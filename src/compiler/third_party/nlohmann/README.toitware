@@ -1,0 +1,12 @@
+Name: JSON for Modern C++
+Short Name: json
+URL: https://github.com/nlohmann/json
+Version: 3.8.0
+Revision: eb7376bb131a4b19a5fc6aacfd046fd298cd0119
+Date: 2020-07-01
+License: MIT
+
+Description:
+A JSON library for C++.
+We only use the single-include file from the library. (Normally located in
+`single_include/nlohmann`)

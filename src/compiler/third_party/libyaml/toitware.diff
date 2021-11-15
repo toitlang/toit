@@ -1,0 +1,13 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 4f81148..964a1c5 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -52,6 +52,8 @@ configure_file(
+   cmake/config.h.in
+   ${config_h}
+   )
++set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/src/emitter.c
++  PROPERTIES COMPILE_FLAGS "-Wno-unused-value")
+ 
+ add_library(yaml ${SRCS})
+ 

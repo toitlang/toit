@@ -1,0 +1,13 @@
+Name: Yaml Parser Library
+Short Name: libyaml
+URL: https://github.com/yaml/libyaml
+Version: 0.2.5
+Revision: acd6f6f014c25e46363e718381e0b35205df2d83
+Date: 2021-02-09
+License: MIT
+
+Description:
+A Yaml library for C.
+
+We have patched the CMakeLists.txt to avoid warnings during build.
+See 'toitware.diff' for the changes, and https://github.com/yaml/libyaml/issues/210.

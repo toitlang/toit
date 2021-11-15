@@ -1,0 +1,10 @@
+Name: termcolor-c
+Short Name: termcolor-c
+URL: https://github.com/ararslan/termcolor-c
+Version: 0.1.0
+Revision: dfc1b077749d56e730bc0434facda68e794d2bbc
+Date: 2020-07-20
+License: BSD 2-Clause "Simplified" License
+
+Description:
+An ANSI C library for writing colored text to the terminal.

@@ -1,0 +1,17 @@
+Name: semver.c
+Short Name: semver.c
+URL: https://github.com/h2non/semver.c
+Version: 1.0.0
+Revision: bf2ac7567917c84fd2ff7393317a14caafa28796
+Date: 2021-09-14
+Author: Tomás Aparicio
+License: MIT
+
+Description:
+Semantic version v2.0 parser and render written in ANSI C with zero dependencies.
+
+Changes:
+The sources were modified to remove a debug output.
+See toitware.patch.
+
+A CMakeLists.txt file was added.

@@ -1,0 +1,12 @@
+The files in this directory are from Unicode, Inc..  They are not shipped to
+users.  UnicodeData.txt is used to generate code and font information for the
+SDK.
+
+copyright.html:
+  Fetched from https://www.unicode.org/copyright.html 2020-10-11.
+
+license.txt:
+  Fetched from https://www.unicode.org/license.html 2020-10-11, converted to text.
+
+UnicodeData.txt:
+  Fetched from https://www.unicode.org/Public/13.0.0/ucd/UnicodeData.txt 2020-10-11.
