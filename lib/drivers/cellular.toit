@@ -43,9 +43,6 @@ interface Cellular:
 
   use_gsm rats/List? -> bool
 
-  /** Whether modem can connect to specific operator. */
-  can_connect_to_operator -> bool
-
   /**
   Connect to the service using the optional operator.
   */

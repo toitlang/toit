@@ -94,8 +94,10 @@ abstract class CellularBase implements Cellular:
         result.add o[3]
     return result
 
-  can_connect_to_operator -> bool:
-    return true
+  // Should be overridden for a special sequence. Must enable the radio.
+  prepare_connect_to_operator_ session/at.Session -> none:
+    // Force enable radio.
+    enable_radio_ session --force
 
   connect_psm:
     e := catch:
@@ -105,15 +107,14 @@ abstract class CellularBase implements Cellular:
       logger_.warn "error connecting to operator" --tags={"error": "$e"}
 
   connect --operator/string?=null --use_gsm/bool -> bool:
-    if operator and not can_connect_to_operator: return false
-
     is_connected := false
 
     at_.do: | session/at.Session |
-      // Force enable radio.
-      enable_radio_ session --force
 
-      if not operator:
+      if operator:
+        prepare_connect_to_operator_ session
+      else:
+        enable_radio_ session --force
         // Only set COPS mode to automatic (0) if it's not already
         // in that mode.
         if (session.send COPS.read).last.first != 0:
@@ -263,15 +264,15 @@ abstract class CellularBase implements Cellular:
 
     try:
 
-      // Enable events.
-      session.set "+CEREG" [2]
-      if use_gsm: session.set "+CGREG" [2]
-
       if operator:
         timeout := Duration --us=(task.deadline - Time.monotonic_us)
         session.send COPS.read
         result := session.send
           COPS.manual operator --timeout=timeout
+
+      // Enable events.
+      session.set "+CEREG" [2]
+      if use_gsm: session.set "+CGREG" [2]
 
       // Make sure we didn't miss the connect event before we set +CEREG=2.
       check_connected_ session "+CEREG" connected

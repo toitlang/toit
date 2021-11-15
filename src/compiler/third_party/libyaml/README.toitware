@@ -11,3 +11,7 @@ A Yaml library for C.
 
 We have patched the CMakeLists.txt to avoid warnings during build.
 See 'toitware.diff' for the changes, and https://github.com/yaml/libyaml/issues/210.
+
+Similarly, we have changed the .gitignore file, so it doesn't exclude the
+config.h.in file in the 'cmake' directory.
+See https://github.com/yaml/libyaml/pull/232 for a pull request to the project.

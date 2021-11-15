@@ -27,7 +27,7 @@ config.h*
 /config.status
 /configure
 stamp-h1
-!config/config.h.in
+!cmake/config.h.in
 /tests/run-dumper
 /tests/run-emitter
 /tests/run-emitter-test-suite
