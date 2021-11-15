@@ -348,9 +348,31 @@ abstract class SequansCellular extends CellularBase:
   scan_for_operators -> List:
     return []
 
-  // Override can_scan_for_operators as the Monarch modem fails when connecting to specific operators.
-  can_connect_to_operator -> bool:
-    return false
+  // Override prepare_connect_to_operator_ as the Monarch modem needs a special sequence.
+  prepare_connect_to_operator_ session/at.Session -> none:
+    // This shouldn't take too long. Fail fast, so we can get a restart.
+    with_timeout (Duration --s=5):
+
+      try:
+        waiter := monitor.Latch
+        session.register_urc "+CEREG" ::
+          if it.first == 2: waiter.set true
+        // Force enable radio.
+        enable_radio_ session --force
+
+        waiter.get
+      finally:
+        session.unregister_urc "+CEREG"
+
+      try:
+        waiter := monitor.Latch
+        session.register_urc "+CEREG" ::
+          if it.first == 0: waiter.set true
+        session.set "+CGATT" [0]
+        waiter.get
+      finally:
+        session.unregister_urc "+CEREG"
+
 
   configure apn --bands=null --rats=null:
     at_.do: | session/at.Session |
