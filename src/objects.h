@@ -283,8 +283,8 @@ class HeapObject : public Object {
   uint8 _byte_at(int offset) { return *reinterpret_cast<uint8*>(_raw_at(offset)); }
   void _byte_at_put(int offset, uint8 value) { *reinterpret_cast<uint8*>(_raw_at(offset)) = value; }
 
-  uint16 _short_at(int offset) { return *reinterpret_cast<uint16*>(_raw_at(offset)); }
-  void _short_at_put(int offset, uint16 value) { *reinterpret_cast<uint16*>(_raw_at(offset)) = value; }
+  uhalf_word _half_word_at(int offset) { return *reinterpret_cast<uhalf_word*>(_raw_at(offset)); }
+  void _half_word_at_put(int offset, uhalf_word value) { *reinterpret_cast<uhalf_word*>(_raw_at(offset)) = value; }
 
   double _double_at(int offset) { return bit_cast<double>(_int64_at(offset)); }
   void _double_at_put(int offset, double value) { _int64_at_put(offset, bit_cast<int64>(value)); }
@@ -509,6 +509,7 @@ class ByteArray : public HeapObject {
 
   // Constants for external representation.
   static const int EXTERNAL_ADDRESS_OFFSET = HEADER_SIZE;
+  static_assert(EXTERNAL_ADDRESS_OFFSET % WORD_SIZE == 0, "External pointer not word aligned");
   static const int EXTERNAL_TAG_OFFSET = EXTERNAL_ADDRESS_OFFSET + WORD_SIZE;
   static const int EXTERNAL_SIZE = EXTERNAL_TAG_OFFSET + WORD_SIZE;
 
@@ -825,8 +826,8 @@ class String : public HeapObject {
   }
   static void internal_allocation_size(int length, int* word_count, int* extra_bytes) {
     ASSERT(length <= max_internal_size());
-    // The length and hash-code are stored as 16-bit values.
-    static_assert(INTERNAL_HEADER_SIZE == HeapObject::SIZE + 2 * sizeof(uint16),
+    // The length and hash-code are stored as half-word sizes.
+    static_assert(INTERNAL_HEADER_SIZE == HeapObject::SIZE + 2 * HALF_WORD_SIZE,
                   "Unexpected string layout");
     *word_count = HeapObject::SIZE / WORD_SIZE;
     *extra_bytes = length + OVERHEAD - HeapObject::SIZE;
@@ -846,6 +847,8 @@ class String : public HeapObject {
       return internal_allocation_size(length, word_count, extra_bytes);
     }
   }
+
+  void do_pointers(PointerCallback* cb);
 
   // Abstraction to access the read-only content of a String.
   // Note that a String can either have on-heap or off-heap content.
@@ -906,27 +909,28 @@ class String : public HeapObject {
 
  private:
   // Two representations
-  // in heap content:  [class:w][hash_code:s][length:s][content:byte*length][0][padding]
-  // off heap content: [class:w][hash_code:s][-1:s]    [length:w][external_address:w]
+  // in heap content:  [class:w][hash_code:h][length:h][content:byte*length][0][padding]
+  // off heap content: [class:w][hash_code:h][-1:h]    [length:w][external_address:w]
   // The first length field will also be used or tagging, recognizing an external representation.
   // Please note that if need be it is easy to extend the width of hash_code for strings with off heap content.
   static const int SENTINEL = 65535;
   static const int HASH_CODE_OFFSET = HeapObject::SIZE;
-  static const int INTERNAL_LENGTH_OFFSET = HASH_CODE_OFFSET + SHORT_SIZE;
-  static const int INTERNAL_HEADER_SIZE = INTERNAL_LENGTH_OFFSET + SHORT_SIZE;
+  static const int INTERNAL_LENGTH_OFFSET = HASH_CODE_OFFSET + HALF_WORD_SIZE;
+  static const int INTERNAL_HEADER_SIZE = INTERNAL_LENGTH_OFFSET + HALF_WORD_SIZE;
   static const word OVERHEAD = INTERNAL_HEADER_SIZE + 1;
   static const int16 NO_HASH_CODE = -1;
 
   static const int EXTERNAL_LENGTH_OFFSET = INTERNAL_HEADER_SIZE;
   static const int EXTERNAL_ADDRESS_OFFSET = EXTERNAL_LENGTH_OFFSET + WORD_SIZE;
+  static_assert(EXTERNAL_ADDRESS_OFFSET % WORD_SIZE == 0, "External pointer not word aligned");
   static const int EXTERNAL_OBJECT_SIZE = EXTERNAL_ADDRESS_OFFSET + WORD_SIZE;
 
   // Any string that is bigger than this size is snapshotted as external string.
   static const int SNAPSHOT_INTERNAL_SIZE_CUTOFF = TOIT_PAGE_SIZE_32 >> 2;
 
-  int16 _raw_hash_code() { return _short_at(HASH_CODE_OFFSET); }
-  void _raw_set_hash_code(int16 value) { _short_at_put(HASH_CODE_OFFSET, value); }
-  void _set_length(int value) { _short_at_put(INTERNAL_LENGTH_OFFSET, value); }
+  int16 _raw_hash_code() { return _half_word_at(HASH_CODE_OFFSET); }
+  void _raw_set_hash_code(int16 value) { _half_word_at_put(HASH_CODE_OFFSET, value); }
+  void _set_length(int value) { _half_word_at_put(INTERNAL_LENGTH_OFFSET, value); }
 
   static int _offset_from(int index) {
     ASSERT(index >= 0);
@@ -945,7 +949,7 @@ class String : public HeapObject {
   }
 
   int _internal_length() {
-     return _short_at(INTERNAL_LENGTH_OFFSET);
+     return _half_word_at(INTERNAL_LENGTH_OFFSET);
   }
 
   int _external_length() {

@@ -28,19 +28,79 @@ constexpr const int AR_FORMAT_ERROR = -2;
 constexpr const int AR_OUT_OF_MEMORY = -3;
 constexpr const int AR_NOT_FOUND = - 4;
 
-struct File {
-  const char* name;  // Max 16 bytes.
-  const uint8* content;
-  int byte_size;
+enum DisposalStrategy {
+  AR_FREE,
+  AR_DONT_FREE,
+};
+
+class File {
+ public:
+
+  File(const char* name, DisposalStrategy name_disposal, const uint8* content_arg, DisposalStrategy content_disposal, int byte_size_arg)
+    : name_(name)
+    , name_disposal_(name_disposal)
+    , content_(content_arg)
+    , content_disposal_(content_disposal)
+    , byte_size(byte_size_arg) { }
+
+  File()
+    : name_(null)
+    , name_disposal_(AR_DONT_FREE)
+    , content_(null)
+    , content_disposal_(AR_DONT_FREE)
+    , byte_size(0) { }
+
+  ~File() {
+    free_name();
+    free_content();
+  }
+
+  const char* name() const { return name_; }
+
+  void clear_name() {
+    set_name(null, AR_DONT_FREE);
+  }
+
+  void set_name(const char* name, DisposalStrategy disposal) {
+    free_name();
+    name_disposal_ = disposal;
+    name_ = name;
+  }
 
   void free_name() {
-    free(const_cast<char*>(name));
-    name = null;
+    if (name_disposal_ == AR_FREE) {
+      free(const_cast<char*>(name_));
+    }
+    name_ = null;
   }
+
+  const uint8* content() const { return content_; }
+
+  void clear_content() {
+    set_content(null, AR_DONT_FREE);
+  }
+
+  void set_content(uint8* content, DisposalStrategy disposal) {
+    free_content();
+    content_disposal_ = disposal;
+    content_ = content;
+  }
+
   void free_content() {
-    free(const_cast<uint8*>(content));
-    content = null;
+    if (content_disposal_ == AR_FREE) {
+      free(const_cast<uint8*>(content_));
+    }
+    content_ = null;
   }
+
+ private:
+  const char* name_;  // Max 16 bytes.
+  DisposalStrategy name_disposal_;
+  const uint8* content_;
+  DisposalStrategy content_disposal_;
+
+ public:
+  int byte_size;
 };
 
 /// Builds an 'ar' archive in memory.

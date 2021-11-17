@@ -116,6 +116,13 @@
 typedef intptr_t word;
 typedef uintptr_t uword;
 
+#if (__WORDSIZE == 64) || __WIN64
+typedef unsigned int uhalf_word;
+#else
+typedef unsigned short uhalf_word;
+#endif
+static_assert(sizeof(uhalf_word) == sizeof(uword) / 2, "Unexpected half-word size");
+
 typedef signed char int8;
 typedef short int16;
 typedef int int32;
@@ -136,7 +143,7 @@ static const int GB = 1 << GB_LOG2;
 static const int POINTER_SIZE = sizeof(void*);
 static const int WORD_SIZE = sizeof(word);
 static const int DOUBLE_SIZE = sizeof(double);
-static const int SHORT_SIZE = sizeof(uint16);
+static const int HALF_WORD_SIZE = (WORD_SIZE >> 1);
 static const int BYTE_SIZE = sizeof(uint8);
 static const int INT32_SIZE = sizeof(int32);
 static const int UINT32_SIZE = sizeof(uint32);

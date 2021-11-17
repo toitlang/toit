@@ -860,20 +860,18 @@ BYTE_CODES ::= [
 
 
 class ToitString extends ToitHeapObject:
-  // in heap content:  [class:w][hash_code:s][length:s][content:byte*length][0][padding]
-  // off heap content: [class:w][hash_code:s][-1:s]    [length:w][external_address:w]
+  // in heap content:  [class:w][hash_code:h][length:h][content:byte*length][0][padding]
+  // off heap content: [class:w][hash_code:h][-1:h]    [length:w][external_address:w]
 
   static SNAPSHOT_INTERNAL_SIZE_CUTOFF ::= (Heap.PAGE_WORD_SIZE_32 * 4) >> 2
-  // Length, address.
-  static EXTERNAL_WORD_SIZE ::= ToitHeapObject.HEADER_WORD_SIZE + 2
-  // Length, address.
-  static INTERNAL_WORD_SIZE ::= ToitHeapObject.HEADER_WORD_SIZE
+
+  // hash+length.
+  // It is then followed by the string and a terminating '\0'.
+  static INTERNAL_WORD_SIZE ::= ToitHeapObject.HEADER_WORD_SIZE + 1
+  // Internal + actual-length, address.
+  static EXTERNAL_WORD_SIZE ::= INTERNAL_WORD_SIZE + 2
 
   static TAG ::= 1  // Must match TypeTag enum in objects.h.
-  // After the object header (with the class), there are
-  // 4 bytes in a string: 2 bytes hash, and 2 bytes length.
-  // When the string is internal, then it is followed by the string and a terminating '\0'.
-  static INTERNAL_STRING_HEADER_BYTES ::= 4
 
   content/ByteArray? := null
 
@@ -889,11 +887,11 @@ class ToitString extends ToitHeapObject:
     extra_bytes := ?
     if optional_length > SNAPSHOT_INTERNAL_SIZE_CUTOFF:
       word_size = EXTERNAL_WORD_SIZE
-      extra_bytes = INTERNAL_STRING_HEADER_BYTES
+      extra_bytes = 0
     else:
       word_size = INTERNAL_WORD_SIZE
-      // The string header bytes, followed by the content, and a terminating '\0'.
-      extra_bytes = INTERNAL_STRING_HEADER_BYTES + optional_length + 1
+      // Content, and a terminating '\0'.
+      extra_bytes = optional_length + 1
     heap32.store this word_size extra_bytes
     if heap64: heap64.store this word_size extra_bytes
 

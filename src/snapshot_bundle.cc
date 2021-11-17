@@ -32,21 +32,19 @@ SnapshotBundle::SnapshotBundle(List<uint8> snapshot,
   ar::MemoryBuilder builder;
   int status = builder.open();
   if (status != 0) FATAL("Couldn't create snapshot");
-  ar::File magic_file = {
-    .name = MAGIC_NAME,
-    .content = reinterpret_cast<const uint8*>(MAGIC_CONTENT),
-    .byte_size = static_cast<int>(strlen(MAGIC_CONTENT)),
-  };
+  ar::File magic_file(
+    MAGIC_NAME, ar::AR_DONT_FREE,
+    reinterpret_cast<const uint8*>(MAGIC_CONTENT), ar::AR_DONT_FREE,
+    static_cast<int>(strlen(MAGIC_CONTENT)));
   status = builder.add(magic_file);
   if (status != 0) FATAL("Couldn't create snapshot");
 
   // Nested function to add the lists as files to the snapshot.
   auto add = [&](const char* name, List<uint8> bytes) {
-    ar::File file = {
-      .name = name,
-      .content = bytes.data(),
-      .byte_size = bytes.length(),
-    };
+    ar::File file(
+      name, ar::AR_DONT_FREE,
+      bytes.data(), ar::AR_DONT_FREE,
+      bytes.length());
     int status = builder.add(file);
     if (status != 0) FATAL("Couldn't create snapshot");
   };
@@ -64,9 +62,9 @@ bool SnapshotBundle::is_bundle_file(FILE* file) {
   ar::File first_ar_file;
   int status = ar_reader.next(&first_ar_file);
   bool result = status == 0 &&
-      strcmp(MAGIC_NAME, first_ar_file.name) == 0 &&
+      strcmp(MAGIC_NAME, first_ar_file.name()) == 0 &&
       strncmp(MAGIC_CONTENT,
-              reinterpret_cast<const char*>(first_ar_file.content),
+              reinterpret_cast<const char*>(first_ar_file.content()),
               strlen(MAGIC_CONTENT)) == 0;
   first_ar_file.free_name();
   first_ar_file.free_content();
@@ -86,7 +84,7 @@ Snapshot SnapshotBundle::snapshot() {
   ar::File file;
   int status = reader.find("snapshot", &file);
   if (status != 0) FATAL("Invalid SnapshotBundle");
-  return Snapshot(file.content, file.byte_size);
+  return Snapshot(file.content(), file.byte_size);
 }
 
 SnapshotBundle SnapshotBundle::read_from_file(const char* bundle_filename, bool silent) {
