@@ -99,7 +99,7 @@ static void write_ar_file_header(uint8* buffer, const File& file) {
 
   // The file name is truncated if it is too long.
   write_string(&buffer[FILE_NAME_OFFSET],
-               file.name,
+               file.name(),
                FILE_NAME_SIZE);
   write_decimal(&buffer[FILE_TIMESTAMP_OFFSET],
                 modification_timestamp,
@@ -142,7 +142,7 @@ int MemoryBuilder::add(File file) {
   int offset = _size;
   write_ar_file_header(&_buffer[offset], file);
   offset += FILE_HEADER_SIZE;
-  memcpy(&_buffer[offset], file.content, file.byte_size);
+  memcpy(&_buffer[offset], file.content(), file.byte_size);
   offset += file.byte_size;
   if (needs_padding(file.byte_size)) {
     _buffer[offset] = PADDING_CHAR;
@@ -173,7 +173,7 @@ int FileBuilder::add(File file) {
   write_ar_file_header(buffer, file);
   int written = fwrite(buffer, 1, FILE_HEADER_SIZE, _file);
   if (written != FILE_HEADER_SIZE) return AR_ERRNO_ERROR;
-  written = fwrite(file.content, 1, file.byte_size, _file);
+  written = fwrite(file.content(), 1, file.byte_size, _file);
   if (written != file.byte_size) return AR_ERRNO_ERROR;
   if (needs_padding(file.byte_size)) {
     written = fwrite(PADDING_STRING, 1, 1, _file);
@@ -187,8 +187,8 @@ int FileBuilder::add(File file) {
 static int parse_ar_file_header(const uint8* data, File* file) {
   // We don't verify that the owner,group, or mode are correct.
   // However, we check that the ending characters are correct. (Easy enough to do).
-  file->name = null;
-  file->content = null;
+  file->clear_name();
+  file->clear_content();
   file->byte_size = 0;
   if (memcmp(FILE_HEADER_ENDING_CHARS, &data[FILE_ENDING_CHARS_OFFSET], FILE_ENDING_CHARS_SIZE) != 0) {
     return AR_FORMAT_ERROR;
@@ -224,8 +224,8 @@ static int parse_ar_file_header(const uint8* data, File* file) {
       break;
     }
   }
-  file->name = strdup(name);
-  if (file->name == null) return AR_OUT_OF_MEMORY;
+  file->set_name(strdup(name), AR_FREE);
+  if (file->name() == null) return AR_OUT_OF_MEMORY;
   return 0;
 }
 
@@ -236,8 +236,8 @@ int MemoryReader::next(File* file) {
     _offset += AR_HEADER_SIZE;
   }
   if (_offset == _size) {
-    file->name = null;
-    file->content = null;
+    file->clear_name();
+    file->clear_content();
     file->byte_size = 0;
     return AR_END_OF_ARCHIVE;
   }
@@ -246,7 +246,7 @@ int MemoryReader::next(File* file) {
   if (result != 0) return result;
   _offset += FILE_HEADER_SIZE;
   if (_offset + file->byte_size > _size) return AR_FORMAT_ERROR;
-  file->content = &_buffer[_offset];
+  file->set_content(&_buffer[_offset], AR_DONT_FREE);
   _offset += file->byte_size;
   if (needs_padding(file->byte_size)) _offset++;
   return 0;
@@ -259,15 +259,14 @@ int MemoryReader::find(const char* name, File* file, bool reset) {
   while (true) {
     int status = next(file);
     if (status != 0) {
-      file->name = null;
-      file->content = null;
+      file->clear_name();
+      file->clear_content();
       file->byte_size = 0;
       if (status == AR_END_OF_ARCHIVE) return AR_NOT_FOUND;
       return status;
     }
-    if (strcmp(file->name, name) == 0) {
-      file->free_name();
-      file->name = name;
+    if (strcmp(file->name(), name) == 0) {
+      file->set_name(strdup(name), AR_FREE);
       return 0;
     }
   }
@@ -288,8 +287,8 @@ int FileReader::close() {
 }
 
 int FileReader::next(File* file) {
-  file->name = null;
-  file->content = null;
+  file->clear_name();
+  file->clear_content();
   if (_is_first) {
     _is_first = false;
     int status = read_ar_header();
@@ -317,9 +316,8 @@ int FileReader::find(const char* name, File* file, bool reset) {
     int status = read_file_header(file);
     if (status == AR_END_OF_ARCHIVE) return AR_NOT_FOUND;
     if (status != 0) return status;
-    if (strcmp(file->name, name) == 0) {
-      file->free_name();
-      file->name = name;
+    if (strcmp(file->name(), name) == 0) {
+      file->set_name(name, AR_DONT_FREE);
       status = read_file_content(file);
       return status;
     }
@@ -354,7 +352,7 @@ int FileReader::read_file_content(File* file) {
     free(content);
     return AR_ERRNO_ERROR;
   }
-  file->content = content;
+  file->set_content(content, AR_FREE);
   if (needs_padding(file->byte_size)) {
     uint8 padding_char;
     read = fread(&padding_char, 1, 1, _file);

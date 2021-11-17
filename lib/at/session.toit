@@ -98,8 +98,10 @@ parse_response line/ByteArray --plain=false -> List:
       end = line.index_of ')' --from=index
       parts.add
         parse_response line[index + 1..end]
-      // Advance $end to the ','.
-      end++
+      // Monarch has a non-comma-separated tuple list.
+      if end + 1 < size and line[end + 1] == ',':
+        // Advance $end to the ','.
+        end++
     else:
       if (line.index_of '.' --from=index --to=end) >= 0:
         parts.add

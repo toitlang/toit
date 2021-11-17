@@ -226,6 +226,9 @@ void HeapObject::do_pointers(Program* program, PointerCallback* cb) {
   if (class_tag() == BYTE_ARRAY_TAG) {
     auto byte_array = ByteArray::cast(this);
     byte_array->do_pointers(cb);
+  } else if (class_tag() == STRING_TAG) {
+    auto str = String::cast(this);
+    str->do_pointers(cb);
   } else {
     // All other object's pointers are covered by doing their roots.
     PointerRootCallback root_callback(cb);
@@ -235,6 +238,12 @@ void HeapObject::do_pointers(Program* program, PointerCallback* cb) {
 
 void ByteArray::do_pointers(PointerCallback* cb) {
   if (has_external_address()) {
+    cb->c_address(reinterpret_cast<void**>(_raw_at(EXTERNAL_ADDRESS_OFFSET)));
+  }
+}
+
+void String::do_pointers(PointerCallback* cb) {
+  if (!content_on_heap()) {
     cb->c_address(reinterpret_cast<void**>(_raw_at(EXTERNAL_ADDRESS_OFFSET)));
   }
 }
