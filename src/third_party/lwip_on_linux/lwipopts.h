@@ -38,6 +38,10 @@
 #ifndef LWIP_LWIPOPTS_H
 #define LWIP_LWIPOPTS_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /*
  * Include user defined options first. Anything not defined in these files
  * will be set to standard values. Override anything you dont like!
@@ -443,6 +447,10 @@ void sys_lock_tcpip_core(void);
 void sys_unlock_tcpip_core(void);
 #define UNLOCK_TCPIP_CORE()        sys_unlock_tcpip_core()
 #endif
+#endif
+
+#ifdef __cplusplus
+}  // extern "C"
 #endif
 
 #endif /* LWIP_LWIPOPTS_H */

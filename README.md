@@ -3,6 +3,15 @@
 This repository contains the Toit language implementation. It is fully open source and consists of the compiler,
 virtual machine, and standard libraries that together enable Toit programs to run on an ESP32.
 
+## References
+
+The Toit language is the foundation for the [Toit platform](https://toit.io/) that brings robust serviceability
+to your ESP32-based devices. You can read more about the language and the standard libraries in the platform
+documentation:
+
+* [Language basics](https://docs.toit.io/language)
+* [Standard libraries](https://libs.toit.io/)
+
 ## Licenses
 
 The Toit compiler, the virtual machine, and all the supporting infrastructure is licensed under
@@ -80,7 +89,7 @@ build/host/bin/toitvm examples/hello.toit
 ## Build for ESP32
 
 Make sure the environment variables for the ESP32 tools are set, as
-described in the Dependencies section.
+described in the [dependencies](#dependencies) section.
 
 Build an image for your ESP32 device that can be flashed using `esptool.py`.
 

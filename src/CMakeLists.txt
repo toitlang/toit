@@ -79,6 +79,12 @@ if (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
   set(TOIT_LINK_SEGFAULT SegFault)
 endif()
 
+if (DEFINED USE_LWIP)
+  set(TOIT_NETWORK_LIBS mbedtls ${LWIP_SANITIZER_LIBS} lwipcore lwipcontribportunix)
+else()
+  set(TOIT_NETWORK_LIBS mbedtls)
+endif()
+
 # Because of the `CACHE INTERNAL ""` at the end of the `set` we can
 #   use this variable outside of the directory.
 set(TOIT_LINK_LIBS
@@ -86,7 +92,7 @@ set(TOIT_LINK_LIBS
   ${TOIT_LINK_GC_FLAGS}
   ${TOIT_LINK_GROUP_BEGIN_FLAGS}
   toit_vm
-  mbedtls
+  ${TOIT_NETWORK_LIBS}
   ${TOIT_LINK_GROUP_END_FLAGS}
   toit_compiler
   pthread
@@ -126,7 +132,6 @@ if (DEFINED USE_LWIP)
   include_directories(toitvm PRIVATE ${LWIP_INCLUDE_DIRS})
   target_compile_options(toitvm PRIVATE ${LWIP_COMPILER_FLAGS})
   target_compile_definitions(toitvm PRIVATE ${LWIP_DEFINITIONS} ${LWIP_MBEDTLS_DEFINITIONS})
-  target_link_libraries(toitvm ${LWIP_SANITIZER_LIBS} lwipcore lwipcontribportunix)
 endif()
 
 #ifdef IMAGE

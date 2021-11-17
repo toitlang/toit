@@ -43,7 +43,7 @@ include_directories(
 
 if (DEFINED USE_LWIP)
   set(LWIP_MBEDTLSDIR "../mbedtls")
-  set(LWIP_DIR "third_party/lwip")
+  set(LWIP_DIR "third_party/esp-idf/components/lwip/lwip")
   set(LWIP_CONTRIB_DIR "${LWIP_DIR}/contrib")
   add_definitions(-DTOIT_USE_LWIP=1)
   include(${LWIP_DIR}/src/Filelists.cmake)
@@ -54,8 +54,8 @@ if (DEFINED USE_LWIP)
   # version of lwipopts.h, replacing the one in
   # third_party/lwip/contrib/ports/unix/lib.
   include_directories(src/third_party/lwip_on_linux)
-  include_directories(third_party/lwip/src/include)
-  include_directories(third_party/lwip/contrib/ports/unix/port/include)
+  include_directories(third_party/esp-idf/components/lwip/lwip/src/include)
+  include_directories(third_party/esp-idf/components/lwip/lwip/contrib/ports/unix/port/include)
 endif()
 
 # Set the output buffer size to 3700, reduced from 16k.  This is small enough
