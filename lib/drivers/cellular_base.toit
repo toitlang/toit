@@ -83,9 +83,7 @@ abstract class CellularBase implements Cellular:
   scan_for_operators -> List:
     operators := []
     at_.do: | session/at.Session |
-      enable_radio_ session --force
       result := session.send COPS.scan
-      disable_radio_ session
       operators = result.last
 
     result := []
@@ -93,11 +91,6 @@ abstract class CellularBase implements Cellular:
       if o is List and o.size == 5 and o[1] is string and o[0] != 3:  // 3 = operator forbidden.
         result.add o[3]
     return result
-
-  // Should be overridden for a special sequence. Must enable the radio.
-  prepare_connect_to_operator_ session/at.Session -> none:
-    // Force enable radio.
-    enable_radio_ session --force
 
   connect_psm:
     e := catch:
@@ -111,10 +104,7 @@ abstract class CellularBase implements Cellular:
 
     at_.do: | session/at.Session |
 
-      if operator:
-        prepare_connect_to_operator_ session
-      else:
-        enable_radio_ session --force
+      if not operator:
         // Only set COPS mode to automatic (0) if it's not already
         // in that mode.
         if (session.send COPS.read).last.first != 0:
@@ -122,8 +112,6 @@ abstract class CellularBase implements Cellular:
 
       // Set operator after enabling the radio.
       is_connected = wait_for_connected_ session operator --use_gsm=use_gsm
-
-      if not is_connected: disable_radio_ session
 
     return is_connected
 
@@ -151,9 +139,13 @@ abstract class CellularBase implements Cellular:
   wait_for_ready:
     at_.do: wait_for_ready_ it
 
-  enable_radio_ session/at.Session --force=false:
-    if not force and is_radio_enabled_ session: return
-    session.send CFUN.online
+  enable_radio:
+    at_.do: | session/at.Session |
+      session.send CFUN.online
+
+  disable_radio -> none:
+    at_.do: | session/at.Session |
+      disable_radio_ session
 
   disable_radio_ session/at.Session:
     session.send CFUN.offline

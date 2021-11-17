@@ -340,38 +340,34 @@ abstract class SequansCellular extends CellularBase:
   // Overriden since it doesn't appear to support deregister.
   detach:
 
-  // Override disable_radio, as the SIM cannot be accessed unless airplane mode is used.
+  // Override disable_radio_, as the SIM cannot be accessed unless airplane mode is used.
   disable_radio_ session/at.Session:
     session.send CFUN.airplane
 
-  // Override scan_for_operators as the Monarch modem fails when scanning for operators.
-  scan_for_operators -> List:
-    return []
-
-  // Override prepare_connect_to_operator_ as the Monarch modem needs a special sequence.
-  prepare_connect_to_operator_ session/at.Session -> none:
+  // Override enable_radio as the Monarch modem needs a special sequence.
+  enable_radio -> none:
     // This shouldn't take too long. Fail fast, so we can get a restart.
     with_timeout (Duration --s=5):
+      at_.do: | session/at.Session |
+        try:
+          waiter := monitor.Latch
+          session.register_urc "+CEREG" ::
+            if it.first == 2: waiter.set true
+          // Force enable radio.
+          session.send CFUN.online
 
-      try:
-        waiter := monitor.Latch
-        session.register_urc "+CEREG" ::
-          if it.first == 2: waiter.set true
-        // Force enable radio.
-        enable_radio_ session --force
+          waiter.get
+        finally:
+          session.unregister_urc "+CEREG"
 
-        waiter.get
-      finally:
-        session.unregister_urc "+CEREG"
-
-      try:
-        waiter := monitor.Latch
-        session.register_urc "+CEREG" ::
-          if it.first == 0: waiter.set true
-        session.set "+CGATT" [0]
-        waiter.get
-      finally:
-        session.unregister_urc "+CEREG"
+        try:
+          waiter := monitor.Latch
+          session.register_urc "+CEREG" ::
+            if it.first == 0: waiter.set true
+          session.set "+CGATT" [0]
+          waiter.get
+        finally:
+          session.unregister_urc "+CEREG"
 
 
   configure apn --bands=null --rats=null:

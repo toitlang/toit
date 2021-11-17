@@ -69,6 +69,7 @@ Scheduler::~Scheduler() {
   ASSERT(_groups.is_empty());
   ASSERT(_ready_processes.is_empty());
   ASSERT(_threads.is_empty());
+  OS::dispose(_gc_condition);
   OS::dispose(_has_threads);
   OS::dispose(_has_processes);
   OS::dispose(_mutex);

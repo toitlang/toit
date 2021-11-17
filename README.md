@@ -30,39 +30,62 @@ We recommend you use Toitware's [ESP-IDF fork](https://github.com/toitware/esp-i
 * Allocation-fixes for UART, etc.
 * LWIP fixes.
 
-```
-$ git clone https://github.com/toitware/esp-idf.git
-$ cd esp-idf/
-$ git checkout patch-head-4.3-3
-$ git submodule update --init --recursive
+``` sh
+git clone https://github.com/toitware/esp-idf.git
+pushd esp-idf/
+git checkout patch-head-4.3-3
+git submodule update --init --recursive
+popd
 ```
 
 Remember to add it to your ENV as `IDF_PATH`:
 
+``` sh
+export IDF_PATH=...
 ```
-$ export IDF_PATH=...
+
+### ESP32 tools
+
+Install the ESP32 tools, if you want to build an image for an ESP32.
+
+On Linux:
+``` sh
+$IDF_PATH/install.sh
+```
+
+For other platforms see https://docs.espressif.com/projects/esp-idf/en/latest/esp32/get-started/index.html#step-3-set-up-the-tools
+
+Update your environment variables:
+
+``` sh
+. $IDF_PATH/export.sh
 ```
 
 ## Build for Linux
 
-Then run the following commands:
+Make sure `IDF_PATH` is set, as described above.
 
-```
-$ make build/host/bin/toitvm
+Then run the following commands at the root of your checkout.
+
+``` sh
+make build/host/bin/toitvm
 ```
 
 You should then be able to execute a toit file:
 
-```
-$ build/host/bin/toitvm examples/hello.toit
+``` sh
+build/host/bin/toitvm examples/hello.toit
 ```
 
 ## Build for ESP32
 
-You can build an image for your ESP32 device that can be flashed using `esptool.py`.
+Make sure the environment variables for the ESP32 tools are set, as
+described in the Dependencies section.
 
-```
-$ make build/esp32/toit.bin
+Build an image for your ESP32 device that can be flashed using `esptool.py`.
+
+``` sh
+make build/esp32/toit.bin
 ```
 
 By default, the image boots up and runs `examples/hello.toit`.

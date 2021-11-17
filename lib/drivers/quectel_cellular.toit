@@ -463,7 +463,7 @@ abstract class QuectelCellular extends CellularBase implements Gnss:
   network_interface -> net.Interface:
     return Interface_ this
 
-  // Override disable_radio, as the SIM cannot be accessed unless airplane mode is used.
+  // Override disable_radio_, as the SIM cannot be accessed unless airplane mode is used.
   disable_radio_ session/at.Session:
     session.send CFUN.airplane
 

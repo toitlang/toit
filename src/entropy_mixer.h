@@ -36,6 +36,7 @@ class EntropyMixer {
 
   ~EntropyMixer() {
     mbedtls_entropy_free(&_context);
+    OS::dispose(_mutex);
   }
 
   void add_entropy_byte(int datum) {

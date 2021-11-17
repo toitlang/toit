@@ -70,6 +70,10 @@ interface Cellular:
 
   wait_for_ready -> none
 
+  enable_radio -> none
+
+  disable_radio -> none
+
   power_on -> none
 
   /**
