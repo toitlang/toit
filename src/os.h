@@ -123,15 +123,24 @@ class PagedMemory {
   PagedMemoryBlock* _block;
 };
 
-// Class used for allocating aligned C heap memory.
-class AlignedMemory {
+class AlignedMemoryBase {
  public:
-  AlignedMemory(size_t size_in_bytes, size_t alignment);
-  ~AlignedMemory();
+  virtual ~AlignedMemoryBase();
 
   // Returns the aligned address.
-  void* address() { return aligned; }
-  size_t byte_size() const { return size_in_bytes; }
+  virtual void* address() = 0;
+  virtual size_t byte_size() const = 0;
+};
+
+// Class used for allocating aligned C heap memory.
+class AlignedMemory : public AlignedMemoryBase {
+ public:
+  AlignedMemory(size_t size_in_bytes, size_t alignment);
+  virtual ~AlignedMemory();
+
+  // Returns the aligned address.
+  virtual void* address() { return aligned; }
+  virtual size_t byte_size() const { return size_in_bytes; }
 
  private:
   const size_t size_in_bytes;
@@ -139,15 +148,16 @@ class AlignedMemory {
   void* aligned;
 };
 
-class ProtectableAlignedMemory {
+#ifndef TOIT_FREERTOS
+class ProtectableAlignedMemory : public AlignedMemoryBase {
  public:
   ProtectableAlignedMemory(size_t size_in_bytes, size_t alignment)
       : _memory(size_in_bytes, compute_alignment(alignment)) { }
-  ~ProtectableAlignedMemory();
+  virtual ~ProtectableAlignedMemory();
 
   // Returns the aligned address.
-  void* address() { return _memory.address(); }
-  size_t byte_size() const { return _memory.byte_size(); }
+  virtual void* address() { return _memory.address(); }
+  virtual size_t byte_size() const { return _memory.byte_size(); }
 
   void mark_read_only();
 
@@ -155,6 +165,7 @@ class ProtectableAlignedMemory {
   AlignedMemory _memory;
   static size_t compute_alignment(size_t alignment);
 };
+#endif
 
 class OS {
  public:

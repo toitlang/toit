@@ -23,6 +23,8 @@ int Program::absolute_bci_from_bcp(uint8* bcp) const {
   return bcp - bytecodes.data();
 }
 
+#ifndef TOIT_FREERTOS
+
 void Program::write(SnapshotWriter* st) {
   st->write_external_list_uint16(class_bits);
   // From now on, it's safe to just refer to classes by their id.
@@ -88,6 +90,8 @@ void Program::read(SnapshotReader* st) {
   // The source-mapping was not serialized into the snapshot and is therefore
   // kept as `null`.
 }
+
+#endif  // TOIT_FREERTOS
 
 void Program::do_roots(RootCallback* callback) {
   callback->do_roots(_roots, ROOT_COUNT);

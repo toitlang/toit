@@ -93,6 +93,8 @@ bool OS::get_real_time(struct timespec* time) {
   return true;
 }
 
+AlignedMemoryBase::~AlignedMemoryBase() {}
+
 AlignedMemory::AlignedMemory(size_t size_in_bytes, size_t alignment) : size_in_bytes(size_in_bytes) {
   raw = malloc(alignment + size_in_bytes);
 #ifdef DEBUG

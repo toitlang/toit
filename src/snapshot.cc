@@ -27,6 +27,8 @@
 
 namespace toit {
 
+#ifndef TOIT_FREERTOS
+
 enum class SnapshotTypeTag {
   OBJECT_TAG = 0,
   IN_TABLE_TAG,
@@ -1424,6 +1426,8 @@ void BaseSnapshotWriter::write_heap_object(HeapObject* object) {
   }
 }
 
+#endif  // TOIT_FREERTOS
+
 void PointerCallback::object_table(Object** table, int length) {
   ASSERT(length >= 0);
   for (int i = 0; i < length; i++) object_address(&table[i]);
@@ -1432,6 +1436,8 @@ void PointerCallback::object_table(Object** table, int length) {
 void ProgramImage::do_pointers(PointerCallback* callback) const {
   program()->do_pointers(callback);
 }
+
+#ifndef TOIT_FREERTOS
 
 class RelocationBits : public PointerCallback {
  public:
@@ -1514,7 +1520,7 @@ ImageInputStream::ImageInputStream(const ProgramImage& image,
 int ImageInputStream::words_to_read() {
   ASSERT(!eos());
   int ready_words = Utils::address_distance(current, _image.end()) / WORD_SIZE;
-  return Utils::min(CHUNK_SIZE, 1 + ready_words);
+  return Utils::min(ImageOutputStream::CHUNK_SIZE, 1 + ready_words);
 }
 
 int ImageInputStream::read(word* buffer) {
@@ -1534,12 +1540,14 @@ int ImageInputStream::read(word* buffer) {
   return pos;
 }
 
+#endif  // TOIT_FREERTOS
+
 ImageOutputStream::ImageOutputStream(ProgramImage image)
     : _image(image)
     , current(image.begin()) {}
 
 void ImageOutputStream::write(const word* buffer, int size, word* output) {
-  ASSERT(1 < size && size <= ImageInputStream::CHUNK_SIZE);
+  ASSERT(1 < size && size <= CHUNK_SIZE);
   if (output == null) output = current;
   word mask = buffer[0];
   for (int index = 1; index < size; index++) {
@@ -1552,4 +1560,4 @@ void ImageOutputStream::write(const word* buffer, int size, word* output) {
   }
 }
 
-}
+}  // namespace toit

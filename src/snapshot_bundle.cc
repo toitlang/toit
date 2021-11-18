@@ -13,6 +13,10 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+#include "top.h"
+
+#ifndef TOIT_FREERTOS
+
 #include "snapshot_bundle.h"
 #include "compiler/ar.h"
 
@@ -137,3 +141,5 @@ bool SnapshotBundle::write_to_file(const char* bundle_filename, bool silent) {
 }
 
 } // namespace toit
+
+#endif  // TOIT_FREERTOS

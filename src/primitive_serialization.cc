@@ -25,6 +25,9 @@ namespace toit {
 MODULE_IMPLEMENTATION(serialization, MODULE_SERIALIZATION)
 
 PRIMITIVE(serialize) {
+#ifdef TOIT_FREERTOS
+  UNIMPLEMENTED_PRIMITIVE;
+#else
   ARGS(Object, object);
   ByteArray* result = process->object_heap()->allocate_proxy();
   if (result == null) ALLOCATION_FAILED;
@@ -35,14 +38,19 @@ PRIMITIVE(serialize) {
   if (buffer == null) MALLOC_FAILED;
   result->set_external_address(length, buffer);
   return result;
+#endif
 }
 
 PRIMITIVE(deserialize) {
+#ifdef TOIT_FREERTOS
+  UNIMPLEMENTED_PRIMITIVE;
+#else
   ARGS(Blob, bytes);
   Snapshot snapshot(bytes.address(), bytes.length());
   auto result = snapshot.read_object(process);
   if (result == null) ALLOCATION_FAILED;
   return result;
+#endif
 }
 
 } // namespace toit

@@ -152,9 +152,11 @@ class Program : public FlashAllocation {
     return instance_size_for(object->class_id());
   }
 
+#ifndef TOIT_FREERTOS
   // Snapshot operations.
   void write(SnapshotWriter* st);
   void read(SnapshotReader* st);
+#endif
 
   // Size of all objects stored in this program.
   int object_size() const { return _heap.object_size(); }
@@ -214,6 +216,7 @@ class Program : public FlashAllocation {
     T* array() const { return _array; }
     int length() const { return _length; }
 
+#ifndef TOIT_FREERTOS
     void read(SnapshotReader* st) {
       _array = reinterpret_cast<T*>(st->read_external_object_table(&_length));
     }
@@ -221,6 +224,7 @@ class Program : public FlashAllocation {
     void write(SnapshotWriter* st) {
       st->write_external_object_table(raw_array(), length());
     }
+#endif
 
     void do_roots(RootCallback* callback) {
       callback->do_roots(raw_array(), length());

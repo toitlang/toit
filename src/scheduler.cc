@@ -85,6 +85,7 @@ Scheduler::ExitState Scheduler::run_boot_program(Program* program, char** args, 
   return launch_program(locker, _new Process(program, group, args, initial_block));
 }
 
+#ifndef TOIT_FREERTOS
 Scheduler::ExitState Scheduler::run_boot_program(
     Program* boot_program,
     SnapshotBundle application_bundle,
@@ -99,6 +100,7 @@ Scheduler::ExitState Scheduler::run_boot_program(
   Process* process = _new Process(boot_program, group, application_bundle, args, initial_block);
   return launch_program(locker, process);
 }
+#endif
 
 Scheduler::ExitState Scheduler::launch_program(Locker& locker, Process* process) {
   ProcessGroup* group = process->group();

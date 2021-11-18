@@ -72,7 +72,9 @@ class Process : public ProcessListFromProcessGroup::Element,
   static const char* StateName[];
 
   Process(Program* program, ProcessGroup* group, char** args, Block* initial_block);
+#ifndef TOIT_FREERTOS
   Process(Program* program, ProcessGroup* group, SnapshotBundle bundle, char** args, Block* initial_block);
+#endif
   Process(Program* program, ProcessGroup* group, Method method, const uint8* arguments_address, int arguments_length, Block* initial_block);
   ~Process();
 

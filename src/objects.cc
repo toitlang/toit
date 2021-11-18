@@ -252,47 +252,6 @@ void Array::roots_do(RootCallback* cb) {
   cb->do_roots(_root_at(_offset_from(0)), length());
 }
 
-void Array::write_content(SnapshotWriter* st) {
-  int len = length();
-  for (int index = 0; index < len; index++) st->write_object(at(index));
-}
-
-void Array::read_content(SnapshotReader* st, int len) {
-  _set_length(len);
-  for (int index = 0; index < len; index++) at_put(index, st->read_object());
-}
-
-void ByteArray::write_content(SnapshotWriter* st) {
-  Bytes bytes(this);
-  if (bytes.length() > SNAPSHOT_INTERNAL_SIZE_CUTOFF) {
-    if (has_external_address() && external_tag() != RawByteTag) {
-      FATAL("Can only serialize raw bytes");
-    }
-    st->write_external_list_uint8(List<uint8>(bytes.address(), bytes.length()));
-  } else {
-    for (int index = 0; index < bytes.length(); index++) {
-      st->write_cardinal(bytes.at(index));
-    }
-  }
-}
-
-void ByteArray::read_content(SnapshotReader* st, int len) {
-  if (len > SNAPSHOT_INTERNAL_SIZE_CUTOFF) {
-    _set_external_length(len);
-    auto external_bytes = st->read_external_list_uint8();
-    ASSERT(external_bytes.length() == len);
-    _set_external_tag(RawByteTag);
-    _set_external_address(external_bytes.data());
-  } else {
-    _set_length(len);
-    Bytes bytes(this);
-
-    for (int index = 0; index < len; index++)
-      bytes.at_put(index, st->read_cardinal());
-  }
-}
-
-
 void Stack::roots_do(RootCallback* cb) {
   int top = this->top();
   Process* owner = this->owner();
@@ -355,57 +314,6 @@ void Stack::copy_to(HeapObject* other, int other_length) {
 void Instance::roots_do(int instance_size, RootCallback* cb) {
   int len = length_from_size(instance_size);
   cb->do_roots(_root_at(_offset_from(0)), len);
-}
-
-void Instance::write_content(int instance_size, SnapshotWriter* st) {
-  int len = length_from_size(instance_size);
-  st->write_cardinal(len);
-  for (int index = 0; index < len; index++) {
-    st->write_object(at(index));
-  }
-}
-
-void Instance::read_content(SnapshotReader* st) {
-  int len = st->read_cardinal();
-  for (int index = 0; index < len; index++) {
-    at_put(index, st->read_object());
-  }
-}
-
-void String::write_content(SnapshotWriter* st) {
-  Bytes bytes(this);
-  int len = bytes.length();
-  if (len > String::SNAPSHOT_INTERNAL_SIZE_CUTOFF) {
-    // TODO(florian): we should remove the '\0'.
-    st->write_external_list_uint8(List<uint8>(bytes.address(), bytes.length() + 1));
-  } else {
-    ASSERT(content_on_heap());
-    for (int index = 0; index < len; index++) st->write_byte(bytes.at(index));
-  }
-}
-
-void String::read_content(SnapshotReader* st, int len) {
-  if (len > String::SNAPSHOT_INTERNAL_SIZE_CUTOFF) {
-    _set_external_length(len);
-    auto external_bytes = st->read_external_list_uint8();
-    ASSERT(external_bytes.length() == len + 1);  // TODO(florian): we shouldn't have a '\0'.
-    _set_external_address(external_bytes.data());
-  } else {
-    _set_length(len);
-    Bytes bytes(this);
-    for (int index = 0; index < len; index++) bytes._at_put(index, st->read_byte());
-    bytes._set_end();
-    _assign_hash_code();
-    ASSERT(content_on_heap());
-  }
-}
-
-void Double::write_content(SnapshotWriter* st) {
-  st->write_double(value());
-}
-
-void Double::read_content(SnapshotReader* st) {
-  _set_value(st->read_double());
 }
 
 bool Object::encode_on(ProgramOrientedEncoder* encoder) {
@@ -534,5 +442,100 @@ bool String::_is_valid_utf8() {
   Bytes content(this);
   return Utils::is_valid_utf_8(content.address(), content.length());
 }
+
+#ifndef TOIT_FREERTOS
+void Array::write_content(SnapshotWriter* st) {
+  int len = length();
+  for (int index = 0; index < len; index++) st->write_object(at(index));
+}
+
+void ByteArray::write_content(SnapshotWriter* st) {
+  Bytes bytes(this);
+  if (bytes.length() > SNAPSHOT_INTERNAL_SIZE_CUTOFF) {
+    if (has_external_address() && external_tag() != RawByteTag) {
+      FATAL("Can only serialize raw bytes");
+    }
+    st->write_external_list_uint8(List<uint8>(bytes.address(), bytes.length()));
+  } else {
+    for (int index = 0; index < bytes.length(); index++) {
+      st->write_cardinal(bytes.at(index));
+    }
+  }
+}
+
+void Instance::write_content(int instance_size, SnapshotWriter* st) {
+  int len = length_from_size(instance_size);
+  st->write_cardinal(len);
+  for (int index = 0; index < len; index++) {
+    st->write_object(at(index));
+  }
+}
+
+void String::write_content(SnapshotWriter* st) {
+  Bytes bytes(this);
+  int len = bytes.length();
+  if (len > String::SNAPSHOT_INTERNAL_SIZE_CUTOFF) {
+    // TODO(florian): we should remove the '\0'.
+    st->write_external_list_uint8(List<uint8>(bytes.address(), bytes.length() + 1));
+  } else {
+    ASSERT(content_on_heap());
+    for (int index = 0; index < len; index++) st->write_byte(bytes.at(index));
+  }
+}
+
+void Double::write_content(SnapshotWriter* st) {
+  st->write_double(value());
+}
+
+void Instance::read_content(SnapshotReader* st) {
+  int len = st->read_cardinal();
+  for (int index = 0; index < len; index++) {
+    at_put(index, st->read_object());
+  }
+}
+
+void String::read_content(SnapshotReader* st, int len) {
+  if (len > String::SNAPSHOT_INTERNAL_SIZE_CUTOFF) {
+    _set_external_length(len);
+    auto external_bytes = st->read_external_list_uint8();
+    ASSERT(external_bytes.length() == len + 1);  // TODO(florian): we shouldn't have a '\0'.
+    _set_external_address(external_bytes.data());
+  } else {
+    _set_length(len);
+    Bytes bytes(this);
+    for (int index = 0; index < len; index++) bytes._at_put(index, st->read_byte());
+    bytes._set_end();
+    _assign_hash_code();
+    ASSERT(content_on_heap());
+  }
+}
+
+void Double::read_content(SnapshotReader* st) {
+  _set_value(st->read_double());
+}
+
+void Array::read_content(SnapshotReader* st, int len) {
+  _set_length(len);
+  for (int index = 0; index < len; index++) at_put(index, st->read_object());
+}
+
+void ByteArray::read_content(SnapshotReader* st, int len) {
+  if (len > SNAPSHOT_INTERNAL_SIZE_CUTOFF) {
+    _set_external_length(len);
+    auto external_bytes = st->read_external_list_uint8();
+    ASSERT(external_bytes.length() == len);
+    _set_external_tag(RawByteTag);
+    _set_external_address(external_bytes.data());
+  } else {
+    _set_length(len);
+    Bytes bytes(this);
+
+    for (int index = 0; index < len; index++)
+      bytes.at_put(index, st->read_cardinal());
+  }
+}
+
+
+#endif  // TOIT_FREERTOS
 
 }  // namespace toit

@@ -34,10 +34,12 @@ class ProgramImage {
  public:
   ProgramImage(void* address, int size)
       : _memory(null), _address(address), _size(size) {}
+#ifndef TOIT_FREERTOS
   ProgramImage(ProtectableAlignedMemory* memory)
       : _memory(memory)
       , _address(memory->address())
       , _size(static_cast<int>(memory->byte_size())) {}
+#endif
 
   static ProgramImage invalid() { return ProgramImage(null, 0); }
 
@@ -73,10 +75,21 @@ class ProgramImage {
   }
 
  private:
-  ProtectableAlignedMemory* _memory;
+  AlignedMemoryBase* _memory;
   void* _address;
   int _size;
 };
+
+class PointerCallback {
+ public:
+  void object_table(Object** p, int length);
+  virtual void object_address(Object** p) = 0;
+  // When [is_sentinel] is true, then the pointer is delimiting a memory
+  // area and is thus allowed to point to invalid memory (by one word).
+  virtual void c_address(void** p, bool is_sentinel = false) = 0;
+};
+
+#ifndef TOIT_FREERTOS
 
 class Snapshot {
  public:
@@ -223,15 +236,6 @@ class SnapshotGenerator {
                 Process* process = null);
 };
 
-class PointerCallback {
- public:
-  void object_table(Object** p, int length);
-  virtual void object_address(Object** p) = 0;
-  // When [is_sentinel] is true, then the pointer is delimiting a memory
-  // area and is thus allowed to point to invalid memory (by one word).
-  virtual void c_address(void** p, bool is_sentinel = false) = 0;
-};
-
 class RelocationBits;
 
 // Abstraction to stream over a Toit image for relocation.
@@ -252,8 +256,6 @@ class ImageInputStream {
 
   ProgramImage image() const { return _image; }
 
-  static const int CHUNK_SIZE = 1 + WORD_BIT_SIZE;
-
  private:
   ProgramImage _image;
   RelocationBits* relocation_bits;
@@ -261,12 +263,15 @@ class ImageInputStream {
   int index;
 };
 
+#endif  // TOIT_FREERTOS
+
 // Abstraction to write a Toit image (counter part of ImageInputStream).
 class ImageOutputStream {
  public:
   TAG(ImageOutputStream);
   ImageOutputStream(ProgramImage image);
 
+  static const int CHUNK_SIZE = 1 + WORD_BIT_SIZE;
 
   void* cursor() const { return current; }
   bool empty() const { return current == _image.begin(); }

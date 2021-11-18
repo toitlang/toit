@@ -15,6 +15,8 @@
 
 #pragma once
 
+#ifndef TOIT_FREERTOS
+
 #include <stdio.h>
 
 #include "top.h"
@@ -69,3 +71,5 @@ class SnapshotBundle {
 };
 
 } // namespace toit
+
+#endif  // TOIT_FREERTOS

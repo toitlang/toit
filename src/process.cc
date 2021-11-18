@@ -62,6 +62,7 @@ Process::Process(Program* program, ProcessGroup* group, char** args, Block* init
   _object_heap.set_hatch_arguments(program->null_object());
 }
 
+#ifndef TOIT_FREERTOS
 Process::Process(Program* program, ProcessGroup* group, SnapshotBundle bundle, char** args, Block* initial_block)
   : Process(program, group, initial_block) {
   _entry = program->entry();
@@ -71,13 +72,10 @@ Process::Process(Program* program, ProcessGroup* group, SnapshotBundle bundle, c
 
   // We don't run from snapshot on the device so we can assume that allocation
   // does not fail on a newly created heap.
-#ifdef TOIT_FREERTOS
-  UNREACHABLE();
-#else
   ASSERT(snap != null);
-#endif
   _object_heap.set_hatch_arguments(snap);
 }
+#endif
 
 Process::Process(Program* program, ProcessGroup* group, Method method, const uint8* arguments_address, int arguments_length, Block* initial_block)
    : Process(program, group, initial_block) {

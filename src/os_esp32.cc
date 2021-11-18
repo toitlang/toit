@@ -468,18 +468,6 @@ bool OS::set_real_time(struct timespec* time) {
   return settimeofday(&timeofday, NULL) == 0;
 }
 
-ProtectableAlignedMemory::~ProtectableAlignedMemory() {
-  // Do nothing. ESP32 doesn't have memory protection.
-}
-
-void ProtectableAlignedMemory::mark_read_only() {
-  // Do nothing. ESP32 doesn't have memory protection.
-}
-
-size_t ProtectableAlignedMemory::compute_alignment(size_t alignment) {
-  return alignment;
-}
-
 }
 
 #endif // TOIT_FREERTOS
