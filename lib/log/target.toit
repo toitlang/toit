@@ -3,15 +3,21 @@
 // found in the lib/LICENSE file.
 
 import .level
-import .rpc
-import rpc
 
 interface Target:
   log names/List/*<string>*/ level/int message/string tags/Map/*<string, any>*/ -> none
 
 class DefaultTarget implements Target:
   log names/List/*<string>*/ level/int message/string tags/Map/*<string, any>*/ -> none:
-    rpc.invoke RPC_SYSTEM_LOG [names, level, message, tags.map: | _ v | v.stringify]
+    names_string ::= names.is_empty ? "" : "[$(names.join ",")] "
+    tags_string := ""
+    if not tags.is_empty:
+      first := true
+      tags.do: | key value |
+        if not first: tags_string += ","
+        tags_string += " $key=$value"
+        first = false
+    print "$names_string$(level_name level): $message$tags_string"
 
 level_name level -> string:
   if level == DEBUG_LEVEL: return "DEBUG"

@@ -94,7 +94,23 @@ described in the [dependencies](#dependencies) section.
 Build an image for your ESP32 device that can be flashed using `esptool.py`.
 
 ``` sh
-make build/esp32/toit.bin
+make esp32
 ```
 
-By default, the image boots up and runs `examples/hello.toit`.
+By default, the image boots up and runs `examples/hello.toit`. You can use your
+own entry point and specify it through the `ESP32_ENTRY` make variable:
+
+``` sh
+make esp32 ESP32_ENTRY=examples/mandelbrot.toit
+```
+
+### Configuring WiFi for the ESP32
+
+You can easily configure the ESP32's builtin WiFi by setting the `ESP32_WIFI_SSID` and
+`ESP32_WIFI_PASSWORD` make variables:
+
+``` sh
+make esp32 ESP32_ENTRY=examples/http.toit ESP32_WIFI_SSID=myssid ESP32_WIFI_PASSWORD=mypassword
+```
+
+This allows the WiFi to automatically start up when a network interface is opened.
