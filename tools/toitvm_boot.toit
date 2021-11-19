@@ -29,6 +29,7 @@ import log.rpc as log
 import log
 import monitor
 import debug.rpc as debug_lib
+import core.message_manual_decoding_ show print_for_manually_decoding_
 
 class ToitcProcessManager implements SystemMessageHandler_:
   snapshot_bundle / ByteArray ::= ?

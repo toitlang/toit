@@ -324,43 +324,6 @@ namespace toit {
 #define MODULE_DHCP(PRIMITIVE)               \
   PRIMITIVE(wait_for_lwip_dhcp_on_linux, 0)  \
 
-#define MODULE_ESP32(PRIMITIVE)              \
-  PRIMITIVE(ota_begin, 2)                    \
-  PRIMITIVE(ota_write, 1)                    \
-  PRIMITIVE(ota_end, 2)                      \
-  PRIMITIVE(reset_reason, 0)                 \
-  PRIMITIVE(open_dump, 0)                    \
-  PRIMITIVE(close_dump, 1)                   \
-  PRIMITIVE(erase_dump, 0)                   \
-  PRIMITIVE(enable_external_wakeup, 2)       \
-  PRIMITIVE(wakeup_cause, 0)                 \
-  PRIMITIVE(ext1_wakeup_status, 1)           \
-  PRIMITIVE(total_deep_sleep_time, 0)        \
-  PRIMITIVE(set_ota_checkpoint, 4)           \
-  PRIMITIVE(ota_uuid, 0)                     \
-  PRIMITIVE(ota_patch_position, 0)           \
-  PRIMITIVE(ota_image_position, 0)           \
-  PRIMITIVE(ota_image_size, 0)               \
-  PRIMITIVE(total_run_time, 0)               \
-  PRIMITIVE(ota_is_rollback_possible, 0)     \
-  PRIMITIVE(ota_mark_invalid_rollback_and_reboot, 0)  \
-  PRIMITIVE(ota_mark_as_valid_and_cancel_rollback, 0) \
-  PRIMITIVE(ota_description, 0)              \
-  PRIMITIVE(ota_boot_failures, 0)            \
-  PRIMITIVE(ota_register_successful_boot, 0) \
-  PRIMITIVE(esp_oom_count, 0)                \
-  PRIMITIVE(esp_register_oom_report, 1)      \
-  PRIMITIVE(esp_current_system_image, 0)     \
-  PRIMITIVE(esp_system_image_byte, 2)        \
-  PRIMITIVE(esp_unmap_system_image, 0)       \
-  PRIMITIVE(set_last_time, 3)                \
-  PRIMITIVE(get_last_time_accuracy, 0)       \
-  PRIMITIVE(get_last_time_s, 0)              \
-  PRIMITIVE(get_last_time_ns, 0)             \
-  PRIMITIVE(has_connection_tokens, 0)        \
-  PRIMITIVE(set_connection_tokens, 1)  \
-  PRIMITIVE(decrement_connection_tokens, 0)  \
-
 #define MODULE_I2C(PRIMITIVE)                \
   PRIMITIVE(init, 3)                         \
   PRIMITIVE(close, 1)                        \
@@ -445,24 +408,6 @@ namespace toit {
   PRIMITIVE(writer_commit, 2)                \
   PRIMITIVE(writer_close, 1)                 \
 
-#define MODULE_FLASH_ELEMENTS(PRIMITIVE)     \
-  PRIMITIVE(init, 5)                         \
-  PRIMITIVE(insert, 2)                       \
-  PRIMITIVE(load, 2)                         \
-  PRIMITIVE(is_empty, 2)                     \
-  PRIMITIVE(repair, 1)                       \
-
-#define MODULE_QUEUE(PRIMITIVE)              \
-  PRIMITIVE(remove, 2)                       \
-  PRIMITIVE(remove_multiple, 3)              \
-  PRIMITIVE(tail, 1)                         \
-  PRIMITIVE(head, 1)                         \
-  PRIMITIVE(count, 2)                        \
-  PRIMITIVE(info, 1)                         \
-
-#define MODULE_KVSTORE(PRIMITIVE)            \
-  PRIMITIVE(key_scan, 3)                     \
-
 #define MODULE_BLOB(PRIMITIVE)               \
   PRIMITIVE(writer_create, 2)                \
   PRIMITIVE(writer_write, 2)                 \
@@ -493,24 +438,6 @@ namespace toit {
   PRIMITIVE(factor, 2)                       \
   PRIMITIVE(set_factor, 3)                   \
   PRIMITIVE(close_channel, 2)                \
-
-#define MODULE_PROGRAMS_REGISTRY(PRIMITIVE)  \
-  PRIMITIVE(next_group_id, 0)                \
-  PRIMITIVE(spawn, 3)                        \
-  PRIMITIVE(is_running, 2)                   \
-  PRIMITIVE(kill, 2)                         \
-
-#define MODULE_FLASH_REGISTRY(PRIMITIVE)     \
-  PRIMITIVE(next, 1)                         \
-  PRIMITIVE(info, 1)                         \
-  PRIMITIVE(erase, 2)                        \
-  PRIMITIVE(get_id, 1)                       \
-  PRIMITIVE(get_size, 1)                     \
-  PRIMITIVE(get_type, 1)                     \
-  PRIMITIVE(get_meta_data, 1)                \
-  PRIMITIVE(reserve_hole, 2)                 \
-  PRIMITIVE(cancel_reservation, 1)           \
-  PRIMITIVE(erase_flash_registry, 0)         \
 
 #define MODULE_FILE(PRIMITIVE)               \
   PRIMITIVE(open, 3)                         \
@@ -579,15 +506,6 @@ namespace toit {
   PRIMITIVE(get_common_name, 1)              \
   PRIMITIVE(close, 1)                        \
 
-#define MODULE_TEST(PRIMITIVE)               \
-  PRIMITIVE(read, 2)                         \
-  PRIMITIVE(read_raw, 2)                     \
-  PRIMITIVE(write, 2)                        \
-  PRIMITIVE(write_raw, 2)                    \
-  PRIMITIVE(fail_inserts, 1)                 \
-  PRIMITIVE(fail_queue_removes, 1)           \
-  PRIMITIVE(fail_repair, 1)                  \
-
 #define MODULE_RPC(PRIMITIVE)                \
   PRIMITIVE(init, 0)                         \
   PRIMITIVE(create_channel, 2)               \
@@ -600,21 +518,6 @@ namespace toit {
   PRIMITIVE(take_bytes, 1)                   \
   PRIMITIVE(skip, 1)                         \
   PRIMITIVE(close, 2)                        \
-
-#define MODULE_SYSTEM(PRIMITIVE)             \
-  PRIMITIVE(is_factory, 0)                   \
-  PRIMITIVE(load_secure_data, 0)             \
-  PRIMITIVE(load_image_config, 0)            \
-  PRIMITIVE(image_uuid, 0)                   \
-  PRIMITIVE(watchdog_start, 0)               \
-  PRIMITIVE(watchdog_reset, 0)               \
-  PRIMITIVE(session_id, 0)                   \
-  PRIMITIVE(set_session_id, 1)               \
-
-#define MODULE_DEBUG(PRIMITIVE)              \
-  PRIMITIVE(memory, 0)                       \
-  PRIMITIVE(print_configuration, 0)          \
-  PRIMITIVE(free_memory_size, 0)             \
 
 // ----------------------------------------------------------------------------
 

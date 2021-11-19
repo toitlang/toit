@@ -2,8 +2,8 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import encoding.base64 as base64
 import encoding.ubjson as ubjson
+import .message_manual_decoding_
 
 // Message types.
 // Keep in sync with constants in process.h.
@@ -115,24 +115,6 @@ The system message handler for the $type.
 */
 get_system_message_handler_ type:
   return system_message_handlers_.get type
-
-
-print_for_manually_decoding_ message/ByteArray --from=0 --to=message.size:
-  // Print a message on output so that that you can easily decode.
-  // The message is base64 encoded to limit the output size.
-  print_ "----"
-  print_ "Received a Toit system message but unable to send it to the Toit console for decoding."
-  print_ "Executing the command below will make it human readable:"
-  print_ "----"
-  // Block size must be a multiple of 3 for this to work, due to the 3/4 nature
-  // of base64 encoding.
-  BLOCK_SIZE := 1500
-  for i := from; i < to; i += BLOCK_SIZE:
-    end := i >= to - BLOCK_SIZE
-    prefix := i == from ? "toit serial decode " : ""
-    base64_text := base64.encode (message.copy i (end ? to : i + BLOCK_SIZE))
-    postfix := end ? "" : "\\"
-    print_ "$prefix$base64_text$postfix"
 
 /**
 Processes the incoming messages sent to tasks in this process.
