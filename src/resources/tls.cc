@@ -245,11 +245,14 @@ Object* tls_error(MbedTLSResourceGroup* group, Process* process, int err) {
       return Primitive::mark_as_error(str);
     }
   }
+  if (((-err) & 0xff80) == -MBEDTLS_ERR_SSL_CA_CHAIN_REQUIRED) {
+    strncpy(buffer, "No root certificate provided.\n", BUFFER_LEN);
+  }
 #ifdef TOIT_FREERTOS
   // On small platforms we don't want to pay the 14k to have all the error
   // messages from MbedTLS, so we just print the code and a link to the
   // explanation.
-  if (err < 0) {
+  else if (err < 0) {
     int major = (-err) & 0xff80;
     int minor = (-err) & ~0xff80;
     const char* gist = "https://gist.github.com/erikcorry/b25bdcacf3e0086f8a2afb688420678e";
@@ -262,7 +265,9 @@ Object* tls_error(MbedTLSResourceGroup* group, Process* process, int err) {
     snprintf(buffer, BUFFER_LEN, "Unknown mbedtls error 0x%x", err);
   }
 #else
-  mbedtls_strerror(err, buffer, BUFFER_LEN);
+  else {
+    mbedtls_strerror(err, buffer, BUFFER_LEN);
+  }
 #endif
   unsigned used = strlen(buffer);
   if (group && group->error_flags() != 0 && used < BUFFER_LEN - 30) {

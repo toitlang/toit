@@ -3,7 +3,7 @@
 This repository contains the Toit language implementation. It is fully open source and consists of the compiler,
 virtual machine, and standard libraries that together enable Toit programs to run on an ESP32.
 
-We use [GitHub Discussions](htts://github.com/toitlang/toit/discussions) to discuss and learn and
+We use [GitHub Discussions](https://github.com/toitlang/toit/discussions) to discuss and learn and
 we follow a [code of conduct](CODE_OF_CONDUCT.md) in all our community interactions.
 
 ## References
