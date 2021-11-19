@@ -3,6 +3,9 @@
 This repository contains the Toit language implementation. It is fully open source and consists of the compiler,
 virtual machine, and standard libraries that together enable Toit programs to run on an ESP32.
 
+We use [GitHub Discussions](htts://github.com/toitlang/toit/discussions) to discuss and learn and
+we follow a [code of conduct](CODE_OF_CONDUCT.md) in all our community interactions.
+
 ## References
 
 The Toit language is the foundation for the [Toit platform](https://toit.io/) that brings robust serviceability
@@ -114,3 +117,8 @@ make esp32 ESP32_ENTRY=examples/http.toit ESP32_WIFI_SSID=myssid ESP32_WIFI_PASS
 ```
 
 This allows the WiFi to automatically start up when a network interface is opened.
+
+
+## Contributing
+
+We welcome and value your [open source contributions](CONTRIBUTING.md).

@@ -613,7 +613,6 @@ namespace toit {
 
 #define MODULE_DEBUG(PRIMITIVE)              \
   PRIMITIVE(memory, 0)                       \
-  PRIMITIVE(object_histogram, 0)             \
   PRIMITIVE(print_configuration, 0)          \
   PRIMITIVE(free_memory_size, 0)             \
 
