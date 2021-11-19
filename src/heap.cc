@@ -658,7 +658,7 @@ void VMFinalizerNode::free_external_memory(Process* process) {
     accounting_size = ByteArray::Bytes(byte_array).length();
     // Accounting size is 0 if the byte array is tagged, since we don't account
     // memory for Resources etc.
-    ASSERT(byte_array->external_tag() == RawByteTag);
+    ASSERT(byte_array->external_tag() == RawByteTag || byte_array->external_tag() == NullStructTag);
   } else if (key()->is_string()) {
     String* string = String::cast(key());
     memory = string->as_external();
