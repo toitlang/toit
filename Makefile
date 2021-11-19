@@ -54,10 +54,15 @@ build/snapshot: build/ia32/bin/toitc $(ESP32_ENTRY)
 build/ia32/ build/host/:
 	mkdir -p $@
 
-build/esp32/:
+build/esp32/: check-env
 	mkdir -p $@
 	make -C toolchains/esp32 -s $(shell pwd)/build/esp32/include/sdkconfig.h
 
-.PHONY:	clean
+.PHONY:	clean check-env
 clean:
 	rm -rf build/
+
+check-env:
+ifndef IDF_PATH
+	$(error IDF_PATH is not set)
+endif

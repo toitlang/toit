@@ -360,15 +360,24 @@ abstract class SequansCellular extends CellularBase:
         finally:
           session.unregister_urc "+CEREG"
 
-        try:
-          waiter := monitor.Latch
-          session.register_urc "+CEREG" ::
-            if it.first == 0: waiter.set true
-          session.set "+CGATT" [0]
-          waiter.get
-        finally:
-          session.unregister_urc "+CEREG"
+  ps_detach_ -> none:
+    at_.do: | session/at.Session |
+      try:
+        waiter := monitor.Latch
+        session.register_urc "+CEREG" ::
+          if it.first == 0: waiter.set true
+        session.set "+CGATT" [0]
+        waiter.get
+      finally:
+        session.unregister_urc "+CEREG"
 
+  connect --operator/string?=null --use_gsm/bool -> bool:
+    if operator: ps_detach_
+    return super --operator=operator --use_gsm=use_gsm
+
+  scan_for_operators -> List:
+    ps_detach_
+    return super
 
   configure apn --bands=null --rats=null:
     at_.do: | session/at.Session |

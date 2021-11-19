@@ -185,6 +185,13 @@ PRIMITIVE(readdir) {
     ALLOCATION_FAILED;
   }
 
+  // Because we allocated the proxy without a backing (we are adding that
+  // later) it got created without a finalizer.  If we were putting a resource
+  // in it, then the resource cleanup code would free the memory, but we are
+  // just putting raw bytes in it, so we have to set a finalizer.
+  bool ok = process->add_vm_finalizer(proxy);
+  ASSERT(ok);  // Malloc does not fail on non-embedded.
+
   struct dirent* entry = readdir(directory->dir);
   // After this point we can't bail out for GC because readdir is not really
   // restartable in Unix.
@@ -198,6 +205,8 @@ PRIMITIVE(readdir) {
   if (!Utils::is_valid_utf_8(unsigned_cast(entry->d_name), len)) {
     ILLEGAL_UTF_8;
   }
+
+  process->register_external_allocation(len);
 
   uint8 *backing = unvoid_cast<uint8*>(malloc(len));  // Can't fail on non-embedded.
   ASSERT(backing);

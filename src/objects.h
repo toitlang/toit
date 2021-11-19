@@ -429,7 +429,7 @@ class ByteArray : public HeapObject {
   }
 
   uint8* as_external() {
-    ASSERT(external_tag() == RawByteTag);
+    ASSERT(external_tag() == RawByteTag || external_tag() == NullStructTag);
     if (has_external_address()) return unsigned_cast(_external_address());
     return 0;
   }
