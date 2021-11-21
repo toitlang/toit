@@ -12,8 +12,8 @@ import .modules.udp
 import .modules.wifi as wifi
 
 WIFI_USE_      /bool   ::= (platform == "FreeRTOS") and (WIFI_SSID_ != "")
-WIFI_SSID_     /string ::= (defines_.get "wifi.ssid" --if_absent=: "")
-WIFI_PASSWORD_ /string ::= (defines_.get "wifi.password" --if_absent=: "")
+WIFI_SSID_     /string ::= defines_.get "wifi.ssid" --if_absent=: ""
+WIFI_PASSWORD_ /string ::= defines_.get "wifi.password" --if_absent=: ""
 WIFI_CONNECT_TIMEOUT_  ::= Duration --s=10
 WIFI_DHCP_TIMEOUT_     ::= Duration --s=16
 

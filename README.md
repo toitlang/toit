@@ -65,12 +65,21 @@ On Linux:
 $IDF_PATH/install.sh
 ```
 
-For other platforms see https://docs.espressif.com/projects/esp-idf/en/latest/esp32/get-started/index.html#step-3-set-up-the-tools
+For other platforms, see [Espressif's documentation](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/get-started/index.html#step-3-set-up-the-tools).
 
-Update your environment variables:
+Remember to update your environment variables:
 
 ``` sh
 . $IDF_PATH/export.sh
+```
+
+The build system will automatically use a 32-bit build of the Toit compiler to produce the correct executable image for the ESP32.
+Your build might fail if you're on a 64-bit Linux machine and you don't have the support for compiling 32-bit executables installed.
+You can install this support on most Linux distributions by installing the `gcc-multilib` and `g++-multilib` packages. If you
+use `apt-get`, you can use the following command:
+
+``` sh
+sudo apt-get install gcc-multilib g++-multilib
 ```
 
 ## Build for Linux
