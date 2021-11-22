@@ -13,6 +13,8 @@
 # The license can be found in the file `LICENSE` in the top level
 # directory of this repository.
 
+BUILD_DATE = $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
+
 # Use 'make ESP32_ENTRY=examples/mandelbrot.toit' to compile a different
 # example for the ESP32 firmware.
 ESP32_ENTRY=examples/hello.toit
@@ -50,6 +52,23 @@ build/esp32/esp32.image.s: build/esp32/ build/snapshot build/ia32/bin/toitvm too
 
 build/snapshot: build/ia32/bin/toitc $(ESP32_ENTRY)
 	build/ia32/bin/toitc -w $@ $(ESP32_ENTRY) -Dwifi.ssid=$(ESP32_WIFI_SSID) -Dwifi.password=$(ESP32_WIFI_PASSWORD)
+
+GO_BUILD_FLAGS ?=
+ifeq ("$(GO_BUILD_FLAGS)", "")
+$(eval GO_BUILD_FLAGS=CGO_ENABLED=1 GODEBUG=netdns=go)
+else
+$(eval GO_BUILD_FLAGS=$(GO_BUILD_FLAGS) CGO_ENABLED=1 GODEBUG=netdns=go)
+endif
+
+GO_LINK_FLAGS ?=
+GO_LINK_FLAGS +=-X main.date=$(BUILD_DATE)
+
+TOITLSP_SOURCE := $(shell find ./tools/toitlsp/ -name '*.go')
+build/toitlsp: $(TOITLSP_SOURCE)
+	cd tools/toitlsp; $(GO_BUILD_FLAGS) go build  -ldflags "$(GO_LINK_FLAGS)" -tags 'netgo osusergo' -o ../../build/$(notdir $@) .
+
+.PHONY: toitlsp
+toitlsp: build/toitlsp
 
 build/ia32/ build/host/:
 	mkdir -p $@
