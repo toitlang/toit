@@ -21,6 +21,12 @@ ESP32_ENTRY=examples/hello.toit
 ESP32_WIFI_PASSWORD=
 ESP32_WIFI_SSID=
 
+.PHONY: all
+all: tools
+
+.PHONY: tools
+tools: tpkg toitlsp build/host/bin/toitvm build/host/bin/toitc
+
 .PHONY: esp32
 esp32: build/esp32/toit.bin
 
@@ -69,6 +75,13 @@ build/toitlsp: $(TOITLSP_SOURCE)
 
 .PHONY: toitlsp
 toitlsp: build/toitlsp
+
+.PHONY: tpkg
+tpkg: build/tpkg
+
+TPKG_VERSION := "v0.0.0-20211122165249-e0dfea186707"
+build/tpkg:
+	GOBIN=$(shell pwd)/build go install github.com/toitlang/tpkg/cmd/tpkg@$(TPKG_VERSION)
 
 build/ia32/ build/host/:
 	mkdir -p $@

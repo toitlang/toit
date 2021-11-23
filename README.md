@@ -89,14 +89,34 @@ Make sure `IDF_PATH` is set, as described above.
 Then run the following commands at the root of your checkout.
 
 ``` sh
-make build/host/bin/toitvm
+make tools
 ```
+
+This builds the Toit VM, the compiler, the language server and the package manager.
 
 You should then be able to execute a toit file:
 
 ``` sh
 build/host/bin/toitvm examples/hello.toit
 ```
+
+The package manager is found at `build/tpkg`:
+
+``` sh
+build/tpkg pkg init --project-root=<some-directory>
+build/tpkg pkg install --project-root=<some-directory> <package-id>
+```
+
+The language server can be started with:
+
+``` sh
+build/toitlsp --toitc=build/host/bin/toitc
+```
+
+See the instructions of your IDE on how to integrate the language server.
+
+For VSCode you can also use the [published extension](https://marketplace.visualstudio.com/items?itemName=toit.toit).
+
 
 ## Build for ESP32
 
