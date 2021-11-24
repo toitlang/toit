@@ -45,6 +45,31 @@ in those directories.  These subdirectories are:
 
 ## Dependencies
 
+### Build system
+
+To build Toit and its dependencies the build host requires;
+
+* [cmake >= 3.13.3](https://cmake.org/)
+* [ninja](https://ninja-build.org/)
+* [gcc](https://gcc.gnu.org/)
+* [go >= v1.16](https://go.dev/),
+
+If you are using a Linux distribution with `apt` capabilities, you can
+issue the following command to install these:
+
+``` sh
+sudo apt install build-essential cmake ninja-build golang
+```
+
+Note that many distributions doesn't provide go v1.16 out of the box at the
+moment, as it is rather recent (2021-02-16). Neither of current
+[Debian Bullseye](https://packages.debian.org/bullseye/golang) nor
+[Ubuntu Focal Fossa/20.04 LTS](https://packages.ubuntu.com/focal/golang) has
+an adequate package version.
+
+For builds targeting ESP32 hardware additional requirements might be in effect
+depending on the build host's architecture, see paragraph [ESP32 tools](#esp32-tools).
+
 ### ESP-IDF
 
 The VM has a requirement to ESP-IDF, both for Linux and ESP32 builds (for Linux it's for the MBedTLS implementation).
@@ -92,12 +117,12 @@ You can install this support on most Linux distributions by installing the `gcc-
 use `apt-get`, you can use the following command:
 
 ``` sh
-sudo apt-get install gcc-multilib g++-multilib
+sudo apt install gcc-multilib g++-multilib
 ```
 
 ## Build for Linux and Mac
 
-Make sure `IDF_PATH` is set, as described above.
+Make sure `IDF_PATH` is set, and the required build tools are installed as described in dependency sections [ESP-IDF](#esp-idf) and [Build system](#build-system) above.
 
 Then run the following commands at the root of your checkout.
 
