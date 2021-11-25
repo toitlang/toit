@@ -79,9 +79,10 @@ toitlsp: build/toitlsp
 .PHONY: toitpkg
 toitpkg: build/toitpkg
 
+
 TOITPKG_VERSION := "v0.0.0-20211126161923-c00da039da00"
 build/toitpkg:
-	GOBIN=$(shell pwd)/build go install github.com/toitlang/tpkg/cmd/toitpkg@$(TOITPKG_VERSION)
+	GO111MODULE=on GOBIN=$(shell pwd)/build go get github.com/toitlang/tpkg/cmd/toitpkg@$(TOITPKG_VERSION)
 
 build/ia32/ build/host/:
 	mkdir -p $@
