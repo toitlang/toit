@@ -15,6 +15,13 @@ documentation:
 * [Language basics](https://docs.toit.io/language)
 * [Standard libraries](https://libs.toit.io/)
 
+## Contributing
+
+We welcome and value your [open source contributions](CONTRIBUTING.md) to the language implementation
+and the broader ecosystem. Building or porting drivers to the Toit language is a great place to start.
+Read about [how to get started building I2C-based drivers](https://github.com/toitlang/toit/discussions/22) and
+get ready to publish your new driver to the [package registry](https://pkg.toit.io).
+
 ## Licenses
 
 The Toit compiler, the virtual machine, and all the supporting infrastructure is licensed under
@@ -29,6 +36,8 @@ in those directories.  These subdirectories are:
 * Every subdirectory under `src/compiler/third_party`
 * Every subdirectory under `lib/font/x11_100dpi`
 * The subdirectory `lib/font/matthew_welch`
+
+# Building
 
 ## Dependencies
 
@@ -82,7 +91,7 @@ use `apt-get`, you can use the following command:
 sudo apt-get install gcc-multilib g++-multilib
 ```
 
-## Build for Linux
+## Build for Linux and Mac
 
 Make sure `IDF_PATH` is set, as described above.
 
@@ -117,6 +126,13 @@ See the instructions of your IDE on how to integrate the language server.
 
 For VSCode you can also use the [published extension](https://marketplace.visualstudio.com/items?itemName=toit.toit).
 
+### Notes for Mac
+
+The support for building for Mac is still work in progress. For now, it isn't possible
+to build firmware images for the ESP32 on a Mac, because it requires compiling and
+running 32-bit executables. We are working on
+[addressing this](https://github.com/toitlang/toit/issues/24).
+
 
 ## Build for ESP32
 
@@ -146,8 +162,3 @@ make esp32 ESP32_ENTRY=examples/http.toit ESP32_WIFI_SSID=myssid ESP32_WIFI_PASS
 ```
 
 This allows the WiFi to automatically start up when a network interface is opened.
-
-
-## Contributing
-
-We welcome and value your [open source contributions](CONTRIBUTING.md).

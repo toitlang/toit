@@ -371,8 +371,12 @@ abstract class SequansCellular extends CellularBase:
       finally:
         session.unregister_urc "+CEREG"
 
-  connect --operator/string?=null --use_gsm/bool -> bool:
-    if operator: ps_detach_
+  connect --operator/Operator?=null --use_gsm/bool -> bool:
+    if operator:
+      ps_detach_
+      // Using the RAT seems to give problems, so remove it.
+      operator = Operator operator.op
+
     return super --operator=operator --use_gsm=use_gsm
 
   scan_for_operators -> List:

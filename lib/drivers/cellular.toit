@@ -46,7 +46,7 @@ interface Cellular:
   /**
   Connect to the service using the optional operator.
   */
-  connect --operator/string?=null --use_gsm/bool -> bool
+  connect --operator/Operator?=null --use_gsm/bool -> bool
 
   /**
   Connect to the service after a PSM wakeup.
@@ -58,7 +58,7 @@ interface Cellular:
   */
   scan_for_operators -> List
 
-  get_connected_operator -> string?
+  get_connected_operator -> Operator?
 
   network_interface -> net.Interface
 
@@ -84,6 +84,12 @@ interface Cellular:
   power_off -> none
 
   reset -> none
+
+class Operator:
+  op/string
+  rat/int?
+
+  constructor .op --.rat=null:
 
 /**
 GNSS location consisting of coordinates and accuracy measurements.

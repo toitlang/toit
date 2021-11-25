@@ -89,7 +89,9 @@ abstract class CellularBase implements Cellular:
     result := []
     operators.do: | o |
       if o is List and o.size == 5 and o[1] is string and o[0] != 3:  // 3 = operator forbidden.
-        result.add o[3]
+        rat := o[3] is int ? o[3] : null
+        result.add
+          Operator o[2] --rat=rat
     return result
 
   connect_psm:
@@ -99,7 +101,7 @@ abstract class CellularBase implements Cellular:
     if e:
       logger_.warn "error connecting to operator" --tags={"error": "$e"}
 
-  connect --operator/string?=null --use_gsm/bool -> bool:
+  connect --operator/Operator?=null --use_gsm/bool -> bool:
     is_connected := false
 
     at_.do: | session/at.Session |
@@ -116,12 +118,13 @@ abstract class CellularBase implements Cellular:
     return is_connected
 
   // TODO(Lau): Support the other operator formats than numeric.
-  get_connected_operator -> string?:
+  get_connected_operator -> Operator?:
     catch --trace:
       at_.do: | session/at.Session |
         res := (session.send COPS.read).last
         if res.size == 4 and res[1] == COPS.FORMAT_NUMERIC and res[2] is string and res[2].size == 5:
-          return res[2]
+          rat := res[3] is int ? res[3] : null
+          return Operator res[2] --rat=rat
     return null
 
   detach:
@@ -242,7 +245,7 @@ abstract class CellularBase implements Cellular:
         return true
       return false
 
-  wait_for_connected_ session/at.Session operator/string? --use_gsm/bool -> bool:
+  wait_for_connected_ session/at.Session operator/Operator? --use_gsm/bool -> bool:
     connected := monitor.Latch
 
     failed_to_connect = false
@@ -260,7 +263,7 @@ abstract class CellularBase implements Cellular:
         timeout := Duration --us=(task.deadline - Time.monotonic_us)
         session.send COPS.read
         result := session.send
-          COPS.manual operator --timeout=timeout
+          COPS.manual operator.op --timeout=timeout --rat=operator.rat
 
       // Enable events.
       session.set "+CEREG" [2]
