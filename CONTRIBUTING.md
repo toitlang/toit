@@ -9,8 +9,13 @@ Contributing code to a community is a great way to engage. Make sure to read our
 
 ## Individual contributions
 
-Before we can use your code, you must sign the an individual contributor license agreement (CLA). The CLA is
-necessary mainly because you own the copyright to your changes, even after your contribution becomes part of
+Before we can use your code, you must sign our
+[individual contributor license agreement](CLA.md) (CLA). Send an email to
+[open-source@toit.io](mailto:open-source@toit.io) indicating your request to sign the CLA and we will
+respond with a document ready for your electronic signature. Please include a link to your GitHub
+user profile page in the request to make it easier to identify your contributions going forward.
+
+The CLA is necessary mainly because you own the copyright to your changes, even after your contribution becomes part of
 our codebase, so we need your permission to use and distribute your code. We also need to be sure of various
 other things - for instance that you‘ll tell us if you know that your code infringes on other people’s
 patents. You don‘t have to sign the CLA until after you’ve submitted your code for review and a member has
