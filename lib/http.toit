@@ -177,9 +177,6 @@ class Connection:
   read_request:
     return read_request_
 
-  is_connected:
-    return socket_.is_connected
-
   close:
     return socket_.close
 
@@ -335,9 +332,6 @@ class DetachedSocket:
 
   close:
     return socket_.close
-
-  is_connected:
-    return socket_.is_connected
 
 class Response implements Reader:
   connection_ := ?

@@ -112,8 +112,6 @@ class TcpSocket extends TcpSocket_ implements net.Socket Reader:
   constructor: return TcpSocket 0
   constructor .window_size_:
 
-  is_connected: return state_ != null
-
   peer_address -> net.SocketAddress:
     return net.SocketAddress
       net.IpAddress.parse

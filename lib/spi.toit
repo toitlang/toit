@@ -158,7 +158,7 @@ class Device_ implements Device:
   /** See $Device.close. */
   close:
     if device_:
-      spi_device_close_ spi_ device_
+      spi_device_close_ spi_.spi_ device_
       device_ = null
 
   /** See $Device.transfer. */

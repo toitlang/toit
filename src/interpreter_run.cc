@@ -979,13 +979,14 @@ Interpreter::Result Interpreter::_run() {
   OPCODE_END();
 
   OPCODE_BEGIN(PRIMITIVE);
-    B_ARG1(primitive_index);
+    B_ARG1(primitive_module);
     const int parameter_offset = Interpreter::FRAME_SIZE;
-    unsigned n = *reinterpret_cast<uint16*>(bcp + 2);
-    const PrimitiveEntry* primitive = Primitive::at(primitive_index, n);
-    if (Flags::primitives) printf("Invoking primitive %d::%d\n", primitive_index, n);
+    unsigned primitive_index = *reinterpret_cast<uint16*>(bcp + 2);
+    const PrimitiveEntry* primitive = Primitive::at(primitive_module, primitive_index);
+    if (Flags::primitives) printf("Invoking primitive %d::%d\n", primitive_module, primitive_index);
     if (primitive == null) {
-      PUSH(Smi::from(n));
+      PUSH(Smi::from(primitive_module));
+      PUSH(Smi::from(primitive_index));
       Method target = program->primitive_lookup_failure();
       CALL_METHOD(target, PRIMITIVE_LENGTH);
     } else {
@@ -1007,7 +1008,7 @@ Interpreter::Result Interpreter::_run() {
         if (attempts == 3) {
           printf("[gc @ %p%s | 3rd time primitive failure %d::%d%s]\n",
               _process, VM::current()->scheduler()->is_boot_process(_process) ? "*" : "",
-              primitive_index, n,
+              primitive_module, primitive_index,
               malloc_failed ? " (malloc)" : "");
         }
 #endif

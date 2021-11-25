@@ -176,9 +176,9 @@ as_check_failure_ receiver id:
     encode_error_ "AS_CHECK_FAILED"
       create_array_ receiver id
 
-primitive_lookup_failure_ module:
+primitive_lookup_failure_ module index:
   rethrow "PRIMITIVE_LOOKUP_FAILED"
-    encode_error_ "PRIMITIVE_LOOKUP_FAILED" "Failed to find primitive table $module"
+    encode_error_ "PRIMITIVE_LOOKUP_FAILED" "Failed to find primitive $module:$index"
 
 too_few_code_arguments_failure_ is_block expected provided bci:
   rethrow "CODE_INVOCATION_FAILED"

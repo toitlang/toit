@@ -87,6 +87,7 @@ class Session:
 
     group := is_server ? tls_group_server_ : tls_group_client_
     tls_ = tls_create_ group server_name_
+    add_finalizer this:: this.close
     root_certificates.do: tls_add_root_certificate_ tls_ it.res_
     if certificate:
       tls_add_certificate_ tls_ certificate.certificate.res_ certificate.private_key certificate.password
@@ -171,6 +172,7 @@ class Session:
     if tls_:
       tls_close_ tls_
       tls_ = null
+      remove_finalizer this
 
   ensure_handshaken_:
     if not handshake_in_progress_: return

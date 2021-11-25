@@ -69,7 +69,7 @@ class Bus:
   Releases the resources associated with this bus.
   */
   close -> none:
-    devices_.keys.do: it.close
+    devices_.values.do: it.close
     i2c_close_ i2c_
 
   /**

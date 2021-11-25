@@ -103,11 +103,7 @@ class WebSocket:
     writer_.close_write
 
   close -> none:
-    if writer_.is_connected:
-      writer_.close
-
-  is_connected -> bool:
-    return writer_.is_connected
+    writer_.close
 
   peer_port -> int:
     return writer_.peer_port

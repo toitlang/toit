@@ -51,7 +51,7 @@ class AesCbc:
 
   constructor.common_ key/ByteArray initialization_vector/ByteArray encrypt/bool:
     aes_ = aes_cbc_init_ resource_freeing_module_ key initialization_vector encrypt
-    add_finalizer this:: finalize_ this
+    add_finalizer this:: this.close
 
   /**
   Encrypts the given $cleartext.
@@ -91,6 +91,3 @@ aes_cbc_crypt_ aes input/ByteArray from/int to/int encrypt/bool:
 
 aes_cbc_close_ aes:
   #primitive.crypto.aes_cbc_close
-
-finalize_ closeable -> none:
-  closeable.close

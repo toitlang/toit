@@ -11,9 +11,11 @@ utf_8_bytes char:
 // Writes 1-4 bytes to the byte array, corresponding to the UTF-8 encoding of
 // Unicode code point given as 'char'.  Returns the number of bytes written.
 write_utf_8_to_byte_array byte_array position char:
-  if char <= 0x7f:
+  if 0 <= char <= 0x7f:
     if byte_array: byte_array[position] = char
     return 1
+  if not 0 <= char < 0xd800:
+    if not 0xe000 <= char <= 0x10ffff: throw "INVALID_ARGUMENT"
   bytes := 2
   mask := 0x1f
   shifted := 6
@@ -59,12 +61,38 @@ abstract class string implements Comparable:
   str1 := string.from_rune 'a'  // -> "a"
   str2 := string.from_rune 0x41 // -> "A"
   str3 := string.from_rune 42   // -> "*"
-  str4 := string.from_rune 42   // -> "*"
-  str5 := string.from_rune 7931 // -> "☃"
+  str4 := string.from_rune 7931 // -> "☃"
   ```
   */
   constructor.from_rune rune/int:
     #primitive.core.string_from_rune
+
+  /**
+  Constructs a string from a list of Unicode code points.
+  All elements of the list must be in the Unicode range of 0 to 0x10ffff, inclusive.
+  Since UTF-8 encoding is used, if any elements of the list are greater than
+    the maximum ASCII value of 0x7f the size of the string will be greater than
+    the size of the list.
+  UTF-8 bytes are not valid input to this constructor.  If you have a ByteArray
+    of UTF-8 bytes, use the $ByteArray.to_string method instead.
+
+  # Examples
+  ```
+  str1 := string.from_runes ['a', 'b', 42]  // -> "ab*"
+  str2 := string.from_runes [0x41]          // -> "A"
+  str3 := string.from_runes [42]            // -> "*"
+  str4 := string.from_runes [7931, 0x20ac]  // -> "☃€"
+  ```
+  */
+  constructor.from_runes runes/List:
+    length := 0
+    runes.do:
+      length += utf_8_bytes it
+    ba := ByteArray length
+    length = 0
+    runes.do:
+      length += write_utf_8_to_byte_array ba length it
+    return ba.to_string
 
   constructor.from_subclass_:
 

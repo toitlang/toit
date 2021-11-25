@@ -23,7 +23,7 @@ namespace toit {
   E(hatch_entry,              __hatch_entry__, 0)                 \
   E(lookup_failure,           lookup_failure_, 2)                 \
   E(as_check_failure,         as_check_failure_, 2)               \
-  E(primitive_lookup_failure, primitive_lookup_failure_, 1)       \
+  E(primitive_lookup_failure, primitive_lookup_failure_, 2)       \
   E(allocation_failure,       allocation_failure_, 1)             \
   E(code_failure,             too_few_code_arguments_failure_, 4) \
   E(program_failure,          program_failure_, 1)                \
