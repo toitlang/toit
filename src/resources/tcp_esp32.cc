@@ -346,7 +346,7 @@ PRIMITIVE(accept) {
 }
 
 static ByteArray* allocate_read_buffer(Process* process, pbuf* p, Error** error) {
-  const int MAX_SIZE = 4096;
+  const int MAX_SIZE = 1500;
 
   int size = 0;
   pbuf* c = p;
@@ -391,8 +391,7 @@ PRIMITIVE(read)  {
       memcpy(bytes.address() + offset, p->payload, p->len);
       offset += p->len;
 
-      pbuf* n = p->tot_len == p->len ? null : p->next;
-
+      pbuf* n = p->next;
       // Free the first part of the chain.
       if (n != null) pbuf_ref(n);
       pbuf_free(p);
@@ -401,7 +400,7 @@ PRIMITIVE(read)  {
 
     socket->set_read_buffer(p);
 
-    if (socket->tpcb() != null) tcp_recved(socket->tpcb(), bytes.length());
+    if (socket->tpcb() != null) tcp_recved(socket->tpcb(), offset);
 
     return array;
   });
@@ -441,6 +440,9 @@ PRIMITIVE(write) {
       capture.socket->set_send_pending(capture.socket->send_pending() + to);
       tcp_sent(capture.socket->tpcb(), LwIPSocket::on_wrote);
     } else if (err == ERR_MEM) {
+      // If send queue is empty, we know the internal allocation failed. Be sure to
+      // trigger GC and retry, as there will be no tcp_sent event.
+      if (tcp_sndqueuelen(capture.socket->tpcb()) == 0) MALLOC_FAILED;
       // Wait for data being processed.
       return Smi::from(-1);
     } else {
@@ -449,10 +451,6 @@ PRIMITIVE(write) {
 
     return Smi::from(to);
   });
-
-  if (result == Primitive::mark_as_error(process->program()->allocation_failed())) {
-    return Smi::from(0);
-  }
 
   return result;
 }

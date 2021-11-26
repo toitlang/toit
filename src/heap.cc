@@ -568,13 +568,19 @@ int ObjectHeap::scavenge() {
 
   int blocks_after = _blocks.length();
 #ifdef TOIT_FREERTOS
-  word free_after = static_cast<word>(heap_caps_get_free_size(MALLOC_CAP_8BIT));
+  multi_heap_info_t info;
+  heap_caps_get_info(&info, MALLOC_CAP_8BIT);
+  word free_after = info.total_free_bytes;
+  word total = info.total_allocated_bytes;
+  word largest = info.largest_free_block;
   int64 microseconds = OS::get_monotonic_time() - start_time;
-  printf("[gc @ %p%s | heap: %zdkb -> %zdkb | external: %zdkb -> %zdkb | free: %zdkb->%zdkb %d.%03dms]\n",
+  printf("[gc @ %p%s | heap: %zdkb -> %zdkb | external: %zdkb -> %zdkb | used: %zdkb | free: %zdkb->%zdkb (largest %zd%s) %d.%03dms]\n",
       owner(), VM::current()->scheduler()->is_boot_process(owner()) ? "*" : "",
       blocks_before << (TOIT_PAGE_SIZE_LOG2 - KB_LOG2), blocks_after << (TOIT_PAGE_SIZE_LOG2 - KB_LOG2),
       external_memory_before >> KB_LOG2, _external_memory >> KB_LOG2,
-      free_before >> KB_LOG2, free_after >> KB_LOG2,
+      total >> KB_LOG2, free_before >> KB_LOG2, free_after >> KB_LOG2,
+      largest >= 4096 ? (largest >> KB_LOG2) : largest,
+      largest >= 4096 ? "kb" : "bytes",
       (int)(microseconds / 1000),
       (int)(microseconds % 1000));
 #endif
