@@ -25,7 +25,7 @@ ESP32_WIFI_SSID=
 all: tools
 
 .PHONY: tools
-tools: tpkg toitlsp build/host/bin/toitvm build/host/bin/toitc
+tools: toitpkg toitlsp build/host/bin/toitvm build/host/bin/toitc
 
 .PHONY: esp32
 esp32: build/esp32/toit.bin
@@ -76,12 +76,12 @@ build/toitlsp: $(TOITLSP_SOURCE)
 .PHONY: toitlsp
 toitlsp: build/toitlsp
 
-.PHONY: tpkg
-tpkg: build/tpkg
+.PHONY: toitpkg
+toitpkg: build/toitpkg
 
-TPKG_VERSION := "v0.0.0-20211122165249-e0dfea186707"
-build/tpkg:
-	GOBIN=$(shell pwd)/build go install github.com/toitlang/tpkg/cmd/tpkg@$(TPKG_VERSION)
+TOITPKG_VERSION := "v0.0.0-20211125091835-4159753d2086"
+build/toitpkg:
+	GOBIN=$(shell pwd)/build go install github.com/toitlang/tpkg/cmd/toitpkg@$(TOITPKG_VERSION)
 
 build/ia32/ build/host/:
 	mkdir -p $@
