@@ -112,11 +112,11 @@ You should then be able to execute a toit file:
 build/host/bin/toitvm examples/hello.toit
 ```
 
-The package manager is found at `build/tpkg`:
+The package manager is found at `build/toitpkg`:
 
 ``` sh
-build/tpkg pkg init --project-root=<some-directory>
-build/tpkg pkg install --project-root=<some-directory> <package-id>
+build/toitpkg pkg init --project-root=<some-directory>
+build/toitpkg pkg install --project-root=<some-directory> <package-id>
 ```
 
 The language server can be started with:
