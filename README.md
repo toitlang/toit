@@ -22,6 +22,9 @@ and the broader ecosystem. Building or porting drivers to the Toit language is a
 Read about [how to get started building I2C-based drivers](https://github.com/toitlang/toit/discussions/22) and
 get ready to publish your new driver to the [package registry](https://pkg.toit.io).
 
+If you're interested in pitching in, we could use your help with
+[these drivers](https://github.com/toitlang/toit/issues?q=is%3Aissue+is%3Aopen+label%3Adriver) and more!
+
 ## Licenses
 
 The Toit compiler, the virtual machine, and all the supporting infrastructure is licensed under
