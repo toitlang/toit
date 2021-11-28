@@ -80,7 +80,7 @@ class ByteArrayProducer implements Producer:
 
   /**
   Constructs a producer.
-  The constructed instance returns the range between $from_ and $to_(exclusive)
+  The constructed instance returns the range between $from_ and $to_ (exclusive)
     of the $byte_array_ when $write_to is called.
   */
   constructor .byte_array_ .from_=0 .to_=byte_array_.size:

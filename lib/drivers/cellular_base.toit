@@ -54,10 +54,10 @@ abstract class CellularBase implements Cellular:
 
   abstract configure apn --bands/List?=null --rats=null
 
-  use_gsm rats/List? -> bool:
-    return false
-
   abstract close -> none
+
+  support_gsm_ -> bool:
+    return false
 
   model:
     r := at_.do: it.action "+CGMM"
@@ -97,11 +97,11 @@ abstract class CellularBase implements Cellular:
   connect_psm:
     e := catch:
       at_.do: | session/at.Session |
-        wait_for_connected_ session null --use_gsm=false
+        wait_for_connected_ session null
     if e:
       logger_.warn "error connecting to operator" --tags={"error": "$e"}
 
-  connect --operator/Operator?=null --use_gsm/bool -> bool:
+  connect --operator/Operator?=null -> bool:
     is_connected := false
 
     at_.do: | session/at.Session |
@@ -113,7 +113,7 @@ abstract class CellularBase implements Cellular:
           session.send COPS.automatic
 
       // Set operator after enabling the radio.
-      is_connected = wait_for_connected_ session operator --use_gsm=use_gsm
+      is_connected = wait_for_connected_ session operator
 
     return is_connected
 
@@ -245,20 +245,19 @@ abstract class CellularBase implements Cellular:
         return true
       return false
 
-  wait_for_connected_ session/at.Session operator/Operator? --use_gsm/bool -> bool:
+  wait_for_connected_ session/at.Session operator/Operator? -> bool:
     connected := monitor.Latch
 
     failed_to_connect = false
     is_lte_connection_ = false
 
     set_up_wait_for_ session "+CEREG" connected
-    if use_gsm:
+    if support_gsm_:
       set_up_wait_for_ session "+CGREG" connected --on_connect=::
         is_lte_connection_ = true
         use_psm = false
 
     try:
-
       if operator:
         timeout := Duration --us=(task.deadline - Time.monotonic_us)
         session.send COPS.read
@@ -267,11 +266,11 @@ abstract class CellularBase implements Cellular:
 
       // Enable events.
       session.set "+CEREG" [2]
-      if use_gsm: session.set "+CGREG" [2]
+      if support_gsm_: session.set "+CGREG" [2]
 
       // Make sure we didn't miss the connect event before we set +CEREG=2.
       check_connected_ session "+CEREG" connected
-      if use_gsm:
+      if support_gsm_:
         check_connected_ session "+CGREG" connected --on_connect=::
           is_lte_connection_ = true
           use_psm = false
@@ -283,7 +282,7 @@ abstract class CellularBase implements Cellular:
         return false
     finally:
       session.unregister_urc "+CEREG"
-      if use_gsm: session.unregister_urc "+CGREG"
+      if support_gsm_: session.unregister_urc "+CGREG"
 
     on_connected_ session
 
@@ -313,8 +312,10 @@ class CFUN extends at.Command:
   constructor.offline:
     super.set "+CFUN" --parameters=[0] --timeout=TIMEOUT
 
-  constructor.online:
-    super.set "+CFUN" --parameters=[1] --timeout=TIMEOUT
+  constructor.online --reset=false:
+    params := [1]
+    if reset: params.add 1
+    super.set "+CFUN" --parameters=params --timeout=TIMEOUT
 
   constructor.airplane:
     super.set "+CFUN" --parameters=[4] --timeout=TIMEOUT

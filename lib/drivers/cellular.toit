@@ -41,12 +41,10 @@ interface Cellular:
 
   configure apn --bands/List?=null --rats/List?=null
 
-  use_gsm rats/List? -> bool
-
   /**
   Connect to the service using the optional operator.
   */
-  connect --operator/Operator?=null --use_gsm/bool -> bool
+  connect --operator/Operator?=null -> bool
 
   /**
   Connect to the service after a PSM wakeup.

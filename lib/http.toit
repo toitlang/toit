@@ -241,7 +241,7 @@ class Connection:
       key := reader_.read_string (reader_.index_of ':')
       reader_.skip 1
 
-      while is_whitespace_(reader_.byte 0): reader_.skip 1
+      while is_whitespace_ (reader_.byte 0): reader_.skip 1
 
       value := reader_.read_string (reader_.index_of '\r')
       reader_.skip 1
@@ -274,15 +274,15 @@ class Request implements Reader:
 
   // Incoming request from an HTTP client like a browser, we are the server.
   constructor .connection_ .reader_ .method .path .version .headers:
-    length := headers.single("Content-Length")
+    length := headers.single "Content-Length"
     if length: length_ = int.parse length
     TE ::= "Transfer-Encoding"
-    transfer_encoding := headers.single(TE)
+    transfer_encoding := headers.single TE
     if transfer_encoding:
       if headers.starts_with TE "chunked":
         reader_ = ChunkedReader_ (BufferedReader reader_)
       else if not headers.matches TE "identity":
-        throw "No support for $TE: $(headers.single(TE))"
+        throw "No support for $TE: $(headers.single TE)"
 
   send:
     connection_.socket_.set_no_delay false
@@ -350,7 +350,7 @@ class Response implements Reader:
   constructor .connection_ .writer_:
 
   constructor .connection_ .reader_ .version .status_code .status_message .headers:
-    length := headers.single("Content-Length")
+    length := headers.single "Content-Length"
     if length: length_ = int.parse length
 
   send:

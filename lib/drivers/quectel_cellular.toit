@@ -401,10 +401,8 @@ abstract class QuectelCellular extends CellularBase implements Gnss:
 
     return 0
 
-  use_gsm rats/List? -> bool:
-    if not rats: return false
-
-    return rats.contains RAT_GSM
+  support_gsm_ -> bool:
+    return true
 
   configure apn --bands=null --rats=null:
     at_.do: | session/at.Session |

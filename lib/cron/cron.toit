@@ -45,7 +45,7 @@ class CronSchedule:
     if description.is_empty: throw "Cron: empty string"
     if description[0] == '@':
       description = get_predefined_description_ description
-    fields ::= description.split(" ")
+    fields ::= description.split " "
     if fields.size != 6: throw "Cron: expected six fields"
     return CronSchedule
       parse_field_ fields[0] 0 59

@@ -354,7 +354,8 @@ abstract class SequansCellular extends CellularBase:
           session.register_urc "+CEREG" ::
             if it.first == 2: waiter.set true
           // Force enable radio.
-          session.send CFUN.online
+          session.send
+            CFUN.online --reset
 
           waiter.get
         finally:
@@ -371,13 +372,13 @@ abstract class SequansCellular extends CellularBase:
       finally:
         session.unregister_urc "+CEREG"
 
-  connect --operator/Operator?=null --use_gsm/bool -> bool:
+  connect --operator/Operator?=null -> bool:
     if operator:
       ps_detach_
       // Using the RAT seems to give problems, so remove it.
       operator = Operator operator.op
 
-    return super --operator=operator --use_gsm=use_gsm
+    return super --operator=operator
 
   scan_for_operators -> List:
     ps_detach_

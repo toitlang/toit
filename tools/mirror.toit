@@ -496,7 +496,7 @@ class BlackWhiteBlockOutputter_ extends UnicodeBlockOutputter_:
     result := ""
     DESCRIPTIONS_.do: | letter description |
       letter_string := letter == 'F' ? "█" : "$(%c letter)"
-      result += "    $(description.pad(30)) $letter_string\n"
+      result += "    $(description.pad 30) $letter_string\n"
     return result
 
   add usage_char last_flag:
@@ -542,7 +542,7 @@ class ColorBlockOutputter_ extends UnicodeBlockOutputter_:
   key:
     result := ""
     DESCRIPTIONS_.do: | letter description |
-      result += "    $BG$colors[letter]m $(description.pad(30)) $(%c letter) $reset\n"
+      result += "    $BG$colors[letter]m $(description.pad 30) $(%c letter) $reset\n"
     return result
 
   reset ::= "\u001b[0m"
