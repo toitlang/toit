@@ -25,7 +25,6 @@ namespace toit {
 const char* FlashRegistry::allocations_memory_ = null;
 
 void FlashRegistry::set_up() {
-  UNIMPLEMENTED();
 }
 
 bool FlashRegistry::is_allocations_set_up() {

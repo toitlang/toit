@@ -38,6 +38,7 @@ class FilesystemArchive : public Filesystem {
   void initialize(Diagnostics* diagnostics);
 
   const char* entry_path() { return _entry_path; }
+  bool is_absolute(const char* path) { return path[0] == '/'; }
 
   const char* sdk_path() { return _sdk_path; }
   List<const char*> package_cache_paths() { return _package_cache_paths; }

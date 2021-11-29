@@ -43,7 +43,7 @@ void PathBuilder::canonicalize() {
   // With C++11 we can, in theory, modify the buffer directly, but it feels
   // brittle.
   auto copy = ::strdup(_buffer.c_str());
-  Filesystem::canonicalize(copy);
+  _fs->canonicalize(copy);
   _buffer.assign(copy);
   free(copy);
 }

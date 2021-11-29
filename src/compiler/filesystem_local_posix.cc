@@ -1,4 +1,4 @@
-// Copyright (C) 2018 Toitware ApS.
+// Copyright (C) 2021 Toitware ApS.
 //
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -15,39 +15,36 @@
 
 #include "../top.h"
 
-#ifdef TOIT_WINDOWS
+#ifdef TOIT_POSIX
 
-#include <errno.h>
-#include <sys/param.h>
 #include <libgen.h>
+#include <limits.h>
+#include <sys/stat.h>
 #include <unistd.h>
-#include <shlwapi.h>
+// For checking whether a path is a regular file.
+#include <sys/types.h>
 
 #include "filesystem_local.h"
-#include "sources.h"
+#include "lock.h"
+#include "util.h"
+#include "../flags.h"
+#include "../top.h"
+#include "../utils.h"
 
 namespace toit {
 namespace compiler {
 
-char* FilesystemLocal::get_executable_path() {
-  char* path = _new char[MAX_PATH];
-  auto length = GetModuleFileName(NULL, path, MAX_PATH);
-  path[length] = '\0';
-  return path;
-}
-
 bool FilesystemLocal::is_absolute(const char* path) {
-  if (SourceManager::is_virtual_file(path)) return true;
   int length = strlen(path);
-  if (length < 3) return false;
-  return path[1] == ':' && path[2] == '\\';
+  if (length < 1) return false;
+  return path[0] == '/';
 }
 
 char FilesystemLocal::path_separator() {
-  return '\\';
+  return '/';
 }
 
-} // namespace toit::compiler
+} // namespace compiler
 } // namespace toit
 
-#endif // TOIT_LINUX
+#endif

@@ -32,6 +32,8 @@ class FilesystemLocal : public Filesystem {
   /// Otherwise computes the library root based on the executable path.
   const char* sdk_path();
   List<const char*> package_cache_paths();
+  bool is_absolute(const char* path);
+  char path_separator();
 
   /// Computes the executable path.
   ///

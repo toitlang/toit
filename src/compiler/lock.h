@@ -36,7 +36,7 @@ class PackageLock {
   // Returns the package that contains the given path.
   // The given path must be absolute.
   // Returns "" if the path is in no package.
-  Package package_for(const std::string& path) const;
+  Package package_for(const std::string& path, Filesystem* fs) const;
 
   // Reads the lock-file.
   // If [lock_file_path] is "", assumes the file doesn't exists and creates a
@@ -107,7 +107,7 @@ std::string find_lock_file(const char* source_path,
 std::string find_lock_file_at(const char* dir,
                              Filesystem* fs);
 
-const char* compute_package_cache_path_from_home(const char* home);
+const char* compute_package_cache_path_from_home(const char* home, Filesystem* fs);
 
 } // namespace toit::compiler
 } // namespace toit

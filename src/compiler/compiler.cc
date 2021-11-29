@@ -908,7 +908,7 @@ PackageLock Pipeline::load_package_lock(const List<const char*> source_paths) {
   } else {
     lock_file = find_lock_file(entry_path, filesystem());
   }
-  bool entry_is_absolute = entry_path[0] == '/';
+  bool entry_is_absolute = filesystem()->is_absolute(entry_path);
   return PackageLock::read(lock_file,
                            entry_is_absolute,
                            source_manager(),
@@ -923,7 +923,7 @@ PackageLock DebugCompilationPipeline::load_package_lock(const List<const char*> 
   ASSERT(source_paths.length() == 2);
   auto entry_path = source_paths[1];
   auto lock_file = find_lock_file(entry_path, filesystem());
-  bool entry_is_absolute = entry_path[0] == '/';
+  bool entry_is_absolute = filesystem()->is_absolute(entry_path);
   return PackageLock::read(lock_file,
                            entry_is_absolute,
                            source_manager(),
@@ -961,7 +961,7 @@ Source* CompletionPipeline::_load_file(const char* path, const PackageLock& pack
   // Now that we have loaded the file that contains the LSP selection, extract
   // the prefix (if there is any), and the package it is from.
 
-  _package_id = package_lock.package_for(path).id();
+  _package_id = package_lock.package_for(path, filesystem()).id();
 
   const uint8* text = result->text();
   int offset = compute_source_offset(text, _line_number, _column_number);
@@ -1063,14 +1063,14 @@ void Pipeline::_report_failed_import(ast::Import* import,
   // However, this time we look at each segment separately to figure out at which
   // point things go wrong.
   auto fs = filesystem();
-  auto unit_package = package_lock.package_for(unit->absolute_path());
+  auto unit_package = package_lock.package_for(unit->absolute_path(), filesystem());
   // Package used to create a relative path for the path in the note.
   Package build_error_package = Package::invalid();
   auto build_error_path = [&](const std::string& path) {
-    return build_error_package.build_error_path(path);
+    return build_error_package.build_error_path(filesystem(), path);
   };
 
-  PathBuilder path_builder;
+  PathBuilder path_builder(filesystem());
   bool have_note = false;
   std::function<void ()> note_fun;
 
@@ -1181,7 +1181,7 @@ Source* Pipeline::_load_import(ast::Unit* unit,
     return null;
   }
 
-  auto unit_package = package_lock.package_for(unit->absolute_path());
+  auto unit_package = package_lock.package_for(unit->absolute_path(), filesystem());
   ASSERT(unit_package.is_ok());
   std::string unit_package_id = unit_package.id();
 
@@ -1189,7 +1189,7 @@ Source* Pipeline::_load_import(ast::Unit* unit,
   const char* lsp_segment = null;
 
   std::string expected_import_package_id;
-  PathBuilder import_path_builder;
+  PathBuilder import_path_builder(filesystem());
   int relative_segment_start = 0;
   bool dotted_out = false;
   if (is_relative) {
@@ -1205,7 +1205,7 @@ Source* Pipeline::_load_import(ast::Unit* unit,
       // We check if a file in this folder would still be part of this package.
       PathBuilder fake_path_builder = import_path_builder;
       fake_path_builder.join("fake.toit");
-      auto dotted_package = package_lock.package_for(fake_path_builder.buffer());
+      auto dotted_package = package_lock.package_for(fake_path_builder.buffer(), filesystem());
       if (!dotted_package.is_ok() || dotted_package.id() != expected_import_package_id) {
         dotted_out = true;
         // Note that we don't even allow this if the user comes back into the package.
@@ -1289,7 +1289,7 @@ Source* Pipeline::_load_import(ast::Unit* unit,
     // TODO(florian): in order to show `<pkg1>` messages we can't have long package-ids. Currently
     // they are something like `package-github.com/toitware/my_package`.
     std::string import_path = import_path_builder.buffer();
-    result_package = package_lock.package_for(import_path);
+    result_package = package_lock.package_for(import_path, filesystem());
     auto load_result = source_manager()->load_file(import_path, result_package);
     switch (load_result.status) {
       case SourceManager::LoadResult::OK:
@@ -1336,15 +1336,15 @@ Source* Pipeline::_load_import(ast::Unit* unit,
 }
 
 Source* Pipeline::_load_file(const char* path, const PackageLock& package_lock) {
-  PathBuilder builder;
-  if (path[0] == '/') {
+  PathBuilder builder(filesystem());
+  if (filesystem()->is_absolute(path)) {
     builder.join(path);
   } else {
     builder.join(filesystem()->cwd());
     builder.join(path);
   }
   builder.canonicalize();
-  auto package = package_lock.package_for(builder.buffer());
+  auto package = package_lock.package_for(builder.buffer(), filesystem());
   auto load_result = source_manager()->load_file(builder.buffer(), package);
   if (load_result.status == SourceManager::LoadResult::OK) {
     return load_result.source;
@@ -1380,9 +1380,9 @@ std::vector<ast::Unit*> Pipeline::_parse_units(List<const char*> source_paths,
 
   // Add the core library which is implicitly imported.
   {
-    const char* const CORE_MODULE_PATH = "core/core.toit";
-    PathBuilder builder;
-    builder.join(sdk_lib_dir, CORE_MODULE_PATH);
+    PathBuilder builder(filesystem());
+    builder.join(sdk_lib_dir);
+    builder.join("core", "core.toit");
     auto source = _load_file(builder.c_str(), package_lock);
     // If the entry is the same as the core lib we will parse the core library
     // twice. That shouldn't be a problem.

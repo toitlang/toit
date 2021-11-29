@@ -13,13 +13,15 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+#include "top.h"
+
+#ifdef TOIT_WINDOWS
+
 #define _FILE_OFFSET_BITS 64
 
 #include "primitive_file.h"
 #include "primitive.h"
 #include "process.h"
-
-#if defined(TOIT_LINUX) || defined(TOIT_BSD)
 
 #include <dirent.h>
 #include <errno.h>
@@ -28,20 +30,6 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
-
-// Old C library version of stat.
-extern "C" {
-
-extern int __fxstat64(int ver, int fd, struct stat64* stat_buf);
-extern int __fxstatat64(int ver, int dirfd, const char* path, struct stat64* stat_buf, int flags);
-
-}
-
-#ifdef BUILD_64
-# define STAT_VERSION 1
-#else
-# define STAT_VERSION 3
-#endif
 
 namespace toit {
 
@@ -68,7 +56,7 @@ class AutoCloser {
 
 static Object* return_open_error(Process* process, int err) {
   if (err == EPERM || err == EACCES || err == EROFS) PERMISSION_DENIED;
-  if (err == EDQUOT || err == EMFILE || err == ENFILE || err == ENOSPC) QUOTA_EXCEEDED;
+  if (err == EMFILE || err == ENFILE || err == ENOSPC) QUOTA_EXCEEDED;
   if (err == EEXIST) ALREADY_EXISTS;
   if (err == EINVAL || err == EISDIR || err == ENAMETOOLONG) INVALID_ARGUMENT;
   if (err == ENODEV || err == ENOENT || err == ENOTDIR) FILE_NOT_FOUND;
@@ -96,45 +84,27 @@ static const int FILE_ST_ATIME = 8;
 static const int FILE_ST_MTIME = 9;
 static const int FILE_ST_CTIME = 10;
 
-int current_dir(Process* process) {
-  int fd = process->current_directory();
-  if (fd >= 0) return fd;
-  fd = open(".", O_DIRECTORY | O_RDONLY | O_CLOEXEC);
-  process->set_current_directory(fd);
-  return fd;
-}
-
 PRIMITIVE(open) {
   ARGS(cstring, pathname, int, flags, int, mode);
-  // We always set the close-on-exec flag otherwise we leak fds when we fork.
-  // File descriptors that are intended for subprocesses have the the flags cleared.
-  int os_flags = O_CLOEXEC;
-  if ((flags & FILE_RDWR) == FILE_RDONLY) os_flags |= O_RDONLY;
-  else if ((flags & FILE_RDWR) == FILE_WRONLY) os_flags |= O_WRONLY;
-  else if ((flags & FILE_RDWR) == FILE_RDWR) os_flags |= O_RDWR;
+  int os_flags = _O_BINARY;
+  if ((flags & FILE_RDWR) == FILE_RDONLY) os_flags |= _O_RDONLY;
+  else if ((flags & FILE_RDWR) == FILE_WRONLY) os_flags |= _O_WRONLY;
+  else if ((flags & FILE_RDWR) == FILE_RDWR) os_flags |= _O_RDWR;
   else INVALID_ARGUMENT;
-  if ((flags & FILE_APPEND) != 0) os_flags |= O_APPEND;
-  if ((flags & FILE_CREAT) != 0) os_flags |= O_CREAT;
-  if ((flags & FILE_TRUNC) != 0) os_flags |= O_TRUNC;
-  bool is_dev_null = strcmp(pathname, "/dev/null") == 0;
-  int fd = openat(current_dir(process), pathname, os_flags, mode);
+  if ((flags & FILE_APPEND) != 0) os_flags |= _O_APPEND;
+  if ((flags & FILE_CREAT) != 0) os_flags |= _O_CREAT;
+  if ((flags & FILE_TRUNC) != 0) os_flags |= _O_TRUNC;
+  int fd = _open(pathname, os_flags, mode);
   AutoCloser closer(fd);
   if (fd < 0) return return_open_error(process, errno);
-#ifndef TOIT_LINUX
   struct stat statbuf;
   int res = fstat(fd, &statbuf);
-#else
-  // Use an older version of stat, so that we can run in docker
-  // containers with older glibc.
-  struct stat64 statbuf;
-  int res = __fxstat64(STAT_VERSION, fd, &statbuf);
-#endif
   if (res < 0) {
     if (errno == ENOMEM) MALLOC_FAILED;
     OTHER_ERROR;
   }
   int type = statbuf.st_mode & S_IFMT;
-  if (!is_dev_null && type != S_IFREG) {
+  if (type != S_IFREG) {
     // An attempt to open something with file::open that is not a regular file
     // with open (eg a pipe, a socket, a directory).  We forbid this because
     // these file descriptors can block, and this API does not support
@@ -152,76 +122,15 @@ class Directory {
 };
 
 PRIMITIVE(opendir) {
-  ARGS(cstring, pathname);
-  Directory* directory = _new Directory();
-  if (directory == null) {
-    ALLOCATION_FAILED;
-  }
-  ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) {
-    delete directory;
-    ALLOCATION_FAILED;
-  }
-  int fd = openat(current_dir(process), pathname, O_RDONLY | O_DIRECTORY);
-  if (fd < 0) return return_open_error(process, errno);
-  DIR* dir = fdopendir(fd);
-  if (dir == null) {
-    close(fd);
-    delete directory;
-    return return_open_error(process, errno);
-  }
-
-  directory->dir = dir;
-
-  proxy->set_external_address(directory);
-  return proxy;
+  UNIMPLEMENTED_PRIMITIVE;
 }
 
 PRIMITIVE(readdir) {
-  ARGS(Directory, directory);
-
-  ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) {
-    ALLOCATION_FAILED;
-  }
-
-  // Because we allocated the proxy without a backing (we are adding that
-  // later) it got created without a finalizer.  If we were putting a resource
-  // in it, then the resource cleanup code would free the memory, but we are
-  // just putting raw bytes in it, so we have to set a finalizer.
-  bool ok = process->add_vm_finalizer(proxy);
-  ASSERT(ok);  // Malloc does not fail on non-embedded.
-
-  struct dirent* entry = readdir(directory->dir);
-  // After this point we can't bail out for GC because readdir is not really
-  // restartable in Unix.
-
-  if (entry == null) {
-    return process->program()->null_object();
-  }
-
-  int len = strlen(entry->d_name);
-
-  if (!Utils::is_valid_utf_8(unsigned_cast(entry->d_name), len)) {
-    ILLEGAL_UTF_8;
-  }
-
-  process->register_external_allocation(len);
-
-  uint8 *backing = unvoid_cast<uint8*>(malloc(len));  // Can't fail on non-embedded.
-  ASSERT(backing);
-  memcpy(backing, reinterpret_cast<const uint8*>(entry->d_name), len);
-
-  proxy->set_external_address(len, backing);
-  return proxy;
+  UNIMPLEMENTED_PRIMITIVE;
 }
 
 PRIMITIVE(closedir) {
-  ARGS(Directory, directory);
-  closedir(directory->dir);
-  free(directory);
-  directory_proxy->clear_external_address();
-  return process->program()->null_object();
+  UNIMPLEMENTED_PRIMITIVE;
 }
 
 PRIMITIVE(read) {
@@ -230,7 +139,7 @@ PRIMITIVE(read) {
   uint8 buffer[SIZE];
   ssize_t buffer_fullness = 0;
   while (buffer_fullness < SIZE) {
-    ssize_t bytes_read = read(fd, buffer + buffer_fullness, SIZE - buffer_fullness);
+    ssize_t bytes_read = _read(fd, buffer + buffer_fullness, SIZE - buffer_fullness);
     if (bytes_read < 0) {
       if (errno == EINTR) continue;
       if (errno == EINVAL || errno == EISDIR || errno == EBADF) INVALID_ARGUMENT;
@@ -261,7 +170,6 @@ PRIMITIVE(write) {
     if (bytes_written < 0) {
       if (errno == EINTR) continue;
       if (errno == EINVAL || errno == EBADF) INVALID_ARGUMENT;
-      if (errno == EDQUOT || errno == ENOSPC) QUOTA_EXCEEDED;
       OTHER_ERROR;
     }
     current_offset += bytes_written;
@@ -276,30 +184,24 @@ PRIMITIVE(close) {
     if (result < 0) {
       if (errno == EINTR) continue;
       if (errno == EBADF) ALREADY_CLOSED;
-      if (errno == ENOSPC || errno == EDQUOT) QUOTA_EXCEEDED;
+      if (errno == ENOSPC) QUOTA_EXCEEDED;
       OTHER_ERROR;
     }
     return process->program()->null_object();
   }
 }
 
-Object* time_stamp(Process* process, struct timespec time) {
-  return Primitive::integer(time.tv_sec * 1000000000ll + time.tv_nsec, process);
+Object* time_stamp(Process* process, time_t time) {
+  return Primitive::integer(time * 1000000000ll, process);
 }
 
 // Returns null for entries that do not exist.
 // Otherwise returns an array with indices from the FILE_ST_xxx constants.
 PRIMITIVE(stat) {
   ARGS(cstring, pathname, bool, follow_links);
-#ifndef TOIT_LINUX
+  USE(follow_links);
   struct stat statbuf;
-  int result = fstatat(current_dir(process), pathname, &statbuf, follow_links ? 0 : AT_SYMLINK_NOFOLLOW);
-#else
-  struct stat64 statbuf;
-  // Use an older version of stat, so that we can run in docker
-  // containers with older glibc.
-  int result = __fxstatat64(STAT_VERSION, current_dir(process), pathname, &statbuf, follow_links ? 0 : AT_SYMLINK_NOFOLLOW);
-#endif
+  int result = stat(pathname, &statbuf);
   if (result < 0) {
     if (errno == ENOENT || errno == ENOTDIR) {
       return process->program()->null_object();
@@ -322,25 +224,15 @@ PRIMITIVE(stat) {
   Object* size = Primitive::integer(statbuf.st_size, process);
   if (Primitive::is_error(size)) return size;
 
-#if defined(TOIT_LINUX)
-  Object* atime = time_stamp(process, statbuf.st_atim);
+  Object* atime = time_stamp(process, statbuf.st_atime);
   if (Primitive::is_error(atime)) return atime;
 
-  Object* mtime = time_stamp(process, statbuf.st_mtim);
+  Object* mtime = time_stamp(process, statbuf.st_mtime);
   if (Primitive::is_error(mtime)) return mtime;
 
-  Object* ctime = time_stamp(process, statbuf.st_ctim);
+  Object* ctime = time_stamp(process, statbuf.st_ctime);
   if (Primitive::is_error(ctime)) return ctime;
-#else
-  Object* atime = time_stamp(process, statbuf.st_atimespec);
-  if (Primitive::is_error(atime)) return atime;
 
-  Object* mtime = time_stamp(process, statbuf.st_mtimespec);
-  if (Primitive::is_error(mtime)) return mtime;
-
-  Object* ctime = time_stamp(process, statbuf.st_ctimespec);
-  if (Primitive::is_error(ctime)) return ctime;
-#endif
   array->at_put(FILE_ST_DEV, device_id);
   array->at_put(FILE_ST_INO, inode);
   array->at_put(FILE_ST_MODE, Smi::from(mode));
@@ -358,70 +250,37 @@ PRIMITIVE(stat) {
 
 PRIMITIVE(unlink) {
   ARGS(cstring, pathname);
-  int result = unlinkat(current_dir(process), pathname, 0);
+  int result = unlink(pathname);
   if (result < 0) return return_open_error(process, errno);
   return process->program()->null_object();
 }
 
 PRIMITIVE(rmdir) {
-  ARGS(cstring, pathname);
-  int result = unlinkat(current_dir(process), pathname, AT_REMOVEDIR);
-  if (result < 0) return return_open_error(process, errno);
-  return process->program()->null_object();
+  UNIMPLEMENTED_PRIMITIVE;
 }
 
 PRIMITIVE(rename) {
   ARGS(cstring, old_name, cstring, new_name);
-  int result = renameat(current_dir(process), old_name, current_dir(process), new_name);
+  int result = rename(old_name, new_name);
   if (result < 0) return return_open_error(process, errno);
   return process->program()->null_object();
 }
 
 PRIMITIVE(chdir) {
-  ARGS(cstring, pathname);
-  int old_dir = current_dir(process);
-  int new_dir = openat(old_dir, pathname, O_DIRECTORY | O_RDONLY);
-  if (new_dir < 0) return return_open_error(process, errno);
-  process->set_current_directory(new_dir);
-  close(old_dir);
-  return process->program()->null_object();
+  UNIMPLEMENTED_PRIMITIVE;
 }
 
 PRIMITIVE(mkdir) {
   ARGS(cstring, pathname, int, mode);
-  int result = mkdirat(current_dir(process), pathname, mode);
+  USE(mode);
+  int result = mkdir(pathname);
   return result < 0
     ? return_open_error(process, errno)
     : process->program()->null_object();
 }
 
 PRIMITIVE(mkdtemp) {
-  ARGS(cstring, prefix);
-
-  const int X_COUNT = 6;
-
-  word prefix_len = strlen(prefix);
-  word total_len = prefix_len + X_COUNT;
-  Error* error = null;
-  Object* result = process->allocate_byte_array(total_len, &error);
-  if (result == null) return error;
-
-  if (!process->should_allow_external_allocation(total_len + 1)) ALLOCATION_FAILED;
-  char* mutable_buffer = unvoid_cast<char*>(malloc(total_len + 1));
-  if (mutable_buffer == null) MALLOC_FAILED;
-  AllocationManager allocation(process, mutable_buffer, total_len);
-
-  memset(mutable_buffer, 'X', total_len);
-  mutable_buffer[total_len] = '\0';
-  memcpy(mutable_buffer, prefix, prefix_len);
-
-  char* ok = mkdtemp(mutable_buffer);
-  if (ok == null) {
-    return return_open_error(process, errno);
-  }
-  ASSERT(ok == mutable_buffer);
-  memcpy(ByteArray::Bytes(ByteArray::cast(result)).address(), mutable_buffer, total_len);
-  return result;
+  UNIMPLEMENTED_PRIMITIVE;
 }
 
 PRIMITIVE(is_open_file) {
@@ -437,7 +296,7 @@ PRIMITIVE(is_open_file) {
 
 PRIMITIVE(realpath) {
   ARGS(cstring, filename);
-  char* c_result = realpath(filename, null);
+  char* c_result = _fullpath(null, filename, MAXPATHLEN);
   if (c_result == null) {
     if (errno == ENOMEM) MALLOC_FAILED;
     if (errno == ENOENT or errno == ENOTDIR) return process->program()->null_object();
@@ -453,21 +312,7 @@ PRIMITIVE(realpath) {
 }
 
 PRIMITIVE(cwd) {
-#ifdef TOIT_DARWIN
-  char cwd_path[PATH_MAX + 1];
-  int status = fcntl(current_dir(process), F_GETPATH, &cwd_path);
-  cwd_path[PATH_MAX] = '\0';
-  if (status == -1) {
-    if (errno == ENOMEM) MALLOC_FAILED;
-    OTHER_ERROR;
-  }
-  Error* error = null;
-  String* result = process->allocate_string(cwd_path, &error);
-  if (result == null) return error;
-  return result;
-#else
-  OTHER_ERROR;
-#endif
+  UNIMPLEMENTED_PRIMITIVE;
 }
 
 }
