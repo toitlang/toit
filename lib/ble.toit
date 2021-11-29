@@ -268,6 +268,7 @@ class Device:
 
   constructor.default:
     resource_group_ = ble_init_
+    add_finalizer this:: this.close
     try:
       gap := ble_gap_ resource_group_
       resource_state := monitor.ResourceState_ resource_group_ gap
@@ -289,10 +290,13 @@ class Device:
   */
   close:
     if resource_group_:
-      ble_close_ resource_group_
-      resource_group_ = null
-      resource_state_.dispose
-      resource_state_ = null
+      try:
+        ble_close_ resource_group_
+        resource_group_ = null
+        resource_state_.dispose
+        resource_state_ = null
+      finally:
+        remove_finalizer this
 
   /**
   Initializes an advertiser for the local device.
