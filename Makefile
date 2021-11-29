@@ -59,6 +59,17 @@ build/esp32/esp32.image.s: build/esp32/ build/snapshot build/ia32/bin/toitvm too
 build/snapshot: build/ia32/bin/toitc $(ESP32_ENTRY)
 	build/ia32/bin/toitc -w $@ $(ESP32_ENTRY) -Dwifi.ssid=$(ESP32_WIFI_SSID) -Dwifi.password=$(ESP32_WIFI_PASSWORD)
 
+GO_USE_INSTALL = 1
+GO_USE_INSTALL_FROM = 1 16
+GO_VERSION = $(subst ., ,$(shell go version |grep --perl-regexp --only-matching "(?<=go version go)[[:digit:]]*\.[[:digit:]]*\.[[:digit:]]*(?= .*/.*)"))
+ifeq ($(shell echo "$(word 1,$(GO_VERSION)) >= $(word 1,$(GO_USE_INSTALL_FROM))"|bc), 1)
+  ifeq ($(shell echo "$(word 2,$(GO_VERSION)) < $(word 2,$(GO_USE_INSTALL_FROM))"|bc), 1)
+  GO_USE_INSTALL=0
+  endif
+else
+  GO_USE_INSTALL=0
+endif
+
 GO_BUILD_FLAGS ?=
 ifeq ("$(GO_BUILD_FLAGS)", "")
 $(eval GO_BUILD_FLAGS=CGO_ENABLED=1 GODEBUG=netdns=go)
@@ -82,7 +93,11 @@ toitpkg: build/toitpkg
 
 TOITPKG_VERSION := "v0.0.0-20211126161923-c00da039da00"
 build/toitpkg:
+ifeq ($(GO_USE_INSTALL),1)
+	GOBIN=$(shell pwd)/build go install github.com/toitlang/tpkg/cmd/toitpkg@$(TOITPKG_VERSION)
+else
 	GO111MODULE=on GOBIN=$(shell pwd)/build go get github.com/toitlang/tpkg/cmd/toitpkg@$(TOITPKG_VERSION)
+endif
 
 build/ia32/ build/host/:
 	mkdir -p $@
