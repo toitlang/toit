@@ -19,7 +19,7 @@ This fork is very much an experiment in getting Toit running on RISC-V hardware-
   
 ## Compiling Toit
 - Compile esp-idf-riscv
-  - export IDF_PATH=<path-to-esp-idf-riscv>
+  - export IDF_PATH=*path-to-esp-idf-riscv*
   - $IDF_PATH/install.sh **ERROR: Fails here on wheel cryptography (version mismatch for risc-v support?)**
   - . $IDF_PATH/export.sh
 - Compile toit-riscv
