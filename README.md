@@ -1,3 +1,38 @@
+------
+# RISC-V GETTING STARTED
+------
+
+This fork is very much an experiment in getting Toit running on RISC-V hardware--as an IoT endpoint, coordinator, and potentially development platform.  Below are a list of **WIP** steps required to get Toit running on a sifive unmatched dev board. 
+
+## Environment Setup
+- Install Ubuntu Server 20.04 RISC-V image
+- sudo apt install build-essential libffi-dev python3 git cargo python-pip golang ninja-build
+- pip install cryptography 
+
+## Clone Sources
+- git clone https://github.com/dsobotta/esp-idf-riscv.git
+  - pushd esp-idf-riscv/
+  - git checkout patch-head-4.3-3
+  - git submodule update --init --recursive
+  - popd
+- git clone https://github.com/dsobotta/toit-riscv.git
+  
+## Compiling Toit
+- Compile esp-idf-riscv
+  - export IDF_PATH=<path-to-esp-idf-riscv>
+  - $IDF_PATH/install.sh **ERROR: Fails here on wheel cryptography (version mismatch for risc-v support?)**
+  - . $IDF_PATH/export.sh
+- Compile toit-riscv
+  - export GO111MODULE=on
+  - cd toit-riscv
+  - make tools **ERROR: Fails here on missing ninja config file**
+
+
+
+------
+# ORIGINAL DOCUMENTATION
+------
+
 # Toit language implementation
 
 This repository contains the Toit language implementation. It is fully open source and consists of the compiler,
