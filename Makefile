@@ -25,10 +25,10 @@ ESP32_WIFI_SSID=
 all: tools
 
 .PHONY: tools
-tools: toitpkg toitlsp build/host/bin/toitvm build/host/bin/toitc
+tools: check-env toitpkg toitlsp build/host/bin/toitvm build/host/bin/toitc
 
 .PHONY: esp32
-esp32: build/esp32/toit.bin
+esp32: check-env build/esp32/toit.bin
 
 build/esp32/toit.bin build/esp32/toit.elf: build/esp32/lib/libtoit_image.a
 	make -C toolchains/esp32/
@@ -81,7 +81,7 @@ toitpkg: build/toitpkg
 
 TOITPKG_VERSION := "v0.0.0-20211126161923-c00da039da00"
 build/toitpkg:
-	GOBIN=$(shell pwd)/build go install github.com/toitlang/tpkg/cmd/toitpkg@$(TOITPKG_VERSION)
+	GO111MODULE=on GOBIN=$(shell pwd)/build go get github.com/toitlang/tpkg/cmd/toitpkg@$(TOITPKG_VERSION)
 
 build/ia32/ build/host/:
 	mkdir -p $@
