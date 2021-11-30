@@ -184,7 +184,7 @@ SourceManager::LoadResult SourceManager::load_file(const std::string& path, cons
   std::string error_path;
   std::string package_id;
   if (package.is_valid()) {
-    error_path = package.build_error_path(path);
+    error_path = package.build_error_path(_filesystem, path);
     package_id = package.id();
   } else {
     error_path = path;

@@ -20,6 +20,7 @@
 
 #include "../top.h"
 
+#include "filesystem.h"
 #include "map.h"
 
 namespace toit {
@@ -72,7 +73,7 @@ class Package {
 
   // Build the error path for the given absolute path which must be inside
   // this package.
-  std::string build_error_path(const std::string& member_absolute_path) const;
+  std::string build_error_path(Filesystem* fs, const std::string& member_absolute_path) const;
 
   bool is_valid() const { return _error_state != INVALID; }
 

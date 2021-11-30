@@ -275,7 +275,7 @@ class Request implements Reader:
   // Incoming request from an HTTP client like a browser, we are the server.
   constructor .connection_ .reader_ .method .path .version .headers:
     length := headers.single "Content-Length"
-    if length: length_ = int.parse length
+    if length: length_ = int.parse length.trim
     TE ::= "Transfer-Encoding"
     transfer_encoding := headers.single TE
     if transfer_encoding:
@@ -351,7 +351,7 @@ class Response implements Reader:
 
   constructor .connection_ .reader_ .version .status_code .status_message .headers:
     length := headers.single "Content-Length"
-    if length: length_ = int.parse length
+    if length: length_ = int.parse length.trim
 
   send:
     connection_.socket_.set_no_delay false

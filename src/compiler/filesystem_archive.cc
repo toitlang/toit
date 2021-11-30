@@ -57,7 +57,7 @@ void FilesystemArchive::initialize(Diagnostics* diagnostics) {
         }
         current_working_dir_len = strlen(current_working_dir);
       }
-      PathBuilder builder;
+      PathBuilder builder(this);
       builder.join(current_working_dir, name);
       name = builder.strdup();
     }

@@ -41,6 +41,9 @@ class Filesystem {
   virtual const char* sdk_path() = 0;
   virtual List<const char*> package_cache_paths() = 0;
 
+  virtual bool is_absolute(const char* path) = 0;
+  virtual char path_separator() { return '/'; }
+
   bool is_regular_file(const char* path);
   bool is_directory(const char* path);
   bool exists(const char* path);
@@ -66,10 +69,10 @@ class Filesystem {
   // '/'. For example `a/b/c/../../d` becomes `a/d`.
   // Also removes double '//' and '/./'
   // Does *not* canonicalize virtual paths (see [SourceManager::is_virtual_file]).
-  static void canonicalize(char* path);
+  void canonicalize(char* path);
 
   // Returns the relative path of [path] with respect to [to].
-  static std::string relative(const std::string& path, const std::string& to);
+  std::string relative(const std::string& path, const std::string& to);
 
   // Copies the directory part (without the `/`) into `path`.
   // The target must be big enough to contain the dirname. Otherwise it is truncated.
@@ -92,6 +95,8 @@ class Filesystem {
     const uint8* content;
     int size;
   };
+
+  std::string _relative(const std::string& path, std::string to);
 
   UnorderedMap<std::string, InterceptedFile> _intercepted;
   const char* _library_root = null;

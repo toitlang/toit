@@ -131,7 +131,7 @@ List<const char*> FilesystemLocal::package_cache_paths() {
         FATAL("Couldn't determine home");
       }
       _package_cache_paths = ListBuilder<const char*>::build(
-        compute_package_cache_path_from_home(home_path));
+        compute_package_cache_path_from_home(home_path, this));
     }
   }
   return _package_cache_paths;

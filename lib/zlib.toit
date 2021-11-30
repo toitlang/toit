@@ -111,6 +111,8 @@ class RunLengthDeflateEncoder_ extends ZlibEncoder_:
 
   constructor this.summer_ --gzip_header/bool:
     super --gzip_header=gzip_header
+    add_finalizer this::
+      this.close
 
   write collection from=0 to=collection.size:
     summer_.add collection from to
@@ -129,10 +131,13 @@ class RunLengthDeflateEncoder_ extends ZlibEncoder_:
 
   close:
     channel_.send (buffer_.copy 0 buffer_fullness_)
-    written := rle_finish_ rle_ buffer_ 0
-    channel_.send (buffer_.copy 0 written)
-    channel_.send summer_.get
-    channel_.send null
+    try:
+      written := rle_finish_ rle_ buffer_ 0
+      channel_.send (buffer_.copy 0 written)
+      channel_.send summer_.get
+      channel_.send null
+    finally:
+      remove_finalizer this
 
 /**
 Creates a run length encoded data stream that is compatible with zlib decoders

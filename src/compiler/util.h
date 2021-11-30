@@ -17,6 +17,7 @@
 
 #include <string.h>
 #include "../utils.h"
+#include "filesystem.h"
 
 namespace toit {
 namespace compiler {
@@ -75,8 +76,7 @@ class StringBuilder {
 
 class PathBuilder {
  public:
-  // For now we only support Linux paths.
-  static const char PATH_SEPARATOR = '/';
+  explicit PathBuilder(Filesystem* fs) : _fs(fs) {}
 
   int length() const { return _buffer.size(); }
   std::string buffer() const { return _buffer; }
@@ -84,6 +84,7 @@ class PathBuilder {
   char* strdup() const { return ::strdup(c_str()); }
 
   void add(const std::string& str) { _buffer += str; }
+  void add(char c) { _buffer += c; }
 
   void reset_to(int size) {
     _buffer.resize(size);
@@ -95,8 +96,8 @@ class PathBuilder {
   // and the new segment.
   // Only inserts the separator if the buffer isn't empty.
   void join(const std::string& segment) {
-    if (!_buffer.empty() && _buffer[_buffer.size() - 1] != PATH_SEPARATOR) {
-      _buffer += PATH_SEPARATOR;
+    if (!_buffer.empty() && _buffer[_buffer.size() - 1] != _fs->path_separator()) {
+      _buffer += _fs->path_separator();
     }
     _buffer += segment;
   }
@@ -109,6 +110,7 @@ class PathBuilder {
   void canonicalize();
 
  private:
+  Filesystem* _fs;
   std::string _buffer;
 };
 
