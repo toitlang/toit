@@ -49,10 +49,11 @@ in those directories.  These subdirectories are:
 
 To build Toit and its dependencies the build host requires;
 
-* [cmake >= 3.13.3](https://cmake.org/)
-* [ninja](https://ninja-build.org/)
-* [gcc](https://gcc.gnu.org/)
-* [go >= v1.16](https://go.dev/),
+* [GNU Make](https://www.gnu.org/software/make/)
+* [CMake >= 3.13.3](https://cmake.org/)
+* [Ninja](https://ninja-build.org/)
+* [GCC](https://gcc.gnu.org/)
+* [Go](https://go.dev/),
 
 If you are using a Linux distribution with `apt` capabilities, you can
 issue the following command to install these:
@@ -61,18 +62,12 @@ issue the following command to install these:
 sudo apt install build-essential cmake ninja-build golang
 ```
 
-Note that many distributions don't provide go v1.16 out of the box at the
-moment, as it is rather recent (2021-02-16). Neither of current
-[Debian Bullseye](https://packages.debian.org/bullseye/golang) nor
-[Ubuntu Focal Fossa/20.04 LTS](https://packages.ubuntu.com/focal/golang) has
-an adequate package version.
-
 For builds targeting ESP32 hardware additional requirements might be in effect
 depending on the build host's architecture, see paragraph [ESP32 tools](#esp32-tools).
 
 ### ESP-IDF
 
-The VM has a requirement to ESP-IDF, both for Linux and ESP32 builds (for Linux it's for the MBedTLS implementation).
+The VM has a requirement to ESP-IDF, both for Linux and ESP32 builds (for Linux it's for the [Mbed TLS](https://www.trustedfirmware.org/projects/mbed-tls/) implementation).
 
 We recommend you use Toitware's [ESP-IDF fork](https://github.com/toitware/esp-idf) that comes with a few changes:
 
@@ -120,7 +115,7 @@ use `apt-get`, you can use the following command:
 sudo apt install gcc-multilib g++-multilib
 ```
 
-## Build for Linux and Mac
+## Build for Linux and macOS
 
 Make sure `IDF_PATH` is set, and the required build tools are installed as described in dependency sections [ESP-IDF](#esp-idf) and [Build system](#build-system) above.
 
@@ -155,13 +150,12 @@ See the instructions of your IDE on how to integrate the language server.
 
 For VSCode you can also use the [published extension](https://marketplace.visualstudio.com/items?itemName=toit.toit).
 
-### Notes for Mac
+### Notes for macOS
 
-The support for building for Mac is still work in progress. For now, it isn't possible
-to build firmware images for the ESP32 on a Mac, because it requires compiling and
+The support for building on macOS is still work in progress. For now, it isn't possible
+to build firmware images for the ESP32, because it requires compiling and
 running 32-bit executables. We are working on
 [addressing this](https://github.com/toitlang/toit/issues/24).
-
 
 ## Build for ESP32
 
