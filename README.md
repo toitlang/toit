@@ -61,7 +61,7 @@ issue the following command to install these:
 sudo apt install build-essential cmake ninja-build golang
 ```
 
-Note that many distributions doesn't provide go v1.16 out of the box at the
+Note that many distributions don't provide go v1.16 out of the box at the
 moment, as it is rather recent (2021-02-16). Neither of current
 [Debian Bullseye](https://packages.debian.org/bullseye/golang) nor
 [Ubuntu Focal Fossa/20.04 LTS](https://packages.ubuntu.com/focal/golang) has
