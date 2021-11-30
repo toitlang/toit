@@ -33,6 +33,8 @@ class Socket implements net.Socket:
     group := udp_resource_group_
     id := udp_bind_ group (dns_lookup hostname).raw port
     state_ = ResourceState_ group id
+    add_finalizer this::
+      this.close
 
   local_address:
     state := ensure_state_
@@ -44,6 +46,7 @@ class Socket implements net.Socket:
   close:
     if not state_.resource: return
     udp_close_ state_.group state_.resource
+    remove_finalizer this
     state_.dispose
 
   connect address/net.SocketAddress:

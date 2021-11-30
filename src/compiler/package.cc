@@ -25,24 +25,24 @@
 namespace toit {
 namespace compiler {
 
-std::string Package::build_error_path(const std::string& path) const {
+std::string Package::build_error_path(Filesystem* fs, const std::string& path) const {
   if (_id == VIRTUAL_PACKAGE_ID) {
     return path;
   }
-  auto relative = Filesystem::relative(path, _absolute_error_path);
+  auto relative = fs->relative(path, _absolute_error_path);
   if (_id == ENTRY_PACKAGE_ID) {
-    PathBuilder builder;
+    PathBuilder builder(fs);
     builder.join(_relative_error_path, relative);
     builder.canonicalize();
     return builder.buffer();
   }
   if (_id == SDK_PACKAGE_ID) {
-    PathBuilder builder;
+    PathBuilder builder(fs);
     builder.join("<sdk>", relative);
     return builder.buffer();
   }
   // For normal packages we prefix the relative path with the package id.
-  PathBuilder builder;
+  PathBuilder builder(fs);
   builder.join("<pkg:" + id() + ">", relative);
   return builder.buffer();
 }

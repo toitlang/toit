@@ -33,6 +33,16 @@ const char* FilesystemHybrid::entry_path() {
   return do_with_active_fs<const char*>(f);
 }
 
+char FilesystemHybrid::path_separator() {
+  auto f = [&](Filesystem* fs) { return fs->path_separator(); };
+  return do_with_active_fs<char>(f);
+}
+
+bool FilesystemHybrid::is_absolute(const char* path) {
+  auto f = [&](const char* path, Filesystem* fs) { return fs->is_absolute(path); };
+  return do_with_active_fs<bool>(path, f);
+}
+
 bool FilesystemHybrid::do_exists(const char* path) {
   auto f = [&](const char* path, Filesystem* fs) { return fs->exists(path); };
   return do_with_active_fs<bool>(path, f);
@@ -92,12 +102,12 @@ T FilesystemHybrid::do_with_active_fs(const char* path,
     const char* sdk_path = _fs_archive.sdk_path();
     size_t sdk_path_len = strlen(sdk_path);
     if (strncmp(path, sdk_path, sdk_path_len) == 0 &&
-        (sdk_path[sdk_path_len - 1] == '/' || path[sdk_path_len] == '/')) {
+        (sdk_path[sdk_path_len - 1] == _fs_archive.path_separator() || path[sdk_path_len] == _fs_archive.path_separator())) {
       // Replace the archive's SDK path with the local SDK path and
       // let the local filesystem do the work.
       char local_path[PATH_MAX];
       const char* local_sdk_path = _fs_local.sdk_path();
-      snprintf(local_path, PATH_MAX, "%s/%s", local_sdk_path, &path[sdk_path_len]);
+      snprintf(local_path, PATH_MAX, "%s%c%s", local_sdk_path, _fs_archive.path_separator(), &path[sdk_path_len]);
       local_path[PATH_MAX - 1] = '\0';
       return callback(local_path, &_fs_local);
     }

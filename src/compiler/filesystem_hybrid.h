@@ -36,6 +36,8 @@ class FilesystemHybrid : public Filesystem {
   const char* entry_path();
   const char* sdk_path();
   List<const char*> package_cache_paths();
+  bool is_absolute(const char* path);
+  char path_separator();
 
  protected:
   bool do_exists(const char* path);

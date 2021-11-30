@@ -20,10 +20,12 @@
 #include "os.h"
 #include "utils.h"
 #include "uuid.h"
+#include "memory.h"
 
 #include <errno.h>
 #include <pthread.h>
 #include <sys/time.h>
+#include <windows.h>
 
 namespace toit {
 
@@ -246,9 +248,7 @@ void OS::signal(ConditionVariable* condition_variable) { condition_variable->sig
 void OS::signal_all(ConditionVariable* condition_variable) { condition_variable->signal_all(); }
 void OS::dispose(ConditionVariable* condition_variable) { delete condition_variable; }
 
-void OS::close(int fd) {
-  FATAL("unimplemented");
-}
+void OS::close(int fd) {}
 
 void OS::out_of_memory(const char* reason) {
   fprintf(stderr, "%s; aborting.\n", reason);
@@ -263,7 +263,7 @@ const uint8* OS::image_uuid() {
 }
 
 uint8* OS::image_config(size_t *length) {
-  FATAL("should not be used on posix")
+  FATAL("should not be used on windows")
   return null;
 }
 
@@ -276,31 +276,33 @@ bool OS::set_real_time(struct timespec* time) {
 }
 
 ProtectableAlignedMemory::~ProtectableAlignedMemory() {
-  FATAL("unimplemented");
 }
 
 void ProtectableAlignedMemory::mark_read_only() {
-  FATAL("unimplemented");
+  // TODO(anders): Unimplemented.
 }
 
 size_t ProtectableAlignedMemory::compute_alignment(size_t alignment) {
-  FATAL("unimplemented");
+  SYSTEM_INFO si;
+  GetSystemInfo(&si);
+  return Utils::max<size_t>(alignment, si.dwPageSize);
 }
 
 int OS::num_cores() {
-  return 0;
+  return 1;
 }
 
 void OS::free_block(Block* block) {
-  FATAL("unimplemented");
+  delete block;
 }
 
 Block* OS::allocate_block() {
-  FATAL("unimplemented");
+  void* result = _aligned_malloc(TOIT_PAGE_SIZE, TOIT_PAGE_SIZE);
+  return (result == null) ? null : new (result) Block();
 }
 
 void OS::set_writable(Block* block, bool value) {
-  FATAL("unimplemented");
+  // TODO(anders): Unimplemented.
 }
 
 void OS::tear_down() {
@@ -313,16 +315,12 @@ const char* OS::get_platform() {
 }
 
 int OS::read_entire_file(char* name, uint8** buffer) {
-  FATAL("unimplemented");
+  FATAL("read_entire_file unimplemented");
 }
 
-void OS::set_heap_tag(word tag) {
-  FATAL("unimplemented");
-}
+void OS::set_heap_tag(word tag) {}
 
-void OS::clear_heap_tag() {
-  FATAL("unimplemented");
-}
+void OS::clear_heap_tag() {}
 
 } // namespace toit
 

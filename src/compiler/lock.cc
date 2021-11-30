@@ -47,8 +47,8 @@ static const char* PATH_LABEL = "path";
 static constexpr const char* PACKAGE_SOURCE_DIR = "src";
 
 
-const char* compute_package_cache_path_from_home(const char* home) {
-  PathBuilder builder;
+const char* compute_package_cache_path_from_home(const char* home, Filesystem* fs) {
+  PathBuilder builder(fs);
   builder.join(home);
   builder.join(PACKAGE_CACHE_PATH);
   return builder.strdup();
@@ -77,19 +77,20 @@ Package PackageLock::resolve_prefix(const Package& package,
   return Package::invalid();
 }
 
-Package PackageLock::package_for(const std::string& path) const {
+Package PackageLock::package_for(const std::string& path, Filesystem* fs) const {
   if (SourceManager::is_virtual_file(path.c_str())) {
     return _packages.at(Package::VIRTUAL_PACKAGE_ID);
   }
+
   // Paths that come in here must be absolute.
-  ASSERT(path[0] == '/');
+  ASSERT(fs->is_absolute(path.c_str()));
   auto cache_probe = _path_to_package_cache.find(path);
   if (cache_probe != _path_to_package_cache.end()) {
     return _packages.at(cache_probe->second);
   }
   std::vector<std::string> to_cache;
   for (int i = path.size() - 1; i >= 0; i--) {
-    if (path[i] == '/') {
+    if (path[i] == fs->path_separator()) {
       auto sub = path.substr(0, i);
       auto probe = _path_to_package_cache.find(sub);
       if (probe != _path_to_package_cache.end()) {
@@ -115,8 +116,8 @@ std::string find_lock_file_at(const char* dir,
                               Filesystem* fs) {
   if (SourceManager::is_virtual_file(dir)) return "";
 
-  PathBuilder builder;
-  if (dir[0] != '/') {
+  PathBuilder builder(fs);
+  if (!fs->is_absolute(dir)) {
     builder.join(fs->cwd());
   }
   builder.join(dir);
@@ -133,8 +134,8 @@ std::string find_lock_file(const char* source_path,
                            Filesystem* fs) {
   if (SourceManager::is_virtual_file(source_path)) return "";
 
-  PathBuilder builder;
-  if (source_path[0] != '/') {
+  PathBuilder builder(fs);
+  if (!fs->is_absolute(source_path)) {
     builder.join(fs->cwd());
   }
   builder.join(source_path);
@@ -143,10 +144,10 @@ std::string find_lock_file(const char* source_path,
   builder.canonicalize();
 
   // Add a trailing '/', so we can unify the loop.
-  builder.add("/");
+  builder.add(fs->path_separator());
 
   for (int i = builder.length() - 1; i >= 0; i--) {
-    if (builder[i] == '/') {
+    if (builder[i] == fs->path_separator()) {
       builder.reset_to(i + 1);
       builder.join(LOCK_FILE);
       if (fs->exists(builder.c_str())) {
@@ -159,9 +160,8 @@ std::string find_lock_file(const char* source_path,
 
 static std::string build_canonical_sdk_dir(Filesystem* fs) {
   const char* sdk_lib_dir = fs->library_root();
-  PathBuilder sdk_builder;
-  bool is_absolute = sdk_lib_dir[0] == '/';
-  if (!is_absolute) {
+  PathBuilder sdk_builder(fs);
+  if (!fs->is_absolute(sdk_lib_dir)) {
     sdk_builder.join(fs->cwd());
   }
   sdk_builder.join(sdk_lib_dir);
@@ -228,7 +228,7 @@ static bool is_valid_package_id(const std::string& package_id) {
   for (size_t i = 0; i < package_id.size(); i++) {
     char c = package_id[i];
     if (is_identifier_part(c)) continue;
-    if (c == '+' || c == '-' || c == '*' || c == '/' || c == '.') continue;
+    if (c == '+' || c == '-' || c == '*' || c == '/' || c == '\\' || c == '.') continue;
     return false;
   }
   return true;
@@ -854,10 +854,12 @@ PackageLock PackageLock::read(const std::string& lock_file_path,
   }
 
   ASSERT(!is_valid_package_id(Package::ENTRY_PACKAGE_ID));
+  std::string path_separator;
+  path_separator += fs->path_separator();
   Package entry_package(Package::ENTRY_PACKAGE_ID,
                         entry_pkg_path,
-                        entry_is_absolute ? std::string("/") : fs->cwd(),
-                        entry_is_absolute ? std::string("/") : std::string("."),
+                        entry_is_absolute ? path_separator : fs->cwd(),
+                        entry_is_absolute ? path_separator : std::string("."),
                         Package::OK,
                         entry_prefixes);
   packages[Package::ENTRY_PACKAGE_ID] = entry_package;
@@ -868,7 +870,7 @@ PackageLock PackageLock::read(const std::string& lock_file_path,
     ListBuilder<const char*> builder;
 
     // Add the local (to the application) package directory.
-    PathBuilder path_builder;
+    PathBuilder path_builder(fs);
     path_builder.join(lock_file_path);
     path_builder.join("..");
     path_builder.join(LOCAL_PACKAGE_DIR);
@@ -890,12 +892,12 @@ PackageLock PackageLock::read(const std::string& lock_file_path,
     // have to duplicate the code.
     // -1 is only used when the package is of kind 'PATH'.
     for (int i = -1; i < package_dirs.length(); i++) {
-      PathBuilder builder;
+      PathBuilder builder(fs);
 
       std::string error_path;
       if (!entry.path.empty()) {
         ASSERT(i == -1);
-        if (entry.path.c_str()[0] != '/') {
+        if (!fs->is_absolute(entry.path.c_str())) {
           builder.join(package_lock_dir);
         }
         error_path = entry.path;
@@ -903,7 +905,7 @@ PackageLock PackageLock::read(const std::string& lock_file_path,
         builder.canonicalize();
       } else {
         if (i == -1) continue;
-        if (package_dirs[i][0] != '/') {
+        if (!fs->is_absolute(package_dirs[i])) {
           builder.join(fs->cwd());
         }
         builder.join(package_dirs[i]);
@@ -915,7 +917,7 @@ PackageLock PackageLock::read(const std::string& lock_file_path,
       std::string path = builder.buffer();
 
       if (fs->exists(path.c_str()) && fs->is_directory(path.c_str())) {
-        PathBuilder src_builder;
+        PathBuilder src_builder(fs);
         src_builder.join(path, PACKAGE_SOURCE_DIR);
         auto src_path = src_builder.buffer();
 

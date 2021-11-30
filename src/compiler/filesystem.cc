@@ -41,13 +41,14 @@ const char* Filesystem::cwd() {
 const char* Filesystem::library_root() {
   if (_library_root == null) {
     auto sdk = sdk_path();
-    const char* LIB_SUFFIX = "/lib";
+    const char* LIB_SUFFIX = "lib";
     int suffix_length = strlen(LIB_SUFFIX);
     int sdk_path_length = strlen(sdk);
-    int length = sdk_path_length + suffix_length + 1;
+    int length = sdk_path_length + suffix_length + 2;
     char* path = unvoid_cast<char*>(malloc(length));
     memcpy(path, sdk, sdk_path_length);
-    memcpy(path + sdk_path_length, LIB_SUFFIX, suffix_length);
+    path[sdk_path_length] = path_separator();
+    memcpy(path + sdk_path_length + 1, LIB_SUFFIX, suffix_length);
     path[length - 1] = '\0';
     _library_root = path;
   }
@@ -58,7 +59,7 @@ void Filesystem::canonicalize(char* path) {
   if (path[0] == '\0') return;
   if (SourceManager::is_virtual_file(path)) return;
 
-  bool is_absolute = path[0] == '/';
+  bool is_absolute = this->is_absolute(path);
 
   std::vector<int> slashes;  // Keep track of previous slashes.
   int path_len = strlen(path);
@@ -71,18 +72,18 @@ void Filesystem::canonicalize(char* path) {
   int canonical_pos = 0;
   int i = 0;
   while (i < path_len) {
-    if (at_slash && path[i] == '/') {
+    if (at_slash && path[i] == path_separator()) {
       // Drop double slashes.
       i++;
     } else if (at_slash &&
                path[i] == '.' &&
-               (path[i + 1] == '/' || path[i + 1] == '\0')) {
+               (path[i + 1] == path_separator() || path[i + 1] == '\0')) {
       // Drop '.' segments
       i += 2;
     } else if (at_slash &&
                path[i] == '.' &&
                path[i + 1] == '.' &&
-               (path[i + 2] == '/' || path[i + 2] == '\0')) {
+               (path[i + 2] == path_separator() || path[i + 2] == '\0')) {
       // Discard the previous segment (between the last two slashes).
       if (slashes.size() < 2) {
         // We don't have any earlier segment.
@@ -104,50 +105,50 @@ void Filesystem::canonicalize(char* path) {
         i += 3;
       }
     } else {
-      if (path[i] == '/') {
+      if (path[i] == path_separator()) {
         slashes.push_back(canonical_pos);
       }
-      at_slash = path[i] == '/';
+      at_slash = path[i] == path_separator();
       path[canonical_pos++] = path[i++];
     }
   }
-  // Drop trailing '/'.
+  // Drop trailing path seperator.
   // There can only be one.
-  if (path[canonical_pos - 1] == '/') {
+  if (path[canonical_pos - 1] == path_separator()) {
     canonical_pos--;
   }
   if (canonical_pos == 0) {
-    path[canonical_pos++] = is_absolute ? '/' : '.';
+    path[canonical_pos++] = is_absolute ? path_separator() : '.';
   }
   path[canonical_pos] = '\0';
 }
 
-std::string _relative(const std::string& path, std::string to) {
-  ASSERT(!path.empty() && path[0] == '/');
-  ASSERT(!to.empty() && to[0] == '/');
+std::string Filesystem::_relative(const std::string& path, std::string to) {
+  ASSERT(!path.empty() && is_absolute(path.c_str()));
+  ASSERT(!to.empty() && is_absolute(to.c_str()));
   if (path == to) return std::string(".");
-  PathBuilder builder;
+  PathBuilder builder(this);
   while (true) {
     if (path.rfind(to, 0) == 0 && // Starts with. (Reverse find at position 0).
-        path[to.size()] == '/') {
+        path[to.size()] == path_separator()) {
       builder.join(path.substr(to.size() + 1));
       return builder.buffer();
     }
-    auto last_sep = to.rfind('/');
+    auto last_sep = to.rfind(path_separator());
     to = to.substr(0, last_sep);
     builder.join("..");
   }
 }
 
 std::string Filesystem::relative(const std::string& path, const std::string& to) {
-  ASSERT(!path.empty() && path[0] == '/');
-  ASSERT(!to.empty() && to[0] == '/');
+  ASSERT(!path.empty() && is_absolute(path.c_str()));
+  ASSERT(!to.empty() && is_absolute(to.c_str()));
   // Canonicalize both paths first.
   // The easiest is to use the PathBuilder for that.
-  PathBuilder path_builder;
+  PathBuilder path_builder(this);
   path_builder.add(path);
   path_builder.canonicalize();
-  PathBuilder to_builder;
+  PathBuilder to_builder(this);
   to_builder.add(to);
   to_builder.canonicalize();
   return _relative(path_builder.buffer(), to_builder.buffer());
@@ -234,4 +235,3 @@ void Filesystem::list_toit_directory_entries(const char* path,
 
 } // namespace compiler
 } // namespace toit
-
