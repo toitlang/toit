@@ -25,10 +25,10 @@ ESP32_WIFI_SSID=
 all: tools
 
 .PHONY: tools
-tools: toitpkg toitlsp build/host/bin/toitvm build/host/bin/toitc
+tools: check-env toitpkg toitlsp build/host/bin/toitvm build/host/bin/toitc
 
 .PHONY: esp32
-esp32: build/esp32/toit.bin
+esp32: check-env build/esp32/toit.bin
 
 build/esp32/toit.bin build/esp32/toit.elf: build/esp32/lib/libtoit_image.a
 	make -C toolchains/esp32/
