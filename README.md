@@ -47,13 +47,13 @@ in those directories.  These subdirectories are:
 
 ### Build system
 
-To build Toit and its dependencies the build host requires;
+To build Toit and its dependencies the build host requires:
 
 * [GNU Make](https://www.gnu.org/software/make/)
 * [CMake >= 3.13.3](https://cmake.org/)
 * [Ninja](https://ninja-build.org/)
 * [GCC](https://gcc.gnu.org/)
-* [Go](https://go.dev/),
+* [Go](https://go.dev/)
 
 If you are using a Linux distribution with `apt` capabilities, you can
 issue the following command to install these:
@@ -109,7 +109,7 @@ Remember to update your environment variables:
 The build system will automatically use a 32-bit build of the Toit compiler to produce the correct executable image for the ESP32.
 Your build might fail if you're on a 64-bit Linux machine and you don't have the support for compiling 32-bit executables installed.
 You can install this support on most Linux distributions by installing the `gcc-multilib` and `g++-multilib` packages. If you
-use `apt-get`, you can use the following command:
+use `apt`, you can use the following command:
 
 ``` sh
 sudo apt install gcc-multilib g++-multilib
