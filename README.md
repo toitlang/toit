@@ -11,8 +11,8 @@ This fork is an experiment in getting Toit running on RISC-V 64-bit hardware.  B
 | ![](https://img.shields.io/static/v1?label=&message=PARTIAL&color=yellow) | IDF compile sources (*Fails to compile wheel cryptography*) |
 | ![](https://img.shields.io/static/v1?label=&message=SUCCESS&color=green)| Toit generate build files |
 | ![](https://img.shields.io/static/v1?label=&message=SUCCESS&color=green) | Toit compile sources |
-| ![](https://img.shields.io/static/v1?label=&message=FAILS&color=red)| Toit generate snapshot |
-| ![](https://img.shields.io/static/v1?label=&message=FAILS&color=red) | Toit run examples |
+| ![](https://img.shields.io/static/v1?label=&message=FAILURE&color=red)| Toit generate snapshot |
+| ![](https://img.shields.io/static/v1?label=&message=FAILURE&color=red) | Toit run examples |
 
 ## 1) RISC-V Environment Setup
 Install a Debian-based Linux distro (choose one)
