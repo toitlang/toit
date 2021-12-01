@@ -15,7 +15,7 @@ This fork is very much an experiment in getting Toit running on RISC-V hardware-
 ## Environment Setup
 - Install Ubuntu Server 20.04 RISC-V image
 ``` sh
-  sudo apt install build-essential libffi-dev python3 git cargo python-pip golang ninja-build
+  sudo apt install build-essential libffi-dev python3 git cargo python3-pip golang ninja-build
   pip install cryptography 
 ```
 
