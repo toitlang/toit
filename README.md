@@ -14,13 +14,13 @@ This fork is very much an experiment in getting Toit running on RISC-V hardware-
 
 ## Environment Setup
 - Install Ubuntu Server 20.04 RISC-V image
-```
+``` sh
   sudo apt install build-essential libffi-dev python3 git cargo python-pip golang ninja-build
   pip install cryptography 
 ```
 
 ## Clone Sources
-```
+``` sh
   git clone https://github.com/dsobotta/esp-idf-riscv.git
   pushd esp-idf-riscv/
   git checkout patch-head-4.3-3
@@ -30,16 +30,16 @@ This fork is very much an experiment in getting Toit running on RISC-V hardware-
 ```
   
 ## Compiling Toit
-```
+``` sh
   export IDF_PATH=*path-to-esp-idf-riscv*
 ```
 - Compile esp-idf-riscv **(Not necessary; attempt only if you wish to use RISC-V as a development platform for ESP32 targets)**
-```
+``` sh
   $IDF_PATH/install.sh
   . $IDF_PATH/export.sh
 ```
 - Compile toit-riscv
-```
+``` sh
   export GO111MODULE=on
   cd toit-riscv
   make tools
