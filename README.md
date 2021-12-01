@@ -25,7 +25,7 @@ This fork is very much an experiment in getting Toit running on RISC-V hardware-
 - Compile toit-riscv
   - export GO111MODULE=on
   - cd toit-riscv
-  - make tools **ERROR: Fails here on missing ninja config file**
+  - make tools **ERROR: Fails to compile 160/322 - sandbox.cc **
 
 
 
