@@ -2,7 +2,7 @@
 # RISC-V GETTING STARTED
 ------
 
-This fork is very much an experiment in getting Toit running on RISC-V hardware--as an IoT endpoint, coordinator, and potentially development platform.  Below are a list of **WIP** steps required to get Toit running on a SiFive Unmatched dev board. 
+This fork is an experiment in getting Toit running on RISC-V 64-bit hardware.  Below is a list of **WIP** steps required to get Toit running on a SiFive Unmatched dev board or RISC-V VM with QEMU. 
 
 ## STATUS
 - idf environment - **PARTIAL** (ERROR: Fails near the end on wheel cryptography. version mismatch for RISC-V support?)
@@ -12,40 +12,45 @@ This fork is very much an experiment in getting Toit running on RISC-V hardware-
 - toit compile sources **WORKS**
 - toit generate snapshot **FAILS**
 
-## Environment Setup
-- Install Ubuntu Server 20.04 RISC-V image
+## 1) RISC-V Environment Setup
+Install a Debian-based Linux distro (choose one)
+- SiFive Unmatched: [Ubuntu Server 20.04](https://ubuntu.com/tutorials/how-to-install-ubuntu-on-risc-v-hifive-boards#1-overview)
+- Virtual Machine: [RISC-V VM with QEMU](https://colatkinson.site/linux/riscv/2021/01/27/riscv-qemu/)
 ``` sh
-  sudo apt install build-essential libffi-dev python3 git cargo python3-pip golang ninja-build
-  pip install cryptography 
+#install build tools
+apt install git build-essential cmake python3 python3-pip libffi-dev cargo golang ninja-build
+pip install cryptography 
 ```
 
-## Clone Sources
+## 2) Clone Sources 
 ``` sh
-  git clone https://github.com/dsobotta/esp-idf-riscv.git
-  pushd esp-idf-riscv/
-  git checkout patch-head-4.3-3
-  git submodule update --init --recursive
-  popd
-  git clone https://github.com/dsobotta/toit-riscv.git
+#ESP-IDF
+git clone https://github.com/dsobotta/esp-idf-riscv.git
+pushd esp-idf-riscv/
+git checkout patch-head-4.3-3
+git submodule update --init --recursive
+popd
+
+#Toit
+git clone https://github.com/dsobotta/toit-riscv.git
+
+#Add IDF path to environment
+export IDF_PATH=PATH_TO_ESP_IDF_RISCV
+```
+
+## 3) Compiling ESP-IDF
+> TIP: If you don't wish to deploy to an ESP32 device, you can skip to step 4
+``` sh
+$IDF_PATH/install.sh
+. $IDF_PATH/export.sh
 ```
   
-## Compiling Toit
+## 4) Compiling Toit
 ``` sh
-  export IDF_PATH=*path-to-esp-idf-riscv*
+export GO111MODULE=on
+cd toit-riscv
+make tools
 ```
-- Compile esp-idf-riscv **(Not necessary; attempt only if you wish to use RISC-V as a development platform for ESP32 targets)**
-``` sh
-  $IDF_PATH/install.sh
-  . $IDF_PATH/export.sh
-```
-- Compile toit-riscv
-``` sh
-  export GO111MODULE=on
-  cd toit-riscv
-  make tools
-```
-
-
 
 ------
 # ORIGINAL DOCUMENTATION
