@@ -4,6 +4,14 @@
 
 This fork is very much an experiment in getting Toit running on RISC-V hardware--as an IoT endpoint, coordinator, and potentially development platform.  Below are a list of **WIP** steps required to get Toit running on a sifive unmatched dev board. 
 
+## STATUS
+- idf environment - **PARTIAL** (see 'Compiling Toit' for more details)
+- golang environment - **WORKS**
+- toit configuration - **WORKS**
+- toit generate build files - **WORKS**
+- toit compile sources **WORKS**
+- toit generate snapshot **FAILS**
+
 ## Environment Setup
 - Install Ubuntu Server 20.04 RISC-V image
 - sudo apt install build-essential libffi-dev python3 git cargo python-pip golang ninja-build
@@ -18,14 +26,14 @@ This fork is very much an experiment in getting Toit running on RISC-V hardware-
 - git clone https://github.com/dsobotta/toit-riscv.git
   
 ## Compiling Toit
-- Compile esp-idf-riscv
-  - export IDF_PATH=*path-to-esp-idf-riscv*
-  - $IDF_PATH/install.sh **ERROR: Fails here on wheel cryptography (version mismatch for risc-v support?)**
+- export IDF_PATH=*path-to-esp-idf-riscv*
+- Compile esp-idf-riscv **(Not necessary; attempt only if you wish to use RISC-V as a development platform for ESP32 targets)**
+  - $IDF_PATH/install.sh **ERROR: Fails near the end on wheel cryptography (version mismatch for risc-v support?)**
   - . $IDF_PATH/export.sh
 - Compile toit-riscv
   - export GO111MODULE=on
   - cd toit-riscv
-  - make tools **ERROR: Fails to compile 160/322 - sandbox.cc **
+  - make tools **ERROR: Fails to generate snapshot after compiling sources **
 
 
 
