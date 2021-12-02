@@ -19,9 +19,8 @@ Install a Debian-based Linux distro (choose one)
 - SiFive Unmatched: [Ubuntu Server 20.04](https://ubuntu.com/tutorials/how-to-install-ubuntu-on-risc-v-hifive-boards#1-overview)
 - Virtual Machine: [RISC-V VM with QEMU](https://colatkinson.site/linux/riscv/2021/01/27/riscv-qemu/)
 ``` sh
-#install build tools
-apt install git build-essential cmake python python3-pip libffi-dev cargo golang ninja-build
-pip install cryptography 
+#install dependencies
+apt install git build-essential cmake python python3-pip libffi-dev libssl-dev cargo golang ninja-build
 ```
 
 ## 2) Clone Sources 
