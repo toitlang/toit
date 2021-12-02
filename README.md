@@ -75,12 +75,11 @@ We recommend you use Toitware's [ESP-IDF fork](https://github.com/toitware/esp-i
 * Allocation-fixes for UART, etc.
 * LWIP fixes.
 
+This repository has been added as as submodule reference, so doing a recursive init & update will establish everything nedded:
+
 ``` sh
-git clone https://github.com/toitware/esp-idf.git
-pushd esp-idf/
-git checkout patch-head-4.3-3
 git submodule update --init --recursive
-popd
+
 ```
 
 Remember to add it to your ENV as `IDF_PATH`:
