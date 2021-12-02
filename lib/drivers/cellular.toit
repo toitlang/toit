@@ -89,6 +89,9 @@ class Operator:
 
   constructor .op --.rat=null:
 
+  stringify -> string:
+    return "$op ($rat)"
+
 /**
 GNSS location consisting of coordinates and accuracy measurements.
 */

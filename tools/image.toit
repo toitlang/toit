@@ -35,24 +35,6 @@ class ImageReader:
     image_reader_close_ content_
     content_ = null
 
-// API for writing a relocatable program image in chunks.
-class ImageWriter:
-  content_ := ?
-  offset_ ::= ?
-
-  constructor .offset_ size_in_bytes:
-    content_ = image_writer_create_ offset_ size_in_bytes
-
-  write part/ByteArray from to -> none:
-    image_writer_write_ content_ part from to
-
-  commit id/ByteArray -> none:
-    image_writer_commit_ content_ id
-
-  close -> none:
-    image_writer_close_ content_
-
-
 // Private support methods.
 image_reader_create_ snapshot:
   #primitive.snapshot.reader_create
@@ -65,15 +47,3 @@ image_reader_read_ image:
 
 image_reader_close_ image:
   #primitive.snapshot.reader_close
-
-image_writer_create_ offset size_in_bytes:
-  #primitive.image.writer_create
-
-image_writer_write_ image part/ByteArray from/int to/int:
-  #primitive.image.writer_write
-
-image_writer_commit_ image id/ByteArray:
-  #primitive.image.writer_commit
-
-image_writer_close_ image:
-  #primitive.image.writer_close

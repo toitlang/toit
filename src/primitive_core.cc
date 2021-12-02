@@ -954,14 +954,14 @@ PRIMITIVE(string_length) {
 
 PRIMITIVE(string_hash_code) {
   ARGS(String, receiver);
-  return Smi::from(receiver->hash_code() >> 2);
+  return Smi::from(receiver->hash_code());
 }
 
 PRIMITIVE(string_slice_hash_code) {
   ARGS(Blob, receiver);
   auto hash = String::compute_hash_code_for(reinterpret_cast<const char*>(receiver.address()),
                                             receiver.length());
-  return Smi::from(hash >> 2);
+  return Smi::from(hash);
 }
 
 PRIMITIVE(hash_simple_json_string) {
@@ -973,7 +973,7 @@ PRIMITIVE(hash_simple_json_string) {
     if (c == '"') {
       auto hash = String::compute_hash_code_for(reinterpret_cast<const char*>(bytes.address() + offset),
                                                 i - offset);
-      return Smi::from(hash >> 2);
+      return Smi::from(hash);
     }
   }
   return Smi::from(-1);

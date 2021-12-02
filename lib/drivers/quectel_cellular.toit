@@ -421,6 +421,8 @@ abstract class QuectelCellular extends CellularBase implements Gnss:
         session.set "+QCFG" ["iotopmode", 0]
         // M1 -> NB1 (default).
         session.action "+QCFG=\"nwscanseq\",$(rats_to_scan_sequence_ rats)"
+        // Only use GSM data service domain.
+        session.action "+QCFG=\"servicedomain\",1"
         // Enable PSM URCs.
         session.set "+QCFG" ["psm/urc", 1]
         // Enable URC on uart1.

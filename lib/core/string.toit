@@ -1141,7 +1141,8 @@ class String_ extends string:
     #primitive.core.string_hash_code
 
 class StringSlice_ extends string:
-  // This constant must be kept in sync with objects.cc.
+  // This constant must be kept in sync with objects.cc so that no valid hash
+  // can be 'NO_HASH_'.
   static NO_HASH_ ::= -1
 
   // The order of the fields matters, as the primitives access them directly.
