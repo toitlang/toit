@@ -36,7 +36,11 @@ extern int __xstat64(int ver, const char* path, struct stat64* stat_buf);
 
 }
 
-#ifdef BUILD_64
+#if !defined(__riscv) && !defined(TOIT_LINUX)
+  #define USE_XSTAT64 1
+#endif
+
+#ifndef BUILD_64
 # define STAT_VERSION 1
 #else
 # define STAT_VERSION 3
@@ -48,7 +52,7 @@ namespace compiler {
 char* get_executable_path();
 
 bool FilesystemLocal::do_exists(const char* path) {
-#ifndef TOIT_LINUX
+#ifndef USE_XSTAT64
   struct stat path_stat;
   int stat_result = stat(path, &path_stat);
 #else
@@ -62,7 +66,7 @@ bool FilesystemLocal::do_exists(const char* path) {
 
 
 bool FilesystemLocal::do_is_regular_file(const char* path) {
-#ifndef TOIT_LINUX
+#ifndef USE_XSTAT64
   struct stat path_stat;
   int stat_result = stat(path, &path_stat);
 #else
@@ -80,7 +84,7 @@ bool FilesystemLocal::do_is_regular_file(const char* path) {
 }
 
 bool FilesystemLocal::do_is_directory(const char* path) {
-#ifndef TOIT_LINUX
+#ifndef USE_XSTAT64
   struct stat path_stat;
   int stat_result = stat(path, &path_stat);
 #else
