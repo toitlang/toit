@@ -392,10 +392,6 @@ namespace toit {
   PRIMITIVE(register_object_notifier, 3)     \
 
 #define MODULE_SNAPSHOT(PRIMITIVE)           \
-  PRIMITIVE(reader_create, 1)                \
-  PRIMITIVE(reader_size_in_bytes, 1)         \
-  PRIMITIVE(reader_read, 1)                  \
-  PRIMITIVE(reader_close, 1)                 \
   PRIMITIVE(launch, 4)                       \
 
 #define MODULE_SERIALIZATION(PRIMITIVE)      \

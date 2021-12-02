@@ -40,24 +40,17 @@ build/esp32/lib/libtoit_image.a: build/esp32/esp32.image.s build/esp32/CMakeCach
 build/host/bin/toitvm build/host/bin/toitc: build/host/CMakeCache.txt
 	(cd build/host && ninja build_toitvm)
 
-.PHONY:	build/ia32/bin/toitvm build/ia32/bin/toitc
-build/ia32/bin/toitvm build/ia32/bin/toitc: build/ia32/CMakeCache.txt
-	(cd build/ia32 && ninja build_toitvm)
-
 build/host/CMakeCache.txt: build/host/
 	(cd build/host && cmake ../.. -G Ninja -DCMAKE_BUILD_TYPE=Release)
-
-build/ia32/CMakeCache.txt: build/ia32/
-	(cd build/ia32 && cmake ../.. -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/ia32.cmake)
 
 build/esp32/CMakeCache.txt: build/esp32/
 	(cd build/esp32 && IMAGE=build/esp32/esp32.image.s cmake ../../ -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/esp32/esp32.cmake --no-warn-unused-cli)
 
-build/esp32/esp32.image.s: build/esp32/ build/snapshot build/ia32/bin/toitvm tools/snapshot_to_image.toit
-	build/ia32/bin/toitvm tools/snapshot_to_image.toit build/snapshot $@
+build/esp32/esp32.image.s: build/esp32/ build/snapshot build/host/bin/toitvm tools/snapshot_to_image.toit
+	build/host/bin/toitvm tools/snapshot_to_image.toit build/snapshot $@
 
-build/snapshot: build/ia32/bin/toitc $(ESP32_ENTRY)
-	build/ia32/bin/toitc -w $@ $(ESP32_ENTRY) -Dwifi.ssid=$(ESP32_WIFI_SSID) -Dwifi.password=$(ESP32_WIFI_PASSWORD)
+build/snapshot: build/host/bin/toitc $(ESP32_ENTRY)
+	build/host/bin/toitc -w $@ $(ESP32_ENTRY) -Dwifi.ssid=$(ESP32_WIFI_SSID) -Dwifi.password=$(ESP32_WIFI_PASSWORD)
 
 GO_USE_INSTALL = 1
 GO_USE_INSTALL_FROM = 1 16
@@ -98,7 +91,7 @@ else
 	GO111MODULE=on GOBIN=$(shell pwd)/build go get github.com/toitlang/tpkg/cmd/toitpkg@$(TOITPKG_VERSION)
 endif
 
-build/ia32/ build/host/:
+build/host/:
 	mkdir -p $@
 
 build/esp32/: check-env
