@@ -6,7 +6,7 @@ This fork is an experiment in getting Toit running on RISC-V 64-bit hardware.  B
 
 | STATUS | STEP |
 | ------------- | ------------- |
-| ![](https://img.shields.io/static/v1?label=&message=SUCCESS&color=green) | RISC-V environment |
+| ![](https://img.shields.io/static/v1?label=&message=SUCCESS&color=green) | Linux RISC-V environment |
 | ![](https://img.shields.io/static/v1?label=&message=SUCCESS&color=green) | IDF environment |
 | ![](https://img.shields.io/static/v1?label=&message=SUCCESS&color=green) | IDF compile sources |
 | ![](https://img.shields.io/static/v1?label=&message=FAILURE&color=red) | IDF export [ERROR](https://github.com/dsobotta/toit-riscv/issues/4) |
@@ -15,6 +15,8 @@ This fork is an experiment in getting Toit running on RISC-V 64-bit hardware.  B
 | ![](https://img.shields.io/static/v1?label=&message=SUCCESS&color=green)| Toit generate snapshot |
 | ![](https://img.shields.io/static/v1?label=&message=SUCCESS&color=green) | Toit run examples |
 | ![](https://img.shields.io/static/v1?label=&message=TODO&color=orange) | Cross-compile to riscv64 |
+| ![](https://img.shields.io/static/v1?label=&message=TODO&color=orange) | Embedded RISC-V support |
+
 
 ## 1) RISC-V Environment Setup
 Install a Debian-based Linux distro (choose one)
