@@ -106,15 +106,6 @@ Remember to update your environment variables:
 . $IDF_PATH/export.sh
 ```
 
-The build system will automatically use a 32-bit build of the Toit compiler to produce the correct executable image for the ESP32.
-Your build might fail if you're on a 64-bit Linux machine and you don't have the support for compiling 32-bit executables installed.
-You can install this support on most Linux distributions by installing the `gcc-multilib` and `g++-multilib` packages. If you
-use `apt`, you can use the following command:
-
-``` sh
-sudo apt install gcc-multilib g++-multilib
-```
-
 ## Build for Linux and macOS
 
 Make sure `IDF_PATH` is set, and the required build tools are installed as described in dependency sections [ESP-IDF](#esp-idf) and [Build system](#build-system) above.
@@ -149,13 +140,6 @@ build/toitlsp --toitc=build/host/bin/toitc
 See the instructions of your IDE on how to integrate the language server.
 
 For VSCode you can also use the [published extension](https://marketplace.visualstudio.com/items?itemName=toit.toit).
-
-### Notes for macOS
-
-The support for building on macOS is still work in progress. For now, it isn't possible
-to build firmware images for the ESP32, because it requires compiling and
-running 32-bit executables. We are working on
-[addressing this](https://github.com/toitlang/toit/issues/24).
 
 ## Build for ESP32
 
