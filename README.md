@@ -50,9 +50,16 @@ $IDF_PATH/install.sh
   
 ## 4) Compiling Toit
 ``` sh
-export GO111MODULE=on
 cd toit-riscv
 make tools
+```
+
+## 5) Run Examples
+``` sh
+build/host/bin/toitvm examples/hello.toit
+build/host/bin/toitvm examples/bubble_sort.toit
+build/host/bin/toitvm examples/http.toit
+build/host/bin/toitvm examples/mandelbrot.toit
 ```
 
 ------
