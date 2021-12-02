@@ -27,3 +27,4 @@ abstract class Interface implements udp.Interface tcp.Interface:
   abstract udp_open --port/int? -> udp.Socket
   abstract tcp_connect address/SocketAddress -> tcp.Socket
   abstract tcp_listen port/int -> tcp.ServerSocket
+  abstract close

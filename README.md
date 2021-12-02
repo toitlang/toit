@@ -106,7 +106,7 @@ Remember to update your environment variables:
 . $IDF_PATH/export.sh
 ```
 
-## Build for Linux and macOS
+## Build for host machine
 
 Make sure `IDF_PATH` is set, and the required build tools are installed as described in dependency sections [ESP-IDF](#esp-idf) and [Build system](#build-system) above.
 
@@ -115,6 +115,18 @@ Then run the following commands at the root of your checkout.
 ``` sh
 make tools
 ```
+
+---
+*NOTE*
+
+These instructions have been tested on Linux and macOS.
+
+Windows support is still [preliminary](https://github.com/toitlang/toit/discussions/33), and
+the build instructions may differ for Windows. Let us know on the
+[discussions forum](https://github.com/toitlang/toit/discussions) how we can improve
+this README.
+
+---
 
 This builds the Toit VM, the compiler, the language server and the package manager.
 
@@ -131,7 +143,23 @@ build/toitpkg pkg init --project-root=<some-directory>
 build/toitpkg pkg install --project-root=<some-directory> <package-id>
 ```
 
-The language server can be started with:
+## IDE integration
+
+Toit has a [VS Code](https://code.visualstudio.com/) extension. You can either use the
+[published extension](https://marketplace.visualstudio.com/items?itemName=toit.toit) or
+build it yourself from the
+[sources](https://github.com/toitware/ide-tools).
+
+In the VS Code extension (version 1.3.7+) set the `toitLanguageServer.command` setting to
+`["PATH_TO_TOIT/build/toitlsp", "--toitc=PATH_TO_TOIT/build/host/bin/toitc"], where
+`PATH_TO_TOIT` is the path to your Toit checkout.
+
+This makes the extension use the language server that was compiled in the [build step](#build-for-host-machine).
+
+### Other IDEs
+
+The Toit language server is independent of VSCode and can be used with other IDEs.
+It can be started with:
 
 ``` sh
 build/toitlsp --toitc=build/host/bin/toitc
@@ -139,7 +167,8 @@ build/toitlsp --toitc=build/host/bin/toitc
 
 See the instructions of your IDE on how to integrate the language server.
 
-For VSCode you can also use the [published extension](https://marketplace.visualstudio.com/items?itemName=toit.toit).
+There are syntax highlighters for VIM and CodeMirror in the
+[ide-tools repository](https://github.com/toitware/ide-tools).
 
 ## Build for ESP32
 
