@@ -582,6 +582,8 @@ class Interface_ extends net.Interface:
   tcp_listen port/int -> tcp.ServerSocket:
     throw "UNIMPLEMENTED"
 
+  close:
+
 class UDNSRN extends at.Command:
   static TIMEOUT ::= Duration --s=70
 

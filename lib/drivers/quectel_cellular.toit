@@ -572,6 +572,8 @@ class Interface_ extends net.Interface:
     throw
       ResourceExhaustedException "no more sockets available"
 
+  close:
+
 class QIDNSGIP extends at.Command:
   static TIMEOUT ::= Duration --s=70
 
