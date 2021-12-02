@@ -23,7 +23,7 @@ Install a Debian-based Linux distro (choose one)
 ``` sh
 #install dependencies
 apt update
-apt install git build-essential cmake python python3-pip libffi-dev libssl-dev cargo golang ninja-build
+apt install git build-essential cmake python3 python3-pip python-is-python3 libffi-dev libssl-dev cargo golang ninja-build
 ```
 
 ## 2) Clone Sources 
