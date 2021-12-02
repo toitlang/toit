@@ -2,32 +2,58 @@
 # RISC-V GETTING STARTED
 ------
 
-This fork is very much an experiment in getting Toit running on RISC-V hardware--as an IoT endpoint, coordinator, and potentially development platform.  Below are a list of **WIP** steps required to get Toit running on a sifive unmatched dev board. 
+This fork is an experiment in getting Toit running on RISC-V 64-bit hardware.  Below is a list of **WIP** steps required to get Toit running on a SiFive Unmatched dev board or RISC-V VM with QEMU. 
 
-## Environment Setup
-- Install Ubuntu Server 20.04 RISC-V image
-- sudo apt install build-essential libffi-dev python3 git cargo python-pip golang ninja-build
-- pip install cryptography 
+| STATUS | STEP |
+| ------------- | ------------- |
+| ![](https://img.shields.io/static/v1?label=&message=SUCCESS&color=green) | RISC-V environment |
+| ![](https://img.shields.io/static/v1?label=&message=SUCCESS&color=green) | IDF environment |
+| ![](https://img.shields.io/static/v1?label=&message=SUCCESS&color=green) | IDF compile sources |
+| ![](https://img.shields.io/static/v1?label=&message=FAILURE&color=red) | IDF export [ERROR](https://github.com/dsobotta/toit-riscv/issues/4) |
+| ![](https://img.shields.io/static/v1?label=&message=SUCCESS&color=green)| Toit generate build files |
+| ![](https://img.shields.io/static/v1?label=&message=SUCCESS&color=green) | Toit compile sources |
+| ![](https://img.shields.io/static/v1?label=&message=FAILURE&color=red)| Toit generate snapshot |
+| ![](https://img.shields.io/static/v1?label=&message=FAILURE&color=red) | Toit run examples |
 
-## Clone Sources
-- git clone https://github.com/dsobotta/esp-idf-riscv.git
-  - pushd esp-idf-riscv/
-  - git checkout patch-head-4.3-3
-  - git submodule update --init --recursive
-  - popd
-- git clone https://github.com/dsobotta/toit-riscv.git
+## 1) RISC-V Environment Setup
+Install a Debian-based Linux distro (choose one)
+- SiFive Unmatched: [Ubuntu Server 20.04](https://ubuntu.com/tutorials/how-to-install-ubuntu-on-risc-v-hifive-boards#1-overview)
+- Virtual Machine: [RISC-V VM with QEMU](https://colatkinson.site/linux/riscv/2021/01/27/riscv-qemu/)
+``` sh
+#install dependencies
+apt update
+apt install git build-essential cmake python python3-pip libffi-dev libssl-dev cargo golang ninja-build
+```
+
+## 2) Clone Sources 
+``` sh
+#ESP-IDF
+git clone https://github.com/dsobotta/esp-idf-riscv.git
+pushd esp-idf-riscv/
+git checkout patch-head-4.3-3
+git submodule update --init --recursive
+popd
+
+#Toit
+git clone https://github.com/dsobotta/toit-riscv.git
+
+#Add IDF path to environment
+export IDF_PATH=PATH_TO_ESP_IDF_RISCV
+```
+
+## 3) Compiling ESP-IDF
+> TIP: If you don't wish to deploy to an ESP32 device, you can skip to step 4
+``` sh
+$IDF_PATH/install.sh
+. $IDF_PATH/export.sh
+```
   
-## Compiling Toit
-- Compile esp-idf-riscv
-  - export IDF_PATH=*path-to-esp-idf-riscv*
-  - $IDF_PATH/install.sh **ERROR: Fails here on wheel cryptography (version mismatch for risc-v support?)**
-  - . $IDF_PATH/export.sh
-- Compile toit-riscv
-  - export GO111MODULE=on
-  - cd toit-riscv
-  - make tools **ERROR: Fails to compile 160/322 - sandbox.cc **
-
-
+## 4) Compiling Toit
+``` sh
+export GO111MODULE=on
+cd toit-riscv
+make tools
+```
 
 ------
 # ORIGINAL DOCUMENTATION
