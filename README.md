@@ -151,7 +151,7 @@ build it yourself from the
 [sources](https://github.com/toitware/ide-tools).
 
 In the VS Code extension (version 1.3.7+) set the `toitLanguageServer.command` setting to
-`["PATH_TO_TOIT/build/toitlsp", "--toitc=PATH_TO_TOIT/build/host/bin/toitc"], where
+`["PATH_TO_TOIT/build/toitlsp", "--toitc=PATH_TO_TOIT/build/host/bin/toitc"]`, where
 `PATH_TO_TOIT` is the path to your Toit checkout.
 
 This makes the extension use the language server that was compiled in the [build step](#build-for-host-machine).
