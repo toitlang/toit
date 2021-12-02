@@ -20,6 +20,7 @@ Install a Debian-based Linux distro (choose one)
 - Virtual Machine: [RISC-V VM with QEMU](https://colatkinson.site/linux/riscv/2021/01/27/riscv-qemu/)
 ``` sh
 #install dependencies
+apt update
 apt install git build-essential cmake python python3-pip libffi-dev libssl-dev cargo golang ninja-build
 ```
 
