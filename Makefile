@@ -61,7 +61,7 @@ build/snapshot: build/ia32/bin/toitc $(ESP32_ENTRY)
 
 GO_USE_INSTALL = 1
 GO_USE_INSTALL_FROM = 1 16
-GO_VERSION = $(subst ., ,$(shell go version |grep --perl-regexp --only-matching "(?<=go version go)[[:digit:]]*\.[[:digit:]]*\.[[:digit:]]*(?= .*/.*)"))
+GO_VERSION = $(subst ., ,$(shell go version |cut -d' ' -f 3| tail -c+3))
 ifeq ($(shell echo "$(word 1,$(GO_VERSION)) >= $(word 1,$(GO_USE_INSTALL_FROM))"|bc), 1)
   ifeq ($(shell echo "$(word 2,$(GO_VERSION)) < $(word 2,$(GO_USE_INSTALL_FROM))"|bc), 1)
   GO_USE_INSTALL = 0
