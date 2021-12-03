@@ -616,9 +616,9 @@ abstract class int extends num:
     else if radix == 16:
       return parse_16_ data from to --on_error=on_error
     else:
-      return parse_generic_radix radix data from to --on_error=on_error
+      return parse_generic_radix_ radix data from to --on_error=on_error
 
-  static parse_generic_radix radix/int data from/int to/int [--on_error] -> int?:
+  static parse_generic_radix_ radix/int data from/int to/int [--on_error] -> int?:
     if radix <= 1 or radix > 36: throw PARSE_ERR_
 
     max_num := (min radix 9) + '0' - 1
