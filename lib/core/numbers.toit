@@ -561,7 +561,7 @@ abstract class int extends num:
 
   The data must be a $string or $ByteArray.
 
-  The given $radix must be either 10 (default) or 16.
+  The given $radix must be in the range 2 to 36.
 
   Use slices to parse only a subset of the data (for example `data[..3]`).
 
@@ -616,7 +616,28 @@ abstract class int extends num:
     else if radix == 16:
       return parse_16_ data from to --on_error=on_error
     else:
-      return on_error.call PARSE_ERR_
+      return parse_generic_radix radix data from to --on_error=on_error
+
+  static parse_generic_radix radix/int data from/int to/int [--on_error] -> int?:
+    if radix <= 1 or radix > 36: throw PARSE_ERR_
+
+    max_num := (min radix 9) + '0' - 1
+    max_char := radix + 'a' - 1
+    max_char_C := radix + 'A' - 1
+    print "radix: $radix max_num: $max_num max_char: $max_char max_char_C: $max_char_C"
+    return generic_parser_ data from to --on_error=on_error: | char result _ _ |
+      value := 0
+      if '0' <= char <= max_num:
+        value = char - '0'
+      else if radix > 9 and 'a' <= char <= max_char:
+        value = 10 + char - 'a'
+      else if radix > 9 and 'A' <= char <= max_char_C:
+        value = 10 + char - 'A'
+      else:
+        return on_error.call PARSE_ERR_
+      result *= radix
+      result += value
+      continue.generic_parser_ result
 
   static parse_10_ data from/int to/int [--on_error] -> int?:
     return generic_parser_ data from to --on_error=on_error: | char result is_last negative |
