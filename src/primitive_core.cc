@@ -448,7 +448,7 @@ PRIMITIVE(args) {
     // Copy and return the array.
     int length = snapshot_arguments->length();
     Array* result = process->object_heap()->allocate_array(length, process->program()->null_object());
-    if (!result) ALLOCATION_FAILED;
+    if (result == null) ALLOCATION_FAILED;
     for (int index = 0; index < length; index++) result->at_put(index, snapshot_arguments->at(index));
     return result;
   }
@@ -2227,6 +2227,15 @@ PRIMITIVE(dump_heap) {
   return process->program()->null_object();
 #endif
 
+#endif // def TOIT_CMPCTMALLOC
+}
+
+PRIMITIVE(serial_print_heap_report) {
+#ifndef TOIT_CMPCTMALLOC
+  UNIMPLEMENTED_PRIMITIVE;
+#else
+  OS::heap_summary_report();
+  return process->program()->null_object();
 #endif // def TOIT_CMPCTMALLOC
 }
 

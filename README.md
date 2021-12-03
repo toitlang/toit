@@ -34,12 +34,13 @@ are licensed under the [MIT](lib/LICENSE) license. The examples contained in the
 directory are licensed under the [0BSD](examples/LICENSE) license.
 
 Certain subdirectories are under their own open source licenses, detailed
-in those directories.  These subdirectories are:
+in those directories and the files they contain. These subdirectories are:
 
-* Every subdirectory under `src/third_party`
-* Every subdirectory under `src/compiler/third_party`
-* Every subdirectory under `lib/font/x11_100dpi`
-* The subdirectory `lib/font/matthew_welch`
+* The subdirectory `lib/font/matthew_welch/`
+* Every subdirectory under `lib/font/x11_100dpi/`
+* Every subdirectory under `src/compiler/third_party/`
+* Every subdirectory under `src/third_party/`
+* Every subdirectory under `third_party/`
 
 # Building
 

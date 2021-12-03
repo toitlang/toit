@@ -68,6 +68,7 @@
 
 #if defined(__FREERTOS__)
 #define TOIT_FREERTOS
+#define TOIT_CMPCTMALLOC
 #elif defined(__APPLE__)
 #define TOIT_DARWIN
 #define TOIT_BSD
@@ -387,9 +388,10 @@ static const int BLOCK_SALT = 0x01020304;
 // ability to iterate the malloc heap, but the malloc is switched in at
 // runtime with the LD_PRELOAD trick so we don't have any headers for it.
 // Keep these first four in sync with esp_heap_caps.h.
+static const int ITERATE_UNLOCKED        = 1 << 0;
 static const int ITERATE_ALL_ALLOCATIONS = 1 << 1;
-static const int ITERATE_UNALLOCATED = 1 << 2;
-static const word ITERATE_TAG_FREE = -1;
+static const int ITERATE_UNALLOCATED     = 1 << 2;
+static const word ITERATE_TAG_FREE          = -1;
 static const word ITERATE_TAG_HEAP_OVERHEAD = -2;
 
 static const word ITERATE_CUSTOM_TAGS = -100;
