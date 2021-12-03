@@ -48,6 +48,6 @@ class InterfaceImpl_ extends Interface:
     result := TcpServerSocket
     result.listen "0.0.0.0" port
     return result
-  
+
   close -> none:
     // Do nothing yet.
