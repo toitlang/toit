@@ -21,11 +21,25 @@ ESP32_ENTRY=examples/hello.toit
 ESP32_WIFI_PASSWORD=
 ESP32_WIFI_SSID=
 
+
 .PHONY: all
 all: tools
 
+
 .PHONY: tools
 tools: check-env toitpkg toitlsp build/host/bin/toitvm build/host/bin/toitc
+
+
+.PHONY: tools-riscv64
+tools-riscv64: check-env toitpkg toitlsp build/riscv64/bin/toitvm build/riscv64/bin/toitc	
+
+.PHONY: build/riscv64/bin/toitvm build/riscv64/bin/toitc
+build/riscv64/bin/toitvm build/riscv64/bin/toitc: build/riscv64/CMakeCache.txt
+	(cd build/riscv64 && ninja build_toitvm)
+
+build/riscv64/CMakeCache.txt: build/riscv64/
+	(cd build/riscv64 && cmake ../../ -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/riscv64.cmake)
+
 
 .PHONY: esp32
 esp32: check-env build/esp32/toit.bin
@@ -36,9 +50,11 @@ build/esp32/toit.bin build/esp32/toit.elf: build/esp32/lib/libtoit_image.a
 build/esp32/lib/libtoit_image.a: build/esp32/esp32.image.s build/esp32/CMakeCache.txt
 	(cd build/esp32 && ninja toit_image)
 
+
 .PHONY:	build/host/bin/toitvm build/host/bin/toitc
 build/host/bin/toitvm build/host/bin/toitc: build/host/CMakeCache.txt
 	(cd build/host && ninja build_toitvm)
+
 
 .PHONY:	build/ia32/bin/toitvm build/ia32/bin/toitc
 build/ia32/bin/toitvm build/ia32/bin/toitc: build/ia32/CMakeCache.txt
@@ -59,6 +75,7 @@ build/esp32/esp32.image.s: build/esp32/ build/snapshot build/ia32/bin/toitvm too
 build/snapshot: build/ia32/bin/toitc $(ESP32_ENTRY)
 	build/ia32/bin/toitc -w $@ $(ESP32_ENTRY) -Dwifi.ssid=$(ESP32_WIFI_SSID) -Dwifi.password=$(ESP32_WIFI_PASSWORD)
 
+
 GO_BUILD_FLAGS ?=
 ifeq ("$(GO_BUILD_FLAGS)", "")
 $(eval GO_BUILD_FLAGS=CGO_ENABLED=1 GODEBUG=netdns=go)
@@ -76,6 +93,7 @@ build/toitlsp: $(TOITLSP_SOURCE)
 .PHONY: toitlsp
 toitlsp: build/toitlsp
 
+
 .PHONY: toitpkg
 toitpkg: build/toitpkg
 
@@ -89,6 +107,9 @@ build/ia32/ build/host/:
 build/esp32/: check-env
 	mkdir -p $@
 	make -C toolchains/esp32 -s $(shell pwd)/build/esp32/include/sdkconfig.h
+
+build/riscv64/:
+	mkdir -p $@
 
 .PHONY:	clean check-env
 clean:
