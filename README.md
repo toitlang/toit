@@ -12,9 +12,9 @@ This fork is an experiment in getting Toit running on RISC-V 64-bit hardware.  B
 | ![](https://img.shields.io/static/v1?label=&message=FAILURE&color=red) | IDF export [ERROR](https://github.com/dsobotta/toit-riscv/issues/4) |
 | ![](https://img.shields.io/static/v1?label=&message=SUCCESS&color=green)| Toit generate build files |
 | ![](https://img.shields.io/static/v1?label=&message=SUCCESS&color=green) | Toit compile sources |
-| ![](https://img.shields.io/static/v1?label=&message=SUCCESS&color=green)| Toit generate snapshot |
+| ![](https://img.shields.io/static/v1?label=&message=SUCCESS&color=green)| Toit generate boot snapshot |
 | ![](https://img.shields.io/static/v1?label=&message=SUCCESS&color=green) | Toit run examples |
-| ![](https://img.shields.io/static/v1?label=&message=TODO&color=orange) | Cross-compile to riscv64 |
+| ![](https://img.shields.io/static/v1?label=&message=PARTIAL&color=yellow) | Cross-compile to riscv64 (Requires manually copying host boot snapshot)|
 | ![](https://img.shields.io/static/v1?label=&message=TODO&color=orange) | Embedded RISC-V support |
 
 
@@ -64,6 +64,25 @@ build/host/bin/toitvm examples/bubble_sort.toit
 build/host/bin/toitvm examples/http.toit
 build/host/bin/toitvm examples/mandelbrot.toit
 ```
+
+## Cross-Compiling for RISC-V/Linux
+| STATUS | STEP |
+| ------------- | ------------- |
+| ![](https://img.shields.io/static/v1?label=&message=SUCCESS&color=green) | Linux RISC-V cross-compile environment |
+| ![](https://img.shields.io/static/v1?label=&message=SUCCESS&color=green) | IDF environment |
+| ![](https://img.shields.io/static/v1?label=&message=SUCCESS&color=green) | IDF compile sources |
+| ![](https://img.shields.io/static/v1?label=&message=SUCCESS&color=green) | IDF export |
+| ![](https://img.shields.io/static/v1?label=&message=SUCCESS&color=green)| Toit generate build files |
+| ![](https://img.shields.io/static/v1?label=&message=PARTIAL&color=yellow) | Toit compile sources (Works on Debian, fails to link libstdc++ on Arch |
+| ![](https://img.shields.io/static/v1?label=&message=FAILURE&color=red)| Toit generate boot snapshot (Requires manually copying host snapshot) |
+| ![](https://img.shields.io/static/v1?label=&message=SUCCESS&color=green) | Toit run examples |
+
+``` sh
+apt install gcc-riscv64-linux-gnu g++-riscv64-linux-gnu
+cd toit-riscv
+make tools
+```
+
 
 ------
 # ORIGINAL DOCUMENTATION
