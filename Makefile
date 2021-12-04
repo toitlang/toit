@@ -22,8 +22,10 @@ ESP32_WIFI_SSID=
 ESP32_WIFI_PASSWORD=
 ESP32_PORT=
 
+
 .PHONY: all
 all: tools
+
 
 .PHONY: tools
 tools: check-env toitpkg toitlsp build/host/bin/toitvm build/host/bin/toitc build/snapshots/snapshot_to_image.snapshot build/snapshots/system_message.snapshot
@@ -65,6 +67,18 @@ build/arm32/bin/toitvm build/arm32/bin/toitc: build/arm32/CMakeCache.txt
 build/arm32/CMakeCache.txt: build/arm32/
 	(cd build/arm32 && cmake ../../ -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/arm32.cmake)
 
+
+.PHONY: tools-riscv64
+tools-riscv64: check-env toitpkg toitlsp build/riscv64/bin/toitvm build/riscv64/bin/toitc	
+
+.PHONY: build/riscv64/bin/toitvm build/riscv64/bin/toitc
+build/riscv64/bin/toitvm build/riscv64/bin/toitc: build/riscv64/CMakeCache.txt
+	(cd build/riscv64 && ninja build_toitvm)
+
+build/riscv64/CMakeCache.txt: build/riscv64/
+	(cd build/riscv64 && cmake ../../ -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/riscv64.cmake)
+
+
 .PHONY: esp32
 esp32: check-env build/esp32/toit.bin
 
@@ -83,6 +97,7 @@ build/esp32/toit.bin build/esp32/toit.elf: build/esp32/lib/libtoit_image.a
 
 build/esp32/lib/libtoit_image.a: build/esp32/esp32.image.s build/esp32/CMakeCache.txt
 	(cd build/esp32 && ninja toit_image)
+
 
 .PHONY:	build/host/bin/toitvm build/host/bin/toitc
 build/host/bin/toitvm build/host/bin/toitc: build/host/CMakeCache.txt
@@ -120,6 +135,7 @@ else
   GO_USE_INSTALL = 0
 endif
 
+
 GO_BUILD_FLAGS ?=
 ifeq ("$(GO_BUILD_FLAGS)", "")
 $(eval GO_BUILD_FLAGS=CGO_ENABLED=1 GODEBUG=netdns=go)
@@ -136,6 +152,7 @@ build/toitlsp: $(TOITLSP_SOURCE)
 
 .PHONY: toitlsp
 toitlsp: build/toitlsp
+
 
 .PHONY: toitpkg
 toitpkg: build/toitpkg
