@@ -33,7 +33,7 @@ deep_sleep duration/Duration -> none:
   __deep_sleep__ duration.in_ms
 
 /**
-  Returns one of the ESP_RST_* enum values that indicate why the ESP32 was reset.
+Returns one of the ESP_RST_* enum values that indicate why the ESP32 was reset.
 */
 reset_reason -> int:
   #primitive.esp32.reset_reason
