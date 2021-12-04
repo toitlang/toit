@@ -26,8 +26,8 @@ WAKEUP_GPIO      ::= 7 // Wakeup caused by GPIO (light sleep only).
 WAKEUP_UART      ::= 8 // Wakeup caused by UART (light sleep only).
 
 /**
-  Enters deep sleep for the specified duration (up to 24h) and does not return. Exiting
-  deep sleep causes the ESP32 to start over from main.
+Enters deep sleep for the specified duration (up to 24h) and does not return.
+Exiting deep sleep causes the ESP32 to start over from main.
 */
 deep_sleep duration/Duration -> none:
   __deep_sleep__ duration.in_ms
