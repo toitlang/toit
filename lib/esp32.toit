@@ -39,7 +39,7 @@ reset_reason -> int:
   #primitive.esp32.reset_reason
 
 /**
-  Returns one of the WAKEUP_* enum values that indicate why the ESP32 was woken up.
+Returns one of the WAKEUP_* enum values (such as $WAKEUP_TIMER) that indicate why the ESP32 was woken up.
 */
 wakeup_cause -> int:
   #primitive.esp32.wakeup_cause
