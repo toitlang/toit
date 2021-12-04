@@ -45,8 +45,8 @@ wakeup_cause -> int:
   #primitive.esp32.wakeup_cause
 
 /**
-  Returns the total number of microseconds this device has been running (including deep sleep).
-  NOTE: currently boot time of FreeRTOS is not included (this might be significant).
+Returns the total number of microseconds this device has been running (including deep sleep).
+NOTE: currently boot time of FreeRTOS is not included (this might be significant).
 */
 total_run_time -> int:
   #primitive.esp32.total_run_time
