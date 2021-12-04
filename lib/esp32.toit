@@ -52,7 +52,7 @@ total_run_time -> int:
   #primitive.esp32.total_run_time
 
 /**
-Returns the number of total microseconds this device has been in deep sleep.
+Returns the total number of microseconds this device has been in deep sleep.
 */
 total_deep_sleep_time -> int:
   #primitive.esp32.total_deep_sleep_time
