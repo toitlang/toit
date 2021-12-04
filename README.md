@@ -77,7 +77,7 @@ How to compile the 64-bit RISC-V Toit binaries (toitc and toitvm) from another a
 
 ## 1) Compile host tools
 > *Note: This is a necessary to generate toitvm_boot.snapshot, a dependency for the toitvm runtime.* </br> 
-Follow steps 2-4 above, on the non-riscv64 host.
+Follow [steps 2-4 above](https://github.com/dsobotta/toit-riscv#2-install-dependencies), on the non-riscv64 host.
 
 ## 2) Install dependencies
 ``` sh
