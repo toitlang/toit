@@ -7,12 +7,12 @@ This fork is an experiment in getting Toit running on 64-bit RISC-V hardware.  B
 | ![](https://img.shields.io/static/v1?label=&message=SUCCESS&color=green) | Linux RISC-V environment |
 | ![](https://img.shields.io/static/v1?label=&message=SUCCESS&color=green) | IDF environment |
 | ![](https://img.shields.io/static/v1?label=&message=SUCCESS&color=green) | IDF compile sources |
-| ![](https://img.shields.io/static/v1?label=&message=FAILURE&color=red) | IDF export [ERROR](https://github.com/dsobotta/toit-riscv/issues/4) |
+| ![](https://img.shields.io/static/v1?label=&message=FAILURE&color=red) | IDF export > [doesn't compile on RISC-V host](https://github.com/dsobotta/toit-riscv/issues/4) |
 | ![](https://img.shields.io/static/v1?label=&message=SUCCESS&color=green)| Toit generate build files |
 | ![](https://img.shields.io/static/v1?label=&message=SUCCESS&color=green) | Toit compile sources |
 | ![](https://img.shields.io/static/v1?label=&message=SUCCESS&color=green)| Toit generate boot snapshot |
 | ![](https://img.shields.io/static/v1?label=&message=SUCCESS&color=green) | Toit run examples |
-| ![](https://img.shields.io/static/v1?label=&message=PARTIAL&color=yellow) | Cross-compile to riscv64 (Requires manually copying host boot snapshot)|
+| ![](https://img.shields.io/static/v1?label=&message=PARTIAL&color=yellow) | Cross-compile for RISC-V > [fails to link on Arch](https://github.com/dsobotta/toit-riscv/issues/6)|
 | ![](https://img.shields.io/static/v1?label=&message=TODO&color=orange) | Embedded RISC-V support |
 
 
@@ -62,18 +62,7 @@ build/host/bin/toitvm examples/mandelbrot.toit
 # Cross-Compiling for RISC-V/Linux
 
 How to compile the 64-bit RISC-V Toit binaries (toitc and toitvm) from another architecture (ie. amd64)
-
-| STATUS | |
-| ------------- | ------------- |
-| ![](https://img.shields.io/static/v1?label=&message=SUCCESS&color=green) | Linux RISC-V cross-compile environment |
-| ![](https://img.shields.io/static/v1?label=&message=SUCCESS&color=green) | IDF environment |
-| ![](https://img.shields.io/static/v1?label=&message=SUCCESS&color=green) | IDF compile sources |
-| ![](https://img.shields.io/static/v1?label=&message=SUCCESS&color=green) | IDF export |
-| ![](https://img.shields.io/static/v1?label=&message=SUCCESS&color=green)| Toit generate build files |
-| ![](https://img.shields.io/static/v1?label=&message=PARTIAL&color=yellow) | Toit compile sources (Works on Debian, [fails to link on Arch](https://github.com/dsobotta/toit-riscv/issues/6)) |
-| ![](https://img.shields.io/static/v1?label=&message=FAILURE&color=red)| Toit generate boot snapshot (Requires manually copying host snapshot) |
-| ![](https://img.shields.io/static/v1?label=&message=SUCCESS&color=green) | Toit run examples |
-
+> *Note: [Fails to link on Arch](https://github.com/dsobotta/toit-riscv/issues/6)* 
 
 ## 1) Compile host tools
 > *Note: This is a necessary to generate toitvm_boot.snapshot, a dependency for the toitvm runtime.* </br> 
