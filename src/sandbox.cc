@@ -32,7 +32,7 @@
 
 namespace toit {
 
-#ifdef __linux__
+#if defined(__linux__) && !defined(__arm__)
 static int COMPILER_SYSCALLS[] = {
   SYS_brk,
   SYS_rt_sigreturn,
@@ -179,7 +179,7 @@ static int SANDBOX_SYSCALLS[] = {
 #endif
 
 void enable_sandbox(int flags) {
-#ifdef __linux__
+#if defined(__linux__) && !defined(__arm__)
   const int MAX_INSTRUCTIONS = 300;
   const int MAX_SYSCALLS = 1500;
   sock_filter* instructions = reinterpret_cast<sock_filter*>(calloc(MAX_INSTRUCTIONS, sizeof(sock_filter)));

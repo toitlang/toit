@@ -341,7 +341,8 @@ PRIMITIVE(put_float_32_little_endian) {
   if (unsigned_offset > length || unsigned_offset + 4 >= length) {
     OUT_OF_BOUNDS;
   }
-  *reinterpret_cast<float*>(dest.address() + offset) = value;
+  float raw = value;
+  memcpy(dest.address() + offset, &raw, sizeof raw);
   return process->program()->null_object();
 }
 
@@ -356,7 +357,7 @@ PRIMITIVE(put_float_64_little_endian) {
   if (unsigned_offset > length || unsigned_offset + 8 >= length) {
     OUT_OF_BOUNDS;
   }
-  *reinterpret_cast<double*>(dest.address() + offset) = value;
+  memcpy(dest.address() + offset, &value, sizeof value);
   return process->program()->null_object();
 }
 
