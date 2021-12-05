@@ -26,6 +26,7 @@
 #include <linux/seccomp.h>
 #include <sys/prctl.h>
 #include <sys/syscall.h>
+#include <linux/version.h>
 
 #include "sandbox.h"
 #endif
@@ -93,7 +94,11 @@ static int COMPILER_SYSCALLS[] = {
 
 static int MOST_SYSCALLS[] = {
 #ifdef __riscv
-  SYS_fsopen,
+  #if LINUX_VERSION_CODE >= KERNEL_VERSION(5,0,0)
+    SYS_fsopen,
+  #else    
+    SYS_mq_open,
+  #endif
 #else
   SYS_open,
 #endif
