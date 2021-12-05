@@ -105,7 +105,7 @@ toitpkg: build/toitpkg
 
 TOITPKG_VERSION := "v0.0.0-20211126161923-c00da039da00"
 build/toitpkg:
-ifeq ($(GO_USE_INSTASLL), 1)
+ifeq ($(GO_USE_INSTALL), 1)
 	GOBIN=$(shell pwd)/build go install github.com/toitlang/tpkg/cmd/toitpkg@$(TOITPKG_VERSION)
 else
 	GO111MODULE=on GOBIN=$(shell pwd)/build go get github.com/toitlang/tpkg/cmd/toitpkg@$(TOITPKG_VERSION)
