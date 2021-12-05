@@ -1,4 +1,4 @@
 [submodule "esp-idf"]
-	path = esp-idf
+	path = third_party/esp-idf/esp-idf
 	url = https://github.com/toitware/esp-idf.git
 	branch = patch-head-4.3-3

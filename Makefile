@@ -111,5 +111,5 @@ clean:
 
 check-env:
 ifndef IDF_PATH
-	$(error IDF_PATH is not set)
+	$(error IDF_PATH is not set, if you want to use the Toitware fork execute "export IDF_PATH=`pwd`/third_party/esp-idf" (see README.md))
 endif
