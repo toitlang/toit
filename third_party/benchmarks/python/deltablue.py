@@ -630,4 +630,6 @@ def main(n):
     ms = (end - start) / n
     print("DeltaBlue (%s) - time per iteration: %i ms" % (sys.implementation.name, ms))
 
-main(10)
+
+if __name__ == '__main__':
+    main(10)

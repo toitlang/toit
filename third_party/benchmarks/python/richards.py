@@ -391,4 +391,5 @@ def main(iterations):
     ms = (endTime - startTime) / iterations
     print("Richards (%s) - time per iteration: %i ms" % (sys.implementation.name, ms))    
 
-main(10)
+if __name__ == '__main__':
+    main(10)
