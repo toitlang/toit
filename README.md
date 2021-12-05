@@ -1,4 +1,4 @@
-# RISC-V GETTING STARTED
+# Compiling for RISC-V
 
 This fork is an experiment in getting Toit running on 64-bit RISC-V hardware.  Below is a **WIP** guide to get Toit running on a SiFive Unmatched dev board or RISC-V VM with QEMU. 
 
@@ -24,7 +24,7 @@ Install a Debian-based Linux distro (choose one)
 ## 2) Install Dependencies
 ``` sh
 apt update
-apt install git build-essential cmake python3 python3-pip python-is-python3 libffi-dev libssl-dev cargo golang ninja-build
+apt install git build-essential bc cmake python3 python3-pip python-is-python3 libffi-dev libssl-dev cargo golang ninja-build
 ```
 
 ## 3) Clone Sources 
