@@ -29,7 +29,7 @@ apt install git build-essential bc cmake python3 python3-pip python-is-python3 l
 
 ## 3) Clone Sources 
 ``` sh
-#ESP-IDF
+#ESP-IDF, slightly modified to compile for RISCV
 git clone https://github.com/dsobotta/esp-idf-riscv.git
 pushd esp-idf-riscv/
 git checkout patch-head-4.3-3
@@ -37,7 +37,7 @@ git submodule update --init --recursive
 popd
 
 #Toit
-git clone https://github.com/dsobotta/toit-riscv.git
+git clone https://github.com/toitlang/toit.git
 
 #Add IDF path to environment
 export IDF_PATH=PATH_TO_ESP_IDF_RISCV
