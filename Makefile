@@ -56,10 +56,6 @@ build/esp32/lib/libtoit_image.a: build/esp32/esp32.image.s build/esp32/CMakeCach
 build/host/bin/toitvm build/host/bin/toitc: build/host/CMakeCache.txt
 	(cd build/host && ninja build_toitvm)
 
-.PHONY:	build/ia32/bin/toitvm build/ia32/bin/toitc
-build/ia32/bin/toitvm build/ia32/bin/toitc: build/ia32/CMakeCache.txt
-	(cd build/ia32 && ninja build_toitvm)
-
 build/host/CMakeCache.txt: build/host/
 	(cd build/host && cmake ../.. -G Ninja -DCMAKE_BUILD_TYPE=Release)
 
