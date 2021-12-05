@@ -91,7 +91,7 @@ class OpenPipe implements reader.Reader:
   close:
     close_ resource_
 
-  is_a_terminal:
+  is_a_terminal -> bool:
     return is_a_tty_ resource_
 
 pipe_fd_ resource:
