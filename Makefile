@@ -20,6 +20,7 @@ BUILD_DATE = $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 ESP32_ENTRY=examples/hello.toit
 ESP32_WIFI_PASSWORD=
 ESP32_WIFI_SSID=
+ESP32_PORT=
 
 
 .PHONY: all
@@ -44,6 +45,11 @@ build/riscv64/CMakeCache.txt: build/riscv64/
 .PHONY: esp32
 esp32: check-env build/esp32/toit.bin
 
+.PHONY: flash
+flash: esp32
+	echo ${IDF_PATH}
+	python $(IDF_PATH)/components/esptool_py/esptool/esptool.py --chip esp32 --port ${ESP32_PORT} --baud 921600 --before default_reset --after hard_reset write_flash -z --flash_mode dio --flash_freq 40m --flash_size detect 0xd000 build/esp32/ota_data_initial.bin 0x1000 build/esp32/bootloader/bootloader.bin 0x10000 build/esp32/toit.bin 0x8000 build/esp32/partitions.bin
+
 build/esp32/toit.bin build/esp32/toit.elf: build/esp32/lib/libtoit_image.a
 	make -C toolchains/esp32/
 
@@ -63,17 +69,14 @@ build/ia32/bin/toitvm build/ia32/bin/toitc: build/ia32/CMakeCache.txt
 build/host/CMakeCache.txt: build/host/
 	(cd build/host && cmake ../.. -G Ninja -DCMAKE_BUILD_TYPE=Release)
 
-build/ia32/CMakeCache.txt: build/ia32/
-	(cd build/ia32 && cmake ../.. -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/ia32.cmake)
-
 build/esp32/CMakeCache.txt: build/esp32/
 	(cd build/esp32 && IMAGE=build/esp32/esp32.image.s cmake ../../ -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/esp32/esp32.cmake --no-warn-unused-cli)
 
-build/esp32/esp32.image.s: build/esp32/ build/snapshot build/ia32/bin/toitvm tools/snapshot_to_image.toit
-	build/ia32/bin/toitvm tools/snapshot_to_image.toit build/snapshot $@
+build/esp32/esp32.image.s: build/esp32/ build/snapshot build/host/bin/toitvm tools/snapshot_to_image.toit
+	build/host/bin/toitvm tools/snapshot_to_image.toit build/snapshot $@
 
-build/snapshot: build/ia32/bin/toitc $(ESP32_ENTRY)
-	build/ia32/bin/toitc -w $@ $(ESP32_ENTRY) -Dwifi.ssid=$(ESP32_WIFI_SSID) -Dwifi.password=$(ESP32_WIFI_PASSWORD)
+build/snapshot: build/host/bin/toitc $(ESP32_ENTRY)
+	build/host/bin/toitc -w $@ $(ESP32_ENTRY) -Dwifi.ssid=$(ESP32_WIFI_SSID) -Dwifi.password=$(ESP32_WIFI_PASSWORD)
 
 
 GO_BUILD_FLAGS ?=
@@ -101,7 +104,7 @@ TOITPKG_VERSION := "v0.0.0-20211126161923-c00da039da00"
 build/toitpkg:
 	GO111MODULE=on GOBIN=$(shell pwd)/build go get github.com/toitlang/tpkg/cmd/toitpkg@$(TOITPKG_VERSION)
 
-build/ia32/ build/host/:
+build/host/:
 	mkdir -p $@
 
 build/esp32/: check-env

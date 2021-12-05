@@ -59,16 +59,15 @@ main args:
   if args.size != 2:
     print_ "Usage: snapshot_to_image <snapshot> <output>"
     return
+  word_size := 4
   out := file.Stream.for_write args[1]
   snapshot_bundle := SnapshotBundle.from_file args[0]
-  snapshot := snapshot_bundle.program_snapshot
-  snapshot_bytes := snapshot.byte_array.copy snapshot.from snapshot.to
-  image := ImageReader snapshot_bytes
-  output := AssemblerOutput image.size_in_bytes out
-  buffer := image.read
-  while buffer:
-    output.write buffer
-    buffer = image.read
+  program := snapshot_bundle.decode
+  image := build_image program
+  relocatable := image.build_relocatable
+  output := AssemblerOutput relocatable.size out
+  chunk_size := (word_size * 8 + 1) * word_size
+  List.chunk_up 0 relocatable.size chunk_size: | from to |
+    output.write relocatable[from..to]
   output.write_end
-  image.close
   out.close

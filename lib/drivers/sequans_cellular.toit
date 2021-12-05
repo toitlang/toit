@@ -346,20 +346,19 @@ abstract class SequansCellular extends CellularBase:
 
   // Override enable_radio as the Monarch modem needs a special sequence.
   enable_radio -> none:
-    // This shouldn't take too long. Fail fast, so we can get a restart.
-    with_timeout (Duration --s=5):
-      at_.do: | session/at.Session |
-        try:
-          waiter := monitor.Latch
-          session.register_urc "+CEREG" ::
-            if it.first == 2: waiter.set true
-          // Force enable radio.
-          session.send
-            CFUN.online --reset
+    catch --trace=(: it != DEADLINE_EXCEEDED_ERROR) --unwind=(: it != DEADLINE_EXCEEDED_ERROR):
+      with_timeout (Duration --s=5):
+        at_.do: | session/at.Session |
+          try:
+            waiter := monitor.Latch
+            session.register_urc "+CEREG" ::
+              if it.first == 2: waiter.set true
+            // Force enable radio.
+            session.send CFUN.online
 
-          waiter.get
-        finally:
-          session.unregister_urc "+CEREG"
+            waiter.get
+          finally:
+            session.unregister_urc "+CEREG"
 
   ps_detach_ -> none:
     at_.do: | session/at.Session |
@@ -394,6 +393,9 @@ abstract class SequansCellular extends CellularBase:
         enter_configuration_mode_ session
 
         should_reboot = false
+
+        // Set unsolicited events for CEREG to get radio ready.
+        session.set "+CEREG" [2]
 
         session.set "+CPSMS" [0]
         session.set "+CEDRXS" [0]
@@ -496,6 +498,8 @@ class Interface_ extends net.Interface:
       if not cellular_.sockets_.contains it + 1: return it + 1
     throw
       ResourceExhaustedException "no more sockets available"
+
+  close:
 
 class SQNDNSLKUP extends at.Command:
   static TIMEOUT ::= Duration --s=20

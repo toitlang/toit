@@ -245,12 +245,14 @@ void Thread::_boot() {
   auto thread = reinterpret_cast<ThreadData*>(_handle);
   current_thread_ = this;
   ASSERT(current() == this);
+  HeapTagScope scope(ITERATE_CUSTOM_TAGS + OTHER_THREADS_MALLOC_TAG);
   entry();
   xSemaphoreGive(thread->terminated);
   vTaskDelete(null);
 }
 
 bool Thread::spawn(int stack_size, int core) {
+  HeapTagScope scope(ITERATE_CUSTOM_TAGS + THREAD_SPAWN_MALLOC_TAG);
   ThreadData* thread = _new ThreadData();
   if (thread == null) return false;
   thread->terminated = xSemaphoreCreateBinary();
@@ -407,10 +409,170 @@ void OS::clear_heap_tag() {
   heap_caps_set_option(MALLOC_OPTION_THREAD_TAG, null);
 }
 
+class HeapSummaryPage {
+  uword MASK_ = ~(TOIT_PAGE_SIZE - 1);
+ public:
+
+  HeapSummaryPage() {
+    set_address(null);
+  }
+
+  bool unused() {
+    return address_ == 0;
+  }
+
+  bool matches(void* a) {
+    uword address = reinterpret_cast<uword>(a);
+    return (address & MASK_) == address_;
+  }
+
+  void set_address(void* a) {
+    address_ = (reinterpret_cast<uword>(a) & MASK_);
+    memset(void_cast(sizes_), 0, sizeof sizes_);
+    memset(void_cast(counts_), 0, sizeof counts_);
+    users_ = 0;
+    largest_free_ = 0;
+  }
+
+  int register_user(uword tag, uword size) {
+    uint16 saturated_size = Utils::min(size, 0xffffu);
+    if (tag == ITERATE_TAG_FREE) {
+      tag = FREE_MALLOC_TAG;
+    } else {
+      tag -= ITERATE_CUSTOM_TAGS;
+      if (tag < 0 || tag >= NUMBER_OF_MALLOC_TAGS) {
+        tag = UNKNOWN_MALLOC_TAG;
+      }
+    }
+    users_ |= 1 << tag;
+    sizes_[tag] += saturated_size;
+    counts_[tag]++;
+    if (tag == FREE_MALLOC_TAG) {
+      largest_free_ = Utils::max(largest_free_, saturated_size);
+    }
+    return tag;
+  }
+
+  void print() {
+    if (address_ == 0) return;
+    printf("%p: largest free %d\n", reinterpret_cast<void*>(address_), largest_free_);
+    for (int i = 0; i < NUMBER_OF_MALLOC_TAGS; i++) {
+      if (users_ & (1 << i)) {
+        const char* name = name_of_type(i);
+        for (int j = 0; j < 30; j++) printf(" ");
+        printf("%4dbytes %3d allocations %s\n", sizes_[i], counts_[i], name);
+      }
+    }
+  }
+
+  static const char* name_of_type(int tag) {
+    switch (tag) {
+      case MISC_MALLOC_TAG: return "misc";
+      case EXTERNAL_BYTE_ARRAY_MALLOC_TAG: return "external byte array";
+      case BIGNUM_MALLOC_TAG: return "bignum";
+      case EXTERNAL_STRING_MALLOC_TAG: return "external string";
+      case TOIT_HEAP_MALLOC_TAG: return "toit";
+      case UNUSED_TOIT_HEAP_MALLOC_TAG: return "unused";
+      case FREE_MALLOC_TAG: return "free";
+      case LWIP_MALLOC_TAG: return "lwip";
+      case HEAP_OVERHEAD_MALLOC_TAG: return "heap overhead";
+      case EVENT_SOURCE_MALLOC_TAG: return "event source";
+      case OTHER_THREADS_MALLOC_TAG: return "other threads";
+      case THREAD_SPAWN_MALLOC_TAG: return "thread spawn";
+    }
+    return "unknown";
+  }
+
+ private:
+  uword address_;
+  // In order to increase the chances of being able to make a report
+  // on a memory-limited ESP32 we use uint16 here, with a little risk
+  // of overflow.
+  uint16 users_;
+  uint16 sizes_[NUMBER_OF_MALLOC_TAGS];
+  uint16 counts_[NUMBER_OF_MALLOC_TAGS];
+  uint16 largest_free_;
+  uint16 largest_allocation_;
+};
+
+class HeapSummaryCollector {
+  static const int MAX_PAGES_ = 100;
+
+ public:
+  HeapSummaryCollector() {
+    pages_ = _new HeapSummaryPage[MAX_PAGES_];
+    current_page_ = null;
+    memset(void_cast(sizes_), 0, sizeof sizes_);
+    memset(void_cast(counts_), 0, sizeof counts_);
+  }
+
+  bool out_of_memory() const { return pages_ == null; }
+
+  ~HeapSummaryCollector() {
+    delete[] pages_;
+  }
+
+  void register_allocation(void* t, void* address, uword size) {
+    uword tag = reinterpret_cast<uword>(t);
+    if (!current_page_ || !current_page_->matches(address)) {
+      current_page_ = null;
+      for (int i = 0; i < MAX_PAGES_; i++) {
+        if (pages_[i].matches(address)) {
+          current_page_ = pages_ + i;
+          break;
+        }
+        if (pages_[i].unused() || i == MAX_PAGES_ - 1) {
+          current_page_ = pages_ + i;
+          current_page_->set_address(address);
+          break;
+        }
+      }
+    }
+    int type = current_page_->register_user(tag, size);
+    sizes_[type] += size;
+    counts_[type]++;
+  }
+
+  void print() {
+    printf("HEAP REPORT:\n");
+    for (int i = 0; i < NUMBER_OF_MALLOC_TAGS; i++) {
+      printf("%20s: %7d bytes %3d allocations\n", HeapSummaryPage::name_of_type(i), sizes_[i], counts_[i]);
+    }
+    for (int i = 0; i < MAX_PAGES_; i++) {
+      pages_[i].print();
+    }
+  }
+
+ private:
+  HeapSummaryPage* pages_;
+  HeapSummaryPage* current_page_;
+  uword sizes_[NUMBER_OF_MALLOC_TAGS];
+  uword counts_[NUMBER_OF_MALLOC_TAGS];
+};
+
+bool register_allocation(void* self, void* tag, void* address, uword size) {
+  auto collector = reinterpret_cast<HeapSummaryCollector*>(self);
+  collector->register_allocation(tag, address, size);
+  return false;
+}
+
+void OS::heap_summary_report() {
+  HeapSummaryCollector collector;
+  if (collector.out_of_memory()) {
+    printf("Not enough memory for a heap report\n");
+    return;
+  }
+  int flags = ITERATE_ALL_ALLOCATIONS | ITERATE_UNALLOCATED;
+  heap_caps_iterate_tagged_memory_areas(&collector, null, &register_allocation, flags);
+  collector.print();
+}
+
 #else // def TOIT_CMPCTMALLOC
 
 void OS::set_heap_tag(word tag) { }
 void OS::clear_heap_tag() { }
+void OS::heap_summary_report() { }
+
 
 #endif // def TOIT_CMPCTMALLOC
 

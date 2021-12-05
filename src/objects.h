@@ -93,10 +93,10 @@ class Blob {
   Blob(const uint8* address, int length)
       : _address(address), _length(length) {}
 
-  const uint8* address() { return _address; }
-  int length() { return _length; }
+  const uint8* address() const { return _address; }
+  int length() const { return _length; }
 
-  bool slow_equals(const char* c_string);
+  bool slow_equals(const char* c_string) const;
 
  private:
   const uint8* _address;
@@ -731,7 +731,7 @@ class Double : public HeapObject {
 
 class String : public HeapObject {
  public:
-  int16 hash_code() {
+  uint16 hash_code() {
     int result = _raw_hash_code();
     return result != NO_HASH_CODE ? result : _assign_hash_code();
   }
@@ -794,9 +794,9 @@ class String : public HeapObject {
                    length_b);
   }
 
-  int16 compute_hash_code();
-  static int16 compute_hash_code_for(const char* str, int str_len);
-  static int16 compute_hash_code_for(const char* str);
+  uint16 compute_hash_code();
+  static uint16 compute_hash_code_for(const char* str, int str_len);
+  static uint16 compute_hash_code_for(const char* str);
 
   void write_content(SnapshotWriter* st);
   void read_content(SnapshotReader* st, int length);
@@ -918,7 +918,7 @@ class String : public HeapObject {
   static const int INTERNAL_LENGTH_OFFSET = HASH_CODE_OFFSET + HALF_WORD_SIZE;
   static const int INTERNAL_HEADER_SIZE = INTERNAL_LENGTH_OFFSET + HALF_WORD_SIZE;
   static const word OVERHEAD = INTERNAL_HEADER_SIZE + 1;
-  static const int16 NO_HASH_CODE = -1;
+  static const uint16 NO_HASH_CODE = 0xFFFF;
 
   static const int EXTERNAL_LENGTH_OFFSET = INTERNAL_HEADER_SIZE;
   static const int EXTERNAL_ADDRESS_OFFSET = EXTERNAL_LENGTH_OFFSET + WORD_SIZE;
@@ -928,8 +928,8 @@ class String : public HeapObject {
   // Any string that is bigger than this size is snapshotted as external string.
   static const int SNAPSHOT_INTERNAL_SIZE_CUTOFF = TOIT_PAGE_SIZE_32 >> 2;
 
-  int16 _raw_hash_code() { return _half_word_at(HASH_CODE_OFFSET); }
-  void _raw_set_hash_code(int16 value) { _half_word_at_put(HASH_CODE_OFFSET, value); }
+  uint16 _raw_hash_code() { return _half_word_at(HASH_CODE_OFFSET); }
+  void _raw_set_hash_code(uint16 value) { _half_word_at_put(HASH_CODE_OFFSET, value); }
   void _set_length(int value) { _half_word_at_put(INTERNAL_LENGTH_OFFSET, value); }
 
   static int _offset_from(int index) {
@@ -939,7 +939,7 @@ class String : public HeapObject {
     ASSERT(index <= max_internal_size() + 1);
     return INTERNAL_HEADER_SIZE + index;
   }
-  int16 _assign_hash_code();
+  uint16 _assign_hash_code();
 
   uint8* _as_utf8bytes() {
     if (content_on_heap()) {
