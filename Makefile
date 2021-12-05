@@ -22,14 +22,11 @@ ESP32_WIFI_PASSWORD=
 ESP32_WIFI_SSID=
 ESP32_PORT=
 
-
 .PHONY: all
 all: tools
 
-
 .PHONY: tools
 tools: check-env toitpkg toitlsp build/host/bin/toitvm build/host/bin/toitc
-
 
 .PHONY: tools-riscv64
 tools-riscv64: check-env toitpkg toitlsp build/riscv64/bin/toitvm build/riscv64/bin/toitc	
@@ -40,7 +37,6 @@ build/riscv64/bin/toitvm build/riscv64/bin/toitc: build/riscv64/CMakeCache.txt
 
 build/riscv64/CMakeCache.txt: build/riscv64/
 	(cd build/riscv64 && cmake ../../ -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/riscv64.cmake)
-
 
 .PHONY: esp32
 esp32: check-env build/esp32/toit.bin
@@ -56,11 +52,9 @@ build/esp32/toit.bin build/esp32/toit.elf: build/esp32/lib/libtoit_image.a
 build/esp32/lib/libtoit_image.a: build/esp32/esp32.image.s build/esp32/CMakeCache.txt
 	(cd build/esp32 && ninja toit_image)
 
-
 .PHONY:	build/host/bin/toitvm build/host/bin/toitc
 build/host/bin/toitvm build/host/bin/toitc: build/host/CMakeCache.txt
 	(cd build/host && ninja build_toitvm)
-
 
 .PHONY:	build/ia32/bin/toitvm build/ia32/bin/toitc
 build/ia32/bin/toitvm build/ia32/bin/toitc: build/ia32/CMakeCache.txt
@@ -78,6 +72,16 @@ build/esp32/esp32.image.s: build/esp32/ build/snapshot build/host/bin/toitvm too
 build/snapshot: build/host/bin/toitc $(ESP32_ENTRY)
 	build/host/bin/toitc -w $@ $(ESP32_ENTRY) -Dwifi.ssid=$(ESP32_WIFI_SSID) -Dwifi.password=$(ESP32_WIFI_PASSWORD)
 
+GO_USE_INSTALL = 1
+GO_USE_INSTALL_FROM = 1 16
+GO_VERSION = $(subst ., ,$(shell go version | cut -d" " -f 3 | cut -c 3-))
+ifeq ($(shell echo "$(word 1,$(GO_VERSION)) >= $(word 1,$(GO_USE_INSTALL_FROM))" | bc), 1)
+  ifeq ($(shell echo "$(word 2,$(GO_VERSION)) < $(word 2,$(GO_USE_INSTALL_FROM))" | bc), 1)
+  GO_USE_INSTALL = 0
+  endif
+else
+  GO_USE_INSTALL = 0
+endif
 
 GO_BUILD_FLAGS ?=
 ifeq ("$(GO_BUILD_FLAGS)", "")
@@ -96,13 +100,16 @@ build/toitlsp: $(TOITLSP_SOURCE)
 .PHONY: toitlsp
 toitlsp: build/toitlsp
 
-
 .PHONY: toitpkg
 toitpkg: build/toitpkg
 
 TOITPKG_VERSION := "v0.0.0-20211126161923-c00da039da00"
 build/toitpkg:
+ifeq ($(GO_USE_INSTASLL), 1)
+	GOBIN=$(shell pwd)/build go install github.com/toitlang/tpkg/cmd/toitpkg@$(TOITPKG_VERSION)
+else
 	GO111MODULE=on GOBIN=$(shell pwd)/build go get github.com/toitlang/tpkg/cmd/toitpkg@$(TOITPKG_VERSION)
+endif
 
 build/host/:
 	mkdir -p $@
