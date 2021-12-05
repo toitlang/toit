@@ -291,10 +291,16 @@ class List {
 
 class Base64Encoder {
  public:
-  Base64Encoder() : rest(0), bit_count(0) {}
+  Base64Encoder(bool url_mode = false) : rest(0), bit_count(0), url_mode(url_mode) {}
 
-  static inline word output_size(word input_size) {
-    return ((input_size + 2) / 3) * 4;
+  static inline word output_size(word input_size, bool url_mode) {
+    if (!url_mode) return ((input_size + 2) / 3) * 4;
+    // Desired result:
+    // 0 -> 0
+    // 1 -> 2
+    // 2 -> 3
+    // 3 -> 4
+    return (((input_size + 1) * 4) - 2) / 3;
   }
 
   void encode(const uint8* data, word size, const std::function<void (uint8 out_byte)>& f);
@@ -303,6 +309,7 @@ class Base64Encoder {
  private:
   uword rest;
   uword bit_count;
+  bool url_mode;
 };
 
 extern void iram_safe_char_memcpy(char* dest, const char* src, size_t bytes);

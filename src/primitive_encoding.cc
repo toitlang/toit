@@ -23,9 +23,8 @@ namespace toit {
 MODULE_IMPLEMENTATION(encoding, MODULE_ENCODING)
 
 PRIMITIVE(base64_encode)  {
-  ARGS(Blob, data);
-
-  int out_len = Base64Encoder::output_size(data.length());
+  ARGS(Blob, data, bool, url_mode);
+  int out_len = Base64Encoder::output_size(data.length(), url_mode);
 
   Error* error = null;
   ByteArray* buffer = process->allocate_byte_array(out_len, &error);
@@ -33,21 +32,20 @@ PRIMITIVE(base64_encode)  {
   ByteArray::Bytes buffer_bytes(buffer);
 
   word i = 0;
-  Base64Encoder encoder;
+  Base64Encoder encoder(url_mode);
   auto put = [&](uint8 c) {
     buffer_bytes.at_put(i++, c);
   };
 
   encoder.encode(data.address(), data.length(), put);
   encoder.finish(put);
-
   return process->allocate_string_or_error(char_cast(buffer_bytes.address()), out_len);
 }
 
-static int get_for_decode(String* string, int index) {
-  String::Bytes bytes(string);
+static int get_for_decode(const Blob& bytes, int index, bool url_mode) {
   const int ERROR = -1;
-  uint8_t x = bytes.at(index);
+  uint8_t x = bytes.address()[index];
+  if (url_mode && x == '_') return 63;
   if (x >= 'a') {
     if (x > 'z') return ERROR;
     return x - 'a' + 26;
@@ -57,58 +55,86 @@ static int get_for_decode(String* string, int index) {
     return x - 'A';
   }
   if (x >= '0' && x <= '9') return x + 52 - '0';
-  if (x == '+') return 62;
-  if (x == '/') return 63;
-  if (x == '=') {
-    if (index == bytes.length() - 1) return 0;
-    if (index == bytes.length() - 2 && bytes.at(index + 1) == '=') return 0;
-    return ERROR; // '=' can't appear in other positions.
+  if (url_mode) {
+    if (x == '-') return 62;
+  } else {
+    if (x == '+') return 62;
+    if (x == '/') return 63;
   }
   return ERROR;
 }
 
 PRIMITIVE(base64_decode)  {
-  ARGS(String, string);
-  String::Bytes bytes(string);
+  ARGS(Blob, input, bool, url_mode);
+  int length = input.length();
+  int out_len;
+  if (url_mode) {
+    // Padding = signs not required.
+    out_len = (length >> 2) * 3;
+    int last_group_length = length & 3;  // Can be 0 if input length is a multiple of 4.
+    if (last_group_length == 1) {
+      OUT_OF_RANGE;  // 6 bits are not enough to encode another byte.
+    } else if (last_group_length == 2) {
+      out_len++;     // 12 bits for one more byte of output.
+    } else if (last_group_length == 3) {
+      out_len += 2;  // 18 bits for two more bytes of output.
+    }
+  } else {
+    // Padding '=' signs required to make the input a multiple of 4 characters.
+    if ((length & 3) != 0) OUT_OF_RANGE;
+    out_len = (length >> 2) * 3;
+    // Trailing "=" signs indicate a slightly shorter output.
+    if (length > 0 && input.address()[static_cast<unsigned>(length) - 1] == '=') out_len--;
+    if (length > 1 && input.address()[static_cast<unsigned>(length) - 2] == '=') out_len--;
+  }
 
-  int length = bytes.length();
-  if ((length & 3) != 0) OUT_OF_RANGE;
-
-  int out_len = (length >> 2) * 3;
-
-  if (length > 0 && bytes.at(static_cast<unsigned>(length) - 1) == '=') out_len--;
-  if (length > 1 && bytes.at(static_cast<unsigned>(length) - 2) == '=') out_len--;
 
   Error* error = null;
   ByteArray* result = process->allocate_byte_array(out_len, &error);
   if (result == null) return error;
 
   uint8* buffer = ByteArray::Bytes(result).address();
-  for (int i = 0, j = 0; i < out_len; i += 3, j += 4) {
+  // Iterate over the groups of 3 output characters that have 4 regular input characters.
+  for (int i = 0, j = 0; i <= out_len - 3; i += 3, j += 4) {
     uint32_t wrd =
-      (get_for_decode(string, j + 0) << 18) |
-      (get_for_decode(string, j + 1) << 12) |
-      (get_for_decode(string, j + 2) << 6) |
-      (get_for_decode(string, j + 3) << 0);
+      (get_for_decode(input, j + 0, url_mode) << 18) |
+      (get_for_decode(input, j + 1, url_mode) << 12) |
+      (get_for_decode(input, j + 2, url_mode) << 6) |
+      (get_for_decode(input, j + 3, url_mode) << 0);
     // If any of the get_for_decode calls returned -1 then some of the high
     // bits will be set, indicating invalid input.
-    if (wrd >> 24 != 0) {
-      OUT_OF_RANGE;
-    }
+    if (wrd >> 24 != 0) OUT_OF_RANGE;
     buffer[i + 0] = (wrd >> 16) & 0xff;
-    uint8_t byte2 = (wrd >> 8) & 0xff;
-    if (i + 1 < out_len) {
-      buffer[i + 1] = byte2;
-    } else {
-      // If there is padding at the end, then the unused bits must be zero.
-      if (byte2 != 0) OUT_OF_RANGE;
+    buffer[i + 1] = (wrd >> 8) & 0xff;
+    buffer[i + 2] = wrd & 0xff;
+  }
+  int j = (out_len / 3) * 4;
+  switch (out_len % 3) {
+    case 1: {
+      if (!url_mode) {
+        if (input.address()[j + 2] != '=' || input.address()[j + 3] != '=') OUT_OF_RANGE;
+      }
+      uint32_t wrd =
+        (get_for_decode(input, j + 0, url_mode) << 6) |
+        (get_for_decode(input, j + 1, url_mode) << 0);
+      if (wrd >> 24 != 0) OUT_OF_RANGE;
+      if ((wrd & 0xf) != 0) OUT_OF_RANGE;  // Unused bits must be zero.
+      buffer[out_len - 1] = (wrd >> 4) & 0xff;
+      break;
     }
-    uint8_t byte3 = wrd & 0xff;
-    if (i + 2 < out_len) {
-      buffer[i + 2] = byte3;
-    } else {
-      // If there is padding at the end, then the unused bits must be zero.
-      if (byte3 != 0) OUT_OF_RANGE;
+    case 2: {
+      if (!url_mode) {
+        if (input.address()[j + 3] != '=') OUT_OF_RANGE;
+      }
+      uint32_t wrd =
+        (get_for_decode(input, j + 0, url_mode) << 12) |
+        (get_for_decode(input, j + 1, url_mode) << 6) |
+        (get_for_decode(input, j + 2, url_mode) << 0);
+      if (wrd >> 24 != 0) OUT_OF_RANGE;
+      if ((wrd & 0x3) != 0) OUT_OF_RANGE;  // Unused bits must be zero.
+      buffer[out_len - 2] = (wrd >> 10) & 0xff;
+      buffer[out_len - 1] = (wrd >> 2) & 0xff;
+      break;
     }
   }
   return result;

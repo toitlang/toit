@@ -123,12 +123,15 @@ void OS::clear_heap_tag() {
   }
 }
 
+
 #else // def TOIT_CMPCTMALLOC
 
 void OS::set_heap_tag(word tag) { }
 void OS::clear_heap_tag() { }
 
 #endif // def TOIT_CMPCTMALLOC
+
+void OS::heap_summary_report() { }
 
 }
 

@@ -28,9 +28,10 @@ import binary show *
   ```
 **/
 class Program:
+  header / ProgramHeader ::= ?
   // Program graph.
   roots                     / List ::= ?  // List of ToitObject
-  built_in_class_ids_       / List ::= ?  // List of integers
+  built_in_class_ids        / List ::= ?  // List of integers
   invoke_bytecode_offsets   / List ::= ?  // List of integers
   entry_point_indexes       / List ::= ?  // List of indexes into the dispatch_table
   class_tags                / List ::= ?  // List of class tags
@@ -66,11 +67,12 @@ class Program:
 
   constructor snapshot/SnapshotBundle:
     snapshot.parse
+    header                    = snapshot.program_snapshot.program_segment.header_
     roots                     = snapshot.program_snapshot.program_segment.roots_
-    built_in_class_ids_       = snapshot.program_snapshot.program_segment.built_in_class_ids_
+    built_in_class_ids        = snapshot.program_snapshot.program_segment.built_in_class_ids_
     invoke_bytecode_offsets   = snapshot.program_snapshot.program_segment.invoke_bytecode_offsets_
     class_tags                = snapshot.program_snapshot.program_segment.class_bits_.map: it & CLASS_TAG_MASK_
-    class_instance_sizes      = snapshot.program_snapshot.program_segment.class_bits_.map: (it >> CLASS_TAG_SIZE_) & CLASS_TAG_MASK_
+    class_instance_sizes      = snapshot.program_snapshot.program_segment.class_bits_.map: it >> CLASS_TAG_SIZE_
     entry_point_indexes       = snapshot.program_snapshot.program_segment.entry_point_indexes_
     global_variables          = snapshot.program_snapshot.program_segment.global_variables_
     class_check_ids           = snapshot.program_snapshot.program_segment.class_check_ids_
@@ -202,6 +204,23 @@ class SnapshotBundle:
       throw "Invalid snapshot bundle"
     return offsets
 
+class ProgramHeader:
+  block_count32 /int
+  block_count64 /int
+  offheap_pointer_count /int
+  offheap_int32_count /int
+  offheap_byte_count /int
+  back_table_length /int
+  large_integer_id /int
+
+  constructor
+      .block_count32
+      .block_count64
+      .offheap_pointer_count
+      .offheap_int32_count
+      .offheap_byte_count
+      .back_table_length
+      .large_integer_id:
 
 class ProgramSnapshot:
   program_segment / ProgramSegment ::= ?
@@ -404,6 +423,12 @@ abstract class ToitHeapObject extends ToitObject:
   static CLASS_ID_MASK/int ::= (1 << CLASS_ID_BIT_SIZE) - 1
 
   header/int? := null
+  hash_id_/int
+
+  static HASH_COUNTER_ := 0
+
+  constructor:
+    hash_id_ = HASH_COUNTER_++
 
   class_id -> int:
     assert: header
@@ -412,6 +437,8 @@ abstract class ToitHeapObject extends ToitObject:
   class_tag -> int:
     assert: header
     return (header >> CLASS_TAG_OFFSET) & CLASS_TAG_MASK
+
+  hash_code -> int: return hash_id_
 
   abstract read_from heap_segment/HeapSegment optional_length/int
   abstract store_in_heaps heap32/Heap heap64/Heap? optional_length/int -> none
@@ -1131,6 +1158,7 @@ class ObjectSegment extends HeapSegment:
     return program_heap_.object_at offset
 
 class ProgramSegment extends HeapSegment:
+  header_ /ProgramHeader?    := null
   roots_                     := []
   built_in_class_ids_        := []
   invoke_bytecode_offsets_   := []
@@ -1151,11 +1179,21 @@ class ProgramSegment extends HeapSegment:
 
   parse_header_:
     encoded_normal_block_count := read_uint32_
+    block_count32 := encoded_normal_block_count >> 16
+    block_count64 := encoded_normal_block_count & 0xFFFF
     offheap_pointer_count := read_uint32_
     offheap_int32_count   := read_uint32_
     offheap_byte_count    := read_uint32_
     back_table_length     := read_uint32_
     large_integer_id      := read_uint32_
+    header_ = ProgramHeader
+        block_count32
+        block_count64
+        offheap_pointer_count
+        offheap_int32_count
+        offheap_byte_count
+        back_table_length
+        large_integer_id
     return back_table_length
 
   read_program_:

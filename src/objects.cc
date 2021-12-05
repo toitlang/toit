@@ -78,7 +78,7 @@ bool Object::byte_content(Program* program, Blob* blob, BlobKind strings_only) {
   return result;
 }
 
-bool Blob::slow_equals(const char* c_string) {
+bool Blob::slow_equals(const char* c_string) const {
   if (static_cast<size_t>(length()) != strlen(c_string)) return false;
   return memcmp(address(), c_string, length()) == 0;
 }
@@ -376,27 +376,27 @@ bool String::starts_with_vowel() {
   return strchr("aeiouAEIOU", bytes.at(pos)) != null;
 }
 
-int16 String::compute_hash_code() {
+uint16 String::compute_hash_code() {
   Bytes bytes(this);
   return compute_hash_code_for(reinterpret_cast<const char*>(bytes.address()), bytes.length());
 }
 
-int16 String::compute_hash_code_for(const char* str) {
+uint16 String::compute_hash_code_for(const char* str) {
   return compute_hash_code_for(str, strlen(str));
 }
 
-int16 String::compute_hash_code_for(const char* str, int str_len) {
+uint16 String::compute_hash_code_for(const char* str, int str_len) {
   // Trivial computation of hash code for string.
-  int16 hash = str_len;
+  uint16 hash = str_len;
   for (int index = 0; index < str_len; index++) {
     // The sign of 'char' is implementation dependent.
-    // Force the value to be signed to have a deterministic hash.
-    hash = 31 * hash + static_cast<int8>(str[index]);
+    // Force the value to be unsigned to have a deterministic hash.
+    hash = 31 * hash + static_cast<uint8>(str[index]);
   }
   return hash != NO_HASH_CODE ? hash : 0;
 }
 
-int16 String::_assign_hash_code() {
+uint16 String::_assign_hash_code() {
   _raw_set_hash_code(compute_hash_code());
   ASSERT(_raw_hash_code() != NO_HASH_CODE);
   ASSERT(_is_valid_utf8());

@@ -104,24 +104,32 @@ interface Collection:
 
 
 abstract class CollectionBase implements Collection:
+  /// See $Collection.do.
   abstract do [block] -> none
+  /// See $Collection.size.
   abstract size -> int
+  /// See $Collection.==.
   abstract operator == other/Collection -> bool
 
+  /// See $Collection.is_empty.
   is_empty -> bool:
     return size == 0
 
+  /// See $Collection.every.
   every [predicate] -> bool:
     do: if not predicate.call it: return false
     return true
 
+  /// See $Collection.any.
   any [predicate] -> bool:
     do: if predicate.call it: return true
     return false
 
+  /// See $Collection.contains.
   contains element -> bool:
     return any: it == element
 
+  /// See $Collection.reduce.
   reduce [block]:
     if is_empty: throw "Not enough elements"
     result := null
@@ -131,6 +139,7 @@ abstract class CollectionBase implements Collection:
       else: result = block.call result it
     return result
 
+  /// See $Collection.reduce.
   reduce --initial [block]:
     result := initial
     do:
@@ -499,11 +508,29 @@ abstract class List extends CollectionBase:
       str = str + this[it].stringify
     return str + "]"
 
+  /**
+  Calls stringify on each element of the list, and concatenates the results
+    into one string, using the separator.
+
+  # Examples
+  ```
+  [1, 2].join ", "  // "1, 2"
+  ```
+  */
   join separator/string -> string:
     result := join_ 0 size separator: it.stringify
     if result == "": return result
     return result
 
+  /**
+  Calls the block on each element of the list, and concatenates the results
+    into one string, using the separator.
+
+  # Examples
+  ```
+  [1, 2].join ", ": "0x$(%02x it)"  // "0x01, 0x02"
+  ```
+  */
   join separator/string [stringify] -> string:
     result := join_ 0 size separator stringify
     if result == "": return result

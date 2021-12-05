@@ -341,7 +341,8 @@ PRIMITIVE(put_float_32_little_endian) {
   if (unsigned_offset > length || unsigned_offset + 4 >= length) {
     OUT_OF_BOUNDS;
   }
-  *reinterpret_cast<float*>(dest.address() + offset) = value;
+  float raw = value;
+  memcpy(dest.address() + offset, &raw, sizeof raw);
   return process->program()->null_object();
 }
 
@@ -356,7 +357,7 @@ PRIMITIVE(put_float_64_little_endian) {
   if (unsigned_offset > length || unsigned_offset + 8 >= length) {
     OUT_OF_BOUNDS;
   }
-  *reinterpret_cast<double*>(dest.address() + offset) = value;
+  memcpy(dest.address() + offset, &value, sizeof value);
   return process->program()->null_object();
 }
 
@@ -448,6 +449,7 @@ PRIMITIVE(args) {
     // Copy and return the array.
     int length = snapshot_arguments->length();
     Array* result = process->object_heap()->allocate_array(length, process->program()->null_object());
+    if (result == null) ALLOCATION_FAILED;
     for (int index = 0; index < length; index++) result->at_put(index, snapshot_arguments->at(index));
     return result;
   }
@@ -954,14 +956,14 @@ PRIMITIVE(string_length) {
 
 PRIMITIVE(string_hash_code) {
   ARGS(String, receiver);
-  return Smi::from(receiver->hash_code() >> 2);
+  return Smi::from(receiver->hash_code());
 }
 
 PRIMITIVE(string_slice_hash_code) {
   ARGS(Blob, receiver);
   auto hash = String::compute_hash_code_for(reinterpret_cast<const char*>(receiver.address()),
                                             receiver.length());
-  return Smi::from(hash >> 2);
+  return Smi::from(hash);
 }
 
 PRIMITIVE(hash_simple_json_string) {
@@ -973,7 +975,7 @@ PRIMITIVE(hash_simple_json_string) {
     if (c == '"') {
       auto hash = String::compute_hash_code_for(reinterpret_cast<const char*>(bytes.address() + offset),
                                                 i - offset);
-      return Smi::from(hash >> 2);
+      return Smi::from(hash);
     }
   }
   return Smi::from(-1);
@@ -2226,6 +2228,15 @@ PRIMITIVE(dump_heap) {
   return process->program()->null_object();
 #endif
 
+#endif // def TOIT_CMPCTMALLOC
+}
+
+PRIMITIVE(serial_print_heap_report) {
+#ifndef TOIT_CMPCTMALLOC
+  UNIMPLEMENTED_PRIMITIVE;
+#else
+  OS::heap_summary_report();
+  return process->program()->null_object();
 #endif // def TOIT_CMPCTMALLOC
 }
 

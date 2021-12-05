@@ -32,6 +32,7 @@ namespace toit {
   M(udp,     MODULE_UDP)                     \
   M(tls,     MODULE_TLS)                     \
   M(dns,     MODULE_DNS)                     \
+  M(esp32,   MODULE_ESP32)                   \
   M(i2c,     MODULE_I2C)                     \
   M(i2s,     MODULE_I2S)                     \
   M(spi,     MODULE_SPI)                     \
@@ -225,6 +226,7 @@ namespace toit {
   PRIMITIVE(get_system_time, 0)              \
   PRIMITIVE(debug_set_memory_limit, 1)       \
   PRIMITIVE(dump_heap, 1)                    \
+  PRIMITIVE(serial_print_heap_report, 0)     \
   PRIMITIVE(get_env, 1)                      \
   PRIMITIVE(varint_encode, 3)                \
   PRIMITIVE(varint_decode, 2)                \
@@ -324,6 +326,14 @@ namespace toit {
 #define MODULE_DHCP(PRIMITIVE)               \
   PRIMITIVE(wait_for_lwip_dhcp_on_linux, 0)  \
 
+#define MODULE_ESP32(PRIMITIVE)              \
+  PRIMITIVE(reset_reason, 0)                 \
+  PRIMITIVE(enable_external_wakeup, 2)       \
+  PRIMITIVE(wakeup_cause, 0)                 \
+  PRIMITIVE(ext1_wakeup_status, 1)           \
+  PRIMITIVE(total_deep_sleep_time, 0)        \
+  PRIMITIVE(total_run_time, 0)               \
+
 #define MODULE_I2C(PRIMITIVE)                \
   PRIMITIVE(init, 3)                         \
   PRIMITIVE(close, 1)                        \
@@ -363,8 +373,8 @@ namespace toit {
   PRIMITIVE(aes_cbc_close, 1)                \
 
 #define MODULE_ENCODING(PRIMITIVE)           \
-  PRIMITIVE(base64_encode, 1)                \
-  PRIMITIVE(base64_decode, 1)                \
+  PRIMITIVE(base64_encode, 2)                \
+  PRIMITIVE(base64_decode, 2)                \
   PRIMITIVE(hex_encode, 1)                   \
   PRIMITIVE(hex_decode, 1)                   \
 
@@ -392,10 +402,6 @@ namespace toit {
   PRIMITIVE(register_object_notifier, 3)     \
 
 #define MODULE_SNAPSHOT(PRIMITIVE)           \
-  PRIMITIVE(reader_create, 1)                \
-  PRIMITIVE(reader_size_in_bytes, 1)         \
-  PRIMITIVE(reader_read, 1)                  \
-  PRIMITIVE(reader_close, 1)                 \
   PRIMITIVE(launch, 4)                       \
 
 #define MODULE_SERIALIZATION(PRIMITIVE)      \

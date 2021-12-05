@@ -16,6 +16,7 @@
 #pragma once
 
 #include "heap.h"
+#include "heap_report.h"
 #include "linked.h"
 #include "os.h"
 #include "tags.h"
@@ -274,6 +275,7 @@ class LazyEventSource : public EventSource {
   template<class T>
   static T* get_instance() {
     Locker locker(OS::global_mutex());
+    HeapTagScope scope(ITERATE_CUSTOM_TAGS + EVENT_SOURCE_MALLOC_TAG);
     if (!T::_instance) {
       T::_instance = _new T();
       if (!T::_instance) return null;

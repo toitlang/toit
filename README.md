@@ -150,20 +150,41 @@ are licensed under the [MIT](lib/LICENSE) license. The examples contained in the
 directory are licensed under the [0BSD](examples/LICENSE) license.
 
 Certain subdirectories are under their own open source licenses, detailed
-in those directories.  These subdirectories are:
+in those directories and the files they contain. These subdirectories are:
 
-* Every subdirectory under `src/third_party`
-* Every subdirectory under `src/compiler/third_party`
-* Every subdirectory under `lib/font/x11_100dpi`
-* The subdirectory `lib/font/matthew_welch`
+* The subdirectory `lib/font/matthew_welch/`
+* Every subdirectory under `lib/font/x11_100dpi/`
+* Every subdirectory under `src/compiler/third_party/`
+* Every subdirectory under `src/third_party/`
+* Every subdirectory under `third_party/`
 
 # Building
 
 ## Dependencies
 
+### Build system
+
+To build Toit and its dependencies the build host requires:
+
+* [GNU Make](https://www.gnu.org/software/make/)
+* [CMake >= 3.13.3](https://cmake.org/)
+* [Ninja](https://ninja-build.org/)
+* [GCC](https://gcc.gnu.org/)
+* [Go](https://go.dev/)
+
+If you are using a Linux distribution with `apt` capabilities, you can
+issue the following command to install these:
+
+``` sh
+sudo apt install build-essential cmake ninja-build golang
+```
+
+For builds targeting ESP32 hardware additional requirements might be in effect
+depending on the build host's architecture, see paragraph [ESP32 tools](#esp32-tools).
+
 ### ESP-IDF
 
-The VM has a requirement to ESP-IDF, both for Linux and ESP32 builds (for Linux it's for the MBedTLS implementation).
+The VM has a requirement to ESP-IDF, both for Linux and ESP32 builds (for Linux it's for the [Mbed TLS](https://www.trustedfirmware.org/projects/mbed-tls/) implementation).
 
 We recommend you use Toitware's [ESP-IDF fork](https://github.com/toitware/esp-idf) that comes with a few changes:
 
@@ -202,24 +223,27 @@ Remember to update your environment variables:
 . $IDF_PATH/export.sh
 ```
 
-The build system will automatically use a 32-bit build of the Toit compiler to produce the correct executable image for the ESP32.
-Your build might fail if you're on a 64-bit Linux machine and you don't have the support for compiling 32-bit executables installed.
-You can install this support on most Linux distributions by installing the `gcc-multilib` and `g++-multilib` packages. If you
-use `apt-get`, you can use the following command:
+## Build for host machine
 
-``` sh
-sudo apt-get install gcc-multilib g++-multilib
-```
-
-## Build for Linux and Mac
-
-Make sure `IDF_PATH` is set, as described above.
+Make sure `IDF_PATH` is set, and the required build tools are installed as described in dependency sections [ESP-IDF](#esp-idf) and [Build system](#build-system) above.
 
 Then run the following commands at the root of your checkout.
 
 ``` sh
 make tools
 ```
+
+---
+*NOTE*
+
+These instructions have been tested on Linux and macOS.
+
+Windows support is still [preliminary](https://github.com/toitlang/toit/discussions/33), and
+the build instructions may differ for Windows. Let us know on the
+[discussions forum](https://github.com/toitlang/toit/discussions) how we can improve
+this README.
+
+---
 
 This builds the Toit VM, the compiler, the language server and the package manager.
 
@@ -236,7 +260,23 @@ build/toitpkg pkg init --project-root=<some-directory>
 build/toitpkg pkg install --project-root=<some-directory> <package-id>
 ```
 
-The language server can be started with:
+## IDE integration
+
+Toit has a [VS Code](https://code.visualstudio.com/) extension. You can either use the
+[published extension](https://marketplace.visualstudio.com/items?itemName=toit.toit) or
+build it yourself from the
+[sources](https://github.com/toitware/ide-tools).
+
+In the VS Code extension (version 1.3.7+) set the `toitLanguageServer.command` setting to
+`["PATH_TO_TOIT/build/toitlsp", "--toitc=PATH_TO_TOIT/build/host/bin/toitc"]`, where
+`PATH_TO_TOIT` is the path to your Toit checkout.
+
+This makes the extension use the language server that was compiled in the [build step](#build-for-host-machine).
+
+### Other IDEs
+
+The Toit language server is independent of VSCode and can be used with other IDEs.
+It can be started with:
 
 ``` sh
 build/toitlsp --toitc=build/host/bin/toitc
@@ -244,15 +284,8 @@ build/toitlsp --toitc=build/host/bin/toitc
 
 See the instructions of your IDE on how to integrate the language server.
 
-For VSCode you can also use the [published extension](https://marketplace.visualstudio.com/items?itemName=toit.toit).
-
-### Notes for Mac
-
-The support for building for Mac is still work in progress. For now, it isn't possible
-to build firmware images for the ESP32 on a Mac, because it requires compiling and
-running 32-bit executables. We are working on
-[addressing this](https://github.com/toitlang/toit/issues/24).
-
+There are syntax highlighters for VIM and CodeMirror in the
+[ide-tools repository](https://github.com/toitware/ide-tools).
 
 ## Build for ESP32
 
