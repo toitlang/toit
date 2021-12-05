@@ -20,6 +20,7 @@ BUILD_DATE = $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 ESP32_ENTRY=examples/hello.toit
 ESP32_WIFI_PASSWORD=
 ESP32_WIFI_SSID=
+ESP32_PORT=
 
 .PHONY: all
 all: tools
@@ -29,6 +30,11 @@ tools: check-env toitpkg toitlsp build/host/bin/toitvm build/host/bin/toitc
 
 .PHONY: esp32
 esp32: check-env build/esp32/toit.bin
+
+.PHONY: flash
+flash: esp32
+	echo ${IDF_PATH}
+	python $(IDF_PATH)/components/esptool_py/esptool/esptool.py --chip esp32 --port ${ESP32_PORT} --baud 921600 --before default_reset --after hard_reset write_flash -z --flash_mode dio --flash_freq 40m --flash_size detect 0xd000 build/esp32/ota_data_initial.bin 0x1000 build/esp32/bootloader/bootloader.bin 0x10000 build/esp32/toit.bin 0x8000 build/esp32/partitions.bin
 
 build/esp32/toit.bin build/esp32/toit.elf: build/esp32/lib/libtoit_image.a
 	make -C toolchains/esp32/
