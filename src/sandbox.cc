@@ -53,12 +53,12 @@ static int COMPILER_SYSCALLS[] = {
 #endif
   SYS_rt_sigaction,
 
-#ifdef __riscv
+#if defined(__riscv) || defined(__aarch64__)
   SYS_times,
 #else
   SYS_time,
 #endif
-#ifndef __riscv
+#if !defined(__riscv) && !defined(__aarch64__)
   SYS_pipe,
 #endif
   SYS_pipe2,
@@ -69,7 +69,7 @@ static int COMPILER_SYSCALLS[] = {
   SYS_futex,
   SYS_epoll_create1,
   SYS_epoll_ctl,
-#ifdef __riscv
+#if defined(__riscv) || defined(__aarch64__)
   SYS_epoll_pwait,
 #else
   SYS_epoll_wait,
@@ -84,7 +84,7 @@ static int COMPILER_SYSCALLS[] = {
   SYS_getsockopt,
   SYS_fadvise64,
   SYS_shutdown,
-#ifdef __riscv
+#if defined(__riscv) || defined(__aarch64__)
   SYS_ppoll,
 #else
   SYS_poll,
@@ -93,7 +93,7 @@ static int COMPILER_SYSCALLS[] = {
 };
 
 static int MOST_SYSCALLS[] = {
-#ifdef __riscv
+#if defined(__riscv) || defined(__aarch64__)
   #if LINUX_VERSION_CODE >= KERNEL_VERSION(5,0,0)
     SYS_fsopen,
   #else    
@@ -103,7 +103,7 @@ static int MOST_SYSCALLS[] = {
   SYS_open,
 #endif
   SYS_openat,
-#ifndef __riscv
+#if !defined(__riscv) && !defined(__aarch64__)
   SYS_readlink,
 #endif
   SYS_readlinkat,
@@ -124,9 +124,12 @@ static int MOST_SYSCALLS[] = {
 #elif BUILD_64
   SYS_wait4,
   SYS_fstat,
-#ifndef __riscv
+#if !defined(__riscv) && !defined(__aarch64__)
   SYS_lstat,
   SYS_stat,
+#endif
+#ifdef __aarch64__
+  SYS_statx,
 #endif
   SYS_mmap,
   SYS_prlimit64,
@@ -140,24 +143,24 @@ static int MOST_SYSCALLS[] = {
   SYS_getcwd,
   SYS_statfs,
   SYS_umask,
-#ifndef __riscv
+#if !defined(__riscv) && !defined(__aarch64__)
   SYS_mkdir,
 #endif
   SYS_mkdirat,
   SYS_fchdir,
   SYS_dup,
-#ifndef __riscv
+#if !defined(__riscv) && !defined(__aarch64__)
   SYS_dup2,
   SYS_arch_prctl,
 #endif
   SYS_prctl,
   SYS_set_tid_address,
   SYS_execve,
-#ifndef __riscv
+#if !defined(__riscv) && !defined(__aarch64__)
   SYS_access,
 #endif
   SYS_ioctl,
-#ifdef __riscv
+#if defined(__riscv) || defined(__aarch64__)
   SYS_getdents64,
 #else
   SYS_getdents,
@@ -190,12 +193,12 @@ static int SANDBOX_SYSCALLS[] = {
   SYS_lseek,
 #endif
   SYS_rt_sigaction,
-#ifdef __riscv
+#if defined(__riscv) || defined(__aarch64__)
   SYS_times,
 #else
   SYS_time,
 #endif
-#ifndef __riscv
+#if !defined(__riscv) && !defined(__aarch64__)
   SYS_pipe,
 #endif
   SYS_pipe2,
@@ -205,7 +208,9 @@ static int SANDBOX_SYSCALLS[] = {
   SYS_futex,
   SYS_epoll_create1,
   SYS_epoll_ctl,
-#ifndef __riscv
+#if defined(__riscv) || defined(__aarch64__)
+  SYS_epoll_pwait,
+#else
   SYS_epoll_wait,
 #endif
   SYS_getpid,
@@ -219,7 +224,7 @@ static int SANDBOX_SYSCALLS[] = {
   SYS_getsockopt,
   SYS_fadvise64,
   SYS_shutdown,
-#ifdef __riscv
+#if defined(__riscv) || defined(__aarch64__)
   SYS_ppoll,
 #else
   SYS_poll,
