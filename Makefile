@@ -29,7 +29,7 @@ all: tools
 tools: check-env toitpkg toitlsp build/host/bin/toitvm build/host/bin/toitc
 
 .PHONY: tools-riscv64
-tools-riscv64: check-env toitpkg toitlsp build/riscv64/bin/toitvm build/riscv64/bin/toitc	
+tools-riscv64: check-env toitpkg toitlsp build/riscv64/bin/toitvm build/riscv64/bin/toitc
 
 .PHONY: build/riscv64/bin/toitvm build/riscv64/bin/toitc
 build/riscv64/bin/toitvm build/riscv64/bin/toitc: build/riscv64/CMakeCache.txt
