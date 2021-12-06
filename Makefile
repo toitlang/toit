@@ -48,6 +48,18 @@ build/arm64/bin/toitvm build/arm64/bin/toitc: build/arm64/CMakeCache.txt
 build/arm64/CMakeCache.txt: build/arm64/
 	(cd build/arm64 && cmake ../../ -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/arm64.cmake)
 
+
+.PHONY: tools-arm32
+tools-arm32: check-env toitpkg toitlsp build/arm32/bin/toitvm build/arm32/bin/toitc
+
+.PHONY: build/arm32/bin/toitvm build/arm32/bin/toitc
+build/arm32/bin/toitvm build/arm32/bin/toitc: build/arm32/CMakeCache.txt
+	(cd build/arm32 && ninja build_toitvm)
+
+build/arm32/CMakeCache.txt: build/arm32/
+	(cd build/arm32 && cmake ../../ -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/arm32.cmake)
+
+
 .PHONY: esp32
 esp32: check-env build/esp32/toit.bin
 
@@ -124,7 +136,7 @@ build/esp32/: check-env
 	mkdir -p $@
 	make -C toolchains/esp32 -s $(shell pwd)/build/esp32/include/sdkconfig.h
 
-build/riscv64/ build/arm64/:
+build/riscv64/ build/arm64/ build/arm32/:
 	mkdir -p $@
 
 .PHONY:	clean check-env
