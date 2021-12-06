@@ -66,6 +66,8 @@ sudo apt install build-essential cmake ninja-build golang
 For builds targeting ESP32 hardware additional requirements might be in effect
 depending on the build host's architecture, see paragraph [ESP32 tools](#esp32-tools).
 
+For builds targeting RISC-V hardware, see the [RISC-V readme](README_RISCV.md).
+
 ### ESP-IDF
 
 The VM has a requirement to ESP-IDF, both for Linux and ESP32 builds (for Linux it's for the [Mbed TLS](https://www.trustedfirmware.org/projects/mbed-tls/) implementation).

@@ -26,6 +26,7 @@
 #include <linux/seccomp.h>
 #include <sys/prctl.h>
 #include <sys/syscall.h>
+#include <linux/version.h>
 
 #include "sandbox.h"
 #endif
@@ -51,8 +52,15 @@ static int COMPILER_SYSCALLS[] = {
   SYS_mmap,
 #endif
   SYS_rt_sigaction,
+
+#ifdef __riscv
+  SYS_times,
+#else
   SYS_time,
+#endif
+#ifndef __riscv
   SYS_pipe,
+#endif
   SYS_pipe2,
   SYS_set_robust_list,
   SYS_mprotect,
@@ -61,7 +69,11 @@ static int COMPILER_SYSCALLS[] = {
   SYS_futex,
   SYS_epoll_create1,
   SYS_epoll_ctl,
+#ifdef __riscv
+  SYS_epoll_pwait,
+#else
   SYS_epoll_wait,
+#endif
   SYS_getpid,
   SYS_getuid,
   SYS_geteuid,
@@ -72,14 +84,28 @@ static int COMPILER_SYSCALLS[] = {
   SYS_getsockopt,
   SYS_fadvise64,
   SYS_shutdown,
+#ifdef __riscv
+  SYS_ppoll,
+#else
   SYS_poll,
+#endif
   -1
 };
 
 static int MOST_SYSCALLS[] = {
+#ifdef __riscv
+  #if LINUX_VERSION_CODE >= KERNEL_VERSION(5,0,0)
+    SYS_fsopen,
+  #else    
+    SYS_mq_open,
+  #endif
+#else
   SYS_open,
+#endif
   SYS_openat,
+#ifndef __riscv
   SYS_readlink,
+#endif
   SYS_readlinkat,
   SYS_clone,
   SYS_getppid,
@@ -98,8 +124,10 @@ static int MOST_SYSCALLS[] = {
 #elif BUILD_64
   SYS_wait4,
   SYS_fstat,
+#ifndef __riscv
   SYS_lstat,
   SYS_stat,
+#endif
   SYS_mmap,
   SYS_prlimit64,
   SYS_newfstatat,
@@ -112,18 +140,28 @@ static int MOST_SYSCALLS[] = {
   SYS_getcwd,
   SYS_statfs,
   SYS_umask,
+#ifndef __riscv
   SYS_mkdir,
+#endif
   SYS_mkdirat,
   SYS_fchdir,
   SYS_dup,
+#ifndef __riscv
   SYS_dup2,
   SYS_arch_prctl,
+#endif
   SYS_prctl,
   SYS_set_tid_address,
   SYS_execve,
+#ifndef __riscv
   SYS_access,
+#endif
   SYS_ioctl,
+#ifdef __riscv
+  SYS_getdents64,
+#else
   SYS_getdents,
+#endif
   SYS_unlinkat,
   SYS_socket,
   SYS_setsockopt,
@@ -152,8 +190,14 @@ static int SANDBOX_SYSCALLS[] = {
   SYS_lseek,
 #endif
   SYS_rt_sigaction,
+#ifdef __riscv
+  SYS_times,
+#else
   SYS_time,
+#endif
+#ifndef __riscv
   SYS_pipe,
+#endif
   SYS_pipe2,
   SYS_set_robust_list,
   SYS_mprotect,
@@ -161,7 +205,9 @@ static int SANDBOX_SYSCALLS[] = {
   SYS_futex,
   SYS_epoll_create1,
   SYS_epoll_ctl,
+#ifndef __riscv
   SYS_epoll_wait,
+#endif
   SYS_getpid,
   SYS_getuid,
   SYS_geteuid,
@@ -173,7 +219,11 @@ static int SANDBOX_SYSCALLS[] = {
   SYS_getsockopt,
   SYS_fadvise64,
   SYS_shutdown,
+#ifdef __riscv
+  SYS_ppoll,
+#else
   SYS_poll,
+#endif
   -1
 };
 #endif
