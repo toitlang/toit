@@ -14,18 +14,18 @@
 | ![](https://img.shields.io/static/v1?label=&message=TODO&color=orange) | Embedded support |
 
 
-## 1) Environment Setup (RISC-V Example)
+## 1) Environment setup (RISC-V example)
 Install a Debian-based Linux distro (choose one)
 - SiFive Unmatched: [Ubuntu Server 20.04](https://ubuntu.com/tutorials/how-to-install-ubuntu-on-risc-v-hifive-boards#1-overview)
 - Virtual Machine: [RISC-V VM with QEMU](https://colatkinson.site/linux/riscv/2021/01/27/riscv-qemu/)
 
-## 2) Install Dependencies
+## 2) Install dependencies
 ``` sh
 apt update
 apt install git build-essential bc cmake python3 python3-pip python-is-python3 libffi-dev libssl-dev cargo golang ninja-build
 ```
 
-## 3) Clone Sources 
+## 3) Clone sources 
 ``` sh
 git clone https://github.com/toitware/esp-idf.git
 pushd esp-idf/
@@ -46,7 +46,7 @@ cd toit
 make tools
 ```
 
-## 5) Run Examples
+## 5) Run examples
 ``` sh
 build/host/bin/toitvm examples/hello.toit
 build/host/bin/toitvm examples/bubble_sort.toit
@@ -56,7 +56,7 @@ build/host/bin/toitvm examples/mandelbrot.toit
 </br>
 </br>
 
-# Cross-Compiling
+# Cross-compiling
 How to compile the Toit binaries (toitc and toitvm) for another architecture (ie. RISC-V) from an amd64 host
 
 ## 1) Compile host tools
