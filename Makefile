@@ -85,7 +85,6 @@ build/arm64/bin/toitvm build/arm64/bin/toitc: build/arm64/CMakeCache.txt
 build/arm64/CMakeCache.txt: build/arm64/
 	(cd build/arm64 && cmake ../../ -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/arm64.cmake)
 
-
 .PHONY: tools-arm32
 tools-arm32: check-env toitpkg toitlsp build/arm32/bin/toitvm build/arm32/bin/toitc
 
@@ -95,7 +94,6 @@ build/arm32/bin/toitvm build/arm32/bin/toitc: build/arm32/CMakeCache.txt
 
 build/arm32/CMakeCache.txt: build/arm32/
 	(cd build/arm32 && cmake ../../ -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/arm32.cmake)
-
 
 .PHONY: esp32
 esp32: check-env build/esp32/toit.bin
