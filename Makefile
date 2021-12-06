@@ -75,6 +75,16 @@ build/riscv64/bin/toitvm build/riscv64/bin/toitc: build/riscv64/CMakeCache.txt
 build/riscv64/CMakeCache.txt: build/riscv64/
 	(cd build/riscv64 && cmake ../../ -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/riscv64.cmake)
 
+.PHONY: tools-arm64
+tools-arm64: check-env toitpkg toitlsp build/arm64/bin/toitvm build/arm64/bin/toitc
+
+.PHONY: build/arm64/bin/toitvm build/arm64/bin/toitc
+build/arm64/bin/toitvm build/arm64/bin/toitc: build/arm64/CMakeCache.txt
+	(cd build/arm64 && ninja build_toitvm)
+
+build/arm64/CMakeCache.txt: build/arm64/
+	(cd build/arm64 && cmake ../../ -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/arm64.cmake)
+
 .PHONY: esp32
 esp32: check-env build/esp32/toit.bin
 
