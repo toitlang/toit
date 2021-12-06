@@ -66,7 +66,7 @@ sudo apt install build-essential cmake ninja-build golang
 For builds targeting ESP32 hardware additional requirements might be in effect
 depending on the build host's architecture, see paragraph [ESP32 tools](#esp32-tools).
 
-For builds targeting RISC-V, ARM32, or ARM64 hardware, see the [Other Platforms README](README_OTHERPLATFORMS.md).
+For builds targeting RISC-V, ARM32, or ARM64 hardware, see the [Other platforms README](README_OTHERPLATFORMS.md).
 
 ### ESP-IDF
 
