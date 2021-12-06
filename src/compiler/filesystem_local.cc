@@ -36,7 +36,7 @@ extern int __xstat64(int ver, const char* path, struct stat64* stat_buf);
 
 }
 
-#if !defined(__riscv) && !defined(TOIT_LINUX)
+#if defined(TOIT_LINUX) && !defined(__riscv)
   #define USE_XSTAT64 1
 #endif
 
