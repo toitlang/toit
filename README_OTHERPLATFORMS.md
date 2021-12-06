@@ -27,9 +27,8 @@ apt install git build-essential bc cmake python3 python3-pip python-is-python3 l
 
 ## 3) Clone Sources 
 ``` sh
-#ESP-IDF, slightly modified to compile for RISCV
-git clone https://github.com/dsobotta/esp-idf-riscv.git
-pushd esp-idf-riscv/
+git clone https://github.com/toitware/esp-idf.git
+pushd esp-idf/
 git checkout patch-head-4.3-3
 git submodule update --init --recursive
 popd
