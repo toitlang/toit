@@ -905,8 +905,8 @@ class ToitArray extends ToitHeapObject:
     size.repeat:
       element := o_.content[it]
       element_address := (ToitHeapObject element).write_to image
-      element_offset := address + it * word_size
-      image.heap.put_word --at=element_offset element_address
+      element_offset := address + array_header_byte_size + it * word_size
+      image.heap.put_heap_pointer --at=element_offset element_address
 
     return to_encoded_address address
 
@@ -1094,7 +1094,7 @@ class ToitInstance extends ToitHeapObject:
 
     o_.fields.size.repeat:
       field := o_.fields[it]
-      field_address := (ToitHeapObject field).write_to_ image
+      field_address := (ToitHeapObject field).write_to image
       field_offset := address + header_byte_size + (it * word_size)
       image.heap.put_heap_pointer --at=field_offset field_address
 

@@ -88,6 +88,9 @@ class Stream implements Reader:
   close:
     close_ fd_
 
+  is_a_terminal -> bool:
+    return false
+
 // Returns a file descriptor.  Only for use on actual files, not pipes,
 // devices, etc.
 open_ name flags permissions:
