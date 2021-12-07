@@ -22,6 +22,8 @@ jobs:
           cmake --version
           gcc --version
       - uses: actions/checkout@v2
+        with:
+          submodules: "recursive"
       - name: make
         run: |
           export IDF_PATH="$PWD/third_party/esp-idf"
