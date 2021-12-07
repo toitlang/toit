@@ -1,0 +1,34 @@
+name: Build Linux
+
+on:
+  push:
+    branches: [build-action]
+# on:
+# push:
+#   branches: [master]
+# pull_request:
+#   branches: [master]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install ninja-build cmake
+          ninja --version
+          cmake --version
+          gcc --version
+      - uses: actions/checkout@v2
+      - name: make
+        run: |
+          export IDF_PATH="$PWD/third_party/esp-idf"
+          make tools
+      - uses: actions/upload-artifact@v2
+        with:
+          name: linux-build
+          path: |
+            $PWD/build/host/bin/toit*
+            $PWD/build/host/bin/lib/
