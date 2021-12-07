@@ -29,7 +29,7 @@ PRIMITIVE(writer_create) {
   ByteArray* result = process->object_heap()->allocate_proxy();
   if (result == null) ALLOCATION_FAILED;
 
-  FlashRegistry::erase_chunk(offset, byte_size);
+  if (!FlashRegistry::erase_chunk(offset, byte_size)) OUT_OF_BOUNDS;
   void* address = FlashRegistry::memory(offset, byte_size);
   ProgramImage image(address, byte_size);
   ImageOutputStream* output = _new ImageOutputStream(image);
