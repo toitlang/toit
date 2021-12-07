@@ -11,16 +11,14 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
 
     steps:
       - name: Install dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install ninja-build cmake
+          brew install cmake ninja
           ninja --version
           cmake --version
-          gcc --version
       - uses: actions/checkout@v2
         with:
           submodules: "recursive"
@@ -30,7 +28,7 @@ jobs:
         run: make tools
       - uses: actions/upload-artifact@v2
         with:
-          name: linux-build
+          name: macos-build
           path: |
             build/host/bin/toit*
             build/host/bin/lib/

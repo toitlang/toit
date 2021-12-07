@@ -1,4 +1,4 @@
-name: Build Linux
+name: Build Windows
 
 on:
   push:
@@ -11,16 +11,14 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
 
     steps:
       - name: Install dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install ninja-build cmake
+          choco install ninja cmake
           ninja --version
           cmake --version
-          gcc --version
       - uses: actions/checkout@v2
         with:
           submodules: "recursive"
@@ -30,7 +28,7 @@ jobs:
         run: make tools
       - uses: actions/upload-artifact@v2
         with:
-          name: linux-build
+          name: windows-build
           path: |
             build/host/bin/toit*
             build/host/bin/lib/
