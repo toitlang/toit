@@ -2,7 +2,7 @@
 # Contributor Covenant Code of Conduct
 
 The following code forms the foundation for the
-[Toit language](https://github.com/toitlang/toit) community.
+[Toit language](https://github.com/toitlang) community.
 
 ## Our Pledge
 
