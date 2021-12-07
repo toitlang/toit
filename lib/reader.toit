@@ -36,8 +36,7 @@ interface SizedReader implements Reader:
   size -> int
 
 /** A reader wrapper that buffers the content offered by a reader. */
-// TODO(Lau): Why is this not a Reader?
-class BufferedReader:
+class BufferedReader implements Reader:
   reader_/Reader := ?
 
   // An array of byte arrays that have arrived but are not yet processed.
