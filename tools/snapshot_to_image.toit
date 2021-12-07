@@ -18,6 +18,8 @@ import .snapshot
 
 import .file as file
 
+BINARY_OPTION ::= "--binary"
+
 // This program reads a snapshot, converts it into an image
 // and dumps the content as a GNU assembler file.
 class AssemblerOutput:
@@ -56,18 +58,28 @@ class AssemblerOutput:
     out.write "\n"
 
 main args:
-  if args.size != 2:
-    print_ "Usage: snapshot_to_image <snapshot> <output>"
+  if args.size != 2 and args.size != 3:
+    print_ "Usage: snapshot_to_image [$BINARY_OPTION] <snapshot> <output>"
     return
+
+  binary_output := false
+  if args.contains BINARY_OPTION:
+    binary_output = true
+    args = args.filter: it != BINARY_OPTION
+
   word_size := 4
-  out := file.Stream.for_write args[1]
+  output_path := args[1]
+  out := file.Stream.for_write output_path
   snapshot_bundle := SnapshotBundle.from_file args[0]
   program := snapshot_bundle.decode
   image := build_image program
   relocatable := image.build_relocatable
-  output := AssemblerOutput relocatable.size out
-  chunk_size := (word_size * 8 + 1) * word_size
-  List.chunk_up 0 relocatable.size chunk_size: | from to |
-    output.write relocatable[from..to]
-  output.write_end
+  if binary_output:
+    out.write relocatable
+  else:
+    output := AssemblerOutput relocatable.size out
+    chunk_size := (word_size * 8 + 1) * word_size
+    List.chunk_up 0 relocatable.size chunk_size: | from to |
+      output.write relocatable[from..to]
+    output.write_end
   out.close
