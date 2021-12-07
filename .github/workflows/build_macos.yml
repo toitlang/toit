@@ -1,4 +1,4 @@
-name: Build Linux
+name: Build macos
 
 on:
   push:
@@ -24,7 +24,7 @@ jobs:
           submodules: "recursive"
       - name: make
         env:
-          IDF_PATH: ${{env.GITHUB_WORKSPACE}}/third_party/esp-idf
+          IDF_PATH: ${{github.workspace}}/third_party/esp-idf
         run: make tools
       - uses: actions/upload-artifact@v2
         with:
