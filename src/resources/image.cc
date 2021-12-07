@@ -69,10 +69,8 @@ PRIMITIVE(writer_write) {
 PRIMITIVE(writer_commit) {
   ARGS(ImageOutputStream, output, Blob, id_bytes);
 
-  // TODO(florian): id_bytes_length is unused. Should probably be used to check
-  // that id has the right size.
   ProgramImage image = output->image();
-  if (output->cursor() != output->image().end()) OUT_OF_BOUNDS;
+  if (!image.is_valid() || output->cursor() != image.end()) OUT_OF_BOUNDS;
 
   // Write program header as the last thing. Only a complete flash write
   // will mark the program as valid.
