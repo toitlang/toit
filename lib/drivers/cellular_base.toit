@@ -89,9 +89,9 @@ abstract class CellularBase implements Cellular:
     result := []
     operators.do: | o |
       if o is List and o.size == 5 and o[1] is string and o[0] != 3:  // 3 = operator forbidden.
-        rat := o[3] is int ? o[3] : null
+        rat := o[4] is int ? o[4] : null
         result.add
-          Operator o[2] --rat=rat
+          Operator o[3] --rat=rat
     return result
 
   connect_psm:
@@ -105,12 +105,8 @@ abstract class CellularBase implements Cellular:
     is_connected := false
 
     at_.do: | session/at.Session |
-
       if not operator:
-        // Only set COPS mode to automatic (0) if it's not already
-        // in that mode.
-        if (session.send COPS.read).last.first != 0:
-          session.send COPS.automatic
+        session.send COPS.automatic
 
       // Set operator after enabling the radio.
       is_connected = wait_for_connected_ session operator
@@ -123,8 +119,7 @@ abstract class CellularBase implements Cellular:
       at_.do: | session/at.Session |
         res := (session.send COPS.read).last
         if res.size == 4 and res[1] == COPS.FORMAT_NUMERIC and res[2] is string and res[2].size == 5:
-          rat := res[3] is int ? res[3] : null
-          return Operator res[2] --rat=rat
+          return Operator res[2]
     return null
 
   detach:
@@ -260,7 +255,6 @@ abstract class CellularBase implements Cellular:
     try:
       if operator:
         timeout := Duration --us=(task.deadline - Time.monotonic_us)
-        session.send COPS.read
         result := session.send
           COPS.manual operator.op --timeout=timeout --rat=operator.rat
 

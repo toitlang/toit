@@ -364,9 +364,17 @@ static const char base64_output_table[12] = {
     1, '=' + 1
 };
 
-// Base-64 encode a number between 0 and 64 to the characters A-Za-z0-9+/=
-static uint8 write_64(int bits) {
-  const char* p = base64_output_table;
+static const char base64url_output_table[12] = {
+    26, 'Z' + 1,
+    26, 'z' + 1,
+    10, '9' + 1,
+    1, '-' + 1,
+    1, '_' + 1,
+    1, '=' + 1
+};
+
+// Base-64 encode a number between 0 and 64 to the characters defined by p.
+static uint8 write_64(int bits, const char* p) {
   while (true) {
     bits -= *p;
     p += 2;
@@ -381,13 +389,14 @@ void Base64Encoder::encode(const uint8* data, word size, const std::function<voi
   // Output a buffer in base64 encoding, outputting 3 input bytes as 4 output
   // bytes.
   word r = rest;
+  const char* table = url_mode ? base64url_output_table : base64_output_table;
   word c = bit_count;
   for (word i = 0; i < size; i++) {
     int byte = data[i];
     r = (r << 8) | byte;
     c += 8;
     while (c >= 6) {
-      f(write_64((r >> (c - 6)) & 0x3f));
+      f(write_64((r >> (c - 6)) & 0x3f, table));
       c -= 6;
     }
   }
@@ -397,12 +406,18 @@ void Base64Encoder::encode(const uint8* data, word size, const std::function<voi
 
 void Base64Encoder::finish(const std::function<void (uint8 out_byte)>& f) {
   // Shift remaining bits to high end of 6-bit field.
+  word r = (rest << (6 - bit_count)) & 0x3f;
+  if (url_mode) {
+    if (bit_count != 0) {
+      f(write_64(r, base64url_output_table));
+    }
+    return;
+  }
   word c = bit_count;
-  word r = (rest << (6 - c)) & 0x3f;
-  // Turn 0, 2 or 4 into 0, 3 or 2.
+  // Turn 0, 2 or 4 remaining bits into into 0, 3 or 2 bytes to output.
   int iterations = "\0.\3.\2"[c];
   for (int i = iterations; i > 0; i--) {
-    f(write_64(r));
+    f(write_64(r, base64_output_table));
     r = 64;  // Pad with "=".
   }
 }

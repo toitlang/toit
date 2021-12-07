@@ -20,6 +20,7 @@ BUILD_DATE = $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 ESP32_ENTRY=examples/hello.toit
 ESP32_WIFI_PASSWORD=
 ESP32_WIFI_SSID=
+ESP32_PORT=
 
 .PHONY: all
 all: tools
@@ -27,8 +28,43 @@ all: tools
 .PHONY: tools
 tools: check-env toitpkg toitlsp build/host/bin/toitvm build/host/bin/toitc
 
+.PHONY: tools-riscv64
+tools-riscv64: check-env toitpkg toitlsp build/riscv64/bin/toitvm build/riscv64/bin/toitc
+
+.PHONY: build/riscv64/bin/toitvm build/riscv64/bin/toitc
+build/riscv64/bin/toitvm build/riscv64/bin/toitc: build/riscv64/CMakeCache.txt
+	(cd build/riscv64 && ninja build_toitvm)
+
+build/riscv64/CMakeCache.txt: build/riscv64/
+	(cd build/riscv64 && cmake ../../ -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/riscv64.cmake)
+
+.PHONY: tools-arm64
+tools-arm64: check-env toitpkg toitlsp build/arm64/bin/toitvm build/arm64/bin/toitc
+
+.PHONY: build/arm64/bin/toitvm build/arm64/bin/toitc
+build/arm64/bin/toitvm build/arm64/bin/toitc: build/arm64/CMakeCache.txt
+	(cd build/arm64 && ninja build_toitvm)
+
+build/arm64/CMakeCache.txt: build/arm64/
+	(cd build/arm64 && cmake ../../ -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/arm64.cmake)
+
+.PHONY: tools-arm32
+tools-arm32: check-env toitpkg toitlsp build/arm32/bin/toitvm build/arm32/bin/toitc
+
+.PHONY: build/arm32/bin/toitvm build/arm32/bin/toitc
+build/arm32/bin/toitvm build/arm32/bin/toitc: build/arm32/CMakeCache.txt
+	(cd build/arm32 && ninja build_toitvm)
+
+build/arm32/CMakeCache.txt: build/arm32/
+	(cd build/arm32 && cmake ../../ -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/arm32.cmake)
+
 .PHONY: esp32
 esp32: check-env build/esp32/toit.bin
+
+.PHONY: flash
+flash: esp32
+	echo ${IDF_PATH}
+	python $(IDF_PATH)/components/esptool_py/esptool/esptool.py --chip esp32 --port ${ESP32_PORT} --baud 921600 --before default_reset --after hard_reset write_flash -z --flash_mode dio --flash_freq 40m --flash_size detect 0xd000 build/esp32/ota_data_initial.bin 0x1000 build/esp32/bootloader/bootloader.bin 0x10000 build/esp32/toit.bin 0x8000 build/esp32/partitions.bin
 
 build/esp32/toit.bin build/esp32/toit.elf: build/esp32/lib/libtoit_image.a
 	make -C toolchains/esp32/
@@ -40,30 +76,23 @@ build/esp32/lib/libtoit_image.a: build/esp32/esp32.image.s build/esp32/CMakeCach
 build/host/bin/toitvm build/host/bin/toitc: build/host/CMakeCache.txt
 	(cd build/host && ninja build_toitvm)
 
-.PHONY:	build/ia32/bin/toitvm build/ia32/bin/toitc
-build/ia32/bin/toitvm build/ia32/bin/toitc: build/ia32/CMakeCache.txt
-	(cd build/ia32 && ninja build_toitvm)
-
 build/host/CMakeCache.txt: build/host/
 	(cd build/host && cmake ../.. -G Ninja -DCMAKE_BUILD_TYPE=Release)
-
-build/ia32/CMakeCache.txt: build/ia32/
-	(cd build/ia32 && cmake ../.. -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/ia32.cmake)
 
 build/esp32/CMakeCache.txt: build/esp32/
 	(cd build/esp32 && IMAGE=build/esp32/esp32.image.s cmake ../../ -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/esp32/esp32.cmake --no-warn-unused-cli)
 
-build/esp32/esp32.image.s: build/esp32/ build/snapshot build/ia32/bin/toitvm tools/snapshot_to_image.toit
-	build/ia32/bin/toitvm tools/snapshot_to_image.toit build/snapshot $@
+build/esp32/esp32.image.s: build/esp32/ build/snapshot build/host/bin/toitvm tools/snapshot_to_image.toit
+	build/host/bin/toitvm tools/snapshot_to_image.toit build/snapshot $@
 
-build/snapshot: build/ia32/bin/toitc $(ESP32_ENTRY)
-	build/ia32/bin/toitc -w $@ $(ESP32_ENTRY) -Dwifi.ssid=$(ESP32_WIFI_SSID) -Dwifi.password=$(ESP32_WIFI_PASSWORD)
+build/snapshot: build/host/bin/toitc $(ESP32_ENTRY)
+	build/host/bin/toitc -w $@ $(ESP32_ENTRY) -Dwifi.ssid=$(ESP32_WIFI_SSID) -Dwifi.password=$(ESP32_WIFI_PASSWORD)
 
 GO_USE_INSTALL = 1
 GO_USE_INSTALL_FROM = 1 16
-GO_VERSION = $(subst ., ,$(shell go version |grep --perl-regexp --only-matching "(?<=go version go)[[:digit:]]*\.[[:digit:]]*\.[[:digit:]]*(?= .*/.*)"))
-ifeq ($(shell echo "$(word 1,$(GO_VERSION)) >= $(word 1,$(GO_USE_INSTALL_FROM))"|bc), 1)
-  ifeq ($(shell echo "$(word 2,$(GO_VERSION)) < $(word 2,$(GO_USE_INSTALL_FROM))"|bc), 1)
+GO_VERSION = $(subst ., ,$(shell go version | cut -d" " -f 3 | cut -c 3-))
+ifeq ($(shell echo "$(word 1,$(GO_VERSION)) >= $(word 1,$(GO_USE_INSTALL_FROM))" | bc), 1)
+  ifeq ($(shell echo "$(word 2,$(GO_VERSION)) < $(word 2,$(GO_USE_INSTALL_FROM))" | bc), 1)
   GO_USE_INSTALL = 0
   endif
 else
@@ -98,12 +127,15 @@ else
 	GO111MODULE=on GOBIN=$(shell pwd)/build go get github.com/toitlang/tpkg/cmd/toitpkg@$(TOITPKG_VERSION)
 endif
 
-build/ia32/ build/host/:
+build/host/:
 	mkdir -p $@
 
 build/esp32/: check-env
 	mkdir -p $@
 	make -C toolchains/esp32 -s $(shell pwd)/build/esp32/include/sdkconfig.h
+
+build/riscv64/ build/arm64/ build/arm32/:
+	mkdir -p $@
 
 .PHONY:	clean check-env
 clean:

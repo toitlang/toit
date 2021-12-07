@@ -26,13 +26,14 @@
 #include <linux/seccomp.h>
 #include <sys/prctl.h>
 #include <sys/syscall.h>
+#include <linux/version.h>
 
 #include "sandbox.h"
 #endif
 
 namespace toit {
 
-#ifdef __linux__
+#if defined(__linux__) && !defined(__arm__)
 static int COMPILER_SYSCALLS[] = {
   SYS_brk,
   SYS_rt_sigreturn,
@@ -51,8 +52,15 @@ static int COMPILER_SYSCALLS[] = {
   SYS_mmap,
 #endif
   SYS_rt_sigaction,
+
+#if defined(__riscv) || defined(__aarch64__)
+  SYS_times,
+#else
   SYS_time,
+#endif
+#if !defined(__riscv) && !defined(__aarch64__)
   SYS_pipe,
+#endif
   SYS_pipe2,
   SYS_set_robust_list,
   SYS_mprotect,
@@ -61,7 +69,11 @@ static int COMPILER_SYSCALLS[] = {
   SYS_futex,
   SYS_epoll_create1,
   SYS_epoll_ctl,
+#if defined(__riscv) || defined(__aarch64__)
+  SYS_epoll_pwait,
+#else
   SYS_epoll_wait,
+#endif
   SYS_getpid,
   SYS_getuid,
   SYS_geteuid,
@@ -72,14 +84,28 @@ static int COMPILER_SYSCALLS[] = {
   SYS_getsockopt,
   SYS_fadvise64,
   SYS_shutdown,
+#if defined(__riscv) || defined(__aarch64__)
+  SYS_ppoll,
+#else
   SYS_poll,
+#endif
   -1
 };
 
 static int MOST_SYSCALLS[] = {
+#if defined(__riscv) || defined(__aarch64__)
+  #if LINUX_VERSION_CODE >= KERNEL_VERSION(5,0,0)
+    SYS_fsopen,
+  #else    
+    SYS_mq_open,
+  #endif
+#else
   SYS_open,
+#endif
   SYS_openat,
+#if !defined(__riscv) && !defined(__aarch64__)
   SYS_readlink,
+#endif
   SYS_readlinkat,
   SYS_clone,
   SYS_getppid,
@@ -98,8 +124,13 @@ static int MOST_SYSCALLS[] = {
 #elif BUILD_64
   SYS_wait4,
   SYS_fstat,
+#if !defined(__riscv) && !defined(__aarch64__)
   SYS_lstat,
   SYS_stat,
+#endif
+#ifdef __aarch64__
+  SYS_statx,
+#endif
   SYS_mmap,
   SYS_prlimit64,
   SYS_newfstatat,
@@ -112,18 +143,28 @@ static int MOST_SYSCALLS[] = {
   SYS_getcwd,
   SYS_statfs,
   SYS_umask,
+#if !defined(__riscv) && !defined(__aarch64__)
   SYS_mkdir,
+#endif
   SYS_mkdirat,
   SYS_fchdir,
   SYS_dup,
+#if !defined(__riscv) && !defined(__aarch64__)
   SYS_dup2,
   SYS_arch_prctl,
+#endif
   SYS_prctl,
   SYS_set_tid_address,
   SYS_execve,
+#if !defined(__riscv) && !defined(__aarch64__)
   SYS_access,
+#endif
   SYS_ioctl,
+#if defined(__riscv) || defined(__aarch64__)
+  SYS_getdents64,
+#else
   SYS_getdents,
+#endif
   SYS_unlinkat,
   SYS_socket,
   SYS_setsockopt,
@@ -152,8 +193,14 @@ static int SANDBOX_SYSCALLS[] = {
   SYS_lseek,
 #endif
   SYS_rt_sigaction,
+#if defined(__riscv) || defined(__aarch64__)
+  SYS_times,
+#else
   SYS_time,
+#endif
+#if !defined(__riscv) && !defined(__aarch64__)
   SYS_pipe,
+#endif
   SYS_pipe2,
   SYS_set_robust_list,
   SYS_mprotect,
@@ -161,7 +208,11 @@ static int SANDBOX_SYSCALLS[] = {
   SYS_futex,
   SYS_epoll_create1,
   SYS_epoll_ctl,
+#if defined(__riscv) || defined(__aarch64__)
+  SYS_epoll_pwait,
+#else
   SYS_epoll_wait,
+#endif
   SYS_getpid,
   SYS_getuid,
   SYS_geteuid,
@@ -173,13 +224,17 @@ static int SANDBOX_SYSCALLS[] = {
   SYS_getsockopt,
   SYS_fadvise64,
   SYS_shutdown,
+#if defined(__riscv) || defined(__aarch64__)
+  SYS_ppoll,
+#else
   SYS_poll,
+#endif
   -1
 };
 #endif
 
 void enable_sandbox(int flags) {
-#ifdef __linux__
+#if defined(__linux__) && !defined(__arm__)
   const int MAX_INSTRUCTIONS = 300;
   const int MAX_SYSCALLS = 1500;
   sock_filter* instructions = reinterpret_cast<sock_filter*>(calloc(MAX_INSTRUCTIONS, sizeof(sock_filter)));

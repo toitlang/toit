@@ -356,6 +356,9 @@ app_sdk_info -> string:
 set_max_heap_size_ size/int -> none:
   #primitive.core.set_max_heap_size
 
+serial_print_heap_report -> none:
+  #primitive.core.serial_print_heap_report
+
 /** Simplistic profiler based on bytecode invocation counts. */
 class Profiler:
   /**

@@ -13,6 +13,8 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+#pragma once
+
 #include "top.h"
 
 #include "encoder.h"
@@ -28,7 +30,11 @@ static const uint8 UNUSED_TOIT_HEAP_MALLOC_TAG    = 5;
 static const uint8 FREE_MALLOC_TAG                = 6;
 static const uint8 LWIP_MALLOC_TAG                = 7;
 static const uint8 HEAP_OVERHEAD_MALLOC_TAG       = 8;
-static const uint8 UNKNOWN_MALLOC_TAG             = 15;
+static const uint8 UNKNOWN_MALLOC_TAG             = 9;
+static const uint8 EVENT_SOURCE_MALLOC_TAG        = 10;
+static const uint8 OTHER_THREADS_MALLOC_TAG       = 11;
+static const uint8 THREAD_SPAWN_MALLOC_TAG        = 12;
+static const uint8 NUMBER_OF_MALLOC_TAGS          = 13;
 
 #ifdef TOIT_CMPCTMALLOC
 

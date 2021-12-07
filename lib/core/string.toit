@@ -132,9 +132,9 @@ abstract class string implements Comparable:
   # Examples
   ```
   str := "Amélie"
-  debug "$(%c str[2])" // => é
-  debug str[3]         // => null
-  debug "$(%c str[4])" // => l
+  print "$(%c str[2])" // => é
+  print str[3]         // => null
+  print "$(%c str[4])" // => l
   ```
   */
   abstract operator [] i/int -> int?
@@ -203,7 +203,7 @@ abstract class string implements Comparable:
 
   # Examples
   ```
-  "é".do: debug it // 233, null
+  "é".do: print it // 233, null
   ```
   */
   do [block] -> none:
@@ -219,7 +219,7 @@ abstract class string implements Comparable:
 
   # Examples
   ```
-  "Amélie".do --runes: debug "$(%c it)"" // A, m, é, l, i, e
+  "Amélie".do --runes: print "$(%c it)"" // A, m, é, l, i, e
   ```
   */
   do --runes/bool [block] -> none:
@@ -910,39 +910,46 @@ abstract class string implements Comparable:
     well-formed UTF-8. However, it is explicitly enforced for the zero length
     separator (the empty string).
 
+  As a special case the empty separator does not result in a zero length string as
+    the first and last entries, even though the empty separator can be found at
+    both ends.  However if $at_first is true and the separator is empty then the
+    result is one character, followed by the rest of the string even if that is an
+    empty string.
+
   # Examples
   ```
-  "Toad the Wet Sprocket".split "e": debug it  // debugs "Toad th", " W", "t Sprock", and "t"
-  " the dust ".split " ": debug it             // debugs "", "the", "dust", and ""
-  "abc".split  "":    debug it                 // debugs "", "a", "b", and "c"
-  "foo".split  "foo": debug it                 // debugs "" and ""
-  "afoo".split "foo": debug it                 // debugs "a" and ""
-  "foob".split "foo": debug it                 // debugs "" and "b"
-  "".split "": debug it                        // debugs ""
+  "Toad the Wet Sprocket".split "e": print it  // prints "Toad th", " W", "t Sprock", and "t"
+  " the dust ".split " ": print it             // prints "the", "dust", and ""
+  "abc".split  "":    print it                 // prints "a", "b", and "c"
+  "foo".split  "foo": print it                 // prints "" and ""
+  "afoo".split "foo": print it                 // prints "a" and ""
+  "foob".split "foo": print it                 // prints "" and "b"
+  "".split "": print it                        // Doesn't print.
 
   gadsby := "If youth, throughout all history, had had a champion to stand up for it;"
-  gadsby.split "e": debug it // debugs the contents of gadsby
+  gadsby.split "e": print it // prints the contents of gadsby
 
-  "Toad the Wet Sprocket".split --at_first "e": debug it  // debugs "Toad th", " Wet Sprocket"
-  " the dust ".split            --at_first " ": debug it  // debugs "", "the dust "
-  gadsby.split                  --at_first "e": debug it  // debugs the contents of gadsby
+  "Toad the Wet Sprocket".split --at_first "e": print it  // prints "Toad th", " Wet Sprocket"
+  " the dust ".split            --at_first " ": print it  // prints "", "the dust "
+  gadsby.split                  --at_first "e": print it  // prints the contents of gadsby
 
-  "abc".split  --at_first "":    debug it     // debugs "" and "abc"
-  "foo".split  --at_first "foo": debug it     // debugs "" and ""
-  "afoo".split --at_first "foo": debug it     // debugs "a" and ""
-  "foob".split --at_first "foo": debug it     // debugs "" and "b"
-  "".split     --at_first "":    debug it     // debugs ""
+  "abc".split  --at_first "":    print it     // prints "a" and "bc"
+  "foo".split  --at_first "foo": print it     // prints "" and ""
+  "afoo".split --at_first "foo": print it     // prints "a" and ""
+  "foob".split --at_first "foo": print it     // prints "" and "b"
+  "".split     --at_first "":    print it     // This is an error.
+  "a".split    --at_first "":    print it     // prints "a" and ""
   ```
   */
   split --at_first/bool=false separator/string [process_part] -> none:
     if separator.size == 0:
-      if this.size == 0:
-        process_part.call ""
-      else if at_first:
-        process_part.call ""
-        process_part.call this
-      else:
-        split_everywhere_ process_part
+      if at_first:
+        if size == 0: throw "INVALID_ARGUMENT"
+        len := utf_8_bytes this[0]
+        process_part.call this[..len]
+        process_part.call this[len..]
+        return
+      split_everywhere_ process_part
       return
     subject := this
     pos := 0
@@ -1001,7 +1008,6 @@ abstract class string implements Comparable:
     return res
 
   split_everywhere_ [process_part]:
-    process_part.call ""  // For consistency with the non-zero separator case.
     subject := this
     size.repeat:
       c := subject[it]
@@ -1141,7 +1147,8 @@ class String_ extends string:
     #primitive.core.string_hash_code
 
 class StringSlice_ extends string:
-  // This constant must be kept in sync with objects.cc.
+  // This constant must be kept in sync with objects.cc so that no valid hash
+  // can be 'NO_HASH_'.
   static NO_HASH_ ::= -1
 
   // The order of the fields matters, as the primitives access them directly.
