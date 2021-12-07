@@ -9,7 +9,7 @@ import .udp as udp
 import .modules.dns as dns
 import .modules.tcp
 import .modules.udp
-import .modules.wifi as wifi
+import .modules.wifi
 
 WIFI_USE_      /bool   ::= (platform == "FreeRTOS") and (WIFI_SSID_ != "")
 WIFI_SSID_     /string ::= defines_.get "wifi.ssid" --if_absent=: ""
@@ -20,8 +20,9 @@ WIFI_DHCP_TIMEOUT_     ::= Duration --s=16
 wifi_enabled_ := false
 
 open -> Interface:
+  wifi := null
   if WIFI_USE_ and not wifi_enabled_:
-    wifi := wifi.Wifi
+    wifi = Wifi
     try:
       wifi.set_ssid WIFI_SSID_ WIFI_PASSWORD_
       with_timeout WIFI_CONNECT_TIMEOUT_: wifi.connect
@@ -29,9 +30,13 @@ open -> Interface:
       wifi_enabled_ = true
     finally: | is_exception _ |
       if is_exception: wifi.close
-  return InterfaceImpl_
+  return InterfaceImpl_ wifi
 
 class InterfaceImpl_ extends Interface:
+  wifi_/Wifi?
+
+  constructor .wifi_:
+
   resolve host/string -> List:
     return [dns.dns_lookup host]
 
@@ -48,6 +53,11 @@ class InterfaceImpl_ extends Interface:
     result := TcpServerSocket
     result.listen "0.0.0.0" port
     return result
+
+  address -> IpAddress:
+    if wifi_:
+      return wifi_.address
+    return IpAddress.parse "0.0.0.0"
 
   close -> none:
     // Do nothing yet.
