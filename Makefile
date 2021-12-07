@@ -61,9 +61,14 @@ build/arm32/CMakeCache.txt: build/arm32/
 .PHONY: esp32
 esp32: check-env build/esp32/toit.bin
 
+.PHONY: check-flash-env
+check-flash-env:
+ifndef ESP32_PORT
+	$(error ESP32_PORT is not set)
+endif
+
 .PHONY: flash
-flash: esp32
-	echo ${IDF_PATH}
+flash: esp32 check-flash-env
 	python $(IDF_PATH)/components/esptool_py/esptool/esptool.py --chip esp32 --port ${ESP32_PORT} --baud 921600 --before default_reset --after hard_reset write_flash -z --flash_mode dio --flash_freq 40m --flash_size detect 0xd000 build/esp32/ota_data_initial.bin 0x1000 build/esp32/bootloader/bootloader.bin 0x10000 build/esp32/toit.bin 0x8000 build/esp32/partitions.bin
 
 build/esp32/toit.bin build/esp32/toit.elf: build/esp32/lib/libtoit_image.a
