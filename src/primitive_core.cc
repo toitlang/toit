@@ -2267,4 +2267,8 @@ PRIMITIVE(literal_index) {
   OTHER_ERROR;
 }
 
+PRIMITIVE(word_size) {
+  return Smi::from(WORD_SIZE);
+}
+
 } // namespace toit
