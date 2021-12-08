@@ -27,17 +27,15 @@ apt install git build-essential bc cmake python3 python3-pip python-is-python3 l
 
 ## 3) Clone sources 
 ``` sh
-git clone https://github.com/toitware/esp-idf.git
-pushd esp-idf/
-git checkout patch-head-4.3-3
-git submodule update --init --recursive
-popd
-
 #Toit
 git clone https://github.com/toitlang/toit.git
+cd toit/
+
+#ESP-IDF
+git submodule update --init --recursive
 
 #Add IDF path to environment
-export IDF_PATH=PATH-TO-ESP-IDF
+export IDF_PATH=`pwd`/third_party/esp-idf
 ```
 
 ## 4) Compile Toit
