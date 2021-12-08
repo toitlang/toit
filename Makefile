@@ -18,8 +18,8 @@ BUILD_DATE = $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 # Use 'make ESP32_ENTRY=examples/mandelbrot.toit' to compile a different
 # example for the ESP32 firmware.
 ESP32_ENTRY=examples/hello.toit
-ESP32_WIFI_PASSWORD=
 ESP32_WIFI_SSID=
+ESP32_WIFI_PASSWORD=
 ESP32_PORT=
 
 .PHONY: all
