@@ -35,7 +35,7 @@ if (CCACHE_FOUND)
   set_property(GLOBAL PROPERTY RULE_LAUNCH_LINK "CCACHE_BASEDIR=${PROJECT_SOURCE_DIR} ${CCACHE_FOUND}")
 endif(CCACHE_FOUND)
 
-set(TOIT_GENERIC_FLAGS "'-fdebug-prefix-map=${PROJECT_SOURCE_DIR}=.' -Wall -Werror -ffunction-sections -fdata-sections -Wno-unused-command-line-argument -Wno-error=string-concatenation")
+set(TOIT_GENERIC_FLAGS "'-fdebug-prefix-map=${PROJECT_SOURCE_DIR}=.' -Wall -ffunction-sections -fdata-sections -Wno-unused-command-line-argument")
 
 include_directories(
   "$ENV{IDF_PATH}/components/mbedtls/mbedtls/include"
