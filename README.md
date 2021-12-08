@@ -192,6 +192,13 @@ own entry point and specify it through the `ESP32_ENTRY` make variable:
 make esp32 ESP32_ENTRY=examples/mandelbrot.toit
 ```
 
+Build an image and flash it to your ESP32 device. You must specify the device port
+with the `ESP32_PORT` make variable. You can also use all the `make esp32` make variables.
+
+``` sh
+make flash ESP32_ENTRY=examples/mandelbrot.toit ESP32_PORT=/dev/ttyUSB0
+```
+
 ### Configuring WiFi for the ESP32
 
 You can easily configure the ESP32's builtin WiFi by setting the `ESP32_WIFI_SSID` and
