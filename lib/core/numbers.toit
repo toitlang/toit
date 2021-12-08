@@ -619,7 +619,7 @@ abstract class int extends num:
       return parse_generic_radix_ radix data from to --on_error=on_error
 
   static parse_generic_radix_ radix/int data from/int to/int [--on_error] -> int?:
-    if not 2 <= radix <= 36: throw "INVALID RADIX"
+    if not 2 <= radix <= 36: throw "INVALID_RADIX"
 
     max_num := (min radix 9) + '0' - 1
     max_char := radix + 'a' - 1
