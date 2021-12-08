@@ -1,0 +1,29 @@
+# Copyright (C) 2021 Toitware ApS.
+#
+# This library is free software; you can redistribute it and/or
+# modify it under the terms of the GNU Lesser General Public
+# License as published by the Free Software Foundation; version
+# 2.1 only.
+#
+# This library is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# Lesser General Public License for more details.
+#
+# The license can be found in the file `LICENSE` in the top level
+# directory of this repository.
+
+# Partition Table for Toit.
+
+# Name,   Type, SubType, Offset,   Size
+# bootloader,,  ,        0x1000,   0x7000
+# partitions,,  ,        0x8000,   0xc00
+secure,   0x42, 0x00,    0x9000,   0x4000,
+otadata,  data, ota,     0xd000,   0x2000,
+ota_0,    app,  ota_0,   0x10000,  0x150000,
+ota_1,    app,  ota_1,   0x160000, 0x150000,
+ota_0_cfg,0x41, 0x00,    0x2B0000, 0x4000,
+ota_1_cfg,0x41, 0x01,    0x2B4000, 0x4000,
+nvs,      data, nvs,     0x2B8000, 0x4000,
+coredump, data, coredump,0x2BC000, 0x10000,
+data,     0x40, 0x00,    0x2CC000, 0x134000, encrypted

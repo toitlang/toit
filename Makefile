@@ -21,6 +21,7 @@ ESP32_ENTRY=examples/hello.toit
 ESP32_WIFI_SSID=
 ESP32_WIFI_PASSWORD=
 ESP32_PORT=
+ESP32_CHIP=esp32
 
 .PHONY: all
 all: tools
@@ -96,7 +97,7 @@ build/arm32/CMakeCache.txt: build/arm32/
 	(cd build/arm32 && cmake ../../ -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/arm32.cmake)
 
 .PHONY: esp32
-esp32: check-env build/esp32/toit.bin
+esp32: check-env build/$(ESP32_CHIP)/toit.bin
 
 .PHONY: check-flash-env
 check-flash-env:
@@ -108,10 +109,11 @@ endif
 flash: esp32 check-flash-env
 	python $(IDF_PATH)/components/esptool_py/esptool/esptool.py --chip esp32 --port ${ESP32_PORT} --baud 921600 --before default_reset --after hard_reset write_flash -z --flash_mode dio --flash_freq 40m --flash_size detect 0xd000 build/esp32/ota_data_initial.bin 0x1000 build/esp32/bootloader/bootloader.bin 0x10000 build/esp32/toit.bin 0x8000 build/esp32/partitions.bin
 
-build/esp32/toit.bin build/esp32/toit.elf: build/esp32/lib/libtoit_image.a
-	make -C toolchains/esp32/
+build/$(ESP32_CHIP)/toit.bin build/$(ESP32_CHIP)/toit.elf: build/$(ESP32_CHIP)/lib/libtoit_image.a
+	#idf.py set-target $(ESP32_CHIP)
+	make -C toolchains/$(ESP32_CHIP)/
 
-build/esp32/lib/libtoit_image.a: build/esp32/esp32.image.s build/esp32/CMakeCache.txt
+build/$(ESP32_CHIP)/lib/libtoit_image.a: build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s build/$(ESP32_CHIP)/CMakeCache.txt
 	(cd build/esp32 && ninja toit_image)
 
 .PHONY:	build/host/bin/toitvm build/host/bin/toitc
@@ -121,8 +123,8 @@ build/host/bin/toitvm build/host/bin/toitc: build/host/CMakeCache.txt
 build/host/CMakeCache.txt: build/host/
 	(cd build/host && cmake ../.. -G Ninja -DCMAKE_BUILD_TYPE=Release)
 
-build/esp32/CMakeCache.txt: build/esp32/
-	(cd build/esp32 && IMAGE=build/esp32/esp32.image.s cmake ../../ -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/esp32/esp32.cmake --no-warn-unused-cli)
+build/esp32/CMakeCache.txt: build/$(ESP32_CHIP)/
+	(cd build/$(ESP32_CHIP) && IMAGE=build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s cmake ../../ -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/$(ESP32_CHIP)/$(ESP32_CHIP).cmake --no-warn-unused-cli)
 
 build/esp32/esp32.image.s: build/esp32/ build/snapshot build/host/bin/toitvm build/snapshots/snapshot_to_image.snapshot
 	build/host/bin/toitvm build/snapshots/snapshot_to_image.snapshot build/snapshot $@
