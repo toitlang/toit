@@ -14,5 +14,5 @@
 # directory of this repository.
 
 PROJECT_NAME := toit
-BUILD_DIR_BASE := $(abspath ../../build/esp32)
+BUILD_DIR_BASE := $(abspath ../../build/esp32c3)
 include $(IDF_PATH)/make/project.mk

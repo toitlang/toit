@@ -53,6 +53,7 @@ namespace toit {
   M(gpio,    MODULE_GPIO)                    \
   M(adc,     MODULE_ADC)                     \
   M(pwm,     MODULE_PWM)                     \
+  M(programs_registry, MODULE_PROGRAMS_REGISTRY) \
   M(file,    MODULE_FILE)                    \
   M(pipe,    MODULE_PIPE)                    \
   M(zlib,    MODULE_ZLIB)                    \
@@ -444,6 +445,12 @@ namespace toit {
   PRIMITIVE(factor, 2)                       \
   PRIMITIVE(set_factor, 3)                   \
   PRIMITIVE(close_channel, 2)                \
+
+#define MODULE_PROGRAMS_REGISTRY(PRIMITIVE)  \
+  PRIMITIVE(next_group_id, 0)                \
+  PRIMITIVE(spawn, 3)                        \
+  PRIMITIVE(is_running, 2)                   \
+  PRIMITIVE(kill, 2)                         \
 
 #define MODULE_FILE(PRIMITIVE)               \
   PRIMITIVE(open, 3)                         \

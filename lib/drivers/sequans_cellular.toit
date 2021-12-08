@@ -499,6 +499,9 @@ class Interface_ extends net.Interface:
     throw
       ResourceExhaustedException "no more sockets available"
 
+  address -> net.IpAddress:
+    unreachable
+
   close:
 
 class SQNDNSLKUP extends at.Command:

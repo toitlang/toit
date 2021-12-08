@@ -70,7 +70,7 @@ For builds targeting RISC-V, ARM32, or ARM64 hardware, see the [Other platforms 
 
 ### ESP-IDF
 
-The VM has a requirement to ESP-IDF, both for Linux and ESP32 builds (for Linux it's for the [Mbed TLS](https://www.trustedfirmware.org/projects/mbed-tls/) implementation).
+The Toit VM has a requirement for the [Espressif IoT Development Framework](https://idf.espressif.com/), both for Linux and ESP32 builds (for Linux it's for the [Mbed TLS](https://www.trustedfirmware.org/projects/mbed-tls/) implementation).
 
 We recommend you use Toitware's [ESP-IDF fork](https://github.com/toitware/esp-idf) that comes with a few changes:
 
@@ -78,19 +78,20 @@ We recommend you use Toitware's [ESP-IDF fork](https://github.com/toitware/esp-i
 * Allocation-fixes for UART, etc.
 * LWIP fixes.
 
+The fork's repository has been added as a submodule reference to this repository, so doing a recursive submodule init & update will establish everything nedded:
+
 ``` sh
-git clone https://github.com/toitware/esp-idf.git
-pushd esp-idf/
-git checkout patch-head-4.3-3
 git submodule update --init --recursive
-popd
+
 ```
 
-Remember to add it to your ENV as `IDF_PATH`:
+For the build to succeed, you will need to add its path to your ENV as `IDF_PATH`:
 
 ``` sh
-export IDF_PATH=...
+export IDF_PATH=`pwd`/third_party/esp-idf
 ```
+
+To use the [offical ESP-IDF](https://github.com/espressif/esp-idf), or [any other variation](https://github.com/espressif/esp-idf/network/members), make sure it is available in your file system and point IDF_PATH to its path instead before building.
 
 ### ESP32 tools
 

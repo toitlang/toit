@@ -582,6 +582,9 @@ class Interface_ extends net.Interface:
   tcp_listen port/int -> tcp.ServerSocket:
     throw "UNIMPLEMENTED"
 
+  address -> net.IpAddress:
+    unreachable
+
   close:
 
 class UDNSRN extends at.Command:

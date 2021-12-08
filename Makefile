@@ -30,7 +30,7 @@ all: tools
 tools: check-env toitpkg toitlsp build/host/bin/toitvm build/host/bin/toitc
 
 .PHONY: tools-riscv64
-tools-riscv64: check-env toitpkg toitlsp build/riscv64/bin/toitvm build/riscv64/bin/toitc	
+tools-riscv64: check-env toitpkg toitlsp build/riscv64/bin/toitvm build/riscv64/bin/toitc
 
 .PHONY: build/riscv64/bin/toitvm build/riscv64/bin/toitc
 build/riscv64/bin/toitvm build/riscv64/bin/toitc: build/riscv64/CMakeCache.txt
@@ -62,8 +62,14 @@ build/arm32/CMakeCache.txt: build/arm32/
 .PHONY: esp32
 esp32: check-env build/$(ESP32_CHIP)/toit.bin
 
+.PHONY: check-flash-env
+check-flash-env:
+ifndef ESP32_PORT
+	$(error ESP32_PORT is not set)
+endif
+
 .PHONY: flash
-flash: esp32
+flash: check-flash-env esp32
 	echo $(IDF_PATH)
 	python $(IDF_PATH)/components/esptool_py/esptool/esptool.py --chip $(ESP32_CHIP) --port $(ESP32_PORT) --baud 921600 --before default_reset --after hard_reset write_flash -z --flash_mode dio --flash_freq 40m --flash_size detect 0xd000 build/$(ESP32_CHIP)/ota_data_initial.bin 0x1000 build/$(ESP32_CHIP)/bootloader/bootloader.bin 0x10000 build/$(ESP32_CHIP)/toit.bin 0x8000 build/$(ESP32_CHIP)/partitions.bin
 
@@ -72,7 +78,7 @@ build/$(ESP32_CHIP)/toit.bin build/$(ESP32_CHIP)/toit.elf: build/$(ESP32_CHIP)/l
 	make -C toolchains/$(ESP32_CHIP)/
 
 build/$(ESP32_CHIP)/lib/libtoit_image.a: build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s build/$(ESP32_CHIP)/CMakeCache.txt
-	(cd build/esp32 && ninja toit_image)
+	(cd build/$(ESP32_CHIP) && ninja toit_image)
 
 .PHONY:	build/host/bin/toitvm build/host/bin/toitc
 build/host/bin/toitvm build/host/bin/toitc: build/host/CMakeCache.txt
@@ -81,10 +87,10 @@ build/host/bin/toitvm build/host/bin/toitc: build/host/CMakeCache.txt
 build/host/CMakeCache.txt: build/host/
 	(cd build/host && cmake ../.. -G Ninja -DCMAKE_BUILD_TYPE=Release)
 
-build/esp32/CMakeCache.txt: build/$(ESP32_CHIP)/
+build/$(ESP32_CHIP)/CMakeCache.txt: build/$(ESP32_CHIP)/
 	(cd build/$(ESP32_CHIP) && IMAGE=build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s cmake ../../ -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/$(ESP32_CHIP)/$(ESP32_CHIP).cmake --no-warn-unused-cli)
 
-build/esp32/esp32.image.s: build/esp32/ build/snapshot build/host/bin/toitvm tools/snapshot_to_image.toit
+build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s: build/$(ESP32_CHIP)/ build/snapshot build/host/bin/toitvm tools/snapshot_to_image.toit
 	build/host/bin/toitvm tools/snapshot_to_image.toit build/snapshot $@
 
 build/snapshot: build/host/bin/toitc $(ESP32_ENTRY)
@@ -132,9 +138,9 @@ endif
 build/host/:
 	mkdir -p $@
 
-build/esp32/: check-env
+build/$(ESP32_CHIP)/: check-env
 	mkdir -p $@
-	make -C toolchains/esp32 -s $(shell pwd)/build/esp32/include/sdkconfig.h
+	make -C toolchains/$(ESP32_CHIP) -s $(shell pwd)/build/$(ESP32_CHIP)/include/sdkconfig.h
 
 build/riscv64/ build/arm64/ build/arm32/:
 	mkdir -p $@
@@ -145,5 +151,5 @@ clean:
 
 check-env:
 ifndef IDF_PATH
-	$(error IDF_PATH is not set)
+	$(error IDF_PATH is not set, if you want to use the Toitware fork execute "export IDF_PATH=`pwd`/third_party/esp-idf" (see README.md))
 endif
