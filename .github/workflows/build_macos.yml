@@ -11,24 +11,7 @@ on:
 
 jobs:
   build:
-    # The type of runner that the job will run on
-    name: ${{ matrix.config.name }}
-    runs-on: ${{ matrix.config.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        config:
-          - {
-              name: "macOS Latest Clang",
-              os: macos-latest,
-              artifact: "macos_clang.7z",
-              build_type: "Release",
-              cc: "clang",
-              cxx: "clang++",
-              archiver: "7za a",
-              generators: "Ninja",
-            }
-
+    runs-on: macos-latest
     steps:
       - name: Install dependencies
         run: |
