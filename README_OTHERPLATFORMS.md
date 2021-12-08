@@ -33,14 +33,13 @@ cd toit/
 
 #ESP-IDF
 git submodule update --init --recursive
-
-#Add IDF path to environment
-export IDF_PATH=`pwd`/third_party/esp-idf
 ```
 
 ## 4) Compile Toit
 ``` sh
-cd toit
+#Add IDF path to environment
+export IDF_PATH=`pwd`/third_party/esp-idf
+
 make tools
 ```
 
