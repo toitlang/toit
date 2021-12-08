@@ -199,6 +199,12 @@ exit status:
 /** The number of bits per byte. */
 BITS_PER_BYTE ::= 8
 
+/** The number of bits per word. */
+BITS_PER_WORD ::= BYTES_PER_WORD * BITS_PER_BYTE
+
+/** The number of bytes per word. */
+BYTES_PER_WORD ::= word_size_
+
 /** The number of bytes per kilobyte. */
 KB ::= 1024
 
@@ -418,3 +424,6 @@ This function is in O(1) when it fails, but requires a linear search for
 */
 literal_index_ o -> int?:
   #primitive.core.literal_index
+
+word_size_ -> int:
+  #primitive.core.word_size

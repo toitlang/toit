@@ -232,6 +232,7 @@ namespace toit {
   PRIMITIVE(varint_encode, 3)                \
   PRIMITIVE(varint_decode, 2)                \
   PRIMITIVE(literal_index, 1)                \
+  PRIMITIVE(word_size, 0)                    \
 
 #define MODULE_TIMER(PRIMITIVE)              \
   PRIMITIVE(init, 0)                         \
