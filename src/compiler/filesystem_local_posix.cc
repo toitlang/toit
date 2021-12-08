@@ -45,6 +45,7 @@ char FilesystemLocal::path_separator() {
 }
 
 char* FilesystemLocal::canonicalize(const char* path) {
+  if (path == null) return null;
   return strdup(path);
 }
 

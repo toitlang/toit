@@ -50,6 +50,7 @@ char FilesystemLocal::path_separator() {
 }
 
 char* FilesystemLocal::canonicalize(const char* path) {
+  if (path == null) return null;
   char* result = strdup(path);
   int length = strlen(path);
   for (int i = 0; i < length; i++) {
