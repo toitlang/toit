@@ -639,6 +639,192 @@ class IndexedBytemapSource : public BytemapDecompresser {
   uint8* opacity_buffer_;
 };
 
+static uint32_t read_uint32_be(const uint8* addr) {
+  uint32_t x0 = addr[0];
+  uint32_t x1 = addr[1];
+  uint32_t x2 = addr[2];
+  uint32_t x3 = addr[3];
+  return (x0 << 24) |
+         (x1 << 16) |
+         (x2 << 8) |
+         (x3 << 0);
+}
+
+/**
+A pixel decompresser that uses a QOI image buffer as a source.
+*/
+class QoiSource : public BytemapDecompresser {
+ public:
+  // After calling the constructor, out_of_memory must be checked on the
+  // resulting object.
+  QoiSource(const uint8* image_data, word size, int component)
+    : image_data_(image_data)
+    , size_(size)
+    , position_(14)
+    , component_(component)
+    , repeats_left_(0) {
+    line_buffer_ = opacity_buffer_ = null;
+    history_ = null;
+    valid_ = false;
+    if (size_ < 14) return;
+    if (image_data_[0] != 'q') return;
+    if (image_data_[1] != 'o') return;
+    if (image_data_[2] != 'i') return;
+    if (image_data_[3] != 'f') return;
+    width_ = read_uint32_be(image_data_ + 4);
+    height_ = read_uint32_be(image_data_ + 8);
+    valid_ = true;
+    line_buffer_ = unvoid_cast<uint8*>(malloc(width_));
+    opacity_buffer_ = unvoid_cast<uint8*>(malloc(width_));
+    history_ = unvoid_cast<uint8*>(calloc(64, 4));
+    // Set up the previous pixel to be 0, 0, 0, 255.
+    previous_index_ = 63 * 4;
+    history_[previous_index_ + 3] = 255;
+  }
+
+  ~QoiSource() {
+    free(line_buffer_);
+    free(opacity_buffer_);
+    free(history_);
+  }
+
+  bool out_of_memory() {
+    return line_buffer_ == null || opacity_buffer_ == null || history_ == null;
+  }
+
+  uint32 width() { return width_; }
+  uint32 height() { return height_; }
+
+  virtual void compute_next_line() {
+    uint32 x = 0;
+    while (x < width_) {
+      if (repeats_left_) {
+        uint8 c = history_[previous_index_ + component_];
+        uint8 a = history_[previous_index_ + 3];
+        for (; x < width_ && repeats_left_; x++, repeats_left_--) {
+          line_buffer_[x] = c;
+          opacity_buffer_[x] = a;
+        }
+      }
+      if (position_ < size_ && x < width_) {
+        int bytecode = image_data_[position_] >> 4;
+        repeats_left_ = 1;
+        uint8 r = history_[previous_index_    ];
+        uint8 g = history_[previous_index_ + 1];
+        uint8 b = history_[previous_index_ + 2];
+        uint8 a = history_[previous_index_ + 3];
+        switch (bytecode) {
+          case 0:
+          case 1:
+          case 2:
+          case 3:
+            // 00xxxxxx QOI_INDEX
+            previous_index_ = (image_data_[position_++] & 0x3f) << 2;
+            r = history_[previous_index_    ];
+            g = history_[previous_index_ + 1];
+            b = history_[previous_index_ + 2];
+            a = history_[previous_index_ + 3];
+            break;
+          case 4:
+          case 5:
+            // 010xxxxx 1-32 repeats of last pixel.
+            repeats_left_ = (image_data_[position_++] & 0x1f) + 1;
+            break;
+          case 6:
+          case 7:
+            // 011xxxxx 33- repeats of last pixel.
+            repeats_left_ = (image_data_[position_] & 0x1f) << 8;
+            if (position_ < size_ - 1) position_++;  // If is always true in wellformed input.
+            repeats_left_ += image_data_[position_++] + 33;
+            break;
+          case 8:
+          case 9:
+          case 10:
+          case 11: {
+            // 10xxxxxx 2 bit difference to last.
+            int diff = image_data_[position_++] & 0x3f;
+            r += ((diff >> 4) & 3) - 2;
+            g += ((diff >> 2) & 3) - 2;
+            b += (diff & 3) - 2;
+            break;
+          }
+          case 12:
+          case 13: {
+            // 110 4-5 bit difference to last.
+            int diff_r = image_data_[position_] & 0x1f;
+            if (position_ < size_ - 1) position_++;  // If is always true in wellformed input.
+            int diff_gb = image_data_[position_++];
+            r += diff_r - 16;
+            g += (diff_gb >> 4) - 8;
+            b += (diff_gb & 0xf) - 8;
+            break;
+          }
+          case 14: {
+            // 1110 5-bit difference to last.
+            if (position_ <= size_ - 3) {  // If is always true in wellformed input.
+              int diff = (image_data_[position_++] & 0xf) << 16;
+              diff |= image_data_[position_++] << 8;
+              diff |= image_data_[position_++];
+              r += (diff >> 15) - 16;
+              g += ((diff >> 10) & 0x1f) - 16;
+              b += ((diff >> 5) & 0x1f) - 16;
+              a += (diff & 0x1f) - 16;
+            }
+            break;
+          }
+          case 15: {
+            // 1111rgba replace given components.
+            int flags = image_data_[position_++] & 0xf;
+            int bytes = __builtin_popcount(flags);
+            if (position_ + bytes <= size_) {  // If is always true in wellformed input.
+              if (flags & 8) {
+                r = image_data_[position_++];
+              }
+              if (flags & 4) {
+                g = image_data_[position_++];
+              }
+              if (flags & 2) {
+                b = image_data_[position_++];
+              }
+              if (flags & 1) {
+                a = image_data_[position_++];
+              }
+            }
+            break;
+          }
+        }
+        previous_index_ = ((r ^ g ^ b ^ a) & 0x3f) << 2;
+        history_[previous_index_    ] = r;
+        history_[previous_index_ + 1] = g;
+        history_[previous_index_ + 2] = b;
+        history_[previous_index_ + 3] = a;
+      }
+    }
+  }
+
+  virtual const uint8* line() const {
+    return line_buffer_;
+  }
+
+  virtual const uint8* opacity_line() const {
+    return opacity_buffer_;
+  }
+
+ private:
+  bool valid_;
+  const uint8* image_data_;
+  word size_;
+  word position_;
+  int component_;
+  uint32_t width_;
+  uint32_t height_;
+  uint8* line_buffer_;
+  uint8* opacity_buffer_;
+  uint8* history_;
+  uint8 previous_index_;
+  int repeats_left_;
+};
+
 // Draw a bitmap on a bitmap or a bytemap.  The ones in the input bitmap are
 // drawn in the given color and the zeroes are transparent.
 PRIMITIVE(draw_bitmap) {
@@ -727,6 +913,34 @@ PRIMITIVE(draw_bitmap) {
 #endif  // !defined(CONFIG_TOIT_BIT_DISPLAY) && !defined(CONFIG_TOIT_BYTE_DISPLAY)
 }
 
+static void byte_draw(int, BytemapDecompresser&, const PixelBox&, DrawData&);
+
+// Draw a QOI file on a bytemap.
+PRIMITIVE(draw_qoi) {
+  ARGS(int, x_base, int, y_base, int, orientation, Blob, in_bytes, int, component, MutableBlob, bytes, int, byte_array_width);
+  // The output byte array is arranged as n rows, each byte_array_width long.
+  if (byte_array_width < 1) OUT_OF_BOUNDS;
+  int byte_array_height = bytes.length() / byte_array_width;
+  if (byte_array_height * byte_array_width != bytes.length()) OUT_OF_BOUNDS;
+  if (component < 0 || component > 2) OUT_OF_BOUNDS;
+  if (!(0 <= orientation && orientation <= 3)) INVALID_ARGUMENT;
+
+  uint8* output_contents = bytes.address();
+
+  QoiSource source(in_bytes.address(), in_bytes.length(), component);
+  if (source.out_of_memory()) MALLOC_FAILED;
+
+  int color = 0;  // Unused.
+
+  DrawData capture(x_base, y_base, color, orientation * 90, byte_array_width, byte_array_height, output_contents);
+
+  BitmapPixelBox bit_box(source.width(), source.height());
+
+  byte_draw(orientation, source, bit_box, capture);
+
+  return process->program()->null_object();
+}
+
 // Draw a bytemap on a bytemap.  A palette is given, where every third byte is used.
 PRIMITIVE(draw_bytemap) {
   ARGS(int, x_base, int, y_base, int, transparent_color, int, orientation, Blob, in_bytes, int, bytes_per_line, Blob, palette, MutableBlob, bytes, int, byte_array_width);
@@ -751,6 +965,12 @@ PRIMITIVE(draw_bytemap) {
 
   BitmapPixelBox bit_box(bytes_per_line, bitmap_height);
 
+  byte_draw(orientation, bytemap_source, bit_box, capture);
+
+  return process->program()->null_object();
+}
+
+static void byte_draw(int orientation, BytemapDecompresser& decompresser, const PixelBox& bit_box, DrawData& capture) {
   switch (orientation) {
     case 2: {
       // When stepping backwards the exclusive/inclusive bounds are swapped, so
@@ -758,12 +978,12 @@ PRIMITIVE(draw_bytemap) {
       capture.x_base--;
       capture.y_base--;
       int sign = -1;
-      draw_orientation_0_180_byte_helper(bytemap_source, bit_box, capture, sign);
+      draw_orientation_0_180_byte_helper(decompresser, bit_box, capture, sign);
       break;
     }
     case 0: {
       int sign = 1;
-      draw_orientation_0_180_byte_helper(bytemap_source, bit_box, capture, sign);
+      draw_orientation_0_180_byte_helper(decompresser, bit_box, capture, sign);
       break;
     }
     case 1: {
@@ -771,7 +991,7 @@ PRIMITIVE(draw_bytemap) {
       // When stepping backwards the exclusive/inclusive bounds are swapped, so
       // adjust by one.
       capture.y_base--;
-      byte_draw_orientation_90_270_byte_helper(bytemap_source, bit_box, capture, sign);
+      byte_draw_orientation_90_270_byte_helper(decompresser, bit_box, capture, sign);
       break;
     }
     case 3: {
@@ -779,11 +999,10 @@ PRIMITIVE(draw_bytemap) {
       // When stepping backwards the exclusive/inclusive bounds are swapped, so
       // adjust by one.
       capture.x_base--;
-      byte_draw_orientation_90_270_byte_helper(bytemap_source, bit_box, capture, sign);
+      byte_draw_orientation_90_270_byte_helper(decompresser, bit_box, capture, sign);
       break;
     }
   }
-  return process->program()->null_object();
 }
 
 PRIMITIVE(byte_draw_text) {
