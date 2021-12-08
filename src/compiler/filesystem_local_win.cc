@@ -29,6 +29,8 @@
 namespace toit {
 namespace compiler {
 
+static char PATH_SEPERATOR = '\\';
+
 char* FilesystemLocal::get_executable_path() {
   char* path = _new char[MAX_PATH];
   auto length = GetModuleFileName(NULL, path, MAX_PATH);
@@ -40,11 +42,20 @@ bool FilesystemLocal::is_absolute(const char* path) {
   if (SourceManager::is_virtual_file(path)) return true;
   int length = strlen(path);
   if (length < 3) return false;
-  return path[1] == ':' && path[2] == '\\';
+  return path[1] == ':' && path[2] == PATH_SEPERATOR;
 }
 
 char FilesystemLocal::path_separator() {
-  return '\\';
+  return PATH_SEPERATOR;
+}
+
+char* FilesystemLocal::canonicalize(const char* path) {
+  char* result = strcup(path);
+  int length = strlen(path);
+  for (int i = 0; i < length; i++) {
+    if (result[i] == '/') result[i] = PATH_SEPERATOR;
+  }
+  return result;
 }
 
 } // namespace toit::compiler

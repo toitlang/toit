@@ -44,6 +44,10 @@ char FilesystemLocal::path_separator() {
   return '/';
 }
 
+char* FilesystemLocal::canonicalize(const char* path) {
+  return strdup(path);
+}
+
 } // namespace compiler
 } // namespace toit
 

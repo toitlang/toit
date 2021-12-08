@@ -40,6 +40,7 @@ class FilesystemLocal : public Filesystem {
   /// Returns a malloced data structure that should be freed
   ///   by the caller with `delete []`.
   static char* get_executable_path();
+  static char* canonicalize(const char* path);
 
  protected:
   bool do_exists(const char* path);
