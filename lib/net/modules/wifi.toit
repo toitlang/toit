@@ -4,6 +4,7 @@
 
 import log
 import monitor
+import net
 
 TOIT_WIFI_CONNECTED_    ::= 1 << 0
 TOIT_WIFI_DHCP_SUCCESS_ ::= 1 << 1
@@ -18,6 +19,8 @@ class Wifi:
   ssid_ := null
   password_ := null
 
+  address_/net.IpAddress? := null
+
   set_ssid ssid password:
     ssid_ = ssid
     password_ = password
@@ -26,6 +29,9 @@ class Wifi:
     if resource_group_:
       wifi_close_ resource_group_
       resource_group_ = null
+
+  address -> net.IpAddress:
+    return address_
 
   connect:
     try:
@@ -61,6 +67,7 @@ class Wifi:
     res.dispose
     if (state & TOIT_WIFI_DHCP_SUCCESS_) != 0:
       ip := wifi_get_ip_ resource
+      address_ = net.IpAddress.parse ip
       logger_.info "got ip" --tags={"ip": ip}
       return ip
     close

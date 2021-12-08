@@ -29,6 +29,7 @@ PRIMITIVE(writer_create) {
   ByteArray* result = process->object_heap()->allocate_proxy();
   if (result == null) ALLOCATION_FAILED;
 
+  if (!FlashRegistry::erase_chunk(offset, byte_size)) OUT_OF_BOUNDS;
   void* address = FlashRegistry::memory(offset, byte_size);
   ProgramImage image(address, byte_size);
   ImageOutputStream* output = _new ImageOutputStream(image);
@@ -69,10 +70,8 @@ PRIMITIVE(writer_write) {
 PRIMITIVE(writer_commit) {
   ARGS(ImageOutputStream, output, Blob, id_bytes);
 
-  // TODO(florian): id_bytes_length is unused. Should probably be used to check
-  // that id has the right size.
   ProgramImage image = output->image();
-  if (output->cursor() != output->image().end()) OUT_OF_BOUNDS;
+  if (!image.is_valid() || output->cursor() != image.end()) OUT_OF_BOUNDS;
 
   // Write program header as the last thing. Only a complete flash write
   // will mark the program as valid.
