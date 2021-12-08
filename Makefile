@@ -87,8 +87,11 @@ build/host/CMakeCache.txt: build/host/
 build/esp32/CMakeCache.txt: build/esp32/
 	(cd build/esp32 && IMAGE=build/esp32/esp32.image.s cmake ../../ -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/esp32/esp32.cmake --no-warn-unused-cli)
 
-build/esp32/esp32.image.s: build/esp32/ build/snapshot build/host/bin/toitvm tools/snapshot_to_image.toit
-	build/host/bin/toitvm tools/snapshot_to_image.toit build/snapshot $@
+build/esp32/esp32.image.s: build/esp32/ build/snapshot build/host/bin/toitvm build/snapshot_to_image.snapshot
+	build/host/bin/toitvm build/snapshot_to_image.snapshot build/snapshot $@
+
+build/snapshot_to_image.snapshot: build/host/bin/toitc tools/snapshot_to_image.toit
+	build/host/bin/toitc -w $@ tools/snapshot_to_image.toit
 
 build/snapshot: build/host/bin/toitc $(ESP32_ENTRY)
 	build/host/bin/toitc -w $@ $(ESP32_ENTRY) -Dwifi.ssid="$(ESP32_WIFI_SSID)" -Dwifi.password="$(ESP32_WIFI_PASSWORD)"
