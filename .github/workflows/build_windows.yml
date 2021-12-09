@@ -28,7 +28,7 @@ jobs:
       - name: Pack artifacts
         run: |
           cp -R ./build/host/sdk ./build/host/toit
-          tar -czf build/toit-windows.tar.gz -C ./build/host -h --exclude sdk/bin/mbedtls toit
+          tar -czf build/toit-windows.tar.gz -C ./build/host -h --exclude toit/bin/mbedtls toit
       - name: Upload artifacts
         uses: actions/upload-artifact@v2
         with:
