@@ -174,6 +174,10 @@ MODULE_IMPLEMENTATION(ethernet, MODULE_ETHERNET)
 PRIMITIVE(init_esp32) {
   ARGS(int, phy_chip, int, phy_addr, int, phy_reset_num, int, mdc_num, int, msio_num)
 
+#ifdef __riscv
+  return Primitive::os_error(ESP_FAIL, process);
+#else
+
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;
 
@@ -206,6 +210,7 @@ PRIMITIVE(init_esp32) {
 
   // TODO(anders): If phy initialization fails, we're leaking this.
   esp_eth_mac_t* mac = esp_eth_mac_new_esp32(&mac_config);
+  
   if (!mac) {
     ethernet_pool.put(id);
     esp_netif_destroy(netif);
@@ -259,6 +264,7 @@ PRIMITIVE(init_esp32) {
 
   proxy->set_external_address(resource_group);
   return proxy;
+#endif
 }
 
 

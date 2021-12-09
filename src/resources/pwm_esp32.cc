@@ -26,6 +26,13 @@
 #include "../resource_pool.h"
 #include "../vm.h"
 
+
+#ifdef __riscv
+    #define SPEED_MODE LEDC_LOW_SPEED_MODE
+#else
+    #define SPEED_MODE LEDC_HIGH_SPEED_MODE
+#endif
+
 namespace toit {
 
 // On the ESP32, the PWM module is exposed by the LEDC library:
@@ -41,8 +48,16 @@ ResourcePool<ledc_timer_t, kInvalidLedcTimer> ledc_timers(
 
 const ledc_channel_t kInvalidLedcChannel = ledc_channel_t(-1);
 ResourcePool<ledc_channel_t, kInvalidLedcChannel> ledc_channels(
-    LEDC_CHANNEL_0, LEDC_CHANNEL_1, LEDC_CHANNEL_2, LEDC_CHANNEL_3,
-    LEDC_CHANNEL_4, LEDC_CHANNEL_5, LEDC_CHANNEL_6, LEDC_CHANNEL_7
+    LEDC_CHANNEL_0 
+,   LEDC_CHANNEL_1
+,   LEDC_CHANNEL_2 
+,   LEDC_CHANNEL_3
+,   LEDC_CHANNEL_4 
+,   LEDC_CHANNEL_5
+#ifndef __riscv
+,   LEDC_CHANNEL_6
+,   LEDC_CHANNEL_7
+#endif
 );
 
 const uint32_t kMaxFrequencyBits = 26;
@@ -70,7 +85,7 @@ class PWMResourceGroup : public ResourceGroup {
      , _max_value(max_value) {}
 
   ~PWMResourceGroup() {
-    ledc_timer_rst(LEDC_HIGH_SPEED_MODE, _timer);
+    ledc_timer_rst(SPEED_MODE, _timer);
     ledc_timers.put(_timer);
   }
 
@@ -80,7 +95,7 @@ class PWMResourceGroup : public ResourceGroup {
  protected:
   virtual void on_unregister_resource(Resource* r) {
     PWMResource* pwm = reinterpret_cast<PWMResource*>(r);
-    ledc_stop(LEDC_HIGH_SPEED_MODE, pwm->channel(), 0);
+    ledc_stop(SPEED_MODE, pwm->channel(), 0);
     ledc_channels.put(pwm->channel());
   }
 
@@ -110,7 +125,7 @@ PRIMITIVE(init) {
   if (timer == kInvalidLedcTimer) OUT_OF_RANGE;
 
   ledc_timer_config_t config = {
-    .speed_mode = LEDC_HIGH_SPEED_MODE,
+    .speed_mode = SPEED_MODE,
     .duty_resolution = (ledc_timer_bit_t)resolution_bits,
     .timer_num = timer,
     .freq_hz = uint32(frequency),
@@ -125,7 +140,7 @@ PRIMITIVE(init) {
 
   PWMResourceGroup* gpio = _new PWMResourceGroup(process, timer,  (1 << resolution_bits) - 1);
   if (!gpio) {
-    ledc_timer_rst(LEDC_HIGH_SPEED_MODE, timer);
+    ledc_timer_rst(SPEED_MODE, timer);
     ledc_timers.put(timer);
     MALLOC_FAILED;
   }
@@ -160,7 +175,7 @@ PRIMITIVE(start) {
 
   ledc_channel_config_t config = {
     .gpio_num = pin,
-    .speed_mode = LEDC_HIGH_SPEED_MODE,
+    .speed_mode = SPEED_MODE,
     .channel = channel,
     .timer_sel = resource_group->timer(),
     .duty = compute_duty_factor(resource_group, factor),
@@ -174,7 +189,7 @@ PRIMITIVE(start) {
 
   PWMResource* pwm = _new PWMResource(resource_group, channel);
   if (!pwm) {
-    ledc_stop(LEDC_HIGH_SPEED_MODE, channel, 0);
+    ledc_stop(SPEED_MODE, channel, 0);
     ledc_channels.put(channel);
     MALLOC_FAILED;
   }
@@ -189,7 +204,7 @@ PRIMITIVE(start) {
 PRIMITIVE(factor) {
   ARGS(PWMResourceGroup, resource_group, PWMResource, resource);
 
-  uint32 duty = ledc_get_duty(LEDC_HIGH_SPEED_MODE, resource->channel());
+  uint32 duty = ledc_get_duty(SPEED_MODE, resource->channel());
   if (duty == LEDC_ERR_DUTY) {
     return Primitive::os_error(LEDC_ERR_DUTY, process);
   }
@@ -201,12 +216,12 @@ PRIMITIVE(set_factor) {
   ARGS(PWMResourceGroup, resource_group, PWMResource, resource, double, factor);
 
   uint32 duty = compute_duty_factor(resource_group, factor);
-  esp_err_t err = ledc_set_duty(LEDC_HIGH_SPEED_MODE, resource->channel(), duty);
+  esp_err_t err = ledc_set_duty(SPEED_MODE, resource->channel(), duty);
   if (err != ESP_OK) {
     return Primitive::os_error(err, process);
   }
 
-  err = ledc_update_duty(LEDC_HIGH_SPEED_MODE, resource->channel());
+  err = ledc_update_duty(SPEED_MODE, resource->channel());
   if (err != ESP_OK) {
     return Primitive::os_error(err, process);
   }

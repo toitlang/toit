@@ -26,14 +26,21 @@
 #include "esp_partition.h"
 #include "esp_system.h"
 #include "esp_wifi.h"
-#include "soc/rtc.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "lwip/tcpip.h"
 
 #include "esp_sleep.h"
-#include "soc/sens_reg.h"
-#include "soc/soc.h"
+
+#include <soc/soc.h>
+#include <soc/rtc.h>
+
+#ifdef __riscv
+//  #include "soc/esp32/include/soc/sens_reg.h"
+#else
+  #include "soc/sens_reg.h"
+#endif
+
 #include "driver/gpio.h"
 #include "driver/rtc_io.h"
 
@@ -53,8 +60,11 @@ namespace toit {
 extern unsigned int checksum[4];
 
 const Program* setup_program() {
+
+#ifndef __riscv
   const esp_partition_t* configured = esp_ota_get_boot_partition();
   const esp_partition_t* running = esp_ota_get_running_partition();
+
   if (configured != running) {
     ESP_LOGW("Toit", "Configured OTA boot partition at offset 0x%08x, but running from offset 0x%08x",
         configured->address, running->address);
@@ -76,6 +86,8 @@ const Program* setup_program() {
   }
 
   ESP_LOGI("Toit", "Fingerprint %x-%x-%x-%x", checksum[0], checksum[1], checksum[2], checksum[3]);
+#endif
+
   FlashRegistry::set_up();
   return reinterpret_cast<const Program*>(&toit_image);
 }
@@ -116,13 +128,17 @@ static void start() {
     }
 
     case Scheduler::EXIT_ERROR:
+#ifndef __riscv
       ESP_LOGE("Toit", "VM exited with error, restarting.");
+#endif
       // 1s sleep before restart, after an error.
       esp_sleep_enable_timer_wakeup(1000000);
       break;
 
     case Scheduler::EXIT_DONE:
+#ifndef __riscv
       ESP_LOGE("Toit", "VM exited, going into deep sleep.");
+#endif
       break;
 
     case Scheduler::EXIT_NONE:

@@ -24,13 +24,24 @@
 
 #include "rtc_memory_esp32.h"
 
-#include "soc/rtc.h"
 #include "esp_attr.h"
-#include "esp32/rom/ets_sys.h"
+
+#include <soc/rtc.h>
+
+#ifdef __riscv
+  #include <esp32c3/rom/ets_sys.h>
+#else
+  #include <esp32/rom/ets_sys.h>
+#endif
+
 #include "esp_system.h"
 
 extern "C" {
-  #include "esp32/clk.h"
+#ifdef __riscv
+  #include <esp32c3/clk.h>
+#else
+  #include <esp32/clk.h>
+#endif
 }
 
 struct RTCData {
