@@ -28,27 +28,27 @@ export IDF_TARGET=$(ESP32_CHIP)
 all: tools
 
 .PHONY: tools
-tools: check-env toitpkg toitlsp build/host/bin/toitvm build/host/bin/toitc build/snapshots/snapshot_to_image.snapshot build/snapshots/system_message.snapshot
+tools: check-env toitpkg toitlsp build/host/sdk/bin/toitvm build/host/sdk/bin/toitc build/snapshots/snapshot_to_image.snapshot build/snapshots/system_message.snapshot
 
 .PHONY: tools-riscv64
-tools-riscv64: check-env toitpkg toitlsp build/riscv64/bin/toitvm build/riscv64/bin/toitc
+tools-riscv64: check-env toitpkg toitlsp build/riscv64/sdk/bin/toitvm build/riscv64/sdk/bin/toitc
 
-.PHONY: build/riscv64/bin/toitvm build/riscv64/bin/toitc
-build/riscv64/bin/toitvm build/riscv64/bin/toitc: build/riscv64/CMakeCache.txt
+.PHONY: build/riscv64/sdk/bin/toitvm build/riscv64/sdk/bin/toitc
+build/riscv64/sdk/bin/toitvm build/riscv64/sdk/bin/toitc: build/riscv64/CMakeCache.txt
 	(cd build/riscv64 && ninja build_toitvm)
 
 build/riscv64/CMakeCache.txt: build/riscv64/
 	(cd build/riscv64 && cmake ../../ -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/riscv64.cmake)
 
 .PHONY: tools-arm64
-tools-arm64: check-env toitpkg toitlsp build/arm64/bin/toitvm build/arm64/bin/toitc
+tools-arm64: check-env toitpkg toitlsp build/arm64/sdk/bin/toitvm build/arm64/sdk/bin/toitc
 
-.PHONY: build/arm64/bin/toitvm build/arm64/bin/toitc
-build/arm64/bin/toitvm build/arm64/bin/toitc: build/arm64/CMakeCache.txt
+.PHONY: build/arm64/sdk/bin/toitvm build/arm64/sdk/bin/toitc
+build/arm64/sdk/bin/toitvm build/arm64/sdk/bin/toitc: build/arm64/CMakeCache.txt
 	(cd build/arm64 && ninja build_toitvm)
 
-.PHONY: build/win64/bin/toitvm build/win64/bin/toitc
-build/win64/bin/toitvm build/win64/bin/toitc: build/win64/CMakeCache.txt
+.PHONY: build/win64/sdk/bin/toitvm build/win64/sdk/bin/toitc
+build/win64/sdk/bin/toitvm build/win64/sdk/bin/toitc: build/win64/CMakeCache.txt
 	(cd build/win64 && ninja build_toitvm)
 
 build/arm64/CMakeCache.txt: build/arm64/
@@ -58,10 +58,10 @@ build/win64/CMakeCache.txt: build/win64/
 	(cd build/win64 && cmake ../../ -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/win64.cmake)
 
 .PHONY: tools-arm32
-tools-arm32: check-env toitpkg toitlsp build/arm32/bin/toitvm build/arm32/bin/toitc
+tools-arm32: check-env toitpkg toitlsp build/arm32/sdk/bin/toitvm build/arm32/sdk/bin/toitc
 
-.PHONY: build/arm32/bin/toitvm build/arm32/bin/toitc
-build/arm32/bin/toitvm build/arm32/bin/toitc: build/arm32/CMakeCache.txt
+.PHONY: build/arm32/sdk/bin/toitvm build/arm32/sdk/bin/toitc
+build/arm32/sdk/bin/toitvm build/arm32/sdk/bin/toitc: build/arm32/CMakeCache.txt
 	(cd build/arm32 && ninja build_toitvm)
 
 build/arm32/CMakeCache.txt: build/arm32/
@@ -117,8 +117,8 @@ build/$(ESP32_CHIP)/toit.bin build/$(ESP32_CHIP)/toit.elf: build/$(ESP32_CHIP)/l
 build/$(ESP32_CHIP)/lib/libtoit_image.a: build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s build/$(ESP32_CHIP)/CMakeCache.txt
 	(cd build/esp32 && ninja toit_image)
 
-.PHONY:	build/host/bin/toitvm build/host/bin/toitc
-build/host/bin/toitvm build/host/bin/toitc: build/host/CMakeCache.txt
+.PHONY:	build/host/sdk/bin/toitvm build/host/sdk/bin/toitc
+build/host/sdk/bin/toitvm build/host/sdk/bin/toitc: build/host/CMakeCache.txt
 	(cd build/host && ninja build_toitvm)
 
 build/host/CMakeCache.txt: build/host/
@@ -127,20 +127,20 @@ build/host/CMakeCache.txt: build/host/
 build/esp32/CMakeCache.txt: build/$(ESP32_CHIP)/
 	(cd build/$(ESP32_CHIP) && IMAGE=build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s cmake ../../ -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/$(ESP32_CHIP)/$(ESP32_CHIP).cmake --no-warn-unused-cli)
 
-build/esp32/esp32.image.s: build/esp32/ build/snapshot build/host/bin/toitvm build/snapshots/snapshot_to_image.snapshot
-	build/host/bin/toitvm build/snapshots/snapshot_to_image.snapshot build/snapshot $@
+build/esp32/esp32.image.s: build/esp32/ build/snapshot build/host/sdk/bin/toitvm build/snapshots/snapshot_to_image.snapshot
+	build/host/sdk/bin/toitvm build/snapshots/snapshot_to_image.snapshot build/snapshot $@
 
 build/snapshots/:
 	mkdir -p $@
 
-build/snapshots/snapshot_to_image.snapshot: build/host/bin/toitc tools/snapshot_to_image.toit build/snapshots/
-	build/host/bin/toitc -w $@ tools/snapshot_to_image.toit
+build/snapshots/snapshot_to_image.snapshot: build/host/sdk/bin/toitc tools/snapshot_to_image.toit build/snapshots/
+	build/host/sdk/bin/toitc -w $@ tools/snapshot_to_image.toit
 
-build/snapshots/system_message.snapshot: build/host/bin/toitc tools/system_message.toit build/snapshots/
-	build/host/bin/toitc -w $@ tools/system_message.toit
+build/snapshots/system_message.snapshot: build/host/sdk/bin/toitc tools/system_message.toit build/snapshots/
+	build/host/sdk/bin/toitc -w $@ tools/system_message.toit
 
-build/snapshot: build/host/bin/toitc $(ESP32_ENTRY)
-	build/host/bin/toitc -w $@ $(ESP32_ENTRY) -Dwifi.ssid="$(ESP32_WIFI_SSID)" -Dwifi.password="$(ESP32_WIFI_PASSWORD)"
+build/snapshot: build/host/sdk/bin/toitc $(ESP32_ENTRY)
+	build/host/sdk/bin/toitc -w $@ $(ESP32_ENTRY) -Dwifi.ssid="$(ESP32_WIFI_SSID)" -Dwifi.password="$(ESP32_WIFI_PASSWORD)"
 
 GO_USE_INSTALL = 1
 GO_USE_INSTALL_FROM = 1 16
