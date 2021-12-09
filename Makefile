@@ -130,7 +130,7 @@ $(SNAPSHOT_DIR)/inject_config.snapshot: tools/inject_config.toit $(TOITC_BIN) $(
 	$(TOITC_BIN) -w $@ $<
 
 build/snapshot: $(TOITC_BIN) $(ESP32_ENTRY)
-	$(TOITC_BIN) -w $@ $(ESP32_ENTRY) -Dwifi.ssid=$(ESP32_WIFI_SSID) -Dwifi.password=$(ESP32_WIFI_PASSWORD)
+	$(TOITC_BIN) -w $@ $(ESP32_ENTRY) -Dwifi.ssid="$(ESP32_WIFI_SSID)" -Dwifi.password="$(ESP32_WIFI_PASSWORD)"
 
 GO_USE_INSTALL = 1
 GO_USE_INSTALL_FROM = 1 16
