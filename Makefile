@@ -45,6 +45,24 @@ prefix ?= /opt/toit-sdk
 TOOLS = $(TOITPKG_BIN) $(TOITLSP_BIN) $(TOITVM_BIN) $(TOITC_BIN)
 SNAPSHOTS = $(SYSTEM_MESSAGE_SNAPSHOT) $(SNAPSHOT_TO_IMAGE_SNAPSHOT)
 
+BIN_DIR = build/host/sdk/bin
+TOITPKG_BIN = $(BIN_DIR)/toitpkg
+TOITLSP_BIN = $(BIN_DIR)/toitlsp
+TOITVM_BIN = $(BIN_DIR)/toitvm
+TOITC_BIN = $(BIN_DIR)/toitc
+
+# Note that the boot snapshot lives in the bin dir.
+TOIT_BOOT_SNAPSHOT = $(BIN_DIR)/toitvm_boot.snapshot
+
+SNAPSHOT_DIR = build/host/sdk/snapshots
+SYSTEM_MESSAGE_SNAPSHOT = $(SNAPSHOT_DIR)/system_message.snapshot
+SNAPSHOT_TO_IMAGE_SNAPSHOT = $(SNAPSHOT_DIR)/snapshot_to_image.snapshot
+
+prefix ?= /opt/toit-sdk
+
+TOOLS = $(TOITPKG_BIN) $(TOITLSP_BIN) $(TOITVM_BIN) $(TOITC_BIN)
+SNAPSHOTS = $(SYSTEM_MESSAGE_SNAPSHOT) $(SNAPSHOT_TO_IMAGE_SNAPSHOT)
+
 .PHONY: all
 all: tools
 
