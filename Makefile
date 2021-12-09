@@ -111,8 +111,8 @@ build/arm64/CMakeCache.txt: build/arm64/
 .PHONY: tools-arm32
 tools-arm32: check-env toitpkg toitlsp build/arm32/bin/toitvm build/arm32/bin/toitc
 
-.PHONY: build/arm32/bin/toitvm build/arm32/bin/toitc
-build/arm32/bin/toitvm build/arm32/bin/toitc: build/arm32/CMakeCache.txt
+.PHONY: build/arm32/sdk/bin/toitvm build/arm32/sdk/bin/toitc
+build/arm32/sdk/bin/toitvm build/arm32/sdk/bin/toitc: build/arm32/CMakeCache.txt
 	(cd build/arm32 && ninja build_toitvm)
 
 build/arm32/CMakeCache.txt: build/arm32/
