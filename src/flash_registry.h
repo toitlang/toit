@@ -53,10 +53,12 @@ class FlashRegistry {
   // Erase the flash registry.
   static bool erase_flash_registry();
 
+  // Get the size of the allocations area in bytes.
+  static int allocations_size();
+
  private:
   static const char* allocations_memory() { return allocations_memory_; }
   static bool is_allocations_set_up();
-  static int allocations_size();
 
   static const char* allocations_memory_;
 };

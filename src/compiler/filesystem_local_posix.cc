@@ -44,6 +44,15 @@ char FilesystemLocal::path_separator() {
   return '/';
 }
 
+char* FilesystemLocal::root(const char* path) {
+  return Filesystem::root(path);
+}
+
+char* FilesystemLocal::to_local_path(const char* path) {
+  if (path == null) return null;
+  return strdup(path);
+}
+
 } // namespace compiler
 } // namespace toit
 

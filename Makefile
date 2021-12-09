@@ -18,8 +18,8 @@ BUILD_DATE = $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 # Use 'make ESP32_ENTRY=examples/mandelbrot.toit' to compile a different
 # example for the ESP32 firmware.
 ESP32_ENTRY=examples/hello.toit
-ESP32_WIFI_PASSWORD=
 ESP32_WIFI_SSID=
+ESP32_WIFI_PASSWORD=
 ESP32_PORT=
 ESP32_CHIP=esp32
 export IDF_TARGET=$(ESP32_CHIP)
@@ -28,7 +28,7 @@ export IDF_TARGET=$(ESP32_CHIP)
 all: tools
 
 .PHONY: tools
-tools: check-env toitpkg toitlsp build/host/bin/toitvm build/host/bin/toitc
+tools: check-env toitpkg toitlsp build/host/bin/toitvm build/host/bin/toitc build/snapshots/snapshot_to_image.snapshot build/snapshots/system_message.snapshot
 
 .PHONY: tools-riscv64
 tools-riscv64: check-env toitpkg toitlsp build/riscv64/bin/toitvm build/riscv64/bin/toitc
@@ -47,8 +47,15 @@ tools-arm64: check-env toitpkg toitlsp build/arm64/bin/toitvm build/arm64/bin/to
 build/arm64/bin/toitvm build/arm64/bin/toitc: build/arm64/CMakeCache.txt
 	(cd build/arm64 && ninja build_toitvm)
 
+.PHONY: build/win64/bin/toitvm build/win64/bin/toitc
+build/win64/bin/toitvm build/win64/bin/toitc: build/win64/CMakeCache.txt
+	(cd build/win64 && ninja build_toitvm)
+
 build/arm64/CMakeCache.txt: build/arm64/
 	(cd build/arm64 && cmake ../../ -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/arm64.cmake)
+
+build/win64/CMakeCache.txt: build/win64/
+	(cd build/win64 && cmake ../../ -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/win64.cmake)
 
 .PHONY: tools-arm32
 tools-arm32: check-env toitpkg toitlsp build/arm32/bin/toitvm build/arm32/bin/toitc
@@ -91,11 +98,20 @@ build/host/CMakeCache.txt: build/host/
 build/$(ESP32_CHIP)/CMakeCache.txt: build/$(ESP32_CHIP)/
 	(cd build/$(ESP32_CHIP) && IMAGE=build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s cmake ../../ -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/$(ESP32_CHIP)/$(ESP32_CHIP).cmake --no-warn-unused-cli)
 
-build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s: build/$(ESP32_CHIP)/ build/snapshot build/host/bin/toitvm tools/snapshot_to_image.toit
-	build/host/bin/toitvm tools/snapshot_to_image.toit build/snapshot $@
+build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s: build/$(ESP32_CHIP)/ build/snapshot build/host/bin/toitvm tools/snapshot_to_image.snapshot
+	build/host/bin/toitvm build/snapshots/snapshot_to_image.snapshot build/snapshot $@
+
+build/snapshots/:
+	mkdir -p $@
+
+build/snapshots/snapshot_to_image.snapshot: build/host/bin/toitc tools/snapshot_to_image.toit build/snapshots/
+	build/host/bin/toitc -w $@ tools/snapshot_to_image.toit
+
+build/snapshots/system_message.snapshot: build/host/bin/toitc tools/system_message.toit build/snapshots/
+	build/host/bin/toitc -w $@ tools/system_message.toit
 
 build/snapshot: build/host/bin/toitc $(ESP32_ENTRY)
-	build/host/bin/toitc -w $@ $(ESP32_ENTRY) -Dwifi.ssid=$(ESP32_WIFI_SSID) -Dwifi.password=$(ESP32_WIFI_PASSWORD)
+	build/host/bin/toitc -w $@ $(ESP32_ENTRY) -Dwifi.ssid="$(ESP32_WIFI_SSID)" -Dwifi.password="$(ESP32_WIFI_PASSWORD)"
 
 GO_USE_INSTALL = 1
 GO_USE_INSTALL_FROM = 1 16
@@ -143,7 +159,7 @@ build/$(ESP32_CHIP)/: check-env
 	mkdir -p $@
 	make -C toolchains/$(ESP32_CHIP) -s $(shell pwd)/build/$(ESP32_CHIP)/include/sdkconfig.h
 
-build/riscv64/ build/arm64/ build/arm32/:
+build/riscv64/ build/arm64/ build/arm32/ build/win64/:
 	mkdir -p $@
 
 .PHONY:	clean check-env

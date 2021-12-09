@@ -38,6 +38,11 @@ char FilesystemHybrid::path_separator() {
   return do_with_active_fs<char>(f);
 }
 
+char* FilesystemHybrid::root(const char* path) {
+  auto f = [&](Filesystem* fs) { return fs->root(path); };
+  return do_with_active_fs<char*>(f);
+}
+
 bool FilesystemHybrid::is_absolute(const char* path) {
   auto f = [&](const char* path, Filesystem* fs) { return fs->is_absolute(path); };
   return do_with_active_fs<bool>(path, f);

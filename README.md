@@ -3,6 +3,11 @@
 This repository contains the Toit language implementation. It is fully open source and consists of the compiler,
 virtual machine, and standard libraries that together enable Toit programs to run on an ESP32.
 
+## Community
+
+Use this [invite](https://discord.gg/ugjgGbW6) to join our Discord server, and follow the development and get help.
+We're eager to hear of your experience building with Toit.
+
 We use [GitHub Discussions](https://github.com/toitlang/toit/discussions) to discuss and learn and
 we follow a [code of conduct](CODE_OF_CONDUCT.md) in all our community interactions.
 
@@ -190,6 +195,13 @@ own entry point and specify it through the `ESP32_ENTRY` make variable:
 
 ``` sh
 make esp32 ESP32_ENTRY=examples/mandelbrot.toit
+```
+
+Build an image and flash it to your ESP32 device. You must specify the device port
+with the `ESP32_PORT` make variable. You can also use all the `make esp32` make variables.
+
+``` sh
+make flash ESP32_ENTRY=examples/mandelbrot.toit ESP32_PORT=/dev/ttyUSB0
 ```
 
 ### Configuring WiFi for the ESP32

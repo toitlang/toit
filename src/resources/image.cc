@@ -26,10 +26,12 @@ MODULE_IMPLEMENTATION(image, MODULE_IMAGE)
 
 PRIMITIVE(writer_create) {
   ARGS(int, offset, int, byte_size);
+  if (offset < 0 || offset + byte_size > FlashRegistry::allocations_size()) OUT_OF_BOUNDS;
+
   ByteArray* result = process->object_heap()->allocate_proxy();
   if (result == null) ALLOCATION_FAILED;
 
-  if (!FlashRegistry::erase_chunk(offset, byte_size)) OUT_OF_BOUNDS;
+  if (!FlashRegistry::erase_chunk(offset, byte_size)) HARDWARE_ERROR;
   void* address = FlashRegistry::memory(offset, byte_size);
   ProgramImage image(address, byte_size);
   ImageOutputStream* output = _new ImageOutputStream(image);
