@@ -178,7 +178,12 @@ uint32_t WifiResourceGroup::on_event(Resource* resource, word data, uint32_t sta
     case IP_EVENT_STA_GOT_IP: {
       ip_event_got_ip_t* event = reinterpret_cast<ip_event_got_ip_t*>(system_event->event_data);
       uint32_t addr = event->ip_info.ip.addr;
-      sprintf(static_cast<IPEvents*>(resource)->_ip, "%d.%d.%d.%d",
+      sprintf(static_cast<IPEvents*>(resource)->_ip, 
+#ifdef __riscv
+              "%lu.%lu.%lu.%lu",
+#else
+	      "%d.%d.%d.%d",
+#endif
               (addr >> 0) & 0xff,
               (addr >> 8) & 0xff,
               (addr >> 16) & 0xff,
@@ -191,7 +196,14 @@ uint32_t WifiResourceGroup::on_event(Resource* resource, word data, uint32_t sta
       break;
 
     default:
-      printf("unhandled WiFi event: %d\n", system_event->id);
+      printf(
+#ifdef __riscv
+        "unhandled WiFi event: %lu\n",
+#else
+	"unhandled Wifi event: %d\n",
+#endif
+        system_event->id
+      );
   }
 
   return state;

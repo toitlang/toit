@@ -380,7 +380,12 @@ static Object* get_address_or_error(UDPSocket* socket, Process* process, bool pe
     ip_addr_get_ip4_u32(&socket->upcb()->remote_ip) :
     ip_addr_get_ip4_u32(&socket->upcb()->local_ip);
   char buffer[16];
-  int length = sprintf(buffer, "%d.%d.%d.%d",
+  int length = sprintf(buffer, 
+#ifdef __riscv
+		       "%lu.%lu.%lu.%lu",
+#else
+		       "%d.%d.%d.%d",
+#endif
                        (address >> 0) & 0xff,
                        (address >> 8) & 0xff,
                        (address >> 16) & 0xff,

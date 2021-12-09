@@ -26,7 +26,6 @@
 #include <malloc.h>
 #include <sys/time.h>
 #include <sys/queue.h>
-#include <esp32/rtc.h>
 
 #include "os.h"
 #include "flags.h"
@@ -34,8 +33,16 @@
 #include "memory.h"
 #include "rtc_memory_esp32.h"
 #include "driver/uart.h"
-#include "soc/soc.h"
-#include "soc/uart_reg.h"
+
+#include <soc/soc.h>
+#include <soc/uart_reg.h>
+
+#ifdef __riscv
+  #include <esp32c3/rtc.h>
+#else
+  #include <esp32/rtc.h>
+#endif
+
 #include "uuid.h"
 
 namespace toit {
@@ -149,7 +156,11 @@ class ConditionVariable {
 
     _mutex->unlock();
 
+#ifdef __riscv
+    uint32_t value = 0;
+#else
     uint32 value = 0;
+#endif
     bool success = xTaskNotifyWait(0x00, 0xffffffff, &value, timeout_ticks) == pdTRUE;
 
     _mutex->lock();

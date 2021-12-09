@@ -23,7 +23,12 @@
 
 #include "esp_partition.h"
 #include "esp_spi_flash.h"
-#include <esp32/rom/cache.h>
+
+#ifdef __riscv
+  #include <esp32c3/rom/cache.h>
+#else
+  #include <esp32/rom/cache.h>
+#endif
 
 namespace toit {
 
@@ -94,9 +99,11 @@ bool FlashRegistry::is_allocations_set_up() {
 
 void FlashRegistry::flush() {
   if (!is_dirty) return;
+#ifndef __riscv
   Cache_Flush(0);
 #ifndef CONFIG_FREERTOS_UNICORE
   Cache_Flush(1);
+#endif
 #endif
   is_dirty = false;
 }

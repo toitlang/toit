@@ -43,9 +43,12 @@ set(SKDCONFIG_INCLUDE_DIR "build/esp32/include" CACHE FILEPATH "Path to the sdkc
 include_directories(
   $ENV{IDF_PATH}/components/app_update/include
   $ENV{IDF_PATH}/components/bootloader_support/include
-  $ENV{IDF_PATH}/components/driver/esp32c3/include
+  
   $ENV{IDF_PATH}/components/driver/include
+  $ENV{IDF_PATH}/components/driver/esp32c3/include
+  
   $ENV{IDF_PATH}/components/esp32c3/include
+  
   $ENV{IDF_PATH}/components/esp_adc_cal/include
   $ENV{IDF_PATH}/components/esp_common/include
   $ENV{IDF_PATH}/components/esp_eth/include
@@ -60,8 +63,10 @@ include_directories(
   $ENV{IDF_PATH}/components/freertos/include
   $ENV{IDF_PATH}/components/freertos/xtensa/include
   $ENV{IDF_PATH}/components/freertos/port/xtensa/include
+  
   $ENV{IDF_PATH}/components/hal/include
   $ENV{IDF_PATH}/components/hal/esp32c3/include
+  
   $ENV{IDF_PATH}/components/heap/include
   $ENV{IDF_PATH}/components/log/include
   $ENV{IDF_PATH}/components/lwip/include/lwip
@@ -74,7 +79,9 @@ include_directories(
   $ENV{IDF_PATH}/components/newlib/platform_include
   $ENV{IDF_PATH}/components/nvs_flash/include
   $ENV{IDF_PATH}/components/spi_flash/include
-  $ENV{IDF_PATH}/components/soc/esp32c3/include
+  
+ 
+  $ENV{IDF_PATH}/components/ 
   $ENV{IDF_PATH}/components/soc/include
   $ENV{IDF_PATH}/components/soc/soc/include
   $ENV{IDF_PATH}/components/soc/soc/esp32/include
@@ -90,7 +97,6 @@ include_directories(
   $ENV{IDF_PATH}/components/bt/host/nimble/nimble/porting/npl/freertos/include
   $ENV{IDF_PATH}/components/bt/host/nimble/nimble/nimble/host/include
   $ENV{IDF_PATH}/components/bt/host/nimble/nimble/nimble/host/util/include
-  $ENV{IDF_PATH}/components/bt/include/esp32c3/include
   $ENV{IDF_PATH}/components/bt/host/nimble/nimble/nimble/host/services/gap/include
   ${SKDCONFIG_INCLUDE_DIR}
   )
