@@ -768,10 +768,11 @@ static LockFileContent parse_lock_file(const std::string& lock_file_path,
 }
 
 PackageLock PackageLock::read(const std::string& lock_file_path,
-                              bool entry_is_absolute,
+                              const char* entry_path,
                               SourceManager* source_manager,
                               Filesystem* fs,
                               Diagnostics* diagnostics) {
+  bool entry_is_absolute = fs->is_absolute(entry_path);
   LockFileContent lock_content;
 
   if (lock_file_path.empty()) {
@@ -854,7 +855,7 @@ PackageLock PackageLock::read(const std::string& lock_file_path,
   }
 
   ASSERT(!is_valid_package_id(Package::ENTRY_PACKAGE_ID));
-  std::string root(fs->root(fs->cwd()));
+  std::string root(fs->root(entry_path));
   Package entry_package(Package::ENTRY_PACKAGE_ID,
                         entry_pkg_path,
                         entry_is_absolute ? root : fs->cwd(),
