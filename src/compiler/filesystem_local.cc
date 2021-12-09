@@ -78,7 +78,6 @@ bool FilesystemLocal::do_is_regular_file(const char* path) {
   if (stat_result == 0) {
     return S_ISREG(path_stat.st_mode);
   } else {
-    perror("is_regular_file");
     return false;
   }
 }
@@ -96,7 +95,6 @@ bool FilesystemLocal::do_is_directory(const char* path) {
   if (stat_result == 0) {
     return S_ISDIR(path_stat.st_mode);
   } else {
-    perror("is_directory");
     return false;
   }
 }

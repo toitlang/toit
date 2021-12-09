@@ -114,7 +114,7 @@ target_link_libraries(
 
 include(${CMAKE_SOURCE_DIR}/tools/toit.cmake)
 
-set(BOOT_SNAPSHOT ${CMAKE_BINARY_DIR}/bin/toitvm_boot.snapshot)
+set(BOOT_SNAPSHOT ${CMAKE_BINARY_DIR}/sdk/bin/toitvm_boot.snapshot)
 
 ADD_TOIT_TARGET(
   ${CMAKE_SOURCE_DIR}/tools/toitvm_boot.toit

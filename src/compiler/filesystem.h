@@ -38,6 +38,9 @@ class Filesystem {
 
   virtual const char* entry_path() = 0;
 
+  // This function should return the path that contains the 'lib' directory.
+  // For historic reasons it may also be the path to the `bin` folder, and the compiler
+  // searches for `../lib`.
   virtual const char* sdk_path() = 0;
   virtual List<const char*> package_cache_paths() = 0;
 
@@ -65,6 +68,7 @@ class Filesystem {
                                    const std::function<void (const char*, bool is_directory)> callback);
 
   const char* cwd();
+
   const char* library_root();
 
   /// Registers an intercepted file.
