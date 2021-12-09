@@ -107,6 +107,19 @@ class PathBuilder {
     join(segment2);
   }
 
+  void join(const std::string& segment, const std::string& segment2, const std::string& segment3) {
+    join(segment);
+    join(segment2);
+    join(segment3);
+  }
+
+  void join(const std::string& segment, const std::string& segment2, const std::string& segment3, const std::string& segment4) {
+    join(segment);
+    join(segment2);
+    join(segment3);
+    join(segment4);
+  }
+
   void canonicalize();
 
  private:

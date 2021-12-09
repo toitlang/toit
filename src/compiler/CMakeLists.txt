@@ -42,15 +42,17 @@ else()
   set(LN_FORCE "Tf")
 endif()
 
+set(TOIT_LIB_DIR "${CMAKE_BINARY_DIR}/sdk/lib")
+
 add_custom_command(
-  OUTPUT ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/lib
-  COMMAND ln -s${LN_FORCE} ${CMAKE_SOURCE_DIR}/lib ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/lib
+  OUTPUT ${TOIT_LIB_DIR}
+  COMMAND ln -s${LN_FORCE} ${CMAKE_SOURCE_DIR}/lib ${TOIT_LIB_DIR}
   VERBATIM
 )
 
 add_custom_target(
   generate-lib-symlink
-  DEPENDS ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/lib
+  DEPENDS ${TOIT_LIB_DIR}
   )
 
 add_dependencies(toitc generate-lib-symlink)
