@@ -35,13 +35,11 @@ TOITC_BIN = $(BIN_DIR)/toitc
 TOIT_BOOT_SNAPSHOT = $(BIN_DIR)/toitvm_boot.snapshot
 
 SNAPSHOT_DIR = build/host/sdk/snapshots
-SYSTEM_MESSAGE_SNAPSHOT = $(SNAPSHOT_DIR)/system_message.snapshot
-SNAPSHOT_TO_IMAGE_SNAPSHOT = $(SNAPSHOT_DIR)/snapshot_to_image.snapshot
 
 prefix ?= /opt/toit-sdk
 
 TOOLS = $(TOITPKG_BIN) $(TOITLSP_BIN) $(TOITVM_BIN) $(TOITC_BIN)
-SNAPSHOTS = $(SYSTEM_MESSAGE_SNAPSHOT) $(SNAPSHOT_TO_IMAGE_SNAPSHOT)
+SNAPSHOTS = $(SNAPSHOT_DIR)/system_message.snapshot $(SNAPSHOT_DIR)/snapshot_to_image.snapshot $(SNAPSHOT_DIR)/inject_config.snapshot
 
 .PHONY: all
 all: tools
@@ -126,6 +124,9 @@ $(SNAPSHOT_DIR)/snapshot_to_image.snapshot: tools/snapshot_to_image.toit $(TOITC
 	$(TOITC_BIN) -w $@ $<
 
 $(SNAPSHOT_DIR)/system_message.snapshot: tools/system_message.toit $(TOITC_BIN) $(SNAPSHOT_DIR)
+	$(TOITC_BIN) -w $@ $<
+
+$(SNAPSHOT_DIR)/inject_config.snapshot: tools/inject_config.toit $(TOITC_BIN) $(SNAPSHOT_DIR)
 	$(TOITC_BIN) -w $@ $<
 
 build/snapshot: $(TOITC_BIN) $(ESP32_ENTRY)
