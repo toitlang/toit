@@ -2,7 +2,7 @@ name: Build Linux
 
 on:
   push:
-    branches: [master,pack-artifacts]
+    branches: [master]
   pull_request:
     branches: [master]
   release:
@@ -29,17 +29,17 @@ jobs:
         run: make tools
       - name: Pack artifacts
         run: |
-          tar -czf build/linux.tgz -C ./build --transform s/^host/toit/ host
+          tar -czf build/toit-linux.tar.gz -C ./build/host -h --transform s/^sdk/toit/ sdk
       - name: Upload artifacts
         uses: actions/upload-artifact@v2
         with:
           name: linux-build
-          path: build/linux.tgz
+          path: build/toit-linux.tar.gz
       - name: Upload release artifacts
         if: github.event_name == 'release'
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: build/linux.tgz
+          file: build/toit-linux.tar.gz
           tag: ${{ github.ref }}
           overwrite: true
