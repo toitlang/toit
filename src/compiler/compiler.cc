@@ -908,9 +908,8 @@ PackageLock Pipeline::load_package_lock(const List<const char*> source_paths) {
   } else {
     lock_file = find_lock_file(entry_path, filesystem());
   }
-  bool entry_is_absolute = filesystem()->is_absolute(entry_path);
   return PackageLock::read(lock_file,
-                           entry_is_absolute,
+                           entry_path,
                            source_manager(),
                            filesystem(),
                            diagnostics());
@@ -923,9 +922,8 @@ PackageLock DebugCompilationPipeline::load_package_lock(const List<const char*> 
   ASSERT(source_paths.length() == 2);
   auto entry_path = source_paths[1];
   auto lock_file = find_lock_file(entry_path, filesystem());
-  bool entry_is_absolute = filesystem()->is_absolute(entry_path);
   return PackageLock::read(lock_file,
-                           entry_is_absolute,
+                           entry_path,
                            source_manager(),
                            filesystem(),
                            diagnostics());
