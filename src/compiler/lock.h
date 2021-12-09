@@ -42,7 +42,7 @@ class PackageLock {
   // If [lock_file_path] is "", assumes the file doesn't exists and creates a
   // default PackageLock, as if the lock-file was empty.
   static PackageLock read(const std::string& lock_file_path,
-                          bool entry_is_absolute,
+                          const char* entry_path,
                           SourceManager* source_manager,
                           Filesystem* fs,
                           Diagnostics* diagnostics);
