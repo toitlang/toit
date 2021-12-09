@@ -101,6 +101,7 @@ flash: esp32 check-flash-env
 
 build/esp32/toit.bin build/esp32/toit.elf: build/esp32/lib/libtoit_image.a
 	make -C toolchains/esp32/
+	$(TOITVM_BIN) tools/inject_config.toit build/config.json build/esp32/toit.bin
 
 build/esp32/lib/libtoit_image.a: build/esp32/esp32.image.s build/esp32/CMakeCache.txt
 	(cd build/esp32 && ninja toit_image)
@@ -129,7 +130,8 @@ $(SNAPSHOT_DIR)/system_message.snapshot: tools/system_message.toit $(TOITC_BIN) 
 	$(TOITC_BIN) -w $@ $<
 
 build/snapshot: $(TOITC_BIN) $(ESP32_ENTRY)
-	$(TOITC_BIN) -w $@ $(ESP32_ENTRY) -Dwifi.ssid=$(ESP32_WIFI_SSID) -Dwifi.password=$(ESP32_WIFI_PASSWORD)
+	echo '{"wifi": {"ssid": "$(ESP32_WIFI_SSID)", "password": "$(ESP32_WIFI_PASSWORD)"}}' > build/config.json
+	$(TOITC_BIN) -w $@ $(ESP32_ENTRY)
 
 GO_USE_INSTALL = 1
 GO_USE_INSTALL_FROM = 1 16
