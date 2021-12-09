@@ -56,7 +56,7 @@ char* FilesystemLocal::root(const char* path) {
   return result;
 }
 
-char* FilesystemLocal::canonicalize(const char* path) {
+char* FilesystemLocal::to_local_path(const char* path) {
   if (path == null) return null;
   char* result = strdup(path);
   int length = strlen(path);

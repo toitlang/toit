@@ -48,7 +48,7 @@ char* FilesystemLocal::root(const char* path) {
   return Filesystem::root(path);
 }
 
-char* FilesystemLocal::canonicalize(const char* path) {
+char* FilesystemLocal::to_local_path(const char* path) {
   if (path == null) return null;
   return strdup(path);
 }
