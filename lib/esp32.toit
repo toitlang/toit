@@ -2,6 +2,8 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+import encoding.ubjson
+
 ESP_RST_UNKNOWN   ::= 0 // Reset reason can not be determined.
 ESP_RST_POWERON   ::= 1 // Reset due to power-on event.
 ESP_RST_EXT       ::= 2 // Reset by external pin (not applicable for ESP32).
@@ -68,3 +70,11 @@ enable_external_wakeup pin_mask/int on_any_high/bool -> none:
 
 ext1_wakeup_status pin_mask/int -> int:
   #primitive.esp32.ext1_wakeup_status
+
+image_config -> Map?:
+  config_data := image_config_
+  if config_data[0] == 0: return null
+  return (ubjson.Decoder config_data).decode
+
+image_config_ -> ByteArray:
+  #primitive.esp32.image_config

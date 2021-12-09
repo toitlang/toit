@@ -335,6 +335,7 @@ namespace toit {
   PRIMITIVE(ext1_wakeup_status, 1)           \
   PRIMITIVE(total_deep_sleep_time, 0)        \
   PRIMITIVE(total_run_time, 0)               \
+  PRIMITIVE(image_config, 0)                 \
 
 #define MODULE_I2C(PRIMITIVE)                \
   PRIMITIVE(init, 3)                         \
