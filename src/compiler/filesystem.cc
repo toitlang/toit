@@ -42,15 +42,21 @@ const char* Filesystem::library_root() {
   if (_library_root == null) {
     auto sdk = sdk_path();
     const char* LIB_SUFFIX = "lib";
-    int suffix_length = strlen(LIB_SUFFIX);
-    int sdk_path_length = strlen(sdk);
-    int length = sdk_path_length + suffix_length + 2;
-    char* path = unvoid_cast<char*>(malloc(length));
-    memcpy(path, sdk, sdk_path_length);
-    path[sdk_path_length] = path_separator();
-    memcpy(path + sdk_path_length + 1, LIB_SUFFIX, suffix_length);
-    path[length - 1] = '\0';
-    _library_root = path;
+    PathBuilder builder(this);
+    builder.join(sdk);
+    int sdk_length = builder.length();
+    builder.join(LIB_SUFFIX);
+    if (is_directory(builder.c_str())) {
+      _library_root = builder.strdup();
+    } else {
+      builder.reset_to(sdk_length);
+      builder.join("..", "lib");
+      builder.canonicalize();
+      // Always assign the string, without testing.
+      // If the path is wrong there will be an error very soon, because the compiler can't
+      // find the core library.
+      _library_root = builder.strdup();
+    }
   }
   return _library_root;
 }

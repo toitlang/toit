@@ -20,8 +20,8 @@ project(toit)
 set(CMAKE_INSTALL_MESSAGE LAZY)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# Put all binaries in /bin folder.
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+# Put all binaries in /sdk/bin folder.
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/sdk/bin")
 # Put all libraries in /lib folder.
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
