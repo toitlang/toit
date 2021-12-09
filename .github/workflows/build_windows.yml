@@ -27,7 +27,9 @@ jobs:
         run: make tools
       - name: Pack artifacts
         run: |
-          tar -czf build/toit-windows.tar.gz -C ./build/host -h --exclude sdk/bin/mbedtls -s /^sdk/toit/ sdk
+          Xcopy /E /I build/host/sdk build/host/toit
+          dir build/host/
+          tar -czf build/toit-windows.tar.gz -C ./build/host -h --exclude sdk/bin/mbedtls toit
       - name: Upload artifacts
         uses: actions/upload-artifact@v2
         with:
