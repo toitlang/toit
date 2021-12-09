@@ -52,7 +52,7 @@
 
 #include <soc/rtc_cntl_reg.h>
 
-#ifdef __riscv
+#ifdef CONFIG_IDF_TARGET_ESP32C3
 //  #include <soc/esp32/include/soc/sens_reg.h>
   #include <esp32c3/rom/rtc.h>
   #include <esp32c3/rom/ets_sys.h>
@@ -82,7 +82,7 @@ PRIMITIVE(total_deep_sleep_time) {
 }
 
 PRIMITIVE(enable_external_wakeup) {
-#ifndef __riscv
+#ifndef CONFIG_IDF_TARGET_ESP32C3
   ARGS(int64, pin_mask, bool, on_any_high);
   esp_err_t err = esp_sleep_enable_ext1_wakeup(pin_mask, on_any_high ? ESP_EXT1_WAKEUP_ANY_HIGH : ESP_EXT1_WAKEUP_ALL_LOW);
   if (err != ESP_OK) {
@@ -98,7 +98,7 @@ PRIMITIVE(wakeup_cause) {
 }
 
 PRIMITIVE(ext1_wakeup_status) {
-#ifndef __riscv
+#ifndef CONFIG_IDF_TARGET_ESP32C3
   ARGS(int64, pin_mask);
   uint64 status = esp_sleep_get_ext1_wakeup_status();
   for (int pin = 0; pin_mask > 0; pin++) {

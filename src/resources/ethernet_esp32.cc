@@ -174,7 +174,7 @@ MODULE_IMPLEMENTATION(ethernet, MODULE_ETHERNET)
 PRIMITIVE(init_esp32) {
   ARGS(int, phy_chip, int, phy_addr, int, phy_reset_num, int, mdc_num, int, msio_num)
 
-#ifdef __riscv
+#ifdef CONFIG_IDF_TARGET_ESP32C3
   return Primitive::os_error(ESP_FAIL, process);
 #else
 

@@ -381,7 +381,7 @@ static Object* get_address_or_error(UDPSocket* socket, Process* process, bool pe
     ip_addr_get_ip4_u32(&socket->upcb()->local_ip);
   char buffer[16];
   int length = sprintf(buffer, 
-#ifdef __riscv
+#ifdef CONFIG_IDF_TARGET_ESP32C3
 		       "%lu.%lu.%lu.%lu",
 #else
 		       "%d.%d.%d.%d",

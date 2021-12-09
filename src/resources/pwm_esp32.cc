@@ -27,7 +27,7 @@
 #include "../vm.h"
 
 
-#ifdef __riscv
+#ifdef CONFIG_IDF_TARGET_ESP32C3
     #define SPEED_MODE LEDC_LOW_SPEED_MODE
 #else
     #define SPEED_MODE LEDC_HIGH_SPEED_MODE
@@ -54,7 +54,7 @@ ResourcePool<ledc_channel_t, kInvalidLedcChannel> ledc_channels(
 ,   LEDC_CHANNEL_3
 ,   LEDC_CHANNEL_4 
 ,   LEDC_CHANNEL_5
-#ifndef __riscv
+#ifndef CONFIG_IDF_TARGET_ESP32C3
 ,   LEDC_CHANNEL_6
 ,   LEDC_CHANNEL_7
 #endif
