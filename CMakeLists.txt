@@ -35,8 +35,14 @@ if (CCACHE_FOUND)
   set_property(GLOBAL PROPERTY RULE_LAUNCH_LINK "CCACHE_BASEDIR=${PROJECT_SOURCE_DIR} ${CCACHE_FOUND}")
 endif(CCACHE_FOUND)
 
-#set(TOIT_GENERIC_FLAGS "'-fdebug-prefix-map=${PROJECT_SOURCE_DIR}=.' -Wall -Werror -ffunction-sections -fdata-sections -Wno-unused-command-line-argument")
-set(TOIT_GENERIC_FLAGS "'-fdebug-prefix-map=${PROJECT_SOURCE_DIR}=.' -Wall -Werror -ffunction-sections -fdata-sections")
+if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Windows")
+  set(TOIT_GENERIC_FLAGS "${TOIT_GENERIC_FLAGS} '-fdebug-prefix-map=${PROJECT_SOURCE_DIR}=.'")
+endif()
+set(TOIT_GENERIC_FLAGS "${TOIT_GENERIC_FLAGS} -Wall -ffunction-sections -fdata-sections")
+
+if (NOT ${ESP32_CHIP} MATCHES "esp32c3")
+  set(TOIT_GENERIC_FLAGS "${TOIT_GENERIC_FLAGS} -Wno-unused-command-line-argument")
+endif()
 
 include_directories(
   "$ENV{IDF_PATH}/components/mbedtls/mbedtls/include"
