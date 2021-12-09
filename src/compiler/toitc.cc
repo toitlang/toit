@@ -298,8 +298,11 @@ int main(int argc, char **argv) {
       compiler.language_server(compiler_config);
     } else if (for_analysis) {
       compiler::Compiler compiler;
-      compiler.analyze(List<const char*>(source_paths, source_path_count),
-                       compiler_config);
+      List<const char*> paths(source_paths, source_path_count);
+      for (int i = 0; i < paths.length(); i++) {
+        paths[i] = FilesystemLocal::canonicalize(paths[i]);
+      }
+      compiler.analyze(paths, compiler_config);
     } else if (bundle_filename != null) {
       auto compiled = SnapshotBundle::invalid();
       compiler::Compiler compiler;

@@ -34,6 +34,7 @@ class FilesystemLocal : public Filesystem {
   List<const char*> package_cache_paths();
   bool is_absolute(const char* path);
   char path_separator();
+  char* root(const char* path);
 
   /// Computes the executable path.
   ///

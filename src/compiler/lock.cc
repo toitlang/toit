@@ -854,12 +854,11 @@ PackageLock PackageLock::read(const std::string& lock_file_path,
   }
 
   ASSERT(!is_valid_package_id(Package::ENTRY_PACKAGE_ID));
-  std::string path_separator;
-  path_separator += fs->path_separator();
+  std::string root(fs->root(fs->cwd()));
   Package entry_package(Package::ENTRY_PACKAGE_ID,
                         entry_pkg_path,
-                        entry_is_absolute ? path_separator : fs->cwd(),
-                        entry_is_absolute ? path_separator : std::string("."),
+                        entry_is_absolute ? root : fs->cwd(),
+                        entry_is_absolute ? root : std::string("."),
                         Package::OK,
                         entry_prefixes);
   packages[Package::ENTRY_PACKAGE_ID] = entry_package;
