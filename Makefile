@@ -26,7 +26,7 @@ ESP32_PORT=
 all: tools
 
 .PHONY: tools
-tools: check-env toitpkg toitlsp build/host/bin/toitvm build/host/bin/toitc
+tools: check-env toitpkg toitlsp build/host/bin/toitvm build/host/bin/toitc build/snapshots/snapshot_to_image.snapshot build/snapshots/system_message.snapshot
 
 .PHONY: tools-riscv64
 tools-riscv64: check-env toitpkg toitlsp build/riscv64/bin/toitvm build/riscv64/bin/toitc
@@ -87,11 +87,17 @@ build/host/CMakeCache.txt: build/host/
 build/esp32/CMakeCache.txt: build/esp32/
 	(cd build/esp32 && IMAGE=build/esp32/esp32.image.s cmake ../../ -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/esp32/esp32.cmake --no-warn-unused-cli)
 
-build/esp32/esp32.image.s: build/esp32/ build/snapshot build/host/bin/toitvm build/snapshot_to_image.snapshot
-	build/host/bin/toitvm build/snapshot_to_image.snapshot build/snapshot $@
+build/esp32/esp32.image.s: build/esp32/ build/snapshot build/host/bin/toitvm build/snapshots/snapshot_to_image.snapshot
+	build/host/bin/toitvm build/snapshots/snapshot_to_image.snapshot build/snapshot $@
 
-build/snapshot_to_image.snapshot: build/host/bin/toitc tools/snapshot_to_image.toit
+build/snapshots/:
+	mkdir -p $@
+
+build/snapshots/snapshot_to_image.snapshot: build/host/bin/toitc tools/snapshot_to_image.toit build/snapshots/
 	build/host/bin/toitc -w $@ tools/snapshot_to_image.toit
+
+build/snapshots/system_message.snapshot: build/host/bin/toitc tools/system_message.toit build/snapshots/
+	build/host/bin/toitc -w $@ tools/system_message.toit
 
 build/snapshot: build/host/bin/toitc $(ESP32_ENTRY)
 	build/host/bin/toitc -w $@ $(ESP32_ENTRY) -Dwifi.ssid="$(ESP32_WIFI_SSID)" -Dwifi.password="$(ESP32_WIFI_PASSWORD)"
