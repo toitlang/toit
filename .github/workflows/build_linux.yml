@@ -2,9 +2,11 @@ name: Build Linux
 
 on:
   push:
-    branches: [master]
+    branches: [master,pack-artifacts]
   pull_request:
     branches: [master]
+  release:
+    types: [published]
 
 jobs:
   build:
@@ -25,9 +27,19 @@ jobs:
         env:
           IDF_PATH: ${{github.workspace}}/third_party/esp-idf
         run: make tools
-      - uses: actions/upload-artifact@v2
+      - name: Pack artifacts
+        run: |
+          tar -czf build/linux.tgz -C ./build --transform s/^host/toit/ host
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v2
         with:
           name: linux-build
-          path: |
-            build/host/bin/toit*
-            build/host/bin/lib/
+          path: build/linux.tgz
+      - name: Upload release artifacts
+        if: github.event_name == 'release'
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: build/linux.tgz
+          tag: ${{ github.ref }}
+          overwrite: true
