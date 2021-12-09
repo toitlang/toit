@@ -29,7 +29,7 @@ jobs:
         run: make tools
       - name: Pack artifacts
         run: |
-          tar -czf build/toit-linux.tar.gz -C ./build/host -h --transform s/^sdk/toit/ sdk
+          tar -czf build/toit-linux.tar.gz -C ./build/host -h --exclude sdk/bin/mbedtls --transform s/^sdk/toit/ sdk
       - name: Upload artifacts
         uses: actions/upload-artifact@v2
         with:
