@@ -19,6 +19,8 @@ import .snapshot
 import .file as file
 
 BINARY_OPTION ::= "--binary"
+M32_OPTION    ::= "-m32"
+M64_OPTION    ::= "-m64"
 
 // This program reads a snapshot, converts it into an image
 // and dumps the content as a GNU assembler file.
@@ -57,22 +59,44 @@ class AssemblerOutput:
     out.write data
     out.write "\n"
 
-main args:
-  if args.size != 2 and args.size != 3:
-    print_ "Usage: snapshot_to_image [$BINARY_OPTION] <snapshot> <output>"
-    return
+print_usage:
+  print_ "Usage: snapshot_to_image [$BINARY_OPTION] [$M32_OPTION|$M64_OPTION] <snapshot> <output>"
 
+main args:
+  default_word_size := BYTES_PER_WORD
   binary_output := false
   if args.contains BINARY_OPTION:
     binary_output = true
     args = args.filter: it != BINARY_OPTION
+  else:
+    default_word_size = 4  // Use 32-bit non-binary output.
 
-  word_size := 4
+  word_size := null
+  if args.contains M32_OPTION:
+    args = args.filter: it != M32_OPTION
+    word_size = 4
+  if args.contains M64_OPTION:
+    args = args.filter: it != M64_OPTION
+    if word_size:
+      print_usage  // Already set to -m32.
+      return
+    word_size = 8
+  if not word_size:
+    word_size = default_word_size
+
+  if args.size != 2:
+    print_usage
+    return
+
+  if not binary_output and word_size != 4:
+    print_ "Error: Cannot generate 64-bit non-binary output"
+    return
+
   output_path := args[1]
   out := file.Stream.for_write output_path
   snapshot_bundle := SnapshotBundle.from_file args[0]
   program := snapshot_bundle.decode
-  image := build_image program
+  image := build_image program word_size
   relocatable := image.build_relocatable
   if binary_output:
     out.write relocatable

@@ -34,12 +34,14 @@ class FilesystemLocal : public Filesystem {
   List<const char*> package_cache_paths();
   bool is_absolute(const char* path);
   char path_separator();
+  char* root(const char* path);
 
   /// Computes the executable path.
   ///
   /// Returns a malloced data structure that should be freed
   ///   by the caller with `delete []`.
   static char* get_executable_path();
+  static char* to_local_path(const char* path);
 
  protected:
   bool do_exists(const char* path);

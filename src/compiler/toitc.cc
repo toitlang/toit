@@ -155,7 +155,7 @@ int main(int argc, char **argv) {
           fprintf(stderr, "Only one '-w' flag is allowed.\n");
           print_usage(1);
         }
-        bundle_filename = argv[processed_args++];
+        bundle_filename = FilesystemLocal::to_local_path(argv[processed_args++]);
       } else if (strcmp(argv[processed_args], "--force") == 0) {
         force = true;
         processed_args++;
@@ -226,7 +226,7 @@ int main(int argc, char **argv) {
           }
           ways_to_run++;
           ASSERT(source_path_count == 0);
-          source_path = argv[processed_args++];
+          source_path = FilesystemLocal::to_local_path(argv[processed_args++]);
           source_path_count = 1;
         }
         break;
@@ -298,13 +298,16 @@ int main(int argc, char **argv) {
       compiler.language_server(compiler_config);
     } else if (for_analysis) {
       compiler::Compiler compiler;
-      compiler.analyze(List<const char*>(source_paths, source_path_count),
-                       compiler_config);
+      List<const char*> paths(source_paths, source_path_count);
+      for (int i = 0; i < paths.length(); i++) {
+        paths[i] = FilesystemLocal::to_local_path(paths[i]);
+      }
+      compiler.analyze(paths, compiler_config);
     } else if (bundle_filename != null) {
       auto compiled = SnapshotBundle::invalid();
       compiler::Compiler compiler;
       auto source_path = source_path_count == 0 ? null : source_paths[0];
-      compiled = compiler.compile(source_path,
+      compiled = compiler.compile(FilesystemLocal::to_local_path(source_path),
                                   direct_script,
                                   args,
                                   bundle_filename,

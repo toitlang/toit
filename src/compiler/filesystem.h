@@ -43,6 +43,12 @@ class Filesystem {
 
   virtual bool is_absolute(const char* path) = 0;
   virtual char path_separator() { return '/'; }
+  virtual char* root(const char* path) {
+    char* result = new char[2];
+    result[0] = path[0];
+    result[1] = '\0';
+    return result;
+  }
 
   bool is_regular_file(const char* path);
   bool is_directory(const char* path);

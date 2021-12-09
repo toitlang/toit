@@ -63,8 +63,7 @@ abstract class Memory:
 
   put_word --at/int offset/int -> int:
     assert: from_ <= at <= to_ - word_size
-    if word_size == 4: ENDIAN_.put_uint32 bytes_ at offset
-    else: throw "UNIMPLEMENTED"
+    ENDIAN_.put_uint bytes_ word_size at offset
     return at + word_size
 
   put_float64 --at/int value/float -> int:
@@ -75,22 +74,19 @@ abstract class Memory:
   put_half_word --at/int offset/int -> int:
     half_word_size := word_size / 2
     assert: from_ <= at <= to_ - half_word_size
-    if word_size == 4: ENDIAN_.put_uint16 bytes_ at offset
-    else: throw "UNIMPLEMENTED"
+    ENDIAN_.put_uint bytes_ half_word_size at offset
     return at + half_word_size
 
   put_offheap_pointer --at/int address/int -> int:
     assert: from_ <= at <= to_ - word_size
     if address != 0: mark_pointer_ --at=at
-    if word_size == 4: ENDIAN_.put_uint32 bytes_ at address
-    else: ENDIAN_.put_int64 bytes_ at address
+    ENDIAN_.put_uint bytes_ word_size at address
     return at + word_size
 
   put_heap_pointer --at/int heap_address/int -> int:
     assert: from_ <= at <= to_ - word_size
     if ToitHeapObject.is_heap_object heap_address: mark_pointer_ --at=at
-    if word_size == 4: ENDIAN_.put_uint32 bytes_ at heap_address
-    else: ENDIAN_.put_int64 bytes_ at heap_address
+    ENDIAN_.put_uint bytes_ word_size at heap_address
     return at + word_size
 
   put_bytes --at/int value/int --size/int -> int:
@@ -123,8 +119,7 @@ class Offheap extends Memory:
     top_ += aligned
     return result
 
-
-class Block:
+class MemoryBlock:
   from_ /int
   to_   /int
   top_  /int := ?
@@ -172,8 +167,8 @@ class Heap extends Memory:
 
   expand:
     assert: top_ + page_size <= to_
-    block_object_size := ToitBlock.LAYOUT.byte_size --word_size=word_size
-    new_block := Block --at=top_ --page_size=page_size --reserved=block_object_size
+    block_object_size := ToitMemoryBlock.LAYOUT.byte_size --word_size=word_size
+    new_block := MemoryBlock --at=top_ --page_size=page_size --reserved=block_object_size
     top_ += page_size
     blocks_.add new_block
 
@@ -186,13 +181,13 @@ class Heap extends Memory:
     if this is not ToitInteger:
       return contained_objects_.get o --init=if_absent
 
-    // Integers are either going to be encoded as SMIs, or as LargeIntegers.
+    // Integers are either going to be encoded as Smis, or as LargeIntegers.
     // The only way they are large integers is, if they are literals, in which
     // case they are already deduplicated (only once in the literal table).
     // As such it's safe to just create call the `write_to_` function as often
     // as we want.
     result := if_absent.call
-    // The following 'if' only serves as safe-guard against future changes.
+    // The following 'if' only serves as safeguard against future changes.
     if not ToitInteger.is_smi_address result:
       value := (this as ToitInteger).o_.value
       // A large integer.
@@ -204,7 +199,7 @@ class Heap extends Memory:
 
   /**
   Allocates space for an object of the given size in $bytes.
-  Returns the address (aligned). The returned address is not SMI encoded.
+  Returns the address (aligned). The returned address is not Smi encoded.
   */
   allocate --bytes/int -> int:
     aligned := round_up bytes word_size
@@ -230,28 +225,29 @@ class Image:
   all_memory /ByteArray
   relocation_bits /ByteArray
 
-
   // Hackish way of getting the large_integer header from the
   // program to the ToitInteger class without needing to thread it
   // through every possible function call.
   large_integer_header_ /int? := null
 
-  constructor snapshot_program/snapshot.Program:
+  constructor snapshot_program/snapshot.Program .word_size:
     header := snapshot_program.header
-    word_size = 4
+    assert: word_size == 4 or word_size == 8
     page_size = word_size == 4 ? PAGE_BYTE_SIZE_32 : PAGE_BYTE_SIZE_64
 
     block_count := word_size == 4 ? header.block_count32 : header.block_count64
     block_byte_size := block_count * page_size
     toit_program_byte_size := ToitProgram.LAYOUT.byte_size --word_size=word_size
     summed_offheap := (round_up toit_program_byte_size word_size)
-        + (round_up (header.offheap_pointer_count * word_size) word_size)
+        + (header.offheap_pointer_count * word_size)
         + (round_up (header.offheap_int32_count * 4) word_size)
         + (round_up header.offheap_byte_count word_size)
     offheap_size := round_up summed_offheap page_size
     total_size := offheap_size + block_byte_size
     all_memory = ByteArray total_size
-    relocation_bits = ByteArray total_size / word_size / 8
+    total_word_count := total_size / word_size
+    relocation_bits_byte_count := (total_word_count + 7) / 8
+    relocation_bits = ByteArray (round_up relocation_bits_byte_count word_size)
     offheap = Offheap --word_size=word_size all_memory 0 offheap_size relocation_bits
     heap = Heap --word_size=word_size --page_size=page_size all_memory offheap_size total_size relocation_bits
 
@@ -262,14 +258,9 @@ class Image:
     for i := 0; i < all_memory.size; i++:
       if (i % (word_size * word_size * 8)) == 0:
         index := i / word_size / 8
-        if word_size == 4:
-          relocation_word := LITTLE_ENDIAN.uint32 relocation_bits index
-          LITTLE_ENDIAN.put_uint32 result out_index relocation_word
-          out_index += word_size
-        else:
-          relocation_word := LITTLE_ENDIAN.int64 relocation_bits index
-          LITTLE_ENDIAN.put_int64 result out_index relocation_word
-          out_index += word_size
+        relocation_word := LITTLE_ENDIAN.read_uint relocation_bits word_size index
+        LITTLE_ENDIAN.put_uint result word_size out_index relocation_word
+        out_index += word_size
       result[out_index++] = all_memory[i]
     return result
 
@@ -347,16 +338,16 @@ class PrimitiveType extends Layout:
 
   constructor .size:
 
-  static UINT8   ::= PrimitiveType (LayoutSize 0 1)
-  static UINT16  ::= PrimitiveType (LayoutSize 0 2)
-  static UINT32  ::= PrimitiveType (LayoutSize 0 4)
-  static INT32   ::= PrimitiveType (LayoutSize 0 4)
-  static INT     ::= INT32
-  static POINTER ::= PrimitiveType (LayoutSize 1 0)
-  static WORD    ::= PrimitiveType (LayoutSize 1 0)
+  static UINT8     ::= PrimitiveType (LayoutSize 0 1)
+  static UINT16    ::= PrimitiveType (LayoutSize 0 2)
+  static UINT32    ::= PrimitiveType (LayoutSize 0 4)
+  static INT32     ::= PrimitiveType (LayoutSize 0 4)
+  static INT       ::= INT32
+  static POINTER   ::= PrimitiveType (LayoutSize 1 0)
+  static WORD      ::= PrimitiveType (LayoutSize 1 0)
   static HALF_WORD ::= PrimitiveType LayoutSize.half_word
-  static FLOAT64 ::= PrimitiveType (LayoutSize 0 8)
-  static INT64   ::= PrimitiveType (LayoutSize 0 8)
+  static FLOAT64   ::= PrimitiveType (LayoutSize 0 8)
+  static INT64     ::= PrimitiveType (LayoutSize 0 8)
 
   operator* count/int -> PrimitiveType:
     return PrimitiveType (size * count)
@@ -524,7 +515,7 @@ class ToitProgram extends ToitObjectType:
 
   /**
   Layout of the structure.
-  Given a specific VMversion this is a constant. However, it is dependent on
+  Given a specific VM version this is a constant. However, it is dependent on
     variables that may change for different VM versions. Instead of depending on
     the specific VM version, we require the layout to be initialized before
     used. See $init_constants.
@@ -692,7 +683,6 @@ class ToitTable extends ToitSequence:
   element_byte_size --word_size/int -> int: return word_size
   write_element index/int image/Image --at/int:
     element := list_[index]
-    // For simplicity, SMIs can be given to
     heap_object := ToitHeapObject element
     object_address := heap_object.write_to image
     image.offheap.put_heap_pointer --at=at object_address
@@ -734,7 +724,7 @@ class ToitUint8List extends ToitSequence:
 
 class ToitRawHeap:
   static LAYOUT /ObjectType ::= ObjectType {
-    "_blocks": ToitBlockList.LAYOUT,
+    "_blocks": ToitMemoryBlockList.LAYOUT,
     "_owner": PrimitiveType.POINTER,
   }
 
@@ -744,14 +734,14 @@ class ToitRawHeap:
 
   fill_into image/Image --at/int:
     anchored := LAYOUT.anchor image.offheap --at=at
-    block_list := ToitBlockList heap_.blocks_
+    block_list := ToitMemoryBlockList heap_.blocks_
     block_list.fill_into image --at=anchored["_blocks"]
     // Owner is just `null`.
     anchored.put_offheap_pointer "_owner" 0
 
-class ToitBlockList:
+class ToitMemoryBlockList:
   static LAYOUT /ObjectType ::= ObjectType {
-    "_blocks": ToitBlockLinkedList.LAYOUT,
+    "_blocks": ToitMemoryBlockLinkedList.LAYOUT,
     "_length": PrimitiveType.WORD,
   }
 
@@ -761,12 +751,12 @@ class ToitBlockList:
 
   fill_into image/Image --at/int:
     anchored := LAYOUT.anchor image.offheap --at=at
-    linked_list := ToitBlockLinkedList blocks_
+    linked_list := ToitMemoryBlockLinkedList blocks_
     linked_list.fill_into image --at=anchored["_blocks"]
 
     anchored.put_word "_length" blocks_.size
 
-class ToitBlockLinkedList:
+class ToitMemoryBlockLinkedList:
   static LAYOUT /ObjectType ::= ObjectType {
     // Inherited from LinkedList<Block>
     // The anchor is a LinkedListElement, which just contains one element '_next'.
@@ -784,8 +774,8 @@ class ToitBlockLinkedList:
 
     next_address := 0  // Last block has "null" as next.
     for i := blocks_.size - 1; i >= 0; i--:
-      block/Block := blocks_[i]
-      toit_block := ToitBlock block next_address
+      block /MemoryBlock := blocks_[i]
+      toit_block := ToitMemoryBlock block next_address
       address := block.address
       toit_block.fill_into image --at=address
       next_address = address
@@ -798,8 +788,8 @@ class ToitBlockLinkedList:
         anchored.put_offheap_pointer "_anchor" address
 
 
-class ToitBlock:
-  // It's debatable, whether the Toitblock is an ObjectType. It is clearly
+class ToitMemoryBlock:
+  // It's debatable, whether the ToitMemoryblock is an ObjectType. It is clearly
   // located in the heap memory, but it is treated like an offheap-object.
   static LAYOUT /ObjectType ::= ObjectType {
     // Inherited from LinkedListElement.
@@ -808,7 +798,7 @@ class ToitBlock:
     "_top": PrimitiveType.POINTER,
   }
 
-  block_ /Block
+  block_ /MemoryBlock
   next_address_ /int
 
   constructor .block_ .next_address_:
@@ -852,8 +842,8 @@ abstract class ToitHeapObject extends ToitObject:
   /**
   Writes this object to the image unless the object was already written.
   Returns the encoded address of the written object.
-  Returns a SMI (see $ToitInteger.is_smi_address) if the object is an integer
-    that fits into a SMI.
+  Returns a Smi (see $ToitInteger.is_smi_address) if the object is an integer
+    that fits into a Smi.
   */
   write_to image/Image -> int:
     return image.heap.store o_ --if_absent=:
@@ -865,7 +855,7 @@ abstract class ToitHeapObject extends ToitObject:
 
   /**
   Writes this object to the image.
-  Returns the encoded address (distinguishing between SMIs and pointers).
+  Returns the encoded address (distinguishing between Smis and pointers).
   */
   abstract write_to_ image/Image -> int
 
@@ -1161,9 +1151,9 @@ class ToitInteger extends ToitHeapObject:
     anchored.put_int64 "value" o_.value
     return to_encoded_address address
 
-build_image snapshot/snapshot.Program -> Image:
+build_image snapshot/snapshot.Program word_size/int -> Image:
   ToitProgram.init_constants snapshot
-  image := Image snapshot
+  image := Image snapshot word_size
   program := ToitProgram snapshot
   program.write_to image
   return image
