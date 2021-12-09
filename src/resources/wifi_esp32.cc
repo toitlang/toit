@@ -179,7 +179,7 @@ uint32_t WifiResourceGroup::on_event(Resource* resource, word data, uint32_t sta
       ip_event_got_ip_t* event = reinterpret_cast<ip_event_got_ip_t*>(system_event->event_data);
       uint32_t addr = event->ip_info.ip.addr;
       sprintf(static_cast<IPEvents*>(resource)->_ip, 
-#ifdef __riscv
+#ifdef CONFIG_IDF_TARGET_ESP32C3
               "%lu.%lu.%lu.%lu",
 #else
 	      "%d.%d.%d.%d",
@@ -197,7 +197,7 @@ uint32_t WifiResourceGroup::on_event(Resource* resource, word data, uint32_t sta
 
     default:
       printf(
-#ifdef __riscv
+#ifdef CONFIG_IDF_TARGET_ESP32C3
         "unhandled WiFi event: %lu\n",
 #else
 	"unhandled Wifi event: %d\n",

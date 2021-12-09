@@ -35,9 +35,7 @@
 #include <soc/soc.h>
 #include <soc/rtc.h>
 
-#ifdef __riscv
-//  #include "soc/esp32/include/soc/sens_reg.h"
-#else
+#ifndef CONFIG_IDF_TARGET_ESP32C3
   #include "soc/sens_reg.h"
 #endif
 
@@ -61,7 +59,7 @@ extern unsigned int checksum[4];
 
 const Program* setup_program() {
 
-#ifndef __riscv
+#ifndef CONFIG_IDF_TARGET_ESP32C3
   const esp_partition_t* configured = esp_ota_get_boot_partition();
   const esp_partition_t* running = esp_ota_get_running_partition();
 
@@ -128,7 +126,7 @@ static void start() {
     }
 
     case Scheduler::EXIT_ERROR:
-#ifndef __riscv
+#ifndef CONFIG_IDF_TARGET_ESP32C3
       ESP_LOGE("Toit", "VM exited with error, restarting.");
 #endif
       // 1s sleep before restart, after an error.
@@ -136,7 +134,7 @@ static void start() {
       break;
 
     case Scheduler::EXIT_DONE:
-#ifndef __riscv
+#ifndef CONFIG_IDF_TARGET_ESP32C3
       ESP_LOGE("Toit", "VM exited, going into deep sleep.");
 #endif
       break;

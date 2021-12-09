@@ -33,7 +33,7 @@ const i2s_port_t kInvalidPort = i2s_port_t(-1);
 
 ResourcePool<i2s_port_t, kInvalidPort> i2s_ports(
   I2S_NUM_0
-#ifndef __riscv
+#ifndef CONFIG_IDF_TARGET_ESP32C3
 , I2S_NUM_1
 #endif
 );

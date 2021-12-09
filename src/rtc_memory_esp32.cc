@@ -23,12 +23,10 @@
 #ifdef TOIT_FREERTOS
 
 #include "rtc_memory_esp32.h"
-
 #include "esp_attr.h"
-
 #include <soc/rtc.h>
 
-#ifdef __riscv
+#ifdef CONFIG_IDF_TARGET_ESP32C3
   #include <esp32c3/rom/ets_sys.h>
 #else
   #include <esp32/rom/ets_sys.h>
@@ -37,7 +35,7 @@
 #include "esp_system.h"
 
 extern "C" {
-#ifdef __riscv
+#ifdef CONFIG_IDF_TARGET_ESP32C3
   #include <esp32c3/clk.h>
 #else
   #include <esp32/clk.h>

@@ -37,7 +37,7 @@ ResourcePool<int, 0> dma_channels(1, 2);
 const spi_host_device_t kInvalidHostDevice = spi_host_device_t(-1);
 
 ResourcePool<spi_host_device_t, kInvalidHostDevice> spi_host_devices(
-#ifdef __riscv
+#ifdef CONFIG_IDF_TARGET_ESP32C3
   SPI3_HOST
 #else
   HSPI_HOST,
@@ -79,7 +79,7 @@ PRIMITIVE(init) {
   if ((mosi == -1 || mosi == 13) &&
       (miso == -1 || miso == 12) &&
       (clock == -1 || clock == 14)) {
-#ifdef __riscv
+#ifdef CONFIG_IDF_TARGET_ESP32C3
     host_device = SPI3_HOST;
 #else
     host_device = HSPI_HOST;
@@ -88,7 +88,7 @@ PRIMITIVE(init) {
   if ((mosi == -1 || mosi == 23) &&
       (miso == -1 || miso == 19) &&
       (clock == -1 || clock == 18)) {
-#ifdef __riscv
+#ifdef CONFIG_IDF_TARGET_ESP32C3
     host_device = SPI3_HOST;
 #else
     host_device = VSPI_HOST;

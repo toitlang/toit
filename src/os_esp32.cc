@@ -37,7 +37,7 @@
 #include <soc/soc.h>
 #include <soc/uart_reg.h>
 
-#ifdef __riscv
+#ifdef CONFIG_IDF_TARGET_ESP32C3
   #include <esp32c3/rtc.h>
 #else
   #include <esp32/rtc.h>
@@ -156,7 +156,7 @@ class ConditionVariable {
 
     _mutex->unlock();
 
-#ifdef __riscv
+#ifdef CONFIG_IDF_TARGET_ESP32C3
     uint32_t value = 0;
 #else
     uint32 value = 0;
