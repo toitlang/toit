@@ -230,9 +230,9 @@ class Image:
   // through every possible function call.
   large_integer_header_ /int? := null
 
-  constructor snapshot_program/snapshot.Program:
+  constructor snapshot_program/snapshot.Program .word_size:
     header := snapshot_program.header
-    word_size = 4
+    assert: word_size == 4 or word_size == 8
     page_size = word_size == 4 ? PAGE_BYTE_SIZE_32 : PAGE_BYTE_SIZE_64
 
     block_count := word_size == 4 ? header.block_count32 : header.block_count64
@@ -1151,9 +1151,9 @@ class ToitInteger extends ToitHeapObject:
     anchored.put_int64 "value" o_.value
     return to_encoded_address address
 
-build_image snapshot/snapshot.Program -> Image:
+build_image snapshot/snapshot.Program word_size/int -> Image:
   ToitProgram.init_constants snapshot
-  image := Image snapshot
+  image := Image snapshot word_size
   program := ToitProgram snapshot
   program.write_to image
   return image
