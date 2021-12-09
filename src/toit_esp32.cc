@@ -77,7 +77,7 @@ const Program* setup_program() {
 
   ESP_LOGI("Toit", "Fingerprint %x-%x-%x-%x", checksum[0], checksum[1], checksum[2], checksum[3]);
   FlashRegistry::set_up();
-  return reinterpret_cast<const Program*>(&toit_image);
+  return reinterpret_cast<const Program*>(OS::program_data(NULL));
 }
 
 static void start() {

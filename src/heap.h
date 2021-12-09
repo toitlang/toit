@@ -26,9 +26,6 @@
 
 #include "objects_inline.h"
 
-extern "C" uword toit_image;
-extern "C" uword toit_image_size;
-
 namespace toit {
 
 class Heap : public RawHeap {
@@ -83,7 +80,9 @@ class Heap : public RawHeap {
     // The system image is not page aligned so we can't use HeapObject::owner
     // to detect it.  But it is all in one range, so we use that instead.
     uword address = reinterpret_cast<uword>(object);
-    if ((address - reinterpret_cast<uword>(&toit_image)) < toit_image_size) {
+    size_t size;
+    uint8* data = OS::program_data(&size);
+    if ((address - reinterpret_cast<uword>(data)) < size) {
       return true;
     }
 #endif

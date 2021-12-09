@@ -262,7 +262,7 @@ const uint8* OS::image_uuid() {
   return uuid;
 }
 
-uint8* OS::image_config(size_t *length) {
+uint8* OS::program_data(size_t *length) {
   FATAL("should not be used on windows")
   return null;
 }

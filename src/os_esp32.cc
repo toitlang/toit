@@ -576,8 +576,7 @@ void OS::heap_summary_report() { }
 
 #endif // def TOIT_CMPCTMALLOC
 
-static const int TOIT_IMAGE_DATA_SIZE = 1024;
-static const int TOIT_CONFIG_IMAGE_SIZE = TOIT_IMAGE_DATA_SIZE - UUID_SIZE;
+static const int TOIT_IMAGE_DATA_SIZE = 100 * 1024;
 
 class ImageData {
  public:
@@ -587,9 +586,8 @@ class ImageData {
   // bytes, otherwise the patching utility will not detect it. Search for
   // 0x7017da7a. Note when updating this restriction is baked into the SDK that
   // you are updating *from* so it can't be fixed without multiple SDK updates.
-  uint8_t image_config[TOIT_CONFIG_IMAGE_SIZE] = {0};
-  uint8_t image_uuid[UUID_SIZE] = {0};
-  uint32_t image_magic2 = 0xc09f19;    // "config"
+  uint8_t program_data[TOIT_IMAGE_DATA_SIZE] = {0};
+  uint32_t image_magic2 = 0x7017ed;    // "toitend"
 } __attribute__((packed));
 
 // Note, you can't declare this const because then the compiler thinks it can
@@ -598,19 +596,22 @@ class ImageData {
 __attribute__((section(".rodata_custom_desc"))) ImageData toit_image_data;
 
 const uint8* OS::image_uuid() {
-  return toit_image_data.image_uuid;
+  // Static image id.
+  static uint8_t uuid[UUID_SIZE] = {0xe3, 0xbb, 0xa6, 0xa1, 0x23, 0x0c, 0x44, 0xa5, 0x9f, 0x5d, 0x09, 0x0c, 0xf7, 0xfd, 0x15, 0x2a};
+  return uuid;
 }
 
-uint8* OS::image_config(size_t *length) {
-  if (length) *length = TOIT_CONFIG_IMAGE_SIZE;
+uint8* OS::program_data(size_t *length) {
+  if (length) *length = TOIT_IMAGE_DATA_SIZE;
   // See 512-byte restriction above.
-  ASSERT(((TOIT_CONFIG_IMAGE_SIZE + UUID_SIZE) & 0x1ff) == 0);
-  uint8* result = (uint8*)toit_image_data.image_config;
-  if (result[0] == 0) {
-    // A null byte is not a valid start of a UBJSON stream.  This indicates
+  ASSERT(((TOIT_IMAGE_DATA_SIZE) & 0x1ff) == 0);
+  uint8* result = (uint8*)toit_image_data.program_data;
+  printf("program at: %p\n", result);
+  if (reinterpret_cast<word*>(result)[0] == 0) {
+    // A null word is not a valid start of a toit program.  This indicates
     // that the config data was not patched in, or was patched in at the wrong
     // address.
-    FATAL("No config data in image at %x: %02x %02x", &(result[0]), result[0], result[1]);
+    FATAL("No program data in image at %x: %08x", &(result[0]), reinterpret_cast<word*>(result)[0]);
   }
   return result;
 }

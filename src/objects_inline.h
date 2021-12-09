@@ -22,16 +22,16 @@
 
 namespace toit {
 
-extern "C" uword toit_image;
-extern "C" uword toit_image_size;
-
 inline Process* HeapObject::owner() {
 #ifdef TOIT_FREERTOS
   // On embedded targets the program heap is in flash and not aligned, so it is
   // not OK to try to load the owner from the page header.
   uword address = reinterpret_cast<uword>(this);
   USE(address);
-  ASSERT(!(address - reinterpret_cast<uword>(&toit_image) < toit_image_size));
+  size_t size;
+  uint8* data = OS::program_data(&size);
+  USE(data);
+  ASSERT(!(address - reinterpret_cast<uword>(data) < size));
 #endif
   return Block::from(this)->process();
 }
