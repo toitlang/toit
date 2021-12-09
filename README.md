@@ -6,6 +6,11 @@ virtual machine, and standard libraries that together enable Toit programs to ru
 We use [GitHub Discussions](https://github.com/toitlang/toit/discussions) to discuss and learn and
 we follow a [code of conduct](CODE_OF_CONDUCT.md) in all our community interactions.
 
+## Community
+
+Use this [invite](https://discord.gg/ugjgGbW6) to join our Discord server, and follow the development and get help.
+We're eager to hear your experience trying out Toit.
+
 ## References
 
 The Toit language is the foundation for the [Toit platform](https://toit.io/) that brings robust serviceability
