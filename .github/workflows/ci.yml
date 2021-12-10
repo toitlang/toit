@@ -35,13 +35,13 @@ jobs:
           cmake --version
           gcc --version
       - name: Install dependencies - macOS
-        if: runner.os == "macOS"
+        if: runner.os == 'macOS'
         run: |
           brew install cmake ninja
           ninja --version
           cmake --version
       - name: Install dependencies - Windows
-        if: runner.os == "Windows"
+        if: runner.os == 'Windows'
         run: |
           choco install ninja cmake
           ninja --version
