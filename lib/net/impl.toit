@@ -13,13 +13,13 @@ import .modules.tcp
 import .modules.udp
 import .modules.wifi
 
-wifi_enabled_ := false
+wifi_interface_/Interface? := null
 
 open -> Interface:
   if platform == "FreeRTOS":
-    network := wifi.connect
-    wifi_enabled_ = true
-    return network
+    if not wifi_interface_:
+      wifi_interface_ = wifi.connect
+    return wifi_interface_
   return SystemInterface_
 
 class SystemInterface_ extends Interface:
