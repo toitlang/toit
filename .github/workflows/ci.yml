@@ -27,7 +27,7 @@ jobs:
 
     steps:
       - name: Install dependencies - Linux
-        if: matrix.os == 'linux'
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install ninja-build cmake
@@ -35,13 +35,13 @@ jobs:
           cmake --version
           gcc --version
       - name: Install dependencies - macOS
-        if: matrix.os == "macos"
+        if: runner.os == "macOS"
         run: |
           brew install cmake ninja
           ninja --version
           cmake --version
       - name: Install dependencies - Windows
-        if: matrix.os == "windows"
+        if: runner.os == "Windows"
         run: |
           choco install ninja cmake
           ninja --version
