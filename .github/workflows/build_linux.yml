@@ -5,6 +5,8 @@ on:
     branches: [master]
   pull_request:
     branches: [master]
+  release:
+    types: [published]
 
 jobs:
   build:
@@ -25,9 +27,19 @@ jobs:
         env:
           IDF_PATH: ${{github.workspace}}/third_party/esp-idf
         run: make tools
-      - uses: actions/upload-artifact@v2
+      - name: Pack artifacts
+        run: |
+          tar -czf build/toit-linux.tar.gz -C ./build/host -h --exclude sdk/bin/mbedtls --transform s/^sdk/toit/ sdk
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v2
         with:
           name: linux-build
-          path: |
-            build/host/bin/toit*
-            build/host/bin/lib/
+          path: build/toit-linux.tar.gz
+      - name: Upload release artifacts
+        if: github.event_name == 'release'
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: build/toit-linux.tar.gz
+          tag: ${{ github.ref }}
+          overwrite: true
