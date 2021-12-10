@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  release:
+    types: [published]
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: linux
+            container: ubuntu-latest
+            artifact: toit-linux.tar.gz
+          - os: macos
+            container: macos-latest
+            artifact: toit-macos.tar.gz
+          - os: windows
+            container: windows-latest
+            artifact: toit-windows.tar.gz
+
+    runs-on: ${{ matrix.container }}
+
+    steps:
+      - name: Install dependencies (${{ matrix.os }})
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" == "Linux" ]; then
+            sudo apt-get update
+            sudo apt-get install ninja-build cmake
+            ninja --version
+            cmake --version
+            gcc --version
+          elif [ "$RUNNER_OS" == "macOS" ]; then
+            brew install cmake ninja
+            ninja --version
+            cmake --version
+          elif [ "$RUNNER_OS" == "Windows" ]; then
+            choco install ninja cmake
+            ninja --version
+            cmake --version
+          else
+            echo "$RUNNER_OS not supported"
+            exit 1
+          fi
+
+      - uses: actions/checkout@v2
+        with:
+          submodules: "recursive"
+      - name: make (${{ matrix.os }})
+        env:
+          IDF_PATH: ${{github.workspace}}/third_party/esp-idf
+        run: make tools
+      - name: Pack artifacts (${{ matrix.os }})
+        shell: bash
+        run: |
+          cp -R ./build/host/sdk ./build/host/toit
+          tar -czf build/${{ matrix.artifact }} -C ./build/host -h --exclude toit/bin/mbedtls toit
+      - name: Upload artifacts (${{ matrix.os }})
+        uses: actions/upload-artifact@v2
+        with:
+          name: ${{ matrix.os }}-build
+          path: build/${{ matrix.artifact }}
+      - name: Upload release artifacts ${{ matrix.os }}
+        if: github.event_name == 'release'
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: build/${{ matrix.artifact }}.tar.gz
+          tag: ${{ github.ref }}
+          overwrite: true
