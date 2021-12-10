@@ -97,8 +97,9 @@ endif
 flash: esp32 check-flash-env
 	python $(IDF_PATH)/components/esptool_py/esptool/esptool.py --chip esp32 --port ${ESP32_PORT} --baud 921600 --before default_reset --after hard_reset write_flash -z --flash_mode dio --flash_freq 40m --flash_size detect 0xd000 build/esp32/ota_data_initial.bin 0x1000 build/esp32/bootloader/bootloader.bin 0x10000 build/esp32/toit.bin 0x8000 build/esp32/partitions.bin
 
-build/esp32/toit.bin build/esp32/toit.elf: build/esp32/lib/libtoit_image.a
+build/esp32/toit.bin build/esp32/toit.elf: build/esp32/lib/libtoit_image.a build/config.json
 	make -C toolchains/esp32/
+	$(TOITVM_BIN) tools/inject_config.toit build/config.json build/esp32/toit.bin
 
 build/esp32/lib/libtoit_image.a: build/esp32/esp32.image.s build/esp32/CMakeCache.txt
 	(cd build/esp32 && ninja toit_image)
@@ -130,7 +131,11 @@ $(SNAPSHOT_DIR)/inject_config.snapshot: tools/inject_config.toit $(TOITC_BIN) $(
 	$(TOITC_BIN) -w $@ $<
 
 build/snapshot: $(TOITC_BIN) $(ESP32_ENTRY)
-	$(TOITC_BIN) -w $@ $(ESP32_ENTRY) -Dwifi.ssid="$(ESP32_WIFI_SSID)" -Dwifi.password="$(ESP32_WIFI_PASSWORD)"
+	$(TOITC_BIN) -w $@ $(ESP32_ENTRY)
+
+.PHONY: build/config.json
+build/config.json:
+	echo '{"wifi": {"ssid": "$(ESP32_WIFI_SSID)", "password": "$(ESP32_WIFI_PASSWORD)"}}' > $@
 
 GO_USE_INSTALL = 1
 GO_USE_INSTALL_FROM = 1 16
