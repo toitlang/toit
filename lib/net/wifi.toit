@@ -15,7 +15,7 @@ import .esp32
 WIFI_CONNECT_TIMEOUT_  ::= Duration --s=10
 WIFI_DHCP_TIMEOUT_     ::= Duration --s=16
 
-connect --ssid/string?=null --password/string="" -> Wifi:
+connect --ssid/string?=null --password/string="" -> net.Interface:
   if not ssid:
     config := image_config or {:}
     wifi_config := config.get "wifi" --if_absent=: {:}
@@ -27,11 +27,11 @@ connect --ssid/string?=null --password/string="" -> Wifi:
     wifi.set_ssid ssid password
     with_timeout WIFI_CONNECT_TIMEOUT_: wifi.connect
     with_timeout WIFI_DHCP_TIMEOUT_: wifi.get_ip
-    return Wifi wifi
+    return WifiInterface_ wifi
   finally: | is_exception _ |
     if is_exception: wifi.close
 
-class Wifi extends net.Interface:
+class WifiInterface_ extends net.Interface:
   wifi_/wifi.Wifi? := ?
 
   constructor .wifi_:
