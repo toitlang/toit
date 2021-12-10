@@ -6,11 +6,11 @@ import net
 import net.udp
 import net.tcp
 
-import .net.modules.wifi as wifi
-import .net.modules.tcp
-import .net.modules.udp
-import .net.modules.dns
-import .esp32
+import .modules.wifi as wifi
+import .modules.tcp
+import .modules.udp
+import .modules.dns
+import ..esp32
 
 WIFI_CONNECT_TIMEOUT_  ::= Duration --s=10
 WIFI_DHCP_TIMEOUT_     ::= Duration --s=16
