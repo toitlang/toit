@@ -32,13 +32,14 @@ IMAGE_DATA_OFFSET ::= 296
 IMAGE_DATA_MAGIC_1 := 0x7017da7a
 IMAGE_DATA_MAGIC_2 := 0xc09f19
 /**
-  usage: inject_config <config-json file> <bin file>
+  usage: inject_config <config-json file> <bin file> [<output file>]
 */
 main args/List:
   parser := ArgumentParser
   parsed := parser.parse args
   config_path/string := parsed.rest[0] as string
   bin_path/string := parsed.rest[1] as string
+  out_path/string := parsed.rest.size > 2 ? parsed.rest[2] as string : bin_path
 
   config_data := file.read_content config_path
   bin_data := file.read_content bin_path
@@ -47,10 +48,10 @@ main args/List:
 
   result := inject_config config bin_data
 
-  bin_stream := file.Stream.for_write bin_path
-  bin_writer := writer.Writer bin_stream
-  bin_writer.write result
-  bin_stream.close
+  out_stream := file.Stream.for_write out_path
+  out_writer := writer.Writer out_stream
+  out_writer.write result
+  out_stream.close
 
 // the factory image contains a "empty" section of 1024 bytes here we encoded the config such that
 // the image can run completely independently.
@@ -62,7 +63,6 @@ inject_config config/Map bin_data/ByteArray -> ByteArray:
   image_config_size := image_data_size - uuid.SIZE
 
   config_data := ubjson.encode config
-  print config_data.size
 
   // We need to regenerate the checksums for the image. Checksum format is described here:
   // https://docs.espressif.com/projects/esp-idf/en/latest/api-reference/system/app_image_format.html
