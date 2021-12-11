@@ -17,43 +17,97 @@ jobs:
             container: ubuntu-latest
             artifact: toit-linux.tar.gz
           - os: macos
-            container: macos-latest
+            container: macos-11      # Currently later than macos-latest
             artifact: toit-macos.tar.gz
           - os: windows
-            container: windows-latest
+            container: windows-2022  # Currently later than windows-latest.
             artifact: toit-windows.tar.gz
 
     runs-on: ${{ matrix.container }}
 
     steps:
+      - uses: actions/checkout@v2
+
+      - name: Initialize mbed-tls submodule
+        # We only need the mbedtls submodule for building.
+        run: |
+          cd third_party/esp-idf
+          git submodule update --init .
+          git submodule update --init components/mbedtls
+
+      # Get values for cache paths to be used in later steps
+      - name: Get Go paths
+        id: go-cache-paths
+        run: |
+          echo "::set-output name=go-build::$(go env GOCACHE)"
+          echo "::set-output name=go-mod::$(go env GOMODCACHE)"
+
+      # Cache go build cache, used to speedup go test
+      - name: Go Build Cache
+        uses: actions/cache@v2
+        with:
+          path: ${{ steps.go-cache-paths.outputs.go-build }}
+          key: ${{ runner.os }}-go-build-${{ hashFiles('**/go.sum') }}
+          restore-keys: ${{ runner.os }}-go-build-
+
+      # Cache go mod cache, used to speedup builds
+      - name: Go Mod Cache
+        uses: actions/cache@v2
+        with:
+          path: ${{ steps.go-cache-paths.outputs.go-mod }}
+          key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum') }}
+          restore-keys: ${{ runner.os }}-go-mod-
+
+      # We create a new id every second.
+      # The 'restore-keys' below will make sure that we continue using earlier versions.
+      - name: Create timestamp
+        id: timestamp
+        shell: cmake -P {0}
+        run: |
+          string(TIMESTAMP current_date "%Y-%m-%d-%H;%M;%S" UTC)
+          message("::set-output name=timestamp::${current_date}")
+
+      - name: Ccache Cache
+        uses: actions/cache@v2
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ${{ runner.os }}-ccache-${{ steps.timestamp.outputs.timestamp }}
+          restore-keys: ${{ runner.os }}-ccache-
+
+      # Fetch the dependencies. Different for each platform.
       - name: Install dependencies - Linux
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install ninja-build cmake
+          sudo apt-get install ninja-build ccache
           ninja --version
           cmake --version
           gcc --version
       - name: Install dependencies - macOS
         if: runner.os == 'macOS'
         run: |
-          brew install cmake ninja
+          brew install ninja ccache
           ninja --version
           cmake --version
       - name: Install dependencies - Windows
         if: runner.os == 'Windows'
+        # Reenable ccache if possible...
         run: |
-          choco install ninja cmake
+          choco install ninja
           ninja --version
           cmake --version
 
-      - uses: actions/checkout@v2
-        with:
-          submodules: "recursive"
+      # Build using make.
       - name: make
         env:
-          IDF_PATH: ${{github.workspace}}/third_party/esp-idf
-        run: make tools
+          IDF_PATH: ${{ github.workspace }}/third_party/esp-idf
+          CCACHE_DIR: ${{ github.workspace }}/.ccache
+          CCACHE_COMPRESS: true
+          CCACHE_COMPRESSLEVEL: '6'
+          CCACHE_MAXSIZE: 400M
+        run: |
+          make tools
+
       - name: Pack artifacts
         shell: bash
         run: |
