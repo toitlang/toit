@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  release:
+    types: [published]
+
+jobs:
+  build:
+    strategy:
+      # The matrix will run all possible combinations in parallel.
+      matrix:
+        include:
+          - os: linux
+            container: ubuntu-latest
+            artifact: toit-linux.tar.gz
+          - os: macos
+            container: macos-latest
+            artifact: toit-macos.tar.gz
+          - os: windows
+            container: windows-latest
+            artifact: toit-windows.tar.gz
+
+    runs-on: ${{ matrix.container }}
+
+    steps:
+      # Install the dependencies.
+      - name: Install dependencies - Linux
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install ninja-build cmake
+          ninja --version
+          cmake --version
+          gcc --version
+      - name: Install dependencies - macOS
+        if: runner.os == 'macOS'
+        run: |
+          brew install cmake ninja
+          ninja --version
+          cmake --version
+      - name: Install dependencies - Windows
+        if: runner.os == 'Windows'
+        run: |
+          choco install ninja cmake
+          ninja --version
+          cmake --version
+
+      # Check out the sources.
+      - uses: actions/checkout@v2
+        with:
+          submodules: "recursive"
+
+      # Build.
+      - name: make
+        env:
+          IDF_PATH: ${{github.workspace}}/third_party/esp-idf
+        run: make tools
+
+      - name: Pack artifacts
+        shell: bash
+        # Note that we use `cp -R` first, since that works on every platform.
+        run: |
+          cp -R ./build/host/sdk ./build/host/toit
+          tar -czf build/${{ matrix.artifact }} -C ./build/host -h --exclude toit/bin/mbedtls toit
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: ${{ matrix.os }}-build
+          path: build/${{ matrix.artifact }}
+      - name: Upload release artifacts
+        if: github.event_name == 'release'
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: build/${{ matrix.artifact }}.tar.gz
+          tag: ${{ github.ref }}
+          overwrite: true
