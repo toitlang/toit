@@ -11,6 +11,7 @@ on:
 jobs:
   build:
     strategy:
+      # The matrix will run all possible combinations in parallel.
       matrix:
         include:
           - os: linux
@@ -26,6 +27,7 @@ jobs:
     runs-on: ${{ matrix.container }}
 
     steps:
+      # Install the dependencies.
       - name: Install dependencies - Linux
         if: runner.os == 'Linux'
         run: |
@@ -47,15 +49,20 @@ jobs:
           ninja --version
           cmake --version
 
+      # Check out the sources.
       - uses: actions/checkout@v2
         with:
           submodules: "recursive"
+
+      # Build.
       - name: make
         env:
           IDF_PATH: ${{github.workspace}}/third_party/esp-idf
         run: make tools
+
       - name: Pack artifacts
         shell: bash
+        # Note that we use `cp -R` first, since that works on every platform.
         run: |
           cp -R ./build/host/sdk ./build/host/toit
           tar -czf build/${{ matrix.artifact }} -C ./build/host -h --exclude toit/bin/mbedtls toit
