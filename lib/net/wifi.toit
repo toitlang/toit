@@ -41,7 +41,9 @@ class WifiInterface_ extends net.Interface:
       return [dns_lookup host]
     unreachable
 
-  udp_open -> udp.Socket: return udp_open --port=null
+  udp_open -> udp.Socket:
+    return udp_open --port=null
+
   udp_open --port/int? -> udp.Socket:
     with_wifi_:
       return Socket "0.0.0.0" (port ? port : 0)

@@ -13,20 +13,28 @@ import .modules.tcp
 import .modules.udp
 import .modules.wifi
 
+WIFI_ALREADY_STARTED_EXCEPTION_ ::= "OUT_OF_BOUNDS"
 wifi_interface_/Interface? := null
 
 open -> Interface:
   if platform == "FreeRTOS":
-    if not wifi_interface_:
+    // Was WiFi already started in this process?
+    if wifi_interface_: return wifi_interface_
+    exception ::= catch:
       wifi_interface_ = wifi.connect
-    return wifi_interface_
+      return wifi_interface_
+    // Was WiFi already started in another process?
+    if exception != WIFI_ALREADY_STARTED_EXCEPTION_:
+      throw exception
   return SystemInterface_
 
 class SystemInterface_ extends Interface:
   resolve host/string -> List:
     return [dns.dns_lookup host]
 
-  udp_open -> udp.Socket: return udp_open --port=null
+  udp_open -> udp.Socket:
+    return udp_open --port=null
+
   udp_open --port/int? -> udp.Socket:
     return Socket "0.0.0.0" (port ? port : 0)
 
