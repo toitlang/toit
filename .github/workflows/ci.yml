@@ -13,15 +13,18 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: linux
+#          - os: linux
+#            container: ubuntu-latest
+#            artifact: toit-linux.tar.gz
+#          - os: macos
+#            container: macos-11      # Currently later than macos-latest
+#            artifact: toit-macos.tar.gz
+#          - os: windows
+#            container: windows-2022  # Currently later than windows-latest.
+#            artifact: toit-windows.tar.gz
+          - os: windows-mingw
             container: ubuntu-latest
-            artifact: toit-linux.tar.gz
-          - os: macos
-            container: macos-11      # Currently later than macos-latest
-            artifact: toit-macos.tar.gz
-          - os: windows
-            container: windows-2022  # Currently later than windows-latest.
-            artifact: toit-windows.tar.gz
+            artifact: toit-windows-mingw.tar.gz
 
     runs-on: ${{ matrix.container }}
 
@@ -80,6 +83,10 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install ninja-build ccache
+          echo ${{ matrix.os }}
+          if [ ${{ matrix.os }} == "windows-mingw" ]; then
+            sudo apt-get install gcc-mingw-w64
+          fi
           ninja --version
           cmake --version
           gcc --version
@@ -106,7 +113,11 @@ jobs:
           CCACHE_COMPRESSLEVEL: '6'
           CCACHE_MAXSIZE: 400M
         run: |
-          make tools
+          if [ ${{ matrix.os }} == "windows-mingw" ]; then
+            make build/win64/sdk/bin/toitvm
+          else
+            make tools
+          fi
 
       - name: Pack artifacts
         shell: bash
