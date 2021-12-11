@@ -113,10 +113,11 @@ jobs:
           CCACHE_COMPRESSLEVEL: '6'
           CCACHE_MAXSIZE: 400M
         run: |
+          make tools
           if [ ${{ matrix.os }} == "windows-mingw" ]; then
+            mkdir -p build/win64/sdk/bin
+            cp build/host/sdk/bin/*.snapshot build/win64/sdk/bin
             make build/win64/sdk/bin/toitvm
-          else
-            make tools
           fi
 
       - name: Pack artifacts
