@@ -3,7 +3,7 @@
 This repository contains the Toit language implementation. It is fully open source and consists of the compiler,
 virtual machine, and standard libraries that together enable Toit programs to run on an ESP32.
 
-## Jaguar: Ultra-fast development for the ESP32
+## Jaguar: The fastest way to develop for an ESP32?
 
 You can use Toit to develop, update, and restart your ESP32 applications in less than two seconds through
 [Jaguar](https://github.com/toitlang/jaguar). Jaguar is a small Toit program that runs on your ESP32.
