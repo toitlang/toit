@@ -23,7 +23,7 @@ Watch a short video that shows how you can experience Jaguar on your ESP32 in le
 Use this [invite](https://discord.gg/ugjgGbW6) to join our Discord server, and follow the development and get help.
 We're eager to hear of your experience building with Toit.
 
-We use [GitHub Discussions](https://github.com/toitlang/toit/discussions) to discuss and learn and
+We also use [GitHub Discussions](https://github.com/toitlang/toit/discussions) to discuss and learn and
 we follow a [code of conduct](CODE_OF_CONDUCT.md) in all our community interactions.
 
 ## References
