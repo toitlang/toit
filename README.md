@@ -14,6 +14,10 @@ applications written in Toit over WiFi. Once set up, it is as easy as:
 jag run examples/hello.toit
 ```
 
+Watch a short video that shows how you can experience Jaguar on your ESP32 in less than 3 minutes:
+
+[![Jaguar demonstration](https://img.youtube.com/vi/rXbe_1hyz80/0.jpg)](https://www.youtube.com/watch?v=rXbe_1hyz80)
+
 ## Community
 
 Use this [invite](https://discord.gg/ugjgGbW6) to join our Discord server, and follow the development and get help.
