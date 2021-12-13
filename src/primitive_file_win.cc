@@ -135,7 +135,7 @@ PRIMITIVE(closedir) {
 
 PRIMITIVE(read) {
   ARGS(int, fd);
-  const int SIZE = 4000;
+  const int SIZE = 1000;
   uint8 buffer[SIZE];
   ssize_t buffer_fullness = 0;
   while (buffer_fullness < SIZE) {
@@ -153,7 +153,7 @@ PRIMITIVE(read) {
   Error* error = null;
   Object* byte_array = process->allocate_byte_array(buffer_fullness, &error);
   if (byte_array == null) {
-    lseek(fd, -buffer_fullness, SEEK_CUR);
+    _lseek(fd, -buffer_fullness, SEEK_CUR);
     return error;
   }
   auto buf = ByteArray::Bytes(ByteArray::cast(byte_array)).address();
