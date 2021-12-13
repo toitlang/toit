@@ -26,6 +26,7 @@
 #include "lock.h"
 #include "util.h"
 #include "../flags.h"
+#include "../os.h"
 #include "../top.h"
 #include "../utils.h"
 
@@ -126,7 +127,12 @@ List<const char*> FilesystemLocal::package_cache_paths() {
     if (cache_paths != null) {
       _package_cache_paths = string_split(strdup(cache_paths), ":");
     } else {
-      char* home_path = getenv("HOME");
+      char* home_path;
+      if (strcmp(OS::get_platform(), "Windows") == 0) {
+        home_path = getenv("USERPROFILE");
+      } else {
+        home_path = getenv("HOME");
+      }
       if (home_path == null) {
         // TODO(florian): we could use getpwuid(getuid())->pw_dir instead.
         // However, the LSP server currently only looks at the env var.

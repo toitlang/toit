@@ -292,6 +292,11 @@ simple_interpolate_strings_ array:
 platform:
   #primitive.core.platform
 
+PLATFORM_FREERTOS ::= "FreeRTOS"
+PLATFORM_WINDOWS ::= "Windows"
+PLATFORM_MACOS ::= "macOS"
+PLATFORM_LINUX ::= "Linux"
+
 /**
 Returns an array with stats for the current process.
 The stats, listed by index in the array, are:

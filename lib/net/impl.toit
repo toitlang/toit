@@ -17,7 +17,7 @@ WIFI_ALREADY_STARTED_EXCEPTION_ ::= "OUT_OF_BOUNDS"
 wifi_interface_/Interface? := null
 
 open -> Interface:
-  if platform == "FreeRTOS":
+  if platform == PLATFORM_FREERTOS:
     // Was WiFi already started in this process?
     if wifi_interface_: return wifi_interface_
     exception ::= catch:
