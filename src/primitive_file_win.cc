@@ -156,13 +156,13 @@ PRIMITIVE(read) {
   Error* error = null;
   printf("allocating byte array\r\n");
   Object* byte_array = process->allocate_byte_array(buffer_fullness, &error);
-  printf("successful allocated\r\n");
   if (byte_array == null) {
     printf("trying lseek: %d\r\n", -buffer_fullness);
     _lseek(fd, -buffer_fullness, SEEK_CUR);
-    printf("successful lseek\r\n");
+    printf("successful lseek: %d\r\n");
     return error;
   }
+  printf("successful allocated\r\n");
   auto buf = ByteArray::Bytes(ByteArray::cast(byte_array)).address();
   printf("trying memcopy\r\n");
   memcpy(buf, buffer, buffer_fullness);
