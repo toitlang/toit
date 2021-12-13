@@ -139,7 +139,9 @@ PRIMITIVE(read) {
   uint8 buffer[SIZE];
   ssize_t buffer_fullness = 0;
   while (buffer_fullness < SIZE) {
+    printf("trying to read: %d - %d\r\n", buffer + buffer_fullness, SIZE - buffer_fullness);
     ssize_t bytes_read = _read(fd, buffer + buffer_fullness, SIZE - buffer_fullness);
+    printf("successful read: %d - errno: %d\r\n", bytes_read, errno);
     if (bytes_read < 0) {
       if (errno == EINTR) continue;
       if (errno == EINVAL || errno == EISDIR || errno == EBADF) INVALID_ARGUMENT;
@@ -148,16 +150,23 @@ PRIMITIVE(read) {
     if (bytes_read == 0) break;
   }
   if (buffer_fullness == 0) {
+    printf("empty read, return null\r\n");
     return process->program()->null_object();
   }
   Error* error = null;
+  printf("allocating byte array\r\n");
   Object* byte_array = process->allocate_byte_array(buffer_fullness, &error);
+  printf("successful allocated\r\n");
   if (byte_array == null) {
+    printf("trying lseek: %d\r\n", -buffer_fullness);
     _lseek(fd, -buffer_fullness, SEEK_CUR);
+    printf("successful lseek\r\n");
     return error;
   }
   auto buf = ByteArray::Bytes(ByteArray::cast(byte_array)).address();
+  printf("trying memcopy\r\n");
   memcpy(buf, buffer, buffer_fullness);
+  printf("successful memcopy\r\n");
   return byte_array;
 }
 
