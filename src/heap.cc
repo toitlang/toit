@@ -189,11 +189,11 @@ Heap::AllocationResult Heap::_expand() {
 Heap::AllocationResult ObjectHeap::_expand() {
   word used = (_blocks.length() << TOIT_PAGE_SIZE_LOG2) + _external_memory;
   if (_limit != 0 && used >= _limit) {
-#ifdef TOIT_FREERTOS
+// #ifdef TOIT_FREERTOS
     printf("[gc @ %p%s | soft limit reached (%zd >= %zd)]\n",
         owner(), VM::current()->scheduler()->is_boot_process(owner()) ? "*" : "",
         used, _limit);
-#endif
+// #endif
     return ALLOCATION_HIT_LIMIT;
   }
   return Heap::_expand();

@@ -158,8 +158,8 @@ PRIMITIVE(read) {
   Object* byte_array = process->allocate_byte_array(buffer_fullness, &error);
   if (byte_array == null) {
     printf("trying lseek: %d\r\n", -buffer_fullness);
-    _lseek(fd, -buffer_fullness, SEEK_CUR);
-    printf("successful lseek: %d\r\n");
+    ssize_t res = _lseek(fd, -buffer_fullness, SEEK_CUR);
+    printf("successful lseek: %d - errno: %d\r\n", res, errno);
     return error;
   }
   printf("successful allocated\r\n");
