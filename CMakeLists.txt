@@ -36,7 +36,7 @@ if (CCACHE_FOUND)
 endif(CCACHE_FOUND)
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "Windows")
-  set(TOIT_GENERIC_FLAGS "${TOIT_GENERIC_FLAGS} '-static")
+  set(TOIT_GENERIC_FLAGS "${TOIT_GENERIC_FLAGS} -static")
 else()
   set(TOIT_GENERIC_FLAGS "${TOIT_GENERIC_FLAGS} '-fdebug-prefix-map=${PROJECT_SOURCE_DIR}=.'")
 endif()
