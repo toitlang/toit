@@ -27,8 +27,6 @@ ESP32_PORT=
 
 ifeq ($(OS),Windows_NT)
 	EXE_SUFFIX=".exe"
-else
-	EXE_SUFFIX=""
 endif
 
 BIN_DIR = build/host/sdk/bin
