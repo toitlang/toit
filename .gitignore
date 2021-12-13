@@ -2,3 +2,4 @@
 .packages
 /.cache/
 /.vscode/
+tedi_test.go
