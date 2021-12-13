@@ -35,9 +35,12 @@ if (CCACHE_FOUND)
   set_property(GLOBAL PROPERTY RULE_LAUNCH_LINK "CCACHE_BASEDIR=${PROJECT_SOURCE_DIR} ${CCACHE_FOUND}")
 endif(CCACHE_FOUND)
 
-if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Windows")
+if (${CMAKE_SYSTEM_NAME} MATCHES "Windows")
+  set(TOIT_GENERIC_FLAGS "${TOIT_GENERIC_FLAGS} -static")
+else()
   set(TOIT_GENERIC_FLAGS "${TOIT_GENERIC_FLAGS} '-fdebug-prefix-map=${PROJECT_SOURCE_DIR}=.'")
 endif()
+
 set(TOIT_GENERIC_FLAGS "${TOIT_GENERIC_FLAGS} -Wall -ffunction-sections -fdata-sections -Wno-unused-command-line-argument")
 
 include_directories(
