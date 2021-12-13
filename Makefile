@@ -25,7 +25,6 @@ ESP32_WIFI_SSID=
 ESP32_WIFI_PASSWORD=
 ESP32_PORT=
 
-
 ifeq ($(OS),Windows_NT)
 	EXE_SUFFIX=".exe"
 else
