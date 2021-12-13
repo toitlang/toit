@@ -94,7 +94,7 @@ jobs:
         if: runner.os == 'Windows'
         # Reenable ccache if possible...
         run: |
-          choco install ccache
+          choco install ninja ccache
           ninja --version
           ccache --version
           cmake --version
