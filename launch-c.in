@@ -1,4 +1,0 @@
-#!/bin/sh
-
-export CCACHE_BASEDIR="${PROJECT_SOURCE_DIR}"
-exec "${C_LAUNCHER}" "$@"

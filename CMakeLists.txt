@@ -31,15 +31,12 @@ set(CMAKE_CXX_EXTENSIONS ON)  # Needed so that `tzset` is available in esp-idf.
 
 find_program(CCACHE_FOUND ccache)
 if (CCACHE_FOUND)
-  set(C_LAUNCHER   "${CCACHE_FOUND}")
-  set(CXX_LAUNCHER "${CCACHE_FOUND}")
-  configure_file(launch-c.in   launch-c)
-  configure_file(launch-cxx.in launch-cxx)
-  execute_process(COMMAND chmod a+rx
-      "${CMAKE_BINARY_DIR}/launch-c"
-      "${CMAKE_BINARY_DIR}/launch-cxx")
-  set(CMAKE_C_COMPILER_LAUNCHER "${CMAKE_BINARY_DIR}/launch-c")
-  set(CMAKE_CXX_COMPILER_LAUNCHER "${CMAKE_BINARY_DIR}/launch-cxx")
+  # On build-systems, it is recommended to set the CCACHE_BASEDIR environment
+  # variable to the root of the checkout, so that different runs in different directories
+  # can still take advantage of ccache.
+  # Typically this is done by setting the environment variable for the build step.
+  set(CMAKE_C_COMPILER_LAUNCHER   "${CCACHE_FOUND}")
+  set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_FOUND}")
 endif(CCACHE_FOUND)
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "Windows")
