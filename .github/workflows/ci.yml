@@ -102,17 +102,4 @@ jobs:
           CCACHE_COMPRESSLEVEL: '6'
           CCACHE_MAXSIZE: 400M
         run: |
-          command -v ccache.exe
-          command -v gcc.exe
-          echo "---"
-          ccache.exe --version
-          echo "---"
-          gcc.exe --version
-          echo "---"
-          ccache.exe gcc.exe --version
-          echo "---"
-          ccache.exe gcc.exe -DDEBUG -o x.o -c src/compiler/tar.cc
-          echo "---"
-          ls x.o
-          echo "---"
           make tools
