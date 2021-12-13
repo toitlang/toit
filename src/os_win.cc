@@ -293,7 +293,7 @@ int OS::num_cores() {
 }
 
 void OS::free_block(Block* block) {
-  delete block;
+  _aligned_free(block);
 }
 
 Block* OS::allocate_block() {
