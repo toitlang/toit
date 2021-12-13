@@ -94,8 +94,9 @@ jobs:
         if: runner.os == 'Windows'
         # Reenable ccache if possible...
         run: |
-          choco install ninja
+          choco install ccache
           ninja --version
+          ccache --version
           cmake --version
 
       # Build using make.
@@ -103,6 +104,7 @@ jobs:
         env:
           IDF_PATH: ${{ github.workspace }}/third_party/esp-idf
           CCACHE_DIR: ${{ github.workspace }}/.ccache
+          CCACHE_BASEDIR: ${{ github.workspace }}
           CCACHE_COMPRESS: true
           CCACHE_COMPRESSLEVEL: '6'
           CCACHE_MAXSIZE: 400M
