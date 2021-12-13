@@ -25,11 +25,18 @@ ESP32_WIFI_SSID=
 ESP32_WIFI_PASSWORD=
 ESP32_PORT=
 
+
+ifeq ($(OS),Windows_NT)
+	EXE_SUFFIX=".exe"
+else
+	EXE_SUFFIX=""
+endif
+
 BIN_DIR = build/host/sdk/bin
-TOITPKG_BIN = $(BIN_DIR)/toitpkg
-TOITLSP_BIN = $(BIN_DIR)/toitlsp
-TOITVM_BIN = $(BIN_DIR)/toitvm
-TOITC_BIN = $(BIN_DIR)/toitc
+TOITPKG_BIN = $(BIN_DIR)/toitpkg$(EXE_SUFFIX)
+TOITLSP_BIN = $(BIN_DIR)/toitlsp$(EXE_SUFFIX)
+TOITVM_BIN = $(BIN_DIR)/toitvm$(EXE_SUFFIX)
+TOITC_BIN = $(BIN_DIR)/toitc$(EXE_SUFFIX)
 
 # Note that the boot snapshot lives in the bin dir.
 TOIT_BOOT_SNAPSHOT = $(BIN_DIR)/toitvm_boot.snapshot
