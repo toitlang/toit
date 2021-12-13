@@ -18,7 +18,7 @@ jobs:
             container: ubuntu-latest
             artifact: toit-linux.tar.gz
           - os: macos
-            container: macos-11      # Currently later than macos-latest
+            container: macos-latest  # Currently we need Clang 12 (https://github.com/toitlang/toit/issues/130)
             artifact: toit-macos.tar.gz
           - os: windows
             container: windows-2022  # Currently later than windows-latest.
