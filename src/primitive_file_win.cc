@@ -135,11 +135,17 @@ PRIMITIVE(closedir) {
 
 PRIMITIVE(read) {
   ARGS(int, fd);
-  const int SIZE = 4000;
-  uint8 buffer[SIZE];
+
+  Error* error = null;
+  ByteArray* byte_array = process->allocate_byte_array(4000, &error);
+  if (byte_array == null) {
+    return error;
+  }
+
+  ByteArray::Bytes bytes(ByteArray::cast(byte_array));
   ssize_t buffer_fullness = 0;
-  while (buffer_fullness < SIZE) {
-    ssize_t bytes_read = _read(fd, buffer + buffer_fullness, SIZE - buffer_fullness);
+  while (buffer_fullness < bytes.length()) {
+    ssize_t bytes_read = _read(fd, bytes.address() + buffer_fullness, bytes.length() - buffer_fullness);
     if (bytes_read < 0) {
       if (errno == EINTR) continue;
       if (errno == EINVAL || errno == EISDIR || errno == EBADF) INVALID_ARGUMENT;
@@ -147,17 +153,12 @@ PRIMITIVE(read) {
     buffer_fullness += bytes_read;
     if (bytes_read == 0) break;
   }
+
   if (buffer_fullness == 0) {
     return process->program()->null_object();
   }
-  Error* error = null;
-  Object* byte_array = process->allocate_byte_array(buffer_fullness, &error);
-  if (byte_array == null) {
-    lseek(fd, -buffer_fullness, SEEK_CUR);
-    return error;
-  }
-  auto buf = ByteArray::Bytes(ByteArray::cast(byte_array)).address();
-  memcpy(buf, buffer, buffer_fullness);
+
+  byte_array->resize(buffer_fullness);
   return byte_array;
 }
 
