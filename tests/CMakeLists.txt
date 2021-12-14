@@ -30,7 +30,7 @@ add_custom_target(
   )
 
 foreach(file ${TOIT_TESTS})
-  cmake_path(SET host_path ${file})
+  file(TO_NATIVE_PATH ${file} host_path)
   add_test(
     NAME ${file}
     # We add 3 arguments to all test-calls.
