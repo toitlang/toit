@@ -87,7 +87,7 @@ void OS::tear_down() {
 }
 
 const char* OS::get_platform() {
-  return "OSX";
+  return "macOS";
 }
 
 int OS::read_entire_file(char* name, uint8** buffer) {

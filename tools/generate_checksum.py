@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+#
 # Copyright (C) 2018 Toitware ApS.
 #
 # This library is free software; you can redistribute it and/or
@@ -23,13 +25,13 @@ def md5(fname):
             hash_md5.update(chunk)
     return hash_md5.hexdigest()
 
-f = open(sys.argv[1], 'w+')
 hash = md5(sys.argv[2])
-f.write('namespace toit {\n\n');
-f.write('unsigned int checksum[4] = {')
-for i in range(0, 4):
-    if i != 0: f.write(', ')
-    f.write('0x' + hash[i * 8:(i + 1) * 8])
-f.write('};\n\n')
-f.write('}\n')
-f.close()
+with open(sys.argv[1], 'w+') as file:
+    file.write('namespace toit {\n\n');
+    file.write('unsigned int checksum[4] = {')
+    for i in range(0, 4):
+        if i != 0: file.write(', ')
+        file.write('0x' + hash[i * 8:(i + 1) * 8])
+    file.write('};\n\n')
+    file.write('}\n')
+    file.close()

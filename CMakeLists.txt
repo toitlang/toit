@@ -31,18 +31,25 @@ set(CMAKE_CXX_EXTENSIONS ON)  # Needed so that `tzset` is available in esp-idf.
 
 find_program(CCACHE_FOUND ccache)
 if (CCACHE_FOUND)
-  set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE "CCACHE_BASEDIR=${PROJECT_SOURCE_DIR} ${CCACHE_FOUND}")
-  set_property(GLOBAL PROPERTY RULE_LAUNCH_LINK "CCACHE_BASEDIR=${PROJECT_SOURCE_DIR} ${CCACHE_FOUND}")
+  # On build-systems, it is recommended to set the CCACHE_BASEDIR environment
+  # variable to the root of the checkout, so that different runs in different directories
+  # can still take advantage of ccache.
+  # Typically this is done by setting the environment variable for the build step.
+  set(CMAKE_C_COMPILER_LAUNCHER   "${CCACHE_FOUND}")
+  set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_FOUND}")
 endif(CCACHE_FOUND)
 
-if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Windows")
+if (${CMAKE_SYSTEM_NAME} MATCHES "Windows")
+  set(TOIT_GENERIC_FLAGS "${TOIT_GENERIC_FLAGS} -static")
+else()
   set(TOIT_GENERIC_FLAGS "${TOIT_GENERIC_FLAGS} '-fdebug-prefix-map=${PROJECT_SOURCE_DIR}=.'")
 endif()
-set(TOIT_GENERIC_FLAGS "${TOIT_GENERIC_FLAGS} -Wall -ffunction-sections -fdata-sections")
 
 if (NOT ${ESP32_CHIP} MATCHES "esp32c3")
   set(TOIT_GENERIC_FLAGS "${TOIT_GENERIC_FLAGS} -Wno-unused-command-line-argument")
 endif()
+
+set(TOIT_GENERIC_FLAGS "${TOIT_GENERIC_FLAGS} -Wall -ffunction-sections -fdata-sections")
 
 include_directories(
   "$ENV{IDF_PATH}/components/mbedtls/mbedtls/include"

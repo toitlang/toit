@@ -3,12 +3,27 @@
 This repository contains the Toit language implementation. It is fully open source and consists of the compiler,
 virtual machine, and standard libraries that together enable Toit programs to run on an ESP32.
 
+## Jaguar: Live reloading for the ESP32
+
+You can use Toit to develop, update, and restart your ESP32 applications in less than two seconds through
+[Jaguar](https://github.com/toitlang/jaguar). Jaguar is a small Toit program that runs on your ESP32.
+It uses the capabilities of the Toit virtual machine to let you update and restart your ESP32
+applications written in Toit over WiFi. Once set up, it is as easy as:
+
+``` sh
+jag run examples/hello.toit
+```
+
+Watch a short video that shows how you can experience Jaguar on your ESP32 in less than 3 minutes:
+
+[![Jaguar demonstration](https://img.youtube.com/vi/rXbe_1hyz80/0.jpg)](https://www.youtube.com/watch?v=rXbe_1hyz80)
+
 ## Community
 
 Use this [invite](https://discord.gg/ugjgGbW6) to join our Discord server, and follow the development and get help.
 We're eager to hear of your experience building with Toit.
 
-We use [GitHub Discussions](https://github.com/toitlang/toit/discussions) to discuss and learn and
+We also use [GitHub Discussions](https://github.com/toitlang/toit/discussions) to discuss and learn and
 we follow a [code of conduct](CODE_OF_CONDUCT.md) in all our community interactions.
 
 ## References

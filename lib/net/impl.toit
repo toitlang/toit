@@ -2,6 +2,8 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+import .wifi as wifi
+
 import .net
 import .tcp as tcp
 import .udp as udp
@@ -11,36 +13,28 @@ import .modules.tcp
 import .modules.udp
 import .modules.wifi
 
-WIFI_USE_      /bool   ::= (platform == "FreeRTOS") and (WIFI_SSID_ != "")
-WIFI_SSID_     /string ::= defines_.get "wifi.ssid" --if_absent=: ""
-WIFI_PASSWORD_ /string ::= defines_.get "wifi.password" --if_absent=: ""
-WIFI_CONNECT_TIMEOUT_  ::= Duration --s=10
-WIFI_DHCP_TIMEOUT_     ::= Duration --s=16
-
-wifi_enabled_ := false
+WIFI_ALREADY_STARTED_EXCEPTION_ ::= "OUT_OF_BOUNDS"
+wifi_interface_/Interface? := null
 
 open -> Interface:
-  wifi := null
-  if WIFI_USE_ and not wifi_enabled_:
-    wifi = Wifi
-    try:
-      wifi.set_ssid WIFI_SSID_ WIFI_PASSWORD_
-      with_timeout WIFI_CONNECT_TIMEOUT_: wifi.connect
-      with_timeout WIFI_DHCP_TIMEOUT_: wifi.get_ip
-      wifi_enabled_ = true
-    finally: | is_exception _ |
-      if is_exception: wifi.close
-  return InterfaceImpl_ wifi
+  if platform == PLATFORM_FREERTOS:
+    // Was WiFi already started in this process?
+    if wifi_interface_: return wifi_interface_
+    exception ::= catch:
+      wifi_interface_ = wifi.connect
+      return wifi_interface_
+    // Was WiFi already started in another process?
+    if exception != WIFI_ALREADY_STARTED_EXCEPTION_:
+      throw exception
+  return SystemInterface_
 
-class InterfaceImpl_ extends Interface:
-  wifi_/Wifi?
-
-  constructor .wifi_:
-
+class SystemInterface_ extends Interface:
   resolve host/string -> List:
     return [dns.dns_lookup host]
 
-  udp_open -> udp.Socket: return udp_open --port=null
+  udp_open -> udp.Socket:
+    return udp_open --port=null
+
   udp_open --port/int? -> udp.Socket:
     return Socket "0.0.0.0" (port ? port : 0)
 
@@ -55,9 +49,7 @@ class InterfaceImpl_ extends Interface:
     return result
 
   address -> IpAddress:
-    if wifi_:
-      return wifi_.address
-    return IpAddress.parse "0.0.0.0"
+    return IpAddress.parse "127.0.0.1"
 
   close -> none:
     // Do nothing yet.

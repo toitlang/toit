@@ -901,7 +901,7 @@ class ToitArray extends ToitHeapObject:
     return to_encoded_address address
 
 class ToitByteArray extends ToitHeapObject:
-  static INTERNAL_SIZE_CUTOFF := Image.PAGE_BYTE_SIZE_32 / 2
+  static INTERNAL_SIZE_CUTOFF := Image.PAGE_BYTE_SIZE_32 >> 2
   static RAW_BYTE_TAG ::= 0
 
   static LAYOUT_INTERNAL /ObjectType ::= ObjectType --packed {  // The '--packed' shouldn't be necessary, but doesn't hurt.
@@ -963,7 +963,7 @@ class ToitByteArray extends ToitHeapObject:
     return to_encoded_address address
 
 class ToitString extends ToitHeapObject:
-  static INTERNAL_SIZE_CUTOFF := Image.PAGE_BYTE_SIZE_32 / 2
+  static INTERNAL_SIZE_CUTOFF := Image.PAGE_BYTE_SIZE_32 >> 2
 
   static LAYOUT_INTERNAL /ObjectType ::= ObjectType --packed {  // The '--packed' shouldn't be necessary, but doesn't hurt.
     // Inherited from HeapObject.

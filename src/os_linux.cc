@@ -82,7 +82,7 @@ void OS::tear_down() {
 }
 
 const char* OS::get_platform() {
-  return "Debian";
+  return "Linux";
 }
 
 int OS::read_entire_file(char* name, uint8** buffer) {
