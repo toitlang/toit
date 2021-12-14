@@ -222,5 +222,4 @@ install: install-sdk
 
 .PHONY: test
 test:
-	cd build/host
-	ninja check
+	(cd build/host && ninja check)
