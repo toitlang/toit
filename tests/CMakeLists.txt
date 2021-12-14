@@ -30,11 +30,12 @@ add_custom_target(
   )
 
 foreach(file ${TOIT_TESTS})
+  cmake_path(SET host_path ${file})
   add_test(
     NAME ${file}
     # We add 3 arguments to all test-calls.
     # They are only used for tests that deal with arguments.
-    COMMAND $<TARGET_FILE:toitvm> ${file} "foo" "bar" "gee"
+    COMMAND $<TARGET_FILE:toitvm> ${host_path} "foo" "bar" "gee"
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     )
   set_tests_properties(${file} PROPERTIES TIMEOUT ${DEFAULT_TIMEOUT})
