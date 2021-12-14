@@ -114,7 +114,6 @@ jobs:
       # Test.
       - name: test
         run: |
-          (cd build/host && ctest --verbose -R ar_test)
           make test
 
       - name: Pack artifacts

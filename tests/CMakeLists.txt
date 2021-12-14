@@ -30,13 +30,13 @@ add_custom_target(
   )
 
 foreach(file ${TOIT_TESTS})
-  file(TO_NATIVE_PATH ${file} host_path)
+  file(TO_NATIVE_PATH "${file}" host_path)
   add_test(
     NAME ${file}
     # We add 3 arguments to all test-calls.
     # They are only used for tests that deal with arguments.
-    COMMAND $<TARGET_FILE:toitvm> ${host_path} "foo" "bar" "gee"
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    COMMAND $<TARGET_FILE:toitvm> "${host_path}" "foo" "bar" "gee"
+    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
     )
   set_tests_properties(${file} PROPERTIES TIMEOUT ${DEFAULT_TIMEOUT})
   set_tests_properties(${file} PROPERTIES ENVIRONMENT "TOIT_TEST_ENV_ENTRY=TOIT_TEST_ENV_VALUE")
