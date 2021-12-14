@@ -1,0 +1,87 @@
+file(GLOB TOIT_TESTS RELATIVE ${CMAKE_SOURCE_DIR} "*_test.toit" "regress/*_test.toit")
+file(GLOB TOIT_SLOW_TESTS RELATIVE ${CMAKE_SOURCE_DIR} "*_test_slow.toit" "regress/*_test_slow.toit")
+file(GLOB TOIT_FORCE_TESTS RELATIVE ${CMAKE_SOURCE_DIR} "*_test_force.toit" "regress/*_test_force.toit")
+file(GLOB TOIT_NO_BOOT_TESTS RELATIVE ${CMAKE_SOURCE_DIR} "*_test_no_boot.toit" "regress/*_test_no_boot.toit")
+file(GLOB TOIT_COMPILER_TESTS RELATIVE ${CMAKE_SOURCE_DIR} "*_test_compiler.toit" "regress/*_test_compiler.toit")
+
+include(ProcessorCount)
+ProcessorCount(NUM_CPU)
+
+IF(APPLE)
+  set(DEFAULT_TIMEOUT 80)
+  set(SLOW_TIMEOUT 800)
+else()
+  set(DEFAULT_TIMEOUT 40)
+  set(SLOW_TIMEOUT 400)
+endif()
+
+add_custom_target(
+  check
+  COMMAND ${CMAKE_CTEST_COMMAND} -j${NUM_CPU} -T test --output-on-failure
+  USES_TERMINAL
+  DEPENDS build_toitvm
+  )
+
+add_custom_target(
+  check_slow
+  COMMAND ${CMAKE_CTEST_COMMAND} -j${NUM_CPU} -T test -C slow --output-on-failure
+  USES_TERMINAL
+  DEPENDS build_toitvm
+  )
+
+foreach(file ${TOIT_TESTS})
+  add_test(
+    NAME ${file}
+    # We add 3 arguments to all test-calls.
+    # They are only used for tests that deal with arguments.
+    COMMAND $<TARGET_FILE:toitvm> ${file} "foo" "bar" "gee"
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    )
+  set_tests_properties(${file} PROPERTIES TIMEOUT ${DEFAULT_TIMEOUT})
+  set_tests_properties(${file} PROPERTIES ENVIRONMENT "TOIT_TEST_ENV_ENTRY=TOIT_TEST_ENV_VALUE")
+endforeach()
+
+foreach(file ${TOIT_FORCE_TESTS})
+  add_test(
+    NAME ${file}
+    COMMAND $<TARGET_FILE:toitvm> --force ${file}
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    )
+  set_tests_properties(${file} PROPERTIES TIMEOUT ${DEFAULT_TIMEOUT})
+endforeach()
+
+foreach(file ${TOIT_NO_BOOT_TESTS})
+  add_test(
+    NAME ${file}
+    # Assumes that `none` doesn't exist.
+    COMMAND $<TARGET_FILE:toitvm> -b none ${file}
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    )
+  set_tests_properties(${file} PROPERTIES TIMEOUT ${DEFAULT_TIMEOUT})
+endforeach()
+
+foreach(file ${TOIT_COMPILER_TESTS})
+  add_test(
+    NAME ${file}
+    COMMAND $<TARGET_FILE:toitvm> ${file} $<TARGET_FILE:toitvm>
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    )
+  set_tests_properties(${file} PROPERTIES TIMEOUT ${DEFAULT_TIMEOUT})
+endforeach()
+
+set(PREEMPT_ALOT_TEST "tests/json_test.toit")
+add_test(
+  NAME "${PREEMPT_ALOT_TEST}-PREEMPT_ALOT"
+  COMMAND $<TARGET_FILE:toitvm> -Xpreemptalot ${PREEMPT_ALOT_TEST}
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+  )
+
+foreach(file ${TOIT_SLOW_TESTS})
+  add_test(
+    NAME ${file}
+    COMMAND $<TARGET_FILE:toitvm> ${file}
+    CONFIGURATIONS slow
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    )
+  set_tests_properties(${file} PROPERTIES TIMEOUT ${SLOW_TIMEOUT})
+endforeach()

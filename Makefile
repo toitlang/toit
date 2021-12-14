@@ -218,3 +218,9 @@ install-sdk: $(TOOLS) $(SNAPSHOTS)
 	install -m 644 -D --target-directory="$(DESTDIR)$(prefix)"/snapshots $(SNAPSHOTS)
 
 install: install-sdk
+
+
+.PHONY: test
+test:
+	cd build/host
+	ninja check
