@@ -49,7 +49,7 @@ class SystemInterface_ extends Interface:
     return result
 
   address -> IpAddress:
-    return IpAddress.parse "0.0.0.0"
+    return IpAddress.parse "127.0.0.1"
 
   close -> none:
     // Do nothing yet.
