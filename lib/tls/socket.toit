@@ -40,6 +40,23 @@ class Socket extends Session implements net.Socket:
       --handshake_timeout=handshake_timeout
 
   /**
+  Creates a new TLS socket for a server-side TCP socket.
+
+  The $root_certificates are used to validate the peer certificate if present.
+  If $certificate is used as the authority of the server.
+  The handshake routine requires at most $handshake_timeout between each step
+    in the handshake process.
+  */
+  constructor.server .socket_/net.Socket
+      --certificate/Certificate
+      --root_certificates=[]
+      --handshake_timeout/Duration=Session.DEFAULT_HANDSHAKE_TIMEOUT:
+    super.server socket_ socket_
+      --certificate=certificate
+      --root_certificates=root_certificates
+      --handshake_timeout=handshake_timeout
+
+  /**
   Explicitly completes the handshake step.
 
   This method will automatically be called by read and write if the handshake
