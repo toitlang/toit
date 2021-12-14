@@ -65,7 +65,9 @@ int BaseMbedTLSSocket::add_root_certificate(X509Certificate* cert) {
   ASSERT(!cert->cert()->next);
   // Do a shallow copy of the cert.
   *last = _new mbedtls_x509_crt(*(cert->cert()));
-  return *last ? 0 : MBEDTLS_ERR_PK_ALLOC_FAILED;
+  if (*last == null) return MBEDTLS_ERR_PK_ALLOC_FAILED;
+  mbedtls_ssl_conf_authmode(&_conf, MBEDTLS_SSL_VERIFY_REQUIRED);
+  return 0;
 }
 
 void BaseMbedTLSSocket::apply_certs() {
@@ -144,7 +146,6 @@ void MbedTLSResourceGroup::init_conf(mbedtls_ssl_config* conf) {
                                             MBEDTLS_SSL_PRESET_DEFAULT)) {
     FATAL("mbedtls_ssl_config_defaults returned %d", ret);
   }
-  mbedtls_ssl_conf_authmode(conf, MBEDTLS_SSL_VERIFY_REQUIRED);
   mbedtls_ssl_conf_session_tickets(conf, MBEDTLS_SSL_SESSION_TICKETS_ENABLED);
 
 #ifdef DEBUG_TLS
