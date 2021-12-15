@@ -13,8 +13,8 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-import .ar
-import .file as file
+import host.ar show *
+import host.file
 import binary show *
 
 // Library for parsing a snapshot file into a useful structure.

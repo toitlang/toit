@@ -1,6 +1,6 @@
 // Copyright (C) 2020 Toitware ApS. All rights reserved.
 
-import ..tools.pipe as pipe
+import host.pipe
 import expect show *
 
 main args:

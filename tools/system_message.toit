@@ -16,8 +16,8 @@
 // directory of this repository.
 
 import encoding.base64 as base64
-import .file as file
-import .pipe as pipe
+import host.file
+import host.pipe
 import .snapshot
 import .mirror as mirror
 import services.arguments as services

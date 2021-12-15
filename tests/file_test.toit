@@ -2,8 +2,8 @@
 
 import expect show *
 
-import ..tools.file as file
-import ..tools.directory show *
+import host.file
+import host.directory show *
 import writer show Writer
 
 expect_ name [code]:
