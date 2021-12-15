@@ -36,6 +36,11 @@ jobs:
           git submodule update --init .
           git submodule update --init components/mbedtls
 
+      # Use Go 1.17
+      - name: Switch to Go 1.17
+        run:
+          echo "$GOROOT_1_17_X64"/bin >> $GITHUB_PATH
+
       # Get values for cache paths to be used in later steps
       - name: Get Go paths
         id: go-cache-paths
