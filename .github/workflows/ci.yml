@@ -111,6 +111,12 @@ jobs:
         run: |
           make tools
 
+      # Test.
+      - name: test
+        if: runner.os != 'Windows'
+        run: |
+          make test
+
       - name: Pack artifacts
         shell: bash
         # Note that we use `cp -R` first, since that works on every platform.
