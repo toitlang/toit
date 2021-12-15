@@ -108,6 +108,7 @@ jobs:
           CCACHE_COMPRESSLEVEL: '6'
           CCACHE_MAXSIZE: 400M
         run: |
+          go version
           make tools
 
       # Test.
