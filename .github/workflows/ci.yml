@@ -75,6 +75,14 @@ jobs:
           key: ${{ runner.os }}-ccache-${{ steps.timestamp.outputs.timestamp }}
           restore-keys: ${{ runner.os }}-ccache-
 
+    - name: Cache Chocolatey Dependencies
+      if: runner.os == 'Windows'
+      uses: actions/cache@v2
+      with:
+        path: C:\ProgramData\chocolatey\lib
+        key: choco-cache-${{ steps.timestamp.outputs.timestamp }}
+        restore-keys: choco-cache-
+
       # Fetch the dependencies. Different for each platform.
       - name: Install dependencies - Linux
         if: runner.os == 'Linux'
