@@ -189,7 +189,7 @@ Heap::AllocationResult Heap::_expand() {
 Heap::AllocationResult ObjectHeap::_expand() {
   word used = (_blocks.length() << TOIT_PAGE_SIZE_LOG2) + _external_memory;
   if (_limit != 0 && used >= _limit) {
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_GC_LOGGING
     printf("[gc @ %p%s | soft limit reached (%zd >= %zd)]\n",
         owner(), VM::current()->scheduler()->is_boot_process(owner()) ? "*" : "",
         used, _limit);
@@ -474,12 +474,14 @@ Stack* ObjectHeap::allocate_stack(int length) {
 }
 
 int ObjectHeap::scavenge() {
-  int blocks_before = _blocks.length();
-#ifdef TOIT_FREERTOS
-  word external_memory_before = _external_memory;
-  word free_before = static_cast<word>(heap_caps_get_free_size(MALLOC_CAP_8BIT));
+  word blocks_before = _blocks.length();
+#ifdef TOIT_GC_LOGGING
   int64 start_time = OS::get_monotonic_time();
-#endif
+  word external_memory_before = _external_memory;
+#ifdef TOIT_FREERTOS
+  word free_before = static_cast<word>(heap_caps_get_free_size(MALLOC_CAP_8BIT));
+#endif //TOIT_FREERTOS
+#endif //TOIT_GC_LOGGING
 
   enter_gc();
   // Reset this until we get a new failure after GC.
@@ -566,8 +568,8 @@ int ObjectHeap::scavenge() {
   _gc_count++;
   leave_gc();
 
-  int blocks_after = _blocks.length();
-#ifdef TOIT_FREERTOS
+  word blocks_after = _blocks.length();
+#if defined(TOIT_FREERTOS) && defined(TOIT_GC_LOGGING)
   multi_heap_info_t info;
   heap_caps_get_info(&info, MALLOC_CAP_8BIT);
   word free_after = info.total_free_bytes;
@@ -581,6 +583,14 @@ int ObjectHeap::scavenge() {
       total >> KB_LOG2, free_before >> KB_LOG2, free_after >> KB_LOG2,
       largest >= 4096 ? (largest >> KB_LOG2) : largest,
       largest >= 4096 ? "kb" : "bytes",
+      (int)(microseconds / 1000),
+      (int)(microseconds % 1000));
+#elif defined(TOIT_GC_LOGGING)
+  int64 microseconds = OS::get_monotonic_time() - start_time;
+  printf("[gc @ %p%s | heap: %zdkb -> %zdkb | external: %zdkb -> %zdkb | %d.%03dms]\n",
+      owner(), VM::current()->scheduler()->is_boot_process(owner()) ? "*" : "",
+      blocks_before << (TOIT_PAGE_SIZE_LOG2 - KB_LOG2), blocks_after << (TOIT_PAGE_SIZE_LOG2 - KB_LOG2),
+      external_memory_before >> KB_LOG2, _external_memory >> KB_LOG2,
       (int)(microseconds / 1000),
       (int)(microseconds % 1000));
 #endif

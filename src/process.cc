@@ -130,7 +130,7 @@ String* Process::allocate_string(int length, Error** error) {
   if (can_fit_in_heap_block) {
     String* result = object_heap()->allocate_internal_string(length);
     if (result != null) return result;
-  #ifdef TOIT_FREERTOS
+  #ifdef TOIT_GC_LOGGING
     printf("[gc @ %p%s | string allocation failed, length = %d (heap)]\n",
         this, VM::current()->scheduler()->is_boot_process(this) ? "*" : "",
         length);
@@ -146,7 +146,7 @@ String* Process::allocate_string(int length, Error** error) {
     memory = allocation.alloc(length + 1);
   }
   if (memory == null) {
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_GC_LOGGING
       printf("[gc @ %p%s | string allocation failed, length = %d (malloc)]\n",
           this, VM::current()->scheduler()->is_boot_process(this) ? "*" : "",
           length);
@@ -159,7 +159,7 @@ String* Process::allocate_string(int length, Error** error) {
     allocation.keep_result();
     return result;
   }
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_GC_LOGGING
     printf("[gc @ %p%s | string allocation failed, length = %d (after malloc)]\n",
         this, VM::current()->scheduler()->is_boot_process(this) ? "*" : "",
         length);
@@ -195,7 +195,7 @@ ByteArray* Process::allocate_byte_array(int length, Error** error, bool force_ex
     }
     if (memory == null) {
       // Malloc failed, report it.
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_GC_LOGGING
       printf("[gc @ %p%s | byte array allocation failed, length = %d (malloc)]\n",
           this, VM::current()->scheduler()->is_boot_process(this) ? "*" : "",
           length);
@@ -207,7 +207,7 @@ ByteArray* Process::allocate_byte_array(int length, Error** error, bool force_ex
       allocation.keep_result();
       return result;
     }
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_GC_LOGGING
     printf("[gc @ %p%s | byte array allocation failed, length = %d (after malloc)]\n",
         this, VM::current()->scheduler()->is_boot_process(this) ? "*" : "",
         length);
@@ -216,7 +216,7 @@ ByteArray* Process::allocate_byte_array(int length, Error** error, bool force_ex
     return null;
   }
   if (ByteArray* result = object_heap()->allocate_internal_byte_array(length)) return result;
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_GC_LOGGING
   printf("[gc @ %p%s | byte array allocation failed, length = %d (heap)]\n",
       this, VM::current()->scheduler()->is_boot_process(this) ? "*" : "",
       length);
