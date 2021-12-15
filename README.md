@@ -8,10 +8,10 @@ virtual machine, and standard libraries that together enable Toit programs to ru
 You can use Toit to develop, update, and restart your ESP32 applications in less than two seconds through
 [Jaguar](https://github.com/toitlang/jaguar). Jaguar is a small Toit program that runs on your ESP32.
 It uses the capabilities of the Toit virtual machine to let you update and restart your ESP32
-applications written in Toit over WiFi. Once set up, it is as easy as:
+applications written in Toit over WiFi whenever your source files change. Once set up, it is as easy as:
 
 ``` sh
-jag run examples/hello.toit
+jag watch examples/hello.toit
 ```
 
 Watch a short video that shows how you can experience Jaguar on your ESP32 in less than 3 minutes:
