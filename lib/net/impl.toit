@@ -49,7 +49,15 @@ class SystemInterface_ extends Interface:
     return result
 
   address -> IpAddress:
-    return IpAddress.parse "127.0.0.1"
+    socket := udp_open
+    try:
+      socket.connect
+        SocketAddress
+          IpAddress.parse "8.8.8.8"
+          0
+      return socket.local_address.ip
+    finally:
+      socket.close
 
   close -> none:
     // Do nothing yet.
