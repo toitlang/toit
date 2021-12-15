@@ -16,7 +16,7 @@ jag watch examples/hello.toit
 
 Watch a short video that shows how you can experience Jaguar on your ESP32 in less than 3 minutes:
 
-[![Jaguar demonstration](https://img.youtube.com/vi/rXbe_1hyz80/0.jpg)](https://www.youtube.com/watch?v=rXbe_1hyz80)
+<a href="https://www.youtube.com/watch?v=rXbe_1hyz80"><img width="543" alt="Jaguar demonstration" src="https://user-images.githubusercontent.com/133277/146210503-24811800-bb26-4244-817d-6422b20e6786.png"></a>
 
 ## Community
 
