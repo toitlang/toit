@@ -113,6 +113,7 @@ jobs:
 
       # Test.
       - name: test
+        if: runner.os != 'Windows'
         run: |
           make test
 
