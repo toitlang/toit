@@ -57,10 +57,31 @@ Certain subdirectories are under their own open source licenses, detailed
 in those directories and the files they contain. These subdirectories are:
 
 * The subdirectory `lib/font/matthew_welch/`
+* Every subdirectory under `packages/`
 * Every subdirectory under `lib/font/x11_100dpi/`
 * Every subdirectory under `src/compiler/third_party/`
 * Every subdirectory under `src/third_party/`
 * Every subdirectory under `third_party/`
+
+# Installation
+The instructions in this section don't cover the IDE integration. Follow the instructions
+[below](#ide-integration) to set up Toit support for your editor.
+
+## Arch Linux
+For [Arch Linux](https://archlinux.org/) (or variants such as [Manjaro](https://manjaro.org/))
+use your favorite [AUR helper](https://wiki.archlinux.org/title/AUR_helpers) to
+install the [toit](https://aur.archlinux.org/packages/toit/) or
+[toit-git](https://aur.archlinux.org/packages/toit-git/) package.
+
+For example:
+```
+yay -S toit
+```
+
+## Other platforms
+We're actively working on simple installation steps for other platforms. For now, please use the build instructions below or download the `.tar.gz` files from the
+[release](https://github.com/toitlang/toit/releases) page.
+
 
 # Building
 
