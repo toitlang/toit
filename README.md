@@ -201,6 +201,25 @@ In the VS Code extension (version 1.3.7+) set the `toitLanguageServer.command` s
 
 This makes the extension use the language server that was compiled in the [build step](#build-for-host-machine).
 
+### Jetbrains IntelliJ Platform
+
+---
+*NOTE*
+
+Applies to distributions like IntelliJ IDEA, GoLand, CLion, PHPStorm etc, but has not been tested with Fleet.
+
+---
+
+Through the plugin system, IntelliJ has limited support for LSP. In particular the [LSP Support](https://plugins.jetbrains.com/plugin/10209-lsp-support) plugin has been verified to work with Toit's LSP server.
+
+With the plugin installed, a server definition needs to be added, in Preferences > Languages & Frameworks > Language Server Protocol, with the following parameters:
+* `Executable`
+* Extension: `toit`
+* Path: _Path to toit executable_ i.e. `/usr/local/bin/toit`
+* Args: `tool lsp`
+
+At this point, the LSP Support plugin does not support syntax highlighting, but registering a `*.toit` [file type](https://www.jetbrains.com/help/idea/creating-and-registering-file-types.html#create-new-file-type) will give some simple keyword syntax highlighting.
+
 ### Other IDEs
 
 The Toit language server is independent of VSCode and can be used with other IDEs.
