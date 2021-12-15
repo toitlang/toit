@@ -1,9 +1,9 @@
 // Copyright (C) 2018 Toitware ApS. All rights reserved.
 
-import ..system.modules.dns
+import .dns
 import http
 import tls
-import ..system.modules.tcp as tcp
+import .tcp as tcp
 import net.x509 as net
 
 monitor LimitLoad:
