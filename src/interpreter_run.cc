@@ -505,13 +505,13 @@ Interpreter::Result Interpreter::_run() {
   OPCODE_BEGIN_WITH_WIDE(ALLOCATE, class_index);
     Object* result = _process->object_heap()->allocate_instance(Smi::from(class_index));
     for (int attempts = 1; result == null && attempts < 4; attempts++) {
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_GC_LOGGING
       if (attempts == 3) {
         printf("[gc @ %p%s | 3rd time allocate failure %zd]\n",
             _process, VM::current()->scheduler()->is_boot_process(_process) ? "*" : "",
             class_index);
       }
-#endif //TOIT_FREERTOS
+#endif //TOIT_GC_LOGGING
       sp = scavenge(sp, false, attempts);
       result = _process->object_heap()->allocate_instance(Smi::from(class_index));
     }
@@ -1004,7 +1004,7 @@ Interpreter::Result Interpreter::_run() {
         bool allocation_failed = (result == _process->program()->allocation_failed());
 
         if (attempts > 3 || !(malloc_failed || allocation_failed)) break;
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_GC_LOGGING
         if (attempts == 3) {
           printf("[gc @ %p%s | 3rd time primitive failure %d::%d%s]\n",
               _process, VM::current()->scheduler()->is_boot_process(_process) ? "*" : "",

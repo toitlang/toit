@@ -90,7 +90,7 @@ class Pin:
     - pull-low for 0
     - open-drain for 1
   */
-  config --input/bool=false --output/bool=false --open_drain=false:
+  config --input/bool=false --output/bool=false --open_drain/bool=false:
     if open_drain and not output: throw "INVALID_ARGUMENT"
     gpio_config_ num (input and pull_up_) (input and pull_down_) input output open_drain
 
@@ -159,8 +159,8 @@ class VirtualPin extends Pin:
   /** Closes the pin. */
   close:
 
-  /** Configures the virtual pin. */
-  config --input/bool=false --output/bool=false:
+  /** Does nothing. */
+  config --input/bool=false --output/bool=false --open_drain/bool=false:
 
   /** Not supported. */
   get: throw "UNSUPPORTED"
@@ -173,6 +173,37 @@ class VirtualPin extends Pin:
 
   /** Not supported. */
   num: throw "UNSUPPORTED"
+
+/**
+A pin that does the opposite of the physical pin that it takes in the constructor.
+*/
+class InvertedPin extends Pin:
+  original_pin_ /Pin
+
+  constructor .original_pin_:
+    super.virtual_
+
+  /** Sets the physical pin to 1 if $value is 0, and vice versa. */
+  set value -> none:
+    original_pin_.set 1 - value
+
+  close -> none:
+    original_pin_.close
+
+  /** Configures the underlying pin. */
+  config --input/bool=false --output/bool=false --open_drain/bool=false -> none:
+    original_pin_.config --input=input --output=output --open_drain=open_drain
+
+  /** Returns 1 if the physical pin is at 0, and vice versa. */
+  get -> int:
+    return 1 - original_pin_.get
+
+  /** Waits for 1 on on the physical pin if $value is 0, and vice versa. */
+  wait_for value/int -> none:
+    original_pin_.wait_for 1 - value
+
+  num -> int:
+    return original_pin_.num
 
 gpio_init_:
   #primitive.gpio.init

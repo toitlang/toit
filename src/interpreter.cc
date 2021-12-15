@@ -399,7 +399,7 @@ Object** Interpreter::check_stack_overflow(Object** sp, OverflowState* state, Me
 
   // Garbage collect up to three times.
   for (int attempts = 1; new_stack == null && attempts < 4; attempts++) {
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_GC_LOGGING
     if (attempts == 3) {
       printf("[gc @ %p%s | 3rd time stack allocate failure %d->%d]\n",
           _process, VM::current()->scheduler()->is_boot_process(_process) ? "*" : "",
