@@ -92,7 +92,6 @@ jobs:
           cmake --version
       - name: Install dependencies - Windows
         if: runner.os == 'Windows'
-        # Reenable ccache if possible...
         run: |
           choco install ninja ccache
           ninja --version
