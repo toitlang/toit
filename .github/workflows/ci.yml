@@ -113,9 +113,6 @@ jobs:
           CCACHE_COMPRESSLEVEL: '6'
           CCACHE_MAXSIZE: 400M
         run: |
-          go version
-          echo $GOROOT_1_17_X64
-          ls $GOROOT_1_17_X64
           make tools
 
       # Test.
