@@ -2,9 +2,9 @@
 
 import expect show *
 
-import ..tools.directory show *
-import ..tools.file as file
-import ..tools.pipe as pipe
+import host.directory show *
+import host.file
+import host.pipe
 
 test_exit_value command args expected_exit_value sleep_time/int:
   complete_args := [command] + args

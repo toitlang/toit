@@ -1,0 +1,5 @@
+prefixes:
+  host: host
+packages:
+  host:
+    path: ../packages/host

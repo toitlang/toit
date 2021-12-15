@@ -1,7 +1,6 @@
 // Copyright (C) 2019 Toitware ApS. All rights reserved.
 
-import server.tar as server
-import ..tools.pipe as pipe
+import host.pipe
 import reader show BufferedReader
 import monitor
 import expect show *

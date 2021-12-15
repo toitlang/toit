@@ -2,9 +2,9 @@
 
 import expect show *
 
-import ..tools.directory show *
-import ..tools.file as file
-import ..tools.pipe as pipe
+import host.directory show *
+import host.file
+import host.pipe
 
 expect_error name [code]:
   expect_equals

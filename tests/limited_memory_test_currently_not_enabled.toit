@@ -1,6 +1,6 @@
 // Copyright (C) 2019 Toitware ApS. All rights reserved.
 
-import ..tools.file as file
+import host.file
 import reader
 import ..system.kernel.test_primitive
 

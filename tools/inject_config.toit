@@ -16,7 +16,7 @@
 import binary show LITTLE_ENDIAN
 import bytes
 import crypto.sha256 as crypto
-import .file as file
+import host.file
 import services.arguments show *
 import uuid
 import writer

@@ -16,7 +16,7 @@
 import .image
 import .snapshot
 
-import .file as file
+import host.file
 
 BINARY_OPTION ::= "--binary"
 M32_OPTION    ::= "-m32"

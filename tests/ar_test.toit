@@ -1,11 +1,11 @@
 // Copyright (C) 2020 Toitware ApS. All rights reserved.
 
 import expect show *
-import ..tools.ar show *
+import host.ar show *
 import bytes
-import ..tools.directory as directory
-import ..tools.file as file
-import ..tools.pipe as pipe
+import host.directory
+import host.file
+import host.pipe
 import writer show Writer
 
 TESTS ::= [

@@ -3,8 +3,8 @@
 import bytes
 import expect show *
 import zlib show *
-import ..tools.pipe as pipe
-import ..tools.file as file
+import host.pipe
+import host.file
 import monitor show *
 
 test_compress str expected --uncompressed=false:
