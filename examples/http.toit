@@ -7,16 +7,12 @@ import http
 
 main:
   network := net.open
-
+  client := http.Client network
   host := "www.google.com"
-  socket := network.tcp_connect host 80
-
-  connection := http.Connection socket host
-  request := connection.new_request "GET" "/"
-  response := request.send
+  response := client.get host "/"
 
   bytes := 0
-  while data := response.read:
+  while data := response.body.read:
     bytes += data.size
 
   print "Read $bytes bytes from http://$host/"
