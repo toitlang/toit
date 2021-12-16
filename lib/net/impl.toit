@@ -54,7 +54,7 @@ class SystemInterface_ extends Interface:
       socket.connect
         SocketAddress
           IpAddress.parse "8.8.8.8"
-          0
+          80
       return socket.local_address.ip
     finally:
       socket.close
