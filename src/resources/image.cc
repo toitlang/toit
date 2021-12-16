@@ -43,15 +43,17 @@ PRIMITIVE(writer_create) {
 
 PRIMITIVE(writer_write) {
   ARGS(ImageOutputStream, output, Blob, content_bytes, int, from, int, to);
+  if (to < from || from < 0) INVALID_ARGUMENT;
+  if (to > content_bytes.length()) OUT_OF_BOUNDS;
 
-  word buffer[WORD_BIT_SIZE];
-
-  int length = (to - from) / WORD_SIZE;
-  //TODO(florian): the size of the content_bytes is ignored. We should probably add checks.
   const word* data = reinterpret_cast<const word*>(content_bytes.address() + from);
+  int byte_size = to - from;
+  int length = byte_size / WORD_SIZE;
+  word buffer[WORD_BIT_SIZE];
 
   bool first = output->empty();
   int offset = FlashRegistry::offset(output->cursor());
+  if (offset < 0 || offset + byte_size > FlashRegistry::allocations_size()) OUT_OF_BOUNDS;
   output->write(data, length, buffer);
 
   bool success = false;
@@ -66,7 +68,7 @@ PRIMITIVE(writer_write) {
   }
 
   if (success) return process->program()->null_object();
-  OUT_OF_BOUNDS;
+  HARDWARE_ERROR;
 }
 
 PRIMITIVE(writer_commit) {
@@ -80,9 +82,10 @@ PRIMITIVE(writer_commit) {
   int header_offset = FlashRegistry::offset(image.begin());
   uint8 meta_data[FlashAllocation::Header::meta_data_size()];
   memset(meta_data, 0, FlashAllocation::Header::meta_data_size());
-  if (FlashAllocation::initialize(header_offset, PROGRAM_TYPE, id_bytes.address(), image.byte_size(), meta_data))
+  if (FlashAllocation::initialize(header_offset, PROGRAM_TYPE, id_bytes.address(), image.byte_size(), meta_data)) {
     return process->program()->null_object();
-  OUT_OF_BOUNDS;
+  }
+  HARDWARE_ERROR;
 }
 
 PRIMITIVE(writer_close) {
