@@ -13,8 +13,8 @@ import bytes show
   Buffer
   BufferConsumer
 
-import http show Request
-  Connection
+import bytes show Buffer
+  BufferConsumer
 
 // Test exporting on multiple lines.
 export
