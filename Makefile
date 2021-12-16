@@ -25,7 +25,7 @@ ESP32_WIFI_SSID=
 ESP32_WIFI_PASSWORD=
 ESP32_PORT=
 
-# Use Toitware fork by default.
+# Use Toitware ESP-IDF fork by default.
 export IDF_PATH ?= $(CURDIR)/third_party/esp-idf
 
 ifeq ($(OS),Windows_NT)
@@ -200,7 +200,7 @@ else
 endif
 endif
 ifneq ("$(IDF_PATH)", "$(CURDIR)/third_party/esp-idf")
-	$(info -- Not using Toitware ESP-IDF)
+	$(info -- Not using Toitware ESP-IDF fork.)
 endif
 
 .PHONY: install-sdk install
