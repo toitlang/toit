@@ -11,14 +11,9 @@ import .dns as dns
 BROADCAST_ADDRESS ::= net.IpAddress.parse "255.255.255.255"
 
 main:
-  local_address_test
   ping_ping_test
   ping_ping_timeout_test
   broadcast_test
-
-local_address_test:
-  net.IpAddress.parse
-    net.open.address.stringify
 
 ping_ping_test:
   times := 10
