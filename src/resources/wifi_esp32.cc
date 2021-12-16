@@ -333,7 +333,6 @@ PRIMITIVE(get_rssi) {
   return Smi::from(rssi);
 }
 
-
 } // namespace toit
 
 #endif // TOIT_FREERTOS
