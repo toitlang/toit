@@ -95,7 +95,7 @@ To build Toit and its dependencies the build host requires:
 * [CMake >= 3.13.3](https://cmake.org/)
 * [Ninja](https://ninja-build.org/)
 * [GCC](https://gcc.gnu.org/)
-* [Go](https://go.dev/)
+* [Go >= 1.16](https://go.dev/)
 
 If you are using a Linux distribution with `apt` capabilities, you can
 issue the following command to install these:
@@ -126,13 +126,11 @@ git submodule update --init --recursive
 
 ```
 
-For the build to succeed, you will need to add its path to your ENV as `IDF_PATH`:
+To use the [offical ESP-IDF](https://github.com/espressif/esp-idf), or [any other variation](https://github.com/espressif/esp-idf/network/members), make sure it is available in your file system and point IDF_PATH to its path instead before building.
 
 ``` sh
-export IDF_PATH=`pwd`/third_party/esp-idf
+export IDF_PATH=<A_DIFFERENT_ESP_IDF>
 ```
-
-To use the [offical ESP-IDF](https://github.com/espressif/esp-idf), or [any other variation](https://github.com/espressif/esp-idf/network/members), make sure it is available in your file system and point IDF_PATH to its path instead before building.
 
 ### ESP32 tools
 
@@ -153,7 +151,7 @@ Remember to update your environment variables:
 
 ## Build for host machine
 
-Make sure `IDF_PATH` is set, and the required build tools are installed as described in dependency sections [ESP-IDF](#esp-idf) and [Build system](#build-system) above.
+Make sure the required build tools are installed as described in dependency sections [ESP-IDF](#esp-idf) and [Build system](#build-system) above.
 
 Then run the following commands at the root of your checkout.
 

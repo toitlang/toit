@@ -25,6 +25,9 @@ ESP32_WIFI_SSID=
 ESP32_WIFI_PASSWORD=
 ESP32_PORT=
 
+# Use Toitware ESP-IDF fork by default.
+export IDF_PATH ?= $(CURDIR)/third_party/esp-idf
+
 ifeq ($(OS),Windows_NT)
 	EXE_SUFFIX=".exe"
 else
@@ -150,17 +153,6 @@ build/snapshot: $(TOITC_BIN) $(ESP32_ENTRY)
 build/config.json:
 	echo '{"wifi": {"ssid": "$(ESP32_WIFI_SSID)", "password": "$(ESP32_WIFI_PASSWORD)"}}' > $@
 
-GO_USE_INSTALL = 1
-GO_USE_INSTALL_FROM = 1 16
-GO_VERSION = $(subst ., ,$(shell go version | cut -d" " -f 3 | cut -c 3-))
-ifeq ($(shell echo "$(word 1,$(GO_VERSION)) >= $(word 1,$(GO_USE_INSTALL_FROM))" | bc), 1)
-  ifeq ($(shell echo "$(word 2,$(GO_VERSION)) < $(word 2,$(GO_USE_INSTALL_FROM))" | bc), 1)
-  GO_USE_INSTALL = 0
-  endif
-else
-  GO_USE_INSTALL = 0
-endif
-
 GO_BUILD_FLAGS ?=
 ifeq ("$(GO_BUILD_FLAGS)", "")
 $(eval GO_BUILD_FLAGS=CGO_ENABLED=1 GODEBUG=netdns=go)
@@ -183,11 +175,7 @@ toitpkg: $(TOITPKG_BIN)
 
 TOITPKG_VERSION := v0.0.0-20211126161923-c00da039da00
 $(TOITPKG_BIN):
-ifeq ($(GO_USE_INSTALL), 1)
 	GOBIN="$(CURDIR)"/$(dir $@) go install github.com/toitlang/tpkg/cmd/toitpkg@$(TOITPKG_VERSION)
-else
-	GO111MODULE=on GOBIN="$(CURDIR)"/$(dir $@) go get github.com/toitlang/tpkg/cmd/toitpkg@$(TOITPKG_VERSION)
-endif
 
 build/host/:
 	mkdir -p $@
@@ -204,8 +192,15 @@ clean:
 	rm -rf build/
 
 check-env:
-ifndef IDF_PATH
-	$(error IDF_PATH is not set, if you want to use the Toitware fork execute "export IDF_PATH=`pwd`/third_party/esp-idf" (see README.md))
+ifeq ("$(wildcard $(IDF_PATH)/components/mbedtls/mbedtls/LICENSE)","")
+ifeq ("$(IDF_PATH)", "$(CURDIR)/third_party/esp-idf")
+	$(error mbedtls sources are missing. Did you initialize the submodules?)
+else
+	$(error Invalid IDF_PATH. Missing mbedtls sources.)
+endif
+endif
+ifneq ("$(IDF_PATH)", "$(CURDIR)/third_party/esp-idf")
+	$(info -- Not using Toitware ESP-IDF fork.)
 endif
 
 .PHONY: install-sdk install
