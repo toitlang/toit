@@ -1,9 +1,9 @@
 // Copyright (C) 2018 Toitware ApS. All rights reserved.
 
-import http
 import tls
 import .tcp as tcp
 import net.x509 as net
+import writer
 
 monitor LimitLoad:
   current := 0
@@ -130,17 +130,14 @@ connect_to_site host port add_root:
     // Install the roots needed.
     --root_certificates=add_root ? [BALTIMORE_CYBERTRUST_ROOT, GLOBALSIGN_R2] : net.TRUSTED_ROOTS
 
-  connection := http.Connection socket host
-
-  request := connection.new_request "GET" "/"
-
-  response := request.send
+  writer := writer.Writer socket
+  writer.write """GET / HTTP/1.1\r\nHost: $host\r\nConnection: close\r\n\r\n"""
 
   bytes := 0
 
-  while data := response.read:
+  while data := socket.read:
     bytes += data.size
 
-  connection.close
+  socket.close
 
   print "Read $bytes bytes from https://$host$(port == 443 ? "" : ":$port")/"

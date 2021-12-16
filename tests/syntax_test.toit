@@ -2,11 +2,11 @@
 
 import ..tests.syntax
 import .syntax
-import http
+import bytes
 
 import ..tests.syntax show global_x global_y
 import .syntax show global_x global_y
-import http show Headers
+import bytes show Buffer
 
 import ..tests.syntax show
   global_x
@@ -16,18 +16,18 @@ import .syntax
     global_x
     global_y
 import
-  http
+  bytes
   show
-  Headers
-  Connection
+  Buffer
+  BufferConsumer
 
 import ..tests.syntax show *
 import .syntax show *
-import http show *
+import bytes show *
 
 import ..tests.syntax as imp1
 import .syntax as imp2
-import http as imp3
+import bytes as imp3
 
 import core as core
 
@@ -102,16 +102,16 @@ global_fun6 x / any y/Type?: while true: some_fun "2" /*comment*/ null true
 global_fun7 -> none:
   while true: some_fun "2" /*comment*/ null true
 
-global_fun8 x/http.Headers -> none:
+global_fun8 x/bytes.Buffer -> none:
   while true: some_fun "2" /*comment*/ null true
 
 global_fun9 -> none
-    x / http.Headers?
+    x / bytes.Buffer?
     y/any:
   while true: some_fun "2" /*comment*/ null true
 
 global_fun9b -> none
-    x /http.Headers? /*comment*/
+    x /bytes.Buffer? /*comment*/
     y /any:
   while true: some_fun "2" /*comment*/ null true
 
