@@ -151,7 +151,7 @@ Remember to update your environment variables:
 
 ## Build for host machine
 
-Make sure `IDF_PATH` is set, and the required build tools are installed as described in dependency sections [ESP-IDF](#esp-idf) and [Build system](#build-system) above.
+Make sure the required build tools are installed as described in dependency sections [ESP-IDF](#esp-idf) and [Build system](#build-system) above.
 
 Then run the following commands at the root of your checkout.
 
