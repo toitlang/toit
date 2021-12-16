@@ -1,7 +1,7 @@
 // Copyright (C) 2018 Toitware ApS. All rights reserved.
 
 import .dns
-import http
+import writer
 import tls
 import .tcp as tcp
 import net.x509 as net
@@ -159,14 +159,12 @@ connect_to_site host port expected_certificate_name:
       --server_name=expected_certificate_name or host
 
     try:
-      connection = http.Connection socket host
+      writer := writer.Writer socket
+      writer.write """GET / HTTP/1.1\r\nHost: $host\r\nConnection: close\r\n\r\n"""
 
-      request := connection.new_request "GET" "/"
-
-      response := request.send
-
-      while data := response.read:
+      while data := socket.read:
         bytes += data.size
+
     finally:
       socket.close
   finally:

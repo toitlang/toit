@@ -47,13 +47,13 @@ main:
 
   // Just try to instantiate library classes through 'f'.
   f.Map
-  f.Headers
+  f.Buffer
 
   // Same for the libraries imported through 'g'. No prefix.
   Writer null
 
   h.Map
-  h.Headers
+  h.Buffer
   h.Writer null
   expect_equals "h_List" h.List
   expect_equals "h_Response" (h.Response null null)
