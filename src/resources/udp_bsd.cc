@@ -167,7 +167,6 @@ PRIMITIVE(connect) {
   memcpy(&addr.sin_addr.s_addr, address.address(), address.length());
   addr.sin_port = htons(port);
   if (connect(fd, reinterpret_cast<struct sockaddr*>(&addr), size) != 0) {
-    close_keep_errno(fd);
     return Primitive::os_error(errno, process);
   }
 

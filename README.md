@@ -1,6 +1,6 @@
-# Toit language implementation
+# Toit programming language
 
-This repository contains the Toit language implementation. It is fully open source and consists of the compiler,
+This repository contains the Toit language implementation. It consists of the compiler,
 virtual machine, and standard libraries that together enable Toit programs to run on an ESP32.
 
 ## Jaguar: Live reloading for the ESP32
@@ -16,7 +16,7 @@ jag watch examples/hello.toit
 
 Watch a short video that shows how you can experience Jaguar on your ESP32 in less than 3 minutes:
 
-[![Jaguar demonstration](https://img.youtube.com/vi/rXbe_1hyz80/0.jpg)](https://www.youtube.com/watch?v=rXbe_1hyz80)
+<a href="https://www.youtube.com/watch?v=rXbe_1hyz80"><img width="543" alt="Jaguar demonstration" src="https://user-images.githubusercontent.com/133277/146210503-24811800-bb26-4244-817d-6422b20e6786.png"></a>
 
 ## Community
 
@@ -57,10 +57,31 @@ Certain subdirectories are under their own open source licenses, detailed
 in those directories and the files they contain. These subdirectories are:
 
 * The subdirectory `lib/font/matthew_welch/`
+* Every subdirectory under `packages/`
 * Every subdirectory under `lib/font/x11_100dpi/`
 * Every subdirectory under `src/compiler/third_party/`
 * Every subdirectory under `src/third_party/`
 * Every subdirectory under `third_party/`
+
+# Installation
+The instructions in this section don't cover the IDE integration. Follow the instructions
+[below](#ide-integration) to set up Toit support for your editor.
+
+## Arch Linux
+For [Arch Linux](https://archlinux.org/) (or variants such as [Manjaro](https://manjaro.org/))
+use your favorite [AUR helper](https://wiki.archlinux.org/title/AUR_helpers) to
+install the [toit](https://aur.archlinux.org/packages/toit/) or
+[toit-git](https://aur.archlinux.org/packages/toit-git/) package.
+
+For example:
+```
+yay -S toit
+```
+
+## Other platforms
+We're actively working on simple installation steps for other platforms. For now, please use the build instructions below or download the `.tar.gz` files from the
+[release](https://github.com/toitlang/toit/releases) page.
+
 
 # Building
 

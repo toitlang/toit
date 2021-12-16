@@ -2,34 +2,27 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import rpc
-import uuid
-import serialization show serialize deserialize
 import drivers.cellular
+import device_impl as impl
+import uuid
+
 
 /**
 Functionality available on devices (ESP32).
 */
 
-RPC_SYSTEM_DEVICE_NAME ::= 100
-RPC_SYSTEM_DEVICE_HARDWARE_ID ::= 101
-RPC_SYSTEM_FLASHSTORE_GET ::= 102
-RPC_SYSTEM_FLASHSTORE_SET ::= 103
-RPC_SYSTEM_FLASHSTORE_DELETE ::= 104
-RPC_SYSTEM_CONSOLE_CONNECTION_OPEN ::= 105
-RPC_SYSTEM_CONSOLE_CONNECTION_CLOSE ::= 106
-RPC_SYSTEM_ESTIMATE_TIME_ACCURACY ::= 107
-RPC_SYSTEM_GNSS_START ::= 108
-RPC_SYSTEM_GNSS_LOCATION ::= 109
-RPC_SYSTEM_GNSS_STOP ::= 110
+interface Device_:
+  name -> string?
+  hardware_id -> uuid.Uuid
+  estimate_time_accuracy -> int?
+
 
 /** Name of this device. */
 name -> string?:
-  return rpc.invoke RPC_SYSTEM_DEVICE_NAME []
+  return impl.Device_.instance.name
 
 /** Hardware ID of this device. */
-hardware_id/uuid.Uuid ::= uuid.Uuid
-  rpc.invoke RPC_SYSTEM_DEVICE_HARDWARE_ID []
+hardware_id/uuid.Uuid ::= impl.Device_.instance.hardware_id
 
 /**
 Estimated time accuracy of this device.
@@ -39,7 +32,7 @@ On the device, the time drifts. The time is corrigated using the NTP when the
   accuracy when the time was last set plus the an estimated time drift.
 */
 estimate_time_accuracy -> int?:
-  return rpc.invoke RPC_SYSTEM_ESTIMATE_TIME_ACCURACY []
+  return impl.Device_.instance.estimate_time_accuracy
 
 /** Simple key-value store. */
 interface Store:
@@ -63,10 +56,7 @@ class FlashStore implements Store:
   Returns null if no value is available.
   */
   get key/string -> any:
-    res := rpc.invoke RPC_SYSTEM_FLASHSTORE_GET [key]
-    if res is ByteArray:
-        return deserialize res
-    return null
+    return impl.FlashStore_.instance.get key
 
   /**
   Deletes the given $key from the store.
@@ -74,7 +64,7 @@ class FlashStore implements Store:
   The $key does not need to be present in the store.
   */
   delete key/string:
-    rpc.invoke RPC_SYSTEM_FLASHSTORE_DELETE [key]
+    impl.FlashStore_.instance.get key
 
   /**
   Inserts the given $key-$value pair in the store.
@@ -82,35 +72,29 @@ class FlashStore implements Store:
   If the $key already exists in the store, then the value is overwritten.
   */
   set key/string value/any:
-    rpc.invoke RPC_SYSTEM_FLASHSTORE_SET [key, serialize value]
+    impl.FlashStore_.instance.set key value
 
 /**
 Connection to the console.
 
 Forces the kernel to attempt to connect to the console.
 */
-class ConsoleConnection extends rpc.CloseableProxy:
+class ConsoleConnection extends impl.ConsoleConnection_:
   /** Opens a connection to the console. */
   constructor.open:
-    super
-      rpc.invoke RPC_SYSTEM_CONSOLE_CONNECTION_OPEN []
-
-  close_rpc_selector_: return RPC_SYSTEM_CONSOLE_CONNECTION_CLOSE
+    super.open
 
 /**
 Control of the GNSS module controlled by the kernel.
 */
-class Gnss extends rpc.CloseableProxy:
+class Gnss extends impl.Gnss_:
   /**
   Starts GNSS.
 
   The device must support GNSS.
   */
   constructor.start:
-    super
-      rpc.invoke RPC_SYSTEM_GNSS_START []
-
-  close_rpc_selector_: return RPC_SYSTEM_GNSS_STOP
+    super.start
 
   /**
   The location of this device.
@@ -118,6 +102,4 @@ class Gnss extends rpc.CloseableProxy:
   Returns null if there is no location fix.
   */
   location -> cellular.GnssLocation?:
-    bytes := rpc.invoke RPC_SYSTEM_GNSS_LOCATION [handle_]
-    if not bytes: return null
-    return cellular.GnssLocation.deserialize bytes
+    return super

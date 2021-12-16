@@ -108,6 +108,18 @@ PRIMITIVE(image_config) {
   return result;
 }
 
+PRIMITIVE(get_mac_address) {
+  Error* error = null;
+  ByteArray* result = process->allocate_byte_array(6, &error);
+  if (result == null) return error;
+
+  ByteArray::Bytes bytes = ByteArray::Bytes(result);
+  esp_err_t err = esp_efuse_mac_get_default(bytes.address());
+  if (err != ESP_OK) memset(bytes.address(), 0, 6);
+
+  return result;
+}
+
 } // namespace toit
 
 #endif // TOIT_FREERTOS
