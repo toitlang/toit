@@ -46,6 +46,7 @@ word ZlibRle::add(const uint8* contents, intptr_t extra) {
     }
     uint8 b = contents[i];
     if (mode_ == LITERAL) {
+      // We need at least 4 bytes of lookahead to make compression decisions.
       if (unemitted_bytes_valid_ < 4) {
         unemitted_bytes_ <<= 8;
         unemitted_bytes_ |= b;
@@ -56,6 +57,8 @@ word ZlibRle::add(const uint8* contents, intptr_t extra) {
           (last_bytes_ & 0xff) == (unemitted_bytes_ & 0xff) &&
           (last_bytes_ & 0xff) == ((unemitted_bytes_ >> 8) & 0xff) &&
           (unemitted_bytes_ >> 16) == (unemitted_bytes_ & 0xffff)) {
+        // We recognized that the unemitted bytes all four matched the last
+        // emitted one.
         mode_ = REP1;
         repetitions_ = 4;
         last_bytes_ = unemitted_bytes_;
@@ -65,6 +68,8 @@ word ZlibRle::add(const uint8* contents, intptr_t extra) {
       } else if (last_bytes_valid_ >= 2 &&
           (last_bytes_ & 0xffff) == (unemitted_bytes_ & 0xffff) &&
           (unemitted_bytes_ >> 16) == (unemitted_bytes_ & 0xffff)) {
+        // We recognized that the four unemitted bytes are two repetitions of
+        // the last two emitted ones.
         mode_ = REP2;
         repetitions_ = 4;
         last_bytes_ = unemitted_bytes_;
@@ -75,6 +80,9 @@ word ZlibRle::add(const uint8* contents, intptr_t extra) {
           (last_bytes_ & 0xff) == ((unemitted_bytes_ >> 8) & 0xff) &&
           (last_bytes_ & 0xff) == ((unemitted_bytes_ >> 16) & 0xff) &&
           (last_bytes_ & 0xff) == ((unemitted_bytes_ >> 24) & 0xff)) {
+        // We recognized that the three first unemitted bytes are repetitions
+        // of the last emitted one.  It's not a huge win to code them as
+        // a run of 1+3, but it saves a few bits.
         mode_ = REP1;
         repetitions_ = 3;
         last_bytes_ <<= 24;
@@ -85,20 +93,28 @@ word ZlibRle::add(const uint8* contents, intptr_t extra) {
         output_repetitions();  // Will flush completely since repetitions_ == 3.
       } else if (last_bytes_valid_ >= 4 &&
           last_bytes_ == unemitted_bytes_) {
+        // We recognized that the four unemitted bytes are the same as
+        // the last four emitted ones.  Start a run with offset 4.
         mode_ = REP4;
         repetitions_ = 4;
         unemitted_bytes_ = 0;
         unemitted_bytes_valid_ = 0;
       } else if (last_bytes_valid_ >= 3 &&
           (last_bytes_ & 0xffffff) == (unemitted_bytes_ >> 8)) {
+        // We recognized that the first four of the unemitted bytes are
+        // the same as the last three emitted ones.
         mode_ = REP3;
         if ((unemitted_bytes_ & 0xff) == ((last_bytes_ >> 16) & 0xff)) {
+          // The last unemitted byte also matches the pattern of three
+          // being repeated.
           last_bytes_ = unemitted_bytes_;
           last_bytes_valid_ = 4;
           repetitions_ = 4;
           unemitted_bytes_ = 0;
           unemitted_bytes_valid_ = 0;
         } else {
+          // The last unemitted byte didn't match, so it was a rather
+          // short run.
           repetitions_ = 3;
           last_bytes_ <<= 24;
           last_bytes_ |= unemitted_bytes_ >> 8;
@@ -110,6 +126,8 @@ word ZlibRle::add(const uint8* contents, intptr_t extra) {
     }
     if (mode_ == LITERAL) {
       if (unemitted_bytes_valid_ == 4) {
+        // We have no current run, so just emit the oldest unemitted byte to
+        // make space for the new bytes.
         uint8 to_emit = unemitted_bytes_ >> 24;
         literal(to_emit);
         unemitted_bytes_ <<= 8;
@@ -118,14 +136,19 @@ word ZlibRle::add(const uint8* contents, intptr_t extra) {
         last_bytes_ |= to_emit;
         if (last_bytes_valid_ < 4) last_bytes_valid_++;
       } else {
+        // We have no current run, but there's a spare slot in the unemitted
+        // bytes so we put our new byte there.
         unemitted_bytes_ <<= 8;
         unemitted_bytes_valid_++;
         unemitted_bytes_ |= b;
       }
     } else {
+      // We have some sort of run going.  As long as it is running we don't
+      // have unemitted bytes.
       ASSERT(unemitted_bytes_valid_ == 0);
       int shift = static_cast<int>(mode_ - 1) << 3;
       if (b == ((last_bytes_ >> shift) & 0xff)) {
+        // Hooray, the new byte fits the run.
         repetitions_++;
         if (last_bytes_valid_ < 4) {
           last_bytes_valid_++;
@@ -133,6 +156,7 @@ word ZlibRle::add(const uint8* contents, intptr_t extra) {
         last_bytes_ <<= 8;
         last_bytes_ |= b;
       } else {
+        // Sadly, the run has ended.
         ASSERT(repetitions_ >= 3);
         output_repetitions(true);   // Will flush completely because repetitions_ >= 3.
         ASSERT(unemitted_bytes_ == 0);
@@ -140,6 +164,8 @@ word ZlibRle::add(const uint8* contents, intptr_t extra) {
         unemitted_bytes_ = b;
       }
     }
+    // Deflate doesn't work well with very large numbers of repetitions, so we
+    // flush some of them here, but carry on in the previous mode.
     if (repetitions_ == 260) output_repetitions(false);  // Will leave 3 repetitions.
   }
   return extra;
