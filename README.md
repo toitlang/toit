@@ -14,9 +14,9 @@ applications written in Toit over WiFi whenever your source files change. Once s
 jag watch examples/hello.toit
 ```
 
-Watch a short video that shows how you can experience Jaguar on your ESP32 in less than 3 minutes:
+Watch a short video that shows how you can experience Jaguar on your ESP32 in less two minutes:
 
-<a href="https://www.youtube.com/watch?v=rXbe_1hyz80"><img width="543" alt="Jaguar demonstration" src="https://user-images.githubusercontent.com/133277/146210503-24811800-bb26-4244-817d-6422b20e6786.png"></a>
+<a href="https://youtu.be/cU7zr6_YBbQ"><img width="543" alt="Jaguar demonstration" src="https://user-images.githubusercontent.com/133277/146210503-24811800-bb26-4244-817d-6422b20e6786.png"></a>
 
 ## Community
 
