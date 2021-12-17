@@ -18,3 +18,5 @@ tedi_test.go
 /tools/lsp/client/npm-debug.log
 /tools/lsp/client/vsc-extension-quickstart.md
 /tools/lsp/client/out/
+
+tests/health/health_sources.cmake
