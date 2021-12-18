@@ -88,17 +88,34 @@ class ZlibRle : public SimpleResource {
 
  private:
   void literal(uint8 byte);
-  void output_repetitions();
+  void output_repetitions(bool as_much_as_possible = true);
   void output_bits(uint32 bits, int bit_count);
+  void output_unemitted();
+
+  // The integer values are used in various places in nano_zlib.cc.
+  enum Mode {
+    LITERAL,   // We have not recognized any pattern in the bytes being compressed.
+    REP1 = 1,  // A run of identical bytes has been recognized.
+    REP2 = 2,  // A pattern of the form abababab has been recognized.
+    REP3 = 3,  // A pattern of the form abcabcabc has been recognized.
+    REP4 = 4   // A pattern of the form abcdabcd has been recognized.
+  };
 
   uint32 partial_ = 0;
   int partial_bits_ = 0;
   bool initialized_ = false;
-  int last_byte_ = -1;
-  int repetitions_ = 0;
+
   uint8* output_buffer_ = null;
   word output_index_ = 0;
   word output_limit_ = 0;
+
+  Mode mode_ = LITERAL;
+  uint32 last_bytes_ = 0;  // Most recent byte is least significant.
+  uint32 last_bytes_valid_ = 0;
+  uint32 unemitted_bytes_ = 0;  // Chronologically last byte is least significant.
+  uint32 unemitted_bytes_valid_ = 0;
+  int bytes_repeated_ = 0;
+
 };
 
 }
