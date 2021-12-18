@@ -58,9 +58,9 @@ word ZlibRle::add(const uint8* contents, intptr_t extra) {
           (last_bytes_ & 0xff) == ((unemitted_bytes_ >> 8) & 0xff) &&
           (unemitted_bytes_ >> 16) == (unemitted_bytes_ & 0xffff)) {
         // We recognized that the unemitted bytes all four matched the last
-        // emitted one.
+        // emitted one: last=...a unemitted=aaaa
         mode_ = REP1;
-        repetitions_ = 4;
+        bytes_repeated_ = 4;
         last_bytes_ = unemitted_bytes_;
         last_bytes_valid_ = 4;
         unemitted_bytes_ = 0;
@@ -69,9 +69,9 @@ word ZlibRle::add(const uint8* contents, intptr_t extra) {
           (last_bytes_ & 0xffff) == (unemitted_bytes_ & 0xffff) &&
           (unemitted_bytes_ >> 16) == (unemitted_bytes_ & 0xffff)) {
         // We recognized that the four unemitted bytes are two repetitions of
-        // the last two emitted ones.
+        // the last two emitted ones: last=..ab unemitted=abab
         mode_ = REP2;
-        repetitions_ = 4;
+        bytes_repeated_ = 4;
         last_bytes_ = unemitted_bytes_;
         last_bytes_valid_ = 4;
         unemitted_bytes_ = 0;
@@ -82,45 +82,45 @@ word ZlibRle::add(const uint8* contents, intptr_t extra) {
           (last_bytes_ & 0xff) == ((unemitted_bytes_ >> 24) & 0xff)) {
         // We recognized that the three first unemitted bytes are repetitions
         // of the last emitted one.  It's not a huge win to code them as
-        // a run of 1+3, but it saves a few bits.
+        // a run of 1+3, but it saves a few bits: last=...a unemitted=aaax
         mode_ = REP1;
-        repetitions_ = 3;
+        bytes_repeated_ = 3;
         last_bytes_ <<= 24;
         last_bytes_ |= unemitted_bytes_ >> 8;
         last_bytes_valid_ = 4;
         unemitted_bytes_ &= 0xff;
         unemitted_bytes_valid_ = 1;
-        output_repetitions();  // Will flush completely since repetitions_ == 3.
+        output_repetitions();  // Will flush completely since bytes_repeated_ == 3.
       } else if (last_bytes_valid_ >= 4 &&
           last_bytes_ == unemitted_bytes_) {
         // We recognized that the four unemitted bytes are the same as
-        // the last four emitted ones.  Start a run with offset 4.
+        // the last four emitted ones: last=abcd unemitted=abcd
         mode_ = REP4;
-        repetitions_ = 4;
+        bytes_repeated_ = 4;
         unemitted_bytes_ = 0;
         unemitted_bytes_valid_ = 0;
       } else if (last_bytes_valid_ >= 3 &&
           (last_bytes_ & 0xffffff) == (unemitted_bytes_ >> 8)) {
-        // We recognized that the first four of the unemitted bytes are
-        // the same as the last three emitted ones.
+        // We recognized that the first three of the unemitted bytes are
+        // the same as the last three emitted ones: last=.abc unemitted=abc?
         mode_ = REP3;
         if ((unemitted_bytes_ & 0xff) == ((last_bytes_ >> 16) & 0xff)) {
-          // The last unemitted byte also matches the pattern of three
-          // being repeated.
+          // The fourth unemitted byte also matches the pattern of three
+          // being repeated: last=abc unemitted=abca
           last_bytes_ = unemitted_bytes_;
           last_bytes_valid_ = 4;
-          repetitions_ = 4;
+          bytes_repeated_ = 4;
           unemitted_bytes_ = 0;
           unemitted_bytes_valid_ = 0;
         } else {
           // The last unemitted byte didn't match, so it was a rather
-          // short run.
-          repetitions_ = 3;
+          // short run: last=abc unemitted=abcx
+          bytes_repeated_ = 3;
           last_bytes_ <<= 24;
           last_bytes_ |= unemitted_bytes_ >> 8;
           unemitted_bytes_ &= 0xff;
           unemitted_bytes_valid_ = 1;
-          output_repetitions();  // Will flush completely since repetitions_ == 3.
+          output_repetitions();  // Will flush completely since bytes_repeated_ == 3.
         }
       }
     }
@@ -149,7 +149,7 @@ word ZlibRle::add(const uint8* contents, intptr_t extra) {
       int shift = static_cast<int>(mode_ - 1) << 3;
       if (b == ((last_bytes_ >> shift) & 0xff)) {
         // Hooray, the new byte fits the run.
-        repetitions_++;
+        bytes_repeated_++;
         if (last_bytes_valid_ < 4) {
           last_bytes_valid_++;
         }
@@ -157,8 +157,8 @@ word ZlibRle::add(const uint8* contents, intptr_t extra) {
         last_bytes_ |= b;
       } else {
         // Sadly, the run has ended.
-        ASSERT(repetitions_ >= 3);
-        output_repetitions(true);   // Will flush completely because repetitions_ >= 3.
+        ASSERT(bytes_repeated_ >= 3);
+        output_repetitions(true);   // Will flush completely because bytes_repeated_ >= 3.
         ASSERT(unemitted_bytes_ == 0);
         unemitted_bytes_valid_ = 1;
         unemitted_bytes_ = b;
@@ -166,7 +166,7 @@ word ZlibRle::add(const uint8* contents, intptr_t extra) {
     }
     // Deflate doesn't work well with very large numbers of repetitions, so we
     // flush some of them here, but carry on in the previous mode.
-    if (repetitions_ == 260) output_repetitions(false);  // Will leave 3 repetitions.
+    if (bytes_repeated_ == 260) output_repetitions(false);  // Will leave 3 repetitions.
   }
   return extra;
 }
@@ -209,13 +209,13 @@ static const uint8 reversed_5[5] = {0, 0, 0b10000, 0b01000, 0b11000};
 
 void ZlibRle::output_repetitions(bool as_much_as_possible) {
   // Deflate can only represent up to 257 length in a regular way.
-  while (repetitions_ > 0) {
-    int r = Utils::min(257, repetitions_);
-    repetitions_ -= r;
-    while (repetitions_ != 0 && repetitions_ < 3 && r > 3) {
+  while (bytes_repeated_ > 0) {
+    int r = Utils::min(257, bytes_repeated_);
+    bytes_repeated_ -= r;
+    while (bytes_repeated_ != 0 && bytes_repeated_ < 3 && r > 3) {
       // We prefer not to output a repetition of 1 or 2 at the end, since that is verbose.
       r--;
-      repetitions_++;
+      bytes_repeated_++;
     }
     if (r <= 10) {
       output_bits(reverse_7(1 + r - 3), 7);  // Codes 1-8 inclusive indicate 3-10 repetitions.
@@ -242,7 +242,7 @@ void ZlibRle::output_repetitions(bool as_much_as_possible) {
     output_bits(reversed_5[mode_], 5);              // Distance depends on mode.
     if (!as_much_as_possible) break;
   }
-  if (repetitions_ == 0) {
+  if (bytes_repeated_ == 0) {
     mode_ = LITERAL;
   }
 }
