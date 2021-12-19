@@ -24,6 +24,8 @@ ESP32_ENTRY=examples/hello.toit
 ESP32_WIFI_SSID=
 ESP32_WIFI_PASSWORD=
 ESP32_PORT=
+ESP32_CHIP=esp32
+export IDF_TARGET=$(ESP32_CHIP)
 
 # Use Toitware ESP-IDF fork by default.
 export IDF_PATH ?= $(CURDIR)/third_party/esp-idf
@@ -101,7 +103,7 @@ build/arm32/CMakeCache.txt: build/arm32/
 	(cd build/arm32 && cmake ../../ -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/arm32.cmake)
 
 .PHONY: esp32
-esp32: check-env build/esp32/toit.bin
+esp32: check-env build/$(ESP32_CHIP)/toit.bin
 
 .PHONY: check-flash-env
 check-flash-env:
@@ -110,15 +112,15 @@ ifndef ESP32_PORT
 endif
 
 .PHONY: flash
-flash: esp32 check-flash-env
-	python $(IDF_PATH)/components/esptool_py/esptool/esptool.py --chip esp32 --port ${ESP32_PORT} --baud 921600 --before default_reset --after hard_reset write_flash -z --flash_mode dio --flash_freq 40m --flash_size detect 0xd000 build/esp32/ota_data_initial.bin 0x1000 build/esp32/bootloader/bootloader.bin 0x10000 build/esp32/toit.bin 0x8000 build/esp32/partitions.bin
+flash: check-flash-env esp32
+	python $(IDF_PATH)/components/esptool_py/esptool/esptool.py --chip $(ESP32_CHIP) --port $(ESP32_PORT) --baud 921600 --before default_reset --after hard_reset write_flash -z --flash_mode dio --flash_freq 40m --flash_size detect 0xd000 build/$(ESP32_CHIP)/ota_data_initial.bin 0x1000 build/$(ESP32_CHIP)/bootloader/bootloader.bin 0x10000 build/$(ESP32_CHIP)/toit.bin 0x8000 build/$(ESP32_CHIP)/partitions.bin
 
-build/esp32/toit.bin build/esp32/toit.elf: build/esp32/lib/libtoit_image.a build/config.json
-	make -C toolchains/esp32/
-	$(TOITVM_BIN) tools/inject_config.toit build/config.json build/esp32/toit.bin
+build/$(ESP32_CHIP)/toit.bin build/$(ESP32_CHIP)/toit.elf: build/$(ESP32_CHIP)/lib/libtoit_image.a build/config.json
+	make -C toolchains/$(ESP32_CHIP)/
+	$(TOITVM_BIN) tools/inject_config.toit build/config.json build/$(ESP32_CHIP)/toit.bin
 
-build/esp32/lib/libtoit_image.a: build/esp32/esp32.image.s build/esp32/CMakeCache.txt
-	(cd build/esp32 && ninja toit_image)
+build/$(ESP32_CHIP)/lib/libtoit_image.a: build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s build/$(ESP32_CHIP)/CMakeCache.txt
+	(cd build/$(ESP32_CHIP) && ninja toit_image)
 
 # We don't track dependencies in the Makefile, so we always have to call out to ninja.
 .PHONY: $(TOITVM_BIN) $(TOITC_BIN) $(TOIT_BOOT_SNAPSHOT)
@@ -128,10 +130,10 @@ $(TOITVM_BIN) $(TOITC_BIN) $(TOIT_BOOT_SNAPSHOT): build/host/CMakeCache.txt
 build/host/CMakeCache.txt: build/host/
 	(cd build/host && cmake ../.. -G Ninja -DCMAKE_BUILD_TYPE=Release)
 
-build/esp32/CMakeCache.txt: build/esp32/
-	(cd build/esp32 && IMAGE=build/esp32/esp32.image.s cmake ../../ -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/esp32/esp32.cmake --no-warn-unused-cli)
+build/$(ESP32_CHIP)/CMakeCache.txt: build/$(ESP32_CHIP)/
+	(cd build/$(ESP32_CHIP) && IMAGE=build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s cmake ../../ -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/$(ESP32_CHIP)/$(ESP32_CHIP).cmake --no-warn-unused-cli)
 
-build/esp32/esp32.image.s: build/esp32/ build/snapshot $(TOITVM_BIN) $(SNAPSHOT_DIR)/snapshot_to_image.snapshot
+build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s: build/$(ESP32_CHIP)/ build/snapshot $(TOITVM_BIN) $(SNAPSHOT_DIR)/snapshot_to_image.snapshot
 	$(TOITVM_BIN) $(SNAPSHOT_DIR)/snapshot_to_image.snapshot build/snapshot $@
 
 $(SNAPSHOT_DIR):
@@ -180,9 +182,9 @@ $(TOITPKG_BIN):
 build/host/:
 	mkdir -p $@
 
-build/esp32/: check-env
+build/$(ESP32_CHIP)/: check-env
 	mkdir -p $@
-	make -C toolchains/esp32 -s "$(CURDIR)"/build/esp32/include/sdkconfig.h
+	make -C toolchains/$(ESP32_CHIP) -s "$(CURDIR)"/build/$(ESP32_CHIP)/include/sdkconfig.h
 
 build/riscv64/ build/arm64/ build/arm32/ build/win64/ build/win32/:
 	mkdir -p $@

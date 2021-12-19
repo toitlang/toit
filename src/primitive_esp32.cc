@@ -26,7 +26,9 @@
 #include "scheduler.h"
 #include "sha1.h"
 #include "sha256.h"
+
 #include "rtc_memory_esp32.h"
+
 #include "uuid.h"
 #include "vm.h"
 
@@ -41,18 +43,26 @@
 #include "freertos/queue.h"
 #include <driver/adc.h>
 #include <driver/rtc_io.h>
-#include <driver/touch_sensor.h>
 #include <esp_adc_cal.h>
 #include <esp_log.h>
 #include <esp_sleep.h>
 #include <esp_ota_ops.h>
 #include <esp_spi_flash.h>
 #include <esp_timer.h>
-#include <esp32/rom/rtc.h>
-#include <esp32/rom/ets_sys.h>
+
 #include <soc/rtc_cntl_reg.h>
-#include <soc/sens_reg.h>
-#include <esp32/ulp.h>
+
+#ifdef CONFIG_IDF_TARGET_ESP32C3
+//  #include <soc/esp32/include/soc/sens_reg.h>
+  #include <esp32c3/rom/rtc.h>
+  #include <esp32c3/rom/ets_sys.h>
+#else
+  #include <soc/sens_reg.h>
+  #include <esp32/rom/rtc.h>
+  #include <esp32/rom/ets_sys.h>
+  #include <driver/touch_sensor.h>
+  #include <esp32/ulp.h>
+#endif
 
 #include "esp_partition.h"
 #include "esp_spi_flash.h"
@@ -72,12 +82,14 @@ PRIMITIVE(total_deep_sleep_time) {
 }
 
 PRIMITIVE(enable_external_wakeup) {
+#ifndef CONFIG_IDF_TARGET_ESP32C3
   ARGS(int64, pin_mask, bool, on_any_high);
   esp_err_t err = esp_sleep_enable_ext1_wakeup(pin_mask, on_any_high ? ESP_EXT1_WAKEUP_ANY_HIGH : ESP_EXT1_WAKEUP_ALL_LOW);
   if (err != ESP_OK) {
     ESP_LOGE("Toit", "Failed: sleep_enable_ext1_wakeup");
     OTHER_ERROR;
   }
+#endif
   return process->program()->null_object();
 }
 
@@ -86,6 +98,7 @@ PRIMITIVE(wakeup_cause) {
 }
 
 PRIMITIVE(ext1_wakeup_status) {
+#ifndef CONFIG_IDF_TARGET_ESP32C3
   ARGS(int64, pin_mask);
   uint64 status = esp_sleep_get_ext1_wakeup_status();
   for (int pin = 0; pin_mask > 0; pin++) {
@@ -93,6 +106,9 @@ PRIMITIVE(ext1_wakeup_status) {
     pin_mask >>= 1;
   }
   return Primitive::integer(status, process);
+#else
+  return process->program()->null_object();
+#endif
 }
 
 PRIMITIVE(total_run_time) {

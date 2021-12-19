@@ -28,6 +28,13 @@
 #include "../event_sources/uart_esp32.h"
 #include "../event_sources/system_esp32.h"
 
+
+#ifdef CONFIG_IDF_TARGET_ESP32C3
+    #define UART_PORT UART_NUM_1
+#else
+    #define UART_PORT UART_NUM_2
+#endif
+
 namespace toit {
 
 const uart_port_t kInvalidUARTPort = uart_port_t(-1);
@@ -37,7 +44,9 @@ const int kErrorState = 1 << 1;
 
 ResourcePool<uart_port_t, kInvalidUARTPort> uart_ports(
   // UART_NUM_0 is reserved serial communication (stdout).
+#ifndef CONFIG_IDF_TARGET_ESP32C3
   UART_NUM_2,
+#endif
   UART_NUM_1
 );
 
@@ -105,7 +114,7 @@ PRIMITIVE(create) {
       (rx == -1 || rx == 16) &&
       (rts == -1 || rts == 7) &&
       (cts == -1 || cts == 8)) {
-    port = UART_NUM_2;
+    port = UART_PORT;
   }
   if ((tx == -1 || tx == 10) &&
       (rx == -1 || rx == 9) &&

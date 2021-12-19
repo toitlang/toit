@@ -425,7 +425,7 @@ void Base64Encoder::finish(const std::function<void (uint8 out_byte)>& f) {
 void iram_safe_char_memcpy(char* dst, const char* src, size_t bytes) {
   ASSERT((bytes & 3) == 0);
   ASSERT(((uintptr_t)src & 3) == 0);
-#ifdef TOIT_FREERTOS
+#if defined(TOIT_FREERTOS) && !defined(CONFIG_IDF_TARGET_ESP32C3)
   uint32_t tmp;
   __asm__ __volatile__(
     "srai %3, %3, 2   \n"  // Divide bytes by 4.

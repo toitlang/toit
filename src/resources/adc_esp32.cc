@@ -40,9 +40,11 @@ static int get_adc1_channel(int pin) {
     case 38: return ADC1_CHANNEL_2;
     case 39: return ADC1_CHANNEL_3;
     case 32: return ADC1_CHANNEL_4;
+#ifndef CONFIG_IDF_TARGET_ESP32C3
     case 33: return ADC1_CHANNEL_5;
     case 34: return ADC1_CHANNEL_6;
     case 35: return ADC1_CHANNEL_7;
+#endif
     default: return adc1_channel_t(-1);
   }
 }

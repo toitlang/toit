@@ -495,7 +495,12 @@ static Object* get_address(LwIPSocket* socket, Process* process, bool peer) {
     ip_addr_get_ip4_u32(&socket->tpcb()->remote_ip) :
     ip_addr_get_ip4_u32(&socket->tpcb()->local_ip);
   char buffer[16];
-  int length = sprintf(buffer, "%d.%d.%d.%d",
+  int length = sprintf(buffer, 
+#ifdef CONFIG_IDF_TARGET_ESP32C3
+ 		       "%lu.%lu.%lu.%lu",
+#else
+		       "%d.%d.%d.%d",
+#endif
                        (address >> 0) & 0xff,
                        (address >> 8) & 0xff,
                        (address >> 16) & 0xff,

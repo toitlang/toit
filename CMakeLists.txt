@@ -45,7 +45,11 @@ else()
   set(TOIT_GENERIC_FLAGS "${TOIT_GENERIC_FLAGS} '-fdebug-prefix-map=${PROJECT_SOURCE_DIR}=.'")
 endif()
 
-set(TOIT_GENERIC_FLAGS "${TOIT_GENERIC_FLAGS} -Wall -ffunction-sections -fdata-sections -Wno-unused-command-line-argument")
+if (NOT ${ESP32_CHIP} MATCHES "esp32c3")
+  set(TOIT_GENERIC_FLAGS "${TOIT_GENERIC_FLAGS} -Wno-unused-command-line-argument")
+endif()
+
+set(TOIT_GENERIC_FLAGS "${TOIT_GENERIC_FLAGS} -Wall -ffunction-sections -fdata-sections")
 
 include_directories(
   "$ENV{IDF_PATH}/components/mbedtls/mbedtls/include"
