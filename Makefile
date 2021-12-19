@@ -18,7 +18,7 @@
 
 BUILD_DATE = $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-# Use 'make ESP32_ENTRY=examples/mandelbrot.toit' to compile a different
+# Use 'make ESP32_ENTRY=examples/mandelbrot.toit esp32' to compile a different
 # example for the ESP32 firmware.
 ESP32_ENTRY=examples/hello.toit
 ESP32_WIFI_SSID=
@@ -194,7 +194,7 @@ clean:
 check-env:
 ifeq ("$(wildcard $(IDF_PATH)/components/mbedtls/mbedtls/LICENSE)","")
 ifeq ("$(IDF_PATH)", "$(CURDIR)/third_party/esp-idf")
-	$(error mbedtls sources are missing. Did you initialize the submodules?)
+	$(error mbedtls sources are missing. Did you `git submodule update --init --recursive`?)
 else
 	$(error Invalid IDF_PATH. Missing mbedtls sources.)
 endif
