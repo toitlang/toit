@@ -45,7 +45,7 @@ namespace toit {
 //   WU = uint32: unsigned value
 
 #define BYTECODE_FORMATS(FORMAT) \
-  FORMAT(OP,   1)                \
+  FORMAT(OP, 1)                  \
   FORMAT(OP_BU, 2)               \
   FORMAT(OP_BS, 2)               \
   FORMAT(OP_BL, 2)               \
