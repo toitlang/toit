@@ -80,7 +80,7 @@ func createRepro(cmd *cobra.Command, args []string) error {
 	defer cancel()
 
 	if !cmd.Flags().Changed("sdk-path") {
-		sdkPath, err = filepath.Abs(filepath.Dir(toitcPath))
+		sdkPath, err = computeSDKPath(nil, toitcPath)
 		if err != nil {
 			return err
 		}

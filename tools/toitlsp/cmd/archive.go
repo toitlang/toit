@@ -22,7 +22,6 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
-	"path/filepath"
 
 	doclsp "github.com/sourcegraph/go-lsp"
 	"github.com/sourcegraph/jsonrpc2"
@@ -54,14 +53,8 @@ func createArchive(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	sdk, err := cmd.Flags().GetString("sdk")
+	sdk, err := computeSDKPath(cmd.Flags(), toitc)
 	if err != nil {
-		return err
-	}
-	if sdk == "" {
-		sdk = filepath.Dir(toitc)
-	}
-	if sdk, err = filepath.Abs(sdk); err != nil {
 		return err
 	}
 
