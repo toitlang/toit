@@ -17,6 +17,12 @@ cmake_minimum_required(VERSION 3.13.3)
 
 project(toit)
 
+if (DEFINED ENV{IDF_PATH})
+  set(IDF_PATH "ENV{IDF_PATH}")
+else ()
+  set(IDF_PATH "${CMAKE_CURRENT_SOURCE_DIR}/third_party/esp-idf")
+endif()
+
 set(CMAKE_INSTALL_MESSAGE LAZY)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
@@ -52,7 +58,7 @@ endif()
 set(TOIT_GENERIC_FLAGS "${TOIT_GENERIC_FLAGS} -Wall -ffunction-sections -fdata-sections")
 
 include_directories(
-  "$ENV{IDF_PATH}/components/mbedtls/mbedtls/include"
+  "${IDF_PATH}/components/mbedtls/mbedtls/include"
   )
 
 if (DEFINED USE_LWIP)
@@ -103,7 +109,7 @@ add_custom_target(
 
 set(CMAKE_POLICY_DEFAULT_CMP0076 OLD)
 add_subdirectory(
-  "$ENV{IDF_PATH}/components/mbedtls/mbedtls"
+  "${IDF_PATH}/components/mbedtls/mbedtls"
   "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/mbedtls"
   )
 
