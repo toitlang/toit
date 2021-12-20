@@ -116,18 +116,19 @@ void OS::set_heap_tag(word tag) {
   }
 }
 
-void OS::clear_heap_tag() {
+word OS::get_heap_tag() {
   int MALLOC_OPTION_THREAD_TAG = 1;
   if (heap_caps_set_option != null) {
-    heap_caps_set_option(MALLOC_OPTION_THREAD_TAG, null);
+    return reinterpret_cast<word>(heap_caps_get_option(MALLOC_OPTION_THREAD_TAG));
   }
+  return 0;
 }
 
 
 #else // def TOIT_CMPCTMALLOC
 
 void OS::set_heap_tag(word tag) { }
-void OS::clear_heap_tag() { }
+word OS::get_heap_tag() { return 0; }
 
 #endif // def TOIT_CMPCTMALLOC
 
