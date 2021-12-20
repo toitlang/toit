@@ -15,15 +15,10 @@
 
 # Partition Table for Toit.
 
-# Name,   Type, SubType, Offset,   Size
-# bootloader,,  ,        0x1000,   0x7000
-# partitions,,  ,        0x8000,   0xc00
-secure,   0x42, 0x00,    0x9000,   0x4000,
-otadata,  data, ota,     0xd000,   0x2000,
-ota_0,    app,  ota_0,   0x10000,  0x150000,
-ota_1,    app,  ota_1,   0x160000, 0x150000,
-ota_0_cfg,0x41, 0x00,    0x2B0000, 0x4000,
-ota_1_cfg,0x41, 0x01,    0x2B4000, 0x4000,
-nvs,      data, nvs,     0x2B8000, 0x4000,
-coredump, data, coredump,0x2BC000, 0x10000,
-data,     0x40, 0x00,    0x2CC000, 0x134000, encrypted
+# Name,   Type, SubType,  Offset,    Size
+# bootloader,,  ,         0x001000,  0x007000
+# partitions,,  ,         0x008000,  0x000c00
+nvs,      data, nvs,      0x009000,  0x004000,
+factory,  app,  factory,  0x010000,  0x1e0000,
+coredump, data, coredump, 0x1f0000,  0x010000,
+programs, 0x40, 0x00,     0x200000,  0x200000, encrypted
