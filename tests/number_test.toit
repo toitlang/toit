@@ -215,6 +215,75 @@ test_parse_integer:
   expect_int_invalid_radix: int.parse ("10".to_byte_array) --radix=37
   expect_int_invalid_radix: int.parse ("10".to_byte_array) --radix=1
 
+  expect_equals 0 (int_parse_helper "0" --radix=12)
+  expect_equals 9 (int_parse_helper "9" --radix=12)
+  expect_equals 10 (int_parse_helper "a" --radix=12)
+  expect_equals 11 (int_parse_helper "b" --radix=12)
+  expect_equals 21 (int_parse_helper "19" --radix=12)
+  expect_equals 108 (int_parse_helper "90" --radix=12)
+
+  expect_int_parsing_error: (int_parse_helper "a" --radix=2)
+  expect_int_parsing_error: (int_parse_helper "2" --radix=2)
+  expect_int_parsing_error: (int_parse_helper "5" --radix=4)
+  expect_int_parsing_error: (int_parse_helper "c" --radix=12)
+  expect_int_parsing_error: (int_parse_helper "g" --radix=16)
+  expect_int_parsing_error: (int_parse_helper "h" --radix=17)
+
+  expect_equals 9 (int.parse "1001" --radix=2)
+  expect_equals int.MAX (int.parse       "111111111111111111111111111111111111111111111111111111111111111" --radix=2)
+  expect_number_out_of_range: int.parse  "1000000000000000000000000000000000000000000000000000000000000000" --radix=2
+  expect_equals int.MIN (int.parse      "-1000000000000000000000000000000000000000000000000000000000000000" --radix=2)
+  expect_number_out_of_range: int.parse "-1000000000000000000000000000000000000000000000000000000000000001" --radix=2
+
+  expect_equals 7 (int.parse "21" --radix=3)
+  expect_equals int.MAX (int.parse       "2021110011022210012102010021220101220221" --radix=3)
+  expect_number_out_of_range: int.parse  "2021110011022210012102010021220101220222" --radix=3
+  expect_equals int.MIN (int.parse      "-2021110011022210012102010021220101220222" --radix=3)
+  expect_number_out_of_range: int.parse "-2021110011022210012102010021220101221000" --radix=3
+
+  expect_equals 11 (int.parse "23" --radix=4)
+  expect_equals int.MAX (int.parse       "13333333333333333333333333333333" --radix=4)
+  expect_number_out_of_range: int.parse  "20000000000000000000000000000000" --radix=4
+  expect_equals int.MIN (int.parse      "-20000000000000000000000000000000" --radix=4)
+  expect_number_out_of_range: int.parse "-20000000000000000000000000000001" --radix=4
+
+  expect_equals 13 (int.parse "23" --radix=5)
+  expect_equals int.MAX (int.parse       "1104332401304422434310311212" --radix=5)
+  expect_number_out_of_range: int.parse  "1104332401304422434310311213" --radix=5
+  expect_equals int.MIN (int.parse      "-1104332401304422434310311213" --radix=5)
+  expect_number_out_of_range: int.parse "-1104332401304422434310311214" --radix=5
+
+  expect_equals 54 (int.parse "66" --radix=8)
+  expect_equals int.MAX (int.parse        "777777777777777777777" --radix=8)
+  expect_number_out_of_range: int.parse  "1000000000000000000000" --radix=8
+  expect_equals int.MIN (int.parse      "-1000000000000000000000" --radix=8)
+  expect_number_out_of_range: int.parse "-1000000000000000000001" --radix=8
+
+  expect_equals 102 (int.parse "66" --radix=16)
+  expect_equals int.MAX (int.parse       "7fffffffffffffff" --radix=16)
+  expect_number_out_of_range: int.parse  "8000000000000000" --radix=16
+  expect_equals int.MIN (int.parse      "-8000000000000000" --radix=16)
+  expect_number_out_of_range: int.parse "-8000000000000001" --radix=16
+
+  expect_equals 24 (int.parse "17" --radix=17)
+  expect_equals int.MAX (int.parse "33d3d8307b214008" --radix=17)
+  expect_number_out_of_range: int.parse "33d3d8307b214009" --radix=17
+  expect_equals int.MIN (int.parse "-33d3d8307b214009" --radix=17)
+  expect_number_out_of_range: int.parse "-33d3d8307b21400a" --radix=17
+
+  expect_equals 31839 (int.parse "v2v" --radix=32)
+  expect_equals int.MAX (int.parse       "7vvvvvvvvvvvv" --radix=32)
+  expect_number_out_of_range: int.parse  "8000000000000" --radix=32
+  expect_equals int.MIN (int.parse      "-8000000000000" --radix=32)
+  expect_number_out_of_range: int.parse "-8000000000001" --radix=32
+
+  expect_equals 46655 (int.parse "zzz" --radix=36)
+  expect_equals int.MAX (int.parse       "1y2p0ij32e8e7" --radix=36)
+  expect_number_out_of_range: int.parse  "1y2p0ij32e8e8" --radix=36
+  expect_equals int.MIN (int.parse      "-1y2p0ij32e8e8" --radix=36)
+  expect_number_out_of_range: int.parse "-1y2p0ij32e8e9" --radix=36
+
+
 // Parse helper that validates the input is parsable both as a string and a ByteArray.
 float_parse_helper str/string from/int=0 to/int=str.size -> float:
   result := float.parse str[from..to]
