@@ -144,7 +144,7 @@ void print_bytecode(Printer* printer, uint8* bcp, int bci) {
       printer->printf(" L%dCI%d", index >> 5, index & 0x1F);
       break;
     case OP_BS_BU:
-      printer->printf(" S%u %u", bcp[1],  bcp[2]);
+      printer->printf(" S%u %u", bcp[1], bcp[2]);
       break;
     case OP_SD: {
       int index = *reinterpret_cast<uint16*>(bcp + 1);
@@ -153,7 +153,7 @@ void print_bytecode(Printer* printer, uint8* bcp, int bci) {
     }
     case OP_SD_BS_BU: {
       int index = *reinterpret_cast<uint16*>(bcp + 1);
-      printer->printf(" D%u S%u %u", index, bcp[3],  bcp[4]);
+      printer->printf(" D%u S%u %u", index, bcp[3], bcp[4]);
       break;
     }
     case OP_SO: {
