@@ -727,6 +727,8 @@ PRIMITIVE(draw_bitmap) {
 #endif  // !defined(CONFIG_TOIT_BIT_DISPLAY) && !defined(CONFIG_TOIT_BYTE_DISPLAY)
 }
 
+static void byte_draw(int, BytemapDecompresser&, const PixelBox&, DrawData&);
+
 // Draw a bytemap on a bytemap.  A palette is given, where every third byte is used.
 PRIMITIVE(draw_bytemap) {
   ARGS(int, x_base, int, y_base, int, transparent_color, int, orientation, Blob, in_bytes, int, bytes_per_line, Blob, palette, MutableBlob, bytes, int, byte_array_width);
@@ -751,6 +753,12 @@ PRIMITIVE(draw_bytemap) {
 
   BitmapPixelBox bit_box(bytes_per_line, bitmap_height);
 
+  byte_draw(orientation, bytemap_source, bit_box, capture);
+
+  return process->program()->null_object();
+}
+
+static void byte_draw(int orientation, BytemapDecompresser& decompresser, const PixelBox& bit_box, DrawData& capture) {
   switch (orientation) {
     case 2: {
       // When stepping backwards the exclusive/inclusive bounds are swapped, so
@@ -758,12 +766,12 @@ PRIMITIVE(draw_bytemap) {
       capture.x_base--;
       capture.y_base--;
       int sign = -1;
-      draw_orientation_0_180_byte_helper(bytemap_source, bit_box, capture, sign);
+      draw_orientation_0_180_byte_helper(decompresser, bit_box, capture, sign);
       break;
     }
     case 0: {
       int sign = 1;
-      draw_orientation_0_180_byte_helper(bytemap_source, bit_box, capture, sign);
+      draw_orientation_0_180_byte_helper(decompresser, bit_box, capture, sign);
       break;
     }
     case 1: {
@@ -771,7 +779,7 @@ PRIMITIVE(draw_bytemap) {
       // When stepping backwards the exclusive/inclusive bounds are swapped, so
       // adjust by one.
       capture.y_base--;
-      byte_draw_orientation_90_270_byte_helper(bytemap_source, bit_box, capture, sign);
+      byte_draw_orientation_90_270_byte_helper(decompresser, bit_box, capture, sign);
       break;
     }
     case 3: {
@@ -779,11 +787,10 @@ PRIMITIVE(draw_bytemap) {
       // When stepping backwards the exclusive/inclusive bounds are swapped, so
       // adjust by one.
       capture.x_base--;
-      byte_draw_orientation_90_270_byte_helper(bytemap_source, bit_box, capture, sign);
+      byte_draw_orientation_90_270_byte_helper(decompresser, bit_box, capture, sign);
       break;
     }
   }
-  return process->program()->null_object();
 }
 
 PRIMITIVE(byte_draw_text) {

@@ -48,15 +48,17 @@ ResourcePool<ledc_timer_t, kInvalidLedcTimer> ledc_timers(
 
 const ledc_channel_t kInvalidLedcChannel = ledc_channel_t(-1);
 ResourcePool<ledc_channel_t, kInvalidLedcChannel> ledc_channels(
-    LEDC_CHANNEL_0 
-,   LEDC_CHANNEL_1
-,   LEDC_CHANNEL_2 
-,   LEDC_CHANNEL_3
-,   LEDC_CHANNEL_4 
-,   LEDC_CHANNEL_5
+    LEDC_CHANNEL_0,
+    LEDC_CHANNEL_1,
+    LEDC_CHANNEL_2,
+    LEDC_CHANNEL_3,
+    LEDC_CHANNEL_4,
 #ifndef CONFIG_IDF_TARGET_ESP32C3
-,   LEDC_CHANNEL_6
-,   LEDC_CHANNEL_7
+    LEDC_CHANNEL_5,
+    LEDC_CHANNEL_6,
+    LEDC_CHANNEL_7
+#else
+    LEDC_CHANNEL_5
 #endif
 );
 
@@ -138,7 +140,7 @@ PRIMITIVE(init) {
     return Primitive::os_error(err, process);
   }
 
-  PWMResourceGroup* gpio = _new PWMResourceGroup(process, timer,  (1 << resolution_bits) - 1);
+  PWMResourceGroup* gpio = _new PWMResourceGroup(process, timer, (1 << resolution_bits) - 1);
   if (!gpio) {
     ledc_timer_rst(SPEED_MODE, timer);
     ledc_timers.put(timer);
