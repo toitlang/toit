@@ -386,6 +386,7 @@ bool ensure_handshake_memory() {
   // restarted from scratch.  This is annoying, but most code will already be
   // able to restart TLS connections since they can fail because of transient
   // network issues.
+  HeapTagScope scope(ITERATE_CUSTOM_TAGS + BIGNUM_MALLOC_TAG);
   const int BLOCK_SIZE = 1900;
   const int BLOCK_COUNT = 8;
   void* blocks[BLOCK_COUNT] = { 0 };

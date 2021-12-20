@@ -6,23 +6,23 @@ import expect show *
 
 // Test different multiline imports.
 // The actual imported declarations don't matter and can be changed.
-import http
-  as http2
+import bytes
+  as bytes2
 
-import http show
-  Response
-  DetachedSocket
+import bytes show
+  Buffer
+  BufferConsumer
 
-import http show Request
-  Connection
+import bytes show Buffer
+  BufferConsumer
 
 // Test exporting on multiple lines.
 export
-  Response
-  DetachedSocket
+  Buffer
+  BufferConsumer
 
-export Response
-  DetachedSocket
+export BufferConsumer
+  BufferConsumer
 
 run [b]:
   return b.call

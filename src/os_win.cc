@@ -320,7 +320,7 @@ int OS::read_entire_file(char* name, uint8** buffer) {
 
 void OS::set_heap_tag(word tag) {}
 
-void OS::clear_heap_tag() {}
+word OS::get_heap_tag() { return 0; }
 
 } // namespace toit
 
