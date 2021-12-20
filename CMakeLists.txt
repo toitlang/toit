@@ -18,7 +18,7 @@ cmake_minimum_required(VERSION 3.13.3)
 project(toit)
 
 if (DEFINED ENV{IDF_PATH})
-  set(IDF_PATH "ENV{IDF_PATH}")
+  set(IDF_PATH "$ENV{IDF_PATH}")
 else ()
   set(IDF_PATH "${CMAKE_CURRENT_SOURCE_DIR}/third_party/esp-idf")
 endif()
