@@ -2,10 +2,11 @@
 
 import expect show *
 
-import http
 import tls
 import .tcp as tcp
 import net.x509 as net
+import writer
+import reader
 
 monitor LimitLoad:
   current := 0
@@ -79,13 +80,12 @@ connect_to_site host port cert key expected_cert_name:
 
   expect_equals cert.common_name expected_cert_name
 
-  connection := http.Connection socket host
+  writer := writer.Writer socket
+  writer.write """GET / HTTP/1.1\r\nHost: $host\r\nConnection: close\r\n\r\n"""
 
-  request := connection.new_request "GET" "/"
-
-  response := request.send
-
-  status := response.status_code
+  reader := reader.BufferedReader socket
+  first_line := reader.read_until "\r"
+  status := int.parse (first_line.split ":")[1]
 
   if 400 <= status < 600:
     socket.close
@@ -94,10 +94,10 @@ connect_to_site host port cert key expected_cert_name:
 
   bytes := 0
 
-  while data := response.read:
+  while data := reader.read:
     bytes += data.size
 
-  connection.close
+  socket.close
 
   print "Read $bytes bytes from https://$host$(port == 443 ? "" : ":$port")/"
 
