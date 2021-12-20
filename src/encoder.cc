@@ -212,7 +212,7 @@ void EncodeVisitor::visit_stack(Stack* stack) {
 }
 
 
-ProgramOrientedEncoder::ProgramOrientedEncoder(Program* program,  Buffer* buffer)
+ProgramOrientedEncoder::ProgramOrientedEncoder(Program* program, Buffer* buffer)
   : Encoder(buffer),
     _program(program) {
   // Always encode header information to identify:
