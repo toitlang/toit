@@ -416,8 +416,8 @@ void OS::set_heap_tag(word tag) {
   heap_caps_set_option(MALLOC_OPTION_THREAD_TAG, reinterpret_cast<void*>(tag));
 }
 
-void OS::clear_heap_tag() {
-  heap_caps_set_option(MALLOC_OPTION_THREAD_TAG, null);
+word OS::get_heap_tag() {
+  return reinterpret_cast<word>(heap_caps_get_option(MALLOC_OPTION_THREAD_TAG));
 }
 
 class HeapSummaryPage {
@@ -447,7 +447,11 @@ class HeapSummaryPage {
 
   int register_user(uword tag, uword size) {
     uint16 saturated_size = Utils::min(size, 0xffffu);
-    if (tag == ITERATE_TAG_FREE) {
+    if (tag == 0) {
+      tag = NULL_MALLOC_TAG;
+    } else if (tag == 'W') {
+      tag = WIFI_MALLOC_TAG;
+    } else if (tag == ITERATE_TAG_FREE) {
       tag = FREE_MALLOC_TAG;
     } else {
       tag -= ITERATE_CUSTOM_TAGS;
@@ -490,6 +494,8 @@ class HeapSummaryPage {
       case EVENT_SOURCE_MALLOC_TAG: return "event source";
       case OTHER_THREADS_MALLOC_TAG: return "other threads";
       case THREAD_SPAWN_MALLOC_TAG: return "thread spawn";
+      case NULL_MALLOC_TAG: return "null tag";
+      case WIFI_MALLOC_TAG: return "wifi";
     }
     return "unknown";
   }
@@ -515,6 +521,10 @@ class HeapSummaryCollector {
     current_page_ = null;
     memset(void_cast(sizes_), 0, sizeof sizes_);
     memset(void_cast(counts_), 0, sizeof counts_);
+  }
+
+  word allocation_requirement() {
+    return MAX_PAGES_ * sizeof(HeapSummaryPage);
   }
 
   bool out_of_memory() const { return pages_ == null; }
@@ -570,7 +580,7 @@ bool register_allocation(void* self, void* tag, void* address, uword size) {
 void OS::heap_summary_report() {
   HeapSummaryCollector collector;
   if (collector.out_of_memory()) {
-    printf("Not enough memory for a heap report\n");
+    printf("Not enough memory for a heap report (%d bytes)\n", static_cast<int>(collector.allocation_requirement()));
     return;
   }
   int flags = ITERATE_ALL_ALLOCATIONS | ITERATE_UNALLOCATED;
@@ -581,7 +591,7 @@ void OS::heap_summary_report() {
 #else // def TOIT_CMPCTMALLOC
 
 void OS::set_heap_tag(word tag) { }
-void OS::clear_heap_tag() { }
+word OS::get_heap_tag() { return 0; }
 void OS::heap_summary_report() { }
 
 

@@ -221,7 +221,7 @@ class OS {
   // If we are using Cmpctmalloc this lets us set a tag that is used to mark
   // the origin of allocations on the current thread.
   static void set_heap_tag(word tag);
-  static void clear_heap_tag();
+  static word get_heap_tag();
   static void heap_summary_report();
 
   // Unique 16-bytes uuid of the running image.
@@ -245,12 +245,15 @@ class OS {
 class HeapTagScope {
  public:
   HeapTagScope(uword tag) {
+    old = OS::get_heap_tag();
     OS::set_heap_tag(tag);
   }
 
   ~HeapTagScope() {
-    OS::clear_heap_tag();
+    OS::set_heap_tag(old);
   }
+
+  uword old;
 };
 
 } // namespace toit
