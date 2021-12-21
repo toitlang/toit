@@ -64,7 +64,7 @@ class FlashStore implements Store:
   The $key does not need to be present in the store.
   */
   delete key/string:
-    impl.FlashStore_.instance.get key
+    impl.FlashStore_.instance.delete key
 
   /**
   Inserts the given $key-$value pair in the store.

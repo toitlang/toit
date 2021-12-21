@@ -61,6 +61,7 @@ namespace toit {
   M(math,    MODULE_MATH)                    \
   M(x509,    MODULE_X509)                    \
   M(rpc,     MODULE_RPC)                     \
+  M(flash_kv, MODULE_FLASH_KV)               \
 
 #define MODULE_CORE(PRIMITIVE)               \
   PRIMITIVE(print_string_on_stdout, 1)       \
@@ -534,6 +535,13 @@ namespace toit {
   PRIMITIVE(take_bytes, 1)                   \
   PRIMITIVE(skip, 1)                         \
   PRIMITIVE(close, 2)                        \
+
+#define MODULE_FLASH_KV(PRIMITIVE)           \
+  PRIMITIVE(init, 3)                         \
+  PRIMITIVE(read_bytes, 2)                   \
+  PRIMITIVE(write_bytes, 3)                  \
+  PRIMITIVE(delete, 2)                       \
+  PRIMITIVE(erase, 1)                        \
 
 // ----------------------------------------------------------------------------
 
