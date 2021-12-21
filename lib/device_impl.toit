@@ -4,13 +4,12 @@
 
 import drivers.cellular
 import device
-import encoding.json
+import encoding.ubjson
 import uuid
 
 /**
 Implementation of ESP32 device library. Use the APIs in the device library.
 */
-
 class Device_ implements device.Device_:
   static instance_/Device_? := null
   static hardware_id_/uuid.Uuid? := null
@@ -50,13 +49,13 @@ class FlashStore_ implements device.Store:
     bytes := kv_store_.bytes key
     if not bytes: return null
 
-    return json.decode bytes
+    return ubjson.decode bytes
 
   delete key/string:
     return kv_store_.delete key
 
   set key/string value/any:
-    bytes := json.encode value
+    bytes := ubjson.encode value
     return kv_store_.set_bytes key bytes
 
 class ConsoleConnection_:
@@ -64,7 +63,6 @@ class ConsoleConnection_:
     throw "NOT IMPLEMENTED"
 
 class Gnss_:
-
   constructor.start:
     throw "NOT IMPLEMENTED"
 
@@ -75,12 +73,12 @@ get_mac_address_:
   #primitive.esp32.get_mac_address
 
 class Volume_:
-  name_ ::= ?
-  read_only_ ::= ?
+  name_/string ::= ?
+  read_only_/bool ::= ?
 
   constructor.init_ .name_ .read_only_:
 
-  from name:
+  from name -> KeyValue_:
     return KeyValue_ this name
 
 class KeyValue_:
