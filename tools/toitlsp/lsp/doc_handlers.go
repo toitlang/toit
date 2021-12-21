@@ -19,6 +19,7 @@ import (
 	"context"
 	"fmt"
 	"io/ioutil"
+	"os"
 	"strings"
 	"time"
 
@@ -214,6 +215,15 @@ func (s *Server) analyzeWithRevision(ctx context.Context, conn *jsonrpc2.Conn, r
 			s.logger.Error("failed to analyze uris", zap.Any("uris", err), zap.Error(err))
 		}
 		return err
+	}
+
+	if len(result.DiagnosticsWithoutPosition) != 0 {
+		// Print all non-position errors on stderr.
+		// This makes them visible in the LSP output, but doesn't interfere with
+		// normal operation of the LSP protocol.
+		for _, diagnostic := range result.DiagnosticsWithoutPosition {
+			os.Stderr.WriteString(diagnostic + "\n")
+		}
 	}
 
 	if len(result.Summaries) == 0 {
