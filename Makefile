@@ -42,6 +42,7 @@ TOITPKG_BIN = $(BIN_DIR)/toitpkg$(EXE_SUFFIX)
 TOITLSP_BIN = $(BIN_DIR)/toitlsp$(EXE_SUFFIX)
 TOITVM_BIN = $(BIN_DIR)/toitvm$(EXE_SUFFIX)
 TOITC_BIN = $(BIN_DIR)/toitc$(EXE_SUFFIX)
+VERSION_FILE = $(BIN_DIR)/VERSION
 
 # Note that the boot snapshot lives in the bin dir.
 TOIT_BOOT_SNAPSHOT = $(BIN_DIR)/toitvm_boot.snapshot
@@ -50,7 +51,7 @@ SNAPSHOT_DIR = build/host/sdk/snapshots
 
 prefix ?= /opt/toit-sdk
 
-TOOLS = $(TOITPKG_BIN) $(TOITLSP_BIN) $(TOITVM_BIN) $(TOITC_BIN)
+TOOLS = $(TOITPKG_BIN) $(TOITLSP_BIN) $(TOITVM_BIN) $(TOITC_BIN) $(VERSION_FILE)
 SNAPSHOTS = $(SNAPSHOT_DIR)/system_message.snapshot $(SNAPSHOT_DIR)/snapshot_to_image.snapshot $(SNAPSHOT_DIR)/inject_config.snapshot
 
 .PHONY: all
@@ -127,6 +128,10 @@ build/$(ESP32_CHIP)/lib/libtoit_image.a: build/$(ESP32_CHIP)/$(ESP32_CHIP).image
 .PHONY: $(TOITVM_BIN) $(TOITC_BIN) $(TOIT_BOOT_SNAPSHOT)
 $(TOITVM_BIN) $(TOITC_BIN) $(TOIT_BOOT_SNAPSHOT): build/host/CMakeCache.txt
 	(cd build/host && ninja build_toitvm)
+
+.PHONY: $(VERSION_FILE)
+$(VERSION_FILE):
+	echo $(GIT_VERSION) > $@
 
 build/host/CMakeCache.txt: build/host/
 	(cd build/host && cmake ../.. -G Ninja -DVM_GIT_VERSION="$(GIT_VERSION)" -DCMAKE_BUILD_TYPE=Release)
