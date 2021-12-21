@@ -632,6 +632,9 @@ abstract class int extends num:
     max_num := (min radix 10) + '0' - 1
     max_char := radix - 10 + 'a' - 1
     max_char_C := radix - 10 + 'A' - 1
+    // The minimum number of characters required to overflow a big number is 13
+    // (There are 13 characters in 2 ** 63 base 36).  Therefore we avoid the
+    // expensive division for strings with less than 13 characters.
     max_int64_div_radix := (to - from > 12) ? MAX / radix : MAX
     max_last_char := MAX_INT64_LAST_CHARS_[radix]
 
