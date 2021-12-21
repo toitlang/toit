@@ -543,7 +543,6 @@ namespace toit {
   PRIMITIVE(delete, 2)                       \
   PRIMITIVE(erase, 1)                        \
 
-
 // ----------------------------------------------------------------------------
 
 #define MODULE_IMPLEMENTATION_PRIMITIVE(name, arity)                \
