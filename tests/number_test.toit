@@ -229,6 +229,8 @@ test_parse_integer:
   expect_int_parsing_error: (int_parse_helper "g" --radix=16)
   expect_int_parsing_error: (int_parse_helper "h" --radix=17)
 
+  expect_number_out_of_range: (int.parse "123" -1)
+
   expect_equals 9 (int.parse "1001" --radix=2)
   expect_equals int.MAX (int.parse       "111111111111111111111111111111111111111111111111111111111111111" --radix=2)
   expect_number_out_of_range: int.parse  "1000000000000000000000000000000000000000000000000000000000000000" --radix=2
