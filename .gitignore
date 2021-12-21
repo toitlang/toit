@@ -7,7 +7,7 @@ tedi_test.go
 .clangd/
 compile_commands.json
 /.kdev4/
-/toit.kdev4
+/*.kdev4
 /.cache
 *_pb.toit
 *_mock.go
