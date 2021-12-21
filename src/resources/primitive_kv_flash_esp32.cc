@@ -98,8 +98,6 @@ PRIMITIVE(read_bytes) {
     return Primitive::os_error(err, process);
   }
 
-  array->resize(length);
-
   return array;
 }
 
