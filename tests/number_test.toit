@@ -231,6 +231,8 @@ test_parse_integer:
 
   expect_number_out_of_range: (int.parse "123" -1 --on_error=: throw it)
   expect_number_out_of_range: (int.parse "123" 0 4 --on_error=: throw it)
+  expect_number_out_of_range: (int.parse "123" 0 0 --on_error=: throw it)
+  expect_number_out_of_range: (int.parse "")
 
   expect_equals 9 (int.parse "1001" --radix=2)
   expect_equals int.MAX (int.parse       "111111111111111111111111111111111111111111111111111111111111111" --radix=2)
