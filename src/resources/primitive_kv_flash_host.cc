@@ -94,7 +94,7 @@ PRIMITIVE(write_bytes) {
 
   std::string str(key);
   ByteArray::Bytes bytes(value);
-  AllowThrowingNew unix_only;
+  AllowThrowingNew host_only;
   std::vector<uint8_t> data(bytes.address(), bytes.address() + bytes.length());
   persistent_bytes_map[str] = data;
 
@@ -108,7 +108,7 @@ PRIMITIVE(delete) {
   if (!is_valid_key(key, process)) INVALID_ARGUMENT;
 
   std::string str(key);
-  AllowThrowingNew unix_only;
+  AllowThrowingNew host_only;
   persistent_int32_map.erase(str);
   persistent_int64_map.erase(str);
   persistent_bytes_map.erase(str);
