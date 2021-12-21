@@ -99,15 +99,8 @@ func runToitdoc(sdkVersion string) func(cmd *cobra.Command, args []string) error
 			}
 		}
 
-		sdk, err := cmd.Flags().GetString("sdk")
+		sdk, err := computeSDKPath(cmd.Flags(), toitc)
 		if err != nil {
-			return err
-		}
-		if sdk == "" {
-			sdk = filepath.Dir(toitc)
-		}
-
-		if sdk, err = filepath.Abs(sdk); err != nil {
 			return err
 		}
 

@@ -19,7 +19,6 @@ import (
 	"context"
 	"io"
 	"os"
-	"path/filepath"
 	"runtime"
 	"runtime/pprof"
 	"sync"
@@ -66,14 +65,8 @@ func runToitLSP(cmd *cobra.Command, args []string) (err error) {
 		return err
 	}
 
-	sdk, err := cmd.Flags().GetString("sdk")
+	sdk, err := computeSDKPath(cmd.Flags(), toitc)
 	if err != nil {
-		return err
-	}
-	if sdk == "" {
-		sdk = filepath.Dir(toitc)
-	}
-	if sdk, err = filepath.Abs(sdk); err != nil {
 		return err
 	}
 
