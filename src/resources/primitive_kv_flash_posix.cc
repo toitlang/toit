@@ -26,6 +26,7 @@
 #include "../process.h"
 
 namespace toit {
+
 const size_t MAX_KEY_LENGTH_ = 15;
 static std::unordered_map<std::string, int32_t> persistent_int32_map;
 static std::unordered_map<std::string, int64_t> persistent_int64_map;
@@ -40,6 +41,12 @@ class PersistentResourceGroup : public ResourceGroup {
   ~PersistentResourceGroup() {
   }
 };
+
+bool is_valid_key(const char* key, Process* process) {
+  if (key[0] == '\0' || strlen(key) > MAX_KEY_LENGTH_) return false;
+  if (!process->is_privileged() && key[0] == '_') return false;
+  return true;
+}
 
 MODULE_IMPLEMENTATION(flash_kv, MODULE_FLASH_KV)
 
@@ -63,9 +70,9 @@ PRIMITIVE(init) {
 PRIMITIVE(read_bytes) {
   ARGS(PersistentResourceGroup, resource_group, cstring, key);
   USE(resource_group);
+  if (!is_valid_key(key, process)) INVALID_ARGUMENT;
 
   std::string str(key);
-  if (str.length() > MAX_KEY_LENGTH_) INVALID_ARGUMENT;
   auto it = persistent_bytes_map.find(str);
   if (it == persistent_bytes_map.end()) {
     return process->program()->null_object();
@@ -83,8 +90,9 @@ PRIMITIVE(read_bytes) {
 PRIMITIVE(write_bytes) {
   ARGS(PersistentResourceGroup, resource_group, cstring, key, ByteArray, value);
   USE(resource_group);
+  if (!is_valid_key(key, process)) INVALID_ARGUMENT;
+
   std::string str(key);
-  if (str.length() > MAX_KEY_LENGTH_) INVALID_ARGUMENT;
   ByteArray::Bytes bytes(value);
   AllowThrowingNew unix_only;
   std::vector<uint8_t> data(bytes.address(), bytes.address() + bytes.length());
@@ -94,12 +102,12 @@ PRIMITIVE(write_bytes) {
 }
 
 PRIMITIVE(delete) {
-  ARGS(PersistentResourceGroup, resource_group, String, key);
+  ARGS(PersistentResourceGroup, resource_group, cstring, key);
   USE(resource_group);
 
-  if (key->length() > static_cast<int>(MAX_KEY_LENGTH_)) INVALID_ARGUMENT;
-  String::Bytes bytes(key);
-  std::string str(char_cast(bytes.address()), bytes.length());
+  if (!is_valid_key(key, process)) INVALID_ARGUMENT;
+
+  std::string str(key);
   AllowThrowingNew unix_only;
   persistent_int32_map.erase(str);
   persistent_int64_map.erase(str);
@@ -118,7 +126,6 @@ PRIMITIVE(erase) {
 
   return process->program()->null_object();
 }
-
 
 } // namespace toit
 
