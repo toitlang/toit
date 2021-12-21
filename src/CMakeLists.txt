@@ -52,7 +52,7 @@ set_source_files_properties(utils.cc PROPERTIES COMPILE_FLAGS "-DTOIT_MODEL=\"\\
 
 add_custom_command(
   OUTPUT  checksum.cc
-  COMMAND python ${CMAKE_SOURCE_DIR}/tools/generate_checksum.py ${CMAKE_CURRENT_BINARY_DIR}/checksum.cc $<TARGET_FILE:toit_vm>
+  COMMAND python ${TOIT_SDK_SOURCE_DIR}/tools/generate_checksum.py ${CMAKE_CURRENT_BINARY_DIR}/checksum.cc $<TARGET_FILE:toit_vm>
   DEPENDS toit_vm
   )
 
@@ -112,12 +112,12 @@ target_link_libraries(
   ${TOIT_LINK_LIBS}
   )
 
-include(${CMAKE_SOURCE_DIR}/tools/toit.cmake)
+include(${TOIT_SDK_SOURCE_DIR}/tools/toit.cmake)
 
 set(BOOT_SNAPSHOT ${CMAKE_BINARY_DIR}/sdk/bin/toitvm_boot.snapshot)
 
 ADD_TOIT_TARGET(
-  ${CMAKE_SOURCE_DIR}/tools/toitvm_boot.toit
+  ${TOIT_SDK_SOURCE_DIR}/tools/toitvm_boot.toit
   ${BOOT_SNAPSHOT}
   ${CMAKE_CURRENT_BINARY_DIR}/boot.dep
   "ASAN_OPTIONS=detect_leaks=false"

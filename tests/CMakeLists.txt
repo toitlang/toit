@@ -50,7 +50,7 @@ foreach(file ${TOIT_TESTS})
     # We add 3 arguments to all test-calls.
     # They are only used for tests that deal with arguments.
     COMMAND $<TARGET_FILE:toitvm> ${file} "foo" "bar" "gee"
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
     )
   set_tests_properties(${file} PROPERTIES TIMEOUT ${DEFAULT_TIMEOUT})
   set_tests_properties(${file} PROPERTIES ENVIRONMENT "TOIT_TEST_ENV_ENTRY=TOIT_TEST_ENV_VALUE")
@@ -60,7 +60,7 @@ foreach(file ${TOIT_FORCE_TESTS})
   add_test(
     NAME ${file}
     COMMAND $<TARGET_FILE:toitvm> --force ${file}
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
     )
   set_tests_properties(${file} PROPERTIES TIMEOUT ${DEFAULT_TIMEOUT})
 endforeach()
@@ -70,7 +70,7 @@ foreach(file ${TOIT_NO_BOOT_TESTS})
     NAME ${file}
     # Assumes that `none` doesn't exist.
     COMMAND $<TARGET_FILE:toitvm> -b none ${file}
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
     )
   set_tests_properties(${file} PROPERTIES TIMEOUT ${DEFAULT_TIMEOUT})
 endforeach()
@@ -79,7 +79,7 @@ foreach(file ${TOIT_COMPILER_TESTS})
   add_test(
     NAME ${file}
     COMMAND $<TARGET_FILE:toitvm> ${file} $<TARGET_FILE:toitvm>
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
     )
   set_tests_properties(${file} PROPERTIES TIMEOUT ${DEFAULT_TIMEOUT})
 endforeach()
@@ -88,7 +88,7 @@ set(PREEMPT_ALOT_TEST "tests/json_test.toit")
 add_test(
   NAME "${PREEMPT_ALOT_TEST}-PREEMPT_ALOT"
   COMMAND $<TARGET_FILE:toitvm> -Xpreemptalot ${PREEMPT_ALOT_TEST}
-  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+  WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
   )
 
 foreach(file ${TOIT_SLOW_TESTS})
@@ -96,7 +96,7 @@ foreach(file ${TOIT_SLOW_TESTS})
     NAME ${file}
     COMMAND $<TARGET_FILE:toitvm> ${file}
     CONFIGURATIONS slow
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
     )
   set_tests_properties(${file} PROPERTIES TIMEOUT ${SLOW_TIMEOUT})
 endforeach()
