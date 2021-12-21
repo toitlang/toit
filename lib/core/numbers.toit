@@ -556,6 +556,8 @@ abstract class int extends num:
   static RANGE_ERR_ ::= "OUT_OF_RANGE"
   static MAX_INT64_DIV_10_ ::= 922337203685477580
 
+  static MAX_INT64_LAST_CHARS_ ::= #[0, 0, 1, 1, 3, 2, 1, 0, 7, 7, 7, 7, 7, 7, 7, 7, 15, 8, 7, 17, 7, 7, 7, 2, 7, 7, 7, 25, 7, 11, 7, 7, 31, 7, 25, 7, 7]
+
   /**
   Parses the $data as an integer.
 
@@ -610,7 +612,7 @@ abstract class int extends num:
     return parse_ data from to --radix=radix --on_error=on_error
 
   static parse_ data from/int to/int=data.size --radix=10 [--on_error] -> int?:
-    if to <= from: return on_error.call RANGE_ERR_
+    if not 0 <= from < to <= data.size: return on_error.call RANGE_ERR_
     if radix == 10:
       return parse_10_ data from to --on_error=on_error
     else if radix == 16:
@@ -618,19 +620,41 @@ abstract class int extends num:
     else:
       return parse_generic_radix_ radix data from to --on_error=on_error
 
+  static char_to_int_ c/int -> int:
+    if '0' <= c <= '9': return c - '0'
+    else if 'A' <= c <= 'Z': return 10 + c - 'A'
+    else if 'a' <= c <= 'z': return 10 + c - 'a'
+    throw PARSE_ERR_
+
   static parse_generic_radix_ radix/int data from/int to/int [--on_error] -> int?:
     if not 2 <= radix <= 36: throw "INVALID_RADIX"
 
-    max_num := (min radix 9) + '0' - 1
-    max_char := radix + 'a' - 1
-    max_char_C := radix + 'A' - 1
-    return generic_parser_ data from to --on_error=on_error: | char result _ _ |
+    max_num := (min radix 10) + '0' - 1
+    max_char := radix - 10 + 'a' - 1
+    max_char_C := radix - 10 + 'A' - 1
+    // The minimum number of characters required to overflow a big number is 13
+    // (There are 13 characters in 2 ** 63 base 36).  Therefore we avoid the
+    // expensive division for strings with less than 13 characters.
+    max_int64_div_radix := (to - from > 12) ? MAX / radix : MAX
+    max_last_char := MAX_INT64_LAST_CHARS_[radix]
+
+    return generic_parser_ data from to --on_error=on_error: | char result is_last negative |
       value := 0
+
+      if result > max_int64_div_radix or (result == max_int64_div_radix and (char_to_int_ char) > max_last_char):
+        min_last_char := (max_last_char + 1) % radix
+        if negative and is_last and (char_to_int_ char) == min_last_char:
+          if result == max_int64_div_radix:
+            return int.MIN
+          else if result == max_int64_div_radix + 1:
+            return int.MIN
+        return on_error.call RANGE_ERR_
+
       if '0' <= char <= max_num:
         value = char - '0'
-      else if radix > 9 and 'a' <= char <= max_char:
+      else if radix > 10 and 'a' <= char <= max_char:
         value = 10 + char - 'a'
-      else if radix > 9 and 'A' <= char <= max_char_C:
+      else if radix > 10 and 'A' <= char <= max_char_C:
         value = 10 + char - 'A'
       else:
         return on_error.call PARSE_ERR_
@@ -675,7 +699,14 @@ abstract class int extends num:
     return (not negative and index == 0) or (negative and index == 1) or index == size - 1
 
   static parse_16_ data from/int to/int [--on_error] -> int?:
-    return generic_parser_ data from to --on_error=on_error: | char result _ _ |
+    max_int64_div_radix := MAX / 16
+
+    return generic_parser_ data from to --on_error=on_error: | char result is_last negative |
+      if result > max_int64_div_radix or (result == max_int64_div_radix and char > 'f'):
+        if negative and is_last and char == '0' and result == max_int64_div_radix + 1:
+            return int.MIN
+        return on_error.call RANGE_ERR_
+
       value := 0
       if '0' <= char <= '9':
         value = char - '0'
