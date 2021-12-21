@@ -52,7 +52,7 @@ class FlashStore_ implements device.Store:
     return ubjson.decode bytes
 
   delete key/string:
-    return kv_store_.delete key
+    kv_store_.delete key
 
   set key/string value/any:
     bytes := ubjson.encode value
@@ -78,25 +78,25 @@ class Volume_:
 
   constructor.init_ .name_ .read_only_:
 
-  from name -> KeyValue_:
+  from name/string -> KeyValue_:
     return KeyValue_ this name
 
 class KeyValue_:
   group_ ::= ?
 
-  constructor volume name:
+  constructor volume/Volume_ name/string:
     group_ = flash_kv_init_ volume.name_ name volume.read_only_
 
-  bytes key:
+  bytes key/string:
     return flash_kv_read_bytes_ group_ key
 
-  set_bytes key value:
+  set_bytes key/string value:
     return flash_kv_write_bytes_ group_ key value
 
-  set_string key value:
+  set_string key/string value:
     return flash_kv_write_bytes_ group_ key value.to_byte_array
 
-  delete key:
+  delete key/string:
     return flash_kv_delete_ group_ key
 
 flash_kv_init_ volume name read_only:
