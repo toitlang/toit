@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+
+# Copyright (C) 2021 Toitware ApS. All rights reserved.
+# Use of this source code is governed by an MIT-style license that can be
+# found in the LICENSE file.
+
+set -e
+
+# Make sure git is installed and we are in a git tree.
+command -v git >/dev/null                       || { echo "UNKNOWN"; exit 0; }
+git rev-parse --is-inside-work-tree &>/dev/null || { echo "UNKNOWN"; exit 0; }
+
+
+CURRENT_COMMIT=$(git rev-parse HEAD)
+CURRENT_COMMIT_SHORT=$(git rev-parse --short HEAD)
+LATEST_VERSION_TAG=$(git describe --tags --match "v[0-9]*" --abbrev=0 `git rev-list --tags --max-count=1` 2>/dev/null || echo "")
+
+if [ "$LATEST_VERSION_TAG" != "" ]; then
+  VERSION_TAG_COMMIT=$(git rev-parse $LATEST_VERSION_TAG^{})
+  CURRENT_COMMIT_NO=$(git rev-list --count HEAD ^$VERSION_TAG_COMMIT)
+else
+  LATEST_VERSION_TAG="v0.0.0"
+  VERSION_TAG_COMMIT="UNKNOWN"
+  CURRENT_COMMIT_NO=$(git rev-list --count HEAD)
+fi
+
+if [ "$VERSION_TAG_COMMIT" == "$CURRENT_COMMIT" ]; then
+    # Always use the tag if the current commit is the tag.
+    echo "$LATEST_VERSION_TAG"
+else
+    echo "$CURRENT_COMMIT_SHORT"
+fi
