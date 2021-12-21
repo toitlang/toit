@@ -612,7 +612,7 @@ abstract class int extends num:
     return parse_ data from to --radix=radix --on_error=on_error
 
   static parse_ data from/int to/int=data.size --radix=10 [--on_error] -> int?:
-    if to <= from: return on_error.call RANGE_ERR_
+    if not 0 <= from < to <= data.size: return on_error.call RANGE_ERR_
     if radix == 10:
       return parse_10_ data from to --on_error=on_error
     else if radix == 16:
