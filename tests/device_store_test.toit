@@ -23,8 +23,3 @@ main:
   store.delete a_key
   expect_equals null
     store.get a_key
-
-  print "done"
-
-erase_ resource_group:
-  #primitive.flash_kv.erase
