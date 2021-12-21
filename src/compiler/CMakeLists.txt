@@ -46,7 +46,7 @@ set(TOIT_LIB_DIR "${CMAKE_BINARY_DIR}/sdk/lib")
 
 add_custom_command(
   OUTPUT ${TOIT_LIB_DIR}
-  COMMAND ln -s${LN_FORCE} ${CMAKE_SOURCE_DIR}/lib ${TOIT_LIB_DIR}
+  COMMAND ln -s${LN_FORCE} ${TOIT_SDK_SOURCE_DIR}/lib ${TOIT_LIB_DIR}
   VERBATIM
 )
 
