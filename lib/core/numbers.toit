@@ -632,7 +632,7 @@ abstract class int extends num:
     max_num := (min radix 10) + '0' - 1
     max_char := radix - 10 + 'a' - 1
     max_char_C := radix - 10 + 'A' - 1
-    max_int64_div_radix := (from - to > 12) ? MAX / radix : MAX
+    max_int64_div_radix := (to - from > 12) ? MAX / radix : MAX
     max_last_char := MAX_INT64_LAST_CHARS_[radix]
 
     return generic_parser_ data from to --on_error=on_error: | char result is_last negative |
