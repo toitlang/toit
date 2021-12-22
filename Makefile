@@ -42,7 +42,7 @@ TOITPKG_BIN = $(BIN_DIR)/toitpkg$(EXE_SUFFIX)
 TOITLSP_BIN = $(BIN_DIR)/toitlsp$(EXE_SUFFIX)
 TOITVM_BIN = $(BIN_DIR)/toitvm$(EXE_SUFFIX)
 TOITC_BIN = $(BIN_DIR)/toitc$(EXE_SUFFIX)
-VERSION_FILE = $(BIN_DIR)/VERSION
+VERSION_FILE = build/host/sdk/VERSION
 
 # Note that the boot snapshot lives in the bin dir.
 TOIT_BOOT_SNAPSHOT = $(BIN_DIR)/toitvm_boot.snapshot
