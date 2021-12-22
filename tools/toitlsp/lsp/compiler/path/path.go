@@ -21,6 +21,14 @@ import (
 	"strings"
 )
 
+const (
+	virtualFileMarker = "///"
+)
+
+func isVirtualPath(path string) bool {
+	return strings.HasPrefix(path, virtualFileMarker)
+}
+
 func ToCompilerPath(path string) string {
 	return toCompilerPath(path, runtime.GOOS == "windows")
 }
@@ -33,7 +41,7 @@ func ToCompilerPaths(paths ...string) []string {
 }
 
 func toCompilerPath(path string, windows bool) string {
-	if !windows {
+	if !windows || isVirtualPath(path) {
 		return path
 	}
 	if filepath.IsAbs(path) {
@@ -47,7 +55,7 @@ func FromCompilerPath(path string) string {
 }
 
 func fromCompilerPath(path string, onWindows bool) string {
-	if !onWindows {
+	if !onWindows || isVirtualPath(path) {
 		return path
 	}
 
