@@ -118,7 +118,7 @@ $(VERSION_FILE):
 
 # CROSS-COMPILE
 .PHONY: tools-cross
-tools-cross: check-env check-env-cross tools build/$(CROSS_ARCH)/sdk/bin/toitvm build/$(CROSS_ARCH)/sdk/bin/toitc
+tools-cross: check-env check-env-cross tools build/$(CROSS_ARCH)/sdk/bin/toitvm build/$(CROSS_ARCH)/sdk/bin/toitc build/$(CROSS_ARCH)/sdk/bin/toitvm_boot.snapshot
 
 check-env-cross:
 ifndef CROSS_ARCH
@@ -130,7 +130,7 @@ endif
 
 .PHONY: build/$(CROSS_ARCH)/sdk/bin/toitvm build/$(CROSS_ARCH)/sdk/bin/toitc
 build/$(CROSS_ARCH)/sdk/bin/toitvm build/$(CROSS_ARCH)/sdk/bin/toitc: build/$(CROSS_ARCH)/CMakeCache.txt
-	(cd build/$(CROSS_ARCH) && ninja build_toitvm)
+	(cd build/$(CROSS_ARCH) && ninja)
 
 build/$(CROSS_ARCH)/CMakeCache.txt: build/$(CROSS_ARCH)/
 	(cd build/$(CROSS_ARCH) && cmake ../../ -G Ninja -DVM_GIT_VERSION="$(GIT_VERSION)" -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/$(CROSS_ARCH).cmake)
@@ -138,6 +138,8 @@ build/$(CROSS_ARCH)/CMakeCache.txt: build/$(CROSS_ARCH)/
 build/$(CROSS_ARCH)/:
 	mkdir -p $@
 
+build/$(CROSS_ARCH)/sdk/bin/toitvm_boot.snapshot:
+	(cp $(TOIT_BOOT_SNAPSHOT) build/$(CROSS_ARCH)/sdk/bin/)
 
 # ESP32 VARIANTS
 .PHONY: esp32

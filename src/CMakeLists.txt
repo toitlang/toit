@@ -114,19 +114,21 @@ target_link_libraries(
 
 include(${TOIT_SDK_SOURCE_DIR}/tools/toit.cmake)
 
-set(BOOT_SNAPSHOT ${CMAKE_BINARY_DIR}/sdk/bin/toitvm_boot.snapshot)
+if (DEFINED TOIT_BUILD_BOOT_SNAPSHOT)
+  set(BOOT_SNAPSHOT ${CMAKE_BINARY_DIR}/sdk/bin/toitvm_boot.snapshot)
 
-ADD_TOIT_TARGET(
-  ${TOIT_SDK_SOURCE_DIR}/tools/toitvm_boot.toit
-  ${BOOT_SNAPSHOT}
-  ${CMAKE_CURRENT_BINARY_DIR}/boot.dep
-  "ASAN_OPTIONS=detect_leaks=false"
-)
+  ADD_TOIT_TARGET(
+    ${TOIT_SDK_SOURCE_DIR}/tools/toitvm_boot.toit
+    ${BOOT_SNAPSHOT}
+    ${CMAKE_CURRENT_BINARY_DIR}/boot.dep
+    "ASAN_OPTIONS=detect_leaks=false"
+  )
 
-add_custom_target(
-  build_toitvm
-  DEPENDS toitvm ${BOOT_SNAPSHOT}
-)
+  add_custom_target(
+    build_toitvm
+    DEPENDS toitvm ${BOOT_SNAPSHOT}
+  )
+endif()
 
 if (DEFINED USE_LWIP)
   include_directories(toitvm PRIVATE ${LWIP_INCLUDE_DIRS})
