@@ -1,6 +1,6 @@
 // Copyright (C) 2019 Toitware ApS. All rights reserved.
 
-import .....system.modules.tcp as tcp
+import .tcp as tcp
 import reader show BufferedReader
 import writer show Writer
 import host.file

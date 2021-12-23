@@ -2,4 +2,4 @@ prefixes:
   host: host
 packages:
   host:
-    path: ../../../../system/lib/host
+    path: ../../../packages/host
