@@ -1,0 +1,12 @@
+prefixes:
+  foo: foo
+  bar: bar
+packages:
+  foo:
+    url: foo
+    version: 1.0.0
+    prefixes:
+      bar: bar
+  bar:
+    url: bar
+    version: 2.0.1  # foo has 2.0.0 in its lock file.
