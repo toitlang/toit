@@ -1,0 +1,6 @@
+prefixes:
+  bar: bar
+packages:
+  bar:
+    url: bar
+    version: 2.0.0 # Note that this version isn't installed.
