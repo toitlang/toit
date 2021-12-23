@@ -22,7 +22,6 @@
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_netif.h"
-#include "esp_ota_ops.h"
 #include "esp_partition.h"
 #include "esp_system.h"
 #include "esp_wifi.h"
@@ -52,6 +51,7 @@
 #include "rtc_memory_esp32.h"
 #include "vm.h"
 #include "objects_inline.h"
+#include "ota.h"
 
 namespace toit {
 
@@ -60,30 +60,7 @@ extern unsigned int checksum[4];
 const Program* setup_program() {
 
 #ifndef CONFIG_IDF_TARGET_ESP32C3
-  const esp_partition_t* configured = esp_ota_get_boot_partition();
-  const esp_partition_t* running = esp_ota_get_running_partition();
-
-  if (configured != running) {
-    ESP_LOGW("Toit", "Configured OTA boot partition at offset 0x%08x, but running from offset 0x%08x",
-        configured->address, running->address);
-  }
-
-  switch (running->subtype) {
-    case ESP_PARTITION_SUBTYPE_APP_FACTORY:
-      ESP_LOGI("Toit", "Running from factory partition");
-      break;
-    case ESP_PARTITION_SUBTYPE_APP_OTA_0:
-      ESP_LOGI("Toit", "Running from OTA-0 partition");
-      break;
-    case ESP_PARTITION_SUBTYPE_APP_OTA_1:
-      ESP_LOGI("Toit", "Running from OTA-1 partition");
-      break;
-    default:
-      ESP_LOGE("Toit", "Running from unknown partition");
-      break;
-  }
-
-  ESP_LOGI("Toit", "Fingerprint %x-%x-%x-%x", checksum[0], checksum[1], checksum[2], checksum[3]);
+  Ota::set_up();
 #endif
 
   FlashRegistry::set_up();
@@ -104,7 +81,7 @@ static void start() {
 
   OS::tear_down();
 
-  bool firmware_updated = esp_ota_get_boot_partition() != esp_ota_get_running_partition();
+  bool firmware_updated = Ota::is_firmware_updated();
   if (firmware_updated) {
     // If we're updating the firmware, we call esp_restart to ensure we fully
     // reset the chip with the new firmware.
