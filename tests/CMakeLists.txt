@@ -100,3 +100,5 @@ foreach(file ${TOIT_SLOW_TESTS})
     )
   set_tests_properties(${file} PROPERTIES TIMEOUT ${SLOW_TIMEOUT})
 endforeach()
+
+add_subdirectory(lock_file)
