@@ -1,0 +1,12 @@
+prefixes:
+  redirected: target
+  sub: target/sub
+  foo: foo-1.0
+
+packages:
+  target:
+    path: ../target
+  target/sub:
+    path: ../target/sub
+  foo-1.0:
+    path: ../foo
