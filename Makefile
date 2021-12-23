@@ -43,6 +43,7 @@ TOITLSP_BIN = $(BIN_DIR)/toitlsp$(EXE_SUFFIX)
 TOITVM_BIN = $(BIN_DIR)/toitvm$(EXE_SUFFIX)
 TOITC_BIN = $(BIN_DIR)/toitc$(EXE_SUFFIX)
 VERSION_FILE = build/host/sdk/VERSION
+CROSS_ARCH=
 
 # Note that the boot snapshot lives in the bin dir.
 TOIT_BOOT_SNAPSHOT = $(BIN_DIR)/toitvm_boot.snapshot
@@ -60,49 +61,24 @@ all: tools
 .PHONY: tools
 tools: check-env $(TOOLS) $(SNAPSHOTS)
 
-.PHONY: tools-riscv64
-tools-riscv64: check-env toitpkg toitlsp build/riscv64/sdk/bin/toitvm build/riscv64/sdk/bin/toitc
+.PHONY: tools-cross
+tools-cross: check-env check-env-cross $(TOOLS) $(SNAPSHOTS) build/$(CROSS_ARCH)/sdk/bin/toitvm build/$(CROSS_ARCH)/sdk/bin/toitc
 
-.PHONY: build/riscv64/sdk/bin/toitvm build/riscv64/sdk/bin/toitc
-build/riscv64/sdk/bin/toitvm build/riscv64/sdk/bin/toitc: build/riscv64/CMakeCache.txt
-	(cd build/riscv64 && ninja build_toitvm)
+.PHONY: build/$(CROSS_ARCH)/sdk/bin/toitvm build/$(CROSS_ARCH)/sdk/bin/toitc
+build/$(CROSS_ARCH)/sdk/bin/toitvm build/$(CROSS_ARCH)/sdk/bin/toitc: build/$(CROSS_ARCH)/CMakeCache.txt
+	(cd build/$(CROSS_ARCH) && ninja build_toitvm)
 
-build/riscv64/CMakeCache.txt: build/riscv64/
-	(cd build/riscv64 && cmake ../../ -G Ninja -DVM_GIT_VERSION="$(GIT_VERSION)" -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/riscv64.cmake)
+build/$(CROSS_ARCH)/CMakeCache.txt: build/$(CROSS_ARCH)/
+	(cd build/$(CROSS_ARCH) && cmake ../../ -G Ninja -DVM_GIT_VERSION="$(GIT_VERSION)" -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/$(CROSS_ARCH).cmake)
 
-.PHONY: tools-arm64
-tools-arm64: check-env toitpkg toitlsp build/arm64/sdk/bin/toitvm build/arm64/sdk/bin/toitc
+check-env-cross:
+ifndef CROSS_ARCH
+	$(error invalid must specify a cross-compilation targt with CROSS_ARCH.  ie: make tools-cross CROSS_ARCH=riscv64)
+endif
+ifeq ("$(wildcard ./toolchains/$(CROSS_ARCH).cmake)","")
+	$(error invalid cross-compile target '$(CROSS_ARCH)')
+endif
 
-.PHONY: build/arm64/sdk/bin/toitvm build/arm64/sdk/bin/toitc
-build/arm64/sdk/bin/toitvm build/arm64/sdk/bin/toitc: build/arm64/CMakeCache.txt
-	(cd build/arm64 && ninja build_toitvm)
-
-.PHONY: build/win64/sdk/bin/toitvm build/win64/sdk/bin/toitc
-build/win64/sdk/bin/toitvm build/win64/sdk/bin/toitc: build/win64/CMakeCache.txt
-	(cd build/win64 && ninja build_toitvm)
-
-.PHONY: build/win32/sdk/bin/toitvm build/win32/sdk/bin/toitc
-build/win32/sdk/bin/toitvm build/win32/sdk/bin/toitc: build/win32/CMakeCache.txt
-	(cd build/win32 && ninja build_toitvm)
-
-build/arm64/CMakeCache.txt: build/arm64/
-	(cd build/arm64 && cmake ../../ -G Ninja -DVM_GIT_VERSION="$(GIT_VERSION)" -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/arm64.cmake)
-
-build/win64/CMakeCache.txt: build/win64/
-	(cd build/win64 && cmake ../../ -G Ninja -DVM_GIT_VERSION="$(GIT_VERSION)" -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/win64.cmake)
-
-build/win32/CMakeCache.txt: build/win32/
-	(cd build/win32 && cmake ../../ -G Ninja -DVM_GIT_VERSION="$(GIT_VERSION)" -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/win32.cmake)
-
-.PHONY: tools-arm32
-tools-arm32: check-env toitpkg toitlsp build/arm32/sdk/bin/toitvm build/arm32/sdk/bin/toitc
-
-.PHONY: build/arm32/sdk/bin/toitvm build/arm32/sdk/bin/toitc
-build/arm32/sdk/bin/toitvm build/arm32/sdk/bin/toitc: build/arm32/CMakeCache.txt
-	(cd build/arm32 && ninja build_toitvm)
-
-build/arm32/CMakeCache.txt: build/arm32/
-	(cd build/arm32 && cmake ../../ -G Ninja -DVM_GIT_VERSION="$(GIT_VERSION)" -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/arm32.cmake)
 
 .PHONY: esp32
 esp32: check-env build/$(ESP32_CHIP)/toit.bin
@@ -192,7 +168,7 @@ build/$(ESP32_CHIP)/: check-env
 	mkdir -p $@
 	make -C toolchains/$(ESP32_CHIP) -s "$(CURDIR)"/build/$(ESP32_CHIP)/include/sdkconfig.h
 
-build/riscv64/ build/arm64/ build/arm32/ build/win64/ build/win32/:
+build/$(CROSS_ARCH)/:
 	mkdir -p $@
 
 .PHONY:	clean check-env
@@ -222,7 +198,7 @@ install-sdk: $(TOOLS) $(SNAPSHOTS)
 
 install: install-sdk
 
-
 .PHONY: test
 test:
 	(cd build/host && ninja check_slow)
+
