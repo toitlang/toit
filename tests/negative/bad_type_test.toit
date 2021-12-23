@@ -1,4 +1,4 @@
-import http as prefix
+import math as prefix
 
 foo -> extends: return unresolved
 foo x -> prefix.implements: return unresolved

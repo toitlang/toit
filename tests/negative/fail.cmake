@@ -1,24 +1,2 @@
 set(TOIT_FAILING_TESTS
-  tests/negative/bad_type_test.toit
-  tests/negative/import7_test.toit
-  tests/negative/import_as_test.toit
-  tests/negative/import_show_test.toit
-  tests/negative/main1_test.toit
-  tests/negative/prefix_assign2_test.toit
-  tests/negative/prefix_assign_test.toit
-  tests/negative/prefixed2_test.toit
-  tests/negative/prefixed_assign1_test.toit
-  tests/negative/prefixed_assign1b_test.toit
-  tests/negative/prefixed_assign2_test.toit
-  tests/negative/prefixed_assign2b_test.toit
-  tests/negative/prefixed_assign3_test.toit
-  tests/negative/prefixed_assign3b_test.toit
-  tests/negative/prefixed_assign4_test.toit
-  tests/negative/prefixed_assign4b_test.toit
-  tests/negative/prefixed_assign5_test.toit
-  tests/negative/prefixed_assign5b_test.toit
-  tests/negative/prefixed_assign6_test.toit
-  tests/negative/prefixed_assign6b_test.toit
-  tests/negative/prefixed_test.toit
-  tests/negative/syntax_test.toit
 )
