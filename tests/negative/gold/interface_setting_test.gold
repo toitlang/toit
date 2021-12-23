@@ -1,0 +1,11 @@
+tests/negative/interface_setting_test.toit:4:3: error: Interfaces can't have fields
+  field := 499
+  ^~~~~
+tests/negative/interface_setting_test.toit:5:7: error: Field-storing parameter not allowed in interface methods
+  foo .field
+      ^~~~~~
+tests/negative/interface_setting_test.toit:8:7: error: Field-storing parameter not allowed in interface methods
+  foo .field
+      ^~~~~~
+Couldn't find 'main' (with 0 or 1 argument) in entry file 'tests/negative/interface_setting_test.toit'
+Compilation failed.

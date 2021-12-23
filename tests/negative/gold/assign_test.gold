@@ -1,0 +1,52 @@
+tests/negative/assign_test.toit:4:3: error: Can't assign to literal
+  5 = unresolved
+  ^
+tests/negative/assign_test.toit:4:7: error: Unresolved identifier: 'unresolved'
+  5 = unresolved
+      ^~~~~~~~~~
+tests/negative/assign_test.toit:5:3: error: Can't assign to literal
+  true = unresolved
+  ^~~~
+tests/negative/assign_test.toit:5:10: error: Unresolved identifier: 'unresolved'
+  true = unresolved
+         ^~~~~~~~~~
+tests/negative/assign_test.toit:6:3: error: Can't assign to literal
+  'c' = unresolved
+  ^~~
+tests/negative/assign_test.toit:6:9: error: Unresolved identifier: 'unresolved'
+  'c' = unresolved
+        ^~~~~~~~~~
+tests/negative/assign_test.toit:7:3: error: Can't assign to literal
+  4.2 = unresolved
+  ^~~
+tests/negative/assign_test.toit:7:9: error: Unresolved identifier: 'unresolved'
+  4.2 = unresolved
+        ^~~~~~~~~~
+tests/negative/assign_test.toit:8:3: error: Can't assign to literal
+  null = unresolved
+  ^~~~
+tests/negative/assign_test.toit:8:10: error: Unresolved identifier: 'unresolved'
+  null = unresolved
+         ^~~~~~~~~~
+tests/negative/assign_test.toit:9:3: error: Can't assign to 'super' in static contexts
+  super = unresolved
+  ^~~~~
+tests/negative/assign_test.toit:9:11: error: Unresolved identifier: 'unresolved'
+  super = unresolved
+          ^~~~~~~~~~
+tests/negative/assign_test.toit:10:3: error: Can't assign to 'this'
+  this = unresolved
+  ^~~~
+tests/negative/assign_test.toit:10:10: error: Unresolved identifier: 'unresolved'
+  this = unresolved
+         ^~~~~~~~~~
+tests/negative/assign_test.toit:11:3: error: Can't assign to expression
+  (unresolved) = unresolved
+  ^
+tests/negative/assign_test.toit:11:4: error: Unresolved identifier: 'unresolved'
+  (unresolved) = unresolved
+   ^~~~~~~~~~
+tests/negative/assign_test.toit:11:18: error: Unresolved identifier: 'unresolved'
+  (unresolved) = unresolved
+                 ^~~~~~~~~~
+Compilation failed.

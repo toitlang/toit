@@ -1,0 +1,7 @@
+tests/negative/duplicated_global_assign_test.toit:4:1: error: Redefinition of 'global'
+global := 3
+^~~~~~
+tests/negative/duplicated_global_assign_test.toit:3:1: note: First definition of 'global'
+global := 3
+^~~~~~
+Compilation failed.

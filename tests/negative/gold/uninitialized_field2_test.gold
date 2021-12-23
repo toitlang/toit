@@ -1,0 +1,40 @@
+tests/negative/uninitialized_field2_test.toit:89:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+tests/negative/uninitialized_field2_test.toit:14:14: error: Field 'field' must be initialized before first use
+    some_fun field
+             ^~~~~
+tests/negative/uninitialized_field2_test.toit:19:16: error: Field 'field' must be initialized before first use
+      some_fun field
+               ^~~~~
+tests/negative/uninitialized_field2_test.toit:26:16: error: Field 'field' must be initialized before first use
+      some_fun field
+               ^~~~~
+tests/negative/uninitialized_field2_test.toit:30:10: error: Field 'field' must be initialized before first use
+    field++
+         ^~
+tests/negative/uninitialized_field2_test.toit:33:5: error: Field 'field' not initialized on all paths before implicit super-call
+    some_fun this
+    ^~~~~~~~
+tests/negative/uninitialized_field2_test.toit:39:12: error: Field 'field' must be initialized before first use
+      field++
+           ^~
+tests/negative/uninitialized_field2_test.toit:45:7: error: Field 'field' must be initialized before first use
+      field
+      ^~~~~
+tests/negative/uninitialized_field2_test.toit:50:7: error: Field 'field' must be initialized before first use
+      field
+      ^~~~~
+tests/negative/uninitialized_field2_test.toit:55:7: error: Field 'field' must be initialized before first use
+      field
+      ^~~~~
+tests/negative/uninitialized_field2_test.toit:60:7: error: Field 'field' must be initialized before first use
+      field
+      ^~~~~
+tests/negative/uninitialized_field2_test.toit:67:7: error: Field 'field' must be initialized before first use
+      field
+      ^~~~~
+tests/negative/uninitialized_field2_test.toit:71:28: error: Field 'field' must be initialized before first use
+    for i := 0; i < 2; i < field:
+                           ^~~~~
+Compilation failed.

@@ -1,0 +1,13 @@
+tests/negative/clashing_optional2_test.toit:4:3: error: Method 'bar' with overlapping signature
+  bar --arg1=0:
+  ^~~
+tests/negative/clashing_optional2_test.toit:5:3: note: Overlaps with method 'bar'
+  bar --arg=499 --arg1:
+  ^~~
+tests/negative/clashing_optional2_test.toit:7:3: error: Method 'foo' with overlapping signature
+  foo --arg=0:
+  ^~~
+tests/negative/clashing_optional2_test.toit:8:3: note: Overlaps with method 'foo'
+  foo --arg1=499 --arg:
+  ^~~
+Compilation failed.

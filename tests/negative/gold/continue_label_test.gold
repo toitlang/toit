@@ -1,0 +1,7 @@
+tests/negative/continue_label_test.toit:7:14: error: Unresolved label 'bar'
+    continue.bar
+             ^~~
+tests/negative/continue_label_test.toit:11:16: error: Can't return out of lambda
+      continue.foo
+               ^~~
+Compilation failed.

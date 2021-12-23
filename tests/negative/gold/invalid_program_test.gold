@@ -1,0 +1,5 @@
+tests/negative/invalid_program_test.toit:7:3: error: Argument mismatch for 'run_global_initializer_'
+Too few arguments provided
+  run_global_initializer_ 10000 (LazyInitializer_ -2)
+  ^~~~~~~~~~~~~~~~~~~~~~~
+Compilation failed.

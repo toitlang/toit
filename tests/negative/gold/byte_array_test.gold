@@ -1,0 +1,13 @@
+tests/negative/byte_array_test.toit:5:11: warning: Byte-array element not in range 0-255
+  print #[1024]
+          ^~~~
+tests/negative/byte_array_test.toit:8:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+tests/negative/byte_array_test.toit:4:14: error: Type mismatch. Expected 'int'. Got 'List'
+  print #[1, [2, 3]]
+             ^
+tests/negative/byte_array_test.toit:7:11: error: Type mismatch. Expected 'int'. Got 'float'
+  print #[f]
+          ^
+Compilation failed.

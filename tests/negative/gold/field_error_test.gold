@@ -1,0 +1,5 @@
+tests/negative/field_error_test.toit:4:14: error: Incomplete expression
+  field := 0.
+             ^
+Couldn't find 'main' (with 0 or 1 argument) in entry file 'tests/negative/field_error_test.toit'
+Compilation failed.

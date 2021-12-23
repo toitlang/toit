@@ -1,0 +1,26 @@
+tests/negative/toitdoc_bad_id_test.toit:2:4: warning: Error while parsing identifier
+  $oo
+   ^
+tests/negative/toitdoc_bad_id_test.toit:12:4: warning: Expected identifier or operator as toitdoc target
+  $for
+   ^~~
+tests/negative/toitdoc_bad_id_test.toit:17:6: warning: Illegal token while parsing toitdoc reference
+  $(x oo)
+     ^
+tests/negative/toitdoc_bad_id_test.toit:36:5: warning: Incomplete toitdoc reference
+  $(// $unresolved)
+    ^
+tests/negative/toitdoc_bad_id_test.toit:43:5: warning: Incomplete toitdoc reference
+  $(// $unresolved '\0' here: '
+    ^
+tests/negative/toitdoc_bad_id_test.toit:7:4: warning: Unresolved reference 'x'
+  $x.oo
+   ^
+tests/negative/toitdoc_bad_id_test.toit:23:8: warning: Unresolved reference 'unresolved'
+  $// $unresolved
+       ^~~~~~~~~~
+tests/negative/toitdoc_bad_id_test.toit:30:8: warning: Unresolved reference 'unresolved'
+  $// $unresolved '\0' here: '
+       ^~~~~~~~~~
+Couldn't find 'main' (with 0 or 1 argument) in entry file 'tests/negative/toitdoc_bad_id_test.toit'
+Compilation failed.

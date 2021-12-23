@@ -1,0 +1,70 @@
+<...>/tests/negative/pkg_lock_errors/package.lock:2:3: error: Invalid prefix '<invalid prefix>'
+  "<invalid prefix>": not important
+  ^~~~~~~~~~~~~~~~~~
+<...>/tests/negative/pkg_lock_errors/package.lock:2:23: error: Invalid package id: 'not important'
+  "<invalid prefix>": not important
+                      ^~~~~~~~~~~~~
+<...>/tests/negative/pkg_lock_errors/package.lock:3:24: error: Package 'not_in_list', target of prefix 'package_not_in_list', not found
+  package_not_in_list: not_in_list
+                       ^~~~~~~~~~~
+<...>/tests/negative/pkg_lock_errors/package.lock:4:15: error: Package '499', target of prefix 'bad_format', not found
+  bad_format: 499
+              ^~~
+<...>/tests/negative/pkg_lock_errors/package.lock:13:7: error: Invalid prefix '<invalid prefix>'
+      "<invalid prefix>": not important
+      ^~~~~~~~~~~~~~~~~~
+<...>/tests/negative/pkg_lock_errors/package.lock:13:27: error: Invalid package id: 'not important'
+      "<invalid prefix>": not important
+                          ^~~~~~~~~~~~~
+<...>/tests/negative/pkg_lock_errors/package.lock:14:28: error: Package 'not_in_list', target of prefix 'package_not_in_list', not found
+      package_not_in_list: not_in_list
+                           ^~~~~~~~~~~
+<...>/tests/negative/pkg_lock_errors/package.lock:15:19: error: Package '499', target of prefix 'bad_format', not found
+      bad_format: 499
+                  ^~~
+<...>/tests/negative/pkg_lock_errors/package.lock:20:20: error: Invalid package lock file. Expected a map, got a scalar
+  not_a_map_error: "not a map"
+                   ^~~~~~~~~~~
+<...>/tests/negative/pkg_lock_errors/package.lock:20:3: error: Package 'not_a_map_error' is missing a 'url' or 'path' entry
+  not_a_map_error: "not a map"
+  ^~~~~~~~~~~~~~~
+<...>/tests/negative/pkg_lock_errors/package.lock:22:3: error: Package 'bad_format_error' has url, but no version
+  bad_format_error:
+  ^~~~~~~~~~~~~~~~
+<...>/tests/negative/pkg_lock_errors/package.lock:26:5: error: Path must not be empty string
+    path:
+    ^~~~
+<...>/tests/negative/pkg_lock_errors/package.lock:29:5: error: URL must not be empty string
+    url:
+    ^~~
+<...>/tests/negative/pkg_lock_errors/package.lock:34:5: error: Version must not be empty string
+    version:
+    ^~~~~~~
+<...>/tests/negative/pkg_lock_errors/package.lock:36:3: warning: Package 'bad_format_error5' has version, but no url
+  bad_format_error5:
+  ^~~~~~~~~~~~~~~~~
+<...>/tests/negative/pkg_lock_errors/package.lock:40:3: error: Package 'bad_format_error6' is missing a 'url' or 'path' entry
+  bad_format_error6: {}
+  ^~~~~~~~~~~~~~~~~
+<...>/tests/negative/pkg_lock_errors/package.lock:42:3: error: Invalid package id: '<xyz>'
+  "<xyz>":
+  ^~~~~~~
+<...>/tests/negative/pkg_lock_errors/package.lock:8:11: error: Package 'not exist' not found at '<...>/tests/negative/pkg_lock_errors/not exist'
+    path: not exist
+          ^~~~~~~~~
+<...>/tests/negative/pkg_lock_errors/package.lock:18:11: error: Path of package 'same_path_error' is same as for 'p1': 'p1'
+    path: p1
+          ^~
+<...>/tests/negative/pkg_lock_errors/package.lock:38:11: error: Package 'some_path' not found at '<...>/tests/negative/pkg_lock_errors/some_path'
+    path: some_path
+          ^~~~~~~~~
+<...>/tests/negative/pkg_lock_errors/package.lock:43:11: error: Package 'xyz' not found at '<...>/tests/negative/pkg_lock_errors/xyz'
+    path: xyz
+          ^~~
+tests/negative/pkg_lock_errors/main_test.toit:3:8: error: Package for prefix 'p1' not found, but lock file has errors
+import p1
+       ^~
+tests/negative/pkg_lock_errors/main_test.toit:6:12: error: Unresolved identifier: 'foo'
+  print p1.foo
+           ^~~
+Compilation failed.

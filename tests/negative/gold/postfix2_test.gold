@@ -1,0 +1,17 @@
+tests/negative/postfix2_test.toit:4:3: error: Invalid name for declaration
+  + x:
+  ^
+tests/negative/postfix2_test.toit:12:10: error: Expected identifier
+    this.- 42 unresolved
+         ^
+tests/negative/postfix2_test.toit:12:15: error: Unresolved identifier: 'unresolved'
+    this.- 42 unresolved
+              ^~~~~~~~~~
+tests/negative/postfix2_test.toit:12:10: error: Can't call result of evaluating expression
+    this.- 42 unresolved
+         ^
+tests/negative/postfix2_test.toit:13:10: error: Argument mismatch for 'A.bar'
+Too few arguments provided
+    this.bar 33
+         ^~~
+Compilation failed.

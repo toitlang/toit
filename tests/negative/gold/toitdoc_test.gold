@@ -1,0 +1,89 @@
+tests/negative/toitdoc_test.toit:13:1: warning: Unterminated code section
+```
+^
+tests/negative/toitdoc_test.toit:19:5: warning: Expected identifier or operator as toitdoc target
+  $(32 )
+    ^~
+tests/negative/toitdoc_test.toit:20:10: warning: Missing parameter name
+  $(id --)
+         ^
+tests/negative/toitdoc_test.toit:21:11: warning: Can't have space between '--' and the parameter name
+  $(id -- x)
+          ^
+tests/negative/toitdoc_test.toit:22:12: warning: Can't have space between '--' and the parameter name
+  $(id [-- x])
+           ^
+tests/negative/toitdoc_test.toit:23:10: warning: Missing parameter name
+  $(id --[foo])
+         ^
+tests/negative/toitdoc_test.toit:24:4: warning: Incomplete toitdoc reference
+  $(
+   ^
+tests/negative/toitdoc_test.toit:29:1: warning: Incomplete string
+"foo
+^
+tests/negative/toitdoc_test.toit:35:1: warning: Incomplete `code` segment
+`foo
+^
+tests/negative/toitdoc_test.toit:45:3: warning: Expected identifier or operator as toitdoc target
+$(for)
+  ^~~
+tests/negative/toitdoc_test.toit:59:5: warning: Missing parameter name or closing ')'
+$(A.foo
+    ^
+tests/negative/toitdoc_test.toit:64:9: warning: Missing parameter name or closing ')'
+$(A.foo x
+        ^
+tests/negative/toitdoc_test.toit:69:9: warning: Missing parameter name or closing ')'
+$(A.bar x
+        ^
+tests/negative/toitdoc_test.toit:6:1: warning: Incomplete string
+"incomplete string
+^~~~~~~~~~~~~~~~~~
+tests/negative/toitdoc_test.toit:8:1: warning: Incomplete `code` segment
+`incomplete code
+^~~~~~~~~~~~~~~~
+tests/negative/toitdoc_test.toit:56:3: error: Redefinition of 'bar'
+  bar:
+  ^~~
+tests/negative/toitdoc_test.toit:55:3: note: First definition of 'bar'
+  bar:
+  ^~~
+tests/negative/toitdoc_test.toit:59:3: warning: Can't resolve reference 'foo' with the given shape
+$(A.foo
+  ^~~~~
+tests/negative/toitdoc_test.toit:69:3: warning: Can't resolve reference 'bar' with the given shape
+$(A.bar x
+  ^~~~~
+tests/negative/toitdoc_test.toit:41:3: warning: Can't resolve reference 'foo' with the given shape
+$(A.foo)
+  ^~~~~
+tests/negative/toitdoc_test.toit:43:3: warning: Ambiguous resolution of reference 'foo'
+$(amb.foo)
+  ^~~~~~~
+tests/negative/ambiguous_a.toit:3:1: warning: Resolution candidate for 'foo'
+foo:
+^~~
+tests/negative/ambiguous_b.toit:3:1: warning: Resolution candidate for 'foo'
+foo:
+^~~
+tests/negative/toitdoc_test.toit:44:2: warning: Can't reference prefix 'amb'
+$amb
+ ^~~
+tests/negative/toitdoc_test.toit:46:3: warning: Can't reference prefix 'amb'
+$(amb)
+  ^~~
+tests/negative/toitdoc_test.toit:48:2: warning: Can't resolve reference 'foo' with the given shape
+$foo=
+ ^~~
+tests/negative/toitdoc_test.toit:49:3: warning: Can't resolve reference 'foo' with the given shape
+$(foo x y z)
+  ^~~
+tests/negative/toitdoc_test.toit:50:3: warning: A setter must take exactly one argument
+$(foo=)
+  ^~~
+tests/negative/toitdoc_test.toit:50:3: warning: Can't resolve reference 'foo' with the given shape
+$(foo=)
+  ^~~
+Couldn't find 'main' (with 0 or 1 argument) in entry file 'tests/negative/toitdoc_test.toit'
+Compilation failed.

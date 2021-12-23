@@ -1,0 +1,8 @@
+tests/negative/final_field3_test.toit:9:11: error: Can't assign to final field 'field'
+  a.field = 499
+          ^
+EXCEPTION error. 
+FINAL_FIELD_ASSIGNMENT_FAILED
+  0: A.field=                  tests/negative/final_field3_test.toit:5:3
+  1: main                      tests/negative/final_field3_test.toit:9:11
+  2: __entry__.<lambda>        <sdk>/core/entry.toit:48:20

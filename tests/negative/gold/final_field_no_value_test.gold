@@ -1,0 +1,8 @@
+tests/negative/final_field_no_value_test.toit:9:19: error: Can't assign to final field 'field'
+  (A "str").field = "can't assign to final"
+                  ^
+EXCEPTION error. 
+FINAL_FIELD_ASSIGNMENT_FAILED
+  0: A.field=                  tests/negative/final_field_no_value_test.toit:5:3
+  1: main                      tests/negative/final_field_no_value_test.toit:9:19
+  2: __entry__.<lambda>        <sdk>/core/entry.toit:48:20

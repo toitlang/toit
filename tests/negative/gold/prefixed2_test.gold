@@ -1,0 +1,4 @@
+tests/negative/prefixed2_test.toit:6:3: error: Can't use prefix 'prefix' as an expression
+  prefix = 499
+  ^~~~~~
+Compilation failed.
