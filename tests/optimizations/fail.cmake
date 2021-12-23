@@ -1,0 +1,2 @@
+set(TOIT_FAILING_TESTS
+)
