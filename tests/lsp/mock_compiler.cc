@@ -10,6 +10,17 @@
 #include "../../src/compiler/diagnostic.h"
 #include "../../src/compiler/package.h"
 
+#ifdef TOIT_WINDOWS
+// Make the mock-compiler compile on Windows.
+// Clearly doesn't work yet.
+size_t getline (char** line_ptr,
+                size_t* n,
+                FILE* stream) {
+  UNIMPLEMENTED();
+}
+#define SIGKILL 9
+#endif
+
 using namespace toit::compiler;
 using namespace toit;
 
