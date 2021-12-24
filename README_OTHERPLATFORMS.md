@@ -47,7 +47,6 @@ make tools
 ``` sh
 build/host/bin/toitvm examples/hello.toit
 build/host/bin/toitvm examples/bubble_sort.toit
-build/host/bin/toitvm examples/http.toit
 build/host/bin/toitvm examples/mandelbrot.toit
 ```
 </br>
