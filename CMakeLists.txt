@@ -18,7 +18,6 @@ cmake_minimum_required(VERSION 3.13.3)
 project(toit)
 
 set(TOIT_SDK_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
-set(TOIT_BUILD_BOOT_SNAPSHOT 1)
 
 if (DEFINED ENV{IDF_PATH})
   set(IDF_PATH "$ENV{IDF_PATH}")

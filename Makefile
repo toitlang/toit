@@ -103,7 +103,7 @@ $(TOITLSP_BIN): $(TOITLSP_SOURCE)
 # We don't track dependencies in the Makefile, so we always have to call out to ninja.
 .PHONY: $(TOITVM_BIN) $(TOITC_BIN) $(TOIT_BOOT_SNAPSHOT)
 $(TOITVM_BIN) $(TOITC_BIN) $(TOIT_BOOT_SNAPSHOT): build/host/CMakeCache.txt
-	(cd build/host && ninja build_toitvm)
+	(cd build/host && ninja build_tools)
 
 build/host/CMakeCache.txt: build/host/
 	(cd build/host && cmake ../.. -G Ninja -DVM_GIT_VERSION="$(GIT_VERSION)" -DCMAKE_BUILD_TYPE=Release)
@@ -130,10 +130,10 @@ endif
 
 .PHONY: build/$(CROSS_ARCH)/sdk/bin/toitvm build/$(CROSS_ARCH)/sdk/bin/toitc
 build/$(CROSS_ARCH)/sdk/bin/toitvm build/$(CROSS_ARCH)/sdk/bin/toitc: build/$(CROSS_ARCH)/CMakeCache.txt
-	(cd build/$(CROSS_ARCH) && ninja)
+	(cd build/$(CROSS_ARCH) && ninja build_tools)
 
 build/$(CROSS_ARCH)/CMakeCache.txt: build/$(CROSS_ARCH)/
-	(cd build/$(CROSS_ARCH) && cmake ../../ -G Ninja -DVM_GIT_VERSION="$(GIT_VERSION)" -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/$(CROSS_ARCH).cmake)
+	(cd build/$(CROSS_ARCH) && cmake ../../ -G Ninja -DVM_GIT_VERSION="$(GIT_VERSION)" -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/$(CROSS_ARCH).cmake --no-warn-unused-cli)
 
 build/$(CROSS_ARCH)/:
 	mkdir -p $@
