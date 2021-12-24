@@ -196,8 +196,6 @@ endif
 
 
 # UTILITY
-.PHONY: all
-all: tools
 
 .PHONY:	clean
 clean:
