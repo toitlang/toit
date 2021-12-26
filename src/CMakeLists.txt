@@ -124,9 +124,18 @@ ADD_TOIT_TARGET(
 )
 
 add_custom_target(
-  build_toitvm
-  DEPENDS toitvm ${BOOT_SNAPSHOT}
+  build_tools
+  DEPENDS toitvm toitc
 )
+
+add_custom_target(
+  build_boot_snapshot
+  DEPENDS ${BOOT_SNAPSHOT}
+)
+
+if (NOT DEFINED TOIT_IS_CROSS)
+  add_dependencies(build_tools build_boot_snapshot)
+endif()
 
 if (DEFINED USE_LWIP)
   include_directories(toitvm PRIVATE ${LWIP_INCLUDE_DIRS})
