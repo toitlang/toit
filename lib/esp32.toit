@@ -76,10 +76,22 @@ image_config -> Map?:
   if config_data[0] == 0: return null
   return (ubjson.Decoder config_data).decode
 
+/**
+Adjusts the real-time clock with the specified $adjustment.
+
+The adjustment may not be visible immediately through calls to
+  $Time.now in case techniques like time smearing are used to
+  prevent large jumps in time.
+*/
 adjust_real_time_clock adjustment/Duration -> none:
   new ::= Time.now + adjustment
   set_real_time_clock_ new.s_since_epoch new.ns_part
 
+/**
+Sets the real-time clock to the new $time.
+
+The new time is visible immediately through calls to $Time.now.
+*/
 set_real_time_clock time/Time -> none:
   set_real_time_clock_ time.s_since_epoch time.ns_part
 
