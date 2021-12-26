@@ -76,5 +76,15 @@ image_config -> Map?:
   if config_data[0] == 0: return null
   return (ubjson.Decoder config_data).decode
 
+adjust_real_time_clock adjustment/Duration -> none:
+  new ::= Time.now + adjustment
+  set_real_time_clock_ new.s_since_epoch new.ns_part
+
+set_real_time_clock time/Time -> none:
+  set_real_time_clock_ time.s_since_epoch time.ns_part
+
 image_config_ -> ByteArray:
   #primitive.esp32.image_config
+
+set_real_time_clock_ seconds/int ns/int -> none:
+  #primitive.core.set_real_time_clock
