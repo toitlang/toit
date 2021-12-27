@@ -149,7 +149,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v2
         with:
-          submodules: 'true'
+          submodules: recursive
 
       # We create a new id every second.
       # The 'restore-keys' below will make sure that we continue using earlier versions.
