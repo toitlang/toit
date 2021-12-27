@@ -9,52 +9,6 @@ on:
     types: [published]
 
 jobs:
-  # Really annoying that we need to duplicate
-  esp32:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v2
-        with:
-          submodules: 'true'
-
-      # We create a new id every second.
-      # The 'restore-keys' below will make sure that we continue using earlier versions.
-      - name: Create timestamp
-        id: timestamp
-        shell: cmake -P {0}
-        run: |
-          string(TIMESTAMP current_date "%Y-%m-%d-%H;%M;%S" UTC)
-          message("::set-output name=timestamp::${current_date}")
-
-      - name: Ccache Cache
-        uses: actions/cache@v2
-        with:
-          path: ${{ github.workspace }}/.ccache
-          key: esp32-ccache-${{ steps.timestamp.outputs.timestamp }}
-          restore-keys: esp32-ccache-
-
-      - name: Install dependencies - Linux
-        run: |
-          sudo apt-get update
-          sudo apt-get install ninja-build ccache
-          ninja --version
-          cmake --version
-          gcc --version
-
-      # Build using make.
-      - name: make
-        env:
-          IDF_PATH: ${{ github.workspace }}/third_party/esp-idf
-          CCACHE_DIR: ${{ github.workspace }}/.ccache
-          CCACHE_BASEDIR: ${{ github.workspace }}
-          CCACHE_COMPRESS: true
-          CCACHE_COMPRESSLEVEL: '6'
-          CCACHE_MAXSIZE: 400M
-        run: |
-          make esp32
-
   build:
     strategy:
       # The matrix will run all possible combinations in parallel.
