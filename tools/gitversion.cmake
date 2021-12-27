@@ -36,9 +36,13 @@ function(compute_git_version VERSION)
   # We assume that there is always a version, and don't handle the initial case where no
   # version tag is found.
 
+  # Note: the clone of the repository must have access to all tags.
+  # Buildbots might provide a shallow copy, in which case `git fetch --tags` must be called.
+
   backtick(TAG_COMMIT ${GIT_EXECUTABLE} rev-list --tags --max-count=1)
   # The '--abbrev=0' ensures that we only get the tag, without the number of intermediate commits.
-  # On the buildbot we need the TAG_COMMIT. Not really sure why.
+  # The buildbot has a shallow checkout of our repository. We need to pass in the commit of the latest tag.
+  # (Tbh not sure why.)
   backtick(LATEST_VERSION_TAG ${GIT_EXECUTABLE} describe --tags --match "v[0-9]*" --abbrev=0 ${TAG_COMMIT})
 
   backtick(VERSION_TAG_COMMIT ${GIT_EXECUTABLE} rev-parse "${LATEST_VERSION_TAG}^{}")
