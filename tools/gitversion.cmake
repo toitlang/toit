@@ -40,7 +40,6 @@ function(compute_git_version VERSION)
   # The '--abbrev=0' ensures that we only get the tag, without the number of intermediate commits.
   # On the buildbot we need the TAG_COMMIT. Not really sure why.
   backtick(LATEST_VERSION_TAG ${GIT_EXECUTABLE} describe --tags --match "v[0-9]*" --abbrev=0 ${TAG_COMMIT})
-  message("LATEST_VERSION_TAG: ${LATEST_VERSION_TAG}")
 
   backtick(VERSION_TAG_COMMIT ${GIT_EXECUTABLE} rev-parse "${LATEST_VERSION_TAG}^{}")
 
