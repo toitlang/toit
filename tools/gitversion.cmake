@@ -33,9 +33,14 @@ function(compute_git_version VERSION)
   backtick(CURRENT_COMMIT ${GIT_EXECUTABLE} rev-parse HEAD)
   backtick(CURRENT_COMMIT_SHORT ${GIT_EXECUTABLE} rev-parse --short HEAD)
 
-  # This code is quite restrictive: it requires there to be a version number.
+  # We assume that there is always a version, and don't handle the initial case where no
+  # version tag is found.
+
+  backtick(TAG_COMMIT ${GIT_EXECUTABLE} rev-list --tags --max-count=1)
   # The '--abbrev=0' ensures that we only get the tag, without the number of intermediate commits.
-  backtick(LATEST_VERSION_TAG ${GIT_EXECUTABLE} describe --tags --match "v[0-9]*" --abbrev=0)
+  # On the buildbot we need the TAG_COMMIT. Not really sure why.
+  backtick(LATEST_VERSION_TAG ${GIT_EXECUTABLE} describe --tags --match "v[0-9]*" --abbrev=0 ${TAG_COMMIT})
+  message("LATEST_VERSION_TAG: ${LATEST_VERSION_TAG}")
 
   backtick(VERSION_TAG_COMMIT ${GIT_EXECUTABLE} rev-parse "${LATEST_VERSION_TAG}^{}")
 
