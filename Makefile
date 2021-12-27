@@ -17,7 +17,6 @@
 .SHELLFLAGS += -e
 
 BUILD_DATE = $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
-GIT_VERSION := $(shell tools/gitversion)
 
 # Use 'make ESP32_ENTRY=examples/mandelbrot.toit esp32' to compile a different
 # example for the ESP32 firmware.
@@ -106,14 +105,14 @@ $(TOITVM_BIN) $(TOITC_BIN) $(TOIT_BOOT_SNAPSHOT): build/host/CMakeCache.txt
 	(cd build/host && ninja build_tools)
 
 build/host/CMakeCache.txt: build/host/
-	(cd build/host && cmake ../.. -G Ninja -DVM_GIT_VERSION="$(GIT_VERSION)" -DCMAKE_BUILD_TYPE=Release)
+	(cd build/host && cmake ../.. -G Ninja -DCMAKE_BUILD_TYPE=Release)
 
 build/host/:
 	mkdir -p $@
 
 .PHONY: $(VERSION_FILE)
 $(VERSION_FILE):
-	echo $(GIT_VERSION) > $@
+	(cd build/host && ninja build_version_file)
 
 
 # CROSS-COMPILE
@@ -133,7 +132,7 @@ build/$(CROSS_ARCH)/sdk/bin/toitvm build/$(CROSS_ARCH)/sdk/bin/toitc: build/$(CR
 	(cd build/$(CROSS_ARCH) && ninja build_tools)
 
 build/$(CROSS_ARCH)/CMakeCache.txt: build/$(CROSS_ARCH)/
-	(cd build/$(CROSS_ARCH) && cmake ../../ -G Ninja -DVM_GIT_VERSION="$(GIT_VERSION)" -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/$(CROSS_ARCH).cmake --no-warn-unused-cli)
+	(cd build/$(CROSS_ARCH) && cmake ../../ -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/$(CROSS_ARCH).cmake --no-warn-unused-cli)
 
 build/$(CROSS_ARCH)/:
 	mkdir -p $@
@@ -159,7 +158,7 @@ build/snapshot: $(TOITC_BIN) $(ESP32_ENTRY)
 	$(TOITC_BIN) -w $@ $(ESP32_ENTRY)
 
 build/$(ESP32_CHIP)/CMakeCache.txt: build/$(ESP32_CHIP)/
-	(cd build/$(ESP32_CHIP) && IMAGE=build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s cmake ../../ -G Ninja -DVM_GIT_VERSION="$(GIT_VERSION)" -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/$(ESP32_CHIP)/$(ESP32_CHIP).cmake --no-warn-unused-cli)
+	(cd build/$(ESP32_CHIP) && IMAGE=build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s cmake ../../ -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/$(ESP32_CHIP)/$(ESP32_CHIP).cmake --no-warn-unused-cli)
 
 build/$(ESP32_CHIP)/:
 	mkdir -p $@
