@@ -183,6 +183,7 @@ jobs:
       - name: make
         env:
           IDF_PATH: ${{ github.workspace }}/third_party/esp-idf
+          IDF_CCACHE_ENABLE: 1
           CCACHE_DIR: ${{ github.workspace }}/.ccache
           CCACHE_BASEDIR: ${{ github.workspace }}
           CCACHE_COMPRESS: true
