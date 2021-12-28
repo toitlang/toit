@@ -13,11 +13,11 @@
 # The license can be found in the file `LICENSE` in the top level
 # directory of this repository.
 
-file(GLOB TOIT_TESTS RELATIVE ${CMAKE_SOURCE_DIR} "*_test.toit" "regress/*_test.toit")
-file(GLOB TOIT_SLOW_TESTS RELATIVE ${CMAKE_SOURCE_DIR} "*_test_slow.toit" "regress/*_test_slow.toit")
-file(GLOB TOIT_FORCE_TESTS RELATIVE ${CMAKE_SOURCE_DIR} "*_test_force.toit" "regress/*_test_force.toit")
-file(GLOB TOIT_NO_BOOT_TESTS RELATIVE ${CMAKE_SOURCE_DIR} "*_test_no_boot.toit" "regress/*_test_no_boot.toit")
-file(GLOB TOIT_COMPILER_TESTS RELATIVE ${CMAKE_SOURCE_DIR} "*_test_compiler.toit" "regress/*_test_compiler.toit")
+file(GLOB TOIT_TESTS RELATIVE ${TOIT_SDK_SOURCE_DIR} "*_test.toit" "regress/*_test.toit")
+file(GLOB TOIT_SLOW_TESTS RELATIVE ${TOIT_SDK_SOURCE_DIR} "*_test_slow.toit" "regress/*_test_slow.toit")
+file(GLOB TOIT_FORCE_TESTS RELATIVE ${TOIT_SDK_SOURCE_DIR} "*_test_force.toit" "regress/*_test_force.toit")
+file(GLOB TOIT_NO_BOOT_TESTS RELATIVE ${TOIT_SDK_SOURCE_DIR} "*_test_no_boot.toit" "regress/*_test_no_boot.toit")
+file(GLOB TOIT_COMPILER_TESTS RELATIVE ${TOIT_SDK_SOURCE_DIR} "*_test_compiler.toit" "regress/*_test_compiler.toit")
 
 include(ProcessorCount)
 ProcessorCount(NUM_CPU)
