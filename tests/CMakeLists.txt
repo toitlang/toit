@@ -104,6 +104,7 @@ endforeach()
 add_subdirectory(negative)
 add_subdirectory(lsp)
 add_subdirectory(optimizations)
+add_subdirectory(lock_file)
 
 include(fail.cmake)
 foreach(test ${TOIT_FAILING_TESTS})
