@@ -1,0 +1,4 @@
+<...>/tests/negative/lock_sdk_bad2/package.lock:1:6: error: Invalid SDK constraint: '^1.0ab.9'
+sdk: ^1.0ab.9
+     ^~~~~~~~
+Compilation failed.

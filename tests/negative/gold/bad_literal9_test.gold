@@ -1,0 +1,19 @@
+tests/negative/bad_literal9_test.toit:6:9: error: Invalid floating-point literal
+  print 0.123456e
+        ^~~~~~~~~
+tests/negative/bad_literal9_test.toit:7:9: error: Invalid floating-point literal
+  print 0.123456e+
+        ^~~~~~~~~~
+tests/negative/bad_literal9_test.toit:8:9: error: Invalid floating-point literal
+  print 0.123456e-
+        ^~~~~~~~~~
+tests/negative/bad_literal9_test.toit:9:9: error: Invalid number literal
+  print 0.123456e+5_
+        ^~~~~~~~~~~~
+tests/negative/bad_literal9_test.toit:10:9: error: Invalid floating-point literal
+  print 0.123456e-_3
+        ^~~~~~~~~~~~
+tests/negative/bad_literal9_test.toit:11:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+Compilation failed.

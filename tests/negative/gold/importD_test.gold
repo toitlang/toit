@@ -1,0 +1,28 @@
+tests/negative/relative_dir/relative.toit:3:1: error: Not a regular file: '<...>/tests/negative/relative_dir/dir.toit'
+import .dir as pre
+^~~~~~
+tests/negative/relative_dir/relative.toit:4:1: error: Failed to find import '.dir2'
+import .dir2 as pre
+^~~~~~
+tests/negative/relative_dir/relative.toit:4:9: note: Folder 'tests/negative/relative_dir/dir2' exists, but is missing a 'dir2.toit' file
+import .dir2 as pre
+        ^~~~
+tests/negative/relative_dir/relative.toit:5:1: error: Failed to find import '.dir2.foo'
+import .dir2.foo as toto
+^~~~~~
+tests/negative/relative_dir/relative.toit:5:14: note: Missing library file. Tried 'tests/negative/relative_dir/dir2/foo.toit' and 'tests/negative/relative_dir/dir2/foo/foo.toit'
+import .dir2.foo as toto
+             ^~~
+tests/negative/relative_dir/relative.toit:6:1: error: Failed to find import '.dir2.foo.bar'
+import .dir2.foo.bar as toto
+^~~~~~
+tests/negative/relative_dir/relative.toit:6:14: note: Folder does not exist: 'tests/negative/relative_dir/dir2/foo'
+import .dir2.foo.bar as toto
+             ^~~
+tests/negative/relative_dir/relative.toit:7:1: error: Failed to find import '.dir2.not_a_directory.bar'
+import .dir2.not_a_directory.bar as toto
+^~~~~~
+tests/negative/relative_dir/relative.toit:7:14: note: Not a folder: 'tests/negative/relative_dir/dir2/not_a_directory'
+import .dir2.not_a_directory.bar as toto
+             ^~~~~~~~~~~~~~~
+Compilation failed.

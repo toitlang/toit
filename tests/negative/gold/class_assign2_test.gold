@@ -1,0 +1,4 @@
+tests/negative/class_assign2_test.toit:6:3: error: Can't assign to class 'A'
+  A += 3
+  ^
+Compilation failed.

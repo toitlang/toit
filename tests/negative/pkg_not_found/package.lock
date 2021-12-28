@@ -1,0 +1,9 @@
+prefixes:
+  error: path
+  error2: path2
+
+packages:
+  path:
+    path: not exist
+  path2:
+    path: path2

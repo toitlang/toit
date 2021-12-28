@@ -1,0 +1,7 @@
+tests/negative/block3_test.toit:5:6: error: Unexpected block
+    (: debug it)
+     ^~~~~~~~~~
+tests/negative/block3_test.toit:5:5: error: Set elements may not be blocks
+    (: debug it)
+    ^
+Compilation failed.

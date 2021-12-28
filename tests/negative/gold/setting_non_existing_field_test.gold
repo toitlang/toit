@@ -1,0 +1,19 @@
+tests/negative/setting_non_existing_field_test.toit:4:15: error: Couldn't find field for field-storing parameter 'x'
+  constructor .x:
+              ^~
+tests/negative/setting_non_existing_field_test.toit:5:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/setting_non_existing_field_test.toit:10:14: error: Field-storing parameter not allowed in static functions
+  static bar .x:
+             ^~
+tests/negative/setting_non_existing_field_test.toit:11:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/setting_non_existing_field_test.toit:7:7: error: Unresolved target for field-storing parameter
+  foo .x:
+      ^~
+tests/negative/setting_non_existing_field_test.toit:8:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+Compilation failed.

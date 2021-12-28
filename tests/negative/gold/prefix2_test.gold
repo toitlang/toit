@@ -1,0 +1,5 @@
+tests/negative/prefix2_test.toit:6:7: error: Argument mismatch for 'Map'
+Too many arguments provided
+  pre.Map 1 2 3 4 5
+      ^~~
+Compilation failed.

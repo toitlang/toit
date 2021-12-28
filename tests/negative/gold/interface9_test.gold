@@ -1,0 +1,7 @@
+tests/negative/interface9_test.toit:4:3: error: Interfaces can't have constructors
+  constructor
+  ^~~~~~~~~~~
+tests/negative/interface9_test.toit:7:8: error: Can't instantiate interface class without factory
+  a := A
+       ^
+Compilation failed.

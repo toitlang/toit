@@ -1,0 +1,4 @@
+tests/negative/block_define_test.toit:5:7: error: Can't return a block from a lambda
+    x := :499
+      ^~
+Compilation failed.

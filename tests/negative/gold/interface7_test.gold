@@ -1,0 +1,7 @@
+tests/negative/interface7_test.toit:9:7: error: Missing implementations for interface methods
+class B implements A A2:
+      ^
+tests/negative/interface7_test.toit:7:3: note: Missing implementation for 'bar'
+  bar x
+  ^~~
+Compilation failed.

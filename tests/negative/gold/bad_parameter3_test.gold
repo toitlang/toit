@@ -1,0 +1,11 @@
+tests/negative/bad_parameter3_test.toit:5:16: error: Missing parameter name
+  constructor .
+               ^
+tests/negative/bad_parameter3_test.toit:6:22: error: Missing parameter name
+  constructor.named .:
+                     ^
+tests/negative/bad_parameter3_test.toit:5:3: error: Missing body
+  constructor .
+  ^~~~~~~~~~~
+Couldn't find 'main' (with 0 or 1 argument) in entry file 'tests/negative/bad_parameter3_test.toit'
+Compilation failed.

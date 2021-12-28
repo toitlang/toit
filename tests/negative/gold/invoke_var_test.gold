@@ -1,0 +1,19 @@
+tests/negative/invoke_var_test.toit:12:3: error: Can't invoke local variable 'local'
+  local 1
+  ^~~~~
+tests/negative/invoke_var_test.toit:13:3: error: Can't invoke global variable 'global'
+  global 2
+  ^~~~~~
+tests/negative/invoke_var_test.toit:14:3: error: Can't use prefix 'pre' as an expression
+  pre 3
+  ^~~
+tests/negative/invoke_var_test.toit:15:6: error: Can't invoke global variable 'global'
+  pre.global 4
+     ^
+tests/negative/invoke_var_test.toit:16:4: error: Can't invoke global variable 'static_field'
+  A.static_field 5
+   ^
+tests/negative/invoke_var_test.toit:17:8: error: Can't invoke global variable 'static_field'
+  pre.A.static_field 6
+       ^
+Compilation failed.

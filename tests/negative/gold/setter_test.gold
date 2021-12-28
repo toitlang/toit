@@ -1,0 +1,48 @@
+tests/negative/setter_test.toit:3:1: error: Setters must take exactly one parameter
+setter=: unresolved
+^~~~~~~
+tests/negative/setter_test.toit:3:10: error: Unresolved identifier: 'unresolved'
+setter=: unresolved
+         ^~~~~~~~~~
+tests/negative/setter_test.toit:4:11: error: Setters must take exactly one parameter
+setter= x y: unresolved
+          ^
+tests/negative/setter_test.toit:4:14: error: Unresolved identifier: 'unresolved'
+setter= x y: unresolved
+             ^~~~~~~~~~
+tests/negative/setter_test.toit:14:3: error: No setter method 'setter=' found.
+  setter = 3
+  ^~~~~~
+tests/negative/setter_test.toit:7:3: error: Setters must take exactly one parameter
+  static_setter=: unresolved
+  ^~~~~~~~~~~~~~
+tests/negative/setter_test.toit:7:19: error: Unresolved identifier: 'unresolved'
+  static_setter=: unresolved
+                  ^~~~~~~~~~
+tests/negative/setter_test.toit:8:20: error: Setters must take exactly one parameter
+  static_setter= x y: unresolved
+                   ^
+tests/negative/setter_test.toit:8:23: error: Unresolved identifier: 'unresolved'
+  static_setter= x y: unresolved
+                      ^~~~~~~~~~
+tests/negative/setter_test.toit:10:3: error: Setters must take exactly one parameter
+  instance_setter=: unresolved
+  ^~~~~~~~~~~~~~~~
+tests/negative/setter_test.toit:10:21: error: Unresolved identifier: 'unresolved'
+  instance_setter=: unresolved
+                    ^~~~~~~~~~
+tests/negative/setter_test.toit:11:22: error: Setters must take exactly one parameter
+  instance_setter= x y: unresolved
+                     ^
+tests/negative/setter_test.toit:11:25: error: Unresolved identifier: 'unresolved'
+  instance_setter= x y: unresolved
+                        ^~~~~~~~~~
+tests/negative/setter_test.toit:15:19: error: Argument mismatch for 'A.static_setter'
+Could not find an overload with 1 arguments
+  A.static_setter = 5
+                  ^
+tests/negative/setter_test.toit:16:21: error: Argument mismatch for 'A.instance_setter'
+Could not find an overload with 1 arguments
+  A.instance_setter = 7
+                    ^
+Compilation failed.

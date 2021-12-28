@@ -1,0 +1,4 @@
+tests/negative/import6_test.toit:3:24: error: Unresolved show 'foo'
+import .import6_a show foo
+                       ^~~
+Compilation failed.

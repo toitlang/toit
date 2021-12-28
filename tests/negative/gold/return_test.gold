@@ -1,0 +1,10 @@
+tests/negative/return_test.toit:4:12: warning: Missing return value
+  if true: return
+           ^~~~~~
+tests/negative/return_test.toit:8:3: warning: Return type of function is 'none'. Can't return a value
+  return 499
+  ^~~~~~
+EXCEPTION error. 
+negative
+  0: main                      tests/negative/return_test.toit:11:3
+  1: __entry__.<lambda>        <sdk>/core/entry.toit:48:20
