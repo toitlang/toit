@@ -155,6 +155,11 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Fetch tags
+        # The github checkout is shallow and doesn't have tags.
+        run: |
+          git fetch --tags
+
       # We create a new id every second.
       # The 'restore-keys' below will make sure that we continue using earlier versions.
       - name: Create timestamp
