@@ -74,7 +74,7 @@ SNAPSHOTS = $(SNAPSHOT_DIR)/system_message.snapshot $(SNAPSHOT_DIR)/snapshot_to_
 all: tools
 
 .PHONY: tools
-tools: check-env $(TOOLS)
+tools: check-env $(TOOLS) snapshots
 
 check-env:
 ifeq ("$(wildcard $(IDF_PATH)/components/mbedtls/mbedtls/LICENSE)","")
@@ -115,6 +115,21 @@ build/host/:
 $(VERSION_FILE):
 	echo $(GIT_VERSION) > $@
 
+.PHONY: snapshots
+snapshots: $(SNAPSHOTS)
+
+$(SNAPSHOT_DIR)/snapshot_to_image.snapshot: tools/snapshot_to_image.toit $(TOITC_BIN) $(SNAPSHOT_DIR)
+	$(TOITC_BIN) -w $@ $<
+
+$(SNAPSHOT_DIR)/system_message.snapshot: tools/system_message.toit $(TOITC_BIN) $(SNAPSHOT_DIR)
+	$(TOITC_BIN) -w $@ $<
+
+$(SNAPSHOT_DIR)/inject_config.snapshot: tools/inject_config.toit $(TOITC_BIN) $(SNAPSHOT_DIR)
+	$(TOITC_BIN) -w $@ $<
+
+$(SNAPSHOT_DIR):
+	mkdir -p $@
+
 
 # CROSS-COMPILE
 .PHONY: tools-cross
@@ -141,15 +156,16 @@ build/$(CROSS_ARCH)/:
 build/$(CROSS_ARCH)/sdk/bin/toitvm_boot.snapshot:
 	(cp $(TOIT_BOOT_SNAPSHOT) build/$(CROSS_ARCH)/sdk/bin/)
 
+
 # ESP32 VARIANTS
 .PHONY: esp32
-esp32: check-env build/$(ESP32_CHIP)/toit.bin esp32-snapshots
+esp32: check-env build/$(ESP32_CHIP)/toit.bin
 
 build/$(ESP32_CHIP)/toit.bin build/$(ESP32_CHIP)/toit.elf: build/$(ESP32_CHIP)/lib/libtoit_image.a build/config.json
 	make -C toolchains/$(ESP32_CHIP)/
 	$(TOITVM_BIN) tools/inject_config.toit build/config.json build/$(ESP32_CHIP)/toit.bin
 
-build/$(ESP32_CHIP)/lib/libtoit_image.a: build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s build/$(ESP32_CHIP)/CMakeCache.txt  build/$(ESP32_CHIP)/include/sdkconfig.h
+build/$(ESP32_CHIP)/lib/libtoit_image.a: build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s build/$(ESP32_CHIP)/CMakeCache.txt build/$(ESP32_CHIP)/include/sdkconfig.h
 	(cd build/$(ESP32_CHIP) && ninja toit_image)
 
 build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s: build/$(ESP32_CHIP)/ build/snapshot $(TOITVM_BIN) $(SNAPSHOT_DIR)/snapshot_to_image.snapshot
@@ -167,22 +183,9 @@ build/$(ESP32_CHIP)/:
 build/$(ESP32_CHIP)/include/sdkconfig.h: build/$(ESP32_CHIP)/
 	make -C toolchains/$(ESP32_CHIP) -s "$(CURDIR)"/$@
 
+.PHONY: build/config.json
 build/config.json:
 	echo '{"wifi": {"ssid": "$(ESP32_WIFI_SSID)", "password": "$(ESP32_WIFI_PASSWORD)"}}' > $@
-
-.PHONY: esp32-snapshots
-esp32-snapshots:
-$(SNAPSHOT_DIR)/snapshot_to_image.snapshot: tools/snapshot_to_image.toit $(TOITC_BIN) $(SNAPSHOT_DIR)
-	$(TOITC_BIN) -w $@ $<
-
-$(SNAPSHOT_DIR)/system_message.snapshot: tools/system_message.toit $(TOITC_BIN) $(SNAPSHOT_DIR)
-	$(TOITC_BIN) -w $@ $<
-
-$(SNAPSHOT_DIR)/inject_config.snapshot: tools/inject_config.toit $(TOITC_BIN) $(SNAPSHOT_DIR)
-	$(TOITC_BIN) -w $@ $<
-
-$(SNAPSHOT_DIR):
-	mkdir -p $@
 
 
 # ESP32 VARIANTS FLASH
@@ -198,7 +201,6 @@ endif
 
 
 # UTILITY
-
 .PHONY:	clean
 clean:
 	rm -rf build/
