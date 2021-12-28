@@ -73,7 +73,7 @@ jobs:
           string(TIMESTAMP current_date "%Y-%m-%d-%H;%M;%S" UTC)
           message("::set-output name=timestamp::${current_date}")
 
-      - name: Ccache Cache
+      - name: Ccache cache
         uses: actions/cache@v2
         with:
           path: ${{ github.workspace }}/.ccache
@@ -160,7 +160,7 @@ jobs:
           string(TIMESTAMP current_date "%Y-%m-%d-%H;%M;%S" UTC)
           message("::set-output name=timestamp::${current_date}")
 
-      - name: Ccache Cache
+      - name: Ccache cache
         uses: actions/cache@v2
         with:
           path: ${{ github.workspace }}/.ccache
@@ -175,7 +175,7 @@ jobs:
           cmake --version
           gcc --version
 
-      - name: Install Esp32 tools
+      - name: Install ESP32 tools
         run: |
           third_party/esp-idf/install.sh
 
