@@ -1,0 +1,22 @@
+tests/negative/incomplete_string_char_test.toit:7:8: error: Unterminated string
+  x := "foo
+       ^~~~
+tests/negative/incomplete_string_char_test.toit:8:10: error: Unterminated string
+  x = "$z foo
+         ^~~~
+tests/negative/incomplete_string_char_test.toit:9:12: error: Unterminated string
+  x = "$(z) foo
+           ^~~~
+tests/negative/incomplete_string_char_test.toit:10:11: error: Invalid format string
+  x = "$(%_ 499)"
+          ^
+tests/negative/incomplete_string_char_test.toit:13:8: error: Unterminated string
+  y := """
+       ^
+tests/negative/incomplete_string_char_test.toit:11:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+tests/negative/incomplete_string_char_test.toit:12:7: error: Type mismatch. Expected 'int'. Got 'string'
+  foo "str"
+      ^~~~~
+Compilation failed.

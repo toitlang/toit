@@ -1,0 +1,4 @@
+<...>/tests/negative/lock_sdk_empty/package.lock:1:5: error: Invalid empty SDK constraint
+sdk:
+    ^
+Compilation failed.

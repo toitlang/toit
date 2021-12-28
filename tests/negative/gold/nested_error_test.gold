@@ -1,0 +1,20 @@
+tests/negative/nested_error_test.toit:18:11: error: Can't call result of evaluating expression
+    local := ? 42
+          ^~
+tests/negative/nested_error_test.toit:19:11: error: Unresolved identifier: 'local'
+    : bar local
+          ^~~~~
+tests/negative/nested_error_test.toit:23:5: error: Can't call result of evaluating expression
+    (local := ?) 42
+    ^
+tests/negative/nested_error_test.toit:23:12: error: Definition of variable not allowed at this location
+    (local := ?) 42
+           ^~
+tests/negative/nested_error_test.toit:24:11: error: Unresolved identifier: 'local'
+    : bar local
+          ^~~~~
+Couldn't find 'main' (with 0 or 1 argument) in entry file 'tests/negative/nested_error_test.toit'
+tests/negative/nested_error_test.toit:17:6: error: Class 'string' does not have any method 'bar'
+  "".bar
+     ^~~
+Compilation failed.

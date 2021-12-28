@@ -1,0 +1,10 @@
+tests/negative/compound_type_test.toit:6:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+tests/negative/compound_type_test.toit:5:14: error: Type mismatch. Expected 'int'. Got 'string'
+  list["str".copy 1]++
+             ^~~~
+tests/negative/compound_type_test.toit:5:14: error: Type mismatch. Expected 'int'. Got 'string'
+  list["str".copy 1]++
+             ^~~~
+Compilation failed.

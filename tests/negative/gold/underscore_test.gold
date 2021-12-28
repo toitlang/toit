@@ -1,0 +1,46 @@
+tests/negative/underscore_test.toit:20:7: error: Can't use '_' as name for a class
+class _:
+      ^
+tests/negative/underscore_test.toit:34:1: error: Can't use '_' as name for a field
+_ := 42
+^
+tests/negative/underscore_test.toit:36:1: error: Can't use '_' as name for a method
+_= x:
+^
+tests/negative/underscore_test.toit:23:3: error: Can't use '_' as name for a field
+  _ := 499
+  ^
+tests/negative/underscore_test.toit:25:10: error: Can't use '_' as name for a method
+  static _:
+         ^
+tests/negative/underscore_test.toit:26:3: error: Can't use '_' as name for a method
+  _ x:
+  ^
+tests/negative/underscore_test.toit:28:10: error: Can't use '_' as name for a field
+  static _ := 42
+         ^
+tests/negative/underscore_test.toit:30:15: error: Can't use '_' as name for a constructor
+  constructor._:
+              ^
+tests/negative/underscore_test.toit:32:3: error: Can't use '_' as name for a method
+  _= x:
+  ^
+tests/negative/underscore_test.toit:5:10: error: Can't reference '_'
+  return _
+         ^
+tests/negative/underscore_test.toit:12:12: error: Can't reference '_'
+    return _
+           ^
+tests/negative/underscore_test.toit:14:5: error: Can't reference '_'
+    _
+    ^
+tests/negative/underscore_test.toit:17:3: error: Can't use '_' as name for a local variable
+  _ := 499
+  ^
+tests/negative/underscore_test.toit:18:10: error: Can't reference '_'
+  return _
+         ^
+tests/negative/underscore_test.toit:39:3: error: Can't reference '_'
+  _
+  ^
+Compilation failed.

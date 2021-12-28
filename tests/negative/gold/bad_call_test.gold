@@ -1,0 +1,46 @@
+tests/negative/bad_call_test.toit:25:11: error: Definition of variable not allowed at this location
+  foo foo := 0
+          ^~
+tests/negative/bad_call_test.toit:25:3: error: Unresolved identifier: 'foo'
+  foo foo := 0
+  ^~~
+tests/negative/bad_call_test.toit:26:9: error: Unresolved identifier: 'foo'
+  debug foo
+        ^~~
+tests/negative/bad_call_test.toit:6:15: error: Definition of variable not allowed at this location
+    super foo := 0
+              ^~
+tests/negative/bad_call_test.toit:6:5: error: Only one super call at the top-level of a constructor is allowed
+    super foo := 0
+    ^~~~~
+tests/negative/bad_call_test.toit:7:11: error: Unresolved identifier: 'foo'
+    print foo
+          ^~~
+tests/negative/bad_call_test.toit:11:17: error: Definition of variable not allowed at this location
+      super foo := 0
+                ^~
+tests/negative/bad_call_test.toit:11:7: error: Super constructor calls must be at the top-level
+      super foo := 0
+      ^~~~~
+tests/negative/bad_call_test.toit:12:11: error: Unresolved identifier: 'foo'
+    print foo
+          ^~~
+tests/negative/bad_call_test.toit:16:17: error: Definition of variable not allowed at this location
+      super foo := 0
+                ^~
+tests/negative/bad_call_test.toit:16:7: error: Can't access 'super' in factory method
+      super foo := 0
+      ^~~~~
+tests/negative/bad_call_test.toit:17:11: error: Unresolved identifier: 'foo'
+    print foo
+          ^~~
+tests/negative/bad_call_test.toit:21:15: error: Definition of variable not allowed at this location
+    super foo := 0
+              ^~
+tests/negative/bad_call_test.toit:21:5: error: Can't access 'super' in static method
+    super foo := 0
+    ^~~~~
+tests/negative/bad_call_test.toit:22:11: error: Unresolved identifier: 'foo'
+    print foo
+          ^~~
+Compilation failed.

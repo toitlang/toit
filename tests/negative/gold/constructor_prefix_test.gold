@@ -1,0 +1,7 @@
+tests/negative/constructor_prefix_test.toit:7:18: error: Can't use prefix 'core' as an expression
+  constructor: x=core
+                 ^~~~
+tests/negative/constructor_prefix_test.toit:8:22: error: Can't use prefix 'core' as an expression
+  constructor.named: core
+                     ^~~~
+Compilation failed.

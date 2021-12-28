@@ -1,0 +1,4 @@
+tests/negative/named_constructor_test.toit:8:8: error: Class 'A' only has named constructors
+  a := A  // There should not be an implicit constructor.
+       ^
+Compilation failed.

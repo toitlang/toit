@@ -1,0 +1,7 @@
+tests/negative/named_constructor2_test.toit:8:10: error: Couldn't find matching constructor in superclass 'A'
+    super.foo  // Finds the static function.
+         ^
+tests/negative/named_constructor2_test.toit:9:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+Compilation failed.

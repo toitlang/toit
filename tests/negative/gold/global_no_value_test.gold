@@ -1,0 +1,4 @@
+tests/negative/global_no_value_test.toit:3:1: error: Global variables must have initializers
+global / any
+^~~~~~
+Compilation failed.

@@ -1,0 +1,37 @@
+tests/negative/uninitialized_field_test.toit:67:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+tests/negative/uninitialized_field_test.toit:11:3: error: Field 'field' must be initialized in a constructor
+  field / any
+  ^~~~~
+tests/negative/uninitialized_field_test.toit:16:3: error: Field 'field' not initialized on all paths in constructor
+  constructor:
+  ^~~~~~~~~~~
+tests/negative/uninitialized_field_test.toit:20:3: error: Field 'field' not initialized on all paths in constructor
+  constructor.x:
+  ^~~~~~~~~~~
+tests/negative/uninitialized_field_test.toit:26:3: error: Field 'field' not initialized on all paths in constructor
+  constructor.y:
+  ^~~~~~~~~~~
+tests/negative/uninitialized_field_test.toit:31:5: error: Field 'field' not initialized on all paths
+    super
+    ^~~~~
+tests/negative/uninitialized_field_test.toit:34:5: error: Field 'field' not initialized on all paths before implicit super-call
+    some_fun this
+    ^~~~~~~~
+tests/negative/uninitialized_field_test.toit:36:3: error: Field 'field' not initialized on all paths in constructor
+  constructor.gee:
+  ^~~~~~~~~~~
+tests/negative/uninitialized_field_test.toit:40:3: error: Field 'field' not initialized on all paths in constructor
+  constructor.lambda:
+  ^~~~~~~~~~~
+tests/negative/uninitialized_field_test.toit:44:3: error: Field 'field' not initialized on all paths in constructor
+  constructor.try_finally:
+  ^~~~~~~~~~~
+tests/negative/uninitialized_field_test.toit:49:3: error: Field 'field' not initialized on all paths in constructor
+  constructor.logical_and arg:
+  ^~~~~~~~~~~
+tests/negative/uninitialized_field_test.toit:52:3: error: Field 'field' not initialized on all paths in constructor
+  constructor.logical_or arg:
+  ^~~~~~~~~~~
+Compilation failed.

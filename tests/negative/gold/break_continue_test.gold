@@ -1,0 +1,40 @@
+tests/negative/break_continue_test.toit:5:9: error: 'break' can't break out of lambda
+    (:: break).call
+        ^~~~~
+tests/negative/break_continue_test.toit:5:6: note: Location of the lambda that 'break' would break out of
+    (:: break).call
+     ^~~~~~~~
+tests/negative/break_continue_test.toit:6:9: error: 'continue' can't break out of lambda
+    (:: continue).call
+        ^~~~~~~~
+tests/negative/break_continue_test.toit:6:6: note: Location of the lambda that 'continue' would break out of
+    (:: continue).call
+     ^~~~~~~~~~~
+tests/negative/break_continue_test.toit:7:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+tests/negative/break_continue_test.toit:12:11: error: 'break' can't break out of lambda
+      (:: break).call
+          ^~~~~
+tests/negative/break_continue_test.toit:12:8: note: Location of the lambda that 'break' would break out of
+      (:: break).call
+       ^~~~~~~~
+tests/negative/break_continue_test.toit:13:11: error: 'continue' can't break out of lambda
+      (:: continue).call
+          ^~~~~~~~
+tests/negative/break_continue_test.toit:13:8: note: Location of the lambda that 'continue' would break out of
+      (:: continue).call
+       ^~~~~~~~~~~
+tests/negative/break_continue_test.toit:14:7: error: Unresolved identifier: 'unresolved'
+      unresolved
+      ^~~~~~~~~~
+tests/negative/break_continue_test.toit:19:3: error: 'break' must be inside loop
+  break
+  ^~~~~
+tests/negative/break_continue_test.toit:20:3: error: 'continue' must be inside loop
+  continue
+  ^~~~~~~~
+tests/negative/break_continue_test.toit:21:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+Compilation failed.

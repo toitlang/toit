@@ -1,0 +1,58 @@
+tests/negative/default_values6_test.toit:3:17: error: Default value can't be a block
+foo [x] --named=x:
+                ^
+tests/negative/default_values6_test.toit:4:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+tests/negative/default_values6_test.toit:6:10: error: Block parameters may not have a default value.
+foo2 [x] [--named]=x:
+         ^~~~~~~~
+tests/negative/default_values6_test.toit:6:20: error: Default value can't be a block
+foo2 [x] [--named]=x:
+                   ^
+tests/negative/default_values6_test.toit:7:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+tests/negative/default_values6_test.toit:9:11: error: Block parameters may not have a default value.
+foo2b [x] [--named=x]:
+          ^~~~~~~~
+tests/negative/default_values6_test.toit:9:20: error: Default value can't be a block
+foo2b [x] [--named=x]:
+                   ^
+tests/negative/default_values6_test.toit:10:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+tests/negative/default_values6_test.toit:12:6: error: Block parameters may not have a default value.
+foo3 [x=(:499)]:
+     ^~
+tests/negative/default_values6_test.toit:12:10: error: Unexpected block
+foo3 [x=(:499)]:
+         ^~~~
+tests/negative/default_values6_test.toit:12:9: error: Default value can't be a block
+foo3 [x=(:499)]:
+        ^
+tests/negative/default_values6_test.toit:13:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+tests/negative/default_values6_test.toit:15:7: error: Block parameters may not have a default value.
+foo3b [x]=(:499):
+      ^~
+tests/negative/default_values6_test.toit:15:12: error: Unexpected block
+foo3b [x]=(:499):
+           ^~~~
+tests/negative/default_values6_test.toit:15:11: error: Default value can't be a block
+foo3b [x]=(:499):
+          ^
+tests/negative/default_values6_test.toit:16:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+tests/negative/default_values6_test.toit:18:10: error: Block parameters may not have a default value.
+foo4 [x] [y]=x:
+         ^~
+tests/negative/default_values6_test.toit:18:14: error: Default value can't be a block
+foo4 [x] [y]=x:
+             ^
+tests/negative/default_values6_test.toit:19:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+Compilation failed.

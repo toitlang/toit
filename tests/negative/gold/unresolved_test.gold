@@ -1,0 +1,13 @@
+tests/negative/unresolved_test.toit:4:7: error: Unresolved identifier: 'bar'
+  foo bar (gee (toto 1 2))
+      ^~~
+tests/negative/unresolved_test.toit:4:17: error: Unresolved identifier: 'toto'
+  foo bar (gee (toto 1 2))
+                ^~~~
+tests/negative/unresolved_test.toit:4:12: error: Unresolved identifier: 'gee'
+  foo bar (gee (toto 1 2))
+           ^~~
+tests/negative/unresolved_test.toit:4:3: error: Unresolved identifier: 'foo'
+  foo bar (gee (toto 1 2))
+  ^~~
+Compilation failed.

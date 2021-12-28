@@ -1,0 +1,4 @@
+tests/negative/abstract2_test.toit:8:12: error: Unresolved identifier: 'foo'
+    return super
+           ^~~~~
+Compilation failed.

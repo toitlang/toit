@@ -1,0 +1,2 @@
+The SDK constraint defined in the package.lock file is not satisfied: <GIT_VERSION> < ^0199.0.9
+Compilation failed.
