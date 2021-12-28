@@ -1,0 +1,19 @@
+tests/negative/uninitialized_field4_test.toit:6:3: error: Invalid name for declaration
+  := ?
+  ^~
+tests/negative/uninitialized_field4_test.toit:6:6: error: Unexpected token: ?
+  := ?
+     ^
+tests/negative/uninitialized_field4_test.toit:7:3: error: Invalid name for declaration
+  / int ::= ?
+  ^
+tests/negative/uninitialized_field4_test.toit:7:9: error: Unexpected token: ::=
+  / int ::= ?
+        ^~~
+tests/negative/uninitialized_field4_test.toit:7:13: error: Unexpected delimiter
+  / int ::= ?
+            ^
+tests/negative/uninitialized_field4_test.toit:6:3: error: Missing body
+  := ?
+  ^~
+Compilation failed.

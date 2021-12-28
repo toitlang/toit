@@ -1,0 +1,7 @@
+tests/negative/lambda5_test.toit:6:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+tests/negative/lambda5_test.toit:5:7: error: Class 'Lambda' does not have any method 'foo'
+  fun.foo
+      ^~~
+Compilation failed.

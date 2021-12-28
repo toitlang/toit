@@ -1,0 +1,7 @@
+tests/negative/monitor2_test.toit:5:3: error: Redefinition of 'get'
+  get x:
+  ^~~
+tests/negative/monitor2_test.toit:4:3: note: First definition of 'get'
+  get x:
+  ^~~
+Compilation failed.

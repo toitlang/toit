@@ -1,0 +1,3 @@
+EXCEPTION error. 
+oops
+  0: main.<lambda>.<lambda>.<lambda> tests/negative/nested_throw_test.toit:5:14

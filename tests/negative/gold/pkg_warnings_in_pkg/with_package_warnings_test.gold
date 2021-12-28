@@ -1,0 +1,4 @@
+<pkg:target-1.0>/foo.toit:7:3: warning: Deprecated 'deprecated'
+  deprecated
+  ^~~~~~~~~~
+Compilation failed.

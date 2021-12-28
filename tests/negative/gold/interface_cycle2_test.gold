@@ -1,0 +1,7 @@
+tests/negative/interface_cycle2_test.toit:3:11: error: Cycle in super/interface chain
+interface A implements A:
+          ^
+tests/negative/interface_cycle2_test.toit:3:24: error: This clause contributes to the cycle
+interface A implements A:
+                       ^
+Compilation failed.

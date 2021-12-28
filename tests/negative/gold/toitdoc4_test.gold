@@ -1,0 +1,29 @@
+tests/negative/toitdoc4_test.toit:23:11: error: Setters must take exactly one parameter
+setter= x y:
+          ^
+tests/negative/toitdoc4_test.toit:22:7: warning: A setter must take exactly one argument
+/// $(setter= x y)
+      ^~~~~~
+tests/negative/toitdoc4_test.toit:4:2: warning: Unresolved reference 'super'
+$super
+ ^~~~~
+tests/negative/toitdoc4_test.toit:5:3: warning: Unresolved reference 'super'
+$(super)
+  ^~~~~
+tests/negative/toitdoc4_test.toit:11:2: warning: Unresolved reference 'super'
+$super
+ ^~~~~
+tests/negative/toitdoc4_test.toit:12:3: warning: Unresolved reference 'super'
+$(super)
+  ^~~~~
+tests/negative/toitdoc4_test.toit:13:3: warning: Can't resolve reference 'this' with the given shape
+$(this)
+  ^~~~
+tests/negative/toitdoc4_test.toit:17:5: warning: Can't resolve reference 'super' with the given shape
+  $(super x)
+    ^~~~~
+tests/negative/toitdoc4_test.toit:18:5: warning: Can't resolve reference 'this' with the given shape
+  $(this)
+    ^~~~
+Couldn't find 'main' (with 0 or 1 argument) in entry file 'tests/negative/toitdoc4_test.toit'
+Compilation failed.

@@ -1,0 +1,7 @@
+tests/negative/indent6_test.toit:4:19: error: Unexpected |
+  if list.sorted: |a b| a > b:
+                  ^
+tests/negative/indent6_test.toit:4:6: error: Unresolved identifier: 'list'
+  if list.sorted: |a b| a > b:
+     ^~~~
+Compilation failed.

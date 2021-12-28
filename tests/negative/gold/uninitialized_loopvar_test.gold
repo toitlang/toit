@@ -1,0 +1,19 @@
+tests/negative/uninitialized_loopvar_test.toit:13:19: error: Can't assign '?' to condition loop variable
+  while local ::= ?:
+                  ^
+tests/negative/uninitialized_loopvar_test.toit:17:19: error: Can't assign '?' to condition loop variable
+  while local ::= ?:
+                  ^
+tests/negative/uninitialized_loopvar_test.toit:21:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+tests/negative/uninitialized_loopvar_test.toit:9:33: error: Can't assign to final local
+  for local ::= ?; i < 3; local = 499:
+                                ^
+tests/negative/uninitialized_loopvar_test.toit:15:11: error: Can't assign to final local
+    local = 499
+          ^
+tests/negative/uninitialized_loopvar_test.toit:19:13: error: Can't assign to final local multiple times
+      local = 499
+            ^
+Compilation failed.

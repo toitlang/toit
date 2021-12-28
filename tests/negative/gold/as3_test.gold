@@ -1,0 +1,13 @@
+tests/negative/as3_test.toit:22:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+tests/negative/as3_test.toit:16:11: error: Type mismatch. Expected 'I'. Got 'B'
+  wants_i B
+          ^
+tests/negative/as3_test.toit:19:12: error: Type mismatch. Expected 'I2'. Got 'B'
+  wants_i2 B
+           ^
+tests/negative/as3_test.toit:20:21: error: Type mismatch. Expected 'I2'. Got 'C'
+  wants_i2 static_b as C
+                    ^~
+Compilation failed.

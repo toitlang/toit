@@ -1,0 +1,10 @@
+tests/negative/blockA_test.toit:5:16: error: Unresolved identifier: 'unresolved'
+  b.call --foo=unresolved
+               ^~~~~~~~~~
+tests/negative/blockA_test.toit:5:4: error: Can't invoke a block with a named argument.
+  b.call --foo=unresolved
+   ^
+tests/negative/blockA_test.toit:6:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+Compilation failed.

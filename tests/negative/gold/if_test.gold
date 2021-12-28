@@ -1,0 +1,28 @@
+tests/negative/if_test.toit:4:5: error: Incomplete expression
+  if
+    ^
+tests/negative/if_test.toit:4:5: error: Missing ':' for 'if' condition
+  if
+    ^
+tests/negative/if_test.toit:6:5: error: Missing ':' for 'if' condition
+    print unresolved
+    ^~~~~
+tests/negative/if_test.toit:7:9: error: Incomplete expression
+  if "".
+        ^
+tests/negative/if_test.toit:7:9: error: Missing ':' for 'if' condition
+  if "".
+        ^
+tests/negative/if_test.toit:8:5: error: Missing condition
+  if:
+    ^
+tests/negative/if_test.toit:5:6: error: 'break' must be inside loop
+  if break
+     ^~~~~
+tests/negative/if_test.toit:6:11: error: Unresolved identifier: 'unresolved'
+    print unresolved
+          ^~~~~~~~~~
+tests/negative/if_test.toit:9:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+Compilation failed.

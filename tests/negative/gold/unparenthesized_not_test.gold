@@ -1,0 +1,41 @@
+tests/negative/unparenthesized_not_test.toit:4:13: error: 'not' must be parenthesized when used at this location
+  foo param=not true: unresolved
+            ^~~
+tests/negative/unparenthesized_not_test.toit:5:13: error: 'not' must be parenthesized when used at this location
+  bar param=not not true: unresolved
+            ^~~
+tests/negative/unparenthesized_not_test.toit:5:17: error: 'not' must be parenthesized when used at this location
+  bar param=not not true: unresolved
+                ^~~
+tests/negative/unparenthesized_not_test.toit:6:13: error: 'not' must be parenthesized when used at this location
+  gee param=not: unresolved
+            ^~~
+tests/negative/unparenthesized_not_test.toit:7:16: error: 'not' must be parenthesized when used at this location
+  foobar param=not
+               ^~~
+tests/negative/unparenthesized_not_test.toit:7:19: error: Incomplete expression
+  foobar param=not
+                  ^
+tests/negative/unparenthesized_not_test.toit:6:3: error: Missing body
+  gee param=not: unresolved
+  ^~~
+tests/negative/unparenthesized_not_test.toit:7:3: error: Missing body
+  foobar param=not
+  ^~~~~~
+tests/negative/unparenthesized_not_test.toit:4:23: error: Unresolved identifier: 'unresolved'
+  foo param=not true: unresolved
+                      ^~~~~~~~~~
+tests/negative/unparenthesized_not_test.toit:5:27: error: Unresolved identifier: 'unresolved'
+  bar param=not not true: unresolved
+                          ^~~~~~~~~~
+tests/negative/unparenthesized_not_test.toit:6:16: error: Unexpected block
+  gee param=not: unresolved
+               ^~~~~~~~~~~~
+tests/negative/unparenthesized_not_test.toit:6:18: error: Unresolved identifier: 'unresolved'
+  gee param=not: unresolved
+                 ^~~~~~~~~~
+tests/negative/unparenthesized_not_test.toit:6:16: error: Can't negate blocks
+  gee param=not: unresolved
+               ^~~~~~~~~~~~
+Couldn't find 'main' (with 0 or 1 argument) in entry file 'tests/negative/unparenthesized_not_test.toit'
+Compilation failed.

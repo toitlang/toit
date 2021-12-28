@@ -1,0 +1,35 @@
+tests/negative/incomplete_string_interpolation_test.toit:4:12: error: Incomplete expression
+  print "$( /* " // */
+           ^~~~~~~~~~~
+tests/negative/incomplete_string_interpolation_test.toit:4:11: error: Missing closing ')'
+  print "$( /* " // */
+          ^~~~~~~~~~~~
+tests/negative/incomplete_string_interpolation_test.toit:7:13: error: Unterminated string
+  unresolved
+            ^
+tests/negative/incomplete_string_interpolation_test.toit:12:14: error: Incomplete expression
+  print """$( /* """ // */
+             ^~~~~~~~~~~~~
+tests/negative/incomplete_string_interpolation_test.toit:12:13: error: Missing closing ')'
+  print """$( /* """ // */
+            ^~~~~~~~~~~~~~
+tests/negative/incomplete_string_interpolation_test.toit:21:13: error: Missing closing ')'
+  print """$(4     // Gives an error about not being allowed to call an expression.
+            ^
+tests/negative/incomplete_string_interpolation_test.toit:10:3: error: Unresolved identifier: 'unresolved2'
+  unresolved2  // Gives an error.
+  ^~~~~~~~~~~
+tests/negative/incomplete_string_interpolation_test.toit:19:3: error: Unresolved identifier: 'unresolved3'
+  unresolved3  // Gives an error.
+  ^~~~~~~~~~~
+tests/negative/incomplete_string_interpolation_test.toit:22:5: error: Unresolved identifier: 'unresolved4'
+    unresolved4  // Gives an error.
+    ^~~~~~~~~~~
+tests/negative/incomplete_string_interpolation_test.toit:21:14: error: Can't call result of evaluating expression
+  print """$(4     // Gives an error about not being allowed to call an expression.
+             ^
+tests/negative/incomplete_string_interpolation_test.toit:26:6: error: Argument mismatch for 'bar'
+Method does not take any arguments, but one was provided
+bar: bar 3  // This line is again active.
+     ^~~
+Compilation failed.

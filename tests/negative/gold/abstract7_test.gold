@@ -1,0 +1,16 @@
+tests/negative/abstract7_test.toit:7:12: error: Members can't be abstract in non-abstract class
+  abstract bar x
+           ^~~
+tests/negative/abstract7_test.toit:10:12: error: Members can't be abstract in non-abstract class
+  abstract gee x y
+           ^~~
+tests/negative/abstract7_test.toit:6:7: error: Non-abstract class 'B' is missing implementations
+class B extends A:
+      ^
+tests/negative/abstract7_test.toit:4:12: note: Missing implementation for 'foo'
+  abstract foo
+           ^~~
+tests/negative/abstract7_test.toit:7:12: note: Missing implementation for 'bar'
+  abstract bar x
+           ^~~
+Compilation failed.

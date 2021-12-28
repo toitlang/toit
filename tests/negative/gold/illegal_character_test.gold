@@ -1,0 +1,8 @@
+tests/negative/illegal_character_test.toit:4:1: error: Invalid name for declaration
+
+^
+tests/negative/illegal_character_test.toit:4:1: error: Missing body
+
+^
+Couldn't find 'main' (with 0 or 1 argument) in entry file 'tests/negative/illegal_character_test.toit'
+Compilation failed.

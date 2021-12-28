@@ -1,0 +1,7 @@
+tests/negative/type_test.toit:6:18: error: Constructors may not have return types
+  constructor -> A:
+                 ^
+tests/negative/type_test.toit:6:3: error: Type mismatch. Expected 'A'. Got 'B'
+  constructor -> A:
+  ^~~~~~~~~~~
+Compilation failed.

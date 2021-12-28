@@ -1,0 +1,7 @@
+tests/negative/postfix_test.toit:4:3: error: Can't assign to unknown 'unresolved'
+  unresolved++
+  ^~~~~~~~~~
+tests/negative/postfix_test.toit:5:3: error: Can't assign to unknown 'unresolved'
+  unresolved++
+  ^~~~~~~~~~
+Compilation failed.
