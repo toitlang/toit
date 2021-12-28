@@ -1,0 +1,10 @@
+prefixes:
+  target: target
+  target2: "target2"
+packages:
+  target:
+    path: "target"
+    prefixes:
+      foo: target2
+  target2:
+    path: target2

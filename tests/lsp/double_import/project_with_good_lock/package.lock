@@ -1,0 +1,5 @@
+prefixes:
+  pkg: pkg
+packages:
+  pkg:
+    path: ../pkg_for_shared

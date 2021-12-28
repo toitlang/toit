@@ -1,4 +1,4 @@
 tests/negative/import7_test.toit:3:20: error: Not at dedent
-import http as foo import http as bar
+import math as foo import math as bar
                    ^~~~~~
 Compilation failed.

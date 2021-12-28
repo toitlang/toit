@@ -1,6 +1,6 @@
 // Copyright (C) 2018 Toitware ApS. All rights reserved.
 
-import http as prefix
+import math as prefix
 
 class A:
   foo:
