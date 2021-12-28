@@ -34,14 +34,14 @@ add_custom_target(
   check
   COMMAND ${CMAKE_CTEST_COMMAND} -j${NUM_CPU} -T test --output-on-failure
   USES_TERMINAL
-  DEPENDS build_toitvm
+  DEPENDS build_tools
   )
 
 add_custom_target(
   check_slow
   COMMAND ${CMAKE_CTEST_COMMAND} -j${NUM_CPU} -T test -C slow --output-on-failure
   USES_TERMINAL
-  DEPENDS build_toitvm
+  DEPENDS build_tools
   )
 
 foreach(file ${TOIT_TESTS})
