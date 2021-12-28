@@ -77,7 +77,7 @@ jobs:
           string(TIMESTAMP current_date "%Y-%m-%d-%H;%M;%S" UTC)
           message("::set-output name=timestamp::${current_date}")
 
-      - name: Ccache Cache
+      - name: Ccache cache
         uses: actions/cache@v2
         with:
           path: ${{ github.workspace }}/.ccache
@@ -144,3 +144,62 @@ jobs:
           file: build/${{ matrix.artifact }}
           tag: ${{ github.ref }}
           overwrite: true
+
+  # Really annoying that we need to duplicate so much.
+  esp32:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Fetch tags
+        # The github checkout is shallow and doesn't have tags.
+        run: |
+          git fetch --tags
+
+      - name: Initialize submodules
+        run: |
+          git submodule sync --recursive
+          git submodule update --init --recursive -j 2
+
+      # We create a new id every second.
+      # The 'restore-keys' below will make sure that we continue using earlier versions.
+      - name: Create timestamp
+        id: timestamp
+        shell: cmake -P {0}
+        run: |
+          string(TIMESTAMP current_date "%Y-%m-%d-%H;%M;%S" UTC)
+          message("::set-output name=timestamp::${current_date}")
+
+      - name: Ccache cache
+        uses: actions/cache@v2
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: esp32-ccache-${{ steps.timestamp.outputs.timestamp }}
+          restore-keys: esp32-ccache-
+
+      - name: Install dependencies - Linux
+        run: |
+          sudo apt-get update
+          sudo apt-get install ninja-build ccache
+          ninja --version
+          cmake --version
+          gcc --version
+
+      - name: Install ESP32 tools
+        run: |
+          third_party/esp-idf/install.sh
+
+      # Build using make.
+      - name: make
+        env:
+          IDF_PATH: ${{ github.workspace }}/third_party/esp-idf
+          IDF_CCACHE_ENABLE: 1
+          CCACHE_DIR: ${{ github.workspace }}/.ccache
+          CCACHE_BASEDIR: ${{ github.workspace }}
+          CCACHE_COMPRESS: true
+          CCACHE_COMPRESSLEVEL: '6'
+          CCACHE_MAXSIZE: 400M
+        run: |
+          source third_party/esp-idf/export.sh
+          make esp32
