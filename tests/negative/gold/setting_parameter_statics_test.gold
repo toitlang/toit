@@ -1,0 +1,19 @@
+tests/negative/setting_parameter_statics_test.toit:4:5: error: Field-storing parameter not allowed in static functions
+foo .x:
+    ^~
+tests/negative/setting_parameter_statics_test.toit:5:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+tests/negative/setting_parameter_statics_test.toit:11:14: error: Field-storing parameter not allowed in static functions
+  static bar .y:
+             ^~
+tests/negative/setting_parameter_statics_test.toit:12:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/setting_parameter_statics_test.toit:14:14: error: Field-storing parameter not allowed in static functions
+  static gee .z:
+             ^~
+tests/negative/setting_parameter_statics_test.toit:15:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+Compilation failed.

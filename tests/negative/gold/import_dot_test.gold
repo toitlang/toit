@@ -1,0 +1,22 @@
+tests/negative/import_dot_test.toit:3:11: error: Incomplete import clause
+import ...
+          ^
+tests/negative/import_dot_test.toit:4:12: error: Incomplete import clause
+import foo.
+           ^
+tests/negative/import_dot_test.toit:5:11: error: Incomplete import clause
+import ...  // comment
+          ^~~~~~~~~~~~
+tests/negative/import_dot_test.toit:6:12: error: Incomplete import clause
+import foo. // comment
+           ^~~~~~~~~~~
+tests/negative/import_dot_test.toit:7:11: error: Incomplete import clause
+import ...  /* comment
+          ^
+tests/negative/import_dot_test.toit:9:12: error: Incomplete import clause
+import foo. /* comment
+           ^
+tests/negative/import_dot_test.toit:13:9: error: Unresolved identifier: 'unresolved'
+  print unresolved
+        ^~~~~~~~~~
+Compilation failed.

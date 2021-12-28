@@ -1,0 +1,409 @@
+tests/negative/reserved_test.toit:18:11: error: Missing ':' to end class signature
+class this=:
+          ^
+tests/negative/reserved_test.toit:18:11: error: Members must have the same indentation
+class this=:
+          ^
+tests/negative/reserved_test.toit:18:11: error: Invalid name for declaration
+class this=:
+          ^
+tests/negative/reserved_test.toit:19:12: error: Missing ':' to end class signature
+class super=:
+           ^
+tests/negative/reserved_test.toit:19:12: error: Members must have the same indentation
+class super=:
+           ^
+tests/negative/reserved_test.toit:19:12: error: Invalid name for declaration
+class super=:
+           ^
+tests/negative/reserved_test.toit:20:18: error: Missing ':' to end class signature
+class constructor=:
+                 ^
+tests/negative/reserved_test.toit:20:18: error: Members must have the same indentation
+class constructor=:
+                 ^
+tests/negative/reserved_test.toit:20:18: error: Invalid name for declaration
+class constructor=:
+                 ^
+tests/negative/reserved_test.toit:21:8: error: Missing ':' to end class signature
+class _=:
+       ^
+tests/negative/reserved_test.toit:21:8: error: Members must have the same indentation
+class _=:
+       ^
+tests/negative/reserved_test.toit:21:8: error: Invalid name for declaration
+class _=:
+       ^
+tests/negative/reserved_test.toit:49:9: error: Unexpected token: :=
+  this= := null
+        ^~
+tests/negative/reserved_test.toit:50:10: error: Unexpected token: :=
+  super= := null
+         ^~
+tests/negative/reserved_test.toit:51:16: error: Unexpected token: :=
+  constructor= := null
+               ^~
+tests/negative/reserved_test.toit:52:6: error: Unexpected token: :=
+  _= := null
+     ^~
+tests/negative/reserved_test.toit:59:16: error: Unexpected token: :=
+  static this= := null
+               ^~
+tests/negative/reserved_test.toit:60:17: error: Unexpected token: :=
+  static super= := null
+                ^~
+tests/negative/reserved_test.toit:61:23: error: Unexpected token: :=
+  static constructor= := null
+                      ^~
+tests/negative/reserved_test.toit:62:13: error: Unexpected token: :=
+  static _= := null
+            ^~
+tests/negative/reserved_test.toit:70:9: error: Unexpected :=
+  this= := null
+        ^~
+tests/negative/reserved_test.toit:71:10: error: Unexpected :=
+  super= := null
+         ^~
+tests/negative/reserved_test.toit:72:16: error: Unexpected :=
+  constructor= := null
+               ^~
+tests/negative/reserved_test.toit:73:6: error: Unexpected :=
+  _= := null
+     ^~
+tests/negative/reserved_test.toit:3:1: error: Can't use 'this' as name for a method
+this:
+^~~~
+tests/negative/reserved_test.toit:4:1: error: Can't use 'super' as name for a method
+super:
+^~~~~
+tests/negative/reserved_test.toit:5:1: error: Invalid name
+constructor:
+^~~~~~~~~~~
+tests/negative/reserved_test.toit:6:1: error: Can't use '_' as name for a method
+_:
+^
+tests/negative/reserved_test.toit:8:1: error: Can't use 'this' as name for a method
+this= x:
+^~~~
+tests/negative/reserved_test.toit:9:1: error: Can't use 'super' as name for a method
+super= x:
+^~~~~
+tests/negative/reserved_test.toit:10:1: error: Constructors can't be followed by '='
+constructor= x:
+^~~~~~~~~~~
+tests/negative/reserved_test.toit:10:1: error: Invalid name
+constructor= x:
+^~~~~~~~~~~
+tests/negative/reserved_test.toit:11:1: error: Can't use '_' as name for a method
+_= x:
+^
+tests/negative/reserved_test.toit:13:7: error: Can't use 'this' as name for a class
+class this:
+      ^~~~
+tests/negative/reserved_test.toit:14:7: error: Can't use 'super' as name for a class
+class super:
+      ^~~~~
+tests/negative/reserved_test.toit:15:7: error: Can't use 'constructor' as name for a class
+class constructor:
+      ^~~~~~~~~~~
+tests/negative/reserved_test.toit:16:7: error: Can't use '_' as name for a class
+class _:
+      ^
+tests/negative/reserved_test.toit:18:7: error: Can't use 'this' as name for a class
+class this=:
+      ^~~~
+tests/negative/reserved_test.toit:19:7: error: Can't use 'super' as name for a class
+class super=:
+      ^~~~~
+tests/negative/reserved_test.toit:20:7: error: Can't use 'constructor' as name for a class
+class constructor=:
+      ^~~~~~~~~~~
+tests/negative/reserved_test.toit:21:7: error: Can't use '_' as name for a class
+class _=:
+      ^
+tests/negative/reserved_test.toit:24:3: error: Can't use 'this' as name for a method
+  this:
+  ^~~~
+tests/negative/reserved_test.toit:25:3: error: Can't use 'super' as name for a method
+  super:
+  ^~~~~
+tests/negative/reserved_test.toit:27:3: error: Can't use '_' as name for a method
+  _:
+  ^
+tests/negative/reserved_test.toit:29:3: error: Can't use 'this' as name for a method
+  this= x:
+  ^~~~
+tests/negative/reserved_test.toit:30:3: error: Can't use 'super' as name for a method
+  super= x:
+  ^~~~~
+tests/negative/reserved_test.toit:31:3: error: Constructors can't be followed by '='
+  constructor= x:
+  ^~~~~~~~~~~
+tests/negative/reserved_test.toit:32:3: error: Can't use '_' as name for a method
+  _= x:
+  ^
+tests/negative/reserved_test.toit:34:10: error: Can't use 'this' as name for a method
+  static this:
+         ^~~~
+tests/negative/reserved_test.toit:35:10: error: Can't use 'super' as name for a method
+  static super:
+         ^~~~~
+tests/negative/reserved_test.toit:36:10: error: Constructors can't be static
+  static constructor:
+         ^~~~~~~~~~~
+tests/negative/reserved_test.toit:37:10: error: Can't use '_' as name for a method
+  static _:
+         ^
+tests/negative/reserved_test.toit:39:10: error: Can't use 'this' as name for a method
+  static this= x:
+         ^~~~
+tests/negative/reserved_test.toit:40:10: error: Can't use 'super' as name for a method
+  static super= x:
+         ^~~~~
+tests/negative/reserved_test.toit:41:10: error: Constructors can't be followed by '='
+  static constructor= x:
+         ^~~~~~~~~~~
+tests/negative/reserved_test.toit:41:10: error: Constructors can't be static
+  static constructor= x:
+         ^~~~~~~~~~~
+tests/negative/reserved_test.toit:42:10: error: Can't use '_' as name for a method
+  static _= x:
+         ^
+tests/negative/reserved_test.toit:44:3: error: Can't use 'this' as name for a field
+  this := null
+  ^~~~
+tests/negative/reserved_test.toit:45:3: error: Can't use 'super' as name for a field
+  super := null
+  ^~~~~
+tests/negative/reserved_test.toit:46:3: error: Can't use 'constructor' as name for a field
+  constructor := null
+  ^~~~~~~~~~~
+tests/negative/reserved_test.toit:47:3: error: Can't use '_' as name for a field
+  _ := null
+  ^
+tests/negative/reserved_test.toit:49:3: error: Can't use 'this' as name for a method
+  this= := null
+  ^~~~
+tests/negative/reserved_test.toit:50:3: error: Can't use 'super' as name for a method
+  super= := null
+  ^~~~~
+tests/negative/reserved_test.toit:51:3: error: Constructors can't be followed by '='
+  constructor= := null
+  ^~~~~~~~~~~
+tests/negative/reserved_test.toit:52:3: error: Can't use '_' as name for a method
+  _= := null
+  ^
+tests/negative/reserved_test.toit:54:10: error: Can't use 'this' as name for a field
+  static this := null
+         ^~~~
+tests/negative/reserved_test.toit:55:10: error: Can't use 'super' as name for a field
+  static super := null
+         ^~~~~
+tests/negative/reserved_test.toit:56:10: error: Can't use 'constructor' as name for a field
+  static constructor := null
+         ^~~~~~~~~~~
+tests/negative/reserved_test.toit:57:10: error: Can't use '_' as name for a field
+  static _ := null
+         ^
+tests/negative/reserved_test.toit:59:10: error: Can't use 'this' as name for a method
+  static this= := null
+         ^~~~
+tests/negative/reserved_test.toit:60:10: error: Can't use 'super' as name for a method
+  static super= := null
+         ^~~~~
+tests/negative/reserved_test.toit:61:10: error: Constructors can't be followed by '='
+  static constructor= := null
+         ^~~~~~~~~~~
+tests/negative/reserved_test.toit:61:10: error: Constructors can't be static
+  static constructor= := null
+         ^~~~~~~~~~~
+tests/negative/reserved_test.toit:62:10: error: Can't use '_' as name for a method
+  static _= := null
+         ^
+tests/negative/reserved_test.toit:13:7: error: Redefinition of 'this' as class
+class this:
+      ^~~~
+tests/negative/reserved_test.toit:3:1: note: First definition of 'this'
+this:
+^~~~
+tests/negative/reserved_test.toit:18:7: error: Redefinition of 'this' as class
+class this=:
+      ^~~~
+tests/negative/reserved_test.toit:3:1: note: First definition of 'this'
+this:
+^~~~
+tests/negative/reserved_test.toit:8:1: error: Redefinition of 'this' as method
+this= x:
+^~~~~
+tests/negative/reserved_test.toit:3:1: note: First definition of 'this'
+this:
+^~~~
+tests/negative/reserved_test.toit:14:7: error: Redefinition of 'super' as class
+class super:
+      ^~~~~
+tests/negative/reserved_test.toit:4:1: note: First definition of 'super'
+super:
+^~~~~
+tests/negative/reserved_test.toit:19:7: error: Redefinition of 'super' as class
+class super=:
+      ^~~~~
+tests/negative/reserved_test.toit:4:1: note: First definition of 'super'
+super:
+^~~~~
+tests/negative/reserved_test.toit:9:1: error: Redefinition of 'super' as method
+super= x:
+^~~~~~
+tests/negative/reserved_test.toit:4:1: note: First definition of 'super'
+super:
+^~~~~
+tests/negative/reserved_test.toit:15:7: error: Redefinition of 'constructor' as class
+class constructor:
+      ^~~~~~~~~~~
+tests/negative/reserved_test.toit:5:1: note: First definition of 'constructor'
+constructor:
+^~~~~~~~~~~
+tests/negative/reserved_test.toit:20:7: error: Redefinition of 'constructor' as class
+class constructor=:
+      ^~~~~~~~~~~
+tests/negative/reserved_test.toit:5:1: note: First definition of 'constructor'
+constructor:
+^~~~~~~~~~~
+tests/negative/reserved_test.toit:10:1: error: Redefinition of 'constructor' as method
+constructor= x:
+^~~~~~~~~~~~
+tests/negative/reserved_test.toit:5:1: note: First definition of 'constructor'
+constructor:
+^~~~~~~~~~~
+tests/negative/reserved_test.toit:36:10: error: Redefinition of 'constructor'
+  static constructor:
+         ^~~~~~~~~~~
+tests/negative/reserved_test.toit:26:3: note: First definition of 'constructor'
+  constructor:
+  ^~~~~~~~~~~
+tests/negative/reserved_test.toit:41:10: error: Redefinition of 'constructor'
+  static constructor= x:
+         ^~~~~~~~~~~~
+tests/negative/reserved_test.toit:31:3: note: First definition of 'constructor'
+  constructor= x:
+  ^~~~~~~~~~~~
+tests/negative/reserved_test.toit:61:10: error: Redefinition of 'constructor'
+  static constructor= := null
+         ^~~~~~~~~~~~
+tests/negative/reserved_test.toit:51:3: note: First definition of 'constructor'
+  constructor= := null
+  ^~~~~~~~~~~~
+tests/negative/reserved_test.toit:44:3: error: Redefinition of 'this'
+  this := null
+  ^~~~
+tests/negative/reserved_test.toit:24:3: note: First definition of 'this'
+  this:
+  ^~~~
+tests/negative/reserved_test.toit:34:10: error: Redefinition of 'this'
+  static this:
+         ^~~~
+tests/negative/reserved_test.toit:24:3: note: First definition of 'this'
+  this:
+  ^~~~
+tests/negative/reserved_test.toit:54:10: error: Redefinition of 'this'
+  static this := null
+         ^~~~
+tests/negative/reserved_test.toit:24:3: note: First definition of 'this'
+  this:
+  ^~~~
+tests/negative/reserved_test.toit:44:3: error: Redefinition of 'this'
+  this := null
+  ^~~~
+tests/negative/reserved_test.toit:29:3: note: First definition of 'this'
+  this= x:
+  ^~~~~
+tests/negative/reserved_test.toit:39:10: error: Redefinition of 'this'
+  static this= x:
+         ^~~~~
+tests/negative/reserved_test.toit:29:3: note: First definition of 'this'
+  this= x:
+  ^~~~~
+tests/negative/reserved_test.toit:59:10: error: Redefinition of 'this'
+  static this= := null
+         ^~~~~
+tests/negative/reserved_test.toit:49:3: note: First definition of 'this'
+  this= := null
+  ^~~~~
+tests/negative/reserved_test.toit:45:3: error: Redefinition of 'super'
+  super := null
+  ^~~~~
+tests/negative/reserved_test.toit:25:3: note: First definition of 'super'
+  super:
+  ^~~~~
+tests/negative/reserved_test.toit:35:10: error: Redefinition of 'super'
+  static super:
+         ^~~~~
+tests/negative/reserved_test.toit:25:3: note: First definition of 'super'
+  super:
+  ^~~~~
+tests/negative/reserved_test.toit:55:10: error: Redefinition of 'super'
+  static super := null
+         ^~~~~
+tests/negative/reserved_test.toit:25:3: note: First definition of 'super'
+  super:
+  ^~~~~
+tests/negative/reserved_test.toit:45:3: error: Redefinition of 'super'
+  super := null
+  ^~~~~
+tests/negative/reserved_test.toit:30:3: note: First definition of 'super'
+  super= x:
+  ^~~~~~
+tests/negative/reserved_test.toit:40:10: error: Redefinition of 'super'
+  static super= x:
+         ^~~~~~
+tests/negative/reserved_test.toit:30:3: note: First definition of 'super'
+  super= x:
+  ^~~~~~
+tests/negative/reserved_test.toit:60:10: error: Redefinition of 'super'
+  static super= := null
+         ^~~~~~
+tests/negative/reserved_test.toit:50:3: note: First definition of 'super'
+  super= := null
+  ^~~~~~
+tests/negative/reserved_test.toit:56:10: error: Redefinition of 'constructor'
+  static constructor := null
+         ^~~~~~~~~~~
+tests/negative/reserved_test.toit:46:3: note: First definition of 'constructor'
+  constructor := null
+  ^~~~~~~~~~~
+tests/negative/reserved_test.toit:65:3: error: Can't use 'this' as name for a local variable
+  this := null
+  ^~~~
+tests/negative/reserved_test.toit:66:3: error: Can't use 'super' as name for a local variable
+  super := null
+  ^~~~~
+tests/negative/reserved_test.toit:67:3: error: Can't use 'constructor' as name for a local variable
+  constructor := null
+  ^~~~~~~~~~~
+tests/negative/reserved_test.toit:68:3: error: Can't use '_' as name for a local variable
+  _ := null
+  ^
+tests/negative/reserved_test.toit:70:3: error: Can't assign to 'this'
+  this= := null
+  ^~~~
+tests/negative/reserved_test.toit:71:3: error: Can't assign to 'super' in static contexts
+  super= := null
+  ^~~~~
+tests/negative/reserved_test.toit:59:10: error: Setters must take exactly one parameter
+  static this= := null
+         ^~~~~
+tests/negative/reserved_test.toit:60:10: error: Setters must take exactly one parameter
+  static super= := null
+         ^~~~~~
+tests/negative/reserved_test.toit:62:10: error: Setters must take exactly one parameter
+  static _= := null
+         ^~
+tests/negative/reserved_test.toit:49:3: error: Setters must take exactly one parameter
+  this= := null
+  ^~~~~
+tests/negative/reserved_test.toit:50:3: error: Setters must take exactly one parameter
+  super= := null
+  ^~~~~~
+tests/negative/reserved_test.toit:52:3: error: Setters must take exactly one parameter
+  _= := null
+  ^~
+Compilation failed.

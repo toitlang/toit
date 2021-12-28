@@ -1,0 +1,3 @@
+As check failed: a B is not a A.
+  0: main                      tests/negative/as2_test.toit:8:5
+  1: __entry__.<lambda>        <sdk>/core/entry.toit:48:20

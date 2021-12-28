@@ -1,0 +1,7 @@
+tests/negative/incomplete_string_interpolation3_test.toit:4:11: error: Incomplete string interpolation
+  print "$
+          ^
+tests/negative/incomplete_string_interpolation3_test.toit:4:11: error: Unterminated string
+  print "$
+          ^
+Compilation failed.

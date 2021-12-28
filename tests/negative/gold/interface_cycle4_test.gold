@@ -1,0 +1,13 @@
+tests/negative/interface_cycle4_test.toit:3:11: error: Cycle in super/interface chain
+interface A implements C D:
+          ^
+tests/negative/interface_cycle4_test.toit:3:24: error: This clause contributes to the cycle
+interface A implements C D:
+                       ^
+tests/negative/interface_cycle4_test.toit:7:13: error: This clause contributes to the cycle
+interface C B:
+            ^
+tests/negative/interface_cycle4_test.toit:5:13: error: This clause contributes to the cycle
+interface B A:
+            ^
+Compilation failed.

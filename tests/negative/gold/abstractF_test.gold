@@ -1,0 +1,4 @@
+tests/negative/abstractF_test.toit:4:11: error: Expected name of declaration
+  abstract
+          ^
+Compilation failed.

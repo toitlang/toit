@@ -1,0 +1,25 @@
+tests/negative/null_check_test.toit:20:7: error: Type mismatch. Expected 'int'. Got 'string'
+  foo null_string            // Error, even though null could match.
+      ^~~~~~~~~~~
+tests/negative/null_check_test.toit:21:18: error: Type mismatch. Expected 'int'. Got 'string'
+  bar --optional=null_string // Error, even though null could match.
+                 ^~~~~~~~~~~
+tests/negative/null_check_test.toit:23:5: error: Type mismatch. Expected 'int'. Got 'string'
+  A null_string
+    ^~~~~~~~~~~
+tests/negative/null_check_test.toit:24:19: error: Type mismatch. Expected 'int'. Got 'string'
+  A.named --field=null_string
+                  ^~~~~~~~~~~
+tests/negative/null_check_test.toit:27:5: error: Type mismatch: can't assign 'null' to non-nullable 'A'
+  a = null
+    ^
+tests/negative/null_check_test.toit:29:7: error: Type mismatch: can't assign 'null' to non-nullable 'int'
+  gee null
+      ^~~~
+tests/negative/null_check_test.toit:35:7: error: Type mismatch: can't assign 'null' to non-nullable 'int'
+  gee null_local2
+      ^~~~~~~~~~~
+As check failed: null is not a int.
+  0: gee                       tests/negative/null_check_test.toit:15:5
+  1: main                      tests/negative/null_check_test.toit:29:3
+  2: __entry__.<lambda>        <sdk>/core/entry.toit:48:20

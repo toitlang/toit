@@ -1,0 +1,7 @@
+tests/negative/factory_no_constructor_test.toit:3:7: error: A class with factories must have a constructor.
+class A:
+      ^
+tests/negative/factory_no_constructor_test.toit:5:12: error: Unresolved identifier: 'unresolved'
+    return unresolved
+           ^~~~~~~~~~
+Compilation failed.

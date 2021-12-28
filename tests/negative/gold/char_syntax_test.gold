@@ -1,0 +1,13 @@
+tests/negative/char_syntax_test.toit:4:8: error: Invalid character '\e'
+  c := '\e'
+       ^~~~
+tests/negative/char_syntax_test.toit:5:7: error: Invalid character '\x123'
+  c = '\x123'
+      ^~~~~~~
+tests/negative/char_syntax_test.toit:6:7: error: Invalid character '\u!'
+  c = '\u!'
+      ^~~~~
+tests/negative/char_syntax_test.toit:7:7: error: Invalid character '\u12345'
+  c = '\u12345'
+      ^~~~~~~~~
+Compilation failed.

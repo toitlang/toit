@@ -1,0 +1,14 @@
+tests/negative/invalid_class_name_constructor_type_test.toit:3:7: error: Expected class name
+class :
+      ^
+tests/negative/invalid_class_name_constructor_type_test.toit:3:7: error: A class with factories must have a constructor.
+class :
+      ^
+Couldn't find 'main' (with 0 or 1 argument) in entry file 'tests/negative/invalid_class_name_constructor_type_test.toit'
+tests/negative/invalid_class_name_constructor_type_test.toit:5:5: error: Can't return `null` from factory
+    return null
+    ^~~~~~
+tests/negative/invalid_class_name_constructor_type_test.toit:8:5: error: Can't return incompatible type 'List' from factory
+    return []
+    ^~~~~~
+Compilation failed.

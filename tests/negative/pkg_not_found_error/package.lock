@@ -1,0 +1,7 @@
+prefixes:
+  error: not_exist
+  error2: pkg_not_exist
+
+packages:
+  not_exist:
+    path: not exist

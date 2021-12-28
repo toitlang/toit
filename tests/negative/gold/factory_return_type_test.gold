@@ -1,0 +1,7 @@
+tests/negative/factory_return_type_test.toit:6:26: error: Factories may not have return types
+  constructor.factory -> A:
+                         ^
+tests/negative/factory_return_type_test.toit:9:29: error: Factories may not have return types
+  constructor.factory2 x -> B:
+                            ^
+Compilation failed.

@@ -1,0 +1,7 @@
+tests/negative/typed_assign_local2_test.toit:5:9: error: Type mismatch. Expected 'int'. Got 'string'
+  param = "str"
+        ^
+As check failed: a string ("str") is not a int.
+  0: foo                       tests/negative/typed_assign_local2_test.toit:5:9
+  1: main                      tests/negative/typed_assign_local2_test.toit:8:3
+  2: __entry__.<lambda>        <sdk>/core/entry.toit:48:20

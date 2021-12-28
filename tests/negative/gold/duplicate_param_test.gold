@@ -1,0 +1,39 @@
+tests/negative/duplicate_param_test.toit:3:11: error: Duplicate parameter 'x'
+foo x/int x/string y/string y/int:
+          ^
+tests/negative/duplicate_param_test.toit:3:5: note: First declaration of 'x'
+foo x/int x/string y/string y/int:
+    ^
+tests/negative/duplicate_param_test.toit:3:29: error: Duplicate parameter 'y'
+foo x/int x/string y/string y/int:
+                            ^
+tests/negative/duplicate_param_test.toit:3:20: note: First declaration of 'y'
+foo x/int x/string y/string y/int:
+                   ^
+tests/negative/duplicate_param_test.toit:6:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+tests/negative/duplicate_param_test.toit:7:12: error: Duplicate parameter 'name'
+bar --name [--name]:
+           ^~~~~~~
+tests/negative/duplicate_param_test.toit:7:5: note: First declaration of 'name'
+bar --name [--name]:
+    ^~~~~~
+tests/negative/duplicate_param_test.toit:8:12: error: Duplicate parameter 'name'
+gee --name --name:
+           ^~~~~~
+tests/negative/duplicate_param_test.toit:8:5: note: First declaration of 'name'
+gee --name --name:
+    ^~~~~~
+tests/negative/duplicate_param_test.toit:12:3: error: Argument mismatch for 'bar'
+Required named argument '--name' not provided
+  bar --name=(: it) --name
+  ^~~
+tests/negative/duplicate_param_test.toit:13:3: error: Argument mismatch for 'gee'
+Required named argument '--name' not provided
+  gee --name --name
+  ^~~
+tests/negative/duplicate_param_test.toit:5:5: error: Class 'int' does not have any method 'copy'
+  y.copy 2
+    ^~~~
+Compilation failed.

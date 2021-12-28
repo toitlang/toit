@@ -1,0 +1,19 @@
+tests/negative/final_loop_variable2_test.toit:23:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+tests/negative/final_loop_variable2_test.toit:8:9: error: Can't assign to final local
+    foo = 42
+        ^
+tests/negative/final_loop_variable2_test.toit:11:26: error: Can't assign to final local
+  for x ::= 42; x < 10; x++:
+                         ^~
+tests/negative/final_loop_variable2_test.toit:15:18: error: Can't assign to final local
+  for x ::= 42; x++ < 10; x++:
+                 ^~
+tests/negative/final_loop_variable2_test.toit:15:28: error: Can't assign to final local
+  for x ::= 42; x++ < 10; x++:
+                           ^~
+tests/negative/final_loop_variable2_test.toit:20:6: error: Can't assign to final local
+    x++
+     ^~
+Compilation failed.

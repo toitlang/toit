@@ -1,0 +1,4 @@
+tests/negative/string_too_large_test.toit:3:11: error: Literal string too large
+LARGE ::= """
+          ^
+Compilation failed.

@@ -1,0 +1,10 @@
+tests/negative/if2_test.toit:5:8: error: Missing ':' for 'else'
+  else unresolved
+       ^~~~~~~~~~
+tests/negative/if2_test.toit:5:8: error: Unresolved identifier: 'unresolved'
+  else unresolved
+       ^~~~~~~~~~
+tests/negative/if2_test.toit:6:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+Compilation failed.

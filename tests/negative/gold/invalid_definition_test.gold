@@ -1,0 +1,64 @@
+tests/negative/invalid_definition_test.toit:22:18: error: Definition of variable not allowed at this location
+  return x + x x := 499
+                 ^~
+tests/negative/invalid_definition_test.toit:22:12: error: Can't call result of evaluating expression
+  return x + x x := 499
+           ^
+tests/negative/invalid_definition_test.toit:22:10: error: Unresolved identifier: 'x'
+  return x + x x := 499
+         ^
+tests/negative/invalid_definition_test.toit:22:14: error: Unresolved identifier: 'x'
+  return x + x x := 499
+             ^
+tests/negative/invalid_definition_test.toit:26:11: error: Definition of variable not allowed at this location
+    foo x := 499
+          ^~
+tests/negative/invalid_definition_test.toit:28:11: error: Definition of variable not allowed at this location
+    foo x := 499
+          ^~
+tests/negative/invalid_definition_test.toit:32:11: error: Definition of variable not allowed at this location
+    foo y := 499
+          ^~
+tests/negative/invalid_definition_test.toit:36:11: error: Definition of variable not allowed at this location
+    foo x := 499
+          ^~
+tests/negative/invalid_definition_test.toit:37:10: error: Definition of variable not allowed at this location
+  y := x := 42 ? true : false
+         ^~
+tests/negative/invalid_definition_test.toit:38:18: error: Definition of variable not allowed at this location
+  y2 := true ? z := 42 : false
+                 ^~
+tests/negative/invalid_definition_test.toit:39:26: error: Definition of variable not allowed at this location
+  y3 := true ? true : zz := 42
+                         ^~
+tests/negative/invalid_definition_test.toit:41:9: error: Definition of variable not allowed at this location
+  not x := 499
+        ^~
+tests/negative/invalid_definition_test.toit:43:6: error: Definition of variable not allowed at this location
+  (x := 499)
+     ^~
+tests/negative/invalid_definition_test.toit:8:14: error: Definition of variable not allowed at this location
+  field := x := 499
+             ^~
+tests/negative/invalid_definition_test.toit:11:11: error: Definition of variable not allowed at this location
+    foo x := 499
+          ^~
+tests/negative/invalid_definition_test.toit:12:11: error: Definition of variable not allowed at this location
+    foo y ::= 499
+          ^~~
+tests/negative/invalid_definition_test.toit:15:11: error: Definition of variable not allowed at this location
+    foo x := 499
+          ^~
+tests/negative/invalid_definition_test.toit:16:11: error: Definition of variable not allowed at this location
+    foo y ::= 499
+          ^~~
+tests/negative/invalid_definition_test.toit:19:11: error: Definition of variable not allowed at this location
+    foo x := 499
+          ^~
+tests/negative/invalid_definition_test.toit:5:13: error: Definition of variable not allowed at this location
+global := x := 499
+            ^~
+tests/negative/invalid_definition_test.toit:37:16: warning: Condition always evaluates to true
+  y := x := 42 ? true : false
+               ^
+Compilation failed.

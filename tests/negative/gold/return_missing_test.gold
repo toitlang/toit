@@ -1,0 +1,34 @@
+tests/negative/return_missing_test.toit:49:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+tests/negative/return_missing_test.toit:35:12: error: Logical operation argument can't be 'none'
+  arg and (return 499)
+           ^~~~~~
+tests/negative/return_missing_test.toit:38:11: error: Logical operation argument can't be 'none'
+  arg or (return 499)
+          ^~~~~~
+tests/negative/return_missing_test.toit:10:1: error: Method doesn't return a value
+test1 -> any:
+^~~~~
+tests/negative/return_missing_test.toit:12:1: error: Method doesn't return a value on all paths
+test2:
+^~~~~
+tests/negative/return_missing_test.toit:16:1: error: Method doesn't return a value on all paths
+test3:
+^~~~~
+tests/negative/return_missing_test.toit:22:1: error: Method doesn't return a value on all paths
+test4:
+^~~~~
+tests/negative/return_missing_test.toit:26:1: error: Method doesn't return a value on all paths
+test5:
+^~~~~
+tests/negative/return_missing_test.toit:30:1: error: Method doesn't return a value on all paths
+test6 -> any:
+^~~~~
+tests/negative/return_missing_test.toit:34:1: error: Method doesn't return a value on all paths
+test7 arg -> any:
+^~~~~
+tests/negative/return_missing_test.toit:37:1: error: Method doesn't return a value on all paths
+test8 arg -> any:
+^~~~~
+Compilation failed.

@@ -216,3 +216,6 @@ install: install-sdk
 test:
 	(cd build/host && ninja check_slow)
 
+.PHONY: update-gold
+update-gold:
+	(cd build/host && ninja update_gold)
