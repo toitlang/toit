@@ -1489,6 +1489,9 @@ static void check_sdk(const std::string& constraint, Diagnostics* diagnostics) {
                               compiler_version,
                               constraint.c_str());
   };
+  diagnostics->report_warning("The SDK constraint defined in the package.lock file is satisfied: %s < %s",
+                            compiler_version,
+                            constraint.c_str());
 }
 
 Pipeline::Result Pipeline::run(List<const char*> source_paths) {
