@@ -102,6 +102,7 @@ foreach(file ${TOIT_SLOW_TESTS})
 endforeach()
 
 add_subdirectory(negative)
+add_subdirectory(lsp)
 
 include(fail.cmake)
 foreach(test ${TOIT_FAILING_TESTS})
