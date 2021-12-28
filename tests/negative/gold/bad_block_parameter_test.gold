@@ -1,0 +1,25 @@
+tests/negative/bad_block_parameter_test.toit:6:9: error: Invalid parameter name
+  foo: |export| unresolved
+        ^~~~~~
+tests/negative/bad_block_parameter_test.toit:7:9: error: Invalid parameter name
+  foo: |for x: | unresolved
+        ^~~
+tests/negative/bad_block_parameter_test.toit:8:9: error: Invalid parameter name
+  foo: |for
+        ^~~
+tests/negative/bad_block_parameter_test.toit:10:9: error: Invalid parameter name
+  foo: |4
+        ^
+tests/negative/bad_block_parameter_test.toit:11:8: error: Missing closing '|'
+  foo: |
+       ^
+tests/negative/bad_block_parameter_test.toit:6:17: error: Unresolved identifier: 'unresolved'
+  foo: |export| unresolved
+                ^~~~~~~~~~
+tests/negative/bad_block_parameter_test.toit:7:18: error: Unresolved identifier: 'unresolved'
+  foo: |for x: | unresolved
+                 ^~~~~~~~~~
+tests/negative/bad_block_parameter_test.toit:9:8: error: Unresolved identifier: 'unresolved'
+  foo: unresolved
+       ^~~~~~~~~~
+Compilation failed.

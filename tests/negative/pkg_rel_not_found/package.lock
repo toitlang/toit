@@ -1,0 +1,6 @@
+prefixes:
+  pre: nested/id
+
+packages:
+  nested/id:
+    path: nested

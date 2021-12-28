@@ -1,0 +1,4 @@
+tests/negative/monitor_test.toit:7:13: error: Monitors may not have a super class
+monitor Foo Bar:
+            ^~~
+Compilation failed.

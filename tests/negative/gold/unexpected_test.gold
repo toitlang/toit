@@ -1,0 +1,4 @@
+tests/negative/unexpected_test.toit:5:11: error: Missing semicolon or missing newline
+    break 499
+          ^~~
+Compilation failed.

@@ -1,0 +1,7 @@
+tests/negative/export_show_test.toit:3:28: error: Unresolved show 'foo'
+import .export_show_a show foo
+                           ^~~
+tests/negative/export_show_test.toit:4:8: error: Unresolved export 'foo'
+export foo
+       ^~~
+Compilation failed.

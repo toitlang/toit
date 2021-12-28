@@ -1,0 +1,7 @@
+tests/negative/shadow2_test.toit:7:5: error: Definition of 'x' shadows earlier definition
+    x := 1
+    ^
+tests/negative/shadow2_test.toit:4:3: note: Earlier definition of 'x'
+  x := 0
+  ^
+Compilation failed.

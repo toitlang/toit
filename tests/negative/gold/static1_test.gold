@@ -1,0 +1,7 @@
+tests/negative/static1_test.toit:6:3: error: Redefinition of 'f'
+  f:
+  ^
+tests/negative/static1_test.toit:4:10: note: First definition of 'f'
+  static f := 42
+         ^
+Compilation failed.

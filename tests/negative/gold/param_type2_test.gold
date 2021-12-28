@@ -1,0 +1,4 @@
+As check failed: an int (499) is not a string.
+  0: foo                       tests/negative/param_type2_test.toit:3:5
+  1: main                      tests/negative/param_type2_test.toit:9:3
+  2: __entry__.<lambda>        <sdk>/core/entry.toit:48:20

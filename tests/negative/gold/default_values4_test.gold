@@ -1,0 +1,4 @@
+tests/negative/default_values4_test.toit:4:8: error: Unexpected token: +
+foo x=5+3:
+       ^
+Compilation failed.

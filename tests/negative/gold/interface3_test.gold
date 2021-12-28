@@ -1,0 +1,7 @@
+tests/negative/interface3_test.toit:4:3: error: Interface members can't have bodies
+  foo:
+  ^~~
+tests/negative/interface3_test.toit:8:8: error: Can't instantiate interface 'A'
+  a := A
+       ^
+Compilation failed.

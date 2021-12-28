@@ -1,0 +1,8 @@
+tests/negative/abstract_optional_test.toit:4:20: error: Unresolved identifier: 'unresolved'
+  abstract foo x y=unresolved --named1=unresolved --named2=2
+                   ^~~~~~~~~~
+tests/negative/abstract_optional_test.toit:4:40: error: Unresolved identifier: 'unresolved'
+  abstract foo x y=unresolved --named1=unresolved --named2=2
+                                       ^~~~~~~~~~
+Couldn't find 'main' (with 0 or 1 argument) in entry file 'tests/negative/abstract_optional_test.toit'
+Compilation failed.

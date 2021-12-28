@@ -1,0 +1,2 @@
+The lock file only uses relative paths.
+The test framework will take the lockfile and change it to absolute and pkg paths.

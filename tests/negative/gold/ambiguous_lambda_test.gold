@@ -1,0 +1,10 @@
+tests/negative/ambiguous_lambda_test.toit:10:9: error: Ambiguous resolution of 'foo'
+  bar:: foo  // Ambiguous import.
+        ^~~
+tests/negative/ambiguous_a.toit:3:1: note: Resolution candidate for 'foo'
+foo:
+^~~
+tests/negative/ambiguous_b.toit:3:1: note: Resolution candidate for 'foo'
+foo:
+^~~
+Compilation failed.

@@ -1,0 +1,4 @@
+tests/negative/type_no_force_test.toit:6:7: error: Type mismatch. Expected 'int'. Got 'string'
+  foo "str"
+      ^~~~~
+Compilation failed.

@@ -1,0 +1,16 @@
+tests/negative/paren_test.toit:4:6: error: Incomplete expression
+ (1 +
+     ^
+tests/negative/paren_test.toit:4:2: error: Missing closing ')'
+ (1 +
+ ^~~~
+tests/negative/paren_test.toit:8:2: error: Missing closing ')'
+ (1 + 3
+ ^~~~~~
+tests/negative/paren_test.toit:5:2: error: Unresolved identifier: 'unresolved'
+ unresolved
+ ^~~~~~~~~~
+tests/negative/paren_test.toit:9:2: error: Unresolved identifier: 'unresolved'
+ unresolved
+ ^~~~~~~~~~
+Compilation failed.
