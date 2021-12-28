@@ -1,0 +1,15 @@
+tests/negative/null_char_test.toit:4:3: error: Unexpected <illegal>
+  
+  ^
+tests/negative/null_char_test.toit:5:6: error: Unexpected <illegal>
+  foo
+     ^
+tests/negative/null_char_test.toit:5:3: error: Argument mismatch for 'foo'
+Method does not take any arguments, but one was provided
+  foo
+  ^~~
+tests/negative/null_char_test.toit:6:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+Couldn't find 'main' (with 0 or 1 argument) in entry file 'tests/negative/null_char_test.toit'
+Compilation failed.

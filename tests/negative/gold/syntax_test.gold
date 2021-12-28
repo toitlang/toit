@@ -1,0 +1,5 @@
+tests/negative/syntax_test.toit:3:20: error: Not at dedent
+import math as foo bar noeth
+                   ^~~
+Couldn't find 'main' (with 0 or 1 argument) in entry file 'tests/negative/syntax_test.toit'
+Compilation failed.

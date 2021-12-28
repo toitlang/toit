@@ -21,6 +21,7 @@ Watch a short video that shows how you can experience Jaguar on your ESP32 in le
 ## Community
 
 Use this [invite](https://discord.gg/Q7Y9VQ5nh2) to join our Discord server, and follow the development and get help.
+We've a channel in [Telegram](https://t.me/Toitware).
 We're eager to hear of your experience building with Toit.
 
 We also use [GitHub Discussions](https://github.com/toitlang/toit/discussions) to discuss and learn and
@@ -125,6 +126,17 @@ The fork's repository has been added as a submodule reference to this repository
 git submodule update --init --recursive
 
 ```
+
+If the `submodule update` step fails with:
+
+```
+Submodule path 'esp-idf/components/coap/libcoap': checked out '98954eb30a2e728e172a6cd29430ae5bc999b585'
+fatal: remote error: want 7f8c86e501e690301630029fa9bae22424adf618 not valid
+Fetched in submodule path 'esp-idf/components/coap/libcoap/ext/tinydtls', but it did not contain 7f8c86e501e690301630029fa9bae22424adf618. Direct fetching of that commit failed.
+```
+
+try following the steps outlined [here](https://github.com/toitlang/toit/issues/88). It is an issue in the upstream ESP-IDF repository 
+caused by the `tinydtls` component having changed its remote URL.
 
 To use the [offical ESP-IDF](https://github.com/espressif/esp-idf), or [any other variation](https://github.com/espressif/esp-idf/network/members), make sure it is available in your file system and point IDF_PATH to its path instead before building.
 

@@ -34,14 +34,14 @@ add_custom_target(
   check
   COMMAND ${CMAKE_CTEST_COMMAND} -j${NUM_CPU} -T test --output-on-failure
   USES_TERMINAL
-  DEPENDS build_toitvm
+  DEPENDS build_tools
   )
 
 add_custom_target(
   check_slow
   COMMAND ${CMAKE_CTEST_COMMAND} -j${NUM_CPU} -T test -C slow --output-on-failure
   USES_TERMINAL
-  DEPENDS build_toitvm
+  DEPENDS build_tools
   )
 
 foreach(file ${TOIT_TESTS})
@@ -101,4 +101,13 @@ foreach(file ${TOIT_SLOW_TESTS})
   set_tests_properties(${file} PROPERTIES TIMEOUT ${SLOW_TIMEOUT})
 endforeach()
 
+add_subdirectory(negative)
+add_subdirectory(lsp)
+add_subdirectory(optimizations)
 add_subdirectory(toitp)
+add_subdirectory(lock_file)
+
+include(fail.cmake)
+foreach(test ${TOIT_FAILING_TESTS})
+  set_tests_properties(${test} PROPERTIES WILL_FAIL TRUE)
+endforeach()

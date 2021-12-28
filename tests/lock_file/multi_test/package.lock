@@ -1,0 +1,17 @@
+prefixes:
+  redirected: target
+  sub: target/sub-1.0
+  foo: foo-2.0
+
+packages:
+  target:
+    path: target
+    prefixes:
+      foo: target/sub-1.0
+  target/sub-1.0:
+    path: target/sub
+    prefixes:
+      foo: target
+      self: target/sub-1.0
+  foo-2.0:
+    path: foo

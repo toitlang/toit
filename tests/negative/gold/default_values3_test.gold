@@ -1,0 +1,15 @@
+tests/negative/default_values3_test.toit:5:3: error: Argument mismatch for 'foo'
+Block argument not provided
+  foo
+  ^~~
+tests/negative/default_values3_test.toit:6:3: error: Argument mismatch for 'foo'
+Method does not take any arguments, but one was provided
+  foo null
+  ^~~
+tests/negative/default_values3_test.toit:10:5: error: Block parameters may not have a default value.
+foo [x]=(499):
+    ^~
+tests/negative/default_values3_test.toit:11:10: error: Can't return a block
+  return x
+         ^
+Compilation failed.

@@ -1,0 +1,34 @@
+tests/negative/bad_literalA_test.toit:6:9: error: Invalid floating-point literal
+  print 0x.123456P
+        ^~~~~~~~~~
+tests/negative/bad_literalA_test.toit:7:9: error: Invalid floating-point literal
+  print 0x.123456P+
+        ^~~~~~~~~~~
+tests/negative/bad_literalA_test.toit:8:9: error: Invalid floating-point literal
+  print 0x.123456p-
+        ^~~~~~~~~~~
+tests/negative/bad_literalA_test.toit:9:9: error: Invalid number literal
+  print 0x.123456p+5_
+        ^~~~~~~~~~~~~
+tests/negative/bad_literalA_test.toit:10:9: error: Invalid floating-point literal
+  print 0x.123456p-_3
+        ^~~~~~~~~~~~~
+tests/negative/bad_literalA_test.toit:11:9: error: Hexadecimal floating point numbers must have an exponent
+  print 0x.123456
+        ^~~~~~~~~
+tests/negative/bad_literalA_test.toit:12:9: error: Hexadecimal floating point numbers must have an exponent
+  print 0xabc.123456
+        ^~~~~~~~~~~~
+tests/negative/bad_literalA_test.toit:13:9: error: Invalid floating-point literal
+  print 0xabc.123456p-
+        ^~~~~~~~~~~~~~
+tests/negative/bad_literalA_test.toit:14:9: error: Invalid number literal
+  print 0xabc.123456P+5_
+        ^~~~~~~~~~~~~~~~
+tests/negative/bad_literalA_test.toit:15:9: error: Invalid floating-point literal
+  print 0xabc.123456P-_3
+        ^~~~~~~~~~~~~~~~
+tests/negative/bad_literalA_test.toit:16:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+Compilation failed.

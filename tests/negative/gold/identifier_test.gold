@@ -1,0 +1,7 @@
+tests/negative/identifier_test.toit:4:6: error: Unexpected <illegal>
+  foo$bar := 499
+     ^
+tests/negative/identifier_test.toit:4:3: error: Unresolved identifier: 'foo'
+  foo$bar := 499
+  ^~~
+Compilation failed.

@@ -1,0 +1,25 @@
+tests/negative/typed_local_test.toit:7:3: error: Unexpected :=
+  := 499
+  ^~
+tests/negative/typed_local_test.toit:9:17: error: Unexpected token while parsing definition
+  local2 / core . List := null
+                ^
+tests/negative/typed_local_test.toit:6:3: error: Unresolved identifier: 'local'
+  local / int
+  ^~~~~
+tests/negative/typed_local_test.toit:6:11: error: Can't instantiate abstract class
+  local / int
+          ^~~
+tests/negative/typed_local_test.toit:9:12: error: Prefix can't be used as type: 'core'
+  local2 / core . List := null
+           ^~~~
+tests/negative/typed_local_test.toit:11:10: error: Left-hand side of definition must be an identifier
+  local3 / 4 := 3
+         ^
+tests/negative/typed_local_test.toit:11:3: error: Unresolved identifier: 'local3'
+  local3 / 4 := 3
+  ^~~~~~
+tests/negative/typed_local_test.toit:13:18: error: Invalid type
+  local4 / local.local2 := 3
+                 ^~~~~~
+Compilation failed.

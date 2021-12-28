@@ -1,0 +1,13 @@
+tests/negative/interface_cycle5_test.toit:3:26: error: Unresolved interface
+interface A implements B C:
+                         ^
+tests/negative/interface_cycle5_test.toit:3:11: error: Cycle in super/interface chain
+interface A implements B C:
+          ^
+tests/negative/interface_cycle5_test.toit:3:24: error: This clause contributes to the cycle
+interface A implements B C:
+                       ^~~
+tests/negative/interface_cycle5_test.toit:5:24: error: This clause contributes to the cycle
+interface B implements A:
+                       ^
+Compilation failed.

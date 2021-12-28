@@ -1,0 +1,10 @@
+tests/negative/block9_test.toit:5:11: error: Unresolved identifier: 'unresolved'
+  b.call: unresolved it
+          ^~~~~~~~~~
+tests/negative/block9_test.toit:5:4: error: Can't invoke a block with a block argument.
+  b.call: unresolved it
+   ^
+tests/negative/block9_test.toit:6:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+Compilation failed.

@@ -1,0 +1,4 @@
+tests/negative/import_export1_test.toit:6:3: error: Unresolved identifier: 'foo'
+  foo  // Is a prefix in import_export1_a and should thus be unresolved, even though it's exported from import_export1_b
+  ^~~
+Compilation failed.

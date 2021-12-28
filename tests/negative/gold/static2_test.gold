@@ -1,0 +1,7 @@
+tests/negative/static2_test.toit:7:3: error: Redefinition of 'foo'
+  foo:
+  ^~~
+tests/negative/static2_test.toit:4:10: note: First definition of 'foo'
+  static foo:
+         ^~~
+Compilation failed.

@@ -1,0 +1,28 @@
+tests/negative/short_types_test.toit:7:14: error: Type annotation does not resolve to class or interface: 'int'
+foo x/int -> int: return x + 1
+             ^~~
+tests/negative/short_types_test.toit:7:7: error: Type annotation does not resolve to class or interface: 'int'
+foo x/int -> int: return x + 1
+      ^~~
+tests/negative/short_types_test.toit:8:15: error: Type annotation does not resolve to class or interface: 'bool'
+bar y/bool -> bool: return not y
+              ^~~~
+tests/negative/short_types_test.toit:8:7: error: Type annotation does not resolve to class or interface: 'bool'
+bar y/bool -> bool: return not y
+      ^~~~
+tests/negative/short_types_test.toit:9:16: error: Type annotation does not resolve to class or interface: 'float'
+gee z/float -> float: return -z
+               ^~~~~
+tests/negative/short_types_test.toit:9:7: error: Type annotation does not resolve to class or interface: 'float'
+gee z/float -> float: return -z
+      ^~~~~
+tests/negative/short_types_test.toit:12:8: error: Type annotation does not resolve to class or interface: 'int'
+  1 is int
+       ^~~
+tests/negative/short_types_test.toit:13:10: error: Type annotation does not resolve to class or interface: 'float'
+  1.0 is float
+         ^~~~~
+tests/negative/short_types_test.toit:14:11: error: Type annotation does not resolve to class or interface: 'bool'
+  true is bool
+          ^~~~
+Compilation failed.

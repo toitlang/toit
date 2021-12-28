@@ -1,0 +1,7 @@
+tests/negative/lambda4_test.toit:11:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+tests/negative/lambda4_test.toit:10:10: error: Can't assign to final local
+    local++
+         ^~
+Compilation failed.

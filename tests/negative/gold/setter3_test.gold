@@ -1,0 +1,5 @@
+EXCEPTION error. 
+ok
+  0: A.foo=                    tests/negative/setter3_test.toit:5:5
+  1: main                      tests/negative/setter3_test.toit:10:9
+  2: __entry__.<lambda>        <sdk>/core/entry.toit:48:20

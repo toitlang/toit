@@ -1,0 +1,7 @@
+tests/negative/prefix_assign2_test.toit:6:3: error: Can't use prefix 'prefix' as an expression
+  prefix += unresolved
+  ^~~~~~
+tests/negative/prefix_assign2_test.toit:6:13: error: Unresolved identifier: 'unresolved'
+  prefix += unresolved
+            ^~~~~~~~~~
+Compilation failed.
