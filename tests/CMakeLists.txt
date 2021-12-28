@@ -101,6 +101,7 @@ foreach(file ${TOIT_SLOW_TESTS})
   set_tests_properties(${file} PROPERTIES TIMEOUT ${SLOW_TIMEOUT})
 endforeach()
 
+add_subdirectory(negative)
 add_subdirectory(lsp)
 
 include(fail.cmake)

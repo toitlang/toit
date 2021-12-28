@@ -1,0 +1,25 @@
+tests/negative/logical_test.toit:4:14: error: '||' has been deprecated for 'or'
+  print true || false
+             ^~
+tests/negative/logical_test.toit:5:14: error: '&&' has been deprecated for 'and'
+  print true && false
+             ^~
+tests/negative/logical_test.toit:6:10: error: '!' has been deprecated for 'not'
+  print (!true)
+         ^
+tests/negative/logical_test.toit:7:9: error: '!' has been deprecated for 'not'
+  print !true
+        ^
+tests/negative/logical_test.toit:7:9: error: 'not' must be parenthesized when used at this location
+  print !true
+        ^
+tests/negative/logical_test.toit:8:6: error: '!' has been deprecated for 'not'
+  if !true: print "ok"
+     ^
+tests/negative/logical_test.toit:4:3: error: Logical operation argument can't be 'none'
+  print true || false
+  ^~~~~
+tests/negative/logical_test.toit:5:3: error: Logical operation argument can't be 'none'
+  print true && false
+  ^~~~~
+Compilation failed.

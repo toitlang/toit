@@ -1,0 +1,79 @@
+tests/negative/bad_loop_variable_test.toit:6:9: error: Can't use 'this' as name for a local variable
+  while this := 499: print 1
+        ^~~~
+tests/negative/bad_loop_variable_test.toit:7:12: error: Left-hand side of definition must be an identifier
+  while foo.bar := 42: print 2
+           ^
+tests/negative/bad_loop_variable_test.toit:7:9: error: Unresolved identifier: 'foo'
+  while foo.bar := 42: print 2
+        ^~~
+tests/negative/bad_loop_variable_test.toit:8:12: error: Left-hand side of definition must be an identifier
+  while pre.bar := 42: print 2
+           ^
+tests/negative/bad_loop_variable_test.toit:8:13: error: Unresolved identifier: 'bar'
+  while pre.bar := 42: print 2
+            ^~~
+tests/negative/bad_loop_variable_test.toit:9:9: error: Left-hand side of definition must be an identifier
+  while 42 := 42: print 3
+        ^~
+tests/negative/bad_loop_variable_test.toit:10:9: error: Can't use 'this' as name for a local variable
+  while this ::= 499: print 1
+        ^~~~
+tests/negative/bad_loop_variable_test.toit:11:12: error: Left-hand side of definition must be an identifier
+  while foo.bar ::= 42: print 2
+           ^
+tests/negative/bad_loop_variable_test.toit:11:9: error: Unresolved identifier: 'foo'
+  while foo.bar ::= 42: print 2
+        ^~~
+tests/negative/bad_loop_variable_test.toit:12:12: error: Left-hand side of definition must be an identifier
+  while pre.bar ::= 42: print 2
+           ^
+tests/negative/bad_loop_variable_test.toit:12:13: error: Unresolved identifier: 'bar'
+  while pre.bar ::= 42: print 2
+            ^~~
+tests/negative/bad_loop_variable_test.toit:13:9: error: Left-hand side of definition must be an identifier
+  while 42 ::= 42: print 3
+        ^~
+tests/negative/bad_loop_variable_test.toit:15:7: error: Can't use 'this' as name for a local variable
+  for this := 499; true; true: print 1
+      ^~~~
+tests/negative/bad_loop_variable_test.toit:16:10: error: Left-hand side of definition must be an identifier
+  for foo.bar := 499; true; true: print 1
+         ^
+tests/negative/bad_loop_variable_test.toit:16:7: error: Unresolved identifier: 'foo'
+  for foo.bar := 499; true; true: print 1
+      ^~~
+tests/negative/bad_loop_variable_test.toit:17:10: error: Left-hand side of definition must be an identifier
+  for pre.bar := 499; true; true: print 1
+         ^
+tests/negative/bad_loop_variable_test.toit:17:11: error: Unresolved identifier: 'bar'
+  for pre.bar := 499; true; true: print 1
+          ^~~
+tests/negative/bad_loop_variable_test.toit:18:7: error: Left-hand side of definition must be an identifier
+  for 42 := 499; true; true: print 1
+      ^~
+tests/negative/bad_loop_variable_test.toit:19:7: error: Can't use 'this' as name for a local variable
+  for this ::= 499; true; true: print 1
+      ^~~~
+tests/negative/bad_loop_variable_test.toit:20:10: error: Left-hand side of definition must be an identifier
+  for foo.bar ::= 499; true; true: print 1
+         ^
+tests/negative/bad_loop_variable_test.toit:20:7: error: Unresolved identifier: 'foo'
+  for foo.bar ::= 499; true; true: print 1
+      ^~~
+tests/negative/bad_loop_variable_test.toit:21:10: error: Left-hand side of definition must be an identifier
+  for pre.bar ::= 499; true; true: print 1
+         ^
+tests/negative/bad_loop_variable_test.toit:21:11: error: Unresolved identifier: 'bar'
+  for pre.bar ::= 499; true; true: print 1
+          ^~~
+tests/negative/bad_loop_variable_test.toit:22:7: error: Left-hand side of definition must be an identifier
+  for 42 ::= 499; true; true: print 1
+      ^~
+tests/negative/bad_loop_variable_test.toit:6:3: warning: Condition always evaluates to true
+  while this := 499: print 1
+  ^~~~~
+tests/negative/bad_loop_variable_test.toit:10:3: warning: Condition always evaluates to true
+  while this ::= 499: print 1
+  ^~~~~
+Compilation failed.

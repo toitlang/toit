@@ -1,0 +1,11 @@
+tests/negative/super6_test.toit:4:3: error: Expected name of declaration
+  :  // No name for method.
+  ^
+tests/negative/super6_test.toit:6:11: error: Unresolved identifier: 'unresolved'
+    super unresolved
+          ^~~~~~~~~~
+tests/negative/super6_test.toit:7:13: error: Unresolved identifier: 'unresolved'
+    super = unresolved
+            ^~~~~~~~~~
+Couldn't find 'main' (with 0 or 1 argument) in entry file 'tests/negative/super6_test.toit'
+Compilation failed.

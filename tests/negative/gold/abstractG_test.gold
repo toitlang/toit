@@ -1,0 +1,19 @@
+tests/negative/abstractG_test.toit:7:7: error: Non-abstract class 'A' is missing implementations
+class A extends Abstract:
+      ^
+tests/negative/abstractG_test.toit:4:12: note: Method 'foo' is only partially implemented
+  abstract foo x y=499 --named1 --named2=42 --named3=499
+           ^~~
+tests/negative/abstractG_test.toit:5:12: note: Method 'bar' is only partially implemented
+  abstract bar x y=499 [block] --named1 --named2=42 --named3=499 [--b]
+           ^~~
+tests/negative/abstractG_test.toit:31:7: error: Non-abstract class 'B' is missing implementations
+class B extends Abstract2:
+      ^
+tests/negative/abstractG_test.toit:23:12: note: Method 'foo' is only partially implemented
+  abstract foo x y --named1 --named2=42 --named3=499 --named4=11
+           ^~~
+tests/negative/abstractG_test.toit:29:12: note: Method 'bar' is only partially implemented
+  abstract bar x y [block] --named1 --named2=42 --named3=499 [--b] --named4=11
+           ^~~
+Compilation failed.

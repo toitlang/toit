@@ -1,0 +1,4 @@
+As check failed: a string ("str") is not a I.
+  0: B.gee                     tests/negative/field_type5_test.toit:14:7
+  1: main                      tests/negative/field_type5_test.toit:19:5
+  2: __entry__.<lambda>        <sdk>/core/entry.toit:48:20

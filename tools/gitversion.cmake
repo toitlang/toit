@@ -63,14 +63,14 @@ function(compute_git_version VERSION)
   if ("${CURRENT_BRANCH}" MATCHES "^release-v[0-9]+\\.[0-9]$")
     # Use next patch version when on a release branch.
     MATH(EXPR patch "${patch}+1")
-    set(${VERSION} "${major}.${minor}.${patch}-pre.${CURRENT_COMMIT_NO}+${CURRENT_COMMIT_SHORT}" PARENT_SCOPE)
+    set(${VERSION} "v${major}.${minor}.${patch}-pre.${CURRENT_COMMIT_NO}+${CURRENT_COMMIT_SHORT}" PARENT_SCOPE)
     return()
   endif()
 
   if ("${CURRENT_BRANCH}" MATCHES "^release-v[0-9]+\\.[0-9]$")
     # Master branch: v0.5.0-pre.17+9a1fbdb29
     MATH(EXPR minor "${minor}+1")
-    set(${VERSION} "${major}.${minor}.0-pre.${CURRENT_COMMIT_NO}+${CURRENT_COMMIT_SHORT}" PARENT_SCOPE)
+    set(${VERSION} "v${major}.${minor}.0-pre.${CURRENT_COMMIT_NO}+${CURRENT_COMMIT_SHORT}" PARENT_SCOPE)
     return()
   endif()
 
@@ -78,7 +78,7 @@ function(compute_git_version VERSION)
   # Semver requires the dot-separated identifiers to comprise only alphanumerics and hyphens.
   string(REGEX REPLACE "[^.0-9A-Za-z-]" "-" SANITIZED_BRANCH ${CURRENT_BRANCH})
   MATH(EXPR minor "${minor}+1")
-  set(${VERSION} "${major}.${minor}.0-pre.${CURRENT_COMMIT_NO}+${SANITIZED_BRANCH}.${CURRENT_COMMIT_SHORT}" PARENT_SCOPE)
+  set(${VERSION} "v${major}.${minor}.0-pre.${CURRENT_COMMIT_NO}+${SANITIZED_BRANCH}.${CURRENT_COMMIT_SHORT}" PARENT_SCOPE)
 endfunction()
 
 compute_git_version(TOIT_GIT_VERSION)

@@ -1,0 +1,8 @@
+Initialization of static field 'A.global' in progress.
+  0: run_global_initializer_   <sdk>/core/objects.toit:196:5
+  1: A.foo                     tests/negative/cyclic_static_field_test.toit:5:15
+  2: A.global                  tests/negative/cyclic_static_field_test.toit:4:24
+  3: run_global_initializer_.<block> <sdk>/core/objects.toit:205:26
+  4: run_global_initializer_   <sdk>/core/objects.toit:194:1
+  5: main                      tests/negative/cyclic_static_field_test.toit:12:8
+  6: __entry__.<lambda>        <sdk>/core/entry.toit:48:20

@@ -1,0 +1,8 @@
+tests/negative/toitdoc2_test.toit:1:1: error: Unterminated multi-line comment
+/**
+^
+tests/negative/toitdoc2_test.toit:2:2: warning: Unresolved reference 'foo'
+$foo
+ ^~~
+Couldn't find 'main' (with 0 or 1 argument) in entry file 'tests/negative/toitdoc2_test.toit'
+Compilation failed.

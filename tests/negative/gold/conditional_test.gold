@@ -1,0 +1,39 @@
+tests/negative/conditional_test.toit:5:24: error: Missing ':' in conditional expression
+  x := foo ? unresolved
+                       ^
+tests/negative/conditional_test.toit:6:17: error: Missing ':' in conditional expression
+  y := foo ? foo
+                ^
+tests/negative/conditional_test.toit:8:19: error: Incomplete expression
+  z := foo ? foo :
+                  ^
+tests/negative/conditional_test.toit:5:8: error: Argument mismatch for 'foo'
+Too few arguments provided
+  x := foo ? unresolved
+       ^~~
+tests/negative/conditional_test.toit:5:14: error: Unresolved identifier: 'unresolved'
+  x := foo ? unresolved
+             ^~~~~~~~~~
+tests/negative/conditional_test.toit:6:8: error: Argument mismatch for 'foo'
+Too few arguments provided
+  y := foo ? foo
+       ^~~
+tests/negative/conditional_test.toit:6:14: error: Argument mismatch for 'foo'
+Too few arguments provided
+  y := foo ? foo
+             ^~~
+tests/negative/conditional_test.toit:7:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+tests/negative/conditional_test.toit:8:8: error: Argument mismatch for 'foo'
+Too few arguments provided
+  z := foo ? foo :
+       ^~~
+tests/negative/conditional_test.toit:8:14: error: Argument mismatch for 'foo'
+Too few arguments provided
+  z := foo ? foo :
+             ^~~
+tests/negative/conditional_test.toit:9:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+Compilation failed.

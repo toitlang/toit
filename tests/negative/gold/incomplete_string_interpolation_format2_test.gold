@@ -1,0 +1,10 @@
+tests/negative/incomplete_string_interpolation_format2_test.toit:4:7: error: Incomplete expression
+  "$(%x
+      ^
+tests/negative/incomplete_string_interpolation_format2_test.toit:4:5: error: Missing closing ')'
+  "$(%x
+    ^~
+tests/negative/incomplete_string_interpolation_format2_test.toit:4:8: error: Unterminated string
+  "$(%x
+       ^
+Compilation failed.

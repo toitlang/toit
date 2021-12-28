@@ -1,0 +1,42 @@
+tests/negative/bad_parameter2_test.toit:3:8: error: Missing parameter name
+foo x [] x:
+       ^
+tests/negative/bad_parameter2_test.toit:6:7: error: Unexpected token: break
+bar x break y:
+      ^~~~~
+tests/negative/bad_parameter2_test.toit:9:9: error: Unexpected token: =
+gee y=3 =:
+        ^
+tests/negative/bad_parameter2_test.toit:12:9: error: Invalid parameter name
+foobar [:
+        ^
+tests/negative/bad_parameter2_test.toit:12:9: error: Missing ']' for block parameter
+foobar [:
+        ^
+tests/negative/bad_parameter2_test.toit:3:10: error: Duplicate parameter 'x'
+foo x [] x:
+         ^
+tests/negative/bad_parameter2_test.toit:3:5: note: First declaration of 'x'
+foo x [] x:
+    ^
+tests/negative/bad_parameter2_test.toit:4:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+tests/negative/bad_parameter2_test.toit:7:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+tests/negative/bad_parameter2_test.toit:10:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+tests/negative/bad_parameter2_test.toit:13:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+tests/negative/bad_parameter2_test.toit:16:3: error: Argument mismatch for 'foo'
+Too few arguments provided
+  foo 3
+  ^~~
+tests/negative/bad_parameter2_test.toit:17:3: error: Argument mismatch for 'bar'
+Too many arguments provided
+  bar 1 2 3
+  ^~~
+Compilation failed.

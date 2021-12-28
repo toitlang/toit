@@ -1,0 +1,31 @@
+tests/negative/export_cyclic4_b.toit:4:8: error: Cyclic export dependency
+export foo
+       ^~~
+tests/negative/export_cyclic4_c.toit:4:8: note: This clause contributes to the 'export' cycle
+export foo
+       ^~~
+tests/negative/export_cyclic4_d.toit:4:8: note: This clause contributes to the 'export' cycle
+export foo
+       ^~~
+tests/negative/export_cyclic4_c.toit:4:8: error: Cyclic export dependency
+export foo
+       ^~~
+tests/negative/export_cyclic4_b.toit:4:8: note: This clause contributes to the 'export' cycle
+export foo
+       ^~~
+tests/negative/export_cyclic4_d.toit:4:8: note: This clause contributes to the 'export' cycle
+export foo
+       ^~~
+tests/negative/export_cyclic4_d.toit:4:8: error: Cyclic export dependency
+export foo
+       ^~~
+tests/negative/export_cyclic4_b.toit:4:8: note: This clause contributes to the 'export' cycle
+export foo
+       ^~~
+tests/negative/export_cyclic4_c.toit:4:8: note: This clause contributes to the 'export' cycle
+export foo
+       ^~~
+tests/negative/export_cyclic4_a.toit:4:8: error: Unresolved export 'foo'
+export foo
+       ^~~
+Compilation failed.

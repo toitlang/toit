@@ -1,0 +1,4 @@
+<...>/tests/negative/invalid_lock_file/package.lock:2:1: error: Couldn't parse package lock file: did not find expected node content
+
+^
+Compilation failed.

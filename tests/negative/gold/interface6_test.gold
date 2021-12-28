@@ -1,0 +1,7 @@
+tests/negative/interface6_test.toit:6:7: error: Missing implementations for interface methods
+class B implements A:
+      ^
+tests/negative/interface6_test.toit:4:3: note: Missing implementation for 'foo'
+  foo
+  ^~~
+Compilation failed.

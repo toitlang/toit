@@ -1,0 +1,14 @@
+tests/negative/indent5_test.toit:9:31: error: Missing semicolon or missing newline
+       if bar: 499 else: break: it + 42
+                              ^
+tests/negative/indent5_test.toit:9:31: error: Unexpected block
+       if bar: 499 else: break: it + 42
+                              ^~~~~~~~~
+tests/negative/indent5_test.toit:9:31: error: If branches may not evaluate to blocks
+       if bar: 499 else: break: it + 42
+                              ^~~~~~~~~
+tests/negative/indent5_test.toit:8:5: error: Argument mismatch for 'foo'
+Block argument not provided
+    foo
+    ^~~
+Compilation failed.

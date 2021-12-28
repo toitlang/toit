@@ -1,0 +1,13 @@
+tests/negative/interface2_test.toit:5:5: warning: Unusual indentation for parameter
+    log "foo"
+    ^~~
+tests/negative/interface2_test.toit:5:9: error: Unexpected token: <string>
+    log "foo"
+        ^~~~~
+tests/negative/interface2_test.toit:7:3: error: Interface members can't have bodies
+  foo:
+  ^~~
+tests/negative/interface2_test.toit:11:8: error: Can't instantiate interface 'A'
+  a := A
+       ^
+Compilation failed.
