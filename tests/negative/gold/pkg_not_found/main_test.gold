@@ -1,0 +1,34 @@
+<...>/tests/negative/pkg_not_found/package.lock:7:11: error: Package 'not exist' not found at '<...>/tests/negative/pkg_not_found/not exist'
+    path: not exist
+          ^~~~~~~~~
+tests/negative/pkg_not_found/main_test.toit:3:8: error: Package 'path' for prefix 'error' not found
+import error
+       ^~~~~
+tests/negative/pkg_not_found/main_test.toit:4:1: error: Failed to find import 'error2'
+import error2
+^~~~~~
+tests/negative/pkg_not_found/main_test.toit:4:8: note: Folder '<pkg:path2>/.' exists, but is missing a 'error2.toit' file
+import error2
+       ^~~~~~
+tests/negative/pkg_not_found/main_test.toit:5:1: error: Failed to find import 'error2.foo'
+import error2.foo
+^~~~~~
+tests/negative/pkg_not_found/main_test.toit:5:15: note: Missing library file. Tried '<pkg:path2>/foo.toit' and '<pkg:path2>/foo/foo.toit'
+import error2.foo
+              ^~~
+tests/negative/pkg_not_found/main_test.toit:6:1: error: Failed to find import 'error2.foo.bar'
+import error2.foo.bar
+^~~~~~
+tests/negative/pkg_not_found/main_test.toit:6:15: note: Folder does not exist: '<pkg:path2>/foo'
+import error2.foo.bar
+              ^~~
+tests/negative/pkg_not_found/main_test.toit:7:1: error: Failed to find import 'error2.not_a_directory.bar'
+import error2.not_a_directory.bar
+^~~~~~
+tests/negative/pkg_not_found/main_test.toit:7:15: note: Not a folder: '<pkg:path2>/not_a_directory'
+import error2.not_a_directory.bar
+              ^~~~~~~~~~~~~~~
+tests/negative/pkg_not_found/main_test.toit:10:15: error: Unresolved identifier: 'foo'
+  print error.foo
+              ^~~
+Compilation failed.

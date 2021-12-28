@@ -1,0 +1,4 @@
+tests/negative/type4_test.toit:4:12: error: Unresolved type: 'NonExisting'
+  foo x -> NonExisting:
+           ^~~~~~~~~~~
+Compilation failed.

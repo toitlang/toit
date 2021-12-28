@@ -1,0 +1,6 @@
+prefixes:
+  target: target
+
+packages:
+  target:
+    path: target

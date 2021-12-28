@@ -1,0 +1,7 @@
+tests/negative/abstractA_test.toit:4:16: error: Field-storing parameter not allowed in abstract methods
+  abstract foo .x
+               ^~
+tests/negative/abstractA_test.toit:8:16: error: Unresolved identifier: 'unresolved'
+    return x + unresolved
+               ^~~~~~~~~~
+Compilation failed.

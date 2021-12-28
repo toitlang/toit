@@ -1,0 +1,43 @@
+prefixes:
+  "<invalid prefix>": not important
+  package_not_in_list: not_in_list
+  bad_format: 499
+
+packages:
+  not_found_error:
+    path: not exist
+
+  p1:
+    path: p1
+    prefixes:
+      "<invalid prefix>": not important
+      package_not_in_list: not_in_list
+      bad_format: 499
+
+  same_path_error:
+    path: p1
+
+  not_a_map_error: "not a map"
+
+  bad_format_error:
+    url: some_url
+
+  bad_format_error2:
+    path:
+
+  bad_format_error3:
+    url:
+    version: whatever
+
+  bad_format_error4:
+    url: foobar
+    version:
+
+  bad_format_error5:
+    version: some_version_no_url
+    path: some_path
+
+  bad_format_error6: {}
+
+  "<xyz>":
+    path: xyz

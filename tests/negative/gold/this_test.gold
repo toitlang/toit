@@ -1,0 +1,19 @@
+tests/negative/this_test.toit:18:12: error: Can't access instance members in field initializers.
+  field := foo
+           ^~~
+tests/negative/this_test.toit:19:17: error: Can't access 'this' in a field initializer
+  field2 := bar this
+                ^~~~
+tests/negative/this_test.toit:11:5: error: Can't access instance members before `super` call.
+    foo
+    ^~~
+tests/negative/this_test.toit:15:9: error: Can't access 'this' before a super call in the constructor
+    bar this
+        ^~~~
+tests/negative/this_test.toit:22:12: error: Can't access 'this' in static method
+    return this + foo
+           ^~~~
+tests/negative/this_test.toit:22:19: error: Can't access instance members in static contexts
+    return this + foo
+                  ^~~
+Compilation failed.

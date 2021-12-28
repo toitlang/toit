@@ -1,0 +1,7 @@
+tests/negative/assert2_test.toit:4:3: error: 'assert' takes exactly one block
+  assert 1 == 1
+  ^~~~~~
+tests/negative/assert2_test.toit:5:3: error: 'assert' takes exactly one block
+  assert "msg": 1 == 1
+  ^~~~~~
+Compilation failed.

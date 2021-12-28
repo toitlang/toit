@@ -1,0 +1,82 @@
+tests/negative/check_method_test.toit:3:8: error: Toplevel functions can't have the 'static' modifier
+static foo: unresolved
+       ^~~
+tests/negative/check_method_test.toit:4:1: error: Operators may not be static
+operator + other: unresolved
+^~~~~~~~~~
+tests/negative/check_method_test.toit:6:1: error: Invalid name
+foo.bar: unresolved
+^~~~~~~
+tests/negative/check_method_test.toit:8:10: error: Static functions can't be abstract
+abstract gee:
+         ^~~
+tests/negative/check_method_test.toit:12:10: error: Constructors can't be static
+  static constructor: unresolved
+         ^~~~~~~~~~~
+tests/negative/check_method_test.toit:14:3: error: Invalid name
+  foo.bar: unresolved
+  ^~~~~~~
+tests/negative/check_method_test.toit:17:12: error: Constructors can't be abstract
+  abstract constructor
+           ^~~~~~~~~~~
+tests/negative/check_method_test.toit:18:19: error: Static functions can't be abstract
+  abstract static foo
+                  ^~~
+tests/negative/check_method_test.toit:19:12: error: Abstract members can't have bodies
+  abstract bar:
+           ^~~
+tests/negative/check_method_test.toit:23:3: error: Interfaces can't have constructors
+  constructor: unresolved
+  ^~~~~~~~~~~
+tests/negative/check_method_test.toit:25:3: error: Interface members can't have bodies
+  foo:
+  ^~~
+tests/negative/check_method_test.toit:28:12: error: Interface members can't be declared abstract
+  abstract bar
+           ^~~
+tests/negative/check_method_test.toit:30:12: error: Interface members can't be declared abstract
+  abstract gee:
+           ^~~
+tests/negative/check_method_test.toit:30:12: error: Interface members can't have bodies
+  abstract gee:
+           ^~~
+tests/negative/check_method_test.toit:34:12: error: Monitor functions can't be abstract
+  abstract foo
+           ^~~
+tests/negative/check_method_test.toit:36:12: error: Monitor functions can't be abstract
+  abstract bar:
+           ^~~
+tests/negative/check_method_test.toit:3:13: error: Unresolved identifier: 'unresolved'
+static foo: unresolved
+            ^~~~~~~~~~
+tests/negative/check_method_test.toit:4:19: error: Unresolved identifier: 'unresolved'
+operator + other: unresolved
+                  ^~~~~~~~~~
+tests/negative/check_method_test.toit:6:10: error: Unresolved identifier: 'unresolved'
+foo.bar: unresolved
+         ^~~~~~~~~~
+tests/negative/check_method_test.toit:9:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+tests/negative/check_method_test.toit:12:23: error: Unresolved identifier: 'unresolved'
+  static constructor: unresolved
+                      ^~~~~~~~~~
+tests/negative/check_method_test.toit:14:12: error: Unresolved identifier: 'unresolved'
+  foo.bar: unresolved
+           ^~~~~~~~~~
+tests/negative/check_method_test.toit:20:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/check_method_test.toit:23:16: error: Unresolved identifier: 'unresolved'
+  constructor: unresolved
+               ^~~~~~~~~~
+tests/negative/check_method_test.toit:26:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/check_method_test.toit:31:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/check_method_test.toit:37:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+Compilation failed.

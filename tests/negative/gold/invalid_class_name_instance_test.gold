@@ -1,0 +1,7 @@
+tests/negative/invalid_class_name_instance_test.toit:3:7: error: Expected class name
+class :
+      ^
+tests/negative/invalid_class_name_instance_test.toit:5:10: error: No method 'bar' in this class
+    this.bar
+         ^~~
+Compilation failed.

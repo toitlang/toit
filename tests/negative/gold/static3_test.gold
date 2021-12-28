@@ -1,0 +1,4 @@
+tests/negative/static3_test.toit:3:8: error: Toplevel functions can't have the 'static' modifier
+static foo:
+       ^~~
+Compilation failed.

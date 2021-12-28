@@ -1,0 +1,10 @@
+tests/negative/incomplete_dot_test.toit:5:5: error: Incomplete expression
+  x.  // some comment
+    ^~~~~~~~~~~~~~~~~
+tests/negative/incomplete_dot_test.toit:6:5: error: Incomplete expression
+  x.  /* some
+    ^
+tests/negative/incomplete_dot_test.toit:8:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+Compilation failed.

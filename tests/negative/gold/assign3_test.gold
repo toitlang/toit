@@ -1,0 +1,7 @@
+tests/negative/assign3_test.toit:3:5: error: Unexpected token '='. Did you mean ':='?
+foo = 499
+    ^
+tests/negative/assign3_test.toit:6:7: error: Unexpected token '='. Did you mean ':='?
+  bar = 42
+      ^
+Compilation failed.

@@ -1,0 +1,43 @@
+<pkg:target-1.0>/foo.toit:14:3: error: Method 'foo' with overlapping signature
+  foo x y=499:
+  ^~~
+<pkg:target-1.0>/foo.toit:13:3: note: Overlaps with method 'foo'
+  foo x:
+  ^~~
+<pkg:target-1.0>/foo.toit:15:3: note: Overlaps with method 'foo'
+  foo x y=43 z=23:
+  ^~~
+<pkg:target-1.0>/foo.toit:15:3: error: Method 'foo' with overlapping signature
+  foo x y=43 z=23:
+  ^~~
+<pkg:target-1.0>/foo.toit:13:3: note: Overlaps with method 'foo'
+  foo x:
+  ^~~
+tests/negative/pkg_group_errors_in_pkg/with_package_warnings_test.toit:6:7: error: Missing implementations for interface methods
+class A implements target.I1:
+      ^
+<pkg:target-1.0>/foo.toit:7:3: note: Missing implementation for 'foo'
+  foo -> string
+  ^~~
+<pkg:target-1.0>/foo.toit:8:3: note: Missing implementation for 'bar'
+  bar x y
+  ^~~
+<pkg:target-1.0>/foo.toit:10:7: error: Missing implementations for interface methods
+class B implements I1:
+      ^
+<pkg:target-1.0>/foo.toit:7:3: note: Missing implementation for 'foo'
+  foo -> string
+  ^~~
+<pkg:target-1.0>/foo.toit:8:3: note: Missing implementation for 'bar'
+  bar x y
+  ^~~
+<pkg:target-1.0>/foo.toit:18:3: error: Ambiguous resolution of 'ambiguous'
+  ambiguous
+  ^~~~~~~~~
+<pkg:target-1.0>/bar.toit:3:1: note: Resolution candidate for 'ambiguous'
+ambiguous:
+^~~~~~~~~
+<pkg:target-1.0>/gee.toit:3:1: note: Resolution candidate for 'ambiguous'
+ambiguous:
+^~~~~~~~~
+Compilation failed.

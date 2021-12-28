@@ -1,0 +1,10 @@
+tests/negative/evaluating_test.toit:4:3: error: Can't call result of evaluating expression
+  (1 + 2) 3
+  ^
+tests/negative/evaluating_test.toit:5:3: error: Can't call result of evaluating expression
+  (unresolved) 2
+  ^
+tests/negative/evaluating_test.toit:5:4: error: Unresolved identifier: 'unresolved'
+  (unresolved) 2
+   ^~~~~~~~~~
+Compilation failed.

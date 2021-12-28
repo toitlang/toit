@@ -1,0 +1,7 @@
+tests/negative/abstractC_test.toit:9:7: error: Non-abstract class 'B' is missing implementations
+class B extends A:
+      ^
+tests/negative/abstractC_test.toit:5:12: note: Missing implementation for 'bar'
+  abstract bar
+           ^~~
+Compilation failed.

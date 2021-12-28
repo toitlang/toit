@@ -1,0 +1,59 @@
+tests/negative/missing_name2_test.toit:3:8: error: Missing parameter name
+foo -- --foo:
+       ^~
+tests/negative/missing_name2_test.toit:3:8: error: Unexpected token: --
+foo -- --foo:
+       ^~
+tests/negative/missing_name2_test.toit:6:13: error: Missing parameter name
+bar --foo --:
+            ^
+tests/negative/missing_name2_test.toit:9:8: error: Missing parameter name
+foo [--] [--foo]:
+       ^
+tests/negative/missing_name2_test.toit:9:8: error: Missing parameter name
+foo [--] [--foo]:
+       ^
+tests/negative/missing_name2_test.toit:12:16: error: Missing parameter name
+bar [--foo] [--]:
+               ^
+tests/negative/missing_name2_test.toit:12:16: error: Missing parameter name
+bar [--foo] [--]:
+               ^
+tests/negative/missing_name2_test.toit:15:7: error: Missing parameter name
+gee --
+      ^
+tests/negative/missing_name2_test.toit:17:8: error: Missing parameter name
+gee -- -> none:
+       ^~
+tests/negative/missing_name2_test.toit:19:7: error: Missing parameter name
+gee ---> none:
+      ^~
+tests/negative/missing_name2_test.toit:15:1: error: Missing body
+gee --
+^~~
+tests/negative/missing_name2_test.toit:17:1: error: Redefinition of 'gee'
+gee -- -> none:
+^~~
+tests/negative/missing_name2_test.toit:15:1: note: First definition of 'gee'
+gee --
+^~~
+tests/negative/missing_name2_test.toit:19:1: error: Redefinition of 'gee'
+gee ---> none:
+^~~
+tests/negative/missing_name2_test.toit:15:1: note: First definition of 'gee'
+gee --
+^~~
+tests/negative/missing_name2_test.toit:4:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+tests/negative/missing_name2_test.toit:7:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+tests/negative/missing_name2_test.toit:10:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+tests/negative/missing_name2_test.toit:13:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+Couldn't find 'main' (with 0 or 1 argument) in entry file 'tests/negative/missing_name2_test.toit'
+Compilation failed.

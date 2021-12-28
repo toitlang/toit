@@ -1,0 +1,4 @@
+<...>/tests/negative/lock_sdk_bad/package.lock:1:6: error: SDK constraint must be of form '^version': '1.0.9'
+sdk: 1.0.9
+     ^~~~~
+Compilation failed.
