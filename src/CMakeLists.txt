@@ -48,7 +48,7 @@ add_library(
   )
 
 set_source_files_properties(interpreter_run.cc PROPERTIES COMPILE_FLAGS "-O3 ${TOIT_INTERPRETER_FLAGS} $ENV{LOCAL_INTERPRETER_CXXFLAGS}")
-set_source_files_properties(utils.cc PROPERTIES COMPILE_FLAGS "-DTOIT_MODEL=\"\\\"${TOIT_MODEL}\\\"\" -DVM_GIT_INFO=\"\\\"${VM_GIT_INFO}\\\"\" -DVM_GIT_VERSION=\"\\\"${VM_GIT_VERSION}\\\"\"")
+set_source_files_properties(utils.cc PROPERTIES COMPILE_FLAGS "-DTOIT_MODEL=\"\\\"${TOIT_MODEL}\\\"\" -DVM_GIT_INFO=\"\\\"${VM_GIT_INFO}\\\"\" -DVM_GIT_VERSION=\"\\\"${TOIT_GIT_VERSION}\\\"\"")
 
 add_custom_command(
   OUTPUT  checksum.cc
@@ -124,9 +124,18 @@ ADD_TOIT_TARGET(
 )
 
 add_custom_target(
-  build_toitvm
-  DEPENDS toitvm ${BOOT_SNAPSHOT}
+  build_tools
+  DEPENDS toitvm toitc
 )
+
+add_custom_target(
+  build_boot_snapshot
+  DEPENDS ${BOOT_SNAPSHOT}
+)
+
+if (NOT DEFINED TOIT_IS_CROSS)
+  add_dependencies(build_tools build_boot_snapshot)
+endif()
 
 if (DEFINED USE_LWIP)
   include_directories(toitvm PRIVATE ${LWIP_INCLUDE_DIRS})
