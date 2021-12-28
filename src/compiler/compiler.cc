@@ -1477,23 +1477,18 @@ static void check_sdk(const std::string& constraint, Diagnostics* diagnostics) {
   // We checked the version already during parsing of the lock file. So we know
   // the parsing must work.
   ASSERT(status == 0);
-  printf("constraint-parse: %d\n", status);
 
   semver_t compiler_semver;
   const char* compiler_version = vm_git_version();
   ASSERT(compiler_version[0] == 'v');
   status = semver_parse(&compiler_version[1], &compiler_semver);
   ASSERT(status == 0);
-  printf("compiler_version-parse: %d\n", status);
 
   if (semver_lt(compiler_semver, constraint_semver)) {
     diagnostics->report_error("The SDK constraint defined in the package.lock file is not satisfied: %s < %s",
                               compiler_version,
                               constraint.c_str());
   };
-  diagnostics->report_warning("The SDK constraint defined in the package.lock file is satisfied: %s < %s",
-                            compiler_version,
-                            constraint.c_str());
 }
 
 Pipeline::Result Pipeline::run(List<const char*> source_paths) {
