@@ -13,9 +13,14 @@
 # The license can be found in the file `LICENSE` in the top level
 # directory of this repository.
 
-cmake_minimum_required(VERSION 3.13.3)
+cmake_minimum_required(VERSION 3.19.0)
 
 project(toit)
+
+include(tools/gitversion.cmake)
+# The Git version is only computed when cmake generates the Ninja files, but
+# that should be good enough.
+compute_git_version(TOIT_GIT_VERSION)
 
 set(TOIT_SDK_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 
@@ -107,6 +112,11 @@ endif()
 add_custom_target(
   build_toitlsp
   COMMAND make -C ${CMAKE_SOURCE_DIR} toitlsp
+)
+
+add_custom_target(
+  build_version_file
+  COMMAND echo ${TOIT_GIT_VERSION} > "${CMAKE_BINARY_DIR}/sdk/VERSION"
 )
 
 set(CMAKE_POLICY_DEFAULT_CMP0076 OLD)

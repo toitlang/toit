@@ -28,6 +28,11 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
+      - name: Fetch tags
+        # The github checkout is shallow and doesn't have tags.
+        run: |
+          git fetch --tags
+
       - name: Initialize mbed-tls submodule
         # We only need the mbedtls submodule for building.
         run: |
