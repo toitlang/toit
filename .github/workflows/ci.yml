@@ -150,15 +150,17 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v2
-        with:
-          submodules: recursive
+      - uses: actions/checkout@v2
 
       - name: Fetch tags
         # The github checkout is shallow and doesn't have tags.
         run: |
           git fetch --tags
+
+      - name: Initialize submodules
+        run: |
+          git submodule sync --recursive
+          git submodule update --init --recursive -j 2
 
       # We create a new id every second.
       # The 'restore-keys' below will make sure that we continue using earlier versions.
