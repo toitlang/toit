@@ -74,9 +74,11 @@ function(compute_git_version VERSION)
     return()
   endif()
 
-  # Other branch: v0.5.0-pre.17+branch_name.9a1fbd29
+  # Other branch: v0.5.0-pre.17+branch-name.9a1fbd29
+  # Semver requires the dot-separated identifiers to comprise only alphanumerics and hyphens.
+  string(REGEX REPLACE "[^.0-9A-Za-z-]" "-" SANITIZED_BRANCH ${CURRENT_BRANCH})
   MATH(EXPR minor "${minor}+1")
-  set(${VERSION} "${major}.${minor}.0-pre.${CURRENT_COMMIT_NO}+${CURRENT_BRANCH}.${CURRENT_COMMIT_SHORT}" PARENT_SCOPE)
+  set(${VERSION} "${major}.${minor}.0-pre.${CURRENT_COMMIT_NO}+${SANITIZED_BRANCH}.${CURRENT_COMMIT_SHORT}" PARENT_SCOPE)
 endfunction()
 
 compute_git_version(TOIT_GIT_VERSION)
