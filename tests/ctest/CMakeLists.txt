@@ -52,7 +52,6 @@ foreach(file ${CC_FILES})
   )
 
   # Make sure the test is built before we run the tests.
-  add_dependencies(build_tools ${exe})
   add_dependencies(check ${exe})
   add_dependencies(check_slow ${exe})
 endforeach()
@@ -64,7 +63,6 @@ foreach(file ${CC_TESTS})
   add_test(NAME ${test_name} COMMAND ${CTEST_DIR}/${exe} ${test_input})
   set_tests_properties(${test_name} PROPERTIES TIMEOUT 40)
   # Make sure the test is built before we run the tests.
-  add_dependencies(build_tools ${exe})
   add_dependencies(check ${exe})
   add_dependencies(check_slow ${exe})
 endforeach()
@@ -77,7 +75,6 @@ foreach(file ${TOIT_TESTS})
 
   set_tests_properties(${test_name} PROPERTIES TIMEOUT 40)
   # Make sure the test is built before we run the tests.
-  add_dependencies(build_tools ${exe})
   add_dependencies(check ${exe})
   add_dependencies(check_slow ${exe})
 endforeach()
