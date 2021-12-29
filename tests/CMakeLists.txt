@@ -105,6 +105,7 @@ add_subdirectory(negative)
 add_subdirectory(lsp)
 add_subdirectory(optimizations)
 add_subdirectory(toitp)
+add_subdirectory(toit_run_image)
 add_subdirectory(lock_file)
 
 include(fail.cmake)
