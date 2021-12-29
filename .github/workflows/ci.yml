@@ -122,6 +122,7 @@ jobs:
         if: runner.os != 'Windows'
         run: |
           make test
+          make test-health
 
       - name: Pack artifacts
         shell: bash
