@@ -106,6 +106,7 @@ add_subdirectory(lsp)
 add_subdirectory(optimizations)
 add_subdirectory(toitp)
 add_subdirectory(lock_file)
+add_subdirectory(snapshot_to_image)
 
 include(fail.cmake)
 foreach(test ${TOIT_FAILING_TESTS})
