@@ -221,3 +221,4 @@ test:
 .PHONY: update-gold
 update-gold:
 	(cd build/host && ninja update_gold)
+	(cd build/host && ninja update_minus_s_gold)
