@@ -125,10 +125,13 @@ enable_testing()
 add_subdirectory(tests)
 
 set(CMAKE_POLICY_DEFAULT_CMP0076 OLD)
-# There is no prefix, so this variable might be interfere with other libraries.
+# The 'ENABLE_TESTING' and 'ENABLE_PROGRAMS' variables (used by mbedtls) have no prefix. As
+# such they might interfere with other libraries.
 # Eventually, we need to import mbedtls differently.
 set(ENABLE_TESTING CACHE BOOL OFF)
 set(ENABLE_PROGRAMS CACHE BOOL OFF)
+# Resetting the 'CMAKE_RUNTIME_OUTPUT_DIRECTORY' so that mbedtls doesn't pollute the
+# 'sdk/bin' directory.
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
 add_subdirectory(
   "${IDF_PATH}/components/mbedtls/mbedtls"
