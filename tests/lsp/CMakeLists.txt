@@ -20,7 +20,7 @@ file(GLOB TOIT_SLOW_COMPILER_TESTS RELATIVE ${TOIT_SDK_SOURCE_DIR} "*compiler_te
 
 set(MOCK_COMPILER_DIR ${CMAKE_BINARY_DIR}/lsp_test)
 
-set(TOIT_LSP_BIN ${CMAKE_BINARY_DIR}/sdk/bin/toitlsp)
+set(TOIT_LSP_BIN ${CMAKE_BINARY_DIR}/sdk/bin/toit.lsp)
 set(TOIT_LSP_SERVER_DIR ${TOIT_SDK_SOURCE_DIR}/tools/lsp/server)
 
 # TODO(florian): set timeout to DEFAULT_TIMEOUT once we have removed the Toit version of the LSP server.

@@ -38,7 +38,7 @@ endif
 
 BIN_DIR = build/host/sdk/bin
 TOITPKG_BIN = $(BIN_DIR)/toitpkg$(EXE_SUFFIX)
-TOITLSP_BIN = $(BIN_DIR)/toitlsp$(EXE_SUFFIX)
+TOITLSP_BIN = $(BIN_DIR)/toit.lsp$(EXE_SUFFIX)
 TOITVM_BIN = $(BIN_DIR)/toit.run$(EXE_SUFFIX)
 TOITC_BIN = $(BIN_DIR)/toit.compile$(EXE_SUFFIX)
 VERSION_FILE = build/host/sdk/VERSION
