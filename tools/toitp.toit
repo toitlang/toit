@@ -1,4 +1,4 @@
-#!/usr/bin/env toitc
+#!/usr/bin/env toit.run
 
 // Copyright (C) 2019 Toitware ApS.
 //

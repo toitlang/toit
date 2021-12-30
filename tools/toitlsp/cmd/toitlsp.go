@@ -37,7 +37,7 @@ func ToitLSP(version, date string) *cobra.Command {
 		RunE:  runToitLSP,
 	}
 	cmd.Flags().BoolP("verbose", "v", false, "")
-	cmd.Flags().String("toitc", "", "the default toitc to use")
+	cmd.Flags().String("toitc", "", "the default toit compiler to use")
 	cmd.Flags().String("sdk", "", "the default SDK path to use")
 	cmd.Flags().String("cpuprofile", "", "write cpu profile to `file`")
 	cmd.Flags().String("memprofile", "", "write mem profile to `file`")

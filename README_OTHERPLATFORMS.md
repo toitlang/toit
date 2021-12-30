@@ -53,7 +53,7 @@ build/host/bin/toit.run examples/mandelbrot.toit
 </br>
 
 # Cross-compiling
-How to compile the Toit binaries (toitc and toit.run) for another architecture (ie. RISC-V) from an amd64 host
+How to compile the Toit binaries (toit.compile and toit.run) for another architecture (ie. RISC-V) from an amd64 host
 
 ## 1) Compile host tools
 >Note: This is necessary to generate run_boot.snapshot, a dependency for the toit.run runtime. </br> 
@@ -92,7 +92,7 @@ ubuntu@ubuntu:~/git/toit$ ls -l build/riscv64/sdk/bin/
 total 4112
 lrwxrwxrwx 1 ubuntu ubuntu      31 Dec  4 07:48 lib -> /home/ubuntu/git/toit/lib
 drwxrwxr-x 7 ubuntu ubuntu    4096 Dec  4 11:19 mbedtls
--rwxrwxr-x 1 ubuntu ubuntu 1806496 Dec  4 07:49 toitc
+-rwxrwxr-x 1 ubuntu ubuntu 1806496 Dec  4 07:49 toit.compile
 -rwxrwxr-x 1 ubuntu ubuntu 2189584 Dec  4 07:49 toit.run
 -rw-rw-r-- 1 ubuntu ubuntu  202320 Dec  4 11:19 run_boot.snapshot
 ```

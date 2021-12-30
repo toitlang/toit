@@ -161,14 +161,14 @@ int main(int argc, char **argv) {
     argc -= 2;
     argv += 2;
   } else {
-    // The wrapping boot bundle is run_boot.snapshot, stored next to the executing toitc.
-    char* toitc_path = compiler::FilesystemLocal::get_executable_path();
-    char* bin_path = dirname(toitc_path);
+    // The wrapping boot bundle is run_boot.snapshot, stored next to the executing toit.run.
+    char* toit_run_path = compiler::FilesystemLocal::get_executable_path();
+    char* bin_path = dirname(toit_run_path);
     const char* postfix = "/run_boot.snapshot";
     boot_bundle_path = unvoid_cast<char*>(malloc(strlen(bin_path) + strlen(postfix) + 1));
     strcpy(boot_bundle_path, bin_path);
     strcat(boot_bundle_path, postfix);
-    delete [] toitc_path;
+    delete [] toit_run_path;
   }
 
   // Help must be used on its own.

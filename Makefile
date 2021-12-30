@@ -40,7 +40,7 @@ BIN_DIR = build/host/sdk/bin
 TOITPKG_BIN = $(BIN_DIR)/toitpkg$(EXE_SUFFIX)
 TOITLSP_BIN = $(BIN_DIR)/toitlsp$(EXE_SUFFIX)
 TOITVM_BIN = $(BIN_DIR)/toit.run$(EXE_SUFFIX)
-TOITC_BIN = $(BIN_DIR)/toitc$(EXE_SUFFIX)
+TOITC_BIN = $(BIN_DIR)/toit.compile$(EXE_SUFFIX)
 VERSION_FILE = build/host/sdk/VERSION
 CROSS_ARCH=
 
@@ -132,7 +132,7 @@ $(SNAPSHOT_DIR):
 
 # CROSS-COMPILE
 .PHONY: tools-cross
-tools-cross: check-env check-env-cross tools build/$(CROSS_ARCH)/sdk/bin/toit.run build/$(CROSS_ARCH)/sdk/bin/toitc build/$(CROSS_ARCH)/sdk/bin/run_boot.snapshot
+tools-cross: check-env check-env-cross tools build/$(CROSS_ARCH)/sdk/bin/toit.run build/$(CROSS_ARCH)/sdk/bin/toit.compile build/$(CROSS_ARCH)/sdk/bin/run_boot.snapshot
 
 check-env-cross:
 ifndef CROSS_ARCH
@@ -142,8 +142,8 @@ ifeq ("$(wildcard ./toolchains/$(CROSS_ARCH).cmake)","")
 	$(error invalid cross-compile target '$(CROSS_ARCH)')
 endif
 
-.PHONY: build/$(CROSS_ARCH)/sdk/bin/toit.run build/$(CROSS_ARCH)/sdk/bin/toitc
-build/$(CROSS_ARCH)/sdk/bin/toit.run build/$(CROSS_ARCH)/sdk/bin/toitc: build/$(CROSS_ARCH)/CMakeCache.txt
+.PHONY: build/$(CROSS_ARCH)/sdk/bin/toit.run build/$(CROSS_ARCH)/sdk/bin/toit.compile
+build/$(CROSS_ARCH)/sdk/bin/toit.run build/$(CROSS_ARCH)/sdk/bin/toit.compile: build/$(CROSS_ARCH)/CMakeCache.txt
 	(cd build/$(CROSS_ARCH) && ninja build_tools)
 
 build/$(CROSS_ARCH)/CMakeCache.txt: build/$(CROSS_ARCH)/

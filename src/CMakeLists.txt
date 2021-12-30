@@ -125,7 +125,7 @@ ADD_TOIT_TARGET(
 
 add_custom_target(
   build_tools
-  DEPENDS toit.run toitc
+  DEPENDS toit.run toit.compile
 )
 
 add_custom_target(

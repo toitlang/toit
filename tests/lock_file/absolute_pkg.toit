@@ -92,7 +92,7 @@ find dir/string [block]:
   stream.close
 
 main args:
-  toitc := args[0]
+  toit_run := args[0]
   dir := args[1]
   last_segment := (dir.split "/").last
 
@@ -108,7 +108,7 @@ main args:
     // super-set of JSON this is valid.
     write_to_file lock_path (json.stringify absolute_lock_content)
     // The program should still complete successfully with absolute paths.
-    pipe.backticks toitc main_path
+    pipe.backticks toit_run main_path
 
     fake_home_dir := "$test_dir/FAKE_HOME"
     shared_cache_dir := "$fake_home_dir/$SHARED_CACHE_DIR"
@@ -120,16 +120,16 @@ main args:
     // super-set of JSON this is valid.
     write_to_file lock_path (json.stringify package_lock_content)
     // We don't want to access the real home-directory cache, so provide a fake one with the HOME env variable.
-    pipe.backticks "sh" "-c" "HOME=\"$fake_home_dir\" \"$toitc\" \"$main_path\""
+    pipe.backticks "sh" "-c" "HOME=\"$fake_home_dir\" \"$toit_run\" \"$main_path\""
     // Check that it doesn't work with a non-existing directory.
     if not lock_content["prefixes"].is_empty:
-      exit_code := pipe.system "HOME=\"NON_EXISTING_PATH\" \"$toitc\" \"$main_path\" > /dev/null"
+      exit_code := pipe.system "HOME=\"NON_EXISTING_PATH\" \"$toit_run\" \"$main_path\" > /dev/null"
       expect_equals 1 exit_code
     // The `TOIT_PACKAGE_CACHE_PATHS` takes precedence over the home package cache.
-    pipe.backticks "sh" "-c" "HOME=\"NON_EXISTING_PATH\" TOIT_PACKAGE_CACHE_PATHS=\"$fake_home_dir/$SHARED_CACHE_DIR\" \"$toitc\" \"$main_path\""
+    pipe.backticks "sh" "-c" "HOME=\"NON_EXISTING_PATH\" TOIT_PACKAGE_CACHE_PATHS=\"$fake_home_dir/$SHARED_CACHE_DIR\" \"$toit_run\" \"$main_path\""
     // Check that it also works if there are multiple entries (separated by ":")
-    pipe.backticks "sh" "-c" "HOME=\"NON_EXISTING_PATH\" TOIT_PACKAGE_CACHE_PATHS=\"NON_EXISTING_PATH:$fake_home_dir/$SHARED_CACHE_DIR\" \"$toitc\" \"$main_path\""
-    pipe.backticks "sh" "-c" "HOME=\"NON_EXISTING_PATH\" TOIT_PACKAGE_CACHE_PATHS=\"$fake_home_dir/$SHARED_CACHE_DIR:NON_EXISTING_PATH\" \"$toitc\" \"$main_path\""
+    pipe.backticks "sh" "-c" "HOME=\"NON_EXISTING_PATH\" TOIT_PACKAGE_CACHE_PATHS=\"NON_EXISTING_PATH:$fake_home_dir/$SHARED_CACHE_DIR\" \"$toit_run\" \"$main_path\""
+    pipe.backticks "sh" "-c" "HOME=\"NON_EXISTING_PATH\" TOIT_PACKAGE_CACHE_PATHS=\"$fake_home_dir/$SHARED_CACHE_DIR:NON_EXISTING_PATH\" \"$toit_run\" \"$main_path\""
 
     // Modify the shared cache directory so that it now yields errors.
     find shared_cache_dir: | path/string |
@@ -146,8 +146,8 @@ main args:
         json.stringify package_lock_content_local
 
     // This local package dir is now found and preferred.
-    pipe.backticks toitc main_path
-    pipe.backticks "sh" "-c" "HOME=\"$fake_home_dir\" \"$toitc\" \"$main_path\""
+    pipe.backticks toit_run main_path
+    pipe.backticks "sh" "-c" "HOME=\"$fake_home_dir\" \"$toit_run\" \"$main_path\""
 
   finally:
     directory.rmdir --recursive tmp_dir
