@@ -191,11 +191,11 @@ You should then be able to execute a toit file:
 build/host/sdk/bin/toit.run examples/hello.toit
 ```
 
-The package manager is found at `build/host/sdk/bin/toitpkg`:
+The package manager is found at `build/host/sdk/bin/toit.pkg`:
 
 ``` sh
-build/host/sdk/bin/toitpkg pkg init --project-root=<some-directory>
-build/host/sdk/bin/toitpkg pkg install --project-root=<some-directory> <package-id>
+build/host/sdk/bin/toit.pkg pkg init --project-root=<some-directory>
+build/host/sdk/bin/toit.pkg pkg install --project-root=<some-directory> <package-id>
 ```
 
 ## IDE integration

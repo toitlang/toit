@@ -37,7 +37,7 @@ else
 endif
 
 BIN_DIR = build/host/sdk/bin
-TOITPKG_BIN = $(BIN_DIR)/toitpkg$(EXE_SUFFIX)
+TOITPKG_BIN = $(BIN_DIR)/toit.pkg$(EXE_SUFFIX)
 TOITLSP_BIN = $(BIN_DIR)/toit.lsp$(EXE_SUFFIX)
 TOITVM_BIN = $(BIN_DIR)/toit.run$(EXE_SUFFIX)
 TOITC_BIN = $(BIN_DIR)/toit.compile$(EXE_SUFFIX)
@@ -92,6 +92,7 @@ toitpkg: $(TOITPKG_BIN)
 
 $(TOITPKG_BIN):
 	GOBIN="$(CURDIR)"/$(dir $@) go install github.com/toitlang/tpkg/cmd/toitpkg@$(TOITPKG_VERSION)
+	mv "$(CURDIR)"/$(dir $@)/toitpkg "$(CURDIR)"/$@
 
 .PHONY: toitlsp
 toitlsp: $(TOITLSP_BIN)
