@@ -57,7 +57,7 @@ add_custom_command(
   )
 
 add_executable(
-  toitvm
+  toit.run
   toit.cc
   ${CMAKE_CURRENT_BINARY_DIR}/checksum.cc
   )
@@ -103,7 +103,7 @@ set(TOIT_LINK_LIBS
   )
 
 target_link_libraries(
-  toitvm
+  toit.run
   ${TOIT_LINK_LIBS}
   )
 
@@ -114,10 +114,10 @@ target_link_libraries(
 
 include(${TOIT_SDK_SOURCE_DIR}/tools/toit.cmake)
 
-set(BOOT_SNAPSHOT ${CMAKE_BINARY_DIR}/sdk/bin/toitvm_boot.snapshot)
+set(BOOT_SNAPSHOT ${CMAKE_BINARY_DIR}/sdk/bin/run_boot.snapshot)
 
 ADD_TOIT_TARGET(
-  ${TOIT_SDK_SOURCE_DIR}/tools/toitvm_boot.toit
+  ${TOIT_SDK_SOURCE_DIR}/tools/run_boot.toit
   ${BOOT_SNAPSHOT}
   ${CMAKE_CURRENT_BINARY_DIR}/boot.dep
   "ASAN_OPTIONS=detect_leaks=false"
@@ -125,7 +125,7 @@ ADD_TOIT_TARGET(
 
 add_custom_target(
   build_tools
-  DEPENDS toitvm toitc
+  DEPENDS toit.run toitc
 )
 
 add_custom_target(
@@ -138,9 +138,9 @@ if (NOT DEFINED TOIT_IS_CROSS)
 endif()
 
 if (DEFINED USE_LWIP)
-  include_directories(toitvm PRIVATE ${LWIP_INCLUDE_DIRS})
-  target_compile_options(toitvm PRIVATE ${LWIP_COMPILER_FLAGS})
-  target_compile_definitions(toitvm PRIVATE ${LWIP_DEFINITIONS} ${LWIP_MBEDTLS_DEFINITIONS})
+  include_directories(toit.run PRIVATE ${LWIP_INCLUDE_DIRS})
+  target_compile_options(toit.run PRIVATE ${LWIP_COMPILER_FLAGS})
+  target_compile_definitions(toit.run PRIVATE ${LWIP_DEFINITIONS} ${LWIP_MBEDTLS_DEFINITIONS})
 endif()
 
 #ifdef IMAGE

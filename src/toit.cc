@@ -43,7 +43,7 @@ static void print_usage(int exit_code) {
   printf("  [-h] [--help]                             // This help message\n");
   printf("  [--version]                               // Prints version information\n");
   printf("  [-X<flag>]*                               // Provide a compiler flag\n");
-  printf("  [-b <snapshot>]                           // Use a specific boot snapshot, default is the adjacent toitvm_boot.snapshot\n");
+  printf("  [-b <snapshot>]                           // Use a specific boot snapshot, default is the adjacent run_boot.snapshot\n");
   printf("  [--dependency-file <file>]                // Write a dependency file ('-' for stdout)\n");
   printf("  [--dependency-format {plain|ninja}]       // The format of the dependency file\n");
   printf("  [--project-root <path>]                   // Path to the project root. Any package.lock file must be in that folder\n");
@@ -161,10 +161,10 @@ int main(int argc, char **argv) {
     argc -= 2;
     argv += 2;
   } else {
-    // The wrapping boot bundle is toitvm_boot.snapshot, stored next to the executing toitc.
+    // The wrapping boot bundle is run_boot.snapshot, stored next to the executing toitc.
     char* toitc_path = compiler::FilesystemLocal::get_executable_path();
     char* bin_path = dirname(toitc_path);
-    const char* postfix = "/toitvm_boot.snapshot";
+    const char* postfix = "/run_boot.snapshot";
     boot_bundle_path = unvoid_cast<char*>(malloc(strlen(bin_path) + strlen(postfix) + 1));
     strcpy(boot_bundle_path, bin_path);
     strcat(boot_bundle_path, postfix);

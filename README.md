@@ -188,7 +188,7 @@ This builds the Toit VM, the compiler, the language server and the package manag
 You should then be able to execute a toit file:
 
 ``` sh
-build/host/sdk/bin/toitvm examples/hello.toit
+build/host/sdk/bin/toit.run examples/hello.toit
 ```
 
 The package manager is found at `build/host/sdk/bin/toitpkg`:

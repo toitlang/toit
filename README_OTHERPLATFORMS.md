@@ -45,18 +45,18 @@ make tools
 
 ## 5) Run examples
 ``` sh
-build/host/bin/toitvm examples/hello.toit
-build/host/bin/toitvm examples/bubble_sort.toit
-build/host/bin/toitvm examples/mandelbrot.toit
+build/host/bin/toit.run examples/hello.toit
+build/host/bin/toit.run examples/bubble_sort.toit
+build/host/bin/toit.run examples/mandelbrot.toit
 ```
 </br>
 </br>
 
 # Cross-compiling
-How to compile the Toit binaries (toitc and toitvm) for another architecture (ie. RISC-V) from an amd64 host
+How to compile the Toit binaries (toitc and toit.run) for another architecture (ie. RISC-V) from an amd64 host
 
 ## 1) Compile host tools
->Note: This is necessary to generate toitvm_boot.snapshot, a dependency for the toitvm runtime. </br> 
+>Note: This is necessary to generate run_boot.snapshot, a dependency for the toit.run runtime. </br> 
 Follow [steps 2-4 above](README_OTHERPLATFORMS.md#2-install-dependencies) on the host.
 
 ## 2) Install cross-compile dependencies
@@ -93,8 +93,8 @@ total 4112
 lrwxrwxrwx 1 ubuntu ubuntu      31 Dec  4 07:48 lib -> /home/ubuntu/git/toit/lib
 drwxrwxr-x 7 ubuntu ubuntu    4096 Dec  4 11:19 mbedtls
 -rwxrwxr-x 1 ubuntu ubuntu 1806496 Dec  4 07:49 toitc
--rwxrwxr-x 1 ubuntu ubuntu 2189584 Dec  4 07:49 toitvm
--rw-rw-r-- 1 ubuntu ubuntu  202320 Dec  4 11:19 toitvm_boot.snapshot
+-rwxrwxr-x 1 ubuntu ubuntu 2189584 Dec  4 07:49 toit.run
+-rw-rw-r-- 1 ubuntu ubuntu  202320 Dec  4 11:19 run_boot.snapshot
 ```
 </br>
 </br>

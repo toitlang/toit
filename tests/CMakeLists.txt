@@ -49,7 +49,7 @@ foreach(file ${TOIT_TESTS})
     NAME ${file}
     # We add 3 arguments to all test-calls.
     # They are only used for tests that deal with arguments.
-    COMMAND $<TARGET_FILE:toitvm> ${file} "foo" "bar" "gee"
+    COMMAND $<TARGET_FILE:toit.run> ${file} "foo" "bar" "gee"
     WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
     )
   set_tests_properties(${file} PROPERTIES TIMEOUT ${DEFAULT_TIMEOUT})
@@ -59,7 +59,7 @@ endforeach()
 foreach(file ${TOIT_FORCE_TESTS})
   add_test(
     NAME ${file}
-    COMMAND $<TARGET_FILE:toitvm> --force ${file}
+    COMMAND $<TARGET_FILE:toit.run> --force ${file}
     WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
     )
   set_tests_properties(${file} PROPERTIES TIMEOUT ${DEFAULT_TIMEOUT})
@@ -69,7 +69,7 @@ foreach(file ${TOIT_NO_BOOT_TESTS})
   add_test(
     NAME ${file}
     # Assumes that `none` doesn't exist.
-    COMMAND $<TARGET_FILE:toitvm> -b none ${file}
+    COMMAND $<TARGET_FILE:toit.run> -b none ${file}
     WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
     )
   set_tests_properties(${file} PROPERTIES TIMEOUT ${DEFAULT_TIMEOUT})
@@ -78,7 +78,7 @@ endforeach()
 foreach(file ${TOIT_COMPILER_TESTS})
   add_test(
     NAME ${file}
-    COMMAND $<TARGET_FILE:toitvm> ${file} $<TARGET_FILE:toitvm>
+    COMMAND $<TARGET_FILE:toit.run> ${file} $<TARGET_FILE:toit.run>
     WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
     )
   set_tests_properties(${file} PROPERTIES TIMEOUT ${DEFAULT_TIMEOUT})
@@ -87,14 +87,14 @@ endforeach()
 set(PREEMPT_ALOT_TEST "tests/json_test.toit")
 add_test(
   NAME "${PREEMPT_ALOT_TEST}-PREEMPT_ALOT"
-  COMMAND $<TARGET_FILE:toitvm> -Xpreemptalot ${PREEMPT_ALOT_TEST}
+  COMMAND $<TARGET_FILE:toit.run> -Xpreemptalot ${PREEMPT_ALOT_TEST}
   WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
   )
 
 foreach(file ${TOIT_SLOW_TESTS})
   add_test(
     NAME ${file}
-    COMMAND $<TARGET_FILE:toitvm> ${file}
+    COMMAND $<TARGET_FILE:toit.run> ${file}
     CONFIGURATIONS slow
     WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
     )
