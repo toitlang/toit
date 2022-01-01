@@ -20,3 +20,5 @@ tedi_test.go
 /tools/lsp/client/out/
 
 tests/health/health_sources.cmake
+
+.gdb_history
