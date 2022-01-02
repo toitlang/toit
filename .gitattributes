@@ -1,0 +1,20 @@
+# Source files should not be normalized to avoid confusing clang-format-diff.py
+*.c text eol=lf
+*.cc text eol=lf
+*.cpp text eol=lf
+*.h text eol=lf
+*.toit text eol=lf
+
+# Explicitly declare text files we want to be normalized.
+*.mk text
+Makefile text
+CMakeLists.txt text
+*.md text
+*.yaml text
+
+# File that should not be converted.
+tests/default_values_test.toit -text
+tests/font_test.toit -text
+tests/string_large_literal_test.toit -text
+tests/string_trailing_test.toit -text
+tests/string_test.toit -text
