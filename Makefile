@@ -82,7 +82,7 @@ build/host/CMakeCache.txt:
 	(cd build/host && cmake ../.. -G Ninja -DCMAKE_BUILD_TYPE=Release)
 
 .PHONY: tools
-tools: check-env build/host/CMakeCache.txt
+tools: check-env build/host/CMakeCache.txt $(TOITPKG_BIN) $(TOITLSP_BIN)
 	(cd build/host && ninja build_tools)
 
 .PHONY: snapshots
@@ -113,7 +113,7 @@ all-cross: tools-cross snapshots-cross
 
 check-env-cross:
 ifndef CROSS_ARCH
-	$(error invalid must specify a cross-compilation targt with CROSS_ARCH.  ie: make tools-cross CROSS_ARCH=riscv64)
+	$(error invalid must specify a cross-compilation targt with CROSS_ARCH.  For example: make all-cross CROSS_ARCH=riscv64)
 endif
 ifeq ("$(wildcard ./toolchains/$(CROSS_ARCH).cmake)","")
 	$(error invalid cross-compile target '$(CROSS_ARCH)')
@@ -124,7 +124,7 @@ build/$(CROSS_ARCH)/CMakeCache.txt:
 	(cd build/$(CROSS_ARCH) && cmake ../../ -G Ninja -DTOITC=$(CURDIR)/build/host/sdk/bin/toit.compile -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/$(CROSS_ARCH).cmake --no-warn-unused-cli)
 
 .PHONY: tools-cross
-tools-cross: build/$(CROSS_ARCH)/CMakeCache.txt tools
+tools-cross: check-env-cross build/$(CROSS_ARCH)/CMakeCache.txt tools
 	(cd build/$(CROSS_ARCH) && ninja build_tools)
 
 .PHONY: snapshots-cross
