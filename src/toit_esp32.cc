@@ -57,32 +57,35 @@ namespace toit {
 
 extern unsigned int checksum[4];
 
-const Program* setup_program() {
+const Program* setup_program(bool supports_ota) {
+  if (supports_ota) {
+#ifndef CONFIG_IDF_TARGET_ESP32C3
+    const esp_partition_t* configured = esp_ota_get_boot_partition();
+    const esp_partition_t* running = esp_ota_get_running_partition();
+
+    if (configured != running) {
+      ESP_LOGW("Toit", "Configured OTA boot partition at offset 0x%08x, but running from offset 0x%08x",
+          configured->address, running->address);
+    }
+
+    switch (running->subtype) {
+      case ESP_PARTITION_SUBTYPE_APP_FACTORY:
+        ESP_LOGI("Toit", "Running from factory partition");
+        break;
+      case ESP_PARTITION_SUBTYPE_APP_OTA_0:
+        ESP_LOGI("Toit", "Running from OTA-0 partition");
+        break;
+      case ESP_PARTITION_SUBTYPE_APP_OTA_1:
+        ESP_LOGI("Toit", "Running from OTA-1 partition");
+        break;
+      default:
+        ESP_LOGE("Toit", "Running from unknown partition");
+        break;
+    }
+#endif
+  }
 
 #ifndef CONFIG_IDF_TARGET_ESP32C3
-  const esp_partition_t* configured = esp_ota_get_boot_partition();
-  const esp_partition_t* running = esp_ota_get_running_partition();
-
-  if (configured != running) {
-    ESP_LOGW("Toit", "Configured OTA boot partition at offset 0x%08x, but running from offset 0x%08x",
-        configured->address, running->address);
-  }
-
-  switch (running->subtype) {
-    case ESP_PARTITION_SUBTYPE_APP_FACTORY:
-      ESP_LOGI("Toit", "Running from factory partition");
-      break;
-    case ESP_PARTITION_SUBTYPE_APP_OTA_0:
-      ESP_LOGI("Toit", "Running from OTA-0 partition");
-      break;
-    case ESP_PARTITION_SUBTYPE_APP_OTA_1:
-      ESP_LOGI("Toit", "Running from OTA-1 partition");
-      break;
-    default:
-      ESP_LOGE("Toit", "Running from unknown partition");
-      break;
-  }
-
   ESP_LOGI("Toit", "Fingerprint %x-%x-%x-%x", checksum[0], checksum[1], checksum[2], checksum[3]);
 #endif
 
@@ -94,7 +97,13 @@ static void start() {
   RtcMemory::set_up();
   OS::set_up();
 
-  const Program* program = setup_program();
+  // The Toit firmware only supports OTAs if we can find the OTA app partition.
+  bool supports_ota = NULL != esp_partition_find_first(
+      ESP_PARTITION_TYPE_APP,
+      ESP_PARTITION_SUBTYPE_APP_OTA_MIN,
+      NULL);
+
+  const Program* program = setup_program(supports_ota);
   Scheduler::ExitState exit_state;
   { VM vm;
     vm.load_platform_event_sources();
@@ -104,7 +113,8 @@ static void start() {
 
   OS::tear_down();
 
-  bool firmware_updated = esp_ota_get_boot_partition() != esp_ota_get_running_partition();
+  bool firmware_updated = supports_ota &&
+      esp_ota_get_boot_partition() != esp_ota_get_running_partition();
   if (firmware_updated) {
     // If we're updating the firmware, we call esp_restart to ensure we fully
     // reset the chip with the new firmware.
