@@ -1,0 +1,16 @@
+name: Rebuild website
+
+on:
+  release:
+    types: [ published, edited ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Repository Dispatch
+        uses: peter-evans/repository-dispatch@v1
+        with:
+          token: ${{ secrets.WEBSITE_DISPATCH_PAT }}
+          repository: toitlang/toitlang.org
+          event-type: new-release
