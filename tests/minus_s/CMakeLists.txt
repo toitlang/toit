@@ -43,7 +43,7 @@ foreach(file ${MINUS_S_TESTS})
     TARGET ${generate_gold}
     COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/run.sh --update $<TARGET_FILE:toit.run> ${relative} ${gold_file}
     WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
-    DEPENDS toitc
+    DEPENDS toit.compile
   )
   add_dependencies(update_minus_s_gold ${generate_gold})
 endforeach()
