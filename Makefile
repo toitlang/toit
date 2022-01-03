@@ -216,7 +216,7 @@ install: install-sdk
 
 .PHONY: test
 test:
-	(cd build/host && ninja check_slow)
+	(cd build/host && ninja check_slow check_fuzzer_lib)
 
 .PHONY: update-gold
 update-gold:
