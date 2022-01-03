@@ -188,14 +188,14 @@ This builds the Toit VM, the compiler, the language server and the package manag
 You should then be able to execute a toit file:
 
 ``` sh
-build/host/sdk/bin/toitvm examples/hello.toit
+build/host/sdk/bin/toit.run examples/hello.toit
 ```
 
-The package manager is found at `build/host/sdk/bin/toitpkg`:
+The package manager is found at `build/host/sdk/bin/toit.pkg`:
 
 ``` sh
-build/host/sdk/bin/toitpkg pkg init --project-root=<some-directory>
-build/host/sdk/bin/toitpkg pkg install --project-root=<some-directory> <package-id>
+build/host/sdk/bin/toit.pkg pkg init --project-root=<some-directory>
+build/host/sdk/bin/toit.pkg pkg install --project-root=<some-directory> <package-id>
 ```
 
 ## IDE integration
@@ -206,7 +206,7 @@ build it yourself from the
 [sources](https://github.com/toitware/ide-tools).
 
 In the VS Code extension (version 1.3.7+) set the `toitLanguageServer.command` setting to
-`["PATH_TO_SDK/bin/toitlsp", "--toitc=PATH_TO_SDK/bin/toitc"]`, where
+`["PATH_TO_SDK/bin/toit.lsp", "--toitc=PATH_TO_SDK/bin/toit.compile"]`, where
 `PATH_TO_SDK` is the path to your `build/host/sdk/` folder in the Toit repository.
 
 This makes the extension use the language server that was compiled in the [build step](#build-for-host-machine).
@@ -217,7 +217,7 @@ The Toit language server is independent of VSCode and can be used with other IDE
 It can be started with:
 
 ``` sh
-build/host/sdk/bin/toitlsp --toitc=build/host/sdk/bin/toitc
+build/host/sdk/bin/toit.lsp --toitc=build/host/sdk/bin/toit.compile
 ```
 
 See the instructions of your IDE on how to integrate the language server.

@@ -39,7 +39,7 @@ func Analyze() *cobra.Command {
 		Args:  cobra.MinimumNArgs(1),
 	}
 	analyzeCmd.Flags().BoolP("verbose", "v", false, "")
-	analyzeCmd.Flags().String("toitc", "", "the default toitc to use")
+	analyzeCmd.Flags().String("toitc", "", "the default toit compiler to use")
 	analyzeCmd.Flags().String("sdk", "", "the default SDK path to use")
 
 	return analyzeCmd
