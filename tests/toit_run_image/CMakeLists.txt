@@ -40,7 +40,7 @@ foreach(file ${TOIT_RUN_IMAGE_TESTS})
   add_custom_command(
     OUTPUT ${image}
     DEPENDS ${snap}
-    COMMAND ASAN_OPTIONS=detect_leaks=false $<TARGET_FILE:toitc> -i ${image} ${snap}
+    COMMAND ASAN_OPTIONS=detect_leaks=false $<TARGET_FILE:toit.compile> -i ${image} ${snap}
   )
 
   set(build_img tests-toit_run_image-build_${test_name}_input)
@@ -53,7 +53,7 @@ foreach(file ${TOIT_RUN_IMAGE_TESTS})
   file(RELATIVE_PATH test_name ${TOIT_SDK_SOURCE_DIR} ${file})
   add_test(
     NAME ${test_name}
-    COMMAND $<TARGET_FILE:toitvm> ${file} $<TARGET_FILE:toit_run_image> ${image}
+    COMMAND $<TARGET_FILE:toit.run> ${file} $<TARGET_FILE:toit_run_image> ${image}
     )
   set_tests_properties(${test_name} PROPERTIES TIMEOUT 40)
 endforeach()

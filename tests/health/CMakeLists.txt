@@ -54,7 +54,7 @@ foreach(file ${HEALTH_SOURCES})
 
   add_test(
     NAME ${TEST_NAME}
-    COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/run.sh" $<TARGET_FILE:toitc> "${relative}" "${GOLD}" "${LIB_PATH}" "${NORMALIZE_GOLD}" "${TOIT_SDK_SOURCE_DIR}"
+    COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/run.sh" $<TARGET_FILE:toit.compile> "${relative}" "${GOLD}" "${LIB_PATH}" "${NORMALIZE_GOLD}" "${TOIT_SDK_SOURCE_DIR}"
     WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
     CONFIGURATIONS health
     )
@@ -65,7 +65,7 @@ foreach(file ${HEALTH_SOURCES})
 
   add_custom_command(
     TARGET ${generate_gold}
-    COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/run.sh" --update $<TARGET_FILE:toitc> "${relative}" "${GOLD}" "${LIB_PATH}" "${NORMALIZE_GOLD}" "${TOIT_SDK_SOURCE_DIR}"
+    COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/run.sh" --update $<TARGET_FILE:toit.compile> "${relative}" "${GOLD}" "${LIB_PATH}" "${NORMALIZE_GOLD}" "${TOIT_SDK_SOURCE_DIR}"
     WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
     DEPENDS toitc
   )

@@ -44,7 +44,7 @@ if (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
     file(RELATIVE_PATH test_name ${TOIT_SDK_SOURCE_DIR} ${test})
     add_test(
       NAME ${test_name}
-      COMMAND $<TARGET_FILE:toitvm> ${test} ${snap} $<TARGET_FILE:toitvm> ${TOIT_SDK_SOURCE_DIR}/tools/snapshot_to_image.toit
+      COMMAND $<TARGET_FILE:toit.run> ${test} ${snap} $<TARGET_FILE:toit.run> ${TOIT_SDK_SOURCE_DIR}/tools/snapshot_to_image.toit
       )
     set_tests_properties(${test_name} PROPERTIES TIMEOUT 40)
   endforeach()
