@@ -45,7 +45,7 @@ add_dependencies(check_slow ${build_snap})
 foreach(file ${SNAPSHOT_SERIALIZATION_TESTS})
   add_test(
     NAME ${file}
-    COMMAND $<TARGET_FILE:toitvm> ${file} $<TARGET_FILE:toitvm> ${CMAKE_CURRENT_SOURCE_DIR} ${SNAPSHOT_SERIALIZATION_INPUT_SNAP}
+    COMMAND $<TARGET_FILE:toit.run> ${file} $<TARGET_FILE:toit.run> ${CMAKE_CURRENT_SOURCE_DIR} ${SNAPSHOT_SERIALIZATION_INPUT_SNAP}
     WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
     )
   set_tests_properties(${file} PROPERTIES TIMEOUT 40)

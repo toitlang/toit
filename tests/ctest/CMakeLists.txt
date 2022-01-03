@@ -71,7 +71,7 @@ foreach(file ${TOIT_TESTS})
   file(RELATIVE_PATH test_name ${PROJECT_SOURCE_DIR} ${file})
   add_test(NAME
     ${test_name}
-    COMMAND $<TARGET_FILE:toitvm> ${file} ${CTEST_DIR})
+    COMMAND $<TARGET_FILE:toit.run> ${file} ${CTEST_DIR})
 
   set_tests_properties(${test_name} PROPERTIES TIMEOUT 40)
   # Make sure the test is built before we run the tests.

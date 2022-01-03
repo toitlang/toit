@@ -509,7 +509,7 @@ class LspServer:
     compiler_path := toit_path_override_
     if compiler_path != null:
       return compiler_path
-    return settings_.get "toitPath" --if_absent=: "toitc"
+    return settings_.get "toitPath" --if_absent=: "toit.compile"
 
   sdk_path_ -> string:
     // We can't access a setting while reading settings (the Setting class is a

@@ -29,7 +29,7 @@ add_custom_target(
   check_health
   COMMAND ${CMAKE_CTEST_COMMAND} -j${NUM_CPU} -T test -C health --output-on-failure -I ${TEST_SHARD_START},,${TEST_SHARD_STRIDE}
   USES_TERMINAL
-  DEPENDS toitc generate_health_sources
+  DEPENDS toit.compile generate_health_sources
   )
 
 add_custom_target(
@@ -54,7 +54,7 @@ foreach(file ${HEALTH_SOURCES})
 
   add_test(
     NAME ${TEST_NAME}
-    COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/run.sh" $<TARGET_FILE:toitc> "${relative}" "${GOLD}" "${LIB_PATH}" "${NORMALIZE_GOLD}" "${TOIT_SDK_SOURCE_DIR}"
+    COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/run.sh" $<TARGET_FILE:toit.compile> "${relative}" "${GOLD}" "${LIB_PATH}" "${NORMALIZE_GOLD}" "${TOIT_SDK_SOURCE_DIR}"
     WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
     CONFIGURATIONS health
     )
@@ -65,9 +65,9 @@ foreach(file ${HEALTH_SOURCES})
 
   add_custom_command(
     TARGET ${generate_gold}
-    COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/run.sh" --update $<TARGET_FILE:toitc> "${relative}" "${GOLD}" "${LIB_PATH}" "${NORMALIZE_GOLD}" "${TOIT_SDK_SOURCE_DIR}"
+    COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/run.sh" --update $<TARGET_FILE:toit.compile> "${relative}" "${GOLD}" "${LIB_PATH}" "${NORMALIZE_GOLD}" "${TOIT_SDK_SOURCE_DIR}"
     WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
-    DEPENDS toitc
+    DEPENDS toit.compile
   )
   add_dependencies(update_health_gold ${generate_gold})
 endforeach()

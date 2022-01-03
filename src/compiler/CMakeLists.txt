@@ -21,14 +21,14 @@ target_link_libraries(
 )
 
 add_executable(
-  toitc
+  toit.compile
   toitc.cc
   )
 
-target_link_libraries(toitc -static-libstdc++)
+target_link_libraries(toit.compile -static-libstdc++)
 
 target_link_libraries(
-  toitc
+  toit.compile
   toit_core
   toit_compiler
   mbedtls
@@ -55,4 +55,4 @@ add_custom_target(
   DEPENDS ${TOIT_LIB_DIR}
   )
 
-add_dependencies(toitc generate-lib-symlink)
+add_dependencies(toit.compile generate-lib-symlink)

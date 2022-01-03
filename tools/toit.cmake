@@ -15,7 +15,7 @@
 
 # Creates a custom command to build ${TARGET} with correct dependencies.
 function(ADD_TOIT_TARGET SOURCE TARGET DEP_FILE ENV)
-  set(TOITC "$<TARGET_FILE:toitc>")
+  set(TOITC "$<TARGET_FILE:toit.compile>")
   if(POLICY CMP0116)
     cmake_policy(SET CMP0116 NEW)
   endif()

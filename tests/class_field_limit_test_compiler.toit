@@ -4,16 +4,16 @@ import host.pipe
 import expect show *
 
 main args:
-  toitc := args[0]
+  toit_run := args[0]
   input := "tests/class_field_limit_input.toit"
   pipes := pipe.fork
       true                // use_path
       pipe.PIPE_INHERITED // stdin
       pipe.PIPE_INHERITED // stdout
       pipe.PIPE_INHERITED // stderr
-      toitc
+      toit_run
       [
-        toitc,
+        toit_run,
         input
       ]
   to   := pipes[0]
