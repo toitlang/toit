@@ -37,6 +37,7 @@
 #include "filesystem_socket.h"
 #include "goto_definition.h"
 #include "lambda.h"
+#include "list.h"
 #include "lock.h"
 #include "map.h"
 #include "monitor.h"
@@ -505,6 +506,9 @@ bool read_from_pipe(int fd, void* buffer, int requested_bytes) {
 
 void Compiler::analyze(List<const char*> source_paths,
                        const Compiler::Configuration& compiler_config) {
+  // We accept '/' paths on Windows as well.
+  // For simplicity (and consistency) switch to localized ones in the compiler.
+  source_paths = FilesystemLocal::to_local_path(source_paths);
   bool single_source = source_paths.length() == 1;
   FilesystemHybrid fs(single_source ? source_paths[0] : null);
   SourceManager source_manager(&fs);
@@ -616,6 +620,10 @@ SnapshotBundle Compiler::compile(const char* source_path,
                                  char** snapshot_args,
                                  const char* out_path,
                                  const Compiler::Configuration& compiler_config) {
+  // We accept '/' paths on Windows as well.
+  // For simplicity (and consistency) switch to localized ones in the compiler.
+  source_path = FilesystemLocal::to_local_path(source_path);
+  out_path = FilesystemLocal::to_local_path(out_path);
   FilesystemHybrid fs(source_path);
   SourceManager source_manager(&fs);
   CompilationDiagnostics diagnostics(&source_manager, compiler_config.show_package_warnings);

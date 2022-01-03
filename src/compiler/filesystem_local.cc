@@ -52,6 +52,14 @@ namespace compiler {
 
 char* get_executable_path();
 
+List<const char*> FilesystemLocal::to_local_path(List<const char*> paths) {
+  auto result = ListBuilder<const char*>::allocate(paths.length());
+  for (int i = 0; i < paths.length(); i++) {
+    result[i] = FilesystemLocal::to_local_path(paths[i]);
+  }
+  return result;
+}
+
 bool FilesystemLocal::do_exists(const char* path) {
 #ifdef USE_XSTAT64
   // Use an older version of stat, so that we can run in docker
