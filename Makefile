@@ -36,11 +36,6 @@ else
 	EXE_SUFFIX=
 endif
 
-BIN_DIR = build/host/sdk/bin
-TOITPKG_BIN = $(BIN_DIR)/toit.pkg$(EXE_SUFFIX)
-TOITLSP_BIN = $(BIN_DIR)/toit.lsp$(EXE_SUFFIX)
-TOITVM_BIN = $(BIN_DIR)/toit.run$(EXE_SUFFIX)
-TOITC_BIN = $(BIN_DIR)/toit.compile$(EXE_SUFFIX)
 VERSION_FILE = build/host/sdk/VERSION
 CROSS_ARCH=
 
@@ -131,17 +126,25 @@ snapshots-cross: tools
 
 
 # ESP32 VARIANTS
+SNAPSHOT_DIR = build/host/sdk/snapshots
+BIN_DIR = build/host/sdk/bin
+TOITPKG_BIN = $(BIN_DIR)/toit.pkg$(EXE_SUFFIX)
+TOITLSP_BIN = $(BIN_DIR)/toit.lsp$(EXE_SUFFIX)
+TOITVM_BIN = $(BIN_DIR)/toit.run$(EXE_SUFFIX)
+TOITC_BIN = $(BIN_DIR)/toit.compile$(EXE_SUFFIX)
+
 .PHONY: esp32
 esp32: check-env build/$(ESP32_CHIP)/toit.bin
 
-build/$(ESP32_CHIP)/toit.bin build/$(ESP32_CHIP)/toit.elf: tools build/$(ESP32_CHIP)/lib/libtoit_image.a build/config.json
+build/$(ESP32_CHIP)/toit.bin build/$(ESP32_CHIP)/toit.elf: tools snapshots build/$(ESP32_CHIP)/lib/libtoit_image.a build/config.json
 	make -C toolchains/$(ESP32_CHIP)/
 	$(TOITVM_BIN) tools/inject_config.toit build/config.json build/$(ESP32_CHIP)/toit.bin
 
 build/$(ESP32_CHIP)/lib/libtoit_image.a: build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s build/$(ESP32_CHIP)/CMakeCache.txt build/$(ESP32_CHIP)/include/sdkconfig.h
 	(cd build/$(ESP32_CHIP) && ninja toit_image)
 
-build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s: tools snapshots build/snapshot build/$(ESP32_CHIP)/
+build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s: tools snapshots build/snapshot
+	mkdir -p build/$(ESP32_CHIP)
 	$(TOITVM_BIN) $(SNAPSHOT_DIR)/snapshot_to_image.snapshot build/snapshot $@
 
 build/snapshot: $(TOITC_BIN) $(ESP32_ENTRY)
