@@ -1,0 +1,18 @@
+tests/project_root_flag/test.toit:3:8: error: Package for prefix 'redirected' not found
+import redirected.target as redirected
+       ^~~~~~~~~~
+tests/project_root_flag/test.toit:4:8: error: Package for prefix 'sub' not found
+import sub
+       ^~~
+tests/project_root_flag/test.toit:5:8: error: Package for prefix 'foo' not found
+import foo
+       ^~~
+tests/project_root_flag/test.toit:9:27: error: Unresolved identifier: 'identify'
+  expect_equals "foo" foo.identify
+                          ^~~~~~~~
+tests/project_root_flag/test.toit:10:37: error: Unresolved identifier: 'identify'
+  expect_equals "target" redirected.identify
+                                    ^~~~~~~~
+tests/project_root_flag/test.toit:11:27: error: Unresolved identifier: 'identify'
+  expect_equals "sub" sub.identify
+                          ^~~~~~~~
