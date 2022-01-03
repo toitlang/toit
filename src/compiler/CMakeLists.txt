@@ -6,8 +6,8 @@ file(GLOB toit_compiler_SRC
 )
 list(FILTER toit_compiler_SRC EXCLUDE REGEX "/toitc.cc$")
 
-add_subdirectory(third_party/libyaml)
-add_subdirectory(third_party/semver)
+add_subdirectory(third_party/libyaml EXCLUDE_FROM_ALL)
+add_subdirectory(third_party/semver EXCLUDE_FROM_ALL)
 
 add_library(
   toit_compiler
