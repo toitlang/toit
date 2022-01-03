@@ -17,6 +17,7 @@
 
 #include "../top.h"
 
+#include "list.h"
 #include "filesystem.h"
 
 namespace toit {
@@ -42,6 +43,7 @@ class FilesystemLocal : public Filesystem {
   ///   by the caller with `delete []`.
   static char* get_executable_path();
   static char* to_local_path(const char* path);
+  static List<const char*> to_local_path(List<const char*> paths);
 
  protected:
   bool do_exists(const char* path);
