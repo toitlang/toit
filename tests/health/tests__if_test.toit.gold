@@ -1,0 +1,3 @@
+tests/if_test.toit:35:3: warning: Condition always evaluates to true
+  if n: n = 42
+  ^~
