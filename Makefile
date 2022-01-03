@@ -225,13 +225,13 @@ update-gold:
 .PHONY: test-health
 test-health:
 	(cd build/host && ninja generate_health_sources)
+	echo $(SHARD_START)
 	$(MAKE) build/host/CMakeCache.txt
+	echo $(SHARD_START)
 	(cd build/host && ninja check_health)
 
 .PHONY: update-health-gold
 update-health-gold:
 	(cd build/host && ninja generate_health_sources)
-	echo $(SHARD_START)
 	$(MAKE) build/host/CMakeCache.txt
-	echo $(SHARD_START)
 	(cd build/host && ninja update_health_gold)
