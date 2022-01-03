@@ -1,0 +1,13 @@
+tests/lsp/null_char.toit:4:3: error: Unexpected <illegal>
+  
+  ^
+tests/lsp/null_char.toit:5:6: error: Unexpected <illegal>
+  foo
+     ^
+tests/lsp/null_char.toit:5:3: error: Argument mismatch for 'foo'
+Method does not take any arguments, but one was provided
+  foo
+  ^~~
+tests/lsp/null_char.toit:6:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~

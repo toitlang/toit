@@ -1,0 +1,9 @@
+<...>/examples/http/package.lock:5:10: error: Package 'github.com/toitlang/pkg-http-1.4.1' not found
+    url: github.com/toitlang/pkg-http
+         ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+examples/http/http.toit:6:8: error: Package 'pkg-http' for prefix 'http' not found
+import http
+       ^~~~
+examples/http/http.toit:10:18: error: Unresolved identifier: 'Client'
+  client := http.Client network
+                 ^~~~~~
