@@ -114,6 +114,10 @@ else ()
     set(TOIT_LINK_GROUP_END_FLAGS "-Wl,--no-whole-archive")
 endif()
 
+if (NOT DEFINED TOIT_IS_CROSS)
+  set(TOITC "$<TARGET_FILE:toit.compile>")
+endif()
+
 add_custom_target(
   build_toitlsp
   COMMAND make -C ${CMAKE_SOURCE_DIR} toitlsp
@@ -124,7 +128,12 @@ add_custom_target(
   COMMAND echo ${TOIT_GIT_VERSION} > "${CMAKE_BINARY_DIR}/sdk/VERSION"
 )
 
+add_custom_target(
+  build_snapshots
+)
+
 add_subdirectory(src)
+add_subdirectory(tools)
 
 enable_testing()
 add_subdirectory(tests)
