@@ -17,7 +17,7 @@ file(GLOB TOIT_FUZZER_LIB_TESTS RELATIVE ${TOIT_SDK_SOURCE_DIR} "../*_test.toit"
 
 add_custom_target(
   check_fuzzer_lib
-  COMMAND ${CMAKE_CTEST_COMMAND} -j${NUM_CPU} -T test -C fuzzer_lib --output-on-failure
+  COMMAND ${CMAKE_CTEST_COMMAND} -j${NUM_CPU} -T test -C fuzzer_lib --output-on-failure -I ${TEST_SHARD_START},,${TEST_SHARD_STRIDE}
   USES_TERMINAL
   DEPENDS toitc
   )
