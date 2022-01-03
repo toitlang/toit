@@ -122,6 +122,7 @@ add_subdirectory(fuzzer)
 add_subdirectory(cmake)
 add_subdirectory(snapshot_serialization)
 add_subdirectory(lock_file)
+add_subdirectory(snapshot_to_image)
 
 include(fail.cmake)
 foreach(test ${TOIT_FAILING_TESTS})
