@@ -80,6 +80,3 @@ function(compute_git_version VERSION)
   MATH(EXPR minor "${minor}+1")
   set(${VERSION} "v${major}.${minor}.0-pre.${CURRENT_COMMIT_NO}+${SANITIZED_BRANCH}.${CURRENT_COMMIT_SHORT}" PARENT_SCOPE)
 endfunction()
-
-compute_git_version(TOIT_GIT_VERSION)
-message(${TOIT_GIT_VERSION})
