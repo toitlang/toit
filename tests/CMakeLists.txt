@@ -120,6 +120,7 @@ add_subdirectory(profiler)
 add_subdirectory(health)
 add_subdirectory(fuzzer)
 add_subdirectory(cmake)
+add_subdirectory(snapshot_serialization)
 add_subdirectory(lock_file)
 
 include(fail.cmake)
