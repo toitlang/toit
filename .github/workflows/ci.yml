@@ -143,6 +143,15 @@ jobs:
       # Test.
       - name: test
         if: runner.os != 'Windows'
+        env:
+          IDF_PATH: ${{ github.workspace }}/third_party/esp-idf
+          CCACHE_DIR: ${{ github.workspace }}/.ccache
+          CCACHE_BASEDIR: ${{ github.workspace }}
+          CCACHE_COMPRESS: true
+          CCACHE_COMPRESSLEVEL: '6'
+          CCACHE_MAXSIZE: 400M
+          SHARD_START: ${{ matrix.shard }}
+          SHARD_STRIDE: ${{ steps.constants.outputs.total_shards }}
         run: |
           make test
           make test-health
