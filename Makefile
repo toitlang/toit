@@ -36,6 +36,13 @@ else
 	EXE_SUFFIX=
 endif
 
+SNAPSHOT_DIR = build/host/sdk/snapshots
+BIN_DIR = build/host/sdk/bin
+TOITPKG_BIN = $(BIN_DIR)/toit.pkg$(EXE_SUFFIX)
+TOITLSP_BIN = $(BIN_DIR)/toit.lsp$(EXE_SUFFIX)
+TOITVM_BIN = $(BIN_DIR)/toit.run$(EXE_SUFFIX)
+TOITC_BIN = $(BIN_DIR)/toit.compile$(EXE_SUFFIX)
+
 VERSION_FILE = build/host/sdk/VERSION
 CROSS_ARCH=
 
@@ -126,13 +133,6 @@ snapshots-cross: tools
 
 
 # ESP32 VARIANTS
-SNAPSHOT_DIR = build/host/sdk/snapshots
-BIN_DIR = build/host/sdk/bin
-TOITPKG_BIN = $(BIN_DIR)/toit.pkg$(EXE_SUFFIX)
-TOITLSP_BIN = $(BIN_DIR)/toit.lsp$(EXE_SUFFIX)
-TOITVM_BIN = $(BIN_DIR)/toit.run$(EXE_SUFFIX)
-TOITC_BIN = $(BIN_DIR)/toit.compile$(EXE_SUFFIX)
-
 .PHONY: esp32
 esp32: check-env build/$(ESP32_CHIP)/toit.bin
 
@@ -181,12 +181,15 @@ clean:
 	rm -rf build/
 
 .PHONY: install-sdk install
-install-sdk: $(TOOLS) $(SNAPSHOTS)
-	install -D --target-directory="$(DESTDIR)$(prefix)"/bin $(TOOLS)
-	install -m 644 -D --target-directory="$(DESTDIR)$(prefix)"/bin $(TOIT_BOOT_SNAPSHOT)
-	cp -R "$(CURDIR)"/lib "$(DESTDIR)$(prefix)"/lib
+install-sdk: all
+	install -D --target-directory="$(DESTDIR)$(prefix)"/bin "$(CURDIR)"/build/host/sdk/bin/*
+	chmod 644 "$(DESTDIR)$(prefix)"/bin/*.snapshot
+	mkdir -p "$(DESTDIR)$(prefix)"/lib
+	cp -R "$(CURDIR)"/lib/* "$(DESTDIR)$(prefix)"/lib
 	find "$(DESTDIR)$(prefix)"/lib -type f -exec chmod 644 {} \;
-	install -m 644 -D --target-directory="$(DESTDIR)$(prefix)"/snapshots $(SNAPSHOTS)
+	mkdir -p "$(DESTDIR)$(prefix)"/snapshots
+	cp "$(CURDIR)"/build/host/sdk/snapshots/* "$(DESTDIR)$(prefix)"/snapshots
+	find "$(DESTDIR)$(prefix)"/snapshots -type f -exec chmod 644 {} \;
 
 install: install-sdk
 
