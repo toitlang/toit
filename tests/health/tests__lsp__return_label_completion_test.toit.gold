@@ -1,0 +1,3 @@
+tests/lsp/return_label_completion_test.toit:14:12: error: Unresolved label 'foo'
+  continue.foo
+           ^~~

@@ -1,0 +1,3 @@
+tests/lsp/show_bad_completion_test.toit:3:8: error: Package for prefix 'xyz' not found
+import xyz show foo
+       ^~~
