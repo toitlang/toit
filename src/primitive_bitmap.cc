@@ -228,15 +228,18 @@ static void SOMETIMES_UNUSED draw_text_orientation_0_180(int x_base, int y_base,
   }
   // If you capture too many variables, then the functor does heap allocations.
   DrawData capture(x_base, y_base, color, orientation, byte_array_width, byte_array_height, contents);
-  iterate_font_characters(string, font, [&](const FontCharacter* c) {
-    int sign = capture.orientation == 0 ? 1 : -1;
-    if (c->box_height_ != 0) {
-      FontDecompresser decompresser(c->box_width_, c->box_height_, c->bitmap());
-      FontCharacterPixelBox bit_box(c);
-      draw_orientation_0_180_helper(decompresser, bit_box, capture, sign, bytewise_output);
-    }
-    capture.x_base += sign * c->pixel_width;
-  });
+  if (font->anti_aliased()) {
+  } else {
+    iterate_font_characters(string, font, [&](const FontCharacter* c) {
+      int sign = capture.orientation == 0 ? 1 : -1;
+      if (c->box_height_ != 0) {
+        FontDecompresser decompresser(c->box_width_, c->box_height_, c->bitmap());
+        FontCharacterPixelBox bit_box(c);
+        draw_orientation_0_180_helper(decompresser, bit_box, capture, sign, bytewise_output);
+      }
+      capture.x_base += sign * c->pixel_width;
+    });
+  }
 }
 
 // Draws from a byte-oriented source to a byte-oriented destination.

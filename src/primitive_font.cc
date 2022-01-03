@@ -34,6 +34,8 @@ namespace toit {
 //  Known keys:
 //    'f'    from      Lowest code point.
 //    't'    to        Highest code point + 1.
+//    's'    start     Start offset of tile data (anti-aliased fonts)
+//    'n'    number    Number of 8-byte (16-pixel) anti-aliased tiles.
 //    -'n'   name      Font name.
 //    -'c'   copyright Copyright message.
 //    0:               Bitmap data follows, terminated by 0xff.
@@ -48,6 +50,8 @@ bool FontBlock::verify(const uint8* data, uint32 length, const char* name) {
   uint32 offset = has_checksum ? 40 : 8;
   uint32 from = -1;
   uint32 to = -1;
+  int32 start = -1;
+  int32 tile_count = -1;
   while (true) {
     if (offset >= length) return false;
     int key = (signed char)data[offset];
@@ -77,6 +81,12 @@ bool FontBlock::verify(const uint8* data, uint32 length, const char* name) {
       case 't':
         to = value;
         break;
+      case 's':
+        start = value;
+        break;
+      case 'n':
+        tile_count = value;
+        break;
       case -'n':
         if (name && strcmp(char_cast(data) + start_of_string, name) != 0) return false;
         break;
@@ -85,6 +95,16 @@ bool FontBlock::verify(const uint8* data, uint32 length, const char* name) {
     }
   }
   if (from < 0 || to < 0 || from > Utils::MAX_UNICODE || from >= to) return false;
+  if (start != -1 || tile_count != -1) {
+    // Anti-alias mode.
+    if (start > static_cast<int32>(length) ||
+        tile_count > 0xffff ||  // Overflow protection.
+        start + tile_count * TILE_SIZE > static_cast<int32>(length) ||
+        start < 0 ||
+        tile_count < 0) {
+      return false;
+    }
+  }
   // Check integrity with Sha256 in case encrypted file has been tampered with.
   if (has_checksum) {
     uint8 non_zero_checksum = 0;
@@ -113,12 +133,22 @@ FontBlock::FontBlock(const uint8* data, bool free_on_delete)
   bool has_checksum = *data & 1;
   uint32 offset = has_checksum ? 40 : 8;
   while (int key = static_cast<signed char>(data[offset])) {
+    uint32 value = 0;
+    if (key <= 0x7f) {
+      value = int_24(data_ + offset + 1);
+    }
     switch (key) {
       case 'f':
-        from_ = int_24(data_ + offset + 1);
+        from_ = value;
         break;
       case 't':
-        to_ = int_24(data_ + offset + 1);
+        to_ = value;
+        break;
+      case 's':
+        tile_start_ = value;
+        break;
+      case 'n':
+        tile_count_ = value;
         break;
       case -'n':
         font_name_ = char_cast(data_) + offset;

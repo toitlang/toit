@@ -127,6 +127,7 @@ class FontBlock {
   const char* font_name() const { return font_name_; }
   const char* copyright() const { return copyright_; }
   const FontCharacter* data() const { return reinterpret_cast<const FontCharacter*>(bitmaps_); }
+  bool anti_aliased() const { return tile_start_ >= 0; }
 
  private:
   static const uint32 int_24(const uint8* p) {
@@ -136,11 +137,15 @@ class FontBlock {
       (static_cast<uint32>(p[2]) << 16);
   }
 
+  static const int TILE_SIZE = 8;
+
   const uint8* data_;  // Character data.
   const bool free_on_delete_;
   const uint8* bitmaps_;
   uint32 from_;
   uint32 to_;
+  int32 tile_start_;
+  int32 tile_count_;
   const char* font_name_;
   const char* copyright_;
 };
