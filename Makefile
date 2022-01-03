@@ -216,8 +216,21 @@ install: install-sdk
 
 .PHONY: test
 test:
-	(cd build/host && ninja check_slow)
+	(cd build/host && ninja check_slow check_fuzzer_lib)
 
 .PHONY: update-gold
 update-gold:
 	(cd build/host && ninja update_gold)
+	(cd build/host && ninja update_minus_s_gold)
+
+.PHONY: test-health
+test-health:
+	(cd build/host && ninja generate_health_sources)
+	$(MAKE) build/host/CMakeCache.txt
+	(cd build/host && ninja check_health)
+
+.PHONY: update-health-gold
+update-health-gold:
+	(cd build/host && ninja generate_health_sources)
+	$(MAKE) build/host/CMakeCache.txt
+	(cd build/host && ninja update_health_gold)

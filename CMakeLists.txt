@@ -17,10 +17,15 @@ cmake_minimum_required(VERSION 3.19.0)
 
 project(toit)
 
-include(tools/gitversion.cmake)
-# The Git version is only computed when cmake generates the Ninja files, but
-# that should be good enough.
-compute_git_version(TOIT_GIT_VERSION)
+# When using the downloadable sources there is no Git, so the version has
+# to be given as argument.
+set(TOIT_GIT_VERSION "$ENV{TOIT_GIT_VERSION}")
+if ("${TOIT_GIT_VERSION}" STREQUAL "")
+  include(tools/gitversion.cmake)
+  # The Git version is only computed when cmake generates the Ninja files, but
+  # that should be good enough.
+  compute_git_version(TOIT_GIT_VERSION)
+endif()
 
 set(TOIT_SDK_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 

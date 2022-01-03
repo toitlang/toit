@@ -30,16 +30,25 @@ else()
   set(SLOW_TIMEOUT 400)
 endif()
 
+# The SHARD_START end SHART_STRIDE environment variables must be set when
+# generating the cmake files.
+# I couldn't figure out how to use them while running the tests.
+set(TEST_SHARD_START "$ENV{SHARD_START}")
+set(TEST_SHARD_STRIDE "$ENV{SHARD_STRIDE}")
+if ("${TEST_SHARD_START}" STREQUAL "")
+  set(TEST_SHARD_START 1)
+endif()
+
 add_custom_target(
   check
-  COMMAND ${CMAKE_CTEST_COMMAND} -j${NUM_CPU} -T test --output-on-failure
+  COMMAND ${CMAKE_CTEST_COMMAND} -j${NUM_CPU} -T test --output-on-failure -I ${TEST_SHARD_START},,${TEST_SHARD_STRIDE}
   USES_TERMINAL
   DEPENDS build_tools
   )
 
 add_custom_target(
   check_slow
-  COMMAND ${CMAKE_CTEST_COMMAND} -j${NUM_CPU} -T test -C slow --output-on-failure
+  COMMAND ${CMAKE_CTEST_COMMAND} -j${NUM_CPU} -T test -C slow --output-on-failure  -I ${TEST_SHARD_START},,${TEST_SHARD_STRIDE}
   USES_TERMINAL
   DEPENDS build_tools
   )
@@ -101,10 +110,16 @@ foreach(file ${TOIT_SLOW_TESTS})
   set_tests_properties(${file} PROPERTIES TIMEOUT ${SLOW_TIMEOUT})
 endforeach()
 
+add_subdirectory(minus_s)
 add_subdirectory(negative)
 add_subdirectory(lsp)
 add_subdirectory(optimizations)
+add_subdirectory(ctest)
 add_subdirectory(toitp)
+add_subdirectory(profiler)
+add_subdirectory(health)
+add_subdirectory(fuzzer)
+add_subdirectory(cmake)
 add_subdirectory(snapshot_serialization)
 add_subdirectory(lock_file)
 

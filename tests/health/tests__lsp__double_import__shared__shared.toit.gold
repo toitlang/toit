@@ -1,0 +1,6 @@
+tests/lsp/double_import/shared/shared.toit:1:8: error: Package for prefix 'pkg' not found
+import pkg
+       ^~~
+tests/lsp/double_import/shared/shared.toit:3:17: error: Unresolved type: 'PkgType'
+identify -> pkg.PkgType?:
+                ^~~~~~~
