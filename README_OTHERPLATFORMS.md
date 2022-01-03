@@ -25,7 +25,7 @@ apt update
 apt install git build-essential bc cmake python3 python3-pip python-is-python3 libffi-dev libssl-dev cargo golang ninja-build
 ```
 
-## 3) Clone sources 
+## 3) Clone sources
 ``` sh
 #Toit
 git clone https://github.com/toitlang/toit.git
@@ -37,10 +37,7 @@ git submodule update --init --recursive
 
 ## 4) Compile Toit SDK
 ``` sh
-#Add IDF path to environment
-export IDF_PATH=`pwd`/third_party/esp-idf
-
-make tools
+make all
 ```
 
 ## 5) Run examples
@@ -53,10 +50,12 @@ build/host/bin/toit.run examples/mandelbrot.toit
 </br>
 
 # Cross-compiling
-How to compile the Toit binaries (toit.compile and toit.run) for another architecture (ie. RISC-V) from an amd64 host
+This section describes how to compile the Toit binaries (toit.compile and toit.run) for another
+architecture (like RISC-V).
 
-## 1) Compile host tools
->Note: This is necessary to generate run_boot.snapshot, a dependency for the toit.run runtime. </br> 
+## 1) Prepare host tools
+>Note: This is necessary to generate the snapshots that are part of the SDK.
+
 Follow [steps 2-4 above](README_OTHERPLATFORMS.md#2-install-dependencies) on the host.
 
 ## 2) Install cross-compile dependencies
@@ -82,19 +81,24 @@ apt install g++-mingw-w64-x86-64 gcc-mingw-w64-x86-64
 ## 3) Cross-compile Toit SDK
 ``` sh
 #Substitute <TARGET> with one of [arm32, arm64, riscv64, win32, win64]
-make tools-cross CROSS_ARCH=<TARGET>
+make all-cross CROSS_ARCH=<TARGET>
 ```
 
 ## 4) Deploy
 A complete Toit environment should now be ready for use on the target architecture
 ``` sh
-ubuntu@ubuntu:~/git/toit$ ls -l build/riscv64/sdk/bin/
-total 4112
-lrwxrwxrwx 1 ubuntu ubuntu      31 Dec  4 07:48 lib -> /home/ubuntu/git/toit/lib
-drwxrwxr-x 7 ubuntu ubuntu    4096 Dec  4 11:19 mbedtls
--rwxrwxr-x 1 ubuntu ubuntu 1806496 Dec  4 07:49 toit.compile
--rwxrwxr-x 1 ubuntu ubuntu 2189584 Dec  4 07:49 toit.run
--rw-rw-r-- 1 ubuntu ubuntu  202320 Dec  4 11:19 run_boot.snapshot
+ᐅ find build/win64/sdk
+build/win64/sdk
+build/win64/sdk/bin
+build/win64/sdk/bin/toit.run.exe
+build/win64/sdk/bin/toit.compile.exe
+build/win64/sdk/bin/run_boot.snapshot
+build/win64/sdk/lib
+build/win64/sdk/snapshots
+build/win64/sdk/snapshots/inject_config.snapshot
+build/win64/sdk/snapshots/snapshot_to_image.snapshot
+build/win64/sdk/snapshots/system_message.snapshot
 ```
-</br>
-</br>
+
+>Note: The `sdk/lib` directory is, by default, only a symlink to the 'lib' directory.
+  For deployment the SDK needs to have the symlink replaced by a copy of the 'lib' directory.
