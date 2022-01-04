@@ -52,12 +52,17 @@ jobs:
         run: |
           git fetch --tags
 
+        # We only need the tpkg and mbedtls submodule for building.
       - name: Initialize mbed-tls submodule
-        # We only need the mbedtls submodule for building.
         run: |
           cd third_party/esp-idf
           git submodule update --init .
           git submodule update --init components/mbedtls
+
+      - name: Initialize tpkg submodule
+        run: |
+          cd tools/tpkg
+          git submodule update --init .
 
       # Use Go 1.17
       - name: Switch to Go 1.17
