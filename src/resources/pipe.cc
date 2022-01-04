@@ -334,7 +334,7 @@ PRIMITIVE(fork) {
        Object, err_obj,
        int, fd_3,
        int, fd_4,
-       String, command,
+       cstring, command,
        Array, args);
   if (args->length() > 1000000) OUT_OF_BOUNDS;
   ByteArray* proxy = process->object_heap()->allocate_proxy();
@@ -420,9 +420,8 @@ PRIMITIVE(fork) {
 
   // Child process.
 
-  char* cmd = command->as_cstr();
   do {
-    if (cmd == null) break;
+    if (command == null) break;
 
     // Change the directory of the child process to match the Toit task's current directory.
     int current_directory_fd = current_dir(process);
@@ -490,9 +489,9 @@ PRIMITIVE(fork) {
     // Exec the actual program.  If this succeeds, then control_write is closed
     // automatically, and the parent is unblocked on its read.
     if (use_path) {
-      execvp(cmd, argv);
+      execvp(command, argv);
     } else {
-      execv(cmd, argv);
+      execv(command, argv);
     }
     // We only get here if the exec failed.
   } while (false);
