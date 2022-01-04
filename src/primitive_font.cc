@@ -128,6 +128,8 @@ bool FontBlock::verify(const uint8* data, uint32 length, const char* name) {
 FontBlock::FontBlock(const uint8* data, bool free_on_delete)
   : data_(data),
     free_on_delete_(free_on_delete),
+    tile_start_(0),
+    tile_count_(0),
     font_name_(null),
     copyright_(null) {
   bool has_checksum = *data & 1;
@@ -178,29 +180,29 @@ extern const uint8 FONT_PAGE_ToitLogo[203];
 
 static const FontCharacter* create_replacement(int code_point);
 
-const FontCharacter* Font::get_char(int cp, bool substitue_mojibake) {
+const Glyph Font::get_char(int cp, bool substitue_mojibake) {
   int hashed = (cp >> _CACHE_GRANULARITY_BITS) ^ (cp >> 6) ^ (cp >> 10) ^ (cp >> 14);
   hashed &= _CACHE_SIZE - 1;
   if (!_does_section_match(_cache[hashed], cp)) {
-    const FontCharacter* c = _get_section_for_code_point(cp);
-    if (c == null) {
+    Glyph g = _get_section_for_code_point(cp);
+    if (g.pixels == null) {
       if (substitue_mojibake)
-        return create_replacement(cp);
+        return Glyph(create_replacement(cp), null);
       else
-        return null;
+        return Glyph();
     }
-    _cache[hashed] = c;
+    _cache[hashed] = g;
   }
-  const FontCharacter* c = _cache[hashed];
-  while (c != null) {
-    if (c->code_point() == cp) return c;
-    if (!_does_section_match(c, cp)) return create_replacement(cp);
-    c = c ->next();
+  Glyph g = _cache[hashed];
+  while (g.pixels != null) {
+    if (g.pixels->code_point() == cp) return g;
+    if (!_does_section_match(g, cp)) return Glyph(create_replacement(cp), null);
+    g = g.next();
   }
-  return create_replacement(cp);
+  return Glyph(create_replacement(cp), null);
 }
 
-const FontCharacter* Font::_get_section_for_code_point(int code_point) {
+Glyph Font::_get_section_for_code_point(int code_point) {
   code_point &= _CACHE_MASK;
   for (int i = 0; i < _block_count; i++) {
     const FontBlock* block = _blocks[i];
@@ -208,14 +210,14 @@ const FontCharacter* Font::_get_section_for_code_point(int code_point) {
       for (const FontCharacter* c = block->data(); !c->is_terminator(); c = c->next()) {
         // Check if we found the first character in the same granularity
         // section as the code point we are seeking.
-        if (_does_section_match(c, code_point)) return c;
+        if (_does_section_match(Glyph(c, block), code_point)) return Glyph(c, block);
         // If we are not in the same granularity section and we are past the
         // one we are seeking, then we didn't find it in this block.
         if (c->code_point() > code_point) break;
       }
     }
   }
-  return null;
+  return Glyph();
 }
 
 // Big endian tiny hex digits for missing letters in the font.
@@ -564,8 +566,8 @@ PRIMITIVE(contains) {
   ARGS(Font, font, int, code_point);
   if (code_point < 0 || code_point > Utils::MAX_UNICODE) OUT_OF_RANGE;
   const bool mojibake = false;
-  const FontCharacter* fc = font->get_char(code_point, mojibake);
-  return BOOL(fc != null);
+  const Glyph glyph = font->get_char(code_point, mojibake);
+  return BOOL(glyph.pixels != null);
 }
 
 PRIMITIVE(delete_font) {
@@ -576,7 +578,7 @@ PRIMITIVE(delete_font) {
   return process->program()->null_object();
 }
 
-void iterate_font_characters(Blob bytes, Font* font, const std::function<void (const FontCharacter*)>& f) {
+void iterate_font_characters(Blob bytes, Font* font, const std::function<void (const Glyph)>& f) {
   for (int i = 0; i < bytes.length(); i++) {
     int c = bytes.address()[i];
     if (c >= 0x80) {
@@ -590,9 +592,9 @@ void iterate_font_characters(Blob bytes, Font* font, const std::function<void (c
       }
       i += nbytes - 1;
     }
-    const FontCharacter* fc = font->get_char(c);
-    if (fc != null) {
-      f(fc);
+    const Glyph glyph = font->get_char(c);
+    if (glyph.pixels != null) {
+      f(glyph);
     }
   }
 }
@@ -614,7 +616,8 @@ PRIMITIVE(get_text_size) {
     .bottom = A_LARGE_NUMBER,
     .right = -A_LARGE_NUMBER
   };
-  iterate_font_characters(bytes, font, [&](const FontCharacter* c) {
+  iterate_font_characters(bytes, font, [&](Glyph g) {
+    const FontCharacter* c = g.pixels;
     if (pixels + c->box_xoffset_ < box.left) box.left = pixels + c->box_xoffset_;
     if (c->box_yoffset_ < box.bottom) box.bottom = c->box_yoffset_;
     int r = pixels + c->box_xoffset_ + c->box_width_;

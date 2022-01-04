@@ -26,6 +26,8 @@
 
 namespace toit {
 
+class FontBlock;
+
 class PixelBox {
  public:
   virtual int box_width() const = 0;
@@ -111,6 +113,17 @@ class FontCharacterPixelBox : public PixelBox {
   const FontCharacter* font_character_;
 };
 
+class Glyph {
+ public:
+  const FontCharacter* pixels;
+  const FontBlock*     block;
+
+  Glyph() : pixels(null), block(null) {}
+  Glyph(const FontCharacter* pixels, const FontBlock* block) : pixels(pixels), block(block) {}
+
+  Glyph next() const { return Glyph(pixels->next(), block); }
+};
+
 // A block of Unicode (eg ASCII, Armenian, Deseret) in a particular font.
 class FontBlock {
  public:
@@ -127,7 +140,7 @@ class FontBlock {
   const char* font_name() const { return font_name_; }
   const char* copyright() const { return copyright_; }
   const FontCharacter* data() const { return reinterpret_cast<const FontCharacter*>(bitmaps_); }
-  bool anti_aliased() const { return tile_start_ >= 0; }
+  bool anti_aliased() const { return tile_start_ > 0; }
 
  private:
   static const uint32 int_24(const uint8* p) {
@@ -157,7 +170,7 @@ class Font : public SimpleResource {
      : SimpleResource(group),
        _blocks(null),
        _block_count(0) {
-     for (int i = 0; i < _CACHE_SIZE; i++) _cache[i] = null;
+     for (int i = 0; i < _CACHE_SIZE; i++) _cache[i] = Glyph();
    }
 
    ~Font() {
@@ -190,24 +203,24 @@ class Font : public SimpleResource {
    static const int _CACHE_GRANULARITY_BITS = 3;
    static const int _CACHE_GRANULARITY = 1 << _CACHE_GRANULARITY_BITS;
    static const int _CACHE_MASK = ~(_CACHE_GRANULARITY - 1);
-   const FontCharacter* _cache[_CACHE_SIZE];
+   Glyph _cache[_CACHE_SIZE];
 
  public:
-  const FontCharacter* get_char(int cp, bool substitute_mojibake=true);
+  const Glyph get_char(int cp, bool substitute_mojibake=true);
 
  private:
   // Checks whether we have found the correct section (range of 16 code
   // points) for a given code point.
-  bool _does_section_match(const FontCharacter* entry, int code_point) {
-    if (entry == null) return false;
-    return (entry->code_point() & _CACHE_MASK) == (code_point & _CACHE_MASK);
+  bool _does_section_match(Glyph entry, int code_point) {
+    if (entry.pixels == null) return false;
+    return (entry.pixels->code_point() & _CACHE_MASK) == (code_point & _CACHE_MASK);
   }
 
   // For cache misses, find the index of the section of the byte array (a range
   // of 16 code points) that can contain the given code point.  These section
   // indexes are cached so we don't have to step through the entire byte array
   // to find the glyph for a given code point.
-  const FontCharacter* _get_section_for_code_point(int code_point);
+  Glyph _get_section_for_code_point(int code_point);
 };
 
 class BytemapDecompresser {
@@ -272,6 +285,6 @@ class FontDecompresser : public BitmapDecompresser {
   }
 };
 
-extern void iterate_font_characters(Blob string, Font* font, const std::function<void (const FontCharacter*)>& f);
+extern void iterate_font_characters(Blob string, Font* font, const std::function<void (Glyph)>& f);
 
 } // namespace toit
