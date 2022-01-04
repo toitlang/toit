@@ -142,14 +142,14 @@ set(GO_LINK_FLAGS "$ENV{GO_LINK_FLAGS} -X main.date=${BUILD_DATE}")
 set(TOITLSP_BIN "${CMAKE_BINARY_DIR}/sdk/bin/toit.lsp${CMAKE_EXECUTABLE_SUFFIX}")
 add_custom_command(
   OUTPUT "${TOITLSP_BIN}"
-  COMMAND "${CMAKE_COMMAND}" -E env ${GO_ENV} go build -ldflags "${GO_LINK_FLAGS}" -tags 'netgo osusergo' -o "${TOITLSP_BIN}"
+  COMMAND "${CMAKE_COMMAND}" -E env ${GO_ENV} go build -ldflags "${GO_LINK_FLAGS}" -tags "netgo osusergo" -o "${TOITLSP_BIN}"
   WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}/tools/toitlsp
 )
 
 set(TOITPKG_BIN "${CMAKE_BINARY_DIR}/sdk/bin/toit.pkg${CMAKE_EXECUTABLE_SUFFIX}")
 add_custom_command(
   OUTPUT "${TOITPKG_BIN}"
-  COMMAND "${CMAKE_COMMAND}" -E env ${GO_ENV} go build -ldflags "${GO_LINK_FLAGS}" -tags 'netgo osusergo' -o "${TOITPKG_BIN}"
+  COMMAND "${CMAKE_COMMAND}" -E env ${GO_ENV} go build -ldflags "${GO_LINK_FLAGS}" -tags "netgo osusergo" -o "${TOITPKG_BIN}"
   WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}/tools/tpkg/cmd/toitpkg
 )
 
