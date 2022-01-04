@@ -17,6 +17,8 @@ cmake_minimum_required(VERSION 3.19.0)
 
 project(toit)
 
+string(TIMESTAMP BUILD_DATE "%Y-%m-%dT%H:%M:%SZ" UTC)
+
 # When using the downloadable sources there is no Git, so the version has
 # to be given as argument.
 set(TOIT_GIT_VERSION "$ENV{TOIT_GIT_VERSION}")
@@ -118,10 +120,6 @@ if (NOT DEFINED TOIT_IS_CROSS)
   set(TOITC "$<TARGET_FILE:toit.compile>")
 endif()
 
-add_custom_target(
-  build_toitlsp
-  COMMAND make -C ${CMAKE_SOURCE_DIR} toitlsp
-)
 
 add_custom_target(
   build_version_file
@@ -134,6 +132,32 @@ add_custom_target(
 
 add_subdirectory(src)
 add_subdirectory(tools)
+
+set(GO_ENV "$ENV{GO_BUILD_FLAGS}")
+separate_arguments(GO_ENV)
+list(APPEND GO_ENV CGO_ENABLED=1 GODEBUG=netdns=go "GOOS=${GOOS}" "GOARCH=${GOARCH}")
+
+set(GO_LINK_FLAGS "$ENV{GO_LINK_FLAGS} -X main.date=${BUILD_DATE}")
+
+set(TOITLSP_BIN "${CMAKE_BINARY_DIR}/sdk/bin/toit.lsp${CMAKE_EXECUTABLE_SUFFIX}")
+add_custom_command(
+  OUTPUT "${TOITLSP_BIN}"
+  COMMAND "${CMAKE_COMMAND}" -E env ${GO_ENV} go build -ldflags "${GO_LINK_FLAGS}" -tags 'netgo osusergo' -o "${TOITLSP_BIN}"
+  WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}/tools/toitlsp
+)
+
+set(TOITPKG_BIN "${CMAKE_BINARY_DIR}/sdk/bin/toit.pkg${CMAKE_EXECUTABLE_SUFFIX}")
+add_custom_command(
+  OUTPUT "${TOITPKG_BIN}"
+  COMMAND "${CMAKE_COMMAND}" -E env ${GO_ENV} go build -ldflags "${GO_LINK_FLAGS}" -tags 'netgo osusergo' -o "${TOITPKG_BIN}"
+  WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}/tools/tpkg/cmd/toitpkg
+)
+
+add_custom_target(
+  build_go_tools
+  DEPENDS "${TOITLSP_BIN}" "${TOITPKG_BIN}"
+)
+add_dependencies(build_tools build_go_tools)
 
 enable_testing()
 add_subdirectory(tests)

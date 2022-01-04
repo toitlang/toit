@@ -38,7 +38,6 @@ target_link_libraries(
   ${TOIT_LINK_LIBS}
   )
 
-add_dependencies(build_tools mock_compiler build_toitlsp)
 add_dependencies(check mock_compiler)
 add_dependencies(check_slow mock_compiler)
 
