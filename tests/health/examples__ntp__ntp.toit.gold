@@ -1,0 +1,9 @@
+<...>/examples/ntp/package.lock:5:10: error: Package 'github.com/toitlang/pkg-ntp-1.0.0' not found
+    url: github.com/toitlang/pkg-ntp
+         ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+examples/ntp/ntp.toit:5:8: error: Package 'pkg-ntp' for prefix 'ntp' not found
+import ntp
+       ^~~
+examples/ntp/ntp.toit:10:15: error: Unresolved identifier: 'synchronize'
+  sync := ntp.synchronize
+              ^~~~~~~~~~~
