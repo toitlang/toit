@@ -156,9 +156,9 @@ func serveRepro(cmd *cobra.Command, args []string) error {
 		fmt.Println("Server started at", fileServer.Port())
 		fmt.Println("Run the compiler with:")
 		if len(reproFS.compilerFlags) == 0 {
-			fmt.Println("  toitc -Xno_fork --lsp")
+			fmt.Println("  toit.compile -Xno_fork --lsp")
 		} else {
-			fmt.Println("  toitc -Xno_fork", strings.Join(reproFS.compilerFlags, " "))
+			fmt.Println("  toit.compile -Xno_fork", strings.Join(reproFS.compilerFlags, " "))
 		}
 		fmt.Println("Stdin for the compiler:")
 		fmt.Println(fileServer.Port())

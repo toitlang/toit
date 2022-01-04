@@ -30,7 +30,7 @@ foreach(file ${TOIT_TESTS})
   string(REPLACE " " "__" test_name ${relative})
   add_test(
     NAME ${test_name}
-    COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/run.sh $<TARGET_FILE:toitvm> ${relative} ${gold_file} ${lib_dir} ${NORMALIZE_GOLD} "${TOIT_SDK_SOURCE_DIR}" "${TOIT_GIT_VERSION}"
+    COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/run.sh $<TARGET_FILE:toit.run> ${relative} ${gold_file} ${lib_dir} ${NORMALIZE_GOLD} "${TOIT_SDK_SOURCE_DIR}" "${TOIT_GIT_VERSION}"
     WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
   )
   set_tests_properties(${test_name} PROPERTIES TIMEOUT 40)
@@ -43,9 +43,9 @@ foreach(file ${TOIT_TESTS})
 
   add_custom_command(
     TARGET ${generate_gold}
-    COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/run.sh --update $<TARGET_FILE:toitvm> ${relative} ${gold_file} ${lib_dir} ${NORMALIZE_GOLD} "${TOIT_SDK_SOURCE_DIR}" "${TOIT_GIT_VERSION}"
+    COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/run.sh --update $<TARGET_FILE:toit.run> ${relative} ${gold_file} ${lib_dir} ${NORMALIZE_GOLD} "${TOIT_SDK_SOURCE_DIR}" "${TOIT_GIT_VERSION}"
     WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
-    DEPENDS toitc
+    DEPENDS toit.compile
   )
   add_dependencies(update_gold ${generate_gold})
 endforeach()

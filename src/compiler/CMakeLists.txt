@@ -6,8 +6,8 @@ file(GLOB toit_compiler_SRC
 )
 list(FILTER toit_compiler_SRC EXCLUDE REGEX "/toitc.cc$")
 
-add_subdirectory(third_party/libyaml)
-add_subdirectory(third_party/semver)
+add_subdirectory(third_party/libyaml EXCLUDE_FROM_ALL)
+add_subdirectory(third_party/semver EXCLUDE_FROM_ALL)
 
 add_library(
   toit_compiler
@@ -21,14 +21,14 @@ target_link_libraries(
 )
 
 add_executable(
-  toitc
+  toit.compile
   toitc.cc
   )
 
-target_link_libraries(toitc -static-libstdc++)
+target_link_libraries(toit.compile -static-libstdc++)
 
 target_link_libraries(
-  toitc
+  toit.compile
   toit_core
   toit_compiler
   mbedtls
@@ -55,4 +55,4 @@ add_custom_target(
   DEPENDS ${TOIT_LIB_DIR}
   )
 
-add_dependencies(toitc generate-lib-symlink)
+add_dependencies(toit.compile generate-lib-symlink)

@@ -30,16 +30,25 @@ else()
   set(SLOW_TIMEOUT 400)
 endif()
 
+# The SHARD_START end SHART_STRIDE environment variables must be set when
+# generating the cmake files.
+# I couldn't figure out how to use them while running the tests.
+set(TEST_SHARD_START "$ENV{SHARD_START}")
+set(TEST_SHARD_STRIDE "$ENV{SHARD_STRIDE}")
+if ("${TEST_SHARD_START}" STREQUAL "")
+  set(TEST_SHARD_START 1)
+endif()
+
 add_custom_target(
   check
-  COMMAND ${CMAKE_CTEST_COMMAND} -j${NUM_CPU} -T test --output-on-failure
+  COMMAND ${CMAKE_CTEST_COMMAND} -j${NUM_CPU} -T test --output-on-failure -I ${TEST_SHARD_START},,${TEST_SHARD_STRIDE}
   USES_TERMINAL
   DEPENDS build_tools
   )
 
 add_custom_target(
   check_slow
-  COMMAND ${CMAKE_CTEST_COMMAND} -j${NUM_CPU} -T test -C slow --output-on-failure
+  COMMAND ${CMAKE_CTEST_COMMAND} -j${NUM_CPU} -T test -C slow --output-on-failure  -I ${TEST_SHARD_START},,${TEST_SHARD_STRIDE}
   USES_TERMINAL
   DEPENDS build_tools
   )
@@ -49,7 +58,7 @@ foreach(file ${TOIT_TESTS})
     NAME ${file}
     # We add 3 arguments to all test-calls.
     # They are only used for tests that deal with arguments.
-    COMMAND $<TARGET_FILE:toitvm> ${file} "foo" "bar" "gee"
+    COMMAND $<TARGET_FILE:toit.run> ${file} "foo" "bar" "gee"
     WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
     )
   set_tests_properties(${file} PROPERTIES TIMEOUT ${DEFAULT_TIMEOUT})
@@ -59,7 +68,7 @@ endforeach()
 foreach(file ${TOIT_FORCE_TESTS})
   add_test(
     NAME ${file}
-    COMMAND $<TARGET_FILE:toitvm> --force ${file}
+    COMMAND $<TARGET_FILE:toit.run> --force ${file}
     WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
     )
   set_tests_properties(${file} PROPERTIES TIMEOUT ${DEFAULT_TIMEOUT})
@@ -69,7 +78,7 @@ foreach(file ${TOIT_NO_BOOT_TESTS})
   add_test(
     NAME ${file}
     # Assumes that `none` doesn't exist.
-    COMMAND $<TARGET_FILE:toitvm> -b none ${file}
+    COMMAND $<TARGET_FILE:toit.run> -b none ${file}
     WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
     )
   set_tests_properties(${file} PROPERTIES TIMEOUT ${DEFAULT_TIMEOUT})
@@ -78,7 +87,7 @@ endforeach()
 foreach(file ${TOIT_COMPILER_TESTS})
   add_test(
     NAME ${file}
-    COMMAND $<TARGET_FILE:toitvm> ${file} $<TARGET_FILE:toitvm>
+    COMMAND $<TARGET_FILE:toit.run> ${file} $<TARGET_FILE:toit.run>
     WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
     )
   set_tests_properties(${file} PROPERTIES TIMEOUT ${DEFAULT_TIMEOUT})
@@ -87,25 +96,34 @@ endforeach()
 set(PREEMPT_ALOT_TEST "tests/json_test.toit")
 add_test(
   NAME "${PREEMPT_ALOT_TEST}-PREEMPT_ALOT"
-  COMMAND $<TARGET_FILE:toitvm> -Xpreemptalot ${PREEMPT_ALOT_TEST}
+  COMMAND $<TARGET_FILE:toit.run> -Xpreemptalot ${PREEMPT_ALOT_TEST}
   WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
   )
 
 foreach(file ${TOIT_SLOW_TESTS})
   add_test(
     NAME ${file}
-    COMMAND $<TARGET_FILE:toitvm> ${file}
+    COMMAND $<TARGET_FILE:toit.run> ${file}
     CONFIGURATIONS slow
     WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
     )
   set_tests_properties(${file} PROPERTIES TIMEOUT ${SLOW_TIMEOUT})
 endforeach()
 
+add_subdirectory(minus_s)
 add_subdirectory(negative)
 add_subdirectory(lsp)
 add_subdirectory(optimizations)
+add_subdirectory(ctest)
 add_subdirectory(toitp)
+add_subdirectory(toit_run_image)
+add_subdirectory(profiler)
+add_subdirectory(health)
+add_subdirectory(fuzzer)
+add_subdirectory(cmake)
+add_subdirectory(snapshot_serialization)
 add_subdirectory(lock_file)
+add_subdirectory(snapshot_to_image)
 
 include(fail.cmake)
 foreach(test ${TOIT_FAILING_TESTS})

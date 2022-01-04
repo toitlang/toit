@@ -7,10 +7,10 @@ import .utils
 main args:
   i := 0
   snap := args[i++]
-  toitvm := args[i++]
+  toit_run := args[i++]
 
   // Get the indexes from the program.
-  out /string := pipe.backticks [toitvm, snap]
+  out /string := pipe.backticks [toit_run, snap]
   lines := out.split "\n"
   lines.do:
     if it == "": continue.do

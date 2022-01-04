@@ -17,10 +17,15 @@ cmake_minimum_required(VERSION 3.19.0)
 
 project(toit)
 
-include(tools/gitversion.cmake)
-# The Git version is only computed when cmake generates the Ninja files, but
-# that should be good enough.
-compute_git_version(TOIT_GIT_VERSION)
+# When using the downloadable sources there is no Git, so the version has
+# to be given as argument.
+set(TOIT_GIT_VERSION "$ENV{TOIT_GIT_VERSION}")
+if ("${TOIT_GIT_VERSION}" STREQUAL "")
+  include(tools/gitversion.cmake)
+  # The Git version is only computed when cmake generates the Ninja files, but
+  # that should be good enough.
+  compute_git_version(TOIT_GIT_VERSION)
+endif()
 
 set(TOIT_SDK_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 
@@ -109,6 +114,10 @@ else ()
     set(TOIT_LINK_GROUP_END_FLAGS "-Wl,--no-whole-archive")
 endif()
 
+if (NOT DEFINED TOIT_IS_CROSS)
+  set(TOITC "$<TARGET_FILE:toit.compile>")
+endif()
+
 add_custom_target(
   build_toitlsp
   COMMAND make -C ${CMAKE_SOURCE_DIR} toitlsp
@@ -119,7 +128,12 @@ add_custom_target(
   COMMAND echo ${TOIT_GIT_VERSION} > "${CMAKE_BINARY_DIR}/sdk/VERSION"
 )
 
+add_custom_target(
+  build_snapshots
+)
+
 add_subdirectory(src)
+add_subdirectory(tools)
 
 enable_testing()
 add_subdirectory(tests)
@@ -130,12 +144,10 @@ set(CMAKE_POLICY_DEFAULT_CMP0076 OLD)
 # Eventually, we need to import mbedtls differently.
 set(ENABLE_TESTING CACHE BOOL OFF)
 set(ENABLE_PROGRAMS CACHE BOOL OFF)
-# Resetting the 'CMAKE_RUNTIME_OUTPUT_DIRECTORY' so that mbedtls doesn't pollute the
-# 'sdk/bin' directory.
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
 add_subdirectory(
   "${IDF_PATH}/components/mbedtls/mbedtls"
-  "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/mbedtls"
+  "${CMAKE_BINARY_DIR}/mbedtls"
+  EXCLUDE_FROM_ALL
   )
 
 set(CMAKE_POLICY_DEFAULT_CMP0076 NEW)

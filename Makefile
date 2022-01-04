@@ -36,18 +36,15 @@ else
 	EXE_SUFFIX=
 endif
 
+SNAPSHOT_DIR = build/host/sdk/snapshots
 BIN_DIR = build/host/sdk/bin
-TOITPKG_BIN = $(BIN_DIR)/toitpkg$(EXE_SUFFIX)
-TOITLSP_BIN = $(BIN_DIR)/toitlsp$(EXE_SUFFIX)
-TOITVM_BIN = $(BIN_DIR)/toitvm$(EXE_SUFFIX)
-TOITC_BIN = $(BIN_DIR)/toitc$(EXE_SUFFIX)
+TOITPKG_BIN = $(BIN_DIR)/toit.pkg$(EXE_SUFFIX)
+TOITLSP_BIN = $(BIN_DIR)/toit.lsp$(EXE_SUFFIX)
+TOITVM_BIN = $(BIN_DIR)/toit.run$(EXE_SUFFIX)
+TOITC_BIN = $(BIN_DIR)/toit.compile$(EXE_SUFFIX)
+
 VERSION_FILE = build/host/sdk/VERSION
 CROSS_ARCH=
-
-# Note that the boot snapshot lives in the bin dir.
-TOIT_BOOT_SNAPSHOT = $(BIN_DIR)/toitvm_boot.snapshot
-
-SNAPSHOT_DIR = build/host/sdk/snapshots
 
 prefix ?= /opt/toit-sdk
 
@@ -64,16 +61,9 @@ GO_LINK_FLAGS +=-X main.date=$(BUILD_DATE)
 TOITLSP_SOURCE := $(shell find ./tools/toitlsp/ -name '*.go')
 TOITPKG_VERSION := v0.0.0-20211126161923-c00da039da00
 
-TOOLS = $(TOITPKG_BIN) $(TOITLSP_BIN) $(TOITVM_BIN) $(TOITC_BIN) $(VERSION_FILE)
-SNAPSHOTS = $(SNAPSHOT_DIR)/system_message.snapshot $(SNAPSHOT_DIR)/snapshot_to_image.snapshot $(SNAPSHOT_DIR)/inject_config.snapshot
-
-
 # HOST
 .PHONY: all
-all: tools
-
-.PHONY: tools
-tools: check-env $(TOOLS) snapshots
+all: tools snapshots $(VERSION_FILE)
 
 check-env:
 ifeq ("$(wildcard $(IDF_PATH)/components/mbedtls/mbedtls/LICENSE)","")
@@ -87,11 +77,24 @@ ifneq ("$(IDF_PATH)", "$(CURDIR)/third_party/esp-idf")
 	$(info -- Not using Toitware ESP-IDF fork.)
 endif
 
+build/host/CMakeCache.txt:
+	mkdir -p build/host
+	(cd build/host && cmake ../.. -G Ninja -DCMAKE_BUILD_TYPE=Release)
+
+.PHONY: tools
+tools: check-env build/host/CMakeCache.txt $(TOITPKG_BIN) $(TOITLSP_BIN)
+	(cd build/host && ninja build_tools)
+
+.PHONY: snapshots
+snapshots: tools
+	(cd build/host && ninja build_snapshots)
+
 .PHONY: toitpkg
 toitpkg: $(TOITPKG_BIN)
 
 $(TOITPKG_BIN):
 	GOBIN="$(CURDIR)"/$(dir $@) go install github.com/toitlang/tpkg/cmd/toitpkg@$(TOITPKG_VERSION)
+	mv "$(CURDIR)"/$(dir $@)/toitpkg "$(CURDIR)"/$@
 
 .PHONY: toitlsp
 toitlsp: $(TOITLSP_BIN)
@@ -99,87 +102,60 @@ toitlsp: $(TOITLSP_BIN)
 $(TOITLSP_BIN): $(TOITLSP_SOURCE)
 	cd tools/toitlsp; $(GO_BUILD_FLAGS) go build  -ldflags "$(GO_LINK_FLAGS)" -tags 'netgo osusergo' -o "$(CURDIR)"/$@ .
 
-# We don't track dependencies in the Makefile, so we always have to call out to ninja.
-.PHONY: $(TOITVM_BIN) $(TOITC_BIN) $(TOIT_BOOT_SNAPSHOT)
-$(TOITVM_BIN) $(TOITC_BIN) $(TOIT_BOOT_SNAPSHOT): build/host/CMakeCache.txt
-	(cd build/host && ninja build_tools)
-
-build/host/CMakeCache.txt: build/host/
-	(cd build/host && cmake ../.. -G Ninja -DCMAKE_BUILD_TYPE=Release)
-
-build/host/:
-	mkdir -p $@
-
 .PHONY: $(VERSION_FILE)
 $(VERSION_FILE):
 	(cd build/host && ninja build_version_file)
 
-.PHONY: snapshots
-snapshots: $(SNAPSHOTS)
-
-$(SNAPSHOT_DIR)/snapshot_to_image.snapshot: tools/snapshot_to_image.toit $(TOITC_BIN) $(SNAPSHOT_DIR)
-	$(TOITC_BIN) -w $@ $<
-
-$(SNAPSHOT_DIR)/system_message.snapshot: tools/system_message.toit $(TOITC_BIN) $(SNAPSHOT_DIR)
-	$(TOITC_BIN) -w $@ $<
-
-$(SNAPSHOT_DIR)/inject_config.snapshot: tools/inject_config.toit $(TOITC_BIN) $(SNAPSHOT_DIR)
-	$(TOITC_BIN) -w $@ $<
-
-$(SNAPSHOT_DIR):
-	mkdir -p $@
-
 
 # CROSS-COMPILE
-.PHONY: tools-cross
-tools-cross: check-env check-env-cross tools build/$(CROSS_ARCH)/sdk/bin/toitvm build/$(CROSS_ARCH)/sdk/bin/toitc build/$(CROSS_ARCH)/sdk/bin/toitvm_boot.snapshot
+.PHONY: all-cross
+all-cross: tools-cross snapshots-cross
 
 check-env-cross:
 ifndef CROSS_ARCH
-	$(error invalid must specify a cross-compilation targt with CROSS_ARCH.  ie: make tools-cross CROSS_ARCH=riscv64)
+	$(error invalid must specify a cross-compilation targt with CROSS_ARCH.  For example: make all-cross CROSS_ARCH=riscv64)
 endif
 ifeq ("$(wildcard ./toolchains/$(CROSS_ARCH).cmake)","")
 	$(error invalid cross-compile target '$(CROSS_ARCH)')
 endif
 
-.PHONY: build/$(CROSS_ARCH)/sdk/bin/toitvm build/$(CROSS_ARCH)/sdk/bin/toitc
-build/$(CROSS_ARCH)/sdk/bin/toitvm build/$(CROSS_ARCH)/sdk/bin/toitc: build/$(CROSS_ARCH)/CMakeCache.txt
+build/$(CROSS_ARCH)/CMakeCache.txt:
+	mkdir -p build/$(CROSS_ARCH)
+	(cd build/$(CROSS_ARCH) && cmake ../../ -G Ninja -DTOITC=$(CURDIR)/build/host/sdk/bin/toit.compile -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/$(CROSS_ARCH).cmake --no-warn-unused-cli)
+
+.PHONY: tools-cross
+tools-cross: check-env-cross build/$(CROSS_ARCH)/CMakeCache.txt tools
 	(cd build/$(CROSS_ARCH) && ninja build_tools)
 
-build/$(CROSS_ARCH)/CMakeCache.txt: build/$(CROSS_ARCH)/
-	(cd build/$(CROSS_ARCH) && cmake ../../ -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/$(CROSS_ARCH).cmake --no-warn-unused-cli)
-
-build/$(CROSS_ARCH)/:
-	mkdir -p $@
-
-build/$(CROSS_ARCH)/sdk/bin/toitvm_boot.snapshot:
-	(cp $(TOIT_BOOT_SNAPSHOT) build/$(CROSS_ARCH)/sdk/bin/)
+.PHONY: snapshots-cross
+snapshots-cross: tools
+	(cd build/$(CROSS_ARCH) && ninja build_snapshots)
 
 
 # ESP32 VARIANTS
 .PHONY: esp32
 esp32: check-env build/$(ESP32_CHIP)/toit.bin
 
-build/$(ESP32_CHIP)/toit.bin build/$(ESP32_CHIP)/toit.elf: build/$(ESP32_CHIP)/lib/libtoit_image.a build/config.json
+build/$(ESP32_CHIP)/toit.bin build/$(ESP32_CHIP)/toit.elf: tools snapshots build/$(ESP32_CHIP)/lib/libtoit_image.a build/config.json
 	make -C toolchains/$(ESP32_CHIP)/
 	$(TOITVM_BIN) tools/inject_config.toit build/config.json build/$(ESP32_CHIP)/toit.bin
 
 build/$(ESP32_CHIP)/lib/libtoit_image.a: build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s build/$(ESP32_CHIP)/CMakeCache.txt build/$(ESP32_CHIP)/include/sdkconfig.h
 	(cd build/$(ESP32_CHIP) && ninja toit_image)
 
-build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s: build/$(ESP32_CHIP)/ build/snapshot $(TOITVM_BIN) $(SNAPSHOT_DIR)/snapshot_to_image.snapshot
+build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s: tools snapshots build/snapshot
+	mkdir -p build/$(ESP32_CHIP)
 	$(TOITVM_BIN) $(SNAPSHOT_DIR)/snapshot_to_image.snapshot build/snapshot $@
 
 build/snapshot: $(TOITC_BIN) $(ESP32_ENTRY)
 	$(TOITC_BIN) -w $@ $(ESP32_ENTRY)
 
-build/$(ESP32_CHIP)/CMakeCache.txt: build/$(ESP32_CHIP)/
+build/$(ESP32_CHIP)/CMakeCache.txt:
+	mkdir -p build/$(ESP32_CHIP)
 	(cd build/$(ESP32_CHIP) && IMAGE=build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s cmake ../../ -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/$(ESP32_CHIP)/$(ESP32_CHIP).cmake --no-warn-unused-cli)
 
-build/$(ESP32_CHIP)/:
-	mkdir -p $@
-
-build/$(ESP32_CHIP)/include/sdkconfig.h: build/$(ESP32_CHIP)/
+build/$(ESP32_CHIP)/include/sdkconfig.h:
+	mkdir -p build/$(ESP32_CHIP)
 	make -C toolchains/$(ESP32_CHIP) -s "$(CURDIR)"/$@
 
 .PHONY: build/config.json
@@ -205,19 +181,35 @@ clean:
 	rm -rf build/
 
 .PHONY: install-sdk install
-install-sdk: $(TOOLS) $(SNAPSHOTS)
-	install -D --target-directory="$(DESTDIR)$(prefix)"/bin $(TOOLS)
-	install -m 644 -D --target-directory="$(DESTDIR)$(prefix)"/bin $(TOIT_BOOT_SNAPSHOT)
-	cp -R "$(CURDIR)"/lib "$(DESTDIR)$(prefix)"/lib
+install-sdk: all
+	install -D --target-directory="$(DESTDIR)$(prefix)"/bin "$(CURDIR)"/build/host/sdk/bin/*
+	chmod 644 "$(DESTDIR)$(prefix)"/bin/*.snapshot
+	mkdir -p "$(DESTDIR)$(prefix)"/lib
+	cp -R "$(CURDIR)"/lib/* "$(DESTDIR)$(prefix)"/lib
 	find "$(DESTDIR)$(prefix)"/lib -type f -exec chmod 644 {} \;
-	install -m 644 -D --target-directory="$(DESTDIR)$(prefix)"/snapshots $(SNAPSHOTS)
+	mkdir -p "$(DESTDIR)$(prefix)"/snapshots
+	cp "$(CURDIR)"/build/host/sdk/snapshots/* "$(DESTDIR)$(prefix)"/snapshots
+	find "$(DESTDIR)$(prefix)"/snapshots -type f -exec chmod 644 {} \;
 
 install: install-sdk
 
 .PHONY: test
 test:
-	(cd build/host && ninja check_slow)
+	(cd build/host && ninja check_slow check_fuzzer_lib)
 
 .PHONY: update-gold
 update-gold:
 	(cd build/host && ninja update_gold)
+	(cd build/host && ninja update_minus_s_gold)
+
+.PHONY: test-health
+test-health:
+	(cd build/host && ninja generate_health_sources)
+	$(MAKE) build/host/CMakeCache.txt
+	(cd build/host && ninja check_health)
+
+.PHONY: update-health-gold
+update-health-gold:
+	(cd build/host && ninja generate_health_sources)
+	$(MAKE) build/host/CMakeCache.txt
+	(cd build/host && ninja update_health_gold)

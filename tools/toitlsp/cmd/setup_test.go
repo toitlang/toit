@@ -30,7 +30,7 @@ func fixToitcPath(t *tedi.T) (toitcPath, error) {
 		return toitcPath(path), nil
 	}
 
-	path, err := exec.LookPath("toitc")
+	path, err := exec.LookPath("toit.compile")
 	if err != nil {
 		return "", err
 	}

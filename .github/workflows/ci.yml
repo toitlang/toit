@@ -10,20 +10,41 @@ jobs:
     strategy:
       # The matrix will run all possible combinations in parallel.
       matrix:
-        include:
-          - os: linux
-            container: ubuntu-latest
-            artifact: toit-linux.tar.gz
-          - os: macos
-            container: macos-10.15   # Currently we need Clang 12 (https://github.com/toitlang/toit/issues/130)
-            artifact: toit-macos.tar.gz
-          - os: windows
-            container: windows-2022  # Currently later than windows-latest.
-            artifact: toit-windows.tar.gz
+        # macos-10.15, as we currently need Clang 12 (https://github.com/toitlang/toit/issues/130)
+        # windows-2022, as it's currently later than windows-latest.
+        container: [ ubuntu-latest, macos-10.15, windows-2022 ]
+        shard: [1, 2, 3, 4, 5]
+        exclude: # We don't run tests on Windows yet. Exclude all but the first shard.
+          - container: windows-2022
+            shard: 2
+          - container: windows-2022
+            shard: 3
+          - container: windows-2022
+            shard: 4
+          - container: windows-2022
+            shard: 5
 
     runs-on: ${{ matrix.container }}
 
     steps:
+      - name: Set up constants
+        id: constants
+        run: |
+          if [ "$RUNNER_OS" == "Linux" ]; then
+            echo ::set-output name=artifact::toit-linux.tar.gz
+            echo ::set-output name=total_shards::5
+          elif [ "$RUNNER_OS" == "macOS" ]; then
+            echo ::set-output name=artifact::toit-macos.tar.gz
+            echo ::set-output name=total_shards::5
+          elif [ "$RUNNER_OS" == "Windows" ]; then
+            echo ::set-output name=artifact::toit-windows.tar.gz
+            echo ::set-output name=total_shards::1
+          else
+            echo "UNSUPPORTED RUNNER: $RUNNER_OS"
+            exit 1
+          fi
+        shell: bash
+
       - uses: actions/checkout@v2
 
       - name: Fetch tags
@@ -114,32 +135,50 @@ jobs:
           CCACHE_COMPRESS: true
           CCACHE_COMPRESSLEVEL: '6'
           CCACHE_MAXSIZE: 400M
+          SHARD_START: ${{ matrix.shard }}
+          SHARD_STRIDE: ${{ steps.constants.outputs.total_shards }}
         run: |
           make tools
 
       # Test.
       - name: test
         if: runner.os != 'Windows'
+        env:
+          IDF_PATH: ${{ github.workspace }}/third_party/esp-idf
+          CCACHE_DIR: ${{ github.workspace }}/.ccache
+          CCACHE_BASEDIR: ${{ github.workspace }}
+          CCACHE_COMPRESS: true
+          CCACHE_COMPRESSLEVEL: '6'
+          CCACHE_MAXSIZE: 400M
+          SHARD_START: ${{ matrix.shard }}
+          SHARD_STRIDE: ${{ steps.constants.outputs.total_shards }}
         run: |
           make test
+          make test-health
 
       - name: Pack artifacts
+        if: matrix.shard == 1
         shell: bash
         # Note that we use `cp -R` first, since that works on every platform.
         run: |
           cp -R ./build/host/sdk ./build/host/toit
-          tar -czf build/${{ matrix.artifact }} -C ./build/host -h --exclude toit/bin/mbedtls toit
+          tar -czf build/${{ steps.constants.outputs.artifact }} -C ./build/host -h --exclude toit/bin/mbedtls toit
+
       - name: Upload artifacts
+        if: matrix.shard == 1
         uses: actions/upload-artifact@v2
         with:
-          name: ${{ matrix.os }}-build
-          path: build/${{ matrix.artifact }}
+          name: ${{ runner.os }}-build
+          path: build/${{ steps.constants.outputs.artifact }}
+
       - name: Upload release artifacts
-        if: github.event_name == 'release'
+        if: |
+          (github.event_name) == 'release' &&
+          (matrix.shard == 1)
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: build/${{ matrix.artifact }}
+          file: build/${{ steps.constants.outputs.artifact }}
           tag: ${{ github.ref }}
           overwrite: true
 
@@ -159,6 +198,34 @@ jobs:
         run: |
           git submodule sync --recursive
           git submodule update --init --recursive -j 2
+
+      # Use Go 1.17
+      - name: Switch to Go 1.17
+        run:
+          echo "$GOROOT_1_17_X64"/bin >> $GITHUB_PATH
+
+      # Get values for cache paths to be used in later steps
+      - name: Get Go paths
+        id: go-cache-paths
+        run: |
+          echo "::set-output name=go-build::$(go env GOCACHE)"
+          echo "::set-output name=go-mod::$(go env GOMODCACHE)"
+
+      # Cache go build cache, used to speedup go test
+      - name: Go Build Cache
+        uses: actions/cache@v2
+        with:
+          path: ${{ steps.go-cache-paths.outputs.go-build }}
+          key: ${{ runner.os }}-go-build-${{ hashFiles('**/go.sum') }}
+          restore-keys: ${{ runner.os }}-go-build-
+
+      # Cache go mod cache, used to speedup builds
+      - name: Go Mod Cache
+        uses: actions/cache@v2
+        with:
+          path: ${{ steps.go-cache-paths.outputs.go-mod }}
+          key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum') }}
+          restore-keys: ${{ runner.os }}-go-mod-
 
       # We create a new id every second.
       # The 'restore-keys' below will make sure that we continue using earlier versions.

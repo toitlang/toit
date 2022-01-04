@@ -15,7 +15,14 @@
 
 # Creates a custom command to build ${TARGET} with correct dependencies.
 function(ADD_TOIT_TARGET SOURCE TARGET DEP_FILE ENV)
-  set(TOITC "$<TARGET_FILE:toitc>")
+  if (NOT DEFINED TOITC)
+    set(TOITC "$ENV{TOITC}")
+    if ("${TOITC}" STREQUAL "")
+      # TOITC is normally set to the toit.compile executable.
+      # However, for cross-compilation the compiler must be provided manually.
+      message(FATAL_ERROR "TOITC not provided")
+    endif()
+  endif()
   if(POLICY CMP0116)
     cmake_policy(SET CMP0116 NEW)
   endif()

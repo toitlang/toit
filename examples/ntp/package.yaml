@@ -1,0 +1,4 @@
+dependencies:
+  ntp:
+    url: github.com/toitlang/pkg-ntp
+    version: ^1.0.0

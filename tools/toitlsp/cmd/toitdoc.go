@@ -49,7 +49,7 @@ func Toitdoc(sdkVersion string) *cobra.Command {
 	cmd.Flags().String("version", "", "version of the package to build toitdoc for")
 	cwd, _ := os.Getwd()
 	cmd.Flags().String("root-path", cwd, "root path to build paths from")
-	cmd.Flags().String("toitc", "", "the toitc to use")
+	cmd.Flags().String("toitc", "", "the toit compiler to use")
 	cmd.Flags().String("sdk", "", "the SDK path to use")
 	cmd.Flags().String("out", "toitdoc.json", "the output file")
 	cmd.Flags().Bool("exclude-sdk", false, "if set, will remove the sdk libraries from the toitdoc")

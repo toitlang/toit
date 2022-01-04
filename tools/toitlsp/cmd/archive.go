@@ -39,7 +39,7 @@ func Archive() *cobra.Command {
 		Args:  cobra.MinimumNArgs(1),
 	}
 	archiveCmd.Flags().BoolP("verbose", "v", false, "")
-	archiveCmd.Flags().String("toitc", "", "the default toitc to use")
+	archiveCmd.Flags().String("toitc", "", "the default toit compiler to use")
 	archiveCmd.Flags().String("sdk", "", "the default SDK path to use")
 	archiveCmd.Flags().String("out", "archive.tar", "the output file. Use: '-' for stdout")
 	archiveCmd.Flags().Bool("include-sdk", false, "if set, will include the used SDK files in the archive file")

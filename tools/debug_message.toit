@@ -101,15 +101,15 @@ run_debug_snapshot snapshot_bytes json_message:
 
     // TODO(florian): we should use `hatch_` or something similar to
     //   launch the debug snapshot.
-    toitc_path := "toitc"
+    toit_run_path := "toit.run"
     pipes := pipe.fork
         true                // use_path
         pipe.PIPE_CREATED   // stdin
         pipe.PIPE_CREATED   // stdout
         pipe.PIPE_INHERITED // stderr
-        toitc_path
+        toit_run_path
         [
-          toitc_path,
+          toit_run_path,
           debug_toit,
         ]
     to   := pipes[0]

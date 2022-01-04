@@ -32,8 +32,8 @@ This makes it possible to detect spurious output that interferes with
   have been a communication based on ports...).
 */
 main args:
-  TOITC := "/home/flo/code/toit_lsp/build/debug/sdk/bin/toitc"
-  SERVER := "/home/flo/code/toit_lsp/tools/lsp/server/server.toit"
+  TOIT_RUN := "toit.run"
+  SERVER := "tools/lsp/server/server.toit"
   LOG := "/tmp/lsp_logs"
 
   pipes := pipe.fork
@@ -41,9 +41,9 @@ main args:
     pipe.PIPE_CREATED  // stdin
     pipe.PIPE_CREATED  // stdout
     pipe.PIPE_INHERITED  // stderr
-    TOITC
+    TOIT_RUN
     [
-      TOITC,
+      TOIT_RUN,
       SERVER
     ]
   pipe_to := pipes[0]
