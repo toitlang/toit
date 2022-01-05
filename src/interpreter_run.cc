@@ -1111,7 +1111,7 @@ Interpreter::Result Interpreter::_run() {
 
   OPCODE_BEGIN(NON_LOCAL_BRANCH);
     B_ARG1(height_diff);
-    uint32 absolute_bci = Utils::read_unaligned_int32(bcp + 2);
+    uint32 absolute_bci = Utils::read_unaligned_uint32(bcp + 2);
     Smi* block = Smi::cast(POP());
     Object** target_sp = _from_block(block);
     _index_ = 0;

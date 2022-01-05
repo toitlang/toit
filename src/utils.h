@@ -87,13 +87,6 @@ class Utils {
   }
 
   template<typename T>
-  static inline int32 read_unaligned_int32(T* ptr) {
-    int32 result;
-    memcpy(&result, ptr, sizeof(result));
-    return result;
-  }
-
-  template<typename T>
   static inline uint32 read_unaligned_uint32(T* ptr) {
     uint32 result;
     memcpy(&result, ptr, sizeof(result));
