@@ -2,3 +2,5 @@ As check failed: an int (3) is not a Point.
   0: Point                     tests/negative/factory_test.toit:11:5
   1: main                      tests/negative/factory_test.toit:7:5
   2: __entry__.<lambda>        <sdk>/core/entry.toit:48:20
+
+

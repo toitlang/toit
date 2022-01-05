@@ -2,3 +2,5 @@ in foo
 As check failed: an int (499) is not a C.
   0: main                      tests/negative/type_local4_test.toit:11:9
   1: __entry__.<lambda>        <sdk>/core/entry.toit:48:20
+
+

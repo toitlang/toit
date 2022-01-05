@@ -4,3 +4,5 @@ tests/negative/typed_local2_test.toit:5:14: error: Type mismatch. Expected 'int'
 As check failed: a string ("str") is not a int.
   0: main                      tests/negative/typed_local2_test.toit:5:14
   1: __entry__.<lambda>        <sdk>/core/entry.toit:48:20
+
+

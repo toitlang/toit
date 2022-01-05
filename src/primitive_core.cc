@@ -876,8 +876,9 @@ PRIMITIVE(seconds_since_epoch_local) {
 static char* current_buffer = null;
 
 PRIMITIVE(set_tz) {
-  ARGS(String, rules)
-  if (rules->length() == 0) {
+  ARGS(cstring, rules)
+  size_t length = rules ? strlen(rules) : 0;
+  if (length == 0) {
     putenv((char*)("TZ"));
     tzset();
     free(current_buffer);
@@ -886,11 +887,11 @@ PRIMITIVE(set_tz) {
   }
   const char* prefix = "TZ=";
   const int prefix_size = strlen(prefix);
-  int buffer_size = prefix_size + rules->length() + 1;
+  int buffer_size = prefix_size + length + 1;
   char* tz_buffer = static_cast<char*>(malloc(buffer_size));
   if (tz_buffer == null) ALLOCATION_FAILED;
-  strcpy(tz_buffer, "TZ=");
-  strncpy(tz_buffer + 3, rules->as_cstr(), buffer_size - 3);
+  strcpy(tz_buffer, prefix);
+  memcpy(tz_buffer + prefix_size, rules, buffer_size - prefix_size);
   tz_buffer[buffer_size - 1] = '\0';
   putenv((char*)("TZ"));
   putenv(tz_buffer);
@@ -2245,10 +2246,10 @@ PRIMITIVE(get_env) {
   // FreeRTOS supports environment variables, but we prefer not to expose them.
   UNIMPLEMENTED_PRIMITIVE;
 #else
-  ARGS(String, key);
+  ARGS(cstring, key);
   // TODO(florian): getenv is not reentrant.
   //   We should have a lock around `getenv` and `setenv`.
-  const char* result = OS::getenv(key->as_cstr());
+  const char* result = OS::getenv(key);
   if (result == null) return process->program()->null_object();
   return process->allocate_string_or_error(result, strlen(result));
 #endif

@@ -189,12 +189,11 @@ update-gold:
 
 .PHONY: test-health
 test-health:
-	(cd build/host && ninja generate_health_sources)
 	$(MAKE) rebuild-cmake
 	(cd build/host && ninja check_health)
 
 .PHONY: update-health-gold
 update-health-gold:
-	(cd build/host && ninja generate_health_sources)
 	$(MAKE) rebuild-cmake
+	(cd build/host && ninja clear_health_gold)
 	(cd build/host && ninja update_health_gold)
