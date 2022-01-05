@@ -111,7 +111,7 @@ func (p *parser) AnalyzeOutput(r io.Reader) (*AnalyzeResult, error) {
 			}
 
 			var msg string
-			first := true
+			isFirst := true
 			for {
 				line, err := p.readLine(reader)
 				if err != nil {
@@ -120,9 +120,9 @@ func (p *parser) AnalyzeOutput(r io.Reader) (*AnalyzeResult, error) {
 				if line == "*******************" {
 					break
 				}
-				if !first {
+				if !isFirst {
 					msg += "\n"
-					first = false
+					isFirst = false
 				}
 				msg += line
 			}
