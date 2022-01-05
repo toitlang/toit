@@ -122,9 +122,9 @@ PRIMITIVE(blit) {
         dest.address()[dest_index] ^= looked_up;
       } else {
         ASSERT(operation == ADD_16_LE);
-        uint32_t value = *reinterpret_cast<uint16_t*>(dest.address() + dest_index);
+        uint32_t value = Utils::read_unaligned_uint16(dest.address() + dest_index);
         value += looked_up;
-        *reinterpret_cast<uint16_t*>(dest.address() + dest_index) = value > 0xffff ? 0xffff : value;
+        Utils::write_unaligned_uint16(dest.address() + dest_index, value > 0xffff ? 0xffff : value);
       }
     }
     src_offset += src_line_stride;

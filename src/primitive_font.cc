@@ -40,8 +40,8 @@ namespace toit {
 bool FontBlock::verify(const uint8* data, uint32 length, const char* name) {
   // Sanity checks - is it a font file?
   // TODO: If we support big endian then this needs fixing.
-  if (*reinterpret_cast<const uint32*>(data) != 0x7017f097) return false;
-  if (*reinterpret_cast<const uint32*>(data + 4) != length) return false;
+  if (Utils::read_unaligned_uint32(data) != 0x7017f097) return false;
+  if (Utils::read_unaligned_uint32(data + 4) != length) return false;
   if (data[length - 1] != 0xff) return false;
   uint32 offset = 40;
   uint32 from = -1;
