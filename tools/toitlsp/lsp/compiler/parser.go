@@ -122,10 +122,9 @@ func (p *parser) AnalyzeOutput(r io.Reader) (*AnalyzeResult, error) {
 				}
 				if !first {
 					msg += "\n"
+					first = false
 				}
 				msg += line
-
-				first = false
 			}
 
 			if !withPosition {
