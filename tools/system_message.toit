@@ -39,7 +39,7 @@ usage prog_name:
       $prog_name <snapshot>
       $prog_name <snapshot> <system message or heap_dump file>
       $prog_name <snapshot> -b <base64-encoded-ubjson>
-      # Eg snapshot file can be run_boot.snapshot
+      # Eg snapshot file can be toit.run.snapshot
 
     If no system-message file is given, the stack trace is read from stdin."""
   exit 1
