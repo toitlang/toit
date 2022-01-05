@@ -88,9 +88,10 @@ class DnsQuery_:
           socket.write query
 
           answer := null
-          catch:
+          exception := catch:
             with_timeout retry_timeout:
               answer = socket.receive
+          if exception and exception != "DEADLINE_EXCEEDED": throw exception
 
           if answer:
             return decode_response_ answer.data
