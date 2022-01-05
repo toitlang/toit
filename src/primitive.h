@@ -683,12 +683,47 @@ namespace toit {
 
 #define _A_T_cstring(N, name)                                           \
   Object* _raw_##name = __args[-(N)];                                   \
-  const char* name;                                                     \
+  char* _nonconst_##name = null;                                        \
+  if (_raw_##name != process->program()->null_object()) {               \
+    Blob _blob_##name;                                                  \
+    if (!_raw_##name->byte_content(process->program(), &_blob_##name, STRINGS_ONLY)) WRONG_TYPE; \
+    _nonconst_##name = unvoid_cast<char*>(calloc(_blob_##name.length() + 1, 1)); \
+    if (!_nonconst_##name) MALLOC_FAILED;                               \
+    memcpy(_nonconst_##name, _blob_##name.address(), _blob_##name.length()); \
+  }                                                                     \
+  const char* name = _nonconst_##name;                                  \
+  AllocationManager _manager_##name(process, _nonconst_##name, 0);
+
+// If it's a string, then the length is calculated including the terminating
+// null.  Otherwise it's calculated without the terminating null.  MbedTLS
+// seems to like this crazy semantics.  Produces two variables, called name
+// and name_length.  Null is also allowed.
+#define _A_T_blob_or_string_with_terminating_null(N, name)              \
+  Object* _raw_##name = __args[-(N)];                                   \
+  uword name##_length = 0;                                              \
+  const uint8* name = 0;                                                \
+  uint8* _freed_##name = 0;                                             \
   if (_raw_##name->is_string()) {                                       \
-    name = String::cast(_raw_##name)->as_cstr();                        \
-  } else if (_raw_##name == process->program()->null_object()) {        \
-    name = null;                                                        \
-  } else WRONG_TYPE;
+    /* Avoid copying */                                                 \
+    auto str = String::cast(_raw_##name);                               \
+    name = unsigned_cast(str->as_cstr());                               \
+    name##_length = 1 + str->length();                                  \
+  } else {                                                              \
+    Blob _blob_##name;                                                  \
+    if (_raw_##name->byte_content(process->program(), &_blob_##name, STRINGS_ONLY)) { \
+      /* Probably a slice - send it as a string to mbedtls */           \
+      name##_length = 1 + _blob_##name.length();                        \
+      name = _freed_##name = unvoid_cast<uint8*>(calloc(name##_length, 1)); \
+      if (!_freed_##name) MALLOC_FAILED;                                \
+      memcpy(_freed_##name, _blob_##name.address(), _blob_##name.length()); \
+    } else if (_raw_##name->byte_content(process->program(), &_blob_##name, STRINGS_OR_BYTE_ARRAYS)) { \
+      name##_length = _blob_##name.length();                            \
+      name = _blob_##name.address();                                    \
+    } else if (_raw_##name != process->program()->null_object()) {      \
+      WRONG_TYPE;                                                       \
+    }                                                                   \
+  }                                                                     \
+  AllocationManager _manager_##name(process, _freed_##name, 0);
 
 #define _A_T_StringOrSlice(N, name)                               \
   Object* _raw_##name = __args[-(N)];                             \

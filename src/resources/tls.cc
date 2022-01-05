@@ -40,7 +40,7 @@ void BaseMbedTLSSocket::uninit_certs() {
   _private_key = null;
 }
 
-int BaseMbedTLSSocket::add_certificate(X509Certificate* cert, uint8_t* private_key, size_t private_key_length, const unsigned char* password, int password_length) {
+int BaseMbedTLSSocket::add_certificate(X509Certificate* cert, const uint8_t* private_key, size_t private_key_length, const uint8_t* password, int password_length) {
   uninit_certs();  // Remove any old cert on the config.
 
   _private_key = _new mbedtls_pk_context;
@@ -477,24 +477,9 @@ PRIMITIVE(add_root_certificate) {
 }
 
 PRIMITIVE(add_certificate) {
-  ARGS(BaseMbedTLSSocket, socket, X509Certificate, certificate, Object, private_key, cstring, password);
+  ARGS(BaseMbedTLSSocket, socket, X509Certificate, certificate, blob_or_string_with_terminating_null, private_key, blob_or_string_with_terminating_null, password);
 
-  size_t password_length = password ? strlen(password) : 0;
-
-  uint8_t* key_data = null;
-  size_t key_length = 0;
-  if (private_key->is_string()) {
-    key_data = (uint8_t*)String::cast(private_key)->as_cstr();
-    key_length = String::cast(private_key)->length() + 1;
-  } else if (private_key->is_byte_array()) {
-    ByteArray::Bytes bytes(ByteArray::cast(private_key));
-    key_data = bytes.address();
-    key_length = bytes.length();
-  } else {
-    WRONG_TYPE;
-  }
-
-  int ret = socket->add_certificate(certificate, key_data, key_length, unsigned_cast(password), password_length);
+  int ret = socket->add_certificate(certificate, private_key, private_key_length, password, password_length);
   if (ret != 0) return tls_error(null, process, ret);
   return process->program()->null_object();
 }

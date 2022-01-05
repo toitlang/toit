@@ -138,7 +138,7 @@ jobs:
           SHARD_START: ${{ matrix.shard }}
           SHARD_STRIDE: ${{ steps.constants.outputs.total_shards }}
         run: |
-          make tools
+          make all
 
       # Test.
       - name: test

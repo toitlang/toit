@@ -58,7 +58,7 @@ class BaseMbedTLSSocket : public TLSSocket {
 
   virtual bool init(const char* transport_id) = 0;
   void apply_certs();
-  int add_certificate(X509Certificate* cert, uint8_t* private_key, size_t private_key_length, const unsigned char* password, int password_length);
+  int add_certificate(X509Certificate* cert, const uint8_t* private_key, size_t private_key_length, const uint8_t* password, int password_length);
   int add_root_certificate(X509Certificate* cert);
   void uninit_certs();
   word handshake() override;
