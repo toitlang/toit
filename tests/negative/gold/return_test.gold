@@ -8,3 +8,5 @@ EXCEPTION error.
 negative
   0: main                      tests/negative/return_test.toit:11:3
   1: __entry__.<lambda>        <sdk>/core/entry.toit:48:20
+
+

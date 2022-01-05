@@ -23,3 +23,5 @@ As check failed: null is not a int.
   0: gee                       tests/negative/null_check_test.toit:15:5
   1: main                      tests/negative/null_check_test.toit:29:3
   2: __entry__.<lambda>        <sdk>/core/entry.toit:48:20
+
+

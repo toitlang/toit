@@ -2,3 +2,5 @@ in assert
 ASSERTION_FAILED error.
   0: main                      tests/negative/assert_test.toit:4:3
   1: __entry__.<lambda>        <sdk>/core/entry.toit:48:20
+
+

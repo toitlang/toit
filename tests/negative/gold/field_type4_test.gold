@@ -5,3 +5,5 @@ As check failed: null is not a string.
   0: A                         tests/negative/field_type4_test.toit:5:17
   1: main                      tests/negative/field_type4_test.toit:10:8
   2: __entry__.<lambda>        <sdk>/core/entry.toit:48:20
+
+

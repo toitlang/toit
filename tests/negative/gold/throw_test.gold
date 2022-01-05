@@ -2,3 +2,5 @@ EXCEPTION error.
 oops
   0: main                      tests/negative/throw_test.toit:3:3
   1: __entry__.<lambda>        <sdk>/core/entry.toit:48:20
+
+
