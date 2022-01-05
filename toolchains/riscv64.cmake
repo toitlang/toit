@@ -35,4 +35,7 @@ set(CMAKE_CXX_FLAGS_PROF "-Os -DPROF -pg" CACHE STRING "c++ Prof flags")
 
 set(FIND_LIBRARY_USE_LIB64_PATHS OFF)
 
+set(GOOS "linux")
+set(GOARCH "riscv64")
+
 enable_testing()

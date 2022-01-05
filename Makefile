@@ -16,8 +16,6 @@
 .ONESHELL: # Run all lines of targets in one shell
 .SHELLFLAGS += -e
 
-BUILD_DATE = $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
-
 # Use 'make ESP32_ENTRY=examples/mandelbrot.toit esp32' to compile a different
 # example for the ESP32 firmware.
 ESP32_ENTRY=examples/hello.toit
@@ -36,34 +34,13 @@ else
 	EXE_SUFFIX=
 endif
 
-SNAPSHOT_DIR = build/host/sdk/snapshots
-BIN_DIR = build/host/sdk/bin
-TOITPKG_BIN = $(BIN_DIR)/toit.pkg$(EXE_SUFFIX)
-TOITLSP_BIN = $(BIN_DIR)/toit.lsp$(EXE_SUFFIX)
-TOITVM_BIN = $(BIN_DIR)/toit.run$(EXE_SUFFIX)
-TOITC_BIN = $(BIN_DIR)/toit.compile$(EXE_SUFFIX)
-
-VERSION_FILE = build/host/sdk/VERSION
 CROSS_ARCH=
 
 prefix ?= /opt/toit-sdk
 
-GO_BUILD_FLAGS ?=
-ifeq ("$(GO_BUILD_FLAGS)", "")
-$(eval GO_BUILD_FLAGS=CGO_ENABLED=1 GODEBUG=netdns=go)
-else
-$(eval GO_BUILD_FLAGS=$(GO_BUILD_FLAGS) CGO_ENABLED=1 GODEBUG=netdns=go)
-endif
-
-GO_LINK_FLAGS ?=
-GO_LINK_FLAGS +=-X main.date=$(BUILD_DATE)
-
-TOITLSP_SOURCE := $(shell find ./tools/toitlsp/ -name '*.go')
-TOITPKG_VERSION := v0.0.0-20211126161923-c00da039da00
-
 # HOST
 .PHONY: all
-all: tools snapshots $(VERSION_FILE)
+all: tools snapshots version-file
 
 check-env:
 ifeq ("$(wildcard $(IDF_PATH)/components/mbedtls/mbedtls/LICENSE)","")
@@ -78,38 +55,30 @@ ifneq ("$(IDF_PATH)", "$(CURDIR)/third_party/esp-idf")
 endif
 
 build/host/CMakeCache.txt:
+	$(MAKE) rebuild-cmake
+
+.PHONY: rebuild-cmake
+rebuild-cmake:
 	mkdir -p build/host
 	(cd build/host && cmake ../.. -G Ninja -DCMAKE_BUILD_TYPE=Release)
 
 .PHONY: tools
-tools: check-env build/host/CMakeCache.txt $(TOITPKG_BIN) $(TOITLSP_BIN)
+tools: check-env build/host/CMakeCache.txt
 	(cd build/host && ninja build_tools)
 
 .PHONY: snapshots
 snapshots: tools
 	(cd build/host && ninja build_snapshots)
 
-.PHONY: toitpkg
-toitpkg: $(TOITPKG_BIN)
-
-$(TOITPKG_BIN):
-	GOBIN="$(CURDIR)"/$(dir $@) go install github.com/toitlang/tpkg/cmd/toitpkg@$(TOITPKG_VERSION)
-	mv "$(CURDIR)"/$(dir $@)/toitpkg "$(CURDIR)"/$@
-
-.PHONY: toitlsp
-toitlsp: $(TOITLSP_BIN)
-
-$(TOITLSP_BIN): $(TOITLSP_SOURCE)
-	cd tools/toitlsp; $(GO_BUILD_FLAGS) go build  -ldflags "$(GO_LINK_FLAGS)" -tags 'netgo osusergo' -o "$(CURDIR)"/$@ .
-
-.PHONY: $(VERSION_FILE)
-$(VERSION_FILE):
+.PHONY: version-file
+version-file: build/host/CMakeCache.txt
+	$(MAKE) rebuild-cmake
 	(cd build/host && ninja build_version_file)
 
 
 # CROSS-COMPILE
 .PHONY: all-cross
-all-cross: tools-cross snapshots-cross
+all-cross: tools-cross snapshots-cross version-file-cross
 
 check-env-cross:
 ifndef CROSS_ARCH
@@ -120,19 +89,33 @@ ifeq ("$(wildcard ./toolchains/$(CROSS_ARCH).cmake)","")
 endif
 
 build/$(CROSS_ARCH)/CMakeCache.txt:
+	$(MAKE) rebuild-cross-cmake
+
+.PHONY: rebuild-cross-cmake
+rebuild-cross-cmake:
 	mkdir -p build/$(CROSS_ARCH)
 	(cd build/$(CROSS_ARCH) && cmake ../../ -G Ninja -DTOITC=$(CURDIR)/build/host/sdk/bin/toit.compile -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/$(CROSS_ARCH).cmake --no-warn-unused-cli)
 
 .PHONY: tools-cross
-tools-cross: check-env-cross build/$(CROSS_ARCH)/CMakeCache.txt tools
+tools-cross: check-env-cross tools build/$(CROSS_ARCH)/CMakeCache.txt
 	(cd build/$(CROSS_ARCH) && ninja build_tools)
 
 .PHONY: snapshots-cross
-snapshots-cross: tools
+snapshots-cross: tools build/$(CROSS_ARCH)/CMakeCache.txt
 	(cd build/$(CROSS_ARCH) && ninja build_snapshots)
+
+.PHONY: version-file-cross
+version-file-cross: build/$(CROSS_ARCH)/CMakeCache.txt
+	$(MAKE) rebuild-cross-cmake
+	(cd build/host && ninja build_version_file)
 
 
 # ESP32 VARIANTS
+SNAPSHOT_DIR = build/host/sdk/snapshots
+BIN_DIR = build/host/sdk/bin
+TOITVM_BIN = $(BIN_DIR)/toit.run$(EXE_SUFFIX)
+TOITC_BIN = $(BIN_DIR)/toit.compile$(EXE_SUFFIX)
+
 .PHONY: esp32
 esp32: check-env build/$(ESP32_CHIP)/toit.bin
 
@@ -193,6 +176,8 @@ install-sdk: all
 
 install: install-sdk
 
+
+# TESTS (host)
 .PHONY: test
 test:
 	(cd build/host && ninja check_slow check_fuzzer_lib)
@@ -204,11 +189,11 @@ update-gold:
 
 .PHONY: test-health
 test-health:
-	$(MAKE) build/host/CMakeCache.txt
+	$(MAKE) rebuild-cmake
 	(cd build/host && ninja check_health)
 
 .PHONY: update-health-gold
 update-health-gold:
-	$(MAKE) build/host/CMakeCache.txt
+	$(MAKE) rebuild-cmake
 	(cd build/host && ninja clear_health_gold)
 	(cd build/host && ninja update_health_gold)
