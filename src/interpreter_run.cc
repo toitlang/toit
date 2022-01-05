@@ -123,7 +123,7 @@ Method Program::find_method(Object* receiver, int offset) {
   int _length_;                                             \
   interpret_##opcode##_WIDE:                                \
     _length_ = opcode##_WIDE_LENGTH;                        \
-    arg = *reinterpret_cast<uint16*>(bcp + 1);              \
+    arg = Utils::read_unaligned_uint16(bcp + 1);            \
     goto interpret_##opcode##_impl;                         \
   interpret_##opcode:                                       \
     _length_ = opcode##_LENGTH;                             \
@@ -157,7 +157,7 @@ Method Program::find_method(Object* receiver, int offset) {
 #define DROP(n)             ({ int _n_ = n; sp += _n_; })
 
 #define B_ARG1(name) uint8 name = bcp[1];
-#define S_ARG1(name) uint16 name = *reinterpret_cast<uint16*>(bcp + 1);
+#define S_ARG1(name) uint16 name = Utils::read_unaligned_uint16(bcp + 1);
 
 #ifdef PROFILER
 #define REGISTER_METHOD(target)                             \
@@ -430,11 +430,11 @@ Interpreter::Result Interpreter::_run() {
   OPCODE_END();
 
   OPCODE_BEGIN(LOAD_SMI_U16);
-    PUSH(Smi::from(*reinterpret_cast<uint16*>(bcp + 1)));
+    PUSH(Smi::from(Utils::read_unaligned_uint16(bcp + 1)));
   OPCODE_END();
 
   OPCODE_BEGIN(LOAD_SMI_U32);
-    PUSH(Smi::from(*reinterpret_cast<uint32*>(bcp + 1)));
+    PUSH(Smi::from(Utils::read_unaligned_uint32(bcp + 1)));
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(LOAD_GLOBAL_VAR, global_index);
@@ -667,7 +667,7 @@ Interpreter::Result Interpreter::_run() {
 
   OPCODE_BEGIN_WITH_WIDE(INVOKE_VIRTUAL, stack_offset);
     Object* receiver = STACK_AT(stack_offset);
-    int selector_offset = *reinterpret_cast<int16*>(bcp + 2);
+    int selector_offset = Utils::read_unaligned_uint16(bcp + 2);
     Method target = program->find_method(receiver, selector_offset);
     if (!target.is_valid()) {
       PUSH(receiver);
@@ -679,7 +679,7 @@ Interpreter::Result Interpreter::_run() {
 
   OPCODE_BEGIN(INVOKE_VIRTUAL_GET);
     Object* receiver = STACK_AT(0);
-    unsigned offset = *reinterpret_cast<uint16*>(bcp + 1);
+    unsigned offset = Utils::read_unaligned_uint16(bcp + 1);
     Method target = program->find_method(receiver, offset);
     if (!target.is_valid()) {
       PUSH(receiver);
@@ -711,7 +711,7 @@ Interpreter::Result Interpreter::_run() {
 
   OPCODE_BEGIN(INVOKE_VIRTUAL_SET);
     Object* receiver = STACK_AT(1);
-    unsigned offset = *reinterpret_cast<uint16*>(bcp + 1);
+    unsigned offset = Utils::read_unaligned_uint16(bcp + 1);
     Method target = program->find_method(receiver, offset);
     if (!target.is_valid()) {
       PUSH(receiver);
@@ -895,20 +895,20 @@ Interpreter::Result Interpreter::_run() {
   OPCODE_END();
 
   OPCODE_BEGIN(BRANCH);
-    bcp += *reinterpret_cast<uint16*>(bcp + 1);
+    bcp += Utils::read_unaligned_uint16(bcp + 1);
     DISPATCH(0);
   OPCODE_END();
 
   OPCODE_BEGIN(BRANCH_IF_TRUE);
     if (is_true_value(program, POP())) {
-      bcp += *reinterpret_cast<uint16*>(bcp + 1);
+      bcp += Utils::read_unaligned_uint16(bcp + 1);
       DISPATCH(0);
     }
   OPCODE_END();
 
   OPCODE_BEGIN(BRANCH_IF_FALSE);
     if (!is_true_value(program, POP())) {
-      bcp += *reinterpret_cast<uint16*>(bcp + 1);
+      bcp += Utils::read_unaligned_uint16(bcp + 1);
       DISPATCH(0);
     }
   OPCODE_END();
@@ -981,7 +981,7 @@ Interpreter::Result Interpreter::_run() {
   OPCODE_BEGIN(PRIMITIVE);
     B_ARG1(primitive_module);
     const int parameter_offset = Interpreter::FRAME_SIZE;
-    unsigned primitive_index = *reinterpret_cast<uint16*>(bcp + 2);
+    unsigned primitive_index = Utils::read_unaligned_uint16(bcp + 2);
     const PrimitiveEntry* primitive = Primitive::at(primitive_module, primitive_index);
     if (Flags::primitives) printf("Invoking primitive %d::%d\n", primitive_module, primitive_index);
     if (primitive == null) {
@@ -1103,15 +1103,15 @@ Interpreter::Result Interpreter::_run() {
   OPCODE_END();
 
   OPCODE_BEGIN(NON_LOCAL_RETURN_WIDE);
-    int arity = *reinterpret_cast<uint16*>(bcp + 1);
-    uint16 height = *reinterpret_cast<uint16*>(bcp + 3);
+    int arity = Utils::read_unaligned_uint16(bcp + 1);
+    uint16 height = Utils::read_unaligned_uint16(bcp + 3);
     NON_LOCAL_RETURN_impl(arity, height);
   OPCODE_END();
 #undef NON_LOCAL_RETURN_impl
 
   OPCODE_BEGIN(NON_LOCAL_BRANCH);
     B_ARG1(height_diff);
-    uint32 absolute_bci = *reinterpret_cast<int32*>(bcp + 2);
+    uint32 absolute_bci = Utils::read_unaligned_uint32(bcp + 2);
     Smi* block = Smi::cast(POP());
     Object** target_sp = _from_block(block);
     _index_ = 0;
