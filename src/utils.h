@@ -87,10 +87,20 @@ class Utils {
   }
 
   template<typename T>
+  static inline void write_unaligned_uint16(T* ptr, uint16 value) {
+    memcpy(ptr, &value, sizeof(value));
+  }
+
+  template<typename T>
   static inline uint32 read_unaligned_uint32(T* ptr) {
     uint32 result;
     memcpy(&result, ptr, sizeof(result));
     return result;
+  }
+
+  template<typename T>
+  static inline void write_unaligned_uint32(T* ptr, uint32 value) {
+    memcpy(ptr, &value, sizeof(value));
   }
 
   // Reverse the order of the bits in an 8 bit byte.
