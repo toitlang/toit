@@ -6,3 +6,5 @@ Target:
   0: Lambda.call               <sdk>/core/objects.toit:138:3
   1: main                      tests/negative/lambda_call_test.toit:5:10
   2: __entry__.<lambda>        <sdk>/core/entry.toit:48:20
+
+

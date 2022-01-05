@@ -15,7 +15,7 @@
 
 file(GLOB_RECURSE HEALTH_SOURCES "${TOIT_SDK_SOURCE_DIR}/*.toit")
 
-set(NORMALIZE_GOLD ${TOIT_SDK_SOURCE_DIR}/tests/tools/normalize_gold.sh)
+set(NORMALIZE_GOLD ${TOIT_SDK_SOURCE_DIR}/tests/tools/normalize_gold.cmake)
 
 add_custom_target(
   check_health
@@ -66,7 +66,15 @@ foreach(file ${HEALTH_SOURCES})
 
   add_test(
     NAME ${TEST_NAME}
-    COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/run.sh" $<TARGET_FILE:toit.compile> "${relative}" "${GOLD}" "${LIB_PATH}" "${NORMALIZE_GOLD}" "${TOIT_SDK_SOURCE_DIR}"
+    COMMAND ${CMAKE_COMMAND}
+        -DTOITC=$<TARGET_FILE:toit.compile>
+        "-DTEST=${relative}"
+        "-DGOLD=${GOLD}"
+        "-DLIB_DIR=${lib_dir}"
+        "-DNORMALIZE_GOLD=${NORMALIZE_GOLD}"
+        "-DTEST_ROOT=${TOIT_SDK_SOURCE_DIR}"
+        "-DTMP=${CMAKE_BINARY_DIR}/tmp"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/run.cmake"
     WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
     CONFIGURATIONS health
     )
@@ -77,7 +85,16 @@ foreach(file ${HEALTH_SOURCES})
 
   add_custom_command(
     TARGET ${generate_gold}
-    COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/run.sh" --update $<TARGET_FILE:toit.compile> "${relative}" "${GOLD}" "${LIB_PATH}" "${NORMALIZE_GOLD}" "${TOIT_SDK_SOURCE_DIR}"
+    COMMAND ${CMAKE_COMMAND}
+        -DUPDATE_GOLD=true
+        -DTOITC=$<TARGET_FILE:toit.compile>
+        "-DTEST=${relative}"
+        "-DGOLD=${GOLD}"
+        "-DLIB_DIR=${lib_dir}"
+        "-DNORMALIZE_GOLD=${NORMALIZE_GOLD}"
+        "-DTEST_ROOT=${TOIT_SDK_SOURCE_DIR}"
+        "-DTMP=${CMAKE_BINARY_DIR}/tmp"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/run.cmake"
     WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
     DEPENDS toit.compile
   )

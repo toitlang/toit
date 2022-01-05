@@ -5,3 +5,5 @@ As check failed: an int (42) is not a string.
   0: foo                       tests/negative/underscore2_test.toit:4:11
   1: main                      tests/negative/underscore2_test.toit:7:3
   2: __entry__.<lambda>        <sdk>/core/entry.toit:48:20
+
+

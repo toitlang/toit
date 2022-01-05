@@ -3,3 +3,5 @@ As check failed: a string ("str") is not a int.
   1: run                       tests/negative/type9_test.toit:3:21
   2: main                      tests/negative/type9_test.toit:6:3
   3: __entry__.<lambda>        <sdk>/core/entry.toit:48:20
+
+

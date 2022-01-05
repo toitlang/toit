@@ -5,3 +5,5 @@ Target:
 
   0: main                      tests/negative/block_call2_test.toit:5:8
   1: __entry__.<lambda>        <sdk>/core/entry.toit:48:20
+
+

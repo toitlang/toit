@@ -2,3 +2,5 @@ As check failed: null is not a A.
   0: foo                       tests/negative/param_order_test.toit:10:5
   1: main                      tests/negative/param_order_test.toit:13:3
   2: __entry__.<lambda>        <sdk>/core/entry.toit:48:20
+
+
