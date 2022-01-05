@@ -79,6 +79,27 @@ class Utils {
     return x + 1;
   }
 
+  template<typename T>
+  static inline uint16 read_unaligned_uint16(T* ptr) {
+    uint16 result;
+    memcpy(&result, ptr, sizeof(result));
+    return result;
+  }
+
+  template<typename T>
+  static inline int32 read_unaligned_int32(T* ptr) {
+    int32 result;
+    memcpy(&result, ptr, sizeof(result));
+    return result;
+  }
+
+  template<typename T>
+  static inline uint32 read_unaligned_uint32(T* ptr) {
+    uint32 result;
+    memcpy(&result, ptr, sizeof(result));
+    return result;
+  }
+
   // Reverse the order of the bits in an 8 bit byte.
   static inline uint8 reverse_8(uint8 b) {
     return (REVERSE_NIBBLE[b & 0b1111] << 4) | REVERSE_NIBBLE[b >> 4];
