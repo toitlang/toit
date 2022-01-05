@@ -1,6 +1,22 @@
+// Copyright (C) 2020 Toitware ApS. All rights reserved.
+// Use of this source code is governed by an MIT-style license that can be
+// found in the lib/LICENSE file.
+
 import binary show BIG_ENDIAN
 import net.modules.udp
 import net
+
+DNS_DEFAULT_TIMEOUT ::= Duration --s=20
+DNS_RETRY_TIMEOUT ::= Duration --s=1
+HOSTS_ ::= {"localhost": "127.0.0.1"}
+
+class DnsException:
+  text/string
+
+  constructor .text:
+
+  stringify -> string:
+    return "DNS lookup exception $text"
 
 /**
 Look up a domain name.
@@ -16,20 +32,19 @@ By default the server is "8.8.8.8" which is the Google DNS
 
 Currently only works for IPv4, not IPv6.
 */
-dns_lookup host/string --server/string="8.8.8.8" --timeout/Duration=DNS_DEFAULT_TIMEOUT -> net.IpAddress:
-  q := DnsQuery host
+dns_lookup -> net.IpAddress
+    host/string
+    --server/string="8.8.8.8"
+    --timeout/Duration=DNS_DEFAULT_TIMEOUT:
+  q := DnsQuery_ host
   return q.get --server=server --timeout=timeout
 
-DNS_DEFAULT_TIMEOUT ::= Duration --s=20
-DNS_RETRY_TIMEOUT ::= Duration --s=1
-
-class DnsQuery:
+class DnsQuery_:
   static A     ::= 1  // A address.
   static CNAME ::= 5  // Canonical name.
   static CLASS ::= 1  // The Internet class.
   id/int
   name/string
-  hosts/Map ::= {"localhost": "127.0.0.1"}
 
   constructor .name:
     id = random 0x10000
@@ -48,11 +63,13 @@ class DnsQuery:
 
   Currently only works for IPv4, not IPv6.
   */
-  get --server/string="8.8.8.8" --timeout/Duration=DNS_DEFAULT_TIMEOUT -> net.IpAddress:
+  get -> net.IpAddress
+      --server/string="8.8.8.8"
+      --timeout/Duration=DNS_DEFAULT_TIMEOUT:
     if ip_string_:
       return net.IpAddress.parse name
-    if hosts.contains name:
-      return net.IpAddress.parse hosts[name]
+    if HOSTS_.contains name:
+      return net.IpAddress.parse HOSTS_[name]
 
     query := create_query_
     socket := udp.Socket
@@ -82,7 +99,7 @@ class DnsQuery:
 
       finally:
         socket.close
-    throw null  // with_timeout won't return.
+    unreachable
 
   static case_compare_ a/string b/string -> bool:
     if a == b: return true
@@ -112,10 +129,10 @@ class DnsQuery:
     parts := name.split "."
     length := 1
     parts.do: | part |
-      if part.size > 63: throw "LABEL_TOO_LARGE"
-      if part.size < 1: throw "LABEL_TOO_SHORT"
+      if part.size > 63: throw (DnsException "LABEL_TOO_LARGE")
+      if part.size < 1: throw (DnsException "LABEL_TOO_SHORT")
       part.do:
-        if it == 0 or it == null: throw "INVALID_DOMAIN_NAME"
+        if it == 0 or it == null: throw (DnsException "INVALID_DOMAIN_NAME")
       length += part.size + 1
     query := ByteArray 12 + length + 4
     BIG_ENDIAN.put_uint16 query 0 id
@@ -125,7 +142,7 @@ class DnsQuery:
     position := 12
     parts.do: | part |
       query[position++] = part.size
-      query.replace position  part
+      query.replace position part
       position += part.size
     query[position++] = 0
     BIG_ENDIAN.put_uint16 query position     A
@@ -136,16 +153,16 @@ class DnsQuery:
   decode_response_ response/ByteArray -> net.IpAddress:
     received_id := BIG_ENDIAN.uint16 response 0
     if received_id != id:
-      throw "DNS response ID mismatch"
-    if response[2] != 0x81: throw "Unexpected response"
-    if response[3] & 0xf != 0: throw "Error code $(response[3] & 0xf)"
+      throw (DnsException "Response ID mismatch")
+    if response[2] != 0x81: throw (DnsException "Unexpected response")
+    if response[3] & 0xf != 0: throw (DnsException "Error code $(response[3] & 0xf)")
     position := 12
     queries := BIG_ENDIAN.uint16 response 4
-    if queries != 1: throw "Unexpected number of queries in response"
+    if queries != 1: throw (DnsException "Unexpected number of queries in response")
     q_name := name_ response position: position = it
     position += 4
     if not case_compare_ q_name name:
-      throw "DNS response name mismatch"
+      throw (DnsException "Response name mismatch")
     (BIG_ENDIAN.uint16 response 6).repeat:
       r_name := name_ response position: position = it
 
@@ -154,14 +171,14 @@ class DnsQuery:
 
       clas := BIG_ENDIAN.uint16 response position
       position += 2
-      if clas != CLASS: throw "Unexpected response class: $clas"
+      if clas != CLASS: throw (DnsException "Unexpected response class: $clas")
 
       position += 4  // Skip TTL field.
 
       rd_length := BIG_ENDIAN.uint16 response position
       position += 2
       if type == A:
-        if rd_length != 4: throw "Unexpected IP address length $rd_length"
+        if rd_length != 4: throw (DnsException "Unexpected IP address length $rd_length")
         if case_compare_ r_name q_name:
           return net.IpAddress
               response.copy position position + 4
@@ -169,7 +186,7 @@ class DnsQuery:
       else if type == CNAME:
         q_name = name_ response position: null
       position += rd_length
-    throw "DNS response did not contain matching A record"
+    throw (DnsException "Response did not contain matching A record")
 
   name_ packet/ByteArray position/int [position_block]:
     parts := []
@@ -185,7 +202,7 @@ class DnsQuery:
           packet.to_string position position + size
         position += size
       else:
-        if size < 192: throw "Unknown label byte: $size"
+        if size < 192: throw (DnsException "")
         pointer := (BIG_ENDIAN.uint16 packet position) & 0x3fff
         parts_ packet pointer parts: null
         position_block.call position + 2
