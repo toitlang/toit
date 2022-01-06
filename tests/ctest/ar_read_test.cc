@@ -13,6 +13,12 @@
 #include "../../src/compiler/list.h"
 #include "../../src/utils.h"
 
+#ifdef WIN32
+static char* mkdtemp(char* tmpl) {
+  UNIMPLEMENTED();
+}
+#endif
+
 namespace toit {
 
 using namespace compiler;
