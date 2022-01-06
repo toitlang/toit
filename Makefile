@@ -43,6 +43,12 @@ prefix ?= /opt/toit-sdk
 all: tools snapshots version-file
 
 check-env:
+ifndef IGNORE_SUBMODULE
+	@ if git submodule status | grep '^[-+]' ; then \
+		echo "Submodules not updated or initialized. Did you 'git submodule update --init --recursive'?"; \
+		exit 1; \
+	fi
+endif
 ifeq ("$(wildcard $(IDF_PATH)/components/mbedtls/mbedtls/LICENSE)","")
 ifeq ("$(IDF_PATH)", "$(CURDIR)/third_party/esp-idf")
 	$(error mbedtls sources are missing. Did you `git submodule update --init --recursive`?)
