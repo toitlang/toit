@@ -1,7 +1,9 @@
 // Copyright (C) 2020 Toitware ApS. All rights reserved.
 
 #include <vector>
-#include <sys/mman.h>
+#ifndef WIN32
+  #include <sys/mman.h>
+#endif
 #include <stdio.h>
 #include <string>
 
@@ -9,6 +11,14 @@
 #include "../../src/flags.h"
 #include "../../src/snapshot.h"
 #include "../../src/os.h"
+
+#ifdef WIN32
+#define PROT_READ 0
+#define PROT_WRITE 1
+int mprotect(void* addr, size_t len, int prot) {
+  UNIMPLEMENTED();
+}
+#endif
 
 namespace toit {
 
