@@ -92,7 +92,7 @@ build/win64/sdk
 build/win64/sdk/bin
 build/win64/sdk/bin/toit.run.exe
 build/win64/sdk/bin/toit.compile.exe
-build/win64/sdk/bin/run_boot.snapshot
+build/win64/sdk/bin/toit.run.snapshot
 build/win64/sdk/lib
 build/win64/sdk/snapshots
 build/win64/sdk/snapshots/inject_config.snapshot

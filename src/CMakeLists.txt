@@ -114,10 +114,10 @@ target_link_libraries(
 
 include(${TOIT_SDK_SOURCE_DIR}/tools/toit.cmake)
 
-set(BOOT_SNAPSHOT ${CMAKE_BINARY_DIR}/sdk/bin/run_boot.snapshot)
+set(BOOT_SNAPSHOT ${CMAKE_BINARY_DIR}/sdk/bin/toit.run.snapshot)
 
 ADD_TOIT_TARGET(
-  ${TOIT_SDK_SOURCE_DIR}/tools/run_boot.toit
+  ${TOIT_SDK_SOURCE_DIR}/tools/toit.run.toit
   ${BOOT_SNAPSHOT}
   ${CMAKE_CURRENT_BINARY_DIR}/boot.dep
   "ASAN_OPTIONS=detect_leaks=false"
