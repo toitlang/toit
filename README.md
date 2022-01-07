@@ -146,7 +146,7 @@ export IDF_PATH=<A_DIFFERENT_ESP_IDF>
 
 ### ESP32 tools
 
-Install the ESP32 tools, if you want to build an image for an ESP32.
+If you want to build an image for the ESP32, install the ESP32 tools.
 
 On Linux:
 ``` sh
@@ -158,7 +158,7 @@ For other platforms, see [Espressif's documentation](https://docs.espressif.com/
 Remember to update your environment variables:
 
 ``` sh
-. $IDF_PATH/export.sh
+source $IDF_PATH/export.sh
 ```
 
 ## Build for host machine
