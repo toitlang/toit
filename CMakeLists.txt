@@ -17,6 +17,16 @@ cmake_minimum_required(VERSION 3.19.0)
 
 project(toit)
 
+set(TOIT_IS_CROSS FALSE)
+if ((NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "${CMAKE_HOST_SYSTEM_NAME}") OR
+    (NOT "${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "${CMAKE_HOST_SYSTEM_PROCESSOR}"))
+  # For '-m32' builds we don't enter here, as the system and processor are still the same. The
+  # '-m32' is just a flag to the compiler.
+  # This turns out to work out fine, as we can run the 32-bit executables anyway and don't
+  # need a different host build to compile the snapshots.
+  set(TOIT_IS_CROSS TRUE)
+endif()
+
 string(TIMESTAMP BUILD_DATE "%Y-%m-%dT%H:%M:%SZ" UTC)
 
 # When using the downloadable sources there is no Git, so the version has
@@ -116,7 +126,7 @@ else ()
     set(TOIT_LINK_GROUP_END_FLAGS "-Wl,--no-whole-archive")
 endif()
 
-if (NOT DEFINED TOIT_IS_CROSS)
+if (NOT ${TOIT_IS_CROSS})
   set(TOITC "$<TARGET_FILE:toit.compile>")
 endif()
 

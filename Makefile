@@ -141,7 +141,7 @@ build/snapshot: $(TOITC_BIN) $(ESP32_ENTRY)
 
 build/$(ESP32_CHIP)/CMakeCache.txt:
 	mkdir -p build/$(ESP32_CHIP)
-	(cd build/$(ESP32_CHIP) && IMAGE=build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s cmake ../../ -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/$(ESP32_CHIP)/$(ESP32_CHIP).cmake --no-warn-unused-cli)
+	(cd build/$(ESP32_CHIP) && IMAGE=build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s cmake ../../ -G Ninja -DTOITC=$(CURDIR)/build/host/sdk/bin/toit.compile -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/$(ESP32_CHIP)/$(ESP32_CHIP).cmake --no-warn-unused-cli)
 
 build/$(ESP32_CHIP)/include/sdkconfig.h:
 	mkdir -p build/$(ESP32_CHIP)
