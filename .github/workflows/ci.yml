@@ -256,6 +256,13 @@ jobs:
           cmake --version
           gcc --version
 
+      - name: Ccache symlinks
+        run: |
+          mkdir ccache_interceptors
+          cd ccache_interceptors
+          ln -s $(command -v ccache) xtensa-esp32-elf-gcc
+          ln -s $(command -v ccache) xtensa-esp32-elf-g++
+
       - name: Install ESP32 tools
         run: |
           third_party/esp-idf/install.sh
@@ -272,4 +279,6 @@ jobs:
           CCACHE_MAXSIZE: 400M
         run: |
           source third_party/esp-idf/export.sh
+          # Make sure the ccache interceptors are before any other path.
+          export PATH="$PWD/ccache_interceptors":$PATH
           make esp32
