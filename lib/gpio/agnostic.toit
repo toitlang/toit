@@ -18,7 +18,9 @@ A $Pin that is agnostic to it wiring.
 Call $on to activate the pin and $off to deactivate the pin.
 */
 interface Pin:
+  /** Switches the pin to active. */
   on -> none
+  /** Switches the pin to inactive.*/
   off -> none
 
 /**
