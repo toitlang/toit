@@ -14,15 +14,6 @@ jobs:
         # windows-2022, as it's currently later than windows-latest.
         container: [ ubuntu-latest, macos-10.15, windows-2022 ]
         shard: [1, 2, 3, 4, 5]
-        exclude: # We don't run tests on Windows yet. Exclude all but the first shard.
-          - container: windows-2022
-            shard: 2
-          - container: windows-2022
-            shard: 3
-          - container: windows-2022
-            shard: 4
-          - container: windows-2022
-            shard: 5
 
     runs-on: ${{ matrix.container }}
 
@@ -38,7 +29,7 @@ jobs:
             echo ::set-output name=total_shards::5
           elif [ "$RUNNER_OS" == "Windows" ]; then
             echo ::set-output name=artifact::toit-windows.tar.gz
-            echo ::set-output name=total_shards::1
+            echo ::set-output name=total_shards::5
           else
             echo "UNSUPPORTED RUNNER: $RUNNER_OS"
             exit 1
@@ -147,7 +138,6 @@ jobs:
 
       # Test.
       - name: test
-        if: runner.os != 'Windows'
         env:
           IDF_PATH: ${{ github.workspace }}/third_party/esp-idf
           CCACHE_DIR: ${{ github.workspace }}/.ccache
