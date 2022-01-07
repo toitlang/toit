@@ -17,7 +17,6 @@ set(CMAKE_C_COMPILER /usr/bin/arm-linux-gnueabihf-gcc CACHE PATH "" FORCE)
 set(CMAKE_CXX_COMPILER /usr/bin/arm-linux-gnueabihf-g++ CACHE PATH "" FORCE)
 
 set(TOIT_SYSTEM_NAME ${CMAKE_SYSTEM_NAME})
-set(TOIT_IS_CROSS ON)
 
 set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} -x assembler-with-cpp" CACHE STRING "asm flags")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-psabi" CACHE STRING "c flags")

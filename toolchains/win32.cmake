@@ -35,7 +35,6 @@ set(CMAKE_CXX_FLAGS_RELEASE "-Os" CACHE STRING "c++ Release flags")
 set(CMAKE_EXE_LINKER_FLAGS "-static-libgcc -static-libstdc++ -static")
 
 set(TOIT_SYSTEM_NAME ${CMAKE_SYSTEM_NAME})
-set(TOIT_IS_CROSS ON)
 
 set(GOOS "windows")
 set(GOARCH "386")
