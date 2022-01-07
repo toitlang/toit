@@ -106,3 +106,8 @@ foreach(file ${HEALTH_SOURCES})
   )
   add_dependencies(update_health_gold ${generate_gold})
 endforeach()
+
+include(fail.cmake)
+foreach(test ${TOIT_FAILING_TESTS})
+  set_tests_properties(${test} PROPERTIES WILL_FAIL TRUE)
+endforeach()

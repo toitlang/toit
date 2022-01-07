@@ -50,3 +50,8 @@ foreach(file ${SNAPSHOT_SERIALIZATION_TESTS})
     )
   set_tests_properties(${file} PROPERTIES TIMEOUT 40)
 endforeach()
+
+include(fail.cmake)
+foreach(test ${TOIT_FAILING_TESTS})
+  set_tests_properties(${test} PROPERTIES WILL_FAIL TRUE)
+endforeach()

@@ -56,3 +56,8 @@ foreach(file ${TOITP_TESTS})
     )
   set_tests_properties(${snap_test_name} PROPERTIES TIMEOUT 40)
 endforeach()
+
+include(fail.cmake)
+foreach(test ${TOIT_FAILING_TESTS})
+  set_tests_properties(${test} PROPERTIES WILL_FAIL TRUE)
+endforeach()

@@ -78,3 +78,8 @@ foreach(file ${TOIT_TESTS})
   add_dependencies(check ${exe})
   add_dependencies(check_slow ${exe})
 endforeach()
+
+include(fail.cmake)
+foreach(test ${TOIT_FAILING_TESTS})
+  set_tests_properties(${test} PROPERTIES WILL_FAIL TRUE)
+endforeach()

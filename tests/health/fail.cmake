@@ -18,28 +18,9 @@ set(TOIT_FAILING_TESTS
 
 if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows")
   list(APPEND TOIT_FAILING_TESTS
-    tests/ar_test.toit
-    tests/close_test.toit
-    tests/file_test.toit
-    tests/interface_address_test.toit
-    tests/keepalive_test.toit
-    tests/number_test.toit
-    tests/pipe2_test.toit
-    tests/pipe_test.toit
-    tests/regress/issue3_test.toit
-    tests/socket_close_test.toit
-    tests/socket_option_test.toit
-    tests/socket_task_test.toit
-    tests/socket_test.toit
-    tests/socket_timeout_test.toit
-    tests/tar_test.toit
-    tests/time_test.toit
-    tests/tls2_test.toit
-    tests/udp_test.toit
-    tests/zlib_test.toit
-    tests/class_field_limit_test_compiler.toit
-    tests/cow_read_only_test_compiler.toit
-    tests/fork_stress_test_slow.toit
-    tests/tls_test_slow.toit
+    examples/http/http.toit
+    examples/ntp/ntp.toit
+    tests/lock_file/multi_test/target/sub/src/sub.toit
+    tests/lsp/project_root/.packages/foo/1.0.0/src/foo.toit
   )
 endif()

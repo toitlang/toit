@@ -1,4 +1,4 @@
-# Copyright (C) 2021 Toitware ApS.
+# Copyright (C) 2022 Toitware ApS.
 #
 # This library is free software; you can redistribute it and/or
 # modify it under the terms of the GNU Lesser General Public
@@ -18,14 +18,7 @@ set(TOIT_FAILING_TESTS
 
 if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows")
   list(APPEND TOIT_FAILING_TESTS
-    tests/optimizations/byte_array_test.toit
-    tests/optimizations/dead_code_test.toit
-    tests/optimizations/eager_global_test.toit
-    tests/optimizations/fold_test.toit
-    tests/optimizations/lambda_test.toit
-    tests/optimizations/return_test.toit
-    tests/optimizations/tail_call_test.toit
-    tests/optimizations/uninstantiated_classes_test.toit
-    tests/optimizations/virtual_test.toit
+    tests/profiler/basic_test.toit
+    tests/profiler/lambda_test.toit
   )
 endif()
