@@ -80,3 +80,10 @@ function(compute_git_version VERSION)
   MATH(EXPR minor "${minor}+1")
   set(${VERSION} "v${major}.${minor}.0-pre.${CURRENT_COMMIT_NO}+${SANITIZED_BRANCH}.${CURRENT_COMMIT_SHORT}" PARENT_SCOPE)
 endfunction()
+
+# Print the git-version on stdout:
+# cmake -DPRINT_VERSION=1 -P tools/gitversion.cmake
+if (DEFINED PRINT_VERSION)
+  compute_git_version(VERSION)
+  execute_process(COMMAND "${CMAKE_COMMAND}" -E echo "${VERSION}")
+endif()
