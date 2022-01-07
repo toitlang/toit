@@ -36,6 +36,9 @@ add_custom_target(
 set(NEGATIVE_PREFIX "${TOIT_SDK_SOURCE_DIR}/tests/negative/")
 set(TPKG_PREFIX "${TOIT_SDK_SOURCE_DIR}/tools/tpkg/tests/")
 set(GIT_PREFIX "${TOIT_SDK_SOURCE_DIR}/.git/")
+# Normally not necessary as toit files in the build directory are generally
+# only accessible through symlinks. But on Windows the globbing would find them.
+set(BUILD_PREFIX "${CMAKE_SOURCE_DIR}/build/")
 
 # Sets the RESULT variable to TRUE if STR has PREFIX as prefix.
 # Leaves the RESULT variable untouched otherwise.
@@ -52,6 +55,7 @@ foreach(file ${HEALTH_SOURCES})
   starts_with("${NEGATIVE_PREFIX}" "${file}" IS_PREFIXED)
   starts_with("${TPKG_PREFIX}" "${file}" IS_PREFIXED)
   starts_with("${GIT_PREFIX}" "${file}" IS_PREFIXED)
+  starts_with("${BUILD_PREFIX}" "${file}" IS_PREFIXED)
   if (${IS_PREFIXED})
     continue()
   endif()
