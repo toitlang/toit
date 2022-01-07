@@ -28,6 +28,7 @@ foreach(file ${TOIT_TESTS})
   set(gold_file ${CMAKE_CURRENT_SOURCE_DIR}/gold/${relative_negative_dir}/${name}.gold)
   file(RELATIVE_PATH relative ${TOIT_SDK_SOURCE_DIR} ${toit_file})
   string(REPLACE " " "__" test_name ${relative})
+
   add_test(
     NAME ${test_name}
     COMMAND ${CMAKE_COMMAND}
@@ -39,6 +40,7 @@ foreach(file ${TOIT_TESTS})
         "-DTEST_ROOT=${TOIT_SDK_SOURCE_DIR}"
         "-DGIT_VERSION=${TOIT_GIT_VERSION}"
         "-DTMP=${CMAKE_BINARY_DIR}/tmp"
+        "-DCMAKE_SYSTEM_NAME=${CMAKE_SYSTEM_NAME}"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/run.cmake"
     WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
   )
@@ -55,14 +57,15 @@ foreach(file ${TOIT_TESTS})
     COMMAND ${CMAKE_COMMAND}
         -DUPDATE_GOLD=true
         -DTOITVM=$<TARGET_FILE:toit.run>
-        -DTEST=${relative}
-        -DGOLD=${gold_file}
-        -DLIB_DIR=${lib_dir}
-        -DNORMALIZE_GOLD=${NORMALIZE_GOLD}
+        "-DTEST=${relative}"
+        "-DGOLD=${gold_file}"
+        "-DLIB_DIR=${lib_dir}"
+        "-DNORMALIZE_GOLD=${NORMALIZE_GOLD}"
         "-DTEST_ROOT=${TOIT_SDK_SOURCE_DIR}"
         "-DGIT_VERSION=${TOIT_GIT_VERSION}"
-        -DTMP=${CMAKE_BINARY_DIR}/tmp
-        -P ${CMAKE_CURRENT_SOURCE_DIR}/run.cmake
+        "-DTMP=${CMAKE_BINARY_DIR}/tmp"
+        "-DCMAKE_SYSTEM_NAME=${CMAKE_SYSTEM_NAME}"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/run.cmake"
     WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
     DEPENDS toit.compile
   )
