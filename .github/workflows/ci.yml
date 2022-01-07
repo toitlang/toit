@@ -104,7 +104,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install ninja-build ccache
+          sudo apt-get install ninja-build ccache gcc-multilib g++-multilib
           ninja --version
           cmake --version
           gcc --version
@@ -133,8 +133,12 @@ jobs:
           CCACHE_MAXSIZE: 400M
           SHARD_START: ${{ matrix.shard }}
           SHARD_STRIDE: ${{ steps.constants.outputs.total_shards }}
+        shell: bash
         run: |
           make all
+          if [ "$RUNNER_OS" == "Linux" ]; then
+            make CROSS_ARCH=host32 all-cross
+          fi
 
       # Test.
       - name: test
@@ -147,9 +151,14 @@ jobs:
           CCACHE_MAXSIZE: 400M
           SHARD_START: ${{ matrix.shard }}
           SHARD_STRIDE: ${{ steps.constants.outputs.total_shards }}
+        shell: bash
         run: |
           make test
           make test-health
+          if [ "$RUNNER_OS" == "Linux" ]; then
+            cd build/host32
+            ninja check
+          fi
 
       - name: Pack artifacts
         if: matrix.shard == 1
