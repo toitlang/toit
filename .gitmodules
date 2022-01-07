@@ -5,4 +5,4 @@
 	ignore = untracked
 [submodule "tools/tpkg"]
 	path = tools/tpkg
-	url = ../tpkg
+	url = https://github.com/toitlang/tpkg.git
