@@ -88,17 +88,17 @@ void print_bytecode(Printer* printer, uint8* bcp, int bci) {
       // nothing more to add.
       break;
     case OP_SU:
-      index = *reinterpret_cast<uint16*>(bcp + 1);
+      index = Utils::read_unaligned_uint16(bcp + 1);
     case OP_BU:
       printer->printf(" %u", index);
       break;
     case OP_SS:
-      index = *reinterpret_cast<uint16*>(bcp + 1);
+      index = Utils::read_unaligned_uint16(bcp + 1);
     case OP_BS:
       printer->printf(" S%u", index);
       break;
     case OP_SL:
-      index = *reinterpret_cast<uint16*>(bcp + 1);
+      index = Utils::read_unaligned_uint16(bcp + 1);
     case OP_BL: {
         if (printer->program() != null) {
           printer->printf(" '");
@@ -110,33 +110,33 @@ void print_bytecode(Printer* printer, uint8* bcp, int bci) {
       }
       break;
     case OP_SC:
-      index = *reinterpret_cast<uint16*>(bcp + 1);
+      index = Utils::read_unaligned_uint16(bcp + 1);
     case OP_BC: {
       printer->printf(" C%u", index);
       break;
     }
     case OP_SG:
-      index = *reinterpret_cast<uint16*>(bcp + 1);
+      index = Utils::read_unaligned_uint16(bcp + 1);
     case OP_BG:
       printer->printf(" G%u", index);
       break;
     case OP_SF:
-      index = *reinterpret_cast<uint16*>(bcp + 1);
+      index = Utils::read_unaligned_uint16(bcp + 1);
     case OP_BF:
       printer->printf(" T%u", bci + index);
       break;
     case OP_SB:
-      index = *reinterpret_cast<uint16*>(bcp + 1);
+      index = Utils::read_unaligned_uint16(bcp + 1);
     case OP_BB:
       printer->printf(" T%d", bci - index);
       break;
     case OP_SCI:
-      index = *reinterpret_cast<uint16*>(bcp + 1);
+      index = Utils::read_unaligned_uint16(bcp + 1);
     case OP_BCI:
       printer->printf(" CI%d%s", index >> 1, (index & 1) == 0 ? "" : "?");
       break;
     case OP_SII:
-      index = *reinterpret_cast<uint16*>(bcp + 1);
+      index = Utils::read_unaligned_uint16(bcp + 1);
     case OP_BII:
       printer->printf(" II%d%s", index >> 1, (index & 1) == 0 ? "" : "?");
       break;
@@ -147,56 +147,56 @@ void print_bytecode(Printer* printer, uint8* bcp, int bci) {
       printer->printf(" S%u %u", bcp[1], bcp[2]);
       break;
     case OP_SD: {
-      int index = *reinterpret_cast<uint16*>(bcp + 1);
+      int index = Utils::read_unaligned_uint16(bcp + 1);
       printer->printf(" D%u", index);
       break;
     }
     case OP_SD_BS_BU: {
-      int index = *reinterpret_cast<uint16*>(bcp + 1);
+      int index = Utils::read_unaligned_uint16(bcp + 1);
       printer->printf(" D%u S%u %u", index, bcp[3], bcp[4]);
       break;
     }
     case OP_SO: {
-      int offset = *reinterpret_cast<uint16*>(bcp + 1);
+      int offset = Utils::read_unaligned_uint16(bcp + 1);
       printer->printf(" O%u", offset);
       break;
     }
     case OP_WU:
-      printer->printf(" %u", *reinterpret_cast<uint32*>(bcp + 1));
+      printer->printf(" %u", Utils::read_unaligned_uint32(bcp + 1));
       break;
     case OP_SS_SO: {
-      index = *reinterpret_cast<uint16*>(bcp + 1);
-      int offset = *reinterpret_cast<uint16*>(bcp + 3);
+      index = Utils::read_unaligned_uint16(bcp + 1);
+      int offset = Utils::read_unaligned_uint16(bcp + 3);
       printer->printf(" S%u O%u", index, offset);
       break;
     }
     case OP_BS_SO: {
-      int offset = *reinterpret_cast<uint16*>(bcp + 2);
+      int offset = Utils::read_unaligned_uint16(bcp + 2);
       printer->printf(" S%u O%u", index, offset);
       break;
     }
     case OP_BU_SO: {
-      int offset = *reinterpret_cast<uint16*>(bcp + 2);
+      int offset = Utils::read_unaligned_uint16(bcp + 2);
       printer->printf(" %u O%u", bcp[1], offset);
       break;
     }
     case OP_SU_SU: {
-      index = *reinterpret_cast<uint16*>(bcp + 1);
-      printer->printf(" %u %u", index, *reinterpret_cast<uint16*>(bcp + 3));
+      index = Utils::read_unaligned_uint16(bcp + 1);
+      printer->printf(" %u %u", index, Utils::read_unaligned_uint16(bcp + 3));
       break;
     }
     case OP_BU_SU: {
       if (opcode == PRIMITIVE) {
         const char* module = primitive_module_names[bcp[1]];
-        printer->printf(" %s::%u", module, *reinterpret_cast<uint16*>(bcp + 2));
+        printer->printf(" %s::%u", module, Utils::read_unaligned_uint16(bcp + 2));
       } else {
-        printer->printf(" %u %u", index, *reinterpret_cast<uint16*>(bcp + 2));
+        printer->printf(" %u %u", index, Utils::read_unaligned_uint16(bcp + 2));
       }
       break;
     }
     case OP_BU_WU: {
       ASSERT(opcode == NON_LOCAL_BRANCH)
-      uint32 absolute_bci = *reinterpret_cast<uint32*>(bcp + 2);
+      uint32 absolute_bci = Utils::read_unaligned_uint32(bcp + 2);
       printer->printf(" %d %d", absolute_bci, index);
       break;
     }
