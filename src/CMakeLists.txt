@@ -135,7 +135,7 @@ add_custom_target(
 
 add_dependencies(build_snapshots build_boot_snapshot)
 
-if (NOT DEFINED TOIT_IS_CROSS)
+if (NOT ${TOIT_IS_CROSS})
   add_dependencies(build_tools build_boot_snapshot)
 endif()
 
