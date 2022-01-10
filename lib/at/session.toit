@@ -6,7 +6,6 @@ import reader
 import writer
 import bytes
 import log
-import metrics
 
 import .locker
 
