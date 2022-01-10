@@ -53,7 +53,12 @@ add_custom_target(
   DEPENDS build_tools
   )
 
+include(fail.cmake)
+
 foreach(file ${TOIT_TESTS})
+  if("${file}" IN_LIST TOIT_SKIP_TESTS)
+    continue()
+  endif()
   add_test(
     NAME ${file}
     # We add 3 arguments to all test-calls.

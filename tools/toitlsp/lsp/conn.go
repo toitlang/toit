@@ -46,13 +46,14 @@ func newConnManager(settings ServerSettings, logger *zap.Logger) *connManager {
 }
 
 type connection struct {
-	l sync.Mutex
+	// Put 'processCount' first to ensure that it's 64-bit aligned.
+	processCount int64
+	l            sync.Mutex
 
 	*jsonrpc2.Conn
 	context ConnContext
 	logger  *zap.Logger
 
-	processCount    int64
 	onIdleCallbacks []callbackFunc
 }
 
