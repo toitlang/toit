@@ -33,7 +33,7 @@ PRIMITIVE(next_group_id) {
 PRIMITIVE(spawn) {
   ARGS(int, offset, int, size, int, group_id);
 
-  FlashAllocation* allocation = static_cast<FlashAllocation*>(FlashRegistry::memory(offset,size));
+  FlashAllocation* allocation = static_cast<FlashAllocation*>(FlashRegistry::memory(offset, size));
   if (allocation->type() != PROGRAM_TYPE) INVALID_ARGUMENT;
 
   Program* program = static_cast<Program*>(allocation);
@@ -60,7 +60,7 @@ PRIMITIVE(spawn) {
 
 PRIMITIVE(is_running) {
   ARGS(int, offset, int, size);
-  FlashAllocation* allocation = static_cast<FlashAllocation*>(FlashRegistry::memory(offset,size));
+  FlashAllocation* allocation = static_cast<FlashAllocation*>(FlashRegistry::memory(offset, size));
   if (allocation->type() != PROGRAM_TYPE) INVALID_ARGUMENT;
 
   Program* program = static_cast<Program*>(allocation);
@@ -69,7 +69,7 @@ PRIMITIVE(is_running) {
 
 PRIMITIVE(kill) {
   ARGS(int, offset, int, size);
-  FlashAllocation* allocation = static_cast<FlashAllocation*>(FlashRegistry::memory(offset,size));
+  FlashAllocation* allocation = static_cast<FlashAllocation*>(FlashRegistry::memory(offset, size));
   if (allocation->type() != PROGRAM_TYPE) INVALID_ARGUMENT;
 
   Program* program = static_cast<Program*>(allocation);
