@@ -2,6 +2,9 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+import rpc
+import rpc.proto.rpc.rpc_pb
+
 /**
 Prints the $message.
 
@@ -10,6 +13,13 @@ The resulting message is stringified using $Object.stringify.
 */
 print message/any:
   print_ message
+  message = message.stringify
+  if not is_root_process:
+    print_request := rpc_pb.PrintRequest
+    print_request.message = message
+    request := rpc_pb.Request
+    request.request_print = print_request
+    rpc.invoke request
 
 /**
 Prints an empty line.

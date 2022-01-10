@@ -432,3 +432,6 @@ literal_index_ o -> int?:
 
 word_size_ -> int:
   #primitive.core.word_size
+
+is_root_process -> bool:
+  #primitive.core.is_root_process

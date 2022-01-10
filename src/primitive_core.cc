@@ -2272,4 +2272,8 @@ PRIMITIVE(word_size) {
   return Smi::from(WORD_SIZE);
 }
 
+PRIMITIVE(is_root_process) {
+  return BOOL(process->is_privileged());
+}
+
 } // namespace toit

@@ -2,15 +2,24 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import encoding.ubjson as ubjson
+import bytes
+import encoding.ubjson
+import encoding.protobuf
 import monitor show Mutex Latch
 import rpc_transport show Channel_ Stream_ Frame_
 import uuid show uuid5
 
+import .proto.rpc.rpc_pb
+
 export *
+
+RPC_PROTOBUF_ ::= 42
 
 invoke procedure_name/int args/List -> any:
   return Rpc.instance.invoke procedure_name args
+
+invoke request/Request -> Response:
+  return Rpc.instance.invoke request
 
 class Rpc:
   static instance ::= Rpc
@@ -32,6 +41,23 @@ class Rpc:
       stream.send header args_bytes
       response := stream.receive
       return frame_data_ response
+    finally:
+      stream.close
+
+  invoke request/Request -> Response:
+    ensure_channel_
+    stream := channel_.new_stream
+    try:
+      buffer := bytes.Buffer
+      writer := protobuf.Writer buffer
+      request.serialize writer
+      bytes := buffer.bytes
+      header := frame_header_ RPC_PROTOBUF_ --bytes
+      stream.send header bytes
+      response := stream.receive
+      data/ByteArray := frame_data_ response
+      reader := protobuf.Reader data
+      return Response.deserialize reader
     finally:
       stream.close
 
