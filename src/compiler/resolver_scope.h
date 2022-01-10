@@ -87,31 +87,11 @@ class Module {
 
   bool is_error_module() const { return _unit->is_error_unit(); }
 
-  void add_first_segment_prefix(Symbol first_segment_prefix, Symbol last_segment_prefix, const Source::Range& range) {
-    _first_segment_prefixes[first_segment_prefix].push_back(std::make_pair(last_segment_prefix, range));
-  }
-
-  bool is_first_segment_prefix(Symbol symbol) {
-    return _first_segment_prefixes.find(symbol) != _first_segment_prefixes.end();
-  }
-  std::vector<std::pair<Symbol, Source::Range>> first_segment_prefixes_for(Symbol symbol) {
-    return _first_segment_prefixes.at(symbol);
-  }
-  bool has_first_segment_prefixes() const { return !_first_segment_prefixes.empty(); }
-  void mark_reported_deprecation(const Source::Range& range) { _reported_first_segment_warnings.insert(range); }
-  bool needs_first_segment_deprecation_warning(const Source::Range& range) {
-    return !_reported_first_segment_warnings.contains(range);
-  }
-
  private:
   ast::Unit* _unit;
   List<ir::Class*> _classes;
   List<ir::Method*> _methods;
   List<ir::Global*> _globals;
-
-  /// Support for deprecated use-of-first-segment-as-import-prefix.
-  Map<Symbol, std::vector<std::pair<Symbol, Source::Range>>> _first_segment_prefixes;
-  UnorderedSet<Source::Range> _reported_first_segment_warnings;
 
   List<PrefixedModule> _imported_modules;
   bool _export_all;
@@ -838,88 +818,6 @@ class ScopeFiller {
  private:
   bool _discard_invalid;
   Map<Symbol, std::vector<ir::Node*>> _declarations;
-};
-
-/// Support for deprecated use-of-first-segment-as-import-prefix.
-class FirstSegmentPrefixCompatibilityModuleScope : public Scope {
- public:
-  FirstSegmentPrefixCompatibilityModuleScope(ModuleScope* wrapped, Module* module, Diagnostics* diagnostics)
-      : Scope(null)
-      , _wrapped(wrapped)
-      , _module(module)
-      , _diagnostics(diagnostics) { }
-
-  ResolutionEntry lookup_shallow(Symbol name);
-
-  void add(Symbol name, ResolutionEntry entry) { UNREACHABLE(); }
-  // 'for_each' is only used for completion. We can thus just use the _wrapped
-  // scope.
-  void for_each_shallow(const std::function<void (Symbol, const ResolutionEntry&)>& callback) {
-    _wrapped->for_each_shallow(callback);
-  }
-  ClassScope* enclosing_class_scope() { return _wrapped->enclosing_class_scope(); }
-
- private:
-  ModuleScope* _wrapped;
-  Module* _module;
-  Diagnostics* _diagnostics;
-
-  Map<Symbol, ResolutionEntry> _import_scope_cache;
-};
-
-/// Support for deprecated use-of-first-segment-as-import-prefix.
-class FirstSegmentCompatibilityImportScope : public ImportScope {
- public:
-  FirstSegmentCompatibilityImportScope(Symbol prefix,
-                        ImportScope* existing,
-                        const std::vector<std::pair<ImportScope*, Source::Range>>& deprecated,
-                        Module* module,
-                        Diagnostics* diagnostics)
-      : ImportScope(prefix)
-      , _last_segment(existing)
-      , _first_segments(deprecated)
-      , _module(module)
-      , _diagnostics(diagnostics) { }
-
-
-  /// Looks up the corresponding name in the modules.
-  ResolutionEntry lookup(Symbol name, UnorderedSet<ModuleScope*>* already_visited) {
-    return do_all([&] (ImportScope* scope) {
-      return scope->lookup(name, already_visited);
-    });
-  }
-
-  /// Looks up the corresponding name in the modules, but skips implicitly imported modules.
-  ResolutionEntry lookup_external(Symbol name, UnorderedSet<ModuleScope*>* already_visited) {
-    return do_all([&] (ImportScope* scope) {
-      return scope->lookup_external(name, already_visited);
-    });
-  }
-
-
-  // `for_each` is only used for LSP, in which case we can only show the existing ones.
-  void for_each(const std::function<void (Symbol, const ResolutionEntry&)>& callback,
-                UnorderedSet<ModuleScope*>* already_visited) {
-    if (_last_segment != null) {
-      _last_segment->for_each(callback, already_visited);
-    }
-  }
-
-  // `for_each` is only used for LSP, in which case we can only show the existing ones.
-  void for_each_external(const std::function<void (Symbol, const ResolutionEntry&)>& callback,
-                         UnorderedSet<ModuleScope*>* already_visited)  {
-    if (_last_segment != null) {
-      _last_segment->for_each_external(callback, already_visited);
-    }
-  }
-
- private:
-  ImportScope* _last_segment;
-  std::vector<std::pair<ImportScope*, Source::Range>> _first_segments;
-  Module* _module;
-  Diagnostics* _diagnostics;
-
-  ResolutionEntry do_all(const std::function<ResolutionEntry (ImportScope* scope)> fun);
 };
 
 } // namespace toit::compiler

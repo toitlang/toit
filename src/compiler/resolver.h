@@ -105,19 +105,16 @@ class Resolver {
                            Module* entry_module,
                            Module* core_module);
   void resolve_fill_toplevel_methods(Module* module,
-                                     Scope* scope,
                                      Module* entry_module,
                                      Module* core_module);
   void resolve_fill_classes(Module* module,
-                            Scope* scope,
                             Module* entry_module,
                             Module* core_module);
   void resolve_fill_class(ir::Class* klass,
-                          Scope* scope,
+                          ModuleScope* module_scope,
                           Module* entry_module,
                           Module* core_module);
   void resolve_fill_globals(Module* module,
-                            Scope* scope,
                             Module* entry_module,
                             Module* core_module);
   void resolve_fill_method(ir::Method* method,
