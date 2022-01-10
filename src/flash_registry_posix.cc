@@ -39,7 +39,19 @@ static void* allocations = null;
 const char* FlashRegistry::allocations_memory_ = null;
 
 static bool is_file_backed = false;
-static bool is_dirty = false;
+
+static long pagesize = 0;
+static int dirty_start = INT32_MAX;
+static int dirty_end = 0;
+
+static bool is_dirty() {
+  return dirty_start <= dirty_end;
+}
+
+static void mark_dirty(int offset, int size) {
+  dirty_start = Utils::min(dirty_start, offset);
+  dirty_end = Utils::max(dirty_end, offset + size);
+}
 
 void FlashRegistry::set_up() {
   ASSERT(allocations == null);
@@ -63,8 +75,8 @@ void FlashRegistry::set_up() {
     is_file_backed = true;
   }
 
-  long page_size = sysconf(_SC_PAGE_SIZE);
-  if (page_size != Utils::round_up(page_size, FLASH_PAGE_SIZE)) {
+  pagesize = sysconf(_SC_PAGESIZE);
+  if (pagesize != Utils::round_up(pagesize, FLASH_PAGE_SIZE)) {
     padding = FLASH_PAGE_SIZE;
   }
 
@@ -88,6 +100,8 @@ void FlashRegistry::set_up() {
   if (fd >= 0) {
     close(fd);
   }
+
+  ASSERT(!is_dirty());
 }
 
 bool FlashRegistry::is_allocations_set_up() {
@@ -95,10 +109,15 @@ bool FlashRegistry::is_allocations_set_up() {
 }
 
 void FlashRegistry::flush() {
-  if (!is_dirty || !is_file_backed) return;
-  // TODO(kasper): Track the dirty region instead.
-  msync(void_cast(const_cast<char*>(allocations_memory_)), allocations_size(), MS_SYNC);
-  is_dirty = false;
+  if (!is_file_backed || !is_dirty()) return;
+  int offset = Utils::round_down(dirty_start, pagesize);
+  int size = dirty_end - offset;
+  if (msync(void_cast(const_cast<char*>(allocations_memory_) + offset), size, MS_SYNC) != 0) {
+    perror("FlashRegistry::flush/msync");
+  }
+  dirty_start = INT32_MAX;
+  dirty_end = 0;
+  ASSERT(!is_dirty());
 }
 
 int FlashRegistry::allocations_size() {
@@ -109,7 +128,7 @@ int FlashRegistry::erase_chunk(int offset, int size) {
   ASSERT(Utils::is_aligned(offset, FLASH_PAGE_SIZE));
   size = Utils::round_up(size, FLASH_PAGE_SIZE);
   memset(memory(offset, size), 0xff, size);
-  is_dirty = true;
+  mark_dirty(offset, size);
   return size;
 }
 
@@ -130,7 +149,7 @@ bool FlashRegistry::write_chunk(const void* chunk, int offset, int size) {
   ASSERT(Utils::is_aligned(size, ENCRYPTION_WRITE_SIZE));
   ASSERT(is_erased(dest, 0, size));
   memcpy(dest, chunk, size);
-  is_dirty = true;
+  mark_dirty(offset, size);
   return true;
 }
 
@@ -168,7 +187,7 @@ bool FlashRegistry::write_raw_chunk(const void* chunk, int offset, int size) {
   void* dest = memory(offset, size);
   ASSERT(is_valid_write(dest, chunk, offset, size));
   memcpy(dest, chunk, size);
-  is_dirty = true;
+  mark_dirty(offset, size);
   return true;
 }
 
