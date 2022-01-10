@@ -1,5 +1,3 @@
 As check failed: an int (499) is not a A.
   0: main                      tests/negative/as8_test.toit:14:5
   1: __entry__.<lambda>        <sdk>/core/entry.toit:48:20
-
-

@@ -46,7 +46,16 @@ print_ object:
 
 // Dumps the string $message on stdout and flushes.
 print_string_on_stdout_ message:
-  #primitive.core.print_string_on_stdout
+  write_string_on_stdout_ message
+  write_string_on_stdout_ "\n"
+
+// Dumps the string $message on stdout without a newline and flushes.
+write_on_stdout_ message:
+  write_string_on_stdout_ message.stringify
+
+// Dumps the string $message on stdout without a newline and flushes.
+write_string_on_stdout_ message:
+  #primitive.core.write_string_on_stdout
 
 // Dumps the string of $object on stderr.
 print_on_stderr_ object:
@@ -54,4 +63,13 @@ print_on_stderr_ object:
 
 // Dumps the string $message on stderr and flushes.
 print_string_on_stderr_ message:
-  #primitive.core.print_string_on_stderr
+  write_string_on_stderr_ message
+  write_string_on_stderr_ "\n"
+
+// Dumps the string of $object on stderr without adding a newline and flushes.
+write_on_stderr_ object:
+  write_string_on_stderr_ object.stringify
+
+// Dumps the string $message on stderr without adding a newline and flushes.
+write_string_on_stderr_ message:
+  #primitive.core.write_string_on_stderr

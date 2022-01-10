@@ -5,5 +5,3 @@ Required named argument '--expected' not provided
 Argument mismatch for 'A.bar'.
   0: main                      tests/negative/named2_test.toit:17:5
   1: __entry__.<lambda>        <sdk>/core/entry.toit:48:20
-
-

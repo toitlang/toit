@@ -6,5 +6,3 @@ Initialization of global 'global' in progress.
   4: run_global_initializer_   <sdk>/core/objects.toit:194:1
   5: main                      tests/negative/cyclic_global_test.toit:11:7
   6: __entry__.<lambda>        <sdk>/core/entry.toit:48:20
-
-

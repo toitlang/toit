@@ -1,5 +1,3 @@
 As check failed: a string ("str") is not a int.
   0: main                      tests/negative/as7_test.toit:7:5
   1: __entry__.<lambda>        <sdk>/core/entry.toit:48:20
-
-

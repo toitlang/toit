@@ -64,8 +64,8 @@ namespace toit {
   M(flash_kv, MODULE_FLASH_KV)               \
 
 #define MODULE_CORE(PRIMITIVE)               \
-  PRIMITIVE(print_string_on_stdout, 1)       \
-  PRIMITIVE(print_string_on_stderr, 1)       \
+  PRIMITIVE(write_string_on_stdout, 1)       \
+  PRIMITIVE(write_string_on_stderr, 1)       \
   PRIMITIVE(time, 0)                         \
   PRIMITIVE(time_info, 2)                    \
   PRIMITIVE(seconds_since_epoch_local, 7)    \
