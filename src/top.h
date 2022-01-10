@@ -81,9 +81,9 @@
 #endif
 
 #if defined(TOIT_DARWIN) + defined(TOIT_LINUX) + defined(TOIT_WINDOWS) + defined(TOIT_FREERTOS) > 1
-#error "More than one os configuration specified"
+#error "More than one OS configuration specified"
 #elif defined(TOIT_DARWIN) + defined(TOIT_LINUX) + defined(TOIT_WINDOWS) + defined(TOIT_FREERTOS) < 1
-#error "No os configuration specified"
+#error "No OS configuration specified"
 #endif
 
 #if (__WORDSIZE == 64) || __WIN64
