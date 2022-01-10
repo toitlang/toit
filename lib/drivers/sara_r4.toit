@@ -33,7 +33,7 @@ class SaraR4 extends UBloxCellular:
   pwr_on/Pin?
   reset_n/Pin?
 
-  constructor uart/uart.Port --logger=log.default --.pwr_on=null --.reset_n=null:
+  constructor uart/uart.Port --logger=log.default --.pwr_on=null --.reset_n=null --is_always_online/bool:
     super
       uart
       --logger=logger
@@ -43,7 +43,7 @@ class SaraR4 extends UBloxCellular:
       --preferred_baud_rate=460800
       --async_socket_connect
       --async_socket_close
-      --use_psm=false
+      --use_psm=not is_always_online
 
   on_connected_ session/at.Session:
 
