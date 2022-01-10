@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package rpc;
+
+message Request {
+  oneof request {
+    PrintRequest print = 1;
+  }
+}
+
+message Response {
+  oneof response {
+    PrintResponse print = 1;
+  }
+}
+
+message PrintRequest {
+  string message = 1;
+}
+
+message PrintResponse {
+  bool intercepted = 1;
+}
