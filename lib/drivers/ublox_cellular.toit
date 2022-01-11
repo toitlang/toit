@@ -400,7 +400,8 @@ abstract class UBloxCellular extends CellularBase:
     try:
       sockets_.values.do: it.closed_
       at_.do:
-        if not it.is_closed: it.send CPWROFF
+        if not it.is_closed and (not use_psm or failed_to_connect or is_lte_connection_):
+          it.send CPWROFF
     finally:
       at_session_.close
       uart_.close
@@ -460,7 +461,26 @@ abstract class UBloxCellular extends CellularBase:
           reboot_ session
           continue
 
+        configure_psm_ session --enable=use_psm
+
         break
+
+  configure_psm_ session/at.Session --enable/bool --periodic_tau/string="00111000":
+    psm_target := enable ? 1 : 0
+
+    session.send_non_check
+      at.Command.set "+CEDRXS" --parameters=[0]
+    psm_value := session.read "+CPSMS"
+    psv_value := session.read "+UPSV"
+    if psm_value.single[0] == psm_target and psv_value.single[0] == psm_target: return
+
+    if enable:
+      session.set "+UPSV" [4]
+      session.set "+CPSMS" [1, null, null, periodic_tau, "00000000"]
+    else:
+      session.set "+UPSV" [0]
+      session.set "+CPSMS" [0]
+
 
   apply_configs_ session/at.Session -> bool:
     changed := false

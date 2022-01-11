@@ -15,28 +15,19 @@ import .cellular
 Driver for Sara-R5, GSM communicating over NB-IoT & M1.
 */
 class SaraR5 extends UBloxCellular:
-  static CONFIG_ ::= {
-    // Disable UART power saving.
-    "+UPSV": [0],
-    // Disable UE power saving.
-    "+CPSMS": [0],
-    // The following fails when using mno=100:
-    //
-    //    Disable eDRX.
-    //    "+CEDRXS": [0],
-  }
+  static CONFIG_ ::= {:}
 
   pwr_on/Pin?
   reset_n/Pin?
 
-  constructor uart/uart.Port --logger=log.default --.pwr_on=null --.reset_n=null:
+  constructor uart/uart.Port --logger=log.default --.pwr_on=null --.reset_n=null --is_always_online/bool:
     super
       uart
       --logger=logger
       --config=CONFIG_
       --cat_m1
       --preferred_baud_rate=3250000
-      --use_psm=false
+      --use_psm=not is_always_online
 
   on_connected_ session/at.Session:
     // Attach to network.

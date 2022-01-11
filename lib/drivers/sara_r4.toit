@@ -16,24 +16,16 @@ Driver for Sara-R4, GSM communicating over NB-IoT & M1.
 */
 class SaraR4 extends UBloxCellular:
   static CONFIG_ ::= {
-    // Disable UART power saving.
-    "+UPSV": [0],
-    // Disable UE power saving.
-    "+CPSMS": [0],
     // Disables the TCP socket Graceful Dormant Close feature. With this enabled,
     // the module waits for ack (or timeout) from peer, before closing socket
     // resources.
     "+USOCLCFG": [0],
-    // The following fails when using mno=100:
-    //
-    //    Disable eDRX.
-    //    "+CEDRXS": [0],
   }
 
   pwr_on/Pin?
   reset_n/Pin?
 
-  constructor uart/uart.Port --logger=log.default --.pwr_on=null --.reset_n=null:
+  constructor uart/uart.Port --logger=log.default --.pwr_on=null --.reset_n=null --is_always_online/bool:
     super
       uart
       --logger=logger
@@ -43,7 +35,7 @@ class SaraR4 extends UBloxCellular:
       --preferred_baud_rate=460800
       --async_socket_connect
       --async_socket_close
-      --use_psm=false
+      --use_psm=not is_always_online
 
   on_connected_ session/at.Session:
 
