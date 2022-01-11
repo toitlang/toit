@@ -3,6 +3,8 @@
 import expect show *
 
 import encoding.json as json
+import fixed_point show FixedPoint
+import math
 import reader show Reader
 
 main:
@@ -28,6 +30,11 @@ test_stringify:
   expect_equals "0" (json.stringify 0)
   expect_equals "0.00" (json.stringify 0.0)
   expect_equals "-0.00" (json.stringify -0.00001)
+
+  expect_equals "3.14" (json.stringify (FixedPoint math.PI --decimals=2))
+  expect_equals "3.142" (json.stringify (FixedPoint math.PI --decimals=3))
+  expect_equals "3.1416" (json.stringify (FixedPoint math.PI --decimals=4))
+  expect_equals "3.14159" (json.stringify (FixedPoint math.PI --decimals=5))
 
   expect_equals "true" (json.stringify true)
   expect_equals "false" (json.stringify false)

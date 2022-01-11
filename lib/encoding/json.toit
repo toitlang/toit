@@ -3,6 +3,7 @@
 // found in the lib/LICENSE file.
 
 import reader show Reader
+import fixed_point show FixedPoint
 
 INITIAL_BUFFER_SIZE_ ::= 64
 MAX_BUFFER_GROWTH_ ::= 1024
@@ -100,6 +101,7 @@ class Encoder extends Buffer_:
   encode obj/any:
     if obj is string: encode_string_ obj
     else if obj is num: encode_number_ obj
+    else if obj is FixedPoint: encode_number_ obj
     else if identical obj true: encode_true_
     else if identical obj false: encode_false_
     else if identical obj null: encode_null_
@@ -147,8 +149,8 @@ class Encoder extends Buffer_:
 
     put_byte_ '"'
 
-  encode_number_ num:
-    str := num is float ? num.stringify 2 : num.stringify
+  encode_number_ number:
+    str := number is float ? number.stringify 2 : number.stringify
     put_string_ str
 
   encode_true_:
