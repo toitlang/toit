@@ -59,18 +59,18 @@ namespace toit {
 MODULE_IMPLEMENTATION(core, MODULE_CORE)
 
 PRIMITIVE(write_string_on_stdout) {
-  ARGS(String, message);
+  ARGS(String, message, bool, should_flush);
   String::Bytes bytes(message);
   fprintf(stdout, "%s", bytes.address());
-  fflush(stdout);
+  if (should_flush) fflush(stdout);
   return message;
 }
 
 PRIMITIVE(write_string_on_stderr) {
-  ARGS(String, message);
+  ARGS(String, message, bool, should_flush);
   String::Bytes bytes(message);
   fprintf(stderr, "%s", bytes.address());
-  fflush(stderr);
+  if (should_flush) fflush(stderr);
   return message;
 }
 

@@ -83,7 +83,7 @@ class ToitcProcessManager implements SystemMessageHandler_:
     mirror_string := mirror.stringify
     if mirror_string.ends_with "\n":
       // No need to add another one.
-      write_on_stderr_ mirror_string
+      write_on_stderr_ mirror_string true
     else:
       print_on_stderr_ mirror
 

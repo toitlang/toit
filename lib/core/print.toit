@@ -46,15 +46,15 @@ print_ object:
 
 // Dumps the string $message on stdout and flushes.
 print_string_on_stdout_ message:
-  write_string_on_stdout_ message
-  write_string_on_stdout_ "\n"
+  write_string_on_stdout_ message false
+  write_string_on_stdout_ "\n" true
 
-// Dumps the string $message on stdout without a newline and flushes.
-write_on_stdout_ message:
-  write_string_on_stdout_ message.stringify
+// Dumps the string $message on stdout without a newline.
+write_on_stdout_ message should_flush:
+  write_string_on_stdout_ message.stringify should_flush
 
-// Dumps the string $message on stdout without a newline and flushes.
-write_string_on_stdout_ message:
+// Dumps the string $message on stdout without a newline.
+write_string_on_stdout_ message should_flash:
   #primitive.core.write_string_on_stdout
 
 // Dumps the string of $object on stderr.
@@ -63,13 +63,13 @@ print_on_stderr_ object:
 
 // Dumps the string $message on stderr and flushes.
 print_string_on_stderr_ message:
-  write_string_on_stderr_ message
-  write_string_on_stderr_ "\n"
+  write_string_on_stderr_ message false
+  write_string_on_stderr_ "\n" true
 
-// Dumps the string of $object on stderr without adding a newline and flushes.
-write_on_stderr_ object:
-  write_string_on_stderr_ object.stringify
+// Dumps the string of $object on stderr without adding a newline.
+write_on_stderr_ object should_flush:
+  write_string_on_stderr_ object.stringify should_flush
 
-// Dumps the string $message on stderr without adding a newline and flushes.
-write_string_on_stderr_ message:
+// Dumps the string $message on stderr without adding a newline..
+write_string_on_stderr_ message should_flash:
   #primitive.core.write_string_on_stderr
