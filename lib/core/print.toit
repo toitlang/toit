@@ -66,7 +66,7 @@ If $add_newline is true adds a "\n" to the output.
 
 Does not yield the currently running task.
 */
-write_on_stdout_ object add_newline :
+write_on_stdout_ object add_newline:
   write_string_on_stdout_ object.stringify add_newline
 
 /**
