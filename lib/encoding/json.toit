@@ -18,8 +18,8 @@ Maps must have only string keys.  The elements of lists and the values of
 The $converter block is passed an object to be serialized and an instance
   of the $Encoder class.  If it returns a non-null value, that value will
   be serialized instead of the object that was passed in.  Alternatively,
-  the $converter block can call the $Encoder.encode or Encoder.put_unquoted
-  methods on the encoder.
+  the $converter block can call the $Encoder.encode, $Encoder.put_list,
+  or Encoder.put_unquoted methods on the encoder.
 Utf-8 encoding is used for strings.
 */
 encode obj [converter] -> ByteArray:
@@ -59,8 +59,8 @@ Maps must have only string keys.  The elements of lists and the values of
 The $converter block is passed an object to be serialized and an instance
   of the $Encoder class.  If it returns a non-null value, that value will
   be serialized instead of the object that was passed in.  Alternatively,
-  the $converter block can call the $Encoder.encode or Encoder.put_unquoted
-  methods on the encoder.
+  the $converter block can call the $Encoder.encode, $Encoder.put_list,
+  or Encoder.put_unquoted methods on the encoder.
 Utf-8 encoding is used for strings.
 */
 stringify obj/any [converter] -> string:
@@ -229,11 +229,19 @@ class Encoder extends Buffer_:
     put_byte_ '}'
 
   encode_list_ list [converter]:
+    put_list list.size (: list[it]) converter
+
+  /**
+  Outputs a list-like thing to the JSON stream.
+  This can be used by converter blocks.
+  The generator is called repeatedly with indices from 0 to size - 1.
+  */
+  put_list size/int [generator] [converter]:
     put_byte_ '['
 
-    for i := 0; i < list.size; i++:
+    for i := 0; i < size; i++:
       if i > 0: put_byte_ ','
-      encode list[i] converter
+      encode (generator.call i) converter
 
     put_byte_ ']'
 

@@ -110,6 +110,14 @@ test_converter -> none:
       """{"foo":{"foo":1,"bar":2},"bar":{"foo":"Tweedledum","bar":"Tweedledee"}}"""
       (json.stringify fb3 to_json_lambda)
 
+  byte_array_converter := : | obj encoder |
+    encoder.put_list obj.size
+      : | index | obj[index]    // Generator block returns integers.
+      : unreachable             // Converter block will never be called since all elements are integers.
+
+  expect_equals "[1,2,42,103]"
+      json.stringify #[1, 2, 42, 103] byte_array_converter
+
 class FooBar:
   foo := ?
   bar := ?
