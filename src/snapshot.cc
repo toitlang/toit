@@ -1549,9 +1549,11 @@ ImageOutputStream::ImageOutputStream(ProgramImage image)
 void ImageOutputStream::write(const word* buffer, int size, word* output) {
   ASSERT(1 < size && size <= CHUNK_SIZE);
   if (output == null) output = current;
-  word mask = buffer[0];
+  // The input buffer is often part of network packets with various headers,
+  // so the embedded words aren't guaranteed to be word-aligned.
+  word mask = Utils::read_unaligned_word(&buffer[0]);
   for (int index = 1; index < size; index++) {
-    word value = buffer[index];
+    word value = Utils::read_unaligned_word(&buffer[index]);
     // Relocate value if needed with the address of the image.
     if (mask & 1U) value += reinterpret_cast<word>(_image.begin());
     mask = mask >> 1;

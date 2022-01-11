@@ -103,6 +103,13 @@ class Utils {
     memcpy(ptr, &value, sizeof(value));
   }
 
+  template<typename T>
+  static inline word read_unaligned_word(T* ptr) {
+    word result;
+    memcpy(&result, ptr, sizeof(result));
+    return result;
+  }
+
   // Reverse the order of the bits in an 8 bit byte.
   static inline uint8 reverse_8(uint8 b) {
     return (REVERSE_NIBBLE[b & 0b1111] << 4) | REVERSE_NIBBLE[b >> 4];
