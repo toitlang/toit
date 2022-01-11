@@ -3,11 +3,14 @@
 import expect show *
 
 import encoding.json as json
+import fixed_point show FixedPoint
+import math
 import reader show Reader
 
 main:
   test_parse
   test_stringify
+  test_converter
   test_encode
   test_decode
   test_repeated_strings
@@ -46,6 +49,75 @@ test_stringify:
   expect_equals
     "\"" + "hej" * 1024 + "\""
     json.stringify "hej" * 1024
+
+test_converter -> none:
+  fixed_converter := : | obj encoder |
+    if obj is FixedPoint:
+      encoder.put_unquoted obj.stringify
+      // Return null to indicate we have encoded the object we were passed and
+      // nothing more needs to be done (in this case we didn't need this since
+      // put_unquoted is none-typed and so implicitly returns null).
+      null
+    else:
+      throw "INVALID_JSON_OBJECT"
+
+  expect_equals "3.14" (json.stringify (FixedPoint math.PI --decimals=2) fixed_converter)
+  expect_equals "3.142" (json.stringify (FixedPoint math.PI --decimals=3) fixed_converter)
+  expect_equals "3.1416" (json.stringify (FixedPoint math.PI --decimals=4) fixed_converter)
+  expect_equals "3.14159" (json.stringify (FixedPoint math.PI --decimals=5) fixed_converter)
+
+  pi := FixedPoint math.PI
+  e := FixedPoint math.E
+
+  expect_equals "[3.14,2.72]" (json.stringify [pi, e] fixed_converter)
+
+  time_converter := : | obj encoder |
+    if obj is Time:
+      encoder.encode obj.stringify
+      // Return null to indicate we have encoded the object we were passed and
+      // nothing more needs to be done.
+      null
+    else:
+      throw "INVALID_JSON_OBJECT"
+
+  stringify_converter := : | obj |
+    obj.stringify  // Returns a string from the block, which is then encoded.
+
+  erik := Time.from_string "1969-05-27T14:00:00Z"
+  moon := Time.from_string "1969-07-20T20:17:00Z"
+
+  expect_equals "[\"$erik\",\"$moon\"]" (json.stringify [erik, moon] time_converter)
+  expect_equals "[\"$erik\",\"$moon\"]" (json.stringify [erik, moon] stringify_converter)
+
+  fb1 := FooBar 1 2
+  fb2 := FooBar "Tweedledum" "Tweedledee"
+
+  to_json_converter := : | obj | obj.to_json  // Returns a short-lived object which is serialized.
+
+  expect_equals
+      """[{"foo":1,"bar":2},{"foo":"Tweedledum","bar":"Tweedledee"}]"""
+      (json.stringify [fb1, fb2] to_json_converter)
+
+  // Nested custom conversions.
+  fb3 := FooBar fb1 fb2
+  expect_equals
+      """{"foo":{"foo":1,"bar":2},"bar":{"foo":"Tweedledum","bar":"Tweedledee"}}"""
+      (json.stringify fb3 to_json_converter)
+
+  // Using a lambda instead of a block.
+  to_json_lambda := :: | obj | obj.to_json  // Returns a short-lived object which is serialized.
+  expect_equals
+      """{"foo":{"foo":1,"bar":2},"bar":{"foo":"Tweedledum","bar":"Tweedledee"}}"""
+      (json.stringify fb3 to_json_lambda)
+
+class FooBar:
+  foo := ?
+  bar := ?
+
+  constructor .foo .bar:
+
+  to_json -> Map:
+    return { "foo": foo, "bar": bar }
 
 test_parse:
   expect_equals "testing" (json.parse "\"testing\"")
