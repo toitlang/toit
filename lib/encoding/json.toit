@@ -10,15 +10,35 @@ MAX_BUFFER_GROWTH_ ::= 1024
 
 /**
 Encodes the $obj as a JSON ByteArray.
+The $obj must be a supported type, which means either a type supported
+  by the $converter block or an instance of int, bool, float, string, List
+  or Map.
+Maps must have only string keys.  The elements of lists and the values of
+  maps can be any of the above supported types.
+The $converter block is passed an object to be serialized and an instance
+  of the $Encoder class.  If it returns a non-null value, that value will
+  be serialized instead of the object that was passed in.  Alternatively,
+  the $converter block can call the $Encoder.encode or Encoder.put_unquoted
+  methods on the encoder.
+Utf-8 encoding is used for strings.
+*/
+encode obj [converter] -> ByteArray:
+  e := Encoder
+  e.encode obj converter
+  return e.to_byte_array
+
+encode obj converter/Lambda -> ByteArray:
+  return encode obj: | obj encoder | converter.call obj encoder
+
+/**
+Encodes the $obj as a JSON ByteArray.
 The $obj must be null or an instance of int, bool, float, string, List, or Map.
-  Maps must have only string keys.  The elements of lists and the values of
+Maps must have only string keys.  The elements of lists and the values of
   maps can be any of the above supported types.
 Utf-8 encoding is used for strings.
 */
 encode obj -> ByteArray:
-  e := Encoder
-  e.encode obj
-  return e.to_byte_array
+  return encode obj: throw "INVALID_JSON_OBJECT"
 
 /**
 Decodes the $bytes, which is a ByteArray in JSON format.
@@ -31,14 +51,34 @@ decode bytes/ByteArray -> any:
 
 /**
 Encodes the $obj as a JSON string.
+The $obj must be a supported type, which means either a type supported
+  by the $converter block or an instance of int, bool, float, string, List
+  or Map.
+Maps must have only string keys.  The elements of lists and the values of
+  maps can be any of the above supported types.
+The $converter block is passed an object to be serialized and an instance
+  of the $Encoder class.  If it returns a non-null value, that value will
+  be serialized instead of the object that was passed in.  Alternatively,
+  the $converter block can call the $Encoder.encode or Encoder.put_unquoted
+  methods on the encoder.
+Utf-8 encoding is used for strings.
+*/
+stringify obj/any [converter] -> string:
+  e := Encoder
+  e.encode obj converter
+  return e.to_string
+
+stringify obj converter/Lambda -> string:
+  return stringify obj: | obj encoder | converter.call obj encoder
+
+/**
+Encodes the $obj as a JSON string.
 The $obj must be null or an instance of int, bool, float, string, List, or Map.
   Maps must have only string keys.  The elements of lists and the values of
   maps can be any of the above supported types.
 */
 stringify obj/any -> string:
-  e := Encoder
-  e.encode obj
-  return e.to_string
+  return stringify obj: throw "INVALID_JSON_OBJECT"
 
 /**
 Decodes the $str, which is a string in JSON format.
@@ -77,7 +117,12 @@ class Buffer_:
     new.replace 0 buffer_
     buffer_ = new
 
-  put_string_ str:
+  /**
+  Outputs a string directly to the JSON stream.
+  No quoting, no escaping.  This is mainly used for things
+    that will be parsed as numbers by the receiver.
+  */
+  put_unquoted str/string:
     len := str.size
     ensure_ len
     buffer_.replace offset_ str
@@ -97,15 +142,23 @@ class Buffer_:
     offset_ = 0
 
 class Encoder extends Buffer_:
-  encode obj/any:
+  encode obj/any [converter]:
     if obj is string: encode_string_ obj
     else if obj is num: encode_number_ obj
     else if identical obj true: encode_true_
     else if identical obj false: encode_false_
     else if identical obj null: encode_null_
-    else if obj is Map: encode_map_ obj
-    else if obj is List: encode_list_ obj
-    else: throw "INVALID_JSON_OBJECT"
+    else if obj is Map: encode_map_ obj converter
+    else if obj is List: encode_list_ obj converter
+    else:
+      result := converter.call obj this
+      if result != null: encode result converter
+
+  encode obj/any converter/Lambda:
+    encode obj: converter.call obj this
+
+  encode obj/any:
+    encode obj: throw "INVALID_JSON_OBJECT"
 
   encode_string_ str:
     size := str.size
@@ -147,20 +200,20 @@ class Encoder extends Buffer_:
 
     put_byte_ '"'
 
-  encode_number_ num:
-    str := num is float ? num.stringify 2 : num.stringify
-    put_string_ str
+  encode_number_ number:
+    str := number is float ? number.stringify 2 : number.stringify
+    put_unquoted str
 
   encode_true_:
-    put_string_ "true"
+    put_unquoted "true"
 
   encode_false_:
-    put_string_ "false"
+    put_unquoted "false"
 
   encode_null_:
-    put_string_ "null"
+    put_unquoted "null"
 
-  encode_map_ map:
+  encode_map_ map [converter]:
     put_byte_ '{'
 
     first := true
@@ -171,16 +224,16 @@ class Encoder extends Buffer_:
         throw "INVALID_JSON_OBJECT"
       encode_string_ key
       put_byte_ ':'
-      encode value
+      encode value converter
 
     put_byte_ '}'
 
-  encode_list_ list:
+  encode_list_ list [converter]:
     put_byte_ '['
 
     for i := 0; i < list.size; i++:
       if i > 0: put_byte_ ','
-      encode list[i]
+      encode list[i] converter
 
     put_byte_ ']'
 
