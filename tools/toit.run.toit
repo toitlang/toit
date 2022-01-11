@@ -80,8 +80,9 @@ class ToitcProcessManager implements SystemMessageHandler_:
     mirror ::= decode encoded_message program:
       print_on_stderr_ "Mirror creation failed: $it"
       return
-    print_on_stderr_ mirror
-    print_on_stderr_ ""
+    mirror_string := mirror.stringify
+    // If the text already ends with a newline don't add another one.
+    write_on_stderr_ mirror_string (not mirror_string.ends_with "\n")
 
 class NoopDescriptorRegistry implements DescriptorRegistry:
   register_descriptor gid/int object/Descriptor -> int:

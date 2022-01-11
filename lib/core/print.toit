@@ -36,22 +36,78 @@ Does not yield the currently running task.
 debug:
   print_
 
-// Dumps an empty line on stdout.
+/**
+Dumps the an empty new line on stdout and flushes it.
+
+Does not yield the currently running task.
+*/
 print_:
   print_ ""
 
-// Dumps print string of $object on stdout.
+/**
+Dumps the string of $object and a newline on stdout and flushes it.
+
+Does not yield the currently running task.
+*/
 print_ object:
-  print_string_on_stdout_ object.stringify
+  write_string_on_stdout_ object.stringify true
 
-// Dumps the string $message on stdout and flushes.
+/**
+Dumps the string $message and a newline on stdout and flushes it.
+
+Does not yield the currently running task.
+*/
 print_string_on_stdout_ message:
-  #primitive.core.print_string_on_stdout
+  write_string_on_stdout_ message true
 
-// Dumps the string of $object on stderr.
+/**
+Dumps the string of $object on stdout and flushes it.
+If $add_newline is true adds a "\n" to the output.
+
+Does not yield the currently running task.
+*/
+write_on_stdout_ object add_newline:
+  write_string_on_stdout_ object.stringify add_newline
+
+/**
+Dumps the string $message on stdout and flushes it.
+If $add_newline is true adds a "\n" to the output.
+
+Does not yield the currently running task.
+*/
+write_string_on_stdout_ message add_newline:
+  #primitive.core.write_string_on_stdout
+
+/**
+Dumps the string of $object and a newline on stderr and flushes it.
+
+Does not yield the currently running task.
+*/
 print_on_stderr_ object:
-  print_string_on_stderr_ object.stringify
+  write_string_on_stderr_ object.stringify true
 
-// Dumps the string $message on stderr and flushes.
+/**
+Dumps the string $message and a newline on stderr and flushes it.
+
+Does not yield the currently running task.
+*/
 print_string_on_stderr_ message:
-  #primitive.core.print_string_on_stderr
+  write_string_on_stderr_ message true
+
+/**
+Dumps the string of $object on stderr and flushes it.
+If $add_newline is true adds a "\n" to the output.
+
+Does not yield the currently running task.
+*/
+write_on_stderr_ object add_newline:
+  write_string_on_stderr_ object.stringify add_newline
+
+/**
+Dumps the string $message on stderr and flushes it.
+If $add_newline is true adds a "\n" to the output.
+
+Does not yield the currently running task.
+*/
+write_string_on_stderr_ message add_newline:
+  #primitive.core.write_string_on_stderr

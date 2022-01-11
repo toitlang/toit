@@ -1,5 +1,3 @@
 EXCEPTION error. 
 nope
   0: main.<lambda>             tests/negative/task_close_test.toit:5:5
-
-

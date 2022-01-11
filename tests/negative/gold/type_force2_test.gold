@@ -5,5 +5,3 @@ As check failed: an A is not a B.
   0: B                         tests/negative/type_force2_test.toit:8:5
   1: main                      tests/negative/type_force2_test.toit:13:8
   2: __entry__.<lambda>        <sdk>/core/entry.toit:48:20
-
-

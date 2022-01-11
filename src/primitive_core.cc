@@ -58,18 +58,20 @@ namespace toit {
 
 MODULE_IMPLEMENTATION(core, MODULE_CORE)
 
-PRIMITIVE(print_string_on_stdout) {
-  ARGS(String, message);
+PRIMITIVE(write_string_on_stdout) {
+  ARGS(String, message, bool, add_newline);
   String::Bytes bytes(message);
-  fprintf(stdout, "%s\n", bytes.address());
+  fprintf(stdout, "%s", bytes.address());
+  if (add_newline) fprintf(stdout, "\n");
   fflush(stdout);
   return message;
 }
 
-PRIMITIVE(print_string_on_stderr) {
-  ARGS(String, message);
+PRIMITIVE(write_string_on_stderr) {
+  ARGS(String, message, bool, add_newline);
   String::Bytes bytes(message);
-  fprintf(stderr, "%s\n", bytes.address());
+  fprintf(stderr, "%s", bytes.address());
+  if (add_newline) fprintf(stderr, "\n");
   fflush(stderr);
   return message;
 }

@@ -3,5 +3,3 @@ x
   0: A.foo                     tests/negative/throw_in_static_test.toit:4:15
   1: main                      tests/negative/throw_in_static_test.toit:7:4
   2: __entry__.<lambda>        <sdk>/core/entry.toit:48:20
-
-
