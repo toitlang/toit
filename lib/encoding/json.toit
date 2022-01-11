@@ -18,7 +18,7 @@ Maps must have only string keys.  The elements of lists and the values of
 The $converter block is passed an object to be serialized and an instance
   of the $Encoder class.  If it returns a non-null value, that value will
   be serialized instead of the object that was passed in.  Alternatively,
-  the $converter block can call the $Encoder.encode or $Encoder.put_unquoted
+  the $converter block can call the $Encoder.encode or Encoder.put_unquoted
   methods on the encoder.
 Utf-8 encoding is used for strings.
 */
@@ -59,7 +59,7 @@ Maps must have only string keys.  The elements of lists and the values of
 The $converter block is passed an object to be serialized and an instance
   of the $Encoder class.  If it returns a non-null value, that value will
   be serialized instead of the object that was passed in.  Alternatively,
-  the $converter block can call the $Encoder.encode or $Encoder.put_unquoted
+  the $converter block can call the $Encoder.encode or Encoder.put_unquoted
   methods on the encoder.
 Utf-8 encoding is used for strings.
 */
