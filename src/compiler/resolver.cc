@@ -288,14 +288,8 @@ std::vector<Module*> Resolver::build_modules(const std::vector<ast::Unit*>& unit
         prefix = null;
       } else if (import->is_relative()) {
         prefix = null;
-      } else if (import->segments().length() == 1) {
-        prefix = import->segments().last();
       } else {
         prefix = import->segments().last();
-        auto deprecated_prefix = import->segments()[0];
-        module->add_first_segment_prefix(deprecated_prefix->data(),
-                                         prefix->data(),
-                                         deprecated_prefix->range());
       }
 
       imported_modules_builder.add({
@@ -1136,16 +1130,7 @@ void Resolver::setup_inheritance(std::vector<Module*> modules, int core_module_i
   ASSERT(monitor != null);
 
   for (auto module : modules) {
-    Scope* scope;
-    auto module_scope = module->scope();
-    FirstSegmentPrefixCompatibilityModuleScope deprecated_prefix_scope(module_scope, module, diagnostics());
-    if (module->has_first_segment_prefixes()) {
-      // Use the deprecated prefix scope to find identifiers that use the
-      // first-segment prefixes and emit a warning if that happens.
-      scope = &deprecated_prefix_scope;
-    } else {
-      scope = module_scope;
-    }
+    Scope* scope = module->scope();
 
     // -- Check that super classes exist.
     for (auto klass : module->classes()) {
@@ -2049,20 +2034,19 @@ void Resolver::resolve_field(ir::Field* field,
 }
 
 void Resolver::resolve_fill_toplevel_methods(Module* module,
-                                             Scope* scope,
                                              Module* entry_module,
                                              Module* core_module) {
-
+  auto scope = module->scope();
   for (auto method : module->methods()) {
     resolve_fill_method(method, null, scope, entry_module, core_module);
   }
 }
 
 void Resolver::resolve_fill_globals(Module* module,
-                                    Scope* scope,
                                     Module* entry_module,
                                     Module* core_module) {
 
+  auto scope = module->scope();
   for (auto global : module->globals()) {
     ASSERT(global->body() == null);
     resolve_fill_method(global, null, scope, entry_module, core_module);
@@ -2176,33 +2160,22 @@ void Resolver::resolve_fill_module(Module* module,
                                    diagnostics());
     _toitdocs.set_toitdoc(module, toitdoc);
   }
-  Scope* scope;
-  auto module_scope = module->scope();
-  FirstSegmentPrefixCompatibilityModuleScope deprecated_prefix_scope(module_scope, module, diagnostics());
-  if (module->has_first_segment_prefixes()) {
-    // Use the deprecated prefix scope to find identifiers that use the
-    // first-segment prefixes and emit a warning if that happens.
-    scope = &deprecated_prefix_scope;
-  } else {
-    scope = module_scope;
-  }
-  resolve_fill_toplevel_methods(module, scope, entry_module, core_module);
-  resolve_fill_classes(module, scope, entry_module, core_module);
-  resolve_fill_globals(module, scope, entry_module, core_module);
+  resolve_fill_toplevel_methods(module, entry_module, core_module);
+  resolve_fill_classes(module, entry_module, core_module);
+  resolve_fill_globals(module, entry_module, core_module);
 }
 
 void Resolver::resolve_fill_classes(Module* module,
-                                    Scope* scope,
                                     Module* entry_module,
                                     Module* core_module) {
-
+  auto module_scope = module->scope();
   for (auto klass : module->classes()) {
-    resolve_fill_class(klass, scope, entry_module, core_module);
+    resolve_fill_class(klass, module_scope, entry_module, core_module);
   }
 }
 
 void Resolver::resolve_fill_class(ir::Class* klass,
-                                  Scope* scope,
+                                  ModuleScope* module_scope,
                                   Module* entry_module,
                                   Module* core_module) {
   auto ast_node = _ir_to_ast_map.at(klass)->as_Class();
@@ -2239,7 +2212,7 @@ void Resolver::resolve_fill_class(ir::Class* klass,
     }
   }
 
-  ClassScope class_scope(klass, scope);
+  ClassScope class_scope(klass, module_scope);
 
   for (auto name : declarations.keys()) {
     auto& vector = declarations[name];

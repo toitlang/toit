@@ -16,7 +16,6 @@
 #include "resolver_scope.h"
 
 #include "ast.h"
-#include "diagnostic.h"
 #include "set.h"
 
 namespace toit {
@@ -237,63 +236,6 @@ void ModuleScope::for_each_external(const std::function<void (Symbol, const Reso
     _non_prefixed_imported->for_each_external(callback, already_visited);
     already_visited->erase(this);
   }
-}
-
-ResolutionEntry FirstSegmentPrefixCompatibilityModuleScope::lookup_shallow(Symbol name) {
-  // if (name.is_valid()) fprintf(stderr, "shallow: '%s'\n", name.c_str());
-  auto result = _wrapped->lookup_shallow(name);
-  //fprintf(stderr, "is_empty: %s, is_prefix: %s", result.is_empty() ? "true" : "false",
-  //        result.is_prefix() ? "true" : "false");
-  if (!result.is_empty() && !result.is_prefix()) return result;
-
-  if (!_module->is_first_segment_prefix(name)) return result;
-
-  auto probe = _import_scope_cache.find(name);
-  if (probe != _import_scope_cache.end()) return probe->second;
-
-  auto first_segment_prefixes = _module->first_segment_prefixes_for(name);
-  std::vector<std::pair<ImportScope*, Source::Range>> first_segment_scopes;
-
-  for (auto first_segment : first_segment_prefixes) {
-    auto first_segment_id = first_segment.first;
-    auto first_segment_range = first_segment.second;
-    auto first_segment_prefix = _wrapped->lookup_shallow(first_segment_id);
-    if (!first_segment_prefix.is_prefix()) continue;
-    first_segment_scopes.push_back(std::make_pair(first_segment_prefix.prefix(), first_segment_range));
-  }
-
-  auto last_segment = result.is_empty() ? null : result.prefix();
-  auto compatibility_scope = _new FirstSegmentCompatibilityImportScope(name,
-                                                                       last_segment,
-                                                                       first_segment_scopes,
-                                                                       _module,
-                                                                       _diagnostics);
-  result = ResolutionEntry(compatibility_scope);
-  _import_scope_cache[name] = result;
-  return result;
-}
-
-ResolutionEntry FirstSegmentCompatibilityImportScope::do_all(const std::function<ResolutionEntry (ImportScope* scope)> fun) {
-  ResolutionEntry result;
-  if (_last_segment != null) {
-    result = fun(_last_segment);
-    if (!result.is_empty()) return result;
-  }
-  for (auto first_segment : _first_segments) {
-    auto deprecated_scope = first_segment.first;
-    auto range = first_segment.second;
-    result = fun(deprecated_scope);
-    if (!result.is_empty()) {
-      if (_module->needs_first_segment_deprecation_warning(range)) {
-        _diagnostics->report_warning(range,
-                                    "Deprecated first-segment prefix");
-        _module->mark_reported_deprecation(range);
-      }
-      // Don't look into other scopes.
-      return result;
-    }
-  }
-  return result;
 }
 
 } // namespace toit::compiler
