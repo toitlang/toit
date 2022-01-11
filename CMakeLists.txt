@@ -103,10 +103,14 @@ if (DEFINED USE_LWIP)
 endif()
 
 # Set the output buffer size to 3700, reduced from 16k.  This is small enough
-# that the allocation from MbedTLS is < 4k, 4033bytes to be precise.  We can
-# also change the input buffer length, but this requires that all communication
-# partners support the TLS protocol extension to tell them about this.
-set(MBEDTLS_C_FLAGS "-DMBEDTLS_SSL_IN_CONTENT_LEN=6000 -DMBEDTLS_SSL_OUT_CONTENT_LEN=6000 -DMBEDTLS_PLATFORM_MEMORY=1")
+# that the allocation from MbedTLS is < 4k, 4033bytes to be precise.  We set
+# the input buffer length to 6k because some sites have very large certificates
+# (eg Telegram, over 5100 bytes) and this is not something we can control.
+# There are some protocol extensions for telling the other side about our buffer
+# sizes, but they just cause the other side to fragment packets more agressively.
+# At this end we still have to reassemble the packets in and unfragmented form
+# that fits in the buffer size below.
+set(MBEDTLS_C_FLAGS "-DMBEDTLS_SSL_IN_CONTENT_LEN=6000 -DMBEDTLS_SSL_OUT_CONTENT_LEN=3700 -DMBEDTLS_PLATFORM_MEMORY=1")
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${TOIT_GENERIC_FLAGS} ${TOIT_LWIP_C_FLAGS} ${MBEDTLS_C_FLAGS}")
 set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -DDEBUG")

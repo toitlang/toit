@@ -211,46 +211,48 @@ class Session:
     if c == '\t': return true
     return c == '\r'
 
+  // The TLS protocol has two layers.  The record layer breaks up the data into
+  // records with 5 byte record headers.  In the payload of the records we find
+  // the message layer.  The message layer contains a stream of messages, of
+  // which there are four types.  A given record can only contain messages of
+  // one type, but a message can be fragmented over multiple records and a record
+  // can contain multiple messages.
+  //
   // MbedTLS can't reassemble handshake messages that span more than one
-  // TLS record.  Once handshaking is done it can reassemble them OK.
-
-  // During handshake we may therefore need to create artificial records
-  // that contain only complete messages.  Because of memory churn we
-  // try to do this as little as possible. So if records happen to coincide
-  // with message boundaries then we can just extract byte arrays from the
-  // buffered reader and feed them to MbedTLS.
-
-  // However when we have a record that doesn't end on a message boundary
-  // we have to switch to a different mode.  We create a synthetic record
-  // and fill it with a single message.
-
-  // At this point we may have a new issue: If we didn't end on a record
-  // boundary, the buffered reader has some amount of data that belongs to
-  // the next fictional record.  We unget 5 bytes of data to create an
-  // artificial record boundary.
-
+  // TLS record.  Once handshaking is done it does not have a problem with
+  // reassembling the messages, which are all of the APPLICATION_DATA_ type.
+  //
+  // During handshake we may therefore need to create synthetic records
+  // that contain only complete messages.
+  //
+  // If a message doesn't end on a record boundary, the buffered reader has
+  // some amount of data that belongs to the next fictional record.  We unget 5
+  // bytes of data to create an synthetic record boundary.
+  //
   // At some point MbedTLS gets a CHANGE_CIPHER_SPEC_ message, and after
   // this point the data from the other side is encrypted.  This happens
   // fairly late in the handshaking, and we have to hope that no more
-  // fragmented packets arrive after this point, because we can no longer
+  // fragmented messages arrive after this point, because we can no longer
   // understand the message data and defragment it.
 
   // Reads and blocks until we have enough data to construct a whole
-  // handshaking message.  May return an artificial record, (defragmented
+  // handshaking message.  May return an synthetic record, (defragmented
   // from several records on the wire).
-  // If the first record is an applicaton data record (handshaking is over) it
-  // returns an arbitrary byte array of data to be passed to MbedTLS, since
-  // MbedTLS can defragment OK once the handshake is over.
   extract_first_message_ -> ByteArray:
     if switched_to_encrypted_ or (reader_.byte 0) == APPLICATION_DATA_:
+      // We rarely (never?) find a record with the application data type
+      // because normally we have switched to encrypted mode before this
+      // happens.  In any case we lose the ability to see the message
+      // structure when encryption is activated and from this point we
+      // just feed data unchanged to MbedTLS.
       return reader_.read
     header := reader_.read_bytes 5
     content_type := header[0]
-    message_size / int := ?
+    remaining_message_bytes / int := ?
     if content_type == ALERT_:
-      message_size = 2
+      remaining_message_bytes = 2
     else if content_type == CHANGE_CIPHER_SPEC_:
-      message_size = 1
+      remaining_message_bytes = 1
       switched_to_encrypted_ = true
     else:
       if content_type != HANDSHAKE_:
@@ -263,34 +265,42 @@ class Session:
         text_end := 0
         while text_end < 100 and text_end < reader_.buffered and is_ascii_ (reader_.byte text_end):
           text_end++
-        throw "Unknown TLS record type: $content_type - server replied '$(reader_.read_string text_end)'"
+        server_reply := ""
+        if text_end > 2:
+          server_reply = "- server replied unencrypted:\n$(reader_.read_string text_end)"
+        throw "Unknown TLS record type: $content_type$server_reply"
       reader_.ensure 4  // 4 byte handshake message header.
-      message_size = (reader_.byte 1) << 16
-      message_size += (reader_.byte 2) << 8
-      message_size += (reader_.byte 3)
-      message_size += 4  // Encoded size does not include the 4 byte handshake header.
+      // Big endian 24 bit handshake message size.
+      remaining_message_bytes = (reader_.byte 1) << 16
+      remaining_message_bytes += (reader_.byte 2) << 8
+      remaining_message_bytes += (reader_.byte 3)
+      remaining_message_bytes += 4  // Encoded size does not include the 4 byte handshake header.
 
-    if message_size >= 0x4000: throw "TLS handshake message too large to defragment"
+    // The protocol requires that records are less than 16k large, so if there is
+    // a single message that doesn't fit in a record we can't defragment.  MbedTLS
+    // has a lower limit, currently configured to 6000 bytes, so this isn't actually
+    // limiting us.
+    if remaining_message_bytes >= 0x4000: throw "TLS handshake message too large to defragment"
     // Make an artificial record that was not on the wire.
-    record := ByteArray message_size + 5  // Include space for header.
+    record := ByteArray remaining_message_bytes + 5  // Include space for header.
     record.replace 0 header
     // Overwrite record size of header.
-    BIG_ENDIAN.put_uint16 record 3 message_size
+    BIG_ENDIAN.put_uint16 record 3 remaining_message_bytes
     remaining_in_record := BIG_ENDIAN.uint16 header 3
-    while message_size > 0:
-      m := min remaining_in_record message_size
+    while remaining_message_bytes > 0:
+      m := min remaining_in_record remaining_message_bytes
       chunk := reader_.read --max_size=m
-      record.replace (record.size - message_size) chunk
-      message_size -= chunk.size
+      record.replace (record.size - remaining_message_bytes) chunk
+      remaining_message_bytes -= chunk.size
       remaining_in_record -= chunk.size
-      if remaining_in_record == 0 and message_size != 0:
+      if remaining_in_record == 0 and remaining_message_bytes != 0:
         header = reader_.read_bytes 5  // Next record header.
         if header[0] != content_type: throw "Unexpected content type in continued record"
         remaining_in_record = BIG_ENDIAN.uint16 header 3
     if remaining_in_record != 0:
       // The message ended in the middle of a record.  We have to unget an
       // artificial record header to the stream to take care of the rest of
-      // the record
+      // the record.
       reader_.ensure 1
       synthetic_header := header.copy
       BIG_ENDIAN.put_uint16 synthetic_header 3 remaining_in_record
