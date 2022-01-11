@@ -11,15 +11,15 @@ MAX_BUFFER_GROWTH_ ::= 1024
 /**
 Encodes the $obj as a JSON ByteArray.
 The $obj must be a supported type, which means either a type supported
-  by the converter block or an instance of int, bool, float, string, List
+  by the $converter block or an instance of int, bool, float, string, List
   or Map.
 Maps must have only string keys.  The elements of lists and the values of
   maps can be any of the above supported types.
-The converter block is passed an object to be serialized and an instance
+The $converter block is passed an object to be serialized and an instance
   of the $Encoder class.  If it returns a non-null value, that value will
   be serialized instead of the object that was passed in.  Alternatively,
-  the converter block can call the encode or put_unquoted methods on the
-  encoder.
+  the $converter block can call the $Encoder.encode or $Encoder.put_unquoted
+  methods on the encoder.
 Utf-8 encoding is used for strings.
 */
 encode obj [converter] -> ByteArray:
@@ -52,15 +52,15 @@ decode bytes/ByteArray -> any:
 /**
 Encodes the $obj as a JSON string.
 The $obj must be a supported type, which means either a type supported
-  by the converter block or an instance of int, bool, float, string, List
+  by the $converter block or an instance of int, bool, float, string, List
   or Map.
 Maps must have only string keys.  The elements of lists and the values of
   maps can be any of the above supported types.
-The converter block is passed an object to be serialized and an instance
+The $converter block is passed an object to be serialized and an instance
   of the $Encoder class.  If it returns a non-null value, that value will
   be serialized instead of the object that was passed in.  Alternatively,
-  the converter block can call the encode or put_unquoted methods on the
-  encoder.
+  the $converter block can call the $Encoder.encode or $Encoder.put_unquoted
+  methods on the encoder.
 Utf-8 encoding is used for strings.
 */
 stringify obj/any [converter] -> string:
