@@ -29,6 +29,10 @@ endif()
 
 file(READ ${TEST} TEST_CONTENT)
 
+# Some of the test content contains invalid characters.
+# The CMP0053 allows for more characters.
+cmake_policy(SET CMP0053 NEW)
+
 if ("${TEST_CONTENT}" MATCHES "[\n]// TEST_FLAGS: ([^\n]*)[\n]")
   set(TEST_FLAGS ${CMAKE_MATCH_1})
   separate_arguments(TEST_FLAGS)

@@ -10,7 +10,6 @@ function(NORMALIZE_GOLD INPUT PREFIX_TO_REMOVE GIT_VERSION OUTPUT)
 endfunction()
 
 function(LOCALIZE_GOLD INPUT OUTPUT)
-  message("${CMAKE_SYSTEM_NAME}")
   if (NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "Windows")
     set(${OUTPUT} "${INPUT}" PARENT_SCOPE)
     return()
