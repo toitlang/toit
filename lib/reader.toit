@@ -439,9 +439,9 @@ class BufferedReader implements Reader:
   At least $n bytes must be available.
   */
   read_bytes n -> ByteArray:
-    str := bytes n
+    byte_array := bytes n
     skip n
-    return str
+    return byte_array
 
   /**
   Peeks the first $n bytes and converts them to a string.
@@ -523,6 +523,22 @@ class BufferedReader implements Reader:
     skip length + 1 // Skip delimiter char
     return bytes
 
+  /**
+  The bytes in $value are prepended to the BufferedReader.
+  These will be the first bytes to be read in subsequent read
+    operations.  This takes ownership of $value so it is kept
+    alive and its contents should not be modified after being
+    given to the BufferedReader.
+  */
+  unget value/ByteArray -> none:
+    if first_array_position_ != 0:
+      first := arrays_.first
+      arrays_.remove_first
+      first = first[first_array_position_..]
+      arrays_.prepend first
+      first_array_position_ = 0
+    arrays_.prepend value
+
 class Element_:
   value/ByteArray
   next/Element_? := null
@@ -543,6 +559,16 @@ class ByteArrayList_:
     else:
       head_ = element
     tail_ = element
+    size++
+    size_in_bytes += value.size
+
+  prepend value/ByteArray:
+    element := Element_ value
+    if head_:
+      element.next = head_
+    else:
+      tail_ = element
+    head_ = element
     size++
     size_in_bytes += value.size
 

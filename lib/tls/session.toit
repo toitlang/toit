@@ -6,6 +6,7 @@ import monitor
 import reader
 import writer
 import net.x509 as x509
+import binary show BIG_ENDIAN
 
 import .certificate
 import .socket
@@ -23,7 +24,8 @@ class Session:
   root_certificates/List
   handshake_timeout/Duration
 
-  reader_/reader.Reader
+  reader_/reader.BufferedReader
+  switched_to_encrypted_ := false
   writer_ ::= ?
   server_name_/string? ::= null
 
@@ -31,7 +33,6 @@ class Session:
   handshake_in_progress_/monitor.Latch? := monitor.Latch
   tls_ := null
   outgoing_byte_array_ := ByteArray 1500
-  incoming_to_ := 0
   closed_for_write_ := false
 
   /**
@@ -45,11 +46,12 @@ class Session:
   The handshake routine requires at most $handshake_timeout between each step
     in the handshake process.
   */
-  constructor.client .reader_ .writer_
+  constructor.client unbuffered_reader .writer_
       --server_name/string?=null
       --.certificate=null
       --.root_certificates=[]
       --.handshake_timeout/Duration=DEFAULT_HANDSHAKE_TIMEOUT:
+    reader_ = reader.BufferedReader unbuffered_reader
     server_name_ = server_name
 
   /**
@@ -61,10 +63,11 @@ class Session:
   The handshake routine requires at most $handshake_timeout between each step
     in the handshake process.
   */
-  constructor.server .reader_ .writer_
+  constructor.server unbuffered_reader .writer_
       --.certificate=null
       --.root_certificates=[]
       --.handshake_timeout/Duration=DEFAULT_HANDSHAKE_TIMEOUT:
+    reader_ = reader.BufferedReader unbuffered_reader
     is_server = true
 
   /**
@@ -109,7 +112,7 @@ class Session:
           return
         else if state == TOIT_TLS_WANT_READ_:
           with_timeout handshake_timeout:
-            if not read_more_: throw "TLS_CONNECTION_CLOSED_DURING_HANDSHAKE"
+            read_handshake_message_
         else if state == TOIT_TLS_WANT_WRITE_:
           // This is already handled above with flush_outgoing_
         else:
@@ -189,14 +192,115 @@ class Session:
         tls_set_outgoing_ tls_ outgoing_byte_array_ 0
         return
 
-  read_more_:
-    while true:
-      from := tls_get_incoming_from_ tls_
-      if incoming_to_ > from: return true
-      ba := reader_.read
-      if not ba: return false
-      tls_set_incoming_ tls_ ba 0
-      if ba.size > 0: return true
+  read_more_ -> bool:
+    from := tls_get_incoming_from_ tls_
+    ba := reader_.read
+    if not ba: return false
+    tls_set_incoming_ tls_ ba 0
+    return true
+
+  // Record types from RFC 5246.
+  static CHANGE_CIPHER_SPEC_ ::= 20
+  static ALERT_ ::= 21
+  static HANDSHAKE_ ::= 22
+  static APPLICATION_DATA_ ::= 23
+
+  is_ascii_ c/int -> bool:
+    if ' ' <= c <= '~': return true
+    if c == '\n': return true
+    if c == '\t': return true
+    return c == '\r'
+
+  // MbedTLS can't reassemble handshake messages that span more than one
+  // TLS record.  Once handshaking is done it can reassemble them OK.
+
+  // During handshake we may therefore need to create artificial records
+  // that contain only complete messages.  Because of memory churn we
+  // try to do this as little as possible. So if records happen to coincide
+  // with message boundaries then we can just extract byte arrays from the
+  // buffered reader and feed them to MbedTLS.
+
+  // However when we have a record that doesn't end on a message boundary
+  // we have to switch to a different mode.  We create a synthetic record
+  // and fill it with a single message.
+
+  // At this point we may have a new issue: If we didn't end on a record
+  // boundary, the buffered reader has some amount of data that belongs to
+  // the next fictional record.  We unget 5 bytes of data to create an
+  // artificial record boundary.
+
+  // At some point MbedTLS gets a CHANGE_CIPHER_SPEC_ message, and after
+  // this point the data from the other side is encrypted.  This happens
+  // fairly late in the handshaking, and we have to hope that no more
+  // fragmented packets arrive after this point, because we can no longer
+  // understand the message data and defragment it.
+
+  // Reads and blocks until we have enough data to construct a whole
+  // handshaking message.  May return an artificial record, (defragmented
+  // from several records on the wire).
+  // If the first record is an applicaton data record (handshaking is over) it
+  // returns an arbitrary byte array of data to be passed to MbedTLS, since
+  // MbedTLS can defragment OK once the handshake is over.
+  extract_first_message_ -> ByteArray:
+    if switched_to_encrypted_ or (reader_.byte 0) == APPLICATION_DATA_:
+      return reader_.read
+    header := reader_.read_bytes 5
+    content_type := header[0]
+    message_size / int := ?
+    if content_type == ALERT_:
+      message_size = 2
+    else if content_type == CHANGE_CIPHER_SPEC_:
+      message_size = 1
+      switched_to_encrypted_ = true
+    else:
+      if content_type != HANDSHAKE_:
+        // If we get an unknown record type the probable reason is that
+        // we are not connecting to a real TLS server.  Often we have
+        // accidentally connected to an HTTP server instead.  If the
+        // response looks like ASCII then put it in the error thrown -
+        // it may be helpful.
+        reader_.unget header
+        text_end := 0
+        while text_end < 100 and text_end < reader_.buffered and is_ascii_ (reader_.byte text_end):
+          text_end++
+        throw "Unknown TLS record type: $content_type - server replied '$(reader_.read_string text_end)'"
+      reader_.ensure 4  // 4 byte handshake message header.
+      message_size = (reader_.byte 1) << 16
+      message_size += (reader_.byte 2) << 8
+      message_size += (reader_.byte 3)
+      message_size += 4  // Encoded size does not include the 4 byte handshake header.
+
+    if message_size >= 0x4000: throw "TLS handshake message too large to defragment"
+    // Make an artificial record that was not on the wire.
+    record := ByteArray message_size + 5  // Include space for header.
+    record.replace 0 header
+    // Overwrite record size of header.
+    BIG_ENDIAN.put_uint16 record 3 message_size
+    remaining_in_record := BIG_ENDIAN.uint16 header 3
+    while message_size > 0:
+      m := min remaining_in_record message_size
+      chunk := reader_.read --max_size=m
+      record.replace (record.size - message_size) chunk
+      message_size -= chunk.size
+      remaining_in_record -= chunk.size
+      if remaining_in_record == 0 and message_size != 0:
+        header = reader_.read_bytes 5  // Next record header.
+        if header[0] != content_type: throw "Unexpected content type in continued record"
+        remaining_in_record = BIG_ENDIAN.uint16 header 3
+    if remaining_in_record != 0:
+      // The message ended in the middle of a record.  We have to unget an
+      // artificial record header to the stream to take care of the rest of
+      // the record
+      reader_.ensure 1
+      synthetic_header := header.copy
+      BIG_ENDIAN.put_uint16 synthetic_header 3 remaining_in_record
+      reader_.unget synthetic_header
+    return record
+
+  read_handshake_message_ -> none:
+    packet := extract_first_message_
+    tls_set_incoming_ tls_ packet 0
+
 
 TOIT_TLS_DONE_ := 1 << 0
 TOIT_TLS_WANT_READ_ := 1 << 1
