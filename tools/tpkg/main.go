@@ -22,18 +22,11 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 	"github.com/toitlang/tpkg/commands"
 	"github.com/toitlang/tpkg/config"
 	"github.com/toitlang/tpkg/config/store"
 	"github.com/toitlang/tpkg/pkg/tracking"
-)
-
-var (
-	rootCmd = &cobra.Command{
-		Use:              "toitpkg",
-		Short:            "Run pkg commands",
-		TraverseChildren: true,
-	}
 )
 
 func getTrimmedEnv(key string) string {
@@ -42,6 +35,30 @@ func getTrimmedEnv(key string) string {
 
 // Should be set with '-X' flag when linking.
 var sdkVersion = ""
+
+func copyAsDeprecated(cmd *cobra.Command) *cobra.Command {
+	result := &cobra.Command{
+		Deprecated: "Use without the 'pkg' prefix",
+		Use:        cmd.Use,
+		Short:      cmd.Short,
+		Long:       cmd.Long,
+		Run:        cmd.Run,
+		RunE:       cmd.RunE,
+		Args:       cmd.Args,
+		Aliases:    cmd.Aliases,
+		Hidden:     cmd.Hidden,
+		Example:    cmd.Example,
+	}
+	if cmd.HasLocalFlags() {
+		cmd.Flags().VisitAll(func(flag *pflag.Flag) {
+			result.Flags().AddFlag(flag)
+		})
+	}
+	for _, c := range cmd.Commands() {
+		result.AddCommand(copyAsDeprecated(c))
+	}
+	return result
+}
 
 func main() {
 	cfgFile := getTrimmedEnv("TOIT_CONFIG_FILE")
@@ -66,6 +83,10 @@ func main() {
 			fmt.Fprintln(os.Stderr, e)
 		}
 	}
-	rootCmd.AddCommand(pkgCmd)
-	rootCmd.Execute()
+	deprecatedPkg := copyAsDeprecated(pkgCmd)
+
+	pkgCmd.Use = "toit.pkg"
+	pkgCmd.Short = "The toit package manager"
+	pkgCmd.AddCommand(deprecatedPkg)
+	pkgCmd.Execute()
 }
