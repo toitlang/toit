@@ -151,7 +151,7 @@ set(GO_ENV "$ENV{GO_BUILD_FLAGS}")
 separate_arguments(GO_ENV)
 list(APPEND GO_ENV CGO_ENABLED=1 GODEBUG=netdns=go "GOOS=${GOOS}" "GOARCH=${GOARCH}")
 
-set(GO_LINK_FLAGS "$ENV{GO_LINK_FLAGS} -X main.date=${BUILD_DATE}")
+set(GO_LINK_FLAGS "$ENV{GO_LINK_FLAGS} -X main.date=${BUILD_DATE} -X main.sdkVersion=${TOIT_GIT_VERSION}")
 
 set(TOITLSP_BIN "${CMAKE_BINARY_DIR}/sdk/bin/toit.lsp${CMAKE_EXECUTABLE_SUFFIX}")
 add_custom_command(
@@ -164,7 +164,7 @@ set(TOITPKG_BIN "${CMAKE_BINARY_DIR}/sdk/bin/toit.pkg${CMAKE_EXECUTABLE_SUFFIX}"
 add_custom_command(
   OUTPUT "${TOITPKG_BIN}"
   COMMAND "${CMAKE_COMMAND}" -E env ${GO_ENV} go build -ldflags "${GO_LINK_FLAGS}" -tags "netgo osusergo" -o "${TOITPKG_BIN}"
-  WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}/tools/tpkg/cmd/toitpkg
+  WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}/tools/tpkg
 )
 
 add_custom_target(
