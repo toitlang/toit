@@ -9,7 +9,7 @@ import net
 DNS_DEFAULT_TIMEOUT ::= Duration --s=20
 DNS_RETRY_TIMEOUT ::= Duration --s=1
 HOSTS_ ::= {"localhost": "127.0.0.1"}
-CACHE_ ::= Map  // From name to CacheEntry
+CACHE_ ::= Map  // From name to CacheEntry.
 MAX_CACHE_SIZE_ ::= platform == "FreeRTOS" ? 30 : 1000
 MAX_TRIMMED_CACHE_SIZE_ ::= MAX_CACHE_SIZE_ / 3 * 2
 
@@ -192,7 +192,7 @@ class DnsQuery_:
 
       // We won't cache more than a day, even if the TTL is very high.  (In
       // practice TTLs over one hour are rare.)
-      ttl = min ttl 3600 * 24
+      ttl = min ttl (3600 * 24)
       // Ignore negative TTLs.
       ttl = max 0 ttl
 
@@ -234,7 +234,7 @@ class DnsQuery_:
         return
     position_block.call position + 1
 
-/// Limit the size of the cache to avoid using too much memory.
+/// Limits the size of the cache to avoid using too much memory.
 trim_cache_ -> none:
   if CACHE_.size < MAX_CACHE_SIZE_: return
 
@@ -255,8 +255,8 @@ trim_cache_ -> none:
     toggle
 
 class CacheEntry:
-  server / string          // Unparsed server name like "8.8.8.8"
-  end / int                // Time in µs, compatible with Time.monotonic_us
+  server / string          // Unparsed server name like "8.8.8.8".
+  end / int                // Time in µs, compatible with Time.monotonic_us.
   address / net.IpAddress
 
   constructor .address ttl/int .server:

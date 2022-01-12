@@ -32,7 +32,5 @@ cache_test:
 
   // We should easily be able to hit the cache in less than 5ms (a round trip
   // lookup takes about 15ms).
-  start := Time.now
-  dns_lookup "www.apple.com"
-  duration := start.to Time.now
+  duration := Duration.of: dns_lookup "www.apple.com"
   expect duration < (Duration --ms=5)
