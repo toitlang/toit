@@ -88,5 +88,13 @@ func main() {
 	pkgCmd.Use = "toit.pkg"
 	pkgCmd.Short = "The toit package manager"
 	pkgCmd.AddCommand(deprecatedPkg)
+	pkgCmd.AddCommand(&cobra.Command{
+		Use:   "version",
+		Short: "Prints the version of the package manager",
+		Args:  cobra.NoArgs,
+		Run: func(cmd *cobra.Command, args []string) {
+			fmt.Println(sdkVersion)
+		},
+	})
 	pkgCmd.Execute()
 }
