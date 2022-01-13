@@ -86,7 +86,7 @@ func main() {
 	deprecatedPkg := copyAsDeprecated(pkgCmd)
 
 	pkgCmd.Use = "toit.pkg"
-	pkgCmd.Short = "The toit package manager"
+	pkgCmd.Short = "The Toit package manager"
 	pkgCmd.AddCommand(deprecatedPkg)
 	pkgCmd.Execute()
 }
