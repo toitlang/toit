@@ -33,7 +33,6 @@ if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows")
     tests/file_test.toit
     tests/interface_address_test.toit
     tests/keepalive_test.toit
-    tests/number_test.toit
     tests/pipe2_test.toit
     tests/pipe_test.toit
     tests/regress/issue3_test.toit
