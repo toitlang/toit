@@ -27,6 +27,9 @@ const char* FlashRegistry::allocations_memory_ = null;
 void FlashRegistry::set_up() {
 }
 
+void FlashRegistry::tear_down() {
+}
+
 bool FlashRegistry::is_allocations_set_up() {
   UNIMPLEMENTED();
 }

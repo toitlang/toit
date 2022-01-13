@@ -22,6 +22,7 @@ namespace toit {
 class FlashRegistry {
  public:
   static void set_up();
+  static void tear_down();
 
   // Flush the caches before reading.
   static void flush();
