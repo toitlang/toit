@@ -73,11 +73,10 @@ static int run_program(Program* program) {
 
 int main(int argc, char **argv) {
   Flags::process_args(&argc, argv);
-  FlashRegistry::set_up();
-
-  OS::set_up();
-
   if (argc < 2) print_usage(1);
+
+  FlashRegistry::set_up();
+  OS::set_up();
 
   char* image_filename = argv[1];
   FILE* file = fopen(image_filename, "rb");
@@ -107,8 +106,11 @@ int main(int argc, char **argv) {
     output.write(reinterpret_cast<word*>(buffer), chunk_word_size);
   }
   fclose(file);
+
   int exit_state = run_program(reinterpret_cast<Program*>(relocated.program()));
+
   OS::tear_down();
+  FlashRegistry::tear_down();
   return exit_state;
 }
 

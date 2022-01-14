@@ -50,24 +50,7 @@ Dumps the string of $object and a newline on stdout and flushes it.
 Does not yield the currently running task.
 */
 print_ object:
-  write_string_on_stdout_ object.stringify true
-
-/**
-Dumps the string $message and a newline on stdout and flushes it.
-
-Does not yield the currently running task.
-*/
-print_string_on_stdout_ message:
-  write_string_on_stdout_ message true
-
-/**
-Dumps the string of $object on stdout and flushes it.
-If $add_newline is true adds a "\n" to the output.
-
-Does not yield the currently running task.
-*/
-write_on_stdout_ object add_newline:
-  write_string_on_stdout_ object.stringify add_newline
+  write_on_stdout_ object.stringify true
 
 /**
 Dumps the string $message on stdout and flushes it.
@@ -75,7 +58,7 @@ If $add_newline is true adds a "\n" to the output.
 
 Does not yield the currently running task.
 */
-write_string_on_stdout_ message add_newline:
+write_on_stdout_ message/string add_newline/bool -> none:
   #primitive.core.write_string_on_stdout
 
 /**
@@ -84,24 +67,7 @@ Dumps the string of $object and a newline on stderr and flushes it.
 Does not yield the currently running task.
 */
 print_on_stderr_ object:
-  write_string_on_stderr_ object.stringify true
-
-/**
-Dumps the string $message and a newline on stderr and flushes it.
-
-Does not yield the currently running task.
-*/
-print_string_on_stderr_ message:
-  write_string_on_stderr_ message true
-
-/**
-Dumps the string of $object on stderr and flushes it.
-If $add_newline is true adds a "\n" to the output.
-
-Does not yield the currently running task.
-*/
-write_on_stderr_ object add_newline:
-  write_string_on_stderr_ object.stringify add_newline
+  write_on_stderr_ object.stringify true
 
 /**
 Dumps the string $message on stderr and flushes it.
@@ -109,5 +75,5 @@ If $add_newline is true adds a "\n" to the output.
 
 Does not yield the currently running task.
 */
-write_string_on_stderr_ message add_newline:
+write_on_stderr_ message/string add_newline/bool -> none:
   #primitive.core.write_string_on_stderr

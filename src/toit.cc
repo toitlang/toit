@@ -140,14 +140,12 @@ int run_program(char* boot_program_path, SnapshotBundle bundle, char** argv) {
 
 int main(int argc, char **argv) {
   Flags::process_args(&argc, argv);
-  FlashRegistry::set_up();
-
-  int exit_state = 0;
-
-  OS::set_up();
-
   if (argc < 2) print_usage(1);
 
+  FlashRegistry::set_up();
+  OS::set_up();
+
+  int exit_state = 0;
   char* boot_bundle_path = null;
   if (strcmp(argv[1], "-b") == 0) {
     // The wrapping boot bundle is passed after the '-b' arg.
@@ -456,6 +454,7 @@ int main(int argc, char **argv) {
   free(boot_bundle_path);
 
   OS::tear_down();
+  FlashRegistry::tear_down();
   return exit_state;
 }
 
