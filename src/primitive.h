@@ -60,7 +60,6 @@ namespace toit {
   M(subprocess, MODULE_SUBPROCESS)           \
   M(math,    MODULE_MATH)                    \
   M(x509,    MODULE_X509)                    \
-  M(rpc,     MODULE_RPC)                     \
   M(flash_kv, MODULE_FLASH_KV)               \
 
 #define MODULE_CORE(PRIMITIVE)               \
@@ -522,19 +521,6 @@ namespace toit {
   PRIMITIVE(parse, 2)                        \
   PRIMITIVE(get_common_name, 1)              \
   PRIMITIVE(close, 1)                        \
-
-#define MODULE_RPC(PRIMITIVE)                \
-  PRIMITIVE(init, 0)                         \
-  PRIMITIVE(create_channel, 2)               \
-  PRIMITIVE(open_channel, 2)                 \
-  PRIMITIVE(send_status, 2)                  \
-  PRIMITIVE(send, 4)                         \
-  PRIMITIVE(has_frame, 1)                    \
-  PRIMITIVE(get_stream_id, 1)                \
-  PRIMITIVE(get_bits, 1)                     \
-  PRIMITIVE(take_bytes, 1)                   \
-  PRIMITIVE(skip, 1)                         \
-  PRIMITIVE(close, 2)                        \
 
 #define MODULE_FLASH_KV(PRIMITIVE)           \
   PRIMITIVE(init, 3)                         \

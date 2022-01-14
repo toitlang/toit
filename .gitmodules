@@ -3,6 +3,3 @@
 	url = https://github.com/toitware/esp-idf.git
 	branch = patch-head-4.3-3
 	ignore = untracked
-[submodule "tools/tpkg"]
-	path = tools/tpkg
-	url = https://github.com/toitlang/tpkg.git
