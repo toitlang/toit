@@ -9,6 +9,7 @@ main:
   localhost_test
   ipv6_address_test
   cache_test
+  fail_test
 
 localhost_test:
   expect_equals "127.0.0.1" (dns_lookup "localhost").stringify
@@ -34,3 +35,10 @@ cache_test:
   // lookup takes about 15ms).
   duration := Duration.of: dns_lookup "www.apple.com"
   expect duration < (Duration --ms=5)
+
+fail_test:
+  error := catch: dns_lookup "does-not-resolve.example.com"
+  expect error is DnsException
+  exception := error as DnsException
+  expect
+    exception.text.contains "NO_SUCH_DOMAIN"

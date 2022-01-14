@@ -164,12 +164,21 @@ class DnsQuery_:
       return null
     return entry.address
 
+  static ERROR_MESSAGES_ ::= ["", "FORMAT_ERROR", "SERVER_FAILURE", "NO_SUCH_DOMAIN", "NOT_IMPLEMENTED", "REFUSED"]
+
   decode_response_ response/ByteArray name_server/string -> net.IpAddress:
     received_id := BIG_ENDIAN.uint16 response 0
     if received_id != id:
       throw (DnsException "Response ID mismatch")
-    if response[2] != 0x81: throw (DnsException "Unexpected response")
-    if response[3] & 0xf != 0: throw (DnsException "Error code $(response[3] & 0xf)")
+    // Check for expected response, but mask out the authoritative bit
+    // so we can accept answers that are either authoritative or non-
+    // authoritative.
+    if response[2] & ~4 != 0x81: throw (DnsException "Unexpected response: $(%x response[2])")
+    error := response[3] & 0xf
+    if error != 0:
+      detail := "error code $error"
+      if 0 <= error < ERROR_MESSAGES_.size: detail = ERROR_MESSAGES_[error]
+      throw (DnsException "Server responded: $detail")
     position := 12
     queries := BIG_ENDIAN.uint16 response 4
     if queries != 1: throw (DnsException "Unexpected number of queries in response")
