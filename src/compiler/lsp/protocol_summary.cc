@@ -1,4 +1,4 @@
-// Copyright (C) 2019 Toitware ApS.
+// Copyright (C) 2022 Toitware ApS.
 //
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -15,8 +15,15 @@
 
 #include <functional>
 
-#include "summary_writer.h"
-#include "toitdoc_node.h"
+#include "protocol_summary.h"
+
+#include "../ir.h"
+#include "../map.h"
+#include "../resolver_scope.h"
+#include "../sources.h"
+#include "../toitdoc.h"
+#include "../toitdoc_node.h"
+
 
 namespace toit {
 namespace compiler {
@@ -546,9 +553,10 @@ class ToitdocPathMappingCreator {
 
 }  // Anonymous namespace.
 
-void print_summary(const std::vector<Module*>& modules,
-                   int core_index,
-                   ToitdocRegistry toitdocs) {
+
+void emit_summary(const std::vector<Module*>& modules,
+                  int core_index,
+                  const ToitdocRegistry& toitdocs) {
   auto paths = ToitdocPathMappingCreator().create(modules, toitdocs);
   Writer writer(modules, toitdocs, core_index, paths);
   writer.print_modules();

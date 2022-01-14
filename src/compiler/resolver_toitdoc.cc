@@ -16,7 +16,7 @@
 #include "../top.h"
 
 #include "diagnostic.h"
-#include "lsp.h"
+#include "lsp/lsp.h"
 #include "resolver_toitdoc.h"
 #include "resolver_scope.h"
 
@@ -229,7 +229,7 @@ static bool left_most_is_selection(ast::Node* ast_target) {
   return left_most_is_selection(ast_target->as_Dot()->receiver());;
 }
 
-static void call_lsp_handler(LspSelectionHandler* lsp_handler,
+static void call_lsp_handler(Lsp* lsp,
                              ast::ToitdocReference* ast_ref,
                              ast::Node* holder,
                              List<ir::Node*> candidates,
@@ -250,10 +250,10 @@ static void call_lsp_handler(LspSelectionHandler* lsp_handler,
     if (class_scope != null) super_entries = lookup_super(holder, class_scope).nodes();
 
     LeftMostIterator iterator(scope, holder, this_class, super_entries);
-    lsp_handler->toitdoc_ref(ast_ref,
-                             candidates,
-                             &iterator,
-                             is_signature_reference);
+    lsp->selection_handler()->toitdoc_ref(ast_ref,
+                                          candidates,
+                                          &iterator,
+                                          is_signature_reference);
     return;
   }
 
@@ -279,10 +279,10 @@ static void call_lsp_handler(LspSelectionHandler* lsp_handler,
     } else {
       return;
     }
-    lsp_handler->toitdoc_ref(dot->name(),
-                             candidates,
-                             iterator,
-                             is_signature_reference);
+    lsp->selection_handler()->toitdoc_ref(dot->name(),
+                                          candidates,
+                                          iterator,
+                                          is_signature_reference);
     return;
   }
 
@@ -298,27 +298,27 @@ static void call_lsp_handler(LspSelectionHandler* lsp_handler,
     PrefixIterator iterator(prefix);
     // The candidates aren't for this segment, but for the whole ast_ref node.
     // We could look up new candidates, but for now we just provide none.
-    lsp_handler->toitdoc_ref(left_dot->name(),
-                             List<ir::Node*>(),
-                             &iterator,
-                             is_signature_reference);
+    lsp->selection_handler()->toitdoc_ref(left_dot->name(),
+                                          List<ir::Node*>(),
+                                          &iterator,
+                                          is_signature_reference);
     return;
   }
   ASSERT(dot->name()->is_LspSelection());
   auto class_entry = scope->lookup_prefixed(left_dot);
   if (!class_entry.is_class()) return;
   ClassIterator iterator(class_entry.klass());
-  lsp_handler->toitdoc_ref(dot->name(),
-                           candidates,
-                           &iterator,
-                           is_signature_reference);
+  lsp->selection_handler()->toitdoc_ref(dot->name(),
+                                        candidates,
+                                        &iterator,
+                                        is_signature_reference);
 }
 
 
 ir::Node* resolve_toitdoc_ref(ast::ToitdocReference* ast_ref,
                               ast::Node* holder,
                               Scope* scope,
-                              LspSelectionHandler* lsp_handler,
+                              Lsp* lsp,
                               const UnorderedMap<ir::Node*, ast::Node*>& ir_to_ast_map,
                               Diagnostics* diagnostics) {
   if (ast_ref->is_error()) return null;
@@ -458,7 +458,7 @@ ir::Node* resolve_toitdoc_ref(ast::ToitdocReference* ast_ref,
     }
   }
   if (is_lsp) {
-    call_lsp_handler(lsp_handler,
+    call_lsp_handler(lsp,
                      ast_ref,
                      holder,
                      goto_definition_targets,
@@ -470,7 +470,8 @@ ir::Node* resolve_toitdoc_ref(ast::ToitdocReference* ast_ref,
 Toitdoc<ir::Node*> resolve_toitdoc(Toitdoc<ast::Node*> ast_toitdoc,
                                    ast::Node* holder,
                                    Scope* scope,
-                                   LspSelectionHandler* lsp_handler,                                    const UnorderedMap<ir::Node*, ast::Node*>& ir_to_ast_map,
+                                   Lsp* lsp,
+                                   const UnorderedMap<ir::Node*, ast::Node*>& ir_to_ast_map,
                                    Diagnostics* diagnostics) {
   auto ast_refs = ast_toitdoc.refs();
   auto resolved = ListBuilder<ir::Node*>::allocate(ast_refs.length());
@@ -478,7 +479,7 @@ Toitdoc<ir::Node*> resolve_toitdoc(Toitdoc<ast::Node*> ast_toitdoc,
     auto ast_node = ast_refs[i];
     ASSERT(ast_node->is_ToitdocReference());
     auto ast_ref = ast_node->as_ToitdocReference();
-    resolved[i] = resolve_toitdoc_ref(ast_ref, holder, scope, lsp_handler, ir_to_ast_map, diagnostics);
+    resolved[i] = resolve_toitdoc_ref(ast_ref, holder, scope, lsp, ir_to_ast_map, diagnostics);
   }
   return Toitdoc<ir::Node*>(ast_toitdoc.contents(), resolved, ast_toitdoc.range());
 }

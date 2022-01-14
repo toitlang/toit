@@ -15,12 +15,12 @@
 
 #include "completion.h"
 
-#include "lock.h"
-#include "resolver_scope.h"
-#include "resolver_toitdoc.h"
-#include "resolver_primitive.h"
-#include "set.h"
-#include "token.h"
+#include "../lock.h"
+#include "../resolver_scope.h"
+#include "../resolver_toitdoc.h"
+#include "../resolver_primitive.h"
+#include "../set.h"
+#include "../token.h"
 
 namespace toit {
 namespace compiler {
@@ -46,11 +46,11 @@ void CompletionHandler::type(ast::Node* node,
   Set<std::string> important_core_types;
 
   if (!scope->is_prefixed_scope()) {
-    complete("any", KEYWORD);
-    if (allow_none) complete("none", KEYWORD);
-    complete("bool", CLASS);
-    complete("int", CLASS);
-    complete("float", CLASS);
+    complete("any", CompletionKind::KEYWORD);
+    if (allow_none) complete("none", CompletionKind::KEYWORD);
+    complete("bool", CompletionKind::CLASS);
+    complete("int", CompletionKind::CLASS);
+    complete("float", CompletionKind::CLASS);
     // The following are just commonly used and should appear early in the list.
     important_core_types.insert("String");
     important_core_types.insert("Map");
@@ -59,7 +59,7 @@ void CompletionHandler::type(ast::Node* node,
   }
 
   for (auto core_type : important_core_types) {
-    complete(core_type, CLASS);
+    complete(core_type, CompletionKind::CLASS);
   }
   scope->for_each([&](Symbol name, const ResolutionEntry& entry) {
     if (entry.is_class()) {
@@ -68,9 +68,9 @@ void CompletionHandler::type(ast::Node* node,
         //   shown as classes and not as constructors.
         auto klass = entry.klass();
         if (klass->is_interface()) {
-          complete_entry(name, entry, INTERFACE);
+          complete_entry(name, entry, CompletionKind::INTERFACE);
         } else {
-          complete_entry(name, entry, CLASS);
+          complete_entry(name, entry, CompletionKind::CLASS);
         }
       }
     } else if (entry.is_prefix()) {
@@ -151,10 +151,10 @@ void CompletionHandler::call_static(ast::Node* node,
                                     List<ir::Node*> candidates,
                                     IterableScope* scope,
                                     ir::Method* surrounding) {
-  complete("true", KEYWORD);
-  complete("false", KEYWORD);
-  complete("null", KEYWORD);
-  complete("return", KEYWORD);
+  complete("true", CompletionKind::KEYWORD);
+  complete("false", CompletionKind::KEYWORD);
+  complete("null", CompletionKind::KEYWORD);
+  complete("return", CompletionKind::KEYWORD);
   complete_static_ids(scope, surrounding);
   exit(0);
 }
@@ -209,7 +209,7 @@ void CompletionHandler::call_class(ast::Dot* node,
 }
 
 void CompletionHandler::call_block(ast::Dot* node, ir::Node* ir_receiver) {
-  complete("call", METHOD);
+  complete("call", CompletionKind::METHOD);
 }
 
 void CompletionHandler::call_static_named(ast::Node* name_node, ir::Node* ir_call_target, List<ir::Node*> candidates) {
@@ -226,21 +226,21 @@ void CompletionHandler::call_primitive(ast::Node* node, Symbol module_name, Symb
                                        int module, int primitive, bool on_module) {
   // TODO(florian): the intrinsics don't really fit yet.
   if (on_module) {
-    complete("intrinsics", MODULE);
+    complete("intrinsics", CompletionKind::MODULE);
     int module_count = PrimitiveResolver::number_of_modules();
     for (int i = 0; i < module_count; i++) {
-      complete(PrimitiveResolver::module_name(i), MODULE);
+      complete(PrimitiveResolver::module_name(i), CompletionKind::MODULE);
     }
   } else if (module_name == Symbols::intrinsics) {
-    complete("array_do", PROPERTY);
-    complete("hash_find", PROPERTY);
-    complete("hash_do", PROPERTY);
-    complete("smi_repeat", PROPERTY);
-    complete("main", PROPERTY);
+    complete("array_do", CompletionKind::PROPERTY);
+    complete("hash_find", CompletionKind::PROPERTY);
+    complete("hash_do", CompletionKind::PROPERTY);
+    complete("smi_repeat", CompletionKind::PROPERTY);
+    complete("main", CompletionKind::PROPERTY);
   } else if (module != -1) {
     int primitive_count = PrimitiveResolver::number_of_primitives(module);
     for (int i = 0; i < primitive_count; i++) {
-      complete(PrimitiveResolver::primitive_name(module, i), PROPERTY);
+      complete(PrimitiveResolver::primitive_name(module, i), CompletionKind::PROPERTY);
     }
   }
   exit(0);
@@ -253,7 +253,7 @@ void CompletionHandler::field_storing_parameter(ast::Parameter* node,
     for (auto field : fields) {
       auto name = field->name();
       if (!name.is_valid()) continue;
-      complete(field->name(), FIELD);
+      complete(field->name(), CompletionKind::FIELD);
     }
   }
   exit(0);
@@ -280,7 +280,7 @@ void CompletionHandler::return_label(ast::Node* node, int label_index, const std
   for (int i = labels.size() - 1; i >= 0; i--) {
     auto label = labels[i].first;
     // TODO(florian): check LSP spec in the future to see if a better kind was added.
-    if (label.is_valid()) complete(label, KEYWORD);
+    if (label.is_valid()) complete(label, CompletionKind::KEYWORD);
     if (labels[i].second->is_Lambda()) break;
   }
   exit(0);
@@ -292,7 +292,7 @@ void CompletionHandler::toitdoc_ref(ast::Node* node,
                                     bool is_signature_toitdoc) {
   // TODO(florian): prefer parameters.
   auto param_callback = [&](Symbol param) {
-    complete(param, VARIABLE);
+    complete(param, CompletionKind::VARIABLE);
   };
   auto other_callback = [&](Symbol name, const ResolutionEntry& entry) {
     complete_entry(name, entry);
@@ -304,23 +304,25 @@ void CompletionHandler::toitdoc_ref(ast::Node* node,
 void CompletionHandler::import_first_segment(Symbol prefix,
                                              ast::Identifier* segment,
                                              const Package& current_pkg,
-                                             const PackageLock& package_lock) {
-  CompletionHandler handler(prefix, current_pkg.id(), null);
+                                             const PackageLock& package_lock,
+                                             LspProtocol* protocol) {
+  CompletionHandler handler(prefix, current_pkg.id(), null, protocol);
   current_pkg.list_prefixes([&](const std::string& candidate) {
-    handler.complete(candidate.c_str(), MODULE);
+    handler.complete(candidate.c_str(), CompletionKind::MODULE);
   });
   package_lock.list_sdk_prefixes([&](const std::string& candidate) {
-    handler.complete(candidate.c_str(), MODULE);
+    handler.complete(candidate.c_str(), CompletionKind::MODULE);
   });
   exit(0);
 }
 
 void CompletionHandler::import_path(Symbol prefix,
                                     const char* path,
-                                    Filesystem* fs) {
-  CompletionHandler handler(prefix, Package::INVALID_PACKAGE_ID, null);
+                                    Filesystem* fs,
+                                    LspProtocol* protocol) {
+  CompletionHandler handler(prefix, Package::INVALID_PACKAGE_ID, null, protocol);
   fs->list_toit_directory_entries(path, [&](const char* candidate, bool is_directory) {
-    handler.complete(candidate, MODULE);
+    handler.complete(candidate, CompletionKind::MODULE);
   });
   exit(0);
 }
@@ -344,7 +346,7 @@ void CompletionHandler::complete_named_args(ir::Method* method) {
     // TODO(florian): check LSP spec in the future to see if a better kind than KEYWORD
     //   was added. Suggested a 'named argument' kind here:
     //   https://github.com/microsoft/language-server-protocol/issues/343#issuecomment-661786310
-    complete(std::string(name.c_str()) + "=", KEYWORD);
+    complete(std::string(name.c_str()) + "=", CompletionKind::KEYWORD);
   }
 }
 
@@ -355,7 +357,7 @@ bool is_private(Symbol name) {
 }
 
 void CompletionHandler::complete_method(ir::Method* method, const std::string& package_id) {
-  complete_if_visible(method->name(), METHOD, package_id);
+  complete_if_visible(method->name(), CompletionKind::METHOD, package_id);
 }
 
 void CompletionHandler::complete_entry(Symbol name,
@@ -364,14 +366,14 @@ void CompletionHandler::complete_entry(Symbol name,
   switch (entry.kind()) {
     case ResolutionEntry::Kind::PREFIX:
       // TODO(florian): check LSP spec in the future to see if a better kind was added.
-      complete(name, MODULE);
+      complete(name, CompletionKind::MODULE);
       return;
 
     case ResolutionEntry::Kind::AMBIGUOUS:
     case ResolutionEntry::Kind::NODES:
       if (entry.is_empty()) {
         // Can this even happen?
-        complete(name, NONE);
+        complete(name, CompletionKind::NONE);
         return;
       }
       break;
@@ -386,44 +388,44 @@ void CompletionHandler::complete_entry(Symbol name,
   auto node = entry.nodes()[0];
 
   auto range = Source::Range::invalid();
-  auto kind = NONE;
+  auto kind = CompletionKind::NONE;
 
   if (node->is_Class()) {
     auto klass = node->as_Class();
-    kind = klass->is_interface() ? INTERFACE : CLASS;
+    kind = klass->is_interface() ? CompletionKind::INTERFACE : CompletionKind::CLASS;
     range = klass->range();
   } else if (node->is_Field()) {
     range = node->as_Field()->range();
-    kind = FIELD;
+    kind = CompletionKind::FIELD;
   } else if (node->is_FieldStub()) {
     range = node->as_FieldStub()->range();
-    kind = FIELD;
+    kind = CompletionKind::FIELD;
   } else if (node->is_Local()) {
     // In theory we could avoid the visibility check, as the
     // local must be in the same package.
     range = node->as_Local()->range();
-    kind = VARIABLE;
+    kind = CompletionKind::VARIABLE;
   } else if (node->is_Global()) {
     auto global = node->as_Global();
     range = global->range();
     // TODO(florian): not sure these are the best completion kinds.
     if (global->is_final() && is_constant_name(name)) {
-      kind = CONSTANT;
+      kind = CompletionKind::CONSTANT;
     } else {
-      kind = VARIABLE;
+      kind = CompletionKind::VARIABLE;
     }
   } else if (node->is_Method()) {
     auto method = node->as_Method();
     range = method->range();
     if (method->is_constructor() || method->is_factory()) {
-      kind = CONSTRUCTOR;
+      kind = CompletionKind::CONSTRUCTOR;
     } else if (method->is_instance()) {
-      kind = METHOD;
+      kind = CompletionKind::METHOD;
     } else {
-      kind = FUNCTION;
+      kind = CompletionKind::FUNCTION;
     }
   }
-  if (kind_override != NONE) {
+  if (kind_override != CompletionKind::NONE) {
     kind = kind_override;
   }
   std::string package_id = Package::INVALID_PACKAGE_ID;
@@ -446,7 +448,7 @@ void CompletionHandler::complete(const std::string& name, CompletionKind kind) {
   // Filter out completions that don't match the prefix.
   if (strncmp(name.c_str(), _prefix.c_str(), strlen(_prefix.c_str())) != 0) return;
   emitted.insert(name);
-  printf("%s\n%d\n", name.c_str(), kind);
+  protocol()->completion()->emit(name, kind);
 }
 
 

@@ -1,6 +1,8 @@
 file(GLOB toit_compiler_SRC
     "*.h"
     "*.cc"
+    "lsp/*.h"
+    "lsp/*.cc"
     "optimizations/*.h"
     "optimizations/*.cc"
 )

@@ -1,4 +1,4 @@
-// Copyright (C) 2018 Toitware ApS.
+// Copyright (C) 2019 Toitware ApS.
 //
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -15,20 +15,17 @@
 
 #pragma once
 
+#include <vector>
+
 namespace toit {
 namespace compiler {
 
-namespace ir {
-class Program;
-}
-class Lsp;
-class Diagnostics;
+class Module;
 class ToitdocRegistry;
 
-void check_types_and_deprecations(ir::Program* program,
-                                  Lsp* lsp,
-                                  ToitdocRegistry* toitdocs,
-                                  Diagnostics* diagnostics);
+void emit_summary(const std::vector<Module*>& modules,
+                  int core_index,
+                  const ToitdocRegistry& toitdocs);
 
 } // namespace toit::compiler
 } // namespace toit

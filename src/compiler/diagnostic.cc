@@ -19,7 +19,7 @@
 
 #include "ast.h"
 #include "diagnostic.h"
-#include "lsp.h"
+#include "lsp/lsp.h"
 #include "package.h"
 #include "scanner.h"
 
@@ -264,41 +264,26 @@ void CompilationDiagnostics::emit(Severity severity,
   reset_colors(stdout);
 }
 
-static const char* severity_to_lsp_severity(Diagnostics::Severity severity) {
-  switch (severity) {
-    case Diagnostics::Severity::warning: return "warning";
-    case Diagnostics::Severity::error: return "error";
-    case Diagnostics::Severity::note: return "information";
-  }
-  UNREACHABLE();
-}
-
 void LanguageServerAnalysisDiagnostics::emit(Severity severity, const char* format, va_list& arguments) {
-  printf("NO POSITION\n");
-  printf("%s\n", severity_to_lsp_severity(severity));
-  vprintf(format, arguments);
-  putchar('\n');
-  printf("*******************\n");
+  lsp()->diagnostics()->emit(severity, format, arguments);
 }
 
 void LanguageServerAnalysisDiagnostics::emit(Severity severity,
                                              Source::Range range,
                                              const char* format,
                                              va_list& arguments) {
-  printf("WITH POSITION\n");
-  printf("%s\n", severity_to_lsp_severity(severity));
-  print_lsp_range(range, source_manager());
-  vprintf(format, arguments);
-  putchar('\n');
-  printf("*******************\n");
+  lsp()->diagnostics()->emit(severity,
+                             range_to_lsp_range(range, source_manager()),
+                             format,
+                             arguments);
 }
 
 void LanguageServerAnalysisDiagnostics::start_group() {
-  printf("START GROUP\n");
+  lsp()->diagnostics()->start_group();
 }
 
 void LanguageServerAnalysisDiagnostics::end_group() {
-  printf("END GROUP\n");
+  lsp()->diagnostics()->end_group();
 }
 
 } // namespace toit::compiler

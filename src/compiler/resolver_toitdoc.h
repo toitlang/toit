@@ -22,7 +22,7 @@ namespace compiler {
 
 class Diagnostics;
 class Scope;
-class LspSelectionHandler;
+class Lsp;
 
 class ToitdocScopeIterator {
  public:
@@ -34,7 +34,7 @@ class ToitdocScopeIterator {
 Toitdoc<ir::Node*> resolve_toitdoc(Toitdoc<ast::Node*> ast_toitdoc,
                                    ast::Node* holder,
                                    Scope* scope,
-                                   LspSelectionHandler* lsp_handler,
+                                   Lsp* lsp,
                                    const UnorderedMap<ir::Node*, ast::Node*>& ir_to_ast_map,
                                    Diagnostics* diagnostics);
 

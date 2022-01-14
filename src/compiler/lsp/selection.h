@@ -1,4 +1,4 @@
-// Copyright (C) 2019 Toitware ApS.
+// Copyright (C) 2022 Toitware ApS.
 //
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -17,16 +17,21 @@
 
 #include <utility>
 #include <vector>
+#include <string>
 
-#include "../top.h"
+#include "../../top.h"
 
-#include "ir.h"
-#include "list.h"
-#include "map.h"
-#include "queryable_class.h"
-#include "sources.h"
-#include "resolver_scope.h"
-#include "symbol.h"
+#include "completion_kind.h"
+#include "protocol.h"
+
+#include "../diagnostic.h"
+#include "../ir.h"
+#include "../list.h"
+#include "../map.h"
+#include "../queryable_class.h"
+#include "../sources.h"
+#include "../resolver_scope.h"
+#include "../symbol.h"
 
 namespace toit {
 namespace compiler {
@@ -41,18 +46,23 @@ class IterableScope;
 class ImportScope;
 class Queryables;
 class ToitdocScopeIterator;
+class ToitdocRegistry;
 
-int utf16_offset_in_line(Source::Location location);
-void print_lsp_range(Source::Range range, SourceManager* source_manager);
-void print_lsp_range(const char* path,
-                     int from_line,   // 1-based.
-                     int from_column, // 0-based
-                     int to_line,     // 1-based
-                     int to_column);  // 0-based
-
-/// The selection handler is invoked when the target of a LSP command is encountered.
+/// For some operations, the LSP client sends the server a selection for which it
+/// wants information. This selection is given to the compiler which then detects
+/// it during the compilation process.
+/// When the compiler finds a selection it invokes the selection handler with all
+/// the information that could be relevant. Different selection handlers then
+/// use the information to supply the requested information to the LSP server.
+/// For example, a selection handler could ask for a completion, or be a request
+/// for a goto-definition target.
 class LspSelectionHandler {
  public:
+  /// The constructor takes a protocol as argument. All information that is
+  /// sent to the LSP server must go through the protocol.
+  explicit LspSelectionHandler(LspProtocol* protocol) : _protocol(protocol) { }
+  virtual ~LspSelectionHandler() { }
+
   /// Handles a class or interface node.
   ///
   /// This is used when a class resolves a superclass (in the extends clause) or for
@@ -113,6 +123,13 @@ class LspSelectionHandler {
                            List<ir::Node*> candidates,
                            ToitdocScopeIterator* iterator,
                            bool is_signature_toitdoc) = 0;
+
+
+ protected:
+  LspProtocol* protocol() { return _protocol; }
+
+ private:
+  LspProtocol* _protocol;
 };
 
 } // namespace toit::compiler

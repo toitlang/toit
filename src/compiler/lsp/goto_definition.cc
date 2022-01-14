@@ -15,7 +15,7 @@
 
 #include "goto_definition.h"
 
-#include "resolver_scope.h"
+#include "../resolver_scope.h"
 
 namespace toit {
 namespace compiler {
@@ -23,7 +23,7 @@ namespace compiler {
 void GotoDefinitionHandler::_print_range(Source::Range range) {
   if (_printed_definitions.contains(range)) return;
   _printed_definitions.insert(range);
-  print_lsp_range(range, _source_manager);
+  protocol()->goto_definition()->emit(range_to_lsp_range(range, _source_manager));
 }
 
 void GotoDefinitionHandler::_print_range(ir::Node* resolved) {
@@ -276,9 +276,16 @@ void GotoDefinitionHandler::toitdoc_ref(ast::Node* node,
   exit(0);
 }
 
-void GotoDefinitionHandler::import_path(const char* resolved) {
+void GotoDefinitionHandler::import_path(const char* resolved, LspProtocol* protocol) {
   if (resolved != null) {
-    print_lsp_range(resolved, 1, 0, 1, 0);
+    auto import_range = LspRange {
+      .path = resolved,
+      .from_line = 0,
+      .from_column= 0,
+      .to_line= 0,
+      .to_column = 0,
+    };
+    protocol->goto_definition()->emit(import_range);
   }
   exit(0);
 }

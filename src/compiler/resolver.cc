@@ -19,10 +19,8 @@
 #include <stdarg.h>
 
 #include "diagnostic.h"
-#include "lsp.h"
+#include "lsp/lsp.h"
 #include "map.h"
-#include "semantic.h"
-#include "summary_writer.h"
 #include "token.h"
 #include "tree_roots.h"
 #include "resolver_method.h"
@@ -91,9 +89,7 @@ static ir::Method* resolve_entry_point(Symbol name, int arity, ModuleScope* scop
 
 ir::Program* Resolver::resolve(const std::vector<ast::Unit*>& units,
                                int entry_index,
-                               int core_index,
-                               bool should_print_summary,
-                               bool should_emit_semantic_tokens) {
+                               int core_index) {
   auto modules = build_modules(units, entry_index, core_index);
   build_module_scopes(modules);
 
@@ -116,17 +112,17 @@ ir::Program* Resolver::resolve(const std::vector<ast::Unit*>& units,
     if (i == entry_index) continue;
     Module* module = i == -1 ? entry_module : modules[i];
     resolve_fill_module(module, entry_module, core_module);
-    if (should_emit_semantic_tokens) {
+    if (_lsp != null && _lsp->should_emit_semantic_tokens()) {
       ASSERT(module == entry_module);
       // Immediately print the tokens.
       // The function should exit, thus aborting the remaining resolutions.
-      emit_semantic_tokens(module, entry_module->unit()->absolute_path(), _source_manager);
+      _lsp->emit_semantic_tokens(module, entry_module->unit()->absolute_path(), _source_manager);
       UNREACHABLE();
     }
   }
 
-  if (should_print_summary) {
-    print_summary(modules, core_index, _toitdocs);
+  if (_lsp != null && _lsp->needs_summary()) {
+    _lsp->emit_summary(modules, core_index, _toitdocs);
   }
 
   ListBuilder<ir::Class*> all_classes;
@@ -949,7 +945,7 @@ void Resolver::resolve_shows_and_exports(std::vector<Module*>& modules) {
   }
 
   if (lsp_node != null) {
-    _lsp_selection_handler->show(lsp_node, lsp_resolution_entry, lsp_scope);
+    _lsp->selection_handler()->show(lsp_node, lsp_resolution_entry, lsp_scope);
   }
 }
 
@@ -1079,7 +1075,7 @@ ir::Class* Resolver::resolve_class_or_interface(ast::Expression* ast_node,
     type_declaration = scope->lookup_shallow(type_name);
     if (ast_node->is_LspSelection()) {
       ir::Node* ir_resolved = type_declaration.is_single() ? type_declaration.single() : null;
-      _lsp_selection_handler->class_or_interface(ast_node, scope, holder, ir_resolved, needs_interface);
+      _lsp->selection_handler()->class_or_interface(ast_node, scope, holder, ir_resolved, needs_interface);
     }
   } else if (ast_node->is_Dot()) {
     auto ast_dot = ast_node->as_Dot();
@@ -1092,18 +1088,18 @@ ir::Class* Resolver::resolve_class_or_interface(ast::Expression* ast_node,
       auto prefix_scope = prefix_lookup_result.entry.is_prefix()
           ? static_cast<IterableScope*>(prefix_lookup_result.entry.prefix())
           : static_cast<IterableScope*>(&empty_scope);
-      _lsp_selection_handler->class_or_interface(ast_dot->name(),
-                                                 prefix_scope,
-                                                 holder,
-                                                 ir_resolved,
-                                                 needs_interface);
+      _lsp->selection_handler()->class_or_interface(ast_dot->name(),
+                                                    prefix_scope,
+                                                    holder,
+                                                     ir_resolved,
+                                                    needs_interface);
     } else if (ast_dot->receiver()->is_LspSelection()) {
       auto receiver_as_type_name = ast_dot->receiver()->as_Identifier()->data();
       auto receiver_as_type_declaration = scope->lookup_shallow(receiver_as_type_name);
       ir::Node* ir_resolved = receiver_as_type_declaration.is_single()
           ? receiver_as_type_declaration.single()
           : null;
-      _lsp_selection_handler->class_or_interface(ast_node, scope, holder, ir_resolved, needs_interface);
+      _lsp->selection_handler()->class_or_interface(ast_node, scope, holder, ir_resolved, needs_interface);
     }
   } else {
     ASSERT(ast_node->is_Error());
@@ -1983,7 +1979,7 @@ void Resolver::resolve_fill_method(ir::Method* method,
   }
 
   MethodResolver resolver(method, holder, scope, &_ir_to_ast_map, entry_module, core_module,
-                          _lsp_selection_handler, _source_manager, _diagnostics);
+                          _lsp, _source_manager, _diagnostics);
   resolver.resolve_fill();
 
   if (!method->is_synthetic()) {
@@ -1996,7 +1992,7 @@ void Resolver::resolve_fill_method(ir::Method* method,
       auto toitdoc = resolve_toitdoc(ast_node->toitdoc(),
                                      ast_node,
                                      &scope_with_parameters,
-                                     _lsp_selection_handler,
+                                     _lsp,
                                      _ir_to_ast_map,
                                      diagnostics());
       _toitdocs.set_toitdoc(method, toitdoc);
@@ -2018,7 +2014,7 @@ void Resolver::resolve_field(ir::Field* field,
                                  false,
                                  field->range());
   MethodResolver resolver(&fake_method, holder, scope, &_ir_to_ast_map, entry_module, core_module,
-                          _lsp_selection_handler, _source_manager, _diagnostics);
+                          _lsp, _source_manager, _diagnostics);
   resolver.resolve_field(field);
 
   auto ast_node = _ir_to_ast_map.at(field)->as_Declaration();
@@ -2026,7 +2022,7 @@ void Resolver::resolve_field(ir::Field* field,
     auto toitdoc = resolve_toitdoc(ast_node->toitdoc(),
                                    ast_node,
                                    scope,
-                                   _lsp_selection_handler,
+                                   _lsp,
                                    _ir_to_ast_map,
                                    diagnostics());
     _toitdocs.set_toitdoc(field, toitdoc);
@@ -2155,7 +2151,7 @@ void Resolver::resolve_fill_module(Module* module,
     auto toitdoc = resolve_toitdoc(unit->toitdoc(),
                                    unit,
                                    module->scope(),
-                                   _lsp_selection_handler,
+                                   _lsp,
                                    _ir_to_ast_map,
                                    diagnostics());
     _toitdocs.set_toitdoc(module, toitdoc);
@@ -2231,7 +2227,7 @@ void Resolver::resolve_fill_class(ir::Class* klass,
     auto toitdoc = resolve_toitdoc(ast_node->toitdoc(),
                                    ast_node,
                                    &class_scope,
-                                   _lsp_selection_handler,
+                                   _lsp,
                                    _ir_to_ast_map,
                                    diagnostics());
     _toitdocs.set_toitdoc(klass, toitdoc);
