@@ -27,7 +27,7 @@ class RpcBroker implements SystemMessageHandler_:
     name/int := decoded[1]
 
     send_exception_reply :=: | exception |
-      process_send_bytes_ pid type (ubjson.encode [ id, true, exception ])
+      process_send_bytes_ pid type (ubjson.encode [ id, true, exception, null ])
       return
 
     procedures_.get name --if_present=: | procedure |
