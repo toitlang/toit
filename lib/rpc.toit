@@ -47,16 +47,16 @@ monitor RpcSynchronizer_:
     id_ = id > 0xfff_ffff ? 0 : id + 1
 
     map := map_
-    map[id] = EMPTY
-
-    send.call id  // Lock is kept during the non-blocking send.
-
     result/any := EMPTY
-    await:
-      result = map[id]
-      not identical EMPTY result
+    try:
+      map[id] = EMPTY
+      send.call id  // Lock is kept during the non-blocking send.
+      await:
+        result = map[id]
+        not identical EMPTY result
+    finally:
+      map.remove id
 
-    map.remove id
     if result is not RpcException_: return result
 
     exception := result.exception
@@ -65,7 +65,11 @@ monitor RpcSynchronizer_:
     throw exception
 
   receive id/int value/any -> none:
-    map_[id] = value
+    map_.update id --if_absent=(: return): | existing |
+      // Unless the existing value indicates that we are ready to receive
+      // the result of the RPC call, we discard it.
+      if not identical EMPTY existing: return
+      value
 
 /**
 Has a close method suitable for objects that use a handle/descriptor

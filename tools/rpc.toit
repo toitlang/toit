@@ -96,8 +96,8 @@ class RpcRequest_:
       return  // Stops any unwinding.
 
 monitor RpcRequestQueue_:
-  static MAX_TASKS ::= 2
-  static MAX_REQUESTS ::= 8
+  static MAX_TASKS ::= 4
+  static MAX_REQUESTS ::= 16
   static IDLE_TIME_MS ::= 10_000
 
   first_/RpcRequest_? := null
