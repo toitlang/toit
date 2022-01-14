@@ -22,7 +22,6 @@ import .debug_message
 import .snapshot
 import .mirror
 import .rpc
-import .service_registry
 import .logging
 import encoding.ubjson as ubjson
 import log.rpc as log
@@ -40,14 +39,9 @@ class ToitcProcessManager implements SystemMessageHandler_:
     // First setup the handlers before launching the application.
     set_system_message_handler_ SYSTEM_TERMINATED_ this
     set_system_message_handler_ SYSTEM_MIRROR_MESSAGE_ this
-    task_cache := monitor.TaskCache_
-    rpc_broker := RpcBroker task_cache
+    rpc_broker := RpcBroker
     register_rpc rpc_broker
     set_system_message_handler_ SYSTEM_RPC_CHANNEL_LEGACY_ rpc_broker
-    service_broker := ServiceBroker NoopDescriptorRegistry task_cache
-    set_system_message_handler_ SYSTEM_RPC_REGISTRY_REGISTER_ service_broker
-    set_system_message_handler_ SYSTEM_RPC_REGISTRY_UNREGISTER_ service_broker
-    set_system_message_handler_ SYSTEM_RPC_REGISTRY_FIND_ service_broker
     ar_reader := ArReader.from_bytes snapshot_bundle
     offsets := ar_reader.find --offsets SnapshotBundle.SNAPSHOT_NAME
     // Start the application process.
@@ -83,11 +77,6 @@ class ToitcProcessManager implements SystemMessageHandler_:
     mirror_string := mirror.stringify
     // If the text already ends with a newline don't add another one.
     write_on_stderr_ mirror_string (not mirror_string.ends_with "\n")
-
-class NoopDescriptorRegistry implements DescriptorRegistry:
-  register_descriptor gid/int object/Descriptor -> int:
-    return 0
-  unregister_descriptor gid/int descriptor/int -> none:
 
 main:
   // The snapshot for the application program is passed in hatch_args_

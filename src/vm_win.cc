@@ -20,14 +20,12 @@
 #include "objects_inline.h"
 #include "vm.h"
 
-#include "event_sources/rpc_transport.h"
 #include "event_sources/timer.h"
 
 namespace toit {
 
 void VM::load_platform_event_sources() {
   event_manager()->add_event_source(_new TimerEventSource());
-  event_manager()->add_event_source(_new InterProcessMessageEventSource());
 }
 
 } // namespace toit

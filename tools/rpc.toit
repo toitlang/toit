@@ -13,133 +13,140 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-import encoding.ubjson as ubjson
-import monitor
-import rpc_transport show Channel_ Frame_
-import uuid show Uuid
-import rpc
-
-export *
+import encoding.ubjson
 
 class RpcBroker implements SystemMessageHandler_:
-  task_cache_/monitor.TaskCache_
-  handlers_ ::= {:}
-  named_handlers_ ::= {:}
-  descriptor_handlers_ ::= {:}
-  tpack_handlers_ ::= {:}
+  procedures_/Map ::= {:}
+  handlers_/Map ::= {:}
+  queue_/RpcRequestQueue_ ::= RpcRequestQueue_
 
-  constructor .task_cache_:
+  on_message type gid pid message -> none:
+    assert: type == SYSTEM_RPC_CHANNEL_LEGACY_
+    decoded := ubjson.decode message
+    id/int := decoded[0]
+    name/int := decoded[1]
 
-  register_procedure --tpack procedure/int handler/Lambda:
-    tpack_handlers_[procedure] = handler
+    send_exception_reply :=: | exception |
+      process_send_bytes_ pid type (ubjson.encode [ id, true, exception ])
+      return
+
+    procedures_.get name --if_present=: | procedure |
+      request := RpcRequest_ pid gid id decoded[2] procedure
+      if queue_.add request: return
+      send_exception_reply.call "Cannot enqueue more requests"
+
+    if decoded.is_empty:
+      send_exception_reply.call "Missing call context"
+    context ::= decoded[0]
+    if context is not int:
+      // TODO(kasper): This is a weird exception to pass back.
+      send_exception_reply.call "Closed descriptor $context"
+
+    handlers_.get name --if_present=: | handler |
+      descriptor := get_descriptor_ gid context
+      if not descriptor:
+        send_exception_reply.call "Closed descriptor $context"
+      request := RpcRequest_ pid gid id decoded[2]:: | arguments gid pid |
+        handler.call descriptor arguments gid
+      if queue_.add request: return
+      send_exception_reply.call "Cannot enqueue more requests"
+
+    send_exception_reply.call "No such procedure registered $name"
 
   // Register a regular procedure to handle a message.  The arguments to the
   // handler will be:
-  //   process_manager/ProcessManager
   //   arguments/List
   //   group_id/int
   //   process_id/int
-  register_procedure procedure_name/int handler/Lambda:
-    handlers_[procedure_name] = handler
-
-  // Register a regular procedure to handle a message, matching a name.
-  // The third argument must be the name.
-  register_named_procedure name/string procedure_name/int handler/Lambda:
-    map := named_handlers_.get procedure_name --init=:{:}
-    map[name] = handler
+  register_procedure name/int action/Lambda -> none:
+    procedures_[name] = action
 
   // Register a descriptor-based procedure to handle a message.  These are
   // invoked by the RPC caller with a descriptor as the first argument.  This
   // descriptor is looked up on the process group and the resulting object is
   // passed to the handler.
-  register_descriptor_procedure procedure_name/int handler/Lambda:
-    descriptor_handlers_[procedure_name] = handler
+  register_descriptor_procedure name/int action/Lambda:
+    handlers_[name] = action
 
-  get_descriptor_ gid context:
+  // Typically overwritten in a subclass.
+  get_descriptor_ gid/int descriptor/int -> any:
     return null
 
-  get_handler_ gid procedure_name procedure_args [--on_error]:
-    handlers_.get procedure_name --if_present=: return it
+class RpcRequest_:
+  next/RpcRequest_? := null
 
-    if procedure_args.size == 0:
-      on_error.call "Missing call context"
-      return null
+  pid/int
+  gid/int
+  id/int
+  arguments/List
+  procedure/Lambda
 
-    context ::= procedure_args[0]
+  constructor .pid .gid .id .arguments .procedure:
 
-    named_handlers_.get procedure_name --if_present=:
-      it.get context --if_present=: return it
+  process -> none:
+    result/any := null
+    try:
+      result = procedure.call arguments gid pid
+      if result is Serializable: result = result.serialize
+    finally: | is_exception exception |
+      reply := is_exception
+          ? [ id, true, exception.value, exception.trace ]
+          : [ id, false, result ]
+      process_send_bytes_ pid SYSTEM_RPC_CHANNEL_LEGACY_ (ubjson.encode reply)
+      return  // Stops any unwinding.
 
-    // The descriptor must be an integer.
-    if context is not int:
-      on_error.call "Closed descriptor $context"
-      return null
+monitor RpcRequestQueue_:
+  static MAX_TASKS ::= 4
+  static MAX_REQUESTS ::= 16
+  static IDLE_TIME_MS ::= 1_000
 
-    descriptor_handlers_.get procedure_name --if_present=: | handler |
-      driver := get_descriptor_ gid context
-      if driver: return :: | args gid pid |
-        handler.call driver args gid
+  first_/RpcRequest_? := null
+  last_/RpcRequest_? := null
 
-      on_error.call "Closed descriptor $context"
-      return null
+  size_/int := 0
+  tasks_/int := 0
 
-    on_error.call "No such procedure registered $procedure_name"
-    return null
+  add request/RpcRequest_ -> bool:
+    if size_ >= MAX_REQUESTS: return false
 
-  on_message type gid pid args:
-    if type == SYSTEM_RPC_CHANNEL_LEGACY_:
-      on_open_channel_ gid pid args
-      return
+    // Enqueue the new request in the linked list.
+    last := last_
+    if last:
+      last.next = request
+      last_ = request
+    else:
+      first_ = last_ = request
+    size_++
 
-  static is_rpc_error_ error -> bool:
-    if error == Channel_.CHANNEL_CLOSED_ERROR: return true
-    if error == Channel_.NO_SUCH_CHANNEL_ERROR: return true
-    return false
-
-  on_open_channel_ gid pid id_bytes:
-    task::
-      catch --trace=(: not is_rpc_error_ it):
-        channel := Channel_.open (Uuid id_bytes)
+    while size_ > tasks_ and tasks_ < MAX_TASKS:
+      tasks_++
+      task::
+        // The task code runs outside the monitor, so the monitor
+        // is unlocked when the requests are being processed but
+        // locked when the requests are being dequeued.
         try:
-          listen_ gid pid channel
+          while next := remove_first: next.process
         finally:
-          channel.close
-
-  listen_ gid pid channel/Channel_:
-    while true:
-      frame := channel.receive
-      if not frame: continue
-
-      procedure_name := frame.bits >> rpc.Rpc.HEADER_SIZE_
-      procedure_args := rpc.Rpc.frame_data_ frame
-      handler := get_handler_ gid procedure_name procedure_args --on_error=: | err | report_error channel frame.stream_id err null
-      if not handler: continue
-      task_cache_.run:: process_handler channel frame handler procedure_args gid pid
-
-  process_handler channel/Channel_ frame/Frame_ handler procedure_args gid pid:
-    catch --trace=(: not is_rpc_error_ it):
-      try:
-        result := handler.call procedure_args gid pid
-        if result is Serializable: result = result.serialize
-        is_bytes := result is ByteArray
-        if not is_bytes: result = ubjson.encode result
-        channel.send
-          frame.stream_id
-          rpc.Rpc.frame_header_ 0 --bytes=is_bytes
-          result
-      finally: | is_exception exception |
-        if is_exception:
-          report_error channel frame.stream_id exception.value exception.trace
-
-  report_error channel/Channel_ stream_id/int exception trace -> bool:
-    // Throws if the channel is closed in the other end.
-    catch --trace=(: not is_rpc_error_ it):
-      channel.send
-        stream_id
-        rpc.Rpc.frame_header_ 0 --error
-        ubjson.encode [exception, trace]
+          tasks_--
     return true
+
+  remove_first -> RpcRequest_?:
+    while true:
+      request := first_
+      if not request:
+        deadline := Time.monotonic_us + (IDLE_TIME_MS * 1_000)
+        if not (try_await --deadline=deadline: first_ != null):
+          return null
+        continue
+
+      // Dequeue the first request from the linked list.
+      next := request.next
+      if identical last_ request: last_ = next
+      first_ = next
+      size_--
+      return request
 
 // Serializable indicates a method can be serialized to a RPC-compatible value.
 interface Serializable:
+  // Must return a value that can be encoded to ubjson.
   serialize -> any
