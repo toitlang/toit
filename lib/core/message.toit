@@ -14,9 +14,6 @@ MESSAGE_SYSTEM_        ::= 2
 // System message types.
 SYSTEM_TERMINATED_              ::= 0
 SYSTEM_MIRROR_MESSAGE_          ::= 2  // Used for sending stack traces and profile information.
-SYSTEM_RPC_REGISTRY_REGISTER_   ::= 7
-SYSTEM_RPC_REGISTRY_FIND_       ::= 8
-SYSTEM_RPC_REGISTRY_UNREGISTER_ ::= 9
 SYSTEM_RPC_CHANNEL_LEGACY_      ::= 10
 
 /**

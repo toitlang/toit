@@ -3,67 +3,69 @@
 // found in the lib/LICENSE file.
 
 import encoding.ubjson as ubjson
-import monitor show Mutex Latch
-import rpc_transport show Channel_ Stream_ Frame_
-import uuid show uuid5
 
-export *
+invoke name/int arguments/List -> any:
+  return Rpc.instance.invoke name arguments
 
-invoke procedure_name/int args/List -> any:
-  return Rpc.instance.invoke procedure_name args
+class Rpc implements SystemMessageHandler_:
+  static instance ::= Rpc.internal_
+  synchronizer_/RpcSynchronizer_ ::= RpcSynchronizer_
 
-class Rpc:
-  static instance ::= Rpc
-  static channel_ := null
+  constructor:
+    return instance
 
-  // Bit 0-1.
-  static HEADER_SIZE_ ::= 2
-  static ERROR_MARKER_ ::= 0b1
-  static BYTE_ARRAY_MARKER_ ::=0b10
+  constructor.internal_:
+    set_system_message_handler_ SYSTEM_RPC_CHANNEL_LEGACY_ this
 
-  mutex ::= Mutex
+  invoke name/int arguments/List -> any:
+    return synchronizer_.send: | id |
+      message := [id, name, arguments]
+      system_send_bytes_ SYSTEM_RPC_CHANNEL_LEGACY_ (ubjson.encode message)
 
-  invoke procedure_name/int args/List -> any:
-    ensure_channel_
-    stream := channel_.new_stream
-    try:
-      args_bytes := ubjson.encode args
-      header := frame_header_ procedure_name
-      stream.send header args_bytes
-      response := stream.receive
-      return frame_data_ response
-    finally:
-      stream.close
+  on_message type gid pid arguments -> none:
+    assert: type == SYSTEM_RPC_CHANNEL_LEGACY_
+    reply := ubjson.decode arguments
+    id/int := reply[0]
+    is_exception/bool := reply[1]
+    result/any := reply[2]
+    if is_exception: result = RpcException_ result reply[3]
+    synchronizer_.receive id result
 
-  ensure_channel_:
-    mutex.do: if not channel_: create_channel_
+class RpcException_:
+  exception/any
+  trace/any
+  constructor .exception .trace:
 
-  create_channel_:
-    stats ::= process_stats
-    group_id := stats[5]
-    process_id := stats[6]
-    // TODO(Lau): Use UUID v4 (randomly rolled UUID) when available.
-    id := uuid5 "$group_id, $process_id" "kernel channel"
-    channel_ = Channel_.create id
+monitor RpcSynchronizer_:
+  static EMPTY ::= Object
 
-  static frame_data_ frame/Frame_:
-    if frame.bits & ERROR_MARKER_ == ERROR_MARKER_:
-      args := ubjson.decode frame.bytes
-      exception ::= args[0]
-      trace ::= args[1]
-      if trace: rethrow exception trace
-      else: throw exception
-    else if frame.bits & BYTE_ARRAY_MARKER_ == BYTE_ARRAY_MARKER_:
-      return frame.bytes
-    else:
-      return ubjson.decode frame.bytes
+  map_/Map ::= {:}
+  id_/int := 0
 
-  static frame_header_ procedure/int --error=false --bytes=false -> int:
-    header := procedure << HEADER_SIZE_
-    if error: header |= ERROR_MARKER_
-    if bytes: header |= BYTE_ARRAY_MARKER_
-    return header
+  send [send] -> any:
+    id := id_
+    id_ = id > 0xfff_ffff ? 0 : id + 1
 
+    map := map_
+    map[id] = EMPTY
+
+    send.call id  // Lock is kept during the non-blocking send.
+
+    result/any := EMPTY
+    await:
+      result = map[id]
+      not identical EMPTY result
+
+    map.remove id
+    if result is not RpcException_: return result
+
+    exception := result.exception
+    trace := result.trace
+    if trace: rethrow exception trace
+    throw exception
+
+  receive id/int value/any -> none:
+    map_[id] = value
 
 /**
 Has a close method suitable for objects that use a handle/descriptor
