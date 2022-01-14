@@ -25,19 +25,20 @@ class RpcBroker implements SystemMessageHandler_:
     decoded := ubjson.decode message
     id/int := decoded[0]
     name/int := decoded[1]
+    arguments := decoded[2]
 
     send_exception_reply :=: | exception |
       process_send_bytes_ pid type (ubjson.encode [ id, true, exception, null ])
       return
 
     procedures_.get name --if_present=: | procedure |
-      request := RpcRequest_ pid gid id decoded[2] procedure
+      request := RpcRequest_ pid gid id arguments procedure
       if queue_.add request: return
       send_exception_reply.call "Cannot enqueue more requests"
 
-    if decoded.is_empty:
+    if arguments.is_empty:
       send_exception_reply.call "Missing call context"
-    context ::= decoded[0]
+    context ::= arguments[0]
     if context is not int:
       // TODO(kasper): This is a weird exception to pass back.
       send_exception_reply.call "Closed descriptor $context"
@@ -46,7 +47,7 @@ class RpcBroker implements SystemMessageHandler_:
       descriptor := get_descriptor_ gid context
       if not descriptor:
         send_exception_reply.call "Closed descriptor $context"
-      request := RpcRequest_ pid gid id decoded[2]:: | arguments gid pid |
+      request := RpcRequest_ pid gid id arguments:: | arguments gid _ |
         handler.call descriptor arguments gid
       if queue_.add request: return
       send_exception_reply.call "Cannot enqueue more requests"
