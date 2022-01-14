@@ -44,7 +44,7 @@ monitor RpcSynchronizer_:
 
   send [send] -> any:
     id := id_
-    id_ = id > 0xfff_ffff ? 0 : id + 1
+    id_ = id > 0x3fff_ffff ? 0 : id + 1
 
     map := map_
     result/any := EMPTY

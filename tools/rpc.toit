@@ -26,10 +26,9 @@ class RpcBroker implements SystemMessageHandler_:
     id/int := decoded[0]
     name/int := decoded[1]
 
-    send_exception_reply := (:| exception |
+    send_exception_reply :=: | exception |
       process_send_bytes_ pid type (ubjson.encode [ id, true, exception ])
       return
-    )
 
     procedures_.get name --if_present=: | procedure |
       request := RpcRequest_ pid gid id decoded[2] procedure
@@ -99,7 +98,7 @@ class RpcRequest_:
 monitor RpcRequestQueue_:
   static MAX_TASKS ::= 4
   static MAX_REQUESTS ::= 16
-  static IDLE_TIME_MS ::= 10_000
+  static IDLE_TIME_MS ::= 1_000
 
   first_/RpcRequest_? := null
   last_/RpcRequest_? := null
