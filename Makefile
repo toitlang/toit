@@ -30,8 +30,10 @@ export IDF_PATH ?= $(CURDIR)/third_party/esp-idf
 
 ifeq ($(OS),Windows_NT)
 	EXE_SUFFIX=".exe"
+	DETECTED_OS=$(OS)
 else
 	EXE_SUFFIX=
+	DETECTED_OS=$(shell uname)
 endif
 
 CROSS_ARCH=
@@ -122,11 +124,20 @@ BIN_DIR = build/host/sdk/bin
 TOITVM_BIN = $(BIN_DIR)/toit.run$(EXE_SUFFIX)
 TOITC_BIN = $(BIN_DIR)/toit.compile$(EXE_SUFFIX)
 
+ifeq ($(DETECTED_OS), Linux)
+	NUM_CPU := $(shell nproc)
+else ifeq ($(DETECTED_OS), Darwin)
+	NUM_CPU := $(shell sysctl -n hw.ncpu)
+else
+	# Just assume two cores.
+	NUM_CPU := 2
+endif
+
 .PHONY: esp32
 esp32: check-env build/$(ESP32_CHIP)/toit.bin
 
 build/$(ESP32_CHIP)/toit.bin build/$(ESP32_CHIP)/toit.elf: tools snapshots build/$(ESP32_CHIP)/lib/libtoit_image.a build/config.json
-	make -C toolchains/$(ESP32_CHIP)/
+	$(MAKE) -j $(NUM_CPU) -C toolchains/$(ESP32_CHIP)/
 	$(TOITVM_BIN) tools/inject_config.toit build/config.json build/$(ESP32_CHIP)/toit.bin
 
 build/$(ESP32_CHIP)/lib/libtoit_image.a: build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s build/$(ESP32_CHIP)/CMakeCache.txt build/$(ESP32_CHIP)/include/sdkconfig.h
@@ -145,7 +156,7 @@ build/$(ESP32_CHIP)/CMakeCache.txt:
 
 build/$(ESP32_CHIP)/include/sdkconfig.h:
 	mkdir -p build/$(ESP32_CHIP)
-	make -C toolchains/$(ESP32_CHIP) -s "$(CURDIR)"/$@
+	$(MAKE) -C toolchains/$(ESP32_CHIP) -s "$(CURDIR)"/$@
 
 .PHONY: build/config.json
 build/config.json:

@@ -89,12 +89,12 @@ const Program* setup_program(bool supports_ota) {
   ESP_LOGI("Toit", "Fingerprint %x-%x-%x-%x", checksum[0], checksum[1], checksum[2], checksum[3]);
 #endif
 
-  FlashRegistry::set_up();
   return reinterpret_cast<const Program*>(&toit_image);
 }
 
 static void start() {
   RtcMemory::set_up();
+  FlashRegistry::set_up();
   OS::set_up();
 
   // The Toit firmware only supports OTAs if we can find the OTA app partition.
@@ -112,6 +112,7 @@ static void start() {
   }
 
   OS::tear_down();
+  FlashRegistry::tear_down();
 
   bool firmware_updated = supports_ota &&
       esp_ota_get_boot_partition() != esp_ota_get_running_partition();

@@ -20,12 +20,14 @@
 #include "os.h"
 #include "utils.h"
 #include "uuid.h"
+#include "vm.h"
 
 #include <errno.h>
 #include <pthread.h>
 #include <sys/time.h>
 #include <unistd.h>
 #include <sys/mman.h>
+
 namespace toit {
 
 int64 OS::get_system_time() {
@@ -257,9 +259,38 @@ void OS::out_of_memory(const char* reason) {
 }
 
 const uint8* OS::image_uuid() {
-  // Posix "devices" does not support images (ota, factory promote, factory reset) so the uuid
-  // doesn't need to be unique.
-  static uint8_t uuid[UUID_SIZE] = {0xe3, 0xbb, 0xa6, 0xa1, 0x23, 0x0c, 0x44, 0xa5, 0x9f, 0x5d, 0x09, 0x0c, 0xf7, 0xfd, 0x15, 0x2a};
+  static uint8* uuid = null;
+  if (uuid) return uuid;
+
+  const char* path = getenv("TOIT_FLASH_UUID_FILE");
+  if (path == null) {
+    // POSIX "devices" that aren't passed a file for their uuid get a non-unique
+    // uuid which makes their support for OTAs, etc. limited.
+    static uint8 non_unique_uuid[UUID_SIZE] = {
+        0xe3, 0xbb, 0xa6, 0xa1, 0x23, 0x0c, 0x44, 0xa5,
+        0x9f, 0x5d, 0x09, 0x0c, 0xf7, 0xfd, 0x15, 0x2a };
+    uuid = non_unique_uuid;
+    return uuid;
+  }
+
+  uuid = unvoid_cast<uint8*>(malloc(UUID_SIZE));
+
+  FILE* file = fopen(path, "r");
+  if (file != null) {
+    bool success = fread(uuid, UUID_SIZE, 1, file) == 1;
+    fclose(file);
+    if (success) return uuid;
+  }
+
+  VM::current()->entropy_mixer()->get_entropy(uuid, UUID_SIZE);
+  file = fopen(path, "w");
+  if (file == null) {
+    perror("OS::image_uuid/fopen");
+  }
+  if (fwrite(uuid, UUID_SIZE, 1, file) != 1) {
+    fprintf(stderr, "OS::image_uuid/fwrite failed: %s\n", strerror(ferror(file)));
+  }
+  fclose(file);
   return uuid;
 }
 

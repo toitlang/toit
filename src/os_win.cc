@@ -256,7 +256,7 @@ void OS::out_of_memory(const char* reason) {
 }
 
 const uint8* OS::image_uuid() {
-  // Posix "devices" does not support images (ota, factory promote, factory reset) so the uuid
+  // Windows "devices" does not support images (ota, factory promote, factory reset) so the uuid
   // doesn't need to be unique.
   static uint8_t uuid[UUID_SIZE] = {0xe3, 0xbb, 0xa6, 0xa1, 0x23, 0x0c, 0x44, 0xa5, 0x9f, 0x5d, 0x09, 0x0c, 0xf7, 0xfd, 0x15, 0x2a};
   return uuid;

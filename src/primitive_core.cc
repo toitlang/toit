@@ -500,8 +500,8 @@ PRIMITIVE(smi_multiply) {
   ARGS(word, receiver, Object, arg);
   if (arg->is_smi()) {
     word other = Smi::cast(arg)->value();
-    long result;
-    if (__builtin_smull_overflow(receiver, other << 1, &result)) goto overflow;
+    word result;
+    if (__builtin_mul_overflow(receiver, other << 1, &result)) goto overflow;
     Smi* r = reinterpret_cast<Smi*>(result);
     ASSERT(r == Smi::from(result >> 1));
     return r;
