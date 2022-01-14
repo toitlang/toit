@@ -10,7 +10,7 @@ This package is not yet published on pkg.toit.io. As such it is best to
 simply install it as a local package:
 
 ```
-toit.pkg pkg install --name=host --local <PATH_TO_HOST_PACKAGE>
+toit.pkg install --name=host --local <PATH_TO_HOST_PACKAGE>
 ```
 
 where `<PATH_TO_HOST_PACKAGE>` is the folder containing this README.
