@@ -35,7 +35,8 @@ namespace toit {
 static const int ALLOCATION_SIZE = 2 * MB;
 static const int ENCRYPTION_WRITE_SIZE = 16;
 
-static void* allocations = null;
+static void* allocations_mmap = null;
+static size_t allocations_mmap_size = 0;
 const char* FlashRegistry::allocations_memory_ = null;
 
 static bool is_file_backed = false;
@@ -45,7 +46,7 @@ static int dirty_start = INT32_MAX;
 static int dirty_end = 0;
 
 static bool is_dirty() {
-  return dirty_start <= dirty_end;
+  return dirty_start < dirty_end;
 }
 
 static void mark_dirty(int offset, int size) {
@@ -54,7 +55,7 @@ static void mark_dirty(int offset, int size) {
 }
 
 void FlashRegistry::set_up() {
-  ASSERT(allocations == null);
+  ASSERT(allocations_mmap == null);
   ASSERT(allocations_memory() == null);
 
   int fd = -1;
@@ -86,14 +87,15 @@ void FlashRegistry::set_up() {
 
   // We use mmap here instead of regular allocation because this is emulating
   // the flash on the device so we don't want it to show up in heap accounting.
-  allocations = mmap(null, allocations_size() + padding, PROT_READ | PROT_WRITE, flags, fd, 0);
-  allocations_memory_ = Utils::round_up(unvoid_cast<char*>(allocations), FLASH_PAGE_SIZE);
+  allocations_mmap_size = allocations_size() + padding;
+  allocations_mmap = mmap(null, allocations_mmap_size, PROT_READ | PROT_WRITE, flags, fd, 0);
+  allocations_memory_ = Utils::round_up(unvoid_cast<char*>(allocations_mmap), FLASH_PAGE_SIZE);
 
-  if (allocations == MAP_FAILED) {
+  if (allocations_mmap == MAP_FAILED) {
     FATAL("Failed to allocate memory for FlashRegistry");
   }
 
-  if (padding == 0 && allocations != allocations_memory_) {
+  if (padding == 0 && allocations_mmap != allocations_memory_) {
     FATAL("Cannot allocate aligned memory for FlashRegistry");
   }
 
@@ -104,14 +106,22 @@ void FlashRegistry::set_up() {
   ASSERT(!is_dirty());
 }
 
+void FlashRegistry::tear_down() {
+  allocations_memory_ = null;
+  if (munmap(allocations_mmap, allocations_mmap_size) != 0) {
+    perror("FlashRegistry::tear_down/munmap");
+  }
+  allocations_mmap = null;
+}
+
 bool FlashRegistry::is_allocations_set_up() {
-  return allocations != null;
+  return allocations_memory_ != null;
 }
 
 void FlashRegistry::flush() {
   if (!is_file_backed || !is_dirty()) return;
   int offset = Utils::round_down(dirty_start, pagesize);
-  int size = dirty_end - offset;
+  int size = Utils::round_up(dirty_end - offset, pagesize);
   if (msync(void_cast(const_cast<char*>(allocations_memory_) + offset), size, MS_SYNC) != 0) {
     perror("FlashRegistry::flush/msync");
   }

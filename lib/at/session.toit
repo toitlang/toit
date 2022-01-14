@@ -30,7 +30,7 @@ class Command:
   name/string
   type/string
   parameters/List ::= []
-  data/ByteArray? ::= null
+  data ::= null
 
   timeout/Duration
 
