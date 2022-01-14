@@ -30,6 +30,7 @@ if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows")
   list(APPEND TOIT_FAILING_TESTS
     tests/ar_test.toit
     tests/close_test.toit
+    tests/dns_test.toit
     tests/file_test.toit
     tests/interface_address_test.toit
     tests/keepalive_test.toit

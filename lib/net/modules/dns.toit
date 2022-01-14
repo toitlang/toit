@@ -9,6 +9,9 @@ import net
 DNS_DEFAULT_TIMEOUT ::= Duration --s=20
 DNS_RETRY_TIMEOUT ::= Duration --s=1
 HOSTS_ ::= {"localhost": "127.0.0.1"}
+CACHE_ ::= Map  // From name to CacheEntry.
+MAX_CACHE_SIZE_ ::= platform == "FreeRTOS" ? 30 : 1000
+MAX_TRIMMED_CACHE_SIZE_ ::= MAX_CACHE_SIZE_ / 3 * 2
 
 class DnsException:
   text/string
@@ -55,9 +58,6 @@ class DnsQuery_:
   If given a numeric address like "127.0.0.1" it merely parses
     the numbers without a network round trip.
 
-  Does not currently cache results, so there is normally a
-    network round trip on every use.
-
   By default the server is "8.8.8.8" which is the Google DNS
     service.
 
@@ -70,6 +70,9 @@ class DnsQuery_:
       return net.IpAddress.parse name
     if HOSTS_.contains name:
       return net.IpAddress.parse HOSTS_[name]
+
+    hit := find_in_cache_ server
+    if hit: return hit
 
     query := create_query_
     socket := udp.Socket
@@ -94,7 +97,7 @@ class DnsQuery_:
           if exception and exception != "DEADLINE_EXCEEDED": throw exception
 
           if answer:
-            return decode_response_ answer.data
+            return decode_response_ answer.data server
 
           retry_timeout = retry_timeout * 2
 
@@ -151,7 +154,17 @@ class DnsQuery_:
     assert: position + 4 == query.size
     return query
 
-  decode_response_ response/ByteArray -> net.IpAddress:
+  // We pass the name_server because we don't use the cache entry if the user
+  // is trying a different name server.
+  find_in_cache_ name_server/string -> net.IpAddress?:
+    if not CACHE_.contains name: return null
+    entry := CACHE_[name]
+    if not entry.valid name_server:
+      CACHE_.remove name
+      return null
+    return entry.address
+
+  decode_response_ response/ByteArray name_server/string -> net.IpAddress:
     received_id := BIG_ENDIAN.uint16 response 0
     if received_id != id:
       throw (DnsException "Response ID mismatch")
@@ -174,15 +187,26 @@ class DnsQuery_:
       position += 2
       if clas != CLASS: throw (DnsException "Unexpected response class: $clas")
 
-      position += 4  // Skip TTL field.
+      ttl := BIG_ENDIAN.int32 response position
+      position += 4
+
+      // We won't cache more than a day, even if the TTL is very high.  (In
+      // practice TTLs over one hour are rare.)
+      ttl = min ttl (3600 * 24)
+      // Ignore negative TTLs.
+      ttl = max 0 ttl
 
       rd_length := BIG_ENDIAN.uint16 response position
       position += 2
       if type == A:
         if rd_length != 4: throw (DnsException "Unexpected IP address length $rd_length")
         if case_compare_ r_name q_name:
-          return net.IpAddress
+          result := net.IpAddress
               response.copy position position + 4
+          if ttl > 0:
+            trim_cache_
+            CACHE_[name] = CacheEntry result ttl name_server
+          return result
         // Skip name that does not match.
       else if type == CNAME:
         q_name = name_ response position: null
@@ -209,3 +233,35 @@ class DnsQuery_:
         position_block.call position + 2
         return
     position_block.call position + 1
+
+/// Limits the size of the cache to avoid using too much memory.
+trim_cache_ -> none:
+  if CACHE_.size < MAX_CACHE_SIZE_: return
+
+  // Cache too big.  Start by removing entries where the TTL has
+  // expired.
+  now := Time.monotonic_us
+  CACHE_.filter --in_place: | key value |
+    value.end > now
+
+  // Set the limit a bit lower now - we want to remove at least one third of
+  // the entries when we trim the cache since it's an expensive operation.
+  if CACHE_.size < MAX_TRIMMED_CACHE_SIZE_: return
+
+  // Remove every second entry.
+  toggle := true
+  CACHE_.filter --in_place: | key value |
+    toggle = not toggle
+    toggle
+
+class CacheEntry:
+  server / string          // Unparsed server name like "8.8.8.8".
+  end / int                // Time in µs, compatible with Time.monotonic_us.
+  address / net.IpAddress
+
+  constructor .address ttl/int .server:
+    end = Time.monotonic_us + ttl * 1_000_000
+
+  valid name_server/string -> bool:
+    if Time.monotonic_us > end: return false
+    return name_server == server
