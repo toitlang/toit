@@ -32,7 +32,8 @@ class RpcBroker implements SystemMessageHandler_:
     )
 
     procedures_.get name --if_present=: | procedure |
-      if queue_.add (RpcRequest_ pid gid id decoded[2] procedure): return
+      request := RpcRequest_ pid gid id decoded[2] procedure
+      if queue_.add request: return
       send_exception_reply.call "Cannot enqueue more requests"
 
     if decoded.is_empty:
