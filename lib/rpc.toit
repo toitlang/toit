@@ -19,7 +19,7 @@ class Rpc implements SystemMessageHandler_:
 
   invoke name/int arguments/List -> any:
     return synchronizer_.send: | id |
-      message := [id, name, arguments]
+      message := [ id, name, arguments ]
       system_send_bytes_ SYSTEM_RPC_CHANNEL_LEGACY_ (ubjson.encode message)
 
   on_message type gid pid arguments -> none:

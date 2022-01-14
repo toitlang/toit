@@ -27,7 +27,7 @@ class RpcBroker implements SystemMessageHandler_:
     name/int := decoded[1]
 
     send_exception_reply := (:| exception |
-      process_send_bytes_ pid type (ubjson.encode [id, true, exception])
+      process_send_bytes_ pid type (ubjson.encode [ id, true, exception ])
       return
     )
 
@@ -89,7 +89,9 @@ class RpcRequest_:
       result = procedure.call arguments gid pid
       if result is Serializable: result = result.serialize
     finally: | is_exception exception |
-      reply := is_exception ? [id, true, exception.value, exception.trace ] : [id, false, result]
+      reply := is_exception
+          ? [ id, true, exception.value, exception.trace ]
+          : [ id, false, result ]
       process_send_bytes_ pid SYSTEM_RPC_CHANNEL_LEGACY_ (ubjson.encode reply)
       return  // Stops any unwinding.
 
