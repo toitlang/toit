@@ -103,13 +103,17 @@ set(TOIT_LINK_LIBS
   ${TOIT_NETWORK_LIBS}
   ${TOIT_LINK_GROUP_END_FLAGS}
   toit_compiler
-  ${TOIT_WINDOWS_LIBS}
   pthread
   ${CMAKE_DL_LIBS}
   ${TOIT_LINK_LIBS_LIBGCC}
   ${TOIT_LINK_SEGFAULT}
   CACHE INTERNAL ""
   )
+
+target_link_libraries(
+  toit_vm
+  ${TOIT_WINDOWS_LIBS}
+)
 
 target_link_libraries(
   toit.run
