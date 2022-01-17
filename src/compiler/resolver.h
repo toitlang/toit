@@ -33,25 +33,23 @@ namespace compiler {
 
 class Diagnostics;
 class Scope;
-class LspSelectionHandler;
+class Lsp;
 class ToplevelScope;
 class Module;
 class ModuleScope;
 
 class Resolver {
  public:
-  Resolver(LspSelectionHandler* lsp_selection_handler,
+  Resolver(Lsp* lsp,
            SourceManager* source_manager,
            Diagnostics* diagnostics)
       : _source_manager(source_manager)
       , _diagnostics(diagnostics)
-      , _lsp_selection_handler(lsp_selection_handler) { }
+      , _lsp(lsp) { }
 
   ir::Program* resolve(const std::vector<ast::Unit*>& units,
                        int entry_unit_index,
-                       int core_unit_index,
-                       bool should_print_summary,
-                       bool should_emit_semantic_tokens);
+                       int core_unit_index);
 
   ToitdocRegistry toitdocs() { return _toitdocs; }
 
@@ -61,7 +59,7 @@ class Resolver {
   UnorderedMap<ir::Node*, ast::Node*> _ir_to_ast_map;
   ToitdocRegistry _toitdocs;
 
-  LspSelectionHandler* _lsp_selection_handler;
+  Lsp* _lsp;
 
   Diagnostics* diagnostics() const { return _diagnostics; }
 

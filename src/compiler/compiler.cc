@@ -27,7 +27,6 @@
 #include <fcntl.h>
 
 #include "compiler.h"
-#include "completion.h"
 #include "diagnostic.h"
 #include "definite.h"
 #include "dep_writer.h"
@@ -35,15 +34,18 @@
 #include "filesystem_hybrid.h"
 #include "filesystem_local.h"
 #include "filesystem_socket.h"
-#include "goto_definition.h"
 #include "lambda.h"
 #include "list.h"
+#include "lsp/lsp.h"
+#include "lsp/completion.h"
+#include "lsp/goto_definition.h"
 #include "lock.h"
 #include "map.h"
 #include "monitor.h"
 #include "optimizations/optimizations.h"
 #include "parser.h"
 #include "resolver.h"
+#include "../snapshot_bundle.h"
 #include "stubs.h"
 #include "symbol_canonicalizer.h"
 #include "token.h"
@@ -77,6 +79,7 @@ struct PipelineConfiguration {
   Filesystem* filesystem;
   SourceManager* source_manager;
   Diagnostics* diagnostics;
+  Lsp* lsp;
 
   /// Whether to continue compiling after having encountered an error (if possible).
   bool force;
@@ -84,8 +87,6 @@ struct PipelineConfiguration {
   bool werror;
   bool parse_only;
   bool is_for_analysis;
-  bool needs_summary;
-  bool emit_semantic_tokens;
 };
 
 class Pipeline {
@@ -123,7 +124,7 @@ class Pipeline {
  protected:
   virtual Source* _load_file(const char* path, const PackageLock& package_lock);
   virtual ast::Unit* parse(Source* source);
-  virtual void do_with_lsp_selection_handler(const std::function<void (LspSelectionHandler*)>& callback);
+  virtual void setup_lsp_selection_handler();
 
   // Gives the Pipeline the opportunity to change the program once it was
   // resolved.
@@ -143,10 +144,9 @@ class Pipeline {
   Diagnostics* diagnostics() const { return _configuration.diagnostics; }
   SymbolCanonicalizer* symbol_canonicalizer() { return &_symbols; }
   Filesystem* filesystem() const { return _configuration.filesystem; }
+  Lsp* lsp() { return _configuration.lsp; }
   // The toitdoc registry is filled during the resolution stage.
   ToitdocRegistry* toitdocs() { return &_toitdoc_registry; }
-  bool needs_summary() const { return _configuration.needs_summary; }
-  bool emit_semantic_tokens() const { return _configuration.emit_semantic_tokens; }
 
 
  private:
@@ -235,7 +235,7 @@ class CompletionPipeline : public LocationLanguageServerPipeline {
   using LocationLanguageServerPipeline::LocationLanguageServerPipeline;
 
  protected:
-  void do_with_lsp_selection_handler(const std::function<void (LspSelectionHandler*)>& callback);
+  void setup_lsp_selection_handler();
   Source* _load_file(const char* path, const PackageLock& package_lock);
 
 
@@ -265,7 +265,7 @@ class GotoDefinitionPipeline : public LocationLanguageServerPipeline {
   }
 
  protected:
-  void do_with_lsp_selection_handler(const std::function<void (LspSelectionHandler*)>& callback);
+  void setup_lsp_selection_handler();
 
   void lsp_selection_import_path(const char* path,
                                  const char* segment,
@@ -334,6 +334,9 @@ void Compiler::language_server(const Compiler::Configuration& compiler_config) {
     fs = &fs_socket;
   }
 
+  LspProtocol lsp_protocol;
+  Lsp lsp(&lsp_protocol);
+
   const char* mode = reader.next("mode");
   SourceManager source_manager(fs);
   PipelineConfiguration configuration = {
@@ -345,12 +348,11 @@ void Compiler::language_server(const Compiler::Configuration& compiler_config) {
     .filesystem = fs,
     .source_manager = &source_manager,
     .diagnostics = null,  // Needs to be set later.
+    .lsp = &lsp,
     .force = compiler_config.force,
     .werror = compiler_config.werror,
     .parse_only = false,
     .is_for_analysis = true,
-    .needs_summary = false,
-    .emit_semantic_tokens = false,
   };
 
   if (strcmp("ANALYZE", mode) == 0) {
@@ -362,9 +364,9 @@ void Compiler::language_server(const Compiler::Configuration& compiler_config) {
     for (int i = 0; i < path_count; i++) {
       source_paths[i] = strdup(reader.next("path"));
     }
-    LanguageServerAnalysisDiagnostics diagnostics(&source_manager);
+    LanguageServerAnalysisDiagnostics diagnostics(&source_manager, &lsp);
     configuration.diagnostics = &diagnostics;
-    configuration.needs_summary = true;
+    lsp.set_needs_summary(true);
     lsp_analyze(source_paths, configuration);
   } else if (strcmp("PARSE", mode) == 0) {
     int path_count = reader.next_int("path count");
@@ -384,7 +386,7 @@ void Compiler::language_server(const Compiler::Configuration& compiler_config) {
     NullDiagnostics diagnostics(&source_manager);
     configuration.diagnostics = &diagnostics;
     configuration.parse_only = true;
-    configuration.needs_summary = false;
+    lsp.set_needs_summary(false);
     lsp_analyze(source_paths, configuration);
   } else if (strcmp("SNAPSHOT BUNDLE", mode) == 0) {
     const char* path = reader.next("path");
@@ -397,7 +399,6 @@ void Compiler::language_server(const Compiler::Configuration& compiler_config) {
     NullDiagnostics diagnostics(&source_manager);
     configuration.diagnostics = &diagnostics;
     configuration.is_for_analysis = true;
-    configuration.emit_semantic_tokens = true;
     lsp_semantic_tokens(path, configuration);
   } else {
     const char* path = reader.next("path");
@@ -447,21 +448,16 @@ void Compiler::lsp_snapshot(const char* source_path,
   Flags::no_fork = true; // No need to fork the compiler when running in LSP mode.
   SnapshotBundle bundle = compile(source_path, configuration);
   if (!bundle.is_valid()) {
-    printf("FAIL\n");
+    configuration.lsp->snapshot()->fail();
     return;
   }
-  // The SnapshotBundle constructor copies all data.
-  printf("OK\n%d\n", bundle.size());
-  int written = fwrite(bundle.buffer(), 1, bundle.size(), stdout);
-  fflush(stdout);
+  configuration.lsp->snapshot()->emit(bundle);
   free(bundle.buffer());
-  if (written != bundle.size()) {
-    FATAL("Couldn't write snapshot");
-  }
 }
 
 void Compiler::lsp_semantic_tokens(const char* source_path,
                                    const PipelineConfiguration& configuration) {
+  configuration.lsp->set_should_emit_semantic_tokens(true);
   ASSERT(configuration.diagnostics != null);
   LanguageServerPipeline pipeline(configuration);
   pipeline.run(ListBuilder<const char*>::build(source_path));
@@ -522,12 +518,11 @@ void Compiler::analyze(List<const char*> source_paths,
     .filesystem = &fs,
     .source_manager = &source_manager,
     .diagnostics = &diagnostics,
+    .lsp = null,
     .force = compiler_config.force,
     .werror = compiler_config.werror,
     .parse_only = false,
     .is_for_analysis = true,
-    .needs_summary = false,
-    .emit_semantic_tokens = false,
   };
   Pipeline pipeline(configuration);
   pipeline.run(source_paths);
@@ -650,12 +645,11 @@ SnapshotBundle Compiler::compile(const char* source_path,
     .filesystem = &fs,
     .source_manager = &source_manager,
     .diagnostics = &diagnostics,
+    .lsp = null,
     .force = compiler_config.force,
     .werror = compiler_config.werror,
     .parse_only = false,
     .is_for_analysis = false,
-    .needs_summary = false,
-    .emit_semantic_tokens = false,
   };
 
   return compile(source_path, configuration);
@@ -797,23 +791,18 @@ ast::Unit* Pipeline::parse(Source* source) {
   return parser.parse_unit();
 }
 
-void Pipeline::do_with_lsp_selection_handler(const std::function<void (LspSelectionHandler*)>& callback) {
-  callback(null);
+void Pipeline::setup_lsp_selection_handler() {
+  // Do nothing.
 }
 
 ir::Program* Pipeline::resolve(const std::vector<ast::Unit*>& units,
                                int entry_unit_index, int core_unit_index) {
-  ir::Program* result;
-  do_with_lsp_selection_handler([&](LspSelectionHandler* handler) {
-    // Resolve all units.
-    Resolver resolver(handler, source_manager(), diagnostics());
-    result = resolver.resolve(units,
-                              entry_unit_index,
-                              core_unit_index,
-                              needs_summary(),
-                              emit_semantic_tokens());
-    set_toitdocs(resolver.toitdocs());
-  });
+  // Resolve all units.
+  Resolver resolver(_configuration.lsp, source_manager(), diagnostics());
+  auto result = resolver.resolve(units,
+                                 entry_unit_index,
+                                 core_unit_index);
+  set_toitdocs(resolver.toitdocs());
   return result;
 }
 
@@ -882,9 +871,7 @@ void DebugCompilationPipeline::patch(ir::Program* program) {
 }
 
 void Pipeline::check_types_and_deprecations(ir::Program* program) {
-  do_with_lsp_selection_handler([&] (LspSelectionHandler* handler) {
-    ::toit::compiler::check_types_and_deprecations(program, handler, toitdocs(), diagnostics());
-  });
+  ::toit::compiler::check_types_and_deprecations(program, _configuration.lsp, toitdocs(), diagnostics());
 }
 
 List<const char*> Pipeline::adjust_source_paths(List<const char*> source_paths) {
@@ -989,38 +976,34 @@ Source* CompletionPipeline::_load_file(const char* path, const PackageLock& pack
   return result;
 }
 
-void CompletionPipeline::do_with_lsp_selection_handler(const std::function<void (LspSelectionHandler*)>& callback) {
-
-
-  CompletionHandler lsp_selection_handler(_completion_prefix, _package_id, source_manager());
-  callback(&lsp_selection_handler);
+void CompletionPipeline::setup_lsp_selection_handler() {
+  lsp()->setup_completion_handler(_completion_prefix, _package_id, source_manager());
 }
 
 
 void CompletionPipeline::lsp_complete_import_first_segment(ast::Identifier* segment,
                                                            const Package& current_package,
                                                            const PackageLock& package_lock) {
-  CompletionHandler::import_first_segment(
-    _completion_prefix, segment, current_package, package_lock);
+  lsp()->complete_first_segment(_completion_prefix,
+                                segment,
+                                current_package,
+                                package_lock);
 }
 
 void CompletionPipeline::lsp_selection_import_path(const char* path,
                                                    const char* segment,
                                                    const char* resolved) {
-  CompletionHandler::import_path(_completion_prefix, path, filesystem());
+  lsp()->complete_import_path(_completion_prefix, path, filesystem());
 }
 
-void GotoDefinitionPipeline::do_with_lsp_selection_handler(const std::function<void (LspSelectionHandler*)>& callback) {
-
-  GotoDefinitionHandler lsp_selection_handler(source_manager());
-  callback(&lsp_selection_handler);
+void GotoDefinitionPipeline::setup_lsp_selection_handler() {
+  lsp()->setup_goto_definition_handler(source_manager());
 }
-
 
 void GotoDefinitionPipeline::lsp_selection_import_path(const char* path,
                                                        const char* segment,
                                                        const char* resolved) {
-  GotoDefinitionHandler::import_path(resolved);
+  lsp()->goto_definition_import_path(resolved);
 }
 
 /// Returns the error-unit if the file can't be parsed.
@@ -1535,6 +1518,8 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths) {
   }
 
   if (_configuration.parse_only) return Result::invalid();
+
+  setup_lsp_selection_handler();
 
   ir::Program* ir_program = resolve(units, ENTRY_UNIT_INDEX, CORE_UNIT_INDEX);
 

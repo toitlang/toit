@@ -15,15 +15,17 @@
 
 #pragma once
 
-#include "../top.h"
-
-#include "resolver_scope.h"
-#include "sources.h"
+#include "../../top.h"
 
 namespace toit {
 namespace compiler {
 
-void emit_semantic_tokens(Module* module, const char* path, SourceManager* manager);
+class Module;
+class LspProtocol;
+class SourceManager;
+
+/// Emits semantic tokens that are used to syntax highlight code in the LSP client.
+void emit_tokens(Module* module, const char* path, SourceManager* manager, LspProtocol* protocol);
 
 } // namespace toit::compiler
 } // namespace toit

@@ -15,19 +15,28 @@
 
 #pragma once
 
-#include "../top.h"
+#include <string>
 
-#include "lsp.h"
-#include "sources.h"
+#include "../../top.h"
+
+#include "selection.h"
+#include "completion_kind.h"
+#include "../package.h"
 
 namespace toit {
 namespace compiler {
 
+class PackageLock;
+class SourceManager;
+
 /// A target handler is invoked when the target of a LSP command is encountered.
-class GotoDefinitionHandler : public LspSelectionHandler {
+class CompletionHandler : public LspSelectionHandler {
  public:
-  explicit GotoDefinitionHandler(SourceManager* source_manager)
-      : _source_manager(source_manager) { }
+  CompletionHandler(Symbol prefix, const std::string& package_id, SourceManager* source_manager, LspProtocol* protocol)
+      : LspSelectionHandler(protocol)
+      , _prefix(prefix)
+      , _package_id(package_id)
+      , _source_manager(source_manager) {}
 
   void class_or_interface(ast::Node* node, IterableScope* scope, ir::Class* holder, ir::Node* resolved, bool needs_interface);
   void type(ast::Node* node, IterableScope* scope, ResolutionEntry resolved, bool allow_none);
@@ -50,6 +59,7 @@ class GotoDefinitionHandler : public LspSelectionHandler {
                    IterableScope* scope,
                    ir::Method* surrounding);
   void call_block(ast::Dot* node, ir::Node* ir_receiver);
+
   void call_static_named(ast::Node* name_node, ir::Node* ir_call_target, List<ir::Node*> candidates);
 
   void call_primitive(ast::Node* node, Symbol module_name, Symbol primitive_name,
@@ -70,17 +80,38 @@ class GotoDefinitionHandler : public LspSelectionHandler {
                    ToitdocScopeIterator* iterator,
                    bool is_signature_toitdoc);
 
-  static void import_path(const char* resolved);
+  static void import_first_segment(Symbol prefix,
+                                   ast::Identifier* segment,
+                                   const Package& current_package,
+                                   const PackageLock& package_lock,
+                                   LspProtocol* protocol);
+  static void import_path(Symbol prefix,
+                          const char* path,
+                          Filesystem* fs,
+                          LspProtocol* protocol);
 
  private:
-  SourceManager* _source_manager;
-  UnorderedSet<Source::Range> _printed_definitions;
+  void complete_static_ids(IterableScope* scope, ir::Method* surrounding);
+  void complete_named_args(ir::Method* method);
 
-  void call_statically_resolved(ir::Node* resolved1, ir::Node* resolved2, List<ir::Node*> candidates);
-  void _print_range(ir::Node* resolved);
-  void _print_range(Source::Range range);
-  void _print_all(ResolutionEntry entry);
-  void _print_all(List<ir::Node*> nodes);
+  void complete(Symbol symbol) { complete(symbol.c_str()); }
+  void complete(Symbol symbol, CompletionKind kind) { complete(symbol.c_str(), kind); }
+  void complete(const std::string& name) { complete(name, CompletionKind::NONE); }
+
+  void complete_if_visible(Symbol name,
+                           CompletionKind kind,
+                           const std::string& package_id);
+
+  void complete_method(ir::Method* method, const std::string& package_id);
+  void complete_entry(Symbol name,
+                      const ResolutionEntry& entry,
+                      CompletionKind kind_override = CompletionKind::NONE);
+  void complete(const std::string& name, CompletionKind kind);
+
+  Symbol _prefix;
+  std::string _package_id;
+  SourceManager* _source_manager;
+  UnorderedSet<std::string> emitted;
 };
 
 } // namespace toit::compiler

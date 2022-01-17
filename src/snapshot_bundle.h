@@ -57,7 +57,8 @@ class SnapshotBundle {
   Snapshot snapshot();
 
   uint8* buffer() { return _buffer; }
-  int size() { return _size; }
+  const uint8* buffer() const { return _buffer; }
+  int size() const { return _size; }
 
   /// Whether the given [file] is likely a bundle file.
   /// This function is applying a heuristic to determine whether

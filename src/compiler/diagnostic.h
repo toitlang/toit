@@ -24,6 +24,8 @@
 namespace toit {
 namespace compiler {
 
+class Lsp;
+
 namespace ast {
 class Node;
 }
@@ -142,8 +144,9 @@ class AnalysisDiagnostics : public CompilationDiagnostics {
 
 class LanguageServerAnalysisDiagnostics : public Diagnostics {
  public:
-  explicit LanguageServerAnalysisDiagnostics(SourceManager* source_manager)
-      : Diagnostics(source_manager) {}
+  explicit LanguageServerAnalysisDiagnostics(SourceManager* source_manager, Lsp* lsp)
+      : Diagnostics(source_manager)
+      , _lsp(lsp) {}
 
   bool should_report_missing_main() const { return false; }
 
@@ -153,6 +156,11 @@ class LanguageServerAnalysisDiagnostics : public Diagnostics {
  protected:
   void emit(Severity severity, const char* format, va_list& arguments);
   void emit(Severity severity, Source::Range range, const char* format, va_list& arguments);
+
+  Lsp* lsp() { return _lsp; }
+
+ private:
+  Lsp* _lsp;
 };
 
 class NullDiagnostics : public Diagnostics {

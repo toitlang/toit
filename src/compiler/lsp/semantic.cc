@@ -16,10 +16,12 @@
 #include <vector>
 #include <algorithm>
 
-#include "ast.h"
-#include "ir.h"
-#include "lsp.h"
 #include "semantic.h"
+
+#include "lsp.h"
+
+#include "../ast.h"
+#include "../ir.h"
 
 namespace toit {
 namespace compiler {
@@ -124,7 +126,7 @@ class TokenVisitor : public TraversingVisitor {
 
 }
 
-void emit_semantic_tokens(Module* module, const char* path, SourceManager* manager) {
+void emit_tokens(Module* module, const char* path, SourceManager* manager, LspProtocol* protocol) {
   TokenVisitor visitor(path, manager);
 
   for (auto prefixed : module->imported_modules()) {
@@ -143,14 +145,18 @@ void emit_semantic_tokens(Module* module, const char* path, SourceManager* manag
     return a.column < b.column;
   });
 
-  printf("%d\n", static_cast<int>(tokens.size()) * 5);
+  protocol->semantic()->emit_size(static_cast<int>(tokens.size()));
   int last_line = 0;
   int last_column = 0;
   for (auto token : tokens) {
     int delta_line = token.line - last_line;
     int delta_column = delta_line == 0 ? token.column - last_column : token.column;
     int encoded_token_type = static_cast<int>(token.type);
-    printf("%d\n%d\n%d\n%d\n%d\n", delta_line, delta_column, token.length, encoded_token_type, token.modifiers);
+    protocol->semantic()->emit_token(delta_line,
+                                     delta_column,
+                                     token.length,
+                                     encoded_token_type,
+                                     token.modifiers);
     last_line = token.line;
     last_column = token.column;
   }

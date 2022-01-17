@@ -20,7 +20,7 @@
 #include "deprecation.h"
 #include "diagnostic.h"
 #include "ir.h"
-#include "lsp.h"
+#include "lsp/lsp.h"
 #include "no_such_method.h"
 #include "queryable_class.h"
 #include "toitdoc.h"
@@ -46,12 +46,12 @@ class TypeChecker : public ReturningVisitor<Type> {
               List<ir::Class*> classes,
               const UnorderedMap<ir::Class*, QueryableClass>* queryables,
               const Set<ir::Node*>* deprecated,
-              LspSelectionHandler* lsp_selection_handler,
+              Lsp* lsp,
               Diagnostics* diagnostics)
       : _classes(classes)
       , _queryables(queryables)
       , _deprecated(deprecated)
-      , _lsp_selection_handler(lsp_selection_handler)
+      , _lsp(lsp)
       , _diagnostics(diagnostics)
       , _method(null)
       , _boolean_type(Type::invalid())
@@ -289,7 +289,7 @@ class TypeChecker : public ReturningVisitor<Type> {
 
     auto receiver_type = visit(node->receiver());
     if (is_lsp_selection) {
-      _lsp_selection_handler->call_virtual(node, receiver_type, _classes);
+      _lsp->selection_handler()->call_virtual(node, receiver_type, _classes);
     }
     auto arguments = node->arguments();
 
@@ -530,7 +530,7 @@ class TypeChecker : public ReturningVisitor<Type> {
   List<ir::Class*> _classes;
   const UnorderedMap<ir::Class*, QueryableClass>* _queryables;
   const Set<ir::Node*>* _deprecated;
-  LspSelectionHandler* _lsp_selection_handler;
+  Lsp* _lsp;
   Diagnostics* _diagnostics;
 
   // The current method.
@@ -677,12 +677,12 @@ class TypeChecker : public ReturningVisitor<Type> {
 };
 
 void check_types_and_deprecations(ir::Program* program,
-                                  LspSelectionHandler* lsp_selection_handler,
+                                  Lsp* lsp,
                                   ToitdocRegistry* toitdocs,
                                   Diagnostics* diagnostics) {
   auto deprecated = collect_deprecated_elements(program, toitdocs);
   auto queryables = build_queryables_from_resolution_shapes(program);
-  TypeChecker checker(program->literal_types(), program->classes(), &queryables, &deprecated, lsp_selection_handler, diagnostics);
+  TypeChecker checker(program->literal_types(), program->classes(), &queryables, &deprecated, lsp, diagnostics);
   program->accept(&checker);
 }
 

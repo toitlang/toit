@@ -21,7 +21,7 @@
 #include <limits.h>
 #include <math.h>
 
-#include "lsp.h"
+#include "lsp/lsp.h"
 #include "no_such_method.h"
 #include "package.h"
 #include "resolver_primitive.h"
@@ -376,7 +376,7 @@ ir::Type MethodResolver::resolve_type(ast::Expression* type, bool is_return_type
     if (type_name == Symbols::any) return ir::Type::any();
     type_declaration = lookup(type_name).entry;
     if (type->is_LspSelection()) {
-      _lsp_selection_handler->type(type, scope(), type_declaration, is_return_type);
+      _lsp->selection_handler()->type(type, scope(), type_declaration, is_return_type);
     }
   } else if (type->is_Dot()) {
     auto dot = type->as_Dot();
@@ -384,12 +384,12 @@ ir::Type MethodResolver::resolve_type(ast::Expression* type, bool is_return_type
     type_declaration = scope()->lookup_prefixed(type);
     if (dot->receiver()->is_LspSelection()) {
       auto entry = lookup(dot->receiver()->as_Identifier()->data()).entry;
-      _lsp_selection_handler->type(type, scope(), entry, is_return_type);
+      _lsp->selection_handler()->type(type, scope(), entry, is_return_type);
     } else if (dot->name()->is_LspSelection()) {
       if (dot->receiver()->is_Identifier()) {
         auto lookup_entry = lookup(dot->receiver()->as_Identifier()->data()).entry;
         if (lookup_entry.is_prefix()) {
-          _lsp_selection_handler->type(type, lookup_entry.prefix(), type_declaration, is_return_type);
+          _lsp->selection_handler()->type(type, lookup_entry.prefix(), type_declaration, is_return_type);
         } else {
           // We are not going to visit this node again. Might as well stop now.
           exit(2);
@@ -1273,7 +1273,7 @@ void MethodResolver::_resolve_parameters(
         fields = holder->fields();
       }
       bool field_storing_is_allowed = _method->is_constructor() || _method->is_instance();
-      _lsp_selection_handler->field_storing_parameter(parameter, fields, field_storing_is_allowed);
+      _lsp->selection_handler()->field_storing_parameter(parameter, fields, field_storing_is_allowed);
     }
 
     if (field_storing_parameters != null && parameter->is_field_storing()) {
@@ -2423,7 +2423,7 @@ void MethodResolver::_handle_lsp_call_dot(ast::Dot* ast_dot, ir::Expression* ir_
   if (ir_receiver->is_block()) {
     // Most likely, the selector is `call`. At least that's what the
     //   completion will suggest.
-    _lsp_selection_handler->call_block(ast_dot, ir_receiver);
+    _lsp->selection_handler()->call_block(ast_dot, ir_receiver);
   } else if (ir_receiver->is_CallConstructor() &&
              !ast_dot->receiver()->is_Parenthesis()) {
     // We have to deal with the special case `Class.x` where `x` could either
@@ -2434,12 +2434,12 @@ void MethodResolver::_handle_lsp_call_dot(ast::Dot* ast_dot, ir::Expression* ir_
     // The selector doesn't resolve to a static target (otherwise we wouldn't be here), so
     // no need to try to find candidates.
     List<ir::Node*> candidates;
-    _lsp_selection_handler->call_class(ast_dot,
-                                       call_constructor->klass(),
-                                       null,
-                                       null,
-                                       candidates,
-                                       _scope);
+    _lsp->selection_handler()->call_class(ast_dot,
+                                          call_constructor->klass(),
+                                          null,
+                                          null,
+                                          candidates,
+                                          _scope);
   } else if (ir_receiver->is_Error() ||
               (ir_receiver->is_CallStatic() &&
               ir_receiver->as_CallStatic()->target()->target()->is_factory())) {
@@ -2456,12 +2456,12 @@ void MethodResolver::_handle_lsp_call_dot(ast::Dot* ast_dot, ir::Expression* ir_
       // The selector doesn't resolve to a static target (otherwise we wouldn't be here), so
       // no need to try to find candidates.
       List<ir::Node*> candidates;
-      _lsp_selection_handler->call_class(ast_dot,
-                                         class_entry.klass(),
-                                         null,
-                                         null,
-                                         candidates,
-                                         _scope);
+      _lsp->selection_handler()->call_class(ast_dot,
+                                            class_entry.klass(),
+                                            null,
+                                            null,
+                                            candidates,
+                                            _scope);
     }
   }
 }
@@ -2483,22 +2483,22 @@ void MethodResolver::_handle_lsp_call_identifier(ast::Node* ast_target,
 
   auto candidates = _compute_target_candidates(ast_target, scope());
   if (ast_target->is_Identifier()) {
-    _lsp_selection_handler->call_static(ast_target,
-                                        ir_target1,
-                                        ir_target2,
-                                        candidates.nodes,
-                                        scope(),
-                                        _method);
+    _lsp->selection_handler()->call_static(ast_target,
+                                           ir_target1,
+                                           ir_target2,
+                                           candidates.nodes,
+                                           scope(),
+                                           _method);
   } else if (_scope->is_prefixed_identifier(ast_target)) {
     auto ast_dot = ast_target->as_Dot();
     auto prefix_name = ast_dot->receiver()->as_Identifier()->data();
     auto entry = _scope->lookup(prefix_name).entry;
     ASSERT(entry.kind() == ResolutionEntry::PREFIX);
-    _lsp_selection_handler->call_prefixed(ast_target->as_Dot(),
-                                          ir_target1,
-                                          ir_target2,
-                                          candidates.nodes,
-                                          entry.prefix());
+    _lsp->selection_handler()->call_prefixed(ast_target->as_Dot(),
+                                             ir_target1,
+                                             ir_target2,
+                                             candidates.nodes,
+                                             entry.prefix());
   } else {
     ASSERT(_scope->is_static_identifier(ast_target));
     auto ast_dot = ast_target->as_Dot();
@@ -2511,12 +2511,12 @@ void MethodResolver::_handle_lsp_call_identifier(ast::Node* ast_target,
       class_entry = _scope->lookup_prefixed(receiver);
     }
     ir::Class* ir_class = class_entry.klass();
-    _lsp_selection_handler->call_class(ast_dot,
-                                       ir_class,
-                                       ir_target1,
-                                       ir_target2,
-                                       candidates.nodes,
-                                       _scope);
+    _lsp->selection_handler()->call_class(ast_dot,
+                                          ir_class,
+                                          ir_target1,
+                                          ir_target2,
+                                          candidates.nodes,
+                                          _scope);
   }
 }
 
@@ -2532,9 +2532,9 @@ void MethodResolver::_visit_potential_call_identifier(ast::Node* ast_target,
   auto ir_target = _resolve_call_target(ast_target, shape_without_implicit_this);
   if (named_lsp_selection != null) {
     auto candidates = _compute_target_candidates(ast_target, scope());
-    _lsp_selection_handler->call_static_named(named_lsp_selection,
-                                              ir_target,
-                                              candidates.nodes);
+    _lsp->selection_handler()->call_static_named(named_lsp_selection,
+                                                 ir_target,
+                                                 candidates.nodes);
   }
   if (ast_target->is_LspSelection() ||
       (ast_target->is_Dot() && ast_target->as_Dot()->name()->is_LspSelection())) {
@@ -2686,12 +2686,12 @@ void MethodResolver::_visit_potential_call_super(ast::Node* ast_target,
       auto ir_target = _resolve_call_target(ast_target, shape_without_implicit_this);
       if (ast_target->is_LspSelection()) {
         auto candidates = _compute_target_candidates(ast_target, scope());
-        _lsp_selection_handler->call_static(ast_target,
-                                            ir_target,
-                                            null,
-                                            candidates.nodes,
-                                            scope(),
-                                            _method);
+        _lsp->selection_handler()->call_static(ast_target,
+                                               ir_target,
+                                               null,
+                                               candidates.nodes,
+                                               scope(),
+                                               _method);
       }
       if (ir_target->is_Error()) {
         ir_target->as_Error()->set_nested(call_builder.arguments());
@@ -2719,12 +2719,12 @@ void MethodResolver::_visit_potential_call_super(ast::Node* ast_target,
         auto ir_target = _resolve_constructor_super_target(ast_target, shape);
         if (ast_target->is_LspSelection()) {
           auto candidates = _compute_constructor_super_candidates(ast_target);
-          _lsp_selection_handler->call_static(ast_target,
-                                              ir_target,
-                                              null,
-                                              candidates,
-                                              scope(),
-                                              _method);
+          _lsp->selection_handler()->call_static(ast_target,
+                                                 ir_target,
+                                                 null,
+                                                 candidates,
+                                                 scope(),
+                                                 _method);
         } else if (ast_target->is_Dot() && ast_target->as_Dot()->name()->is_LspSelection()) {
           // The candidates include statics and factories with the same name. This might make it
           //   easier to figure out what's wrong.
@@ -2738,21 +2738,21 @@ void MethodResolver::_visit_potential_call_super(ast::Node* ast_target,
             }
             return false;
           });
-          _lsp_selection_handler->call_prefixed(ast_target->as_Dot(),
-                                                ir_target,
-                                                null,
-                                                candidates,
-                                                &filtered);
+          _lsp->selection_handler()->call_prefixed(ast_target->as_Dot(),
+                                                   ir_target,
+                                                   null,
+                                                   candidates,
+                                                   &filtered);
         } else if (ast_target->is_Dot() && ast_target->as_Dot()->receiver()->is_LspSelection()) {
           // We don't provide any target for goto-definition. (The only good option would be the actual target,
           //   but that's already handled by goto-definition of the actual 'name'.
           // For completion we just provide all current static targets.
-          _lsp_selection_handler->call_static(ast_target->as_Dot()->receiver(),
-                                              null,
-                                              null,
-                                              List<ir::Node*>(),
-                                              scope(),
-                                              _method);
+          _lsp->selection_handler()->call_static(ast_target->as_Dot()->receiver(),
+                                                 null,
+                                                 null,
+                                                 List<ir::Node*>(),
+                                                 scope(),
+                                                 _method);
         }
         if (ir_target->is_ReferenceMethod()) {
           // 1. we need to add `this` in front.
@@ -3000,7 +3000,7 @@ void MethodResolver::visit_labeled_break_continue(ast::BreakContinue* node) {
     }
   }
   if (node->label()->is_LspSelection()) {
-    _lsp_selection_handler->return_label(node, label_index, _break_continue_label_stack);
+    _lsp->selection_handler()->return_label(node, label_index, _break_continue_label_stack);
   }
 
   if (label_index == -1) {
@@ -3087,7 +3087,7 @@ void MethodResolver::visit_literal_this(ast::Identifier* node) {
   ASSERT(is_literal_this(node));
 
   if (node->is_LspSelection()) {
-    _lsp_selection_handler->this_(node, _holder, scope(), _method);
+    _lsp->selection_handler()->this_(node, _holder, scope(), _method);
   }
 
   switch (_resolution_mode) {
@@ -4754,8 +4754,8 @@ void MethodResolver::visit_call_primitive(ast::Call* node) {
       (primitive_node != null && primitive_node->is_LspSelection())) {
     ASSERT(module_node != null);
     ast::Node* selected_node = module_node->is_LspSelection() ? module_node : primitive_node;
-    _lsp_selection_handler->call_primitive(selected_node, module_name, primitive_name, module, index,
-                                           selected_node == module_node);
+    _lsp->selection_handler()->call_primitive(selected_node, module_name, primitive_name, module, index,
+                                              selected_node == module_node);
   }
   ir::Expression* invocation;
   if (encountered_error) {

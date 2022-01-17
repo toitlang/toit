@@ -56,7 +56,7 @@ class MethodResolver : public ast::Visitor {
                  UnorderedMap<ir::Node*, ast::Node*>* ir_to_ast_map,
                  Module* entry_module,
                  Module* core_module,
-                 LspSelectionHandler* lsp_selection_handler,
+                 Lsp* lsp,
                  SourceManager* source_manager,
                  Diagnostics* diagnostics)
       : _method(method)
@@ -64,7 +64,7 @@ class MethodResolver : public ast::Visitor {
       , _ir_to_ast_map(ir_to_ast_map)
       , _entry_module(entry_module)
       , _core_module(core_module)
-      , _lsp_selection_handler(lsp_selection_handler)
+      , _lsp(lsp)
       , _source_manager(source_manager)
       , _diagnostics(diagnostics)
       , _scope(scope)
@@ -100,7 +100,7 @@ class MethodResolver : public ast::Visitor {
   UnorderedMap<ir::Node*, ast::Node*>* _ir_to_ast_map;
   Module* _entry_module;
   Module* _core_module;
-  LspSelectionHandler* _lsp_selection_handler;
+  Lsp* _lsp;
   SourceManager* _source_manager;
   Diagnostics* _diagnostics;
   std::vector<ir::Node*> _stack;
