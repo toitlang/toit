@@ -18,7 +18,7 @@ set(TOIT_FAILING_TESTS
 
 
 if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows" OR "${CMAKE_SYSTEM_NAME}" STREQUAL "MSYS")
-  list(APPEND TOIT_FAILING_TESTS
+  list(APPEND TOIT_SKIP_TESTS
     tests/lsp/assig_completion_test.toit
     tests/lsp/basic_completion_test.toit
     tests/lsp/export_completion_test.toit
