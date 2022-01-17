@@ -61,6 +61,9 @@ The system adds random characters to make the name unique and creates a fresh
   directory with the new name.
 Returns the name of the created directory.
 
+On Windows the prefix "/tmp/" is recognized, and the system's temporary
+  directory is used, as returned by the Win32 API GetTempPath() call.
+
 # Examples
 ```
 test_dir := mkdtemp "/tmp/test-"
