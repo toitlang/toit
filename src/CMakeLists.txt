@@ -117,11 +117,13 @@ target_link_libraries(
 
 target_link_libraries(
   toit.run
+  ${TOIT_WINDOWS_LIBS}
   ${TOIT_LINK_LIBS}
   )
 
 target_link_libraries(
   toit_run_image
+  ${TOIT_WINDOWS_LIBS}
   ${TOIT_LINK_LIBS}
   )
 
