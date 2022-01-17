@@ -18,7 +18,7 @@ file(GLOB S2I_TESTS "*_test.toit")
 set(S2I_TEST_DIR ${CMAKE_BINARY_DIR}/snapshot_to_image_test)
 
 # Image creation only works on Linux.
-if (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
+if ("${CMAKE_SYSTEM_NAME}" MATCHES "Linux")
   foreach(file ${S2I_TESTS})
     get_filename_component(base ${file} NAME_WE)
     string(REGEX REPLACE "_test$" "" test_name ${base})

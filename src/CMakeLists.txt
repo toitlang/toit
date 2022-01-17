@@ -3,7 +3,7 @@ add_subdirectory(compiler)
 # Use D flags to switch tools to deterministic mode (no timestamps etc.)
 # This is part of getting a reproducible build.  This flag is not available
 # in the 'ar' used on macOS.
-if (NOT (${CMAKE_SYSTEM_NAME} MATCHES "Darwin"))
+if (NOT ("${CMAKE_SYSTEM_NAME}" MATCHES "Darwin"))
   set(CMAKE_C_ARCHIVE_CREATE "<CMAKE_AR> qcD <TARGET> <LINK_FLAGS> <OBJECTS>")
   set(CMAKE_CXX_ARCHIVE_CREATE "<CMAKE_AR> qcD <TARGET> <LINK_FLAGS> <OBJECTS>")
   set(CMAKE_C_ARCHIVE_APPEND "<CMAKE_AR> qD <TARGET> <LINK_FLAGS> <OBJECTS>")
@@ -74,7 +74,7 @@ set_target_properties(toit_run_image
   )
 
 # On linux, we need to link statically against libgcc as well.
-if (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
+if ("${CMAKE_SYSTEM_NAME}" MATCHES "Linux")
   set(TOIT_LINK_LIBS_LIBGCC -static-libgcc)
   set(TOIT_LINK_SEGFAULT SegFault)
 endif()
@@ -85,7 +85,7 @@ else()
   set(TOIT_NETWORK_LIBS mbedtls)
 endif()
 
-if (CMAKEISDUMB${CMAKE_SYSTEM_NAME} MATCHES "CMAKEISDUMBMSYS")
+if ("${CMAKE_SYSTEM_NAME}" MATCHES "MSYS")
   set(TOIT_WINSOCK_LIBS ws2_32)
 else()
   set(TOIT_WINSOCK_LIBS )
