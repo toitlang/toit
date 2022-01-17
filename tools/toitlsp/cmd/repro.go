@@ -139,8 +139,8 @@ func serveRepro(cmd *cobra.Command, args []string) error {
 	documents := lsp.NewDocuments(logger)
 	fs := lsp.MultiFileSystem{lsp.NewDocsCacheFileSystem(documents), reproFS}
 
-	fileServer := compiler.NewFileServer(fs, logger, reproFS.sdkPath)
-	go fileServer.ListenAndServe(fmt.Sprintf(":%d", port))
+	fileServer := compiler.NewPortFileServer(fs, logger, reproFS.sdkPath, fmt.Sprintf(":%d", port))
+	go fileServer.Start()
 	defer fileServer.Stop()
 
 	for !fileServer.IsReady() {

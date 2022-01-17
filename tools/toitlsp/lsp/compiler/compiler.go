@@ -81,7 +81,7 @@ type Compiler struct {
 	settings   Settings
 	logger     *zap.Logger
 	fs         FileSystem
-	fileServer *FileServer
+	fileServer FileServer
 	parser     *parser
 
 	lastCompilerFlags []string
@@ -100,7 +100,7 @@ func New(fs FileSystem, logger *zap.Logger, settings Settings) *Compiler {
 		settings:   settings,
 		logger:     logger,
 		fs:         fs,
-		fileServer: NewFileServer(fs, logger, settings.SDKPath),
+		fileServer: NewPortFileServer(fs, logger, settings.SDKPath, ":0"),
 		parser:     newParser(logger),
 	}
 }
@@ -273,13 +273,13 @@ func (c *Compiler) Archive(ctx context.Context, options ArchiveOptions) error {
 	}
 
 	return WriteArchive(ctx, WriteArchiveOptions{
-		Writer:        options.Writer,
-		CompilerFlags: compilerFlags,
-		CompilerInput: compilerInput,
-		Info:          options.Info,
-		FileServer:    c.fileServer,
-		IncludeSDK:    options.IncludeSDK,
-		CWDPath:       cwdPath,
+		Writer:             options.Writer,
+		CompilerFlags:      compilerFlags,
+		CompilerInput:      compilerInput,
+		Info:               options.Info,
+		CompilerFSProtocol: c.fileServer.Protocol(),
+		IncludeSDK:         options.IncludeSDK,
+		CWDPath:            cwdPath,
 	})
 }
 
@@ -303,7 +303,7 @@ func (w *logWriter) Write(b []byte) (n int, err error) {
 type parserFn func(context.Context, io.Reader)
 
 func (c *Compiler) run(ctx context.Context, input string, parserFunc parserFn) error {
-	go c.fileServer.ListenAndServe(":0")
+	go c.fileServer.Start()
 	defer c.fileServer.Stop()
 
 	cmd := c.cmd(ctx, input)
@@ -367,7 +367,7 @@ func (c *Compiler) cmd(ctx context.Context, input string) *exec.Cmd {
 
 	c.lastCompilerFlags = args
 	c.lastCompilerInput = input
-	input = fmt.Sprintf("%d\n%s", c.fileServer.Port(), input)
+	input = fmt.Sprintf("%s\n%s", c.fileServer.ConfigLine(), input)
 	c.logger.Debug("running compiler", zap.String("input", input), zap.Stringer("cmd", cmd))
 	cmd.Stdin = strings.NewReader(input)
 	cmd.Stderr = newLogWriter(c.logger.Named("toitc"), zapcore.WarnLevel)

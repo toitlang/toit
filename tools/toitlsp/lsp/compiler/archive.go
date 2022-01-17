@@ -49,13 +49,13 @@ type ArchiveFile struct {
 }
 
 type WriteArchiveOptions struct {
-	Writer        io.Writer
-	CompilerFlags []string
-	CompilerInput string
-	Info          string
-	FileServer    *FileServer
-	IncludeSDK    bool
-	CWDPath       *string
+	Writer             io.Writer
+	CompilerFlags      []string
+	CompilerInput      string
+	Info               string
+	CompilerFSProtocol *CompilerFSProtocol
+	IncludeSDK         bool
+	CWDPath            *string
 }
 
 // WriteArchive creates a tar file with all files that have been served.
@@ -65,13 +65,13 @@ func WriteArchive(ctx context.Context, options WriteArchiveOptions) error {
 		Directories: map[string][]string{},
 	}
 
-	sdkPath, hasSdkPath := options.FileServer.ServedSdkPath()
+	sdkPath, hasSdkPath := options.CompilerFSProtocol.ServedSdkPath()
 	if !strings.HasSuffix(sdkPath, string(filepath.Separator)) {
 		sdkPath += string(filepath.Separator)
 	}
 	sdkPath = path.ToCompilerPath(sdkPath)
 
-	packagePaths := options.FileServer.ServedPackageCachePaths()
+	packagePaths := options.CompilerFSProtocol.ServedPackageCachePaths()
 	packagePaths = path.ToCompilerPaths(packagePaths...)
 
 	w := tar.NewWriter(options.Writer)
@@ -90,7 +90,7 @@ func WriteArchive(ctx context.Context, options WriteArchiveOptions) error {
 		return err
 	}
 
-	for p, file := range options.FileServer.ServedFiles() {
+	for p, file := range options.CompilerFSProtocol.ServedFiles() {
 		path := path.ToCompilerPath(p)
 		meta.Files[path] = ArchiveFile{
 			Exists:      file.Exists,
@@ -109,7 +109,7 @@ func WriteArchive(ctx context.Context, options WriteArchiveOptions) error {
 		}
 	}
 
-	meta.Directories = options.FileServer.ServedDirectories()
+	meta.Directories = options.CompilerFSProtocol.ServedDirectories()
 
 	metaContent, err := json.Marshal(meta)
 	if err != nil {
