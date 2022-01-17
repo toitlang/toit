@@ -16,7 +16,7 @@
 set(CMAKE_C_COMPILER /usr/bin/riscv64-linux-gnu-gcc CACHE PATH "" FORCE)
 set(CMAKE_CXX_COMPILER /usr/bin/riscv64-linux-gnu-g++ CACHE PATH "" FORCE)
 
-set(TOIT_SYSTEM_NAME ${CMAKE_SYSTEM_NAME})
+set(TOIT_SYSTEM_NAME "${CMAKE_SYSTEM_NAME}")
 
 set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} -x assembler-with-cpp" CACHE STRING "asm flags")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}" CACHE STRING "c flags")

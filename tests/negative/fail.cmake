@@ -16,7 +16,7 @@
 set(TOIT_FAILING_TESTS
 )
 
-if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows" OR "XX${CMAKE_SYSTEM_NAME}" STREQUAL "XXMSYS")
+if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows" OR "${CMAKE_SYSTEM_NAME}" STREQUAL "MSYS")
   list(APPEND TOIT_FAILING_TESTS
     tests/negative/lock_sdk_bad/lock_sdk_bad_test.toit
     tests/negative/lock_sdk_bad2/lock_sdk_bad_test.toit

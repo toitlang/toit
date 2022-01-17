@@ -29,7 +29,7 @@ add_executable(
 
 target_link_libraries(toit.compile -static-libstdc++)
 
-if (CMAKEISDUMB${CMAKE_SYSTEM_NAME} MATCHES "CMAKEISDUMBMSYS")
+if ("${CMAKE_SYSTEM_NAME}" MATCHES "MSYS")
   set(TOIT_WINSOCK_LIBS ws2_32)
 else()
   set(TOIT_WINSOCK_LIBS )

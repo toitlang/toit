@@ -16,7 +16,7 @@
 set(TOIT_FAILING_TESTS
 )
 
-if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows" OR "XX${CMAKE_SYSTEM_NAME}" STREQUAL "XXMSYS")
+if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows" OR "${CMAKE_SYSTEM_NAME}" STREQUAL "MSYS")
   list(APPEND TOIT_FAILING_TESTS
     tests/toit_run_image/basic_test.toit
   )
