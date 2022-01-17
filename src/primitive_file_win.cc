@@ -26,9 +26,12 @@
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <rpc.h>     // For rpcdce.h.
+#include <rpcdce.h>  // For UuidCreate.
 #include <sys/param.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <windows.h>
 #include <unistd.h>
 
 namespace toit {
@@ -54,6 +57,7 @@ class AutoCloser {
   int _fd;
 };
 
+// For Posix-like calls, including socket calls.
 static Object* return_open_error(Process* process, int err) {
   if (err == EPERM || err == EACCES || err == EROFS) PERMISSION_DENIED;
   if (err == EMFILE || err == ENFILE || err == ENOSPC) QUOTA_EXCEEDED;
@@ -61,6 +65,44 @@ static Object* return_open_error(Process* process, int err) {
   if (err == EINVAL || err == EISDIR || err == ENAMETOOLONG) INVALID_ARGUMENT;
   if (err == ENODEV || err == ENOENT || err == ENOTDIR) FILE_NOT_FOUND;
   if (err == ENOMEM) MALLOC_FAILED;
+  OTHER_ERROR;
+}
+
+// For Windows API calls.
+static Object* return_windows_error(Process* process) {
+  DWORD err = GetLastError();
+  if (err == ERROR_FILE_NOT_FOUND ||
+      err == ERROR_INVALID_DRIVE ||
+      err == ERROR_DEV_NOT_EXIST) {
+    FILE_NOT_FOUND;
+  }
+  if (err == ERROR_TOO_MANY_OPEN_FILES ||
+      err == ERROR_SHARING_BUFFER_EXCEEDED ||
+      err == ERROR_TOO_MANY_NAMES ||
+      err == ERROR_NO_PROC_SLOTS ||
+      err == ERROR_TOO_MANY_SEMAPHORES) {
+    QUOTA_EXCEEDED;
+  }
+  if (err == ERROR_ACCESS_DENIED ||
+      err == ERROR_WRITE_PROTECT ||
+      err == ERROR_NETWORK_ACCESS_DENIED) {
+    PERMISSION_DENIED;
+  }
+  if (err == ERROR_INVALID_HANDLE) {
+    ALREADY_CLOSED;
+  }
+  if (err == ERROR_NOT_ENOUGH_MEMORY ||
+      err == ERROR_OUTOFMEMORY) {
+    MALLOC_FAILED;
+  }
+  if (err == ERROR_BAD_COMMAND ||
+      err == ERROR_INVALID_PARAMETER) {
+    INVALID_ARGUMENT;
+  }
+  if (err == ERROR_FILE_EXISTS ||
+      err == ERROR_ALREADY_ASSIGNED) {
+    ALREADY_EXISTS;
+  }
   OTHER_ERROR;
 }
 
@@ -257,7 +299,10 @@ PRIMITIVE(unlink) {
 }
 
 PRIMITIVE(rmdir) {
-  UNIMPLEMENTED_PRIMITIVE;
+  ARGS(cstring, pathname);
+  int result = rmdir(pathname);
+  if (result < 0) return return_open_error(process, errno);
+  return process->program()->null_object();
 }
 
 PRIMITIVE(rename) {
@@ -281,7 +326,56 @@ PRIMITIVE(mkdir) {
 }
 
 PRIMITIVE(mkdtemp) {
-  UNIMPLEMENTED_PRIMITIVE;
+  ARGS(cstring, prefix);
+  DWORD ret;
+
+  bool in_standard_tmp_dir = false;
+  if (strncmp(prefix, "/tmp/", 5) == 0) {
+    in_standard_tmp_dir = true;
+    prefix += 5;
+  }
+
+  char accumulator = 0;
+  for (const char* p = prefix; *p; p++) accumulator |= *p;
+  if (accumulator & 0x80) INVALID_ARGUMENT;  // Only supports ASCII prefix.
+
+  static const int UUID_TEXT_LENGTH = 32;
+
+  char temp_dir_name[MAX_PATH];
+  temp_dir_name[0] = '\0';
+
+  if (in_standard_tmp_dir) {
+    // Get the location of the Windows temp directory.
+    ret = GetTempPath(MAX_PATH, temp_dir_name);
+    if (ret + 2 > MAX_PATH) INVALID_ARGUMENT;
+    if (ret == 0) return return_windows_error(process);
+    strncat(temp_dir_name, "\\", strlen(temp_dir_name) - 1);
+  }
+
+  if (strlen(temp_dir_name) + UUID_TEXT_LENGTH + strlen(prefix) + 1 > MAX_PATH) INVALID_ARGUMENT;
+
+  UUID uuid;
+  ret = UuidCreate(&uuid);
+  if (ret != RPC_S_OK && ret != RPC_S_UUID_LOCAL_ONLY) OTHER_ERROR;
+ 
+  unsigned char* uuid_string; 
+  ret = UuidToString(&uuid, &uuid_string);
+  strncat(temp_dir_name, prefix, MAX_PATH - strlen(temp_dir_name) - 1);
+  strncat(temp_dir_name, char_cast(uuid_string), MAX_PATH - strlen(temp_dir_name) - 1);
+  RpcStringFree(&uuid_string);
+
+  uword total_len = strlen(temp_dir_name);
+
+  Error* error = null;
+  Object* result = process->allocate_byte_array(total_len, &error);
+  if (result == null) return error;
+
+  int posix_result = mkdir(temp_dir_name);
+  if (posix_result < 0) return return_open_error(process, errno);
+
+  memcpy(ByteArray::Bytes(ByteArray::cast(result)).address(), temp_dir_name, total_len);
+
+  return result;
 }
 
 PRIMITIVE(is_open_file) {

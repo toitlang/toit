@@ -30,9 +30,9 @@ add_executable(
 target_link_libraries(toit.compile -static-libstdc++)
 
 if (CMAKEISDUMB${CMAKE_SYSTEM_NAME} MATCHES "CMAKEISDUMBMSYS")
-  set(TOIT_WINSOCK_LIBS ws2_32)
+  set(TOIT_WINDOWS_LIBS ws2_32 rpcrt4)
 else()
-  set(TOIT_WINSOCK_LIBS )
+  set(TOIT_WINDOWS_LIBS )
 endif()
 
 target_link_libraries(
@@ -40,7 +40,7 @@ target_link_libraries(
   toit_core
   toit_compiler
   mbedtls
-  ${TOIT_WINSOCK_LIBS}
+  ${TOIT_WINDOWS_LIBS}
   pthread
   ${CMAKE_DL_LIBS}
   )
