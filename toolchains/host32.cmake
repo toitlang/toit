@@ -13,7 +13,7 @@
 # The license can be found in the file `LICENSE` in the top level
 # directory of this repository.
 
-set(TOIT_SYSTEM_NAME ${CMAKE_SYSTEM_NAME})
+set(TOIT_SYSTEM_NAME "${CMAKE_SYSTEM_NAME}")
 
 set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} -m32 -x assembler-with-cpp" CACHE STRING "asm flags")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -m32" CACHE STRING "c flags")
