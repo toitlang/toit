@@ -88,7 +88,7 @@ endif()
 if ("${CMAKE_SYSTEM_NAME}" MATCHES "MSYS")
   set(TOIT_WINDOWS_LIBS ws2_32 rpcrt4)
 elseif ("${CMAKE_SYSTEM_NAME}" MATCHES "Windows")
-  set(TOIT_WINSOCK_LIBS rpcrt4)
+  set(TOIT_WINDOWS_LIBS rpcrt4)
 else()
   set(TOIT_WINDOWS_LIBS )
 endif()
@@ -117,13 +117,11 @@ target_link_libraries(
 
 target_link_libraries(
   toit.run
-  ${TOIT_WINDOWS_LIBS}
   ${TOIT_LINK_LIBS}
   )
 
 target_link_libraries(
   toit_run_image
-  ${TOIT_WINDOWS_LIBS}
   ${TOIT_LINK_LIBS}
   )
 
