@@ -20,6 +20,7 @@
 #include "process.h"
 #include "sha1.h"
 #include "sha256.h"
+#include "siphash.h"
 
 namespace toit {
 
@@ -43,7 +44,6 @@ PRIMITIVE(sha1_add) {
   sha1->add(data.address() + from, to - from);
   return process->program()->null_object();
 }
-
 
 PRIMITIVE(sha1_get) {
   ARGS(Sha1, sha1);
@@ -86,6 +86,38 @@ PRIMITIVE(sha256_get) {
   sha256->get(bytes.address());
   sha256->resource_group()->unregister_resource(sha256);
   sha256_proxy->set_external_address(static_cast<Sha256*>(null));
+  return result;
+}
+
+PRIMITIVE(siphash_start) {
+  ARGS(SimpleResourceGroup, group, Blob, key, int, output_length, int, c_rounds, int, d_rounds);
+  if (output_length != 8 && output_length != 16) INVALID_ARGUMENT;
+  if (key.length() < 16) INVALID_ARGUMENT;
+  ByteArray* proxy = process->object_heap()->allocate_proxy();
+  if (proxy == null) ALLOCATION_FAILED;
+
+  Siphash* siphash = _new Siphash(group, key.address(), output_length, c_rounds, d_rounds);
+  if (!siphash) MALLOC_FAILED;
+  proxy->set_external_address(siphash);
+  return proxy;
+}
+
+PRIMITIVE(siphash_add) {
+  ARGS(Siphash, siphash, Blob, data, int, from, int, to);
+
+  if (from < 0 || from > to || to > data.length()) OUT_OF_RANGE;
+  siphash->add(data.address() + from, to - from);
+  return process->program()->null_object();
+}
+
+PRIMITIVE(siphash_get) {
+  ARGS(Siphash, siphash);
+  Error* error = null;
+  ByteArray* result = process->allocate_byte_array(siphash->output_length(), &error);
+  if (result == null) return error;
+  siphash->get_hash(ByteArray::Bytes(result).address());
+  siphash->resource_group()->unregister_resource(siphash);
+  siphash_proxy->set_external_address(static_cast<Siphash*>(null));
   return result;
 }
 

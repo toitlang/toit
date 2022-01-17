@@ -91,11 +91,23 @@ class Utils {
     memcpy(ptr, &value, sizeof(value));
   }
 
+  // This needs fixing if we ever port to a big-endian platform.
+  template<typename T>
+  static inline uint32 read_unaligned_uint32_le(T* ptr) {
+    return read_unaligned_uint32(ptr);
+  }
+
   template<typename T>
   static inline uint32 read_unaligned_uint32(T* ptr) {
     uint32 result;
     memcpy(&result, ptr, sizeof(result));
     return result;
+  }
+
+  // This needs fixing if we ever port to a big-endian platform.
+  template<typename T>
+  static inline void write_unaligned_uint32_le(T* ptr, uint32 value) {
+    memcpy(ptr, &value, sizeof(value));
   }
 
   template<typename T>

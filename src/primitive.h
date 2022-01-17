@@ -372,6 +372,9 @@ namespace toit {
   PRIMITIVE(sha256_start, 1)                 \
   PRIMITIVE(sha256_add, 4)                   \
   PRIMITIVE(sha256_get, 1)                   \
+  PRIMITIVE(siphash_start, 5)                \
+  PRIMITIVE(siphash_add, 4)                  \
+  PRIMITIVE(siphash_get, 1)                  \
   PRIMITIVE(aes_cbc_init, 4)                 \
   PRIMITIVE(aes_cbc_crypt, 5)                \
   PRIMITIVE(aes_cbc_close, 1)                \
@@ -782,6 +785,7 @@ namespace toit {
 #define _A_T_X509Certificate(N, name)     MAKE_UNPACKING_MACRO(X509Certificate, N, name)
 #define _A_T_AesCbcContext(N, name)       MAKE_UNPACKING_MACRO(AesCbcContext, N, name)
 #define _A_T_Sha1(N, name)                MAKE_UNPACKING_MACRO(Sha1, N, name)
+#define _A_T_Siphash(N, name)             MAKE_UNPACKING_MACRO(Siphash, N, name)
 #define _A_T_Sha256(N, name)              MAKE_UNPACKING_MACRO(Sha256, N, name)
 #define _A_T_Adler32(N, name)             MAKE_UNPACKING_MACRO(Adler32, N, name)
 #define _A_T_ZlibRle(N, name)             MAKE_UNPACKING_MACRO(ZlibRle, N, name)
