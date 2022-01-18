@@ -2,8 +2,6 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import encoding.ubjson as ubjson
-
 invoke name/int arguments/List -> any:
   return Rpc.instance.invoke name arguments
 
@@ -15,16 +13,14 @@ class Rpc implements SystemMessageHandler_:
     return instance
 
   constructor.internal_:
-    set_system_message_handler_ SYSTEM_RPC_CHANNEL_LEGACY_ this
+    set_system_message_handler_ SYSTEM_RPC_MESSAGE_ this
 
   invoke name/int arguments/List -> any:
     return synchronizer_.send: | id |
-      message := [ id, name, arguments ]
-      system_send_bytes_ SYSTEM_RPC_CHANNEL_LEGACY_ (ubjson.encode message)
+      system_send_ SYSTEM_RPC_MESSAGE_ [ id, name, arguments ]
 
-  on_message type gid pid arguments -> none:
-    assert: type == SYSTEM_RPC_CHANNEL_LEGACY_
-    reply := ubjson.decode arguments
+  on_message type gid pid reply -> none:
+    assert: type == SYSTEM_RPC_MESSAGE_
     id/int := reply[0]
     is_exception/bool := reply[1]
     result/any := reply[2]

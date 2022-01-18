@@ -41,7 +41,7 @@ class ToitcProcessManager implements SystemMessageHandler_:
     set_system_message_handler_ SYSTEM_MIRROR_MESSAGE_ this
     rpc_broker := RpcBroker
     register_rpc rpc_broker
-    set_system_message_handler_ SYSTEM_RPC_CHANNEL_LEGACY_ rpc_broker
+    set_system_message_handler_ SYSTEM_RPC_MESSAGE_ rpc_broker
     ar_reader := ArReader.from_bytes snapshot_bundle
     offsets := ar_reader.find --offsets SnapshotBundle.SNAPSHOT_NAME
     // Start the application process.

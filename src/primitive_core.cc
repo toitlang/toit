@@ -1706,52 +1706,347 @@ PRIMITIVE(task_transfer) {
   return Smi::from(42);
 }
 
-PRIMITIVE(process_send) {
-  ARGS(int, process_id, int, type, Object, array);
+enum MessageTag {
+  TAG_POSITIVE_INT,
+  TAG_NEGATIVE_INT,
+  TAG_NULL,
+  TAG_TRUE,
+  TAG_FALSE,
+  TAG_ARRAY,
+  TAG_BYTE_ARRAY,
+};
 
-  bool take_external_data = array->is_byte_array() &&
-      ByteArray::cast(array)->has_external_address();
+enum {
+  MAX_EXTERNALS = 8
+};
 
+class MessageEncoder {
+ public:
+  MessageEncoder(Process* process, uint8* buffer)
+      : _process(process)
+      , _program(process->program())
+      , _buffer(buffer)
+      , _cursor(0)
+      , _malloc_failed(false)
+      , _copied_count(0)
+      , _externals_count(0) { }
+
+  int size() const { return _cursor; }
+  bool malloc_failed() const { return _malloc_failed; }
+
+  void free_copied();
+  void neuter_externals();
+
+  bool encode(Object* object);
+
+ private:
+  Process* _process;
+  Program* _program;
+  uint8* _buffer;
+  int _cursor;
+
+  bool _malloc_failed;
+
+  int _copied_count;
+  uint8* _copied[MAX_EXTERNALS];
+
+  int _externals_count;
+  ByteArray* _externals[MAX_EXTERNALS];
+
+  bool encode_string(String* object);
+  bool encode_array(Array* object, int size);
+  bool encode_byte_array(ByteArray* object);
+
+  void write_byte(uint8 value) {
+    if (_buffer) _buffer[_cursor] = value;
+    _cursor++;
+  }
+
+  void write_pointer(void* value);
+  void write_cardinal(uword value);
+};
+
+void MessageEncoder::free_copied() {
+  for (int i = 0; i < _copied_count; i++) {
+    free(_copied[i]);
+  }
+}
+
+void MessageEncoder::neuter_externals() {
+  for (int i = 0; i < _externals_count; i++) {
+    _externals[i]->neuter(_process);
+  }
+}
+
+bool MessageEncoder::encode(Object* object) {
+  if (object->is_smi()) {
+    word value = Smi::cast(object)->value();
+    if (value >= 0) {
+      write_byte(TAG_POSITIVE_INT);
+      write_cardinal(value);
+    } else {
+      write_byte(TAG_NEGATIVE_INT);
+      write_cardinal(-value);
+    }
+    return true;
+  } else if (object->is_instance()) {
+    Instance* instance = Instance::cast(object);
+    Smi* class_id = instance->class_id();
+    if (class_id == _program->list_class_id()) {
+      // TODO(kasper): Deal with large arrays?
+      Array* array = Array::cast(instance->at(0));
+      return encode_array(array, Smi::cast(instance->at(1))->value());
+    }
+    printf("[no instance encoding: class id = %ld]\n", class_id->value());
+  } else if (object == _program->null_object()) {
+    write_byte(TAG_NULL);
+    return true;
+  } else if (object == _program->true_object()) {
+    write_byte(TAG_TRUE);
+    return true;
+  } else if (object == _program->false_object()) {
+    write_byte(TAG_FALSE);
+    return true;
+  } else if (object->is_byte_array()) {
+    return encode_byte_array(ByteArray::cast(object));
+  } else if (object->is_double()) {
+    printf("[no double encoding]\n");
+  } else if (object->is_string()) {
+    return encode_string(String::cast(object));
+  } else if (object->is_array()) {
+    Array* array = Array::cast(object);
+    return encode_array(array, array->length());
+  } else if (object->is_large_integer()) {
+    printf("[no large integer encoding]\n");
+  } else if (object->is_heap_object()) {
+    printf("[no heap object encoding: class tag = %d]\n", HeapObject::cast(object)->class_tag());
+  }
+  return false;
+}
+
+bool MessageEncoder::encode_string(String* object) {
+  printf("[no string encoding]\n");
+  return false;
+}
+
+bool MessageEncoder::encode_array(Array* object, int size) {
+  write_byte(TAG_ARRAY);
+  write_cardinal(size);
+  for (int i = 0; i < size; i++) {
+    if (!encode(object->at(i))) return false;
+  }
+  return true;
+}
+
+bool MessageEncoder::encode_byte_array(ByteArray* object) {
+  bool take_external_data = object->has_external_address();
   int length;
   uint8* data = null;
   if (take_external_data) {
-    ByteArray::Bytes bytes(ByteArray::cast(array));
+    ByteArray::Bytes bytes(object);
     length = bytes.length();
     data = bytes.address();
+    if (_buffer) {
+      _externals[_externals_count++] = object;
+    }
   } else {
     const uint8* array_address;
-    if (!array->byte_content(process->program(), &array_address, &length, STRINGS_OR_BYTE_ARRAYS)) WRONG_TYPE;
-    data = unvoid_cast<uint8_t*>(malloc(length));
-    if (data == null) MALLOC_FAILED;
-    memcpy(data, array_address, length);
+    if (!object->byte_content(_program, &array_address, &length, STRINGS_OR_BYTE_ARRAYS)) return false;
+    if (_buffer) {
+      data = unvoid_cast<uint8_t*>(malloc(length));
+      if (data == null) {
+        _malloc_failed = true;
+        return false;
+      }
+      _copied[_copied_count++] = data;
+      memcpy(data, array_address, length);
+    }
   }
 
-  SystemMessage* message = _new SystemMessage(type, process->group()->id(), process->id(), data, length);
+  write_byte(TAG_BYTE_ARRAY);
+  write_cardinal(length);
+  write_pointer(data);
+  return true;
+}
+
+void MessageEncoder::write_pointer(void* value) {
+  if (_buffer) memcpy(&_buffer[_cursor], &value, WORD_SIZE);
+  _cursor += WORD_SIZE;
+}
+
+void MessageEncoder::write_cardinal(uword value) {
+  while (value >= 128) {
+    write_byte((uint8) (value % 128 + 128));
+    value >>= 7;
+  }
+  write_byte((uint8) value);
+}
+
+class MessageDecoder {
+ public:
+  MessageDecoder(Process* process, uint8* buffer)
+      : _process(process)
+      , _program(process->program())
+      , _buffer(buffer)
+      , _cursor(0)
+      , _allocation_failed(false)
+      , _external_allocations(0)
+      , _externals_count(0) { }
+
+  bool allocation_failed() const { return _allocation_failed; }
+  int external_allocations() const { return _external_allocations; }
+
+  void neuter_externals();
+
+  Object* decode();
+
+ private:
+  Process* _process;
+  Program* _program;
+  uint8* _buffer;
+  int _cursor;
+
+  bool _allocation_failed;
+  int _external_allocations;
+
+  int _externals_count;
+  ByteArray* _externals[MAX_EXTERNALS];
+
+  Object* decode_array();
+  Object* decode_byte_array();
+
+  uint8 read_byte() {
+    return _buffer[_cursor++];
+  }
+
+  uint8* read_pointer();
+  uword read_cardinal();
+};
+
+void MessageDecoder::neuter_externals() {
+  for (int i = 0; i < _externals_count; i++) {
+    _process->object_heap()->remove_finalizer(_externals[i]);
+  }
+}
+
+Object* MessageDecoder::decode() {
+  int tag = read_byte();
+  switch (tag) {
+    case TAG_POSITIVE_INT:
+      return Smi::from(read_cardinal());
+    case TAG_NEGATIVE_INT:
+      return Smi::from(-static_cast<word>(read_cardinal()));
+    case TAG_NULL:
+      return _program->null_object();
+    case TAG_TRUE:
+      return _program->true_object();
+    case TAG_FALSE:
+      return _program->false_object();
+    case TAG_ARRAY:
+      return decode_array();
+    case TAG_BYTE_ARRAY:
+      return decode_byte_array();
+    default:
+      printf("[unhandled message tag: %d]\n", tag);
+  }
+  return null;
+}
+
+Object* MessageDecoder::decode_array() {
+  int length = read_cardinal();
+  Array* result = _process->object_heap()->allocate_array(length);
+  if (result == null) {
+    _allocation_failed = true;
+    return null;
+  }
+  for (int i = 0; i < length; i++) {
+    Object* inner = decode();
+    if (_allocation_failed) return null;
+    result->at_put(i, inner);
+  }
+  return result;
+}
+
+Object* MessageDecoder::decode_byte_array() {
+  int length = read_cardinal();
+  uint8* data = read_pointer();
+  ByteArray* result = _process->object_heap()->allocate_external_byte_array(length, data, true, false);
+  if (result == null) {
+    _allocation_failed = true;
+    return null;
+  }
+  _externals[_externals_count++] = result;
+  _external_allocations += length;
+  return result;
+}
+
+uint8* MessageDecoder::read_pointer() {
+  uint8* result;
+  memcpy(&result, &_buffer[_cursor], WORD_SIZE);
+  _cursor += WORD_SIZE;
+  return result;
+}
+
+uword MessageDecoder::read_cardinal() {
+  uword result = 0;
+  uint8 byte = read_byte();
+  int shift = 0;
+  while (byte >= 128) {
+    result += (((uword) byte) - 128) << shift;
+    shift += 7;
+    byte = read_byte();
+  }
+  result += ((uword) byte) << shift;
+  return result;
+}
+
+PRIMITIVE(process_send) {
+  ARGS(int, process_id, int, type, Object, array);
+
+  int length = 0;
+  { MessageEncoder size_encoder(process, null);
+    if (!size_encoder.encode(array)) WRONG_TYPE;
+    length = size_encoder.size();
+  }
+
+  uint8* buffer = unvoid_cast<uint8*>(malloc(length));
+  if (buffer == null) MALLOC_FAILED;
+
+  SystemMessage* message = null;
+  MessageEncoder encoder(process, buffer);
+  encoder.encode(array);
+  if (!encoder.malloc_failed()) {
+    message = _new SystemMessage(type, process->group()->id(), process->id(), buffer, length);
+  }
+
   if (message == null) {
-    if (!take_external_data) free(data);
+    encoder.free_copied();
+    free(buffer);
     MALLOC_FAILED;
   }
 
   // From here on, the destructor of SystemMessage will free the data.
-  scheduler_err_t result = VM::current()->scheduler()->send_message(process_id, message);
+  scheduler_err_t result = (process_id >= 0)
+      ? VM::current()->scheduler()->send_message(process_id, message)
+      : VM::current()->scheduler()->send_system_message(message);
   if (result == MESSAGE_OK) {
-    // TODO(kasper): We should really also get rid of the contents of an on-heap
-    // byte array at this point.
     // Neuter will disassociate the external memory from the ByteArray, and
     // also remove the memory from the accounting of the sending process.  The
     // memory is unaccounted until it is attached to the receiving process.
-    if (take_external_data) ByteArray::cast(array)->neuter(process);
+    encoder.neuter_externals();
+    // TODO(kasper): Consider doing in-place shrinking of internal, non-constant
+    // byte arrays and strings.
   } else {
-    // Sending failed. Don't delete the data unless we copied it.
-    if (take_external_data) message->clear_data();
+    // Sending failed. Free the copied bits.
+    encoder.free_copied();
     delete message;
   }
   return Smi::from(result);
 }
 
 PRIMITIVE(system_send) {
-  ARGS(int, type, Object, array);
-
+  UNIMPLEMENTED();
+/*
   bool take_external_data = array->is_byte_array() &&
       ByteArray::cast(array)->has_external_address();
 
@@ -1787,6 +2082,7 @@ PRIMITIVE(system_send) {
     delete message;
   }
   return Smi::from(result);
+*/
 }
 
 PRIMITIVE(task_peek_message_type) {
@@ -1810,15 +2106,20 @@ PRIMITIVE(task_receive_message) {
     if (array == null) ALLOCATION_FAILED;
 
     SystemMessage* system = static_cast<SystemMessage*>(message);
-    ByteArray* proxy = process->object_heap()->allocate_proxy(system->length(), system->data(), true);
-    if (proxy == null) ALLOCATION_FAILED;
-    process->register_external_allocation(system->length());
+
+    MessageDecoder decoder(process, system->data());
+    Object* decoded = decoder.decode();
+    if (decoder.allocation_failed()) {
+      decoder.neuter_externals();
+      ALLOCATION_FAILED;
+    }
+    process->register_external_allocation(decoder.external_allocations());
     system->clear_data();
 
     array->at_put(0, Smi::from(system->type()));
     array->at_put(1, Smi::from(system->gid()));
     array->at_put(2, Smi::from(system->pid()));
-    array->at_put(3, proxy);
+    array->at_put(3, decoded);
     result = array;
   } else {
     UNREACHABLE();

@@ -354,7 +354,7 @@ void Scheduler::scavenge(Process* process, bool malloc_failed, bool try_hard) {
       while (_gc_waiting_for_preemption > 0) {
         int64 wait_ms = Utils::max(1LL, (deadline - OS::get_monotonic_time()) / 1000);
         if (!OS::wait(_gc_condition, wait_ms)) {
-#ifdef TOIT_FREERTOS
+#ifdef TOIT_GC_LOGGING
           printf("[cross-process gc: timed out waiting for %d]\n", _gc_waiting_for_preemption);
 #endif
           _gc_waiting_for_preemption = 0;
@@ -402,13 +402,14 @@ void Scheduler::scavenge(Process* process, bool malloc_failed, bool try_hard) {
   }
 
   process->scavenge();
+  uint64 elapsed = OS::get_monotonic_time() - start;
 
   if (doing_cross_process_gc) {
     Locker locker(_mutex);
     _gc_cross_processes = false;
-#ifdef TOIT_FREERTOS
-    printf("[cross-process gc: %d scavenges, took %Ld ms]\n",
-        scavenges + 1, (OS::get_monotonic_time() - start) / 1000);
+#ifdef TOIT_GC_LOGGING
+    printf("[cross-process gc: %d scavenges, took %d.%03dms]\n",
+        scavenges + 1, elapsed / 1000, elapsed % 1000);
 #endif
     OS::signal_all(_gc_condition);
   }

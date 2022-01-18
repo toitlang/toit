@@ -36,7 +36,7 @@ void MbedTLSResourceGroup::uninit() {
 
 void BaseMbedTLSSocket::uninit_certs() {
   if (_private_key != null) mbedtls_pk_free(_private_key);
-  free(_private_key);
+  delete _private_key;
   _private_key = null;
 }
 
