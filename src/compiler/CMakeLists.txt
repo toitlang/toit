@@ -30,9 +30,11 @@ add_executable(
 target_link_libraries(toit.compile -static-libstdc++)
 
 if ("${CMAKE_SYSTEM_NAME}" MATCHES "MSYS")
-  set(TOIT_WINSOCK_LIBS ws2_32)
+  set(TOIT_WINDOWS_LIBS ws2_32 rpcrt4)
+elseif ("${CMAKE_SYSTEM_NAME}" MATCHES "Windows")
+  set(TOIT_WINDOWS_LIBS rpcrt4)
 else()
-  set(TOIT_WINSOCK_LIBS )
+  set(TOIT_WINDOWS_LIBS )
 endif()
 
 target_link_libraries(
@@ -40,7 +42,7 @@ target_link_libraries(
   toit_core
   toit_compiler
   mbedtls
-  ${TOIT_WINSOCK_LIBS}
+  ${TOIT_WINDOWS_LIBS}
   pthread
   ${CMAKE_DL_LIBS}
   )

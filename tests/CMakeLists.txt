@@ -115,9 +115,12 @@ foreach(file ${TOIT_SLOW_TESTS})
   set_tests_properties(${file} PROPERTIES TIMEOUT ${SLOW_TIMEOUT})
 endforeach()
 
+if ((NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "Windows") AND (NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "MSYS"))
+  add_subdirectory(lsp)
+endif()
+
 add_subdirectory(minus_s)
 add_subdirectory(negative)
-add_subdirectory(lsp)
 add_subdirectory(optimizations)
 add_subdirectory(ctest)
 add_subdirectory(toitp)
