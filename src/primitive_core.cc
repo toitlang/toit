@@ -1720,15 +1720,15 @@ PRIMITIVE(process_send) {
 
   SystemMessage* message = null;
   MessageEncoder encoder(process, buffer);
-  encoder.encode(array);
-  if (!encoder.malloc_failed()) {
+  if (encoder.encode(array)) {
     message = _new SystemMessage(type, process->group()->id(), process->id(), buffer, length);
   }
 
   if (message == null) {
     encoder.free_copied();
     free(buffer);
-    MALLOC_FAILED;
+    if (encoder.malloc_failed()) MALLOC_FAILED;
+    OTHER_ERROR;
   }
 
   // From here on, the destructor of SystemMessage will free the data.
