@@ -303,7 +303,7 @@ func (w *logWriter) Write(b []byte) (n int, err error) {
 type parserFn func(context.Context, io.Reader)
 
 func (c *Compiler) run(ctx context.Context, input string, parserFunc parserFn) error {
-	go c.fileServer.Start()
+	go c.fileServer.Run()
 	defer c.fileServer.Stop()
 
 	cmd := c.cmd(ctx, input)

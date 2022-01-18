@@ -29,7 +29,7 @@ type FileServer interface {
 	/// ConfigLine is the line that is sent to the compiler to be able to
 	/// communicate with the file server.
 	ConfigLine() string
-	Start() error
+	Run() error
 	Stop() error
 	Protocol() *CompilerFSProtocol
 }
@@ -49,7 +49,7 @@ func NewPortFileServer(fs FileSystem, logger *zap.Logger, SDKPath string, addres
 	}
 }
 
-func (s *PortFileServer) Start() error {
+func (s *PortFileServer) Run() error {
 	ocl, closeCh, err := s.setup(s.address)
 	if err != nil {
 		return err
