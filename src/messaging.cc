@@ -175,7 +175,10 @@ bool MessageEncoder::encode_copy(Object* object, int tag) {
     return false;
   }
   if (!encoding_for_size()) {
-    data = malloc(length);
+    // Strings are '\0'-terminated, so we need to make sure the allocated
+    // memory is big enough for that and remember to copy it over.
+    int extra = (tag == TAG_STRING) ? 1 : 0;
+    data = malloc(length + extra);
     if (data == null) {
       _malloc_failed = true;
       return false;
@@ -185,7 +188,7 @@ bool MessageEncoder::encode_copy(Object* object, int tag) {
       return false;
     }
     _copied[_copied_count++] = data;
-    memcpy(data, source, length);
+    memcpy(data, source, length + extra);
   }
   write_uint8(tag);
   write_cardinal(length);
