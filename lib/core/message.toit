@@ -25,10 +25,7 @@ Returns a status code:
 * 1: No such receiver
 */
 system_send_ type/int message:
-  return process_send_native_
-    -1
-    type
-    message
+  return process_send_ -1 type message
 
 /**
 Sends the $message with $type to the process identified by $pid.
@@ -40,27 +37,6 @@ Returns a status code:
 - 1: No such receiver
 */
 process_send_ pid/int type/int message:
-  return process_send_native_
-    pid
-    type
-    message
-
-/**
-Sends a message byte array to the system process.
-Returns a result code (OK, NO_SUCH_RECEIVER).
-If the result is OK, the message byte array is consumed
-and cannot be reused.
-*/
-system_send_native_ type message:
-  #primitive.core.system_send
-
-/**
-Sends a message byte array to another process.
-Returns a result code (OK, NO_SUCH_RECEIVER).
-If the result is OK, the message byte array is consumed
-and cannot be reused.
-*/
-process_send_native_ pid type message:
   #primitive.core.process_send
 
 /** Registered system message handlers for this process. */

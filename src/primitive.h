@@ -162,7 +162,6 @@ namespace toit {
   PRIMITIVE(get_generic_resource_group, 0)   \
   PRIMITIVE(signal_kill, 1)                  \
   PRIMITIVE(current_process_id, 0)           \
-  PRIMITIVE(system_send, 2)                  \
   PRIMITIVE(process_send, 3)                 \
   PRIMITIVE(task_peek_message_type, 0)       \
   PRIMITIVE(task_receive_message, 0)         \

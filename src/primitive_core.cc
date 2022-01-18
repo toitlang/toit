@@ -1750,47 +1750,6 @@ PRIMITIVE(process_send) {
   return Smi::from(result);
 }
 
-PRIMITIVE(system_send) {
-  UNIMPLEMENTED();
-/*
-  bool take_external_data = array->is_byte_array() &&
-      ByteArray::cast(array)->has_external_address();
-
-  int length;
-  uint8* data = null;
-  if (take_external_data) {
-    ByteArray::Bytes bytes(ByteArray::cast(array));
-    length = bytes.length();
-    data = bytes.address();
-  } else {
-    const uint8* array_address;
-    if (!array->byte_content(process->program(), &array_address, &length, STRINGS_OR_BYTE_ARRAYS)) WRONG_TYPE;
-    data = unvoid_cast<uint8_t*>(malloc(length));
-    if (data == null) MALLOC_FAILED;
-    memcpy(data, array_address, length);
-  }
-
-  SystemMessage* message = _new SystemMessage(type, process->group()->id(), process->id(), data, length);
-  if (message == null) {
-    if (!take_external_data) free(data);
-    MALLOC_FAILED;
-  }
-
-  // From here on, the destructor of SystemMessage will free the data.
-  scheduler_err_t result = VM::current()->scheduler()->send_system_message(message);
-  if (result == MESSAGE_OK) {
-    // TODO(kasper): We should really also get rid of the contents of an on-heap
-    // byte array at this point.
-    if (take_external_data) ByteArray::cast(array)->neuter(process);
-  } else {
-    // Sending failed. Don't delete the data unless we copied it.
-    if (take_external_data) message->clear_data();
-    delete message;
-  }
-  return Smi::from(result);
-*/
-}
-
 PRIMITIVE(task_peek_message_type) {
   Message* message = process->peek_message();
   if (message == null) return Smi::from(MESSAGE_INVALID);
