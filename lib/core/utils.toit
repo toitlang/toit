@@ -394,7 +394,7 @@ class Profiler:
   */
   static report title/string --cutoff/int=10 -> none:
     encoded_profile := encode title cutoff
-    system_send_ SYSTEM_MIRROR_MESSAGE_ [encoded_profile]
+    system_send_ SYSTEM_MIRROR_MESSAGE_ encoded_profile
     process_messages_
 
   /**

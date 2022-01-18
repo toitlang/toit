@@ -23,7 +23,6 @@ import .snapshot
 import .mirror
 import .rpc
 import .logging
-import encoding.ubjson as ubjson
 import log.rpc as log
 import log
 import monitor
@@ -70,7 +69,7 @@ class ToitcProcessManager implements SystemMessageHandler_:
   handle_mirror_message encoded_message/ByteArray -> none:
     // The snapshot is lazily parsed when debugging information is needed.
     if not program: program = (SnapshotBundle snapshot_bundle).decode
-    // Handle stack traces in ubjson format.
+    // Handle stack traces.
     mirror ::= decode encoded_message program:
       print_on_stderr_ "Mirror creation failed: $it"
       return

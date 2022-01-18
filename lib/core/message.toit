@@ -17,7 +17,8 @@ SYSTEM_RPC_MESSAGE_     ::= 2
 
 /**
 Sends the $message to the system with the $type.
-It must be possible to encode the $message as ubjson.
+It must be possible to encode the $message with the built-in
+primitive message encoder.
 
 Returns a status code:
 * 0: Message OK
@@ -27,11 +28,12 @@ system_send_ type/int message:
   return process_send_native_
     -1
     type
-    message //ubjson.encode message
+    message
 
 /**
 Sends the $message with $type to the process identified by $pid.
-It must be possible to encode the $message as ubjson.
+It must be possible to encode the $message with the built-in
+primitive message encoder.
 
 Returns a status code:
 - 0: Message OK
@@ -41,7 +43,7 @@ process_send_ pid/int type/int message:
   return process_send_native_
     pid
     type
-    message //ubjson.encode message
+    message
 
 /**
 Sends a message byte array to the system process.
@@ -105,7 +107,7 @@ process_messages_:
         type ::= received[0]
         gid ::= received[1]
         pid ::= received[2]
-        args ::= received[3] // ubjson.decode received[3]
+        args ::= received[3]
         received = null  // Allow garbage collector to free.
         system_message_handlers_.get type
           --if_present=: it.on_message type gid pid args
