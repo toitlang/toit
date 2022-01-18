@@ -7,7 +7,7 @@ import expect
 PROCEDURE_MULTIPLY_BY_TWO/int ::= 500
 
 main:
-  myself := pid
+  myself := current_process_
   broker := RpcBroker
   broker.install
 
@@ -18,6 +18,3 @@ main:
     expect.expect_equals
         it * 2
         rpc.invoke myself PROCEDURE_MULTIPLY_BY_TWO [it]
-
-pid -> int:
-  #primitive.core.current_process_id
