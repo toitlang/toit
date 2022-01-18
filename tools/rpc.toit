@@ -13,22 +13,22 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-import encoding.ubjson
-
 class RpcBroker implements SystemMessageHandler_:
   procedures_/Map ::= {:}
   handlers_/Map ::= {:}
   queue_/RpcRequestQueue_ ::= RpcRequestQueue_
 
-  on_message type gid pid message -> none:
-    assert: type == SYSTEM_RPC_CHANNEL_LEGACY_
-    decoded := ubjson.decode message
-    id/int := decoded[0]
-    name/int := decoded[1]
-    arguments := decoded[2]
+  install:
+    set_system_message_handler_ SYSTEM_RPC_REQUEST_ this
+
+  on_message type gid pid message/List -> none:
+    assert: type == SYSTEM_RPC_REQUEST_
+    id/int := message[0]
+    name/int := message[1]
+    arguments := message[2]
 
     send_exception_reply :=: | exception |
-      process_send_bytes_ pid type (ubjson.encode [ id, true, exception, null ])
+      process_send_ pid type [ id, true, exception, null ]
       return
 
     procedures_.get name --if_present=: | procedure |
@@ -93,7 +93,7 @@ class RpcRequest_:
       reply := is_exception
           ? [ id, true, exception.value, exception.trace ]
           : [ id, false, result ]
-      process_send_bytes_ pid SYSTEM_RPC_CHANNEL_LEGACY_ (ubjson.encode reply)
+      process_send_ pid SYSTEM_RPC_REPLY_ reply
       return  // Stops any unwinding.
 
 monitor RpcRequestQueue_:

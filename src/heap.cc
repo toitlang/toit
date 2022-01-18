@@ -417,7 +417,6 @@ ByteArray* Heap::allocate_external_byte_array(int length, uint8* memory, bool di
 }
 
 String* Heap::allocate_external_string(int length, uint8* memory, bool dispose) {
-
   String* result = unvoid_cast<String*>(_allocate_raw(String::external_allocation_size()));
   if (result == null) return null;  // Allocation failure.
   // Initialize object.

@@ -1709,81 +1709,42 @@ PRIMITIVE(task_transfer) {
 PRIMITIVE(process_send) {
   ARGS(int, process_id, int, type, Object, array);
 
-  bool take_external_data = array->is_byte_array() &&
-      ByteArray::cast(array)->has_external_address();
-
-  int length;
-  uint8* data = null;
-  if (take_external_data) {
-    ByteArray::Bytes bytes(ByteArray::cast(array));
-    length = bytes.length();
-    data = bytes.address();
-  } else {
-    const uint8* array_address;
-    if (!array->byte_content(process->program(), &array_address, &length, STRINGS_OR_BYTE_ARRAYS)) WRONG_TYPE;
-    data = unvoid_cast<uint8_t*>(malloc(length));
-    if (data == null) MALLOC_FAILED;
-    memcpy(data, array_address, length);
+  int length = 0;
+  { MessageEncoder size_encoder(process, null);
+    if (!size_encoder.encode(array)) WRONG_TYPE;
+    length = size_encoder.size();
   }
 
-  SystemMessage* message = _new SystemMessage(type, process->group()->id(), process->id(), data, length);
+  uint8* buffer = unvoid_cast<uint8*>(malloc(length));
+  if (buffer == null) MALLOC_FAILED;
+
+  SystemMessage* message = null;
+  MessageEncoder encoder(process, buffer);
+  if (encoder.encode(array)) {
+    message = _new SystemMessage(type, process->group()->id(), process->id(), buffer, length);
+  }
+
   if (message == null) {
-    if (!take_external_data) free(data);
-    MALLOC_FAILED;
+    encoder.free_copied();
+    free(buffer);
+    if (encoder.malloc_failed()) MALLOC_FAILED;
+    OTHER_ERROR;
   }
 
   // From here on, the destructor of SystemMessage will free the data.
-  scheduler_err_t result = VM::current()->scheduler()->send_message(process_id, message);
+  scheduler_err_t result = (process_id >= 0)
+      ? VM::current()->scheduler()->send_message(process_id, message)
+      : VM::current()->scheduler()->send_system_message(message);
   if (result == MESSAGE_OK) {
-    // TODO(kasper): We should really also get rid of the contents of an on-heap
-    // byte array at this point.
     // Neuter will disassociate the external memory from the ByteArray, and
     // also remove the memory from the accounting of the sending process.  The
     // memory is unaccounted until it is attached to the receiving process.
-    if (take_external_data) ByteArray::cast(array)->neuter(process);
+    encoder.neuter_externals();
+    // TODO(kasper): Consider doing in-place shrinking of internal, non-constant
+    // byte arrays and strings.
   } else {
-    // Sending failed. Don't delete the data unless we copied it.
-    if (take_external_data) message->clear_data();
-    delete message;
-  }
-  return Smi::from(result);
-}
-
-PRIMITIVE(system_send) {
-  ARGS(int, type, Object, array);
-
-  bool take_external_data = array->is_byte_array() &&
-      ByteArray::cast(array)->has_external_address();
-
-  int length;
-  uint8* data = null;
-  if (take_external_data) {
-    ByteArray::Bytes bytes(ByteArray::cast(array));
-    length = bytes.length();
-    data = bytes.address();
-  } else {
-    const uint8* array_address;
-    if (!array->byte_content(process->program(), &array_address, &length, STRINGS_OR_BYTE_ARRAYS)) WRONG_TYPE;
-    data = unvoid_cast<uint8_t*>(malloc(length));
-    if (data == null) MALLOC_FAILED;
-    memcpy(data, array_address, length);
-  }
-
-  SystemMessage* message = _new SystemMessage(type, process->group()->id(), process->id(), data, length);
-  if (message == null) {
-    if (!take_external_data) free(data);
-    MALLOC_FAILED;
-  }
-
-  // From here on, the destructor of SystemMessage will free the data.
-  scheduler_err_t result = VM::current()->scheduler()->send_system_message(message);
-  if (result == MESSAGE_OK) {
-    // TODO(kasper): We should really also get rid of the contents of an on-heap
-    // byte array at this point.
-    if (take_external_data) ByteArray::cast(array)->neuter(process);
-  } else {
-    // Sending failed. Don't delete the data unless we copied it.
-    if (take_external_data) message->clear_data();
+    // Sending failed. Free the copied bits.
+    encoder.free_copied();
     delete message;
   }
   return Smi::from(result);
@@ -1810,15 +1771,20 @@ PRIMITIVE(task_receive_message) {
     if (array == null) ALLOCATION_FAILED;
 
     SystemMessage* system = static_cast<SystemMessage*>(message);
-    ByteArray* proxy = process->object_heap()->allocate_proxy(system->length(), system->data(), true);
-    if (proxy == null) ALLOCATION_FAILED;
-    process->register_external_allocation(system->length());
+
+    MessageDecoder decoder(process, system->data());
+    Object* decoded = decoder.decode();
+    if (decoder.allocation_failed()) {
+      decoder.remove_disposing_finalizers();
+      ALLOCATION_FAILED;
+    }
+    process->register_external_allocation(decoder.external_allocations());
     system->clear_data();
 
     array->at_put(0, Smi::from(system->type()));
     array->at_put(1, Smi::from(system->gid()));
     array->at_put(2, Smi::from(system->pid()));
-    array->at_put(3, proxy);
+    array->at_put(3, decoded);
     result = array;
   } else {
     UNREACHABLE();

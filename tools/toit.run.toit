@@ -23,7 +23,6 @@ import .snapshot
 import .mirror
 import .rpc
 import .logging
-import encoding.ubjson as ubjson
 import log.rpc as log
 import log
 import monitor
@@ -41,7 +40,7 @@ class ToitcProcessManager implements SystemMessageHandler_:
     set_system_message_handler_ SYSTEM_MIRROR_MESSAGE_ this
     rpc_broker := RpcBroker
     register_rpc rpc_broker
-    set_system_message_handler_ SYSTEM_RPC_CHANNEL_LEGACY_ rpc_broker
+    rpc_broker.install
     ar_reader := ArReader.from_bytes snapshot_bundle
     offsets := ar_reader.find --offsets SnapshotBundle.SNAPSHOT_NAME
     // Start the application process.
@@ -70,7 +69,7 @@ class ToitcProcessManager implements SystemMessageHandler_:
   handle_mirror_message encoded_message/ByteArray -> none:
     // The snapshot is lazily parsed when debugging information is needed.
     if not program: program = (SnapshotBundle snapshot_bundle).decode
-    // Handle stack traces in ubjson format.
+    // Handle stack traces.
     mirror ::= decode encoded_message program:
       print_on_stderr_ "Mirror creation failed: $it"
       return

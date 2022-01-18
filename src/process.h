@@ -18,31 +18,12 @@
 #include "heap.h"
 #include "interpreter.h"
 #include "linked.h"
+#include "messaging.h"
 #include "profiler.h"
 #include "resource.h"
 #include "snapshot_bundle.h"
 
-
 namespace toit {
-
-enum MessageType {
-  MESSAGE_INVALID = 0,
-  MESSAGE_OBJECT_NOTIFY = 1,
-  MESSAGE_SYSTEM = 2,
-};
-
-class Message;
-typedef LinkedFIFO<Message> MessageFIFO;
-
-class Message : public MessageFIFO::Element {
- public:
-  virtual ~Message() { }
-
-  virtual MessageType message_type() const = 0;
-
-  bool is_object_notify() const { return message_type() == MESSAGE_OBJECT_NOTIFY; }
-  bool is_system() const { return message_type() == MESSAGE_SYSTEM; }
-};
 
 // Process is linked into two different linked lists, so we have to make
 // use of the arbitrary N template argument to distinguish the two.
@@ -336,76 +317,6 @@ class AllocationManager {
   word _size;
   Process* _process;
   bool _hit_limit;
-};
-
-class SystemMessage : public Message {
- public:
-  // Some system messages that are created from within the VM.
-  enum {
-    TERMINATED = 0,
-    LOG = 1,
-    STACK_TRACE = 2,
-  };
-
-  SystemMessage(int type, int gid, int pid, uint8_t* data, int length) : _type(type), _gid(gid), _pid(pid), _data(data), _length(length) { }
-  SystemMessage(int type, int gid, int pid) : _type(type), _gid(gid), _pid(pid), _data(null), _length(0) { }
-  ~SystemMessage() {
-    free(_data);
-  }
-
-  MessageType message_type() const { return MESSAGE_SYSTEM; }
-
-  int gid() const { return _gid; }
-  int pid() const { return _pid; }
-  int type() const { return _type; }
-
-  uint8_t* data() const { return _data; }
-  int length() const { return _length; }
-
-  void set_pid(int pid) { _pid = pid; }
-
-  void clear_data() {
-    _data = null;
-    _length = 0;
-  }
-
- private:
-  const int _type;
-  const int _gid;  // The process group ID this message comes from.
-  int _pid;  // The process ID this message comes from.
-
-  uint8_t* _data;
-  int _length;
-};
-
-class ObjectNotifyMessage : public Message {
- public:
-  explicit ObjectNotifyMessage(ObjectNotifier* notifier)
-      : _notifier(notifier)
-      , _queued(false) {}
-  ~ObjectNotifyMessage() {}
-
-  bool is_queued() { return _queued; }
-  void mark_queued() { _queued = true; }
-  bool mark_dequeued() {
-    _queued = false;
-    return _notifier == null;
-  }
-
-  MessageType message_type() const { return MESSAGE_OBJECT_NOTIFY; }
-
-  ObjectNotifier* object_notifier() {
-    return _notifier;
-  }
-
-  bool clear_object_notifier() {
-    _notifier = null;
-    return !is_queued();
-  }
-
- private:
-  ObjectNotifier* _notifier;
-  bool _queued;
 };
 
 } // namespace toit

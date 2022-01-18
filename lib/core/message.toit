@@ -2,7 +2,6 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import encoding.ubjson as ubjson
 import .message_manual_decoding_
 
 // Message types.
@@ -12,79 +11,33 @@ MESSAGE_OBJECT_NOTIFY_ ::= 1
 MESSAGE_SYSTEM_        ::= 2
 
 // System message types.
-SYSTEM_TERMINATED_              ::= 0
-SYSTEM_MIRROR_MESSAGE_          ::= 2  // Used for sending stack traces and profile information.
-SYSTEM_RPC_CHANNEL_LEGACY_      ::= 10
+SYSTEM_TERMINATED_     ::= 0
+SYSTEM_MIRROR_MESSAGE_ ::= 1  // Used for sending stack traces and profile information.
+SYSTEM_RPC_REQUEST_    ::= 2
+SYSTEM_RPC_REPLY_      ::= 3
 
 /**
 Sends the $message to the system with the $type.
-It must be possible to encode the $message as ubjson.
+It must be possible to encode the $message with the built-in
+primitive message encoder.
 
 Returns a status code:
 * 0: Message OK
 * 1: No such receiver
 */
-system_send_ type message:
-  return system_send_bytes_
-    type
-    ubjson.encode message
-
-/**
-Sends the $bytes to the system with the $type.
-If the $bytes are not an external byte array, then they are copied to one.
-The $bytes must not be accessed once they have been sent.
-
-Returns a status code:
-- 0: Message OK
-- 1: No such receiver
-*/
-system_send_bytes_ type/int bytes/ByteArray:
-  return system_send_native_ type bytes
+system_send_ type/int message:
+  return process_send_ -1 type message
 
 /**
 Sends the $message with $type to the process identified by $pid.
-It must be possible to encode the $message as ubjson.
+It must be possible to encode the $message with the built-in
+primitive message encoder.
 
 Returns a status code:
 - 0: Message OK
 - 1: No such receiver
 */
-process_send_ pid type message:
-  return process_send_bytes_
-    pid
-    type
-    ubjson.encode message
-
-/**
-Sends the $bytes with $type to the process identified by $pid.
-If the $bytes are not an external byte array, then they are copied to an
-  external byte array.
-
-Returns a status code:
-- 0: Message OK
-- 1: No such receiver
-
-If the return code is OK, then the $bytes are consumed.
-*/
-process_send_bytes_ pid/int type/int bytes/ByteArray:
-  return process_send_native_ pid type bytes
-
-/**
-Sends a message byte array to the system process.
-Returns a result code (OK, NO_SUCH_RECEIVER).
-If the result is OK, the message byte array is consumed
-and cannot be reused.
-*/
-system_send_native_ type message:
-  #primitive.core.system_send
-
-/**
-Sends a message byte array to another process.
-Returns a result code (OK, NO_SUCH_RECEIVER).
-If the result is OK, the message byte array is consumed
-and cannot be reused.
-*/
-process_send_native_ pid type message:
+process_send_ pid/int type/int message:
   #primitive.core.process_send
 
 /** Registered system message handlers for this process. */
@@ -131,7 +84,7 @@ process_messages_:
         type ::= received[0]
         gid ::= received[1]
         pid ::= received[2]
-        args ::= type == SYSTEM_RPC_CHANNEL_LEGACY_  ? received[3] : ubjson.decode received[3]
+        args ::= received[3]
         received = null  // Allow garbage collector to free.
         system_message_handlers_.get type
           --if_present=: it.on_message type gid pid args
