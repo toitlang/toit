@@ -207,9 +207,8 @@ scheduler_err_t Scheduler::send_system_message(Locker& locker, SystemMessage* me
   // Default processing of system messages.
   switch (message->type()) {
     case SystemMessage::TERMINATED:
-      // TODO(anders): Not pretty!
-      if (message->length() == 2 && message->data()[0] == 'U') {
-        int value = message->data()[1];
+      int value;
+      if (MessageDecoder::decode_termination_message(message->data(), &value)) {
         ExitReason reason = (value == 0) ? EXIT_DONE : EXIT_ERROR;
         terminate_execution(locker, ExitState(reason, value));
       }
@@ -402,12 +401,12 @@ void Scheduler::scavenge(Process* process, bool malloc_failed, bool try_hard) {
   }
 
   process->scavenge();
-  uint64 elapsed = OS::get_monotonic_time() - start;
 
   if (doing_cross_process_gc) {
     Locker locker(_mutex);
     _gc_cross_processes = false;
 #ifdef TOIT_GC_LOGGING
+    uint64 elapsed = OS::get_monotonic_time() - start;
     printf("[cross-process gc: %d scavenges, took %d.%03dms]\n",
         scavenges + 1, elapsed / 1000, elapsed % 1000);
 #endif
@@ -663,9 +662,6 @@ void Scheduler::print_process(Locker& locker, Process* process, Interpreter* int
     }
   }
   */
-
-  //SystemMessage* message = _new SystemMessage(SYSTEM_MESSAGE_STACK_TRACE, buffer, printer.length(), OS::get_time(), process->group()->id());
-  //send_system_message(locker, message);
 }
 
 void Scheduler::terminate_execution(Locker& locker, ExitState exit) {

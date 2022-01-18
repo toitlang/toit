@@ -16,6 +16,7 @@
 #pragma once
 
 #include "linked.h"
+#include "messaging.h"
 #include "os.h"
 #include "process.h"
 #include "process_group.h"

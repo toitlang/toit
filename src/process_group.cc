@@ -37,16 +37,14 @@ SystemMessage* ProcessGroup::take_termination_message(int pid, uint8 result) {
   _termination_message = null;
   message->set_pid(pid);
 
-  // Encode the exit value as small integer in ubjson format 'U' <value>.
-  uint8* data = message->data();
-  data[0] = (uint8) 'U';
-  data[1] = result;
+  // Encode the exit value as small integer in the termination message.
+  MessageEncoder::encode_termination_message(message->data(), result);
 
   return message;
 }
 
 ProcessGroup* ProcessGroup::create(int id) {
-  uint8_t* data = unvoid_cast<uint8*>(malloc(2));
+  uint8_t* data = unvoid_cast<uint8*>(malloc(MESSAGING_TERMINATION_MESSAGE_SIZE));
   if (data == NULL) return NULL;
 
   SystemMessage* termination_message = _new SystemMessage(SystemMessage::TERMINATED, id, -1, data, 2);

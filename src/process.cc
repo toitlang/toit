@@ -264,7 +264,6 @@ int Process::message_count() {
   return count;
 }
 
-
 void Process::send_mail(Message* message) {
   _append_message(message);
   VM::current()->scheduler()->process_ready(this);
