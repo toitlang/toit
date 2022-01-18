@@ -5,6 +5,9 @@
 invoke name/int arguments/List -> any:
   return Rpc.instance.invoke name arguments
 
+invoke pid/int name/int arguments/List -> any:
+  return Rpc.instance.invoke pid name arguments
+
 class Rpc implements SystemMessageHandler_:
   static instance ::= Rpc.internal_
   synchronizer_/RpcSynchronizer_ ::= RpcSynchronizer_
@@ -13,14 +16,18 @@ class Rpc implements SystemMessageHandler_:
     return instance
 
   constructor.internal_:
-    set_system_message_handler_ SYSTEM_RPC_MESSAGE_ this
+    set_system_message_handler_ SYSTEM_RPC_REPLY_ this
 
   invoke name/int arguments/List -> any:
     return synchronizer_.send: | id |
-      system_send_ SYSTEM_RPC_MESSAGE_ [ id, name, arguments ]
+      process_send_ -1 SYSTEM_RPC_REQUEST_ [ id, name, arguments ]
+
+  invoke pid/int name/int arguments/List -> any:
+    return synchronizer_.send: | id |
+      process_send_ pid SYSTEM_RPC_REQUEST_ [ id, name, arguments ]
 
   on_message type gid pid reply -> none:
-    assert: type == SYSTEM_RPC_MESSAGE_
+    assert: type == SYSTEM_RPC_REPLY_
     id/int := reply[0]
     is_exception/bool := reply[1]
     result/any := reply[2]

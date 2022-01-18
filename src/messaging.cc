@@ -156,7 +156,7 @@ bool MessageEncoder::encode_byte_array(ByteArray* object) {
   write_uint8(TAG_BYTE_ARRAY);
   write_cardinal(bytes.length());
   write_pointer(bytes.address());
-  if (_buffer) {
+  if (!encoding_for_size()) {
     if (_externals_count >= ARRAY_SIZE(_externals)) {
       // TODO(kasper): Report meaningful error.
       return false;
@@ -174,7 +174,7 @@ bool MessageEncoder::encode_copy(Object* object, int tag) {
     // TODO(kasper): Report meaningful error.
     return false;
   }
-  if (_buffer) {
+  if (!encoding_for_size()) {
     data = malloc(length);
     if (data == null) {
       _malloc_failed = true;
@@ -194,7 +194,7 @@ bool MessageEncoder::encode_copy(Object* object, int tag) {
 }
 
 void MessageEncoder::write_pointer(void* value) {
-  if (_buffer) memcpy(&_buffer[_cursor], &value, WORD_SIZE);
+  if (!encoding_for_size()) memcpy(&_buffer[_cursor], &value, WORD_SIZE);
   _cursor += WORD_SIZE;
 }
 
@@ -207,7 +207,7 @@ void MessageEncoder::write_cardinal(uword value) {
 }
 
 void MessageEncoder::write_uint64(uint64 value) {
-  if (_buffer) memcpy(&_buffer[_cursor], &value, sizeof(uint64));
+  if (!encoding_for_size()) memcpy(&_buffer[_cursor], &value, sizeof(uint64));
   _cursor += sizeof(uint64);
 }
 

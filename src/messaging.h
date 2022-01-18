@@ -136,7 +136,7 @@ class MessageEncoder {
  private:
   Process* _process;
   Program* _program;
-  uint8* _buffer;
+  uint8* _buffer;  // The buffer is null when we're encoding for size.
   int _cursor;
   int _nesting;
 
@@ -148,13 +148,15 @@ class MessageEncoder {
   unsigned _externals_count;
   ByteArray* _externals[MESSAGING_ENCODING_MAX_EXTERNALS];
 
+  bool encoding_for_size() const { return _buffer == null; }
+
   bool encode_string(String* object);
   bool encode_array(Array* object, int size);
   bool encode_byte_array(ByteArray* object);
   bool encode_copy(Object* object, int tag);
 
   void write_uint8(uint8 value) {
-    if (_buffer) _buffer[_cursor] = value;
+    if (!encoding_for_size()) _buffer[_cursor] = value;
     _cursor++;
   }
 

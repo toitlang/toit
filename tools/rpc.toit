@@ -18,8 +18,11 @@ class RpcBroker implements SystemMessageHandler_:
   handlers_/Map ::= {:}
   queue_/RpcRequestQueue_ ::= RpcRequestQueue_
 
+  install:
+    set_system_message_handler_ SYSTEM_RPC_REQUEST_ this
+
   on_message type gid pid message/List -> none:
-    assert: type == SYSTEM_RPC_MESSAGE_
+    assert: type == SYSTEM_RPC_REQUEST_
     id/int := message[0]
     name/int := message[1]
     arguments := message[2]
@@ -90,7 +93,7 @@ class RpcRequest_:
       reply := is_exception
           ? [ id, true, exception.value, exception.trace ]
           : [ id, false, result ]
-      process_send_ pid SYSTEM_RPC_MESSAGE_ reply
+      process_send_ pid SYSTEM_RPC_REPLY_ reply
       return  // Stops any unwinding.
 
 monitor RpcRequestQueue_:

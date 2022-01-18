@@ -11,9 +11,10 @@ MESSAGE_OBJECT_NOTIFY_ ::= 1
 MESSAGE_SYSTEM_        ::= 2
 
 // System message types.
-SYSTEM_TERMINATED_      ::= 0
-SYSTEM_MIRROR_MESSAGE_  ::= 1  // Used for sending stack traces and profile information.
-SYSTEM_RPC_MESSAGE_     ::= 2
+SYSTEM_TERMINATED_     ::= 0
+SYSTEM_MIRROR_MESSAGE_ ::= 1  // Used for sending stack traces and profile information.
+SYSTEM_RPC_REQUEST_    ::= 2
+SYSTEM_RPC_REPLY_      ::= 3
 
 /**
 Sends the $message to the system with the $type.
