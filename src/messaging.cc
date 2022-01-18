@@ -283,7 +283,7 @@ Object* MessageDecoder::decode_string() {
     _allocation_failed = true;
     return null;
   }
-  register_external(result, length);
+  register_external(result, length + 1);  // Account for '\0'-termination.
   return result;
 }
 
