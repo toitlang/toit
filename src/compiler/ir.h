@@ -113,7 +113,7 @@ IR_NODES(DECLARE)
 
 class TraversingVisitor : public Visitor {
  public:
-#define DECLARE(name) virtual void visit_##name(name* node);
+#define DECLARE(name) virtual void visit_##name(name* node) override;
 IR_NODES(DECLARE)
 #undef DECLARE
 };
@@ -129,7 +129,7 @@ class ReplacingVisitor : public ReturningVisitor<Node*> {
  public:
   virtual Node* visit(Node* node);
 
-#define DECLARE(name) virtual Node* visit_##name(name* node);
+#define DECLARE(name) virtual Node* visit_##name(name* node) override;
 IR_NODES(DECLARE)
 #undef DECLARE
 
