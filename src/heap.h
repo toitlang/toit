@@ -269,9 +269,6 @@ class HeapRoot : public HeapRootList::Element {
 // An object heap contains all objects created at runtime.
 class ObjectHeap final : public Heap {
  public:
-  // An estimate of how much memory overhead malloc has.
-  static const word EXTERNAL_MEMORY_ALLOCATOR_OVERHEAD = 2 * sizeof(word);
-
   ObjectHeap(Program* program, Process* owner, Block* initial_block);
   ~ObjectHeap();
 
@@ -324,6 +321,9 @@ class ObjectHeap final : public Heap {
   void install_heap_limit() { _limit = _pending_limit; }
 
  private:
+  // An estimate of how much memory overhead malloc has.
+  static const word _EXTERNAL_MEMORY_ALLOCATOR_OVERHEAD = 2 * sizeof(word);
+
   // Minimum number of heap blocks we limit ourselves to.
   static const word _MIN_BLOCK_LIMIT = 4;
 

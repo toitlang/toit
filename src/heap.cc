@@ -369,13 +369,13 @@ word ObjectHeap::_calculate_limit() {
 bool ObjectHeap::should_allow_external_allocation(word size) {
   if (_limit == 0) return true;
   word external_allowed = _limit - (Utils::min(_MIN_BLOCK_LIMIT, _blocks.length()) << TOIT_PAGE_SIZE_LOG2);
-  return external_allowed >= _external_memory + EXTERNAL_MEMORY_ALLOCATOR_OVERHEAD + size;
+  return external_allowed >= _external_memory + _EXTERNAL_MEMORY_ALLOCATOR_OVERHEAD + size;
 }
 
 void ObjectHeap::register_external_allocation(word size) {
   if (size == 0) return;
   // Overloading on an atomic type makes an atomic += and returns new value.
-  _external_memory += EXTERNAL_MEMORY_ALLOCATOR_OVERHEAD + size;
+  _external_memory += _EXTERNAL_MEMORY_ALLOCATOR_OVERHEAD + size;
   _total_bytes_allocated += size;
 }
 
@@ -383,7 +383,7 @@ void ObjectHeap::unregister_external_allocation(word size) {
   if (size == 0) return;
   // Overloading on an atomic type makes an atomic += and returns new value.
   uword old_external_memory = _external_memory;
-  uword external_memory = _external_memory -= EXTERNAL_MEMORY_ALLOCATOR_OVERHEAD + size;
+  uword external_memory = _external_memory -= _EXTERNAL_MEMORY_ALLOCATOR_OVERHEAD + size;
   USE(old_external_memory);
   USE(external_memory);
   // Check that the external memory does not underflow into 'negative' range.

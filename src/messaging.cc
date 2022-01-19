@@ -238,7 +238,6 @@ MessageDecoder::MessageDecoder(Process* process, uint8* buffer)
     , _buffer(buffer)
     , _cursor(0)
     , _allocation_failed(false)
-    , _external_allocations(0)
     , _externals_count(0) {
 }
 
@@ -253,10 +252,10 @@ bool MessageDecoder::decode_termination_message(uint8* buffer, int* value) {
   return false;
 }
 
-word MessageDecoder::external_allocations_size() const {
-  if (_external_allocations == 0) return 0;
-  return _external_allocations + _external_overhead -
-      ObjectHeap::EXTERNAL_MEMORY_ALLOCATOR_OVERHEAD;
+void MessageDecoder::register_external_allocations() {
+  for (unsigned i = 0; i < _externals_count; i++) {
+    _process->object_heap()->register_external_allocation(_externals_sizes[i]);
+  }
 }
 
 void MessageDecoder::remove_disposing_finalizers() {
@@ -266,14 +265,13 @@ void MessageDecoder::remove_disposing_finalizers() {
 }
 
 void MessageDecoder::register_external(HeapObject* object, int length) {
-  if (_externals_count >= ARRAY_SIZE(_externals)) {
-    FATAL("[message decoder: too many externals: %d]", _externals_count + 1);
+  unsigned index = _externals_count;
+  if (index >= ARRAY_SIZE(_externals)) {
+    FATAL("[message decoder: too many externals: %d]", index + 1);
   }
-  _externals[_externals_count++] = object;
-  if (length > 0) {
-    _external_allocations += length;
-    _external_overhead += ObjectHeap::EXTERNAL_MEMORY_ALLOCATOR_OVERHEAD;
-  }
+  _externals[index] = object;
+  _externals_sizes[index] = length;
+  _externals_count++;
 }
 
 Object* MessageDecoder::decode() {
