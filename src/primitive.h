@@ -439,7 +439,7 @@ namespace toit {
   PRIMITIVE(config_interrupt, 2)             \
 
 #define MODULE_ADC(PRIMITIVE)               \
-  PRIMITIVE(init, 2)                        \
+  PRIMITIVE(init, 3)                        \
   PRIMITIVE(get, 2)                         \
   PRIMITIVE(close, 1)                       \
 
@@ -789,7 +789,7 @@ namespace toit {
 #define _A_T_Adler32(N, name)             MAKE_UNPACKING_MACRO(Adler32, N, name)
 #define _A_T_ZlibRle(N, name)             MAKE_UNPACKING_MACRO(ZlibRle, N, name)
 #define _A_T_UARTResource(N, name)        MAKE_UNPACKING_MACRO(UARTResource, N, name)
-#define _A_T_ADCState(N, name)            MAKE_UNPACKING_MACRO(ADCState, N, name)
+#define _A_T_AdcState(N, name)            MAKE_UNPACKING_MACRO(AdcState, N, name)
 #define _A_T_PWMResource(N, name)         MAKE_UNPACKING_MACRO(PWMResource, N, name)
 #define _A_T_GAPResource(N, name)         MAKE_UNPACKING_MACRO(GAPResource, N, name)
 #define _A_T_GATTResource(N, name)        MAKE_UNPACKING_MACRO(GATTResource, N, name)

@@ -17,6 +17,8 @@
 
 #ifdef TOIT_FREERTOS
 
+#include "adc_esp32.h"
+
 #include <driver/gpio.h>
 #include <driver/adc.h>
 #include <esp_adc_cal.h>
@@ -62,9 +64,10 @@ static adc_atten_t get_atten(int mv) {
   if (mv <= 2200) return ADC_ATTEN_DB_6;
   return ADC_ATTEN_DB_11;
 }
-
-struct ADCState {
-  ADCState(adc_unit_t unit, int chan)
+/*
+class AdcState : public SimpleResource {
+ public:
+  AdcState(adc_unit_t unit, int chan)
     : unit(unit)
     , chan(chan) {}
 
@@ -72,11 +75,22 @@ struct ADCState {
   int chan;
   esp_adc_cal_characteristics_t calibration;
 };
+*/
+
+AdcState::AdcState(SimpleResourceGroup* group) : SimpleResource(group) {
+  // what to do with this?
+}
+
+void AdcState::init(adc_unit_t unit, int chan) {
+  // what to do with this?
+  this->unit = unit;
+  this->chan = chan;
+}
 
 MODULE_IMPLEMENTATION(adc, MODULE_ADC)
 
 PRIMITIVE(init) {
-  ARGS(int, pin, double, max);
+  ARGS(SimpleResourceGroup, group, int, pin, double, max);
 
   if (max < 0.0) INVALID_ARGUMENT;
 
@@ -104,7 +118,8 @@ PRIMITIVE(init) {
     }
   }
 
-  ADCState* state = _new ADCState(unit, chan);
+  //AdcState* state = _new AdcState(unit, chan);
+  AdcState* state = _new AdcState(group);
   if (!state) MALLOC_FAILED;
 
   ByteArray* proxy = process->object_heap()->allocate_external_byte_array(0, reinterpret_cast<uint8*>(state), true, false);
@@ -112,6 +127,7 @@ PRIMITIVE(init) {
     delete state;
     ALLOCATION_FAILED;
   }
+  state->init(unit, chan);
 
   const int DEFAULT_VREF = 1100;
   esp_adc_cal_characterize(unit, atten, ADC_WIDTH_BIT_12, DEFAULT_VREF, &state->calibration);
@@ -122,7 +138,8 @@ PRIMITIVE(init) {
 PRIMITIVE(get) {
   ARGS(ByteArray, raw_state, int, samples);
 
-  ADCState* state = reinterpret_cast<ADCState*>(raw_state->as_external());
+  // TODO: how to get the instance?
+  AdcState* state = reinterpret_cast<AdcState*>(raw_state->as_external());
   // Check if it's already closed.
   if (state == null) INVALID_ARGUMENT;
 
