@@ -728,7 +728,6 @@ class Double : public HeapObject {
   friend class Heap;
 };
 
-
 class String : public HeapObject {
  public:
   uint16 hash_code() {

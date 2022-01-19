@@ -300,8 +300,11 @@ class ObjectHeap final : public Heap {
 
   bool add_finalizer(HeapObject* key, Object* lambda);
   bool has_finalizer(HeapObject* key, Object* lambda);
-  bool add_vm_finalizer(HeapObject* key);
   bool remove_finalizer(HeapObject* key);
+
+  bool add_vm_finalizer(HeapObject* key);
+  bool remove_vm_finalizer(HeapObject* key);
+
   Object* next_finalizer_to_run();
   void set_finalizer_notifier(ObjectNotifier* notifier);
 

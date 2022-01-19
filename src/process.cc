@@ -154,6 +154,7 @@ String* Process::allocate_string(int length, Error** error) {
     *error = Error::from(program()->allocation_failed());
     return null;
   }
+  memory[length] = '\0';  // External strings should be zero-terminated.
   String* result = object_heap()->allocate_external_string(length, memory, true);
   if (result != null) {
     allocation.keep_result();

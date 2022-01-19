@@ -73,8 +73,15 @@ void MessageEncoder::free_copied() {
 }
 
 void MessageEncoder::neuter_externals() {
+  ObjectHeap* heap = _process->object_heap();
   for (unsigned i = 0; i < _externals_count; i++) {
-    _externals[i]->neuter(_process);
+    ByteArray* array = _externals[i];
+    // Remove any disposing finalizers and neuter the byte array. The
+    // contents of the array is now linked to from an enqueue SystemMessage
+    // and will be used to construct a new external byte array in the
+    // receiving process.
+    heap->remove_vm_finalizer(array);
+    array->neuter(_process);
   }
 }
 
@@ -253,14 +260,16 @@ bool MessageDecoder::decode_termination_message(uint8* buffer, int* value) {
 }
 
 void MessageDecoder::register_external_allocations() {
+  ObjectHeap* heap = _process->object_heap();
   for (unsigned i = 0; i < _externals_count; i++) {
-    _process->object_heap()->register_external_allocation(_externals_sizes[i]);
+    heap->register_external_allocation(_externals_sizes[i]);
   }
 }
 
 void MessageDecoder::remove_disposing_finalizers() {
+  ObjectHeap* heap = _process->object_heap();
   for (unsigned i = 0; i < _externals_count; i++) {
-    _process->object_heap()->remove_finalizer(_externals[i]);
+    heap->remove_vm_finalizer(_externals[i]);
   }
 }
 

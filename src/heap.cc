@@ -633,6 +633,19 @@ bool ObjectHeap::remove_finalizer(HeapObject* key) {
   return found;
 }
 
+bool ObjectHeap::remove_vm_finalizer(HeapObject* key) {
+  bool found = false;
+  _registered_vm_finalizers.remove_wherever([key, &found](VMFinalizerNode* node) -> bool {
+    if (node->key() == key) {
+      delete node;
+      found = true;
+      return true;
+    }
+    return false;
+  });
+  return found;
+}
+
 Object* ObjectHeap::next_finalizer_to_run() {
   FinalizerNode* node = _runnable_finalizers.remove_first();
   if (node == null) {
