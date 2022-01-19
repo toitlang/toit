@@ -51,6 +51,12 @@ ifndef IGNORE_SUBMODULE
 		exit 1; \
 	fi
 endif
+ifndef IGNORE_GIT_TAGS
+	@ if [ -z "$(git rev-list --tags --max-count=1)" ]; then \
+		echo "No tags in repository. Checkout is probably shallow. Run 'git fetch --tags --recurse-submodules=no'"; \
+		exit 1; \
+	fi
+endif
 ifeq ("$(wildcard $(IDF_PATH)/components/mbedtls/mbedtls/LICENSE)","")
 ifeq ("$(IDF_PATH)", "$(CURDIR)/third_party/esp-idf")
 	$(error mbedtls sources are missing. Did you `git submodule update --init --recursive`?)
