@@ -134,6 +134,9 @@ monitor RpcRequestQueue_:
             try:
               next.process
             finally:
+              // This doesn't have to be in a finally-block because the call
+              // to 'next.process' never unwinds, but being a little bit
+              // defensive feels right.
               unprocessed_--
         finally:
           tasks_--
