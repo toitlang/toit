@@ -76,12 +76,14 @@ void MessageEncoder::neuter_externals() {
   ObjectHeap* heap = _process->object_heap();
   for (unsigned i = 0; i < _externals_count; i++) {
     ByteArray* array = _externals[i];
-    // Remove any disposing finalizers and neuter the byte array. The
-    // contents of the array is now linked to from an enqueue SystemMessage
-    // and will be used to construct a new external byte array in the
-    // receiving process.
-    heap->remove_vm_finalizer(array);
+    // Neuter the byte array. The contents of the array is now linked to from
+    // an enqueued SystemMessage and will be used to construct a new external
+    // byte array in the receiving process.
     array->neuter(_process);
+
+    // Optimization: Eagerly remove any disposing finalizer, so the garbage
+    // collector does not have to deal with disposing a neutered byte array.
+    heap->remove_vm_finalizer(array);
   }
 }
 
