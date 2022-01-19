@@ -52,7 +52,7 @@ ifndef IGNORE_SUBMODULE
 	fi
 endif
 ifndef IGNORE_GIT_TAGS
-	@ if [ -z "$(git rev-list --tags --max-count=1)" ]; then \
+	@ if [ -z "$$(git rev-list --tags --max-count=1)" ]; then \
 		echo "No tags in repository. Checkout is probably shallow. Run 'git fetch --tags --recurse-submodules=no'"; \
 		exit 1; \
 	fi
