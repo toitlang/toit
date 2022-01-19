@@ -68,7 +68,7 @@ build/host/CMakeCache.txt:
 .PHONY: rebuild-cmake
 rebuild-cmake:
 	mkdir -p build/host
-	(cd build/host && cmake ../.. -G Ninja -DCMAKE_BUILD_TYPE=Debug)
+	(cd build/host && cmake ../.. -G Ninja -DCMAKE_BUILD_TYPE=Release)
 
 .PHONY: tools
 tools: check-env build/host/CMakeCache.txt
