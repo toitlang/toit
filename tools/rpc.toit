@@ -28,7 +28,7 @@ class RpcBroker implements SystemMessageHandler_:
     arguments := message[2]
 
     send_exception_reply :=: | exception |
-      process_send_ pid type [ id, true, exception, null ]
+      process_send_ pid SYSTEM_RPC_REPLY_ [ id, true, exception, null ]
       return
 
     procedures_.get name --if_present=: | procedure |
@@ -66,7 +66,7 @@ class RpcBroker implements SystemMessageHandler_:
   // invoked by the RPC caller with a descriptor as the first argument.  This
   // descriptor is looked up on the process group and the resulting object is
   // passed to the handler.
-  register_descriptor_procedure name/int action/Lambda:
+  register_descriptor_procedure name/int action/Lambda -> none:
     handlers_[name] = action
 
   // Typically overwritten in a subclass.
