@@ -10,6 +10,8 @@ import at
 import .sequans_cellular
 
 /**
+Deprecated. Use package sequans-cellular (https://github.com/toitware/sequans-cellular).
+
 Driver for Sequans Monarch, GSM communicating over NB-IoT & M1.
 */
 class Monarch extends SequansCellular:

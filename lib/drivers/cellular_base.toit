@@ -13,6 +13,8 @@ import .cellular
 REGISTRATION_DENIED_ERROR ::= "registration denied"
 
 /**
+Deprecated. Use package cellular (https://github.com/toitware/cellular).
+
 Base functionality of Cellular modems, encapsulating the generic functionality.
 
 Major things that are not implemented in the base is:
@@ -293,6 +295,7 @@ abstract class CellularBase implements Cellular:
     power_off
 
   /**
+  Deprecated. Use package cellular (https://github.com/toitware/cellular).
   Called when the driver has connected.
   */
   abstract on_connected_ session/at.Session

@@ -23,6 +23,9 @@ CONNECTED_STATE_  ::= 1 << 0
 READ_STATE_       ::= 1 << 1
 CLOSE_STATE_      ::= 1 << 2
 
+/**
+Deprecated. Use package ublox-cellular (https://github.com/toitware/ublox-cellular).
+*/
 monitor SocketState_:
   state_/int := 0
   dirty_/bool := false
@@ -62,6 +65,8 @@ class Socket_:
     return id_
 
   /**
+  Deprecated. Use package ublox-cellular (https://github.com/toitware/ublox-cellular).
+
   Will capture exceptions and translate to socket-related errors.
   */
   socket_call [block]:
@@ -73,6 +78,8 @@ class Socket_:
     unreachable
 
   /**
+  Deprecated. Use package ublox-cellular (https://github.com/toitware/ublox-cellular).
+
   Returns the latest socket error (even if OK).
   */
   last_error_ session/at.Session original_error/string="" -> Exception:
@@ -248,6 +255,8 @@ class UdpSocket extends Socket_ implements udp.Socket:
 
 
 /**
+Deprecated. Use package ublox-cellular (https://github.com/toitware/ublox-cellular).
+
 Base driver for u-blox Cellular devices, communicating over CAT-NB1 and/or CAT-M1.
 */
 abstract class UBloxCellular extends CellularBase:
@@ -262,6 +271,8 @@ abstract class UBloxCellular extends CellularBase:
   async_socket_close/bool
 
   /**
+  Deprecated. Use package ublox-cellular (https://github.com/toitware/ublox-cellular).
+  
   Called when the driver should reset.
   */
   abstract on_reset session/at.Session

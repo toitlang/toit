@@ -14,6 +14,8 @@ interface Pin:
   off -> none
 
 /**
+Deprecated. Use package cellular (https://github.com/toitware/cellular).
+
 Base for Cellular drivers for embedding in the kernel.
 */
 interface Cellular:
@@ -23,16 +25,22 @@ interface Cellular:
   use_psm= value/bool -> none
 
   /**
+  Deprecated. Use package cellular (https://github.com/toitware/cellular).
+
   Returns the model of the Cellular module.
   */
   model -> string
 
   /**
+  Deprecated. Use package cellular (https://github.com/toitware/cellular).
+
   Returns the version of the Cellular module.
   */
   version -> string
 
   /**
+  Deprecated. Use package cellular (https://github.com/toitware/cellular).
+
   Returns the ICCID of the SIM card.
   */
   iccid -> string
@@ -42,16 +50,22 @@ interface Cellular:
   configure apn --bands/List?=null --rats/List?=null
 
   /**
+  Deprecated. Use package cellular (https://github.com/toitware/cellular).
+
   Connect to the service using the optional operator.
   */
   connect --operator/Operator?=null -> bool
 
   /**
+  Deprecated. Use package cellular (https://github.com/toitware/cellular).
+
   Connect to the service after a PSM wakeup.
   */
   connect_psm
 
   /**
+  Deprecated. Use package cellular (https://github.com/toitware/cellular).
+  
   Scan for operators.
   */
   scan_for_operators -> List
@@ -75,6 +89,8 @@ interface Cellular:
   power_on -> none
 
   /**
+  Deprecated. Use package cellular (https://github.com/toitware/cellular).
+
   Modem-specific implementation for recovering if the AT interface is unresponsive.
   */
   recover_modem -> none
@@ -93,25 +109,42 @@ class Operator:
     return "$op ($rat)"
 
 /**
+Deprecated. Use package toit-gnss-location (https://github.com/toitware/toit-gnss-location).
+
 GNSS location consisting of coordinates and accuracy measurements.
 */
 class GnssLocation:
   latitude/float
   longitude/float
-  /** The horizontal accuracy. */
+  /** 
+  Deprecated. Use package toit-gnss-location (https://github.com/toitware/toit-gnss-location).
+  The horizontal accuracy. 
+  */
   horizontal_accuracy ::= 0.0
-  /** The vertical accuracy. */
+  /** 
+  Deprecated. Use package toit-gnss-location (https://github.com/toitware/toit-gnss-location).
+  
+  The vertical accuracy. 
+  */
   vertical_accuracy ::= 0.0
-  /** The altitude relative to the median sea level. */
+  /** 
+  Deprecated. Use package toit-gnss-location (https://github.com/toitware/toit-gnss-location).
+
+  The altitude relative to the median sea level. 
+  */
   altitude_msl ::= 0.0
 
   /**
+  Deprecated. Use package toit-gnss-location (https://github.com/toitware/toit-gnss-location).
+  
   Constructs a GNSS location from the given $latitude, $longitude,
     $horizontal_accuracy, $vertical_accuracy, and $altitude_msl.
   */
   constructor .latitude .longitude .horizontal_accuracy .vertical_accuracy .altitude_msl:
 
   /**
+  Deprecated. Use package toit-gnss-location (https://github.com/toitware/toit-gnss-location).
+
   Constructs a GNSS location by deserializing the given bytes.
 
   The bytes must be constructed with $to_byte_array.
@@ -126,6 +159,8 @@ class GnssLocation:
       values[4]
 
   /**
+  Deprecated. Use package toit-gnss-location (https://github.com/toitware/toit-gnss-location).
+
   Serializes this GNSS location into a byte array.
 
   The bytes can be deserialized into a location with $GnssLocation.deserialize.
@@ -139,7 +174,11 @@ class GnssLocation:
       vertical_accuracy,
     ]
 
-  /** See $super. */
+  /** 
+  Deprecated. Use package toit-gnss-location (https://github.com/toitware/toit-gnss-location).
+  
+  See $super. 
+  */
   stringify:
     lat_printer := create_printer_ "S" "N"
     lat := lat_printer.call latitude
@@ -152,6 +191,7 @@ class GnssLocation:
   static create_printer_ negative_indicator_ positive_indicator_:
     return :: | value | "$(%3.5f value.abs)$(value < 0 ? negative_indicator_ : positive_indicator_)"
 
+/** Deprecated. */
 interface Gnss:
   gnss_start
   gnss_location -> GnssLocation?

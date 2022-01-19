@@ -67,6 +67,8 @@ class Socket_:
     return id_
 
   /**
+  Deprecated. Use package quectel-cellular (https://github.com/toitware/quectel-cellular).
+
   Calls the given $block.
   Captures exceptions and translates them to socket-related errors.
   */
@@ -79,6 +81,8 @@ class Socket_:
     unreachable
 
   /**
+  Deprecated. Use package quectel-cellular (https://github.com/toitware/quectel-cellular).
+
   Returns the latest socket error (even if OK).
   */
   last_error_ cellular/at.Session original_error/string="" -> Exception:
@@ -157,6 +161,8 @@ class TcpSocket extends Socket_ implements tcp.Socket:
     return 0
 
   /**
+  Deprecated. Use package quectel-cellular (https://github.com/toitware/quectel-cellular).
+
   Closes the socket for write. The socket is still be able to read incoming data.
   */
   close_write:
@@ -259,6 +265,8 @@ class UdpSocket extends Socket_ implements udp.Socket:
   broadcast= value/bool: throw "BROADCAST_UNSUPPORTED"
 
 /**
+Deprecated. Use package quectel-cellular (https://github.com/toitware/quectel-cellular).
+
 Base driver for Quectel Cellular devices, communicating over CAT-NB1 and/or CAT-M1.
 */
 abstract class QuectelCellular extends CellularBase implements Gnss:
@@ -268,6 +276,8 @@ abstract class QuectelCellular extends CellularBase implements Gnss:
   resolve_/monitor.Latch? := null
 
   /**
+  Deprecated. Use package quectel-cellular (https://github.com/toitware/quectel-cellular).
+
   Called when the driver should reset.
   */
   abstract on_reset session/at.Session
@@ -599,6 +609,8 @@ class QIDEACT extends at.Command:
 
 class QICFG extends at.Command:
   /**
+    Deprecated. Use package quectel-cellular (https://github.com/toitware/quectel-cellular).
+
     $idle_time in range 1-120, unit minutes.
     $interval_time in range 25-100, unit seconds.
     $probe_count in range 3-10.

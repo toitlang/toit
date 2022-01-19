@@ -17,6 +17,10 @@ import experimental.exceptions show *
 import .cellular
 import .cellular_base
 
+/**
+Deprecated. Use package sequans-cellular (https://github.com/toitware/sequans-cellular).
+*/
+
 CONNECTED_STATE_  ::= 1 << 0
 READ_STATE_       ::= 1 << 1
 CLOSE_STATE_      ::= 1 << 2
@@ -58,6 +62,8 @@ class Socket_:
     return id_
 
   /**
+  Deprecated. Use package sequans-cellular (https://github.com/toitware/sequans-cellular).
+
   Calls the given $block.
   Captures exceptions and translates them to socket-related errors.
   */
@@ -153,6 +159,8 @@ class TcpSocket extends Socket_ implements tcp.Socket:
     return 0
 
   /**
+  Deprecated. Use package sequans-cellular (https://github.com/toitware/sequans-cellular).
+
   Closes the socket for write. The socket is still be able to read incoming data.
   */
   close_write:
@@ -246,6 +254,8 @@ class UdpSocket extends Socket_ implements udp.Socket:
   broadcast= value/bool: throw "BROADCAST_UNSUPPORTED"
 
 /**
+Deprecated. Use package sequans-cellular (https://github.com/toitware/sequans-cellular).
+
 Base driver for Sequans Cellular devices, communicating over CAT-NB1 and/or CAT-M1.
 */
 abstract class SequansCellular extends CellularBase:
@@ -254,6 +264,8 @@ abstract class SequansCellular extends CellularBase:
   closed_/monitor.Latch ::= monitor.Latch
 
   /**
+  Deprecated. Use package sequans-cellular (https://github.com/toitware/sequans-cellular).
+  
   Called when the driver should reset.
   */
   abstract on_reset session/at.Session
