@@ -253,6 +253,12 @@ bool MessageDecoder::decode_termination_message(uint8* buffer, int* value) {
   return false;
 }
 
+word MessageDecoder::external_allocations_size() const {
+  if (_external_allocations == 0) return 0;
+  return _external_allocations + _external_overhead -
+      ObjectHeap::EXTERNAL_MEMORY_ALLOCATOR_OVERHEAD;
+}
+
 void MessageDecoder::remove_disposing_finalizers() {
   for (unsigned i = 0; i < _externals_count; i++) {
     _process->object_heap()->remove_finalizer(_externals[i]);
@@ -264,7 +270,10 @@ void MessageDecoder::register_external(HeapObject* object, int length) {
     FATAL("[message decoder: too many externals: %d]", _externals_count + 1);
   }
   _externals[_externals_count++] = object;
-  _external_allocations += length;
+  if (length > 0) {
+    _external_allocations += length;
+    _external_overhead += ObjectHeap::EXTERNAL_MEMORY_ALLOCATOR_OVERHEAD;
+  }
 }
 
 Object* MessageDecoder::decode() {
@@ -307,6 +316,7 @@ Object* MessageDecoder::decode_string(bool inlined) {
     ASSERT(length <= String::max_internal_size());
     Error* error = null;
     result = _process->allocate_string(reinterpret_cast<char*>(&_buffer[_cursor]), length, &error);
+    ASSERT(result == null || result->content_on_heap());
     _cursor += length;
   } else {
     uint8* data = read_pointer();
@@ -342,6 +352,7 @@ Object* MessageDecoder::decode_byte_array(bool inlined) {
     Error* error = null;
     result = _process->allocate_byte_array(length, &error, false);
     if (result != null) {
+      ASSERT(!result->has_external_address());
       ByteArray::Bytes bytes(result);
       memcpy(bytes.address(), &_buffer[_cursor], length);
     }

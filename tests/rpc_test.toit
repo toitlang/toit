@@ -26,6 +26,8 @@ main:
   test_simple myself
   test_large_external myself
   test_second_procedure myself
+  test_small_strings myself
+  test_small_byte_arrays myself
   test_problematic myself
   test_closed_descriptor myself
   test_performance myself
@@ -45,12 +47,34 @@ test_large_external myself/int -> none:
   15.repeat: s += s
   expect.expect_equals 262144 (test_chain myself [s])[0].size
 
-test_second_procedure myself/int  -> none:
+test_second_procedure myself/int -> none:
   // Test second procedure.
   10.repeat:
     expect.expect_equals
         it * 2
         rpc.invoke myself PROCEDURE_MULTIPLY_BY_TWO [it]
+
+test_small_strings myself/int -> none:
+  collection := "abcdefghijklmn"
+  s1 := ""
+  s2 := ""
+  (1 << 12).repeat:
+    test myself [s1]
+    test myself [s2]
+    test myself [s1, s2]
+    test myself [s2, s1]
+    x := string.from_rune collection[it % collection.size]
+    s1 = s1 + x
+    s2 = x + s2
+
+test_small_byte_arrays myself/int -> none:
+  (1 << 12).repeat:
+    b1 := ByteArray it: 7 - it
+    b2 := ByteArray it: it + 9
+    test myself [b1]
+    test myself [b2]
+    test myself [b1, b2]
+    test myself [b2, b1]
 
 test_problematic myself/int -> none:
   // Check for unhandled types of data.

@@ -1778,7 +1778,7 @@ PRIMITIVE(task_receive_message) {
       decoder.remove_disposing_finalizers();
       ALLOCATION_FAILED;
     }
-    process->register_external_allocation(decoder.external_allocations());
+    process->register_external_allocation(decoder.external_allocations_size());
     system->clear_data();
 
     array->at_put(0, Smi::from(system->type()));

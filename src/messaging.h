@@ -174,7 +174,7 @@ class MessageDecoder {
   static bool decode_termination_message(uint8* buffer, int* value);
 
   bool allocation_failed() const { return _allocation_failed; }
-  int external_allocations() const { return _external_allocations; }
+  word external_allocations_size() const;
 
   void remove_disposing_finalizers();
 
@@ -187,7 +187,12 @@ class MessageDecoder {
   int _cursor;
 
   bool _allocation_failed;
-  int _external_allocations;
+
+  // We keep track of the external allocation overhead to be able to
+  // mimic the behavior of registering multiple external memory chunks
+  // in one call to ObjectHeap::register_external_allocation().
+  word _external_overhead;
+  word _external_allocations;
 
   unsigned _externals_count;
   HeapObject* _externals[MESSAGING_ENCODING_MAX_EXTERNALS];
