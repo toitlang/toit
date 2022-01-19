@@ -3,6 +3,7 @@
 import rpc
 import ..tools.rpc show RpcBroker
 import expect
+import monitor
 
 PROCEDURE_MULTIPLY_BY_TWO/int ::= 500
 PROCEDURE_ECHO/int            ::= 501
@@ -31,6 +32,7 @@ main:
   test_problematic myself
   test_closed_descriptor myself
   test_performance myself
+  test_blocking myself broker
 
 test_simple myself/int -> none:
   // Test simple types.
@@ -98,12 +100,53 @@ test_closed_descriptor myself/int -> none:
   expect.expect_throw "Closed descriptor 42": rpc.invoke myself PROCEDURE_DESCRIPTOR [42]
   expect.expect_throw "Closed descriptor fang": rpc.invoke myself PROCEDURE_DESCRIPTOR ["fang"]
 
-test_performance myself/int:
+test_performance myself/int -> none:
   iterations := 100_000
   start := Time.monotonic_us
   iterations.repeat: rpc.invoke myself PROCEDURE_ECHO [it]
   end := Time.monotonic_us
   print_ "Time per rpc.invoke = $(%.1f (end - start).to_float/iterations) us"
+
+test_blocking myself/int broker/RpcBroker -> none:
+  // Check that we can still make progress even if all but one
+  // processing task are blocked.
+  test_blocking myself broker (RpcBroker.MAX_TASKS - 1):
+    test_simple myself
+
+  // Check that we get timeouts if we require too many tasks
+  // to process at once.
+  test_blocking myself broker (RpcBroker.MAX_TASKS):
+    expect.expect_throw DEADLINE_EXCEEDED_ERROR:
+      with_timeout --ms=200:
+        test_simple myself
+
+  // Check that the max request limits is honored.
+  test_blocking myself broker (RpcBroker.MAX_TASKS):
+    (RpcBroker.MAX_REQUESTS - RpcBroker.MAX_TASKS).repeat:
+      task::
+        test_simple myself
+    expect.expect_throw "Cannot enqueue more requests":
+      test_simple myself
+
+test_blocking myself/int broker/RpcBroker tasks/int [test] -> none:
+  name ::= 800
+  latches ::= {:}
+  broker.register_procedure name:: | args |
+    index := args[0]
+    latches[index].get
+
+  // Create a number of tasks that all block.
+  tasks.repeat:
+    index ::= it
+    latches[index] = monitor.Latch
+    task:: expect.expect_equals index * 3 (rpc.invoke myself name [index])
+
+  // Invoke the test.
+  test.call
+
+  // Let the tasks complete.
+  tasks.repeat: latches[it].set it * 3
+
 
 // ----------------------------------------------------------------------------
 
