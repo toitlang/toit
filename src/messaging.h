@@ -35,8 +35,9 @@ enum MessageType {
 enum {
   MESSAGING_TERMINATION_MESSAGE_SIZE = 3,
 
-  MESSAGING_ENCODING_MAX_NESTING   = 4,
-  MESSAGING_ENCODING_MAX_EXTERNALS = 8,
+  MESSAGING_ENCODING_MAX_NESTING      = 4,
+  MESSAGING_ENCODING_MAX_EXTERNALS    = 8,
+  MESSAGING_ENCODING_MAX_INLINED_SIZE = 128,
 };
 
 
@@ -193,9 +194,9 @@ class MessageDecoder {
 
   void register_external(HeapObject* object, int length);
 
-  Object* decode_string();
+  Object* decode_string(bool inlined);
   Object* decode_array();
-  Object* decode_byte_array();
+  Object* decode_byte_array(bool inlined);
   Object* decode_double();
   Object* decode_large_integer();
 

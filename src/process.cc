@@ -130,11 +130,11 @@ String* Process::allocate_string(int length, Error** error) {
   if (can_fit_in_heap_block) {
     String* result = object_heap()->allocate_internal_string(length);
     if (result != null) return result;
-  #ifdef TOIT_GC_LOGGING
+#ifdef TOIT_GC_LOGGING
     printf("[gc @ %p%s | string allocation failed, length = %d (heap)]\n",
         this, VM::current()->scheduler()->is_boot_process(this) ? "*" : "",
         length);
-  #endif
+#endif
     *error = Error::from(program()->allocation_failed());
     return null;
   }

@@ -26,9 +26,11 @@ enum MessageTag {
   TAG_NULL,
   TAG_TRUE,
   TAG_FALSE,
-  TAG_STRING,
   TAG_ARRAY,
+  TAG_STRING,
+  TAG_STRING_INLINE,
   TAG_BYTE_ARRAY,
+  TAG_BYTE_ARRAY_INLINE,
   TAG_DOUBLE,
   TAG_LARGE_INTEGER,
 };
@@ -167,13 +169,29 @@ bool MessageEncoder::encode_byte_array(ByteArray* object) {
 }
 
 bool MessageEncoder::encode_copy(Object* object, int tag) {
+  ASSERT(tag == TAG_STRING || tag == TAG_BYTE_ARRAY);
+  ASSERT(TAG_STRING_INLINE == TAG_STRING + 1);
+  ASSERT(TAG_BYTE_ARRAY_INLINE == TAG_BYTE_ARRAY + 1);
+
   const uint8* source;
   int length = 0;
-  void* data = null;
   if (!object->byte_content(_program, &source, &length, STRINGS_OR_BYTE_ARRAYS)) {
     // TODO(kasper): Report meaningful error.
     return false;
   }
+
+  // To avoid too many small allocations, we inline the content of the small strings or byte arrays.
+  if (length <= MESSAGING_ENCODING_MAX_INLINED_SIZE) {
+    write_uint8(tag + 1);
+    write_cardinal(length);
+    if (!encoding_for_size()) {
+      memcpy(&_buffer[_cursor], source, length);
+    }
+    _cursor += length;
+    return true;
+  }
+
+  void* data = null;
   if (!encoding_for_size()) {
     // Strings are '\0'-terminated, so we need to make sure the allocated
     // memory is big enough for that and remember to copy it over.
@@ -263,11 +281,15 @@ Object* MessageDecoder::decode() {
     case TAG_FALSE:
       return _program->false_object();
     case TAG_STRING:
-      return decode_string();
+      return decode_string(false);
+    case TAG_STRING_INLINE:
+      return decode_string(true);
     case TAG_ARRAY:
       return decode_array();
     case TAG_BYTE_ARRAY:
-      return decode_byte_array();
+      return decode_byte_array(false);
+    case TAG_BYTE_ARRAY_INLINE:
+      return decode_byte_array(true);
     case TAG_DOUBLE:
       return decode_double();
     case TAG_LARGE_INTEGER:
@@ -278,15 +300,22 @@ Object* MessageDecoder::decode() {
   return null;
 }
 
-Object* MessageDecoder::decode_string() {
+Object* MessageDecoder::decode_string(bool inlined) {
   int length = read_cardinal();
-  uint8* data = read_pointer();
-  String* result = _process->object_heap()->allocate_external_string(length, data, true);
+  String* result = null;
+  if (inlined) {
+    ASSERT(length <= String::max_internal_size());
+    Error* error = null;
+    result = _process->allocate_string(reinterpret_cast<char*>(&_buffer[_cursor]), length, &error);
+    _cursor += length;
+  } else {
+    uint8* data = read_pointer();
+    result = _process->object_heap()->allocate_external_string(length, data, true);
+    if (result != null) register_external(result, length + 1);  // Account for '\0'-termination.
+  }
   if (result == null) {
     _allocation_failed = true;
-    return null;
   }
-  register_external(result, length + 1);  // Account for '\0'-termination.
   return result;
 }
 
@@ -305,15 +334,26 @@ Object* MessageDecoder::decode_array() {
   return result;
 }
 
-Object* MessageDecoder::decode_byte_array() {
+Object* MessageDecoder::decode_byte_array(bool inlined) {
   int length = read_cardinal();
-  uint8* data = read_pointer();
-  ByteArray* result = _process->object_heap()->allocate_external_byte_array(length, data, true, false);
+  ByteArray* result = null;
+  if (inlined) {
+    ASSERT(length <= ByteArray::max_internal_size());
+    Error* error = null;
+    result = _process->allocate_byte_array(length, &error, false);
+    if (result != null) {
+      ByteArray::Bytes bytes(result);
+      memcpy(bytes.address(), &_buffer[_cursor], length);
+    }
+    _cursor += length;
+  } else {
+    uint8* data = read_pointer();
+    result = _process->object_heap()->allocate_external_byte_array(length, data, true, false);
+    if (result != null) register_external(result, length);
+  }
   if (result == null) {
     _allocation_failed = true;
-    return null;
   }
-  register_external(result, length);
   return result;
 }
 
