@@ -1769,17 +1769,15 @@ PRIMITIVE(task_receive_message) {
   } else if (message_type == MESSAGE_SYSTEM) {
     Array* array = process->object_heap()->allocate_array(4);
     if (array == null) ALLOCATION_FAILED;
-
     SystemMessage* system = static_cast<SystemMessage*>(message);
-
     MessageDecoder decoder(process, system->data());
+
     Object* decoded = decoder.decode();
     if (decoder.allocation_failed()) {
       decoder.remove_disposing_finalizers();
       ALLOCATION_FAILED;
     }
-    process->register_external_allocation(decoder.external_allocations());
-    system->clear_data();
+    decoder.register_external_allocations();
 
     array->at_put(0, Smi::from(system->type()));
     array->at_put(1, Smi::from(system->gid()));

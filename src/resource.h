@@ -123,8 +123,8 @@ class ResourceGroup : public ResourceGroupListFromProcess::Element {
   virtual void on_unregister_resource(Resource* r) {}
 
   // Avoid direct deletes of ResourceGroup - use tear_down.
-  void operator delete(void* p) {
-    free(p);
+  void operator delete(void* ptr) {
+    ::operator delete(ptr);
   }
 
  private:

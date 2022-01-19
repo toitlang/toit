@@ -300,8 +300,11 @@ class ObjectHeap final : public Heap {
 
   bool add_finalizer(HeapObject* key, Object* lambda);
   bool has_finalizer(HeapObject* key, Object* lambda);
-  bool add_vm_finalizer(HeapObject* key);
   bool remove_finalizer(HeapObject* key);
+
+  bool add_vm_finalizer(HeapObject* key);
+  bool remove_vm_finalizer(HeapObject* key);
+
   Object* next_finalizer_to_run();
   void set_finalizer_notifier(ObjectNotifier* notifier);
 
@@ -323,6 +326,7 @@ class ObjectHeap final : public Heap {
  private:
   // An estimate of how much memory overhead malloc has.
   static const word _EXTERNAL_MEMORY_ALLOCATOR_OVERHEAD = 2 * sizeof(word);
+
   // Minimum number of heap blocks we limit ourselves to.
   static const word _MIN_BLOCK_LIMIT = 4;
 
