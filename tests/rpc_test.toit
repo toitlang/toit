@@ -42,10 +42,15 @@ test_simple myself/int -> none:
   test myself [ByteArray 10: it]
 
 test_large_external myself/int -> none:
-  expect.expect_equals 17281 (test_chain myself [ByteArray 17281: it])[0].size
+  expect.expect_equals 33199 (test_chain myself [ByteArray 33199: it])[0].size
   s := "hestfisk"
   15.repeat: s += s
   expect.expect_equals 262144 (test_chain myself [s])[0].size
+
+  // Test that large enough byte arrays are neutered when sent.
+  x := ByteArray 33199: it
+  rpc.invoke myself PROCEDURE_ECHO [x]
+  expect.expect_bytes_equal #[] x
 
 test_second_procedure myself/int -> none:
   // Test second procedure.
@@ -71,10 +76,12 @@ test_small_byte_arrays myself/int -> none:
   (1 << 12).repeat:
     b1 := ByteArray it: 7 - it
     b2 := ByteArray it: it + 9
-    test myself [b1]
-    test myself [b2]
-    test myself [b1, b2]
-    test myself [b2, b1]
+    // Large enough byte arrays are neutered when sent, so make sure to copy
+    // them before trying it out.
+    expect.expect_list_equals [b1] (rpc.invoke myself PROCEDURE_ECHO [b1.copy])
+    expect.expect_list_equals [b2] (rpc.invoke myself PROCEDURE_ECHO [b2.copy])
+    expect.expect_list_equals [b1, b2] (rpc.invoke myself PROCEDURE_ECHO [b1.copy, b2.copy])
+    expect.expect_list_equals [b2, b1] (rpc.invoke myself PROCEDURE_ECHO [b2.copy, b1.copy])
 
 test_problematic myself/int -> none:
   // Check for unhandled types of data.

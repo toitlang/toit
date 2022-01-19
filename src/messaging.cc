@@ -27,12 +27,15 @@ enum MessageTag {
   TAG_TRUE,
   TAG_FALSE,
   TAG_ARRAY,
+  TAG_DOUBLE,
+  TAG_LARGE_INTEGER,
+
+  // MessageEncoder::encode_copy() relies on the fact that 'inline' tags
+  // for strings and byte arrays directly follow their non-inline variants.
   TAG_STRING,
   TAG_STRING_INLINE,
   TAG_BYTE_ARRAY,
   TAG_BYTE_ARRAY_INLINE,
-  TAG_DOUBLE,
-  TAG_LARGE_INTEGER,
 };
 
 class NestingTracker {
@@ -323,6 +326,8 @@ Object* MessageDecoder::decode_string(bool inlined) {
   String* result = null;
   if (inlined) {
     ASSERT(length <= String::max_internal_size());
+    // We ignore the specific error because we are below the maximum internal string
+    // size, so we know it's an internal allocation error.
     Error* error = null;
     result = _process->allocate_string(reinterpret_cast<char*>(&_buffer[_cursor]), length, &error);
     ASSERT(result == null || result->content_on_heap());
