@@ -296,6 +296,7 @@ abstract class CellularBase implements Cellular:
 
   /**
   Deprecated. Use package cellular (https://github.com/toitware/cellular).
+  
   Called when the driver has connected.
   */
   abstract on_connected_ session/at.Session
