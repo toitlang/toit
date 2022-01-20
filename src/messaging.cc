@@ -398,7 +398,6 @@ bool MessageDecoder::decode_byte_array_external(void** data, int* length) {
   int tag = read_uint8();
   int encoded_length = read_cardinal();
   if (tag == TAG_BYTE_ARRAY) {
-    UNIMPLEMENTED();
     *data = read_pointer();
   } else if (tag == TAG_BYTE_ARRAY_INLINE) {
     void* copy = malloc(encoded_length);
@@ -502,8 +501,10 @@ Interpreter::Result ExternalSystemMessageHandler::run() {
       void* data = null;
       int length = 0;
       bool success = decoder.decode_byte_array_external(&data, &length);
+      int pid = system->pid();
+      int type = system->type();
       _process->remove_first_message();
-      if (success) on_message(system->pid(), system->type(), data, length);
+      if (success) on_message(pid, type, data, length);
     }
   }
 }
