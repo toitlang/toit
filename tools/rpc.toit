@@ -25,11 +25,13 @@ class RpcBroker implements SystemMessageHandler_:
   install:
     set_system_message_handler_ SYSTEM_RPC_REQUEST_ this
 
-  // Register a procedure to handle a message.  The arguments to the
-  // handler will be:
-  //   arguments/List
-  //   group_id/int
-  //   process_id/int
+  /**
+  Registers a procedure to handle a message.  The arguments to the
+    handler will be:
+  arguments/List
+  group_id/int
+  process_id/int
+  */
   register_procedure name/int action/Lambda -> none:
     procedures_[name] = action
 
