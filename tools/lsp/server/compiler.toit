@@ -24,19 +24,19 @@ class AnalysisResult:
   constructor .diagnostics .diagnostics_without_position .summaries:
 
 class Compiler:
-  compiler_path_       /string            ::= ?
-  uri_path_translator_ /UriPathTranslator ::= ?
+  compiler_path_       /string             ::= ?
+  uri_path_translator_ /UriPathTranslator  ::= ?
   on_crash_            /Lambda?     ::= ?
   on_error_            /Lambda?     ::= ?
   timeout_ms_          /int         ::= ?
-  file_server          /FileServer  ::= ?
+  protocol             /FileServerProtocol ::= ?
   project_path_        /string?     ::= ?
 
   constructor
       .compiler_path_
       .uri_path_translator_
       .timeout_ms_
-      --.file_server
+      --.protocol
       --project_path/string?
       --on_error/Lambda?=null
       --on_crash/Lambda?=null:
@@ -81,6 +81,7 @@ class Compiler:
     has_terminated := false
     was_killed_because_of_timeout := false
 
+    file_server := TcpFileServer protocol
     file_server_port := file_server.run
     task:: catch --trace:
       try:
@@ -117,7 +118,7 @@ class Compiler:
           if on_crash_:
             reason := (pipe.signal_to_string exit_signal)
             if was_killed_because_of_timeout: reason += "\nKilled after timeout"
-            on_crash_.call flags compiler_input reason file_server
+            on_crash_.call flags compiler_input reason file_server.protocol
           did_crash = true
     return not did_crash
 
