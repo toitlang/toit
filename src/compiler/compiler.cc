@@ -33,12 +33,14 @@
 #include "dispatch_table.h"
 #include "filesystem_hybrid.h"
 #include "filesystem_local.h"
-#include "filesystem_socket.h"
+#include "filesystem_lsp.h"
 #include "lambda.h"
 #include "list.h"
 #include "lsp/lsp.h"
 #include "lsp/completion.h"
 #include "lsp/goto_definition.h"
+#include "lsp/fs_connection_socket.h"
+#include "lsp/fs_protocol.h"
 #include "lock.h"
 #include "map.h"
 #include "monitor.h"
@@ -325,13 +327,22 @@ void Compiler::language_server(const Compiler::Configuration& compiler_config) {
 #endif
   LineReader reader(stdin);
   const char* port = reader.next("port");
+
+  // We allocate two different filesystems on the stack, but will only
+  // use one of them.
+  // The constructor of the filesystems isn't doing anything, so the cost of
+  // having both is minimal.
   FilesystemLocal fs_local;
-  FilesystemSocket fs_socket(port);
+
+  LspFsConnectionSocket socket_connection(port);
+  LspFsProtocol protocol(&socket_connection);
+  FilesystemLsp fs_lsp(&protocol);
+
   Filesystem* fs;
   if (strcmp("-1", port) == 0) {
     fs = &fs_local;
   } else {
-    fs = &fs_socket;
+    fs = &fs_lsp;
   }
 
   LspProtocol lsp_protocol;
