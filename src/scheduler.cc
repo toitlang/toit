@@ -116,7 +116,7 @@ Scheduler::ExitState Scheduler::launch_program(Locker& locker, Process* process)
 #endif
 
   // Update the state and start the boot process.
-  ASSERT(/*_groups.is_empty() && */_boot_process == null);
+  ASSERT(_boot_process == null);
   _groups.prepend(group);
   _boot_process = process;
   add_process(locker, process);
