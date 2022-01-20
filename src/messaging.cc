@@ -57,12 +57,7 @@ class NestingTracker {
 MessageEncoder::MessageEncoder(Process* process, uint8* buffer)
     : _process(process)
     , _program(process ? process->program() : null)
-    , _buffer(buffer)
-    , _cursor(0)
-    , _nesting(0)
-    , _malloc_failed(false)
-    , _copied_count(0)
-    , _externals_count(0) {
+    , _buffer(buffer) {
 }
 
 void MessageEncoder::encode_termination_message(uint8* buffer, uint8 value) {
@@ -182,6 +177,20 @@ bool MessageEncoder::encode_byte_array(ByteArray* object) {
   return true;
 }
 
+bool MessageEncoder::encode_byte_array_external(void* data, int length) {
+  write_uint8(TAG_BYTE_ARRAY);
+  write_cardinal(length);
+  write_pointer(data);
+  if (!encoding_for_size()) {
+    if (_copied_count >= ARRAY_SIZE(_copied)) {
+      // TODO(kasper): Report meaningful error.
+      return false;
+    }
+    _copied[_copied_count++] = data;
+  }
+  return true;
+}
+
 bool MessageEncoder::encode_copy(Object* object, int tag) {
   ASSERT(tag == TAG_STRING || tag == TAG_BYTE_ARRAY);
   ASSERT(TAG_STRING_INLINE == TAG_STRING + 1);
@@ -249,10 +258,7 @@ void MessageEncoder::write_uint64(uint64 value) {
 MessageDecoder::MessageDecoder(Process* process, uint8* buffer)
     : _process(process)
     , _program(process ? process->program() : null)
-    , _buffer(buffer)
-    , _cursor(0)
-    , _allocation_failed(false)
-    , _externals_count(0) {
+    , _buffer(buffer) {
 }
 
 bool MessageDecoder::decode_termination_message(uint8* buffer, int* value) {
@@ -384,6 +390,24 @@ Object* MessageDecoder::decode_byte_array(bool inlined) {
   return result;
 }
 
+bool MessageDecoder::decode_byte_array_external(void** data, int* length) {
+  int tag = read_uint8();
+  int encoded_length = read_cardinal();
+  if (tag == TAG_BYTE_ARRAY) {
+    UNIMPLEMENTED();
+    *data = read_pointer();
+  } else if (tag == TAG_BYTE_ARRAY_INLINE) {
+    void* copy = malloc(encoded_length);
+    // TODO(kasper): Handle failure here.
+    memcpy(copy, &_buffer[_cursor], encoded_length);
+    *data = copy;
+  } else {
+    return false;
+  }
+  *length = encoded_length;
+  return true;
+}
+
 Object* MessageDecoder::decode_double() {
   double value = bit_cast<double>(read_uint64());
   Double* result = _process->object_heap()->allocate_double(value);
@@ -437,14 +461,27 @@ void ExternalSystemMessageHandler::start() {
 }
 
 bool ExternalSystemMessageHandler::send(int pid, int type, void* data, int length) {
+  int buffer_size = 0;
+  { MessageEncoder encoder(null);
+    encoder.encode_byte_array_external(data, length);
+    buffer_size = encoder.size();
+  }
+
+  uint8* buffer = unvoid_cast<uint8*>(malloc(buffer_size));
+  if (buffer == null) return false;
+  MessageEncoder encoder(buffer);
+  encoder.encode_byte_array_external(data, length);
+
   SystemMessage* message = _new SystemMessage(type, _process->group()->id(), _process->id(),
-      unvoid_cast<uint8*>(data), length);
+      buffer, buffer_size);
   if (message == null) {
-    free(data);  // <--- TODO(kasper): Come up with some reasonable semantics around this.
+    encoder.free_copied();
+    free(buffer);
     return false;
   }
   scheduler_err_t result = _vm->scheduler()->send_message(pid, message);
   if (result == MESSAGE_OK) return true;
+  encoder.free_copied();
   delete message;
   return false;
 }
@@ -456,9 +493,14 @@ Interpreter::Result ExternalSystemMessageHandler::run() {
       return Interpreter::Result(Interpreter::Result::YIELDED);
     }
     if (message->is_system()) {
-      on_message(static_cast<SystemMessage*>(message));
+      SystemMessage* system = static_cast<SystemMessage*>(message);
+      MessageDecoder decoder(system->data());
+      void* data = null;
+      int length = 0;
+      bool success = decoder.decode_byte_array_external(&data, &length);
+      _process->remove_first_message();
+      if (success) on_message(system->pid(), system->type(), data, length);
     }
-    _process->remove_first_message();
   }
 }
 

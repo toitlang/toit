@@ -100,16 +100,11 @@ static ProgramImage attempt_to_load_snapshot(char* bundle_path) {
 class MessageHandler : public ExternalSystemMessageHandler {
  public:
   MessageHandler(VM* vm) : ExternalSystemMessageHandler(vm) { }
-  virtual void on_message(SystemMessage* message);
+  virtual void on_message(int sender, int type, void* data, int length);
 };
 
-void MessageHandler::on_message(SystemMessage* message) {
-  printf("[c++] got message %d from %d\n", message->type(), message->pid());
-  int length = 2;
-  uint8* reply = unvoid_cast<uint8*>(malloc(length));
-  reply[0] = 0;
-  reply[1] = 42;
-  send(message->pid(), message->type(), reply, length);
+void MessageHandler::on_message(int sender, int type, void* data, int length) {
+  send(sender, type, data, length);
 }
 
 int run_program(char* boot_program_path, SnapshotBundle bundle, char** argv) {

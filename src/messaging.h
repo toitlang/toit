@@ -122,6 +122,7 @@ class ObjectNotifyMessage : public Message {
 
 class MessageEncoder {
  public:
+  explicit MessageEncoder(uint8* buffer) : _buffer(buffer) { }
   MessageEncoder(Process* process, uint8* buffer);
 
   static int termination_message_size();
@@ -134,20 +135,21 @@ class MessageEncoder {
   void neuter_externals();
 
   bool encode(Object* object);
+  bool encode_byte_array_external(void* data, int length);
 
  private:
-  Process* _process;
-  Program* _program;
+  Process* _process = null;
+  Program* _program = null;
   uint8* _buffer;  // The buffer is null when we're encoding for size.
-  int _cursor;
-  int _nesting;
+  int _cursor = 0;
+  int _nesting = 0;
 
-  bool _malloc_failed;
+  bool _malloc_failed = false;
 
-  unsigned _copied_count;
+  unsigned _copied_count = 0;
   void* _copied[MESSAGING_ENCODING_MAX_EXTERNALS];
 
-  unsigned _externals_count;
+  unsigned _externals_count = 0;
   ByteArray* _externals[MESSAGING_ENCODING_MAX_EXTERNALS];
 
   bool encoding_for_size() const { return _buffer == null; }
@@ -170,6 +172,7 @@ class MessageEncoder {
 
 class MessageDecoder {
  public:
+  explicit MessageDecoder(uint8* buffer) : _buffer(buffer) { }
   MessageDecoder(Process* process, uint8* buffer);
 
   static bool decode_termination_message(uint8* buffer, int* value);
@@ -180,16 +183,17 @@ class MessageDecoder {
   void remove_disposing_finalizers();
 
   Object* decode();
+  bool decode_byte_array_external(void** data, int* length);
 
  private:
-  Process* _process;
-  Program* _program;
+  Process* _process = null;
+  Program* _program = null;
   uint8* _buffer;
-  int _cursor;
+  int _cursor = 0;
 
-  bool _allocation_failed;
+  bool _allocation_failed = false;
 
-  unsigned _externals_count;
+  unsigned _externals_count = 0;
   HeapObject* _externals[MESSAGING_ENCODING_MAX_EXTERNALS];
   word _externals_sizes[MESSAGING_ENCODING_MAX_EXTERNALS];
 
@@ -212,8 +216,8 @@ class ExternalSystemMessageHandler : public ProcessRunner {
   ExternalSystemMessageHandler(VM* vm) : _vm(vm), _process(null) { }
   void start();
 
-  virtual void on_message(SystemMessage* message) = 0;
-  bool send(int pid, int type, void* data, int length);
+  virtual void on_message(int sender, int type, void* data, int length) = 0;
+  bool send(int receiver, int type, void* data, int length);
 
   virtual Interpreter::Result run();
 
