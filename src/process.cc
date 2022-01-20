@@ -156,10 +156,6 @@ Process::~Process() {
   }
 }
 
-bool Process::is_privileged() {
-  return id() == 1 && group()->id() == 0;
-}
-
 String* Process::allocate_string(const char* content, int length, Error** error) {
   String* result = allocate_string(length, error);
   if (result == null) return result;  // Allocation failure.
