@@ -76,10 +76,12 @@ monitor RpcSynchronizer_:
       if not identical EMPTY existing: return
       value
 
-// Objects that are RPC-serializable can be serialized to a RPC-compatible
-// value by calling their 'serialize_for_rpc' method.
+/**
+Objects that are RPC-serializable can be serialized to a RPC-compatible
+  value by calling their 'serialize_for_rpc' method.
+*/
 interface RpcSerializable:
-  // Must return a value that can be encoded using the built-in message encoder.
+  /// Must return a value that can be encoded using the built-in message encoder.
   serialize_for_rpc -> any
 
 /**
