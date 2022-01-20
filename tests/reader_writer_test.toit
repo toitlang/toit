@@ -2,10 +2,12 @@
 
 import expect show *
 import reader_writer show ReaderWriter
+import monitor
 
 main:
-  print "regular_test"
+  print "regular tests"
   regular_test
+  regular_test2
   print "write_does_not_hang"
   write_does_not_hang
   print "read_does_not_hang"
@@ -42,39 +44,50 @@ read_does_not_hang:
   while not did_not_hang: sleep --ms=10
 
 regular_test:
+  write_sem := monitor.Semaphore
+
   writer := ReaderWriter 2
   reader := writer.reader
   task::
     writer.write "012"
-    sleep --ms=100
+
+    write_sem.down
     writer.write "345"
-    sleep --ms=100
     writer.write "67"
-    sleep --ms=100
+
+    write_sem.down
     writer.write "89"
-    sleep --ms=100
     writer.close
 
-  expect_equals
-    ByteArray 2: ['0', '1'][it]
-    reader.read
+  expect_equals #['0', '1'] reader.read
 
-  expect_equals
-    ByteArray 2: ['2', '3'][it]
-    reader.read
+  // The read succeeds without waiting to fill the buffer fully.
+  expect_equals #['2'] reader.read
 
-  expect_equals
-    ByteArray 2: ['4', '5'][it]
-    reader.read
+  // Ask for new data and wait until it has been written
+  write_sem.up
+  // Writes immediately "345", but is then blocked as the buffer is full.
+  // Still has to write "5".
+  expect_equals #['3', '4'] reader.read
+  // Once the '3' and '4' have been read the writer task is activated again,
+  // filling in the remaining '5' and starting to write the "67"
+  expect_equals #['5', '6'] reader.read
+  // Since we don't allow the writer task to continue writing "89", we get a single
+  // '7' now.
+  expect_equals #['7'] reader.read
 
-  expect_equals
-    ByteArray 2: ['6', '7'][it]
-    reader.read
+  write_sem.up
+  // The writer is able to write "89" now.
+  expect_equals #['8', '9'] reader.read
+  expect_equals null reader.read
 
-  expect_equals
-    ByteArray 2: ['8', '9'][it]
-    reader.read
+regular_test2:
+  writer := ReaderWriter 2
+  reader := writer.reader
+  task::
+    writer.write "012"
+    writer.close
 
-  expect_equals
-    null
-    reader.read
+  expect_equals #['0', '1'] reader.read
+  expect_equals #['2'] reader.read
+  expect_equals null reader.read

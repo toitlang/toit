@@ -58,19 +58,16 @@ class ReaderWriterReader_ implements CloseableReader:
 // than privacy to indicate which methods are synchronized.
 monitor ReaderWriterHelper_:
   buffer_size_/int ::= ?
-  buffer_/ByteArray := ?
-  outgoing_ := null
+  buffer_/ByteArray? := null
+  // Buffer to reuse instead of allocating a new one.
+  reuse_/ByteArray? := null
   fullness_ := 0
   writer_closed_ := false
   reader_closed_ := false
 
   constructor .buffer_size_:
-    buffer_ = ByteArray buffer_size_
 
   writer_close -> none:
-    if fullness_ != 0:
-      await: outgoing_ == null or reader_closed_
-      outgoing_ = buffer_.copy 0 fullness_
     writer_closed_ = true
 
   reader_close -> none:
@@ -80,27 +77,38 @@ monitor ReaderWriterHelper_:
     if writer_closed_: throw "CLOSED"
     result := to - from
     while from != to:
-      await: fullness_ != buffer_.size or outgoing_ == null or reader_closed_
+      await: fullness_ != buffer_size_ or reader_closed_
       if reader_closed_: throw "CLOSED"
+      // Allocate a buffer or reuse an old one.
+      if buffer_ == null:
+        if reuse_:
+          buffer_ = reuse_
+          reuse_ = null
+        else:
+          buffer_ = ByteArray buffer_size_
+
       space := buffer_.size - fullness_
-      if space == 0:
-        assert: outgoing_ == null
-        outgoing_ = buffer_
-        buffer_ = ByteArray buffer_size_
-        fullness_ = 0
-        space = buffer_.size
       remaining := to - from
       chunk_size := min space remaining
+      // Put as much as possible into the buffer.
+      // If we fill it up entirely, then the 'await' above will make us
+      // wait until a reader empties the buffer.
       buffer_.replace fullness_ data from from + chunk_size
       from += chunk_size
       fullness_ += chunk_size
     return result
 
   read:
-    await: outgoing_ or writer_closed_
-    if outgoing_:
-      result := outgoing_
-      outgoing_ = null
+    await: buffer_ or writer_closed_
+    result := ?
+    if buffer_:
+      if fullness_ != buffer_.size:
+        result = buffer_[..fullness_]
+        reuse_ = buffer_
+      else:
+        result = buffer_
+      fullness_ = 0
+      buffer_ = null
       return result
     assert: writer_closed_
     return null
