@@ -12,8 +12,6 @@ import .rpc
 import .utils
 import .verbose
 
-import .debug
-
 sdk_path_from_compiler compiler_path/string -> string:
   index := compiler_path.index_of --last "/"
   if index < 0: throw "Couldn't determine SDK path"
@@ -80,7 +78,6 @@ class FileServer:
       while true:
         line := reader.read_line
         if line == null: break
-        print_debug "FS: $line"
         if line == "SDK PATH":
           if not sdk_path_: sdk_path_ = filesystem.sdk_path
           writer.write "$sdk_path_\n"
@@ -100,10 +97,8 @@ class FileServer:
           file := get_file path
           encoded_size := file.content == null ? -1 : file.content.size
           encoded_content := file.content == null ? "" : file.content
-          print_debug "responding info for $file.path"
           writer.write "$file.exists\n$file.is_regular\n$file.is_directory\n$encoded_size\n"
           writer.write encoded_content
-          print_debug "written info for $file.path"
     finally:
       socket.close
       close

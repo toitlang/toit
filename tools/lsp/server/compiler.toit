@@ -16,8 +16,6 @@ import .uri_path_translator
 import .utils
 import .verbose
 
-import .debug
-
 class AnalysisResult:
   diagnostics / Map/*<uri/string, Diagnostics>*/ ::= ?
   diagnostics_without_position / List/*<string>*/ ::= ?
@@ -68,7 +66,6 @@ class Compiler:
   run --ignore_crashes/bool=false --compiler_input/string [read_callback] -> bool:
     flags := build_run_flags
 
-    print_debug "Running $flags"
     cpp_pipes := pipe.fork
         true                // use_path
         pipe.PIPE_CREATED   // stdin
@@ -80,7 +77,6 @@ class Compiler:
     cpp_from := cpp_pipes[1]
     cpp_pid  := cpp_pipes[3]
 
-    print_debug "Forked"
 
     has_terminated := false
     was_killed_because_of_timeout := false
@@ -99,7 +95,6 @@ class Compiler:
         sleep --ms=timeout_ms_
         if not has_terminated:
           SIGKILL ::= 9
-          print_debug "Timeout ($timeout_ms_ ms). Killing process with SIGKILL"
           pipe.kill_ cpp_pid SIGKILL
           was_killed_because_of_timeout = true
 
@@ -158,11 +153,9 @@ class Compiler:
           if line == null: break
           if line == "": continue  // Empty lines are allowed.
           if line == "SUMMARY":
-            print_debug "Receiving Summary"
             assert: summary == null
             summary = read_summary reader
           else if line == "START GROUP":
-            print_debug "Receiving Group"
             assert: not in_group
             assert: group_diagnostic == null
             assert: related_information == null
@@ -175,7 +168,6 @@ class Compiler:
             group_diagnostic = null
             related_information = null
           else if line == "WITH POSITION" or line == "NO POSITION":
-            print_debug "Receiving Diagnostic"
             with_position := line == "WITH POSITION"
             severity := reader.read_line
             error_path := null
