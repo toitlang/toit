@@ -1,4 +1,6 @@
 // Copyright (C) 2021 Toitware ApS. All rights reserved.
+// Use of this source code is governed by a Zero-Clause BSD license that can
+// be found in the tests/LICENSE file.
 
 abstract class Abstract:
   abstract foo x y=499 --named1 --named2=42 --named3=499

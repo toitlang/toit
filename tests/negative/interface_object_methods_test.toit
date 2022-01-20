@@ -1,4 +1,6 @@
 // Copyright (C) 2019 Toitware ApS. All rights reserved.
+// Use of this source code is governed by a Zero-Clause BSD license that can
+// be found in the tests/LICENSE file.
 
 // This is a positive test.
 // We want to make sure that the type-checker doesn't complain when

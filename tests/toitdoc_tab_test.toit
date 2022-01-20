@@ -1,4 +1,6 @@
 // Copyright (C) 2020 Toitware ApS. All rights reserved.
+// Use of this source code is governed by a Zero-Clause BSD license that can
+// be found in the tests/LICENSE file.
 
 // Test discovered by fuzzing the compiler.
 // The compiler would crash if the toitdoc started with a tab.

@@ -1,4 +1,6 @@
 // Copyright (C) 2021 Toitware ApS. All rights reserved.
+// Use of this source code is governed by a Zero-Clause BSD license that can
+// be found in the tests/LICENSE file.
 
 // Tests that we don't go quadratic in running time when using sets and maps as
 // queues or FIFOs, ie always removing the oldest or newest entries first.
