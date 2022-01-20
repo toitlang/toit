@@ -226,7 +226,7 @@ namespace toit {
   PRIMITIVE(get_system_time, 0)              \
   PRIMITIVE(debug_set_memory_limit, 1)       \
   PRIMITIVE(dump_heap, 1)                    \
-  PRIMITIVE(serial_print_heap_report, 0)     \
+  PRIMITIVE(serial_print_heap_report, 1)     \
   PRIMITIVE(get_env, 1)                      \
   PRIMITIVE(varint_encode, 3)                \
   PRIMITIVE(varint_decode, 2)                \
