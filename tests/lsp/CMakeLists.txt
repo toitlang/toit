@@ -48,7 +48,6 @@ foreach(file ${TOIT_COMPLETION_TESTS})
     WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
     )
   set_tests_properties(${file} PROPERTIES TIMEOUT ${LSP_DOUBLE_TIMEOUT})
-  set_tests_properties(${file} PROPERTIES ENVIRONMENT "TOIT_DEBUG_COMPLETION=true")
 endforeach()
 
 foreach(file ${TOIT_GOTO_DEFINITION_TESTS})
