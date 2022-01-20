@@ -66,12 +66,15 @@ char* LspFsConnectionMultiplexStdout::getline() {
   char buffer[MAX_LINE_SIZE];
   // Add a marker to make sure we don't run out of space in the line.
   buffer[MAX_LINE_SIZE - 1] = 'a';
-  char* result = fgets(buffer, MAX_LINE_SIZE, stdin);
-  if (result != buffer) FATAL("Couldn't read line");
+  char* line = fgets(buffer, MAX_LINE_SIZE, stdin);
+  if (line != buffer) FATAL("Couldn't read line");
   if (buffer[MAX_LINE_SIZE - 1] != 'a') FATAL("Line too long");
   int len = strlen(buffer);
   // Drop the '\n'.
-  return strndup(buffer, len - 1);
+  char* result = unvoid_cast<char*>(malloc(len));
+  memcpy(result, buffer, len - 1);
+  result[len - 1] = '\0';
+  return result;
 }
 
 int LspFsConnectionMultiplexStdout::read_data(uint8* content, int size) {
