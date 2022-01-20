@@ -5,9 +5,9 @@ import ..tools.rpc show RpcBroker
 import expect
 import monitor
 
-PROCEDURE_MULTIPLY_BY_TWO/int ::= 500
-PROCEDURE_ECHO/int            ::= 501
-PROCEDURE_DESCRIPTOR/int      ::= 502
+PROCEDURE_ECHO/int            ::= 500
+PROCEDURE_ECHO_WRAPPED/int    ::= 501
+PROCEDURE_MULTIPLY_BY_TWO/int ::= 502
 
 class TestBroker extends RpcBroker:
   // Nothing yet.
@@ -19,23 +19,31 @@ main:
 
   broker.register_procedure PROCEDURE_ECHO:: | args |
     args
+  broker.register_procedure PROCEDURE_ECHO_WRAPPED:: | args |
+    MySerializable args
   broker.register_procedure PROCEDURE_MULTIPLY_BY_TWO:: | args |
     args[0] * 2
-  broker.register_descriptor_procedure PROCEDURE_DESCRIPTOR:: | descriptor args |
-    args
 
   test_simple myself
   test_large_external myself
   test_second_procedure myself
+  test_serializable myself
   test_small_strings myself
   test_small_byte_arrays myself
   test_problematic myself
-  test_closed_descriptor myself
   test_performance myself
   test_blocking myself broker
 
 test_simple myself/int -> none:
   // Test simple types.
+  test myself 3
+  test myself 3.9
+  test myself null
+  test myself true
+  test myself false
+  test myself "fisk"
+
+  // Test simple lists.
   test myself []
   test myself [7]
   test myself [7.3]
@@ -60,6 +68,16 @@ test_second_procedure myself/int -> none:
     expect.expect_equals
         it * 2
         rpc.invoke myself PROCEDURE_MULTIPLY_BY_TWO [it]
+
+test_serializable myself/int -> none:
+  test myself (MySerializable 4)
+  test myself (MySerializable 4.3)
+  test myself (MySerializable [1, 2, 3])
+
+class MySerializable implements rpc.RpcSerializable:
+  wrapped/any
+  constructor .wrapped:
+  serialize_for_rpc -> any: return wrapped
 
 test_small_strings myself/int -> none:
   collection := "abcdefghijklmn"
@@ -88,17 +106,13 @@ test_small_byte_arrays myself/int -> none:
 test_problematic myself/int -> none:
   // Check for unhandled types of data.
   test_illegal myself [MyClass]
+  test_illegal myself [MySerializable 4]
   test_illegal myself [ #[1, 2, 3, 4] ]  // TODO(kasper): This should be handled.
 
   // Check for cyclic data structure.
   cyclic := []
   cyclic.add cyclic
   test_illegal myself cyclic
-
-test_closed_descriptor myself/int -> none:
-  expect.expect_throw "Missing call context": rpc.invoke myself PROCEDURE_DESCRIPTOR []
-  expect.expect_throw "Closed descriptor 42": rpc.invoke myself PROCEDURE_DESCRIPTOR [42]
-  expect.expect_throw "Closed descriptor fang": rpc.invoke myself PROCEDURE_DESCRIPTOR ["fang"]
 
 test_performance myself/int -> none:
   iterations := 100_000
@@ -147,18 +161,29 @@ test_blocking myself/int broker/RpcBroker tasks/int [test] -> none:
   // Let the tasks complete.
   tasks.repeat: latches[it].set it * 3
 
+  // Unregister procedure and make sure it's gone.
+  broker.unregister_procedure name
+  expect.expect_throw "No such procedure registered: 800": rpc.invoke myself name []
 
 // ----------------------------------------------------------------------------
 
-test myself/int arguments/List:
-  expect.expect_list_equals arguments
-      rpc.invoke myself PROCEDURE_ECHO arguments
+test myself/int arguments/any:
+  expected/any := arguments
+  actual/any := ?
+  if arguments is MySerializable:
+    actual = rpc.invoke myself PROCEDURE_ECHO_WRAPPED arguments
+    expected = arguments.serialize_for_rpc
+  else:
+    actual = rpc.invoke myself PROCEDURE_ECHO arguments
+  if arguments is List:
+    expect.expect_list_equals expected actual
+  else:
+    expect.expect_equals expected actual
 
-test_illegal myself/int arguments/List:
+test_illegal myself/int arguments/any:
   expect.expect_throw "WRONG_OBJECT_TYPE": rpc.invoke myself PROCEDURE_ECHO arguments
 
-
-test_chain myself/int arguments/List -> List:
+test_chain myself/int arguments/any -> List:
   1024.repeat: arguments = rpc.invoke myself PROCEDURE_ECHO arguments
   return arguments
 

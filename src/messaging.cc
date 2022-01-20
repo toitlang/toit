@@ -114,7 +114,7 @@ bool MessageEncoder::encode(Object* object) {
         return encode_array(array, Smi::cast(instance->at(1))->value());
       }
     }
-    printf("[message encoder: cannot encode instance with class id = %ld]\n", class_id->value());
+    printf("[message encoder: cannot encode instance with class id = %zd]\n", class_id->value());
   } else if (object == _program->null_object()) {
     write_uint8(TAG_NULL);
     return true;
