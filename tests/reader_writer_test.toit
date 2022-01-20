@@ -59,27 +59,39 @@ regular_test:
     writer.write "89"
     writer.close
 
-  expect_equals #['0', '1'] reader.read
+  all_chunks := []
+  // Keep all read data, to make sure the returned byte arrays are not
+  // overwritten.
+  read_next := :
+    data := reader.read
+    if data: all_chunks.add data
+    data
+
+  expect_equals #['0', '1'] read_next.call
 
   // The read succeeds without waiting to fill the buffer fully.
-  expect_equals #['2'] reader.read
+  expect_equals #['2'] read_next.call
 
   // Ask for new data and wait until it has been written
   write_sem.up
   // Writes immediately "345", but is then blocked as the buffer is full.
   // Still has to write "5".
-  expect_equals #['3', '4'] reader.read
+  expect_equals #['3', '4'] read_next.call
   // Once the '3' and '4' have been read the writer task is activated again,
   // filling in the remaining '5' and starting to write the "67"
-  expect_equals #['5', '6'] reader.read
+  expect_equals #['5', '6'] read_next.call
   // Since we don't allow the writer task to continue writing "89", we get a single
   // '7' now.
-  expect_equals #['7'] reader.read
+  expect_equals #['7'] read_next.call
 
   write_sem.up
   // The writer is able to write "89" now.
-  expect_equals #['8', '9'] reader.read
-  expect_equals null reader.read
+  expect_equals #['8', '9'] read_next.call
+  expect_equals null read_next.call
+
+  // Ensure the returned byte-arrays haven't been modified.
+  all_bytes := all_chunks.reduce: | a b | a + b
+  expect_equals "0123456789" all_bytes.to_string
 
 regular_test2:
   writer := ReaderWriter 2
@@ -88,6 +100,11 @@ regular_test2:
     writer.write "012"
     writer.close
 
-  expect_equals #['0', '1'] reader.read
-  expect_equals #['2'] reader.read
+  data1 := reader.read
+  data2 := reader.read
+  expect_equals #['0', '1'] data1
+  expect_equals #['2'] data2
   expect_equals null reader.read
+
+  // Ensure the returned byte-arrays haven't been modified.
+  expect_equals "012" (data1 + data2).to_string
