@@ -27,16 +27,56 @@
 
 namespace toit {
 
+void ProcessRunner::start() {
+  ASSERT(_process == null);
+  _process = _vm->scheduler()->run_external(this);
+}
+
+bool ProcessRunner::send(int pid, int type, void* data, int length) {
+  SystemMessage* message = _new SystemMessage(type, _process->group()->id(), _process->id(),
+      unvoid_cast<uint8*>(data), length);
+  if (message == null) {
+    free(data);  // <--- TODO(kasper): Come up with some reasonable semantics around this.
+    return false;
+  }
+  scheduler_err_t result = _vm->scheduler()->send_message(pid, message);
+  if (result == MESSAGE_OK) return true;
+  delete message;
+  return false;
+}
+
+Interpreter::Result ProcessRunner::run() {
+  while (true) {
+    Message* message = next();
+    if (message == null) {
+      return Interpreter::Result(Interpreter::Result::YIELDED);
+    }
+    if (message->is_system()) {
+      on_message(static_cast<SystemMessage*>(message));
+    }
+    advance();
+  }
+}
+
+Message* ProcessRunner::next() const {
+  return _process->peek_message();
+}
+
+void ProcessRunner::advance() {
+  _process->remove_first_message();
+}
+
 const char* Process::StateName[] = {
   "IDLE",
   "SCHEDULED",
   "RUNNING",
 };
 
-Process::Process(Program* program, ProcessGroup* group, Block* initial_block)
+Process::Process(Program* program, ProcessRunner* runner, ProcessGroup* group, Block* initial_block)
     : _id(VM::current()->scheduler()->next_process_id())
     , _next_task_id(0)
     , _program(program)
+    , _runner(runner)
     , _group(group)
     , _entry(Method::invalid())
     , _object_heap(program, this, initial_block)
@@ -55,7 +95,7 @@ Process::Process(Program* program, ProcessGroup* group, Block* initial_block)
 }
 
 Process::Process(Program* program, ProcessGroup* group, char** args, Block* initial_block)
-   : Process(program, group, initial_block) {
+   : Process(program, null, group, initial_block) {
   _entry = program->entry();
   _args = args;
   _object_heap.set_hatch_method(Method::invalid());
@@ -64,7 +104,7 @@ Process::Process(Program* program, ProcessGroup* group, char** args, Block* init
 
 #ifndef TOIT_FREERTOS
 Process::Process(Program* program, ProcessGroup* group, SnapshotBundle bundle, char** args, Block* initial_block)
-  : Process(program, group, initial_block) {
+  : Process(program, null, group, initial_block) {
   _entry = program->entry();
   _args = args;
   ByteArray* snap = _object_heap.allocate_external_byte_array(bundle.size(), bundle.buffer(), true, false);
@@ -78,7 +118,7 @@ Process::Process(Program* program, ProcessGroup* group, SnapshotBundle bundle, c
 #endif
 
 Process::Process(Program* program, ProcessGroup* group, Method method, const uint8* arguments_address, int arguments_length, Block* initial_block)
-   : Process(program, group, initial_block) {
+   : Process(program, null, group, initial_block) {
   _entry = program->hatch_entry();
   _args = null;
   ByteArray* args = _object_heap.allocate_internal_byte_array(arguments_length);
@@ -95,6 +135,9 @@ Process::Process(Program* program, ProcessGroup* group, Method method, const uin
 
   _object_heap.set_hatch_method(method);
   _object_heap.set_hatch_arguments(args);
+}
+
+Process::Process(ProcessRunner* runner, ProcessGroup* group) : Process(null, runner, group, null) {
 }
 
 Process::~Process() {
@@ -114,7 +157,7 @@ Process::~Process() {
 }
 
 bool Process::is_privileged() {
-  return id() == 0 && group()->id() == 0;
+  return id() == 1 && group()->id() == 0;
 }
 
 String* Process::allocate_string(const char* content, int length, Error** error) {
