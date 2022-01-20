@@ -64,18 +64,6 @@ static adc_atten_t get_atten(int mv) {
   if (mv <= 2200) return ADC_ATTEN_DB_6;
   return ADC_ATTEN_DB_11;
 }
-/*
-class AdcState : public SimpleResource {
- public:
-  AdcState(adc_unit_t unit, int chan)
-    : unit(unit)
-    , chan(chan) {}
-
-  adc_unit_t unit;
-  int chan;
-  esp_adc_cal_characteristics_t calibration;
-};
-*/
 
 AdcState::AdcState(SimpleResourceGroup* group) : SimpleResource(group) {
   // what to do with this?
