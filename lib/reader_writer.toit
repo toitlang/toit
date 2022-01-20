@@ -58,7 +58,7 @@ class ReaderWriterReader_ implements CloseableReader:
 // than privacy to indicate which methods are synchronized.
 monitor ReaderWriterHelper_:
   buffer_size_/int ::= ?
-  buffer_/ByteArray := ?
+  buffer_/ByteArray
   fullness_ := 0
   writer_closed_ := false
   reader_closed_ := false
@@ -93,11 +93,7 @@ monitor ReaderWriterHelper_:
     await: fullness_ != 0 or writer_closed_
     result := ?
     if fullness_ != 0:
-      if fullness_ != buffer_.size:
-        result = buffer_[..fullness_].copy
-      else:
-        result = buffer_
-        buffer_ = ByteArray buffer_size_
+      result = buffer_[..fullness_].copy
       fullness_ = 0
       return result
     assert: writer_closed_
