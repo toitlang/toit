@@ -32,7 +32,7 @@ test client/LspClient:
   expect_equals 1 diagnostics.size
 
   print "Get goto-definition with underscore"
-  response := client.send_goto_definition_request --uri=uri 5 20
+  response := client.send_goto_definition_request --uri=uri 7 20
   expect_equals 1 response.size
   definition := response.first
   expect_equals escaped_uri definition["uri"]

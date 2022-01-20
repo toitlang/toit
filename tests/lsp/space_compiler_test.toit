@@ -23,11 +23,11 @@ test client/LspClient:
   diagnostics := client.diagnostics_for --uri=uri
   expect_equals 1 diagnostics.size
   diagnostic := diagnostics[0]
-  expect_equals 5 diagnostic["range"]["start"]["line"]
+  expect_equals 7 diagnostic["range"]["start"]["line"]
   expect_equals 2 diagnostic["range"]["start"]["character"]
 
   print "Get goto-definition with space"
-  response := client.send_goto_definition_request --path=space_foo 5 3
+  response := client.send_goto_definition_request --path=space_foo 7 3
   expect_equals 1 response.size
   definition := response.first
   expect_equals space_bar (client.to_path definition["uri"])
