@@ -166,7 +166,6 @@ class MessageEncoder {
   void write_uint64(uint64 value);
   void write_pointer(void* value);
   void write_cardinal(uword value);
-
 };
 
 class MessageDecoder {
