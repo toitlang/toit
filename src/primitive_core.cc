@@ -2205,7 +2205,7 @@ PRIMITIVE(serial_print_heap_report) {
   ARGS(int, max_pages);
   OS::heap_summary_report(max_pages);
   return process->program()->null_object();
-#endif // def TOIT_CMPCTMALLOCP
+#endif // def TOIT_CMPCTMALLOC
 }
 
 PRIMITIVE(get_env) {
