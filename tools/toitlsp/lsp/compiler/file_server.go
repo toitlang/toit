@@ -45,7 +45,8 @@ type PortFileServer struct {
 
 func NewPortFileServer(fs FileSystem, logger *zap.Logger, SDKPath string, address string) *PortFileServer {
 	return &PortFileServer{
-		cp: NewCompilerFSProtocol(fs, logger, SDKPath),
+		address: address,
+		cp:      NewCompilerFSProtocol(fs, logger, SDKPath),
 	}
 }
 
