@@ -86,6 +86,9 @@ class Scheduler {
   // Run a new program. Returns the process ID of the root process.
   int run_program(Program* program, char** args, ProcessGroup* group, Block* initial_block);
 
+  // Run a new external program. Returns the process.
+  Process* run_external(ProcessRunner* runner);
+
   // Send a system message. Returns an error code to signal whether the message was delivered.
   scheduler_err_t send_system_message(SystemMessage* message);
 

@@ -25,6 +25,25 @@
 
 namespace toit {
 
+class VM;
+
+class ProcessRunner {
+ public:
+  ProcessRunner(VM* vm) : _vm(vm), _process(null) { }
+  void start();
+  Interpreter::Result run();
+
+  virtual void on_message(SystemMessage* message) = 0;
+  bool send(int pid, int type, void* data, int length);
+
+ private:
+  VM* _vm;
+  Process* _process;
+
+  Message* next() const;
+  void advance();
+};
+
 // Process is linked into two different linked lists, so we have to make
 // use of the arbitrary N template argument to distinguish the two.
 typedef LinkedList<Process, 1> ProcessListFromProcessGroup;
@@ -58,6 +77,8 @@ class Process : public ProcessListFromProcessGroup::Element,
 #endif
   Process(Program* program, ProcessGroup* group, Method method, const uint8* arguments_address, int arguments_length, Block* initial_block);
   ~Process();
+
+  Process(ProcessRunner* runner, ProcessGroup* group);
 
   int id() const { return _id; }
   int next_task_id() { return _next_task_id++; }
@@ -99,6 +120,8 @@ class Process : public ProcessListFromProcessGroup::Element,
   ObjectHeap* object_heap() { return &_object_heap; }
   Usage* usage() { return &_memory_usage; }
   Task* task() { return object_heap()->task(); }
+
+  ProcessRunner* runner() const { return _runner; }
 
   void print();
 
@@ -210,7 +233,7 @@ class Process : public ProcessListFromProcessGroup::Element,
   }
 
  private:
-  Process(Program* program, ProcessGroup* group, Block* initial_block);
+  Process(Program* program, ProcessRunner* runner, ProcessGroup* group, Block* initial_block);
   void _append_message(Message* message);
   void _ensure_random_seeded();
 
@@ -218,6 +241,7 @@ class Process : public ProcessListFromProcessGroup::Element,
   int _next_task_id;
 
   Program* _program;
+  ProcessRunner* _runner;
   ProcessGroup* _group;
 
   Method _entry;
@@ -239,7 +263,7 @@ class Process : public ProcessListFromProcessGroup::Element,
   SchedulerThread* _scheduler_thread;
 
   bool _construction_failed = false;
-  bool _idle_since_scavenge = false;
+  bool _idle_since_scavenge = true;
 
   int64 _last_run_us = 0;
   int64 _unyielded_for_us = 0;
