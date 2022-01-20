@@ -1,39 +1,39 @@
-tests/negative/conditional_test.toit:5:24: error: Missing ':' in conditional expression
+tests/negative/conditional_test.toit:7:24: error: Missing ':' in conditional expression
   x := foo ? unresolved
                        ^
-tests/negative/conditional_test.toit:6:17: error: Missing ':' in conditional expression
+tests/negative/conditional_test.toit:8:17: error: Missing ':' in conditional expression
   y := foo ? foo
                 ^
-tests/negative/conditional_test.toit:8:19: error: Incomplete expression
+tests/negative/conditional_test.toit:10:19: error: Incomplete expression
   z := foo ? foo :
                   ^
-tests/negative/conditional_test.toit:5:8: error: Argument mismatch for 'foo'
+tests/negative/conditional_test.toit:7:8: error: Argument mismatch for 'foo'
 Too few arguments provided
   x := foo ? unresolved
        ^~~
-tests/negative/conditional_test.toit:5:14: error: Unresolved identifier: 'unresolved'
+tests/negative/conditional_test.toit:7:14: error: Unresolved identifier: 'unresolved'
   x := foo ? unresolved
              ^~~~~~~~~~
-tests/negative/conditional_test.toit:6:8: error: Argument mismatch for 'foo'
-Too few arguments provided
-  y := foo ? foo
-       ^~~
-tests/negative/conditional_test.toit:6:14: error: Argument mismatch for 'foo'
-Too few arguments provided
-  y := foo ? foo
-             ^~~
-tests/negative/conditional_test.toit:7:3: error: Unresolved identifier: 'unresolved'
-  unresolved
-  ^~~~~~~~~~
 tests/negative/conditional_test.toit:8:8: error: Argument mismatch for 'foo'
 Too few arguments provided
-  z := foo ? foo :
+  y := foo ? foo
        ^~~
 tests/negative/conditional_test.toit:8:14: error: Argument mismatch for 'foo'
 Too few arguments provided
-  z := foo ? foo :
+  y := foo ? foo
              ^~~
 tests/negative/conditional_test.toit:9:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+tests/negative/conditional_test.toit:10:8: error: Argument mismatch for 'foo'
+Too few arguments provided
+  z := foo ? foo :
+       ^~~
+tests/negative/conditional_test.toit:10:14: error: Argument mismatch for 'foo'
+Too few arguments provided
+  z := foo ? foo :
+             ^~~
+tests/negative/conditional_test.toit:11:3: error: Unresolved identifier: 'unresolved'
   unresolved
   ^~~~~~~~~~
 Compilation failed.

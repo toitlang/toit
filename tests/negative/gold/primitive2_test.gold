@@ -1,7 +1,7 @@
-tests/negative/primitive2_test.toit:4:10: error: Unresolved identifier: 'name'
+tests/negative/primitive2_test.toit:6:10: error: Unresolved identifier: 'name'
  {{ some name }}
          ^~~~
-tests/negative/primitive2_test.toit:4:5: error: Unresolved identifier: 'some'
+tests/negative/primitive2_test.toit:6:5: error: Unresolved identifier: 'some'
  {{ some name }}
     ^~~~
 Compilation failed.

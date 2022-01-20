@@ -1,7 +1,7 @@
-tests/negative/block_test.toit:8:9: error: Unexpected block
+tests/negative/block_test.toit:10:9: error: Unexpected block
   a.x = : debug it
         ^~~~~~~~~~
-tests/negative/block_test.toit:8:9: error: Can't assign block to instance member
+tests/negative/block_test.toit:10:9: error: Can't assign block to instance member
   a.x = : debug it
         ^~~~~~~~~~
 Compilation failed.

@@ -1,7 +1,7 @@
-tests/negative/import4_test.toit:3:22: error: Prefix clashes with toplevel declaration 'foo'
+tests/negative/import4_test.toit:5:22: error: Prefix clashes with toplevel declaration 'foo'
 import .import4_a as foo
                      ^~~
-tests/negative/import4_test.toit:5:1: error: Toplevel declaration 'foo'
+tests/negative/import4_test.toit:7:1: error: Toplevel declaration 'foo'
 foo:
 ^~~
 Compilation failed.

@@ -1,10 +1,10 @@
-tests/negative/bad_literal_test.toit:4:9: error: Invalid number literal
+tests/negative/bad_literal_test.toit:6:9: error: Invalid number literal
   print 0xnope
         ^~
-tests/negative/bad_literal_test.toit:4:11: error: Unresolved identifier: 'nope'
+tests/negative/bad_literal_test.toit:6:11: error: Unresolved identifier: 'nope'
   print 0xnope
           ^~~~
-tests/negative/bad_literal_test.toit:4:3: error: Argument mismatch for 'print'
+tests/negative/bad_literal_test.toit:6:3: error: Argument mismatch for 'print'
 Too many arguments provided
   print 0xnope
   ^~~~~

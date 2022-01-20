@@ -1,7 +1,7 @@
-tests/negative/indent7_test.toit:5:6: error: Empty blocks are not allowed
+tests/negative/indent7_test.toit:7:6: error: Empty blocks are not allowed
   fun:
      ^
-tests/negative/indent7_test.toit:6:12: error: Unresolved identifier: 'unresolved'
+tests/negative/indent7_test.toit:8:12: error: Unresolved identifier: 'unresolved'
   local := unresolved
            ^~~~~~~~~~
 Compilation failed.

@@ -1,4 +1,4 @@
-tests/negative/comments_test.toit:5:1: error: Unterminated multi-line comment
+tests/negative/comments_test.toit:7:1: error: Unterminated multi-line comment
 /*
 ^~
 Couldn't find 'main' (with 0 or 1 argument) in entry file 'tests/negative/comments_test.toit'

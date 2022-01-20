@@ -1,7 +1,7 @@
-tests/negative/type_force2_test.toit:8:5: error: Type mismatch. Expected 'B'. Got 'A'
+tests/negative/type_force2_test.toit:10:5: error: Type mismatch. Expected 'B'. Got 'A'
     return A
     ^~~~~~
 As check failed: an A is not a B.
-  0: B                         tests/negative/type_force2_test.toit:8:5
-  1: main                      tests/negative/type_force2_test.toit:13:8
+  0: B                         tests/negative/type_force2_test.toit:10:5
+  1: main                      tests/negative/type_force2_test.toit:15:8
   2: __entry__.<lambda>        <sdk>/core/entry.toit:48:20

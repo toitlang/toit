@@ -1,4 +1,4 @@
-tests/negative/block_parameter_test.toit:4:12: error: Unexpected |
+tests/negative/block_parameter_test.toit:6:12: error: Unexpected |
   if true: |x y| print "ok"
            ^
 Compilation failed.

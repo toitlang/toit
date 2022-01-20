@@ -1,11 +1,11 @@
-tests/negative/indent8_test.toit:5:6: error: Unexpected delimiter
+tests/negative/indent8_test.toit:7:6: error: Unexpected delimiter
   fun)
      ^
-tests/negative/indent8_test.toit:5:3: error: Argument mismatch for 'fun'
+tests/negative/indent8_test.toit:7:3: error: Argument mismatch for 'fun'
 Block argument not provided
   fun)
   ^~~
-tests/negative/indent8_test.toit:6:12: error: Unresolved identifier: 'unresolved'
+tests/negative/indent8_test.toit:8:12: error: Unresolved identifier: 'unresolved'
   local := unresolved
            ^~~~~~~~~~
 Compilation failed.

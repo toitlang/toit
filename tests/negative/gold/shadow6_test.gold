@@ -1,7 +1,7 @@
-tests/negative/shadow6_test.toit:6:3: error: Definition of 'global' shadows global variable
+tests/negative/shadow6_test.toit:8:3: error: Definition of 'global' shadows global variable
   global := 0
   ^~~~~~
-tests/negative/shadow6_test.toit:3:1: note: Global definition of 'global'
+tests/negative/shadow6_test.toit:5:1: note: Global definition of 'global'
 global := 499
 ^~~~~~
 Compilation failed.

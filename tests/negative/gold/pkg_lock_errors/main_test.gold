@@ -61,10 +61,10 @@
 <...>/tests/negative/pkg_lock_errors/package.lock:43:11: error: Package 'xyz' not found at '<...>/tests/negative/pkg_lock_errors/xyz'
     path: xyz
           ^~~
-tests/negative/pkg_lock_errors/main_test.toit:3:8: error: Package for prefix 'p1' not found, but lock file has errors
+tests/negative/pkg_lock_errors/main_test.toit:5:8: error: Package for prefix 'p1' not found, but lock file has errors
 import p1
        ^~
-tests/negative/pkg_lock_errors/main_test.toit:6:12: error: Unresolved identifier: 'foo'
+tests/negative/pkg_lock_errors/main_test.toit:8:12: error: Unresolved identifier: 'foo'
   print p1.foo
            ^~~
 Compilation failed.

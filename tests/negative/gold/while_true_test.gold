@@ -1,28 +1,28 @@
-tests/negative/while_true_test.toit:84:3: error: Unresolved identifier: 'unresolved'
+tests/negative/while_true_test.toit:86:3: error: Unresolved identifier: 'unresolved'
   unresolved
   ^~~~~~~~~~
-tests/negative/while_true_test.toit:7:1: error: Method doesn't return a value on all paths
+tests/negative/while_true_test.toit:9:1: error: Method doesn't return a value on all paths
 test1 x -> int:
 ^~~~~
-tests/negative/while_true_test.toit:12:1: error: Method doesn't return a value
+tests/negative/while_true_test.toit:14:1: error: Method doesn't return a value
 test2 x -> int:
 ^~~~~
-tests/negative/while_true_test.toit:23:10: error: Local 'local' must be initialized before first use
+tests/negative/while_true_test.toit:25:10: error: Local 'local' must be initialized before first use
   return local
          ^~~~~
-tests/negative/while_true_test.toit:30:35: error: Local 'local' must be initialized before first use
+tests/negative/while_true_test.toit:32:35: error: Local 'local' must be initialized before first use
   for ; true; done = returns_true local:
                                   ^~~~~
-tests/negative/while_true_test.toit:45:10: error: Local 'local' must be initialized before first use
+tests/negative/while_true_test.toit:47:10: error: Local 'local' must be initialized before first use
   return local
          ^~~~~
-tests/negative/while_true_test.toit:58:10: error: Local 'local' must be initialized before first use
+tests/negative/while_true_test.toit:60:10: error: Local 'local' must be initialized before first use
   return local
          ^~~~~
-tests/negative/while_true_test.toit:66:10: error: Local 'local' must be initialized before first use
+tests/negative/while_true_test.toit:68:10: error: Local 'local' must be initialized before first use
   return local
          ^~~~~
-tests/negative/while_true_test.toit:73:10: error: Local 'local' must be initialized before first use
+tests/negative/while_true_test.toit:75:10: error: Local 'local' must be initialized before first use
   return local
          ^~~~~
 Compilation failed.

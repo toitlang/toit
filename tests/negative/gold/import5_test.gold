@@ -1,13 +1,13 @@
-tests/negative/import5_a.toit:6:1: error: Ambiguous export of 'foo'
+tests/negative/import5_a.toit:8:1: error: Ambiguous export of 'foo'
 export *
 ^~~~~~
-tests/negative/import5_b.toit:3:1: error: Definition of 'foo'
+tests/negative/import5_b.toit:5:1: error: Definition of 'foo'
 foo:
 ^~~
-tests/negative/import5_c.toit:3:1: error: Definition of 'foo'
+tests/negative/import5_c.toit:5:1: error: Definition of 'foo'
 foo:
 ^~~
-tests/negative/import5_test.toit:3:24: error: Unresolved show 'foo'
+tests/negative/import5_test.toit:5:24: error: Unresolved show 'foo'
 import .import5_a show foo
                        ^~~
 Compilation failed.

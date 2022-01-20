@@ -1,7 +1,7 @@
-tests/negative/field_return_test.toit:4:12: error: Can't return from within a field initializer
+tests/negative/field_return_test.toit:6:12: error: Can't return from within a field initializer
   field := return
            ^~~~~~
-tests/negative/field_return_test.toit:5:13: error: Can't return from within a field initializer
+tests/negative/field_return_test.toit:7:13: error: Can't return from within a field initializer
   field2 := return 499
             ^~~~~~
 Couldn't find 'main' (with 0 or 1 argument) in entry file 'tests/negative/field_return_test.toit'

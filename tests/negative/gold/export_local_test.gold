@@ -1,4 +1,4 @@
-tests/negative/export_local_test.toit:3:8: error: Can't export local 'foo'
+tests/negative/export_local_test.toit:5:8: error: Can't export local 'foo'
 export foo
        ^~~
 Compilation failed.

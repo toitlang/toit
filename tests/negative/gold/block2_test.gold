@@ -1,7 +1,7 @@
-tests/negative/block2_test.toit:5:5: error: Unexpected block
+tests/negative/block2_test.toit:7:5: error: Unexpected block
     : debug it
     ^~~~~~~~~~
-tests/negative/block2_test.toit:5:5: error: List elements may not be blocks
+tests/negative/block2_test.toit:7:5: error: List elements may not be blocks
     : debug it
     ^~~~~~~~~~
 Compilation failed.

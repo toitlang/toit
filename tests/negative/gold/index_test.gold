@@ -1,64 +1,64 @@
-tests/negative/index_test.toit:9:10: error: Missing closing ']'
+tests/negative/index_test.toit:11:10: error: Missing closing ']'
 operator [ x:
          ^
-tests/negative/index_test.toit:12:10: error: Missing closing ']'
+tests/negative/index_test.toit:14:10: error: Missing closing ']'
 operator [ = x:
          ^
-tests/negative/index_test.toit:12:12: error: Unexpected token: =
+tests/negative/index_test.toit:14:12: error: Unexpected token: =
 operator [ = x:
            ^
-tests/negative/index_test.toit:20:19: error: Missing closing ']'
+tests/negative/index_test.toit:22:19: error: Missing closing ']'
   static operator [ x v:
                   ^
-tests/negative/index_test.toit:22:19: error: Missing closing ']'
+tests/negative/index_test.toit:24:19: error: Missing closing ']'
   static operator [ = x v:
                   ^
-tests/negative/index_test.toit:22:21: error: Unexpected token: =
+tests/negative/index_test.toit:24:21: error: Unexpected token: =
   static operator [ = x v:
                     ^
-tests/negative/index_test.toit:3:1: error: Operators may not be static
+tests/negative/index_test.toit:5:1: error: Operators may not be static
 operator [] x:
 ^~~~~~~~~~~
-tests/negative/index_test.toit:6:1: error: Operators may not be static
+tests/negative/index_test.toit:8:1: error: Operators may not be static
 operator []= x v:
 ^~~~~~~~~~~~
-tests/negative/index_test.toit:16:10: error: Operators may not be static
+tests/negative/index_test.toit:18:10: error: Operators may not be static
   static operator [] x:
          ^~~~~~~~~~~
-tests/negative/index_test.toit:18:10: error: Operators may not be static
+tests/negative/index_test.toit:20:10: error: Operators may not be static
   static operator []= x v:
          ^~~~~~~~~~~~
-tests/negative/index_test.toit:4:3: error: Unresolved identifier: 'unresolved'
+tests/negative/index_test.toit:6:3: error: Unresolved identifier: 'unresolved'
   unresolved x
   ^~~~~~~~~~
-tests/negative/index_test.toit:7:3: error: Unresolved identifier: 'unresolved'
+tests/negative/index_test.toit:9:3: error: Unresolved identifier: 'unresolved'
   unresolved x v
   ^~~~~~~~~~
-tests/negative/index_test.toit:10:3: error: Unresolved identifier: 'unresolved'
+tests/negative/index_test.toit:12:3: error: Unresolved identifier: 'unresolved'
   unresolved x
   ^~~~~~~~~~
-tests/negative/index_test.toit:13:14: error: Unresolved identifier: 'x'
+tests/negative/index_test.toit:15:14: error: Unresolved identifier: 'x'
   unresolved x
              ^
-tests/negative/index_test.toit:13:3: error: Unresolved identifier: 'unresolved'
+tests/negative/index_test.toit:15:3: error: Unresolved identifier: 'unresolved'
   unresolved x
   ^~~~~~~~~~
-tests/negative/index_test.toit:17:5: error: Unresolved identifier: 'unresolved'
-    unresolved
-    ^~~~~~~~~~
 tests/negative/index_test.toit:19:5: error: Unresolved identifier: 'unresolved'
     unresolved
     ^~~~~~~~~~
 tests/negative/index_test.toit:21:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/index_test.toit:23:5: error: Unresolved identifier: 'unresolved'
     unresolved x v
     ^~~~~~~~~~
-tests/negative/index_test.toit:23:16: error: Unresolved identifier: 'x'
+tests/negative/index_test.toit:25:16: error: Unresolved identifier: 'x'
     unresolved x v
                ^
-tests/negative/index_test.toit:23:18: error: Unresolved identifier: 'v'
+tests/negative/index_test.toit:25:18: error: Unresolved identifier: 'v'
     unresolved x v
                  ^
-tests/negative/index_test.toit:23:5: error: Unresolved identifier: 'unresolved'
+tests/negative/index_test.toit:25:5: error: Unresolved identifier: 'unresolved'
     unresolved x v
     ^~~~~~~~~~
 Compilation failed.

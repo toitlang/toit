@@ -1,4 +1,4 @@
-tests/negative/missing_setting2_test.toit:6:7: error: Can't set final field
+tests/negative/missing_setting2_test.toit:8:7: error: Can't set final field
   foo .x:
       ^~
 Compilation failed.

@@ -1,4 +1,4 @@
-tests/negative/prefixed_test.toit:6:9: error: Can't use prefix 'prefix' as an expression
+tests/negative/prefixed_test.toit:8:9: error: Can't use prefix 'prefix' as an expression
   print prefix
         ^~~~~~
 Compilation failed.

@@ -1,10 +1,10 @@
-tests/negative/type3_test.toit:4:24: error: Unexpected token: :=
+tests/negative/type3_test.toit:6:24: error: Unexpected token: :=
   field -> NonExisting := null
                        ^~
-tests/negative/type3_test.toit:4:12: error: Unresolved type: 'NonExisting'
+tests/negative/type3_test.toit:6:12: error: Unresolved type: 'NonExisting'
   field -> NonExisting := null
            ^~~~~~~~~~~
-tests/negative/type3_test.toit:4:3: error: Method doesn't return a value
+tests/negative/type3_test.toit:6:3: error: Method doesn't return a value
   field -> NonExisting := null
   ^~~~~
 Compilation failed.

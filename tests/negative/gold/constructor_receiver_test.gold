@@ -1,16 +1,16 @@
-tests/negative/constructor_receiver_test.toit:17:4: warning: Deprecated use of static method syntax to call an unnamed constructor. Use (<Class>).<member> instead.
+tests/negative/constructor_receiver_test.toit:21:4: warning: Deprecated use of static method syntax to call an unnamed constructor. Use (<Class>).<member> instead.
   A.member
    ^
-tests/negative/constructor_receiver_test.toit:18:4: warning: Deprecated use of static method syntax to call an unnamed constructor. Use (<Class>).<member> instead.
+tests/negative/constructor_receiver_test.toit:22:4: warning: Deprecated use of static method syntax to call an unnamed constructor. Use (<Class>).<member> instead.
   B.member
    ^
-tests/negative/constructor_receiver_test.toit:20:8: warning: Deprecated use of static method syntax to call an unnamed constructor. Use (<Class>).<member> instead.
+tests/negative/constructor_receiver_test.toit:24:8: warning: Deprecated use of static method syntax to call an unnamed constructor. Use (<Class>).<member> instead.
   pre.A.member
        ^
-tests/negative/constructor_receiver_test.toit:21:8: warning: Deprecated use of static method syntax to call an unnamed constructor. Use (<Class>).<member> instead.
+tests/negative/constructor_receiver_test.toit:25:8: warning: Deprecated use of static method syntax to call an unnamed constructor. Use (<Class>).<member> instead.
   pre.B.member
        ^
-tests/negative/constructor_receiver_test.toit:29:3: error: Unresolved identifier: 'unresolved'
+tests/negative/constructor_receiver_test.toit:33:3: error: Unresolved identifier: 'unresolved'
   unresolved
   ^~~~~~~~~~
 Compilation failed.

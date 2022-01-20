@@ -1,10 +1,10 @@
-tests/negative/ambiguous_assign2_test.toit:7:3: error: Ambiguous resolution of 'bar'
+tests/negative/ambiguous_assign2_test.toit:9:3: error: Ambiguous resolution of 'bar'
   bar += 3
   ^~~
-tests/negative/ambiguous_a.toit:6:1: note: Resolution candidate for 'bar'
+tests/negative/ambiguous_a.toit:8:1: note: Resolution candidate for 'bar'
 bar := 0
 ^~~
-tests/negative/ambiguous_b.toit:6:1: note: Resolution candidate for 'bar'
+tests/negative/ambiguous_b.toit:8:1: note: Resolution candidate for 'bar'
 bar := 0
 ^~~
 Compilation failed.

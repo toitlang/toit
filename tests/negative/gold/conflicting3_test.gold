@@ -1,7 +1,7 @@
-tests/negative/conflicting3_test.toit:5:1: error: Redefinition of 'foo' as global
+tests/negative/conflicting3_test.toit:7:1: error: Redefinition of 'foo' as global
 foo := 2
 ^~~
-tests/negative/conflicting3_test.toit:3:7: note: First definition of 'foo'
+tests/negative/conflicting3_test.toit:5:7: note: First definition of 'foo'
 class foo:
       ^~~
 Compilation failed.

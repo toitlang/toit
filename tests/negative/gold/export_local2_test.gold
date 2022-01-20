@@ -1,10 +1,10 @@
-tests/negative/export_local2_test.toit:3:33: error: Name clash with toplevel declaration 'foo'
+tests/negative/export_local2_test.toit:5:33: error: Name clash with toplevel declaration 'foo'
 import .export_local2_test show foo
                                 ^~~
-tests/negative/export_local2_test.toit:7:1: note: Toplevel declaration of 'foo'
+tests/negative/export_local2_test.toit:9:1: note: Toplevel declaration of 'foo'
 foo:
 ^~~
-tests/negative/export_local2_test.toit:5:8: error: Can't export local 'foo'
+tests/negative/export_local2_test.toit:7:8: error: Can't export local 'foo'
 export foo
        ^~~
 Compilation failed.

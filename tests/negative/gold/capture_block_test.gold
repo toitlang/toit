@@ -1,10 +1,10 @@
-tests/negative/capture_block_test.toit:7:5: error: Unresolved identifier: 'unresolved'
+tests/negative/capture_block_test.toit:9:5: error: Unresolved identifier: 'unresolved'
     unresolved
     ^~~~~~~~~~
-tests/negative/capture_block_test.toit:5:13: error: Can't capture block variable b
+tests/negative/capture_block_test.toit:7:13: error: Can't capture block variable b
   lambda := ::
             ^
-tests/negative/capture_block_test.toit:8:15: error: Unresolved identifier: 'unresolved'
+tests/negative/capture_block_test.toit:10:15: error: Unresolved identifier: 'unresolved'
   lambda.call unresolved
               ^~~~~~~~~~
 Compilation failed.

@@ -1,13 +1,13 @@
-tests/negative/constructor_return_type_test.toit:7:7: error: Expected class name
+tests/negative/constructor_return_type_test.toit:9:7: error: Expected class name
 class :
       ^
-tests/negative/constructor_return_type_test.toit:4:18: error: Constructors may not have return types
+tests/negative/constructor_return_type_test.toit:6:18: error: Constructors may not have return types
   constructor -> A:
                  ^
-tests/negative/constructor_return_type_test.toit:5:5: error: Unresolved identifier: 'unresolved'
+tests/negative/constructor_return_type_test.toit:7:5: error: Unresolved identifier: 'unresolved'
     unresolved
     ^~~~~~~~~~
-tests/negative/constructor_return_type_test.toit:8:18: error: Constructors may not have return types
+tests/negative/constructor_return_type_test.toit:10:18: error: Constructors may not have return types
   constructor -> A:
                  ^
 Compilation failed.
