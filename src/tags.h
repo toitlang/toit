@@ -38,6 +38,7 @@ namespace toit {
   fn(Adler32)                           \
   fn(ZlibRle)                           \
   fn(UARTResource)                      \
+  fn(AdcState)                          \
   fn(PWMResource)                       \
   fn(GAPResource)                       \
   fn(GATTResource)                      \

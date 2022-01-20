@@ -82,7 +82,7 @@ AdcState::AdcState(SimpleResourceGroup* group) : SimpleResource(group) {
 }
 
 void AdcState::init(adc_unit_t unit, int chan) {
-  // what to do with this?
+  // is this enough?
   this->unit = unit;
   this->chan = chan;
 }
@@ -118,11 +118,10 @@ PRIMITIVE(init) {
     }
   }
 
-  //AdcState* state = _new AdcState(unit, chan);
   AdcState* state = _new AdcState(group);
   if (!state) MALLOC_FAILED;
 
-  ByteArray* proxy = process->object_heap()->allocate_external_byte_array(0, reinterpret_cast<uint8*>(state), true, false);
+  ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) {
     delete state;
     ALLOCATION_FAILED;
@@ -132,16 +131,13 @@ PRIMITIVE(init) {
   const int DEFAULT_VREF = 1100;
   esp_adc_cal_characterize(unit, atten, ADC_WIDTH_BIT_12, DEFAULT_VREF, &state->calibration);
 
+  proxy->set_external_address(state);
+
   return proxy;
 }
 
 PRIMITIVE(get) {
-  ARGS(ByteArray, raw_state, int, samples);
-
-  // TODO: how to get the instance?
-  AdcState* state = reinterpret_cast<AdcState*>(raw_state->as_external());
-  // Check if it's already closed.
-  if (state == null) INVALID_ARGUMENT;
+  ARGS(AdcState, state, int, samples);
 
   uint32_t adc_reading = 0;
 
