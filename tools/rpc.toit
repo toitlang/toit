@@ -50,7 +50,7 @@ class RpcBroker implements SystemMessageHandler_:
       return
 
     procedure := procedures_.get name
-    if not procedure: send_exception_reply.call "No such procedure registered $name"
+    if not procedure: send_exception_reply.call "No such procedure registered: $name"
     request := RpcRequest_ pid gid id arguments procedure
     if not queue_.add request: send_exception_reply.call "Cannot enqueue more requests"
 
