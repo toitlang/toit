@@ -2,10 +2,10 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-invoke name/int arguments/List -> any:
+invoke name/int arguments/any -> any:
   return Rpc.instance.invoke name arguments
 
-invoke pid/int name/int arguments/List -> any:
+invoke pid/int name/int arguments/any -> any:
   return Rpc.instance.invoke pid name arguments
 
 class Rpc implements SystemMessageHandler_:
@@ -18,11 +18,13 @@ class Rpc implements SystemMessageHandler_:
   constructor.internal_:
     set_system_message_handler_ SYSTEM_RPC_REPLY_ this
 
-  invoke name/int arguments/List -> any:
+  invoke name/int arguments/any -> any:
+    if arguments is RpcSerializable: arguments = arguments.serialize_for_rpc
     return synchronizer_.send: | id |
       process_send_ -1 SYSTEM_RPC_REQUEST_ [ id, name, arguments ]
 
-  invoke pid/int name/int arguments/List -> any:
+  invoke pid/int name/int arguments/any -> any:
+    if arguments is RpcSerializable: arguments = arguments.serialize_for_rpc
     return synchronizer_.send: | id |
       process_send_ pid SYSTEM_RPC_REQUEST_ [ id, name, arguments ]
 
@@ -73,6 +75,12 @@ monitor RpcSynchronizer_:
       // the result of the RPC call, we discard it.
       if not identical EMPTY existing: return
       value
+
+// Objects that are RPC-serializable can be serialized to a RPC-compatible
+// value by calling their 'serialize_for_rpc' method.
+interface RpcSerializable:
+  // Must return a value that can be encoded using the built-in message encoder.
+  serialize_for_rpc -> any
 
 /**
 Has a close method suitable for objects that use a handle/descriptor

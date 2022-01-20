@@ -13,16 +13,29 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+import rpc show RpcSerializable
+
 class RpcBroker implements SystemMessageHandler_:
   static MAX_TASKS/int    ::= 4
   static MAX_REQUESTS/int ::= 16
 
   procedures_/Map ::= {:}
-  handlers_/Map ::= {:}
   queue_/RpcRequestQueue_ ::= RpcRequestQueue_
 
   install:
     set_system_message_handler_ SYSTEM_RPC_REQUEST_ this
+
+  // Register a procedure to handle a message.  The arguments to the
+  // handler will be:
+  //   arguments/List
+  //   group_id/int
+  //   process_id/int
+  register_procedure name/int action/Lambda -> none:
+    procedures_[name] = action
+
+  // Unregister a procedure to handle a message.
+  unregister_procedure name/int -> none:
+    procedures_.remove name
 
   on_message type gid pid message/List -> none:
     assert: type == SYSTEM_RPC_REQUEST_
@@ -34,47 +47,10 @@ class RpcBroker implements SystemMessageHandler_:
       process_send_ pid SYSTEM_RPC_REPLY_ [ id, true, exception, null ]
       return
 
-    procedures_.get name --if_present=: | procedure |
-      request := RpcRequest_ pid gid id arguments procedure
-      if queue_.add request: return
-      send_exception_reply.call "Cannot enqueue more requests"
-
-    if arguments.is_empty:
-      send_exception_reply.call "Missing call context"
-    context ::= arguments[0]
-    if context is not int:
-      // TODO(kasper): This is a weird exception to pass back.
-      send_exception_reply.call "Closed descriptor $context"
-
-    handlers_.get name --if_present=: | handler |
-      descriptor := get_descriptor_ gid context
-      if not descriptor:
-        send_exception_reply.call "Closed descriptor $context"
-      request := RpcRequest_ pid gid id arguments:: | arguments gid _ |
-        handler.call descriptor arguments gid
-      if queue_.add request: return
-      send_exception_reply.call "Cannot enqueue more requests"
-
-    send_exception_reply.call "No such procedure registered $name"
-
-  // Register a regular procedure to handle a message.  The arguments to the
-  // handler will be:
-  //   arguments/List
-  //   group_id/int
-  //   process_id/int
-  register_procedure name/int action/Lambda -> none:
-    procedures_[name] = action
-
-  // Register a descriptor-based procedure to handle a message.  These are
-  // invoked by the RPC caller with a descriptor as the first argument.  This
-  // descriptor is looked up on the process group and the resulting object is
-  // passed to the handler.
-  register_descriptor_procedure name/int action/Lambda -> none:
-    handlers_[name] = action
-
-  // Typically overwritten in a subclass.
-  get_descriptor_ gid/int descriptor/int -> any:
-    return null
+    procedure := procedures_.get name
+    if not procedure: send_exception_reply.call "No such procedure registered $name"
+    request := RpcRequest_ pid gid id arguments procedure
+    if not queue_.add request: send_exception_reply.call "Cannot enqueue more requests"
 
 class RpcRequest_:
   next/RpcRequest_? := null
@@ -82,7 +58,7 @@ class RpcRequest_:
   pid/int
   gid/int
   id/int
-  arguments/List
+  arguments/any
   procedure/Lambda
 
   constructor .pid .gid .id .arguments .procedure:
@@ -91,7 +67,7 @@ class RpcRequest_:
     result/any := null
     try:
       result = procedure.call arguments gid pid
-      if result is Serializable: result = result.serialize
+      if result is RpcSerializable: result = result.serialize_for_rpc
     finally: | is_exception exception |
       reply := is_exception
           ? [ id, true, exception.value, exception.trace ]
@@ -156,8 +132,3 @@ monitor RpcRequestQueue_:
       if identical last_ request: last_ = next
       first_ = next
       return request
-
-// Serializable indicates a method can be serialized to a RPC-compatible value.
-interface Serializable:
-  // Must return a value that can be encoded to ubjson.
-  serialize -> any
