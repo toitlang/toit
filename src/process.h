@@ -86,7 +86,8 @@ class Process : public ProcessListFromProcessGroup::Element,
   bool is_suspended() const { return _state == SUSPENDED_IDLE || _state == SUSPENDED_SCHEDULED; }
 
   // Returns whether this process is privileged (a system process).
-  bool is_privileged();
+  bool is_privileged() const { return _is_privileged; }
+  void mark_as_priviliged() { _is_privileged = true; }
 
   // Garbage collection operation for runtime objects.
   int scavenge() {
@@ -239,6 +240,7 @@ class Process : public ProcessListFromProcessGroup::Element,
 
   int const _id;
   int _next_task_id;
+  bool _is_privileged = false;
 
   Program* _program;
   ProcessRunner* _runner;

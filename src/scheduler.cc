@@ -108,6 +108,7 @@ Scheduler::ExitState Scheduler::launch_program(Locker& locker, Process* process)
   interpreter.activate(process);
   interpreter.prepare_process();
   interpreter.deactivate();
+  process->mark_as_priviliged();
   ASSERT(process->is_privileged());
 
 #ifdef TOIT_POSIX
