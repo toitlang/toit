@@ -100,7 +100,7 @@ func New(fs FileSystem, logger *zap.Logger, settings Settings) *Compiler {
 		settings:   settings,
 		logger:     logger,
 		fs:         fs,
-		fileServer: NewPortFileServer(fs, logger, settings.SDKPath, ":0"),
+		fileServer: NewPortFileServer(fs, logger, settings.SDKPath, "127.0.0.1:0"),
 		parser:     newParser(logger),
 	}
 }
