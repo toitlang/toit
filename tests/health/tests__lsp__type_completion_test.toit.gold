@@ -1,15 +1,15 @@
-tests/lsp/type_completion_test.toit:100:30: error: Invalid type
+tests/lsp/type_completion_test.toit:102:30: error: Invalid type
 bad -> prefix.ImportedClass2.named:
                              ^~~~~
-tests/lsp/type_completion_test.toit:108:19: error: Ambiguous resolution of type: 'ImportedClass'
+tests/lsp/type_completion_test.toit:110:19: error: Ambiguous resolution of type: 'ImportedClass'
 bad2 -> ambiguous.ImportedClass:
                   ^~~~~~~~~~~~~
-tests/lsp/definition_imported.toit:3:7: note: Resolution candidate for 'ImportedClass'
+tests/lsp/definition_imported.toit:5:7: note: Resolution candidate for 'ImportedClass'
 class ImportedClass:
       ^~~~~~~~~~~~~
-tests/lsp/definition_imported2.toit:7:7: note: Resolution candidate for 'ImportedClass'
+tests/lsp/definition_imported2.toit:9:7: note: Resolution candidate for 'ImportedClass'
 class ImportedClass:
       ^~~~~~~~~~~~~
-tests/lsp/type_completion_test.toit:115:19: error: Invalid type
+tests/lsp/type_completion_test.toit:117:19: error: Invalid type
 bad3 -> SomeClass.static_fun:
                   ^~~~~~~~~~

@@ -1,3 +1,3 @@
-tests/lsp/warning.toit:7:7: error: Class 'A' does not have any method 'bar'
+tests/lsp/warning.toit:9:7: error: Class 'A' does not have any method 'bar'
   foo.bar
       ^~~

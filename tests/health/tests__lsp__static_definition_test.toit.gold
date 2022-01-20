@@ -1,6 +1,6 @@
-tests/lsp/static_definition_test.toit:23:11: error: Can't invoke method on 'none' type
+tests/lsp/static_definition_test.toit:25:11: error: Can't invoke method on 'none' type
   Foo.bar.something
           ^~~~~~~~~
-tests/lsp/static_definition_test.toit:38:18: error: Can't invoke method on 'none' type
+tests/lsp/static_definition_test.toit:40:18: error: Can't invoke method on 'none' type
   prefix.Foo.bar.something
                  ^~~~~~~~~
