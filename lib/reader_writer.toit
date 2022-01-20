@@ -58,14 +58,13 @@ class ReaderWriterReader_ implements CloseableReader:
 // than privacy to indicate which methods are synchronized.
 monitor ReaderWriterHelper_:
   buffer_size_/int ::= ?
-  buffer_/ByteArray? := null
-  // Buffer to reuse instead of allocating a new one.
-  reuse_/ByteArray? := null
+  buffer_/ByteArray := ?
   fullness_ := 0
   writer_closed_ := false
   reader_closed_ := false
 
   constructor .buffer_size_:
+    buffer_ = ByteArray buffer_size_
 
   writer_close -> none:
     writer_closed_ = true
@@ -77,16 +76,8 @@ monitor ReaderWriterHelper_:
     if writer_closed_: throw "CLOSED"
     result := to - from
     while from != to:
-      await: fullness_ != buffer_size_ or reader_closed_
+      await: fullness_ != buffer_.size or reader_closed_
       if reader_closed_: throw "CLOSED"
-      // Allocate a buffer or reuse an old one.
-      if buffer_ == null:
-        if reuse_:
-          buffer_ = reuse_
-          reuse_ = null
-        else:
-          buffer_ = ByteArray buffer_size_
-
       space := buffer_.size - fullness_
       remaining := to - from
       chunk_size := min space remaining
@@ -99,16 +90,15 @@ monitor ReaderWriterHelper_:
     return result
 
   read:
-    await: buffer_ or writer_closed_
+    await: fullness_ != 0 or writer_closed_
     result := ?
-    if buffer_:
+    if fullness_ != 0:
       if fullness_ != buffer_.size:
-        result = buffer_[..fullness_]
-        reuse_ = buffer_
+        result = buffer_[..fullness_].copy
       else:
         result = buffer_
+        buffer_ = ByteArray buffer_size_
       fullness_ = 0
-      buffer_ = null
       return result
     assert: writer_closed_
     return null
