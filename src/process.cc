@@ -27,45 +27,6 @@
 
 namespace toit {
 
-void ProcessRunner::start() {
-  ASSERT(_process == null);
-  _process = _vm->scheduler()->run_external(this);
-}
-
-bool ProcessRunner::send(int pid, int type, void* data, int length) {
-  SystemMessage* message = _new SystemMessage(type, _process->group()->id(), _process->id(),
-      unvoid_cast<uint8*>(data), length);
-  if (message == null) {
-    free(data);  // <--- TODO(kasper): Come up with some reasonable semantics around this.
-    return false;
-  }
-  scheduler_err_t result = _vm->scheduler()->send_message(pid, message);
-  if (result == MESSAGE_OK) return true;
-  delete message;
-  return false;
-}
-
-Interpreter::Result ProcessRunner::run() {
-  while (true) {
-    Message* message = next();
-    if (message == null) {
-      return Interpreter::Result(Interpreter::Result::YIELDED);
-    }
-    if (message->is_system()) {
-      on_message(static_cast<SystemMessage*>(message));
-    }
-    advance();
-  }
-}
-
-Message* ProcessRunner::next() const {
-  return _process->peek_message();
-}
-
-void ProcessRunner::advance() {
-  _process->remove_first_message();
-}
-
 const char* Process::StateName[] = {
   "IDLE",
   "SCHEDULED",

@@ -97,13 +97,13 @@ static ProgramImage attempt_to_load_snapshot(char* bundle_path) {
   return result;
 }
 
-class ExternalProcess : public ProcessRunner {
+class MessageHandler : public ExternalSystemMessageHandler {
  public:
-  ExternalProcess(VM* vm) : ProcessRunner(vm) { }
+  MessageHandler(VM* vm) : ExternalSystemMessageHandler(vm) { }
   virtual void on_message(SystemMessage* message);
 };
 
-void ExternalProcess::on_message(SystemMessage* message) {
+void MessageHandler::on_message(SystemMessage* message) {
   printf("[c++] got message %d from %d\n", message->type(), message->pid());
   int length = 2;
   uint8* reply = unvoid_cast<uint8*>(malloc(length));
@@ -124,8 +124,8 @@ int run_program(char* boot_program_path, SnapshotBundle bundle, char** argv) {
       }
       int group_id = vm.scheduler()->next_group_id();
 
-      ExternalProcess external_process(&vm);
-      external_process.start();
+      MessageHandler handler(&vm);
+      handler.start();
 
       if (!boot_image.is_valid()) {
         exit = vm.scheduler()->run_boot_program(application_image.program(), argv, group_id);

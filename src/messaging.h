@@ -18,11 +18,13 @@
 #include "top.h"
 #include "objects.h"
 #include "heap.h"
+#include "interpreter.h"
 
 namespace toit {
 
 class Message;
 class Process;
+class VM;
 
 typedef LinkedFIFO<Message> MessageFIFO;
 
@@ -39,7 +41,6 @@ enum {
   MESSAGING_ENCODING_MAX_EXTERNALS    = 8,
   MESSAGING_ENCODING_MAX_INLINED_SIZE = 128,
 };
-
 
 class Message : public MessageFIFO::Element {
  public:
@@ -204,6 +205,21 @@ class MessageDecoder {
   uint64 read_uint64();
   uint8* read_pointer();
   uword read_cardinal();
+};
+
+class ExternalSystemMessageHandler : public ProcessRunner {
+ public:
+  ExternalSystemMessageHandler(VM* vm) : _vm(vm), _process(null) { }
+  void start();
+
+  virtual void on_message(SystemMessage* message) = 0;
+  bool send(int pid, int type, void* data, int length);
+
+  virtual Interpreter::Result run();
+
+ private:
+  VM* _vm;
+  Process* _process;
 };
 
 }  // namespace toit

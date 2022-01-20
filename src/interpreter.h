@@ -216,4 +216,9 @@ class Interpreter {
   friend class Stack;
 };
 
+class ProcessRunner {
+ public:
+  virtual Interpreter::Result run() = 0;
+};
+
 } // namespace toit
