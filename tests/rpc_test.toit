@@ -163,7 +163,7 @@ test_blocking myself/int broker/RpcBroker tasks/int [test] -> none:
 
   // Unregister procedure and make sure it's gone.
   broker.unregister_procedure name
-  expect.expect_throw "No such procedure registered 800": rpc.invoke myself name []
+  expect.expect_throw "No such procedure registered: 800": rpc.invoke myself name []
 
 // ----------------------------------------------------------------------------
 
