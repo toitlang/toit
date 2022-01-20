@@ -1,3 +1,5 @@
+// Copyright (C) 2022 Toitware ApS. All rights reserved.
+
 class A:
   foo: return 499
 

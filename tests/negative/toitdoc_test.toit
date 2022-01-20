@@ -1,3 +1,5 @@
+// Copyright (C) 2022 Toitware ApS. All rights reserved.
+
 import .ambiguous_a as amb
 import .ambiguous_b as amb
 import .toitdoc_test as self

@@ -1,3 +1,5 @@
+// Copyright (C) 2022 Toitware ApS. All rights reserved.
+
 import .constructor_receiver_test as pre
 
 class A:

@@ -1,7 +1,6 @@
+// Copyright (C) 2022 Toitware ApS. All rights reserved.
 
-// Copyright (C) 2018 Toitware ApS. All rights reserved.
 import expect show *
-
 
 main:
   b0 := MessageBox

@@ -1,7 +1,6 @@
-
 // Copyright (C) 2018 Toitware ApS. All rights reserved.
-import expect show *
 
+import expect show *
 
 // https://github.com/toitware/toit/issues/38
 

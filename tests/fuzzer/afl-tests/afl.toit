@@ -1,3 +1,5 @@
+// Copyright (C) 2022 Toitware ApS. All rights reserved.
+
 foo fun: return fun.call
 
 bar [block]: block.call

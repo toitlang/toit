@@ -1,3 +1,5 @@
+// Copyright (C) 2022 Toitware ApS. All rights reserved.
+
 import font show *
 import font.x11_100dpi.sans.sans_08 as sans_08
 import expect show *
