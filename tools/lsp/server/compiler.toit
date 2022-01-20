@@ -15,6 +15,7 @@ import .summary show SummaryReader
 import .uri_path_translator
 import .utils
 import .verbose
+import .multiplex
 
 class AnalysisResult:
   diagnostics / Map/*<uri/string, Diagnostics>*/ ::= ?
@@ -81,32 +82,33 @@ class Compiler:
     has_terminated := false
     was_killed_because_of_timeout := false
 
-    file_server := TcpFileServer protocol
-    file_server_port := file_server.run
-    task:: catch --trace:
-      try:
-        writer := Writer cpp_to
-        writer.write "$file_server_port\n"
-        writer.write compiler_input
-      finally:
-        cpp_to.close
+    multiplex := MultiplexConnection cpp_from
+    multiplex.start_dispatch
+    to_parser := multiplex.compiler_to_parser
+    file_server := PipeFileServer protocol cpp_to multiplex.compiler_to_fs
+    file_server_line := file_server.run
 
     if timeout_ms_ > 0:
       task:: catch --trace:
         sleep --ms=timeout_ms_
         if not has_terminated:
+          print_on_stderr_ "Killing timeout"
           SIGKILL ::= 9
           pipe.kill_ cpp_pid SIGKILL
           was_killed_because_of_timeout = true
 
     did_crash := false
     try:
-      // Read the dependency information.
-      reader := BufferedReader cpp_from
+      writer := Writer cpp_to
+      writer.write "$file_server_line\n"
+      writer.write compiler_input
+
+      reader := BufferedReader to_parser
       read_callback.call reader
     finally:
       file_server.close
-      cpp_from.close
+      to_parser.close
+      multiplex.close
 
       exit_value := pipe.wait_for cpp_pid
       verbose: "Compiler terminated with exit_signal: $(pipe.exit_signal exit_value)"
