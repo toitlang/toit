@@ -25,25 +25,6 @@
 
 namespace toit {
 
-class VM;
-
-class ProcessRunner {
- public:
-  ProcessRunner(VM* vm) : _vm(vm), _process(null) { }
-  void start();
-  Interpreter::Result run();
-
-  virtual void on_message(SystemMessage* message) = 0;
-  bool send(int pid, int type, void* data, int length);
-
- private:
-  VM* _vm;
-  Process* _process;
-
-  Message* next() const;
-  void advance();
-};
-
 // Process is linked into two different linked lists, so we have to make
 // use of the arbitrary N template argument to distinguish the two.
 typedef LinkedList<Process, 1> ProcessListFromProcessGroup;
