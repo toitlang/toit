@@ -1,4 +1,4 @@
-// The location of this toit file.
+// Keep this comment, as '@ in_dir' below needs a line to point to.
 /*
 @ in_dir
 */

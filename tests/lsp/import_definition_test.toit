@@ -1,4 +1,4 @@
-// The location of this toit file.
+// Keep this comment, as '@ import_definition_test' needs a line to point to.
 /*
 @ import_definition_test
 */

@@ -1,4 +1,4 @@
-// The location of this toit file.
+// Keep this comment, as '@ target_module' needs a line to point to.
 /*
 @ target_module
 */
