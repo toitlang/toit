@@ -17,6 +17,7 @@
 
 #include <vector>
 #include <string>
+#include <stdarg.h>
 
 #include "../../top.h"
 
@@ -48,13 +49,57 @@ struct LspRange {
 int utf16_offset_in_line(Source::Location location);
 LspRange range_to_lsp_range(Source::Range range, SourceManager* manager);
 
+struct LspWriter {
+  virtual ~LspWriter() {}
+  virtual void printf(const char* format, va_list& arguments) = 0;
+  virtual void write(const uint8* data, int size) = 0;
+};
+
+struct LspWriterStdout : public LspWriter {
+  void printf(const char* format, va_list& arguments) {
+    vprintf(format, arguments);
+  }
+
+  void write(const uint8* data, int size) {
+    int written = fwrite(data, 1, size, stdout);
+    fflush(stdout);
+    if (written != size) FATAL("Couldn't write data");
+  }
+};
+
 class LspProtocolBase {
+ public:
+  LspProtocolBase(LspWriter* writer) : _writer(writer) { }
+
  protected:
   void print_lsp_range(const LspRange& range);
+
+  void printf(const char* format, va_list& arguments) {
+    _writer->printf(format, arguments);
+  }
+
+  void printf(const char* format, ...) {
+    va_list arguments;
+    va_start(arguments, format);
+    printf(format, arguments);
+    va_end(arguments);
+  }
+
+  void write(const uint8* data, int size) {
+    _writer->write(data, size);
+  }
+
+  LspWriter* writer() { return _writer; }
+
+ private:
+  LspWriter* _writer;
 };
 
 class LspDiagnosticsProtocol : public LspProtocolBase {
  public:
+  // Inherit constructor.
+  using LspProtocolBase::LspProtocolBase;
+
   void emit(Diagnostics::Severity severity, const char* format, va_list& arguments);
   void emit(Diagnostics::Severity severity,
             const LspRange& range,
@@ -66,30 +111,45 @@ class LspDiagnosticsProtocol : public LspProtocolBase {
 
 class LspGotoDefinitionProtocol : public LspProtocolBase {
  public:
+  // Inherit constructor.
+  using LspProtocolBase::LspProtocolBase;
+
   void emit(const LspRange& range);
 };
 
 class LspCompletionProtocol : public LspProtocolBase {
  public:
+  // Inherit constructor.
+  using LspProtocolBase::LspProtocolBase;
+
   void emit(const std::string& name,
             CompletionKind kind);
 };
 
-class LspSummaryProtocol {
+class LspSummaryProtocol : public LspProtocolBase {
  public:
+  // Inherit constructor.
+  using LspProtocolBase::LspProtocolBase;
+
   void emit(const std::vector<Module*>& modules,
             int core_index,
             const ToitdocRegistry& toitdocs);
 };
 
-class LspSnapshotProtocol {
+class LspSnapshotProtocol : public LspProtocolBase {
  public:
+  // Inherit constructor.
+  using LspProtocolBase::LspProtocolBase;
+
   void fail();
   void emit(const SnapshotBundle& bundle);
 };
 
-class LspSemanticTokensProtocol {
+class LspSemanticTokensProtocol : public LspProtocolBase {
  public:
+  // Inherit constructor.
+  using LspProtocolBase::LspProtocolBase;
+
   // The number of tokens.
   void emit_size(int size);
 
@@ -110,6 +170,15 @@ class LspSemanticTokensProtocol {
 /// class.
 class LspProtocol {
  public:
+  explicit LspProtocol(LspWriter* writer)
+      : _diagnostics(writer)
+      , _goto_definition(writer)
+      , _completion(writer)
+      , _summary(writer)
+      , _snapshot(writer)
+      , _semantic(writer) {
+  }
+
   LspDiagnosticsProtocol* diagnostics() { return &_diagnostics; }
   LspGotoDefinitionProtocol* goto_definition() { return &_goto_definition; }
   LspCompletionProtocol* completion() { return &_completion; }

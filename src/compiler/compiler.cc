@@ -345,7 +345,8 @@ void Compiler::language_server(const Compiler::Configuration& compiler_config) {
     fs = &fs_lsp;
   }
 
-  LspProtocol lsp_protocol;
+  LspWriterStdout stdout_writer;
+  LspProtocol lsp_protocol(&stdout_writer);
   Lsp lsp(&lsp_protocol);
 
   const char* mode = reader.next("mode");
