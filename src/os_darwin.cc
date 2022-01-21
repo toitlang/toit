@@ -114,7 +114,7 @@ int OS::read_entire_file(char* name, uint8** buffer) {
 
 void OS::set_heap_tag(word tag) { }
 word OS::get_heap_tag() { return 0; }
-void OS::heap_summary_report() { }
+void OS::heap_summary_report(int max_pages) { }
 
 }
 
