@@ -299,6 +299,7 @@ class HeapObject : public Object {
   friend class ScavengeState;
   friend class ObjectHeap;
   friend class Heap;
+  friend class ProgramHeap;
   friend class BaseSnapshotWriter;
   friend class SnapshotReader;
   friend class compiler::ProgramBuilder;
@@ -983,6 +984,7 @@ class String : public HeapObject {
 
   friend class Heap;
   friend class ObjectHeap;
+  friend class ProgramHeap;
   friend class VMFinalizerNode;
 };
 

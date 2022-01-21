@@ -159,18 +159,6 @@ class NoGC {
   Heap* _heap;
 };
 
-// A program heap contains all the reflective structures to run the program.
-// The program heap also maintains a list of active processes using this heap.
-class ProgramHeap final : public Heap {
- public:
-  ProgramHeap(Program* program, Block* initial_block) : Heap(null, program, initial_block) {}
-  void migrate_to(Program* program);
-
-  String* allocate_string(const char* str);
-  String* allocate_string(const char* str, int length);
-  ByteArray* allocate_byte_array(const uint8*, int length);
-};
-
 class ObjectNotifier;
 class FinalizerNode;
 class VMFinalizerNode;

@@ -3,4 +3,4 @@
 // be found in the examples/LICENSE file.
 
 main:
-  print "Hello, World!"
+  print "Hello, Wørld!"

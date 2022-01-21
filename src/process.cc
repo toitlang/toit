@@ -326,9 +326,7 @@ void Process::clear_signal(Signal signal) {
 void Process::print() {
   printf("Process #%d\n", _id);
   Usage u = object_heap()->usage("heap");
-  Usage p = program()->usage();
   u.print(2);
-  p.print(2);
 }
 
 }

@@ -111,17 +111,31 @@ class Snapshot {
   const int _size;
 };
 
-class SnapshotAllocator {
+class AligningAllocator {
  public:
-  virtual bool initialize(int normal_block_count,
-                          int external_pointer_count,
-                          int external_int32_count,
-                          int external_byte_count) = 0;
+  virtual void skip_bytes(int byte_count) = 0;
+
+ protected:
+  virtual int byte_count() const = 0;
+  void round_bytes(int alignment) {
+    int bytes = byte_count();
+    int mask = alignment - 1;
+    int partial = bytes & mask;
+    if (partial != 0) {
+      skip_bytes(alignment - partial);
+    }
+  }
+};
+
+class SnapshotAllocator : public AligningAllocator {
+ public:
+  virtual bool initialize(int pointer_count,
+                          int byte_count) = 0;
   virtual HeapObject* allocate_object(TypeTag tag, int length) = 0;
-  virtual Object** allocate_external_pointers(int count) = 0;
-  virtual uint16* allocate_external_uint16s(int count) = 0;
-  virtual int32* allocate_external_int32s(int count) = 0;
-  virtual uint8* allocate_external_bytes(int count) = 0;
+  virtual Object** allocate_pointers(int count) = 0;
+  virtual uint16* allocate_uint16s(int count) = 0;
+  virtual int32* allocate_int32s(int count) = 0;
+  virtual uint8* allocate_bytes(int count) = 0;
 };
 
 class SnapshotReader {
@@ -130,10 +144,8 @@ class SnapshotReader {
   ~SnapshotReader();
 
   bool initialize(int snapshot_size,
-                  int normal_block_count,
-                  int external_pointer_count,
-                  int external_int32_count,
-                  int external_byte_count,
+                  int pointer_count,
+                  int byte_count,
                   int table_length,
                   int large_integer_id);
 
@@ -175,10 +187,10 @@ class SnapshotReader {
 
  private:
   HeapObject* allocate_object(TypeTag tag, int length);
-  Object** allocate_external_pointers(int count);
-  uint16* allocate_external_uint16s(int count);
-  int32* allocate_external_int32s(int count);
-  uint8* allocate_external_bytes(int count);
+  Object** allocate_pointers(int count);
+  uint16* allocate_uint16s(int count);
+  int32* allocate_int32s(int count);
+  uint8* allocate_bytes(int count);
 
   const uint8* const _buffer;
   int const _length;
@@ -201,10 +213,9 @@ class SnapshotWriter {
   virtual void write_object(Object* object) = 0;
   virtual void write_byte(uint8 value) = 0;
   virtual void write_external_object_table(Object** table, int length) = 0;
-  virtual void write_external_list_int32(List<int32> list) = 0;
-  virtual void write_external_list_uint16(List<uint16> list) = 0;
-  virtual void write_external_list_uint8(List<uint8> list) = 0;
-
+  virtual void write_list_int32(List<int32> list) = 0;
+  virtual void write_list_uint16(List<uint16> list) = 0;
+  virtual void write_list_uint8(List<uint8> list) = 0;
 };
 
 class SnapshotGenerator {
@@ -213,7 +224,6 @@ class SnapshotGenerator {
   ~SnapshotGenerator();
 
   void generate(Program* program);
-  void generate(Object* object, Process* process);
 
   uint8* the_buffer() const { return _buffer; }
   int the_length() const { return _length; }
@@ -231,9 +241,7 @@ class SnapshotGenerator {
 
   void generate(int header_byte_size,
                 std::function<void (EmittingSnapshotWriter*)> write_header,
-                std::function<void (SnapshotWriter*)> write_object,
-                bool only_process_heap,
-                Process* process = null);
+                std::function<void (SnapshotWriter*)> write_object);
 };
 
 class RelocationBits;

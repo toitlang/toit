@@ -30,7 +30,7 @@ namespace compiler {
 ProgramBuilder::ProgramBuilder(Program* program)
     // We assume that allocate_initial_block succeeds since ProgramBuilder is
     // run on the server.
-    : _program_heap(program, VM::current()->heap_memory()->allocate_initial_block())
+    : _program_heap(program)
     , _program(program) {
 }
 
@@ -267,11 +267,7 @@ void ProgramBuilder::set_built_in_class_tags_and_sizes() {
 }
 
 void ProgramBuilder::set_up_skeleton_program() {
-  int minimal_object_size = Instance::allocation_size(0);
-  NoGC check(&_program_heap);
-
-  _program->set_null_object(static_cast<Instance*>(_program_heap._allocate_raw(minimal_object_size)));
-  _program->null_object()->_set_header(_program, _program->null_class_id());
+  _program->set_null_object(_program_heap.allocate_instance(_program->null_class_id()));
   _program->set_true_object(_program_heap.allocate_instance(_program->true_class_id()));
   _program->set_false_object(_program_heap.allocate_instance(_program->false_class_id()));
   auto sentinel = _program_heap.allocate_instance(_program->lazy_initializer_class_id());
@@ -345,7 +341,6 @@ Program* ProgramBuilder::cook() {
 
   // Clear the symbol table not used during execution.
   _symbols.clear();
-  _program_heap.migrate_to(_program);
   return _program;
 }
 

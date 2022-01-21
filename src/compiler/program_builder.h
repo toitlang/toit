@@ -20,7 +20,9 @@
 
 #include "../top.h"
 #include "../objects.h"
-#include "../heap.h"
+#include "../program.h"
+
+#include "program_heap.h"
 
 #include "list.h"
 #include "map.h"

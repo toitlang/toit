@@ -26,7 +26,7 @@ int Program::absolute_bci_from_bcp(uint8* bcp) const {
 #ifndef TOIT_FREERTOS
 
 void Program::write(SnapshotWriter* st) {
-  st->write_external_list_uint16(class_bits);
+  st->write_list_uint16(class_bits);
   // From now on, it's safe to just refer to classes by their id.
   global_variables.write(st);
   literals.write(st);
@@ -48,10 +48,10 @@ void Program::write(SnapshotWriter* st) {
   for (int i = 0; i < ENTRY_POINTS_COUNT; i++) {
     st->write_cardinal(_entry_point_indexes[i]);
   }
-  st->write_external_list_uint16(class_check_ids);
-  st->write_external_list_uint16(interface_check_offsets);
-  st->write_external_list_int32(dispatch_table);
-  st->write_external_list_uint8(bytecodes);
+  st->write_list_uint16(class_check_ids);
+  st->write_list_uint16(interface_check_offsets);
+  st->write_list_int32(dispatch_table);
+  st->write_list_uint8(bytecodes);
   // The source-mapping is not serialized into the snapshot.
 }
 
@@ -99,16 +99,6 @@ void Program::do_roots(RootCallback* callback) {
   literals.do_roots(callback);
 }
 
-Usage Program::usage() {
-  Usage total("program", sizeof(Program));
-  total.add_external(tables_size());
-  Usage h = _heap.usage("program object heap");
-  total.add(&h);
-  total.add_external(4 + dispatch_table.length() * 4);  // Length + dispatch entries.
-  total.add_external(4 + bytecodes.length());  // Length + bytecodes.
-  return total;
-}
-
 int Program::number_of_unused_dispatch_table_entries() {
   int count = 0;
   for (int i = 0; i < dispatch_table.length(); i++) {
@@ -139,7 +129,7 @@ void Program::do_pointers(PointerCallback* callback) {
   callback->c_address(reinterpret_cast<void**>(&interface_check_offsets.data()));
   callback->c_address(reinterpret_cast<void**>(&class_bits.data()));
 
-  _heap.do_pointers(this, callback);
+  _heap->do_pointers(callback);
 }
 
 }  // namespace toit

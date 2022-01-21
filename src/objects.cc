@@ -455,7 +455,7 @@ void ByteArray::write_content(SnapshotWriter* st) {
     if (has_external_address() && external_tag() != RawByteTag) {
       FATAL("Can only serialize raw bytes");
     }
-    st->write_external_list_uint8(List<uint8>(bytes.address(), bytes.length()));
+    st->write_list_uint8(List<uint8>(bytes.address(), bytes.length()));
   } else {
     for (int index = 0; index < bytes.length(); index++) {
       st->write_cardinal(bytes.at(index));
@@ -476,7 +476,7 @@ void String::write_content(SnapshotWriter* st) {
   int len = bytes.length();
   if (len > String::SNAPSHOT_INTERNAL_SIZE_CUTOFF) {
     // TODO(florian): we should remove the '\0'.
-    st->write_external_list_uint8(List<uint8>(bytes.address(), bytes.length() + 1));
+    st->write_list_uint8(List<uint8>(bytes.address(), bytes.length() + 1));
   } else {
     ASSERT(content_on_heap());
     for (int index = 0; index < len; index++) st->write_byte(bytes.at(index));
