@@ -1,4 +1,4 @@
-tests/negative/prefixed_assign3b_test.toit:6:6: error: Can't assign to class 'A'
+tests/negative/prefixed_assign3b_test.toit:8:6: error: Can't assign to class 'A'
   pa.A = 3
      ^
 Compilation failed.

@@ -1,4 +1,4 @@
-tests/negative/static_setter_test.toit:7:3: error: Argument mismatch for 'foo'
+tests/negative/static_setter_test.toit:9:3: error: Argument mismatch for 'foo'
   foo 42
   ^~~
 Compilation failed.

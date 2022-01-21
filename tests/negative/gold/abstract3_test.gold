@@ -1,4 +1,4 @@
-tests/negative/abstract3_test.toit:7:4: error: Can't instantiate abstract class
+tests/negative/abstract3_test.toit:9:4: error: Can't instantiate abstract class
   (A).foo
    ^
 Compilation failed.

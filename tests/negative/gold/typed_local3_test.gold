@@ -1,7 +1,7 @@
-tests/negative/typed_local3_test.toit:7:3: error: Unresolved identifier: 'unresolved'
+tests/negative/typed_local3_test.toit:9:3: error: Unresolved identifier: 'unresolved'
   unresolved
   ^~~~~~~~~~
-tests/negative/typed_local3_test.toit:5:21: error: Type mismatch. Expected 'int'. Got 'string'
+tests/negative/typed_local3_test.toit:7:21: error: Type mismatch. Expected 'int'. Got 'string'
   while local /int? := stop:
                     ^~
 Compilation failed.

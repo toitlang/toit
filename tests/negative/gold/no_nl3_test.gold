@@ -1,7 +1,7 @@
-tests/negative/no_nl3_test.toit:7:5: error: Incomplete expression
+tests/negative/no_nl3_test.toit:9:5: error: Incomplete expression
   if
     ^
-tests/negative/no_nl3_test.toit:7:5: error: Missing ':' for 'if' condition
+tests/negative/no_nl3_test.toit:9:5: error: Missing ':' for 'if' condition
   if
     ^
 Compilation failed.

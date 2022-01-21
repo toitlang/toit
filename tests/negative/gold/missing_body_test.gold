@@ -1,19 +1,19 @@
-tests/negative/missing_body_test.toit:3:1: error: Missing body
+tests/negative/missing_body_test.toit:5:1: error: Missing body
 foo
 ^~~
-tests/negative/missing_body_test.toit:4:1: error: Missing body
+tests/negative/missing_body_test.toit:6:1: error: Missing body
 bar x y=unresolved
 ^~~
-tests/negative/missing_body_test.toit:7:3: error: Missing body
+tests/negative/missing_body_test.toit:9:3: error: Missing body
   foo
   ^~~
-tests/negative/missing_body_test.toit:8:3: error: Missing body
+tests/negative/missing_body_test.toit:10:3: error: Missing body
   bar x y=unresolved
   ^~~
-tests/negative/missing_body_test.toit:4:9: error: Unresolved identifier: 'unresolved'
+tests/negative/missing_body_test.toit:6:9: error: Unresolved identifier: 'unresolved'
 bar x y=unresolved
         ^~~~~~~~~~
-tests/negative/missing_body_test.toit:8:11: error: Unresolved identifier: 'unresolved'
+tests/negative/missing_body_test.toit:10:11: error: Unresolved identifier: 'unresolved'
   bar x y=unresolved
           ^~~~~~~~~~
 Compilation failed.

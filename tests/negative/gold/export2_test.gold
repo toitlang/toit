@@ -1,4 +1,4 @@
-tests/negative/export2_test.toit:4:8: error: Unresolved export 'foo'
+tests/negative/export2_test.toit:6:8: error: Unresolved export 'foo'
 export foo
        ^~~
 Compilation failed.

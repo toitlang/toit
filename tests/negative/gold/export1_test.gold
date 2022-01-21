@@ -1,4 +1,4 @@
-tests/negative/export1_test.toit:4:8: error: Can't export prefix 'foo'
+tests/negative/export1_test.toit:6:8: error: Can't export prefix 'foo'
 export foo
        ^~~
 Compilation failed.

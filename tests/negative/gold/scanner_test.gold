@@ -1,82 +1,82 @@
-tests/negative/scanner_test.toit:5:1: error: Can't have tabs in leading whitespace
+tests/negative/scanner_test.toit:7:1: error: Can't have tabs in leading whitespace
 	/* with tabs */
 ^
-tests/negative/scanner_test.toit:6:3: error: Can't have tabs in leading whitespace
+tests/negative/scanner_test.toit:8:3: error: Can't have tabs in leading whitespace
   	/* with tabs */
-  ^
-tests/negative/scanner_test.toit:8:1: error: Can't have tabs in leading whitespace
-	expect true
-^
-tests/negative/scanner_test.toit:9:3: error: Can't have tabs in leading whitespace
-  	expect true
   ^
 tests/negative/scanner_test.toit:10:1: error: Can't have tabs in leading whitespace
 	expect true
 ^
-tests/negative/scanner_test.toit:11:2: error: Can't have tabs in leading whitespace
- 	expect true
- ^
-tests/negative/scanner_test.toit:12:3: error: Can't have tabs in leading whitespace
+tests/negative/scanner_test.toit:11:3: error: Can't have tabs in leading whitespace
   	expect true
   ^
-tests/negative/scanner_test.toit:13:4: error: Can't have tabs in leading whitespace
+tests/negative/scanner_test.toit:12:1: error: Can't have tabs in leading whitespace
+	expect true
+^
+tests/negative/scanner_test.toit:13:2: error: Can't have tabs in leading whitespace
+ 	expect true
+ ^
+tests/negative/scanner_test.toit:14:3: error: Can't have tabs in leading whitespace
+  	expect true
+  ^
+tests/negative/scanner_test.toit:15:4: error: Can't have tabs in leading whitespace
    	expect true
    ^
-tests/negative/scanner_test.toit:14:5: error: Can't have tabs in leading whitespace
+tests/negative/scanner_test.toit:16:5: error: Can't have tabs in leading whitespace
     	expect true
     ^
-tests/negative/scanner_test.toit:15:6: error: Can't have tabs in leading whitespace
+tests/negative/scanner_test.toit:17:6: error: Can't have tabs in leading whitespace
      	expect true
      ^
-tests/negative/scanner_test.toit:16:7: error: Can't have tabs in leading whitespace
+tests/negative/scanner_test.toit:18:7: error: Can't have tabs in leading whitespace
       	expect true
       ^
-tests/negative/scanner_test.toit:17:8: error: Can't have tabs in leading whitespace
+tests/negative/scanner_test.toit:19:8: error: Can't have tabs in leading whitespace
        	expect true
        ^
-tests/negative/scanner_test.toit:18:1: error: Can't have tabs in leading whitespace
-	unresolved	unresolved2
-^
 tests/negative/scanner_test.toit:20:1: error: Can't have tabs in leading whitespace
-	"0123456789112345678921234567893123456789412345678951234567896123456789712345678981234567899123456789A123456789B123456789C123456789D1234567891E23456789F23456789" + unresolved
-^
-tests/negative/scanner_test.toit:21:1: error: Can't have tabs in leading whitespace
-	"0123456789112345678921234567893123456789412345678951234567896"	 +		 "123456789712345678981234567899123456789A123456789B123456789C123456789D1234567891E23456789F23456789" + unresolved
+	unresolved	unresolved2
 ^
 tests/negative/scanner_test.toit:22:1: error: Can't have tabs in leading whitespace
-	"0123456789112345	678921234567893123456789412345678951234567896"	 +	unresolved
+	"0123456789112345678921234567893123456789412345678951234567896123456789712345678981234567899123456789A123456789B123456789C123456789D1234567891E23456789F23456789" + unresolved
 ^
 tests/negative/scanner_test.toit:23:1: error: Can't have tabs in leading whitespace
+	"0123456789112345678921234567893123456789412345678951234567896"	 +		 "123456789712345678981234567899123456789A123456789B123456789C123456789D1234567891E23456789F23456789" + unresolved
+^
+tests/negative/scanner_test.toit:24:1: error: Can't have tabs in leading whitespace
+	"0123456789112345	678921234567893123456789412345678951234567896"	 +	unresolved
+^
+tests/negative/scanner_test.toit:25:1: error: Can't have tabs in leading whitespace
 	"Error is not allowed to be off: 0123456789112345678921234567893123456789412345678951234567896123456789712345678981234567899123456789A123456789B123456789C123456789D1234567891E23456789F23456789" +	unresolved
 ^
-tests/negative/scanner_test.toit:18:13: error: Unresolved identifier: 'unresolved2'
+tests/negative/scanner_test.toit:20:13: error: Unresolved identifier: 'unresolved2'
 	unresolved	unresolved2
 	          	^~~~~~~~~~~
-tests/negative/scanner_test.toit:18:2: error: Unresolved identifier: 'unresolved'
+tests/negative/scanner_test.toit:20:2: error: Unresolved identifier: 'unresolved'
 	unresolved	unresolved2
 	^~~~~~~~~~
-tests/negative/scanner_test.toit:20:166: error: Unresolved identifier: 'unresolved'
+tests/negative/scanner_test.toit:22:166: error: Unresolved identifier: 'unresolved'
 	"0123456789112345678921234567893123456789412345678951234567896123456789712345678981234567899123456789A123456789B123456789C123456789D1234567891E23456789F23456789" + unresolved
 	                                                                                                                                                                    ^~~~~~~~~~
-tests/negative/scanner_test.toit:21:174: error: Unresolved identifier: 'unresolved'
+tests/negative/scanner_test.toit:23:174: error: Unresolved identifier: 'unresolved'
 	"0123456789112345678921234567893123456789412345678951234567896"	 +		 "123456789712345678981234567899123456789A123456789B123456789C123456789D1234567891E23456789F23456789" + unresolved
 	                                                               	  		                                                                                                        ^~~~~~~~~~
-tests/negative/scanner_test.toit:22:70: error: Unresolved identifier: 'unresolved'
+tests/negative/scanner_test.toit:24:70: error: Unresolved identifier: 'unresolved'
 	"0123456789112345	678921234567893123456789412345678951234567896"	 +	unresolved
 	                 	                                              	  	^~~~~~~~~~
-tests/negative/scanner_test.toit:23:198: error: Unresolved identifier: 'unresolved'
+tests/negative/scanner_test.toit:25:198: error: Unresolved identifier: 'unresolved'
 	"Error is not allowed to be off: 0123456789112345678921234567893123456789412345678951234567896123456789712345678981234567899123456789A123456789B123456789C123456789D1234567891E23456789F23456789" +	unresolved
 	                                                                                                                                                                                                   	^~~~~~~~~~
-tests/negative/scanner_test.toit:26:167: error: Unresolved identifier: 'unresolved'
+tests/negative/scanner_test.toit:28:167: error: Unresolved identifier: 'unresolved'
   "0123456789112345678921234567893123456789412345678951234567896123456789712345678981234567899123456789A123456789B123456789C123456789D1234567891E23456789F23456789" + unresolved
                                                                                                                                                                       ^~~~~~~~~~
-tests/negative/scanner_test.toit:27:175: error: Unresolved identifier: 'unresolved'
+tests/negative/scanner_test.toit:29:175: error: Unresolved identifier: 'unresolved'
   "0123456789112345678921234567893123456789412345678951234567896"	 +		 "123456789712345678981234567899123456789A123456789B123456789C123456789D1234567891E23456789F23456789" + unresolved
                                                                  	  		                                                                                                        ^~~~~~~~~~
-tests/negative/scanner_test.toit:28:72: error: Unresolved identifier: 'unresolved'
+tests/negative/scanner_test.toit:30:72: error: Unresolved identifier: 'unresolved'
   "0123456789112345	6789	21234567893123456789412345678951234567896"	 +	unresolved
                    	    	                                          	  	^~~~~~~~~~
-tests/negative/scanner_test.toit:29:199: error: Unresolved identifier: 'unresolved'
+tests/negative/scanner_test.toit:31:199: error: Unresolved identifier: 'unresolved'
   "Error is not allowed to be off: 0123456789112345678921234567893123456789412345678951234567896123456789712345678981234567899123456789A123456789B123456789C123456789D1234567891E23456789F23456789" +	unresolved
                                                                                                                                                                                                      	^~~~~~~~~~
 Compilation failed.

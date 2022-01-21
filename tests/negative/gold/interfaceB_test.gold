@@ -1,4 +1,4 @@
-tests/negative/interfaceB_test.toit:4:3: error: Interfaces can't have fields
+tests/negative/interfaceB_test.toit:6:3: error: Interfaces can't have fields
   x := null
   ^
 Compilation failed.

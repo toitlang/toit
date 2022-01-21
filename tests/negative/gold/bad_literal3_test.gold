@@ -1,7 +1,7 @@
-tests/negative/bad_literal3_test.toit:4:9: error: Invalid number literal
+tests/negative/bad_literal3_test.toit:6:9: error: Invalid number literal
   print 123__456
         ^~~~~~~~
-tests/negative/bad_literal3_test.toit:5:3: error: Unresolved identifier: 'unresolved'
+tests/negative/bad_literal3_test.toit:7:3: error: Unresolved identifier: 'unresolved'
   unresolved
   ^~~~~~~~~~
 Compilation failed.

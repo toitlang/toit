@@ -1,13 +1,13 @@
-tests/negative/none_test.toit:4:3: warning: Return type of function is 'none'. Can't return a value
+tests/negative/none_test.toit:6:3: warning: Return type of function is 'none'. Can't return a value
   return 499
   ^~~~~~
-tests/negative/none_test.toit:14:3: error: Unresolved identifier: 'unresolved'
+tests/negative/none_test.toit:16:3: error: Unresolved identifier: 'unresolved'
   unresolved
   ^~~~~~~~~~
-tests/negative/none_test.toit:7:7: error: Can't invoke method on 'none' type
+tests/negative/none_test.toit:9:7: error: Can't invoke method on 'none' type
   foo.call_on_none
       ^~~~~~~~~~~~
-tests/negative/none_test.toit:10:7: error: Can't invoke method on 'none' type
+tests/negative/none_test.toit:12:7: error: Can't invoke method on 'none' type
   bar.call_on_none
       ^~~~~~~~~~~~
 Compilation failed.

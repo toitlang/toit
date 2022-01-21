@@ -1,28 +1,28 @@
-tests/negative/deprecation_test.toit:89:3: error: Unresolved identifier: 'unresolved'
+tests/negative/deprecation_test.toit:91:3: error: Unresolved identifier: 'unresolved'
   unresolved
   ^~~~~~~~~~
-tests/negative/deprecation_test.toit:69:17: warning: Class 'Deprecated' is deprecated
+tests/negative/deprecation_test.toit:71:17: warning: Class 'Deprecated' is deprecated
   deprecated := Deprecated
                 ^~~~~~~~~~
-tests/negative/deprecation_test.toit:70:28: warning: Class 'Deprecated' is deprecated
+tests/negative/deprecation_test.toit:72:28: warning: Class 'Deprecated' is deprecated
   deprecated2 := Deprecated.named
                            ^
-tests/negative/deprecation_test.toit:74:8: warning: Deprecated constructor of 'A'
+tests/negative/deprecation_test.toit:76:8: warning: Deprecated constructor of 'A'
   a := A
        ^
-tests/negative/deprecation_test.toit:77:5: warning: Deprecated 'A.method1'
+tests/negative/deprecation_test.toit:79:5: warning: Deprecated 'A.method1'
   a.method1
     ^~~~~~~
-tests/negative/deprecation_test.toit:80:5: warning: Deprecated 'A.some_field'
+tests/negative/deprecation_test.toit:82:5: warning: Deprecated 'A.some_field'
   a.some_field
     ^~~~~~~~~~
-tests/negative/deprecation_test.toit:82:4: warning: Deprecated 'A.some_static_field'
+tests/negative/deprecation_test.toit:84:4: warning: Deprecated 'A.some_static_field'
   A.some_static_field
    ^
-tests/negative/deprecation_test.toit:84:3: warning: Deprecated 'global'
+tests/negative/deprecation_test.toit:86:3: warning: Deprecated 'global'
   global
   ^~~~~~
-tests/negative/deprecation_test.toit:86:3: warning: Deprecated 'fun'
+tests/negative/deprecation_test.toit:88:3: warning: Deprecated 'fun'
   fun
   ^~~
 Compilation failed.

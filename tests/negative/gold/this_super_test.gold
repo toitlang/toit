@@ -1,139 +1,139 @@
-tests/negative/this_super_test.toit:3:1: error: Can't use 'this' as name for a method
+tests/negative/this_super_test.toit:5:1: error: Can't use 'this' as name for a method
 this:
 ^~~~
-tests/negative/this_super_test.toit:4:1: error: Can't use 'super' as name for a method
+tests/negative/this_super_test.toit:6:1: error: Can't use 'super' as name for a method
 super:
 ^~~~~
-tests/negative/this_super_test.toit:6:1: error: Can't use 'this' as name for a method
+tests/negative/this_super_test.toit:8:1: error: Can't use 'this' as name for a method
 this x:
 ^~~~
-tests/negative/this_super_test.toit:7:1: error: Can't use 'super' as name for a method
+tests/negative/this_super_test.toit:9:1: error: Can't use 'super' as name for a method
 super x:
 ^~~~~
-tests/negative/this_super_test.toit:9:7: error: Can't use 'this' as name for a class
+tests/negative/this_super_test.toit:11:7: error: Can't use 'this' as name for a class
 class this:
       ^~~~
-tests/negative/this_super_test.toit:10:7: error: Can't use 'super' as name for a class
+tests/negative/this_super_test.toit:12:7: error: Can't use 'super' as name for a class
 class super:
       ^~~~~
-tests/negative/this_super_test.toit:12:11: error: Can't use 'this' as name for a interface
+tests/negative/this_super_test.toit:14:11: error: Can't use 'this' as name for a interface
 interface this:
           ^~~~
-tests/negative/this_super_test.toit:13:11: error: Can't use 'super' as name for a interface
+tests/negative/this_super_test.toit:15:11: error: Can't use 'super' as name for a interface
 interface super:
           ^~~~~
-tests/negative/this_super_test.toit:15:1: error: Can't use 'this' as name for a field
+tests/negative/this_super_test.toit:17:1: error: Can't use 'this' as name for a field
 this := 499
 ^~~~
-tests/negative/this_super_test.toit:16:1: error: Can't use 'super' as name for a field
+tests/negative/this_super_test.toit:18:1: error: Can't use 'super' as name for a field
 super := 42
 ^~~~~
-tests/negative/this_super_test.toit:18:1: error: Can't use 'this' as name for a field
+tests/negative/this_super_test.toit:20:1: error: Can't use 'this' as name for a field
 this ::= "foo"
 ^~~~
-tests/negative/this_super_test.toit:19:1: error: Can't use 'super' as name for a field
+tests/negative/this_super_test.toit:21:1: error: Can't use 'super' as name for a field
 super ::= "bar"
 ^~~~~
-tests/negative/this_super_test.toit:9:7: error: Redefinition of 'this' as class
+tests/negative/this_super_test.toit:11:7: error: Redefinition of 'this' as class
 class this:
       ^~~~
-tests/negative/this_super_test.toit:3:1: note: First definition of 'this'
+tests/negative/this_super_test.toit:5:1: note: First definition of 'this'
 this:
 ^~~~
-tests/negative/this_super_test.toit:12:11: error: Redefinition of 'this' as class
+tests/negative/this_super_test.toit:14:11: error: Redefinition of 'this' as class
 interface this:
           ^~~~
-tests/negative/this_super_test.toit:3:1: note: First definition of 'this'
+tests/negative/this_super_test.toit:5:1: note: First definition of 'this'
 this:
 ^~~~
-tests/negative/this_super_test.toit:15:1: error: Redefinition of 'this' as global
+tests/negative/this_super_test.toit:17:1: error: Redefinition of 'this' as global
 this := 499
 ^~~~
-tests/negative/this_super_test.toit:3:1: note: First definition of 'this'
+tests/negative/this_super_test.toit:5:1: note: First definition of 'this'
 this:
 ^~~~
-tests/negative/this_super_test.toit:18:1: error: Redefinition of 'this' as global
+tests/negative/this_super_test.toit:20:1: error: Redefinition of 'this' as global
 this ::= "foo"
 ^~~~
-tests/negative/this_super_test.toit:3:1: note: First definition of 'this'
+tests/negative/this_super_test.toit:5:1: note: First definition of 'this'
 this:
 ^~~~
-tests/negative/this_super_test.toit:6:1: error: Redefinition of 'this' as method
+tests/negative/this_super_test.toit:8:1: error: Redefinition of 'this' as method
 this x:
 ^~~~
-tests/negative/this_super_test.toit:3:1: note: First definition of 'this'
+tests/negative/this_super_test.toit:5:1: note: First definition of 'this'
 this:
 ^~~~
-tests/negative/this_super_test.toit:10:7: error: Redefinition of 'super' as class
+tests/negative/this_super_test.toit:12:7: error: Redefinition of 'super' as class
 class super:
       ^~~~~
-tests/negative/this_super_test.toit:4:1: note: First definition of 'super'
+tests/negative/this_super_test.toit:6:1: note: First definition of 'super'
 super:
 ^~~~~
-tests/negative/this_super_test.toit:13:11: error: Redefinition of 'super' as class
+tests/negative/this_super_test.toit:15:11: error: Redefinition of 'super' as class
 interface super:
           ^~~~~
-tests/negative/this_super_test.toit:4:1: note: First definition of 'super'
+tests/negative/this_super_test.toit:6:1: note: First definition of 'super'
 super:
 ^~~~~
-tests/negative/this_super_test.toit:16:1: error: Redefinition of 'super' as global
+tests/negative/this_super_test.toit:18:1: error: Redefinition of 'super' as global
 super := 42
 ^~~~~
-tests/negative/this_super_test.toit:4:1: note: First definition of 'super'
+tests/negative/this_super_test.toit:6:1: note: First definition of 'super'
 super:
 ^~~~~
-tests/negative/this_super_test.toit:19:1: error: Redefinition of 'super' as global
+tests/negative/this_super_test.toit:21:1: error: Redefinition of 'super' as global
 super ::= "bar"
 ^~~~~
-tests/negative/this_super_test.toit:4:1: note: First definition of 'super'
+tests/negative/this_super_test.toit:6:1: note: First definition of 'super'
 super:
 ^~~~~
-tests/negative/this_super_test.toit:7:1: error: Redefinition of 'super' as method
+tests/negative/this_super_test.toit:9:1: error: Redefinition of 'super' as method
 super x:
 ^~~~~
-tests/negative/this_super_test.toit:4:1: note: First definition of 'super'
+tests/negative/this_super_test.toit:6:1: note: First definition of 'super'
 super:
 ^~~~~
-tests/negative/this_super_test.toit:21:8: error: Unexpected 'super' in type
+tests/negative/this_super_test.toit:23:8: error: Unexpected 'super' in type
 foo1 x/super.A:
        ^~~~~
-tests/negative/this_super_test.toit:22:3: error: Can't use 'this' as name for a local variable
+tests/negative/this_super_test.toit:24:3: error: Can't use 'this' as name for a local variable
   this := "foo"
   ^~~~
-tests/negative/this_super_test.toit:23:3: error: Can't use 'super' as name for a local variable
+tests/negative/this_super_test.toit:25:3: error: Can't use 'super' as name for a local variable
   super := "bar"
   ^~~~~
-tests/negative/this_super_test.toit:24:3: error: Can't access 'super' in static method
+tests/negative/this_super_test.toit:26:3: error: Can't access 'super' in static method
   super
   ^~~~~
-tests/negative/this_super_test.toit:25:3: error: Can't access 'this' in static method
+tests/negative/this_super_test.toit:27:3: error: Can't access 'this' in static method
   this
   ^~~~
-tests/negative/this_super_test.toit:27:8: error: Can't use 'this' as name for a parameter
+tests/negative/this_super_test.toit:29:8: error: Can't use 'this' as name for a parameter
 global this super:
        ^~~~
-tests/negative/this_super_test.toit:27:13: error: Can't use 'super' as name for a parameter
+tests/negative/this_super_test.toit:29:13: error: Can't use 'super' as name for a parameter
 global this super:
             ^~~~~
-tests/negative/this_super_test.toit:34:24: error: Can't use 'this' as name for a parameter
+tests/negative/this_super_test.toit:36:24: error: Can't use 'this' as name for a parameter
   static statik_method this super:
                        ^~~~
-tests/negative/this_super_test.toit:34:29: error: Can't use 'super' as name for a parameter
+tests/negative/this_super_test.toit:36:29: error: Can't use 'super' as name for a parameter
   static statik_method this super:
                             ^~~~~
-tests/negative/this_super_test.toit:35:5: error: Can't access 'this' in static method
+tests/negative/this_super_test.toit:37:5: error: Can't access 'this' in static method
     this
     ^~~~
-tests/negative/this_super_test.toit:36:5: error: Can't access 'super' in static method
+tests/negative/this_super_test.toit:38:5: error: Can't access 'super' in static method
     super
     ^~~~~
-tests/negative/this_super_test.toit:30:10: error: Can't use 'this' as name for a parameter
+tests/negative/this_super_test.toit:32:10: error: Can't use 'this' as name for a parameter
   method this super:
          ^~~~
-tests/negative/this_super_test.toit:30:15: error: Can't use 'super' as name for a parameter
+tests/negative/this_super_test.toit:32:15: error: Can't use 'super' as name for a parameter
   method this super:
               ^~~~~
-tests/negative/this_super_test.toit:32:5: error: Unresolved identifier: 'method'
+tests/negative/this_super_test.toit:34:5: error: Unresolved identifier: 'method'
     super
     ^~~~~
 Compilation failed.

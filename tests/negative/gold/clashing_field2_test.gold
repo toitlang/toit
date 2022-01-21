@@ -1,13 +1,13 @@
-tests/negative/clashing_field2_test.toit:5:3: error: Redefinition of 'foo'
+tests/negative/clashing_field2_test.toit:7:3: error: Redefinition of 'foo'
   foo:
   ^~~
-tests/negative/clashing_field2_test.toit:4:3: note: First definition of 'foo'
+tests/negative/clashing_field2_test.toit:6:3: note: First definition of 'foo'
   foo := 1
   ^~~
-tests/negative/clashing_field2_test.toit:7:3: error: Redefinition of 'foo'
+tests/negative/clashing_field2_test.toit:9:3: error: Redefinition of 'foo'
   foo= x:
   ^~~~
-tests/negative/clashing_field2_test.toit:4:3: note: First definition of 'foo'
+tests/negative/clashing_field2_test.toit:6:3: note: First definition of 'foo'
   foo := 1
   ^~~
 Compilation failed.

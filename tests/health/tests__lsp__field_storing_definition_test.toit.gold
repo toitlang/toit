@@ -1,15 +1,15 @@
-tests/lsp/field_storing_definition_test.toit:59:23: error: Field-storing parameter not allowed in static functions
+tests/lsp/field_storing_definition_test.toit:61:23: error: Field-storing parameter not allowed in static functions
   constructor.factory .field_B1:
                       ^~~~~~~~~
-tests/lsp/field_storing_definition_test.toit:93:14: error: Field-storing parameter not allowed in static functions
+tests/lsp/field_storing_definition_test.toit:95:14: error: Field-storing parameter not allowed in static functions
   static foo .field_B1:
              ^~~~~~~~~
-tests/lsp/field_storing_definition_test.toit:72:7: error: Can't set final field
+tests/lsp/field_storing_definition_test.toit:74:7: error: Can't set final field
       .field_B2
       ^~~~~~~~~
-tests/lsp/field_storing_definition_test.toit:80:7: error: Can't set final field
+tests/lsp/field_storing_definition_test.toit:82:7: error: Can't set final field
       .field_B4
       ^~~~~~~~~
-tests/lsp/field_storing_definition_test.toit:88:7: error: Can't set final field
+tests/lsp/field_storing_definition_test.toit:90:7: error: Can't set final field
       .field_B6:
       ^~~~~~~~~

@@ -1,27 +1,27 @@
-tests/lsp/type_definition_test.toit:93:8: error: Invalid type
+tests/lsp/type_definition_test.toit:95:8: error: Invalid type
 bad -> fun:
        ^~~
-tests/lsp/type_definition_test.toit:99:9: error: Invalid type
+tests/lsp/type_definition_test.toit:101:9: error: Invalid type
 bad x / fun:
         ^~~
-tests/lsp/type_definition_test.toit:106:30: error: Invalid type
+tests/lsp/type_definition_test.toit:108:30: error: Invalid type
 bad2 -> prefix.ImportedClass.named:
                              ^~~~~
-tests/lsp/type_definition_test.toit:112:19: error: Ambiguous resolution of type: 'ImportedClass'
+tests/lsp/type_definition_test.toit:114:19: error: Ambiguous resolution of type: 'ImportedClass'
 bad3 -> ambiguous.ImportedClass:
                   ^~~~~~~~~~~~~
-tests/lsp/definition_imported.toit:3:7: note: Resolution candidate for 'ImportedClass'
+tests/lsp/definition_imported.toit:5:7: note: Resolution candidate for 'ImportedClass'
 class ImportedClass:
       ^~~~~~~~~~~~~
-tests/lsp/definition_imported2.toit:7:7: note: Resolution candidate for 'ImportedClass'
+tests/lsp/definition_imported2.toit:9:7: note: Resolution candidate for 'ImportedClass'
 class ImportedClass:
       ^~~~~~~~~~~~~
-tests/lsp/type_definition_test.toit:118:19: error: Invalid type
+tests/lsp/type_definition_test.toit:120:19: error: Invalid type
 bad4 -> SomeClass.static_fun:
                   ^~~~~~~~~~
-tests/lsp/type_definition_test.toit:124:19: error: Invalid type
+tests/lsp/type_definition_test.toit:126:19: error: Invalid type
 bad5 -> SomeClass.static_fun:
                   ^~~~~~~~~~
-tests/lsp/type_definition_test.toit:130:19: error: Invalid type
+tests/lsp/type_definition_test.toit:132:19: error: Invalid type
 bad6 -> SomeClass.non_existent:
                   ^~~~~~~~~~~~

@@ -1,4 +1,4 @@
-tests/negative/factory_only_test.toit:3:7: error: A class with factories must have a constructor.
+tests/negative/factory_only_test.toit:5:7: error: A class with factories must have a constructor.
 class A:
       ^
 Compilation failed.

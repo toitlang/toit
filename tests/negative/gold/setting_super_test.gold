@@ -1,7 +1,7 @@
-tests/negative/setting_super_test.toit:4:7: error: Field-storing parameter can only set local fields
+tests/negative/setting_super_test.toit:6:7: error: Field-storing parameter can only set local fields
   foo .x: 42
       ^~
-tests/negative/setting_super_test.toit:10:7: error: Field-storing parameter can only set local fields
+tests/negative/setting_super_test.toit:12:7: error: Field-storing parameter can only set local fields
   foo .x: 499
       ^~
 Compilation failed.

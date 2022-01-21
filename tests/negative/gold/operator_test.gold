@@ -1,318 +1,315 @@
-tests/negative/operator_test.toit:4:3: error: Invalid method shape for '=='
+tests/negative/operator_test.toit:6:3: error: Invalid method shape for '=='
   operator == other bad:
   ^~~~~~~~~~~
-tests/negative/operator_test.toit:6:3: error: Invalid method shape for '<'
+tests/negative/operator_test.toit:8:3: error: Invalid method shape for '<'
   operator < other bad:
   ^~~~~~~~~~
-tests/negative/operator_test.toit:8:3: error: Invalid method shape for '<='
+tests/negative/operator_test.toit:10:3: error: Invalid method shape for '<='
   operator <= other bad:
   ^~~~~~~~~~~
-tests/negative/operator_test.toit:10:3: error: Invalid method shape for '>='
+tests/negative/operator_test.toit:12:3: error: Invalid method shape for '>='
   operator >= other bad:
   ^~~~~~~~~~~
-tests/negative/operator_test.toit:12:3: error: Invalid method shape for '>'
+tests/negative/operator_test.toit:14:3: error: Invalid method shape for '>'
   operator > other bad:
   ^~~~~~~~~~
-tests/negative/operator_test.toit:14:3: error: Invalid method shape for '+'
+tests/negative/operator_test.toit:16:3: error: Invalid method shape for '+'
   operator + other bad:
   ^~~~~~~~~~
-tests/negative/operator_test.toit:16:3: error: Invalid method shape for '-'
+tests/negative/operator_test.toit:18:3: error: Invalid method shape for '-'
   operator - other bad:
   ^~~~~~~~~~
-tests/negative/operator_test.toit:18:3: error: Invalid method shape for '*'
+tests/negative/operator_test.toit:20:3: error: Invalid method shape for '*'
   operator * other bad:
   ^~~~~~~~~~
-tests/negative/operator_test.toit:20:3: error: Invalid method shape for '/'
+tests/negative/operator_test.toit:22:3: error: Invalid method shape for '/'
   operator / other bad:
   ^~~~~~~~~~
-tests/negative/operator_test.toit:22:3: error: Invalid method shape for '%'
+tests/negative/operator_test.toit:24:3: error: Invalid method shape for '%'
   operator % other bad:
   ^~~~~~~~~~
-tests/negative/operator_test.toit:24:3: error: Invalid method shape for '~'
+tests/negative/operator_test.toit:26:3: error: Invalid method shape for '~'
   operator ~ bad:
   ^~~~~~~~~~
-tests/negative/operator_test.toit:26:3: error: Invalid method shape for '&'
+tests/negative/operator_test.toit:28:3: error: Invalid method shape for '&'
   operator & other bad:
   ^~~~~~~~~~
-tests/negative/operator_test.toit:28:3: error: Invalid method shape for '|'
+tests/negative/operator_test.toit:30:3: error: Invalid method shape for '|'
   operator | other bad:
   ^~~~~~~~~~
-tests/negative/operator_test.toit:30:3: error: Invalid method shape for '^'
+tests/negative/operator_test.toit:32:3: error: Invalid method shape for '^'
   operator ^ other bad:
   ^~~~~~~~~~
-tests/negative/operator_test.toit:32:3: error: Invalid method shape for '<<'
+tests/negative/operator_test.toit:34:3: error: Invalid method shape for '<<'
   operator << other bad:
   ^~~~~~~~~~~
-tests/negative/operator_test.toit:34:3: error: Invalid method shape for '>>'
+tests/negative/operator_test.toit:36:3: error: Invalid method shape for '>>'
   operator >> other bad:
   ^~~~~~~~~~~
-tests/negative/operator_test.toit:36:3: error: Invalid method shape for '>>>'
+tests/negative/operator_test.toit:38:3: error: Invalid method shape for '>>>'
   operator >>> other bad:
   ^~~~~~~~~~~~
-tests/negative/operator_test.toit:40:3: error: Invalid method shape for '=='
+tests/negative/operator_test.toit:42:3: error: Invalid method shape for '=='
   operator ==:
   ^~~~~~~~~~~
-tests/negative/operator_test.toit:42:3: error: Invalid method shape for '<'
+tests/negative/operator_test.toit:44:3: error: Invalid method shape for '<'
   operator <:
   ^~~~~~~~~~
-tests/negative/operator_test.toit:44:3: error: Invalid method shape for '<='
+tests/negative/operator_test.toit:46:3: error: Invalid method shape for '<='
   operator <=:
   ^~~~~~~~~~~
-tests/negative/operator_test.toit:46:3: error: Invalid method shape for '>='
+tests/negative/operator_test.toit:48:3: error: Invalid method shape for '>='
   operator >=:
   ^~~~~~~~~~~
-tests/negative/operator_test.toit:48:3: error: Invalid method shape for '>'
+tests/negative/operator_test.toit:50:3: error: Invalid method shape for '>'
   operator >:
   ^~~~~~~~~~
-tests/negative/operator_test.toit:50:3: error: Invalid method shape for '+'
+tests/negative/operator_test.toit:52:3: error: Invalid method shape for '+'
   operator +:
   ^~~~~~~~~~
-tests/negative/operator_test.toit:54:3: error: Invalid method shape for '*'
+tests/negative/operator_test.toit:56:3: error: Invalid method shape for '*'
   operator *:
   ^~~~~~~~~~
-tests/negative/operator_test.toit:56:3: error: Invalid method shape for '/'
+tests/negative/operator_test.toit:58:3: error: Invalid method shape for '/'
   operator /:
   ^~~~~~~~~~
-tests/negative/operator_test.toit:58:3: error: Invalid method shape for '%'
+tests/negative/operator_test.toit:60:3: error: Invalid method shape for '%'
   operator %:
   ^~~~~~~~~~
-tests/negative/operator_test.toit:60:3: error: Invalid method shape for '&'
+tests/negative/operator_test.toit:62:3: error: Invalid method shape for '&'
   operator &:
   ^~~~~~~~~~
-tests/negative/operator_test.toit:62:3: error: Invalid method shape for '|'
+tests/negative/operator_test.toit:64:3: error: Invalid method shape for '|'
   operator |:
   ^~~~~~~~~~
-tests/negative/operator_test.toit:64:3: error: Invalid method shape for '^'
+tests/negative/operator_test.toit:66:3: error: Invalid method shape for '^'
   operator ^:
   ^~~~~~~~~~
-tests/negative/operator_test.toit:66:3: error: Invalid method shape for '<<'
+tests/negative/operator_test.toit:68:3: error: Invalid method shape for '<<'
   operator <<:
   ^~~~~~~~~~~
-tests/negative/operator_test.toit:68:3: error: Invalid method shape for '>>'
+tests/negative/operator_test.toit:70:3: error: Invalid method shape for '>>'
   operator >>:
   ^~~~~~~~~~~
-tests/negative/operator_test.toit:70:3: error: Invalid method shape for '>>>'
+tests/negative/operator_test.toit:72:3: error: Invalid method shape for '>>>'
   operator >>>:
   ^~~~~~~~~~~~
-tests/negative/operator_test.toit:73:3: error: Invalid method shape for '[]'
+tests/negative/operator_test.toit:75:3: error: Invalid method shape for '[]'
   operator []:
   ^~~~~~~~~~~
-tests/negative/operator_test.toit:76:3: error: Invalid method shape for '[]='
+tests/negative/operator_test.toit:78:3: error: Invalid method shape for '[]='
   operator []=:
   ^~~~~~~~~~~~
-tests/negative/operator_test.toit:79:3: error: Invalid method shape for '[]='
+tests/negative/operator_test.toit:81:3: error: Invalid method shape for '[]='
   operator []= x:
   ^~~~~~~~~~~~
-tests/negative/operator_test.toit:83:3: error: Invalid method shape for '=='
+tests/negative/operator_test.toit:85:3: error: Invalid method shape for '=='
   operator == other [bad]:
   ^~~~~~~~~~~
-tests/negative/operator_test.toit:85:3: error: Invalid method shape for '<'
+tests/negative/operator_test.toit:87:3: error: Invalid method shape for '<'
   operator < other [bad]:
   ^~~~~~~~~~
-tests/negative/operator_test.toit:87:3: error: Invalid method shape for '<='
+tests/negative/operator_test.toit:89:3: error: Invalid method shape for '<='
   operator <= other [bad]:
   ^~~~~~~~~~~
-tests/negative/operator_test.toit:89:3: error: Invalid method shape for '>='
+tests/negative/operator_test.toit:91:3: error: Invalid method shape for '>='
   operator >= other [bad]:
   ^~~~~~~~~~~
-tests/negative/operator_test.toit:91:3: error: Invalid method shape for '>'
+tests/negative/operator_test.toit:93:3: error: Invalid method shape for '>'
   operator > other [bad]:
   ^~~~~~~~~~
-tests/negative/operator_test.toit:93:3: error: Invalid method shape for '+'
+tests/negative/operator_test.toit:95:3: error: Invalid method shape for '+'
   operator + other [bad]:
   ^~~~~~~~~~
-tests/negative/operator_test.toit:95:3: error: Invalid method shape for '-'
+tests/negative/operator_test.toit:97:3: error: Invalid method shape for '-'
   operator - other [bad]:
   ^~~~~~~~~~
-tests/negative/operator_test.toit:97:3: error: Invalid method shape for '*'
+tests/negative/operator_test.toit:99:3: error: Invalid method shape for '*'
   operator * other [bad]:
   ^~~~~~~~~~
-tests/negative/operator_test.toit:99:3: error: Invalid method shape for '/'
+tests/negative/operator_test.toit:101:3: error: Invalid method shape for '/'
   operator / other [bad]:
   ^~~~~~~~~~
-tests/negative/operator_test.toit:101:3: error: Invalid method shape for '%'
+tests/negative/operator_test.toit:103:3: error: Invalid method shape for '%'
   operator % other [bad]:
   ^~~~~~~~~~
-tests/negative/operator_test.toit:103:3: error: Invalid method shape for '~'
+tests/negative/operator_test.toit:105:3: error: Invalid method shape for '~'
   operator ~ [bad]:
   ^~~~~~~~~~
-tests/negative/operator_test.toit:105:3: error: Invalid method shape for '&'
+tests/negative/operator_test.toit:107:3: error: Invalid method shape for '&'
   operator & other [bad]:
   ^~~~~~~~~~
-tests/negative/operator_test.toit:107:3: error: Invalid method shape for '|'
+tests/negative/operator_test.toit:109:3: error: Invalid method shape for '|'
   operator | other [bad]:
   ^~~~~~~~~~
-tests/negative/operator_test.toit:109:3: error: Invalid method shape for '^'
+tests/negative/operator_test.toit:111:3: error: Invalid method shape for '^'
   operator ^ other [bad]:
   ^~~~~~~~~~
-tests/negative/operator_test.toit:111:3: error: Invalid method shape for '<<'
+tests/negative/operator_test.toit:113:3: error: Invalid method shape for '<<'
   operator << other [bad]:
   ^~~~~~~~~~~
-tests/negative/operator_test.toit:113:3: error: Invalid method shape for '>>'
+tests/negative/operator_test.toit:115:3: error: Invalid method shape for '>>'
   operator >> other [bad]:
   ^~~~~~~~~~~
-tests/negative/operator_test.toit:115:3: error: Invalid method shape for '>>>'
+tests/negative/operator_test.toit:117:3: error: Invalid method shape for '>>>'
   operator >>> other [bad]:
   ^~~~~~~~~~~~
-tests/negative/operator_test.toit:119:3: error: Invalid method shape for '=='
+tests/negative/operator_test.toit:121:3: error: Invalid method shape for '=='
   operator == other bad=null:
   ^~~~~~~~~~~
-tests/negative/operator_test.toit:121:3: error: Invalid method shape for '<'
+tests/negative/operator_test.toit:123:3: error: Invalid method shape for '<'
   operator < other bad=null:
   ^~~~~~~~~~
-tests/negative/operator_test.toit:123:3: error: Invalid method shape for '<='
+tests/negative/operator_test.toit:125:3: error: Invalid method shape for '<='
   operator <= other bad=null:
   ^~~~~~~~~~~
-tests/negative/operator_test.toit:125:3: error: Invalid method shape for '>='
+tests/negative/operator_test.toit:127:3: error: Invalid method shape for '>='
   operator >= other bad=null:
   ^~~~~~~~~~~
-tests/negative/operator_test.toit:127:3: error: Invalid method shape for '>'
+tests/negative/operator_test.toit:129:3: error: Invalid method shape for '>'
   operator > other bad=null:
   ^~~~~~~~~~
-tests/negative/operator_test.toit:129:3: error: Invalid method shape for '+'
+tests/negative/operator_test.toit:131:3: error: Invalid method shape for '+'
   operator + other bad=null:
   ^~~~~~~~~~
-tests/negative/operator_test.toit:131:3: error: Invalid method shape for '-'
+tests/negative/operator_test.toit:133:3: error: Invalid method shape for '-'
   operator - other bad=null:
   ^~~~~~~~~~
-tests/negative/operator_test.toit:133:3: error: Invalid method shape for '*'
+tests/negative/operator_test.toit:135:3: error: Invalid method shape for '*'
   operator * other bad=null:
   ^~~~~~~~~~
-tests/negative/operator_test.toit:135:3: error: Invalid method shape for '/'
+tests/negative/operator_test.toit:137:3: error: Invalid method shape for '/'
   operator / other bad=null:
   ^~~~~~~~~~
-tests/negative/operator_test.toit:137:3: error: Invalid method shape for '%'
+tests/negative/operator_test.toit:139:3: error: Invalid method shape for '%'
   operator % other bad=null:
   ^~~~~~~~~~
-tests/negative/operator_test.toit:139:3: error: Invalid method shape for '~'
+tests/negative/operator_test.toit:141:3: error: Invalid method shape for '~'
   operator ~ bad=null:
   ^~~~~~~~~~
-tests/negative/operator_test.toit:141:3: error: Invalid method shape for '&'
+tests/negative/operator_test.toit:143:3: error: Invalid method shape for '&'
   operator & other bad=null:
   ^~~~~~~~~~
-tests/negative/operator_test.toit:143:3: error: Invalid method shape for '|'
+tests/negative/operator_test.toit:145:3: error: Invalid method shape for '|'
   operator | other bad=null:
   ^~~~~~~~~~
-tests/negative/operator_test.toit:145:3: error: Invalid method shape for '^'
+tests/negative/operator_test.toit:147:3: error: Invalid method shape for '^'
   operator ^ other bad=null:
   ^~~~~~~~~~
-tests/negative/operator_test.toit:147:3: error: Invalid method shape for '<<'
+tests/negative/operator_test.toit:149:3: error: Invalid method shape for '<<'
   operator << other bad=null:
   ^~~~~~~~~~~
-tests/negative/operator_test.toit:149:3: error: Invalid method shape for '>>'
+tests/negative/operator_test.toit:151:3: error: Invalid method shape for '>>'
   operator >> other bad=null:
   ^~~~~~~~~~~
-tests/negative/operator_test.toit:151:3: error: Invalid method shape for '>>>'
+tests/negative/operator_test.toit:153:3: error: Invalid method shape for '>>>'
   operator >>> other bad=null:
   ^~~~~~~~~~~~
-tests/negative/operator_test.toit:155:3: error: Invalid method shape for '=='
+tests/negative/operator_test.toit:157:3: error: Invalid method shape for '=='
   operator == other --bad:
   ^~~~~~~~~~~
-tests/negative/operator_test.toit:157:3: error: Invalid method shape for '<'
+tests/negative/operator_test.toit:159:3: error: Invalid method shape for '<'
   operator < other --bad:
   ^~~~~~~~~~
-tests/negative/operator_test.toit:159:3: error: Invalid method shape for '<='
+tests/negative/operator_test.toit:161:3: error: Invalid method shape for '<='
   operator <= other --bad:
   ^~~~~~~~~~~
-tests/negative/operator_test.toit:161:3: error: Invalid method shape for '>='
+tests/negative/operator_test.toit:163:3: error: Invalid method shape for '>='
   operator >= other --bad:
   ^~~~~~~~~~~
-tests/negative/operator_test.toit:163:3: error: Invalid method shape for '>'
+tests/negative/operator_test.toit:165:3: error: Invalid method shape for '>'
   operator > other --bad:
   ^~~~~~~~~~
-tests/negative/operator_test.toit:165:3: error: Invalid method shape for '+'
+tests/negative/operator_test.toit:167:3: error: Invalid method shape for '+'
   operator + other --bad:
   ^~~~~~~~~~
-tests/negative/operator_test.toit:167:3: error: Invalid method shape for '-'
+tests/negative/operator_test.toit:169:3: error: Invalid method shape for '-'
   operator - other --bad:
   ^~~~~~~~~~
-tests/negative/operator_test.toit:169:3: error: Invalid method shape for '*'
+tests/negative/operator_test.toit:171:3: error: Invalid method shape for '*'
   operator * other --bad:
   ^~~~~~~~~~
-tests/negative/operator_test.toit:171:3: error: Invalid method shape for '/'
+tests/negative/operator_test.toit:173:3: error: Invalid method shape for '/'
   operator / other --bad:
   ^~~~~~~~~~
-tests/negative/operator_test.toit:173:3: error: Invalid method shape for '%'
+tests/negative/operator_test.toit:175:3: error: Invalid method shape for '%'
   operator % other --bad:
   ^~~~~~~~~~
-tests/negative/operator_test.toit:175:3: error: Invalid method shape for '~'
+tests/negative/operator_test.toit:177:3: error: Invalid method shape for '~'
   operator ~ --bad:
   ^~~~~~~~~~
-tests/negative/operator_test.toit:177:3: error: Invalid method shape for '&'
+tests/negative/operator_test.toit:179:3: error: Invalid method shape for '&'
   operator & other --bad:
   ^~~~~~~~~~
-tests/negative/operator_test.toit:179:3: error: Invalid method shape for '|'
+tests/negative/operator_test.toit:181:3: error: Invalid method shape for '|'
   operator | other --bad:
   ^~~~~~~~~~
-tests/negative/operator_test.toit:181:3: error: Invalid method shape for '^'
+tests/negative/operator_test.toit:183:3: error: Invalid method shape for '^'
   operator ^ other --bad:
   ^~~~~~~~~~
-tests/negative/operator_test.toit:183:3: error: Invalid method shape for '<<'
+tests/negative/operator_test.toit:185:3: error: Invalid method shape for '<<'
   operator << other --bad:
   ^~~~~~~~~~~
-tests/negative/operator_test.toit:185:3: error: Invalid method shape for '>>'
+tests/negative/operator_test.toit:187:3: error: Invalid method shape for '>>'
   operator >> other --bad:
   ^~~~~~~~~~~
-tests/negative/operator_test.toit:187:3: error: Invalid method shape for '>>>'
+tests/negative/operator_test.toit:189:3: error: Invalid method shape for '>>>'
   operator >>> other --bad:
   ^~~~~~~~~~~~
-tests/negative/operator_test.toit:190:3: error: Invalid method shape for '[]='
+tests/negative/operator_test.toit:192:3: error: Invalid method shape for '[]='
   operator []= --bad:
   ^~~~~~~~~~~~
-tests/negative/operator_test.toit:194:3: error: Invalid method shape for '=='
+tests/negative/operator_test.toit:196:3: error: Invalid method shape for '=='
   operator == other [--bad]:
   ^~~~~~~~~~~
-tests/negative/operator_test.toit:196:3: error: Invalid method shape for '<'
+tests/negative/operator_test.toit:198:3: error: Invalid method shape for '<'
   operator < other [--bad]:
   ^~~~~~~~~~
-tests/negative/operator_test.toit:198:3: error: Invalid method shape for '<='
+tests/negative/operator_test.toit:200:3: error: Invalid method shape for '<='
   operator <= other [--bad]:
   ^~~~~~~~~~~
-tests/negative/operator_test.toit:200:3: error: Invalid method shape for '>='
+tests/negative/operator_test.toit:202:3: error: Invalid method shape for '>='
   operator >= other [--bad]:
   ^~~~~~~~~~~
-tests/negative/operator_test.toit:202:3: error: Invalid method shape for '>'
+tests/negative/operator_test.toit:204:3: error: Invalid method shape for '>'
   operator > other [--bad]:
   ^~~~~~~~~~
-tests/negative/operator_test.toit:204:3: error: Invalid method shape for '+'
+tests/negative/operator_test.toit:206:3: error: Invalid method shape for '+'
   operator + other [--bad]:
   ^~~~~~~~~~
-tests/negative/operator_test.toit:206:3: error: Invalid method shape for '-'
+tests/negative/operator_test.toit:208:3: error: Invalid method shape for '-'
   operator - other [--bad]:
   ^~~~~~~~~~
-tests/negative/operator_test.toit:208:3: error: Invalid method shape for '*'
+tests/negative/operator_test.toit:210:3: error: Invalid method shape for '*'
   operator * other [--bad]:
   ^~~~~~~~~~
-tests/negative/operator_test.toit:210:3: error: Invalid method shape for '/'
+tests/negative/operator_test.toit:212:3: error: Invalid method shape for '/'
   operator / other [--bad]:
   ^~~~~~~~~~
-tests/negative/operator_test.toit:212:3: error: Invalid method shape for '%'
+tests/negative/operator_test.toit:214:3: error: Invalid method shape for '%'
   operator % other [--bad]:
   ^~~~~~~~~~
-tests/negative/operator_test.toit:214:3: error: Invalid method shape for '~'
+tests/negative/operator_test.toit:216:3: error: Invalid method shape for '~'
   operator ~ [--bad]:
   ^~~~~~~~~~
-tests/negative/operator_test.toit:216:3: error: Invalid method shape for '&'
+tests/negative/operator_test.toit:218:3: error: Invalid method shape for '&'
   operator & other [--bad]:
   ^~~~~~~~~~
-tests/negative/operator_test.toit:218:3: error: Invalid method shape for '|'
+tests/negative/operator_test.toit:220:3: error: Invalid method shape for '|'
   operator | other [--bad]:
   ^~~~~~~~~~
-tests/negative/operator_test.toit:220:3: error: Invalid method shape for '^'
+tests/negative/operator_test.toit:222:3: error: Invalid method shape for '^'
   operator ^ other [--bad]:
   ^~~~~~~~~~
-tests/negative/operator_test.toit:222:3: error: Invalid method shape for '<<'
+tests/negative/operator_test.toit:224:3: error: Invalid method shape for '<<'
   operator << other [--bad]:
   ^~~~~~~~~~~
-tests/negative/operator_test.toit:224:3: error: Invalid method shape for '>>'
+tests/negative/operator_test.toit:226:3: error: Invalid method shape for '>>'
   operator >> other [--bad]:
   ^~~~~~~~~~~
-tests/negative/operator_test.toit:226:3: error: Invalid method shape for '>>>'
+tests/negative/operator_test.toit:228:3: error: Invalid method shape for '>>>'
   operator >>> other [--bad]:
   ^~~~~~~~~~~~
-tests/negative/operator_test.toit:5:5: error: Unresolved identifier: 'unresolved'
-    unresolved
-    ^~~~~~~~~~
 tests/negative/operator_test.toit:7:5: error: Unresolved identifier: 'unresolved'
     unresolved
     ^~~~~~~~~~
@@ -361,7 +358,7 @@ tests/negative/operator_test.toit:35:5: error: Unresolved identifier: 'unresolve
 tests/negative/operator_test.toit:37:5: error: Unresolved identifier: 'unresolved'
     unresolved
     ^~~~~~~~~~
-tests/negative/operator_test.toit:41:5: error: Unresolved identifier: 'unresolved'
+tests/negative/operator_test.toit:39:5: error: Unresolved identifier: 'unresolved'
     unresolved
     ^~~~~~~~~~
 tests/negative/operator_test.toit:43:5: error: Unresolved identifier: 'unresolved'
@@ -409,16 +406,16 @@ tests/negative/operator_test.toit:69:5: error: Unresolved identifier: 'unresolve
 tests/negative/operator_test.toit:71:5: error: Unresolved identifier: 'unresolved'
     unresolved
     ^~~~~~~~~~
-tests/negative/operator_test.toit:74:5: error: Unresolved identifier: 'unresolved'
+tests/negative/operator_test.toit:73:5: error: Unresolved identifier: 'unresolved'
     unresolved
     ^~~~~~~~~~
-tests/negative/operator_test.toit:77:5: error: Unresolved identifier: 'unresolved'
+tests/negative/operator_test.toit:76:5: error: Unresolved identifier: 'unresolved'
     unresolved
     ^~~~~~~~~~
-tests/negative/operator_test.toit:80:5: error: Unresolved identifier: 'unresolved'
+tests/negative/operator_test.toit:79:5: error: Unresolved identifier: 'unresolved'
     unresolved
     ^~~~~~~~~~
-tests/negative/operator_test.toit:84:5: error: Unresolved identifier: 'unresolved'
+tests/negative/operator_test.toit:82:5: error: Unresolved identifier: 'unresolved'
     unresolved
     ^~~~~~~~~~
 tests/negative/operator_test.toit:86:5: error: Unresolved identifier: 'unresolved'
@@ -469,7 +466,7 @@ tests/negative/operator_test.toit:114:5: error: Unresolved identifier: 'unresolv
 tests/negative/operator_test.toit:116:5: error: Unresolved identifier: 'unresolved'
     unresolved
     ^~~~~~~~~~
-tests/negative/operator_test.toit:120:5: error: Unresolved identifier: 'unresolved'
+tests/negative/operator_test.toit:118:5: error: Unresolved identifier: 'unresolved'
     unresolved
     ^~~~~~~~~~
 tests/negative/operator_test.toit:122:5: error: Unresolved identifier: 'unresolved'
@@ -520,7 +517,7 @@ tests/negative/operator_test.toit:150:5: error: Unresolved identifier: 'unresolv
 tests/negative/operator_test.toit:152:5: error: Unresolved identifier: 'unresolved'
     unresolved
     ^~~~~~~~~~
-tests/negative/operator_test.toit:156:5: error: Unresolved identifier: 'unresolved'
+tests/negative/operator_test.toit:154:5: error: Unresolved identifier: 'unresolved'
     unresolved
     ^~~~~~~~~~
 tests/negative/operator_test.toit:158:5: error: Unresolved identifier: 'unresolved'
@@ -571,10 +568,10 @@ tests/negative/operator_test.toit:186:5: error: Unresolved identifier: 'unresolv
 tests/negative/operator_test.toit:188:5: error: Unresolved identifier: 'unresolved'
     unresolved
     ^~~~~~~~~~
-tests/negative/operator_test.toit:191:5: error: Unresolved identifier: 'unresolved'
+tests/negative/operator_test.toit:190:5: error: Unresolved identifier: 'unresolved'
     unresolved
     ^~~~~~~~~~
-tests/negative/operator_test.toit:195:5: error: Unresolved identifier: 'unresolved'
+tests/negative/operator_test.toit:193:5: error: Unresolved identifier: 'unresolved'
     unresolved
     ^~~~~~~~~~
 tests/negative/operator_test.toit:197:5: error: Unresolved identifier: 'unresolved'
@@ -623,6 +620,9 @@ tests/negative/operator_test.toit:225:5: error: Unresolved identifier: 'unresolv
     unresolved
     ^~~~~~~~~~
 tests/negative/operator_test.toit:227:5: error: Unresolved identifier: 'unresolved'
+    unresolved
+    ^~~~~~~~~~
+tests/negative/operator_test.toit:229:5: error: Unresolved identifier: 'unresolved'
     unresolved
     ^~~~~~~~~~
 Compilation failed.

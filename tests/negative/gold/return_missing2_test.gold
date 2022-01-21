@@ -1,7 +1,7 @@
-tests/negative/return_missing2_test.toit:4:3: error: Expected name of declaration
+tests/negative/return_missing2_test.toit:6:3: error: Expected name of declaration
   :
   ^
-tests/negative/return_missing2_test.toit:4:3: error: Method doesn't return a value on all paths
+tests/negative/return_missing2_test.toit:6:3: error: Method doesn't return a value on all paths
   :
   ^
 Compilation failed.

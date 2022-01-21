@@ -1,49 +1,49 @@
-tests/negative/type8_test.toit:13:12: error: Block parameters can't have default values
+tests/negative/type8_test.toit:15:12: error: Block parameters can't have default values
   run 0 : |x/int=0| unresolved x
            ^
-tests/negative/type8_test.toit:13:21: error: Unresolved identifier: 'unresolved'
+tests/negative/type8_test.toit:15:21: error: Unresolved identifier: 'unresolved'
   run 0 : |x/int=0| unresolved x
                     ^~~~~~~~~~
-tests/negative/type8_test.toit:14:12: error: Lambda parameters can't have default values
+tests/negative/type8_test.toit:16:12: error: Lambda parameters can't have default values
   run 0:: |x/int=0| unresolved x
            ^
-tests/negative/type8_test.toit:14:21: error: Unresolved identifier: 'unresolved'
+tests/negative/type8_test.toit:16:21: error: Unresolved identifier: 'unresolved'
   run 0:: |x/int=0| unresolved x
                     ^~~~~~~~~~
-tests/negative/type8_test.toit:15:12: error: Block can't have field-storing parameters
+tests/negative/type8_test.toit:17:12: error: Block can't have field-storing parameters
   run 0 : |.x| unresolved x
            ^~
-tests/negative/type8_test.toit:15:16: error: Unresolved identifier: 'unresolved'
+tests/negative/type8_test.toit:17:16: error: Unresolved identifier: 'unresolved'
   run 0 : |.x| unresolved x
                ^~~~~~~~~~
-tests/negative/type8_test.toit:16:12: error: Lambda can't have field-storing parameters
+tests/negative/type8_test.toit:18:12: error: Lambda can't have field-storing parameters
   run 0:: |.x| unresolved x
            ^~
-tests/negative/type8_test.toit:16:16: error: Unresolved identifier: 'unresolved'
+tests/negative/type8_test.toit:18:16: error: Unresolved identifier: 'unresolved'
   run 0:: |.x| unresolved x
                ^~~~~~~~~~
-tests/negative/type8_test.toit:17:12: error: Block parameters can't be blocks
+tests/negative/type8_test.toit:19:12: error: Block parameters can't be blocks
   run 0 : |[x]| unresolved x
            ^~
-tests/negative/type8_test.toit:17:17: error: Unresolved identifier: 'unresolved'
+tests/negative/type8_test.toit:19:17: error: Unresolved identifier: 'unresolved'
   run 0 : |[x]| unresolved x
                 ^~~~~~~~~~
-tests/negative/type8_test.toit:18:12: error: Lambda parameters can't be blocks
+tests/negative/type8_test.toit:20:12: error: Lambda parameters can't be blocks
   run 0:: |[x]| unresolved x
            ^~
-tests/negative/type8_test.toit:18:17: error: Unresolved identifier: 'unresolved'
+tests/negative/type8_test.toit:20:17: error: Unresolved identifier: 'unresolved'
   run 0:: |[x]| unresolved x
                 ^~~~~~~~~~
-tests/negative/type8_test.toit:19:12: error: Lambda parameters can't have default values
+tests/negative/type8_test.toit:21:12: error: Lambda parameters can't have default values
   run 0:: |it/int=0| unresolved it
            ^~
-tests/negative/type8_test.toit:19:22: error: Unresolved identifier: 'unresolved'
+tests/negative/type8_test.toit:21:22: error: Unresolved identifier: 'unresolved'
   run 0:: |it/int=0| unresolved it
                      ^~~~~~~~~~
-tests/negative/type8_test.toit:9:7: error: Class 'int' does not have any method 'copy'
+tests/negative/type8_test.toit:11:7: error: Class 'int' does not have any method 'copy'
     x.copy 1
       ^~~~
-tests/negative/type8_test.toit:11:7: error: Class 'int' does not have any method 'copy'
+tests/negative/type8_test.toit:13:7: error: Class 'int' does not have any method 'copy'
     x.copy 1
       ^~~~
 Compilation failed.

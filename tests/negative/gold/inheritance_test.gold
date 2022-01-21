@@ -1,88 +1,88 @@
-tests/negative/inheritance_test.toit:3:19: error: Monitors may not have a super class
+tests/negative/inheritance_test.toit:5:19: error: Monitors may not have a super class
 monitor A extends B:
                   ^
-tests/negative/inheritance_test.toit:5:21: error: Super of an interface must be an interface
+tests/negative/inheritance_test.toit:7:21: error: Super of an interface must be an interface
 interface I extends A:
                     ^
-tests/negative/inheritance_test.toit:7:17: error: Super of a class must be a class
+tests/negative/inheritance_test.toit:9:17: error: Super of a class must be a class
 class B extends I:
                 ^
-tests/negative/inheritance_test.toit:11:17: error: Cannot extend builtin Monitor class
+tests/negative/inheritance_test.toit:13:17: error: Cannot extend builtin Monitor class
 class C extends __Monitor__:
                 ^~~~~~~~~~~
-tests/negative/inheritance_test.toit:15:17: error: Unresolved super class
+tests/negative/inheritance_test.toit:17:17: error: Unresolved super class
 class D extends E implements F G H B C:
                 ^
-tests/negative/inheritance_test.toit:15:30: error: Unresolved interface
+tests/negative/inheritance_test.toit:17:30: error: Unresolved interface
 class D extends E implements F G H B C:
                              ^
-tests/negative/inheritance_test.toit:15:32: error: Unresolved interface
+tests/negative/inheritance_test.toit:17:32: error: Unresolved interface
 class D extends E implements F G H B C:
                                ^
-tests/negative/inheritance_test.toit:15:34: error: Unresolved interface
+tests/negative/inheritance_test.toit:17:34: error: Unresolved interface
 class D extends E implements F G H B C:
                                  ^
-tests/negative/inheritance_test.toit:15:36: error: Not an interface
+tests/negative/inheritance_test.toit:17:36: error: Not an interface
 class D extends E implements F G H B C:
                                    ^
-tests/negative/inheritance_test.toit:15:38: error: Not an interface
+tests/negative/inheritance_test.toit:17:38: error: Not an interface
 class D extends E implements F G H B C:
                                      ^
-tests/negative/inheritance_test.toit:19:7: error: Cycle in super/interface chain
+tests/negative/inheritance_test.toit:21:7: error: Cycle in super/interface chain
 class Cycle1 extends Cycle3:
       ^~~~~~
-tests/negative/inheritance_test.toit:19:22: error: This clause contributes to the cycle
+tests/negative/inheritance_test.toit:21:22: error: This clause contributes to the cycle
 class Cycle1 extends Cycle3:
                      ^~~~~~
-tests/negative/inheritance_test.toit:21:22: error: This clause contributes to the cycle
+tests/negative/inheritance_test.toit:23:22: error: This clause contributes to the cycle
 class Cycle3 extends Cycle1:
                      ^~~~~~
-tests/negative/inheritance_test.toit:23:11: error: Cycle in super/interface chain
+tests/negative/inheritance_test.toit:25:11: error: Cycle in super/interface chain
 interface ICycle1 extends ICycle3:
           ^~~~~~~
-tests/negative/inheritance_test.toit:23:27: error: This clause contributes to the cycle
+tests/negative/inheritance_test.toit:25:27: error: This clause contributes to the cycle
 interface ICycle1 extends ICycle3:
                           ^~~~~~~
-tests/negative/inheritance_test.toit:25:27: error: This clause contributes to the cycle
+tests/negative/inheritance_test.toit:27:27: error: This clause contributes to the cycle
 interface ICycle3 extends ICycle2:
                           ^~~~~~~
-tests/negative/inheritance_test.toit:24:27: error: This clause contributes to the cycle
+tests/negative/inheritance_test.toit:26:27: error: This clause contributes to the cycle
 interface ICycle2 extends ICycle1:
                           ^~~~~~~
-tests/negative/inheritance_test.toit:29:11: error: Cycle in super/interface chain
+tests/negative/inheritance_test.toit:31:11: error: Cycle in super/interface chain
 interface ICycle4 implements ICycle4:
           ^~~~~~~
-tests/negative/inheritance_test.toit:29:30: error: This clause contributes to the cycle
+tests/negative/inheritance_test.toit:31:30: error: This clause contributes to the cycle
 interface ICycle4 implements ICycle4:
                              ^~~~~~~
-tests/negative/inheritance_test.toit:31:11: error: Cycle in super/interface chain
+tests/negative/inheritance_test.toit:33:11: error: Cycle in super/interface chain
 interface ICycle5 extends ICycle6:
           ^~~~~~~
-tests/negative/inheritance_test.toit:31:27: error: This clause contributes to the cycle
+tests/negative/inheritance_test.toit:33:27: error: This clause contributes to the cycle
 interface ICycle5 extends ICycle6:
                           ^~~~~~~
-tests/negative/inheritance_test.toit:32:30: error: This clause contributes to the cycle
+tests/negative/inheritance_test.toit:34:30: error: This clause contributes to the cycle
 interface ICycle6 implements ICycle5:
                              ^~~~~~~
-tests/negative/inheritance_test.toit:34:11: error: Cycle in super/interface chain
+tests/negative/inheritance_test.toit:36:11: error: Cycle in super/interface chain
 interface ICycle7 implements ICycle8:
           ^~~~~~~
-tests/negative/inheritance_test.toit:34:30: error: This clause contributes to the cycle
+tests/negative/inheritance_test.toit:36:30: error: This clause contributes to the cycle
 interface ICycle7 implements ICycle8:
                              ^~~~~~~
-tests/negative/inheritance_test.toit:35:30: error: This clause contributes to the cycle
+tests/negative/inheritance_test.toit:37:30: error: This clause contributes to the cycle
 interface ICycle8 implements ICycle7:
                              ^~~~~~~
-tests/negative/inheritance_test.toit:38:3: error: Unresolved identifier: 'unresolved'
+tests/negative/inheritance_test.toit:40:3: error: Unresolved identifier: 'unresolved'
   unresolved
   ^~~~~~~~~~
-tests/negative/inheritance_test.toit:9:5: error: Unresolved identifier: 'unresolved'
+tests/negative/inheritance_test.toit:11:5: error: Unresolved identifier: 'unresolved'
     unresolved
     ^~~~~~~~~~
-tests/negative/inheritance_test.toit:13:5: error: Unresolved identifier: 'unresolved'
+tests/negative/inheritance_test.toit:15:5: error: Unresolved identifier: 'unresolved'
     unresolved
     ^~~~~~~~~~
-tests/negative/inheritance_test.toit:17:5: error: Unresolved identifier: 'unresolved'
+tests/negative/inheritance_test.toit:19:5: error: Unresolved identifier: 'unresolved'
     unresolved
     ^~~~~~~~~~
 Compilation failed.

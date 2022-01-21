@@ -1,4 +1,4 @@
-tests/negative/indentation_force_test.toit:4:3: warning: Unusual indentation for parameter
+tests/negative/indentation_force_test.toit:6:3: warning: Unusual indentation for parameter
   x:
   ^
 499
