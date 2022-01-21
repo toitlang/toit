@@ -12,7 +12,7 @@ The $compiler_to_fs and $compiler_to_parser $SimplePipe should be used as a
   normal $CloseableReader.
 
 If data is produced faster than it is consumed, then the data is buffered. There
-  is now flow-control.
+  is no flow-control.
 
 The given incoming $OpenPipe should be the stdout of the C++ compiler. Data
   is framed with a 4-byte integer indicating the size of the frame. If the

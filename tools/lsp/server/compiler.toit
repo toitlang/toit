@@ -92,7 +92,6 @@ class Compiler:
       task:: catch --trace:
         sleep --ms=timeout_ms_
         if not has_terminated:
-          print_on_stderr_ "Killing timeout"
           SIGKILL ::= 9
           pipe.kill_ cpp_pid SIGKILL
           was_killed_because_of_timeout = true
