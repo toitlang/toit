@@ -116,8 +116,8 @@ func newPipe() *pipe {
 func (p *pipe) Close() error {
 	err_read := p.r.Close()
 	err_write := p.w.Close()
-	if err_read == nil {
-		return err_write
+	if err_read != nil {
+		return err_read
 	}
-	return err_read
+	return err_write
 }
