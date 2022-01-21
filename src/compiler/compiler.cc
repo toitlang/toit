@@ -354,7 +354,7 @@ void Compiler::language_server(const Compiler::Configuration& compiler_config) {
 
   // We generally don't explicitly keep track of memory, but here we might need
   // to release resources.
-  Defer del { [&]() {
+  Defer del { [&] {
       delete fs;
       delete fs_protocol;
       delete connection;
