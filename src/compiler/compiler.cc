@@ -328,26 +328,37 @@ void Compiler::language_server(const Compiler::Configuration& compiler_config) {
   LineReader reader(stdin);
   const char* port = reader.next("port");
 
-  // We allocate two different filesystems on the stack, but will only
-  // use one of them.
-  // The constructor of the filesystems isn't doing anything, so the cost of
-  // having both is minimal.
-  FilesystemLocal fs_local;
-
-  LspFsConnectionSocket socket_connection(port);
-  LspFsProtocol protocol(&socket_connection);
-  FilesystemLsp fs_lsp(&protocol);
-
-  Filesystem* fs;
+  Filesystem* fs = null;
+  LspFsProtocol* fs_protocol = null;
+  LspFsConnection* connection = null;
   if (strcmp("-1", port) == 0) {
-    fs = &fs_local;
+    fs = _new FilesystemLocal();
   } else {
-    fs = &fs_lsp;
+    connection = _new LspFsConnectionSocket(port);
+    fs_protocol = _new LspFsProtocol(connection);
+    fs = _new FilesystemLsp(fs_protocol);
   }
 
-  LspWriterStdout stdout_writer;
-  LspProtocol lsp_protocol(&stdout_writer);
-  Lsp lsp(&lsp_protocol);
+  // We generally don't explicitly keep track of memory, but here we might need
+  // to release resources.
+  Defer del_fs { [&]() {
+      delete fs;
+      delete fs_protocol;
+      delete connection;
+    }
+  };
+
+  LspWriter* writer = new LspWriterStdout();
+  LspProtocol* lsp_protocol = new LspProtocol(writer);
+  Lsp lsp(lsp_protocol);
+
+  // We generally don't explicitly keep track of memory, but here we might need
+  // to release resources.
+  Defer del_lsp { [&]() {
+      delete writer;
+      delete lsp_protocol;
+    }
+  };
 
   const char* mode = reader.next("mode");
   SourceManager source_manager(fs);
