@@ -1,283 +1,57 @@
 name: CI
-
-on:
-  push:
-  release:
-    types: [published]
-
+'on': push
 jobs:
   build:
-    strategy:
-      # The matrix will run all possible combinations in parallel.
-      matrix:
-        # macos-10.15, as we currently need Clang 12 (https://github.com/toitlang/toit/issues/130)
-        # windows-2022, as it's currently later than windows-latest.
-        container: [ ubuntu-latest, macos-10.15, windows-2022 ]
-        shard: [1, 2, 3, 4, 5]
-
-    runs-on: ${{ matrix.container }}
-
     steps:
-      - name: Set up constants
-        id: constants
-        run: |
-          if [ "$RUNNER_OS" == "Linux" ]; then
-            echo ::set-output name=artifact::toit-linux.tar.gz
-            echo ::set-output name=total_shards::5
-          elif [ "$RUNNER_OS" == "macOS" ]; then
-            echo ::set-output name=artifact::toit-macos.tar.gz
-            echo ::set-output name=total_shards::5
-          elif [ "$RUNNER_OS" == "Windows" ]; then
-            echo ::set-output name=artifact::toit-windows.tar.gz
-            echo ::set-output name=total_shards::5
-          else
-            echo "UNSUPPORTED RUNNER: $RUNNER_OS"
-            exit 1
-          fi
-        shell: bash
-
-      - uses: actions/checkout@v2
-
-      - name: Fetch tags
-        # The github checkout is shallow and doesn't have tags.
-        run: |
-          git fetch --tags
-
-      # We only need the tpkg and mbedtls submodule for building.
-      - name: Initialize mbedtls submodule
-        run: |
+    - name: Checkout
+      uses: actions/checkout@v2
+    - name: Fetch tags
+      run: "  git fetch --tags\n"
+    - name: Initialize mbedtls submodule
+      run: |2
           cd third_party/esp-idf
-          git submodule update --init .
+          git submodule update --init
           git submodule update --init components/mbedtls
-
-      - name: Initialize tpkg submodule
-        run: |
-          cd tools/tpkg
-          git submodule update --init .
-
-      # Use Go 1.17
-      - name: Switch to Go 1.17
-        run:
-          echo "$GOROOT_1_17_X64"/bin >> $GITHUB_PATH
-
-      # Get values for cache paths to be used in later steps
-      - name: Get Go paths
-        id: go-cache-paths
-        run: |
+    - name: Set up Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: '1.17'
+    - name: Get Go paths
+      run: |2
           echo "::set-output name=go-build::$(go env GOCACHE)"
           echo "::set-output name=go-mod::$(go env GOMODCACHE)"
-
-      # Cache go build cache, used to speedup go test
-      - name: Go Build Cache
-        uses: actions/cache@v2
-        with:
-          path: ${{ steps.go-cache-paths.outputs.go-build }}
-          key: ${{ runner.os }}-go-build-${{ hashFiles('**/go.sum') }}
-          restore-keys: ${{ runner.os }}-go-build-
-
-      # Cache go mod cache, used to speedup builds
-      - name: Go Mod Cache
-        uses: actions/cache@v2
-        with:
-          path: ${{ steps.go-cache-paths.outputs.go-mod }}
-          key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum') }}
-          restore-keys: ${{ runner.os }}-go-mod-
-
-      # We create a new id every second.
-      # The 'restore-keys' below will make sure that we continue using earlier versions.
-      - name: Create timestamp
-        id: timestamp
-        shell: cmake -P {0}
-        run: |
-          string(TIMESTAMP current_date "%Y-%m-%d-%H;%M;%S" UTC)
-          message("::set-output name=timestamp::${current_date}")
-
-      - name: Ccache cache
-        uses: actions/cache@v2
-        with:
-          path: ${{ github.workspace }}/.ccache
-          key: ${{ runner.os }}-ccache-${{ steps.timestamp.outputs.timestamp }}
-          restore-keys: ${{ runner.os }}-ccache-
-
-      # Fetch the dependencies. Different for each platform.
-      - name: Install dependencies - Linux
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install ninja-build ccache gcc-multilib g++-multilib
-          ninja --version
-          cmake --version
-          gcc --version
-      - name: Install dependencies - macOS
-        if: runner.os == 'macOS'
-        run: |
-          brew install ninja ccache
-          ninja --version
-          cmake --version
-      - name: Install dependencies - Windows
-        if: runner.os == 'Windows'
-        run: |
-          choco install ninja ccache
-          ninja --version
-          ccache --version
-          cmake --version
-
-      # Build using make.
-      - name: make
-        env:
-          IDF_PATH: ${{ github.workspace }}/third_party/esp-idf
-          CCACHE_DIR: ${{ github.workspace }}/.ccache
-          CCACHE_BASEDIR: ${{ github.workspace }}
-          CCACHE_COMPRESS: true
-          CCACHE_COMPRESSLEVEL: '6'
-          CCACHE_MAXSIZE: 400M
-          SHARD_START: ${{ matrix.shard }}
-          SHARD_STRIDE: ${{ steps.constants.outputs.total_shards }}
-        shell: bash
-        run: |
-          make all
-          if [ "$RUNNER_OS" == "Linux" ]; then
-            make CROSS_ARCH=host32 all-cross
-          fi
-
-      # Test.
-      - name: test
-        env:
-          IDF_PATH: ${{ github.workspace }}/third_party/esp-idf
-          CCACHE_DIR: ${{ github.workspace }}/.ccache
-          CCACHE_BASEDIR: ${{ github.workspace }}
-          CCACHE_COMPRESS: true
-          CCACHE_COMPRESSLEVEL: '6'
-          CCACHE_MAXSIZE: 400M
-          SHARD_START: ${{ matrix.shard }}
-          SHARD_STRIDE: ${{ steps.constants.outputs.total_shards }}
-        shell: bash
-        run: |
-          make test
-          make test-health
-          if [ "$RUNNER_OS" == "Linux" ]; then
-            cd build/host32
-            ninja check
-          fi
-
-      - name: Pack artifacts
-        if: matrix.shard == 1
-        shell: bash
-        # Note that we use `cp -R` first, since that works on every platform.
-        run: |
-          cp -R ./build/host/sdk ./build/host/toit
-          tar -czf build/${{ steps.constants.outputs.artifact }} -C ./build/host -h --exclude toit/bin/mbedtls toit
-
-      - name: Upload artifacts
-        if: matrix.shard == 1
-        uses: actions/upload-artifact@v2
-        with:
-          name: ${{ runner.os }}-build
-          path: build/${{ steps.constants.outputs.artifact }}
-
-      - name: Upload release artifacts
-        if: |
-          (github.event_name) == 'release' &&
-          (matrix.shard == 1)
-        uses: svenstaro/upload-release-action@v2
-        with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: build/${{ steps.constants.outputs.artifact }}
-          tag: ${{ github.ref }}
-          overwrite: true
-
-  # Really annoying that we need to duplicate so much.
-  esp32:
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v2
-
-      - name: Fetch tags
-        # The github checkout is shallow and doesn't have tags.
-        run: |
-          git fetch --tags
-
-      - name: Initialize submodules
-        run: |
-          git submodule sync --recursive
-          git submodule update --init --recursive -j 2
-
-      # Use Go 1.17
-      - name: Switch to Go 1.17
-        run:
-          echo "$GOROOT_1_17_X64"/bin >> $GITHUB_PATH
-
-      # Get values for cache paths to be used in later steps
-      - name: Get Go paths
-        id: go-cache-paths
-        run: |
-          echo "::set-output name=go-build::$(go env GOCACHE)"
-          echo "::set-output name=go-mod::$(go env GOMODCACHE)"
-
-      # Cache go build cache, used to speedup go test
-      - name: Go Build Cache
-        uses: actions/cache@v2
-        with:
-          path: ${{ steps.go-cache-paths.outputs.go-build }}
-          key: ${{ runner.os }}-go-build-${{ hashFiles('**/go.sum') }}
-          restore-keys: ${{ runner.os }}-go-build-
-
-      # Cache go mod cache, used to speedup builds
-      - name: Go Mod Cache
-        uses: actions/cache@v2
-        with:
-          path: ${{ steps.go-cache-paths.outputs.go-mod }}
-          key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum') }}
-          restore-keys: ${{ runner.os }}-go-mod-
-
-      # We create a new id every second.
-      # The 'restore-keys' below will make sure that we continue using earlier versions.
-      - name: Create timestamp
-        id: timestamp
-        shell: cmake -P {0}
-        run: |
-          string(TIMESTAMP current_date "%Y-%m-%d-%H;%M;%S" UTC)
-          message("::set-output name=timestamp::${current_date}")
-
-      - name: Ccache cache
-        uses: actions/cache@v2
-        with:
-          path: ${{ github.workspace }}/.ccache
-          key: esp32-ccache-${{ steps.timestamp.outputs.timestamp }}
-          restore-keys: esp32-ccache-
-
-      - name: Install dependencies - Linux
-        run: |
-          sudo apt-get update
-          sudo apt-get install ninja-build ccache
-          ninja --version
-          cmake --version
-          gcc --version
-
-      - name: Ccache symlinks
-        run: |
-          mkdir ccache_interceptors
-          cd ccache_interceptors
-          ln -s $(command -v ccache) xtensa-esp32-elf-gcc
-          ln -s $(command -v ccache) xtensa-esp32-elf-g++
-
-      - name: Install ESP32 tools
-        run: |
-          third_party/esp-idf/install.sh
-
-      # Build using make.
-      - name: make
-        env:
-          IDF_PATH: ${{ github.workspace }}/third_party/esp-idf
-          IDF_CCACHE_ENABLE: 1
-          CCACHE_DIR: ${{ github.workspace }}/.ccache
-          CCACHE_BASEDIR: ${{ github.workspace }}
-          CCACHE_COMPRESS: true
-          CCACHE_COMPRESSLEVEL: '6'
-          CCACHE_MAXSIZE: 400M
-        run: |
-          source third_party/esp-idf/export.sh
-          # Make sure the ccache interceptors are before any other path.
-          export PATH="$PWD/ccache_interceptors":$PATH
-          make esp32
+      id: go-cache-paths
+    - name: Go build
+      uses: actions/cache@v2
+      with:
+        path: "${{ steps.go-cache-paths.go-build }}"
+        key: Linux-go-build-${{ hashFiles('**/go.sum') }}
+        restore_key: Linux-go-build
+    - name: Go mod
+      uses: actions/cache@v2
+      with:
+        path: "${{ steps.go-cache-paths.go-mod }}"
+        key: Linux-go-build-${{ hashFiles('**/go.sum') }}
+        restore_key: Linux-go-build
+    - name: Apt-get update
+      run: "  sudo apt-get update\n"
+    - name: Apt-get install ccache
+      run: "  sudo apt-get install ccache\n"
+    - name: Create timestamp
+      run: |
+        string(TIMESTAMP current_date "%Y-%m-%d-%H;%M;%S" UTC)
+        message("::set-output name=timestamp::${current_date}")
+      id: timestamp_step
+      shell: cmake -P {0}
+    - name: Ccache
+      uses: actions/cache@v2
+      with:
+        path: "${{ github.workspace }}/.ccache"
+        key: Linux-ccache-${{ steps.timestamp_step.timestamp }}
+        restore_key: Linux-ccache
+    - name: Apt-get install ninja-build gcc-multilib g++-multilib
+      run: "  sudo apt-get install ninja-build gcc-multilib g++-multilib\n"
+    - name: Make
+      run: |-
+        make all
+        make CROSS_ARCH=host32 all-cross
