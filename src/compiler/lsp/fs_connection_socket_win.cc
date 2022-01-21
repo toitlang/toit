@@ -13,7 +13,7 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-#include "../top.h"
+#include "../../top.h"
 
 #ifdef TOIT_WINDOWS
 
@@ -21,17 +21,16 @@
 #include <ws2tcpip.h>
 #include <stdio.h>
 
-#include "diagnostic.h"
-#include "filesystem_socket.h"
-#include "windows.h"
-#include "../utils.h"
+#include "fs_connection_socket.h"
+
+#include "../diagnostic.h"
+#include "../windows.h"
+#include "../../utils.h"
 
 namespace toit {
 namespace compiler {
 
-char* get_executable_path();
-
-void FilesystemSocket::initialize(Diagnostics* diagnostics) {
+void LspFsConnectionSocket::initialize(Diagnostics* diagnostics) {
   if (_is_initialized) return;
   _is_initialized = true;
 
@@ -69,7 +68,7 @@ void FilesystemSocket::initialize(Diagnostics* diagnostics) {
   }
 }
 
-FilesystemSocket::~FilesystemSocket() {
+LspFsConnectionSocket::~LspFsConnectionSocket() {
   if (_socket != -1) {
     closesocket(_socket);
     _socket = -1;

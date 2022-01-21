@@ -23,15 +23,18 @@
 #include "filesystem.h"
 #include "map.h"
 
+#include "lsp/fs_protocol.h"
+
 namespace toit {
 namespace compiler {
 
-class FilesystemSocket : public Filesystem {
+class FilesystemLsp : public Filesystem {
  public:
-  explicit FilesystemSocket(const char* port) : _port(port) { }
-  ~FilesystemSocket();
+  explicit FilesystemLsp(LspFsProtocol* protocol) : _protocol(protocol) { }
 
-  void initialize(Diagnostics* diagnostics);
+  void initialize(Diagnostics* diagnostics) {
+    _protocol->initialize(diagnostics);
+  }
 
   const char* entry_path() { return null; }
 
@@ -51,22 +54,10 @@ class FilesystemSocket : public Filesystem {
                               const std::function<void (const char*)> callback);
 
  private:
-  struct PathInfo {
-    bool exists;
-    bool is_regular_file;
-    bool is_directory;
-    int size;
-    const uint8* content;
-  };
-  const char* _port;
-  UnorderedMap<std::string, PathInfo> _file_cache;
-  bool _is_initialized = false;
+  UnorderedMap<std::string, LspFsProtocol::PathInfo> _file_cache;
+  LspFsProtocol* _protocol;
 
-  int64 _socket = -1;
-
-  PathInfo info_for(const char* path);
-  char* getline();
-  void putline(const char* line);
+  LspFsProtocol::PathInfo info_for(const char* path);
 };
 
 } // namespace compiler
