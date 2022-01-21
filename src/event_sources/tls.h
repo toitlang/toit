@@ -37,7 +37,7 @@ class TLSEventSource : public LazyEventSource, public Thread {
  public:
   static TLSEventSource* instance();
 
-  void on_unregister_resource(Locker& locker, Resource* r) override;
+  virtual void on_unregister_resource(Locker& locker, Resource* r) override;
 
   void handshake(TLSSocket* socket);
 
