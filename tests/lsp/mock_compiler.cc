@@ -5,7 +5,9 @@
 
 #include "../../src/top.h"
 #include "../../src/compiler/tar.h"
-#include "../../src/compiler/filesystem_socket.h"
+#include "../../src/compiler/lsp/fs_connection_socket.h"
+#include "../../src/compiler/lsp/fs_protocol.h"
+#include "../../src/compiler/filesystem_lsp.h"
 #include "../../src/compiler/sources.h"
 #include "../../src/compiler/diagnostic.h"
 #include "../../src/compiler/package.h"
@@ -74,7 +76,9 @@ int main(int argc, char** argv) {
     }
   }
 
-  FilesystemSocket fs(port);
+  LspFsConnectionSocket connection(port);
+  LspFsProtocol protocol(&connection);
+  FilesystemLsp fs(&protocol);
   SourceManager manager(&fs);
   NullDiagnostics diagnostics(&manager);
   fs.initialize(&diagnostics);

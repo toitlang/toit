@@ -30,7 +30,7 @@ class Diagnostics;
 
 class Filesystem {
  public:
-  ~Filesystem() { free(const_cast<char*>(_cwd)); }
+  virtual ~Filesystem() { free(const_cast<char*>(_cwd)); }
 
   /// Can be called multiple times.
   /// Subclasses must ensure that multiple calls don't lead to problems.

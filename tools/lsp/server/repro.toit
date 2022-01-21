@@ -71,13 +71,13 @@ write_repro
     --compiler_flags /List
     --compiler_input /string
     --info           /string
-    --file_server    /FileServer
+    --protocol       /FileServerProtocol
     --cwd_path       /string?
     --include_sdk    /bool:
   writer := file.Stream.for_write repro_path
   write_repro --writer=writer \
       --compiler_flags=compiler_flags --compiler_input=compiler_input --info=info \
-      --file_server=file_server --cwd_path=cwd_path --include_sdk=include_sdk
+      --protocol=protocol --cwd_path=cwd_path --include_sdk=include_sdk
   writer.close
 
 write_repro
@@ -85,7 +85,7 @@ write_repro
     --compiler_flags /List
     --compiler_input /string
     --info           /string
-    --file_server    /FileServer
+    --protocol       /FileServerProtocol
     --cwd_path       /string?
     --include_sdk    /bool:
   meta := {
@@ -93,14 +93,14 @@ write_repro
     "directories": {:}
   }
   // If the sdk-path wasn't used then it's null. We can pick any value at that point. (We choose "").
-  sdk_path := file_server.served_sdk_path or ""
+  sdk_path := protocol.served_sdk_path or ""
   if not sdk_path.ends_with "/": sdk_path += "/"
   // If the package-cache paths wasn't used then it's null. We can pick any value at that point.
   // We choose [].
-  package_cache_paths := file_server.served_package_cache_paths or []
+  package_cache_paths := protocol.served_package_cache_paths or []
 
   tar := Tar writer
-  file_server.served_files.do: |path file|
+  protocol.served_files.do: |path file|
     if not include_sdk and path.starts_with sdk_path: continue.do
 
     meta["files"][path] = {
@@ -111,7 +111,7 @@ write_repro
     }
     content := file.content
     if content: tar.add path content
-  file_server.served_directories.do: |path entries|
+  protocol.served_directories.do: |path entries|
     meta["directories"][path] = entries
   tar.add REPRO_COMPILER_FLAGS_PATH (compiler_flags.join "\n")
   tar.add REPRO_COMPILER_INPUT_PATH compiler_input
@@ -130,9 +130,9 @@ create_archive project_path/string? compiler_path/string entry_path/string out_p
   translator := UriPathTranslator
   documents := Documents translator
   sdk_path := sdk_path_from_compiler compiler_path
-  file_server := FileServer.local compiler_path sdk_path documents
+  protocol := FileServerProtocol.local compiler_path sdk_path documents
   compiler := Compiler compiler_path translator DEFAULT_TIMEOUT_MS
-      --file_server=file_server
+      --protocol=protocol
       --project_path=project_path
   entry_uri := translator.to_uri entry_path
   compiler.analyze [entry_uri]
@@ -142,6 +142,6 @@ create_archive project_path/string? compiler_path/string entry_path/string out_p
       --compiler_flags=compiler.build_run_flags
       --compiler_input="ANALYZE\n1\n$entry_path\n"
       --info="from repro tool"
-      --file_server=file_server
+      --protocol=protocol
       --cwd_path=cwd
       --include_sdk

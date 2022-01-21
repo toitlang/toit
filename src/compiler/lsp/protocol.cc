@@ -69,9 +69,9 @@ LspRange range_to_lsp_range(Source::Range range, SourceManager* source_manager) 
 }
 
 void LspProtocolBase::print_lsp_range(const LspRange& range) {
-  printf("%s\n", range.path);
-  printf("%d\n%d\n", range.from_line, range.from_column);
-  printf("%d\n%d\n", range.to_line, range.to_column);
+  this->printf("%s\n", range.path);
+  this->printf("%d\n%d\n", range.from_line, range.from_column);
+  this->printf("%d\n%d\n", range.to_line, range.to_column);
 }
 
 static const char* severity_to_lsp_severity(Diagnostics::Severity severity) {
@@ -84,31 +84,29 @@ static const char* severity_to_lsp_severity(Diagnostics::Severity severity) {
 }
 
 void LspDiagnosticsProtocol::emit(Diagnostics::Severity severity, const char* format, va_list& arguments) {
-  printf("NO POSITION\n");
-  printf("%s\n", severity_to_lsp_severity(severity));
-  vprintf(format, arguments);
-  putchar('\n');
-  printf("*******************\n");
+  this->printf("NO POSITION\n");
+  this->printf("%s\n", severity_to_lsp_severity(severity));
+  this->printf(format, arguments);
+  this->printf("\n*******************\n");
 }
 
 void LspDiagnosticsProtocol::emit(Diagnostics::Severity severity,
                                   const LspRange& range,
                                   const char* format,
                                   va_list& arguments) {
-  printf("WITH POSITION\n");
-  printf("%s\n", severity_to_lsp_severity(severity));
+  this->printf("WITH POSITION\n");
+  this->printf("%s\n", severity_to_lsp_severity(severity));
   print_lsp_range(range);
-  vprintf(format, arguments);
-  putchar('\n');
-  printf("*******************\n");
+  this->printf(format, arguments);
+  this->printf("\n*******************\n");
 }
 
 void LspDiagnosticsProtocol::start_group() {
-  printf("START GROUP\n");
+  this->printf("START GROUP\n");
 }
 
 void LspDiagnosticsProtocol::end_group() {
-  printf("END GROUP\n");
+  this->printf("END GROUP\n");
 }
 
 void LspGotoDefinitionProtocol::emit(const LspRange& range) {
@@ -117,31 +115,27 @@ void LspGotoDefinitionProtocol::emit(const LspRange& range) {
 
 void LspCompletionProtocol::emit(const std::string& name,
                                  CompletionKind kind) {
-  printf("%s\n%d\n", name.c_str(), static_cast<int>(kind));
+  this->printf("%s\n%d\n", name.c_str(), static_cast<int>(kind));
 }
 
 void LspSnapshotProtocol::fail() {
-  printf("FAIL\n");
+  this->printf("FAIL\n");
 }
 
 void LspSnapshotProtocol::emit(const SnapshotBundle& bundle) {
   // The SnapshotBundle constructor copies all data.
-  printf("OK\n%d\n", bundle.size());
-  int written = fwrite(bundle.buffer(), 1, bundle.size(), stdout);
-  fflush(stdout);
-  if (written != bundle.size()) {
-    FATAL("Couldn't write snapshot");
-  }
+  this->printf("OK\n%d\n", bundle.size());
+  this->write(bundle.buffer(), bundle.size());
 }
 
 void LspSummaryProtocol::emit(const std::vector<Module*>& modules,
                               int core_index,
                               const ToitdocRegistry& toitdocs) {
-  emit_summary(modules, core_index, toitdocs);
+  emit_summary(modules, core_index, toitdocs, writer());
 }
 
 void LspSemanticTokensProtocol::emit_size(int size) {
-  printf("%d\n", (size * 5));
+  this->printf("%d\n", (size * 5));
 }
 
 void LspSemanticTokensProtocol::emit_token(int delta_line,
@@ -149,7 +143,12 @@ void LspSemanticTokensProtocol::emit_token(int delta_line,
                                            int token_length,
                                            int encoded_token_type,
                                            int token_modifiers) {
-  printf("%d\n%d\n%d\n%d\n%d\n", delta_line, delta_column, token_length, encoded_token_type, token_modifiers);
+  this->printf("%d\n%d\n%d\n%d\n%d\n",
+               delta_line,
+               delta_column,
+               token_length,
+               encoded_token_type,
+               token_modifiers);
 }
 
 

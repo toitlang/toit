@@ -15,7 +15,9 @@
 
 #pragma once
 
+#include <functional>
 #include <string.h>
+
 #include "../utils.h"
 #include "filesystem.h"
 
@@ -132,6 +134,11 @@ List<const char*> string_split(const char* str, const char* delim);
 // Splits the given string, physically modifying the input, and using it
 // in the returned list.
 List<const char*> string_split(char* str, const char* delim);
+
+struct Defer {
+  std::function<void()> fun;
+  ~Defer() { fun(); }
+};
 
 } // namespace toit::compiler
 } // namespace toit
