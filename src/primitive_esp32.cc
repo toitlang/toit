@@ -136,7 +136,7 @@ PRIMITIVE(get_mac_address) {
   return result;
 }
 
-PRIMITIVE(set_user_rtc_data) {
+PRIMITIVE(set_rtc_user_data) {
   ARGS(Blob, bytes, int, from)
   if (from < 0 || from + bytes.length() > RtcMemory::RTC_USER_DATA_SIZE) OUT_OF_BOUNDS;
 
@@ -145,7 +145,7 @@ PRIMITIVE(set_user_rtc_data) {
   return process->program()->null_object();
 }
 
-PRIMITIVE(user_rtc_data) {
+PRIMITIVE(rtc_user_data) {
   ARGS(int, from, int, length)
   if (from < 0 || from + length > RtcMemory::RTC_USER_DATA_SIZE) OUT_OF_BOUNDS;
 
