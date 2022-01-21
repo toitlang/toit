@@ -46,7 +46,6 @@ namespace toit {
   M(ethernet,MODULE_ETHERNET)                \
   M(ble,     MODULE_BLE)                     \
   M(dhcp,    MODULE_DHCP)                    \
-  M(snapshot,MODULE_SNAPSHOT)                \
   M(image,   MODULE_IMAGE)                   \
   M(blob,    MODULE_BLOB)                    \
   M(gpio,    MODULE_GPIO)                    \
@@ -405,9 +404,6 @@ namespace toit {
 #define MODULE_EVENTS(PRIMITIVE)             \
   PRIMITIVE(read_state, 2)                   \
   PRIMITIVE(register_object_notifier, 3)     \
-
-#define MODULE_SNAPSHOT(PRIMITIVE)           \
-  PRIMITIVE(launch, 4)                       \
 
 #define MODULE_SERIALIZATION(PRIMITIVE)      \
   PRIMITIVE(serialize, 1)                    \
