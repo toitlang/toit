@@ -58,8 +58,7 @@ class ReaderWriterReader_ implements CloseableReader:
 // than privacy to indicate which methods are synchronized.
 monitor ReaderWriterHelper_:
   buffer_size_/int ::= ?
-  buffer_/ByteArray := ?
-  outgoing_ := null
+  buffer_/ByteArray
   fullness_ := 0
   writer_closed_ := false
   reader_closed_ := false
@@ -68,9 +67,6 @@ monitor ReaderWriterHelper_:
     buffer_ = ByteArray buffer_size_
 
   writer_close -> none:
-    if fullness_ != 0:
-      await: outgoing_ == null or reader_closed_
-      outgoing_ = buffer_.copy 0 fullness_
     writer_closed_ = true
 
   reader_close -> none:
@@ -80,27 +76,25 @@ monitor ReaderWriterHelper_:
     if writer_closed_: throw "CLOSED"
     result := to - from
     while from != to:
-      await: fullness_ != buffer_.size or outgoing_ == null or reader_closed_
+      await: fullness_ != buffer_.size or reader_closed_
       if reader_closed_: throw "CLOSED"
       space := buffer_.size - fullness_
-      if space == 0:
-        assert: outgoing_ == null
-        outgoing_ = buffer_
-        buffer_ = ByteArray buffer_size_
-        fullness_ = 0
-        space = buffer_.size
       remaining := to - from
       chunk_size := min space remaining
+      // Put as much as possible into the buffer.
+      // If we fill it up entirely, then the 'await' above will make us
+      // wait until a reader empties the buffer.
       buffer_.replace fullness_ data from from + chunk_size
       from += chunk_size
       fullness_ += chunk_size
     return result
 
   read:
-    await: outgoing_ or writer_closed_
-    if outgoing_:
-      result := outgoing_
-      outgoing_ = null
+    await: fullness_ != 0 or writer_closed_
+    result := ?
+    if fullness_ != 0:
+      result = buffer_.copy 0 fullness_
+      fullness_ = 0
       return result
     assert: writer_closed_
     return null
