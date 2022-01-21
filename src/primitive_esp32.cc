@@ -136,6 +136,30 @@ PRIMITIVE(get_mac_address) {
   return result;
 }
 
+PRIMITIVE(set_user_rtc_data) {
+  ARGS(Blob, bytes, int, from)
+  if (from < 0 || from + bytes.length() > RtcMemory::RTC_USER_DATA_SIZE) OUT_OF_BOUNDS;
+
+  RtcMemory::set_user_data(const_cast<uint8*>(bytes.address()), from, bytes.length());
+
+  return process->program()->null_object();
+}
+
+PRIMITIVE(user_rtc_data) {
+  ARGS(int, from, int, length)
+  if (from < 0 || from + length > RtcMemory::RTC_USER_DATA_SIZE) OUT_OF_BOUNDS;
+
+  Error* error = null;
+  ByteArray* result = process->allocate_byte_array(length, &error);
+  if (result == null) return error;
+
+  ByteArray::Bytes bytes(result);
+
+  RtcMemory::user_data(const_cast<uint8*>(bytes.address()), from, bytes.length());
+  return result;
+}
+
+
 } // namespace toit
 
 #endif // TOIT_FREERTOS

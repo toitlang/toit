@@ -100,3 +100,19 @@ image_config_ -> ByteArray:
 
 set_real_time_clock_ seconds/int ns/int -> none:
   #primitive.core.set_real_time_clock
+
+/**
+Sets the RTC user data to the given $data starting from the given $offset.
+
+The given $data must be within bounds. That is 0 <= $offset <= $offset + data.size < 2048.
+*/
+set_rtc_data data offset/int=0 -> none:
+  #primitive.esp32.set_rtc_user_data
+
+/**
+Gets the RTC user data in the range [$offset, $offset + $length[.
+
+The parameters must satisfy 0 <= $offset <= + $offset + $length  < 2048.
+*/
+rtc_data offset/int=0 length/int=2048 -> ByteArray:
+  #primitive.esp32.rtc_user_data

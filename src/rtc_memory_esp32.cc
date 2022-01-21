@@ -71,6 +71,7 @@ struct RTCData {
 // Keep the RTC state in the noinit segment that isn't cleared on reboots.
 static RTC_NOINIT_ATTR RTCData rtc;
 static RTC_NOINIT_ATTR uint32 rtc_checksum;
+static RTC_NOINIT_ATTR uint8 rtc_user_data[toit::RtcMemory::RTC_USER_DATA_SIZE];
 static bool reset_after_boot = false;
 
 extern "C" void start_cpu0_default(void) IRAM_ATTR __attribute__((noreturn));
@@ -309,6 +310,14 @@ void RtcMemory::set_session_id(uint32 session_id) {
 
 uint32 RtcMemory::session_id() {
   return rtc.session_id;
+}
+
+void RtcMemory::set_user_data(uint8* data, int from, int length) {
+  memcpy(data, rtc_user_data + from, length);
+}
+
+void RtcMemory::user_data(uint8* data, int from, int length) {
+  memcpy(rtc_user_data + from, data, length);
 }
 
 
