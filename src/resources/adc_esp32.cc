@@ -64,17 +64,7 @@ static adc_atten_t get_atten(int mv) {
   if (mv <= 2200) return ADC_ATTEN_DB_6;
   return ADC_ATTEN_DB_11;
 }
-/*
-AdcState::AdcState(SimpleResourceGroup* group) : SimpleResource(group) {
-  // what to do with this?
-}
 
-void AdcState::init(adc_unit_t unit, int chan) {
-  // is this enough?
-  this->unit = unit;
-  this->chan = chan;
-}
-*/
 MODULE_IMPLEMENTATION(adc, MODULE_ADC)
 
 PRIMITIVE(init) {
