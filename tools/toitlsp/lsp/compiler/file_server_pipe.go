@@ -23,7 +23,7 @@ import (
 )
 
 type PipeFileServer struct {
-	l           sync.Mutex
+	l           sync.Mutex // Covers r and w.
 	r           io.ReadCloser
 	w           io.WriteCloser
 	close_error error
@@ -38,8 +38,11 @@ func NewPipeFileServer(fs FileSystem, logger *zap.Logger, SDKPath string) *PipeF
 }
 
 func (s *PipeFileServer) Run(reader io.ReadCloser, writer io.WriteCloser) error {
+	s.l.Lock()
 	s.r = reader
 	s.w = writer
+	s.l.Unlock()
+
 	go s.handleConn(reader, writer)
 	return nil
 }
@@ -59,6 +62,8 @@ func (s *PipeFileServer) Protocol() *CompilerFSProtocol {
 
 func (s *PipeFileServer) Stop() error {
 	s.l.Lock()
+	defer s.l.Unlock()
+
 	if s.r != nil {
 		s.close_error = s.r.Close()
 	}
@@ -68,11 +73,12 @@ func (s *PipeFileServer) Stop() error {
 			s.close_error = w_error
 		}
 	}
-	s.l.Unlock()
 
 	return s.close_error
 }
 
 func (s *PipeFileServer) IsReady() bool {
+	s.l.Lock()
+	defer s.l.Unlock()
 	return s.r != nil
 }
