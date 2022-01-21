@@ -26,9 +26,7 @@ namespace toit {
 class AdcState : public SimpleResource {
  public:
   TAG(AdcState);
-  AdcState(SimpleResourceGroup* group);
-
-  void init(adc_unit_t unit, int chan);
+  AdcState(SimpleResourceGroup* group, adc_unit_t unit, int chan) : SimpleResource(group), unit(unit), chan(chan) {}
 
   adc_unit_t unit;
   int chan;

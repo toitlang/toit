@@ -64,7 +64,7 @@ static adc_atten_t get_atten(int mv) {
   if (mv <= 2200) return ADC_ATTEN_DB_6;
   return ADC_ATTEN_DB_11;
 }
-
+/*
 AdcState::AdcState(SimpleResourceGroup* group) : SimpleResource(group) {
   // what to do with this?
 }
@@ -74,7 +74,7 @@ void AdcState::init(adc_unit_t unit, int chan) {
   this->unit = unit;
   this->chan = chan;
 }
-
+*/
 MODULE_IMPLEMENTATION(adc, MODULE_ADC)
 
 PRIMITIVE(init) {
@@ -105,16 +105,14 @@ PRIMITIVE(init) {
       OUT_OF_RANGE;
     }
   }
-
-  AdcState* state = _new AdcState(group);
-  if (!state) MALLOC_FAILED;
-
+  
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) {
-    delete state;
     ALLOCATION_FAILED;
   }
-  state->init(unit, chan);
+
+  AdcState* state = _new AdcState(group, unit, chan);
+  if (!state) MALLOC_FAILED;
 
   const int DEFAULT_VREF = 1100;
   esp_adc_cal_characterize(unit, atten, ADC_WIDTH_BIT_12, DEFAULT_VREF, &state->calibration);
