@@ -277,9 +277,15 @@ class LazyEventSource : public EventSource {
     return T::_instance;
   }
 
-  // Overridden to autoatically call unuse().
+  // Overridden to automatically call unuse().
   void unregister_resource_group(ResourceGroup* resource_group) override;
 
+  // The use() and unuse() methods are exposed, so we can get errors out of the
+  // call to use() and fail in a reasonable way. The alternative would have been
+  // to automatically call use() when registering a resource group - to match
+  // how unuse() is automatically called when unregistering - but because the
+  // registering is done from a call to the ResourceGroup constructor, it is hard
+  // to get any errors out.
   bool use();
   void unuse();
 
