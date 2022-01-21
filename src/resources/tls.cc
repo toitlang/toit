@@ -59,7 +59,7 @@ int BaseMbedTLSSocket::add_certificate(X509Certificate* cert, const uint8_t* pri
 
 int BaseMbedTLSSocket::add_root_certificate(X509Certificate* cert) {
   // Copy to a per-certificate chain.
-mbedtls_x509_crt** last = &_root_certs;
+  mbedtls_x509_crt** last = &_root_certs;
   // Move to end of chain.
   while (*last != null) last = &(*last)->next;
   ASSERT(!cert->cert()->next);
