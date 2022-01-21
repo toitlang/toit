@@ -22,28 +22,28 @@ namespace toit {
 
 TLSEventSource* TLSEventSource::_instance = null;
 
-TLSEventSource* TLSEventSource::instance() {
-  return LazyEventSource::get_instance<TLSEventSource>();
-}
-
 TLSEventSource::TLSEventSource()
     : LazyEventSource("TLS", 1)
     , Thread("TLS") {
+  _instance = this;
 }
 
 TLSEventSource::~TLSEventSource() {
-  OS::dispose(_sockets_changed);
+  ASSERT(_sockets_changed == null);
   _instance = null;
 }
 
 bool TLSEventSource::start() {
-  if (mutex() == null) return false;
-
+  Locker locker(mutex());
+  ASSERT(_sockets_changed == null);
   _sockets_changed = OS::allocate_condition_variable(mutex());
   if (_sockets_changed == null) return false;
-
-  if (!spawn(5 * KB)) return false;
-
+  if (!spawn(5 * KB)) {
+    OS::dispose(_sockets_changed);
+    _sockets_changed = null;
+    return false;
+  }
+  _stop = false;
   return true;
 }
 
@@ -57,6 +57,8 @@ void TLSEventSource::stop() {
   }
 
   join();
+  OS::dispose(_sockets_changed);
+  _sockets_changed = null;
 }
 
 void TLSEventSource::handshake(TLSSocket* socket) {

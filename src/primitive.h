@@ -265,6 +265,7 @@ namespace toit {
 
 #define MODULE_TLS(PRIMITIVE)                \
   PRIMITIVE(init, 1)                         \
+  PRIMITIVE(deinit, 1)                       \
   PRIMITIVE(init_socket, 2)                  \
   PRIMITIVE(create, 2)                       \
   PRIMITIVE(set_outgoing, 3)                 \

@@ -35,21 +35,22 @@ class TLSSocket : public Resource, public TLSSocketList::Element {
 
 class TLSEventSource : public LazyEventSource, public Thread {
  public:
-  static TLSEventSource* instance();
+  static TLSEventSource* instance() { return _instance; }
 
   TLSEventSource();
-  ~TLSEventSource();
 
-  virtual bool start() override;
-  virtual void stop() override;
-
-  void on_unregister_resource(Locker& locker, Resource* r) override;
+  virtual void on_unregister_resource(Locker& locker, Resource* r) override;
 
   void handshake(TLSSocket* socket);
 
  protected:
   friend class LazyEventSource;
   static TLSEventSource* _instance;
+
+  ~TLSEventSource();
+
+  virtual bool start() override;
+  virtual void stop() override;
 
  private:
   void entry() override;

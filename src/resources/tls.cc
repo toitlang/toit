@@ -333,11 +333,10 @@ PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;
 
+  // Mark usage. When the group is unregistered, the usage is automatically
+  // decremented, but if group allocation fails, we manually call unuse().
   TLSEventSource* tls = TLSEventSource::instance();
-  if (!tls) MALLOC_FAILED;
-  // Mark usage. The group will automatically unuse when done - if group allocation
-  // failed, manually call unuse.
-  tls->use();
+  if (!tls->use()) MALLOC_FAILED;
 
   auto mode = server ? MbedTLSResourceGroup::TLS_SERVER : MbedTLSResourceGroup::TLS_CLIENT;
   MbedTLSResourceGroup* group = _new MbedTLSResourceGroup(process, tls, mode);
@@ -345,6 +344,7 @@ PRIMITIVE(init) {
     tls->unuse();
     MALLOC_FAILED;
   }
+
   int ret = group->init();
   if (ret != 0) {
     group->tear_down();
@@ -353,6 +353,13 @@ PRIMITIVE(init) {
 
   proxy->set_external_address(group);
   return proxy;
+}
+
+PRIMITIVE(deinit) {
+  ARGS(MbedTLSResourceGroup, group);
+  group->tear_down();
+  group_proxy->clear_external_address();
+  return process->program()->null_object();
 }
 
 Object* MbedTLSResourceGroup::tls_socket_create(Process* process, const char* hostname) {

@@ -38,6 +38,7 @@ void VM::load_platform_event_sources() {
   event_manager()->add_event_source(_new GPIOEventSource());
   event_manager()->add_event_source(_new UARTEventSource());
   event_manager()->add_event_source(_new TLSEventSource());
+  event_manager()->add_event_source(_new BLEEventSource());
 }
 
 } // namespace toit
