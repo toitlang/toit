@@ -299,7 +299,7 @@ class LazyEventSource : public EventSource {
   virtual void stop() = 0;
 
  private:
-  int _usage;
+  int _usage = 0;
 };
 
 class EventSourceManager {
