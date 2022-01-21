@@ -472,13 +472,24 @@ Stack* ObjectHeap::allocate_stack(int length) {
   return result;
 }
 
+#ifdef TOIT_GC_LOGGING
+static word format(word n) {
+  return (n > 9999) ? (n >> KB_LOG2) : n;
+}
+static const char* format_unit(word n) {
+  return (n > 9999) ? "K" : "";
+}
+#define FORMAT(n) format(n), format_unit(n)
+#endif
+
 int ObjectHeap::scavenge() {
   word blocks_before = _blocks.length();
 #ifdef TOIT_GC_LOGGING
   int64 start_time = OS::get_monotonic_time();
   word external_memory_before = _external_memory;
 #ifdef TOIT_FREERTOS
-  word free_before = static_cast<word>(heap_caps_get_free_size(MALLOC_CAP_8BIT));
+  multi_heap_info_t before;
+  heap_caps_get_info(&before, MALLOC_CAP_8BIT);
 #endif //TOIT_FREERTOS
 #endif //TOIT_GC_LOGGING
 
@@ -568,31 +579,40 @@ int ObjectHeap::scavenge() {
   leave_gc();
 
   word blocks_after = _blocks.length();
-#if defined(TOIT_FREERTOS) && defined(TOIT_GC_LOGGING)
-  multi_heap_info_t info;
-  heap_caps_get_info(&info, MALLOC_CAP_8BIT);
-  word free_after = info.total_free_bytes;
-  word total = info.total_allocated_bytes;
-  word largest = info.largest_free_block;
+#ifdef TOIT_GC_LOGGING
+  word toit_before = (blocks_before << TOIT_PAGE_SIZE_LOG2) + external_memory_before;
+  word toit_after = (blocks_after << TOIT_PAGE_SIZE_LOG2) + _external_memory;
   int64 microseconds = OS::get_monotonic_time() - start_time;
-  printf("[gc @ %p%s | heap: %zdkb -> %zdkb | external: %zdkb -> %zdkb | used: %zdkb | free: %zdkb->%zdkb (largest %zd%s) %d.%03dms]\n",
+#ifdef TOIT_FREERTOS
+  multi_heap_info_t after;
+  heap_caps_get_info(&after, MALLOC_CAP_8BIT);
+  word capacity_before = before.total_allocated_bytes + before.total_free_bytes;
+  word capacity_after = after.total_allocated_bytes + after.total_free_bytes;
+  int used_before = before.total_allocated_bytes * 100 / capacity_before;
+  int used_after = after.total_allocated_bytes * 100 / capacity_after;
+  printf("[gc @ %p%s "
+         "| toit: %zd%s/%zd%s -> %zd%s/%zd%s "
+         "| used: %zd%s/%zd%s@%d%% -> %zd%s/%zd%s@%d%% "
+         "| free: %zd%s/%zd%s -> %zd%s/%zd%s "
+         "| %d.%03dms]\n",
       owner(), VM::current()->scheduler()->is_boot_process(owner()) ? "*" : "",
-      blocks_before << (TOIT_PAGE_SIZE_LOG2 - KB_LOG2), blocks_after << (TOIT_PAGE_SIZE_LOG2 - KB_LOG2),
-      external_memory_before >> KB_LOG2, _external_memory >> KB_LOG2,
-      total >> KB_LOG2, free_before >> KB_LOG2, free_after >> KB_LOG2,
-      largest >= 4096 ? (largest >> KB_LOG2) : largest,
-      largest >= 4096 ? "kb" : "bytes",
-      (int)(microseconds / 1000),
-      (int)(microseconds % 1000));
-#elif defined(TOIT_GC_LOGGING)
-  int64 microseconds = OS::get_monotonic_time() - start_time;
-  printf("[gc @ %p%s | heap: %zdkb -> %zdkb | external: %zdkb -> %zdkb | %d.%03dms]\n",
+      FORMAT(external_memory_before), FORMAT(toit_before),                           // toit-before
+      FORMAT(_external_memory), FORMAT(toit_after),                                  // toit-after
+      FORMAT(before.total_allocated_bytes), FORMAT(capacity_before), used_before,    // used-before
+      FORMAT(after.total_allocated_bytes), FORMAT(capacity_after), used_after,       // used-after
+      FORMAT(before.largest_free_block), FORMAT(before.total_free_bytes),            // free-before
+      FORMAT(after.largest_free_block), FORMAT(after.total_free_bytes),              // free-after
+      static_cast<int>(microseconds / 1000), static_cast<int>(microseconds % 1000)); // time
+#else
+  printf("[gc @ %p%s "
+         "| toit: %zd%s/%zd%s -> %zd%s/%zd%s "
+         "| %d.%03dms]\n",
       owner(), VM::current()->scheduler()->is_boot_process(owner()) ? "*" : "",
-      blocks_before << (TOIT_PAGE_SIZE_LOG2 - KB_LOG2), blocks_after << (TOIT_PAGE_SIZE_LOG2 - KB_LOG2),
-      external_memory_before >> KB_LOG2, _external_memory >> KB_LOG2,
-      (int)(microseconds / 1000),
-      (int)(microseconds % 1000));
-#endif
+      FORMAT(external_memory_before), FORMAT(toit_before),                           // toit-before
+      FORMAT(_external_memory), FORMAT(toit_after),                                  // toit-after
+      static_cast<int>(microseconds / 1000), static_cast<int>(microseconds % 1000)); // time
+#endif // TOIT_FREERTOS
+#endif // TOIT_GC_LOGGING
   return blocks_before - blocks_after;
 }
 
@@ -682,8 +702,9 @@ void VMFinalizerNode::free_external_memory(Process* process) {
     ByteArray* byte_array = ByteArray::cast(key());
     if (byte_array->external_tag() == MappedFileTag) return;  // TODO(Lau): release mapped file, so flash storage can be reclaimed.
     ASSERT(byte_array->has_external_address());
-    memory = byte_array->as_external();
-    accounting_size = ByteArray::Bytes(byte_array).length();
+    ByteArray::Bytes bytes(byte_array);
+    memory = bytes.address();
+    accounting_size = bytes.length();
     // Accounting size is 0 if the byte array is tagged, since we don't account
     // memory for Resources etc.
     ASSERT(byte_array->external_tag() == RawByteTag || byte_array->external_tag() == NullStructTag);
