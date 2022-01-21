@@ -126,7 +126,6 @@ void EventSource::register_resource_group(ResourceGroup* resource_group) {
 }
 
 void EventSource::unregister_resource_group(ResourceGroup* resource_group) {
-  unuse();
 }
 
 void EventSource::set_state(word id, uint32_t state) {
@@ -187,9 +186,15 @@ IntResource* EventSource::find_resource_by_id(const Locker& locker, word id) {
   return null;
 }
 
-void LazyEventSource::use() {
+void LazyEventSource::unregister_resource_group(ResourceGroup* resource_group) {
+  unuse();
+}
+
+bool LazyEventSource::use() {
   Locker locker(OS::global_mutex());
+  if (_usage == 0 && !start()) return false;
   _usage++;
+  return true;
 }
 
 void LazyEventSource::unuse() {

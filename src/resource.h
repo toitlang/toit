@@ -222,7 +222,7 @@ class EventSource : public EventSourceList::Element {
   void unregister_resource(Resource* resource);
 
   void register_resource_group(ResourceGroup* resource_group);
-  void unregister_resource_group(ResourceGroup* resource_group);
+  virtual void unregister_resource_group(ResourceGroup* resource_group);
 
   void set_object_notifier(Resource* r, ObjectNotifier* notifier);
 
@@ -239,9 +239,6 @@ class EventSource : public EventSourceList::Element {
   ResourceListFromEventSource& resources() {
     return _resources;
   }
-
-  virtual void use() {}
-  virtual void unuse() {}
 
  protected:
   explicit EventSource(const char* name, int lock_level = 0);
@@ -276,20 +273,15 @@ class LazyEventSource : public EventSource {
   static T* get_instance() {
     Locker locker(OS::global_mutex());
     HeapTagScope scope(ITERATE_CUSTOM_TAGS + EVENT_SOURCE_MALLOC_TAG);
-    if (!T::_instance) {
-      T::_instance = _new T();
-      if (!T::_instance) return null;
-
-      if (!T::_instance->start()) {
-        delete T::_instance;
-        T::_instance = null;
-      }
-    }
+    if (!T::_instance) T::_instance = _new T();
     return T::_instance;
   }
 
-  void use() override;
-  void unuse() override;
+  // Overridden to autoatically call unuse().
+  void unregister_resource_group(ResourceGroup* resource_group) override;
+
+  bool use();
+  void unuse();
 
  protected:
   LazyEventSource(const char* name, int lock_level = 0)

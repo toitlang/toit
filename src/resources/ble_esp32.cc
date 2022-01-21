@@ -299,11 +299,10 @@ PRIMITIVE(init) {
   }
 
   BLEEventSource* ble = BLEEventSource::instance();
-  if (!ble) {
+  if (!ble || !ble->use()) {
     ble_pool.put(id);
     MALLOC_FAILED;
   }
-  ble->use();
 
   BLEResourceGroup* group = _new BLEResourceGroup(process, ble, id);
   if (!group) {
