@@ -1,3 +1,4 @@
+---
 name: CI
 'on': push
 jobs:
@@ -55,3 +56,4 @@ jobs:
       run: |-
         make all
         make CROSS_ARCH=host32 all-cross
+    runs-on: ubuntu-latest
