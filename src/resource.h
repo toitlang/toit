@@ -269,12 +269,8 @@ class EventSource : public EventSourceList::Element {
 
 class LazyEventSource : public EventSource {
  public:
-  template<class T>
-  static T* get_instance() {
-    Locker locker(OS::global_mutex());
-    HeapTagScope scope(ITERATE_CUSTOM_TAGS + EVENT_SOURCE_MALLOC_TAG);
-    if (!T::_instance) T::_instance = _new T();
-    return T::_instance;
+  LazyEventSource(const char* name, int lock_level = 0)
+    : EventSource(name, lock_level) {
   }
 
   // Overridden to automatically call unuse().
@@ -290,9 +286,6 @@ class LazyEventSource : public EventSource {
   void unuse();
 
  protected:
-  LazyEventSource(const char* name, int lock_level = 0)
-    : EventSource(name, lock_level) {}
-
   virtual bool start() = 0;
   virtual void stop() = 0;
 

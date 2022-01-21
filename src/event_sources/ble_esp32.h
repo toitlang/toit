@@ -104,7 +104,9 @@ class GATTResource : public BLEResource {
 
 class BLEEventSource : public LazyEventSource, public Thread {
  public:
-  static BLEEventSource* instance();
+  static BLEEventSource* instance() { return _instance; }
+
+  BLEEventSource();
 
   void on_register_resource(Locker& locker, Resource* r) override;
   void on_unregister_resource(Locker& locker, Resource* r) override;
@@ -128,7 +130,6 @@ class BLEEventSource : public LazyEventSource, public Thread {
   friend class LazyEventSource;
   static BLEEventSource* _instance;
 
-  BLEEventSource();
   ~BLEEventSource();
 
   virtual bool start() override;

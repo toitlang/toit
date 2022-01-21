@@ -201,7 +201,6 @@ void LazyEventSource::unuse() {
   Locker locker(OS::global_mutex());
   if (--_usage == 0) {
     stop();
-    delete this;
   }
 }
 

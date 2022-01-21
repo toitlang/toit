@@ -298,8 +298,10 @@ PRIMITIVE(init) {
     return Primitive::os_error(err, process);
   }
 
+  // Mark usage. When the group is unregistered, the usage is automatically
+  // decremented, but if group allocation fails, we manually call unuse().
   BLEEventSource* ble = BLEEventSource::instance();
-  if (!ble || !ble->use()) {
+  if (!ble->use()) {
     ble_pool.put(id);
     MALLOC_FAILED;
   }
