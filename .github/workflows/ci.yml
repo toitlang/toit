@@ -19,6 +19,8 @@ jobs:
         go-version: '1.17'
     - name: Get Go paths
       run: |
+        go env GOCACHE
+        go env GOMODCACHE
         echo "::set-output name=go-build::$(go env GOCACHE)"
         echo "::set-output name=go-mod::$(go env GOMODCACHE)"
       id: go-cache-paths
