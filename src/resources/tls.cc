@@ -355,6 +355,13 @@ PRIMITIVE(init) {
   return proxy;
 }
 
+PRIMITIVE(deinit) {
+  ARGS(MbedTLSResourceGroup, group);
+  group->tear_down();
+  group_proxy->clear_external_address();
+  return process->program()->null_object();
+}
+
 Object* MbedTLSResourceGroup::tls_socket_create(Process* process, const char* hostname) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;

@@ -34,7 +34,6 @@ void VM::load_platform_event_sources() {
   event_manager()->add_event_source(_new KQueueEventSource());
   event_manager()->add_event_source(_new DNSEventSource());
   event_manager()->add_event_source(_new SubprocessEventSource());
-  event_manager()->add_event_source(_new TLSEventSource());
 }
 
 } // namespace toit

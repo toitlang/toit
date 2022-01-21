@@ -37,12 +37,6 @@ class TLSEventSource : public LazyEventSource, public Thread {
  public:
   static TLSEventSource* instance();
 
-  TLSEventSource();
-  ~TLSEventSource();
-
-  virtual bool start() override;
-  virtual void stop() override;
-
   void on_unregister_resource(Locker& locker, Resource* r) override;
 
   void handshake(TLSSocket* socket);
@@ -50,6 +44,12 @@ class TLSEventSource : public LazyEventSource, public Thread {
  protected:
   friend class LazyEventSource;
   static TLSEventSource* _instance;
+
+  TLSEventSource();
+  ~TLSEventSource();
+
+  virtual bool start() override;
+  virtual void stop() override;
 
  private:
   void entry() override;

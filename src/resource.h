@@ -288,15 +288,15 @@ class LazyEventSource : public EventSource {
     return T::_instance;
   }
 
-  virtual bool start() = 0;
-  virtual void stop() = 0;
-
   void use() override;
   void unuse() override;
 
  protected:
-  explicit LazyEventSource(const char* name, int lock_level = 0)
+  LazyEventSource(const char* name, int lock_level = 0)
     : EventSource(name, lock_level) {}
+
+  virtual bool start() = 0;
+  virtual void stop() = 0;
 
  private:
   int _usage;
