@@ -32,18 +32,20 @@ MODULE_IMPLEMENTATION(snapshot, MODULE_SNAPSHOT)
 PRIMITIVE(launch) {
   ARGS(Blob, bytes, int, from, int, to, bool, pass_args);
 
-  Block* initial_block = VM::current()->heap_memory()->allocate_initial_block();
-  if (!initial_block) ALLOCATION_FAILED;
-
   if (!(0 <= from && from <= to && to <= bytes.length())) {
     INVALID_ARGUMENT;
   }
+
+  Block* initial_block = VM::current()->heap_memory()->allocate_initial_block();
+  if (!initial_block) ALLOCATION_FAILED;
+
   Snapshot snapshot(&bytes.address()[from], to - from);
   auto image = snapshot.read_image();
   int group_id = VM::current()->scheduler()->next_group_id();
   ProcessGroup* process_group = ProcessGroup::create(group_id);
   if (process_group == NULL) {
     VM::current()->heap_memory()->free_unused_block(initial_block);
+    image.release();
     MALLOC_FAILED;
   }
 
