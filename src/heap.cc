@@ -591,25 +591,25 @@ int ObjectHeap::scavenge() {
   int used_before = before.total_allocated_bytes * 100 / capacity_before;
   int used_after = after.total_allocated_bytes * 100 / capacity_after;
   printf("[gc @ %p%s "
-         "| toit: %zd%s/%zd%s -> %zd%s/%zd%s "
-         "| used: %zd%s/%zd%s@%d%% -> %zd%s/%zd%s@%d%% "
+         "| objects: %zd%s/%zd%s -> %zd%s/%zd%s "
+         "| overall: %zd%s/%zd%s@%d%% -> %zd%s/%zd%s@%d%% "
          "| free: %zd%s/%zd%s -> %zd%s/%zd%s "
          "| %d.%03dms]\n",
       owner(), VM::current()->scheduler()->is_boot_process(owner()) ? "*" : "",
-      FORMAT(external_memory_before), FORMAT(toit_before),                           // toit-before
-      FORMAT(_external_memory), FORMAT(toit_after),                                  // toit-after
-      FORMAT(before.total_allocated_bytes), FORMAT(capacity_before), used_before,    // used-before
-      FORMAT(after.total_allocated_bytes), FORMAT(capacity_after), used_after,       // used-after
+      FORMAT(external_memory_before), FORMAT(toit_before),                           // objects-before
+      FORMAT(_external_memory), FORMAT(toit_after),                                  // objects-after
+      FORMAT(before.total_allocated_bytes), FORMAT(capacity_before), used_before,    // overall-before
+      FORMAT(after.total_allocated_bytes), FORMAT(capacity_after), used_after,       // overall-after
       FORMAT(before.largest_free_block), FORMAT(before.total_free_bytes),            // free-before
       FORMAT(after.largest_free_block), FORMAT(after.total_free_bytes),              // free-after
       static_cast<int>(microseconds / 1000), static_cast<int>(microseconds % 1000)); // time
 #else
   printf("[gc @ %p%s "
-         "| toit: %zd%s/%zd%s -> %zd%s/%zd%s "
+         "| objects: %zd%s/%zd%s -> %zd%s/%zd%s "
          "| %d.%03dms]\n",
       owner(), VM::current()->scheduler()->is_boot_process(owner()) ? "*" : "",
-      FORMAT(external_memory_before), FORMAT(toit_before),                           // toit-before
-      FORMAT(_external_memory), FORMAT(toit_after),                                  // toit-after
+      FORMAT(external_memory_before), FORMAT(toit_before),                           // objects-before
+      FORMAT(_external_memory), FORMAT(toit_after),                                  // objects-after
       static_cast<int>(microseconds / 1000), static_cast<int>(microseconds % 1000)); // time
 #endif // TOIT_FREERTOS
 #endif // TOIT_GC_LOGGING
