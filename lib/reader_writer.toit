@@ -93,7 +93,7 @@ monitor ReaderWriterHelper_:
     await: fullness_ != 0 or writer_closed_
     result := ?
     if fullness_ != 0:
-      result = buffer_[..fullness_].copy
+      result = buffer_.copy 0 fullness_
       fullness_ = 0
       return result
     assert: writer_closed_
