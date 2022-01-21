@@ -1,13 +1,13 @@
-tests/negative/abstractD_test.toit:6:7: error: Non-abstract class 'B' is missing implementations
+tests/negative/abstractD_test.toit:8:7: error: Non-abstract class 'B' is missing implementations
 class B extends A:
       ^
-tests/negative/abstractD_test.toit:4:12: note: Method 'foo' is only partially implemented
+tests/negative/abstractD_test.toit:6:12: note: Method 'foo' is only partially implemented
   abstract foo x=unresolved
            ^~~
-tests/negative/abstractD_test.toit:4:18: error: Unresolved identifier: 'unresolved'
+tests/negative/abstractD_test.toit:6:18: error: Unresolved identifier: 'unresolved'
   abstract foo x=unresolved
                  ^~~~~~~~~~
-tests/negative/abstractD_test.toit:8:16: error: Unresolved identifier: 'unresolved'
+tests/negative/abstractD_test.toit:10:16: error: Unresolved identifier: 'unresolved'
     return x + unresolved
                ^~~~~~~~~~
 Compilation failed.

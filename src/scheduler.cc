@@ -418,9 +418,11 @@ void Scheduler::scavenge(Process* process, bool malloc_failed, bool try_hard) {
     Locker locker(_mutex);
     _gc_cross_processes = false;
 #ifdef TOIT_GC_LOGGING
-    uint64 elapsed = OS::get_monotonic_time() - start;
+    int64 microseconds = OS::get_monotonic_time() - start;
     printf("[cross-process gc: %d scavenges, took %d.%03dms]\n",
-        scavenges + 1, elapsed / 1000, elapsed % 1000);
+        scavenges + 1,
+        static_cast<int>(microseconds / 1000),
+        static_cast<int>(microseconds % 1000));
 #endif
     OS::signal_all(_gc_condition);
   }

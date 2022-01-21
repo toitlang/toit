@@ -1,25 +1,25 @@
-tests/negative/member_name_test.toit:4:3: error: Invalid member name
+tests/negative/member_name_test.toit:6:3: error: Invalid member name
   foo. x: unresolved
   ^~~~
-tests/negative/member_name_test.toit:6:3: error: Invalid member name
+tests/negative/member_name_test.toit:8:3: error: Invalid member name
   constructor.+ y: unresolved
   ^~~~~~~~~~~~
-tests/negative/member_name_test.toit:6:15: error: Unexpected token: +
+tests/negative/member_name_test.toit:8:15: error: Unexpected token: +
   constructor.+ y: unresolved
               ^
-tests/negative/member_name_test.toit:7:3: error: Invalid member name
+tests/negative/member_name_test.toit:9:3: error: Invalid member name
   bar.= y: unresolved
   ^~~~
-tests/negative/member_name_test.toit:7:7: error: Unexpected token: =
+tests/negative/member_name_test.toit:9:7: error: Unexpected token: =
   bar.= y: unresolved
       ^
-tests/negative/member_name_test.toit:6:20: error: Unresolved identifier: 'unresolved'
+tests/negative/member_name_test.toit:8:20: error: Unresolved identifier: 'unresolved'
   constructor.+ y: unresolved
                    ^~~~~~~~~~
-tests/negative/member_name_test.toit:4:11: error: Unresolved identifier: 'unresolved'
+tests/negative/member_name_test.toit:6:11: error: Unresolved identifier: 'unresolved'
   foo. x: unresolved
           ^~~~~~~~~~
-tests/negative/member_name_test.toit:7:12: error: Unresolved identifier: 'unresolved'
+tests/negative/member_name_test.toit:9:12: error: Unresolved identifier: 'unresolved'
   bar.= y: unresolved
            ^~~~~~~~~~
 Compilation failed.

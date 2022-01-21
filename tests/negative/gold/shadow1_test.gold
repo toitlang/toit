@@ -1,7 +1,7 @@
-tests/negative/shadow1_test.toit:6:5: error: Definition of 'x' shadows outer field definition
+tests/negative/shadow1_test.toit:8:5: error: Definition of 'x' shadows outer field definition
     x := 499
     ^
-tests/negative/shadow1_test.toit:4:3: note: Shadowed field 'x'
+tests/negative/shadow1_test.toit:6:3: note: Shadowed field 'x'
   x := 0
   ^
 Compilation failed.

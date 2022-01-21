@@ -1,4 +1,4 @@
-tests/named2_test_force.toit:16:10: error: Argument mismatch for 'B.x'
+tests/named2_test_force.toit:18:10: error: Argument mismatch for 'B.x'
 No argument named '--val'
     this.x --val=499
          ^

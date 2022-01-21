@@ -1,10 +1,10 @@
-tests/negative/bad_assignment_test.toit:4:9: error: Expected name of declaration
+tests/negative/bad_assignment_test.toit:6:9: error: Expected name of declaration
   static 
         ^
-tests/negative/bad_assignment_test.toit:7:6: error: Expected identifier
+tests/negative/bad_assignment_test.toit:9:6: error: Expected identifier
   A. = 99
      ^
-tests/negative/bad_assignment_test.toit:4:9: error: Missing body
+tests/negative/bad_assignment_test.toit:6:9: error: Missing body
   static 
         ^
 Compilation failed.

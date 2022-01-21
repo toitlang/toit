@@ -1,4 +1,4 @@
-tests/negative/abstract8_test.toit:4:12: error: Abstract members can't have bodies
+tests/negative/abstract8_test.toit:6:12: error: Abstract members can't have bodies
   abstract foo:
            ^~~
 Compilation failed.

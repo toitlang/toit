@@ -33,12 +33,14 @@
 #include "dispatch_table.h"
 #include "filesystem_hybrid.h"
 #include "filesystem_local.h"
-#include "filesystem_socket.h"
+#include "filesystem_lsp.h"
 #include "lambda.h"
 #include "list.h"
 #include "lsp/lsp.h"
 #include "lsp/completion.h"
 #include "lsp/goto_definition.h"
+#include "lsp/fs_connection_socket.h"
+#include "lsp/fs_protocol.h"
 #include "lock.h"
 #include "map.h"
 #include "monitor.h"
@@ -325,17 +327,38 @@ void Compiler::language_server(const Compiler::Configuration& compiler_config) {
 #endif
   LineReader reader(stdin);
   const char* port = reader.next("port");
-  FilesystemLocal fs_local;
-  FilesystemSocket fs_socket(port);
-  Filesystem* fs;
+
+  Filesystem* fs = null;
+  LspFsProtocol* fs_protocol = null;
+  LspFsConnection* connection = null;
   if (strcmp("-1", port) == 0) {
-    fs = &fs_local;
+    fs = _new FilesystemLocal();
   } else {
-    fs = &fs_socket;
+    connection = _new LspFsConnectionSocket(port);
+    fs_protocol = _new LspFsProtocol(connection);
+    fs = _new FilesystemLsp(fs_protocol);
   }
 
-  LspProtocol lsp_protocol;
-  Lsp lsp(&lsp_protocol);
+  // We generally don't explicitly keep track of memory, but here we might need
+  // to release resources.
+  Defer del_fs { [&]() {
+      delete fs;
+      delete fs_protocol;
+      delete connection;
+    }
+  };
+
+  LspWriter* writer = new LspWriterStdout();
+  LspProtocol* lsp_protocol = new LspProtocol(writer);
+  Lsp lsp(lsp_protocol);
+
+  // We generally don't explicitly keep track of memory, but here we might need
+  // to release resources.
+  Defer del_lsp { [&]() {
+      delete writer;
+      delete lsp_protocol;
+    }
+  };
 
   const char* mode = reader.next("mode");
   SourceManager source_manager(fs);

@@ -1,4 +1,6 @@
-// Copyright (C) 2019 Toitware ApS. All rights reserved.
+// Copyright (C) 2019 Toitware ApS.
+// Use of this source code is governed by a Zero-Clause BSD license that can
+// be found in the tests/LICENSE file.
 
 import host.directory
 import expect show *
@@ -67,9 +69,9 @@ create_archive path toitc -> string:
   timeout_ms := -1  // No timeout.
 
   repro_filesystem := FilesystemLocal (sdk_path_from_compiler toitc)
-  repro_file_server := FileServer documents repro_filesystem
+  protocol := FileServerProtocol documents repro_filesystem
   compiler := Compiler toitc uri_translator timeout_ms
-      --file_server=repro_file_server
+      --protocol=protocol
       --project_path=directory.cwd
 
   compiler_input := create_compiler_input --path=untitled_path
@@ -83,7 +85,7 @@ create_archive path toitc -> string:
       --compiler_flags=compiler.build_run_flags
       --compiler_input=compiler_input
       --info="Test"
-      --file_server=repro_file_server
+      --protocol=protocol
       --cwd_path=directory.cwd
       --include_sdk
 

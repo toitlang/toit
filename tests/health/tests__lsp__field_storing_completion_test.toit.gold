@@ -1,9 +1,9 @@
-tests/lsp/field_storing_completion_test.toit:58:5: error: Field-storing parameter not allowed in static functions
+tests/lsp/field_storing_completion_test.toit:60:5: error: Field-storing parameter not allowed in static functions
 foo .field_storing:
     ^~~~~~~~~~~~~~
-tests/lsp/field_storing_completion_test.toit:39:23: error: Field-storing parameter not allowed in static functions
+tests/lsp/field_storing_completion_test.toit:41:23: error: Field-storing parameter not allowed in static functions
   constructor.factory .field_B1:
                       ^~~~~~~~~
-tests/lsp/field_storing_completion_test.toit:53:14: error: Field-storing parameter not allowed in static functions
+tests/lsp/field_storing_completion_test.toit:55:14: error: Field-storing parameter not allowed in static functions
   static foo .field_B1:
              ^~~~~~~~~

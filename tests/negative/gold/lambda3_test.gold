@@ -1,13 +1,13 @@
-tests/negative/lambda3_test.toit:21:3: error: Unresolved identifier: 'unresolved'
+tests/negative/lambda3_test.toit:23:3: error: Unresolved identifier: 'unresolved'
   unresolved
   ^~~~~~~~~~
-tests/negative/lambda3_test.toit:12:9: error: Type mismatch. Expected 'string'. Got 'int'
+tests/negative/lambda3_test.toit:14:9: error: Type mismatch. Expected 'string'. Got 'int'
   a.foo 5
         ^
-tests/negative/lambda3_test.toit:13:15: error: Type mismatch. Expected 'string'. Got 'int'
+tests/negative/lambda3_test.toit:15:15: error: Type mismatch. Expected 'string'. Got 'int'
   run:: a.foo 3
               ^
-tests/negative/lambda3_test.toit:19:12: error: Type mismatch. Expected 'string'. Got 'int'
+tests/negative/lambda3_test.toit:21:12: error: Type mismatch. Expected 'string'. Got 'int'
     a2.foo 499
            ^~~
 Compilation failed.

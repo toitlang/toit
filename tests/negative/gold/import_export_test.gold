@@ -1,13 +1,13 @@
-tests/negative/import_export_test.toit:5:1: error: Imports must be before declarations
+tests/negative/import_export_test.toit:7:1: error: Imports must be before declarations
 import encoding.json as json
 ^~~~~~
-tests/negative/import_export_test.toit:3:1: note: Earlier declaration
+tests/negative/import_export_test.toit:5:1: note: Earlier declaration
 declaration := null
 ^~~~~~~~~~~
-tests/negative/import_export_test.toit:6:1: error: Exports must be before declarations
+tests/negative/import_export_test.toit:8:1: error: Exports must be before declarations
 export *
 ^~~~~~
-tests/negative/import_export_test.toit:3:1: note: Earlier declaration
+tests/negative/import_export_test.toit:5:1: note: Earlier declaration
 declaration := null
 ^~~~~~~~~~~
 Couldn't find 'main' (with 0 or 1 argument) in entry file 'tests/negative/import_export_test.toit'

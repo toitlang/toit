@@ -22,10 +22,12 @@ namespace compiler {
 
 class Module;
 class ToitdocRegistry;
+struct LspWriter;
 
 void emit_summary(const std::vector<Module*>& modules,
                   int core_index,
-                  const ToitdocRegistry& toitdocs);
+                  const ToitdocRegistry& toitdocs,
+                  LspWriter* writer);
 
 } // namespace toit::compiler
 } // namespace toit

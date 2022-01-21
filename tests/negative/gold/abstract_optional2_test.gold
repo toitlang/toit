@@ -1,13 +1,13 @@
-tests/negative/abstract_optional2_test.toit:8:10: error: Static functions can't be abstract
+tests/negative/abstract_optional2_test.toit:10:10: error: Static functions can't be abstract
 abstract foo x y=gee --named1=gee --named2=2
          ^~~
-tests/negative/abstract_optional2_test.toit:9:10: error: Static functions can't be abstract
+tests/negative/abstract_optional2_test.toit:11:10: error: Static functions can't be abstract
 abstract bar x/int="str"
          ^~~
-tests/negative/abstract_optional2_test.toit:10:10: error: Static functions can't be abstract
+tests/negative/abstract_optional2_test.toit:12:10: error: Static functions can't be abstract
 abstract foobar x y=this.gee
          ^~~~~~
-tests/negative/abstract_optional2_test.toit:10:21: error: Can't access 'this' in static method
+tests/negative/abstract_optional2_test.toit:12:21: error: Can't access 'this' in static method
 abstract foobar x y=this.gee
                     ^~~~
 Couldn't find 'main' (with 0 or 1 argument) in entry file 'tests/negative/abstract_optional2_test.toit'

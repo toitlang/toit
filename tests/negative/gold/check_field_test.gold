@@ -1,52 +1,52 @@
-tests/negative/check_field_test.toit:3:10: error: Fields can't be abstract
+tests/negative/check_field_test.toit:5:10: error: Fields can't be abstract
 abstract x := unresolved
          ^
-tests/negative/check_field_test.toit:6:12: error: Fields can't be abstract
+tests/negative/check_field_test.toit:8:12: error: Fields can't be abstract
   abstract x := unresolved
            ^
-tests/negative/check_field_test.toit:7:19: error: Fields can't be abstract
+tests/negative/check_field_test.toit:9:19: error: Fields can't be abstract
   abstract static y := unresolved
                   ^
-tests/negative/check_field_test.toit:10:3: error: Interfaces can't have fields
+tests/negative/check_field_test.toit:12:3: error: Interfaces can't have fields
   x := unresolved
   ^
-tests/negative/check_field_test.toit:11:12: error: Fields can't be abstract
+tests/negative/check_field_test.toit:13:12: error: Fields can't be abstract
   abstract y := unresolved
            ^
-tests/negative/check_field_test.toit:11:12: error: Interfaces can't have fields
+tests/negative/check_field_test.toit:13:12: error: Interfaces can't have fields
   abstract y := unresolved
            ^
-tests/negative/check_field_test.toit:14:3: error: Interfaces can't have constructors
+tests/negative/check_field_test.toit:16:3: error: Interfaces can't have constructors
   constructor:
   ^~~~~~~~~~~
-tests/negative/check_field_test.toit:15:3: error: Interfaces can't have fields
+tests/negative/check_field_test.toit:17:3: error: Interfaces can't have fields
   x := unresolved
   ^
-tests/negative/check_field_test.toit:16:12: error: Fields can't be abstract
+tests/negative/check_field_test.toit:18:12: error: Fields can't be abstract
   abstract y := unresolved
            ^
-tests/negative/check_field_test.toit:16:12: error: Interfaces can't have fields
+tests/negative/check_field_test.toit:18:12: error: Interfaces can't have fields
   abstract y := unresolved
            ^
-tests/negative/check_field_test.toit:6:17: error: Unresolved identifier: 'unresolved'
+tests/negative/check_field_test.toit:8:17: error: Unresolved identifier: 'unresolved'
   abstract x := unresolved
                 ^~~~~~~~~~
-tests/negative/check_field_test.toit:7:24: error: Unresolved identifier: 'unresolved'
+tests/negative/check_field_test.toit:9:24: error: Unresolved identifier: 'unresolved'
   abstract static y := unresolved
                        ^~~~~~~~~~
-tests/negative/check_field_test.toit:10:8: error: Unresolved identifier: 'unresolved'
+tests/negative/check_field_test.toit:12:8: error: Unresolved identifier: 'unresolved'
   x := unresolved
        ^~~~~~~~~~
-tests/negative/check_field_test.toit:11:17: error: Unresolved identifier: 'unresolved'
+tests/negative/check_field_test.toit:13:17: error: Unresolved identifier: 'unresolved'
   abstract y := unresolved
                 ^~~~~~~~~~
-tests/negative/check_field_test.toit:15:8: error: Unresolved identifier: 'unresolved'
+tests/negative/check_field_test.toit:17:8: error: Unresolved identifier: 'unresolved'
   x := unresolved
        ^~~~~~~~~~
-tests/negative/check_field_test.toit:16:17: error: Unresolved identifier: 'unresolved'
+tests/negative/check_field_test.toit:18:17: error: Unresolved identifier: 'unresolved'
   abstract y := unresolved
                 ^~~~~~~~~~
-tests/negative/check_field_test.toit:3:15: error: Unresolved identifier: 'unresolved'
+tests/negative/check_field_test.toit:5:15: error: Unresolved identifier: 'unresolved'
 abstract x := unresolved
               ^~~~~~~~~~
 Compilation failed.

@@ -222,7 +222,7 @@ class EventSource : public EventSourceList::Element {
   void unregister_resource(Resource* resource);
 
   void register_resource_group(ResourceGroup* resource_group);
-  void unregister_resource_group(ResourceGroup* resource_group);
+  virtual void unregister_resource_group(ResourceGroup* resource_group);
 
   void set_object_notifier(Resource* r, ObjectNotifier* notifier);
 
@@ -239,9 +239,6 @@ class EventSource : public EventSourceList::Element {
   ResourceListFromEventSource& resources() {
     return _resources;
   }
-
-  virtual void use() {}
-  virtual void unuse() {}
 
  protected:
   explicit EventSource(const char* name, int lock_level = 0);
@@ -272,34 +269,28 @@ class EventSource : public EventSourceList::Element {
 
 class LazyEventSource : public EventSource {
  public:
-  template<class T>
-  static T* get_instance() {
-    Locker locker(OS::global_mutex());
-    HeapTagScope scope(ITERATE_CUSTOM_TAGS + EVENT_SOURCE_MALLOC_TAG);
-    if (!T::_instance) {
-      T::_instance = _new T();
-      if (!T::_instance) return null;
-
-      if (!T::_instance->start()) {
-        delete T::_instance;
-        T::_instance = null;
-      }
-    }
-    return T::_instance;
+  LazyEventSource(const char* name, int lock_level = 0)
+    : EventSource(name, lock_level) {
   }
 
+  // Overridden to automatically call unuse().
+  void unregister_resource_group(ResourceGroup* resource_group) override;
+
+  // The use() and unuse() methods are exposed, so we can get errors out of the
+  // call to use() and fail in a reasonable way. The alternative would have been
+  // to automatically call use() when registering a resource group - to match
+  // how unuse() is automatically called when unregistering - but because the
+  // registering is done from a call to the ResourceGroup constructor, it is hard
+  // to get any errors out.
+  bool use();
+  void unuse();
+
+ protected:
   virtual bool start() = 0;
   virtual void stop() = 0;
 
-  void use() override;
-  void unuse() override;
-
- protected:
-  explicit LazyEventSource(const char* name, int lock_level = 0)
-    : EventSource(name, lock_level) {}
-
  private:
-  int _usage;
+  int _usage = 0;
 };
 
 class EventSourceManager {

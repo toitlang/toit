@@ -1,3 +1,18 @@
+// Copyright (C) 2022 Toitware ApS.
+//
+// This library is free software; you can redistribute it and/or
+// modify it under the terms of the GNU Lesser General Public
+// License as published by the Free Software Foundation; version
+// 2.1 only.
+//
+// This library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+// Lesser General Public License for more details.
+//
+// The license can be found in the file `LICENSE` in the top level
+// directory of this repository.
+
 #include <stdio.h>
 #include <string.h>
 #include <signal.h>
@@ -5,7 +20,9 @@
 
 #include "../../src/top.h"
 #include "../../src/compiler/tar.h"
-#include "../../src/compiler/filesystem_socket.h"
+#include "../../src/compiler/lsp/fs_connection_socket.h"
+#include "../../src/compiler/lsp/fs_protocol.h"
+#include "../../src/compiler/filesystem_lsp.h"
 #include "../../src/compiler/sources.h"
 #include "../../src/compiler/diagnostic.h"
 #include "../../src/compiler/package.h"
@@ -74,7 +91,9 @@ int main(int argc, char** argv) {
     }
   }
 
-  FilesystemSocket fs(port);
+  LspFsConnectionSocket connection(port);
+  LspFsProtocol protocol(&connection);
+  FilesystemLsp fs(&protocol);
   SourceManager manager(&fs);
   NullDiagnostics diagnostics(&manager);
   fs.initialize(&diagnostics);

@@ -1,19 +1,19 @@
-tests/negative/index2_test.toit:5:4: error: Missing closing ']'
+tests/negative/index2_test.toit:7:4: error: Missing closing ']'
   x[break break unresolved] = 3
    ^~~~~~~
-tests/negative/index2_test.toit:7:15: error: Missing closing ']'
+tests/negative/index2_test.toit:9:15: error: Missing closing ']'
   y := "foo $x[break break unresolved]"
               ^~~~~~~
-tests/negative/index2_test.toit:8:14: error: Missing closing ']'
+tests/negative/index2_test.toit:10:14: error: Missing closing ']'
   y = "foo $x[break break]"
              ^~~~~~~
-tests/negative/index2_test.toit:5:5: error: 'break' must be inside loop
+tests/negative/index2_test.toit:7:5: error: 'break' must be inside loop
   x[break break unresolved] = 3
     ^~~~~
-tests/negative/index2_test.toit:7:16: error: 'break' must be inside loop
+tests/negative/index2_test.toit:9:16: error: 'break' must be inside loop
   y := "foo $x[break break unresolved]"
                ^~~~~
-tests/negative/index2_test.toit:8:15: error: 'break' must be inside loop
+tests/negative/index2_test.toit:10:15: error: 'break' must be inside loop
   y = "foo $x[break break]"
               ^~~~~
 Compilation failed.

@@ -1,7 +1,7 @@
 // Copyright (C) 2019 Toitware ApS. All rights reserved.
 
 import .tcp as tcp
-import reader show BufferedReader
+import reader show BufferedReader Reader
 import writer show Writer
 import host.file
 import host.directory
@@ -11,8 +11,6 @@ import .documents
 import .rpc
 import .utils
 import .verbose
-
-import .debug
 
 sdk_path_from_compiler compiler_path/string -> string:
   index := compiler_path.index_of --last "/"
@@ -34,53 +32,24 @@ class File:
   constructor .path .exists .is_regular .is_directory .content:
 
 
-class FileServer:
+class FileServerProtocol:
   filesystem / Filesystem ::= ?
   documents_  / Documents  ::= ?
-
-  server_   / tcp.TcpServerSocket? := null
 
   file_cache_ / Map ::= {:}
   directory_cache_ / Map ::= {:}
   sdk_path_ / string? := null
   package_cache_paths_ / List? := null
 
-  _semaphore ::= monitor.Semaphore
-
   constructor .documents_ .filesystem:
 
   constructor.local compiler_path/string sdk_path/string .documents_:
     filesystem = FilesystemLocal sdk_path
 
-  /**
-  Binds the server and listens for one connection.
-
-  If a $port is given, binds to that port.
-  Otherwise binds to an arbitrary port.
-
-  Returns the port at which the server can be reached.
-  */
-  run --port=0 -> int:
-    server_ = tcp.TcpServerSocket
-    server_.listen "" port
-    port = server_.local_address.port
-    task:: catch --trace: accept_
-    return port
-
-  close:
-    server_.close
-    _semaphore.up
-
-  accept_:
-    socket := server_.accept
-    try:
-      socket.set_no_delay true
-      reader := BufferedReader socket
-      writer := Writer socket
+  handle reader/BufferedReader writer/Writer:
       while true:
         line := reader.read_line
         if line == null: break
-        print_debug "FS: $line"
         if line == "SDK PATH":
           if not sdk_path_: sdk_path_ = filesystem.sdk_path
           writer.write "$sdk_path_\n"
@@ -100,13 +69,8 @@ class FileServer:
           file := get_file path
           encoded_size := file.content == null ? -1 : file.content.size
           encoded_content := file.content == null ? "" : file.content
-          print_debug "responding info for $file.path"
           writer.write "$file.exists\n$file.is_regular\n$file.is_directory\n$encoded_size\n"
           writer.write encoded_content
-          print_debug "written info for $file.path"
-    finally:
-      socket.close
-      close
 
   get_file path /string -> File:
     return file_cache_.get path --init=: create_file_entry_ path
@@ -132,8 +96,52 @@ class FileServer:
   served_sdk_path -> string?: return sdk_path_
   served_package_cache_paths -> List?: return package_cache_paths_
 
+interface FileServer:
+  // Starts the file server and returns the line that should be given
+  // to the compiler to be able to contact it.
+  run -> string
+  close
+  protocol -> FileServerProtocol
+
+class TcpFileServer implements FileServer:
+  server_   / tcp.TcpServerSocket? := null
+  semaphore_ ::= monitor.Semaphore
+  protocol / FileServerProtocol
+
+  constructor .protocol:
+
+  /**
+  Binds the server and listens for one connection.
+
+  If a $port is given, binds to that port.
+  Otherwise binds to an arbitrary port.
+
+  Returns the port at which the server can be reached.
+  */
+  run --port=0 -> string:
+    server_ = tcp.TcpServerSocket
+    server_.listen "" port
+    port = server_.local_address.port
+    task:: catch --trace: accept_
+    return "$port"
+
+  close:
+    server_.close
+    semaphore_.up
+
+  accept_:
+    socket := server_.accept
+    try:
+      socket.set_no_delay true
+      reader := BufferedReader socket
+      writer := Writer socket
+      protocol.handle reader writer
+    finally:
+      socket.close
+      close
+
   wait_for_done -> none:
-    _semaphore.down
+    semaphore_.down
 
 
 interface Filesystem:

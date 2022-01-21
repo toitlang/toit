@@ -1,6 +1,6 @@
-tests/lsp/under_score.toit:6:7: error: Missing implementations for interface methods
+tests/lsp/under_score.toit:8:7: error: Missing implementations for interface methods
 class B implements A:
       ^
-tests/lsp/under_score.toit:4:3: note: Missing implementation for 'foo'
+tests/lsp/under_score.toit:6:3: note: Missing implementation for 'foo'
   foo x
   ^~~

@@ -1,43 +1,43 @@
-tests/negative/instance_assign_test.toit:5:12: error: Can't access instance members in field initializers.
+tests/negative/instance_assign_test.toit:7:12: error: Can't access instance members in field initializers.
   field := hash_code_counter++
            ^~~~~~~~~~~~~~~~~
-tests/negative/instance_assign_test.toit:6:13: error: Can't access instance members in field initializers.
+tests/negative/instance_assign_test.toit:8:13: error: Can't access instance members in field initializers.
   field2 := hash_code_counter
             ^~~~~~~~~~~~~~~~~
-tests/negative/instance_assign_test.toit:7:13: error: Can't access 'super' in field initializers
+tests/negative/instance_assign_test.toit:9:13: error: Can't access 'super' in field initializers
   field3 := super
             ^~~~~
-tests/negative/instance_assign_test.toit:8:13: error: Can't assign to 'super' in field initializer
+tests/negative/instance_assign_test.toit:10:13: error: Can't assign to 'super' in field initializer
   field4 := super++
             ^~~~~
-tests/negative/instance_assign_test.toit:15:5: error: Can't access instance members before `super` call.
+tests/negative/instance_assign_test.toit:17:5: error: Can't access instance members before `super` call.
     getter_setter++
     ^~~~~~~~~~~~~
-tests/negative/instance_assign_test.toit:16:5: error: Can't assign to 'this'
+tests/negative/instance_assign_test.toit:18:5: error: Can't assign to 'this'
     this++
     ^~~~
-tests/negative/instance_assign_test.toit:20:5: error: Can't access instance members in factories
+tests/negative/instance_assign_test.toit:22:5: error: Can't access instance members in factories
     field++
     ^~~~~
-tests/negative/instance_assign_test.toit:21:5: error: Can't access instance members in factories
+tests/negative/instance_assign_test.toit:23:5: error: Can't access instance members in factories
     getter_setter++
     ^~~~~~~~~~~~~
-tests/negative/instance_assign_test.toit:22:5: error: Can't assign to 'this'
+tests/negative/instance_assign_test.toit:24:5: error: Can't assign to 'this'
     this++
     ^~~~
-tests/negative/instance_assign_test.toit:23:5: error: Can't assign to 'super' in static contexts
+tests/negative/instance_assign_test.toit:25:5: error: Can't assign to 'super' in static contexts
     super++
     ^~~~~
-tests/negative/instance_assign_test.toit:28:5: error: Can't access instance members in static contexts
+tests/negative/instance_assign_test.toit:30:5: error: Can't access instance members in static contexts
     field++
     ^~~~~
-tests/negative/instance_assign_test.toit:29:5: error: Can't access instance members in static contexts
+tests/negative/instance_assign_test.toit:31:5: error: Can't access instance members in static contexts
     getter_setter++
     ^~~~~~~~~~~~~
-tests/negative/instance_assign_test.toit:30:5: error: Can't assign to 'this'
+tests/negative/instance_assign_test.toit:32:5: error: Can't assign to 'this'
     this++
     ^~~~
-tests/negative/instance_assign_test.toit:31:5: error: Can't assign to 'super' in static contexts
+tests/negative/instance_assign_test.toit:33:5: error: Can't assign to 'super' in static contexts
     super++
     ^~~~~
 Couldn't find 'main' (with 0 or 1 argument) in entry file 'tests/negative/instance_assign_test.toit'

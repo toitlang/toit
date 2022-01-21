@@ -1,7 +1,7 @@
-tests/negative/primitive3_test.toit:3:5: error: Mutated parameters can't be captured in methods with primitive invocations
+tests/negative/primitive3_test.toit:5:5: error: Mutated parameters can't be captured in methods with primitive invocations
 foo x:
     ^
-tests/negative/primitive3_test.toit:14:15: error: Mutated parameters can't be captured in methods with primitive invocations
+tests/negative/primitive3_test.toit:16:15: error: Mutated parameters can't be captured in methods with primitive invocations
   constructor len:
               ^~~
 Compilation failed.

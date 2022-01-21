@@ -1,10 +1,10 @@
-tests/negative/deprecated_string_test.toit:3:17: warning: Use of 'String' as type is deprecated. Use 'string' instead
+tests/negative/deprecated_string_test.toit:5:17: warning: Use of 'String' as type is deprecated. Use 'string' instead
 foo x/String -> String:
                 ^~~~~~
-tests/negative/deprecated_string_test.toit:3:7: warning: Use of 'String' as type is deprecated. Use 'string' instead
+tests/negative/deprecated_string_test.toit:5:7: warning: Use of 'String' as type is deprecated. Use 'string' instead
 foo x/String -> String:
       ^~~~~~
-tests/negative/deprecated_string_test.toit:8:3: error: Unresolved identifier: 'unresolved'
+tests/negative/deprecated_string_test.toit:10:3: error: Unresolved identifier: 'unresolved'
   unresolved
   ^~~~~~~~~~
 Compilation failed.

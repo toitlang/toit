@@ -1,7 +1,7 @@
-tests/negative/clashing_function_test.toit:6:1: error: Redefinition of 'foo'
+tests/negative/clashing_function_test.toit:8:1: error: Redefinition of 'foo'
 foo:
 ^~~
-tests/negative/clashing_function_test.toit:3:1: note: First definition of 'foo'
+tests/negative/clashing_function_test.toit:5:1: note: First definition of 'foo'
 foo:
 ^~~
 Compilation failed.

@@ -1,4 +1,4 @@
-tests/lsp/member_definition_test.toit:23:5: error: Argument mismatch for 'member1'
+tests/lsp/member_definition_test.toit:25:5: error: Argument mismatch for 'member1'
 Too few arguments provided
     member1
     ^~~~~~~

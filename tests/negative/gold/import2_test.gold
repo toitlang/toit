@@ -1,7 +1,7 @@
-tests/negative/import2_test.toit:4:24: error: Ambiguous 'show' import for 'foo'
+tests/negative/import2_test.toit:6:24: error: Ambiguous 'show' import for 'foo'
 import .import2_b show foo
                        ^~~
-tests/negative/import2_test.toit:3:24: note: First show of identifier 'foo'
+tests/negative/import2_test.toit:5:24: note: First show of identifier 'foo'
 import .import2_a show foo
                        ^~~
 Compilation failed.

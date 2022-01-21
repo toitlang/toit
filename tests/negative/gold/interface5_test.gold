@@ -1,4 +1,4 @@
-tests/negative/interface5_test.toit:5:20: error: Not an interface
+tests/negative/interface5_test.toit:7:20: error: Not an interface
 class B implements A:
                    ^
 Compilation failed.
