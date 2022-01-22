@@ -22,3 +22,6 @@ tedi_test.go
 /tests/health/health_sources.cmake
 
 .gdb_history
+
+*.swp
+*.swo
