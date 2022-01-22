@@ -23,13 +23,16 @@
 
 namespace toit {
 
-ProcessGroup::ProcessGroup(int id, SystemMessage* termination_message)
-  : _id(id)
-  , _termination_message(termination_message) {
+ProcessGroup::ProcessGroup(int id, Program* program, AlignedMemoryBase* memory, SystemMessage* termination)
+    : _id(id)
+    , _program(program)
+    , _memory(memory)
+    , _termination_message(termination) {
 }
 
 ProcessGroup::~ProcessGroup() {
-  free(_termination_message);
+  delete _memory;
+  delete _termination_message;
 }
 
 SystemMessage* ProcessGroup::take_termination_message(int pid, uint8 result) {
@@ -43,7 +46,7 @@ SystemMessage* ProcessGroup::take_termination_message(int pid, uint8 result) {
   return message;
 }
 
-ProcessGroup* ProcessGroup::create(int id) {
+ProcessGroup* ProcessGroup::create(int id, Program* program, AlignedMemoryBase* memory) {
   uint8_t* data = unvoid_cast<uint8*>(malloc(MESSAGING_TERMINATION_MESSAGE_SIZE));
   if (data == NULL) return NULL;
 
@@ -53,18 +56,12 @@ ProcessGroup* ProcessGroup::create(int id) {
     return NULL;
   }
 
-  ProcessGroup* group = _new ProcessGroup(id, termination_message);
+  ProcessGroup* group = _new ProcessGroup(id, program, memory, termination_message);
   if (group == NULL) {
-    delete termination_message;  // data is freed by ProcessGroup destructor.
+    delete termination_message;  // The data is freed by the SystemMessage destructor.
     return NULL;
   }
   return group;
-}
-
-Program* ProcessGroup::program() const {
-  ASSERT(VM::current()->scheduler()->is_locked());
-  Process* process = _processes.first();
-  return process ? process->program() : null;
 }
 
 Process* ProcessGroup::lookup(int process_id) {

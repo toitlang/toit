@@ -41,8 +41,9 @@ PRIMITIVE(launch) {
 
   Snapshot snapshot(&bytes.address()[from], to - from);
   auto image = snapshot.read_image();
+  Program* program = image.program();
   int group_id = VM::current()->scheduler()->next_group_id();
-  ProcessGroup* process_group = ProcessGroup::create(group_id);
+  ProcessGroup* process_group = ProcessGroup::create(group_id, program, image.memory());
   if (process_group == NULL) {
     VM::current()->heap_memory()->free_unused_block(initial_block);
     image.release();
@@ -50,8 +51,8 @@ PRIMITIVE(launch) {
   }
 
   int pid = pass_args
-     ? VM::current()->scheduler()->run_program(image.program(), process->args(), process_group, initial_block)
-     : VM::current()->scheduler()->run_program(image.program(), {}, process_group, initial_block);
+     ? VM::current()->scheduler()->run_program(program, process->args(), process_group, initial_block)
+     : VM::current()->scheduler()->run_program(program, {}, process_group, initial_block);
   // We don't use snapshots on devices so we assume malloc/new cannot fail.
   ASSERT(pid != Scheduler::INVALID_PROCESS_ID);
   return Smi::from(pid);

@@ -81,7 +81,7 @@ Scheduler::ExitState Scheduler::run_boot_program(Program* program, char** args, 
   // Allocation takes the memory lock which must happen before taking the scheduler lock.
   Block* initial_block = VM::current()->heap_memory()->allocate_initial_block();
   Locker locker(_mutex);
-  ProcessGroup* group = ProcessGroup::create(group_id);
+  ProcessGroup* group = ProcessGroup::create(group_id, program);
   return launch_program(locker, _new Process(program, group, args, initial_block));
 }
 
@@ -91,7 +91,7 @@ Scheduler::ExitState Scheduler::run_boot_program(
     SnapshotBundle application_bundle,
     char** args,
     int group_id) {
-  ProcessGroup* group = ProcessGroup::create(group_id);
+  ProcessGroup* group = ProcessGroup::create(group_id, boot_program);
   // We assume that allocate_initial_block succeeds since we can't run out of
   // memory while booting.
   // Allocation takes the memory lock which must happen before taking the scheduler lock.
