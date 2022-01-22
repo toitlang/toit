@@ -102,7 +102,9 @@ Process::~Process() {
   while (ResourceGroup* r = _resource_groups.first()) {
     r->tear_down();  // Also removes from linked list.
   }
-  OS::close(_current_directory);
+  if (_current_directory >= 0) {
+    OS::close(_current_directory);
+  }
 
   // Use [has_message] to ensure that system_acks are processed and message
   // budget is returned.
