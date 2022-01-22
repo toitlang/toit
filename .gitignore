@@ -25,3 +25,5 @@ tedi_test.go
 
 *.swp
 *.swo
+*.orig
+*.rej
