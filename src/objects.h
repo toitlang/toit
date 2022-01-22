@@ -171,8 +171,6 @@ class RootCallback {
   virtual void do_roots(Object** roots, int length) = 0;
 };
 
-// Note that these enum numbers must match the constants (called TAG) found in
-// the corresponding classes in snapshot.toit.
 enum TypeTag {
   ARRAY_TAG = 0,
   STRING_TAG = 1,
@@ -207,6 +205,7 @@ class HeapObject : public Object {
   // Pseudo virtual member functions.
   int size(Program* program);  // Returns the byte size of this object.
   void roots_do(Program* program, RootCallback* cb);
+
   void do_pointers(Program* program, PointerCallback* cb);
 
   static const int HEADER_OFFSET = Object::NON_SMI_TAG_OFFSET;
@@ -300,8 +299,6 @@ class HeapObject : public Object {
   friend class ObjectHeap;
   friend class Heap;
   friend class ProgramHeap;
-  friend class BaseSnapshotWriter;
-  friend class SnapshotReader;
   friend class compiler::ProgramBuilder;
   friend class Stack;
 };
@@ -335,8 +332,6 @@ class Array : public HeapObject {
   int size() { return allocation_size(length()); }
 
   void roots_do(RootCallback* cb);
-  void write_content(SnapshotWriter* st);
-  void read_content(SnapshotReader* st, int length);
 
   static Array* cast(Object* array) {
      ASSERT(array->is_array());
@@ -461,17 +456,6 @@ class ByteArray : public HeapObject {
     *extra_bytes = raw_length;
   }
 
-  static void snapshot_allocation_size(int length, int* word_count, int* extra_bytes) {
-    if (length > SNAPSHOT_INTERNAL_SIZE_CUTOFF) {
-      return external_allocation_size(word_count, extra_bytes);
-    } else {
-      return internal_allocation_size(length, word_count, extra_bytes);
-    }
-  }
-
-  void write_content(SnapshotWriter* st);
-  void read_content(SnapshotReader* st, int byte_length);
-
   static ByteArray* cast(Object* byte_array) {
      ASSERT(byte_array->is_byte_array());
      return static_cast<ByteArray*>(byte_array);
@@ -499,8 +483,6 @@ class ByteArray : public HeapObject {
     return _word_at(EXTERNAL_TAG_OFFSET);
   }
 
-  void do_pointers(PointerCallback* cb);
-
  private:
   word raw_length() { return _word_at(LENGTH_OFFSET); }
   uint8* content() { return reinterpret_cast<uint8*>(_raw() + _offset_from(0)); }
@@ -509,14 +491,11 @@ class ByteArray : public HeapObject {
   static const int HEADER_SIZE = LENGTH_OFFSET + WORD_SIZE;
 
   // Constants for external representation.
-  static const int EXTERNAL_ADDRESS_OFFSET = HEADER_SIZE;
+  // ByteArray::do_pointers relies on the external address being last.
+  static const int EXTERNAL_TAG_OFFSET = HEADER_SIZE;
+  static const int EXTERNAL_SIZE_OFFSET = EXTERNAL_TAG_OFFSET + WORD_SIZE;
+  static const int EXTERNAL_ADDRESS_OFFSET = EXTERNAL_SIZE_OFFSET + WORD_SIZE;
   static_assert(EXTERNAL_ADDRESS_OFFSET % WORD_SIZE == 0, "External pointer not word aligned");
-  static const int EXTERNAL_TAG_OFFSET = EXTERNAL_ADDRESS_OFFSET + WORD_SIZE;
-  static const int EXTERNAL_SIZE = EXTERNAL_TAG_OFFSET + WORD_SIZE;
-
-  // Any byte-array that is bigger than this size is snapshotted as external
-  // byte array.
-  static const int SNAPSHOT_INTERNAL_SIZE_CUTOFF = TOIT_PAGE_SIZE_32 >> 2;
 
   uint8* _external_address() {
     return reinterpret_cast<uint8*>(_word_at(EXTERNAL_ADDRESS_OFFSET));
@@ -603,7 +582,6 @@ class LargeInteger : public HeapObject {
     _int64_at_put(VALUE_OFFSET, value);
   }
   friend class Heap;
-  friend class SnapshotReader;
 };
 
 
@@ -711,9 +689,6 @@ class Double : public HeapObject {
      return static_cast<Double*>(value);
   }
 
-  void write_content(SnapshotWriter* st);
-  void read_content(SnapshotReader* st);
-
   static int allocation_size() { return SIZE; }
   static void allocation_size(int* word_count, int* extra_bytes) {
     *word_count = HeapObject::SIZE / WORD_SIZE;
@@ -798,9 +773,6 @@ class String : public HeapObject {
   static uint16 compute_hash_code_for(const char* str, int str_len);
   static uint16 compute_hash_code_for(const char* str);
 
-  void write_content(SnapshotWriter* st);
-  void read_content(SnapshotReader* st, int length);
-
   // Returns a derived pointer that can be used as a null terminated c string.
   // Not all returned objects are mutable.
   // If the string is a literal it lives in a read-only area.
@@ -839,16 +811,6 @@ class String : public HeapObject {
     *extra_bytes = 0;
   }
 
-
-  static void snapshot_allocation_size(int length, int* word_count, int* extra_bytes) {
-    if (length > SNAPSHOT_INTERNAL_SIZE_CUTOFF) {
-      return external_allocation_size(word_count, extra_bytes);
-    } else {
-      return internal_allocation_size(length, word_count, extra_bytes);
-    }
-  }
-
-  void do_pointers(PointerCallback* cb);
 
   // Abstraction to access the read-only content of a String.
   // Note that a String can either have on-heap or off-heap content.
@@ -924,9 +886,6 @@ class String : public HeapObject {
   static const int EXTERNAL_ADDRESS_OFFSET = EXTERNAL_LENGTH_OFFSET + WORD_SIZE;
   static_assert(EXTERNAL_ADDRESS_OFFSET % WORD_SIZE == 0, "External pointer not word aligned");
   static const int EXTERNAL_OBJECT_SIZE = EXTERNAL_ADDRESS_OFFSET + WORD_SIZE;
-
-  // Any string that is bigger than this size is snapshotted as external string.
-  static const int SNAPSHOT_INTERNAL_SIZE_CUTOFF = TOIT_PAGE_SIZE_32 >> 2;
 
   uint16 _raw_hash_code() { return _half_word_at(HASH_CODE_OFFSET); }
   void _raw_set_hash_code(uint16 value) { _half_word_at_put(HASH_CODE_OFFSET, value); }
@@ -1119,8 +1078,6 @@ class Instance : public HeapObject {
   }
 
   void roots_do(int instance_size, RootCallback* cb);
-  void write_content(int instance_size, SnapshotWriter* st);
-  void read_content(SnapshotReader* st);
 
   static int length_from_size(int instance_size) {
     return (instance_size - HEADER_SIZE) / WORD_SIZE;

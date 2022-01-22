@@ -21,13 +21,13 @@
 
 namespace toit {
 
-class ProgramHeapVisitor {
+class PointerCallback {
  public:
-  virtual void visit_c_pointer(void** p) = 0;
-  virtual void visit_toit_cell(Object** p) = 0;
+  void object_table(Object**p, int length);
+  virtual void object_address(Object** p) = 0;
+  virtual void c_address(void** p, bool is_sentinel = false) = 0;
+  virtual void literal_data(uint8* p, int count) = 0;
 };
-
-class PointerCallback;
 
 // A program heap contains all the reflective structures to run the program.
 class ProgramHeap {
@@ -42,15 +42,20 @@ class ProgramHeap {
   Instance* allocate_instance(Smi* class_id);
   Instance* allocate_instance(TypeTag class_tag, Smi* class_id, Smi* instance_size);
 
+
   HeapObject* allocate_pointers(int count);
   uint8* allocate_bytes(int count);
 
   const void* address() const { return _memory; }
   word size() const { return _top - _memory; }
 
-  void do_pointers(ProgramHeapVisitor* callback);
+  void do_pointers(PointerCallback* callback);
 
  private:
+  HeapObject* _allocate_raw(int size) {
+    return HeapObject::cast(allocate_bytes(size));
+  }
+
   Program* _program;
   uint8* _memory;
   uint8* _top;

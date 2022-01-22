@@ -119,30 +119,6 @@ void Block::shrink_top(int delta) {
   _top = translate_address(_top, -delta);
 }
 
-void Block::do_pointers(Program* program, PointerCallback* callback) {
-  ASSERT(_process == null);
-  for (void* p = base(); p < top(); p = Utils::address_at(p, HeapObject::cast(p)->size(program))) {
-    HeapObject* obj = HeapObject::cast(p);
-    obj->do_pointers(program, callback);
-  }
-  LinkedListPatcher<Block> hack(*this);
-  callback->c_address(reinterpret_cast<void**>(hack.next_cell()));
-  bool is_sentinel = true;
-  callback->c_address(reinterpret_cast<void**>(&_top), is_sentinel);
-}
-
-void BlockList::do_pointers(Program* program, PointerCallback* callback) {
-  Block* previous = null;
-  for (auto block : _blocks) {
-    if (previous) previous->do_pointers(program, callback);
-    previous = block;
-  }
-  if (previous) previous->do_pointers(program, callback);
-  LinkedListPatcher<Block> hack(_blocks);
-  callback->c_address(reinterpret_cast<void**>(hack.next_cell()));
-  callback->c_address(reinterpret_cast<void**>(hack.tail_cell()));
-}
-
 HeapMemory::HeapMemory() {
   _memory_mutex = OS::allocate_mutex(0, "Memory mutex");
 }

@@ -222,31 +222,73 @@ class PointerRootCallback : public RootCallback {
   PointerCallback* callback;
 };
 
-void HeapObject::do_pointers(Program* program, PointerCallback* cb) {
-  if (class_tag() == BYTE_ARRAY_TAG) {
+int HeapObject::do_pointers(Program* program, PointerCallback* cb) {
+  auto tag = class_tag();
+  if (tag == INSTANCE_TAG) {
+    // Visit header as literal data, no pointers.
+    cb->literal_data(reinterpret_cast<uint8*>(_raw()), sizeof(word));
+    // The rest of an instance is pointers.
+    for (int i = sizeof(word); i < size; i += sizeof(word)) {
+      cb->object_address(reinterpret_cast<Object**>(_raw() + i));
+    }
+    return;
+  }
+  if (tag == BYTE_ARRAY_TAG) {
     auto byte_array = ByteArray::cast(this);
-    byte_array->do_pointers(cb);
-  } else if (class_tag() == STRING_TAG) {
+    return byte_array->do_pointers(cb);
+  } else if (tag == STRING_TAG) {
     auto str = String::cast(this);
-    str->do_pointers(cb);
+    return str->do_pointers(program, cb);
+  } else if (tag == INSTANCE_TAG) {
+    // Visit header as literal data, no pointers.
+    cb->literal_data(reinterpret_cast<uint8*>(_raw()), sizeof(word));
+    // The rest of an instance is pointers.
+    auto instance = Instance::cast(this);
+    int size = program->instance_size_for(instance);
+    for (int i = sizeof(word); i < size; i += sizeof(word)) {
+      cb->object_address(reinterpret_cast<Object**>(_raw() + i));
+    }
   } else {
-    // All other object's pointers are covered by doing their roots.
-    PointerRootCallback root_callback(cb);
-    roots_do(program, &root_callback);
+    // No other objects contain pointers of any kind.
+    cb->literal_data(reinterpret_cast<uint8*>(_raw()), size);
   }
 }
 
-void ByteArray::do_pointers(PointerCallback* cb) {
+int ByteArray::do_pointers(PointerCallback *cb) {
   if (has_external_address()) {
-    cb->c_address(reinterpret_cast<void**>(_raw_at(EXTERNAL_ADDRESS_OFFSET)));
+    uword payload = _raw_at(EXTERNAL_ADDRESS_OFFSET);
+    // If the external payload isn't raw bytes we may have to visit pointers
+    // inside it.  Currently that never happens.
+    ASSERT(_raw_at(EXTERNAL_TAG_OFFSET) == RawByteTag);
+    // Everything up to the external address contains no pointers.
+    cb->literal_data(reinterpret_cast<uint8*>(_raw()), EXTERNAL_ADDRESS_OFFSET);
+    cb->c_address(reinterpret_cast<void**>(_raw() + EXTERNAL_ADDRESS_OFFSET), sizeof(word));
+    // We rely on the fact that the external pointers is the last thing in the
+    // ByteArray.
+    return EXTERNAL_SIZE;
+  } else {
+    int size = internal_allocation_size(raw_length());
+    // Internal byte array contains no pointers.
+    cb->literal_data(reinterpret_cast<uint8*>(_raw()), size);
+    return size;
   }
 }
 
-void String::do_pointers(PointerCallback* cb) {
-  if (!content_on_heap()) {
-    cb->c_address(reinterpret_cast<void**>(_raw_at(EXTERNAL_ADDRESS_OFFSET)));
+int String::do_pointers(PointerCallback *cb) {
+  if (has_external_address()) {
+    uword payload = _raw_at(EXTERNAL_ADDRESS_OFFSET);
+    // Everything up to the external address contains no pointers.
+    cb->literal_data(reinterpret_cast<uint8*>(_raw()), EXTERNAL_ADDRESS_OFFSET);
+    cb->c_address(reinterpret_cast<void**>(_raw() + EXTERNAL_ADDRESS_OFFSET), sizeof(word));
+    return EXTERNAL_SIZE;
+  } else {
+    int size = internal_allocation_size(raw_length());
+    // Internal byte array contains no pointers.
+    cb->literal_data(reinterpret_cast<uint8*>(_raw()), size);
+    return size;
   }
 }
+
 
 void Array::roots_do(RootCallback* cb) {
   cb->do_roots(_root_at(_offset_from(0)), length());
