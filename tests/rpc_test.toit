@@ -62,6 +62,14 @@ test_simple myself/int -> none:
       20, 21, 22, 23]
   test myself big_cow
 
+  // Test modified copy-on-write arrays.
+  modified_cow := #[1, 2, 3]
+  test myself modified_cow
+  modified_cow[1] = 9
+  test myself modified_cow
+  modified_cow[2] = 19
+  test myself modified_cow
+
   // Test byte array slices.
   test myself (ByteArray 10: it)[3..4]
   test myself [(ByteArray 10: it)[3..5]]
