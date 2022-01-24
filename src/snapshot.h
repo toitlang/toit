@@ -60,6 +60,7 @@ class ProgramImage {
   bool address_inside(word* addr) const { return addr >= begin() && addr < end(); }
 
   void* address() const { return _address; }
+  AlignedMemoryBase* memory() const { return _memory; }
 
   /// Frees the memory.
   /// Uses `delete` for the aligned memory, or `free` for the `void*`.
