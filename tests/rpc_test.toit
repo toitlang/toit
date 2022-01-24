@@ -56,18 +56,26 @@ test_simple myself/int -> none:
   // Test copy-on-write byte arrays.
   test myself #[1, 2, 3, 4]
   test myself [#[3, 4, 5]]
+  big_cow := #[
+       0,  1,  2,  3,  4,  5,  6,  7,  8,  9,
+      10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
+      20, 21, 22, 23]
+  test myself big_cow
 
   // Test byte array slices.
+  test myself (ByteArray 10: it)[3..4]
   test myself [(ByteArray 10: it)[3..5]]
+  test myself #[1, 2, 3, 4][1..2]
   test myself [#[1, 2, 3, 4][0..1]]
   test myself [(ByteArray 100: it)[7..51]]
-  bigger := #[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]
-  test myself bigger[0..16]
-  test myself [bigger[0..16]]
+  test myself big_cow[0..17]
+  test myself [big_cow[1..18]]
 
   // Testing string slices.
   test myself "hestfisk"[1..3]
+  test myself ["hestfisk"[2..5]]
   test myself ("hestfisk"*8)[4..32]
+  test myself [("hestfisk"*8)[5..37]]
 
 test_large_external myself/int -> none:
   expect.expect_equals 33199 (test_chain myself [ByteArray 33199: it])[0].size
