@@ -116,6 +116,12 @@ bool MessageEncoder::encode(Object* object) {
         Array* array = Array::cast(backing);
         return encode_array(array, Smi::cast(instance->at(1))->value());
       }
+    } else if (class_id == _program->byte_array_cow_class_id()) {
+      return encode_copy(object, TAG_BYTE_ARRAY);
+    } else if (class_id == _program->byte_array_slice_class_id()) {
+      return encode_copy(object, TAG_BYTE_ARRAY);
+    } else if (class_id == _program->string_slice_class_id()) {
+      return encode_copy(object, TAG_STRING);
     }
     printf("[message encoder: cannot encode instance with class id = %zd]\n", class_id->value());
   } else if (object == _program->null_object()) {
@@ -134,7 +140,7 @@ bool MessageEncoder::encode(Object* object) {
     write_uint64(bit_cast<uint64>(Double::cast(object)->value()));
     return true;
   } else if (object->is_string()) {
-    return encode_string(String::cast(object));
+    return encode_copy(object, TAG_STRING);
   } else if (object->is_array()) {
     Array* array = Array::cast(object);
     return encode_array(array, array->length());
@@ -146,10 +152,6 @@ bool MessageEncoder::encode(Object* object) {
     printf("[message encoder: cannot encode object with class tag = %d]\n", HeapObject::cast(object)->class_tag());
   }
   return false;
-}
-
-bool MessageEncoder::encode_string(String* object) {
-  return encode_copy(object, TAG_STRING);
 }
 
 bool MessageEncoder::encode_array(Array* object, int size) {
