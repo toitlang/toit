@@ -53,6 +53,22 @@ test_simple myself/int -> none:
   test myself ["hest"]
   test myself [ByteArray 10: it]
 
+  // Test copy-on-write byte arrays.
+  test myself #[1, 2, 3, 4]
+  test myself [#[3, 4, 5]]
+
+  // Test byte array slices.
+  test myself [(ByteArray 10: it)[3..5]]
+  test myself [#[1, 2, 3, 4][0..1]]
+  test myself [(ByteArray 100: it)[7..51]]
+  bigger := #[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]
+  test myself bigger[0..16]
+  test myself [bigger[0..16]]
+
+  // Testing string slices.
+  test myself "hestfisk"[1..3]
+  test myself ("hestfisk"*8)[4..32]
+
 test_large_external myself/int -> none:
   expect.expect_equals 33199 (test_chain myself [ByteArray 33199: it])[0].size
   s := "hestfisk"
@@ -109,7 +125,6 @@ test_problematic myself/int -> none:
   // Check for unhandled types of data.
   test_illegal myself [MyClass]
   test_illegal myself [MySerializable 4]
-  test_illegal myself [ #[1, 2, 3, 4] ]  // TODO(kasper): This should be handled.
 
   // Check for cyclic data structure.
   cyclic := []
