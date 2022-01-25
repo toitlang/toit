@@ -340,6 +340,7 @@ void Interpreter::prepare_task(Method entry, Instance* code) {
 Object** Interpreter::scavenge(Object** sp, bool malloc_failed, int attempts) {
   ASSERT(attempts >= 1 && attempts <= 3);  // Allocation attempts.
   if (attempts == 3) {
+    OS::heap_summary_report(0, "out of memory");
     if (VM::current()->scheduler()->is_boot_process(_process)) {
       OS::out_of_memory("Out of memory in system process");
     }

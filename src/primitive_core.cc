@@ -2199,13 +2199,11 @@ PRIMITIVE(dump_heap) {
 }
 
 PRIMITIVE(serial_print_heap_report) {
-#ifndef TOIT_CMPCTMALLOC
-  UNIMPLEMENTED_PRIMITIVE;
-#else
-  ARGS(int, max_pages);
-  OS::heap_summary_report(max_pages);
-  return process->program()->null_object();
+#ifdef TOIT_CMPCTMALLOC
+  ARGS(cstring, marker, int, max_pages);
+  OS::heap_summary_report(max_pages, marker);
 #endif // def TOIT_CMPCTMALLOC
+  return process->program()->null_object();
 }
 
 PRIMITIVE(get_env) {
