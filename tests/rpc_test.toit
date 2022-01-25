@@ -94,6 +94,8 @@ test_large_external myself/int -> none:
   // Test that large enough byte arrays are neutered when sent.
   x := ByteArray 33199: it
   rpc.invoke myself PROCEDURE_ECHO [x]
+  expect.expect x is ByteArray
+  expect.expect x.is_empty
   expect.expect_bytes_equal #[] x
 
 test_second_procedure myself/int -> none:

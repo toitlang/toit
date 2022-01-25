@@ -33,7 +33,8 @@ class Session:
   handshake_in_progress_/monitor.Latch? := monitor.Latch
   group_/TlsGroup_? := null
   tls_ := null
-  outgoing_byte_array_ := ByteArray 1500
+
+  outgoing_buffer_/ByteArray := #[]
   closed_for_write_ := false
 
   /**
@@ -100,7 +101,6 @@ class Session:
     tls_init_socket_ tls_ null
     if session_state:
       tls_set_session_ tls_ session_state
-    tls_set_outgoing_ tls_ outgoing_byte_array_ 0
 
     resource_state := monitor.ResourceState_ handle tls_
     try:
@@ -170,6 +170,7 @@ class Session:
     tls_close_write_ tls_
     flush_outgoing_
     closed_for_write_ = true
+    outgoing_buffer_ = #[]
 
   /**
   Closes the TLS session and releases any resources associated with it.
@@ -180,6 +181,8 @@ class Session:
       tls_ = null
       group_.unuse
       group_ = null
+      reader_.clear
+      outgoing_buffer_ = #[]
       remove_finalizer this
 
   ensure_handshaken_:
@@ -191,10 +194,14 @@ class Session:
     while true:
       fullness := tls_get_outgoing_fullness_ tls_
       if fullness > from:
-        sent := writer_.write outgoing_byte_array_ from fullness
+        sent := writer_.write outgoing_buffer_ from fullness
         from += sent
       else:
-        tls_set_outgoing_ tls_ outgoing_byte_array_ 0
+        // The outgoing buffer can be neutered by the calls to
+        // write. In that case, we allocate a fresh external one.
+        if outgoing_buffer_.is_empty:
+          outgoing_buffer_ = ByteArray_.external_ 1500
+        tls_set_outgoing_ tls_ outgoing_buffer_ 0
         return
 
   read_more_ -> bool:
