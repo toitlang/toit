@@ -19,7 +19,7 @@ TOIT_UDP_OPTION_ADDRESS_   ::= 2
 TOIT_UDP_OPTION_BROADCAST_ ::= 3
 
 class Socket implements net.Socket:
-  state_ := ?
+  state_/ResourceState_? := ?
 
   constructor:
     return Socket "0.0.0.0" 0
@@ -44,10 +44,13 @@ class Socket implements net.Socket:
       udp_get_option_ state.group state.resource TOIT_UDP_OPTION_PORT_
 
   close:
-    if not state_.resource: return
-    udp_close_ state_.group state_.resource
+    state := state_
+    if state == null: return
+    state_ = null
+    udp_close_ state.group state.resource
+    state.dispose
+    // Remove the finalizer installed in the constructor.
     remove_finalizer this
-    state_.dispose
 
   connect address/net.SocketAddress:
     state := ensure_state_

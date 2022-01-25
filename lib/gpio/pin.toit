@@ -82,6 +82,8 @@ class Pin:
     if resource_:
       gpio_unuse_ resource_group_ resource_
       resource_ = null
+      state_.dispose
+      state_ = null
 
   /**
   Changes the configuration of this pin.

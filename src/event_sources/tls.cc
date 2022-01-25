@@ -75,6 +75,7 @@ void TLSEventSource::on_unregister_resource(Locker& locker, Resource* r) {
 
 void TLSEventSource::entry() {
   Locker locker(mutex());
+  HeapTagScope scope(ITERATE_CUSTOM_TAGS + EVENT_SOURCE_MALLOC_TAG);
 
   while (!_stop) {
     while (true) {

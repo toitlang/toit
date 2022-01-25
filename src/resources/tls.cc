@@ -423,7 +423,7 @@ PRIMITIVE(read)  {
     return Smi::from(TLS_WANT_READ);
   }
   int size = mbedtls_ssl_get_bytes_avail(&socket->ssl);
-  if (size < 0 || size > ByteArray::PREFERRED_IO_BUFFER_SIZE)  size = ByteArray::PREFERRED_IO_BUFFER_SIZE;
+  if (size < 0 || size > ByteArray::PREFERRED_IO_BUFFER_SIZE) size = ByteArray::PREFERRED_IO_BUFFER_SIZE;
 
   Error* error = null;
   ByteArray* array = process->allocate_byte_array(size, &error);

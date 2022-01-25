@@ -210,6 +210,8 @@ bool MessageEncoder::encode_copy(Object* object, int tag) {
     // Strings are '\0'-terminated, so we need to make sure the allocated
     // memory is big enough for that and remember to copy it over.
     int extra = (tag == TAG_STRING) ? 1 : 0;
+    int heap_tag = (tag == TAG_STRING) ? EXTERNAL_STRING_MALLOC_TAG : EXTERNAL_BYTE_ARRAY_MALLOC_TAG;
+    HeapTagScope scope(ITERATE_CUSTOM_TAGS + heap_tag);
     data = malloc(length + extra);
     if (data == null) {
       _malloc_failed = true;
