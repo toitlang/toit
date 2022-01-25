@@ -502,78 +502,81 @@ int ObjectHeap::scavenge() {
            _limit >> KB_LOG2,
            _external_memory >> KB_LOG2);
   }
-  ScavengeState ss(this);
 
-  // Process the roots in the object heap.
-  ss.do_root(reinterpret_cast<Object**>(&_task));
-  ss.do_root(reinterpret_cast<Object**>(&_hatch_arguments));
-  ss.do_roots(_global_variables, program()->global_variables.length());
-  for (auto root : _external_roots) ss.do_roots(root->slot(), 1);
+  { ScavengeState ss(this);
 
-  // Process roots in the _object_notifiers list.
-  for (ObjectNotifier* n : _object_notifiers) n->roots_do(&ss);
-  // Process roots in the _runnable_finalizers.
-  for (FinalizerNode* node : _runnable_finalizers) {
-    node->roots_do(&ss);
+    // Process the roots in the object heap.
+    ss.do_root(reinterpret_cast<Object**>(&_task));
+    ss.do_root(reinterpret_cast<Object**>(&_hatch_arguments));
+    ss.do_roots(_global_variables, program()->global_variables.length());
+    for (auto root : _external_roots) ss.do_roots(root->slot(), 1);
+
+    // Process roots in the _object_notifiers list.
+    for (ObjectNotifier* n : _object_notifiers) n->roots_do(&ss);
+    // Process roots in the _runnable_finalizers.
+    for (FinalizerNode* node : _runnable_finalizers) {
+      node->roots_do(&ss);
+    }
+
+    // Process the to space.
+    Iterator objects(ss.blocks, program());
+    while (!objects.eos()) ss.process_to_objects(objects);
+
+    // Process the registered finalizer list.
+    if (!_registered_finalizers.is_empty() && Flags::tracegc && Flags::verbose) printf(" - Processing registered finalizers\n");
+    ObjectHeap* heap = this;
+    _registered_finalizers.remove_wherever([&ss, heap](FinalizerNode* node) -> bool {
+      bool is_alive = ScavengeState::is_forward_address(node->key()->header_during_gc());
+      if (!is_alive) {
+        // Clear the key so it is not retained.
+        node->set_key(heap->program()->null_object());
+      }
+      node->roots_do(&ss);
+      if (is_alive && Flags::tracegc && Flags::verbose) printf(" - Finalizer %p is alive\n", node);
+      if (is_alive) return false;  // Keep node in list.
+      // From here down, the node is going to be unlinked by returning true.
+      if (Flags::tracegc && Flags::verbose) printf(" - Finalizer %p is unreachable\n", node);
+      heap->_runnable_finalizers.append(node);
+      // Signal finalizers are ready to run.
+      if (heap->_finalizer_notifier != null) {
+        heap->_finalizer_notifier->notify();
+      }
+      return true; // Remove node from list.
+    });
+
+    // Process the finalizers in the to space.
+    while (!objects.eos()) ss.process_to_objects(objects);
+    ASSERT(objects.eos());
+
+    // Process registered VM finalizers.
+    _registered_vm_finalizers.remove_wherever([&ss, this](VMFinalizerNode* node) -> bool {
+      bool is_alive = ScavengeState::is_forward_address(node->key()->header_during_gc());
+
+      if (is_alive && Flags::tracegc && Flags::verbose) printf(" - Finalizer %p is alive\n", node);
+      if (is_alive) {
+        node->roots_do(&ss);
+        return false; // Keep node in list.
+      }
+      if (Flags::tracegc && Flags::verbose) printf(" - Processing registered finalizer %p for external memory.\n", node);
+      node->free_external_memory(owner());
+      delete node;
+      return true; // Remove node from list.
+    });
+
+    // Complete the scavenge.
+    while (!objects.eos()) ss.process_to_objects(objects);
+    ASSERT(objects.eos());
+
+    take_blocks(&ss.blocks);
   }
 
-  // Process the to space.
-  Iterator objects(ss.blocks, program());
-  while (!objects.eos()) ss.process_to_objects(objects);
-
-  // Process the registered finalizer list.
-  if (!_registered_finalizers.is_empty() && Flags::tracegc && Flags::verbose) printf(" - Processing registered finalizers\n");
-  ObjectHeap* heap = this;
-  _registered_finalizers.remove_wherever([&ss, heap](FinalizerNode* node) -> bool {
-    bool is_alive = ScavengeState::is_forward_address(node->key()->header_during_gc());
-    if (!is_alive) {
-      // Clear the key so it is not retained.
-      node->set_key(heap->program()->null_object());
-    }
-    node->roots_do(&ss);
-    if (is_alive && Flags::tracegc && Flags::verbose) printf(" - Finalizer %p is alive\n", node);
-    if (is_alive) return false;  // Keep node in list.
-    // From here down, the node is going to be unlinked by returning true.
-    if (Flags::tracegc && Flags::verbose) printf(" - Finalizer %p is unreachable\n", node);
-    heap->_runnable_finalizers.append(node);
-    // Signal finalizers are ready to run.
-    if (heap->_finalizer_notifier != null) {
-      heap->_finalizer_notifier->notify();
-    }
-    return true; // Remove node from list.
-  });
-
-  // Process the finalizers in the to space.
-  while (!objects.eos()) ss.process_to_objects(objects);
-  ASSERT(objects.eos());
-
-  // Process registered VM finalizers.
-  _registered_vm_finalizers.remove_wherever([&ss, this](VMFinalizerNode* node) -> bool {
-    bool is_alive = ScavengeState::is_forward_address(node->key()->header_during_gc());
-
-    if (is_alive && Flags::tracegc && Flags::verbose) printf(" - Finalizer %p is alive\n", node);
-    if (is_alive) {
-      node->roots_do(&ss);
-      return false; // Keep node in list.
-    }
-    if (Flags::tracegc && Flags::verbose) printf(" - Processing registered finalizer %p for external memory.\n", node);
-    node->free_external_memory(owner());
-    delete node;
-    return true; // Remove node from list.
-  });
-
-  // Complete the scavenge.
-  while (!objects.eos()) ss.process_to_objects(objects);
-  ASSERT(objects.eos());
-
-  take_blocks(&ss.blocks);
   _pending_limit = _calculate_limit();  // GC limit to install after next GC.
   _limit = _max_heap_size;  // Only the hard limit for the rest of this primitive.
   if (Flags::tracegc) {
     printf("[End object scavenge #(%zdk, %zdk, external %zdk)]\n",
-           _blocks.length() << (TOIT_PAGE_SIZE_LOG2 - KB_LOG2),
-           _pending_limit >> KB_LOG2,
-           _external_memory >> KB_LOG2);
+        _blocks.length() << (TOIT_PAGE_SIZE_LOG2 - KB_LOG2),
+        _pending_limit >> KB_LOG2,
+        _external_memory >> KB_LOG2);
   }
   _gc_count++;
   leave_gc();
@@ -595,7 +598,7 @@ int ObjectHeap::scavenge() {
          "| overall: %zd%s/%zd%s@%d%% -> %zd%s/%zd%s@%d%% "
          "| free: %zd%s/%zd%s -> %zd%s/%zd%s "
          "| %d.%03dms]\n",
-      owner(), VM::current()->scheduler()->is_boot_process(owner()) ? "*" : "",
+      owner(), VM::current()->scheduler()->is_boot_process(owner()) ? "*" : " ",
       FORMAT(external_memory_before), FORMAT(toit_before),                           // objects-before
       FORMAT(_external_memory), FORMAT(toit_after),                                  // objects-after
       FORMAT(before.total_allocated_bytes), FORMAT(capacity_before), used_before,    // overall-before
@@ -607,7 +610,7 @@ int ObjectHeap::scavenge() {
   printf("[gc @ %p%s "
          "| objects: %zd%s/%zd%s -> %zd%s/%zd%s "
          "| %d.%03dms]\n",
-      owner(), VM::current()->scheduler()->is_boot_process(owner()) ? "*" : "",
+      owner(), VM::current()->scheduler()->is_boot_process(owner()) ? "*" : " ",
       FORMAT(external_memory_before), FORMAT(toit_before),                           // objects-before
       FORMAT(_external_memory), FORMAT(toit_after),                                  // objects-after
       static_cast<int>(microseconds / 1000), static_cast<int>(microseconds % 1000)); // time
@@ -720,7 +723,6 @@ void VMFinalizerNode::free_external_memory(Process* process) {
     process->unregister_external_allocation(accounting_size);
   }
 }
-
 
 // We initialize lazily - this is because the number of objects can grow during
 // iteration.
