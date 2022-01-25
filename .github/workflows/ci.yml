@@ -50,11 +50,6 @@ jobs:
           git submodule update --init .
           git submodule update --init components/mbedtls
 
-      - name: Initialize tpkg submodule
-        run: |
-          cd tools/tpkg
-          git submodule update --init .
-
       # Use Go 1.17
       - name: Switch to Go 1.17
         run:
