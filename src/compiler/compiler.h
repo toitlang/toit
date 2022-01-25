@@ -23,7 +23,7 @@
 #include "windows.h"
 
 #include "../vm.h"
-#include "../snapshot_bundle.h"
+#include "../image_bundle.h"
 
 #include <vector>
 #include <string>
@@ -76,14 +76,14 @@ class Compiler {
   /// The compiler reads the requested feature from stdin and dispatches
   /// accordingly.
   ///
-  /// This mode does not run the program or generates any snapshots. It is
+  /// This mode does not run the program or generates any images. It is
   /// intended to be used as the backend of a language server, and the
   /// generated information is not intended to be read by humans.
   void language_server(const Configuration& config);
 
   /// Analyzes the given source.
   ///
-  /// This mode does not run the program or generates any snapshots. It simply
+  /// This mode does not run the program or generates any images. It simply
   /// prints out all found errors.
   void analyze(List<const char*> source_paths,
                const Configuration& config);
@@ -92,25 +92,25 @@ class Compiler {
   ///
   /// The parameters [source_path] and [direct_script] are mutually exclusive.
   /// If one is given, the other one must be null.
-  SnapshotBundle compile(const char* source_path,
-                         const char* direct_script,
-                         char** snapshot_args,
-                         const char* out_path,
-                         const Configuration& config);
+  ImageBundle compile(const char* source_path,
+                      const char* direct_script,
+                      char** image_args,
+                      const char* out_path,
+                      const Configuration& config);
 
  private:
   VM _vm;  // Needed to support allocation of program structures.
 
   /// Analyzes the given sources.
   ///
-  /// This mode does not run the program or generates any snapshots. It simply
+  /// This mode does not run the program or generates any images. It simply
   /// prints out all found errors.
   void lsp_analyze(List<const char*> source_paths,
                    const PipelineConfiguration& configuration);
 
   /// Completes the identifier at the given location.
   ///
-  /// This mode does not run the program or generates any snapshots. It simply
+  /// This mode does not run the program or generates any images. It simply
   /// prints out the found completions.
   void lsp_complete(const char* source_path,
                     int line_number,
@@ -119,24 +119,24 @@ class Compiler {
 
   /// Finds the definition of the identifier at the given location.
   ///
-  /// This mode does not run the program or generates any snapshots. It simply
+  /// This mode does not run the program or generates any images. It simply
   /// prints out the found location.
   void lsp_goto_definition(const char* source_path,
                            int line_number,
                            int column_number,
                            const PipelineConfiguration& configuration);
 
-  /// Compiles the given program and sends the snapshot to the server.
-  void lsp_snapshot(const char* source_path,
-                    const PipelineConfiguration& configuration);
+  /// Compiles the given program and sends the image to the server.
+  void lsp_image(const char* source_path,
+                 const PipelineConfiguration& configuration);
 
   /// Emits semantic tokens for the given source_path.
   void lsp_semantic_tokens(const char* source_path,
                            const PipelineConfiguration& configuration);
 
   /// Compiles the given [source_path] into a source bundle.
-  SnapshotBundle compile(const char* source_path,
-                         const PipelineConfiguration& configuration);
+  ImageBundle compile(const char* source_path,
+                      const PipelineConfiguration& configuration);
 };
 
 } // namespace toit::compiler

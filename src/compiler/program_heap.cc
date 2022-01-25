@@ -26,6 +26,22 @@ ProgramHeap::ProgramHeap(Program* program) : _program(program) {
   _program->set_heap(this);
 }
 
+uint8* ProgramHeap::allocate_bytes(int count) {
+  result = _top;
+  if (_top + count > _memory + _size) return null;
+  _top += count;
+  return result;
+}
+
+HeapObject* ProgramHeap::_allocate_raw(int allocation_size) {
+  uword heap_size = size();
+  uword rounded = Utils::round_up(heap_size, sizeof(word));
+  if (heap_size!= rounded) {
+    allocate_bytes(rounded - heap_size);
+  }
+  return HeapObject::cast(allocate_bytes(allocation_size));
+}
+
 String* ProgramHeap::allocate_string(const char* str) {
   return allocate_string(str, strlen(str));
 }
@@ -104,13 +120,6 @@ LargeInteger* ProgramHeap::allocate_large_integer(int64 value) {
   heap_object->_set_header(_program, _program->large_integer_class_id());
   auto result = LargeInteger::cast(result);
   result->_initialize(value);
-  return result;
-}
-
-uint8* ProgramHeap::allocate_bytes(int count) {
-  result = _top;
-  if (_top + count > _memory + _size) return null;
-  _top += count;
   return result;
 }
 

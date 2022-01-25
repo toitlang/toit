@@ -20,7 +20,7 @@
 #include "objects.h"
 #include "memory.h"
 #include "bytecodes.h"
-#include "snapshot.h"
+#include "program_image.h"
 #include "flash_allocation.h"
 #include "compiler/program_heap.h"
 

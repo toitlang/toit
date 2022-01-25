@@ -20,7 +20,7 @@
 #include "os.h"
 #include "process.h"
 #include "process_group.h"
-#include "snapshot_bundle.h"
+#include "image_bundle.h"
 #include "top.h"
 
 namespace toit {

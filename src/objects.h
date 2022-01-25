@@ -496,6 +496,7 @@ class ByteArray : public HeapObject {
   static const int EXTERNAL_SIZE_OFFSET = EXTERNAL_TAG_OFFSET + WORD_SIZE;
   static const int EXTERNAL_ADDRESS_OFFSET = EXTERNAL_SIZE_OFFSET + WORD_SIZE;
   static_assert(EXTERNAL_ADDRESS_OFFSET % WORD_SIZE == 0, "External pointer not word aligned");
+  static const int EXTERNAL_SIZE = EXTERNAL_ADDRESS_OFFSET + WORD_SIZE;
 
   uint8* _external_address() {
     return reinterpret_cast<uint8*>(_word_at(EXTERNAL_ADDRESS_OFFSET));

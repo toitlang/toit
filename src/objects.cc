@@ -19,7 +19,7 @@
 #include "encoder.h"
 #include "printing.h"
 #include "process.h"
-#include "snapshot.h"
+#include "program_image.h"
 #include "utils.h"
 
 namespace toit {
@@ -262,9 +262,18 @@ int ByteArray::do_pointers(PointerCallback *cb) {
     ASSERT(_raw_at(EXTERNAL_TAG_OFFSET) == RawByteTag);
     // Everything up to the external address contains no pointers.
     cb->literal_data(reinterpret_cast<uint8*>(_raw()), EXTERNAL_ADDRESS_OFFSET);
-    cb->c_address(reinterpret_cast<void**>(_raw() + EXTERNAL_ADDRESS_OFFSET), sizeof(word));
     // We rely on the fact that the external pointers is the last thing in the
     // ByteArray.
+    void** payload_cell = reinterpret_cast<void**>(_raw() + EXTERNAL_ADDRESS_OFFSET);
+    cb->c_address(payload_cell, sizeof(word));
+    // Unlike the run-time proces heap "external" byte arrays on the program
+    // heap usually have the external data immediately following the byte
+    // array.  If so, we return the size including the external data to help
+    // the heap iterator find the next object.
+    if (unvoid_cast<uint8*>(*payload_cell) == reinterpret_cast<uint8*>(_raw()) + EXTERNAL_SIZE) {
+      Bytes bytes(this);
+      return EXTERNAL_SIZE + Utils::round_up(bytes.length(), sizeof(word));
+    }
     return EXTERNAL_SIZE;
   } else {
     int size = internal_allocation_size(raw_length());
@@ -279,7 +288,18 @@ int String::do_pointers(PointerCallback *cb) {
     uword payload = _raw_at(EXTERNAL_ADDRESS_OFFSET);
     // Everything up to the external address contains no pointers.
     cb->literal_data(reinterpret_cast<uint8*>(_raw()), EXTERNAL_ADDRESS_OFFSET);
-    cb->c_address(reinterpret_cast<void**>(_raw() + EXTERNAL_ADDRESS_OFFSET), sizeof(word));
+    // We rely on the fact that the external pointers is the last thing in the
+    // ByteArray.
+    void** payload_cell = reinterpret_cast<void**>(_raw() + EXTERNAL_ADDRESS_OFFSET);
+    cb->c_address(payload_cell, sizeof(word));
+    // Unlike the run-time proces heap "external" strings on the program
+    // heap usually have the external data immediately following the byte
+    // array.  If so, we return the size including the external data to help
+    // the heap iterator find the next object.
+    if (unvoid_cast<uint8*>(*payload_cell) == reinterpret_cast<uint8*>(_raw()) + EXTERNAL_SIZE) {
+      Bytes bytes(this);
+      return EXTERNAL_SIZE + Utils::round_up(bytes.length(), sizeof(word));
+    }
     return EXTERNAL_SIZE;
   } else {
     int size = internal_allocation_size(raw_length());
@@ -288,7 +308,6 @@ int String::do_pointers(PointerCallback *cb) {
     return size;
   }
 }
-
 
 void Array::roots_do(RootCallback* cb) {
   cb->do_roots(_root_at(_offset_from(0)), length());

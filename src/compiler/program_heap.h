@@ -21,14 +21,6 @@
 
 namespace toit {
 
-class PointerCallback {
- public:
-  void object_table(Object**p, int length);
-  virtual void object_address(Object** p) = 0;
-  virtual void c_address(void** p, bool is_sentinel = false) = 0;
-  virtual void literal_data(uint8* p, int count) = 0;
-};
-
 // A program heap contains all the reflective structures to run the program.
 class ProgramHeap {
  public:
@@ -49,9 +41,11 @@ class ProgramHeap {
   const void* address() const { return _memory; }
   word size() const { return _top - _memory; }
 
+  // Iterates the whole program heap.
   void do_pointers(PointerCallback* callback);
 
  private:
+  // Allocates a number of bytes on a word-aligned address.
   HeapObject* _allocate_raw(int size) {
     return HeapObject::cast(allocate_bytes(size));
   }

@@ -24,7 +24,7 @@
 #include "scheduler.h"
 #include "vm.h"
 #include "os.h"
-#include "snapshot.h"
+#include "program_image.h"
 
 namespace toit {
 

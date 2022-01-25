@@ -21,7 +21,7 @@
 #include "messaging.h"
 #include "profiler.h"
 #include "resource.h"
-#include "snapshot_bundle.h"
+#include "image_bundle.h"
 
 namespace toit {
 

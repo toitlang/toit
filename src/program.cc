@@ -15,7 +15,7 @@
 
 #include "program.h"
 #include "objects_inline.h"
-#include "snapshot.h"
+#include "program_image.h"
 
 namespace toit {
 

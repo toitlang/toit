@@ -45,7 +45,7 @@
 #include "optimizations/optimizations.h"
 #include "parser.h"
 #include "resolver.h"
-#include "../snapshot_bundle.h"
+#include "../image_bundle.h"
 #include "stubs.h"
 #include "symbol_canonicalizer.h"
 #include "token.h"
@@ -55,7 +55,7 @@
 #include "util.h"
 
 #include "../objects_inline.h"
-#include "../snapshot.h"
+#include "../program_image.h"
 #include "../flags.h"
 #include "../utils.h"
 
@@ -68,7 +68,7 @@ const int ENTRY_UNIT_INDEX = 0;
 const int CORE_UNIT_INDEX = 1;
 
 struct PipelineConfiguration {
-  char** snapshot_args;
+  char** image_args;
 
   const char* out_path;
   const char* dep_file;
@@ -92,24 +92,30 @@ struct PipelineConfiguration {
 class Pipeline {
  public:
   struct Result {
-    uint8* snapshot;
-    int snapshot_size;
+    uint8* image_32;
+    int image_32_size;
+    uint8* image_64;
+    int image_64_size;
     uint8* source_map_data;
     int source_map_size;
 
-    bool is_valid() const { return snapshot != null; }
+    bool is_valid() const { return image_32 != null && image_64 != null; }
 
     void free_all() {
-      free(snapshot);
-      snapshot = null;
+      free(image_32);
+      image_32 = null;
+      free(image_64);
+      image_64 = null;
       free(source_map_data);
       source_map_data = null;
     }
 
     static Result invalid() {
       return {
-        .snapshot = null,
-        .snapshot_size = 0,
+        .image_32 = null,
+        .image_32_size = 0,
+        .image_64 = null,
+        .image_64_size = 0,
         .source_map_data = null,
         .source_map_size = 0,
       };
@@ -340,7 +346,7 @@ void Compiler::language_server(const Compiler::Configuration& compiler_config) {
   const char* mode = reader.next("mode");
   SourceManager source_manager(fs);
   PipelineConfiguration configuration = {
-    .snapshot_args = null,
+    .image_args = null,
     .out_path = null,
     .dep_file = null,
     .dep_format = DepFormat::none,
@@ -388,12 +394,12 @@ void Compiler::language_server(const Compiler::Configuration& compiler_config) {
     configuration.parse_only = true;
     lsp.set_needs_summary(false);
     lsp_analyze(source_paths, configuration);
-  } else if (strcmp("SNAPSHOT BUNDLE", mode) == 0) {
+  } else if (strcmp("IMAGE BUNDLE", mode) == 0) {
     const char* path = reader.next("path");
     NullDiagnostics diagnostics(&source_manager);
     configuration.diagnostics = &diagnostics;
     configuration.is_for_analysis = false;
-    lsp_snapshot(path, configuration);
+    lsp_image(path, configuration);
   } else if (strcmp("SEMANTIC TOKENS", mode) == 0) {
     const char* path = reader.next("path");
     NullDiagnostics diagnostics(&source_manager);
@@ -443,15 +449,15 @@ void Compiler::lsp_analyze(List<const char*> source_paths,
   pipeline.run(source_paths);
 }
 
-void Compiler::lsp_snapshot(const char* source_path,
-                            const PipelineConfiguration& configuration) {
+void Compiler::lsp_image(const char* source_path,
+                         const PipelineConfiguration& configuration) {
   Flags::no_fork = true; // No need to fork the compiler when running in LSP mode.
-  SnapshotBundle bundle = compile(source_path, configuration);
+  ImageBundle bundle = compile(source_path, configuration);
   if (!bundle.is_valid()) {
-    configuration.lsp->snapshot()->fail();
+    configuration.lsp->image()->fail();
     return;
   }
-  configuration.lsp->snapshot()->emit(bundle);
+  configuration.lsp->image()->emit(bundle);
   free(bundle.buffer());
 }
 
@@ -510,7 +516,7 @@ void Compiler::analyze(List<const char*> source_paths,
   SourceManager source_manager(&fs);
   AnalysisDiagnostics diagnostics(&source_manager, compiler_config.show_package_warnings);
   PipelineConfiguration configuration = {
-    .snapshot_args = null,
+    .image_args = null,
     .out_path = null,
     .dep_file = compiler_config.dep_file,
     .dep_format = compiler_config.dep_format,
@@ -531,23 +537,23 @@ void Compiler::analyze(List<const char*> source_paths,
 #ifdef TOIT_POSIX
 
 static Pipeline::Result receive_pipeline_result(int read_fd) {
-  int snapshot_size = -1;
-  uint8* snapshot = null;
+  int image_size = -1;
+  uint8* image = null;
   int source_map_size = -1;
   uint8* source_map_data = null;
 
-  if (!read_from_pipe(read_fd, &snapshot_size, sizeof(int))) return Pipeline::Result::invalid();
-  snapshot = unvoid_cast<uint8*>(malloc(snapshot_size));
-  if (!read_from_pipe(read_fd, snapshot, snapshot_size)) FATAL("Incomplete data");
+  if (!read_from_pipe(read_fd, &image_size, sizeof(int))) return Pipeline::Result::invalid();
+  image = unvoid_cast<uint8*>(malloc(image_size));
+  if (!read_from_pipe(read_fd, image, image_size)) FATAL("Incomplete data");
   if (!read_from_pipe(read_fd, &source_map_size, sizeof(int))) FATAL("Incomplete data");
   source_map_data = unvoid_cast<uint8*>(malloc(source_map_size));
   if (!read_from_pipe(read_fd, source_map_data, source_map_size)) FATAL("Incomplete data");
 
-  ASSERT(snapshot_size != -1);
+  ASSERT(image_size != -1);
   ASSERT(source_map_size != -1);
   return {
-    .snapshot = snapshot,
-    .snapshot_size = snapshot_size,
+    .image = image,
+    .image_size = image_size,
     .source_map_data = source_map_data,
     .source_map_size = source_map_size,
   };
@@ -566,8 +572,8 @@ static void send_pipeline_result(int write_fd, const Pipeline::Result& pipeline_
     }
   };
 
-  write_to_fd(&pipeline_result.snapshot_size, sizeof(int));
-  write_to_fd(pipeline_result.snapshot, pipeline_result.snapshot_size);
+  write_to_fd(&pipeline_result.image_size, sizeof(int));
+  write_to_fd(pipeline_result.image, pipeline_result.image_size);
   write_to_fd(&pipeline_result.source_map_size, sizeof(int));
   write_to_fd(pipeline_result.source_map_data, pipeline_result.source_map_size);
 }
@@ -610,11 +616,11 @@ static void wait_for_child(int cpid, Diagnostics* diagnostics) {
 
 static const uint8* wrap_direct_script_expression(const char* direct_script, Diagnostics* diagnostics);
 
-SnapshotBundle Compiler::compile(const char* source_path,
-                                 const char* direct_script,
-                                 char** snapshot_args,
-                                 const char* out_path,
-                                 const Compiler::Configuration& compiler_config) {
+ImageBundle Compiler::compile(const char* source_path,
+                              const char* direct_script,
+                              char** image_args,
+                              const char* out_path,
+                              const Compiler::Configuration& compiler_config) {
   // We accept '/' paths on Windows as well.
   // For simplicity (and consistency) switch to localized ones in the compiler.
   source_path = FilesystemLocal::to_local_path(source_path);
@@ -637,7 +643,7 @@ SnapshotBundle Compiler::compile(const char* source_path,
   ASSERT(source_path != null);
 
   PipelineConfiguration configuration = {
-    .snapshot_args = snapshot_args,
+    .image_args = image_args,
     .out_path = out_path,
     .dep_file = compiler_config.dep_file,
     .dep_format = compiler_config.dep_format,
@@ -655,14 +661,14 @@ SnapshotBundle Compiler::compile(const char* source_path,
   return compile(source_path, configuration);
 }
 
-SnapshotBundle Compiler::compile(const char* source_path,
-                                 const PipelineConfiguration& configuration) {
+ImageBundle Compiler::compile(const char* source_path,
+                              const PipelineConfiguration& configuration) {
   PipelineConfiguration main_configuration = configuration;
 
   NullDiagnostics null_diagnostics(configuration.source_manager);
   PipelineConfiguration debug_configuration = main_configuration;
   debug_configuration.diagnostics = &null_diagnostics;
-  debug_configuration.snapshot_args = null;
+  debug_configuration.image_args = null;
   // TODO(florian): the dep-file needs to keep track of both compilations.
   debug_configuration.dep_file = null;
   debug_configuration.dep_format = DepFormat::none;
@@ -726,17 +732,21 @@ SnapshotBundle Compiler::compile(const char* source_path,
     // not be necessary. However, they can't hurt either.
     pipeline_main_result.free_all();
     pipeline_debug_result.free_all();
-    return SnapshotBundle::invalid();
+    return ImageBundle::invalid();
   }
-  SnapshotBundle result(List<uint8>(pipeline_main_result.snapshot,
-                                    pipeline_main_result.snapshot_size),
-                        List<uint8>(pipeline_main_result.source_map_data,
-                                    pipeline_main_result.source_map_size),
-                        List<uint8>(pipeline_debug_result.snapshot,
-                                    pipeline_debug_result.snapshot_size),
-                        List<uint8>(pipeline_debug_result.source_map_data,
-                                    pipeline_debug_result.source_map_size));
-  // The snapshot bundle copies all given data. It's thus safe to free
+  ImageBundle result(List<uint8>(pipeline_main_result.image_32,
+                                 pipeline_main_result.image_32_size),
+                     List<uint8>(pipeline_main_result.image_64,
+                                 pipeline_main_result.image_64_size),
+                     List<uint8>(pipeline_main_result.source_map_data,
+                                 pipeline_main_result.source_map_size),
+                     List<uint8>(pipeline_debug_result.image_32,
+                                 pipeline_debug_result.image_32_size),
+                     List<uint8>(pipeline_debug_result.image_64,
+                                 pipeline_debug_result.image_64_size),
+                     List<uint8>(pipeline_debug_result.source_map_data,
+                                 pipeline_debug_result.source_map_size));
+  // The image bundle copies all given data. It's thus safe to free
   //   the pipeline data.
   pipeline_main_result.free_all();
   pipeline_debug_result.free_all();
@@ -1581,16 +1591,22 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths) {
   mark_eager_globals(ir_program->globals());
 
   Backend backend(source_manager(), &source_mapper);
-  auto program = backend.emit(ir_program, _configuration.snapshot_args);
-  SnapshotGenerator generator(program);
-  generator.generate(program);
+  auto program = backend.emit(ir_program, _configuration.image_args);
+  ImageGenerator generator_32(program, 32);
+  generator_32.generate(program);
+  ImageGenerator generator_64(program, 64);
+  generator_64.generate(program);
   int source_map_size;
   uint8* source_map_data = source_mapper.cook(&source_map_size);
-  int snapshot_size;
-  uint8* snapshot = generator.take_buffer(&snapshot_size);
+  int image_32_size;
+  int image_64_size;
+  uint8* image_32 = generator_32.take_buffer(&image_32_size);
+  uint8* image_64 = generator_64.take_buffer(&image_64_size);
   return {
-    .snapshot = snapshot,
-    .snapshot_size = snapshot_size,
+    .image_32 = image_32,
+    .image_32_size = image_32_size,
+    .image_64 = image_64,
+    .image_64_size = image_64_size,
     .source_map_data = source_map_data,
     .source_map_size = source_map_size,
   };

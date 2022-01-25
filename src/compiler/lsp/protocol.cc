@@ -26,7 +26,7 @@
 #include "../map.h"
 #include "../resolver_scope.h"
 
-#include "../../snapshot_bundle.h"
+#include "../../image_bundle.h"
 #include "../../utils.h"
 
 namespace toit {

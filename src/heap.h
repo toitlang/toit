@@ -22,7 +22,7 @@
 #include "objects.h"
 #include "primitive.h"
 #include "printing.h"
-#include "snapshot.h"
+#include "program_image.h"
 
 #include "objects_inline.h"
 
