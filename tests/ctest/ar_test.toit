@@ -6,7 +6,7 @@ import expect show *
 import host.pipe
 import host.directory
 import host.file
-import host.tar show *
+import tar show *
 import ..ar_test as toit_ar_test
 
 do_ctest exe_dir tmp_dir file_mapping --in_memory=false:

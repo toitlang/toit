@@ -1,5 +1,8 @@
 prefixes:
   host: host
+  ar: ar
 packages:
   host:
     path: ../packages/host
+  ar:
+    path: ../packages/ar

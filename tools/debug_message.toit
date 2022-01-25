@@ -13,7 +13,7 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-import host.ar show *
+import ar show *
 import bytes
 import encoding.ubjson as ubjson
 import host.file

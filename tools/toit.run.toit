@@ -16,7 +16,7 @@
 // This program is a wrapper program used by toitc with one purpose
 // only: To make stack traces readable.
 
-import host.ar show *
+import ar show *
 import debug.rpc show RPC_ECHO
 import .debug_message
 import .snapshot

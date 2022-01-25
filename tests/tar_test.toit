@@ -3,7 +3,7 @@
 // be found in the tests/LICENSE file.
 
 import expect show *
-import host.tar show *
+import tar show *
 import host.pipe
 import host.file
 import monitor

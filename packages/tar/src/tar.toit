@@ -2,7 +2,6 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the package's LICENSE file.
 
-import .file as file
 import writer show Writer
 
 /**
@@ -88,10 +87,3 @@ class Tar:
 
   static normal_    ::= '0'
   static long_link_ ::= 'L'
-
-// Just a small test/example.
-main:
-  tar := Tar (file.Stream "/tmp/toit.tar" file.CREAT | file.WRONLY 0x1ff)
-  tar.add "test2.txt" "456\n"
-  tar.add "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789" "123\n"
-  tar.close
