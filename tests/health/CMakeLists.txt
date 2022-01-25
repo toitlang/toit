@@ -15,7 +15,7 @@
 
 file(GLOB_RECURSE HEALTH_SOURCES "${TOIT_SDK_SOURCE_DIR}/*.toit")
 
-set(NORMALIZE_GOLD ${TOIT_SDK_SOURCE_DIR}/tests/tools/normalize_gold.cmake)
+include("${TOIT_SDK_SOURCE_DIR}/tests/tools/health.cmake")
 
 add_custom_target(
   check_health
@@ -59,52 +59,10 @@ foreach(file ${HEALTH_SOURCES})
   if (${IS_PREFIXED})
     continue()
   endif()
-  get_filename_component(name ${file} NAME_WE)
-  file(RELATIVE_PATH relative ${TOIT_SDK_SOURCE_DIR} ${file})
-  string(REPLACE " " "__" TEST_NAME ${relative})
-  string(REPLACE "/" "__" ESCAPED ${TEST_NAME})
-  set(GOLD ${CMAKE_CURRENT_SOURCE_DIR}/${ESCAPED}.gold)
-  # We don't use the path relative to the compiler, as analyzing `lib/...` would not be
-  #   recognized as core library.
-  set(LIB_PATH ".")
-
-  add_test(
-    NAME ${TEST_NAME}
-    COMMAND ${CMAKE_COMMAND}
-        -DTOITC=$<TARGET_FILE:toit.compile>
-        "-DTEST=${relative}"
-        "-DGOLD=${GOLD}"
-        "-DLIB_DIR=${lib_dir}"
-        "-DNORMALIZE_GOLD=${NORMALIZE_GOLD}"
-        "-DTEST_ROOT=${TOIT_SDK_SOURCE_DIR}"
-        "-DTMP=${CMAKE_BINARY_DIR}/tmp"
-        "-DCMAKE_SYSTEM_NAME=${CMAKE_SYSTEM_NAME}"
-        -P "${CMAKE_CURRENT_SOURCE_DIR}/run.cmake"
-    WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
-    CONFIGURATIONS health
-    )
-  set_tests_properties(${TEST_NAME} PROPERTIES TIMEOUT 40)
-
-  set(generate_gold build-health-${ESCAPED}.gold)
-  add_custom_target(${generate_gold})
-
-  add_custom_command(
-    TARGET ${generate_gold}
-    COMMAND ${CMAKE_COMMAND}
-        -DUPDATE_GOLD=true
-        -DTOITC=$<TARGET_FILE:toit.compile>
-        "-DTEST=${relative}"
-        "-DGOLD=${GOLD}"
-        "-DLIB_DIR=${lib_dir}"
-        "-DNORMALIZE_GOLD=${NORMALIZE_GOLD}"
-        "-DTEST_ROOT=${TOIT_SDK_SOURCE_DIR}"
-        "-DTMP=${CMAKE_BINARY_DIR}/tmp"
-        "-DCMAKE_SYSTEM_NAME=${CMAKE_SYSTEM_NAME}"
-        -P "${CMAKE_CURRENT_SOURCE_DIR}/run.cmake"
-    WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}
-    DEPENDS toit.compile
-  )
-  add_dependencies(update_health_gold ${generate_gold})
+  add_health_test("${file}"
+    "${TOIT_SDK_SOURCE_DIR}"
+    "${TOIT_SDK_SOURCE_DIR}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/gold/sdk")
 endforeach()
 
 include(fail.cmake)
