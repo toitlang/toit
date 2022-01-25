@@ -5,5 +5,8 @@
 read_state_ module id:
   #primitive.events.read_state
 
-register_object_notifier_ obj module id:
+register_object_notifier_ object module id:
   #primitive.events.register_object_notifier
+
+unregister_object_notifier_ module id:
+  #primitive.events.unregister_object_notifier

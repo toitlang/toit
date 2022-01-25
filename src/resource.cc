@@ -165,9 +165,14 @@ void EventSource::try_notify(Resource* r, const Locker& locker, bool force) {
 void EventSource::set_object_notifier(Resource* r, ObjectNotifier* notifier) {
   Locker locker(_mutex);
 
-  ASSERT(r->object_notifier() == null);
-  r->set_object_notifier(notifier);
-  if (r->state() != 0) notifier->notify();
+  if (notifier) {
+    ASSERT(r->object_notifier() == null);
+    r->set_object_notifier(notifier);
+    if (r->state() != 0) notifier->notify();
+  } else {
+    delete r->object_notifier();
+    r->set_object_notifier(null);
+  }
 }
 
 uint32_t EventSource::read_state(Resource* r) {
@@ -192,7 +197,10 @@ void LazyEventSource::unregister_resource_group(ResourceGroup* resource_group) {
 
 bool LazyEventSource::use() {
   Locker locker(OS::global_mutex());
-  if (_usage == 0 && !start()) return false;
+  if (_usage == 0) {
+    HeapTagScope scope(ITERATE_CUSTOM_TAGS + EVENT_SOURCE_MALLOC_TAG);
+    if (!start()) return false;
+  }
   _usage++;
   return true;
 }

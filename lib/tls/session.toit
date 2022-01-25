@@ -124,6 +124,7 @@ class Session:
       value := is_exception ? exception.value : null
       handshake_in_progress_.set value
       handshake_in_progress_ = null
+      resource_state.dispose
 
   /**
   Gets the session state, a ByteArray that can be used to resume

@@ -73,6 +73,7 @@ void SystemEventSource::on_event(esp_event_base_t base, int32_t id, void* event_
   Thread::ensure_system_thread();
   Locker locker(mutex());
 
+  HeapTagScope scope(ITERATE_CUSTOM_TAGS + EVENT_SOURCE_MALLOC_TAG);
   if (base == RUN_EVENT) {
     const std::function<void ()>* func = reinterpret_cast<const std::function<void ()>*>(event_data);
     (*func)();

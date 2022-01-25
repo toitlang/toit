@@ -407,6 +407,7 @@ namespace toit {
 #define MODULE_EVENTS(PRIMITIVE)             \
   PRIMITIVE(read_state, 2)                   \
   PRIMITIVE(register_object_notifier, 3)     \
+  PRIMITIVE(unregister_object_notifier, 2)   \
 
 #define MODULE_SNAPSHOT(PRIMITIVE)           \
   PRIMITIVE(launch, 4)                       \

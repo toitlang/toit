@@ -104,8 +104,11 @@ PRIMITIVE(init) {
     }
   }
 
-  ADCState* state = _new ADCState(unit, chan);
-  if (!state) MALLOC_FAILED;
+  ADCState* state = null;
+  { HeapTagScope scope(ITERATE_CUSTOM_TAGS + EXTERNAL_BYTE_ARRAY_MALLOC_TAG);
+    state = _new ADCState(unit, chan);
+    if (!state) MALLOC_FAILED;
+  }
 
   ByteArray* proxy = process->object_heap()->allocate_external_byte_array(0, reinterpret_cast<uint8*>(state), true, false);
   if (proxy == null) {
