@@ -367,7 +367,7 @@ app_sdk_info -> string:
 set_max_heap_size_ size/int -> none:
   #primitive.core.set_max_heap_size
 
-serial_print_heap_report max_pages/int=100 -> none:
+serial_print_heap_report marker/string="" max_pages/int=0 -> none:
   #primitive.core.serial_print_heap_report
 
 /** Simplistic profiler based on bytecode invocation counts. */
