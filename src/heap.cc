@@ -191,7 +191,7 @@ Heap::AllocationResult ObjectHeap::_expand() {
   if (_limit != 0 && used >= _limit) {
 #ifdef TOIT_GC_LOGGING
     printf("[gc @ %p%s | soft limit reached (%zd >= %zd)]\n",
-        owner(), VM::current()->scheduler()->is_boot_process(owner()) ? "*" : "",
+        owner(), VM::current()->scheduler()->is_boot_process(owner()) ? "*" : " ",
         used, _limit);
 #endif
     return ALLOCATION_HIT_LIMIT;
