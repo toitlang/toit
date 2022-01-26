@@ -74,6 +74,16 @@ class Socket implements tcp.Socket:
     // TODO(anders): Set as before handshake, when state can be read.
     socket_.set_no_delay false
 
+  /**
+  Gets the session state, a ByteArray that can be used to resume
+    a TLS session at a later point.
+
+  The session can be read at any point after a handshake, but before the session
+    is closed.
+  */
+  session_state -> ByteArray:
+    return session_.session_state
+
   read -> ByteArray?:
     return session_.read
 
