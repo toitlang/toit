@@ -7,6 +7,7 @@ import reader
 import writer
 import net.x509 as x509
 import binary show BIG_ENDIAN
+import bytes
 
 import .certificate
 import .socket
@@ -36,6 +37,7 @@ class Session:
 
   outgoing_buffer_/ByteArray := #[]
   closed_for_write_ := false
+  client_hello_ := bytes.Buffer
 
   /**
   Creates a new TLS session at the client-side.
@@ -189,6 +191,93 @@ class Session:
   ensure_handshaken_:
     if not handshake_in_progress_: return
     handshake
+
+  static RECORD_HEADER_SIZE ::= 5
+  static MESSAGE_HEADER_SIZE_ ::= 4
+  static CLIENT_VERSION_SIZE_ ::= 2
+  static RANDOM_SIZE_ ::= 32
+
+  /*  Client hello format.
+  struct client_hello {
+    struct record_header {
+      uint8 record_type;  // 0x16 is handshake record.
+      uint16 protocol_version;
+      uint16 record_size;
+    };
+    struct handshake_header {
+      uint8 message_type;  // 0x01 is client hello.
+      uint24 message_size;
+    };
+    uint16 client_version;
+    uint8 random[32];
+    uint8 session_id_size;
+    uint8 session_id[session_id_size];
+    uint16 cipher_suite_size;
+    uint8 cipher_suites[cipher_suite_size];
+    uint8 compression_methods_size;
+    uint8 compression_methods[compression_methods_size];
+    uint16 extensions_size;
+    union {
+      uint8 extensions[extensions_size]
+      struct extension {
+        uint16 extension_number;  // 28 is record size limit extension.
+        uint16 extension_size;
+        uint8 extension[extention_size];
+      } extensions[];
+    };
+  };
+  */
+
+  has_complete_client_hello_ -> bool:
+    if client_hello_.size < RECORD_HEADER_SIZE_: return false
+    if client_hello_.buffer[0] != 0x16: throw "TLS_BUG_1"  // Did not start with client hello.
+    record_size := BIG_ENDIAN.uint16 client_hello.buffer 3
+    message_offset ::= RECORD_HEADER_SIZE_
+    if client_hello_.size < message_offset + record_size: return false  // Complete record not there yet.
+    if client_hello_.buffer[message_offset] != 0x01: throw "TLS_BUG_2"  // Did not start with client hello.
+    client_hello_size := BIG_ENDIAN.uint24 client_hello_.buffer message_offset + 1
+    if client_hello_size != record_size - MESSAGE_HEADER_SIZE_: throw "TLS_BUG_3"  // First record was not a single complete client hello message.
+    return true.
+
+  find_extensions_offset_ buffer/ByteArray -> int:
+    assert: has_complete_client_hello_
+    message_offset ::= RECORD_HEADER_SIZE_
+    client_hello_size := BIG_ENDIAN.uint24 client_hello_.buffer message_offset + 1
+    session_id_offset := RECORD_HEADER_SIZE_ + MESSAGE_HEADER_SIZE_ + CLIENT_VERSION_SIZE_ + RANDOM_SIZE_
+    session_id_size := buffer[session_id_offset]
+    cipher_suite_offset := session_id_offset + 1 + session_id_size
+    cipher_suite_size := BIG_ENDIAN.uint16 buffer cipher_suite_offset
+    compression_methods_offset := cipher_suite_offset + 2 + cipher_suite_size
+    compression_methods_size := buffer[compression_methods_offset]
+    return compression_methods_offset + 1 + compression_methods_size
+
+  client_hello_contains_record_size_limit_ -> bool:
+    buffer := client_hello_.buffer
+    extensions_offset := find_extensions_offset_ buffer
+    bytes_left := BIG_ENDIAN.uint16 buffer extensions_offset
+    offset := extensions_offset + 4
+    while bytes_left > 0:
+      extension := BIG_ENDIAN.uint16 buffer offset
+      extension_size := BIG_ENDIAN.uint16 buffer offset + 2
+      if extension == 28:
+        return true
+      offset += 4 + extension_size
+      bytes_left -= 4 + extension_size
+    return false
+
+  write_client_hello_with_record_size_limit_ -> none:
+    buffer := client_hello_.buffer
+    extensions_offset := find_extensions_offset_ buffer
+    bytes_left := BIG_ENDIAN.uint16 buffer extensions_offset
+    offset := extensions_offset + 4
+    while bytes_left > 0:
+      extension := BIG_ENDIAN.uint16 buffer offset
+      extension_size := BIG_ENDIAN.uint16 buffer offset + 2
+      if extension == 28:
+        return true
+      offset += 4 + extension_size
+      bytes_left -= 4 + extension_size
+    return false
 
   flush_outgoing_ -> none:
     from := 0
