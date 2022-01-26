@@ -5,7 +5,7 @@
 import expect show *
 
 main:
-  b := (: debug it)
+  b := (: print it)
   run_loop := true
   b2 := while run_loop:
     run_loop = false

@@ -26,6 +26,6 @@ main args:
   snap := run args --entry_path=eager_global_test_path
   program := snap.decode
   methods := extract_methods program [ "eager_test", "lazy_test" ]
-  debug methods
+  print methods
   check_eager_lazy --eager methods["eager_test"]
   check_eager_lazy --no-eager methods["lazy_test"]

@@ -25,4 +25,4 @@ class A:
 
 main:
   foo foo := 0
-  debug foo
+  print foo
