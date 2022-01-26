@@ -140,8 +140,9 @@ PRIMITIVE(set_rtc_user_data) {
   ARGS(Blob, bytes, int, from)
   if (from < 0 || from + bytes.length() > RtcMemory::RTC_USER_DATA_SIZE) OUT_OF_BOUNDS;
 
+  printf("set RTC user data\n");
   RtcMemory::set_user_data(const_cast<uint8*>(bytes.address()), from, bytes.length());
-
+  printf("RTC user data set\n");
   return process->program()->null_object();
 }
 
@@ -149,13 +150,16 @@ PRIMITIVE(rtc_user_data) {
   ARGS(int, from, int, length)
   if (from < 0 || from + length > RtcMemory::RTC_USER_DATA_SIZE) OUT_OF_BOUNDS;
 
+  printf("RTC data primitive\n");
   Error* error = null;
   ByteArray* result = process->allocate_byte_array(length, &error);
   if (result == null) return error;
 
   ByteArray::Bytes bytes(result);
 
+  printf("get RTC data\n");
   RtcMemory::user_data(const_cast<uint8*>(bytes.address()), from, bytes.length());
+  printf("return RTC data\n");
   return result;
 }
 
