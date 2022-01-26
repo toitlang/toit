@@ -22,7 +22,6 @@
 #include "objects.h"
 #include "primitive.h"
 #include "printing.h"
-#include "snapshot.h"
 
 #include "objects_inline.h"
 

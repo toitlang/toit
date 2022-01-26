@@ -460,6 +460,7 @@ class ByteArray : public HeapObject {
     *extra_bytes = raw_length;
   }
 
+#ifndef TOIT_FREERTOS
   static void snapshot_allocation_size(int length, int* word_count, int* extra_bytes) {
     if (length > SNAPSHOT_INTERNAL_SIZE_CUTOFF) {
       return external_allocation_size(word_count, extra_bytes);
@@ -470,6 +471,7 @@ class ByteArray : public HeapObject {
 
   void write_content(SnapshotWriter* st);
   void read_content(SnapshotReader* st, int byte_length);
+#endif
 
   static ByteArray* cast(Object* byte_array) {
      ASSERT(byte_array->is_byte_array());
@@ -838,7 +840,7 @@ class String : public HeapObject {
     *extra_bytes = 0;
   }
 
-
+#ifndef TOIT_FREERTOS
   static void snapshot_allocation_size(int length, int* word_count, int* extra_bytes) {
     if (length > SNAPSHOT_INTERNAL_SIZE_CUTOFF) {
       return external_allocation_size(word_count, extra_bytes);
@@ -846,6 +848,7 @@ class String : public HeapObject {
       return internal_allocation_size(length, word_count, extra_bytes);
     }
   }
+#endif
 
   void do_pointers(PointerCallback* cb);
 

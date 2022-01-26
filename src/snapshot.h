@@ -139,7 +139,6 @@ class SnapshotReader {
                   int large_integer_id);
 
   virtual bool read_header() = 0;
-  virtual HeapObject* read_program_heap_reference(uword offset) = 0;
 
  public:
   uword read_cardinal();
@@ -232,9 +231,7 @@ class SnapshotGenerator {
 
   void generate(int header_byte_size,
                 std::function<void (EmittingSnapshotWriter*)> write_header,
-                std::function<void (SnapshotWriter*)> write_object,
-                bool only_process_heap,
-                Process* process = null);
+                std::function<void (SnapshotWriter*)> write_object);
 };
 
 class RelocationBits;

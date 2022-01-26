@@ -61,4 +61,4 @@ PRIMITIVE(launch) {
 
 } // namespace toit
 
-#endif // TOIT_LINUX
+#endif // ndef TOIT_FREERTOS
