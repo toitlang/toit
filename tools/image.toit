@@ -963,7 +963,8 @@ class ToitByteArray extends ToitHeapObject:
     return to_encoded_address address
 
 class ToitString extends ToitHeapObject:
-  static INTERNAL_SIZE_CUTOFF := Image.PAGE_BYTE_SIZE_32 >> 2
+  static INTERNAL_SIZE_CUTOFF ::= Image.PAGE_BYTE_SIZE_32 >> 2
+  static EXTERNAL_LENGTH_SENTINEL ::= 65535  // On 64-bit machines, this is not -1 when stored in a half-word.
 
   static LAYOUT_INTERNAL /ObjectType ::= ObjectType --packed {  // The '--packed' shouldn't be necessary, but doesn't hurt.
     // Inherited from HeapObject.
@@ -979,7 +980,7 @@ class ToitString extends ToitHeapObject:
     // Inherited from HeapObject.
     "header": PrimitiveType.WORD,
     // External representation of a string contains a few bits for the
-    // hashcode and then the length which is set to -1.
+    // hashcode and then the length which is set to EXTERNAL_LENGTH_SENTINEL.
     // It is then followed by the real length and a pointer to the external address.
     "hash_code": PrimitiveType.HALF_WORD,
     "length": PrimitiveType.HALF_WORD,
@@ -1025,8 +1026,8 @@ class ToitString extends ToitHeapObject:
     hash := compute_hash_
     anchored.put_half_word "hash_code" hash
 
-    // External representation has -1 as length.
-    anchored.put_half_word "length" -1
+    // External representation has a sentinel as length.
+    anchored.put_half_word "length" EXTERNAL_LENGTH_SENTINEL
 
     anchored.put_word "real_length" size
 
