@@ -31,7 +31,9 @@ SystemEventSource::SystemEventSource()
     : EventSource("System", 1)
     , _run_cond(OS::allocate_condition_variable(mutex()))
     , _in_run(false) {
-  FATAL_IF_NOT_ESP_OK(esp_event_loop_create_default());
+  { HeapTagScope scope(ITERATE_CUSTOM_TAGS + THREAD_SPAWN_MALLOC_TAG);
+    FATAL_IF_NOT_ESP_OK(esp_event_loop_create_default());
+  }
   FATAL_IF_NOT_ESP_OK(esp_event_handler_register(RUN_EVENT, ESP_EVENT_ANY_ID, on_event, this));
   ASSERT(_instance == null);
   _instance = this;
