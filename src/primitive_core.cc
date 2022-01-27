@@ -1715,6 +1715,7 @@ PRIMITIVE(process_send) {
     length = size_encoder.size();
   }
 
+  HeapTagScope scope(ITERATE_CUSTOM_TAGS + EXTERNAL_BYTE_ARRAY_MALLOC_TAG);
   uint8* buffer = unvoid_cast<uint8*>(malloc(length));
   if (buffer == null) MALLOC_FAILED;
 
