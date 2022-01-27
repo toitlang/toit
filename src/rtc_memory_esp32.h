@@ -24,7 +24,7 @@ namespace toit {
 // The RTC memory holds state that is preserved across reboots.
 class RtcMemory {
  public:
-  static const int RTC_USER_DATA_SIZE = 2048;
+  static const int RTC_USER_DATA_SIZE = 4096;
 
   // Run at program startup (after FreeRTOS is initialized).
   static void set_up();
