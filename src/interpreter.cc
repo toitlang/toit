@@ -403,7 +403,7 @@ Object** Interpreter::check_stack_overflow(Object** sp, OverflowState* state, Me
 #ifdef TOIT_GC_LOGGING
     if (attempts == 3) {
       printf("[gc @ %p%s | 3rd time stack allocate failure %d->%d]\n",
-          _process, VM::current()->scheduler()->is_boot_process(_process) ? "*" : "",
+          _process, VM::current()->scheduler()->is_boot_process(_process) ? "*" : " ",
           length, new_length);
     }
 #endif
