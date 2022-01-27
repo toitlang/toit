@@ -127,6 +127,8 @@ class ResourceGroup : public ResourceGroupListFromProcess::Element {
     ::operator delete(ptr);
   }
 
+  ResourceList& resources() { return _resources; }
+
  private:
   Process* const _process;
   EventSource* _event_source;
