@@ -332,7 +332,7 @@ void Compiler::language_server(const Compiler::Configuration& compiler_config) {
   Filesystem* fs = null;
   LspFsProtocol* fs_protocol = null;
   LspFsConnection* connection = null;
-  LspWriter* writer;
+  LspWriter* writer = null;
   if (strcmp("-1", port) == 0) {
     fs = _new FilesystemLocal();
     writer = new LspWriterStdout();
