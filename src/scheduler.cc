@@ -409,7 +409,7 @@ void Scheduler::scavenge(Process* process, bool malloc_failed, bool try_hard) {
     _gc_cross_processes = false;
 #ifdef TOIT_GC_LOGGING
     int64 microseconds = OS::get_monotonic_time() - start;
-    printf("[gc %p%s | cross process gc with %d scavenges, took %d.%03dms]\n",
+    printf("[gc @ %p%s | cross process gc with %d scavenges, took %d.%03dms]\n",
         process, VM::current()->scheduler()->is_boot_process(process) ? "*" : " ",
         scavenges + 1,
         static_cast<int>(microseconds / 1000),

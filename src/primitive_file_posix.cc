@@ -157,7 +157,7 @@ PRIMITIVE(opendir) {
   if (directory == null) {
     ALLOCATION_FAILED;
   }
-  ByteArray* proxy = process->object_heap()->allocate_proxy();
+  ByteArray* proxy = process->object_heap()->allocate_proxy(true);
   if (proxy == null) {
     delete directory;
     ALLOCATION_FAILED;
@@ -180,17 +180,10 @@ PRIMITIVE(opendir) {
 PRIMITIVE(readdir) {
   ARGS(Directory, directory);
 
-  ByteArray* proxy = process->object_heap()->allocate_proxy();
+  ByteArray* proxy = process->object_heap()->allocate_proxy(true);
   if (proxy == null) {
     ALLOCATION_FAILED;
   }
-
-  // Because we allocated the proxy without a backing (we are adding that
-  // later) it got created without a finalizer.  If we were putting a resource
-  // in it, then the resource cleanup code would free the memory, but we are
-  // just putting raw bytes in it, so we have to set a finalizer.
-  bool ok = process->add_vm_finalizer(proxy);
-  ASSERT(ok);  // Malloc does not fail on non-embedded.
 
   struct dirent* entry = readdir(directory->dir);
   // After this point we can't bail out for GC because readdir is not really

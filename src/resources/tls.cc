@@ -639,7 +639,7 @@ void SslSession::free_session(mbedtls_ssl_session* session) {
 PRIMITIVE(get_session) {
   ARGS(BaseMbedTLSSocket, socket);
 
-  ByteArray* proxy = process->object_heap()->allocate_proxy();
+  ByteArray* proxy = process->object_heap()->allocate_proxy(true);
   if (proxy == null) ALLOCATION_FAILED;
 
   mbedtls_ssl_session session;
@@ -680,14 +680,14 @@ PRIMITIVE(set_session) {
     return tls_error(null, process, result);
   }
 
+  // Set the session and remember to always free the fake session
+  // created by deserialize.
   result = mbedtls_ssl_set_session(&socket->ssl, &ssl_session);
+  SslSession::free_session(&ssl_session);
+
   if (result != 0) {
     return tls_error(null, process, result);
   }
-
-  // Free the fake session created by deserialize.
-  SslSession::free_session(&ssl_session);
-
   return process->program()->null_object();
 }
 
