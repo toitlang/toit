@@ -1,0 +1,33 @@
+<sdk>/drivers/cellular.toit:172:7: warning: Deprecated 'GnssLocation.altitude_msl'
+      altitude_msl,
+      ^~~~~~~~~~~~
+<sdk>/drivers/cellular.toit:173:7: warning: Deprecated 'GnssLocation.horizontal_accuracy'
+      horizontal_accuracy,
+      ^~~~~~~~~~~~~~~~~~~
+<sdk>/drivers/cellular.toit:174:7: warning: Deprecated 'GnssLocation.vertical_accuracy'
+      vertical_accuracy,
+      ^~~~~~~~~~~~~~~~~
+<sdk>/drivers/cellular_base.toit:283:5: warning: Deprecated 'CellularBase.on_connected_'
+    on_connected_ session
+    ^~~~~~~~~~~~~
+<sdk>/drivers/ublox_cellular.toit:545:5: warning: Deprecated 'UBloxCellular.on_reset'
+    on_reset session
+    ^~~~~~~~
+<sdk>/drivers/ublox_cellular.toit:77:14: warning: Deprecated 'Socket_.last_error_'
+      throw (last_error_ session e)
+             ^~~~~~~~~~~
+<sdk>/drivers/ublox_cellular.toit:149:7: warning: Deprecated 'Socket_.socket_call'
+      socket_call: | session/at.Session |
+      ^~~~~~~~~~~
+<sdk>/drivers/sara_r4.toit:31:5: warning: Class 'UBloxCellular' is deprecated
+    super
+    ^~~~~
+<sdk>/drivers/ublox_cellular.toit:50:14: warning: Class 'SocketState_' is deprecated
+  state_ ::= SocketState_
+             ^~~~~~~~~~~~
+<sdk>/drivers/ublox_cellular.toit:294:5: warning: Class 'CellularBase' is deprecated
+    super uart at_session
+    ^~~~~
+<sdk>/drivers/cellular.toit:154:12: warning: Class 'GnssLocation' is deprecated
+    return GnssLocation
+           ^~~~~~~~~~~~

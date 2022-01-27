@@ -1,0 +1,36 @@
+<sdk>/drivers/cellular_base.toit:283:5: warning: Deprecated 'CellularBase.on_connected_'
+    on_connected_ session
+    ^~~~~~~~~~~~~
+<sdk>/drivers/sequans_cellular.toit:452:5: warning: Deprecated 'SequansCellular.on_reset'
+    on_reset session
+    ^~~~~~~~
+<sdk>/drivers/cellular.toit:172:7: warning: Deprecated 'GnssLocation.altitude_msl'
+      altitude_msl,
+      ^~~~~~~~~~~~
+<sdk>/drivers/cellular.toit:173:7: warning: Deprecated 'GnssLocation.horizontal_accuracy'
+      horizontal_accuracy,
+      ^~~~~~~~~~~~~~~~~~~
+<sdk>/drivers/cellular.toit:174:7: warning: Deprecated 'GnssLocation.vertical_accuracy'
+      vertical_accuracy,
+      ^~~~~~~~~~~~~~~~~
+<sdk>/drivers/sequans_cellular.toit:198:5: warning: Deprecated 'Socket_.socket_call'
+    socket_call: | session/at.Session |
+    ^~~~~~~~~~~
+<sdk>/drivers/sequans_cellular.toit:227:9: warning: Deprecated 'Socket_.socket_call'
+        socket_call: | session/at.Session |
+        ^~~~~~~~~~~
+<sdk>/drivers/sequans_cellular.toit:124:9: warning: Deprecated 'Socket_.socket_call'
+        socket_call: | session/at.Session |
+        ^~~~~~~~~~~
+<sdk>/drivers/sequans_cellular.toit:141:7: warning: Deprecated 'Socket_.socket_call'
+      socket_call:
+      ^~~~~~~~~~~
+<sdk>/drivers/sequans_cellular.toit:92:5: warning: Deprecated 'Socket_.socket_call'
+    socket_call: | session/at.Session |
+    ^~~~~~~~~~~
+<sdk>/drivers/sequans_cellular.toit:281:5: warning: Class 'CellularBase' is deprecated
+    super uart at_session
+    ^~~~~
+<sdk>/drivers/cellular.toit:154:12: warning: Class 'GnssLocation' is deprecated
+    return GnssLocation
+           ^~~~~~~~~~~~
