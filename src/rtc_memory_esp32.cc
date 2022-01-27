@@ -314,14 +314,17 @@ uint32 RtcMemory::session_id() {
 }
 
 void RtcMemory::set_user_data(uint8* data, int from, int length) {
-  memcpy(data, rtc_user_data + from, length);
-//   for (int i = 0; i < length; i++) {
-//     rtc_user_data[from + i] = data[i];
-//   }
+  // memcpy doesn't work here.
+  for (int i = 0; i < length; i++) {
+    rtc_user_data[from + i] = data[i];
+  }
 }
 
 void RtcMemory::user_data(uint8* data, int from, int length) {
-  memcpy(rtc_user_data + from, data, length);
+  // memcpy doesn't work here.
+  for (int i = 0; i < length; i++) {
+    data[i] = rtc_user_data[from + i];
+  }
 }
 
 
