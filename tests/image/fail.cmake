@@ -20,5 +20,6 @@ if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows" OR "${CMAKE_SYSTEM_NAME}" STREQUAL
   list(APPEND TOIT_FAILING_TESTS
     tests/image/basic_input.toit
     tests/image/full_page_test.toit
+    tests/image/large_string_input.toit
   )
 endif()
