@@ -1,4 +1,4 @@
-# Copyright (C) 2021 Toitware ApS.
+# Copyright (C) 2022 Toitware ApS.
 #
 # This library is free software; you can redistribute it and/or
 # modify it under the terms of the GNU Lesser General Public
@@ -13,11 +13,13 @@
 # The license can be found in the file `LICENSE` in the top level
 # directory of this repository.
 
-set(TOIT_FAILING_TESTS
-)
+file(GLOB TOIT_PROJECTS LIST_DIRECTORIES true "*")
 
-if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows" OR "${CMAKE_SYSTEM_NAME}" STREQUAL "MSYS")
-  list(APPEND TOIT_FAILING_TESTS
-    tests/lock_file/multi_test/target/sub/src/sub.toit
-  )
-endif()
+foreach(PROJECT ${TOIT_PROJECTS})
+  if (NOT IS_DIRECTORY "${PROJECT}")
+    continue()
+  endif()
+  get_filename_component(NAME "${PROJECT}" NAME)
+  # Assumes that 'toit.cmake' was included earlier.
+  toit_project("${NAME}" "${PROJECT}")
+endforeach()
