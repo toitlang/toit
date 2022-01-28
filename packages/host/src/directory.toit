@@ -102,8 +102,9 @@ class DirectoryStream:
       return str
 
   close -> none:
-    dir := dir_
-    closedir_ dir
+    if dir_:
+      closedir_ dir_
+      dir_ = null
 
 opendir_ resource_group name:
   #primitive.file.opendir
