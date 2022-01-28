@@ -65,7 +65,7 @@ interface Cellular:
 
   /**
   Deprecated. Use package cellular (https://github.com/toitware/cellular).
-  
+
   Scan for operators.
   */
   scan_for_operators -> List
@@ -116,27 +116,30 @@ GNSS location consisting of coordinates and accuracy measurements.
 class GnssLocation:
   latitude/float
   longitude/float
-  /** 
+
+  /**
   Deprecated. Use package toit-gnss-location (https://github.com/toitware/toit-gnss-location).
-  The horizontal accuracy. 
+  The horizontal accuracy.
   */
   horizontal_accuracy ::= 0.0
-  /** 
-  Deprecated. Use package toit-gnss-location (https://github.com/toitware/toit-gnss-location).
-  
-  The vertical accuracy. 
-  */
-  vertical_accuracy ::= 0.0
-  /** 
+
+  /**
   Deprecated. Use package toit-gnss-location (https://github.com/toitware/toit-gnss-location).
 
-  The altitude relative to the median sea level. 
+  The vertical accuracy.
+  */
+  vertical_accuracy ::= 0.0
+
+  /**
+  Deprecated. Use package toit-gnss-location (https://github.com/toitware/toit-gnss-location).
+
+  The altitude relative to the median sea level.
   */
   altitude_msl ::= 0.0
 
   /**
   Deprecated. Use package toit-gnss-location (https://github.com/toitware/toit-gnss-location).
-  
+
   Constructs a GNSS location from the given $latitude, $longitude,
     $horizontal_accuracy, $vertical_accuracy, and $altitude_msl.
   */
@@ -174,10 +177,10 @@ class GnssLocation:
       vertical_accuracy,
     ]
 
-  /** 
+  /**
   Deprecated. Use package toit-gnss-location (https://github.com/toitware/toit-gnss-location).
-  
-  See $super. 
+
+  See $super.
   */
   stringify:
     lat_printer := create_printer_ "S" "N"
