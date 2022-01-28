@@ -148,10 +148,6 @@ add_custom_target(
 
 add_dependencies(build_snapshots build_boot_snapshot)
 
-if (NOT ${TOIT_IS_CROSS})
-  add_dependencies(build_tools build_boot_snapshot)
-endif()
-
 if (DEFINED USE_LWIP)
   include_directories(toit.run PRIVATE ${LWIP_INCLUDE_DIRS})
   target_compile_options(toit.run PRIVATE ${LWIP_COMPILER_FLAGS})
