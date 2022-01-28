@@ -180,6 +180,8 @@ enable_testing()
 add_subdirectory(tests)
 
 add_subdirectory(examples)
+# External Toit packages and projects.
+add_subdirectory(external)
 
 set(CMAKE_POLICY_DEFAULT_CMP0076 OLD)
 # The 'ENABLE_TESTING' and 'ENABLE_PROGRAMS' variables (used by mbedtls) have no prefix. As

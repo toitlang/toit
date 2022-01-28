@@ -17,7 +17,20 @@ set(TOOLS_DIR "${CMAKE_CURRENT_LIST_DIR}")
 
 # Adds a health-test.
 # Adds the tests to test configuration 'health'.
-function (add_health_test PATH RELATIVE_TO LIB_DIR GOLD_DIR)
+function (add_health_test PATH)
+  set(PARAMS RELATIVE_TO LIB_DIR GOLD_DIR CONFIGURATION UPDATE_TARGET)
+  cmake_parse_arguments(
+      MY_HEALTH    # Prefix
+      ""
+      "${PARAMS}"  # One value parameters.
+      ""
+      ${ARGN})
+  set(RELATIVE_TO "${MY_HEALTH_RELATIVE_TO}")
+  set(LIB_DIR "${MY_HEALTH_LIB_DIR}")
+  set(GOLD_DIR "${MY_HEALTH_GOLD_DIR}")
+  set(CONFIGURATION "${MY_HEALTH_CONFIGURATION}")
+  set(UPDATE_TARGET "${MY_HEALTH_UPDATE_TARGET}")
+
   get_filename_component(NAME "${PATH}" NAME_WE)
   file(RELATIVE_PATH TEST_NAME "${CMAKE_SOURCE_DIR}" "${PATH}")
 
@@ -38,7 +51,7 @@ function (add_health_test PATH RELATIVE_TO LIB_DIR GOLD_DIR)
         "-DCMAKE_SYSTEM_NAME=${CMAKE_SYSTEM_NAME}"
         -P "${TOOLS_DIR}/health_run.cmake"
     WORKING_DIRECTORY "${RELATIVE_TO}"
-    CONFIGURATIONS health
+    CONFIGURATIONS "${CONFIGURATION}"
     )
 
   set_tests_properties(${TEST_NAME} PROPERTIES TIMEOUT 40)
@@ -60,5 +73,5 @@ function (add_health_test PATH RELATIVE_TO LIB_DIR GOLD_DIR)
         -P "${TOOLS_DIR}/health_run.cmake"
     WORKING_DIRECTORY "${RELATIVE_TO}"
   )
-  add_dependencies(update_health_gold ${generate_gold})
+  add_dependencies("${UPDATE_TARGET}" "${generate_gold}")
 endfunction()
