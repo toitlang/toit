@@ -28,7 +28,7 @@ foreach(input ${INPUT})
   set(expected_out "${CMAKE_CURRENT_SOURCE_DIR}/${base}.out")
 
   ADD_TOIT_TARGET(
-    "${CMAKE_SOURCE_DIR}/${input}"
+    "${TOIT_SDK_SOURCE_DIR}/${input}"
     ${snap}
     ${dep}
     "")
