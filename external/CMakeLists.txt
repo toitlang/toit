@@ -98,8 +98,18 @@ if (NOT ${TEST_TOIT_REPOS})
 endif()
 
 add_custom_target(
+  check_external
+  COMMAND ${CMAKE_CTEST_COMMAND} -j${NUM_CPU} -T test -C external --output-on-failure -I ${TEST_SHARD_START},,${TEST_SHARD_STRIDE}
+  USES_TERMINAL
+  )
+
+add_custom_target(
   check_external_health
   COMMAND "${CMAKE_CTEST_COMMAND}" -j${NUM_CPU} -T test -C external_health --output-on-failure -I ${TEST_SHARD_START},,${TEST_SHARD_STRIDE}
+  USES_TERMINAL
+  )
+
+add_custom_target(
   USES_TERMINAL
   DEPENDS toit.compile
   )
@@ -151,8 +161,25 @@ function(find_toit_projects REPO)
   endforeach()
 endfunction()
 
+function(add_repo_tests REPO)
+  get_filename_component(REPO_NAME "${REPO}" NAME)
+  set(REPO_PATH "${DOWNLOADS_DIR}/${REPO_NAME}")
+  file(GLOB TEST_FILES RELATIVE "${CMAKE_SOURCE_DIR}"
+      "${REPO_PATH}/test/*_test.toit"
+      "${REPO_PATH}/tests/*_test.toit")
+  foreach(FILE ${TEST_FILES})
+    add_test(
+      NAME "${FILE}"
+      COMMAND $<TARGET_FILE:toit.run> "${FILE}"
+      WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+      CONFIGURATIONS external
+    )
+  endforeach()
+endfunction()
+
 foreach(REPO ${TOIT_REPOS})
-  find_toit_projects(${REPO})
+  find_toit_projects("${REPO}")
+  add_repo_tests("${REPO}")
 endforeach()
 
 include("${TOIT_SDK_SOURCE_DIR}/tests/tools/health.cmake")
