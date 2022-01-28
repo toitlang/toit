@@ -57,7 +57,7 @@ function (add_health_test PATH RELATIVE_TO LIB_DIR GOLD_DIR)
         "-DTEST_ROOT=${RELATIVE_TO}"
         "-DTMP=${CMAKE_BINARY_DIR}/tmp"
         "-DCMAKE_SYSTEM_NAME=${CMAKE_SYSTEM_NAME}"
-        -P "${TOOLS_DIR}/run.cmake"
+        -P "${TOOLS_DIR}/health_run.cmake"
     WORKING_DIRECTORY "${RELATIVE_TO}"
   )
   add_dependencies(update_health_gold ${generate_gold})
