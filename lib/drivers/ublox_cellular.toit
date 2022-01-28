@@ -23,9 +23,7 @@ CONNECTED_STATE_  ::= 1 << 0
 READ_STATE_       ::= 1 << 1
 CLOSE_STATE_      ::= 1 << 2
 
-/**
-Deprecated. Use package ublox-cellular (https://github.com/toitware/ublox-cellular).
-*/
+/** Deprecated. Use package ublox-cellular (https://github.com/toitware/ublox-cellular). */
 monitor SocketState_:
   state_/int := 0
   dirty_/bool := false

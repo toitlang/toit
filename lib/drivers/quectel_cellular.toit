@@ -67,7 +67,7 @@ class Socket_:
     return id_
 
   /**
-    Calls the given $block.
+  Calls the given $block.
   Captures exceptions and translates them to socket-related errors.
   */
   socket_call [block]:
