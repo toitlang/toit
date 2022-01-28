@@ -157,7 +157,9 @@ PRIMITIVE(opendir) {
   if (directory == null) {
     ALLOCATION_FAILED;
   }
-  ByteArray* proxy = process->object_heap()->allocate_proxy(true);
+  // TODO(kasper): For now, we leak memory because we cannot mark the proxy for
+  // auto-disposal. The VM finalizer will not accept an object with the Directory tag.
+  ByteArray* proxy = process->object_heap()->allocate_proxy(false);
   if (proxy == null) {
     delete directory;
     ALLOCATION_FAILED;
