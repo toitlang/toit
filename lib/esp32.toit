@@ -105,6 +105,12 @@ set_real_time_clock_ seconds/int ns/int -> none:
 Sets the RTC user data to the given $data starting from the given $offset.
 
 The given $data must be within bounds. That is 0 <= $offset <= $offset + data.size < 4096.
+
+# Advanced
+RTC memory is volatile memory that is powered during deep sleep. RTC memory is
+  random access and significantly faster than flash memory.
+
+It is recommended to ensure the integrity of the stored data with a checksum.
 */
 set_rtc_data data offset/int=0 -> none:
   #primitive.esp32.set_rtc_user_data
@@ -113,6 +119,12 @@ set_rtc_data data offset/int=0 -> none:
 Gets the RTC user data in the range [$offset, $offset + $length[.
 
 The parameters must satisfy 0 <= $offset <= + $offset + $length  < 4096.
+
+# Advanced
+RTC memory is volatile memory that is powered during deep sleep. RTC memory is
+  random access and significantly faster than flash memory.
+
+It is recommended to ensure the integrity of the stored data with a checksum.
 */
 rtc_data offset/int=0 length/int=4096 -> ByteArray:
   #primitive.esp32.rtc_user_data
