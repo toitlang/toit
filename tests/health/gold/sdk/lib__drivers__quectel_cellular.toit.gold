@@ -1,0 +1,48 @@
+<sdk>/drivers/cellular_base.toit:89:34: warning: Class 'COPS' is deprecated
+      result := session.send COPS.scan
+                                 ^
+<sdk>/drivers/cellular_base.toit:97:11: warning: Class 'Operator' is deprecated
+          Operator o[3] --rat=rat
+          ^~~~~~~~
+<sdk>/drivers/cellular_base.toit:112:26: warning: Class 'COPS' is deprecated
+        session.send COPS.automatic
+                         ^
+<sdk>/drivers/cellular_base.toit:123:34: warning: Class 'COPS' is deprecated
+        res := (session.send COPS.read).last
+                                 ^
+<sdk>/drivers/cellular_base.toit:125:18: warning: Class 'Operator' is deprecated
+          return Operator res[2]
+                 ^~~~~~~~
+<sdk>/drivers/cellular_base.toit:129:25: warning: Class 'COPS' is deprecated
+    at_.do: it.send COPS.deregister
+                        ^
+<sdk>/drivers/cellular_base.toit:145:24: warning: Class 'CFUN' is deprecated
+      session.send CFUN.online
+                       ^
+<sdk>/drivers/cellular_base.toit:152:22: warning: Class 'CFUN' is deprecated
+    session.send CFUN.offline
+                     ^
+<sdk>/drivers/cellular_base.toit:155:32: warning: Class 'CFUN' is deprecated
+    result := session.send CFUN.get
+                               ^
+<sdk>/drivers/cellular_base.toit:262:15: warning: Class 'COPS' is deprecated
+          COPS.manual operator.op --timeout=timeout --rat=operator.rat
+              ^
+<sdk>/drivers/quectel_cellular.toit:467:22: warning: Class 'CFUN' is deprecated
+    session.send CFUN.airplane
+                     ^
+<sdk>/drivers/quectel_cellular.toit:495:16: warning: Class 'GnssLocation' is deprecated
+        return GnssLocation
+               ^~~~~~~~~~~~
+<sdk>/drivers/quectel_cellular.toit:553:15: warning: Class 'UdpSocket' is deprecated
+    socket := UdpSocket cellular_ id port
+              ^~~~~~~~~
+<sdk>/drivers/quectel_cellular.toit:283:19: warning: Class 'QuectelConstants' is deprecated
+      --constants=QuectelConstants
+                  ^~~~~~~~~~~~~~~~
+<sdk>/drivers/quectel_cellular.toit:282:5: warning: Class 'CellularBase' is deprecated
+    super uart at_session
+    ^~~~~
+<sdk>/drivers/cellular.toit:112:12: warning: Class 'GnssLocation' is deprecated
+    return GnssLocation
+           ^~~~~~~~~~~~

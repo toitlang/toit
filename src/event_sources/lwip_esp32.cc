@@ -183,6 +183,7 @@ LwIPEventSource::LwIPEventSource()
     : EventSource("LwIP", 1)
     , _mutex(OS::allocate_mutex(0, "LwIPEventSource"))
     , _call_done(OS::allocate_condition_variable(_mutex)) {
+  HeapTagScope scope(ITERATE_CUSTOM_TAGS + LWIP_MALLOC_TAG);
 #if defined(TOIT_FREERTOS)
   // Create the LWIP thread.
   esp_netif_init();

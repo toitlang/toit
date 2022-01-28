@@ -1,7 +1,7 @@
 tests/negative/block3_test.toit:7:6: error: Unexpected block
-    (: debug it)
+    (: print it)
      ^~~~~~~~~~
 tests/negative/block3_test.toit:7:5: error: Set elements may not be blocks
-    (: debug it)
+    (: print it)
     ^
 Compilation failed.

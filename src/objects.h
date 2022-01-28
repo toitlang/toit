@@ -916,6 +916,7 @@ class String : public HeapObject {
   // The first length field will also be used or tagging, recognizing an external representation.
   // Please note that if need be it is easy to extend the width of hash_code for strings with off heap content.
   static const int SENTINEL = 65535;
+  static_assert(SENTINEL > TOIT_PAGE_SIZE);
   static const int HASH_CODE_OFFSET = HeapObject::SIZE;
   static const int INTERNAL_LENGTH_OFFSET = HASH_CODE_OFFSET + HALF_WORD_SIZE;
   static const int INTERNAL_HEADER_SIZE = INTERNAL_LENGTH_OFFSET + HALF_WORD_SIZE;

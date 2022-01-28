@@ -1,8 +1,9 @@
 // Copyright (C) 2019 Toitware ApS. All rights reserved.
 
 import .tcp as tcp
-import reader show BufferedReader Reader
+import reader show BufferedReader Reader CloseableReader
 import writer show Writer
+import host.pipe show OpenPipe
 import host.file
 import host.directory
 import monitor
@@ -102,6 +103,30 @@ interface FileServer:
   run -> string
   close
   protocol -> FileServerProtocol
+
+class PipeFileServer implements FileServer:
+  protocol / FileServerProtocol
+  to_compiler_   / OpenPipe
+  from_compiler_ / CloseableReader
+
+  constructor .protocol .to_compiler_ .from_compiler_:
+
+  /**
+  Starts the pipe file server in a new task.
+  Returns "-2".
+  */
+  run -> string:
+    task::
+      catch --trace:
+        reader := BufferedReader from_compiler_
+        writer := Writer to_compiler_
+        protocol.handle reader writer
+    return "-2"
+
+  close:
+    from_compiler_.close
+    to_compiler_.close
+
 
 class TcpFileServer implements FileServer:
   server_   / tcp.TcpServerSocket? := null

@@ -3,5 +3,5 @@
 // be found in the tests/LICENSE file.
 
 main:
-  print "foo $(: debug it) bar"
+  print "foo $(: print it) bar"
   print "foo $class"

@@ -24,6 +24,9 @@ namespace toit {
 // The RTC memory holds state that is preserved across reboots.
 class RtcMemory {
  public:
+  // Keep in sync with `RTC_MEMORY_SIZE` in `lib/esp32.toit`.
+  static const int RTC_USER_DATA_SIZE = 4096;
+
   // Run at program startup (after FreeRTOS is initialized).
   static void set_up();
   // Update before going into deep sleep.
@@ -68,6 +71,8 @@ class RtcMemory {
 
   static void set_session_id(uint32 session_id);
   static uint32 session_id();
+
+  static uint8* user_data_address();
 };
 
 } // namespace toit

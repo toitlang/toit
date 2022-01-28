@@ -19,6 +19,7 @@
 
 #include "../heap.h"
 #include "../resource.h"
+#include "../sha256.h"
 
 namespace toit {
 
@@ -39,19 +40,12 @@ class X509Certificate : public Resource {
  public:
   TAG(X509Certificate);
 
-  explicit X509Certificate(X509ResourceGroup* group)
-    : Resource(group)
-    , _should_free(true) {
+  explicit X509Certificate(X509ResourceGroup* group) : Resource(group) {
     mbedtls_x509_crt_init(&_cert);
   }
 
-  X509Certificate(X509ResourceGroup* group, const mbedtls_x509_crt *cert)
-    : Resource(group)
-    , _should_free(false)
-    , _cert(*cert) { }
-
   ~X509Certificate() {
-    if (_should_free) mbedtls_x509_crt_free(&_cert);
+    mbedtls_x509_crt_free(&_cert);
   }
 
   mbedtls_x509_crt* cert() {
@@ -60,9 +54,15 @@ class X509Certificate : public Resource {
 
   Object* common_name_or_error(Process* process);
 
+  uint8* checksum() { return &_checksum[0]; }
+
+  void reference() { _references++; }
+  bool dereference() { return --_references == 0; }
+
  private:
-  bool _should_free;
   mbedtls_x509_crt _cert;
+  uint8 _checksum[Sha256::HASH_LENGTH];
+  int _references = 1;
 };
 
 } // namespace toit

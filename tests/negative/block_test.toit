@@ -7,4 +7,4 @@ class A:
 
 main:
   a := A
-  a.x = : debug it
+  a.x = : print it

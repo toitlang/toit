@@ -19,8 +19,8 @@ BIG_STRING := "\"$("a" * BIG_STRING_SIZE)\""
 
 VARIABLE_ELEMENT_COUNT ::= 800
 
-toitc / string := ""
-test_dir / string := ""
+toitc     / string := ""
+test_dir  / string := ""
 toit_file / string := ""
 snap_file / string := ""
 img_file  / string := ""

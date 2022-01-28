@@ -336,6 +336,7 @@ namespace toit {
   PRIMITIVE(total_run_time, 0)               \
   PRIMITIVE(image_config, 0)                 \
   PRIMITIVE(get_mac_address, 0)              \
+  PRIMITIVE(rtc_user_bytes, 0)               \
 
 #define MODULE_I2C(PRIMITIVE)                \
   PRIMITIVE(init, 3)                         \
@@ -468,7 +469,7 @@ namespace toit {
   PRIMITIVE(rename, 2)                       \
   PRIMITIVE(chdir, 1)                        \
   PRIMITIVE(mkdir, 2)                        \
-  PRIMITIVE(opendir, 1)                      \
+  PRIMITIVE(opendir, 2)                      \
   PRIMITIVE(readdir, 1)                      \
   PRIMITIVE(closedir, 1)                     \
   PRIMITIVE(stat, 2)                         \
