@@ -25,50 +25,26 @@ interface Cellular:
   use_psm -> bool
   use_psm= value/bool -> none
 
-  /**
-  Deprecated. Use package cellular (https://github.com/toitware/cellular).
-
-  Returns the model of the Cellular module.
-  */
+  /** Returns the model of the Cellular module. */
   model -> string
 
-  /**
-  Deprecated. Use package cellular (https://github.com/toitware/cellular).
-
-  Returns the version of the Cellular module.
-  */
+  /** Returns the version of the Cellular module. */
   version -> string
 
-  /**
-  Deprecated. Use package cellular (https://github.com/toitware/cellular).
-
-  Returns the ICCID of the SIM card.
-  */
+  /** Returns the ICCID of the SIM card. */
   iccid -> string
 
   is_connected -> bool
 
   configure apn --bands/List?=null --rats/List?=null
 
-  /**
-  Deprecated. Use package cellular (https://github.com/toitware/cellular).
-
-  Connect to the service using the optional operator.
-  */
+  /** Connect to the service using the optional operator. */
   connect --operator/Operator?=null -> bool
 
-  /**
-  Deprecated. Use package cellular (https://github.com/toitware/cellular).
-
-  Connect to the service after a PSM wakeup.
-  */
+  /** Connect to the service after a PSM wakeup. */
   connect_psm
 
-  /**
-  Deprecated. Use package cellular (https://github.com/toitware/cellular).
-
-  Scan for operators.
-  */
+  /** Scan for operators. */
   scan_for_operators -> List
 
   get_connected_operator -> Operator?
@@ -89,17 +65,14 @@ interface Cellular:
 
   power_on -> none
 
-  /**
-  Deprecated. Use package cellular (https://github.com/toitware/cellular).
-
-  Modem-specific implementation for recovering if the AT interface is unresponsive.
-  */
+  /** Modem-specific implementation for recovering if the AT interface is unresponsive. */
   recover_modem -> none
 
   power_off -> none
 
   reset -> none
 
+/** Deprecated. Use package cellular (https://github.com/toitware/cellular). */
 class Operator:
   op/string
   rat/int?
@@ -124,16 +97,12 @@ class GnssLocation:
   /** The altitude relative to the median sea level. */
   altitude_msl ::= 0.0
   /**
-  Deprecated. Use package toit-gnss-location (https://github.com/toitware/toit-gnss-location).
-
   Constructs a GNSS location from the given $latitude, $longitude,
     $horizontal_accuracy, $vertical_accuracy, and $altitude_msl.
   */
   constructor .latitude .longitude .horizontal_accuracy .vertical_accuracy .altitude_msl:
 
   /**
-  Deprecated. Use package toit-gnss-location (https://github.com/toitware/toit-gnss-location).
-
   Constructs a GNSS location by deserializing the given bytes.
 
   The bytes must be constructed with $to_byte_array.
