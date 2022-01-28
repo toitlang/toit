@@ -91,9 +91,9 @@ if (DEFINED EXECUTING_SCRIPT)
   return()
 endif()
 
-option(TEST_TOIT_REPOS "Download and test external toit repositories" OFF)
+option(TOIT_TEST_EXTERNAL "Download and test external toit repositories" OFF)
 
-if (NOT ${TEST_TOIT_REPOS})
+if (NOT ${TOIT_TEST_EXTERNAL})
   return()
 endif()
 

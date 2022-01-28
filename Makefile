@@ -227,3 +227,16 @@ update-health-gold: download-packages
 	$(MAKE) rebuild-cmake
 	(cd build/host && ninja clear_health_gold)
 	(cd build/host && ninja update_health_gold)
+
+.PHONY: download-external
+download-external:
+	# Download with higher parallelism.
+	(cd build/host && ninja -j 16 download_external)
+
+.PHONY: test-external
+test-external:
+	(cd build/host && ninja check_external)
+
+.PHONY: test-external-health
+test-external-health:
+	(cd build/host && ninja check_external_health)
