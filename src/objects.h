@@ -334,8 +334,11 @@ class Array : public HeapObject {
   int size() { return allocation_size(length()); }
 
   void roots_do(RootCallback* cb);
+
+#ifndef TOIT_FREERTOS
   void write_content(SnapshotWriter* st);
   void read_content(SnapshotReader* st, int length);
+#endif
 
   static Array* cast(Object* array) {
      ASSERT(array->is_array());
@@ -712,8 +715,10 @@ class Double : public HeapObject {
      return static_cast<Double*>(value);
   }
 
+#ifndef TOIT_FREERTOS
   void write_content(SnapshotWriter* st);
   void read_content(SnapshotReader* st);
+#endif
 
   static int allocation_size() { return SIZE; }
   static void allocation_size(int* word_count, int* extra_bytes) {
@@ -799,8 +804,10 @@ class String : public HeapObject {
   static uint16 compute_hash_code_for(const char* str, int str_len);
   static uint16 compute_hash_code_for(const char* str);
 
+#ifndef TOIT_FREERTOS
   void write_content(SnapshotWriter* st);
   void read_content(SnapshotReader* st, int length);
+#endif
 
   // Returns a derived pointer that can be used as a null terminated c string.
   // Not all returned objects are mutable.
@@ -1121,8 +1128,11 @@ class Instance : public HeapObject {
   }
 
   void roots_do(int instance_size, RootCallback* cb);
+
+#ifndef TOIT_FREERTOS
   void write_content(int instance_size, SnapshotWriter* st);
   void read_content(SnapshotReader* st);
+#endif
 
   static int length_from_size(int instance_size) {
     return (instance_size - HEADER_SIZE) / WORD_SIZE;

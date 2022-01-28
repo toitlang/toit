@@ -33,7 +33,6 @@ enum class SnapshotTypeTag {
   OBJECT_TAG = 0,
   IN_TABLE_TAG,
   BACK_REFERENCE_TAG,
-  UNUSED_TAG,
   POSITIVE_SMI_TAG,
   NEGATIVE_SMI_TAG,  // Last element must be tested in static_assert below.
 };
@@ -792,8 +791,6 @@ Object* SnapshotReader::read_object() {
     case SnapshotTypeTag::IN_TABLE_TAG:
       // Handled here.
       break;
-    case SnapshotTypeTag::UNUSED_TAG:
-      FATAL("UNUSED_TAG");
   }
   bool in_table = type == SnapshotTypeTag::IN_TABLE_TAG;
   int optional_length = extra;

@@ -445,7 +445,6 @@ PRIMITIVE(read_int_little_endian) {
 
 PRIMITIVE(args) {
   char** argv = process->args();
-#ifndef TOIT_FREERTOS
   if (argv == null || argv[0] == null) {
     // No argument are passed so use snapshot arguments program.
     Array* snapshot_arguments = process->program()->snapshot_arguments();
@@ -456,7 +455,6 @@ PRIMITIVE(args) {
     for (int index = 0; index < length; index++) result->at_put(index, snapshot_arguments->at(index));
     return result;
   }
-#endif
   int argc = 0;
   while (argv[argc] != null) argc++;
   Array* result = process->object_heap()->allocate_array(argc, process->program()->null_object());
