@@ -101,10 +101,13 @@ image_config_ -> ByteArray:
 set_real_time_clock_ seconds/int ns/int -> none:
   #primitive.core.set_real_time_clock
 
+/** Size of the user accessible RTC memory. */
+RTC_MEMORY_SIZE ::= 4096
+
 /**
 Sets the RTC user data to the given $data starting from the given $offset.
 
-The given $data must be within bounds. That is 0 <= $offset <= $offset + data.size < 4096.
+The given $data must be within bounds. That is 0 <= $offset <= $offset + data.size < $RTC_MEMORY_SIZE.
 
 # Advanced
 RTC memory is volatile memory that is powered during deep sleep. RTC memory is
@@ -118,7 +121,7 @@ set_rtc_data data offset/int=0 -> none:
 /**
 Gets the RTC user data in the range [$offset, $offset + $length[.
 
-The parameters must satisfy 0 <= $offset <= + $offset + $length  < 4096.
+The parameters must satisfy 0 <= $offset <= + $offset + $length  < $RTC_MEMORY_SIZE.
 
 # Advanced
 RTC memory is volatile memory that is powered during deep sleep. RTC memory is
@@ -126,5 +129,5 @@ RTC memory is volatile memory that is powered during deep sleep. RTC memory is
 
 It is recommended to ensure the integrity of the stored data with a checksum.
 */
-rtc_data offset/int=0 length/int=4096 -> ByteArray:
+rtc_data offset/int=0 length/int=RTC_MEMORY_SIZE -> ByteArray:
   #primitive.esp32.rtc_user_data
