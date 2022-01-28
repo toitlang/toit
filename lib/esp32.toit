@@ -112,6 +112,9 @@ RTC memory is volatile memory that is powered during deep sleep. RTC memory is
   random access and significantly faster than flash memory.
 
 It is recommended to ensure the integrity of the stored data with a checksum.
+
+There is only one RTC memory on the device, so all tasks or processes have
+  access to the same RTC memory.
 */
 rtc_user_bytes -> ByteArray:
   #primitive.esp32.rtc_user_bytes
