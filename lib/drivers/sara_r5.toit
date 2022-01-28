@@ -12,6 +12,8 @@ import .cellular_base
 import .cellular
 
 /**
+Deprecated. Use package ublox-cellular (https://github.com/toitware/ublox-cellular).
+
 Driver for Sara-R5, GSM communicating over NB-IoT & M1.
 */
 class SaraR5 extends UBloxCellular:
