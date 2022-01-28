@@ -47,7 +47,6 @@ namespace toit {
   M(ble,     MODULE_BLE)                     \
   M(dhcp,    MODULE_DHCP)                    \
   M(snapshot,MODULE_SNAPSHOT)                \
-  M(serialization, MODULE_SERIALIZATION)     \
   M(image,   MODULE_IMAGE)                   \
   M(blob,    MODULE_BLOB)                    \
   M(gpio,    MODULE_GPIO)                    \
