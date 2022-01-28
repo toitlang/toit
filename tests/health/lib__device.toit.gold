@@ -1,12 +1,3 @@
-<sdk>/drivers/cellular.toit:172:7: warning: Deprecated 'GnssLocation.altitude_msl'
-      altitude_msl,
-      ^~~~~~~~~~~~
-<sdk>/drivers/cellular.toit:173:7: warning: Deprecated 'GnssLocation.horizontal_accuracy'
-      horizontal_accuracy,
-      ^~~~~~~~~~~~~~~~~~~
-<sdk>/drivers/cellular.toit:174:7: warning: Deprecated 'GnssLocation.vertical_accuracy'
-      vertical_accuracy,
-      ^~~~~~~~~~~~~~~~~
-<sdk>/drivers/cellular.toit:154:12: warning: Class 'GnssLocation' is deprecated
+<sdk>/drivers/cellular.toit:112:12: warning: Class 'GnssLocation' is deprecated
     return GnssLocation
            ^~~~~~~~~~~~
