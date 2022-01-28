@@ -2,6 +2,8 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+import binary
+import crypto.crc32 show crc32
 import encoding.ubjson
 
 ESP_RST_UNKNOWN   ::= 0 // Reset reason can not be determined.
@@ -115,3 +117,103 @@ It is recommended to ensure the integrity of the stored data with a checksum.
 */
 rtc_user_bytes -> ByteArray:
   #primitive.esp32.rtc_user_bytes
+
+class RtcByteArrayBacking_:
+  bytes/ByteArray
+  checksum_/ByteArray
+  static BYTES_OFFSET_ ::= 4
+
+  constructor:
+    rtc_bytes := rtc_user_bytes
+    checksum_ = rtc_bytes[..4]
+    bytes = rtc_bytes[4..]
+    loaded_checksum := compute_checksum_
+    if loaded_checksum != checksum_:
+      bytes.fill 0
+      update_checksum
+
+  update_checksum -> none:
+    checksum_.replace 0 compute_checksum_
+
+  compute_checksum_ -> ByteArray:
+    return crc32 bytes
+
+class RtcByteArray implements ByteArray:
+  bytes_/ByteArray
+  static BACKING_ ::= RtcByteArrayBacking_
+
+  constructor .bytes_=BACKING_.bytes:
+    add_finalizer this::
+      BACKING_.update_checksum
+
+  size -> int:
+    return bytes_.size
+
+  is_empty -> bool:
+    return bytes_.is_empty
+
+  operator == other -> bool:
+    return bytes_ == other
+
+  do [block]:
+    return bytes_.do block
+
+  do --reversed/bool [block] -> none:
+    bytes_.do --reversed=reversed block
+
+  every [predicate] -> bool:
+    return bytes_.every predicate
+
+  any [predicate] -> bool:
+    return bytes_.any predicate
+
+  first -> int:
+    return bytes_.first
+
+  last -> int:
+    return bytes_.last
+
+  operator [] n/int -> int:
+    return bytes_[n]
+
+  operator []= n/int value/int -> int:
+    return bytes_[n] = value
+
+  operator [..] --from/int=0 --to/int=size -> ByteArray:
+    return RtcByteArray bytes_[from..to]
+
+  to_string from/int=0 to/int=size -> string:
+    return bytes_.to_string from size
+
+  to_float from/int --big_endian/bool?=true -> float:
+    return bytes_.to_float from --big_endian=big_endian
+
+  to_string_non_throwing from=0 to=size:
+    return bytes_.to_string_non_throwing from size
+
+  is_valid_string_content from/int=0 to/int=size -> bool:
+    return bytes_.is_valid_string_content from to
+
+  operator + other/ByteArray -> ByteArray:
+    return bytes_ + other
+
+  copy from/int=0 to/int=size -> ByteArray:
+    return bytes_.copy from size
+
+  replace index/int source from/int to/int -> none:
+    bytes_.replace index source from to
+
+  replace index/int source from/int -> none:
+    bytes_.replace index source from
+
+  replace index/int source -> none:
+    bytes_.replace index source
+
+  fill --from/int=0 --to/int=size value:
+    bytes_.fill --from=from --to=to value
+
+  fill --from/int=0 --to/int=size [block]:
+    bytes_.fill --from=from --to=to block
+
+  index_of byte/int --from/int=0 --to/int=size -> int:
+    return bytes_.index_of byte --from=from --to=to
