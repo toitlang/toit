@@ -145,35 +145,36 @@ PRIMITIVE(open) {
   return Smi::from(fd);
 }
 
-class Directory {
+class Directory : public SimpleResource {
  public:
   TAG(Directory);
-  DIR* dir;
+  Directory(SimpleResourceGroup* group, DIR* dir) : SimpleResource(group), _dir(dir) { }
+  ~Directory() { closedir(_dir); }
+
+  DIR* dir() const { return _dir; }
+
+ private:
+  DIR* _dir;
 };
 
 PRIMITIVE(opendir) {
-  ARGS(cstring, pathname);
-  Directory* directory = _new Directory();
-  if (directory == null) {
-    ALLOCATION_FAILED;
-  }
-  // TODO(kasper): For now, we leak memory because we cannot mark the proxy for
-  // auto-disposal. The VM finalizer will not accept an object with the Directory tag.
-  ByteArray* proxy = process->object_heap()->allocate_proxy(false);
-  if (proxy == null) {
-    delete directory;
-    ALLOCATION_FAILED;
-  }
+  ARGS(SimpleResourceGroup, group, cstring, pathname);
+  ByteArray* proxy = process->object_heap()->allocate_proxy();
+  if (proxy == null) ALLOCATION_FAILED;
+
   int fd = openat(current_dir(process), pathname, O_RDONLY | O_DIRECTORY);
   if (fd < 0) return return_open_error(process, errno);
   DIR* dir = fdopendir(fd);
   if (dir == null) {
     close(fd);
-    delete directory;
     return return_open_error(process, errno);
   }
 
-  directory->dir = dir;
+  Directory* directory = _new Directory(group, dir);
+  if (directory == null) {
+    closedir(dir);  // Also closes fd.
+    MALLOC_FAILED;
+  }
 
   proxy->set_external_address(directory);
   return proxy;
@@ -187,7 +188,7 @@ PRIMITIVE(readdir) {
     ALLOCATION_FAILED;
   }
 
-  struct dirent* entry = readdir(directory->dir);
+  struct dirent* entry = readdir(directory->dir());
   // After this point we can't bail out for GC because readdir is not really
   // restartable in Unix.
 
@@ -213,8 +214,7 @@ PRIMITIVE(readdir) {
 
 PRIMITIVE(closedir) {
   ARGS(Directory, directory);
-  closedir(directory->dir);
-  free(directory);
+  directory->resource_group()->unregister_resource(directory);
   directory_proxy->clear_external_address();
   return process->program()->null_object();
 }
