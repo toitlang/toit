@@ -1,13 +1,13 @@
-tests/negative/block_loop_variable_test.toit:5:14: error: Condition may not be a block
+tests/negative/block_loop_variable_test.toit:7:14: error: Condition may not be a block
   while x := block:
              ^~~~~
-tests/negative/block_loop_variable_test.toit:8:12: error: Loop variables may not be blocks
+tests/negative/block_loop_variable_test.toit:10:12: error: Loop variables may not be blocks
   for x := block; x.call; y++:
            ^~~~~
-tests/negative/block_loop_variable_test.toit:12:14: error: Condition may not be a block
+tests/negative/block_loop_variable_test.toit:14:14: error: Condition may not be a block
   while x := block:
              ^~~~~
-tests/negative/block_loop_variable_test.toit:16:12: error: Loop variables may not be blocks
+tests/negative/block_loop_variable_test.toit:18:12: error: Loop variables may not be blocks
   for x := block; x.call; y++:
            ^~~~~
 Compilation failed.

@@ -1,4 +1,4 @@
-tests/negative/static5_test.toit:5:10: error: Constructors can't be static
+tests/negative/static5_test.toit:7:10: error: Constructors can't be static
   static constructor:
          ^~~~~~~~~~~
 Compilation failed.

@@ -1,0 +1,3 @@
+tests/and_or_test_force.toit:17:13: error: Logical operation argument can't be 'none'
+  a2 = a or unreachable
+            ^~~~~~~~~~~

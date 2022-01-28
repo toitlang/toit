@@ -1,31 +1,31 @@
-tests/negative/setter4_test.toit:3:15: error: Setters must take exactly one parameter
+tests/negative/setter4_test.toit:5:15: error: Setters must take exactly one parameter
 setter=--name x:
               ^
-tests/negative/setter4_test.toit:4:24: error: Setters must take exactly one parameter
+tests/negative/setter4_test.toit:6:24: error: Setters must take exactly one parameter
 setter2=--optional=499 x:  optional + x
                        ^
-tests/negative/setter4_test.toit:5:1: error: Setters must take exactly one parameter
+tests/negative/setter4_test.toit:7:1: error: Setters must take exactly one parameter
 setter3=:
 ^~~~~~~~
-tests/negative/setter4_test.toit:8:3: error: No setter method 'setter=' found.
+tests/negative/setter4_test.toit:10:3: error: No setter method 'setter=' found.
   setter = 42
   ^~~~~~
-tests/negative/setter4_test.toit:10:3: error: No setter method 'setter3=' found.
+tests/negative/setter4_test.toit:12:3: error: No setter method 'setter3=' found.
   setter3 = 412
   ^~~~~~~
-tests/negative/setter4_test.toit:11:3: error: No getter method 'setter' (0 arguments) found.
+tests/negative/setter4_test.toit:13:3: error: No getter method 'setter' (0 arguments) found.
   setter += 42
   ^~~~~~
-tests/negative/setter4_test.toit:11:3: error: No setter method 'setter=' found.
+tests/negative/setter4_test.toit:13:3: error: No setter method 'setter=' found.
   setter += 42
   ^~~~~~
-tests/negative/setter4_test.toit:12:3: error: No getter method 'setter2' (0 arguments) found.
+tests/negative/setter4_test.toit:14:3: error: No getter method 'setter2' (0 arguments) found.
   setter2 += 499
   ^~~~~~~
-tests/negative/setter4_test.toit:13:3: error: No getter method 'setter3' (0 arguments) found.
+tests/negative/setter4_test.toit:15:3: error: No getter method 'setter3' (0 arguments) found.
   setter3 += 412
   ^~~~~~~
-tests/negative/setter4_test.toit:13:3: error: No setter method 'setter3=' found.
+tests/negative/setter4_test.toit:15:3: error: No setter method 'setter3=' found.
   setter3 += 412
   ^~~~~~~
 Compilation failed.

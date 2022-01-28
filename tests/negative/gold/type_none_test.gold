@@ -1,16 +1,16 @@
-tests/negative/type_none_test.toit:3:9: error: Type 'none' is only allowed as return type
+tests/negative/type_none_test.toit:5:9: error: Type 'none' is only allowed as return type
 foo x / none:
         ^~~~
-tests/negative/type_none_test.toit:6:11: error: Type 'none' is only allowed as return type
+tests/negative/type_none_test.toit:8:11: error: Type 'none' is only allowed as return type
   field / none := 0
           ^~~~
-tests/negative/type_none_test.toit:7:23: error: Type 'none' is only allowed as return type
+tests/negative/type_none_test.toit:9:23: error: Type 'none' is only allowed as return type
   constructor field / none:
                       ^~~~
-tests/negative/type_none_test.toit:10:21: error: Type 'none' is only allowed as return type
+tests/negative/type_none_test.toit:12:21: error: Type 'none' is only allowed as return type
   static statik x / none:
                     ^~~~
-tests/negative/type_none_test.toit:9:16: error: Type 'none' is only allowed as return type
+tests/negative/type_none_test.toit:11:16: error: Type 'none' is only allowed as return type
   instance x / none:
                ^~~~
 Compilation failed.

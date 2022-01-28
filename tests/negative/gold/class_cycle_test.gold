@@ -1,10 +1,10 @@
-tests/negative/class_cycle_test.toit:3:7: error: Cycle in super/interface chain
+tests/negative/class_cycle_test.toit:5:7: error: Cycle in super/interface chain
 class A extends B:
       ^
-tests/negative/class_cycle_test.toit:3:17: error: This clause contributes to the cycle
+tests/negative/class_cycle_test.toit:5:17: error: This clause contributes to the cycle
 class A extends B:
                 ^
-tests/negative/class_cycle_test.toit:5:17: error: This clause contributes to the cycle
+tests/negative/class_cycle_test.toit:7:17: error: This clause contributes to the cycle
 class B extends A:
                 ^
 Compilation failed.

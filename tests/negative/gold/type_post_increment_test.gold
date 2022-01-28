@@ -1,10 +1,10 @@
-tests/negative/type_post_increment_test.toit:9:3: error: Unresolved identifier: 'unresolved'
+tests/negative/type_post_increment_test.toit:11:3: error: Unresolved identifier: 'unresolved'
   unresolved
   ^~~~~~~~~~
-tests/negative/type_post_increment_test.toit:8:4: error: Type mismatch. Expected 'string'. Got 'int'
+tests/negative/type_post_increment_test.toit:10:4: error: Type mismatch. Expected 'string'. Got 'int'
   a++
    ^~
-tests/negative/type_post_increment_test.toit:8:4: error: Can't use value that is typed 'none'
+tests/negative/type_post_increment_test.toit:10:4: error: Can't use value that is typed 'none'
   a++
    ^~
 Compilation failed.

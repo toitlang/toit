@@ -1,11 +1,13 @@
-// Copyright (C) 2020 Toitware ApS. All rights reserved.
+// Copyright (C) 2020 Toitware ApS.
+// Use of this source code is governed by a Zero-Clause BSD license that can
+// be found in the tests/LICENSE file.
 
 import ...tools.snapshot
 import ...tools.lsp.server.client show with_lsp_client LspClient
 import host.directory
 import host.file
 import host.pipe
-import host.tar show Tar
+import tar show Tar
 import encoding.base64 as base64
 
 run args/List --entry_path/string sources/Map={:} -> SnapshotBundle:

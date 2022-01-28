@@ -1,4 +1,6 @@
-// Copyright (C) 2019 Toitware ApS. All rights reserved.
+// Copyright (C) 2019 Toitware ApS.
+// Use of this source code is governed by a Zero-Clause BSD license that can
+// be found in the tests/LICENSE file.
 
 import host.directory
 import expect show *
@@ -8,7 +10,7 @@ import encoding.base64 as base64
 import monitor
 import host.pipe
 import reader show BufferedReader
-import host.tar show Tar
+import tar show Tar
 import writer show Writer
 
 import .lsp_client show LspClient run_client_test

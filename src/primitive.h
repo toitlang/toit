@@ -226,7 +226,7 @@ namespace toit {
   PRIMITIVE(get_system_time, 0)              \
   PRIMITIVE(debug_set_memory_limit, 1)       \
   PRIMITIVE(dump_heap, 1)                    \
-  PRIMITIVE(serial_print_heap_report, 1)     \
+  PRIMITIVE(serial_print_heap_report, 2)     \
   PRIMITIVE(get_env, 1)                      \
   PRIMITIVE(varint_encode, 3)                \
   PRIMITIVE(varint_decode, 2)                \
@@ -265,6 +265,7 @@ namespace toit {
 
 #define MODULE_TLS(PRIMITIVE)                \
   PRIMITIVE(init, 1)                         \
+  PRIMITIVE(deinit, 1)                       \
   PRIMITIVE(init_socket, 2)                  \
   PRIMITIVE(create, 2)                       \
   PRIMITIVE(set_outgoing, 3)                 \
@@ -406,6 +407,7 @@ namespace toit {
 #define MODULE_EVENTS(PRIMITIVE)             \
   PRIMITIVE(read_state, 2)                   \
   PRIMITIVE(register_object_notifier, 3)     \
+  PRIMITIVE(unregister_object_notifier, 2)   \
 
 #define MODULE_SNAPSHOT(PRIMITIVE)           \
   PRIMITIVE(launch, 4)                       \

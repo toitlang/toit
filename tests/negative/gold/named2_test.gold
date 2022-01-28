@@ -1,7 +1,7 @@
-tests/negative/named2_test.toit:17:5: error: Argument mismatch for 'A.bar'
+tests/negative/named2_test.toit:19:5: error: Argument mismatch for 'A.bar'
 Required named argument '--expected' not provided
   a.bar 3
     ^~~
 Argument mismatch for 'A.bar'.
-  0: main                      tests/negative/named2_test.toit:17:5
+  0: main                      tests/negative/named2_test.toit:19:5
   1: __entry__.<lambda>        <sdk>/core/entry.toit:48:20

@@ -1,0 +1,15 @@
+tests/return_test_force.toit:33:10: error: Condition can't be 'none'
+  while (return 499):
+         ^~~~~~
+tests/return_test_force.toit:37:4: error: Logical operation argument can't be 'none'
+  (return 499) or (throw "bad")
+   ^~~~~~
+tests/return_test_force.toit:37:20: error: Logical operation argument can't be 'none'
+  (return 499) or (throw "bad")
+                   ^~~~~
+tests/return_test_force.toit:40:4: error: Logical operation argument can't be 'none'
+  (return 499) and (throw "bad")
+   ^~~~~~
+tests/return_test_force.toit:40:21: error: Logical operation argument can't be 'none'
+  (return 499) and (throw "bad")
+                    ^~~~~

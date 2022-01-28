@@ -32,35 +32,36 @@
 
 namespace toit {
 
-BLEEventSource* BLEEventSource::instance() {
-  return LazyEventSource::get_instance<BLEEventSource>();
-}
+BLEEventSource* BLEEventSource::_instance = null;
 
 BLEEventSource::BLEEventSource()
     : LazyEventSource("BLE", 1)
     , Thread("BLE") {
+  _instance = this;
 }
 
 BLEEventSource::~BLEEventSource() {
-  OS::dispose(_resources_changed);
+  ASSERT(_resources_changed == null);
   _instance = null;
 }
 
 bool BLEEventSource::start() {
-  if (mutex() == null) return false;
-
+  Locker locker(mutex());
+  ASSERT(_resources_changed == null);
   _resources_changed = OS::allocate_condition_variable(mutex());
   if (_resources_changed == null) return false;
-
-  if (!spawn()) return false;
-
+  if (!spawn()) {
+    OS::dispose(_resources_changed);
+    _resources_changed = null;
+    return false;
+  }
+  _stop = false;
   return true;
 }
 
 void BLEEventSource::stop() {
   ASSERT(!_running);
-  {
-    // Stop the main thread.
+  { // Stop the main thread.
     Locker locker(mutex());
     _stop = true;
 
@@ -68,10 +69,13 @@ void BLEEventSource::stop() {
   }
 
   join();
+  OS::dispose(_resources_changed);
+  _resources_changed = null;
 }
 
 void BLEEventSource::entry() {
   Locker locker(mutex());
+  HeapTagScope scope(ITERATE_CUSTOM_TAGS + EVENT_SOURCE_MALLOC_TAG);
 
   while (!_stop) {
     if (_should_run) {
@@ -241,9 +245,6 @@ void BLEEventSource::on_started_event() {
 void BLEEventSource::on_started() {
   instance()->on_started_event();
 }
-
-
-BLEEventSource* BLEEventSource::_instance = null;
 
 } // namespace toit
 

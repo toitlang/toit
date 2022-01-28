@@ -1,7 +1,7 @@
-tests/negative/interface1_test.toit:8:8: error: Can't instantiate interface 'A'
+tests/negative/interface1_test.toit:10:8: error: Can't instantiate interface 'A'
   a := A
        ^
-tests/negative/interface1_test.toit:9:8: error: Can't instantiate interface 'B'
+tests/negative/interface1_test.toit:11:8: error: Can't instantiate interface 'B'
   b := B
        ^
 Compilation failed.

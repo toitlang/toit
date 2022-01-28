@@ -1,4 +1,0 @@
-tests/lsp/protocol2.toit:4:3: error: Argument mismatch for 'print'
-Too many arguments provided
-  print 1 2
-  ^~~~~

@@ -1,4 +1,4 @@
-tests/negative/indent2_test.toit:6:5: error: All expressions in a sequence must be indented the same way
+tests/negative/indent2_test.toit:8:5: error: All expressions in a sequence must be indented the same way
     break
     ^~~~~
 Compilation failed.

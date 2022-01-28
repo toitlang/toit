@@ -1,4 +1,6 @@
-// Copyright (C) 2018 Toitware ApS. All rights reserved.
+// Copyright (C) 2018 Toitware ApS.
+// Use of this source code is governed by a Zero-Clause BSD license that can
+// be found in the tests/LICENSE file.
 
 import expect show *
 
@@ -11,7 +13,7 @@ simple:
   a[0] = "Hello"
   a[1] = "Cruel"
   a[2] = "Lars"
-  a.do: | it | debug it
+  a.do: | it | print it
 
 gnarly:
   x := null

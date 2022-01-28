@@ -1,10 +1,10 @@
-tests/negative/abstract4_test.toit:6:7: error: Non-abstract class 'B' is missing implementations
+tests/negative/abstract4_test.toit:8:7: error: Non-abstract class 'B' is missing implementations
 class B extends A:
       ^
-tests/negative/abstract4_test.toit:4:12: note: Missing implementation for 'foo'
+tests/negative/abstract4_test.toit:6:12: note: Missing implementation for 'foo'
   abstract foo
            ^~~
-tests/negative/abstract4_test.toit:12:4: error: Can't instantiate abstract class
+tests/negative/abstract4_test.toit:14:4: error: Can't instantiate abstract class
   (C).foo
    ^
 Compilation failed.

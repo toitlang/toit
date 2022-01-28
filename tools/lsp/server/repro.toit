@@ -3,7 +3,7 @@
 import host.pipe show print_to_stdout
 import host.directory
 import host.file
-import host.tar show Tar
+import tar show Tar
 import encoding.json as json
 import .compiler
 import .documents

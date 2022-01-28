@@ -1,0 +1,10 @@
+tests/lsp/this_super_definition_test.toit:42:5: error: Can't access 'this' in static method
+    this.member  // It's an error, but we might as well link to the class.
+    ^~~~
+tests/lsp/this_super_definition_test.toit:61:10: error: Couldn't find matching constructor in superclass 'SomeClass'
+    super.named2
+         ^
+tests/lsp/this_super_definition_test.toit:90:5: error: Argument mismatch for 'bar'
+Too few arguments provided
+    super
+    ^~~~~

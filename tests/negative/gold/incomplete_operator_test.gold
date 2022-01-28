@@ -1,7 +1,7 @@
-tests/negative/incomplete_operator_test.toit:4:11: error: Missing closing ']'
+tests/negative/incomplete_operator_test.toit:6:11: error: Missing closing ']'
   operator[
           ^
-tests/negative/incomplete_operator_test.toit:4:3: error: Missing body
+tests/negative/incomplete_operator_test.toit:6:3: error: Missing body
   operator[
   ^~~~~~~~~
 Couldn't find 'main' (with 0 or 1 argument) in entry file 'tests/negative/incomplete_operator_test.toit'

@@ -1,7 +1,7 @@
 // Copyright (C) 2019 Toitware ApS. All rights reserved.
 
 import host.file
-import host.tar show *
+import tar show *
 import .summary
 
 import .uri_path_translator

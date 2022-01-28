@@ -1,7 +1,7 @@
-tests/negative/incomplete_multi_string_test.toit:4:5: error: Unterminated string
+tests/negative/incomplete_multi_string_test.toit:6:5: error: Unterminated string
     """\
     ^~~~
-tests/negative/incomplete_multi_string_test.toit:4:5: error: Invalid string: '\'
+tests/negative/incomplete_multi_string_test.toit:6:5: error: Invalid string: '\'
 
     """\
     ^~~~

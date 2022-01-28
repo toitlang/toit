@@ -1,0 +1,12 @@
+tests/lsp/error_outline.toit:5:6: error: Expected class name
+class:
+     ^
+tests/lsp/error_outline.toit:13:11: error: Expected name of declaration
+  abstract
+          ^
+tests/lsp/error_outline.toit:18:9: error: Expected name of declaration
+  static:
+        ^
+tests/lsp/error_outline.toit:21:1: error: Expected name of declaration
+:
+^

@@ -1,9 +1,0 @@
-tests/number_test.toit:232:35: warning: Deprecated 'int.parse'
-  expect_number_out_of_range: (int.parse "123" -1 --on_error=: throw it)
-                                  ^
-tests/number_test.toit:233:35: warning: Deprecated 'int.parse'
-  expect_number_out_of_range: (int.parse "123" 0 4 --on_error=: throw it)
-                                  ^
-tests/number_test.toit:234:35: warning: Deprecated 'int.parse'
-  expect_number_out_of_range: (int.parse "123" 0 0 --on_error=: throw it)
-                                  ^

@@ -1,31 +1,31 @@
-tests/negative/is_test.toit:3:1: error: Failed to find import '.non_existing'
+tests/negative/is_test.toit:5:1: error: Failed to find import '.non_existing'
 import .non_existing as pre
 ^~~~~~
-tests/negative/is_test.toit:3:9: note: Missing library file. Tried 'tests/negative/non_existing.toit' and 'tests/negative/non_existing/non_existing.toit'
+tests/negative/is_test.toit:5:9: note: Missing library file. Tried 'tests/negative/non_existing.toit' and 'tests/negative/non_existing/non_existing.toit'
 import .non_existing as pre
         ^~~~~~~~~~~~
-tests/negative/is_test.toit:8:8: error: Unresolved identifier: 'A'
+tests/negative/is_test.toit:10:8: error: Unresolved identifier: 'A'
   a := A
        ^
-tests/negative/is_test.toit:9:8: error: Unresolved type: 'A'
+tests/negative/is_test.toit:11:8: error: Unresolved type: 'A'
   a is A
        ^
-tests/negative/is_test.toit:10:8: error: Invalid type
+tests/negative/is_test.toit:12:8: error: Invalid type
   a is 4
        ^
-tests/negative/is_test.toit:11:11: error: Unresolved type: 'C'
+tests/negative/is_test.toit:13:11: error: Unresolved type: 'C'
   a is pre.C
           ^
-tests/negative/is_test.toit:12:8: error: Type 'none' is only allowed as return type
+tests/negative/is_test.toit:14:8: error: Type 'none' is only allowed as return type
   a is none
        ^~~~
-tests/negative/is_test.toit:13:11: error: Invalid type
+tests/negative/is_test.toit:15:11: error: Invalid type
   a is foo.bar
           ^
-tests/negative/is_test.toit:16:5: error: Invalid type
+tests/negative/is_test.toit:18:5: error: Invalid type
     not B
     ^~~
-tests/negative/is_test.toit:18:8: error: Invalid type
+tests/negative/is_test.toit:20:8: error: Invalid type
   a is (not B)
        ^
 Compilation failed.

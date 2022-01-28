@@ -34,7 +34,7 @@ void LspWriterMultiplexStdout::printf(const char* format, va_list& arguments) {
   checked_fwrite(&needed_bytes, sizeof(needed_bytes));
   int written_bytes = vprintf(format, copy);
   if (written_bytes < 0) {
-    perror("multi-printf");
+    perror("LspWriterMultiplexStdout::printf/vprintf");
   }
   if (written_bytes != needed_bytes) {
     fprintf(stderr, "Written %d, needed: %d, format: %s\n", written_bytes, needed_bytes, format);
@@ -51,7 +51,7 @@ void LspWriterMultiplexStdout::write(const uint8* data, int size) {
 void LspFsConnectionMultiplexStdout::putline(const char* line) {
   int len = static_cast<int>(strlen(line));
   int32 size = static_cast<int32>(len) + 1; // +1 for the newline.
-  // Mark as cming from the FS protocol:
+  // Mark as coming from the FS protocol:
   size = -size;
   checked_fwrite(&size, sizeof(size));
   checked_fwrite(line, len);
@@ -65,10 +65,13 @@ char* LspFsConnectionMultiplexStdout::getline() {
   const int MAX_LINE_SIZE = 64 * 1024;
   char buffer[MAX_LINE_SIZE];
   // Add a marker to make sure we don't run out of space in the line.
-  buffer[MAX_LINE_SIZE - 1] = 'a';
+  // Anything that isn't '\0' works, as fgets is guaranteed to terminate the
+  // read line with '\0'
+  const char SENTINEL = '@';
+  buffer[MAX_LINE_SIZE - 1] = SENTINEL;
   char* line = fgets(buffer, MAX_LINE_SIZE, stdin);
   if (line != buffer) FATAL("Couldn't read line");
-  if (buffer[MAX_LINE_SIZE - 1] != 'a') FATAL("Line too long");
+  if (buffer[MAX_LINE_SIZE - 1] != SENTINEL) FATAL("Line too long");
   int len = strlen(buffer);
   // Drop the '\n'.
   char* result = unvoid_cast<char*>(malloc(len));

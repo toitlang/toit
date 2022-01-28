@@ -1,4 +1,4 @@
-tests/negative/empty_block_eos_test.toit:5:8: error: Empty blocks are not allowed
+tests/negative/empty_block_eos_test.toit:9:8: error: Empty blocks are not allowed
     foo:
        ^
 Couldn't find 'main' (with 0 or 1 argument) in entry file 'tests/negative/empty_block_eos_test.toit'

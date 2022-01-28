@@ -23,6 +23,7 @@ CONNECTED_STATE_  ::= 1 << 0
 READ_STATE_       ::= 1 << 1
 CLOSE_STATE_      ::= 1 << 2
 
+/** Deprecated. Use package ublox-cellular (https://github.com/toitware/ublox-cellular). */
 monitor SocketState_:
   state_/int := 0
   dirty_/bool := false
@@ -61,9 +62,7 @@ class Socket_:
     if not id_: throw "socket is closed"
     return id_
 
-  /**
-  Will capture exceptions and translate to socket-related errors.
-  */
+  /** Will capture exceptions and translate to socket-related errors. */
   socket_call [block]:
     // Ensure no other socket call can come in between.
     cellular_.at_.do: | session |
@@ -72,9 +71,7 @@ class Socket_:
       throw (last_error_ session e)
     unreachable
 
-  /**
-  Returns the latest socket error (even if OK).
-  */
+  /** Returns the latest socket error (even if OK). */
   last_error_ session/at.Session original_error/string="" -> Exception:
     error/int := (session.set "+USOCTL" [get_id_, 1]).last[2]
     if error == 0: // OK
@@ -248,6 +245,8 @@ class UdpSocket extends Socket_ implements udp.Socket:
 
 
 /**
+Deprecated. Use package ublox-cellular (https://github.com/toitware/ublox-cellular).
+
 Base driver for u-blox Cellular devices, communicating over CAT-NB1 and/or CAT-M1.
 */
 abstract class UBloxCellular extends CellularBase:
@@ -261,9 +260,7 @@ abstract class UBloxCellular extends CellularBase:
   async_socket_connect/bool
   async_socket_close/bool
 
-  /**
-  Called when the driver should reset.
-  */
+  /** Called when the driver should reset. */
   abstract on_reset session/at.Session
 
   constructor
@@ -554,6 +551,7 @@ abstract class UBloxCellular extends CellularBase:
     while true:
       at_.do: it.set "+UTEST" [3,124150,23,null,null,5000]
 
+/** Deprecated. Use package ublox-cellular (https://github.com/toitware/ublox-cellular). */
 class UBloxConstants implements Constants:
   RatCatM1 -> int?: return null
 

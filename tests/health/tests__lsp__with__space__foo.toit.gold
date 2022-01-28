@@ -1,4 +1,0 @@
-tests/lsp/with space/foo.toit:6:3: error: Argument mismatch for 'bar'
-Too few arguments provided
-  bar
-  ^~~

@@ -1,16 +1,16 @@
-tests/negative/return_global_test.toit:7:17: warning: 'return.label' is deprecated. Use 'continue.label' instead
+tests/negative/return_global_test.toit:9:17: warning: 'return.label' is deprecated. Use 'continue.label' instead
 global3 := foo: return.global3 42
                 ^~~~~~
-tests/negative/return_global_test.toit:5:11: error: Can't return from within a global initializer
+tests/negative/return_global_test.toit:7:11: error: Can't return from within a global initializer
 global := return
           ^~~~~~
-tests/negative/return_global_test.toit:6:17: error: Can't return from within a global initializer
+tests/negative/return_global_test.toit:8:17: error: Can't return from within a global initializer
 global2 := foo: return 499
                 ^~~~~~
-tests/negative/return_global_test.toit:7:24: error: Unresolved label 'global3'
+tests/negative/return_global_test.toit:9:24: error: Unresolved label 'global3'
 global3 := foo: return.global3 42
                        ^~~~~~~
-tests/negative/return_global_test.toit:8:26: error: Unresolved label 'global4'
+tests/negative/return_global_test.toit:10:26: error: Unresolved label 'global4'
 global4 := foo: continue.global4 42
                          ^~~~~~~
 Couldn't find 'main' (with 0 or 1 argument) in entry file 'tests/negative/return_global_test.toit'

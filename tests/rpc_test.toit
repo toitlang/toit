@@ -1,4 +1,6 @@
-// Copyright (C) 2022 Toitware ApS. All rights reserved.
+// Copyright (C) 2022 Toitware ApS.
+// Use of this source code is governed by a Zero-Clause BSD license that can
+// be found in the tests/LICENSE file.
 
 import rpc
 import ..tools.rpc show RpcBroker
@@ -51,6 +53,38 @@ test_simple myself/int -> none:
   test myself ["hest"]
   test myself [ByteArray 10: it]
 
+  // Test copy-on-write byte arrays.
+  test myself #[1, 2, 3, 4]
+  test myself [#[3, 4, 5]]
+  big_cow := #[
+       0,  1,  2,  3,  4,  5,  6,  7,  8,  9,
+      10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
+      20, 21, 22, 23]
+  test myself big_cow
+
+  // Test modified copy-on-write arrays.
+  modified_cow := #[1, 2, 3]
+  test myself modified_cow
+  modified_cow[1] = 9
+  test myself modified_cow
+  modified_cow[2] = 19
+  test myself modified_cow
+
+  // Test byte array slices.
+  test myself (ByteArray 10: it)[3..4]
+  test myself [(ByteArray 10: it)[3..5]]
+  test myself #[1, 2, 3, 4][1..2]
+  test myself [#[1, 2, 3, 4][0..1]]
+  test myself [(ByteArray 100: it)[7..51]]
+  test myself big_cow[0..17]
+  test myself [big_cow[1..18]]
+
+  // Testing string slices.
+  test myself "hestfisk"[1..3]
+  test myself ["hestfisk"[2..5]]
+  test myself ("hestfisk"*8)[4..32]
+  test myself [("hestfisk"*8)[5..37]]
+
 test_large_external myself/int -> none:
   expect.expect_equals 33199 (test_chain myself [ByteArray 33199: it])[0].size
   s := "hestfisk"
@@ -60,6 +94,8 @@ test_large_external myself/int -> none:
   // Test that large enough byte arrays are neutered when sent.
   x := ByteArray 33199: it
   rpc.invoke myself PROCEDURE_ECHO [x]
+  expect.expect x is ByteArray
+  expect.expect x.is_empty
   expect.expect_bytes_equal #[] x
 
 test_second_procedure myself/int -> none:
@@ -107,7 +143,6 @@ test_problematic myself/int -> none:
   // Check for unhandled types of data.
   test_illegal myself [MyClass]
   test_illegal myself [MySerializable 4]
-  test_illegal myself [ #[1, 2, 3, 4] ]  // TODO(kasper): This should be handled.
 
   // Check for cyclic data structure.
   cyclic := []

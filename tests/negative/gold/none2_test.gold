@@ -1,61 +1,61 @@
-tests/negative/none2_test.toit:56:3: error: Unresolved identifier: 'unresolved'
+tests/negative/none2_test.toit:58:3: error: Unresolved identifier: 'unresolved'
   unresolved
   ^~~~~~~~~~
-tests/negative/none2_test.toit:6:10: error: Condition can't be 'none'
+tests/negative/none2_test.toit:8:10: error: Condition can't be 'none'
   while (return 499):
          ^~~~~~
-tests/negative/none2_test.toit:10:4: error: Logical operation argument can't be 'none'
+tests/negative/none2_test.toit:12:4: error: Logical operation argument can't be 'none'
   (return 499) or (throw "bad")
    ^~~~~~
-tests/negative/none2_test.toit:10:20: error: Logical operation argument can't be 'none'
+tests/negative/none2_test.toit:12:20: error: Logical operation argument can't be 'none'
   (return 499) or (throw "bad")
                    ^~~~~
-tests/negative/none2_test.toit:13:4: error: Logical operation argument can't be 'none'
+tests/negative/none2_test.toit:15:4: error: Logical operation argument can't be 'none'
   (return 499) and (throw "bad")
    ^~~~~~
-tests/negative/none2_test.toit:13:21: error: Logical operation argument can't be 'none'
+tests/negative/none2_test.toit:15:21: error: Logical operation argument can't be 'none'
   (return 499) and (throw "bad")
                     ^~~~~
-tests/negative/none2_test.toit:20:6: error: Condition can't be 'none'
+tests/negative/none2_test.toit:22:6: error: Condition can't be 'none'
   if none_fun: null
      ^~~~~~~~
-tests/negative/none2_test.toit:21:3: error: Condition can't be 'none'
+tests/negative/none2_test.toit:23:3: error: Condition can't be 'none'
   none_fun ? true : false
   ^~~~~~~~
-tests/negative/none2_test.toit:22:7: error: Argument to 'not' can't be 'none'
+tests/negative/none2_test.toit:24:7: error: Argument to 'not' can't be 'none'
   not none_fun
       ^~~~~~~~
-tests/negative/none2_test.toit:23:9: error: Condition can't be 'none'
+tests/negative/none2_test.toit:25:9: error: Condition can't be 'none'
   while none_fun: null
         ^~~~~~~~
-tests/negative/none2_test.toit:24:9: error: Condition can't be 'none'
+tests/negative/none2_test.toit:26:9: error: Condition can't be 'none'
   for ; none_fun;: null
         ^~~~~~~~
-tests/negative/none2_test.toit:26:3: error: Logical operation argument can't be 'none'
+tests/negative/none2_test.toit:28:3: error: Logical operation argument can't be 'none'
   none_fun or none_fun
   ^~~~~~~~
-tests/negative/none2_test.toit:26:15: error: Logical operation argument can't be 'none'
+tests/negative/none2_test.toit:28:15: error: Logical operation argument can't be 'none'
   none_fun or none_fun
               ^~~~~~~~
-tests/negative/none2_test.toit:27:3: error: Logical operation argument can't be 'none'
+tests/negative/none2_test.toit:29:3: error: Logical operation argument can't be 'none'
   none_fun and none_fun
   ^~~~~~~~
-tests/negative/none2_test.toit:27:16: error: Logical operation argument can't be 'none'
+tests/negative/none2_test.toit:29:16: error: Logical operation argument can't be 'none'
   none_fun and none_fun
                ^~~~~~~~
-tests/negative/none2_test.toit:29:12: error: Variable can't be initialized with 'none'
+tests/negative/none2_test.toit:31:12: error: Variable can't be initialized with 'none'
   local := none_fun
            ^~~~~~~~
-tests/negative/none2_test.toit:37:13: error: Logical operation argument can't be 'none'
+tests/negative/none2_test.toit:39:13: error: Logical operation argument can't be 'none'
   a2 = a or unreachable
             ^~~~~~~~~~~
-tests/negative/none2_test.toit:39:6: warning: Condition always evaluates to true
+tests/negative/none2_test.toit:41:6: warning: Condition always evaluates to true
   "" ? 4 : null
      ^
-tests/negative/none2_test.toit:40:3: warning: Condition always evaluates to true
+tests/negative/none2_test.toit:42:3: warning: Condition always evaluates to true
   if "":
   ^~
-tests/negative/none2_test.toit:51:3: warning: Condition always evaluates to true
+tests/negative/none2_test.toit:53:3: warning: Condition always evaluates to true
   if 0:
   ^~
 Compilation failed.

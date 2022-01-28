@@ -1,19 +1,19 @@
-tests/negative/export_parser_test.toit:3:8: error: Expected export identifier
+tests/negative/export_parser_test.toit:5:8: error: Expected export identifier
 export 4
        ^
-tests/negative/export_parser_test.toit:4:7: error: Incomplete export clause
+tests/negative/export_parser_test.toit:6:7: error: Incomplete export clause
 export
       ^
-tests/negative/export_parser_test.toit:5:8: error: Expected export identifier
+tests/negative/export_parser_test.toit:7:8: error: Expected export identifier
 export 4  // comment
        ^
-tests/negative/export_parser_test.toit:6:7: error: Incomplete export clause
+tests/negative/export_parser_test.toit:8:7: error: Incomplete export clause
 export    // comment
       ^~~~~~~~~~~~~~
-tests/negative/export_parser_test.toit:7:8: error: Expected export identifier
+tests/negative/export_parser_test.toit:9:8: error: Expected export identifier
 export 4  /* comment
        ^
-tests/negative/export_parser_test.toit:9:7: error: Incomplete export clause
+tests/negative/export_parser_test.toit:11:7: error: Incomplete export clause
 export    /* comment
       ^
 Compilation failed.

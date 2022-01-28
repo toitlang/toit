@@ -1,7 +1,7 @@
-tests/negative/abstract6_test.toit:10:7: error: Non-abstract class 'C' is missing implementations
+tests/negative/abstract6_test.toit:12:7: error: Non-abstract class 'C' is missing implementations
 class C extends B:
       ^
-tests/negative/abstract6_test.toit:8:12: note: Missing implementation for 'foo'
+tests/negative/abstract6_test.toit:10:12: note: Missing implementation for 'foo'
   abstract foo
            ^~~
 Compilation failed.

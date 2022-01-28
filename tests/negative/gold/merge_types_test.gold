@@ -1,6 +1,6 @@
-tests/negative/merge_types_test.toit:7:5: error: Class 'int' does not have any method 'foo'
+tests/negative/merge_types_test.toit:9:5: error: Class 'int' does not have any method 'foo'
   x.foo
     ^~~
 Class 'int' does not have any method 'foo'.
-  0: main                      tests/negative/merge_types_test.toit:7:5
+  0: main                      tests/negative/merge_types_test.toit:9:5
   1: __entry__.<lambda>        <sdk>/core/entry.toit:48:20

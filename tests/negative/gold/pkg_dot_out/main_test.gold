@@ -1,10 +1,10 @@
-<pkg:target>/target.toit:4:1: error: Import is dotting out of its own package: '<...>/tests/negative/pkg_dot_out'
+<pkg:target>/target.toit:6:1: error: Import is dotting out of its own package: '<...>/tests/negative/pkg_dot_out'
 import ...main_test
 ^~~~~~
-<pkg:target>/target.toit:6:1: error: Import is dotting out of its own package: '<...>/tests/negative/pkg_dot_out/target'
+<pkg:target>/target.toit:8:1: error: Import is dotting out of its own package: '<...>/tests/negative/pkg_dot_out/target'
 import ..src.target
 ^~~~~~
-<pkg:target>/target.toit:8:1: error: Cyclic export dependency
+<pkg:target>/target.toit:10:1: error: Cyclic export dependency
 export *
 ^~~~~~
 Compilation failed.

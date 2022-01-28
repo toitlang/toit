@@ -1,94 +1,94 @@
-tests/negative/return_block_test.toit:4:10: error: Can't return a block
+tests/negative/return_block_test.toit:6:10: error: Can't return a block
   return block
          ^~~~~
-tests/negative/return_block_test.toit:8:10: error: Can't return a block
+tests/negative/return_block_test.toit:10:10: error: Can't return a block
   return block
          ^~~~~
-tests/negative/return_block_test.toit:12:17: error: If branches may not evaluate to blocks
+tests/negative/return_block_test.toit:14:17: error: If branches may not evaluate to blocks
   return true ? block : block
                 ^~~~~
-tests/negative/return_block_test.toit:12:25: error: If branches may not evaluate to blocks
+tests/negative/return_block_test.toit:14:25: error: If branches may not evaluate to blocks
   return true ? block : block
                         ^~~~~
-tests/negative/return_block_test.toit:16:19: error: If branches may not evaluate to blocks
+tests/negative/return_block_test.toit:18:19: error: If branches may not evaluate to blocks
   return if true: block else: block
                   ^~~~~
-tests/negative/return_block_test.toit:16:31: error: If branches may not evaluate to blocks
+tests/negative/return_block_test.toit:18:31: error: If branches may not evaluate to blocks
   return if true: block else: block
                               ^~~~~
-tests/negative/return_block_test.toit:19:20: error: Unexpected block
+tests/negative/return_block_test.toit:21:20: error: Unexpected block
   return if true: (: 499) else: (: 499)
                    ^~~~~
-tests/negative/return_block_test.toit:19:19: error: If branches may not evaluate to blocks
+tests/negative/return_block_test.toit:21:19: error: If branches may not evaluate to blocks
   return if true: (: 499) else: (: 499)
                   ^
-tests/negative/return_block_test.toit:19:34: error: Unexpected block
+tests/negative/return_block_test.toit:21:34: error: Unexpected block
   return if true: (: 499) else: (: 499)
                                  ^~~~~
-tests/negative/return_block_test.toit:19:33: error: If branches may not evaluate to blocks
+tests/negative/return_block_test.toit:21:33: error: If branches may not evaluate to blocks
   return if true: (: 499) else: (: 499)
                                 ^
-tests/negative/return_block_test.toit:23:5: error: Unexpected block
+tests/negative/return_block_test.toit:25:5: error: Unexpected block
     : 499
     ^~~~~
-tests/negative/return_block_test.toit:23:5: error: Can't return a block from a lambda
+tests/negative/return_block_test.toit:25:5: error: Can't return a block from a lambda
     : 499
     ^~~~~
-tests/negative/return_block_test.toit:27:6: error: Unexpected block
+tests/negative/return_block_test.toit:29:6: error: Unexpected block
     (: 499)
      ^~~~~
-tests/negative/return_block_test.toit:27:5: error: Can't return a block from a lambda
+tests/negative/return_block_test.toit:29:5: error: Can't return a block from a lambda
     (: 499)
     ^
-tests/negative/return_block_test.toit:32:5: error: Can't return a block from a lambda
+tests/negative/return_block_test.toit:34:5: error: Can't return a block from a lambda
     lambda_block
     ^~~~~~~~~~~~
-tests/negative/return_block_test.toit:36:13: error: Unexpected block
+tests/negative/return_block_test.toit:38:13: error: Unexpected block
     return (: 499)
             ^~~~~
-tests/negative/return_block_test.toit:36:12: error: Can't return a block
+tests/negative/return_block_test.toit:38:12: error: Can't return a block
     return (: 499)
            ^
-tests/negative/return_block_test.toit:36:5: error: Can't explicitly return from within a lambda
+tests/negative/return_block_test.toit:38:5: error: Can't explicitly return from within a lambda
     return (: 499)
     ^~~~~~
-tests/negative/return_block_test.toit:41:12: error: Can't return a block
+tests/negative/return_block_test.toit:43:12: error: Can't return a block
     return lambda_block
            ^~~~~~~~~~~~
-tests/negative/return_block_test.toit:41:5: error: Can't explicitly return from within a lambda
+tests/negative/return_block_test.toit:43:5: error: Can't explicitly return from within a lambda
     return lambda_block
     ^~~~~~
-tests/negative/return_block_test.toit:46:14: error: If branches may not evaluate to blocks
+tests/negative/return_block_test.toit:48:14: error: If branches may not evaluate to blocks
     if true: lambda_block
              ^~~~~~~~~~~~
-tests/negative/return_block_test.toit:51:14: error: If branches may not evaluate to blocks
+tests/negative/return_block_test.toit:53:14: error: If branches may not evaluate to blocks
     if true: lambda_block
              ^~~~~~~~~~~~
-tests/negative/return_block_test.toit:52:11: error: If branches may not evaluate to blocks
+tests/negative/return_block_test.toit:54:11: error: If branches may not evaluate to blocks
     else: lambda_block
           ^~~~~~~~~~~~
-tests/negative/return_block_test.toit:59:5: error: Unexpected block
+tests/negative/return_block_test.toit:61:5: error: Unexpected block
     : 499
     ^~~~~
-tests/negative/return_block_test.toit:59:5: error: Can't return a block from a block
+tests/negative/return_block_test.toit:61:5: error: Can't return a block from a block
     : 499
     ^~~~~
-tests/negative/return_block_test.toit:64:6: error: Unexpected block
+tests/negative/return_block_test.toit:66:6: error: Unexpected block
     (: 499))
      ^~~~~
-tests/negative/return_block_test.toit:64:5: error: Can't return a block from a block
+tests/negative/return_block_test.toit:66:5: error: Can't return a block from a block
     (: 499))
     ^
-tests/negative/return_block_test.toit:69:5: error: Can't return a block from a block
+tests/negative/return_block_test.toit:71:5: error: Can't return a block from a block
     block_block
     ^~~~~~~~~~~
-tests/negative/return_block_test.toit:75:7: error: If branches may not evaluate to blocks
+tests/negative/return_block_test.toit:77:7: error: If branches may not evaluate to blocks
       block_block
       ^~~~~~~~~~~
-tests/negative/return_block_test.toit:81:7: error: If branches may not evaluate to blocks
+tests/negative/return_block_test.toit:83:7: error: If branches may not evaluate to blocks
       block_block
       ^~~~~~~~~~~
-tests/negative/return_block_test.toit:82:11: error: If branches may not evaluate to blocks
+tests/negative/return_block_test.toit:84:11: error: If branches may not evaluate to blocks
     else: block_block
           ^~~~~~~~~~~
 Compilation failed.

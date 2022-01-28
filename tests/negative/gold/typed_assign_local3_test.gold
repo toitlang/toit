@@ -1,6 +1,6 @@
-tests/negative/typed_assign_local3_test.toit:10:4: error: Type mismatch. Expected 'A'. Got 'int'
+tests/negative/typed_assign_local3_test.toit:12:4: error: Type mismatch. Expected 'A'. Got 'int'
   a++
    ^~
 As check failed: an int (1) is not a A.
-  0: main                      tests/negative/typed_assign_local3_test.toit:10:4
+  0: main                      tests/negative/typed_assign_local3_test.toit:12:4
   1: __entry__.<lambda>        <sdk>/core/entry.toit:48:20

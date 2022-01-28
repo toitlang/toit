@@ -1,7 +1,7 @@
-tests/negative/shadow4_test.toit:7:9: error: Definition of 'x' shadows earlier definition
+tests/negative/shadow4_test.toit:9:9: error: Definition of 'x' shadows earlier definition
   while x := false:
         ^
-tests/negative/shadow4_test.toit:6:3: note: Earlier definition of 'x'
+tests/negative/shadow4_test.toit:8:3: note: Earlier definition of 'x'
   x := true
   ^
 Compilation failed.

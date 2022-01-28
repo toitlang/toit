@@ -1,72 +1,72 @@
-tests/negative/assign2_test.toit:30:3: error: No setter method 'foo=' found.
+tests/negative/assign2_test.toit:32:3: error: No setter method 'foo=' found.
   foo = unresolved
   ^~~
-tests/negative/assign2_test.toit:30:9: error: Unresolved identifier: 'unresolved'
+tests/negative/assign2_test.toit:32:9: error: Unresolved identifier: 'unresolved'
   foo = unresolved
         ^~~~~~~~~~
-tests/negative/assign2_test.toit:31:3: error: Can't assign to class 'A'
+tests/negative/assign2_test.toit:33:3: error: Can't assign to class 'A'
   A = unresolved
-  ^
-tests/negative/assign2_test.toit:31:7: error: Unresolved identifier: 'unresolved'
-  A = unresolved
-      ^~~~~~~~~~
-tests/negative/assign2_test.toit:33:3: error: Can't assign to block variable 'b'
-  b = unresolved
   ^
 tests/negative/assign2_test.toit:33:7: error: Unresolved identifier: 'unresolved'
+  A = unresolved
+      ^~~~~~~~~~
+tests/negative/assign2_test.toit:35:3: error: Can't assign to block variable 'b'
+  b = unresolved
+  ^
+tests/negative/assign2_test.toit:35:7: error: Unresolved identifier: 'unresolved'
   b = unresolved
       ^~~~~~~~~~
-tests/negative/assign2_test.toit:35:21: error: Can't use block value in assignment
+tests/negative/assign2_test.toit:37:21: error: Can't use block value in assignment
   non_block_local = b
                     ^
-tests/negative/assign2_test.toit:38:25: error: Unresolved identifier: 'unresolved'
+tests/negative/assign2_test.toit:40:25: error: Unresolved identifier: 'unresolved'
   (A).missing_getter += unresolved
                         ^~~~~~~~~~
-tests/negative/assign2_test.toit:39:25: error: Unresolved identifier: 'unresolved'
+tests/negative/assign2_test.toit:41:25: error: Unresolved identifier: 'unresolved'
   (A).missing_setter += unresolved
                         ^~~~~~~~~~
-tests/negative/assign2_test.toit:41:17: error: Unresolved identifier: 'unresolved'
+tests/negative/assign2_test.toit:43:17: error: Unresolved identifier: 'unresolved'
   final_local = unresolved
                 ^~~~~~~~~~
-tests/negative/assign2_test.toit:42:3: error: Can't assign to final global
+tests/negative/assign2_test.toit:44:3: error: Can't assign to final global
   final_global = unresolved
   ^~~~~~~~~~~~
-tests/negative/assign2_test.toit:42:18: error: Unresolved identifier: 'unresolved'
+tests/negative/assign2_test.toit:44:18: error: Unresolved identifier: 'unresolved'
   final_global = unresolved
                  ^~~~~~~~~~
-tests/negative/assign2_test.toit:10:5: error: Final field 'final_field' cannot be assigned
+tests/negative/assign2_test.toit:12:5: error: Final field 'final_field' cannot be assigned
     final_field = unresolved
     ^~~~~~~~~~~
-tests/negative/assign2_test.toit:10:19: error: Unresolved identifier: 'unresolved'
+tests/negative/assign2_test.toit:12:19: error: Unresolved identifier: 'unresolved'
     final_field = unresolved
                   ^~~~~~~~~~
-tests/negative/assign2_test.toit:16:5: error: No getter method 'missing_getter' (0 arguments) found.
+tests/negative/assign2_test.toit:18:5: error: No getter method 'missing_getter' (0 arguments) found.
     missing_getter += unresolved
     ^~~~~~~~~~~~~~
-tests/negative/assign2_test.toit:16:23: error: Unresolved identifier: 'unresolved'
+tests/negative/assign2_test.toit:18:23: error: Unresolved identifier: 'unresolved'
     missing_getter += unresolved
                       ^~~~~~~~~~
-tests/negative/assign2_test.toit:17:5: error: No setter method 'missing_setter=' found.
+tests/negative/assign2_test.toit:19:5: error: No setter method 'missing_setter=' found.
     missing_setter += unresolved
     ^~~~~~~~~~~~~~
-tests/negative/assign2_test.toit:17:23: error: Unresolved identifier: 'unresolved'
+tests/negative/assign2_test.toit:19:23: error: Unresolved identifier: 'unresolved'
     missing_setter += unresolved
                       ^~~~~~~~~~
-tests/negative/assign2_test.toit:24:5: error: No getter method 'foo' (0 arguments) found.
+tests/negative/assign2_test.toit:26:5: error: No getter method 'foo' (0 arguments) found.
     foo++
     ^~~
-tests/negative/assign2_test.toit:25:5: error: No setter method 'foo2=' found.
+tests/negative/assign2_test.toit:27:5: error: No setter method 'foo2=' found.
     foo2++
     ^~~~
-tests/negative/assign2_test.toit:38:6: error: Argument mismatch for 'A.missing_getter'
+tests/negative/assign2_test.toit:40:6: error: Argument mismatch for 'A.missing_getter'
 No getter available
   (A).missing_getter += unresolved
      ^
-tests/negative/assign2_test.toit:39:6: error: Argument mismatch for 'A.missing_setter'
+tests/negative/assign2_test.toit:41:6: error: Argument mismatch for 'A.missing_setter'
 No setter available
   (A).missing_setter += unresolved
      ^
-tests/negative/assign2_test.toit:41:15: error: Can't assign to final local
+tests/negative/assign2_test.toit:43:15: error: Can't assign to final local
   final_local = unresolved
               ^
 Compilation failed.

@@ -1,10 +1,10 @@
-tests/negative/type6_test.toit:7:5: error: All expressions in a sequence must be indented the same way
+tests/negative/type6_test.toit:9:5: error: All expressions in a sequence must be indented the same way
     unresolved
     ^~~~~~~~~~
-tests/negative/type6_test.toit:7:5: error: Unresolved identifier: 'unresolved'
+tests/negative/type6_test.toit:9:5: error: Unresolved identifier: 'unresolved'
     unresolved
     ^~~~~~~~~~
-tests/negative/type6_test.toit:8:15: error: Unresolved identifier: 'unresolved'
+tests/negative/type6_test.toit:10:15: error: Unresolved identifier: 'unresolved'
   lambda.call unresolved
               ^~~~~~~~~~
 Compilation failed.

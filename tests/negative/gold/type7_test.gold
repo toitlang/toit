@@ -1,52 +1,52 @@
-tests/negative/type7_test.toit:101:3: error: Unresolved identifier: 'unresolved'
+tests/negative/type7_test.toit:103:3: error: Unresolved identifier: 'unresolved'
   unresolved
   ^~~~~~~~~~
-tests/negative/type7_test.toit:32:8: error: Type mismatch. Expected 'string'. Got 'A'
+tests/negative/type7_test.toit:34:8: error: Type mismatch. Expected 'string'. Got 'A'
   foo3 .x/A:
        ^~
-tests/negative/type7_test.toit:43:21: error: Type mismatch. Expected 'string'. Got 'A'
+tests/negative/type7_test.toit:45:21: error: Type mismatch. Expected 'string'. Got 'A'
   foo3 --named/bool .x/A:
                     ^~
-tests/negative/type7_test.toit:61:11: error: Type mismatch. Expected 'string'. Got 'int'
+tests/negative/type7_test.toit:63:11: error: Type mismatch. Expected 'string'. Got 'int'
   a = A.x 499
           ^~~
-tests/negative/type7_test.toit:62:12: error: Type mismatch. Expected 'string'. Got 'int'
+tests/negative/type7_test.toit:64:12: error: Type mismatch. Expected 'string'. Got 'int'
   a = A.y2 499
            ^~~
-tests/negative/type7_test.toit:63:12: error: Type mismatch. Expected 'string'. Got 'int'
+tests/negative/type7_test.toit:65:12: error: Type mismatch. Expected 'string'. Got 'int'
   a = A.z2 499
            ^~~
-tests/negative/type7_test.toit:73:19: error: Type mismatch. Expected 'string'. Got 'int'
+tests/negative/type7_test.toit:75:19: error: Type mismatch. Expected 'string'. Got 'int'
   a = A.x --named 499
                   ^~~
-tests/negative/type7_test.toit:74:20: error: Type mismatch. Expected 'string'. Got 'int'
+tests/negative/type7_test.toit:76:20: error: Type mismatch. Expected 'string'. Got 'int'
   a = A.y2 --named 499
                    ^~~
-tests/negative/type7_test.toit:75:20: error: Type mismatch. Expected 'string'. Got 'int'
+tests/negative/type7_test.toit:77:20: error: Type mismatch. Expected 'string'. Got 'int'
   a = A.z2 --named 499
                    ^~~
-tests/negative/type7_test.toit:85:9: error: Type mismatch. Expected 'string'. Got 'int'
+tests/negative/type7_test.toit:87:9: error: Type mismatch. Expected 'string'. Got 'int'
   a.foo 499
         ^~~
-tests/negative/type7_test.toit:86:10: error: Type mismatch. Expected 'string'. Got 'int'
+tests/negative/type7_test.toit:88:10: error: Type mismatch. Expected 'string'. Got 'int'
   a.bar2 499
          ^~~
-tests/negative/type7_test.toit:87:10: error: Type mismatch. Expected 'string'. Got 'int'
+tests/negative/type7_test.toit:89:10: error: Type mismatch. Expected 'string'. Got 'int'
   a.gee2 499
          ^~~
-tests/negative/type7_test.toit:97:17: error: Type mismatch. Expected 'string'. Got 'int'
+tests/negative/type7_test.toit:99:17: error: Type mismatch. Expected 'string'. Got 'int'
   a.foo --named 499
                 ^~~
-tests/negative/type7_test.toit:98:18: error: Type mismatch. Expected 'string'. Got 'int'
+tests/negative/type7_test.toit:100:18: error: Type mismatch. Expected 'string'. Got 'int'
   a.bar2 --named 499
                  ^~~
-tests/negative/type7_test.toit:99:18: error: Type mismatch. Expected 'string'. Got 'int'
+tests/negative/type7_test.toit:101:18: error: Type mismatch. Expected 'string'. Got 'int'
   a.gee2 --named 499
                  ^~~
-tests/negative/type7_test.toit:10:18: error: Type mismatch. Expected 'string'. Got 'A'
+tests/negative/type7_test.toit:12:18: error: Type mismatch. Expected 'string'. Got 'A'
   constructor.x3 .x/A:
                  ^~
-tests/negative/type7_test.toit:21:31: error: Type mismatch. Expected 'string'. Got 'A'
+tests/negative/type7_test.toit:23:31: error: Type mismatch. Expected 'string'. Got 'A'
   constructor.x3 --named/bool .x/A:
                               ^~
 Compilation failed.

@@ -1,5 +1,5 @@
 EXCEPTION error. 
 throw in pkg
-  0: say_hi                    <pkg:target-1.0>/foo_dynamic.toit:4:3
-  1: main                      tests/negative/pkg_errors_in_pkg/dynamic_test.toit:6:9
+  0: say_hi                    <pkg:target-1.0>/foo_dynamic.toit:6:3
+  1: main                      tests/negative/pkg_errors_in_pkg/dynamic_test.toit:8:9
   2: __entry__.<lambda>        <sdk>/core/entry.toit:48:20

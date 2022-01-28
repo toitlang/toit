@@ -1,28 +1,28 @@
-tests/negative/importB_test.toit:3:1: error: Not a regular file: '<...>/tests/negative/dir.toit'
+tests/negative/importB_test.toit:5:1: error: Not a regular file: '<...>/tests/negative/dir.toit'
 import .dir as pre
 ^~~~~~
-tests/negative/importB_test.toit:4:1: error: Failed to find import '.dir2'
+tests/negative/importB_test.toit:6:1: error: Failed to find import '.dir2'
 import .dir2 as pre
 ^~~~~~
-tests/negative/importB_test.toit:4:9: note: Folder 'tests/negative/dir2' exists, but is missing a 'dir2.toit' file
+tests/negative/importB_test.toit:6:9: note: Folder 'tests/negative/dir2' exists, but is missing a 'dir2.toit' file
 import .dir2 as pre
         ^~~~
-tests/negative/importB_test.toit:5:1: error: Failed to find import '.dir2.foo'
+tests/negative/importB_test.toit:7:1: error: Failed to find import '.dir2.foo'
 import .dir2.foo as toto
 ^~~~~~
-tests/negative/importB_test.toit:5:14: note: Missing library file. Tried 'tests/negative/dir2/foo.toit' and 'tests/negative/dir2/foo/foo.toit'
+tests/negative/importB_test.toit:7:14: note: Missing library file. Tried 'tests/negative/dir2/foo.toit' and 'tests/negative/dir2/foo/foo.toit'
 import .dir2.foo as toto
              ^~~
-tests/negative/importB_test.toit:6:1: error: Failed to find import '.dir2.foo.bar'
+tests/negative/importB_test.toit:8:1: error: Failed to find import '.dir2.foo.bar'
 import .dir2.foo.bar as toto
 ^~~~~~
-tests/negative/importB_test.toit:6:14: note: Folder does not exist: 'tests/negative/dir2/foo'
+tests/negative/importB_test.toit:8:14: note: Folder does not exist: 'tests/negative/dir2/foo'
 import .dir2.foo.bar as toto
              ^~~
-tests/negative/importB_test.toit:7:1: error: Failed to find import '.dir2.not_directory.bar'
+tests/negative/importB_test.toit:9:1: error: Failed to find import '.dir2.not_directory.bar'
 import .dir2.not_directory.bar as toto
 ^~~~~~
-tests/negative/importB_test.toit:7:14: note: Not a folder: 'tests/negative/dir2/not_directory'
+tests/negative/importB_test.toit:9:14: note: Not a folder: 'tests/negative/dir2/not_directory'
 import .dir2.not_directory.bar as toto
              ^~~~~~~~~~~~~
 Compilation failed.

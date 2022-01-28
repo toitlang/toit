@@ -1,10 +1,10 @@
-tests/negative/block_bracket_test.toit:3:8: error: Missing ']' for block parameter
+tests/negative/block_bracket_test.toit:5:8: error: Missing ']' for block parameter
 foo [x :
        ^
-tests/negative/block_bracket_test.toit:4:3: error: Unresolved identifier: 'unresolved'
+tests/negative/block_bracket_test.toit:6:3: error: Unresolved identifier: 'unresolved'
   unresolved
   ^~~~~~~~~~
-tests/negative/block_bracket_test.toit:7:3: error: Argument mismatch for 'foo'
+tests/negative/block_bracket_test.toit:9:3: error: Argument mismatch for 'foo'
 Block argument not provided
 No argument named '--x'
   foo --x= 499

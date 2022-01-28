@@ -1,7 +1,7 @@
-tests/negative/block5_test.toit:5:6: error: Unexpected block
-    (: debug it) : "foo"
+tests/negative/block5_test.toit:7:6: error: Unexpected block
+    (: print it) : "foo"
      ^~~~~~~~~~
-tests/negative/block5_test.toit:5:5: error: Map keys may not be blocks
-    (: debug it) : "foo"
+tests/negative/block5_test.toit:7:5: error: Map keys may not be blocks
+    (: print it) : "foo"
     ^
 Compilation failed.

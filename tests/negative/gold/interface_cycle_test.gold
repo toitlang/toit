@@ -1,10 +1,10 @@
-tests/negative/interface_cycle_test.toit:3:11: error: Cycle in super/interface chain
+tests/negative/interface_cycle_test.toit:5:11: error: Cycle in super/interface chain
 interface A B:
           ^
-tests/negative/interface_cycle_test.toit:3:13: error: This clause contributes to the cycle
+tests/negative/interface_cycle_test.toit:5:13: error: This clause contributes to the cycle
 interface A B:
             ^
-tests/negative/interface_cycle_test.toit:5:13: error: This clause contributes to the cycle
+tests/negative/interface_cycle_test.toit:7:13: error: This clause contributes to the cycle
 interface B A:
             ^
 Compilation failed.

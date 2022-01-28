@@ -1,4 +1,4 @@
-tests/negative/incomplete_char_test.toit:4:3: error: Unterminated character
+tests/negative/incomplete_char_test.toit:6:3: error: Unterminated character
   '\
   ^~
 Compilation failed.
