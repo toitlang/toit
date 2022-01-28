@@ -312,20 +312,9 @@ uint32 RtcMemory::session_id() {
   return rtc.session_id;
 }
 
-void RtcMemory::set_user_data(uint8* data, int from, int length) {
-  // memcpy doesn't work here.
-  for (int i = 0; i < length; i++) {
-    rtc_user_data[from + i] = data[i];
-  }
+uint8* RtcMemory::user_data_address() {
+  return rtc_user_data;
 }
-
-void RtcMemory::user_data(uint8* data, int from, int length) {
-  // memcpy doesn't work here.
-  for (int i = 0; i < length; i++) {
-    data[i] = rtc_user_data[from + i];
-  }
-}
-
 
 } // namespace toit
 

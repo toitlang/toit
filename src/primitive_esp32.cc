@@ -136,29 +136,15 @@ PRIMITIVE(get_mac_address) {
   return result;
 }
 
-PRIMITIVE(set_rtc_user_data) {
-  ARGS(Blob, bytes, int, from)
-  if (from < 0 || from + bytes.length() > RtcMemory::RTC_USER_DATA_SIZE) OUT_OF_BOUNDS;
-
-  RtcMemory::set_user_data(const_cast<uint8*>(bytes.address()), from, bytes.length());
-
-  return process->program()->null_object();
-}
-
-PRIMITIVE(rtc_user_data) {
-  ARGS(int, from, int, length)
-  if (from < 0 || from + length > RtcMemory::RTC_USER_DATA_SIZE) OUT_OF_BOUNDS;
+PRIMITIVE(rtc_user_bytes) {
+  uint8* rtc_memory = RtcMemory::user_data_address();
 
   Error* error = null;
-  ByteArray* result = process->allocate_byte_array(length, &error);
+  ByteArray* result = process->object_heap()->allocate_external_byte_array(RtcMemory::RTC_USER_DATA_SIZE, rtc_memory, false, false);
   if (result == null) return error;
 
-  ByteArray::Bytes bytes(result);
-
-  RtcMemory::user_data(const_cast<uint8*>(bytes.address()), from, bytes.length());
   return result;
 }
-
 
 } // namespace toit
 

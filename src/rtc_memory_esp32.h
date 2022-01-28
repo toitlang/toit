@@ -72,8 +72,7 @@ class RtcMemory {
   static void set_session_id(uint32 session_id);
   static uint32 session_id();
 
-  static void set_user_data(uint8* data, int from, int size);
-  static void user_data(uint8* data, int from, int size);
+  static uint8* user_data_address();
 };
 
 } // namespace toit
