@@ -67,9 +67,7 @@ class Socket_:
     return id_
 
   /**
-  Deprecated. Use package quectel-cellular (https://github.com/toitware/quectel-cellular).
-
-  Calls the given $block.
+    Calls the given $block.
   Captures exceptions and translates them to socket-related errors.
   */
   socket_call [block]:
@@ -80,11 +78,7 @@ class Socket_:
       throw (last_error_ session e)
     unreachable
 
-  /**
-  Deprecated. Use package quectel-cellular (https://github.com/toitware/quectel-cellular).
-
-  Returns the latest socket error (even if OK).
-  */
+  /** Returns the latest socket error (even if OK). */
   last_error_ cellular/at.Session original_error/string="" -> Exception:
     res := cellular.action "+QIGETERROR"
     print_ "Error $original_error -> $res.last"
@@ -160,11 +154,7 @@ class TcpSocket extends Socket_ implements tcp.Socket:
     sleep --ms=100
     return 0
 
-  /**
-  Deprecated. Use package quectel-cellular (https://github.com/toitware/quectel-cellular).
-
-  Closes the socket for write. The socket is still be able to read incoming data.
-  */
+  /** Closes the socket for write. The socket is still be able to read incoming data. */
   close_write:
     throw "UNSUPPORTED"
 
@@ -186,6 +176,9 @@ class TcpSocket extends Socket_ implements tcp.Socket:
   mtu -> int:
     return 1500
 
+/**
+Deprecated. Use package quectel-cellular (https://github.com/toitware/quectel-cellular).
+*/
 class UdpSocket extends Socket_ implements udp.Socket:
   remote_address_ := null
 
@@ -275,11 +268,7 @@ abstract class QuectelCellular extends CellularBase implements Gnss:
 
   resolve_/monitor.Latch? := null
 
-  /**
-  Deprecated. Use package quectel-cellular (https://github.com/toitware/quectel-cellular).
-
-  Called when the driver should reset.
-  */
+  /** Called when the driver should reset. */
   abstract on_reset session/at.Session
 
   constructor
@@ -519,6 +508,7 @@ abstract class QuectelCellular extends CellularBase implements Gnss:
       if state[0] == 1:
         session.action "+QGPSEND"
 
+/** Deprecated. Use package quectel-cellular (https://github.com/toitware/quectel-cellular).*/
 class QuectelConstants implements Constants:
   RatCatM1 -> int: return 8
 
@@ -609,8 +599,6 @@ class QIDEACT extends at.Command:
 
 class QICFG extends at.Command:
   /**
-    Deprecated. Use package quectel-cellular (https://github.com/toitware/quectel-cellular).
-
     $idle_time in range 1-120, unit minutes.
     $interval_time in range 25-100, unit seconds.
     $probe_count in range 3-10.

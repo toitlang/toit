@@ -9,6 +9,7 @@ RAT_LTE_M ::= 1
 RAT_NB_IOT ::= 2
 RAT_GSM ::= 3
 
+/** Deprecated. */
 interface Pin:
   on -> none
   off -> none
@@ -116,27 +117,12 @@ GNSS location consisting of coordinates and accuracy measurements.
 class GnssLocation:
   latitude/float
   longitude/float
-
-  /**
-  Deprecated. Use package toit-gnss-location (https://github.com/toitware/toit-gnss-location).
-  The horizontal accuracy.
-  */
+  /** The horizontal accuracy. */
   horizontal_accuracy ::= 0.0
-
-  /**
-  Deprecated. Use package toit-gnss-location (https://github.com/toitware/toit-gnss-location).
-
-  The vertical accuracy.
-  */
+  /** The vertical accuracy. */
   vertical_accuracy ::= 0.0
-
-  /**
-  Deprecated. Use package toit-gnss-location (https://github.com/toitware/toit-gnss-location).
-
-  The altitude relative to the median sea level.
-  */
+  /** The altitude relative to the median sea level. */
   altitude_msl ::= 0.0
-
   /**
   Deprecated. Use package toit-gnss-location (https://github.com/toitware/toit-gnss-location).
 
@@ -162,8 +148,6 @@ class GnssLocation:
       values[4]
 
   /**
-  Deprecated. Use package toit-gnss-location (https://github.com/toitware/toit-gnss-location).
-
   Serializes this GNSS location into a byte array.
 
   The bytes can be deserialized into a location with $GnssLocation.deserialize.
@@ -177,11 +161,7 @@ class GnssLocation:
       vertical_accuracy,
     ]
 
-  /**
-  Deprecated. Use package toit-gnss-location (https://github.com/toitware/toit-gnss-location).
-
-  See $super.
-  */
+  /** See $super. */
   stringify:
     lat_printer := create_printer_ "S" "N"
     lat := lat_printer.call latitude

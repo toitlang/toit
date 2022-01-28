@@ -78,6 +78,7 @@ class Socket_:
   last_error_ cellular/at.Session original_error/string="":
     throw (UnknownException "SOCKET ERROR $original_error")
 
+/** Deprecated. Use package sequans-cellular (https://github.com/toitware/sequans-cellular). */
 class TcpSocket extends Socket_ implements tcp.Socket:
   static MAX_SIZE_ ::= 1500
   static WRITE_TIMEOUT_ ::= Duration --s=5
@@ -180,6 +181,7 @@ class TcpSocket extends Socket_ implements tcp.Socket:
   mtu -> int:
     return 1500
 
+/** Deprecated. Use package sequans-cellular (https://github.com/toitware/sequans-cellular). */
 class UdpSocket extends Socket_ implements udp.Socket:
   remote_address_ := null
   port_/int
@@ -265,7 +267,7 @@ abstract class SequansCellular extends CellularBase:
 
   /**
   Deprecated. Use package sequans-cellular (https://github.com/toitware/sequans-cellular).
-  
+
   Called when the driver should reset.
   */
   abstract on_reset session/at.Session
@@ -458,6 +460,7 @@ abstract class SequansCellular extends CellularBase:
   network_interface -> net.Interface:
     return Interface_ this
 
+/** Deprecated. Use package sequans-cellular (https://github.com/toitware/sequans-cellular). */
 class SequansConstants implements Constants:
   RatCatM1 -> int?: return null
 
