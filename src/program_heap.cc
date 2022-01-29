@@ -218,7 +218,7 @@ ByteArray* ProgramHeap::allocate_external_byte_array(int length, uint8* memory) 
   if (result == null) return null;  // Allocation failure.
   // Initialize object.
   result->_set_header(_program, _program->byte_array_class_id());
-  result->_initialize_external_memory(length, memory, true);
+  result->_initialize_external_memory(length, memory, false);
   return result;
 }
 
