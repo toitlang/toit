@@ -308,7 +308,7 @@ namespace toit {
   PRIMITIVE(get_ip, 1)                       \
 
 #define MODULE_BLE(PRIMITIVE)                \
-  PRIMITIVE(init, 0)                         \
+  PRIMITIVE(init, 1)                         \
   PRIMITIVE(gap, 1)                          \
   PRIMITIVE(close, 1)                        \
   PRIMITIVE(scan_start, 2)                   \
@@ -324,6 +324,12 @@ namespace toit {
   PRIMITIVE(request_service, 2)              \
   PRIMITIVE(request_characteristic, 3)       \
   PRIMITIVE(request_attribute, 2)            \
+  PRIMITIVE(server_config_init, 0)           \
+  PRIMITIVE(add_server_service, 2)           \
+  PRIMITIVE(add_server_characteristic, 3)    \
+  PRIMITIVE(set_characteristics_value, 2)    \
+  PRIMITIVE(notify_characteristics_value, 2) \
+  PRIMITIVE(get_characteristics_value, 1)    \
 
 #define MODULE_DHCP(PRIMITIVE)               \
   PRIMITIVE(wait_for_lwip_dhcp_on_linux, 0)  \
@@ -795,6 +801,9 @@ namespace toit {
 #define _A_T_PWMResource(N, name)         MAKE_UNPACKING_MACRO(PWMResource, N, name)
 #define _A_T_GAPResource(N, name)         MAKE_UNPACKING_MACRO(GAPResource, N, name)
 #define _A_T_GATTResource(N, name)        MAKE_UNPACKING_MACRO(GATTResource, N, name)
+#define _A_T_BLEServerConfigGroup(N, name)  MAKE_UNPACKING_MACRO(BLEServerConfigGroup, N, name)
+#define _A_T_BLEServerServiceResource(N, name)  MAKE_UNPACKING_MACRO(BLEServerServiceResource, N, name)
+#define _A_T_BLEServerCharacteristicResource(N, name)  MAKE_UNPACKING_MACRO(BLEServerCharacteristicResource, N, name)
 #define _A_T_ServiceDescription(N, name)  MAKE_UNPACKING_MACRO(ServiceDescription, N, name)
 #define _A_T_Peer(N, name)                MAKE_UNPACKING_MACRO(Peer, N, name)
 #define _A_T_Channel(N, name)             MAKE_UNPACKING_MACRO(Channel, N, name)

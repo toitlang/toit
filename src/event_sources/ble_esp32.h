@@ -102,6 +102,86 @@ class GATTResource : public BLEResource {
   struct os_mbuf* _mbuf = null;
 };
 
+
+class BLEServerServiceResource;
+typedef LinkedList<BLEServerServiceResource> BLEServerServiceList;
+
+class BLEServerCharacteristicResource;
+typedef LinkedList<BLEServerCharacteristicResource> BLEServerCharacteristicList;
+
+class BLEServerCharacteristicResource: public Resource, public BLEServerCharacteristicList::Element{
+public:
+  TAG(BLEServerCharacteristicResource);
+  explicit BLEServerCharacteristicResource(ResourceGroup *resource_group, ble_uuid_any_t uuid, int type, uint8 *value, int value_length):
+      Resource(resource_group), _uuid(uuid), _type(type), _value(value), _value_length(value_length){}
+
+  ble_uuid_any_t uuid() const { return _uuid; }
+  ble_uuid_t *uuid_p() { return &_uuid.u; }
+  int type() const { return _type; }
+  uint8 *value() const { return _value; }
+  int value_length() const { return _value_length; }
+  uint16_t *nimble_value_handle() { return &_nimble_value_handle; }
+
+private:
+  ble_uuid_any_t _uuid;
+  int _type;
+  uint8 *_value;
+  int _value_length;
+  uint16 _nimble_value_handle;
+};
+
+
+class BLEServerServiceResource: public Resource, public BLEServerServiceList::Element {
+public:
+  TAG(BLEServerServiceResource);
+  explicit BLEServerServiceResource(ResourceGroup *resource_group, ble_uuid_any_t uuid):
+      Resource(resource_group),
+      _uuid(uuid) {}
+
+  ~BLEServerServiceResource() override {
+    for (BLEServerCharacteristicResource *characteristic : _characteristics) {
+      delete characteristic;
+    }
+  }
+
+  BLEServerCharacteristicResource *add_characteristic(ble_uuid_any_t uuid, int type, uint8 *value, int value_length) {
+    BLEServerCharacteristicResource *characteristic = _new BLEServerCharacteristicResource(resource_group(), uuid, type, value, value_length);
+    if (characteristic != null) _characteristics.prepend(characteristic);
+    return characteristic;
+  }
+
+  ble_uuid_any_t uuid() const { return _uuid; }
+  ble_uuid_t *uuid_p() { return &_uuid.u; }
+  BLEServerCharacteristicList characteristics() const { return _characteristics; }
+private:
+  BLEServerCharacteristicList _characteristics;
+  ble_uuid_any_t _uuid;
+};
+
+class BLEServerConfigGroup: public ResourceGroup {
+public:
+  TAG(BLEServerConfigGroup);
+  explicit  BLEServerConfigGroup(Process *process) : ResourceGroup(process) {}
+  ~BLEServerConfigGroup() override {
+    for (BLEServerServiceResource *service : _services) {
+      delete service;
+    }
+  }
+
+  BLEServerServiceResource *add_service(ble_uuid_any_t uuid) {
+    BLEServerServiceResource *service = _new BLEServerServiceResource(this, uuid);
+    if (service != null) _services.prepend(service);
+    return service;
+  }
+
+  BLEServerServiceList services() const { return _services; }
+
+private:
+  BLEServerServiceList _services;
+};
+
+
+
 class BLEEventSource : public LazyEventSource, public Thread {
  public:
   static BLEEventSource* instance() { return _instance; }
@@ -126,7 +206,11 @@ class BLEEventSource : public LazyEventSource, public Thread {
                                void* arg);
   static void on_started();
 
- protected:
+
+  static int on_gatt_server_attribute_access(uint16_t conn_handle, uint16_t attr_handle,
+                                      struct ble_gatt_access_ctxt *ctxt, void *arg);
+
+protected:
   friend class LazyEventSource;
   static BLEEventSource* _instance;
 
@@ -153,10 +237,12 @@ class BLEEventSource : public LazyEventSource, public Thread {
                                GATTResource* gatt);
   void on_started_event();
 
+
   ConditionVariable* _resources_changed = null;
   bool _running = false;
   bool _should_run = false;
   bool _stop = false;
+  static ble_gatt_access_fn *on_access;
 };
 
 } // namespace toit

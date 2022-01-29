@@ -246,6 +246,13 @@ void BLEEventSource::on_started() {
   instance()->on_started_event();
 }
 
+int BLEEventSource::on_gatt_server_attribute_access(uint16_t conn_handle, uint16_t attr_handle,
+                                                    struct ble_gatt_access_ctxt *ctxt, void *arg) {
+  BLEResourceGroup* group = unvoid_cast<BLEResourceGroup*>(arg);
+  USE(group);
+  return 0;
+}
+
 } // namespace toit
 
 #endif // TOIT_FREERTOS
