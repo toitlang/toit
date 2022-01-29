@@ -2225,13 +2225,11 @@ PRIMITIVE(literal_index) {
   ARGS(Object, o);
   auto null_object = process->program()->null_object();
   if (!o->is_heap_object()) return null_object;
-  auto heap_object = HeapObject::cast(o);
-  if (!Heap::in_read_only_program_heap(heap_object, process->object_heap())) return null_object;
   auto& literals = process->program()->literals;
   for (int i = 0; i < literals.length(); i++) {
     if (literals.at(i) == o) return Smi::from(i);
   }
-  OTHER_ERROR;
+  return null_object;
 }
 
 PRIMITIVE(word_size) {

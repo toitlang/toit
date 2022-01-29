@@ -209,8 +209,11 @@ class OS {
   static void close(int fd);
 
   static Block* allocate_block();
+  static ProgramBlock* allocate_program_block();
   static void free_block(Block* block);
+  static void free_block(ProgramBlock* block);
   static void set_writable(Block* block, bool value);
+  static void set_writable(ProgramBlock* block, bool value);
 
   static void set_up();
   static void tear_down();
