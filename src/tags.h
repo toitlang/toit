@@ -92,6 +92,7 @@ enum StructTag {
   ResourceGroupMaxTag,
 
   // Misc.
+  LeakyDirectoryTag,
   FontTag,
   ImageOutputStreamTag,
   ChannelTag

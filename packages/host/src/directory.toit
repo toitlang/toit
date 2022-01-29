@@ -106,8 +106,12 @@ class DirectoryStream:
       closedir_ dir_
       dir_ = null
 
-opendir_ resource_group name:
+// No longer in use.
+opendir_ name:
   #primitive.file.opendir
+
+opendir_ resource_group name:
+  #primitive.file.opendir2
 
 readdir_ dir -> ByteArray:
   #primitive.file.readdir
