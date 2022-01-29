@@ -239,16 +239,6 @@ String* ProgramHeap::allocate_external_string(int length, uint8* memory) {
   return result;
 }
 
-#ifdef TOIT_GC_LOGGING
-static word format(word n) {
-  return (n > 9999) ? (n >> KB_LOG2) : n;
-}
-static const char* format_unit(word n) {
-  return (n > 9999) ? "K" : "";
-}
-#define FORMAT(n) format(n), format_unit(n)
-#endif
-
 // We initialize lazily - this is because the number of objects can grow during
 // iteration.
 ProgramHeap::Iterator::Iterator(ProgramBlockList& list, Program* program)
