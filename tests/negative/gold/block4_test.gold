@@ -1,7 +1,7 @@
 tests/negative/block4_test.toit:7:14: error: Unexpected block
-    "foo" : (: debug it)
+    "foo" : (: print it)
              ^~~~~~~~~~
 tests/negative/block4_test.toit:7:13: error: Map values may not be blocks
-    "foo" : (: debug it)
+    "foo" : (: print it)
             ^
 Compilation failed.

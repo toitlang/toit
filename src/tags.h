@@ -43,6 +43,7 @@ namespace toit {
   fn(GATTResource)                      \
   fn(BLEServerServiceResource)          \
   fn(BLEServerCharacteristicResource)   \
+  fn(Directory)                         \
 
 #define TLS_CLASSES_DO(fn)              \
   fn(MbedTLSSocket)                     \
@@ -96,7 +97,6 @@ enum StructTag {
   // Misc.
   FontTag,
   ImageOutputStreamTag,
-  DirectoryTag,
   ChannelTag
 };
 

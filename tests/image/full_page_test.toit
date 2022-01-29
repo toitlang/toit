@@ -19,17 +19,19 @@ BIG_STRING := "\"$("a" * BIG_STRING_SIZE)\""
 
 VARIABLE_ELEMENT_COUNT ::= 800
 
-toitc / string := ""
-test_dir / string := ""
+toitc     / string := ""
+test_dir  / string := ""
 toit_file / string := ""
 snap_file / string := ""
 img_file  / string := ""
 
 compile bigger_chunk_count small_string_size -> int:
   print "Compiling $bigger_chunk_count $small_string_size"
+  // We don't run the image here, but as a general principle don't use 'print'
+  // in image tests as it might require a boot-snapshot.
   content_prefix := """
     main:
-      print ["""
+      print_ ["""
   content_suffix := "]"
   buffer := Buffer
   buffer.write content_prefix

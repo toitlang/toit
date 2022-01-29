@@ -30,6 +30,21 @@ Object* X509ResourceGroup::parse(Process* process, const uint8_t* encoded, size_
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;
 
+  uint8 checksum[Sha256::HASH_LENGTH];
+  { Sha256 sha256(null);
+    sha256.add(encoded, encoded_size);
+    sha256.get(&checksum[0]);
+  }
+
+  for (Resource* it : resources()) {
+    X509Certificate* other = static_cast<X509Certificate*>(it);
+    if (memcmp(checksum, other->checksum(), Sha256::HASH_LENGTH) == 0) {
+      other->reference();
+      proxy->set_external_address(other);
+      return proxy;
+    }
+  }
+
   X509Certificate* cert = _new X509Certificate(this);
   if (!cert) MALLOC_FAILED;
 
@@ -39,6 +54,7 @@ Object* X509ResourceGroup::parse(Process* process, const uint8_t* encoded, size_
     return tls_error(null, process, ret);
   }
 
+  memcpy(cert->checksum(), checksum, Sha256::HASH_LENGTH);
   register_resource(cert);
 
   proxy->set_external_address(cert);
@@ -100,7 +116,9 @@ PRIMITIVE(get_common_name) {
 
 PRIMITIVE(close) {
   ARGS(X509Certificate, cert);
-  cert->resource_group()->unregister_resource(cert);
+  if (cert->dereference()) {
+    cert->resource_group()->unregister_resource(cert);
+  }
   cert_proxy->clear_external_address();
   return process->program()->null_object();
 }

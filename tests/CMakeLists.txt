@@ -30,14 +30,11 @@ else()
   set(SLOW_TIMEOUT 400)
 endif()
 
-# The SHARD_START end SHART_STRIDE environment variables must be set when
+# The SHARD_START end SHARD_STRIDE environment variables must be set when
 # generating the cmake files.
 # I couldn't figure out how to use them while running the tests.
 set(TEST_SHARD_START "$ENV{SHARD_START}")
 set(TEST_SHARD_STRIDE "$ENV{SHARD_STRIDE}")
-if ("${TEST_SHARD_START}" STREQUAL "")
-  set(TEST_SHARD_START 1)
-endif()
 
 add_custom_target(
   check
@@ -124,14 +121,12 @@ add_subdirectory(negative)
 add_subdirectory(optimizations)
 add_subdirectory(ctest)
 add_subdirectory(toitp)
-add_subdirectory(toit_run_image)
+add_subdirectory(image)
 add_subdirectory(profiler)
 add_subdirectory(health)
 add_subdirectory(fuzzer)
 add_subdirectory(cmake)
-add_subdirectory(snapshot_serialization)
 add_subdirectory(lock_file)
-add_subdirectory(snapshot_to_image)
 
 include(fail.cmake)
 foreach(test ${TOIT_FAILING_TESTS})

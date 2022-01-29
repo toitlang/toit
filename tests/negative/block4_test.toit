@@ -4,5 +4,5 @@
 
 main:
   x := {
-    "foo" : (: debug it)
+    "foo" : (: print it)
   };

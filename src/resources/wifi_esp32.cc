@@ -178,7 +178,7 @@ uint32_t WifiResourceGroup::on_event(Resource* resource, word data, uint32_t sta
     case IP_EVENT_STA_GOT_IP: {
       ip_event_got_ip_t* event = reinterpret_cast<ip_event_got_ip_t*>(system_event->event_data);
       uint32_t addr = event->ip_info.ip.addr;
-      sprintf(static_cast<IPEvents*>(resource)->_ip, 
+      sprintf(static_cast<IPEvents*>(resource)->_ip,
 #ifdef CONFIG_IDF_TARGET_ESP32C3
               "%lu.%lu.%lu.%lu",
 #else
@@ -212,13 +212,14 @@ uint32_t WifiResourceGroup::on_event(Resource* resource, word data, uint32_t sta
 MODULE_IMPLEMENTATION(wifi, MODULE_WIFI)
 
 PRIMITIVE(init) {
+  HeapTagScope scope(ITERATE_CUSTOM_TAGS + WIFI_MALLOC_TAG);
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;
 
   int id = wifi_pool.any();
   if (id == kInvalidWifi) OUT_OF_BOUNDS;
 
-  esp_netif_t *netif = esp_netif_create_default_wifi_sta();
+  esp_netif_t* netif = esp_netif_create_default_wifi_sta();
   if (!netif) {
     wifi_pool.put(id);
     MALLOC_FAILED;
@@ -266,6 +267,8 @@ PRIMITIVE(close) {
 
 PRIMITIVE(connect) {
   ARGS(WifiResourceGroup, group, cstring, ssid, cstring, password);
+  HeapTagScope scope(ITERATE_CUSTOM_TAGS + WIFI_MALLOC_TAG);
+
   if (ssid == null || password == null) {
     INVALID_ARGUMENT;
   }
@@ -290,6 +293,7 @@ PRIMITIVE(connect) {
 
 PRIMITIVE(setup_ip) {
   ARGS(WifiResourceGroup, group);
+  HeapTagScope scope(ITERATE_CUSTOM_TAGS + WIFI_MALLOC_TAG);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;

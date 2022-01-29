@@ -3,6 +3,6 @@
 // be found in the tests/LICENSE file.
 
 main:
-  b := : debug it
+  b := : print it
   b.call: unresolved it
   unresolved

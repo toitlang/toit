@@ -7,7 +7,7 @@ import expect show *
 
 main args:
   lines := run args
-  debug lines
+  print lines
   expect (lines.first.starts_with "Profile of Lambda Profiler Test")
 
   expect_equals "[lambda] in foo" (lines[1].copy 7 35).trim
