@@ -192,7 +192,7 @@ String* ProgramHeap::allocate_string(const char* str, int length) {
     String::Bytes bytes(result);
     bytes._initialize(str);
   } else {
-    result = allocate_external_string(length, const_cast<uint8*>(unsigned_cast(str)), false);
+    result = allocate_external_string(length, const_cast<uint8*>(unsigned_cast(str)));
   }
   result->hash_code();  // Ensure hash_code is computed at creation.
   return result;
@@ -222,7 +222,7 @@ ByteArray* ProgramHeap::allocate_external_byte_array(int length, uint8* memory) 
   return result;
 }
 
-String* ProgramHeap::allocate_external_string(int length, uint8* memory, bool dispose) {
+String* ProgramHeap::allocate_external_string(int length, uint8* memory) {
   String* result = unvoid_cast<String*>(_allocate_raw(String::external_allocation_size()));
   if (result == null) return null;  // Allocation failure.
   // Initialize object.
@@ -235,16 +235,6 @@ String* ProgramHeap::allocate_external_string(int length, uint8* memory, bool di
     // TODO(florian): we should not have '\0' at the end of strings anymore.
     String::Bytes bytes(String::cast(result));
     bytes._set_end();
-  }
-  if (dispose) {
-    // Ensure finalizer is created for string with external memory.
-    if (Flags::allocation) printf("External memory for string %p [length = %d] setup for finalization.\n", memory, length);
-    Process* process = owner();
-    ASSERT(process != null);
-    if (!process->add_vm_finalizer(result)) {
-      set_last_allocation_result(ALLOCATION_OUT_OF_MEMORY);
-      return null;  // Allocation failure.
-    }
   }
   return result;
 }

@@ -185,11 +185,8 @@ class ProgramHeapMemory {
   // Memory management (MT safe operations)
   ProgramBlock* allocate_block(ProgramRawHeap* heap);
   ProgramBlock* allocate_initial_block();
-  ProgramBlock* allocate_block_during_scavenge(ProgramRawHeap* heap);
   void free_block(ProgramBlock* block, ProgramRawHeap* heap);
   void set_writable(ProgramBlock* block, bool value);
-  void enter_scavenge(ProgramRawHeap* heap);
-  void leave_scavenge(ProgramRawHeap* heap);
 
   // This is used for the case where we allocated an initial block for a new
   // heap, but the new heap creation failed, so the block was never associated
@@ -204,7 +201,6 @@ class ProgramHeapMemory {
 
   ProgramBlockList _free_list;
   Mutex* _memory_mutex;
-  bool _in_scavenge = false;
   word _largest_number_of_blocks_in_a_heap = 0;  // In pages.
 
   friend class VM;

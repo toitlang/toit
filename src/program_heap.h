@@ -62,7 +62,7 @@ class ProgramHeap : public ProgramRawHeap {
   Array* allocate_array(int length, Object* filler);
   Array* allocate_array(int length);
   ByteArray* allocate_external_byte_array(int length, uint8* memory);
-  String* allocate_external_string(int length, uint8* memory, bool dispose);
+  String* allocate_external_string(int length, uint8* memory);
   ByteArray* allocate_internal_byte_array(int length);
   String* allocate_internal_string(int length);
   Double* allocate_double(double value);
