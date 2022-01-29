@@ -298,7 +298,6 @@ class HeapObject : public Object {
 
   friend class ScavengeState;
   friend class ObjectHeap;
-  friend class ProgramObjectHeap;
   friend class Heap;
   friend class ProgramHeap;
   friend class BaseSnapshotWriter;
@@ -377,7 +376,6 @@ class Array : public HeapObject {
   }
 
   friend class ObjectHeap;
-  friend class ProgramObjectHeap;
   friend class Heap;
   friend class ProgramHeap;
 
@@ -567,7 +565,6 @@ class ByteArray : public HeapObject {
   }
 
   friend class ObjectHeap;
-  friend class ProgramObjectHeap;
   friend class Heap;
   friend class ProgramHeap;
   friend class ShortPrintVisitor;
@@ -709,7 +706,6 @@ class Stack : public HeapObject {
 
   static int _array_offset_from(int index) { return HEADER_SIZE + index  * WORD_SIZE; }
   friend class ObjectHeap;
-  friend class ProgramObjectHeap;
   friend class Heap;
   friend class ProgramHeap;
 };
@@ -1005,7 +1001,6 @@ class String : public HeapObject {
   friend class Heap;
   friend class ProgramHeap;
   friend class ObjectHeap;
-  friend class ProgramObjectHeap;
   friend class VMFinalizerNode;
 };
 
@@ -1200,7 +1195,6 @@ class Task : public Instance {
     at_put(ID_INDEX, id);
   }
   friend class ObjectHeap;
-  friend class ProgramObjectHeap;
 };
 
 inline Task* Stack::task() {
