@@ -20,6 +20,7 @@
 #include "os.h"
 #include "flags.h"
 #include "memory.h"
+#include "program_memory.h"
 #include <sys/time.h>
 #include <time.h>
 #include <sys/mman.h>
