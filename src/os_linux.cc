@@ -111,10 +111,6 @@ ProgramBlock* OS::allocate_program_block() {
 #endif
 }
 
-void OS::set_writable(Block* block, bool value) {
-  mprotect(void_cast(block), TOIT_PAGE_SIZE, PROT_READ | (value ? PROT_WRITE : 0));
-}
-
 void OS::set_writable(ProgramBlock* block, bool value) {
   mprotect(void_cast(block), TOIT_PAGE_SIZE, PROT_READ | (value ? PROT_WRITE : 0));
 }

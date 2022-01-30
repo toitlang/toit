@@ -130,8 +130,6 @@ class BlockList {
   // Returns the number of bytes allocated.
   int payload_size() const;
 
-  void set_writable(bool value);
-
   void append(Block* b) {
     _blocks.append(b);
     _length++;
@@ -187,7 +185,6 @@ class HeapMemory {
   Block* allocate_initial_block();
   Block* allocate_block_during_scavenge(RawHeap* heap);
   void free_block(Block* block, RawHeap* heap);
-  void set_writable(Block* block, bool value);
   void enter_scavenge(RawHeap* heap);
   void leave_scavenge(RawHeap* heap);
 

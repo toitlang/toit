@@ -63,7 +63,6 @@ Heap::Heap(Process* owner, Program* program, Block* initial_block)
 }
 
 Heap::~Heap() {
-  set_writable(true);
   // Deleting a heap is like a scavenge where nothing survives.
   ScavengeScope scope(VM::current()->heap_memory(), this);
   _blocks.free_blocks(this);

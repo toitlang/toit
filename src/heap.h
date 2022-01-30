@@ -70,11 +70,6 @@ class Heap : public RawHeap {
   // Returns the number of bytes allocated in this heap.
   virtual int payload_size();
 
-  // Make all blocks in this heap writable or read only.
-  void set_writable(bool value) {
-    _blocks.set_writable(value);
-  }
-
   Program* program() { return _program; }
 
   static inline bool in_read_only_program_heap(HeapObject* object, Heap* object_heap) {

@@ -218,12 +218,11 @@ void ProgramHeapMemory::free_block(ProgramBlock* block, ProgramRawHeap* heap) {
   ASSERT(OS::is_locked(_memory_mutex));
   // If the block's owner is null we know it is program space and the memory is
   // read only.  This does not happen on the device.
-  if (block->is_program()) {
+  ASSERT(block->is_program());
 #ifdef TOIT_FREERTOS
-    FATAL("Program memory freed on device");
+  FATAL("Program memory freed on device");
 #endif
-    set_writable(block, true);
-  }
+  set_writable(block, true);
   block->_reset();
   _free_list.prepend(block);
 }

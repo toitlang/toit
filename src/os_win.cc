@@ -301,7 +301,7 @@ Block* OS::allocate_block() {
   return (result == null) ? null : new (result) Block();
 }
 
-void OS::set_writable(Block* block, bool value) {
+void OS::set_writable(ProgramBlock* block, bool value) {
   // TODO(anders): Unimplemented.
 }
 
