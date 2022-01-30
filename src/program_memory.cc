@@ -150,7 +150,9 @@ ProgramHeapMemory::ProgramHeapMemory() {
 ProgramHeapMemory::~ProgramHeapMemory() {
   // Unlink freelist to avoid asserts on closedown.
   while (ProgramBlock* block = _free_list.remove_first()) {
+#ifndef TOIT_FREERTOS
     OS::free_block(block);
+#endif
   }
   OS::dispose(_memory_mutex);
 }
@@ -221,14 +223,17 @@ void ProgramHeapMemory::free_block(ProgramBlock* block, ProgramRawHeap* heap) {
   ASSERT(block->is_program());
 #ifdef TOIT_FREERTOS
   FATAL("Program memory freed on device");
-#endif
+#else
   set_writable(block, true);
+#endif
   block->_reset();
   _free_list.prepend(block);
 }
 
 void ProgramHeapMemory::set_writable(ProgramBlock* block, bool value) {
+#ifndef TOIT_FREERTOS
   OS::set_writable(block, value);
+#endif
 }
 
 void ProgramRawHeap::take_blocks(ProgramBlockList* blocks) {
