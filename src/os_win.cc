@@ -21,6 +21,7 @@
 #include "utils.h"
 #include "uuid.h"
 #include "memory.h"
+#include "program_memory.h"
 
 #include <errno.h>
 #include <pthread.h>
