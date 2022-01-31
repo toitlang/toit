@@ -28,7 +28,7 @@ class Tar:
   Closes the tar stream, and invokes `close_write` on the stored writer if $close_writer is true.
   */
   close --close_writer /bool = true:
-    // TODO(florian): feels heavy to allocate a new array just to write a bunch of zeroes.
+    // TODO(florian): feels heavy to allocate a new array just to write a bunch of zeros.
     zero_header := ByteArray 512
     writer_.write zero_header
     writer_.write zero_header
@@ -65,7 +65,7 @@ class Tar:
       checksum += header[i]
     checksum_in_octal := checksum.stringify 8
     // Quoting Wikipedia: [The checksum] is stored as a six digit octal number with
-    //   leading zeroes followed by a NUL and then a space.
+    //   leading zeros followed by a NUL and then a space.
     checksum_pos := 148
     for i := 0; i < 6 - checksum_in_octal.size; i++:
       header[checksum_pos++] = '0'
@@ -75,7 +75,7 @@ class Tar:
 
     writer_.write header
     writer_.write content
-    // Fill up with zeroes to the next 512 boundary.
+    // Fill up with zeros to the next 512 boundary.
     last_chunk_size := file_size % 512
     if last_chunk_size != 0:
       missing := 512 - last_chunk_size
