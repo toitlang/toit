@@ -82,7 +82,6 @@ int BlockList::payload_size() const {
 }
 
 BlockList::~BlockList() {
-  set_writable(true);
   while (_blocks.remove_first());
 }
 
@@ -101,12 +100,6 @@ void BlockList::take_blocks(BlockList* list, RawHeap* heap) {
   _length = list->_length;
   list->_length = 0;
   list->_blocks = BlockLinkedList();
-}
-
-void BlockList::set_writable(bool value) {
-  for (auto block : _blocks) {
-    VM::current()->heap_memory()->set_writable(block, value);
-  }
 }
 
 template<typename T> inline T translate_address(T value, int delta) {
@@ -242,14 +235,8 @@ void HeapMemory::free_block(Block* block, RawHeap* heap) {
   ASSERT(_in_scavenge);
   // If the block's owner is null we know it is program space and the memory is
   // read only.  This does not happen on the device.
-  if (block->is_program()) {
-#ifdef TOIT_FREERTOS
-    FATAL("Program memory freed on device");
-#endif
-    set_writable(block, true);
-  } else {
-    ASSERT(_in_scavenge);
-  }
+  ASSERT(!block->is_program());
+  ASSERT(_in_scavenge);
   block->_reset();
   _free_list.prepend(block);
 }
@@ -340,10 +327,6 @@ void HeapMemory::leave_scavenge(RawHeap* heap) {
 #endif
   _largest_number_of_blocks_in_a_heap = new_largest_number_of_blocks_in_a_heap;
   _in_scavenge = false;
-}
-
-void HeapMemory::set_writable(Block* block, bool value) {
-  OS::set_writable(block, value);
 }
 
 void RawHeap::take_blocks(BlockList* blocks) {

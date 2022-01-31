@@ -20,6 +20,7 @@
 #include "os.h"
 #include "flags.h"
 #include "memory.h"
+#include "program_memory.h"
 #include <sys/time.h>
 #include <time.h>
 #include <sys/mman.h>
@@ -40,6 +41,12 @@ int OS::num_cores() {
 
 
 void OS::free_block(Block* block) {
+  int result = munmap(void_cast(block), TOIT_PAGE_SIZE);
+  USE(result);
+  ASSERT(result == 0);
+}
+
+void OS::free_block(ProgramBlock* block) {
   int result = munmap(void_cast(block), TOIT_PAGE_SIZE);
   USE(result);
   ASSERT(result == 0);
@@ -77,7 +84,39 @@ Block* OS::allocate_block() {
 #endif
 }
 
-void OS::set_writable(Block* block, bool value) {
+ProgramBlock* OS::allocate_program_block() {
+#if BUILD_64
+  uword size = TOIT_PAGE_SIZE * 2;
+  void* result = mmap(null, size,
+       PROT_READ | PROT_WRITE,
+       MAP_PRIVATE | MAP_ANON, -1, 0);
+  if (result == MAP_FAILED) return null;
+  uword addr = reinterpret_cast<uword>(result);
+  uword aligned = Utils::round_up(addr, TOIT_PAGE_SIZE);
+  if (aligned != addr) {
+    // Unmap the part at the beginning that we can't use because of alignment.
+    int unmap_result = munmap(reinterpret_cast<void*>(addr), aligned - addr);
+    USE(unmap_result);
+    ASSERT(unmap_result == 0);
+  }
+  if (aligned + TOIT_PAGE_SIZE != addr + size) {
+    // Unmap the part at the end that we can't use because of alignment.
+    int unmap_result = munmap(reinterpret_cast<void*>(aligned + TOIT_PAGE_SIZE), addr + size - aligned - TOIT_PAGE_SIZE);
+    USE(unmap_result);
+    ASSERT(unmap_result == 0);
+  }
+  return new (reinterpret_cast<void*>(aligned)) ProgramBlock();
+#else
+  // Using 4k pages on 32 bit we know that the result of mmap will always be
+  // page aligned.
+  void* result = mmap(null, TOIT_PAGE_SIZE,
+       PROT_READ | PROT_WRITE,
+       MAP_PRIVATE | MAP_ANON, -1, 0);
+  return (result == MAP_FAILED) ? null : new (result) ProgramBlock();
+#endif
+}
+
+void OS::set_writable(ProgramBlock* block, bool value) {
   mprotect(void_cast(block), TOIT_PAGE_SIZE, PROT_READ | (value ? PROT_WRITE : 0));
 }
 

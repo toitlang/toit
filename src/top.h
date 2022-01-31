@@ -278,10 +278,13 @@ void fail(const char* format, ...) __attribute__ ((__noreturn__));
 // Common forward declarations.
 class AlignedMemory;
 class Block;
+class ProgramBlock;
 class ConditionVariable;
 class Encoder;
 class Heap;
+class ProgramHeap;
 class HeapMemory;
+class ProgramHeapMemory;
 class Interpreter;
 class Message;
 class Mutex;

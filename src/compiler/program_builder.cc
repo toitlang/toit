@@ -30,7 +30,7 @@ namespace compiler {
 ProgramBuilder::ProgramBuilder(Program* program)
     // We assume that allocate_initial_block succeeds since ProgramBuilder is
     // run on the server.
-    : _program_heap(program, VM::current()->heap_memory()->allocate_initial_block())
+    : _program_heap(program, VM::current()->program_heap_memory()->allocate_initial_block())
     , _program(program) {
 }
 
@@ -268,7 +268,6 @@ void ProgramBuilder::set_built_in_class_tags_and_sizes() {
 
 void ProgramBuilder::set_up_skeleton_program() {
   int minimal_object_size = Instance::allocation_size(0);
-  NoGC check(&_program_heap);
 
   _program->set_null_object(static_cast<Instance*>(_program_heap._allocate_raw(minimal_object_size)));
   _program->null_object()->_set_header(_program, _program->null_class_id());
