@@ -28,7 +28,7 @@ class Port implements reader.Reader:
 
   uart_ := ?
 
-  state_/ResourceState_ ::= ?
+  state_/ResourceState_? := ?
   /** Amount of encountered errors. */
   errors := 0
 
@@ -89,8 +89,13 @@ class Port implements reader.Reader:
   Closes this UART port and release all associated resources.
   */
   close:
-    if uart_:
+    if state_:
+      // Must be done before closing the associated resource, which
+      // invalidates the resource stored in the resource state.
       state_.dispose
+      state_ = null
+    if uart_:
+      // TODO(kasper): Should this have a finalizer.
       uart_close_ resource_group_ uart_
       uart_ = null
 

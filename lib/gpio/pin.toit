@@ -79,11 +79,15 @@ class Pin:
   Closes the pin and releases resources associated with it.
   */
   close:
-    if resource_:
-      gpio_unuse_ resource_group_ resource_
-      resource_ = null
+    if state_:
+      // Must be done before closing the associated resource, which
+      // invalidates the resource stored in the resource state.
       state_.dispose
       state_ = null
+    if resource_:
+      // TODO(kasper): Should this have a finalizer?
+      gpio_unuse_ resource_group_ resource_
+      resource_ = null
 
   /**
   Changes the configuration of this pin.
