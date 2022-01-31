@@ -17,6 +17,7 @@
 
 #include "entropy_mixer.h"
 #include "memory.h"
+#include "program_memory.h"
 #include "objects_inline.h"
 #include "os.h"
 #include "primitive.h"
@@ -42,6 +43,7 @@ VM::VM() {
   OS::reset_monotonic_time();  // Reset "up time".
   Primitive::set_up();
   _heap_memory = _new HeapMemory();
+  _program_heap_memory = _new ProgramHeapMemory();
   _scheduler = _new Scheduler();
 
   _event_manager = _new EventSourceManager();
@@ -53,6 +55,7 @@ VM::~VM() {
   delete _event_manager;
   delete _scheduler;
   delete _heap_memory;
+  delete _program_heap_memory;
   _current = null;
 }
 

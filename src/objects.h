@@ -299,6 +299,7 @@ class HeapObject : public Object {
   friend class ScavengeState;
   friend class ObjectHeap;
   friend class Heap;
+  friend class ProgramHeap;
   friend class BaseSnapshotWriter;
   friend class SnapshotReader;
   friend class compiler::ProgramBuilder;
@@ -376,6 +377,7 @@ class Array : public HeapObject {
 
   friend class ObjectHeap;
   friend class Heap;
+  friend class ProgramHeap;
 
  protected:
   static int _offset_from(int index) { return HEADER_SIZE + index * WORD_SIZE; }
@@ -564,6 +566,7 @@ class ByteArray : public HeapObject {
 
   friend class ObjectHeap;
   friend class Heap;
+  friend class ProgramHeap;
   friend class ShortPrintVisitor;
   friend class VMFinalizerNode;
 
@@ -607,6 +610,7 @@ class LargeInteger : public HeapObject {
     _int64_at_put(VALUE_OFFSET, value);
   }
   friend class Heap;
+  friend class ProgramHeap;
   friend class SnapshotReader;
 };
 
@@ -703,6 +707,7 @@ class Stack : public HeapObject {
   static int _array_offset_from(int index) { return HEADER_SIZE + index  * WORD_SIZE; }
   friend class ObjectHeap;
   friend class Heap;
+  friend class ProgramHeap;
 };
 
 class Double : public HeapObject {
@@ -733,6 +738,7 @@ class Double : public HeapObject {
   void _initialize(double value) { _set_value(value); }
   void _set_value(double value) { _double_at_put(VALUE_OFFSET, value); }
   friend class Heap;
+  friend class ProgramHeap;
 };
 
 class String : public HeapObject {
@@ -993,6 +999,7 @@ class String : public HeapObject {
   bool _is_valid_utf8();
 
   friend class Heap;
+  friend class ProgramHeap;
   friend class ObjectHeap;
   friend class VMFinalizerNode;
 };
@@ -1155,6 +1162,7 @@ class Instance : public HeapObject {
   static int _offset_from(int index) { return HEADER_SIZE + index  * WORD_SIZE; }
 
   friend class Heap;
+  friend class ProgramHeap;
 };
 
 

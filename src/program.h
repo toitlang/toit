@@ -18,7 +18,7 @@
 #include "entry_points.h"
 #include "top.h"
 #include "objects.h"
-#include "memory.h"
+#include "program_memory.h"
 #include "bytecodes.h"
 #include "snapshot.h"
 #include "flash_allocation.h"
@@ -162,18 +162,18 @@ class Program : public FlashAllocation {
   int object_size() const { return _heap.object_size(); }
 
   // Return the program heap.
-  RawHeap* heap() { return &_heap; }
+  ProgramRawHeap* heap() { return &_heap; }
   // The address of where the program heap starts.
   // The returned address points to the the first block's header.
   void* heap_address() { return _heap._blocks.first(); }
 
-  Usage usage();
+  ProgramUsage usage();
 
   int number_of_unused_dispatch_table_entries();
 
   void do_roots(RootCallback* callback);
 
-  void take_blocks(BlockList* blocks) {
+  void take_blocks(ProgramBlockList* blocks) {
     _heap.take_blocks(blocks);
   }
 
@@ -299,7 +299,7 @@ class Program : public FlashAllocation {
             sizeof(uint16) * (class_bits.length() + interface_check_offsets.length() + class_check_ids.length());
   }
 
-  RawHeap _heap;
+  ProgramRawHeap _heap;
 
   Object* _roots[ROOT_COUNT];
   #define DECLARE_ROOT(type, name) void set_##name(type* v) { _roots[name##_INDEX] = v; }

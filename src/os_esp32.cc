@@ -355,10 +355,6 @@ Block* OS::allocate_block() {
   return new (allocation) Block();
 }
 
-void OS::set_writable(Block* block, bool value) {
-  // Not supported on ESP32.
-}
-
 void OS::tear_down() {
 }
 
