@@ -178,7 +178,7 @@ int Scheduler::run_program(Program* program, char** args, ProcessGroup* group, B
 Process* Scheduler::run_external(ProcessRunner* runner) {
   int group_id = next_group_id();
   Locker locker(_mutex);
-  ProcessGroup* group = ProcessGroup::create(group_id);
+  ProcessGroup* group = ProcessGroup::create(group_id, null);
   Process* process = _new Process(runner, group);
   if (process == null) return null;
   _groups.append(group);
