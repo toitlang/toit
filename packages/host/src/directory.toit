@@ -106,7 +106,8 @@ class DirectoryStream:
       closedir_ dir_
       dir_ = null
 
-// No longer in use.
+// For backwards compatibility.
+// Deprecated as of 2022-01.
 opendir_ name:
   #primitive.file.opendir
 
