@@ -35,10 +35,10 @@ class Pin:
   */
   num/int
 
-  pull_up_/bool := false
-  pull_down_/bool := false
-  resource_ := null
-  state_ := null
+  pull_up_/bool ::= false
+  pull_down_/bool ::= false
+  resource_/ByteArray? := null
+  state_/monitor.ResourceState_? ::= null
   last_set_/int := 0
 
   /**
@@ -79,13 +79,8 @@ class Pin:
   Closes the pin and releases resources associated with it.
   */
   close:
-    if state_:
-      // Must be done before closing the associated resource, which
-      // invalidates the resource stored in the resource state.
-      state_.dispose
-      state_ = null
     if resource_:
-      // TODO(kasper): Should this have a finalizer?
+      state_.dispose
       gpio_unuse_ resource_group_ resource_
       resource_ = null
 

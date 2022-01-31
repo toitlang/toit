@@ -234,7 +234,7 @@ class Client:
   address/Address
 
   gatt_ := ?
-  resource_state_/monitor.ResourceState_? := null
+  resource_state_/monitor.ResourceState_
 
   constructor .device .address:
     ble_connect_ device.resource_group_ address.raw_
@@ -289,15 +289,14 @@ class Device:
   Closes the device and releases all resources associated with the BLE stack.
   */
   close:
-    if resource_state_:
-      // Must be done before closing the associated resource, which
-      // invalidates the resource stored in the resource state.
-      resource_state_.dispose
-      resource_state_ = null
     if resource_group_:
-      ble_close_ resource_group_
-      resource_group_ = null
-      remove_finalizer this
+      try:
+        ble_close_ resource_group_
+        resource_group_ = null
+        resource_state_.dispose
+        resource_state_ = null
+      finally:
+        remove_finalizer this
 
   /**
   Initializes an advertiser for the local device.
