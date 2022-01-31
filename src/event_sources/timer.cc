@@ -95,6 +95,7 @@ void TimerEventSource::on_unregister_resource(Locker& locker, Resource* r) {
 
 void TimerEventSource::entry() {
   Locker locker(mutex());
+  HeapTagScope scope(ITERATE_CUSTOM_TAGS + EVENT_SOURCE_MALLOC_TAG);
 
   while (!_stop) {
     int64 time = OS::get_monotonic_time();

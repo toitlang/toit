@@ -60,6 +60,7 @@ GPIOEventSource::~GPIOEventSource() {
 }
 
 void GPIOEventSource::entry() {
+  HeapTagScope scope(ITERATE_CUSTOM_TAGS + EVENT_SOURCE_MALLOC_TAG);
   while (true) {
     word id;
     if (xQueueReceive(_queue, &id, portMAX_DELAY) != pdTRUE) continue;

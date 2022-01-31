@@ -83,10 +83,10 @@ chdir name:
 
 // An open directory, used to iterate over the named entries in a directory.
 class DirectoryStream:
-  fd_ := ?
+  dir_ := ?
 
   constructor name:
-    fd_ = opendir_ name
+    dir_ = opendir_ resource_freeing_module_ name
 
   /**
   Returns a string with the next name from the directory.
@@ -95,17 +95,18 @@ class DirectoryStream:
   */
   next -> string?:
     while true:
-      byte_array := readdir_ fd_
+      byte_array := readdir_ dir_
       if not byte_array: return null
       str := byte_array.to_string
       if str == "." or str == "..": continue
       return str
 
   close -> none:
-    fd := fd_
-    closedir_ fd
+    if dir_:
+      closedir_ dir_
+      dir_ = null
 
-opendir_ name:
+opendir_ resource_group name:
   #primitive.file.opendir
 
 readdir_ dir -> ByteArray:

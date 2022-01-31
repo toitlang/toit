@@ -78,9 +78,7 @@ class Socket_:
       throw (last_error_ session e)
     unreachable
 
-  /**
-  Returns the latest socket error (even if OK).
-  */
+  /** Returns the latest socket error (even if OK). */
   last_error_ cellular/at.Session original_error/string="" -> Exception:
     res := cellular.action "+QIGETERROR"
     print_ "Error $original_error -> $res.last"
@@ -156,9 +154,7 @@ class TcpSocket extends Socket_ implements tcp.Socket:
     sleep --ms=100
     return 0
 
-  /**
-  Closes the socket for write. The socket is still be able to read incoming data.
-  */
+  /** Closes the socket for write. The socket is still be able to read incoming data. */
   close_write:
     throw "UNSUPPORTED"
 
@@ -180,6 +176,9 @@ class TcpSocket extends Socket_ implements tcp.Socket:
   mtu -> int:
     return 1500
 
+/**
+Deprecated. Use package quectel-cellular (https://github.com/toitware/quectel-cellular).
+*/
 class UdpSocket extends Socket_ implements udp.Socket:
   remote_address_ := null
 
@@ -259,6 +258,8 @@ class UdpSocket extends Socket_ implements udp.Socket:
   broadcast= value/bool: throw "BROADCAST_UNSUPPORTED"
 
 /**
+Deprecated. Use package quectel-cellular (https://github.com/toitware/quectel-cellular).
+
 Base driver for Quectel Cellular devices, communicating over CAT-NB1 and/or CAT-M1.
 */
 abstract class QuectelCellular extends CellularBase implements Gnss:
@@ -267,9 +268,7 @@ abstract class QuectelCellular extends CellularBase implements Gnss:
 
   resolve_/monitor.Latch? := null
 
-  /**
-  Called when the driver should reset.
-  */
+  /** Called when the driver should reset. */
   abstract on_reset session/at.Session
 
   constructor
@@ -509,6 +508,7 @@ abstract class QuectelCellular extends CellularBase implements Gnss:
       if state[0] == 1:
         session.action "+QGPSEND"
 
+/** Deprecated. Use package quectel-cellular (https://github.com/toitware/quectel-cellular).*/
 class QuectelConstants implements Constants:
   RatCatM1 -> int: return 8
 

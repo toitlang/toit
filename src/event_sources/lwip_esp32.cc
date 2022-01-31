@@ -81,7 +81,7 @@ String* lwip_strerror(Process* process, err_t err, Error** error) {
              "Connection reset",         /* ERR_RST        -12 */
              "Connection closed",        /* ERR_CLSD       -13 */
              "Connection refused",       /* ERR_CONN       -14 */
-             "Illegal argument"          /* ERR_ARG        -15 */
+             "Illegal argument",         /* ERR_ARG        -15 */
              "Low-level netif error",    /* ERR_IF         -16 */
   };
 
@@ -183,6 +183,7 @@ LwIPEventSource::LwIPEventSource()
     : EventSource("LwIP", 1)
     , _mutex(OS::allocate_mutex(0, "LwIPEventSource"))
     , _call_done(OS::allocate_condition_variable(_mutex)) {
+  HeapTagScope scope(ITERATE_CUSTOM_TAGS + LWIP_MALLOC_TAG);
 #if defined(TOIT_FREERTOS)
   // Create the LWIP thread.
   esp_netif_init();

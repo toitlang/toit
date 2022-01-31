@@ -334,8 +334,11 @@ class Array : public HeapObject {
   int size() { return allocation_size(length()); }
 
   void roots_do(RootCallback* cb);
+
+#ifndef TOIT_FREERTOS
   void write_content(SnapshotWriter* st);
   void read_content(SnapshotReader* st, int length);
+#endif
 
   static Array* cast(Object* array) {
      ASSERT(array->is_array());
@@ -460,6 +463,7 @@ class ByteArray : public HeapObject {
     *extra_bytes = raw_length;
   }
 
+#ifndef TOIT_FREERTOS
   static void snapshot_allocation_size(int length, int* word_count, int* extra_bytes) {
     if (length > SNAPSHOT_INTERNAL_SIZE_CUTOFF) {
       return external_allocation_size(word_count, extra_bytes);
@@ -470,6 +474,7 @@ class ByteArray : public HeapObject {
 
   void write_content(SnapshotWriter* st);
   void read_content(SnapshotReader* st, int byte_length);
+#endif
 
   static ByteArray* cast(Object* byte_array) {
      ASSERT(byte_array->is_byte_array());
@@ -710,8 +715,10 @@ class Double : public HeapObject {
      return static_cast<Double*>(value);
   }
 
+#ifndef TOIT_FREERTOS
   void write_content(SnapshotWriter* st);
   void read_content(SnapshotReader* st);
+#endif
 
   static int allocation_size() { return SIZE; }
   static void allocation_size(int* word_count, int* extra_bytes) {
@@ -797,8 +804,10 @@ class String : public HeapObject {
   static uint16 compute_hash_code_for(const char* str, int str_len);
   static uint16 compute_hash_code_for(const char* str);
 
+#ifndef TOIT_FREERTOS
   void write_content(SnapshotWriter* st);
   void read_content(SnapshotReader* st, int length);
+#endif
 
   // Returns a derived pointer that can be used as a null terminated c string.
   // Not all returned objects are mutable.
@@ -838,7 +847,7 @@ class String : public HeapObject {
     *extra_bytes = 0;
   }
 
-
+#ifndef TOIT_FREERTOS
   static void snapshot_allocation_size(int length, int* word_count, int* extra_bytes) {
     if (length > SNAPSHOT_INTERNAL_SIZE_CUTOFF) {
       return external_allocation_size(word_count, extra_bytes);
@@ -846,6 +855,7 @@ class String : public HeapObject {
       return internal_allocation_size(length, word_count, extra_bytes);
     }
   }
+#endif
 
   void do_pointers(PointerCallback* cb);
 
@@ -913,6 +923,7 @@ class String : public HeapObject {
   // The first length field will also be used or tagging, recognizing an external representation.
   // Please note that if need be it is easy to extend the width of hash_code for strings with off heap content.
   static const int SENTINEL = 65535;
+  static_assert(SENTINEL > TOIT_PAGE_SIZE, "Sentinel must not be legal internal length");
   static const int HASH_CODE_OFFSET = HeapObject::SIZE;
   static const int INTERNAL_LENGTH_OFFSET = HASH_CODE_OFFSET + HALF_WORD_SIZE;
   static const int INTERNAL_HEADER_SIZE = INTERNAL_LENGTH_OFFSET + HALF_WORD_SIZE;
@@ -1117,8 +1128,11 @@ class Instance : public HeapObject {
   }
 
   void roots_do(int instance_size, RootCallback* cb);
+
+#ifndef TOIT_FREERTOS
   void write_content(int instance_size, SnapshotWriter* st);
   void read_content(SnapshotReader* st);
+#endif
 
   static int length_from_size(int instance_size) {
     return (instance_size - HEADER_SIZE) / WORD_SIZE;

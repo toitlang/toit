@@ -111,7 +111,7 @@ bool FilesystemLocal::do_is_directory(const char* path) {
 const char* FilesystemLocal::sdk_path() {
   if (_sdk_path == null) {
     if (Flags::lib_path != null) {
-      _sdk_path = Flags::lib_path;
+      _sdk_path = to_local_path(Flags::lib_path);
     } else {
       // Compute the library_root based on the executable path.
       char* path = get_executable_path();

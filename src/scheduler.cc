@@ -81,7 +81,7 @@ Scheduler::ExitState Scheduler::run_boot_program(Program* program, char** args, 
   // Allocation takes the memory lock which must happen before taking the scheduler lock.
   Block* initial_block = VM::current()->heap_memory()->allocate_initial_block();
   Locker locker(_mutex);
-  ProcessGroup* group = ProcessGroup::create(group_id);
+  ProcessGroup* group = ProcessGroup::create(group_id, program);
   return launch_program(locker, _new Process(program, group, args, initial_block));
 }
 
@@ -91,7 +91,7 @@ Scheduler::ExitState Scheduler::run_boot_program(
     SnapshotBundle application_bundle,
     char** args,
     int group_id) {
-  ProcessGroup* group = ProcessGroup::create(group_id);
+  ProcessGroup* group = ProcessGroup::create(group_id, boot_program);
   // We assume that allocate_initial_block succeeds since we can't run out of
   // memory while booting.
   // Allocation takes the memory lock which must happen before taking the scheduler lock.
@@ -366,7 +366,9 @@ void Scheduler::scavenge(Process* process, bool malloc_failed, bool try_hard) {
         int64 wait_ms = Utils::max(1LL, (deadline - OS::get_monotonic_time()) / 1000);
         if (!OS::wait(_gc_condition, wait_ms)) {
 #ifdef TOIT_GC_LOGGING
-          printf("[cross-process gc: timed out waiting for %d]\n", _gc_waiting_for_preemption);
+          printf("[gc @ %p%s | timed out waiting for %d processes to stop]\n",
+              process, VM::current()->scheduler()->is_boot_process(process) ? "*" : " ",
+              _gc_waiting_for_preemption);
 #endif
           _gc_waiting_for_preemption = 0;
         }
@@ -419,7 +421,8 @@ void Scheduler::scavenge(Process* process, bool malloc_failed, bool try_hard) {
     _gc_cross_processes = false;
 #ifdef TOIT_GC_LOGGING
     int64 microseconds = OS::get_monotonic_time() - start;
-    printf("[cross-process gc: %d scavenges, took %d.%03dms]\n",
+    printf("[gc @ %p%s | cross process gc with %d scavenges, took %d.%03dms]\n",
+        process, VM::current()->scheduler()->is_boot_process(process) ? "*" : " ",
         scavenges + 1,
         static_cast<int>(microseconds / 1000),
         static_cast<int>(microseconds % 1000));

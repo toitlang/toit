@@ -53,4 +53,15 @@ PRIMITIVE(register_object_notifier) {
   return process->program()->null_object();
 }
 
+PRIMITIVE(unregister_object_notifier) {
+  ARGS(ByteArray, group_proxy, ByteArray, resource_proxy);
+
+  ResourceGroup* group = group_proxy->as_external<ResourceGroup>();
+  Resource* resource = resource_proxy->as_external<Resource>();
+  if (group && resource && resource->object_notifier()) {
+    group->event_source()->set_object_notifier(resource, null);
+  }
+  return process->program()->null_object();
+}
+
 } // namespace toit

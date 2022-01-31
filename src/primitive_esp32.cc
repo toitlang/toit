@@ -136,6 +136,15 @@ PRIMITIVE(get_mac_address) {
   return result;
 }
 
+PRIMITIVE(rtc_user_bytes) {
+  uint8* rtc_memory = RtcMemory::user_data_address();
+  Error* error = null;
+  ByteArray* result = process->object_heap()->allocate_external_byte_array(RtcMemory::RTC_USER_DATA_SIZE, rtc_memory, false, false);
+  if (result == null) return error;
+
+  return result;
+}
+
 } // namespace toit
 
 #endif // TOIT_FREERTOS

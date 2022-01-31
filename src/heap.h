@@ -22,7 +22,6 @@
 #include "objects.h"
 #include "primitive.h"
 #include "printing.h"
-#include "snapshot.h"
 
 #include "objects_inline.h"
 
@@ -281,7 +280,9 @@ class ObjectHeap final : public Heap {
   ByteArray* allocate_proxy(int length, uint8* memory, bool dispose = false) {
     return allocate_external_byte_array(length, memory, dispose, false);
   }
-  ByteArray* allocate_proxy() { return allocate_proxy(0, null); }
+  ByteArray* allocate_proxy(bool dispose = false) {
+    return allocate_proxy(0, null, dispose);
+  }
 
   void print(Printer* printer);
 

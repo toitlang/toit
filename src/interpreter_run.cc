@@ -508,7 +508,7 @@ Interpreter::Result Interpreter::_run() {
 #ifdef TOIT_GC_LOGGING
       if (attempts == 3) {
         printf("[gc @ %p%s | 3rd time allocate failure %zd]\n",
-            _process, VM::current()->scheduler()->is_boot_process(_process) ? "*" : "",
+            _process, VM::current()->scheduler()->is_boot_process(_process) ? "*" : " ",
             class_index);
       }
 #endif //TOIT_GC_LOGGING
@@ -1007,7 +1007,7 @@ Interpreter::Result Interpreter::_run() {
 #ifdef TOIT_GC_LOGGING
         if (attempts == 3) {
           printf("[gc @ %p%s | 3rd time primitive failure %d::%d%s]\n",
-              _process, VM::current()->scheduler()->is_boot_process(_process) ? "*" : "",
+              _process, VM::current()->scheduler()->is_boot_process(_process) ? "*" : " ",
               primitive_module, primitive_index,
               malloc_failed ? " (malloc)" : "");
         }

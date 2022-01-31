@@ -444,6 +444,7 @@ bool String::_is_valid_utf8() {
 }
 
 #ifndef TOIT_FREERTOS
+
 void Array::write_content(SnapshotWriter* st) {
   int len = length();
   for (int index = 0; index < len; index++) st->write_object(at(index));
@@ -534,7 +535,6 @@ void ByteArray::read_content(SnapshotReader* st, int len) {
       bytes.at_put(index, st->read_cardinal());
   }
 }
-
 
 #endif  // TOIT_FREERTOS
 

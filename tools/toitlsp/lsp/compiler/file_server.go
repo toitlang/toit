@@ -29,7 +29,6 @@ type FileServer interface {
 	/// ConfigLine is the line that is sent to the compiler to be able to
 	/// communicate with the file server.
 	ConfigLine() string
-	Run() error
 	Stop() error
 	Protocol() *CompilerFSProtocol
 }
@@ -109,7 +108,7 @@ func (s *PortFileServer) serve(l net.Listener, closeCh chan struct{}) error {
 
 func (s *PortFileServer) handleConn(conn net.Conn) {
 	defer conn.Close()
-	s.cp.HandleConn(conn)
+	s.cp.HandleConn(conn, conn)
 }
 
 func (s *PortFileServer) Stop() error {

@@ -13,6 +13,8 @@ import .cellular
 REGISTRATION_DENIED_ERROR ::= "registration denied"
 
 /**
+Deprecated. Use package cellular (https://github.com/toitware/cellular).
+
 Base functionality of Cellular modems, encapsulating the generic functionality.
 
 Major things that are not implemented in the base is:
@@ -39,6 +41,7 @@ abstract class CellularBase implements Cellular:
 
   is_lte_connection_ := false
 
+  /** Deprecated. Use package cellular (https://github.com/toitware/cellular). */
   constructor
       .uart_
       .at_session_
@@ -292,14 +295,14 @@ abstract class CellularBase implements Cellular:
   recover_modem -> none:
     power_off
 
-  /**
-  Called when the driver has connected.
-  */
+  /** Called when the driver has connected. */
   abstract on_connected_ session/at.Session
 
+/** Deprecated. Use package cellular (https://github.com/toitware/cellular). */
 interface Constants:
   RatCatM1 -> int?
 
+/** Deprecated. Use package cellular (https://github.com/toitware/cellular). */
 class CFUN extends at.Command:
   static TIMEOUT ::= Duration --m=3
 
@@ -320,7 +323,7 @@ class CFUN extends at.Command:
   constructor.get:
     super.read "+CFUN" --timeout=TIMEOUT
 
-
+/** Deprecated. Use package cellular (https://github.com/toitware/cellular). */
 class COPS extends at.Command:
   // COPS times out after 180s, but since it can be aborted, any timeout can be used.
   static TIMEOUT ::= Duration --m=3

@@ -31,12 +31,12 @@ class ProcessGroup : public ProcessGroupList::Element {
  public:
   ~ProcessGroup();
 
-  static ProcessGroup* create(int id);
+  static ProcessGroup* create(int id, Program* program, AlignedMemoryBase* memory = null);
 
   SystemMessage* take_termination_message(int pid, uint8 result);
 
   int id() const { return _id; }
-  Program* program() const;
+  Program* program() const { return _program; }
 
   Process* lookup(int process_id);
   void add(Process* process);
@@ -51,11 +51,17 @@ class ProcessGroup : public ProcessGroupList::Element {
 
  private:
   const int _id;
+  Program* const _program;
+
+  // If the process groups owns memory, it is automatically deleted
+  // when the process group goes away.
+  AlignedMemoryBase* const _memory;
+
   SystemMessage* _termination_message;
 
   ProcessListFromProcessGroup _processes;
 
-  ProcessGroup(int id, SystemMessage* termination_message);
+  ProcessGroup(int id, Program* program, AlignedMemoryBase* memory, SystemMessage* termination);
 
   friend class Scheduler;
 };

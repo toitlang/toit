@@ -63,9 +63,9 @@ func NewCompilerFSProtocol(fs FileSystem, logger *zap.Logger, SDKPath string) *C
 	}
 }
 
-func (cp *CompilerFSProtocol) HandleConn(conn io.ReadWriter) {
-	scanner := bufio.NewScanner(conn)
-	w := bufio.NewWriter(conn)
+func (cp *CompilerFSProtocol) HandleConn(reader io.Reader, writer io.Writer) {
+	scanner := bufio.NewScanner(reader)
+	w := bufio.NewWriter(writer)
 	for scanner.Scan() {
 		line := scanner.Text()
 		switch line {

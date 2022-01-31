@@ -11,6 +11,8 @@ import .quectel_cellular
 import .cellular
 
 /**
+Deprecated. Use package quectel-cellular (https://github.com/toitware/quectel-cellular).
+
 Driver for BG96, LTE-M modem.
 */
 class BG96 extends QuectelCellular:

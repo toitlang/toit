@@ -4,5 +4,5 @@
 
 main:
   x := [
-    : debug it
+    : print it
   ];

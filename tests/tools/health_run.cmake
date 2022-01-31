@@ -25,9 +25,6 @@ endif()
 if (NOT DEFINED LIB_DIR)
   message(FATAL_ERROR "Missing LIB_DIR argument")
 endif()
-if (NOT DEFINED NORMALIZE_GOLD)
-  message(FATAL_ERROR "Missing NORMALIZE_GOLD argument")
-endif()
 if (NOT DEFINED TEST_ROOT)
   message(FATAL_ERROR "Missing TEST_ROOT argument")
 endif()
@@ -46,7 +43,7 @@ execute_process(
 # Ensure that the stderr is after stdout to avoid diffs..
 set(OUTPUT "${STDOUT}${STDERR}")
 
-include(${NORMALIZE_GOLD})
+include("${CMAKE_CURRENT_LIST_DIR}/normalize_gold.cmake")
 
 NORMALIZE_GOLD("${OUTPUT}" "${TEST_ROOT}" "" NORMALIZED)
 
