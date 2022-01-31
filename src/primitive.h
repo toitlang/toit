@@ -469,7 +469,8 @@ namespace toit {
   PRIMITIVE(rename, 2)                       \
   PRIMITIVE(chdir, 1)                        \
   PRIMITIVE(mkdir, 2)                        \
-  PRIMITIVE(opendir, 2)                      \
+  PRIMITIVE(opendir, 1)                      \
+  PRIMITIVE(opendir2, 2)                     \
   PRIMITIVE(readdir, 1)                      \
   PRIMITIVE(closedir, 1)                     \
   PRIMITIVE(stat, 2)                         \

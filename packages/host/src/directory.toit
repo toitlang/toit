@@ -106,8 +106,13 @@ class DirectoryStream:
       closedir_ dir_
       dir_ = null
 
-opendir_ resource_group name:
+// For backwards compatibility.
+// Deprecated as of 2022-01.
+opendir_ name:
   #primitive.file.opendir
+
+opendir_ resource_group name:
+  #primitive.file.opendir2
 
 readdir_ dir -> ByteArray:
   #primitive.file.readdir
