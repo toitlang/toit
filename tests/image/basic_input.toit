@@ -3,4 +3,6 @@
 // be found in the tests/LICENSE file.
 
 main:
-  print "hello world"
+  // Don't use 'print' as it might require a boot-process which isn't loaded when
+  // just running the image.
+  print_ "hello world"

@@ -39,9 +39,6 @@ execute_process(
   RESULT_VARIABLE EXIT_CODE
 )
 
-message("-Xlib_path=${LIB_DIR}")
-message("${TEST}")
-
 # We can't guarantee that stdout and stderr appear in the right order (looking at you, Windows).
 # Ensure that the stderr is after stdout to avoid diffs..
 set(OUTPUT "${STDOUT}${STDERR}")

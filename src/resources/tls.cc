@@ -663,6 +663,7 @@ PRIMITIVE(get_session) {
   }
 
   proxy->set_external_address(result.length(), const_cast<uint8*>(result.address()));
+  process->object_heap()->register_external_allocation(result.length());
   return proxy;
 }
 

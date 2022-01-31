@@ -81,7 +81,7 @@ String* lwip_strerror(Process* process, err_t err, Error** error) {
              "Connection reset",         /* ERR_RST        -12 */
              "Connection closed",        /* ERR_CLSD       -13 */
              "Connection refused",       /* ERR_CONN       -14 */
-             "Illegal argument"          /* ERR_ARG        -15 */
+             "Illegal argument",         /* ERR_ARG        -15 */
              "Low-level netif error",    /* ERR_IF         -16 */
   };
 

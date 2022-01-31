@@ -19,7 +19,7 @@
 
 #include "snapshot.h"
 #include "objects_inline.h"
-#include "heap.h"
+#include "program_heap.h"
 #include "os.h"
 #include "process.h"
 #include "uuid.h"
@@ -253,7 +253,7 @@ class SizedVirtualAllocator {
  public:
   SizedVirtualAllocator(int word_size)
       : _word_size(word_size)
-      , limit(Block::max_payload_size(word_size)) { }
+      , limit(ProgramBlock::max_payload_size(word_size)) { }
 
   HeapObject* allocate_object(TypeTag tag, int length);
 
@@ -414,44 +414,6 @@ class ImageAllocator : public HeapAllocator {
 
   // Returns the byte_size needed for the external (off-heap) memory at the head of the image.
   uword external_size();
-};
-
-class ObjectAllocator : public HeapAllocator {
- public:
-  ObjectAllocator(Process* process) : _process(process) { }
-
-  bool initialize(int normal_block_count,
-                  int external_pointer_count,
-                  int external_int32_count,
-                  int external_byte_count) {
-    HeapAllocator::initialize(normal_block_count,
-                              external_pointer_count,
-                              external_int32_count,
-                              external_byte_count);
-
-    _block_table = unvoid_cast<void**>(malloc(normal_block_count * sizeof(void*)));
-    if (_block_table == null) return false;
-    for (int i = 0; i < normal_block_count; i++) {
-      auto block_memory = _process->object_heap()->_allocate_raw(Block::max_payload_size());
-      if (block_memory == null) return false;
-      _block_table[i] = block_memory;
-    }
-    if (external_pointer_count != 0 || external_int32_count != 0 || external_byte_count != 0) {
-      UNIMPLEMENTED();
-    }
-    return true;
-  }
-
-  HeapObject* allocate_object(TypeTag tag, int length);
-
- protected:
-  void* allocate_external(int byte_size) { UNREACHABLE(); }
-
- private:
-  Process* _process;
-  void** _block_table = null;
-  int _current_block = 0; // Index of the current block.
-  int _block_offset = 0;  // Offset into the current block of the first free area.
 };
 
 template <typename T>
@@ -869,21 +831,6 @@ Object** SnapshotReader::read_external_object_table(int* length) {
   return table;
 }
 
-HeapObject* ObjectAllocator::allocate_object(TypeTag tag, int length) {
-  int word_count, extra_bytes;
-  allocation_size(tag, length, &word_count, &extra_bytes);
-  int byte_size = _align(word_count * sizeof(word) + extra_bytes);
-  ASSERT(byte_size < Block::max_payload_size());
-  if (_block_offset + byte_size > Block::max_payload_size()) {
-    _current_block++;
-    _block_offset = 0;
-  }
-  ASSERT(_current_block < normal_block_count());
-  auto result = reinterpret_cast<HeapObject*>(&unvoid_cast<char*>(_block_table[_current_block])[_block_offset]);
-  _block_offset += byte_size;
-  return result;
-}
-
 HeapObject* SizedVirtualAllocator::allocate_object(TypeTag tag, int length) {
   int word_count, extra_bytes;
   allocation_size(tag, length, &word_count, &extra_bytes);
@@ -967,7 +914,7 @@ ProgramImage ImageSnapshotReader::read_image() {
 }
 
 void ImageAllocator::expand() {
-  Block* block = new (_block_top) Block();
+  ProgramBlock* block = new (_block_top) ProgramBlock();
   _block_top = Utils::address_at(_block_top, TOIT_PAGE_SIZE);
   _program->_heap._blocks.append(block);
 }
@@ -978,7 +925,7 @@ HeapObject* ImageAllocator::allocate_object(TypeTag tag, int length) {
   int byte_size = _align(word_count * sizeof(word) + extra_bytes);
   HeapObject* result = _program->_heap._blocks.last()->allocate_raw(byte_size);
   if (result != null) return result;
-  ASSERT(byte_size < Block::max_payload_size());
+  ASSERT(byte_size < ProgramBlock::max_payload_size());
   expand();
   return _program->_heap._blocks.last()->allocate_raw(byte_size);
 }
