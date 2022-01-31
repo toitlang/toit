@@ -60,9 +60,19 @@ function(compute_git_version VERSION)
   backtick(CURRENT_COMMIT_NO ${GIT_EXECUTABLE} rev-list --count HEAD "^${VERSION_TAG_COMMIT}")
   backtick(CURRENT_BRANCH ${GIT_EXECUTABLE} rev-parse --abbrev-ref HEAD)
 
-  if ("${CURRENT_BRANCH}" MATCHES "^release-v[0-9]+\\.[0-9]$")
-    # Use next patch version when on a release branch.
-    MATH(EXPR patch "${patch}+1")
+  if ("${CURRENT_BRANCH}" MATCHES "^release-v([0-9]+)\\.([0-9]+)$")
+    set(branch_major ${CMAKE_MATCH_1})
+    set(branch_minor ${CMAKE_MATCH_2})
+    if (${branch_major} EQUAL ${major} AND ${branch_minor} EQUAL ${minor})
+      # There is already a release on this branch.
+      # Use next patch version.
+      MATH(EXPR patch "${patch}+1")
+    else()
+      # First release on this major.minor branch.
+      set(major ${branch_major})
+      set(minor ${branch_minor})
+      set(patch "0")
+    endif()
     set(${VERSION} "v${major}.${minor}.${patch}-pre.${CURRENT_COMMIT_NO}+${CURRENT_COMMIT_SHORT}" PARENT_SCOPE)
     return()
   endif()
