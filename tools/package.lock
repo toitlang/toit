@@ -1,8 +1,12 @@
 prefixes:
-  host: host
-  ar: ar
+  ar: pkg-ar
+  host: pkg-host
 packages:
-  host:
-    path: ../packages/host
-  ar:
-    path: ../packages/ar
+  pkg-ar:
+    url: github.com/toitlang/pkg-ar
+    version: 1.0.0
+    hash: 175bcdfd59b2597c0825ef8765a20498a7e6a2db
+  pkg-host:
+    url: github.com/toitlang/pkg-host
+    version: 1.0.0
+    hash: 8c8d57301062a62d827c81687e09923d7d909ff7
