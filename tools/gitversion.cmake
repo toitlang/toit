@@ -77,7 +77,7 @@ function(compute_git_version VERSION)
     return()
   endif()
 
-  if ("${CURRENT_BRANCH}" MATCHES "^release-v[0-9]+\\.[0-9]$")
+  if ("${CURRENT_BRANCH}" STREQUAL master OR "${CURRENT_BRANCH}" STREQUAL main OR "${CURRENT_BRANCH}" STREQUAL HEAD)
     # Master branch: v0.5.0-pre.17+9a1fbdb29
     MATH(EXPR minor "${minor}+1")
     set(${VERSION} "v${major}.${minor}.0-pre.${CURRENT_COMMIT_NO}+${CURRENT_COMMIT_SHORT}" PARENT_SCOPE)
