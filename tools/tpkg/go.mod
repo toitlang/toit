@@ -4,7 +4,7 @@ go 1.17
 
 require (
 	github.com/spf13/cobra v1.3.0
-	github.com/toitlang/tpkg v0.0.0-20220112133931-234a7f81c4ab
+	github.com/toitlang/tpkg v0.0.0-20220131170659-2a3698d78e18
 )
 
 require (
