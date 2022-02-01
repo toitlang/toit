@@ -152,6 +152,8 @@ ProgramHeapMemory::~ProgramHeapMemory() {
   while (ProgramBlock* block = _free_list.remove_first()) {
 #ifndef TOIT_FREERTOS
     OS::free_block(block);
+#else
+    USE(block);
 #endif
   }
   OS::dispose(_memory_mutex);
