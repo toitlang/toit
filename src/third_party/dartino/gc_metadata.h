@@ -7,8 +7,7 @@
 // tables of the metadata can also be contiguous without needing complicated
 // mapping.
 
-#ifndef SRC_VM_GC_METADATA_H_
-#define SRC_VM_GC_METADATA_H_
+#pragma once
 
 #include <stdint.h>
 
@@ -395,5 +394,3 @@ class GcMetadata {
 };
 
 }  // namespace toit
-
-#endif  // SRC_VM_GC_METADATA_H_
