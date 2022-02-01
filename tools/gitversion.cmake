@@ -116,11 +116,12 @@ function(compute_git_version VERSION)
       COMMAND ${GIT_EXECUTABLE} merge-base --is-ancestor ${RELEASE_BRANCH} HEAD
       RESULT_VARIABLE RESULT
     )
-    if ("${RESULT_VARIABLE}" EQUAL 0)
+    if ("${RESULT}" EQUAL 0)
       # This branch is a child branch of a release-branch.
       string(REGEX MATCH "/release-v([0-9]+)\\.([0-9]+)" IGNORED "${RELEASE_BRANCH}")
       set(branch_major ${CMAKE_MATCH_1})
       set(branch_minor ${CMAKE_MATCH_2})
+      set(ON_RELEASE_BRANCH 1)
       break()
     endif()
   endforeach()
@@ -129,11 +130,19 @@ function(compute_git_version VERSION)
   if ("${branch_major}.${branch_minor}" VERSION_GREATER "${major}.${minor}")
     set(major ${branch_major})
     set(minor ${branch_minor})
+    set(patch 0)
+  endif()
+  if ("${ON_RELEASE_BRANCH}")
+    # We are a child of a release branch.
+    # Just increment the patch number.
+    MATH(EXPR patch "${patch}+1")
+  else()
+    MATH(EXPR minor "${minor}+1")
+    set(patch 0)
   endif()
   # Semver requires the dot-separated identifiers to comprise only alphanumerics and hyphens.
   string(REGEX REPLACE "[^.0-9A-Za-z-]" "-" SANITIZED_BRANCH ${CURRENT_BRANCH})
-  MATH(EXPR minor "${minor}+1")
-  set(${VERSION} "v${major}.${minor}.0-pre.${CURRENT_COMMIT_NO}+${SANITIZED_BRANCH}.${CURRENT_COMMIT_SHORT}" PARENT_SCOPE)
+  set(${VERSION} "v${major}.${minor}.${patch}-pre.${CURRENT_COMMIT_NO}+${SANITIZED_BRANCH}.${CURRENT_COMMIT_SHORT}" PARENT_SCOPE)
 endfunction()
 
 # Print the git-version on stdout:
