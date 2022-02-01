@@ -257,7 +257,7 @@ class GcMetadata {
   // Marks all the bits (1 bit per word) that correspond to a live object.
   // This marks the object black (scanned) and sets up the bitmap data we need
   // for compaction.
-  static void mark_all(HeapObject* object, size_t size) {
+  static void mark_all(HeapObject* object, uword size) {
     // If there were 1-word live objects we could not see the difference
     // between grey objects (only first word is marked) and black objects (all
     // words are marked).
@@ -269,7 +269,7 @@ class GcMetadata {
 #endif
     int mask_shift =
         ((reinterpret_cast<uword>(object) >> WORD_SHIFT) & mask_mask);
-    size_t size_in_words = size >> WORD_SHIFT;
+    uword size_in_words = size >> WORD_SHIFT;
     // Jump to the slow case routine to handle crossing an int32_t boundary.
     // If we have unaligned access then this slow case never happens for
     // objects < 24 words in size. Otherwise it can happen for small objects
@@ -287,7 +287,7 @@ class GcMetadata {
   }
 
   static ALWAYS_INLINE uword get_destination(HeapObject* pre_compaction) {
-    size_t word_position =
+    uword word_position =
         (reinterpret_cast<uword>(pre_compaction) >> WORD_SHIFT) & 31;
     uint32 mask = ~(0xffffffffu << word_position);
     uint32 bits = *mark_bits_for(pre_compaction) & mask;
@@ -354,7 +354,7 @@ class GcMetadata {
 
   void set_up_singleton();
 
-  static void slow_mark(HeapObject* object, size_t size);
+  static void slow_mark(HeapObject* object, uword size);
   static uword end_of_destination_of_last_live_object_starting_before(
       uword line, uword limit, uword* src_end_return = NULL);
   static uword last_line_that_fits(uword line, uword dest_limit);

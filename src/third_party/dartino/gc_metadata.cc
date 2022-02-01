@@ -243,7 +243,7 @@ uword GcMetadata::object_address_from_start(uword card, uint8 start) {
 }
 
 // Mark all bits of an object whose mark bits cross a 32 bit boundary.
-void GcMetadata::slow_mark(HeapObject* object, size_t size) {
+void GcMetadata::slow_mark(HeapObject* object, uword size) {
   int mask_shift = ((reinterpret_cast<uword>(object) >> WORD_SHIFT) & 31);
   uint32* bits = mark_bits_for(object);
 
