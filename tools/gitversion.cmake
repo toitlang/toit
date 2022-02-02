@@ -60,28 +60,6 @@ function(compute_git_version VERSION)
   backtick(CURRENT_COMMIT_NO ${GIT_EXECUTABLE} rev-list --count HEAD "^${VERSION_TAG_COMMIT}")
   backtick(CURRENT_BRANCH ${GIT_EXECUTABLE} rev-parse --abbrev-ref HEAD)
 
-  if ("${CURRENT_BRANCH}" MATCHES "^release-v([0-9]+)\\.([0-9]+)$")
-    set(branch_major ${CMAKE_MATCH_1})
-    set(branch_minor ${CMAKE_MATCH_2})
-    if (${branch_major} EQUAL ${major} AND ${branch_minor} EQUAL ${minor})
-      # There is already a release on this branch.
-      # Use next patch version.
-      MATH(EXPR patch "${patch}+1")
-      set(${VERSION} "v${major}.${minor}.${patch}-pre.${CURRENT_COMMIT_NO}+${CURRENT_COMMIT_SHORT}" PARENT_SCOPE)
-      return()
-    endif()
-    # First release on this major.minor branch.
-    set(major ${branch_major})
-    set(minor ${branch_minor})
-    set(patch "0")
-    # Instead of counting since the last tag, we count the commits that have been done in this branch.
-    # Note that we are assuming that the default branch is called "master".
-    backtick(COMMON_ANCESTOR ${GIT_EXECUTABLE} merge-base HEAD master)
-    backtick(COMMITS_IN_BRANCH ${GIT_EXECUTABLE} rev-list --count "HEAD...${COMMON_ANCESTOR}")
-    set(${VERSION} "v${major}.${minor}.${patch}-pre.${COMMITS_IN_BRANCH}+${CURRENT_COMMIT_SHORT}" PARENT_SCOPE)
-    return()
-  endif()
-
   # On the main-branch we want to use the highest version-number+1.
   # However, if a version was branched but not released yet, then we don't have a tag yet.
   # Run through the branches to see if there is a branch in preparation.
@@ -103,31 +81,6 @@ function(compute_git_version VERSION)
     set(branch_minor ${CMAKE_MATCH_2})
   endif()
 
-  if ("${CURRENT_BRANCH}" STREQUAL master OR "${CURRENT_BRANCH}" STREQUAL main OR "${CURRENT_BRANCH}" STREQUAL HEAD)
-    # Master branch: v0.5.0-pre.17+9a1fbdb29
-    # Use either the latest reachable tag, or the highest branch. Whichever is higher.
-    if ("${branch_major}.${branch_minor}" VERSION_GREATER "${major}.${minor}")
-      set(major ${branch_major})
-      set(minor ${branch_minor})
-      # Update the commit number. Count the commits since the latest branch.
-      backtick(COMMON_ANCESTOR ${GIT_EXECUTABLE} merge-base HEAD "${NEWEST_BRANCH}")
-      backtick(COMMITS_SINCE_BRANCH ${GIT_EXECUTABLE} rev-list --count "HEAD...${COMMON_ANCESTOR}")
-      # We need to ensure that later commits have higher versions.
-      # However, once the branch is released, there will be a tag, and we will count the number
-      # of commits from there. This could lead to newer commits having a shorter commit-count.
-      # To ensure that the order stays correct we use a different pre-version identifier that is
-      # always lower than the default identifier.
-      set(pre_identifier "pr")
-      MATH(EXPR minor "${minor}+1")
-      set(${VERSION} "v${major}.${minor}.0-${pre_identifier}.${COMMITS_SINCE_BRANCH}+${CURRENT_COMMIT_SHORT}" PARENT_SCOPE)
-      return()
-    endif()
-    MATH(EXPR minor "${minor}+1")
-    set(${VERSION} "v${major}.${minor}.0-pre.${CURRENT_COMMIT_NO}+${CURRENT_COMMIT_SHORT}" PARENT_SCOPE)
-    return()
-  endif()
-
-  # Other branch: v0.5.0-pre.17+branch-name.9a1fbd29
   # If we are the child of a release-branch, use it, or a tag. Whichever is higher.
   # If we aren't a child of a release-branch, use the highest branch or tag.
   foreach (RELEASE_BRANCH ${RELEASE_BRANCHES})
@@ -135,33 +88,62 @@ function(compute_git_version VERSION)
       COMMAND ${GIT_EXECUTABLE} merge-base --is-ancestor ${RELEASE_BRANCH} HEAD
       RESULT_VARIABLE RESULT
     )
-    if ("${RESULT}" EQUAL 0)
-      # This branch is a child branch of a release-branch.
-      string(REGEX MATCH "/release-v([0-9]+)\\.([0-9]+)" IGNORED "${RELEASE_BRANCH}")
-      set(branch_major ${CMAKE_MATCH_1})
-      set(branch_minor ${CMAKE_MATCH_2})
-      set(ON_RELEASE_BRANCH 1)
-      break()
+    if (NOT "${RESULT}" EQUAL 0)
+      continue()
     endif()
+    # This branch is a child branch of a release-branch.
+    string(REGEX MATCH "/release-v([0-9]+)\\.([0-9]+)" IGNORED "${RELEASE_BRANCH}")
+    set(branch_major ${CMAKE_MATCH_1})
+    set(branch_minor ${CMAKE_MATCH_2})
+    if (${branch_major} EQUAL ${major} AND ${branch_minor} EQUAL ${minor})
+      # There is already a release on this branch.
+      # Use next patch version.
+      MATH(EXPR patch "${patch}+1")
+      set(${VERSION} "v${major}.${minor}.${patch}-pre.${CURRENT_COMMIT_NO}+${CURRENT_COMMIT_SHORT}" PARENT_SCOPE)
+      return()
+    endif()
+    # First release on this major.minor branch.
+    set(major ${branch_major})
+    set(minor ${branch_minor})
+    set(patch "0")
+    # Instead of counting since the last tag, we count the commits that have been done in this branch.
+    # Note that we are assuming that the default branch is called "master".
+    backtick(COMMON_ANCESTOR ${GIT_EXECUTABLE} merge-base HEAD "origin/master")
+    backtick(COMMITS_IN_BRANCH ${GIT_EXECUTABLE} rev-list --count "HEAD...${COMMON_ANCESTOR}")
+    set(${VERSION} "v${major}.${minor}.${patch}-pre.${COMMITS_IN_BRANCH}+${CURRENT_COMMIT_SHORT}" PARENT_SCOPE)
+    return()
   endforeach()
-  # branch_major and branch_minor are now either the highest version, or the
-  # one that is a parent of this branch.
+
+  # If we are on master/main or a checkout without a branch-name use the next highest release.
+  if ("${CURRENT_BRANCH}" STREQUAL master OR "${CURRENT_BRANCH}" STREQUAL main OR "${CURRENT_BRANCH}" STREQUAL HEAD)
+    # Master branch: v0.5.0-pre.17+9a1fbdb29
+    set(BRANCH_ID "")
+  else()
+    # Other branch: v0.5.0-pre.17+branch-name.9a1fbd29
+    # Semver requires the dot-separated identifiers to comprise only alphanumerics and hyphens.
+    string(REGEX REPLACE "[^.0-9A-Za-z-]" "-" SANITIZED_BRANCH ${CURRENT_BRANCH})
+    set(BRANCH_ID "${SANITIZED_BRANCH}.")
+  endif()
+
+  # Use either the latest reachable tag, or the highest branch. Whichever is higher.
   if ("${branch_major}.${branch_minor}" VERSION_GREATER "${major}.${minor}")
     set(major ${branch_major})
     set(minor ${branch_minor})
-    set(patch 0)
-  endif()
-  if ("${ON_RELEASE_BRANCH}")
-    # We are a child of a release branch.
-    # Just increment the patch number.
-    MATH(EXPR patch "${patch}+1")
-  else()
+    # Update the commit number. Count the commits since the latest branch.
+    backtick(COMMON_ANCESTOR ${GIT_EXECUTABLE} merge-base HEAD "${NEWEST_BRANCH}")
+    backtick(COMMITS_SINCE_BRANCH ${GIT_EXECUTABLE} rev-list --count "HEAD...${COMMON_ANCESTOR}")
+    # We need to ensure that later commits have higher versions.
+    # However, once the branch is released, there will be a tag, and we will count the number
+    # of commits from there. This could lead to newer commits having a shorter commit-count.
+    # To ensure that the order stays correct we use a different pre-version identifier that is
+    # always lower than the default identifier.
+    set(pre_identifier "pr")
     MATH(EXPR minor "${minor}+1")
-    set(patch 0)
+    set(${VERSION} "v${major}.${minor}.0-${pre_identifier}.${COMMITS_SINCE_BRANCH}+${BRANCH_ID}${CURRENT_COMMIT_SHORT}" PARENT_SCOPE)
+    return()
   endif()
-  # Semver requires the dot-separated identifiers to comprise only alphanumerics and hyphens.
-  string(REGEX REPLACE "[^.0-9A-Za-z-]" "-" SANITIZED_BRANCH ${CURRENT_BRANCH})
-  set(${VERSION} "v${major}.${minor}.${patch}-pre.${CURRENT_COMMIT_NO}+${SANITIZED_BRANCH}.${CURRENT_COMMIT_SHORT}" PARENT_SCOPE)
+  MATH(EXPR minor "${minor}+1")
+  set(${VERSION} "v${major}.${minor}.0-pre.${CURRENT_COMMIT_NO}+${BRANCH_ID}${CURRENT_COMMIT_SHORT}" PARENT_SCOPE)
 endfunction()
 
 # Print the git-version on stdout:
