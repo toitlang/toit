@@ -36,9 +36,10 @@ main:
   test_performance myself
   test_blocking myself broker
 
-  test_request_queue_cancel
+  test_request_queue_cancel myself
   test_timeouts myself broker --cancel
   test_timeouts myself broker --no-cancel
+  test_ensure_processing_task myself broker
 
 test_simple myself/int -> none:
   // Test simple types.
@@ -204,39 +205,39 @@ test_blocking myself/int broker/RpcBroker tasks/int [test] -> none:
   broker.unregister_procedure name
   expect.expect_throw "No such procedure registered: 800": rpc.invoke myself name []
 
-test_request_queue_cancel -> none:
+test_request_queue_cancel myself/int -> none:
   queue := RpcRequestQueue_ 0
   expect.expect_equals 0 queue.unprocessed_
-  10.repeat: queue.add (RpcRequest_ -1 -1 it null:: unreachable)
+  10.repeat: queue.add (RpcRequest_ myself -1 it null:: unreachable)
   expect.expect_equals 10 queue.unprocessed_
   10.repeat:
-    expect.expect_equals 1 (queue.cancel it)
+    expect.expect_equals 1 (queue.cancel myself it)
   expect.expect_equals 0 queue.unprocessed_
 
-  10.repeat: queue.add (RpcRequest_ -1 -1 it null:: unreachable)
+  10.repeat: queue.add (RpcRequest_ myself -1 it null:: unreachable)
   expect.expect_equals 10 queue.unprocessed_
   10.repeat:
-    expect.expect_equals 1 (queue.cancel 10 - it - 1)
+    expect.expect_equals 1 (queue.cancel myself (10 - it - 1))
   expect.expect_equals 0 queue.unprocessed_
 
-  10.repeat: queue.add (RpcRequest_ -1 -1 it null:: unreachable)
+  10.repeat: queue.add (RpcRequest_ myself -1 it null:: unreachable)
   expect.expect_equals 10 queue.unprocessed_
-  expect.expect_equals 1 (queue.cancel 5)
+  expect.expect_equals 1 (queue.cancel myself 5)
   expect.expect_equals 9 queue.unprocessed_
-  expect.expect_equals 0 (queue.cancel 5)
+  expect.expect_equals 0 (queue.cancel myself 5)
   expect.expect_equals 9 queue.unprocessed_
 
-  expect.expect_equals 1 (queue.cancel 7)
+  expect.expect_equals 1 (queue.cancel myself 7)
   expect.expect_equals 8 queue.unprocessed_
-  expect.expect_equals 1 (queue.cancel 3)
+  expect.expect_equals 1 (queue.cancel myself 3)
   expect.expect_equals 7 queue.unprocessed_
 
-  10.repeat: queue.cancel it
+  10.repeat: queue.cancel myself it
   expect.expect_equals 0 queue.unprocessed_
 
-  10.repeat: queue.add (RpcRequest_ -1 -1 42 null:: unreachable)
+  10.repeat: queue.add (RpcRequest_ myself -1 42 null:: unreachable)
   expect.expect_equals 10 queue.unprocessed_
-  expect.expect_equals 10 (queue.cancel 42)
+  expect.expect_equals 10 (queue.cancel myself 42)
   expect.expect_equals 0 queue.unprocessed_
 
 test_timeouts myself/int broker/RpcBroker --cancel/bool -> none:
@@ -319,6 +320,29 @@ test_timeouts myself/int broker/RpcBroker --cancel/bool -> none:
   // other requests.
   expect.expect_equals RpcBroker.MAX_REQUESTS (unprocessed + canceled)
   expect.expect canceled >= RpcBroker.MAX_TASKS
+
+  // Unregister procedure and make sure it's gone.
+  broker.unregister_procedure name
+  expect.expect_throw "No such procedure registered: $name": rpc.invoke myself name []
+
+test_ensure_processing_task myself/int broker/RpcBroker -> none:
+  name ::= 802
+  broker.register_procedure name:: | index |
+    // Block until canceled.
+    (monitor.Latch).get
+
+  // Block all processing tasks one-by-one, but cancel them after a little while.
+  RpcBroker.MAX_TASKS.repeat:
+    expect.expect_throw DEADLINE_EXCEEDED_ERROR:
+      with_timeout --ms=50: rpc.invoke myself name []
+  with_timeout --ms=200: test myself 42
+
+  // Block all processing tasks at once, but cancel them after a little while.
+  RpcBroker.MAX_TASKS.repeat:
+    task::
+      expect.expect_throw DEADLINE_EXCEEDED_ERROR:
+        with_timeout --ms=50: rpc.invoke myself name []
+  with_timeout --ms=200: test myself 87
 
   // Unregister procedure and make sure it's gone.
   broker.unregister_procedure name

@@ -43,7 +43,7 @@ class RpcBroker implements SystemMessageHandler_:
   on_message type gid pid message/List -> none:
     id/int := message[0]
     if type == SYSTEM_RPC_CANCEL_:
-      queue_.cancel id
+      queue_.cancel pid id
       return
 
     assert: type == SYSTEM_RPC_REQUEST_
@@ -114,32 +114,9 @@ monitor RpcRequestQueue_:
       first_ = last_ = request
     unprocessed_++
 
-    // If there are requests that could be processed by spawning more tasks,
-    // we do that now. To avoid spending too much memory on tasks, we prefer
-    // to keep some requests unprocessed and enqueued.
-    while unprocessed_ > tasks_ and tasks_ < processing_tasks_.size:
-      tasks_++
-      task_index := processing_tasks_.index_of null
-      processing_tasks_[task_index] = task --background::
-        // The task code runs outside the monitor, so the monitor
-        // is unlocked when the requests are being processed but
-        // locked when the requests are being dequeued.
-        assert: identical processing_tasks_[task_index] task
-        try:
-          while next := remove_first:
-            try:
-              processing_requests_[task_index] = next
-              next.process
-            finally:
-              // This doesn't have to be in a finally-block because the call
-              // to 'next.process' never unwinds, but being a little bit
-              // defensive feels right.
-              processing_requests_[task_index] = null
-              unprocessed_--
-        finally:
-          processing_tasks_[task_index] = null
-          tasks_--
+    ensure_processing_task_
     return true
+
 
   remove_first -> RpcRequest_?:
     while true:
@@ -156,7 +133,7 @@ monitor RpcRequestQueue_:
       first_ = next
       return request
 
-  cancel id/int -> int:
+  cancel pid/int id/int -> int:
     // For testing purposes, we keep track of the number of requests that
     // were actually canceled through this operation.
     result/int := 0
@@ -167,7 +144,7 @@ monitor RpcRequestQueue_:
     current := first_
     while current:
       next := current.next
-      if current.id == id:
+      if current.pid == pid and current.id == id:
         if previous:
           previous.next = next
         else:
@@ -182,7 +159,37 @@ monitor RpcRequestQueue_:
     // associated processing task.
     processing_requests_.size.repeat:
       request/RpcRequest_? := processing_requests_[it]
-      if request and request.id == id:
+      if request and request.pid == pid and request.id == id:
         processing_tasks_[it].cancel
         result++
     return result
+
+  ensure_processing_task_ -> none:
+    // If there are requests that could be processed by spawning more tasks,
+    // we do that now. To avoid spending too much memory on tasks, we prefer
+    // to keep some requests unprocessed and enqueued.
+    while unprocessed_ > tasks_ and tasks_ < processing_tasks_.size:
+      tasks_++
+      task_index := processing_tasks_.index_of null
+      processing_tasks_[task_index] = task --background::
+        // The task code runs outside the monitor, so the monitor
+        // is unlocked when the requests are being processed but
+        // locked when the requests are being dequeued.
+        assert: identical processing_tasks_[task_index] task
+        try:
+          while not task.is_canceled:
+            next := remove_first
+            if not next: break
+            try:
+              processing_requests_[task_index] = next
+              next.process
+            finally:
+              // This doesn't have to be in a finally-block because the call
+              // to 'next.process' never unwinds, but being a little bit
+              // defensive feels right.
+              processing_requests_[task_index] = null
+              unprocessed_--
+        finally:
+          processing_tasks_[task_index] = null
+          tasks_--
+          ensure_processing_task_
