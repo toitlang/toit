@@ -40,10 +40,16 @@ class RpcBroker implements SystemMessageHandler_:
   unregister_procedure name/int -> none:
     procedures_.remove name
 
+  /**
+  Cancels all requests associated with a given process id (pid).
+  */
+  cancel_requests pid/int -> none:
+    queue_.cancel: | request/RpcRequest_ | request.pid == pid
+
   on_message type gid pid message/List -> none:
     id/int := message[0]
     if type == SYSTEM_RPC_CANCEL_:
-      queue_.cancel pid id
+      queue_.cancel: | request/RpcRequest_ | request.pid == pid and request.id == id
       return
 
     assert: type == SYSTEM_RPC_REQUEST_
@@ -132,18 +138,16 @@ monitor RpcRequestQueue_:
       first_ = next
       return request
 
-  cancel pid/int id/int -> int:
-    // For testing purposes, we keep track of the number of requests that
-    // were actually canceled through this operation.
-    result/int := 0
-    // First we get rid of any unprocessed request with the given id. This
-    // is a simple linked list traversal with the usual bookkeeping challenges
-    // that come from removing from a linked list with insertion at the end.
+  cancel [predicate] -> none:
+    // First we get rid of any unprocessed request where the 'predicate' block
+    // answers true. This is a simple linked list traversal with the usual
+    // bookkeeping challenges that come from removing from a linked list with
+    // insertion at the end.
     previous := null
     current := first_
     while current:
       next := current.next
-      if current.pid == pid and current.id == id:
+      if predicate.call current:
         if previous:
           previous.next = next
         else:
@@ -151,17 +155,14 @@ monitor RpcRequestQueue_:
         if not next:
           last_ = previous
         unprocessed_--
-        result++
       previous = current
       current = next
     // Then we cancel any requests that are in progress by canceling the
     // associated processing task.
     processing_requests_.size.repeat:
       request/RpcRequest_? := processing_requests_[it]
-      if request and request.pid == pid and request.id == id:
+      if request and predicate.call request:
         processing_tasks_[it].cancel
-        result++
-    return result
 
   ensure_processing_task_ -> none:
     // If there are requests that could be processed by spawning more tasks,
