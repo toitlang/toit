@@ -20,10 +20,11 @@ class RpcBroker implements SystemMessageHandler_:
   static MAX_REQUESTS/int ::= 16
 
   procedures_/Map ::= {:}
-  queue_/RpcRequestQueue_ ::= RpcRequestQueue_
+  queue_/RpcRequestQueue_ ::= RpcRequestQueue_ MAX_TASKS
 
   install:
     set_system_message_handler_ SYSTEM_RPC_REQUEST_ this
+    set_system_message_handler_ SYSTEM_RPC_CANCEL_ this
 
   /**
   Registers a procedure to handle a message.  The arguments to the
@@ -40,8 +41,12 @@ class RpcBroker implements SystemMessageHandler_:
     procedures_.remove name
 
   on_message type gid pid message/List -> none:
-    assert: type == SYSTEM_RPC_REQUEST_
     id/int := message[0]
+    if type == SYSTEM_RPC_CANCEL_:
+      queue_.cancel id
+      return
+
+    assert: type == SYSTEM_RPC_REQUEST_
     name/int := message[1]
     arguments := message[2]
 
@@ -80,11 +85,22 @@ class RpcRequest_:
 monitor RpcRequestQueue_:
   static IDLE_TIME_MS ::= 1_000
 
+  // We keep track of the current requests being processed in two parallel lists: One
+  // containing the request being processed and one containing the processing task.
+  // This allows the request and the associated task to be canceled if the client asks
+  // for that.
+  processing_requests_/List ::= ?
+  processing_tasks_/List ::= ?
+
   first_/RpcRequest_? := null
   last_/RpcRequest_? := null
 
   unprocessed_/int := 0
   tasks_/int := 0
+
+  constructor max_tasks/int:
+    processing_requests_ = List max_tasks
+    processing_tasks_ = List max_tasks
 
   add request/RpcRequest_ -> bool:
     if unprocessed_ >= RpcBroker.MAX_REQUESTS: return false
@@ -101,22 +117,27 @@ monitor RpcRequestQueue_:
     // If there are requests that could be processed by spawning more tasks,
     // we do that now. To avoid spending too much memory on tasks, we prefer
     // to keep some requests unprocessed and enqueued.
-    while unprocessed_ > tasks_ and tasks_ < RpcBroker.MAX_TASKS:
+    while unprocessed_ > tasks_ and tasks_ < processing_tasks_.size:
       tasks_++
-      task --background::
+      task_index := processing_tasks_.index_of null
+      processing_tasks_[task_index] = task --background::
         // The task code runs outside the monitor, so the monitor
         // is unlocked when the requests are being processed but
         // locked when the requests are being dequeued.
+        assert: identical processing_tasks_[task_index] task
         try:
           while next := remove_first:
             try:
+              processing_requests_[task_index] = next
               next.process
             finally:
               // This doesn't have to be in a finally-block because the call
               // to 'next.process' never unwinds, but being a little bit
               // defensive feels right.
+              processing_requests_[task_index] = null
               unprocessed_--
         finally:
+          processing_tasks_[task_index] = null
           tasks_--
     return true
 
@@ -134,3 +155,34 @@ monitor RpcRequestQueue_:
       if identical last_ request: last_ = next
       first_ = next
       return request
+
+  cancel id/int -> int:
+    // For testing purposes, we keep track of the number of requests that
+    // were actually canceled through this operation.
+    result/int := 0
+    // First we get rid of any unprocessed request with the given id. This
+    // is a simple linked list traversal with the usual bookkeeping challenges
+    // that come from removing from a linked list with insertion at the end.
+    previous := null
+    current := first_
+    while current:
+      next := current.next
+      if current.id == id:
+        if previous:
+          previous.next = next
+        else:
+          first_ = next
+        if not next:
+          last_ = previous
+        unprocessed_--
+        result++
+      previous = current
+      current = next
+    // Then we cancel any requests that are in progress by canceling the
+    // associated processing task.
+    processing_requests_.size.repeat:
+      request/RpcRequest_? := processing_requests_[it]
+      if request and request.id == id:
+        processing_tasks_[it].cancel
+        result++
+    return result
