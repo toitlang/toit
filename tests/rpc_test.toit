@@ -3,7 +3,7 @@
 // be found in the tests/LICENSE file.
 
 import rpc
-import ..tools.rpc show RpcBroker
+import rpc.broker show RpcBroker
 import expect
 import monitor
 
