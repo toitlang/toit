@@ -101,7 +101,23 @@ function(compute_git_version VERSION)
 
   # Returns the distance of HEAD to the common ancestor of HEAD and COMMIT.
   function (commits_since_common_ancestor COMMIT COMMIT_COUNT)
-    backtick(COMMON_ANCESTOR ${GIT_EXECUTABLE} merge-base HEAD "${COMMIT}")
+    set(DEPTH 128)
+    while (1)
+      execute_process(
+        COMMAND ${GIT_EXECUTABLE} merge-base HEAD "${COMMIT}"
+        RESULT_VARIABLE result
+        OUTPUT_VARIABLE COMMON_ANCESTOR
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+      )
+      if ("${result}" EQUAL 0)
+        break()
+      endif()
+      if (${DEPTH} GREATER 10000)
+        message(FATAL_ERROR "Couldn't determine merge-base for HEAD and ${COMMIT}")
+      endif()
+      backtick(ignored ${GIT_EXECUTABLE} fetch --depth=${DEPTH})
+      math(EXPR DEPTH "${DEPTH} * 2")
+    endwhile()
     backtick(COMMITS_IN_BRANCH ${GIT_EXECUTABLE} rev-list --count "HEAD...${COMMON_ANCESTOR}")
     set(${COMMIT_COUNT} ${COMMITS_IN_BRANCH} PARENT_SCOPE)
   endfunction()
