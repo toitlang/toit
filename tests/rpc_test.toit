@@ -211,6 +211,9 @@ test_request_queue_cancel myself/int -> none:
   10.repeat: queue.add (RpcRequest_ myself -1 it null:: unreachable)
   expect.expect_equals 10 queue.unprocessed_
   10.repeat:
+    expect.expect_equals (10 - it) queue.unprocessed_
+    expect.expect_equals 0 (queue.cancel (myself + 1) it)  // Try canceling request for other pid.
+    expect.expect_equals (10 - it) queue.unprocessed_
     expect.expect_equals 1 (queue.cancel myself it)
   expect.expect_equals 0 queue.unprocessed_
 
