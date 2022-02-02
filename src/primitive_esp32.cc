@@ -18,7 +18,6 @@
 #ifdef TOIT_FREERTOS
 
 #include "flash_allocation.h"
-#include "heap.h"
 #include "objects_inline.h"
 #include "os.h"
 #include "primitive.h"

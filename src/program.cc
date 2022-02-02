@@ -99,10 +99,10 @@ void Program::do_roots(RootCallback* callback) {
   literals.do_roots(callback);
 }
 
-Usage Program::usage() {
-  Usage total("program", sizeof(Program));
+ProgramUsage Program::usage() {
+  ProgramUsage total("program", sizeof(Program));
   total.add_external(tables_size());
-  Usage h = _heap.usage("program object heap");
+  ProgramUsage h = _heap.usage("program object heap");
   total.add(&h);
   total.add_external(4 + dispatch_table.length() * 4);  // Length + dispatch entries.
   total.add_external(4 + bytecodes.length());  // Length + bytecodes.

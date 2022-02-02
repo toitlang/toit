@@ -38,7 +38,6 @@ foreach(file ${TOITP_TESTS})
   add_custom_target(${build_snap} DEPENDS ${snap})
 
   # Make sure the test input is built before we run the tests.
-  add_dependencies(build_tools ${build_snap})
   add_dependencies(check ${build_snap})
   add_dependencies(check_slow ${build_snap})
 
