@@ -117,7 +117,6 @@ monitor RpcRequestQueue_:
     ensure_processing_task_
     return true
 
-
   remove_first -> RpcRequest_?:
     while true:
       request := first_
