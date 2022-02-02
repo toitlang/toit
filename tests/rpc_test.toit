@@ -3,7 +3,7 @@
 // be found in the tests/LICENSE file.
 
 import rpc
-import rpc.broker show RpcBroker
+import rpc.broker show RpcBroker RpcRequest_ RpcRequestQueue_
 import expect
 import monitor
 
@@ -35,6 +35,11 @@ main:
   test_problematic myself
   test_performance myself
   test_blocking myself broker
+
+  test_request_queue_cancel myself
+  test_timeouts myself broker --cancel
+  test_timeouts myself broker --no-cancel
+  test_ensure_processing_task myself broker
 
 test_simple myself/int -> none:
   // Test simple types.
@@ -199,6 +204,152 @@ test_blocking myself/int broker/RpcBroker tasks/int [test] -> none:
   // Unregister procedure and make sure it's gone.
   broker.unregister_procedure name
   expect.expect_throw "No such procedure registered: 800": rpc.invoke myself name []
+
+test_request_queue_cancel myself/int -> none:
+  queue := RpcRequestQueue_ 0
+  expect.expect_equals 0 queue.unprocessed_
+  10.repeat: queue.add (RpcRequest_ myself -1 it null:: unreachable)
+  expect.expect_equals 10 queue.unprocessed_
+  10.repeat:
+    expect.expect_equals (10 - it) queue.unprocessed_
+    expect.expect_equals 0 (queue.cancel (myself + 1) it)  // Try canceling request for other pid.
+    expect.expect_equals (10 - it) queue.unprocessed_
+    expect.expect_equals 1 (queue.cancel myself it)
+  expect.expect_equals 0 queue.unprocessed_
+
+  10.repeat: queue.add (RpcRequest_ myself -1 it null:: unreachable)
+  expect.expect_equals 10 queue.unprocessed_
+  10.repeat:
+    expect.expect_equals 1 (queue.cancel myself (10 - it - 1))
+  expect.expect_equals 0 queue.unprocessed_
+
+  10.repeat: queue.add (RpcRequest_ myself -1 it null:: unreachable)
+  expect.expect_equals 10 queue.unprocessed_
+  expect.expect_equals 1 (queue.cancel myself 5)
+  expect.expect_equals 9 queue.unprocessed_
+  expect.expect_equals 0 (queue.cancel myself 5)
+  expect.expect_equals 9 queue.unprocessed_
+
+  expect.expect_equals 1 (queue.cancel myself 7)
+  expect.expect_equals 8 queue.unprocessed_
+  expect.expect_equals 1 (queue.cancel myself 3)
+  expect.expect_equals 7 queue.unprocessed_
+
+  10.repeat: queue.cancel myself it
+  expect.expect_equals 0 queue.unprocessed_
+
+  10.repeat: queue.add (RpcRequest_ myself -1 42 null:: unreachable)
+  expect.expect_equals 10 queue.unprocessed_
+  expect.expect_equals 10 (queue.cancel myself 42)
+  expect.expect_equals 0 queue.unprocessed_
+
+test_timeouts myself/int broker/RpcBroker --cancel/bool -> none:
+  name ::= 801
+  latches := {:}
+  broker.register_procedure name:: | index |
+    try:
+      // If a task starts processing this request, we tell the
+      // caller to wait for the result.
+      latches[index] = monitor.Latch
+      // Block until canceled.
+      (monitor.Latch).get
+    finally:
+      if task.is_canceled:
+        latches[index].set "Canceled: $index"
+
+  // Use 'with_timeout' to trigger the timeout.
+  timeout_based/Lambda := :: | index |
+    expect.expect_throw DEADLINE_EXCEEDED_ERROR: with_timeout --ms=10:
+      latches[index] = monitor.Latch
+      latches[index].set "Unprocessed: $index"
+      rpc.invoke myself name index
+
+  // Use 'sleep' and 'Task.cancel' to trigger the timeout.
+  sleep_cancel_based/Lambda ::= :: | index |
+    join := monitor.Latch
+    subtask := task::
+      latches[index] = monitor.Latch
+      latches[index].set "Unprocessed: $index"
+      try:
+        rpc.invoke myself name index
+      finally: | is_exception exception |
+        expect.expect task.is_canceled
+        join.set task
+    sleep --ms=10
+    subtask.cancel
+    expect.expect (identical subtask join.get)
+
+  unprocessed := 0
+  canceled := 0
+  done ::= monitor.Semaphore
+
+  test := :: | index |
+    if cancel: sleep_cancel_based.call index
+    else: timeout_based.call index
+    result := null
+    with_timeout --ms=100: result = latches[index].get
+    latches.remove index
+    if result == "Unprocessed: $index":
+      unprocessed++
+    else if result == "Canceled: $index":
+      canceled++
+    else:
+      expect.expect false --message="Unexpected result <$result>"
+    done.up
+
+  unprocessed = canceled = 0
+  RpcBroker.MAX_REQUESTS.repeat: | index |
+    test.call index
+  RpcBroker.MAX_REQUESTS.repeat:
+    done.down
+  expect.expect_equals 0 unprocessed
+  expect.expect_equals RpcBroker.MAX_REQUESTS canceled
+
+  unprocessed = canceled = 0
+  RpcBroker.MAX_TASKS.repeat: | index |
+    task:: test.call index
+  RpcBroker.MAX_TASKS.repeat:
+    done.down
+  expect.expect_equals 0 unprocessed
+  expect.expect_equals RpcBroker.MAX_TASKS canceled
+
+  unprocessed = canceled = 0
+  RpcBroker.MAX_REQUESTS.repeat: | index |
+    task:: test.call index
+  RpcBroker.MAX_REQUESTS.repeat:
+    done.down
+  // It is possible that a canceled processing tasks grabs hold of an
+  // unprocessed request and starts processing while we are canceling
+  // other requests.
+  expect.expect_equals RpcBroker.MAX_REQUESTS (unprocessed + canceled)
+  expect.expect canceled >= RpcBroker.MAX_TASKS
+
+  // Unregister procedure and make sure it's gone.
+  broker.unregister_procedure name
+  expect.expect_throw "No such procedure registered: $name": rpc.invoke myself name []
+
+test_ensure_processing_task myself/int broker/RpcBroker -> none:
+  name ::= 802
+  broker.register_procedure name:: | index |
+    // Block until canceled.
+    (monitor.Latch).get
+
+  // Block all processing tasks one-by-one, but cancel them after a little while.
+  RpcBroker.MAX_TASKS.repeat:
+    expect.expect_throw DEADLINE_EXCEEDED_ERROR:
+      with_timeout --ms=50: rpc.invoke myself name []
+  with_timeout --ms=200: test myself 42
+
+  // Block all processing tasks at once, but cancel them after a little while.
+  RpcBroker.MAX_TASKS.repeat:
+    task::
+      expect.expect_throw DEADLINE_EXCEEDED_ERROR:
+        with_timeout --ms=50: rpc.invoke myself name []
+  with_timeout --ms=200: test myself 87
+
+  // Unregister procedure and make sure it's gone.
+  broker.unregister_procedure name
+  expect.expect_throw "No such procedure registered: $name": rpc.invoke myself name []
 
 // ----------------------------------------------------------------------------
 
