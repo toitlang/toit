@@ -205,6 +205,14 @@ test_blocking myself/int broker/RpcBroker tasks/int [test] -> none:
   broker.unregister_procedure name
   expect.expect_throw "No such procedure registered: 800": rpc.invoke myself name []
 
+cancel queue/RpcRequestQueue_ pid/int id/int -> int:
+  result/int := 0
+  queue.cancel: | request/RpcRequest_ |
+    match/bool := request.pid == pid and request.id == id
+    if match: result++
+    match
+  return result
+
 test_request_queue_cancel myself/int -> none:
   queue := RpcRequestQueue_ 0
   expect.expect_equals 0 queue.unprocessed_
@@ -212,35 +220,35 @@ test_request_queue_cancel myself/int -> none:
   expect.expect_equals 10 queue.unprocessed_
   10.repeat:
     expect.expect_equals (10 - it) queue.unprocessed_
-    expect.expect_equals 0 (queue.cancel (myself + 1) it)  // Try canceling request for other pid.
+    expect.expect_equals 0 (cancel queue (myself + 1) it)  // Try canceling request for other pid.
     expect.expect_equals (10 - it) queue.unprocessed_
-    expect.expect_equals 1 (queue.cancel myself it)
+    expect.expect_equals 1 (cancel queue myself it)
   expect.expect_equals 0 queue.unprocessed_
 
   10.repeat: queue.add (RpcRequest_ myself -1 it null:: unreachable)
   expect.expect_equals 10 queue.unprocessed_
   10.repeat:
-    expect.expect_equals 1 (queue.cancel myself (10 - it - 1))
+    expect.expect_equals 1 (cancel queue myself (10 - it - 1))
   expect.expect_equals 0 queue.unprocessed_
 
   10.repeat: queue.add (RpcRequest_ myself -1 it null:: unreachable)
   expect.expect_equals 10 queue.unprocessed_
-  expect.expect_equals 1 (queue.cancel myself 5)
+  expect.expect_equals 1 (cancel queue myself 5)
   expect.expect_equals 9 queue.unprocessed_
-  expect.expect_equals 0 (queue.cancel myself 5)
+  expect.expect_equals 0 (cancel queue myself 5)
   expect.expect_equals 9 queue.unprocessed_
 
-  expect.expect_equals 1 (queue.cancel myself 7)
+  expect.expect_equals 1 (cancel queue myself 7)
   expect.expect_equals 8 queue.unprocessed_
-  expect.expect_equals 1 (queue.cancel myself 3)
+  expect.expect_equals 1 (cancel queue myself 3)
   expect.expect_equals 7 queue.unprocessed_
 
-  10.repeat: queue.cancel myself it
+  10.repeat: cancel queue myself it
   expect.expect_equals 0 queue.unprocessed_
 
   10.repeat: queue.add (RpcRequest_ myself -1 42 null:: unreachable)
   expect.expect_equals 10 queue.unprocessed_
-  expect.expect_equals 10 (queue.cancel myself 42)
+  expect.expect_equals 10 (cancel queue myself 42)
   expect.expect_equals 0 queue.unprocessed_
 
 test_timeouts myself/int broker/RpcBroker --cancel/bool -> none:
