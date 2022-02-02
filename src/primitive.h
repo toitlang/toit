@@ -313,10 +313,10 @@ namespace toit {
   PRIMITIVE(scan_start, 2)                   \
   PRIMITIVE(scan_next, 1)                    \
   PRIMITIVE(scan_stop, 1)                    \
-  PRIMITIVE(advertise_start, 3)              \
+  PRIMITIVE(advertise_start, 4)              \
   PRIMITIVE(advertise_config, 4)             \
   PRIMITIVE(advertise_stop, 1)               \
-  PRIMITIVE(connect, 2)                      \
+  PRIMITIVE(connect, 3)                      \
   PRIMITIVE(get_gatt, 1)                     \
   PRIMITIVE(request_result, 1)               \
   PRIMITIVE(request_data, 1)                 \
@@ -325,7 +325,7 @@ namespace toit {
   PRIMITIVE(request_attribute, 2)            \
   PRIMITIVE(server_config_init, 0)           \
   PRIMITIVE(add_server_service, 2)           \
-  PRIMITIVE(add_server_characteristic, 3)    \
+  PRIMITIVE(add_server_characteristic, 4)    \
   PRIMITIVE(set_characteristics_value, 2)    \
   PRIMITIVE(notify_characteristics_value, 2) \
   PRIMITIVE(get_characteristics_value, 1)    \

@@ -235,6 +235,40 @@ void BLEEventSource::on_gatt_attribute_event(uint16_t conn_handle,
   dispatch(locker, gatt, 0);
 }
 
+int BLEEventSource::on_gatt_server_characteristic(uint16_t conn_handle, uint16_t attr_handle,
+                                                  struct ble_gatt_access_ctxt *ctxt, void *arg) {
+  auto characteristic = reinterpret_cast<BLEServerCharacteristicResource*>(arg);
+  return instance()->on_gatt_server_characteristic_event(ctxt, characteristic);
+}
+
+int BLEEventSource::on_gatt_server_characteristic_event(ble_gatt_access_ctxt *ctxt,
+                                                         BLEServerCharacteristicResource *characteristic) {
+  int err = 0;
+  switch (ctxt->op) {
+    case  BLE_GATT_ACCESS_OP_READ_CHR:
+      if (characteristic->mbuf_to_send() != null) {
+        err = os_mbuf_appendfrom(ctxt->om, characteristic->mbuf_to_send(), 0, characteristic->mbuf_to_send()->om_len);
+      }
+      break;
+    case BLE_GATT_ACCESS_OP_WRITE_CHR:
+      characteristic->set_mbuf_received(ctxt->om);
+      ctxt->om = null;
+      break;
+    case BLE_GATT_ACCESS_OP_READ_DSC:
+    case BLE_GATT_ACCESS_OP_WRITE_DSC:
+      // ignore
+      return 0;
+    default:
+      // unknown
+      break;
+  }
+
+  Locker locker(mutex());
+  dispatch(locker, characteristic, ctxt->op);
+  return err;
+}
+
+
 void BLEEventSource::on_started_event() {
   Locker locker(mutex());
   for (auto resource : resources()) {
@@ -246,11 +280,22 @@ void BLEEventSource::on_started() {
   instance()->on_started_event();
 }
 
-int BLEEventSource::on_gatt_server_attribute_access(uint16_t conn_handle, uint16_t attr_handle,
-                                                    struct ble_gatt_access_ctxt *ctxt, void *arg) {
-  BLEResourceGroup* group = unvoid_cast<BLEResourceGroup*>(arg);
-  USE(group);
-  return 0;
+void BLEServerCharacteristicResource::set_mbuf_received(os_mbuf *mbuf) {
+  Locker locker(_mutex);
+  if (_mbuf_received == null)  {
+    _mbuf_received = mbuf;
+  } else if (mbuf == null) {
+    os_mbuf_free_chain(_mbuf_received);
+    _mbuf_received = null;
+  } else {
+    os_mbuf_concat(_mbuf_received, mbuf);
+  }
+}
+
+void BLEServerCharacteristicResource::set_mbuf_to_send(struct os_mbuf* mbuf) {
+  Locker locker(_mutex);
+  if (_mbuf_to_send != null) os_mbuf_free(_mbuf_to_send);
+  _mbuf_to_send = mbuf;
 }
 
 } // namespace toit
