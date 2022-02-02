@@ -26,6 +26,27 @@ function(backtick out_name)
   set(${out_name} ${result} PARENT_SCOPE)
 endfunction()
 
+# Computes a version from git branches and git tags.
+# If a commit is tagged explicitly with a version tag (v1.2.3) then use that one.
+# If a commit is on a release-branch (release-v1.2), then we have two cases:
+#   - there is already a release on this branch (visible by a version tag with the
+#     same major/minor)
+#   - there isn't a release yet.
+# If there is already a release, then count the commits since that release, and
+#   mark the current commit as a prerelease of a patch-release. For example,
+#   if we are on release-v1.2 and there is a tag v1.2.4. Then we count the commits
+#   since that tag (say 5) and return 'v1.2.5-pre.5+<commit-hash>'
+# If there isn't a release yet (no tag), then we count the commits since the previous
+#   release-branch (say 38 commits since release-v1.1 branch point) and
+#   return 'v1.2.0-pre.38+<commit-hash>'. We need to count from the previous branch-point
+#   since 'master' is using the same naming scheme, and we need to ensure monotonically
+#   increasing version numbers. (See next case).
+# If a commit is not on a release-branch, find the newest release-branch (say release-v1.5),
+#   and count the commits since it (say 22).
+#   Return v1.6.0-pre.22+<commit-hash> if we are on master/main or don't know the branch name.
+#   Return v1.6.0-pre.22+<branch-name>.<commit-hash> if we know the name.
+# Note that "v1.6.0-pre." is also used on a release-v1.6 branch until the release has
+#   happened. Care must be taken to ensure that the version numbers increase correctly.
 function(compute_git_version VERSION)
   # Check that we are in a git tree.
   backtick(ignored ${GIT_EXECUTABLE} rev-parse --is-inside-work-tree)
@@ -33,8 +54,8 @@ function(compute_git_version VERSION)
   backtick(CURRENT_COMMIT ${GIT_EXECUTABLE} rev-parse HEAD)
   backtick(CURRENT_COMMIT_SHORT ${GIT_EXECUTABLE} rev-parse --short HEAD)
 
-  # We assume that there is always a version, and don't handle the initial case where no
-  # version tag is found.
+  # We assume that there is always a version-branch and a version tag.
+  # We don't handle the initial case where no version branch is found.
 
   # Note: the clone of the repository must have access to all tags.
   # Buildbots might provide a shallow copy, in which case `git fetch --tags` must be called.
@@ -44,25 +65,20 @@ function(compute_git_version VERSION)
   # The buildbot has a shallow checkout of our repository. We need to pass in the commit of the latest tag.
   # (Tbh not sure why.)
   backtick(LATEST_VERSION_TAG ${GIT_EXECUTABLE} describe --tags --match "v[0-9]*" --abbrev=0 ${TAG_COMMIT})
+  set(SEMVER_REGEX "^v([0-9]+)\\.([0-9]+)\\.([0-9]+)")
+  string(REGEX REPLACE ${SEMVER_REGEX} "\\1" tag_major ${LATEST_VERSION_TAG})
+  string(REGEX REPLACE ${SEMVER_REGEX} "\\2" tag_minor ${LATEST_VERSION_TAG})
+  string(REGEX REPLACE ${SEMVER_REGEX} "\\3" tag_patch ${LATEST_VERSION_TAG})
 
   backtick(VERSION_TAG_COMMIT ${GIT_EXECUTABLE} rev-parse "${LATEST_VERSION_TAG}^{}")
 
+  # If we are directly on a version-tag commit, just use that one.
   if ("${VERSION_TAG_COMMIT}" STREQUAL "${CURRENT_COMMIT}")
     set(${VERSION} "${LATEST_VERSION_TAG}" PARENT_SCOPE)
     return()
   endif()
 
-  set(SEMVER_REGEX "^v([0-9]+)\\.([0-9]+)\\.([0-9]+)")
-  string(REGEX REPLACE ${SEMVER_REGEX} "\\1" major ${LATEST_VERSION_TAG})
-  string(REGEX REPLACE ${SEMVER_REGEX} "\\2" minor ${LATEST_VERSION_TAG})
-  string(REGEX REPLACE ${SEMVER_REGEX} "\\3" patch ${LATEST_VERSION_TAG})
-
-  backtick(CURRENT_COMMIT_NO ${GIT_EXECUTABLE} rev-list --count HEAD "^${VERSION_TAG_COMMIT}")
-  backtick(CURRENT_BRANCH ${GIT_EXECUTABLE} rev-parse --abbrev-ref HEAD)
-
-  # On the main-branch we want to use the highest version-number+1.
-  # However, if a version was branched but not released yet, then we don't have a tag yet.
-  # Run through the branches to see if there is a branch in preparation.
+  # Find all release branches.
   backtick(ALL_BRANCHES ${GIT_EXECUTABLE} branch -a "--format=%(refname:short)")
   # Split lines.
   # Assumes there aren't any ';' in the branch names.
@@ -73,17 +89,27 @@ function(compute_git_version VERSION)
   list(FILTER RELEASE_BRANCHES INCLUDE REGEX "/release-v[0-9]+\\.[0-9]")
   list(SORT RELEASE_BRANCHES COMPARE NATURAL ORDER DESCENDING)
   list(LENGTH RELEASE_BRANCHES BRANCHES_LENGTH)
-  if (NOT ${BRANCHES_LENGTH} EQUAL 0)
-    # The first branch is the latest version (by virtue of sorting in natural descending order).
-    list(GET RELEASE_BRANCHES 0 NEWEST_BRANCH)
-    string(REGEX MATCH "/release-v([0-9]+)\\.([0-9]+)" IGNORED "${NEWEST_BRANCH}")
-    set(branch_major ${CMAKE_MATCH_1})
-    set(branch_minor ${CMAKE_MATCH_2})
+  if (${BRANCHES_LENGTH} EQUAL 0)
+    message(FATAL_ERROR "No release branch found")
   endif()
 
-  # If we are the child of a release-branch, use it, or a tag. Whichever is higher.
-  # If we aren't a child of a release-branch, use the highest branch or tag.
-  foreach (RELEASE_BRANCH ${RELEASE_BRANCHES})
+  function (version_from_branch BRANCH MAJOR MINOR)
+    string(REGEX MATCH "/release-v([0-9]+)\\.([0-9]+)" IGNORED "${BRANCH}")
+    set(${MAJOR} "${CMAKE_MATCH_1}" PARENT_SCOPE)
+    set(${MINOR} "${CMAKE_MATCH_2}" PARENT_SCOPE)
+  endfunction()
+
+  # Returns the distance of HEAD to the common ancestor of HEAD and COMMIT.
+  function (commits_since_common_ancestor COMMIT COMMIT_COUNT)
+    backtick(COMMON_ANCESTOR ${GIT_EXECUTABLE} merge-base HEAD "${COMMIT}")
+    backtick(COMMITS_IN_BRANCH ${GIT_EXECUTABLE} rev-list --count "HEAD...${COMMON_ANCESTOR}")
+    set(${COMMIT_COUNT} ${COMMITS_IN_BRANCH} PARENT_SCOPE)
+  endfunction()
+
+  # Run through the release-branches to see if we are on one.
+  math(EXPR LEN_MINUS_1 "${BRANCHES_LENGTH} - 1")
+  foreach (index RANGE ${LEN_MINUS_1})
+    list(GET RELEASE_BRANCHES ${index} RELEASE_BRANCH)
     execute_process(
       COMMAND ${GIT_EXECUTABLE} merge-base --is-ancestor ${RELEASE_BRANCH} HEAD
       RESULT_VARIABLE RESULT
@@ -91,30 +117,40 @@ function(compute_git_version VERSION)
     if (NOT "${RESULT}" EQUAL 0)
       continue()
     endif()
-    # This branch is a child branch of a release-branch.
-    string(REGEX MATCH "/release-v([0-9]+)\\.([0-9]+)" IGNORED "${RELEASE_BRANCH}")
-    set(branch_major ${CMAKE_MATCH_1})
-    set(branch_minor ${CMAKE_MATCH_2})
-    if (${branch_major} EQUAL ${major} AND ${branch_minor} EQUAL ${minor})
+    # This commit is a child branch of a release-branch.
+    version_from_branch("${RELEASE_BRANCH}" branch_major branch_minor)
+    if (${branch_major} EQUAL ${tag_major} AND ${branch_minor} EQUAL ${tag_minor})
       # There is already a release on this branch.
       # Use next patch version.
-      MATH(EXPR patch "${patch}+1")
-      set(${VERSION} "v${major}.${minor}.${patch}-pre.${CURRENT_COMMIT_NO}+${CURRENT_COMMIT_SHORT}" PARENT_SCOPE)
+      MATH(EXPR patch "${tag_patch}+1")
+      # Count the distance to the last tag.
+      backtick(CURRENT_COMMIT_NO ${GIT_EXECUTABLE} rev-list --count HEAD "^${VERSION_TAG_COMMIT}")
+      set(${VERSION} "v${tag_major}.${tag_minor}.${patch}-pre.${CURRENT_COMMIT_NO}+${CURRENT_COMMIT_SHORT}" PARENT_SCOPE)
       return()
     endif()
     # First release on this major.minor branch.
-    set(major ${branch_major})
-    set(minor ${branch_minor})
-    set(patch "0")
-    # Instead of counting since the last tag, we count the commits that have been done in this branch.
-    # Note that we are assuming that the default branch is called "master".
-    backtick(COMMON_ANCESTOR ${GIT_EXECUTABLE} merge-base HEAD "origin/master")
-    backtick(COMMITS_IN_BRANCH ${GIT_EXECUTABLE} rev-list --count "HEAD...${COMMON_ANCESTOR}")
-    set(${VERSION} "v${major}.${minor}.${patch}-pre.${COMMITS_IN_BRANCH}+${CURRENT_COMMIT_SHORT}" PARENT_SCOPE)
+
+    # We need to find the distance to the previous commit-branch to maintain a consistent
+    # counting (monotonically increasing).
+    # We assume the next release-branch in the list is the previous branch-point.
+    # Remember: the release-branches are sorted in descending order.
+    math(EXPR next_index "${index}+1")
+    list(GET RELEASE_BRANCHES ${next_index} PREVIOUS_RELEASE_BRANCH)
+    commits_since_common_ancestor(${PREVIOUS_RELEASE_BRANCH} COMMITS_SINCE_LAST_RELEASE)
+    set(${VERSION} "v${branch_major}.${branch_minor}.0-pre.${COMMITS_SINCE_LAST_RELEASE}+${CURRENT_COMMIT_SHORT}" PARENT_SCOPE)
     return()
   endforeach()
 
-  # If we are on master/main or a checkout without a branch-name use the next highest release.
+  # We are not on a release branch.
+  # Use the next highest release since the last release branch.
+
+  # The first branch is the latest version (by virtue of sorting in natural descending order).
+  list(GET RELEASE_BRANCHES 0 NEWEST_BRANCH)
+  version_from_branch("${NEWEST_BRANCH}" branch_major branch_minor)
+  # Count the commits since the last release-branch.
+  commits_since_common_ancestor(${NEWEST_BRANCH} COMMITS_SINCE_LAST_RELEASE)
+
+  backtick(CURRENT_BRANCH ${GIT_EXECUTABLE} rev-parse --abbrev-ref HEAD)
   if ("${CURRENT_BRANCH}" STREQUAL master OR "${CURRENT_BRANCH}" STREQUAL main OR "${CURRENT_BRANCH}" STREQUAL HEAD)
     # Master branch: v0.5.0-pre.17+9a1fbdb29
     set(BRANCH_ID "")
@@ -125,25 +161,8 @@ function(compute_git_version VERSION)
     set(BRANCH_ID "${SANITIZED_BRANCH}.")
   endif()
 
-  # Use either the latest reachable tag, or the highest branch. Whichever is higher.
-  if ("${branch_major}.${branch_minor}" VERSION_GREATER "${major}.${minor}")
-    set(major ${branch_major})
-    set(minor ${branch_minor})
-    # Update the commit number. Count the commits since the latest branch.
-    backtick(COMMON_ANCESTOR ${GIT_EXECUTABLE} merge-base HEAD "${NEWEST_BRANCH}")
-    backtick(COMMITS_SINCE_BRANCH ${GIT_EXECUTABLE} rev-list --count "HEAD...${COMMON_ANCESTOR}")
-    # We need to ensure that later commits have higher versions.
-    # However, once the branch is released, there will be a tag, and we will count the number
-    # of commits from there. This could lead to newer commits having a shorter commit-count.
-    # To ensure that the order stays correct we use a different pre-version identifier that is
-    # always lower than the default identifier.
-    set(pre_identifier "pr")
-    MATH(EXPR minor "${minor}+1")
-    set(${VERSION} "v${major}.${minor}.0-${pre_identifier}.${COMMITS_SINCE_BRANCH}+${BRANCH_ID}${CURRENT_COMMIT_SHORT}" PARENT_SCOPE)
-    return()
-  endif()
-  MATH(EXPR minor "${minor}+1")
-  set(${VERSION} "v${major}.${minor}.0-pre.${CURRENT_COMMIT_NO}+${BRANCH_ID}${CURRENT_COMMIT_SHORT}" PARENT_SCOPE)
+  MATH(EXPR minor "${branch_minor}+1")
+  set(${VERSION} "v${branch_major}.${minor}.0-pre.${COMMITS_SINCE_LAST_RELEASE}+${BRANCH_ID}${CURRENT_COMMIT_SHORT}" PARENT_SCOPE)
 endfunction()
 
 # Print the git-version on stdout:
