@@ -17,7 +17,6 @@
 
 #include "objects.h"
 #include "memory.h"
-#include "heap.h"
 #include "tags.h"
 
 namespace toit {

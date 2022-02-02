@@ -3,7 +3,7 @@
 // be found in the tests/LICENSE file.
 
 import expect show *
-import host.ar show *
+import ar show *
 import bytes
 import host.directory
 import host.file

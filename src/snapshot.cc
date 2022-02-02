@@ -19,7 +19,7 @@
 
 #include "snapshot.h"
 #include "objects_inline.h"
-#include "heap.h"
+#include "program_heap.h"
 #include "os.h"
 #include "process.h"
 #include "uuid.h"
@@ -33,7 +33,6 @@ enum class SnapshotTypeTag {
   OBJECT_TAG = 0,
   IN_TABLE_TAG,
   BACK_REFERENCE_TAG,
-  PROGRAM_HEAP_REFERENCE_TAG,
   POSITIVE_SMI_TAG,
   NEGATIVE_SMI_TAG,  // Last element must be tested in static_assert below.
 };
@@ -43,10 +42,8 @@ static_assert(static_cast<int>(SnapshotTypeTag::NEGATIVE_SMI_TAG) < (1 << OBJECT
 static const int OBJECT_HEADER_TYPE_MASK = (1 << OBJECT_HEADER_TYPE_SIZE) - 1;
 
 static const uint32 PROGRAM_SNAPSHOT_MAGIC = 70177017;  // Toit toit.
-static const uint32 OBJECT_SNAPSHOT_MAGIC = 0x70177017;  // Toit toit.
 
 static const int PROGRAM_SNAPSHOT_HEADER_BYTE_SIZE = 8 * UINT32_SIZE;
-static const int OBJECT_SNAPSHOT_HEADER_BYTE_SIZE = 5 * UINT32_SIZE;
 
 namespace {
 
@@ -256,7 +253,7 @@ class SizedVirtualAllocator {
  public:
   SizedVirtualAllocator(int word_size)
       : _word_size(word_size)
-      , limit(Block::max_payload_size(word_size)) { }
+      , limit(ProgramBlock::max_payload_size(word_size)) { }
 
   HeapObject* allocate_object(TypeTag tag, int length);
 
@@ -419,67 +416,11 @@ class ImageAllocator : public HeapAllocator {
   uword external_size();
 };
 
-class ObjectAllocator : public HeapAllocator {
- public:
-  ObjectAllocator(Process* process) : _process(process) { }
-
-  bool initialize(int normal_block_count,
-                  int external_pointer_count,
-                  int external_int32_count,
-                  int external_byte_count) {
-    HeapAllocator::initialize(normal_block_count,
-                              external_pointer_count,
-                              external_int32_count,
-                              external_byte_count);
-
-    _block_table = unvoid_cast<void**>(malloc(normal_block_count * sizeof(void*)));
-    if (_block_table == null) return false;
-    for (int i = 0; i < normal_block_count; i++) {
-      auto block_memory = _process->object_heap()->_allocate_raw(Block::max_payload_size());
-      if (block_memory == null) return false;
-      _block_table[i] = block_memory;
-    }
-    if (external_pointer_count != 0 || external_int32_count != 0 || external_byte_count != 0) {
-      UNIMPLEMENTED();
-    }
-    return true;
-  }
-
-  HeapObject* allocate_object(TypeTag tag, int length);
-
- protected:
-  void* allocate_external(int byte_size) { UNREACHABLE(); }
-
- private:
-  Process* _process;
-  void** _block_table = null;
-  int _current_block = 0; // Index of the current block.
-  int _block_offset = 0;  // Offset into the current block of the first free area.
-};
-
 template <typename T>
 using WorkAroundSet = BinaryTreeSet;
 
 template <typename K, typename V>
 using WorkAroundMap = BinaryTreeMap<V>;
-
-class ObjectSnapshotReader : public SnapshotReader {
- public:
-  ObjectSnapshotReader(const uint8* buffer, int length, Process* process)
-      : SnapshotReader(buffer, length, &_object_allocator)
-      , _object_allocator(process)
-      , _program(process->program()) { }
-
-  Object* read();
-
- protected:
-  bool read_header();
-  HeapObject* read_program_heap_reference(uword offset);
-
- private:
-  ObjectAllocator _object_allocator;
-  Program* _program;
-};
 
 class ImageSnapshotReader : public SnapshotReader {
  public:
@@ -491,7 +432,6 @@ class ImageSnapshotReader : public SnapshotReader {
 
  protected:
   bool read_header();
-  HeapObject* read_program_heap_reference(uword offset);
 
  private:
   ImageAllocator _image_allocator;
@@ -501,10 +441,8 @@ class ImageSnapshotReader : public SnapshotReader {
 class BaseSnapshotWriter : public SnapshotWriter {
  public:
   BaseSnapshotWriter(int large_integer_class_id,
-                     uword program_heap_base,
                      Program* program)
       : _large_integer_class_id(large_integer_class_id)
-      , _program_heap_base(program_heap_base)
       , _program(program) { }
 
   void write_byte(uint8 value) = 0;
@@ -538,13 +476,10 @@ class BaseSnapshotWriter : public SnapshotWriter {
 
   Program* _program;
 
-  bool is_program_heap_reference(HeapObject* object, uword* offset);
-
   void write_object_header(SnapshotTypeTag tag, int extra = 0) {
     write_cardinal(static_cast<int>(tag) + (extra << OBJECT_HEADER_TYPE_SIZE));
   }
   void write_reference(int index);
-  void write_program_heap_reference(uword offset);
   void write_heap_object(HeapObject* object);
   void write_integer(int64 value);
   void write_cardinal64(uint64 value);
@@ -583,9 +518,8 @@ class EmittingSnapshotWriter : public BaseSnapshotWriter {
                          int length,
                          const WorkAroundSet<uword>& back_reference_targets,
                          int large_integer_class_id,
-                         Program* program,
-                         uword program_heap_base = 0)
-      : BaseSnapshotWriter(large_integer_class_id, program_heap_base, program)
+                         Program* program)
+      : BaseSnapshotWriter(large_integer_class_id, program)
       , _buffer(buffer)
       , _length(length)
       , _back_reference_targets(back_reference_targets) { }
@@ -597,9 +531,6 @@ class EmittingSnapshotWriter : public BaseSnapshotWriter {
   // Must be called last, since it uses the data that was accumulated by the
   //   virtual allocator.
   void write_program_snapshot_header();
-  // Must be called last, since it uses the data that was accumulated by the
-  //   virtual allocator.
-  void write_object_snapshot_header();
 
   int remaining() const { return _length - _pos; }
 
@@ -624,11 +555,6 @@ class EmittingSnapshotWriter : public BaseSnapshotWriter {
 ProgramImage Snapshot::read_image() {
   ImageSnapshotReader reader(_buffer, _size);
   return reader.read_image();
-}
-
-Object* Snapshot::read_object(Process* process) {
-  ObjectSnapshotReader reader(_buffer, _size, process);
-  return reader.read();
 }
 
 SnapshotReader::SnapshotReader(const uint8* buffer, int length, SnapshotAllocator* allocator)
@@ -678,39 +604,6 @@ int32* SnapshotReader::allocate_external_int32s(int count) {
 }
 uint8* SnapshotReader::allocate_external_bytes(int count) {
   return _allocator->allocate_external_bytes(count);
-}
-
-// Returns object table length.
-bool ObjectSnapshotReader::read_header() {
-  uint32 magic = read_uint32();
-  if (magic != OBJECT_SNAPSHOT_MAGIC) {
-    printf("Magic marker in snapshot is %x!\n", magic);
-    // TODO(florian): we should return and indicate the error to the user.
-    exit(1);
-  }
-  int snapshot_size = read_uint32();
-  int word_size = read_uint32();
-  if (word_size != WORD_SIZE) {
-    printf("Magic marker in snapshot is %x!\n", magic);
-    // TODO(florian): we should return and indicate the error to the user.
-    exit(1);
-  }
-  int encoded_block_count = read_uint32();
-  int block_count32 = encoded_block_count >> 16;
-  int block_count64 = encoded_block_count & 0xFFFF;
-  int normal_block_count = sizeof(word) == 4 ? block_count32 : block_count64;
-  int external_pointer_count = 0;
-  int external_int32_count = 0;
-  int external_byte_count = 0;
-  int table_length = read_uint32();
-  int large_integer_id = _program->large_integer_class_id()->value();
-  return initialize(snapshot_size,
-                    normal_block_count,
-                    external_pointer_count,
-                    external_int32_count,
-                    external_byte_count,
-                    table_length,
-                    large_integer_id);
 }
 
 // Returns object table length.
@@ -848,10 +741,6 @@ static void allocation_size(TypeTag heap_tag, int optional_length,
   }
 }
 
-HeapObject* ImageSnapshotReader::read_program_heap_reference(uword offset) {
-  FATAL("Reading program heap reference in image snapshot reader.");
-}
-
 Object* SnapshotReader::read_object() {
   SnapshotTypeTag type;
   int extra;
@@ -860,7 +749,6 @@ Object* SnapshotReader::read_object() {
     case SnapshotTypeTag::POSITIVE_SMI_TAG: return read_integer(false);
     case SnapshotTypeTag::NEGATIVE_SMI_TAG: return read_integer(true);
     case SnapshotTypeTag::BACK_REFERENCE_TAG: return _table[extra];
-    case SnapshotTypeTag::PROGRAM_HEAP_REFERENCE_TAG: return read_program_heap_reference(extra);
     case SnapshotTypeTag::OBJECT_TAG:
     case SnapshotTypeTag::IN_TABLE_TAG:
       // Handled here.
@@ -941,32 +829,6 @@ Object** SnapshotReader::read_external_object_table(int* length) {
   }
   *length = n;
   return table;
-}
-
-Object* ObjectSnapshotReader::read() {
-  if (!read_header()) return null;
-  register_class_bits(_program->class_bits.data(), _program->class_bits.length());
-  return read_object();
-}
-
-HeapObject* ObjectAllocator::allocate_object(TypeTag tag, int length) {
-  int word_count, extra_bytes;
-  allocation_size(tag, length, &word_count, &extra_bytes);
-  int byte_size = _align(word_count * sizeof(word) + extra_bytes);
-  ASSERT(byte_size < Block::max_payload_size());
-  if (_block_offset + byte_size > Block::max_payload_size()) {
-    _current_block++;
-    _block_offset = 0;
-  }
-  ASSERT(_current_block < normal_block_count());
-  auto result = reinterpret_cast<HeapObject*>(&unvoid_cast<char*>(_block_table[_current_block])[_block_offset]);
-  _block_offset += byte_size;
-  return result;
-}
-
-HeapObject* ObjectSnapshotReader::read_program_heap_reference(uword offset) {
-  uword program_heap_address = reinterpret_cast<uword>(_program->heap_address());
-  return HeapObject::cast(reinterpret_cast<void*>(program_heap_address + offset));
 }
 
 HeapObject* SizedVirtualAllocator::allocate_object(TypeTag tag, int length) {
@@ -1052,7 +914,7 @@ ProgramImage ImageSnapshotReader::read_image() {
 }
 
 void ImageAllocator::expand() {
-  Block* block = new (_block_top) Block();
+  ProgramBlock* block = new (_block_top) ProgramBlock();
   _block_top = Utils::address_at(_block_top, TOIT_PAGE_SIZE);
   _program->_heap._blocks.append(block);
 }
@@ -1063,7 +925,7 @@ HeapObject* ImageAllocator::allocate_object(TypeTag tag, int length) {
   int byte_size = _align(word_count * sizeof(word) + extra_bytes);
   HeapObject* result = _program->_heap._blocks.last()->allocate_raw(byte_size);
   if (result != null) return result;
-  ASSERT(byte_size < Block::max_payload_size());
+  ASSERT(byte_size < ProgramBlock::max_payload_size());
   expand();
   return _program->_heap._blocks.last()->allocate_raw(byte_size);
 }
@@ -1085,31 +947,13 @@ int SnapshotGenerator::large_integer_class_id() {
 void SnapshotGenerator::generate(Program* program) {
   generate(PROGRAM_SNAPSHOT_HEADER_BYTE_SIZE,
            [&](EmittingSnapshotWriter* writer) { writer->write_program_snapshot_header(); },
-           [&](SnapshotWriter* writer) { program->write(writer); },
-           false);
-}
-
-void SnapshotGenerator::generate(Object* object, Process* process) {
-  generate(OBJECT_SNAPSHOT_HEADER_BYTE_SIZE,
-           [&](EmittingSnapshotWriter* writer) { writer->write_object_snapshot_header(); },
-           [&](SnapshotWriter* writer) {
-             writer->write_object(object);
-           },
-           true,
-           process);
+           [&](SnapshotWriter* writer) { program->write(writer); });
 }
 
 void SnapshotGenerator::generate(int header_byte_size,
                                  std::function<void (EmittingSnapshotWriter*)> write_header,
-                                 std::function<void (SnapshotWriter*)> write_object,
-                                 bool only_process_heap,
-                                 Process* process) {
-  uword program_heap_base = 0;
-  if (only_process_heap) {
-    program_heap_base = reinterpret_cast<uword>(process->program()->heap_address());
-  }
-
-  CollectingSnapshotWriter collector(large_integer_class_id(), program_heap_base, _program);
+                                 std::function<void (SnapshotWriter*)> write_object) {
+  CollectingSnapshotWriter collector(large_integer_class_id(), _program);
   collector.reserve_header(header_byte_size);
   write_object(&collector);
 
@@ -1119,8 +963,7 @@ void SnapshotGenerator::generate(int header_byte_size,
                                  _length,
                                  collector.back_reference_targets(),
                                  large_integer_class_id(),
-                                 _program,
-                                 program_heap_base);
+                                 _program);
   emitter.reserve_header(header_byte_size);
   write_object(&emitter);
   write_header(&emitter);
@@ -1271,22 +1114,6 @@ void EmittingSnapshotWriter::write_program_snapshot_header() {
   ASSERT(offset == PROGRAM_SNAPSHOT_HEADER_BYTE_SIZE);
 }
 
-void EmittingSnapshotWriter::write_object_snapshot_header() {
-  int offset = 0;
-  offset = write_uint32_at(offset, OBJECT_SNAPSHOT_MAGIC);
-  offset = write_uint32_at(offset, _pos);
-  offset = write_uint32_at(offset, WORD_SIZE);
-  // We still send the two block-counts, as this simplifies the
-  // translation in an external tool.
-  int block_count32 = _allocator.normal_block_count(4);
-  int block_count64 = _allocator.normal_block_count(8);
-  int encoded_block_count = (block_count32 << 16) + block_count64;
-  offset = write_uint32_at(offset, encoded_block_count);
-  int object_table_length = _back_reference_index;
-  offset = write_uint32_at(offset, object_table_length);
-  ASSERT(offset == OBJECT_SNAPSHOT_HEADER_BYTE_SIZE);
-}
-
 void BaseSnapshotWriter::write_double(double value) {
   static_assert(sizeof(value) == 8, "Unexpected type size");
   uint8 bytes[8];
@@ -1317,16 +1144,6 @@ void BaseSnapshotWriter::write_uint64(uint64 value) {
 
 void BaseSnapshotWriter::write_reference(int index) {
   write_object_header(SnapshotTypeTag::BACK_REFERENCE_TAG, index);
-}
-
-bool BaseSnapshotWriter::is_program_heap_reference(HeapObject* object, uword* offset) {
-  if (_program_heap_base == 0 || object->owner() != null) return false;
-  *offset = object->_raw() - _program_heap_base;
-  return true;
-}
-
-void BaseSnapshotWriter::write_program_heap_reference(uword offset) {
-  write_object_header(SnapshotTypeTag::PROGRAM_HEAP_REFERENCE_TAG, offset);
 }
 
 void BaseSnapshotWriter::write_object(Object* object) {
@@ -1380,11 +1197,6 @@ static int optional_length(HeapObject* object, Program* program) {
 }
 
 void BaseSnapshotWriter::write_heap_object(HeapObject* object) {
-  uword program_heap_offset;
-  if (is_program_heap_reference(object, &program_heap_offset)) {
-    write_program_heap_reference(program_heap_offset);
-    return;
-  }
   uword key = object->_raw();
   int back_reference_index;
   if (is_back_reference(key, &back_reference_index)) {

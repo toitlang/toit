@@ -51,6 +51,7 @@ UARTEventSource::~UARTEventSource() {
 
 void UARTEventSource::entry() {
   Locker locker(mutex());
+  HeapTagScope scope(ITERATE_CUSTOM_TAGS + EVENT_SOURCE_MALLOC_TAG);
 
   while (true) {
     { Unlocker unlock(locker);

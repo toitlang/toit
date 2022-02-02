@@ -5,7 +5,7 @@ tests/negative/bad_call_test.toit:27:3: error: Unresolved identifier: 'foo'
   foo foo := 0
   ^~~
 tests/negative/bad_call_test.toit:28:9: error: Unresolved identifier: 'foo'
-  debug foo
+  print foo
         ^~~
 tests/negative/bad_call_test.toit:8:15: error: Definition of variable not allowed at this location
     super foo := 0

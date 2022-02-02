@@ -71,6 +71,16 @@ endif
 build/host/CMakeCache.txt:
 	$(MAKE) rebuild-cmake
 
+BIN_DIR = build/host/sdk/bin
+TOITVM_BIN = $(BIN_DIR)/toit.run$(EXE_SUFFIX)
+TOITPKG_BIN = $(BIN_DIR)/toit.pkg$(EXE_SUFFIX)
+TOITC_BIN = $(BIN_DIR)/toit.compile$(EXE_SUFFIX)
+
+.PHONY: download-packages
+download-packages: check-env build/host/CMakeCache.txt tools
+	$(TOITPKG_BIN) sync   # Shouldn't be necessary but fixes a race condition.
+	(cd build/host && ninja download_packages)
+
 .PHONY: rebuild-cmake
 rebuild-cmake:
 	mkdir -p build/host
@@ -81,7 +91,7 @@ tools: check-env build/host/CMakeCache.txt
 	(cd build/host && ninja build_tools)
 
 .PHONY: snapshots
-snapshots: tools
+snapshots: tools download-packages
 	(cd build/host && ninja build_snapshots)
 
 .PHONY: version-file
@@ -108,14 +118,14 @@ build/$(CROSS_ARCH)/CMakeCache.txt:
 .PHONY: rebuild-cross-cmake
 rebuild-cross-cmake:
 	mkdir -p build/$(CROSS_ARCH)
-	(cd build/$(CROSS_ARCH) && cmake ../../ -G Ninja -DTOITC=$(CURDIR)/build/host/sdk/bin/toit.compile -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/$(CROSS_ARCH).cmake --no-warn-unused-cli)
+	(cd build/$(CROSS_ARCH) && cmake ../../ -G Ninja -DTOITC=$(TOITC_BIN) -DTOITPKG=$(TOITPKG_BIN) -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/$(CROSS_ARCH).cmake --no-warn-unused-cli)
 
 .PHONY: tools-cross
 tools-cross: check-env-cross tools build/$(CROSS_ARCH)/CMakeCache.txt
 	(cd build/$(CROSS_ARCH) && ninja build_tools)
 
 .PHONY: snapshots-cross
-snapshots-cross: tools build/$(CROSS_ARCH)/CMakeCache.txt
+snapshots-cross: tools download-packages build/$(CROSS_ARCH)/CMakeCache.txt
 	(cd build/$(CROSS_ARCH) && ninja build_snapshots)
 
 .PHONY: version-file-cross
@@ -126,9 +136,6 @@ version-file-cross: build/$(CROSS_ARCH)/CMakeCache.txt
 
 # ESP32 VARIANTS
 SNAPSHOT_DIR = build/host/sdk/snapshots
-BIN_DIR = build/host/sdk/bin
-TOITVM_BIN = $(BIN_DIR)/toit.run$(EXE_SUFFIX)
-TOITC_BIN = $(BIN_DIR)/toit.compile$(EXE_SUFFIX)
 
 ifeq ($(DETECTED_OS), Linux)
 	NUM_CPU := $(shell nproc)
@@ -158,7 +165,7 @@ build/snapshot: $(TOITC_BIN) $(ESP32_ENTRY)
 
 build/$(ESP32_CHIP)/CMakeCache.txt:
 	mkdir -p build/$(ESP32_CHIP)
-	(cd build/$(ESP32_CHIP) && IMAGE=build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s cmake ../../ -G Ninja -DTOITC=$(CURDIR)/build/host/sdk/bin/toit.compile -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/$(ESP32_CHIP)/$(ESP32_CHIP).cmake --no-warn-unused-cli)
+	(cd build/$(ESP32_CHIP) && IMAGE=build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s cmake ../../ -G Ninja -DTOITC=$(TOITC_BIN) -DTOITPKG=$(TOITPKG_BIN) -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/$(ESP32_CHIP)/$(ESP32_CHIP).cmake --no-warn-unused-cli)
 
 build/$(ESP32_CHIP)/include/sdkconfig.h:
 	mkdir -p build/$(ESP32_CHIP)
@@ -211,12 +218,12 @@ update-gold:
 	(cd build/host && ninja update_minus_s_gold)
 
 .PHONY: test-health
-test-health:
+test-health: download-packages
 	$(MAKE) rebuild-cmake
 	(cd build/host && ninja check_health)
 
 .PHONY: update-health-gold
-update-health-gold:
+update-health-gold: download-packages
 	$(MAKE) rebuild-cmake
 	(cd build/host && ninja clear_health_gold)
 	(cd build/host && ninja update_health_gold)

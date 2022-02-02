@@ -640,7 +640,7 @@ class IndexedBytemapSource : public BytemapDecompresser {
 };
 
 // Draw a bitmap on a bitmap or a bytemap.  The ones in the input bitmap are
-// drawn in the given color and the zeroes are transparent.
+// drawn in the given color and the zeros are transparent.
 PRIMITIVE(draw_bitmap) {
 #if !defined(CONFIG_TOIT_BIT_DISPLAY) && !defined(CONFIG_TOIT_BYTE_DISPLAY)
   UNIMPLEMENTED_PRIMITIVE;

@@ -22,7 +22,6 @@
 #include "objects.h"
 #include "primitive.h"
 #include "printing.h"
-#include "snapshot.h"
 
 #include "objects_inline.h"
 
@@ -70,11 +69,6 @@ class Heap : public RawHeap {
 
   // Returns the number of bytes allocated in this heap.
   virtual int payload_size();
-
-  // Make all blocks in this heap writable or read only.
-  void set_writable(bool value) {
-    _blocks.set_writable(value);
-  }
 
   Program* program() { return _program; }
 
@@ -142,7 +136,6 @@ class Heap : public RawHeap {
   AllocationResult _last_allocation_result;
 
   friend class ProgramSnapshotReader;
-  friend class ObjectAllocator;
   friend class compiler::ProgramBuilder;
 };
 
@@ -157,18 +150,6 @@ class NoGC {
 
  private:
   Heap* _heap;
-};
-
-// A program heap contains all the reflective structures to run the program.
-// The program heap also maintains a list of active processes using this heap.
-class ProgramHeap final : public Heap {
- public:
-  ProgramHeap(Program* program, Block* initial_block) : Heap(null, program, initial_block) {}
-  void migrate_to(Program* program);
-
-  String* allocate_string(const char* str);
-  String* allocate_string(const char* str, int length);
-  ByteArray* allocate_byte_array(const uint8*, int length);
 };
 
 class ObjectNotifier;
@@ -281,7 +262,9 @@ class ObjectHeap final : public Heap {
   ByteArray* allocate_proxy(int length, uint8* memory, bool dispose = false) {
     return allocate_external_byte_array(length, memory, dispose, false);
   }
-  ByteArray* allocate_proxy() { return allocate_proxy(0, null); }
+  ByteArray* allocate_proxy(bool dispose = false) {
+    return allocate_proxy(0, null, dispose);
+  }
 
   void print(Printer* printer);
 

@@ -75,6 +75,7 @@ void BLEEventSource::stop() {
 
 void BLEEventSource::entry() {
   Locker locker(mutex());
+  HeapTagScope scope(ITERATE_CUSTOM_TAGS + EVENT_SOURCE_MALLOC_TAG);
 
   while (!_stop) {
     if (_should_run) {

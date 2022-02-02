@@ -18,9 +18,6 @@ set(TOIT_FAILING_TESTS
 
 if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows" OR "${CMAKE_SYSTEM_NAME}" STREQUAL "MSYS")
   list(APPEND TOIT_FAILING_TESTS
-    examples/http/http.toit
-    examples/ntp/ntp.toit
     tests/lock_file/multi_test/target/sub/src/sub.toit
-    tests/lsp/project_root/.packages/foo/1.0.0/src/foo.toit
   )
 endif()

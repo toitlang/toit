@@ -13,7 +13,7 @@ simple:
   a[0] = "Hello"
   a[1] = "Cruel"
   a[2] = "Lars"
-  a.do: | it | debug it
+  a.do: | it | print it
 
 gnarly:
   x := null

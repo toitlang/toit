@@ -18,7 +18,6 @@
 #include <atomic>
 
 #include "objects.h"
-#include "heap.h"
 #include "primitive.h"
 
 #ifdef ESP32

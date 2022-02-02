@@ -35,10 +35,10 @@ class Pin:
   */
   num/int
 
-  pull_up_/bool := false
-  pull_down_/bool := false
-  resource_ := null
-  state_ := null
+  pull_up_/bool ::= false
+  pull_down_/bool ::= false
+  resource_/ByteArray? := null
+  state_/monitor.ResourceState_? ::= null
   last_set_/int := 0
 
   /**
@@ -80,6 +80,7 @@ class Pin:
   */
   close:
     if resource_:
+      state_.dispose
       gpio_unuse_ resource_group_ resource_
       resource_ = null
 

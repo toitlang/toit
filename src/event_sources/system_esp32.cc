@@ -31,7 +31,9 @@ SystemEventSource::SystemEventSource()
     : EventSource("System", 1)
     , _run_cond(OS::allocate_condition_variable(mutex()))
     , _in_run(false) {
-  FATAL_IF_NOT_ESP_OK(esp_event_loop_create_default());
+  { HeapTagScope scope(ITERATE_CUSTOM_TAGS + THREAD_SPAWN_MALLOC_TAG);
+    FATAL_IF_NOT_ESP_OK(esp_event_loop_create_default());
+  }
   FATAL_IF_NOT_ESP_OK(esp_event_handler_register(RUN_EVENT, ESP_EVENT_ANY_ID, on_event, this));
   ASSERT(_instance == null);
   _instance = this;
@@ -73,6 +75,7 @@ void SystemEventSource::on_event(esp_event_base_t base, int32_t id, void* event_
   Thread::ensure_system_thread();
   Locker locker(mutex());
 
+  HeapTagScope scope(ITERATE_CUSTOM_TAGS + EVENT_SOURCE_MALLOC_TAG);
   if (base == RUN_EVENT) {
     const std::function<void ()>* func = reinterpret_cast<const std::function<void ()>*>(event_data);
     (*func)();

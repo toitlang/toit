@@ -367,7 +367,7 @@ app_sdk_info -> string:
 set_max_heap_size_ size/int -> none:
   #primitive.core.set_max_heap_size
 
-serial_print_heap_report max_pages/int=100 -> none:
+serial_print_heap_report marker/string="" max_pages/int=0 -> none:
   #primitive.core.serial_print_heap_report
 
 /** Simplistic profiler based on bytecode invocation counts. */
@@ -424,8 +424,7 @@ class Profiler:
 Returns the literal index of the given object $o, or null if the object wasn't
   recognized as literal.
 
-This function is in O(1) when it fails, but requires a linear search for
-  objects that are found to be literals.
+This function can be slow as it requires a linear search for objects.
 */
 literal_index_ o -> int?:
   #primitive.core.literal_index

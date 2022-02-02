@@ -41,6 +41,7 @@ namespace toit {
   fn(PWMResource)                       \
   fn(GAPResource)                       \
   fn(GATTResource)                      \
+  fn(Directory)                         \
 
 #define TLS_CLASSES_DO(fn)              \
   fn(MbedTLSSocket)                     \
@@ -91,9 +92,9 @@ enum StructTag {
   ResourceGroupMaxTag,
 
   // Misc.
+  LeakyDirectoryTag,
   FontTag,
   ImageOutputStreamTag,
-  DirectoryTag,
   ChannelTag
 };
 

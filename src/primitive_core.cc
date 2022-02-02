@@ -1715,6 +1715,7 @@ PRIMITIVE(process_send) {
     length = size_encoder.size();
   }
 
+  HeapTagScope scope(ITERATE_CUSTOM_TAGS + EXTERNAL_BYTE_ARRAY_MALLOC_TAG);
   uint8* buffer = unvoid_cast<uint8*>(malloc(length));
   if (buffer == null) MALLOC_FAILED;
 
@@ -2199,13 +2200,11 @@ PRIMITIVE(dump_heap) {
 }
 
 PRIMITIVE(serial_print_heap_report) {
-#ifndef TOIT_CMPCTMALLOC
-  UNIMPLEMENTED_PRIMITIVE;
-#else
-  ARGS(int, max_pages);
-  OS::heap_summary_report(max_pages);
-  return process->program()->null_object();
+#ifdef TOIT_CMPCTMALLOC
+  ARGS(cstring, marker, int, max_pages);
+  OS::heap_summary_report(max_pages, marker);
 #endif // def TOIT_CMPCTMALLOC
+  return process->program()->null_object();
 }
 
 PRIMITIVE(get_env) {
@@ -2226,13 +2225,11 @@ PRIMITIVE(literal_index) {
   ARGS(Object, o);
   auto null_object = process->program()->null_object();
   if (!o->is_heap_object()) return null_object;
-  auto heap_object = HeapObject::cast(o);
-  if (!Heap::in_read_only_program_heap(heap_object, process->object_heap())) return null_object;
   auto& literals = process->program()->literals;
   for (int i = 0; i < literals.length(); i++) {
     if (literals.at(i) == o) return Smi::from(i);
   }
-  OTHER_ERROR;
+  return null_object;
 }
 
 PRIMITIVE(word_size) {

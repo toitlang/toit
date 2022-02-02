@@ -35,3 +35,6 @@ add_custom_target(
   DEPENDS ${SNAPSHOTS}
 )
 add_dependencies(build_snapshots build_tool_snapshots)
+
+toit_project(lsp "${CMAKE_CURRENT_LIST_DIR}/lsp/server")
+toit_project(tools "${CMAKE_CURRENT_LIST_DIR}")

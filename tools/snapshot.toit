@@ -13,7 +13,7 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-import host.ar show *
+import ar show *
 import host.file
 import binary show *
 
@@ -292,33 +292,11 @@ class SourceMap:
   stringify -> string:
     return "$method_segment\n - $class_segment\n - $primitive_segment\n - $selector_names_segment"
 
-class ObjectSnapshot:
-  byte_array     / ByteArray   ::= ?
-  program        / Program     ::= ?
-  object_segment / ObjectSegment ::= ?
-  file_name      / string?     ::= ?
-
-  constructor.from_file name/string program/Program:
-    return ObjectSnapshot name (file.read_content name) program
-
-  constructor byte_array/ByteArray program/Program:
-    return ObjectSnapshot null byte_array program
-
-  constructor .file_name .byte_array .program:
-    header := SegmentHeader byte_array 0
-    if not header.is_object_snapshot: throw "Bad snapshot format"
-    object_segment = ObjectSegment byte_array 0 header.content_size program
-
-  decode -> ToitObject:
-    return object_segment.parse
-
-
 OBJECT_TAG          ::= 0
 IN_TABLE_TAG        ::= 1
 BACK_REFERENCE_TAG  ::= 2
-PROGRAM_HEAP_REFERENCE_TAG ::= 3
-POSITIVE_SMI_TAG    ::= 4
-NEGATIVE_SMI_TAG    ::= 5
+POSITIVE_SMI_TAG    ::= 3
+NEGATIVE_SMI_TAG    ::= 4
 
 OBJECT_HEADER_WIDTH ::= 3
 OBJECT_HEADER_TYPE_MASK ::= (1 << OBJECT_HEADER_WIDTH) - 1
@@ -1107,7 +1085,6 @@ abstract class HeapSegment extends Segment:
     if type == NEGATIVE_SMI_TAG: return read_integer_ false
     if type == POSITIVE_SMI_TAG: return read_integer_ true
     if type == BACK_REFERENCE_TAG: return get_back_reference_ extra
-    if type == PROGRAM_HEAP_REFERENCE_TAG: return get_program_heap_reference_ extra
     assert: (type == OBJECT_TAG) or (type == IN_TABLE_TAG)
     in_table := type == IN_TABLE_TAG
     optional_length := extra
@@ -1129,33 +1106,6 @@ abstract class HeapSegment extends Segment:
   get_back_reference_ index/int -> ToitObject: return back_table_[index]
 
   abstract get_program_heap_reference_ id -> ToitObject
-
-class ObjectSegment extends HeapSegment:
-  program_      / Program ::= ?
-  /// The program heap with the correct word_size.
-  program_heap_ / Heap?    := null
-
-  constructor byte_array begin end .program_:
-    super byte_array begin end
-
-  parse -> ToitObject:
-    return super: read_object_snapshot
-
-  parse_header_:
-    word_size := read_uint32_
-    program_heap_ = word_size == 4
-        ? program_.heap32
-        : program_.heap64
-    encoded_normal_block_count := read_uint32_
-    back_table_length     := read_uint32_
-
-  read_object_snapshot -> ToitObject:
-    set_offset_ SegmentHeader.SIZE
-    parse_header_
-    return read_object_
-
-  get_program_heap_reference_ offset -> ToitObject:
-    return program_heap_.object_at offset
 
 class ProgramSegment extends HeapSegment:
   header_ /ProgramHeader?    := null

@@ -137,7 +137,7 @@ main:
       expect name == filename
       expect (not dir.next)
       dir.close
-      expect_already_closed: dir.close
+      dir.close  // We allow multiple calls to close.
 
       file.delete "$dirname/$filename"
 

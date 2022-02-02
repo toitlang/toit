@@ -3,7 +3,7 @@
 // found in the lib/LICENSE file.
 
 import net
-import net.tcp as net
+import net.tcp
 import reader
 
 import .session
@@ -12,10 +12,11 @@ import .certificate
 /**
 TLS Socket implementation that can upgrade a TCP socket to a secure TLS socket.
 */
-class Socket extends Session implements net.Socket:
+class Socket implements tcp.Socket:
   TLS_HEADER_SIZE_ ::= 29
 
-  socket_/net.Socket
+  socket_/tcp.Socket
+  session_/Session
 
   /**
   Creates a new TLS socket for a client-side TCP socket.
@@ -28,12 +29,12 @@ class Socket extends Session implements net.Socket:
   The handshake routine requires at most $handshake_timeout between each step
     in the handshake process.
   */
-  constructor.client .socket_/net.Socket
+  constructor.client .socket_/tcp.Socket
       --server_name/string?=null
       --certificate/Certificate?=null
       --root_certificates=[]
       --handshake_timeout/Duration=Session.DEFAULT_HANDSHAKE_TIMEOUT:
-    super.client socket_ socket_
+    session_ = Session.client socket_ socket_
       --server_name=server_name
       --certificate=certificate
       --root_certificates=root_certificates
@@ -47,11 +48,11 @@ class Socket extends Session implements net.Socket:
   The handshake routine requires at most $handshake_timeout between each step
     in the handshake process.
   */
-  constructor.server .socket_/net.Socket
+  constructor.server .socket_/tcp.Socket
       --certificate/Certificate
       --root_certificates=[]
       --handshake_timeout/Duration=Session.DEFAULT_HANDSHAKE_TIMEOUT:
-    super.server socket_ socket_
+    session_ = Session.server socket_ socket_
       --certificate=certificate
       --root_certificates=root_certificates
       --handshake_timeout=handshake_timeout
@@ -69,18 +70,41 @@ class Socket extends Session implements net.Socket:
   */
   handshake --session_state/ByteArray?=null -> none:
     socket_.set_no_delay true
-    super --session_state=session_state
+    session_.handshake --session_state=session_state
     // TODO(anders): Set as before handshake, when state can be read.
     socket_.set_no_delay false
 
-  close:
-    super
+  /**
+  Gets the session state, a ByteArray that can be used to resume
+    a TLS session at a later point.
+
+  The session can be read at any point after a handshake, but before the session
+    is closed.
+  */
+  session_state -> ByteArray:
+    return session_.session_state
+
+  read -> ByteArray?:
+    return session_.read
+
+  write data from/int=0 to/int=data.size -> int:
+    return session_.write data from to
+
+  close -> none:
+    session_.close
     socket_.close
 
-  local_address -> net.SocketAddress: return socket_.local_address
-  peer_address -> net.SocketAddress: return socket_.peer_address
+  close_write -> none:
+    session_.close_write
+    socket_.close_write
 
-  set_no_delay value:
+  local_address -> net.SocketAddress:
+    return socket_.local_address
+
+  peer_address -> net.SocketAddress:
+    return socket_.peer_address
+
+  set_no_delay value/bool:
     socket_.set_no_delay value
 
   mtu -> int:

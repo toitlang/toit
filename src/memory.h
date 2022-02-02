@@ -94,8 +94,6 @@ class Block : public BlockLinkedList::Element {
   // Shift top with delta (not block content).
   void shrink_top(int delta);
 
-  void do_pointers(Program* program, PointerCallback* callback);
-
   // Returns the number of bytes allocated.
   int payload_size() const { return reinterpret_cast<uword>(top()) - reinterpret_cast<uword>(base()); }
 
@@ -129,8 +127,6 @@ class BlockList {
 
   // Returns the number of bytes allocated.
   int payload_size() const;
-
-  void set_writable(bool value);
 
   void append(Block* b) {
     _blocks.append(b);
@@ -166,8 +162,6 @@ class BlockList {
 
   word length() const { return _length; }
 
-  void do_pointers(Program* program, PointerCallback* callback);
-
   void print();
 
   typename BlockLinkedList::Iterator begin() { return _blocks.begin(); }
@@ -187,7 +181,6 @@ class HeapMemory {
   Block* allocate_initial_block();
   Block* allocate_block_during_scavenge(RawHeap* heap);
   void free_block(Block* block, RawHeap* heap);
-  void set_writable(Block* block, bool value);
   void enter_scavenge(RawHeap* heap);
   void leave_scavenge(RawHeap* heap);
 
@@ -231,12 +224,6 @@ class RawHeap {
 
   Usage usage(const char* name);
   void print();
-
-  // Should only be called from ProgramImage.
-  void do_pointers(Program* program, PointerCallback* callback) {
-    ASSERT(_owner == null);
-    _blocks.do_pointers(program, callback);
-  }
 
  protected:
   BlockList _blocks;

@@ -18,7 +18,6 @@
 #ifdef TOIT_FREERTOS
 
 #include "flash_allocation.h"
-#include "heap.h"
 #include "objects_inline.h"
 #include "os.h"
 #include "primitive.h"
@@ -132,6 +131,15 @@ PRIMITIVE(get_mac_address) {
   ByteArray::Bytes bytes = ByteArray::Bytes(result);
   esp_err_t err = esp_efuse_mac_get_default(bytes.address());
   if (err != ESP_OK) memset(bytes.address(), 0, 6);
+
+  return result;
+}
+
+PRIMITIVE(rtc_user_bytes) {
+  uint8* rtc_memory = RtcMemory::user_data_address();
+  Error* error = null;
+  ByteArray* result = process->object_heap()->allocate_external_byte_array(RtcMemory::RTC_USER_DATA_SIZE, rtc_memory, false, false);
+  if (result == null) return error;
 
   return result;
 }
