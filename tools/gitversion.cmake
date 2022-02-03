@@ -60,8 +60,6 @@ function(compute_git_version VERSION)
   # Check if we are matching a tag directly.
   execute_process(
     # The '--abbrev=0' ensures that we only get the tag, without the number of intermediate commits.
-    # TODO(florian): the following is likely to fail on Jenkins. Figure out why the "HEAD" argument
-    #   doesn't work.
     # Git describe uses globs for matching and not regexps.
     COMMAND ${GIT_EXECUTABLE} describe --tags --match "v[0-9]*" --abbrev=0 HEAD
     RESULT_VARIABLE result
@@ -165,8 +163,6 @@ function(compute_git_version VERSION)
     # See if there is already a release of this branch.
     execute_process(
       # The '--abbrev=0' ensures that we only get the tag, without the number of intermediate commits.
-      # TODO(florian): the following is likely to fail on Jenkins. Figure out why the "HEAD" argument
-      #   doesn't work.
       # Git describe uses globs for matching and not regexps. This makes this a bit more awkward.
       COMMAND ${GIT_EXECUTABLE} describe --tags
           --match "v${branch_major}.${branch_minor}.[0-9]"
