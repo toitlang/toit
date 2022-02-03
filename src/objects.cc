@@ -340,20 +340,20 @@ void Stack::transfer_from_interpreter(Interpreter* interpreter) {
   ASSERT(top() > 0 && top() <= length());
 }
 
-bool HeapObject::is_at_block_top() {
+bool HeapObject::is_at_block_top(Program* program) {
   Block* block = Block::from(this);
-  return _raw_at(size(block->process()->program())) == block->top();
+  return _raw_at(size(program)) == block->top();
 }
 
-void ByteArray::resize(int new_length) {
+void ByteArray::resize(Program* program, int new_length) {
   ASSERT(!has_external_address());
   ASSERT(new_length <= raw_length());
-  ASSERT(is_at_block_top());
+  ASSERT(is_at_block_top(program));
   if (new_length != raw_length()) {
     int new_size = ByteArray::internal_allocation_size(new_length);
     Block::from(this)->shrink_top(size() - new_size);
     _word_at_put(LENGTH_OFFSET, new_length);
-    ASSERT(is_at_block_top());
+    ASSERT(is_at_block_top(program));
   }
 }
 

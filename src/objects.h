@@ -292,7 +292,7 @@ class HeapObject : public Object {
   int64 _int64_at(int offset) { return *reinterpret_cast<int64*>(_raw_at(offset)); }
   void _int64_at_put(int offset, int64 value) { *reinterpret_cast<int64*>(_raw_at(offset)) = value; }
 
-  bool is_at_block_top();
+  bool is_at_block_top(Program* program);
 
   static int _align(int byte_size) { return (byte_size + (WORD_SIZE - 1)) & ~(WORD_SIZE - 1); }
 
@@ -483,7 +483,7 @@ class ByteArray : public HeapObject {
      return static_cast<ByteArray*>(byte_array);
   }
 
-  void resize(int new_length);
+  void resize(Program* program, int new_length);
 
   template<typename T> void set_external_address(T* value) {
     _set_external_address(reinterpret_cast<uint8*>(value));

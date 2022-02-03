@@ -181,12 +181,14 @@ PRIMITIVE(receive) {
   // TODO: Support IPv6.
   ByteArray* address = null;
   if (output->is_array()) {
+    if (Array::cast(output)->length() != 3) INVALID_ARGUMENT;
     Error* error = null;
     address = process->allocate_byte_array(4, &error);
     if (address == null) return error;
   }
 
-  uint8_t peek[64 * 1024];
+  uint8 peek[64 * 1024];
+  // Reads the data into the peek buffer, but doesn't unqueue it.
   int available = recv(fd, peek, sizeof(peek), MSG_PEEK);
   if (available == -1) {
     if (errno == EWOULDBLOCK) return Smi::from(-1);
@@ -197,12 +199,11 @@ PRIMITIVE(receive) {
   ByteArray* array = process->allocate_byte_array(available, &error);
   if (array == null) return error;
 
-  char buffer[available];
-
   struct sockaddr_in addr;
   bzero(&addr, sizeof(addr));
   socklen_t addr_len = sizeof(addr);
-  int read = recvfrom(fd, buffer, available, 0, reinterpret_cast<sockaddr*>(&addr), &addr_len);
+  auto bytes = ByteArray::Bytes(array);
+  int read = recvfrom(fd, bytes.address(), available, 0, reinterpret_cast<sockaddr*>(&addr), &addr_len);
   if (read == -1) {
     if (errno == EWOULDBLOCK) return Smi::from(-1);
     return Primitive::os_error(errno, process);
@@ -210,7 +211,6 @@ PRIMITIVE(receive) {
   if (read == 0) return process->program()->null_object();
 
   ASSERT(read == available);
-  memcpy(ByteArray::Bytes(array).address(), buffer, read);
 
   if (output->is_array()) {
     Array* out = Array::cast(output);

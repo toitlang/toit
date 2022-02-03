@@ -168,6 +168,7 @@ PRIMITIVE(receive)  {
   // TODO: Support IPv6.
   ByteArray* address = null;
   if (output->is_array()) {
+    if (Array::cast(output)->length() != 3) INVALID_ARGUMENT;
     Error* error = null;
     address = process->allocate_byte_array(4, &error);
     if (address == null) return error;
@@ -195,7 +196,7 @@ PRIMITIVE(receive)  {
   if (read == 0) return process->program()->null_object();
 
   // Please note that the array might change length so no ByteArray::Bytes variables can pass this point.
-  array->resize(read);
+  array->resize(process->program(), read);
 
   if (output->is_array()) {
     Array* out = Array::cast(output);

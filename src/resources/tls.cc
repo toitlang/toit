@@ -437,7 +437,7 @@ PRIMITIVE(read)  {
     return tls_error(null, process, read);
   }
 
-  array->resize(read);
+  array->resize(process->program(), read);
   return array;
 }
 

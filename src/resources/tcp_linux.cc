@@ -293,12 +293,13 @@ PRIMITIVE(read)  {
 
   int read = recv(fd, ByteArray::Bytes(array).address(), available, 0);
   if (read == -1) {
-    if (errno == EWOULDBLOCK) return Smi::from(-1);
+    Smi* would_block = Smi::from(-1);
+    if (errno == EWOULDBLOCK) return would_block;
     return Primitive::os_error(errno, process);
   }
   if (read == 0) return process->program()->null_object();
 
-  array->resize(read);
+  array->resize(process->program(), read);
 
   return array;
 }
