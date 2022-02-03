@@ -99,7 +99,7 @@ function(compute_git_version VERSION)
     set(${MINOR} "${CMAKE_MATCH_2}" PARENT_SCOPE)
   endfunction()
 
-  # Returns the common ancestor of COMMIT1 ond COMMIT2.
+  # Returns the common ancestor of COMMIT1 and COMMIT2.
   function (common_ancestor COMMIT1 COMMIT2 COMMON_ANCESTOR)
     set(DEPTH 128)
     while (1)
