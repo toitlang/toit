@@ -180,7 +180,7 @@ jobs:
           SHARD_STRIDE: ${{ steps.constants.outputs.total_shards }}
         shell: bash
         run: |
-          echo fail > ${{ steps.constants.outputs.external_result }}
+          echo fail > '${{ steps.constants.outputs.external_result }}'
 
           cmake -DTOIT_TEST_EXTERNAL=ON build/host
           make download-external
@@ -194,8 +194,8 @@ jobs:
             cd build/host32
             ninja check_external
           fi
-          echo success > ${{ steps.constants.outputs.external_result }}
-          cat ${{ steps.constants.outputs.external_result }}
+          echo success > '${{ steps.constants.outputs.external_result }}''
+          cat '${{ steps.constants.outputs.external_result }}'
 
       - name: Pack artifacts
         if: matrix.shard == 1
