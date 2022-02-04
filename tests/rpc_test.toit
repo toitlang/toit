@@ -411,13 +411,21 @@ test_terminate myself/int broker/TestBroker n/int -> none:
       expect.expect (task.is_canceled or exception == DEADLINE_EXCEEDED_ERROR)
     finally:
       done.up
+
+  // Wait a bit and check that all the requests have been enqueued. It is
+  // hard to know exactly how long that takes and we get no signals back.
   sleep --ms=20
   expect.expect_equals n broker.queue_.unprocessed_
+
+  // Terminate and wait for the client tasks to stop.
   broker.terminate myself
-  sleep --ms=20
   n.repeat: done.down
 
-  // Check that we get back to the starting conditions.
+  // Check that we get back to the starting conditions after waiting a
+  // bit. The waiting time might not be stricly necessary because after
+  // all we know that the client tasks have gotten very close to their
+  // termination point.
+  sleep --ms=20
   expect.expect_equals 0 broker.queue_.unprocessed_
   expect.expect_null broker.queue_.first_
   expect.expect_null broker.queue_.last_
