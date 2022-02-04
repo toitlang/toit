@@ -78,7 +78,6 @@ TOITC_BIN = $(BIN_DIR)/toit.compile$(EXE_SUFFIX)
 
 .PHONY: download-packages
 download-packages: check-env build/host/CMakeCache.txt tools
-	$(TOITPKG_BIN) sync   # Shouldn't be necessary but fixes a race condition.
 	(cd build/host && ninja download_packages)
 
 .PHONY: rebuild-cmake

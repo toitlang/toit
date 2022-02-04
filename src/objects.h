@@ -299,6 +299,7 @@ class HeapObject : public Object {
   friend class ScavengeState;
   friend class ObjectHeap;
   friend class Heap;
+  friend class ProgramHeap;
   friend class BaseSnapshotWriter;
   friend class SnapshotReader;
   friend class compiler::ProgramBuilder;
@@ -376,6 +377,7 @@ class Array : public HeapObject {
 
   friend class ObjectHeap;
   friend class Heap;
+  friend class ProgramHeap;
 
  protected:
   static int _offset_from(int index) { return HEADER_SIZE + index * WORD_SIZE; }
@@ -564,6 +566,7 @@ class ByteArray : public HeapObject {
 
   friend class ObjectHeap;
   friend class Heap;
+  friend class ProgramHeap;
   friend class ShortPrintVisitor;
   friend class VMFinalizerNode;
 
@@ -576,7 +579,7 @@ class ByteArray : public HeapObject {
 
  public:
   // Constants that should be elsewhere.
-  static const int MIN_IO_BUFFER_SIZE = 128;
+  static const int MIN_IO_BUFFER_SIZE = 1;
   // Selected to be able to contain most MTUs (1500), but still align to 512 bytes.
   static const int PREFERRED_IO_BUFFER_SIZE = 1536 - HEADER_SIZE;
 };
@@ -607,6 +610,7 @@ class LargeInteger : public HeapObject {
     _int64_at_put(VALUE_OFFSET, value);
   }
   friend class Heap;
+  friend class ProgramHeap;
   friend class SnapshotReader;
 };
 
@@ -703,6 +707,7 @@ class Stack : public HeapObject {
   static int _array_offset_from(int index) { return HEADER_SIZE + index  * WORD_SIZE; }
   friend class ObjectHeap;
   friend class Heap;
+  friend class ProgramHeap;
 };
 
 class Double : public HeapObject {
@@ -733,6 +738,7 @@ class Double : public HeapObject {
   void _initialize(double value) { _set_value(value); }
   void _set_value(double value) { _double_at_put(VALUE_OFFSET, value); }
   friend class Heap;
+  friend class ProgramHeap;
 };
 
 class String : public HeapObject {
@@ -923,7 +929,7 @@ class String : public HeapObject {
   // The first length field will also be used or tagging, recognizing an external representation.
   // Please note that if need be it is easy to extend the width of hash_code for strings with off heap content.
   static const int SENTINEL = 65535;
-  static_assert(SENTINEL > TOIT_PAGE_SIZE);
+  static_assert(SENTINEL > TOIT_PAGE_SIZE, "Sentinel must not be legal internal length");
   static const int HASH_CODE_OFFSET = HeapObject::SIZE;
   static const int INTERNAL_LENGTH_OFFSET = HASH_CODE_OFFSET + HALF_WORD_SIZE;
   static const int INTERNAL_HEADER_SIZE = INTERNAL_LENGTH_OFFSET + HALF_WORD_SIZE;
@@ -993,6 +999,7 @@ class String : public HeapObject {
   bool _is_valid_utf8();
 
   friend class Heap;
+  friend class ProgramHeap;
   friend class ObjectHeap;
   friend class VMFinalizerNode;
 };
@@ -1155,6 +1162,7 @@ class Instance : public HeapObject {
   static int _offset_from(int index) { return HEADER_SIZE + index  * WORD_SIZE; }
 
   friend class Heap;
+  friend class ProgramHeap;
 };
 
 

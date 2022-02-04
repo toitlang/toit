@@ -119,8 +119,10 @@ typedef uintptr_t uword;
 
 #if (__WORDSIZE == 64) || __WIN64
 typedef unsigned int uhalf_word;
+static const int WORD_SHIFT = 3;
 #else
 typedef unsigned short uhalf_word;
+static const int WORD_SHIFT = 2;
 #endif
 static_assert(sizeof(uhalf_word) == sizeof(uword) / 2, "Unexpected half-word size");
 
@@ -278,10 +280,13 @@ void fail(const char* format, ...) __attribute__ ((__noreturn__));
 // Common forward declarations.
 class AlignedMemory;
 class Block;
+class ProgramBlock;
 class ConditionVariable;
 class Encoder;
 class Heap;
+class ProgramHeap;
 class HeapMemory;
+class ProgramHeapMemory;
 class Interpreter;
 class Message;
 class Mutex;

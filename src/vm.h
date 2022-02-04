@@ -40,6 +40,7 @@ class VM {
 
   Scheduler* scheduler() const { return _scheduler; }
   HeapMemory* heap_memory() const { return _heap_memory; }
+  ProgramHeapMemory* program_heap_memory() const { return _program_heap_memory; }
 
   EventSourceManager* event_manager() const { return _event_manager; }
   EventSource* nop_event_source() const { return _nop_event_source; }
@@ -49,6 +50,7 @@ class VM {
  private:
   static VM* _current;
   HeapMemory* _heap_memory;
+  ProgramHeapMemory* _program_heap_memory;
   Scheduler* _scheduler;
   EntropyMixer _entropy_mixer;
 

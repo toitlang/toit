@@ -424,8 +424,7 @@ class Profiler:
 Returns the literal index of the given object $o, or null if the object wasn't
   recognized as literal.
 
-This function is in O(1) when it fails, but requires a linear search for
-  objects that are found to be literals.
+This function can be slow as it requires a linear search for objects.
 */
 literal_index_ o -> int?:
   #primitive.core.literal_index

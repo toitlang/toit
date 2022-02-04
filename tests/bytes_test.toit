@@ -35,8 +35,8 @@ test_simple:
   // Grow must fill the buffer with 0s, even though the original
   //   backing store was already filled with junk.
   buffer.grow 6
-  zeroes := buffer.bytes
-  6.repeat: expect_equals 0 zeroes[it]
+  zeros := buffer.bytes
+  6.repeat: expect_equals 0 zeros[it]
 
   buffer.clear
   buffer.write foobar
