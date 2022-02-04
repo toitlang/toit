@@ -1,0 +1,12 @@
+toit-e-paper/examples/movement.toit:7:8: error: Package for prefix 'peripherals' not found
+import peripherals show Accelerometer
+       ^~~~~~~~~~~
+toit-e-paper/examples/movement.toit:9:8: error: Package for prefix 'job' not found
+import job
+       ^~~
+toit-e-paper/examples/movement.toit:44:12: error: Unresolved identifier: 'Accelerometer'
+    acc := Accelerometer.start
+           ^~~~~~~~~~~~~
+toit-e-paper/examples/movement.toit:57:14: error: Unresolved type: 'Accelerometer'
+movement acc/Accelerometer -> float:
+             ^~~~~~~~~~~~~
