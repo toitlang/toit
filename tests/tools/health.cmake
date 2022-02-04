@@ -15,6 +15,8 @@
 
 set(TOOLS_DIR "${CMAKE_CURRENT_LIST_DIR}")
 
+set(HEALTH_TEST_PREFIX "health-")
+
 # Adds a health-test.
 # Adds the tests to test configuration 'health'.
 function (add_health_test PATH)
@@ -33,6 +35,7 @@ function (add_health_test PATH)
 
   get_filename_component(NAME "${PATH}" NAME_WE)
   file(RELATIVE_PATH TEST_NAME "${CMAKE_SOURCE_DIR}" "${PATH}")
+  set(TEST_NAME "${HEALTH_TEST_PREFIX}${TEST_NAME}")
 
   file(RELATIVE_PATH RELATIVE "${RELATIVE_TO}" "${PATH}")
   string(REPLACE " " "__" ESCAPED "${RELATIVE}")
@@ -40,7 +43,7 @@ function (add_health_test PATH)
   set(GOLD "${GOLD_DIR}/${ESCAPED}.gold")
 
   add_test(
-    NAME ${TEST_NAME}
+    NAME "${TEST_NAME}"
     COMMAND ${CMAKE_COMMAND}
         -DTOITC=$<TARGET_FILE:toit.compile>
         "-DTEST=${RELATIVE}"
