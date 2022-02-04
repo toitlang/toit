@@ -195,6 +195,7 @@ jobs:
             ninja check_external
           fi
           echo success > ${{ steps.constants.outputs.external_result }}
+          cat ${{ steps.constants.outputs.external_result }}
 
       - name: Pack artifacts
         if: matrix.shard == 1
