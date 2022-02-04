@@ -189,6 +189,8 @@ jobs:
           make test-external
           make test-external-health
           if [ "$RUNNER_OS" == "Linux" ]; then
+            cmake -DTOIT_TEST_EXTERNAL=ON build/host32
+            make CROSS_ARCH=host32 rebuild-cross-cmake
             cd build/host32
             ninja check_external
           fi
