@@ -385,8 +385,8 @@ test_ensure_processing_task myself/int broker/RpcBroker -> none:
   expect.expect_throw "No such procedure registered: $name": rpc.invoke myself name []
 
 test_terminate myself/int broker/TestBroker -> none:
-  //test_terminate myself broker 1
-  //test_terminate myself broker RpcBroker.MAX_TASKS
+  test_terminate myself broker 1
+  test_terminate myself broker RpcBroker.MAX_TASKS
   test_terminate myself broker RpcBroker.MAX_REQUESTS
 
 test_terminate myself/int broker/TestBroker n/int -> none:
