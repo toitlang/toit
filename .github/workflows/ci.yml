@@ -158,7 +158,7 @@ jobs:
           fi
 
       # We use a cache to send the external test result to the external job.
-      - name: Retrieve/Store external test result
+      - name: Retrieve/store external test result
         uses: actions/cache@v2
         with:
           path: ${{ steps.constants.outputs.external_result }}
