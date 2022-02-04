@@ -12,7 +12,17 @@ PROCEDURE_ECHO_WRAPPED/int    ::= 501
 PROCEDURE_MULTIPLY_BY_TWO/int ::= 502
 
 class TestBroker extends RpcBroker:
-  // Nothing yet.
+  terminated_ := {}
+
+  is_valid_sender gid/int pid/int -> bool:
+    return not terminated_.contains pid
+
+  reset_terminated -> none:
+    terminated_.clear
+
+  terminate pid/int -> none:
+    terminated_.add pid
+    cancel_requests pid
 
 main:
   myself := current_process_
@@ -40,6 +50,7 @@ main:
   test_timeouts myself broker --cancel
   test_timeouts myself broker --no-cancel
   test_ensure_processing_task myself broker
+  test_terminate myself broker
 
 test_simple myself/int -> none:
   // Test simple types.
@@ -216,6 +227,9 @@ cancel queue/RpcRequestQueue_ pid/int id/int -> int:
 test_request_queue_cancel myself/int -> none:
   queue := RpcRequestQueue_ 0
   expect.expect_equals 0 queue.unprocessed_
+  expect.expect_null queue.first_
+  expect.expect_null queue.last_
+
   10.repeat: queue.add (RpcRequest_ myself -1 it null:: unreachable)
   expect.expect_equals 10 queue.unprocessed_
   10.repeat:
@@ -224,12 +238,16 @@ test_request_queue_cancel myself/int -> none:
     expect.expect_equals (10 - it) queue.unprocessed_
     expect.expect_equals 1 (cancel queue myself it)
   expect.expect_equals 0 queue.unprocessed_
+  expect.expect_null queue.first_
+  expect.expect_null queue.last_
 
   10.repeat: queue.add (RpcRequest_ myself -1 it null:: unreachable)
   expect.expect_equals 10 queue.unprocessed_
   10.repeat:
     expect.expect_equals 1 (cancel queue myself (10 - it - 1))
   expect.expect_equals 0 queue.unprocessed_
+  expect.expect_null queue.first_
+  expect.expect_null queue.last_
 
   10.repeat: queue.add (RpcRequest_ myself -1 it null:: unreachable)
   expect.expect_equals 10 queue.unprocessed_
@@ -245,11 +263,15 @@ test_request_queue_cancel myself/int -> none:
 
   10.repeat: cancel queue myself it
   expect.expect_equals 0 queue.unprocessed_
+  expect.expect_null queue.first_
+  expect.expect_null queue.last_
 
   10.repeat: queue.add (RpcRequest_ myself -1 42 null:: unreachable)
   expect.expect_equals 10 queue.unprocessed_
   expect.expect_equals 10 (cancel queue myself 42)
   expect.expect_equals 0 queue.unprocessed_
+  expect.expect_null queue.first_
+  expect.expect_null queue.last_
 
 test_timeouts myself/int broker/RpcBroker --cancel/bool -> none:
   name ::= 801
@@ -285,7 +307,7 @@ test_timeouts myself/int broker/RpcBroker --cancel/bool -> none:
         join.set task
     sleep --ms=10
     subtask.cancel
-    expect.expect (identical subtask join.get)
+    expect.expect_identical subtask join.get
 
   unprocessed := 0
   canceled := 0
@@ -349,11 +371,69 @@ test_ensure_processing_task myself/int broker/RpcBroker -> none:
   with_timeout --ms=200: test myself 42
 
   // Block all processing tasks at once, but cancel them after a little while.
+  done := monitor.Semaphore
   RpcBroker.MAX_TASKS.repeat:
     task::
       expect.expect_throw DEADLINE_EXCEEDED_ERROR:
         with_timeout --ms=50: rpc.invoke myself name []
+      done.up
   with_timeout --ms=200: test myself 87
+  RpcBroker.MAX_TASKS.repeat: done.down
+
+  // Unregister procedure and make sure it's gone.
+  broker.unregister_procedure name
+  expect.expect_throw "No such procedure registered: $name": rpc.invoke myself name []
+
+test_terminate myself/int broker/TestBroker -> none:
+  //test_terminate myself broker 1
+  //test_terminate myself broker RpcBroker.MAX_TASKS
+  test_terminate myself broker RpcBroker.MAX_REQUESTS
+
+test_terminate myself/int broker/TestBroker n/int -> none:
+  name ::= 803
+  broker.register_procedure name:: | index |
+    // Block until canceled.
+    (monitor.Latch).get
+
+  // Check that we start under the expected conditions.
+  expect.expect_equals 0 broker.queue_.unprocessed_
+  expect.expect_null broker.queue_.first_
+  expect.expect_null broker.queue_.last_
+
+  // Check that terminating a process and cancelling requests take care
+  // of both requests that are enqueued and requests that are being
+  // processed.
+  broker.reset_terminated
+  done := monitor.Semaphore
+  n.repeat: task::
+    try:
+      exception := catch: with_timeout --ms=200: rpc.invoke myself name []
+      expect.expect (task.is_canceled or exception == DEADLINE_EXCEEDED_ERROR)
+    finally:
+      done.up
+  sleep --ms=20
+  expect.expect_equals n broker.queue_.unprocessed_
+  broker.terminate myself
+  sleep --ms=20
+  n.repeat: done.down
+
+  // Check that we get back to the starting conditions.
+  expect.expect_equals 0 broker.queue_.unprocessed_
+  expect.expect_null broker.queue_.first_
+  expect.expect_null broker.queue_.last_
+
+  // If a task from a dead process has already sent messages to the broker,
+  // they are simply discarded.
+  finished := monitor.Latch
+  dead := task::
+    expect.expect_throw DEADLINE_EXCEEDED_ERROR:
+      with_timeout --ms=100: test myself 99
+    finished.set task
+  expect.expect_identical dead finished.get
+
+  // If we revive the process, messages are accepted again.
+  broker.reset_terminated
+  test myself 87
 
   // Unregister procedure and make sure it's gone.
   broker.unregister_procedure name

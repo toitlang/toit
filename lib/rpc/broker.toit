@@ -27,6 +27,12 @@ class RpcBroker implements SystemMessageHandler_:
     set_system_message_handler_ SYSTEM_RPC_CANCEL_ this
 
   /**
+  Checks that an incoming request is from a valid sender.
+  */
+  is_valid_sender gid/int pid/int -> bool:
+    return true
+
+  /**
   Registers a procedure to handle a message.  The arguments to the
     handler will be:
   arguments/List
@@ -46,7 +52,9 @@ class RpcBroker implements SystemMessageHandler_:
   cancel_requests pid/int -> none:
     queue_.cancel: | request/RpcRequest_ | request.pid == pid
 
-  on_message type gid pid message/List -> none:
+  on_message type gid/int pid/int message/List -> none:
+    if not is_valid_sender gid pid: return
+
     id/int := message[0]
     if type == SYSTEM_RPC_CANCEL_:
       queue_.cancel: | request/RpcRequest_ | request.pid == pid and request.id == id
@@ -109,7 +117,12 @@ monitor RpcRequestQueue_:
     processing_tasks_ = List max_tasks
 
   add request/RpcRequest_ -> bool:
-    if unprocessed_ >= RpcBroker.MAX_REQUESTS: return false
+    if unprocessed_ >= RpcBroker.MAX_REQUESTS:
+      // It should not be necessary to ask for more processing tasks here,
+      // but we do it (defensively) anyway to guard against issues in the
+      // bookkeeping of unprocessed requests and processing tasks.
+      ensure_processing_task_
+      return false
 
     // Enqueue the new request in the linked list.
     last := last_
@@ -155,7 +168,8 @@ monitor RpcRequestQueue_:
         if not next:
           last_ = previous
         unprocessed_--
-      previous = current
+      else:
+        previous = current
       current = next
     // Then we cancel any requests that are in progress by canceling the
     // associated processing task.
