@@ -27,9 +27,12 @@ class RpcBroker implements SystemMessageHandler_:
     set_system_message_handler_ SYSTEM_RPC_CANCEL_ this
 
   /**
-  Checks that an incoming request is from a valid sender.
+  Determine if an incoming request from a given sender is accepted.
+
+  This method is typically overridden in subclasses to filter out
+  requests from unwanted senders.
   */
-  is_valid_sender gid/int pid/int -> bool:
+  accept gid/int pid/int -> bool:
     return true
 
   /**
@@ -53,7 +56,12 @@ class RpcBroker implements SystemMessageHandler_:
     queue_.cancel: | request/RpcRequest_ | request.pid == pid
 
   on_message type gid/int pid/int message/List -> none:
-    if not is_valid_sender gid pid: return
+    // When canceling requests for specific processes, there can still be
+    // enqueued system messages from such a process that will end up here.
+    // To avoid having requests from such processes in the broker request
+    // queue it is important to make 'accept' return false for them as part
+    // of canceling their requests (do it before canceling to be sure).
+    if not accept gid pid: return
 
     id/int := message[0]
     if type == SYSTEM_RPC_CANCEL_:

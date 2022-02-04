@@ -14,7 +14,7 @@ PROCEDURE_MULTIPLY_BY_TWO/int ::= 502
 class TestBroker extends RpcBroker:
   terminated_ := {}
 
-  is_valid_sender gid/int pid/int -> bool:
+  accept gid/int pid/int -> bool:
     return not terminated_.contains pid
 
   reset_terminated -> none:
