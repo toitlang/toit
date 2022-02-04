@@ -21,19 +21,19 @@
 
 namespace toit {
 
-class Block;
-class Heap;
-class RawHeap;
+class ProgramBlock;
+class ProgramHeap;
+class ProgramRawHeap;
 
 // A class used for printing usage of a memory area.
-class Usage {
+class ProgramUsage {
  public:
-  explicit Usage(const char* name) : _name(name), _reserved(0), _allocated(0) {}
-  Usage(const char* name, int reserved) : _name(name), _reserved(reserved), _allocated(reserved) {}
-  Usage(const char* name, int reserved, int allocated) : _name(name), _reserved(reserved), _allocated(allocated) {}
+  explicit ProgramUsage(const char* name) : _name(name), _reserved(0), _allocated(0) {}
+  ProgramUsage(const char* name, int reserved) : _name(name), _reserved(reserved), _allocated(reserved) {}
+  ProgramUsage(const char* name, int reserved, int allocated) : _name(name), _reserved(reserved), _allocated(allocated) {}
 
   // For accumulating usage information.
-  void add(Usage* other) {
+  void add(ProgramUsage* other) {
     _reserved += other->_reserved;
     _allocated += other->_allocated;
   }
@@ -55,17 +55,17 @@ class Usage {
   int _allocated;
 };
 
-typedef LinkedFIFO<Block> BlockLinkedList;
+typedef LinkedFIFO<ProgramBlock> ProgramBlockLinkedList;
 
-class Block : public BlockLinkedList::Element {
+class ProgramBlock : public ProgramBlockLinkedList::Element {
  public:
-  Block() {
+  ProgramBlock() {
     _reset();
   }
 
   void* top() const { return _top; }
-  void* base() const { return Utils::address_at(const_cast<Block*>(this), sizeof(Block)); }
-  void* limit() const { return Utils::address_at(const_cast<Block*>(this), TOIT_PAGE_SIZE); }
+  void* base() const { return Utils::address_at(const_cast<ProgramBlock*>(this), sizeof(ProgramBlock)); }
+  void* limit() const { return Utils::address_at(const_cast<ProgramBlock*>(this), TOIT_PAGE_SIZE); }
 
   HeapObject* allocate_raw(int byte_size);
 
@@ -77,7 +77,7 @@ class Block : public BlockLinkedList::Element {
 
   // How many bytes are available for payload in one Block?
   static int max_payload_size(int word_size = WORD_SIZE) {
-    ASSERT(sizeof(Block) == 3 * WORD_SIZE);
+    ASSERT(sizeof(ProgramBlock) == 3 * WORD_SIZE);
     if (word_size == 4) {
       return TOIT_PAGE_SIZE_32 - 3 * word_size;
     } else {
@@ -86,13 +86,15 @@ class Block : public BlockLinkedList::Element {
   }
 
   // Returns the memory block that contains the object.
-  static Block* from(HeapObject* object);
+  static ProgramBlock* from(HeapObject* object);
 
   // Tells whether this block of memory contains the object.
   bool contains(HeapObject* object);
 
   // Shift top with delta (not block content).
   void shrink_top(int delta);
+
+  void do_pointers(Program* program, PointerCallback* callback);
 
   // Returns the number of bytes allocated.
   int payload_size() const { return reinterpret_cast<uword>(top()) - reinterpret_cast<uword>(base()); }
@@ -113,27 +115,29 @@ class Block : public BlockLinkedList::Element {
 
   Process* _process;
   void* _top;
-  friend class BlockList;
-  friend class Heap;
-  friend class HeapMemory;
+  friend class ProgramBlockList;
+  friend class ProgramHeap;
+  friend class ProgramHeapMemory;
   friend class OS;
-  friend class RawMemory;
+  friend class ProgramRawMemory;
 };
 
-class BlockList {
+class ProgramBlockList {
  public:
-  BlockList() : _length(0) { }
-  ~BlockList();
+  ProgramBlockList() : _length(0) { }
+  ~ProgramBlockList();
 
   // Returns the number of bytes allocated.
   int payload_size() const;
 
-  void append(Block* b) {
+  void set_writable(bool value);
+
+  void append(ProgramBlock* b) {
     _blocks.append(b);
     _length++;
   }
 
-  void prepend(Block* b) {
+  void prepend(ProgramBlock* b) {
     _blocks.prepend(b);
     _length++;
   }
@@ -142,75 +146,74 @@ class BlockList {
     return _blocks.is_empty();
   }
 
-  Block* first() const {
+  ProgramBlock* first() const {
     return _blocks.first();
   }
 
-  Block* remove_first() {
-    Block* block = _blocks.remove_first();
+  ProgramBlock* remove_first() {
+    ProgramBlock* block = _blocks.remove_first();
     if (block) _length--;
     return block;
   }
 
-  Block* last() const {
+  ProgramBlock* last() const {
     return _blocks.last();
   }
 
-  void take_blocks(BlockList* list, RawHeap* heap);
-  void free_blocks(RawHeap* heap);
+  void take_blocks(ProgramBlockList* list, ProgramRawHeap* heap);
+  void free_blocks(ProgramRawHeap* heap);
   void discard_blocks();
 
   word length() const { return _length; }
 
+  void do_pointers(Program* program, PointerCallback* callback);
+
   void print();
 
-  typename BlockLinkedList::Iterator begin() { return _blocks.begin(); }
-  typename BlockLinkedList::Iterator end() { return _blocks.end(); }
+  typename ProgramBlockLinkedList::Iterator begin() { return _blocks.begin(); }
+  typename ProgramBlockLinkedList::Iterator end() { return _blocks.end(); }
 
  private:
-  BlockLinkedList _blocks;
+  ProgramBlockLinkedList _blocks;
   word _length;  // Number of blocks in the this list.
 };
 
 // Memory provide blocks for objects.
-class HeapMemory {
+class ProgramHeapMemory {
  public:
 
   // Memory management (MT safe operations)
-  Block* allocate_block(RawHeap* heap);
-  Block* allocate_initial_block();
-  Block* allocate_block_during_scavenge(RawHeap* heap);
-  void free_block(Block* block, RawHeap* heap);
-  void enter_scavenge(RawHeap* heap);
-  void leave_scavenge(RawHeap* heap);
+  ProgramBlock* allocate_block(ProgramRawHeap* heap);
+  ProgramBlock* allocate_initial_block();
+  void free_block(ProgramBlock* block, ProgramRawHeap* heap);
+  void set_writable(ProgramBlock* block, bool value);
 
   // This is used for the case where we allocated an initial block for a new
   // heap, but the new heap creation failed, so the block was never associated
   // with a heap or a process.
-  void free_unused_block(Block* block);
+  void free_unused_block(ProgramBlock* block);
 
   Mutex* mutex() const { return _memory_mutex; }
 
  private:
-  HeapMemory();
-  ~HeapMemory();
+  ProgramHeapMemory();
+  ~ProgramHeapMemory();
 
-  BlockList _free_list;
+  ProgramBlockList _free_list;
   Mutex* _memory_mutex;
-  bool _in_scavenge = false;
   word _largest_number_of_blocks_in_a_heap = 0;  // In pages.
 
   friend class VM;
 };
 
-class RawHeap {
+class ProgramRawHeap {
  public:
-  explicit RawHeap(Process* owner) : _owner(owner) { }
-  RawHeap() : _owner(null) { }
+  explicit ProgramRawHeap(Process* owner) : _owner(owner) { }
+  ProgramRawHeap() : _owner(null) { }
 
   Process* owner() { return _owner; }
 
-  void take_blocks(BlockList* blocks);
+  void take_blocks(ProgramBlockList* blocks);
 
   // Size of all objects stored in this heap.
   int object_size() const {
@@ -222,11 +225,17 @@ class RawHeap {
   // GC.
   word number_of_blocks() const { return _blocks.length(); }
 
-  Usage usage(const char* name);
+  ProgramUsage usage(const char* name);
   void print();
 
+  // Should only be called from ProgramImage.
+  void do_pointers(Program* program, PointerCallback* callback) {
+    ASSERT(_owner == null);
+    _blocks.do_pointers(program, callback);
+  }
+
  protected:
-  BlockList _blocks;
+  ProgramBlockList _blocks;
 
  private:
   Process* const _owner;

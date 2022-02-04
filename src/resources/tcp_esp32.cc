@@ -20,7 +20,6 @@
 #endif
 
 #if defined(TOIT_FREERTOS) || defined(TOIT_USE_LWIP)
-#include <lwip/dns.h>
 #include <lwip/ip_addr.h>
 
 #include "../resource.h"

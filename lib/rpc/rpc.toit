@@ -20,12 +20,12 @@ class Rpc implements SystemMessageHandler_:
 
   invoke name/int arguments/any -> any:
     if arguments is RpcSerializable: arguments = arguments.serialize_for_rpc
-    return synchronizer_.send: | id |
-      process_send_ -1 SYSTEM_RPC_REQUEST_ [ id, name, arguments ]
+    return synchronizer_.send -1: | id pid |
+      process_send_ pid SYSTEM_RPC_REQUEST_ [ id, name, arguments ]
 
   invoke pid/int name/int arguments/any -> any:
     if arguments is RpcSerializable: arguments = arguments.serialize_for_rpc
-    return synchronizer_.send: | id |
+    return synchronizer_.send pid: | id pid |
       process_send_ pid SYSTEM_RPC_REQUEST_ [ id, name, arguments ]
 
   on_message type gid pid reply -> none:
@@ -47,7 +47,7 @@ monitor RpcSynchronizer_:
   map_/Map ::= {:}
   id_/int := 0
 
-  send [send] -> any:
+  send pid/int [send] -> any:
     id := id_
     id_ = id > 0x3fff_ffff ? 0 : id + 1
 
@@ -55,16 +55,19 @@ monitor RpcSynchronizer_:
     result/any := EMPTY
     try:
       map[id] = EMPTY
-      send.call id  // Lock is kept during the non-blocking send.
+      send.call id pid  // Lock is kept during the non-blocking send.
       await:
         result = map[id]
         not identical EMPTY result
-    finally:
+    finally: | is_exception exception |
       map.remove id
+      if is_exception:
+        if exception.value == DEADLINE_EXCEEDED_ERROR or task.is_canceled:
+          process_send_ pid SYSTEM_RPC_CANCEL_ [ id ]
 
     if result is not RpcException_: return result
-
     exception := result.exception
+    if exception == CANCELED_ERROR: task.cancel
     trace := result.trace
     if trace: rethrow exception trace
     throw exception

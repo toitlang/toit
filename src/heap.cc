@@ -63,7 +63,6 @@ Heap::Heap(Process* owner, Program* program, Block* initial_block)
 }
 
 Heap::~Heap() {
-  set_writable(true);
   // Deleting a heap is like a scavenge where nothing survives.
   ScavengeScope scope(VM::current()->heap_memory(), this);
   _blocks.free_blocks(this);
@@ -157,11 +156,6 @@ String* Heap::allocate_internal_string(int length) {
   bytes._set_end();
   ASSERT(bytes.length() == length);
   return String::cast(result);
-}
-
-void ProgramHeap::migrate_to(Program* program) {
-  set_writable(false);
-  program->take_blocks(&_blocks);
 }
 
 HeapObject* Heap::_allocate_raw(int byte_size) {
@@ -282,42 +276,6 @@ class ScavengeState : public RootCallback {
   Heap* _heap;
   ScavengeScope _scope;
 };
-
-String* ProgramHeap::allocate_string(const char* str) {
-  return allocate_string(str, strlen(str));
-}
-
-String* ProgramHeap::allocate_string(const char* str, int length) {
-  bool can_fit_in_heap_block = length <= String::max_internal_size();
-  String* result;
-  if (can_fit_in_heap_block) {
-    result = allocate_internal_string(length);
-    // We are in the program heap. We should never run out of memory.
-    ASSERT(result != null);
-    // Initialize object.
-    String::Bytes bytes(result);
-    bytes._initialize(str);
-  } else {
-    result = allocate_external_string(length, const_cast<uint8*>(unsigned_cast(str)), false);
-  }
-  result->hash_code();  // Ensure hash_code is computed at creation.
-  return result;
-}
-
-ByteArray* ProgramHeap::allocate_byte_array(const uint8* data, int length) {
-  if (length > ByteArray::max_internal_size()) {
-    auto result = allocate_external_byte_array(length, const_cast<uint8*>(data), false, false);
-    // We are on the program heap which should never run out of memory.
-    ASSERT(result != null);
-    return result;
-  }
-  auto byte_array = allocate_internal_byte_array(length);
-  // We are on the program heap which should never run out of memory.
-  ASSERT(byte_array != null);
-  ByteArray::Bytes bytes(byte_array);
-  if (length != 0) memcpy(bytes.address(), data, length);
-  return byte_array;
-}
 
 Object** ObjectHeap::_copy_global_variables() {
   return _program->global_variables.copy();
