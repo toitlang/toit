@@ -100,9 +100,9 @@ class Uuid:
   /**
   Creates the NIL UUID.
   All bits of the UUID are zero.
-  Consider using $NIL instead.
+
+  Deprecated. Use $NIL instead.
   */
-  // TODO(4194): remove this constructor.
   constructor.all_zeros:
     zeros := ByteArray SIZE: 0
     return Uuid zeros

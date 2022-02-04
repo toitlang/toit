@@ -235,7 +235,7 @@ jobs:
       - name: Initialize submodules
         run: |
           git submodule sync --recursive
-          git submodule update --init --recursive -j 2
+          git submodule update --init --recursive -j 16
 
       # Use Go 1.17
       - name: Switch to Go 1.17
