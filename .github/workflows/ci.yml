@@ -21,7 +21,7 @@ jobs:
       - name: Set up constants
         id: constants
         run: |
-          echo ::set-output name=external_result::external-result-$RUNNER_OS-${{ matrix.shard }}.txt
+          echo ::set-output name=external_result::${{ github.workspace }}/external-result-$RUNNER_OS-${{ matrix.shard }}.txt
           echo ::set-output name=external_result_key::external-result-${{ github.run_id }}-${{ github.run_attempt }}-$RUNNER_OS-${{ matrix.shard }}
           if [ "$RUNNER_OS" == "Linux" ]; then
             echo ::set-output name=artifact::toit-linux.tar.gz
@@ -362,6 +362,11 @@ jobs:
         with:
           path: ${{ steps.constants.outputs.external_result_prefix }}-5.txt
           key: ${{ steps.constants.outputs.external_result_key_prefix }}-5
+      - name: Retrieve Win
+        uses: actions/cache@v2
+        with:
+          path: external_result_prefix::external-result-Windows-5.txt
+          key: external-result-${{ github.run_id }}-${{ github.run_attempt }}-Windows-5
 
       - name: Check
         shell: bash
