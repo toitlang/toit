@@ -1593,6 +1593,12 @@ PRIMITIVE(byte_array_replace) {
   return process->program()->null_object();
 }
 
+PRIMITIVE(byte_array_compare) {
+  ARGS(Blob, a, Blob, b);
+  if (a.length() != b.length()) return BOOL(false);
+  return BOOL(memcmp(a.address(), b.address(), a.length()) == 0);
+}
+
 PRIMITIVE(smi_unary_minus) {
   ARGS(Object, receiver);
   if (!receiver->is_smi()) WRONG_TYPE;

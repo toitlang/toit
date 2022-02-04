@@ -179,6 +179,7 @@ namespace toit {
   PRIMITIVE(byte_array_replace, 5)           \
   PRIMITIVE(byte_array_is_valid_string_content, 3) \
   PRIMITIVE(byte_array_convert_to_string, 3) \
+  PRIMITIVE(byte_array_compare, 2)           \
   PRIMITIVE(blob_index_of, 4)                \
   PRIMITIVE(string_from_rune, 1)             \
   PRIMITIVE(string_write_to_byte_array, 5)   \
