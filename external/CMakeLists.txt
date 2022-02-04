@@ -97,6 +97,12 @@ if (NOT ${TOIT_TEST_EXTERNAL})
   return()
 endif()
 
+# The SHARD_START end SHARD_STRIDE environment variables must be set when
+# generating the cmake files.
+# I couldn't figure out how to use them while running the tests.
+set(TEST_SHARD_START "$ENV{SHARD_START}")
+set(TEST_SHARD_STRIDE "$ENV{SHARD_STRIDE}")
+
 add_custom_target(
   check_external
   COMMAND ${CMAKE_CTEST_COMMAND} -j${NUM_CPU} -T test -C external --output-on-failure -I ${TEST_SHARD_START},,${TEST_SHARD_STRIDE}
