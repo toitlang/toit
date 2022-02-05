@@ -4,7 +4,7 @@ go 1.17
 
 require (
 	github.com/spf13/cobra v1.3.0
-	github.com/toitlang/tpkg v0.0.0-20220112133931-234a7f81c4ab
+	github.com/toitlang/tpkg v0.0.0-20220204122114-8cf6c818b89f
 )
 
 require (
@@ -12,6 +12,7 @@ require (
 	github.com/ProtonMail/go-crypto v0.0.0-20210428141323-04723f9f07d7 // indirect
 	github.com/acomagu/bufpipe v1.0.3 // indirect
 	github.com/alessio/shellescape v1.4.1 // indirect
+	github.com/alexflint/go-filemutex v1.1.0 // indirect
 	github.com/emirpasic/gods v1.12.0 // indirect
 	github.com/fsnotify/fsnotify v1.5.1 // indirect
 	github.com/go-git/gcfg v1.5.0 // indirect

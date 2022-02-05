@@ -37,8 +37,6 @@
 #include <lwip/api.h>
 #include <lwip/dhcp.h>
 #include <lwip/prot/dhcp.h>
-#include <lwip/dns.h>
-#include <lwip/dns.h>
 #include <lwip/etharp.h>
 #include <lwip/init.h>
 #include <lwip/init.h>
@@ -139,13 +137,6 @@ PRIMITIVE(wait_for_lwip_dhcp_on_linux) {
         ip4_addr3(&global_netif.ip_addr),
         ip4_addr4(&global_netif.ip_addr));
   } else {
-    LwIPEventSource::instance()->call_on_thread([&]() -> Object *{
-      netif_set_up(&global_netif);
-      ip4_addr_t dns_server;
-      ip4_addr_set_u32(&dns_server, 0x8080808);  // 8.8.8.8 Google DNS.
-      dns_setserver(0, &dns_server);
-      return process->program()->null_object();
-    });
     // Wait until we know which tap device the low level driver could register.  This
     // gives us the MAC address and the 'static' (ie non-DHCP) IP address for the subnet.
     while (ip_addr_offset == -1) {

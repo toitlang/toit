@@ -579,7 +579,7 @@ class ByteArray : public HeapObject {
 
  public:
   // Constants that should be elsewhere.
-  static const int MIN_IO_BUFFER_SIZE = 128;
+  static const int MIN_IO_BUFFER_SIZE = 1;
   // Selected to be able to contain most MTUs (1500), but still align to 512 bytes.
   static const int PREFERRED_IO_BUFFER_SIZE = 1536 - HEADER_SIZE;
 };
