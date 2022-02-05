@@ -1,3 +1,7 @@
+// Copyright (C) 2021 Toitware ApS.
+// Use of this source code is governed by a Zero-Clause BSD license that can
+// be found in the examples/LICENSE file.
+
 // The standard ble peripheral demo
 
 import ble show *
@@ -27,16 +31,16 @@ main:
   advertiser := device.advertise
   advertiser.set_data
     AdvertisementData
-           --name="Toit heartrate demo"
+        --name="Toit heartrate demo"
 
   advertiser.start --connection_mode=BLE_CONNECT_MODE_UNDIRECTIONAL
 
   task::
     while true:
-      device.client_connected
+      device.wait_for_client_connected
       print "Client connected"
       advertiser.close
-      device.client_disconnected
+      device.wait_for_client_disconnected
       print "Client disconnected"
       advertiser.start --connection_mode=BLE_CONNECT_MODE_UNDIRECTIONAL
 

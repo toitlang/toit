@@ -85,14 +85,14 @@ class BLEDiscovery;
 typedef LinkedFIFO<BLEDiscovery> DiscoveriesFIFO;
 
 class BLEDiscovery : public DiscoveriesFIFO::Element {
-public:
+ public:
   ~BLEDiscovery() {
     free(_data);
   }
 
   bool init(struct ble_gap_disc_desc &disc) {
     if (disc.length_data > 0) {
-      _data = unvoid_cast<uint8 *>(malloc(disc.length_data));
+      _data = unvoid_cast<uint8*>(malloc(disc.length_data));
       if (!_data) {
         return false;
       }
@@ -110,24 +110,24 @@ public:
 
   int8_t rssi() { return _rssi; }
 
-  uint8 *data() { return _data; }
+  uint8* data() { return _data; }
 
   uint8_t data_length() { return _data_length; }
 
-private:
+ private:
   ble_addr_t _addr;
   int8_t _rssi;
-  uint8 *_data = null;
+  uint8* _data = null;
   uint8_t _data_length = 0;
 };
 
 class BLEServerConfigGroup;
 
 class BLEResourceGroup : public ResourceGroup {
-public:
+ public:
   TAG(BLEResourceGroup);
 
-  BLEResourceGroup(Process *process, BLEEventSource *event_source, int id)
+  BLEResourceGroup(Process* process, BLEEventSource* event_source, int id)
       : ResourceGroup(process, event_source),
       _id(id),
       _mutex(OS::allocate_mutex(3, "")),
@@ -146,6 +146,37 @@ public:
     ResourceGroup::tear_down();
   }
 
+  GAPResource* gap() { return _gap; }
+
+  void set_gap(GAPResource* gap) { _gap = gap; }
+
+  BLEServerConfigGroup* server_config() { return _server_config; }
+
+  void set_server_config(BLEServerConfigGroup* server_config) { _server_config = server_config; }
+
+  uint32_t on_event(Resource* resource, word data, uint32_t state) override;
+
+  int init_server();
+
+  static bool is_advertising() { return ble_gap_adv_active(); }
+
+  static bool is_scanning() { return ble_gap_disc_active(); }
+
+  BLEDiscovery* next() {
+    Locker locker(_mutex);
+    return _discoveries.first();
+  }
+
+  bool remove_next() {
+    Locker locker(_mutex);
+    BLEDiscovery* next = _discoveries.first();
+    if (!next) return false;
+    _discoveries.remove_first();
+    delete next;
+    return true;
+  }
+
+ protected:
   ~BLEResourceGroup() override {
     nimble_port_deinit();
 
@@ -156,90 +187,56 @@ public:
     ble_pool.put(_id);
   }
 
-  GAPResource *gap() { return _gap; }
 
-  void set_gap(GAPResource *gap) { _gap = gap; }
-
-  BLEServerConfigGroup *server_config() { return _server_config; }
-
-  void set_server_config(BLEServerConfigGroup *server_config) { _server_config = server_config; }
-
-  uint32_t on_event(Resource *resource, word data, uint32_t state) override;
-
-  int init_server();
-
-  static bool is_advertising() { return ble_gap_adv_active(); }
-
-  static bool is_scanning() { return ble_gap_disc_active(); }
-
-  BLEDiscovery *next() {
-    Locker locker(_mutex);
-    return _discoveries.first();
-  }
-
-  bool remove_next() {
-    Locker locker(_mutex);
-    BLEDiscovery *next = _discoveries.first();
-    if (!next) return false;
-    _discoveries.remove_first();
-    delete next;
-    return true;
-  }
-
-private:
+ private:
   int _id;
-  Mutex *_mutex;
+  Mutex* _mutex;
   DiscoveriesFIFO _discoveries;
-  GAPResource *_gap = null;
-  BLEServerConfigGroup *_server_config;
+  GAPResource* _gap = null;
+  BLEServerConfigGroup* _server_config;
 };
 
 
 class BLEServerConfigGroup : public ResourceGroup, public Thread {
-public:
+ public:
   TAG(BLEServerConfigGroup);
 
-  explicit BLEServerConfigGroup(Process *process, EventSource* event_source) :
+  explicit BLEServerConfigGroup(Process* process, EventSource* event_source) :
       ResourceGroup(process, event_source), Thread("toit.ble"),
       _gatt_services(null) {}
 
   ~BLEServerConfigGroup() override {
-    for (BLEServerServiceResource *service: _services) {
+    for (BLEServerServiceResource* service: _services) {
       delete service;
     }
 
     free_gatt_service_structure();
   }
 
-  void tear_down() override {
-    free_gatt_service_structure();
-    ResourceGroup::tear_down();
-  }
-
-  BLEServerServiceResource *add_service(ble_uuid_any_t uuid) {
-    BLEServerServiceResource *service = _new BLEServerServiceResource(this, uuid);
+  BLEServerServiceResource* add_service(ble_uuid_any_t uuid) {
+    BLEServerServiceResource* service = _new BLEServerServiceResource(this, uuid);
     if (service != null) _services.prepend(service);
     return service;
   }
 
   BLEServerServiceList services() const { return _services; }
 
-  uint32_t on_event(Resource *resource, word data, uint32_t state) override;
+  uint32_t on_event(Resource* resource, word data, uint32_t state) override;
 
   void entry() override;
 
   void set_subscription_status(uint16 attr_handle, uint16 conn_handle, bool indicate, bool notify);
 
-  void set_gatt_service_structure(ble_gatt_svc_def *gatt_services) {
+  void set_gatt_service_structure(ble_gatt_svc_def* gatt_services) {
     if (_gatt_services != null) free_gatt_service_structure();
     _gatt_services = gatt_services;
   };
 
   void free_gatt_service_structure() {
     if (_gatt_services != null) {
-      ble_gatt_svc_def *cur = _gatt_services;
+      ble_gatt_svc_def* cur = _gatt_services;
       while (cur->type) {
-        free((void *) cur->characteristics);
+        free((void*) cur->characteristics);
         cur++;
       }
       free(_gatt_services);
@@ -247,14 +244,14 @@ public:
     }
   }
 
-private:
+ private:
   BLEServerServiceList _services;
-  ble_gatt_svc_def *_gatt_services;
+  ble_gatt_svc_def* _gatt_services;
 };
 
 
-uint32_t BLEResourceGroup::on_event(Resource *resource, word data, uint32_t state) {
-  struct ble_gap_event *event = reinterpret_cast<struct ble_gap_event *>(data);
+uint32_t BLEResourceGroup::on_event(Resource* resource, word data, uint32_t state) {
+  struct ble_gap_event* event = reinterpret_cast<struct ble_gap_event*>(data);
 
   if (event == null) {
     return state | kBLEStarted;
@@ -266,7 +263,7 @@ uint32_t BLEResourceGroup::on_event(Resource *resource, word data, uint32_t stat
       break;
 
     case BLE_GAP_EVENT_DISC: {
-      BLEDiscovery *discovery = _new BLEDiscovery();
+      BLEDiscovery* discovery = _new BLEDiscovery();
       if (!discovery) {
         break;
       }
@@ -348,24 +345,30 @@ int BLEResourceGroup::init_server() {
     ble_svc_gap_init();
     ble_svc_gatt_init();
 
-    // Build the service structure
+    // Build the service structure.
     int service_cnt = 0;
-    for (__attribute__((unused)) BLEServerServiceResource *t: _server_config->services()) service_cnt++;
+    for (BLEServerServiceResource* t: _server_config->services()) {
+      USE(t);
+      service_cnt++;
+    }
 
-    auto gatt_services = static_cast<ble_gatt_svc_def *>(malloc((service_cnt + 1) * sizeof(ble_gatt_svc_def)));
+    auto gatt_services = static_cast<ble_gatt_svc_def*>(malloc((service_cnt + 1) * sizeof(ble_gatt_svc_def)));
 
     gatt_services[service_cnt].type = 0;
 
     int service_idx = 0;
-    for (BLEServerServiceResource *service: _server_config->services()) {
+    for (BLEServerServiceResource* service: _server_config->services()) {
       int characteristic_cnt = 0;
-      for (__attribute__((unused)) BLEServerCharacteristicResource *t: service->characteristics()) characteristic_cnt++;
+      for (BLEServerCharacteristicResource* t: service->characteristics()) {
+        USE(t);
+        characteristic_cnt++;
+      }
 
-      auto gatt_svr_chars = static_cast<ble_gatt_chr_def *>(malloc(
+      auto gatt_svr_chars = static_cast<ble_gatt_chr_def*>(malloc(
           (characteristic_cnt + 1) * sizeof(ble_gatt_chr_def)));
 
       int characteristic_idx = 0;
-      for (BLEServerCharacteristicResource *characteristic: service->characteristics()) {
+      for (BLEServerCharacteristicResource* characteristic: service->characteristics()) {
         gatt_svr_chars[characteristic_idx].uuid = characteristic->uuid_p();
         gatt_svr_chars[characteristic_idx].access_cb = BLEEventSource::on_gatt_server_characteristic;
         gatt_svr_chars[characteristic_idx].arg = characteristic;
@@ -441,7 +444,7 @@ static ble_uuid_any_t uuid_from_blob(Blob blob) {
   return uuid;
 }
 
-uint32_t BLEServerConfigGroup::on_event(Resource *resource, word data, uint32_t state) {
+uint32_t BLEServerConfigGroup::on_event(Resource* resource, word data, uint32_t state) {
   switch (data) {
     case BLE_GATT_ACCESS_OP_READ_CHR:
       state |= kBLECharAccessed;
@@ -470,7 +473,7 @@ void BLEServerConfigGroup::entry() {
   nimble_port_run();
 }
 
-static bool object_to_mbuf(Process* process, Object *object, struct os_mbuf** res) {
+static bool object_to_mbuf(Process* process, Object* object, struct os_mbuf** res) {
   *res = null;
   if (object != process->program()->null_object()) {
     Blob bytes;
@@ -835,7 +838,7 @@ PRIMITIVE(request_result) {
   return Primitive::integer(gatt->result(), process);
 }
 
-static Object *convert_mbuf_to_heap_object(Process *process, const os_mbuf *mbuf) {
+static Object* convert_mbuf_to_heap_object(Process* process, const os_mbuf* mbuf) {
   int size = 0;
   for (const os_mbuf* current = mbuf; current; current = SLIST_NEXT(current, om_next)) {
     size += current->om_len;
@@ -863,7 +866,7 @@ PRIMITIVE(request_data) {
 
   const struct os_mbuf* mbuf = gatt->mbuf();
   if (!mbuf) return process->program()->null_object();
-  Object *ret_val = convert_mbuf_to_heap_object(process, mbuf);
+  Object* ret_val = convert_mbuf_to_heap_object(process, mbuf);
   gatt->set_mbuf(null);
 
   return ret_val;
@@ -931,7 +934,7 @@ PRIMITIVE(server_config_init) {
     MALLOC_FAILED;
   }
 
-  BLEServerConfigGroup *group = _new BLEServerConfigGroup(process, ble);
+  BLEServerConfigGroup* group = _new BLEServerConfigGroup(process, ble);
   if (!group) MALLOC_FAILED;
 
   proxy->set_external_address(group);
@@ -945,7 +948,7 @@ PRIMITIVE(add_server_service) {
 
   ble_uuid_any_t uuid = uuid_from_blob(uuid_blob);
 
-  BLEServerServiceResource *service = group->add_service(uuid);
+  BLEServerServiceResource* service = group->add_service(uuid);
   if (!service) MALLOC_FAILED;
 
   proxy->set_external_address(service);
@@ -959,10 +962,10 @@ PRIMITIVE(add_server_characteristic) {
 
   ble_uuid_any_t uuid = uuid_from_blob(uuid_blob);
 
-  struct os_mbuf *om =null;
+  struct os_mbuf* om =null;
   if (!object_to_mbuf(process, value, &om)) WRONG_TYPE;
 
-  BLEServerCharacteristicResource *characteristic = service->add_characteristic(uuid, type, om);
+  BLEServerCharacteristicResource* characteristic = service->add_characteristic(uuid, type, om);
   if (!characteristic) MALLOC_FAILED;
 
   proxy->set_external_address(characteristic);
@@ -972,7 +975,7 @@ PRIMITIVE(add_server_characteristic) {
 PRIMITIVE(set_characteristics_value) {
   ARGS(BLEServerCharacteristicResource, resource, Object, value);
 
-  struct os_mbuf *om;
+  struct os_mbuf* om;
   if (!object_to_mbuf(process, value, &om)) WRONG_TYPE;
 
   resource->set_mbuf_to_send(om);
@@ -984,7 +987,7 @@ PRIMITIVE(notify_characteristics_value) {
   ARGS(BLEServerCharacteristicResource, resource, Object, value);
 
   if (resource->is_notify_enabled() || resource->is_indicate_enabled()) {
-    struct os_mbuf *om;
+    struct os_mbuf* om;
     if (!object_to_mbuf(process, value, &om)) WRONG_TYPE;
 
     int err = 0;
@@ -1012,10 +1015,10 @@ PRIMITIVE(notify_characteristics_value) {
 PRIMITIVE(get_characteristics_value) {
   ARGS(BLEServerCharacteristicResource, resource);
 
-  os_mbuf *mbuf = resource->mbuf_received();
+  os_mbuf* mbuf = resource->mbuf_received();
   if (mbuf == null) return process->program()->null_object();
 
-  Object *ret_val = convert_mbuf_to_heap_object(process, mbuf);
+  Object* ret_val = convert_mbuf_to_heap_object(process, mbuf);
 
   resource->set_mbuf_received(null);
 
