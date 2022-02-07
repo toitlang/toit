@@ -345,7 +345,7 @@ bool HeapObject::is_at_block_top() {
   return _raw_at(size(block->process()->program())) == block->top();
 }
 
-void ByteArray::resize_hest_fisk(word new_length) {
+void ByteArray::resize_external(word new_length) {
   ASSERT(has_external_address());
   ASSERT(external_tag() == RawByteTag);
   ASSERT(new_length <= _external_length());
