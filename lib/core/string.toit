@@ -397,7 +397,7 @@ abstract class string implements Comparable:
   /** See $super. */
   operator == other:
     if other is not string: return false
-    #primitive.core.string_equals
+    #primitive.core.blob_equals
 
 
   /**

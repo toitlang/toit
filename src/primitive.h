@@ -92,7 +92,7 @@ namespace toit {
   PRIMITIVE(smi_to_string_base_10, 1)        \
   PRIMITIVE(compare_to, 2)                   \
   PRIMITIVE(min_special_compare_to, 2)       \
-  PRIMITIVE(string_equals, 2)                \
+  PRIMITIVE(blob_equals, 2)                  \
   PRIMITIVE(string_compare, 2)               \
   PRIMITIVE(string_rune_count, 1)            \
   PRIMITIVE(object_equals, 2)                \
