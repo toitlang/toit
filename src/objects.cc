@@ -345,15 +345,14 @@ bool HeapObject::is_at_block_top() {
   return _raw_at(size(block->process()->program())) == block->top();
 }
 
-void ByteArray::resize(int new_length) {
-  ASSERT(!has_external_address());
-  ASSERT(new_length <= raw_length());
-  ASSERT(is_at_block_top());
-  if (new_length != raw_length()) {
-    int new_size = ByteArray::internal_allocation_size(new_length);
-    Block::from(this)->shrink_top(size() - new_size);
-    _word_at_put(LENGTH_OFFSET, new_length);
-    ASSERT(is_at_block_top());
+void ByteArray::resize_hest_fisk(word new_length) {
+  ASSERT(has_external_address());
+  ASSERT(external_tag() == RawByteTag);
+  ASSERT(new_length <= _external_length());
+  _set_external_length(new_length);
+  uint8* new_data = AllocationManager::realloc(_external_address(), new_length);
+  if (new_data != null) {
+    _set_external_address(new_data);
   }
 }
 
