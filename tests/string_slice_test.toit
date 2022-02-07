@@ -29,7 +29,14 @@ hash_test:
 
 equals_test:
   // Big enough that slices are real slices and not copies.
-  str := "Now the number of mice is largely dependent, as every one knows, on the number of cats; and Colonel Newman says, “Near villages and small towns I have found the nests of humble-bees more numerous than elsewhere, which I attribute to the number of cats that destroy the mice.” Hence it is quite credible that the presence of a feline animal in large numbers in a district might determine, through the intervention first of mice and then of bees, the frequency of certain flowers in that district!"
+  str := """
+      Now the number of mice is largely dependent, as every one knows, on the \
+      number of cats; and Colonel Newman says, “Near villages and small towns I \
+      have found the nests of humble-bees more numerous than elsewhere, which I \
+      attribute to the number of cats that destroy the mice.” Hence it is quite \
+      credible that the presence of a feline animal in large numbers in a \
+      district might determine, through the intervention first of mice and then \
+      of bees, the frequency of certain flowers in that district!"""
   ba := str.to_byte_array
   expect_equals ba DARWIN_COW_BYTE_ARRAY
   expect_not_equals str ba  // String and byte arrays do not equal each other.
