@@ -1260,12 +1260,7 @@ abstract class ByteArrayBase_ implements ByteArray:
   */
   operator == other -> bool:
     if other is not ByteArray: return false
-    s := size
-    if s != other.size: return false
-    return compare_ other
-
-  compare_ other -> bool:
-    #primitive.core.byte_array_compare
+    #primitive.core.blob_equals
 
   /**
   Invokes the given $block on each element of this instance.
