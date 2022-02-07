@@ -1,0 +1,24 @@
+toit-e-paper/examples/tech_spec_demo.toit:5:8: error: Package for prefix 'peripherals' not found
+import peripherals.led show *
+       ^~~~~~~~~~~
+toit-e-paper/examples/tech_spec_demo.toit:6:8: error: Package for prefix 'peripherals' not found
+import peripherals.touch show *
+       ^~~~~~~~~~~
+toit-e-paper/examples/tech_spec_demo.toit:7:8: error: Package for prefix 'peripherals' not found
+import peripherals.thp show *
+       ^~~~~~~~~~~
+toit-e-paper/examples/tech_spec_demo.toit:60:25: error: Unresolved identifier: 'Led'
+  leds = Led.names.map: Led it
+                        ^~~
+toit-e-paper/examples/tech_spec_demo.toit:60:10: error: Unresolved identifier: 'Led'
+  leds = Led.names.map: Led it
+         ^~~
+toit-e-paper/examples/tech_spec_demo.toit:65:12: error: Unresolved identifier: 'Touch'
+  touch := Touch.start
+           ^~~~~
+toit-e-paper/examples/tech_spec_demo.toit:71:17: error: Unresolved identifier: 'Touch'
+    if event != Touch.EVENT_TYPE_UP:
+                ^~~~~
+toit-e-paper/examples/tech_spec_demo.toit:77:15: error: Unresolved identifier: 'read_temperature'
+      temp := read_temperature
+              ^~~~~~~~~~~~~~~~
