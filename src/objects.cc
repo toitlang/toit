@@ -350,7 +350,7 @@ void ByteArray::resize_external(word new_length) {
   ASSERT(external_tag() == RawByteTag);
   ASSERT(new_length <= _external_length());
   _set_external_length(new_length);
-  uint8* new_data = AllocationManager::realloc(_external_address(), new_length);
+  uint8* new_data = AllocationManager::reallocate(_external_address(), new_length);
   if (new_data != null) {
     _set_external_address(new_data);
   }

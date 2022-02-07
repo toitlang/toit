@@ -292,7 +292,7 @@ class AllocationManager {
     return unvoid_cast<uint8_t*>(_ptr);
   }
 
-  static uint8* realloc(uint8* old_allocation, word new_size) {
+  static uint8* reallocate(uint8* old_allocation, word new_size) {
     return unvoid_cast<uint8*>(::realloc(old_allocation, new_size));
   }
 
