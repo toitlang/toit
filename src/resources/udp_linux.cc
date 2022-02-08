@@ -179,7 +179,7 @@ PRIMITIVE(receive)  {
   }
 
   Error* error = null;
-  ByteArray* array = process->allocate_byte_array(available, &error, /*force_external = */ true);
+  ByteArray* array = process->allocate_byte_array(available, &error, /*force_external*/ true);
   if (array == null) return error;
 
   struct sockaddr_in addr;

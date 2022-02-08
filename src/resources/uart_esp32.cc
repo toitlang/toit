@@ -275,7 +275,7 @@ PRIMITIVE(read) {
   size_t capacity = Utils::max(available, (size_t)8);
 
   Error* error = null;
-  ByteArray* data = process->allocate_byte_array(capacity, &error, /*force_external = */ true);
+  ByteArray* data = process->allocate_byte_array(capacity, &error, /*force_external*/ true);
   if (data == null) return error;
 
   ByteArray::Bytes rx(data);

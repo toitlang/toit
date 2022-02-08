@@ -183,7 +183,7 @@ PRIMITIVE(read) {
   ARGS(int, fd);
 
   Error* error = null;
-  ByteArray* byte_array = process->allocate_byte_array(4000, &error, /*force_external = */ true);
+  ByteArray* byte_array = process->allocate_byte_array(4000, &error, /*force_external*/ true);
   if (byte_array == null) {
     return error;
   }
