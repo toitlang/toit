@@ -298,7 +298,7 @@ PRIMITIVE(read)  {
   }
   if (read == 0) return process->program()->null_object();
 
-  array->resize_external(read);
+  array->resize_external(process, read);
 
   return array;
 }

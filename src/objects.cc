@@ -345,10 +345,12 @@ bool HeapObject::is_at_block_top() {
   return _raw_at(size(block->process()->program())) == block->top();
 }
 
-void ByteArray::resize_external(word new_length) {
+void ByteArray::resize_external(Process* process, word new_length) {
   ASSERT(has_external_address());
   ASSERT(external_tag() == RawByteTag);
   ASSERT(new_length <= _external_length());
+  process->unregister_external_allocation(_external_length());
+  process->register_external_allocation(new_length);
   _set_external_length(new_length);
   uint8* new_data = AllocationManager::reallocate(_external_address(), new_length);
   if (new_data != null) {

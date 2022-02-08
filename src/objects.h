@@ -487,7 +487,7 @@ class ByteArray : public HeapObject {
   // accounting, so we may overestimate the external memory pressure.  May fail
   // under memory pressure, in which case the size of the Toit ByteArray object
   // is changed, but the backing harmlessly points to a larger area.
-  void resize_external(word new_length);
+  void resize_external(Process* process, word new_length);
 
   template<typename T> void set_external_address(T* value) {
     _set_external_address(reinterpret_cast<uint8*>(value));

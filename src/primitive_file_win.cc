@@ -204,7 +204,7 @@ PRIMITIVE(read) {
     return process->program()->null_object();
   }
 
-  byte_array->resize_external(buffer_fullness);
+  byte_array->resize_external(process, buffer_fullness);
   return byte_array;
 }
 

@@ -288,7 +288,7 @@ PRIMITIVE(read) {
     return process->allocate_string_or_error("broken UART read");
   }
 
-  data->resize_external(read);
+  data->resize_external(process, read);
 
   return data;
 }

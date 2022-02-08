@@ -195,7 +195,7 @@ PRIMITIVE(receive)  {
   if (read == 0) return process->program()->null_object();
 
   // Please note that the array might change length so no ByteArray::Bytes variables can pass this point.
-  array->resize_external(read);
+  array->resize_external(process, read);
 
   if (output->is_array()) {
     Array* out = Array::cast(output);
