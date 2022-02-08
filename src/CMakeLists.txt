@@ -146,7 +146,7 @@ add_custom_target(
   DEPENDS ${BOOT_SNAPSHOT}
 )
 
-add_dependencies(build_snapshots build_boot_snapshot)
+add_dependencies(toit.run build_boot_snapshot)
 
 if (DEFINED USE_LWIP)
   include_directories(toit.run PRIVATE ${LWIP_INCLUDE_DIRS})

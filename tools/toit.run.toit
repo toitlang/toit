@@ -76,7 +76,7 @@ main:
   // The snapshot for the application program is passed in hatch_args_
   snapshot_bundle ::= hatch_args_
   if snapshot_bundle is not ByteArray:
-    print_on_stderr_ "run_boot must be provided a snapshot"
+    print_on_stderr_ "toit.run.toit must be provided a snapshot"
     exit 1
   ToitcProcessManager snapshot_bundle
   while true:
