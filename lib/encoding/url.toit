@@ -38,7 +38,7 @@ The $data must be a string or byte array.  The value returned is a string or
   a byte array, but not necessarily of the same type as the $data.
 The characters 0-9, A-Z, and a-z are unchanged by the encoding, as are the
   characters '-', '_', '.', and '~'.  All other characters are encoded in
-  hexadecimal, using the percent sign.  Thus a space character is encode
+  hexadecimal, using the percent sign.  Thus a space character is encoded
   as "%20", and the Unicode snowman (☃) is encoded as "%E2%98%83".
 */
 encode data -> any:
