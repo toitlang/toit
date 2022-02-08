@@ -9,10 +9,11 @@ NEEDS_ENCODING_ ::= ByteArray '~' - '-' + 1:
 // Takes an ASCII string or a byte array.
 needs_encoding_ data -> int:
   count := 0
+  table := NEEDS_ENCODING_
   data.do: | c |
     if not '-' <= c <= '~':
       count++
-    else if NEEDS_ENCODING_[c - '-'] == 1:
+    else if table[c - '-'] == 1:
       count++
   return count
 
@@ -22,8 +23,9 @@ url_encode_ from -> any:
   if escaped == 0: return from
   result := ByteArray from.size + escaped * 2
   pos := 0
+  table := NEEDS_ENCODING_
   from.do: | c |
-    if not '-' <= c <= '~' or NEEDS_ENCODING_[c - '-'] == 1:
+    if not '-' <= c <= '~' or table[c - '-'] == 1:
       result[pos] = '%'
       result[pos + 1] = "0123456789ABCDEF"[c >> 4]
       result[pos + 2] = "0123456789ABCDEF"[c & 0xf]
