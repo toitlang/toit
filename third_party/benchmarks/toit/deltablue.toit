@@ -40,8 +40,8 @@ import .benchmark
 main -> none:
   log_execution_time "Deltablue" --iterations=10:
     10.repeat:
-      chain_test 100
-      projection_test 100
+      chain_test 50
+      projection_test 50
 
 /**
 Strengths are used to measure the relative importance of constraints.
