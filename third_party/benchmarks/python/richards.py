@@ -389,7 +389,7 @@ def main(iterations):
     result = r.run(iterations)
     endTime = time_ms()
     ms = (endTime - startTime) / iterations
-    print("Richards (%s) - time per iteration: %i ms" % (sys.implementation.name, ms))    
+    print("Richards (%s) - time per iteration: %i ms" % (sys.implementation.name, ms))
 
 if __name__ == '__main__':
     main(10)
