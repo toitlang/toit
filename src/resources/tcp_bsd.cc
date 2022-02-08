@@ -304,7 +304,7 @@ PRIMITIVE(read)  {
   available = Utils::min(available, ByteArray::PREFERRED_IO_BUFFER_SIZE);
 
   Error* error = null;
-  ByteArray* array = process->allocate_byte_array(available, &error);
+  ByteArray* array = process->allocate_byte_array(available, &error, /*force_external*/ true);
   if (array == null) return error;
 
   int read = recv(fd, ByteArray::Bytes(array).address(), available, 0);
@@ -314,7 +314,7 @@ PRIMITIVE(read)  {
   }
   if (read == 0) return process->program()->null_object();
 
-  array->resize(read);
+  array->resize_external(process, read);
 
   return array;
 }

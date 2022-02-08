@@ -426,7 +426,7 @@ PRIMITIVE(read)  {
   if (size < 0 || size > ByteArray::PREFERRED_IO_BUFFER_SIZE) size = ByteArray::PREFERRED_IO_BUFFER_SIZE;
 
   Error* error = null;
-  ByteArray* array = process->allocate_byte_array(size, &error);
+  ByteArray* array = process->allocate_byte_array(size, &error, /*force_external*/ true);
   if (array == null) return error;
   int read = mbedtls_ssl_read(&socket->ssl, ByteArray::Bytes(array).address(), size);
   if (read == 0 || read == MBEDTLS_ERR_SSL_CONN_EOF || read == MBEDTLS_ERR_SSL_PEER_CLOSE_NOTIFY) {
@@ -437,7 +437,7 @@ PRIMITIVE(read)  {
     return tls_error(null, process, read);
   }
 
-  array->resize(read);
+  array->resize_external(process, read);
   return array;
 }
 
