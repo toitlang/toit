@@ -58,9 +58,9 @@ test_parse:
     "9c20dadc-1abe-5520-b92c-85b948daf44a"
     (UUID.parse "9c-20-da-dc-1a-be-55-20-b9-2c-85-b9-48-da-f4-4a").stringify
 
-  expect_throws "INVALID_UUID": UUID.parse ""
-  expect_throws "INVALID_UUID": UUID.parse "9c20dadc-1abe-5520-b92c-85b948daf44"
-  expect_throws "INVALID_UUID": UUID.parse "9c20dadc-1abe-5520-b92c-85b948daf44aa"
+  expect_throws "INVALID_UUID":  UUID.parse ""
+  expect_throws "OUT_OF_BOUNDS": UUID.parse "9c20dadc-1abe-5520-b92c-85b948daf44"
+  expect_throws "INVALID_UUID":  UUID.parse "9c20dadc-1abe-5520-b92c-85b948daf44aa"
 
 test_uuid5:
   ns := UUID.parse "9c20dadc-1abe-5520-b92c-85b948daf44a"

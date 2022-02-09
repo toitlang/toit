@@ -1057,17 +1057,20 @@ PRIMITIVE(size_of_json_number) {
   return Smi::from(is_float ? -result : result);
 }
 
-PRIMITIVE(string_equals) {
+// The Toit code has already checked whether the types match, so we are not
+// comparing strings with byte arrays.
+PRIMITIVE(blob_equals) {
   ARGS(Object, receiver, Object, other)
   if (receiver->is_string() && other->is_string()) {
+    // We can make use of hash code here.
     return BOOL(String::cast(receiver)->equals(other));
   }
   Blob receiver_blob;
   Blob other_blob;
-  if (!receiver->byte_content(process->program(), &receiver_blob, STRINGS_ONLY)) WRONG_TYPE;
-  if (!other->byte_content(process->program(), &other_blob, STRINGS_ONLY)) WRONG_TYPE;
-  return BOOL(String::slow_equals(receiver_blob.address(), receiver_blob.length(),
-                                  other_blob.address(), other_blob.length()));
+  if (!receiver->byte_content(process->program(), &receiver_blob, STRINGS_OR_BYTE_ARRAYS)) WRONG_TYPE;
+  if (!other->byte_content(process->program(), &other_blob, STRINGS_OR_BYTE_ARRAYS)) WRONG_TYPE;
+  if (receiver_blob.length() != other_blob.length()) return BOOL(false);
+  return BOOL(memcmp(receiver_blob.address(), other_blob.address(), receiver_blob.length()) == 0);
 }
 
 PRIMITIVE(string_compare) {

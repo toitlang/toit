@@ -620,8 +620,8 @@ planner = None
 
 def delta_blue():
     for i in range(10):
-        chain_test(100)
-        projection_test(100)
+        chain_test(50)
+        projection_test(50)
 
 def main(n):
     start = time_ms()
