@@ -506,13 +506,12 @@ Token::Kind Scanner::scan_newline(int peek) {
   int indentation;
 
   do {
-    ASSERT(peek == 10 || peek == 13);
-    if (peek == 10) {
+    ASSERT(peek == '\n' || peek == '\r');
+    if (peek == '\r') {
       peek = advance();
       if (peek == 13) peek = advance();
     } else {
       peek = advance();
-      if (peek == 10) peek = advance();
     }
 
     // Compute indentation level of next line.
@@ -543,7 +542,7 @@ Token::Kind Scanner::scan_newline(int peek) {
 
     // Continue as long as we're moving through whitespace
     // only lines.
-  } while (peek == 10 || peek == 13);
+  } while (peek == '\n' || peek == '\r');
   // Ignore all whitespace, if it's at the end of the file.
   _indentation = at_eos() ? 0 : indentation;
   return Token::NEWLINE;

@@ -151,6 +151,10 @@ class ToitdocTextBuilder {
     // Drop the last '\n' from the buffer, as it might not exist in
     // the actual source.
     _text.pop_back();
+    if (!_text.empty() && _text[_text.size() - 1] == '\r') {
+      // On Windows also drop the '\r', so we don't end up in the middle of a \r\n.
+      _text.pop_back();
+    }
     return _new ToitdocSource(_source, _text, _source_line_offsets, _toitdoc_line_offsets);
   }
 
@@ -951,8 +955,9 @@ int ToitdocParser::peek() {
   auto text = _toitdoc_source->text();
   ASSERT(_index <= _toitdoc_source->size());
   int c = text[_index];
-  if (c == '\n') {
-    // Note that this branch always returns, and that it never returns '\n' (only ' ' or '\0').
+  if (is_newline(c)) {
+    // Note that this branch always returns, and that it never returns '\r' or
+    //   '\n' (only ' ' or '\0').
     // Callers thus don't need to worry about '\n', but can simply check for
     //   whitespace by looking for spaces.
     if (is_single_line) return '\0';
@@ -960,19 +965,27 @@ int ToitdocParser::peek() {
       // We already computed the indentation once and know that we aren't at a dedent.
       return ' ';
     }
-    _next_index = _index + 1;
+    if (c == '\r' && text[_index + 1] == '\n') {
+      _next_index = _index + 2;
+    } else {
+      _next_index = _index + 1;
+    }
     _next_indentation = 0;
     bool skipped_over_multiple_lines = false;
     // The only whitespace we care for are spaces.
     // Otherwise we would need to deal with the width of '\t'.
-    while (text[_next_index] == ' ' || text[_next_index] == '\n') {
-      if (text[_next_index] == '\n') {
+    while (text[_next_index] == ' ' || is_newline(text[_next_index])) {
+      if (is_newline(text[_next_index])) {
         skipped_over_multiple_lines = true;
         _next_indentation = 0;
       } else {
         _next_indentation++;
       }
-      _next_index++;
+      if (text[_next_index] == '\r' && text[_next_index + 1] == '\n') {
+        _next_index += 2;
+      } else {
+        _next_index++;
+      }
     }
     if (skipped_over_multiple_lines && !allows_empty_line) {
       _is_at_dedent = true;
@@ -1095,12 +1108,15 @@ bool CommentsManager::is_attached(Source::Range previous,
   auto text = _source->text();
   while (i < end_offset and text[i] == ' ') i++;
   if (i == end_offset) return true;
+  if (text[i] == '\r') i++;
+  if (i == end_offset) return true;
   if (text[i++] != '\n') return false;
   while (i < end_offset and text[i] == ' ') i++;
   if (i == end_offset) return true;
   if (!allow_modifiers) return false;
   for (; i < end_offset; i++) {
     if (text[i] == '\n') return false;
+    if (text[i] == '\r') return false;
     if (text[i] == ':') return false;
   }
   return true;
