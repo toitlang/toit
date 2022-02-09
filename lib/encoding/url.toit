@@ -7,7 +7,8 @@ NEEDS_ENCODING_ ::= ByteArray '~' - '-' + 1:
   (c == '-' or c == '_' or c == '.' or c == '~' or '0' <= c <= '9' or 'A' <= c <= 'Z' or 'a' <= c <= 'z') ? 0 : 1
 
 // Takes an ASCII string or a byte array.
-needs_encoding_ data -> int:
+// Counts the number of bytes that need escaping.
+count_escapes_ data -> int:
   count := 0
   table := NEEDS_ENCODING_
   data.do: | c |
@@ -19,7 +20,7 @@ needs_encoding_ data -> int:
 
 // Takes an ASCII string or a byte array.
 url_encode_ from -> any:
-  escaped := needs_encoding_ from
+  escaped := count_escapes_ from
   if escaped == 0: return from
   result := ByteArray from.size + escaped * 2
   pos := 0
