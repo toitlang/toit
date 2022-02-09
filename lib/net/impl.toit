@@ -14,18 +14,14 @@ import .modules.udp
 import .modules.wifi
 
 WIFI_ALREADY_STARTED_EXCEPTION_ ::= "OUT_OF_BOUNDS"
-wifi_interface_/Interface? := null
 
 open -> Interface:
   if platform == PLATFORM_FREERTOS:
-    // Was WiFi already started in this process?
-    if wifi_interface_: return wifi_interface_
-    exception ::= catch:
-      wifi_interface_ = wifi.connect
-      return wifi_interface_
-    // Was WiFi already started in another process?
-    if exception != WIFI_ALREADY_STARTED_EXCEPTION_:
-      throw exception
+    // We fall through and use the system interface if the WiFi was already started
+    // in another process. This is broken because the other process might close
+    // the WiFi and it really shouldn't while this process is still using it.
+    catch --unwind=(: it != WIFI_ALREADY_STARTED_EXCEPTION_):
+      return wifi.connect
   return SystemInterface_
 
 class SystemInterface_ extends Interface:
