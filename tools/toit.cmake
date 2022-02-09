@@ -29,7 +29,7 @@ if (DEFINED EXECUTING_SCRIPT)
 
     if (EXISTS "${TOIT_PROJECT}/package.yaml" OR EXISTS "${TOIT_PROJECT}/package.lock")
       execute_process(
-        COMMAND "${TOITPKG}" install "--project-root=${TOIT_PROJECT}"
+        COMMAND "${TOITPKG}" install --auto-sync=false "--project-root=${TOIT_PROJECT}"
         COMMAND_ERROR_IS_FATAL ANY
       )
     endif()
@@ -61,13 +61,17 @@ function(ADD_TOIT_TARGET SOURCE TARGET DEP_FILE ENV)
   )
 endfunction(ADD_TOIT_TARGET)
 
-if (NOT TARGET download_packages)
-  add_custom_target(
-    download_packages
-  )
-endif()
-
 macro(toit_project NAME PATH)
+  if (NOT TARGET download_packages)
+    add_custom_target(
+      download_packages
+    )
+    add_custom_target(
+      sync_packages
+      COMMAND "${TOITPKG}" sync
+    )
+  endif()
+
   # TODO(florian): find toitpkg in path.
   if (NOT DEFINED TOITPKG)
     message(FATAL_ERROR "Missing TOITPKG")
@@ -84,4 +88,5 @@ macro(toit_project NAME PATH)
         -P "${TOIT_DOWNLOAD_PACKAGE_SCRIPT}"
   )
   add_dependencies(download_packages "${DOWNLOAD_TARGET_NAME}")
+  add_dependencies("${DOWNLOAD_TARGET_NAME}" sync_packages)
 endmacro()

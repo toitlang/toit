@@ -441,10 +441,8 @@ github.com/stretchr/testify v1.7.0/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/
 github.com/subosito/gotenv v1.2.0 h1:Slr1R9HxAlEKefgq5jn9U+DnETlIUa6HfgEzj0g5d7s=
 github.com/subosito/gotenv v1.2.0/go.mod h1:N0PQaV/YGNqwC0u51sEeR/aUtSLEXKX9iv69rRypqCw=
 github.com/tmc/grpc-websocket-proxy v0.0.0-20190109142713-0ad062ec5ee5/go.mod h1:ncp9v5uamzpCO7NfCPTXjqaC+bZgJeR0sMTm6dMHP7U=
-github.com/toitlang/tpkg v0.0.0-20220112133931-234a7f81c4ab h1:LtiJy/NVy0SX1oZkFHb/+RRtC42I+sBp3Tj/hM6TlPg=
-github.com/toitlang/tpkg v0.0.0-20220112133931-234a7f81c4ab/go.mod h1:LQTX3L+ZoPC35JAiIaJ3BSkxOFxqrDhuxHIFVGDVrdQ=
-github.com/toitlang/tpkg v0.0.0-20220204122114-8cf6c818b89f h1:XibbEuwU9/+79AG4g29zdCU9KuxAnq8q8qdn7HWId5Q=
-github.com/toitlang/tpkg v0.0.0-20220204122114-8cf6c818b89f/go.mod h1:H6CzLD7CRMKdRBtl89DlFGvKa2mCjzp9HGboSGaSJAE=
+github.com/toitlang/tpkg v0.0.0-20220208100452-339a2ab582da h1:0ceMqGm+rpgikrfjcY4pKIFnsWB5K4OBuA61OWPggTY=
+github.com/toitlang/tpkg v0.0.0-20220208100452-339a2ab582da/go.mod h1:8+mRIFIKJxHMEAu8H5MxkaY/fLALKSEguBBIm8D0lG8=
 github.com/tv42/httpunix v0.0.0-20150427012821-b75d8614f926/go.mod h1:9ESjWnEqriFuLhtthL60Sar/7RFoluCcXsuvEwTV5KM=
 github.com/xanzy/ssh-agent v0.3.0 h1:wUMzuKtKilRgBAD1sUb8gOwwRr2FGoBVumcjoOACClI=
 github.com/xanzy/ssh-agent v0.3.0/go.mod h1:3s9xbODqPuuhK9JV1R321M/FlMZSBvE5aY6eAcqrDh0=
