@@ -34,7 +34,9 @@ connect --ssid/string?=null --password/string="" -> net.Interface:
       exception := wifi_connecting_.get
       if exception: throw exception
     else:
-      // We
+      // We use a latch to coordinate the initial creation of the WiFi
+      // connection. We always set it to a value when leaving this path
+      // and we always clear out the latch when we're done synchronizing.
       wifi_connecting_ = monitor.Latch
       wifi := wifi.Wifi
       try:
