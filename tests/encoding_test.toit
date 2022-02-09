@@ -10,6 +10,7 @@ import encoding.url
 main:
   maskint_test
   url_test
+  url_decoding_test
 
 maskint_test:
   0x100.repeat:
@@ -49,3 +50,21 @@ url_test:
   expect_equals "%F1sh" (url.encode #[0xf1, 's', 'h']).to_string
   expect_equals "-%E2%98%83-" (url.encode "-☃-").to_string
   expect_equals "%E2%82%AC25%2C-" (url.encode "€25,-").to_string
+
+url_decoding_test:
+  expect_equals "foo" (url.decode "foo")
+  expect_equals "-_.~abcABC012" (url.decode "-_.~abcABC012")
+  expect_equals "Søen så sær ud" (url.decode "Søen så sær ud")  // Postel.
+  expect_equals " " (url.decode "%20").to_string
+  expect_equals "%" (url.decode "%25").to_string
+  expect_equals "+" (url.decode "+")            // Doesn't treat '+' specially.
+  expect_equals "+" (url.decode "%2B").to_string
+  expect_equals #[0, 1, 2, 3, 4] (url.decode (ByteArray 5: it))
+  expect_equals #[0, 1, 2, 3, 4] (url.decode "%00%01%02%03%04")
+  expect_equals #[0xf0, 0xf1, 0xf2] (url.decode (ByteArray 3: 0xf0 + it))
+  expect_equals #[0xf0, 0xf1, 0xf2] (url.decode "%F0%F1%F2")
+  expect_equals #[0xf0, 0xf1, 0xf2] (url.decode "%f0%f1%f2")  // Lower case.
+  expect_equals "%F1sh" (url.encode #[0xf1, 's', 'h']).to_string
+  expect_equals "-☃-" (url.decode "-%E2%98%83-").to_string
+  expect_equals "€25,-" (url.decode "%E2%82%AC25%2C-").to_string
+
