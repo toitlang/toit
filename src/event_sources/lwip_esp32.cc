@@ -65,7 +65,7 @@ String* lwip_strerror(Process* process, err_t err, Error** error) {
   // unless it is compiled with debug options.
   static const char* error_names[] = {
              "OK",                       /* ERR_OK          0  */
-             "Out of memory",            /* ERR_MEM        -1  */
+             "Out of memory (lwip)",     /* ERR_MEM        -1  */
              "Buffer error",             /* ERR_BUF        -2  */
              "Timeout",                  /* ERR_TIMEOUT    -3  */
              "Routing problem",          /* ERR_RTE        -4  */
@@ -98,6 +98,7 @@ String* lwip_strerror(Process* process, err_t err, Error** error) {
 }
 
 Object* lwip_error(Process* process, err_t err) {
+  if (err == ERR_MEM) MALLOC_FAILED;
   Error* error = null;
   String* str = lwip_strerror(process, err, &error);
   if (str == null) return error;

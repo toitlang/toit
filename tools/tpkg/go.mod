@@ -4,7 +4,8 @@ go 1.17
 
 require (
 	github.com/spf13/cobra v1.3.0
-	github.com/toitlang/tpkg v0.0.0-20220204122114-8cf6c818b89f
+	github.com/spf13/pflag v1.0.5
+	github.com/toitlang/tpkg v0.0.0-20220208100452-339a2ab582da
 )
 
 require (
@@ -34,7 +35,6 @@ require (
 	github.com/spf13/afero v1.6.0 // indirect
 	github.com/spf13/cast v1.4.1 // indirect
 	github.com/spf13/jwalterweatherman v1.1.0 // indirect
-	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/spf13/viper v1.10.0 // indirect
 	github.com/subosito/gotenv v1.2.0 // indirect
 	github.com/xanzy/ssh-agent v0.3.0 // indirect
