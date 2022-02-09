@@ -32,31 +32,37 @@ IMAGE_DATA_OFFSET ::= 296
 IMAGE_DATA_MAGIC_1 := 0x7017da7a
 IMAGE_DATA_MAGIC_2 := 0xc09f19
 /**
-  usage: inject_config <config-json file> <bin file> [<output file>]
+  usage: inject_config <config-json file> <bin file> [--unique_id=<uuid>] [<output file>]
 */
 main args/List:
   parser := ArgumentParser
+  parser.add_option "unique_id"
   parsed := parser.parse args
   config_path/string := parsed.rest[0] as string
   bin_path/string := parsed.rest[1] as string
   out_path/string := parsed.rest.size > 2 ? parsed.rest[2] as string : bin_path
+
+  // Get the unique image id from the --unique_id argument or generate a random one.
+  unique_id/uuid.Uuid := parsed["unique_id"]
+      ? uuid.parse parsed["unique_id"]
+      : (uuid.uuid5 "$random" "$Time.now".to_byte_array)
 
   config_data := file.read_content config_path
   bin_data := file.read_content bin_path
 
   config := json.decode config_data
 
-  result := inject_config config bin_data
+  result := inject_config config unique_id bin_data
 
   out_stream := file.Stream.for_write out_path
   out_writer := writer.Writer out_stream
   out_writer.write result
   out_stream.close
 
-// the factory image contains a "empty" section of 1024 bytes here we encoded the config such that
+// The factory image contains an "empty" section of 1024 bytes here we encoded the config such that
 // the image can run completely independently.
 // The function updates the sha256 and XOR checksums to ensure that the image stays valid.
-inject_config config/Map bin_data/ByteArray -> ByteArray:
+inject_config config/Map unique_id/uuid.Uuid bin_data/ByteArray -> ByteArray:
   image_data_position := get_image_data_position bin_data
   image_data_offset := image_data_position[0]
   image_data_size := image_data_position[1]
@@ -83,7 +89,7 @@ inject_config config/Map bin_data/ByteArray -> ByteArray:
 
   bin_data.replace image_data_offset (ByteArray image_data_size)  // Zero out area.
   bin_data.replace image_data_offset config_data
-  bin_data.replace image_data_offset + image_config_size uuid.NIL.to_byte_array
+  bin_data.replace image_data_offset + image_config_size unique_id.to_byte_array
 
   for i := image_data_offset; i < image_data_offset + image_data_size; i++:
     bin_data[xor_cs_offset] ^= bin_data[i]
