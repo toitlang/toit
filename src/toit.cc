@@ -97,16 +97,6 @@ static ProgramImage attempt_to_load_snapshot(char* bundle_path) {
   return result;
 }
 
-class MessageHandler : public ExternalSystemMessageHandler {
- public:
-  MessageHandler(VM* vm) : ExternalSystemMessageHandler(vm) { }
-  virtual void on_message(int sender, int type, void* data, int length);
-};
-
-void MessageHandler::on_message(int sender, int type, void* data, int length) {
-  send(sender, type, data, length);
-}
-
 int run_program(char* boot_program_path, SnapshotBundle bundle, char** argv) {
   while (true) {
     Scheduler::ExitState exit;
@@ -118,10 +108,6 @@ int run_program(char* boot_program_path, SnapshotBundle bundle, char** argv) {
         application_image = bundle.snapshot().read_image();
       }
       int group_id = vm.scheduler()->next_group_id();
-
-      MessageHandler handler(&vm);
-      handler.start();
-
       if (!boot_image.is_valid()) {
         exit = vm.scheduler()->run_boot_program(application_image.program(), argv, group_id);
       } else {
