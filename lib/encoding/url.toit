@@ -28,8 +28,8 @@ url_encode_ from -> any:
   from.do: | c |
     if not '-' <= c <= '~' or table[c - '-'] == 1:
       result[pos] = '%'
-      result[pos + 1] = "0123456789ABCDEF"[c >> 4]
-      result[pos + 2] = "0123456789ABCDEF"[c & 0xf]
+      result[pos + 1] = to_upper_case_hex c >> 4
+      result[pos + 2] = to_upper_case_hex c & 0xf
       pos += 3
     else:
       result[pos++] = c
@@ -53,3 +53,37 @@ encode data -> any:
   else if data is not ByteArray:
     throw "WRONG_OBJECT_TYPE"
   return url_encode_ data
+
+/**
+Decodes the given $data using URL-encoding, also known as percent encoding.
+The function is liberal, accepting unencoded characters that should be
+  encoded, with the exception of '%'.
+Takes a string or a byte array, and may return a string or a ByteArray.
+  (Both string and ByteArray have a to_string method.)
+Does not check for malformed UTF-8, but calling to_string on the return
+  value will throw on malformed UTF-8.
+Plus signs (+) are not decoded to spaces.
+# Example
+  (url.decode "foo%20b%C3%A5r").to_string  // Returns "foo bår"
+*/
+decode data -> any:
+  if data is string:
+    if not data.contains "%": return data
+    if data.size != (data.size --runes): data = data.to_byte_array
+  else if data is ByteArray:
+    if (data.index_of '%') == -1: return data
+  else:
+    throw "WRONG_OBJECT_TYPE"
+  count := 0
+  data.do: | c |
+    if c == '%': count++
+  result := ByteArray data.size - count * 2
+  j := 0
+  for i := 0; i < data.size; i++:
+    c := data[i]
+    if c == '%':
+      c = (hex_digit data[i + 1]) << 4
+      c += hex_digit data[i + 2]
+      i += 2
+    result[j++] = c
+  return result
