@@ -44,7 +44,7 @@ connect --ssid/string?=null --password/string="" -> net.Interface:
         with_timeout WIFI_CONNECT_TIMEOUT_: wifi.connect
         with_timeout WIFI_DHCP_TIMEOUT_: wifi.get_ip
         // Success: Register the WiFi connection, tell anyone who is waiting
-        // for it that the connetion is ready to be used (no exception), and
+        // for it that the connection is ready to be used (no exception), and
         // go on to mark ourselves as a user of the WiFi network.
         wifi_ = wifi
         wifi_connecting_.set null
