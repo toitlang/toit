@@ -5,6 +5,7 @@
 import net
 import net.udp
 import net.tcp
+import monitor
 
 import .modules.wifi as wifi
 import .modules.tcp
@@ -15,6 +16,9 @@ import ..esp32
 WIFI_CONNECT_TIMEOUT_  ::= Duration --s=10
 WIFI_DHCP_TIMEOUT_     ::= Duration --s=16
 
+wifi_/wifi.Wifi? := null
+wifi_connecting_/monitor.Latch? := null
+
 connect --ssid/string?=null --password/string="" -> net.Interface:
   if not ssid:
     config := image_config or {:}
@@ -22,19 +26,43 @@ connect --ssid/string?=null --password/string="" -> net.Interface:
     ssid = wifi_config.get "ssid"
     password = wifi_config.get "password"
 
-  wifi := wifi.Wifi
-  try:
-    wifi.set_ssid ssid password
-    with_timeout WIFI_CONNECT_TIMEOUT_: wifi.connect
-    with_timeout WIFI_DHCP_TIMEOUT_: wifi.get_ip
-    return WifiInterface_ wifi
-  finally: | is_exception _ |
-    if is_exception: wifi.close
+  if not wifi_:
+    if wifi_connecting_:
+      // If we're already connecting, we wait and see if that leads to
+      // an exception. If it doesn't throw, then we continue to mark
+      // ourselves as a user of the WiFi network.
+      exception := wifi_connecting_.get
+      if exception: throw exception
+    else:
+      // We
+      wifi_connecting_ = monitor.Latch
+      wifi := wifi.Wifi
+      try:
+        wifi.set_ssid ssid password
+        with_timeout WIFI_CONNECT_TIMEOUT_: wifi.connect
+        with_timeout WIFI_DHCP_TIMEOUT_: wifi.get_ip
+        // Success: Register the WiFi connection, tell anyone who is waiting
+        // for it that the connetion is ready to be used (no exception), and
+        // go on to mark ourselves as a user of the WiFi network.
+        wifi_ = wifi
+        wifi_connecting_.set null
+      finally: | is_exception exception |
+        if is_exception:
+          wifi.close
+          wifi_connecting_.set exception.value
+        wifi_connecting_ = null
+
+  interface := WifiInterface_
+  if ssid == wifi_.ssid_ and password == wifi_.password_: return interface
+  interface.close
+  throw "wifi already connected with different credentials"
 
 class WifiInterface_ extends net.Interface:
-  wifi_/wifi.Wifi? := ?
+  static open_count_/int := 0
+  open_/bool := true
 
-  constructor .wifi_:
+  constructor:
+    open_count_++
 
   resolve host/string -> List:
     with_wifi_:
@@ -69,10 +97,13 @@ class WifiInterface_ extends net.Interface:
     unreachable
 
   close -> none:
-    if wifi_:
-      wifi_.close
-      wifi_ = null
+    if not open_: return
+    open_ = false
+    if --open_count_ > 0: return
+    wifi := wifi_
+    wifi_ = null
+    wifi.close
 
   with_wifi_ [block]:
-    if not wifi_: throw "interface is closed"
+    if not open_: throw "interface is closed"
     block.call wifi_
