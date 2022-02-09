@@ -74,7 +74,7 @@ class FlashStore implements Store:
   The $value is encoded as UBJSON. As such it supports:
   - literals: numbers, booleans, strings, null.
   - lists.
-  - maps. The keys must be strings, and the values must be valid JSON objects.
+  - maps. The keys must be strings, and the values must be valid UBJSON objects.
   */
   set key/string value/any:
     impl.FlashStore_.instance.set key value
