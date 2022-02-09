@@ -286,6 +286,8 @@ class AllocationManager {
       _hit_limit = true;
       return null;
     }
+    // Don't change this to use C++ array 'new' because that isn't compatible
+    // with realloc.
     _ptr = malloc(length);
     if (_ptr == null) {
       _process->object_heap()->set_last_allocation_result(Heap::ALLOCATION_OUT_OF_MEMORY);
@@ -295,6 +297,10 @@ class AllocationManager {
     }
 
     return unvoid_cast<uint8_t*>(_ptr);
+  }
+
+  static uint8* reallocate(uint8* old_allocation, word new_size) {
+    return unvoid_cast<uint8*>(::realloc(old_allocation, new_size));
   }
 
   uint8_t* calloc(word length, word size) {

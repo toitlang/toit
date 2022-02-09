@@ -85,13 +85,8 @@ Process::Process(Program* program, ProcessGroup* group, Method method, const uin
   ByteArray* args = _object_heap.allocate_internal_byte_array(arguments_length);
   // We don't run from snapshot on the device so we can assume that allocation
   // does not fail on a newly created heap.
-#ifdef TOIT_FREERTOS
-  UNREACHABLE();
-#else
   ASSERT(args != null);
-#endif
   ByteArray::Bytes to(args);
-
   memcpy(to.address(), arguments_address, to.length());
 
   _object_heap.set_hatch_method(method);
