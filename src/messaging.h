@@ -212,16 +212,36 @@ class MessageDecoder {
 class ExternalSystemMessageHandler : public ProcessRunner {
  public:
   ExternalSystemMessageHandler(VM* vm) : _vm(vm), _process(null) { }
-  void start();
 
+  // Try to start the messaging handler. Returns true if successful and false
+  // if starting it failed due to lack of memory.
+  bool start();
+
+  // Get the process id for this message handler. Returns -1 if the process
+  // hasn't been started.
+  int pid() const;
+
+  // Callback for received messages.
   virtual void on_message(int sender, int type, void* data, int length) = 0;
+
+  // Send a message to a specific receiver.
   bool send(int receiver, int type, void* data, int length);
 
-  virtual Interpreter::Result run();
+  // Support for handling failed allocations. Return true from the callback
+  // if you have cleaned up and want to retry the allocation. Returning false
+  // causes the message to be discarded.
+  virtual bool on_failed_allocation(int length) { return false; }
+
+  // Try collecting garbage. If asked to try hard, the system will preempt running
+  // processes and get the to stop before garbage collecting their heaps.
+  void collect_garbage(bool try_hard);
 
  private:
   VM* _vm;
   Process* _process;
+
+  // Called by the scheduler.
+  virtual Interpreter::Result run() override;
 };
 
 }  // namespace toit

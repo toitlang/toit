@@ -54,27 +54,24 @@ void MessageHandler::on_message(int sender, int type, void* data, int length) {
 }
 
 int run_program(Snapshot snapshot) {
-  while (true) {
-    Scheduler::ExitState exit;
-    { VM vm;
-      vm.load_platform_event_sources();
-      auto image = snapshot.read_image();
-      int group_id = vm.scheduler()->next_group_id();
+  VM vm;
+  vm.load_platform_event_sources();
+  auto image = snapshot.read_image();
+  int group_id = vm.scheduler()->next_group_id();
 
-      MessageHandler handler(&vm);
-      handler.start();
+  MessageHandler handler(&vm);
+  handler.start();
 
-      exit = vm.scheduler()->run_boot_program(image.program(), NULL, group_id);
-      image.release();
-    }
-    switch (exit.reason) {
-      case Scheduler::EXIT_DONE:
-        return 0;
-      case Scheduler::EXIT_ERROR:
-        return exit.value;
-      default:
-        FATAL("unexpected exit reason: %d", exit.reason);
-    }
+  Scheduler::ExitState exit = vm.scheduler()->run_boot_program(image.program(), NULL, group_id);
+  image.release();
+
+  switch (exit.reason) {
+    case Scheduler::EXIT_DONE:
+      return 0;
+    case Scheduler::EXIT_ERROR:
+      return exit.value;
+    default:
+      FATAL("unexpected exit reason: %d", exit.reason);
   }
 }
 

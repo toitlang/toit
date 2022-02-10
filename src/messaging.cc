@@ -396,19 +396,22 @@ Object* MessageDecoder::decode_byte_array(bool inlined) {
 
 bool MessageDecoder::decode_byte_array_external(void** data, int* length) {
   int tag = read_uint8();
-  int encoded_length = read_cardinal();
   if (tag == TAG_BYTE_ARRAY) {
+    *length = read_cardinal();
     *data = read_pointer();
+    return true;
   } else if (tag == TAG_BYTE_ARRAY_INLINE) {
+    int encoded_length = *length = read_cardinal();
     void* copy = malloc(encoded_length);
-    // TODO(kasper): Handle failure here.
+    if (copy == null) {
+      _allocation_failed = true;
+      return false;
+    }
     memcpy(copy, &_buffer[_cursor], encoded_length);
     *data = copy;
-  } else {
-    return false;
+    return true;
   }
-  *length = encoded_length;
-  return true;
+  return false;
 }
 
 Object* MessageDecoder::decode_double() {
@@ -458,9 +461,16 @@ uint64 MessageDecoder::read_uint64() {
   return result;
 }
 
-void ExternalSystemMessageHandler::start() {
+bool ExternalSystemMessageHandler::start() {
   ASSERT(_process == null);
-  _process = _vm->scheduler()->run_external(this);
+  Process* process = _vm->scheduler()->run_external(this);
+  if (process == null) return false;
+  _process = process;
+  return true;
+}
+
+int ExternalSystemMessageHandler::pid() const {
+  return _process ? _process->id() : -1;
 }
 
 bool ExternalSystemMessageHandler::send(int pid, int type, void* data, int length) {
@@ -501,11 +511,26 @@ Interpreter::Result ExternalSystemMessageHandler::run() {
       void* data = null;
       int length = 0;
       bool success = decoder.decode_byte_array_external(&data, &length);
+
+      // If the allocation failed, we ask the handler if we should retry the failed
+      // allocation. If so, we leave the message in place and try again. Otherwise,
+      // we remove it but do not call on_message.
+      bool allocation_failed = !success && decoder.allocation_failed();
+      if (allocation_failed && on_failed_allocation(length)) continue;
+
       int pid = system->pid();
       int type = system->type();
       _process->remove_first_message();
-      if (success) on_message(pid, type, data, length);
+      if (success) {
+        on_message(pid, type, data, length);
+      }
     }
+  }
+}
+
+void ExternalSystemMessageHandler::collect_garbage(bool try_hard) {
+  if (_process) {
+    _vm->scheduler()->scavenge(_process, true, try_hard);
   }
 }
 

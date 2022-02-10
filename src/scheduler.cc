@@ -179,8 +179,12 @@ Process* Scheduler::run_external(ProcessRunner* runner) {
   int group_id = next_group_id();
   Locker locker(_mutex);
   ProcessGroup* group = ProcessGroup::create(group_id, null);
+  if (group == null) return null;
   Process* process = _new Process(runner, group);
-  if (process == null) return null;
+  if (process == null) {
+    delete group;
+    return null;
+  }
   _groups.append(group);
   add_process(locker, process);
   return process;
