@@ -193,8 +193,8 @@ jobs:
             make CROSS_ARCH=host32 rebuild-cross-cmake
             cd build/host32
             ninja check_external
+            cd ../..
           fi
-          cd ${{ github.workspace }}
           # If we reach here, all steps of this step succeeded.
           echo success > ${{ steps.constants.outputs.external_result }}
 
