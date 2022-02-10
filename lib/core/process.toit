@@ -23,10 +23,12 @@ hatch_primitive_ method arguments:
 __hatch_entry__:
   current := task
   current.initialize_entry_task_
-  args := deserialize hatch_args_
+  deserialized := deserialize hatch_args_
+  // Turn deserialized lists into the more primitive array form.
+  if deserialized is List: deserialized = Array_.from deserialized
   lambda := Lambda.__
     hatch_method_
-    Array_ args.size: args[it]
+    deserialized
   current.evaluate_ lambda
 
 hatch_method_:

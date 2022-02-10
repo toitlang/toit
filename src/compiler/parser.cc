@@ -2639,6 +2639,9 @@ Source::Range Parser::current_range() {
   auto& state = current_state();
   if (state.token == Token::NEWLINE || state.token == Token::DEDENT || state.token == Token::EOS) {
     int shortened_to = std::min(state.scanner_state.to, state.scanner_state.from + 1);
+    if (_source->text()[shortened_to] == '\n' && _source->text()[shortened_to - 1] == '\r') {
+      shortened_to++;
+    }
     return _source->range(state.scanner_state.from, shortened_to);
   }
   return _source->range(state.scanner_state.from, state.scanner_state.to);

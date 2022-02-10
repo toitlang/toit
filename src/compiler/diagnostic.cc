@@ -233,6 +233,9 @@ void CompilationDiagnostics::emit(Severity severity,
   }
   putchar('\n');
 
+  // Skip over Windows newline.
+  if (source[index - 1] == '\r' && source[index] == '\n') index++;
+
   // Print the `^~~~` at the correct location.
 
   (*color_fun)(stdout);

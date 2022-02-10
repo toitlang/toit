@@ -116,11 +116,6 @@ add_custom_target(
   )
 
 add_custom_target(
-  USES_TERMINAL
-  DEPENDS toit.compile
-  )
-
-add_custom_target(
   clear_external_health_gold
   COMMAND rm -f "${CMAKE_CURRENT_LIST_DIR}/gold/*.gold"
 )

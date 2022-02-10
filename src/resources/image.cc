@@ -47,13 +47,13 @@ PRIMITIVE(writer_write) {
   if (to > content_bytes.length()) OUT_OF_BOUNDS;
 
   const word* data = reinterpret_cast<const word*>(content_bytes.address() + from);
-  int byte_size = to - from;
-  int length = byte_size / WORD_SIZE;
+  int length = (to - from) / WORD_SIZE;
+  int output_byte_size = (length - 1) * WORD_SIZE;  // The first word is relocation bits, not part of the output.
   word buffer[WORD_BIT_SIZE];
 
   bool first = output->empty();
   int offset = FlashRegistry::offset(output->cursor());
-  if (offset < 0 || offset + byte_size > FlashRegistry::allocations_size()) OUT_OF_BOUNDS;
+  if (offset < 0 || offset + output_byte_size > FlashRegistry::allocations_size()) OUT_OF_BOUNDS;
   output->write(data, length, buffer);
 
   bool success = false;
@@ -62,9 +62,9 @@ PRIMITIVE(writer_write) {
     const int header_size = sizeof(Program::Header);
     ASSERT(Utils::is_aligned(header_size, WORD_SIZE));
     const int header_words = header_size / WORD_SIZE;
-    success = FlashRegistry::write_chunk(&buffer[header_words], offset + header_size, (length - header_words - 1) * WORD_SIZE);
+    success = FlashRegistry::write_chunk(&buffer[header_words], offset + header_size, output_byte_size - header_size);
   } else {
-    success = FlashRegistry::write_chunk(buffer, offset, (length - 1) * WORD_SIZE);
+    success = FlashRegistry::write_chunk(buffer, offset, output_byte_size);
   }
 
   if (success) return process->program()->null_object();

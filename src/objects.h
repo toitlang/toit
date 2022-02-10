@@ -483,7 +483,11 @@ class ByteArray : public HeapObject {
      return static_cast<ByteArray*>(byte_array);
   }
 
-  void resize(int new_length);
+  // Only for external byte arrays that were malloced.  Does not change the
+  // accounting, so we may overestimate the external memory pressure.  May fail
+  // under memory pressure, in which case the size of the Toit ByteArray object
+  // is changed, but the backing harmlessly points to a larger area.
+  void resize_external(Process* process, word new_length);
 
   template<typename T> void set_external_address(T* value) {
     _set_external_address(reinterpret_cast<uint8*>(value));
@@ -541,6 +545,11 @@ class ByteArray : public HeapObject {
   void _set_length(int value) { _word_at_put(LENGTH_OFFSET, value); }
 
   void _set_external_length(int length) { _set_length(-1 - length); }
+
+  int _external_length() {
+    ASSERT(has_external_address());
+    return -1 - raw_length();
+  }
 
   void _clear() {
     Bytes bytes(this);

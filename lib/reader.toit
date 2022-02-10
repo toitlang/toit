@@ -173,13 +173,14 @@ class BufferedReader implements Reader:
     ensure n
     start := first_array_position_
     first := arrays_.first
-    if start + n <= first.size: return first[start..start+n]
+    if start + n <= first.size: return first[start..start + n]
     result := ByteArray n
     offset := 0
     arrays_.do:
-      size := it.size - start
-      if offset + size > n: size = n - offset
-      result.replace offset it start start+size
+      size := min
+          it.size - start
+          n - offset
+      result.replace offset it start (start + size)
       offset += size
       if offset == n: return result
       start = 0
