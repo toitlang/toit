@@ -18,14 +18,8 @@ set(TOIT_FAILING_TESTS
 
 if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows" OR "${CMAKE_SYSTEM_NAME}" STREQUAL "MSYS")
   list(APPEND TOIT_FAILING_TESTS
-    tests/negative/lock_sdk_bad/lock_sdk_bad_test.toit
-    tests/negative/lock_sdk_bad2/lock_sdk_bad_test.toit
-    tests/negative/lock_sdk_empty/lock_sdk_empty_test.toit
     tests/negative/pkg_bad_path/main_test.toit
-    tests/negative/pkg_lock_errors/main_test.toit
-    tests/negative/pkg_no_src/main_test.toit
     tests/negative/pkg_not_found/main_test.toit
     tests/negative/pkg_not_found/relative_test.toit
-    tests/negative/pkg_not_found_error/main_test.toit
   )
 endif()
