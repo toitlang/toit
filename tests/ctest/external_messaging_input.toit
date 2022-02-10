@@ -21,9 +21,10 @@ main:
   test handler (ByteArray 31971: it)
 
 test handler/MessageHandler data/ByteArray:
+  copy := data.copy  // Data can be neutered as part of the transfer.
   process_send_ EXTERNAL_PID 0 data
   result := handler.receive
-  expect.expect_bytes_equal data result
+  expect.expect_bytes_equal copy result
 
 class MessageHandler implements SystemMessageHandler_:
   messages_ ::= monitor.Channel 1
