@@ -509,7 +509,7 @@ Token::Kind Scanner::scan_newline(int peek) {
     ASSERT(peek == '\n' || peek == '\r');
     if (peek == '\r') {
       peek = advance();
-      if (peek == 13) peek = advance();
+      if (peek == '\r') peek = advance();
     } else {
       peek = advance();
     }
