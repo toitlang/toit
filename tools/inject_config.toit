@@ -29,8 +29,8 @@ import encoding.ubjson
 IMAGE_DATA_SIZE ::= 1024
 IMAGE_DATA_OFFSET ::= 296
 
-IMAGE_DATA_MAGIC_1 := 0x7017da7a
-IMAGE_DATA_MAGIC_2 := 0xc09f19
+IMAGE_DATA_MAGIC_1 ::= 0x7017da7a
+IMAGE_DATA_MAGIC_2 ::= 0xc09f19
 /**
   usage: inject_config <config-json file> <bin file> [--unique_id=<uuid>] [<output file>]
 */
@@ -59,9 +59,9 @@ main args/List:
   out_writer.write result
   out_stream.close
 
-// The factory image contains an "empty" section of 1024 bytes here we encoded the config such that
-// the image can run completely independently.
-// The function updates the sha256 and XOR checksums to ensure that the image stays valid.
+// The factory image contains an "empty" section of 1024 bytes where we encoded the config
+// such that the image can run completely independently. This function updates the sha256
+// and XOR checksums to ensure that the image stays valid.
 inject_config config/Map unique_id/uuid.Uuid bin_data/ByteArray -> ByteArray:
   image_data_position := get_image_data_position bin_data
   image_data_offset := image_data_position[0]
