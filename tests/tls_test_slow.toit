@@ -51,8 +51,6 @@ run_tests:
     "sha512.badssl.com",
     // "100-sans.badssl.com"
     // "10000-sans.badssl.com"
-    "ecc256.badssl.com",
-    "ecc384.badssl.com",
     "rsa2048.badssl.com",
     "rsa4096.badssl.com",
     "extended-validation.badssl.com",
@@ -74,6 +72,9 @@ run_tests:
     //  "revoked.badssl.com",  // We don't have support for cert revocation yet.
     //  "pinning-test.badssl.com",  // We don't have support for cert pinning yet.
     // "sha1-intermediate.badssl.com/unacceptable hash",  // Expired.
+    // Started failing on Feb 10, 2022: Site relies on unknown root certificate: 'O=Digital Signature Trust Co., CN=DST Root CA X3'.
+    "ecc256.badssl.com",
+    "ecc384.badssl.com",
     // The peer rejects us here because we don't have any hash algorithm in common.
     "rc4-md5.badssl.com/7780@received from our peer",
     "rc4.badssl.com/7780@received from our peer",
