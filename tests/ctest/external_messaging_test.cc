@@ -46,10 +46,16 @@ static SnapshotBundle compile(const char* input_path) {
 class MessageHandler : public ExternalSystemMessageHandler {
  public:
   MessageHandler(VM* vm) : ExternalSystemMessageHandler(vm) { }
-  virtual void on_message(int sender, int type, void* data, int length);
+  virtual void on_message(int sender, int type, void* data, int length) override;
+
+ private:
+  bool _try_hard = false;
 };
 
 void MessageHandler::on_message(int sender, int type, void* data, int length) {
+  collect_garbage(_try_hard);
+  _try_hard = !_try_hard;
+
   send(sender, type, data, length);
 }
 
