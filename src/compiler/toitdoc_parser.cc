@@ -953,7 +953,9 @@ int ToitdocParser::peek() {
 
   if (_is_at_dedent) return '\0';
   auto text = _toitdoc_source->text();
+  // The toit-doc source is null-terminated, so it's safe to read at out-of bounds.
   ASSERT(_index <= _toitdoc_source->size());
+  ASSERT(text[_toitdoc_source->size()] == '\0');
   int c = text[_index];
   if (is_newline(c)) {
     // Note that this branch always returns, and that it never returns '\r' or
@@ -965,6 +967,7 @@ int ToitdocParser::peek() {
       // We already computed the indentation once and know that we aren't at a dedent.
       return ' ';
     }
+    // The source is null-terminated. It's safe to read out of bounds.
     if (c == '\r' && text[_index + 1] == '\n') {
       _next_index = _index + 2;
     } else {
@@ -981,6 +984,7 @@ int ToitdocParser::peek() {
       } else {
         _next_indentation++;
       }
+      // The source is null-terminated. It's safe to read out of bounds.
       if (text[_next_index] == '\r' && text[_next_index + 1] == '\n') {
         _next_index += 2;
       } else {
