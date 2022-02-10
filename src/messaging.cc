@@ -18,6 +18,8 @@
 #include "objects.h"
 #include "process.h"
 
+#include "objects_inline.h"
+
 namespace toit {
 
 enum MessageTag {
@@ -329,7 +331,7 @@ Object* MessageDecoder::decode_string(bool inlined) {
   int length = read_cardinal();
   String* result = null;
   if (inlined) {
-    ASSERT(length <= String::max_internal_size());
+    ASSERT(length <= String::max_internal_size_in_process());
     // We ignore the specific error because we are below the maximum internal string
     // size, so we know it's an internal allocation error.
     Error* error = null;
@@ -366,7 +368,7 @@ Object* MessageDecoder::decode_byte_array(bool inlined) {
   int length = read_cardinal();
   ByteArray* result = null;
   if (inlined) {
-    ASSERT(length <= ByteArray::max_internal_size());
+    ASSERT(length <= ByteArray::max_internal_size_in_process());
     Error* error = null;
     result = _process->allocate_byte_array(length, &error, false);
     if (result != null) {

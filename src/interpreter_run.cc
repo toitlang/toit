@@ -18,11 +18,12 @@
 #include <math.h>
 
 #include "flags.h"
-#include "objects_inline.h"
 #include "printing.h"
 #include "process.h"
 #include "scheduler.h"
 #include "vm.h"
+
+#include "objects_inline.h"
 
 namespace toit {
 

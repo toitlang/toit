@@ -37,6 +37,8 @@ Process::Process(Program* program, ProcessGroup* group, Block* initial_block)
     : _id(VM::current()->scheduler()->next_process_id())
     , _next_task_id(0)
     , _program(program)
+    , _program_heap_address(program->_program_heap_address)
+    , _program_heap_size(program->_program_heap_size)
     , _group(group)
     , _entry(Method::invalid())
     , _object_heap(program, this, initial_block)
@@ -49,6 +51,10 @@ Process::Process(Program* program, ProcessGroup* group, Block* initial_block)
     , _signals(0)
     , _state(IDLE)
     , _scheduler_thread(null) {
+  // We can't start a process from a heap that has not been linearly allocated
+  // because we use the address range to distinguish program pointers and
+  // process pointers.
+  ASSERT(_program_heap_size > 0);
   // Link this process to the program heap.
   _group->add(this);
   ASSERT(_group->lookup(_id) == this);
@@ -123,7 +129,7 @@ String* Process::allocate_string(const char* content, int length, Error** error)
 
 String* Process::allocate_string(int length, Error** error) {
   ASSERT(length >= 0);
-  bool can_fit_in_heap_block = length <= String::max_internal_size();
+  bool can_fit_in_heap_block = length <= String::max_internal_size_in_process();
   if (can_fit_in_heap_block) {
     String* result = object_heap()->allocate_internal_string(length);
     if (result != null) return result;
@@ -183,7 +189,7 @@ Object* Process::allocate_string_or_error(const char* content) {
 
 ByteArray* Process::allocate_byte_array(int length, Error** error, bool force_external) {
   ASSERT(length >= 0);
-  if (force_external || length > ByteArray::max_internal_size()) {
+  if (force_external || length > ByteArray::max_internal_size_in_process()) {
     // Byte array cannot fit within a heap block so place content in malloced space.
     AllocationManager allocation(this);
     uint8* memory;

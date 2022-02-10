@@ -69,21 +69,7 @@ class ProgramBlock : public ProgramBlockLinkedList::Element {
 
   HeapObject* allocate_raw(int byte_size);
 
-  Process* process() { return _process; }
-
-  bool is_program() { return process() == null; }
-
   bool is_empty() { return top() == base(); }
-
-  // How many bytes are available for payload in one Block?
-  static int max_payload_size(int word_size = WORD_SIZE) {
-    ASSERT(sizeof(ProgramBlock) == 3 * WORD_SIZE);
-    if (word_size == 4) {
-      return TOIT_PAGE_SIZE_32 - 3 * word_size;
-    } else {
-      return TOIT_PAGE_SIZE_64 - 3 * word_size;
-    }
-  }
 
   // Returns the memory block that contains the object.
   static ProgramBlock* from(HeapObject* object);
@@ -102,18 +88,22 @@ class ProgramBlock : public ProgramBlockLinkedList::Element {
   void print();
 
  private:
-  void _set_process(Process* value) {
-    _process = value;
+  // How many bytes are available for payload in one Block?
+  static int max_payload_size(int word_size = WORD_SIZE) {
+    ASSERT(sizeof(ProgramBlock) == 2 * WORD_SIZE);
+    if (word_size == 4) {
+      return TOIT_PAGE_SIZE_32 - 2 * word_size;
+    } else {
+      return TOIT_PAGE_SIZE_64 - 2 * word_size;
+    }
   }
 
   void _reset() {
-    _process = null;
     _top = base();
   }
 
   void wipe();
 
-  Process* _process;
   void* _top;
   friend class ProgramBlockList;
   friend class ProgramHeap;
@@ -190,7 +180,7 @@ class ProgramHeapMemory {
 
   // This is used for the case where we allocated an initial block for a new
   // heap, but the new heap creation failed, so the block was never associated
-  // with a heap or a process.
+  // with a heap.
   void free_unused_block(ProgramBlock* block);
 
   Mutex* mutex() const { return _memory_mutex; }
@@ -208,10 +198,7 @@ class ProgramHeapMemory {
 
 class ProgramRawHeap {
  public:
-  explicit ProgramRawHeap(Process* owner) : _owner(owner) { }
-  ProgramRawHeap() : _owner(null) { }
-
-  Process* owner() { return _owner; }
+  ProgramRawHeap() { }
 
   void take_blocks(ProgramBlockList* blocks);
 
@@ -230,7 +217,6 @@ class ProgramRawHeap {
 
   // Should only be called from ProgramImage.
   void do_pointers(Program* program, PointerCallback* callback) {
-    ASSERT(_owner == null);
     _blocks.do_pointers(program, callback);
   }
 
@@ -238,7 +224,6 @@ class ProgramRawHeap {
   ProgramBlockList _blocks;
 
  private:
-  Process* const _owner;
   friend class ImageAllocator;
   friend class Program;
 };

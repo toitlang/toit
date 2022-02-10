@@ -69,24 +69,17 @@ class Block : public BlockLinkedList::Element {
 
   HeapObject* allocate_raw(int byte_size);
 
-  Process* process() { return _process; }
-
-  bool is_program() { return process() == null; }
-
   bool is_empty() { return top() == base(); }
 
   // How many bytes are available for payload in one Block?
   static int max_payload_size(int word_size = WORD_SIZE) {
-    ASSERT(sizeof(Block) == 3 * WORD_SIZE);
+    ASSERT(sizeof(Block) == 2 * WORD_SIZE);
     if (word_size == 4) {
-      return TOIT_PAGE_SIZE_32 - 3 * word_size;
+      return TOIT_PAGE_SIZE_32 - 2 * word_size;
     } else {
-      return TOIT_PAGE_SIZE_64 - 3 * word_size;
+      return TOIT_PAGE_SIZE_64 - 2 * word_size;
     }
   }
-
-  // Returns the memory block that contains the object.
-  static Block* from(HeapObject* object);
 
   // Tells whether this block of memory contains the object.
   bool contains(HeapObject* object);
@@ -100,18 +93,12 @@ class Block : public BlockLinkedList::Element {
   void print();
 
  private:
-  void _set_process(Process* value) {
-    _process = value;
-  }
-
   void _reset() {
-    _process = null;
     _top = base();
   }
 
   void wipe();
 
-  Process* _process;
   void* _top;
   friend class BlockList;
   friend class Heap;
