@@ -209,7 +209,7 @@ class MessageDecoder {
   uword read_cardinal();
 };
 
-class ExternalSystemMessageHandler : public ProcessRunner {
+class ExternalSystemMessageHandler : private ProcessRunner {
  public:
   ExternalSystemMessageHandler(VM* vm) : _vm(vm), _process(null) { }
 
