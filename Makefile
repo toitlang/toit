@@ -165,6 +165,7 @@ build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s: tools snapshots build/snapshot
 	mkdir -p build/$(ESP32_CHIP)
 	$(TOITVM_BIN) $(SNAPSHOT_DIR)/snapshot_to_image.snapshot build/snapshot $@
 
+.PHONY: build/snapshot  # Marked phony to force regeneration.
 build/snapshot: $(TOITC_BIN) $(ESP32_ENTRY)
 	$(TOITC_BIN) -w $@ $(ESP32_ENTRY)
 
@@ -177,7 +178,7 @@ build/$(ESP32_CHIP)/include/sdkconfig.h:
 	mkdir -p build/$(ESP32_CHIP)
 	$(MAKE) -C toolchains/$(ESP32_CHIP) -s "$(CURDIR)"/$@
 
-.PHONY: build/config.json
+.PHONY: build/config.json  # Marked phony to force regeneration.
 build/config.json:
 	echo '{"wifi": {"ssid": "$(ESP32_WIFI_SSID)", "password": "$(ESP32_WIFI_PASSWORD)"}}' > $@
 
