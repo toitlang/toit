@@ -233,7 +233,7 @@ class ExternalSystemMessageHandler : private ProcessRunner {
   virtual bool on_failed_allocation(int length) { return false; }
 
   // Try collecting garbage. If asked to try hard, the system will preempt running
-  // processes and get the to stop before garbage collecting their heaps.
+  // processes and get them to stop before garbage collecting their heaps.
   void collect_garbage(bool try_hard);
 
  private:
