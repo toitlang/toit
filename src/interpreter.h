@@ -22,6 +22,11 @@
 
 #ifdef ESP32
 #include <esp_attr.h>
+// We put the core interpreter functionality in the IRAM section to avoid
+// spending time on re-reading the code from flash.
+#define INTERPRETER_CORE IRAM_ATTR
+#else
+#define INTERPRETER_CORE
 #endif
 
 namespace toit {
@@ -31,35 +36,32 @@ class Interpreter {
   // Number of words that are pushed onto the stack whenever there is a call.
   static const int FRAME_SIZE = 2;
 
-  //
+  // Layout for unwind-protect frames used in try-finally.
   static const int LINK_REASON_SLOT = 1;
   static const int LINK_TARGET_SLOT = 2;
   static const int LINK_RESULT_SLOT = 3;
   static const int UNWIND_REASON_WHEN_THROWING_EXCEPTION = -2;
 
-
-  static const int COMPARISON_FAILED  = 0;
-
   // Return values for the fast compare_to test for numbers.
-  static const int COMPARE_TO_BIAS    = -2;
-  static const int COMPARE_TO_MINUS_1 = 1;
-  static const int COMPARE_TO_ZERO    = 2;
-  static const int COMPARE_TO_PLUS_1  = 3;
-  static const int COMPARE_TO_MASK    = 3;
+  static const int COMPARE_FAILED = 0;
+  // The succesful compare results are communicated in the low bits.
+  static const int COMPARE_RESULT_MINUS_1 = 1;
+  static const int COMPARE_RESULT_ZERO    = 2;
+  static const int COMPARE_RESULT_PLUS_1  = 3;
+  static const int COMPARE_RESULT_MASK    = 3;
+  static const int COMPARE_RESULT_BIAS    = -2;
 
   // Special flag used to signal to the `min` function that lhs <= rhs,
   // but with the special rule that NaN < anything else.  This allows
   // `min` to efficiently propagate NaN.  (`max` automatically does this
   // without special code because NaN is the highest value in compare_to.)
-  static const int COMPARE_TO_LESS_FOR_MIN = 4;
-
-  static const int STRICTLY_LESS      = 8;
-  static const int LESS_EQUAL         = 16;
-  static const int EQUAL              = 32;
-  static const int GREATER_EQUAL      = 64;
-  static const int STRICTLY_GREATER   = 128;
-
-  static int compare_numbers(Object* lhs, Object *rhs);
+  static const int COMPARE_FLAG_LESS_FOR_MIN       = 4;
+  // Other returned comparison flags.
+  static const int COMPARE_FLAG_STRICTLY_LESS      = 8;
+  static const int COMPARE_FLAG_LESS_EQUAL         = 16;
+  static const int COMPARE_FLAG_EQUAL              = 32;
+  static const int COMPARE_FLAG_GREATER_EQUAL      = 64;
+  static const int COMPARE_FLAG_STRICTLY_GREATER   = 128;
 
   class Result {
    public:
@@ -94,9 +96,13 @@ class Interpreter {
   // Boot the interpreter on the current process.
   void prepare_process();
 
-  // Run the interpreter. Returns true if the process yielded (and thus needs
-  // resuming at a later point in time) and false if the process halted (done!).
-  Result run();
+  // Run the interpreter. Returns a result that indicates if the process was
+  // terminated or stopped for other reasons.
+  Result run() INTERPRETER_CORE;
+
+  // Fast helpers for indexing and number comparisons.
+  static bool fast_at(Process* process, Object* receiver, Object* args, bool is_put, Object** value) INTERPRETER_CORE;
+  static int compare_numbers(Object* lhs, Object *rhs) INTERPRETER_CORE;
 
   // Load stack info from process's stack.
   Object** load_stack();
@@ -112,30 +118,22 @@ class Interpreter {
   // having thrown a stack overflow exception.
   void reset_stack_limit();
 
-  static bool fast_at(Process* process, Object* receiver, Object* args, bool is_put, Object** value);
-
  private:
   Object** const PREEMPTION_MARKER = reinterpret_cast<Object**>(UINTPTR_MAX);
-
-#ifdef ESP32
-  Result _run() IRAM_ATTR;
-#else
-  Result _run();
-#endif
-
-  void _trace(uint8* bcp);
-
-  Method _lookup_entry();
-
   Process* _process;
 
-  // Pointers into the stack object.
+  // Cached pointers into the stack object.
   Object** _limit;
   Object** _base;
   Object** _sp;
   Object** _try_sp;
+
+  // Stack overflow handling.
   std::atomic<Object**> _watermark;
   bool _in_stack_overflow;
+
+  void trace(uint8* bcp);
+  Method lookup_entry();
 
 #ifdef PROFILER
   bool _is_profiler_active;
@@ -156,61 +154,30 @@ class Interpreter {
   Method handle_stack_overflow(OverflowState state);
   Method handle_watchdog();
 
-  bool is_inside(Object** value) {
-    return (_base > value) && (value >= _sp);
-  }
-
-  bool is_stack_empty() const {
-    return _sp == _base;
-  }
+  Object* hash_do(Program* program, Object* current, Object* backing, int step, Object* block, Object** entry_return);
 
   inline Object* boolean(Program* program, bool x) const;
   inline bool is_true_value(Program* program, Object* value) const;
 
   inline bool typecheck_class(Program* program, Object* value, int class_index, bool is_nullable) const;
   inline bool typecheck_interface(Program* program, Object* value, int interface_selector_index, bool is_nullable) const;
-  Object* hash_do(Program* program, Object* current, Object* backing, int step, Object* block, Object** entry_return);
 
-  void _push(Object* object) {
+  bool is_stack_empty() const {
+    return _sp == _base;
+  }
+
+  void push(Object* object) {
     ASSERT(_sp > _limit);
     *(--_sp) = object;
   }
 
-  Object* _pop() {
-    ASSERT(_sp < _base);
-    return *(_sp++);
-  }
-
-  Object* _tos() {
-    ASSERT(_sp < _base);
-    return *(_sp);
-  }
-
-  void _drop(int n) {
-    ASSERT(n <= _length());
-    _sp += n;
-  }
-
-  Object* _at(int index) {
-    ASSERT((_sp + index) < _base);
-    return *(_sp + index);
-  }
-
-  Object* _at_put(int index, Object* value) {
-    ASSERT((_sp + index) < _base);
-    return *(_sp + index) = value;
-  }
-
-  Object** _from_block(Smi* block) {
+  Object** from_block(Smi* block) const {
     return _base - (block->value() - BLOCK_SALT);
   }
 
-  Smi* _to_block(Object** pointer) {
+  Smi* to_block(Object** pointer) const {
     return Smi::from(_base - pointer + BLOCK_SALT);
   }
-
-  int _length() { return _base - _sp; }
-
 
   friend class Stack;
 };
