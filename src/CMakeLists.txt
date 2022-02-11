@@ -51,22 +51,14 @@ set_source_files_properties(interpreter_core.cc PROPERTIES COMPILE_FLAGS "-O3")
 set_source_files_properties(interpreter_run.cc PROPERTIES COMPILE_FLAGS "-O3 ${TOIT_INTERPRETER_FLAGS} $ENV{LOCAL_INTERPRETER_CXXFLAGS}")
 set_source_files_properties(utils.cc PROPERTIES COMPILE_FLAGS "-DTOIT_MODEL=\"\\\"${TOIT_MODEL}\\\"\" -DVM_GIT_INFO=\"\\\"${VM_GIT_INFO}\\\"\" -DVM_GIT_VERSION=\"\\\"${TOIT_GIT_VERSION}\\\"\"")
 
-add_custom_command(
-  OUTPUT  checksum.cc
-  COMMAND python ${TOIT_SDK_SOURCE_DIR}/tools/generate_checksum.py ${CMAKE_CURRENT_BINARY_DIR}/checksum.cc $<TARGET_FILE:toit_vm>
-  DEPENDS toit_vm
-  )
-
 add_executable(
   toit.run
   toit.cc
-  ${CMAKE_CURRENT_BINARY_DIR}/checksum.cc
   )
 
 add_executable(
   toit_run_image
   toit_run_image.cc
-  ${CMAKE_CURRENT_BINARY_DIR}/checksum.cc
   )
 
 set_target_properties(toit_run_image
@@ -162,8 +154,10 @@ get_filename_component(TOIT_IMAGE "$ENV{IMAGE}" REALPATH BASE_DIR "${CMAKE_SOURC
 
 add_library(
   toit_image
+  STATIC
   EXCLUDE_FROM_ALL
-  ${CMAKE_CURRENT_BINARY_DIR}/checksum.cc
   ${TOIT_IMAGE}
 )
+
+set_target_properties(toit_image PROPERTIES LINKER_LANGUAGE ASM)
 #endif
