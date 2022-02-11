@@ -139,7 +139,7 @@ PRIMITIVE(compare_to) {
   ARGS(Object, lhs, Object, rhs);
   int result = Interpreter::compare_numbers(lhs, rhs);
   result &= Interpreter::COMPARE_TO_MASK;
-  if (result == Interpreter::COMPARISON_FAILED) {
+  if (result == Interpreter::COMPARE_FAILED) {
     INVALID_ARGUMENT;
   }
   return Smi::from(result + Interpreter::COMPARE_TO_BIAS);
@@ -148,7 +148,7 @@ PRIMITIVE(compare_to) {
 PRIMITIVE(min_special_compare_to) {
   ARGS(Object, lhs, Object, rhs);
   int result = Interpreter::compare_numbers(lhs, rhs);
-  if (result == Interpreter::COMPARISON_FAILED) {
+  if (result == Interpreter::COMPARE_FAILED) {
     INVALID_ARGUMENT;
   }
   result &= Interpreter::COMPARE_TO_LESS_FOR_MIN;
