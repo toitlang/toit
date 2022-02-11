@@ -206,7 +206,7 @@ class HeapAllocator : public SnapshotAllocator {
   bool initialize(int normal_block_count,
                   int external_pointer_count,
                   int external_int32_count,
-                  int external_byte_count) {
+                  int external_byte_count) override {
     _normal_block_count = normal_block_count;
     _external_pointer_count = external_pointer_count;
     _external_int32_count = external_int32_count;
@@ -214,18 +214,18 @@ class HeapAllocator : public SnapshotAllocator {
     return true;
   }
 
-  uint8* allocate_external_bytes(int count) {
+  uint8* allocate_external_bytes(int count) override {
     return unvoid_cast<uint8*>(allocate_external(count));
   }
 
-  Object** allocate_external_pointers(int count) {
+  Object** allocate_external_pointers(int count) override {
     return unvoid_cast<Object**>(allocate_external(count * sizeof(Object*)));
   }
-  uint16* allocate_external_uint16s(int count) {
+  uint16* allocate_external_uint16s(int count) override {
     ASSERT(count / 2 <= _external_int32_count);
     return unvoid_cast<uint16*>(allocate_external(count * 2));
   }
-  int32* allocate_external_int32s(int count) {
+  int32* allocate_external_int32s(int count) override {
     ASSERT(count <= _external_int32_count);
     return unvoid_cast<int32*>(allocate_external(count * 4));
   }
@@ -253,7 +253,7 @@ class SizedVirtualAllocator {
  public:
   SizedVirtualAllocator(int word_size)
       : _word_size(word_size)
-      , limit(ProgramBlock::max_payload_size(word_size)) { }
+      , limit(ProgramHeap::max_allocation_size(word_size)) { }
 
   HeapObject* allocate_object(TypeTag tag, int length);
 
@@ -396,7 +396,7 @@ class ImageAllocator : public HeapAllocator {
   void expand();
 
  protected:
-  void* allocate_external(int byte_size);
+  void* allocate_external(int byte_size) override;
 
  private:
   ProtectableAlignedMemory* _image = null;
@@ -899,9 +899,13 @@ bool ImageAllocator::initialize(int normal_block_count,
 }
 
 ProgramImage ImageSnapshotReader::read_image() {
+  // Also calls SnapshotReader::initialize() which calls _allocator->initialize().
+  // _allocator is an ImageAllocator
+  //   which is a subclass of HeapAllocator
+  //     which is a subset of SnapshotAllocator
   bool succeeded = read_header();
   ASSERT(succeeded);  // We expect to never run out of memory on the desktop.
-  _program  = new (_image_allocator.memory()) Program();
+  _program  = new (_image_allocator.memory()) Program(_image_allocator.image()->address(), _image_allocator.image()->byte_size());
   _image_allocator.set_program(_program);
   // Initialize the uuid to 0. It can be patched from the outside.
   uint8 uuid[UUID_SIZE] = {0};
@@ -925,7 +929,7 @@ HeapObject* ImageAllocator::allocate_object(TypeTag tag, int length) {
   int byte_size = _align(word_count * sizeof(word) + extra_bytes);
   HeapObject* result = _program->_heap._blocks.last()->allocate_raw(byte_size);
   if (result != null) return result;
-  ASSERT(byte_size < ProgramBlock::max_payload_size());
+  ASSERT(byte_size < ProgramHeap::max_allocation_size());
   expand();
   return _program->_heap._blocks.last()->allocate_raw(byte_size);
 }

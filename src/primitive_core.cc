@@ -1443,7 +1443,7 @@ PRIMITIVE(array_expand) {
   ARGS(Array, old, word, old_length, word, length);
   if (length == 0) return process->program()->empty_array();
   if (length < 0) OUT_OF_BOUNDS;
-  if (length > Array::max_length()) OUT_OF_RANGE;
+  if (length > Array::max_length_in_process()) OUT_OF_RANGE;
   if (old_length < 0 || old_length > old->length() || old_length > length) OUT_OF_RANGE;
   Object* result = process->object_heap()->allocate_array(length);
   if (result == null) ALLOCATION_FAILED;
@@ -1472,7 +1472,7 @@ PRIMITIVE(array_new) {
   ARGS(int, length, Object, filler);
   if (length == 0) return process->program()->empty_array();
   if (length < 0) OUT_OF_BOUNDS;
-  if (length > Array::max_length()) OUT_OF_RANGE;
+  if (length > Array::max_length_in_process()) OUT_OF_RANGE;
   return Primitive::allocate_array(length, filler, process);
 }
 

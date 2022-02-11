@@ -82,7 +82,7 @@ namespace toit {
 // The reflective structure of a program.
 class Program : public FlashAllocation {
  public:
-  Program();
+  Program(void* program_heap_address, uword program_heap_size);
   ~Program();
 
   #define DECLARE_ROOT(type, name) name##_INDEX,
@@ -330,6 +330,10 @@ class Program : public FlashAllocation {
   // Should only be called from ProgramImage.
   void do_pointers(PointerCallback* callback);
 
+  uword _program_heap_address;
+  uword _program_heap_size;
+
+  friend class Process;
   friend class ProgramHeap;
   friend class ImageAllocator;
   friend class compiler::ProgramBuilder;

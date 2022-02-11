@@ -17,6 +17,9 @@
 
 #include "objects.h"
 #include "memory.h"
+#include "heap.h"
+#include "program_heap.h"
+#include "process.h"
 #include "tags.h"
 
 namespace toit {
@@ -24,24 +27,34 @@ namespace toit {
 extern "C" uword toit_image;
 extern "C" uword toit_image_size;
 
-inline Process* HeapObject::owner() {
-#ifdef TOIT_FREERTOS
-  // On embedded targets the program heap is in flash and not aligned, so it is
-  // not OK to try to load the owner from the page header.
-  uword address = reinterpret_cast<uword>(this);
-  USE(address);
-  ASSERT(!(address - reinterpret_cast<uword>(&toit_image) < toit_image_size));
-#endif
-  return Block::from(this)->process();
+int Array::max_length_in_process() {
+  return (Heap::max_allocation_size() - HEADER_SIZE) / WORD_SIZE;
 }
 
-
-inline int Array::max_length() {
-  return (Block::max_payload_size() - HEADER_SIZE) / WORD_SIZE;
+int Array::max_length_in_program() {
+  return (ProgramHeap::max_allocation_size() - HEADER_SIZE) / WORD_SIZE;
 }
 
-inline int Stack::max_length() {
-  return (Block::max_payload_size() - HEADER_SIZE) / WORD_SIZE;
+int Stack::max_length() {
+  return (Heap::max_allocation_size() - HEADER_SIZE) / WORD_SIZE;
+}
+
+word ByteArray::max_internal_size_in_process() {
+  return Heap::max_allocation_size() - HEADER_SIZE;
+}
+
+word ByteArray::max_internal_size_in_program() {
+  return ProgramHeap::max_allocation_size() - HEADER_SIZE;
+}
+
+word String::max_internal_size_in_process() {
+  word result = Heap::max_allocation_size() - OVERHEAD;
+  return result;
+}
+
+word String::max_internal_size_in_program() {
+  word result = ProgramHeap::max_allocation_size() - OVERHEAD;
+  return result;
 }
 
 template<typename T>
@@ -54,6 +67,10 @@ T* ByteArray::as_external() {
   USE(max);
   if (has_external_address()) return reinterpret_cast<T*>(_external_address());
   return 0;
+}
+
+inline bool HeapObject::on_program_heap(Process* process) {
+  return process->on_program_heap(this);
 }
 
 } // namespace toit

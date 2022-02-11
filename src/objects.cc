@@ -19,6 +19,7 @@
 #include "encoder.h"
 #include "printing.h"
 #include "process.h"
+#include "program_heap.h"
 #include "snapshot.h"
 #include "utils.h"
 
@@ -188,7 +189,7 @@ void HeapObject::roots_do(Program* program, RootCallback* cb) {
       Array::cast(this)->roots_do(cb);
       break;
     case TypeTag::STACK_TAG:
-      Stack::cast(this)->roots_do(cb);
+      Stack::cast(this)->roots_do(program, cb);
       break;
     case TypeTag::TASK_TAG:
     case TypeTag::INSTANCE_TAG:
@@ -252,11 +253,8 @@ void Array::roots_do(RootCallback* cb) {
   cb->do_roots(_root_at(_offset_from(0)), length());
 }
 
-void Stack::roots_do(RootCallback* cb) {
+void Stack::roots_do(Program* program, RootCallback* cb) {
   int top = this->top();
-  Process* owner = this->owner();
-  ASSERT(owner != null);
-  Program* program = owner->program();
   // Skip over pointers into the bytecodes.
   void* bytecodes_from = program->bytecodes.data();
   void* bytecodes_to = &program->bytecodes.data()[program->bytecodes.length()];
@@ -338,11 +336,6 @@ void Stack::transfer_from_interpreter(Interpreter* interpreter) {
   _set_try_top(interpreter->_try_sp - _stack_limit_addr());
   _set_in_stack_overflow(interpreter->_in_stack_overflow);
   ASSERT(top() > 0 && top() <= length());
-}
-
-bool HeapObject::is_at_block_top() {
-  Block* block = Block::from(this);
-  return _raw_at(size(block->process()->program())) == block->top();
 }
 
 void ByteArray::resize_external(Process* process, word new_length) {
@@ -535,6 +528,14 @@ void ByteArray::read_content(SnapshotReader* st, int len) {
     for (int index = 0; index < len; index++)
       bytes.at_put(index, st->read_cardinal());
   }
+}
+
+word ByteArray::max_internal_size() {
+  return Utils::max(max_internal_size_in_process(), max_internal_size_in_program());
+}
+
+word String::max_internal_size() {
+  return Utils::max(max_internal_size_in_process(), max_internal_size_in_program());
 }
 
 #endif  // TOIT_FREERTOS
