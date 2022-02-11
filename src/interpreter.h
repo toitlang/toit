@@ -181,6 +181,9 @@ class Interpreter {
   friend class Stack;
 };
 
-#undef INTERPRETER_CORE
+class ProcessRunner {
+ public:
+  virtual Interpreter::Result run() = 0;
+};
 
 } // namespace toit
