@@ -58,6 +58,7 @@ Heap::Heap(Process* owner, Program* program, Block* initial_block)
     , _gc_allowed(true)
     , _total_bytes_allocated(0)
     , _last_allocation_result(ALLOCATION_SUCCESS) {
+  if (initial_block == null) return;
   _blocks.append(initial_block);
 }
 
@@ -287,7 +288,9 @@ ObjectHeap::ObjectHeap(Program* program, Process* owner, Block* block)
     , _external_memory(0)
     , _hatch_method(Method::invalid())
     , _finalizer_notifier(null)
-    , _gc_count(0) {
+    , _gc_count(0)
+    , _global_variables(null) {
+  if (block == null) return;
   _task = allocate_task();
   _global_variables = _copy_global_variables();
   // Currently the heap is empty and it has one block allocated for objects.

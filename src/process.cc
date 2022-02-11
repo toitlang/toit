@@ -33,13 +33,14 @@ const char* Process::StateName[] = {
   "RUNNING",
 };
 
-Process::Process(Program* program, ProcessGroup* group, Block* initial_block)
+Process::Process(Program* program, ProcessRunner* runner, ProcessGroup* group, Block* initial_block)
     : _id(VM::current()->scheduler()->next_process_id())
     , _next_task_id(0)
     , _program(program)
+    , _runner(runner)
+    , _group(group)
     , _program_heap_address(program->_program_heap_address)
     , _program_heap_size(program->_program_heap_size)
-    , _group(group)
     , _entry(Method::invalid())
     , _object_heap(program, this, initial_block)
     , _memory_usage(Usage("initial object heap"))
@@ -61,7 +62,7 @@ Process::Process(Program* program, ProcessGroup* group, Block* initial_block)
 }
 
 Process::Process(Program* program, ProcessGroup* group, char** args, Block* initial_block)
-   : Process(program, group, initial_block) {
+   : Process(program, null, group, initial_block) {
   _entry = program->entry();
   _args = args;
   _object_heap.set_hatch_method(Method::invalid());
@@ -70,7 +71,7 @@ Process::Process(Program* program, ProcessGroup* group, char** args, Block* init
 
 #ifndef TOIT_FREERTOS
 Process::Process(Program* program, ProcessGroup* group, SnapshotBundle bundle, char** args, Block* initial_block)
-  : Process(program, group, initial_block) {
+  : Process(program, null, group, initial_block) {
   _entry = program->entry();
   _args = args;
   ByteArray* snap = _object_heap.allocate_external_byte_array(bundle.size(), bundle.buffer(), true, false);
@@ -84,7 +85,7 @@ Process::Process(Program* program, ProcessGroup* group, SnapshotBundle bundle, c
 #endif
 
 Process::Process(Program* program, ProcessGroup* group, Method method, const uint8* arguments_address, int arguments_length, Block* initial_block)
-   : Process(program, group, initial_block) {
+   : Process(program, null, group, initial_block) {
   _entry = program->hatch_entry();
   _args = null;
   ByteArray* args = _object_heap.allocate_internal_byte_array(arguments_length);
@@ -96,6 +97,9 @@ Process::Process(Program* program, ProcessGroup* group, Method method, const uin
 
   _object_heap.set_hatch_method(method);
   _object_heap.set_hatch_arguments(args);
+}
+
+Process::Process(ProcessRunner* runner, ProcessGroup* group) : Process(null, runner, group, null) {
 }
 
 Process::~Process() {
@@ -112,10 +116,6 @@ Process::~Process() {
   while (has_messages()) {
     remove_first_message();
   }
-}
-
-bool Process::is_privileged() {
-  return id() == 0 && group()->id() == 0;
 }
 
 String* Process::allocate_string(const char* content, int length, Error** error) {

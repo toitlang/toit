@@ -108,6 +108,7 @@ Scheduler::ExitState Scheduler::launch_program(Locker& locker, Process* process)
   interpreter.activate(process);
   interpreter.prepare_process();
   interpreter.deactivate();
+  process->mark_as_priviliged();
   ASSERT(process->is_privileged());
 
 #ifdef TOIT_POSIX
@@ -115,7 +116,7 @@ Scheduler::ExitState Scheduler::launch_program(Locker& locker, Process* process)
 #endif
 
   // Update the state and start the boot process.
-  ASSERT(_groups.is_empty() && _boot_process == null);
+  ASSERT(_boot_process == null);
   _groups.prepend(group);
   _boot_process = process;
   add_process(locker, process);
@@ -172,6 +173,21 @@ int Scheduler::run_program(Program* program, char** args, ProcessGroup* group, B
   _groups.append(group);
   add_process(locker, process);
   return process->id();
+}
+
+Process* Scheduler::run_external(ProcessRunner* runner) {
+  int group_id = next_group_id();
+  Locker locker(_mutex);
+  ProcessGroup* group = ProcessGroup::create(group_id, null);
+  if (group == null) return null;
+  Process* process = _new Process(runner, group);
+  if (process == null) {
+    delete group;
+    return null;
+  }
+  _groups.append(group);
+  add_process(locker, process);
+  return process;
 }
 
 scheduler_err_t Scheduler::send_system_message(SystemMessage* message) {
@@ -464,22 +480,34 @@ bool Scheduler::process_stats(Array* array, int group_id, int process_id) {
 void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* scheduler_thread) {
   wait_for_any_gc_to_complete(locker, process, Process::RUNNING);
   process->set_scheduler_thread(scheduler_thread);
-  process->set_idle_since_scavenge(false);
-
-  Interpreter* interpreter = scheduler_thread->interpreter();
-  interpreter->activate(process);
-
   int64 start = OS::get_monotonic_time();
   process->set_last_run(start);
 
+  ProcessRunner* runner = process->runner();
+  bool interpreted = (runner == null);
   Interpreter::Result result(Interpreter::Result::PREEMPTED);
-  // If no signals are sent, run the process.
-  if (process->signals() == 0) {
+  if (interpreted) {
+    Interpreter* interpreter = scheduler_thread->interpreter();
+    interpreter->activate(process);
+    process->set_idle_since_scavenge(false);
+    if (process->signals() == 0) {
+      Unlocker unlock(locker);
+      result = interpreter->run();
+    }
+    // Handle stack trace printing while the interpreter is still activated.
+    if (process->signals() & Process::PRINT_STACK_TRACE) {
+      print_process(locker, process, interpreter);
+      process->clear_signal(Process::PRINT_STACK_TRACE);
+    }
+    interpreter->deactivate();
+  } else if (process->signals() == 0) {
+    ASSERT(process->idle_since_scavenge());
     Unlocker unlock(locker);
-    result = interpreter->run();
+    result = runner->run();
   }
 
   process->increment_unyielded_for(OS::get_monotonic_time() - start);
+  process->set_scheduler_thread(null);
 
   while (result.state() != Interpreter::Result::TERMINATED) {
     uint32_t signals = process->signals();
@@ -492,7 +520,7 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
       result = Interpreter::Result(Interpreter::Result::PREEMPTED);
       process->clear_signal(Process::PREEMPT);
     } else if (signals & Process::PRINT_STACK_TRACE) {
-      print_process(locker, process, interpreter);
+      ASSERT(!interpreted);
       process->clear_signal(Process::PRINT_STACK_TRACE);
     } else if (signals & Process::WATCHDOG) {
       process->clear_signal(Process::WATCHDOG);
@@ -500,10 +528,6 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
       UNREACHABLE();
     }
   }
-
-  interpreter->deactivate();
-
-  process->set_scheduler_thread(null);
 
   switch (result.state()) {
     case Interpreter::Result::PREEMPTED:
