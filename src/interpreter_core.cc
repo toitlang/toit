@@ -163,11 +163,11 @@ int Interpreter::compare_numbers(Object* lhs, Object* rhs) {
   // Handle two ints.
   if (lhs_is_int && rhs_is_int) {
     if (lhs_int < rhs_int) {
-      return STRICTLY_LESS | COMPARE_TO_MINUS_1 | LESS_EQUAL | COMPARE_TO_LESS_FOR_MIN;
+      return COMPARE_RESULT_MINUS_1 | COMPARE_FLAG_STRICTLY_LESS | COMPARE_FLAG_LESS_EQUAL | COMPARE_FLAG_LESS_FOR_MIN;
     } else if (lhs_int == rhs_int) {
-      return LESS_EQUAL | EQUAL | COMPARE_TO_ZERO | GREATER_EQUAL;
+      return COMPARE_RESULT_ZERO | COMPARE_FLAG_LESS_EQUAL | COMPARE_FLAG_EQUAL | COMPARE_FLAG_GREATER_EQUAL;
     } else {
-      return STRICTLY_GREATER | COMPARE_TO_PLUS_1 | GREATER_EQUAL;
+      return COMPARE_RESULT_PLUS_1 | COMPARE_FLAG_STRICTLY_GREATER | COMPARE_FLAG_GREATER_EQUAL;
     }
   }
   // At least one is a double, so we convert to double.
@@ -190,32 +190,32 @@ int Interpreter::compare_numbers(Object* lhs, Object* rhs) {
   // Handle any NaNs.
   if (std::isnan(lhs_double)) {
     if (std::isnan(rhs_double)) {
-      return COMPARE_TO_ZERO | COMPARE_TO_LESS_FOR_MIN;
+      return COMPARE_RESULT_ZERO | COMPARE_FLAG_LESS_FOR_MIN;
     }
-    return COMPARE_TO_PLUS_1 | COMPARE_TO_LESS_FOR_MIN;
+    return COMPARE_RESULT_PLUS_1 | COMPARE_FLAG_LESS_FOR_MIN;
   }
   if (std::isnan(rhs_double)) {
-    return COMPARE_TO_MINUS_1;
+    return COMPARE_RESULT_MINUS_1;
   }
   // Handle equal case.
   if (lhs_double == rhs_double) {
     // Special treatment for plus/minus zero.
     if (lhs_double == 0.0) {
       if (std::signbit(lhs_double) == std::signbit(rhs_double)) {
-        return LESS_EQUAL | EQUAL | COMPARE_TO_ZERO | GREATER_EQUAL | COMPARE_TO_LESS_FOR_MIN;
+        return COMPARE_RESULT_ZERO | COMPARE_FLAG_LESS_EQUAL | COMPARE_FLAG_EQUAL | COMPARE_FLAG_GREATER_EQUAL | COMPARE_FLAG_LESS_FOR_MIN;
       } else if (std::signbit(lhs_double)) {
-        return LESS_EQUAL | EQUAL | COMPARE_TO_MINUS_1 | GREATER_EQUAL | COMPARE_TO_LESS_FOR_MIN;
+        return COMPARE_RESULT_MINUS_1 | COMPARE_FLAG_LESS_EQUAL | COMPARE_FLAG_EQUAL | COMPARE_FLAG_GREATER_EQUAL | COMPARE_FLAG_LESS_FOR_MIN;
       } else {
-        return LESS_EQUAL | EQUAL | COMPARE_TO_PLUS_1 | GREATER_EQUAL;
+        return COMPARE_RESULT_PLUS_1 | COMPARE_FLAG_LESS_EQUAL | COMPARE_FLAG_EQUAL | COMPARE_FLAG_GREATER_EQUAL;
       }
     } else {
-      return LESS_EQUAL | EQUAL | COMPARE_TO_ZERO | GREATER_EQUAL | COMPARE_TO_LESS_FOR_MIN;
+      return COMPARE_RESULT_ZERO | COMPARE_FLAG_LESS_EQUAL | COMPARE_FLAG_EQUAL | COMPARE_FLAG_GREATER_EQUAL | COMPARE_FLAG_LESS_FOR_MIN;
     }
   }
   if (lhs_double < rhs_double) {
-    return STRICTLY_LESS | COMPARE_TO_MINUS_1 | LESS_EQUAL | COMPARE_TO_LESS_FOR_MIN;
+    return COMPARE_RESULT_MINUS_1 | COMPARE_FLAG_STRICTLY_LESS | COMPARE_FLAG_LESS_EQUAL | COMPARE_FLAG_LESS_FOR_MIN;
   } else {
-    return STRICTLY_GREATER | COMPARE_TO_PLUS_1 | GREATER_EQUAL;
+    return COMPARE_RESULT_PLUS_1 | COMPARE_FLAG_STRICTLY_GREATER | COMPARE_FLAG_GREATER_EQUAL;
   }
 }
 

@@ -43,24 +43,25 @@ class Interpreter {
   static const int UNWIND_REASON_WHEN_THROWING_EXCEPTION = -2;
 
   // Return values for the fast compare_to test for numbers.
-  static const int COMPARE_TO_BIAS    = -2;
-  static const int COMPARE_FAILED     = 0;
-  static const int COMPARE_TO_MINUS_1 = 1;
-  static const int COMPARE_TO_ZERO    = 2;
-  static const int COMPARE_TO_PLUS_1  = 3;
-  static const int COMPARE_TO_MASK    = 3;
+  static const int COMPARE_FAILED = 0;
+  // The succesful compare results are communicated in the low bits.
+  static const int COMPARE_RESULT_MINUS_1 = 1;
+  static const int COMPARE_RESULT_ZERO    = 2;
+  static const int COMPARE_RESULT_PLUS_1  = 3;
+  static const int COMPARE_RESULT_MASK    = 3;
+  static const int COMPARE_RESULT_BIAS    = -2;
 
   // Special flag used to signal to the `min` function that lhs <= rhs,
   // but with the special rule that NaN < anything else.  This allows
   // `min` to efficiently propagate NaN.  (`max` automatically does this
   // without special code because NaN is the highest value in compare_to.)
-  static const int COMPARE_TO_LESS_FOR_MIN = 4;
-
-  static const int STRICTLY_LESS      = 8;
-  static const int LESS_EQUAL         = 16;
-  static const int EQUAL              = 32;
-  static const int GREATER_EQUAL      = 64;
-  static const int STRICTLY_GREATER   = 128;
+  static const int COMPARE_FLAG_LESS_FOR_MIN       = 4;
+  // Other returned comparison flags.
+  static const int COMPARE_FLAG_STRICTLY_LESS      = 8;
+  static const int COMPARE_FLAG_LESS_EQUAL         = 16;
+  static const int COMPARE_FLAG_EQUAL              = 32;
+  static const int COMPARE_FLAG_GREATER_EQUAL      = 64;
+  static const int COMPARE_FLAG_STRICTLY_GREATER   = 128;
 
   class Result {
    public:

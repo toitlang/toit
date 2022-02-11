@@ -764,7 +764,7 @@ Interpreter::Result Interpreter::run() {
       POP();
       DISPATCH(INVOKE_EQ_LENGTH);
     } else if (int result = compare_numbers(a0, a1)) {
-      STACK_AT_PUT(1, boolean(program, (result & EQUAL) != 0));
+      STACK_AT_PUT(1, boolean(program, (result & COMPARE_FLAG_EQUAL) != 0));
       POP();
       DISPATCH(INVOKE_EQ_LENGTH);
     }
@@ -793,10 +793,10 @@ Interpreter::Result Interpreter::run() {
     goto INVOKE_VIRTUAL_FALLBACK;                                      \
   OPCODE_END();
 
-  INVOKE_RELATIONAL(INVOKE_LT,  <  , STRICTLY_LESS)
-  INVOKE_RELATIONAL(INVOKE_LTE, <= , LESS_EQUAL)
-  INVOKE_RELATIONAL(INVOKE_GT,  >  , STRICTLY_GREATER)
-  INVOKE_RELATIONAL(INVOKE_GTE, >= , GREATER_EQUAL)
+  INVOKE_RELATIONAL(INVOKE_LT,  <  , COMPARE_FLAG_STRICTLY_LESS)
+  INVOKE_RELATIONAL(INVOKE_LTE, <= , COMPARE_FLAG_LESS_EQUAL)
+  INVOKE_RELATIONAL(INVOKE_GT,  >  , COMPARE_FLAG_STRICTLY_GREATER)
+  INVOKE_RELATIONAL(INVOKE_GTE, >= , COMPARE_FLAG_GREATER_EQUAL)
 #undef INVOKE_RELATIONAL
 
 #define INVOKE_ARITHMETIC(opcode, op)                                  \
