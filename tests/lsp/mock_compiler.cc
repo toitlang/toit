@@ -43,12 +43,6 @@ size_t getline (char** line_ptr,
 using namespace toit::compiler;
 using namespace toit;
 
-namespace toit {
-
-unsigned int checksum[4] = { 0, 0, 0, 0};
-
-}  // namespace toit
-
 static bool starts_with(const uint8* str, const char* prefix) {
   return strncmp(char_cast(str), prefix, strlen(prefix)) == 0;
 }

@@ -25,9 +25,6 @@ namespace toit {
 
 using namespace compiler;
 
-// Required for linking.
-unsigned int checksum[4] = { 0, };
-
 void write_to_memory(List<ar::File> files, uint8** buffer, int* size) {
   ar::MemoryBuilder memory_builder;
   int status = memory_builder.open();

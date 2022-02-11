@@ -35,8 +35,6 @@ int mprotect(void* addr, size_t len, int prot) {
 
 namespace toit {
 
-unsigned int checksum[4] = { 0, 0, 0, 0};
-
 static SnapshotBundle compile(const char* input_path) {
   Flags::no_fork = true;
   char** args = null;

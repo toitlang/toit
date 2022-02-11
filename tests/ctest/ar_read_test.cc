@@ -36,9 +36,6 @@ namespace toit {
 
 using namespace compiler;
 
-// Required for linking.
-unsigned int checksum[4] = { 0, 0, 0, 0};
-
 template <typename T>
 void do_test(List<ar::File> test, T& reader) {
   std::unordered_set<std::string> seen;
