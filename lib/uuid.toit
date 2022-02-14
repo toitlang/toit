@@ -41,11 +41,12 @@ parse str:
   uuid := ByteArray SIZE
   index := 0
   i := 0
+  thrower := (: throw "INVALID_UUID")
   while i < str.size and index < uuid.size:
     if (str.at --raw i) == '-': i++
-    v := hex_ str i++
+    v := hex_digit str[i++] thrower
     v <<= 4
-    v |= hex_ str i++
+    v |= hex_digit str[i++] thrower
     uuid[index++] = v
   if i < str.size or index != uuid.size: throw "INVALID_UUID"
   return Uuid uuid
@@ -100,9 +101,9 @@ class Uuid:
   /**
   Creates the NIL UUID.
   All bits of the UUID are zero.
-  Consider using $NIL instead.
+
+  Deprecated. Use $NIL instead.
   */
-  // TODO(4194): remove this constructor.
   constructor.all_zeros:
     zeros := ByteArray SIZE: 0
     return Uuid zeros
@@ -123,8 +124,8 @@ class Uuid:
       if index == 8 or index == 13 or index == 18 or index == 23:
         buffer[index++] = '-'
       c := bytes_[i]
-      buffer[index++] = to_hex_ c >> 4
-      buffer[index++] = to_hex_ c & 0xf
+      buffer[index++] = to_lower_case_hex c >> 4
+      buffer[index++] = to_lower_case_hex c & 0xf
     return buffer.to_string
 
   /**
@@ -156,17 +157,3 @@ class Uuid:
 
   /** Whether this instance is equal to the nil UUID $NIL. */
   is_nil -> bool: return not bytes_.any: it != 0
-
-hex_ str index:
-  if index >= str.size: throw "INVALID_UUID"
-  c := str.at --raw index
-  if '0' <= c <= '9': return c - '0'
-  if 'a' <= c <= 'f': return 10 + c - 'a'
-  if 'A' <= c <= 'F': return 10 + c - 'A'
-  throw "INVALID_UUID"
-
-to_hex_ c:
-  if 0 <= c < 10: return '0' + c
-  c -= 10
-  if 0 <= c < 6: return 'a' + c
-  throw "INVALID_UUID"

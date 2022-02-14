@@ -37,8 +37,6 @@
 #include <lwip/api.h>
 #include <lwip/dhcp.h>
 #include <lwip/prot/dhcp.h>
-#include <lwip/dns.h>
-#include <lwip/dns.h>
 #include <lwip/etharp.h>
 #include <lwip/init.h>
 #include <lwip/init.h>
@@ -67,7 +65,7 @@ String* lwip_strerror(Process* process, err_t err, Error** error) {
   // unless it is compiled with debug options.
   static const char* error_names[] = {
              "OK",                       /* ERR_OK          0  */
-             "Out of memory",            /* ERR_MEM        -1  */
+             "Out of memory (lwip)",     /* ERR_MEM        -1  */
              "Buffer error",             /* ERR_BUF        -2  */
              "Timeout",                  /* ERR_TIMEOUT    -3  */
              "Routing problem",          /* ERR_RTE        -4  */
@@ -100,6 +98,7 @@ String* lwip_strerror(Process* process, err_t err, Error** error) {
 }
 
 Object* lwip_error(Process* process, err_t err) {
+  if (err == ERR_MEM) MALLOC_FAILED;
   Error* error = null;
   String* str = lwip_strerror(process, err, &error);
   if (str == null) return error;
@@ -139,13 +138,6 @@ PRIMITIVE(wait_for_lwip_dhcp_on_linux) {
         ip4_addr3(&global_netif.ip_addr),
         ip4_addr4(&global_netif.ip_addr));
   } else {
-    LwIPEventSource::instance()->call_on_thread([&]() -> Object *{
-      netif_set_up(&global_netif);
-      ip4_addr_t dns_server;
-      ip4_addr_set_u32(&dns_server, 0x8080808);  // 8.8.8.8 Google DNS.
-      dns_setserver(0, &dns_server);
-      return process->program()->null_object();
-    });
     // Wait until we know which tap device the low level driver could register.  This
     // gives us the MAC address and the 'static' (ie non-DHCP) IP address for the subnet.
     while (ip_addr_offset == -1) {

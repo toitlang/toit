@@ -58,12 +58,11 @@ Heap::Heap(Process* owner, Program* program, Block* initial_block)
     , _gc_allowed(true)
     , _total_bytes_allocated(0)
     , _last_allocation_result(ALLOCATION_SUCCESS) {
-  initial_block->_set_process(owner);
+  if (initial_block == null) return;
   _blocks.append(initial_block);
 }
 
 Heap::~Heap() {
-  set_writable(true);
   // Deleting a heap is like a scavenge where nothing survives.
   ScavengeScope scope(VM::current()->heap_memory(), this);
   _blocks.free_blocks(this);
@@ -85,7 +84,7 @@ Instance* Heap::allocate_instance(TypeTag class_tag, Smi* class_id, Smi* instanc
 
 Array* Heap::allocate_array(int length, Object* filler) {
   ASSERT(length >= 0);
-  ASSERT(length <= Array::max_length());
+  ASSERT(length <= Array::max_length_in_process());
   HeapObject* result = _allocate_raw(Array::allocation_size(length));
   if (result == null) {
     return null;  // Allocation failure.
@@ -98,7 +97,7 @@ Array* Heap::allocate_array(int length, Object* filler) {
 
 Array* Heap::allocate_array(int length) {
   ASSERT(length >= 0);
-  ASSERT(length <= Array::max_length());
+  ASSERT(length <= Array::max_length_in_process());
   HeapObject* result = _allocate_raw(Array::allocation_size(length));
   if (result == null) {
     return null;  // Allocation failure.
@@ -112,7 +111,7 @@ Array* Heap::allocate_array(int length) {
 ByteArray* Heap::allocate_internal_byte_array(int length) {
   ASSERT(length >= 0);
   // Byte array should fit within one heap block.
-  ASSERT(length <= ByteArray::max_internal_size());
+  ASSERT(length <= ByteArray::max_internal_size_in_process());
   ByteArray* result = unvoid_cast<ByteArray*>(_allocate_raw(ByteArray::internal_allocation_size(length)));
   if (result == null) return null;  // Allocation failure.
   // Initialize object.
@@ -145,7 +144,7 @@ int Heap::payload_size() {
 
 String* Heap::allocate_internal_string(int length) {
   ASSERT(length >= 0);
-  ASSERT(length <= String::max_internal_size());
+  ASSERT(length <= String::max_internal_size_in_process());
   HeapObject* result = _allocate_raw(String::internal_allocation_size(length));
   if (result == null) return null;
   // Initialize object.
@@ -159,14 +158,9 @@ String* Heap::allocate_internal_string(int length) {
   return String::cast(result);
 }
 
-void ProgramHeap::migrate_to(Program* program) {
-  set_writable(false);
-  program->take_blocks(&_blocks);
-}
-
 HeapObject* Heap::_allocate_raw(int byte_size) {
   ASSERT(byte_size > 0);
-  ASSERT(byte_size <= Block::max_payload_size());
+  ASSERT(byte_size <= max_allocation_size());
   HeapObject* result = _blocks.last()->allocate_raw(byte_size);
   if (result == null) {
     AllocationResult expand_result = _expand();
@@ -202,7 +196,7 @@ Heap::AllocationResult ObjectHeap::_expand() {
 class ScavengeState : public RootCallback {
  public:
   explicit ScavengeState(Heap* heap)
-      : _heap(heap), _scope(VM::current()->heap_memory(), heap) {
+      : _heap(heap), _process(heap->owner()), _scope(VM::current()->heap_memory(), heap) {
     blocks.append(VM::current()->heap_memory()->allocate_block_during_scavenge(heap));
   }
 
@@ -255,7 +249,7 @@ class ScavengeState : public RootCallback {
       Object* content = roots[i];
       if (!content->is_heap_object()) continue;  // Do nothing.
       HeapObject* heap_object = HeapObject::cast(content);
-      if (Heap::in_read_only_program_heap(heap_object, _heap)) continue;  // Do nothing, content is outside heap.
+      if (heap_object->on_program_heap(_process)) continue;  // Do nothing, content is outside heap.
       Object* header = HeapObject::cast(content)->header_during_gc();
       roots[i] = is_forward_address(header)          // Check whether there is a forward address.
           ? header                                   // if so, update the root with the forwarding.
@@ -280,44 +274,9 @@ class ScavengeState : public RootCallback {
   BlockList blocks;
  private:
   Heap* _heap;
+  Process* _process;
   ScavengeScope _scope;
 };
-
-String* ProgramHeap::allocate_string(const char* str) {
-  return allocate_string(str, strlen(str));
-}
-
-String* ProgramHeap::allocate_string(const char* str, int length) {
-  bool can_fit_in_heap_block = length <= String::max_internal_size();
-  String* result;
-  if (can_fit_in_heap_block) {
-    result = allocate_internal_string(length);
-    // We are in the program heap. We should never run out of memory.
-    ASSERT(result != null);
-    // Initialize object.
-    String::Bytes bytes(result);
-    bytes._initialize(str);
-  } else {
-    result = allocate_external_string(length, const_cast<uint8*>(unsigned_cast(str)), false);
-  }
-  result->hash_code();  // Ensure hash_code is computed at creation.
-  return result;
-}
-
-ByteArray* ProgramHeap::allocate_byte_array(const uint8* data, int length) {
-  if (length > ByteArray::max_internal_size()) {
-    auto result = allocate_external_byte_array(length, const_cast<uint8*>(data), false, false);
-    // We are on the program heap which should never run out of memory.
-    ASSERT(result != null);
-    return result;
-  }
-  auto byte_array = allocate_internal_byte_array(length);
-  // We are on the program heap which should never run out of memory.
-  ASSERT(byte_array != null);
-  ByteArray::Bytes bytes(byte_array);
-  if (length != 0) memcpy(bytes.address(), data, length);
-  return byte_array;
-}
 
 Object** ObjectHeap::_copy_global_variables() {
   return _program->global_variables.copy();
@@ -329,7 +288,9 @@ ObjectHeap::ObjectHeap(Program* program, Process* owner, Block* block)
     , _external_memory(0)
     , _hatch_method(Method::invalid())
     , _finalizer_notifier(null)
-    , _gc_count(0) {
+    , _gc_count(0)
+    , _global_variables(null) {
+  if (block == null) return;
   _task = allocate_task();
   _global_variables = _copy_global_variables();
   // Currently the heap is empty and it has one block allocated for objects.
@@ -451,7 +412,6 @@ Task* ObjectHeap::allocate_task() {
   Smi* task_id = program()->task_class_id();
   Task* result = unvoid_cast<Task*>(allocate_instance(program()->class_tag_for(task_id), task_id, Smi::from(program()->instance_size_for(task_id))));
   if (result == null) return null;  // Allocation failure.
-  ASSERT(owner() == result->owner());
   Task::cast(result)->_initialize(stack, Smi::from(owner()->next_task_id()));
   int instance_size = program()->instance_size_for(result);
   for (int i = Task::ID_INDEX + 1; i < result->length(instance_size); i++) {
@@ -468,7 +428,6 @@ Stack* ObjectHeap::allocate_stack(int length) {
   // Initialize object.
   result->_set_header(program(), program()->stack_class_id());
   Stack::cast(result)->_initialize(length);
-  ASSERT(owner() == result->owner());
   return result;
 }
 

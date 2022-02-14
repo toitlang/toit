@@ -33,11 +33,14 @@ const char* Process::StateName[] = {
   "RUNNING",
 };
 
-Process::Process(Program* program, ProcessGroup* group, Block* initial_block)
+Process::Process(Program* program, ProcessRunner* runner, ProcessGroup* group, Block* initial_block)
     : _id(VM::current()->scheduler()->next_process_id())
     , _next_task_id(0)
     , _program(program)
+    , _runner(runner)
     , _group(group)
+    , _program_heap_address(program ? program->_program_heap_address : 0)
+    , _program_heap_size(program ? program->_program_heap_size : 0)
     , _entry(Method::invalid())
     , _object_heap(program, this, initial_block)
     , _memory_usage(Usage("initial object heap"))
@@ -49,13 +52,17 @@ Process::Process(Program* program, ProcessGroup* group, Block* initial_block)
     , _signals(0)
     , _state(IDLE)
     , _scheduler_thread(null) {
+  // We can't start a process from a heap that has not been linearly allocated
+  // because we use the address range to distinguish program pointers and
+  // process pointers.
+  ASSERT(_program_heap_size > 0);
   // Link this process to the program heap.
   _group->add(this);
   ASSERT(_group->lookup(_id) == this);
 }
 
 Process::Process(Program* program, ProcessGroup* group, char** args, Block* initial_block)
-   : Process(program, group, initial_block) {
+   : Process(program, null, group, initial_block) {
   _entry = program->entry();
   _args = args;
   _object_heap.set_hatch_method(Method::invalid());
@@ -64,7 +71,7 @@ Process::Process(Program* program, ProcessGroup* group, char** args, Block* init
 
 #ifndef TOIT_FREERTOS
 Process::Process(Program* program, ProcessGroup* group, SnapshotBundle bundle, char** args, Block* initial_block)
-  : Process(program, group, initial_block) {
+  : Process(program, null, group, initial_block) {
   _entry = program->entry();
   _args = args;
   ByteArray* snap = _object_heap.allocate_external_byte_array(bundle.size(), bundle.buffer(), true, false);
@@ -78,23 +85,21 @@ Process::Process(Program* program, ProcessGroup* group, SnapshotBundle bundle, c
 #endif
 
 Process::Process(Program* program, ProcessGroup* group, Method method, const uint8* arguments_address, int arguments_length, Block* initial_block)
-   : Process(program, group, initial_block) {
+   : Process(program, null, group, initial_block) {
   _entry = program->hatch_entry();
   _args = null;
   ByteArray* args = _object_heap.allocate_internal_byte_array(arguments_length);
   // We don't run from snapshot on the device so we can assume that allocation
   // does not fail on a newly created heap.
-#ifdef TOIT_FREERTOS
-  UNREACHABLE();
-#else
   ASSERT(args != null);
-#endif
   ByteArray::Bytes to(args);
-
   memcpy(to.address(), arguments_address, to.length());
 
   _object_heap.set_hatch_method(method);
   _object_heap.set_hatch_arguments(args);
+}
+
+Process::Process(ProcessRunner* runner, ProcessGroup* group) : Process(null, runner, group, null) {
 }
 
 Process::~Process() {
@@ -113,10 +118,6 @@ Process::~Process() {
   }
 }
 
-bool Process::is_privileged() {
-  return id() == 0 && group()->id() == 0;
-}
-
 String* Process::allocate_string(const char* content, int length, Error** error) {
   String* result = allocate_string(length, error);
   if (result == null) return result;  // Allocation failure.
@@ -128,7 +129,7 @@ String* Process::allocate_string(const char* content, int length, Error** error)
 
 String* Process::allocate_string(int length, Error** error) {
   ASSERT(length >= 0);
-  bool can_fit_in_heap_block = length <= String::max_internal_size();
+  bool can_fit_in_heap_block = length <= String::max_internal_size_in_process();
   if (can_fit_in_heap_block) {
     String* result = object_heap()->allocate_internal_string(length);
     if (result != null) return result;
@@ -188,7 +189,7 @@ Object* Process::allocate_string_or_error(const char* content) {
 
 ByteArray* Process::allocate_byte_array(int length, Error** error, bool force_external) {
   ASSERT(length >= 0);
-  if (force_external || length > ByteArray::max_internal_size()) {
+  if (force_external || length > ByteArray::max_internal_size_in_process()) {
     // Byte array cannot fit within a heap block so place content in malloced space.
     AllocationManager allocation(this);
     uint8* memory;
@@ -328,7 +329,7 @@ void Process::clear_signal(Signal signal) {
 void Process::print() {
   printf("Process #%d\n", _id);
   Usage u = object_heap()->usage("heap");
-  Usage p = program()->usage();
+  ProgramUsage p = program()->usage();
   u.print(2);
   p.print(2);
 }

@@ -31,7 +31,6 @@ namespace toit {
   M(tcp,     MODULE_TCP)                     \
   M(udp,     MODULE_UDP)                     \
   M(tls,     MODULE_TLS)                     \
-  M(dns,     MODULE_DNS)                     \
   M(esp32,   MODULE_ESP32)                   \
   M(i2c,     MODULE_I2C)                     \
   M(i2s,     MODULE_I2S)                     \
@@ -93,7 +92,7 @@ namespace toit {
   PRIMITIVE(smi_to_string_base_10, 1)        \
   PRIMITIVE(compare_to, 2)                   \
   PRIMITIVE(min_special_compare_to, 2)       \
-  PRIMITIVE(string_equals, 2)                \
+  PRIMITIVE(blob_equals, 2)                  \
   PRIMITIVE(string_compare, 2)               \
   PRIMITIVE(string_rune_count, 1)            \
   PRIMITIVE(object_equals, 2)                \
@@ -282,11 +281,6 @@ namespace toit {
   PRIMITIVE(get_session, 1)                  \
   PRIMITIVE(set_session, 2)                  \
 
-#define MODULE_DNS(PRIMITIVE)                \
-  PRIMITIVE(init, 0)                         \
-  PRIMITIVE(lookup, 2)                       \
-  PRIMITIVE(lookup_result, 2)                \
-
 #define MODULE_WIFI(PRIMITIVE)               \
   PRIMITIVE(init, 0)                         \
   PRIMITIVE(close, 1)                        \
@@ -469,7 +463,8 @@ namespace toit {
   PRIMITIVE(rename, 2)                       \
   PRIMITIVE(chdir, 1)                        \
   PRIMITIVE(mkdir, 2)                        \
-  PRIMITIVE(opendir, 2)                      \
+  PRIMITIVE(opendir, 1)                      \
+  PRIMITIVE(opendir2, 2)                     \
   PRIMITIVE(readdir, 1)                      \
   PRIMITIVE(closedir, 1)                     \
   PRIMITIVE(stat, 2)                         \
@@ -741,7 +736,6 @@ namespace toit {
   Type* name = name##_proxy->as_external<Type>();                \
   if (!name) ALREADY_CLOSED;                                     \
 
-#define _A_T_DNSResourceGroup(N, name)    MAKE_UNPACKING_MACRO(DNSResourceGroup, N, name)
 #define _A_T_SimpleResourceGroup(N, name) MAKE_UNPACKING_MACRO(SimpleResourceGroup, N, name)
 #define _A_T_GPIOResourceGroup(N, name)   MAKE_UNPACKING_MACRO(GPIOResourceGroup, N, name)
 #define _A_T_I2CResourceGroup(N, name)    MAKE_UNPACKING_MACRO(I2CResourceGroup, N, name)
@@ -768,7 +762,6 @@ namespace toit {
 
 #define _A_T_Resource(N, name)            MAKE_UNPACKING_MACRO(Resource, N, name)
 #define _A_T_Directory(N, name)           MAKE_UNPACKING_MACRO(Directory, N, name)
-#define _A_T_DNSLookupRequest(N, name)    MAKE_UNPACKING_MACRO(DNSLookupRequest, N, name)
 #define _A_T_Font(N, name)                MAKE_UNPACKING_MACRO(Font, N, name)
 #define _A_T_ImageOutputStream(N, name)   MAKE_UNPACKING_MACRO(ImageOutputStream, N, name)
 #define _A_T_I2CCommand(N, name)          MAKE_UNPACKING_MACRO(I2CCommand, N, name)

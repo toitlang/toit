@@ -71,6 +71,15 @@ endif
 build/host/CMakeCache.txt:
 	$(MAKE) rebuild-cmake
 
+BIN_DIR = build/host/sdk/bin
+TOITVM_BIN = $(BIN_DIR)/toit.run$(EXE_SUFFIX)
+TOITPKG_BIN = $(BIN_DIR)/toit.pkg$(EXE_SUFFIX)
+TOITC_BIN = $(BIN_DIR)/toit.compile$(EXE_SUFFIX)
+
+.PHONY: download-packages
+download-packages: check-env build/host/CMakeCache.txt tools
+	(cd build/host && ninja download_packages)
+
 .PHONY: rebuild-cmake
 rebuild-cmake:
 	mkdir -p build/host
@@ -81,7 +90,7 @@ tools: check-env build/host/CMakeCache.txt
 	(cd build/host && ninja build_tools)
 
 .PHONY: snapshots
-snapshots: tools
+snapshots: tools download-packages
 	(cd build/host && ninja build_snapshots)
 
 .PHONY: version-file
@@ -108,14 +117,14 @@ build/$(CROSS_ARCH)/CMakeCache.txt:
 .PHONY: rebuild-cross-cmake
 rebuild-cross-cmake:
 	mkdir -p build/$(CROSS_ARCH)
-	(cd build/$(CROSS_ARCH) && cmake ../../ -G Ninja -DTOITC=$(CURDIR)/build/host/sdk/bin/toit.compile -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/$(CROSS_ARCH).cmake --no-warn-unused-cli)
+	(cd build/$(CROSS_ARCH) && cmake ../../ -G Ninja -DTOITC=$(TOITC_BIN) -DTOITPKG=$(TOITPKG_BIN) -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/$(CROSS_ARCH).cmake --no-warn-unused-cli)
 
 .PHONY: tools-cross
 tools-cross: check-env-cross tools build/$(CROSS_ARCH)/CMakeCache.txt
 	(cd build/$(CROSS_ARCH) && ninja build_tools)
 
 .PHONY: snapshots-cross
-snapshots-cross: tools build/$(CROSS_ARCH)/CMakeCache.txt
+snapshots-cross: tools download-packages build/$(CROSS_ARCH)/CMakeCache.txt
 	(cd build/$(CROSS_ARCH) && ninja build_snapshots)
 
 .PHONY: version-file-cross
@@ -126,9 +135,6 @@ version-file-cross: build/$(CROSS_ARCH)/CMakeCache.txt
 
 # ESP32 VARIANTS
 SNAPSHOT_DIR = build/host/sdk/snapshots
-BIN_DIR = build/host/sdk/bin
-TOITVM_BIN = $(BIN_DIR)/toit.run$(EXE_SUFFIX)
-TOITC_BIN = $(BIN_DIR)/toit.compile$(EXE_SUFFIX)
 
 ifeq ($(DETECTED_OS), Linux)
 	NUM_CPU := $(shell nproc)
@@ -142,9 +148,15 @@ endif
 .PHONY: esp32
 esp32: check-env build/$(ESP32_CHIP)/toit.bin
 
-build/$(ESP32_CHIP)/toit.bin build/$(ESP32_CHIP)/toit.elf: tools snapshots build/$(ESP32_CHIP)/lib/libtoit_image.a build/config.json
+build/$(ESP32_CHIP)/toit.bin build/$(ESP32_CHIP)/toit.elf: build/$(ESP32_CHIP)/lib/libtoit_vm.a
+build/$(ESP32_CHIP)/toit.bin build/$(ESP32_CHIP)/toit.elf: build/$(ESP32_CHIP)/lib/libtoit_image.a
+build/$(ESP32_CHIP)/toit.bin build/$(ESP32_CHIP)/toit.elf: tools snapshots build/config.json
 	$(MAKE) -j $(NUM_CPU) -C toolchains/$(ESP32_CHIP)/
 	$(TOITVM_BIN) tools/inject_config.toit build/config.json build/$(ESP32_CHIP)/toit.bin
+
+.PHONY: build/$(ESP32_CHIP)/lib/libtoit_vm.a  # Marked phony to force regeneration.
+build/$(ESP32_CHIP)/lib/libtoit_vm.a: build/$(ESP32_CHIP)/CMakeCache.txt build/$(ESP32_CHIP)/include/sdkconfig.h
+	(cd build/$(ESP32_CHIP) && ninja toit_vm)
 
 build/$(ESP32_CHIP)/lib/libtoit_image.a: build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s build/$(ESP32_CHIP)/CMakeCache.txt build/$(ESP32_CHIP)/include/sdkconfig.h
 	(cd build/$(ESP32_CHIP) && ninja toit_image)
@@ -153,18 +165,20 @@ build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s: tools snapshots build/snapshot
 	mkdir -p build/$(ESP32_CHIP)
 	$(TOITVM_BIN) $(SNAPSHOT_DIR)/snapshot_to_image.snapshot build/snapshot $@
 
+.PHONY: build/snapshot  # Marked phony to force regeneration.
 build/snapshot: $(TOITC_BIN) $(ESP32_ENTRY)
 	$(TOITC_BIN) -w $@ $(ESP32_ENTRY)
 
 build/$(ESP32_CHIP)/CMakeCache.txt:
 	mkdir -p build/$(ESP32_CHIP)
-	(cd build/$(ESP32_CHIP) && IMAGE=build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s cmake ../../ -G Ninja -DTOITC=$(CURDIR)/build/host/sdk/bin/toit.compile -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/$(ESP32_CHIP)/$(ESP32_CHIP).cmake --no-warn-unused-cli)
+	touch build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s
+	(cd build/$(ESP32_CHIP) && IMAGE=build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s cmake ../../ -G Ninja -DTOITC=$(TOITC_BIN) -DTOITPKG=$(TOITPKG_BIN) -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/$(ESP32_CHIP)/$(ESP32_CHIP).cmake --no-warn-unused-cli)
 
 build/$(ESP32_CHIP)/include/sdkconfig.h:
 	mkdir -p build/$(ESP32_CHIP)
 	$(MAKE) -C toolchains/$(ESP32_CHIP) -s "$(CURDIR)"/$@
 
-.PHONY: build/config.json
+.PHONY: build/config.json  # Marked phony to force regeneration.
 build/config.json:
 	echo '{"wifi": {"ssid": "$(ESP32_WIFI_SSID)", "password": "$(ESP32_WIFI_PASSWORD)"}}' > $@
 
@@ -211,12 +225,25 @@ update-gold:
 	(cd build/host && ninja update_minus_s_gold)
 
 .PHONY: test-health
-test-health:
+test-health: download-packages
 	$(MAKE) rebuild-cmake
 	(cd build/host && ninja check_health)
 
 .PHONY: update-health-gold
-update-health-gold:
+update-health-gold: download-packages
 	$(MAKE) rebuild-cmake
 	(cd build/host && ninja clear_health_gold)
 	(cd build/host && ninja update_health_gold)
+
+.PHONY: download-external
+download-external:
+	# Download with higher parallelism.
+	(cd build/host && ninja -j 16 download_external)
+
+.PHONY: test-external
+test-external:
+	(cd build/host && ninja check_external)
+
+.PHONY: test-external-health
+test-external-health:
+	(cd build/host && ninja check_external_health)

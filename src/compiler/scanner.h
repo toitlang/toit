@@ -99,7 +99,7 @@ class LspSource : public Source {
 
 static inline bool is_newline(int c) {
   ASSERT(c >= 0);
-  return c == '\n';
+  return c == '\r' || c == '\n';
 }
 
 static inline bool is_whitespace_not_newline(int c) {
@@ -313,6 +313,11 @@ class Scanner {
     // Never advance past the EOS.
     if (_index < _source->size()) _index++;
     int result = _input[_index];
+    // Advance over the '\n' as well.
+    if (result == '\n' && _input[_index - 1] == '\r' && _index < _source->size()) {
+      _index++;
+      result = _input[_index];
+    }
     ASSERT(result >= 0);
     return result;
   }

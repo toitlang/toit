@@ -17,6 +17,8 @@ cmake_minimum_required(VERSION 3.19.0)
 
 project(toit)
 
+include(tools/toit.cmake)
+
 set(TOIT_IS_CROSS FALSE)
 if ((NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "${CMAKE_HOST_SYSTEM_NAME}") OR
     (NOT "${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "${CMAKE_HOST_SYSTEM_PROCESSOR}"))
@@ -25,6 +27,14 @@ if ((NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "${CMAKE_HOST_SYSTEM_NAME}") OR
   # This turns out to work out fine, as we can run the 32-bit executables anyway and don't
   # need a different host build to compile the snapshots.
   set(TOIT_IS_CROSS TRUE)
+endif()
+
+set(TOITLSP_BIN "${CMAKE_BINARY_DIR}/sdk/bin/toit.lsp${CMAKE_EXECUTABLE_SUFFIX}")
+set(TOITPKG_BIN "${CMAKE_BINARY_DIR}/sdk/bin/toit.pkg${CMAKE_EXECUTABLE_SUFFIX}")
+
+if (NOT ${TOIT_IS_CROSS})
+  set(TOITC "$<TARGET_FILE:toit.compile>")
+  set(TOITPKG "${TOITPKG_BIN}")
 endif()
 
 string(TIMESTAMP BUILD_DATE "%Y-%m-%dT%H:%M:%SZ" UTC)
@@ -130,11 +140,6 @@ else ()
     set(TOIT_LINK_GROUP_END_FLAGS "-Wl,--no-whole-archive")
 endif()
 
-if (NOT ${TOIT_IS_CROSS})
-  set(TOITC "$<TARGET_FILE:toit.compile>")
-endif()
-
-
 add_custom_target(
   build_version_file
   COMMAND echo ${TOIT_GIT_VERSION} > "${CMAKE_BINARY_DIR}/sdk/VERSION"
@@ -153,14 +158,12 @@ list(APPEND GO_ENV CGO_ENABLED=1 GODEBUG=netdns=go "GOOS=${GOOS}" "GOARCH=${GOAR
 
 set(GO_LINK_FLAGS "$ENV{GO_LINK_FLAGS} -X main.date=${BUILD_DATE} -X main.sdkVersion=${TOIT_GIT_VERSION}")
 
-set(TOITLSP_BIN "${CMAKE_BINARY_DIR}/sdk/bin/toit.lsp${CMAKE_EXECUTABLE_SUFFIX}")
 add_custom_command(
   OUTPUT "${TOITLSP_BIN}"
   COMMAND "${CMAKE_COMMAND}" -E env ${GO_ENV} go build -ldflags "${GO_LINK_FLAGS}" -tags "netgo osusergo" -o "${TOITLSP_BIN}"
   WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}/tools/toitlsp
 )
 
-set(TOITPKG_BIN "${CMAKE_BINARY_DIR}/sdk/bin/toit.pkg${CMAKE_EXECUTABLE_SUFFIX}")
 add_custom_command(
   OUTPUT "${TOITPKG_BIN}"
   COMMAND "${CMAKE_COMMAND}" -E env ${GO_ENV} go build -ldflags "${GO_LINK_FLAGS}" -tags "netgo osusergo" -o "${TOITPKG_BIN}"
@@ -175,6 +178,10 @@ add_dependencies(build_tools build_go_tools)
 
 enable_testing()
 add_subdirectory(tests)
+
+add_subdirectory(examples)
+# External Toit packages and projects.
+add_subdirectory(external)
 
 set(CMAKE_POLICY_DEFAULT_CMP0076 OLD)
 # The 'ENABLE_TESTING' and 'ENABLE_PROGRAMS' variables (used by mbedtls) have no prefix. As

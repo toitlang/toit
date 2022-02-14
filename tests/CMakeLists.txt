@@ -19,6 +19,8 @@ file(GLOB TOIT_FORCE_TESTS RELATIVE ${TOIT_SDK_SOURCE_DIR} "*_test_force.toit" "
 file(GLOB TOIT_NO_BOOT_TESTS RELATIVE ${TOIT_SDK_SOURCE_DIR} "*_test_no_boot.toit" "regress/*_test_no_boot.toit")
 file(GLOB TOIT_COMPILER_TESTS RELATIVE ${TOIT_SDK_SOURCE_DIR} "*_test_compiler.toit" "regress/*_test_compiler.toit")
 
+toit_project(tests "${CMAKE_CURRENT_LIST_DIR}")
+
 include(ProcessorCount)
 ProcessorCount(NUM_CPU)
 

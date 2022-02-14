@@ -1,5 +1,0 @@
-prefixes:
-  tar: ..
-packages:
-  ..:
-    path: ..

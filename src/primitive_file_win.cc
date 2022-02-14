@@ -167,6 +167,10 @@ PRIMITIVE(opendir) {
   UNIMPLEMENTED_PRIMITIVE;
 }
 
+PRIMITIVE(opendir2) {
+  UNIMPLEMENTED_PRIMITIVE;
+}
+
 PRIMITIVE(readdir) {
   UNIMPLEMENTED_PRIMITIVE;
 }
@@ -179,7 +183,7 @@ PRIMITIVE(read) {
   ARGS(int, fd);
 
   Error* error = null;
-  ByteArray* byte_array = process->allocate_byte_array(4000, &error);
+  ByteArray* byte_array = process->allocate_byte_array(4000, &error, /*force_external*/ true);
   if (byte_array == null) {
     return error;
   }
@@ -200,7 +204,7 @@ PRIMITIVE(read) {
     return process->program()->null_object();
   }
 
-  byte_array->resize(buffer_fullness);
+  byte_array->resize_external(process, buffer_fullness);
   return byte_array;
 }
 

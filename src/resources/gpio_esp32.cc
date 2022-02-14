@@ -112,9 +112,8 @@ PRIMITIVE(unuse) {
   ARGS(GPIOResourceGroup, resource_group, IntResource, resource);
 
   int num = resource->id();
-
   resource_group->unregister_id(num);
-
+  resource_proxy->clear_external_address();
   return process->program()->null_object();
 }
 

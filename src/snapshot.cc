@@ -19,7 +19,7 @@
 
 #include "snapshot.h"
 #include "objects_inline.h"
-#include "heap.h"
+#include "program_heap.h"
 #include "os.h"
 #include "process.h"
 #include "uuid.h"
@@ -206,7 +206,7 @@ class HeapAllocator : public SnapshotAllocator {
   bool initialize(int normal_block_count,
                   int external_pointer_count,
                   int external_int32_count,
-                  int external_byte_count) {
+                  int external_byte_count) override {
     _normal_block_count = normal_block_count;
     _external_pointer_count = external_pointer_count;
     _external_int32_count = external_int32_count;
@@ -214,18 +214,18 @@ class HeapAllocator : public SnapshotAllocator {
     return true;
   }
 
-  uint8* allocate_external_bytes(int count) {
+  uint8* allocate_external_bytes(int count) override {
     return unvoid_cast<uint8*>(allocate_external(count));
   }
 
-  Object** allocate_external_pointers(int count) {
+  Object** allocate_external_pointers(int count) override {
     return unvoid_cast<Object**>(allocate_external(count * sizeof(Object*)));
   }
-  uint16* allocate_external_uint16s(int count) {
+  uint16* allocate_external_uint16s(int count) override {
     ASSERT(count / 2 <= _external_int32_count);
     return unvoid_cast<uint16*>(allocate_external(count * 2));
   }
-  int32* allocate_external_int32s(int count) {
+  int32* allocate_external_int32s(int count) override {
     ASSERT(count <= _external_int32_count);
     return unvoid_cast<int32*>(allocate_external(count * 4));
   }
@@ -253,7 +253,7 @@ class SizedVirtualAllocator {
  public:
   SizedVirtualAllocator(int word_size)
       : _word_size(word_size)
-      , limit(Block::max_payload_size(word_size)) { }
+      , limit(ProgramHeap::max_allocation_size(word_size)) { }
 
   HeapObject* allocate_object(TypeTag tag, int length);
 
@@ -396,7 +396,7 @@ class ImageAllocator : public HeapAllocator {
   void expand();
 
  protected:
-  void* allocate_external(int byte_size);
+  void* allocate_external(int byte_size) override;
 
  private:
   ProtectableAlignedMemory* _image = null;
@@ -414,44 +414,6 @@ class ImageAllocator : public HeapAllocator {
 
   // Returns the byte_size needed for the external (off-heap) memory at the head of the image.
   uword external_size();
-};
-
-class ObjectAllocator : public HeapAllocator {
- public:
-  ObjectAllocator(Process* process) : _process(process) { }
-
-  bool initialize(int normal_block_count,
-                  int external_pointer_count,
-                  int external_int32_count,
-                  int external_byte_count) {
-    HeapAllocator::initialize(normal_block_count,
-                              external_pointer_count,
-                              external_int32_count,
-                              external_byte_count);
-
-    _block_table = unvoid_cast<void**>(malloc(normal_block_count * sizeof(void*)));
-    if (_block_table == null) return false;
-    for (int i = 0; i < normal_block_count; i++) {
-      auto block_memory = _process->object_heap()->_allocate_raw(Block::max_payload_size());
-      if (block_memory == null) return false;
-      _block_table[i] = block_memory;
-    }
-    if (external_pointer_count != 0 || external_int32_count != 0 || external_byte_count != 0) {
-      UNIMPLEMENTED();
-    }
-    return true;
-  }
-
-  HeapObject* allocate_object(TypeTag tag, int length);
-
- protected:
-  void* allocate_external(int byte_size) { UNREACHABLE(); }
-
- private:
-  Process* _process;
-  void** _block_table = null;
-  int _current_block = 0; // Index of the current block.
-  int _block_offset = 0;  // Offset into the current block of the first free area.
 };
 
 template <typename T>
@@ -869,21 +831,6 @@ Object** SnapshotReader::read_external_object_table(int* length) {
   return table;
 }
 
-HeapObject* ObjectAllocator::allocate_object(TypeTag tag, int length) {
-  int word_count, extra_bytes;
-  allocation_size(tag, length, &word_count, &extra_bytes);
-  int byte_size = _align(word_count * sizeof(word) + extra_bytes);
-  ASSERT(byte_size < Block::max_payload_size());
-  if (_block_offset + byte_size > Block::max_payload_size()) {
-    _current_block++;
-    _block_offset = 0;
-  }
-  ASSERT(_current_block < normal_block_count());
-  auto result = reinterpret_cast<HeapObject*>(&unvoid_cast<char*>(_block_table[_current_block])[_block_offset]);
-  _block_offset += byte_size;
-  return result;
-}
-
 HeapObject* SizedVirtualAllocator::allocate_object(TypeTag tag, int length) {
   int word_count, extra_bytes;
   allocation_size(tag, length, &word_count, &extra_bytes);
@@ -952,9 +899,13 @@ bool ImageAllocator::initialize(int normal_block_count,
 }
 
 ProgramImage ImageSnapshotReader::read_image() {
+  // Also calls SnapshotReader::initialize() which calls _allocator->initialize().
+  // _allocator is an ImageAllocator
+  //   which is a subclass of HeapAllocator
+  //     which is a subset of SnapshotAllocator
   bool succeeded = read_header();
   ASSERT(succeeded);  // We expect to never run out of memory on the desktop.
-  _program  = new (_image_allocator.memory()) Program();
+  _program  = new (_image_allocator.memory()) Program(_image_allocator.image()->address(), _image_allocator.image()->byte_size());
   _image_allocator.set_program(_program);
   // Initialize the uuid to 0. It can be patched from the outside.
   uint8 uuid[UUID_SIZE] = {0};
@@ -967,7 +918,7 @@ ProgramImage ImageSnapshotReader::read_image() {
 }
 
 void ImageAllocator::expand() {
-  Block* block = new (_block_top) Block();
+  ProgramBlock* block = new (_block_top) ProgramBlock();
   _block_top = Utils::address_at(_block_top, TOIT_PAGE_SIZE);
   _program->_heap._blocks.append(block);
 }
@@ -978,7 +929,7 @@ HeapObject* ImageAllocator::allocate_object(TypeTag tag, int length) {
   int byte_size = _align(word_count * sizeof(word) + extra_bytes);
   HeapObject* result = _program->_heap._blocks.last()->allocate_raw(byte_size);
   if (result != null) return result;
-  ASSERT(byte_size < Block::max_payload_size());
+  ASSERT(byte_size < ProgramHeap::max_allocation_size());
   expand();
   return _program->_heap._blocks.last()->allocate_raw(byte_size);
 }

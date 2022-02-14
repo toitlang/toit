@@ -33,12 +33,19 @@ add_custom_target(
   update_health_gold
 )
 
-set(NEGATIVE_PREFIX "${TOIT_SDK_SOURCE_DIR}/tests/negative/")
-set(TPKG_PREFIX "${TOIT_SDK_SOURCE_DIR}/tools/tpkg/tests/")
-set(GIT_PREFIX "${TOIT_SDK_SOURCE_DIR}/.git/")
-# Normally not necessary as toit files in the build directory are generally
-# only accessible through symlinks. But on Windows the globbing would find them.
-set(BUILD_PREFIX "${CMAKE_SOURCE_DIR}/build/")
+set(SKIP_PREFIXES
+    "${TOIT_SDK_SOURCE_DIR}/tests/negative/"
+    "${TOIT_SDK_SOURCE_DIR}/tools/tpkg/tests/"
+    "${TOIT_SDK_SOURCE_DIR}/.git/"
+    # Don't go into the packages directory which only contains external packages.
+    "${TOIT_SDK_SOURCE_DIR}/packages/"
+    # Normally not necessary as toit files in the build directory are generally
+    # only accessible through symlinks. But on Windows the globbing would find them.
+    "${CMAKE_SOURCE_DIR}/build/")
+
+# Don't go into .packages directories.
+# The packages we want to check must be added differently.
+set(DOT_PACKAGES_PATTERN "/[.]packages/")
 
 # Sets the RESULT variable to TRUE if STR has PREFIX as prefix.
 # Leaves the RESULT variable untouched otherwise.
@@ -50,19 +57,29 @@ function(starts_with PREFIX STR RESULT)
   endif()
 endfunction()
 
+function(contains PATTERN STR RESULT)
+  string(REGEX MATCH "${PATTERN}" FOUND_MATCH "${STR}")
+  if (NOT "${FOUND_MATCH}" STREQUAL "")
+    set(${RESULT} TRUE PARENT_SCOPE)
+  endif()
+endfunction()
+
 foreach(file ${HEALTH_SOURCES})
-  set(IS_PREFIXED FALSE)
-  starts_with("${NEGATIVE_PREFIX}" "${file}" IS_PREFIXED)
-  starts_with("${TPKG_PREFIX}" "${file}" IS_PREFIXED)
-  starts_with("${GIT_PREFIX}" "${file}" IS_PREFIXED)
-  starts_with("${BUILD_PREFIX}" "${file}" IS_PREFIXED)
-  if (${IS_PREFIXED})
+  set(SHOULD_SKIP FALSE)
+  foreach(PREFIX ${SKIP_PREFIXES})
+    starts_with("${PREFIX}" "${file}" SHOULD_SKIP)
+  endforeach()
+  contains("${DOT_PACKAGES_PATTERN}" "${file}" SHOULD_SKIP)
+  if (${SHOULD_SKIP})
     continue()
   endif()
   add_health_test("${file}"
-    "${TOIT_SDK_SOURCE_DIR}"
-    "${TOIT_SDK_SOURCE_DIR}"
-    "${CMAKE_CURRENT_SOURCE_DIR}/gold/sdk")
+    RELATIVE_TO "${TOIT_SDK_SOURCE_DIR}"
+    LIB_DIR "${TOIT_SDK_SOURCE_DIR}"
+    GOLD_DIR "${CMAKE_CURRENT_SOURCE_DIR}/gold/sdk"
+    CONFIGURATION health
+    UPDATE_TARGET update_health_gold
+  )
 endforeach()
 
 include(fail.cmake)

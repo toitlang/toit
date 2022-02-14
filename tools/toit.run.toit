@@ -17,13 +17,15 @@
 // only: To make stack traces readable.
 
 import ar show *
-import .snapshot
-import .mirror
-import .rpc
-import .logging
 import log.rpc as log
 import log
 import monitor
+import rpc.broker show RpcBroker
+
+import .snapshot
+import .mirror
+import .logging
+
 import core.message_manual_decoding_ show print_for_manually_decoding_
 
 class ToitcProcessManager implements SystemMessageHandler_:

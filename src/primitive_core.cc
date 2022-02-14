@@ -138,20 +138,20 @@ PRIMITIVE(object_class_id) {
 PRIMITIVE(compare_to) {
   ARGS(Object, lhs, Object, rhs);
   int result = Interpreter::compare_numbers(lhs, rhs);
-  result &= Interpreter::COMPARE_TO_MASK;
-  if (result == Interpreter::COMPARISON_FAILED) {
+  if (result == Interpreter::COMPARE_FAILED) {
     INVALID_ARGUMENT;
   }
-  return Smi::from(result + Interpreter::COMPARE_TO_BIAS);
+  result &= Interpreter::COMPARE_RESULT_MASK;
+  return Smi::from(result + Interpreter::COMPARE_RESULT_BIAS);
 }
 
 PRIMITIVE(min_special_compare_to) {
   ARGS(Object, lhs, Object, rhs);
   int result = Interpreter::compare_numbers(lhs, rhs);
-  if (result == Interpreter::COMPARISON_FAILED) {
+  if (result == Interpreter::COMPARE_FAILED) {
     INVALID_ARGUMENT;
   }
-  result &= Interpreter::COMPARE_TO_LESS_FOR_MIN;
+  result &= Interpreter::COMPARE_FLAG_LESS_FOR_MIN;
   return BOOL(result != 0);
 }
 
@@ -1057,17 +1057,20 @@ PRIMITIVE(size_of_json_number) {
   return Smi::from(is_float ? -result : result);
 }
 
-PRIMITIVE(string_equals) {
+// The Toit code has already checked whether the types match, so we are not
+// comparing strings with byte arrays.
+PRIMITIVE(blob_equals) {
   ARGS(Object, receiver, Object, other)
   if (receiver->is_string() && other->is_string()) {
+    // We can make use of hash code here.
     return BOOL(String::cast(receiver)->equals(other));
   }
   Blob receiver_blob;
   Blob other_blob;
-  if (!receiver->byte_content(process->program(), &receiver_blob, STRINGS_ONLY)) WRONG_TYPE;
-  if (!other->byte_content(process->program(), &other_blob, STRINGS_ONLY)) WRONG_TYPE;
-  return BOOL(String::slow_equals(receiver_blob.address(), receiver_blob.length(),
-                                  other_blob.address(), other_blob.length()));
+  if (!receiver->byte_content(process->program(), &receiver_blob, STRINGS_OR_BYTE_ARRAYS)) WRONG_TYPE;
+  if (!other->byte_content(process->program(), &other_blob, STRINGS_OR_BYTE_ARRAYS)) WRONG_TYPE;
+  if (receiver_blob.length() != other_blob.length()) return BOOL(false);
+  return BOOL(memcmp(receiver_blob.address(), other_blob.address(), receiver_blob.length()) == 0);
 }
 
 PRIMITIVE(string_compare) {
@@ -1440,7 +1443,7 @@ PRIMITIVE(array_expand) {
   ARGS(Array, old, word, old_length, word, length);
   if (length == 0) return process->program()->empty_array();
   if (length < 0) OUT_OF_BOUNDS;
-  if (length > Array::max_length()) OUT_OF_RANGE;
+  if (length > Array::max_length_in_process()) OUT_OF_RANGE;
   if (old_length < 0 || old_length > old->length() || old_length > length) OUT_OF_RANGE;
   Object* result = process->object_heap()->allocate_array(length);
   if (result == null) ALLOCATION_FAILED;
@@ -1469,7 +1472,7 @@ PRIMITIVE(array_new) {
   ARGS(int, length, Object, filler);
   if (length == 0) return process->program()->empty_array();
   if (length < 0) OUT_OF_BOUNDS;
-  if (length > Array::max_length()) OUT_OF_RANGE;
+  if (length > Array::max_length_in_process()) OUT_OF_RANGE;
   return Primitive::allocate_array(length, filler, process);
 }
 
@@ -2225,13 +2228,11 @@ PRIMITIVE(literal_index) {
   ARGS(Object, o);
   auto null_object = process->program()->null_object();
   if (!o->is_heap_object()) return null_object;
-  auto heap_object = HeapObject::cast(o);
-  if (!Heap::in_read_only_program_heap(heap_object, process->object_heap())) return null_object;
   auto& literals = process->program()->literals;
   for (int i = 0; i < literals.length(); i++) {
     if (literals.at(i) == o) return Smi::from(i);
   }
-  OTHER_ERROR;
+  return null_object;
 }
 
 PRIMITIVE(word_size) {

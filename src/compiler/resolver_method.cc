@@ -225,6 +225,9 @@ static const char* convert_string_content(const char* content,
           return null;
         }
       }
+    } else if (peek == '\r' && content[src] == '\n') {
+      result[dst++] = '\n';
+      src++;
     } else {
       result[dst++] = peek;
     }
