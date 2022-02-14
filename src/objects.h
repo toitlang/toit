@@ -243,6 +243,11 @@ class HeapObject : public Object {
     return reinterpret_cast<HeapObject*>(value + HEAP_TAG);
   }
 
+  static HeapObject* from_address(uword address) {
+    ASSERT((address & NON_SMI_TAG_MASK) == 0);
+    return reinterpret_cast<HeapObject*>(address + HEAP_TAG);
+  }
+
   inline bool on_program_heap(Process* process);
 
   static int allocation_size() { return _align(SIZE); }
@@ -300,6 +305,7 @@ class HeapObject : public Object {
   friend class SnapshotReader;
   friend class compiler::ProgramBuilder;
   friend class Stack;
+  friend class GcMetadata;
 };
 
 class Array : public HeapObject {
