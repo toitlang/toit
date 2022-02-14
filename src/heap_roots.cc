@@ -34,7 +34,7 @@ void VMFinalizerNode::free_external_memory(Process* process) {
   word accounting_size = 0;
   if (key()->is_byte_array()) {
     ByteArray* byte_array = ByteArray::cast(key());
-    if (byte_array->external_tag() == MappedFileTag) return;  // TODO(Lau): release mapped file, so flash storage can be reclaimed.
+    if (byte_array->external_tag() == MappedFileTag) return;  // TODO(erik): release mapped file, so flash storage can be reclaimed.
     ASSERT(byte_array->has_external_address());
     ByteArray::Bytes bytes(byte_array);
     memory = bytes.address();
