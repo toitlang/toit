@@ -102,7 +102,9 @@ Process::~Process() {
   while (ResourceGroup* r = _resource_groups.first()) {
     r->tear_down();  // Also removes from linked list.
   }
-  OS::close(_current_directory);
+  if (_current_directory >= 0) {
+    OS::close(_current_directory);
+  }
 
   // Use [has_message] to ensure that system_acks are processed and message
   // budget is returned.
@@ -130,11 +132,11 @@ String* Process::allocate_string(int length, Error** error) {
   if (can_fit_in_heap_block) {
     String* result = object_heap()->allocate_internal_string(length);
     if (result != null) return result;
-  #ifdef TOIT_GC_LOGGING
+#ifdef TOIT_GC_LOGGING
     printf("[gc @ %p%s | string allocation failed, length = %d (heap)]\n",
-        this, VM::current()->scheduler()->is_boot_process(this) ? "*" : "",
+        this, VM::current()->scheduler()->is_boot_process(this) ? "*" : " ",
         length);
-  #endif
+#endif
     *error = Error::from(program()->allocation_failed());
     return null;
   }
@@ -148,12 +150,13 @@ String* Process::allocate_string(int length, Error** error) {
   if (memory == null) {
 #ifdef TOIT_GC_LOGGING
       printf("[gc @ %p%s | string allocation failed, length = %d (malloc)]\n",
-          this, VM::current()->scheduler()->is_boot_process(this) ? "*" : "",
+          this, VM::current()->scheduler()->is_boot_process(this) ? "*" : " ",
           length);
 #endif
     *error = Error::from(program()->allocation_failed());
     return null;
   }
+  memory[length] = '\0';  // External strings should be zero-terminated.
   String* result = object_heap()->allocate_external_string(length, memory, true);
   if (result != null) {
     allocation.keep_result();
@@ -161,7 +164,7 @@ String* Process::allocate_string(int length, Error** error) {
   }
 #ifdef TOIT_GC_LOGGING
     printf("[gc @ %p%s | string allocation failed, length = %d (after malloc)]\n",
-        this, VM::current()->scheduler()->is_boot_process(this) ? "*" : "",
+        this, VM::current()->scheduler()->is_boot_process(this) ? "*" : " ",
         length);
 #endif
     *error = Error::from(program()->allocation_failed());
@@ -197,7 +200,7 @@ ByteArray* Process::allocate_byte_array(int length, Error** error, bool force_ex
       // Malloc failed, report it.
 #ifdef TOIT_GC_LOGGING
       printf("[gc @ %p%s | byte array allocation failed, length = %d (malloc)]\n",
-          this, VM::current()->scheduler()->is_boot_process(this) ? "*" : "",
+          this, VM::current()->scheduler()->is_boot_process(this) ? "*" : " ",
           length);
 #endif
       *error = Error::from(program()->allocation_failed());
@@ -209,7 +212,7 @@ ByteArray* Process::allocate_byte_array(int length, Error** error, bool force_ex
     }
 #ifdef TOIT_GC_LOGGING
     printf("[gc @ %p%s | byte array allocation failed, length = %d (after malloc)]\n",
-        this, VM::current()->scheduler()->is_boot_process(this) ? "*" : "",
+        this, VM::current()->scheduler()->is_boot_process(this) ? "*" : " ",
         length);
 #endif
     *error = Error::from(program()->allocation_failed());
@@ -218,7 +221,7 @@ ByteArray* Process::allocate_byte_array(int length, Error** error, bool force_ex
   if (ByteArray* result = object_heap()->allocate_internal_byte_array(length)) return result;
 #ifdef TOIT_GC_LOGGING
   printf("[gc @ %p%s | byte array allocation failed, length = %d (heap)]\n",
-      this, VM::current()->scheduler()->is_boot_process(this) ? "*" : "",
+      this, VM::current()->scheduler()->is_boot_process(this) ? "*" : " ",
       length);
 #endif
   *error = Error::from(program()->allocation_failed());

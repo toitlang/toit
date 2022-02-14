@@ -1,4 +1,4 @@
-<pkg:target-1.0>/foo_static.toit:4:3: error: Can't call result of evaluating expression
+<pkg:target-1.0>/foo_static.toit:6:3: error: Can't call result of evaluating expression
   "it's" "an error to use a string as target"
   ^~~~~~
 Compilation failed.

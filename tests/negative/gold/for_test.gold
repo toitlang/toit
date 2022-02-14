@@ -1,130 +1,130 @@
-tests/negative/for_test.toit:4:6: error: Incomplete expression
+tests/negative/for_test.toit:6:6: error: Incomplete expression
   for
      ^
-tests/negative/for_test.toit:4:6: error: Missing ';'
+tests/negative/for_test.toit:6:6: error: Missing ';'
   for
      ^
-tests/negative/for_test.toit:6:5: error: Missing ';'
+tests/negative/for_test.toit:8:5: error: Missing ';'
     print unresolved
     ^~~~~
-tests/negative/for_test.toit:7:13: error: Missing ';'
+tests/negative/for_test.toit:9:13: error: Missing ';'
   for break print unresolved
             ^~~~~
-tests/negative/for_test.toit:8:10: error: Incomplete expression
+tests/negative/for_test.toit:10:10: error: Incomplete expression
   for "".
          ^
-tests/negative/for_test.toit:8:10: error: Missing ';'
+tests/negative/for_test.toit:10:10: error: Missing ';'
   for "".
          ^
-tests/negative/for_test.toit:11:14: error: Incomplete expression
+tests/negative/for_test.toit:13:14: error: Incomplete expression
   for x := 0;
              ^
-tests/negative/for_test.toit:11:14: error: Missing ';'
+tests/negative/for_test.toit:13:14: error: Missing ';'
   for x := 0;
              ^
-tests/negative/for_test.toit:13:5: error: Missing ';'
+tests/negative/for_test.toit:15:5: error: Missing ';'
     print unresolved
     ^~~~~
-tests/negative/for_test.toit:14:21: error: Missing ';'
+tests/negative/for_test.toit:16:21: error: Missing ';'
   for x := 0; break print unresolved
                     ^~~~~
-tests/negative/for_test.toit:15:18: error: Incomplete expression
+tests/negative/for_test.toit:17:18: error: Incomplete expression
   for x := 0; "".
                  ^
-tests/negative/for_test.toit:15:18: error: Missing ';'
+tests/negative/for_test.toit:17:18: error: Missing ';'
   for x := 0; "".
                  ^
-tests/negative/for_test.toit:18:20: error: Incomplete expression
+tests/negative/for_test.toit:20:20: error: Incomplete expression
   for x := 0; true;
                    ^
-tests/negative/for_test.toit:18:20: error: Missing ':'
+tests/negative/for_test.toit:20:20: error: Missing ':'
   for x := 0; true;
                    ^
-tests/negative/for_test.toit:20:5: error: Missing ':'
+tests/negative/for_test.toit:22:5: error: Missing ':'
     print unresolved
     ^~~~~
-tests/negative/for_test.toit:21:27: error: Missing ':'
+tests/negative/for_test.toit:23:27: error: Missing ':'
   for x := 0; true; break print unresolved
                           ^~~~~
-tests/negative/for_test.toit:22:24: error: Incomplete expression
+tests/negative/for_test.toit:24:24: error: Incomplete expression
   for x := 0; true; "".
                        ^
-tests/negative/for_test.toit:22:24: error: Missing ':'
+tests/negative/for_test.toit:24:24: error: Missing ':'
   for x := 0; true; "".
                        ^
-tests/negative/for_test.toit:25:31: error: Missing ';'
+tests/negative/for_test.toit:27:31: error: Missing ';'
   for x := 0; true: unresolved
                               ^
-tests/negative/for_test.toit:27:5: error: Missing ':'
+tests/negative/for_test.toit:29:5: error: Missing ':'
     print unresolved
     ^~~~~
-tests/negative/for_test.toit:28:27: error: Missing ':'
+tests/negative/for_test.toit:30:27: error: Missing ':'
   for x := 0; true; break print : unresolved
                           ^~~~~
-tests/negative/for_test.toit:29:26: error: Expected identifier
+tests/negative/for_test.toit:31:26: error: Expected identifier
   for x := 0; true; "".  : unresolved
                          ^
-tests/negative/for_test.toit:5:7: error: 'break' must be inside loop
+tests/negative/for_test.toit:7:7: error: 'break' must be inside loop
   for break
       ^~~~~
-tests/negative/for_test.toit:6:11: error: Unresolved identifier: 'unresolved'
+tests/negative/for_test.toit:8:11: error: Unresolved identifier: 'unresolved'
     print unresolved
           ^~~~~~~~~~
-tests/negative/for_test.toit:7:7: error: 'break' must be inside loop
+tests/negative/for_test.toit:9:7: error: 'break' must be inside loop
   for break print unresolved
       ^~~~~
-tests/negative/for_test.toit:9:3: error: Unresolved identifier: 'unresolved'
+tests/negative/for_test.toit:11:3: error: Unresolved identifier: 'unresolved'
   unresolved
   ^~~~~~~~~~
-tests/negative/for_test.toit:12:15: error: 'break' must be inside loop
+tests/negative/for_test.toit:14:15: error: 'break' must be inside loop
   for x := 0; break
               ^~~~~
-tests/negative/for_test.toit:13:11: error: Unresolved identifier: 'unresolved'
+tests/negative/for_test.toit:15:11: error: Unresolved identifier: 'unresolved'
     print unresolved
           ^~~~~~~~~~
-tests/negative/for_test.toit:14:15: error: 'break' must be inside loop
+tests/negative/for_test.toit:16:15: error: 'break' must be inside loop
   for x := 0; break print unresolved
               ^~~~~
-tests/negative/for_test.toit:16:3: error: Unresolved identifier: 'unresolved'
+tests/negative/for_test.toit:18:3: error: Unresolved identifier: 'unresolved'
   unresolved
   ^~~~~~~~~~
-tests/negative/for_test.toit:19:21: error: 'break' must be inside loop
+tests/negative/for_test.toit:21:21: error: 'break' must be inside loop
   for x := 0; true; break
                     ^~~~~
-tests/negative/for_test.toit:20:11: error: Unresolved identifier: 'unresolved'
+tests/negative/for_test.toit:22:11: error: Unresolved identifier: 'unresolved'
     print unresolved
           ^~~~~~~~~~
-tests/negative/for_test.toit:21:21: error: 'break' must be inside loop
+tests/negative/for_test.toit:23:21: error: 'break' must be inside loop
   for x := 0; true; break print unresolved
                     ^~~~~
-tests/negative/for_test.toit:23:3: error: Unresolved identifier: 'unresolved'
+tests/negative/for_test.toit:25:3: error: Unresolved identifier: 'unresolved'
   unresolved
   ^~~~~~~~~~
-tests/negative/for_test.toit:25:21: error: Unresolved identifier: 'unresolved'
+tests/negative/for_test.toit:27:21: error: Unresolved identifier: 'unresolved'
   for x := 0; true: unresolved
                     ^~~~~~~~~~
-tests/negative/for_test.toit:25:15: error: Can't call result of evaluating expression
+tests/negative/for_test.toit:27:15: error: Can't call result of evaluating expression
   for x := 0; true: unresolved
               ^~~~
-tests/negative/for_test.toit:26:21: error: 'break' must be inside loop
+tests/negative/for_test.toit:28:21: error: 'break' must be inside loop
   for x := 0; true; break
                     ^~~~~
-tests/negative/for_test.toit:27:11: error: Unresolved identifier: 'unresolved'
+tests/negative/for_test.toit:29:11: error: Unresolved identifier: 'unresolved'
     print unresolved
           ^~~~~~~~~~
-tests/negative/for_test.toit:28:21: error: 'break' must be inside loop
+tests/negative/for_test.toit:30:21: error: 'break' must be inside loop
   for x := 0; true; break print : unresolved
                     ^~~~~
-tests/negative/for_test.toit:28:35: error: Unresolved identifier: 'unresolved'
+tests/negative/for_test.toit:30:35: error: Unresolved identifier: 'unresolved'
   for x := 0; true; break print : unresolved
                                   ^~~~~~~~~~
-tests/negative/for_test.toit:29:28: error: Unresolved identifier: 'unresolved'
+tests/negative/for_test.toit:31:28: error: Unresolved identifier: 'unresolved'
   for x := 0; true; "".  : unresolved
                            ^~~~~~~~~~
-tests/negative/for_test.toit:30:3: error: Unresolved identifier: 'unresolved'
+tests/negative/for_test.toit:32:3: error: Unresolved identifier: 'unresolved'
   unresolved
   ^~~~~~~~~~
-tests/negative/for_test.toit:32:17: error: Definition of variable not allowed at this location
+tests/negative/for_test.toit:34:17: error: Definition of variable not allowed at this location
   for x := 0; y := 1; x++:
                 ^~
 Compilation failed.

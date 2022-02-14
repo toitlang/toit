@@ -1,31 +1,31 @@
-tests/negative/class_name_test.toit:3:7: error: Expected class name
+tests/negative/class_name_test.toit:5:7: error: Expected class name
 class [:
       ^
-tests/negative/class_name_test.toit:7:6: error: Expected class name
+tests/negative/class_name_test.toit:9:6: error: Expected class name
 class:
      ^
-tests/negative/class_name_test.toit:11:7: error: Expected class name
+tests/negative/class_name_test.toit:13:7: error: Expected class name
 class *
       ^
-tests/negative/class_name_test.toit:16:7: error: Expected class name
+tests/negative/class_name_test.toit:18:7: error: Expected class name
 class +
       ^
-tests/negative/class_name_test.toit:21:6: error: Expected class name
+tests/negative/class_name_test.toit:23:6: error: Expected class name
 class // comment
      ^~~~~~~~~~~
-tests/negative/class_name_test.toit:23:6: error: Expected class name
+tests/negative/class_name_test.toit:25:6: error: Expected class name
 class /* multiline
      ^
-tests/negative/class_name_test.toit:5:5: error: Unresolved identifier: 'unresolved'
+tests/negative/class_name_test.toit:7:5: error: Unresolved identifier: 'unresolved'
     unresolved
     ^~~~~~~~~~
-tests/negative/class_name_test.toit:9:5: error: Unresolved identifier: 'unresolved'
+tests/negative/class_name_test.toit:11:5: error: Unresolved identifier: 'unresolved'
     unresolved
     ^~~~~~~~~~
-tests/negative/class_name_test.toit:14:5: error: Unresolved identifier: 'unresolved'
+tests/negative/class_name_test.toit:16:5: error: Unresolved identifier: 'unresolved'
     unresolved
     ^~~~~~~~~~
-tests/negative/class_name_test.toit:19:5: error: Unresolved identifier: 'unresolved'
+tests/negative/class_name_test.toit:21:5: error: Unresolved identifier: 'unresolved'
     unresolved
     ^~~~~~~~~~
 Compilation failed.

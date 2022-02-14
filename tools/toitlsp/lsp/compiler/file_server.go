@@ -29,7 +29,6 @@ type FileServer interface {
 	/// ConfigLine is the line that is sent to the compiler to be able to
 	/// communicate with the file server.
 	ConfigLine() string
-	Run() error
 	Stop() error
 	Protocol() *CompilerFSProtocol
 }
@@ -45,7 +44,8 @@ type PortFileServer struct {
 
 func NewPortFileServer(fs FileSystem, logger *zap.Logger, SDKPath string, address string) *PortFileServer {
 	return &PortFileServer{
-		cp: NewCompilerFSProtocol(fs, logger, SDKPath),
+		address: address,
+		cp:      NewCompilerFSProtocol(fs, logger, SDKPath),
 	}
 }
 
@@ -108,7 +108,7 @@ func (s *PortFileServer) serve(l net.Listener, closeCh chan struct{}) error {
 
 func (s *PortFileServer) handleConn(conn net.Conn) {
 	defer conn.Close()
-	s.cp.HandleConn(conn)
+	s.cp.HandleConn(conn, conn)
 }
 
 func (s *PortFileServer) Stop() error {

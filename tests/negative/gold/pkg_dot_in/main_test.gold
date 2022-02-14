@@ -1,4 +1,4 @@
-tests/negative/pkg_dot_in/main_test.toit:4:1: error: Import traverses package boundary: '<...>/tests/negative/pkg_dot_in/target/src/foo.toit'
+tests/negative/pkg_dot_in/main_test.toit:6:1: error: Import traverses package boundary: '<...>/tests/negative/pkg_dot_in/target/src/foo.toit'
 import .target.src.foo
 ^~~~~~
 Compilation failed.

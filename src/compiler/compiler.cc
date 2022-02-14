@@ -33,12 +33,15 @@
 #include "dispatch_table.h"
 #include "filesystem_hybrid.h"
 #include "filesystem_local.h"
-#include "filesystem_socket.h"
+#include "filesystem_lsp.h"
 #include "lambda.h"
 #include "list.h"
 #include "lsp/lsp.h"
 #include "lsp/completion.h"
 #include "lsp/goto_definition.h"
+#include "lsp/fs_connection_socket.h"
+#include "lsp/fs_protocol.h"
+#include "lsp/multiplex_stdout.h"
 #include "lock.h"
 #include "map.h"
 #include "monitor.h"
@@ -325,17 +328,42 @@ void Compiler::language_server(const Compiler::Configuration& compiler_config) {
 #endif
   LineReader reader(stdin);
   const char* port = reader.next("port");
-  FilesystemLocal fs_local;
-  FilesystemSocket fs_socket(port);
-  Filesystem* fs;
-  if (strcmp("-1", port) == 0) {
-    fs = &fs_local;
-  } else {
-    fs = &fs_socket;
-  }
 
-  LspProtocol lsp_protocol;
-  Lsp lsp(&lsp_protocol);
+  Filesystem* fs = null;
+  LspFsProtocol* fs_protocol = null;
+  LspFsConnection* connection = null;
+  LspWriter* writer = null;
+  if (strcmp("-1", port) == 0) {
+    fs = _new FilesystemLocal();
+    writer = new LspWriterStdout();
+  } else {
+    if (strcmp("-2", port) == 0) {
+      // Multiplex the FS protocol and the LSP output over stdout/stdin.
+      connection = _new LspFsConnectionMultiplexStdout();
+      writer = _new LspWriterMultiplexStdout();
+    } else {
+      // Communicate over a socket for the filesystem, and over stdout
+      // for the LSP output.
+      connection = _new LspFsConnectionSocket(port);
+      writer = new LspWriterStdout();
+    }
+    fs_protocol = _new LspFsProtocol(connection);
+    fs = _new FilesystemLsp(fs_protocol);
+  }
+  LspProtocol* lsp_protocol = new LspProtocol(writer);
+
+  // We generally don't explicitly keep track of memory, but here we might need
+  // to release resources.
+  Defer del { [&] {
+      delete fs;
+      delete fs_protocol;
+      delete connection;
+      delete writer;
+      delete lsp_protocol;
+    }
+  };
+
+  Lsp lsp(lsp_protocol);
 
   const char* mode = reader.next("mode");
   SourceManager source_manager(fs);

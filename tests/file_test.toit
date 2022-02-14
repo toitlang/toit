@@ -1,4 +1,6 @@
-// Copyright (C) 2018 Toitware ApS. All rights reserved.
+// Copyright (C) 2018 Toitware ApS.
+// Use of this source code is governed by a Zero-Clause BSD license that can
+// be found in the tests/LICENSE file.
 
 import expect show *
 
@@ -135,7 +137,7 @@ main:
       expect name == filename
       expect (not dir.next)
       dir.close
-      expect_already_closed: dir.close
+      dir.close  // We allow multiple calls to close.
 
       file.delete "$dirname/$filename"
 

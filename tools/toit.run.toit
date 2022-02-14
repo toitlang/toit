@@ -16,9 +16,7 @@
 // This program is a wrapper program used by toitc with one purpose
 // only: To make stack traces readable.
 
-import host.ar show *
-import debug.rpc show RPC_ECHO
-import .debug_message
+import ar show *
 import .snapshot
 import .mirror
 import .rpc
@@ -26,7 +24,6 @@ import .logging
 import log.rpc as log
 import log
 import monitor
-import debug.rpc as debug_lib
 import core.message_manual_decoding_ show print_for_manually_decoding_
 
 class ToitcProcessManager implements SystemMessageHandler_:
@@ -51,10 +48,6 @@ class ToitcProcessManager implements SystemMessageHandler_:
     rpc.register_procedure log.RPC_SYSTEM_LOG :: | args |
       print_
         log_format args[0] args[1] args[2] args[3] --with_timestamp=false
-
-    rpc.register_procedure debug_lib.RPC_SYSTEM_DEBUG::
-      str := decode_debug_message it[0] snapshot_bundle
-      print_ str
 
   on_message type gid pid args:
     if type == SYSTEM_MIRROR_MESSAGE_:

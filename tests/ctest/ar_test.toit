@@ -1,10 +1,12 @@
-// Copyright (C) 2020 Toitware ApS. All rights reserved.
+// Copyright (C) 2020 Toitware ApS.
+// Use of this source code is governed by a Zero-Clause BSD license that can
+// be found in the tests/LICENSE file.
 
 import expect show *
 import host.pipe
 import host.directory
 import host.file
-import host.tar show *
+import tar show *
 import ..ar_test as toit_ar_test
 
 do_ctest exe_dir tmp_dir file_mapping --in_memory=false:

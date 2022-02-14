@@ -322,6 +322,8 @@ void OS::set_heap_tag(word tag) {}
 
 word OS::get_heap_tag() { return 0; }
 
+void OS::heap_summary_report(int max_pages, const char* marker) { }
+
 } // namespace toit
 
 #endif

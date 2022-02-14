@@ -16,6 +16,7 @@
 package compiler
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"io"
@@ -78,11 +79,11 @@ func IsCrashError(err error) bool {
 }
 
 type Compiler struct {
-	settings   Settings
-	logger     *zap.Logger
-	fs         FileSystem
-	fileServer FileServer
-	parser     *parser
+	settings    Settings
+	logger      *zap.Logger
+	fs          FileSystem
+	fs_protocol *CompilerFSProtocol
+	parser      *parser
 
 	lastCompilerFlags []string
 	lastCompilerInput string
@@ -97,11 +98,10 @@ type Settings struct {
 
 func New(fs FileSystem, logger *zap.Logger, settings Settings) *Compiler {
 	return &Compiler{
-		settings:   settings,
-		logger:     logger,
-		fs:         fs,
-		fileServer: NewPortFileServer(fs, logger, settings.SDKPath, ":0"),
-		parser:     newParser(logger),
+		settings: settings,
+		logger:   logger,
+		fs:       fs,
+		parser:   newParser(logger),
 	}
 }
 
@@ -277,7 +277,7 @@ func (c *Compiler) Archive(ctx context.Context, options ArchiveOptions) error {
 		CompilerFlags:      compilerFlags,
 		CompilerInput:      compilerInput,
 		Info:               options.Info,
-		CompilerFSProtocol: c.fileServer.Protocol(),
+		CompilerFSProtocol: c.fs_protocol,
 		IncludeSDK:         options.IncludeSDK,
 		CWDPath:            cwdPath,
 	})
@@ -303,21 +303,39 @@ func (w *logWriter) Write(b []byte) (n int, err error) {
 type parserFn func(context.Context, io.Reader)
 
 func (c *Compiler) run(ctx context.Context, input string, parserFunc parserFn) error {
-	go c.fileServer.Run()
-	defer c.fileServer.Stop()
+	multi := newMultiplexConn(c.logger)
+	fileServer := NewPipeFileServer(c.fs, c.logger, c.settings.SDKPath)
+	c.fs_protocol = fileServer.Protocol()
+	go fileServer.Run(multi.CompilerToFS.r, multi.FSToCompiler.w)
+	defer fileServer.Stop()
 
-	cmd := c.cmd(ctx, input)
+	cmd := c.cmd(ctx, input, fileServer)
+	input = fmt.Sprintf("%s\n%s", fileServer.ConfigLine(), input)
+
+	c.logger.Debug("running compiler", zap.String("input", input), zap.Stringer("cmd", cmd))
+
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return err
+	}
+	w := bufio.NewWriter(stdin)
+	w.WriteString(input)
+	w.Flush()
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return err
 	}
 
+	multi.setFromCompiler(stdout)
+	multi.setToCompiler(stdin)
+
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		parserFunc(ctx, stdout)
-		c.fileServer.Stop()
+		parserFunc(ctx, multi.CompilerToParser.r)
+		fileServer.Stop()
+		multi.Close()
 		stdout.Close()
 	}()
 
@@ -351,7 +369,7 @@ func (c *Compiler) run(ctx context.Context, input string, parserFunc parserFn) e
 	return nil
 }
 
-func (c *Compiler) cmd(ctx context.Context, input string) *exec.Cmd {
+func (c *Compiler) cmd(ctx context.Context, input string, fileServer FileServer) *exec.Cmd {
 	args := []string{"--lsp"}
 	if c.settings.RootURI != "" {
 		project_root := uri.URIToPath(c.settings.RootURI)
@@ -361,15 +379,12 @@ func (c *Compiler) cmd(ctx context.Context, input string) *exec.Cmd {
 		}
 	}
 	cmd := exec.CommandContext(ctx, c.settings.CompilerPath, args...)
-	for !c.fileServer.IsReady() {
+	for !fileServer.IsReady() {
 		runtime.Gosched()
 	}
 
 	c.lastCompilerFlags = args
 	c.lastCompilerInput = input
-	input = fmt.Sprintf("%s\n%s", c.fileServer.ConfigLine(), input)
-	c.logger.Debug("running compiler", zap.String("input", input), zap.Stringer("cmd", cmd))
-	cmd.Stdin = strings.NewReader(input)
 	cmd.Stderr = newLogWriter(c.logger.Named("toitc"), zapcore.WarnLevel)
 	return cmd
 }

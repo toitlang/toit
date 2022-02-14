@@ -340,6 +340,7 @@ void Interpreter::prepare_task(Method entry, Instance* code) {
 Object** Interpreter::scavenge(Object** sp, bool malloc_failed, int attempts) {
   ASSERT(attempts >= 1 && attempts <= 3);  // Allocation attempts.
   if (attempts == 3) {
+    OS::heap_summary_report(0, "out of memory");
     if (VM::current()->scheduler()->is_boot_process(_process)) {
       OS::out_of_memory("Out of memory in system process");
     }
@@ -402,7 +403,7 @@ Object** Interpreter::check_stack_overflow(Object** sp, OverflowState* state, Me
 #ifdef TOIT_GC_LOGGING
     if (attempts == 3) {
       printf("[gc @ %p%s | 3rd time stack allocate failure %d->%d]\n",
-          _process, VM::current()->scheduler()->is_boot_process(_process) ? "*" : "",
+          _process, VM::current()->scheduler()->is_boot_process(_process) ? "*" : " ",
           length, new_length);
     }
 #endif

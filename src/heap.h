@@ -22,7 +22,6 @@
 #include "objects.h"
 #include "primitive.h"
 #include "printing.h"
-#include "snapshot.h"
 
 #include "objects_inline.h"
 
@@ -281,7 +280,9 @@ class ObjectHeap final : public Heap {
   ByteArray* allocate_proxy(int length, uint8* memory, bool dispose = false) {
     return allocate_external_byte_array(length, memory, dispose, false);
   }
-  ByteArray* allocate_proxy() { return allocate_proxy(0, null); }
+  ByteArray* allocate_proxy(bool dispose = false) {
+    return allocate_proxy(0, null, dispose);
+  }
 
   void print(Printer* printer);
 
@@ -300,8 +301,11 @@ class ObjectHeap final : public Heap {
 
   bool add_finalizer(HeapObject* key, Object* lambda);
   bool has_finalizer(HeapObject* key, Object* lambda);
-  bool add_vm_finalizer(HeapObject* key);
   bool remove_finalizer(HeapObject* key);
+
+  bool add_vm_finalizer(HeapObject* key);
+  bool remove_vm_finalizer(HeapObject* key);
+
   Object* next_finalizer_to_run();
   void set_finalizer_notifier(ObjectNotifier* notifier);
 
@@ -323,6 +327,7 @@ class ObjectHeap final : public Heap {
  private:
   // An estimate of how much memory overhead malloc has.
   static const word _EXTERNAL_MEMORY_ALLOCATOR_OVERHEAD = 2 * sizeof(word);
+
   // Minimum number of heap blocks we limit ourselves to.
   static const word _MIN_BLOCK_LIMIT = 4;
 

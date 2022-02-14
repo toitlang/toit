@@ -222,6 +222,7 @@ monitor Mailbox:
 monitor ResourceState_:
   constructor .group_ .resource_:
     register_object_notifier_ this group_ resource_
+    add_finalizer this:: dispose
 
   group: return group_
   resource: return resource_
@@ -239,7 +240,11 @@ monitor ResourceState_:
     state_ &= ~bits
 
   dispose:
-    resource_ = null
+    if resource_:
+      unregister_object_notifier_ group_ resource_
+      resource_ = null
+      group_ = null
+      remove_finalizer this
 
   // Called when the state changes because of the call to
   // [register_object_notifier] in the constructor.

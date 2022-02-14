@@ -1,34 +1,34 @@
-tests/negative/slice_test.toit:17:14: error: Can't have space between '[' and '..'
+tests/negative/slice_test.toit:19:14: error: Can't have space between '[' and '..'
   operator [ .. ] --from --to:
              ^~
-tests/negative/slice_test.toit:17:17: error: Can't have space between '..' and ']'
+tests/negative/slice_test.toit:19:17: error: Can't have space between '..' and ']'
   operator [ .. ] --from --to:
                 ^
-tests/negative/slice_test.toit:29:15: error: Unexpected delimiter
+tests/negative/slice_test.toit:31:15: error: Unexpected delimiter
   outside := 1..2
               ^~
-tests/negative/slice_test.toit:4:3: error: Invalid method shape for '[..]'
+tests/negative/slice_test.toit:6:3: error: Invalid method shape for '[..]'
   operator [..] --from --to --other:
   ^~~~~~~~~~~~~
-tests/negative/slice_test.toit:16:3: error: Invalid method shape for '[..]'
+tests/negative/slice_test.toit:18:3: error: Invalid method shape for '[..]'
   operator [..]:
   ^~~~~~~~~~~~~
-tests/negative/slice_test.toit:18:3: error: Invalid method shape for '[..]'
+tests/negative/slice_test.toit:20:3: error: Invalid method shape for '[..]'
   operator [..] --from:
   ^~~~~~~~~~~~~
-tests/negative/slice_test.toit:22:4: error: Argument mismatch for 'B.[..]'
+tests/negative/slice_test.toit:24:4: error: Argument mismatch for 'B.[..]'
 Required named argument '--to' not provided
   b[0..]
    ^
-tests/negative/slice_test.toit:23:4: error: Argument mismatch for 'B.[..]'
+tests/negative/slice_test.toit:25:4: error: Argument mismatch for 'B.[..]'
 Required named argument '--to' not provided
   b[..]
    ^
-tests/negative/slice_test.toit:26:4: error: Argument mismatch for 'C.[..]'
+tests/negative/slice_test.toit:28:4: error: Argument mismatch for 'C.[..]'
 Required named argument '--from' not provided
   c[..0]
    ^
-tests/negative/slice_test.toit:27:4: error: Argument mismatch for 'C.[..]'
+tests/negative/slice_test.toit:29:4: error: Argument mismatch for 'C.[..]'
 Required named argument '--from' not provided
   c[..]
    ^

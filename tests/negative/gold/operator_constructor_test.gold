@@ -1,19 +1,19 @@
-tests/negative/operator_constructor_test.toit:4:3: error: Invalid member name
+tests/negative/operator_constructor_test.toit:6:3: error: Invalid member name
   constructor.+ other:
   ^~~~~~~~~~~~
-tests/negative/operator_constructor_test.toit:4:15: error: Unexpected token: +
+tests/negative/operator_constructor_test.toit:6:15: error: Unexpected token: +
   constructor.+ other:
               ^
-tests/negative/operator_constructor_test.toit:5:3: error: Invalid member name
+tests/negative/operator_constructor_test.toit:7:3: error: Invalid member name
   constructor.>>> other:
   ^~~~~~~~~~~~
-tests/negative/operator_constructor_test.toit:5:15: error: Unexpected token: >>>
+tests/negative/operator_constructor_test.toit:7:15: error: Unexpected token: >>>
   constructor.>>> other:
               ^~~
-tests/negative/operator_constructor_test.toit:5:3: error: Redefinition of 'constructor'
+tests/negative/operator_constructor_test.toit:7:3: error: Redefinition of 'constructor'
   constructor.>>> other:
   ^~~~~~~~~~~
-tests/negative/operator_constructor_test.toit:4:3: note: First definition of 'constructor'
+tests/negative/operator_constructor_test.toit:6:3: note: First definition of 'constructor'
   constructor.+ other:
   ^~~~~~~~~~~
 Compilation failed.

@@ -1,7 +1,7 @@
-tests/negative/utf8_test.toit:4:17: error: Can't call result of evaluating expression
+tests/negative/utf8_test.toit:6:17: error: Can't call result of evaluating expression
   "𝄞𝄞" + ("𝄞𝄞" 3)
           ^~~~
-tests/negative/utf8_test.toit:5:3: error: Can't call result of evaluating expression
+tests/negative/utf8_test.toit:7:3: error: Can't call result of evaluating expression
   "𝄞𝄞" 3
   ^~~~
 Compilation failed.

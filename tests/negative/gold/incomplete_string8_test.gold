@@ -1,4 +1,4 @@
-tests/negative/incomplete_string8_test.toit:4:3: error: Unterminated string
+tests/negative/incomplete_string8_test.toit:6:3: error: Unterminated string
   """""
   ^
 Compilation failed.

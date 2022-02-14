@@ -1,43 +1,43 @@
-tests/negative/super_field_test.toit:9:3: error: Invalid name for declaration
+tests/negative/super_field_test.toit:11:3: error: Invalid name for declaration
   while:
   ^~~~~
-tests/negative/super_field_test.toit:12:3: error: Invalid name for declaration
+tests/negative/super_field_test.toit:14:3: error: Invalid name for declaration
   +:
   ^
-tests/negative/super_field_test.toit:15:3: error: Expected name of declaration
+tests/negative/super_field_test.toit:17:3: error: Expected name of declaration
   :
   ^
-tests/negative/super_field_test.toit:18:11: error: Expected name of declaration
+tests/negative/super_field_test.toit:20:11: error: Expected name of declaration
   abstract
           ^
-tests/negative/super_field_test.toit:20:9: error: Expected name of declaration
+tests/negative/super_field_test.toit:22:9: error: Expected name of declaration
   static:
         ^
-tests/negative/super_field_test.toit:4:3: error: Can't use 'super' as name for a method
+tests/negative/super_field_test.toit:6:3: error: Can't use 'super' as name for a method
   super
   ^~~~~
-tests/negative/super_field_test.toit:4:3: error: Missing body
+tests/negative/super_field_test.toit:6:3: error: Missing body
   super
   ^~~~~
-tests/negative/super_field_test.toit:6:3: error: Can't use 'this' as name for a method
+tests/negative/super_field_test.toit:8:3: error: Can't use 'this' as name for a method
   this:
   ^~~~
-tests/negative/super_field_test.toit:12:3: error: Invalid method shape for '+'
+tests/negative/super_field_test.toit:14:3: error: Invalid method shape for '+'
   +:
   ^
-tests/negative/super_field_test.toit:18:11: error: Members can't be abstract in non-abstract class
+tests/negative/super_field_test.toit:20:11: error: Members can't be abstract in non-abstract class
   abstract
           ^
-tests/negative/super_field_test.toit:21:5: error: Can't access 'super' in static method
+tests/negative/super_field_test.toit:23:5: error: Can't access 'super' in static method
     super
     ^~~~~
-tests/negative/super_field_test.toit:7:5: error: Unresolved identifier: 'this'
+tests/negative/super_field_test.toit:9:5: error: Unresolved identifier: 'this'
     super
     ^~~~~
-tests/negative/super_field_test.toit:10:5: error: Unresolved identifier: 'while'
+tests/negative/super_field_test.toit:12:5: error: Unresolved identifier: 'while'
     super
     ^~~~~
-tests/negative/super_field_test.toit:13:5: error: Unresolved identifier: '+'
+tests/negative/super_field_test.toit:15:5: error: Unresolved identifier: '+'
     super
     ^~~~~
 Compilation failed.

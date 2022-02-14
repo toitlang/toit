@@ -1,0 +1,12 @@
+tests/lsp/field_completion_test.toit:38:5: error: Can't access instance members before `super` call.
+    field
+    ^~~~~
+tests/lsp/field_completion_test.toit:42:5: error: Can't access instance members before `super` call.
+    field
+    ^~~~~
+tests/lsp/field_completion_test.toit:47:5: error: Can't access instance members before `super` call.
+    field = 0
+    ^~~~~
+tests/lsp/field_completion_test.toit:51:5: error: Can't access instance members before `super` call.
+    field = 0
+    ^~~~~

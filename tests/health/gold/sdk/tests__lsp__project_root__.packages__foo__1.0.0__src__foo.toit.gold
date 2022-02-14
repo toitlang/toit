@@ -1,0 +1,9 @@
+<...>/tests/lsp/project_root/.packages/foo/1.0.0/package.lock:5:10: error: Package 'bar-2.0.0' not found
+    url: bar
+         ^~~
+tests/lsp/project_root/.packages/foo/1.0.0/src/foo.toit:5:8: error: Package 'bar' for prefix 'bar' not found
+import bar
+       ^~~
+tests/lsp/project_root/.packages/foo/1.0.0/src/foo.toit:8:28: error: Unresolved identifier: 'identify'
+  return "foo 1.0.0 - $bar.identify"
+                           ^~~~~~~~

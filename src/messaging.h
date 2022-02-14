@@ -35,8 +35,9 @@ enum MessageType {
 enum {
   MESSAGING_TERMINATION_MESSAGE_SIZE = 3,
 
-  MESSAGING_ENCODING_MAX_NESTING   = 4,
-  MESSAGING_ENCODING_MAX_EXTERNALS = 8,
+  MESSAGING_ENCODING_MAX_NESTING      = 4,
+  MESSAGING_ENCODING_MAX_EXTERNALS    = 8,
+  MESSAGING_ENCODING_MAX_INLINED_SIZE = 128,
 };
 
 
@@ -150,7 +151,6 @@ class MessageEncoder {
 
   bool encoding_for_size() const { return _buffer == null; }
 
-  bool encode_string(String* object);
   bool encode_array(Array* object, int size);
   bool encode_byte_array(ByteArray* object);
   bool encode_copy(Object* object, int tag);
@@ -173,8 +173,8 @@ class MessageDecoder {
   static bool decode_termination_message(uint8* buffer, int* value);
 
   bool allocation_failed() const { return _allocation_failed; }
-  int external_allocations() const { return _external_allocations; }
 
+  void register_external_allocations();
   void remove_disposing_finalizers();
 
   Object* decode();
@@ -186,16 +186,16 @@ class MessageDecoder {
   int _cursor;
 
   bool _allocation_failed;
-  int _external_allocations;
 
   unsigned _externals_count;
   HeapObject* _externals[MESSAGING_ENCODING_MAX_EXTERNALS];
+  word _externals_sizes[MESSAGING_ENCODING_MAX_EXTERNALS];
 
   void register_external(HeapObject* object, int length);
 
-  Object* decode_string();
+  Object* decode_string(bool inlined);
   Object* decode_array();
-  Object* decode_byte_array();
+  Object* decode_byte_array(bool inlined);
   Object* decode_double();
   Object* decode_large_integer();
 

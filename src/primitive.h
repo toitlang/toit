@@ -47,7 +47,6 @@ namespace toit {
   M(ble,     MODULE_BLE)                     \
   M(dhcp,    MODULE_DHCP)                    \
   M(snapshot,MODULE_SNAPSHOT)                \
-  M(serialization, MODULE_SERIALIZATION)     \
   M(image,   MODULE_IMAGE)                   \
   M(blob,    MODULE_BLOB)                    \
   M(gpio,    MODULE_GPIO)                    \
@@ -226,7 +225,7 @@ namespace toit {
   PRIMITIVE(get_system_time, 0)              \
   PRIMITIVE(debug_set_memory_limit, 1)       \
   PRIMITIVE(dump_heap, 1)                    \
-  PRIMITIVE(serial_print_heap_report, 0)     \
+  PRIMITIVE(serial_print_heap_report, 2)     \
   PRIMITIVE(get_env, 1)                      \
   PRIMITIVE(varint_encode, 3)                \
   PRIMITIVE(varint_decode, 2)                \
@@ -265,6 +264,7 @@ namespace toit {
 
 #define MODULE_TLS(PRIMITIVE)                \
   PRIMITIVE(init, 1)                         \
+  PRIMITIVE(deinit, 1)                       \
   PRIMITIVE(init_socket, 2)                  \
   PRIMITIVE(create, 2)                       \
   PRIMITIVE(set_outgoing, 3)                 \
@@ -336,6 +336,7 @@ namespace toit {
   PRIMITIVE(total_run_time, 0)               \
   PRIMITIVE(image_config, 0)                 \
   PRIMITIVE(get_mac_address, 0)              \
+  PRIMITIVE(rtc_user_bytes, 0)               \
 
 #define MODULE_I2C(PRIMITIVE)                \
   PRIMITIVE(init, 3)                         \
@@ -406,6 +407,7 @@ namespace toit {
 #define MODULE_EVENTS(PRIMITIVE)             \
   PRIMITIVE(read_state, 2)                   \
   PRIMITIVE(register_object_notifier, 3)     \
+  PRIMITIVE(unregister_object_notifier, 2)   \
 
 #define MODULE_SNAPSHOT(PRIMITIVE)           \
   PRIMITIVE(launch, 4)                       \
@@ -467,7 +469,7 @@ namespace toit {
   PRIMITIVE(rename, 2)                       \
   PRIMITIVE(chdir, 1)                        \
   PRIMITIVE(mkdir, 2)                        \
-  PRIMITIVE(opendir, 1)                      \
+  PRIMITIVE(opendir, 2)                      \
   PRIMITIVE(readdir, 1)                      \
   PRIMITIVE(closedir, 1)                     \
   PRIMITIVE(stat, 2)                         \

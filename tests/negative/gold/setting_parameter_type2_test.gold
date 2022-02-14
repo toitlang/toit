@@ -1,4 +1,4 @@
 As check failed: an int (499) is not a string.
-  0: A.bar                     tests/negative/setting_parameter_type2_test.toit:6:7
-  1: main                      tests/negative/setting_parameter_type2_test.toit:9:7
+  0: A.bar                     tests/negative/setting_parameter_type2_test.toit:8:7
+  1: main                      tests/negative/setting_parameter_type2_test.toit:11:7
   2: __entry__.<lambda>        <sdk>/core/entry.toit:48:20

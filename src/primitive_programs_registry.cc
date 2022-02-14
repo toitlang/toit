@@ -40,7 +40,7 @@ PRIMITIVE(spawn) {
 
   if (!program->is_valid(offset, OS::image_uuid())) OUT_OF_BOUNDS;
 
-  ProcessGroup* process_group = ProcessGroup::create(group_id);
+  ProcessGroup* process_group = ProcessGroup::create(group_id, program);
   if (!process_group) MALLOC_FAILED;
 
   Block* initial_block = VM::current()->heap_memory()->allocate_initial_block();

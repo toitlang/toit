@@ -1,10 +1,10 @@
 <...>/tests/negative/pkg_bad_path/package.lock:5:11: error: Package '../not_there' not found at '<...>/tests/negative/not_there'
     path: ../not_there
           ^~~~~~~~~~~~
-tests/negative/pkg_bad_path_part/other.toit:1:8: error: Package 'pkg' for prefix 'pkg' not found
+tests/negative/pkg_bad_path_part/other.toit:5:8: error: Package 'pkg' for prefix 'pkg' not found
 import pkg
        ^~~
-tests/negative/pkg_bad_path_part/other.toit:4:14: error: Unresolved identifier: 'identify'
+tests/negative/pkg_bad_path_part/other.toit:8:14: error: Unresolved identifier: 'identify'
   return pkg.identify
              ^~~~~~~~
 Compilation failed.

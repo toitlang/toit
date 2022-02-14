@@ -1,7 +1,7 @@
-tests/negative/interface_optional_test.toit:4:11: error: Unresolved identifier: 'unresolved'
+tests/negative/interface_optional_test.toit:6:11: error: Unresolved identifier: 'unresolved'
   foo x y=unresolved --named1=unresolved --named2=2
           ^~~~~~~~~~
-tests/negative/interface_optional_test.toit:4:31: error: Unresolved identifier: 'unresolved'
+tests/negative/interface_optional_test.toit:6:31: error: Unresolved identifier: 'unresolved'
   foo x y=unresolved --named1=unresolved --named2=2
                               ^~~~~~~~~~
 Couldn't find 'main' (with 0 or 1 argument) in entry file 'tests/negative/interface_optional_test.toit'

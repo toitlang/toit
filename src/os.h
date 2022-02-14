@@ -222,7 +222,7 @@ class OS {
   // the origin of allocations on the current thread.
   static void set_heap_tag(word tag);
   static word get_heap_tag();
-  static void heap_summary_report();
+  static void heap_summary_report(int max_pages, const char* marker);
 
   // Unique 16-bytes uuid of the running image.
   static const uint8* image_uuid();

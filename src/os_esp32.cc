@@ -445,39 +445,51 @@ class HeapSummaryPage {
     largest_free_ = 0;
   }
 
-  int register_user(uword tag, uword size) {
-    uint16 saturated_size = Utils::min(size, 0xffffu);
+  static int compute_type(uword tag) {
     if (tag == 0) {
       tag = NULL_MALLOC_TAG;
     } else if (tag == 'W') {
       tag = WIFI_MALLOC_TAG;
     } else if (tag == ITERATE_TAG_FREE) {
       tag = FREE_MALLOC_TAG;
+    } else if (tag == ITERATE_TAG_HEAP_OVERHEAD) {
+      tag = HEAP_OVERHEAD_MALLOC_TAG;
     } else {
       tag -= ITERATE_CUSTOM_TAGS;
       if (tag < 0 || tag >= NUMBER_OF_MALLOC_TAGS) {
         tag = UNKNOWN_MALLOC_TAG;
       }
     }
-    users_ |= 1 << tag;
-    sizes_[tag] += saturated_size;
-    counts_[tag]++;
-    if (tag == FREE_MALLOC_TAG) {
+    return tag;
+  }
+
+  int register_user(uword tag, uword size) {
+    uint16 saturated_size = Utils::min(size, 0xffffu);
+    int type = compute_type(tag);
+    users_ |= 1 << type;
+    sizes_[type] += saturated_size;
+    counts_[type]++;
+    if (type == FREE_MALLOC_TAG) {
       largest_free_ = Utils::max(largest_free_, saturated_size);
     }
-    return tag;
+    return type;
   }
 
   void print() {
     if (address_ == 0) return;
-    printf("%p: largest free %d\n", reinterpret_cast<void*>(address_), largest_free_);
+    printf("  ├────────────┼─────────────────────────────────────────────┤\n");
+    printf("  │ %p │   Largest free = %-5d                      │\n",
+        reinterpret_cast<void*>(address_), largest_free_);
+    printf("  │            ├───────────┬─────────┬───────────────────────┤\n");
+    printf("  │            │   Bytes   │  Count  │  Type                 │\n");
+    printf("  │            ├───────────┼─────────┼───────────────────────┤\n");
     for (int i = 0; i < NUMBER_OF_MALLOC_TAGS; i++) {
       if (users_ & (1 << i)) {
-        const char* name = name_of_type(i);
-        for (int j = 0; j < 30; j++) printf(" ");
-        printf("%4dbytes %3d allocations %s\n", sizes_[i], counts_[i], name);
+        printf("  │            │ %7d   │ %6d  │  %-19s  │\n",
+             sizes_[i], counts_[i], HeapSummaryPage::name_of_type(i));
       }
     }
+    printf("  ├────────────┼───────────┴─────────┴───────────────────────┤\n");
   }
 
   static const char* name_of_type(int tag) {
@@ -513,21 +525,21 @@ class HeapSummaryPage {
 };
 
 class HeapSummaryCollector {
-  static const int MAX_PAGES_ = 100;
-
  public:
-  HeapSummaryCollector() {
-    pages_ = _new HeapSummaryPage[MAX_PAGES_];
-    current_page_ = null;
+  explicit HeapSummaryCollector(int max_pages) : max_pages_(max_pages) {
+    if (max_pages > 0) {
+      pages_ = _new HeapSummaryPage[max_pages];
+      out_of_memory_ = (pages_ == null);
+    }
     memset(void_cast(sizes_), 0, sizeof sizes_);
     memset(void_cast(counts_), 0, sizeof counts_);
   }
 
   word allocation_requirement() {
-    return MAX_PAGES_ * sizeof(HeapSummaryPage);
+    return max_pages_ * sizeof(HeapSummaryPage);
   }
 
-  bool out_of_memory() const { return pages_ == null; }
+  bool out_of_memory() const { return out_of_memory_; }
 
   ~HeapSummaryCollector() {
     delete[] pages_;
@@ -537,38 +549,90 @@ class HeapSummaryCollector {
     uword tag = reinterpret_cast<uword>(t);
     if (!current_page_ || !current_page_->matches(address)) {
       current_page_ = null;
-      for (int i = 0; i < MAX_PAGES_; i++) {
+      for (int i = 0; i < max_pages_; i++) {
         if (pages_[i].matches(address)) {
-          current_page_ = pages_ + i;
+          current_page_ = &pages_[i];
           break;
         }
-        if (pages_[i].unused() || i == MAX_PAGES_ - 1) {
-          current_page_ = pages_ + i;
+        bool unused = pages_[i].unused();
+        if (unused || i == max_pages_ - 1) {
+          current_page_ = &pages_[i];
+          if (!unused) dropped_pages_++;
           current_page_->set_address(address);
           break;
         }
       }
     }
-    int type = current_page_->register_user(tag, size);
-    sizes_[type] += size;
-    counts_[type]++;
+    int type = current_page_
+        ? current_page_->register_user(tag, size)
+        : HeapSummaryPage::compute_type(tag);
+    // Disregard IRAM allocations.
+    if (reinterpret_cast<uword>(address) < 0x40000000) {
+      sizes_[type] += size;
+      counts_[type]++;
+    }
   }
 
-  void print() {
-    printf("HEAP REPORT:\n");
-    for (int i = 0; i < NUMBER_OF_MALLOC_TAGS; i++) {
-      printf("%20s: %7d bytes %3d allocations\n", HeapSummaryPage::name_of_type(i), sizes_[i], counts_[i]);
+  void print(const char* marker) {
+    if (marker && strlen(marker) > 0) {
+      printf("Heap report @ %s:\n", marker);
+    } else {
+      printf("Heap report:\n");
     }
-    for (int i = 0; i < MAX_PAGES_; i++) {
+    printf("  ┌───────────┬─────────┬───────────────────────┐\n");
+    printf("  │   Bytes   │  Count  │  Type                 │\n");
+    printf("  ├───────────┼─────────┼───────────────────────┤\n");
+
+    int size = 0;
+    int count = 0;
+    for (int i = 0; i < NUMBER_OF_MALLOC_TAGS; i++) {
+      // Leave out free space and allocation types with no allocations.
+      if (i == FREE_MALLOC_TAG || sizes_[i] == 0) continue;
+      printf("  | %7d   | %6d  |  %-19s  |\n",
+          sizes_[i], counts_[i], HeapSummaryPage::name_of_type(i));
+      size += sizes_[i];
+      // The reported overhead isn't really separate allocations, so
+      // don't count them as such.
+      if (i != HEAP_OVERHEAD_MALLOC_TAG) {
+        count += counts_[i];
+      }
+    }
+
+    multi_heap_info_t info;
+    heap_caps_get_info(&info, MALLOC_CAP_8BIT);
+    int capacity_bytes = info.total_allocated_bytes + info.total_free_bytes;
+    int used_bytes = size * 100 / capacity_bytes;
+    printf("  └───────────┴─────────┴───────────────────────┘\n");
+    printf("  Total: %d bytes in %d allocations (%d%%)\n",
+        size, count, used_bytes);
+
+    int page_count = 0;
+    for (int i = 0; i < max_pages_; i++) {
+      if (!pages_[i].unused()) page_count++;
+    }
+    if (page_count == 0) return;
+
+    printf("  ┌────────────┬─────────────────────────────────────────────┐\n");
+    for (int i = 0; i < max_pages_; i++) {
       pages_[i].print();
     }
+    if (dropped_pages_ > 0) {
+      printf("  ├────────────┼─────────────────────────────────────────────┤\n");
+      printf("  │   %8d │   Unreported pages, hit limit of %-4d       │\n",
+        dropped_pages_, max_pages_);
+      printf("  ├────────────┼─────────────────────────────────────────────┤\n");
+    }
+    printf("  └────────────┴─────────────────────────────────────────────┘\n");
   }
 
  private:
-  HeapSummaryPage* pages_;
-  HeapSummaryPage* current_page_;
+  HeapSummaryPage* pages_ = null;
+  HeapSummaryPage* current_page_ = null;
   uword sizes_[NUMBER_OF_MALLOC_TAGS];
   uword counts_[NUMBER_OF_MALLOC_TAGS];
+  const int max_pages_;
+  int dropped_pages_ = 0;
+  bool out_of_memory_ = false;
 };
 
 bool register_allocation(void* self, void* tag, void* address, uword size) {
@@ -577,22 +641,22 @@ bool register_allocation(void* self, void* tag, void* address, uword size) {
   return false;
 }
 
-void OS::heap_summary_report() {
-  HeapSummaryCollector collector;
+void OS::heap_summary_report(int max_pages, const char* marker) {
+  HeapSummaryCollector collector(max_pages);
   if (collector.out_of_memory()) {
     printf("Not enough memory for a heap report (%d bytes)\n", static_cast<int>(collector.allocation_requirement()));
     return;
   }
   int flags = ITERATE_ALL_ALLOCATIONS | ITERATE_UNALLOCATED;
   heap_caps_iterate_tagged_memory_areas(&collector, null, &register_allocation, flags);
-  collector.print();
+  collector.print(marker);
 }
 
 #else // def TOIT_CMPCTMALLOC
 
 void OS::set_heap_tag(word tag) { }
 word OS::get_heap_tag() { return 0; }
-void OS::heap_summary_report() { }
+void OS::heap_summary_report(int max_pages, const char* marker) { }
 
 
 #endif // def TOIT_CMPCTMALLOC

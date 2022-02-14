@@ -1,5 +1,8 @@
 prefixes:
   host: host
+  tar: tar
 packages:
   host:
     path: ../../../packages/host
+  tar:
+    path: ../../../packages/tar

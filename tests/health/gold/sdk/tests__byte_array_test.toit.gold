@@ -1,0 +1,24 @@
+tests/byte_array_test.toit:11:14: warning: Byte-array element not in range 0-255
+  bytes := #[-1, 256]
+             ^~
+tests/byte_array_test.toit:11:18: warning: Byte-array element not in range 0-255
+  bytes := #[-1, 256]
+                 ^~~
+tests/byte_array_test.toit:16:13: warning: Byte-array element not in range 0-255
+  bytes = #[-1, -1, -1, -1, -1, -1]
+            ^~
+tests/byte_array_test.toit:16:17: warning: Byte-array element not in range 0-255
+  bytes = #[-1, -1, -1, -1, -1, -1]
+                ^~
+tests/byte_array_test.toit:16:21: warning: Byte-array element not in range 0-255
+  bytes = #[-1, -1, -1, -1, -1, -1]
+                    ^~
+tests/byte_array_test.toit:16:25: warning: Byte-array element not in range 0-255
+  bytes = #[-1, -1, -1, -1, -1, -1]
+                        ^~
+tests/byte_array_test.toit:16:29: warning: Byte-array element not in range 0-255
+  bytes = #[-1, -1, -1, -1, -1, -1]
+                            ^~
+tests/byte_array_test.toit:16:33: warning: Byte-array element not in range 0-255
+  bytes = #[-1, -1, -1, -1, -1, -1]
+                                ^~

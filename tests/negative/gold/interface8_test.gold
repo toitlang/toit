@@ -1,13 +1,13 @@
-tests/negative/interface8_test.toit:6:11: error: Missing implementations for interface methods
+tests/negative/interface8_test.toit:8:11: error: Missing implementations for interface methods
 interface A2 implements A:
           ^~
-tests/negative/interface8_test.toit:4:3: note: Missing implementation for 'foo'
+tests/negative/interface8_test.toit:6:3: note: Missing implementation for 'foo'
   foo
   ^~~
-tests/negative/interface8_test.toit:9:7: error: Missing implementations for interface methods
+tests/negative/interface8_test.toit:11:7: error: Missing implementations for interface methods
 class B implements A2:
       ^
-tests/negative/interface8_test.toit:4:3: note: Missing implementation for 'foo'
+tests/negative/interface8_test.toit:6:3: note: Missing implementation for 'foo'
   foo
   ^~~
 Compilation failed.

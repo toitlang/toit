@@ -1,25 +1,25 @@
-tests/negative/map_test.toit:5:8: error: Incomplete expression
+tests/negative/map_test.toit:7:8: error: Incomplete expression
     1 :
        ^
-tests/negative/map_test.toit:11:15: error: Missing ':' to separate map key and value
+tests/negative/map_test.toit:13:15: error: Missing ':' to separate map key and value
     unresolved
               ^
-tests/negative/map_test.toit:16:11: error: Missing ':' to separate map key and value
+tests/negative/map_test.toit:18:11: error: Missing ':' to separate map key and value
     break 499
           ^~~
-tests/negative/map_test.toit:7:3: error: Unresolved identifier: 'unresolved'
+tests/negative/map_test.toit:9:3: error: Unresolved identifier: 'unresolved'
   unresolved
   ^~~~~~~~~~
-tests/negative/map_test.toit:10:9: error: Unresolved identifier: 'unresolved'
+tests/negative/map_test.toit:12:9: error: Unresolved identifier: 'unresolved'
     1 : unresolved,
         ^~~~~~~~~~
-tests/negative/map_test.toit:11:5: error: Unresolved identifier: 'unresolved'
+tests/negative/map_test.toit:13:5: error: Unresolved identifier: 'unresolved'
     unresolved
     ^~~~~~~~~~
-tests/negative/map_test.toit:15:5: error: Unresolved identifier: 'unresolved'
+tests/negative/map_test.toit:17:5: error: Unresolved identifier: 'unresolved'
     unresolved : true,
     ^~~~~~~~~~
-tests/negative/map_test.toit:16:5: error: 'break' must be inside loop
+tests/negative/map_test.toit:18:5: error: 'break' must be inside loop
     break 499
     ^~~~~
 Compilation failed.

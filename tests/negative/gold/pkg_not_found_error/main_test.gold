@@ -4,10 +4,10 @@
 <...>/tests/negative/pkg_not_found_error/package.lock:7:11: error: Package 'not exist' not found at '<...>/tests/negative/pkg_not_found_error/not exist'
     path: not exist
           ^~~~~~~~~
-tests/negative/pkg_not_found_error/main_test.toit:3:8: error: Package 'not_exist' for prefix 'error' not found
+tests/negative/pkg_not_found_error/main_test.toit:5:8: error: Package 'not_exist' for prefix 'error' not found
 import error
        ^~~~~
-tests/negative/pkg_not_found_error/main_test.toit:6:15: error: Unresolved identifier: 'foo'
+tests/negative/pkg_not_found_error/main_test.toit:8:15: error: Unresolved identifier: 'foo'
   print error.foo
               ^~~
 Compilation failed.

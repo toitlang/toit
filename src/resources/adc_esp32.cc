@@ -101,8 +101,11 @@ PRIMITIVE(init) {
     ALLOCATION_FAILED;
   }
 
-  AdcState* state = _new AdcState(group, unit, chan);
-  if (!state) MALLOC_FAILED;
+  ADCState* state = null;
+  { HeapTagScope scope(ITERATE_CUSTOM_TAGS + EXTERNAL_BYTE_ARRAY_MALLOC_TAG);
+    state = _new ADCState(group, unit, chan);
+    if (!state) MALLOC_FAILED;
+  }
 
   const int DEFAULT_VREF = 1100;
   esp_adc_cal_characterize(unit, atten, ADC_WIDTH_BIT_12, DEFAULT_VREF, &state->calibration);

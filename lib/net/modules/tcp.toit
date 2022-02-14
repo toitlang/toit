@@ -42,7 +42,7 @@ class TcpSocket_:
     state_ = null
     tcp_close_ state.group state.resource
     state.dispose
-    // Remove the finalizer installed in [listen].
+    // Remove the finalizer installed in [open_].
     remove_finalizer this
 
   mtu -> int: return TOIT_MTU_TCP
@@ -56,7 +56,7 @@ class TcpSocket_:
       // TODO(kasper): We'd like to issue a "WARNING: socket was not closed" message here,
       // but the message cannot be printed on stdout because that interferes with the
       // LSP protocol.
-      tcp_close_ group id
+      close
 
   ensure_state_ bits --error_bits=TOIT_TCP_ERROR_ [--failure]:
     state := ensure_state_

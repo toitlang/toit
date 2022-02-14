@@ -31,8 +31,10 @@ class Session:
 
   // A latch until the handshake has completed.
   handshake_in_progress_/monitor.Latch? := monitor.Latch
+  group_/TlsGroup_? := null
   tls_ := null
-  outgoing_byte_array_ := ByteArray 1500
+
+  outgoing_buffer_/ByteArray := #[]
   closed_for_write_ := false
 
   /**
@@ -88,18 +90,19 @@ class Session:
       if error: throw error
       return
 
-    group := is_server ? tls_group_server_ : tls_group_client_
-    tls_ = tls_create_ group server_name_
+    group_ = is_server ? tls_group_server_ : tls_group_client_
+    handle := group_.use
+    tls_ = tls_create_ handle server_name_
     add_finalizer this:: this.close
+
     root_certificates.do: tls_add_root_certificate_ tls_ it.res_
     if certificate:
       tls_add_certificate_ tls_ certificate.certificate.res_ certificate.private_key certificate.password
     tls_init_socket_ tls_ null
     if session_state:
       tls_set_session_ tls_ session_state
-    tls_set_outgoing_ tls_ outgoing_byte_array_ 0
 
-    resource_state := monitor.ResourceState_ group tls_
+    resource_state := monitor.ResourceState_ handle tls_
     try:
       while true:
         tls_handshake_ tls_
@@ -116,11 +119,12 @@ class Session:
         else if state == TOIT_TLS_WANT_WRITE_:
           // This is already handled above with flush_outgoing_
         else:
-          tls_error_ group state
+          tls_error_ handle state
     finally: | is_exception exception |
       value := is_exception ? exception.value : null
       handshake_in_progress_.set value
       handshake_in_progress_ = null
+      resource_state.dispose
 
   /**
   Gets the session state, a ByteArray that can be used to resume
@@ -167,6 +171,7 @@ class Session:
     tls_close_write_ tls_
     flush_outgoing_
     closed_for_write_ = true
+    outgoing_buffer_ = #[]
 
   /**
   Closes the TLS session and releases any resources associated with it.
@@ -175,6 +180,10 @@ class Session:
     if tls_:
       tls_close_ tls_
       tls_ = null
+      group_.unuse
+      group_ = null
+      reader_.clear
+      outgoing_buffer_ = #[]
       remove_finalizer this
 
   ensure_handshaken_:
@@ -186,10 +195,14 @@ class Session:
     while true:
       fullness := tls_get_outgoing_fullness_ tls_
       if fullness > from:
-        sent := writer_.write outgoing_byte_array_ from fullness
+        sent := writer_.write outgoing_buffer_ from fullness
         from += sent
       else:
-        tls_set_outgoing_ tls_ outgoing_byte_array_ 0
+        // The outgoing buffer can be neutered by the calls to
+        // write. In that case, we allocate a fresh external one.
+        if outgoing_buffer_.is_empty:
+          outgoing_buffer_ = ByteArray_.external_ 1500
+        tls_set_outgoing_ tls_ outgoing_buffer_ 0
         return
 
   read_more_ -> bool:
@@ -316,17 +329,44 @@ TOIT_TLS_DONE_ := 1 << 0
 TOIT_TLS_WANT_READ_ := 1 << 1
 TOIT_TLS_WANT_WRITE_ := 1 << 2
 
-tls_group_client_ ::= tls_init_ false
-tls_group_server_ ::= tls_init_ true
+tls_group_client_ ::= TlsGroup_ false
+tls_group_server_ ::= TlsGroup_ true
 
-tls_init_ server:
+class TlsGroup_:
+  handle_/ByteArray? := null
+  is_server_/bool
+  users_/int := 0
+  constructor .is_server_:
+
+  use -> ByteArray:
+    users_++
+    if handle_: return handle_
+    return handle_ = tls_init_ is_server_
+
+  unuse -> none:
+    if --users_ == 0:
+      handle := handle_
+      handle_ = null
+      tls_deinit_ handle
+
+
+tls_init_ is_server/bool:
   #primitive.tls.init
 
-tls_init_socket_ group transport_id:
-  #primitive.tls.init_socket
+tls_deinit_ group:
+  #primitive.tls.deinit
 
-tls_create_ module hostname:
+tls_create_ group hostname:
   #primitive.tls.create
+
+tls_add_root_certificate_ group cert:
+  #primitive.tls.add_root_certificate
+
+tls_error_ group error:
+  #primitive.tls.error
+
+tls_init_socket_ tls_socket transport_id:
+  #primitive.tls.init_socket
 
 tls_handshake_ tls_socket:
   #primitive.tls.handshake
@@ -343,26 +383,20 @@ tls_close_write_ tls_socket:
 tls_close_ tls_socket:
   #primitive.tls.close
 
-tls_add_root_certificate_ module cert:
-  #primitive.tls.add_root_certificate
-
-tls_add_certificate_ socket public_byte_array private_byte_array password:
+tls_add_certificate_ tls_socket public_byte_array private_byte_array password:
   #primitive.tls.add_certificate
 
-tls_set_incoming_ socket byte_array from:
+tls_set_incoming_ tls_socket byte_array from:
   #primitive.tls.set_incoming
 
-tls_get_incoming_from_ socket:
+tls_get_incoming_from_ tls_socket:
   #primitive.tls.get_incoming_from
 
-tls_set_outgoing_ socket byte_array fullness:
+tls_set_outgoing_ tls_socket byte_array fullness:
   #primitive.tls.set_outgoing
 
-tls_get_outgoing_fullness_ socket:
+tls_get_outgoing_fullness_ tls_socket:
   #primitive.tls.get_outgoing_fullness
-
-tls_error_ group error:
-  #primitive.tls.error
 
 tls_get_session_ tls_socket -> ByteArray:
   #primitive.tls.get_session

@@ -230,8 +230,8 @@ class LspServer:
     sdk_path := (sdk_path_from_compiler compiler_path_)
     local_path := path.replace rpc_sdk_path_placeholder_ sdk_path
 
-    file_server := FileServer.local compiler_path_ sdk_path_ documents_
-    file := file_server.get_file local_path
+    protocol := FileServerProtocol.local compiler_path_ sdk_path_ documents_
+    file := protocol.get_file local_path
     content/any := file.content
     if content and connection_.uses_json: content = content.to_string
     return {
@@ -255,7 +255,7 @@ class LspServer:
         --writer=buffer
         --compiler_flags=compiler.build_run_flags
         --compiler_input=json.stringify paths
-        --file_server=compiler.file_server
+        --protocol=compiler.protocol
         --info="toit/archive"
         --cwd_path=null
         --include_sdk=include_sdk
@@ -532,20 +532,20 @@ class LspServer:
 
     should_write_repro := settings_.get "shouldWriteReproOnCrash" --if_absent=:false
 
-    file_server := null
+    protocol / FileServerProtocol := ?
     if uses_rpc_filesystem_:
       filesystem/Filesystem := ?
       if rpc_sdk_path_placeholder_:
         filesystem = FilesystemHybrid rpc_sdk_path_placeholder_ compiler_path connection_
       else:
         filesystem = FilesystemLspRpc connection_
-      file_server = FileServer documents_ filesystem
+      protocol = FileServerProtocol documents_ filesystem
     else:
-      file_server = FileServer.local compiler_path sdk_path documents_
+      protocol = FileServerProtocol.local compiler_path sdk_path documents_
 
     compiler := null  // Let the 'compiler' local be visible in the lambda expression below.
     compiler = Compiler compiler_path translator_ timeout_ms
-        --file_server=file_server
+        --protocol=protocol
         --project_path=root_uri_ and (translator_.to_path root_uri_)
         --on_error=:: |message|
           if is_rate_limited:
@@ -555,7 +555,7 @@ class LspServer:
             send_show_message message
           else:
             send_log_message message
-        --on_crash=:: |compiler_flags compiler_input signal file_server|
+        --on_crash=:: |compiler_flags compiler_input signal protocol|
           if is_rate_limited:
             // Do nothing.
           else if should_write_repro:
@@ -565,7 +565,7 @@ class LspServer:
                 --compiler_flags=compiler_flags
                 --compiler_input=compiler_input
                 --info=signal
-                --file_server=file_server
+                --protocol=protocol
                 --cwd_path=root_uri_ and (translator_.to_path root_uri_)
                 --include_sdk
             send_show_message "Compiler crashed. Repro created: $repro_path"

@@ -1,19 +1,19 @@
-tests/negative/final_loop_variable3_test.toit:19:3: error: Unresolved identifier: 'unresolved'
+tests/negative/final_loop_variable3_test.toit:21:3: error: Unresolved identifier: 'unresolved'
   unresolved
   ^~~~~~~~~~
-tests/negative/final_loop_variable3_test.toit:8:15: error: Can't assign to final local
+tests/negative/final_loop_variable3_test.toit:10:15: error: Can't assign to final local
     gee:: foo = 42
               ^
-tests/negative/final_loop_variable3_test.toit:10:33: error: Can't assign to final local
+tests/negative/final_loop_variable3_test.toit:12:33: error: Can't assign to final local
   for x ::= 42; x < 10; (gee:: x++):
                                 ^~
-tests/negative/final_loop_variable3_test.toit:13:25: error: Can't assign to final local
+tests/negative/final_loop_variable3_test.toit:15:25: error: Can't assign to final local
   for x ::= 42; (gee ::x++) < 10; (gee x++):
                         ^~
-tests/negative/final_loop_variable3_test.toit:13:41: error: Can't assign to final local
+tests/negative/final_loop_variable3_test.toit:15:41: error: Can't assign to final local
   for x ::= 42; (gee ::x++) < 10; (gee x++):
                                         ^~
-tests/negative/final_loop_variable3_test.toit:17:12: error: Can't assign to final local
+tests/negative/final_loop_variable3_test.toit:19:12: error: Can't assign to final local
     gee:: x++
            ^~
 Compilation failed.

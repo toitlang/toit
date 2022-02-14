@@ -1,0 +1,6 @@
+tests/fold_test.toit:115:23: warning: Condition always evaluates to true
+  expect_not_null ("" ? 4 : null)
+                      ^
+tests/fold_test.toit:116:3: warning: Condition always evaluates to true
+  if "":
+  ^~

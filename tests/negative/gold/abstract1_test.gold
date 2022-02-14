@@ -1,4 +1,4 @@
-tests/negative/abstract1_test.toit:3:10: error: Static functions can't be abstract
+tests/negative/abstract1_test.toit:5:10: error: Static functions can't be abstract
 abstract foo
          ^~~
 Compilation failed.

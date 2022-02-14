@@ -1,16 +1,16 @@
-tests/negative/block6_test.toit:3:9: error: Unnamed non-blocks must be before blocks
+tests/negative/block6_test.toit:5:9: error: Unnamed non-blocks must be before blocks
 foo [x] y:
         ^
-tests/negative/block6_test.toit:3:5: note: Block parameter
+tests/negative/block6_test.toit:5:5: note: Block parameter
 foo [x] y:
     ^~
-tests/negative/block6_test.toit:4:12: error: Unresolved identifier: 'unresolved'
+tests/negative/block6_test.toit:6:12: error: Unresolved identifier: 'unresolved'
   x.call y unresolved
            ^~~~~~~~~~
-tests/negative/block6_test.toit:8:9: error: Blocks must be after non-block arguments
+tests/negative/block6_test.toit:10:9: error: Blocks must be after non-block arguments
   foo b 499
         ^~~
-tests/negative/block6_test.toit:9:3: error: Unresolved identifier: 'unresolved'
+tests/negative/block6_test.toit:11:3: error: Unresolved identifier: 'unresolved'
   unresolved
   ^~~~~~~~~~
 Compilation failed.

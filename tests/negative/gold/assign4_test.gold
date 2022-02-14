@@ -1,13 +1,13 @@
-tests/negative/assign4_test.toit:3:7: error: Expected class name
+tests/negative/assign4_test.toit:5:7: error: Expected class name
 class class A:
       ^~~~~
-tests/negative/assign4_test.toit:6:17: error: Unresolved super class
+tests/negative/assign4_test.toit:8:17: error: Unresolved super class
 class B extends A:
                 ^
-tests/negative/assign4_test.toit:4:12: error: Members can't be abstract in non-abstract class
+tests/negative/assign4_test.toit:6:12: error: Members can't be abstract in non-abstract class
   abstract bar= x
            ^~~
-tests/negative/assign4_test.toit:8:5: error: Can't assign to unknown 'bar'
+tests/negative/assign4_test.toit:10:5: error: Can't assign to unknown 'bar'
     super = 22
     ^~~~~
 Compilation failed.

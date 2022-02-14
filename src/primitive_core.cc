@@ -1715,6 +1715,7 @@ PRIMITIVE(process_send) {
     length = size_encoder.size();
   }
 
+  HeapTagScope scope(ITERATE_CUSTOM_TAGS + EXTERNAL_BYTE_ARRAY_MALLOC_TAG);
   uint8* buffer = unvoid_cast<uint8*>(malloc(length));
   if (buffer == null) MALLOC_FAILED;
 
@@ -1769,17 +1770,15 @@ PRIMITIVE(task_receive_message) {
   } else if (message_type == MESSAGE_SYSTEM) {
     Array* array = process->object_heap()->allocate_array(4);
     if (array == null) ALLOCATION_FAILED;
-
     SystemMessage* system = static_cast<SystemMessage*>(message);
-
     MessageDecoder decoder(process, system->data());
+
     Object* decoded = decoder.decode();
     if (decoder.allocation_failed()) {
       decoder.remove_disposing_finalizers();
       ALLOCATION_FAILED;
     }
-    process->register_external_allocation(decoder.external_allocations());
-    system->clear_data();
+    decoder.register_external_allocations();
 
     array->at_put(0, Smi::from(system->type()));
     array->at_put(1, Smi::from(system->gid()));
@@ -2201,12 +2200,11 @@ PRIMITIVE(dump_heap) {
 }
 
 PRIMITIVE(serial_print_heap_report) {
-#ifndef TOIT_CMPCTMALLOC
-  UNIMPLEMENTED_PRIMITIVE;
-#else
-  OS::heap_summary_report();
-  return process->program()->null_object();
+#ifdef TOIT_CMPCTMALLOC
+  ARGS(cstring, marker, int, max_pages);
+  OS::heap_summary_report(max_pages, marker);
 #endif // def TOIT_CMPCTMALLOC
+  return process->program()->null_object();
 }
 
 PRIMITIVE(get_env) {

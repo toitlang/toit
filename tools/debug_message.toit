@@ -13,7 +13,7 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-import host.ar show *
+import ar show *
 import bytes
 import encoding.ubjson as ubjson
 import host.file
@@ -126,15 +126,3 @@ run_debug_snapshot snapshot_bytes json_message:
   finally:
     if file.is_file debug_toit: file.delete debug_toit
     directory.rmdir tmp_directory
-
-decode_debug_message encoded_debug_message snapshot_bytes:
-  catch:
-    bundle := SnapshotBundle snapshot_bytes
-    program := bundle.decode
-    decoder := ObjectSnapshot encoded_debug_message program
-    val := decoder.decode
-    json_val := to_json_ val program
-    if json_val is Map:
-      return run_debug_snapshot snapshot_bytes json_val
-    return json_val.stringify
-  return "Error while decoding debug message"
