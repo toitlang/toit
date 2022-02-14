@@ -844,7 +844,7 @@ static Object* convert_mbuf_to_heap_object(Process* process, const os_mbuf* mbuf
     size += current->om_len;
   }
   ByteArray* data = process->object_heap()->allocate_internal_byte_array(size);
-  if (!data) ALLOCATION_FAILED;
+  if (!data) return null;
   ByteArray::Bytes bytes(data);
   int offset = 0;
   for (const os_mbuf* current = mbuf; current; current = SLIST_NEXT(current, om_next)) {
@@ -867,9 +867,13 @@ PRIMITIVE(request_data) {
   const struct os_mbuf* mbuf = gatt->mbuf();
   if (!mbuf) return process->program()->null_object();
   Object* ret_val = convert_mbuf_to_heap_object(process, mbuf);
-  gatt->set_mbuf(null);
 
-  return ret_val;
+  if (ret_val != null) {
+    gatt->set_mbuf(null);
+    return ret_val;
+  } else {
+    ALLOCATION_FAILED;
+  }
 }
 
 PRIMITIVE(request_service) {
@@ -1021,7 +1025,12 @@ PRIMITIVE(get_characteristics_value) {
 
   Object* ret_val = convert_mbuf_to_heap_object(process, mbuf);
 
-  resource->set_mbuf_received(null);
+  if (ret_val != null) {
+    resource->set_mbuf_received(null);
+    return ret_val;
+  } else {
+    ALLOCATION_FAILED;
+  }
 
   return ret_val;
 }
