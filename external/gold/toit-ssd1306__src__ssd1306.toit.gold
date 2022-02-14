@@ -1,0 +1,3 @@
+toit-ssd1306/src/ssd1306.toit:56:5: warning: Class 'SSD1306' is deprecated
+    super i2c
+    ^~~~~

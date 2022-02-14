@@ -3,7 +3,6 @@
 *.cc text eol=lf
 *.cpp text eol=lf
 *.h text eol=lf
-*.toit text eol=lf
 
 # Explicitly declare text files we want to be normalized.
 *.mk text

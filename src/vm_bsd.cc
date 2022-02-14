@@ -20,7 +20,6 @@
 #include "objects_inline.h"
 #include "vm.h"
 
-#include "event_sources/dns_posix.h"
 #include "event_sources/kqueue_bsd.h"
 #include "event_sources/lwip_esp32.h"
 #include "event_sources/subprocess.h"
@@ -32,7 +31,6 @@ namespace toit {
 void VM::load_platform_event_sources() {
   event_manager()->add_event_source(_new TimerEventSource());
   event_manager()->add_event_source(_new KQueueEventSource());
-  event_manager()->add_event_source(_new DNSEventSource());
   event_manager()->add_event_source(_new SubprocessEventSource());
   event_manager()->add_event_source(_new TLSEventSource());
 }
