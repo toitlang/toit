@@ -120,7 +120,6 @@ void ProgramBlock::shrink_top(int delta) {
 }
 
 void ProgramBlock::do_pointers(Program* program, PointerCallback* callback) {
-  ASSERT(_process == null);
   for (void* p = base(); p < top(); p = Utils::address_at(p, HeapObject::cast(p)->size(program))) {
     HeapObject* obj = HeapObject::cast(p);
     obj->do_pointers(program, callback);
@@ -183,7 +182,6 @@ ProgramBlock* ProgramHeapMemory::allocate_block(ProgramRawHeap* heap) {
       _free_list.prepend(reserved_block);
     }
   }
-  result->_set_process(heap->owner());
   // If giving this block to the heap makes the heap the largest, then update
   // _largest_number_of_blocks_in_a_heap.
   if (heap->number_of_blocks() + 1 >= _largest_number_of_blocks_in_a_heap) {
@@ -208,7 +206,6 @@ ProgramBlock* ProgramHeapMemory::allocate_initial_block() {
     result = OS::allocate_program_block();
     if (!result) return null;
   }
-  result->_set_process(null);
   return result;
 }
 
@@ -222,7 +219,6 @@ void ProgramHeapMemory::free_block(ProgramBlock* block, ProgramRawHeap* heap) {
   ASSERT(OS::is_locked(_memory_mutex));
   // If the block's owner is null we know it is program space and the memory is
   // read only.  This does not happen on the device.
-  ASSERT(block->is_program());
 #ifdef TOIT_FREERTOS
   FATAL("Program memory freed on device");
 #else

@@ -275,7 +275,7 @@ PRIMITIVE(read) {
   size_t capacity = Utils::max(available, (size_t)8);
 
   Error* error = null;
-  ByteArray* data = process->allocate_byte_array(capacity, &error);
+  ByteArray* data = process->allocate_byte_array(capacity, &error, /*force_external*/ true);
   if (data == null) return error;
 
   ByteArray::Bytes rx(data);
@@ -288,7 +288,7 @@ PRIMITIVE(read) {
     return process->allocate_string_or_error("broken UART read");
   }
 
-  data->resize(read);
+  data->resize_external(process, read);
 
   return data;
 }

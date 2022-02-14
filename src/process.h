@@ -59,13 +59,16 @@ class Process : public ProcessListFromProcessGroup::Element,
   Process(Program* program, ProcessGroup* group, Method method, const uint8* arguments_address, int arguments_length, Block* initial_block);
   ~Process();
 
+  Process(ProcessRunner* runner, ProcessGroup* group);
+
   int id() const { return _id; }
   int next_task_id() { return _next_task_id++; }
 
   bool is_suspended() const { return _state == SUSPENDED_IDLE || _state == SUSPENDED_SCHEDULED; }
 
   // Returns whether this process is privileged (a system process).
-  bool is_privileged();
+  bool is_privileged() const { return _is_privileged; }
+  void mark_as_priviliged() { _is_privileged = true; }
 
   // Garbage collection operation for runtime objects.
   int scavenge() {
@@ -99,6 +102,8 @@ class Process : public ProcessListFromProcessGroup::Element,
   ObjectHeap* object_heap() { return &_object_heap; }
   Usage* usage() { return &_memory_usage; }
   Task* task() { return object_heap()->task(); }
+
+  ProcessRunner* runner() const { return _runner; }
 
   void print();
 
@@ -209,16 +214,26 @@ class Process : public ProcessListFromProcessGroup::Element,
     return _unyielded_for_us + (now - _last_run_us);
   }
 
+  inline bool on_program_heap(HeapObject* object) {
+    uword address = reinterpret_cast<uword>(object);
+    return address - _program_heap_address < _program_heap_size;
+  }
+
  private:
-  Process(Program* program, ProcessGroup* group, Block* initial_block);
+  Process(Program* program, ProcessRunner* runner, ProcessGroup* group, Block* initial_block);
   void _append_message(Message* message);
   void _ensure_random_seeded();
 
   int const _id;
   int _next_task_id;
+  bool _is_privileged = false;
 
   Program* _program;
+  ProcessRunner* _runner;
   ProcessGroup* _group;
+
+  uword _program_heap_address;
+  uword _program_heap_size;
 
   Method _entry;
   char** _args;
@@ -239,7 +254,7 @@ class Process : public ProcessListFromProcessGroup::Element,
   SchedulerThread* _scheduler_thread;
 
   bool _construction_failed = false;
-  bool _idle_since_scavenge = false;
+  bool _idle_since_scavenge = true;
 
   int64 _last_run_us = 0;
   int64 _unyielded_for_us = 0;
@@ -249,6 +264,7 @@ class Process : public ProcessListFromProcessGroup::Element,
 #endif
 
   ResourceGroupListFromProcess _resource_groups;
+  friend class HeapObject;
   friend class Scheduler;
 };
 
@@ -279,6 +295,8 @@ class AllocationManager {
       _hit_limit = true;
       return null;
     }
+    // Don't change this to use C++ array 'new' because that isn't compatible
+    // with realloc.
     _ptr = malloc(length);
     if (_ptr == null) {
       _process->object_heap()->set_last_allocation_result(Heap::ALLOCATION_OUT_OF_MEMORY);
@@ -288,6 +306,10 @@ class AllocationManager {
     }
 
     return unvoid_cast<uint8_t*>(_ptr);
+  }
+
+  static uint8* reallocate(uint8* old_allocation, word new_size) {
+    return unvoid_cast<uint8*>(::realloc(old_allocation, new_size));
   }
 
   uint8_t* calloc(word length, word size) {

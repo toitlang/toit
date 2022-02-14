@@ -18,11 +18,13 @@
 #include "top.h"
 #include "objects.h"
 #include "heap.h"
+#include "interpreter.h"
 
 namespace toit {
 
 class Message;
 class Process;
+class VM;
 
 typedef LinkedFIFO<Message> MessageFIFO;
 
@@ -39,7 +41,6 @@ enum {
   MESSAGING_ENCODING_MAX_EXTERNALS    = 8,
   MESSAGING_ENCODING_MAX_INLINED_SIZE = 128,
 };
-
 
 class Message : public MessageFIFO::Element {
  public:
@@ -121,6 +122,7 @@ class ObjectNotifyMessage : public Message {
 
 class MessageEncoder {
  public:
+  explicit MessageEncoder(uint8* buffer) : _buffer(buffer) { }
   MessageEncoder(Process* process, uint8* buffer);
 
   static int termination_message_size();
@@ -133,20 +135,21 @@ class MessageEncoder {
   void neuter_externals();
 
   bool encode(Object* object);
+  bool encode_byte_array_external(void* data, int length);
 
  private:
-  Process* _process;
-  Program* _program;
+  Process* _process = null;
+  Program* _program = null;
   uint8* _buffer;  // The buffer is null when we're encoding for size.
-  int _cursor;
-  int _nesting;
+  int _cursor = 0;
+  int _nesting = 0;
 
-  bool _malloc_failed;
+  bool _malloc_failed = false;
 
-  unsigned _copied_count;
+  unsigned _copied_count = 0;
   void* _copied[MESSAGING_ENCODING_MAX_EXTERNALS];
 
-  unsigned _externals_count;
+  unsigned _externals_count = 0;
   ByteArray* _externals[MESSAGING_ENCODING_MAX_EXTERNALS];
 
   bool encoding_for_size() const { return _buffer == null; }
@@ -163,11 +166,11 @@ class MessageEncoder {
   void write_uint64(uint64 value);
   void write_pointer(void* value);
   void write_cardinal(uword value);
-
 };
 
 class MessageDecoder {
  public:
+  explicit MessageDecoder(uint8* buffer) : _buffer(buffer) { }
   MessageDecoder(Process* process, uint8* buffer);
 
   static bool decode_termination_message(uint8* buffer, int* value);
@@ -178,16 +181,17 @@ class MessageDecoder {
   void remove_disposing_finalizers();
 
   Object* decode();
+  bool decode_byte_array_external(void** data, int* length);
 
  private:
-  Process* _process;
-  Program* _program;
+  Process* _process = null;
+  Program* _program = null;
   uint8* _buffer;
-  int _cursor;
+  int _cursor = 0;
 
-  bool _allocation_failed;
+  bool _allocation_failed = false;
 
-  unsigned _externals_count;
+  unsigned _externals_count = 0;
   HeapObject* _externals[MESSAGING_ENCODING_MAX_EXTERNALS];
   word _externals_sizes[MESSAGING_ENCODING_MAX_EXTERNALS];
 
@@ -203,6 +207,41 @@ class MessageDecoder {
   uint64 read_uint64();
   uint8* read_pointer();
   uword read_cardinal();
+};
+
+class ExternalSystemMessageHandler : private ProcessRunner {
+ public:
+  ExternalSystemMessageHandler(VM* vm) : _vm(vm), _process(null) { }
+
+  // Try to start the messaging handler. Returns true if successful and false
+  // if starting it failed due to lack of memory.
+  bool start();
+
+  // Get the process id for this message handler. Returns -1 if the process
+  // hasn't been started.
+  int pid() const;
+
+  // Callback for received messages.
+  virtual void on_message(int sender, int type, void* data, int length) = 0;
+
+  // Send a message to a specific receiver.
+  bool send(int receiver, int type, void* data, int length);
+
+  // Support for handling failed allocations. Return true from the callback
+  // if you have cleaned up and want to retry the allocation. Returning false
+  // causes the message to be discarded.
+  virtual bool on_failed_allocation(int length) { return false; }
+
+  // Try collecting garbage. If asked to try hard, the system will preempt running
+  // processes and get them to stop before garbage collecting their heaps.
+  void collect_garbage(bool try_hard);
+
+ private:
+  VM* _vm;
+  Process* _process;
+
+  // Called by the scheduler.
+  virtual Interpreter::Result run() override;
 };
 
 }  // namespace toit

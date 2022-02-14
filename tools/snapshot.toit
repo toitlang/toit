@@ -991,8 +991,8 @@ Contains a mapping from offset to object.
 class Heap:
   static PAGE_WORD_SIZE_32 / int ::= 1 << 10
   static PAGE_WORD_SIZE_64 / int ::= 1 << 12
-  // Each block reserves 3 words for the `Block` object.
-  static BLOCK_HEADER_WORD_SIZE / int ::= 3
+  // Each block reserves 2 words for the `Block` object.
+  static BLOCK_HEADER_WORD_SIZE / int ::= 2
 
   /// Word size in bytes.
   /// Must be either 4 or 8.

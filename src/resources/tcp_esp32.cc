@@ -20,7 +20,6 @@
 #endif
 
 #if defined(TOIT_FREERTOS) || defined(TOIT_USE_LWIP)
-#include <lwip/dns.h>
 #include <lwip/ip_addr.h>
 
 #include "../resource.h"
@@ -247,9 +246,12 @@ PRIMITIVE(listen) {
     err_t err = tcp_bind(tpcb, &capture.bind_address, capture.port);
     if (err != ERR_OK) {
       delete capture.socket;
+      tcp_close(tpcb);
       return lwip_error(process, err);
     }
 
+    // The call to tcp_listen_with_backlog frees or reallocates the tpcb we
+    // pass to it, so there is no need to close that one.
     tpcb = tcp_listen_with_backlog(tpcb, capture.backlog);
     if (tpcb == null) {
       delete capture.socket;
@@ -495,7 +497,7 @@ static Object* get_address(LwIPSocket* socket, Process* process, bool peer) {
     ip_addr_get_ip4_u32(&socket->tpcb()->remote_ip) :
     ip_addr_get_ip4_u32(&socket->tpcb()->local_ip);
   char buffer[16];
-  int length = sprintf(buffer, 
+  int length = sprintf(buffer,
 #ifdef CONFIG_IDF_TARGET_ESP32C3
  		       "%lu.%lu.%lu.%lu",
 #else

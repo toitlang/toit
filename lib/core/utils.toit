@@ -431,3 +431,37 @@ literal_index_ o -> int?:
 
 word_size_ -> int:
   #primitive.core.word_size
+
+/**
+Converts a hex digit character in the ranges
+  '0'-'9', 'a'-'f', or 'A'-'F'.
+Returns the value between 0 and 15.
+Calls the block on invalid input and returns its return value if any.
+*/
+hex_digit char/int [error_block] -> int:
+  if '0' <= char <= '9': return char - '0'
+  if 'a' <= char <= 'f': return 10 + char - 'a'
+  if 'A' <= char <= 'F': return 10 + char - 'A'
+  return error_block.call
+
+/**
+Converts a hex digit character in the ranges
+  '0'-'9', 'a'-'f', or 'A'-'F'.
+Returns the value between 0 and 15.
+*/
+hex_digit char/int -> int:
+  return hex_digit char: throw "INVALID_ARGUMENT"
+
+/**
+Converts a number between 0 and 15 to a lower case
+  hex digit.
+*/
+to_lower_case_hex c/int -> int:
+  return "0123456789abcdef"[c]
+
+/**
+Converts a number between 0 and 15 to an upper case
+  hex digit.
+*/
+to_upper_case_hex c/int -> int:
+  return "0123456789ABCDEF"[c]

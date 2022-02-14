@@ -117,11 +117,13 @@ int Program::number_of_unused_dispatch_table_entries() {
   return count;
 }
 
-Program::Program()
+Program::Program(void* program_heap_address, uword program_heap_size)
     : _invoke_bytecode_offsets()
     , _roots()
     , _entry_point_indexes()
-    , _source_mapping(null) {}
+    , _source_mapping(null)
+    , _program_heap_address(reinterpret_cast<uword>(program_heap_address))
+    , _program_heap_size(program_heap_size) {}
 
 Program::~Program() {
   // TODO(lars): Check the program count is 0.
@@ -138,6 +140,8 @@ void Program::do_pointers(PointerCallback* callback) {
   callback->c_address(reinterpret_cast<void**>(&class_check_ids.data()));
   callback->c_address(reinterpret_cast<void**>(&interface_check_offsets.data()));
   callback->c_address(reinterpret_cast<void**>(&class_bits.data()));
+  callback->c_address(reinterpret_cast<void**>(&_program_heap_address));
+  if (!_program_heap_address) *((char*)_program_heap_address) = 0;
 
   _heap.do_pointers(this, callback);
 }

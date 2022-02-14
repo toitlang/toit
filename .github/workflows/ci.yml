@@ -21,6 +21,8 @@ jobs:
       - name: Set up constants
         id: constants
         run: |
+          echo ::set-output name=external_result::external-result-$RUNNER_OS-${{ matrix.shard }}.txt
+          echo ::set-output name=external_result_key::external-result-${{ github.run_id }}-${{ github.run_attempt }}-$RUNNER_OS-${{ matrix.shard }}
           if [ "$RUNNER_OS" == "Linux" ]; then
             echo ::set-output name=artifact::toit-linux.tar.gz
             echo ::set-output name=total_shards::5
@@ -136,7 +138,7 @@ jobs:
           fi
 
       # Test.
-      - name: test
+      - name: Test
         env:
           IDF_PATH: ${{ github.workspace }}/third_party/esp-idf
           CCACHE_DIR: ${{ github.workspace }}/.ccache
@@ -154,6 +156,47 @@ jobs:
             cd build/host32
             ninja check
           fi
+
+      # We use a cache to send the external test result to the external job.
+      - name: Retrieve/store external test result
+        uses: actions/cache@v2
+        with:
+          path: ${{ steps.constants.outputs.external_result }}
+          key: ${{ steps.constants.outputs.external_result_key }}
+
+      # Test external code.
+      - name: Test external
+        # External tests are allowed to fail, but we record them and
+        # fail a non-required job if they do.
+        continue-on-error: true
+        env:
+          IDF_PATH: ${{ github.workspace }}/third_party/esp-idf
+          CCACHE_DIR: ${{ github.workspace }}/.ccache
+          CCACHE_BASEDIR: ${{ github.workspace }}
+          CCACHE_COMPRESS: true
+          CCACHE_COMPRESSLEVEL: '6'
+          CCACHE_MAXSIZE: 400M
+          SHARD_START: ${{ matrix.shard }}
+          SHARD_STRIDE: ${{ steps.constants.outputs.total_shards }}
+        shell: bash
+        run: |
+          # Mark the external test as failing, and update it at the end of this step.
+          echo fail > ${{ steps.constants.outputs.external_result }}
+          cmake -DTOIT_TEST_EXTERNAL=ON build/host
+          make download-external
+          make rebuild-cmake
+          make download-packages
+          make test-external
+          make test-external-health
+          if [ "$RUNNER_OS" == "Linux" ]; then
+            cmake -DTOIT_TEST_EXTERNAL=ON build/host32
+            make CROSS_ARCH=host32 rebuild-cross-cmake
+            cd build/host32
+            ninja check_external
+            cd ../..
+          fi
+          # If we reach here, all steps of this step succeeded.
+          echo success > ${{ steps.constants.outputs.external_result }}
 
       - name: Pack artifacts
         if: matrix.shard == 1
@@ -196,7 +239,7 @@ jobs:
       - name: Initialize submodules
         run: |
           git submodule sync --recursive
-          git submodule update --init --recursive -j 2
+          git submodule update --init --recursive -j 16
 
       # Use Go 1.17
       - name: Switch to Go 1.17
@@ -276,3 +319,53 @@ jobs:
           # Make sure the ccache interceptors are before any other path.
           export PATH="$PWD/ccache_interceptors":$PATH
           make esp32
+
+  external:
+    needs: build
+
+    strategy:
+      # The matrix will run all possible combinations in parallel.
+      matrix:
+        container: [ ubuntu-latest, macos-latest, windows-latest ]
+
+    runs-on: ${{ matrix.container }}
+
+    steps:
+      - name: Set up constants
+        id: constants
+        shell: bash
+        run: |
+          echo ::set-output name=external_result_prefix::external-result-$RUNNER_OS
+          echo ::set-output name=external_result_key_prefix::external-result-${{ github.run_id }}-${{ github.run_attempt }}-$RUNNER_OS
+
+      - name: Retrieve 1
+        uses: actions/cache@v2
+        with:
+          path: ${{ steps.constants.outputs.external_result_prefix }}-1.txt
+          key: ${{ steps.constants.outputs.external_result_key_prefix }}-1
+      - name: Retrieve 2
+        uses: actions/cache@v2
+        with:
+          path: ${{ steps.constants.outputs.external_result_prefix }}-2.txt
+          key: ${{ steps.constants.outputs.external_result_key_prefix }}-2
+      - name: Retrieve 3
+        uses: actions/cache@v2
+        with:
+          path: ${{ steps.constants.outputs.external_result_prefix }}-3.txt
+          key: ${{ steps.constants.outputs.external_result_key_prefix }}-3
+      - name: Retrieve 4
+        uses: actions/cache@v2
+        with:
+          path: ${{ steps.constants.outputs.external_result_prefix }}-4.txt
+          key: ${{ steps.constants.outputs.external_result_key_prefix }}-4
+      - name: Retrieve 5
+        uses: actions/cache@v2
+        with:
+          path: ${{ steps.constants.outputs.external_result_prefix }}-5.txt
+          key: ${{ steps.constants.outputs.external_result_key_prefix }}-5
+
+      - name: Check
+        shell: bash
+        run: |
+          cat external-result*
+          ! grep "fail" external-result*

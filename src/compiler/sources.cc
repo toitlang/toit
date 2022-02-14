@@ -283,9 +283,11 @@ Source::Location SourceManager::compute_location(Source::Position position) cons
 
   for (int i = start_offset; i < offset_in_source; i++) {
     int c = text[i];
-    if (c == 10 || c == 13) {
-      int other = (c == 10) ? 13 : 10;
-      if (text[i + 1] == other) i++;
+    if (c == '\r' && text[i + 1] == '\n') {
+      i++;
+      c = '\n';
+    }
+    if (c == '\n') {
       line_start = i + 1;
       line++;
     }

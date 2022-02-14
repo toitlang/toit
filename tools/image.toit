@@ -77,9 +77,9 @@ abstract class Memory:
     ENDIAN_.put_uint bytes_ half_word_size at offset
     return at + half_word_size
 
-  put_offheap_pointer --at/int address/int -> int:
+  put_offheap_pointer --force_reloc=false --at/int address/int -> int:
     assert: from_ <= at <= to_ - word_size
-    if address != 0: mark_pointer_ --at=at
+    if address != 0 or force_reloc: mark_pointer_ --at=at
     ENDIAN_.put_uint bytes_ word_size at address
     return at + word_size
 
@@ -551,6 +551,8 @@ class ToitProgram extends ToitObjectType:
       "_builtin_class_ids": PrimitiveType.POINTER * BUILT_IN_CLASS_ID_COUNT,
       "_entry_point_indexes": PrimitiveType.INT * ENTRY_POINT_COUNT,
       "_source_mapping": PrimitiveType.POINTER,
+      "_program_heap_address": PrimitiveType.POINTER,
+      "_program_heap_size": PrimitiveType.WORD,
     }
 
   snapshot_program /snapshot.Program
@@ -622,6 +624,9 @@ class ToitProgram extends ToitObjectType:
     ENTRY_POINT_COUNT.repeat:
       entry_index := snapshot_program.entry_point_indexes[it]
       entry_offset = offheap.put_int32 --at=entry_offset entry_index
+
+    offheap.put_offheap_pointer --force_reloc --at=anchored["_program_heap_address"] 0
+    offheap.put_word --at=anchored["_program_heap_size"] image.all_memory.size
 
     class_check_ids := ToitList snapshot_program.class_check_ids
         --element_type=PrimitiveType.UINT16
@@ -725,7 +730,6 @@ class ToitUint8List extends ToitSequence:
 class ToitRawHeap:
   static LAYOUT /ObjectType ::= ObjectType {
     "_blocks": ToitMemoryBlockList.LAYOUT,
-    "_owner": PrimitiveType.POINTER,
   }
 
   heap_ /Heap
@@ -736,8 +740,6 @@ class ToitRawHeap:
     anchored := LAYOUT.anchor image.offheap --at=at
     block_list := ToitMemoryBlockList heap_.blocks_
     block_list.fill_into image --at=anchored["_blocks"]
-    // Owner is just `null`.
-    anchored.put_offheap_pointer "_owner" 0
 
 class ToitMemoryBlockList:
   static LAYOUT /ObjectType ::= ObjectType {
@@ -794,7 +796,6 @@ class ToitMemoryBlock:
   static LAYOUT /ObjectType ::= ObjectType {
     // Inherited from LinkedListElement.
     "_next": PrimitiveType.POINTER,
-    "_process": PrimitiveType.POINTER,
     "_top": PrimitiveType.POINTER,
   }
 
@@ -807,7 +808,6 @@ class ToitMemoryBlock:
     // Blocks live in the heap-memory area.
     anchored := LAYOUT.anchor image.heap --at=at
     anchored.put_offheap_pointer "_next" next_address_
-    anchored.put_offheap_pointer "_process" 0 // Set process to null.
     anchored.put_offheap_pointer "_top" block_.top_address
 
 
