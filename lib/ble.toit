@@ -70,7 +70,6 @@ class AdvertisementData:
 
   /**
   Advertised service classes as a list of uuid.
-  Advertised service classes as a list of uuid.
   */
   service_classes/List
 
@@ -100,8 +99,8 @@ class Advertiser:
   The data is advertised for the given $duration and once every $interval.
     If the $duration is null, then the data is advertised indefinitely.
 
-  The advertise will include the given connection_mode, use one 
-    of the BLE_CONNECTION_MODE_* constants
+  The advertise will include the given $connection_mode, use one 
+    of the BLE_CONNECTION_MODE_* constants.
 
   Use $set_data to set the data.
 
@@ -256,6 +255,7 @@ class Client:
     state := resource_state_.wait_for_state CONNECTED_EVENT_ | CONNECT_FAILED_EVENT_
     if state & CONNECT_FAILED_EVENT_ != 0:
       throw "BLE connection failed"
+      // TODO Possible leak of the gatt_ resource on connection failures
 
   /**
   Reads a remote service by looking up the given $service_uuid on the remote device.
@@ -270,21 +270,26 @@ class Client:
     state := resource_state_.wait_for_state STARTED_EVENT_
     resource_state_.clear_state STARTED_EVENT_
 
-class ServerConfig:
+/**
+Contains definitions of the services exposed by the BLE server.
+*/
+class ServerConfiguration:
   resource_group_ := null
   services/List := []
 
   constructor:
-    resource_group_ = ble_server_config_init_
+    resource_group_ = ble_server_configuration_init_
+    add_finalizer this:: ble_server_configuration_dispose_ resource_group_
 
   add_service uuid -> Service:
-    service := Service resource_group_ uuid
+    service := Service this uuid
     services.add service
-    return Service resource_group_ uuid
+    return service
 
+  finalization:
 
 /** 
-Defines a BLE service with characteristics 
+Defines a BLE service with characteristics. 
 */
 class Service:
   /**
@@ -294,28 +299,36 @@ class Service:
   */
   uuid/uuid_pkg.Uuid
   
-  resource_group_/any
-  resource_/any
+  server_configuration_/ServerConfiguration
+  resource_/ByteArray?
 
-  characteristics_/Map := {:}
+  characteristics_/Map ::= {:}
 
-  constructor .resource_group_ .uuid:
-    resource_ = ble_add_server_service_ resource_group_ uuid.to_byte_array
+  constructor .server_configuration_ .uuid:
+    resource_ = ble_add_server_service_ server_configuration_.resource_group_ uuid.to_byte_array
 
   add_read_only_characteristic uuid --value=#[]-> ReadOnlyCharacteristic:
-    return ReadOnlyCharacteristic this uuid value
+    char := ReadOnlyCharacteristic this uuid value
+    characteristics_[uuid] = char;
+    return char;
 
   add_write_only_characteristic uuid -> WriteOnlyCharacteristic:
-    return WriteOnlyCharacteristic this uuid
+    char := WriteOnlyCharacteristic this uuid
+    characteristics_[uuid] = char;
+    return char;
 
   add_read_write_characteristic uuid --value=#[]-> ReadWriteCharacteristic:
-    return ReadWriteCharacteristic this uuid value
+    char := ReadWriteCharacteristic this uuid value
+    characteristics_[uuid] = char;
+    return char;
 
   add_notification_characteristic uuid -> NotificationCharacteristic:
-    return NotificationCharacteristic this uuid
+    char := NotificationCharacteristic this uuid
+    characteristics_[uuid] = char;
+    return char;
 
   get_characteristic uuid -> Characteristic?:
-    return characteristics_[uuid]
+    return characteristics_.get uuid
 
 
 BLE_CHR_TYPE_READ_ONLY_    ::= 1
@@ -327,6 +340,9 @@ BLE_WAIT_RECV_             ::= 1 << 0
 BLE_WAIT_ACCESSED_         ::= 1 << 1
 BLE_WAIT_SUBSCRIBED_       ::= 1 << 2
 
+/**
+Base class of all characteristics
+*/
 abstract class Characteristic:
   /**
   The UUID of the characteristic.
@@ -336,15 +352,28 @@ abstract class Characteristic:
   state_/ResourceState_
 
   constructor service/Service resource .uuid:
-    state_ = ResourceState_ service.resource_group_ resource
+    state_ = ResourceState_ service.server_configuration_.resource_group_ resource
+
+/**
+Base class of characteristics that clients can write to
+*/  
+abstract class WritableCharacteristic extends Characteristic:
+  constructor service/Service resource uuid:
+    super service resource uuid
   
+  value -> ByteArray?:
+    state_.wait_for_state BLE_WAIT_RECV_
+    data := ble_get_characteristics_value_ state_.resource
+    state_.clear_state BLE_WAIT_RECV_
+    return data
+
 /** 
 A characteristic that can only be read by clients.
 */
 class ReadOnlyCharacteristic extends Characteristic:
   value_/ByteArray := #[]
 
-  constructor service/Service uuid/uuid_pkg.Uuid value:  
+  constructor service/Service uuid/uuid_pkg.Uuid value/ByteArray:  
     resource := ble_add_server_characteristic_ service.resource_ uuid.to_byte_array BLE_CHR_TYPE_READ_ONLY_ value
     super service resource uuid
     value_ = value
@@ -358,30 +387,18 @@ class ReadOnlyCharacteristic extends Characteristic:
 /**
 A characteristic that can only be written to by clients.
 */
-class WriteOnlyCharacteristic extends Characteristic:
+class WriteOnlyCharacteristic extends WritableCharacteristic:
   constructor service/Service uuid/uuid_pkg.Uuid:
     resource := ble_add_server_characteristic_ service.resource_ uuid.to_byte_array BLE_CHR_TYPE_WRITE_ONLY_ null
     super service resource uuid
 
-  value -> ByteArray?:
-    state_.wait_for_state BLE_WAIT_RECV_
-    data := ble_get_characteristics_value_ state_.resource
-    state_.clear_state BLE_WAIT_RECV_
-    return data;
-
 /**
 A characteristic that allows both read and write by the client.
 */
-class ReadWriteCharacteristic extends Characteristic:
-  constructor service/Service uuid/uuid_pkg.Uuid value:  
+class ReadWriteCharacteristic extends WritableCharacteristic:
+  constructor service/Service uuid/uuid_pkg.Uuid value/ByteArray:  
     resource := ble_add_server_characteristic_ service.resource_ uuid.to_byte_array BLE_CHR_TYPE_READ_WRITE_ value
     super service resource uuid
-
-  value -> ByteArray?:
-    state_.wait_for_state BLE_WAIT_RECV_
-    data := ble_get_characteristics_value_ state_.resource
-    state_.clear_state BLE_WAIT_RECV_
-    return data;
 
   value= value/ByteArray -> none:
     ble_set_characteristics_value_ state_.resource value
@@ -409,11 +426,13 @@ class Device:
   resource_group_ := ?
   resource_state_/monitor.ResourceState_? := null
 
-  server_config/ServerConfig?
+  server_configuration/ServerConfiguration?
 
-  constructor.default .server_config/ServerConfig?=null:
-    server_config_resource_group := server_config!=null?server_config.resource_group_:null
-    resource_group_ = ble_init_ server_config_resource_group
+  constructor.default .server_configuration/ServerConfiguration?=null:
+    server_configuration_resource_group := server_configuration != null
+        ? server_configuration.resource_group_
+        : null
+    resource_group_ = ble_init_ server_configuration_resource_group
     add_finalizer this:: this.close
     try:
       gap := ble_gap_ resource_group_
@@ -554,8 +573,11 @@ ble_request_characteristic_ gatt handle_range characteristic_id:
 ble_request_attribute_ gatt handle:
   #primitive.ble.request_attribute
 
-ble_server_config_init_:
-  #primitive.ble.server_config_init
+ble_server_configuration_init_:
+  #primitive.ble.server_configuration_init
+
+ble_server_configuration_dispose_ resource_group_:
+  #primitive.ble.server_configuration_dispose
 
 ble_add_server_service_ resource_group_ uuid:
   #primitive.ble.add_server_service

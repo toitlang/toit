@@ -923,7 +923,7 @@ PRIMITIVE(request_attribute) {
  * Primitives for BLE server
  *
  */
-PRIMITIVE(server_config_init) {
+PRIMITIVE(server_configuration_init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (!proxy) ALLOCATION_FAILED;
 
@@ -939,6 +939,12 @@ PRIMITIVE(server_config_init) {
 
   proxy->set_external_address(group);
   return proxy;
+}
+
+PRIMITIVE(server_configuration_dispose) {
+  ARGS(BLEServerConfigGroup, group);
+  group->tear_down();
+  return process->program()->null_object();
 }
 
 PRIMITIVE(add_server_service) {
@@ -1004,12 +1010,7 @@ PRIMITIVE(notify_characteristics_value) {
     }
   }
 
-  if (resource->is_notify_enabled())
-    return process->program()->true_object();
-  else
-    return process->program()->false_object();
-
-  return process->program()->null_object();
+  return BOOL(resource->is_notify_enabled());
 }
 
 PRIMITIVE(get_characteristics_value) {

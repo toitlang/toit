@@ -323,7 +323,8 @@ namespace toit {
   PRIMITIVE(request_service, 2)              \
   PRIMITIVE(request_characteristic, 3)       \
   PRIMITIVE(request_attribute, 2)            \
-  PRIMITIVE(server_config_init, 0)           \
+  PRIMITIVE(server_configuration_init, 0)    \
+  PRIMITIVE(server_configuration_dispose, 1) \
   PRIMITIVE(add_server_service, 2)           \
   PRIMITIVE(add_server_characteristic, 4)    \
   PRIMITIVE(set_characteristics_value, 2)    \
