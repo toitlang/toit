@@ -206,8 +206,8 @@ class HeapObject : public Object {
 
   // Pseudo virtual member functions.
   int size(Program* program);  // Returns the byte size of this object.
-  void roots_do(Program* program, RootCallback* cb);
-  void do_pointers(Program* program, PointerCallback* cb);
+  void roots_do(Program* program, RootCallback* cb);  // For GC.
+  void do_pointers(Program* program, PointerCallback* cb);  // For snapshots.
 
   static const int HEADER_OFFSET = Object::NON_SMI_TAG_OFFSET;
 
@@ -241,6 +241,11 @@ class HeapObject : public Object {
     uword value = reinterpret_cast<uword>(address);
     ASSERT((value & NON_SMI_TAG_MASK) == 0);
     return reinterpret_cast<HeapObject*>(value + HEAP_TAG);
+  }
+
+  static HeapObject* from_address(uword address) {
+    ASSERT((address & NON_SMI_TAG_MASK) == 0);
+    return reinterpret_cast<HeapObject*>(address + HEAP_TAG);
   }
 
   inline bool on_program_heap(Process* process);
@@ -294,12 +299,14 @@ class HeapObject : public Object {
 
   friend class ScavengeState;
   friend class ObjectHeap;
+  friend class Space;
   friend class Heap;
   friend class ProgramHeap;
   friend class BaseSnapshotWriter;
   friend class SnapshotReader;
   friend class compiler::ProgramBuilder;
   friend class Stack;
+  friend class GcMetadata;
 };
 
 class Array : public HeapObject {

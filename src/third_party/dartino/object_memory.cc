@@ -2,21 +2,17 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE.md file.
 
-#include "src/vm/object_memory.h"
+#include "object_memory.h"
 
 #include <stdlib.h>
 #include <stdio.h>
 
-#include "src/shared/assert.h"
-#include "src/shared/platform.h"
-#include "src/shared/utils.h"
+#include "../../objects.h"
+#include "../../os.h"
+#include "../../utils.h"
+#include "gc_metadata.h"
 
-#include "src/vm/frame.h"
-#include "src/vm/heap.h"
-#include "src/vm/mark_sweep.h"
-#include "src/vm/object.h"
-
-namespace dartino {
+namespace toit {
 
 Chunk::Chunk(Space* owner, uword start, uword size, bool external)
       : owner_(owner),
@@ -24,8 +20,8 @@ Chunk::Chunk(Space* owner, uword start, uword size, bool external)
         end_(start + size),
         external_(external),
         scavenge_pointer_(start_) {
-  if (GCMetadata::in_metadata_range(start)) {
-    GCMetadata::initialize_overflow_bits_for_chunk(this);
+  if (GcMetadata::in_metadata_range(start)) {
+    GcMetadata::initialize_overflow_bits_for_chunk(this);
   }
 }
 
@@ -33,7 +29,7 @@ Chunk::~Chunk() {
   // If the memory for this chunk is external we leave it alone
   // and let the embedder deallocate it.
   if (is_external()) return;
-  GCMetadata::mark_pages_for_chunk(this, UNKNOWN_SPACE_PAGE);
+  GcMetadata::mark_pages_for_chunk(this, UNKNOWN_SPACE_PAGE);
   OS::free_pages(reinterpret_cast<void*>(start_), size());
 }
 
@@ -43,11 +39,11 @@ Space::~Space() {
 }
 
 void Space::free_all_chunks() {
-  for (auto it = chunk_list_.begin(); it != chunk_list_.end();) {
-    Chunk* current = *it;
-    it = chunk_list_.erase(it);
-    ObjectMemory::free_chunk(current);
+  while (auto it = chunk_list_.first()) {
+    chunk_list_.unlink(it);
+    ObjectMemory::free_chunk(it);
   }
+
   top_ = limit_ = 0;
 }
 
@@ -59,7 +55,7 @@ uword Space::size() {
 }
 
 word Space::offset_of(HeapObject* object) {
-  uword address = object->address();
+  uword address = object->_raw();
   uword start = chunk_list_.first()->start();
 
   // Make sure the space consists of exactly one chunk!
@@ -84,10 +80,10 @@ HeapObject *Space::object_at_offset(word offset) {
 }
 
 void Space::adjust_allocation_budget(uword used_outside_space) {
-  uword used = used() + used_outside_space;
+  uword used_bytes = used() + used_outside_space;
   // Allow heap size to double (but we may hit maximum heap size limits before
   // that).
-  allocation_budget_ = used + PAGE_SIZE;
+  allocation_budget_ = used_bytes + TOIT_PAGE_SIZE;
 }
 
 void Space::increase_allocation_budget(uword size) { allocation_budget_ += size; }
@@ -101,18 +97,18 @@ void Space::set_allocation_budget(word new_budget) {
 
 void Space::iterate_overflowed_objects(PointerVisitor* visitor, MarkingStack* stack) {
   static_assert(
-      PAGE_SIZE % (1 << GCMetadata::CARD_SIZE_IN_BITS_LOG_2) == 0,
+      TOIT_PAGE_SIZE % (1 << GcMetadata::CARD_SIZE_IN_BITS_LOG_2) == 0,
       "MarkStackOverflowBytesMustCoverAFractionOfAPage");
 
   for (auto chunk : chunk_list_) {
-    uint8* bits = GCMetadata::overflow_bits_for(chunk->start());
-    uint8* bits_limit = GCMetadata::overflow_bits_for(chunk->end());
+    uint8* bits = GcMetadata::overflow_bits_for(chunk->start());
+    uint8* bits_limit = GcMetadata::overflow_bits_for(chunk->end());
     uword card = chunk->start();
     for (; bits < bits_limit; bits++) {
-      for (int i = 0; i < 8; i++, card += GCMetadata::CARD_SIZE) {
+      for (int i = 0; i < 8; i++, card += GcMetadata::CARD_SIZE) {
         // Skip cards 8 at a time if they are clear.
         if (*bits == 0) {
-          card += GCMetadata::CARD_SIZE * (8 - i);
+          card += GcMetadata::CARD_SIZE * (8 - i);
           break;
         }
         if ((*bits & (1 << i)) != 0) {
@@ -120,16 +116,16 @@ void Space::iterate_overflowed_objects(PointerVisitor* visitor, MarkingStack* st
           // a different object in this card could fail to push, setting the
           // bit again.
           *bits &= ~(1 << i);
-          uint8 start = *GCMetadata::starts_for(card);
-          ASSERT(start != GCMetadata::NO_OBJECT_START);
+          uint8 start = *GcMetadata::starts_for(card);
+          ASSERT(start != GcMetadata::NO_OBJECT_START);
           uword object_address = (card | start);
           for (HeapObject* object;
-               object_address < card + GCMetadata::CARD_SIZE &&
+               object_address < card + GcMetadata::CARD_SIZE &&
                !has_sentinel_at(object_address);
-               object_address += object->size()) {
+               object_address += object->size(program_)) {
             object = HeapObject::from_address(object_address);
-            if (GCMetadata::is_grey(object)) {
-              GCMetadata::mark_all(object, object->size());
+            if (GcMetadata::is_grey(object)) {
+              GcMetadata::mark_all(object, object->size(program_));
               object->iterate_pointers(visitor);
             }
           }
@@ -171,7 +167,7 @@ void SemiSpace::complete_scavenge(PointerVisitor* visitor) {
 
 void Space::clear_mark_bits() {
   flush();
-  for (auto chunk : chunk_list_) GCMetadata::clear_mark_bits_for(chunk);
+  for (auto chunk : chunk_list_) GcMetadata::clear_mark_bits_for(chunk);
 }
 
 bool Space::includes(uword address) {
@@ -207,11 +203,11 @@ Atomic<uword> ObjectMemory::allocated_;
 
 void ObjectMemory::set_up() {
   allocated_ = 0;
-  GCMetadata::set_up();
+  GcMetadata::set_up();
 }
 
 void ObjectMemory::tear_down() {
-  GCMetadata::tear_down();
+  GcMetadata::tear_down();
 }
 
 #ifdef DEBUG
@@ -238,39 +234,39 @@ void Chunk::find(uword word, const char* name) {
 Chunk* ObjectMemory::allocate_chunk(Space* owner, uword size) {
   ASSERT(owner != NULL);
 
-  size = Utils::round_up(size, PAGE_SIZE);
+  size = Utils::round_up(size, TOIT_PAGE_SIZE);
   void* memory =
-      OS::allocate_pages(size, GCMetadata::heap_allocation_arena());
-  uword lowest = GCMetadata::lowest_old_space_address();
+      OS::allocate_pages(size, GcMetadata::heap_allocation_arena());
+  uword lowest = GcMetadata::lowest_old_space_address();
   USE(lowest);
   if (memory == NULL) return NULL;
   ASSERT(reinterpret_cast<uword>(memory) >= lowest);
   ASSERT(reinterpret_cast<uword>(memory) - lowest + size <=
-         GCMetadata::heap_extent());
+         GcMetadata::heap_extent());
 
   uword base = reinterpret_cast<uword>(memory);
   Chunk* chunk = new Chunk(owner, base, size);
 
-  ASSERT(base == Utils::round_up(base, PAGE_SIZE));
-  ASSERT(size == Utils::round_up(size, PAGE_SIZE));
+  ASSERT(base == Utils::round_up(base, TOIT_PAGE_SIZE));
+  ASSERT(size == Utils::round_up(size, TOIT_PAGE_SIZE));
 
 #ifdef DEBUG
   chunk->scramble();
 #endif
-  GCMetadata::mark_pages_for_chunk(chunk, owner->page_type());
+  GcMetadata::mark_pages_for_chunk(chunk, owner->page_type());
   allocated_ += size;
   return chunk;
 }
 
 Chunk* ObjectMemory::create_fixed_chunk(Space* owner, void* memory, uword size) {
   ASSERT(owner != NULL);
-  ASSERT(size == Utils::round_up(size, PAGE_SIZE));
+  ASSERT(size == Utils::round_up(size, TOIT_PAGE_SIZE));
 
   uword base = reinterpret_cast<uword>(memory);
-  ASSERT(base % PAGE_SIZE == 0);
+  ASSERT(base % TOIT_PAGE_SIZE == 0);
 
   Chunk* chunk = new Chunk(owner, base, size, true);
-  GCMetadata::mark_pages_for_chunk(chunk, owner->page_type());
+  GcMetadata::mark_pages_for_chunk(chunk, owner->page_type());
   return chunk;
 }
 
@@ -334,4 +330,4 @@ NoAllocationScope::NoAllocationScope(Heap* heap) : heap_(heap) {
 NoAllocationScope::~NoAllocationScope() { heap_->decrement_no_allocation(); }
 #endif
 
-}  // namespace dartino
+}  // namespace toit
