@@ -55,7 +55,7 @@ Process::Process(Program* program, ProcessRunner* runner, ProcessGroup* group, B
   // We can't start a process from a heap that has not been linearly allocated
   // because we use the address range to distinguish program pointers and
   // process pointers.
-  ASSERT(_program_heap_size > 0);
+  ASSERT(!program || _program_heap_size > 0);
   // Link this process to the program heap.
   _group->add(this);
   ASSERT(_group->lookup(_id) == this);
