@@ -23,3 +23,7 @@ if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows" OR "${CMAKE_SYSTEM_NAME}" STREQUAL
     tests/ctest/ar_test.toit
   )
 endif()
+
+list(APPEND TOIT_FAILING_TESTS
+  tests/ctest/external_messaging_test.cc
+)
