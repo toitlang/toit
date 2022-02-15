@@ -145,6 +145,7 @@ static const int GB = 1 << GB_LOG2;
 
 static const int POINTER_SIZE = sizeof(void*);
 static const int WORD_SIZE = sizeof(word);
+static const int WORD_SIZE_LOG_2 = sizeof(word) == 4 ? 2 : 3;
 static const int DOUBLE_SIZE = sizeof(double);
 static const int HALF_WORD_SIZE = (WORD_SIZE >> 1);
 static const int BYTE_SIZE = sizeof(uint8);
