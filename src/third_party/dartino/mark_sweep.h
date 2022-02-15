@@ -2,79 +2,79 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE.md file.
 
-#ifndef SRC_VM_MARK_SWEEP_H_
-#define SRC_VM_MARK_SWEEP_H_
+#pragma once
 
-#include "src/shared/utils.h"
-#include "src/vm/object.h"
-#include "src/vm/program.h"
-#include "src/vm/process.h"
+#include "gc_metadata.h"
+#include "../../utils.h"
+#include "../../objects.h"
+#include "../../program.h"
+#include "../../process.h"
 
-namespace dartino {
+namespace toit {
 
 class MarkingStack {
  public:
-  MarkingStack() : next_(&backing_[0]), limit_(&backing_[kChunkSize]) {}
+  MarkingStack() : next_(&backing_[0]), limit_(&backing_[CHUNK_SIZE]) {}
 
-  void Push(HeapObject* object) {
-    ASSERT(GCMetadata::IsMarked(object));
+  void push(HeapObject* object) {
+    ASSERT(GcMetadata::is_marked(object));
     if (next_ < limit_) {
       *(next_++) = object;
     } else {
       overflowed_ = true;
-      GCMetadata::MarkStackOverflow(object);
+      GcMetadata::mark_stack_overflow(object);
     }
   }
 
-  bool IsEmpty() { return next_ == &backing_[0]; }
-  bool IsOverflowed() { return overflowed_; }
-  void ClearOverflow() { overflowed_ = false; }
+  bool is_empty() { return next_ == &backing_[0]; }
+  bool is_overflowed() { return overflowed_; }
+  void clear_overflow() { overflowed_ = false; }
 
-  void Empty(PointerVisitor* visitor);
-  void Process(PointerVisitor* visitor, Space* old_space, Space* new_space);
+  void empty(RootCallback* visitor);
+  void process(RootCallback* visitor, Space* old_space, Space* new_space);
 
  private:
-  static const int kChunkSize = 128;
+  static const int CHUNK_SIZE = 128;
   HeapObject** next_;
   HeapObject** limit_;
-  HeapObject* backing_[kChunkSize];
+  HeapObject* backing_[CHUNK_SIZE];
   bool overflowed_ = false;
 };
 
-class MarkingVisitor : public PointerVisitor {
+class MarkingVisitor : public RootCallback {
  public:
   MarkingVisitor(SemiSpace* new_space, MarkingStack* marking_stack,
-                 Stack** stack_chain = NULL)
+                 Stack** stack_chain = null)
       : stack_chain_(stack_chain),
         new_space_address_(new_space->start()),
         new_space_size_(new_space->size()),
         marking_stack_(marking_stack),
         number_of_stacks_(0) {}
 
-  virtual void VisitClass(Object** p) {}
+  virtual void visit_class(Object** p) {}
 
-  virtual void VisitBlock(Object** start, Object** end) {
+  virtual void visit_block(Object** start, Object** end) {
     // Mark live all HeapObjects pointed to by pointers in [start, end)
-    for (Object** p = start; p < end; p++) MarkPointer(*p);
+    for (Object** p = start; p < end; p++) mark_pointer(*p);
   }
 
   int number_of_stacks() const { return number_of_stacks_; }
 
  private:
-  void ChainStack(Stack* stack) {
+  void chain_stack(Stack* stack) {
     number_of_stacks_++;
     stack->set_next(*stack_chain_);
     *stack_chain_ = stack;
   }
 
-  void ALWAYS_INLINE MarkPointer(Object* object) {
-    if (!GCMetadata::InNewOrOldSpace(object)) return;
+  void INLINE mark_pointer(Object* object) {
+    if (!GcMetadata::in_new_or_old_space(object)) return;
     HeapObject* heap_object = HeapObject::cast(object);
-    if (!GCMetadata::MarkGreyIfNotMarked(heap_object)) {
-      if (stack_chain_ != NULL && heap_object->IsStack()) {
-        ChainStack(Stack::cast(heap_object));
+    if (!GcMetadata::mark_grey_if_not_marked(heap_object)) {
+      if (stack_chain_ != null && heap_object->is_stack()) {
+        chain_stack(Stack::cast(heap_object));
       }
-      marking_stack_->Push(heap_object);
+      marking_stack_->push(heap_object);
     }
   }
 
@@ -90,7 +90,7 @@ class FreeList {
 #if defined(_MSC_VER)
   // Work around Visual Studo 2013 bug 802058
   FreeList(void) {
-    memset(buckets_, 0, kNumberOfBuckets * sizeof(FreeListChunk*));
+    memset(buckets_, 0, NUMBER_OF_BUCKETS * sizeof(FreeListChunk*));
   }
 #endif
 
@@ -98,35 +98,35 @@ class FreeList {
     // If the chunk is too small to be turned into an actual
     // free list chunk we turn it into fillers to be coalesced
     // with other free chunks later.
-    if (free_size < FreeListChunk::kSize) {
-      ASSERT(free_size <= 2 * kPointerSize);
+    if (free_size < FreeListChunk::SIZE) {
+      ASSERT(free_size <= 2 * WORD_SIZE);
       Object** free_address = reinterpret_cast<Object**>(free_start);
-      for (uword i = 0; i * kPointerSize < free_size; i++) {
+      for (uword i = 0; i * WORD_SIZE < free_size; i++) {
         free_address[i] = StaticClassStructures::one_word_filler_class();
       }
       return;
     }
     // Large enough to add a free list chunk.
-    FreeListChunk* result = FreeListChunk::CreateAt(free_start, free_size);
-    int bucket = Utils::HighestBit(free_size) - 1;
-    if (bucket >= kNumberOfBuckets) bucket = kNumberOfBuckets - 1;
+    FreeListChunk* result = FreeListChunk::create_at(free_start, free_size);
+    int bucket = Utils::highest_bit(free_size) - 1;
+    if (bucket >= NUMBER_OF_BUCKETS) bucket = NUMBER_OF_BUCKETS - 1;
     result->set_next_chunk(buckets_[bucket]);
     buckets_[bucket] = result;
   }
 
-  FreeListChunk* GetChunk(uword min_size) {
-    int smallest_bucket = Utils::HighestBit(min_size);
+  FreeListChunk* get_chunk(uword min_size) {
+    int smallest_bucket = Utils::highest_bit(min_size);
     ASSERT(smallest_bucket > 0);
 
     // Locate largest chunk in free list guaranteed to satisfy the
     // allocation.
-    for (int i = kNumberOfBuckets - 1; i >= smallest_bucket; i--) {
+    for (int i = NUMBER_OF_BUCKETS - 1; i >= smallest_bucket; i--) {
       FreeListChunk* result = buckets_[i];
-      if (result != NULL) {
+      if (result != null) {
         ASSERT(result->size() >= min_size);
         FreeListChunk* next_chunk =
             reinterpret_cast<FreeListChunk*>(result->next_chunk());
-        result->set_next_chunk(NULL);
+        result->set_next_chunk(null);
         buckets_[i] = next_chunk;
         return result;
       }
@@ -134,39 +134,39 @@ class FreeList {
 
     // Search the bucket containing chunks that could, but are not
     // guaranteed to, satisfy the allocation.
-    if (smallest_bucket > kNumberOfBuckets) smallest_bucket = kNumberOfBuckets;
-    FreeListChunk* previous = reinterpret_cast<FreeListChunk*>(NULL);
+    if (smallest_bucket > NUMBER_OF_BUCKETS) smallest_bucket = NUMBER_OF_BUCKETS;
+    FreeListChunk* previous = reinterpret_cast<FreeListChunk*>(null);
     FreeListChunk* current = buckets_[smallest_bucket - 1];
-    while (current != NULL) {
+    while (current != null) {
       if (current->size() >= min_size) {
-        if (previous != NULL) {
+        if (previous != null) {
           previous->set_next_chunk(current->next_chunk());
         } else {
           buckets_[smallest_bucket - 1] =
               reinterpret_cast<FreeListChunk*>(current->next_chunk());
         }
-        current->set_next_chunk(NULL);
+        current->set_next_chunk(null);
         return current;
       }
       previous = current;
       current = reinterpret_cast<FreeListChunk*>(current->next_chunk());
     }
 
-    return NULL;
+    return null;
   }
 
   void Clear() {
-    for (int i = 0; i < kNumberOfBuckets; i++) {
-      buckets_[i] = NULL;
+    for (int i = 0; i < NUMBER_OF_BUCKETS; i++) {
+      buckets_[i] = null;
     }
   }
 
   void Merge(FreeList* other) {
-    for (int i = 0; i < kNumberOfBuckets; i++) {
+    for (int i = 0; i < NUMBER_OF_BUCKETS; i++) {
       FreeListChunk* chunk = other->buckets_[i];
-      if (chunk != NULL) {
+      if (chunk != null) {
         FreeListChunk* last_chunk = chunk;
-        while (last_chunk->next_chunk() != NULL) {
+        while (last_chunk->next_chunk() != null) {
           last_chunk = FreeListChunk::cast(last_chunk->next_chunk());
         }
         last_chunk->set_next_chunk(buckets_[i]);
@@ -178,24 +178,24 @@ class FreeList {
  private:
   // Buckets of power of two sized free lists chunks. Bucket i
   // contains chunks of size larger than 2 ** (i + 1).
-  static const int kNumberOfBuckets = 12;
+  static const int NUMBER_OF_BUCKETS = 12;
 #if defined(_MSC_VER)
   // Work around Visual Studo 2013 bug 802058
-  FreeListChunk* buckets_[kNumberOfBuckets];
+  FreeListChunk* buckets_[NUMBER_OF_BUCKETS];
 #else
-  FreeListChunk* buckets_[kNumberOfBuckets] = {NULL};
+  FreeListChunk* buckets_[NUMBER_OF_BUCKETS] = {null};
 #endif
 };
 
-class FixPointersVisitor : public PointerVisitor {
+class FixPointersVisitor : public RootCallback {
  public:
   FixPointersVisitor() : source_address_(0) {}
 
-  virtual void VisitClass(Object** p) {}
+  virtual void visit_class(Object** p) {}
 
-  virtual void VisitBlock(Object** start, Object** end);
+  virtual void visit_block(Object** start, Object** end);
 
-  virtual void AboutToVisitStack(Stack* stack);
+  virtual void about_to_visit_stack(Stack* stack);
 
   void set_source_address(uword address) { source_address_ = address; }
 
@@ -207,9 +207,9 @@ class CompactingVisitor : public HeapObjectVisitor {
  public:
   CompactingVisitor(OldSpace* space, FixPointersVisitor* fix_pointers_visitor);
 
-  virtual void ChunkStart(Chunk* chunk) {
-    GCMetadata::InitializeStartsForChunk(chunk);
-    uint32* last_bits = GCMetadata::MarkBitsFor(chunk->usable_end());
+  virtual void chunk_start(Chunk* chunk) {
+    GcMetadata::initialize_starts_for_chunk(chunk);
+    uint32* last_bits = GcMetadata::mark_bits_for(chunk->usable_end());
     // When compacting the heap, we skip dead objects.  In order to do this
     // faster when we have hit a dead object we use the mark bits to find the
     // next live object, rather than stepping one object at a time and calling
@@ -219,13 +219,13 @@ class CompactingVisitor : public HeapObjectVisitor {
     *last_bits |= 1u << 31;
   }
 
-  virtual uword Visit(HeapObject* object);
+  virtual uword visit(HeapObject* object);
 
   uword used() const { return used_; }
 
  private:
   uword used_;
-  GCMetadata::Destination dest_;
+  GcMetadata::Destination dest_;
   FixPointersVisitor* fix_pointers_visitor_;
 };
 
@@ -233,27 +233,25 @@ class SweepingVisitor : public HeapObjectVisitor {
  public:
   explicit SweepingVisitor(OldSpace* space);
 
-  virtual void ChunkStart(Chunk* chunk) {
-    GCMetadata::InitializeStartsForChunk(chunk);
+  virtual void chunk_start(Chunk* chunk) {
+    GcMetadata::initialize_starts_for_chunk(chunk);
   }
 
-  virtual uword Visit(HeapObject* object);
+  virtual uword visit(HeapObject* object);
 
-  virtual void ChunkEnd(Chunk* chunk, uword end) {
-    AddFreeListChunk(end);
-    GCMetadata::ClearMarkBitsFor(chunk);
+  virtual void chunk_end(Chunk* chunk, uword end) {
+    add_free_list_chunk(end);
+    GcMetadata::clear_mark_bits_for(chunk);
   }
 
   uword used() const { return used_; }
 
  private:
-  void AddFreeListChunk(uword free_end_);
+  void add_free_list_chunk(uword free_end_);
 
   FreeList* free_list_;
   uword free_start_;
   int used_;
 };
 
-}  // namespace dartino
-
-#endif  // SRC_VM_MARK_SWEEP_H_
+}  // namespace toit

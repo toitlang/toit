@@ -73,7 +73,7 @@ class GcMetadata {
     memset(from, GcMetadata::NO_NEW_SPACE_POINTERS, to - from);
   }
 
-  static void initialze_overflow_bits_for_chunk(Chunk* chunk) {
+  static void initialize_overflow_bits_for_chunk(Chunk* chunk) {
     ASSERT(in_metadata_range(chunk->start()));
     uint8* from = overflow_bits_for(chunk->start());
     uint8* to = overflow_bits_for(chunk->end());
@@ -356,7 +356,7 @@ class GcMetadata {
 
   static void slow_mark(HeapObject* object, uword size);
   static uword end_of_destination_of_last_live_object_starting_before(
-      uword line, uword limit, uword* src_end_return = NULL);
+      uword line, uword limit, uword* src_end_return = null);
   static uword last_line_that_fits(uword line, uword dest_limit);
 
   static INLINE int pop_count(uint32 x) {

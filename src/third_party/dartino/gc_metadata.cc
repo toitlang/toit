@@ -206,7 +206,7 @@ uword GcMetadata::end_of_destination_of_last_live_object_starting_before(
     uword size = HeapObject::from_address(object_address)->size();
     if (is_marked(HeapObject::from_address(object_address))) {
       result = get_destination(HeapObject::from_address(object_address)) + size;
-      if (src_end_return != NULL) *src_end_return = object_address + size;
+      if (src_end_return != null) *src_end_return = object_address + size;
     }
     object_address += size;
   }

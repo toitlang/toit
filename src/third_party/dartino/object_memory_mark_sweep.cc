@@ -400,7 +400,7 @@ void FixPointersVisitor::VisitBlock(Object** start, Object** end) {
 // This is faster than the builtin memmove because we know the source and
 // destination are aligned and we know the size is at least 2 words.  Also
 // we know that any overlap is only in one direction.
-static void ALWAYS_INLINE object_mem_move(uword dest, uword source, uword size) {
+static void INLINE object_mem_move(uword dest, uword source, uword size) {
   ASSERT(source > dest);
   ASSERT(size >= WORD_SIZE * 2);
   uword t0 = *reinterpret_cast<uword*>(source);
@@ -417,7 +417,7 @@ static void ALWAYS_INLINE object_mem_move(uword dest, uword source, uword size) 
   }
 }
 
-static int ALWAYS_INLINE find_first_set(uint32 x) {
+static int INLINE find_first_set(uint32 x) {
 #ifdef _MSC_VER
   unsigned long index;  // NOLINT
   bool non_zero = _BitScanForward(&index, x);
@@ -555,7 +555,7 @@ void OldSpace::verify() {
 }
 #endif
 
-void MarkingStack::empty(PointerVisitor* visitor) {
+void MarkingStack::empty(RootCallback* visitor) {
   while (!is_empty()) {
     HeapObject* object = *--next_;
     GcMetadata::mark_all(object, object->size());
@@ -563,7 +563,7 @@ void MarkingStack::empty(PointerVisitor* visitor) {
   }
 }
 
-void MarkingStack::process(PointerVisitor* visitor, Space* old_space,
+void MarkingStack::process(RootCallback* visitor, Space* old_space,
                            Space* new_space) {
   while (!is_empty() || is_overflowed()) {
     empty(visitor);

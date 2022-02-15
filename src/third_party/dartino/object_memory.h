@@ -25,7 +25,7 @@ class HeapObjectVisitor;
 class MarkingStack;
 class Object;
 class OldSpace;
-class PointerVisitor;
+class RootCallback;
 class ProgramHeapRelocator;
 class Program;
 class PromotedTrack;
@@ -157,10 +157,10 @@ class Space {
   void iterate_objects(HeapObjectVisitor* visitor);
 
   // Iterate all the objects that are grey, after a mark stack overflow.
-  void iterate_overflowed_objects(PointerVisitor* visitor, MarkingStack* stack);
+  void iterate_overflowed_objects(RootCallback* visitor, MarkingStack* stack);
 
   // Schema change support.
-  void complete_transformations(PointerVisitor* visitor);
+  void complete_transformations(RootCallback* visitor);
 
   // Returns true if the address is inside this space.  Not particularly fast.
   // See GcMetadata::PageType for a faster possibility.
@@ -308,7 +308,7 @@ class SemiSpace : public Space {
 
   // For the program semispaces.  There is no other space into which we
   // promote, so it does all work in one go.
-  void complete_scavenge(PointerVisitor* visitor);
+  void complete_scavenge(RootCallback* visitor);
 
   // For the mutable heap.
   void start_scavenge();
@@ -401,7 +401,7 @@ class OldSpace : public Space {
   TwoSpaceHeap* heap_;
   FreeList* free_list_;  // Free list structure.
   bool tracking_allocations_ = false;
-  PromotedTrack* promoted_track_ = NULL;
+  PromotedTrack* promoted_track_ = null;
   bool compacting_ = true;
 
   // Actually new space garbage found since last compacting GC. Used to
