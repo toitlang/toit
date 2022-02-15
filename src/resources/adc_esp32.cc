@@ -101,9 +101,9 @@ PRIMITIVE(init) {
     ALLOCATION_FAILED;
   }
 
-  ADCState* state = null;
+  AdcState* state = null;
   { HeapTagScope scope(ITERATE_CUSTOM_TAGS + EXTERNAL_BYTE_ARRAY_MALLOC_TAG);
-    state = _new ADCState(group, unit, chan);
+    state = _new AdcState(group, unit, chan);
     if (!state) MALLOC_FAILED;
   }
 
