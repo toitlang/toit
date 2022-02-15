@@ -37,6 +37,9 @@ add_custom_target(
     )
 
 foreach(file ${CC_FILES})
+  if("${file}" IN_LIST TOIT_SKIP_TESTS)
+    continue()
+  endif()
   get_filename_component(exe ${file} NAME_WE)
   add_executable(
     ${exe}
@@ -57,6 +60,9 @@ foreach(file ${CC_FILES})
 endforeach()
 
 foreach(file ${CC_TESTS})
+  if("${file}" IN_LIST TOIT_SKIP_TESTS)
+    continue()
+  endif()
   file(RELATIVE_PATH test_name ${PROJECT_SOURCE_DIR} ${file})
   get_filename_component(exe ${file} NAME_WE)
   string(REGEX REPLACE "_test.cc$" "_input.toit" test_input ${file})
