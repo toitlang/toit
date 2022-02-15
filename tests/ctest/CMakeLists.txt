@@ -25,6 +25,8 @@ else()
   set(LN_FORCE "Tf")
 endif()
 
+include(fail.cmake)
+
 add_custom_command(
   OUTPUT ${CTEST_DIR}/lib
   COMMAND ln -s${LN_FORCE} ${TOIT_SDK_SOURCE_DIR}/lib ${CTEST_DIR}/lib
@@ -85,7 +87,6 @@ foreach(file ${TOIT_TESTS})
   add_dependencies(check_slow ${exe})
 endforeach()
 
-include(fail.cmake)
 foreach(test ${TOIT_FAILING_TESTS})
   set_tests_properties(${test} PROPERTIES WILL_FAIL TRUE)
 endforeach()
