@@ -81,20 +81,11 @@ jobs:
           key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum') }}
           restore-keys: ${{ runner.os }}-go-mod-
 
-      # We create a new id every second.
-      # The 'restore-keys' below will make sure that we continue using earlier versions.
-      - name: Create timestamp
-        id: timestamp
-        shell: cmake -P {0}
-        run: |
-          string(TIMESTAMP current_date "%Y-%m-%d-%H;%M;%S" UTC)
-          message("::set-output name=timestamp::${current_date}")
-
       - name: Ccache cache
         uses: actions/cache@v2
         with:
           path: ${{ github.workspace }}/.ccache
-          key: ${{ runner.os }}-ccache-${{ steps.timestamp.outputs.timestamp }}
+          key: ${{ runner.os }}-ccache-${{ github.sha }}
           restore-keys: ${{ runner.os }}-ccache-
 
       # Fetch the dependencies. Different for each platform.
@@ -270,20 +261,14 @@ jobs:
           key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum') }}
           restore-keys: ${{ runner.os }}-go-mod-
 
-      # We create a new id every second.
-      # The 'restore-keys' below will make sure that we continue using earlier versions.
-      - name: Create timestamp
-        id: timestamp
-        shell: cmake -P {0}
-        run: |
-          string(TIMESTAMP current_date "%Y-%m-%d-%H;%M;%S" UTC)
-          message("::set-output name=timestamp::${current_date}")
-
       - name: Ccache cache
         uses: actions/cache@v2
+        # Store and retrieve the cache with the given sha.
+        # The 'restore-keys' prefix finds the most recent cache in case there
+        # is no match (which should almost always be the case).
         with:
           path: ${{ github.workspace }}/.ccache
-          key: esp32-ccache-${{ steps.timestamp.outputs.timestamp }}
+          key: esp32-ccache-${{ github.sha }}
           restore-keys: esp32-ccache-
 
       - name: Install dependencies - Linux
