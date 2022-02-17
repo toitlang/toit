@@ -36,6 +36,7 @@ namespace toit {
   M(i2s,     MODULE_I2S)                     \
   M(spi,     MODULE_SPI)                     \
   M(uart,    MODULE_UART)                    \
+  M(rmt,     MODULE_RMT)                     \
   M(crypto,  MODULE_CRYPTO)                  \
   M(encoding,MODULE_ENCODING)                \
   M(font,    MODULE_FONT)                    \
@@ -358,6 +359,12 @@ namespace toit {
   PRIMITIVE(set_baud_rate, 2)                \
   PRIMITIVE(write, 6)                        \
   PRIMITIVE(read, 1)                         \
+
+#define MODULE_RMT(PRIMITIVE)                \
+  PRIMITIVE(init, 0)                         \
+  PRIMITIVE(use, 2)                          \
+  PRIMITIVE(unuse, 2)                        \
+  PRIMITIVE(config, 6)                       \
 
 #define MODULE_CRYPTO(PRIMITIVE)             \
   PRIMITIVE(sha1_start, 1)                   \
