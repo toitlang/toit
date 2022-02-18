@@ -253,7 +253,7 @@ make flash ESP32_ENTRY=examples/mandelbrot.toit ESP32_PORT=/dev/ttyUSB0
 *NOTE*
 
 To access the device `/dev/ttyUSB0` on Linux you probably need to be a member
-of some group, normally either `uucp` or `dialout`.  To see which group you are
+of some group, normally either `uucp` or `dialout`.  To see which groups you are
 a member of and which group owns the device, plug in an ESP32 to the USB port
 and try:
 
