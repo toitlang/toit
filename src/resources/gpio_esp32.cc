@@ -102,7 +102,10 @@ PRIMITIVE(use) {
   if (!gpio_pins.take(num)) ALREADY_IN_USE;
 
   IntResource* resource = resource_group->register_id(num);
-  if (!resource) MALLOC_FAILED;
+  if (!resource) {
+    gpio_pins.put(num);
+    MALLOC_FAILED;
+  }
   proxy->set_external_address(resource);
 
   return proxy;
