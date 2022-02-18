@@ -101,6 +101,9 @@ class Port implements reader.Reader:
     the data is written. The duration of the break signal is bit-duration * $break_length,
     where bit-duration is the duration it takes to write one bit at the current baud rate.
 
+  If not all bytes could be written without blocking, this will be indicated by
+    the return value.  In this case the break is not written even if requested.
+
   If $wait is true, the method blocks until all bytes have been written to the pin.
     Otherwise, returns as soon as the data is fully buffered.
 
