@@ -62,10 +62,10 @@ foreach(file ${CC_FILES})
 endforeach()
 
 foreach(file ${CC_TESTS})
-  if("${file}" IN_LIST TOIT_SKIP_TESTS)
+  file(RELATIVE_PATH test_name ${PROJECT_SOURCE_DIR} ${file})
+  if("${test_name}" IN_LIST TOIT_SKIP_TESTS)
     continue()
   endif()
-  file(RELATIVE_PATH test_name ${PROJECT_SOURCE_DIR} ${file})
   get_filename_component(exe ${file} NAME_WE)
   string(REGEX REPLACE "_test.cc$" "_input.toit" test_input ${file})
   add_test(NAME ${test_name} COMMAND ${CTEST_DIR}/${exe} ${test_input})
@@ -77,6 +77,9 @@ endforeach()
 
 foreach(file ${TOIT_TESTS})
   file(RELATIVE_PATH test_name ${PROJECT_SOURCE_DIR} ${file})
+  if("${test_name}" IN_LIST TOIT_SKIP_TESTS)
+    continue()
+  endif()
   add_test(NAME
     ${test_name}
     COMMAND $<TARGET_FILE:toit.run> ${file} ${CTEST_DIR})
