@@ -239,12 +239,12 @@ class HeapObject : public Object {
 
   static HeapObject* cast(void* address) {
     uword value = reinterpret_cast<uword>(address);
-    ASSERT((value & NON_SMI_TAG_MASK) == 0);
+    ASSERT((value & NON_SMI_TAG_MASK) == SMI_TAG);
     return reinterpret_cast<HeapObject*>(value + HEAP_TAG);
   }
 
   static HeapObject* from_address(uword address) {
-    ASSERT((address & NON_SMI_TAG_MASK) == 0);
+    ASSERT((address & NON_SMI_TAG_MASK) == SMI_TAG);
     return reinterpret_cast<HeapObject*>(address + HEAP_TAG);
   }
 
