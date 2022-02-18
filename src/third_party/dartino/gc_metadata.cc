@@ -2,28 +2,27 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE.md file.
 
-#include "src/vm/gc_metadata.h"
+#include "gc_metadata.h"
 
 #include <stdio.h>
 
-#include "src/shared/assert.h"
-#include "src/shared/flags.h"
-#include "src/vm/object.h"
+#include "../../utils.h"
+#include "../../objects.h"
 
 namespace toit {
 
 GcMetadata GcMetadata::singleton_;
 
 void GcMetadata::tear_down() {
-  Platform::free_pages(singleton_.metadata_, singleton_.metadata_size_);
+  OS::free_pages(singleton_.metadata_, singleton_.metadata_size_);
 }
 
 void GcMetadata::set_up() { singleton_.set_up_singleton(); }
 
 void GcMetadata::set_up_singleton() {
   const int RANGES = 4;
-  Platform::HeapMemoryRange ranges[RANGES];
-  int range_count = Platform::get_heap_memory_pages(ranges, RANGES);
+  OS::HeapMemoryRange ranges[RANGES];
+  int range_count = OS::get_heap_memory_pages(ranges, RANGES);
   ASSERT(range_count > 0);
 
   // Find the largest area.
@@ -62,7 +61,7 @@ void GcMetadata::set_up_singleton() {
       TOIT_PAGE_SIZE);
 
   metadata_ = reinterpret_cast<uint8*>(
-      Platform::allocate_pages(metadata_size_, Platform::kAnyArena));
+      OS::allocate_pages(metadata_size_, OS::kAnyArena));
   remembered_set_ = metadata_;
   object_starts_ = metadata_ + number_of_cards_;
   mark_bits_ = reinterpret_cast<uint32*>(metadata_ + 2 * number_of_cards_);
@@ -204,7 +203,7 @@ uword GcMetadata::end_of_destination_of_last_live_object_starting_before(
   uword result = NO_END_FOUND;
   while (!has_sentinel_at(object_address) && object_address < limit) {
     // Uses cumulative mark bits!
-    uword size = HeapObject::from_address(object_address)->Size();
+    uword size = HeapObject::from_address(object_address)->size();
     if (is_marked(HeapObject::from_address(object_address))) {
       result = get_destination(HeapObject::from_address(object_address)) + size;
       if (src_end_return != NULL) *src_end_return = object_address + size;
@@ -220,14 +219,14 @@ uword GcMetadata::last_line_that_fits(uword line, uword dest_limit) {
   HeapObject* object =
       HeapObject::from_address(object_address_from_start(line, start));
   uword dest = get_destination(object);  // Uses cumulative mark bits!
-  ASSERT(!has_sentinel_at(object->address()));
-  while (!has_sentinel_at(object->address()) &&
-         (dest + object->Size() <= dest_limit || !is_marked(object))) {
-    object = HeapObject::from_address(object->address() + object->Size());
+  ASSERT(!has_sentinel_at(object->_raw()));
+  while (!has_sentinel_at(object->_raw()) &&
+         (dest + object->size() <= dest_limit || !is_marked(object))) {
+    object = HeapObject::from_address(object->_raw() + object->size());
     dest = get_destination(object);  // Uses cumulative mark bits!
   }
-  uword last_line = object->address() & ~(LINE_SIZE - 1);
-  if (has_sentinel_at(object->address())) {
+  uword last_line = object->_raw() & ~(LINE_SIZE - 1);
+  if (has_sentinel_at(object->_raw())) {
     return last_line;
   }
   // The last line did not fit, so return the previous one.
@@ -260,7 +259,7 @@ void GcMetadata::slow_mark(HeapObject* object, uword size) {
 }
 
 void GcMetadata::mark_stack_overflow(HeapObject* object) {
-  uword address = object->address();
+  uword address = object->_raw();
   uint8* overflow_bits = overflow_bits_for(address);
   *overflow_bits |= 1 << ((address >> CARD_SIZE_LOG_2) & 7);
   // We can have a mark stack overflow in new-space where we do not normally
