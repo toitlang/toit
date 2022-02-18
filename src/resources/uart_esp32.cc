@@ -239,10 +239,12 @@ PRIMITIVE(write) {
   if (break_length < 0) OUT_OF_RANGE;
 
   int wrote;
-  if (break_length > 0) {
-    wrote = uart_write_bytes_with_break_non_blocking(uart->port(), reinterpret_cast<const char*>(tx), to - from, break_length);
+  if (to == from) {
+    wrote = 0;
+  } else if (break_length > 0) {
+    wrote = uart_write_bytes_with_break_non_blocking(uart->port(), reinterpret_cast<const char*>(tx), 1, break_length);
   } else {
-    wrote = uart_write_bytes_non_blocking(uart->port(), reinterpret_cast<const char*>(tx), to - from);
+    wrote = uart_write_bytes_non_blocking(uart->port(), reinterpret_cast<const char*>(tx), 1);
   }
   if (wrote == -1) {
     OUT_OF_RANGE;
