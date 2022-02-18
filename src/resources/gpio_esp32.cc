@@ -103,7 +103,7 @@ PRIMITIVE(use) {
 
   IntResource* resource = resource_group->register_id(num);
   if (!resource) {
-    gpio_pins.put(num)
+    gpio_pins.put(num);
     MALLOC_FAILED;
   }
   proxy->set_external_address(resource);
