@@ -939,15 +939,7 @@ PRIMITIVE(add_entropy) {
 
 PRIMITIVE(count_leading_zeros) {
   ARGS(int64, v);
-  uint64_t value = v;
-  if (value == 0) return Smi::from(64);
-  if (sizeof(value) == sizeof(long long)) {
-    return Smi::from(__builtin_clzll(value));
-  } else if (sizeof(value) == sizeof(long)) {
-    return Smi::from(__builtin_clzl(value));
-  } else {
-    UNREACHABLE();
-  }
+  return Smi::from(Utils::clz(v));
 }
 
 PRIMITIVE(string_length) {
