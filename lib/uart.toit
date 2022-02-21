@@ -5,6 +5,7 @@
 import gpio
 import monitor show ResourceState_
 import reader
+import writer
 
 /**
 Support for Universal asynchronous receiver-transmitter (UART).
@@ -103,8 +104,8 @@ class Port implements reader.Reader:
 
   If not all bytes could be written without blocking, this will be indicated by
     the return value.  In this case the break is not written even if requested.
-    The easiest way to handle this by using the $Writer class.  Alternatively, something
-    like the following could be used.
+    The easiest way to handle this by using the $writer.Writer class.  Alternatively,
+    something like the following could be used.
 
   ```
   for position := 0; position < data.size; null:
