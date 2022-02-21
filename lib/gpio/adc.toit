@@ -47,7 +47,7 @@ class Adc:
     strapping pins), and is therefore disabled.
   */
   constructor .pin --max_voltage/float?=null:
-    state_ = adc_init_ pin.num (max_voltage ? max_voltage : 0.0)
+    state_ = adc_init_ resource_freeing_module_ pin.num (max_voltage ? max_voltage : 0.0)
 
   /**
   Measures the voltage on the Pin.
@@ -63,7 +63,7 @@ class Adc:
       adc_close_ state_
       state_ = null
 
-adc_init_ num max:
+adc_init_ group num max:
   #primitive.adc.init
 
 adc_get_ state samples:

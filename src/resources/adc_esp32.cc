@@ -17,6 +17,8 @@
 
 #ifdef TOIT_FREERTOS
 
+#include "adc_esp32.h"
+
 #include <driver/gpio.h>
 #include <driver/adc.h>
 #include <esp_adc_cal.h>
@@ -63,20 +65,10 @@ static adc_atten_t get_atten(int mv) {
   return ADC_ATTEN_DB_11;
 }
 
-struct ADCState {
-  ADCState(adc_unit_t unit, int chan)
-    : unit(unit)
-    , chan(chan) {}
-
-  adc_unit_t unit;
-  int chan;
-  esp_adc_cal_characteristics_t calibration;
-};
-
 MODULE_IMPLEMENTATION(adc, MODULE_ADC)
 
 PRIMITIVE(init) {
-  ARGS(int, pin, double, max);
+  ARGS(SimpleResourceGroup, group, int, pin, double, max);
 
   if (max < 0.0) INVALID_ARGUMENT;
 
@@ -103,31 +95,28 @@ PRIMITIVE(init) {
       OUT_OF_RANGE;
     }
   }
-
-  ADCState* state = null;
-  { HeapTagScope scope(ITERATE_CUSTOM_TAGS + EXTERNAL_BYTE_ARRAY_MALLOC_TAG);
-    state = _new ADCState(unit, chan);
-    if (!state) MALLOC_FAILED;
+  
+  ByteArray* proxy = process->object_heap()->allocate_proxy();
+  if (proxy == null) {
+    ALLOCATION_FAILED;
   }
 
-  ByteArray* proxy = process->object_heap()->allocate_external_byte_array(0, reinterpret_cast<uint8*>(state), true, false);
-  if (proxy == null) {
-    delete state;
-    ALLOCATION_FAILED;
+  AdcState* state = null;
+  { HeapTagScope scope(ITERATE_CUSTOM_TAGS + EXTERNAL_BYTE_ARRAY_MALLOC_TAG);
+    state = _new AdcState(group, unit, chan);
+    if (!state) MALLOC_FAILED;
   }
 
   const int DEFAULT_VREF = 1100;
   esp_adc_cal_characterize(unit, atten, ADC_WIDTH_BIT_12, DEFAULT_VREF, &state->calibration);
 
+  proxy->set_external_address(state);
+
   return proxy;
 }
 
 PRIMITIVE(get) {
-  ARGS(ByteArray, raw_state, int, samples);
-
-  ADCState* state = reinterpret_cast<ADCState*>(raw_state->as_external());
-  // Check if it's already closed.
-  if (state == null) INVALID_ARGUMENT;
+  ARGS(AdcState, state, int, samples);
 
   uint32_t adc_reading = 0;
 
