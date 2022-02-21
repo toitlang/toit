@@ -103,6 +103,13 @@ class Port implements reader.Reader:
 
   If not all bytes could be written without blocking, this will be indicated by
     the return value.  In this case the break is not written even if requested.
+    The easiest way to handle this by using the $Writer class.  Alternatively, something
+    like the following could be used.
+
+  ```
+  for position := 0; position < data.size; null:
+    position += my_uart.write data[position..data.size]
+  ```
 
   If $wait is true, the method blocks until all bytes have been written to the pin.
     Otherwise, returns as soon as the data is fully buffered.
