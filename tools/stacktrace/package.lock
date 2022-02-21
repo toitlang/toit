@@ -1,0 +1,7 @@
+prefixes:
+  host: pkg-host
+packages:
+  pkg-host:
+    url: github.com/toitlang/pkg-host
+    version: 1.0.0
+    hash: 8c8d57301062a62d827c81687e09923d7d909ff7
