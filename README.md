@@ -249,6 +249,30 @@ with the `ESP32_PORT` make variable. You can also use all the `make esp32` make 
 make flash ESP32_ENTRY=examples/mandelbrot.toit ESP32_PORT=/dev/ttyUSB0
 ```
 
+---
+*NOTE*
+
+To access the device `/dev/ttyUSB0` on Linux you probably need to be a member
+of some group, normally either `uucp` or `dialout`.  To see which groups you are
+a member of and which group owns the device, plug in an ESP32 to the USB port
+and try:
+
+``` sh
+groups
+ls -g /dev/ttyUSB0
+```
+
+If you lack a group membership, you can add it with
+
+``` sh
+sudo usermod -aG dialout $USER
+```
+
+You will have to log out and log back in for this to take effect.
+
+---
+
+
 ### Configuring WiFi for the ESP32
 
 You can easily configure the ESP32's builtin WiFi by setting the `ESP32_WIFI_SSID` and
