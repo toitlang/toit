@@ -35,7 +35,7 @@ class Writer:
   write data from/int=0 to/int=data.size:
     size := to - from
     while from < to:
-      from += writer_.write data from to
+      from += writer_.write data[from..to]
     return size
 
   /**
