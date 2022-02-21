@@ -43,35 +43,52 @@ main args/List:
   if error:
     throw error
 
-  if not disassemble:
-    backtrace_do backtrace symbols: | address symbol |
-      name := "(unknown)"
-      if symbol:
-        name = "$symbol.name + 0x$(%x address - symbol.address)"
-      print "0x$(%x address): $name"
+  /* Sample output without --disassemble:
+  0x400870c0: toit::Interpreter::_run() + 0x132c
+  0x4010661d: toit::Interpreter::run() + 0x9
+  0x401143a3: toit::Scheduler::run_process(toit::Locker&, toit::Process*, toit::SchedulerThread*) + 0x57
+  0x40114592: toit::Scheduler::run(toit::SchedulerThread*) + 0x42
+  0x401145c5: toit::SchedulerThread::entry() + 0x9
+  0x40108262: toit::Thread::_boot() + 0x22
+  0x40108289: toit::thread_start(void*) + 0x5
+  */
 
-  else:
-    backtrace_do backtrace symbols: | address symbol |
-      name := "(unknown)"
-      print ""
-      if symbol:
-        name = "$symbol.name + 0x$(%x address - symbol.address)"
-      print "0x$(%x address): $name"
-      if symbol:
-        star_printed := false
-        start := max symbol.address address - 30
-        if start != symbol.address: print "..."
-        for add := start; add < address + 15; add++:
-          star := " "
-          if not star_printed and add >= address:
-            if disassembly_lines.contains add:
-              star = "*"
-            else:
-              print "* $(%x add):  (address is inside previous instruction)"
-            star_printed = true
+  /* Sample output with --disassemble:
+  0x400870c0: toit::Interpreter::_run() + 0x132c
+  ...
+    400870b8:	102192        	l32i	a9, a1, 64
+    400870bb:	1133f0        	slli	a3, a3, 1
+    400870be:	142952        	l32i	a5, a9, 80
+  * 400870c0:  (address is inside previous instruction)
+    400870c1:	353a      	add.n	a3, a5, a3
+
+  0x4010661d: toit::Interpreter::run() + 0x9
+    4010661a:	2de681        	l32r	a8, 400d1db4 <ram_en_pwdet+0xb6c>
+  * 4010661d:	0008e0        	callx8	a8
+    40106620:	0a2d      	mov.n	a2, a10
+  ...
+  */    
+  backtrace_do backtrace symbols: | address symbol |
+    name := "(unknown)"
+    if disassemble: print ""
+    if symbol:
+      name = "$symbol.name + 0x$(%x address - symbol.address)"
+    print "0x$(%x address): $name"
+    if symbol and disassemble:
+      star_printed := false
+      start := max symbol.address (address - 30)
+      if start != symbol.address: print "..."
+      for add := start; add < address + 15; add++:
+        star := " "
+        if not star_printed and add >= address:
           if disassembly_lines.contains add:
-            print "$star $disassembly_lines[add]"
-      print ""
+            star = "*"
+          else:
+            print "* $(%x add):  (address is inside previous instruction)"
+          star_printed = true
+        if disassembly_lines.contains add:
+          print "$star $disassembly_lines[add]"
+    if disassemble: print ""
 
 backtrace_do backtrace/string symbols/List [block]:
   if not backtrace.starts_with "Backtrace:": usage
