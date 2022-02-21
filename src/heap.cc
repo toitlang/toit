@@ -200,8 +200,6 @@ class ScavengeState : public RootCallback {
     blocks.append(VM::current()->heap_memory()->allocate_block_during_scavenge(heap));
   }
 
-  static bool is_forward_address(Object* object) { return object->is_heap_object(); }
-
   HeapObject* allocate(int byte_size) {
     HeapObject* result = blocks.last()->allocate_raw(byte_size);
     if (result == null) {
@@ -238,7 +236,7 @@ class ScavengeState : public RootCallback {
     // The fact that the header is a Smi and the forwarding pointer is a heap pointer,
     // allows us to distinguish the two.
     from->_at_put(HeapObject::HEADER_OFFSET, result);
-    ASSERT(is_forward_address(from->header_during_gc()));
+    ASSERT(from->has_forwarding_address());
     return result;
   }
 
@@ -250,10 +248,9 @@ class ScavengeState : public RootCallback {
       if (!content->is_heap_object()) continue;  // Do nothing.
       HeapObject* heap_object = HeapObject::cast(content);
       if (heap_object->on_program_heap(_process)) continue;  // Do nothing, content is outside heap.
-      Object* header = HeapObject::cast(content)->header_during_gc();
-      roots[i] = is_forward_address(header)          // Check whether there is a forward address.
-          ? header                                   // if so, update the root with the forwarding.
-          : copy_object(HeapObject::cast(content));  // otherwise, copy the object.
+      roots[i] = heap_object->has_forwarding_address()  // Has the object already been copied to new-space.
+          ? heap_object->forwarding_address() // Update the root with the forwarding.
+          : copy_object(heap_object);         // Otherwise, copy the object.
     }
   }
 
@@ -485,7 +482,7 @@ int ObjectHeap::scavenge() {
     if (!_registered_finalizers.is_empty() && Flags::tracegc && Flags::verbose) printf(" - Processing registered finalizers\n");
     ObjectHeap* heap = this;
     _registered_finalizers.remove_wherever([&ss, heap](FinalizerNode* node) -> bool {
-      bool is_alive = ScavengeState::is_forward_address(node->key()->header_during_gc());
+      bool is_alive = node->key()->has_forwarding_address();
       if (!is_alive) {
         // Clear the key so it is not retained.
         node->set_key(heap->program()->null_object());
@@ -509,7 +506,7 @@ int ObjectHeap::scavenge() {
 
     // Process registered VM finalizers.
     _registered_vm_finalizers.remove_wherever([&ss, this](VMFinalizerNode* node) -> bool {
-      bool is_alive = ScavengeState::is_forward_address(node->key()->header_during_gc());
+      bool is_alive = node->key()->has_forwarding_address();
 
       if (is_alive && Flags::tracegc && Flags::verbose) printf(" - Finalizer %p is alive\n", node);
       if (is_alive) {
