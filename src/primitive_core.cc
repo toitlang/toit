@@ -59,21 +59,19 @@ namespace toit {
 MODULE_IMPLEMENTATION(core, MODULE_CORE)
 
 PRIMITIVE(write_string_on_stdout) {
-  ARGS(String, message, bool, add_newline);
-  String::Bytes bytes(message);
-  fprintf(stdout, "%s", bytes.address());
+  ARGS(cstring, message, bool, add_newline);
+  fprintf(stdout, "%s", message);
   if (add_newline) fprintf(stdout, "\n");
   fflush(stdout);
-  return message;
+  return _raw_message;
 }
 
 PRIMITIVE(write_string_on_stderr) {
-  ARGS(String, message, bool, add_newline);
-  String::Bytes bytes(message);
-  fprintf(stderr, "%s", bytes.address());
+  ARGS(cstring, message, bool, add_newline);
+  fprintf(stderr, "%s", message);
   if (add_newline) fprintf(stderr, "\n");
   fflush(stderr);
-  return message;
+  return _raw_message;
 }
 
 PRIMITIVE(hatch_method) {

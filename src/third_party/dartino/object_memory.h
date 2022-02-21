@@ -6,10 +6,13 @@
 
 #include "../../top.h"
 
+#include <atomic>
+
+#include "../../linked.h"
+#include "../../heap_roots.h"
+#include "../../objects.h"
 #include "../../os.h"
 #include "../../utils.h"
-#include "../../linked.h"
-#include "src/vm/weak_pointer.h"
 
 namespace toit {
 
@@ -24,6 +27,7 @@ class Object;
 class OldSpace;
 class PointerVisitor;
 class ProgramHeapRelocator;
+class Program;
 class PromotedTrack;
 class Smi;
 class Space;
@@ -48,7 +52,7 @@ enum PageType {
 };
 
 typedef DoubleLinkedList<Chunk> ChunkList;
-typedef DoubleLinkedList<Chunk>::Iterator<Chunk> ChunkListIterator;
+typedef DoubleLinkedList<Chunk>::Iterator ChunkListIterator;
 
 // A chunk represents a block of memory provided by ObjectMemory.
 class Chunk : public ChunkList::Element {
@@ -115,7 +119,7 @@ class Chunk : public ChunkList::Element {
 // Space is a chain of chunks. It supports allocation and traversal.
 class Space {
  public:
-  static const uword DEFAULT_MINIMUM_CHUNK_SIZE = PAGE_SIZE;
+  static const uword DEFAULT_MINIMUM_CHUNK_SIZE = TOIT_PAGE_SIZE;
   static const uword DEFAULT_MAXIMUM_CHUNK_SIZE = 256 * KB;
 
   virtual ~Space();
@@ -159,7 +163,7 @@ class Space {
   void complete_transformations(PointerVisitor* visitor);
 
   // Returns true if the address is inside this space.  Not particularly fast.
-  // See GCMetadata::PageType for a faster possibility.
+  // See GcMetadata::PageType for a faster possibility.
   bool includes(uword address);
 
   // Adjust the allocation budget based on the current heap size.
@@ -185,17 +189,17 @@ class Space {
     return no_allocation_failure_nesting_ != 0;
   }
 
-  bool is_empty() const { return chunk_list_.IsEmpty(); }
+  bool is_empty() const { return chunk_list_.is_empty(); }
 
-  ChunkListIterator chunk_list_begin() { return chunk_list_.Begin(); }
-  ChunkListIterator chunk_list_end() { return chunk_list_.End(); }
+  ChunkListIterator chunk_list_begin() { return chunk_list_.begin(); }
+  ChunkListIterator chunk_list_end() { return chunk_list_.end(); }
 
   static uword default_chunk_size(uword heap_size) {
     // We return a value between DEFAULT_MINIMUM_CHUNK_SIZE and
     // DEFAULT_MAXIMUM_CHUNK_SIZE - and try to keep the chunks smaller than 20% of
     // the heap.
-    return Utils::Minimum(
-        Utils::Maximum(DEFAULT_MINIMUM_CHUNK_SIZE, heap_size / 5),
+    return Utils::min(
+        Utils::max(DEFAULT_MINIMUM_CHUNK_SIZE, heap_size / 5),
         DEFAULT_MAXIMUM_CHUNK_SIZE);
   }
 
@@ -208,32 +212,32 @@ class Space {
   void find(uword word, const char* name);
 #endif
 
-  uword start() {
-    ASSERT(chunk_list_.First() == chunk_list_.Last());
-    return chunk_list_.First()->start();
+  uword single_chunk_start() {
+    ASSERT(chunk_list_.first() == chunk_list_.last());
+    return chunk_list_.first()->start();
   }
 
-  uword size() {
-    ASSERT(chunk_list_.First() == chunk_list_.Last());
-    return chunk_list_.First()->size();
+  uword single_chunk_size() {
+    ASSERT(chunk_list_.first() == chunk_list_.last());
+    return chunk_list_.first()->size();
   }
 
   bool is_in_single_chunk(HeapObject* object) {
-    ASSERT(chunk_list_.First() == chunk_list_.Last());
-    return reinterpret_cast<uword>(object) - start() < size();
+    ASSERT(chunk_list_.first() == chunk_list_.last());
+    return reinterpret_cast<uword>(object) - single_chunk_start() < single_chunk_size();
   }
 
   Chunk* chunk() {
-    ASSERT(chunk_list_.First() == chunk_list_.Last());
-    return chunk_list_.First();
+    ASSERT(chunk_list_.first() == chunk_list_.last());
+    return chunk_list_.first();
   }
 
-  WeakPointerList* weak_pointers() { return &weak_pointers_; }
+  VMFinalizerNodeFIFO* weak_pointers() { return &weak_pointers_; }
 
   PageType page_type() { return page_type_; }
 
  protected:
-  explicit Space(Resizing resizeable, PageType page_type);
+  Space(Program* program, Resizing resizeable, PageType page_type);
 
   friend class Chunk;
   friend class CompactingVisitor;
@@ -257,6 +261,7 @@ class Space {
     --no_allocation_failure_nesting_;
   }
 
+  Program* program_;
   ChunkList chunk_list_;
   uword used_;              // Allocated bytes.
   uword top_;               // Allocation top in current chunk.
@@ -270,7 +275,7 @@ class Space {
   bool resizeable_;
 
   // Linked list of weak pointers to heap objects in this space.
-  WeakPointerList weak_pointers_;
+  VMFinalizerNodeFIFO weak_pointers_;
   PageType page_type_;
 };
 
@@ -419,19 +424,6 @@ class NoAllocationFailureScope {
   Space* space_;
 };
 
-class NoAllocationScope {
- public:
-#ifndef DEBUG
-  explicit NoAllocationScope(Heap* heap) {}
-#else
-  explicit NoAllocationScope(Heap* heap);
-  ~NoAllocationScope();
-
- private:
-  Heap* heap_;
-#endif
-};
-
 // ObjectMemory controls all memory used by object heaps.
 class ObjectMemory {
  public:
@@ -460,7 +452,7 @@ class ObjectMemory {
   // Use some already-existing memory for a chunk.
   static Chunk* create_fixed_chunk(Space* space, void* heap_space, uword size);
 
-  static Atomic<uword> allocated_;
+  static std::atomic<uword> allocated_;
 
   friend class SemiSpace;
   friend class Space;
