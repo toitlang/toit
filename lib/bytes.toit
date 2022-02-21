@@ -65,7 +65,7 @@ interface Producer:
   /** The size of the generated payload. */
   size -> int
   /** Writes the payload into the given $byte_array at the given $offset. */
-  write_to byte_array offset/int -> none
+  write_to byte_array/ByteArray offset/int -> none
 
 /**
 A $Producer backed by a byte array.
@@ -89,7 +89,7 @@ class ByteArrayProducer implements Producer:
   size -> int: return to_ - from_
 
   /** See $Producer.write_to. */
-  write_to destination offset/int -> none:
+  write_to destination/ByetArray offset/int -> none:
     destination.replace offset byte_array_ from_ to_
 
 /**
