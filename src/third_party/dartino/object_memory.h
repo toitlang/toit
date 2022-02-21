@@ -391,10 +391,10 @@ class OldSpace : public Space {
   // For detecting pointless GCs that are really an out-of-memory situation.
   void EvaluatePointlessness();
   uword MinimumProgress();
-  void ReportNewSpaceProgress(uword bytes_collected);
+  void report_new_space_progress(uword bytes_collected);
 
  private:
-  uword AllocateFromFreeList(uword size);
+  uword allocate_from_free_list(uword size);
   uword allocate_in_new_chunk(uword size);
   Chunk* allocate_and_use_chunk(uword size);
 
