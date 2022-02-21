@@ -24,8 +24,6 @@ ESP32_WIFI_PASSWORD=
 ESP32_PORT=
 ESP32_CHIP=esp32
 export IDF_TARGET=$(ESP32_CHIP)
-ESP32S3_CHIP=esp32s3
-export IDF_TARGET=$(ESP32S3_CHIP)
 
 # Use Toitware ESP-IDF fork by default.
 export IDF_PATH ?= $(CURDIR)/third_party/esp-idf

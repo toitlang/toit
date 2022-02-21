@@ -89,7 +89,7 @@ class ByteArrayProducer implements Producer:
   size -> int: return to_ - from_
 
   /** See $Producer.write_to. */
-  write_to destination/ByetArray offset/int -> none:
+  write_to destination/ByteArray offset/int -> none:
     destination.replace offset byte_array_ from_ to_
 
 /**
