@@ -766,6 +766,7 @@ namespace toit {
 #define _A_T_X509ResourceGroup(N, name)   MAKE_UNPACKING_MACRO(X509ResourceGroup, N, name)
 #define _A_T_PWMResourceGroup(N, name)    MAKE_UNPACKING_MACRO(PWMResourceGroup, N, name)
 #define _A_T_RpcResourceGroup(N, name)    MAKE_UNPACKING_MACRO(RpcResourceGroup, N, name)
+#define _A_T_RMTResourceGroup(N, name)    MAKE_UNPACKING_MACRO(RMTResourceGroup, N, name)
 
 #define _A_T_Resource(N, name)            MAKE_UNPACKING_MACRO(Resource, N, name)
 #define _A_T_Directory(N, name)           MAKE_UNPACKING_MACRO(Directory, N, name)

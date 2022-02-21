@@ -83,7 +83,7 @@ PRIMITIVE(use) {
 }
 
 PRIMITIVE(unuse) {
-  ARGS(RMTResourceGroup, resource_group,  IntResource, resource)
+  ARGS(RMTResourceGroup, resource_group, IntResource, resource)
 
   int channel = resource->id();
   resource_group->unregister_id(channel);
@@ -114,7 +114,16 @@ PRIMITIVE(receive) {
 }
 
 PRIMITIVE(transmit) {
+  ARGS(int, channel_num, Blob, blob)
 
+  if (blob.length() % 4 != 0) INVALID_ARGUMENT;
+
+  uint8* bytes = blob.address();
+  rmt_item32_t* items = reinterpret_cast<rmt_item32_t*>(bytes);
+  esp_err_t err = rmt_write_items(channel_num, items, blob.length() / 4, true);
+  if (ESP_OK != err) return Primitive::os_error(err, process);
+
+  return process->program()->null_object();
 }
 
 #endif // TOIT_FREERTOS
