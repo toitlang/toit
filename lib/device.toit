@@ -2,9 +2,9 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import drivers.cellular
 import device_impl as impl
 import uuid
+import serialization
 
 
 /**
@@ -106,5 +106,69 @@ class Gnss extends impl.Gnss_:
 
   Returns null if there is no location fix.
   */
-  location -> cellular.GnssLocation?:
+  location -> GnssLocation?:
     return super
+
+
+/**
+GNSS location consisting of coordinates and accuracy measurements.
+*/
+class GnssLocation:
+  latitude/float
+  longitude/float
+  /** The altitude relative to the median sea level. */
+  altitude_msl/float
+  /** The time (UTC) when this location was recorded. */
+  time/Time
+  /** The horizontal accuracy. */
+  horizontal_accuracy/float
+  /** The vertical accuracy. */
+  vertical_accuracy/float
+  /**
+  Constructs a GNSS location from the given $latitude, $longitude,
+    $altitude_msl, $time, $horizontal_accuracy, and $vertical_accuracy.
+  */
+  constructor .latitude .longitude .altitude_msl .time .horizontal_accuracy .vertical_accuracy:
+
+  /**
+  Constructs a GNSS location by deserializing the given bytes.
+
+  The bytes must be constructed with $to_byte_array.
+  */
+  constructor.deserialize bytes/ByteArray?:
+    values := serialization.deserialize bytes
+    return GnssLocation
+      values[0]
+      values[1]
+      values[2]
+      Time.deserialize values[3]
+      values[4]
+      values[5]
+
+  /**
+  Serializes this GNSS location into a byte array.
+
+  The bytes can be deserialized into a location with $GnssLocation.deserialize.
+  */
+  to_byte_array:
+    return serialization.serialize [
+      latitude,
+      longitude,
+      altitude_msl,
+      time.to_byte_array,
+      horizontal_accuracy,
+      vertical_accuracy,
+    ]
+
+  /** See $super. */
+  stringify:
+    lat_printer := create_printer_ "S" "N"
+    lat := lat_printer.call latitude
+
+    long_printer := create_printer_ "W" "E"
+    long := long_printer.call longitude
+
+    return "$lat, $long"
+
+  static create_printer_ negative_indicator_ positive_indicator_:
+    return :: | value | "$(%3.5f value.abs)$(value < 0 ? negative_indicator_ : positive_indicator_)"
