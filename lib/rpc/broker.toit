@@ -98,8 +98,10 @@ class RpcRequest_:
       result = procedure.call arguments gid pid
       if result is RpcSerializable: result = result.serialize_for_rpc
     finally: | is_exception exception |
+      // If we get an exception, we send back a string representation of
+      // it to avoid running into issues with unserializable exceptions.
       reply := is_exception
-          ? [ id, true, exception.value, exception.trace ]
+          ? [ id, true, exception.value.stringify, exception.trace ]
           : [ id, false, result ]
       process_send_ pid SYSTEM_RPC_REPLY_ reply
       return  // Stops any unwinding.
