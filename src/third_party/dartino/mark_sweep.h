@@ -155,13 +155,13 @@ class FreeList {
     return null;
   }
 
-  void Clear() {
+  void clear() {
     for (int i = 0; i < NUMBER_OF_BUCKETS; i++) {
       buckets_[i] = null;
     }
   }
 
-  void Merge(FreeList* other) {
+  void merge(FreeList* other) {
     for (int i = 0; i < NUMBER_OF_BUCKETS; i++) {
       FreeListChunk* chunk = other->buckets_[i];
       if (chunk != null) {

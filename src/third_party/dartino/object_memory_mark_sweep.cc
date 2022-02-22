@@ -372,9 +372,9 @@ bool OldSpace::complete_scavenge_generational(
   return found_work;
 }
 
-void OldSpace::ClearFreeList() { free_list_->Clear(); }
+void OldSpace::clear_free_list() { free_list_->clear(); }
 
-void OldSpace::MarkChunkEndsFree() {
+void OldSpace::mark_chunk_ends_free() {
   for (auto chunk : chunk_list_) {
     uword top = chunk->compaction_top();
     uword end = chunk->usable_end();
@@ -385,7 +385,7 @@ void OldSpace::MarkChunkEndsFree() {
   }
 }
 
-void FixPointersVisitor::VisitBlock(Object** start, Object** end) {
+void FixPointersVisitor::visit_block(Object** start, Object** end) {
   for (Object** current = start; current < end; current++) {
     Object* object = *current;
     if (GcMetadata::GetPageType(object) == OLD_SPACE_PAGE) {
@@ -482,7 +482,7 @@ uword CompactingVisitor::visit(HeapObject* object) {
 SweepingVisitor::SweepingVisitor(OldSpace* space)
     : free_list_(space->free_list()), free_start_(0), used_(0) {
   // Clear the free list. It will be rebuilt during sweeping.
-  free_list_->Clear();
+  free_list_->clear();
 }
 
 void SweepingVisitor::add_free_list_chunk(uword free_end) {
