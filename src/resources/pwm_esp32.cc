@@ -107,7 +107,7 @@ class PWMResourceGroup : public ResourceGroup {
 };
 
 uint32 msb(uint32 n){
-  return 31 - __builtin_clz(n);
+  return 31 - Utils::clz(n);
 }
 
 MODULE_IMPLEMENTATION(pwm, MODULE_PWM)

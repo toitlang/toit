@@ -51,6 +51,36 @@ class Utils {
     return (T)((uintptr_t)(x) & -n);
   }
 
+  // Count leading zeros.  Returns the number of bits in T for a zero input.
+  template<typename T>
+  static inline int clz(T x) {
+    if (x == 0) return sizeof(T) * BYTE_BIT_SIZE;
+    typename std::make_unsigned<T>::type u = x;
+    if (sizeof(T) == sizeof(long long)) {
+      return __builtin_clzll(u);
+    } else if (sizeof(T) == sizeof(long)) {
+      return __builtin_clzl(u);
+    } else {
+      ASSERT(sizeof(T) <= sizeof(unsigned));
+      return __builtin_clz(u) - (sizeof(int) - sizeof(T)) * BYTE_BIT_SIZE;
+    }
+  }
+
+  // Count trailing zeros.  Returns the number of bits in T for a zero input.
+  template<typename T>
+  static inline int ctz(T x) {
+    if (x == 0) return sizeof(T) * BYTE_BIT_SIZE;
+    typename std::make_unsigned<T>::type u = x;
+    if (sizeof(T) == sizeof(long long)) {
+      return __builtin_ffsll(u) - 1;
+    } else if (sizeof(T) == sizeof(long)) {
+      return __builtin_ffsl(u) - 1;
+    } else {
+      ASSERT(sizeof(T) <= sizeof(unsigned));
+      return __builtin_ffs(u) - 1;
+    }
+  }
+
   template<typename T>
   static inline T address_at(T base, int byte_offset) {
     return reinterpret_cast<T>(((uword) base) + byte_offset);
