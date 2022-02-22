@@ -43,13 +43,10 @@ class MarkingStack {
 
 class MarkingVisitor : public RootCallback {
  public:
-  MarkingVisitor(SemiSpace* new_space, MarkingStack* marking_stack,
-                 Stack** stack_chain = null)
-      : stack_chain_(stack_chain),
-        new_space_address_(new_space->start()),
+  MarkingVisitor(SemiSpace* new_space, MarkingStack* marking_stack)
+      : new_space_address_(new_space->single_chunk_start()),
         new_space_size_(new_space->size()),
-        marking_stack_(marking_stack),
-        number_of_stacks_(0) {}
+        marking_stack_(marking_stack) {}
 
   virtual void visit_class(Object** p) {}
 
@@ -58,31 +55,18 @@ class MarkingVisitor : public RootCallback {
     for (Object** p = start; p < end; p++) mark_pointer(*p);
   }
 
-  int number_of_stacks() const { return number_of_stacks_; }
-
  private:
-  void chain_stack(Stack* stack) {
-    number_of_stacks_++;
-    stack->set_next(*stack_chain_);
-    *stack_chain_ = stack;
-  }
-
   void INLINE mark_pointer(Object* object) {
     if (!GcMetadata::in_new_or_old_space(object)) return;
     HeapObject* heap_object = HeapObject::cast(object);
     if (!GcMetadata::mark_grey_if_not_marked(heap_object)) {
-      if (stack_chain_ != null && heap_object->is_stack()) {
-        chain_stack(Stack::cast(heap_object));
-      }
       marking_stack_->push(heap_object);
     }
   }
 
-  Stack** stack_chain_;
   uword new_space_address_;
   uword new_space_size_;
   MarkingStack* marking_stack_;
-  int number_of_stacks_;
 };
 
 class FreeList {
@@ -194,8 +178,6 @@ class FixPointersVisitor : public RootCallback {
   virtual void visit_class(Object** p) {}
 
   virtual void visit_block(Object** start, Object** end);
-
-  virtual void about_to_visit_stack(Stack* stack);
 
   void set_source_address(uword address) { source_address_ = address; }
 

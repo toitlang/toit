@@ -506,12 +506,6 @@ uword SweepingVisitor::visit(HeapObject* object) {
   return size;
 }
 
-void FixPointersVisitor::about_to_visit_stack(Stack* stack) {
-  if (source_address_ != 0) {
-    stack->update_frame_pointers(stack->address() - source_address_);
-  }
-}
-
 void OldSpace::process_weak_pointers() {
   WeakPointer::process(&weak_pointers_, this);
 }
