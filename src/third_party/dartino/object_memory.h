@@ -116,6 +116,26 @@ class Chunk : public ChunkList::Element {
   friend class Space;
 };
 
+// Abstract base class for visiting all objects in a space.
+class HeapObjectVisitor {
+ public:
+  HeapObjectVisitor(Program* program) : program_(program) {}
+  virtual ~HeapObjectVisitor() {}
+  // Visit the heap object. Must return the size of the heap
+  // object.
+  virtual uword visit(HeapObject* object) = 0;
+  // Notification that the end of a chunk has been reached. A heap
+  // object visitor visits all heap objects in a chunk in order
+  // calling visit on each of them. When it reaches the end of the
+  // chunk it calls chunk_end.
+  virtual void chunk_end(Chunk* chunk, uword end) {}
+  // Notification that we are about to iterate over a chunk.
+  virtual void chunk_start(Chunk* chunk) {}
+
+ protected:
+  Program* program_;
+};
+
 // Space is a chain of chunks. It supports allocation and traversal.
 class Space {
  public:
