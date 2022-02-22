@@ -11,6 +11,7 @@
 #include "../../os.h"
 #include "../../utils.h"
 #include "gc_metadata.h"
+#include "mark_sweep.h"
 
 namespace toit {
 
@@ -95,7 +96,7 @@ void Space::set_allocation_budget(word new_budget) {
       static_cast<word>(default_chunk_size(new_budget)), new_budget);
 }
 
-void Space::iterate_overflowed_objects(PointerVisitor* visitor, MarkingStack* stack) {
+void Space::iterate_overflowed_objects(RootCallback* visitor, MarkingStack* stack) {
   static_assert(
       TOIT_PAGE_SIZE % (1 << GcMetadata::CARD_SIZE_IN_BITS_LOG_2) == 0,
       "MarkStackOverflowBytesMustCoverAFractionOfAPage");
@@ -152,7 +153,7 @@ void Space::iterate_objects(HeapObjectVisitor* visitor) {
   }
 }
 
-void SemiSpace::complete_scavenge(PointerVisitor* visitor) {
+void SemiSpace::complete_scavenge(RootCallback* visitor) {
   flush();
   for (auto chunk : chunk_list_) {
     uword current = chunk->start();
@@ -182,7 +183,7 @@ void Space::find(uword w, const char* name) {
 }
 #endif
 
-void Space::complete_transformations(PointerVisitor* visitor) {
+void Space::complete_transformations(RootCallback* visitor) {
   flush();
   for (auto chunk : chunk_list_) {
     uword current = chunk->start();
@@ -232,14 +233,14 @@ void Chunk::find(uword word, const char* name) {
 #endif
 
 Chunk* ObjectMemory::allocate_chunk(Space* owner, uword size) {
-  ASSERT(owner != NULL);
+  ASSERT(owner != null);
 
   size = Utils::round_up(size, TOIT_PAGE_SIZE);
   void* memory =
       OS::allocate_pages(size, GcMetadata::heap_allocation_arena());
   uword lowest = GcMetadata::lowest_old_space_address();
   USE(lowest);
-  if (memory == NULL) return NULL;
+  if (memory == null) return null;
   ASSERT(reinterpret_cast<uword>(memory) >= lowest);
   ASSERT(reinterpret_cast<uword>(memory) - lowest + size <=
          GcMetadata::heap_extent());
@@ -259,7 +260,7 @@ Chunk* ObjectMemory::allocate_chunk(Space* owner, uword size) {
 }
 
 Chunk* ObjectMemory::create_fixed_chunk(Space* owner, void* memory, uword size) {
-  ASSERT(owner != NULL);
+  ASSERT(owner != null);
   ASSERT(size == Utils::round_up(size, TOIT_PAGE_SIZE));
 
   uword base = reinterpret_cast<uword>(memory);

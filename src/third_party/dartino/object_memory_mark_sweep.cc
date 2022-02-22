@@ -372,9 +372,9 @@ bool OldSpace::complete_scavenge_generational(
   return found_work;
 }
 
-void OldSpace::ClearFreeList() { free_list_->Clear(); }
+void OldSpace::clear_free_list() { free_list_->clear(); }
 
-void OldSpace::MarkChunkEndsFree() {
+void OldSpace::mark_chunk_ends_free() {
   for (auto chunk : chunk_list_) {
     uword top = chunk->compaction_top();
     uword end = chunk->usable_end();
@@ -385,7 +385,7 @@ void OldSpace::MarkChunkEndsFree() {
   }
 }
 
-void FixPointersVisitor::VisitBlock(Object** start, Object** end) {
+void FixPointersVisitor::visit_block(Object** start, Object** end) {
   for (Object** current = start; current < end; current++) {
     Object* object = *current;
     if (GcMetadata::GetPageType(object) == OLD_SPACE_PAGE) {
@@ -400,7 +400,7 @@ void FixPointersVisitor::VisitBlock(Object** start, Object** end) {
 // This is faster than the builtin memmove because we know the source and
 // destination are aligned and we know the size is at least 2 words.  Also
 // we know that any overlap is only in one direction.
-static void ALWAYS_INLINE object_mem_move(uword dest, uword source, uword size) {
+static void INLINE object_mem_move(uword dest, uword source, uword size) {
   ASSERT(source > dest);
   ASSERT(size >= WORD_SIZE * 2);
   uword t0 = *reinterpret_cast<uword*>(source);
@@ -417,7 +417,7 @@ static void ALWAYS_INLINE object_mem_move(uword dest, uword source, uword size) 
   }
 }
 
-static int ALWAYS_INLINE find_first_set(uint32 x) {
+static int INLINE find_first_set(uint32 x) {
 #ifdef _MSC_VER
   unsigned long index;  // NOLINT
   bool non_zero = _BitScanForward(&index, x);
@@ -482,7 +482,7 @@ uword CompactingVisitor::visit(HeapObject* object) {
 SweepingVisitor::SweepingVisitor(OldSpace* space)
     : free_list_(space->free_list()), free_start_(0), used_(0) {
   // Clear the free list. It will be rebuilt during sweeping.
-  free_list_->Clear();
+  free_list_->clear();
 }
 
 void SweepingVisitor::add_free_list_chunk(uword free_end) {
@@ -555,7 +555,7 @@ void OldSpace::verify() {
 }
 #endif
 
-void MarkingStack::empty(PointerVisitor* visitor) {
+void MarkingStack::empty(RootCallback* visitor) {
   while (!is_empty()) {
     HeapObject* object = *--next_;
     GcMetadata::mark_all(object, object->size());
@@ -563,7 +563,7 @@ void MarkingStack::empty(PointerVisitor* visitor) {
   }
 }
 
-void MarkingStack::process(PointerVisitor* visitor, Space* old_space,
+void MarkingStack::process(RootCallback* visitor, Space* old_space,
                            Space* new_space) {
   while (!is_empty() || is_overflowed()) {
     empty(visitor);
