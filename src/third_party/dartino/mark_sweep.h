@@ -79,30 +79,26 @@ class FreeList {
 #endif
 
   void AddChunk(uword free_start, uword free_size) {
-    // If the chunk is too small to be turned into an actual
-    // free list chunk we turn it into fillers to be coalesced
-    // with other free chunks later.
-    if (free_size < FreeListChunk::SIZE) {
-      ASSERT(free_size <= 2 * WORD_SIZE);
-      Object** free_address = reinterpret_cast<Object**>(free_start);
-      for (uword i = 0; i * WORD_SIZE < free_size; i++) {
-        free_address[i] = StaticClassStructures::one_word_filler_class();
-      }
+    FreeListChunk* result = FreeListChunk::create_at(free_start, free_size);
+    if (!result) {
+      // If the chunk is too small to be turned into an actual
+      // free list chunk we turn it into fillers to be coalesced
+      // with other free chunks later.
       return;
     }
-    // Large enough to add a free list chunk.
-    FreeListChunk* result = FreeListChunk::create_at(free_start, free_size);
-    int bucket = Utils::highest_bit(free_size) - 1;
+    const int WORD_BITS = sizeof(uword) * BYTE_BIT_SIZE;
+    int bucket = WORD_BITS - Utils::clz(free_size);
     if (bucket >= NUMBER_OF_BUCKETS) bucket = NUMBER_OF_BUCKETS - 1;
     result->set_next_chunk(buckets_[bucket]);
     buckets_[bucket] = result;
   }
 
   FreeListChunk* get_chunk(uword min_size) {
-    int smallest_bucket = Utils::highest_bit(min_size);
+    const int WORD_BITS = sizeof(uword) * BYTE_BIT_SIZE;
+    int smallest_bucket = WORD_BITS - Utils::clz(min_size);
     ASSERT(smallest_bucket > 0);
 
-    // Locate largest chunk in free list guaranteed to satisfy the
+    // Take the first chunk in the largest list guaranteed to satisfy the
     // allocation.
     for (int i = NUMBER_OF_BUCKETS - 1; i >= smallest_bucket; i--) {
       FreeListChunk* result = buckets_[i];
@@ -119,7 +115,7 @@ class FreeList {
     // Search the bucket containing chunks that could, but are not
     // guaranteed to, satisfy the allocation.
     if (smallest_bucket > NUMBER_OF_BUCKETS) smallest_bucket = NUMBER_OF_BUCKETS;
-    FreeListChunk* previous = reinterpret_cast<FreeListChunk*>(null);
+    FreeListChunk* previous = null;
     FreeListChunk* current = buckets_[smallest_bucket - 1];
     while (current != null) {
       if (current->size() >= min_size) {

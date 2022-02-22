@@ -24,6 +24,7 @@ namespace toit {
 
 class Printer;
 class Blob;
+class Chunk;
 class MutableBlob;
 class Error;
 
@@ -55,6 +56,8 @@ class Object {
   INLINE bool is_string();
   INLINE bool is_task();
   INLINE bool is_large_integer();
+  INLINE bool is_free_list_chunk();
+  INLINE bool is_promoted_track();
 
   static Object* cast(Object* obj) { return obj; }
 
@@ -183,6 +186,9 @@ enum TypeTag {
   LARGE_INTEGER_TAG,
   STACK_TAG,
   TASK_TAG,
+  FREE_LIST_CHUNK_TAG,
+  SINGLE_FREE_WORD_TAG,
+  PROMOTED_TRACK_TAG,
 };
 
 class HeapObject : public Object {
@@ -1182,6 +1188,107 @@ class Instance : public HeapObject {
   friend class ProgramHeap;
 };
 
+/*
+These objects are sometimes used to overwrite dead objects.  This
+  means a heap can be made traversable, skipping over unused areas.
+They are never accessible from Toit code.
+*/
+class FreeListChunk : public HeapObject {
+ public:
+  uword size() {
+    if (class_tag() == SINGLE_FREE_WORD_TAG) return WORD_SIZE;
+    ASSERT(class_tag() == FREE_LIST_CHUNK_TAG);
+    return _word_at(SIZE_OFFSET);
+  }
+
+  bool can_be_daisychained() { return class_tag() == FREE_LIST_CHUNK_TAG;
+  }
+
+  void roots_do(int instance_size, RootCallback* cb) {}
+
+  static FreeListChunk* cast(Object* value) {
+    ASSERT(value->is_free_list_chunk());
+    return static_cast<FreeListChunk*>(value);
+  }
+
+  void set_next_chunk(FreeListChunk* next) {
+    ASSERT(can_be_daisychained());
+    _at_put(NEXT_OFFSET, next);
+  }
+
+  FreeListChunk* next_chunk() {
+    ASSERT(can_be_daisychained());
+    Object* result = _at(NEXT_OFFSET);
+    if (result == null) return null;
+    return FreeListChunk::cast(result);
+  }
+
+  static FreeListChunk* create_at(uword start, uword size);
+
+ private:
+  static const int SIZE_OFFSET = HeapObject::SIZE;
+  static const int NEXT_OFFSET = SIZE_OFFSET + WORD_SIZE;
+  static const int MINIMUM_SIZE = NEXT_OFFSET + WORD_SIZE;
+};
+
+/*
+These objects are container objects in which we allocate
+  newly promoted objects in old space.  They are chained up
+  so we can traverse the newly promoted objects during a
+  scavenge.
+After the header comes the newly allocated objects, perhaps
+  followed by a FreeListChunk object to fill out the rest.
+They are never accessible from Toit code.
+*/
+class PromotedTrack : public HeapObject {
+ public:
+  // Returns the whole size of the PromotedTrack so that
+  // when traversing the heap we will skip the promoted track.
+  // We only want to traverse the newly-promoted objects explicitly.
+  uword size() {
+    ASSERT(class_tag() == PROMOTED_TRACK_TAG);
+    return HEADER_SIZE;
+  }
+
+  // Returns the first object in the track.
+  HeapObject* start() {
+    return HeapObject::from_address(_raw() + HEADER_SIZE);
+  }
+
+  // When traversing the stack we don't traverse the objects inside the
+  // track, so nothing to do here.
+  void roots_do(int instance_size, RootCallback* cb) {}
+
+  static PromotedTrack* cast(Object* value) {
+    ASSERT(value->is_promoted_track());
+    return static_cast<PromotedTrack*>(value);
+  }
+
+  void set_next(PromotedTrack* next) {
+    _at_put(NEXT_OFFSET, next);
+  }
+
+  PromotedTrack* next() {
+    Object* result = _at(NEXT_OFFSET);
+    if (result == null) return null;
+    return PromotedTrack::cast(result);
+  }
+
+  void set_end(uword end) {
+    _word_at_put(END_OFFSET, end);
+  }
+
+  uword end() {
+    return _word_at(END_OFFSET);
+  }
+
+  static FreeListChunk* initialize(Program* program, PromotedTrack* next, uword start, uword end);
+
+ private:
+  static const int END_OFFSET = HeapObject::SIZE;
+  static const int NEXT_OFFSET = END_OFFSET + WORD_SIZE;
+  static const int HEADER_SIZE = NEXT_OFFSET + WORD_SIZE;
+};
 
 class Task : public Instance {
  public:
@@ -1252,6 +1359,15 @@ inline bool Object::is_string() {
 
 inline bool Object::is_large_integer() {
   return is_heap_object() && HeapObject::cast(this)->class_tag() == LARGE_INTEGER_TAG;
+}
+
+inline bool Object::is_free_list_chunk() {
+  return is_heap_object() && (HeapObject::cast(this)->class_tag() == FREE_LIST_CHUNK_TAG ||
+                              HeapObject::cast(this)->class_tag() == SINGLE_FREE_WORD_TAG);
+}
+
+inline bool Object::is_promoted_track() {
+  return is_heap_object() && HeapObject::cast(this)->class_tag() == PROMOTED_TRACK_TAG;
 }
 
 inline HeapObject* Object::unmark() {

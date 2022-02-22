@@ -127,7 +127,7 @@ void Space::iterate_overflowed_objects(RootCallback* visitor, MarkingStack* stac
             object = HeapObject::from_address(object_address);
             if (GcMetadata::is_grey(object)) {
               GcMetadata::mark_all(object, object->size(program_));
-              object->iterate_pointers(visitor);
+              object->roots_do(program_, visitor);
             }
           }
         }
@@ -159,8 +159,8 @@ void SemiSpace::complete_scavenge(RootCallback* visitor) {
     uword current = chunk->start();
     while (!has_sentinel_at(current)) {
       HeapObject* object = HeapObject::from_address(current);
-      object->iterate_pointers(visitor);
-      current += object->size();
+      object->roots_do(program_, visitor);
+      current += object->size(program_);
       flush();
     }
   }
