@@ -23,8 +23,6 @@
 #include "primitive.h"
 #include "printing.h"
 
-#include "objects_inline.h"
-
 extern "C" uword toit_image;
 extern "C" uword toit_image_size;
 
@@ -32,7 +30,6 @@ namespace toit {
 
 class ProgramHeap : public ProgramRawHeap {
  public:
-  ProgramHeap(Process* owner, Program* program, ProgramBlock* initial_block);
   ProgramHeap(Program* program, ProgramBlock* initial_block);
   ~ProgramHeap();
 
@@ -54,7 +51,7 @@ class ProgramHeap : public ProgramRawHeap {
 
   Iterator object_iterator() { return Iterator(_blocks, _program); }
 
-  static int max_allocation_size() { return ProgramBlock::max_payload_size(); }
+  static int max_allocation_size(int word_size = WORD_SIZE) { return ProgramBlock::max_payload_size(word_size); }
 
   // Shared allocation operations.
   Instance* allocate_instance(Smi* class_id);
@@ -77,18 +74,6 @@ class ProgramHeap : public ProgramRawHeap {
   }
 
   Program* program() { return _program; }
-
-  static inline bool in_read_only_program_heap(HeapObject* object, ProgramHeap* object_heap) {
-#ifdef TOIT_FREERTOS
-    // The system image is not page aligned so we can't use HeapObject::owner
-    // to detect it.  But it is all in one range, so we use that instead.
-    uword address = reinterpret_cast<uword>(object);
-    if ((address - reinterpret_cast<uword>(&toit_image)) < toit_image_size) {
-      return true;
-    }
-#endif
-    return object->owner() != object_heap->owner();
-  }
 
   int64 total_bytes_allocated() { return _total_bytes_allocated; }
 

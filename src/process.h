@@ -214,6 +214,11 @@ class Process : public ProcessListFromProcessGroup::Element,
     return _unyielded_for_us + (now - _last_run_us);
   }
 
+  inline bool on_program_heap(HeapObject* object) {
+    uword address = reinterpret_cast<uword>(object);
+    return address - _program_heap_address < _program_heap_size;
+  }
+
  private:
   Process(Program* program, ProcessRunner* runner, ProcessGroup* group, Block* initial_block);
   void _append_message(Message* message);
@@ -226,6 +231,9 @@ class Process : public ProcessListFromProcessGroup::Element,
   Program* _program;
   ProcessRunner* _runner;
   ProcessGroup* _group;
+
+  uword _program_heap_address;
+  uword _program_heap_size;
 
   Method _entry;
   char** _args;
@@ -256,6 +264,7 @@ class Process : public ProcessListFromProcessGroup::Element,
 #endif
 
   ResourceGroupListFromProcess _resource_groups;
+  friend class HeapObject;
   friend class Scheduler;
 };
 

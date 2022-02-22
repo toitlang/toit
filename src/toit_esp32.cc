@@ -55,8 +55,6 @@
 
 namespace toit {
 
-extern unsigned int checksum[4];
-
 const Program* setup_program(bool supports_ota) {
   if (supports_ota) {
 #ifndef CONFIG_IDF_TARGET_ESP32C3
@@ -84,10 +82,6 @@ const Program* setup_program(bool supports_ota) {
     }
 #endif
   }
-
-#ifndef CONFIG_IDF_TARGET_ESP32C3
-  ESP_LOGI("Toit", "Fingerprint %x-%x-%x-%x", checksum[0], checksum[1], checksum[2], checksum[3]);
-#endif
 
   return reinterpret_cast<const Program*>(&toit_image);
 }

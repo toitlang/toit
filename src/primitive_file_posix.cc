@@ -18,6 +18,7 @@
 #include "primitive_file.h"
 #include "primitive.h"
 #include "process.h"
+#include "objects_inline.h"
 
 #ifdef TOIT_POSIX
 

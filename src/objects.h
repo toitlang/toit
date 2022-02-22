@@ -199,15 +199,20 @@ class HeapObject : public Object {
     return static_cast<TypeTag>((header()->value() >> HeapObject::CLASS_TAG_OFFSET) & HeapObject::CLASS_TAG_MASK);
   }
 
+  INLINE bool has_forwarding_address() {
+    return _at(HEADER_OFFSET)->is_heap_object();
+  }
+
   // During GC the header can be a heap object (a forwarding pointer).
-  INLINE Object* header_during_gc() {
-    return _at(HEADER_OFFSET);
+  INLINE HeapObject* forwarding_address() {
+    ASSERT(has_forwarding_address());
+    return HeapObject::cast(_at(HEADER_OFFSET));
   }
 
   // Pseudo virtual member functions.
   int size(Program* program);  // Returns the byte size of this object.
-  void roots_do(Program* program, RootCallback* cb);
-  void do_pointers(Program* program, PointerCallback* cb);
+  void roots_do(Program* program, RootCallback* cb);  // For GC.
+  void do_pointers(Program* program, PointerCallback* cb);  // For snapshots.
 
   static const int HEADER_OFFSET = Object::NON_SMI_TAG_OFFSET;
 
@@ -232,10 +237,6 @@ class HeapObject : public Object {
     return result;
   }
 
-  // Returns the process that own this object.
-  // Returns null if this object is part of a program heap.
-  INLINE Process* owner();
-
   static HeapObject* cast(Object* obj) {
     ASSERT(obj->is_heap_object());
     return static_cast<HeapObject*>(obj);
@@ -243,9 +244,16 @@ class HeapObject : public Object {
 
   static HeapObject* cast(void* address) {
     uword value = reinterpret_cast<uword>(address);
-    ASSERT((value & NON_SMI_TAG_MASK) == 0);
+    ASSERT((value & NON_SMI_TAG_MASK) == SMI_TAG);
     return reinterpret_cast<HeapObject*>(value + HEAP_TAG);
   }
+
+  static HeapObject* from_address(uword address) {
+    ASSERT((address & NON_SMI_TAG_MASK) == SMI_TAG);
+    return reinterpret_cast<HeapObject*>(address + HEAP_TAG);
+  }
+
+  inline bool on_program_heap(Process* process);
 
   static int allocation_size() { return _align(SIZE); }
   static void allocation_size(int* word_count, int* extra_bytes) {
@@ -292,25 +300,26 @@ class HeapObject : public Object {
   int64 _int64_at(int offset) { return *reinterpret_cast<int64*>(_raw_at(offset)); }
   void _int64_at_put(int offset, int64 value) { *reinterpret_cast<int64*>(_raw_at(offset)) = value; }
 
-  bool is_at_block_top();
-
   static int _align(int byte_size) { return (byte_size + (WORD_SIZE - 1)) & ~(WORD_SIZE - 1); }
 
   friend class ScavengeState;
   friend class ObjectHeap;
+  friend class Space;
   friend class Heap;
   friend class ProgramHeap;
   friend class BaseSnapshotWriter;
   friend class SnapshotReader;
   friend class compiler::ProgramBuilder;
   friend class Stack;
+  friend class GcMetadata;
 };
 
 class Array : public HeapObject {
  public:
   int length() { return _word_at(LENGTH_OFFSET); }
 
-  static INLINE int max_length();
+  static INLINE int max_length_in_process();
+  static INLINE int max_length_in_program();
 
   // Must match collections.toit.
   static const int ARRAYLET_SIZE = 500;
@@ -429,9 +438,9 @@ class ByteArray : public HeapObject {
 
   template<typename T> T* as_external();
 
-  static word max_internal_size() {
-    return Block::max_payload_size() - HEADER_SIZE;
-  }
+  static inline word max_internal_size_in_process();
+  static inline word max_internal_size_in_program();
+  static word max_internal_size();
 
   uint8* as_external() {
     ASSERT(external_tag() == RawByteTag || external_tag() == NullStructTag);
@@ -455,12 +464,11 @@ class ByteArray : public HeapObject {
 
   static int internal_allocation_size(int raw_length) {
     ASSERT(raw_length >= 0);
-    ASSERT(raw_length <= max_internal_size());
     return _align(_offset_from(raw_length));
   }
+
   static void internal_allocation_size(int raw_length, int* word_count, int* extra_bytes) {
     ASSERT(raw_length >= 0);
-    ASSERT(raw_length <= max_internal_size());
     *word_count = HEADER_SIZE / WORD_SIZE;
     *extra_bytes = raw_length;
   }
@@ -647,7 +655,7 @@ class Stack : public HeapObject {
 
   void copy_to(HeapObject* other, int other_length);
 
-  void roots_do(RootCallback* cb);
+  void roots_do(Program* program, RootCallback* cb);
 
   // Iterates over all frames on this stack and returns the number of frames.
   int frames_do(Program* program, FrameCallback* cb);
@@ -765,7 +773,8 @@ class String : public HeapObject {
   // Tells whether the string content is on the heap or external.
   bool content_on_heap() { return _internal_length() != SENTINEL; }
 
-  static INLINE int max_length();
+  static INLINE int max_length_in_process();
+  static INLINE int max_length_in_program();
 
   bool is_empty() { return length() == 0; }
 
@@ -839,10 +848,9 @@ class String : public HeapObject {
      return static_cast<String*>(object);
   }
 
-  static word max_internal_size() {
-    word result = Block::max_payload_size() - OVERHEAD;
-    return result;
-  }
+  static inline word max_internal_size_in_process();
+  static inline word max_internal_size_in_program();
+  static word max_internal_size();
 
   static int internal_allocation_size(int length) {
     return _align(_offset_from(length+1));

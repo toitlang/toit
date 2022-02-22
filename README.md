@@ -21,7 +21,6 @@ Watch a short video that shows how you can experience Jaguar on your ESP32 in le
 ## Community
 
 Use this [invite](https://discord.gg/Q7Y9VQ5nh2) to join our Discord server, and follow the development and get help.
-We've a channel in [Telegram](https://t.me/Toitware).
 We're eager to hear of your experience building with Toit.
 
 We also use [GitHub Discussions](https://github.com/toitlang/toit/discussions) to discuss and learn and
@@ -249,6 +248,30 @@ with the `ESP32_PORT` make variable. You can also use all the `make esp32` make 
 ``` sh
 make flash ESP32_ENTRY=examples/mandelbrot.toit ESP32_PORT=/dev/ttyUSB0
 ```
+
+---
+*NOTE*
+
+To access the device `/dev/ttyUSB0` on Linux you probably need to be a member
+of some group, normally either `uucp` or `dialout`.  To see which groups you are
+a member of and which group owns the device, plug in an ESP32 to the USB port
+and try:
+
+``` sh
+groups
+ls -g /dev/ttyUSB0
+```
+
+If you lack a group membership, you can add it with
+
+``` sh
+sudo usermod -aG dialout $USER
+```
+
+You will have to log out and log back in for this to take effect.
+
+---
+
 
 ### Configuring WiFi for the ESP32
 

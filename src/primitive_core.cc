@@ -59,21 +59,19 @@ namespace toit {
 MODULE_IMPLEMENTATION(core, MODULE_CORE)
 
 PRIMITIVE(write_string_on_stdout) {
-  ARGS(String, message, bool, add_newline);
-  String::Bytes bytes(message);
-  fprintf(stdout, "%s", bytes.address());
+  ARGS(cstring, message, bool, add_newline);
+  fprintf(stdout, "%s", message);
   if (add_newline) fprintf(stdout, "\n");
   fflush(stdout);
-  return message;
+  return _raw_message;
 }
 
 PRIMITIVE(write_string_on_stderr) {
-  ARGS(String, message, bool, add_newline);
-  String::Bytes bytes(message);
-  fprintf(stderr, "%s", bytes.address());
+  ARGS(cstring, message, bool, add_newline);
+  fprintf(stderr, "%s", message);
   if (add_newline) fprintf(stderr, "\n");
   fflush(stderr);
-  return message;
+  return _raw_message;
 }
 
 PRIMITIVE(hatch_method) {
@@ -941,15 +939,7 @@ PRIMITIVE(add_entropy) {
 
 PRIMITIVE(count_leading_zeros) {
   ARGS(int64, v);
-  uint64_t value = v;
-  if (value == 0) return Smi::from(64);
-  if (sizeof(value) == sizeof(long long)) {
-    return Smi::from(__builtin_clzll(value));
-  } else if (sizeof(value) == sizeof(long)) {
-    return Smi::from(__builtin_clzl(value));
-  } else {
-    UNREACHABLE();
-  }
+  return Smi::from(Utils::clz(v));
 }
 
 PRIMITIVE(string_length) {
@@ -1443,7 +1433,7 @@ PRIMITIVE(array_expand) {
   ARGS(Array, old, word, old_length, word, length);
   if (length == 0) return process->program()->empty_array();
   if (length < 0) OUT_OF_BOUNDS;
-  if (length > Array::max_length()) OUT_OF_RANGE;
+  if (length > Array::max_length_in_process()) OUT_OF_RANGE;
   if (old_length < 0 || old_length > old->length() || old_length > length) OUT_OF_RANGE;
   Object* result = process->object_heap()->allocate_array(length);
   if (result == null) ALLOCATION_FAILED;
@@ -1472,7 +1462,7 @@ PRIMITIVE(array_new) {
   ARGS(int, length, Object, filler);
   if (length == 0) return process->program()->empty_array();
   if (length < 0) OUT_OF_BOUNDS;
-  if (length > Array::max_length()) OUT_OF_RANGE;
+  if (length > Array::max_length_in_process()) OUT_OF_RANGE;
   return Primitive::allocate_array(length, filler, process);
 }
 

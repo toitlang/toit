@@ -15,7 +15,6 @@
 
 #pragma once
 
-#include "objects.h"
 #include "flash_allocation.h"
 #include "flash_registry.h"
 

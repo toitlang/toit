@@ -14,6 +14,7 @@
 #include "../../top.h"
 #include "../../os.h"
 #include "../../utils.h"
+#include "object_memory.h"
 
 namespace toit {
 
@@ -72,7 +73,7 @@ class GcMetadata {
     memset(from, GcMetadata::NO_NEW_SPACE_POINTERS, to - from);
   }
 
-  static void initialze_overflow_bits_for_chunk(Chunk* chunk) {
+  static void initialize_overflow_bits_for_chunk(Chunk* chunk) {
     ASSERT(in_metadata_range(chunk->start()));
     uint8* from = overflow_bits_for(chunk->start());
     uint8* to = overflow_bits_for(chunk->end());
@@ -96,7 +97,7 @@ class GcMetadata {
   }
 
   // Safe to call with any object, even a Smi.
-  static ALWAYS_INLINE PageType get_page_type(Object* object) {
+  static INLINE PageType get_page_type(Object* object) {
     uword addr = reinterpret_cast<uword>(object);
     uword offset = addr >> 1 | addr << (8 * sizeof(uword) - 1);
     offset -= singleton_.heap_start_munged_;
@@ -115,7 +116,7 @@ class GcMetadata {
   }
 
   // Safe to call with any object, even a Smi.
-  static ALWAYS_INLINE bool in_new_or_old_space(Object* object) {
+  static INLINE bool in_new_or_old_space(Object* object) {
     PageType page_type = get_page_type(object);
     return page_type != UNKNOWN_SPACE_PAGE;
   }
@@ -138,14 +139,14 @@ class GcMetadata {
                                     singleton_.overflow_bits_bias_);
   }
 
-  static ALWAYS_INLINE uint32* bytewise_mark_bits_for(HeapObject* object) {
+  static INLINE uint32* bytewise_mark_bits_for(HeapObject* object) {
     uword address = reinterpret_cast<uword>(object);
     ASSERT(in_metadata_range(address));
     uword result = (singleton_.mark_bits_bias_ + (address >> MARK_BITS_SHIFT));
     return reinterpret_cast<uint32*>(result);
   }
 
-  static ALWAYS_INLINE uint32* mark_bits_for(HeapObject* object) {
+  static INLINE uint32* mark_bits_for(HeapObject* object) {
     uword address = reinterpret_cast<uword>(object);
     ASSERT(in_metadata_range(address));
     uword result =
@@ -153,16 +154,16 @@ class GcMetadata {
     return reinterpret_cast<uint32*>(result);
   }
 
-  static ALWAYS_INLINE uint32* mark_bits_for(uword address) {
+  static INLINE uint32* mark_bits_for(uword address) {
     ASSERT(in_metadata_range(address));
     return mark_bits_for(reinterpret_cast<HeapObject*>(address));
   }
 
-  static ALWAYS_INLINE int word_index_in_line(HeapObject* object) {
-    return (reinterpret_cast<uword>(object) >> GcMetadata::WORD_SHIFT) & 31;
+  static INLINE int word_index_in_line(HeapObject* object) {
+    return (reinterpret_cast<uword>(object) >> WORD_SHIFT) & 31;
   }
 
-  static ALWAYS_INLINE uword* cumulative_mark_bits_for(HeapObject* object) {
+  static INLINE uword* cumulative_mark_bits_for(HeapObject* object) {
     uword address = reinterpret_cast<uword>(object);
     ASSERT(in_metadata_range(address));
     uword result = (singleton_.cumulative_mark_bits_bias_ +
@@ -171,7 +172,7 @@ class GcMetadata {
     return reinterpret_cast<uword*>(result);
   }
 
-  static ALWAYS_INLINE uword* cumulative_mark_bits_for(uword address) {
+  static INLINE uword* cumulative_mark_bits_for(uword address) {
     ASSERT(in_metadata_range(address));
     return cumulative_mark_bits_for(reinterpret_cast<HeapObject*>(address));
   }
@@ -225,7 +226,7 @@ class GcMetadata {
   }
 
   // Returns true if the object was already grey (queued) or black(scanned).
-  static ALWAYS_INLINE bool mark_grey_if_not_marked(HeapObject* object) {
+  static INLINE bool mark_grey_if_not_marked(HeapObject* object) {
     uword address = reinterpret_cast<uword>(object);
     address = (singleton_.mark_bits_bias_ + (address >> MARK_BITS_SHIFT)) & ~3;
     uint32 mask = 1 << ((reinterpret_cast<uword>(object) >> WORD_SHIFT) & 31);
@@ -285,7 +286,7 @@ class GcMetadata {
     *bits |= mask;
   }
 
-  static ALWAYS_INLINE uword get_destination(HeapObject* pre_compaction) {
+  static INLINE uword get_destination(HeapObject* pre_compaction) {
     uword word_position =
         (reinterpret_cast<uword>(pre_compaction) >> WORD_SHIFT) & 31;
     uint32 mask = ~(0xffffffffu << word_position);
@@ -355,10 +356,10 @@ class GcMetadata {
 
   static void slow_mark(HeapObject* object, uword size);
   static uword end_of_destination_of_last_live_object_starting_before(
-      uword line, uword limit, uword* src_end_return = NULL);
+      uword line, uword limit, uword* src_end_return = null);
   static uword last_line_that_fits(uword line, uword dest_limit);
 
-  static ALWAYS_INLINE int pop_count(uint32 x) {
+  static INLINE int pop_count(uint32 x) {
     x = (x & 0x55555555) + ((x >> 1) & 0x55555555);
     // x has 16 2-bit sums.
     x = (x & 0x33333333) + ((x >> 2) & 0x33333333);

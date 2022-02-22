@@ -45,10 +45,6 @@ HeapObject* Block::allocate_raw(int byte_size) {
   return null;
 }
 
-Block* Block::from(HeapObject* object) {
-  return reinterpret_cast<Block*>(Utils::round_down(reinterpret_cast<uword>(object), TOIT_PAGE_SIZE));
-}
-
 void Block::wipe() {
   uint8* begin = unvoid_cast<uint8*>(base());
   uint8* end   = unvoid_cast<uint8*>(limit());
@@ -139,7 +135,6 @@ Block* HeapMemory::allocate_block_during_scavenge(RawHeap* heap) {
       OS::out_of_memory("Out of memory due to heap fragmentation");
     }
   }
-  block->_set_process(heap->owner());
   // We don't need to update the _largest_number_of_blocks_in_a_heap field
   // because that is done at the end of scavenge.
   return block;
@@ -170,7 +165,6 @@ Block* HeapMemory::allocate_block(RawHeap* heap) {
       _free_list.prepend(reserved_block);
     }
   }
-  result->_set_process(heap->owner());
   // If giving this block to the heap makes the heap the largest, then update
   // _largest_number_of_blocks_in_a_heap.
   if (heap->number_of_blocks() + 1 >= _largest_number_of_blocks_in_a_heap) {
@@ -196,7 +190,6 @@ Block* HeapMemory::allocate_initial_block() {
     result = OS::allocate_block();
     if (!result) return null;
   }
-  result->_set_process(null);
   return result;
 }
 
@@ -208,10 +201,6 @@ void HeapMemory::free_unused_block(Block* block) {
 
 void HeapMemory::free_block(Block* block, RawHeap* heap) {
   ASSERT(OS::is_locked(_memory_mutex));
-  ASSERT(_in_scavenge);
-  // If the block's owner is null we know it is program space and the memory is
-  // read only.  This does not happen on the device.
-  ASSERT(!block->is_program());
   ASSERT(_in_scavenge);
   block->_reset();
   _free_list.prepend(block);
