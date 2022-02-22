@@ -199,9 +199,14 @@ class HeapObject : public Object {
     return static_cast<TypeTag>((header()->value() >> HeapObject::CLASS_TAG_OFFSET) & HeapObject::CLASS_TAG_MASK);
   }
 
+  INLINE bool has_forwarding_address() {
+    return _at(HEADER_OFFSET)->is_heap_object();
+  }
+
   // During GC the header can be a heap object (a forwarding pointer).
-  INLINE Object* header_during_gc() {
-    return _at(HEADER_OFFSET);
+  INLINE HeapObject* forwarding_address() {
+    ASSERT(has_forwarding_address());
+    return HeapObject::cast(_at(HEADER_OFFSET));
   }
 
   // Pseudo virtual member functions.
