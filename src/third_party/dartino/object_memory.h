@@ -119,7 +119,7 @@ class Chunk : public ChunkList::Element {
 // Abstract base class for visiting all objects in a space.
 class HeapObjectVisitor {
  public:
-  HeapObjectVisitor(Program* program) : program_(program) {}
+  explicit HeapObjectVisitor(Program* program) : program_(program) {}
   virtual ~HeapObjectVisitor() {}
   // Visit the heap object. Must return the size of the heap
   // object.
@@ -340,7 +340,7 @@ class SemiSpace : public Space {
 
 class OldSpace : public Space {
  public:
-  explicit OldSpace(TwoSpaceHeap* heap);
+  OldSpace(Program* program, TwoSpaceHeap* heap);
 
   virtual ~OldSpace();
 
@@ -362,7 +362,7 @@ class OldSpace : public Space {
 
   void clear_free_list();
   void mark_chunk_ends_free();
-  void zap_obejct_starts();
+  void zap_object_starts();
 
   // Find pointers to young-space.
   void visit_remembered_set(GenerationalScavengeVisitor* visitor);

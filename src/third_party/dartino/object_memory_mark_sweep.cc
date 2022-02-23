@@ -23,8 +23,8 @@
 
 namespace toit {
 
-OldSpace::OldSpace(TwoSpaceHeap* owner)
-    : Space(CAN_RESIZE, OLD_SPACE_PAGE),
+OldSpace::OldSpace(Program* program, TwoSpaceHeap* owner)
+    : Space(program, CAN_RESIZE, OLD_SPACE_PAGE),
       heap_(owner),
       free_list_(new FreeList()) {}
 
@@ -51,7 +51,7 @@ void OldSpace::flush() {
 }
 
 HeapObject* OldSpace::new_location(HeapObject* old_location) {
-  ASSERT(includes(old_location->address()));
+  ASSERT(includes(old_location->_raw()));
   ASSERT(GcMetadata::is_marked(old_location));
   if (compacting_) {
     return HeapObject::from_address(GcMetadata::get_destination(old_location));
@@ -61,7 +61,7 @@ HeapObject* OldSpace::new_location(HeapObject* old_location) {
 }
 
 bool OldSpace::is_alive(HeapObject* old_location) {
-  ASSERT(includes(old_location->address()));
+  ASSERT(includes(old_location->_raw()));
   return GcMetadata::is_marked(old_location);
 }
 
@@ -71,7 +71,7 @@ void OldSpace::use_whole_chunk(Chunk* chunk) {
   *reinterpret_cast<Object**>(limit_) = chunk_end_sentinel();
   if (tracking_allocations_) {
     promoted_track_ = PromotedTrack::initialize(promoted_track_, top_, limit_);
-    top_ += PromotedTrack::HEADER_SIZE;
+    top_ += PromotedTrack::header_size();
   }
   // Account all of the chunk memory as used for now. When the
   // rest of the freelist chunk is flushed into the freelist we
@@ -97,7 +97,7 @@ Chunk* OldSpace::allocate_and_use_chunk(uword size) {
 uword OldSpace::allocate_in_new_chunk(uword size) {
   ASSERT(top_ == 0);  // Space is flushed.
   // Allocate new chunk that is big enough to fit the object.
-  int tracking_size = tracking_allocations_ ? 0 : PromotedTrack::HEADER_SIZE;
+  int tracking_size = tracking_allocations_ ? 0 : PromotedTrack::header_size();
   uword max_expansion = heap_->max_expansion();
   uword smallest_chunk_size =
       Utils::min(get_default_chunk_size(used()), max_expansion);
@@ -125,32 +125,6 @@ uword OldSpace::allocate_in_new_chunk(uword size) {
   return 0;
 }
 
-// Progress is defined as the number of bytes of objects that have been
-// successfully allocated since the last GC that was forced by running out of
-// memory. If we set the minimum too low then the program will slow down too
-// much (effectively, hang) before declaring an out-of-memory situation.  If we
-// set the minimum too high then the program will declare OOM when it could
-// have continued.  This 1/(1 << 8) is 0.4%, which is a compromise that results
-// in OOMs on heaps that are actually 100.4% of the required minimum size. At
-// that level the program has slowed down around 30x relative to the running
-// speed with unconstrained heap size.
-uword OldSpace::minimum_progress() { return 256 + (used_ >> 8); }
-
-void OldSpace::evaluate_pointlessness() {
-  ASSERT(used_ >= used_after_last_gc_);
-  uword bytes_collected =
-      new_space_garbage_found_since_last_gc_ + used_ - used_after_last_gc_;
-  if (hard_limit_hit_ && bytes_collected < minimum_progress()) {
-    successive_pointless_gcs_++;
-    if (successive_pointless_gcs_ > 3) {
-      FATAL("Out of memory");
-    }
-  } else {
-    successive_pointless_gcs_ = 0;
-  }
-  new_space_garbage_found_since_last_gc_ = 0;
-}
-
 void OldSpace::report_new_space_progress(uword bytes_collected) {
   uword new_total = new_space_garbage_found_since_last_gc_ + bytes_collected;
   // Guard against wraparound.
@@ -164,21 +138,21 @@ uword OldSpace::allocate_from_free_list(uword size) {
   flush();
 
   FreeListRegion* region = free_list_->get_region(
-      tracking_allocations_ ? size + PromotedTrack::HEADER_SIZE : size);
+      tracking_allocations_ ? size + PromotedTrack::header_size() : size);
   if (region != null) {
-    top_ = region->address();
+    top_ = region->_raw();
     limit_ = top_ + region->size();
     // Account all of the region's memory as used for now. When the
     // rest of the freelist region is flushed into the freelist we
     // decrement used_ by the amount still left unused. used_
-    // therefore reflects actual memory usage after Flush has been
+    // therefore reflects actual memory usage after flush has been
     // called.  (Do this before the tracking info below overwrites
     // the free region's data.)
     used_ += region->size();
     if (tracking_allocations_) {
       promoted_track_ =
           PromotedTrack::initialize(promoted_track_, top_, limit_);
-      top_ += PromotedTrack::HEADER_SIZE;
+      top_ += PromotedTrack::header_size();
     }
     ASSERT(static_cast<unsigned>(size) <= limit_ - top_);
     return allocate(size);
@@ -206,14 +180,14 @@ uword OldSpace::allocate(uword size) {
 
   // Can't use bump allocation. Allocate from free lists.
   uword result = allocate_from_free_list(size);
-  if (result == 0) result = allocate_in_new_region(size);
+  if (result == 0) result = allocate_in_new_chunk(size);
   return result;
 }
 
 uword OldSpace::used() { return used_; }
 
 void OldSpace::start_tracking_allocations() {
-  Flush();
+  flush();
   ASSERT(!tracking_allocations_);
   ASSERT(promoted_track_ == null);
   tracking_allocations_ = true;
@@ -247,7 +221,7 @@ void OldSpace::zap_object_starts() {
 }
 
 void OldSpace::visit_remembered_set(GenerationalScavengeVisitor* visitor) {
-  Flush();
+  flush();
   for (auto chunk : chunk_list_) {
     // Scan the byte-map for cards that may have new-space pointers.
     uword current = chunk->start();
@@ -309,7 +283,7 @@ void OldSpace::visit_remembered_set(GenerationalScavengeVisitor* visitor) {
         while (iteration_start < current) {
           if (has_sentinel_at(iteration_start)) break;
           HeapObject* object = HeapObject::from_address(iteration_start);
-          iteration_start += object->size();
+          iteration_start += object->size(program_);
         }
         // Reset in case there are no new-space pointers any more.
         *byte = GcMetadata::NO_NEW_SPACE_POINTERS;
@@ -319,7 +293,7 @@ void OldSpace::visit_remembered_set(GenerationalScavengeVisitor* visitor) {
           if (has_sentinel_at(iteration_start)) break;
           HeapObject* object = HeapObject::from_address(iteration_start);
           object->roots_do(program_, visitor);
-          iteration_start += object->size();
+          iteration_start += object->size(program_);
         }
         earliest_iteration_start = iteration_start;
       }
@@ -336,7 +310,7 @@ void OldSpace::unlink_promoted_track() {
   while (promoted) {
     PromotedTrack* previous = promoted;
     promoted = promoted->next();
-    previous->Zap(StaticClassStructures::one_word_filler_class());
+    previous->zap();
   }
 }
 
@@ -344,7 +318,7 @@ void OldSpace::unlink_promoted_track() {
 // the old-space and traverses them to find and fix more new-space pointers.
 bool OldSpace::complete_scavenge_generational(
     GenerationalScavengeVisitor* visitor) {
-  Flush();
+  flush();
   ASSERT(tracking_allocations_);
 
   bool found_work = false;
@@ -360,14 +334,13 @@ bool OldSpace::complete_scavenge_generational(
       found_work = true;
     }
     for (HeapObject *obj = HeapObject::from_address(traverse); traverse != end;
-         traverse += obj->size(), obj = HeapObject::from_address(traverse)) {
-      visitor->set_record_new_space_pointers(
-          GcMetadata::remembered_set_for(obj->address()));
+         traverse += obj->size(program_), obj = HeapObject::from_address(traverse)) {
+      visitor->set_record_new_space_pointers(GcMetadata::remembered_set_for(obj->_raw()));
       obj->roots_do(program_, visitor);
     }
     PromotedTrack* previous = promoted;
     promoted = promoted->next();
-    previous->Zap(StaticClassStructures::one_word_filler_class());
+    previous->zap();
   }
   return found_work;
 }
@@ -388,11 +361,11 @@ void OldSpace::mark_chunk_ends_free() {
 void FixPointersVisitor::visit_block(Object** start, Object** end) {
   for (Object** current = start; current < end; current++) {
     Object* object = *current;
-    if (GcMetadata::GetPageType(object) == OLD_SPACE_PAGE) {
+    if (GcMetadata::get_page_type(object) == OLD_SPACE_PAGE) {
       HeapObject* heap_object = HeapObject::cast(object);
       uword destination = GcMetadata::get_destination(heap_object);
       *current = HeapObject::from_address(destination);
-      ASSERT(GcMetadata::GetPageType(*current) == OLD_SPACE_PAGE);
+      ASSERT(GcMetadata::get_page_type(*current) == OLD_SPACE_PAGE);
     }
   }
 }
@@ -427,10 +400,12 @@ static int INLINE find_first_set(uint32 x) {
 #endif
 }
 
-CompactingVisitor::CompactingVisitor(OldSpace* space,
+CompactingVisitor::CompactingVisitor(Program* program,
+                                     OldSpace* space,
                                      FixPointersVisitor* fix_pointers_visitor)
-    : used_(0),
-      dest_(space->ChunkListBegin(), space->ChunkListEnd()),
+    : HeapObjectVisitor(program),
+      used_(0),
+      dest_(space->chunk_list_begin(), space->chunk_list_begin()),
       fix_pointers_visitor_(fix_pointers_visitor) {}
 
 uword CompactingVisitor::visit(HeapObject* object) {
@@ -442,18 +417,17 @@ uword CompactingVisitor::visit(HeapObject* object) {
     if (bits != 0) return (find_first_set(bits) - 1) << WORD_SIZE_LOG_2;
     // If all the bits in this mark word are zero, then let's see if we can
     // skip a bit more.
-    uword next_live_object =
-        object->address() + ((32 - pos) << WORD_SIZE_LOG_2);
+    uword next_live_object = object->_raw() + ((32 - pos) << WORD_SIZE_LOG_2);
     // This never runs over the end of the chunk because the last word in the
     // chunk (the sentinel) is artificially marked live.
     while (*++bits_addr == 0) next_live_object += GcMetadata::CARD_SIZE;
     next_live_object += (find_first_set(*bits_addr) - 1) << WORD_SIZE_LOG_2;
-    ASSERT(next_live_object - object->address() >= (uword)object->size());
-    return next_live_object - object->address();
+    ASSERT(next_live_object - object->_raw() >= (uword)object->size(program_));
+    return next_live_object - object->_raw();
   }
 
   // Object is marked.
-  uword size = object->size();
+  uword size = object->size(program_);
   // Unless we have large objects and small chunks max one iteration of this
   // loop is needed to move on to the next destination chunk.
   while (dest_.address + size > dest_.limit) {
@@ -461,25 +435,25 @@ uword CompactingVisitor::visit(HeapObject* object) {
   }
   ASSERT(dest_.address == GcMetadata::get_destination(object));
   GcMetadata::record_start(dest_.address);
-  if (object->address() != dest_.address) {
-    object_mem_move(dest_.address, object->address(), size);
+  if (object->_raw() != dest_.address) {
+    object_mem_move(dest_.address, object->_raw(), size);
 
-    if (*GcMetadata::remembered_set_for(object->address()) !=
+    if (*GcMetadata::remembered_set_for(object->_raw()) !=
         GcMetadata::NO_NEW_SPACE_POINTERS) {
       *GcMetadata::remembered_set_for(dest_.address) =
           GcMetadata::NEW_SPACE_POINTERS;
     }
   }
 
-  fix_pointers_visitor_->set_source_address(object->address());
+  fix_pointers_visitor_->set_source_address(object->_raw());
   HeapObject::from_address(dest_.address)->roots_do(program_, fix_pointers_visitor_);
   used_ += size;
   dest_.address += size;
   return size;
 }
 
-SweepingVisitor::SweepingVisitor(OldSpace* space)
-    : free_list_(space->free_list()), free_start_(0), used_(0) {
+SweepingVisitor::SweepingVisitor(Program* program, OldSpace* space)
+    : HeapObjectVisitor(program), free_list_(space->free_list()), free_start_(0), used_(0) {
   // Clear the free list. It will be rebuilt during sweeping.
   free_list_->clear();
 }
@@ -494,14 +468,14 @@ void SweepingVisitor::add_free_list_region(uword free_end) {
 
 uword SweepingVisitor::visit(HeapObject* object) {
   if (GcMetadata::is_marked(object)) {
-    add_free_list_region(object->address());
-    GcMetadata::record_start(object->address());
-    uword size = object->size();
+    add_free_list_region(object->_raw());
+    GcMetadata::record_start(object->_raw());
+    uword size = object->size(program_);
     used_ += size;
     return size;
   }
-  uword size = object->size();
-  if (free_start_ == 0) free_start_ = object->address();
+  uword size = object->size(program_);
+  if (free_start_ == 0) free_start_ = object->_raw();
   return size;
 }
 
@@ -524,9 +498,8 @@ void OldSpace::verify() {
       // table, yielding some correct object start address.
       uword object_address = GcMetadata::object_address_from_start(card, *starts);
       HeapObject* obj = HeapObject::from_address(object_address);
-      ASSERT(obj->get_class()->is_class());
-      ASSERT(obj->size() > 0);
-      if (object_address + obj->size() > card + 2 * GcMetadata::CARD_SIZE) {
+      ASSERT(obj->size(program_) > 0);
+      if (object_address + obj->size(program_) > card + 2 * GcMetadata::CARD_SIZE) {
         // If this object stretches over the whole of the next card then the
         // next entry in the object starts table must be invalid.
         ASSERT(starts[1] == GcMetadata::NO_OBJECT_START);
@@ -539,10 +512,12 @@ void OldSpace::verify() {
     uword current = chunk->start();
     while (!has_sentinel_at(current)) {
       HeapObject* object = HeapObject::from_address(current);
+      /* TODO(erik): Implement contains_pointers_to so we can verify the remembered set
       if (object->contains_pointers_to(heap_->space())) {
         ASSERT(*GcMetadata::remembered_set_for(current));
       }
-      current += object->size();
+      */
+      current += object->size(program_);
     }
   }
 }
@@ -551,7 +526,7 @@ void OldSpace::verify() {
 void MarkingStack::empty(RootCallback* visitor) {
   while (!is_empty()) {
     HeapObject* object = *--next_;
-    GcMetadata::mark_all(object, object->size());
+    GcMetadata::mark_all(object, object->size(program_));
     object->roots_do(program_, visitor);
   }
 }

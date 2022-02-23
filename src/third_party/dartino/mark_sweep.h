@@ -14,7 +14,7 @@ namespace toit {
 
 class MarkingStack {
  public:
-  MarkingStack() : next_(&backing_[0]), limit_(&backing_[CHUNK_SIZE]) {}
+  explicit MarkingStack(Program* program) : next_(&backing_[0]), limit_(&backing_[CHUNK_SIZE]) {}
 
   void push(HeapObject* object) {
     ASSERT(GcMetadata::is_marked(object));
@@ -35,6 +35,7 @@ class MarkingStack {
 
  private:
   static const int CHUNK_SIZE = 128;
+  Program* program_;
   HeapObject** next_;
   HeapObject** limit_;
   HeapObject* backing_[CHUNK_SIZE];
@@ -183,7 +184,7 @@ class FixPointersVisitor : public RootCallback {
 
 class CompactingVisitor : public HeapObjectVisitor {
  public:
-  CompactingVisitor(OldSpace* space, FixPointersVisitor* fix_pointers_visitor);
+  CompactingVisitor(Program* program, OldSpace* space, FixPointersVisitor* fix_pointers_visitor);
 
   virtual void chunk_start(Chunk* chunk) {
     GcMetadata::initialize_starts_for_chunk(chunk);
@@ -209,7 +210,7 @@ class CompactingVisitor : public HeapObjectVisitor {
 
 class SweepingVisitor : public HeapObjectVisitor {
  public:
-  explicit SweepingVisitor(OldSpace* space);
+  SweepingVisitor(Program* program, OldSpace* space);
 
   virtual void chunk_start(Chunk* chunk) {
     GcMetadata::initialize_starts_for_chunk(chunk);
@@ -218,14 +219,14 @@ class SweepingVisitor : public HeapObjectVisitor {
   virtual uword visit(HeapObject* object);
 
   virtual void chunk_end(Chunk* chunk, uword end) {
-    add_free_list_chunk(end);
+    add_free_list_region(end);
     GcMetadata::clear_mark_bits_for(chunk);
   }
 
   uword used() const { return used_; }
 
  private:
-  void add_free_list_chunk(uword free_end_);
+  void add_free_list_region(uword free_end_);
 
   FreeList* free_list_;
   uword free_start_;

@@ -175,7 +175,7 @@ bool SemiSpace::complete_scavenge_generational(GenerationalScavengeVisitor* visi
       HeapObject* object = HeapObject::from_address(current);
       object->roots_do(program_, visitor);
 
-      current += object->size();
+      current += object->size(program_);
     }
     // Set up the already-scanned pointer for next round.
     chunk->set_scavenge_pointer(current);

@@ -73,4 +73,13 @@ inline bool HeapObject::on_program_heap(Process* process) {
   return process->on_program_heap(this);
 }
 
+inline void PromotedTrack::zap() {
+  uword header = SINGLE_FREE_WORD_CLASS_ID;
+  header = (header << CLASS_TAG_BIT_SIZE) | SINGLE_FREE_WORD_TAG;
+  Object* filler = Smi::from(header);
+  for (uword p = _raw(); p < _raw() + HEADER_SIZE; p += WORD_SIZE) {
+    *reinterpret_cast<Object**>(p) = filler;
+  }
+}
+
 } // namespace toit
