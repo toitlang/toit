@@ -311,6 +311,7 @@ class HeapObject : public Object {
   friend class ObjectHeap;
   friend class Space;
   friend class SemiSpace;
+  friend class OldSpace;
   friend class Heap;
   friend class ProgramHeap;
   friend class BaseSnapshotWriter;
@@ -318,6 +319,8 @@ class HeapObject : public Object {
   friend class compiler::ProgramBuilder;
   friend class Stack;
   friend class GcMetadata;
+  friend class CompactingVisitor;
+  friend class SweepingVisitor;
 };
 
 class Array : public HeapObject {
@@ -1249,9 +1252,9 @@ class PromotedTrack : public HeapObject {
     return HEADER_SIZE;
   }
 
-  // Returns the first object in the track.
-  HeapObject* start() {
-    return HeapObject::from_address(_raw() + HEADER_SIZE);
+  // Returns the address of the first object in the track.
+  uword start() {
+    return _raw() + HEADER_SIZE;
   }
 
   // When traversing the stack we don't traverse the objects inside the
@@ -1281,7 +1284,13 @@ class PromotedTrack : public HeapObject {
     return _word_at(END_OFFSET);
   }
 
-  static FreeListRegion* initialize(Program* program, PromotedTrack* next, uword start, uword end);
+  // Overwrite the header of the PromotedTrack with free space so that
+  // the heap becomes iterable.
+  void zap();
+
+  static PromotedTrack* initialize(PromotedTrack* next, uword start, uword end);
+
+  static inline int header_size() { return HEADER_SIZE; }
 
  private:
   static const int END_OFFSET = HeapObject::SIZE;
