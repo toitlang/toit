@@ -176,7 +176,7 @@ bool SemiSpace::complete_scavenge_generational(GenerationalScavengeVisitor* visi
     while (!has_sentinel_at(current)) {
       found_work = true;
       HeapObject* object = HeapObject::from_address(current);
-      object->iterate_pointers(visitor);
+      object->roots_do(program_, visitor);
 
       current += object->size();
     }

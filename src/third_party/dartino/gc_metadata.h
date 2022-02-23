@@ -45,7 +45,7 @@ class GcMetadata {
   // One word per uint32 of mark bits, corresponding to 32 words of heap.
   static const int CUMULATIVE_MARK_BITS_SHIFT = 5;
 
-  static void initialize_start_for_chunk(Chunk* chunk, uword only_above = 0) {
+  static void initialize_starts_for_chunk(Chunk* chunk, uword only_above = 0) {
     uword start = chunk->start();
     uword end = chunk->end();
     if (only_above >= end) return;

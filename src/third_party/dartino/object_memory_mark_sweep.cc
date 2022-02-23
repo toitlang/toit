@@ -318,7 +318,7 @@ void OldSpace::VisitRememberedSet(GenerationalScavengeVisitor* visitor) {
         while (iteration_start < current + GcMetadata::CARD_SIZE) {
           if (has_sentinel_at(iteration_start)) break;
           HeapObject* object = HeapObject::from_address(iteration_start);
-          object->iterate_pointers(visitor);
+          object->roots_do(program_, visitor);
           iteration_start += object->size();
         }
         earliest_iteration_start = iteration_start;
@@ -363,7 +363,7 @@ bool OldSpace::complete_scavenge_generational(
          traverse += obj->size(), obj = HeapObject::from_address(traverse)) {
       visitor->set_record_new_space_pointers(
           GcMetadata::remembered_set_for(obj->address()));
-      obj->iterate_pointers(visitor);
+      obj->roots_do(program_, visitor);
     }
     PromotedTrack* previous = promoted;
     promoted = promoted->next();
@@ -472,8 +472,7 @@ uword CompactingVisitor::visit(HeapObject* object) {
   }
 
   fix_pointers_visitor_->set_source_address(object->address());
-  HeapObject::from_address(dest_.address)
-      ->iterate_pointers(fix_pointers_visitor_);
+  HeapObject::from_address(dest_.address)->roots_do(program_, fix_pointers_visitor_);
   used_ += size;
   dest_.address += size;
   return size;
@@ -553,7 +552,7 @@ void MarkingStack::empty(RootCallback* visitor) {
   while (!is_empty()) {
     HeapObject* object = *--next_;
     GcMetadata::mark_all(object, object->size());
-    object->iterate_pointers(visitor);
+    object->roots_do(program_, visitor);
   }
 }
 
