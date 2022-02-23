@@ -267,7 +267,6 @@ class HeapObject : public Object {
     *extra_bytes = 0;
   }
 
-
  protected:
   void _set_header(Smi* class_id, TypeTag class_tag) {
     uword header = class_id->value();
@@ -311,6 +310,7 @@ class HeapObject : public Object {
   friend class ScavengeState;
   friend class ObjectHeap;
   friend class Space;
+  friend class SemiSpace;
   friend class Heap;
   friend class ProgramHeap;
   friend class BaseSnapshotWriter;

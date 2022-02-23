@@ -61,7 +61,7 @@ void GcMetadata::set_up_singleton() {
       TOIT_PAGE_SIZE);
 
   metadata_ = reinterpret_cast<uint8*>(
-      OS::allocate_pages(metadata_size_, OS::kAnyArena));
+      OS::allocate_pages(metadata_size_, OS::ANY_ARENA));
   remembered_set_ = metadata_;
   object_starts_ = metadata_ + number_of_cards_;
   mark_bits_ = reinterpret_cast<uint32*>(metadata_ + 2 * number_of_cards_);
@@ -112,7 +112,7 @@ static const uword LINE_SIZE = 32 * sizeof(word);
 // its line with the count of 1's to the left of the object in the line's 32
 // bit mark word.
 GcMetadata::Destination GcMetadata::calculate_object_destinations(
-    Chunk* src_chunk, GcMetadata::Destination dest) {
+    Program* program, Chunk* src_chunk, GcMetadata::Destination dest) {
   uword src_start = src_chunk->start();
   uword src_limit = src_chunk->end();
   uword src = src_chunk->start();
@@ -154,7 +154,7 @@ restart:
       mark_bits--;
       src -= LINE_SIZE;
       dest.address = *dest_table;
-      end = end_of_destination_of_last_live_object_starting_before(src, src + LINE_SIZE);
+      end = end_of_destination_of_last_live_object_starting_before(program, src, src + LINE_SIZE);
     }
 
     // Found a source line that has a real starts entry where all objects from
@@ -163,10 +163,10 @@ restart:
     // because the first few object in the line (which may be the only live
     // ones) can only be iterated using the starts array for a previous line.
     uword end_of_last_src_line_that_fits =
-        last_line_that_fits(src, dest.limit) + LINE_SIZE;
+        last_line_that_fits(program, src, dest.limit) + LINE_SIZE;
     uword end_of_last_source_object_moved = 0;
     uword dest_end = end_of_destination_of_last_live_object_starting_before(
-        src, end_of_last_src_line_that_fits, &end_of_last_source_object_moved);
+        program, src, end_of_last_src_line_that_fits, &end_of_last_source_object_moved);
 
     src = end_of_last_src_line_that_fits;
     mark_bits = mark_bits_for(src);
@@ -196,14 +196,14 @@ restart:
 }
 
 uword GcMetadata::end_of_destination_of_last_live_object_starting_before(
-    uword line, uword limit, uword* src_end_return) {
+    Program* program, uword line, uword limit, uword* src_end_return) {
   uint8 start = *starts_for(line);
   if (start == NO_OBJECT_START) return NO_END_FOUND;
   uword object_address = object_address_from_start(line, start);
   uword result = NO_END_FOUND;
   while (!has_sentinel_at(object_address) && object_address < limit) {
     // Uses cumulative mark bits!
-    uword size = HeapObject::from_address(object_address)->size();
+    uword size = HeapObject::from_address(object_address)->size(program);
     if (is_marked(HeapObject::from_address(object_address))) {
       result = get_destination(HeapObject::from_address(object_address)) + size;
       if (src_end_return != null) *src_end_return = object_address + size;
@@ -213,7 +213,7 @@ uword GcMetadata::end_of_destination_of_last_live_object_starting_before(
   return result;
 }
 
-uword GcMetadata::last_line_that_fits(uword line, uword dest_limit) {
+uword GcMetadata::last_line_that_fits(Program* program, uword line, uword dest_limit) {
   uint8 start = *starts_for(line);
   ASSERT(start != NO_OBJECT_START);
   HeapObject* object =
@@ -221,8 +221,8 @@ uword GcMetadata::last_line_that_fits(uword line, uword dest_limit) {
   uword dest = get_destination(object);  // Uses cumulative mark bits!
   ASSERT(!has_sentinel_at(object->_raw()));
   while (!has_sentinel_at(object->_raw()) &&
-         (dest + object->size() <= dest_limit || !is_marked(object))) {
-    object = HeapObject::from_address(object->_raw() + object->size());
+         (dest + object->size(program) <= dest_limit || !is_marked(object))) {
+    object = HeapObject::from_address(object->_raw() + object->size(program));
     dest = get_destination(object);  // Uses cumulative mark bits!
   }
   uword last_line = object->_raw() & ~(LINE_SIZE - 1);

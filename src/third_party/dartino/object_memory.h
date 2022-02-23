@@ -294,8 +294,7 @@ class Space {
 
 class SemiSpace : public Space {
  public:
-  explicit SemiSpace(Resizing resizeable, PageType page_type,
-                     uword maximum_initial_size);
+  SemiSpace(Program* program, Resizing resizeable, PageType page_type, uword maximum_initial_size);
 
   // Returns the total size of allocated objects.
   virtual uword used();
