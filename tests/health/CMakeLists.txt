@@ -17,6 +17,8 @@ file(GLOB_RECURSE HEALTH_SOURCES "${TOIT_SDK_SOURCE_DIR}/*.toit")
 
 include("${TOIT_SDK_SOURCE_DIR}/tests/tools/health.cmake")
 
+set(GOLD_DIR "${CMAKE_CURRENT_SOURCE_DIR}/gold/sdk")
+
 add_custom_target(
   check_health
   COMMAND ${CMAKE_CTEST_COMMAND} -j${NUM_CPU} -T test -C health --output-on-failure -I ${TEST_SHARD_START},,${TEST_SHARD_STRIDE}
@@ -26,7 +28,7 @@ add_custom_target(
 
 add_custom_target(
   clear_health_gold
-  COMMAND rm -f "${CMAKE_CURRENT_SOURCE_DIR}/*.gold"
+  COMMAND rm -f "${GOLD_DIR}/*.gold"
 )
 
 add_custom_target(
@@ -76,7 +78,7 @@ foreach(file ${HEALTH_SOURCES})
   add_health_test("${file}"
     RELATIVE_TO "${TOIT_SDK_SOURCE_DIR}"
     LIB_DIR "${TOIT_SDK_SOURCE_DIR}"
-    GOLD_DIR "${CMAKE_CURRENT_SOURCE_DIR}/gold/sdk"
+    GOLD_DIR "${GOLD_DIR}"
     CONFIGURATION health
     UPDATE_TARGET update_health_gold
   )
