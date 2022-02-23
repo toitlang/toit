@@ -124,7 +124,7 @@ uword SemiSpace::try_allocate(uword size) {
 
 uword SemiSpace::allocate_in_new_chunk(uword size) {
   // Allocate new chunk that is big enough to fit the object.
-  uword default_chunk_size = default_chunk_size(used());
+  uword default_chunk_size = get_default_chunk_size(used());
   uword chunk_size =
       size >= default_chunk_size
           ? (size + WORD_SIZE)  // Make sure there is room for sentinel.

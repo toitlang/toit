@@ -93,7 +93,7 @@ void Space::decrease_allocation_budget(uword size) { allocation_budget_ -= size;
 
 void Space::set_allocation_budget(word new_budget) {
   allocation_budget_ = Utils::max(
-      static_cast<word>(default_chunk_size(new_budget)), new_budget);
+      static_cast<word>(get_default_chunk_size(new_budget)), new_budget);
 }
 
 void Space::iterate_overflowed_objects(RootCallback* visitor, MarkingStack* stack) {

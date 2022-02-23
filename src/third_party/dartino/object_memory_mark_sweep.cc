@@ -100,7 +100,7 @@ uword OldSpace::allocate_in_new_chunk(uword size) {
   int tracking_size = tracking_allocations_ ? 0 : PromotedTrack::HEADER_SIZE;
   uword max_expansion = heap_->max_expansion();
   uword smallest_chunk_size =
-      Utils::min(default_chunk_size(used()), max_expansion);
+      Utils::min(get_default_chunk_size(used()), max_expansion);
   uword chunk_size =
       (size + tracking_size + WORD_SIZE >= smallest_chunk_size)
           ? (size + tracking_size + WORD_SIZE)  // Make room for sentinel.
@@ -212,41 +212,41 @@ uword OldSpace::allocate(uword size) {
 
 uword OldSpace::used() { return used_; }
 
-void OldSpace::StartTrackingAllocations() {
+void OldSpace::start_tracking_allocations() {
   Flush();
   ASSERT(!tracking_allocations_);
   ASSERT(promoted_track_ == null);
   tracking_allocations_ = true;
 }
 
-void OldSpace::EndTrackingAllocations() {
+void OldSpace::end_tracking_allocations() {
   ASSERT(tracking_allocations_);
   ASSERT(promoted_track_ == null);
   tracking_allocations_ = false;
 }
 
-void OldSpace::ComputeCompactionDestinations() {
+void OldSpace::compute_compaction_destinations() {
   if (is_empty()) return;
   auto it = chunk_list_.begin();
   GcMetadata::Destination dest(it, it->start(), it->usable_end());
   for (auto chunk : chunk_list_) {
-    dest = GcMetadata::CalculateObjectDestinations(chunk, dest);
+    dest = GcMetadata::calculate_object_destinations(program_, chunk, dest);
   }
   dest.chunk()->set_compaction_top(dest.address);
-  while (dest.HasNextChunk()) {
-    dest = dest.NextChunk();
+  while (dest.has_next_chunk()) {
+    dest = dest.next_chunk();
     Chunk* unused = dest.chunk();
     unused->set_compaction_top(unused->start());
   }
 }
 
-void OldSpace::ZapObjectStarts() {
+void OldSpace::zap_object_starts() {
   for (auto chunk : chunk_list_) {
     GcMetadata::initialize_starts_for_chunk(chunk);
   }
 }
 
-void OldSpace::VisitRememberedSet(GenerationalScavengeVisitor* visitor) {
+void OldSpace::visit_remembered_set(GenerationalScavengeVisitor* visitor) {
   Flush();
   for (auto chunk : chunk_list_) {
     // Scan the byte-map for cards that may have new-space pointers.
@@ -329,7 +329,7 @@ void OldSpace::VisitRememberedSet(GenerationalScavengeVisitor* visitor) {
   }
 }
 
-void OldSpace::UnlinkPromotedTrack() {
+void OldSpace::unlink_promoted_track() {
   PromotedTrack* promoted = promoted_track_;
   promoted_track_ = null;
 
