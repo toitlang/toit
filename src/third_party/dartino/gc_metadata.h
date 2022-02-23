@@ -18,6 +18,8 @@
 
 namespace toit {
 
+class Program;
+
 class GcMetadata {
  public:
   static void set_up();
@@ -215,7 +217,7 @@ class GcMetadata {
     ChunkListIterator it_;
   };
 
-  static Destination calculate_object_destinations(Chunk* src_chunk, Destination dest);
+  static Destination calculate_object_destinations(Program* program, Chunk* src_chunk, Destination dest);
 
   // Returns true if the object is grey (queued) or black(scanned).
   static inline bool is_marked(HeapObject* object) {
@@ -356,8 +358,8 @@ class GcMetadata {
 
   static void slow_mark(HeapObject* object, uword size);
   static uword end_of_destination_of_last_live_object_starting_before(
-      uword line, uword limit, uword* src_end_return = null);
-  static uword last_line_that_fits(uword line, uword dest_limit);
+      Program* program, uword line, uword limit, uword* src_end_return = null);
+  static uword last_line_that_fits(Program* program, uword line, uword dest_limit);
 
   static INLINE int pop_count(uint32 x) {
     x = (x & 0x55555555) + ((x >> 1) & 0x55555555);

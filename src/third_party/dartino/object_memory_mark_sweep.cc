@@ -12,7 +12,7 @@
 //   they contain uninitialized memory.
 
 #include "../../utils.h"
-#include "../../object.h"
+#include "../../objects.h"
 #include "mark_sweep.h"
 #include "object_memory.h"
 
