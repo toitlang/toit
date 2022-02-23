@@ -14,12 +14,14 @@
 // directory of this repository.
 
 #include "../top.h"
+
 #ifdef TOIT_FREERTOS
+
+#include "driver/rmt.h"
+
 #include "../primitive.h"
 #include "../resource.h"
 #include "../resource_pool.h"
-
-#include "driver/rmt.h"
 
 namespace toit {
 
@@ -29,27 +31,22 @@ ResourcePool<int, -1> rmt_channels(
     RMT_CHANNEL_4, RMT_CHANNEL_5, RMT_CHANNEL_6, RMT_CHANNEL_7
 );
 
-class RMTResourceGRoup : public ResourceGroup {
+class RMTResourceGroup : public ResourceGroup {
  public:
   TAG(RMTResourceGroup);
-  explicit RMTResourceGroup(Process* process)
-    : ResourceGroup(process, GPIOEventSource::instance()) {}
+  RMTResourceGroup(Process* process)
+    : ResourceGroup(process, null) { }
 
   virtual void on_unregister_resource(Resource* r) {
-    rmt_channel_t channel = static_cast<rmt_channel_t>(static_cast<IntResource*(r)->id());
-    rmt_uninstall_driver(channel);
+    rmt_channel_t channel = static_cast<rmt_channel_t>(static_cast<IntResource*>(r)->id());
+    rmt_driver_uninstall(channel);
     rmt_channels.put(channel);
-    // TODO uninstall driver
-
   }
 
- private:
-  virtual uint32_t on_event(Resource* resource, word data, uint32_t state) {
+};
 
-  }
-}
 
-MODULE_IMPLEMENTATION(MODULE_RMT)
+MODULE_IMPLEMENTATION(rmt, MODULE_RMT)
 
 PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
@@ -111,6 +108,7 @@ PRIMITIVE(config) {
 PRIMITIVE(read) {
   ARGS(int, rx_num)
 
+  return process->program()->null_object();
 }
 
 PRIMITIVE(transfer) {
@@ -130,6 +128,7 @@ PRIMITIVE(transfer) {
 PRIMITIVE(transfer_and_read) {
   ARGS(int, tx_num, int, rx_num, Blob, items_bytes)
 
+  return process->program()->null_object();
 }
 
 } // namespace toit

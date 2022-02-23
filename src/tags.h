@@ -59,6 +59,7 @@ namespace toit {
   fn(MbedTLSResourceGroup)              \
   fn(UDPResourceGroup)                  \
   fn(UARTResourceGroup)                 \
+  fn(RMTResourceGroup)                  \
   fn(WifiResourceGroup)                 \
   fn(EthernetResourceGroup)             \
   fn(BLEResourceGroup)                  \
