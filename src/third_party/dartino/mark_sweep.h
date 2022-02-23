@@ -81,9 +81,9 @@ class FreeList {
   void AddChunk(uword free_start, uword free_size) {
     FreeListChunk* result = FreeListChunk::create_at(free_start, free_size);
     if (!result) {
-      // If the chunk is too small to be turned into an actual
-      // free list chunk we turn it into fillers to be coalesced
-      // with other free chunks later.
+      // Since the chunk was too small to be turned into an actual
+      // free list chunk it was just filled with one-word fillers.
+      // It can be coalesced with other free chunks later.
       return;
     }
     const int WORD_BITS = sizeof(uword) * BYTE_BIT_SIZE;

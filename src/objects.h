@@ -1201,8 +1201,7 @@ class FreeListChunk : public HeapObject {
     return _word_at(SIZE_OFFSET);
   }
 
-  bool can_be_daisychained() { return class_tag() == FREE_LIST_CHUNK_TAG;
-  }
+  bool can_be_daisychained() { return class_tag() == FREE_LIST_CHUNK_TAG; }
 
   void roots_do(int instance_size, RootCallback* cb) {}
 
