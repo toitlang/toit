@@ -52,11 +52,11 @@ class Process : public ProcessListFromProcessGroup::Element,
 
   static const char* StateName[];
 
-  Process(Program* program, ProcessGroup* group, char** args, Block* initial_block);
+  Process(Program* program, ProcessGroup* group, char** args, Chunk* initial_chunk);
 #ifndef TOIT_FREERTOS
-  Process(Program* program, ProcessGroup* group, SnapshotBundle bundle, char** args, Block* initial_block);
+  Process(Program* program, ProcessGroup* group, SnapshotBundle bundle, char** args, Chunk* initial_chunk);
 #endif
-  Process(Program* program, ProcessGroup* group, Method method, const uint8* arguments_address, int arguments_length, Block* initial_block);
+  Process(Program* program, ProcessGroup* group, Method method, const uint8* arguments_address, int arguments_length, Chunk* initial_chunk);
   ~Process();
 
   Process(ProcessRunner* runner, ProcessGroup* group);
@@ -150,8 +150,8 @@ class Process : public ProcessListFromProcessGroup::Element,
   Object* allocate_string_or_error(const char* content, int length);
   ByteArray* allocate_byte_array(int length, Error** error, bool force_external=false);
 
-  word number_of_blocks() {
-    return _object_heap.number_of_blocks();
+  word number_of_chunks() {
+    return _object_heap.number_of_chunks();
   }
 
   void set_max_heap_size(word bytes) {
@@ -220,7 +220,7 @@ class Process : public ProcessListFromProcessGroup::Element,
   }
 
  private:
-  Process(Program* program, ProcessRunner* runner, ProcessGroup* group, Block* initial_block);
+  Process(Program* program, ProcessRunner* runner, ProcessGroup* group, Chunk* initial_chunk);
   void _append_message(Message* message);
   void _ensure_random_seeded();
 

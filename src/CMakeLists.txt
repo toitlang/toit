@@ -35,8 +35,8 @@ file(GLOB lwip_on_linux_sources_SRC
   )
 
 file(GLOB gc_sources_SRC
-  #"third_party/dartino/object_memory.h"
-  #"third_party/dartino/object_memory.cc"
+  "third_party/dartino/object_memory.h"
+  "third_party/dartino/object_memory.cc"
   )
 
 set(toit_vm_SRC ${toit_resources_SRC} ${toit_event_sources_SRC} ${lwip_on_linux_sources_SRC} ${gc_sources_SRC})

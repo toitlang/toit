@@ -114,11 +114,6 @@ template<typename T> inline T translate_address(T value, int delta) {
   return reinterpret_cast<T>(reinterpret_cast<uword>(value) + delta);
 }
 
-void ProgramBlock::shrink_top(int delta) {
-  ASSERT(delta >= 0);
-  _top = translate_address(_top, -delta);
-}
-
 void ProgramBlock::do_pointers(Program* program, PointerCallback* callback) {
   for (void* p = base(); p < top(); p = Utils::address_at(p, HeapObject::cast(p)->size(program))) {
     HeapObject* obj = HeapObject::cast(p);

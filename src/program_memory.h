@@ -77,9 +77,6 @@ class ProgramBlock : public ProgramBlockLinkedList::Element {
   // Tells whether this block of memory contains the object.
   bool contains(HeapObject* object);
 
-  // Shift top with delta (not block content).
-  void shrink_top(int delta);
-
   void do_pointers(Program* program, PointerCallback* callback);
 
   // Returns the number of bytes allocated.

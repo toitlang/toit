@@ -21,7 +21,6 @@
 
 namespace toit {
 
-class Block;
 class Heap;
 class RawHeap;
 
@@ -55,126 +54,22 @@ class Usage {
   int _allocated;
 };
 
-typedef LinkedFIFO<Block> BlockLinkedList;
-
-class Block : public BlockLinkedList::Element {
- public:
-  Block() {
-    _reset();
-  }
-
-  void* top() const { return _top; }
-  void* base() const { return Utils::address_at(const_cast<Block*>(this), sizeof(Block)); }
-  void* limit() const { return Utils::address_at(const_cast<Block*>(this), TOIT_PAGE_SIZE); }
-
-  HeapObject* allocate_raw(int byte_size);
-
-  bool is_empty() { return top() == base(); }
-
-  // How many bytes are available for payload in one Block?
-  static int max_payload_size(int word_size = WORD_SIZE) {
-    ASSERT(sizeof(Block) == 2 * WORD_SIZE);
-    if (word_size == 4) {
-      return TOIT_PAGE_SIZE_32 - 2 * word_size;
-    } else {
-      return TOIT_PAGE_SIZE_64 - 2 * word_size;
-    }
-  }
-
-  // Tells whether this block of memory contains the object.
-  bool contains(HeapObject* object);
-
-  // Shift top with delta (not block content).
-  void shrink_top(int delta);
-
-  // Returns the number of bytes allocated.
-  int payload_size() const { return reinterpret_cast<uword>(top()) - reinterpret_cast<uword>(base()); }
-
-  void print();
-
- private:
-  void _reset() {
-    _top = base();
-  }
-
-  void wipe();
-
-  void* _top;
-  friend class BlockList;
-  friend class Heap;
-  friend class HeapMemory;
-  friend class OS;
-  friend class RawMemory;
-};
-
-class BlockList {
- public:
-  BlockList() : _length(0) { }
-  ~BlockList();
-
-  // Returns the number of bytes allocated.
-  int payload_size() const;
-
-  void append(Block* b) {
-    _blocks.append(b);
-    _length++;
-  }
-
-  void prepend(Block* b) {
-    _blocks.prepend(b);
-    _length++;
-  }
-
-  bool is_empty() const {
-    return _blocks.is_empty();
-  }
-
-  Block* first() const {
-    return _blocks.first();
-  }
-
-  Block* remove_first() {
-    Block* block = _blocks.remove_first();
-    if (block) _length--;
-    return block;
-  }
-
-  Block* last() const {
-    return _blocks.last();
-  }
-
-  void take_blocks(BlockList* list, RawHeap* heap);
-  void free_blocks(RawHeap* heap);
-  void discard_blocks();
-
-  word length() const { return _length; }
-
-  void print();
-
-  typename BlockLinkedList::Iterator begin() { return _blocks.begin(); }
-  typename BlockLinkedList::Iterator end() { return _blocks.end(); }
-
- private:
-  BlockLinkedList _blocks;
-  word _length;  // Number of blocks in the this list.
-};
-
-// Memory provide blocks for objects.
+// Memory provide chunks for objects.
 class HeapMemory {
  public:
 
   // Memory management (MT safe operations)
-  Block* allocate_block(RawHeap* heap);
-  Block* allocate_initial_block();
-  Block* allocate_block_during_scavenge(RawHeap* heap);
-  void free_block(Block* block, RawHeap* heap);
+  Chunk* allocate_chunk(RawHeap* heap);
+  Chunk* allocate_initial_chunk();
+  Chunk* allocate_chunk_during_scavenge(RawHeap* heap);
+  void free_chunk(Chunk* chunk, RawHeap* heap);
   void enter_scavenge(RawHeap* heap);
   void leave_scavenge(RawHeap* heap);
 
-  // This is used for the case where we allocated an initial block for a new
-  // heap, but the new heap creation failed, so the block was never associated
+  // This is used for the case where we allocated an initial chunk for a new
+  // heap, but the new heap creation failed, so the chunk was never associated
   // with a heap or a process.
-  void free_unused_block(Block* block);
+  void free_unused_chunk(Chunk* chunk);
 
   Mutex* mutex() const { return _memory_mutex; }
 
@@ -182,10 +77,10 @@ class HeapMemory {
   HeapMemory();
   ~HeapMemory();
 
-  BlockList _free_list;
+  ChunkList _free_list;
   Mutex* _memory_mutex;
   bool _in_scavenge = false;
-  word _largest_number_of_blocks_in_a_heap = 0;  // In pages.
+  word _largest_number_of_chunks_in_a_heap = 0;  // In pages.
 
   friend class VM;
 };
@@ -197,23 +92,23 @@ class RawHeap {
 
   Process* owner() { return _owner; }
 
-  void take_blocks(BlockList* blocks);
+  void take_chunks(ChunkList* chunks);
 
   // Size of all objects stored in this heap.
   int object_size() const {
-    return _blocks.payload_size();
+    return _chunks.payload_size();
   }
 
-  // Number of blocks allocated.  This is used for reserving space for a GC, so
+  // Number of chunks allocated.  This is used for reserving space for a GC, so
   // it does not include off-heap allocations which don't need to be moved in a
   // GC.
-  word number_of_blocks() const { return _blocks.length(); }
+  word number_of_chunks() const { return _chunks.length(); }
 
   Usage usage(const char* name);
   void print();
 
  protected:
-  BlockList _blocks;
+  ChunkList _chunks;
 
  private:
   Process* const _owner;

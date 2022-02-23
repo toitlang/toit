@@ -43,16 +43,16 @@ PRIMITIVE(spawn) {
   ProcessGroup* process_group = ProcessGroup::create(group_id, program);
   if (!process_group) MALLOC_FAILED;
 
-  Block* initial_block = VM::current()->heap_memory()->allocate_initial_block();
-  if (!initial_block) {
+  Chunk* initial_chunk = VM::current()->heap_memory()->allocate_initial_chunk();
+  if (!initial_chunk) {
     delete process_group;
     ALLOCATION_FAILED;
   }
 
-  int pid = VM::current()->scheduler()->run_program(program, {}, process_group, initial_block);
+  int pid = VM::current()->scheduler()->run_program(program, {}, process_group, initial_chunk);
   if (pid == Scheduler::INVALID_PROCESS_ID) {
     delete process_group;
-    VM::current()->heap_memory()->free_unused_block(initial_block);
+    VM::current()->heap_memory()->free_unused_chunk(initial_chunk);
     MALLOC_FAILED;
   }
   return Smi::from(pid);

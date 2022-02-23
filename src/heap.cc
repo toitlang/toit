@@ -51,21 +51,21 @@ class ScavengeScope : public Locker {
   RawHeap* _heap;
 };
 
-Heap::Heap(Process* owner, Program* program, Block* initial_block)
+Heap::Heap(Process* owner, Program* program, Chunk* initial_chunk)
     : RawHeap(owner)
     , _program(program)
     , _in_gc(false)
     , _gc_allowed(true)
     , _total_bytes_allocated(0)
     , _last_allocation_result(ALLOCATION_SUCCESS) {
-  if (initial_block == null) return;
-  _blocks.append(initial_block);
+  if (initial_chunk == null) return;
+  _chunks.append(initial_chunk);
 }
 
 Heap::~Heap() {
   // Deleting a heap is like a scavenge where nothing survives.
   ScavengeScope scope(VM::current()->heap_memory(), this);
-  _blocks.free_blocks(this);
+  _chunks.free_chunks(this);
 }
 
 Instance* Heap::allocate_instance(Smi* class_id) {
@@ -110,7 +110,7 @@ Array* Heap::allocate_array(int length) {
 
 ByteArray* Heap::allocate_internal_byte_array(int length) {
   ASSERT(length >= 0);
-  // Byte array should fit within one heap block.
+  // Byte array should fit within one heap chunk.
   ASSERT(length <= ByteArray::max_internal_size_in_process());
   ByteArray* result = unvoid_cast<ByteArray*>(_allocate_raw(ByteArray::internal_allocation_size(length)));
   if (result == null) return null;  // Allocation failure.
@@ -139,7 +139,7 @@ LargeInteger* Heap::allocate_large_integer(int64 value) {
 }
 
 int Heap::payload_size() {
-  return _blocks.payload_size();
+  return _chunks.payload_size();
 }
 
 String* Heap::allocate_internal_string(int length) {
@@ -161,12 +161,12 @@ String* Heap::allocate_internal_string(int length) {
 HeapObject* Heap::_allocate_raw(int byte_size) {
   ASSERT(byte_size > 0);
   ASSERT(byte_size <= max_allocation_size());
-  HeapObject* result = _blocks.last()->allocate_raw(byte_size);
+  HeapObject* result = _chunks.last()->allocate_raw(byte_size);
   if (result == null) {
     AllocationResult expand_result = _expand();
     set_last_allocation_result(expand_result);
     if (expand_result != ALLOCATION_SUCCESS) return null;
-    result = _blocks.last()->allocate_raw(byte_size);
+    result = _chunks.last()->allocate_raw(byte_size);
   }
   if (result == null) return null;
   _total_bytes_allocated += byte_size;
@@ -174,14 +174,14 @@ HeapObject* Heap::_allocate_raw(int byte_size) {
 }
 
 Heap::AllocationResult Heap::_expand() {
-  Block* block = VM::current()->heap_memory()->allocate_block(this);
-  if (block == null) return ALLOCATION_OUT_OF_MEMORY;
-  _blocks.append(block);
+  Chunk* chunk = VM::current()->heap_memory()->allocate_chunk(this);
+  if (chunk == null) return ALLOCATION_OUT_OF_MEMORY;
+  _chunks.append(chunk);
   return ALLOCATION_SUCCESS;
 }
 
 Heap::AllocationResult ObjectHeap::_expand() {
-  word used = (_blocks.length() << TOIT_PAGE_SIZE_LOG2) + _external_memory;
+  word used = (_chunks.length() << TOIT_PAGE_SIZE_LOG2) + _external_memory;
   if (_limit != 0 && used >= _limit) {
 #ifdef TOIT_GC_LOGGING
     printf("[gc @ %p%s | soft limit reached (%zd >= %zd)]\n",
@@ -197,14 +197,14 @@ class ScavengeState : public RootCallback {
  public:
   explicit ScavengeState(Heap* heap)
       : _heap(heap), _process(heap->owner()), _scope(VM::current()->heap_memory(), heap) {
-    blocks.append(VM::current()->heap_memory()->allocate_block_during_scavenge(heap));
+    chunks.append(VM::current()->heap_memory()->allocate_chunk_during_scavenge(heap));
   }
 
   HeapObject* allocate(int byte_size) {
-    HeapObject* result = blocks.last()->allocate_raw(byte_size);
+    HeapObject* result = chunks.last()->allocate_raw(byte_size);
     if (result == null) {
-      blocks.append(VM::current()->heap_memory()->allocate_block_during_scavenge(_heap));
-      result = blocks.last()->allocate_raw(byte_size);
+      chunks.append(VM::current()->heap_memory()->allocate_chunk_during_scavenge(_heap));
+      result = chunks.last()->allocate_raw(byte_size);
       if (result == null) {
         FATAL("Cannot allocate memory");
       }
@@ -263,12 +263,12 @@ class ScavengeState : public RootCallback {
   }
 
   void process_to_space() {
-    Heap::Iterator objects(blocks, _heap->program());
+    Heap::Iterator objects(chunks, _heap->program());
     while (!objects.eos()) process_to_objects(objects);
     ASSERT(objects.eos());
   }
 
-  BlockList blocks;
+  Chunk chunks;
  private:
   Heap* _heap;
   Process* _process;
@@ -279,18 +279,18 @@ Object** ObjectHeap::_copy_global_variables() {
   return _program->global_variables.copy();
 }
 
-ObjectHeap::ObjectHeap(Program* program, Process* owner, Block* block)
-    : Heap(owner, program, block)
+ObjectHeap::ObjectHeap(Program* program, Process* owner, Chunk* chunk)
+    : Heap(owner, program, chunk)
     , _max_heap_size(0)
     , _external_memory(0)
     , _hatch_method(Method::invalid())
     , _finalizer_notifier(null)
     , _gc_count(0)
     , _global_variables(null) {
-  if (block == null) return;
+  if (chunk == null) return;
   _task = allocate_task();
   _global_variables = _copy_global_variables();
-  // Currently the heap is empty and it has one block allocated for objects.
+  // Currently the heap is empty and it has one chunk allocated for objects.
   _limit = _pending_limit = _calculate_limit();
 }
 
@@ -316,7 +316,7 @@ ObjectHeap::~ObjectHeap() {
 }
 
 word ObjectHeap::_calculate_limit() {
-  word length = ((_blocks.length() + 2) << TOIT_PAGE_SIZE_LOG2) + _external_memory;
+  word length = ((_chunks.length() + 2) << TOIT_PAGE_SIZE_LOG2) + _external_memory;
   word new_limit = Utils::max(_MIN_BLOCK_LIMIT << TOIT_PAGE_SIZE_LOG2, length + length / 2);
   if (has_max_heap_size()) {
     new_limit = Utils::min(_max_heap_size, new_limit);
@@ -326,7 +326,7 @@ word ObjectHeap::_calculate_limit() {
 
 bool ObjectHeap::should_allow_external_allocation(word size) {
   if (_limit == 0) return true;
-  word external_allowed = _limit - (Utils::min(_MIN_BLOCK_LIMIT, _blocks.length()) << TOIT_PAGE_SIZE_LOG2);
+  word external_allowed = _limit - (Utils::min(_MIN_BLOCK_LIMIT, _chunks.length()) << TOIT_PAGE_SIZE_LOG2);
   return external_allowed >= _external_memory + _EXTERNAL_MEMORY_ALLOCATOR_OVERHEAD + size;
 }
 
@@ -439,7 +439,7 @@ static const char* format_unit(word n) {
 #endif
 
 int ObjectHeap::scavenge() {
-  word blocks_before = _blocks.length();
+  word chunks_before = _chunks.length();
 #ifdef TOIT_GC_LOGGING
   int64 start_time = OS::get_monotonic_time();
   word external_memory_before = _external_memory;
@@ -454,7 +454,7 @@ int ObjectHeap::scavenge() {
   set_last_allocation_result(ALLOCATION_SUCCESS);
   if (Flags::tracegc) {
     printf("[Begin object scavenge #(%zdk, %zdk, external %zdk)]\n",
-           _blocks.length() << (TOIT_PAGE_SIZE_LOG2 - KB_LOG2),
+           _chunks.length() << (TOIT_PAGE_SIZE_LOG2 - KB_LOG2),
            _limit >> KB_LOG2,
            _external_memory >> KB_LOG2);
   }
@@ -475,7 +475,7 @@ int ObjectHeap::scavenge() {
     }
 
     // Process the to space.
-    Iterator objects(ss.blocks, program());
+    Iterator objects(ss.chunks, program());
     while (!objects.eos()) ss.process_to_objects(objects);
 
     // Process the registered finalizer list.
@@ -523,24 +523,24 @@ int ObjectHeap::scavenge() {
     while (!objects.eos()) ss.process_to_objects(objects);
     ASSERT(objects.eos());
 
-    take_blocks(&ss.blocks);
+    take_chunks(&ss.chunks);
   }
 
   _pending_limit = _calculate_limit();  // GC limit to install after next GC.
   _limit = _max_heap_size;  // Only the hard limit for the rest of this primitive.
   if (Flags::tracegc) {
     printf("[End object scavenge #(%zdk, %zdk, external %zdk)]\n",
-        _blocks.length() << (TOIT_PAGE_SIZE_LOG2 - KB_LOG2),
+        _chunks.length() << (TOIT_PAGE_SIZE_LOG2 - KB_LOG2),
         _pending_limit >> KB_LOG2,
         _external_memory >> KB_LOG2);
   }
   _gc_count++;
   leave_gc();
 
-  word blocks_after = _blocks.length();
+  word chunks_after = _chunks.length();
 #ifdef TOIT_GC_LOGGING
-  word toit_before = (blocks_before << TOIT_PAGE_SIZE_LOG2) + external_memory_before;
-  word toit_after = (blocks_after << TOIT_PAGE_SIZE_LOG2) + _external_memory;
+  word toit_before = (chunks_before << TOIT_PAGE_SIZE_LOG2) + external_memory_before;
+  word toit_after = (chunks_after << TOIT_PAGE_SIZE_LOG2) + _external_memory;
   int64 microseconds = OS::get_monotonic_time() - start_time;
 #ifdef TOIT_FREERTOS
   multi_heap_info_t after;
@@ -559,8 +559,8 @@ int ObjectHeap::scavenge() {
       FORMAT(_external_memory), FORMAT(toit_after),                                  // objects-after
       FORMAT(before.total_allocated_bytes), FORMAT(capacity_before), used_before,    // overall-before
       FORMAT(after.total_allocated_bytes), FORMAT(capacity_after), used_after,       // overall-after
-      FORMAT(before.largest_free_block), FORMAT(before.total_free_bytes),            // free-before
-      FORMAT(after.largest_free_block), FORMAT(after.total_free_bytes),              // free-after
+      FORMAT(before.largest_free_chunk), FORMAT(before.total_free_bytes),            // free-before
+      FORMAT(after.largest_free_chunk), FORMAT(after.total_free_bytes),              // free-after
       static_cast<int>(microseconds / 1000), static_cast<int>(microseconds % 1000)); // time
 #else
   printf("[gc @ %p%s "
@@ -572,7 +572,7 @@ int ObjectHeap::scavenge() {
       static_cast<int>(microseconds / 1000), static_cast<int>(microseconds % 1000)); // time
 #endif // TOIT_FREERTOS
 #endif // TOIT_GC_LOGGING
-  return blocks_before - blocks_after;
+  return chunks_before - chunks_after;
 }
 
 bool ObjectHeap::has_finalizer(HeapObject* key, Object* lambda) {
@@ -647,36 +647,36 @@ void ObjectHeap::set_finalizer_notifier(ObjectNotifier* notifier) {
 
 // We initialize lazily - this is because the number of objects can grow during
 // iteration.
-Heap::Iterator::Iterator(BlockList& list, Program* program)
+Heap::Iterator::Iterator(ChunkList& list, Program* program)
   : _list(list)
   , _iterator(list.end())  // Set to null.
-  , _block(null)
+  , _chunk(null)
   , _current(null)
   , _program(program) {}
 
 bool Heap::Iterator::eos() {
   return _list.is_empty()
-      || (_block == null
+      || (_chunk == null
           ? _list.first()->is_empty()
-          :  (_current >= _block->top() && _block == _list.last()));
+          :  (_current >= _chunk->top() && _chunk == _list.last()));
 }
 
 void Heap::Iterator::ensure_started() {
   ASSERT(!eos());
-  if (_block == null) {
+  if (_chunk == null) {
      _iterator = _list.begin();
-     _block = *_iterator;
-     _current = _block->base();
+     _chunk = *_iterator;
+     _current = _chunk->base();
   }
 }
 
 HeapObject* Heap::Iterator::current() {
   ensure_started();
-  if (_current >= _block->top() && _block != _list.last()) {
-    _block = *++_iterator;
-    _current = _block->base();
+  if (_current >= _chunk->top() && _chunk != _list.last()) {
+    _chunk = *++_iterator;
+    _current = _chunk->base();
   }
-  ASSERT(!_block->is_empty());
+  ASSERT(!_chunk->is_empty());
   return HeapObject::cast(_current);
 }
 
@@ -685,10 +685,10 @@ void Heap::Iterator::advance() {
 
   ASSERT(HeapObject::cast(_current)->header()->is_smi());  // Header is not a forwarding pointer.
   _current = Utils::address_at(_current, HeapObject::cast(_current)->size(_program));
-  if (_current >= _block->top() && _block != _list.last()) {
-    _block = *++_iterator;
-    _current = _block->base();
-    ASSERT(!_block->is_empty());
+  if (_current >= _chunk->top() && _chunk != _list.last()) {
+    _chunk = *++_iterator;
+    _current = _chunk->base();
+    ASSERT(!_chunk->is_empty());
   }
 }
 

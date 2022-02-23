@@ -33,7 +33,7 @@ const char* Process::StateName[] = {
   "RUNNING",
 };
 
-Process::Process(Program* program, ProcessRunner* runner, ProcessGroup* group, Block* initial_block)
+Process::Process(Program* program, ProcessRunner* runner, ProcessGroup* group, Chunk* initial_chunk)
     : _id(VM::current()->scheduler()->next_process_id())
     , _next_task_id(0)
     , _program(program)
@@ -42,7 +42,7 @@ Process::Process(Program* program, ProcessRunner* runner, ProcessGroup* group, B
     , _program_heap_address(program ? program->_program_heap_address : 0)
     , _program_heap_size(program ? program->_program_heap_size : 0)
     , _entry(Method::invalid())
-    , _object_heap(program, this, initial_block)
+    , _object_heap(program, this, initial_chunk)
     , _memory_usage(Usage("initial object heap"))
     , _last_bytes_allocated(0)
     , _random_seeded(false)
@@ -61,8 +61,8 @@ Process::Process(Program* program, ProcessRunner* runner, ProcessGroup* group, B
   ASSERT(_group->lookup(_id) == this);
 }
 
-Process::Process(Program* program, ProcessGroup* group, char** args, Block* initial_block)
-   : Process(program, null, group, initial_block) {
+Process::Process(Program* program, ProcessGroup* group, char** args, Chunk* initial_chunk)
+   : Process(program, null, group, initial_chunk) {
   _entry = program->entry();
   _args = args;
   _object_heap.set_hatch_method(Method::invalid());
@@ -70,8 +70,8 @@ Process::Process(Program* program, ProcessGroup* group, char** args, Block* init
 }
 
 #ifndef TOIT_FREERTOS
-Process::Process(Program* program, ProcessGroup* group, SnapshotBundle bundle, char** args, Block* initial_block)
-  : Process(program, null, group, initial_block) {
+Process::Process(Program* program, ProcessGroup* group, SnapshotBundle bundle, char** args, Chunk* initial_chunk)
+  : Process(program, null, group, initial_chunk) {
   _entry = program->entry();
   _args = args;
   ByteArray* snap = _object_heap.allocate_external_byte_array(bundle.size(), bundle.buffer(), true, false);
@@ -84,8 +84,8 @@ Process::Process(Program* program, ProcessGroup* group, SnapshotBundle bundle, c
 }
 #endif
 
-Process::Process(Program* program, ProcessGroup* group, Method method, const uint8* arguments_address, int arguments_length, Block* initial_block)
-   : Process(program, null, group, initial_block) {
+Process::Process(Program* program, ProcessGroup* group, Method method, const uint8* arguments_address, int arguments_length, Chunk* initial_chunk)
+   : Process(program, null, group, initial_chunk) {
   _entry = program->hatch_entry();
   _args = null;
   ByteArray* args = _object_heap.allocate_internal_byte_array(arguments_length);
@@ -129,8 +129,8 @@ String* Process::allocate_string(const char* content, int length, Error** error)
 
 String* Process::allocate_string(int length, Error** error) {
   ASSERT(length >= 0);
-  bool can_fit_in_heap_block = length <= String::max_internal_size_in_process();
-  if (can_fit_in_heap_block) {
+  bool can_fit_in_heap_chunk = length <= String::max_internal_size_in_process();
+  if (can_fit_in_heap_chunk) {
     String* result = object_heap()->allocate_internal_string(length);
     if (result != null) return result;
 #ifdef TOIT_GC_LOGGING
@@ -190,7 +190,7 @@ Object* Process::allocate_string_or_error(const char* content) {
 ByteArray* Process::allocate_byte_array(int length, Error** error, bool force_external) {
   ASSERT(length >= 0);
   if (force_external || length > ByteArray::max_internal_size_in_process()) {
-    // Byte array cannot fit within a heap block so place content in malloced space.
+    // Byte array cannot fit within a heap chunk so place content in malloced space.
     AllocationManager allocation(this);
     uint8* memory;
     {
