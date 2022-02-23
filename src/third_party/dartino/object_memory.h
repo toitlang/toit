@@ -207,7 +207,7 @@ class Space {
   ChunkListIterator chunk_list_begin() { return chunk_list_.begin(); }
   ChunkListIterator chunk_list_end() { return chunk_list_.end(); }
 
-  static uword default_chunk_size(uword heap_size) {
+  static uword get_default_chunk_size(uword heap_size) {
     // We return a value between DEFAULT_MINIMUM_CHUNK_SIZE and
     // DEFAULT_MAXIMUM_CHUNK_SIZE - and try to keep the chunks smaller than 20% of
     // the heap.
@@ -294,8 +294,7 @@ class Space {
 
 class SemiSpace : public Space {
  public:
-  explicit SemiSpace(Resizing resizeable, PageType page_type,
-                     uword maximum_initial_size);
+  SemiSpace(Program* program, Resizing resizeable, PageType page_type, uword maximum_initial_size);
 
   // Returns the total size of allocated objects.
   virtual uword used();

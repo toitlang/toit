@@ -2,20 +2,24 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE.md file.
 
-#include "src/vm/object_memory.h"
+#include "gc_metadata.h"
+#include "object_memory.h"
 
-#include "src/vm/heap.h"
-#include "src/vm/object.h"
+#include "../../heap.h"
+#include "../../objects.h"
 
 namespace toit {
+
+class Program;
 
 static void write_sentinel_at(uword address) {
   ASSERT(sizeof(Object*) == SENTINEL_SIZE);
   *reinterpret_cast<Object**>(address) = chunk_end_sentinel();
 }
 
-Space::Space(Space::Resizing resizeable, PageType page_type)
-    : used_(0),
+Space::Space(Program* program, Space::Resizing resizeable, PageType page_type)
+    : program_(program),
+      used_(0),
       top_(0),
       limit_(0),
       allocation_budget_(0),
@@ -23,15 +27,15 @@ Space::Space(Space::Resizing resizeable, PageType page_type)
       resizeable_(resizeable == CAN_RESIZE),
       page_type_(page_type) {}
 
-SemiSpace::SemiSpace(Space::Resizing resizeable, PageType page_type,
+SemiSpace::SemiSpace(Program* program, Space::Resizing resizeable, PageType page_type,
                      uword maximum_initial_size)
-    : Space(resizeable, page_type) {
+    : Space(program, resizeable, page_type) {
   if (resizeable_ && maximum_initial_size > 0) {
     uword size = Utils::min(
         Utils::round_up(maximum_initial_size, TOIT_PAGE_SIZE),
         DEFAULT_MAXIMUM_CHUNK_SIZE);
     Chunk* chunk = ObjectMemory::allocate_chunk(this, size);
-    if (chunk == null) FATAL1("Failed to allocate %d bytes.\n", size);
+    if (chunk == null) FATAL("Failed to allocate %d bytes.\n", size);
     append(chunk);
     update_base_and_limit(chunk, chunk->start());
   }
@@ -65,12 +69,12 @@ void SemiSpace::flush() {
 }
 
 HeapObject* SemiSpace::new_location(HeapObject* old_location) {
-  ASSERT(includes(old_location->address()));
+  ASSERT(includes(old_location->_raw()));
   return old_location->forwarding_address();
 }
 
 bool SemiSpace::is_alive(HeapObject* old_location) {
-  ASSERT(includes(old_location->address()));
+  ASSERT(includes(old_location->_raw()));
   return old_location->has_forwarding_address();
 }
 
@@ -78,16 +82,9 @@ void Space::append(Chunk* chunk) {
   ASSERT(chunk->owner() == this);
   // Insert chunk in increasing address order in the list.  This is
   // useful for the partial compactor.
-  uword start = 0;
-  for (auto it = chunk_list_.begin(); it != chunk_list_.end(); ++it) {
-    ASSERT(it->start() > start);
-    start = it->start();
-    if (start > chunk->start()) {
-      chunk_list_.insert(it, chunk);
-      return;
-    }
+  if (!chunk_list_.insert_before(chunk, [&chunk](Chunk* it) { return it->start() > chunk->start(); })) {
+    chunk_list_.append(chunk);
   }
-  chunk_list_.append(chunk);
 }
 
 void SemiSpace::append(Chunk* chunk) {
@@ -124,7 +121,7 @@ uword SemiSpace::try_allocate(uword size) {
 
 uword SemiSpace::allocate_in_new_chunk(uword size) {
   // Allocate new chunk that is big enough to fit the object.
-  uword default_chunk_size = default_chunk_size(used());
+  uword default_chunk_size = get_default_chunk_size(used());
   uword chunk_size =
       size >= default_chunk_size
           ? (size + WORD_SIZE)  // Make sure there is room for sentinel.
