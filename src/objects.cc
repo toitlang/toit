@@ -177,8 +177,8 @@ int HeapObject::size(Program* program) {
       return Double::allocation_size();
     case TypeTag::LARGE_INTEGER_TAG:
       return LargeInteger::allocation_size();
-    case TypeTag::FREE_LIST_CHUNK_TAG:
-      return FreeListChunk::cast(this)->size();
+    case TypeTag::FREE_LIST_REGION_TAG:
+      return FreeListRegion::cast(this)->size();
     case TypeTag::SINGLE_FREE_WORD_TAG:
       return WORD_SIZE;
     default:
@@ -204,7 +204,7 @@ void HeapObject::roots_do(Program* program, RootCallback* cb) {
     case TypeTag::DOUBLE_TAG:
     case TypeTag::LARGE_INTEGER_TAG:
     case TypeTag::BYTE_ARRAY_TAG:
-    case TypeTag::FREE_LIST_CHUNK_TAG:
+    case TypeTag::FREE_LIST_REGION_TAG:
     case TypeTag::SINGLE_FREE_WORD_TAG:
       // No roots.
       break;
@@ -218,16 +218,16 @@ void HeapObject::_set_header(Program* program, Smi* id) {
   _set_header(id, tag);
 }
 
-FreeListChunk* FreeListChunk::create_at(uword start, uword size) {
+FreeListRegion* FreeListRegion::create_at(uword start, uword size) {
   if (size >= MINIMUM_SIZE) {
-    auto self = reinterpret_cast<FreeListChunk*>(start);
-    self->_set_header(Smi::from(FREE_LIST_CHUNK_CLASS_ID), FREE_LIST_CHUNK_TAG);
+    auto self = reinterpret_cast<FreeListRegion*>(start);
+    self->_set_header(Smi::from(FREE_LIST_REGION_CLASS_ID), FREE_LIST_REGION_TAG);
     self->_word_at_put(SIZE_OFFSET, size);
     self->_at_put(NEXT_OFFSET, null);
     return self;
   }
   for (uword i = 0; i < size; i += WORD_SIZE) {
-    auto one_word = reinterpret_cast<FreeListChunk*>(start + i);
+    auto one_word = reinterpret_cast<FreeListRegion*>(start + i);
     one_word->_set_header(Smi::from(SINGLE_FREE_WORD_CLASS_ID), SINGLE_FREE_WORD_TAG);
   }
   return null;

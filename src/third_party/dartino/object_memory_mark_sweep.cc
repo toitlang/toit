@@ -2,7 +2,7 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE.md file.
 // Mark-sweep old-space.
-// * Uses worst-fit free-list allocation to get big chunks for fast bump
+// * Uses worst-fit free-list allocation to get big regions for fast bump
 //   allocation.
 // * Non-moving for now.
 // * Has on-heap chained data structure keeping track of
@@ -33,7 +33,7 @@ OldSpace::~OldSpace() { delete free_list_; }
 void OldSpace::flush() {
   if (top_ != 0) {
     uword free_size = limit_ - top_;
-    free_list_->add_chunk(top_, free_size);
+    free_list_->add_region(top_, free_size);
     if (tracking_allocations_ && promoted_track_ != null) {
       // The latest promoted_track_ entry is set to cover the entire
       // current allocation area, so that we skip it when traversing the
@@ -160,21 +160,21 @@ void OldSpace::report_new_space_progress(uword bytes_collected) {
 }
 
 uword OldSpace::allocate_from_free_list(uword size) {
-  // Flush the rest of the active chunk into the free list.
+  // Flush the rest of the active region into the free list.
   flush();
 
-  FreeListChunk* chunk = free_list_->GetChunk(
+  FreeListRegion* region = free_list_->get_region(
       tracking_allocations_ ? size + PromotedTrack::HEADER_SIZE : size);
-  if (chunk != null) {
-    top_ = chunk->address();
-    limit_ = top_ + chunk->size();
-    // Account all of the chunk memory as used for now. When the
-    // rest of the freelist chunk is flushed into the freelist we
+  if (region != null) {
+    top_ = region->address();
+    limit_ = top_ + region->size();
+    // Account all of the region's memory as used for now. When the
+    // rest of the freelist region is flushed into the freelist we
     // decrement used_ by the amount still left unused. used_
     // therefore reflects actual memory usage after Flush has been
     // called.  (Do this before the tracking info below overwrites
-    // the free chunk's data.)
-    used_ += chunk->size();
+    // the free region's data.)
+    used_ += region->size();
     if (tracking_allocations_) {
       promoted_track_ =
           PromotedTrack::initialize(promoted_track_, top_, limit_);
@@ -206,7 +206,7 @@ uword OldSpace::allocate(uword size) {
 
   // Can't use bump allocation. Allocate from free lists.
   uword result = allocate_from_free_list(size);
-  if (result == 0) result = allocate_in_new_chunk(size);
+  if (result == 0) result = allocate_in_new_region(size);
   return result;
 }
 
@@ -378,7 +378,7 @@ void OldSpace::mark_chunk_ends_free() {
   for (auto chunk : chunk_list_) {
     uword top = chunk->compaction_top();
     uword end = chunk->usable_end();
-    if (top != end) free_list_->add_chunk(top, end - top);
+    if (top != end) free_list_->add_region(top, end - top);
     top = Utils::round_up(top, GcMetadata::CARD_SIZE);
     GcMetadata::initialize_starts_for_chunk(chunk, top);
     GcMetadata::initialize_remembered_set_for_chunk(chunk, top);
@@ -484,17 +484,17 @@ SweepingVisitor::SweepingVisitor(OldSpace* space)
   free_list_->clear();
 }
 
-void SweepingVisitor::add_free_list_chunk(uword free_end) {
+void SweepingVisitor::add_free_list_region(uword free_end) {
   if (free_start_ != 0) {
     uword free_size = free_end - free_start_;
-    free_list_->add_chunk(free_start_, free_size);
+    free_list_->add_region(free_start_, free_size);
     free_start_ = 0;
   }
 }
 
 uword SweepingVisitor::visit(HeapObject* object) {
   if (GcMetadata::is_marked(object)) {
-    add_free_list_chunk(object->address());
+    add_free_list_region(object->address());
     GcMetadata::record_start(object->address());
     uword size = object->size();
     used_ += size;
