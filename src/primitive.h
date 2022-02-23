@@ -365,6 +365,9 @@ namespace toit {
   PRIMITIVE(use, 2)                          \
   PRIMITIVE(unuse, 2)                        \
   PRIMITIVE(config, 6)                       \
+  PRIMITIVE(read, 1)                         \
+  PRIMITIVE(transfer, 2)                     \
+  PRIMITIVE(transfer_and_read, 3)            \
 
 #define MODULE_CRYPTO(PRIMITIVE)             \
   PRIMITIVE(sha1_start, 1)                   \

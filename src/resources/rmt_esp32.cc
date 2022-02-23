@@ -24,7 +24,6 @@
 namespace toit {
 
 
-
 ResourcePool<int, -1> rmt_channels(
     RMT_CHANNEL_0, RMT_CHANNEL_1, RMT_CHANNEL_2, RMT_CHANNEL_3,
     RMT_CHANNEL_4, RMT_CHANNEL_5, RMT_CHANNEL_6, RMT_CHANNEL_7
@@ -107,23 +106,31 @@ PRIMITIVE(config) {
   if (ESP_OK != err) return Primitive::os_error(err, process);
 
   return process->program()->null_object();
-} // namespace toit
+}
 
-PRIMITIVE(receive) {
+PRIMITIVE(read) {
+  ARGS(int, rx_num)
 
 }
 
-PRIMITIVE(transmit) {
-  ARGS(int, channel_num, Blob, blob)
+PRIMITIVE(transfer) {
+  ARGS(int, tx_num, Blob, blob)
 
-  if (blob.length() % 4 != 0) INVALID_ARGUMENT;
+  if (item_bytes.length() % 4 != 0) INVALID_ARGUMENT;
 
-  uint8* bytes = blob.address();
-  rmt_item32_t* items = reinterpret_cast<rmt_item32_t*>(bytes);
-  esp_err_t err = rmt_write_items(channel_num, items, blob.length() / 4, true);
-  if (ESP_OK != err) return Primitive::os_error(err, process);
+  rmt_item32_t* items = reinterpret_cast<rmt_item32_t*>(items_bytes);
+
+  esp_err_t err = rmt_write_items(tx_num, items, items_bytes.length() / 4, true);
+
+  if ( err != ESP_OK) return Primitive::os_error(err, process);
 
   return process->program()->null_object();
 }
 
+PRIMITIVE(transfer_and_read) {
+  ARGS(int, tx_num, int, rx_num, Blob, items_bytes)
+
+}
+
+} // namespace toit
 #endif // TOIT_FREERTOS
