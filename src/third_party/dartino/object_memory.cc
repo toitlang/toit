@@ -183,24 +183,7 @@ void Space::find(uword w, const char* name) {
 }
 #endif
 
-void Space::complete_transformations(RootCallback* visitor) {
-  flush();
-  for (auto chunk : chunk_list_) {
-    uword current = chunk->start();
-    while (!has_sentinel_at(current)) {
-      HeapObject* object = HeapObject::from_address(current);
-      if (object->has_forwarding_address()) {
-        current += Instance::kSize;
-      } else {
-        object->iterate_pointers(visitor);
-        current += object->size();
-      }
-      flush();
-    }
-  }
-}
-
-Atomic<uword> ObjectMemory::allocated_;
+std::atomic<uword> ObjectMemory::allocated_;
 
 void ObjectMemory::set_up() {
   allocated_ = 0;
@@ -278,49 +261,6 @@ void ObjectMemory::free_chunk(Chunk* chunk) {
 #endif
   allocated_ -= chunk->size();
   delete chunk;
-}
-
-// Put free-list entries on the objects that are now dead.
-void OldSpace::rebuild_after_transformations() {
-  for (auto chunk : chunk_list_) {
-    uword free_start = 0;
-    uword current = chunk->start();
-    while (!has_sentinel_at(current)) {
-      HeapObject* object = HeapObject::from_address(current);
-      if (object->has_forwarding_address()) {
-        if (free_start == 0) free_start = current;
-        current += Instance::kSize;
-        while (HeapObject::from_address(current)->is_filler()) {
-          current += WORD_SIZE;
-        }
-      } else {
-        if (free_start != 0) {
-          free_list_->add_chunk(free_start, current - free_start);
-          free_start = 0;
-        }
-        current += object->size();
-      }
-    }
-  }
-}
-
-// Put one-word-fillers on the dead objects so it is still iterable.
-void SemiSpace::rebuild_after_transformations() {
-  for (auto chunk : chunk_list_) {
-    uword current = chunk->start();
-    while (!has_sentinel_at(current)) {
-      HeapObject* object = HeapObject::from_address(current);
-      if (object->has_forwarding_address()) {
-        for (int i = 0; i < Instance::kSize; i += WORD_SIZE) {
-          *reinterpret_cast<Object**>(current + i) =
-              StaticClassStructures::one_word_filler_class();
-        }
-        current += Instance::kSize;
-      } else {
-        current += object->size();
-      }
-    }
-  }
 }
 
 #ifdef DEBUG

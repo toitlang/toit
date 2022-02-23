@@ -116,6 +116,26 @@ class Chunk : public ChunkList::Element {
   friend class Space;
 };
 
+// Abstract base class for visiting all objects in a space.
+class HeapObjectVisitor {
+ public:
+  HeapObjectVisitor(Program* program) : program_(program) {}
+  virtual ~HeapObjectVisitor() {}
+  // Visit the heap object. Must return the size of the heap
+  // object.
+  virtual uword visit(HeapObject* object) = 0;
+  // Notification that the end of a chunk has been reached. A heap
+  // object visitor visits all heap objects in a chunk in order
+  // calling visit on each of them. When it reaches the end of the
+  // chunk it calls chunk_end.
+  virtual void chunk_end(Chunk* chunk, uword end) {}
+  // Notification that we are about to iterate over a chunk.
+  virtual void chunk_start(Chunk* chunk) {}
+
+ protected:
+  Program* program_;
+};
+
 // Space is a chain of chunks. It supports allocation and traversal.
 class Space {
  public:
@@ -144,10 +164,6 @@ class Space {
   // processing.
   virtual HeapObject* new_location(HeapObject* old_location) = 0;
 
-  // Instance transformation leaves garbage in the heap so we rebuild the
-  // space after transformations.
-  virtual void rebuild_after_transformations() = 0;
-
   void set_used(uword used) { used_ = used; }
 
   // Returns the total size of allocated chunks.
@@ -158,9 +174,6 @@ class Space {
 
   // Iterate all the objects that are grey, after a mark stack overflow.
   void iterate_overflowed_objects(RootCallback* visitor, MarkingStack* stack);
-
-  // Schema change support.
-  void complete_transformations(RootCallback* visitor);
 
   // Returns true if the address is inside this space.  Not particularly fast.
   // See GcMetadata::PageType for a faster possibility.
@@ -290,10 +303,6 @@ class SemiSpace : public Space {
   virtual bool is_alive(HeapObject* old_location);
   virtual HeapObject* new_location(HeapObject* old_location);
 
-  // Instance transformation leaves garbage in the heap that needs to be
-  // added to freelists when using mark-sweep collection.
-  virtual void rebuild_after_transformations();
-
   // flush will make the current chunk consistent for iteration.
   virtual void flush();
 
@@ -341,10 +350,6 @@ class OldSpace : public Space {
   virtual HeapObject* new_location(HeapObject* old_location);
 
   virtual uword used();
-
-  // Instance transformation leaves garbage in the heap that needs to be
-  // added to freelists when using mark-sweep collection.
-  virtual void rebuild_after_transformations();
 
   // flush will make the current chunk consistent for iteration.
   virtual void flush();
