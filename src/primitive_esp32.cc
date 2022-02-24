@@ -210,9 +210,8 @@ PRIMITIVE(ota_end) {
     // The system SHA256 checksum is optional, so we add an explicit verification
     // that we control.  (There is also a non-optional checksum, but it is only one
     // byte, and so not really reliable.)
-    if (expected->is_byte_array()) {
-      ByteArray* expected_checksum = ByteArray::cast(expected);
-      ByteArray::Bytes checksum_bytes(expected_checksum);
+    Blob checksum_bytes;
+    if (expected->byte_content(process->program(), &checksum_bytes, STRINGS_OR_BYTE_ARRAYS)) {
       if (checksum_bytes.length() != Sha256::HASH_LENGTH) INVALID_ARGUMENT;
       Sha256 sha(null);
       const int BLOCK = 1024;
