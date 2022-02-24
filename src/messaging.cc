@@ -483,7 +483,10 @@ bool ExternalSystemMessageHandler::send(int pid, int type, void* data, int lengt
   }
 
   uint8* buffer = unvoid_cast<uint8*>(malloc(buffer_size));
-  if (buffer == null) return false;
+  if (buffer == null) {
+    free(data);
+    return false;
+  }
   MessageEncoder encoder(buffer);
   encoder.encode_byte_array_external(data, length);
 
