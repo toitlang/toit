@@ -152,7 +152,7 @@ class FirmwareUpdateWriter:
 
   commit -> none:
     if fullness_ != 0:
-      written_ = ota_write_ (buffer_.copy 0 fullness_)  // TODO(kasper): Can this use a slice?
+      written_ = ota_write_ buffer_[..fullness_]
       fullness_ = 0
     // Always commit. Always.
     ota_end_ written_ expected_checksum_
