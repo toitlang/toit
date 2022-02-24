@@ -118,3 +118,54 @@ There is only one RTC memory on the device, so all tasks or processes have
 */
 rtc_user_bytes -> ByteArray:
   #primitive.esp32.rtc_user_bytes
+
+/**
+Xxx
+*/
+class FirmwareUpdateWriter:
+  size_/int ::= ?
+  written_/int := 0
+
+  buffer_/ByteArray ::= ByteArray 4096
+  fullness_/int := 0
+
+  expected_checksum_/ByteArray? := null
+
+  constructor .size_:
+    ota_begin_ 0 size_
+
+  write bytes/ByteArray from=0 to=bytes.size -> int:
+    return List.chunk_up from to (buffer_.size - fullness_) buffer_.size: | from to chunk |
+      buffer_.replace fullness_ bytes from to
+      fullness_ += chunk
+      if fullness_ == buffer_.size:
+        written_ = ota_write_ buffer_
+        fullness_ = 0
+        yield
+
+  // If the expected checksum is set, we will check the SHA256 hash of the written
+  // image against it when commiting.
+  expected_checksum= value/ByteArray -> none:
+    expected_checksum_ = value
+
+  commit -> none:
+    if fullness_ != 0:
+      written_ = ota_.write (buffer_.copy 0 fullness_)
+      fullness_ = 0
+    // Always commit. Always.
+    ota_end_ written_ expected_checksum_
+
+  close -> none:
+    ota_end_ 0 null  // Ensure that the OTA process is cleared so a new one can start.
+
+ota_begin_ from/int to/int -> none:
+  #primitive.esp32.ota_begin
+
+ota_write_ bytes/ByteArray -> int:
+  #primitive.esp32.ota_write
+
+/// If size is non-zero, checks the new partition and sets the system to boot from it.
+/// If expected_checksum is non-null, uses that SHA256 hash to perform the check.
+/// Also clears the current OTA process so a new one can start.
+ota_end_ size/int expected_checksum/ByteArray? -> none:
+  #primitive.esp32.ota_end
