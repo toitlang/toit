@@ -314,6 +314,7 @@ class HeapObject : public Object {
   friend class OldSpace;
   friend class Heap;
   friend class ProgramHeap;
+  friend class TwoSpaceHeap;
   friend class BaseSnapshotWriter;
   friend class SnapshotReader;
   friend class compiler::ProgramBuilder;
@@ -321,6 +322,7 @@ class HeapObject : public Object {
   friend class GcMetadata;
   friend class CompactingVisitor;
   friend class SweepingVisitor;
+  friend class GenerationalScavengeVisitor;
 };
 
 class Array : public HeapObject {
