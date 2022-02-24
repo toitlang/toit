@@ -120,7 +120,9 @@ rtc_user_bytes -> ByteArray:
   #primitive.esp32.rtc_user_bytes
 
 /**
-Xxx
+The $FirmwareUpdateWriter uses the OTA support of the ESP32 to let you
+  update the firmware image. After writing and commiting the firmware,
+  you must reboot (use $deep_sleep) for the update to take effect.
 */
 class FirmwareUpdateWriter:
   size_/int ::= ?
