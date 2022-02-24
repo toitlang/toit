@@ -426,9 +426,7 @@ class Device:
   resource_group_ := ?
   resource_state_/monitor.ResourceState_? := null
 
-  server_configuration/ServerConfiguration?
-
-  constructor.default .server_configuration/ServerConfiguration?=null:
+  constructor.default server_configuration/ServerConfiguration?=null:
     server_configuration_resource_group := server_configuration != null
         ? server_configuration.resource_group_
         : null

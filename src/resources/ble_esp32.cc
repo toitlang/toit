@@ -90,7 +90,7 @@ class BLEDiscovery : public DiscoveriesFIFO::Element {
     free(_data);
   }
 
-  bool init(struct ble_gap_disc_desc &disc) {
+  bool init(struct ble_gap_disc_desc& disc) {
     if (disc.length_data > 0) {
       _data = unvoid_cast<uint8*>(malloc(disc.length_data));
       if (!_data) {
@@ -107,11 +107,8 @@ class BLEDiscovery : public DiscoveriesFIFO::Element {
   }
 
   ble_addr_t addr() { return _addr; }
-
   int8_t rssi() { return _rssi; }
-
   uint8* data() { return _data; }
-
   uint8_t data_length() { return _data_length; }
 
  private:
@@ -126,12 +123,10 @@ class BLEServerConfigGroup;
 class BLEResourceGroup : public ResourceGroup {
  public:
   TAG(BLEResourceGroup);
-
   BLEResourceGroup(Process* process, BLEEventSource* event_source, int id)
-      : ResourceGroup(process, event_source),
-      _id(id),
-      _mutex(OS::allocate_mutex(3, "")),
-      _server_config(null) {
+      : ResourceGroup(process, event_source)
+      , _id(id)
+      , _mutex(OS::allocate_mutex(3, "")) {
   }
 
   void tear_down() override {
@@ -147,7 +142,6 @@ class BLEResourceGroup : public ResourceGroup {
   }
 
   GAPResource* gap() { return _gap; }
-
   void set_gap(GAPResource* gap) { _gap = gap; }
 
   BLEServerConfigGroup* server_config() { return _server_config; }
@@ -201,9 +195,12 @@ class BLEServerConfigGroup : public ResourceGroup, public Thread {
  public:
   TAG(BLEServerConfigGroup);
 
-  explicit BLEServerConfigGroup(Process* process, EventSource* event_source) :
-      ResourceGroup(process, event_source), Thread("toit.ble"),
-      _gatt_services(null) {}
+  BLEServerConfigGroup(Process* process, EventSource* event_source)
+      : ResourceGroup(process, event_source)
+      , Thread("toit.ble")
+      , _gatt_services(null)
+      , _mutex(OS::allocate_mutex(3, "")) {
+  }
 
   ~BLEServerConfigGroup() override {
     for (BLEServerServiceResource* service: _services) {
@@ -227,10 +224,12 @@ class BLEServerConfigGroup : public ResourceGroup, public Thread {
 
   void set_subscription_status(uint16 attr_handle, uint16 conn_handle, bool indicate, bool notify);
 
+  Mutex* mutex() { return _mutex; }
+
   void set_gatt_service_structure(ble_gatt_svc_def* gatt_services) {
     if (_gatt_services != null) free_gatt_service_structure();
     _gatt_services = gatt_services;
-  };
+  }
 
   void free_gatt_service_structure() {
     if (_gatt_services != null) {
@@ -247,6 +246,7 @@ class BLEServerConfigGroup : public ResourceGroup, public Thread {
  private:
   BLEServerServiceList _services;
   ble_gatt_svc_def* _gatt_services;
+  Mutex* _mutex;
 };
 
 
@@ -325,7 +325,7 @@ uint32_t BLEResourceGroup::on_event(Resource* resource, word data, uint32_t stat
 }
 
 static void ble_on_sync(void) {
-  /* Make sure we have proper identity address set (public preferred) */
+  // Make sure we have proper identity address set (public preferred).
   int rc = ble_hs_util_ensure_addr(0);
   if (rc != 0) {
     FATAL("error setting address; rc=%d", rc);
@@ -369,7 +369,7 @@ int BLEResourceGroup::init_server() {
 
       int characteristic_idx = 0;
       for (BLEServerCharacteristicResource* characteristic: service->characteristics()) {
-        gatt_svr_chars[characteristic_idx].uuid = characteristic->uuid_p();
+        gatt_svr_chars[characteristic_idx].uuid = characteristic->ptr_uuid();
         gatt_svr_chars[characteristic_idx].access_cb = BLEEventSource::on_gatt_server_characteristic;
         gatt_svr_chars[characteristic_idx].arg = characteristic;
         gatt_svr_chars[characteristic_idx].val_handle = characteristic->ptr_nimble_value_handle();
@@ -707,11 +707,7 @@ PRIMITIVE(advertise_start) {
   int32 duration_ms = duration_us < 0 ? BLE_HS_FOREVER : duration_us / 1000;
 
   struct ble_gap_adv_params adv_params = { 0 };
-  if (group->server_config() != null) {
-    adv_params.conn_mode = conn_mode;
-  } else {
-    adv_params.conn_mode = conn_mode;
-  }
+  adv_params.conn_mode = conn_mode;
 
   // TODO(anders): Be able to tune this.
   adv_params.disc_mode = BLE_GAP_DISC_MODE_GEN;
@@ -972,11 +968,18 @@ PRIMITIVE(add_server_characteristic) {
 
   ble_uuid_any_t uuid = uuid_from_blob(uuid_blob);
 
-  struct os_mbuf* om =null;
+  os_mbuf* om = null;
   if (!object_to_mbuf(process, value, &om)) WRONG_TYPE;
 
-  BLEServerCharacteristicResource* characteristic = service->add_characteristic(uuid, type, om);
-  if (!characteristic) MALLOC_FAILED;
+  Mutex* resource_group_mutex = static_cast<BLEServerConfigGroup*>(service->resource_group())->mutex();
+
+  BLEServerCharacteristicResource* characteristic =
+      service->add_characteristic(uuid, type, om, resource_group_mutex);
+
+  if (!characteristic) {
+    if (om != null) os_mbuf_free(om);
+    MALLOC_FAILED;
+  }
 
   proxy->set_external_address(characteristic);
   return proxy;
@@ -1000,16 +1003,17 @@ PRIMITIVE(notify_characteristics_value) {
     struct os_mbuf* om;
     if (!object_to_mbuf(process, value, &om)) WRONG_TYPE;
 
-    int err = 0;
+    int err = ESP_OK;
     if (resource->is_notify_enabled()) {
       err = ble_gattc_notify_custom(resource->conn_handle(), resource->nimble_value_handle(), om);
     }
 
-    if (err == 0 && resource->is_indicate_enabled()) {
+    if (err == ESP_OK && resource->is_indicate_enabled()) {
       err = ble_gattc_indicate_custom(resource->conn_handle(), resource->nimble_value_handle(), om);
     }
 
     if (err != ESP_OK) {
+      if (om != null) os_mbuf_free(om);
       return Primitive::os_error(err, process);
     }
   }

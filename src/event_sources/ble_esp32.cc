@@ -245,7 +245,7 @@ int BLEEventSource::on_gatt_server_characteristic_event(ble_gatt_access_ctxt* ct
                                                         BLEServerCharacteristicResource* characteristic) {
   int err = 0;
   switch (ctxt->op) {
-    case  BLE_GATT_ACCESS_OP_READ_CHR:
+    case BLE_GATT_ACCESS_OP_READ_CHR:
       if (characteristic->mbuf_to_send() != null) {
         err = os_mbuf_appendfrom(ctxt->om, characteristic->mbuf_to_send(), 0, characteristic->mbuf_to_send()->om_len);
       }
@@ -256,11 +256,11 @@ int BLEEventSource::on_gatt_server_characteristic_event(ble_gatt_access_ctxt* ct
       break;
     case BLE_GATT_ACCESS_OP_READ_DSC:
     case BLE_GATT_ACCESS_OP_WRITE_DSC:
-      // ignore
+      // Not currently implemented. Ignoring and not dispatching
       return 0;
     default:
-      // unknown
-      break;
+      // Unhandled event, no dispatching
+      return 0;
   }
 
   Locker locker(mutex());
@@ -292,10 +292,25 @@ void BLEServerCharacteristicResource::set_mbuf_received(os_mbuf* mbuf) {
   }
 }
 
-void BLEServerCharacteristicResource::set_mbuf_to_send(struct os_mbuf* mbuf) {
+os_mbuf *BLEServerCharacteristicResource::mbuf_received() {
+  Locker locker(_mutex);
+  return _mbuf_received;
+}
+
+void BLEServerCharacteristicResource::set_mbuf_to_send(os_mbuf* mbuf) {
   Locker locker(_mutex);
   if (_mbuf_to_send != null) os_mbuf_free(_mbuf_to_send);
   _mbuf_to_send = mbuf;
+}
+
+os_mbuf *BLEServerCharacteristicResource::mbuf_to_send() {
+  Locker locker(_mutex);
+  return _mbuf_to_send;
+}
+
+BLEServerCharacteristicResource::~BLEServerCharacteristicResource() {
+  if (_mbuf_received != null) os_mbuf_free_chain(_mbuf_received);
+  if (_mbuf_to_send != null) os_mbuf_free(mbuf_to_send());
 }
 
 } // namespace toit

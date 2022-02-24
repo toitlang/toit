@@ -25,8 +25,6 @@ namespace toit {
 
 const int kInvalidHandle = UINT16_MAX;
 
-class BLEResourceGroup;
-
 class BLEResource : public Resource {
  public:
   enum Kind {
@@ -112,11 +110,11 @@ typedef LinkedList<BLEServerServiceResource> BLEServerServiceList;
 class BLEServerCharacteristicResource;
 typedef LinkedList<BLEServerCharacteristicResource> BLEServerCharacteristicList;
 
-class BLEServerCharacteristicResource: public Resource, public BLEServerCharacteristicList::Element{
+class BLEServerCharacteristicResource: public Resource, public BLEServerCharacteristicList::Element {
  public:
   TAG(BLEServerCharacteristicResource);
   BLEServerCharacteristicResource(ResourceGroup* resource_group, BLEServerServiceResource* service,
-                                  ble_uuid_any_t uuid, int type, struct os_mbuf* value):
+                                  ble_uuid_any_t uuid, int type, os_mbuf* value, Mutex* mutex):
       Resource(resource_group),
       _service(service),
       _uuid(uuid),
@@ -127,20 +125,23 @@ class BLEServerCharacteristicResource: public Resource, public BLEServerCharacte
       _indicate(false),
       _notify(false),
       _conn_handle(0),
-      _mutex(OS::allocate_mutex(3, "")) {}
+      _mutex(mutex) {}
 
+  ~BLEServerCharacteristicResource() override;
   ble_uuid_any_t uuid() const { return _uuid; }
-  ble_uuid_t* uuid_p() { return &_uuid.u; }
+  ble_uuid_t* ptr_uuid() { return &_uuid.u; }
   int type() const { return _type; }
-  struct os_mbuf* mbuf_to_send() { Locker locker(_mutex); return _mbuf_to_send; };
-  void set_mbuf_to_send(struct os_mbuf* mbuf);
   uint16_t* ptr_nimble_value_handle() { return &_nimble_value_handle; }
   uint16_t nimble_value_handle() const { return _nimble_value_handle; }
   bool is_notify_enabled() const { return _notify; }
   bool is_indicate_enabled() const { return _indicate; }
   uint16 conn_handle() const { return _conn_handle; }
+
+  os_mbuf* mbuf_to_send();
+  void set_mbuf_to_send(os_mbuf* mbuf);
+
   void set_mbuf_received(os_mbuf* mbuf);
-  os_mbuf* mbuf_received() { Locker locker(_mutex); return _mbuf_received; }
+  os_mbuf* mbuf_received();
 
   void set_subscription_status(bool indicate, bool notify, uint16 conn_handle) {
     _indicate = indicate;
@@ -152,7 +153,7 @@ class BLEServerCharacteristicResource: public Resource, public BLEServerCharacte
   BLEServerServiceResource* _service;
   ble_uuid_any_t _uuid;
   int _type;
-  struct os_mbuf* _mbuf_to_send;
+  os_mbuf* _mbuf_to_send;
   uint16 _nimble_value_handle;
   os_mbuf* _mbuf_received;
   bool _indicate;
@@ -173,8 +174,8 @@ class BLEServerServiceResource: public Resource, public BLEServerServiceList::El
     }
   }
 
-  BLEServerCharacteristicResource* add_characteristic(ble_uuid_any_t uuid, int type, struct os_mbuf* value) {
-    BLEServerCharacteristicResource* characteristic = _new BLEServerCharacteristicResource(resource_group(), this, uuid, type, value);
+  BLEServerCharacteristicResource* add_characteristic(ble_uuid_any_t uuid, int type, os_mbuf* value, Mutex* mutex) {
+    BLEServerCharacteristicResource* characteristic = _new BLEServerCharacteristicResource(resource_group(), this, uuid, type, value, mutex);
     if (characteristic != null) _characteristics.prepend(characteristic);
     return characteristic;
   }
@@ -186,7 +187,6 @@ class BLEServerServiceResource: public Resource, public BLEServerServiceList::El
  private:
   BLEServerCharacteristicList _characteristics;
   ble_uuid_any_t _uuid;
-
 };
 
 
