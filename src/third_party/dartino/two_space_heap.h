@@ -166,36 +166,6 @@ class TwoSpaceHeap : public Heap {
 };
 
 // Helper class for copying HeapObjects.
-class ScavengeVisitor : public PointerVisitor {
- public:
-  ScavengeVisitor(SemiSpace* from, SemiSpace* to) : from_(from), to_(to) {}
-
-  virtual void visit(Object** p) { scavenge_pointer(p); }
-
-  virtual void visit_block(Object** start, Object** end) {
-    // Copy all HeapObject pointers in [start, end)
-    for (Object** p = start; p < end; p++) scavenge_pointer(p);
-  }
-
- private:
-  void scavenge_pointer(Object** p) {
-    Object* object = *p;
-    if (!object->is_heap_object()) return;
-    if (!from_->includes(reinterpret_cast<uword>(object))) return;
-    HeapObject* heap_object = reinterpret_cast<HeapObject*>(object);
-    if (heap_object->has_forwarding_address()) {
-      *p = heap_object->forwarding_address();
-    } else {
-      *p = reinterpret_cast<HeapObject*>(object)->clone_in_to_space(to_);
-    }
-    ASSERT(*p != NULL);  // No-allocation scope should ensure this.
-  }
-
-  SemiSpace* from_;
-  SemiSpace* to_;
-};
-
-// Helper class for copying HeapObjects.
 class GenerationalScavengeVisitor : public PointerVisitor {
  public:
   explicit GenerationalScavengeVisitor(TwoSpaceHeap* heap)
