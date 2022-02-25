@@ -80,6 +80,21 @@ SemiSpace* Heap::take_space() {
   return result;
 }
 
+template <class SomeSpace>
+HeapObject* GenerationalScavengeVisitor::clone_in_to_space(Program* program, HeapObject* original, SomeSpace* to) {
+  ASSERT(!to->includes(original->_raw()));
+  ASSERT(!original->has_forwarding_address());
+  // Copy the object to the 'to' space and insert a forwarding pointer.
+  int object_size = original->size(program);
+  uword new_address = to->allocate(object_size);
+  if (new_address == 0) return null;
+  HeapObject* target = HeapObject::from_address(new_address);
+  // Copy the content of source to target.
+  memcpy(reinterpret_cast<void*>(new_address), reinterpret_cast<void*>(original->_raw()), object_size);
+  original->set_forwarding_address(target);
+  return target;
+}
+
 void GenerationalScavengeVisitor::visit_block(Object** start, Object** end) {
   for (Object** p = start; p < end; p++) {
     if (!in_from_space(*p)) continue;
@@ -90,17 +105,17 @@ void GenerationalScavengeVisitor::visit_block(Object** start, Object** end) {
       if (in_to_space(destination)) *record_ = GcMetadata::NEW_SPACE_POINTERS;
     } else {
       if (old_object->_raw() < water_mark_) {
-        HeapObject* moved_object = old_object->clone_in_to_space(old_);
+        HeapObject* moved_object = clone_in_to_space(program_, old_object, old_);
         // The old space may fill up.  This is a bad moment for a GC, so we
         // promote to the to-space instead.
         if (moved_object == NULL) {
           trigger_old_space_gc_ = true;
-          moved_object = old_object->clone_in_to_space(to_);
+          moved_object = clone_in_to_space(program_, old_object, to_);
           *record_ = GcMetadata::NEW_SPACE_POINTERS;
         }
         *p = moved_object;
       } else {
-        *p = old_object->clone_in_to_space(to_);
+        *p = clone_in_to_space(program_, old_object, to_);
         *record_ = GcMetadata::NEW_SPACE_POINTERS;
       }
       ASSERT(*p != NULL);  // In an emergency we can move to to-space.

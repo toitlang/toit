@@ -215,6 +215,10 @@ class HeapObject : public Object {
     return HeapObject::cast(_at(HEADER_OFFSET));
   }
 
+  INLINE void set_forwarding_address(HeapObject* destination) {
+    _at_put(HEADER_OFFSET, destination);
+  }
+
   // Pseudo virtual member functions.
   int size(Program* program);  // Returns the byte size of this object.
   void roots_do(Program* program, RootCallback* cb);  // For GC.
