@@ -8,17 +8,13 @@
 
 namespace toit {
 
-Heap::Heap()
-    : space_(NULL) {}
-
-TwoSpaceHeap::TwoSpaceHeap()
-    : old_space_(new OldSpace(this)),
-      unused_semispace_(new SemiSpace(Space::CANNOT_RESIZE, NEW_SPACE_PAGE, 0)) {
-  space_ = new SemiSpace(Space::CANNOT_RESIZE, NEW_SPACE_PAGE, 0);
-  uword size = Utils::round_up(Flags::semispace_size << 10, TOIT_PAGE_SIZE);
-  size = Utils::min(1ul << 24, Utils::max(size, 0ul + TOIT_PAGE_SIZE));
-  semispace_size_ = size;
-  max_size_ = Utils::round_up(Flags::max_heap_size * 1024, TOIT_PAGE_SIZE);
+TwoSpaceHeap::TwoSpaceHeap(Program* program)
+    : program_(program),
+      old_space_(new OldSpace(program, this)),
+      unused_semispace_(new SemiSpace(program, Space::CANNOT_RESIZE, NEW_SPACE_PAGE, 0)) {
+  space_ = new SemiSpace(program, Space::CANNOT_RESIZE, NEW_SPACE_PAGE, 0);
+  semispace_size_ = TOIT_PAGE_SIZE;
+  max_size_ = 256 * TOIT_PAGE_SIZE;
 }
 
 bool TwoSpaceHeap::initialize() {
@@ -33,15 +29,8 @@ bool TwoSpaceHeap::initialize() {
   space_->append(chunk);
   space_->update_base_and_limit(chunk, chunk->start());
   unused_semispace_->append(unused_chunk);
-  adjust_allocation_budget();
-  adjust_old_allocation_budget();
   water_mark_ = chunk->start();
   return true;
-}
-
-Heap::~Heap() {
-  delete space_;
-  ASSERT(foreign_memory_ == 0);
 }
 
 TwoSpaceHeap::~TwoSpaceHeap() {
@@ -50,13 +39,13 @@ TwoSpaceHeap::~TwoSpaceHeap() {
   // TODO(erik): Call all finalizers.
   delete unused_semispace_;
   delete old_space_;
+  delete space_;
 }
 
-Object* Heap::allocate(uword size) {
-  ASSERT(no_allocation_ == 0);
+Object* TwoSpaceHeap::allocate(uword size) {
   uword result = space_->allocate(size);
   if (result == 0) {
-    return handle_allocation_failure(size);
+    return new_space_allocation_failure(size);
   }
   return HeapObject::from_address(result);
 }
@@ -68,13 +57,7 @@ void TwoSpaceHeap::swap_semi_spaces() {
   water_mark_ = space_->top();
 }
 
-void Heap::replace_space(SemiSpace* space) {
-  delete space_;
-  space_ = space;
-  adjust_allocation_budget();
-}
-
-SemiSpace* Heap::take_space() {
+SemiSpace* TwoSpaceHeap::take_space() {
   SemiSpace* result = space_;
   space_ = NULL;
   return result;
@@ -95,7 +78,8 @@ HeapObject* GenerationalScavengeVisitor::clone_in_to_space(Program* program, Hea
   return target;
 }
 
-void GenerationalScavengeVisitor::visit_block(Object** start, Object** end) {
+void GenerationalScavengeVisitor::do_roots(Object** start, int count) {
+  Object** end = start + count;
   for (Object** p = start; p < end; p++) {
     if (!in_from_space(*p)) continue;
     HeapObject* old_object = reinterpret_cast<HeapObject*>(*p);
@@ -134,11 +118,6 @@ void TwoSpaceHeap::find(uword word) {
   space_->find(word, "data semispace");
   unused_semispace_->find(word, "unused semispace");
   old_space_->find(word, "oldspace");
-  Heap::find(word);
-}
-
-void Heap::find(uword word) {
-  space_->find(word, "semispace");
 #ifdef DARTINO_TARGET_OS_LINUX
   FILE* fp = fopen("/proc/self/maps", "r");
   if (fp == NULL) return;
