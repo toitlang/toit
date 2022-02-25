@@ -139,12 +139,12 @@ class TwoSpaceHeap : public Heap {
         return HeapObject::from_address(result);
       }
     }
-    return Failure::retry_after_gc(size);
+    return null;
   }
 
   virtual bool is_two_space_heap() { return true; }
 
-  bool has_empty_new_space() { return space_->top() == space_->start(); }
+  bool has_empty_new_space() { return space_->top() == space_->single_chunk_start(); }
 
   void allocated_foreign_memory(uword size);
 
@@ -168,11 +168,12 @@ class TwoSpaceHeap : public Heap {
 // Helper class for copying HeapObjects.
 class GenerationalScavengeVisitor : public PointerVisitor {
  public:
-  explicit GenerationalScavengeVisitor(TwoSpaceHeap* heap)
-      : to_start_(heap->unused_semispace_->start()),
-        to_size_(heap->unused_semispace_->size()),
-        from_start_(heap->space()->start()),
-        from_size_(heap->space()->size()),
+  explicit GenerationalScavengeVisitor(Program* program, TwoSpaceHeap* heap)
+      : program_(program),
+        to_start_(heap->unused_semispace_->single_chunk_start()),
+        to_size_(heap->unused_semispace_->single_chunk_size()),
+        from_start_(heap->space()->single_chunk_start()),
+        from_size_(heap->space()->single_chunk_size()),
         to_(heap->unused_semispace_),
         old_(heap->old_space()),
         record_(&dummy_record_),
@@ -196,6 +197,10 @@ class GenerationalScavengeVisitor : public PointerVisitor {
   void set_record_new_space_pointers(uint8* p) { record_ = p; }
 
  private:
+  template <class SomeSpace>
+  static inline HeapObject* clone_in_to_space(Program* program, HeapObject* original, SomeSpace* to);
+
+  Program* program_;
   uword to_start_;
   uword to_size_;
   uword from_start_;
