@@ -15,7 +15,7 @@ namespace toit {
 // TwoSpaceHeap represents the container for all HeapObjects.
 class TwoSpaceHeap {
  public:
-
+  explicit TwoSpaceHeap(Program* program);
   ~TwoSpaceHeap();
 
   // Allocate raw object. Returns null if a garbage collection is
@@ -26,7 +26,7 @@ class TwoSpaceHeap {
   // chunks, not just the used memory in them.
   uword max_expansion() { return UNLIMITED_EXPANSION; }
 
-  SemiSpace* space() { return space_; }
+  SemiSpace* space() { return semi_space_; }
 
   SemiSpace* take_space();
 
@@ -40,19 +40,6 @@ class TwoSpaceHeap {
   void find(uword word);
 #endif
 
-  // For asserts.
- protected:
-  friend class Scheduler;
-  friend class Program;
-  friend class NoAllocationScope;
-
-  explicit TwoSpaceHeap(Program* program);
-
-  static const uword UNLIMITED_EXPANSION = 0x80000000u - TOIT_PAGE_SIZE;
-
-  SemiSpace* space_;
-
- public:
   // Returns false for allocation failure.
   bool initialize();
 
@@ -63,19 +50,19 @@ class TwoSpaceHeap {
 
   // Iterate over all objects in the heap.
   void iterate_objects(HeapObjectVisitor* visitor) {
-    space_->iterate_objects(visitor);
+    semi_space_->iterate_objects(visitor);
     old_space_->iterate_objects(visitor);
   }
 
   // Flush will write cached values back to object memory.
   // Flush must be called before traveral of heap.
   void flush() {
-    space_->flush();
+    semi_space_->flush();
     old_space_->flush();
   }
 
   // Returns the number of bytes allocated in the space.
-  int used() { return old_space_->used() + space_->used(); }
+  int used() { return old_space_->used() + semi_space_->used(); }
 
   Object* new_space_allocation_failure(uword size) {
     if (size >= (semispace_size_ >> 1)) {
@@ -91,19 +78,19 @@ class TwoSpaceHeap {
     return null;
   }
 
-  bool has_empty_new_space() { return space_->top() == space_->single_chunk_start(); }
+  bool has_empty_new_space() { return semi_space_->top() == semi_space_->single_chunk_start(); }
 
   void allocated_foreign_memory(uword size);
 
   void freed_foreign_memory(uword size);
 
  private:
+  static const uword UNLIMITED_EXPANSION = 0x80000000u - TOIT_PAGE_SIZE;
+
   friend class GenerationalScavengeVisitor;
 
-  // Allocate or deallocate the pages used for heap metadata.
-  void manage_metadata(bool allocate);
-
   Program* program_;
+  SemiSpace* semi_space_;
   OldSpace* old_space_;
   SemiSpace* unused_semispace_;
   uword water_mark_;

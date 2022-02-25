@@ -12,13 +12,13 @@ TwoSpaceHeap::TwoSpaceHeap(Program* program)
     : program_(program),
       old_space_(new OldSpace(program, this)),
       unused_semispace_(new SemiSpace(program, Space::CANNOT_RESIZE, NEW_SPACE_PAGE, 0)) {
-  space_ = new SemiSpace(program, Space::CANNOT_RESIZE, NEW_SPACE_PAGE, 0);
+  semi_space_ = new SemiSpace(program, Space::CANNOT_RESIZE, NEW_SPACE_PAGE, 0);
   semispace_size_ = TOIT_PAGE_SIZE;
   max_size_ = 256 * TOIT_PAGE_SIZE;
 }
 
 bool TwoSpaceHeap::initialize() {
-  Chunk* chunk = ObjectMemory::allocate_chunk(space_, semispace_size_);
+  Chunk* chunk = ObjectMemory::allocate_chunk(semi_space_, semispace_size_);
   if (chunk == NULL) return false;
   Chunk* unused_chunk =
       ObjectMemory::allocate_chunk(unused_semispace_, semispace_size_);
@@ -26,8 +26,8 @@ bool TwoSpaceHeap::initialize() {
     ObjectMemory::free_chunk(chunk);
     return false;
   }
-  space_->append(chunk);
-  space_->update_base_and_limit(chunk, chunk->start());
+  semi_space_->append(chunk);
+  semi_space_->update_base_and_limit(chunk, chunk->start());
   unused_semispace_->append(unused_chunk);
   water_mark_ = chunk->start();
   return true;
@@ -39,11 +39,11 @@ TwoSpaceHeap::~TwoSpaceHeap() {
   // TODO(erik): Call all finalizers.
   delete unused_semispace_;
   delete old_space_;
-  delete space_;
+  delete semi_space_;
 }
 
 Object* TwoSpaceHeap::allocate(uword size) {
-  uword result = space_->allocate(size);
+  uword result = semi_space_->allocate(size);
   if (result == 0) {
     return new_space_allocation_failure(size);
   }
@@ -51,15 +51,15 @@ Object* TwoSpaceHeap::allocate(uword size) {
 }
 
 void TwoSpaceHeap::swap_semi_spaces() {
-  SemiSpace* temp = space_;
-  space_ = unused_semispace_;
+  SemiSpace* temp = semi_space_;
+  semi_space_ = unused_semispace_;
   unused_semispace_ = temp;
-  water_mark_ = space_->top();
+  water_mark_ = semi_space_->top();
 }
 
 SemiSpace* TwoSpaceHeap::take_space() {
-  SemiSpace* result = space_;
-  space_ = NULL;
+  SemiSpace* result = semi_space_;
+  semi_space_ = NULL;
   return result;
 }
 
@@ -115,7 +115,7 @@ void SemiSpace::start_scavenge() {
 
 #ifdef DEBUG
 void TwoSpaceHeap::find(uword word) {
-  space_->find(word, "data semispace");
+  semi_space_->find(word, "data semispace");
   unused_semispace_->find(word, "unused semispace");
   old_space_->find(word, "oldspace");
 #ifdef DARTINO_TARGET_OS_LINUX
