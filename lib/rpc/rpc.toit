@@ -2,15 +2,21 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-invoke name/int arguments/any -> any:
-  return Rpc.instance.invoke name arguments
+import monitor
 
-invoke pid/int name/int arguments/any -> any:
-  return Rpc.instance.invoke pid name arguments
+invoke name/int arguments/any --sequential/bool=false -> any:
+  return Rpc.instance.invoke -1 name arguments --sequential=sequential
+
+invoke pid/int name/int arguments/any --sequential/bool=false -> any:
+  return Rpc.instance.invoke pid name arguments --sequential=sequential
 
 class Rpc implements SystemMessageHandler_:
   static instance ::= Rpc.internal_
   synchronizer_/RpcSynchronizer_ ::= RpcSynchronizer_
+
+  // Sometimes it is useful to be able to force requests from various tasks
+  // to be sent in sequence rather than concurrently. We use a mutex for this.
+  sequencer_/monitor.Mutex ::= monitor.Mutex
 
   constructor:
     return instance
@@ -18,15 +24,12 @@ class Rpc implements SystemMessageHandler_:
   constructor.internal_:
     set_system_message_handler_ SYSTEM_RPC_REPLY_ this
 
-  invoke name/int arguments/any -> any:
+  invoke pid/int name/int arguments/any --sequential/bool -> any:
     if arguments is RpcSerializable: arguments = arguments.serialize_for_rpc
-    return synchronizer_.send -1: | id pid |
-      process_send_ pid SYSTEM_RPC_REQUEST_ [ id, name, arguments ]
-
-  invoke pid/int name/int arguments/any -> any:
-    if arguments is RpcSerializable: arguments = arguments.serialize_for_rpc
-    return synchronizer_.send pid: | id pid |
-      process_send_ pid SYSTEM_RPC_REQUEST_ [ id, name, arguments ]
+    send ::= :
+      synchronizer_.send pid: | id pid |
+        process_send_ pid SYSTEM_RPC_REQUEST_ [ id, name, arguments ]
+    return sequential ? (sequencer_.do send) : send.call
 
   on_message type gid pid reply -> none:
     assert: type == SYSTEM_RPC_REPLY_
