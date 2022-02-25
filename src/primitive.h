@@ -365,7 +365,6 @@ namespace toit {
   PRIMITIVE(use, 2)                          \
   PRIMITIVE(unuse, 2)                        \
   PRIMITIVE(config, 6)                       \
-  PRIMITIVE(read, 1)                         \
   PRIMITIVE(transfer, 2)                     \
   PRIMITIVE(transfer_and_read, 3)            \
 

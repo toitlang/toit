@@ -19,7 +19,9 @@
 
 #include "driver/rmt.h"
 
+#include "../objects_inline.h"
 #include "../primitive.h"
+#include "../process.h"
 #include "../resource.h"
 #include "../resource_pool.h"
 
@@ -46,7 +48,7 @@ class RMTResourceGroup : public ResourceGroup {
 };
 
 
-MODULE_IMPLEMENTATION(rmt, MODULE_RMT)
+MODULE_IMPLEMENTATION(rmt, MODULE_RMT);
 
 PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
@@ -67,10 +69,10 @@ PRIMITIVE(use) {
 
   if (!rmt_channels.take(channel_num)) ALREADY_IN_USE;
 
-  // TODO install RMT driver for channel.
+  // TODO install RMT driver for channel?
   IntResource* resource = resource_group->register_id(channel_num);
   if (!resource) {
-    rmt_channels.take(put)
+    rmt_channels.put(channel_num);
     MALLOC_FAILED;
   }
   proxy->set_external_address(resource);
@@ -88,37 +90,53 @@ PRIMITIVE(unuse) {
 }
 
 PRIMITIVE(config) {
-  ARGS(int, pin_num, int, channel_num, bool, rx, bool, tx int, mem_block_num)
-  if (rx == tx || mem_block_num < 2) INVALID_ARGUMENT;
+  ARGS(int, pin_num, int, channel_num, bool, is_tx, int, mem_block_num)
+  if (mem_block_num < 2) INVALID_ARGUMENT;
 
-  rmt_config_t config = rx ? RMT_DEFAULT_CONFIG_RX(pin_num, channel_num) : RMT_DEFAULT_CONFIG_TX(pin_num, channel_num);
+  // TODO: is there a better way to initialize this?
+  rmt_config_t config = { };
   config.mem_block_num = mem_block_num;
-
+  config.channel = (rmt_channel_t) channel_num;
+  config.gpio_num = (gpio_num_t) pin_num;
   // TODO: Allow additional paramters
+  config.clk_div = 80;
+  config.flags = 0;
+  config.rmt_mode = is_tx ? RMT_MODE_TX : RMT_MODE_RX;
+  if (is_tx) {
+    rmt_tx_config_t tx_config = { 0 };
+    tx_config.carrier_freq_hz = 38000;
+    tx_config.carrier_level = RMT_CARRIER_LEVEL_HIGH;
+    tx_config.idle_level = RMT_IDLE_LEVEL_LOW;
+    tx_config.carrier_duty_percent = 33;
+    tx_config.carrier_en = false;
+    tx_config.loop_en = false;
+    tx_config.idle_output_en = true;
+    config.tx_config = tx_config;
+  } else {
+    rmt_rx_config_t rx_config = { 0 };
+    rx_config.idle_threshold = 12000;
+    rx_config.filter_ticks_thresh = 100;
+    rx_config.filter_en = true;
+    config.rx_config = rx_config;
+  }
 
   esp_err_t err = rmt_config(&config);
   if (ESP_OK != err) return Primitive::os_error(err, process);
 
-  err = rmt_install_driver(channel_number, 0, 0);
+  err = rmt_driver_install((rmt_channel_t) channel_num, 0, 0);
   if (ESP_OK != err) return Primitive::os_error(err, process);
-
-  return process->program()->null_object();
-}
-
-PRIMITIVE(read) {
-  ARGS(int, rx_num)
 
   return process->program()->null_object();
 }
 
 PRIMITIVE(transfer) {
-  ARGS(int, tx_num, Blob, blob)
+  ARGS(int, tx_num, Blob, items_bytes)
 
-  if (item_bytes.length() % 4 != 0) INVALID_ARGUMENT;
+  if (items_bytes.length() % 4 != 0) INVALID_ARGUMENT;
 
-  rmt_item32_t* items = reinterpret_cast<rmt_item32_t*>(items_bytes);
+  rmt_item32_t* items = reinterpret_cast<rmt_item32_t*>(const_cast<uint8*>(items_bytes.address()));
 
-  esp_err_t err = rmt_write_items(tx_num, items, items_bytes.length() / 4, true);
+  esp_err_t err = rmt_write_items((rmt_channel_t) tx_num, items, items_bytes.length() / 4, true);
 
   if ( err != ESP_OK) return Primitive::os_error(err, process);
 
@@ -126,10 +144,40 @@ PRIMITIVE(transfer) {
 }
 
 PRIMITIVE(transfer_and_read) {
-  ARGS(int, tx_num, int, rx_num, Blob, items_bytes)
+  ARGS(int, tx_num, int, rx_num, Blob, items_bytes, int, max_output_len)
+
+  if (items_bytes.length() % 4 != 0) INVALID_ARGUMENT;
+
+  Error* error = null;
+  ByteArray* data = process->allocate_byte_array(max_output_len, &error, /*force_external*/ true);
+  if (data == null) return error;
+
+  rmt_item32_t* items = reinterpret_cast<rmt_item32_t*>(const_cast<uint8*>(items_bytes.address()));
+  rmt_channel_t rx_channel = (rmt_channel_t) rx_num;
+
+  RingbufHandle_t rb = NULL;
+  esp_err_t err = rmt_get_ringbuf_handle(rx_channel, &rb);
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+
+  rmt_rx_start(rx_channel, true);
+  err = rmt_write_items((rmt_channel_t) tx_num, items, items_bytes.length() / 4, true);
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+
+  size_t length = 0;
+  // TODO how many ticks should we actually wait?
+  void* received_items = xRingbufferReceive(rb, &length, 400);
+
+  // TODO check whether length corresponds to rmt_item32_t?
+
+  ByteArray::Bytes bytes(data);
+  memcpy(bytes.address(), received_items, length);
+  vRingbufferReturnItem(rb, received_items);
+  rmt_rx_stop(rx_channel);
+  data->resize_external(process, length);
 
   return process->program()->null_object();
 }
+
 
 } // namespace toit
 #endif // TOIT_FREERTOS
