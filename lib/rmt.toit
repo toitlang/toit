@@ -2,6 +2,9 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+
+resource_group_ ::= rmt_init_
+
 rmt_init_:
   #primitive.rmt.init
 
