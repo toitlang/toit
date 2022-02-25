@@ -146,16 +146,6 @@ class TwoSpaceHeap : public Heap {
 
   bool has_empty_new_space() { return space_->top() == space_->start(); }
 
-  void add_weak_pointer(HeapObject* object, WeakPointerCallback callback, void* arg);
-  void add_external_weak_pointer(HeapObject* object,
-                              ExternalWeakPointerCallback callback, void* arg);
-  void remove_weak_pointer(HeapObject* object);
-  bool remove_external_weak_pointer(HeapObject* object, ExternalWeakPointerCallback callback);
-  void visit_weak_object_pointers(PointerVisitor* visitor) {
-    WeakPointer::visit(space_->weak_pointers(), visitor);
-    WeakPointer::visit(old_space_->weak_pointers(), visitor);
-  }
-
   void allocated_foreign_memory(uword size);
 
   void freed_foreign_memory(uword size);

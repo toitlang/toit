@@ -480,7 +480,7 @@ uword SweepingVisitor::visit(HeapObject* object) {
 }
 
 void OldSpace::process_weak_pointers() {
-  WeakPointer::process(&weak_pointers_, this);
+  // TODO(erik): Process finalizers.
 }
 
 #ifdef DEBUG
