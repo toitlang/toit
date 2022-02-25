@@ -45,6 +45,7 @@ main:
   test_problematic myself
   test_performance myself
   test_blocking myself broker
+  test_sequential myself broker
 
   test_request_queue_cancel myself
   test_timeouts myself broker --cancel
@@ -211,6 +212,41 @@ test_blocking myself/int broker/RpcBroker tasks/int [test] -> none:
 
   // Let the tasks complete.
   tasks.repeat: latches[it].set it * 3
+
+  // Unregister procedure and make sure it's gone.
+  broker.unregister_procedure name
+  expect.expect_throw "No such procedure registered: 800": rpc.invoke myself name []
+
+test_sequential myself/int broker/RpcBroker -> none:
+  tasks ::= 10
+  name ::= 800
+  latches ::= {:}
+  concurrency := 0
+  broker.register_procedure name:: | args |
+    result := null
+    try:
+      concurrency++
+      expect.expect_equals 1 concurrency  // Should be sequential!
+      index := args[0]
+      result = latches[index].get
+    finally:
+      concurrency--
+    result
+
+  // Create a number of tasks that all block.
+  done := monitor.Semaphore
+  tasks.repeat:
+    index ::= it
+    latches[index] = monitor.Latch
+    task::
+      expect.expect_equals index * 3 (rpc.invoke myself name --sequential [index])
+      done.up
+
+  // Let the tasks complete.
+  tasks.repeat:
+    sleep --ms=10
+    latches[it].set it * 3
+  tasks.repeat: done.down
 
   // Unregister procedure and make sure it's gone.
   broker.unregister_procedure name
