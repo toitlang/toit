@@ -224,6 +224,8 @@ class HeapObject : public Object {
   void roots_do(Program* program, RootCallback* cb);  // For GC.
   void do_pointers(Program* program, PointerCallback* cb);  // For snapshots.
 
+  // The header contains either a Smi that represents the class id/class
+  // tag or a HeapObject which is a forwarding pointer during scavenge.
   static const int HEADER_OFFSET = Object::NON_SMI_TAG_OFFSET;
 
   static const int CLASS_TAG_BIT_SIZE = 4;
