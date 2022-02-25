@@ -185,8 +185,7 @@ bool SemiSpace::complete_scavenge_generational(GenerationalScavengeVisitor* visi
 }
 
 void SemiSpace::process_weak_pointers(SemiSpace* to_space, OldSpace* old_space) {
-  ASSERT(this != to_space);  // This should be from-space.
-  WeakPointer::process_and_move_survivors(&weak_pointers_, this, to_space, old_space);
+  // TODO(erik): Process finalizers.
 }
 
 }  // namespace toit

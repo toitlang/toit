@@ -245,8 +245,6 @@ class Space {
     return chunk_list_.first();
   }
 
-  VMFinalizerNodeFIFO* weak_pointers() { return &weak_pointers_; }
-
   PageType page_type() { return page_type_; }
 
  protected:
@@ -287,8 +285,6 @@ class Space {
   int no_allocation_failure_nesting_;
   bool resizeable_;
 
-  // Linked list of weak pointers to heap objects in this space.
-  VMFinalizerNodeFIFO weak_pointers_;
   PageType page_type_;
 };
 

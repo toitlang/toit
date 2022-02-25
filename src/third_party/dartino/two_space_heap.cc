@@ -47,8 +47,7 @@ Heap::~Heap() {
 TwoSpaceHeap::~TwoSpaceHeap() {
   // We do this before starting to destroy the heap, because the callbacks can
   // trigger calls that assume the heap is still working.
-  WeakPointer::force_callbacks(old_space_->weak_pointers());
-  WeakPointer::force_callbacks(space_->weak_pointers());
+  // TODO(erik): Call all finalizers.
   delete unused_semispace_;
   delete old_space_;
 }
@@ -79,48 +78,6 @@ SemiSpace* Heap::take_space() {
   SemiSpace* result = space_;
   space_ = NULL;
   return result;
-}
-
-void TwoSpaceHeap::add_weak_pointer(
-    HeapObject* object, WeakPointerCallback callback, void* arg) {
-  WeakPointer* weak_pointer = new WeakPointer(object, callback, arg);
-  if (space_->is_in_single_chunk(object)) {
-    space_->weak_pointers()->append(weak_pointer);
-  } else {
-    ASSERT(old_space_->includes(object->_raw()));
-    old_space_->weak_pointers()->append(weak_pointer);
-  }
-}
-
-void TwoSpaceHeap::add_external_weak_pointer(
-    HeapObject* object, ExternalWeakPointerCallback callback, void* arg) {
-  WeakPointer* weak_pointer = new WeakPointer(object, callback, arg);
-  if (space_->is_in_single_chunk(object)) {
-    space_->weak_pointers()->append(weak_pointer);
-  } else {
-    ASSERT(old_space_->includes(object->_raw()));
-    old_space_->weak_pointers()->append(weak_pointer);
-  }
-}
-
-void TwoSpaceHeap::remove_weak_pointer(HeapObject* object) {
-  if (space_->is_in_single_chunk(object)) {
-    bool success = WeakPointer::remove(space_->weak_pointers(), object);
-    ASSERT(success);
-  } else {
-    ASSERT(old_space_->includes(object->_raw()));
-    bool success = WeakPointer::remove(old_space_->weak_pointers(), object);
-    ASSERT(success);
-  }
-}
-
-bool TwoSpaceHeap::remove_external_weak_pointer(
-    HeapObject* object, ExternalWeakPointerCallback callback) {
-  if (space_->is_in_single_chunk(object)) {
-    return WeakPointer::remove(space_->weak_pointers(), object, callback);
-  } else {
-    return WeakPointer::remove(old_space_->weak_pointers(), object, callback);
-  }
 }
 
 void GenerationalScavengeVisitor::visit_block(Object** start, Object** end) {

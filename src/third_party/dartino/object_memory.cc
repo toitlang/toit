@@ -35,7 +35,7 @@ Chunk::~Chunk() {
 }
 
 Space::~Space() {
-  WeakPointer::force_callbacks(&weak_pointers_);
+  // TODO(erik): Call finalizers.
   free_all_chunks();
 }
 
