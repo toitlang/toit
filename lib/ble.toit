@@ -309,23 +309,23 @@ class Service:
 
   add_read_only_characteristic uuid --value=#[]-> ReadOnlyCharacteristic:
     char := ReadOnlyCharacteristic this uuid value
-    characteristics_[uuid] = char;
-    return char;
+    characteristics_[uuid] = char
+    return char
 
   add_write_only_characteristic uuid -> WriteOnlyCharacteristic:
     char := WriteOnlyCharacteristic this uuid
-    characteristics_[uuid] = char;
-    return char;
+    characteristics_[uuid] = char
+    return char
 
   add_read_write_characteristic uuid --value=#[]-> ReadWriteCharacteristic:
     char := ReadWriteCharacteristic this uuid value
-    characteristics_[uuid] = char;
-    return char;
+    characteristics_[uuid] = char
+    return char
 
   add_notification_characteristic uuid -> NotificationCharacteristic:
     char := NotificationCharacteristic this uuid
-    characteristics_[uuid] = char;
-    return char;
+    characteristics_[uuid] = char
+    return char 
 
   get_characteristic uuid -> Characteristic?:
     return characteristics_.get uuid
@@ -341,7 +341,7 @@ BLE_WAIT_ACCESSED_         ::= 1 << 1
 BLE_WAIT_SUBSCRIBED_       ::= 1 << 2
 
 /**
-Base class of all characteristics
+Base class of all characteristics.
 */
 abstract class Characteristic:
   /**
@@ -355,7 +355,7 @@ abstract class Characteristic:
     state_ = ResourceState_ service.server_configuration_.resource_group_ resource
 
 /**
-Base class of characteristics that clients can write to
+Base class of characteristics that clients can write to.
 */  
 abstract class WritableCharacteristic extends Characteristic:
   constructor service/Service resource uuid:
