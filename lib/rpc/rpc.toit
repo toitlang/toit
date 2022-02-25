@@ -26,8 +26,9 @@ class Rpc implements SystemMessageHandler_:
 
   invoke pid/int name/int arguments/any --sequential/bool -> any:
     if arguments is RpcSerializable: arguments = arguments.serialize_for_rpc
-    send ::= : synchronizer_.send pid: | id pid |
-      process_send_ pid SYSTEM_RPC_REQUEST_ [ id, name, arguments ]
+    send ::= :
+      synchronizer_.send pid: | id pid |
+        process_send_ pid SYSTEM_RPC_REQUEST_ [ id, name, arguments ]
     return sequential ? (sequencer_.do send) : send.call
 
   on_message type gid pid reply -> none:
