@@ -36,83 +36,102 @@ int OS::num_cores() {
 }
 
 void OS::free_block(Block* block) {
-  int result = munmap(void_cast(block), TOIT_PAGE_SIZE);
-  USE(result);
-  ASSERT(result == 0);
+  free_pages(void_cast(block), TOIT_PAGE_SIZE);
+}
+
+static bool initialized_ = false;
+static uword allocation_arena_;
+static uword allocation_size_;
+static void* arena_mapping_;
+static uword arena_mapping_size_;
+static uint8* allocation_map_;
+static Mutex* allocation_mutex_ = null;
+
+void OS::free_pages(void* p, uword size) {
+  uword address = reinterpret_cast<uword>(p);
+  ASSERT(address == Utils::round_up(address, TOIT_PAGE_SIZE));
+  int page = static_cast<int>((address - allocation_arena_) >> TOIT_PAGE_SIZE_LOG2);
+  for (int i = 0; i < size >> TOIT_PAGE_SIZE_LOG2; i++) {
+    ASSERT(allocation_map_[page + i] != 0);
+    allocation_map_[page + i] = 0;
+  }
+  int mprotect_result = mprotect(p, size, PROT_NONE);
+  if (mprotect_result < 0) {
+    perror("mprotect");
+    exit(1);
+  }
 }
 
 void OS::free_block(ProgramBlock* block) {
-  int result = munmap(void_cast(block), TOIT_PAGE_SIZE);
-  USE(result);
-  ASSERT(result == 0);
+  free_pages(void_cast(block), TOIT_PAGE_SIZE);
+}
+
+void* OS::allocate_pages(uword size, int arenas) {
+  ASSERT(initialized_);
+  ASSERt(size == Utils::round_up(size, TOIT_PAGE_SIZE));
+  int pages = static_cast<int>(size >> TOIT_PAGE_SIZE_LOG2);
+  int allocation_map_size = static_cast<int>(arena_mapping_size_ >> TOIT_PAGE_SIZE_LOG2);
+  for (int i = 0; i <= allocation_map_size - pages; ) {
+    bool ok = true;
+    for (int j = i + pages - 1; j >= i; j--) {
+      if (allocation_map_[j] != 0) {
+        ok = false;
+        i = j + 1;
+        break;
+      }
+    }
+    if (!ok) continue;
+    auto result = reinterpret_cast<void*>(location_arena_ + i * TOIT_PAGE_SIZE;
+    int mprotect_result = mprotect(result, size, PROT_WRITE | PROT_READ);
+    if (mprotect_result < 0) {
+      perror("mprotect");
+      exit(1);
+    }
+    for (int j = i; j < i + pages; j++) {
+      ASSERT(allocation_map_[page + i] == 0);
+      allocation_map_[j] = 1;
+    }
+    return result;
+  }
+  return null;
 }
 
 Block* OS::allocate_block() {
-#if BUILD_64
-  uword size = TOIT_PAGE_SIZE * 2;
-  void* result = mmap(null, size,
-       PROT_READ | PROT_WRITE,
-       MAP_PRIVATE | MAP_ANON, -1, 0);
-  if (result == MAP_FAILED) return null;
-  uword addr = reinterpret_cast<uword>(result);
-  uword aligned = Utils::round_up(addr, TOIT_PAGE_SIZE);
-  if (aligned != addr) {
-    // Unmap the part at the beginning that we can't use because of alignment.
-    int unmap_result = munmap(reinterpret_cast<void*>(addr), aligned - addr);
-    USE(unmap_result);
-    ASSERT(unmap_result == 0);
-  }
-  if (aligned + TOIT_PAGE_SIZE != addr + size) {
-    // Unmap the part at the end that we can't use because of alignment.
-    int unmap_result = munmap(reinterpret_cast<void*>(aligned + TOIT_PAGE_SIZE), addr + size - aligned - TOIT_PAGE_SIZE);
-    USE(unmap_result);
-    ASSERT(unmap_result == 0);
-  }
-  return new (reinterpret_cast<void*>(aligned)) Block();
-#else
-  // Using 4k pages on 32 bit we know that the result of mmap will always be
-  // page aligned.
-  void* result = mmap(null, TOIT_PAGE_SIZE,
-       PROT_READ | PROT_WRITE,
-       MAP_PRIVATE | MAP_ANON, -1, 0);
-  return (result == MAP_FAILED) ? null : new (result) Block();
-#endif
+  void* aligned = allocate_pages(TOIT_PAGE_SIZE, ANY_ARENA);
+  if (!aligned) return null;
+  return new (aligned) Block();
 }
 
 ProgramBlock* OS::allocate_program_block() {
-#if BUILD_64
-  uword size = TOIT_PAGE_SIZE * 2;
-  void* result = mmap(null, size,
-       PROT_READ | PROT_WRITE,
-       MAP_PRIVATE | MAP_ANON, -1, 0);
-  if (result == MAP_FAILED) return null;
-  uword addr = reinterpret_cast<uword>(result);
-  uword aligned = Utils::round_up(addr, TOIT_PAGE_SIZE);
-  if (aligned != addr) {
-    // Unmap the part at the beginning that we can't use because of alignment.
-    int unmap_result = munmap(reinterpret_cast<void*>(addr), aligned - addr);
-    USE(unmap_result);
-    ASSERT(unmap_result == 0);
-  }
-  if (aligned + TOIT_PAGE_SIZE != addr + size) {
-    // Unmap the part at the end that we can't use because of alignment.
-    int unmap_result = munmap(reinterpret_cast<void*>(aligned + TOIT_PAGE_SIZE), addr + size - aligned - TOIT_PAGE_SIZE);
-    USE(unmap_result);
-    ASSERT(unmap_result == 0);
-  }
-  return new (reinterpret_cast<void*>(aligned)) ProgramBlock();
-#else
-  // Using 4k pages on 32 bit we know that the result of mmap will always be
-  // page aligned.
-  void* result = mmap(null, TOIT_PAGE_SIZE,
-       PROT_READ | PROT_WRITE,
-       MAP_PRIVATE | MAP_ANON, -1, 0);
-  return (result == MAP_FAILED) ? null : new (result) ProgramBlock();
-#endif
+  void* aligned = allocate_pages(TOIT_PAGE_SIZE, ANY_ARENA);
+  if (!aligned) return null;
+  return new (aligned) ProgramBlock();
 }
 
 void OS::set_writable(ProgramBlock* block, bool value) {
   mprotect(void_cast(block), TOIT_PAGE_SIZE, PROT_READ | (value ? PROT_WRITE : 0));
+}
+
+OS::platform_set_up() {
+  ASSERT(!initialized_);
+#if BUILD_64
+  arena_mapping_size_ = 2024 * MB;
+#else
+  arena_mapping_size_ = 512 * MB;
+#endif
+  arena_mapping_ = mmap(null, arena_mapping_size_, PROT_NONE, MAP_PRIVATE, MAP_ANON, -1, 0);
+  while (!arena_mapping_) {
+    arena_mapping_size_ >>= 1;
+    if (arena_mapping_size_ < 64 * MB) {
+      FATAL("Failed to reserve address space");
+    }
+    arena_mapping_ = mmap(null, arena_mapping_size_, PROT_NONE, MAP_PRIVATE, MAP_ANON, -1, 0);
+  }
+  allocation_arena_ = Utils::round_up(reinterpret_cast<uword>(arena_mapping_), TOIT_PAGE_SIZE);
+  uword end = Utils::round_down(arena_mapping_ + arena_mapping_size_, TOIT_PAGE_SIZE);
+  allocation_size_ = end - allocation_arena_;
+  allocation_map_ = calloc(allocation_size_ / TOIT_PAGE_SIZE, 1);
+  initialized_ = true;
 }
 
 void OS::tear_down() {
@@ -151,7 +170,7 @@ int OS::read_entire_file(char* name, uint8** buffer) {
 void OS::set_heap_tag(word tag) {
   int MALLOC_OPTION_THREAD_TAG = 1;
   if (heap_caps_set_option != null) {
-    heap_caps_set_option(MALLOC_OPTION_THREAD_TAG, reinterpret_cast<void*>(tag));
+    heap_caps_set_option(MALLOC_OPTION_THREAD_TAG, void_cast(tag));
   }
 }
 

@@ -200,7 +200,18 @@ class OS {
   static void free_block(ProgramBlock* block);
   static void set_writable(ProgramBlock* block, bool value);
 
+  struct HeapMemoryRange {
+    void* address;
+    uword size;
+  };
+
+  static const int ANY_ARENA = -1;
+
+  static void* allocate_pages(uword size, int arenas);
+  static void free_pages(void* address, uword size);
+
   static void set_up();
+  static void platform_set_up();
   static void tear_down();
   static const char* get_platform();
 
