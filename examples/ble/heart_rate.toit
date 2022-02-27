@@ -7,7 +7,7 @@
 import ble show *
 import uuid show Uuid
 
-GATT_IO_UUID  ::= 0x1825
+GATT_IO_UUID ::= 0x1825
 
 main:
   config := ServerConfiguration

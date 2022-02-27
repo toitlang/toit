@@ -256,10 +256,10 @@ int BLEEventSource::on_gatt_server_characteristic_event(ble_gatt_access_ctxt* ct
       break;
     case BLE_GATT_ACCESS_OP_READ_DSC:
     case BLE_GATT_ACCESS_OP_WRITE_DSC:
-      // Not currently implemented. Ignoring and not dispatching
+      // Not currently implemented. Ignoring and not dispatching.
       return 0;
     default:
-      // Unhandled event, no dispatching
+      // Unhandled event, no dispatching.
       return 0;
   }
 
@@ -292,7 +292,7 @@ void BLEServerCharacteristicResource::set_mbuf_received(os_mbuf* mbuf) {
   }
 }
 
-os_mbuf *BLEServerCharacteristicResource::mbuf_received() {
+os_mbuf* BLEServerCharacteristicResource::mbuf_received() {
   Locker locker(_mutex);
   return _mbuf_received;
 }
@@ -303,7 +303,7 @@ void BLEServerCharacteristicResource::set_mbuf_to_send(os_mbuf* mbuf) {
   _mbuf_to_send = mbuf;
 }
 
-os_mbuf *BLEServerCharacteristicResource::mbuf_to_send() {
+os_mbuf* BLEServerCharacteristicResource::mbuf_to_send() {
   Locker locker(_mutex);
   return _mbuf_to_send;
 }

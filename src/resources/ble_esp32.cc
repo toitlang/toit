@@ -171,15 +171,7 @@ class BLEResourceGroup : public ResourceGroup {
   }
 
  protected:
-  ~BLEResourceGroup() override {
-    nimble_port_deinit();
-
-    FATAL_IF_NOT_ESP_OK(esp_nimble_hci_and_controller_deinit());
-
-    while (remove_next()) {}
-
-    ble_pool.put(_id);
-  }
+  ~BLEResourceGroup() override;
 
 
  private:
@@ -414,13 +406,23 @@ int BLEResourceGroup::init_server() {
     }
 
     ble_hs_cfg.reset_cb = ble_on_reset;
-    // Start the host thread
+    // Start the host thread.
     if (!_server_config->spawn(NIMBLE_STACK_SIZE)) {
       _server_config->tear_down();
     };
   }
 
   return ESP_OK;
+}
+
+BLEResourceGroup::~BLEResourceGroup() {
+  nimble_port_deinit();
+
+  FATAL_IF_NOT_ESP_OK(esp_nimble_hci_and_controller_deinit());
+
+  while (remove_next()) {}
+
+  ble_pool.put(_id);
 }
 
 
@@ -920,7 +922,7 @@ PRIMITIVE(request_attribute) {
 
 /*
  *
- * Primitives for BLE server
+ * Primitives for BLE server.
  *
  */
 PRIMITIVE(server_configuration_init) {

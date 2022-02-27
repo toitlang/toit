@@ -51,11 +51,11 @@ class GAPResource : public BLEResource {
 class GATTResource : public BLEResource {
  public:
   TAG(GATTResource);
-  GATTResource(ResourceGroup* group)
+  explicit GATTResource(ResourceGroup* group)
       : BLEResource(group, GATT)
       , _mutex(OS::allocate_mutex(3, "")) {}
 
-  ~GATTResource() {
+  ~GATTResource() override {
     if (_mbuf) os_mbuf_free(_mbuf);
     OS::dispose(_mutex);
   }
@@ -114,18 +114,18 @@ class BLEServerCharacteristicResource: public Resource, public BLEServerCharacte
  public:
   TAG(BLEServerCharacteristicResource);
   BLEServerCharacteristicResource(ResourceGroup* resource_group, BLEServerServiceResource* service,
-                                  ble_uuid_any_t uuid, int type, os_mbuf* value, Mutex* mutex):
-      Resource(resource_group),
-      _service(service),
-      _uuid(uuid),
-      _type(type),
-      _mbuf_to_send(value),
-      _nimble_value_handle(0),
-      _mbuf_received(null),
-      _indicate(false),
-      _notify(false),
-      _conn_handle(0),
-      _mutex(mutex) {}
+                                  ble_uuid_any_t uuid, int type, os_mbuf* value, Mutex* mutex)
+      : Resource(resource_group)
+      , _service(service)
+      , _uuid(uuid)
+      , _type(type)
+      , _mbuf_to_send(value)
+      , _nimble_value_handle(0)
+      , _mbuf_received(null)
+      , _indicate(false)
+      , _notify(false)
+      , _conn_handle(0)
+      ,_mutex(mutex) {}
 
   ~BLEServerCharacteristicResource() override;
   ble_uuid_any_t uuid() const { return _uuid; }

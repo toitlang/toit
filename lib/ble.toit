@@ -286,8 +286,6 @@ class ServerConfiguration:
     services.add service
     return service
 
-  finalization:
-
 /** 
 Defines a BLE service with characteristics. 
 */
