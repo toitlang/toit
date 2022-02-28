@@ -222,7 +222,7 @@ test_entry_timeouts:
         with_timeout --ms=50:
           mutex.do:
             value++
-    done.up
+      done.up
   // Check that we get the timeouts before the mutex is
   // released, so the error isn't reported very late.
   10.repeat: done.down
