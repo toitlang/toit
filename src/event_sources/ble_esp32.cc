@@ -144,17 +144,17 @@ int BLEEventSource::on_gap(struct ble_gap_event* event, void* arg) {
 }
 
 int BLEEventSource::on_gatt_service(uint16_t conn_handle,
-                                    const struct ble_gatt_error *error,
-                                    const struct ble_gatt_svc *service,
-                                    void *arg) {
+                                    const struct ble_gatt_error* error,
+                                    const struct ble_gatt_svc* service,
+                                    void* arg) {
   GATTResource* gatt = unvoid_cast<GATTResource*>(arg);
   instance()->on_gatt_service_event(conn_handle, error, service, gatt);
   return 0;
 }
 
 void BLEEventSource::on_gatt_service_event(uint16_t conn_handle,
-                                           const struct ble_gatt_error *error,
-                                           const struct ble_gatt_svc *service,
+                                           const struct ble_gatt_error* error,
+                                           const struct ble_gatt_svc* service,
                                            GATTResource* gatt) {
   switch (error->status) {
     case 0:
@@ -174,17 +174,17 @@ void BLEEventSource::on_gatt_service_event(uint16_t conn_handle,
 }
 
 int BLEEventSource::on_gatt_characteristic(uint16_t conn_handle,
-                                           const struct ble_gatt_error *error,
-                                           const struct ble_gatt_chr *chr,
-                                           void *arg) {
+                                           const struct ble_gatt_error* error,
+                                           const struct ble_gatt_chr* chr,
+                                           void* arg) {
   GATTResource* gatt = unvoid_cast<GATTResource*>(arg);
   instance()->on_gatt_characteristic_event(conn_handle, error, chr, gatt);
   return 0;
 }
 
 void BLEEventSource::on_gatt_characteristic_event(uint16_t conn_handle,
-                                                  const struct ble_gatt_error *error,
-                                                  const struct ble_gatt_chr *chr,
+                                                  const struct ble_gatt_error* error,
+                                                  const struct ble_gatt_chr* chr,
                                                   GATTResource* gatt) {
   switch (error->status) {
     case 0:
@@ -204,8 +204,8 @@ void BLEEventSource::on_gatt_characteristic_event(uint16_t conn_handle,
 }
 
 int BLEEventSource::on_gatt_attribute(uint16_t conn_handle,
-                                      const struct ble_gatt_error *error,
-                                      struct ble_gatt_attr *attr,
+                                      const struct ble_gatt_error* error,
+                                      struct ble_gatt_attr* attr,
                                       void* arg) {
   GATTResource* gatt = unvoid_cast<GATTResource*>(arg);
   instance()->on_gatt_attribute_event(conn_handle, error, attr, gatt);
@@ -213,8 +213,8 @@ int BLEEventSource::on_gatt_attribute(uint16_t conn_handle,
 }
 
 void BLEEventSource::on_gatt_attribute_event(uint16_t conn_handle,
-                                             const struct ble_gatt_error *error,
-                                             struct ble_gatt_attr *attr,
+                                             const struct ble_gatt_error* error,
+                                             struct ble_gatt_attr* attr,
                                              GATTResource* gatt) {
   switch (error->status) {
     case 0:
@@ -235,6 +235,40 @@ void BLEEventSource::on_gatt_attribute_event(uint16_t conn_handle,
   dispatch(locker, gatt, 0);
 }
 
+int BLEEventSource::on_gatt_server_characteristic(uint16_t conn_handle, uint16_t attr_handle,
+                                                  struct ble_gatt_access_ctxt* ctxt, void* arg) {
+  auto characteristic = reinterpret_cast<BLEServerCharacteristicResource*>(arg);
+  return instance()->on_gatt_server_characteristic_event(ctxt, characteristic);
+}
+
+int BLEEventSource::on_gatt_server_characteristic_event(ble_gatt_access_ctxt* ctxt,
+                                                        BLEServerCharacteristicResource* characteristic) {
+  int err = 0;
+  switch (ctxt->op) {
+    case BLE_GATT_ACCESS_OP_READ_CHR:
+      if (characteristic->mbuf_to_send() != null) {
+        err = os_mbuf_appendfrom(ctxt->om, characteristic->mbuf_to_send(), 0, characteristic->mbuf_to_send()->om_len);
+      }
+      break;
+    case BLE_GATT_ACCESS_OP_WRITE_CHR:
+      characteristic->set_mbuf_received(ctxt->om);
+      ctxt->om = null;
+      break;
+    case BLE_GATT_ACCESS_OP_READ_DSC:
+    case BLE_GATT_ACCESS_OP_WRITE_DSC:
+      // Not currently implemented. Ignoring and not dispatching.
+      return 0;
+    default:
+      // Unhandled event, no dispatching.
+      return 0;
+  }
+
+  Locker locker(mutex());
+  dispatch(locker, characteristic, ctxt->op);
+  return err;
+}
+
+
 void BLEEventSource::on_started_event() {
   Locker locker(mutex());
   for (auto resource : resources()) {
@@ -244,6 +278,39 @@ void BLEEventSource::on_started_event() {
 
 void BLEEventSource::on_started() {
   instance()->on_started_event();
+}
+
+void BLEServerCharacteristicResource::set_mbuf_received(os_mbuf* mbuf) {
+  Locker locker(_mutex);
+  if (_mbuf_received == null)  {
+    _mbuf_received = mbuf;
+  } else if (mbuf == null) {
+    os_mbuf_free_chain(_mbuf_received);
+    _mbuf_received = null;
+  } else {
+    os_mbuf_concat(_mbuf_received, mbuf);
+  }
+}
+
+os_mbuf* BLEServerCharacteristicResource::mbuf_received() {
+  Locker locker(_mutex);
+  return _mbuf_received;
+}
+
+void BLEServerCharacteristicResource::set_mbuf_to_send(os_mbuf* mbuf) {
+  Locker locker(_mutex);
+  if (_mbuf_to_send != null) os_mbuf_free(_mbuf_to_send);
+  _mbuf_to_send = mbuf;
+}
+
+os_mbuf* BLEServerCharacteristicResource::mbuf_to_send() {
+  Locker locker(_mutex);
+  return _mbuf_to_send;
+}
+
+BLEServerCharacteristicResource::~BLEServerCharacteristicResource() {
+  if (_mbuf_received != null) os_mbuf_free_chain(_mbuf_received);
+  if (_mbuf_to_send != null) os_mbuf_free(mbuf_to_send());
 }
 
 } // namespace toit
