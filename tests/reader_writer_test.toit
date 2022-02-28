@@ -80,7 +80,9 @@ regular_test:
   // Still has to write "5".
   expect_equals #['3', '4'] read_next.call
   // Once the '3' and '4' have been read the writer task is activated again,
-  // filling in the remaining '5' and starting to write the "67"
+  // filling in the remaining '5'. Once the caller yields it starts to write
+  // the "67", but without the yield, we would only see '5' here.
+  yield
   expect_equals #['5', '6'] read_next.call
   // Since we don't allow the writer task to continue writing "89", we get a single
   // '7' now.

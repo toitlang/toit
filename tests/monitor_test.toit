@@ -21,6 +21,8 @@ run:
   test_method_throw
   test_await_throw
   test_await_multiple
+  test_fairness
+  test_entry_timeouts
 
 monitor A:
   foo_ready := false
@@ -127,16 +129,15 @@ test_method_wake_up_1:
 
 test_await_multiple:
   a := A
-
   c := 2
 
   task_with_deadline::
     a.foz: c == 1
-    c = 0
+    a.baz: c = 0
 
   yield_a_lot
 
-  c = 1
+  a.baz: c = 1
   a.foz: c == 0
 
 test_simple_monitor:
@@ -152,7 +153,7 @@ test_yield_a_lot_in_monitor:
     task::
       m.with_yield
   5.repeat:
-    m.notify_all_
+    m.notify_
     yield
 
 monitor MyMonitor:
@@ -180,6 +181,57 @@ task_with_deadline lambda:
   else:
     task::
       lambda.call
+
+test_fairness:
+  mutex := Mutex
+  counts := List 4: 0
+  stop := Time.monotonic_us + 1 * 1_000_000
+  done := Semaphore
+  counts.size.repeat: | n |
+    task::
+      while Time.monotonic_us < stop:
+        mutex.do:
+          counts[n]++
+          yield
+      done.up
+  counts.size.repeat: done.down
+  // Check that the counts are fairly distributed.
+  sum := 0
+  counts.do: sum += it
+  average := sum / counts.size
+  counts.do:
+    diff := it - average
+    expect (diff.abs < 10)
+
+test_entry_timeouts:
+  mutex := Mutex
+  ready := Semaphore
+  done := Semaphore
+  value := 0
+  // Create a task that owns the mutex for a while.
+  task::
+    mutex.do:
+      ready.up
+      sleep --ms=200
+  // Try to get hold of the mutex. Make sure it times
+  // out as expected.
+  ready.down
+  10.repeat:
+    task::
+      expect_throw DEADLINE_EXCEEDED_ERROR:
+        with_timeout --ms=50:
+          mutex.do:
+            value++
+    done.up
+  // Check that we get the timeouts before the mutex is
+  // released, so the error isn't reported very late.
+  10.repeat: done.down
+  expect_throw DEADLINE_EXCEEDED_ERROR:
+    with_timeout --ms=5:
+      mutex.do:
+        unreachable
+  // Make sure nobody messed with the proctected value.
+  expect_equals 0 value
 
 test_channel:
   channel := Channel 5
