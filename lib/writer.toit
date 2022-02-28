@@ -36,6 +36,7 @@ class Writer:
     size := to - from
     while from < to:
       from += writer_.write data[from..to]
+      if from != to: yield
     return size
 
   /**
