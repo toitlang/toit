@@ -136,7 +136,6 @@ class __Monitor__:
     suspend_ self
 
   resume_ --state_changed/bool:
-    assert: owner_ == null
     // If the state changed, we first resume the tasks waiting to
     // re-evaluate their conditions. These are tasks that have
     // already acquired the lock in the past, so it makes sense to
