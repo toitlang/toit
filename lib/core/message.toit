@@ -88,7 +88,12 @@ process_messages_:
         args ::= received[3]
         received = null  // Allow garbage collector to free.
         system_message_handlers_.get type
-          --if_present=: it.on_message type gid pid args
+          --if_present=: | handler |
+            // The message processing can be called on a canceled task
+            // when it is terminating. We need to make sure that the
+            // handler code can run even in that case, so we do it in
+            // a critical section.
+            critical_do: handler.on_message type gid pid args
           --if_absent=:
             if type == SYSTEM_MIRROR_MESSAGE_:
               print_for_manually_decoding_ args
