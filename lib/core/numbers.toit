@@ -707,15 +707,7 @@ abstract class int extends num:
             return int.MIN
         return on_error.call RANGE_ERR_
 
-      value := 0
-      if '0' <= char <= '9':
-        value = char - '0'
-      else if 'a' <= char <= 'f':
-        value = 10 + char - 'a'
-      else if 'A' <= char <= 'F':
-        value = 10 + char - 'A'
-      else:
-        return on_error.call PARSE_ERR_
+      value := hex_digit char: on_error.call PARSE_ERR_
       result <<= 4
       result |= value
       continue.generic_parser_ result

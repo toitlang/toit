@@ -240,9 +240,9 @@ PRIMITIVE(write) {
 
   int wrote;
   if (break_length > 0) {
-    wrote = uart_write_bytes_with_break(uart->port(), reinterpret_cast<const char*>(tx), to - from, break_length);
+    wrote = uart_write_bytes_with_break_non_blocking(uart->port(), reinterpret_cast<const char*>(tx), to - from, break_length);
   } else {
-    wrote = uart_write_bytes(uart->port(), reinterpret_cast<const char*>(tx), to - from);
+    wrote = uart_write_bytes_non_blocking(uart->port(), reinterpret_cast<const char*>(tx), to - from);
   }
   if (wrote == -1) {
     OUT_OF_RANGE;
@@ -275,7 +275,7 @@ PRIMITIVE(read) {
   size_t capacity = Utils::max(available, (size_t)8);
 
   Error* error = null;
-  ByteArray* data = process->allocate_byte_array(capacity, &error);
+  ByteArray* data = process->allocate_byte_array(capacity, &error, /*force_external*/ true);
   if (data == null) return error;
 
   ByteArray::Bytes rx(data);
@@ -288,7 +288,7 @@ PRIMITIVE(read) {
     return process->allocate_string_or_error("broken UART read");
   }
 
-  data->resize(read);
+  data->resize_external(process, read);
 
   return data;
 }

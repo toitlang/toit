@@ -78,7 +78,6 @@ TOITC_BIN = $(BIN_DIR)/toit.compile$(EXE_SUFFIX)
 
 .PHONY: download-packages
 download-packages: check-env build/host/CMakeCache.txt tools
-	$(TOITPKG_BIN) sync   # Shouldn't be necessary but fixes a race condition.
 	(cd build/host && ninja download_packages)
 
 .PHONY: rebuild-cmake
@@ -149,9 +148,15 @@ endif
 .PHONY: esp32
 esp32: check-env build/$(ESP32_CHIP)/toit.bin
 
-build/$(ESP32_CHIP)/toit.bin build/$(ESP32_CHIP)/toit.elf: tools snapshots build/$(ESP32_CHIP)/lib/libtoit_image.a build/config.json
+build/$(ESP32_CHIP)/toit.bin build/$(ESP32_CHIP)/toit.elf: build/$(ESP32_CHIP)/lib/libtoit_vm.a
+build/$(ESP32_CHIP)/toit.bin build/$(ESP32_CHIP)/toit.elf: build/$(ESP32_CHIP)/lib/libtoit_image.a
+build/$(ESP32_CHIP)/toit.bin build/$(ESP32_CHIP)/toit.elf: tools snapshots build/config.json
 	$(MAKE) -j $(NUM_CPU) -C toolchains/$(ESP32_CHIP)/
 	$(TOITVM_BIN) tools/inject_config.toit build/config.json build/$(ESP32_CHIP)/toit.bin
+
+.PHONY: build/$(ESP32_CHIP)/lib/libtoit_vm.a  # Marked phony to force regeneration.
+build/$(ESP32_CHIP)/lib/libtoit_vm.a: build/$(ESP32_CHIP)/CMakeCache.txt build/$(ESP32_CHIP)/include/sdkconfig.h
+	(cd build/$(ESP32_CHIP) && ninja toit_vm)
 
 build/$(ESP32_CHIP)/lib/libtoit_image.a: build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s build/$(ESP32_CHIP)/CMakeCache.txt build/$(ESP32_CHIP)/include/sdkconfig.h
 	(cd build/$(ESP32_CHIP) && ninja toit_image)
@@ -160,18 +165,20 @@ build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s: tools snapshots build/snapshot
 	mkdir -p build/$(ESP32_CHIP)
 	$(TOITVM_BIN) $(SNAPSHOT_DIR)/snapshot_to_image.snapshot build/snapshot $@
 
+.PHONY: build/snapshot  # Marked phony to force regeneration.
 build/snapshot: $(TOITC_BIN) $(ESP32_ENTRY)
 	$(TOITC_BIN) -w $@ $(ESP32_ENTRY)
 
 build/$(ESP32_CHIP)/CMakeCache.txt:
 	mkdir -p build/$(ESP32_CHIP)
+	touch build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s
 	(cd build/$(ESP32_CHIP) && IMAGE=build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s cmake ../../ -G Ninja -DTOITC=$(TOITC_BIN) -DTOITPKG=$(TOITPKG_BIN) -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/$(ESP32_CHIP)/$(ESP32_CHIP).cmake --no-warn-unused-cli)
 
 build/$(ESP32_CHIP)/include/sdkconfig.h:
 	mkdir -p build/$(ESP32_CHIP)
 	$(MAKE) -C toolchains/$(ESP32_CHIP) -s "$(CURDIR)"/$@
 
-.PHONY: build/config.json
+.PHONY: build/config.json  # Marked phony to force regeneration.
 build/config.json:
 	echo '{"wifi": {"ssid": "$(ESP32_WIFI_SSID)", "password": "$(ESP32_WIFI_PASSWORD)"}}' > $@
 
@@ -227,3 +234,42 @@ update-health-gold: download-packages
 	$(MAKE) rebuild-cmake
 	(cd build/host && ninja clear_health_gold)
 	(cd build/host && ninja update_health_gold)
+
+.PHONY: enable-external
+enable-external:
+	$(MAKE) rebuild-cmake  # Ensure the cmake-directory was created.
+	cmake -DTOIT_TEST_EXTERNAL=ON build/host
+	$(MAKE) download-external
+	$(MAKE) rebuild-cmake
+	$(MAKE) download-packages
+
+.PHONY: check-external-enabled
+check-external-enabled:
+	@ if ! cmake -LA -N build/host | grep 'TOIT_TEST_EXTERNAL:BOOL=ON'; then \
+		echo "external projects are not enabled. Run 'make enable-external' first."; \
+		exit 1; \
+	fi
+
+.PHONY: disable-external
+disable-external: check-external-enabled
+	$(MAKE) rebuild-cmake  # Ensure the cmake-directory was created.
+	cmake -DTOIT_TEST_EXTERNAL=OFF build/host
+
+.PHONY: download-external
+download-external: check-external-enabled
+	# Download with higher parallelism.
+	(cd build/host && ninja -j 16 download_external)
+
+.PHONY: test-external
+test-external: check-external-enabled
+	(cd build/host && ninja check_external)
+
+.PHONY: test-external-health
+test-external-health: check-external-enabled
+	(cd build/host && ninja check_external_health)
+
+.PHONY: update-external-health-gold
+update-external-health-gold: download-packages check-external-enabled
+	$(MAKE) rebuild-cmake
+	(cd build/host && ninja clear_external_health_gold)
+	(cd build/host && ninja update_external_health_gold)

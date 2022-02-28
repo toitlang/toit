@@ -12,7 +12,8 @@ jobs:
       matrix:
         # macos-10.15, as we currently need Clang 12 (https://github.com/toitlang/toit/issues/130)
         # windows-2022, as it's currently later than windows-latest.
-        container: [ ubuntu-latest, macos-10.15, windows-2022 ]
+        # ubuntu-18.04 so that we don't depend on a recent glibc.
+        container: [ ubuntu-18.04, macos-10.15, windows-2022 ]
         shard: [1, 2, 3, 4, 5]
 
     runs-on: ${{ matrix.container }}
@@ -21,6 +22,10 @@ jobs:
       - name: Set up constants
         id: constants
         run: |
+          echo ::set-output name=external_result::external-result-$RUNNER_OS-${{ matrix.shard }}.txt
+          echo ::set-output name=external_result_key::external-result-${{ github.run_id }}-${{ github.run_attempt }}-$RUNNER_OS-${{ matrix.shard }}
+          echo ::set-output name=debug_root_dir::debug-ci
+          echo ::set-output name=debug_dir::debug-ci/$RUNNER_OS-${{ matrix.shard }}
           if [ "$RUNNER_OS" == "Linux" ]; then
             echo ::set-output name=artifact::toit-linux.tar.gz
             echo ::set-output name=total_shards::5
@@ -37,6 +42,12 @@ jobs:
         shell: bash
 
       - uses: actions/checkout@v2
+
+      # Anything in the debug dir will be uploaded as artifact.
+      - name: Setup debug dir
+        shell: sh
+        run: |
+          mkdir -p ${{ steps.constants.outputs.debug_dir }}
 
       - name: Fetch tags
         # The github checkout is shallow and doesn't have tags.
@@ -78,20 +89,11 @@ jobs:
           key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum') }}
           restore-keys: ${{ runner.os }}-go-mod-
 
-      # We create a new id every second.
-      # The 'restore-keys' below will make sure that we continue using earlier versions.
-      - name: Create timestamp
-        id: timestamp
-        shell: cmake -P {0}
-        run: |
-          string(TIMESTAMP current_date "%Y-%m-%d-%H;%M;%S" UTC)
-          message("::set-output name=timestamp::${current_date}")
-
       - name: Ccache cache
         uses: actions/cache@v2
         with:
           path: ${{ github.workspace }}/.ccache
-          key: ${{ runner.os }}-ccache-${{ steps.timestamp.outputs.timestamp }}
+          key: ${{ runner.os }}-ccache-${{ github.sha }}
           restore-keys: ${{ runner.os }}-ccache-
 
       # Fetch the dependencies. Different for each platform.
@@ -136,7 +138,7 @@ jobs:
           fi
 
       # Test.
-      - name: test
+      - name: Test
         env:
           IDF_PATH: ${{ github.workspace }}/third_party/esp-idf
           CCACHE_DIR: ${{ github.workspace }}/.ccache
@@ -155,6 +157,45 @@ jobs:
             ninja check
           fi
 
+      # We use a cache to send the external test result to the external job.
+      - name: Retrieve/store external test result
+        uses: actions/cache@v2
+        with:
+          path: ${{ steps.constants.outputs.external_result }}
+          key: ${{ steps.constants.outputs.external_result_key }}
+
+      # Test external code.
+      - name: Test external
+        # External tests are allowed to fail, but we record them and
+        # fail a non-required job if they do.
+        continue-on-error: true
+        env:
+          IDF_PATH: ${{ github.workspace }}/third_party/esp-idf
+          CCACHE_DIR: ${{ github.workspace }}/.ccache
+          CCACHE_BASEDIR: ${{ github.workspace }}
+          CCACHE_COMPRESS: true
+          CCACHE_COMPRESSLEVEL: '6'
+          CCACHE_MAXSIZE: 400M
+          SHARD_START: ${{ matrix.shard }}
+          SHARD_STRIDE: ${{ steps.constants.outputs.total_shards }}
+        shell: bash
+        run: |
+          # Mark the external test as failing, and update it at the end of this step.
+          echo fail > ${{ steps.constants.outputs.external_result }}
+          make enable-external
+          find external > ${{ steps.constants.outputs.debug_dir }}/files_after_enable_external.log
+          make test-external
+          make test-external-health
+          if [ "$RUNNER_OS" == "Linux" ]; then
+            cmake -DTOIT_TEST_EXTERNAL=ON build/host32
+            make CROSS_ARCH=host32 rebuild-cross-cmake
+            cd build/host32
+            ninja check_external
+            cd ../..
+          fi
+          # If we reach here, all steps of this step succeeded.
+          echo success > ${{ steps.constants.outputs.external_result }}
+
       - name: Pack artifacts
         if: matrix.shard == 1
         shell: bash
@@ -169,6 +210,13 @@ jobs:
         with:
           name: ${{ runner.os }}-build
           path: build/${{ steps.constants.outputs.artifact }}
+
+      - name: Upload debug artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: debug
+          path: ${{ steps.constants.outputs.debug_root_dir }}
+          retention-days: 5
 
       - name: Upload release artifacts
         if: |
@@ -196,7 +244,7 @@ jobs:
       - name: Initialize submodules
         run: |
           git submodule sync --recursive
-          git submodule update --init --recursive -j 2
+          git submodule update --init --recursive -j 16
 
       # Use Go 1.17
       - name: Switch to Go 1.17
@@ -226,20 +274,14 @@ jobs:
           key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum') }}
           restore-keys: ${{ runner.os }}-go-mod-
 
-      # We create a new id every second.
-      # The 'restore-keys' below will make sure that we continue using earlier versions.
-      - name: Create timestamp
-        id: timestamp
-        shell: cmake -P {0}
-        run: |
-          string(TIMESTAMP current_date "%Y-%m-%d-%H;%M;%S" UTC)
-          message("::set-output name=timestamp::${current_date}")
-
       - name: Ccache cache
         uses: actions/cache@v2
+        # Store and retrieve the cache with the given sha.
+        # The 'restore-keys' prefix finds the most recent cache in case there
+        # is no match (which should almost always be the case).
         with:
           path: ${{ github.workspace }}/.ccache
-          key: esp32-ccache-${{ steps.timestamp.outputs.timestamp }}
+          key: esp32-ccache-${{ github.sha }}
           restore-keys: esp32-ccache-
 
       - name: Install dependencies - Linux
@@ -276,3 +318,53 @@ jobs:
           # Make sure the ccache interceptors are before any other path.
           export PATH="$PWD/ccache_interceptors":$PATH
           make esp32
+
+  external:
+    needs: build
+
+    strategy:
+      # The matrix will run all possible combinations in parallel.
+      matrix:
+        container: [ ubuntu-latest, macos-latest, windows-latest ]
+
+    runs-on: ${{ matrix.container }}
+
+    steps:
+      - name: Set up constants
+        id: constants
+        shell: bash
+        run: |
+          echo ::set-output name=external_result_prefix::external-result-$RUNNER_OS
+          echo ::set-output name=external_result_key_prefix::external-result-${{ github.run_id }}-${{ github.run_attempt }}-$RUNNER_OS
+
+      - name: Retrieve 1
+        uses: actions/cache@v2
+        with:
+          path: ${{ steps.constants.outputs.external_result_prefix }}-1.txt
+          key: ${{ steps.constants.outputs.external_result_key_prefix }}-1
+      - name: Retrieve 2
+        uses: actions/cache@v2
+        with:
+          path: ${{ steps.constants.outputs.external_result_prefix }}-2.txt
+          key: ${{ steps.constants.outputs.external_result_key_prefix }}-2
+      - name: Retrieve 3
+        uses: actions/cache@v2
+        with:
+          path: ${{ steps.constants.outputs.external_result_prefix }}-3.txt
+          key: ${{ steps.constants.outputs.external_result_key_prefix }}-3
+      - name: Retrieve 4
+        uses: actions/cache@v2
+        with:
+          path: ${{ steps.constants.outputs.external_result_prefix }}-4.txt
+          key: ${{ steps.constants.outputs.external_result_key_prefix }}-4
+      - name: Retrieve 5
+        uses: actions/cache@v2
+        with:
+          path: ${{ steps.constants.outputs.external_result_prefix }}-5.txt
+          key: ${{ steps.constants.outputs.external_result_key_prefix }}-5
+
+      - name: Check
+        shell: bash
+        run: |
+          cat external-result*
+          ! grep "fail" external-result*

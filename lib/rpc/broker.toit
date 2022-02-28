@@ -27,6 +27,15 @@ class RpcBroker implements SystemMessageHandler_:
     set_system_message_handler_ SYSTEM_RPC_CANCEL_ this
 
   /**
+  Determine if an incoming request from a given sender is accepted.
+
+  This method is typically overridden in subclasses to filter out
+  requests from unwanted senders.
+  */
+  accept gid/int pid/int -> bool:
+    return true
+
+  /**
   Registers a procedure to handle a message.  The arguments to the
     handler will be:
   arguments/List
@@ -40,10 +49,23 @@ class RpcBroker implements SystemMessageHandler_:
   unregister_procedure name/int -> none:
     procedures_.remove name
 
-  on_message type gid pid message/List -> none:
+  /**
+  Cancels all requests associated with a given process id (pid).
+  */
+  cancel_requests pid/int -> none:
+    queue_.cancel: | request/RpcRequest_ | request.pid == pid
+
+  on_message type gid/int pid/int message/List -> none:
+    // When canceling requests for specific processes, there can still be
+    // enqueued system messages from such a process that will end up here.
+    // To avoid having requests from such processes in the broker request
+    // queue it is important to make 'accept' return false for them as part
+    // of canceling their requests (do it before canceling to be sure).
+    if not accept gid pid: return
+
     id/int := message[0]
     if type == SYSTEM_RPC_CANCEL_:
-      queue_.cancel pid id
+      queue_.cancel: | request/RpcRequest_ | request.pid == pid and request.id == id
       return
 
     assert: type == SYSTEM_RPC_REQUEST_
@@ -76,8 +98,10 @@ class RpcRequest_:
       result = procedure.call arguments gid pid
       if result is RpcSerializable: result = result.serialize_for_rpc
     finally: | is_exception exception |
+      // If we get an exception, we send back a string representation of
+      // it to avoid running into issues with unserializable exceptions.
       reply := is_exception
-          ? [ id, true, exception.value, exception.trace ]
+          ? [ id, true, exception.value.stringify, exception.trace ]
           : [ id, false, result ]
       process_send_ pid SYSTEM_RPC_REPLY_ reply
       return  // Stops any unwinding.
@@ -103,7 +127,12 @@ monitor RpcRequestQueue_:
     processing_tasks_ = List max_tasks
 
   add request/RpcRequest_ -> bool:
-    if unprocessed_ >= RpcBroker.MAX_REQUESTS: return false
+    if unprocessed_ >= RpcBroker.MAX_REQUESTS:
+      // It should not be necessary to ask for more processing tasks here,
+      // but we do it (defensively) anyway to guard against issues in the
+      // bookkeeping of unprocessed requests and processing tasks.
+      ensure_processing_task_
+      return false
 
     // Enqueue the new request in the linked list.
     last := last_
@@ -132,18 +161,16 @@ monitor RpcRequestQueue_:
       first_ = next
       return request
 
-  cancel pid/int id/int -> int:
-    // For testing purposes, we keep track of the number of requests that
-    // were actually canceled through this operation.
-    result/int := 0
-    // First we get rid of any unprocessed request with the given id. This
-    // is a simple linked list traversal with the usual bookkeeping challenges
-    // that come from removing from a linked list with insertion at the end.
+  cancel [predicate] -> none:
+    // First we get rid of any unprocessed request where the 'predicate' block
+    // answers true. This is a simple linked list traversal with the usual
+    // bookkeeping challenges that come from removing from a linked list with
+    // insertion at the end.
     previous := null
     current := first_
     while current:
       next := current.next
-      if current.pid == pid and current.id == id:
+      if predicate.call current:
         if previous:
           previous.next = next
         else:
@@ -151,17 +178,15 @@ monitor RpcRequestQueue_:
         if not next:
           last_ = previous
         unprocessed_--
-        result++
-      previous = current
+      else:
+        previous = current
       current = next
     // Then we cancel any requests that are in progress by canceling the
     // associated processing task.
     processing_requests_.size.repeat:
       request/RpcRequest_? := processing_requests_[it]
-      if request and request.pid == pid and request.id == id:
+      if request and predicate.call request:
         processing_tasks_[it].cancel
-        result++
-    return result
 
   ensure_processing_task_ -> none:
     // If there are requests that could be processed by spawning more tasks,

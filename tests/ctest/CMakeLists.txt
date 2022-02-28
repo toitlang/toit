@@ -25,6 +25,8 @@ else()
   set(LN_FORCE "Tf")
 endif()
 
+include(fail.cmake)
+
 add_custom_command(
   OUTPUT ${CTEST_DIR}/lib
   COMMAND ln -s${LN_FORCE} ${TOIT_SDK_SOURCE_DIR}/lib ${CTEST_DIR}/lib
@@ -37,6 +39,9 @@ add_custom_target(
     )
 
 foreach(file ${CC_FILES})
+  if("${file}" IN_LIST TOIT_SKIP_TESTS)
+    continue()
+  endif()
   get_filename_component(exe ${file} NAME_WE)
   add_executable(
     ${exe}
@@ -58,6 +63,9 @@ endforeach()
 
 foreach(file ${CC_TESTS})
   file(RELATIVE_PATH test_name ${PROJECT_SOURCE_DIR} ${file})
+  if("${test_name}" IN_LIST TOIT_SKIP_TESTS)
+    continue()
+  endif()
   get_filename_component(exe ${file} NAME_WE)
   string(REGEX REPLACE "_test.cc$" "_input.toit" test_input ${file})
   add_test(NAME ${test_name} COMMAND ${CTEST_DIR}/${exe} ${test_input})
@@ -69,6 +77,9 @@ endforeach()
 
 foreach(file ${TOIT_TESTS})
   file(RELATIVE_PATH test_name ${PROJECT_SOURCE_DIR} ${file})
+  if("${test_name}" IN_LIST TOIT_SKIP_TESTS)
+    continue()
+  endif()
   add_test(NAME
     ${test_name}
     COMMAND $<TARGET_FILE:toit.run> ${file} ${CTEST_DIR})
@@ -79,7 +90,6 @@ foreach(file ${TOIT_TESTS})
   add_dependencies(check_slow ${exe})
 endforeach()
 
-include(fail.cmake)
 foreach(test ${TOIT_FAILING_TESTS})
   set_tests_properties(${test} PROPERTIES WILL_FAIL TRUE)
 endforeach()

@@ -109,20 +109,6 @@ class SystemThread : public Thread {
   void entry() {}
 };
 
-class PagedMemoryBlock;
-
-class PagedMemory {
- public:
-  explicit PagedMemory();
-  ~PagedMemory();
-
-  // Allocate a block of memory that is guaranteed to be page aligned.
-  void* allocate_pages(int& byte_size);
-
- private:
-  PagedMemoryBlock* _block;
-};
-
 class AlignedMemoryBase {
  public:
   virtual ~AlignedMemoryBase();

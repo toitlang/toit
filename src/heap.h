@@ -17,13 +17,12 @@
 
 #include <atomic>
 
+#include "heap_roots.h"
 #include "linked.h"
 #include "memory.h"
 #include "objects.h"
 #include "primitive.h"
 #include "printing.h"
-
-#include "objects_inline.h"
 
 extern "C" uword toit_image;
 extern "C" uword toit_image_size;
@@ -71,18 +70,6 @@ class Heap : public RawHeap {
   virtual int payload_size();
 
   Program* program() { return _program; }
-
-  static inline bool in_read_only_program_heap(HeapObject* object, Heap* object_heap) {
-#ifdef TOIT_FREERTOS
-    // The system image is not page aligned so we can't use HeapObject::owner
-    // to detect it.  But it is all in one range, so we use that instead.
-    uword address = reinterpret_cast<uword>(object);
-    if ((address - reinterpret_cast<uword>(&toit_image)) < toit_image_size) {
-      return true;
-    }
-#endif
-    return object->owner() != object_heap->owner();
-  }
 
   int64 total_bytes_allocated() { return _total_bytes_allocated; }
 
@@ -153,100 +140,6 @@ class NoGC {
 };
 
 class ObjectNotifier;
-class FinalizerNode;
-class VMFinalizerNode;
-
-typedef LinkedFIFO<FinalizerNode> FinalizerNodeFIFO;
-
-class FinalizerNode : public FinalizerNodeFIFO::Element {
- public:
-  FinalizerNode(HeapObject* key, Object* lambda)
-  : _key(key), _lambda(lambda) {}
-  virtual ~FinalizerNode() {}
-
-  HeapObject* key() { return _key; }
-  void set_key(HeapObject* value) { _key = value; }
-  Object* lambda() { return _lambda; }
-
-  // Garbage collection support.
-  void roots_do(RootCallback* cb);
-
- private:
-  HeapObject* _key;
-  Object* _lambda;
-};
-
-typedef LinkedFIFO<VMFinalizerNode> VMFinalizerNodeFIFO;
-
-class VMFinalizerNode : public VMFinalizerNodeFIFO::Element {
- public:
-  VMFinalizerNode(HeapObject* key)
-  : _key(key) {}
-  virtual ~VMFinalizerNode() {}
-
-  HeapObject* key() { return _key; }
-  void set_key(HeapObject* value) { _key = value; }
-
-  // Garbage collection support.
-  void roots_do(RootCallback* cb);
-
-  void free_external_memory(Process* process);
-
- private:
-  HeapObject* _key;
-};
-
-typedef DoubleLinkedList<ObjectNotifier> ObjectNotifierList;
-
-class ObjectNotifier : public ObjectNotifierList::Element {
- public:
-  ObjectNotifier(Process* process, Object* object);
-  ~ObjectNotifier();
-
-  Object* object() const { return _object; }
-
-  // Notify the state of the object has changed.
-  void notify();
-
-  void set_message(ObjectNotifyMessage* message) {
-    _message = message;
-  }
-
-  void update_object(Object* object) {
-    _object = object;
-  }
-
- private:
-  Process* _process;
-
-  // Object to notify.
-  Object* _object;
-
-  ObjectNotifyMessage* _message;
-
-  // Garbage collection support.
-  void roots_do(RootCallback* cb);
-
-  friend class ObjectHeap;
-};
-
-class HeapRoot;
-typedef DoubleLinkedList<HeapRoot> HeapRootList;
-class HeapRoot : public HeapRootList::Element {
- public:
-  explicit HeapRoot(Object* obj) : _obj(obj) {}
-
-  Object* operator*() const { return _obj; }
-  Object* operator->() const { return _obj; }
-  void operator=(Object* obj) { _obj = obj; }
-
-  Object** slot() { return &_obj; }
-  void unlink() { HeapRootList::Element::unlink(); }
-
- private:
-  Object* _obj;
-};
-
 // An object heap contains all objects created at runtime.
 class ObjectHeap final : public Heap {
  public:
@@ -270,7 +163,7 @@ class ObjectHeap final : public Heap {
 
   Object** global_variables() const { return _global_variables; }
   Task* task() { return _task; }
-  void set_task(Task* task) { ASSERT(task->owner() == owner()); _task = task; }
+  void set_task(Task* task) { _task = task; }
 
   Method hatch_method() { return _hatch_method; }
   void set_hatch_method(Method method) { _hatch_method = method; }

@@ -2,7 +2,6 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import drivers.cellular
 import device
 import encoding.ubjson
 import uuid
@@ -66,7 +65,7 @@ class Gnss_:
   constructor.start:
     throw "NOT IMPLEMENTED"
 
-  location -> cellular.GnssLocation?:
+  location -> device.GnssLocation?:
     throw "NOT IMPLEMENTED"
 
 get_mac_address_:

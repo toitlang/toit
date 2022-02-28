@@ -1,17 +1,6 @@
 // Copyright (C) 2020 Toitware ApS.
-//
-// This library is free software; you can redistribute it and/or
-// modify it under the terms of the GNU Lesser General Public
-// License as published by the Free Software Foundation; version
-// 2.1 only.
-//
-// This library is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-// Lesser General Public License for more details.
-//
-// The license can be found in the file `LICENSE` in the top level
-// directory of this repository.
+// Use of this source code is governed by a Zero-Clause BSD license that can
+// be found in the tests/LICENSE file.
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -35,9 +24,6 @@ static char* mkdtemp(char* tmpl) {
 namespace toit {
 
 using namespace compiler;
-
-// Required for linking.
-unsigned int checksum[4] = { 0, 0, 0, 0};
 
 template <typename T>
 void do_test(List<ar::File> test, T& reader) {

@@ -58,7 +58,7 @@ Heap::Heap(Process* owner, Program* program, Block* initial_block)
     , _gc_allowed(true)
     , _total_bytes_allocated(0)
     , _last_allocation_result(ALLOCATION_SUCCESS) {
-  initial_block->_set_process(owner);
+  if (initial_block == null) return;
   _blocks.append(initial_block);
 }
 
@@ -84,7 +84,7 @@ Instance* Heap::allocate_instance(TypeTag class_tag, Smi* class_id, Smi* instanc
 
 Array* Heap::allocate_array(int length, Object* filler) {
   ASSERT(length >= 0);
-  ASSERT(length <= Array::max_length());
+  ASSERT(length <= Array::max_length_in_process());
   HeapObject* result = _allocate_raw(Array::allocation_size(length));
   if (result == null) {
     return null;  // Allocation failure.
@@ -97,7 +97,7 @@ Array* Heap::allocate_array(int length, Object* filler) {
 
 Array* Heap::allocate_array(int length) {
   ASSERT(length >= 0);
-  ASSERT(length <= Array::max_length());
+  ASSERT(length <= Array::max_length_in_process());
   HeapObject* result = _allocate_raw(Array::allocation_size(length));
   if (result == null) {
     return null;  // Allocation failure.
@@ -111,7 +111,7 @@ Array* Heap::allocate_array(int length) {
 ByteArray* Heap::allocate_internal_byte_array(int length) {
   ASSERT(length >= 0);
   // Byte array should fit within one heap block.
-  ASSERT(length <= ByteArray::max_internal_size());
+  ASSERT(length <= ByteArray::max_internal_size_in_process());
   ByteArray* result = unvoid_cast<ByteArray*>(_allocate_raw(ByteArray::internal_allocation_size(length)));
   if (result == null) return null;  // Allocation failure.
   // Initialize object.
@@ -144,7 +144,7 @@ int Heap::payload_size() {
 
 String* Heap::allocate_internal_string(int length) {
   ASSERT(length >= 0);
-  ASSERT(length <= String::max_internal_size());
+  ASSERT(length <= String::max_internal_size_in_process());
   HeapObject* result = _allocate_raw(String::internal_allocation_size(length));
   if (result == null) return null;
   // Initialize object.
@@ -160,7 +160,7 @@ String* Heap::allocate_internal_string(int length) {
 
 HeapObject* Heap::_allocate_raw(int byte_size) {
   ASSERT(byte_size > 0);
-  ASSERT(byte_size <= Block::max_payload_size());
+  ASSERT(byte_size <= max_allocation_size());
   HeapObject* result = _blocks.last()->allocate_raw(byte_size);
   if (result == null) {
     AllocationResult expand_result = _expand();
@@ -196,11 +196,9 @@ Heap::AllocationResult ObjectHeap::_expand() {
 class ScavengeState : public RootCallback {
  public:
   explicit ScavengeState(Heap* heap)
-      : _heap(heap), _scope(VM::current()->heap_memory(), heap) {
+      : _heap(heap), _process(heap->owner()), _scope(VM::current()->heap_memory(), heap) {
     blocks.append(VM::current()->heap_memory()->allocate_block_during_scavenge(heap));
   }
-
-  static bool is_forward_address(Object* object) { return object->is_heap_object(); }
 
   HeapObject* allocate(int byte_size) {
     HeapObject* result = blocks.last()->allocate_raw(byte_size);
@@ -238,7 +236,7 @@ class ScavengeState : public RootCallback {
     // The fact that the header is a Smi and the forwarding pointer is a heap pointer,
     // allows us to distinguish the two.
     from->_at_put(HeapObject::HEADER_OFFSET, result);
-    ASSERT(is_forward_address(from->header_during_gc()));
+    ASSERT(from->has_forwarding_address());
     return result;
   }
 
@@ -249,11 +247,10 @@ class ScavengeState : public RootCallback {
       Object* content = roots[i];
       if (!content->is_heap_object()) continue;  // Do nothing.
       HeapObject* heap_object = HeapObject::cast(content);
-      if (Heap::in_read_only_program_heap(heap_object, _heap)) continue;  // Do nothing, content is outside heap.
-      Object* header = HeapObject::cast(content)->header_during_gc();
-      roots[i] = is_forward_address(header)          // Check whether there is a forward address.
-          ? header                                   // if so, update the root with the forwarding.
-          : copy_object(HeapObject::cast(content));  // otherwise, copy the object.
+      if (heap_object->on_program_heap(_process)) continue;  // Do nothing, content is outside heap.
+      roots[i] = heap_object->has_forwarding_address()  // Has the object already been copied to new-space.
+          ? heap_object->forwarding_address() // Update the root with the forwarding.
+          : copy_object(heap_object);         // Otherwise, copy the object.
     }
   }
 
@@ -274,6 +271,7 @@ class ScavengeState : public RootCallback {
   BlockList blocks;
  private:
   Heap* _heap;
+  Process* _process;
   ScavengeScope _scope;
 };
 
@@ -287,7 +285,9 @@ ObjectHeap::ObjectHeap(Program* program, Process* owner, Block* block)
     , _external_memory(0)
     , _hatch_method(Method::invalid())
     , _finalizer_notifier(null)
-    , _gc_count(0) {
+    , _gc_count(0)
+    , _global_variables(null) {
+  if (block == null) return;
   _task = allocate_task();
   _global_variables = _copy_global_variables();
   // Currently the heap is empty and it has one block allocated for objects.
@@ -409,7 +409,6 @@ Task* ObjectHeap::allocate_task() {
   Smi* task_id = program()->task_class_id();
   Task* result = unvoid_cast<Task*>(allocate_instance(program()->class_tag_for(task_id), task_id, Smi::from(program()->instance_size_for(task_id))));
   if (result == null) return null;  // Allocation failure.
-  ASSERT(owner() == result->owner());
   Task::cast(result)->_initialize(stack, Smi::from(owner()->next_task_id()));
   int instance_size = program()->instance_size_for(result);
   for (int i = Task::ID_INDEX + 1; i < result->length(instance_size); i++) {
@@ -426,7 +425,6 @@ Stack* ObjectHeap::allocate_stack(int length) {
   // Initialize object.
   result->_set_header(program(), program()->stack_class_id());
   Stack::cast(result)->_initialize(length);
-  ASSERT(owner() == result->owner());
   return result;
 }
 
@@ -484,7 +482,7 @@ int ObjectHeap::scavenge() {
     if (!_registered_finalizers.is_empty() && Flags::tracegc && Flags::verbose) printf(" - Processing registered finalizers\n");
     ObjectHeap* heap = this;
     _registered_finalizers.remove_wherever([&ss, heap](FinalizerNode* node) -> bool {
-      bool is_alive = ScavengeState::is_forward_address(node->key()->header_during_gc());
+      bool is_alive = node->key()->has_forwarding_address();
       if (!is_alive) {
         // Clear the key so it is not retained.
         node->set_key(heap->program()->null_object());
@@ -508,7 +506,7 @@ int ObjectHeap::scavenge() {
 
     // Process registered VM finalizers.
     _registered_vm_finalizers.remove_wherever([&ss, this](VMFinalizerNode* node) -> bool {
-      bool is_alive = ScavengeState::is_forward_address(node->key()->header_during_gc());
+      bool is_alive = node->key()->has_forwarding_address();
 
       if (is_alive && Flags::tracegc && Flags::verbose) printf(" - Finalizer %p is alive\n", node);
       if (is_alive) {
@@ -644,41 +642,6 @@ void ObjectHeap::set_finalizer_notifier(ObjectNotifier* notifier) {
 
   if (!_runnable_finalizers.is_empty()) {
     notifier->notify();
-  }
-}
-
-void FinalizerNode::roots_do(RootCallback* cb) {
-  cb->do_root(reinterpret_cast<Object**>(&_key));
-  cb->do_root(reinterpret_cast<Object**>(&_lambda));
-}
-
-void VMFinalizerNode::roots_do(RootCallback* cb) {
-  cb->do_root(reinterpret_cast<Object**>(&_key));
-}
-
-void VMFinalizerNode::free_external_memory(Process* process) {
-  uint8* memory = null;
-  word accounting_size = 0;
-  if (key()->is_byte_array()) {
-    ByteArray* byte_array = ByteArray::cast(key());
-    if (byte_array->external_tag() == MappedFileTag) return;  // TODO(Lau): release mapped file, so flash storage can be reclaimed.
-    ASSERT(byte_array->has_external_address());
-    ByteArray::Bytes bytes(byte_array);
-    memory = bytes.address();
-    accounting_size = bytes.length();
-    // Accounting size is 0 if the byte array is tagged, since we don't account
-    // memory for Resources etc.
-    ASSERT(byte_array->external_tag() == RawByteTag || byte_array->external_tag() == NullStructTag);
-  } else if (key()->is_string()) {
-    String* string = String::cast(key());
-    memory = string->as_external();
-    // Add one because the strings are allocated with a null termination byte.
-    accounting_size = string->length() + 1;
-  }
-  if (memory != null) {
-    if (Flags::allocation) printf("Deleting external memory for string %p\n", memory);
-    free(memory);
-    process->unregister_external_allocation(accounting_size);
   }
 }
 

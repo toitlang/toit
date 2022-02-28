@@ -17,7 +17,6 @@
 
 #include "process.h"
 #include "objects.h"
-#include "objects_inline.h"
 #include "primitive_font.h"
 #include "primitive.h"
 #include "sha256.h"
@@ -503,7 +502,7 @@ PRIMITIVE(get_nonbuiltin) {
     const uint8* font_characters;
     bool was_allocated = false;
     // If the byte array is in the program image we should just point at it.
-    if (Heap::in_read_only_program_heap(HeapObject::cast(block_array), process->object_heap())) {
+    if (HeapObject::cast(block_array)->on_program_heap(process)) {
       font_characters = bytes;
     } else {
       auto mutable_font_characters = manager.alloc(length);

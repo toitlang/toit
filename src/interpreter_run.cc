@@ -18,11 +18,12 @@
 #include <math.h>
 
 #include "flags.h"
-#include "objects_inline.h"
 #include "printing.h"
 #include "process.h"
 #include "scheduler.h"
 #include "vm.h"
+
+#include "objects_inline.h"
 
 namespace toit {
 
@@ -84,16 +85,16 @@ Method Program::find_method(Object* receiver, int offset) {
   return entry;
 }
 
-// OPCODE_TRACE is only called from within Interpreter::_run which gives access to:
+// OPCODE_TRACE is only called from within Interpreter::run which gives access to:
 //   uint8* bcp;
 //   uword index;
 #ifdef PROFILER
 #define OPCODE_TRACE()                                         \
   if (_is_profiler_active) profile_increment(bcp);             \
-  if (Flags::trace) _trace(bcp);
+  if (Flags::trace) trace(bcp);
 #else
 #define OPCODE_TRACE()                                         \
-  if (Flags::trace) _trace(bcp);
+  if (Flags::trace) trace(bcp);
 #endif
 
 // Dispatching helper macros.
@@ -282,7 +283,7 @@ inline bool intrinsic_ushr(Object* a, Object* b, Smi** result) {
   return true;
 }
 
-Interpreter::Result Interpreter::_run() {
+Interpreter::Result Interpreter::run() {
 #define LABEL(opcode, length, format, print) &&interpret_##opcode,
   static void* dispatch_table[] = {
     BYTECODES(LABEL)
@@ -354,7 +355,7 @@ Interpreter::Result Interpreter::_run() {
   OPCODE_BEGIN(LOAD_OUTER);
     B_ARG1(stack_offset);
     Smi* block = Smi::cast(POP());
-    Object** block_ptr = _from_block(block);
+    Object** block_ptr = from_block(block);
     PUSH(block_ptr[stack_offset]);
   OPCODE_END();
 
@@ -362,7 +363,7 @@ Interpreter::Result Interpreter::_run() {
     B_ARG1(stack_offset);
     Object* value = POP();
     Smi* block = Smi::cast(POP());
-    Object** block_ptr = _from_block(block);
+    Object** block_ptr = from_block(block);
     block_ptr[stack_offset] = value;
     PUSH(value);
   OPCODE_END();
@@ -480,14 +481,14 @@ Interpreter::Result Interpreter::_run() {
 
   OPCODE_BEGIN(LOAD_BLOCK);
     B_ARG1(index);
-    PUSH(_to_block(sp + index));
+    PUSH(to_block(sp + index));
   OPCODE_END();
 
   OPCODE_BEGIN(LOAD_OUTER_BLOCK);
     B_ARG1(index);
     Smi* block = Smi::cast(POP());
-    Object** block_ptr = _from_block(block);
-    PUSH(_to_block(&block_ptr[index]));
+    Object** block_ptr = from_block(block);
+    PUSH(to_block(&block_ptr[index]));
   OPCODE_END();
 
   OPCODE_BEGIN(POP);
@@ -625,7 +626,7 @@ Interpreter::Result Interpreter::_run() {
   OPCODE_BEGIN(INVOKE_BLOCK);
     B_ARG1(index);
     Smi* block = Smi::cast(STACK_AT(index - 1));
-    Object** block_ptr = _from_block(block);
+    Object** block_ptr = from_block(block);
     Method target(program->bytecodes, Smi::cast(*block_ptr)->value());
     int extra = index - target.arity();
     if (extra < 0) {
@@ -764,7 +765,7 @@ Interpreter::Result Interpreter::_run() {
       POP();
       DISPATCH(INVOKE_EQ_LENGTH);
     } else if (int result = compare_numbers(a0, a1)) {
-      STACK_AT_PUT(1, boolean(program, (result & EQUAL) != 0));
+      STACK_AT_PUT(1, boolean(program, (result & COMPARE_FLAG_EQUAL) != 0));
       POP();
       DISPATCH(INVOKE_EQ_LENGTH);
     }
@@ -793,10 +794,10 @@ Interpreter::Result Interpreter::_run() {
     goto INVOKE_VIRTUAL_FALLBACK;                                      \
   OPCODE_END();
 
-  INVOKE_RELATIONAL(INVOKE_LT,  <  , STRICTLY_LESS)
-  INVOKE_RELATIONAL(INVOKE_LTE, <= , LESS_EQUAL)
-  INVOKE_RELATIONAL(INVOKE_GT,  >  , STRICTLY_GREATER)
-  INVOKE_RELATIONAL(INVOKE_GTE, >= , GREATER_EQUAL)
+  INVOKE_RELATIONAL(INVOKE_LT,  <  , COMPARE_FLAG_STRICTLY_LESS)
+  INVOKE_RELATIONAL(INVOKE_LTE, <= , COMPARE_FLAG_LESS_EQUAL)
+  INVOKE_RELATIONAL(INVOKE_GT,  >  , COMPARE_FLAG_STRICTLY_GREATER)
+  INVOKE_RELATIONAL(INVOKE_GTE, >= , COMPARE_FLAG_GREATER_EQUAL)
 #undef INVOKE_RELATIONAL
 
 #define INVOKE_ARITHMETIC(opcode, op)                                  \
@@ -1042,7 +1043,7 @@ Interpreter::Result Interpreter::_run() {
     // The exception is already in TOS.
     // Push the target address (the base), and the marker that this is an exception.
     // The unwind-code will find the first finally and execute it.
-    PUSH(_to_block(_base));
+    PUSH(to_block(_base));
     PUSH(Smi::from(UNWIND_REASON_WHEN_THROWING_EXCEPTION));
     goto UNWIND_IMPLEMENTATION;
   OPCODE_END();
@@ -1085,9 +1086,9 @@ Interpreter::Result Interpreter::_run() {
 #define NON_LOCAL_RETURN_impl(arity, height)                                                  \
     Smi* block = Smi::cast(POP());                                                            \
     Object* result = POP();                                                                   \
-    Object** target_sp = _from_block(block) + height + 1;                                     \
+    Object** target_sp = from_block(block) + height + 1;                                      \
     PUSH(result);                                                                             \
-    PUSH(_to_block(target_sp));                                                               \
+    PUSH(to_block(target_sp));                                                                \
     /* -1 and -2 are used as markers.*/                                                       \
     static_assert(UNWIND_REASON_WHEN_THROWING_EXCEPTION == -2, "Unexpected unwind reason");   \
     ASSERT(Smi::from(arity << 1)->value() != -1);                                             \
@@ -1113,10 +1114,10 @@ Interpreter::Result Interpreter::_run() {
     B_ARG1(height_diff);
     uint32 absolute_bci = Utils::read_unaligned_uint32(bcp + 2);
     Smi* block = Smi::cast(POP());
-    Object** target_sp = _from_block(block);
+    Object** target_sp = from_block(block);
     _index_ = 0;
     PUSH(Smi::from(height_diff));
-    PUSH(_to_block(target_sp));
+    PUSH(to_block(target_sp));
     auto encoded_bci = Smi::from((absolute_bci << 1) | 1);
     // -1 and -2 are used as markers.
     static_assert(UNWIND_REASON_WHEN_THROWING_EXCEPTION == -2, "Unexpected unwind reason");
@@ -1176,7 +1177,7 @@ Interpreter::Result Interpreter::_run() {
     }
     // Find target sp.
     Smi* block = Smi::cast(POP());
-    Object** target_sp = _from_block(block);
+    Object** target_sp = from_block(block);
     Object* result_or_height_diff = POP();
 
     if (target_sp > _try_sp) {
@@ -1207,7 +1208,7 @@ Interpreter::Result Interpreter::_run() {
       // Update the link-information.
       int link_offset = _try_sp - sp;
       STACK_AT_PUT(link_offset + 1, tos);
-      STACK_AT_PUT(link_offset + 2, _to_block(target_sp));
+      STACK_AT_PUT(link_offset + 2, to_block(target_sp));
       STACK_AT_PUT(link_offset + 3, result_or_height_diff);
 
       // Simulate a return (without replacing the block-pointer with a result,
@@ -1304,7 +1305,7 @@ Interpreter::Result Interpreter::_run() {
     Smi* block = Smi::cast(STACK_AT(parameter_offset + 0));
     Smi* end = Smi::cast(STACK_AT(parameter_offset + 1));  // This.
 
-    Object** block_ptr = _from_block(block);
+    Object** block_ptr = from_block(block);
     Method target = Method(program->bytecodes, Smi::cast(*block_ptr)->value());
 
     // If the block takes the wrong number of arguments, we let the intrinsic fail and
@@ -1345,7 +1346,7 @@ Interpreter::Result Interpreter::_run() {
     Smi* end = Smi::cast(STACK_AT(parameter_offset + 1));
     Array* backing = Array::cast(STACK_AT(parameter_offset + 2));
 
-    Object** block_ptr = _from_block(block);
+    Object** block_ptr = from_block(block);
     Method target = Method(program->bytecodes, Smi::cast(*block_ptr)->value());
 
     // If the block takes the wrong number of arguments, we let the intrinsic fail and
@@ -1415,7 +1416,7 @@ Interpreter::Result Interpreter::_run() {
       word c = -(Smi::cast(return_value)->value() + 1);
       STACK_AT_PUT(STATE, Smi::from(c));
       Smi* block = Smi::cast(STACK_AT(parameter_offset + BLOCK));
-      Method target = Method(program->bytecodes, Smi::cast(*_from_block(block))->value());
+      Method target = Method(program->bytecodes, Smi::cast(*from_block(block))->value());
       PUSH(block);
       PUSH(entry);
       if (target.arity() > 2) {
@@ -1520,7 +1521,7 @@ Interpreter::Result Interpreter::_run() {
       STACK_AT_PUT(STATE, Smi::from(STATE_START));
       // Call the rebuild block with old_size as argument.
       Smi* rebuild_block = Smi::cast(STACK_AT(parameter_offset + REBUILD));
-      Method rebuild_target = Method(program->bytecodes, Smi::cast(*_from_block(rebuild_block))->value());
+      Method rebuild_target = Method(program->bytecodes, Smi::cast(*from_block(rebuild_block))->value());
       PUSH(rebuild_block);
       PUSH(STACK_AT(OLD_SIZE));
       CALL_METHOD(rebuild_target, 0);  // Continue at the same bytecode after the block call.
@@ -1536,9 +1537,9 @@ Interpreter::Result Interpreter::_run() {
     if (state == STATE_START || state == STATE_AFTER_COMPARE) {
       Object* index_spaces_left_object = collection->at(1);
       Object* size_object = collection->at(0);
-      Object* not_found_block = *_from_block(Smi::cast(STACK_AT(parameter_offset + NOT_FOUND)));
-      Object* rebuild_block   = *_from_block(Smi::cast(STACK_AT(parameter_offset + REBUILD)));
-      Object* compare_block   = *_from_block(Smi::cast(STACK_AT(parameter_offset + COMPARE)));
+      Object* not_found_block = *from_block(Smi::cast(STACK_AT(parameter_offset + NOT_FOUND)));
+      Object* rebuild_block   = *from_block(Smi::cast(STACK_AT(parameter_offset + REBUILD)));
+      Object* compare_block   = *from_block(Smi::cast(STACK_AT(parameter_offset + COMPARE)));
       Method not_found_target = Method(program->bytecodes, Smi::cast(not_found_block)->value());
       Method rebuild_target   = Method(program->bytecodes, Smi::cast(rebuild_block)->value());
       Method compare_target   = Method(program->bytecodes, Smi::cast(compare_block)->value());
@@ -1706,7 +1707,7 @@ Interpreter::Result Interpreter::_run() {
         if (!append_position->is_smi()) {  // If it is null we haven't called not_found yet.
           Smi* not_found_block = Smi::cast(STACK_AT(parameter_offset + NOT_FOUND));
           Method not_found_target =
-              Method(program->bytecodes, Smi::cast(*_from_block(not_found_block))->value());
+              Method(program->bytecodes, Smi::cast(*from_block(not_found_block))->value());
           PUSH(not_found_block);
           CALL_METHOD(not_found_target, 0);  // Continue at the same bytecode.
           UNREACHABLE();
@@ -1743,7 +1744,7 @@ Interpreter::Result Interpreter::_run() {
           STACK_AT_PUT(SLOT_STEP, Smi::from(slot_step));
           STACK_AT_PUT(POSITION, position);
           Smi* compare_block  = Smi::cast(STACK_AT(parameter_offset + COMPARE));
-          Method compare_target   = Method(program->bytecodes, Smi::cast(*_from_block(compare_block))->value());
+          Method compare_target   = Method(program->bytecodes, Smi::cast(*from_block(compare_block))->value());
           Object* key = STACK_AT(parameter_offset + KEY);
           PUSH(compare_block);
           PUSH(key);

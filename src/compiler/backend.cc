@@ -134,7 +134,7 @@ Program* Backend::emit(ir::Program* ir_program, char** snapshot_args) {
     source_mapper()->register_selector_offset(offset, selector.name().c_str());
   });
 
-  auto program = _new Program();
+  auto program = _new Program(null, 0);
   ProgramBuilder program_builder(program);
   program_builder.create_dispatch_table(dispatch_table.length());
 

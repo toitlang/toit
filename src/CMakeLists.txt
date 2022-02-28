@@ -34,7 +34,18 @@ file(GLOB lwip_on_linux_sources_SRC
   "third_party/lwip_on_linux/*.cc"
   )
 
-set(toit_vm_SRC ${toit_resources_SRC} ${toit_event_sources_SRC} ${lwip_on_linux_sources_SRC})
+file(GLOB gc_sources_SRC
+  #"third_party/dartino/object_memory.h"
+  #"third_party/dartino/object_memory.cc"
+  #"third_party/dartino/object_memory_copying.cc"
+  #"third_party/dartino/object_memory_mark_sweep.cc"
+  #"third_party/dartino/gc_metadata.h"
+  #"third_party/dartino/gc_metadata.cc"
+  #"third_party/dartino/two_space_heap.h"
+  #"third_party/dartino/two_space_heap.cc"
+  )
+
+set(toit_vm_SRC ${toit_resources_SRC} ${toit_event_sources_SRC} ${lwip_on_linux_sources_SRC} ${gc_sources_SRC})
 
 add_library(
   toit_core
@@ -47,25 +58,18 @@ add_library(
   ${toit_core_SRC}
   )
 
+set_source_files_properties(interpreter_core.cc PROPERTIES COMPILE_FLAGS "-O3")
 set_source_files_properties(interpreter_run.cc PROPERTIES COMPILE_FLAGS "-O3 ${TOIT_INTERPRETER_FLAGS} $ENV{LOCAL_INTERPRETER_CXXFLAGS}")
 set_source_files_properties(utils.cc PROPERTIES COMPILE_FLAGS "-DTOIT_MODEL=\"\\\"${TOIT_MODEL}\\\"\" -DVM_GIT_INFO=\"\\\"${VM_GIT_INFO}\\\"\" -DVM_GIT_VERSION=\"\\\"${TOIT_GIT_VERSION}\\\"\"")
-
-add_custom_command(
-  OUTPUT  checksum.cc
-  COMMAND python ${TOIT_SDK_SOURCE_DIR}/tools/generate_checksum.py ${CMAKE_CURRENT_BINARY_DIR}/checksum.cc $<TARGET_FILE:toit_vm>
-  DEPENDS toit_vm
-  )
 
 add_executable(
   toit.run
   toit.cc
-  ${CMAKE_CURRENT_BINARY_DIR}/checksum.cc
   )
 
 add_executable(
   toit_run_image
   toit_run_image.cc
-  ${CMAKE_CURRENT_BINARY_DIR}/checksum.cc
   )
 
 set_target_properties(toit_run_image
@@ -76,7 +80,11 @@ set_target_properties(toit_run_image
 # On linux, we need to link statically against libgcc as well.
 if ("${CMAKE_SYSTEM_NAME}" MATCHES "Linux")
   set(TOIT_LINK_LIBS_LIBGCC -static-libgcc)
-  set(TOIT_LINK_SEGFAULT SegFault)
+
+  find_library(SEGFAULT_LIB SegFault)
+  if (SEGFAULT_LIB)
+    set(TOIT_LINK_SEGFAULT SegFault)
+  endif()
 endif()
 
 if (DEFINED USE_LWIP)
@@ -161,8 +169,10 @@ get_filename_component(TOIT_IMAGE "$ENV{IMAGE}" REALPATH BASE_DIR "${CMAKE_SOURC
 
 add_library(
   toit_image
+  STATIC
   EXCLUDE_FROM_ALL
-  ${CMAKE_CURRENT_BINARY_DIR}/checksum.cc
   ${TOIT_IMAGE}
 )
+
+set_target_properties(toit_image PROPERTIES LINKER_LANGUAGE ASM)
 #endif

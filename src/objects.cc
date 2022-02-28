@@ -19,6 +19,7 @@
 #include "encoder.h"
 #include "printing.h"
 #include "process.h"
+#include "program_heap.h"
 #include "snapshot.h"
 #include "utils.h"
 
@@ -176,6 +177,10 @@ int HeapObject::size(Program* program) {
       return Double::allocation_size();
     case TypeTag::LARGE_INTEGER_TAG:
       return LargeInteger::allocation_size();
+    case TypeTag::FREE_LIST_REGION_TAG:
+      return FreeListRegion::cast(this)->size();
+    case TypeTag::SINGLE_FREE_WORD_TAG:
+      return WORD_SIZE;
     default:
       FATAL("Unexpected class tag");
       return -1;
@@ -188,7 +193,7 @@ void HeapObject::roots_do(Program* program, RootCallback* cb) {
       Array::cast(this)->roots_do(cb);
       break;
     case TypeTag::STACK_TAG:
-      Stack::cast(this)->roots_do(cb);
+      Stack::cast(this)->roots_do(program, cb);
       break;
     case TypeTag::TASK_TAG:
     case TypeTag::INSTANCE_TAG:
@@ -199,7 +204,9 @@ void HeapObject::roots_do(Program* program, RootCallback* cb) {
     case TypeTag::DOUBLE_TAG:
     case TypeTag::LARGE_INTEGER_TAG:
     case TypeTag::BYTE_ARRAY_TAG:
-      // No roots other than class.
+    case TypeTag::FREE_LIST_REGION_TAG:
+    case TypeTag::SINGLE_FREE_WORD_TAG:
+      // No roots.
       break;
     default:
       FATAL("Unexpected class tag");
@@ -209,6 +216,21 @@ void HeapObject::roots_do(Program* program, RootCallback* cb) {
 void HeapObject::_set_header(Program* program, Smi* id) {
   TypeTag tag = program->class_tag_for(id);
   _set_header(id, tag);
+}
+
+FreeListRegion* FreeListRegion::create_at(uword start, uword size) {
+  if (size >= MINIMUM_SIZE) {
+    auto self = reinterpret_cast<FreeListRegion*>(start);
+    self->_set_header(Smi::from(FREE_LIST_REGION_CLASS_ID), FREE_LIST_REGION_TAG);
+    self->_word_at_put(SIZE_OFFSET, size);
+    self->_at_put(NEXT_OFFSET, null);
+    return self;
+  }
+  for (uword i = 0; i < size; i += WORD_SIZE) {
+    auto one_word = reinterpret_cast<FreeListRegion*>(start + i);
+    one_word->_set_header(Smi::from(SINGLE_FREE_WORD_CLASS_ID), SINGLE_FREE_WORD_TAG);
+  }
+  return null;
 }
 
 class PointerRootCallback : public RootCallback {
@@ -252,11 +274,8 @@ void Array::roots_do(RootCallback* cb) {
   cb->do_roots(_root_at(_offset_from(0)), length());
 }
 
-void Stack::roots_do(RootCallback* cb) {
+void Stack::roots_do(Program* program, RootCallback* cb) {
   int top = this->top();
-  Process* owner = this->owner();
-  ASSERT(owner != null);
-  Program* program = owner->program();
   // Skip over pointers into the bytecodes.
   void* bytecodes_from = program->bytecodes.data();
   void* bytecodes_to = &program->bytecodes.data()[program->bytecodes.length()];
@@ -340,20 +359,16 @@ void Stack::transfer_from_interpreter(Interpreter* interpreter) {
   ASSERT(top() > 0 && top() <= length());
 }
 
-bool HeapObject::is_at_block_top() {
-  Block* block = Block::from(this);
-  return _raw_at(size(block->process()->program())) == block->top();
-}
-
-void ByteArray::resize(int new_length) {
-  ASSERT(!has_external_address());
-  ASSERT(new_length <= raw_length());
-  ASSERT(is_at_block_top());
-  if (new_length != raw_length()) {
-    int new_size = ByteArray::internal_allocation_size(new_length);
-    Block::from(this)->shrink_top(size() - new_size);
-    _word_at_put(LENGTH_OFFSET, new_length);
-    ASSERT(is_at_block_top());
+void ByteArray::resize_external(Process* process, word new_length) {
+  ASSERT(has_external_address());
+  ASSERT(external_tag() == RawByteTag);
+  ASSERT(new_length <= _external_length());
+  process->unregister_external_allocation(_external_length());
+  process->register_external_allocation(new_length);
+  _set_external_length(new_length);
+  uint8* new_data = AllocationManager::reallocate(_external_address(), new_length);
+  if (new_data != null) {
+    _set_external_address(new_data);
   }
 }
 
@@ -534,6 +549,14 @@ void ByteArray::read_content(SnapshotReader* st, int len) {
     for (int index = 0; index < len; index++)
       bytes.at_put(index, st->read_cardinal());
   }
+}
+
+word ByteArray::max_internal_size() {
+  return Utils::max(max_internal_size_in_process(), max_internal_size_in_program());
+}
+
+word String::max_internal_size() {
+  return Utils::max(max_internal_size_in_process(), max_internal_size_in_program());
 }
 
 #endif  // TOIT_FREERTOS

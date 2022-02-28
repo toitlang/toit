@@ -221,7 +221,7 @@ void ZlibRle::output_repetitions(bool as_much_as_possible) {
       output_bits(reverse_7(1 + r - 3), 7);  // Codes 1-8 inclusive indicate 3-10 repetitions.
     } else {
       r -= 3;  // Boundaries between encodings are now on bit boundaries: 8-15, 16-31, 32-63...
-      int extra_bits_count = 29 - __builtin_clz(r);  // For 8-15, clz returns 28, for 16-31 clz returns 27.
+      int extra_bits_count = 29 - Utils::clz(r);  // For 8-15, clz returns 28, for 16-31 clz returns 27.
       ASSERT(1 <= extra_bits_count && extra_bits_count <= 5);
       int extra_bits = r & ((1 << extra_bits_count) - 1);
       // Get a number 0-3 that is added to the length code.

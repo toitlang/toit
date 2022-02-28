@@ -18,7 +18,6 @@
 namespace toit {
 
 #define NON_TLS_RESOURCE_CLASSES_DO(fn) \
-  fn(DNSLookupRequest)                  \
   fn(IntResource)                       \
   fn(LookupResult)                      \
   fn(LwIPSocket)                        \
@@ -38,6 +37,7 @@ namespace toit {
   fn(Adler32)                           \
   fn(ZlibRle)                           \
   fn(UARTResource)                      \
+  fn(AdcState)                          \
   fn(PWMResource)                       \
   fn(GAPResource)                       \
   fn(GATTResource)                      \
@@ -49,7 +49,6 @@ namespace toit {
   fn(MbedTLSSocket)                     \
 
 #define RESOURCE_GROUP_CLASSES_DO(fn)   \
-  fn(DNSResourceGroup)                  \
   fn(SimpleResourceGroup)               \
   fn(GPIOResourceGroup)                 \
   fn(I2CResourceGroup)                  \

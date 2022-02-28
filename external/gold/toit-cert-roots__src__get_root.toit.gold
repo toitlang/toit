@@ -1,0 +1,21 @@
+toit-cert-roots/src/certificate_roots.toit:4412:3: warning: Deprecated 'GLOBALSIGN_ROOT_CA'
+  GLOBALSIGN_ROOT_CA,
+  ^~~~~~~~~~~~~~~~~~
+toit-cert-roots/src/certificate_roots.toit:4427:3: warning: Deprecated 'DST_ROOT_CA_X3'
+  DST_ROOT_CA_X3,
+  ^~~~~~~~~~~~~~
+toit-cert-roots/src/certificate_roots.toit:4436:3: warning: Deprecated 'CYBERTRUST_GLOBAL_ROOT'
+  CYBERTRUST_GLOBAL_ROOT,
+  ^~~~~~~~~~~~~~~~~~~~~~
+toit-cert-roots/src/certificate_roots.toit:4482:3: warning: Deprecated 'GLOBALSIGN_ECC_ROOT_CA_R4'
+  GLOBALSIGN_ECC_ROOT_CA_R4,
+  ^~~~~~~~~~~~~~~~~~~~~~~~~
+toit-cert-roots/src/certificate_roots.toit:4512:3: warning: Deprecated 'GTS_ROOT_R1'
+  GTS_ROOT_R1,
+  ^~~~~~~~~~~
+toit-cert-roots/src/certificate_roots.toit:4513:3: warning: Deprecated 'GTS_ROOT_R2'
+  GTS_ROOT_R2,
+  ^~~~~~~~~~~
+toit-cert-roots/src/certificate_roots.toit:4514:3: warning: Deprecated 'GTS_ROOT_R3'
+  GTS_ROOT_R3,
+  ^~~~~~~~~~~

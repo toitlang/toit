@@ -18,7 +18,6 @@
 #include "flags.h"
 #include "heap_report.h"
 #include "interpreter.h"
-#include "objects_inline.h"
 #include "os.h"
 #include "primitive.h"
 #include "printing.h"
@@ -27,31 +26,21 @@
 #include "utils.h"
 #include "vm.h"
 
+#include "objects_inline.h"
+
 #ifdef TOIT_FREERTOS
 #include "esp_heap_caps.h"
 #endif
 
 namespace toit {
 
-ProgramHeap::ProgramHeap(Process* owner, Program* program, ProgramBlock* initial_block)
-    : ProgramRawHeap(owner)
-    , _program(program)
-    , _in_gc(false)
-    , _gc_allowed(true)
-    , _total_bytes_allocated(0)
-    , _last_allocation_result(ALLOCATION_SUCCESS) {
-  initial_block->_set_process(owner);
-  _blocks.append(initial_block);
-}
-
 ProgramHeap::ProgramHeap(Program* program, ProgramBlock* initial_block)
-    : ProgramRawHeap(null)
+    : ProgramRawHeap()
     , _program(program)
     , _in_gc(false)
     , _gc_allowed(true)
     , _total_bytes_allocated(0)
     , _last_allocation_result(ALLOCATION_SUCCESS) {
-  initial_block->_set_process(null);
   _blocks.append(initial_block);
 }
 
@@ -76,7 +65,7 @@ Instance* ProgramHeap::allocate_instance(TypeTag class_tag, Smi* class_id, Smi* 
 
 Array* ProgramHeap::allocate_array(int length, Object* filler) {
   ASSERT(length >= 0);
-  ASSERT(length <= Array::max_length());
+  ASSERT(length <= Array::max_length_in_program());
   HeapObject* result = _allocate_raw(Array::allocation_size(length));
   if (result == null) {
     return null;  // Allocation failure.
@@ -89,7 +78,7 @@ Array* ProgramHeap::allocate_array(int length, Object* filler) {
 
 Array* ProgramHeap::allocate_array(int length) {
   ASSERT(length >= 0);
-  ASSERT(length <= Array::max_length());
+  ASSERT(length <= Array::max_length_in_program());
   HeapObject* result = _allocate_raw(Array::allocation_size(length));
   if (result == null) {
     return null;  // Allocation failure.
@@ -103,7 +92,7 @@ Array* ProgramHeap::allocate_array(int length) {
 ByteArray* ProgramHeap::allocate_internal_byte_array(int length) {
   ASSERT(length >= 0);
   // Byte array should fit within one heap block.
-  ASSERT(length <= ByteArray::max_internal_size());
+  ASSERT(length <= ByteArray::max_internal_size_in_program());
   ByteArray* result = unvoid_cast<ByteArray*>(_allocate_raw(ByteArray::internal_allocation_size(length)));
   if (result == null) return null;  // Allocation failure.
   // Initialize object.
@@ -136,7 +125,7 @@ int ProgramHeap::payload_size() {
 
 String* ProgramHeap::allocate_internal_string(int length) {
   ASSERT(length >= 0);
-  ASSERT(length <= String::max_internal_size());
+  ASSERT(length <= String::max_internal_size_in_program());
   HeapObject* result = _allocate_raw(String::internal_allocation_size(length));
   if (result == null) return null;
   // Initialize object.
@@ -182,7 +171,7 @@ String* ProgramHeap::allocate_string(const char* str) {
 }
 
 String* ProgramHeap::allocate_string(const char* str, int length) {
-  bool can_fit_in_heap_block = length <= String::max_internal_size();
+  bool can_fit_in_heap_block = length <= String::max_internal_size_in_program();
   String* result;
   if (can_fit_in_heap_block) {
     result = allocate_internal_string(length);
@@ -199,7 +188,7 @@ String* ProgramHeap::allocate_string(const char* str, int length) {
 }
 
 ByteArray* ProgramHeap::allocate_byte_array(const uint8* data, int length) {
-  if (length > ByteArray::max_internal_size()) {
+  if (length > ByteArray::max_internal_size_in_program()) {
     auto result = allocate_external_byte_array(length, const_cast<uint8*>(data));
     // We are on the program heap which should never run out of memory.
     ASSERT(result != null);

@@ -22,7 +22,7 @@ class SocketAddress:
     return (ip.hash_code * 11 + port * 1719) & 0xfffffff
 
   operator == other:
-    if other is not IpAddress: return false
+    if other is not SocketAddress: return false
     return ip == other.ip and port == other.port
 
   stringify -> string:
