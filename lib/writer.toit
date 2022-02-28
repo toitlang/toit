@@ -31,6 +31,7 @@ class Writer:
   If the internal writer has an error, it is not possible to see how much data was
     written. If it is necessary to know how much data was correctly written, then
     the internal writer must be used directly.
+  May yield.
   */
   write data from/int=0 to/int=data.size:
     size := to - from
