@@ -212,14 +212,14 @@ test_entry_timeouts:
   task::
     mutex.do:
       ready.up
-      sleep --ms=200
+      sleep --ms=300
   // Try to get hold of the mutex. Make sure it times
   // out as expected.
   ready.down
   10.repeat:
     task::
       expect_throw DEADLINE_EXCEEDED_ERROR:
-        with_timeout --ms=50:
+        with_timeout --ms=10:
           mutex.do:
             value++
       done.up
