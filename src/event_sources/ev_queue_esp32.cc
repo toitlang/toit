@@ -20,15 +20,15 @@
 #include "../objects_inline.h"
 #include "../process.h"
 
-#include "uart_esp32.h"
+#include "ev_queue_esp32.h"
 
 namespace toit {
 
-UARTEventSource* UARTEventSource::_instance = null;
+EventQueueEventSource* EventQueueEventSource::_instance = null;
 
-UARTEventSource::UARTEventSource()
-    : EventSource("UART")
-    , Thread("UART")
+EventQueueEventSource::EventQueueEventSource()
+    : EventSource("EVQ")
+    , Thread("EVQ")
     , _stop(xSemaphoreCreateBinary())
     , _queue_set(xQueueCreateSet(32)) {
   xQueueAddToSet(_stop, _queue_set);
@@ -40,16 +40,17 @@ UARTEventSource::UARTEventSource()
   _instance = this;
 }
 
-UARTEventSource::~UARTEventSource() {
+EventQueueEventSource::~EventQueueEventSource() {
   xSemaphoreGive(_stop);
 
   join();
 
+  vQueueDelete(_queue_set);
   vSemaphoreDelete(_stop);
   _instance = null;
 }
 
-void UARTEventSource::entry() {
+void EventQueueEventSource::entry() {
   Locker locker(mutex());
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + EVENT_SOURCE_MALLOC_TAG);
 
@@ -66,37 +67,37 @@ void UARTEventSource::entry() {
 
     // Then loop through all queues.
     for (auto r : resources()) {
-      UARTResource* uart_res = static_cast<UARTResource*>(r);
+      EventQueueResource* evq_res = static_cast<EventQueueResource*>(r);
       uart_event_t event;
-      while (xQueueReceive(uart_res->queue(), &event, 0)) {
+      while (xQueueReceive(evq_res->queue(), &event, 0)) {
         dispatch(locker, r, event.type);
       }
     }
   }
 }
 
-void UARTEventSource::on_register_resource(Locker& locker, Resource* r) {
-  UARTResource* uart_res = static_cast<UARTResource*>(r);
+void EventQueueEventSource::on_register_resource(Locker& locker, Resource* r) {
+  EventQueueResource* evq_res = static_cast<EventQueueResource*>(r);
   // We can only add to the queue set when the queue is empty, so we
   // repeatedly try to drain the queue before adding it to the set.
   int attempts = 0;
   do {
     if (attempts++ > 16) FATAL("couldn't register UART resource");
     uart_event_t event;
-    while (xQueueReceive(uart_res->queue(), &event, 0));
-  } while (xQueueAddToSet(uart_res->queue(), _queue_set) != pdPASS);
+    while (xQueueReceive(evq_res->queue(), &event, 0));
+  } while (xQueueAddToSet(evq_res->queue(), _queue_set) != pdPASS);
 }
 
-void UARTEventSource::on_unregister_resource(Locker& locker, Resource* r) {
-  UARTResource* uart_res = static_cast<UARTResource*>(r);
+void EventQueueEventSource::on_unregister_resource(Locker& locker, Resource* r) {
+  EventQueueResource* evq_res = static_cast<EventQueueResource*>(r);
   // We can only remove from the queue set when the queue is empty, so we
   // repeatedly try to drain the queue before removing it from the set.
   int attempts = 0;
   do {
     if (attempts++ > 16) FATAL("couldn't unregister UART resource");
     uart_event_t event;
-    while (xQueueReceive(uart_res->queue(), &event, 0));
-  } while (xQueueRemoveFromSet(uart_res->queue(), _queue_set) != pdPASS);
+    while (xQueueReceive(evq_res->queue(), &event, 0));
+  } while (xQueueRemoveFromSet(evq_res->queue(), _queue_set) != pdPASS);
 }
 
 } // namespace toit

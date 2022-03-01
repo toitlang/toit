@@ -26,27 +26,58 @@
 #include "../vm.h"
 
 #include "../event_sources/system_esp32.h"
+#include "event_sources/ev_queue_esp32.h"
 
 namespace toit {
 
 const i2s_port_t kInvalidPort = i2s_port_t(-1);
 
+const int kReadState = 1 << 0;
+const int kWriteState = 1 << 1;
+const int kErrorState = 1 << 2;
+
 ResourcePool<i2s_port_t, kInvalidPort> i2s_ports(
-  I2S_NUM_0
+    I2S_NUM_0
 #ifndef CONFIG_IDF_TARGET_ESP32C3
-, I2S_NUM_1
+    , I2S_NUM_1
 #endif
 );
 
 class I2SResourceGroup : public ResourceGroup {
- public:
+public:
   TAG(I2SResourceGroup);
-  I2SResourceGroup(Process* process, i2s_port_t port, int alignment)
-    : ResourceGroup(process)
+
+  I2SResourceGroup(Process *process, EventSource *event_source)
+      : ResourceGroup(process, event_source) {}
+
+  uint32_t on_event(Resource* r, word data, uint32_t state) {
+    switch (data) {
+      case I2S_EVENT_RX_DONE:
+        state |= kReadState;
+        break;
+
+      case I2S_EVENT_TX_DONE:
+        state |= kWriteState;
+        break;
+
+      case I2S_EVENT_DMA_ERROR:
+        state |= kErrorState;
+        break;
+    }
+
+    return state;
+  }
+};
+
+class I2SResource: public EventQueueResource {
+ public:
+  TAG(I2SResource);
+  I2SResource(I2SResourceGroup* group, i2s_port_t port, int alignment, QueueHandle_t queue)
+    : EventQueueResource(group, queue)
     , _port(port)
     , _alignment(alignment) { }
 
-  ~I2SResourceGroup() {
+  ~I2SResource() override {
     SystemEventSource::instance()->run([&]() -> void {
       FATAL_IF_NOT_ESP_OK(i2s_driver_uninstall(_port));
     });
@@ -56,16 +87,79 @@ class I2SResourceGroup : public ResourceGroup {
   i2s_port_t port() const { return _port; }
   int alignment() const { return _alignment; }
 
- private:
-  i2s_port_t _port;
-  int _alignment;
+private:
+   i2s_port_t _port;
+   int _alignment;
 };
+
+// The following function should be moved to i2s.c in the idf fork. For now it stays here and when
+// the PR is accepted, I suggest moving it. Keeping it here make the PR self-contained. The ESP_LOG* lines
+// should be uncommented when moving it to the idf fork.
+/**
+ * @brief   I2S set GPIO for mclk
+ *
+ * @param   i2s_num     I2S device number
+ * @param   gpio_num    GPIO number for mclk
+ * @return
+ *      - ESP_OK                Check or set success
+ *      - ESP_ERR_INVALID_ARG   GPIO is not available
+ */
+static esp_err_t i2s_check_set_mclk(i2s_port_t i2s_num, gpio_num_t gpio_num)
+{
+  if (gpio_num == -1) {
+    return ESP_OK;
+  }
+#if CONFIG_IDF_TARGET_ESP32
+  if (!(gpio_num == GPIO_NUM_0 || gpio_num == GPIO_NUM_1 || gpio_num == GPIO_NUM_3)) {
+    //ESP_LOGE(MODULE, "ESP32 only support to set GPIO0/GPIO1/GPIO3 as mclk signal, error GPIO number:%d", gpio_num);
+    return ESP_ERR_INVALID_ARG;
+  }
+  bool is_i2s0 = i2s_num == I2S_NUM_0;
+  if (gpio_num == GPIO_NUM_0) {
+    PIN_FUNC_SELECT(PERIPHS_IO_MUX_GPIO0_U, FUNC_GPIO0_CLK_OUT1);
+    WRITE_PERI_REG(PIN_CTRL, is_i2s0 ? 0xFFF0 : 0xFFFF);
+  } else if (gpio_num == GPIO_NUM_1) {
+    PIN_FUNC_SELECT(PERIPHS_IO_MUX_U0TXD_U, FUNC_U0TXD_CLK_OUT3);
+    WRITE_PERI_REG(PIN_CTRL, is_i2s0 ? 0xF0F0 : 0xF0FF);
+  } else {
+    PIN_FUNC_SELECT(PERIPHS_IO_MUX_U0RXD_U, FUNC_U0RXD_CLK_OUT2);
+    WRITE_PERI_REG(PIN_CTRL, is_i2s0 ? 0xFF00 : 0xFF0F);
+  }
+#else
+  ESP_RETURN_ON_FALSE(GPIO_IS_VALID_GPIO(gpio_num), ESP_ERR_INVALID_ARG, TAG, "mck_io_num invalid");
+    gpio_matrix_out_check_and_set(gpio_num, i2s_periph_signal[i2s_num].mck_out_sig, 0, 0);
+#endif
+  //ESP_LOGI(MODULE, "I2S%d, MCLK output by GPIO%d", i2s_num, gpio_num);
+  return ESP_OK;
+}
+
 
 MODULE_IMPLEMENTATION(i2s, MODULE_I2S);
 
 PRIMITIVE(init) {
-  ARGS(int, sck_pin, int, ws_pin, int, tx_pin,
-       int, sample_rate, int, bits_per_sample, int, buffer_size);
+  //printf("i2s.init\n");
+  ByteArray* proxy = process->object_heap()->allocate_proxy();
+  if (proxy == null) {
+    ALLOCATION_FAILED;
+  }
+
+  I2SResourceGroup* i2s = _new I2SResourceGroup(process, EventQueueEventSource::instance());
+  //printf("evs: %x\n", EventQueueEventSource::instance());
+  if (!i2s) {
+    MALLOC_FAILED;
+  }
+  //printf("resource_group (i2s): %x\n",i2s);
+
+  proxy->set_external_address(i2s);
+  return proxy;
+}
+
+
+PRIMITIVE(create) {
+  ARGS(I2SResourceGroup, group, int, sck_pin, int, ws_pin, int, tx_pin,
+       int, rx_pin, int, mclk_pin,
+       int, sample_rate, int, bits_per_sample, int, buffer_size,
+       bool, is_master, int, mclk_multiplier, bool, use_apll);
 
   i2s_port_t port = i2s_ports.any();
   if (port == kInvalidPort) OUT_OF_RANGE;
@@ -76,8 +170,28 @@ PRIMITIVE(init) {
     ALLOCATION_FAILED;
   }
 
+  int mode;
+  if (is_master) {
+    mode = I2S_MODE_MASTER;
+  } else {
+    mode = I2S_MODE_SLAVE;
+  }
+
+  if (tx_pin != -1) {
+    mode |= I2S_MODE_TX;
+  }
+
+  if (rx_pin != -1) {
+    mode |= I2S_MODE_RX;
+  }
+
+  int fixed_mclk = 0;
+  if (mclk_pin != -1) {
+    fixed_mclk = mclk_multiplier * sample_rate;
+  }
+
   i2s_config_t config = {
-    .mode = static_cast<i2s_mode_t>(I2S_MODE_MASTER | I2S_MODE_TX),
+    .mode = static_cast<i2s_mode_t>(mode),
     .sample_rate = sample_rate,
     .bits_per_sample = static_cast<i2s_bits_per_sample_t>(bits_per_sample),
     .channel_format = I2S_CHANNEL_FMT_RIGHT_LEFT,
@@ -87,18 +201,21 @@ PRIMITIVE(init) {
     .dma_buf_count = 4,
     // TODO(anders): Divide buf_len (and grow buf-count) if buffer_size is > 1024.
     .dma_buf_len = buffer_size / (bits_per_sample / 8),
+    .use_apll = use_apll,
+    .fixed_mclk = fixed_mclk
   };
 
   struct {
     i2s_port_t port;
     i2s_config_t config;
+    QueueHandle_t queue;
     esp_err_t err;
   } args {
     .port = port,
     .config = config
   };
   SystemEventSource::instance()->run([&]() -> void {
-    args.err = i2s_driver_install(args.port, &args.config, 0, NULL);
+    args.err = i2s_driver_install(args.port, &args.config, 32, &args.queue);
   });
   if (args.err != ESP_OK) {
     i2s_ports.put(port);
@@ -109,7 +226,7 @@ PRIMITIVE(init) {
     .bck_io_num = sck_pin >= 0 ? sck_pin : I2S_PIN_NO_CHANGE,
     .ws_io_num = ws_pin >= 0 ? ws_pin : I2S_PIN_NO_CHANGE,
     .data_out_num = tx_pin >= 0 ? tx_pin : I2S_PIN_NO_CHANGE,
-    .data_in_num = I2S_PIN_NO_CHANGE
+    .data_in_num = rx_pin >= 0 ? rx_pin : I2S_PIN_NO_CHANGE
   };
   esp_err_t err = i2s_set_pin(port, &pin_config);
   if (err != ESP_OK) {
@@ -120,7 +237,18 @@ PRIMITIVE(init) {
     return Primitive::os_error(err, process);
   }
 
-  I2SResourceGroup* i2s = _new I2SResourceGroup(process, port, buffer_size);
+  if (mclk_pin != -1) {
+    err = i2s_check_set_mclk(port, static_cast<gpio_num_t>(mclk_pin));
+    if (err != ESP_OK) {
+      SystemEventSource::instance()->run([&]() -> void {
+        i2s_driver_uninstall(port);
+      });
+      i2s_ports.put(port);
+      return Primitive::os_error(err, process);
+    }
+  }
+
+  I2SResource* i2s = _new I2SResource(group, port, buffer_size, args.queue);
   if (!i2s) {
     SystemEventSource::instance()->run([&]() -> void {
       i2s_driver_uninstall(port);
@@ -129,31 +257,52 @@ PRIMITIVE(init) {
     MALLOC_FAILED;
   }
 
+  group->register_resource(i2s);
+
   proxy->set_external_address(i2s);
 
   return proxy;
 }
 
 PRIMITIVE(close) {
-  ARGS(I2SResourceGroup, i2s);
-  i2s->tear_down();
+  ARGS(I2SResourceGroup, group, I2SResource, i2s);
+  group->unregister_resource(i2s);
   i2s_proxy->clear_external_address();
   return process->program()->null_object();
 }
 
 PRIMITIVE(write) {
-  ARGS(I2SResourceGroup, i2s, Blob, buffer);
+  ARGS(I2SResource, i2s, Blob, buffer);
 
   if (buffer.length() % i2s->alignment() != 0) INVALID_ARGUMENT;
 
   size_t written = 0;
-  esp_err_t err = i2s_write(i2s->port(), buffer.address(), buffer.length(), &written, 1000 / portTICK_RATE_MS);
+  esp_err_t err = i2s_write(i2s->port(), buffer.address(), buffer.length(), &written, 0);
   if (err != ESP_OK) {
     return Primitive::os_error(err, process);
   }
 
   return Smi::from(written);
 }
+
+PRIMITIVE(read) {
+  ARGS(I2SResource, i2s);
+
+  Error* error = null;
+  ByteArray* data = process->allocate_byte_array(i2s->alignment(), &error, /*force_external*/ true);
+  if (data == null) return error;
+
+  ByteArray::Bytes rx(data);
+  size_t read = 0;
+  esp_err_t err = i2s_read(i2s->port(), rx.address(), rx.length(), &read, 0);
+  if (err != ESP_OK) {
+    return Primitive::os_error(err, process);
+  }
+
+  data->resize_external(process, read);
+  return data;
+}
+
 
 } // namespace toit
 

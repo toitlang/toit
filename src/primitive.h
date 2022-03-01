@@ -343,9 +343,11 @@ namespace toit {
   PRIMITIVE(read_reg, 4)                     \
 
 #define MODULE_I2S(PRIMITIVE)                \
-  PRIMITIVE(init, 6)                         \
-  PRIMITIVE(close, 1)                        \
+  PRIMITIVE(init, 0)                        \
+  PRIMITIVE(create, 12)                      \
+  PRIMITIVE(close, 2)                        \
   PRIMITIVE(write, 2)                        \
+  PRIMITIVE(read,  1)                        \
 
 #define MODULE_SPI(PRIMITIVE)                \
   PRIMITIVE(init, 3)                         \
@@ -787,6 +789,7 @@ namespace toit {
 #define _A_T_Adler32(N, name)             MAKE_UNPACKING_MACRO(Adler32, N, name)
 #define _A_T_ZlibRle(N, name)             MAKE_UNPACKING_MACRO(ZlibRle, N, name)
 #define _A_T_UARTResource(N, name)        MAKE_UNPACKING_MACRO(UARTResource, N, name)
+#define _A_T_I2SResource(N, name)         MAKE_UNPACKING_MACRO(I2SResource, N, name)
 #define _A_T_AdcState(N, name)            MAKE_UNPACKING_MACRO(AdcState, N, name)
 #define _A_T_PWMResource(N, name)         MAKE_UNPACKING_MACRO(PWMResource, N, name)
 #define _A_T_GAPResource(N, name)         MAKE_UNPACKING_MACRO(GAPResource, N, name)
@@ -886,10 +889,25 @@ namespace toit {
   _A_T_##t10(9, n10); \
   _A_T_##t11(10, n11);
 
-#define _OVERRIDE(_1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16, _17, _18, _19, _20, _21, _22, NAME, ...) NAME
+#define _A_24(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, n6, t7, n7, t8, n8, t9, n9, t10, n10, t11, n11, t12, n12) \
+  _A_T_##t1(0, n1); \
+  _A_T_##t2(1, n2); \
+  _A_T_##t3(2, n3); \
+  _A_T_##t4(3, n4); \
+  _A_T_##t5(4, n5); \
+  _A_T_##t6(5, n6); \
+  _A_T_##t7(6, n7); \
+  _A_T_##t8(7, n8); \
+  _A_T_##t9(8, n9); \
+  _A_T_##t10(9, n10); \
+  _A_T_##t11(10, n11); \
+  _A_T_##t12(11, n12);
+
+#define _OVERRIDE(_1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16, _17, _18, _19, _20, _21, _22, _23, _24, NAME, ...) NAME
 
 #define ARGS(...)        \
   _OVERRIDE(__VA_ARGS__, \
+    _A_24, _ODD,         \
     _A_22, _ODD,         \
     _A_20, _ODD,         \
     _A_18, _ODD,         \
