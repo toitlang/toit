@@ -12,7 +12,7 @@ class Item:
     this.period = period & 0x7FFF
     this.value = value & 0b1
 
-  constructor.from_bytes bytes/ByteArray index/int:
+  constructor.from_bytes index/int bytes/ByteArray:
     period = (bytes[index] << 8 | bytes[index + 1]) >> 1
     value = bytes[index + 1] & 0x01
 
