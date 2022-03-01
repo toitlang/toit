@@ -51,14 +51,19 @@ class Controller:
       items_to_bytes_ items
 
   transfer_and_read items max_items_size:
-    throw "not implemented"
+    max_output_len := 4096
+    result := rmt_transfer_and_read_ tx_ch rx_ch
+      items_to_bytes_ items
+      max_output_len
+
+    return bytes_to_items_ items
 
   bytes_to_items_ bytes/ByteArray -> List:
     items_size := bytes.size / 2
     result := List items_size
     items_size.repeat:
       result.add
-        Item.from_bytes bytes it * 2
+        Item.from_bytes it * 2 bytes
     return result
 
   items_to_bytes_ items/List/*<Item>*/ -> ByteArray:
