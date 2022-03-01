@@ -22,6 +22,11 @@ class Item:
   second_byte -> int:
     return ((period << 1) & 0xFF) | value
 
+  operator == other/any:
+    if other is not Item: return false
+
+    return value == other.value and period == other.period
+
 class Controller:
   rx_ch/int?
   rx/gpio.Pin?
