@@ -33,12 +33,13 @@ url_encode_ from -> any:
       pos += 3
     else:
       result[pos++] = c
-  return result
+  return result.to_string
 
 /**
 Encodes the given $data using URL-encoding, also known as percent encoding.
 The $data must be a string or byte array.  The value returned is a string or
-  a byte array, but not necessarily of the same type as the $data.
+  a byte array.  It can only be a byte array if the input was a byte array
+  and in this case it can be the identical byte array that was passed in.
 The characters 0-9, A-Z, and a-z are unchanged by the encoding, as are the
   characters '-', '_', '.', and '~'.  All other characters are encoded in
   hexadecimal, using the percent sign.  Thus a space character is encoded
