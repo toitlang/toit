@@ -30,6 +30,14 @@
 
 namespace toit {
 
+// Because of the fixed metadata overhead we limit the max size of the
+// heap for now.  Can be fixed if we can resize the metadata on demand.
+#ifdef BUILD_64
+static const uword MAX_HEAP = 1ull * GB;  // Metadata ca. 8.5Mbytes.
+#else
+static const uword MAX_HEAP = 512ull * MB;  // Metadata ca. 8.2Mbytes.
+#endif
+
 int64 OS::get_system_time() {
   int64 us;
   if (!monotonic_gettime(&us)) {
@@ -218,6 +226,87 @@ void Thread::ensure_system_thread() {
   if (thread == null) FATAL("unable to allocate SystemThread");
   int result = pthread_setspecific(thread_key, void_cast(thread));
   if (result != 0) FATAL("pthread_setspecific failed");
+}
+
+OS::HeapMemoryRange OS::_single_range = { 0 };
+
+OS::HeapMemoryRange OS::get_heap_memory_range() {
+  // We make a single allocation to see where in the huge address space we can
+  // expect allocations.
+  void* probe = grab_vm(null, TOIT_PAGE_SIZE);
+  ungrab_vm(probe, TOIT_PAGE_SIZE);
+  uword addr = reinterpret_cast<uword>(probe);
+  uword HALF_MAX = MAX_HEAP / 2;
+  if (addr < HALF_MAX) {
+    // Address is near the start of address space, so we set the range
+    // to be the first MAX_HEAP of the address space.
+    _single_range.address = reinterpret_cast<void*>(TOIT_PAGE_SIZE);
+  } else if (addr + HALF_MAX + TOIT_PAGE_SIZE < addr) {
+    // Address is near the end of address space, so we set the range to
+    // be the last MAX_HEAP of the address space.
+    _single_range.address = reinterpret_cast<void*>(-static_cast<word>(MAX_HEAP + TOIT_PAGE_SIZE));
+  } else {
+    // We will be allocating within a symmetric range either side of this
+    // single allocation.
+    _single_range.address = reinterpret_cast<void*>(addr - HALF_MAX);
+  }
+  _single_range.size = MAX_HEAP;
+  return _single_range;
+}
+
+// The normal way to get an aligned address is to round up
+// the allocation size, then discard the unaligned ends.  Here
+// we try something slightly different: We try to get an allocation
+// near the unaligned one.  (If that fails we'll try random
+// addresses.)
+static void* try_grab_aligned(void* suggestion, uword size) {
+  ASSERT(size == Utils::round_up(size, TOIT_PAGE_SIZE));
+  void* result = OS::grab_vm(suggestion, size);
+  if (result == null) return result;
+  uword numeric = reinterpret_cast<uword>(result);
+  uword rounded = Utils::round_up(numeric, TOIT_PAGE_SIZE);
+  if (numeric == rounded) return result;
+  // If we got an allocation that was not toit-page-aligned,
+  // then it's a pretty good guess that the next few aligned
+  // addresses might work.
+  OS::ungrab_vm(result, size);
+  for (int i = 0; i < 4; i++) {
+    result = OS::grab_vm(reinterpret_cast<void*>(rounded), size);
+    if (result == reinterpret_cast<void*>(rounded)) return result;
+    if (result) OS::ungrab_vm(result, size);
+    rounded += size;
+  }
+  return OS::grab_vm(reinterpret_cast<void*>(rounded), size);
+}
+
+void* OS::allocate_pages(uword size) {
+  if (_single_range.size == 0) FATAL("GcMetadata::set_up not called");
+  size = Utils::round_up(size, TOIT_PAGE_SIZE);
+  uword original_size = size;
+  // First attempt, let the OS pick a location.
+  void* result = try_grab_aligned(null, size);
+  if (result == null) return null;
+  uword result_end = reinterpret_cast<uword>(result) + size;
+  int attempt = 0;
+  while (result < _single_range.address || result_end > reinterpret_cast<uword>(_single_range.address) + _single_range.size) {
+    if (attempt++ > 20) FATAL("Out of memory");
+    // We did not get a result in the right range.
+    // Try to use a random address in the right range.
+    ungrab_vm(result, size);
+#ifdef BUILD_64
+    uword mask = MAX_HEAP - 1;
+#else
+    word mask = -1;
+#endif
+    uword suggestion = reinterpret_cast<uword>(_single_range.address) + Utils::round_down(random() & mask, TOIT_PAGE_SIZE);
+    result = try_grab_aligned(reinterpret_cast<void*>(suggestion), size);
+  }
+  use_vm(result, original_size);
+  return result;
+}
+
+void OS::free_pages(void* address, uword size) {
+  ungrab_vm(address, size);
 }
 
 void OS::set_up() {

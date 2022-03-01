@@ -9,6 +9,7 @@
 #include "../../src/flags.h"
 #include "../../src/snapshot.h"
 #include "../../src/os.h"
+#include "../../src/third_party/dartino/gc_metadata.h"
 
 namespace toit {
 
@@ -76,11 +77,13 @@ int main(int argc, char **argv) {
 
   FlashRegistry::set_up();
   OS::set_up();
+  GcMetadata::set_up();
 
   auto compiled = compile(argv[1]);
   int result = run_program(compiled.snapshot());
   free(compiled.buffer());
 
+  GcMetadata::tear_down();
   OS::tear_down();
   FlashRegistry::tear_down();
   return result;

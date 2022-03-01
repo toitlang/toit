@@ -36,47 +36,62 @@ int OS::num_cores() {
 }
 
 void OS::free_block(Block* block) {
-  int result = munmap(void_cast(block), TOIT_PAGE_SIZE);
-  USE(result);
-  ASSERT(result == 0);
+  free_pages(void_cast(block), TOIT_PAGE_SIZE);
 }
 
 void OS::free_block(ProgramBlock* block) {
-  int result = munmap(void_cast(block), TOIT_PAGE_SIZE);
-  USE(result);
-  ASSERT(result == 0);
+  free_pages(void_cast(block), TOIT_PAGE_SIZE);
+}
+
+void* OS::grab_vm(void* address, uword size) {
+  void* result = mmap(address, size,
+      PROT_NONE,
+      MAP_PRIVATE | MAP_ANON, -1, 0);
+  if (result == MAP_FAILED) return null;
+  return result;
+}
+
+void OS::ungrab_vm(void* address, uword size) {
+  if (size > 0) {
+    int result = munmap(address, size);
+    if (result != 0) {
+      perror("munmap");
+      exit(1);
+    }
+  }
+}
+
+bool OS::use_vm(void* addr, uword sz) {
+  ASSERT(addr != null);
+  if (sz == 0) return true;
+  uword address = reinterpret_cast<uword>(addr);
+  uword end = address + sz;
+  uword rounded = Utils::round_down(address, 4096);
+  uword size = Utils::round_up(end - rounded, 4096);
+  int result = mprotect(reinterpret_cast<void*>(rounded), size, PROT_READ | PROT_WRITE);
+  if (result == 0) return true;
+  if (errno == ENOMEM) return false;
+  perror("mprotect");
+  exit(1);
+}
+
+void OS::unuse_vm(void* addr, uword sz) {
+  uword address = reinterpret_cast<uword>(addr);
+  uword end = address + sz;
+  uword rounded = Utils::round_up(address, 4096);
+  uword size = Utils::round_down(end - rounded, 4096);
+  if (size != 0) {
+    int result = mprotect(reinterpret_cast<void*>(rounded), size, PROT_NONE);
+    if (result == 0) return;
+    perror("mprotect");
+    exit(1);
+  }
 }
 
 Block* OS::allocate_block() {
-#if BUILD_64
-  uword size = TOIT_PAGE_SIZE * 2;
-  void* result = mmap(null, size,
-       PROT_READ | PROT_WRITE,
-       MAP_PRIVATE | MAP_ANON, -1, 0);
-  if (result == MAP_FAILED) return null;
-  uword addr = reinterpret_cast<uword>(result);
-  uword aligned = Utils::round_up(addr, TOIT_PAGE_SIZE);
-  if (aligned != addr) {
-    // Unmap the part at the beginning that we can't use because of alignment.
-    int unmap_result = munmap(reinterpret_cast<void*>(addr), aligned - addr);
-    USE(unmap_result);
-    ASSERT(unmap_result == 0);
-  }
-  if (aligned + TOIT_PAGE_SIZE != addr + size) {
-    // Unmap the part at the end that we can't use because of alignment.
-    int unmap_result = munmap(reinterpret_cast<void*>(aligned + TOIT_PAGE_SIZE), addr + size - aligned - TOIT_PAGE_SIZE);
-    USE(unmap_result);
-    ASSERT(unmap_result == 0);
-  }
-  return new (reinterpret_cast<void*>(aligned)) Block();
-#else
-  // Using 4k pages on 32 bit we know that the result of mmap will always be
-  // page aligned.
-  void* result = mmap(null, TOIT_PAGE_SIZE,
-       PROT_READ | PROT_WRITE,
-       MAP_PRIVATE | MAP_ANON, -1, 0);
-  return (result == MAP_FAILED) ? null : new (result) Block();
-#endif
+  void* result = allocate_pages(TOIT_PAGE_SIZE);
+  if (!result) return null;
+  return new (result) Block();
 }
 
 ProgramBlock* OS::allocate_program_block() {

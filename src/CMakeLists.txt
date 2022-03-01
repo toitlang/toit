@@ -35,14 +35,14 @@ file(GLOB lwip_on_linux_sources_SRC
   )
 
 file(GLOB gc_sources_SRC
-  #"third_party/dartino/object_memory.h"
-  #"third_party/dartino/object_memory.cc"
-  #"third_party/dartino/object_memory_copying.cc"
-  #"third_party/dartino/object_memory_mark_sweep.cc"
-  #"third_party/dartino/gc_metadata.h"
-  #"third_party/dartino/gc_metadata.cc"
-  #"third_party/dartino/two_space_heap.h"
-  #"third_party/dartino/two_space_heap.cc"
+  "third_party/dartino/object_memory.h"
+  "third_party/dartino/object_memory.cc"
+  "third_party/dartino/object_memory_copying.cc"
+  "third_party/dartino/object_memory_mark_sweep.cc"
+  "third_party/dartino/gc_metadata.h"
+  "third_party/dartino/gc_metadata.cc"
+  "third_party/dartino/two_space_heap.h"
+  "third_party/dartino/two_space_heap.cc"
   )
 
 set(toit_vm_SRC ${toit_resources_SRC} ${toit_event_sources_SRC} ${lwip_on_linux_sources_SRC} ${gc_sources_SRC})

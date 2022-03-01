@@ -194,6 +194,36 @@ class OS {
 
   static void close(int fd);
 
+  // Grab-vm reserves the virtual address range.  If the address is non-null
+  // then the system takes it as a preferred address, but may pick a different
+  // address address.  The address grabbed is returned.
+  // On a system without virtual memory this is just a malloc.  The size
+  // is rounded up to the page size on systems with virtual memory.
+  static void* grab_vm(void* address, uword size);
+  static void ungrab_vm(void* address, uword size);
+  // Use-vm makes the virtual address range usable (adds read-write permissions).
+  // Does nothing on a system without virtual memory.
+  static bool use_vm(void* address, uword size);
+  // Unuse-vm makes the virtual address range unusable (no read-write permissions),
+  // which frees up the memory, returning it to the OS.  The virtual address range
+  // is still reserved though.
+  // Does nothing on a system without virtual memory.
+  static void unuse_vm(void* address, uword size);
+
+  struct HeapMemoryRange {
+    void* address;
+    uword size;
+  };
+
+  // Inform the GC about the memory map so it knows where to expect allocations
+  // to happen.
+  static HeapMemoryRange get_heap_memory_range();
+
+  // Allocate/free some pages of memory.  They will be within the range
+  // returned by get_heap_memory_range.
+  static void* allocate_pages(uword size);
+  static void free_pages(void* address, uword size);
+
   static Block* allocate_block();
   static ProgramBlock* allocate_program_block();
   static void free_block(Block* block);
@@ -226,6 +256,7 @@ class OS {
 
   static Mutex* _global_mutex;
   static Mutex* _scheduler_mutex;
+  static HeapMemoryRange _single_range;
 
   friend class ConditionVariable;
 };
