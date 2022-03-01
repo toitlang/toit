@@ -38,10 +38,11 @@ class Controller:
     if rx: rmt_rx_ = rmt_use_ resource_group_ rx_ch
     if tx: rmt_tx_ = rmt_use_ resource_group_ tx_ch
 
-    // TODO config?
+    config_
 
-  config:
-    throw "not implemented"
+  config_:
+    if rx: rmt_config_ rx.num rx_ch false 500
+    if tx: rmt_config_ tx.num tx_ch true 0
 
   transfer items/List/*<Item>*/:
     if not rmt_tx_: throw "not configured for transfer"
