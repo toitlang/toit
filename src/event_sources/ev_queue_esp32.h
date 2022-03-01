@@ -43,10 +43,10 @@ class EventQueueEventSource : public EventSource, public Thread {
   static EventQueueEventSource* instance() { return _instance; }
 
   EventQueueEventSource();
-  ~EventQueueEventSource();
+  ~EventQueueEventSource() override;
 
  private:
-  void entry();
+  void entry() override;
 
   void on_register_resource(Locker& locker, Resource* r) override;
   void on_unregister_resource(Locker& locker, Resource* r) override;

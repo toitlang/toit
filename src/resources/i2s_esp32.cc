@@ -137,18 +137,15 @@ static esp_err_t i2s_check_set_mclk(i2s_port_t i2s_num, gpio_num_t gpio_num)
 MODULE_IMPLEMENTATION(i2s, MODULE_I2S);
 
 PRIMITIVE(init) {
-  //printf("i2s.init\n");
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) {
     ALLOCATION_FAILED;
   }
 
   I2SResourceGroup* i2s = _new I2SResourceGroup(process, EventQueueEventSource::instance());
-  //printf("evs: %x\n", EventQueueEventSource::instance());
   if (!i2s) {
     MALLOC_FAILED;
   }
-  //printf("resource_group (i2s): %x\n",i2s);
 
   proxy->set_external_address(i2s);
   return proxy;

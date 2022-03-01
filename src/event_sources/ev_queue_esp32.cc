@@ -67,7 +67,7 @@ void EventQueueEventSource::entry() {
 
     // Then loop through all queues.
     for (auto r : resources()) {
-      EventQueueResource* evq_res = static_cast<EventQueueResource*>(r);
+      auto evq_res = static_cast<EventQueueResource*>(r);
       uart_event_t event;
       while (xQueueReceive(evq_res->queue(), &event, 0)) {
         dispatch(locker, r, event.type);
@@ -77,7 +77,7 @@ void EventQueueEventSource::entry() {
 }
 
 void EventQueueEventSource::on_register_resource(Locker& locker, Resource* r) {
-  EventQueueResource* evq_res = static_cast<EventQueueResource*>(r);
+  auto evq_res = static_cast<EventQueueResource*>(r);
   // We can only add to the queue set when the queue is empty, so we
   // repeatedly try to drain the queue before adding it to the set.
   int attempts = 0;
@@ -89,7 +89,7 @@ void EventQueueEventSource::on_register_resource(Locker& locker, Resource* r) {
 }
 
 void EventQueueEventSource::on_unregister_resource(Locker& locker, Resource* r) {
-  EventQueueResource* evq_res = static_cast<EventQueueResource*>(r);
+  auto evq_res = static_cast<EventQueueResource*>(r);
   // We can only remove from the queue set when the queue is empty, so we
   // repeatedly try to drain the queue before removing it from the set.
   int attempts = 0;
