@@ -42,12 +42,38 @@ class Controller:
     if (tx and not tx_ch) or (not tx and tx_ch): throw "INVALID_ARGUMENT"
     if rx: rmt_rx_ = rmt_use_ resource_group_ rx_ch
     if tx: rmt_tx_ = rmt_use_ resource_group_ tx_ch
-
     config_
 
   config_:
-    if rx: rmt_config_ rx.num rx_ch false 500
-    if tx: rmt_config_ tx.num tx_ch true 0
+    if rx: config_rx_ --pin_num=rx.num --channel_num=rx_ch --mem_block_num=1
+    if tx: config_tx_ --pin_num=tx.num --channel_num=tx_ch
+
+  config_rx_
+      --pin_num/int
+      --channel_num/int
+      --mem_block_num/int=1
+      --clk_div/int=80
+      --flags/int=0
+      --idle_threshold/int=12000
+      --filter_en/bool=true
+      --filter_ticks_thresh/int=100:
+    rmt_config_rx_ rx.num rx_ch mem_block_num clk_div flags idle_threshold filter_en filter_ticks_thresh
+
+  config_rx_
+      --pin_num/int
+      --channel_num/int
+      --mem_block_num/int=1
+      --clk_div/int=80
+      --flags/int=0
+      --carrier_en/bool=false
+      --carrier_freq_hz/int=38000
+      --carrier_level/int=1
+      --carrier_duty_percent/int=33
+      --loop_en/bool=false
+      --idle_output_en/bool=true
+      --idle_level/int=0:
+    rmt_config_tx_ tx.num tx_ch mem_block_num clk_div flags carrier_en carrier_freq_hz carrier_level carrier_duty_percent loop_en idle_output_en idle_level
+
 
   transfer items/List/*<Item>*/:
     if not rmt_tx_: throw "not configured for transfer"
@@ -109,8 +135,13 @@ rmt_use_ resource_group channel_num:
 rmt_unuse_ resource_group resource:
   #primitive.rmt.unuse
 
-rmt_config_ pin_num/int channel_num/int is_tx/bool mem_block_num/int:
-  #primitive.rmt.config
+rmt_config_rx_ pin_num/int channel_num/int mem_block_num/int clk_div/int flags/int idle_threshold/int filter_en/bool filter_ticks_thresh/int:
+  #primitive.rmt.config_rx
+
+rmt_config_tx_ pin_num/int channel_num/int mem_block_num/int clk_div/int flags/int
+       carrier_en/bool carrier_freq_hz/int carrier_level/int carrier_duty_percent/int
+       loop_en/bool idle_output_en/bool idle_level/int:
+  #primitive.rmt.config_tx
 
 rmt_transfer_ tx_ch/int items_bytes/*/Blob*/:
   #primitive.rmt.transfer

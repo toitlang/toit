@@ -89,41 +89,65 @@ PRIMITIVE(unuse) {
   return process->program()->null_object();
 }
 
-PRIMITIVE(config) {
-  ARGS(int, pin_num, int, channel_num, bool, is_tx, int, mem_block_num)
-  if (mem_block_num < 2) INVALID_ARGUMENT;
+esp_err_t configure(const rmt_config_t* config, rmt_channel_t channel_num, Process* process) {
+  esp_err_t err = rmt_config(config);
+  if (ESP_OK != err) return err;
+
+  err = rmt_driver_install((rmt_channel_t) channel_num, 0, 0);
+  if (ESP_OK != err) return err;
+  return err;
+}
+
+PRIMITIVE(config_tx) {
+  ARGS(int, pin_num, int, channel_num, int, mem_block_num, int, clk_div, int, flags,
+       bool, carrier_en, int, carrier_freq_hz, int, carrier_level, int, carrier_duty_percent,
+       bool, loop_en, bool, idle_output_en, int, idle_level)
 
   // TODO: is there a better way to initialize this?
   rmt_config_t config = { };
-  config.mem_block_num = mem_block_num;
-  config.channel = (rmt_channel_t) channel_num;
-  config.gpio_num = (gpio_num_t) pin_num;
-  // TODO: Allow additional paramters
-  config.clk_div = 80;
-  config.flags = 0;
-  config.rmt_mode = is_tx ? RMT_MODE_TX : RMT_MODE_RX;
-  if (is_tx) {
-    rmt_tx_config_t tx_config = { 0 };
-    tx_config.carrier_freq_hz = 38000;
-    tx_config.carrier_level = RMT_CARRIER_LEVEL_HIGH;
-    tx_config.idle_level = RMT_IDLE_LEVEL_LOW;
-    tx_config.carrier_duty_percent = 33;
-    tx_config.carrier_en = false;
-    tx_config.loop_en = false;
-    tx_config.idle_output_en = true;
-    config.tx_config = tx_config;
-  } else {
-    rmt_rx_config_t rx_config = { 0 };
-    rx_config.idle_threshold = 12000;
-    rx_config.filter_ticks_thresh = 100;
-    rx_config.filter_en = true;
-    config.rx_config = rx_config;
-  }
 
-  esp_err_t err = rmt_config(&config);
+  config.gpio_num = (gpio_num_t) pin_num;
+  config.channel = (rmt_channel_t) channel_num;
+  config.mem_block_num = mem_block_num;
+  config.clk_div = clk_div;
+  config.flags = flags;
+  config.rmt_mode = RMT_MODE_TX;
+  rmt_tx_config_t tx_config = { 0 };
+  tx_config.carrier_en = carrier_en;
+  tx_config.carrier_freq_hz = carrier_freq_hz;
+  tx_config.carrier_level = (rmt_carrier_level_t) carrier_level;
+  tx_config.carrier_duty_percent = carrier_duty_percent;
+  tx_config.loop_en = loop_en;
+  tx_config.idle_output_en = idle_output_en;
+  tx_config.idle_level = (rmt_idle_level_t) idle_level;
+  config.tx_config = tx_config;
+
+  esp_err_t err = configure(&config, (rmt_channel_t) channel_num, process);
   if (ESP_OK != err) return Primitive::os_error(err, process);
 
-  err = rmt_driver_install((rmt_channel_t) channel_num, 0, 0);
+  return process->program()->null_object();
+}
+
+PRIMITIVE(config_rx) {
+  ARGS(int, pin_num, int, channel_num, int, mem_block_num, int, clk_div, int, flags,
+       int, idle_threshold, bool, filter_en, int, filter_ticks_thresh)
+
+  // TODO: is there a better way to initialize this?
+  rmt_config_t config = { };
+
+  config.gpio_num = (gpio_num_t) pin_num;
+  config.channel = (rmt_channel_t) channel_num;
+  config.mem_block_num = mem_block_num;
+  config.clk_div = clk_div;
+  config.flags = flags;
+  config.rmt_mode = RMT_MODE_RX;
+  rmt_rx_config_t rx_config = { 0 };
+  rx_config.idle_threshold = idle_threshold;
+  rx_config.filter_en = filter_en;
+  rx_config.filter_ticks_thresh = filter_ticks_thresh;
+  config.rx_config = rx_config;
+
+  esp_err_t err = configure(&config,(rmt_channel_t) channel_num, process);
   if (ESP_OK != err) return Primitive::os_error(err, process);
 
   return process->program()->null_object();
