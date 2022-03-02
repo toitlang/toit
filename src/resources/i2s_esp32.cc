@@ -44,10 +44,10 @@ ResourcePool<i2s_port_t, kInvalidPort> i2s_ports(
 );
 
 class I2SResourceGroup : public ResourceGroup {
-public:
+ public:
   TAG(I2SResourceGroup);
 
-  I2SResourceGroup(Process *process, EventSource *event_source)
+  I2SResourceGroup(Process* process, EventSource* event_source)
       : ResourceGroup(process, event_source) {}
 
   uint32_t on_event(Resource* r, word data, uint32_t state) {
@@ -87,9 +87,9 @@ class I2SResource: public EventQueueResource {
   i2s_port_t port() const { return _port; }
   int alignment() const { return _alignment; }
 
-private:
-   i2s_port_t _port;
-   int _alignment;
+ private:
+  i2s_port_t _port;
+  int _alignment;
 };
 
 // The following function should be moved to i2s.c in the idf fork. For now it stays here and when
