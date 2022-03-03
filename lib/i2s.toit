@@ -16,7 +16,7 @@ The I2S Bus works closely with the underlying hardware units, which means that s
 class Bus:
   i2s_ := ?
   state_/ResourceState_ ::= ?
-  /** Amount of encountered errors. */
+  /** Number of encountered errors. */
   errors := 0
 
   /**
