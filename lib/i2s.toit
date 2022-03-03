@@ -47,6 +47,7 @@ class Bus:
       --use_apll/bool=false
       --buffer_size/int=(32 * 2 * bits_per_sample / 8):
     if buffer_size % (2 * bits_per_sample / 8) != 0: throw "INVALID_ARGUMENT"
+    if mclk and mclk.num != 0 and mclk.num != 1 and mclk.num != 3: throw "INVALID_ARGUMENT"
     sck_pin := sck ? sck.num : -1
     ws_pin := ws ? ws.num : -1
     tx_pin := tx ? tx.num : -1

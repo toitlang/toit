@@ -92,47 +92,28 @@ class I2SResource: public EventQueueResource {
   int _alignment;
 };
 
-// The following function should be moved to i2s.c in the idf fork. For now it stays here and when
-// the PR is accepted, I suggest moving it. Keeping it here make the PR self-contained. The ESP_LOG* lines
-// should be uncommented when moving it to the idf fork.
-/**
- * @brief   I2S set GPIO for mclk
- *
- * @param   i2s_num     I2S device number
- * @param   gpio_num    GPIO number for mclk
- * @return
- *      - ESP_OK                Check or set success
- *      - ESP_ERR_INVALID_ARG   GPIO is not available
- */
-static esp_err_t i2s_check_set_mclk(i2s_port_t i2s_num, gpio_num_t gpio_num)
-{
-  if (gpio_num == -1) {
-    return ESP_OK;
-  }
-#if CONFIG_IDF_TARGET_ESP32
-  if (!(gpio_num == GPIO_NUM_0 || gpio_num == GPIO_NUM_1 || gpio_num == GPIO_NUM_3)) {
-    //ESP_LOGE(MODULE, "ESP32 only support to set GPIO0/GPIO1/GPIO3 as mclk signal, error GPIO number:%d", gpio_num);
-    return ESP_ERR_INVALID_ARG;
-  }
-  bool is_i2s0 = i2s_num == I2S_NUM_0;
-  if (gpio_num == GPIO_NUM_0) {
-    PIN_FUNC_SELECT(PERIPHS_IO_MUX_GPIO0_U, FUNC_GPIO0_CLK_OUT1);
-    WRITE_PERI_REG(PIN_CTRL, is_i2s0 ? 0xFFF0 : 0xFFFF);
-  } else if (gpio_num == GPIO_NUM_1) {
-    PIN_FUNC_SELECT(PERIPHS_IO_MUX_U0TXD_U, FUNC_U0TXD_CLK_OUT3);
-    WRITE_PERI_REG(PIN_CTRL, is_i2s0 ? 0xF0F0 : 0xF0FF);
-  } else {
-    PIN_FUNC_SELECT(PERIPHS_IO_MUX_U0RXD_U, FUNC_U0RXD_CLK_OUT2);
-    WRITE_PERI_REG(PIN_CTRL, is_i2s0 ? 0xFF00 : 0xFF0F);
-  }
-#else
-  ESP_RETURN_ON_FALSE(GPIO_IS_VALID_GPIO(gpio_num), ESP_ERR_INVALID_ARG, TAG, "mck_io_num invalid");
-    gpio_matrix_out_check_and_set(gpio_num, i2s_periph_signal[i2s_num].mck_out_sig, 0, 0);
-#endif
-  //ESP_LOGI(MODULE, "I2S%d, MCLK output by GPIO%d", i2s_num, gpio_num);
-  return ESP_OK;
-}
+bool set_mclk_pin(i2s_port_t i2s_num, int io_num) {
+  bool is_0 = i2s_num == I2S_NUM_0;
 
+  switch (io_num) {
+    case GPIO_NUM_0:
+      PIN_FUNC_SELECT(PERIPHS_IO_MUX_GPIO0_U, FUNC_GPIO0_CLK_OUT1);
+      WRITE_PERI_REG(PIN_CTRL, is_0 ? 0xFFF0 : 0xFFFF);
+      break;
+    case GPIO_NUM_1:
+      PIN_FUNC_SELECT(PERIPHS_IO_MUX_U0TXD_U, FUNC_U0TXD_CLK_OUT3);
+      WRITE_PERI_REG(PIN_CTRL, is_0 ? 0xF0F0 : 0xF0FF);
+      break;
+    case GPIO_NUM_3:
+      PIN_FUNC_SELECT(PERIPHS_IO_MUX_U0RXD_U, FUNC_U0RXD_CLK_OUT2);
+      WRITE_PERI_REG(PIN_CTRL, is_0 ? 0xFF00 : 0xFF0F);
+      break;
+    default:
+      return false;
+  }
+
+  return true;
+}
 
 MODULE_IMPLEMENTATION(i2s, MODULE_I2S);
 
@@ -235,8 +216,7 @@ PRIMITIVE(create) {
   }
 
   if (mclk_pin != -1) {
-    err = i2s_check_set_mclk(port, static_cast<gpio_num_t>(mclk_pin));
-    if (err != ESP_OK) {
+    if (!set_mclk_pin(port, mclk_pin)) {
       SystemEventSource::instance()->run([&]() -> void {
         i2s_driver_uninstall(port);
       });
