@@ -368,7 +368,18 @@ void ByteArray::resize_external(Process* process, word new_length) {
   _set_external_length(new_length);
   uint8* new_data = AllocationManager::reallocate(_external_address(), new_length);
   if (new_data != null) {
+    // Realloc succeeded.
     _set_external_address(new_data);
+  } else if (new_length == 0) {
+    // Realloc was really just a free.
+    _set_external_address(null);
+  } else {
+    // Realloc failed because we are very close to out-of-memory.  The malloc
+    // implementation doesn't normally shrink small existing allocations,
+    // lacking an implementation for that.  Instead it will allocate a new area
+    // and copy the data there, an operation that can fail under memory
+    // pressure.  In that rare case we leave the larger buffer attached to the
+    // byte array, which can be a bit of a waste.
   }
 }
 

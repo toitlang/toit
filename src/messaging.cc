@@ -475,7 +475,7 @@ int ExternalSystemMessageHandler::pid() const {
   return _process ? _process->id() : -1;
 }
 
-bool ExternalSystemMessageHandler::send(int pid, int type, void* data, int length) {
+bool ExternalSystemMessageHandler::send(int pid, int type, void* data, int length, bool discard) {
   int buffer_size = 0;
   { MessageEncoder encoder(null);
     encoder.encode_byte_array_external(data, length);
@@ -483,20 +483,23 @@ bool ExternalSystemMessageHandler::send(int pid, int type, void* data, int lengt
   }
 
   uint8* buffer = unvoid_cast<uint8*>(malloc(buffer_size));
-  if (buffer == null) return false;
+  if (buffer == null) {
+    if (discard) free(data);
+    return false;
+  }
   MessageEncoder encoder(buffer);
   encoder.encode_byte_array_external(data, length);
 
   SystemMessage* message = _new SystemMessage(type, _process->group()->id(), _process->id(),
       buffer, buffer_size);
   if (message == null) {
-    encoder.free_copied();
+    if (discard) encoder.free_copied();
     free(buffer);
     return false;
   }
   scheduler_err_t result = _vm->scheduler()->send_message(pid, message);
   if (result == MESSAGE_OK) return true;
-  encoder.free_copied();
+  if (discard) encoder.free_copied();
   delete message;
   return false;
 }
