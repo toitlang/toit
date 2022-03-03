@@ -122,7 +122,7 @@ working_site host port:
     error = false
   finally:
     if error:
-      load_limiter.log_test_failure "*** Incorrectly failed to connected to $host ***"
+      load_limiter.log_test_failure "*** Incorrectly failed to connect to $host ***"
     load_limiter.dec
 
 connect_to_site host port add_root:

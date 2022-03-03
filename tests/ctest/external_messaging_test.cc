@@ -45,7 +45,7 @@ void MessageHandler::on_message(int sender, int type, void* data, int length) {
   collect_garbage(_try_hard);
   _try_hard = !_try_hard;
 
-  send(sender, type, data, length);
+  send(sender, type, data, length, true);
 }
 
 int run_program(Snapshot snapshot) {

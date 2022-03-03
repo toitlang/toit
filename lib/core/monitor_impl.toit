@@ -44,104 +44,120 @@ class __Monitor__:
     return try_await_ deadline condition
 
   try_await_ deadline/int? [condition]:
+    self := task
     if deadline:
-      timer := task.get_timer_
+      timer := self.get_timer_
       // Arrange for the notify_ method to be called if the timeout expires.
       timer.arm this deadline
 
-    self := task
+    // Unlock the monitor before the entering the loop to make the
+    // state the same as it will be just after having been notified.
     if not identical self owner_: throw "must own monitor to await"
+    owner_ = null
+
+    is_non_critical ::= self.critical_count_ == 0
     first := true
-    while not condition.call:
-      // Check for task cancel.
-      if self.critical_count_ == 0 and self.is_canceled_: throw CANCELED_ERROR
+    while true:
+      // Check for task cancelation.
+      if is_non_critical and self.is_canceled_: throw CANCELED_ERROR
       // Check for task timeout.
       if deadline and Time.monotonic_us >= deadline: return false
-      // Unlock the mutex while we sleep, but we are not preempted before we
-      // yield. If we return false above or throw a CANCELED error, we still
-      // own the lock, but it will be release by the finally clause in the
-      // locked_ method.
-      owner_ = null
-      // Let other locked methods run, but state was not changed,
-      // so no need to notify_awaits, except for the first time, where the
-      // locked block is left.
-      notify_next_
-      if first: notify_awaits_
-      first = false
-      await_ self    // Wait for the next notify.
-      owner_ = self  // Retake the lock, ready to recheck the condition.
-    return true
+      if not owner_:
+        // Re-take the lock.
+        owner_ = self
+        // Evaluate the condition.
+        if condition.call: return true
+        // Unlock the mutex while we sleep, but we are not preempted before we
+        // yield, so we get the chance to resume waiters without being interrupted.
+        owner_ = null
+        // We assume that the state cannot change because of evaluating the
+        // await condition. Without this check, we will be constantly re-evaluating
+        // conditions because evaluating any condition will lead to infinite evaluations
+        // of all other conditions. The state can change before the first evaluation
+        // of the await condition, so we take care of that.
+        resume_ --state_changed=first
+        first = false
+      // Wait until notified. When we get back the monitor might be owned by
+      // someone else.
+      await_ self
 
   locked_ [block]:
     self := task
-    if owner_: wait_ self
+    deadline/int? := null
+    if owner_:
+      deadline = self.deadline
+      if deadline:
+        timer := self.get_timer_
+        // Arrange for the notify_ method to be called if the timeout expires.
+        timer.arm this deadline
+
+    is_non_critical ::= self.critical_count_ == 0
+    while true:
+      // Check for task cancelation.
+      if is_non_critical and self.is_canceled_: throw CANCELED_ERROR
+      // Check for task timeout.
+      if deadline and Time.monotonic_us >= deadline: throw DEADLINE_EXCEEDED_ERROR
+      // If the monitor isn't owned by anyone at this point, we are ready
+      // to take it.
+      if not owner_: break
+      // Wait until notified. When we get back the monitor might be owned by
+      // someone else.
+      wait_ self
+
     owner_ = self  // Take lock.
     try:
       block.call
     finally:
       owner_ = null
-      notify_next_
-      notify_awaits_
+      // State may have changed as part of running the locked method.
+      resume_ --state_changed
+      // To guarantee some level of fairness, we yield to avoid letting
+      // the calling task starve the others.
+      if is_non_critical: yield
 
-  // Wait for mutex to be free.
   wait_ self:
-    done := false
-    while not done:
-      // Add self to end of waiters list.
-      tail := waiters_tail_
-      if tail:
-        tail.next_blocked_ = self
-        waiters_tail_ = self
-      else:
-        waiters_head_ = waiters_tail_ = self
-      suspend_ self
-      done = owner_ == null
-    assert: owner_ == null
+    // Add self to end of waiters list.
+    tail := waiters_tail_
+    if tail:
+      tail.next_blocked_ = self
+      waiters_tail_ = self
+    else:
+      waiters_head_ = waiters_tail_ = self
+    suspend_ self
 
-  // Wait for someone to notify.
   await_ self:
-    done := false
-    while not done:
-      // Add self to end of awaiters list.
-      tail := await_tail_
-      if tail:
-        tail.next_blocked_ = self
-        await_tail_ = self
-      else:
-        await_head_ = await_tail_ = self
-      suspend_ self
-      done = owner_ == null
-    assert: owner_ == null
+    // Add self to end of awaiters list.
+    tail := await_tail_
+    if tail:
+      tail.next_blocked_ = self
+      await_tail_ = self
+    else:
+      await_head_ = await_tail_ = self
+    suspend_ self
 
-  notify_all_:
-    // If there is an owner, ignore. We'll notify all waiting once we unlock.
-    if owner_: return
-    notify_next_
-    notify_awaits_
-
-  // Unblock next task waiting to run locked methods.
-  notify_next_:
-    assert: owner_ == null
-    waiter := waiters_head_
-    if waiter:
-      // Unlink.
-      waiters_head_ = waiter.next_blocked_
-      waiter.next_blocked_ = null
-      if not waiters_head_: waiters_tail_ = null
-      // Now resume it.
-      waiter.resume_
-
-  // Unblock all tasks waiting for a condition to be fulfilled.
-  notify_awaits_:
-    assert: owner_ == null
+  resume_ --state_changed/bool:
+    // If the state changed, we first resume the tasks waiting to
+    // re-evaluate their conditions. These are tasks that have
+    // already acquired the lock in the past, so it makes sense to
+    // let them run first.
     waiter := await_head_
-    if waiter:
-      while waiter:
-        waiter.resume_
-        next := waiter.next_blocked_
-        waiter.next_blocked_ = null
-        waiter = next
+    if state_changed and waiter:
+      resume_waiters_ waiter
       await_head_ = await_tail_ = null
+    // Then resume the tasks waiting to run a locked method. We cannot
+    // just wake the first one up, because others may have a deadline
+    // that need to be evaluated.
+    waiter = waiters_head_
+    if waiter:
+      resume_waiters_ waiter
+      waiters_head_ = waiters_tail_ = null
+
+  resume_waiters_ waiter/Task_? -> none:
+    while waiter:
+      waiter.resume_
+      next := waiter.next_blocked_
+      waiter.next_blocked_ = null
+      waiter = next
 
   suspend_ self:
     task_blocked_++
@@ -158,4 +174,6 @@ class __Monitor__:
   // for a timer operation. In that case, the $notify_ method will be called
   // when the timer expires.
   notify_:
-    notify_all_
+    // We resume all tasks at this point, because we don't know which ones
+    // are waiting for a timeout or which ones might be canceled.
+    resume_ --state_changed
