@@ -79,6 +79,10 @@ namespace toit {
   ID(large_array_class_id)       \
   ID(lazy_initializer_class_id)  \
 
+static const int FREE_LIST_REGION_CLASS_ID = -1;
+static const int SINGLE_FREE_WORD_CLASS_ID = -2;
+static const int PROMOTED_TRACK_CLASS_ID = -3;
+
 // The reflective structure of a program.
 class Program : public FlashAllocation {
  public:

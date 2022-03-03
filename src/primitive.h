@@ -302,27 +302,37 @@ namespace toit {
   PRIMITIVE(get_ip, 1)                       \
 
 #define MODULE_BLE(PRIMITIVE)                \
-  PRIMITIVE(init, 0)                         \
+  PRIMITIVE(init, 1)                         \
   PRIMITIVE(gap, 1)                          \
   PRIMITIVE(close, 1)                        \
   PRIMITIVE(scan_start, 2)                   \
   PRIMITIVE(scan_next, 1)                    \
   PRIMITIVE(scan_stop, 1)                    \
-  PRIMITIVE(advertise_start, 3)              \
+  PRIMITIVE(advertise_start, 4)              \
   PRIMITIVE(advertise_config, 4)             \
   PRIMITIVE(advertise_stop, 1)               \
-  PRIMITIVE(connect, 2)                      \
+  PRIMITIVE(connect, 3)                      \
   PRIMITIVE(get_gatt, 1)                     \
   PRIMITIVE(request_result, 1)               \
   PRIMITIVE(request_data, 1)                 \
   PRIMITIVE(request_service, 2)              \
   PRIMITIVE(request_characteristic, 3)       \
   PRIMITIVE(request_attribute, 2)            \
+  PRIMITIVE(server_configuration_init, 0)    \
+  PRIMITIVE(server_configuration_dispose, 1) \
+  PRIMITIVE(add_server_service, 2)           \
+  PRIMITIVE(add_server_characteristic, 4)    \
+  PRIMITIVE(set_characteristics_value, 2)    \
+  PRIMITIVE(notify_characteristics_value, 2) \
+  PRIMITIVE(get_characteristics_value, 1)    \
 
 #define MODULE_DHCP(PRIMITIVE)               \
   PRIMITIVE(wait_for_lwip_dhcp_on_linux, 0)  \
 
 #define MODULE_ESP32(PRIMITIVE)              \
+  PRIMITIVE(ota_begin, 2)                    \
+  PRIMITIVE(ota_write, 1)                    \
+  PRIMITIVE(ota_end, 2)                      \
   PRIMITIVE(reset_reason, 0)                 \
   PRIMITIVE(enable_external_wakeup, 2)       \
   PRIMITIVE(wakeup_cause, 0)                 \
@@ -445,7 +455,7 @@ namespace toit {
   PRIMITIVE(config_interrupt, 2)             \
 
 #define MODULE_ADC(PRIMITIVE)               \
-  PRIMITIVE(init, 2)                        \
+  PRIMITIVE(init, 3)                        \
   PRIMITIVE(get, 2)                         \
   PRIMITIVE(close, 1)                       \
 
@@ -795,10 +805,13 @@ namespace toit {
 #define _A_T_Adler32(N, name)             MAKE_UNPACKING_MACRO(Adler32, N, name)
 #define _A_T_ZlibRle(N, name)             MAKE_UNPACKING_MACRO(ZlibRle, N, name)
 #define _A_T_UARTResource(N, name)        MAKE_UNPACKING_MACRO(UARTResource, N, name)
-#define _A_T_ADCState(N, name)            MAKE_UNPACKING_MACRO(ADCState, N, name)
+#define _A_T_AdcState(N, name)            MAKE_UNPACKING_MACRO(AdcState, N, name)
 #define _A_T_PWMResource(N, name)         MAKE_UNPACKING_MACRO(PWMResource, N, name)
 #define _A_T_GAPResource(N, name)         MAKE_UNPACKING_MACRO(GAPResource, N, name)
 #define _A_T_GATTResource(N, name)        MAKE_UNPACKING_MACRO(GATTResource, N, name)
+#define _A_T_BLEServerConfigGroup(N, name)  MAKE_UNPACKING_MACRO(BLEServerConfigGroup, N, name)
+#define _A_T_BLEServerServiceResource(N, name)  MAKE_UNPACKING_MACRO(BLEServerServiceResource, N, name)
+#define _A_T_BLEServerCharacteristicResource(N, name)  MAKE_UNPACKING_MACRO(BLEServerCharacteristicResource, N, name)
 #define _A_T_ServiceDescription(N, name)  MAKE_UNPACKING_MACRO(ServiceDescription, N, name)
 #define _A_T_Peer(N, name)                MAKE_UNPACKING_MACRO(Peer, N, name)
 #define _A_T_Channel(N, name)             MAKE_UNPACKING_MACRO(Channel, N, name)

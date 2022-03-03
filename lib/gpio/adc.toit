@@ -10,7 +10,7 @@ Analog-to-Digital Conversion.
 This library provides ways to read analogue voltage values from GPIO pins that
   support it.
 
-On the ESP32, only the ADC1 (pins 32-39) are supported. The ADC2 has too many
+On the ESP32, only the ADC1 (pins 32-39) is supported. The ADC2 has too many
   restrictions (cannot be used when WiFi is active, and some of the pins are
   strapping pins), and is therefore disabled.
 
@@ -41,9 +41,13 @@ class Adc:
 
   Note that chip-specific limitations apply, generally the precision at
     various voltage ranges.
+
+  On the ESP32, only the ADC1 (pins 32-39) is supported. The ADC2 has too many
+    restrictions (cannot be used when WiFi is active, and some of the pins are
+    strapping pins), and is therefore disabled.
   */
   constructor .pin --max_voltage/float?=null:
-    state_ = adc_init_ pin.num (max_voltage ? max_voltage : 0.0)
+    state_ = adc_init_ resource_freeing_module_ pin.num (max_voltage ? max_voltage : 0.0)
 
   /**
   Measures the voltage on the Pin.
@@ -59,7 +63,7 @@ class Adc:
       adc_close_ state_
       state_ = null
 
-adc_init_ num max:
+adc_init_ group num max:
   #primitive.adc.init
 
 adc_get_ state samples:

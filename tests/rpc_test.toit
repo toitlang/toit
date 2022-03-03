@@ -45,6 +45,7 @@ main:
   test_problematic myself
   test_performance myself
   test_blocking myself broker
+  test_sequential myself broker
 
   test_request_queue_cancel myself
   test_timeouts myself broker --cancel
@@ -185,32 +186,83 @@ test_blocking myself/int broker/RpcBroker -> none:
       with_timeout --ms=200:
         test_simple myself
 
-  // Check that the max request limits is honored.
+  // Check that the max request limit is honored.
   test_blocking myself broker (RpcBroker.MAX_TASKS):
-    (RpcBroker.MAX_REQUESTS - RpcBroker.MAX_TASKS).repeat:
+    expected_exception ::= "Cannot enqueue more requests"
+    capacity ::= RpcBroker.MAX_REQUESTS - RpcBroker.MAX_TASKS
+    tasks ::= capacity + 3  // Create three too many tasks.
+    done ::= monitor.Semaphore
+    exceptions := 0
+    tasks.repeat:
       task::
-        test_simple myself
-    expect.expect_throw "Cannot enqueue more requests":
-      test_simple myself
+        exception := catch --unwind=(: it != expected_exception):
+          test_simple myself
+        if exception == expected_exception: exceptions++
+        done.up
+    task::
+      tasks.repeat: done.down
+      expect.expect_equals 3 exceptions
 
 test_blocking myself/int broker/RpcBroker tasks/int [test] -> none:
   name ::= 800
   latches ::= {:}
+  ready := monitor.Semaphore
   broker.register_procedure name:: | args |
     index := args[0]
+    ready.up
     latches[index].get
 
   // Create a number of tasks that all block.
+  done := monitor.Semaphore
   tasks.repeat:
     index ::= it
     latches[index] = monitor.Latch
-    task:: expect.expect_equals index * 3 (rpc.invoke myself name [index])
+    task::
+      expect.expect_equals index * 3 (rpc.invoke myself name [index])
+      done.up
 
   // Invoke the test.
+  tasks.repeat: ready.down
   test.call
 
   // Let the tasks complete.
   tasks.repeat: latches[it].set it * 3
+  tasks.repeat: done.down
+
+  // Unregister procedure and make sure it's gone.
+  broker.unregister_procedure name
+  expect.expect_throw "No such procedure registered: 800": rpc.invoke myself name []
+
+test_sequential myself/int broker/RpcBroker -> none:
+  tasks ::= 10
+  name ::= 800
+  latches ::= {:}
+  concurrency := 0
+  broker.register_procedure name:: | args |
+    result := null
+    try:
+      concurrency++
+      expect.expect_equals 1 concurrency  // Should be sequential!
+      index := args[0]
+      result = latches[index].get
+    finally:
+      concurrency--
+    result
+
+  // Create a number of tasks that all block.
+  done := monitor.Semaphore
+  tasks.repeat:
+    index ::= it
+    latches[index] = monitor.Latch
+    task::
+      expect.expect_equals index * 3 (rpc.invoke myself name --sequential [index])
+      done.up
+
+  // Let the tasks complete.
+  tasks.repeat:
+    sleep --ms=10
+    latches[it].set it * 3
+  tasks.repeat: done.down
 
   // Unregister procedure and make sure it's gone.
   broker.unregister_procedure name
@@ -285,7 +337,7 @@ test_timeouts myself/int broker/RpcBroker --cancel/bool -> none:
       (monitor.Latch).get
     finally:
       if task.is_canceled:
-        latches[index].set "Canceled: $index"
+        critical_do: latches[index].set "Canceled: $index"
 
   // Use 'with_timeout' to trigger the timeout.
   timeout_based/Lambda := :: | index |
@@ -304,7 +356,7 @@ test_timeouts myself/int broker/RpcBroker --cancel/bool -> none:
         rpc.invoke myself name index
       finally: | is_exception exception |
         expect.expect task.is_canceled
-        join.set task
+        critical_do: join.set task
     sleep --ms=10
     subtask.cancel
     expect.expect_identical subtask join.get
@@ -317,6 +369,7 @@ test_timeouts myself/int broker/RpcBroker --cancel/bool -> none:
     if cancel: sleep_cancel_based.call index
     else: timeout_based.call index
     result := null
+    sleep --ms=10  // Allow the RPC tasks to reach their blocking point.
     with_timeout --ms=100: result = latches[index].get
     latches.remove index
     if result == "Unprocessed: $index":
@@ -410,7 +463,7 @@ test_terminate myself/int broker/TestBroker n/int -> none:
       exception := catch: with_timeout --ms=200: rpc.invoke myself name []
       expect.expect (task.is_canceled or exception == DEADLINE_EXCEEDED_ERROR)
     finally:
-      done.up
+      critical_do: done.up
 
   // Wait a bit and check that all the requests have been enqueued. It is
   // hard to know exactly how long that takes and we get no signals back.

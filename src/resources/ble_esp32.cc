@@ -40,6 +40,7 @@
 #include <host/ble_gap.h>
 #include <services/gap/ble_svc_gap.h>
 #include <host/ble_gap.h>
+#include <services/gatt/ble_svc_gatt.h>
 
 
 namespace toit {
@@ -48,22 +49,35 @@ const int kInvalidBLE = -1;
 
 // Only allow one instance of BLE running.
 ResourcePool<int, kInvalidBLE> ble_pool(
-  0
+    0
 );
 
-const int kInvalidHandle = UINT16_MAX;
 
 enum {
-  kBLEStarted       = 1 << 0,
-  kBLECompleted     = 1 << 1,
-  kBLEDiscovery     = 1 << 2,
-  kBLEConnected     = 1 << 3,
+  kBLEStarted = 1 << 0,
+  kBLECompleted = 1 << 1,
+  kBLEDiscovery = 1 << 2,
+  kBLEConnected = 1 << 3,
   kBLEConnectFailed = 1 << 4,
+  kBLEDisconnected = 1 << 5,
+};
+
+enum {
+  kBLECharReceived = 1 << 0,
+  kBLECharAccessed = 1 << 1,
+  kBLECharSubscribed = 1 << 2,
+};
+
+enum {
+  kBLECharTypeReadOnly = 1,
+  kBLECharTypeWriteOnly = 2,
+  kBLECharTypeReadWrite = 3,
+  kBLECharTypeNotification = 4,
 };
 
 const uint8 kBluetoothBaseUUID[16] = {
-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00,
-  0x80, 0x00, 0x00, 0x80, 0x5F, 0x9B, 0x34, 0xFB,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00,
+    0x80, 0x00, 0x00, 0x80, 0x5F, 0x9B, 0x34, 0xFB,
 };
 
 class BLEDiscovery;
@@ -104,6 +118,8 @@ class BLEDiscovery : public DiscoveriesFIFO::Element {
   uint8_t _data_length = 0;
 };
 
+class BLEServerConfigGroup;
+
 class BLEResourceGroup : public ResourceGroup {
  public:
   TAG(BLEResourceGroup);
@@ -125,40 +141,20 @@ class BLEResourceGroup : public ResourceGroup {
     ResourceGroup::tear_down();
   }
 
-  ~BLEResourceGroup() {
-    if (_connection_handle != kInvalidHandle) {
-      ble_gap_terminate(_connection_handle, 0);
-    }
-
-    nimble_port_deinit();
-
-    FATAL_IF_NOT_ESP_OK(esp_nimble_hci_and_controller_deinit());
-
-    while (remove_next()) {}
-
-    ble_pool.put(_id);
-  }
-
   GAPResource* gap() { return _gap; }
   void set_gap(GAPResource* gap) { _gap = gap; }
 
-  uint32_t on_event(Resource* resource, word data, uint32_t state);
+  BLEServerConfigGroup* server_config() { return _server_config; }
 
-  bool is_advertising() { return _advertising; }
-  void set_advertising(bool value) { _advertising = value; }
+  void set_server_config(BLEServerConfigGroup* server_config) { _server_config = server_config; }
 
-  bool is_scanning() { return _scanning; }
-  void set_scanning(bool value) { _scanning = value; }
+  uint32_t on_event(Resource* resource, word data, uint32_t state) override;
 
-  uint16 connection_handle() const {
-    Locker locker(_mutex);
-    return _connection_handle;
-  }
+  int init_server();
 
-  void clear_connection_handle() {
-    Locker locker(_mutex);
-    _connection_handle = kInvalidHandle;
-  }
+  static bool is_advertising() { return ble_gap_adv_active(); }
+
+  static bool is_scanning() { return ble_gap_disc_active(); }
 
   BLEDiscovery* next() {
     Locker locker(_mutex);
@@ -174,15 +170,77 @@ class BLEResourceGroup : public ResourceGroup {
     return true;
   }
 
+ protected:
+  ~BLEResourceGroup() override;
+
+
  private:
   int _id;
   Mutex* _mutex;
   DiscoveriesFIFO _discoveries;
   GAPResource* _gap = null;
-  uint16 _connection_handle = kInvalidHandle;
-  bool _advertising = false;
-  bool _scanning = false;
+  BLEServerConfigGroup* _server_config;
 };
+
+
+class BLEServerConfigGroup : public ResourceGroup, public Thread {
+ public:
+  TAG(BLEServerConfigGroup);
+
+  BLEServerConfigGroup(Process* process, EventSource* event_source)
+      : ResourceGroup(process, event_source)
+      , Thread("toit.ble")
+      , _gatt_services(null)
+      , _mutex(OS::allocate_mutex(3, "")) {
+  }
+
+  ~BLEServerConfigGroup() override {
+    for (BLEServerServiceResource* service: _services) {
+      delete service;
+    }
+
+    free_gatt_service_structure();
+  }
+
+  BLEServerServiceResource* add_service(ble_uuid_any_t uuid) {
+    BLEServerServiceResource* service = _new BLEServerServiceResource(this, uuid);
+    if (service != null) _services.prepend(service);
+    return service;
+  }
+
+  BLEServerServiceList services() const { return _services; }
+
+  uint32_t on_event(Resource* resource, word data, uint32_t state) override;
+
+  void entry() override;
+
+  void set_subscription_status(uint16 attr_handle, uint16 conn_handle, bool indicate, bool notify);
+
+  Mutex* mutex() { return _mutex; }
+
+  void set_gatt_service_structure(ble_gatt_svc_def* gatt_services) {
+    if (_gatt_services != null) free_gatt_service_structure();
+    _gatt_services = gatt_services;
+  }
+
+  void free_gatt_service_structure() {
+    if (_gatt_services != null) {
+      ble_gatt_svc_def* cur = _gatt_services;
+      while (cur->type) {
+        free((void*) cur->characteristics);
+        cur++;
+      }
+      free(_gatt_services);
+      _gatt_services = null;
+    }
+  }
+
+ private:
+  BLEServerServiceList _services;
+  ble_gatt_svc_def* _gatt_services;
+  Mutex* _mutex;
+};
+
 
 uint32_t BLEResourceGroup::on_event(Resource* resource, word data, uint32_t state) {
   struct ble_gap_event* event = reinterpret_cast<struct ble_gap_event*>(data);
@@ -218,33 +276,48 @@ uint32_t BLEResourceGroup::on_event(Resource* resource, word data, uint32_t stat
 
     case BLE_GAP_EVENT_DISC_COMPLETE:
       state |= kBLECompleted;
-      {
-        Locker locker(_mutex);
-        set_scanning(false);
-      }
       break;
 
     case BLE_GAP_EVENT_CONNECT: {
       if (event->connect.status == 0) {
+        auto ble_resource = resource->as<BLEResource*>();
+
         // Success.
-        state |= kBLEConnected;
-        {
+        if (ble_resource->kind() == BLEResource::GAP) {
+          state &= ~kBLEDisconnected;
+          state |= kBLEConnected;
+        } else {
           Locker locker(_mutex);
-          ASSERT(_connection_handle == kInvalidHandle);
-          _connection_handle = event->connect.conn_handle;
+          GATTResource* gatt = ble_resource->as<GATTResource*>();
+          ASSERT(gatt->handle() == kInvalidHandle);
+          ble_resource->as<GATTResource*>()->set_handle(event->connect.conn_handle);
         }
       } else {
         state |= kBLEConnectFailed;
       }
       break;
     }
+
+    case BLE_GAP_EVENT_SUBSCRIBE:
+      if (_server_config != null) {
+        _server_config->set_subscription_status(event->subscribe.attr_handle, event->subscribe.conn_handle,
+                                                event->subscribe.cur_indicate, event->subscribe.cur_notify);
+      }
+      break;
+    case BLE_GAP_EVENT_DISCONNECT:
+      if (_server_config != null) {
+        state &= ~kBLEConnected;
+        state |= kBLEDisconnected;
+      }
+
+      break;
   }
 
   return state;
 }
 
-static void blecent_on_sync(void) {
-    /* Make sure we have proper identity address set (public preferred) */
+static void ble_on_sync(void) {
+  // Make sure we have proper identity address set (public preferred).
   int rc = ble_hs_util_ensure_addr(0);
   if (rc != 0) {
     FATAL("error setting address; rc=%d", rc);
@@ -252,6 +325,106 @@ static void blecent_on_sync(void) {
 
   BLEEventSource::on_started();
 }
+
+static void ble_on_reset(int reason) {
+  // Do we need this?
+}
+
+int BLEResourceGroup::init_server() {
+  if (_server_config != null) {
+    nimble_port_init();
+
+    ble_svc_gap_init();
+    ble_svc_gatt_init();
+
+    // Build the service structure.
+    int service_cnt = 0;
+    for (BLEServerServiceResource* t: _server_config->services()) {
+      USE(t);
+      service_cnt++;
+    }
+
+    auto gatt_services = static_cast<ble_gatt_svc_def*>(malloc((service_cnt + 1) * sizeof(ble_gatt_svc_def)));
+
+    gatt_services[service_cnt].type = 0;
+
+    int service_idx = 0;
+    for (BLEServerServiceResource* service: _server_config->services()) {
+      int characteristic_cnt = 0;
+      for (BLEServerCharacteristicResource* t: service->characteristics()) {
+        USE(t);
+        characteristic_cnt++;
+      }
+
+      auto gatt_svr_chars = static_cast<ble_gatt_chr_def*>(malloc(
+          (characteristic_cnt + 1) * sizeof(ble_gatt_chr_def)));
+
+      int characteristic_idx = 0;
+      for (BLEServerCharacteristicResource* characteristic: service->characteristics()) {
+        gatt_svr_chars[characteristic_idx].uuid = characteristic->ptr_uuid();
+        gatt_svr_chars[characteristic_idx].access_cb = BLEEventSource::on_gatt_server_characteristic;
+        gatt_svr_chars[characteristic_idx].arg = characteristic;
+        gatt_svr_chars[characteristic_idx].val_handle = characteristic->ptr_nimble_value_handle();
+
+        switch (characteristic->type()) {
+          case kBLECharTypeReadOnly:
+            gatt_svr_chars[characteristic_idx].flags = BLE_GATT_CHR_F_READ;
+            break;
+          case kBLECharTypeWriteOnly:
+            gatt_svr_chars[characteristic_idx].flags = BLE_GATT_CHR_F_WRITE;
+            break;
+          case kBLECharTypeReadWrite:
+            gatt_svr_chars[characteristic_idx].flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_READ;
+            break;
+          case kBLECharTypeNotification:
+            gatt_svr_chars[characteristic_idx].flags = BLE_GATT_CHR_F_NOTIFY;
+            break;
+        }
+
+        characteristic_idx++;
+      }
+
+      gatt_services[service_idx].type = BLE_GATT_SVC_TYPE_PRIMARY;
+      gatt_services[service_idx].uuid = service->uuid_p();
+      gatt_services[service_idx].characteristics = gatt_svr_chars;
+
+      service_idx++;
+    }
+
+    _server_config->set_gatt_service_structure(gatt_services);
+
+    int rc = ble_gatts_count_cfg(gatt_services);
+    if (rc != 0) {
+      _server_config->tear_down();
+      return rc;
+    }
+
+    rc = ble_gatts_add_svcs(gatt_services);
+    if (rc != 0) {
+      _server_config->tear_down();
+      return rc;
+    }
+
+    ble_hs_cfg.reset_cb = ble_on_reset;
+    // Start the host thread.
+    if (!_server_config->spawn(NIMBLE_STACK_SIZE)) {
+      _server_config->tear_down();
+    };
+  }
+
+  return ESP_OK;
+}
+
+BLEResourceGroup::~BLEResourceGroup() {
+  nimble_port_deinit();
+
+  FATAL_IF_NOT_ESP_OK(esp_nimble_hci_and_controller_deinit());
+
+  while (remove_next()) {}
+
+  ble_pool.put(_id);
+}
+
 
 static ble_uuid_any_t uuid_from_blob(Blob blob) {
   ble_uuid_any_t uuid = { 0 };
@@ -273,6 +446,46 @@ static ble_uuid_any_t uuid_from_blob(Blob blob) {
   return uuid;
 }
 
+uint32_t BLEServerConfigGroup::on_event(Resource* resource, word data, uint32_t state) {
+  switch (data) {
+    case BLE_GATT_ACCESS_OP_READ_CHR:
+      state |= kBLECharAccessed;
+      break;
+    case BLE_GATT_ACCESS_OP_WRITE_CHR:
+      state |= kBLECharReceived;
+      break;
+    default:
+      break;
+  }
+  return state;
+}
+
+void BLEServerConfigGroup::set_subscription_status(uint16 attr_handle, uint16 conn_handle, bool indicate, bool notify) {
+  for (auto service: _services) {
+    for (auto characteristic: service->characteristics()) {
+      if (characteristic->nimble_value_handle() == attr_handle) {
+        characteristic->set_subscription_status(indicate, notify, conn_handle);
+        return;
+      }
+    }
+  }
+}
+
+void BLEServerConfigGroup::entry() {
+  nimble_port_run();
+}
+
+static bool object_to_mbuf(Process* process, Object* object, struct os_mbuf** res) {
+  *res = null;
+  if (object != process->program()->null_object()) {
+    Blob bytes;
+    if (!object->byte_content(process->program(), &bytes, STRINGS_OR_BYTE_ARRAYS)) return false;
+    if (bytes.length() > 0)
+      *res = ble_hs_mbuf_from_flat(bytes.address(), bytes.length());
+  }
+  return true;
+}
+
 MODULE_IMPLEMENTATION(ble, MODULE_BLE)
 
 PRIMITIVE(init) {
@@ -283,6 +496,7 @@ PRIMITIVE(init) {
   if (id == kInvalidBLE) OUT_OF_BOUNDS;
 
   esp_err_t err = esp_nimble_hci_and_controller_init();
+
   // TODO(anders): Enable these to improve BLE/WiFi coop?
   //SystemEventSource::instance()->run([&]() -> void {
     // esp_coex_preference_set(ESP_COEX_PREFER_BT);
@@ -319,10 +533,20 @@ PRIMITIVE(init) {
     MALLOC_FAILED;
   }
 
-  ble_hs_cfg.sync_cb = blecent_on_sync;
+  ble_hs_cfg.sync_cb = ble_on_sync;
 
   group->register_resource(gap);
   group->set_gap(gap);
+
+  if (__args[0] != process->program()->null_object()) {
+    ARGS(BLEServerConfigGroup, server_config);
+    group->set_server_config(server_config);
+    int ret = group->init_server();
+    if (ret != ESP_OK) {
+      group->tear_down();
+      return Primitive::os_error(ret, process);
+    }
+  }
 
   proxy->set_external_address(group);
   return proxy;
@@ -350,7 +574,7 @@ PRIMITIVE(close) {
 PRIMITIVE(scan_start) {
   ARGS(BLEResourceGroup, group, int64, duration_us);
 
-  if (group->is_scanning()) ALREADY_EXISTS;
+  if (BLEResourceGroup::is_scanning()) ALREADY_EXISTS;
 
   int32 duration_ms = duration_us < 0 ? BLE_HS_FOREVER : duration_us / 1000;
 
@@ -384,8 +608,6 @@ PRIMITIVE(scan_start) {
   if (err != ESP_OK) {
     return Primitive::os_error(err, process);
   }
-
-  group->set_scanning(true);
 
   return process->program()->null_object();
 }
@@ -469,27 +691,26 @@ PRIMITIVE(scan_next) {
 PRIMITIVE(scan_stop) {
   ARGS(BLEResourceGroup, group);
 
-  if (group->is_scanning()) {
+  if (BLEResourceGroup::is_scanning()) {
     int err = ble_gap_disc_cancel();
     if (err != ESP_OK) {
       return Primitive::os_error(err, process);
     }
-    group->set_scanning(false);
   }
 
   return process->program()->null_object();
 }
 
 PRIMITIVE(advertise_start) {
-  ARGS(BLEResourceGroup, group, int64, duration_us, int, interval_us);
+  ARGS(BLEResourceGroup, group, int64, duration_us, int, interval_us, int, conn_mode);
 
-  if (group->is_advertising()) ALREADY_EXISTS;
+  if (BLEResourceGroup::is_advertising()) ALREADY_EXISTS;
 
   int32 duration_ms = duration_us < 0 ? BLE_HS_FOREVER : duration_us / 1000;
 
   struct ble_gap_adv_params adv_params = { 0 };
-  // No support for connections yet.
-  adv_params.conn_mode = BLE_GAP_CONN_MODE_NON;
+  adv_params.conn_mode = conn_mode;
+
   // TODO(anders): Be able to tune this.
   adv_params.disc_mode = BLE_GAP_DISC_MODE_GEN;
   adv_params.itvl_min = adv_params.itvl_max = interval_us / 625;
@@ -497,8 +718,6 @@ PRIMITIVE(advertise_start) {
   if (err != ESP_OK) {
     return Primitive::os_error(err, process);
   }
-
-  group->set_advertising(true);
 
   return process->program()->null_object();
 }
@@ -556,19 +775,18 @@ PRIMITIVE(advertise_config) {
 PRIMITIVE(advertise_stop) {
   ARGS(BLEResourceGroup, group);
 
-  if (group->is_advertising()) {
+  if (BLEResourceGroup::is_advertising()) {
     int err = ble_gap_adv_stop();
     if (err != ESP_OK) {
       return Primitive::os_error(err, process);
     }
-    group->set_advertising(false);
   }
 
   return process->program()->null_object();
 }
 
 PRIMITIVE(connect) {
-  ARGS(BLEResourceGroup, group, Blob, address);
+  ARGS(BLEResourceGroup, group, Blob, address, GATTResource, gatt);
 
   uint8_t own_addr_type;
 
@@ -582,7 +800,7 @@ PRIMITIVE(connect) {
   memmove(addr.val, address.address() + 1, 6);
 
   err = ble_gap_connect(own_addr_type, &addr, 3000, NULL,
-                        BLEEventSource::on_gap, group->gap());
+                        BLEEventSource::on_gap, gatt);
   if (err != ESP_OK) {
     return Primitive::os_error(err, process);
   }
@@ -593,19 +811,14 @@ PRIMITIVE(connect) {
 PRIMITIVE(get_gatt) {
   ARGS(BLEResourceGroup, group);
 
-  uint16 handle = group->connection_handle();
-  if (handle == kInvalidHandle) INVALID_ARGUMENT;
-
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (!proxy) ALLOCATION_FAILED;
 
-  GATTResource* gatt = _new GATTResource(group, handle);
+  GATTResource* gatt = _new GATTResource(group);
   if (!gatt) MALLOC_FAILED;
 
   group->register_resource(gatt);
   proxy->set_external_address(gatt);
-
-  group->clear_connection_handle();
 
   return proxy;
 }
@@ -623,6 +836,23 @@ PRIMITIVE(request_result) {
   return Primitive::integer(gatt->result(), process);
 }
 
+static Object* convert_mbuf_to_heap_object(Process* process, const os_mbuf* mbuf) {
+  int size = 0;
+  for (const os_mbuf* current = mbuf; current; current = SLIST_NEXT(current, om_next)) {
+    size += current->om_len;
+  }
+  ByteArray* data = process->object_heap()->allocate_internal_byte_array(size);
+  if (!data) return null;
+  ByteArray::Bytes bytes(data);
+  int offset = 0;
+  for (const os_mbuf* current = mbuf; current; current = SLIST_NEXT(current, om_next)) {
+    memmove(bytes.address() + offset, current->om_data, current->om_len);
+    offset += current->om_len;
+  }
+  return data;
+}
+
+
 PRIMITIVE(request_data) {
   ARGS(GATTResource, gatt);
 
@@ -634,21 +864,14 @@ PRIMITIVE(request_data) {
 
   const struct os_mbuf* mbuf = gatt->mbuf();
   if (!mbuf) return process->program()->null_object();
+  Object* ret_val = convert_mbuf_to_heap_object(process, mbuf);
 
-  int size = 0;
-  for (const os_mbuf* current = mbuf; current; current = SLIST_NEXT(current, om_next)) {
-    size += current->om_len;
+  if (ret_val != null) {
+    gatt->set_mbuf(null);
+    return ret_val;
+  } else {
+    ALLOCATION_FAILED;
   }
-  ByteArray* data = process->object_heap()->allocate_internal_byte_array(size);
-  if (!data) ALLOCATION_FAILED;
-  ByteArray::Bytes bytes(data);
-  int offset = 0;
-  for (const os_mbuf* current = mbuf; current; current = SLIST_NEXT(current, om_next)) {
-    memmove(bytes.address() + offset, current->om_data, current->om_len);
-    offset += current->om_len;
-  }
-  gatt->set_mbuf(null);
-  return data;
 }
 
 PRIMITIVE(request_service) {
@@ -697,6 +920,126 @@ PRIMITIVE(request_attribute) {
   return process->program()->null_object();
 }
 
+/*
+ *
+ * Primitives for BLE server.
+ *
+ */
+PRIMITIVE(server_configuration_init) {
+  ByteArray* proxy = process->object_heap()->allocate_proxy();
+  if (!proxy) ALLOCATION_FAILED;
+
+  // Mark usage. When the group is unregistered, the usage is automatically
+  // decremented, but if group allocation fails, we manually call unuse().
+  BLEEventSource* ble = BLEEventSource::instance();
+  if (!ble->use()) {
+    MALLOC_FAILED;
+  }
+
+  BLEServerConfigGroup* group = _new BLEServerConfigGroup(process, ble);
+  if (!group) MALLOC_FAILED;
+
+  proxy->set_external_address(group);
+  return proxy;
+}
+
+PRIMITIVE(server_configuration_dispose) {
+  ARGS(BLEServerConfigGroup, group);
+  group->tear_down();
+  return process->program()->null_object();
+}
+
+PRIMITIVE(add_server_service) {
+  ARGS(BLEServerConfigGroup, group, Blob, uuid_blob);
+  ByteArray* proxy = process->object_heap()->allocate_proxy();
+  if (!proxy) ALLOCATION_FAILED;
+
+  ble_uuid_any_t uuid = uuid_from_blob(uuid_blob);
+
+  BLEServerServiceResource* service = group->add_service(uuid);
+  if (!service) MALLOC_FAILED;
+
+  proxy->set_external_address(service);
+  return proxy;
+}
+
+PRIMITIVE(add_server_characteristic) {
+  ARGS(BLEServerServiceResource, service, Blob, uuid_blob, int, type, Object, value);
+  ByteArray* proxy = process->object_heap()->allocate_proxy();
+  if (!proxy) ALLOCATION_FAILED;
+
+  ble_uuid_any_t uuid = uuid_from_blob(uuid_blob);
+
+  os_mbuf* om = null;
+  if (!object_to_mbuf(process, value, &om)) WRONG_TYPE;
+
+  Mutex* resource_group_mutex = static_cast<BLEServerConfigGroup*>(service->resource_group())->mutex();
+
+  BLEServerCharacteristicResource* characteristic =
+      service->add_characteristic(uuid, type, om, resource_group_mutex);
+
+  if (!characteristic) {
+    if (om != null) os_mbuf_free(om);
+    MALLOC_FAILED;
+  }
+
+  proxy->set_external_address(characteristic);
+  return proxy;
+}
+
+PRIMITIVE(set_characteristics_value) {
+  ARGS(BLEServerCharacteristicResource, resource, Object, value);
+
+  struct os_mbuf* om;
+  if (!object_to_mbuf(process, value, &om)) WRONG_TYPE;
+
+  resource->set_mbuf_to_send(om);
+
+  return process->program()->null_object();
+}
+
+PRIMITIVE(notify_characteristics_value) {
+  ARGS(BLEServerCharacteristicResource, resource, Object, value);
+
+  if (resource->is_notify_enabled() || resource->is_indicate_enabled()) {
+    struct os_mbuf* om;
+    if (!object_to_mbuf(process, value, &om)) WRONG_TYPE;
+
+    int err = ESP_OK;
+    if (resource->is_notify_enabled()) {
+      err = ble_gattc_notify_custom(resource->conn_handle(), resource->nimble_value_handle(), om);
+    }
+
+    if (err == ESP_OK && resource->is_indicate_enabled()) {
+      err = ble_gattc_indicate_custom(resource->conn_handle(), resource->nimble_value_handle(), om);
+    }
+
+    if (err != ESP_OK) {
+      if (om != null) os_mbuf_free(om);
+      return Primitive::os_error(err, process);
+    }
+  }
+
+  return BOOL(resource->is_notify_enabled());
+}
+
+PRIMITIVE(get_characteristics_value) {
+  ARGS(BLEServerCharacteristicResource, resource);
+
+  os_mbuf* mbuf = resource->mbuf_received();
+  if (mbuf == null) return process->program()->null_object();
+
+  Object* ret_val = convert_mbuf_to_heap_object(process, mbuf);
+
+  if (ret_val != null) {
+    resource->set_mbuf_received(null);
+    return ret_val;
+  } else {
+    ALLOCATION_FAILED;
+  }
+
+  return ret_val;
+}
 
 } // namespace toit
 

@@ -24,6 +24,7 @@ namespace toit {
 
 class Printer;
 class Blob;
+class Chunk;
 class MutableBlob;
 class Error;
 
@@ -55,6 +56,8 @@ class Object {
   INLINE bool is_string();
   INLINE bool is_task();
   INLINE bool is_large_integer();
+  INLINE bool is_free_list_region();
+  INLINE bool is_promoted_track();
 
   static Object* cast(Object* obj) { return obj; }
 
@@ -183,6 +186,9 @@ enum TypeTag {
   LARGE_INTEGER_TAG,
   STACK_TAG,
   TASK_TAG,
+  FREE_LIST_REGION_TAG,
+  SINGLE_FREE_WORD_TAG,
+  PROMOTED_TRACK_TAG,
 };
 
 class HeapObject : public Object {
@@ -199,16 +205,27 @@ class HeapObject : public Object {
     return static_cast<TypeTag>((header()->value() >> HeapObject::CLASS_TAG_OFFSET) & HeapObject::CLASS_TAG_MASK);
   }
 
+  INLINE bool has_forwarding_address() {
+    return _at(HEADER_OFFSET)->is_heap_object();
+  }
+
   // During GC the header can be a heap object (a forwarding pointer).
-  INLINE Object* header_during_gc() {
-    return _at(HEADER_OFFSET);
+  INLINE HeapObject* forwarding_address() {
+    ASSERT(has_forwarding_address());
+    return HeapObject::cast(_at(HEADER_OFFSET));
+  }
+
+  INLINE void set_forwarding_address(HeapObject* destination) {
+    _at_put(HEADER_OFFSET, destination);
   }
 
   // Pseudo virtual member functions.
   int size(Program* program);  // Returns the byte size of this object.
-  void roots_do(Program* program, RootCallback* cb);
-  void do_pointers(Program* program, PointerCallback* cb);
+  void roots_do(Program* program, RootCallback* cb);  // For GC.
+  void do_pointers(Program* program, PointerCallback* cb);  // For snapshots.
 
+  // The header contains either a Smi that represents the class id/class
+  // tag or a HeapObject which is a forwarding pointer during scavenge.
   static const int HEADER_OFFSET = Object::NON_SMI_TAG_OFFSET;
 
   static const int CLASS_TAG_BIT_SIZE = 4;
@@ -239,8 +256,13 @@ class HeapObject : public Object {
 
   static HeapObject* cast(void* address) {
     uword value = reinterpret_cast<uword>(address);
-    ASSERT((value & NON_SMI_TAG_MASK) == 0);
+    ASSERT((value & NON_SMI_TAG_MASK) == SMI_TAG);
     return reinterpret_cast<HeapObject*>(value + HEAP_TAG);
+  }
+
+  static HeapObject* from_address(uword address) {
+    ASSERT((address & NON_SMI_TAG_MASK) == SMI_TAG);
+    return reinterpret_cast<HeapObject*>(address + HEAP_TAG);
   }
 
   inline bool on_program_heap(Process* process);
@@ -250,7 +272,6 @@ class HeapObject : public Object {
     *word_count = SIZE / WORD_SIZE;
     *extra_bytes = 0;
   }
-
 
  protected:
   void _set_header(Smi* class_id, TypeTag class_tag) {
@@ -294,12 +315,20 @@ class HeapObject : public Object {
 
   friend class ScavengeState;
   friend class ObjectHeap;
+  friend class Space;
+  friend class SemiSpace;
+  friend class OldSpace;
   friend class Heap;
   friend class ProgramHeap;
+  friend class TwoSpaceHeap;
   friend class BaseSnapshotWriter;
   friend class SnapshotReader;
   friend class compiler::ProgramBuilder;
   friend class Stack;
+  friend class GcMetadata;
+  friend class CompactingVisitor;
+  friend class SweepingVisitor;
+  friend class GenerationalScavengeVisitor;
 };
 
 class Array : public HeapObject {
@@ -1170,6 +1199,112 @@ class Instance : public HeapObject {
   friend class ProgramHeap;
 };
 
+/*
+These objects are sometimes used to overwrite dead objects.  This
+  means a heap can be made traversable, skipping over unused areas.
+They are never accessible from Toit code.
+*/
+class FreeListRegion : public HeapObject {
+ public:
+  uword size() {
+    if (class_tag() == SINGLE_FREE_WORD_TAG) return WORD_SIZE;
+    ASSERT(class_tag() == FREE_LIST_REGION_TAG);
+    return _word_at(SIZE_OFFSET);
+  }
+
+  bool can_be_daisychained() { return class_tag() == FREE_LIST_REGION_TAG; }
+
+  void roots_do(int instance_size, RootCallback* cb) {}
+
+  static FreeListRegion* cast(Object* value) {
+    ASSERT(value->is_free_list_region());
+    return static_cast<FreeListRegion*>(value);
+  }
+
+  void set_next_region(FreeListRegion* next) {
+    ASSERT(can_be_daisychained());
+    _at_put(NEXT_OFFSET, next);
+  }
+
+  FreeListRegion* next_region() {
+    ASSERT(can_be_daisychained());
+    Object* result = _at(NEXT_OFFSET);
+    if (result == null) return null;
+    return FreeListRegion::cast(result);
+  }
+
+  static FreeListRegion* create_at(uword start, uword size);
+
+ private:
+  static const int SIZE_OFFSET = HeapObject::SIZE;
+  static const int NEXT_OFFSET = SIZE_OFFSET + WORD_SIZE;
+  static const int MINIMUM_SIZE = NEXT_OFFSET + WORD_SIZE;
+};
+
+/*
+These objects are container objects in which we allocate
+  newly promoted objects in old space.  They are chained up
+  so we can traverse the newly promoted objects during a
+  scavenge.
+After the header comes the newly allocated objects, perhaps
+  followed by a FreeListRegion object to fill out the rest.
+They are never accessible from Toit code.
+*/
+class PromotedTrack : public HeapObject {
+ public:
+  // Returns the whole size of the PromotedTrack so that
+  // when traversing the heap we will skip the promoted track.
+  // We only want to traverse the newly-promoted objects explicitly.
+  uword size() {
+    ASSERT(class_tag() == PROMOTED_TRACK_TAG);
+    return HEADER_SIZE;
+  }
+
+  // Returns the address of the first object in the track.
+  uword start() {
+    return _raw() + HEADER_SIZE;
+  }
+
+  // When traversing the stack we don't traverse the objects inside the
+  // track, so nothing to do here.
+  void roots_do(int instance_size, RootCallback* cb) {}
+
+  static PromotedTrack* cast(Object* value) {
+    ASSERT(value->is_promoted_track());
+    return static_cast<PromotedTrack*>(value);
+  }
+
+  void set_next(PromotedTrack* next) {
+    _at_put(NEXT_OFFSET, next);
+  }
+
+  PromotedTrack* next() {
+    Object* result = _at(NEXT_OFFSET);
+    if (result == null) return null;
+    return PromotedTrack::cast(result);
+  }
+
+  void set_end(uword end) {
+    _word_at_put(END_OFFSET, end);
+  }
+
+  uword end() {
+    return _word_at(END_OFFSET);
+  }
+
+  // Overwrite the header of the PromotedTrack with free space so that
+  // the heap becomes iterable.
+  void zap();
+
+  static PromotedTrack* initialize(PromotedTrack* next, uword start, uword end);
+
+  static inline int header_size() { return HEADER_SIZE; }
+
+ private:
+  static const int END_OFFSET = HeapObject::SIZE;
+  static const int NEXT_OFFSET = END_OFFSET + WORD_SIZE;
+  static const int HEADER_SIZE = NEXT_OFFSET + WORD_SIZE;
+};
 
 class Task : public Instance {
  public:
@@ -1240,6 +1375,15 @@ inline bool Object::is_string() {
 
 inline bool Object::is_large_integer() {
   return is_heap_object() && HeapObject::cast(this)->class_tag() == LARGE_INTEGER_TAG;
+}
+
+inline bool Object::is_free_list_region() {
+  return is_heap_object() && (HeapObject::cast(this)->class_tag() == FREE_LIST_REGION_TAG ||
+                              HeapObject::cast(this)->class_tag() == SINGLE_FREE_WORD_TAG);
+}
+
+inline bool Object::is_promoted_track() {
+  return is_heap_object() && HeapObject::cast(this)->class_tag() == PROMOTED_TRACK_TAG;
 }
 
 inline HeapObject* Object::unmark() {

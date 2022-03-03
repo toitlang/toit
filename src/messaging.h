@@ -224,8 +224,11 @@ class ExternalSystemMessageHandler : private ProcessRunner {
   // Callback for received messages.
   virtual void on_message(int sender, int type, void* data, int length) = 0;
 
-  // Send a message to a specific receiver.
-  bool send(int receiver, int type, void* data, int length);
+  // Send a message to a specific receiver. Returns true if the data was sent or
+  // false if an error occurred. If discard is true, the message is always discarded
+  // even on failures; otherwise, only messages that are succesfully sent are taken
+  // over by the receiver and must not be touched or deallocated by the sender.
+  bool send(int receiver, int type, void* data, int length, bool discard = false);
 
   // Support for handling failed allocations. Return true from the callback
   // if you have cleaned up and want to retry the allocation. Returning false

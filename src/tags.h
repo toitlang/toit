@@ -37,9 +37,12 @@ namespace toit {
   fn(Adler32)                           \
   fn(ZlibRle)                           \
   fn(UARTResource)                      \
+  fn(AdcState)                          \
   fn(PWMResource)                       \
   fn(GAPResource)                       \
   fn(GATTResource)                      \
+  fn(BLEServerServiceResource)          \
+  fn(BLEServerCharacteristicResource)   \
   fn(Directory)                         \
 
 #define TLS_CLASSES_DO(fn)              \
@@ -63,6 +66,7 @@ namespace toit {
   fn(WifiResourceGroup)                 \
   fn(EthernetResourceGroup)             \
   fn(BLEResourceGroup)                  \
+  fn(BLEServerConfigGroup)              \
   fn(PipeResourceGroup)                 \
   fn(SubprocessResourceGroup)           \
   fn(PersistentResourceGroup)           \

@@ -19,7 +19,7 @@ class Writer:
   constructor .writer_:
 
   /** Writes everything provided by the $reader. */
-  write_from reader/reader.Reader:
+  write_from reader/reader.Reader -> none:
     while data := reader.read: write data
 
   /**
@@ -31,21 +31,25 @@ class Writer:
   If the internal writer has an error, it is not possible to see how much data was
     written. If it is necessary to know how much data was correctly written, then
     the internal writer must be used directly.
+  May yield.
   */
-  write data from = 0 to = data.size:
+  write data from/int=0 to/int=data.size:
+    size := to - from
     while from < to:
-      from += writer_.write data from to
+      from += writer_.write data[from..to]
+      if from != to: yield
+    return size
 
   /**
   Closes the writer.
   The internal writer must have a `close_writer` method.
   */
-  close_write:
+  close_write -> none:
     writer_.close_write
 
   /**
   Closes the writer.
   The internal writer must have a `close` method.
   */
-  close:
+  close -> none:
     writer_.close

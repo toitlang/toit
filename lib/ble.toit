@@ -6,6 +6,7 @@ import binary
 import monitor
 import uuid as uuid_pkg
 import bytes
+import monitor show ResourceState_
 
 /**
 The base BLE UUID form which 16-bit and 32-bit UUIDs are generated.
@@ -54,6 +55,10 @@ class Address:
     // Use the last 3 bytes for hash.
     return raw_[6] | raw_[5] << 8 | raw_[4] << 16
 
+BLE_CONNECT_MODE_NONE          ::= 0
+BLE_CONNECT_MODE_DIRECTIONAL   ::= 1 
+BLE_CONNECT_MODE_UNDIRECTIONAL ::= 2
+
 /**
 Advertisement data as either sent by advertising or received through scanning.
 */
@@ -67,6 +72,7 @@ class AdvertisementData:
   Advertised service classes as a list of uuid.
   */
   service_classes/List
+
   /**
   Advertised manufacturer-specific data.
   */
@@ -93,13 +99,19 @@ class Advertiser:
   The data is advertised for the given $duration and once every $interval.
     If the $duration is null, then the data is advertised indefinitely.
 
+  The advertise will include the given $connection_mode, use one 
+    of the BLE_CONNECTION_MODE_* constants.
+
   Use $set_data to set the data.
 
   Only one advertiser can advertise at any given time.
   */
-  start --duration/Duration?=null --interval/Duration=DEFAULT_INTERVAL:
+  start 
+      --duration/Duration?=null 
+      --interval/Duration=DEFAULT_INTERVAL 
+      --connection_mode/int=BLE_CONNECT_MODE_NONE:
     duration_us := duration ? (max 0 duration.in_us) : -1
-    ble_advertise_start_ device.resource_group_ duration_us interval.in_us
+    ble_advertise_start_ device.resource_group_ duration_us interval.in_us connection_mode
 
   /**
   Closes and stops the advertiser.
@@ -237,12 +249,13 @@ class Client:
   resource_state_/monitor.ResourceState_
 
   constructor .device .address:
-    ble_connect_ device.resource_group_ address.raw_
-    state := device.resource_state_.wait_for_state CONNECTED_EVENT_ | CONNECTED_EVENT_
-    if state & CONNECT_FAILED_EVENT_ != 0:
-      throw "BLE connection failed"
     gatt_ = ble_get_gatt_ device.resource_group_
     resource_state_ = monitor.ResourceState_ device.resource_group_ gatt_
+    ble_connect_ device.resource_group_ address.raw_ gatt_
+    state := resource_state_.wait_for_state CONNECTED_EVENT_ | CONNECT_FAILED_EVENT_
+    if state & CONNECT_FAILED_EVENT_ != 0:
+      throw "BLE connection failed"
+      // TODO Possible leak of the gatt_ resource on connection failures
 
   /**
   Reads a remote service by looking up the given $service_uuid on the remote device.
@@ -258,22 +271,171 @@ class Client:
     resource_state_.clear_state STARTED_EVENT_
 
 /**
+Contains definitions of the services exposed by the BLE server.
+*/
+class ServerConfiguration:
+  resource_group_ := null
+  services/List := []
+
+  constructor:
+    resource_group_ = ble_server_configuration_init_
+    add_finalizer this:: ble_server_configuration_dispose_ resource_group_
+
+  add_service uuid -> Service:
+    service := Service this uuid
+    services.add service
+    return service
+
+/** 
+Defines a BLE service with characteristics. 
+*/
+class Service:
+  /**
+  The UUID of the service.
+  
+  For 16 and 32 bit UUIDs, form the BLE variant with the top-level uuid function.
+  */
+  uuid/uuid_pkg.Uuid
+  
+  server_configuration_/ServerConfiguration
+  resource_/ByteArray?
+
+  characteristics_/Map ::= {:}
+
+  constructor .server_configuration_ .uuid:
+    resource_ = ble_add_server_service_ server_configuration_.resource_group_ uuid.to_byte_array
+
+  add_read_only_characteristic uuid --value=#[]-> ReadOnlyCharacteristic:
+    char := ReadOnlyCharacteristic this uuid value
+    characteristics_[uuid] = char
+    return char
+
+  add_write_only_characteristic uuid -> WriteOnlyCharacteristic:
+    char := WriteOnlyCharacteristic this uuid
+    characteristics_[uuid] = char
+    return char
+
+  add_read_write_characteristic uuid --value=#[]-> ReadWriteCharacteristic:
+    char := ReadWriteCharacteristic this uuid value
+    characteristics_[uuid] = char
+    return char
+
+  add_notification_characteristic uuid -> NotificationCharacteristic:
+    char := NotificationCharacteristic this uuid
+    characteristics_[uuid] = char
+    return char 
+
+  get_characteristic uuid -> Characteristic?:
+    return characteristics_.get uuid
+
+
+BLE_CHR_TYPE_READ_ONLY_    ::= 1
+BLE_CHR_TYPE_WRITE_ONLY_   ::= 2
+BLE_CHR_TYPE_READ_WRITE_   ::= 3
+BLE_CHR_TYPE_NOTIFICATION_ ::= 4
+
+BLE_WAIT_RECV_             ::= 1 << 0
+BLE_WAIT_ACCESSED_         ::= 1 << 1
+BLE_WAIT_SUBSCRIBED_       ::= 1 << 2
+
+/**
+Base class of all characteristics.
+*/
+abstract class Characteristic:
+  /**
+  The UUID of the characteristic.
+  */
+  uuid/uuid_pkg.Uuid
+
+  state_/ResourceState_
+
+  constructor service/Service resource .uuid:
+    state_ = ResourceState_ service.server_configuration_.resource_group_ resource
+
+/**
+Base class of characteristics that clients can write to.
+*/  
+abstract class WritableCharacteristic extends Characteristic:
+  constructor service/Service resource uuid:
+    super service resource uuid
+  
+  value -> ByteArray?:
+    state_.wait_for_state BLE_WAIT_RECV_
+    data := ble_get_characteristics_value_ state_.resource
+    state_.clear_state BLE_WAIT_RECV_
+    return data
+
+/** 
+A characteristic that can only be read by clients.
+*/
+class ReadOnlyCharacteristic extends Characteristic:
+  value_/ByteArray := #[]
+
+  constructor service/Service uuid/uuid_pkg.Uuid value/ByteArray:  
+    resource := ble_add_server_characteristic_ service.resource_ uuid.to_byte_array BLE_CHR_TYPE_READ_ONLY_ value
+    super service resource uuid
+    value_ = value
+
+  value -> ByteArray: return value_
+
+  value= value/ByteArray -> none:
+    ble_set_characteristics_value_ state_.resource value
+    value_ = value
+
+/**
+A characteristic that can only be written to by clients.
+*/
+class WriteOnlyCharacteristic extends WritableCharacteristic:
+  constructor service/Service uuid/uuid_pkg.Uuid:
+    resource := ble_add_server_characteristic_ service.resource_ uuid.to_byte_array BLE_CHR_TYPE_WRITE_ONLY_ null
+    super service resource uuid
+
+/**
+A characteristic that allows both read and write by the client.
+*/
+class ReadWriteCharacteristic extends WritableCharacteristic:
+  constructor service/Service uuid/uuid_pkg.Uuid value/ByteArray:  
+    resource := ble_add_server_characteristic_ service.resource_ uuid.to_byte_array BLE_CHR_TYPE_READ_WRITE_ value
+    super service resource uuid
+
+  value= value/ByteArray -> none:
+    ble_set_characteristics_value_ state_.resource value
+
+
+/** 
+A characteristic that the client can subscribe to changes on.
+*/
+class NotificationCharacteristic extends Characteristic:
+  constructor service/Service uuid/uuid_pkg.Uuid:  
+    resource := ble_add_server_characteristic_ service.resource_ uuid.to_byte_array BLE_CHR_TYPE_NOTIFICATION_ null
+    super service resource uuid
+
+  value= value/ByteArray -> none:
+    ble_notify_characteristics_value_ state_.resource value
+
+/**
 The local BLE device.
 
 After construction, the BLE stack is initialized and ready to use.
+
+If services is not empty, sets up the services for the advertiser. 
 */
 class Device:
   resource_group_ := ?
   resource_state_/monitor.ResourceState_? := null
 
-  constructor.default:
-    resource_group_ = ble_init_
+  constructor.default server_configuration/ServerConfiguration?=null:
+    server_configuration_resource_group := server_configuration != null
+        ? server_configuration.resource_group_
+        : null
+    resource_group_ = ble_init_ server_configuration_resource_group
     add_finalizer this:: this.close
     try:
       gap := ble_gap_ resource_group_
       resource_state := monitor.ResourceState_ resource_group_ gap
-      resource_state.wait_for_state STARTED_EVENT_
+      state := resource_state.wait_for_state STARTED_EVENT_
       resource_state_ = resource_state
+
     finally: | is_exception e |
       if not resource_state_: ble_close_ resource_group_
 
@@ -305,6 +467,7 @@ class Device:
   */
   advertise -> Advertiser:
     return Advertiser this
+
 
   /**
   Scans for nearby devices. This method blocks while the scan is ongoing.
@@ -343,13 +506,22 @@ class Device:
     finally:
       ble_scan_stop_ resource_group_
 
-STARTED_EVENT_        ::= 1 << 0
-COMPLETED_EVENT_      ::= 1 << 1
-DISCOVERY_EVENT_      ::= 1 << 2
-CONNECTED_EVENT_      ::= 1 << 3
-CONNECT_FAILED_EVENT_ ::= 1 << 4
+  wait_for_client_connected -> none:
+    resource_state_.wait_for_state CONNECTED_EVENT_
+    resource_state_.clear_state CONNECTED_EVENT_
 
-ble_init_:
+  wait_for_client_disconnected -> none:
+    resource_state_.wait_for_state DISCONNECTED_EVENT_
+    resource_state_.clear_state DISCONNECTED_EVENT_
+
+STARTED_EVENT_              ::= 1 << 0
+COMPLETED_EVENT_            ::= 1 << 1
+DISCOVERY_EVENT_            ::= 1 << 2
+CONNECTED_EVENT_            ::= 1 << 3
+CONNECT_FAILED_EVENT_       ::= 1 << 4
+DISCONNECTED_EVENT_         ::= 1 << 5
+
+ble_init_ config_resource_group:
   #primitive.ble.init
 
 ble_gap_ resource_group:
@@ -367,7 +539,7 @@ ble_scan_next_ resource_group:
 ble_scan_stop_ resource_group:
   #primitive.ble.scan_stop
 
-ble_advertise_start_ resource_group duration_us interval_us:
+ble_advertise_start_ resource_group duration_us interval_us connect_mode:
   #primitive.ble.advertise_start
 
 ble_advertise_config_ resource_group name service_classes service_data:
@@ -376,7 +548,7 @@ ble_advertise_config_ resource_group name service_classes service_data:
 ble_advertise_stop_ resource_group:
   #primitive.ble.advertise_stop
 
-ble_connect_ resource_group address:
+ble_connect_ resource_group address gatt:
   #primitive.ble.connect
 
 ble_get_gatt_ resource_group:
@@ -396,3 +568,24 @@ ble_request_characteristic_ gatt handle_range characteristic_id:
 
 ble_request_attribute_ gatt handle:
   #primitive.ble.request_attribute
+
+ble_server_configuration_init_:
+  #primitive.ble.server_configuration_init
+
+ble_server_configuration_dispose_ resource_group_:
+  #primitive.ble.server_configuration_dispose
+
+ble_add_server_service_ resource_group_ uuid:
+  #primitive.ble.add_server_service
+
+ble_add_server_characteristic_ service_resource uuid type value:
+  #primitive.ble.add_server_characteristic
+
+ble_set_characteristics_value_ gatt new_value:
+  #primitive.ble.set_characteristics_value
+
+ble_notify_characteristics_value_ gatt new_value:
+  #primitive.ble.notify_characteristics_value
+
+ble_get_characteristics_value_ gatt:
+  #primitive.ble.get_characteristics_value

@@ -66,6 +66,8 @@ int BaseMbedTLSSocket::add_root_certificate(X509Certificate* cert) {
   // Do a shallow copy of the cert.
   *last = _new mbedtls_x509_crt(*(cert->cert()));
   if (*last == null) return MBEDTLS_ERR_PK_ALLOC_FAILED;
+  // By default we don't enable certificate verification in server mode, but if
+  // the user adds a root that indicates that they certainly want verification.
   mbedtls_ssl_conf_authmode(&_conf, MBEDTLS_SSL_VERIFY_REQUIRED);
   return 0;
 }
@@ -140,6 +142,8 @@ void MbedTLSResourceGroup::init_conf(mbedtls_ssl_config* conf) {
   auto transport = MBEDTLS_SSL_TRANSPORT_STREAM;
   auto client_server = (_mode == TLS_SERVER) ? MBEDTLS_SSL_IS_SERVER : MBEDTLS_SSL_IS_CLIENT;
 
+  // This enables certificate verification in client mode, but does not
+  // enable it in server mode.
   if (int ret = mbedtls_ssl_config_defaults(conf,
                                             client_server,
                                             transport,

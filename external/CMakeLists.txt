@@ -56,6 +56,18 @@ set(TOIT_REPOS
     https://github.com/toitware/toit-ssd1306
     https://github.com/toitware/toit-tm1640
     https://github.com/toitware/toit-vcnl4040
+    https://github.com/toitware/mqtt
+    https://github.com/toitware/cellular
+    https://github.com/toitware/sequans-cellular
+    https://github.com/toitware/quectel-cellular
+    https://github.com/toitware/ublox-cellular
+    https://github.com/toitware/ublox-gnss-driver
+    https://github.com/toitware/icm20948-driver
+    https://github.com/toitware/max31865-driver
+    https://github.com/toitware/mcp2518fd-driver
+    https://github.com/toitware/mcp342x-driver
+    https://github.com/toitware/bme280-driver
+    https://github.com/toitware/sts3x-driver
 )
 
 set(DOWNLOADS_DIR "${CMAKE_CURRENT_LIST_DIR}/downloads")
@@ -103,6 +115,8 @@ endif()
 set(TEST_SHARD_START "$ENV{SHARD_START}")
 set(TEST_SHARD_STRIDE "$ENV{SHARD_STRIDE}")
 
+set(EXTERNAL_GOLD_DIR "${CMAKE_CURRENT_LIST_DIR}/gold")
+
 add_custom_target(
   check_external
   COMMAND ${CMAKE_CTEST_COMMAND} -j${NUM_CPU} -T test -C external --output-on-failure -I ${TEST_SHARD_START},,${TEST_SHARD_STRIDE}
@@ -117,7 +131,7 @@ add_custom_target(
 
 add_custom_target(
   clear_external_health_gold
-  COMMAND rm -f "${CMAKE_CURRENT_LIST_DIR}/gold/*.gold"
+  COMMAND rm -f "${EXTERNAL_GOLD_DIR}/*.gold"
 )
 
 add_custom_target(
@@ -195,7 +209,7 @@ foreach(FILE ${HEALTH_SOURCES})
   add_health_test("${FILE}"
     RELATIVE_TO "${DOWNLOADS_DIR}"
     LIB_DIR "${TOIT_SDK_SOURCE_DIR}"
-    GOLD_DIR "${CMAKE_CURRENT_LIST_DIR}/gold"
+    GOLD_DIR "${EXTERNAL_GOLD_DIR}"
     CONFIGURATION external_health
     UPDATE_TARGET update_external_health_gold
   )

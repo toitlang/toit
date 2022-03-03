@@ -34,7 +34,18 @@ file(GLOB lwip_on_linux_sources_SRC
   "third_party/lwip_on_linux/*.cc"
   )
 
-set(toit_vm_SRC ${toit_resources_SRC} ${toit_event_sources_SRC} ${lwip_on_linux_sources_SRC})
+file(GLOB gc_sources_SRC
+  #"third_party/dartino/object_memory.h"
+  #"third_party/dartino/object_memory.cc"
+  #"third_party/dartino/object_memory_copying.cc"
+  #"third_party/dartino/object_memory_mark_sweep.cc"
+  #"third_party/dartino/gc_metadata.h"
+  #"third_party/dartino/gc_metadata.cc"
+  #"third_party/dartino/two_space_heap.h"
+  #"third_party/dartino/two_space_heap.cc"
+  )
+
+set(toit_vm_SRC ${toit_resources_SRC} ${toit_event_sources_SRC} ${lwip_on_linux_sources_SRC} ${gc_sources_SRC})
 
 add_library(
   toit_core
@@ -69,7 +80,11 @@ set_target_properties(toit_run_image
 # On linux, we need to link statically against libgcc as well.
 if ("${CMAKE_SYSTEM_NAME}" MATCHES "Linux")
   set(TOIT_LINK_LIBS_LIBGCC -static-libgcc)
-  set(TOIT_LINK_SEGFAULT SegFault)
+
+  find_library(SEGFAULT_LIB SegFault)
+  if (SEGFAULT_LIB)
+    set(TOIT_LINK_SEGFAULT SegFault)
+  endif()
 endif()
 
 if (DEFINED USE_LWIP)

@@ -235,15 +235,41 @@ update-health-gold: download-packages
 	(cd build/host && ninja clear_health_gold)
 	(cd build/host && ninja update_health_gold)
 
+.PHONY: enable-external
+enable-external:
+	$(MAKE) rebuild-cmake  # Ensure the cmake-directory was created.
+	cmake -DTOIT_TEST_EXTERNAL=ON build/host
+	$(MAKE) download-external
+	$(MAKE) rebuild-cmake
+	$(MAKE) download-packages
+
+.PHONY: check-external-enabled
+check-external-enabled:
+	@ if ! cmake -LA -N build/host | grep 'TOIT_TEST_EXTERNAL:BOOL=ON'; then \
+		echo "external projects are not enabled. Run 'make enable-external' first."; \
+		exit 1; \
+	fi
+
+.PHONY: disable-external
+disable-external: check-external-enabled
+	$(MAKE) rebuild-cmake  # Ensure the cmake-directory was created.
+	cmake -DTOIT_TEST_EXTERNAL=OFF build/host
+
 .PHONY: download-external
-download-external:
+download-external: check-external-enabled
 	# Download with higher parallelism.
 	(cd build/host && ninja -j 16 download_external)
 
 .PHONY: test-external
-test-external:
+test-external: check-external-enabled
 	(cd build/host && ninja check_external)
 
 .PHONY: test-external-health
-test-external-health:
+test-external-health: check-external-enabled
 	(cd build/host && ninja check_external_health)
+
+.PHONY: update-external-health-gold
+update-external-health-gold: download-packages check-external-enabled
+	$(MAKE) rebuild-cmake
+	(cd build/host && ninja clear_external_health_gold)
+	(cd build/host && ninja update_external_health_gold)

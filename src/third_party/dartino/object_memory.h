@@ -6,10 +6,13 @@
 
 #include "../../top.h"
 
+#include <atomic>
+
+#include "../../linked.h"
+#include "../../heap_roots.h"
+#include "../../objects.h"
 #include "../../os.h"
 #include "../../utils.h"
-#include "../../linked.h"
-#include "src/vm/weak_pointer.h"
 
 namespace toit {
 
@@ -22,8 +25,9 @@ class HeapObjectVisitor;
 class MarkingStack;
 class Object;
 class OldSpace;
-class PointerVisitor;
+class RootCallback;
 class ProgramHeapRelocator;
+class Program;
 class PromotedTrack;
 class Smi;
 class Space;
@@ -48,7 +52,7 @@ enum PageType {
 };
 
 typedef DoubleLinkedList<Chunk> ChunkList;
-typedef DoubleLinkedList<Chunk>::Iterator<Chunk> ChunkListIterator;
+typedef DoubleLinkedList<Chunk>::Iterator ChunkListIterator;
 
 // A chunk represents a block of memory provided by ObjectMemory.
 class Chunk : public ChunkList::Element {
@@ -112,10 +116,30 @@ class Chunk : public ChunkList::Element {
   friend class Space;
 };
 
+// Abstract base class for visiting all objects in a space.
+class HeapObjectVisitor {
+ public:
+  explicit HeapObjectVisitor(Program* program) : program_(program) {}
+  virtual ~HeapObjectVisitor() {}
+  // Visit the heap object. Must return the size of the heap
+  // object.
+  virtual uword visit(HeapObject* object) = 0;
+  // Notification that the end of a chunk has been reached. A heap
+  // object visitor visits all heap objects in a chunk in order
+  // calling visit on each of them. When it reaches the end of the
+  // chunk it calls chunk_end.
+  virtual void chunk_end(Chunk* chunk, uword end) {}
+  // Notification that we are about to iterate over a chunk.
+  virtual void chunk_start(Chunk* chunk) {}
+
+ protected:
+  Program* program_;
+};
+
 // Space is a chain of chunks. It supports allocation and traversal.
 class Space {
  public:
-  static const uword DEFAULT_MINIMUM_CHUNK_SIZE = PAGE_SIZE;
+  static const uword DEFAULT_MINIMUM_CHUNK_SIZE = TOIT_PAGE_SIZE;
   static const uword DEFAULT_MAXIMUM_CHUNK_SIZE = 256 * KB;
 
   virtual ~Space();
@@ -140,10 +164,6 @@ class Space {
   // processing.
   virtual HeapObject* new_location(HeapObject* old_location) = 0;
 
-  // Instance transformation leaves garbage in the heap so we rebuild the
-  // space after transformations.
-  virtual void rebuild_after_transformations() = 0;
-
   void set_used(uword used) { used_ = used; }
 
   // Returns the total size of allocated chunks.
@@ -153,13 +173,10 @@ class Space {
   void iterate_objects(HeapObjectVisitor* visitor);
 
   // Iterate all the objects that are grey, after a mark stack overflow.
-  void iterate_overflowed_objects(PointerVisitor* visitor, MarkingStack* stack);
-
-  // Schema change support.
-  void complete_transformations(PointerVisitor* visitor);
+  void iterate_overflowed_objects(RootCallback* visitor, MarkingStack* stack);
 
   // Returns true if the address is inside this space.  Not particularly fast.
-  // See GCMetadata::PageType for a faster possibility.
+  // See GcMetadata::PageType for a faster possibility.
   bool includes(uword address);
 
   // Adjust the allocation budget based on the current heap size.
@@ -185,17 +202,17 @@ class Space {
     return no_allocation_failure_nesting_ != 0;
   }
 
-  bool is_empty() const { return chunk_list_.IsEmpty(); }
+  bool is_empty() const { return chunk_list_.is_empty(); }
 
-  ChunkListIterator chunk_list_begin() { return chunk_list_.Begin(); }
-  ChunkListIterator chunk_list_end() { return chunk_list_.End(); }
+  ChunkListIterator chunk_list_begin() { return chunk_list_.begin(); }
+  ChunkListIterator chunk_list_end() { return chunk_list_.end(); }
 
-  static uword default_chunk_size(uword heap_size) {
+  static uword get_default_chunk_size(uword heap_size) {
     // We return a value between DEFAULT_MINIMUM_CHUNK_SIZE and
     // DEFAULT_MAXIMUM_CHUNK_SIZE - and try to keep the chunks smaller than 20% of
     // the heap.
-    return Utils::Minimum(
-        Utils::Maximum(DEFAULT_MINIMUM_CHUNK_SIZE, heap_size / 5),
+    return Utils::min(
+        Utils::max(DEFAULT_MINIMUM_CHUNK_SIZE, heap_size / 5),
         DEFAULT_MAXIMUM_CHUNK_SIZE);
   }
 
@@ -208,32 +225,30 @@ class Space {
   void find(uword word, const char* name);
 #endif
 
-  uword start() {
-    ASSERT(chunk_list_.First() == chunk_list_.Last());
-    return chunk_list_.First()->start();
+  uword single_chunk_start() {
+    ASSERT(chunk_list_.first() == chunk_list_.last());
+    return chunk_list_.first()->start();
   }
 
-  uword size() {
-    ASSERT(chunk_list_.First() == chunk_list_.Last());
-    return chunk_list_.First()->size();
+  uword single_chunk_size() {
+    ASSERT(chunk_list_.first() == chunk_list_.last());
+    return chunk_list_.first()->size();
   }
 
   bool is_in_single_chunk(HeapObject* object) {
-    ASSERT(chunk_list_.First() == chunk_list_.Last());
-    return reinterpret_cast<uword>(object) - start() < size();
+    ASSERT(chunk_list_.first() == chunk_list_.last());
+    return reinterpret_cast<uword>(object) - single_chunk_start() < single_chunk_size();
   }
 
   Chunk* chunk() {
-    ASSERT(chunk_list_.First() == chunk_list_.Last());
-    return chunk_list_.First();
+    ASSERT(chunk_list_.first() == chunk_list_.last());
+    return chunk_list_.first();
   }
-
-  WeakPointerList* weak_pointers() { return &weak_pointers_; }
 
   PageType page_type() { return page_type_; }
 
  protected:
-  explicit Space(Resizing resizeable, PageType page_type);
+  Space(Program* program, Resizing resizeable, PageType page_type);
 
   friend class Chunk;
   friend class CompactingVisitor;
@@ -257,6 +272,7 @@ class Space {
     --no_allocation_failure_nesting_;
   }
 
+  Program* program_;
   ChunkList chunk_list_;
   uword used_;              // Allocated bytes.
   uword top_;               // Allocation top in current chunk.
@@ -269,25 +285,18 @@ class Space {
   int no_allocation_failure_nesting_;
   bool resizeable_;
 
-  // Linked list of weak pointers to heap objects in this space.
-  WeakPointerList weak_pointers_;
   PageType page_type_;
 };
 
 class SemiSpace : public Space {
  public:
-  explicit SemiSpace(Resizing resizeable, PageType page_type,
-                     uword maximum_initial_size);
+  SemiSpace(Program* program, Resizing resizeable, PageType page_type, uword maximum_initial_size);
 
   // Returns the total size of allocated objects.
   virtual uword used();
 
   virtual bool is_alive(HeapObject* old_location);
   virtual HeapObject* new_location(HeapObject* old_location);
-
-  // Instance transformation leaves garbage in the heap that needs to be
-  // added to freelists when using mark-sweep collection.
-  virtual void rebuild_after_transformations();
 
   // flush will make the current chunk consistent for iteration.
   virtual void flush();
@@ -303,7 +312,7 @@ class SemiSpace : public Space {
 
   // For the program semispaces.  There is no other space into which we
   // promote, so it does all work in one go.
-  void complete_scavenge(PointerVisitor* visitor);
+  void complete_scavenge(RootCallback* visitor);
 
   // For the mutable heap.
   void start_scavenge();
@@ -327,7 +336,7 @@ class SemiSpace : public Space {
 
 class OldSpace : public Space {
  public:
-  explicit OldSpace(TwoSpaceHeap* heap);
+  OldSpace(Program* program, TwoSpaceHeap* heap);
 
   virtual ~OldSpace();
 
@@ -336,10 +345,6 @@ class OldSpace : public Space {
   virtual HeapObject* new_location(HeapObject* old_location);
 
   virtual uword used();
-
-  // Instance transformation leaves garbage in the heap that needs to be
-  // added to freelists when using mark-sweep collection.
-  virtual void rebuild_after_transformations();
 
   // flush will make the current chunk consistent for iteration.
   virtual void flush();
@@ -353,7 +358,7 @@ class OldSpace : public Space {
 
   void clear_free_list();
   void mark_chunk_ends_free();
-  void zap_obejct_starts();
+  void zap_object_starts();
 
   // Find pointers to young-space.
   void visit_remembered_set(GenerationalScavengeVisitor* visitor);
@@ -386,17 +391,17 @@ class OldSpace : public Space {
   // For detecting pointless GCs that are really an out-of-memory situation.
   void EvaluatePointlessness();
   uword MinimumProgress();
-  void ReportNewSpaceProgress(uword bytes_collected);
+  void report_new_space_progress(uword bytes_collected);
 
  private:
-  uword AllocateFromFreeList(uword size);
+  uword allocate_from_free_list(uword size);
   uword allocate_in_new_chunk(uword size);
   Chunk* allocate_and_use_chunk(uword size);
 
   TwoSpaceHeap* heap_;
   FreeList* free_list_;  // Free list structure.
   bool tracking_allocations_ = false;
-  PromotedTrack* promoted_track_ = NULL;
+  PromotedTrack* promoted_track_ = null;
   bool compacting_ = true;
 
   // Actually new space garbage found since last compacting GC. Used to
@@ -417,19 +422,6 @@ class NoAllocationFailureScope {
 
  private:
   Space* space_;
-};
-
-class NoAllocationScope {
- public:
-#ifndef DEBUG
-  explicit NoAllocationScope(Heap* heap) {}
-#else
-  explicit NoAllocationScope(Heap* heap);
-  ~NoAllocationScope();
-
- private:
-  Heap* heap_;
-#endif
 };
 
 // ObjectMemory controls all memory used by object heaps.
@@ -460,7 +452,7 @@ class ObjectMemory {
   // Use some already-existing memory for a chunk.
   static Chunk* create_fixed_chunk(Space* space, void* heap_space, uword size);
 
-  static Atomic<uword> allocated_;
+  static std::atomic<uword> allocated_;
 
   friend class SemiSpace;
   friend class Space;
