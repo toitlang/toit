@@ -92,7 +92,7 @@ class I2SResource: public EventQueueResource {
   int _alignment;
 };
 
-bool set_mclk_pin(i2s_port_t i2s_num, int io_num) {
+static bool set_mclk_pin(i2s_port_t i2s_num, int io_num) {
   bool is_0 = i2s_num == I2S_NUM_0;
 
   switch (io_num) {
