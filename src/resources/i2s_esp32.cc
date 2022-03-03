@@ -139,6 +139,14 @@ PRIMITIVE(create) {
        int, sample_rate, int, bits_per_sample, int, buffer_size,
        bool, is_master, int, mclk_multiplier, bool, use_apll);
 
+  int fixed_mclk = 0;
+  if (mclk_pin != -1) {
+    if (mclk_multiplier != 128 && mclk_multiplier != 256 && mclk_multiplier != 384) INVALID_ARGUMENT;
+    fixed_mclk = mclk_multiplier * sample_rate;
+  }
+
+  if (bits_per_sample != 16 && bits_per_sample != 24 && bits_per_sample != 32) INVALID_ARGUMENT;
+
   i2s_port_t port = i2s_ports.any();
   if (port == kInvalidPort) OUT_OF_RANGE;
 
@@ -161,11 +169,6 @@ PRIMITIVE(create) {
 
   if (rx_pin != -1) {
     mode |= I2S_MODE_RX;
-  }
-
-  int fixed_mclk = 0;
-  if (mclk_pin != -1) {
-    fixed_mclk = mclk_multiplier * sample_rate;
   }
 
   i2s_config_t config = {

@@ -79,7 +79,6 @@ class Bus:
           errors++
         else if state & WRITE_STATE_ != 0:
           // This is expected, and the loop continues.
-          yield
         else: 
           // It was closed (disposed).
           return -1
@@ -98,9 +97,7 @@ class Bus:
         errors++
       else if state & READ_STATE_ != 0:
         data := i2s_read_ i2s_
-        if data.size > 0: 
-          yield
-          return data
+        if data.size > 0: return data
         state_.clear_state READ_STATE_
       else:
         // It was closed (disposed).
