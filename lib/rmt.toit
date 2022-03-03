@@ -42,13 +42,9 @@ class Controller:
     if (tx and not tx_ch) or (not tx and tx_ch): throw "INVALID_ARGUMENT"
     if rx: rmt_rx_ = rmt_use_ resource_group_ rx_ch
     if tx: rmt_tx_ = rmt_use_ resource_group_ tx_ch
-    config_
 
-  config_:
-    if rx: config_rx_ --pin_num=rx.num --channel_num=rx_ch --mem_block_num=1
-    if tx: config_tx_ --pin_num=tx.num --channel_num=tx_ch
 
-  config_rx_
+  config_rx
       --pin_num/int
       --channel_num/int
       --mem_block_num/int=1
@@ -59,7 +55,7 @@ class Controller:
       --filter_ticks_thresh/int=100:
     rmt_config_rx_ rx.num rx_ch mem_block_num clk_div flags idle_threshold filter_en filter_ticks_thresh
 
-  config_rx_
+  config_tx
       --pin_num/int
       --channel_num/int
       --mem_block_num/int=1
@@ -81,24 +77,28 @@ class Controller:
     rmt_transfer_ tx_ch
       items_to_bytes_ items
 
-  transfer_and_read items max_items_size:
+  transfer_and_read items max_items_size -> List:
     max_output_len := 4096
+    print "len: $((items_to_bytes_ items).size) "
     result := rmt_transfer_and_read_ tx_ch rx_ch
       items_to_bytes_ items
       max_output_len
-
-    return bytes_to_items_ items
+    print "convert to items"
+    return bytes_to_items_ result
 
   bytes_to_items_ bytes/ByteArray -> List:
     items_size := bytes.size / 2
-    result := List items_size
+    print "construct result list"
+    result := []
+    print "convert bytes to items"
     items_size.repeat:
       result.add
         Item.from_bytes it * 2 bytes
+    print "return result"
     return result
 
   items_to_bytes_ items/List/*<Item>*/ -> ByteArray:
-    should_pad := items.size % 2 == 0
+    should_pad := items.size % 2 == 1
     // Ensure there is an even number of items.
     bytes_size := should_pad ? items.size * 2 + 2 : items.size * 2
     bytes := ByteArray bytes_size
@@ -135,12 +135,13 @@ rmt_use_ resource_group channel_num:
 rmt_unuse_ resource_group resource:
   #primitive.rmt.unuse
 
-rmt_config_rx_ pin_num/int channel_num/int mem_block_num/int clk_div/int flags/int idle_threshold/int filter_en/bool filter_ticks_thresh/int:
+rmt_config_rx_ pin_num/int channel_num/int mem_block_num/int clk_div/int flags/int
+    idle_threshold/int filter_en/bool filter_ticks_thresh/int:
   #primitive.rmt.config_rx
 
 rmt_config_tx_ pin_num/int channel_num/int mem_block_num/int clk_div/int flags/int
-       carrier_en/bool carrier_freq_hz/int carrier_level/int carrier_duty_percent/int
-       loop_en/bool idle_output_en/bool idle_level/int:
+    carrier_en/bool carrier_freq_hz/int carrier_level/int carrier_duty_percent/int
+    loop_en/bool idle_output_en/bool idle_level/int:
   #primitive.rmt.config_tx
 
 rmt_transfer_ tx_ch/int items_bytes/*/Blob*/:
