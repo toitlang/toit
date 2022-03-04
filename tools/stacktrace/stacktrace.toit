@@ -5,7 +5,7 @@ usage:
   print "Usage: echo Backtrace:0x400870c0:0x3ffc9df0 0x4010661d:0x3ffc9e70 0x401143a3:0x3ffc9ea0 | toit.run stacktrace.toit [--disassemble] [--objdump objdump_executable] /path/to/toit.elf"
   exit 1
 
-OBJDUMP := "xtensa-esp32-elf-objdump"
+OBJDUMP ::= "xtensa-esp32-elf-objdump"
 
 main args/List:
   if args.size < 1: usage
