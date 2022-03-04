@@ -30,14 +30,6 @@
 
 namespace toit {
 
-// Because of the fixed metadata overhead we limit the max size of the
-// heap for now.  Can be fixed if we can resize the metadata on demand.
-#ifdef BUILD_64
-static const uword MAX_HEAP = 1ull * GB;  // Metadata ca. 8.5Mbytes.
-#else
-static const uword MAX_HEAP = 512ull * MB;  // Metadata ca. 8.2Mbytes.
-#endif
-
 int64 OS::get_system_time() {
   int64 us;
   if (!monotonic_gettime(&us)) {
@@ -252,61 +244,6 @@ OS::HeapMemoryRange OS::get_heap_memory_range() {
   }
   _single_range.size = MAX_HEAP;
   return _single_range;
-}
-
-// The normal way to get an aligned address is to round up
-// the allocation size, then discard the unaligned ends.  Here
-// we try something slightly different: We try to get an allocation
-// near the unaligned one.  (If that fails we'll try random
-// addresses.)
-static void* try_grab_aligned(void* suggestion, uword size) {
-  ASSERT(size == Utils::round_up(size, TOIT_PAGE_SIZE));
-  void* result = OS::grab_vm(suggestion, size);
-  if (result == null) return result;
-  uword numeric = reinterpret_cast<uword>(result);
-  uword rounded = Utils::round_up(numeric, TOIT_PAGE_SIZE);
-  if (numeric == rounded) return result;
-  // If we got an allocation that was not toit-page-aligned,
-  // then it's a pretty good guess that the next few aligned
-  // addresses might work.
-  OS::ungrab_vm(result, size);
-  for (int i = 0; i < 4; i++) {
-    result = OS::grab_vm(reinterpret_cast<void*>(rounded), size);
-    if (result == reinterpret_cast<void*>(rounded)) return result;
-    if (result) OS::ungrab_vm(result, size);
-    rounded += size;
-  }
-  return OS::grab_vm(reinterpret_cast<void*>(rounded), size);
-}
-
-void* OS::allocate_pages(uword size) {
-  if (_single_range.size == 0) FATAL("GcMetadata::set_up not called");
-  size = Utils::round_up(size, TOIT_PAGE_SIZE);
-  uword original_size = size;
-  // First attempt, let the OS pick a location.
-  void* result = try_grab_aligned(null, size);
-  if (result == null) return null;
-  uword result_end = reinterpret_cast<uword>(result) + size;
-  int attempt = 0;
-  while (result < _single_range.address || result_end > reinterpret_cast<uword>(_single_range.address) + _single_range.size) {
-    if (attempt++ > 20) FATAL("Out of memory");
-    // We did not get a result in the right range.
-    // Try to use a random address in the right range.
-    ungrab_vm(result, size);
-#ifdef BUILD_64
-    uword mask = MAX_HEAP - 1;
-#else
-    word mask = -1;
-#endif
-    uword suggestion = reinterpret_cast<uword>(_single_range.address) + Utils::round_down(random() & mask, TOIT_PAGE_SIZE);
-    result = try_grab_aligned(reinterpret_cast<void*>(suggestion), size);
-  }
-  use_vm(result, original_size);
-  return result;
-}
-
-void OS::free_pages(void* address, uword size) {
-  ungrab_vm(address, size);
 }
 
 void OS::set_up() {
