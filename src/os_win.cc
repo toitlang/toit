@@ -301,9 +301,8 @@ void* OS::grab_vm(void* address, uword size) {
 }
 
 void OS::ungrab_vm(void* address, uword size) {
-  size = Utils::round_up(size, 4096);
-  bool error = VirtualFree(address, size, MEM_RELEASE);
-  if (error) FATAL("ungrab_vm");
+  bool ok = VirtualFree(address, 0, MEM_RELEASE);
+  if (!ok) FATAL("ungrab_vm");
 }
 
 bool OS::use_vm(void* addr, uword sz) {
@@ -314,8 +313,8 @@ bool OS::use_vm(void* addr, uword sz) {
   uword rounded = Utils::round_down(address, 4096);
   uword size = Utils::round_up(end - rounded, 4096);
   DWORD old_protection;
-  bool error = VirtualProtect(reinterpret_cast<void*>(rounded), size, PAGE_READWRITE, &old_protection);
-  if (error) FATAL("use_vm");
+  void* result = VirtualAlloc(reinterpret_cast<void*>(address), size, MEM_COMMIT, PAGE_READWRITE);
+  if (result != reinterpret_cast<void*>(address)) FATAL("use_vm");
   return true;
 }
 
@@ -325,8 +324,8 @@ void OS::unuse_vm(void* addr, uword sz) {
   uword rounded = Utils::round_up(address, 4096);
   uword size = Utils::round_down(end - rounded, 4096);
   if (size != 0) {
-    bool error = VirtualFree(reinterpret_cast<void*>(rounded), size, MEM_DECOMMIT);
-    if (error) FATAL("unuse_vm");
+    bool ok = VirtualFree(reinterpret_cast<void*>(rounded), size, MEM_DECOMMIT);
+    if (!ok) FATAL("unuse_vm");
   }
 }
 
