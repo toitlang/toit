@@ -133,8 +133,9 @@ static void* try_grab_aligned(void* suggestion, uword size) {
   // addresses might work.
   OS::ungrab_vm(result, size);
   for (int i = 0; i < 4; i++) {
-    result = OS::grab_vm(reinterpret_cast<void*>(rounded), size);
-    if (result == reinterpret_cast<void*>(rounded)) return result;
+    void* next_suggestion = reinterpret_cast<void*>(rounded);
+    result = OS::grab_vm(next_suggestion, size);
+    if (result == next_suggestion) return result;
     if (result) OS::ungrab_vm(result, size);
     rounded += size;
   }
