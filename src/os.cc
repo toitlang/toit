@@ -155,12 +155,10 @@ void* OS::allocate_pages(uword size) {
     // We did not get a result in the right range.
     // Try to use a random address in the right range.
     ungrab_vm(result, size);
-#ifdef BUILD_64
     uword mask = MAX_HEAP - 1;
-#else
-    word mask = -1;
-#endif
-    uword suggestion = reinterpret_cast<uword>(_single_range.address) + Utils::round_down(random() & mask, TOIT_PAGE_SIZE);
+    uword r = rand();
+    r <<= TOIT_PAGE_SIZE_LOG2;  // Do this on a separate line so that it is done on a word-sized integer.
+    uword suggestion = reinterpret_cast<uword>(_single_range.address) + (r & mask);
     result = try_grab_aligned(reinterpret_cast<void*>(suggestion), size);
   }
   use_vm(result, original_size);
