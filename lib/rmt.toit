@@ -25,7 +25,7 @@ class Item:
 
   constructor.from_bytes index/int bytes/ByteArray:
     period = (bytes[index] | ((bytes[index + 1]) & 0xEF) << 8)
-    value = bytes[index + 1] & 0x80
+    value = (bytes[index + 1] >> 7) & 0b1
 
   first_byte -> int:
     return period & 0xFF
