@@ -4,6 +4,17 @@
 
 import gpio
 
+/**
+Each RMT item consists of a value/level and a period.
+
+# Advanced
+When an RMT value is written, then the given value is sustained for the given
+  period. The period is specified in number of ticks, so the actual time the
+  value is sustained is determined by the RMT controller configuration.
+
+At the lower level, an item consits of 16 bits: 15 bits for the period and 1
+  bit for the value/level.
+*/
 class Item:
   value/int
   period/int
