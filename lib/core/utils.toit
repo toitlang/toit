@@ -307,6 +307,15 @@ The stats, listed by index in the array, are:
 4. Bytes allocated in object heap
 5. Group ID
 6. Process ID
+
+The "bytes allocated in the heap" tracks the total number of allocations, but
+  doesn't deduct the sizes of objects that die. It is a way to follow the
+  allocation pressure of the process.
+
+Also see $bytes_allocated_delta for tracking allocation patterns.
+
+The "allocated memory" is the combined size of all live objects on the heap.
+The "reserved memory" is the size of the heap.
 */
 process_stats -> List:
   result := process_stats -1 -1
@@ -320,8 +329,13 @@ Returns an array with stats for the process identified by the $group and the
   $id.
 */
 process_stats group id -> List?:
+  stats := process_stats_ group id
+  if not stats: return null
+  return List_.from_array_ stats
+
+process_stats_ group id:
   #primitive.core.process_stats:
-    return it ? List_.from_array_ it : it
+    return null
 
 /**
 Returns the number of bytes allocated, since the last call to this function.
