@@ -16,7 +16,7 @@ import gpio.pwm
 
 main:
   led := gpio.Pin 5
-  // Create a PWM square-wave generator with frequency 400.
+  // Create a PWM square wave generator with frequency 400Hz.
   generator := pwm.Pwm --frequency=400
 
   // Use it to drive the led pin.
