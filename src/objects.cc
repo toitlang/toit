@@ -469,6 +469,15 @@ bool String::_is_valid_utf8() {
   return Utils::is_valid_utf_8(content.address(), content.length());
 }
 
+void PromotedTrack::zap() {
+  uword header = SINGLE_FREE_WORD_CLASS_ID;
+  header = (header << CLASS_TAG_BIT_SIZE) | SINGLE_FREE_WORD_TAG;
+  Object* filler = Smi::from(header);
+  for (uword p = _raw(); p < _raw() + HEADER_SIZE; p += WORD_SIZE) {
+    *reinterpret_cast<Object**>(p) = filler;
+  }
+}
+
 #ifndef TOIT_FREERTOS
 
 void Array::write_content(SnapshotWriter* st) {

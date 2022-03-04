@@ -141,6 +141,8 @@ static void* try_grab_aligned(void* suggestion, uword size) {
   return OS::grab_vm(reinterpret_cast<void*>(rounded), size);
 }
 
+OS::HeapMemoryRange OS::_single_range = { 0 };
+
 void* OS::allocate_pages(uword size) {
   if (_single_range.size == 0) FATAL("GcMetadata::set_up not called");
   size = Utils::round_up(size, TOIT_PAGE_SIZE);
@@ -167,6 +169,30 @@ void* OS::allocate_pages(uword size) {
 
 void OS::free_pages(void* address, uword size) {
   ungrab_vm(address, size);
+}
+
+OS::HeapMemoryRange OS::get_heap_memory_range() {
+  // We make a single allocation to see where in the huge address space we can
+  // expect allocations.
+  void* probe = grab_vm(null, TOIT_PAGE_SIZE);
+  ungrab_vm(probe, TOIT_PAGE_SIZE);
+  uword addr = reinterpret_cast<uword>(probe);
+  uword HALF_MAX = MAX_HEAP / 2;
+  if (addr < HALF_MAX) {
+    // Address is near the start of address space, so we set the range
+    // to be the first MAX_HEAP of the address space.
+    _single_range.address = reinterpret_cast<void*>(TOIT_PAGE_SIZE);
+  } else if (addr + HALF_MAX + TOIT_PAGE_SIZE < addr) {
+    // Address is near the end of address space, so we set the range to
+    // be the last MAX_HEAP of the address space.
+    _single_range.address = reinterpret_cast<void*>(-static_cast<word>(MAX_HEAP + TOIT_PAGE_SIZE));
+  } else {
+    // We will be allocating within a symmetric range either side of this
+    // single allocation.
+    _single_range.address = reinterpret_cast<void*>(addr - HALF_MAX);
+  }
+  _single_range.size = MAX_HEAP;
+  return _single_range;
 }
 
 #endif  // ndef TOIT_FREERTOS

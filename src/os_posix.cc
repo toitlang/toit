@@ -220,32 +220,6 @@ void Thread::ensure_system_thread() {
   if (result != 0) FATAL("pthread_setspecific failed");
 }
 
-OS::HeapMemoryRange OS::_single_range = { 0 };
-
-OS::HeapMemoryRange OS::get_heap_memory_range() {
-  // We make a single allocation to see where in the huge address space we can
-  // expect allocations.
-  void* probe = grab_vm(null, TOIT_PAGE_SIZE);
-  ungrab_vm(probe, TOIT_PAGE_SIZE);
-  uword addr = reinterpret_cast<uword>(probe);
-  uword HALF_MAX = MAX_HEAP / 2;
-  if (addr < HALF_MAX) {
-    // Address is near the start of address space, so we set the range
-    // to be the first MAX_HEAP of the address space.
-    _single_range.address = reinterpret_cast<void*>(TOIT_PAGE_SIZE);
-  } else if (addr + HALF_MAX + TOIT_PAGE_SIZE < addr) {
-    // Address is near the end of address space, so we set the range to
-    // be the last MAX_HEAP of the address space.
-    _single_range.address = reinterpret_cast<void*>(-static_cast<word>(MAX_HEAP + TOIT_PAGE_SIZE));
-  } else {
-    // We will be allocating within a symmetric range either side of this
-    // single allocation.
-    _single_range.address = reinterpret_cast<void*>(addr - HALF_MAX);
-  }
-  _single_range.size = MAX_HEAP;
-  return _single_range;
-}
-
 void OS::set_up() {
   ASSERT(sizeof(void*) == sizeof(pthread_t));
   (void) pthread_key_create(&thread_key, null);
