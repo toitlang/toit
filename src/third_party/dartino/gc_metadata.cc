@@ -53,17 +53,16 @@ void GcMetadata::set_up_singleton() {
   // We create all the metadata with just one allocation.  Otherwise we will
   // lose memory when the malloc rounds a series of big allocations up to 4k
   // page boundaries.
+#ifdef LEGACY_GC
+  metadata_ = null;
+#else
   metadata_ = reinterpret_cast<uint8*>(OS::grab_vm(null, metadata_size_));
+#endif
 
   remembered_set_ = metadata_;
-  OS::use_vm(metadata_, number_of_cards_);
 
   object_starts_ = metadata_ + number_of_cards_;
-  OS::use_vm(object_starts_, number_of_cards_);
 
-  // The mark bits and cumulative mark bits are the biggest, so they are not
-  // mapped in immediately in order to reduce the memory footprint of very
-  // small programs.  We do it when we create pages that need them.
   mark_bits_ = reinterpret_cast<uint32*>(metadata_ + 2 * number_of_cards_);
   cumulative_mark_bit_counts_ = reinterpret_cast<uword*>(
       reinterpret_cast<uword>(mark_bits_) + mark_bits_size);
@@ -71,12 +70,19 @@ void GcMetadata::set_up_singleton() {
   mark_stack_overflow_bits_ =
       reinterpret_cast<uint8_t*>(cumulative_mark_bit_counts_) +
       cumulative_mark_bits_size;
-  OS::use_vm(mark_stack_overflow_bits_, mark_stack_overflow_bits_size);
 
   page_type_bytes_ = mark_stack_overflow_bits_ + mark_stack_overflow_bits_size;
-  OS::use_vm(page_type_bytes_, page_type_size_);
 
+#ifndef LEGACY_GC
+  // TODO: The mark bits and cumulative mark bits are the biggest, so they should not
+  // be mapped in immediately in order to reduce the memory footprint of very
+  // small programs.  We should do it when we create pages that need them.
+  OS::use_vm(metadata_, number_of_cards_);
+  OS::use_vm(object_starts_, number_of_cards_);
+  OS::use_vm(mark_stack_overflow_bits_, mark_stack_overflow_bits_size);
+  OS::use_vm(page_type_bytes_, page_type_size_);
   memset(page_type_bytes_, UNKNOWN_SPACE_PAGE, page_type_size_);
+#endif
 
   uword start = reinterpret_cast<uword>(object_starts_);
   uword lowest = lowest_address_;

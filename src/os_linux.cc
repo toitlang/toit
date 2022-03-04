@@ -44,6 +44,7 @@ void OS::free_block(ProgramBlock* block) {
 }
 
 void* OS::grab_vm(void* address, uword size) {
+  size = Utils::round_up(size, 4096);
   void* result = mmap(address, size,
       PROT_NONE,
       MAP_PRIVATE | MAP_ANON, -1, 0);
@@ -52,6 +53,7 @@ void* OS::grab_vm(void* address, uword size) {
 }
 
 void OS::ungrab_vm(void* address, uword size) {
+  size = Utils::round_up(size, 4096);
   if (size > 0) {
     int result = munmap(address, size);
     if (result != 0) {

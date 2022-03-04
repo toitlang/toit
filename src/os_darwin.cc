@@ -29,6 +29,7 @@
 #include <mach/mach_error.h>
 #include <mach/task.h>
 #include <unistd.h>
+#include <errno.h>
 
 namespace toit {
 
@@ -49,7 +50,7 @@ void OS::free_block(ProgramBlock* block) {
 }
 
 void* OS::grab_vm(void* address, uword size) {
-  size := Utils::round_up(size, TOIT_PAGE_SIZE);
+  size = Utils::round_up(size, 4096);
   void* result = mmap(address, size,
       PROT_NONE,
       MAP_PRIVATE | MAP_ANON, -1, 0);
@@ -58,6 +59,7 @@ void* OS::grab_vm(void* address, uword size) {
 }
 
 void OS::ungrab_vm(void* address, uword size) {
+  size = Utils::round_up(size, 4096);
   if (size > 0) {
     int result = munmap(address, size);
     if (result != 0) {
@@ -68,7 +70,7 @@ void OS::ungrab_vm(void* address, uword size) {
 }
 
 bool OS::use_vm(void* addr, uword sz) {
-  ASSERT(address != null);
+  ASSERT(addr != null);
   if (sz == 0) return true;
   uword address = reinterpret_cast<uword>(addr);
   uword end = address + sz;
@@ -88,7 +90,7 @@ void OS::unuse_vm(void* addr, uword sz) {
   uword size = Utils::round_down(end - rounded, 4096);
   if (size != 0) {
     int result = mprotect(reinterpret_cast<void*>(rounded), size, PROT_NONE);
-    if (result == 0) return true;
+    if (result == 0) return;
     perror("mprotect");
     exit(1);
   }
