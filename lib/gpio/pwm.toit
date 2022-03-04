@@ -19,7 +19,7 @@ main:
   // Create a PWM square wave generator with frequency 400Hz.
   generator := pwm.Pwm --frequency=400
 
-  // Use it to drive the led pin.
+  // Use it to drive the LED pin.
   // By default the duty factor is 0.
   channel := generator.start led
 
