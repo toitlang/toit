@@ -32,17 +32,27 @@ test_item_serialization:
 
   item = Item 1 0
   expect_bytes_equal
-    #[0x00,0x01]
+    #[0x00,0x80]
     #[item.first_byte, item.second_byte]
 
   item = Item 0 0x7FFF
   expect_bytes_equal
-    #[0xFF,0xFE]
+    #[0xFF,0x7F]
+    #[item.first_byte, item.second_byte]
+
+  item = Item 1 0x7FFF
+  expect_bytes_equal
+    #[0xFF,0xFF]
     #[item.first_byte, item.second_byte]
 
   item = Item 0 0x700F
   expect_bytes_equal
-    #[0xE0,0x1E]
+    #[0x0F,0x70]
+    #[item.first_byte, item.second_byte]
+
+  item = Item 1 0x700F
+  expect_bytes_equal
+    #[0x0F,0xF0]
     #[item.first_byte, item.second_byte]
 
   item = Item 0 1024

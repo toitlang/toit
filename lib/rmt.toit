@@ -13,14 +13,14 @@ class Item:
     this.value = value & 0b1
 
   constructor.from_bytes index/int bytes/ByteArray:
-    period = (bytes[index] << 8 | bytes[index + 1]) >> 1
-    value = bytes[index + 1] & 0x01
+    period = (bytes[index] | ((bytes[index + 1]) & 0xEF) << 8)
+    value = bytes[index + 1] & 0x80
 
   first_byte -> int:
-    return period >> 7
+    return period & 0xFF
 
   second_byte -> int:
-    return ((period << 1) & 0xFF) | value
+    return (period >> 8 ) | (value << 7)
 
   operator == other/any:
     if other is not Item: return false
