@@ -189,7 +189,8 @@ PRIMITIVE(transfer_and_read) {
   if (err != ESP_OK) return Primitive::os_error(err, process);
 
   printf("start read\n");
-  rmt_rx_start(rx_channel, true);
+  err = rmt_rx_start(rx_channel, true);
+  if (err != ESP_OK) return Primitive::os_error(err, process);
   printf("write\n");
   err = rmt_write_items((rmt_channel_t) tx_num, items, items_bytes.length() / 4, true);
   if (err != ESP_OK) return Primitive::os_error(err, process);
