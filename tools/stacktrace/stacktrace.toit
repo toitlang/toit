@@ -2,18 +2,36 @@ import host.pipe
 import reader show BufferedReader
 
 usage:
-  print "Usage: echo Backtrace:0x400870c0:0x3ffc9df0 0x4010661d:0x3ffc9e70 0x401143a3:0x3ffc9ea0 | toit.run stacktrace.toit [--disassemble] /path/to/toit.elf"
+  print "Usage: echo Backtrace:0x400870c0:0x3ffc9df0 0x4010661d:0x3ffc9e70 0x401143a3:0x3ffc9ea0 | toit.run stacktrace.toit [--disassemble] [--objdump objdump_executable] /path/to/toit.elf"
   exit 1
+
+OBJDUMP := "xtensa-esp32-elf-objdump"
 
 main args/List:
   if args.size < 1: usage
   disassemble := false
-  if args[0] == "--disassemble":
-    disassemble = true
-    args = args[1..]
+  objdump_exe := OBJDUMP
+  while args.size > 0 and args[0].starts_with "--":
+    if args[0] == "--disassemble":
+      disassemble = true
+      args = args[1..]
+    else if args[0].starts_with "--objdump=":
+      objdump_exe = args[0][10..]
+      args = args[1..]
+    else if args[0] == "--objdump":
+      if args.size < 2: usage
+      objdump_exe = args[1]
+      args = args[2..]
+    else if args[0] == "--":
+      args = args[1..]
+      break
   if args.size != 1: usage
-  objdump := BufferedReader
-      pipe.from "xtensa-esp32-elf-objdump" "-dC" args[0]
+  objdump / BufferedReader? := null
+  exception := catch:
+    objdump = BufferedReader
+        pipe.from objdump_exe "-dC" args[0]
+  if exception:
+    throw "$exception: $objdump_exe"
   symbols := []
   disassembly_lines := {:}
   while line := objdump.read_line:
