@@ -6,6 +6,62 @@ import .pin
 
 /**
 Pulse-Width Modulation (PWM) support.
+
+# Examples
+
+A fading LED:
+```
+import gpio
+import gpio.pwm
+
+main:
+  led := gpio.Pin 5
+  // Create a PWM square-wave generator with frequency 400.
+  generator := pwm.Pwm --frequency=400
+
+  // Use it to drive the led pin.
+  // By default the duty factor is 0.
+  channel := generator.start led
+
+  duty_percent := 0
+  step := 1
+  while true:
+    // Update the duty factor.
+    channel.set_duty_factor duty_percent/100.0
+    duty_percent += step
+    if duty_percent == 0 or duty_percent == 100:
+      step = -step
+    sleep --ms=10
+```
+
+Driving a servo:
+```
+import gpio
+import gpio.pwm
+
+main:
+  servo := gpio.Pin 14
+  // Most servos need a 50Hz frequency. However, some models go up to
+  // 400Hz. Consult the documentation for your servo.
+
+  // Create a PWM square-wave generator with frequency 50.
+  generator := pwm.Pwm --frequency=50
+
+  // Generally, the acceptable duty-factor range of servos is 0.025 to 0.125.
+  // Therefore start the pin with 0.075.
+  channel := generator.start servo --duty_factor=0.075
+  sleep --ms=1000
+
+  // Max angle.
+  print "max"
+  channel.set_duty_factor 0.125
+  sleep --ms=1500
+
+  // Min angle.
+  print "min"
+  channel.set_duty_factor 0.025
+  sleep --ms=1500
+```
 */
 
 /**
