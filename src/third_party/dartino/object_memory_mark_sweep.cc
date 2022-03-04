@@ -17,6 +17,8 @@
 #include "object_memory.h"
 #include "two_space_heap.h"
 
+#include "../../objects_inline.h"
+
 #ifdef _MSC_VER
 #include <intrin.h>
 #pragma intrinsic(_BitScanForward)

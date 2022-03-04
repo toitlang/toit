@@ -12,6 +12,8 @@
 //
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
+//
+#define AT_PUT_IS_PRIVATE 1
 
 #include "../top.h"
 #include "../flags.h"

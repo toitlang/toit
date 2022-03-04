@@ -18,6 +18,8 @@
 #include "objects.h"
 #include "process.h"
 
+#include "objects_inline.h"
+
 namespace toit {
 
 void FinalizerNode::roots_do(RootCallback* cb) {

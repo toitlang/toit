@@ -327,8 +327,18 @@ class GcMetadata {
   }
 
   // An object at this address may contain a pointer from old-space to
-  // new-space.
+  // new-space (this is the address of the heap-object, not the slot in the
+  // heap-object).
   inline static void insert_into_remembered_set(uword address) {
+    address >>= CARD_SIZE_LOG_2;
+    address += singleton_.remembered_set_bias_;
+    *reinterpret_cast<uint8*>(address) = NEW_SPACE_POINTERS;
+  }
+
+  // An object at this address may contain a pointer from old-space to
+  // new-space.
+  inline static void insert_into_remembered_set(HeapObject* holder) {
+    uword address = reinterpret_cast<uword>(holder);
     address >>= CARD_SIZE_LOG_2;
     address += singleton_.remembered_set_bias_;
     *reinterpret_cast<uint8*>(address) = NEW_SPACE_POINTERS;

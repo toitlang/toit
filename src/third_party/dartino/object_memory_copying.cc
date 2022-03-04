@@ -9,6 +9,8 @@
 #include "../../heap.h"
 #include "../../objects.h"
 
+#include "../../objects_inline.h"
+
 namespace toit {
 
 class Program;

@@ -1440,7 +1440,7 @@ PRIMITIVE(array_expand) {
   Array* new_array = Array::cast(result);
   new_array->copy_from(old, old_length);
   Object* filler = process->program()->null_object();
-  new_array->fill(old_length, filler);
+  new_array->fill_no_write_barrier(old_length, filler);
   return new_array;
 }
 

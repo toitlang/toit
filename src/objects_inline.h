@@ -21,6 +21,7 @@
 #include "program_heap.h"
 #include "process.h"
 #include "tags.h"
+#include "third_party/dartino/gc_metadata.h"
 
 namespace toit {
 
@@ -67,6 +68,18 @@ T* ByteArray::as_external() {
   USE(max);
   if (has_external_address()) return reinterpret_cast<T*>(_external_address());
   return 0;
+}
+
+INLINE void Array::at_put(int index, HeapObject* value) {
+  ASSERT(index >= 0 && index < length());
+  GcMetadata::insert_into_remembered_set(this);
+  _at_put(_offset_from(index), value);
+}
+
+INLINE void Array::at_put(int index, Object* value) {
+  ASSERT(index >= 0 && index < length());
+  if (!value->is_smi()) GcMetadata::insert_into_remembered_set(this);
+  _at_put(_offset_from(index), value);
 }
 
 inline bool HeapObject::on_program_heap(Process* process) {

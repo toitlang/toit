@@ -18,6 +18,8 @@
 #include "profiler.h"
 #include "encoder.h"
 
+#include "objects_inline.h"
+
 #ifdef PROFILER
 
 namespace toit {

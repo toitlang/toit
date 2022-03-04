@@ -346,7 +346,17 @@ class Array : public HeapObject {
     return _at(_offset_from(index));
   }
 
-  INLINE void at_put(int index, Object* value) {
+#ifndef AT_PUT_IS_PRIVATE
+  INLINE void at_put(int index, HeapObject* value);
+  INLINE void at_put(int index, Object* value);
+#endif
+
+  INLINE void at_put(int index, Smi* value) {
+    ASSERT(index >= 0 && index < length());
+    _at_put(_offset_from(index), value);
+  }
+
+  INLINE void at_put_no_write_barrier(int index, Object* value) {
     ASSERT(index >= 0 && index < length());
     _at_put(_offset_from(index), value);
   }
@@ -381,10 +391,10 @@ class Array : public HeapObject {
     *extra_bytes = 0;
   }
 
-  void fill(int from, Object* filler) {
+  inline void fill_no_write_barrier(int from, Object* filler) {
     int len = length();
     for (int index = from; index < len; index++) {
-      at_put(index, filler);
+      at_put_no_write_barrier(index, filler);
     }
   }
 
@@ -393,9 +403,10 @@ class Array : public HeapObject {
   static const int HEADER_SIZE = LENGTH_OFFSET + WORD_SIZE;
 
   void _set_length(int value) { _word_at_put(LENGTH_OFFSET, value); }
-  void _initialize(int length, Object* filler) {
+  // Doesn't use the write barrier.
+  inline void _initialize(int length, Object* filler) {
     _set_length(length);
-    fill(0, filler);
+    fill_no_write_barrier(0, filler);
   }
   void _initialize(int length) {
     _set_length(length);
