@@ -208,6 +208,7 @@ PRIMITIVE(transfer_and_read) {
   printf("return buffer\n");
   vRingbufferReturnItem(rb, received_items);
   printf("stop reading\n");
+  // TODO check error?
   rmt_rx_stop(rx_channel);
   data->resize_external(process, length);
 
