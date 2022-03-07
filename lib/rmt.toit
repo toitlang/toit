@@ -41,22 +41,14 @@ class Item:
   stringify -> string:
     return "($period, $value)"
 
-class Controller:
-  rx_ch/int?
-  rx/gpio.Pin?
-  tx_ch/int?
-  tx/gpio.Pin?
+class Channel:
+  num/int
+  pin/gpio.Pin
 
-  rmt_rx_/ByteArray? := null
-  rmt_tx_/ByteArray? := null
+  res_/ByteArray? := null
 
-  constructor --.rx --.tx --.rx_ch --.tx_ch:
-    if (not rx) and (not tx): throw "INVALID_ARGUMENT"
-    if (rx and not rx_ch) or (not rx and rx_ch): throw "INVALID_ARGUMENT"
-    if (tx and not tx_ch) or (not tx and tx_ch): throw "INVALID_ARGUMENT"
-    if rx: rmt_rx_ = rmt_use_ resource_group_ rx_ch
-    if tx: rmt_tx_ = rmt_use_ resource_group_ tx_ch
-
+  constructor .pin .num:
+    res_ = rmt_use_ resource_group_ num
 
   config_rx
       --pin_num/int
@@ -67,7 +59,7 @@ class Controller:
       --idle_threshold/int=12000
       --filter_en/bool=true
       --filter_ticks_thresh/int=100:
-    rmt_config_rx_ rx.num rx_ch mem_block_num clk_div flags idle_threshold filter_en filter_ticks_thresh
+    rmt_config_rx_ pin.num num mem_block_num clk_div flags idle_threshold filter_en filter_ticks_thresh
 
   config_tx
       --pin_num/int
@@ -82,31 +74,32 @@ class Controller:
       --loop_en/bool=false
       --idle_output_en/bool=true
       --idle_level/int=0:
-    rmt_config_tx_ tx.num tx_ch mem_block_num clk_div flags carrier_en carrier_freq_hz carrier_level carrier_duty_percent loop_en idle_output_en idle_level
+    rmt_config_tx_ pin.num num mem_block_num clk_div flags carrier_en carrier_freq_hz carrier_level carrier_duty_percent loop_en idle_output_en idle_level
 
+  close:
+    if res_:
+      rmt_unuse_ resource_group_ res_
+      res_ = null
 
-  transfer items/List/*<Item>*/:
-    if not rmt_tx_: throw "not configured for transfer"
-
-    rmt_transfer_ tx_ch
+class Controller:
+  static transfer channel/Channel items/List/*<Item>*/:
+    rmt_transfer_ channel.num
       items_to_bytes_ items
 
-  transfer_and_read items max_items_size -> List:
+  static transfer_and_read --rx/Channel --tx/Channel items/List/*<Item>*/ max_items_size/int -> List:
     max_output_len := 4096
     bytes := items_to_bytes_ items
-    result := rmt_transfer_and_read_ tx_ch rx_ch
-      bytes
-      max_output_len
+    result := rmt_transfer_and_read_ tx.num rx.num bytes max_output_len
     return bytes_to_items_ result
 
-  bytes_to_items_ bytes/ByteArray -> List:
+  static bytes_to_items_ bytes/ByteArray -> List:
     items_size := bytes.size / 2
     result := List items_size
     items_size.repeat:
       result[it] = Item.from_bytes it * 2 bytes
     return result
 
-  items_to_bytes_ items/List/*<Item>*/ -> ByteArray:
+  static items_to_bytes_ items/List/*<Item>*/ -> ByteArray:
     should_pad := items.size % 2 == 1
     // Ensure there is an even number of items.
     bytes_size := should_pad ? items.size * 2 + 2 : items.size * 2
@@ -123,15 +116,6 @@ class Controller:
       bytes[idx + 1] = 0
 
     return bytes
-
-  close:
-    if rmt_rx_:
-      rmt_unuse_ resource_group_ rmt_rx_
-      rmt_rx_ = null
-    if rmt_tx_:
-      rmt_unuse_ resource_group_ rmt_tx_
-      rmt_tx_ = null
-
 
 resource_group_ ::= rmt_init_
 
