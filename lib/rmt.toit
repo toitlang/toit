@@ -15,12 +15,12 @@ An $Item represents an item from the controller.
 /**
 An Item to be transferred or received with RMT.
 
-Each RMT item consists of a level and a period.
+An RMT item consists of a level (low or high) and a period (the amount of
+  ticks the level is sustained).
 
 # Advanced
-When an RMT level is written, then the given level is sustained for the given
-  period. The period is specified in number of ticks, so the actual time the
-  level is sustained is determined by the RMT controller configuration.
+The period is specified in number of ticks, so the actual time the level is
+  sustained is determined by the RMT controller configuration.
 
 At the lower level, an item consits of 16 bits: 15 bits for the period and 1
   bit for the level.
