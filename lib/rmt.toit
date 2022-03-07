@@ -102,10 +102,9 @@ class Controller:
 
   bytes_to_items_ bytes/ByteArray -> List:
     items_size := bytes.size / 2
-    result := []
+    result := List items_size
     items_size.repeat:
-      result.add
-        Item.from_bytes it * 2 bytes
+      result[it] = Item.from_bytes it * 2 bytes
     return result
 
   items_to_bytes_ items/List/*<Item>*/ -> ByteArray:
