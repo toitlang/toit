@@ -60,3 +60,9 @@ test_item_serialization:
     item
     Item.from_bytes 0
       ByteArray 2: it == 0 ? item.first_byte : item.second_byte
+
+  item = Item 1 0
+  expect_equals
+    item
+    Item.from_bytes 0
+      ByteArray 2: it == 0 ? item.first_byte : item.second_byte
