@@ -29,10 +29,12 @@ class Item:
   level/int
   period/int
 
+  /** Constructs an item from the given $period and $level. */
   constructor period level:
     this.period = period & 0x7FFF
     this.level = level & 0b1
 
+  /** Deserialized an item from the given $bytes at the given $index. */
   constructor.from_bytes index/int bytes/ByteArray:
     period = bytes[index] | ((bytes[index + 1] & 0x7F) << 8)
     level = bytes[index + 1] >> 7
@@ -43,23 +45,44 @@ class Item:
   second_byte_ -> int:
     return (period >> 8 ) | (level << 7)
 
+  /** See $super. */
   operator == other/any:
     if other is not Item: return false
 
     return level == other.level and period == other.period
 
+  /** See $super. */
   stringify -> string:
     return "($period, $level)"
 
+/**
+An RMT channel.
+
+The channel must be configured after construction.
+
+  The channel can be configured for either RX or TX.
+*/
 class Channel:
   num/int
   pin/gpio.Pin
 
   res_/ByteArray? := null
 
+  /** Constructs a channel using the given $num using the given $pin. */
   constructor .pin .num:
     res_ = rmt_use_ resource_group_ num
 
+  /**
+  Configure the channel for RX.
+
+  - $mem_block_num is the number of memory blocks (512 bytes) used by this channel.
+  - $clk_div is the source clock divider. Must be in the range [0,255].
+  - $flags is the configuration flags. See the ESP-IDF documentation for available flags.
+  - $idle_threshold is the amount of clock cycles the receiver will run without seeing an edge.
+  - $filter_en whether the filter is enabled.
+  - $filter_ticks_thresh pulses shorter than this value is filtered away.
+    Only works with $filter_en. The value must be in the range [0,255].
+  */
   config_rx
       --mem_block_num/int=1
       --clk_div/int=80
@@ -69,6 +92,14 @@ class Channel:
       --filter_ticks_thresh/int=100:
     rmt_config_rx_ pin.num num mem_block_num clk_div flags idle_threshold filter_en filter_ticks_thresh
 
+  /**
+  Configure the channel for TX.
+
+  - $mem_block_num is the number of memory blocks (512 bytes) used by this channel.
+  - $clk_div is the source clock divider. Must be in the range [0,255].
+  - $flags is the configuration flags. See the ESP-IDF documentation for available flags.
+  - $carrier_en
+  */
   config_tx
       --mem_block_num/int=1
       --clk_div/int=80
