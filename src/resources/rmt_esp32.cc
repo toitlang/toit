@@ -179,7 +179,8 @@ PRIMITIVE(transfer_and_read) {
 
   printf("allocate\n");
   Error* error = null;
-  ByteArray* data = process->allocate_byte_array(max_output_len, &error, /*force_external*/ true);
+  // Force external, so we can adjust the length after the read.
+  ByteArray* data = process->allocate_byte_array(max_output_len, &error, true);
   if (data == null) return error;
 
   printf("get them items\n");
