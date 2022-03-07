@@ -28,41 +28,41 @@ test_item_serialization:
   item := Item 0 0
   expect_bytes_equal
     #[0x00,0x00]
-    #[item.first_bytes_, item.second_byte_]
+    #[item.first_byte_, item.second_byte_]
 
   item = Item 0 1
   expect_bytes_equal
     #[0x00,0x80]
-    #[item.first_bytes_, item.second_byte_]
+    #[item.first_byte_, item.second_byte_]
 
   item = Item 0x7FFF 0
   expect_bytes_equal
     #[0xFF,0x7F]
-    #[item.first_bytes_, item.second_byte_]
+    #[item.first_byte_, item.second_byte_]
 
   item = Item 0x7FFF 1
   expect_bytes_equal
     #[0xFF,0xFF]
-    #[item.first_bytes_, item.second_byte_]
+    #[item.first_byte_, item.second_byte_]
 
   item = Item 0x700F 0
   expect_bytes_equal
     #[0x0F,0x70]
-    #[item.first_bytes_, item.second_byte_]
+    #[item.first_byte_, item.second_byte_]
 
   item = Item 0x700F 1
   expect_bytes_equal
     #[0x0F,0xF0]
-    #[item.first_bytes_, item.second_byte_]
+    #[item.first_byte_, item.second_byte_]
 
   item = Item 1024 0
   expect_equals
     item
     Item.from_bytes 0
-      ByteArray 2: it == 0 ? item.first_bytes_ : item.second_byte_
+      ByteArray 2: it == 0 ? item.first_byte_ : item.second_byte_
 
   item = Item 0 1
   expect_equals
     item
     Item.from_bytes 0
-      ByteArray 2: it == 0 ? item.first_bytes_ : item.second_byte_
+      ByteArray 2: it == 0 ? item.first_byte_ : item.second_byte_
