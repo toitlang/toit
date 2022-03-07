@@ -374,6 +374,7 @@ namespace toit {
   PRIMITIVE(init, 0)                         \
   PRIMITIVE(use, 2)                          \
   PRIMITIVE(unuse, 2)                        \
+  PRIMITIVE(val_to_item, 4)\
   PRIMITIVE(config_rx, 8)                    \
   PRIMITIVE(config_tx, 12)                   \
   PRIMITIVE(transfer, 2)                     \

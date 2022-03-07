@@ -95,6 +95,9 @@ esp_err_t configure(const rmt_config_t* config, rmt_channel_t channel_num, size_
   esp_err_t err = rmt_config(config);
   if (ESP_OK != err) return err;
 
+  err = rmt_set_source_clk(channel_num, RMT_BASECLK_APB);
+  if (ESP_OK != err) return err;
+
   err = rmt_driver_install((rmt_channel_t) channel_num, rx_buffer_size, 0);
   if (ESP_OK != err) return err;
   return err;
@@ -169,6 +172,20 @@ PRIMITIVE(transfer) {
   return process->program()->null_object();
 }
 
+// TODO delete this primitive before committing.
+PRIMITIVE(val_to_item) {
+  ARGS(uint32, dur0, uint32, lvl0, uint32, dur1, uint32, lvl1)
+  Error* error = null;
+  ByteArray* data = process->allocate_byte_array(4, &error);
+  if (data == null) return error;
+
+  rmt_item32_t item = {dur0, lvl0, dur1, lvl1};
+
+  ByteArray::Bytes bytes(data);
+  memcpy(bytes.address(), reinterpret_cast<uint8*>(&item), 4);
+  return data;
+}
+
 PRIMITIVE(transfer_and_read) {
   ARGS(int, tx_num, int, rx_num, Blob, items_bytes, int, max_output_len)
   printf("begin\n");
@@ -180,7 +197,8 @@ PRIMITIVE(transfer_and_read) {
   if (data == null) return error;
 
   printf("get them items\n");
-  rmt_item32_t* items = reinterpret_cast<rmt_item32_t*>(const_cast<uint8*>(items_bytes.address()));
+  const rmt_item32_t* items = reinterpret_cast<const rmt_item32_t*>(items_bytes.address());
+  printf("dur0: %d val0: %d dur1: %d val1: %d\n", items[0].duration0, items[0].level0, items[0].duration1, items[0].level1);
   rmt_channel_t rx_channel = (rmt_channel_t) rx_num;
 
   printf("give me buffer\n");
@@ -191,22 +209,33 @@ PRIMITIVE(transfer_and_read) {
   printf("start read\n");
   err = rmt_rx_start(rx_channel, true);
   if (err != ESP_OK) return Primitive::os_error(err, process);
-  printf("write\n");
+
+  printf("write (len %d)\n", items_bytes.length() / 4);
   err = rmt_write_items((rmt_channel_t) tx_num, items, items_bytes.length() / 4, true);
   if (err != ESP_OK) return Primitive::os_error(err, process);
 
   size_t length = 0;
+
   // TODO how many ticks should we actually wait?
   printf("get items\n");
-  void* received_items = xRingbufferReceive(rb, &length, 400);
+  void* received_bytes = xRingbufferReceive(rb, &length, 5000);
+
+  printf("length: %d\n", length);
+  // TODO remove this before commit:
+  rmt_item32_t* received_items = reinterpret_cast<rmt_item32_t*>(received_bytes);
+  if (length > 0) {
+    printf("received item... dur0: %d val0: %d dur1: %d val1: %d\n", received_items[0].duration0, received_items[0].level0, received_items[0].duration1, received_items[0].level1);
+
+    printf("prepare result\n");
+    ByteArray::Bytes bytes(data);
+    memcpy(bytes.address(), received_bytes, length);
+    printf("return buffer\n");
+    vRingbufferReturnItem(rb, received_bytes);
+
+  }
 
   // TODO check whether length corresponds to rmt_item32_t?
 
-  printf("prepare result\n");
-  ByteArray::Bytes bytes(data);
-  memcpy(bytes.address(), received_items, length);
-  printf("return buffer\n");
-  vRingbufferReturnItem(rb, received_items);
   printf("stop reading\n");
   // TODO check error?
   rmt_rx_stop(rx_channel);

@@ -19,13 +19,14 @@ class Item:
   value/int
   period/int
 
+  // TODO: swap params
   constructor value period:
     this.period = period & 0x7FFF
     this.value = value & 0b1
 
   constructor.from_bytes index/int bytes/ByteArray:
-    period = (bytes[index] | ((bytes[index + 1]) & 0xEF) << 8)
-    value = (bytes[index + 1] >> 7) & 0b1
+    period = bytes[index] | ((bytes[index + 1] & 0x7F) << 8)
+    value = bytes[index + 1] >> 7
 
   first_byte -> int:
     return period & 0xFF
@@ -38,14 +39,17 @@ class Item:
 
     return value == other.value and period == other.period
 
+  stringify -> string:
+    return "($period, $value)"
+
 class Controller:
   rx_ch/int?
   rx/gpio.Pin?
   tx_ch/int?
   tx/gpio.Pin?
 
-  rmt_rx_ := null
-  rmt_tx_ := null
+  rmt_rx_/ByteArray? := null
+  rmt_tx_/ByteArray? := null
 
   constructor --.rx --.tx --.rx_ch --.tx_ch:
     if (not rx) and (not tx): throw "INVALID_ARGUMENT"
@@ -90,19 +94,21 @@ class Controller:
 
   transfer_and_read items max_items_size -> List:
     max_output_len := 4096
-    print "len: $((items_to_bytes_ items).size) "
+    bytes := items_to_bytes_ items
+    print "len: $(bytes.size), $bytes"
     result := rmt_transfer_and_read_ tx_ch rx_ch
-      items_to_bytes_ items
+      bytes
       max_output_len
     print "convert to items"
     return bytes_to_items_ result
 
   bytes_to_items_ bytes/ByteArray -> List:
     items_size := bytes.size / 2
-    print "construct result list"
+    print "construct result list $items_size"
     result := []
     print "convert bytes to items"
     items_size.repeat:
+      print "add item"
       result.add
         Item.from_bytes it * 2 bytes
     print "return result"
@@ -158,5 +164,8 @@ rmt_config_tx_ pin_num/int channel_num/int mem_block_num/int clk_div/int flags/i
 rmt_transfer_ tx_ch/int items_bytes/*/Blob*/:
   #primitive.rmt.transfer
 
-rmt_transfer_and_read_ tx_ch/int rx_ch/int items_bytes max_output_len/int:
+rmt_transfer_and_read_ tx_ch/int rx_ch/int items_bytes/*/Blob*/ max_output_len/int:
   #primitive.rmt.transfer_and_read
+
+rmt_val_to_item dur0 lvl0 dur1 lvl1:
+  #primitive.rmt.val_to_item
