@@ -47,7 +47,6 @@ class RMTResourceGroup : public ResourceGroup {
 
 };
 
-
 MODULE_IMPLEMENTATION(rmt, MODULE_RMT);
 
 PRIMITIVE(init) {
@@ -63,7 +62,6 @@ PRIMITIVE(init) {
 
 PRIMITIVE(use) {
   ARGS(RMTResourceGroup, resource_group, int, channel_num)
-
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;
 
@@ -82,15 +80,12 @@ PRIMITIVE(use) {
 
 PRIMITIVE(unuse) {
   ARGS(RMTResourceGroup, resource_group, IntResource, resource)
-
   int channel = resource->id();
   resource_group->unregister_id(channel);
   resource_proxy->clear_external_address();
   return process->program()->null_object();
 }
 
-
-// HELPER
 esp_err_t configure(const rmt_config_t* config, rmt_channel_t channel_num, size_t rx_buffer_size, Process* process) {
   esp_err_t err = rmt_config(config);
   if (ESP_OK != err) return err;
@@ -108,7 +103,6 @@ PRIMITIVE(config_tx) {
        bool, carrier_en, int, carrier_freq_hz, int, carrier_level, int, carrier_duty_percent,
        bool, loop_en, bool, idle_output_en, int, idle_level)
 
-  // TODO: is there a better way to initialize this?
   rmt_config_t config = { };
 
   config.gpio_num = (gpio_num_t) pin_num;
@@ -137,7 +131,6 @@ PRIMITIVE(config_rx) {
   ARGS(int, pin_num, int, channel_num, int, mem_block_num, int, clk_div, int, flags,
        int, idle_threshold, bool, filter_en, int, filter_ticks_thresh)
 
-  // TODO: is there a better way to initialize this?
   rmt_config_t config = { };
 
   config.gpio_num = (gpio_num_t) pin_num;
