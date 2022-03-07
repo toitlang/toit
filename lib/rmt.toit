@@ -37,10 +37,10 @@ class Item:
     period = bytes[index] | ((bytes[index + 1] & 0x7F) << 8)
     level = bytes[index + 1] >> 7
 
-  first_byte -> int:
+  first_byte_ -> int:
     return period & 0xFF
 
-  second_byte -> int:
+  second_byte_ -> int:
     return (period >> 8 ) | (level << 7)
 
   operator == other/any:
@@ -117,8 +117,8 @@ class Controller:
     idx := 0
 
     items.do: | item/Item |
-      bytes[idx] = item.first_byte
-      bytes[idx + 1] = item.second_byte
+      bytes[idx] = item.first_byte_
+      bytes[idx + 1] = item.second_byte_
       idx += 2
 
     if should_pad:
