@@ -19,8 +19,7 @@ class Item:
   value/int
   period/int
 
-  // TODO: swap params
-  constructor value period:
+  constructor period value:
     this.period = period & 0x7FFF
     this.value = value & 0b1
 
