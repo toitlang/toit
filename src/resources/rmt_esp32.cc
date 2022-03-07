@@ -172,6 +172,14 @@ PRIMITIVE(transfer) {
   return process->program()->null_object();
 }
 
+void flush_buffer(RingbufHandle_t rb) {
+  void* bytes = null;
+  size_t length = 0;
+  while((bytes = xRingbufferReceive(rb, &length, 0))) {
+    vRingbufferReturnItem(rb, bytes);
+  }
+}
+
 PRIMITIVE(transfer_and_read) {
   ARGS(int, tx_num, int, rx_num, Blob, items_bytes, int, max_output_len)
   if (items_bytes.length() % 4 != 0) INVALID_ARGUMENT;
@@ -191,6 +199,8 @@ PRIMITIVE(transfer_and_read) {
   RingbufHandle_t rb = NULL;
   err = rmt_get_ringbuf_handle(rx_channel, &rb);
   if (err != ESP_OK) return Primitive::os_error(err, process);
+
+  flush_buffer(rb);
 
   err = rmt_rx_start(rx_channel, true);
   if (err != ESP_OK) return Primitive::os_error(err, process);
