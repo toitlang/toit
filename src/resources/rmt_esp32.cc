@@ -172,20 +172,6 @@ PRIMITIVE(transfer) {
   return process->program()->null_object();
 }
 
-// TODO delete this primitive before committing.
-PRIMITIVE(val_to_item) {
-  ARGS(uint32, dur0, uint32, lvl0, uint32, dur1, uint32, lvl1)
-  Error* error = null;
-  ByteArray* data = process->allocate_byte_array(4, &error);
-  if (data == null) return error;
-
-  rmt_item32_t item = {dur0, lvl0, dur1, lvl1};
-
-  ByteArray::Bytes bytes(data);
-  memcpy(bytes.address(), reinterpret_cast<uint8*>(&item), 4);
-  return data;
-}
-
 PRIMITIVE(transfer_and_read) {
   ARGS(int, tx_num, int, rx_num, Blob, items_bytes, int, max_output_len)
   printf("begin\n");

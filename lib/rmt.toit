@@ -166,6 +166,3 @@ rmt_transfer_ tx_ch/int items_bytes/*/Blob*/:
 
 rmt_transfer_and_read_ tx_ch/int rx_ch/int items_bytes/*/Blob*/ max_output_len/int:
   #primitive.rmt.transfer_and_read
-
-rmt_val_to_item dur0 lvl0 dur1 lvl1:
-  #primitive.rmt.val_to_item
