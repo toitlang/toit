@@ -160,13 +160,10 @@ PRIMITIVE(config_rx) {
 
 PRIMITIVE(transfer) {
   ARGS(int, tx_num, Blob, items_bytes)
-
   if (items_bytes.length() % 4 != 0) INVALID_ARGUMENT;
 
   rmt_item32_t* items = reinterpret_cast<rmt_item32_t*>(const_cast<uint8*>(items_bytes.address()));
-
   esp_err_t err = rmt_write_items((rmt_channel_t) tx_num, items, items_bytes.length() / 4, true);
-
   if ( err != ESP_OK) return Primitive::os_error(err, process);
 
   return process->program()->null_object();
