@@ -12,16 +12,16 @@ main:
 
 test_item_construction:
   item := Item 1024 0
-  expect_equals 0 item.value
+  expect_equals 0 item.level
   expect_equals 1024 item.period
 
   item = Item 0 1
-  expect_equals 1 item.value
+  expect_equals 1 item.level
   expect_equals 0 item.period
 
 test_item_construction_truncates_values:
   item := Item 0xFFFF 2
-  expect_equals 0 item.value
+  expect_equals 0 item.level
   expect_equals 0x7FFF item.period
 
 test_item_serialization:
