@@ -4,9 +4,14 @@ on:
   push:
   release:
     types: [published]
+  pull_request:
+    types: [ labeled, opened, synchronize, reopened ]
 
 jobs:
   build:
+    if: |
+        github.event_name != 'pull_request' ||
+        contains(github.event.pull_request.labels.*.name, 'ci')
     strategy:
       # The matrix will run all possible combinations in parallel.
       matrix:
@@ -231,6 +236,10 @@ jobs:
 
   # Really annoying that we need to duplicate so much.
   esp32:
+    if: |
+        github.event_name != 'pull_request' ||
+        contains(github.event.pull_request.labels.*.name, 'ci')
+
     runs-on: ubuntu-latest
 
     steps:
@@ -320,6 +329,10 @@ jobs:
           make esp32
 
   external:
+    if: |
+        github.event_name != 'pull_request' ||
+        contains(github.event.pull_request.labels.*.name, 'ci')
+
     needs: build
 
     strategy:
