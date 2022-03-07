@@ -174,57 +174,35 @@ PRIMITIVE(transfer) {
 
 PRIMITIVE(transfer_and_read) {
   ARGS(int, tx_num, int, rx_num, Blob, items_bytes, int, max_output_len)
-  printf("begin\n");
   if (items_bytes.length() % 4 != 0) INVALID_ARGUMENT;
 
-  printf("allocate\n");
   Error* error = null;
   // Force external, so we can adjust the length after the read.
   ByteArray* data = process->allocate_byte_array(max_output_len, &error, true);
   if (data == null) return error;
 
-  printf("get them items\n");
   const rmt_item32_t* items = reinterpret_cast<const rmt_item32_t*>(items_bytes.address());
-  printf("dur0: %d val0: %d dur1: %d val1: %d\n", items[0].duration0, items[0].level0, items[0].duration1, items[0].level1);
   rmt_channel_t rx_channel = (rmt_channel_t) rx_num;
 
-  printf("give me buffer\n");
   RingbufHandle_t rb = NULL;
   esp_err_t err = rmt_get_ringbuf_handle(rx_channel, &rb);
   if (err != ESP_OK) return Primitive::os_error(err, process);
 
-  printf("start read\n");
   err = rmt_rx_start(rx_channel, true);
   if (err != ESP_OK) return Primitive::os_error(err, process);
 
-  printf("write (len %d)\n", items_bytes.length() / 4);
   err = rmt_write_items((rmt_channel_t) tx_num, items, items_bytes.length() / 4, true);
   if (err != ESP_OK) return Primitive::os_error(err, process);
 
   size_t length = 0;
-
-  // TODO how many ticks should we actually wait?
-  printf("get items\n");
   void* received_bytes = xRingbufferReceive(rb, &length, 5000);
-
-  printf("length: %d\n", length);
-  // TODO remove this before commit:
-  rmt_item32_t* received_items = reinterpret_cast<rmt_item32_t*>(received_bytes);
   if (length > 0) {
-    printf("received item... dur0: %d val0: %d dur1: %d val1: %d\n", received_items[0].duration0, received_items[0].level0, received_items[0].duration1, received_items[0].level1);
-
-    printf("prepare result\n");
     ByteArray::Bytes bytes(data);
     memcpy(bytes.address(), received_bytes, length);
-    printf("return buffer\n");
-    vRingbufferReturnItem(rb, received_bytes);
 
+    vRingbufferReturnItem(rb, received_bytes);
   }
 
-  // TODO check whether length corresponds to rmt_item32_t?
-
-  printf("stop reading\n");
-  // TODO check error?
   rmt_rx_stop(rx_channel);
   data->resize_external(process, length);
 
