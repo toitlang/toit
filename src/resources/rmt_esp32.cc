@@ -209,7 +209,7 @@ PRIMITIVE(transfer_and_read) {
   if (err != ESP_OK) return Primitive::os_error(err, process);
 
   size_t length = 0;
-  void* received_bytes = xRingbufferReceive(rb, &length, 5000);
+  void* received_bytes = xRingbufferReceive(rb, &length, 50);
   if (length > 0) {
     ByteArray::Bytes bytes(data);
     memcpy(bytes.address(), received_bytes, length);
