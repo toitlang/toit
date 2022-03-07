@@ -61,7 +61,6 @@ class Channel:
     res_ = rmt_use_ resource_group_ num
 
   config_rx
-      --channel_num/int
       --mem_block_num/int=1
       --clk_div/int=80
       --flags/int=0
@@ -71,7 +70,6 @@ class Channel:
     rmt_config_rx_ pin.num num mem_block_num clk_div flags idle_threshold filter_en filter_ticks_thresh
 
   config_tx
-      --channel_num/int
       --mem_block_num/int=1
       --clk_div/int=80
       --flags/int=0
