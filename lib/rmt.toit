@@ -5,41 +5,51 @@
 import gpio
 
 /**
-Each RMT item consists of a value/level and a period.
+Support for the ESP32 Remote Control (RMT).
+
+The $Channel represents a channel in the controller.
+
+An $Item represents an item from the controller.
+*/
+
+/**
+An Item to be transferred or received with RMT.
+
+Each RMT item consists of a level and a period.
 
 # Advanced
-When an RMT value is written, then the given value is sustained for the given
+When an RMT level is written, then the given level is sustained for the given
   period. The period is specified in number of ticks, so the actual time the
-  value is sustained is determined by the RMT controller configuration.
+  level is sustained is determined by the RMT controller configuration.
 
 At the lower level, an item consits of 16 bits: 15 bits for the period and 1
-  bit for the value/level.
+  bit for the level.
 */
 class Item:
-  value/int
+  level/int
   period/int
 
-  constructor period value:
+  constructor period level:
     this.period = period & 0x7FFF
-    this.value = value & 0b1
+    this.level = level & 0b1
 
   constructor.from_bytes index/int bytes/ByteArray:
     period = bytes[index] | ((bytes[index + 1] & 0x7F) << 8)
-    value = bytes[index + 1] >> 7
+    level = bytes[index + 1] >> 7
 
   first_byte -> int:
     return period & 0xFF
 
   second_byte -> int:
-    return (period >> 8 ) | (value << 7)
+    return (period >> 8 ) | (level << 7)
 
   operator == other/any:
     if other is not Item: return false
 
-    return value == other.value and period == other.period
+    return level == other.level and period == other.period
 
   stringify -> string:
-    return "($period, $value)"
+    return "($period, $level)"
 
 class Channel:
   num/int
