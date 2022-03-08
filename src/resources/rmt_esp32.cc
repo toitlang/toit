@@ -182,12 +182,8 @@ PRIMITIVE(transfer_and_read) {
   const rmt_item32_t* items = reinterpret_cast<const rmt_item32_t*>(items_bytes.address());
   rmt_channel_t rx_channel = (rmt_channel_t) rx_num;
 
-  // If we don't reset the memory, then the RX buffer will eventually be filled.
-  esp_err_t err = rmt_rx_memory_reset(rx_channel);
-  if (err != ESP_OK) return Primitive::os_error(err, process);
-
   RingbufHandle_t rb = NULL;
-  err = rmt_get_ringbuf_handle(rx_channel, &rb);
+  esp_err_t err = rmt_get_ringbuf_handle(rx_channel, &rb);
   if (err != ESP_OK) return Primitive::os_error(err, process);
 
   flush_buffer(rb);
