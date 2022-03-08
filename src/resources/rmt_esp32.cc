@@ -41,10 +41,11 @@ class RMTResourceGroup : public ResourceGroup {
 
   virtual void on_unregister_resource(Resource* r) {
     rmt_channel_t channel = static_cast<rmt_channel_t>(static_cast<IntResource*>(r)->id());
-    rmt_driver_uninstall(channel);
+    rmt_channel_status_result_t channel_status;
+    rmt_get_channel_status(&channel_status);
+    if (channel_status.status[channel] != RMT_CHANNEL_UNINIT) rmt_driver_uninstall(channel);
     rmt_channels.put(channel);
   }
-
 };
 
 MODULE_IMPLEMENTATION(rmt, MODULE_RMT);
@@ -87,7 +88,16 @@ PRIMITIVE(unuse) {
 }
 
 esp_err_t configure(const rmt_config_t* config, rmt_channel_t channel_num, size_t rx_buffer_size, Process* process) {
-  esp_err_t err = rmt_config(config);
+  rmt_channel_status_result_t channel_status;
+  esp_err_t err = rmt_get_channel_status(&channel_status);
+  if (ESP_OK != err) return err;
+
+  if (channel_status.status[channel_num] != RMT_CHANNEL_UNINIT) {
+    err = rmt_driver_uninstall(channel_num);
+    if (ESP_OK != err) return err;
+  }
+
+  err = rmt_config(config);
   if (ESP_OK != err) return err;
 
   err = rmt_set_source_clk(channel_num, RMT_BASECLK_APB);
