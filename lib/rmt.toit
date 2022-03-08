@@ -79,7 +79,7 @@ class Channel:
   - $clk_div is the source clock divider. Must be in the range [0,255].
   - $flags is the configuration flags. See the ESP-IDF documentation for available flags.
   - $idle_threshold is the amount of clock cycles the receiver will run without seeing an edge.
-  - $filter_en whether the filter is enabled.
+  - $filter_en is whether the filter is enabled.
   - $filter_ticks_thresh pulses shorter than this value is filtered away.
     Only works with $filter_en. The value must be in the range [0,255].
   */
@@ -98,7 +98,14 @@ class Channel:
   - $mem_block_num is the number of memory blocks (512 bytes) used by this channel.
   - $clk_div is the source clock divider. Must be in the range [0,255].
   - $flags is the configuration flags. See the ESP-IDF documentation for available flags.
-  - $carrier_en
+  - $carrier_en is whether a carrier wave is used.
+  - $carrier_freq_hz is the frequency of the carrier wave.
+  - $carrier_level is the way the carrier way is modulated.
+    Set to 1 to transmit on low output level and 0 to transmit on high output level.
+  - $carrier_duty_percent is the proportion of time the carrier wave is low.
+  - $loop_en is whether the transmitter continously writes the provided items in a loop.
+  - $idle_output_en is whether the transmitter outputs when idle.
+  - $idle_level is the level transmitted by the transmitter when idle.
   */
   config_tx
       --mem_block_num/int=1
