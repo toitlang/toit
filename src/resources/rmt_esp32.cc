@@ -94,7 +94,6 @@ esp_err_t configure(const rmt_config_t* config, rmt_channel_t channel_num, size_
   if (ESP_OK != err) return err;
 
   err = rmt_driver_install((rmt_channel_t) channel_num, rx_buffer_size, 0);
-  if (ESP_OK != err) return err;
   return err;
 }
 
