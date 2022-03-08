@@ -60,7 +60,7 @@ An RMT channel.
 
 The channel must be configured after construction.
 
-  The channel can be configured for either RX or TX.
+The channel can be configured for either RX or TX.
 */
 class Channel:
   num/int
