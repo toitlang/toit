@@ -192,7 +192,10 @@ PRIMITIVE(transfer_and_read) {
   if (err != ESP_OK) return Primitive::os_error(err, process);
 
   err = rmt_write_items((rmt_channel_t) tx_num, items, items_bytes.length() / 4, true);
-  if (err != ESP_OK) return Primitive::os_error(err, process);
+  if (err != ESP_OK) {
+    rmt_rx_stop(rx_channel);
+    return Primitive::os_error(err, process);
+  }
 
   size_t length = 0;
   void* received_bytes = xRingbufferReceive(rb, &length, 50);
