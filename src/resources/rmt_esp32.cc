@@ -199,10 +199,9 @@ PRIMITIVE(transfer_and_read) {
 
   size_t length = 0;
   void* received_bytes = xRingbufferReceive(rb, &length, 50);
-  if (length > 0) {
+  if (received_bytes != NULL) {
     ByteArray::Bytes bytes(data);
     memcpy(bytes.address(), received_bytes, length);
-
     vRingbufferReturnItem(rb, received_bytes);
   }
 
