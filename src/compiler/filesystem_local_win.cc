@@ -42,7 +42,9 @@ bool FilesystemLocal::is_absolute(const char* path) {
   if (SourceManager::is_virtual_file(path)) return true;
   int length = strlen(path);
   if (length < 3) return false;
-  return path[1] == ':' && path[2] == PATH_SEPARATOR;
+  // Either "c:\" or "\\wsl$"
+  return (path[1] == ':' && path[2] == PATH_SEPARATOR) ||
+      (path[0] == PATH_SEPARATOR && path[1] == PATH_SEPARATOR);
 }
 
 char FilesystemLocal::path_separator() {
