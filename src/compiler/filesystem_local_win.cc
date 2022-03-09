@@ -53,6 +53,7 @@ char FilesystemLocal::path_separator() {
 
 char* FilesystemLocal::root(const char* path) {
   if (path[1] == ':') {
+    // Something like "c:\".
     char* result = new char[4];
     memcpy(result, path, 3);
     result[3] = '\0';
