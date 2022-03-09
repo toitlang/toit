@@ -130,7 +130,7 @@ snapshots-cross: tools download-packages build/$(CROSS_ARCH)/CMakeCache.txt
 .PHONY: version-file-cross
 version-file-cross: build/$(CROSS_ARCH)/CMakeCache.txt
 	$(MAKE) rebuild-cross-cmake
-	(cd build/host && ninja build_version_file)
+	(cd build/$(CROSS_ARCH) && ninja build_version_file)
 
 
 # ESP32 VARIANTS
