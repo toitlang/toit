@@ -89,8 +89,9 @@ class Channel:
       --flags/int=0
       --idle_threshold/int=12000
       --filter_en/bool=true
-      --filter_ticks_thresh/int=100:
-    rmt_config_rx_ pin.num num mem_block_num clk_div flags idle_threshold filter_en filter_ticks_thresh
+      --filter_ticks_thresh/int=100
+      --rx_buffer_size=128:
+    rmt_config_rx_ pin.num num mem_block_num clk_div flags idle_threshold filter_en filter_ticks_thresh rx_buffer_size
 
   /**
   Configure the channel for TX.
@@ -173,7 +174,7 @@ rmt_unuse_ resource_group resource:
   #primitive.rmt.unuse
 
 rmt_config_rx_ pin_num/int channel_num/int mem_block_num/int clk_div/int flags/int
-    idle_threshold/int filter_en/bool filter_ticks_thresh/int:
+    idle_threshold/int filter_en/bool filter_ticks_thresh/int rx_buffer_size/int:
   #primitive.rmt.config_rx
 
 rmt_config_tx_ pin_num/int channel_num/int mem_block_num/int clk_div/int flags/int

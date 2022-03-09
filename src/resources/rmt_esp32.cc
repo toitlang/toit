@@ -138,7 +138,7 @@ PRIMITIVE(config_tx) {
 
 PRIMITIVE(config_rx) {
   ARGS(int, pin_num, int, channel_num, int, mem_block_num, int, clk_div, int, flags,
-       int, idle_threshold, bool, filter_en, int, filter_ticks_thresh)
+       int, idle_threshold, bool, filter_en, int, filter_ticks_thresh, int, rx_buffer_size)
 
   rmt_config_t config = { };
 
@@ -154,7 +154,7 @@ PRIMITIVE(config_rx) {
   rx_config.filter_ticks_thresh = filter_ticks_thresh;
   config.rx_config = rx_config;
 
-  esp_err_t err = configure(&config,(rmt_channel_t) channel_num, 1000, process);
+  esp_err_t err = configure(&config,(rmt_channel_t) channel_num, rx_buffer_size, process);
   if (ESP_OK != err) return Primitive::os_error(err, process);
 
   return process->program()->null_object();
