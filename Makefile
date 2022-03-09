@@ -71,7 +71,7 @@ endif
 build/host/CMakeCache.txt:
 	$(MAKE) rebuild-cmake
 
-BIN_DIR = build/host/sdk/bin
+BIN_DIR = $(CURDIR)/build/host/sdk/bin
 TOITVM_BIN = $(BIN_DIR)/toit.run$(EXE_SUFFIX)
 TOITPKG_BIN = $(BIN_DIR)/toit.pkg$(EXE_SUFFIX)
 TOITC_BIN = $(BIN_DIR)/toit.compile$(EXE_SUFFIX)
