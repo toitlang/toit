@@ -12,6 +12,59 @@ The $Channel represents a channel in the controller.
 An $Item represents an item from the controller.
 */
 
+
+class Items:
+  size/int
+  bytes/ByteArray
+
+  constructor .size:
+    bytes = construct_bytes_ size
+
+  static construct_bytes_ size/int -> ByteArray:
+    should_pad := size % 2 == 1
+    bytes_size := should_pad ? size * 2 + 2 : size * 2
+    return ByteArray bytes_size
+
+  // TODO what's a nice convenient constructor for populating Items with known values?
+
+  constructor.from_bytes .bytes/ByteArray:
+    if bytes.size % 4 != 0: throw "INVALID_ARGUMENT"
+
+    size = bytes.size / 2
+
+  item_level i -> int:
+    check_bounds_ i
+    return item_level_ i
+
+  item_period i -> int:
+    check_bounds_ i
+    return item_period_ i
+
+  set_item i period level -> none:
+    check_bounds_ i
+    period = period & 0x7FFF
+    level = level & 0b1
+    bytes[i] = period & 0xFF
+    bytes[i + 1] = (period >> 8 ) | (level << 7)
+
+  do [block]:
+    size.repeat:
+      i := it * 2
+      block.call
+        item_period_ i
+        item_level_ i
+
+  check_bounds_ i:
+    if not 0 <= i < size: throw "OUT_OF_BOUNDS"
+
+  item_level_ i -> int:
+    return bytes[i + 1] >> 7
+
+  item_period_ i -> int:
+    return bytes[i] | ((bytes[i + 1] & 0x7F) << 8)
+
+
+
 /**
 An Item to be transferred or received with RMT.
 
@@ -126,41 +179,12 @@ class Channel:
       rmt_unuse_ resource_group_ res_
       res_ = null
 
-class Controller:
-  static transfer channel/Channel items/List/*<Item>*/:
-    rmt_transfer_ channel.num
-      items_to_bytes_ items
+transfer channel/Channel items/Items:
+  rmt_transfer_ channel.num items.bytes
 
-  static transfer_and_read --rx/Channel --tx/Channel items/List/*<Item>*/ max_items_size/int -> List:
-    max_output_len := 4096
-    bytes := items_to_bytes_ items
-    result := rmt_transfer_and_read_ tx.num rx.num bytes max_output_len
-    return bytes_to_items_ result
-
-  static bytes_to_items_ bytes/ByteArray -> List:
-    items_size := bytes.size / 2
-    result := List items_size
-    items_size.repeat:
-      result[it] = Item.from_bytes it * 2 bytes
-    return result
-
-  static items_to_bytes_ items/List/*<Item>*/ -> ByteArray:
-    should_pad := items.size % 2 == 1
-    // Ensure there is an even number of items.
-    bytes_size := should_pad ? items.size * 2 + 2 : items.size * 2
-    bytes := ByteArray bytes_size
-    idx := 0
-
-    items.do: | item/Item |
-      bytes[idx] = item.first_byte_
-      bytes[idx + 1] = item.second_byte_
-      idx += 2
-
-    if should_pad:
-      bytes[idx] = 0
-      bytes[idx + 1] = 0
-
-    return bytes
+transfer_and_read --rx/Channel --tx/Channel items/Items max_items_size/int -> Items:
+  result := rmt_transfer_and_read_ tx.num rx.num items.bytes max_items_size
+  return Items.from_bytes result
 
 resource_group_ ::= rmt_init_
 
