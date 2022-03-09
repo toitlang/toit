@@ -12,7 +12,19 @@ The $Channel represents a channel in the controller.
 An $Item represents an item from the controller.
 */
 
+/**
+An Item to be transferred or received with RMT.
 
+An RMT item consists of a level (low or high) and a period (the amount of
+  ticks the level is sustained).
+
+# Advanced
+The period is specified in number of ticks, so the actual time the level is
+  sustained is determined by the RMT controller configuration.
+
+At the lower level, an item consits of 16 bits: 15 bits for the period and 1
+  bit for the level.
+*/
 class Items:
   size/int
   bytes/ByteArray
@@ -63,51 +75,6 @@ class Items:
   item_period_ i -> int:
     idx := i * 2
     return bytes[idx] | ((bytes[idx + 1] & 0x7F) << 8)
-
-
-
-/**
-An Item to be transferred or received with RMT.
-
-An RMT item consists of a level (low or high) and a period (the amount of
-  ticks the level is sustained).
-
-# Advanced
-The period is specified in number of ticks, so the actual time the level is
-  sustained is determined by the RMT controller configuration.
-
-At the lower level, an item consits of 16 bits: 15 bits for the period and 1
-  bit for the level.
-*/
-class Item:
-  level/int
-  period/int
-
-  /** Constructs an item from the given $period and $level. */
-  constructor period level:
-    this.period = period & 0x7FFF
-    this.level = level & 0b1
-
-  /** Deserialized an item from the given $bytes at the given $index. */
-  constructor.from_bytes index/int bytes/ByteArray:
-    period = bytes[index] | ((bytes[index + 1] & 0x7F) << 8)
-    level = bytes[index + 1] >> 7
-
-  first_byte_ -> int:
-    return period & 0xFF
-
-  second_byte_ -> int:
-    return (period >> 8 ) | (level << 7)
-
-  /** See $super. */
-  operator == other/any:
-    if other is not Item: return false
-
-    return level == other.level and period == other.period
-
-  /** See $super. */
-  stringify -> string:
-    return "($period, $level)"
 
 /**
 An RMT channel.
