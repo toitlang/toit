@@ -52,10 +52,16 @@ char FilesystemLocal::path_separator() {
 }
 
 char* FilesystemLocal::root(const char* path) {
-  char* result = new char[4];
-  memcpy(result, path, 3);
-  result[3] = '\0';
-  return result;
+  if (path[1] == ':') {
+    char* result = new char[4];
+    memcpy(result, path, 3);
+    result[3] = '\0';
+    return result;
+  }
+  // A network path or something like "\\wsl$\".
+  // Contrary to the file path (like "c:\") this includes more than just
+  // one drive, but that's more in spirit with the original root path anyway.
+  return strdup("\\\\");
 }
 
 char* FilesystemLocal::to_local_path(const char* path) {
