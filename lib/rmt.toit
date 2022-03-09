@@ -32,15 +32,15 @@ class Items:
 
     size = bytes.size / 2
 
-  item_level i -> int:
+  item_level i/int -> int:
     check_bounds_ i
     return item_level_ i
 
-  item_period i -> int:
+  item_period i/int -> int:
     check_bounds_ i
     return item_period_ i
 
-  set_item i period level -> none:
+  set_item i/int period/int level/int -> none:
     check_bounds_ i
     period = period & 0x7FFF
     level = level & 0b1
