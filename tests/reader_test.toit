@@ -35,8 +35,13 @@ DIFFICULT_STRING ::= "25€ and 23€¢ 🙈!"
 
 utf_8:
   r := reader.BufferedReader (TestReader ["Sø".to_byte_array, "en så s".to_byte_array, "ær ud!".to_byte_array])
+  expect (r.are_available 0)
+  expect_not (r.are_available 1)  // Not yet read from the underlying TestReader.
   expect_equals "Sø" (r.read_string --max_size=3)
   expect_equals "en s" (r.read_string --max_size=5)
+  expect (r.are_available 0)
+  expect (r.are_available 4)
+  expect_not (r.are_available 5)
   expect_throw "max_size was too small to read a single UTF-8 character": r.read_string --max_size=1
   expect_equals "å" (r.read_string --max_size=2)
   expect_equals " s" (r.read_string --max_size=3)
