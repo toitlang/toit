@@ -42,7 +42,10 @@ prefix ?= /opt/toit-sdk
 
 # HOST
 .PHONY: all
-all: tools snapshots version-file
+all: sdk
+
+.PHONY: sdk
+sdk: tools snapshots version-file
 
 check-env:
 ifndef IGNORE_SUBMODULE
@@ -185,7 +188,7 @@ build/config.json:
 
 # ESP32 VARIANTS FLASH
 .PHONY: flash
-flash: check-env-flash esp32
+flash: check-env-flash sdk esp32
 	python $(IDF_PATH)/components/esptool_py/esptool/esptool.py --chip $(ESP32_CHIP) --port $(ESP32_PORT) --baud 921600 --before default_reset --after hard_reset write_flash -z --flash_mode dio --flash_freq 40m --flash_size detect 0x1000 build/$(ESP32_CHIP)/bootloader/bootloader.bin 0x10000 build/$(ESP32_CHIP)/toit.bin 0x8000 build/$(ESP32_CHIP)/partitions.bin
 
 .PHONY: check-env-flash
