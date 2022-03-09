@@ -29,7 +29,7 @@ export IDF_TARGET=$(ESP32_CHIP)
 export IDF_PATH ?= $(CURDIR)/third_party/esp-idf
 
 ifeq ($(OS),Windows_NT)
-	EXE_SUFFIX=".exe"
+	EXE_SUFFIX=.exe
 	DETECTED_OS=$(OS)
 else
 	EXE_SUFFIX=
