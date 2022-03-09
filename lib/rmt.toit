@@ -42,26 +42,27 @@ class Items:
 
   set_item i/int period/int level/int -> none:
     check_bounds_ i
+    idx := i * 2
     period = period & 0x7FFF
     level = level & 0b1
-    bytes[i] = period & 0xFF
-    bytes[i + 1] = (period >> 8 ) | (level << 7)
+    bytes[idx] = period & 0xFF
+    bytes[idx + 1] = (period >> 8 ) | (level << 7)
 
   do [block]:
     size.repeat:
-      i := it * 2
       block.call
-        item_period_ i
-        item_level_ i
+        item_period_ it
+        item_level_ it
 
   check_bounds_ i:
     if not 0 <= i < size: throw "OUT_OF_BOUNDS"
 
   item_level_ i -> int:
-    return bytes[i + 1] >> 7
+    return bytes[i * 2 + 1] >> 7
 
   item_period_ i -> int:
-    return bytes[i] | ((bytes[i + 1] & 0x7F) << 8)
+    idx := i * 2
+    return bytes[idx] | ((bytes[idx + 1] & 0x7F) << 8)
 
 
 
