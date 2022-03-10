@@ -197,7 +197,7 @@ The $items are transferred over the given $tx channel and items are received on 
 
 The given $max_items_size specifies the maximum byte size of the returned items.
 */
-transfer_and_read --rx/Channel --tx/Channel items/Items max_items_size/int -> Items:
+transfer_and_receive --rx/Channel --tx/Channel items/Items max_items_size/int -> Items:
   result := rmt_transfer_and_read_ tx.num rx.num items.bytes_ max_items_size
   return Items.from_bytes result
 
