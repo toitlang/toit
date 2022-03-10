@@ -128,7 +128,11 @@ class Channel:
 
   res_/ByteArray? := null
 
-  /** Constructs a channel using the given $num using the given $pin. */
+  /** 
+  Constructs a channel using the given $num using the given $pin. 
+  
+  The givn $num must be in the range [0,7] and must not be in use.
+  */
   constructor .pin .num:
     res_ = rmt_use_ resource_group_ num
 
