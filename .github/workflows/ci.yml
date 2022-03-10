@@ -209,12 +209,14 @@ jobs:
         continue-on-error: true
         shell: bash
         run: |
-          for f in /tmp/lsp_repro-*; do
-            cp $f ${{ steps.constants.outputs.debug_root_dir }}
+          for REPRO in /tmp/lsp_repro-*; do
+            mkdir -p ${{ steps.constants.outputs.debug_root_dir }}/repros
+            cp $REPRO ${{ steps.constants.outputs.debug_root_dir }}/repros
           done
 
       - name: Upload debug artifacts
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v2
         with:
           name: debug
