@@ -42,7 +42,8 @@ bool FilesystemLocal::is_absolute(const char* path) {
   if (SourceManager::is_virtual_file(path)) return true;
   int length = strlen(path);
   if (length < 3) return false;
-  // Either "c:\" or "\\wsl$"
+  // Either a Windows drive like "c:\", or a network path "\\Machine1".
+  // Network paths also include the WSL drive.
   return (path[1] == ':' && path[2] == PATH_SEPARATOR) ||
       (path[0] == PATH_SEPARATOR && path[1] == PATH_SEPARATOR);
 }
@@ -59,9 +60,10 @@ char* FilesystemLocal::root(const char* path) {
     result[3] = '\0';
     return result;
   }
-  // A network path or something like "\\wsl$\".
-  // Contrary to the file path (like "c:\") this includes more than just
-  // one drive, but that's more in spirit with the original root path anyway.
+  // A network path like "\\Machine1" (including "\\wsl$\" for WSL).
+  // Contrary to the file path (like "c:\") the returned root includes more
+  // than just one drive, but that's more in spirit with the original root
+  // path anyway.
   return strdup("\\\\");
 }
 
