@@ -183,7 +183,7 @@ jobs:
           # Mark the external test as failing, and update it at the end of this step.
           echo fail > ${{ steps.constants.outputs.external_result }}
           make enable-external
-          find external > ${{ steps.constants.outputs.debug_dir }}/files_after_enable_external.log
+          find external > ${{ steps.constants.outputs.debug_dir }}/${{ matrix.container }}_${{ matrix.shard }}_files_after_enable_external.log
           make test-external
           make test-external-health
           if [ "$RUNNER_OS" == "Linux" ]; then
