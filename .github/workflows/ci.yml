@@ -204,20 +204,31 @@ jobs:
           cp -R ./build/host/sdk ./build/host/toit
           tar -czf build/${{ steps.constants.outputs.artifact }} -C ./build/host -h --exclude toit/bin/mbedtls toit
 
+      - name: Prepare debug repros
+        if: always()
+        continue-on-error: true
+        shell: bash
+        run: |
+          for REPRO in /tmp/lsp_repro-*; do
+            mkdir -p ${{ steps.constants.outputs.debug_root_dir }}/repros
+            cp $REPRO ${{ steps.constants.outputs.debug_root_dir }}/repros
+          done
+
+      - name: Upload debug artifacts
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v2
+        with:
+          name: debug
+          path: ${{ steps.constants.outputs.debug_root_dir }}
+          retention-days: 5
+
       - name: Upload artifacts
         if: matrix.shard == 1
         uses: actions/upload-artifact@v2
         with:
           name: ${{ runner.os }}-build
           path: build/${{ steps.constants.outputs.artifact }}
-
-      - name: Upload debug artifacts
-        if: always()
-        uses: actions/upload-artifact@v2
-        with:
-          name: debug
-          path: ${{ steps.constants.outputs.debug_root_dir }}
-          retention-days: 5
 
       - name: Upload release artifacts
         if: |
