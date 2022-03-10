@@ -209,9 +209,16 @@ PRIMITIVE(transfer_and_read) {
   size_t length = 0;
   void* received_bytes = xRingbufferReceive(rb, &length, 50);
   if (received_bytes != null) {
-    ByteArray::Bytes bytes(data);
-    memcpy(bytes.address(), received_bytes, length);
-    vRingbufferReturnItem(rb, received_bytes);
+    if (length <= max_output_len) {
+      ByteArray::Bytes bytes(data);
+      memcpy(bytes.address(), received_bytes, length);
+      vRingbufferReturnItem(rb, received_bytes);
+    } else {
+      vRingbufferReturnItem(rb, received_bytes);
+      rmt_rx_stop(rx_channel);
+      data->resize_external(process, 0);
+      OUT_OF_RANGE;
+    }
   }
 
   rmt_rx_stop(rx_channel);
