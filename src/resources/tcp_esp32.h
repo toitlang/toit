@@ -38,6 +38,7 @@ class LwIPSocket : public Resource, public BacklogSocketList::Element {
     , _kind(kind)
     , _tpcb(null)
     , _error(ERR_OK)
+    , _needs_gc(false)
     , _send_pending(0)
     , _send_closed(false)
     , _read_buffer(null)
@@ -97,7 +98,9 @@ class LwIPSocket : public Resource, public BacklogSocketList::Element {
   void set_tpcb(tcp_pcb* tpcb) { _tpcb = tpcb; }
 
   err_t error() { return _error; }
-  void set_error(err_t error) { _error = error; }
+  bool needs_gc() { return _needs_gc; }
+  void set_needs_gc() { _needs_gc = true; }
+  void clear_needs_gc() { _needs_gc = false; }
 
   Kind kind() { return _kind; }
 
@@ -120,6 +123,7 @@ class LwIPSocket : public Resource, public BacklogSocketList::Element {
   Kind _kind;
   tcp_pcb* _tpcb;
   err_t _error;
+  bool _needs_gc;
 
   int _send_pending;
   bool _send_closed;

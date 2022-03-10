@@ -428,6 +428,11 @@ PRIMITIVE(set_option) {
   return process->program()->null_object();
 }
 
+PRIMITIVE(gc) {
+  // Malloc never fails on Linux so we should never try to trigger a GC.
+  UNREACHABLE();
+}
+
 } // namespace toit
 
 #endif // TOIT_BSD

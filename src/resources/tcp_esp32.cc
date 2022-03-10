@@ -157,7 +157,6 @@ void LwIPSocket::on_error(err_t err) {
   }
 }
 
-
 void LwIPSocket::send_state() {
   uint32_t state = 0;
 
@@ -166,14 +165,19 @@ void LwIPSocket::send_state() {
   if (!_send_closed && tpcb() != null && tcp_sndbuf(tpcb()) > 0) state |= TCP_WRITE;
   if (_read_closed) state |= TCP_READ;
   if (_error != ERR_OK) state |= TCP_ERROR;
+  if (_needs_gc) state |= TCP_NEEDS_GC;
 
   // TODO: Avoid instance usage.
   LwIPEventSource::instance()->set_state(this, state);
 }
 
 void LwIPSocket::socket_error(err_t err) {
-  set_tpcb(null);
-  _error = err;
+  if (err == ERR_MEM) {
+    set_needs_gc();
+  } else {
+    set_tpcb(null);
+    _error = err;
+  }
   send_state();
 }
 
@@ -594,6 +598,15 @@ PRIMITIVE(set_option) {
 
     return process->program()->null_object();
   });
+}
+
+PRIMITIVE(gc) {
+  ARGS(LwIPSocket, socket);
+  if (socket->needs_gc()) {
+    socket->clear_needs_gc();
+    MALLOC_FAILED;
+  }
+  return process->program()->null_object();
 }
 
 } // namespace toit
