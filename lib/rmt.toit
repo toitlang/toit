@@ -7,9 +7,9 @@ import gpio
 /**
 Support for the ESP32 Remote Control (RMT).
 
-The $Channel represents a channel in the controller.
+A $Channel corresponds to a channel in the ESP32 RMT controller.
 
-An $Item represents an item from the controller.
+An $Items represents an item from the controller.
 */
 
 /**
