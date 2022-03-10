@@ -2,6 +2,10 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+/**
+Driver for wired Ethernet.
+*/
+
 import log
 import monitor
 import gpio

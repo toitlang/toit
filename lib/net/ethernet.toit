@@ -2,6 +2,10 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+/**
+Network driver for wired Ethernet.
+*/
+
 import gpio
 import monitor
 import net
@@ -28,7 +32,7 @@ ethernet_/ethernet.Ethernet? := null
 ethernet_connecting_/monitor.Latch? := null
 
 /**
-Connects the ethernet peripheral.
+Connects the Ethernet peripheral.
 
 The $mac_chip must be one of $MAC_CHIP_ESP32 or $MAC_CHIP_W5500.
 The $phy_chip must be one of $PHY_CHIP_NONE, $PHY_CHIP_IP101 or $PHY_CHIP_LAN8720.
@@ -105,9 +109,9 @@ connect -> net.Interface
       try:
         with_timeout ETHERNET_CONNECT_TIMEOUT_: ethernet.connect
         with_timeout ETHERNET_DHCP_TIMEOUT_: ethernet.get_ip
-        // Success: Register the ethernet connection, tell anyone who is waiting
+        // Success: Register the Ethernet connection, tell anyone who is waiting
         // for it that the connection is ready to be used (no exception), and
-        // go on to mark ourselves as a user of the WiFi network.
+        // go on to mark ourselves as a user of the Ethernet network.
         ethernet_ = ethernet
         ethernet_connecting_.set null
       finally: | is_exception exception |
