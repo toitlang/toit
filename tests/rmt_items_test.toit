@@ -14,16 +14,16 @@ main:
 test_items_construction:
   items := Items 4
   expect_equals 4 items.size
-  expect_equals 8 items.bytes.size
+  expect_equals 8 items.bytes_.size
 
   items = Items 5
   expect_equals 5 items.size
-  expect_equals 12 items.bytes.size
+  expect_equals 12 items.bytes_.size
 
   bytes := #[0x11, 0x22, 0x33, 0x44]
   items = Items.from_bytes bytes
   expect_equals 2 items.size
-  expect_bytes_equal bytes items.bytes
+  expect_bytes_equal bytes items.bytes_
 
   bytes = #[0x11, 0x22, 0x33, 0x44, 0x55]
   expect_throw "INVALID_ARGUMENT":
