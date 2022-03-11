@@ -9,32 +9,32 @@ Support for the ESP32 Remote Control (RMT).
 
 A $Channel corresponds to a channel in the ESP32 RMT controller.
 
-$Items represent a collection of items to be sent by the RMT controller.
+$Signals represent a collection of signals to be sent by the RMT controller.
 */
 
 /**
-An Item to be transferred or received with RMT.
+A collection of signals to be transferred or received with the RMT controller.
 
-An RMT item consists of a level (low or high) and a period (the amount of
+An RMT signal consists of a level (low or high) and a period (the amount of
   ticks the level is sustained).
 
 # Advanced
 The period is specified in number of ticks, so the actual time the level is
   sustained is determined by the RMT controller configuration.
 
-At the lower level, an item consits of 16 bits: 15 bits for the period and 1
-  bit for the level.
+At the lower level, a signal consits of 16 bits: 15 bits for the period and 1
+  bit for the level. Signals must be transfered as pairs also known as an item.
 */
-class Items:
-  /** The amount of items in the collection. */
+class Signals:
+  /** The amount of signals in the collection. */
   size/int
 
   bytes_/ByteArray
 
   /**
-  Constructs a collection of items of the given $size.
+  Constructs a collection of signals of the given $size.
 
-  All items are initialized to 0 period and 0 level.
+  All signals are initialized to 0 period and 0 level.
   
   # Advanced
   If the given $size is not divisible by 2, then the byte array allocted for 
@@ -45,17 +45,17 @@ class Items:
     bytes_ = ByteArray
         round_up (size * 2) 4
 
-  // TODO what's a nice convenient constructor for populating Items with known values?
+  // TODO what's a nice convenient constructor for populating Signals with known values?
 
   /**
-  Constructs a collection of items from the given $bytes.
+  Constructs a collection of signals from the given $bytes.
 
   The $bytes size must be divisible by 4.
 
   # Advanced
   The bytes must correspond to bytes produced by the RMT primitives. The 
-    primitives convert the bytes to pairs of items (2 bytes per item) which
-    is the reason the $bytes size must be divisible by 4.
+    primitives operate with pairs of signals (called an item) which  is the 
+    reason the $bytes size must be divisible by 4.
   */
   constructor.from_bytes bytes/ByteArray:
     if bytes.size % 4 != 0: throw "INVALID_ARGUMENT"
@@ -64,29 +64,29 @@ class Items:
     size = bytes_.size / 2
 
   /** 
-  Gets the item period of the $i'th item. 
+  Gets the signal period of the $i'th signal. 
   
   The given $i must be in the range [0,$size[.
   */
-  item_period i/int -> int:
+  signal_period i/int -> int:
     check_bounds_ i
-    return item_period_ i
+    return signal_period_ i
 
   /** 
-  Gets the item level of the $i'th item. 
+  Gets the signal level of the $i'th signal. 
   
   The given $i must be in the range [0,$size[.
   */
-  item_level i/int -> int:
+  signal_level i/int -> int:
     check_bounds_ i
-    return item_level_ i
+    return signal_level_ i
 
   /**
-  Set the $i'th item to the given $period and $level.
+  Set the $i'th signal to the given $period and $level.
 
   The given $i must be in the range [0,$size[.
   */
-  set_item i/int period/int level/int -> none:
+  set_signal i/int period/int level/int -> none:
     check_bounds_ i
     idx := i * 2
     period = period & 0x7FFF
@@ -94,20 +94,20 @@ class Items:
     bytes_[idx] = period & 0xFF
     bytes_[idx + 1] = (period >> 8 ) | (level << 7)
 
-  /** Invokes the given $block on each item of this item collection. */
+  /** Invokes the given $block on each signal of this signal collection. */
   do [block]:
     size.repeat:
       block.call
-        item_period_ it
-        item_level_ it
+        signal_period_ it
+        signal_level_ it
 
   check_bounds_ i:
     if not 0 <= i < size: throw "OUT_OF_BOUNDS"
 
-  item_level_ i -> int:
+  signal_level_ i -> int:
     return bytes_[i * 2 + 1] >> 7
 
-  item_period_ i -> int:
+  signal_period_ i -> int:
     idx := i * 2
     return bytes_[idx] | ((bytes_[idx + 1] & 0x7F) << 8)
 
@@ -164,7 +164,7 @@ class Channel:
   - $carrier_level is the way the carrier way is modulated.
     Set to 1 to transmit on low output level and 0 to transmit on high output level.
   - $carrier_duty_percent is the proportion of time the carrier wave is low.
-  - $loop_en is whether the transmitter continously writes the provided items in a loop.
+  - $loop_en is whether the transmitter continously writes the provided signals in a loop.
   - $idle_output_en is whether the transmitter outputs when idle.
   - $idle_level is the level transmitted by the transmitter when idle.
   */
@@ -186,20 +186,20 @@ class Channel:
       rmt_unuse_ resource_group_ res_
       res_ = null
 
-/** Transfers the given $items over the given $channel.*/
-transfer channel/Channel items/Items -> none:
-  rmt_transfer_ channel.num items.bytes_
+/** Transfers the given $signals over the given $channel.*/
+transfer channel/Channel signals/Signals -> none:
+  rmt_transfer_ channel.num signals.bytes_
 
 /**
-Transfers the given $items while simoultaniously receiving.
+Transfers the given $signals while simoultaniously receiving.
 
-The $items are transferred over the given $tx channel and items are received on the $rx channel.
+The $signals are transferred over the given $tx channel and signals are received on the $rx channel.
 
-The given $max_items_size specifies the maximum byte size of the returned items.
+The given $max_items_size specifies the maximum byte size of the returned signals.
 */
-transfer_and_receive --rx/Channel --tx/Channel items/Items max_items_size/int -> Items:
-  result := rmt_transfer_and_read_ tx.num rx.num items.bytes_ max_items_size
-  return Items.from_bytes result
+transfer_and_receive --rx/Channel --tx/Channel signals/Signals max_items_size/int -> Signals:
+  result := rmt_transfer_and_read_ tx.num rx.num signals.bytes_ max_items_size
+  return Signals.from_bytes result
 
 resource_group_ ::= rmt_init_
 
@@ -221,8 +221,8 @@ rmt_config_tx_ pin_num/int channel_num/int mem_block_num/int clk_div/int flags/i
     loop_en/bool idle_output_en/bool idle_level/int:
   #primitive.rmt.config_tx
 
-rmt_transfer_ tx_ch/int items_bytes/*/Blob*/:
+rmt_transfer_ tx_ch/int signals_bytes/*/Blob*/:
   #primitive.rmt.transfer
 
-rmt_transfer_and_read_ tx_ch/int rx_ch/int items_bytes/*/Blob*/ max_output_len/int:
+rmt_transfer_and_read_ tx_ch/int rx_ch/int signals_bytes/*/Blob*/ max_output_len/int:
   #primitive.rmt.transfer_and_read
