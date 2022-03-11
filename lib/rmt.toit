@@ -126,8 +126,7 @@ class Signals:
   set_signal i/int period/int level/int -> none:
     check_bounds_ i
     idx := i * 2
-    if not 0 <= period <= 0x7FFF: throw "INVALID_ARGUMENT"
-    if level != 0 and level != 1: throw "INVALID_ARGUMENT"
+    if not 0 <= period <= 0x7FFF or level != 0 and level != 1: throw "INVALID_ARGUMENT"
 
     bytes_[idx] = period & 0xFF
     bytes_[idx + 1] = (period >> 8 ) | (level << 7)
