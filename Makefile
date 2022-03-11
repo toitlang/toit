@@ -29,7 +29,7 @@ export IDF_TARGET=$(ESP32_CHIP)
 export IDF_PATH ?= $(CURDIR)/third_party/esp-idf
 
 ifeq ($(OS),Windows_NT)
-	EXE_SUFFIX=".exe"
+	EXE_SUFFIX=.exe
 	DETECTED_OS=$(OS)
 else
 	EXE_SUFFIX=
@@ -74,7 +74,7 @@ endif
 build/host/CMakeCache.txt:
 	$(MAKE) rebuild-cmake
 
-BIN_DIR = build/host/sdk/bin
+BIN_DIR = $(CURDIR)/build/host/sdk/bin
 TOITVM_BIN = $(BIN_DIR)/toit.run$(EXE_SUFFIX)
 TOITPKG_BIN = $(BIN_DIR)/toit.pkg$(EXE_SUFFIX)
 TOITC_BIN = $(BIN_DIR)/toit.compile$(EXE_SUFFIX)
@@ -133,7 +133,7 @@ snapshots-cross: tools download-packages build/$(CROSS_ARCH)/CMakeCache.txt
 .PHONY: version-file-cross
 version-file-cross: build/$(CROSS_ARCH)/CMakeCache.txt
 	$(MAKE) rebuild-cross-cmake
-	(cd build/host && ninja build_version_file)
+	(cd build/$(CROSS_ARCH) && ninja build_version_file)
 
 
 # ESP32 VARIANTS
