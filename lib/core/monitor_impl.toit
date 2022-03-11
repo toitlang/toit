@@ -68,7 +68,7 @@ class __Monitor__:
           owner_ = self
           // Evaluate the condition. This is usually a quick operation, but it may take time
           // and even block and the task may get canceled in the process. We need to check
-          // for the timeout and cancelation notifications before going blocking again, because
+          // for the timeout and cancelation notifications before blocking again, because
           // otherwise the notifications will have been lost.
           if condition.call: return true
           // Unlock the mutex while we sleep, but we are not preempted before we
