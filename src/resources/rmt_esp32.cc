@@ -112,10 +112,8 @@ PRIMITIVE(config_tx) {
        bool, carrier_en, int, carrier_freq_hz, int, carrier_level, int, carrier_duty_percent,
        bool, loop_en, bool, idle_output_en, int, idle_level)
 
-  rmt_config_t config = { };
+  rmt_config_t config = RMT_DEFAULT_CONFIG_TX((gpio_num_t) pin_num, (rmt_channel_t) channel_num);
 
-  config.gpio_num = (gpio_num_t) pin_num;
-  config.channel = (rmt_channel_t) channel_num;
   config.mem_block_num = mem_block_num;
   config.clk_div = clk_div;
   config.flags = flags;
@@ -140,10 +138,8 @@ PRIMITIVE(config_rx) {
   ARGS(int, pin_num, int, channel_num, int, mem_block_num, int, clk_div, int, flags,
        int, idle_threshold, bool, filter_en, int, filter_ticks_thresh, int, rx_buffer_size)
 
-  rmt_config_t config = { };
+  rmt_config_t config = RMT_DEFAULT_CONFIG_RX((gpio_num_t) pin_num, (rmt_channel_t) channel_num);
 
-  config.gpio_num = (gpio_num_t) pin_num;
-  config.channel = (rmt_channel_t) channel_num;
   config.mem_block_num = mem_block_num;
   config.clk_div = clk_div;
   config.flags = flags;
