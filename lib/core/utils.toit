@@ -176,7 +176,7 @@ Enters and calls the given critical $block.
 
 Within $block, the current task won't be interrupted by cancellation exceptions.
   Instead such exceptions will be delayed until the $block is left. The critical
-  $block can be interrupted by a timeout (see $with_timeout).
+  $block can be interrupted by a timeout (see $with_timeout) if $respect_deadline is true.
 */
 critical_do --respect_deadline/bool=true [block]:
   self ::= task
