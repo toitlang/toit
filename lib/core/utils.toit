@@ -178,12 +178,18 @@ Within $block, the current task won't be interrupted by cancellation exceptions.
   Instead such exceptions will be delayed until the $block is left. The critical
   $block can be interrupted by a timeout (see $with_timeout).
 */
-critical_do [block]:
+critical_do --respect_deadline/bool=true [block]:
   self ::= task
+  deadline/int? := null
   self.critical_count_++
+  if not respect_deadline:
+    deadline = self.deadline_
+    self.deadline_ = null
   try:
     block.call
   finally:
+    if not respect_deadline:
+      self.deadline_ = deadline
     self.critical_count_--
 
 /**

@@ -8,6 +8,7 @@ main:
   test_cancel_before
   test_cancel_in_region
   test_cancel_can_timeout
+  test_deadline_in_critical
 
 test_cancel_before:
   task::
@@ -29,3 +30,14 @@ test_cancel_can_timeout:
       with_timeout --ms=1:
         critical_do:
           sleep --ms=10000
+
+test_deadline_in_critical:
+  with_timeout --ms=100:
+    expect_not_null task.deadline
+    critical_do:
+      expect_not_null task.deadline
+
+  with_timeout --ms=100:
+    expect_not_null task.deadline
+    critical_do --no-respect_deadline:
+      expect_null task.deadline

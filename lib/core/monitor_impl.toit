@@ -45,8 +45,9 @@ class __Monitor__:
 
   try_await_ deadline/int? [condition]:
     self := task
+    timer/Timer_? := null
     if deadline:
-      timer := self.get_timer_
+      timer = self.acquire_timer_
       // Arrange for the notify_ method to be called if the timeout expires.
       timer.arm this deadline
 
@@ -55,54 +56,67 @@ class __Monitor__:
     if not identical self owner_: throw "must own monitor to await"
     owner_ = null
 
-    is_non_critical ::= self.critical_count_ == 0
-    first := true
-    while true:
-      // Check for task cancelation.
-      if is_non_critical and self.is_canceled_: throw CANCELED_ERROR
-      // Check for task timeout.
-      if deadline and Time.monotonic_us >= deadline: return false
-      if not owner_:
-        // Re-take the lock.
-        owner_ = self
-        // Evaluate the condition.
-        if condition.call: return true
-        // Unlock the mutex while we sleep, but we are not preempted before we
-        // yield, so we get the chance to resume waiters without being interrupted.
-        owner_ = null
-        // We assume that the state cannot change because of evaluating the
-        // await condition. Without this check, we will be constantly re-evaluating
-        // conditions because evaluating any condition will lead to infinite evaluations
-        // of all other conditions. The state can change before the first evaluation
-        // of the await condition, so we take care of that.
-        resume_ --state_changed=first
-        first = false
-      // Wait until notified. When we get back the monitor might be owned by
-      // someone else.
-      await_ self
+    try:
+      is_non_critical ::= self.critical_count_ == 0
+      first := true
+      while true:
+        // Check for task cancelation and timeout.
+        if is_non_critical and self.is_canceled_: throw CANCELED_ERROR
+        if deadline and Time.monotonic_us >= deadline: return false
+        if not owner_:
+          // Re-take the lock.
+          owner_ = self
+          // Evaluate the condition. This is usually a quick operation, but it may take time
+          // and even block and the task may get canceled in the process. We need to check
+          // for the timeout and cancelation notifications before going blocking again, because
+          // otherwise the notifications will have been lost.
+          if condition.call: return true
+          // Unlock the mutex while we sleep, but we are not preempted before we
+          // yield, so we get the chance to resume waiters without being interrupted.
+          owner_ = null
+          // We assume that the state cannot change because of evaluating the
+          // await condition. Without this check, we will be constantly re-evaluating
+          // conditions because evaluating any condition will lead to infinite evaluations
+          // of all other conditions. The state can change before the first evaluation
+          // of the await condition, so we take care of that.
+          resume_ --state_changed=first
+          first = false
+          // Check for task cancelation and timeout. We have to do this here because we may
+          // have been notified while evaluating the condition in which case it would be wrong
+          // to just block and wait for the next notification.
+          if is_non_critical and self.is_canceled_: throw CANCELED_ERROR
+          if deadline and Time.monotonic_us >= deadline: return false
+        // Wait until notified. When we get back the monitor might be owned by
+        // someone else.
+        await_ self
+    finally:
+      if timer: self.release_timer_ timer
 
   locked_ [block]:
     self := task
     deadline/int? := null
+    timer/Timer_? := null
     if owner_:
       deadline = self.deadline
       if deadline:
-        timer := self.get_timer_
+        timer = self.acquire_timer_
         // Arrange for the notify_ method to be called if the timeout expires.
         timer.arm this deadline
 
     is_non_critical ::= self.critical_count_ == 0
-    while true:
-      // Check for task cancelation.
-      if is_non_critical and self.is_canceled_: throw CANCELED_ERROR
-      // Check for task timeout.
-      if deadline and Time.monotonic_us >= deadline: throw DEADLINE_EXCEEDED_ERROR
-      // If the monitor isn't owned by anyone at this point, we are ready
-      // to take it.
-      if not owner_: break
-      // Wait until notified. When we get back the monitor might be owned by
-      // someone else.
-      wait_ self
+    try:
+      while true:
+        // Check for task cancelation and timeout.
+        if is_non_critical and self.is_canceled_: throw CANCELED_ERROR
+        if deadline and Time.monotonic_us >= deadline: throw DEADLINE_EXCEEDED_ERROR
+        // If the monitor isn't owned by anyone at this point, we are ready
+        // to take it.
+        if not owner_: break
+        // Wait until notified. When we get back the monitor might be owned by
+        // someone else.
+        wait_ self
+    finally:
+      if timer: self.release_timer_ timer
 
     owner_ = self  // Take lock.
     try:

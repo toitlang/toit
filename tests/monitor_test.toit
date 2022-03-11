@@ -23,6 +23,9 @@ run:
   test_await_multiple
   test_fairness
   test_entry_timeouts
+  test_sleep_in_await
+  test_block_in_await
+  test_process_messages_in_locked
 
 monitor A:
   foo_ready := false
@@ -252,3 +255,98 @@ channel_receiver channel/Channel:
   while next := channel.receive --blocking=false:
     str += next
   expect_equals "BarBazBoo" str
+
+monitor Outer:
+  block -> none:
+    return
+
+  locked ready/Latch done/Latch -> none:
+    ready.set 0
+    done.get
+
+monitor Inner:
+  sleep_in_await -> none:
+    await:
+      // The call to sleep sets a deadline on the current task, while it
+      // already has a deadline set from the await call.
+      sleep --ms=10
+      false
+
+  block_in_await outer/Outer -> none:
+    await:
+      // The call to outer.block sets a deadline on the current task, while it
+      // already has a deadline set from the await call.
+      expect_throw DEADLINE_EXCEEDED_ERROR: outer.block
+      false
+
+  non_blocking_call -> none:
+    return
+
+  non_blocking_await -> none:
+    await: true
+
+test_sleep_in_await:
+  inner := Inner
+  expect_throw DEADLINE_EXCEEDED_ERROR:
+    with_timeout --ms=100:
+      inner.sleep_in_await
+
+test_block_in_await:
+  done := Latch
+  ready := Latch
+  outer := Outer
+  inner := Inner
+  task:: outer.locked ready done
+  ready.get  // Make sure outer is locked.
+  expect_throw DEADLINE_EXCEEDED_ERROR:
+    with_timeout --ms=100:
+      inner.block_in_await outer
+  done.set 0
+
+class MessageHandler implements SystemMessageHandler_:
+  static TYPE ::= 999
+  static KIND_NON_BLOCKING_CALL ::= 0
+  static KIND_NON_BLOCKING_AWAIT ::= 1
+  static KIND_NO_DEADLINE ::= 2
+
+  calls/int := 0
+  inner/Inner ::= Inner
+
+  on_message type/int gid/int pid/int message/List -> none:
+    kind := message[0]
+    // Calling the monitor methods will not block, but it might reuse
+    // the deadline set in the task that ends up doing the message
+    // processing and re-arm its timer, thus canceling future notifications.
+    if kind == KIND_NON_BLOCKING_CALL:
+      inner.non_blocking_call
+    else if kind == KIND_NON_BLOCKING_AWAIT:
+      inner.non_blocking_await
+    else if kind == KIND_NO_DEADLINE:
+      expect_null task.deadline
+    calls++
+
+test_process_messages_in_locked:
+  test_process_messages_in_locked MessageHandler.KIND_NON_BLOCKING_CALL
+  test_process_messages_in_locked MessageHandler.KIND_NON_BLOCKING_AWAIT
+  test_process_messages_in_locked MessageHandler.KIND_NO_DEADLINE
+
+test_process_messages_in_locked kind/int:
+  handler := MessageHandler
+  set_system_message_handler_ MessageHandler.TYPE handler
+  done := Latch
+  ready := Latch
+  outer := Outer
+  task:: outer.locked ready done
+  ready.get  // Make sure outer is locked.
+
+  // Enqueue a message for ourselves. Will be processed on
+  // the current task after blocking on the call to outer.block.
+  process_send_ current_process_ MessageHandler.TYPE [kind]
+  expect_equals 0 handler.calls
+
+  expect_throw DEADLINE_EXCEEDED_ERROR:
+    with_timeout --ms=100:
+      expect_equals 0 handler.calls
+      outer.block
+      expect_equals 1 handler.calls
+  done.set 0

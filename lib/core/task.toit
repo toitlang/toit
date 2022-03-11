@@ -182,9 +182,26 @@ class Task_:
     previous_running_ = previous
     next_running_ = current
 
-  get_timer_ -> Timer_:
-    if not timer_: timer_ = Timer_
-    return timer_
+  with_timer_ [block]:
+    timer := acquire_timer_
+    try:
+      block.call timer
+    finally:
+      release_timer_ timer
+
+  acquire_timer_ -> Timer_:
+    timer := timer_
+    if timer:
+      timer_ = null
+      return timer
+    return Timer_
+
+  release_timer_ timer/Timer_:
+    existing := timer_
+    if existing:
+      timer.close
+    else:
+      timer_ = timer
 
   // Task state initialized by the VM.
   id_ := null

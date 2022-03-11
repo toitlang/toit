@@ -6,11 +6,11 @@ import monitor
 
 /** Makes the current task sleep for the $duration. */
 sleep duration/Duration:
-  task.get_timer_.sleep duration.in_us
+  task.with_timer_: it.sleep duration.in_us
 
 /** Makes the current task sleep for the given $ms of milliseconds. */
 sleep --ms/int:
-  task.get_timer_.sleep ms * 1000
+  task.with_timer_: it.sleep ms * 1000
 
 /**
 Timer resource group.
