@@ -141,7 +141,7 @@ class Signals:
 
   signal_period_ i -> int:
     idx := i * 2
-    return bytes_[idx] | ((bytes_[idx + 1] & 0x7F) << 8)
+    return (LITTLE_ENDIAN.uint16 bytes_ idx) & 0x7fff
 
 /**
 An RMT channel.
