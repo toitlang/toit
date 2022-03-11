@@ -3,6 +3,7 @@
 // found in the lib/LICENSE file.
 
 import gpio
+import binary show LITTLE_ENDIAN
 
 /**
 Support for the ESP32 Remote Control (RMT).
