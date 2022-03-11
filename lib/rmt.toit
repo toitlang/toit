@@ -32,7 +32,7 @@ class Signals:
   bytes_/ByteArray
 
   /**
-  Constructs a collection of signals of the given $size.
+  Creates a collection of signals of the given $size.
 
   All signals are initialized to 0 period and 0 level.
   
@@ -45,10 +45,42 @@ class Signals:
     bytes_ = ByteArray
         round_up (size * 2) 4
 
+  /**
+  Creates signals that alternate between a level of 0 and 1 with the periods 
+    given in the indexable collection $periods. 
+
+  The level of the first signal is $first_level.
+  */
+  constructor.alternating --first_level/int periods: 
+    if first_level != 0 and first_level != 1: throw "INVALID_ARGUMENT"
+
+    return Signals.alternating periods.size --first_level=first_level: | idx |
+      periods[idx]
+
+  /**
+  Creates items that alternate between a level of 0 and 1 with the periods 
+    given by successive calls to the block. 
+
+  The $block is called with the signal index and the level it is created with.
+
+  The level of the first signal is $first_level.
+  */ 
+  constructor.alternating size/int --first_level [block]:
+    if first_level != 0 and first_level != 1: throw "INVALID_ARGUMENT"
+
+    signals := Signals size
+    level := first_level
+    size.repeat:
+      signals.set_signal it level (block.call it level)
+      level = level ^ 1
+
+    return signals
+
+
   // TODO what's a nice convenient constructor for populating Signals with known values?
 
   /**
-  Constructs a collection of signals from the given $bytes.
+  Creates a collection of signals from the given $bytes.
 
   The $bytes size must be divisible by 4.
 
