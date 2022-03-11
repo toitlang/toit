@@ -15,7 +15,7 @@ $Signals represent a collection of signals to be sent by the RMT controller.
 /**
 A collection of signals to be transferred or received with the RMT controller.
 
-An RMT signal consists of a level (low or high) and a period (the amount of
+An RMT signal consists of a level (low or high) and a period (the number of
   ticks the level is sustained).
 
 # Advanced
@@ -26,7 +26,7 @@ At the lower level, a signal consits of 16 bits: 15 bits for the period and 1
   bit for the level. Signals must be transfered as pairs also known as an item.
 */
 class Signals:
-  /** The amount of signals in the collection. */
+  /** The number of signals in the collection. */
   size/int
 
   bytes_/ByteArray
@@ -138,7 +138,7 @@ class Channel:
   - $mem_block_num is the number of memory blocks (512 bytes) used by this channel.
   - $clk_div is the source clock divider. Must be in the range [0,255].
   - $flags is the configuration flags. See the ESP-IDF documentation for available flags.
-  - $idle_threshold is the amount of clock cycles the receiver will run without seeing an edge.
+  - $idle_threshold is the number of clock cycles the receiver will run without seeing an edge.
   - $filter_en is whether the filter is enabled.
   - $filter_ticks_thresh pulses shorter than this value is filtered away.
     Only works with $filter_en. The value must be in the range [0,255].
