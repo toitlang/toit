@@ -12,7 +12,7 @@ import .mtu
 TOIT_UDP_READ_    ::= 1 << 0
 TOIT_UDP_WRITE_   ::= 1 << 1
 TOIT_UDP_ERROR_   ::= 1 << 2
-TOIT_UDP_TIMEOUT_ ::= 1 << 3
+TOIT_UDP_NEEDS_GC_ ::= 1 << 3
 
 TOIT_UDP_OPTION_PORT_      ::= 1
 TOIT_UDP_OPTION_ADDRESS_   ::= 2
@@ -101,7 +101,12 @@ class Socket implements net.Socket:
 
   ensure_state_ bits:
     state := ensure_state_
-    state_bits := state.wait_for_state (bits | TOIT_UDP_ERROR_)
+    state_bits / int? := null
+    while state_bits == null:
+      state_bits = state.wait_for_state (bits | TOIT_UDP_ERROR_ | TOIT_UDP_NEEDS_GC_)
+      if state_bits & TOIT_UDP_NEEDS_GC_ != 0:
+        state_bits = null
+        udp_gc_ state.group
     if not state_.resource: return null  // Closed from a different task.
     assert: state_bits != 0
     if (state_bits & TOIT_UDP_ERROR_) == 0:
@@ -147,3 +152,6 @@ udp_get_option_ udp_resource_group id option:
 
 udp_set_option_ udp_resource_group id option value:
   #primitive.udp.set_option
+
+udp_gc_ resource_group:
+  #primitive.udp.gc

@@ -21,6 +21,7 @@ enum UDPState {
   UDP_READ  = 1 << 0,
   UDP_WRITE = 1 << 1,
   UDP_ERROR = 1 << 2,
+  UDP_NEEDS_GC = 1 << 3,
 };
 
 enum UDPOption {

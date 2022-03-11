@@ -148,6 +148,7 @@ void UDPSocket::on_recv(pbuf* p, const ip_addr_t* addr, u16_t port) {
     // object, so we can push the allocation failure out and not drop
     // received pbufs on the floor.
     pbuf_free(p);
+    needs_gc = true;
     return;
   }
 
@@ -168,6 +169,7 @@ void UDPSocket::send_state() {
   uint32_t state = UDP_WRITE;
 
   if (!_packages.is_empty()) state |= UDP_READ;
+  if (needs_gc) state |= UDP_NEEDS_GC;
 
   // TODO: Avoid instance usage.
   LwIPEventSource::instance()->set_state(this, state);
@@ -208,9 +210,7 @@ PRIMITIVE(bind) {
 
   return resource_group->event_source()->call_on_thread([&]() -> Object* {
     udp_pcb* upcb = udp_new();
-    if (upcb == null) {
-      return lwip_error(capture.process, ERR_MEM);
-    }
+    if (upcb == null) MALLOC_FAILED;
 
     err_t err = udp_bind(upcb, &capture.addr, capture.port);
     if (err != ERR_OK) {
@@ -219,6 +219,10 @@ PRIMITIVE(bind) {
     }
 
     UDPSocket* socket = _new UDPSocket(capture.resource_group, upcb);
+    if (socket == null) {
+      udp_remove(upcb);
+      MALLOC_FAILED;
+    }
     udp_recv(upcb, UDPSocket::on_recv, socket);
     proxy->set_external_address(socket);
 
@@ -348,7 +352,7 @@ PRIMITIVE(send) {
     }
     pbuf_free(p);
 
-    if (err != ERR_OK && err != ERR_MEM) {
+    if (err != ERR_OK) {
       return lwip_error(capture.process, err);
     }
 
@@ -442,6 +446,17 @@ PRIMITIVE(set_option) {
 
     return capture.process->program()->null_object();
   });
+}
+
+PRIMITIVE(gc) {
+  ARGS(UDPResourceGroup, group);
+  Object* do_gc = group->event_source()->call_on_thread([&]() -> Object* {
+    bool result = needs_gc;
+    needs_gc = false;
+    return BOOL(result);
+  });
+  if (do_gc == process->program()->true_object()) MALLOC_FAILED;
+  return process->program()->null_object();
 }
 
 } // namespace toit

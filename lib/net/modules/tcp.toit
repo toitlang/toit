@@ -66,7 +66,7 @@ class TcpSocket_:
       state_bits = state.wait_for_state (bits | error_bits | TOIT_TCP_NEEDS_GC_)
       if state_bits & TOIT_TCP_NEEDS_GC_ != 0:
         state_bits = null
-        tcp_gc_ state.resource
+        tcp_gc_ state.group
     if state_bits == 0:
       return failure.call "NOT_CONNECTED"
     if (state_bits & error_bits) == 0:
@@ -200,5 +200,5 @@ tcp_get_option_ socket_resource_group id option:
 tcp_set_option_ socket_resource_group id option value:
   #primitive.tcp.set_option
 
-tcp_gc_ descriptor:
+tcp_gc_ socket_resource_group:
   #primitive.tcp.gc

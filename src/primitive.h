@@ -261,6 +261,7 @@ namespace toit {
   PRIMITIVE(set_option, 4)                   \
   PRIMITIVE(error, 1)                        \
   PRIMITIVE(close, 2)                        \
+  PRIMITIVE(gc, 1)                           \
 
 #define MODULE_TLS(PRIMITIVE)                \
   PRIMITIVE(init, 1)                         \
