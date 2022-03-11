@@ -117,6 +117,10 @@ class Signals:
   Set the $i'th signal to the given $period and $level.
 
   The given $i must be in the range [0,$size[.
+  
+  The given $period must be in the range [0,0x7FFF].
+
+  The given $level must be 0 or 1.
   */
   set_signal i/int period/int level/int -> none:
     check_bounds_ i
@@ -127,7 +131,11 @@ class Signals:
     bytes_[idx] = period & 0xFF
     bytes_[idx + 1] = (period >> 8 ) | (level << 7)
 
-  /** Invokes the given $block on each signal of this signal collection. */
+  /** 
+  Invokes the given $block on each signal of this signal collection. 
+  
+  The block is invoked with the period and the level of each signal.
+  */
   do [block]:
     size.repeat:
       block.call
