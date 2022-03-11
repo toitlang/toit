@@ -103,7 +103,7 @@ esp_err_t configure(const rmt_config_t* config, rmt_channel_t channel_num, size_
   err = rmt_set_source_clk(channel_num, RMT_BASECLK_APB);
   if (ESP_OK != err) return err;
 
-  err = rmt_driver_install((rmt_channel_t) channel_num, rx_buffer_size, 0);
+  err = rmt_driver_install(channel_num, rx_buffer_size, 0);
   return err;
 }
 
@@ -112,7 +112,7 @@ PRIMITIVE(config_tx) {
        bool, carrier_en, int, carrier_freq_hz, int, carrier_level, int, carrier_duty_percent,
        bool, loop_en, bool, idle_output_en, int, idle_level)
 
-  rmt_config_t config = RMT_DEFAULT_CONFIG_TX((gpio_num_t) pin_num, (rmt_channel_t) channel_num);
+  rmt_config_t config = RMT_DEFAULT_CONFIG_TX(static_cast<gpio_num_t>(pin_num), static_cast<rmt_channel_t>(channel_num));
 
   config.mem_block_num = mem_block_num;
   config.clk_div = clk_div;
@@ -121,14 +121,14 @@ PRIMITIVE(config_tx) {
   rmt_tx_config_t tx_config = { 0 };
   tx_config.carrier_en = carrier_en;
   tx_config.carrier_freq_hz = carrier_freq_hz;
-  tx_config.carrier_level = (rmt_carrier_level_t) carrier_level;
+  tx_config.carrier_level = static_cast<rmt_carrier_level_t>(carrier_level);
   tx_config.carrier_duty_percent = carrier_duty_percent;
   tx_config.loop_en = loop_en;
   tx_config.idle_output_en = idle_output_en;
-  tx_config.idle_level = (rmt_idle_level_t) idle_level;
+  tx_config.idle_level = static_cast<rmt_idle_level_t>(idle_level);
   config.tx_config = tx_config;
 
-  esp_err_t err = configure(&config, (rmt_channel_t) channel_num, 0, process);
+  esp_err_t err = configure(&config, static_cast<rmt_channel_t>(channel_num), 0, process);
   if (ESP_OK != err) return Primitive::os_error(err, process);
 
   return process->program()->null_object();
@@ -138,7 +138,7 @@ PRIMITIVE(config_rx) {
   ARGS(int, pin_num, int, channel_num, int, mem_block_num, int, clk_div, int, flags,
        int, idle_threshold, bool, filter_en, int, filter_ticks_thresh, int, rx_buffer_size)
 
-  rmt_config_t config = RMT_DEFAULT_CONFIG_RX((gpio_num_t) pin_num, (rmt_channel_t) channel_num);
+  rmt_config_t config = RMT_DEFAULT_CONFIG_RX(static_cast<gpio_num_t>(pin_num), static_cast<rmt_channel_t>(channel_num));
 
   config.mem_block_num = mem_block_num;
   config.clk_div = clk_div;
@@ -150,7 +150,7 @@ PRIMITIVE(config_rx) {
   rx_config.filter_ticks_thresh = filter_ticks_thresh;
   config.rx_config = rx_config;
 
-  esp_err_t err = configure(&config,(rmt_channel_t) channel_num, rx_buffer_size, process);
+  esp_err_t err = configure(&config,static_cast<rmt_channel_t>(channel_num), rx_buffer_size, process);
   if (ESP_OK != err) return Primitive::os_error(err, process);
 
   return process->program()->null_object();
@@ -161,7 +161,7 @@ PRIMITIVE(transfer) {
   if (items_bytes.length() % 4 != 0) INVALID_ARGUMENT;
 
   const rmt_item32_t* items = reinterpret_cast<const rmt_item32_t*>(items_bytes.address());
-  esp_err_t err = rmt_write_items((rmt_channel_t) tx_num, items, items_bytes.length() / 4, true);
+  esp_err_t err = rmt_write_items(static_cast<rmt_channel_t>(tx_num), items, items_bytes.length() / 4, true);
   if ( err != ESP_OK) return Primitive::os_error(err, process);
 
   return process->program()->null_object();
@@ -196,7 +196,7 @@ PRIMITIVE(transfer_and_read) {
   err = rmt_rx_start(rx_channel, true);
   if (err != ESP_OK) return Primitive::os_error(err, process);
 
-  err = rmt_write_items((rmt_channel_t) tx_num, items, items_bytes.length() / 4, true);
+  err = rmt_write_items(static_cast<rmt_channel_t>(tx_num), items, items_bytes.length() / 4, true);
   if (err != ESP_OK) {
     rmt_rx_stop(rx_channel);
     return Primitive::os_error(err, process);
