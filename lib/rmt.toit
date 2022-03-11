@@ -42,12 +42,8 @@ class Items:
     primitives.
   */
   constructor .size:
-    bytes_ = construct_bytes_ size
-
-  static construct_bytes_ size/int -> ByteArray:
-    should_pad := size % 2 == 1
-    bytes_size := should_pad ? size * 2 + 2 : size * 2
-    return ByteArray bytes_size
+    bytes_ = ByteArray
+        round_up (size * 2) 4
 
   // TODO what's a nice convenient constructor for populating Items with known values?
 
