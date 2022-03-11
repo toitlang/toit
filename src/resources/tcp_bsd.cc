@@ -429,7 +429,7 @@ PRIMITIVE(set_option) {
 }
 
 PRIMITIVE(gc) {
-  // Malloc never fails on Linux so we should never try to trigger a GC.
+  // Malloc never fails on Mac so we should never try to trigger a GC.
   UNREACHABLE();
 }
 
