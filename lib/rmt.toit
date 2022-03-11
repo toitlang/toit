@@ -176,13 +176,19 @@ class Channel:
   /**
   Configure the channel for RX.
 
-  - $mem_block_num is the number of memory blocks (512 bytes) used by this channel.
+  - $mem_block_num is the number of memory blocks (256 bytes or 128 signals) 
+    used by this channel.
   - $clk_div is the source clock divider. Must be in the range [0,255].
   - $flags is the configuration flags. See the ESP-IDF documentation for available flags.
   - $idle_threshold is the number of clock cycles the receiver will run without seeing an edge.
   - $filter_en is whether the filter is enabled.
   - $filter_ticks_thresh pulses shorter than this value is filtered away.
     Only works with $filter_en. The value must be in the range [0,255].
+  
+  # Advanced
+  If $mem_block_num is greater than 1, then it will take the memory of the 
+    subsequent channels. For instance, if channel 2 is configured with a
+    $mem_block_num = 3, then channels 3 and 4 are unusable.
   */
   config_rx
       --mem_block_num/int=1
@@ -197,7 +203,8 @@ class Channel:
   /**
   Configure the channel for TX.
 
-  - $mem_block_num is the number of memory blocks (512 bytes) used by this channel.
+  - $mem_block_num is the number of memory blocks (256 bytes or 128 signals) 
+    used by this channel.
   - $clk_div is the source clock divider. Must be in the range [0,255].
   - $flags is the configuration flags. See the ESP-IDF documentation for available flags.
   - $carrier_en is whether a carrier wave is used.
@@ -208,6 +215,11 @@ class Channel:
   - $loop_en is whether the transmitter continously writes the provided signals in a loop.
   - $idle_output_en is whether the transmitter outputs when idle.
   - $idle_level is the level transmitted by the transmitter when idle.
+
+  # Advanced
+  If $mem_block_num is greater than 1, then it will take the memory of the 
+    subsequent channels. For instance, if channel 2 is configured with a
+    $mem_block_num = 3, then channels 3 and 4 are unusable.
   */
   config_tx
       --mem_block_num/int=1
