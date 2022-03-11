@@ -92,8 +92,10 @@ process_messages_:
             // The message processing can be called on a canceled task
             // when it is terminating. We need to make sure that the
             // handler code can run even in that case, so we do it in
-            // a critical section.
-            critical_do: handler.on_message type gid pid args
+            // a critical section and we do not care about the current
+            // task's deadline if any.
+            critical_do --no-respect_deadline:
+              handler.on_message type gid pid args
           --if_absent=:
             if type == SYSTEM_MIRROR_MESSAGE_:
               print_for_manually_decoding_ args
