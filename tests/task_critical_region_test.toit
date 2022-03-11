@@ -37,7 +37,19 @@ test_deadline_in_critical:
     critical_do:
       expect_not_null task.deadline
 
+  expect_throw DEADLINE_EXCEEDED_ERROR:
+    with_timeout --ms=100:
+      expect_not_null task.deadline
+      critical_do:
+        sleep --ms=1000  // Deadline respected. Exception thrown!
+
   with_timeout --ms=100:
     expect_not_null task.deadline
     critical_do --no-respect_deadline:
       expect_null task.deadline
+
+  with_timeout --ms=100:
+    expect_not_null task.deadline
+    critical_do --no-respect_deadline:
+      expect_null task.deadline
+      sleep --ms=1000  // No deadline exceeded error!
