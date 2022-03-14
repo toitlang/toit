@@ -36,10 +36,10 @@ class Signals:
   Creates a collection of signals of the given $size.
 
   All signals are initialized to 0 period and 0 level.
-  
+
   # Advanced
-  If the given $size is not divisible by 2, then the byte array allocted for 
-    $bytes_ is patted with two bytes to make the $bytes_ usable by the RMT 
+  If the given $size is not divisible by 2, then the byte array allocted for
+    $bytes_ is patted with two bytes to make the $bytes_ usable by the RMT
     primitives.
   */
   constructor .size:
@@ -47,32 +47,32 @@ class Signals:
         round_up (size * 2) 4
 
   /**
-  Creates signals that alternate between a level of 0 and 1 with the periods 
-    given in the indexable collection $periods. 
+  Creates signals that alternate between a level of 0 and 1 with the periods
+    given in the indexable collection $periods.
 
   The level of the first signal is $first_level.
   */
-  constructor.alternating --first_level/int periods: 
+  constructor.alternating --first_level/int periods:
     if first_level != 0 and first_level != 1: throw "INVALID_ARGUMENT"
 
     return Signals.alternating periods.size --first_level=first_level: | idx |
       periods[idx]
 
   /**
-  Creates items that alternate between a level of 0 and 1 with the periods 
-    given by successive calls to the block. 
+  Creates items that alternate between a level of 0 and 1 with the periods
+    given by successive calls to the block.
 
   The $block is called with the signal index and the level it is created with.
 
   The level of the first signal is $first_level.
-  */ 
+  */
   constructor.alternating size/int --first_level [block]:
     if first_level != 0 and first_level != 1: throw "INVALID_ARGUMENT"
 
     signals := Signals size
     level := first_level
     size.repeat:
-      signals.set_signal it level (block.call it level)
+      signals.set_signal it (block.call it level) level
       level = level ^ 1
 
     return signals
@@ -86,8 +86,8 @@ class Signals:
   The $bytes size must be divisible by 4.
 
   # Advanced
-  The bytes must correspond to bytes produced by the RMT primitives. The 
-    primitives operate with pairs of signals (called an item) which  is the 
+  The bytes must correspond to bytes produced by the RMT primitives. The
+    primitives operate with pairs of signals (called an item) which  is the
     reason the $bytes size must be divisible by 4.
   */
   constructor.from_bytes bytes/ByteArray:
@@ -96,18 +96,18 @@ class Signals:
     bytes_ = bytes
     size = bytes_.size / 2
 
-  /** 
-  Gets the signal period of the $i'th signal. 
-  
+  /**
+  Gets the signal period of the $i'th signal.
+
   The given $i must be in the range [0,$size[.
   */
   signal_period i/int -> int:
     check_bounds_ i
     return signal_period_ i
 
-  /** 
-  Gets the signal level of the $i'th signal. 
-  
+  /**
+  Gets the signal level of the $i'th signal.
+
   The given $i must be in the range [0,$size[.
   */
   signal_level i/int -> int:
@@ -118,7 +118,7 @@ class Signals:
   Set the $i'th signal to the given $period and $level.
 
   The given $i must be in the range [0,$size[.
-  
+
   The given $period must be in the range [0,0x7FFF].
 
   The given $level must be 0 or 1.
@@ -131,9 +131,9 @@ class Signals:
     bytes_[idx] = period & 0xFF
     bytes_[idx + 1] = (period >> 8 ) | (level << 7)
 
-  /** 
-  Invokes the given $block on each signal of this signal collection. 
-  
+  /**
+  Invokes the given $block on each signal of this signal collection.
+
   The block is invoked with the period and the level of each signal.
   */
   do [block]:
@@ -165,9 +165,9 @@ class Channel:
 
   res_/ByteArray? := null
 
-  /** 
-  Constructs a channel using the given $num using the given $pin. 
-  
+  /**
+  Constructs a channel using the given $num using the given $pin.
+
   The givn $num must be in the range [0,7] and must not be in use.
   */
   constructor .pin .num:
@@ -176,7 +176,7 @@ class Channel:
   /**
   Configure the channel for RX.
 
-  - $mem_block_num is the number of memory blocks (256 bytes or 128 signals) 
+  - $mem_block_num is the number of memory blocks (256 bytes or 128 signals)
     used by this channel.
   - $clk_div is the source clock divider. Must be in the range [0,255].
   - $flags is the configuration flags. See the ESP-IDF documentation for available flags.
@@ -184,9 +184,9 @@ class Channel:
   - $filter_en is whether the filter is enabled.
   - $filter_ticks_thresh pulses shorter than this value is filtered away.
     Only works with $filter_en. The value must be in the range [0,255].
-  
+
   # Advanced
-  If $mem_block_num is greater than 1, then it will take the memory of the 
+  If $mem_block_num is greater than 1, then it will take the memory of the
     subsequent channels. For instance, if channel 2 is configured with a
     $mem_block_num = 3, then channels 3 and 4 are unusable.
   */
@@ -203,7 +203,7 @@ class Channel:
   /**
   Configure the channel for TX.
 
-  - $mem_block_num is the number of memory blocks (256 bytes or 128 signals) 
+  - $mem_block_num is the number of memory blocks (256 bytes or 128 signals)
     used by this channel.
   - $clk_div is the source clock divider. Must be in the range [0,255].
   - $flags is the configuration flags. See the ESP-IDF documentation for available flags.
@@ -217,7 +217,7 @@ class Channel:
   - $idle_level is the level transmitted by the transmitter when idle.
 
   # Advanced
-  If $mem_block_num is greater than 1, then it will take the memory of the 
+  If $mem_block_num is greater than 1, then it will take the memory of the
     subsequent channels. For instance, if channel 2 is configured with a
     $mem_block_num = 3, then channels 3 and 4 are unusable.
   */

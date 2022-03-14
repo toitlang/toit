@@ -30,53 +30,47 @@ test_signals_construction:
     Signals.from_bytes bytes
 
 test_signals_getters:
-  bytes := #[
-    0x00, 0x00,
-    0xFF, 0xFF,
-    0xFF, 0x7F,
-    0x00, 0x80
-    ]
-  signals := Signals.from_bytes bytes
-  expect_equals 0 (signals.item_level 0)
-  expect_equals 0 (signals.item_period 0)
-  
-  expect_equals 1 (signals.item_level 1)
-  expect_equals 0x7FFF (signals.item_period 1)
+  signals := Signals.alternating --first_level=0 [0, 0x7fff, 0x7fff, 0]
+  expect_equals 0 (signals.signal_level 0)
+  expect_equals 0 (signals.signal_period 0)
 
-  expect_equals 0 (signals.item_level 2)
-  expect_equals 0x7FFF (signals.item_period 2)
+  expect_equals 1 (signals.signal_level 1)
+  expect_equals 0x7FFF (signals.signal_period 1)
 
-  expect_equals 1 (signals.item_level 3)
-  expect_equals 0 (signals.item_period 3)
+  expect_equals 0 (signals.signal_level 2)
+  expect_equals 0x7FFF (signals.signal_period 2)
 
-  expect_throw "OUT_OF_BOUNDS": signals.item_level -1
-  expect_throw "OUT_OF_BOUNDS": signals.item_period -1
-  expect_throw "OUT_OF_BOUNDS": signals.item_level 4
-  expect_throw "OUT_OF_BOUNDS": signals.item_period 4
+  expect_equals 1 (signals.signal_level 3)
+  expect_equals 0 (signals.signal_period 3)
+
+  expect_throw "OUT_OF_BOUNDS": signals.signal_level -1
+  expect_throw "OUT_OF_BOUNDS": signals.signal_period -1
+  expect_throw "OUT_OF_BOUNDS": signals.signal_level 4
+  expect_throw "OUT_OF_BOUNDS": signals.signal_period 4
 
 test_signals_setter:
   signals := Signals 3
   signals.do: | period level |
     expect_equals 0 period
     expect_equals 0 level
-  
-  signals.set_item 0 8 1
-  expect_equals 8 
-    signals.item_period 0
-  expect_equals 1
-    signals.item_level 0
 
-  signals.set_item 1 0x7FFF 0
+  signals.set_signal 0 8 1
+  expect_equals 8
+    signals.signal_period 0
+  expect_equals 1
+    signals.signal_level 0
+
+  signals.set_signal 1 0x7FFF 0
   expect_equals 0x7FFF
-    signals.item_period 1
+    signals.signal_period 1
   expect_equals 0
-    signals.item_level 1
+    signals.signal_level 1
 
-  signals.set_item 2 0 1
+  signals.set_signal 2 0 1
   expect_equals 0
-    signals.item_period 2
+    signals.signal_period 2
   expect_equals 1
-    signals.item_level 0
+    signals.signal_level 0
 
 test_signals_do:
   bytes := #[
