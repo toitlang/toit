@@ -118,15 +118,13 @@ PRIMITIVE(config_tx) {
   config.clk_div = clk_div;
   config.flags = flags;
   config.rmt_mode = RMT_MODE_TX;
-  rmt_tx_config_t tx_config = { 0 };
-  tx_config.carrier_en = carrier_en;
-  tx_config.carrier_freq_hz = carrier_freq_hz;
-  tx_config.carrier_level = static_cast<rmt_carrier_level_t>(carrier_level);
-  tx_config.carrier_duty_percent = carrier_duty_percent;
-  tx_config.loop_en = loop_en;
-  tx_config.idle_output_en = idle_output_en;
-  tx_config.idle_level = static_cast<rmt_idle_level_t>(idle_level);
-  config.tx_config = tx_config;
+  config.tx_config.carrier_en = carrier_en;
+  config.tx_config.carrier_freq_hz = carrier_freq_hz;
+  config.tx_config.carrier_level = static_cast<rmt_carrier_level_t>(carrier_level);
+  config.tx_config.carrier_duty_percent = carrier_duty_percent;
+  config.tx_config.loop_en = loop_en;
+  config.tx_config.idle_output_en = idle_output_en;
+  config.tx_config.idle_level = static_cast<rmt_idle_level_t>(idle_level);
 
   esp_err_t err = configure(&config, static_cast<rmt_channel_t>(channel_num), 0, process);
   if (ESP_OK != err) return Primitive::os_error(err, process);
@@ -144,11 +142,9 @@ PRIMITIVE(config_rx) {
   config.clk_div = clk_div;
   config.flags = flags;
   config.rmt_mode = RMT_MODE_RX;
-  rmt_rx_config_t rx_config = { 0 };
-  rx_config.idle_threshold = idle_threshold;
-  rx_config.filter_en = filter_en;
-  rx_config.filter_ticks_thresh = filter_ticks_thresh;
-  config.rx_config = rx_config;
+  config.rx_config.idle_threshold = idle_threshold;
+  config.rx_config.filter_en = filter_en;
+  config.rx_config.filter_ticks_thresh = filter_ticks_thresh;
 
   esp_err_t err = configure(&config,static_cast<rmt_channel_t>(channel_num), rx_buffer_size, process);
   if (ESP_OK != err) return Primitive::os_error(err, process);
