@@ -238,7 +238,6 @@ PRIMITIVE(create) {
   }
 
   group->register_resource(i2s);
-
   proxy->set_external_address(i2s);
 
   return proxy;
