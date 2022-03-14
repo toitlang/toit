@@ -2602,6 +2602,28 @@ void MethodResolver::_visit_potential_call_identifier(ast::Node* ast_target,
 void MethodResolver::_visit_potential_call_dot(ast::Dot* ast_dot,
                                                CallBuilder& call_builder,
                                                ast::LspSelection* named_lsp_selection) {
+
+  // Look for `A.foo` first. If the class 'A' only has named constructors, a lookup with
+  // `resolve_expression` would report an error (complaining that you need to use the
+  // named constructor).
+  // We know that this isn't a constructor call, as the `visit_potential_call` would have
+  // caught that one.
+  auto ast_receiver = ast_dot->receiver();
+  if (ast_receiver->is_Identifier() || scope()->is_prefixed_identifier(ast_receiver)) {
+    auto candidates = _compute_target_candidates(ast_receiver, scope());
+    if (!candidates.encountered_error &&
+        (candidates.klass != null && candidates.nodes.is_empty())) {
+      auto klass = candidates.klass;
+      auto class_interface = klass->is_interface() ? "Interface" : "Class";
+      report_error(ast_dot, "%s '%s' does not have any static member or constructor with name '%s'.",
+                   class_interface,
+                   candidates.name.c_str(),
+                   ast_dot->name()->data().c_str());
+      push(_new ir::Error(ast_dot->range(), call_builder.arguments()));
+      return;
+    }
+  }
+
   auto receiver = resolve_expression(ast_dot->receiver(), null);
   auto selector = ast_dot->name()->data();
 
