@@ -149,6 +149,21 @@ monitor Channel:
     p_ = n
 
   /**
+  Tries to sends a message with the $value on the channel. This operation never blocks.
+  If there are tasks blocked waiting for a value (with $receive), then one of
+    them is woken up and receives the $value.
+
+  Returns true if the message was successfully delivered to the channel. Returns false 
+    if the channel is full and the message was not delivered
+  */
+  try_send value -> bool:
+    n := (p_ + 1) % buffer_.size
+    if c_ == n: return false
+    buffer_[p_] = value
+    p_ = n
+    return true
+
+  /**
   Receives a message from the channel.
   If no message is ready, and $blocking is true, blocks until another tasks
     sends a message through $send.
