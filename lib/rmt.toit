@@ -244,14 +244,14 @@ transfer channel/Channel signals/Signals -> none:
   rmt_transfer_ channel.num signals.bytes_
 
 /**
-Transfers the given $signals while simoultaniously receiving.
+Transfers the given $signals while simultaneously receiving.
 
 The $signals are transferred over the given $tx channel and signals are received on the $rx channel.
 
-The given $max_items_size specifies the maximum byte size of the returned signals.
+The given $max_returned_bytes specifies the maximum byte size of the returned signals.
 */
-transfer_and_receive --rx/Channel --tx/Channel signals/Signals max_items_size/int -> Signals:
-  result := rmt_transfer_and_read_ tx.num rx.num signals.bytes_ max_items_size
+transfer_and_receive --rx/Channel --tx/Channel signals/Signals max_returned_bytes/int -> Signals:
+  result := rmt_transfer_and_read_ tx.num rx.num signals.bytes_ max_returned_bytes
   return Signals.from_bytes result
 
 resource_group_ ::= rmt_init_
