@@ -7,6 +7,8 @@ import rmt show Signals
 
 main:
   test_signals_construction
+  test_signals_from_bytes
+  test_signals_from_alternating
   test_signals_getters
   test_signals_setter
   test_signals_do
@@ -20,14 +22,39 @@ test_signals_construction:
   expect_equals 5 signals.size
   expect_equals 12 signals.bytes_.size
 
+
+test_signals_from_bytes:
   bytes := #[0x11, 0x22, 0x33, 0x44]
-  signals = Signals.from_bytes bytes
+  signals := Signals.from_bytes bytes
   expect_equals 2 signals.size
   expect_bytes_equal bytes signals.bytes_
 
   bytes = #[0x11, 0x22, 0x33, 0x44, 0x55]
   expect_throw "INVALID_ARGUMENT":
     Signals.from_bytes bytes
+
+test_signals_from_alternating:
+  periods := [0,1,2,3,4]
+  signals := Signals.alternating --first_level=0 periods
+
+  level := 0
+  periods.size.repeat:
+    expect_equals level (signals.signal_level it)
+    level = level ^ 1
+    expect_equals it (signals.signal_period it)
+
+  signals = Signals.alternating --first_level=1 periods
+  level = 1
+  periods.size.repeat:
+    expect_equals level (signals.signal_level it)
+    level = level ^ 1
+    expect_equals it (signals.signal_period it)
+
+  expect_throw "INVALID_ARGUMENT":
+    Signals.alternating --first_level=2 []
+
+  expect_throw "INVALID_ARGUMENT":
+    Signals.alternating --first_level=0 [0x8FFF]
 
 test_signals_getters:
   signals := Signals.alternating --first_level=0 [0, 0x7fff, 0x7fff, 0]
