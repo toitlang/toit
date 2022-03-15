@@ -2609,7 +2609,10 @@ void MethodResolver::_visit_potential_call_dot(ast::Dot* ast_dot,
   // We know that this isn't a constructor call, as the `visit_potential_call` would have
   // caught that one.
   auto ast_receiver = ast_dot->receiver();
-  if (ast_receiver->is_Identifier() || scope()->is_prefixed_identifier(ast_receiver)) {
+  // If this is for the LSP just follow the normal path.
+  // We are only interested in `A.foo`/`prefix.A.foo` not `(A).foo`.
+  if (!ast_dot->name()->is_LspSelection() &&
+      (ast_receiver->is_Identifier() || scope()->is_prefixed_identifier(ast_receiver))) {
     auto candidates = _compute_target_candidates(ast_receiver, scope());
     if (!candidates.encountered_error &&
         (candidates.klass != null && candidates.nodes.is_empty())) {
