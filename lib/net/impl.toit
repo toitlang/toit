@@ -22,6 +22,11 @@ open -> Interface:
     // the WiFi and it really shouldn't while this process is still using it.
     catch --unwind=(: it != WIFI_ALREADY_STARTED_EXCEPTION_):
       return wifi.connect
+  with_timeout --ms=5_000:
+    while true:
+      // Wait for the other thread to store the IP.
+      if stored_ip_ != "": break
+      sleep --ms=100
   return SystemInterface_
 
 class SystemInterface_ extends Interface:
@@ -45,15 +50,10 @@ class SystemInterface_ extends Interface:
     return result
 
   address -> IpAddress:
-    socket := udp_open
-    try:
-      socket.connect
-        SocketAddress
-          IpAddress.parse "8.8.8.8"
-          80
-      return socket.local_address.ip
-    finally:
-      socket.close
+    return IpAddress.parse stored_ip_
 
   close -> none:
     // Do nothing yet.
+
+stored_ip_ -> string:
+  #primitive.wifi.get_stored_ip

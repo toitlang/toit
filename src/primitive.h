@@ -290,6 +290,7 @@ namespace toit {
   PRIMITIVE(disconnect, 2)                   \
   PRIMITIVE(disconnect_reason, 1)            \
   PRIMITIVE(get_ip, 1)                       \
+  PRIMITIVE(get_stored_ip, 0)                \
   PRIMITIVE(get_rssi, 1)                     \
 
 #define MODULE_ETHERNET(PRIMITIVE)           \
