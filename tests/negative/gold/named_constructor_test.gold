@@ -1,10 +1,10 @@
 tests/negative/named_constructor_test.toit:12:8: error: Class 'A' only has named constructors
   a := A  // There should not be an implicit constructor.
        ^
-tests/negative/named_constructor_test.toit:13:9: error: Class 'A' does not have any static member or constructor with name 'some_non_existing_static'.
+tests/negative/named_constructor_test.toit:13:9: error: Class 'A' does not have any static member or constructor with name 'some_non_existing_static'
   b := A.some_non_existing_static
         ^
-tests/negative/named_constructor_test.toit:14:14: error: Class 'A' does not have any static member or constructor with name 'some_non_existing_static'.
+tests/negative/named_constructor_test.toit:14:14: error: Class 'A' does not have any static member or constructor with name 'some_non_existing_static'
   c := self.A.some_non_existing_static
              ^
 Compilation failed.
