@@ -337,6 +337,8 @@ PRIMITIVE(disconnect_reason) {
   }
 }
 
+static char local_address[17] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+
 PRIMITIVE(get_ip) {
   ARGS(IPEvents, ip);
   if (local_address[0] == 0) {
@@ -344,8 +346,6 @@ PRIMITIVE(get_ip) {
   }
   return process->allocate_string_or_error(ip->ip());
 }
-
-static char local_address[17] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
 // Temporary primitive to support parallel access to the WiFi module.
 // The `local_address` global would need to be protected by a lock to be safe.
