@@ -183,7 +183,8 @@ build/snapshot: $(TOITC_BIN) $(ESP32_ENTRY)
 	$(TOITC_BIN) -w $@ $(ESP32_ENTRY)
 
 .PHONY: build/$(ESP32_CHIP)/program.snapshot  # Marked phony to force regeneration.
-build/$(ESP32_CHIP)/program.snapshot: $(TOITC_BIN) $(ESP32_EXTRA_PROGRAM)
+build/$(ESP32_CHIP)/program.snapshot: $(ESP32_EXTRA_PROGRAM) tools
+	mkdir -p build/$(ESP32_CHIP)
 	$(TOITC_BIN) -w $@ $(ESP32_EXTRA_PROGRAM)
 
 build/$(ESP32_CHIP)/programs.bin: build/$(ESP32_CHIP)/program.snapshot tools
