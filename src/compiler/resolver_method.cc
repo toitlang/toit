@@ -2615,7 +2615,7 @@ void MethodResolver::_visit_potential_call_dot(ast::Dot* ast_dot,
         (candidates.klass != null && candidates.nodes.is_empty())) {
       auto klass = candidates.klass;
       auto class_interface = klass->is_interface() ? "Interface" : "Class";
-      report_error(ast_dot, "%s '%s' does not have any static member or constructor with name '%s'.",
+      report_error(ast_dot, "%s '%s' does not have any static member or constructor with name '%s'",
                    class_interface,
                    candidates.name.c_str(),
                    ast_dot->name()->data().c_str());
