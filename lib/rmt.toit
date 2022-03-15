@@ -23,7 +23,7 @@ An RMT signal consists of a level (low or high) and a period (the number of
 The period is specified in number of ticks, so the actual time the level is
   sustained is determined by the RMT controller configuration.
 
-At the lower level, a signal consits of 16 bits: 15 bits for the period and 1
+At the lower level, a signal consists of 16 bits: 15 bits for the period and 1
   bit for the level. Signals must be transfered as pairs also known as an item.
 */
 class Signals:
@@ -39,7 +39,7 @@ class Signals:
 
   # Advanced
   If the given $size is not divisible by 2, then the byte array allocted for
-    $bytes_ is patted with two bytes to make the $bytes_ usable by the RMT
+    $bytes_ is padded with two bytes to make the $bytes_ usable by the RMT
     primitives.
   */
   constructor .size:
@@ -66,14 +66,14 @@ class Signals:
 
   The level of the first signal is $first_level.
   */
-  constructor.alternating size/int --first_level [block]:
+  constructor.alternating size/int --first_level/int [block]:
     if first_level != 0 and first_level != 1: throw "INVALID_ARGUMENT"
 
     signals := Signals size
     level := first_level
     size.repeat:
       signals.set_signal it (block.call it level) level
-      level = level ^ 1
+      level ^= 1
 
     return signals
 
