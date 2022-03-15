@@ -12,6 +12,10 @@
 
 namespace toit {
 
+enum {
+  TYPE_PING_TEST,
+  TYPE_ALLOC_TEST
+};
 unsigned int checksum[4] = { 0, 0, 0, 0 };
 
 static SnapshotBundle compile(const char* input_path) {
@@ -34,19 +38,34 @@ static SnapshotBundle compile(const char* input_path) {
 
 class MessageHandler : public ExternalSystemMessageHandler {
  public:
-  MessageHandler(VM* vm) : ExternalSystemMessageHandler(vm) { }
-  virtual void on_message(int sender, int type, void* data, int length) override;
+  explicit MessageHandler(VM* vm) : ExternalSystemMessageHandler(vm) { }
+  void on_message(int sender, int type, void* data, int length) override;
 
  private:
   bool _try_hard = false;
 };
 
 void MessageHandler::on_message(int sender, int type, void* data, int length) {
-  collect_garbage(_try_hard);
-  _try_hard = !_try_hard;
+  switch (type) {
+    case TYPE_PING_TEST: {
 
-  send(sender, type, data, length, true);
+//      collect_garbage(_try_hard);
+//      _try_hard = !_try_hard;
+
+      send(sender, type, data, length, true);
+    }
+    break;
+    case TYPE_ALLOC_TEST: {
+      free(data);
+      data = malloc(100);
+      send(sender, type, data, 100, true);
+    }
+    break;
+    default:
+      FATAL("Unexpected type");
+  }
 }
+
 
 int run_program(Snapshot snapshot) {
   VM vm;
@@ -59,6 +78,7 @@ int run_program(Snapshot snapshot) {
 
   Scheduler::ExitState exit = vm.scheduler()->run_boot_program(image.program(), NULL, group_id);
   image.release();
+
 
   switch (exit.reason) {
     case Scheduler::EXIT_DONE:
@@ -73,7 +93,6 @@ int run_program(Snapshot snapshot) {
 int main(int argc, char **argv) {
   Flags::process_args(&argc, argv);
   if (argc != 2) FATAL("wrong number of arguments");
-
   FlashRegistry::set_up();
   OS::set_up();
 

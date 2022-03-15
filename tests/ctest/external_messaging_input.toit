@@ -5,12 +5,16 @@
 import expect
 import monitor
 
-TYPE ::= 0
-EXTERNAL_PID ::= 1
+TYPE_PING ::= 0
+TYPE_ALLOC ::= 1
+
+EXTERNAL_PID ::= 0
+
+BENCHMARK_ITERATIONS ::= 60000
 
 main:
   handler := MessageHandler
-  set_system_message_handler_ TYPE handler
+  set_system_message_handler_ TYPE_PING handler
 
   test handler #[]
   test handler #[1, 2, 3, 4]
@@ -20,9 +24,20 @@ main:
   test handler (ByteArray 3197: it)
   test handler (ByteArray 31971: it)
 
+  // send 2k buffer to the external process, and receive 100 bytes.
+  benchmark_handler := BenchmarkHandler
+  set_system_message_handler_ TYPE_ALLOC benchmark_handler
+  print "benchmark"
+  for i:=0; i < BENCHMARK_ITERATIONS; i++:
+    process_send_ EXTERNAL_PID TYPE_ALLOC (ByteArray 2000)
+    result := benchmark_handler.receive
+    expect.expect_equals 100 result.size
+
+  expect.expect_equals BENCHMARK_ITERATIONS benchmark_handler.count_
+
 test handler/MessageHandler data/ByteArray:
   copy := data.copy  // Data can be neutered as part of the transfer.
-  process_send_ EXTERNAL_PID 0 data
+  process_send_ EXTERNAL_PID TYPE_PING data
   result := handler.receive
   expect.expect_bytes_equal copy result
 
@@ -31,7 +46,18 @@ class MessageHandler implements SystemMessageHandler_:
 
   on_message type/int gid/int pid/int argument -> none:
     expect.expect_equals EXTERNAL_PID pid
-    expect.expect_equals TYPE type
+    expect.expect_equals TYPE_PING type
+    messages_.send argument
+
+  receive -> any:
+    return messages_.receive
+
+class BenchmarkHandler implements SystemMessageHandler_:
+  messages_ ::= monitor.Channel 1
+  count_ := 0
+  on_message type/int gid/int pid/int argument/ByteArray -> none:
+    expect.expect_equals TYPE_ALLOC type
+    count_++
     messages_.send argument
 
   receive -> any:
