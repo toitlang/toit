@@ -52,6 +52,7 @@ namespace toit {
   M(adc,     MODULE_ADC)                     \
   M(pwm,     MODULE_PWM)                     \
   M(programs_registry, MODULE_PROGRAMS_REGISTRY) \
+  M(flash,   MODULE_FLASH_REGISTRY)          \
   M(file,    MODULE_FILE)                    \
   M(pipe,    MODULE_PIPE)                    \
   M(zlib,    MODULE_ZLIB)                    \
@@ -462,6 +463,18 @@ namespace toit {
   PRIMITIVE(spawn, 3)                        \
   PRIMITIVE(is_running, 2)                   \
   PRIMITIVE(kill, 2)                         \
+
+#define MODULE_FLASH_REGISTRY(PRIMITIVE)     \
+  PRIMITIVE(next, 1)                         \
+  PRIMITIVE(info, 1)                         \
+  PRIMITIVE(erase, 2)                        \
+  PRIMITIVE(get_id, 1)                       \
+  PRIMITIVE(get_size, 1)                     \
+  PRIMITIVE(get_type, 1)                     \
+  PRIMITIVE(get_meta_data, 1)                \
+  PRIMITIVE(reserve_hole, 2)                 \
+  PRIMITIVE(cancel_reservation, 1)           \
+  PRIMITIVE(erase_flash_registry, 0)         \
 
 #define MODULE_FILE(PRIMITIVE)               \
   PRIMITIVE(open, 3)                         \
