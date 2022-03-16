@@ -97,7 +97,6 @@ int LwIPSocket::on_accept(tcp_pcb* tpcb, err_t err) {
     // We do this to trigger a GC.  The counterpart will retransmit the
     // SYN.
     socket_error(err);
-    send_state();
 
     // This return value actually ignored in LwIP.  The socket is
     // not dead.
