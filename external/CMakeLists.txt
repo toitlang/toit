@@ -163,7 +163,7 @@ endforeach()
 function(find_toit_projects REPO)
   get_filename_component(REPO_NAME "${REPO}" NAME)
   set(REPO_PATH "${DOWNLOADS_DIR}/${REPO_NAME}")
-  foreach(LOCATION "" "examples" "tests" "test")
+  foreach(LOCATION "" "examples" "tests")
     set(LOCATION_PATH "${REPO_PATH}/${LOCATION}")
     if (EXISTS "${LOCATION_PATH}/package.yaml" OR EXISTS "${LOCATION_PATH}/package.lock")
       set(PROJECT_NAME "${REPO_NAME}")
@@ -180,8 +180,8 @@ function(add_repo_tests REPO)
   get_filename_component(REPO_NAME "${REPO}" NAME)
   set(REPO_PATH "${DOWNLOADS_DIR}/${REPO_NAME}")
   file(GLOB TEST_FILES RELATIVE "${CMAKE_SOURCE_DIR}"
-      "${REPO_PATH}/test/*_test.toit"
-      "${REPO_PATH}/tests/*_test.toit")
+      "${REPO_PATH}/tests/*_test.toit"
+      "${REPO_PATH}/tests/*_test_slow.toit")
 
   file(RELATIVE_PATH TEST_PREFIX "${CMAKE_SOURCE_DIR}" "${REPO_PATH}")
   set(FAILING_TESTS)

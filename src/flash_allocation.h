@@ -82,7 +82,7 @@ class FlashAllocation {
 
     bool is_valid_allocation(const uint32 allocation_offset) const;
 
-    // Let the checksum be the last part of the header so that only
+    // Let the image uuid be the last part of the header so that only
     // a complete flash write will mark this allocation as valid.
     void set_uuid(const uint8* uuid);
 
