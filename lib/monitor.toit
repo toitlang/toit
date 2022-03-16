@@ -149,7 +149,7 @@ monitor Channel:
     p_ = n
 
   /**
-  Tries to sends a message with the $value on the channel. This operation never blocks.
+  Tries to send a message with the $value on the channel. This operation never blocks.
   If there are tasks blocked waiting for a value (with $receive), then one of
     them is woken up and receives the $value.
 
