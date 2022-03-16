@@ -13,10 +13,12 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-// This program reads a snapshot, converts it into an image
-// and dumps the content as a binary file or a source file to
-// be read by the GNU assembler. Binary image outputs can be
-// relocated to a specific address or left relocatable.
+/**
+This program reads a snapshot, converts it into an image
+  and dumps the content as a binary file or a source file to
+  be read by the GNU assembler. Binary image outputs can be
+  relocated to a specific address or left relocatable.
+*/
 
 import .image
 import .snapshot

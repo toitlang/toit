@@ -30,7 +30,7 @@ ESP32_EXTRA_PROGRAM=
 
 # Extra entries stored in the flash must have the same uuid as the VM image
 # to make sure they are produced by the same toolchain. On most platforms it
-# is possible to use 'make ... ESP32_UNIQUE_ID=`uuidgen`' to ensure this.
+# is possible to use 'make ... ESP32_UNIQUE_ID=$(uuidgen)' to ensure this.
 ESP32_UNIQUE_ID=00000000-0000-0000-0000-000000000000
 
 export IDF_TARGET=$(ESP32_CHIP)
