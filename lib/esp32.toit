@@ -60,7 +60,7 @@ total_deep_sleep_time -> int:
   #primitive.esp32.total_deep_sleep_time
 
 /**
-Set the ESP32 to wake up from deep sleep if the GPIO pins in pin_mask matches the mode.
+Sets the ESP32 to wake up from deep sleep if the GPIO pins in pin_mask matches the mode.
 If $on_any_high is true, the ESP32 will wake up if any pin in the mask is high.
 If $on_any_high is false, the ESP32 will wake up if all pins in the mask are low.
 Only the following GPIO pins can be used: 0,2,4,12-15,25-27,32-39.

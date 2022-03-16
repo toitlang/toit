@@ -183,7 +183,7 @@ jobs:
           # Mark the external test as failing, and update it at the end of this step.
           echo fail > ${{ steps.constants.outputs.external_result }}
           make enable-external
-          find external > ${{ steps.constants.outputs.debug_dir }}/files_after_enable_external.log
+          find external > ${{ steps.constants.outputs.debug_dir }}/${{ matrix.container }}_${{ matrix.shard }}_files_after_enable_external.log
           make test-external
           make test-external-health
           if [ "$RUNNER_OS" == "Linux" ]; then
@@ -204,19 +204,30 @@ jobs:
           cp -R ./build/host/sdk ./build/host/toit
           tar -czf build/${{ steps.constants.outputs.artifact }} -C ./build/host -h --exclude toit/bin/mbedtls toit
 
+      - name: Prepare debug repros
+        if: always()
+        continue-on-error: true
+        shell: bash
+        run: |
+          REPRO_DIR=${{ steps.constants.outputs.debug_root_dir }}/repros
+          mkdir -p $REPRO_DIR
+          find /tmp -maxdepth 1 -name 'lsp_repro-*' -exec cp -r {} $REPRO_DIR \;
+
+      - name: Upload debug artifacts
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v2
+        with:
+          name: debug
+          path: ${{ steps.constants.outputs.debug_root_dir }}
+          retention-days: 5
+
       - name: Upload artifacts
         if: matrix.shard == 1
         uses: actions/upload-artifact@v2
         with:
           name: ${{ runner.os }}-build
           path: build/${{ steps.constants.outputs.artifact }}
-
-      - name: Upload debug artifacts
-        uses: actions/upload-artifact@v2
-        with:
-          name: debug
-          path: ${{ steps.constants.outputs.debug_root_dir }}
-          retention-days: 5
 
       - name: Upload release artifacts
         if: |
@@ -318,6 +329,83 @@ jobs:
           # Make sure the ccache interceptors are before any other path.
           export PATH="$PWD/ccache_interceptors":$PATH
           make esp32
+
+  # Really annoying that we need to duplicate so much.
+  cross_windows:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Fetch tags
+        # The github checkout is shallow and doesn't have tags.
+        run: |
+          git fetch --tags
+
+      # We only need the tpkg and mbedtls submodule for building.
+      - name: Initialize mbedtls submodule
+        run: |
+          cd third_party/esp-idf
+          git submodule update --init .
+          git submodule update --init components/mbedtls
+
+      # Use Go 1.17
+      - name: Switch to Go 1.17
+        run:
+          echo "$GOROOT_1_17_X64"/bin >> $GITHUB_PATH
+
+      # Get values for cache paths to be used in later steps
+      - name: Get Go paths
+        id: go-cache-paths
+        run: |
+          echo "::set-output name=go-build::$(go env GOCACHE)"
+          echo "::set-output name=go-mod::$(go env GOMODCACHE)"
+
+      # Cache go build cache, used to speedup go test
+      - name: Go Build Cache
+        uses: actions/cache@v2
+        with:
+          path: ${{ steps.go-cache-paths.outputs.go-build }}
+          key: ${{ runner.os }}-go-build-${{ hashFiles('**/go.sum') }}
+          restore-keys: ${{ runner.os }}-go-build-
+
+      # Cache go mod cache, used to speedup builds
+      - name: Go Mod Cache
+        uses: actions/cache@v2
+        with:
+          path: ${{ steps.go-cache-paths.outputs.go-mod }}
+          key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum') }}
+          restore-keys: ${{ runner.os }}-go-mod-
+
+      - name: Ccache cache
+        uses: actions/cache@v2
+        # Store and retrieve the cache with the given sha.
+        # The 'restore-keys' prefix finds the most recent cache in case there
+        # is no match (which should almost always be the case).
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: esp32-ccache-${{ github.sha }}
+          restore-keys: esp32-ccache-
+
+      - name: Install dependencies - Linux
+        run: |
+          sudo apt-get update
+          sudo apt-get install ninja-build ccache mingw-w64
+          ninja --version
+          cmake --version
+          gcc --version
+
+      # Build using make.
+      - name: make
+        env:
+          IDF_PATH: ${{ github.workspace }}/third_party/esp-idf
+          CCACHE_DIR: ${{ github.workspace }}/.ccache
+          CCACHE_BASEDIR: ${{ github.workspace }}
+          CCACHE_COMPRESS: true
+          CCACHE_COMPRESSLEVEL: '6'
+          CCACHE_MAXSIZE: 400M
+        run: |
+          make CROSS_ARCH=win64 all-cross
 
   external:
     needs: build
