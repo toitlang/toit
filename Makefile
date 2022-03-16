@@ -23,13 +23,23 @@ ESP32_WIFI_SSID=
 ESP32_WIFI_PASSWORD=
 ESP32_PORT=
 ESP32_CHIP=esp32
+
+# You can optionally bundle an extra program image into the programs section of
+# of the flash. This allows the entry program to find the program and run it.
+ESP32_EXTRA_PROGRAM=
+
+# Extra entries stored in the flash must have the same uuid as the VM image
+# to make sure they are produced by the same toolchain. On most platforms it
+# is possible to use 'make ... ESP32_UNIQUE_ID=$(uuidgen)' to ensure this.
+ESP32_UNIQUE_ID=00000000-0000-0000-0000-000000000000
+
 export IDF_TARGET=$(ESP32_CHIP)
 
 # Use Toitware ESP-IDF fork by default.
 export IDF_PATH ?= $(CURDIR)/third_party/esp-idf
 
 ifeq ($(OS),Windows_NT)
-	EXE_SUFFIX=".exe"
+	EXE_SUFFIX=.exe
 	DETECTED_OS=$(OS)
 else
 	EXE_SUFFIX=
@@ -74,7 +84,7 @@ endif
 build/host/CMakeCache.txt:
 	$(MAKE) rebuild-cmake
 
-BIN_DIR = build/host/sdk/bin
+BIN_DIR = $(CURDIR)/build/host/sdk/bin
 TOITVM_BIN = $(BIN_DIR)/toit.run$(EXE_SUFFIX)
 TOITPKG_BIN = $(BIN_DIR)/toit.pkg$(EXE_SUFFIX)
 TOITC_BIN = $(BIN_DIR)/toit.compile$(EXE_SUFFIX)
@@ -133,7 +143,7 @@ snapshots-cross: tools download-packages build/$(CROSS_ARCH)/CMakeCache.txt
 .PHONY: version-file-cross
 version-file-cross: build/$(CROSS_ARCH)/CMakeCache.txt
 	$(MAKE) rebuild-cross-cmake
-	(cd build/host && ninja build_version_file)
+	(cd build/$(CROSS_ARCH) && ninja build_version_file)
 
 
 # ESP32 VARIANTS
@@ -155,7 +165,7 @@ build/$(ESP32_CHIP)/toit.bin build/$(ESP32_CHIP)/toit.elf: build/$(ESP32_CHIP)/l
 build/$(ESP32_CHIP)/toit.bin build/$(ESP32_CHIP)/toit.elf: build/$(ESP32_CHIP)/lib/libtoit_image.a
 build/$(ESP32_CHIP)/toit.bin build/$(ESP32_CHIP)/toit.elf: tools snapshots build/config.json
 	$(MAKE) -j $(NUM_CPU) -C toolchains/$(ESP32_CHIP)/
-	$(TOITVM_BIN) tools/inject_config.toit build/config.json build/$(ESP32_CHIP)/toit.bin
+	$(TOITVM_BIN) tools/inject_config.toit build/config.json --unique_id=$(ESP32_UNIQUE_ID) build/$(ESP32_CHIP)/toit.bin
 
 .PHONY: build/$(ESP32_CHIP)/lib/libtoit_vm.a  # Marked phony to force regeneration.
 build/$(ESP32_CHIP)/lib/libtoit_vm.a: build/$(ESP32_CHIP)/CMakeCache.txt build/$(ESP32_CHIP)/include/sdkconfig.h
@@ -171,6 +181,14 @@ build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s: tools snapshots build/snapshot
 .PHONY: build/snapshot  # Marked phony to force regeneration.
 build/snapshot: $(TOITC_BIN) $(ESP32_ENTRY)
 	$(TOITC_BIN) -w $@ $(ESP32_ENTRY)
+
+.PHONY: build/$(ESP32_CHIP)/program.snapshot  # Marked phony to force regeneration.
+build/$(ESP32_CHIP)/program.snapshot: $(ESP32_EXTRA_PROGRAM) tools
+	mkdir -p build/$(ESP32_CHIP)
+	$(TOITC_BIN) -w $@ $(ESP32_EXTRA_PROGRAM)
+
+build/$(ESP32_CHIP)/programs.bin: build/$(ESP32_CHIP)/program.snapshot tools
+	$(TOITVM_BIN) tools/snapshot_to_image.toit --unique_id=$(ESP32_UNIQUE_ID) -m32 --binary --relocate=0x3f420000 $< $@
 
 build/$(ESP32_CHIP)/CMakeCache.txt:
 	mkdir -p build/$(ESP32_CHIP)
@@ -189,7 +207,12 @@ build/config.json:
 # ESP32 VARIANTS FLASH
 .PHONY: flash
 flash: check-env-flash sdk esp32
+ifdef ESP32_EXTRA_PROGRAM
+flash: build/$(ESP32_CHIP)/programs.bin
+	python $(IDF_PATH)/components/esptool_py/esptool/esptool.py --chip $(ESP32_CHIP) --port $(ESP32_PORT) --baud 921600 --before default_reset --after hard_reset write_flash -z --flash_mode dio --flash_freq 40m --flash_size detect 0x1000 build/$(ESP32_CHIP)/bootloader/bootloader.bin 0x10000 build/$(ESP32_CHIP)/toit.bin 0x8000 build/$(ESP32_CHIP)/partitions.bin 0x200000 build/$(ESP32_CHIP)/programs.bin
+else
 	python $(IDF_PATH)/components/esptool_py/esptool/esptool.py --chip $(ESP32_CHIP) --port $(ESP32_PORT) --baud 921600 --before default_reset --after hard_reset write_flash -z --flash_mode dio --flash_freq 40m --flash_size detect 0x1000 build/$(ESP32_CHIP)/bootloader/bootloader.bin 0x10000 build/$(ESP32_CHIP)/toit.bin 0x8000 build/$(ESP32_CHIP)/partitions.bin
+endif
 
 .PHONY: check-env-flash
 check-env-flash:
