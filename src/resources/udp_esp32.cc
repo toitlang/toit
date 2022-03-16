@@ -456,7 +456,7 @@ PRIMITIVE(gc) {
     needs_gc = false;
     return BOOL(result);
   });
-  if (do_gc == process->program()->true_object()) MALLOC_FAILED;
+  if (do_gc == process->program()->true_object()) CROSS_PROCESS_GC;
   return process->program()->null_object();
 }
 
