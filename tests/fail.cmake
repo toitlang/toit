@@ -31,11 +31,8 @@ if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows" OR "${CMAKE_SYSTEM_NAME}" STREQUAL
     tests/ar_test.toit
     tests/close_test.toit
     tests/dns_test.toit
-    tests/file_test.toit
     tests/interface_address_test.toit
     tests/keepalive_test.toit
-    tests/pipe2_test.toit
-    tests/pipe_test.toit
     tests/regress/issue3_test.toit
     tests/socket_close_test.toit
     tests/socket_option_test.toit
@@ -49,7 +46,6 @@ if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows" OR "${CMAKE_SYSTEM_NAME}" STREQUAL
     tests/zlib_test.toit
     tests/class_field_limit_test_compiler.toit
     tests/cow_read_only_test_compiler.toit
-    tests/fork_stress_test_slow.toit
     tests/tls_test_slow.toit
   )
 endif()
