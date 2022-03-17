@@ -301,6 +301,7 @@ void* OS::grab_vm(void* address, uword size) {
 }
 
 void OS::ungrab_vm(void* address, uword size) {
+  if (!address) return;
   bool ok = VirtualFree(address, 0, MEM_RELEASE);
   if (!ok) FATAL("ungrab_vm");
 }
@@ -312,7 +313,6 @@ bool OS::use_vm(void* addr, uword sz) {
   uword end = address + sz;
   uword rounded = Utils::round_down(address, 4096);
   uword size = Utils::round_up(end - rounded, 4096);
-  DWORD old_protection;
   void* result = VirtualAlloc(reinterpret_cast<void*>(address), size, MEM_COMMIT, PAGE_READWRITE);
   if (result != reinterpret_cast<void*>(address)) FATAL("use_vm");
   return true;
