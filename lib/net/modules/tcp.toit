@@ -138,7 +138,13 @@ class TcpSocket extends TcpSocket_ implements net.Socket Reader:
   connect hostname port [failure]:
     address := dns_lookup hostname
     open_ (tcp_connect_ tcp_resource_group_ address.raw port window_size_)
-    ensure_state_ TOIT_TCP_WRITE_ --error_bits=(TOIT_TCP_ERROR_ | TOIT_TCP_CLOSE_) --failure=failure
+    error := catch:
+      ensure_state_ TOIT_TCP_WRITE_ --error_bits=(TOIT_TCP_ERROR_ | TOIT_TCP_CLOSE_) --failure=failure
+    if error:
+      // LwIP uses the same error code, ERR_CON, for connection refused and
+      // connection closed.
+      if error == "Connection closed": throw "Connection refused"
+      throw error
 
   read:
     state := ensure_state_ TOIT_TCP_READ_ --failure=: throw it
