@@ -37,6 +37,7 @@ namespace toit {
   M(spi,     MODULE_SPI)                     \
   M(uart,    MODULE_UART)                    \
   M(rmt,     MODULE_RMT)                     \
+  M(one_wire,MODULE_OW)                      \
   M(crypto,  MODULE_CRYPTO)                  \
   M(encoding,MODULE_ENCODING)                \
   M(font,    MODULE_FONT)                    \
@@ -378,6 +379,9 @@ namespace toit {
   PRIMITIVE(config_tx, 12)                   \
   PRIMITIVE(transfer, 2)                     \
   PRIMITIVE(transfer_and_read, 4)            \
+
+#define MODULE_OW(PRIMITIVE)                 \
+  PRIMITIVE(config_pin, 3)                   \
 
 #define MODULE_CRYPTO(PRIMITIVE)             \
   PRIMITIVE(sha1_start, 1)                   \

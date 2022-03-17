@@ -18,6 +18,7 @@
 #ifdef TOIT_FREERTOS
 
 #include "driver/rmt.h"
+#include "driver/gpio.h"
 
 #include "../objects_inline.h"
 #include "../primitive.h"
