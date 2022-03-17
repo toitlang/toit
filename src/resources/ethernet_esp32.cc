@@ -172,7 +172,7 @@ uint32_t EthernetResourceGroup::on_event(Resource* resource, word data, uint32_t
 MODULE_IMPLEMENTATION(ethernet, MODULE_ETHERNET)
 
 PRIMITIVE(init_esp32) {
-  ARGS(int, phy_chip, int, phy_addr, int, phy_reset_num, int, mdc_num, int, msio_num)
+  ARGS(int, phy_chip, int, phy_addr, int, phy_reset_num, int, mdc_num, int, mdio_num)
 
 #ifdef CONFIG_IDF_TARGET_ESP32C3
   return Primitive::os_error(ESP_FAIL, process);
@@ -206,7 +206,7 @@ PRIMITIVE(init_esp32) {
   phy_config.phy_addr = phy_addr;
   phy_config.reset_gpio_num = phy_reset_num;
   mac_config.smi_mdc_gpio_num = mdc_num;
-  mac_config.smi_mdio_gpio_num = msio_num;
+  mac_config.smi_mdio_gpio_num = mdio_num;
 
   // TODO(anders): If phy initialization fails, we're leaking this.
   esp_eth_mac_t* mac = esp_eth_mac_new_esp32(&mac_config);

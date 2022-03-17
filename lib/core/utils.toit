@@ -176,14 +176,20 @@ Enters and calls the given critical $block.
 
 Within $block, the current task won't be interrupted by cancellation exceptions.
   Instead such exceptions will be delayed until the $block is left. The critical
-  $block can be interrupted by a timeout (see $with_timeout).
+  $block can be interrupted by a timeout (see $with_timeout) if $respect_deadline is true.
 */
-critical_do [block]:
+critical_do --respect_deadline/bool=true [block]:
   self ::= task
+  deadline/int? := null
   self.critical_count_++
+  if not respect_deadline:
+    deadline = self.deadline_
+    self.deadline_ = null
   try:
     block.call
   finally:
+    if not respect_deadline:
+      self.deadline_ = deadline
     self.critical_count_--
 
 /**
@@ -307,6 +313,15 @@ The stats, listed by index in the array, are:
 4. Bytes allocated in object heap
 5. Group ID
 6. Process ID
+
+The "bytes allocated in the heap" tracks the total number of allocations, but
+  doesn't deduct the sizes of objects that die. It is a way to follow the
+  allocation pressure of the process.
+
+Also see $bytes_allocated_delta for tracking allocation patterns.
+
+The "allocated memory" is the combined size of all live objects on the heap.
+The "reserved memory" is the size of the heap.
 */
 process_stats -> List:
   result := process_stats -1 -1
@@ -320,8 +335,13 @@ Returns an array with stats for the process identified by the $group and the
   $id.
 */
 process_stats group id -> List?:
+  stats := process_stats_ group id
+  if not stats: return null
+  return List_.from_array_ stats
+
+process_stats_ group id:
   #primitive.core.process_stats:
-    return it ? List_.from_array_ it : it
+    return null
 
 /**
 Returns the number of bytes allocated, since the last call to this function.
