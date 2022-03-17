@@ -337,12 +337,12 @@ PRIMITIVE(disconnect_reason) {
   }
 }
 
-static char local_address[17] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+static char local_address[16] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
 PRIMITIVE(get_ip) {
   ARGS(IPEvents, ip);
   if (local_address[0] == 0) {
-    memcpy(local_address, ip->ip(), 16);
+    memcpy(local_address, ip->ip(), 15);
   }
   return process->allocate_string_or_error(ip->ip());
 }
