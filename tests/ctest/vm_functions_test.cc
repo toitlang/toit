@@ -16,9 +16,11 @@ static void single_page() {
   uint8* page = reinterpret_cast<uint8*>(OS::grab_vm(null, 4096));
   if (page < range_address) FATAL("Not in expected area");
   if (page + 4096 > range_address + range.size) FATAL("Not in expected area");
-  OS::use_vm(page, 4096);
+  bool result = OS::use_vm(page, 4096);
+  USE(result);
+  ASSERT(result);
   *page = 42;
-  //OS::unuse_vm(page, 4096);
+  OS::unuse_vm(page, 4096);
   OS::ungrab_vm(page, 4096);
 }
 
