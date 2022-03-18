@@ -2013,6 +2013,13 @@ abstract class HashedInsertionOrderedCollection_:
   find_ key [not_found]:
     append_position := null  // Use null/non-null to avoid calling block twice.
 
+    // TODO(erik): Multiply by a large prime to mix up bad hash codes, e.g.
+    //               (0x1351d * (hash_code_ key)) & 0x3fffffff
+    //             that doesn't allocate large integers.
+    // Call this early so we can't get away with single-entry sets/maps
+    // that have incompatible keys.
+    hash := hash_code_ key
+
     if not index_:
       if size_ == 0:
         if not backing_: backing_ = List
@@ -2028,11 +2035,6 @@ abstract class HashedInsertionOrderedCollection_:
           rebuild_ 1 --allow_shrink
         else:
           rebuild_ 1 --allow_shrink
-
-    // TODO(erik): Multiply by a large prime to mix up bad hash codes, e.g.
-    //               (0x1351d * (hash_code_ key)) & 0x3fffffff
-    //             that doesn't allocate large integers.
-    hash := hash_code_ key
 
     return find_body_ key hash append_position not_found
       (: rebuild_ it --allow_shrink=false)
@@ -2188,10 +2190,6 @@ The == operator should be compatible with the hash_code method so
   be rare to maintain good performance.
 Strings and numbers fulfill these requirements and can be used as
   keys in sets.
-Very small sets may not call the hash_code method, and therefore
-  very small sets may appear to work with keys that are missing
-  the method.  However, as soon as a they hit a certain size (currently
-  2) an error will be thrown.
 */
 class Set extends HashedInsertionOrderedCollection_ implements Collection:
   static STEP_ ::= 1
@@ -2474,10 +2472,6 @@ The == operator should be compatible with the hash_code method so
   be rare to maintain good performance.
 Strings and numbers fulfill these requirements and can be used as
   keys in maps.
-Very small maps may not call the hash_code method, and therefore
-  very small maps may appear to work with keys that are missing
-  the method.  However, as soon as a they hit a certain size (currently
-  2) an error will be thrown.
 */
 class Map extends HashedInsertionOrderedCollection_:
   static STEP_ ::= 2
