@@ -42,7 +42,11 @@ Process::Process(Program* program, ProcessRunner* runner, ProcessGroup* group, B
     , _program_heap_address(program ? program->_program_heap_address : 0)
     , _program_heap_size(program ? program->_program_heap_size : 0)
     , _entry(Method::invalid())
+#ifdef LEGACY_GC
     , _object_heap(program, this, initial_block)
+#else
+    , _object_heap(program, this)
+#endif
     , _memory_usage(Usage("initial object heap"))
     , _last_bytes_allocated(0)
     , _random_seeded(false)

@@ -51,6 +51,7 @@ class ScavengeScope : public Locker {
   RawHeap* _heap;
 };
 
+#ifdef LEGACY_GC
 Heap::Heap(Process* owner, Program* program, Block* initial_block)
     : RawHeap(owner)
     , _program(program)
@@ -61,11 +62,24 @@ Heap::Heap(Process* owner, Program* program, Block* initial_block)
   if (initial_block == null) return;
   _blocks.append(initial_block);
 }
+#else
+Heap::Heap(Process* owner, Program* program)
+    : _program(program)
+    , _in_gc(false)
+    , _gc_allowed(true)
+    , _total_bytes_allocated(0)
+    , _last_allocation_result(ALLOCATION_SUCCESS)
+    , _owner(owner)
+    , _two_space_heap(program) {}
+#endif
 
 Heap::~Heap() {
+#ifdef LEGACY_GC
+  // TODO: Heap deletion in new GC.
   // Deleting a heap is like a scavenge where nothing survives.
   ScavengeScope scope(VM::current()->heap_memory(), this);
   _blocks.free_blocks(this);
+#endif
 }
 
 Instance* Heap::allocate_instance(Smi* class_id) {
@@ -139,7 +153,11 @@ LargeInteger* Heap::allocate_large_integer(int64 value) {
 }
 
 int Heap::payload_size() {
+#ifdef LEGACY_GC
   return _blocks.payload_size();
+#else
+  return _two_space_heap.used();
+#endif
 }
 
 String* Heap::allocate_internal_string(int length) {
@@ -157,6 +175,8 @@ String* Heap::allocate_internal_string(int length) {
   ASSERT(bytes.length() == length);
   return String::cast(result);
 }
+
+#ifdef LEGACY_GC
 
 HeapObject* Heap::_allocate_raw(int byte_size) {
   ASSERT(byte_size > 0);
@@ -275,19 +295,28 @@ class ScavengeState : public RootCallback {
   ScavengeScope _scope;
 };
 
+#endif  // def LEGACY_GC
+
 Object** ObjectHeap::_copy_global_variables() {
   return _program->global_variables.copy();
 }
 
+#ifdef LEGACY_GC
 ObjectHeap::ObjectHeap(Program* program, Process* owner, Block* block)
     : Heap(owner, program, block)
+#else
+ObjectHeap::ObjectHeap(Program* program, Process* owner)
+    : Heap(owner, program)
+#endif
     , _max_heap_size(0)
     , _external_memory(0)
     , _hatch_method(Method::invalid())
     , _finalizer_notifier(null)
     , _gc_count(0)
     , _global_variables(null) {
+#ifdef LEGACY_GC
   if (block == null) return;
+#endif
   _task = allocate_task();
   _global_variables = _copy_global_variables();
   // Currently the heap is empty and it has one block allocated for objects.
@@ -315,6 +344,7 @@ ObjectHeap::~ObjectHeap() {
   ASSERT(_object_notifiers.is_empty());
 }
 
+#ifdef LEGACY_GC
 word ObjectHeap::_calculate_limit() {
   word length = ((_blocks.length() + 2) << TOIT_PAGE_SIZE_LOG2) + _external_memory;
   word new_limit = Utils::max(_MIN_BLOCK_LIMIT << TOIT_PAGE_SIZE_LOG2, length + length / 2);
@@ -329,6 +359,26 @@ bool ObjectHeap::should_allow_external_allocation(word size) {
   word external_allowed = _limit - (Utils::min(_MIN_BLOCK_LIMIT, _blocks.length()) << TOIT_PAGE_SIZE_LOG2);
   return external_allowed >= _external_memory + _EXTERNAL_MEMORY_ALLOCATOR_OVERHEAD + size;
 }
+
+# else
+
+word ObjectHeap::_calculate_limit() {
+  word length = _two_space_heap.used() + _external_memory;
+  word MIN = 4096;
+  word new_limit = Utils::max(MIN, length + length / 2);
+  if (has_max_heap_size()) {
+    new_limit = Utils::min(_max_heap_size, new_limit);
+  }
+  return new_limit;
+}
+
+bool ObjectHeap::should_allow_external_allocation(word size) {
+  if (_limit == 0) return true;
+  word external_allowed = _limit - 4096;
+  return external_allowed >= _external_memory + _EXTERNAL_MEMORY_ALLOCATOR_OVERHEAD + size;
+}
+
+#endif
 
 void ObjectHeap::register_external_allocation(word size) {
   if (size == 0) return;
@@ -438,7 +488,9 @@ static const char* format_unit(word n) {
 #define FORMAT(n) format(n), format_unit(n)
 #endif
 
-int ObjectHeap::scavenge() {
+#ifdef LEGACY_GC
+
+int ObjectHeap::gc() {
   word blocks_before = _blocks.length();
 #ifdef TOIT_GC_LOGGING
   int64 start_time = OS::get_monotonic_time();
@@ -575,6 +627,8 @@ int ObjectHeap::scavenge() {
   return blocks_before - blocks_after;
 }
 
+#endif  // def LEGACY_GC
+
 bool ObjectHeap::has_finalizer(HeapObject* key, Object* lambda) {
   for (FinalizerNode* node : _registered_finalizers) {
     if (node->key() == key) return true;
@@ -645,6 +699,8 @@ void ObjectHeap::set_finalizer_notifier(ObjectNotifier* notifier) {
   }
 }
 
+#ifdef LEGACY_GC
+
 // We initialize lazily - this is because the number of objects can grow during
 // iteration.
 Heap::Iterator::Iterator(BlockList& list, Program* program)
@@ -691,6 +747,14 @@ void Heap::Iterator::advance() {
     ASSERT(!_block->is_empty());
   }
 }
+
+#else  // def LEGACY_GC
+
+Usage Heap::usage(const char* name) {
+  return Usage(name, 0, 0);  // TODO: Usage report.
+}
+
+#endif  // def LEGACY_GC
 
 ObjectNotifier::ObjectNotifier(Process* process, Object* object)
     : _process(process)

@@ -339,7 +339,7 @@ bool Scheduler::kill(const Program* program) {
   return false;
 }
 
-void Scheduler::scavenge(Process* process, bool malloc_failed, bool try_hard) {
+void Scheduler::gc(Process* process, bool malloc_failed, bool try_hard) {
   bool doing_idle_process_gc = try_hard || malloc_failed || process->system_refused_memory();
   bool doing_cross_process_gc = false;
   uint64 start = OS::get_monotonic_time();
@@ -380,18 +380,18 @@ void Scheduler::scavenge(Process* process, bool malloc_failed, bool try_hard) {
     }
   }
 
-  int scavenges = 0;
+  int gcs = 0;
   if (doing_idle_process_gc) {
     ProcessListFromScheduler targets;
     { Locker locker(_mutex);
       for (ProcessGroup* group : _groups) {
         bool done = false;
         for (Process* target : group->processes()) {
-          if (target->state() != Process::RUNNING && !target->idle_since_scavenge()) {
+          if (target->state() != Process::RUNNING && !target->idle_since_gc()) {
             if (target->state() != Process::SUSPENDED_AWAITING_GC) {
-              scavenge_suspend_process(locker, target);
+              gc_suspend_process(locker, target);
             }
-            target->set_idle_since_scavenge(true);  // Will be true in a little while.
+            target->set_idle_since_gc(true);  // Will be true in a little while.
             targets.append(target);
             if (!try_hard) {
               done = true;
@@ -404,30 +404,30 @@ void Scheduler::scavenge(Process* process, bool malloc_failed, bool try_hard) {
     }
 
     for (Process* target : targets) {
-      target->scavenge();
-      scavenges++;
+      target->gc();
+      gcs++;
     }
 
     { Locker locker(_mutex);
       while (!targets.is_empty()) {
         Process* target = targets.remove_first();
         if (target->state() != Process::SUSPENDED_AWAITING_GC) {
-          scavenge_resume_process(locker, target);
+          gc_resume_process(locker, target);
         }
       }
     }
   }
 
-  process->scavenge();
+  process->gc();
 
   if (doing_cross_process_gc) {
     Locker locker(_mutex);
     _gc_cross_processes = false;
 #ifdef TOIT_GC_LOGGING
     int64 microseconds = OS::get_monotonic_time() - start;
-    printf("[gc @ %p%s | cross process gc with %d scavenges, took %d.%03dms]\n",
+    printf("[gc @ %p%s | cross process gc with %d gcs, took %d.%03dms]\n",
         process, VM::current()->scheduler()->is_boot_process(process) ? "*" : " ",
-        scavenges + 1,
+        gcs + 1,
         static_cast<int>(microseconds / 1000),
         static_cast<int>(microseconds % 1000));
 #endif
@@ -489,7 +489,7 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
   if (interpreted) {
     Interpreter* interpreter = scheduler_thread->interpreter();
     interpreter->activate(process);
-    process->set_idle_since_scavenge(false);
+    process->set_idle_since_gc(false);
     if (process->signals() == 0) {
       Unlocker unlock(locker);
       result = interpreter->run();
@@ -501,7 +501,7 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
     }
     interpreter->deactivate();
   } else if (process->signals() == 0) {
-    ASSERT(process->idle_since_scavenge());
+    ASSERT(process->idle_since_gc());
     Unlocker unlock(locker);
     result = runner->run();
   }
@@ -585,7 +585,7 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
   }
 }
 
-void Scheduler::scavenge_suspend_process(Locker& locker, Process* process) {
+void Scheduler::gc_suspend_process(Locker& locker, Process* process) {
   ASSERT(process->state() != Process::RUNNING);  // Preempt the process first.
   ASSERT(process->state() != Process::SUSPENDED_AWAITING_GC);
   ASSERT(!process->is_suspended());
@@ -598,7 +598,7 @@ void Scheduler::scavenge_suspend_process(Locker& locker, Process* process) {
   ASSERT(process->is_suspended());
 }
 
-void Scheduler::scavenge_resume_process(Locker& locker, Process* process) {
+void Scheduler::gc_resume_process(Locker& locker, Process* process) {
   ASSERT(process->state() != Process::SUSPENDED_AWAITING_GC);
   ASSERT(process->is_suspended());
   bool was_scheduled = process->state() == Process::SUSPENDED_SCHEDULED;

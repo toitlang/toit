@@ -91,7 +91,7 @@ class Interpreter {
   void deactivate();
 
   // Garbage collection support.
-  Object** scavenge(Object** sp, bool malloc_failed, int attempts);
+  Object** gc(Object** sp, bool malloc_failed, int attempts);
 
   // Boot the interpreter on the current process.
   void prepare_process();

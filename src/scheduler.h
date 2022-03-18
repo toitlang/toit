@@ -122,7 +122,7 @@ class Scheduler {
 
   // Collects garbage from the given process or some of the non-running
   // processes in the system.
-  void scavenge(Process* process, bool malloc_failed, bool try_hard);
+  void gc(Process* process, bool malloc_failed, bool try_hard);
 
   // Print stack traces for all live processes.
   void print_stack_traces();
@@ -153,8 +153,8 @@ class Scheduler {
   // a process and remove it from the ready list (if it's not idle). Resuming a process
   // puts the threads back into its original state, modulo idle->scheduled transitions that
   // are still supported while the process is suspended.
-  void scavenge_suspend_process(Locker& locker, Process* process);
-  void scavenge_resume_process(Locker& locker, Process* process);
+  void gc_suspend_process(Locker& locker, Process* process);
+  void gc_resume_process(Locker& locker, Process* process);
 
   // Check if a cross-process GC is in process and wait for it to complete if so. After
   // waiting transition to the new state.

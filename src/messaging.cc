@@ -535,7 +535,7 @@ Interpreter::Result ExternalSystemMessageHandler::run() {
 
 void ExternalSystemMessageHandler::collect_garbage(bool try_hard) {
   if (_process) {
-    _vm->scheduler()->scavenge(_process, true, try_hard);
+    _vm->scheduler()->gc(_process, true, try_hard);
   }
 }
 

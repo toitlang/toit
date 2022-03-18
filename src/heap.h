@@ -23,12 +23,14 @@
 #include "objects.h"
 #include "primitive.h"
 #include "printing.h"
+#include "third_party/dartino/two_space_heap.h"
 
 extern "C" uword toit_image;
 extern "C" uword toit_image_size;
 
 namespace toit {
 
+#ifdef LEGACY_GC
 class Heap : public RawHeap {
  public:
   Heap(Process* owner, Program* program, Block* initial_block);
@@ -53,6 +55,15 @@ class Heap : public RawHeap {
   Iterator object_iterator() { return Iterator(_blocks, _program); }
 
   static int max_allocation_size() { return Block::max_payload_size(); }
+#else
+class Heap {
+ public:
+  Heap(Process* owner, Program* program);
+  ~Heap();
+
+  // TODO: In the new heap there is no max allocation size.
+  static int max_allocation_size() { return TOIT_PAGE_SIZE - 96; }
+#endif
 
   // Shared allocation operations.
   Instance* allocate_instance(Smi* class_id);
@@ -73,7 +84,7 @@ class Heap : public RawHeap {
 
   int64 total_bytes_allocated() { return _total_bytes_allocated; }
 
-#ifndef DEPLOY
+#if !defined(DEPLOY) && defined(LEGACY_GC)
   void enter_gc() {
     ASSERT(!_in_gc);
     ASSERT(_gc_allowed);
@@ -112,19 +123,34 @@ class Heap : public RawHeap {
   void set_last_allocation_result(AllocationResult result) {
     _last_allocation_result = result;
   }
+#ifndef LEGACY_GC
+  Usage usage(const char* name);
+  Process* owner() { return _owner; }
+#endif
 
  protected:
   Program* const _program;
+#ifdef LEGACY_GC
   HeapObject* _allocate_raw(int byte_size);
   virtual AllocationResult _expand();
+#else
+  HeapObject* _allocate_raw(int byte_size) {
+    return _two_space_heap.allocate(byte_size);
+  }
+#endif
+
   bool _in_gc;
   bool _gc_allowed;
   int64 _total_bytes_allocated;
   AllocationResult _last_allocation_result;
 
-  friend class ProgramSnapshotReader;
-  friend class compiler::ProgramBuilder;
+#ifndef LEGACY_GC
+  Process* _owner;
+  TwoSpaceHeap _two_space_heap;
 };
+#else
+};
+#endif
 
 class NoGC {
  public:
@@ -140,10 +166,15 @@ class NoGC {
 };
 
 class ObjectNotifier;
+
 // An object heap contains all objects created at runtime.
 class ObjectHeap final : public Heap {
  public:
+#ifdef LEGACY_GC
   ObjectHeap(Program* program, Process* owner, Block* initial_block);
+#else
+  ObjectHeap(Program* program, Process* owner);
+#endif
   ~ObjectHeap();
 
   // Returns the number of bytes allocated in this heap.
@@ -172,7 +203,7 @@ class ObjectHeap final : public Heap {
   void set_hatch_arguments(HeapObject* array) { _hatch_arguments = array; }
 
   // Garbage collection operation for runtime objects.
-  int scavenge();
+  int gc();
 
   bool add_finalizer(HeapObject* key, Object* lambda);
   bool has_finalizer(HeapObject* key, Object* lambda);
@@ -234,7 +265,9 @@ class ObjectHeap final : public Heap {
   // Calculate the memory limit for scavenge based on the number of live blocks
   // and the externally allocated memory.
   word _calculate_limit();
+#ifdef LEGACY_GC
   AllocationResult _expand();
+#endif
 
   friend class ObjectNotifier;
 };

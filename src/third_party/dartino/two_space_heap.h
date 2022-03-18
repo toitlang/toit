@@ -20,7 +20,7 @@ class TwoSpaceHeap {
 
   // Allocate raw object. Returns null if a garbage collection is
   // needed.
-  Object* allocate(uword size);
+  HeapObject* allocate(uword size);
 
   // Max memory that can be added by adding new chunks.  Accounts for whole
   // chunks, not just the used memory in them.
@@ -64,7 +64,7 @@ class TwoSpaceHeap {
   // Returns the number of bytes allocated in the space.
   int used() { return old_space_->used() + semi_space_->used(); }
 
-  Object* new_space_allocation_failure(uword size) {
+  HeapObject* new_space_allocation_failure(uword size) {
     if (size >= (semispace_size_ >> 1)) {
       uword result = old_space_->allocate(size);
       if (result != 0) {

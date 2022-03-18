@@ -513,10 +513,10 @@ Interpreter::Result Interpreter::run() {
             class_index);
       }
 #endif //TOIT_GC_LOGGING
-      sp = scavenge(sp, false, attempts);
+      sp = gc(sp, false, attempts);
       result = _process->object_heap()->allocate_instance(Smi::from(class_index));
     }
-    // Scavenge might have taken place in object heap but local
+    // GC might have taken place in object heap but local
     // "klass" is from program heap.
     if (result != null) {
       Instance* instance = Instance::cast(result);
@@ -525,7 +525,7 @@ Interpreter::Result Interpreter::run() {
         instance->at_put(i, program->null_object());
       }
       PUSH(result);
-      if (Flags::gcalot) sp = scavenge(sp, false, 1);
+      if (Flags::gcalot) sp = gc(sp, false, 1);
     } else {
       PUSH(Smi::from(class_index));
       CALL_METHOD(program->allocation_failure(), _length_);
@@ -1013,14 +1013,14 @@ Interpreter::Result Interpreter::run() {
               malloc_failed ? " (malloc)" : "");
         }
 #endif
-        sp = scavenge(sp, malloc_failed, attempts);
+        sp = gc(sp, malloc_failed, attempts);
 
         _sp = sp;
         result = entry(_process, sp + parameter_offset + arity - 1); // Skip the frame.
         sp = _sp;
       }
 
-      // Scavenge might have taken place in object heap but local "method" is from program heap.
+      // GC might have taken place in object heap but local "method" is from program heap.
       PUSH(result);
       DISPATCH(PRIMITIVE_LENGTH);
 
