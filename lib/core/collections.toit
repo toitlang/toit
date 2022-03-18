@@ -2177,7 +2177,22 @@ simple_rebuild_hash_index_ old_index index_ -> none:
           slot_step++
         index_[slot] = hash_and_position
 
-/** A set of keys. */
+/**
+A set of keys.
+The objects used as keys must have a hash_code method that returns
+  an integer that does not change while the object is in the set.
+The == operator should be compatible with the hash_code method so
+  that objects that test equal also have the same hash code.
+  However, objects that test unequal are not required to have
+  different hash codes: Hash code clashes are allowed, but should
+  be rare to maintain good performance.
+Strings and numbers fulfill these requirements and can be used as
+  keys in sets.
+Very small sets may not call the hash_code method, and therefore
+  very small sets may appear to work with keys that are missing
+  the method.  However, as soon as a they hit a certain size (currently
+  2) an error will be thrown.
+*/
 class Set extends HashedInsertionOrderedCollection_ implements Collection:
   static STEP_ ::= 1
 
@@ -2437,7 +2452,7 @@ class Set extends HashedInsertionOrderedCollection_ implements Collection:
 
 /**
 A set that uses object identity instead of the == operator to test equality
-  of elements. This set still uses the hash_code method on elements. There is
+  of elements. This set still uses the hash_code method on elements (see $Set). There is
   no identity hash code operation on arbitrary classes in Toit.
 */
 class IdentitySet extends Set:
@@ -2448,6 +2463,22 @@ class IdentitySet extends Set:
   compare_ key key_or_probe:
     return identical key key_or_probe
 
+/**
+A map from key objects to values.
+The objects used as keys must have a hash_code method that returns
+  an integer that does not change while the object is in the map.
+The == operator should be compatible with the hash_code method so
+  that objects that test equal also have the same hash code.
+  However, objects that test unequal are not required to have
+  different hash codes: Hash code clashes are allowed, but should
+  be rare to maintain good performance.
+Strings and numbers fulfill these requirements and can be used as
+  keys in maps.
+Very small maps may not call the hash_code method, and therefore
+  very small maps may appear to work with keys that are missing
+  the method.  However, as soon as a they hit a certain size (currently
+  2) an error will be thrown.
+*/
 class Map extends HashedInsertionOrderedCollection_:
   static STEP_ ::= 2
 
@@ -2884,7 +2915,7 @@ class Map extends HashedInsertionOrderedCollection_:
 
 /**
 A map that uses object identity instead of the == operator to test equality
-  of keys. This map still uses the hash_code method on keys. There is no
+  of keys. This map still uses the hash_code method on keys (see $Map). There is no
   identity hash code operation on arbitrary classes in Toit.
 */
 class IdentityMap extends Map:
