@@ -84,6 +84,12 @@ class TwoSpaceHeap {
 
   void freed_foreign_memory(uword size);
 
+  void collect_new_space();
+  void collect_old_space();
+  void perform_shared_garbage_collection();
+  void sweep_shared_heap();
+  void compact_shared_heap();
+
  private:
   static const uword UNLIMITED_EXPANSION = 0x80000000u - TOIT_PAGE_SIZE;
 

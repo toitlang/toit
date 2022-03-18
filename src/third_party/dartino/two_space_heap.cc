@@ -5,6 +5,7 @@
 #include "../../top.h"
 #include "../../objects.h"
 #include "two_space_heap.h"
+#include "mark_sweep.h"
 
 namespace toit {
 
@@ -115,121 +116,114 @@ void SemiSpace::start_scavenge() {
 
 #ifndef LEGACY_GC
 
-void Program::CollectNewSpace() {
+void TwoSpaceHeap::collect_new_space() {
   HeapUsage usage_before;
 
-  TwoSpaceHeap* data_heap = process_heap();
+  SemiSpace* from = space();
+  OldSpace* old = old_space();
 
-  SemiSpace* from = data_heap->space();
-  OldSpace* old = data_heap->old_space();
-
-  if (data_heap->HasEmptyNewSpace()) {
-    CollectOldSpaceIfNeeded(false);
+  if (has_empty_new_space()) {
+    collect_old_space_if_needed(false);
     return;
   }
 
-  old->Flush();
-  from->Flush();
+  old->flush();
+  from->flush();
 
 #ifdef DEBUG
-  if (Flags::validate_heaps) old->Verify();
+  if (Flags::validate_heaps) old->verify();
 #endif
 
-  if (Flags::print_heap_statistics) {
-    GetHeapUsage(data_heap, &usage_before);
+  if (Flags::tracegc) {
+    get_heap_usage(this, &usage_before);
   }
 
-  SemiSpace* to = data_heap->unused_space();
+  SemiSpace* to = unused_space();
 
-  uword old_used = old->Used();
+  uword old_used = old->used();
 
   to->set_used(0);
   // Allocate from start of to-space..
-  to->UpdateBaseAndLimit(to->chunk(), to->chunk()->start());
+  to->update_base_and_limit(to->chunk(), to->chunk()->start());
 
-  GenerationalScavengeVisitor visitor(data_heap);
-  to->StartScavenge();
-  old->StartScavenge();
+  GenerationalScavengeVisitor visitor(this);
+  to->start_scavenge();
+  old->start_scavenge();
 
-  IterateSharedHeapRoots(&visitor);
+  program->iterate_shared_heap_roots(&visitor);
 
-  old->VisitRememberedSet(&visitor);
+  old->visit_remembered_set(&visitor);
 
   bool work_found = true;
   while (work_found) {
-    work_found = to->CompleteScavengeGenerational(&visitor);
-    work_found |= old->CompleteScavengeGenerational(&visitor);
+    work_found = to->complete_scavenge_generational(&visitor);
+    work_found |= old->complete_scavenge_generational(&visitor);
   }
-  old->EndScavenge();
+  old->end_scavenge();
 
-  from->ProcessWeakPointers(to, old);
-
-  for (auto process : process_list_) {
-    process->set_ports(Port::CleanupPorts(from, process->ports()));
-  }
+  from->process_weak_pointers(to, old);
 
   // Second space argument is used to size the new-space.
-  data_heap->SwapSemiSpaces();
+  swap_semi_spaces();
 
-  if (Flags::print_heap_statistics) {
+  if (Flags::tracegc) {
     HeapUsage usage_after;
-    GetHeapUsage(data_heap, &usage_after);
-    PrintProcessGCInfo(&usage_before, &usage_after);
+    get_heap_usage(this, &usage_after);
+    print_process_gc_info(&usage_before, &usage_after);
   }
 
 #ifdef DEBUG
-  if (Flags::validate_heaps) old->Verify();
+  if (Flags::validate_heaps) old->verify();
 #endif
 
-  ASSERT(from->Used() >= to->Used());
+  ASSERT(from->used() >= to->used());
   // Find out how much garbage was found.
-  word progress = (from->Used() - to->Used()) - (old->Used() - old_used);
+  word progress = (from->used() - to->used()) - (old->used() - old_used);
   // There's a little overhead when allocating in old space which was not there
   // in new space, so we might overstate the number of promoted bytes a little,
   // which could result in an understatement of the garbage found, even to make
   // it negative.
   if (progress > 0) {
-    old->ReportNewSpaceProgress(progress);
+    old->report_new_space_progress(progress);
   }
-  CollectOldSpaceIfNeeded(visitor.trigger_old_space_gc());
-  UpdateStackLimits();
+  collect_old_space_if_needed(visitor.trigger_old_space_gc());
+  update_stack_limits();
 }
 
-void Program::CollectOldSpace() {
+void TwoSpaceHeap::collect_old_space() {
   if (Flags::validate_heaps) {
-    ValidateHeapsAreConsistent();
+    validate_heaps_are_consistent();
   }
 
   SharedHeapUsage usage_before;
-  if (Flags::print_heap_statistics) {
-    GetSharedHeapUsage(process_heap(), &usage_before);
+  if (Flags::tracegc) {
+    get_shared_heap_usage(this, &usage_before);
   }
 
-  PerformSharedGarbageCollection();
+  perform_shared_garbage_collection();
 
-  if (Flags::print_heap_statistics) {
+  if (Flags::tracegc) {
     SharedHeapUsage usage_after;
-    GetSharedHeapUsage(process_heap(), &usage_after);
-    PrintProgramGCInfo(&usage_before, &usage_after);
+    get_shared_heap_usage(this, &usage_after);
+    print_program_gc_info(&usage_before, &usage_after);
   }
 
   if (Flags::validate_heaps) {
-    ValidateHeapsAreConsistent();
+    validate_heaps_are_consistent();
   }
 }
 
-void Program::PerformSharedGarbageCollection() {
+void TwoSpaceHeap::perform_shared_garbage_collection() {
   // Mark all reachable objects.  We mark all live objects in new-space too, to
   // detect liveness paths that go through new-space, but we just clear the
   // mark bits afterwards.  Dead objects in new-space are only cleared in a
   // new-space GC (scavenge).
-  TwoSpaceHeap* heap = process_heap();
-  OldSpace* old_space = heap->old_space();
-  SemiSpace* new_space = heap->space();
+  OldSpace* old_space = old_space();
+  SemiSpace* new_space = space();
   MarkingStack stack;
   MarkingVisitor marking_visitor(new_space, &stack);
 
-  IterateSharedHeapRoots(&marking_visitor);
+  iterate_shared_heap_roots(&marking_visitor);
 
   stack.Process(&marking_visitor, old_space, new_space);
 
@@ -237,90 +231,80 @@ void Program::PerformSharedGarbageCollection() {
     // If the last GC was compacting we don't have fragmentation, so it
     // is fair to evaluate if we are making progress or just doing
     // pointless GCs.
-    old_space->EvaluatePointlessness();
+    old_space->evaluate_pointlessness();
     old_space->clear_hard_limit_hit();
     // Do a non-compacting GC this time for speed.
-    SweepSharedHeap();
+    sweep_shared_heap();
   } else {
     // Last GC was sweeping, so we do a compaction this time to avoid
     // fragmentation.
     old_space->clear_hard_limit_hit();
-    CompactSharedHeap();
+    compact_shared_heap();
   }
 
-  heap->AdjustOldAllocationBudget();
+  adjust_old_allocation_budget();
 
 #ifdef DEBUG
-  if (Flags::validate_heaps) old_space->Verify();
+  if (Flags::validate_heaps) old_space->verify();
 #endif
 }
 
-void Program::SweepSharedHeap() {
-  TwoSpaceHeap* heap = process_heap();
-  OldSpace* old_space = heap->old_space();
-  SemiSpace* new_space = heap->space();
+void TwoSpaceHeap::sweep_shared_heap() {
+  OldSpace* old_space = old_space();
+  SemiSpace* new_space = space();
 
   old_space->set_compacting(false);
 
-  old_space->ProcessWeakPointers();
-
-  for (auto process : process_list_) {
-    process->set_ports(Port::CleanupPorts(old_space, process->ports()));
-  }
+  old_space->process_weak_pointers();
 
   // Sweep over the old-space and rebuild the freelist.
   SweepingVisitor sweeping_visitor(old_space);
-  old_space->IterateObjects(&sweeping_visitor);
+  old_space->iterate_objects(&sweeping_visitor);
 
   // These are only needed during the mark phase, we can clear them without
   // looking at them.
-  new_space->ClearMarkBits();
+  new_space->clear_mark_bits();
 
-  for (auto process : process_list_) process->UpdateStackLimit();
+  for (auto process : process_list_) process->update_stack_limit();
 
   uword used_after = sweeping_visitor.used();
   old_space->set_used(used_after);
   old_space->set_used_after_last_gc(used_after);
-  heap->AdjustOldAllocationBudget();
+  adjust_old_allocation_budget();
 }
 
-void Program::CompactSharedHeap() {
-  TwoSpaceHeap* heap = process_heap();
-  OldSpace* old_space = heap->old_space();
-  SemiSpace* new_space = heap->space();
+void TwoSpaceHeap::compact_shared_heap() {
+  OldSpace* old_space = old_space();
+  SemiSpace* new_space = space();
 
   old_space->set_compacting(true);
 
-  old_space->ComputeCompactionDestinations();
+  old_space->compute_compaction_destinations();
 
-  old_space->ClearFreeList();
+  old_space->clear_free_list();
 
   // Weak processing when the destination addresses have been calculated, but
   // before they are moved (which ruins the liveness data).
-  old_space->ProcessWeakPointers();
+  old_space->process_weak_pointers();
 
-  for (auto process : process_list_) {
-    process->set_ports(Port::CleanupPorts(old_space, process->ports()));
-  }
-
-  old_space->ZapObjectStarts();
+  old_space->zap_object_starts();
 
   FixPointersVisitor fix;
   CompactingVisitor compacting_visitor(old_space, &fix);
-  old_space->IterateObjects(&compacting_visitor);
+  old_space->iterate_objects(&compacting_visitor);
   uword used_after = compacting_visitor.used();
   old_space->set_used(used_after);
   old_space->set_used_after_last_gc(used_after);
   fix.set_source_address(0);
 
   HeapObjectPointerVisitor new_space_visitor(&fix);
-  new_space->IterateObjects(&new_space_visitor);
+  new_space->iterate_objects(&new_space_visitor);
 
-  IterateSharedHeapRoots(&fix);
+  iterate_shared_heap_roots(&fix);
 
-  new_space->ClearMarkBits();
-  old_space->ClearMarkBits();
-  old_space->MarkChunkEndsFree();
+  new_space->clear_mark_bits();
+  old_space->clear_mark_bits();
+  old_space->mark_chunk_ends_free();
 }
 
 #endif
