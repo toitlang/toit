@@ -337,7 +337,7 @@ PRIMITIVE(disconnect_reason) {
   }
 }
 
-static char local_address[16] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+static char local_address[16] = { 0, };
 
 PRIMITIVE(get_ip) {
   ARGS(IPEvents, ip);
