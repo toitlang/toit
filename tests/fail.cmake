@@ -28,7 +28,6 @@ set(TOIT_FAILING_TESTS
 
 if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows" OR "${CMAKE_SYSTEM_NAME}" STREQUAL "MSYS")
   list(APPEND TOIT_FAILING_TESTS
-    tests/ar_test.toit
     tests/close_test.toit
     tests/dns_test.toit
     tests/interface_address_test.toit
@@ -39,7 +38,6 @@ if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows" OR "${CMAKE_SYSTEM_NAME}" STREQUAL
     tests/socket_task_test.toit
     tests/socket_test.toit
     tests/socket_timeout_test.toit
-    tests/tar_test.toit
     tests/time_test.toit
     tests/tls2_test.toit
     tests/udp_test.toit
