@@ -39,10 +39,13 @@ class OneWire:
     received_signals.do: | period level |
       print "period: $period, level: $level"
 
-    // TODO check the returned signals.
-
-    return false
-
+    return signals.size >= 3 and 
+        // We observe the first low pulse that we sent.
+        (signals.signal_level 0) == 0 and RESET_LOW_DURATION_STD - 2 <= (signals.signal_period 0) <= RESET_LOW_DURATION_STD + 10 and
+        // We release the bus so it becomes high.
+        (signals.signal_level 1) == 1 and (signals.signal_period 1) > 0 and
+        // The receiver signals its presense.
+        (signals.signal_level 2) == 0 and (signals.signal_period 1) > 0  
 
   static RESET_INIT_DURATION_STD    ::= 0
   static RESET_LOW_DURATION_STD     ::= 480
