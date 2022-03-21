@@ -20,6 +20,8 @@ import .flash.allocation
 import .flash.registry
 import .system_rpc_broker
 
+import core.message_manual_decoding_ show print_for_manually_decoding_
+
 class Container:
   image/ContainerImage ::= ?
   gid_/int ::= ?
@@ -63,11 +65,34 @@ class Container:
         if pending == 0:
           if pids_.is_empty: image.manager.on_container_stop_ this
 
-class ContainerImage:
+  on_process_error_ pid/int error/int -> none:
+    on_process_stop_ pid
+    // TODO(kasper): Stop all other processes in this container.
+    image.on_container_error this error
+
+abstract class ContainerImage:
   manager/ContainerManager ::= ?
+  constructor .manager:
+
+  abstract id -> uuid.Uuid
+
+  trace encoded/ByteArray -> bool:
+    return false
+
+  // TODO(kasper): This isn't super nice. It feels a bit odd that the
+  // image is told that one of its containers has an error.
+  on_container_error container/Container error/int -> none:
+    // Nothing so far.
+
+  abstract start -> Container
+  abstract stop_all -> none
+  abstract delete -> none
+
+class ContainerImageFlash extends ContainerImage:
   allocation_/FlashAllocation? := ?
 
-  constructor .manager .allocation_:
+  constructor manager/ContainerManager .allocation_:
+    super manager
 
   id -> uuid.Uuid:
     return allocation_.id
@@ -96,21 +121,20 @@ class ContainerImage:
 
 class ContainerManager implements SystemMessageHandler_:
   image_registry/FlashRegistry ::= ?
-  rpc_broker_/SystemRpcBroker ::= ?
+  rpc_broker/SystemRpcBroker ::= ?
 
   images_/Map ::= {:}               // Map<uuid.Uuid, ContainerImage>
   containers_by_id_/Map ::= {:}     // Map<int, Container>
   containers_by_image_/Map ::= {:}  // Map<uuid.Uuid, Container>
   next_handle_/int := 0
+  done_ ::= monitor.Latch
 
-  // TODO(kasper): Hack for testing.
-  done_ := monitor.Latch
-
-  constructor .image_registry .rpc_broker_:
+  constructor .image_registry .rpc_broker:
     set_system_message_handler_ SYSTEM_TERMINATED_ this
+    set_system_message_handler_ SYSTEM_MIRROR_MESSAGE_ this
     image_registry.do: | allocation/FlashAllocation |
       if allocation.type != FLASH_ALLOCATION_PROGRAM_TYPE: continue.do
-      images_[allocation.id] = ContainerImage this allocation
+      add_flash_image allocation
 
   images -> List:
     return images_.values
@@ -118,8 +142,8 @@ class ContainerManager implements SystemMessageHandler_:
   lookup_image id/uuid.Uuid -> ContainerImage?:
     return images_.get id
 
-  register_image allocation/FlashAllocation -> ContainerImage:
-    return images_[allocation.id] = ContainerImage this allocation
+  register_image image/ContainerImage -> none:
+    images_[image.id] = image
 
   lookup_container id/int -> Container?:
     return containers_by_id_.get id
@@ -141,8 +165,19 @@ class ContainerManager implements SystemMessageHandler_:
     descriptors := container.pids_.get pid --if_absent=: return
     descriptors.remove handle
 
-  wait_until_done -> none:
-    done_.get
+  add_flash_image allocation/FlashAllocation -> ContainerImage:
+    image := ContainerImageFlash this allocation
+    register_image image
+    return image
+
+  // TODO(kasper): Not so happy with this name.
+  wait_until_done -> int:
+    if containers_by_id_.is_empty: return 0
+    return done_.get
+
+  // TODO(kasper): Not the prettiest interface.
+  terminate error/int -> none:
+    done_.set error
 
   on_container_start_ container/Container -> none:
     containers/Map ::= containers_by_image_.get container.image.id --init=: {:}
@@ -161,10 +196,18 @@ class ContainerManager implements SystemMessageHandler_:
         container.on_stop_
 
   on_message type/int gid/int pid/int arguments/any -> none:
-    if type != SYSTEM_TERMINATED_: unreachable
     container/Container? := lookup_container gid
-    rpc_broker_.cancel_requests pid
-    if container: container.on_process_stop_ pid
+    if type == SYSTEM_TERMINATED_:
+      rpc_broker.cancel_requests pid
+      if container:
+        error/int := arguments
+        if error == 0: container.on_process_stop_ pid
+        else: container.on_process_error_ pid error
+    else if type == SYSTEM_MIRROR_MESSAGE_:
+      if not (container and container.image.trace arguments):
+        print_for_manually_decoding_ arguments
+    else:
+      unreachable
 
 // ----------------------------------------------------------------------------
 

@@ -15,33 +15,25 @@
 
 import .flash.registry
 import .containers
-import .stack_traces
 import .system_rpc_broker
 
 import .api.containers
 
 main:
-  print "Booting ..."
-  container_manager/ContainerManager? := null
-  time := Duration.of:
-    container_manager = boot
-  print "Booting ... done in $time"
-  container_manager.wait_until_done
+  container_manager/ContainerManager := initialize
+  boot container_manager
+  // TODO(kasper): Should we reboot here after a little while?
 
-boot -> ContainerManager:
-  install_stack_trace_handler
+initialize -> ContainerManager:
   flash_registry ::= FlashRegistry.scan
-
-  // TODO(kasper): Fetch configuration.
-
   rpc_broker := SystemRpcBroker
   container_manager := ContainerManager flash_registry rpc_broker
   rpc_broker.install container_manager
+  ContainerApi rpc_broker container_manager  // Set up RPC-based APIs.
+  return container_manager
 
-  // Set up RPC-based APIs.
-  ContainerApi rpc_broker container_manager
-
-  // TODO(kasper): Only start containers that require running on boot.
+boot container_manager/ContainerManager -> int:
+  // TODO(kasper): Only start containers that should run on boot.
   container_manager.images.do: | image/ContainerImage |
     image.start
-  return container_manager
+  return container_manager.wait_until_done

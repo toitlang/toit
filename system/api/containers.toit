@@ -50,7 +50,7 @@ class ContainerApi:
     broker_.register_descriptor_procedure RPC_CONTAINER_IMAGE_WRITER_WRITE:: | writer arguments |
       writer.write arguments[1]
     broker_.register_descriptor_procedure RPC_CONTAINER_IMAGE_WRITER_COMMIT:: | writer |
-      image/ContainerImage := manager_.register_image writer.commit
+      image/ContainerImage := manager_.add_flash_image writer.commit
       image.id.to_byte_array
     broker_.register_descriptor_procedure RPC_CONTAINER_IMAGE_WRITER_CLOSE:: | writer arguments gid pid |
       manager_.unregister_descriptor gid pid arguments[0]

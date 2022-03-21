@@ -426,7 +426,7 @@ namespace toit {
   PRIMITIVE(unregister_object_notifier, 2)   \
 
 #define MODULE_SNAPSHOT(PRIMITIVE)           \
-  PRIMITIVE(launch, 4)                       \
+  PRIMITIVE(launch, 3)                       \
 
 #define MODULE_SERIALIZATION(PRIMITIVE)      \
   PRIMITIVE(serialize, 1)                    \
