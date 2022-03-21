@@ -26,7 +26,7 @@
 #include "../vm.h"
 
 #include "../event_sources/system_esp32.h"
-#include "event_sources/ev_queue_esp32.h"
+#include "../event_sources/ev_queue_esp32.h"
 
 namespace toit {
 
@@ -282,6 +282,19 @@ PRIMITIVE(read) {
   return data;
 }
 
+PRIMITIVE(read_to_buffer) {
+  ARGS(I2SResource, i2s, MutableBlob, buffer);
+
+  if (buffer.length() % i2s->alignment() != 0) INVALID_ARGUMENT;
+
+  size_t read = 0;
+  esp_err_t err = i2s_read(i2s->port(), static_cast<void*>(buffer.address()), buffer.length(), &read, 0);
+  if (err != ESP_OK) {
+    return Primitive::os_error(err, process);
+  }
+
+  return Smi::from(read);
+}
 
 } // namespace toit
 
