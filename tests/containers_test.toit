@@ -7,4 +7,3 @@ import expect show *
 
 main:
   expect_equals 1 containers.images.size
-
