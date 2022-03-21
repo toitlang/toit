@@ -200,7 +200,7 @@ PRIMITIVE(transfer_and_read) {
   }
 
   size_t length = 0;
-  void* received_bytes = xRingbufferReceive(rb, &length, 50);
+  void* received_bytes = xRingbufferReceive(rb, &length, 3000);
   if (received_bytes != null) {
     if (length <= max_output_len) {
       ByteArray::Bytes bytes(data);
