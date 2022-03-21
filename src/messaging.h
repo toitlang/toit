@@ -198,11 +198,6 @@ class MessageDecoder {
   Object* decode_double();
   Object* decode_large_integer();
 
-  void deallocate();
-  void deallocate_string();
-  void deallocate_array();
-  void deallocate_byte_array();
-
   uint8 read_uint8() { return _buffer[_cursor++]; }
   uint64 read_uint64();
   uint8* read_pointer();

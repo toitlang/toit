@@ -12,10 +12,11 @@ MESSAGE_SYSTEM_        ::= 2
 
 // System message types.
 SYSTEM_TERMINATED_     ::= 0
-SYSTEM_MIRROR_MESSAGE_ ::= 1  // Used for sending stack traces and profile information.
-SYSTEM_RPC_REQUEST_    ::= 2
-SYSTEM_RPC_REPLY_      ::= 3
-SYSTEM_RPC_CANCEL_     ::= 4
+SYSTEM_HATCHED_        ::= 1
+SYSTEM_MIRROR_MESSAGE_ ::= 2  // Used for sending stack traces and profile information.
+SYSTEM_RPC_REQUEST_    ::= 3
+SYSTEM_RPC_REPLY_      ::= 4
+SYSTEM_RPC_CANCEL_     ::= 5
 
 /**
 Sends the $message to the system with the $type.

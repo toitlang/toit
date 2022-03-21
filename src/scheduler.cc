@@ -271,13 +271,11 @@ scheduler_err_t Scheduler::send_system_message(Locker& locker, SystemMessage* me
 }
 
 bool Scheduler::signal_process(Process* sender, int target_id, Process::Signal signal) {
-  Locker locker(_mutex);
-
-  Process* target = sender->group()->lookup(target_id);
-
-  if (target == null) return false;
-
   if (sender != _boot_process) return false;
+
+  Locker locker(_mutex);
+  Process* target = find_process(locker, target_id);
+  if (target == null) return false;
 
   target->signal(signal);
   process_ready(locker, target);

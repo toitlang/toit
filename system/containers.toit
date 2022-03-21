@@ -67,7 +67,7 @@ class Container:
 
   on_process_error_ pid/int error/int -> none:
     on_process_stop_ pid
-    // TODO(kasper): Stop all other processes in this container.
+    pids_.do --keys: container_kill_pid_ it
     image.on_container_error this error
 
 abstract class ContainerImage:
@@ -108,7 +108,7 @@ class ContainerImageFlash extends ContainerImage:
   stop_all -> none:
     attempts := 0
     while container_is_running_ allocation_.offset allocation_.size:
-      result := container_kill_ allocation_.offset allocation_.size
+      result := container_kill_flash_image_ allocation_.offset allocation_.size
       if result: attempts++
       sleep --ms=10
     manager.on_image_stop_all_ this
@@ -131,6 +131,7 @@ class ContainerManager implements SystemMessageHandler_:
 
   constructor .image_registry .rpc_broker:
     set_system_message_handler_ SYSTEM_TERMINATED_ this
+    set_system_message_handler_ SYSTEM_HATCHED_ this
     set_system_message_handler_ SYSTEM_MIRROR_MESSAGE_ this
     image_registry.do: | allocation/FlashAllocation |
       if allocation.type != FLASH_ALLOCATION_PROGRAM_TYPE: continue.do
@@ -203,6 +204,8 @@ class ContainerManager implements SystemMessageHandler_:
         error/int := arguments
         if error == 0: container.on_process_stop_ pid
         else: container.on_process_error_ pid error
+    else if type == SYSTEM_HATCHED_:
+      if container: container.on_process_start_ pid
     else if type == SYSTEM_MIRROR_MESSAGE_:
       if not (container and container.image.trace arguments):
         print_for_manually_decoding_ arguments
@@ -217,8 +220,11 @@ container_spawn_ offset size gid -> int:
 container_is_running_ offset size -> bool:
   #primitive.programs_registry.is_running
 
-container_kill_ offset size -> bool:
+container_kill_flash_image_ offset size -> bool:
   #primitive.programs_registry.kill
 
 container_next_gid_ -> int:
   #primitive.programs_registry.next_group_id
+
+container_kill_pid_ pid/int -> bool:
+  #primitive.core.signal_kill
