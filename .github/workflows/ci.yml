@@ -211,7 +211,7 @@ jobs:
         run: |
           REPRO_DIR=${{ steps.constants.outputs.debug_root_dir }}/repros
           mkdir -p $REPRO_DIR
-          find /tmp -maxdepth 1 -name 'lsp_repro-*'; exec cp -r {} $REPRO_DIR \;
+          find /tmp -maxdepth 1 -name 'lsp_repro-*' -exec cp -r {} $REPRO_DIR \;
 
       - name: Upload debug artifacts
         if: always()
