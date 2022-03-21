@@ -100,7 +100,7 @@ class LspClient:
     configuration =  {
       "toitPath": toitc,
       "shouldWriteReproOnCrash": true,
-      "timeoutMs": 5_000,  // Increase the timeout to avoid flaky tests.
+      "timeoutMs": 10_000,  // Increase the timeout to avoid flaky tests.
     }
 
   static start_server_ cmd args compiler_exe --spawn_process/bool --use_rpc_filesystem/bool -> List:
