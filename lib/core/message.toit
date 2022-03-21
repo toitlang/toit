@@ -2,8 +2,6 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import .message_manual_decoding_
-
 // Message types.
 // Keep in sync with constants in process.h.
 MESSAGE_INVALID_       ::= 0
@@ -98,10 +96,7 @@ process_messages_:
             critical_do --no-respect_deadline:
               handler.on_message type gid pid args
           --if_absent=:
-            if type == SYSTEM_MIRROR_MESSAGE_:
-              print_for_manually_decoding_ args
-            else:
-              print_ "WARNING: unhandled system message $type $args"
+            print_ "WARNING: unhandled system message $type $args"
       else if message_type == MESSAGE_OBJECT_NOTIFY_:
         if received: received.notify_
       else:
