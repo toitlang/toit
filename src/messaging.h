@@ -59,35 +59,28 @@ class SystemMessage : public Message {
     TERMINATED = 0,
   };
 
-  SystemMessage(int type, int gid, int pid, uint8_t* data, int length) : _type(type), _gid(gid), _pid(pid), _data(data), _length(length) { }
-  SystemMessage(int type, int gid, int pid) : _type(type), _gid(gid), _pid(pid), _data(null), _length(0) { }
-  ~SystemMessage() {
-    free(_data);
-  }
+  SystemMessage(int type, int gid, int pid, uint8* data) : _type(type), _gid(gid), _pid(pid), _data(data) { }
+  SystemMessage(int type, int gid, int pid) : _type(type), _gid(gid), _pid(pid), _data(null) { }
+  ~SystemMessage();
 
   MessageType message_type() const { return MESSAGE_SYSTEM; }
 
+  int type() const { return _type; }
   int gid() const { return _gid; }
   int pid() const { return _pid; }
-  int type() const { return _type; }
-
-  uint8_t* data() const { return _data; }
-  int length() const { return _length; }
+  uint8* data() const { return _data; }
 
   void set_pid(int pid) { _pid = pid; }
 
   void clear_data() {
     _data = null;
-    _length = 0;
   }
 
  private:
   const int _type;
   const int _gid;  // The process group ID this message comes from.
   int _pid;  // The process ID this message comes from.
-
-  uint8_t* _data;
-  int _length;
+  uint8* _data;
 };
 
 class ObjectNotifyMessage : public Message {
@@ -183,6 +176,8 @@ class MessageDecoder {
   Object* decode();
   bool decode_byte_array_external(void** data, int* length);
 
+  static void deallocate(uint8* buffer);
+
  private:
   Process* _process = null;
   Program* _program = null;
@@ -202,6 +197,11 @@ class MessageDecoder {
   Object* decode_byte_array(bool inlined);
   Object* decode_double();
   Object* decode_large_integer();
+
+  void deallocate();
+  void deallocate_string();
+  void deallocate_array();
+  void deallocate_byte_array();
 
   uint8 read_uint8() { return _buffer[_cursor++]; }
   uint64 read_uint64();

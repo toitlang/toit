@@ -75,6 +75,17 @@ Scheduler::~Scheduler() {
   OS::dispose(_mutex);
 }
 
+SystemMessage* Scheduler::new_termination_message(int gid) {
+  uint8* data = unvoid_cast<uint8*>(malloc(MESSAGING_TERMINATION_MESSAGE_SIZE));
+  if (data == NULL) return NULL;
+
+  SystemMessage* result = _new SystemMessage(SystemMessage::TERMINATED, gid, -1, data);
+  if (result == NULL) {
+    free(data);
+  }
+  return result;
+}
+
 Scheduler::ExitState Scheduler::run_boot_program(Program* program, char** args, int group_id) {
   // We assume that allocate_initial_block succeeds since we can't run out of
   // memory while booting.
@@ -82,7 +93,8 @@ Scheduler::ExitState Scheduler::run_boot_program(Program* program, char** args, 
   Block* initial_block = VM::current()->heap_memory()->allocate_initial_block();
   Locker locker(_mutex);
   ProcessGroup* group = ProcessGroup::create(group_id, program);
-  return launch_program(locker, _new Process(program, group, args, initial_block));
+  SystemMessage* termination = new_termination_message(group_id);
+  return launch_program(locker, _new Process(program, group, termination, args, initial_block));
 }
 
 #ifndef TOIT_FREERTOS
@@ -97,7 +109,8 @@ Scheduler::ExitState Scheduler::run_boot_program(
   // Allocation takes the memory lock which must happen before taking the scheduler lock.
   Block* initial_block = VM::current()->heap_memory()->allocate_initial_block();
   Locker locker(_mutex);
-  Process* process = _new Process(boot_program, group, application_bundle, args, initial_block);
+  SystemMessage* termination = new_termination_message(group_id);
+  Process* process = _new Process(boot_program, group, termination, application_bundle, args, initial_block);
   return launch_program(locker, process);
 }
 #endif
@@ -145,6 +158,11 @@ Scheduler::ExitState Scheduler::launch_program(Locker& locker, Process* process)
     delete thread;
   }
 
+  while (_ready_processes.remove_first()) {
+    // Clear out the list of ready processes, so we don't have any dangling
+    // pointers to processes that we delete in a moment.
+  }
+
   while (ProcessGroup* group = _groups.remove_first()) {
     while (Process* process = group->processes().remove_first()) {
       Unlocker unlock(locker);
@@ -163,8 +181,16 @@ int Scheduler::next_group_id() {
 
 int Scheduler::run_program(Program* program, char** args, ProcessGroup* group, Block* initial_block) {
   Locker locker(_mutex);
-  Process* process = _new Process(program, group, args, initial_block);
-  if (process == null) return INVALID_PROCESS_ID;
+  SystemMessage* termination = new_termination_message(group->id());
+  if (termination == null) {
+    return INVALID_PROCESS_ID;
+  }
+  Process* process = _new Process(program, group, termination, args, initial_block);
+  if (process == null) {
+    delete termination;
+    return INVALID_PROCESS_ID;
+  }
+
   Interpreter interpreter;
   interpreter.activate(process);
   interpreter.prepare_process();
@@ -180,9 +206,15 @@ Process* Scheduler::run_external(ProcessRunner* runner) {
   Locker locker(_mutex);
   ProcessGroup* group = ProcessGroup::create(group_id, null);
   if (group == null) return null;
-  Process* process = _new Process(runner, group);
+  SystemMessage* termination = new_termination_message(group_id);
+  if (termination == null) {
+    delete group;
+    return null;
+  }
+  Process* process = _new Process(runner, group, termination);
   if (process == null) {
     delete group;
+    delete termination;
     return null;
   }
   _groups.append(group);
@@ -252,11 +284,16 @@ bool Scheduler::signal_process(Process* sender, int target_id, Process::Signal s
   return true;
 }
 
-Process* Scheduler::hatch(Program* program, ProcessGroup* process_group, Method method, const uint8* array_address, int array_length, Block* initial_block) {
+Process* Scheduler::hatch(Program* program, ProcessGroup* process_group, Method method, uint8* arguments, Block* initial_block) {
   Locker locker(_mutex);
 
-  Process* process = _new Process(program, process_group, method, array_address, array_length, initial_block);
-  if (!process) return null;
+  SystemMessage* termination = new_termination_message(process_group->id());
+  if (!termination) return null;
+  Process* process = _new Process(program, process_group, termination, method, arguments, initial_block);
+  if (!process) {
+    delete termination;
+    return null;
+  }
 
   new_process(locker, process);
 
@@ -546,11 +583,10 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
     case Interpreter::Result::TERMINATED: {
       wait_for_any_gc_to_complete(locker, process, Process::RUNNING);
 
-      // TODO: Take down process group on error, if more than one process exists.
-      int pid = process->id();
       ProcessGroup* group = process->group();
       bool last_in_group = !group->remove(process);
       ASSERT(group->lookup(process->id()) == null);
+      SystemMessage* message = process->take_termination_message(result.value());
 
       // Deleting processes might need to take the event source lock, so we have
       // to unlock the scheduler to not get into a deadlock with the delivery of
@@ -563,16 +599,19 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
       _num_processes--;
       if (process == _boot_process) _boot_process = null;
 
+      // Send the termination message after having deleted the process. This ensures
+      // that the message for the boot process will not be assumed to be handled by
+      // the boot process that is going away.
+      if (send_system_message(locker, message) != MESSAGE_OK) {
+#ifdef TOIT_FREERTOS
+        printf("[message: cannot send termination message for pid %d]\n", process->id());
+#endif
+        delete message;
+      }
+
       if (last_in_group) {
-        SystemMessage* message = group->take_termination_message(pid, result.value());
         group->unlink();
         delete group;
-        if (send_system_message(locker, message) != MESSAGE_OK) {
-#ifdef TOIT_FREERTOS
-          printf("[message: cannot send termination message for pid %d]\n", pid);
-#endif
-          delete message;
-        }
       }
       break;
     }

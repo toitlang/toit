@@ -165,12 +165,6 @@ class ObjectHeap final : public Heap {
   Task* task() { return _task; }
   void set_task(Task* task) { _task = task; }
 
-  Method hatch_method() { return _hatch_method; }
-  void set_hatch_method(Method method) { _hatch_method = method; }
-
-  HeapObject* hatch_arguments() { return _hatch_arguments; }
-  void set_hatch_arguments(HeapObject* array) { _hatch_arguments = array; }
-
   // Garbage collection operation for runtime objects.
   int scavenge();
 
@@ -214,8 +208,6 @@ class ObjectHeap final : public Heap {
   word _max_heap_size;  // Configured max heap size, incl. external allocation.
   std::atomic<word> _external_memory;  // In bytes.
   Task* _task;
-  Method _hatch_method;
-  HeapObject* _hatch_arguments;
   ObjectNotifierList _object_notifiers;
 
   // A finalizer is in one of the following lists.

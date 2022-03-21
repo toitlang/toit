@@ -56,6 +56,10 @@ class NestingTracker {
   int* _nesting;
 };
 
+SystemMessage::~SystemMessage() {
+  if (_data) MessageDecoder::deallocate(_data);
+}
+
 MessageEncoder::MessageEncoder(Process* process, uint8* buffer)
     : _process(process)
     , _program(process ? process->program() : null)
@@ -436,6 +440,11 @@ Object* MessageDecoder::decode_large_integer() {
   return result;
 }
 
+void MessageDecoder::deallocate(uint8* buffer) {
+  // TODO(kasper): Deallocate anything pointed to.
+  free(buffer);
+}
+
 uint8* MessageDecoder::read_pointer() {
   uint8* result;
   memcpy(&result, &_buffer[_cursor], WORD_SIZE);
@@ -490,8 +499,7 @@ bool ExternalSystemMessageHandler::send(int pid, int type, void* data, int lengt
   MessageEncoder encoder(buffer);
   encoder.encode_byte_array_external(data, length);
 
-  SystemMessage* message = _new SystemMessage(type, _process->group()->id(), _process->id(),
-      buffer, buffer_size);
+  SystemMessage* message = _new SystemMessage(type, _process->group()->id(), _process->id(), buffer);
   if (message == null) {
     if (discard) encoder.free_copied();
     free(buffer);

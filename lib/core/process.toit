@@ -2,13 +2,11 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import ..serialization show serialize deserialize
-
 // Hatch a new process using this program heap and running the passed in lambda.
 hatch_ lambda/Lambda:
   id := hatch_primitive_
     lambda.method_
-    serialize lambda.arguments_
+    lambda.arguments_
   return id
 
 /// Only used by the system process, otherwise throws "NOT ALLOWED".
@@ -23,12 +21,9 @@ hatch_primitive_ method arguments:
 __hatch_entry__:
   current := task
   current.initialize_entry_task_
-  deserialized := deserialize hatch_args_
-  // Turn deserialized lists into the more primitive array form.
-  if deserialized is List: deserialized = Array_.from deserialized
   lambda := Lambda.__
     hatch_method_
-    deserialized
+    hatch_args_
   current.evaluate_ lambda
 
 hatch_method_:
