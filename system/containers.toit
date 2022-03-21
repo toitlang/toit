@@ -43,7 +43,6 @@ class Container:
   on_stop_ -> none:
     pids_.do --keys: on_process_stop_ it
 
-  // TODO(kasper): This should only be called as part of spawning new processes.
   on_process_start_ pid/int -> none:
     assert: not pids_.is_empty
     pids_.get pid --init=: {:}
