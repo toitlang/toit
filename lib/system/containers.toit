@@ -2,6 +2,11 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+/**
+User-space side of the RPC API for installing container images in flash, and
+  stopping and starting containers based on them.
+*/
+
 import rpc
 import uuid
 

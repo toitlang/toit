@@ -33,6 +33,10 @@ import ..system_rpc_broker
 IMAGE_WORD_SIZE  ::= BYTES_PER_WORD
 IMAGE_CHUNK_SIZE ::= (BITS_PER_WORD + 1) * IMAGE_WORD_SIZE
 
+/**
+System implementation of the API for installing container images in
+   flash, and starting and stopping containers based on them.
+*/
 class ContainerApi:
   broker_/SystemRpcBroker ::= ?
   manager_/ContainerManager ::= ?

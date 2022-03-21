@@ -24,6 +24,10 @@ main:
   boot container_manager
   // TODO(kasper): Should we reboot here after a little while?
 
+/**
+Initialize the system and create the all important $ContainerManager
+  instance.
+*/
 initialize -> ContainerManager:
   flash_registry ::= FlashRegistry.scan
   rpc_broker := SystemRpcBroker
@@ -32,6 +36,12 @@ initialize -> ContainerManager:
   ContainerApi rpc_broker container_manager  // Set up RPC-based APIs.
   return container_manager
 
+/**
+Boot the system and run the necessary containers. Returns when the
+  containers have run to completetion or an error has occurred.
+
+Returns an error code which is 0 when no errors occurred.
+*/
 boot container_manager/ContainerManager -> int:
   // TODO(kasper): Only start containers that should run on boot.
   container_manager.images.do: | image/ContainerImage |
