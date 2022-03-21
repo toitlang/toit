@@ -36,6 +36,7 @@ namespace toit {
   M(i2s,     MODULE_I2S)                     \
   M(spi,     MODULE_SPI)                     \
   M(uart,    MODULE_UART)                    \
+  M(rmt,     MODULE_RMT)                     \
   M(crypto,  MODULE_CRYPTO)                  \
   M(encoding,MODULE_ENCODING)                \
   M(font,    MODULE_FONT)                    \
@@ -52,6 +53,7 @@ namespace toit {
   M(adc,     MODULE_ADC)                     \
   M(pwm,     MODULE_PWM)                     \
   M(programs_registry, MODULE_PROGRAMS_REGISTRY) \
+  M(flash,   MODULE_FLASH_REGISTRY)          \
   M(file,    MODULE_FILE)                    \
   M(pipe,    MODULE_PIPE)                    \
   M(zlib,    MODULE_ZLIB)                    \
@@ -289,6 +291,7 @@ namespace toit {
   PRIMITIVE(disconnect, 2)                   \
   PRIMITIVE(disconnect_reason, 1)            \
   PRIMITIVE(get_ip, 1)                       \
+  PRIMITIVE(get_stored_ip, 0)                \
   PRIMITIVE(get_rssi, 1)                     \
 
 #define MODULE_ETHERNET(PRIMITIVE)           \
@@ -370,6 +373,15 @@ namespace toit {
   PRIMITIVE(set_baud_rate, 2)                \
   PRIMITIVE(write, 6)                        \
   PRIMITIVE(read, 1)                         \
+
+#define MODULE_RMT(PRIMITIVE)                \
+  PRIMITIVE(init, 0)                         \
+  PRIMITIVE(use, 2)                          \
+  PRIMITIVE(unuse, 2)                        \
+  PRIMITIVE(config_rx, 9)                    \
+  PRIMITIVE(config_tx, 12)                   \
+  PRIMITIVE(transfer, 2)                     \
+  PRIMITIVE(transfer_and_read, 4)            \
 
 #define MODULE_CRYPTO(PRIMITIVE)             \
   PRIMITIVE(sha1_start, 1)                   \
@@ -464,6 +476,18 @@ namespace toit {
   PRIMITIVE(spawn, 3)                        \
   PRIMITIVE(is_running, 2)                   \
   PRIMITIVE(kill, 2)                         \
+
+#define MODULE_FLASH_REGISTRY(PRIMITIVE)     \
+  PRIMITIVE(next, 1)                         \
+  PRIMITIVE(info, 1)                         \
+  PRIMITIVE(erase, 2)                        \
+  PRIMITIVE(get_id, 1)                       \
+  PRIMITIVE(get_size, 1)                     \
+  PRIMITIVE(get_type, 1)                     \
+  PRIMITIVE(get_meta_data, 1)                \
+  PRIMITIVE(reserve_hole, 2)                 \
+  PRIMITIVE(cancel_reservation, 1)           \
+  PRIMITIVE(erase_flash_registry, 0)         \
 
 #define MODULE_FILE(PRIMITIVE)               \
   PRIMITIVE(open, 3)                         \
@@ -771,6 +795,7 @@ namespace toit {
 #define _A_T_X509ResourceGroup(N, name)   MAKE_UNPACKING_MACRO(X509ResourceGroup, N, name)
 #define _A_T_PWMResourceGroup(N, name)    MAKE_UNPACKING_MACRO(PWMResourceGroup, N, name)
 #define _A_T_RpcResourceGroup(N, name)    MAKE_UNPACKING_MACRO(RpcResourceGroup, N, name)
+#define _A_T_RMTResourceGroup(N, name)    MAKE_UNPACKING_MACRO(RMTResourceGroup, N, name)
 
 #define _A_T_Resource(N, name)            MAKE_UNPACKING_MACRO(Resource, N, name)
 #define _A_T_Directory(N, name)           MAKE_UNPACKING_MACRO(Directory, N, name)

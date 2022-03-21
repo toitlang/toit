@@ -2013,6 +2013,13 @@ abstract class HashedInsertionOrderedCollection_:
   find_ key [not_found]:
     append_position := null  // Use null/non-null to avoid calling block twice.
 
+    // TODO(erik): Multiply by a large prime to mix up bad hash codes, e.g.
+    //               (0x1351d * (hash_code_ key)) & 0x3fffffff
+    //             that doesn't allocate large integers.
+    // Call this early so we can't get away with single-entry sets/maps
+    // that have incompatible keys.
+    hash := hash_code_ key
+
     if not index_:
       if size_ == 0:
         if not backing_: backing_ = List
@@ -2028,11 +2035,6 @@ abstract class HashedInsertionOrderedCollection_:
           rebuild_ 1 --allow_shrink
         else:
           rebuild_ 1 --allow_shrink
-
-    // TODO(erik): Multiply by a large prime to mix up bad hash codes, e.g.
-    //               (0x1351d * (hash_code_ key)) & 0x3fffffff
-    //             that doesn't allocate large integers.
-    hash := hash_code_ key
 
     return find_body_ key hash append_position not_found
       (: rebuild_ it --allow_shrink=false)
@@ -2177,7 +2179,18 @@ simple_rebuild_hash_index_ old_index index_ -> none:
           slot_step++
         index_[slot] = hash_and_position
 
-/** A set of keys. */
+/**
+A set of keys.
+The objects used as keys must have a hash_code method that returns
+  an integer that does not change while the object is in the set.
+The == operator should be compatible with the hash_code method so
+  that objects that test equal also have the same hash code.
+  However, objects that test unequal are not required to have
+  different hash codes: Hash code clashes are allowed, but should
+  be rare to maintain good performance.
+Strings and numbers fulfill these requirements and can be used as
+  keys in sets.
+*/
 class Set extends HashedInsertionOrderedCollection_ implements Collection:
   static STEP_ ::= 1
 
@@ -2437,7 +2450,7 @@ class Set extends HashedInsertionOrderedCollection_ implements Collection:
 
 /**
 A set that uses object identity instead of the == operator to test equality
-  of elements. This set still uses the hash_code method on elements. There is
+  of elements. This set still uses the hash_code method on elements (see $Set). There is
   no identity hash code operation on arbitrary classes in Toit.
 */
 class IdentitySet extends Set:
@@ -2448,6 +2461,18 @@ class IdentitySet extends Set:
   compare_ key key_or_probe:
     return identical key key_or_probe
 
+/**
+A map from key objects to values.
+The objects used as keys must have a hash_code method that returns
+  an integer that does not change while the object is in the map.
+The == operator should be compatible with the hash_code method so
+  that objects that test equal also have the same hash code.
+  However, objects that test unequal are not required to have
+  different hash codes: Hash code clashes are allowed, but should
+  be rare to maintain good performance.
+Strings and numbers fulfill these requirements and can be used as
+  keys in maps.
+*/
 class Map extends HashedInsertionOrderedCollection_:
   static STEP_ ::= 2
 
@@ -2884,7 +2909,7 @@ class Map extends HashedInsertionOrderedCollection_:
 
 /**
 A map that uses object identity instead of the == operator to test equality
-  of keys. This map still uses the hash_code method on keys. There is no
+  of keys. This map still uses the hash_code method on keys (see $Map). There is no
   identity hash code operation on arbitrary classes in Toit.
 */
 class IdentityMap extends Map:
