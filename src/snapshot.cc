@@ -383,9 +383,9 @@ class ImageAllocator : public HeapAllocator {
   bool initialize(int normal_block_count,
                   int external_pointer_count,
                   int external_int32_count,
-                  int external_byte_count);
+                  int external_byte_count) override;
 
-  HeapObject* allocate_object(TypeTag tag, int length);
+  HeapObject* allocate_object(TypeTag tag, int length) override;
 
   ProtectableAlignedMemory* image() const { return _image; }
 
@@ -472,9 +472,7 @@ class BaseSnapshotWriter : public SnapshotWriter {
  private:
   int const _large_integer_class_id;
 
-  uword _program_heap_base;  // Might be null, if program-heap references aren't allowed.
-
-  Program* _program;
+  Program* const _program;
 
   void write_object_header(SnapshotTypeTag tag, int extra = 0) {
     write_cardinal(static_cast<int>(tag) + (extra << OBJECT_HEADER_TYPE_SIZE));

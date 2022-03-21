@@ -102,15 +102,25 @@ class BufferedReader implements Reader:
     ensure_ n: return false
     return true
 
-  /** Whether $n bytes are available in the internal buffer. */
+  /**
+  Whether $n bytes are available in the internal buffer.
+  This function will not call read on the underlying reader,
+    so it only tells you the bytes that can be read without
+    a read operation that might block.
+  */
   are_available n/int -> bool:
-    return (byte n - 1) != -1
+    return buffered >= n
 
   /** Reads and buffers until the end of the reader. */
   buffer_all -> none:
     while more_: null
 
-  /** Amount of buffered data. */
+  /**
+  Amount of buffered data.
+  This function will not call read on the underlying reader,
+    so it only tells you the bytes that can be read without
+    a read operation that might block.
+  */
   buffered -> int:
     return arrays_.size_in_bytes - first_array_position_
 

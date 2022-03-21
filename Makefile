@@ -29,7 +29,7 @@ export IDF_TARGET=$(ESP32_CHIP)
 export IDF_PATH ?= $(CURDIR)/third_party/esp-idf
 
 ifeq ($(OS),Windows_NT)
-	EXE_SUFFIX=".exe"
+	EXE_SUFFIX=.exe
 	DETECTED_OS=$(OS)
 else
 	EXE_SUFFIX=
@@ -42,7 +42,10 @@ prefix ?= /opt/toit-sdk
 
 # HOST
 .PHONY: all
-all: tools snapshots version-file
+all: sdk
+
+.PHONY: sdk
+sdk: tools snapshots version-file
 
 check-env:
 ifndef IGNORE_SUBMODULE
@@ -71,7 +74,7 @@ endif
 build/host/CMakeCache.txt:
 	$(MAKE) rebuild-cmake
 
-BIN_DIR = build/host/sdk/bin
+BIN_DIR = $(CURDIR)/build/host/sdk/bin
 TOITVM_BIN = $(BIN_DIR)/toit.run$(EXE_SUFFIX)
 TOITPKG_BIN = $(BIN_DIR)/toit.pkg$(EXE_SUFFIX)
 TOITC_BIN = $(BIN_DIR)/toit.compile$(EXE_SUFFIX)
@@ -130,7 +133,7 @@ snapshots-cross: tools download-packages build/$(CROSS_ARCH)/CMakeCache.txt
 .PHONY: version-file-cross
 version-file-cross: build/$(CROSS_ARCH)/CMakeCache.txt
 	$(MAKE) rebuild-cross-cmake
-	(cd build/host && ninja build_version_file)
+	(cd build/$(CROSS_ARCH) && ninja build_version_file)
 
 
 # ESP32 VARIANTS
@@ -185,7 +188,7 @@ build/config.json:
 
 # ESP32 VARIANTS FLASH
 .PHONY: flash
-flash: check-env-flash esp32
+flash: check-env-flash sdk esp32
 	python $(IDF_PATH)/components/esptool_py/esptool/esptool.py --chip $(ESP32_CHIP) --port $(ESP32_PORT) --baud 921600 --before default_reset --after hard_reset write_flash -z --flash_mode dio --flash_freq 40m --flash_size detect 0x1000 build/$(ESP32_CHIP)/bootloader/bootloader.bin 0x10000 build/$(ESP32_CHIP)/toit.bin 0x8000 build/$(ESP32_CHIP)/partitions.bin
 
 .PHONY: check-env-flash
