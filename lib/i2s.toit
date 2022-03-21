@@ -10,8 +10,8 @@ import serial
 /**
 I2S Serial communication Bus, primarily used to emit sound but has a wide range of usages.
 
-The I2S Bus works closely with the underlying hardware units, which means that some restrictions
-  around buffer and write sizes are enforced.
+The I2S Bus works closely with the underlying hardware units, which means that
+  some restrictions around buffer and write sizes are enforced.
 */
 class Bus:
   i2s_ := ?
@@ -27,11 +27,14 @@ class Bus:
   $buffer_size, in bytes, is used as size for internal buffers.
     All writes must be aligned to this size.
     The $buffer_size must be aligned with $bits_per_sample (in bytes) * 2.
-  $mclk is the pin used to output the master clock. Only relevant when the I2S Bus is operating in master mode.
-  $mclk_multiplier is the muliplier of the $sample_rate to be used for the master clock.
+  $mclk is the pin used to output the master clock. Only relevant when the I2S
+    Bus is operating in master mode.
+  $mclk_multiplier is the muliplier of the $sample_rate to be used for the
+    master clock.
     It should be one of the 128, 256 or 384.
     It is only relevant if the $mclk is not null.
-  $is_master is a flag determining if the I2S driver should run in master (true) or slave (false) mode.
+  $is_master is a flag determining if the I2S driver should run in master
+    (true) or slave (false) mode.
   $use_apll use a high precision clock.
   */
   constructor
@@ -53,18 +56,21 @@ class Bus:
     tx_pin := tx ? tx.num : -1
     rx_pin := rx ? rx.num : -1
     mclk_pin := mclk ? mclk.num : -1
-    i2s_ = i2s_create_ resource_group_ sck_pin ws_pin tx_pin rx_pin mclk_pin sample_rate bits_per_sample buffer_size is_master mclk_multiplier use_apll 
+    i2s_ = i2s_create_ resource_group_ sck_pin ws_pin tx_pin rx_pin mclk_pin sample_rate bits_per_sample buffer_size is_master mclk_multiplier use_apll
     state_ = ResourceState_ resource_group_ i2s_
 
 
   /**
   Writes the bytes to the I2S bus.
 
-  This methods blocks until the internal buffer has accepted all of the data or the underlying resource was closed.
+  This methods blocks until the internal buffer has accepted all of the data or
+    the underlying resource was closed.
 
-  Returns the number of bytes written or -1 if the underlying resource was closed.
+  Returns the number of bytes written or -1 if the underlying resource was
+    closed.
 
-  It's an error if the bytes of the bytes are not aligned to the bus' buffer_size.
+  It's an error if the bytes of the bytes are not aligned to the bus'
+    buffer_size.
   */
   write bytes/ByteArray -> int:
     written/int := 0
@@ -79,11 +85,11 @@ class Bus:
           errors++
         else if state & WRITE_STATE_ != 0:
           // This is expected, and the loop continues.
-        else: 
+        else:
           // It was closed (disposed).
           return -1
     return written
-  
+
   /**
   Read bytes from the I2S bus.
 
