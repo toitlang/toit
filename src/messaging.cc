@@ -52,6 +52,13 @@ class NestingTracker {
   int* _nesting;
 };
 
+void SystemMessage::free_data_and_externals() {
+  if (_data) {
+    MessageDecoder::deallocate(_data);
+    _data = null;
+  }
+}
+
 MessageEncoder::MessageEncoder(Process* process, uint8* buffer)
     : _process(process)
     , _program(process ? process->program() : null)
@@ -323,6 +330,48 @@ Object* MessageDecoder::decode() {
       FATAL("[message decoder: unhandled message tag: %d]", tag);
   }
   return null;
+}
+
+void MessageDecoder::deallocate(uint8* buffer) {
+  MessageDecoder decoder(buffer);
+  decoder.deallocate();
+  free(buffer);
+}
+
+void MessageDecoder::deallocate() {
+  int tag = read_uint8();
+  switch (tag) {
+    case TAG_POSITIVE_SMI:
+    case TAG_NEGATIVE_SMI:
+      read_cardinal();
+      break;
+    case TAG_NULL:
+    case TAG_TRUE:
+    case TAG_FALSE:
+      break;
+    case TAG_STRING:
+    case TAG_BYTE_ARRAY:
+      read_cardinal();
+      free(read_pointer());
+      break;
+    case TAG_STRING_INLINE:
+    case TAG_BYTE_ARRAY_INLINE: {
+      int length = read_cardinal();
+      _cursor += length;
+      break;
+    }
+    case TAG_ARRAY: {
+      int length = read_cardinal();
+      for (int i = 0; i < length; i++) deallocate();
+      break;
+    }
+    case TAG_DOUBLE:
+    case TAG_LARGE_INTEGER:
+      read_uint64();
+      break;
+    default:
+      FATAL("[message decoder: unhandled message tag: %d]", tag);
+  }
 }
 
 Object* MessageDecoder::decode_string(bool inlined) {

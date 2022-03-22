@@ -1720,7 +1720,7 @@ PRIMITIVE(process_send) {
   SystemMessage* message = null;
   MessageEncoder encoder(process, buffer);
   if (encoder.encode(array)) {
-    message = _new SystemMessage(type, process->group()->id(), process->id(), buffer, length);
+    message = _new SystemMessage(type, process->group()->id(), process->id(), buffer);
   }
 
   if (message == null) {
@@ -1730,7 +1730,9 @@ PRIMITIVE(process_send) {
     OTHER_ERROR;
   }
 
-  // From here on, the destructor of SystemMessage will free the data.
+  // From here on, the destructor of SystemMessage will free the buffer and
+  // potentially the externals too if ownership isn't transferred elsewhere
+  // when the message is received.
   scheduler_err_t result = (process_id >= 0)
       ? VM::current()->scheduler()->send_message(process_id, message)
       : VM::current()->scheduler()->send_system_message(message);
@@ -1742,8 +1744,10 @@ PRIMITIVE(process_send) {
     // TODO(kasper): Consider doing in-place shrinking of internal, non-constant
     // byte arrays and strings.
   } else {
-    // Sending failed. Free the copied bits.
+    // Sending failed. Free any copied bits, but make sure to not free the externals
+    // that have not been neutered on this path.
     encoder.free_copied();
+    message->free_data_but_keep_externals();
     delete message;
   }
   return Smi::from(result);
@@ -1777,6 +1781,7 @@ PRIMITIVE(task_receive_message) {
       ALLOCATION_FAILED;
     }
     decoder.register_external_allocations();
+    system->free_data_but_keep_externals();
 
     array->at_put(0, Smi::from(system->type()));
     array->at_put(1, Smi::from(system->gid()));
