@@ -195,7 +195,7 @@ class RawHeap {
   explicit RawHeap(Process* owner) : _owner(owner) { }
   RawHeap() : _owner(null) { }
 
-  Process* owner() { return _owner; }
+  Process* owner() const { return _owner; }
 
   void take_blocks(BlockList* blocks);
 
