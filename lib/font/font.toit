@@ -6,11 +6,13 @@ class Font:
   proxy_ := ?
   hash_code / int
 
+  static hash_code_counter_ := 1234
+
   proxy: return proxy_
 
   constructor.get font_name/string:
     proxy_ = font_get_ resource_freeing_module_ font_name
-    hash_code = font_name.hash_code
+    hash_code = hash_code_counter_++
     add_finalizer this:: this.finalize_
 
   /**
@@ -28,7 +30,7 @@ class Font:
     // The primitive takes a small array (not a list) of byte arrays, so we
     // convert to that.
     array := Array_.from unicode_blocks
-    hash_code = calculate_hash_code_ array
+    hash_code = hash_code_counter_++
     proxy_ = font_get_nonbuiltin_ resource_freeing_module_ array
     add_finalizer this:: this.finalize_
 
@@ -43,20 +45,9 @@ class Font:
     // The primitive takes a small array (not a list) of byte arrays, so we
     // convert to that.
     array := create_array_ glyph_byte_data
-    hash_code = calculate_hash_code_ array
+    hash_code = hash_code_counter_++
     proxy_ = font_get_nonbuiltin_ resource_freeing_module_ array
     add_finalizer this:: this.finalize_
-
-  static calculate_hash_code_ array/Array_ -> int:
-    hash := 0
-    array.do:
-      if it.size > 0:
-        hash *= 89
-        hash += it[0] * 13
-        hash += it[it.size / 2] * 17
-        hash += it[it.size - 1] * 71
-        hash &= 0x1fff_ffff
-    return hash
 
   /**
   The bounding box of the given string $str in this font.
