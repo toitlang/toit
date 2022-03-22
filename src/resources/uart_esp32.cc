@@ -25,7 +25,7 @@
 #include "../resource.h"
 #include "../resource_pool.h"
 #include "../vm.h"
-#include "../event_sources/uart_esp32.h"
+#include "../event_sources/ev_queue_esp32.h"
 #include "../event_sources/system_esp32.h"
 
 
@@ -49,6 +49,20 @@ ResourcePool<uart_port_t, kInvalidUARTPort> uart_ports(
 #endif
   UART_NUM_1
 );
+
+class UARTResource : public EventQueueResource {
+public:
+  TAG(UARTResource);
+
+  UARTResource(ResourceGroup* group, uart_port_t port, QueueHandle_t queue)
+      : EventQueueResource(group, queue)
+      , _port(port) {}
+
+  uart_port_t port() const { return _port; }
+
+private:
+  uart_port_t _port;
+};
 
 class UARTResourceGroup : public ResourceGroup {
  public:
@@ -90,7 +104,7 @@ PRIMITIVE(init) {
   if (proxy == null) {
     ALLOCATION_FAILED;
   }
-  UARTResourceGroup* uart = _new UARTResourceGroup(process, UARTEventSource::instance());
+  UARTResourceGroup* uart = _new UARTResourceGroup(process, EventQueueEventSource::instance());
   if (!uart) MALLOC_FAILED;
 
   proxy->set_external_address(uart);

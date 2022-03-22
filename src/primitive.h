@@ -353,9 +353,11 @@ namespace toit {
   PRIMITIVE(read_reg, 4)                     \
 
 #define MODULE_I2S(PRIMITIVE)                \
-  PRIMITIVE(init, 6)                         \
-  PRIMITIVE(close, 1)                        \
+  PRIMITIVE(init, 0)                        \
+  PRIMITIVE(create, 12)                      \
+  PRIMITIVE(close, 2)                        \
   PRIMITIVE(write, 2)                        \
+  PRIMITIVE(read,  1)                        \
 
 #define MODULE_SPI(PRIMITIVE)                \
   PRIMITIVE(init, 3)                         \
@@ -819,6 +821,7 @@ namespace toit {
 #define _A_T_Adler32(N, name)             MAKE_UNPACKING_MACRO(Adler32, N, name)
 #define _A_T_ZlibRle(N, name)             MAKE_UNPACKING_MACRO(ZlibRle, N, name)
 #define _A_T_UARTResource(N, name)        MAKE_UNPACKING_MACRO(UARTResource, N, name)
+#define _A_T_I2SResource(N, name)         MAKE_UNPACKING_MACRO(I2SResource, N, name)
 #define _A_T_AdcState(N, name)            MAKE_UNPACKING_MACRO(AdcState, N, name)
 #define _A_T_PWMResource(N, name)         MAKE_UNPACKING_MACRO(PWMResource, N, name)
 #define _A_T_GAPResource(N, name)         MAKE_UNPACKING_MACRO(GAPResource, N, name)
