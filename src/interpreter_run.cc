@@ -1001,7 +1001,7 @@ Interpreter::Result Interpreter::run() {
         result = Primitive::unmark_from_error(result);
         bool malloc_failed = (result == _process->program()->malloc_failed());
         bool allocation_failed = (result == _process->program()->allocation_failed());
-        bool force_cross_process =  false;
+        bool force_cross_process = false;
         if (result == _process->program()->cross_process_gc()) {
           force_cross_process = true;
           malloc_failed = true;

@@ -98,7 +98,7 @@ int LwIPSocket::on_accept(tcp_pcb* tpcb, err_t err) {
     // SYN.
     socket_error(err);
 
-    // This return value actually ignored in LwIP.  The socket is
+    // This return value is actually ignored in LwIP.  The socket is
     // not dead.
     return err;
   }
