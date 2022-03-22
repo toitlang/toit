@@ -167,6 +167,8 @@ class Channel:
 
   res_/ByteArray? := null
 
+  idle_threshold_/int? := null
+  rx_buffer_size_/int? := null
   /**
   Constructs a channel using the given $num using the given $pin.
 
@@ -201,6 +203,17 @@ class Channel:
       --filter_ticks_thresh/int=100
       --rx_buffer_size=128:
     rmt_config_rx_ pin.num num mem_block_num clk_div flags idle_threshold filter_en filter_ticks_thresh rx_buffer_size
+    idle_threshold_ = idle_threshold
+    rx_buffer_size_ = rx_buffer_size
+
+  // TODO should this be primitive getters?
+  // TODO add primtive setter
+  idle_threshold -> int?:
+    return idle_threshold_
+
+  rx_buffer_size -> int?:
+    return rx_buffer_size_
+
 
   /**
   Configure the channel for TX.
