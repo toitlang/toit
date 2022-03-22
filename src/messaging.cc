@@ -58,6 +58,8 @@ class NestingTracker {
 
 SystemMessage::~SystemMessage() {
   if (!_data) return;
+  // TODO(kasper): Here we are leaking any memory pointed to by
+  // the encoded message data. Fix this.
   free(_data);
 }
 

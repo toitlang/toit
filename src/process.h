@@ -72,6 +72,7 @@ class Process : public ProcessListFromProcessGroup::Element,
 
   // Garbage collection operation for runtime objects.
   int scavenge() {
+    if (program() == null) FATAL("cannot scavenge external process");
     int result = object_heap()->scavenge();
     _memory_usage = object_heap()->usage("object heap after gc");
     return result;
