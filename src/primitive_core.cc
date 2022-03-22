@@ -1715,7 +1715,7 @@ PRIMITIVE(process_send) {
   SystemMessage* message = null;
   MessageEncoder encoder(process, buffer);
   if (encoder.encode(array)) {
-    message = _new SystemMessage(type, process->group()->id(), process->id(), buffer, length);
+    message = _new SystemMessage(type, process->group()->id(), process->id(), buffer);
   }
 
   if (message == null) {

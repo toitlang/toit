@@ -12,8 +12,6 @@
 
 namespace toit {
 
-unsigned int checksum[4] = { 0, 0, 0, 0 };
-
 static SnapshotBundle compile(const char* input_path) {
   Flags::no_fork = true;
   char** args = null;
@@ -45,7 +43,9 @@ void MessageHandler::on_message(int sender, int type, void* data, int length) {
   collect_garbage(_try_hard);
   _try_hard = !_try_hard;
 
-  send(sender, type, data, length, true);
+  if (!send(sender, type, data, length, true)) {
+    FATAL("unable to send");
+  }
 }
 
 int run_program(Snapshot snapshot) {

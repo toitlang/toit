@@ -59,35 +59,28 @@ class SystemMessage : public Message {
     TERMINATED = 0,
   };
 
-  SystemMessage(int type, int gid, int pid, uint8_t* data, int length) : _type(type), _gid(gid), _pid(pid), _data(data), _length(length) { }
-  SystemMessage(int type, int gid, int pid) : _type(type), _gid(gid), _pid(pid), _data(null), _length(0) { }
-  ~SystemMessage() {
-    free(_data);
-  }
+  SystemMessage(int type, int gid, int pid, uint8* data) : _type(type), _gid(gid), _pid(pid), _data(data) { }
+  SystemMessage(int type, int gid, int pid) : _type(type), _gid(gid), _pid(pid), _data(null) { }
+  ~SystemMessage();
 
   MessageType message_type() const { return MESSAGE_SYSTEM; }
 
-  int gid() const { return _gid; }
-  int pid() const { return _pid; }
   int type() const { return _type; }
+  int gid() const { return _gid; }
+  uint8* data() const { return _data; }
 
-  uint8_t* data() const { return _data; }
-  int length() const { return _length; }
-
+  int pid() const { return _pid; }
   void set_pid(int pid) { _pid = pid; }
 
   void clear_data() {
     _data = null;
-    _length = 0;
   }
 
  private:
   const int _type;
   const int _gid;  // The process group ID this message comes from.
   int _pid;  // The process ID this message comes from.
-
-  uint8_t* _data;
-  int _length;
+  uint8* _data;
 };
 
 class ObjectNotifyMessage : public Message {
