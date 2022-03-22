@@ -1715,7 +1715,7 @@ PRIMITIVE(process_send) {
   SystemMessage* message = null;
   MessageEncoder encoder(process, buffer);
   if (encoder.encode(array)) {
-    message = _new SystemMessage(type, process->group()->id(), process->id(), buffer, length);
+    message = _new SystemMessage(type, process->group()->id(), process->id(), buffer);
   }
 
   if (message == null) {
@@ -1772,6 +1772,7 @@ PRIMITIVE(task_receive_message) {
       ALLOCATION_FAILED;
     }
     decoder.register_external_allocations();
+    system->free_data_but_keep_externals();
 
     array->at_put(0, Smi::from(system->type()));
     array->at_put(1, Smi::from(system->gid()));
