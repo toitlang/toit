@@ -432,13 +432,6 @@ class ObjectMemory {
   // to a page boundary.
   static Chunk* allocate_chunk(Space* space, uword size);
 
-  // Create a chunk for a piece of external memory (usually in flash). Since
-  // this memory is external and potentially read-only, we will not free
-  // nor write to it when deleting the space it belongs to.
-  static Chunk* create_flash_chunk(Space* space, void* heap_space, uword size) {
-    return create_fixed_chunk(space, heap_space, size);
-  }
-
   // Release the chunk.
   static void free_chunk(Chunk* chunk);
 
@@ -449,9 +442,6 @@ class ObjectMemory {
   static uword allocated() { return allocated_; }
 
  private:
-  // Use some already-existing memory for a chunk.
-  static Chunk* create_fixed_chunk(Space* space, void* heap_space, uword size);
-
   static std::atomic<uword> allocated_;
 
   friend class SemiSpace;
