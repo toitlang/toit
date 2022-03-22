@@ -10,6 +10,7 @@ class Font:
 
   constructor.get font_name/string:
     proxy_ = font_get_ resource_freeing_module_ font_name
+    hash_code = font_name.hash_code
     add_finalizer this:: this.finalize_
 
   /**
