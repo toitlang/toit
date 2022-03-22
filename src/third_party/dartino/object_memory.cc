@@ -219,8 +219,7 @@ Chunk* ObjectMemory::allocate_chunk(Space* owner, uword size) {
   ASSERT(owner != null);
 
   size = Utils::round_up(size, TOIT_PAGE_SIZE);
-  void* memory =
-      OS::allocate_pages(size, GcMetadata::heap_allocation_arena());
+  void* memory = OS::allocate_pages(size);
   uword lowest = GcMetadata::lowest_old_space_address();
   USE(lowest);
   if (memory == null) return null;
@@ -242,18 +241,6 @@ Chunk* ObjectMemory::allocate_chunk(Space* owner, uword size) {
   return chunk;
 }
 
-Chunk* ObjectMemory::create_fixed_chunk(Space* owner, void* memory, uword size) {
-  ASSERT(owner != null);
-  ASSERT(size == Utils::round_up(size, TOIT_PAGE_SIZE));
-
-  uword base = reinterpret_cast<uword>(memory);
-  ASSERT(base % TOIT_PAGE_SIZE == 0);
-
-  Chunk* chunk = new Chunk(owner, base, size, true);
-  GcMetadata::mark_pages_for_chunk(chunk, owner->page_type());
-  return chunk;
-}
-
 void ObjectMemory::free_chunk(Chunk* chunk) {
 #ifdef DEBUG
   // Do not touch external memory. It might be read-only.
@@ -262,13 +249,5 @@ void ObjectMemory::free_chunk(Chunk* chunk) {
   allocated_ -= chunk->size();
   delete chunk;
 }
-
-#ifdef DEBUG
-NoAllocationScope::NoAllocationScope(Heap* heap) : heap_(heap) {
-  heap->increment_no_allocation();
-}
-
-NoAllocationScope::~NoAllocationScope() { heap_->decrement_no_allocation(); }
-#endif
 
 }  // namespace toit

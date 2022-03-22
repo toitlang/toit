@@ -251,6 +251,7 @@ namespace toit {
   PRIMITIVE(error, 1)                        \
   PRIMITIVE(get_option, 3)                   \
   PRIMITIVE(set_option, 4)                   \
+  PRIMITIVE(gc, 1)                           \
 
 #define MODULE_UDP(PRIMITIVE)                \
   PRIMITIVE(init, 0)                         \
@@ -262,6 +263,7 @@ namespace toit {
   PRIMITIVE(set_option, 4)                   \
   PRIMITIVE(error, 1)                        \
   PRIMITIVE(close, 2)                        \
+  PRIMITIVE(gc, 1)                           \
 
 #define MODULE_TLS(PRIMITIVE)                \
   PRIMITIVE(init, 1)                         \
@@ -353,9 +355,11 @@ namespace toit {
   PRIMITIVE(read_reg, 4)                     \
 
 #define MODULE_I2S(PRIMITIVE)                \
-  PRIMITIVE(init, 6)                         \
-  PRIMITIVE(close, 1)                        \
+  PRIMITIVE(init, 0)                        \
+  PRIMITIVE(create, 12)                      \
+  PRIMITIVE(close, 2)                        \
   PRIMITIVE(write, 2)                        \
+  PRIMITIVE(read,  1)                        \
 
 #define MODULE_SPI(PRIMITIVE)                \
   PRIMITIVE(init, 3)                         \
@@ -819,6 +823,7 @@ namespace toit {
 #define _A_T_Adler32(N, name)             MAKE_UNPACKING_MACRO(Adler32, N, name)
 #define _A_T_ZlibRle(N, name)             MAKE_UNPACKING_MACRO(ZlibRle, N, name)
 #define _A_T_UARTResource(N, name)        MAKE_UNPACKING_MACRO(UARTResource, N, name)
+#define _A_T_I2SResource(N, name)         MAKE_UNPACKING_MACRO(I2SResource, N, name)
 #define _A_T_AdcState(N, name)            MAKE_UNPACKING_MACRO(AdcState, N, name)
 #define _A_T_PWMResource(N, name)         MAKE_UNPACKING_MACRO(PWMResource, N, name)
 #define _A_T_GAPResource(N, name)         MAKE_UNPACKING_MACRO(GAPResource, N, name)
@@ -962,6 +967,7 @@ namespace toit {
 #define ILLEGAL_UTF_8 return Primitive::mark_as_error(process->program()->illegal_utf_8())
 #define INVALID_ARGUMENT return Primitive::mark_as_error(process->program()->invalid_argument())
 #define MALLOC_FAILED return Primitive::mark_as_error(process->program()->malloc_failed())
+#define CROSS_PROCESS_GC return Primitive::mark_as_error(process->program()->cross_process_gc())
 #define NEGATIVE_ARGUMENT return Primitive::mark_as_error(process->program()->negative_argument())
 #define OUT_OF_BOUNDS return Primitive::mark_as_error(process->program()->out_of_bounds())
 #define OUT_OF_RANGE return Primitive::mark_as_error(process->program()->out_of_range())
