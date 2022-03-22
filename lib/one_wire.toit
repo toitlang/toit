@@ -1,4 +1,4 @@
-// Copyright (C) 2018 Toitware ApS. All rights reserved.
+// Copyright (C) 2020 Toitware ApS. All rights reserved.
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
@@ -25,6 +25,7 @@ class OneWire:
     rx_channel_ = rx
     tx_channel_ = tx
     tx_channel_.config_tx --idle_level=1
+    // TODO handle idle threshold
     rx_channel_.config_rx --filter_ticks_thresh=30 --idle_threshold=3000 --rx_buffer_size=1024
 
     config_ow_pin_ rx_channel_.pin.num rx_channel_.num tx_channel_.num
@@ -37,28 +38,11 @@ class OneWire:
     the read must happen immediately after the write.
   */
   write_then_read bytes/ByteArray byte_count/int -> ByteArray:
-    // TODO(Lau): Check that we have allocated a sufficiently large RX buffer.
+    // TODO: Check that we have allocated a sufficiently large RX buffer.
     signals := encode_write_then_read_signals_ bytes byte_count
     expected_bytes_count := (bytes.size + byte_count) * BITS_PER_BYTE * rmt.BYTES_PER_SIGNAL * SIGNALS_PER_BIT
     received_signals := rmt.transfer_and_receive --rx=rx_channel_ --tx=tx_channel_ signals expected_bytes_count
     return decode_signals_to_bytes_ received_signals --from=bytes.size byte_count
-
-  /**
-  TODO
-
-  The given $from is the number of bytes to skip in the signals.
-  */
-  static decode_signals_to_bytes_ signals/rmt.Signals --from/int=0 byte_count/int -> ByteArray:
-    // TODO check signal size.
-    write_signal_count := from * rmt.BYTES_PER_SIGNAL * BITS_PER_BYTE
-    read_signal_count := (signals.size - write_signal_count) / 2
-    result := ByteArray byte_count: 0
-    read_signal_count.repeat:
-      i := write_signal_count + it * 2
-      result[it / 8] = result[it / 8] >> 1
-      if (signals.signal_period i) < 17: result[it / 8] = result[it / 8] | 0x80
-
-    return result
 
   static encode_write_then_read_signals_ bytes/ByteArray read_bytes_count/int -> rmt.Signals:
     signals := rmt.Signals (bytes.size + read_bytes_count) * rmt.BYTES_PER_SIGNAL * BITS_PER_BYTE
@@ -68,6 +52,20 @@ class OneWire:
       i += 8 * 2
     encode_read_signals_ signals --from=i --bit_count=read_bytes_count * BITS_PER_BYTE
     return signals
+
+  /**
+  TODO write the rest of the Toit doc
+
+  The given $from is the number of bytes to skip in the signals.
+  */
+  static decode_signals_to_bytes_ signals/rmt.Signals --from/int=0 byte_count/int -> ByteArray:
+    // TODO check signal size.
+    write_signal_count := from * rmt.BYTES_PER_SIGNAL * BITS_PER_BYTE
+    result := ByteArray byte_count: 0
+    byte_count.repeat:
+      i := write_signal_count + it * 16
+      result[it] = decode_read_signals_ signals --from=i
+    return result
 
   static encode_read_signals_ signals/rmt.Signals --from/int=0 --bit_count/int:
     assert: 0 <= from
@@ -108,15 +106,16 @@ class OneWire:
     print_ signals
     return decode_read_signals_ signals count
 
-  static decode_read_signals_ --from=0 signals/rmt.Signals count/int -> int:
+  static decode_read_signals_ signals/rmt.Signals --from/int=0 count/int=8 -> int:
     result := 0
     count.repeat:
-      if (signals.signal_level it) != 0: throw "unexpected signal"
+      i := from + it * 2
+      if (signals.signal_level i) != 0: throw "unexpected signal"
 
-      if (signals.signal_level it + 1) != 1: throw "unexpected signal"
+      if (signals.signal_level i + 1) != 1: throw "unexpected signal"
 
       result = result >> 1
-      if (signals.signal_period it * 2) < 17: result = result | 0x80
+      if (signals.signal_period i) < 17: result = result | 0x80
     result = result >> (8 - count)
 
     return result
@@ -134,7 +133,7 @@ class OneWire:
     ]
     received_signals := rmt.transfer_and_receive --rx=rx_channel_ --tx=tx_channel_
         rmt.Signals.alternating --first_level=0 periods
-        32
+        4 * rmt.BYTES_PER_SIGNAL
 
     // TODO(Lau): Should we throw if the signals did not look like we expect?
     return received_signals.size >= 3 and
