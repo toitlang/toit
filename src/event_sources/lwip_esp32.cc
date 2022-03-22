@@ -60,6 +60,8 @@
 
 namespace toit {
 
+bool needs_gc = false;
+
 #if defined(TOIT_FREERTOS) || defined(TOIT_USE_LWIP)
 
 String* lwip_strerror(Process* process, err_t err, Error** error) {
@@ -80,13 +82,14 @@ String* lwip_strerror(Process* process, err_t err, Error** error) {
              "Connection aborted",       /* ERR_ABRT       -11 */
              "Connection reset",         /* ERR_RST        -12 */
              "Connection closed",        /* ERR_CLSD       -13 */
-             "Connection refused",       /* ERR_CONN       -14 */
+             "Connection closed",        /* ERR_CONN       -14 */
              "Illegal argument",         /* ERR_ARG        -15 */
              "Low-level netif error",    /* ERR_IF         -16 */
   };
 
   static const char* custom_strerr[] = {
-             "Host name lookup failure" /* ERR_NAME_LOOKUP_FAILURE         -126  */
+             "Host name lookup failure"                 /* ERR_NAME_LOOKUP_FAILURE -126  */
+             "Connection closed due to memory pressure" /* ERR_MEM_NON_RECOVERABLE -127 */
   };
 
   const char* str = "Unknown network error";

@@ -299,6 +299,7 @@ void ProgramBuilder::set_up_skeleton_program() {
   _program->set_illegal_utf_8(lookup_symbol("ILLEGAL_UTF_8"));
   _program->set_invalid_argument(lookup_symbol("INVALID_ARGUMENT"));
   _program->set_malloc_failed(lookup_symbol("MALLOC_FAILED"));
+  _program->set_cross_process_gc(lookup_symbol("CROSS_PROCESS_GC"));
   _program->set_negative_argument(lookup_symbol("NEGATIVE_ARGUMENT"));
   _program->set_out_of_bounds(lookup_symbol("OUT_OF_BOUNDS"));
   _program->set_out_of_range(lookup_symbol("OUT_OF_RANGE"));

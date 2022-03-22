@@ -14,6 +14,7 @@ TOIT_TCP_READ_  ::= 1 << 0
 TOIT_TCP_WRITE_ ::= 1 << 1
 TOIT_TCP_CLOSE_ ::= 1 << 2
 TOIT_TCP_ERROR_ ::= 1 << 3
+TOIT_TCP_NEEDS_GC_ ::= 1 << 4
 
 TOIT_TCP_OPTION_PORT_          ::= 1
 TOIT_TCP_OPTION_PEER_PORT_     ::= 2
@@ -60,7 +61,15 @@ class TcpSocket_:
 
   ensure_state_ bits --error_bits=TOIT_TCP_ERROR_ [--failure]:
     state := ensure_state_
-    state_bits := state.wait_for_state (bits | error_bits)
+    state_bits / int? := null
+    while state_bits == null:
+      state_bits = state.wait_for_state (bits | error_bits | TOIT_TCP_NEEDS_GC_)
+      if state_bits & TOIT_TCP_NEEDS_GC_ != 0:
+        state_bits = null
+        tcp_gc_ state.group
+        // We can get connect requests so fast that this causes a watchdog
+        // to trigger, so insert a sleep here.
+        sleep --ms=1
     if state_bits == 0:
       return failure.call "NOT_CONNECTED"
     if (state_bits & error_bits) == 0:
@@ -132,7 +141,13 @@ class TcpSocket extends TcpSocket_ implements net.Socket Reader:
   connect hostname port [failure]:
     address := dns_lookup hostname
     open_ (tcp_connect_ tcp_resource_group_ address.raw port window_size_)
-    ensure_state_ TOIT_TCP_WRITE_ --error_bits=(TOIT_TCP_ERROR_ | TOIT_TCP_CLOSE_) --failure=failure
+    error := catch:
+      ensure_state_ TOIT_TCP_WRITE_ --error_bits=(TOIT_TCP_ERROR_ | TOIT_TCP_CLOSE_) --failure=failure
+    if error:
+      // LwIP uses the same error code, ERR_CON, for connection refused and
+      // connection closed.
+      if error == "Connection closed": throw "Connection refused"
+      throw error
 
   read:
     state := ensure_state_ TOIT_TCP_READ_ --failure=: throw it
@@ -193,3 +208,6 @@ tcp_get_option_ socket_resource_group id option:
 
 tcp_set_option_ socket_resource_group id option value:
   #primitive.tcp.set_option
+
+tcp_gc_ socket_resource_group:
+  #primitive.tcp.gc

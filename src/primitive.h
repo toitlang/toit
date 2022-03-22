@@ -250,6 +250,7 @@ namespace toit {
   PRIMITIVE(error, 1)                        \
   PRIMITIVE(get_option, 3)                   \
   PRIMITIVE(set_option, 4)                   \
+  PRIMITIVE(gc, 1)                           \
 
 #define MODULE_UDP(PRIMITIVE)                \
   PRIMITIVE(init, 0)                         \
@@ -261,6 +262,7 @@ namespace toit {
   PRIMITIVE(set_option, 4)                   \
   PRIMITIVE(error, 1)                        \
   PRIMITIVE(close, 2)                        \
+  PRIMITIVE(gc, 1)                           \
 
 #define MODULE_TLS(PRIMITIVE)                \
   PRIMITIVE(init, 1)                         \
@@ -917,6 +919,7 @@ namespace toit {
 #define ILLEGAL_UTF_8 return Primitive::mark_as_error(process->program()->illegal_utf_8())
 #define INVALID_ARGUMENT return Primitive::mark_as_error(process->program()->invalid_argument())
 #define MALLOC_FAILED return Primitive::mark_as_error(process->program()->malloc_failed())
+#define CROSS_PROCESS_GC return Primitive::mark_as_error(process->program()->cross_process_gc())
 #define NEGATIVE_ARGUMENT return Primitive::mark_as_error(process->program()->negative_argument())
 #define OUT_OF_BOUNDS return Primitive::mark_as_error(process->program()->out_of_bounds())
 #define OUT_OF_RANGE return Primitive::mark_as_error(process->program()->out_of_range())

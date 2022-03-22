@@ -512,11 +512,9 @@ Interpreter::Result Interpreter::_run() {
             class_index);
       }
 #endif //TOIT_GC_LOGGING
-      sp = scavenge(sp, false, attempts);
+      sp = scavenge(sp, false, attempts, false);
       result = _process->object_heap()->allocate_instance(Smi::from(class_index));
     }
-    // Scavenge might have taken place in object heap but local
-    // "klass" is from program heap.
     if (result != null) {
       Instance* instance = Instance::cast(result);
       int instance_size = program->instance_size_for(instance);
@@ -524,7 +522,7 @@ Interpreter::Result Interpreter::_run() {
         instance->at_put(i, program->null_object());
       }
       PUSH(result);
-      if (Flags::gcalot) sp = scavenge(sp, false, 1);
+      if (Flags::gcalot) sp = scavenge(sp, false, 1, false);
     } else {
       PUSH(Smi::from(class_index));
       CALL_METHOD(program->allocation_failure(), _length_);
@@ -1002,6 +1000,11 @@ Interpreter::Result Interpreter::_run() {
         result = Primitive::unmark_from_error(result);
         bool malloc_failed = (result == _process->program()->malloc_failed());
         bool allocation_failed = (result == _process->program()->allocation_failed());
+        bool force_cross_process = false;
+        if (result == _process->program()->cross_process_gc()) {
+          force_cross_process = true;
+          malloc_failed = true;
+        }
 
         if (attempts > 3 || !(malloc_failed || allocation_failed)) break;
 #ifdef TOIT_GC_LOGGING
@@ -1012,7 +1015,7 @@ Interpreter::Result Interpreter::_run() {
               malloc_failed ? " (malloc)" : "");
         }
 #endif
-        sp = scavenge(sp, malloc_failed, attempts);
+        sp = scavenge(sp, malloc_failed, attempts, force_cross_process);
 
         _sp = sp;
         result = entry(_process, sp + parameter_offset + arity - 1); // Skip the frame.

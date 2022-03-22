@@ -337,7 +337,7 @@ void Interpreter::prepare_task(Method entry, Instance* code) {
   _push(_process->program()->frame_marker());
 }
 
-Object** Interpreter::scavenge(Object** sp, bool malloc_failed, int attempts) {
+Object** Interpreter::scavenge(Object** sp, bool malloc_failed, int attempts, bool force_cross_process) {
   ASSERT(attempts >= 1 && attempts <= 3);  // Allocation attempts.
   if (attempts == 3) {
     OS::heap_summary_report(0, "out of memory");
@@ -347,7 +347,7 @@ Object** Interpreter::scavenge(Object** sp, bool malloc_failed, int attempts) {
     return sp;
   }
   store_stack(sp);
-  VM::current()->scheduler()->scavenge(_process, malloc_failed, attempts > 1);
+  VM::current()->scheduler()->scavenge(_process, malloc_failed, attempts > 1 || force_cross_process);
   return load_stack();
 }
 
@@ -407,7 +407,7 @@ Object** Interpreter::check_stack_overflow(Object** sp, OverflowState* state, Me
           length, new_length);
     }
 #endif
-    sp = scavenge(sp, false, attempts);
+    sp = scavenge(sp, false, attempts, false);
     new_stack = _process->object_heap()->allocate_stack(new_length);
   }
 
