@@ -1725,7 +1725,9 @@ PRIMITIVE(process_send) {
     OTHER_ERROR;
   }
 
-  // From here on, the destructor of SystemMessage will free the data.
+  // From here on, the destructor of SystemMessage will free the buffer and
+  // potentially the externals too if ownership isn't transferred elsewhere
+  // when the message is received.
   scheduler_err_t result = (process_id >= 0)
       ? VM::current()->scheduler()->send_message(process_id, message)
       : VM::current()->scheduler()->send_system_message(message);
