@@ -337,9 +337,23 @@ PRIMITIVE(disconnect_reason) {
   }
 }
 
+static char local_address[16] = { 0, };
+
 PRIMITIVE(get_ip) {
   ARGS(IPEvents, ip);
+  if (local_address[0] == 0) {
+    memcpy(local_address, ip->ip(), 15);
+  }
   return process->allocate_string_or_error(ip->ip());
+}
+
+// Temporary primitive to support parallel access to the WiFi module.
+// The `local_address` global would need to be protected by a lock to be safe.
+// Currently, we read the address to know whether the device is online, and at that
+// time we don't care for the actual value as long as it's not 0.
+// Before the next call to `get_stored_ip` the memcpy from `get_ip` should have finished.
+PRIMITIVE(get_stored_ip) {
+  return process->allocate_string_or_error(local_address);
 }
 
 PRIMITIVE(get_rssi) {
