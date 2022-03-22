@@ -37,7 +37,7 @@ test_hash:
   sans2.hash_code
 
   s.add sans2
-  expect_equals 1 s.size
+  expect_equals 2 s.size
 
 test_known_pixel_widths:
   expect_equals 0 (sans10.pixel_width "")
