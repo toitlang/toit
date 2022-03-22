@@ -452,7 +452,6 @@ int ObjectHeap::scavenge() {
 
     // Process the roots in the object heap.
     ss.do_root(reinterpret_cast<Object**>(&_task));
-    ss.do_root(reinterpret_cast<Object**>(&_hatch_arguments));
     ss.do_roots(_global_variables, program()->global_variables.length());
     for (auto root : _external_roots) ss.do_roots(root->slot(), 1);
 

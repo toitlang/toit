@@ -57,10 +57,8 @@ class NestingTracker {
 };
 
 void SystemMessage::free_data_and_externals() {
-  if (_data) {
-    MessageDecoder::deallocate(_data);
-    _data = null;
-  }
+  MessageDecoder::deallocate(_data);
+  _data = null;
 }
 
 MessageEncoder::MessageEncoder(Process* process, uint8* buffer)
@@ -343,6 +341,7 @@ Object* MessageDecoder::decode() {
 }
 
 void MessageDecoder::deallocate(uint8* buffer) {
+  if (buffer == null) return;
   MessageDecoder decoder(buffer);
   decoder.deallocate();
   free(buffer);
