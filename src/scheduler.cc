@@ -79,6 +79,11 @@ SystemMessage* Scheduler::new_termination_message(int gid) {
   uint8* data = unvoid_cast<uint8*>(malloc(MESSAGING_TERMINATION_MESSAGE_SIZE));
   if (data == NULL) return NULL;
 
+  // We must encode a proper message in the data. Otherwise, we cannot free it
+  // later without running into issues when we traverse the data to find pointers
+  // to external memory areas.
+  MessageEncoder::encode_termination_message(data, 0);
+
   SystemMessage* result = _new SystemMessage(SystemMessage::TERMINATED, gid, -1, data);
   if (result == NULL) {
     free(data);
@@ -166,6 +171,8 @@ Scheduler::ExitState Scheduler::launch_program(Locker& locker, Process* process)
   while (ProcessGroup* group = _groups.remove_first()) {
     while (Process* process = group->processes().remove_first()) {
       Unlocker unlock(locker);
+      // TODO(kasper): We should let any ExternalSystemMessageHandler know that
+      // their process has been deleted.
       delete process;
     }
     delete group;

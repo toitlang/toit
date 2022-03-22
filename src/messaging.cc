@@ -56,8 +56,9 @@ class NestingTracker {
   int* _nesting;
 };
 
-SystemMessage::~SystemMessage() {
-  if (_data) MessageDecoder::deallocate(_data);
+void SystemMessage::free_data_and_externals() {
+  MessageDecoder::deallocate(_data);
+  _data = null;
 }
 
 MessageEncoder::MessageEncoder(Process* process, uint8* buffer)
@@ -339,6 +340,49 @@ Object* MessageDecoder::decode() {
   return null;
 }
 
+void MessageDecoder::deallocate(uint8* buffer) {
+  if (buffer == null) return;
+  MessageDecoder decoder(buffer);
+  decoder.deallocate();
+  free(buffer);
+}
+
+void MessageDecoder::deallocate() {
+  int tag = read_uint8();
+  switch (tag) {
+    case TAG_POSITIVE_SMI:
+    case TAG_NEGATIVE_SMI:
+      read_cardinal();
+      break;
+    case TAG_NULL:
+    case TAG_TRUE:
+    case TAG_FALSE:
+      break;
+    case TAG_STRING:
+    case TAG_BYTE_ARRAY:
+      read_cardinal();
+      free(read_pointer());
+      break;
+    case TAG_STRING_INLINE:
+    case TAG_BYTE_ARRAY_INLINE: {
+      int length = read_cardinal();
+      _cursor += length;
+      break;
+    }
+    case TAG_ARRAY: {
+      int length = read_cardinal();
+      for (int i = 0; i < length; i++) deallocate();
+      break;
+    }
+    case TAG_DOUBLE:
+    case TAG_LARGE_INTEGER:
+      read_uint64();
+      break;
+    default:
+      FATAL("[message decoder: unhandled message tag: %d]", tag);
+  }
+}
+
 Object* MessageDecoder::decode_string(bool inlined) {
   int length = read_cardinal();
   String* result = null;
@@ -440,11 +484,6 @@ Object* MessageDecoder::decode_large_integer() {
   return result;
 }
 
-void MessageDecoder::deallocate(uint8* buffer) {
-  // TODO(kasper): Deallocate anything pointed to.
-  free(buffer);
-}
-
 uint8* MessageDecoder::read_pointer() {
   uint8* result;
   memcpy(&result, &_buffer[_cursor], WORD_SIZE);
@@ -507,14 +546,16 @@ bool ExternalSystemMessageHandler::send(int pid, int type, void* data, int lengt
   }
   scheduler_err_t result = _vm->scheduler()->send_message(pid, message);
   if (result == MESSAGE_OK) return true;
+  message->free_data_but_keep_externals();
   if (discard) encoder.free_copied();
   delete message;
   return false;
 }
 
 Interpreter::Result ExternalSystemMessageHandler::run() {
+  Process* process = _process;
   while (true) {
-    Message* message = _process->peek_message();
+    Message* message = process->peek_message();
     if (message == null) {
       return Interpreter::Result(Interpreter::Result::YIELDED);
     }
@@ -533,7 +574,10 @@ Interpreter::Result ExternalSystemMessageHandler::run() {
 
       int pid = system->pid();
       int type = system->type();
-      _process->remove_first_message();
+      if (success) {
+        system->free_data_but_keep_externals();
+      }
+      process->remove_first_message();
       if (success) {
         on_message(pid, type, data, length);
       }

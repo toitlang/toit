@@ -61,7 +61,7 @@ class SystemMessage : public Message {
 
   SystemMessage(int type, int gid, int pid, uint8* data) : _type(type), _gid(gid), _pid(pid), _data(data) { }
   SystemMessage(int type, int gid, int pid) : _type(type), _gid(gid), _pid(pid), _data(null) { }
-  ~SystemMessage();
+  virtual ~SystemMessage() override { free_data_and_externals(); }
 
   MessageType message_type() const { return MESSAGE_SYSTEM; }
 
@@ -72,9 +72,16 @@ class SystemMessage : public Message {
 
   void set_pid(int pid) { _pid = pid; }
 
-  void clear_data() {
+  // Free the encoded buffer and but keep any external memory areas that it references.
+  // This is used after succesfully decoding a message and thus taking ownership of such
+  // external areas.
+  void free_data_but_keep_externals() {
+    free(_data);
     _data = null;
   }
+
+  // Free the encoded buffer and all the external memory areas that it references.
+  void free_data_and_externals();
 
  private:
   const int _type;
@@ -88,7 +95,6 @@ class ObjectNotifyMessage : public Message {
   explicit ObjectNotifyMessage(ObjectNotifier* notifier)
       : _notifier(notifier)
       , _queued(false) {}
-  ~ObjectNotifyMessage() {}
 
   bool is_queued() const { return _queued; }
   MessageType message_type() const { return MESSAGE_OBJECT_NOTIFY; }
@@ -176,6 +182,9 @@ class MessageDecoder {
   Object* decode();
   bool decode_byte_array_external(void** data, int* length);
 
+  // Encoded messages may contain pointers to external areas allocated using
+  // malloc. To deallocate such messages, we have to traverse them and free
+  // all external areas before freeing the buffer itself.
   static void deallocate(uint8* buffer);
 
  private:
@@ -197,6 +206,8 @@ class MessageDecoder {
   Object* decode_byte_array(bool inlined);
   Object* decode_double();
   Object* decode_large_integer();
+
+  void deallocate();
 
   uint8 read_uint8() { return _buffer[_cursor++]; }
   uint64 read_uint64();

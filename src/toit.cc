@@ -29,6 +29,7 @@
 #include "utils.h"
 #include "compiler/compiler.h"
 #include "compiler/filesystem_local.h"
+#include "third_party/dartino/gc_metadata.h"
 
 #include <errno.h>
 #include <libgen.h>
@@ -144,6 +145,7 @@ int main(int argc, char **argv) {
 
   FlashRegistry::set_up();
   OS::set_up();
+  GcMetadata::set_up();
 
   int exit_state = 0;
   char* boot_bundle_path = null;
@@ -453,6 +455,7 @@ int main(int argc, char **argv) {
 
   free(boot_bundle_path);
 
+  GcMetadata::tear_down();
   OS::tear_down();
   FlashRegistry::tear_down();
   return exit_state;

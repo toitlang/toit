@@ -25,6 +25,7 @@
 #include "vm.h"
 #include "os.h"
 #include "snapshot.h"
+#include "third_party/dartino/gc_metadata.h"
 
 namespace toit {
 
@@ -77,6 +78,7 @@ int main(int argc, char **argv) {
 
   FlashRegistry::set_up();
   OS::set_up();
+  GcMetadata::set_up();
 
   char* image_filename = argv[1];
   FILE* file = fopen(image_filename, "rb");
@@ -109,6 +111,7 @@ int main(int argc, char **argv) {
 
   int exit_state = run_program(reinterpret_cast<Program*>(relocated.program()));
 
+  GcMetadata::tear_down();
   OS::tear_down();
   FlashRegistry::tear_down();
   return exit_state;

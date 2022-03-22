@@ -73,6 +73,7 @@ class Process : public ProcessListFromProcessGroup::Element,
 
   // Garbage collection operation for runtime objects.
   int scavenge() {
+    if (program() == null) return 0;
     int result = object_heap()->scavenge();
     _memory_usage = object_heap()->usage("object heap after gc");
     return result;
@@ -112,6 +113,7 @@ class Process : public ProcessListFromProcessGroup::Element,
   char** args() { return _args; }
   Method hatch_method() const { return _hatch_method; }
   uint8* hatch_arguments() const { return _hatch_arguments; }
+  void clear_hatch_arguments() { _hatch_arguments = null; }
 
   // Handling of messages and completions.
   bool has_messages();
@@ -140,7 +142,7 @@ class Process : public ProcessListFromProcessGroup::Element,
 
   void signal(Signal signal);
   void clear_signal(Signal signal);
-  uint32_t signals() { return _signals; }
+  uint32_t signals() const { return _signals; }
 
   int current_directory() { return _current_directory; }
   void set_current_directory(int fd) { _current_directory = fd; }

@@ -20,25 +20,10 @@ void GcMetadata::tear_down() {
 void GcMetadata::set_up() { singleton_.set_up_singleton(); }
 
 void GcMetadata::set_up_singleton() {
-  const int RANGES = 4;
-  OS::HeapMemoryRange ranges[RANGES];
-  int range_count = OS::get_heap_memory_pages(ranges, RANGES);
-  ASSERT(range_count > 0);
+  OS::HeapMemoryRange range = OS::get_heap_memory_range();
 
-  // Find the largest area.
-  int largest_index = 0;
-  uword largest_size = ranges[0].size;
-  for (int i = 1; i < range_count; i++) {
-    if (ranges[i].size > largest_size) {
-      largest_size = ranges[i].size;
-      largest_index = i;
-    }
-  }
-
-  heap_allocation_arena_ = 1 << largest_index;
-
-  lowest_address_ = reinterpret_cast<uword>(ranges[largest_index].address);
-  uword size = ranges[largest_index].size;
+  lowest_address_ = reinterpret_cast<uword>(range.address);
+  uword size = range.size;
   heap_extent_ = size;
   heap_start_munged_ = (lowest_address_ >> 1) |
                        (static_cast<uword>(1) << (8 * sizeof(uword) - 1));
@@ -53,26 +38,51 @@ void GcMetadata::set_up_singleton() {
 
   uword page_type_size_ = size >> TOIT_PAGE_SIZE_LOG2;
 
-  // We have two bytes per card: one for remembered set, and one for object
-  // start offset.
   metadata_size_ = Utils::round_up(
-      number_of_cards_ * 2 + mark_bits_size + cumulative_mark_bits_size +
-          mark_stack_overflow_bits_size + page_type_size_,
+                                                               // Overhead on:        32bit   64bit
+      number_of_cards_ +                   // One remembered set byte per card.       1/128   1/256
+          number_of_cards_ +               // One object start offset byte per card.  1/128   1/256
+          mark_bits_size +                 // One mark bit per word.                  1/32    1/64
+          cumulative_mark_bits_size +      // One uword per 32 mark bits              1/32    1/32
+          mark_stack_overflow_bits_size +  // One bit per card                        1/1024  1/2048
+          page_type_size_,                 // One byte per page                       1/4096  1/32768
+                                           //            Total:                       7.9%    5.5%
+                                           //            Total without mark bits:     1.6%    0.8%
       TOIT_PAGE_SIZE);
 
-  metadata_ = reinterpret_cast<uint8*>(
-      OS::allocate_pages(metadata_size_, OS::ANY_ARENA));
+  // We create all the metadata with just one allocation.  Otherwise we will
+  // lose memory when the malloc rounds a series of big allocations up to 4k
+  // page boundaries.
+#ifdef LEGACY_GC
+  metadata_ = null;
+#else
+  metadata_ = reinterpret_cast<uint8*>(OS::grab_virtual_memory(null, metadata_size_));
+#endif
+
   remembered_set_ = metadata_;
+
   object_starts_ = metadata_ + number_of_cards_;
+
   mark_bits_ = reinterpret_cast<uint32*>(metadata_ + 2 * number_of_cards_);
   cumulative_mark_bit_counts_ = reinterpret_cast<uword*>(
       reinterpret_cast<uword>(mark_bits_) + mark_bits_size);
+
   mark_stack_overflow_bits_ =
       reinterpret_cast<uint8_t*>(cumulative_mark_bit_counts_) +
       cumulative_mark_bits_size;
+
   page_type_bytes_ = mark_stack_overflow_bits_ + mark_stack_overflow_bits_size;
 
+#ifndef LEGACY_GC
+  // TODO: The mark bits and cumulative mark bits are the biggest, so they should not
+  // be mapped in immediately in order to reduce the memory footprint of very
+  // small programs.  We should do it when we create pages that need them.
+  OS::use_virtual_memory(metadata_, number_of_cards_);
+  OS::use_virtual_memory(object_starts_, number_of_cards_);
+  OS::use_virtual_memory(mark_stack_overflow_bits_, mark_stack_overflow_bits_size);
+  OS::use_virtual_memory(page_type_bytes_, page_type_size_);
   memset(page_type_bytes_, UNKNOWN_SPACE_PAGE, page_type_size_);
+#endif
 
   uword start = reinterpret_cast<uword>(object_starts_);
   uword lowest = lowest_address_;
