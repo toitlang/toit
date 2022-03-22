@@ -16,6 +16,8 @@ class OneWire:
   static WRITE_1_LOW_DELAY ::= READ_INIT_TIME_STD
   static WRITE_0_LOW_DELAY ::= 60
 
+  static SIGNALS_PER_BIT ::= 2
+
   rx_channel_/rmt.Channel
   tx_channel_/rmt.Channel
 
@@ -36,9 +38,9 @@ class OneWire:
   */
   write_then_read bytes/ByteArray byte_count/int -> ByteArray:
     // TODO(Lau): Check that we have allocated a sufficiently large RX buffer.
-    signal_count := (bytes.size + byte_count) * 8 * 2
-    signals := encode_write_then_read_signals_ bytes signal_count
-    received_signals := rmt.transfer_and_receive --rx=rx_channel_ --tx=tx_channel_ signals signal_count * 2 + 4
+    signals := encode_write_then_read_signals_ bytes byte_count
+    expected_bytes_count := (bytes.size + byte_count) * BITS_PER_BYTE * rmt.BYTES_PER_SIGNAL * SIGNALS_PER_BIT
+    received_signals := rmt.transfer_and_receive --rx=rx_channel_ --tx=tx_channel_ signals expected_bytes_count
     return decode_signals_to_bytes_ received_signals --from=bytes.size byte_count
 
   /**
@@ -58,59 +60,53 @@ class OneWire:
 
     return result
 
-  static encode_write_then_read_signals_ bytes/ByteArray signal_count/int -> rmt.Signals:
-    previous_delay := 0
-    return rmt.Signals.alternating signal_count --first_level=0: | i level |
-        period := 0
-        if i < bytes.size * 8 * 2:
-          // Encode write signals for the given.
-          bits := bytes[i / 2 / 8]
-          if level == 0:
-            // Write the lowest bit.
-            if bits & 0x01 == 1:
-              previous_delay = period = WRITE_1_LOW_DELAY
-            else:
-              previous_delay = period = WRITE_0_LOW_DELAY
-            bytes[i / 2 / 8] = bits >> 1
-          else:
-            period = IO_TIME_SLOT - previous_delay
-        else:
-          // Encode read signals.
-          period = level == 0 ? READ_INIT_TIME_STD : IO_TIME_SLOT - READ_INIT_TIME_STD
-        period
+  static encode_write_then_read_signals_ bytes/ByteArray read_bytes_count/int -> rmt.Signals:
+    signals := rmt.Signals (bytes.size + read_bytes_count) * rmt.BYTES_PER_SIGNAL * BITS_PER_BYTE
+    i := 0
+    bytes.do:
+      encode_write_signals_ signals it --from=i
+      i += 8 * 2
+    encode_read_signals_ signals --from=i --bit_count=read_bytes_count * BITS_PER_BYTE
+    return signals
+
+  static encode_read_signals_ signals/rmt.Signals --from/int=0 --bit_count/int:
+    assert: 0 <= from
+    assert: from + bit_count * 2 <= signals.size
+    bit_count.repeat:
+      signals.set_signal from + it * 2 READ_INIT_TIME_STD 0
+      signals.set_signal from + it * 2 + 1 IO_TIME_SLOT - READ_INIT_TIME_STD 1
 
   write_bits bits/int count/int -> none:
-    rmt.transfer tx_channel_
-        encode_write_signals_ bits count
+    signals :=  rmt.Signals count * 2
+    encode_write_signals_ signals bits --count=count
+    rmt.transfer tx_channel_ signals
 
-  static encode_write_signals_ bits/int count/int -> rmt.Signals:
-    previous_delay := 0
-    return rmt.Signals.alternating count * 2 --first_level=0: | _ level |
-        period := 0
-        if level == 0:
-          // Write the lowest bit.
-          if bits & 0x01 == 1:
-            previous_delay = period = WRITE_1_LOW_DELAY
-          else:
-            previous_delay = period = WRITE_0_LOW_DELAY
-        else:
-          period = IO_TIME_SLOT - previous_delay
-          bits = bits >> 1
-        period
+  static encode_write_signals_ signals/rmt.Signals bits/int --from/int=0 --count/int=8 -> none:
+    write_signal_count := count * 2
+    assert: 0 <= from < signals.size
+    assert: from + write_signal_count < signals.size
+    print "$(%x bits)"
+    count.repeat:
+      // Write the lowest bit.
+      delay := 0
+      if bits & 0x01 == 1:
+        delay = WRITE_1_LOW_DELAY
+      else:
+        delay = WRITE_0_LOW_DELAY
+      signals.set_signal from + it * 2 delay 0
+      signals.set_signal from + it * 2 + 1 IO_TIME_SLOT - delay 1
+      bits = bits >> 1
 
   // TODO Do we want a write bytes?
 
   read_bits count/int -> int:
-    read_signals := encode_read_signals_ count
+    read_signals := rmt.Signals count * 2
+    encode_read_signals_ read_signals --bit_count= count
     signals := rmt.transfer_and_receive --rx=rx_channel_ --tx=tx_channel_
         read_signals
         (count + 1) * 8
     print_ signals
     return decode_read_signals_ signals count
-
-  static encode_read_signals_ count -> rmt.Signals:
-    return rmt.Signals.alternating count * 2 --first_level=0: | _ level |
-        level == 0 ? READ_INIT_TIME_STD : IO_TIME_SLOT - READ_INIT_TIME_STD
 
   static decode_read_signals_ --from=0 signals/rmt.Signals count/int -> int:
     result := 0
