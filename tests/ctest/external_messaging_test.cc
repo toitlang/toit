@@ -13,8 +13,6 @@
 
 namespace toit {
 
-unsigned int checksum[4] = { 0, 0, 0, 0 };
-
 static SnapshotBundle compile(const char* input_path) {
   Flags::no_fork = true;
   char** args = null;
@@ -35,7 +33,7 @@ static SnapshotBundle compile(const char* input_path) {
 
 class MessageHandler : public ExternalSystemMessageHandler {
  public:
-  MessageHandler(VM* vm) : ExternalSystemMessageHandler(vm) { }
+  explicit MessageHandler(VM* vm) : ExternalSystemMessageHandler(vm) { }
   virtual void on_message(int sender, int type, void* data, int length) override;
 
  private:
@@ -46,7 +44,9 @@ void MessageHandler::on_message(int sender, int type, void* data, int length) {
   collect_garbage(_try_hard);
   _try_hard = !_try_hard;
 
-  send(sender, type, data, length, true);
+  if (!send(sender, type + 1, data, length, true)) {
+    FATAL("unable to send");
+  }
 }
 
 int run_program(Snapshot snapshot) {
@@ -56,7 +56,9 @@ int run_program(Snapshot snapshot) {
   int group_id = vm.scheduler()->next_group_id();
 
   MessageHandler handler(&vm);
-  handler.start();
+  if (!handler.start()) {
+    FATAL("unable to start handler");
+  }
 
   Scheduler::ExitState exit = vm.scheduler()->run_boot_program(image.program(), NULL, group_id);
   image.release();

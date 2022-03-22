@@ -148,6 +148,8 @@ Scheduler::ExitState Scheduler::launch_program(Locker& locker, Process* process)
   while (ProcessGroup* group = _groups.remove_first()) {
     while (Process* process = group->processes().remove_first()) {
       Unlocker unlock(locker);
+      // TODO(kasper): We should let any ExternalSystemMessageHandler know that
+      // their process has been deleted.
       delete process;
     }
     delete group;

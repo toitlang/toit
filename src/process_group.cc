@@ -50,6 +50,11 @@ ProcessGroup* ProcessGroup::create(int id, Program* program, AlignedMemoryBase* 
   uint8_t* data = unvoid_cast<uint8*>(malloc(MESSAGING_TERMINATION_MESSAGE_SIZE));
   if (data == NULL) return NULL;
 
+  // We must encode a proper message in the data. Otherwise, we cannot free it
+  // later without running into issues when we traverse the data to find pointers
+  // to external memory areas.
+  MessageEncoder::encode_termination_message(data, 0);
+
   SystemMessage* termination_message = _new SystemMessage(SystemMessage::TERMINATED, id, -1, data);
   if (termination_message == NULL) {
     free(data);
