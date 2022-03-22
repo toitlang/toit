@@ -50,7 +50,7 @@ ProcessGroup* ProcessGroup::create(int id, Program* program, AlignedMemoryBase* 
   uint8_t* data = unvoid_cast<uint8*>(malloc(MESSAGING_TERMINATION_MESSAGE_SIZE));
   if (data == NULL) return NULL;
 
-  SystemMessage* termination_message = _new SystemMessage(SystemMessage::TERMINATED, id, -1, data, 2);
+  SystemMessage* termination_message = _new SystemMessage(SystemMessage::TERMINATED, id, -1, data);
   if (termination_message == NULL) {
     free(data);
     return NULL;
