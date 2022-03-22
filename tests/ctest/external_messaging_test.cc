@@ -32,7 +32,7 @@ static SnapshotBundle compile(const char* input_path) {
 
 class MessageHandler : public ExternalSystemMessageHandler {
  public:
-  MessageHandler(VM* vm) : ExternalSystemMessageHandler(vm) { }
+  explicit MessageHandler(VM* vm) : ExternalSystemMessageHandler(vm) { }
   virtual void on_message(int sender, int type, void* data, int length) override;
 
  private:
