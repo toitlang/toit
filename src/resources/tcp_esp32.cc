@@ -88,27 +88,41 @@ class SocketResourceGroup : public ResourceGroup {
   LwIPEventSource* _event_source;
 };
 
-void LwIPSocket::on_accept(tcp_pcb* tpcb, err_t err) {
+int LwIPSocket::on_accept(tcp_pcb* tpcb, err_t err) {
   Locker locker(LwIPEventSource::instance()->mutex());
 
   if (err != ERR_OK) {
+    // Currently this only happend when a SYN is received and
+    // there is not enough memory.  In this case err is ERR_MEM.
+    // We do this to trigger a GC.  The counterpart will retransmit the
+    // SYN.
     socket_error(err);
-    return;
+
+    // This return value is actually ignored in LwIP.  The socket is
+    // not dead.
+    return err;
   }
 
-  new_backlog_socket(tpcb);
+  int result = new_backlog_socket(tpcb);
+  if (result != ERR_OK) {
+    socket_error(err);
+  }
   send_state();
+  return result;
 }
 
-void LwIPSocket::on_connected(err_t err) {
+int LwIPSocket::on_connected(err_t err) {
   Locker locker(LwIPEventSource::instance()->mutex());
 
+  // According to the documentation err is currently always ERR_OK, but trying
+  // to be defensive here.
   if (err == ERR_OK) {
     tcp_recv(_tpcb, on_read);
-    send_state();
   } else {
     socket_error(err);
   }
+  send_state();
+  return err;
 }
 
 void LwIPSocket::on_read(pbuf* p, err_t err) {
@@ -149,14 +163,19 @@ void LwIPSocket::on_wrote(int length) {
 }
 
 void LwIPSocket::on_error(err_t err) {
+  // The _tpcb has already been deallocated when this is called.
   _tpcb = null;
   if (err == ERR_CLSD) {
     _read_closed = true;
+  } else if (err == ERR_MEM) {
+    // If we got an allocation error that caused the connection to close
+    // then it's too late for a GC and we have to throw something that
+    // actually results in an exception that is visible.  Hopefully rare.
+    socket_error(ERR_MEM_NON_RECOVERABLE);
   } else {
     socket_error(err);
   }
 }
-
 
 void LwIPSocket::send_state() {
   uint32_t state = 0;
@@ -166,19 +185,31 @@ void LwIPSocket::send_state() {
   if (!_send_closed && tpcb() != null && tcp_sndbuf(tpcb()) > 0) state |= TCP_WRITE;
   if (_read_closed) state |= TCP_READ;
   if (_error != ERR_OK) state |= TCP_ERROR;
+  if (needs_gc) state |= TCP_NEEDS_GC;
 
   // TODO: Avoid instance usage.
   LwIPEventSource::instance()->set_state(this, state);
 }
 
 void LwIPSocket::socket_error(err_t err) {
-  set_tpcb(null);
-  _error = err;
+  if (err == ERR_MEM) {
+    needs_gc = true;
+  } else {
+    set_tpcb(null);
+    _error = err;
+  }
   send_state();
 }
 
-void LwIPSocket::new_backlog_socket(tcp_pcb* tpcb) {
+int LwIPSocket::new_backlog_socket(tcp_pcb* tpcb) {
   LwIPSocket* socket = _new LwIPSocket(resource_group(), kConnection);
+  if (socket == null) {
+    // We are not in a primitive, so we can't retry the operation.
+    // We return ERR_ABRT to tell LwIP that the connection is dead.
+    // We also trigger a GC so at least the next one will succeed.
+    needs_gc = true;
+    return ERR_ABRT;
+  }
   socket->set_tpcb(tpcb);
 
   tcp_arg(tpcb, socket);
@@ -186,6 +217,7 @@ void LwIPSocket::new_backlog_socket(tcp_pcb* tpcb) {
   tcp_recv(tpcb, on_read);
 
   _backlog.append(socket);
+  return ERR_OK;
 }
 
 // May return null if there is nothing in the backlog.
@@ -213,6 +245,7 @@ PRIMITIVE(listen) {
   if (resource_proxy == null) ALLOCATION_FAILED;
 
   LwIPSocket* socket = _new LwIPSocket(resource_group, LwIPSocket::kListening);
+  if (socket == null) MALLOC_FAILED;
 
   ip_addr_t bind_address;
   if (address->is_empty() || address->slow_equals("0.0.0.0")) {
@@ -238,7 +271,7 @@ PRIMITIVE(listen) {
     tcp_pcb* tpcb = tcp_new();
     if (tpcb == null) {
       delete capture.socket;
-      return lwip_error(process, ERR_MEM);
+      MALLOC_FAILED;
     }
 
     tpcb->so_options |= SOF_REUSEADDR;
@@ -255,7 +288,7 @@ PRIMITIVE(listen) {
     tpcb = tcp_listen_with_backlog(tpcb, capture.backlog);
     if (tpcb == null) {
       delete capture.socket;
-      return lwip_error(process, ERR_MEM);
+      MALLOC_FAILED;
     }
 
     capture.socket->set_tpcb(tpcb);
@@ -300,7 +333,7 @@ PRIMITIVE(connect) {
     tcp_pcb* tpcb = tcp_new();
     if (tpcb == null) {
       delete capture.socket;
-      return lwip_error(process, ERR_MEM);
+      MALLOC_FAILED;
     }
 
     capture.socket->set_tpcb(tpcb);
@@ -594,6 +627,17 @@ PRIMITIVE(set_option) {
 
     return process->program()->null_object();
   });
+}
+
+PRIMITIVE(gc) {
+  ARGS(SocketResourceGroup, group);
+  Object* do_gc = group->event_source()->call_on_thread([&]() -> Object* {
+    bool result = needs_gc;
+    needs_gc = false;
+    return BOOL(result);
+  });
+  if (do_gc == process->program()->true_object()) CROSS_PROCESS_GC;
+  return process->program()->null_object();
 }
 
 } // namespace toit

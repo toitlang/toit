@@ -123,7 +123,7 @@ AlignedMemory::~AlignedMemory() {
 // addresses.)
 static void* try_grab_aligned(void* suggestion, uword size) {
   ASSERT(size == Utils::round_up(size, TOIT_PAGE_SIZE));
-  void* result = OS::grab_vm(suggestion, size);
+  void* result = OS::grab_virtual_memory(suggestion, size);
   if (result == null) return result;
   uword numeric = reinterpret_cast<uword>(result);
   uword rounded = Utils::round_up(numeric, TOIT_PAGE_SIZE);
@@ -131,15 +131,15 @@ static void* try_grab_aligned(void* suggestion, uword size) {
   // If we got an allocation that was not toit-page-aligned,
   // then it's a pretty good guess that the next few aligned
   // addresses might work.
-  OS::ungrab_vm(result, size);
+  OS::ungrab_virtual_memory(result, size);
   for (int i = 0; i < 4; i++) {
     void* next_suggestion = reinterpret_cast<void*>(rounded);
-    result = OS::grab_vm(next_suggestion, size);
+    result = OS::grab_virtual_memory(next_suggestion, size);
     if (result == next_suggestion) return result;
-    if (result) OS::ungrab_vm(result, size);
+    if (result) OS::ungrab_virtual_memory(result, size);
     rounded += size;
   }
-  return OS::grab_vm(reinterpret_cast<void*>(rounded), size);
+  return OS::grab_virtual_memory(reinterpret_cast<void*>(rounded), size);
 }
 
 OS::HeapMemoryRange OS::_single_range = { 0 };
@@ -157,26 +157,26 @@ void* OS::allocate_pages(uword size) {
     if (attempt++ > 20) FATAL("Out of memory");
     // We did not get a result in the right range.
     // Try to use a random address in the right range.
-    ungrab_vm(result, size);
+    ungrab_virtual_memory(result, size);
     uword mask = MAX_HEAP - 1;
     uword r = rand();
     r <<= TOIT_PAGE_SIZE_LOG2;  // Do this on a separate line so that it is done on a word-sized integer.
     uword suggestion = reinterpret_cast<uword>(_single_range.address) + (r & mask);
     result = try_grab_aligned(reinterpret_cast<void*>(suggestion), size);
   }
-  use_vm(result, original_size);
+  use_virtual_memory(result, original_size);
   return result;
 }
 
 void OS::free_pages(void* address, uword size) {
-  ungrab_vm(address, size);
+  ungrab_virtual_memory(address, size);
 }
 
 OS::HeapMemoryRange OS::get_heap_memory_range() {
   // We make a single allocation to see where in the huge address space we can
   // expect allocations.
-  void* probe = grab_vm(null, TOIT_PAGE_SIZE);
-  ungrab_vm(probe, TOIT_PAGE_SIZE);
+  void* probe = grab_virtual_memory(null, TOIT_PAGE_SIZE);
+  ungrab_virtual_memory(probe, TOIT_PAGE_SIZE);
   uword addr = reinterpret_cast<uword>(probe);
   uword HALF_MAX = MAX_HEAP / 2;
   if (addr < HALF_MAX) {
