@@ -26,6 +26,7 @@ main:
   test_is_aligned
   test_is_power_of_two
   test_operators
+  test_bit_fields
 
 expect_error name [code]:
   expect_equals
@@ -1176,3 +1177,19 @@ test_operators:
     float.INFINITY.compare_to float.INFINITY  // => 0
   expect_equals -1
     3.compare_to float.INFINITY               // => -1
+
+test_bit_fields:
+  expect_equals 13 13[0..64]
+  expect_equals -13 -13[0..64]
+
+  expect_equals 0b1010  0b1100_1010_0011[4..8]
+  expect_equals -6     (0b1100_1010_0011[4..8].sign_extend --bits=4)
+
+  expect_equals 0b1010  0b1100_1010_0011[7..4]
+  expect_equals -6     (0b1100_1010_0011[7..4].sign_extend --bits=4)
+
+  expect_equals 0x9f    0x9fff_ffff_ffff_ffff[56..64]
+  expect_equals -97    (0x9fff_ffff_ffff_ffff[56..64].sign_extend --bits=8)
+
+  expect_equals 0x9f    0x9fff_ffff_ffff_ffff[63..56]
+  expect_equals -97    (0x9fff_ffff_ffff_ffff[63..56].sign_extend --bits=8)

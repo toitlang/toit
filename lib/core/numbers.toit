@@ -873,6 +873,58 @@ abstract class int extends num:
     return 0 == this ? 0 : (0 > this ? -1 : 1)
 
   /**
+  Sign-extend an n-bit two's complement number to a full (64 bit)
+    signed Toit integer.
+
+  # Examples
+  ```
+  255.sign_extend --bits=8  // => -1
+  128.sign_extend --bits=8  // => -128
+  127.sign_extend --bits=8  // => 127
+  ```
+  */
+  sign_extend --bits/int -> int:
+    if not 1 <= bits <= 63:
+      if bits == 64: return this
+      throw "OUT_OF_RANGE"
+    if (this >> (bits - 1)) & 1 == 0:
+      return this
+    return this | ~((1 << bits) - 1)
+
+  /**
+  Extract a bit-field from an integer.
+  Bits are numbered from zero with zero being the least significant bit.
+  Can be written lsb-first and non-inclusive, which matches the normal
+    use of the slice operator.
+  Following Verilog and most data sheets, the bit indexes can be written
+    MSB-first, in which case they are inclusive
+
+  #Examples.
+  x[3..1]                 // Equivalent to Verilog x[3:1].
+  x[1..4]                 // Same as the above
+  0b1100_1010_0011[4..8]  // => 0b1010
+  0b1100_1010_0011[7..4]  // => 0b1010, equivalent to Verilog [7:4]
+
+  // Extract a signed 7-bit field x[18:12].
+  f := x[18..12].sign_extend --bits=7
+  */
+  operator [..] --from/int --to/int -> int:
+    shift / int := ?
+    bits / int := ?
+    if from >= to:
+      // Verilog-style.
+      if not 0 <= to <= from <= 63: throw "OUT_OF_RANGE"
+      bits = from + 1 - to
+      shift = to
+    else:
+      // Slice-style.
+      if not 0 <= from <= to <= 64: throw "OUT_OF_RANGE"
+      bits = to - from
+      shift = from
+    if bits == 64: return this
+    return (this >> shift) & ((1 << bits) - 1)
+
+  /**
   The hash code of this number.
   */
   hash_code -> int:
