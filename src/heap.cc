@@ -54,11 +54,7 @@ class ScavengeScope : public Locker {
 #ifdef LEGACY_GC
 Heap::Heap(Process* owner, Program* program, Block* initial_block)
     : RawHeap(owner)
-    , _program(program)
-    , _in_gc(false)
-    , _gc_allowed(true)
-    , _total_bytes_allocated(0)
-    , _last_allocation_result(ALLOCATION_SUCCESS) {
+    , _program(program) {
   if (initial_block == null) return;
   _blocks.append(initial_block);
 }
@@ -297,10 +293,6 @@ class ScavengeState : public RootCallback {
 
 #endif  // def LEGACY_GC
 
-Object** ObjectHeap::_copy_global_variables() {
-  return _program->global_variables.copy();
-}
-
 #ifdef LEGACY_GC
 ObjectHeap::ObjectHeap(Program* program, Process* owner, Block* block)
     : Heap(owner, program, block)
@@ -308,17 +300,12 @@ ObjectHeap::ObjectHeap(Program* program, Process* owner, Block* block)
 ObjectHeap::ObjectHeap(Program* program, Process* owner)
     : Heap(owner, program)
 #endif
-    , _max_heap_size(0)
-    , _external_memory(0)
-    , _hatch_method(Method::invalid())
-    , _finalizer_notifier(null)
-    , _gc_count(0)
-    , _global_variables(null) {
+    , _external_memory(0) {
 #ifdef LEGACY_GC
   if (block == null) return;
 #endif
   _task = allocate_task();
-  _global_variables = _copy_global_variables();
+  _global_variables = program->global_variables.copy();
   // Currently the heap is empty and it has one block allocated for objects.
   _limit = _pending_limit = _calculate_limit();
 }
@@ -491,6 +478,8 @@ static const char* format_unit(word n) {
 #ifdef LEGACY_GC
 
 int ObjectHeap::gc() {
+  if (program() == null) FATAL("cannot gc external process");
+
   word blocks_before = _blocks.length();
 #ifdef TOIT_GC_LOGGING
   int64 start_time = OS::get_monotonic_time();
