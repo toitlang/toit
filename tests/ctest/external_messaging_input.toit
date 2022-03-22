@@ -5,12 +5,13 @@
 import expect
 import monitor
 
-TYPE ::= 50
+TYPE ::= 100  // Don't overlap with system messages.
 EXTERNAL_PID ::= 0
 
 main:
   handler := MessageHandler
   set_system_message_handler_ (TYPE + 1) handler
+  expect.expect (current_process_ != EXTERNAL_PID)
 
   test handler #[]
   test handler #[1, 2, 3, 4]
