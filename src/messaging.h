@@ -59,7 +59,7 @@ class SystemMessage : public Message {
     TERMINATED = 0,
   };
 
-  SystemMessage(int type, int gid, int pid, uint8_t* data) : _type(type), _gid(gid), _pid(pid), _data(data) { }
+  SystemMessage(int type, int gid, int pid, uint8* data) : _type(type), _gid(gid), _pid(pid), _data(data) { }
   SystemMessage(int type, int gid, int pid) : _type(type), _gid(gid), _pid(pid), _data(null) { }
 
   ~SystemMessage() {
