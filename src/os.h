@@ -199,16 +199,16 @@ class OS {
   // address address.  The address grabbed is returned.
   // On a system without virtual memory this is just a malloc.  The size
   // is rounded up to the page size on systems with virtual memory.
-  static void* grab_vm(void* address, uword size);
-  static void ungrab_vm(void* address, uword size);
+  static void* grab_virtual_memory(void* address, uword size);
+  static void ungrab_virtual_memory(void* address, uword size);
   // Use-vm makes the virtual address range usable (adds read-write permissions).
   // Does nothing on a system without virtual memory.
-  static bool use_vm(void* address, uword size);
+  static bool use_virtual_memory(void* address, uword size);
   // Unuse-vm makes the virtual address range unusable (no read-write permissions),
   // which frees up the memory, returning it to the OS.  The virtual address range
   // is still reserved though.
   // Does nothing on a system without virtual memory.
-  static void unuse_vm(void* address, uword size);
+  static void unuse_virtual_memory(void* address, uword size);
 
   struct HeapMemoryRange {
     void* address;
