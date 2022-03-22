@@ -200,6 +200,7 @@ PRIMITIVE(transfer_and_read) {
   }
 
   size_t length = 0;
+  // TODO add the final wait as a parameter (send the idle threshold).
   void* received_bytes = xRingbufferReceive(rb, &length, 3000);
   if (received_bytes != null) {
     if (length <= max_output_len) {
