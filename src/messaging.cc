@@ -60,7 +60,6 @@ void SystemMessage::free_data_and_externals() {
   if (_data) {
     MessageDecoder::deallocate(_data);
     _data = null;
-    _length = 0;
   }
 }
 

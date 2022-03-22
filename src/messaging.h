@@ -90,9 +90,7 @@ class SystemMessage : public Message {
   const int _type;
   const int _gid;  // The process group ID this message comes from.
   int _pid;  // The process ID this message comes from.
-
-  uint8_t* _data;
-  int _length;
+  uint8* _data;
 };
 
 class ObjectNotifyMessage : public Message {
