@@ -37,17 +37,22 @@ class OneWire:
   write_then_read bytes/ByteArray byte_count/int -> ByteArray:
     // TODO(Lau): Check that we have allocated a sufficiently large RX buffer.
     signal_count := (bytes.size + byte_count) * 8 * 2
-    previous_delay := 0
     signals := encode_write_then_read_signals_ bytes signal_count
-
     received_signals := rmt.transfer_and_receive --rx=rx_channel_ --tx=tx_channel_ signals signal_count * 2 + 4
+    return decode_signals_to_bytes_ received_signals --from=bytes.size byte_count
 
-    return decode_write_then_read_signals_ received_signals bytes.size * 8 * 2 byte_count
+  /**
+  TODO
 
-  static decode_write_then_read_signals_ signals/rmt.Signals write_byte_count/int byte_count/int -> ByteArray:
+  The given $from is the number of bytes to skip in the signals.
+  */
+  static decode_signals_to_bytes_ signals/rmt.Signals --from/int=0 byte_count/int -> ByteArray:
+    // TODO check signal size.
+    write_signal_count := from * rmt.BYTES_PER_SIGNAL * BITS_PER_BYTE
+    read_signal_count := (signals.size - write_signal_count) / 2
     result := ByteArray byte_count: 0
-    (byte_count * 8).repeat:
-      i := write_byte_count + it * 2
+    read_signal_count.repeat:
+      i := write_signal_count + it * 2
       result[it / 8] = result[it / 8] >> 1
       if (signals.signal_period i) < 17: result[it / 8] = result[it / 8] | 0x80
 
@@ -58,7 +63,7 @@ class OneWire:
     return rmt.Signals.alternating signal_count --first_level=0: | i level |
         period := 0
         if i < bytes.size * 8 * 2:
-          // Encode write bytes.
+          // Encode write signals for the given.
           bits := bytes[i / 2 / 8]
           if level == 0:
             // Write the lowest bit.
@@ -70,7 +75,7 @@ class OneWire:
           else:
             period = IO_TIME_SLOT - previous_delay
         else:
-          // Encode read bytes.
+          // Encode read signals.
           period = level == 0 ? READ_INIT_TIME_STD : IO_TIME_SLOT - READ_INIT_TIME_STD
         period
 

@@ -13,6 +13,8 @@ A $Channel corresponds to a channel in the ESP32 RMT controller.
 $Signals represent a collection of signals to be sent by the RMT controller.
 */
 
+BYTES_PER_SIGNAL ::= 2
+
 /**
 A collection of signals to be transferred or received with the RMT controller.
 
