@@ -43,8 +43,8 @@ void OS::free_block(ProgramBlock* block) {
   free_pages(void_cast(block), TOIT_PAGE_SIZE);
 }
 
-void* OS::grab_vm(void* address, uword size) {
-  size = Utils::round_up(size, 4096);
+void* OS::grab_virtual_memory(void* address, uword size) {
+  size = Utils::round_up(size, getpagesize());
   void* result = mmap(address, size,
       PROT_NONE,
       MAP_PRIVATE | MAP_ANON, -1, 0);
@@ -52,8 +52,8 @@ void* OS::grab_vm(void* address, uword size) {
   return result;
 }
 
-void OS::ungrab_vm(void* address, uword size) {
-  size = Utils::round_up(size, 4096);
+void OS::ungrab_virtual_memory(void* address, uword size) {
+  size = Utils::round_up(size, getpagesize());
   if (size > 0) {
     int result = munmap(address, size);
     if (result != 0) {
@@ -63,13 +63,13 @@ void OS::ungrab_vm(void* address, uword size) {
   }
 }
 
-bool OS::use_vm(void* addr, uword sz) {
+bool OS::use_virtual_memory(void* addr, uword sz) {
   ASSERT(addr != null);
   if (sz == 0) return true;
   uword address = reinterpret_cast<uword>(addr);
   uword end = address + sz;
-  uword rounded = Utils::round_down(address, 4096);
-  uword size = Utils::round_up(end - rounded, 4096);
+  uword rounded = Utils::round_down(address, getpagesize());
+  uword size = Utils::round_up(end - rounded, getpagesize());
   int result = mprotect(reinterpret_cast<void*>(rounded), size, PROT_READ | PROT_WRITE);
   if (result == 0) return true;
   if (errno == ENOMEM) return false;
@@ -77,11 +77,11 @@ bool OS::use_vm(void* addr, uword sz) {
   exit(1);
 }
 
-void OS::unuse_vm(void* addr, uword sz) {
+void OS::unuse_virtual_memory(void* addr, uword sz) {
   uword address = reinterpret_cast<uword>(addr);
   uword end = address + sz;
-  uword rounded = Utils::round_up(address, 4096);
-  uword size = Utils::round_down(end - rounded, 4096);
+  uword rounded = Utils::round_up(address, getpagesize());
+  uword size = Utils::round_down(end - rounded, getpagesize());
   if (size != 0) {
     int result = mprotect(reinterpret_cast<void*>(rounded), size, PROT_NONE);
     if (result == 0) return;

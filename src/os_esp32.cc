@@ -365,19 +365,19 @@ Block* OS::allocate_block() {
   return new (allocation) Block();
 }
 
-void* OS::grab_vm(void* address, uword size) {
+void* OS::grab_virtual_memory(void* address, uword size) {
   return malloc(size);
 }
 
-void OS::ungrab_vm(void* address, uword size) {
+void OS::ungrab_virtual_memory(void* address, uword size) {
   free(address);
 }
 
-bool OS::use_vm(void* address, uword size) {
+bool OS::use_virtual_memory(void* address, uword size) {
   return true;
 }
 
-void OS::unuse_vm(void* address, uword size) {}
+void OS::unuse_virtual_memory(void* address, uword size) {}
 
 OS::HeapMemoryRange OS::get_heap_memory_range() {
   //                           DRAM range            IRAM range

@@ -56,7 +56,7 @@ void GcMetadata::set_up_singleton() {
 #ifdef LEGACY_GC
   metadata_ = null;
 #else
-  metadata_ = reinterpret_cast<uint8*>(OS::grab_vm(null, metadata_size_));
+  metadata_ = reinterpret_cast<uint8*>(OS::grab_virtual_memory(null, metadata_size_));
 #endif
 
   remembered_set_ = metadata_;
@@ -77,10 +77,10 @@ void GcMetadata::set_up_singleton() {
   // TODO: The mark bits and cumulative mark bits are the biggest, so they should not
   // be mapped in immediately in order to reduce the memory footprint of very
   // small programs.  We should do it when we create pages that need them.
-  OS::use_vm(metadata_, number_of_cards_);
-  OS::use_vm(object_starts_, number_of_cards_);
-  OS::use_vm(mark_stack_overflow_bits_, mark_stack_overflow_bits_size);
-  OS::use_vm(page_type_bytes_, page_type_size_);
+  OS::use_virtual_memory(metadata_, number_of_cards_);
+  OS::use_virtual_memory(object_starts_, number_of_cards_);
+  OS::use_virtual_memory(mark_stack_overflow_bits_, mark_stack_overflow_bits_size);
+  OS::use_virtual_memory(page_type_bytes_, page_type_size_);
   memset(page_type_bytes_, UNKNOWN_SPACE_PAGE, page_type_size_);
 #endif
 
