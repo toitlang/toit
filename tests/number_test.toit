@@ -27,7 +27,6 @@ main:
   test_is_power_of_two
   test_operators
   test_bit_fields
-
 expect_error name [code]:
   expect_equals
     name
