@@ -25,11 +25,10 @@ class OneWire:
     rx_channel_ = rx
     tx_channel_ = tx
     tx_channel_.config_tx --idle_level=1
-    // TODO handle idle threshold
-    rx_channel_.config_rx --filter_ticks_thresh=30 --idle_threshold=3000 --rx_buffer_size=1024
+    // TODO change idle threshold dynamically.
+    rx_channel_.config_rx --filter_ticks_thresh=30 --idle_threshold=500 --rx_buffer_size=1024
 
-    config_ow_pin_ rx_channel_.pin.num rx_channel_.num tx_channel_.num
-
+    ow_config_pin_ rx_channel_.pin.num rx_channel_.num tx_channel_.num
 
   /**
   Writes the given bytes and then reads the given $byte_count number of bytes.
@@ -64,7 +63,7 @@ class OneWire:
     result := ByteArray byte_count: 0
     byte_count.repeat:
       i := write_signal_count + it * 16
-      result[it] = decode_read_signals_ signals --from=i
+      result[it] = decode_signals_to_bits_ signals --from=i
     return result
 
   static encode_read_signals_ signals/rmt.Signals --from/int=0 --bit_count/int:
@@ -83,7 +82,6 @@ class OneWire:
     write_signal_count := count * 2
     assert: 0 <= from < signals.size
     assert: from + write_signal_count < signals.size
-    print "$(%x bits)"
     count.repeat:
       // Write the lowest bit.
       delay := 0
@@ -104,9 +102,9 @@ class OneWire:
         read_signals
         (count + 1) * 8
     print_ signals
-    return decode_read_signals_ signals count
+    return decode_signals_to_bits_ signals count
 
-  static decode_read_signals_ signals/rmt.Signals --from/int=0 count/int=8 -> int:
+  static decode_signals_to_bits_ signals/rmt.Signals --from/int=0 count/int=8 -> int:
     result := 0
     count.repeat:
       i := from + it * 2
@@ -145,5 +143,5 @@ class OneWire:
         (received_signals.signal_level 2) == 0 and (received_signals.signal_period 2) > 0
 
 
-config_ow_pin_ pin rx tx:
+ow_config_pin_ pin rx tx:
   #primitive.one_wire.config_pin
