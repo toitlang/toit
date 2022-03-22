@@ -13,15 +13,15 @@ OS::HeapMemoryRange range;
 static void single_page() {
   uint8* range_address = reinterpret_cast<uint8*>(range.address);
   if (range.size < 100 * KB) FATAL("Too tiny");
-  uint8* page = reinterpret_cast<uint8*>(OS::grab_vm(null, 4096));
+  uint8* page = reinterpret_cast<uint8*>(OS::grab_virtual_memory(null, 4096));
   if (page < range_address) FATAL("Not in expected area");
   if (page + 4096 > range_address + range.size) FATAL("Not in expected area");
-  bool result = OS::use_vm(page, 4096);
+  bool result = OS::use_virtual_memory(page, 4096);
   USE(result);
   ASSERT(result);
   *page = 42;
-  OS::unuse_vm(page, 4096);
-  OS::ungrab_vm(page, 4096);
+  OS::unuse_virtual_memory(page, 4096);
+  OS::ungrab_virtual_memory(page, 4096);
 }
 
 static void many_pages() {
