@@ -1737,8 +1737,10 @@ PRIMITIVE(process_send) {
     // TODO(kasper): Consider doing in-place shrinking of internal, non-constant
     // byte arrays and strings.
   } else {
-    // Sending failed. Free the copied bits.
+    // Sending failed. Free any copied bits, but make sure to not free the externals
+    // that have not been neutered on this path.
     encoder.free_copied();
+    message->free_data_but_keep_externals();
     delete message;
   }
   return Smi::from(result);
