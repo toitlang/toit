@@ -513,17 +513,9 @@ Interpreter::Result Interpreter::run() {
             class_index);
       }
 #endif //TOIT_GC_LOGGING
-<<<<<<< HEAD
-      sp = gc(sp, false, attempts);
+      sp = gc(sp, false, attempts, false);
       result = _process->object_heap()->allocate_instance(Smi::from(class_index));
     }
-    // GC might have taken place in object heap but local
-    // "klass" is from program heap.
-=======
-      sp = scavenge(sp, false, attempts, false);
-      result = _process->object_heap()->allocate_instance(Smi::from(class_index));
-    }
->>>>>>> origin/master
     if (result != null) {
       Instance* instance = Instance::cast(result);
       int instance_size = program->instance_size_for(instance);
@@ -531,11 +523,7 @@ Interpreter::Result Interpreter::run() {
         instance->at_put(i, program->null_object());
       }
       PUSH(result);
-<<<<<<< HEAD
-      if (Flags::gcalot) sp = gc(sp, false, 1);
-=======
-      if (Flags::gcalot) sp = scavenge(sp, false, 1, false);
->>>>>>> origin/master
+      if (Flags::gcalot) sp = gc(sp, false, 1, false);
     } else {
       PUSH(Smi::from(class_index));
       CALL_METHOD(program->allocation_failure(), _length_);
