@@ -511,8 +511,9 @@ bool ExternalSystemMessageHandler::send(int pid, int type, void* data, int lengt
 }
 
 Interpreter::Result ExternalSystemMessageHandler::run() {
+  Process* process = _process;
   while (true) {
-    Message* message = _process->peek_message();
+    Message* message = process->peek_message();
     if (message == null) {
       return Interpreter::Result(Interpreter::Result::YIELDED);
     }
@@ -531,7 +532,7 @@ Interpreter::Result ExternalSystemMessageHandler::run() {
 
       int pid = system->pid();
       int type = system->type();
-      _process->remove_first_message();
+      process->remove_first_message();
       if (success) {
         on_message(pid, type, data, length);
       }

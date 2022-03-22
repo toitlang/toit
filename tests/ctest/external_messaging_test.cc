@@ -43,7 +43,7 @@ void MessageHandler::on_message(int sender, int type, void* data, int length) {
   collect_garbage(_try_hard);
   _try_hard = !_try_hard;
 
-  if (!send(sender, type, data, length, true)) {
+  if (!send(sender, type + 1, data, length, true)) {
     FATAL("unable to send");
   }
 }
@@ -55,7 +55,9 @@ int run_program(Snapshot snapshot) {
   int group_id = vm.scheduler()->next_group_id();
 
   MessageHandler handler(&vm);
-  handler.start();
+  if (!handler.start()) {
+    FATAL("unable to start handler");
+  }
 
   Scheduler::ExitState exit = vm.scheduler()->run_boot_program(image.program(), NULL, group_id);
   image.release();
