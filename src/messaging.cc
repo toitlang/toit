@@ -547,7 +547,7 @@ bool ExternalSystemMessageHandler::send(int pid, int type, void* data, int lengt
   }
   scheduler_err_t result = _vm->scheduler()->send_message(pid, message);
   if (result == MESSAGE_OK) return true;
-  if (discard) encoder.free_copied();
+  if (!discard) message->free_data_but_keep_externals();
   delete message;
   return false;
 }
