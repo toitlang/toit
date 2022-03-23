@@ -4,6 +4,21 @@
 
 import rmt
 
+/**
+Support for 1-wire protocol.
+
+The 1-wire protocol is implemented with ESP32's hardware supported RMT module.
+*/
+
+/**
+The 1-wire protocol.
+
+Use $read_bits and $write_bits to read or write bytes to the receiver.
+
+Use $write_then_read to write bytes to the receiver and then immediately start reading.
+
+Use $reset to reset the receiver.
+*/
 class OneWire:
   static RESET_LOW_DURATION_STD ::= 480
 
@@ -19,6 +34,11 @@ class OneWire:
   rx_channel_/rmt.Channel
   tx_channel_/rmt.Channel
 
+  /**
+  Constructs a 1-Wire protocol using the given $rx and $tx channel.
+
+  Configures the channels and the underlying pin for 1-wire.
+  */
   constructor --rx --tx:
     rx_channel_ = rx
     tx_channel_ = tx
@@ -51,9 +71,9 @@ class OneWire:
     return signals
 
   /**
-  TODO write the rest of the Toit doc
+  Decodes the given $signals to bytes.
 
-  The given $from is the number of bytes to skip in the signals.
+  Decoding starts from the given $from byte and decodes $byte_count bytes.
   */
   static decode_signals_to_bytes_ signals/rmt.Signals --from/int=0 byte_count/int -> ByteArray:
     assert: 0 <= from
@@ -75,9 +95,12 @@ class OneWire:
       signals.set_signal i READ_INIT_TIME_STD 0
       signals.set_signal i + 1 IO_TIME_SLOT - READ_INIT_TIME_STD 1
 
-  write_bits bits/int count/int -> none:
+  /**
+  Writes $count bits from $value to the receiver.
+  */
+  write_bits value/int count/int -> none:
     signals :=  rmt.Signals count * SIGNALS_PER_BIT
-    encode_write_signals_ signals bits --count=count
+    encode_write_signals_ signals value --count=count
     rmt.transfer tx_channel_ signals
 
   static encode_write_signals_ signals/rmt.Signals bits/int --from/int=0 --count/int=8 -> none:
@@ -98,6 +121,7 @@ class OneWire:
 
   // TODO Do we want a write bytes?
 
+  /** Reads $count bits from the receiver. */
   read_bits count/int -> int:
     read_signals := rmt.Signals count * SIGNALS_PER_BIT
     encode_read_signals_ read_signals --bit_count=count
@@ -123,12 +147,9 @@ class OneWire:
 
     return result
 
-  // TODO Do we want a read bytes?
-  print_ signals:
-    print "signal count: $signals.size"
-    signals.do: | period level |
-      print "period: $period, level: $level"
-
+  /**
+  Sends a reset to the receiver and reads whether the receiver is present.
+  */
   reset -> bool:
     periods := [
       RESET_LOW_DURATION_STD,
