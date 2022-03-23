@@ -5,18 +5,15 @@
 import rmt
 
 class OneWire:
-  static RESET_INIT_DURATION_STD    ::= 0
   static RESET_LOW_DURATION_STD     ::= 480
-  static RESET_SAMPLE_DELAY_STD     ::= 70
-  static RESET_SAMPLE_DURATION_STD  ::= 480
 
   static IO_TIME_SLOT ::= 70
   static READ_INIT_TIME_STD ::= 6
-  static READ_SAMPLE_TIME_STD ::= 9
   static WRITE_1_LOW_DELAY ::= READ_INIT_TIME_STD
   static WRITE_0_LOW_DELAY ::= 60
 
   static SIGNALS_PER_BIT ::= 2
+  static INVALID_SIGNAL ::= "INVALID_SIGNAL"
 
   rx_channel_/rmt.Channel
   tx_channel_/rmt.Channel
@@ -58,7 +55,11 @@ class OneWire:
   The given $from is the number of bytes to skip in the signals.
   */
   static decode_signals_to_bytes_ signals/rmt.Signals --from/int=0 byte_count/int -> ByteArray:
-    // TODO check signal size.
+    assert: 0 <= from
+    assert: 0 <= byte_count
+
+    if from + byte_count * BITS_PER_BYTE * SIGNALS_PER_BIT > signals.size: throw INVALID_SIGNAL
+
     write_signal_count := from * rmt.BYTES_PER_SIGNAL * BITS_PER_BYTE
     result := ByteArray byte_count: 0
     byte_count.repeat:
@@ -68,18 +69,19 @@ class OneWire:
 
   static encode_read_signals_ signals/rmt.Signals --from/int=0 --bit_count/int:
     assert: 0 <= from
-    assert: from + bit_count * 2 <= signals.size
+    assert: from + bit_count * SIGNALS_PER_BIT <= signals.size
     bit_count.repeat:
-      signals.set_signal from + it * 2 READ_INIT_TIME_STD 0
-      signals.set_signal from + it * 2 + 1 IO_TIME_SLOT - READ_INIT_TIME_STD 1
+      i := from + it * SIGNALS_PER_BIT
+      signals.set_signal i READ_INIT_TIME_STD 0
+      signals.set_signal i + 1 IO_TIME_SLOT - READ_INIT_TIME_STD 1
 
   write_bits bits/int count/int -> none:
-    signals :=  rmt.Signals count * 2
+    signals :=  rmt.Signals count * SIGNALS_PER_BIT
     encode_write_signals_ signals bits --count=count
     rmt.transfer tx_channel_ signals
 
   static encode_write_signals_ signals/rmt.Signals bits/int --from/int=0 --count/int=8 -> none:
-    write_signal_count := count * 2
+    write_signal_count := count * SIGNALS_PER_BIT
     assert: 0 <= from < signals.size
     assert: from + write_signal_count < signals.size
     count.repeat:
@@ -89,24 +91,27 @@ class OneWire:
         delay = WRITE_1_LOW_DELAY
       else:
         delay = WRITE_0_LOW_DELAY
-      signals.set_signal from + it * 2 delay 0
-      signals.set_signal from + it * 2 + 1 IO_TIME_SLOT - delay 1
+      i := from + it * SIGNALS_PER_BIT
+      signals.set_signal i delay 0
+      signals.set_signal i + 1 IO_TIME_SLOT - delay 1
       bits = bits >> 1
 
   // TODO Do we want a write bytes?
 
   read_bits count/int -> int:
-    read_signals := rmt.Signals count * 2
-    encode_read_signals_ read_signals --bit_count= count
-    signals := rmt.transfer_and_receive --rx=rx_channel_ --tx=tx_channel_
-        read_signals
-        (count + 1) * 8
-    print_ signals
-    return decode_signals_to_bits_ signals count
+    read_signals := rmt.Signals count * SIGNALS_PER_BIT
+    encode_read_signals_ read_signals --bit_count=count
+    signals := rmt.transfer_and_receive --rx=rx_channel_ --tx=tx_channel_ read_signals
+        (count + 1) * SIGNALS_PER_BIT
+    return decode_signals_to_bits_ signals --bit_count=count
 
-  static decode_signals_to_bits_ signals/rmt.Signals --from/int=0 count/int=8 -> int:
+  static decode_signals_to_bits_ signals/rmt.Signals --from/int=0 --bit_count/int=8 -> int:
+    assert: 0 <= from
+    assert: 0 <= bit_count
+    if from + bit_count * SIGNALS_PER_BIT > signals.size: throw INVALID_SIGNAL
+
     result := 0
-    count.repeat:
+    bit_count.repeat:
       i := from + it * 2
       if (signals.signal_level i) != 0: throw "unexpected signal"
 
@@ -114,7 +119,7 @@ class OneWire:
 
       result = result >> 1
       if (signals.signal_period i) < 17: result = result | 0x80
-    result = result >> (8 - count)
+    result = result >> (8 - bit_count)
 
     return result
 
