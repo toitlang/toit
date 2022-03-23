@@ -138,7 +138,6 @@ class OneWire:
         rmt.Signals.alternating --first_level=0 periods
         4 * rmt.BYTES_PER_SIGNAL
 
-    // TODO(Lau): Should we throw if the signals did not look like we expect?
     return received_signals.size >= 3 and
         // We observe the first low pulse that we sent.
         (received_signals.signal_level 0) == 0 and RESET_LOW_DURATION_STD - 2 <= (received_signals.signal_period 0) <= RESET_LOW_DURATION_STD + 10 and
