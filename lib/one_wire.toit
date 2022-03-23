@@ -19,7 +19,7 @@ Use $write_then_read to write bytes to the receiver and then immediately start r
 
 Use $reset to reset the receiver.
 */
-class OneWire:
+class Protocol:
   static RESET_LOW_DURATION_STD ::= 480
 
   static IO_TIME_SLOT ::= 70

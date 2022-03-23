@@ -25,27 +25,27 @@ test_decode_signals_to_bits:
     6,  64,  // 1
   ]
   expect_equals 0b11011000
-    OneWire.decode_signals_to_bits_ signals
+    Protocol.decode_signals_to_bits_ signals
   expect_equals 0b01101100
-    OneWire.decode_signals_to_bits_ signals --from=2 --bit_count=7
+    Protocol.decode_signals_to_bits_ signals --from=2 --bit_count=7
   expect_equals 0b0
-    OneWire.decode_signals_to_bits_ signals --from=0 --bit_count=0
+    Protocol.decode_signals_to_bits_ signals --from=0 --bit_count=0
   expect_equals 0b1
-    OneWire.decode_signals_to_bits_ signals --from=14 --bit_count=1
+    Protocol.decode_signals_to_bits_ signals --from=14 --bit_count=1
 
   // Decoding should start on a low edge (level = 0).
   expect_throw "unexpected signal":
-    OneWire.decode_signals_to_bits_ signals --from=1 --bit_count=1
+    Protocol.decode_signals_to_bits_ signals --from=1 --bit_count=1
 
-  expect_throw OneWire.INVALID_SIGNAL:
-    OneWire.decode_signals_to_bits_ signals --from=0 --bit_count=10
+  expect_throw Protocol.INVALID_SIGNAL:
+    Protocol.decode_signals_to_bits_ signals --from=0 --bit_count=10
 
   signals = rmt.Signals 2
   signals.set_signal 0 0 0
   signals.set_signal 1 0 0
   // The low edge should be followed by a high edge (level = 1).
   expect_throw "unexpected signal":
-    OneWire.decode_signals_to_bits_ signals --from=0 --bit_count=1
+    Protocol.decode_signals_to_bits_ signals --from=0 --bit_count=1
 
 test_decode_signals_to_bytes:
   periods := [
@@ -71,49 +71,49 @@ test_decode_signals_to_bytes:
   signals := rmt.Signals.alternating --first_level=0 periods
 
   expect_bytes_equal #[0xD8]
-    OneWire.decode_signals_to_bytes_ signals 1
+    Protocol.decode_signals_to_bytes_ signals 1
 
   expect_bytes_equal #[0xCC]
-    OneWire.decode_signals_to_bytes_ signals --from=1 1
+    Protocol.decode_signals_to_bytes_ signals --from=1 1
 
   expect_bytes_equal #[0xD8, 0xCC]
-    OneWire.decode_signals_to_bytes_ signals 2
+    Protocol.decode_signals_to_bytes_ signals 2
 
   expect_bytes_equal #[]
-    OneWire.decode_signals_to_bytes_ signals 0
+    Protocol.decode_signals_to_bytes_ signals 0
 
-  expect_throw OneWire.INVALID_SIGNAL:
-    OneWire.decode_signals_to_bytes_ signals --from=1 2
+  expect_throw Protocol.INVALID_SIGNAL:
+    Protocol.decode_signals_to_bytes_ signals --from=1 2
 
 
   signals = rmt.Signals.alternating --first_level=0 #[]
   expect_bytes_equal #[]
-    OneWire.decode_signals_to_bytes_ signals 0
+    Protocol.decode_signals_to_bytes_ signals 0
 
-  expect_throw OneWire.INVALID_SIGNAL:
-    OneWire.decode_signals_to_bytes_ signals --from=0 1
+  expect_throw Protocol.INVALID_SIGNAL:
+    Protocol.decode_signals_to_bytes_ signals --from=0 1
 
-  expect_throw OneWire.INVALID_SIGNAL:
-    OneWire.decode_signals_to_bytes_ signals --from=1 1
+  expect_throw Protocol.INVALID_SIGNAL:
+    Protocol.decode_signals_to_bytes_ signals --from=1 1
 
 test_encode_read_signals:
   signals := rmt.Signals 16
 
-  OneWire.encode_read_signals_ signals --bit_count=8
+  Protocol.encode_read_signals_ signals --bit_count=8
 
   8.repeat:
     expect_equals 0
       signals.signal_level it * 2
-    expect_equals OneWire.READ_INIT_TIME_STD
+    expect_equals Protocol.READ_INIT_TIME_STD
       signals.signal_period it * 2
     expect_equals 1
       signals.signal_level it * 2 + 1
-    expect_equals OneWire.IO_TIME_SLOT - OneWire.READ_INIT_TIME_STD
+    expect_equals Protocol.IO_TIME_SLOT - Protocol.READ_INIT_TIME_STD
       signals.signal_period it * 2 + 1
 
   signals = rmt.Signals 32
 
-  OneWire.encode_read_signals_ signals --from=16 --bit_count=8
+  Protocol.encode_read_signals_ signals --from=16 --bit_count=8
 
   // The first 16 signals are untouched.
   16.repeat:
@@ -127,11 +127,11 @@ test_encode_read_signals:
     i := 16 + it * 2
     expect_equals 0
       signals.signal_level i
-    expect_equals OneWire.READ_INIT_TIME_STD
+    expect_equals Protocol.READ_INIT_TIME_STD
       signals.signal_period i
     expect_equals 1
       signals.signal_level i + 1
-    expect_equals OneWire.IO_TIME_SLOT - OneWire.READ_INIT_TIME_STD
+    expect_equals Protocol.IO_TIME_SLOT - Protocol.READ_INIT_TIME_STD
       signals.signal_period i + 1
 
 test_encode_write_signals:
@@ -147,7 +147,7 @@ test_encode_write_signals:
     6,  64,  // 1
   ]
   signals := rmt.Signals 16
-  OneWire.encode_write_signals_ signals 0xDA
+  Protocol.encode_write_signals_ signals 0xDA
   8.repeat:
     expect_equals 0
       signals.signal_level it * 2
@@ -159,7 +159,7 @@ test_encode_write_signals:
       signals.signal_period it * 2 + 1
 
   signals = rmt.Signals 16
-  OneWire.encode_write_signals_ signals 0xDA --count=6
+  Protocol.encode_write_signals_ signals 0xDA --count=6
   6.repeat:
     expect_equals 0
       signals.signal_level it * 2
@@ -171,7 +171,7 @@ test_encode_write_signals:
       signals.signal_period it * 2 + 1
 
   signals = rmt.Signals 32
-  OneWire.encode_write_signals_ signals 0xDA --from=16
+  Protocol.encode_write_signals_ signals 0xDA --from=16
 
   // The first 16 signals are untouched.
   16.repeat:
@@ -215,7 +215,7 @@ test_encode_write_then_read_signals:
     60, 10,  // 0
   ]
 
-  signals := OneWire.encode_write_then_read_signals_ bytes 2
+  signals := Protocol.encode_write_then_read_signals_ bytes 2
 
   16.repeat:
     expect_equals 0
@@ -231,9 +231,9 @@ test_encode_write_then_read_signals:
     i := 32 + it * 2
     expect_equals 0
       signals.signal_level i
-    expect_equals OneWire.READ_INIT_TIME_STD
+    expect_equals Protocol.READ_INIT_TIME_STD
       signals.signal_period i
     expect_equals 1
       signals.signal_level i + 1
-    expect_equals OneWire.IO_TIME_SLOT - OneWire.READ_INIT_TIME_STD
+    expect_equals Protocol.IO_TIME_SLOT - Protocol.READ_INIT_TIME_STD
       signals.signal_period i + 1
