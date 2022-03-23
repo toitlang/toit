@@ -22,6 +22,7 @@ enum TCPState {
   TCP_WRITE = 1 << 1,
   TCP_CLOSE = 1 << 2,
   TCP_ERROR = 1 << 3,
+  TCP_NEEDS_GC = 1 << 4,
 };
 
 enum TCPOption {

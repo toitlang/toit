@@ -79,6 +79,7 @@ if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows" OR "${CMAKE_SYSTEM_NAME}" STREQUAL
     tests/lsp/dep8_compiler_test.toit
     tests/lsp/dep9_compiler_test.toit
     tests/lsp/depA_compiler_test.toit
+    tests/lsp/dep_compiler_test.toit
     tests/lsp/double_import_compiler_test.toit
     tests/lsp/dump_crash_compiler_test.toit
     tests/lsp/error_compiler_test.toit

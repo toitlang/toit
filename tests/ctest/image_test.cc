@@ -13,6 +13,7 @@
 #include "../../src/flags.h"
 #include "../../src/snapshot.h"
 #include "../../src/os.h"
+#include "../../src/third_party/dartino/gc_metadata.h"
 
 #ifdef WIN32
 #define PROT_READ 0
@@ -84,9 +85,10 @@ int main(int argc, char** argv) {
   if (argc != 2) FATAL("wrong number of arguments");
   throwing_new_allowed = true;
   OS::set_up();
+  GcMetadata::set_up();
 
   auto compiled = compile(argv[1]);
-  // Compiler resets it in its descructor.
+  // Compiler resets it in its destructor.
   throwing_new_allowed = true;
 
   const uint8* bytecodes = compiled.snapshot().buffer();

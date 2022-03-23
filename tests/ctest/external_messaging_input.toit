@@ -5,16 +5,13 @@
 import expect
 import monitor
 
-TYPE_PING ::= 0
-TYPE_ALLOC ::= 1
-
+TYPE ::= 100  // Don't overlap with system messages.
 EXTERNAL_PID ::= 0
-
-BENCHMARK_ITERATIONS ::= 60000
 
 main:
   handler := MessageHandler
-  set_system_message_handler_ TYPE_PING handler
+  set_system_message_handler_ (TYPE + 1) handler
+  expect.expect (current_process_ != EXTERNAL_PID)
 
   test handler #[]
   test handler #[1, 2, 3, 4]
@@ -37,7 +34,7 @@ main:
 
 test handler/MessageHandler data/ByteArray:
   copy := data.copy  // Data can be neutered as part of the transfer.
-  process_send_ EXTERNAL_PID TYPE_PING data
+  process_send_ EXTERNAL_PID TYPE data
   result := handler.receive
   expect.expect_bytes_equal copy result
 
@@ -46,18 +43,7 @@ class MessageHandler implements SystemMessageHandler_:
 
   on_message type/int gid/int pid/int argument -> none:
     expect.expect_equals EXTERNAL_PID pid
-    expect.expect_equals TYPE_PING type
-    messages_.send argument
-
-  receive -> any:
-    return messages_.receive
-
-class BenchmarkHandler implements SystemMessageHandler_:
-  messages_ ::= monitor.Channel 1
-  count_ := 0
-  on_message type/int gid/int pid/int argument/ByteArray -> none:
-    expect.expect_equals TYPE_ALLOC type
-    count_++
+    expect.expect_equals (TYPE + 1) type
     messages_.send argument
 
   receive -> any:

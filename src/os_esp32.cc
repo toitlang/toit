@@ -347,12 +347,47 @@ void OS::free_block(Block* block) {
   heap_caps_free(reinterpret_cast<void*>(block));
 }
 
-Block* OS::allocate_block() {
+void* OS::allocate_pages(uword size) {
+  size = Utils::round_up(size, TOIT_PAGE_SIZE);
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + TOIT_HEAP_MALLOC_TAG);
-  void* allocation = heap_caps_aligned_alloc(TOIT_PAGE_SIZE, TOIT_PAGE_SIZE, MALLOC_CAP_8BIT | MALLOC_CAP_DEFAULT);
+  void* allocation = heap_caps_aligned_alloc(size, TOIT_PAGE_SIZE, MALLOC_CAP_8BIT | MALLOC_CAP_DEFAULT);
+  return allocation;
+}
+
+void OS::free_pages(void* address, uword size) {
+  heap_caps_free(address);
+}
+
+Block* OS::allocate_block() {
+  void* allocation = allocate_pages(TOIT_PAGE_SIZE);
   if (allocation == null) return null;
   ASSERT(Utils::is_aligned(reinterpret_cast<intptr_t>(allocation), TOIT_PAGE_SIZE));
   return new (allocation) Block();
+}
+
+void* OS::grab_virtual_memory(void* address, uword size) {
+  return malloc(size);
+}
+
+void OS::ungrab_virtual_memory(void* address, uword size) {
+  free(address);
+}
+
+bool OS::use_virtual_memory(void* address, uword size) {
+  return true;
+}
+
+void OS::unuse_virtual_memory(void* address, uword size) {}
+
+OS::HeapMemoryRange OS::get_heap_memory_range() {
+  //                           DRAM range            IRAM range
+  // Internal SRAM 2 200k 3ffa_e000 - 3ffe_0000
+  // Internal SRAM 0 192k 3ffe_0000 - 4000_0000    4007_0000 - 400a_0000
+  // Internal SRAM 1 128k                          400a_0000 - 400c_0000
+  HeapMemoryRange range;
+  range.address = reinterpret_cast<void*>(0x3ffae000);
+  range.size = 392 * KB;
+  return range;
 }
 
 void OS::tear_down() {

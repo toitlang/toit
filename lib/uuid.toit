@@ -37,7 +37,7 @@ Supports the canonical textual representation, consisting of 16 bytes encoded
 parse "123e4567-e89b-12d3-a456-426614174000"
 ```
 */
-parse str:
+parse str/string:
   uuid := ByteArray SIZE
   index := 0
   i := 0
@@ -62,7 +62,7 @@ The generated UUID uses the variant 1 (RFC 4122/DCE 1.1), and is
 uuid5 namespace data:
   hash := crypto.Sha1
   // TODO(4197): why do we need to call `to_byte_array` here.
-  //   Is the documentation wrong and we wont to accept more than
+  //   Is the documentation wrong and we want to accept more than
   //   just strings and byte arrays?
   hash.add namespace.to_byte_array
   hash.add data

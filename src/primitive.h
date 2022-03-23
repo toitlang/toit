@@ -36,6 +36,7 @@ namespace toit {
   M(i2s,     MODULE_I2S)                     \
   M(spi,     MODULE_SPI)                     \
   M(uart,    MODULE_UART)                    \
+  M(rmt,     MODULE_RMT)                     \
   M(crypto,  MODULE_CRYPTO)                  \
   M(encoding,MODULE_ENCODING)                \
   M(font,    MODULE_FONT)                    \
@@ -52,6 +53,7 @@ namespace toit {
   M(adc,     MODULE_ADC)                     \
   M(pwm,     MODULE_PWM)                     \
   M(programs_registry, MODULE_PROGRAMS_REGISTRY) \
+  M(flash,   MODULE_FLASH_REGISTRY)          \
   M(file,    MODULE_FILE)                    \
   M(pipe,    MODULE_PIPE)                    \
   M(zlib,    MODULE_ZLIB)                    \
@@ -249,6 +251,7 @@ namespace toit {
   PRIMITIVE(error, 1)                        \
   PRIMITIVE(get_option, 3)                   \
   PRIMITIVE(set_option, 4)                   \
+  PRIMITIVE(gc, 1)                           \
 
 #define MODULE_UDP(PRIMITIVE)                \
   PRIMITIVE(init, 0)                         \
@@ -260,6 +263,7 @@ namespace toit {
   PRIMITIVE(set_option, 4)                   \
   PRIMITIVE(error, 1)                        \
   PRIMITIVE(close, 2)                        \
+  PRIMITIVE(gc, 1)                           \
 
 #define MODULE_TLS(PRIMITIVE)                \
   PRIMITIVE(init, 1)                         \
@@ -289,6 +293,7 @@ namespace toit {
   PRIMITIVE(disconnect, 2)                   \
   PRIMITIVE(disconnect_reason, 1)            \
   PRIMITIVE(get_ip, 1)                       \
+  PRIMITIVE(get_stored_ip, 0)                \
   PRIMITIVE(get_rssi, 1)                     \
 
 #define MODULE_ETHERNET(PRIMITIVE)           \
@@ -350,9 +355,11 @@ namespace toit {
   PRIMITIVE(read_reg, 4)                     \
 
 #define MODULE_I2S(PRIMITIVE)                \
-  PRIMITIVE(init, 6)                         \
-  PRIMITIVE(close, 1)                        \
+  PRIMITIVE(init, 0)                        \
+  PRIMITIVE(create, 12)                      \
+  PRIMITIVE(close, 2)                        \
   PRIMITIVE(write, 2)                        \
+  PRIMITIVE(read,  1)                        \
 
 #define MODULE_SPI(PRIMITIVE)                \
   PRIMITIVE(init, 3)                         \
@@ -368,6 +375,15 @@ namespace toit {
   PRIMITIVE(set_baud_rate, 2)                \
   PRIMITIVE(write, 6)                        \
   PRIMITIVE(read, 1)                         \
+
+#define MODULE_RMT(PRIMITIVE)                \
+  PRIMITIVE(init, 0)                         \
+  PRIMITIVE(use, 2)                          \
+  PRIMITIVE(unuse, 2)                        \
+  PRIMITIVE(config_rx, 9)                    \
+  PRIMITIVE(config_tx, 12)                   \
+  PRIMITIVE(transfer, 2)                     \
+  PRIMITIVE(transfer_and_read, 4)            \
 
 #define MODULE_CRYPTO(PRIMITIVE)             \
   PRIMITIVE(sha1_start, 1)                   \
@@ -414,7 +430,7 @@ namespace toit {
   PRIMITIVE(unregister_object_notifier, 2)   \
 
 #define MODULE_SNAPSHOT(PRIMITIVE)           \
-  PRIMITIVE(launch, 4)                       \
+  PRIMITIVE(launch, 3)                       \
 
 #define MODULE_SERIALIZATION(PRIMITIVE)      \
   PRIMITIVE(serialize, 1)                    \
@@ -462,6 +478,18 @@ namespace toit {
   PRIMITIVE(spawn, 3)                        \
   PRIMITIVE(is_running, 2)                   \
   PRIMITIVE(kill, 2)                         \
+
+#define MODULE_FLASH_REGISTRY(PRIMITIVE)     \
+  PRIMITIVE(next, 1)                         \
+  PRIMITIVE(info, 1)                         \
+  PRIMITIVE(erase, 2)                        \
+  PRIMITIVE(get_id, 1)                       \
+  PRIMITIVE(get_size, 1)                     \
+  PRIMITIVE(get_type, 1)                     \
+  PRIMITIVE(get_meta_data, 1)                \
+  PRIMITIVE(reserve_hole, 2)                 \
+  PRIMITIVE(cancel_reservation, 1)           \
+  PRIMITIVE(erase_flash_registry, 0)         \
 
 #define MODULE_FILE(PRIMITIVE)               \
   PRIMITIVE(open, 3)                         \
@@ -769,6 +797,7 @@ namespace toit {
 #define _A_T_X509ResourceGroup(N, name)   MAKE_UNPACKING_MACRO(X509ResourceGroup, N, name)
 #define _A_T_PWMResourceGroup(N, name)    MAKE_UNPACKING_MACRO(PWMResourceGroup, N, name)
 #define _A_T_RpcResourceGroup(N, name)    MAKE_UNPACKING_MACRO(RpcResourceGroup, N, name)
+#define _A_T_RMTResourceGroup(N, name)    MAKE_UNPACKING_MACRO(RMTResourceGroup, N, name)
 
 #define _A_T_Resource(N, name)            MAKE_UNPACKING_MACRO(Resource, N, name)
 #define _A_T_Directory(N, name)           MAKE_UNPACKING_MACRO(Directory, N, name)
@@ -794,6 +823,7 @@ namespace toit {
 #define _A_T_Adler32(N, name)             MAKE_UNPACKING_MACRO(Adler32, N, name)
 #define _A_T_ZlibRle(N, name)             MAKE_UNPACKING_MACRO(ZlibRle, N, name)
 #define _A_T_UARTResource(N, name)        MAKE_UNPACKING_MACRO(UARTResource, N, name)
+#define _A_T_I2SResource(N, name)         MAKE_UNPACKING_MACRO(I2SResource, N, name)
 #define _A_T_AdcState(N, name)            MAKE_UNPACKING_MACRO(AdcState, N, name)
 #define _A_T_PWMResource(N, name)         MAKE_UNPACKING_MACRO(PWMResource, N, name)
 #define _A_T_GAPResource(N, name)         MAKE_UNPACKING_MACRO(GAPResource, N, name)
@@ -896,10 +926,25 @@ namespace toit {
   _A_T_##t10(9, n10); \
   _A_T_##t11(10, n11);
 
-#define _OVERRIDE(_1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16, _17, _18, _19, _20, _21, _22, NAME, ...) NAME
+#define _A_24(t1, n1, t2, n2, t3, n3, t4, n4, t5, n5, t6, n6, t7, n7, t8, n8, t9, n9, t10, n10, t11, n11, t12, n12) \
+  _A_T_##t1(0, n1); \
+  _A_T_##t2(1, n2); \
+  _A_T_##t3(2, n3); \
+  _A_T_##t4(3, n4); \
+  _A_T_##t5(4, n5); \
+  _A_T_##t6(5, n6); \
+  _A_T_##t7(6, n7); \
+  _A_T_##t8(7, n8); \
+  _A_T_##t9(8, n9); \
+  _A_T_##t10(9, n10); \
+  _A_T_##t11(10, n11); \
+  _A_T_##t12(11, n12);
+
+#define _OVERRIDE(_1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16, _17, _18, _19, _20, _21, _22, _23, _24, NAME, ...) NAME
 
 #define ARGS(...)        \
   _OVERRIDE(__VA_ARGS__, \
+    _A_24, _ODD,         \
     _A_22, _ODD,         \
     _A_20, _ODD,         \
     _A_18, _ODD,         \
@@ -922,6 +967,7 @@ namespace toit {
 #define ILLEGAL_UTF_8 return Primitive::mark_as_error(process->program()->illegal_utf_8())
 #define INVALID_ARGUMENT return Primitive::mark_as_error(process->program()->invalid_argument())
 #define MALLOC_FAILED return Primitive::mark_as_error(process->program()->malloc_failed())
+#define CROSS_PROCESS_GC return Primitive::mark_as_error(process->program()->cross_process_gc())
 #define NEGATIVE_ARGUMENT return Primitive::mark_as_error(process->program()->negative_argument())
 #define OUT_OF_BOUNDS return Primitive::mark_as_error(process->program()->out_of_bounds())
 #define OUT_OF_RANGE return Primitive::mark_as_error(process->program()->out_of_range())
