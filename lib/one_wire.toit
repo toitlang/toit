@@ -96,7 +96,7 @@ class OneWire:
   /**
   Writes $count bits from $value to the receiver.
   */
-  write_bits value/int count/int -> none:
+  write_bits value/int count/int=8 -> none:
     signals :=  rmt.Signals count * SIGNALS_PER_BIT
     encode_write_signals_ signals value --count=count
     rmt.transfer tx_channel_ signals
