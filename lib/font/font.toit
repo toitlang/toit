@@ -4,7 +4,7 @@
 
 class Font:
   proxy_ := ?
-  hash_code / int
+  hash_code / int ::= hash_code_counter_++
 
   static hash_code_counter_ := 1234
 
@@ -12,7 +12,6 @@ class Font:
 
   constructor.get font_name/string:
     proxy_ = font_get_ resource_freeing_module_ font_name
-    hash_code = hash_code_counter_++
     add_finalizer this:: this.finalize_
 
   /**
@@ -30,7 +29,6 @@ class Font:
     // The primitive takes a small array (not a list) of byte arrays, so we
     // convert to that.
     array := Array_.from unicode_blocks
-    hash_code = hash_code_counter_++
     proxy_ = font_get_nonbuiltin_ resource_freeing_module_ array
     add_finalizer this:: this.finalize_
 
@@ -45,7 +43,6 @@ class Font:
     // The primitive takes a small array (not a list) of byte arrays, so we
     // convert to that.
     array := create_array_ glyph_byte_data
-    hash_code = hash_code_counter_++
     proxy_ = font_get_nonbuiltin_ resource_freeing_module_ array
     add_finalizer this:: this.finalize_
 
