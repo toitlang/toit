@@ -17,6 +17,11 @@ import uuid
 import monitor
 import encoding.base64 as base64
 
+import system.services
+  show
+    RPC_SERVICES_MANAGER_NOTIFY_OPEN_CLIENT
+    RPC_SERVICES_MANAGER_NOTIFY_CLOSE_CLIENT
+
 import .flash.allocation
 import .flash.registry
 import .system_rpc_broker
@@ -180,7 +185,7 @@ class ContainerManager implements SystemMessageHandler_:
     clients := service_managers_[target]
     if clients:
       clients.add pid
-      process_send_ target SYSTEM_SERVICE_NOTIFY_ [0, pid]
+      process_send_ target SYSTEM_SERVICE_NOTIFY_ [RPC_SERVICES_MANAGER_NOTIFY_OPEN_CLIENT, pid]
     return target
 
   register_descriptor gid/int pid/int descriptor/Object -> int:
@@ -236,7 +241,8 @@ class ContainerManager implements SystemMessageHandler_:
       // Tell service managers about the termination.
       service_managers_.remove pid
       service_managers_.do: | manager clients |
-        if clients.contains pid: process_send_ manager SYSTEM_SERVICE_NOTIFY_ [1, pid]
+        if clients.contains pid:
+          process_send_ manager SYSTEM_SERVICE_NOTIFY_ [RPC_SERVICES_MANAGER_NOTIFY_CLOSE_CLIENT, pid]
       // Tell the container (if any) that the process is dead.
       if container:
         error/int := arguments

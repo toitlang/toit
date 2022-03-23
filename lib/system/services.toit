@@ -17,6 +17,9 @@ RPC_SERVICES_MANAGER_UNLISTEN ::= 202
 RPC_SERVICES_DISCOVER         ::= 210
 RPC_SERVICES_RESOLVE          ::= 211
 
+RPC_SERVICES_MANAGER_NOTIFY_OPEN_CLIENT  ::= 300
+RPC_SERVICES_MANAGER_NOTIFY_CLOSE_CLIENT ::= 301
+
 abstract class ServiceClient:
   name/string ::= ?
   version_/List ::= ?
@@ -139,11 +142,11 @@ class ServiceManager_ implements SystemMessageHandler_:
     assert: type == SYSTEM_SERVICE_NOTIFY_
     kind := message[0]
     client := message[1]
-    if kind == 0:
+    if kind == RPC_SERVICES_MANAGER_NOTIFY_OPEN_CLIENT:
       open := broker_.add_client client
       task:: services_by_procedure_.do --values: | service/ServiceDefinition |
         service.on_client_opened client open
-    else if kind == 1:
+    else if kind == RPC_SERVICES_MANAGER_NOTIFY_CLOSE_CLIENT:
       open := broker_.remove_client client
       task:: services_by_procedure_.do --values: | service/ServiceDefinition |
         service.on_client_closed client open
