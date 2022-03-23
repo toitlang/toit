@@ -50,8 +50,8 @@ class OneWire:
   /**
   Writes the given bytes and then reads the given $byte_count number of bytes.
 
-  There is no interruption between the write and the read. Should be used when
-    the read must happen immediately after the write.
+  Should be used when the read must happen immediately after the write as there
+    is no interruption between the write and the read.
   */
   write_then_read bytes/ByteArray byte_count/int -> ByteArray:
     signals := encode_write_then_read_signals_ bytes byte_count
