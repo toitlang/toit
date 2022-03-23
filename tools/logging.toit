@@ -19,7 +19,7 @@ import bytes
 
 log_buffer_/bytes.Buffer ::= bytes.Buffer.with_initial_size 128
 
-log_format names/List?/* <string> */ level/int message/string tags/Map? /* <string, any> */ --with_timestamp=true -> string:
+log_format names/List?/* <string> */ level/int message/string tags/Map? /* <string, any> */ --timestamp=true -> string:
   if level == PRINT_LEVEL:
     return message
 
@@ -29,7 +29,7 @@ log_format names/List?/* <string> */ level/int message/string tags/Map? /* <stri
   //
   //  (5.252721) [at] DEBUG: reading data {foo: bar}
 
-  if with_timestamp:
+  if timestamp:
     buffer.write "("
     timestamp_prefix buffer
     buffer.write ") "

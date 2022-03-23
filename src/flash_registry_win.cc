@@ -31,7 +31,7 @@ void FlashRegistry::tear_down() {
 }
 
 bool FlashRegistry::is_allocations_set_up() {
-  UNIMPLEMENTED();
+  return true;
 }
 
 void FlashRegistry::flush() {
@@ -39,7 +39,7 @@ void FlashRegistry::flush() {
 }
 
 int FlashRegistry::allocations_size() {
-  UNIMPLEMENTED();
+  return 0;
 }
 
 int FlashRegistry::erase_chunk(int offset, int size) {

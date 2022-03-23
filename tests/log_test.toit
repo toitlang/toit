@@ -11,7 +11,7 @@ class TestTarget extends log.DefaultTarget:
   expected_ := null
 
   log names level message tags -> none:
-    out := log_format names level message tags --with_timestamp=false
+    out := log_format names level message tags --no-timestamp
     expect_equals expected_ out
 
 target_ := TestTarget
