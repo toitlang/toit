@@ -52,6 +52,7 @@
 #include "rtc_memory_esp32.h"
 #include "vm.h"
 #include "objects_inline.h"
+#include "third_party/dartino/gc_metadata.h"
 
 namespace toit {
 
@@ -90,6 +91,7 @@ static void start() {
   RtcMemory::set_up();
   FlashRegistry::set_up();
   OS::set_up();
+  GcMetadata::set_up();
 
   // The Toit firmware only supports OTAs if we can find the OTA app partition.
   bool supports_ota = NULL != esp_partition_find_first(
@@ -105,6 +107,7 @@ static void start() {
     exit_state = vm.scheduler()->run_boot_program(const_cast<Program*>(program), null, group_id);
   }
 
+  GcMetadata::tear_down();
   OS::tear_down();
   FlashRegistry::tear_down();
 

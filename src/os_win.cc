@@ -24,6 +24,7 @@
 #include "program_memory.h"
 
 #include <errno.h>
+#include <memoryapi.h>
 #include <pthread.h>
 #include <sys/time.h>
 #include <windows.h>
@@ -291,6 +292,41 @@ size_t ProtectableAlignedMemory::compute_alignment(size_t alignment) {
 
 int OS::num_cores() {
   return 1;
+}
+
+void* OS::grab_virtual_memory(void* address, uword size) {
+  size = Utils::round_up(size, 4096);
+  void* result = VirtualAlloc(address, size, MEM_RESERVE, PAGE_NOACCESS);
+  return result;
+}
+
+void OS::ungrab_virtual_memory(void* address, uword size) {
+  if (!address) return;
+  BOOL ok = VirtualFree(address, 0, MEM_RELEASE);
+  if (!ok) FATAL("ungrab_virtual_memory");
+}
+
+bool OS::use_virtual_memory(void* addr, uword sz) {
+  ASSERT(addr != null);
+  if (sz == 0) return true;
+  uword address = reinterpret_cast<uword>(addr);
+  uword end = address + sz;
+  uword rounded = Utils::round_down(address, 4096);
+  uword size = Utils::round_up(end - rounded, 4096);
+  void* result = VirtualAlloc(reinterpret_cast<void*>(address), size, MEM_COMMIT, PAGE_READWRITE);
+  if (result != reinterpret_cast<void*>(address)) FATAL("use_virtual_memory");
+  return true;
+}
+
+void OS::unuse_virtual_memory(void* addr, uword sz) {
+  uword address = reinterpret_cast<uword>(addr);
+  uword end = address + sz;
+  uword rounded = Utils::round_up(address, 4096);
+  uword size = Utils::round_down(end - rounded, 4096);
+  if (size != 0) {
+    BOOL ok = VirtualFree(reinterpret_cast<void*>(rounded), size, MEM_DECOMMIT);
+    if (!ok) FATAL("unuse_virtual_memory");
+  }
 }
 
 void OS::free_block(Block* block) {

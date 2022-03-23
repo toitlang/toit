@@ -15,6 +15,7 @@
 #include "../../objects.h"
 #include "mark_sweep.h"
 #include "object_memory.h"
+#include "two_space_heap.h"
 
 #ifdef _MSC_VER
 #include <intrin.h>

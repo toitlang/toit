@@ -52,16 +52,16 @@ class LwIPSocket : public Resource, public BacklogSocketList::Element {
   void tear_down();
 
   static err_t on_accept(void* arg, tcp_pcb* tpcb, err_t err) {
-    unvoid_cast<LwIPSocket*>(arg)->on_accept(tpcb, err);
-    return ERR_OK;
+    int result = unvoid_cast<LwIPSocket*>(arg)->on_accept(tpcb, err);
+    return result;
   }
-  void on_accept(tcp_pcb* tpcb, err_t err);
+  int on_accept(tcp_pcb* tpcb, err_t err);
 
   static err_t on_connected(void* arg, tcp_pcb* tpcb, err_t err) {
-    unvoid_cast<LwIPSocket*>(arg)->on_connected(err);
-    return ERR_OK;
+    int result = unvoid_cast<LwIPSocket*>(arg)->on_connected(err);
+    return result;
   }
-  void on_connected(err_t err);
+  int on_connected(err_t err);
 
   static err_t on_read(void* arg, tcp_pcb* tpcb, pbuf* p, err_t err) {
     unvoid_cast<LwIPSocket*>(arg)->on_read(p, err);
@@ -97,7 +97,6 @@ class LwIPSocket : public Resource, public BacklogSocketList::Element {
   void set_tpcb(tcp_pcb* tpcb) { _tpcb = tpcb; }
 
   err_t error() { return _error; }
-  void set_error(err_t error) { _error = error; }
 
   Kind kind() { return _kind; }
 
@@ -113,7 +112,7 @@ class LwIPSocket : public Resource, public BacklogSocketList::Element {
   bool read_closed() { return _read_closed; }
   void mark_read_closed() { _read_closed = true; }
 
-  void new_backlog_socket(tcp_pcb* tpcb);
+  int new_backlog_socket(tcp_pcb* tpcb);
   LwIPSocket* accept();
 
  private:

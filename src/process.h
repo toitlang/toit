@@ -44,6 +44,7 @@ class Process : public ProcessListFromProcessGroup::Element,
     IDLE,
     SCHEDULED,
     RUNNING,
+    TERMINATING,
 
     SUSPENDED_IDLE,
     SUSPENDED_SCHEDULED,
@@ -52,14 +53,14 @@ class Process : public ProcessListFromProcessGroup::Element,
 
   static const char* StateName[];
 
-  Process(Program* program, ProcessGroup* group, char** args, Block* initial_block);
+  Process(Program* program, ProcessGroup* group, SystemMessage* termination, char** args, Block* initial_block);
 #ifndef TOIT_FREERTOS
-  Process(Program* program, ProcessGroup* group, SnapshotBundle bundle, char** args, Block* initial_block);
+  Process(Program* program, ProcessGroup* group, SystemMessage* termination, SnapshotBundle bundle, char** args, Block* initial_block);
 #endif
-  Process(Program* program, ProcessGroup* group, Method method, const uint8* arguments_address, int arguments_length, Block* initial_block);
+  Process(Program* program, ProcessGroup* group, SystemMessage* termination, Method method, uint8* arguments, Block* initial_block);
   ~Process();
 
-  Process(ProcessRunner* runner, ProcessGroup* group);
+  Process(ProcessRunner* runner, ProcessGroup* group, SystemMessage* termination);
 
   int id() const { return _id; }
   int next_task_id() { return _next_task_id++; }
@@ -72,6 +73,7 @@ class Process : public ProcessListFromProcessGroup::Element,
 
   // Garbage collection operation for runtime objects.
   int scavenge() {
+    if (program() == null) return 0;
     int result = object_heap()->scavenge();
     _memory_usage = object_heap()->usage("object heap after gc");
     return result;
@@ -107,14 +109,19 @@ class Process : public ProcessListFromProcessGroup::Element,
 
   void print();
 
-  Method entry() { return _entry; }
+  Method entry() const { return _entry; }
   char** args() { return _args; }
+  Method hatch_method() const { return _hatch_method; }
+  uint8* hatch_arguments() const { return _hatch_arguments; }
+  void clear_hatch_arguments() { _hatch_arguments = null; }
 
   // Handling of messages and completions.
   bool has_messages();
   Message* peek_message();
   void remove_first_message();
   int message_count();
+
+  SystemMessage* take_termination_message(uint8 result);
 
   // Signals that a message is for this process.
   void send_mail(Message* message);
@@ -135,7 +142,7 @@ class Process : public ProcessListFromProcessGroup::Element,
 
   void signal(Signal signal);
   void clear_signal(Signal signal);
-  uint32_t signals() { return _signals; }
+  uint32_t signals() const { return _signals; }
 
   int current_directory() { return _current_directory; }
   void set_current_directory(int fd) { _current_directory = fd; }
@@ -220,7 +227,7 @@ class Process : public ProcessListFromProcessGroup::Element,
   }
 
  private:
-  Process(Program* program, ProcessRunner* runner, ProcessGroup* group, Block* initial_block);
+  Process(Program* program, ProcessRunner* runner, ProcessGroup* group, SystemMessage* termination, Block* initial_block);
   void _append_message(Message* message);
   void _ensure_random_seeded();
 
@@ -237,11 +244,17 @@ class Process : public ProcessListFromProcessGroup::Element,
 
   Method _entry;
   char** _args;
+
+  Method _hatch_method;
+  uint8* _hatch_arguments;
+
   ObjectHeap _object_heap;
   Usage _memory_usage;
   int64 _last_bytes_allocated;
 
   MessageFIFO _messages;
+
+  SystemMessage* _termination_message;
 
   bool _random_seeded;
   uint64_t _random_state0;

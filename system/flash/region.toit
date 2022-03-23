@@ -1,4 +1,4 @@
-// Copyright (C) 2018 Toitware ApS.
+// Copyright (C) 2022 Toitware ApS.
 //
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -13,21 +13,6 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-#pragma once
-
-namespace toit {
-
-enum UDPState {
-  UDP_READ  = 1 << 0,
-  UDP_WRITE = 1 << 1,
-  UDP_ERROR = 1 << 2,
-  UDP_NEEDS_GC = 1 << 3,
-};
-
-enum UDPOption {
-  UDP_PORT        = 1,
-  UDP_ADDRESS     = 2,
-  UDP_BROADCAST   = 3,
-};
-
-} // namespace toit
+interface FlashRegion:
+  offset -> int
+  size -> int

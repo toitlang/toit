@@ -75,7 +75,7 @@ PRIMITIVE(write_string_on_stderr) {
 }
 
 PRIMITIVE(hatch_method) {
-  Method method = process->object_heap()->hatch_method();
+  Method method = process->hatch_method();
   int id = method.is_valid()
       ? process->program()->absolute_bci_from_bcp(method.header_bcp())
       : -1;
@@ -83,11 +83,24 @@ PRIMITIVE(hatch_method) {
 }
 
 PRIMITIVE(hatch_args) {
-  return process->object_heap()->hatch_arguments();
+  uint8* arguments = process->hatch_arguments();
+  if (!arguments) return process->program()->empty_array();
+
+  MessageDecoder decoder(process, arguments);
+  Object* decoded = decoder.decode();
+  if (decoder.allocation_failed()) {
+    decoder.remove_disposing_finalizers();
+    ALLOCATION_FAILED;
+  }
+
+  process->clear_hatch_arguments();
+  free(arguments);
+  decoder.register_external_allocations();
+  return decoded;
 }
 
 PRIMITIVE(hatch) {
-  ARGS(Object, entry, Blob, array)
+  ARGS(Object, entry, Object, arguments)
   if (!entry->is_smi()) WRONG_TYPE;
 
   int method_id = Smi::cast(entry)->value();
@@ -96,7 +109,29 @@ PRIMITIVE(hatch) {
   Block* block = VM::current()->heap_memory()->allocate_initial_block();
   if (!block) ALLOCATION_FAILED;
 
-  Process* child = VM::current()->scheduler()->hatch(process->program(), process->group(), method, array.address(), array.length(), block);
+  int length = 0;
+  { MessageEncoder size_encoder(process, null);
+    if (!size_encoder.encode(arguments)) WRONG_TYPE;
+    length = size_encoder.size();
+  }
+
+  HeapTagScope scope(ITERATE_CUSTOM_TAGS + EXTERNAL_BYTE_ARRAY_MALLOC_TAG);
+  uint8* buffer = unvoid_cast<uint8*>(malloc(length));
+  if (buffer == null) {
+    VM::current()->heap_memory()->free_unused_block(block);
+    MALLOC_FAILED;
+  }
+
+  MessageEncoder encoder(process, buffer);
+  if (!encoder.encode(arguments)) {
+    VM::current()->heap_memory()->free_unused_block(block);
+    encoder.free_copied();
+    free(buffer);
+    if (encoder.malloc_failed()) MALLOC_FAILED;
+    OTHER_ERROR;
+  }
+
+  Process* child = VM::current()->scheduler()->hatch(process->program(), process->group(), method, buffer, block);
   if (!child) {
     VM::current()->heap_memory()->free_unused_block(block);
     MALLOC_FAILED;
@@ -1715,7 +1750,7 @@ PRIMITIVE(process_send) {
   SystemMessage* message = null;
   MessageEncoder encoder(process, buffer);
   if (encoder.encode(array)) {
-    message = _new SystemMessage(type, process->group()->id(), process->id(), buffer, length);
+    message = _new SystemMessage(type, process->group()->id(), process->id(), buffer);
   }
 
   if (message == null) {
@@ -1725,7 +1760,9 @@ PRIMITIVE(process_send) {
     OTHER_ERROR;
   }
 
-  // From here on, the destructor of SystemMessage will free the data.
+  // From here on, the destructor of SystemMessage will free the buffer and
+  // potentially the externals too if ownership isn't transferred elsewhere
+  // when the message is received.
   scheduler_err_t result = (process_id >= 0)
       ? VM::current()->scheduler()->send_message(process_id, message)
       : VM::current()->scheduler()->send_system_message(message);
@@ -1737,8 +1774,10 @@ PRIMITIVE(process_send) {
     // TODO(kasper): Consider doing in-place shrinking of internal, non-constant
     // byte arrays and strings.
   } else {
-    // Sending failed. Free the copied bits.
+    // Sending failed. Free any copied bits, but make sure to not free the externals
+    // that have not been neutered on this path.
     encoder.free_copied();
+    message->free_data_but_keep_externals();
     delete message;
   }
   return Smi::from(result);
@@ -1772,6 +1811,7 @@ PRIMITIVE(task_receive_message) {
       ALLOCATION_FAILED;
     }
     decoder.register_external_allocations();
+    system->free_data_but_keep_externals();
 
     array->at_put(0, Smi::from(system->type()));
     array->at_put(1, Smi::from(system->gid()));

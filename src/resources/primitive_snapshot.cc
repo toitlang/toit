@@ -30,20 +30,15 @@ namespace toit {
 MODULE_IMPLEMENTATION(snapshot, MODULE_SNAPSHOT)
 
 PRIMITIVE(launch) {
-  ARGS(Blob, bytes, int, from, int, to, bool, pass_args);
-
-  if (!(0 <= from && from <= to && to <= bytes.length())) {
-    INVALID_ARGUMENT;
-  }
+  ARGS(Blob, bytes, int, gid, bool, pass_args);
 
   Block* initial_block = VM::current()->heap_memory()->allocate_initial_block();
   if (!initial_block) ALLOCATION_FAILED;
 
-  Snapshot snapshot(&bytes.address()[from], to - from);
+  Snapshot snapshot(bytes.address(), bytes.length());
   auto image = snapshot.read_image();
   Program* program = image.program();
-  int group_id = VM::current()->scheduler()->next_group_id();
-  ProcessGroup* process_group = ProcessGroup::create(group_id, program, image.memory());
+  ProcessGroup* process_group = ProcessGroup::create(gid, program, image.memory());
   if (process_group == NULL) {
     VM::current()->heap_memory()->free_unused_block(initial_block);
     image.release();

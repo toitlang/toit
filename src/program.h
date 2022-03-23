@@ -43,6 +43,7 @@ namespace toit {
   ROOT(String,     illegal_utf_8)            \
   ROOT(String,     invalid_argument)         \
   ROOT(String,     malloc_failed)            \
+  ROOT(String,     cross_process_gc)         \
   ROOT(String,     negative_argument)        \
   ROOT(String,     out_of_bounds)            \
   ROOT(String,     out_of_range)             \
