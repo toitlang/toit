@@ -101,7 +101,7 @@ class Scheduler {
   // deliver the signal.
   bool signal_process(Process* sender, int target_id, Process::Signal signal);
 
-  Process* hatch(Program* program, ProcessGroup* process_group, Method method, const uint8* array_address, int array_length, Block* initial_block);
+  Process* hatch(Program* program, ProcessGroup* process_group, Method method, uint8* arguments, Block* initial_block);
 
   // Returns a new process id (only called from Process constructor).
   int next_process_id();
@@ -181,6 +181,8 @@ class Scheduler {
   Scheduler::ExitState launch_program(Locker& locker, Process* process);
 
   Process* find_process(Locker& locker, int process_id);
+
+  SystemMessage* new_termination_message(int gid);
 
   // Called by the launch thread, to signal that time has passed.
   // The tick is used to drive process preemption.
