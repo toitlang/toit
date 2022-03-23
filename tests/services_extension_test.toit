@@ -16,9 +16,6 @@ interface MyService:
   static BAR_INDEX ::= 1
   bar x/int -> int
 
-  static UNINSTALL_INDEX ::= 2
-  uninstall -> none
-
 interface MyServiceHest extends MyService:
   static NAME/string ::= "myservice/hest"
   static MAJOR/int   ::= 1
@@ -66,9 +63,6 @@ class MyServiceClient extends services.ServiceClient implements MyService:
   bar x/int -> int:
     return invoke_ MyService.BAR_INDEX x
 
-  uninstall -> none:
-    invoke_ MyService.UNINSTALL_INDEX null
-
 class MyServiceHestClient extends MyServiceClient implements MyServiceHest:
   constructor.lookup name=MyServiceHest.NAME major=MyServiceHest.MAJOR minor=MyServiceHest.MINOR:
     super.lookup name major minor
@@ -86,7 +80,6 @@ class MyServiceDefinition extends services.ServiceDefinition implements MyServic
   handle index/int arguments/any -> any:
     if index == MyService.FOO_INDEX: return foo
     if index == MyService.BAR_INDEX: return bar arguments
-    if index == MyService.UNINSTALL_INDEX: return uninstall
     if index == MyServiceHest.BAZ_INDEX: return baz arguments
     unreachable
 
