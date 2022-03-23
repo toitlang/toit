@@ -266,6 +266,8 @@ The $signals are transferred over the given $tx channel and signals are received
 The given $max_returned_bytes specifies the maximum byte size of the returned signals.
 */
 transfer_and_receive --rx/Channel --tx/Channel signals/Signals max_returned_bytes/int -> Signals:
+  if max_returned_bytes > rx.rx_buffer_size: throw "maximum returned buffer size greater than allocated RX buffer size"
+
   result := rmt_transfer_and_read_ tx.num rx.num signals.bytes_ max_returned_bytes
   return Signals.from_bytes result
 
