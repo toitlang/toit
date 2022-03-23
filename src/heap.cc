@@ -61,10 +61,6 @@ Heap::Heap(Process* owner, Program* program, Block* initial_block)
 #else
 Heap::Heap(Process* owner, Program* program)
     : _program(program)
-    , _in_gc(false)
-    , _gc_allowed(true)
-    , _total_bytes_allocated(0)
-    , _last_allocation_result(ALLOCATION_SUCCESS)
     , _owner(owner)
     , _two_space_heap(program) {}
 #endif
