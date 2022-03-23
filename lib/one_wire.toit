@@ -5,14 +5,15 @@
 import rmt
 
 class OneWire:
-  static RESET_LOW_DURATION_STD     ::= 480
+  static RESET_LOW_DURATION_STD ::= 480
 
   static IO_TIME_SLOT ::= 70
   static READ_INIT_TIME_STD ::= 6
-  static WRITE_1_LOW_DELAY ::= READ_INIT_TIME_STD
+  static WRITE_1_LOW_DELAY ::= 6
   static WRITE_0_LOW_DELAY ::= 60
 
   static SIGNALS_PER_BIT ::= 2
+  static SIGNALS_PER_BYTE ::= BITS_PER_BYTE * SIGNALS_PER_BIT
   static INVALID_SIGNAL ::= "INVALID_SIGNAL"
 
   rx_channel_/rmt.Channel
@@ -36,16 +37,16 @@ class OneWire:
   write_then_read bytes/ByteArray byte_count/int -> ByteArray:
     // TODO: Check that we have allocated a sufficiently large RX buffer.
     signals := encode_write_then_read_signals_ bytes byte_count
-    expected_bytes_count := (bytes.size + byte_count) * BITS_PER_BYTE * rmt.BYTES_PER_SIGNAL * SIGNALS_PER_BIT
+    expected_bytes_count := (bytes.size + byte_count) * SIGNALS_PER_BYTE * rmt.BYTES_PER_SIGNAL
     received_signals := rmt.transfer_and_receive --rx=rx_channel_ --tx=tx_channel_ signals expected_bytes_count
     return decode_signals_to_bytes_ received_signals --from=bytes.size byte_count
 
   static encode_write_then_read_signals_ bytes/ByteArray read_bytes_count/int -> rmt.Signals:
-    signals := rmt.Signals (bytes.size + read_bytes_count) * rmt.BYTES_PER_SIGNAL * BITS_PER_BYTE
+    signals := rmt.Signals (bytes.size + read_bytes_count) * SIGNALS_PER_BYTE
     i := 0
     bytes.do:
       encode_write_signals_ signals it --from=i
-      i += 8 * 2
+      i += SIGNALS_PER_BYTE
     encode_read_signals_ signals --from=i --bit_count=read_bytes_count * BITS_PER_BYTE
     return signals
 
@@ -58,13 +59,12 @@ class OneWire:
     assert: 0 <= from
     assert: 0 <= byte_count
 
-    if from + byte_count * BITS_PER_BYTE * SIGNALS_PER_BIT > signals.size: throw INVALID_SIGNAL
+    if from + byte_count * SIGNALS_PER_BYTE > signals.size: throw INVALID_SIGNAL
 
-    write_signal_count := from * rmt.BYTES_PER_SIGNAL * BITS_PER_BYTE
+    write_signal_count := from * SIGNALS_PER_BYTE
     result := ByteArray byte_count: 0
     byte_count.repeat:
-      i := write_signal_count + it * 16
-      result[it] = decode_signals_to_bits_ signals --from=i
+      result[it] = decode_signals_to_bits_ signals --from=write_signal_count + it * SIGNALS_PER_BYTE
     return result
 
   static encode_read_signals_ signals/rmt.Signals --from/int=0 --bit_count/int:
