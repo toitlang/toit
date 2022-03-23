@@ -44,7 +44,11 @@ Process::Process(Program* program, ProcessRunner* runner, ProcessGroup* group, S
     , _entry(Method::invalid())
     , _hatch_method(Method::invalid())
     , _hatch_arguments(null)
+#ifdef LEGACY_GC
     , _object_heap(program, this, initial_block)
+#else
+    , _object_heap(program, this)
+#endif
     , _memory_usage(Usage("initial object heap"))
     , _last_bytes_allocated(0)
     , _termination_message(termination)

@@ -385,7 +385,6 @@ class OldSpace : public Space {
   void set_compacting(bool value) { compacting_ = value; }
   bool compacting() { return compacting_; }
 
-  void clear_hard_limit_hit() { hard_limit_hit_ = false; }
   void set_used_after_last_gc(uword used) { used_after_last_gc_ = used; }
 
   // For detecting pointless GCs that are really an out-of-memory situation.
@@ -409,7 +408,6 @@ class OldSpace : public Space {
   uword new_space_garbage_found_since_last_gc_ = 0;
   int successive_pointless_gcs_ = 0;
   uword used_after_last_gc_ = 0;
-  bool hard_limit_hit_ = false;
 };
 
 class NoAllocationFailureScope {

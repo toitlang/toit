@@ -42,7 +42,7 @@ TwoSpaceHeap::~TwoSpaceHeap() {
   delete semi_space_;
 }
 
-Object* TwoSpaceHeap::allocate(uword size) {
+HeapObject* TwoSpaceHeap::allocate(uword size) {
   uword result = semi_space_->allocate(size);
   if (result == 0) {
     return new_space_allocation_failure(size);

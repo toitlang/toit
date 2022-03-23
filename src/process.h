@@ -72,15 +72,15 @@ class Process : public ProcessListFromProcessGroup::Element,
   void mark_as_priviliged() { _is_privileged = true; }
 
   // Garbage collection operation for runtime objects.
-  int scavenge() {
+  int gc() {
     if (program() == null) return 0;
-    int result = object_heap()->scavenge();
+    int result = object_heap()->gc();
     _memory_usage = object_heap()->usage("object heap after gc");
     return result;
   }
 
-  bool idle_since_scavenge() const { return _idle_since_scavenge; }
-  void set_idle_since_scavenge(bool value) { _idle_since_scavenge = value; }
+  bool idle_since_gc() const { return _idle_since_gc; }
+  void set_idle_since_gc(bool value) { _idle_since_gc = value; }
 
   bool has_finalizer(HeapObject* key, Object* lambda) {
     return object_heap()->has_finalizer(key, lambda);
@@ -157,9 +157,11 @@ class Process : public ProcessListFromProcessGroup::Element,
   Object* allocate_string_or_error(const char* content, int length);
   ByteArray* allocate_byte_array(int length, Error** error, bool force_external=false);
 
+#ifdef LEGACY_GC
   word number_of_blocks() {
     return _object_heap.number_of_blocks();
   }
+#endif
 
   void set_max_heap_size(word bytes) {
     _object_heap.set_max_heap_size(bytes);
@@ -267,7 +269,7 @@ class Process : public ProcessListFromProcessGroup::Element,
   SchedulerThread* _scheduler_thread;
 
   bool _construction_failed = false;
-  bool _idle_since_scavenge = true;
+  bool _idle_since_gc = true;
 
   int64 _last_run_us = 0;
   int64 _unyielded_for_us = 0;

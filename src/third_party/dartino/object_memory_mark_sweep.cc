@@ -121,7 +121,6 @@ uword OldSpace::allocate_in_new_chunk(uword size) {
     }
   }
 
-  hard_limit_hit_ = true;
   allocation_budget_ = -1;  // Trigger GC.
   return 0;
 }
