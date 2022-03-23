@@ -127,9 +127,13 @@ class ContainerManager implements SystemMessageHandler_:
   next_handle_/int := 0
   done_ ::= monitor.Latch
 
+  service_managers_/Map ::= {:}     // Map<int, Set<int>>
+  services_by_id_/Map ::= {:}       // Map<int, Set<string>>
+  services_by_name_/Map ::= {:}     // Map<name, int>
+
   constructor .image_registry .rpc_broker:
     set_system_message_handler_ SYSTEM_TERMINATED_ this
-    set_system_message_handler_ SYSTEM_HATCHED_ this
+    set_system_message_handler_ SYSTEM_SPAWNED_ this
     set_system_message_handler_ SYSTEM_MIRROR_MESSAGE_ this
     image_registry.do: | allocation/FlashAllocation |
       if allocation.type != FLASH_ALLOCATION_PROGRAM_TYPE: continue.do
@@ -151,6 +155,33 @@ class ContainerManager implements SystemMessageHandler_:
     container := containers_by_id_.get gid --if_absent=: return null
     descriptors := container.pids_.get pid --if_absent=: return null
     return descriptors.get handle
+
+  service_install_manager pid/int -> none:
+    service_managers_[pid] = {}
+
+  service_listen name/string pid/int -> none:
+    if services_by_name_.contains name: throw "Already register service for $name"
+    services_by_name_[name] = pid
+    names := services_by_id_.get pid --init=(: {})
+    names.add name
+
+  service_unlisten name/string -> none:
+    pid := services_by_name_.get name
+    if not pid: return
+    services_by_name_.remove name
+    names := services_by_id_.get pid
+    if names:
+      names.remove name
+      if names.is_empty: services_by_id_.remove pid
+
+  service_discover name/string pid/int -> int:
+    target := services_by_name_.get name
+    if not target: throw "Cannot find service for $name"
+    clients := service_managers_[target]
+    if clients:
+      clients.add pid
+      process_send_ target SYSTEM_SERVICE_NOTIFY_ [0, pid]
+    return target
 
   register_descriptor gid/int pid/int descriptor/Object -> int:
     container := containers_by_id_[gid]
@@ -197,12 +228,21 @@ class ContainerManager implements SystemMessageHandler_:
   on_message type/int gid/int pid/int arguments/any -> none:
     container/Container? := lookup_container gid
     if type == SYSTEM_TERMINATED_:
+      // Cancel RPC requests.
       rpc_broker.cancel_requests pid
+      // Tear down services.
+      names := services_by_id_.get pid
+      if names: names.do: service_unlisten it
+      // Tell service managers about the termination.
+      service_managers_.remove pid
+      service_managers_.do: | manager clients |
+        if clients.contains pid: process_send_ manager SYSTEM_SERVICE_NOTIFY_ [1, pid]
+      // Tell the container (if any) that the process is dead.
       if container:
         error/int := arguments
         if error == 0: container.on_process_stop_ pid
         else: container.on_process_error_ pid error
-    else if type == SYSTEM_HATCHED_:
+    else if type == SYSTEM_SPAWNED_:
       if container: container.on_process_start_ pid
     else if type == SYSTEM_MIRROR_MESSAGE_:
       if not (container and container.image.trace arguments):

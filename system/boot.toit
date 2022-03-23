@@ -18,6 +18,7 @@ import .containers
 import .system_rpc_broker
 
 import .api.containers
+import .api.services
 
 main:
   container_manager/ContainerManager := initialize
@@ -33,7 +34,9 @@ initialize -> ContainerManager:
   rpc_broker := SystemRpcBroker
   container_manager := ContainerManager flash_registry rpc_broker
   rpc_broker.install container_manager
-  ContainerApi rpc_broker container_manager  // Set up RPC-based APIs.
+  // Set up RPC-based APIs.
+  ContainersApi rpc_broker container_manager
+  ServicesApi rpc_broker container_manager
   return container_manager
 
 /**
