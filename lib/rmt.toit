@@ -249,21 +249,33 @@ class Channel:
       --idle_level/int=0:
     rmt_config_tx_ pin.num num mem_block_num clk_div flags carrier_en carrier_freq_hz carrier_level carrier_duty_percent loop_en idle_output_en idle_level
 
+  /** Closes the channel. */
   close:
     if res_:
       rmt_unuse_ resource_group_ res_
       res_ = null
 
-/** Transfers the given $signals over the given $channel.*/
+/**
+Transfers the given $signals over the given $channel.
+
+The $channel must be configured for transfering (see $Channel.config_tx).
+*/
 transfer channel/Channel signals/Signals -> none:
   rmt_transfer_ channel.num signals.bytes_
 
 /**
 Transfers the given $signals while simultaneously receiving.
 
-The $signals are transferred over the given $tx channel and signals are received on the $rx channel.
+The $signals are transferred over the given $tx channel and signals are
+  received on the $rx channel.
 
-The given $max_returned_bytes specifies the maximum byte size of the returned signals.
+The given $max_returned_bytes specifies the maximum byte size of the returned
+  signals. The $max_returned_bytes must be smaller than the configured RX
+  buffer size for the $rx channel.
+
+The $rx channel must be configured for receiveing (see $Channel.config_rx).
+
+The $tx channel must be configured for transfering (see $Channel.config_tx).
 */
 transfer_and_receive --rx/Channel --tx/Channel signals/Signals max_returned_bytes/int -> Signals:
   if max_returned_bytes > rx.rx_buffer_size: throw "maximum returned buffer size greater than allocated RX buffer size"
