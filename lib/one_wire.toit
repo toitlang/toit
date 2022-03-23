@@ -43,7 +43,6 @@ class OneWire:
     rx_channel_ = rx
     tx_channel_ = tx
     tx_channel_.config_tx --idle_level=1
-    // TODO change idle threshold dynamically.
     rx_channel_.config_rx --filter_ticks_thresh=30 --idle_threshold=500 --rx_buffer_size=rx_buffer_size
 
     ow_config_pin_ rx_channel_.pin.num rx_channel_.num tx_channel_.num
@@ -55,7 +54,6 @@ class OneWire:
     the read must happen immediately after the write.
   */
   write_then_read bytes/ByteArray byte_count/int -> ByteArray:
-    // TODO: Check that we have allocated a sufficiently large RX buffer.
     signals := encode_write_then_read_signals_ bytes byte_count
     expected_bytes_count := (bytes.size + byte_count) * SIGNALS_PER_BYTE * rmt.BYTES_PER_SIGNAL
     received_signals := rmt.transfer_and_receive --rx=rx_channel_ --tx=tx_channel_ signals expected_bytes_count
@@ -118,8 +116,6 @@ class OneWire:
       signals.set_signal i delay 0
       signals.set_signal i + 1 IO_TIME_SLOT - delay 1
       bits = bits >> 1
-
-  // TODO Do we want a write bytes?
 
   /** Reads $count bits from the receiver. */
   read_bits count/int -> int:
