@@ -33,8 +33,6 @@ class ProcessGroup : public ProcessGroupList::Element {
 
   static ProcessGroup* create(int id, Program* program, AlignedMemoryBase* memory = null);
 
-  SystemMessage* take_termination_message(int pid, uint8 result);
-
   int id() const { return _id; }
   Program* program() const { return _program; }
 
@@ -57,11 +55,9 @@ class ProcessGroup : public ProcessGroupList::Element {
   // when the process group goes away.
   AlignedMemoryBase* const _memory;
 
-  SystemMessage* _termination_message;
-
   ProcessListFromProcessGroup _processes;
 
-  ProcessGroup(int id, Program* program, AlignedMemoryBase* memory, SystemMessage* termination);
+  ProcessGroup(int id, Program* program, AlignedMemoryBase* memory);
 
   friend class Scheduler;
 };
