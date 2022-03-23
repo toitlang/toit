@@ -28,7 +28,7 @@ extern "C" uword toit_image;
 extern "C" uword toit_image_size;
 
 int Array::max_length_in_process() {
-  return (Heap::max_allocation_size() - HEADER_SIZE) / WORD_SIZE;
+  return (ObjectHeap::max_allocation_size() - HEADER_SIZE) / WORD_SIZE;
 }
 
 int Array::max_length_in_program() {
@@ -36,11 +36,11 @@ int Array::max_length_in_program() {
 }
 
 int Stack::max_length() {
-  return (Heap::max_allocation_size() - HEADER_SIZE) / WORD_SIZE;
+  return (ObjectHeap::max_allocation_size() - HEADER_SIZE) / WORD_SIZE;
 }
 
 word ByteArray::max_internal_size_in_process() {
-  return Heap::max_allocation_size() - HEADER_SIZE;
+  return ObjectHeap::max_allocation_size() - HEADER_SIZE;
 }
 
 word ByteArray::max_internal_size_in_program() {
@@ -48,7 +48,7 @@ word ByteArray::max_internal_size_in_program() {
 }
 
 word String::max_internal_size_in_process() {
-  word result = Heap::max_allocation_size() - OVERHEAD;
+  word result = ObjectHeap::max_allocation_size() - OVERHEAD;
   return result;
 }
 
