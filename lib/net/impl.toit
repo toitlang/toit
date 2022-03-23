@@ -22,6 +22,16 @@ open -> Interface:
     // the WiFi and it really shouldn't while this process is still using it.
     catch --unwind=(: it != WIFI_ALREADY_STARTED_EXCEPTION_):
       return wifi.connect
+    // Temporary work-around for two processes opening the network at the same time.
+    // The `WIFI_ALREADY_STARTED_EXCEPTION_` is thrown when another thread already
+    // opened the network. However, at this point we aren't sure whether the
+    // the network is already connected. We therefore look at the stored IP address.
+    // As soon as that one is available we know that we can use the network.
+    with_timeout --ms=26_000:
+      while true:
+        // Wait for the other thread to store the IP.
+        if stored_ip_ != "": break
+        sleep --ms=100
   return SystemInterface_
 
 class SystemInterface_ extends Interface:
@@ -45,6 +55,9 @@ class SystemInterface_ extends Interface:
     return result
 
   address -> IpAddress:
+    if platform == PLATFORM_FREERTOS:
+      return IpAddress.parse stored_ip_
+
     socket := udp_open
     try:
       socket.connect
@@ -57,3 +70,6 @@ class SystemInterface_ extends Interface:
 
   close -> none:
     // Do nothing yet.
+
+stored_ip_ -> string:
+  #primitive.wifi.get_stored_ip

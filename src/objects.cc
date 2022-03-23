@@ -469,6 +469,24 @@ bool String::_is_valid_utf8() {
   return Utils::is_valid_utf_8(content.address(), content.length());
 }
 
+void PromotedTrack::zap() {
+  uword header = SINGLE_FREE_WORD_CLASS_ID;
+  header = (header << CLASS_TAG_BIT_SIZE) | SINGLE_FREE_WORD_TAG;
+  Object* filler = Smi::from(header);
+  for (uword p = _raw(); p < _raw() + HEADER_SIZE; p += WORD_SIZE) {
+    *reinterpret_cast<Object**>(p) = filler;
+  }
+}
+
+PromotedTrack* PromotedTrack::initialize(PromotedTrack* next, uword location, uword end) {
+  ASSERT(end - location > header_size());
+  auto self = reinterpret_cast<PromotedTrack*>(location);
+  self->_set_header(Smi::from(PROMOTED_TRACK_CLASS_ID), PROMOTED_TRACK_TAG);
+  self->_at_put(NEXT_OFFSET, next);
+  self->_word_at_put(END_OFFSET, end);
+  return self;
+}
+
 #ifndef TOIT_FREERTOS
 
 void Array::write_content(SnapshotWriter* st) {

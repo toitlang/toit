@@ -37,6 +37,7 @@ namespace toit {
   fn(Adler32)                           \
   fn(ZlibRle)                           \
   fn(UARTResource)                      \
+  fn(I2SResource)                       \
   fn(AdcState)                          \
   fn(PWMResource)                       \
   fn(GAPResource)                       \
@@ -62,6 +63,7 @@ namespace toit {
   fn(MbedTLSResourceGroup)              \
   fn(UDPResourceGroup)                  \
   fn(UARTResourceGroup)                 \
+  fn(RMTResourceGroup)                  \
   fn(WifiResourceGroup)                 \
   fn(EthernetResourceGroup)             \
   fn(BLEResourceGroup)                  \

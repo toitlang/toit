@@ -20,7 +20,6 @@ import host.file
 import host.pipe
 import .snapshot
 import .mirror as mirror
-import services.arguments as services
 
 handle_system_message encoded_system_message snapshot_content:
   program := (SnapshotBundle snapshot_content).decode

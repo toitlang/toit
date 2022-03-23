@@ -29,7 +29,11 @@ namespace toit {
 
 static const int FIRST_TOIT_ERROR = -126;
 static const int ERR_NAME_LOOKUP_FAILURE = -126;
+static const int ERR_MEM_NON_RECOVERABLE = -127;
 static const int LAST_TOIT_ERROR = -128;
+
+// Only accessed from the LWIP thread.
+extern bool needs_gc;
 
 // Returns the error as a string. Returns null on allocation failure.
 Object* lwip_error(Process* process, err_t err);

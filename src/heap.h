@@ -117,10 +117,11 @@ class Heap : public RawHeap {
   Program* const _program;
   HeapObject* _allocate_raw(int byte_size);
   virtual AllocationResult _expand();
-  bool _in_gc;
-  bool _gc_allowed;
-  int64 _total_bytes_allocated;
-  AllocationResult _last_allocation_result;
+
+  bool _in_gc = false;
+  bool _gc_allowed = true;
+  int64 _total_bytes_allocated = 0;
+  AllocationResult _last_allocation_result = ALLOCATION_SUCCESS;
 
   friend class ProgramSnapshotReader;
   friend class compiler::ProgramBuilder;
@@ -165,12 +166,6 @@ class ObjectHeap final : public Heap {
   Task* task() { return _task; }
   void set_task(Task* task) { _task = task; }
 
-  Method hatch_method() { return _hatch_method; }
-  void set_hatch_method(Method method) { _hatch_method = method; }
-
-  HeapObject* hatch_arguments() { return _hatch_arguments; }
-  void set_hatch_arguments(HeapObject* array) { _hatch_arguments = array; }
-
   // Garbage collection operation for runtime objects.
   int scavenge();
 
@@ -208,26 +203,24 @@ class ObjectHeap final : public Heap {
 
   // Number of bytes used before forcing a scavenge, including external memory.
   // Set to zero to have no limit.
-  word _limit;
-  // This limit will be installed at the end of the current primitive
-  word _pending_limit;
-  word _max_heap_size;  // Configured max heap size, incl. external allocation.
-  std::atomic<word> _external_memory;  // In bytes.
-  Task* _task;
-  Method _hatch_method;
-  HeapObject* _hatch_arguments;
+  word _limit = 0;
+  // This limit will be installed at the end of the current primitive.
+  word _pending_limit = 0;
+
+  word _max_heap_size = 0;  // Configured max heap size, incl. external allocation.
+  std::atomic<word> _external_memory;  // Allocated external memory in bytes.
+
+  Task* _task = null;
   ObjectNotifierList _object_notifiers;
 
   // A finalizer is in one of the following lists.
-  FinalizerNodeFIFO _registered_finalizers;  // Contains registered finalizers.
-  FinalizerNodeFIFO _runnable_finalizers; // Contains finalizers that must be executed.
+  FinalizerNodeFIFO _registered_finalizers;       // Contains registered finalizers.
+  FinalizerNodeFIFO _runnable_finalizers;         // Contains finalizers that must be executed.
   VMFinalizerNodeFIFO _registered_vm_finalizers;  // Contains registered VM finalizers.
-  ObjectNotifier* _finalizer_notifier;
+  ObjectNotifier* _finalizer_notifier = null;
 
-  int _gc_count;
-  Object** _global_variables;
-
-  Object** _copy_global_variables();
+  int _gc_count = 0;
+  Object** _global_variables = null;
 
   HeapRootList _external_roots;
 

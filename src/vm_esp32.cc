@@ -26,7 +26,7 @@
 #include "event_sources/gpio_esp32.h"
 #include "event_sources/timer.h"
 #include "event_sources/tls.h"
-#include "event_sources/uart_esp32.h"
+#include "event_sources/ev_queue_esp32.h"
 
 
 namespace toit {
@@ -37,7 +37,7 @@ void VM::load_platform_event_sources() {
   event_manager()->add_event_source(_new LwIPEventSource());
   event_manager()->add_event_source(_new SystemEventSource());
   event_manager()->add_event_source(_new GPIOEventSource());
-  event_manager()->add_event_source(_new UARTEventSource());
+  event_manager()->add_event_source(_new EventQueueEventSource());
   event_manager()->add_event_source(_new TLSEventSource());
   event_manager()->add_event_source(_new BLEEventSource());
 }

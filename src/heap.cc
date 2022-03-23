@@ -53,11 +53,7 @@ class ScavengeScope : public Locker {
 
 Heap::Heap(Process* owner, Program* program, Block* initial_block)
     : RawHeap(owner)
-    , _program(program)
-    , _in_gc(false)
-    , _gc_allowed(true)
-    , _total_bytes_allocated(0)
-    , _last_allocation_result(ALLOCATION_SUCCESS) {
+    , _program(program) {
   if (initial_block == null) return;
   _blocks.append(initial_block);
 }
@@ -275,21 +271,12 @@ class ScavengeState : public RootCallback {
   ScavengeScope _scope;
 };
 
-Object** ObjectHeap::_copy_global_variables() {
-  return _program->global_variables.copy();
-}
-
 ObjectHeap::ObjectHeap(Program* program, Process* owner, Block* block)
     : Heap(owner, program, block)
-    , _max_heap_size(0)
-    , _external_memory(0)
-    , _hatch_method(Method::invalid())
-    , _finalizer_notifier(null)
-    , _gc_count(0)
-    , _global_variables(null) {
+    , _external_memory(0) {
   if (block == null) return;
   _task = allocate_task();
-  _global_variables = _copy_global_variables();
+  _global_variables = program->global_variables.copy();
   // Currently the heap is empty and it has one block allocated for objects.
   _limit = _pending_limit = _calculate_limit();
 }
@@ -439,6 +426,8 @@ static const char* format_unit(word n) {
 #endif
 
 int ObjectHeap::scavenge() {
+  if (program() == null) FATAL("cannot scavenge external process");
+
   word blocks_before = _blocks.length();
 #ifdef TOIT_GC_LOGGING
   int64 start_time = OS::get_monotonic_time();
@@ -463,7 +452,6 @@ int ObjectHeap::scavenge() {
 
     // Process the roots in the object heap.
     ss.do_root(reinterpret_cast<Object**>(&_task));
-    ss.do_root(reinterpret_cast<Object**>(&_hatch_arguments));
     ss.do_roots(_global_variables, program()->global_variables.length());
     for (auto root : _external_roots) ss.do_roots(root->slot(), 1);
 
