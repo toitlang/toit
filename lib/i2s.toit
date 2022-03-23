@@ -93,7 +93,7 @@ class Bus:
   /**
   Read bytes from the I2S bus.
 
-  This methods blocks until data is avaiable.
+  This methods blocks until data is available.
   */
   read -> ByteArray?:
     while true:
@@ -104,6 +104,25 @@ class Bus:
       else if state & READ_STATE_ != 0:
         data := i2s_read_ i2s_
         if data.size > 0: return data
+        state_.clear_state READ_STATE_
+      else:
+        // It was closed (disposed).
+        return null
+
+  /**
+  Read bytes from the I2S bus to a buffer.
+
+  This methods blocks until data is available.
+  */
+  read buffer/ByteArray -> int?:
+    while true:
+      state := state_.wait_for_state READ_STATE_ | ERROR_STATE_
+      if state & ERROR_STATE_ != 0:
+        state_.clear_state ERROR_STATE_
+        errors++
+      else if state & READ_STATE_ != 0:
+        read := i2s_read_to_buffer_ i2s_ buffer
+        if read > 0: return read
         state_.clear_state READ_STATE_
       else:
         // It was closed (disposed).
