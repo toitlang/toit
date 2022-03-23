@@ -39,12 +39,12 @@ class OneWire:
 
   Configures the channels and the underlying pin for 1-wire.
   */
-  constructor --rx --tx:
+  constructor --rx --tx --rx_buffer_size=1024:
     rx_channel_ = rx
     tx_channel_ = tx
     tx_channel_.config_tx --idle_level=1
     // TODO change idle threshold dynamically.
-    rx_channel_.config_rx --filter_ticks_thresh=30 --idle_threshold=500 --rx_buffer_size=1024
+    rx_channel_.config_rx --filter_ticks_thresh=30 --idle_threshold=500 --rx_buffer_size=rx_buffer_size
 
     ow_config_pin_ rx_channel_.pin.num rx_channel_.num tx_channel_.num
 
