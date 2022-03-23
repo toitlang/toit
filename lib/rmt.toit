@@ -206,14 +206,11 @@ class Channel:
     idle_threshold_ = idle_threshold
     rx_buffer_size_ = rx_buffer_size
 
-  // TODO should this be primitive getters?
-  // TODO add primtive setter
   idle_threshold -> int?:
     return idle_threshold_
 
   rx_buffer_size -> int?:
     return rx_buffer_size_
-
 
   /**
   Configure the channel for TX.
