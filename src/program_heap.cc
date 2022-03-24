@@ -22,6 +22,7 @@
 #include "primitive.h"
 #include "printing.h"
 #include "process.h"
+#include "program_memory.h"
 #include "scheduler.h"
 #include "utils.h"
 #include "vm.h"
@@ -160,7 +161,7 @@ HeapObject* ProgramHeap::_allocate_raw(int byte_size) {
 }
 
 ProgramHeap::AllocationResult ProgramHeap::_expand() {
-  ProgramBlock* block = VM::current()->program_heap_memory()->allocate_block(this);
+  ProgramBlock* block = ProgramHeapMemory::instance()->allocate_block(this);
   if (block == null) return ALLOCATION_OUT_OF_MEMORY;
   _blocks.append(block);
   return ALLOCATION_SUCCESS;
