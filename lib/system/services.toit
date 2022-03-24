@@ -56,6 +56,7 @@ abstract class ServiceClient:
     return "service:$name@$major.$minor.$patch"
 
   invoke_ index/int arguments/any -> any:
+    if not procedure_: throw "Client closed"
     return rpc.invoke pid_ procedure_ [index, arguments]
 
 abstract class ServiceDefinition:
