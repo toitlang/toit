@@ -156,6 +156,14 @@ class ServiceManager_ implements SystemMessageHandler_:
     broker_.unregister_procedure procedure
     services_by_procedure_.remove procedure
     procedures_.remove procedure
+    counts/Map? ::= counts_by_procedure_.get procedure
+    if not counts: return
+    counts_by_procedure_.remove procedure
+    counts.do: | client/int count/int |
+      procedures/Set? := procedures_by_client_.get client
+      if not procedures: continue.do
+      procedures.remove procedure
+      if procedures.is_empty: procedures_by_client_.remove client
 
   listen name/string service/ServiceDefinition -> none:
     services_by_name_[name] = service

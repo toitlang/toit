@@ -18,6 +18,7 @@ main:
   test_logging --separate_process
   test_illegal_name
   test_versions
+  test_uninstall
 
 test_logging --separate_process/bool=false:
   service := LogServiceDefinition
@@ -55,6 +56,15 @@ test_versions:
   expect.expect_equals 5 client.patch
   client.close
   service.wait
+
+test_uninstall:
+  service := LogServiceDefinition
+  service.install
+  test_hello --no-close
+  logger := LogServiceClient.lookup
+  service.uninstall
+  exception := catch: logger.log "Don't let me do this!"
+  expect.expect (exception.starts_with "No such procedure registered:")
 
 test_hello --close=false:
   logger := LogServiceClient.lookup
