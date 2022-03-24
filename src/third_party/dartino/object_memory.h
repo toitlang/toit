@@ -387,8 +387,8 @@ class OldSpace : public Space {
   void set_used_after_last_gc(uword used) { used_after_last_gc_ = used; }
 
   // For detecting pointless GCs that are really an out-of-memory situation.
-  void EvaluatePointlessness();
-  uword MinimumProgress();
+  inline void evaluate_pointlessness() {};  // TODO: Implement.
+  uword minimum_progress();
   void report_new_space_progress(uword bytes_collected);
 
  private:

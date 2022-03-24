@@ -358,7 +358,8 @@ void OldSpace::mark_chunk_ends_free() {
   }
 }
 
-void FixPointersVisitor::visit_block(Object** start, Object** end) {
+void FixPointersVisitor::do_roots(Object** start, int length) {
+  Object** end = start + length;
   for (Object** current = start; current < end; current++) {
     Object* object = *current;
     if (GcMetadata::get_page_type(object) == OLD_SPACE_PAGE) {
