@@ -2616,12 +2616,16 @@ void MethodResolver::_visit_potential_call_dot(ast::Dot* ast_dot,
     auto candidates = _compute_target_candidates(ast_receiver, scope());
     if (!candidates.encountered_error &&
         (candidates.klass != null && candidates.nodes.is_empty())) {
-      auto klass = candidates.klass;
-      auto class_interface = klass->is_interface() ? "Interface" : "Class";
-      report_error(ast_dot, "%s '%s' does not have any static member or constructor with name '%s'",
-                   class_interface,
-                   candidates.name.c_str(),
-                   ast_dot->name()->data().c_str());
+      if (!ast_dot->name()->data().is_valid()) {
+        ASSERT(diagnostics()->encountered_error());
+      } else {
+        auto klass = candidates.klass;
+        auto class_interface = klass->is_interface() ? "Interface" : "Class";
+        report_error(ast_dot, "%s '%s' does not have any static member or constructor with name '%s'",
+                    class_interface,
+                    candidates.name.c_str(),
+                    ast_dot->name()->data().c_str());
+      }
       push(_new ir::Error(ast_dot->range(), call_builder.arguments()));
       return;
     }
