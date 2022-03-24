@@ -128,26 +128,6 @@ class ObjectHeap {
   Process* owner() { return _owner; }
 #endif
 
- protected:
-  Program* const _program;
-#ifdef LEGACY_GC
-  HeapObject* _allocate_raw(int byte_size);
-#else
-  HeapObject* _allocate_raw(int byte_size) {
-    return _two_space_heap.allocate(byte_size);
-  }
-#endif
-
-  bool _in_gc = false;
-  bool _gc_allowed = true;
-  int64 _total_bytes_allocated = 0;
-  AllocationResult _last_allocation_result = ALLOCATION_SUCCESS;
-
-#ifndef LEGACY_GC
-  Process* _owner;
-  TwoSpaceHeap _two_space_heap;
-#endif
-
  public:
 #ifdef LEGACY_GC
   ObjectHeap(Program* program, Process* owner, Block* initial_block);
@@ -201,6 +181,25 @@ class ObjectHeap {
   void iterate_roots(RootCallback* callback);
 
  private:
+  Program* const _program;
+#ifdef LEGACY_GC
+  HeapObject* _allocate_raw(int byte_size);
+#else
+  HeapObject* _allocate_raw(int byte_size) {
+    return _two_space_heap.allocate(byte_size);
+  }
+#endif
+
+  bool _in_gc = false;
+  bool _gc_allowed = true;
+  int64 _total_bytes_allocated = 0;
+  AllocationResult _last_allocation_result = ALLOCATION_SUCCESS;
+
+#ifndef LEGACY_GC
+  Process* _owner;
+  TwoSpaceHeap _two_space_heap;
+#endif
+
   // An estimate of how much memory overhead malloc has.
   static const word _EXTERNAL_MEMORY_ALLOCATOR_OVERHEAD = 2 * sizeof(word);
 
