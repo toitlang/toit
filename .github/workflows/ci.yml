@@ -424,6 +424,7 @@ jobs:
         uses: actions/download-artifact@v3
         with:
           name: ${{ steps.constants.outputs.external_result_name }}
+          path: external-result
 
       - name: Check
         shell: bash
