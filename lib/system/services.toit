@@ -15,7 +15,8 @@ RPC_SERVICES_MANAGER_LISTEN   ::= 201
 RPC_SERVICES_MANAGER_UNLISTEN ::= 202
 
 RPC_SERVICES_DISCOVER         ::= 210
-RPC_SERVICES_RESOLVE          ::= 211
+RPC_SERVICES_OPEN             ::= 211
+RPC_SERVICES_CLOSE            ::= 212
 
 RPC_SERVICES_MANAGER_NOTIFY_OPEN_CLIENT  ::= 300
 RPC_SERVICES_MANAGER_NOTIFY_CLOSE_CLIENT ::= 301
@@ -25,17 +26,15 @@ abstract class ServiceClient:
   version_/List ::= ?
 
   pid_/int ::= ?
-  procedure_/int ::= ?
+  procedure_/int? := null
 
   constructor.lookup name/string major/int minor/int:
     pid_ = rpc.invoke RPC_SERVICES_DISCOVER name
-    definition := rpc.invoke pid_ RPC_SERVICES_RESOLVE [name, major, minor]
+    definition ::= rpc.invoke pid_ RPC_SERVICES_OPEN [name, major, minor]
     this.name = definition[0]
     version_ = definition[1]
     procedure_ = definition[2]
-
-  stringify -> string:
-    return "client:$name@$major.$minor.$patch"
+    add_finalizer this:: close
 
   major -> int:
     return version_[0]
@@ -46,6 +45,16 @@ abstract class ServiceClient:
   patch -> int:
     return version_[2]
 
+  close -> none:
+    if not procedure_: return
+    procedure := procedure_
+    procedure_ = null
+    remove_finalizer this
+    rpc.invoke pid_ RPC_SERVICES_CLOSE procedure
+
+  stringify -> string:
+    return "service:$name@$major.$minor.$patch"
+
   invoke_ index/int arguments/any -> any:
     return rpc.invoke pid_ procedure_ [index, arguments]
 
@@ -54,6 +63,7 @@ abstract class ServiceDefinition:
   versions_/List ::= ?
   manager_/ServiceManager_? := null
   procedure_/int? := null
+  clients_/int := 0
 
   // TODO(kasper): Consider what happens if the same definition is installed
   // after being uninstalled. Do we need to use an extra latch for that?
@@ -65,11 +75,14 @@ abstract class ServiceDefinition:
 
   abstract handle index/int arguments/any -> any
 
-  on_client_opened pid/int open/int -> none:
-    // Do nothing. Overridden in subclasses.
+  name -> string:
+    return names_.first
 
-  on_client_closed pid/int open/int -> none:
-    if open == 0: uninstall
+  version -> string:
+    return versions_.first.join "."
+
+  procedure -> int:
+    return procedure_
 
   install -> none:
     manager_ = ServiceManager_.instance
@@ -82,35 +95,53 @@ abstract class ServiceDefinition:
   uninstall -> none:
     names_.do: manager_.unlisten it
     manager_.uninstall procedure_
+    clients_ = 0
     procedure_ = null
     manager_ = null
     uninstalled_.set 0
+
+  open client/int -> none:
+    clients_++
+
+  close client/int -> none:
+    if --clients_ == 0: uninstall
 
   alias name/string --major/int --minor/int -> none:
     names_.add name
     versions_.add [major, minor]
 
+  stringify -> string:
+    return "service:$name@$version"
+
   resolve name/string major/int minor/int -> List?:
     index := names_.index_of name
     if index < 0: return null
     version := versions_[index]
-    if major != version[0]: throw "Wrong major version: $version[0] != $major"
-    if minor > version[1]: throw "Wrong minor version: $version[1] < $minor"
+    if major != version[0]:
+      throw "Cannot find service:$name@$(major).x, found $this"
+    if minor > version[1]:
+      throw "Cannot find service:$name@$(major).$(minor).x, found $this"
     return [names_[0], versions_[0], procedure_]
 
 class ServiceManager_ implements SystemMessageHandler_:
   static instance := ServiceManager_
 
   broker_/ServiceRpcBroker_ ::= ServiceRpcBroker_
-  procedures_/Set ::= {}
 
-  services_by_name_/Map ::= {:}
-  services_by_procedure_/Map ::= {:}
+  procedures_/Set ::= {}              // Set<int>
+  procedures_by_client_/Map ::= {:}   // Map<int, Set<int>>
+
+  services_by_name_/Map ::= {:}       // Map<string, ServiceDefinition>
+  services_by_procedure_/Map ::= {:}  // Map<int, ServiceDefinition>
+
+  counts_by_procedure_/Map ::= {:}    // Map<int, Map<int, int>>
 
   constructor:
     set_system_message_handler_ SYSTEM_SERVICE_NOTIFY_ this
-    broker_.register_procedure RPC_SERVICES_RESOLVE:: | arguments |
-      resolve arguments[0] arguments[1] arguments[2]
+    broker_.register_procedure RPC_SERVICES_OPEN:: | arguments _ pid |
+      open pid arguments[0] arguments[1] arguments[2]
+    broker_.register_procedure RPC_SERVICES_CLOSE:: | arguments _ pid |
+      close pid arguments
     broker_.install
     rpc.invoke RPC_SERVICES_MANAGER_INSTALL null
 
@@ -134,22 +165,55 @@ class ServiceManager_ implements SystemMessageHandler_:
     rpc.invoke RPC_SERVICES_MANAGER_UNLISTEN name
     services_by_name_.remove name
 
-  resolve name/string major/int minor/int -> List?:
-    service/ServiceDefinition := services_by_name_[name]
-    return service.resolve name major minor
+  open client/int name/string major/int minor/int -> List?:
+    service/ServiceDefinition ::= services_by_name_[name]
+    resolved ::= service.resolve name major minor
+    if not resolved: return null
+    procedure ::= service.procedure
+    counts/Map ::= counts_by_procedure_.get procedure --init=(: {:})
+    count/int ::= counts.update client --init=(: 0): it + 1
+    if count > 1: return resolved
+    procedures/Set ::= procedures_by_client_.get client --init=(: {})
+    procedures.add procedure
+    task:: service.open client
+    return resolved
+
+  close client/int procedure/int -> none:
+    counts/Map? ::= counts_by_procedure_.get procedure
+    if not counts: throw "No such client (pid=$client)"
+    count/int ::= counts.update client: it - 1
+    if count > 0: return
+    service/ServiceDefinition := services_by_procedure_[procedure]
+    procedures/Set ::= procedures_by_client_.get client
+    counts.remove client
+    if counts.is_empty: counts_by_procedure_.remove procedure
+    procedures.remove procedure
+    if procedures.is_empty: procedures_by_client_.remove client
+    task:: service.close client
+
+  close_all client/int -> none:
+    procedures/Set? ::= procedures_by_client_.get client
+    if not procedures: return
+    closed/List ::= []
+    procedures.do: | procedure/int |
+      counts/Map? ::= counts_by_procedure_.get procedure
+      if not counts: continue.do
+      counts.remove client
+      if counts.is_empty: counts_by_procedure_.remove procedure
+      service/ServiceDefinition := services_by_procedure_[procedure]
+      closed.add service
+    procedures_by_client_.remove client
+    task:: closed.do: it.close client
 
   on_message type/int gid/int pid/int message/any -> none:
     assert: type == SYSTEM_SERVICE_NOTIFY_
-    kind := message[0]
-    client := message[1]
+    kind/int ::= message[0]
+    client/int ::= message[1]
     if kind == RPC_SERVICES_MANAGER_NOTIFY_OPEN_CLIENT:
-      open := broker_.add_client client
-      task:: services_by_procedure_.do --values: | service/ServiceDefinition |
-        service.on_client_opened client open
+      broker_.add_client client
     else if kind == RPC_SERVICES_MANAGER_NOTIFY_CLOSE_CLIENT:
-      open := broker_.remove_client client
-      task:: services_by_procedure_.do --values: | service/ServiceDefinition |
-        service.on_client_closed client open
+      broker_.remove_client client
+      close_all client
     else:
       unreachable
 
@@ -166,11 +230,9 @@ class ServiceRpcBroker_ extends broker.RpcBroker:
   accept gid/int pid/int -> bool:
     return clients_.contains pid
 
-  add_client pid/int -> int:
+  add_client pid/int -> none:
     clients_.add pid
-    return clients_.size
 
-  remove_client pid/int -> int:
+  remove_client pid/int -> none:
     clients_.remove pid
     cancel_requests pid
-    return clients_.size

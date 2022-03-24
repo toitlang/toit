@@ -16,10 +16,10 @@ interface MyService:
   static BAR_INDEX ::= 1
   bar x/int -> int
 
-interface MyServiceHest extends MyService:
-  static NAME/string ::= "myservice/hest"
+interface MyServiceExtended extends MyService:
+  static NAME/string ::= "myservice/extended"
   static MAJOR/int   ::= 1
-  static MINOR/int   ::= 1
+  static MINOR/int   ::= 2
 
   static BAZ_INDEX ::= 100
   baz x/string -> none
@@ -36,20 +36,14 @@ run_server:
 
 run_client:
   service/MyService := MyServiceClient.lookup
-  print "myservice = $service"
-  print service.foo
-  print (service.bar 7)
-  print (service.bar 19)
+  expect.expect_equals "service:myservice/extended@1.2.3" "$service"
+  expect.expect_equals 42 service.foo
+  expect.expect_equals 16 (service.bar 7)
+  expect.expect_equals 40 (service.bar 19)
 
-  hest/MyServiceHest := MyServiceHestClient.lookup
-  print "myservice.hest = $hest"
-  hest.baz "Hello, World!"
-
-  iterations := 100_000
-  elapsed := Duration.of:
-    iterations.repeat: service.bar it
-  print "Time per service call = $(elapsed / iterations)"
-
+  extended/MyServiceExtended := MyServiceExtendedClient.lookup
+  expect.expect_equals "service:myservice/extended@1.2.3" "$extended"
+  extended.baz "Hello, World!"
 
 // ------------------------------------------------------------------
 
@@ -63,24 +57,27 @@ class MyServiceClient extends services.ServiceClient implements MyService:
   bar x/int -> int:
     return invoke_ MyService.BAR_INDEX x
 
-class MyServiceHestClient extends MyServiceClient implements MyServiceHest:
-  constructor.lookup name=MyServiceHest.NAME major=MyServiceHest.MAJOR minor=MyServiceHest.MINOR:
+class MyServiceExtendedClient extends MyServiceClient implements MyServiceExtended:
+  constructor.lookup name=MyServiceExtended.NAME major=MyServiceExtended.MAJOR minor=MyServiceExtended.MINOR:
     super.lookup name major minor
 
   baz x/string -> none:
-    invoke_ MyServiceHest.BAZ_INDEX x
+    invoke_ MyServiceExtended.BAZ_INDEX x
 
 // ------------------------------------------------------------------
 
-class MyServiceDefinition extends services.ServiceDefinition implements MyServiceHest:
+class MyServiceDefinition extends services.ServiceDefinition implements MyServiceExtended:
   constructor:
-    super MyServiceHest.NAME --major=MyServiceHest.MAJOR --minor=MyServiceHest.MINOR --patch=3
+    super MyServiceExtended.NAME
+        --major=MyServiceExtended.MAJOR
+        --minor=MyServiceExtended.MINOR
+        --patch=3
     alias MyService.NAME --major=MyService.MAJOR --minor=MyService.MINOR
 
   handle index/int arguments/any -> any:
     if index == MyService.FOO_INDEX: return foo
     if index == MyService.BAR_INDEX: return bar arguments
-    if index == MyServiceHest.BAZ_INDEX: return baz arguments
+    if index == MyServiceExtended.BAZ_INDEX: return baz arguments
     unreachable
 
   foo -> int:
@@ -90,4 +87,4 @@ class MyServiceDefinition extends services.ServiceDefinition implements MyServic
     return (x + 1) * 2
 
   baz x/string -> none:
-    print "baz: $x"
+    expect.expect_equals "Hello, World!" x

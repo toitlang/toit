@@ -9,22 +9,22 @@ import system.services
     RPC_SERVICES_MANAGER_UNLISTEN
     RPC_SERVICES_DISCOVER
 
-import ..containers
+import ..services
 import ..system_rpc_broker
 
 class ServicesApi:
   broker_/SystemRpcBroker ::= ?
-  manager_/ContainerManager ::= ?
+  manager_/ServiceDiscoveryManager ::= ?
 
   constructor .broker_ .manager_:
     broker_.register_procedure RPC_SERVICES_MANAGER_INSTALL:: | _ _ pid |
-      manager_.service_install_manager pid
+      manager_.install_manager pid
 
     broker_.register_procedure RPC_SERVICES_MANAGER_LISTEN:: | name _ pid |
-      manager_.service_listen name pid
+      manager_.listen name pid
 
     broker_.register_procedure RPC_SERVICES_MANAGER_UNLISTEN:: | name |
-      manager_.service_unlisten name
+      manager_.unlisten name
 
     broker_.register_procedure RPC_SERVICES_DISCOVER:: | name _ pid |
-      manager_.service_discover name pid
+      manager_.discover name pid
