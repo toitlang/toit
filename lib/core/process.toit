@@ -4,6 +4,9 @@
 
 /**
 Spawns a new process that starts executing the given lambda.
+The new process does not share any memory with the spawning process. If the lambda
+  captures variables, those are copied to the new process.
+May throw if the captured variables can't be serialized.
 */
 spawn lambda/Lambda -> int:
   return hatch_primitive_ lambda.method_ lambda.arguments_
