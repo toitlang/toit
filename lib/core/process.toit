@@ -2,12 +2,20 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-// Hatch a new process using this program heap and running the passed in lambda.
-hatch_ lambda/Lambda:
-  id := hatch_primitive_
-    lambda.method_
-    lambda.arguments_
-  return id
+/**
+Spawns a new process that starts executing the given lambda.
+The new process does not share any memory with the spawning process. If the lambda
+  captures variables, those are copied to the new process.
+May throw if the captured variables can't be serialized.
+*/
+spawn lambda/Lambda -> int:
+  return hatch_primitive_ lambda.method_ lambda.arguments_
+
+/**
+Alias for $spawn.
+*/
+hatch_ lambda/Lambda:  // TODO(kasper): Mark as deprecated
+  return spawn lambda
 
 hatch_primitive_ method arguments:
   #primitive.core.hatch
@@ -16,7 +24,7 @@ hatch_primitive_ method arguments:
 __hatch_entry__:
   current := task
   current.initialize_entry_task_
-  process_send_ -1 SYSTEM_HATCHED_ null
+  process_send_ -1 SYSTEM_SPAWNED_ null
   lambda := Lambda.__
     hatch_method_
     hatch_args_

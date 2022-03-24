@@ -63,7 +63,7 @@ class SystemMessage : public Message {
   SystemMessage(int type, int gid, int pid) : _type(type), _gid(gid), _pid(pid), _data(null) { }
   virtual ~SystemMessage() override { free_data_and_externals(); }
 
-  MessageType message_type() const { return MESSAGE_SYSTEM; }
+  virtual MessageType message_type() const override { return MESSAGE_SYSTEM; }
 
   int type() const { return _type; }
   int gid() const { return _gid; }
@@ -96,8 +96,9 @@ class ObjectNotifyMessage : public Message {
       : _notifier(notifier)
       , _queued(false) {}
 
+  virtual MessageType message_type() const override { return MESSAGE_OBJECT_NOTIFY; }
+
   bool is_queued() const { return _queued; }
-  MessageType message_type() const { return MESSAGE_OBJECT_NOTIFY; }
   ObjectNotifier* object_notifier() const { return _notifier; }
 
   void mark_queued() {
