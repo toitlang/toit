@@ -30,11 +30,14 @@ extern "C" uword toit_image_size;
 
 namespace toit {
 
+class ObjectNotifier;
+
+// An object heap contains all objects created at runtime.
 #ifdef LEGACY_GC
-class Heap : public RawHeap {
+class ObjectHeap : public RawHeap {
  public:
-  Heap(Process* owner, Program* program, Block* initial_block);
-  ~Heap();
+  ObjectHeap(Process* owner, Program* program, Block* initial_block);
+  ~ObjectHeap();
 
   class Iterator {
    public:
@@ -56,10 +59,10 @@ class Heap : public RawHeap {
 
   static int max_allocation_size() { return Block::max_payload_size(); }
 #else
-class Heap {
+class ObjectHeap {
  public:
-  Heap(Process* owner, Program* program);
-  ~Heap();
+  ObjectHeap(Process* owner, Program* program);
+  ~ObjectHeap();
 
   // TODO: In the new heap there is no max allocation size.
   static int max_allocation_size() { return TOIT_PAGE_SIZE - 96; }
@@ -76,9 +79,6 @@ class Heap {
   String* allocate_internal_string(int length);
   Double* allocate_double(double value);
   LargeInteger* allocate_large_integer(int64 value);
-
-  // Returns the number of bytes allocated in this heap.
-  virtual int payload_size();
 
   Program* program() { return _program; }
 
@@ -132,7 +132,6 @@ class Heap {
   Program* const _program;
 #ifdef LEGACY_GC
   HeapObject* _allocate_raw(int byte_size);
-  virtual AllocationResult _expand();
 #else
   HeapObject* _allocate_raw(int byte_size) {
     return _two_space_heap.allocate(byte_size);
@@ -147,38 +146,14 @@ class Heap {
 #ifndef LEGACY_GC
   Process* _owner;
   TwoSpaceHeap _two_space_heap;
-};
-#else
-};
 #endif
 
-class NoGC {
- public:
-  explicit NoGC(Heap* heap) : _heap(heap) {
-    heap->enter_no_gc();
-  }
-  ~NoGC() {
-    _heap->leave_no_gc();
-  }
-
- private:
-  Heap* _heap;
-};
-
-class ObjectNotifier;
-
-// An object heap contains all objects created at runtime.
-class ObjectHeap final : public Heap {
  public:
 #ifdef LEGACY_GC
   ObjectHeap(Program* program, Process* owner, Block* initial_block);
 #else
   ObjectHeap(Program* program, Process* owner);
 #endif
-  ~ObjectHeap();
-
-  // Returns the number of bytes allocated in this heap.
-  virtual int payload_size();
 
   Task* allocate_task();
   Stack* allocate_stack(int length);
@@ -223,6 +198,7 @@ class ObjectHeap final : public Heap {
   void unregister_external_allocation(word size);
   bool has_max_heap_size() const { return _max_heap_size != 0; }
   void install_heap_limit() { _limit = _pending_limit; }
+  void iterate_roots(RootCallback* callback);
 
  private:
   // An estimate of how much memory overhead malloc has.
@@ -262,6 +238,19 @@ class ObjectHeap final : public Heap {
 #endif
 
   friend class ObjectNotifier;
+};
+
+class NoGC {
+ public:
+  explicit NoGC(ObjectHeap* heap) : _heap(heap) {
+    heap->enter_no_gc();
+  }
+  ~NoGC() {
+    _heap->leave_no_gc();
+  }
+
+ private:
+  ObjectHeap* _heap;
 };
 
 } // namespace toit

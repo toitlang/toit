@@ -2,6 +2,7 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE.md file.
 
+#include "../../heap.h"
 #include "../../top.h"
 #include "../../objects.h"
 #include "two_space_heap.h"
@@ -9,8 +10,9 @@
 
 namespace toit {
 
-TwoSpaceHeap::TwoSpaceHeap(Program* program)
+TwoSpaceHeap::TwoSpaceHeap(Program* program, ObjectHeap* process_heap)
     : program_(program),
+      process_heap_(process_heap),
       old_space_(new OldSpace(program, this)),
       unused_semispace_(new SemiSpace(program, Space::CANNOT_RESIZE, NEW_SPACE_PAGE, 0)) {
   semi_space_ = new SemiSpace(program, Space::CANNOT_RESIZE, NEW_SPACE_PAGE, 0);
@@ -117,8 +119,6 @@ void SemiSpace::start_scavenge() {
 #ifndef LEGACY_GC
 
 void TwoSpaceHeap::collect_new_space() {
-  HeapUsage usage_before;
-
   SemiSpace* from = space();
   OldSpace* old = old_space();
 
@@ -134,10 +134,6 @@ void TwoSpaceHeap::collect_new_space() {
   if (Flags::validate_heaps) old->verify();
 #endif
 
-  if (Flags::tracegc) {
-    get_heap_usage(this, &usage_before);
-  }
-
   SemiSpace* to = unused_space();
 
   uword old_used = old->used();
@@ -146,11 +142,11 @@ void TwoSpaceHeap::collect_new_space() {
   // Allocate from start of to-space..
   to->update_base_and_limit(to->chunk(), to->chunk()->start());
 
-  GenerationalScavengeVisitor visitor(this);
+  GenerationalScavengeVisitor visitor(program_, this);
   to->start_scavenge();
   old->start_scavenge();
 
-  program->iterate_shared_heap_roots(&visitor);
+  process_heap_->iterate_roots(&visitor);
 
   old->visit_remembered_set(&visitor);
 
@@ -165,12 +161,6 @@ void TwoSpaceHeap::collect_new_space() {
 
   // Second space argument is used to size the new-space.
   swap_semi_spaces();
-
-  if (Flags::tracegc) {
-    HeapUsage usage_after;
-    get_heap_usage(this, &usage_after);
-    print_process_gc_info(&usage_before, &usage_after);
-  }
 
 #ifdef DEBUG
   if (Flags::validate_heaps) old->verify();
@@ -190,23 +180,22 @@ void TwoSpaceHeap::collect_new_space() {
   update_stack_limits();
 }
 
+void TwoSpaceHeap::collect_old_space_if_needed(bool force) {
+  if (force || old_space()->needs_garbage_collection()) {
+    old_space()->flush();
+    collect_old_space();
+#ifdef DEBUG
+    if (Flags::validate_heaps) old_space()->verify();
+#endif
+  }
+}
+
 void TwoSpaceHeap::collect_old_space() {
   if (Flags::validate_heaps) {
     validate_heaps_are_consistent();
   }
 
-  SharedHeapUsage usage_before;
-  if (Flags::tracegc) {
-    get_shared_heap_usage(this, &usage_before);
-  }
-
   perform_shared_garbage_collection();
-
-  if (Flags::tracegc) {
-    SharedHeapUsage usage_after;
-    get_shared_heap_usage(this, &usage_after);
-    print_program_gc_info(&usage_before, &usage_after);
-  }
 
   if (Flags::validate_heaps) {
     validate_heaps_are_consistent();

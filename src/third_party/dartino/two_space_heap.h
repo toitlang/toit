@@ -15,7 +15,7 @@ namespace toit {
 // TwoSpaceHeap represents the container for all HeapObjects.
 class TwoSpaceHeap {
  public:
-  explicit TwoSpaceHeap(Program* program);
+  TwoSpaceHeap(Program* program, ObjectHeap* process_heap);
   ~TwoSpaceHeap();
 
   // Allocate raw object. Returns null if a garbage collection is
@@ -86,6 +86,7 @@ class TwoSpaceHeap {
 
   void collect_new_space();
   void collect_old_space();
+  void collect_old_space_if_needed(bool force);
   void perform_shared_garbage_collection();
   void sweep_shared_heap();
   void compact_shared_heap();
@@ -96,6 +97,7 @@ class TwoSpaceHeap {
   friend class GenerationalScavengeVisitor;
 
   Program* program_;
+  ObjectHeap* process_heap_;
   SemiSpace* semi_space_;
   OldSpace* old_space_;
   SemiSpace* unused_semispace_;

@@ -19,7 +19,6 @@ namespace toit {
 class Chunk;
 class FreeList;
 class GenerationalScavengeVisitor;
-class Heap;
 class HeapObject;
 class HeapObjectVisitor;
 class MarkingStack;
@@ -366,7 +365,7 @@ class OldSpace : public Space {
   // For the objects promoted to the old space during scavenge.
   inline void start_scavenge() { start_tracking_allocations(); }
   bool complete_scavenge_generational(GenerationalScavengeVisitor* visitor);
-  inline void EndScavenge() { end_tracking_allocations(); }
+  inline void end_scavenge() { end_tracking_allocations(); }
 
   void start_tracking_allocations();
   void end_tracking_allocations();

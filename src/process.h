@@ -169,7 +169,7 @@ class Process : public ProcessListFromProcessGroup::Element,
 
   bool should_allow_external_allocation(word size) {
     bool result = _object_heap.should_allow_external_allocation(size);
-    _object_heap.set_last_allocation_result(result ? Heap::ALLOCATION_SUCCESS : Heap::ALLOCATION_HIT_LIMIT);
+    _object_heap.set_last_allocation_result(result ? ObjectHeap::ALLOCATION_SUCCESS : ObjectHeap::ALLOCATION_HIT_LIMIT);
     return result;
   }
 
@@ -314,7 +314,7 @@ class AllocationManager {
     // with realloc.
     _ptr = malloc(length);
     if (_ptr == null) {
-      _process->object_heap()->set_last_allocation_result(Heap::ALLOCATION_OUT_OF_MEMORY);
+      _process->object_heap()->set_last_allocation_result(ObjectHeap::ALLOCATION_OUT_OF_MEMORY);
     } else {
       _process->register_external_allocation(length);
       _size = length;

@@ -22,7 +22,7 @@
 namespace toit {
 
 class Block;
-class Heap;
+class ObjectHeap;
 class RawHeap;
 
 // A class used for printing usage of a memory area.
@@ -101,7 +101,6 @@ class Block : public BlockLinkedList::Element {
 
   void* _top;
   friend class BlockList;
-  friend class Heap;
   friend class HeapMemory;
   friend class OS;
   friend class RawMemory;
