@@ -16,6 +16,18 @@ jobs:
         container: [ ubuntu-18.04, macos-10.15, windows-2022 ]
         shard: [1, 2, 3, 4, 5]
 
+        include:
+          - container: ubuntu-18.04
+            shard: 6
+          - container: ubuntu-18.04
+            shard: 7
+          - container: ubuntu-18.04
+            shard: 8
+          - container: ubuntu-18.04
+            shard: 9
+          - container: ubuntu-18.04
+            shard: 10
+
     runs-on: ${{ matrix.container }}
 
     steps:
@@ -28,7 +40,7 @@ jobs:
           echo ::set-output name=debug_dir::debug-ci/$RUNNER_OS-${{ matrix.shard }}
           if [ "$RUNNER_OS" == "Linux" ]; then
             echo ::set-output name=artifact::toit-linux.tar.gz
-            echo ::set-output name=total_shards::5
+            echo ::set-output name=total_shards::10
           elif [ "$RUNNER_OS" == "macOS" ]; then
             echo ::set-output name=artifact::toit-macos.tar.gz
             echo ::set-output name=total_shards::5
@@ -135,6 +147,7 @@ jobs:
           make all
           if [ "$RUNNER_OS" == "Linux" ]; then
             make CROSS_ARCH=host32 all-cross
+            make HOST=debug BUILD_TYPE=Debug all
           fi
 
       # Test.
@@ -153,8 +166,8 @@ jobs:
           make test
           make test-health
           if [ "$RUNNER_OS" == "Linux" ]; then
-            cd build/host32
-            ninja check
+            make HOST=host32 test
+            make HOST=debug BUILD_TYPE=Debug test
           fi
 
       # We use a cache to send the external test result to the external job.
