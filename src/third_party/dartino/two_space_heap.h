@@ -40,6 +40,8 @@ class TwoSpaceHeap {
   void find(uword word);
 #endif
 
+  void validate();
+
   // Returns false for allocation failure.
   bool initialize();
 

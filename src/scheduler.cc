@@ -752,6 +752,8 @@ void Scheduler::terminate_execution(Locker& locker, ExitState exit) {
   OS::signal(_has_processes);
 }
 
+#ifdef LEGACY_GC
+
 word Scheduler::largest_number_of_blocks_in_a_process() {
   Locker locker(_mutex);
   word largest = 0;
@@ -760,6 +762,8 @@ word Scheduler::largest_number_of_blocks_in_a_process() {
   }
   return largest;
 }
+
+#endif
 
 void Scheduler::tick(Locker& locker) {
   int64 now = OS::get_monotonic_time();

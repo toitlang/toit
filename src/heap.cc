@@ -33,6 +33,8 @@
 
 namespace toit {
 
+#ifdef LEGACY_GC
+
 class ScavengeScope : public Locker {
  public:
   ScavengeScope(HeapMemory* heap_memory, RawHeap* heap)
@@ -50,6 +52,8 @@ class ScavengeScope : public Locker {
   HeapMemory* _heap_memory;
   RawHeap* _heap;
 };
+
+#endif
 
 Instance* ObjectHeap::allocate_instance(Smi* class_id) {
   int size = program()->instance_size_for(class_id);
@@ -455,7 +459,14 @@ void ObjectHeap::iterate_roots(RootCallback* callback) {
   }
 }
 
-#ifdef LEGACY_GC
+#ifndef LEGACY_GC
+
+int ObjectHeap::gc() {
+  _two_space_heap.collect_new_space();
+  return 0;  // TODO: Return blocks freed?
+}
+
+#else
 
 int ObjectHeap::gc() {
   if (program() == null) FATAL("cannot gc external process");
