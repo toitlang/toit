@@ -120,7 +120,11 @@ class Protocol:
       signals.set_signal i + 1 IO_TIME_SLOT - delay 1
       bits = bits >> 1
 
-  /** Reads $count bits from the receiver. */
+  /**
+  Reads $count bits from the receiver.
+
+  Can at most read one byte, so $count must satisfy $count <= 8.
+  */
   read_bits count/int -> int:
     read_signals := rmt.Signals count * SIGNALS_PER_BIT
     encode_read_signals_ read_signals --bit_count=count
@@ -133,7 +137,7 @@ class Protocol:
 
   static decode_signals_to_bits_ signals/rmt.Signals --from/int=0 --bit_count/int=8 -> int:
     assert: 0 <= from
-    assert: 0 <= bit_count
+    assert: 0 <= bit_count <= 8
     if from + bit_count * SIGNALS_PER_BIT > signals.size: throw INVALID_SIGNAL
 
     result := 0
