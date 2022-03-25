@@ -13,6 +13,8 @@ A $Channel corresponds to a channel in the ESP32 RMT controller.
 $Signals represent a collection of signals to be sent by the RMT controller.
 */
 
+BYTES_PER_SIGNAL ::= 2
+
 /**
 A collection of signals to be transferred or received with the RMT controller.
 
@@ -165,6 +167,8 @@ class Channel:
 
   res_/ByteArray? := null
 
+  idle_threshold_/int? := null
+  rx_buffer_size_/int? := null
   /**
   Constructs a channel using the given $num using the given $pin.
 
@@ -199,6 +203,35 @@ class Channel:
       --filter_ticks_thresh/int=100
       --rx_buffer_size=128:
     rmt_config_rx_ pin.num num mem_block_num clk_div flags idle_threshold filter_en filter_ticks_thresh rx_buffer_size
+    idle_threshold_ = idle_threshold
+    rx_buffer_size_ = rx_buffer_size
+
+  /**
+  Configures the underlying pin for reception and transmission.
+
+  Must be called on the tx channel.
+
+  # Usage
+  In order to configure a pin for reception and transmission, the following
+    configuration steps must happen (in the given order):
+  - Configure tx channel with $config_tx.
+  - Configure rx channel with $config_rx.
+  - Configure reception/transmission with $config_bidirectional_pin (must be
+    called on the tx channel).
+
+  # Advanced
+  Configuring a pin for reception and transmission allows the implementation
+    of protocols such as 1-wire.
+  */
+  config_bidirectional_pin:
+    rmt_config_bidirectional_pin_ pin.num num
+
+
+  idle_threshold -> int?:
+    return idle_threshold_
+
+  rx_buffer_size -> int?:
+    return rx_buffer_size_
 
   /**
   Configure the channel for TX.
@@ -234,23 +267,37 @@ class Channel:
       --idle_level/int=0:
     rmt_config_tx_ pin.num num mem_block_num clk_div flags carrier_en carrier_freq_hz carrier_level carrier_duty_percent loop_en idle_output_en idle_level
 
+  /** Closes the channel. */
   close:
     if res_:
       rmt_unuse_ resource_group_ res_
       res_ = null
 
-/** Transfers the given $signals over the given $channel.*/
+/**
+Transfers the given $signals over the given $channel.
+
+The $channel must be configured for transfering (see $Channel.config_tx).
+*/
 transfer channel/Channel signals/Signals -> none:
   rmt_transfer_ channel.num signals.bytes_
 
 /**
 Transfers the given $signals while simultaneously receiving.
 
-The $signals are transferred over the given $tx channel and signals are received on the $rx channel.
+The $signals are transferred over the given $tx channel and signals are
+  received on the $rx channel.
 
-The given $max_returned_bytes specifies the maximum byte size of the returned signals.
+The given $max_returned_bytes specifies the maximum byte size of the returned
+  signals. The $max_returned_bytes must be smaller than the configured RX
+  buffer size for the $rx channel.
+
+The $rx channel must be configured for receiving (see $Channel.config_rx).
+
+The $tx channel must be configured for transferring (see $Channel.config_tx).
 */
 transfer_and_receive --rx/Channel --tx/Channel signals/Signals max_returned_bytes/int -> Signals:
+  if max_returned_bytes > rx.rx_buffer_size: throw "maximum returned buffer size greater than allocated RX buffer size"
+
   result := rmt_transfer_and_read_ tx.num rx.num signals.bytes_ max_returned_bytes
   return Signals.from_bytes result
 
@@ -273,6 +320,9 @@ rmt_config_tx_ pin_num/int channel_num/int mem_block_num/int clk_div/int flags/i
     carrier_en/bool carrier_freq_hz/int carrier_level/int carrier_duty_percent/int
     loop_en/bool idle_output_en/bool idle_level/int:
   #primitive.rmt.config_tx
+
+rmt_config_bidirectional_pin_ pin/int tx/int:
+  #primitive.rmt.config_bidirectional_pin
 
 rmt_transfer_ tx_ch/int signals_bytes/*/Blob*/:
   #primitive.rmt.transfer
