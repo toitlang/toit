@@ -228,7 +228,11 @@ Chunk* ObjectMemory::allocate_chunk(Space* owner, uword size) {
          GcMetadata::heap_extent());
 
   uword base = reinterpret_cast<uword>(memory);
-  Chunk* chunk = new Chunk(owner, base, size);
+  Chunk* chunk = _new Chunk(owner, base, size);
+  if (!chunk) {
+    OS::free_pages(memory, size);
+    return null;
+  }
 
   ASSERT(base == Utils::round_up(base, TOIT_PAGE_SIZE));
   ASSERT(size == Utils::round_up(size, TOIT_PAGE_SIZE));

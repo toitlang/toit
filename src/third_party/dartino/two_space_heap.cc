@@ -14,36 +14,33 @@ namespace toit {
 TwoSpaceHeap::TwoSpaceHeap(Program* program, ObjectHeap* process_heap)
     : program_(program),
       process_heap_(process_heap),
-      old_space_(new OldSpace(program, this)),
-      unused_semispace_(new SemiSpace(program, Space::CANNOT_RESIZE, NEW_SPACE_PAGE, 0)) {
-  semi_space_ = new SemiSpace(program, Space::CANNOT_RESIZE, NEW_SPACE_PAGE, 0);
-  semispace_size_ = TOIT_PAGE_SIZE;
+      old_space_(program, this),
+      semi_space_a_(program, Space::CANNOT_RESIZE, NEW_SPACE_PAGE, 0),
+      semi_space_b_(program, Space::CANNOT_RESIZE, NEW_SPACE_PAGE, 0),
+      semi_space_(&semi_space_a_),
+      unused_semi_space_(&semi_space_b_) {
+  semi_space_size_ = TOIT_PAGE_SIZE;
   max_size_ = 256 * TOIT_PAGE_SIZE;
 }
 
 bool TwoSpaceHeap::initialize() {
-  Chunk* chunk = ObjectMemory::allocate_chunk(semi_space_, semispace_size_);
+  Chunk* chunk = ObjectMemory::allocate_chunk(semi_space_, semi_space_size_);
   if (chunk == NULL) return false;
   Chunk* unused_chunk =
-      ObjectMemory::allocate_chunk(unused_semispace_, semispace_size_);
+      ObjectMemory::allocate_chunk(unused_semi_space_, semi_space_size_);
   if (unused_chunk == NULL) {
     ObjectMemory::free_chunk(chunk);
     return false;
   }
   semi_space_->append(chunk);
   semi_space_->update_base_and_limit(chunk, chunk->start());
-  unused_semispace_->append(unused_chunk);
+  unused_semi_space_->append(unused_chunk);
   water_mark_ = chunk->start();
   return true;
 }
 
 TwoSpaceHeap::~TwoSpaceHeap() {
-  // We do this before starting to destroy the heap, because the callbacks can
-  // trigger calls that assume the heap is still working.
   // TODO(erik): Call all finalizers.
-  delete unused_semispace_;
-  delete old_space_;
-  delete semi_space_;
 }
 
 HeapObject* TwoSpaceHeap::allocate(uword size) {
@@ -56,8 +53,8 @@ HeapObject* TwoSpaceHeap::allocate(uword size) {
 
 void TwoSpaceHeap::swap_semi_spaces() {
   SemiSpace* temp = semi_space_;
-  semi_space_ = unused_semispace_;
-  unused_semispace_ = temp;
+  semi_space_ = unused_semi_space_;
+  unused_semi_space_ = temp;
   water_mark_ = semi_space_->top();
 }
 
@@ -314,9 +311,9 @@ void TwoSpaceHeap::compact_shared_heap() {
 
 #ifdef DEBUG
 void TwoSpaceHeap::find(uword word) {
-  semi_space_->find(word, "data semispace");
-  unused_semispace_->find(word, "unused semispace");
-  old_space_->find(word, "oldspace");
+  semi_space_->find(word, "data semi_space");
+  unused_semi_space_->find(word, "unused semi_space");
+  old_space_.find(word, "oldspace");
 #ifdef DARTINO_TARGET_OS_LINUX
   FILE* fp = fopen("/proc/self/maps", "r");
   if (fp == NULL) return;
