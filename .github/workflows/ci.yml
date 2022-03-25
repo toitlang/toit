@@ -131,17 +131,20 @@ jobs:
           ccache --version
           cmake --version
 
+      - name: Setup compilation env
+        shell: bash
+        run: |
+          echo "IDF_PATH=${{ github.workspace }}/third_party/esp-idf" >> $GITHUB_ENV
+          echo "CCACHE_DIR=${{ github.workspace }}/.ccache" >> $GITHUB_ENV
+          echo "CCACHE_BASEDIR=${{ github.workspace }}" >> $GITHUB_ENV
+          echo "CCACHE_COMPRESS=true" >> $GITHUB_ENV
+          echo "CCACHE_COMPRESSLEVEL=6" >> $GITHUB_ENV
+          echo "CCACHE_MAXSIZE=400M" >> $GITHUB_ENV
+          echo "SHARD_START=${{ matrix.shard }}" >> $GITHUB_ENV
+          echo "SHARD_STRIDE=${{ steps.constants.outputs.total_shards }}" >> $GITHUB_ENV
+
       # Build using make.
       - name: make
-        env:
-          IDF_PATH: ${{ github.workspace }}/third_party/esp-idf
-          CCACHE_DIR: ${{ github.workspace }}/.ccache
-          CCACHE_BASEDIR: ${{ github.workspace }}
-          CCACHE_COMPRESS: true
-          CCACHE_COMPRESSLEVEL: '6'
-          CCACHE_MAXSIZE: 400M
-          SHARD_START: ${{ matrix.shard }}
-          SHARD_STRIDE: ${{ steps.constants.outputs.total_shards }}
         shell: bash
         run: |
           make all
@@ -152,23 +155,19 @@ jobs:
 
       # Test.
       - name: Test
-        env:
-          IDF_PATH: ${{ github.workspace }}/third_party/esp-idf
-          CCACHE_DIR: ${{ github.workspace }}/.ccache
-          CCACHE_BASEDIR: ${{ github.workspace }}
-          CCACHE_COMPRESS: true
-          CCACHE_COMPRESSLEVEL: '6'
-          CCACHE_MAXSIZE: 400M
-          SHARD_START: ${{ matrix.shard }}
-          SHARD_STRIDE: ${{ steps.constants.outputs.total_shards }}
-        shell: bash
         run: |
           make test
           make test-health
-          if [ "$RUNNER_OS" == "Linux" ]; then
-            make HOST=host32 test
-            make HOST=debug BUILD_TYPE=Debug test
-          fi
+
+      - name: Test 32bit
+        if: runner.os == 'Linux'
+        run: |
+          make HOST=host32 test
+
+      - name: Test debug
+        if: runner.os == 'Linux'
+        run: |
+          make HOST=debug BUILD_TYPE=Debug test
 
       # Test external code.
       - name: Test external
