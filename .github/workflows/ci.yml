@@ -22,8 +22,8 @@ jobs:
       - name: Set up constants
         id: constants
         run: |
-          echo ::set-output name=external_result::external-result-$RUNNER_OS-${{ matrix.shard }}.txt
-          echo ::set-output name=external_result_key::external-result-${{ github.run_id }}-${{ github.run_attempt }}-$RUNNER_OS-${{ matrix.shard }}
+          echo ::set-output name=external_result::external-result/$RUNNER_OS-${{ matrix.shard }}.txt
+          echo ::set-output name=external_result_name::external-result-${{ github.run_id }}-${{ github.run_attempt }}
           echo ::set-output name=debug_root_dir::debug-ci
           echo ::set-output name=debug_dir::debug-ci/$RUNNER_OS-${{ matrix.shard }}
           if [ "$RUNNER_OS" == "Linux" ]; then
@@ -157,13 +157,6 @@ jobs:
             ninja check
           fi
 
-      # We use a cache to send the external test result to the external job.
-      - name: Retrieve/store external test result
-        uses: actions/cache@v2
-        with:
-          path: ${{ steps.constants.outputs.external_result }}
-          key: ${{ steps.constants.outputs.external_result_key }}
-
       # Test external code.
       - name: Test external
         # External tests are allowed to fail, but we record them and
@@ -181,6 +174,7 @@ jobs:
         shell: bash
         run: |
           # Mark the external test as failing, and update it at the end of this step.
+          mkdir -p $(dirname ${{ steps.constants.outputs.external_result }})
           echo fail > ${{ steps.constants.outputs.external_result }}
           make enable-external
           find external > ${{ steps.constants.outputs.debug_dir }}/${{ matrix.container }}_${{ matrix.shard }}_files_after_enable_external.log
@@ -195,6 +189,12 @@ jobs:
           fi
           # If we reach here, all steps of this step succeeded.
           echo success > ${{ steps.constants.outputs.external_result }}
+
+      - name: Store external test result
+        uses: actions/upload-artifact@v2
+        with:
+          name: ${{ steps.constants.outputs.external_result_name }}
+          path: ${{ steps.constants.outputs.external_result }}
 
       - name: Pack artifacts
         if: matrix.shard == 1
@@ -410,49 +410,25 @@ jobs:
   external:
     needs: build
 
-    strategy:
-      # The matrix will run all possible combinations in parallel.
-      matrix:
-        container: [ ubuntu-latest, macos-latest, windows-latest ]
-
-    runs-on: ${{ matrix.container }}
+    runs-on: ubuntu-latest
 
     steps:
       - name: Set up constants
         id: constants
         shell: bash
         run: |
-          echo ::set-output name=external_result_prefix::external-result-$RUNNER_OS
-          echo ::set-output name=external_result_key_prefix::external-result-${{ github.run_id }}-${{ github.run_attempt }}-$RUNNER_OS
+          echo ::set-output name=external_result_dir::external-result
+          echo ::set-output name=external_result_name::external-result-${{ github.run_id }}-${{ github.run_attempt }}
 
-      - name: Retrieve 1
-        uses: actions/cache@v2
+      - name: Retrieve
+        uses: actions/download-artifact@v3
         with:
-          path: ${{ steps.constants.outputs.external_result_prefix }}-1.txt
-          key: ${{ steps.constants.outputs.external_result_key_prefix }}-1
-      - name: Retrieve 2
-        uses: actions/cache@v2
-        with:
-          path: ${{ steps.constants.outputs.external_result_prefix }}-2.txt
-          key: ${{ steps.constants.outputs.external_result_key_prefix }}-2
-      - name: Retrieve 3
-        uses: actions/cache@v2
-        with:
-          path: ${{ steps.constants.outputs.external_result_prefix }}-3.txt
-          key: ${{ steps.constants.outputs.external_result_key_prefix }}-3
-      - name: Retrieve 4
-        uses: actions/cache@v2
-        with:
-          path: ${{ steps.constants.outputs.external_result_prefix }}-4.txt
-          key: ${{ steps.constants.outputs.external_result_key_prefix }}-4
-      - name: Retrieve 5
-        uses: actions/cache@v2
-        with:
-          path: ${{ steps.constants.outputs.external_result_prefix }}-5.txt
-          key: ${{ steps.constants.outputs.external_result_key_prefix }}-5
+          name: ${{ steps.constants.outputs.external_result_name }}
+          path: external-result
 
       - name: Check
         shell: bash
         run: |
-          cat external-result*
-          ! grep "fail" external-result*
+          find .
+          cat external-result/*
+          ! grep "fail" external-result/*
