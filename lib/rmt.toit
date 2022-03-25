@@ -300,6 +300,9 @@ rmt_config_tx_ pin_num/int channel_num/int mem_block_num/int clk_div/int flags/i
     loop_en/bool idle_output_en/bool idle_level/int:
   #primitive.rmt.config_tx
 
+rmt_config_bidirectional_pin_ pin/int rx/int:
+  #primitive.rmt.config_bidirectional_pin
+
 rmt_transfer_ tx_ch/int signals_bytes/*/Blob*/:
   #primitive.rmt.transfer
 

@@ -45,7 +45,7 @@ class Protocol:
     tx_channel_.config_tx --idle_level=1
     rx_channel_.config_rx --filter_ticks_thresh=30 --idle_threshold=500 --rx_buffer_size=rx_buffer_size
 
-    ow_config_pin_ rx_channel_.pin.num rx_channel_.num tx_channel_.num
+    rmt.rmt_config_bidirectional_pin_  rx_channel_.pin.num tx_channel_.num
 
   /**
   Writes the given bytes and then reads the given $byte_count number of bytes.
@@ -172,6 +172,3 @@ class Protocol:
         (received_signals.signal_level 1) == 1 and (received_signals.signal_period 1) > 0 and
         // The receiver signals its presence.
         (received_signals.signal_level 2) == 0 and (received_signals.signal_period 2) > 0
-
-ow_config_pin_ pin rx tx:
-  #primitive.one_wire.config_pin

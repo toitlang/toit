@@ -153,6 +153,25 @@ PRIMITIVE(config_rx) {
   return process->program()->null_object();
 }
 
+PRIMITIVE(config_bidirectional_pin) {
+  ARGS(int, pin, int, tx);
+
+  // Set open collector?
+  if (pin < 32) {
+      GPIO.enable_w1ts = (0x1 << pin);
+  } else {
+      GPIO.enable1_w1ts.data = (0x1 << (pin - 32));
+  }
+
+  rmt_set_pin(static_cast<rmt_channel_t>(tx), RMT_MODE_TX, static_cast<gpio_num_t>(pin));
+
+  PIN_INPUT_ENABLE(GPIO_PIN_MUX_REG[pin]);
+
+  GPIO.pin[pin].pad_driver = 1;
+
+  return process->program()->null_object();
+}
+
 PRIMITIVE(transfer) {
   ARGS(int, tx_num, Blob, items_bytes)
   if (items_bytes.length() % 4 != 0) INVALID_ARGUMENT;
