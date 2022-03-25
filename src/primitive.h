@@ -381,7 +381,7 @@ namespace toit {
   PRIMITIVE(transfer_and_read, 4)            \
 
 #define MODULE_OW(PRIMITIVE)                 \
-  PRIMITIVE(config_pin, 3)                   \
+  PRIMITIVE(config_pin, 2)                   \
 
 #define MODULE_CRYPTO(PRIMITIVE)             \
   PRIMITIVE(sha1_start, 1)                   \

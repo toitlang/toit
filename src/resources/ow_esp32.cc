@@ -31,7 +31,7 @@ namespace toit {
 MODULE_IMPLEMENTATION(one_wire, MODULE_OW);
 
 PRIMITIVE(config_pin) {
-  ARGS(int, pin, int, rx, int, tx);
+  ARGS(int, pin, int, tx);
 
   if (pin < 32) {
       GPIO.enable_w1ts = (0x1 << pin);
