@@ -206,6 +206,27 @@ class Channel:
     idle_threshold_ = idle_threshold
     rx_buffer_size_ = rx_buffer_size
 
+  /**
+  Configures the underlying pin for reception and transmission.
+
+  Must be called on the tx channel.
+
+  # Usage
+  In order to configure a pin for reception and transmission, the following
+    configuration steps must happen (in the given order):
+  - Configure tx channel with $config_tx.
+  - Configure rx channel with $config_rx.
+  - Configure reception/transmission with $config_bidirectional_pin (must be
+    called on the tx channel).
+
+  # Advanced
+  Configuring a pin for reception and transmission allows the implementation
+    of protocols such as 1-wire.
+  */
+  config_bidirectional_pin:
+    rmt_config_bidirectional_pin_ pin.num num
+
+
   idle_threshold -> int?:
     return idle_threshold_
 
@@ -300,7 +321,7 @@ rmt_config_tx_ pin_num/int channel_num/int mem_block_num/int clk_div/int flags/i
     loop_en/bool idle_output_en/bool idle_level/int:
   #primitive.rmt.config_tx
 
-rmt_config_bidirectional_pin_ pin/int rx/int:
+rmt_config_bidirectional_pin_ pin/int tx/int:
   #primitive.rmt.config_bidirectional_pin
 
 rmt_transfer_ tx_ch/int signals_bytes/*/Blob*/:

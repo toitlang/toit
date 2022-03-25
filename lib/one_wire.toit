@@ -45,7 +45,7 @@ class Protocol:
     tx_channel_.config_tx --idle_level=1
     rx_channel_.config_rx --filter_ticks_thresh=30 --idle_threshold=500 --rx_buffer_size=rx_buffer_size
 
-    rmt.rmt_config_bidirectional_pin_  rx_channel_.pin.num tx_channel_.num
+    rmt.rmt_config_bidirectional_pin_ rx_channel_.pin.num tx_channel_.num
 
   /**
   Writes the given bytes and then reads the given $byte_count number of bytes.
