@@ -16,6 +16,18 @@ jobs:
         container: [ ubuntu-18.04, macos-10.15, windows-2022 ]
         shard: [1, 2, 3, 4, 5]
 
+        include:
+          - container: ubuntu-18.04
+            shard: 6
+          - container: ubuntu-18.04
+            shard: 7
+          - container: ubuntu-18.04
+            shard: 8
+          - container: ubuntu-18.04
+            shard: 9
+          - container: ubuntu-18.04
+            shard: 10
+
     runs-on: ${{ matrix.container }}
 
     steps:
@@ -28,7 +40,7 @@ jobs:
           echo ::set-output name=debug_dir::debug-ci/$RUNNER_OS-${{ matrix.shard }}
           if [ "$RUNNER_OS" == "Linux" ]; then
             echo ::set-output name=artifact::toit-linux.tar.gz
-            echo ::set-output name=total_shards::5
+            echo ::set-output name=total_shards::10
           elif [ "$RUNNER_OS" == "macOS" ]; then
             echo ::set-output name=artifact::toit-macos.tar.gz
             echo ::set-output name=total_shards::5
@@ -119,43 +131,43 @@ jobs:
           ccache --version
           cmake --version
 
+      - name: Setup compilation env
+        shell: bash
+        run: |
+          echo "IDF_PATH=${{ github.workspace }}/third_party/esp-idf" >> $GITHUB_ENV
+          echo "CCACHE_DIR=${{ github.workspace }}/.ccache" >> $GITHUB_ENV
+          echo "CCACHE_BASEDIR=${{ github.workspace }}" >> $GITHUB_ENV
+          echo "CCACHE_COMPRESS=true" >> $GITHUB_ENV
+          echo "CCACHE_COMPRESSLEVEL=6" >> $GITHUB_ENV
+          echo "CCACHE_MAXSIZE=400M" >> $GITHUB_ENV
+          echo "SHARD_START=${{ matrix.shard }}" >> $GITHUB_ENV
+          echo "SHARD_STRIDE=${{ steps.constants.outputs.total_shards }}" >> $GITHUB_ENV
+
       # Build using make.
       - name: make
-        env:
-          IDF_PATH: ${{ github.workspace }}/third_party/esp-idf
-          CCACHE_DIR: ${{ github.workspace }}/.ccache
-          CCACHE_BASEDIR: ${{ github.workspace }}
-          CCACHE_COMPRESS: true
-          CCACHE_COMPRESSLEVEL: '6'
-          CCACHE_MAXSIZE: 400M
-          SHARD_START: ${{ matrix.shard }}
-          SHARD_STRIDE: ${{ steps.constants.outputs.total_shards }}
         shell: bash
         run: |
           make all
           if [ "$RUNNER_OS" == "Linux" ]; then
             make CROSS_ARCH=host32 all-cross
+            make HOST=debug BUILD_TYPE=Debug all
           fi
 
       # Test.
       - name: Test
-        env:
-          IDF_PATH: ${{ github.workspace }}/third_party/esp-idf
-          CCACHE_DIR: ${{ github.workspace }}/.ccache
-          CCACHE_BASEDIR: ${{ github.workspace }}
-          CCACHE_COMPRESS: true
-          CCACHE_COMPRESSLEVEL: '6'
-          CCACHE_MAXSIZE: 400M
-          SHARD_START: ${{ matrix.shard }}
-          SHARD_STRIDE: ${{ steps.constants.outputs.total_shards }}
-        shell: bash
         run: |
           make test
           make test-health
-          if [ "$RUNNER_OS" == "Linux" ]; then
-            cd build/host32
-            ninja check
-          fi
+
+      - name: Test 32bit
+        if: runner.os == 'Linux'
+        run: |
+          make HOST=host32 test
+
+      - name: Test debug
+        if: runner.os == 'Linux'
+        run: |
+          make HOST=debug BUILD_TYPE=Debug test
 
       # Test external code.
       - name: Test external
