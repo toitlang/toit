@@ -17,16 +17,6 @@ import uuid
 
 /*
 
-import system.containers
-  show
-    RPC_CONTAINERS_LIST_IMAGES
-    RPC_CONTAINERS_START_IMAGE
-    RPC_CONTAINERS_UNINSTALL_IMAGE
-    RPC_CONTAINERS_IMAGE_WRITER_OPEN
-    RPC_CONTAINERS_IMAGE_WRITER_WRITE
-    RPC_CONTAINERS_IMAGE_WRITER_COMMIT
-    RPC_CONTAINERS_IMAGE_WRITER_CLOSE
-
 import ..containers
 import ..flash.allocation
 import ..flash.reservation
@@ -42,13 +32,6 @@ class ContainersApi:
   manager_/ContainerManager ::= ?
 
   constructor .broker_ .manager_:
-    broker_.register_procedure RPC_CONTAINERS_LIST_IMAGES:: | _ |
-      list_images
-    broker_.register_procedure RPC_CONTAINERS_START_IMAGE:: | bytes |
-      start_image bytes
-    broker_.register_procedure RPC_CONTAINERS_UNINSTALL_IMAGE:: | bytes |
-      uninstall_image bytes
-
     broker_.register_procedure RPC_CONTAINERS_IMAGE_WRITER_OPEN:: | size gid pid |
       image_writer_open size gid pid
     broker_.register_descriptor_procedure RPC_CONTAINERS_IMAGE_WRITER_WRITE:: | writer arguments |
@@ -59,22 +42,6 @@ class ContainersApi:
     broker_.register_descriptor_procedure RPC_CONTAINERS_IMAGE_WRITER_CLOSE:: | writer arguments gid pid |
       manager_.unregister_descriptor gid pid arguments[0]
       writer.close
-
-  list_images -> List:
-    return manager_.images.map: | image/ContainerImage |
-      image.id.to_byte_array
-
-  start_image bytes/ByteArray -> int?:
-    id := uuid.Uuid bytes
-    image/ContainerImage? := manager_.lookup_image id
-    if not image: return null
-    return image.start.id
-
-  uninstall_image bytes/ByteArray -> none:
-    id := uuid.Uuid bytes
-    image/ContainerImage? := manager_.lookup_image id
-    if not image: return
-    image.delete
 
   image_writer_open size/int gid/int pid/int -> int:
     relocated_size := size - (size / IMAGE_CHUNK_SIZE) * IMAGE_WORD_SIZE

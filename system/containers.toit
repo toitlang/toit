@@ -17,6 +17,9 @@ import uuid
 import monitor
 import encoding.base64 as base64
 
+import system.services show ServiceDefinition
+import system.api.containers show ContainersService
+
 import .flash.allocation
 import .flash.registry
 import .services
@@ -35,9 +38,6 @@ class Container:
 
   id -> int:
     return gid_
-
-  has_process pid/int -> bool:
-    return pids_.contains pid
 
   on_stop_ -> none:
     pids_.do --keys: on_process_stop_ it
@@ -117,9 +117,9 @@ class ContainerImageFlash extends ContainerImage:
     // TODO(kasper): Check in the other methods before using this?
     allocation_ = null
 
-class ContainerManager implements SystemMessageHandler_:
+class ContainerManager extends ServiceDefinition implements ContainersService SystemMessageHandler_:
   image_registry/FlashRegistry ::= ?
-  service_discovery_/ServiceDiscoveryDefinition ::= ?
+  service_manager_/SystemServiceManager ::= ?
 
   images_/Map ::= {:}               // Map<uuid.Uuid, ContainerImage>
   containers_by_id_/Map ::= {:}     // Map<int, Container>
@@ -127,13 +127,41 @@ class ContainerManager implements SystemMessageHandler_:
   next_handle_/int := 0
   done_ ::= monitor.Latch
 
-  constructor .image_registry .service_discovery_:
+  constructor .image_registry .service_manager_:
+    super
+        ContainersService.NAME
+        --major=ContainersService.MAJOR
+        --minor=ContainersService.MINOR
     set_system_message_handler_ SYSTEM_TERMINATED_ this
     set_system_message_handler_ SYSTEM_SPAWNED_ this
     set_system_message_handler_ SYSTEM_MIRROR_MESSAGE_ this
     image_registry.do: | allocation/FlashAllocation |
       if allocation.type != FLASH_ALLOCATION_PROGRAM_TYPE: continue.do
       add_flash_image allocation
+    install
+
+  handle client/int index/int arguments/any -> any:
+    if index == ContainersService.LIST_IMAGES_INDEX:
+      return list_images
+    if index == ContainersService.START_IMAGE_INDEX:
+      return start_image (uuid.Uuid arguments)
+    if index == ContainersService.UNINSTALL_IMAGE_INDEX:
+      return uninstall_image (uuid.Uuid arguments)
+    unreachable
+
+  list_images -> List:
+    return images.map --in_place: | image/ContainerImage |
+      image.id.to_byte_array
+
+  start_image id/uuid.Uuid -> int?:
+    image/ContainerImage? := lookup_image id
+    if not image: return null
+    return image.start.id
+
+  uninstall_image id/uuid.Uuid -> none:
+    image/ContainerImage? := lookup_image id
+    if not image: return
+    image.delete
 
   images -> List:
     return images_.values
@@ -197,7 +225,7 @@ class ContainerManager implements SystemMessageHandler_:
   on_message type/int gid/int pid/int arguments/any -> none:
     container/Container? := lookup_container gid
     if type == SYSTEM_TERMINATED_:
-      service_discovery_.on_process_stop pid
+      service_manager_.on_process_stop pid
       if container:
         error/int := arguments
         if error == 0: container.on_process_stop_ pid

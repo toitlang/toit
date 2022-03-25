@@ -28,9 +28,8 @@ Initialize the system and create the all important $ContainerManager
 */
 initialize -> ContainerManager:
   flash_registry ::= FlashRegistry.scan
-  discovery := ServiceDiscoveryDefinition
-  discovery.install
-  return ContainerManager flash_registry discovery
+  service_manager := SystemServiceManager
+  return ContainerManager flash_registry service_manager
 
 /**
 Boot the system and run the necessary containers. Returns when the

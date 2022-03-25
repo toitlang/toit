@@ -7,28 +7,21 @@ User-space side of the RPC API for installing container images in flash, and
   stopping and starting containers based on them.
 */
 
-import rpc
 import uuid
+import system.api.containers show ContainersService ContainersServiceClient
 
-RPC_CONTAINERS_LIST_IMAGES     ::= 100
-RPC_CONTAINERS_START_IMAGE     ::= 101
-RPC_CONTAINERS_UNINSTALL_IMAGE ::= 102
-
-RPC_CONTAINERS_IMAGE_WRITER_OPEN   := 103
-RPC_CONTAINERS_IMAGE_WRITER_WRITE  := 104
-RPC_CONTAINERS_IMAGE_WRITER_COMMIT := 105
-RPC_CONTAINERS_IMAGE_WRITER_CLOSE  := 106
+client_ /ContainersService ::= ContainersServiceClient.lookup
 
 images -> List:
-  array := rpc.invoke RPC_CONTAINERS_LIST_IMAGES null
-  return List array.size: uuid.Uuid array[it]
+  return client_.list_images
 
 start id/uuid.Uuid -> int:
-  return rpc.invoke RPC_CONTAINERS_START_IMAGE id.to_byte_array
+  return client_.start_image id
 
 uninstall id/uuid.Uuid -> none:
-  rpc.invoke RPC_CONTAINERS_UNINSTALL_IMAGE id.to_byte_array
+  client_.uninstall_image id
 
+/*
 class ContainerImageWriter extends rpc.CloseableProxy:
   size/int ::= ?
 
@@ -43,3 +36,4 @@ class ContainerImageWriter extends rpc.CloseableProxy:
 
   close_rpc_selector_ -> int:
     return RPC_CONTAINERS_IMAGE_WRITER_CLOSE
+*/

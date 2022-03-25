@@ -10,7 +10,10 @@ import rpc
 import rpc.broker
 import monitor
 
-import .discovery
+import system.api.service_discovery
+  show
+    ServiceDiscoveryService
+    ServiceDiscoveryServiceClient
 
 // Notification kinds.
 SERVICES_MANAGER_NOTIFY_OPEN_CLIENT  /int ::= 11
@@ -21,7 +24,7 @@ RPC_SERVICES_OPEN  /int         ::= 300
 RPC_SERVICES_CLOSE /int         ::= 301
 RPC_SERVICES_METHOD_START_ /int ::= 400
 
-default_discovery_client_ ::= ServiceDiscoveryClient.lookup
+client_ /ServiceDiscoveryService ::= ServiceDiscoveryServiceClient.lookup
 
 abstract class ServiceClient:
   name/string ::= ?
@@ -35,7 +38,7 @@ abstract class ServiceClient:
       process_send_ server SYSTEM_RPC_NOTIFY_ [SERVICES_MANAGER_NOTIFY_OPEN_CLIENT, current_process_]
       pid_ = server
     else:
-      pid_ = default_discovery_client_.discover name
+      pid_ = client_.discover name
     definition ::= rpc.invoke pid_ RPC_SERVICES_OPEN [name, major, minor]
     this.name = definition[0]
     version_ = definition[1]
@@ -120,7 +123,10 @@ abstract class ServiceDefinition:
   stringify -> string:
     return "service:$name@$version"
 
-  resolve name/string major/int minor/int -> List?:
+  listen_ name/string -> none:
+
+
+  resolve_ name/string major/int minor/int -> List?:
     index := names_.index_of name
     if index < 0: return null
     version := versions_[index]
@@ -173,15 +179,15 @@ class ServiceManager_ implements SystemMessageHandler_:
 
   listen name/string service/ServiceDefinition -> none:
     services_by_name_[name] = service
-    default_discovery_client_.listen name
+    client_.listen name
 
   unlisten name/string -> none:
-    default_discovery_client_.unlisten name
+    client_.unlisten name
     services_by_name_.remove name
 
   open client/int name/string major/int minor/int -> List?:
     service/ServiceDefinition ::= services_by_name_[name]
-    resolved ::= service.resolve name major minor
+    resolved ::= service.resolve_ name major minor
     if not resolved: return null
     procedure ::= service.procedure
     counts/Map ::= counts_by_procedure_.get procedure --init=(: {:})

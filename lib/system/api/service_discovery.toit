@@ -3,10 +3,10 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import .services
+import system.services show ServiceClient
 
-interface ServiceDiscovery:
-  static NAME  /string ::= "system/service/discovery"
+interface ServiceDiscoveryService:
+  static NAME  /string ::= "system/service-discovery"
   static MAJOR /int    ::= 0
   static MINOR /int    ::= 1
 
@@ -19,15 +19,18 @@ interface ServiceDiscovery:
   static UNLISTEN_INDEX /int ::= 2
   unlisten name/string -> none
 
-class ServiceDiscoveryClient extends ServiceClient implements ServiceDiscovery:
-  constructor.lookup name=ServiceDiscovery.NAME major=ServiceDiscovery.MAJOR minor=ServiceDiscovery.MINOR:
+class ServiceDiscoveryServiceClient extends ServiceClient implements ServiceDiscoveryService:
+  constructor.lookup
+      name=ServiceDiscoveryService.NAME
+      major=ServiceDiscoveryService.MAJOR
+      minor=ServiceDiscoveryService.MINOR:
     super.lookup name major minor --server=-1
 
   discover name/string -> int:
-    return invoke_ ServiceDiscovery.DISCOVER_INDEX name
+    return invoke_ ServiceDiscoveryService.DISCOVER_INDEX name
 
   listen name/string -> none:
-    invoke_ ServiceDiscovery.LISTEN_INDEX name
+    invoke_ ServiceDiscoveryService.LISTEN_INDEX name
 
   unlisten name/string -> none:
-    invoke_ ServiceDiscovery.UNLISTEN_INDEX name
+    invoke_ ServiceDiscoveryService.UNLISTEN_INDEX name
