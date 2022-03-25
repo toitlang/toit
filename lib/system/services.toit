@@ -123,9 +123,6 @@ abstract class ServiceDefinition:
   stringify -> string:
     return "service:$name@$version"
 
-  listen_ name/string -> none:
-
-
   resolve_ name/string major/int minor/int -> List?:
     index := names_.index_of name
     if index < 0: return null

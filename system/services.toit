@@ -42,12 +42,6 @@ class SystemServiceManager extends ServiceDefinition implements ServiceDiscovery
       return unlisten arguments
     unreachable
 
-  // Override the default listen implementation to avoid calling the
-  // service manager with the request. This is necessary to bootstrap
-  // the basic service discovery service.
-  listen_ name/string -> none:
-    listen name current_process_
-
   listen name/string pid/int -> none:
     if services_by_name_.contains name:
       throw "Already registered service:$name"

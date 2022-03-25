@@ -20,7 +20,10 @@ interface ContainersService:
   uninstall_image id/uuid.Uuid -> none
 
 class ContainersServiceClient extends ServiceClient implements ContainersService:
-  constructor.lookup name=ContainersService.NAME major=ContainersService.MAJOR minor=ContainersService.MINOR:
+  constructor.lookup
+      name=ContainersService.NAME
+      major=ContainersService.MAJOR
+      minor=ContainersService.MINOR:
     super.lookup name major minor
 
   list_images -> List:
