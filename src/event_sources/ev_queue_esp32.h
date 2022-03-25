@@ -22,42 +22,36 @@
 
 namespace toit {
 
-class UARTResource : public Resource {
- public:
+class EventQueueResource : public Resource {
+public:
   TAG(UARTResource);
 
-  UARTResource(ResourceGroup* group, uart_port_t port, QueueHandle_t queue)
+  EventQueueResource(ResourceGroup* group, QueueHandle_t queue)
       : Resource(group)
-      , _port(port)
       , _queue(queue){}
 
-  ~UARTResource() {
-    // TODO: Do we need to delete queue?
-  }
-
-  uart_port_t port() { return _port; }
   QueueHandle_t queue() { return _queue; }
 
- private:
-  uart_port_t _port;
-  QueueHandle_t _queue;
+private:
+  QueueHandle_t _queue; // Note: The queue is freed from the driver uninstall.
 };
 
-// TODO: This could be more generic and handle multiple types of busses.
-class UARTEventSource : public EventSource, public Thread {
- public:
-  static UARTEventSource* instance() { return _instance; }
 
-  UARTEventSource();
-  ~UARTEventSource();
+
+class EventQueueEventSource : public EventSource, public Thread {
+ public:
+  static EventQueueEventSource* instance() { return _instance; }
+
+  EventQueueEventSource();
+  ~EventQueueEventSource() override;
 
  private:
-  void entry();
+  void entry() override;
 
   void on_register_resource(Locker& locker, Resource* r) override;
   void on_unregister_resource(Locker& locker, Resource* r) override;
 
-  static UARTEventSource* _instance;
+  static EventQueueEventSource* _instance;
 
   QueueHandle_t _stop;
   QueueSetHandle_t _queue_set;

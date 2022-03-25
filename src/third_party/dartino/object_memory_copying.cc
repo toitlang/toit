@@ -4,6 +4,7 @@
 
 #include "gc_metadata.h"
 #include "object_memory.h"
+#include "two_space_heap.h"
 
 #include "../../heap.h"
 #include "../../objects.h"

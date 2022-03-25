@@ -101,7 +101,7 @@ class Scheduler {
   // deliver the signal.
   bool signal_process(Process* sender, int target_id, Process::Signal signal);
 
-  Process* hatch(Program* program, ProcessGroup* process_group, Method method, const uint8* array_address, int array_length, Block* initial_block);
+  Process* hatch(Program* program, ProcessGroup* process_group, Method method, uint8* arguments, Block* initial_block);
 
   // Returns a new process id (only called from Process constructor).
   int next_process_id();
@@ -122,7 +122,7 @@ class Scheduler {
 
   // Collects garbage from the given process or some of the non-running
   // processes in the system.
-  void scavenge(Process* process, bool malloc_failed, bool try_hard);
+  void gc(Process* process, bool malloc_failed, bool try_hard);
 
   // Print stack traces for all live processes.
   void print_stack_traces();
@@ -133,7 +133,9 @@ class Scheduler {
   // Returns false if the process doesn't exist, true otherwise.
   bool process_stats(Array* array, int group_id, int process_id);
 
+#ifdef LEGACY_GC
   word largest_number_of_blocks_in_a_process();
+#endif
 
   static const int INVALID_PROCESS_ID = -1;
 
@@ -153,8 +155,8 @@ class Scheduler {
   // a process and remove it from the ready list (if it's not idle). Resuming a process
   // puts the threads back into its original state, modulo idle->scheduled transitions that
   // are still supported while the process is suspended.
-  void scavenge_suspend_process(Locker& locker, Process* process);
-  void scavenge_resume_process(Locker& locker, Process* process);
+  void gc_suspend_process(Locker& locker, Process* process);
+  void gc_resume_process(Locker& locker, Process* process);
 
   // Check if a cross-process GC is in process and wait for it to complete if so. After
   // waiting transition to the new state.
@@ -181,6 +183,8 @@ class Scheduler {
   Scheduler::ExitState launch_program(Locker& locker, Process* process);
 
   Process* find_process(Locker& locker, int process_id);
+
+  SystemMessage* new_termination_message(int gid);
 
   // Called by the launch thread, to signal that time has passed.
   // The tick is used to drive process preemption.

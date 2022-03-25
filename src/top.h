@@ -26,6 +26,9 @@
 #include <typeinfo>
 #endif
 
+// Use semispace non-generational GC.
+#define LEGACY_GC 1
+
 // Support for profiling configuration
 #if defined(PROF)
 #define DEPLOY
@@ -168,6 +171,15 @@ static const int LARGE_INT_BIT_SIZE = INT64_SIZE * 8;
 static const int WORD_BIT_SIZE = WORD_SIZE * 8;  // Number of bits in a word.
 static const int BYTE_BIT_SIZE = 8;  // Number of bits in a byte.
 
+// Because of the fixed metadata overhead we limit the max size of the
+// heap for now.  Can be fixed if we can resize the metadata on demand.
+// This constant is not used on embedded platforms.
+#ifdef BUILD_64
+static const uword MAX_HEAP = 1ull * GB;  // Metadata ca. 8.5Mbytes.
+#else
+static const uword MAX_HEAP = 512ull * MB;  // Metadata ca. 8.2Mbytes.
+#endif
+
 static_assert(sizeof(int32) == 4, "invalid type size");
 static_assert(sizeof(int64) == 8, "invalid type size");
 #ifdef BUILD_64
@@ -284,7 +296,6 @@ class Block;
 class ProgramBlock;
 class ConditionVariable;
 class Encoder;
-class Heap;
 class ProgramHeap;
 class HeapMemory;
 class ProgramHeapMemory;

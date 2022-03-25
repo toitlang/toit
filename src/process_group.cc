@@ -23,45 +23,18 @@
 
 namespace toit {
 
-ProcessGroup::ProcessGroup(int id, Program* program, AlignedMemoryBase* memory, SystemMessage* termination)
+ProcessGroup::ProcessGroup(int id, Program* program, AlignedMemoryBase* memory)
     : _id(id)
     , _program(program)
-    , _memory(memory)
-    , _termination_message(termination) {
+    , _memory(memory) {
 }
 
 ProcessGroup::~ProcessGroup() {
   delete _memory;
-  delete _termination_message;
-}
-
-SystemMessage* ProcessGroup::take_termination_message(int pid, uint8 result) {
-  SystemMessage* message = _termination_message;
-  _termination_message = null;
-  message->set_pid(pid);
-
-  // Encode the exit value as small integer in the termination message.
-  MessageEncoder::encode_termination_message(message->data(), result);
-
-  return message;
 }
 
 ProcessGroup* ProcessGroup::create(int id, Program* program, AlignedMemoryBase* memory) {
-  uint8_t* data = unvoid_cast<uint8*>(malloc(MESSAGING_TERMINATION_MESSAGE_SIZE));
-  if (data == NULL) return NULL;
-
-  SystemMessage* termination_message = _new SystemMessage(SystemMessage::TERMINATED, id, -1, data, 2);
-  if (termination_message == NULL) {
-    free(data);
-    return NULL;
-  }
-
-  ProcessGroup* group = _new ProcessGroup(id, program, memory, termination_message);
-  if (group == NULL) {
-    delete termination_message;  // The data is freed by the SystemMessage destructor.
-    return NULL;
-  }
-  return group;
+  return _new ProcessGroup(id, program, memory);
 }
 
 Process* ProcessGroup::lookup(int process_id) {
@@ -72,6 +45,7 @@ Process* ProcessGroup::lookup(int process_id) {
   return null;
 }
 
+#ifdef LEGACY_GC
 word ProcessGroup::largest_number_of_blocks_in_a_process() {
   ASSERT(VM::current()->scheduler()->is_locked());
   word largest = 0;
@@ -80,6 +54,7 @@ word ProcessGroup::largest_number_of_blocks_in_a_process() {
   }
   return largest;
 }
+#endif
 
 void ProcessGroup::add(Process* process) {
   ASSERT(VM::current()->scheduler()->is_locked());

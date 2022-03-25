@@ -33,7 +33,7 @@ const char* Process::StateName[] = {
   "RUNNING",
 };
 
-Process::Process(Program* program, ProcessRunner* runner, ProcessGroup* group, Block* initial_block)
+Process::Process(Program* program, ProcessRunner* runner, ProcessGroup* group, SystemMessage* termination, Block* initial_block)
     : _id(VM::current()->scheduler()->next_process_id())
     , _next_task_id(0)
     , _program(program)
@@ -42,9 +42,16 @@ Process::Process(Program* program, ProcessRunner* runner, ProcessGroup* group, B
     , _program_heap_address(program ? program->_program_heap_address : 0)
     , _program_heap_size(program ? program->_program_heap_size : 0)
     , _entry(Method::invalid())
+    , _hatch_method(Method::invalid())
+    , _hatch_arguments(null)
+#ifdef LEGACY_GC
     , _object_heap(program, this, initial_block)
+#else
+    , _object_heap(program, this)
+#endif
     , _memory_usage(Usage("initial object heap"))
     , _last_bytes_allocated(0)
+    , _termination_message(termination)
     , _random_seeded(false)
     , _random_state0(1)
     , _random_state1(2)
@@ -61,52 +68,54 @@ Process::Process(Program* program, ProcessRunner* runner, ProcessGroup* group, B
   ASSERT(_group->lookup(_id) == this);
 }
 
-Process::Process(Program* program, ProcessGroup* group, char** args, Block* initial_block)
-   : Process(program, null, group, initial_block) {
+Process::Process(Program* program, ProcessGroup* group, SystemMessage* termination, char** args, Block* initial_block)
+   : Process(program, null, group, termination, initial_block) {
   _entry = program->entry();
   _args = args;
-  _object_heap.set_hatch_method(Method::invalid());
-  _object_heap.set_hatch_arguments(program->null_object());
 }
 
 #ifndef TOIT_FREERTOS
-Process::Process(Program* program, ProcessGroup* group, SnapshotBundle bundle, char** args, Block* initial_block)
-  : Process(program, null, group, initial_block) {
+Process::Process(Program* program, ProcessGroup* group, SystemMessage* termination, SnapshotBundle bundle, char** args, Block* initial_block)
+  : Process(program, null, group, termination, initial_block) {
   _entry = program->entry();
   _args = args;
-  ByteArray* snap = _object_heap.allocate_external_byte_array(bundle.size(), bundle.buffer(), true, false);
-  _object_heap.register_external_allocation(bundle.size());
 
-  // We don't run from snapshot on the device so we can assume that allocation
-  // does not fail on a newly created heap.
-  ASSERT(snap != null);
-  _object_heap.set_hatch_arguments(snap);
+  int size;
+  { MessageEncoder encoder(null);
+    encoder.encode_byte_array_external(bundle.buffer(), bundle.size());
+    size = encoder.size();
+  }
+
+  uint8* buffer = unvoid_cast<uint8*>(malloc(size));
+  ASSERT(buffer != null)
+  MessageEncoder encoder(buffer);
+  encoder.encode_byte_array_external(bundle.buffer(), bundle.size());
+  _hatch_arguments = buffer;
 }
 #endif
 
-Process::Process(Program* program, ProcessGroup* group, Method method, const uint8* arguments_address, int arguments_length, Block* initial_block)
-   : Process(program, null, group, initial_block) {
+Process::Process(Program* program, ProcessGroup* group, SystemMessage* termination, Method method, uint8* arguments, Block* initial_block)
+   : Process(program, null, group, termination, initial_block) {
   _entry = program->hatch_entry();
   _args = null;
-  ByteArray* args = _object_heap.allocate_internal_byte_array(arguments_length);
-  // We don't run from snapshot on the device so we can assume that allocation
-  // does not fail on a newly created heap.
-  ASSERT(args != null);
-  ByteArray::Bytes to(args);
-  memcpy(to.address(), arguments_address, to.length());
-
-  _object_heap.set_hatch_method(method);
-  _object_heap.set_hatch_arguments(args);
+  _hatch_method = method;
+  _hatch_arguments = arguments;
 }
 
-Process::Process(ProcessRunner* runner, ProcessGroup* group) : Process(null, runner, group, null) {
+Process::Process(ProcessRunner* runner, ProcessGroup* group, SystemMessage* termination)
+    : Process(null, runner, group, termination, null) {
 }
 
 Process::~Process() {
+  _state = TERMINATING;
+  MessageDecoder::deallocate(_hatch_arguments);
+  delete _termination_message;
+
   // Clean up unclaimed resource groups.
   while (ResourceGroup* r = _resource_groups.first()) {
     r->tear_down();  // Also removes from linked list.
   }
+
   if (_current_directory >= 0) {
     OS::close(_current_directory);
   }
@@ -117,6 +126,18 @@ Process::~Process() {
     remove_first_message();
   }
 }
+
+SystemMessage* Process::take_termination_message(uint8 result) {
+  SystemMessage* message = _termination_message;
+  _termination_message = null;
+  message->set_pid(id());
+
+  // Encode the exit value as small integer in the termination message.
+  MessageEncoder::encode_termination_message(message->data(), result);
+
+  return message;
+}
+
 
 String* Process::allocate_string(const char* content, int length, Error** error) {
   String* result = allocate_string(length, error);
@@ -269,6 +290,7 @@ int Process::message_count() {
 }
 
 void Process::send_mail(Message* message) {
+  if (_state == TERMINATING) return;
   _append_message(message);
   VM::current()->scheduler()->process_ready(this);
 }

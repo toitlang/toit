@@ -15,6 +15,7 @@
 #include "../../objects.h"
 #include "mark_sweep.h"
 #include "object_memory.h"
+#include "two_space_heap.h"
 
 #ifdef _MSC_VER
 #include <intrin.h>
@@ -120,7 +121,6 @@ uword OldSpace::allocate_in_new_chunk(uword size) {
     }
   }
 
-  hard_limit_hit_ = true;
   allocation_budget_ = -1;  // Trigger GC.
   return 0;
 }
@@ -358,7 +358,8 @@ void OldSpace::mark_chunk_ends_free() {
   }
 }
 
-void FixPointersVisitor::visit_block(Object** start, Object** end) {
+void FixPointersVisitor::do_roots(Object** start, int length) {
+  Object** end = start + length;
   for (Object** current = start; current < end; current++) {
     Object* object = *current;
     if (GcMetadata::get_page_type(object) == OLD_SPACE_PAGE) {

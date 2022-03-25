@@ -9,10 +9,9 @@
 #include "../../src/flags.h"
 #include "../../src/snapshot.h"
 #include "../../src/os.h"
+#include "../../src/third_party/dartino/gc_metadata.h"
 
 namespace toit {
-
-unsigned int checksum[4] = { 0, 0, 0, 0 };
 
 static SnapshotBundle compile(const char* input_path) {
   Flags::no_fork = true;
@@ -34,7 +33,7 @@ static SnapshotBundle compile(const char* input_path) {
 
 class MessageHandler : public ExternalSystemMessageHandler {
  public:
-  MessageHandler(VM* vm) : ExternalSystemMessageHandler(vm) { }
+  explicit MessageHandler(VM* vm) : ExternalSystemMessageHandler(vm) { }
   virtual void on_message(int sender, int type, void* data, int length) override;
 
  private:
@@ -45,7 +44,9 @@ void MessageHandler::on_message(int sender, int type, void* data, int length) {
   collect_garbage(_try_hard);
   _try_hard = !_try_hard;
 
-  send(sender, type, data, length, true);
+  if (!send(sender, type + 1, data, length, true)) {
+    FATAL("unable to send");
+  }
 }
 
 int run_program(Snapshot snapshot) {
@@ -55,7 +56,9 @@ int run_program(Snapshot snapshot) {
   int group_id = vm.scheduler()->next_group_id();
 
   MessageHandler handler(&vm);
-  handler.start();
+  if (!handler.start()) {
+    FATAL("unable to start handler");
+  }
 
   Scheduler::ExitState exit = vm.scheduler()->run_boot_program(image.program(), NULL, group_id);
   image.release();
@@ -76,11 +79,13 @@ int main(int argc, char **argv) {
 
   FlashRegistry::set_up();
   OS::set_up();
+  GcMetadata::set_up();
 
   auto compiled = compile(argv[1]);
   int result = run_program(compiled.snapshot());
   free(compiled.buffer());
 
+  GcMetadata::tear_down();
   OS::tear_down();
   FlashRegistry::tear_down();
   return result;

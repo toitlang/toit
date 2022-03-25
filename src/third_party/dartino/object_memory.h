@@ -19,7 +19,6 @@ namespace toit {
 class Chunk;
 class FreeList;
 class GenerationalScavengeVisitor;
-class Heap;
 class HeapObject;
 class HeapObjectVisitor;
 class MarkingStack;
@@ -366,7 +365,7 @@ class OldSpace : public Space {
   // For the objects promoted to the old space during scavenge.
   inline void start_scavenge() { start_tracking_allocations(); }
   bool complete_scavenge_generational(GenerationalScavengeVisitor* visitor);
-  inline void EndScavenge() { end_tracking_allocations(); }
+  inline void end_scavenge() { end_tracking_allocations(); }
 
   void start_tracking_allocations();
   void end_tracking_allocations();
@@ -385,12 +384,11 @@ class OldSpace : public Space {
   void set_compacting(bool value) { compacting_ = value; }
   bool compacting() { return compacting_; }
 
-  void clear_hard_limit_hit() { hard_limit_hit_ = false; }
   void set_used_after_last_gc(uword used) { used_after_last_gc_ = used; }
 
   // For detecting pointless GCs that are really an out-of-memory situation.
-  void EvaluatePointlessness();
-  uword MinimumProgress();
+  inline void evaluate_pointlessness() {};  // TODO: Implement.
+  uword minimum_progress();
   void report_new_space_progress(uword bytes_collected);
 
  private:
@@ -409,7 +407,6 @@ class OldSpace : public Space {
   uword new_space_garbage_found_since_last_gc_ = 0;
   int successive_pointless_gcs_ = 0;
   uword used_after_last_gc_ = 0;
-  bool hard_limit_hit_ = false;
 };
 
 class NoAllocationFailureScope {
@@ -432,13 +429,6 @@ class ObjectMemory {
   // to a page boundary.
   static Chunk* allocate_chunk(Space* space, uword size);
 
-  // Create a chunk for a piece of external memory (usually in flash). Since
-  // this memory is external and potentially read-only, we will not free
-  // nor write to it when deleting the space it belongs to.
-  static Chunk* create_flash_chunk(Space* space, void* heap_space, uword size) {
-    return create_fixed_chunk(space, heap_space, size);
-  }
-
   // Release the chunk.
   static void free_chunk(Chunk* chunk);
 
@@ -449,9 +439,6 @@ class ObjectMemory {
   static uword allocated() { return allocated_; }
 
  private:
-  // Use some already-existing memory for a chunk.
-  static Chunk* create_fixed_chunk(Space* space, void* heap_space, uword size);
-
   static std::atomic<uword> allocated_;
 
   friend class SemiSpace;
