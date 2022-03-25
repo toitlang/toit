@@ -38,7 +38,7 @@ System implementation of the API for installing container images in
    flash, and starting and stopping containers based on them.
 */
 class ContainersApi:
-  broker_/SystemRpcBroker ::= ?
+  broker_/SystemRpcBroker? ::= ?
   manager_/ContainerManager ::= ?
 
   constructor .broker_ .manager_:

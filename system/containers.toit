@@ -20,7 +20,6 @@ import encoding.base64 as base64
 import .flash.allocation
 import .flash.registry
 import .services
-import .system_rpc_broker
 
 class Container:
   image/ContainerImage ::= ?
@@ -120,8 +119,7 @@ class ContainerImageFlash extends ContainerImage:
 
 class ContainerManager implements SystemMessageHandler_:
   image_registry/FlashRegistry ::= ?
-  rpc_broker/SystemRpcBroker ::= ?
-  service_discovery_manager_/ServiceDiscoveryManager ::= ?
+  service_discovery_/ServiceDiscoveryDefinition ::= ?
 
   images_/Map ::= {:}               // Map<uuid.Uuid, ContainerImage>
   containers_by_id_/Map ::= {:}     // Map<int, Container>
@@ -129,7 +127,7 @@ class ContainerManager implements SystemMessageHandler_:
   next_handle_/int := 0
   done_ ::= monitor.Latch
 
-  constructor .image_registry .rpc_broker .service_discovery_manager_:
+  constructor .image_registry .service_discovery_:
     set_system_message_handler_ SYSTEM_TERMINATED_ this
     set_system_message_handler_ SYSTEM_SPAWNED_ this
     set_system_message_handler_ SYSTEM_MIRROR_MESSAGE_ this
@@ -199,8 +197,7 @@ class ContainerManager implements SystemMessageHandler_:
   on_message type/int gid/int pid/int arguments/any -> none:
     container/Container? := lookup_container gid
     if type == SYSTEM_TERMINATED_:
-      rpc_broker.cancel_requests pid
-      service_discovery_manager_.on_process_stop pid
+      service_discovery_.on_process_stop pid
       if container:
         error/int := arguments
         if error == 0: container.on_process_stop_ pid

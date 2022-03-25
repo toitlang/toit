@@ -10,16 +10,18 @@ import rpc
 import rpc.broker
 import monitor
 
-RPC_SERVICES_MANAGER_INSTALL  ::= 200
-RPC_SERVICES_MANAGER_LISTEN   ::= 201
-RPC_SERVICES_MANAGER_UNLISTEN ::= 202
+import .discovery
 
-RPC_SERVICES_DISCOVER         ::= 210
-RPC_SERVICES_OPEN             ::= 211
-RPC_SERVICES_CLOSE            ::= 212
+// Notification kinds.
+SERVICES_MANAGER_NOTIFY_OPEN_CLIENT  /int ::= 11
+SERVICES_MANAGER_NOTIFY_CLOSE_CLIENT /int ::= 12
 
-RPC_SERVICES_MANAGER_NOTIFY_OPEN_CLIENT  ::= 300
-RPC_SERVICES_MANAGER_NOTIFY_CLOSE_CLIENT ::= 301
+// RPC procedure numbers used for opening and closing services from clients.
+RPC_SERVICES_OPEN  /int         ::= 300
+RPC_SERVICES_CLOSE /int         ::= 301
+RPC_SERVICES_METHOD_START_ /int ::= 400
+
+default_discovery_client_ ::= ServiceDiscoveryClient.lookup
 
 abstract class ServiceClient:
   name/string ::= ?
@@ -28,8 +30,12 @@ abstract class ServiceClient:
   pid_/int ::= ?
   procedure_/int? := null
 
-  constructor.lookup name/string major/int minor/int:
-    pid_ = rpc.invoke RPC_SERVICES_DISCOVER name
+  constructor.lookup name/string major/int minor/int --server/int?=null:
+    if server:
+      process_send_ server SYSTEM_RPC_NOTIFY_ [SERVICES_MANAGER_NOTIFY_OPEN_CLIENT, current_process_]
+      pid_ = server
+    else:
+      pid_ = default_discovery_client_.discover name
     definition ::= rpc.invoke pid_ RPC_SERVICES_OPEN [name, major, minor]
     this.name = definition[0]
     version_ = definition[1]
@@ -74,7 +80,7 @@ abstract class ServiceDefinition:
     names_ = [name]
     versions_ = [[major, minor, patch]]
 
-  abstract handle index/int arguments/any -> any
+  abstract handle client/int index/int arguments/any-> any
 
   name -> string:
     return names_.first
@@ -138,19 +144,18 @@ class ServiceManager_ implements SystemMessageHandler_:
   counts_by_procedure_/Map ::= {:}    // Map<int, Map<int, int>>
 
   constructor:
-    set_system_message_handler_ SYSTEM_SERVICE_NOTIFY_ this
+    set_system_message_handler_ SYSTEM_RPC_NOTIFY_ this
     broker_.register_procedure RPC_SERVICES_OPEN:: | arguments _ pid |
       open pid arguments[0] arguments[1] arguments[2]
     broker_.register_procedure RPC_SERVICES_CLOSE:: | arguments _ pid |
       close pid arguments
     broker_.install
-    rpc.invoke RPC_SERVICES_MANAGER_INSTALL null
 
   install service/ServiceDefinition -> int:
     procedure := random_procedure_
     services_by_procedure_[procedure] = service
-    broker_.register_procedure procedure:: | arguments |
-      service.handle arguments[0] arguments[1]
+    broker_.register_procedure procedure:: | arguments _ pid |
+      service.handle pid arguments[0] arguments[1]
     return procedure
 
   uninstall procedure/int -> none:
@@ -168,10 +173,10 @@ class ServiceManager_ implements SystemMessageHandler_:
 
   listen name/string service/ServiceDefinition -> none:
     services_by_name_[name] = service
-    rpc.invoke RPC_SERVICES_MANAGER_LISTEN name
+    default_discovery_client_.listen name
 
   unlisten name/string -> none:
-    rpc.invoke RPC_SERVICES_MANAGER_UNLISTEN name
+    default_discovery_client_.unlisten name
     services_by_name_.remove name
 
   open client/int name/string major/int minor/int -> List?:
@@ -215,12 +220,12 @@ class ServiceManager_ implements SystemMessageHandler_:
     task:: closed.do: it.close client
 
   on_message type/int gid/int pid/int message/any -> none:
-    assert: type == SYSTEM_SERVICE_NOTIFY_
+    assert: type == SYSTEM_RPC_NOTIFY_
     kind/int ::= message[0]
     client/int ::= message[1]
-    if kind == RPC_SERVICES_MANAGER_NOTIFY_OPEN_CLIENT:
+    if kind == SERVICES_MANAGER_NOTIFY_OPEN_CLIENT:
       broker_.add_client client
-    else if kind == RPC_SERVICES_MANAGER_NOTIFY_CLOSE_CLIENT:
+    else if kind == SERVICES_MANAGER_NOTIFY_CLOSE_CLIENT:
       broker_.remove_client client
       close_all client
     else:
@@ -228,7 +233,7 @@ class ServiceManager_ implements SystemMessageHandler_:
 
   random_procedure_ -> int:
     while true:
-      guess := (random 1_000_000_000) + 1_000
+      guess := (random 1_000_000_000) + RPC_SERVICES_METHOD_START_
       if procedures_.contains guess: continue
       procedures_.add guess
       return guess

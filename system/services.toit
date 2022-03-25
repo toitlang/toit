@@ -13,20 +13,44 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+import system.discovery
+  show
+    ServiceDiscovery
+
 import system.services
   show
-    RPC_SERVICES_MANAGER_NOTIFY_OPEN_CLIENT
-    RPC_SERVICES_MANAGER_NOTIFY_CLOSE_CLIENT
+    ServiceDefinition
+    ServiceManager_
+    SERVICES_MANAGER_NOTIFY_OPEN_CLIENT
+    SERVICES_MANAGER_NOTIFY_CLOSE_CLIENT
 
-class ServiceDiscoveryManager:
+class ServiceDiscoveryDefinition extends ServiceDefinition implements ServiceDiscovery:
   service_managers_/Map ::= {:}     // Map<int, Set<int>>
   services_by_id_/Map ::= {:}       // Map<int, Set<string>>
   services_by_name_/Map ::= {:}     // Map<name, int>
 
-  install_manager pid/int -> none:
-    service_managers_[pid] = {}
+  constructor:
+    super ServiceDiscovery.NAME --major=ServiceDiscovery.MAJOR --minor=ServiceDiscovery.MINOR
+
+  install:
+    // TODO(kasper): Share code. This is completely reimplemented here.
+    manager_ = ServiceManager_.instance
+    procedure_ = manager_.install this
+    names_.do:
+      manager_.services_by_name_[it] = this
+      listen it current_process_  // <--- this is the only thing that doesn't work directly.
+
+  handle client/int index/int arguments/any -> any:
+    if index == ServiceDiscovery.DISCOVER_INDEX:
+      return discover arguments client
+    if index == ServiceDiscovery.LISTEN_INDEX:
+      return listen arguments client
+    if index == ServiceDiscovery.UNLISTEN_INDEX:
+      return unlisten arguments
+    unreachable
 
   listen name/string pid/int -> none:
+    service_managers_.get pid --init=(: {})
     if services_by_name_.contains name:
       throw "Already registered service:$name"
     services_by_name_[name] = pid
@@ -34,6 +58,8 @@ class ServiceDiscoveryManager:
     names.add name
 
   unlisten name/string -> none:
+    // TODO(kasper): Clean up the service managers set when the
+    // last of its services go away.
     pid := services_by_name_.get name
     if not pid: return
     services_by_name_.remove name
@@ -49,7 +75,7 @@ class ServiceDiscoveryManager:
     clients := service_managers_[target]
     if clients:
       clients.add pid
-      process_send_ target SYSTEM_SERVICE_NOTIFY_ [RPC_SERVICES_MANAGER_NOTIFY_OPEN_CLIENT, pid]
+      process_send_ target SYSTEM_RPC_NOTIFY_ [SERVICES_MANAGER_NOTIFY_OPEN_CLIENT, pid]
     return target
 
   on_process_stop pid/int -> none:
@@ -59,4 +85,10 @@ class ServiceDiscoveryManager:
     service_managers_.remove pid
     service_managers_.do: | manager clients |
       if clients.contains pid:
-        process_send_ manager SYSTEM_SERVICE_NOTIFY_ [RPC_SERVICES_MANAGER_NOTIFY_CLOSE_CLIENT, pid]
+        process_send_ manager SYSTEM_RPC_NOTIFY_ [SERVICES_MANAGER_NOTIFY_CLOSE_CLIENT, pid]
+
+  discover name/string -> int:
+    unreachable  // <-- TODO(kasper): nasty
+
+  listen name/string -> none:
+    unreachable  // <-- TODO(kasper): nasty
