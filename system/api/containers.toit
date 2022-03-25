@@ -15,6 +15,8 @@
 
 import uuid
 
+/*
+
 import system.containers
   show
     RPC_CONTAINERS_LIST_IMAGES
@@ -28,7 +30,6 @@ import system.containers
 import ..containers
 import ..flash.allocation
 import ..flash.reservation
-import ..system_rpc_broker
 
 IMAGE_WORD_SIZE  ::= BYTES_PER_WORD
 IMAGE_CHUNK_SIZE ::= (BITS_PER_WORD + 1) * IMAGE_WORD_SIZE
@@ -38,7 +39,6 @@ System implementation of the API for installing container images in
    flash, and starting and stopping containers based on them.
 */
 class ContainersApi:
-  broker_/SystemRpcBroker? ::= ?
   manager_/ContainerManager ::= ?
 
   constructor .broker_ .manager_:
@@ -127,3 +127,5 @@ image_writer_commit_ image id/ByteArray:
 
 image_writer_close_ image:
   #primitive.image.writer_close
+
+*/
