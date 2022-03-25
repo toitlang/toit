@@ -6,5 +6,5 @@ import system.containers
 import expect show *
 
 main:
-  return  // TODO(kasper): Re-enable.
-  expect_equals 1 containers.images.size
+  // TODO(kasper): Disabled for now.
+  // expect_equals 1 containers.images.size
