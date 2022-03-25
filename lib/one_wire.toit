@@ -39,7 +39,7 @@ class Protocol:
 
   Configures the channels and the underlying pin for 1-wire.
   */
-  constructor --rx --tx --rx_buffer_size=1024:
+  constructor --rx/rmt.Channel --tx/rmt.Channel --rx_buffer_size/int=1024:
     rx_channel_ = rx
     tx_channel_ = tx
     tx_channel_.config_tx --idle_level=1
@@ -110,7 +110,7 @@ class Protocol:
     assert: from + write_signal_count < signals.size
     count.repeat:
       // Write the lowest bit.
-      delay := 0
+      delay := ?
       if bits & 0x01 == 1:
         delay = WRITE_1_LOW_DELAY
       else:
@@ -168,7 +168,6 @@ class Protocol:
         (received_signals.signal_level 1) == 1 and (received_signals.signal_period 1) > 0 and
         // The receiver signals its presence.
         (received_signals.signal_level 2) == 0 and (received_signals.signal_period 2) > 0
-
 
 ow_config_pin_ pin rx tx:
   #primitive.one_wire.config_pin
