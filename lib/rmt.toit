@@ -80,8 +80,6 @@ class Signals:
     return signals
 
 
-  // TODO what's a nice convenient constructor for populating Signals with known values?
-
   /**
   Creates a collection of signals from the given $bytes.
 

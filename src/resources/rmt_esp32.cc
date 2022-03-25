@@ -69,7 +69,6 @@ PRIMITIVE(use) {
 
   if (!rmt_channels.take(channel_num)) ALREADY_IN_USE;
 
-  // TODO install RMT driver for channel?
   IntResource* resource = resource_group->register_id(channel_num);
   if (!resource) {
     rmt_channels.put(channel_num);
