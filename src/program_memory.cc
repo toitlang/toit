@@ -234,7 +234,7 @@ void ProgramHeapMemory::set_writable(ProgramBlock* block, bool value) {
 #endif
 }
 
-ProgramHeapMemory  ProgramHeapMemory::_instance;
+ProgramHeapMemory ProgramHeapMemory::_instance;
 
 void ProgramRawHeap::take_blocks(ProgramBlockList* blocks) {
   _blocks.take_blocks(blocks, this);
