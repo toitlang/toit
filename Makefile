@@ -23,6 +23,8 @@ ESP32_WIFI_SSID=
 ESP32_WIFI_PASSWORD=
 ESP32_PORT=
 ESP32_CHIP=esp32
+HOST=host
+BUILD_TYPE=Release
 
 # You can optionally bundle an extra program image into the programs section of
 # of the flash. This allows the entry program to find the program and run it.
@@ -81,35 +83,35 @@ ifneq ("$(IDF_PATH)", "$(CURDIR)/third_party/esp-idf")
 	$(info -- Not using Toitware ESP-IDF fork.)
 endif
 
-build/host/CMakeCache.txt:
+build/$(HOST)/CMakeCache.txt:
 	$(MAKE) rebuild-cmake
 
-BIN_DIR = $(CURDIR)/build/host/sdk/bin
+BIN_DIR = $(CURDIR)/build/$(HOST)/sdk/bin
 TOITVM_BIN = $(BIN_DIR)/toit.run$(EXE_SUFFIX)
 TOITPKG_BIN = $(BIN_DIR)/toit.pkg$(EXE_SUFFIX)
 TOITC_BIN = $(BIN_DIR)/toit.compile$(EXE_SUFFIX)
 
 .PHONY: download-packages
-download-packages: check-env build/host/CMakeCache.txt tools
-	(cd build/host && ninja download_packages)
+download-packages: check-env build/$(HOST)/CMakeCache.txt tools
+	(cd build/$(HOST) && ninja download_packages)
 
 .PHONY: rebuild-cmake
 rebuild-cmake:
-	mkdir -p build/host
-	(cd build/host && cmake ../.. -G Ninja -DCMAKE_BUILD_TYPE=Release)
+	mkdir -p build/$(HOST)
+	(cd build/$(HOST) && cmake ../.. -G Ninja -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DCMAKE_TOOLCHAIN_FILE=../../toolchains/host.cmake --no-warn-unused-cli)
 
 .PHONY: tools
-tools: check-env build/host/CMakeCache.txt
-	(cd build/host && ninja build_tools)
+tools: check-env build/$(HOST)/CMakeCache.txt
+	(cd build/$(HOST) && ninja build_tools)
 
 .PHONY: snapshots
 snapshots: tools download-packages
-	(cd build/host && ninja build_snapshots)
+	(cd build/$(HOST) && ninja build_snapshots)
 
 .PHONY: version-file
-version-file: build/host/CMakeCache.txt
+version-file: build/$(HOST)/CMakeCache.txt
 	$(MAKE) rebuild-cmake
-	(cd build/host && ninja build_version_file)
+	(cd build/$(HOST) && ninja build_version_file)
 
 
 # CROSS-COMPILE
@@ -118,7 +120,7 @@ all-cross: tools-cross snapshots-cross version-file-cross
 
 check-env-cross:
 ifndef CROSS_ARCH
-	$(error invalid must specify a cross-compilation targt with CROSS_ARCH.  For example: make all-cross CROSS_ARCH=riscv64)
+	$(error invalid must specify a cross-compilation target with CROSS_ARCH.  For example: make all-cross CROSS_ARCH=riscv64)
 endif
 ifeq ("$(wildcard ./toolchains/$(CROSS_ARCH).cmake)","")
 	$(error invalid cross-compile target '$(CROSS_ARCH)')
@@ -130,7 +132,7 @@ build/$(CROSS_ARCH)/CMakeCache.txt:
 .PHONY: rebuild-cross-cmake
 rebuild-cross-cmake:
 	mkdir -p build/$(CROSS_ARCH)
-	(cd build/$(CROSS_ARCH) && cmake ../../ -G Ninja -DTOITC=$(TOITC_BIN) -DTOITPKG=$(TOITPKG_BIN) -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/$(CROSS_ARCH).cmake --no-warn-unused-cli)
+	(cd build/$(CROSS_ARCH) && cmake ../../ -G Ninja -DTOITC=$(TOITC_BIN) -DTOITPKG=$(TOITPKG_BIN) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DCMAKE_TOOLCHAIN_FILE=../../toolchains/$(CROSS_ARCH).cmake --no-warn-unused-cli)
 
 .PHONY: tools-cross
 tools-cross: check-env-cross tools build/$(CROSS_ARCH)/CMakeCache.txt
@@ -147,7 +149,7 @@ version-file-cross: build/$(CROSS_ARCH)/CMakeCache.txt
 
 
 # ESP32 VARIANTS
-SNAPSHOT_DIR = build/host/sdk/snapshots
+SNAPSHOT_DIR = build/$(HOST)/sdk/snapshots
 
 ifeq ($(DETECTED_OS), Linux)
 	NUM_CPU := $(shell nproc)
@@ -193,7 +195,7 @@ build/$(ESP32_CHIP)/programs.bin: build/$(ESP32_CHIP)/program.snapshot tools
 build/$(ESP32_CHIP)/CMakeCache.txt:
 	mkdir -p build/$(ESP32_CHIP)
 	touch build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s
-	(cd build/$(ESP32_CHIP) && IMAGE=build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s cmake ../../ -G Ninja -DTOITC=$(TOITC_BIN) -DTOITPKG=$(TOITPKG_BIN) -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../../toolchains/$(ESP32_CHIP)/$(ESP32_CHIP).cmake --no-warn-unused-cli)
+	(cd build/$(ESP32_CHIP) && IMAGE=build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s cmake ../../ -G Ninja -DTOITC=$(TOITC_BIN) -DTOITPKG=$(TOITPKG_BIN) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DCMAKE_TOOLCHAIN_FILE=../../toolchains/$(ESP32_CHIP)/$(ESP32_CHIP).cmake --no-warn-unused-cli)
 
 build/$(ESP32_CHIP)/include/sdkconfig.h:
 	mkdir -p build/$(ESP32_CHIP)
@@ -228,13 +230,13 @@ clean:
 
 .PHONY: install-sdk install
 install-sdk: all
-	install -D --target-directory="$(DESTDIR)$(prefix)"/bin "$(CURDIR)"/build/host/sdk/bin/*
+	install -D --target-directory="$(DESTDIR)$(prefix)"/bin "$(CURDIR)"/build/$(HOST)/sdk/bin/*
 	chmod 644 "$(DESTDIR)$(prefix)"/bin/*.snapshot
 	mkdir -p "$(DESTDIR)$(prefix)"/lib
 	cp -R "$(CURDIR)"/lib/* "$(DESTDIR)$(prefix)"/lib
 	find "$(DESTDIR)$(prefix)"/lib -type f -exec chmod 644 {} \;
 	mkdir -p "$(DESTDIR)$(prefix)"/snapshots
-	cp "$(CURDIR)"/build/host/sdk/snapshots/* "$(DESTDIR)$(prefix)"/snapshots
+	cp "$(CURDIR)"/build/$(HOST)/sdk/snapshots/* "$(DESTDIR)$(prefix)"/snapshots
 	find "$(DESTDIR)$(prefix)"/snapshots -type f -exec chmod 644 {} \;
 
 install: install-sdk
@@ -243,35 +245,35 @@ install: install-sdk
 # TESTS (host)
 .PHONY: test
 test:
-	(cd build/host && ninja check_slow check_fuzzer_lib)
+	(cd build/$(HOST) && ninja check_slow check_fuzzer_lib)
 
 .PHONY: update-gold
 update-gold:
-	(cd build/host && ninja update_gold)
-	(cd build/host && ninja update_minus_s_gold)
+	(cd build/$(HOST) && ninja update_gold)
+	(cd build/$(HOST) && ninja update_minus_s_gold)
 
 .PHONY: test-health
 test-health: download-packages
 	$(MAKE) rebuild-cmake
-	(cd build/host && ninja check_health)
+	(cd build/$(HOST) && ninja check_health)
 
 .PHONY: update-health-gold
 update-health-gold: download-packages
 	$(MAKE) rebuild-cmake
-	(cd build/host && ninja clear_health_gold)
-	(cd build/host && ninja update_health_gold)
+	(cd build/$(HOST) && ninja clear_health_gold)
+	(cd build/$(HOST) && ninja update_health_gold)
 
 .PHONY: enable-external
 enable-external:
 	$(MAKE) rebuild-cmake  # Ensure the cmake-directory was created.
-	cmake -DTOIT_TEST_EXTERNAL=ON build/host
+	cmake -DTOIT_TEST_EXTERNAL=ON build/$(HOST)
 	$(MAKE) download-external
 	$(MAKE) rebuild-cmake
 	$(MAKE) download-packages
 
 .PHONY: check-external-enabled
 check-external-enabled:
-	@ if ! cmake -LA -N build/host | grep 'TOIT_TEST_EXTERNAL:BOOL=ON'; then \
+	@ if ! cmake -LA -N build/$(HOST) | grep 'TOIT_TEST_EXTERNAL:BOOL=ON'; then \
 		echo "external projects are not enabled. Run 'make enable-external' first."; \
 		exit 1; \
 	fi
@@ -279,23 +281,23 @@ check-external-enabled:
 .PHONY: disable-external
 disable-external: check-external-enabled
 	$(MAKE) rebuild-cmake  # Ensure the cmake-directory was created.
-	cmake -DTOIT_TEST_EXTERNAL=OFF build/host
+	cmake -DTOIT_TEST_EXTERNAL=OFF build/$(HOST)
 
 .PHONY: download-external
 download-external: check-external-enabled
 	# Download with higher parallelism.
-	(cd build/host && ninja -j 16 download_external)
+	(cd build/$(HOST) && ninja -j 16 download_external)
 
 .PHONY: test-external
 test-external: check-external-enabled
-	(cd build/host && ninja check_external)
+	(cd build/$(HOST) && ninja check_external)
 
 .PHONY: test-external-health
 test-external-health: check-external-enabled
-	(cd build/host && ninja check_external_health)
+	(cd build/$(HOST) && ninja check_external_health)
 
 .PHONY: update-external-health-gold
 update-external-health-gold: download-packages check-external-enabled
 	$(MAKE) rebuild-cmake
-	(cd build/host && ninja clear_external_health_gold)
-	(cd build/host && ninja update_external_health_gold)
+	(cd build/$(HOST) && ninja clear_external_health_gold)
+	(cd build/$(HOST) && ninja update_external_health_gold)
