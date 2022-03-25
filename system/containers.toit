@@ -19,6 +19,7 @@ import encoding.base64 as base64
 
 import .flash.allocation
 import .flash.registry
+import .services
 import .system_rpc_broker
 
 class Container:
@@ -120,6 +121,7 @@ class ContainerImageFlash extends ContainerImage:
 class ContainerManager implements SystemMessageHandler_:
   image_registry/FlashRegistry ::= ?
   rpc_broker/SystemRpcBroker ::= ?
+  service_discovery_manager_/ServiceDiscoveryManager ::= ?
 
   images_/Map ::= {:}               // Map<uuid.Uuid, ContainerImage>
   containers_by_id_/Map ::= {:}     // Map<int, Container>
@@ -127,9 +129,9 @@ class ContainerManager implements SystemMessageHandler_:
   next_handle_/int := 0
   done_ ::= monitor.Latch
 
-  constructor .image_registry .rpc_broker:
+  constructor .image_registry .rpc_broker .service_discovery_manager_:
     set_system_message_handler_ SYSTEM_TERMINATED_ this
-    set_system_message_handler_ SYSTEM_HATCHED_ this
+    set_system_message_handler_ SYSTEM_SPAWNED_ this
     set_system_message_handler_ SYSTEM_MIRROR_MESSAGE_ this
     image_registry.do: | allocation/FlashAllocation |
       if allocation.type != FLASH_ALLOCATION_PROGRAM_TYPE: continue.do
@@ -198,11 +200,12 @@ class ContainerManager implements SystemMessageHandler_:
     container/Container? := lookup_container gid
     if type == SYSTEM_TERMINATED_:
       rpc_broker.cancel_requests pid
+      service_discovery_manager_.on_process_stop pid
       if container:
         error/int := arguments
         if error == 0: container.on_process_stop_ pid
         else: container.on_process_error_ pid error
-    else if type == SYSTEM_HATCHED_:
+    else if type == SYSTEM_SPAWNED_:
       if container: container.on_process_start_ pid
     else if type == SYSTEM_MIRROR_MESSAGE_:
       if not (container and container.image.trace arguments):

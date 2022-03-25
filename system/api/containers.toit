@@ -17,13 +17,13 @@ import uuid
 
 import system.containers
   show
-    RPC_CONTAINER_LIST_IMAGES
-    RPC_CONTAINER_START_IMAGE
-    RPC_CONTAINER_UNINSTALL_IMAGE
-    RPC_CONTAINER_IMAGE_WRITER_OPEN
-    RPC_CONTAINER_IMAGE_WRITER_WRITE
-    RPC_CONTAINER_IMAGE_WRITER_COMMIT
-    RPC_CONTAINER_IMAGE_WRITER_CLOSE
+    RPC_CONTAINERS_LIST_IMAGES
+    RPC_CONTAINERS_START_IMAGE
+    RPC_CONTAINERS_UNINSTALL_IMAGE
+    RPC_CONTAINERS_IMAGE_WRITER_OPEN
+    RPC_CONTAINERS_IMAGE_WRITER_WRITE
+    RPC_CONTAINERS_IMAGE_WRITER_COMMIT
+    RPC_CONTAINERS_IMAGE_WRITER_CLOSE
 
 import ..containers
 import ..flash.allocation
@@ -37,26 +37,26 @@ IMAGE_CHUNK_SIZE ::= (BITS_PER_WORD + 1) * IMAGE_WORD_SIZE
 System implementation of the API for installing container images in
    flash, and starting and stopping containers based on them.
 */
-class ContainerApi:
+class ContainersApi:
   broker_/SystemRpcBroker ::= ?
   manager_/ContainerManager ::= ?
 
   constructor .broker_ .manager_:
-    broker_.register_procedure RPC_CONTAINER_LIST_IMAGES:: | _ |
+    broker_.register_procedure RPC_CONTAINERS_LIST_IMAGES:: | _ |
       list_images
-    broker_.register_procedure RPC_CONTAINER_START_IMAGE:: | bytes |
+    broker_.register_procedure RPC_CONTAINERS_START_IMAGE:: | bytes |
       start_image bytes
-    broker_.register_procedure RPC_CONTAINER_UNINSTALL_IMAGE:: | bytes |
+    broker_.register_procedure RPC_CONTAINERS_UNINSTALL_IMAGE:: | bytes |
       uninstall_image bytes
 
-    broker_.register_procedure RPC_CONTAINER_IMAGE_WRITER_OPEN:: | size gid pid |
+    broker_.register_procedure RPC_CONTAINERS_IMAGE_WRITER_OPEN:: | size gid pid |
       image_writer_open size gid pid
-    broker_.register_descriptor_procedure RPC_CONTAINER_IMAGE_WRITER_WRITE:: | writer arguments |
+    broker_.register_descriptor_procedure RPC_CONTAINERS_IMAGE_WRITER_WRITE:: | writer arguments |
       writer.write arguments[1]
-    broker_.register_descriptor_procedure RPC_CONTAINER_IMAGE_WRITER_COMMIT:: | writer |
+    broker_.register_descriptor_procedure RPC_CONTAINERS_IMAGE_WRITER_COMMIT:: | writer |
       image/ContainerImage := manager_.add_flash_image writer.commit
       image.id.to_byte_array
-    broker_.register_descriptor_procedure RPC_CONTAINER_IMAGE_WRITER_CLOSE:: | writer arguments gid pid |
+    broker_.register_descriptor_procedure RPC_CONTAINERS_IMAGE_WRITER_CLOSE:: | writer arguments gid pid |
       manager_.unregister_descriptor gid pid arguments[0]
       writer.close
 

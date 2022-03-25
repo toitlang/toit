@@ -23,6 +23,7 @@ class Command:
   static READ_ ::= "?"
   static SET_ ::= "="
   static TEST_ ::= "=?"
+  static RAW_ ::= "R"
 
   static COMMA_ ::= #[',']
   static DOUBLE_QUOTE_ ::= #['"']
@@ -46,6 +47,11 @@ class Command:
   constructor.set .name --.parameters=[] --.data=null --.timeout=DEFAULT_TIMEOUT:
     type = SET_
 
+  constructor.raw command/string --s3_data/bool=true --.timeout=DEFAULT_TIMEOUT:
+    name = command
+    type = RAW_
+    data = s3_data
+
   write_parameters writer:
     first := true
     parameters.do:
@@ -61,6 +67,7 @@ class Command:
         writer.write it.stringify
 
   stringify -> string:
+    if type == RAW_: return "raw[$name]$(data ? "+s3" : "")"
     buffer := bytes.Buffer
     write_parameters
       writer.Writer buffer
@@ -305,7 +312,9 @@ class Session:
 
       if ready_at <= now: break
 
-      duration_ms := min 250 (ready_at - now) / 1000
+      // Add one to avoid rounding down to a number of milliseconds that
+      // will not get us past 'ready at'.
+      duration_ms := min 250 ((ready_at - now) / 1000) + 1
       sleep --ms=duration_ms
 
     now := Time.monotonic_us
@@ -340,11 +349,15 @@ class Session:
 
   write_command_ command/Command:
     logger_.with_level log.INFO_LEVEL: it.info "-> $command"
-    writer_.write "AT"
-    writer_.write command.name
-    writer_.write command.type
-    command.write_parameters writer_
-    writer_.write s3_data_
+    if command.type == Command.RAW_:
+      writer_.write command.name
+      if command.data: writer_.write s3_data_
+    else:
+      writer_.write "AT"
+      writer_.write command.name
+      writer_.write command.type
+      command.write_parameters writer_
+      writer_.write s3_data_
 
   dispatch_urc_ urc/string response/List:
     delay_next_request_

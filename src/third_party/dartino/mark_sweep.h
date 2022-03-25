@@ -49,9 +49,8 @@ class MarkingVisitor : public RootCallback {
         new_space_size_(new_space->size()),
         marking_stack_(marking_stack) {}
 
-  virtual void visit_class(Object** p) {}
-
-  virtual void visit_block(Object** start, Object** end) {
+  virtual void do_roots(Object** start, int length) {
+    Object** end = start + length;
     // Mark live all HeapObjects pointed to by pointers in [start, end)
     for (Object** p = start; p < end; p++) mark_pointer(*p);
   }
@@ -172,9 +171,7 @@ class FixPointersVisitor : public RootCallback {
  public:
   FixPointersVisitor() : source_address_(0) {}
 
-  virtual void visit_class(Object** p) {}
-
-  virtual void visit_block(Object** start, Object** end);
+  virtual void do_roots(Object** start, int length);
 
   void set_source_address(uword address) { source_address_ = address; }
 

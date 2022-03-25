@@ -206,6 +206,8 @@ void HeapMemory::free_block(Block* block, RawHeap* heap) {
   _free_list.prepend(block);
 }
 
+#ifdef LEGACY_GC
+
 void HeapMemory::enter_scavenge(RawHeap* heap) {
   ASSERT(OS::is_locked(_memory_mutex));
   _in_scavenge = true;
@@ -297,6 +299,8 @@ void HeapMemory::leave_scavenge(RawHeap* heap) {
 void RawHeap::take_blocks(BlockList* blocks) {
   _blocks.take_blocks(blocks, this);
 }
+
+#endif  // defined LEGACY_GC
 
 void RawHeap::print() {
   printf("%p RawHeap\n", this);
