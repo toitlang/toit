@@ -9,6 +9,7 @@
 #include "../../src/flags.h"
 #include "../../src/snapshot.h"
 #include "../../src/os.h"
+#include "../../src/vm.h"
 #include "../../src/third_party/dartino/gc_metadata.h"
 
 namespace toit {

@@ -298,7 +298,7 @@ void Process::send_mail(Message* message) {
 void Process::_ensure_random_seeded() {
   if (_random_seeded) return;
   uint8 seed[16];
-  VM::current()->entropy_mixer()->get_entropy(seed, sizeof(seed));
+  EntropyMixer::instance()->get_entropy(seed, sizeof(seed));
   random_seed(seed, sizeof(seed));
   _random_seeded = true;
 }

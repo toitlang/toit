@@ -17,6 +17,7 @@ file(GLOB toit_core_SRC
   "*.c"
   "*.cc"
   )
+
 list(FILTER toit_core_SRC EXCLUDE REGEX "/(toit|toit_run_image).cc$")
 
 file(GLOB toit_resources_SRC
