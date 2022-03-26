@@ -273,6 +273,8 @@ ObjectHeap::ObjectHeap(Program* program, Process* owner)
     , _external_memory(0) {
 #endif
   _task = allocate_task();
+  ASSERT(_task);  // Should not fail, because a newly created heap has at least
+                  // enough space for the task structure.
   _global_variables = program->global_variables.copy();
   // Currently the heap is empty and it has one block allocated for objects.
   _limit = _pending_limit = _calculate_limit();
