@@ -19,6 +19,18 @@ interface ContainersService:
   static UNINSTALL_IMAGE_INDEX /int ::= 2
   uninstall_image id/uuid.Uuid -> none
 
+  static IMAGE_WRITER_OPEN_INDEX /int ::= 3
+  image_writer_open size/int -> int
+
+  static IMAGE_WRITER_WRITE_INDEX /int ::= 4
+  image_writer_write handle/int bytes/ByteArray -> none
+
+  static IMAGE_WRITER_COMMIT_INDEX /int ::= 5
+  image_writer_commit handle/int -> uuid.Uuid
+
+  static IMAGE_WRITER_CLOSE_INDEX /int ::= 6
+  image_writer_close handle/int -> none
+
 class ContainersServiceClient extends ServiceClient implements ContainersService:
   constructor.lookup
       name=ContainersService.NAME
@@ -35,3 +47,15 @@ class ContainersServiceClient extends ServiceClient implements ContainersService
 
   uninstall_image id/uuid.Uuid -> none:
     invoke_ ContainersService.UNINSTALL_IMAGE_INDEX id.to_byte_array
+
+  image_writer_open size/int -> int:
+    return invoke_ ContainersService.IMAGE_WRITER_OPEN_INDEX size
+
+  image_writer_write handle/int bytes/ByteArray -> none:
+    invoke_ ContainersService.IMAGE_WRITER_WRITE_INDEX [handle, bytes]
+
+  image_writer_commit handle/int -> uuid.Uuid:
+    return uuid.Uuid (invoke_ ContainersService.IMAGE_WRITER_COMMIT_INDEX handle)
+
+  image_writer_close handle/int -> none:
+    invoke_ ContainersService.IMAGE_WRITER_CLOSE_INDEX handle

@@ -9,6 +9,7 @@ User-space side of the RPC API for installing container images in flash, and
 
 import uuid
 import system.api.containers show ContainersService ContainersServiceClient
+import rpc show CloseableProxy
 
 client_ /ContainersService ::= ContainersServiceClient.lookup
 
@@ -21,19 +22,18 @@ start id/uuid.Uuid -> int:
 uninstall id/uuid.Uuid -> none:
   client_.uninstall_image id
 
-/*
-class ContainerImageWriter extends rpc.CloseableProxy:
+class ContainerImageWriter extends CloseableProxy:
   size/int ::= ?
 
   constructor .size:
-    super (rpc.invoke RPC_CONTAINERS_IMAGE_WRITER_OPEN size)
+    super (client_.image_writer_open size)
 
   write bytes/ByteArray -> none:
-    rpc.invoke RPC_CONTAINERS_IMAGE_WRITER_WRITE [handle_, bytes]
+    client_.image_writer_write handle_ bytes
 
   commit -> uuid.Uuid:
-    return uuid.Uuid (rpc.invoke RPC_CONTAINERS_IMAGE_WRITER_COMMIT [handle_])
+    return client_.image_writer_commit handle_
 
   close_rpc_selector_ -> int:
-    return RPC_CONTAINERS_IMAGE_WRITER_CLOSE
-*/
+    unreachable
+    return -1

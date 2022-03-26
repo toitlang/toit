@@ -21,6 +21,7 @@ import system.services show ServiceDefinition
 import system.api.containers show ContainersService
 
 import .flash.allocation
+import .flash.image_writer
 import .flash.registry
 import .services
 
@@ -117,27 +118,12 @@ class ContainerImageFlash extends ContainerImage:
     // TODO(kasper): Check in the other methods before using this?
     allocation_ = null
 
-class ContainerManager extends ServiceDefinition implements ContainersService SystemMessageHandler_:
-  image_registry/FlashRegistry ::= ?
-  service_manager_/SystemServiceManager ::= ?
-
-  images_/Map ::= {:}               // Map<uuid.Uuid, ContainerImage>
-  containers_by_id_/Map ::= {:}     // Map<int, Container>
-  containers_by_image_/Map ::= {:}  // Map<uuid.Uuid, Container>
-  next_handle_/int := 0
-  done_ ::= monitor.Latch
-
-  constructor .image_registry .service_manager_:
-    super
-        ContainersService.NAME
+abstract class ContainersServiceDefinition extends ServiceDefinition
+    implements ContainersService:
+  constructor:
+    super ContainersService.NAME
         --major=ContainersService.MAJOR
         --minor=ContainersService.MINOR
-    set_system_message_handler_ SYSTEM_TERMINATED_ this
-    set_system_message_handler_ SYSTEM_SPAWNED_ this
-    set_system_message_handler_ SYSTEM_MIRROR_MESSAGE_ this
-    image_registry.do: | allocation/FlashAllocation |
-      if allocation.type != FLASH_ALLOCATION_PROGRAM_TYPE: continue.do
-      add_flash_image allocation
     install
 
   handle client/int index/int arguments/any -> any:
@@ -147,7 +133,24 @@ class ContainerManager extends ServiceDefinition implements ContainersService Sy
       return start_image (uuid.Uuid arguments)
     if index == ContainersService.UNINSTALL_IMAGE_INDEX:
       return uninstall_image (uuid.Uuid arguments)
+    if index == ContainersService.IMAGE_WRITER_OPEN_INDEX:
+      return image_writer_open client arguments
+    if index == ContainersService.IMAGE_WRITER_WRITE_INDEX:
+      return image_writer_write client arguments[0] arguments[1]
+    if index == ContainersService.IMAGE_WRITER_COMMIT_INDEX:
+      return (image_writer_commit client arguments).to_byte_array
+    if index == ContainersService.IMAGE_WRITER_CLOSE_INDEX:
+      return image_writer_close client arguments
     unreachable
+
+  abstract image_registry -> FlashRegistry
+  abstract images -> List
+  abstract add_flash_image allocation/FlashAllocation -> ContainerImage
+  abstract lookup_image id/uuid.Uuid -> ContainerImage?
+
+  abstract register_descriptor client/int descriptor/Object -> int
+  abstract lookup_descriptor client/int handle/int -> any
+  abstract unregister_descriptor client/int handle/int -> none
 
   list_images -> List:
     return images.map --in_place: | image/ContainerImage |
@@ -163,6 +166,57 @@ class ContainerManager extends ServiceDefinition implements ContainersService Sy
     if not image: return
     image.delete
 
+  image_writer_open size/int -> int:
+    unreachable  // <-- TODO(kasper): Nasty.
+
+  image_writer_write handle/int bytes/ByteArray -> none:
+    unreachable  // <-- TODO(kasper): Nasty.
+
+  image_writer_commit handle/int -> uuid.Uuid:
+    unreachable  // <-- TODO(kasper): Nasty.
+
+  image_writer_close handle/int -> none:
+    unreachable  // <-- TODO(kasper): Nasty.
+
+  image_writer_open client/int size/int -> int?:
+    relocated_size := size - (size / IMAGE_CHUNK_SIZE) * IMAGE_WORD_SIZE
+    reservation := image_registry.reserve relocated_size
+    if reservation == null: throw "FIXME: kasper"
+    writer := ContainerImageWriter reservation
+    return register_descriptor client writer
+
+  image_writer_write client/int handle/int bytes/ByteArray -> none:
+    writer := lookup_descriptor client handle
+    writer.write bytes
+
+  image_writer_commit client/int handle/int -> uuid.Uuid:
+    writer := lookup_descriptor client handle
+    image := add_flash_image writer.commit
+    return image.id
+
+  image_writer_close client/int handle/int -> none:
+    writer := lookup_descriptor client handle
+    unregister_descriptor client handle
+    writer.close
+
+class ContainerManager extends ContainersServiceDefinition implements SystemMessageHandler_:
+  image_registry/FlashRegistry ::= ?
+  service_manager_/SystemServiceManager ::= ?
+
+  images_/Map ::= {:}               // Map<uuid.Uuid, ContainerImage>
+  containers_by_id_/Map ::= {:}     // Map<int, Container>
+  containers_by_image_/Map ::= {:}  // Map<uuid.Uuid, Container>
+  next_handle_/int := 0
+  done_ ::= monitor.Latch
+
+  constructor .image_registry .service_manager_:
+    set_system_message_handler_ SYSTEM_TERMINATED_ this
+    set_system_message_handler_ SYSTEM_SPAWNED_ this
+    set_system_message_handler_ SYSTEM_MIRROR_MESSAGE_ this
+    image_registry.do: | allocation/FlashAllocation |
+      if allocation.type != FLASH_ALLOCATION_PROGRAM_TYPE: continue.do
+      add_flash_image allocation
+
   images -> List:
     return images_.values
 
@@ -175,19 +229,29 @@ class ContainerManager extends ServiceDefinition implements ContainersService Sy
   lookup_container id/int -> Container?:
     return containers_by_id_.get id
 
-  lookup_descriptor gid/int pid/int handle/int -> Object?:
+  // TODO(kasper): Get rid of this slow implementation. The descriptor
+  // handling will be done purely on the pids going forward.
+  gid_from_pid_ pid/int-> int:
+    containers_by_id_.do --values: | container/Container |
+      if container.pids_.contains pid: return container.id
+    unreachable
+
+  lookup_descriptor pid/int handle/int -> Object?:
+    gid := gid_from_pid_ pid
     container := containers_by_id_.get gid --if_absent=: return null
     descriptors := container.pids_.get pid --if_absent=: return null
     return descriptors.get handle
 
-  register_descriptor gid/int pid/int descriptor/Object -> int:
+  register_descriptor pid/int descriptor/Object -> int:
+    gid := gid_from_pid_ pid
     container := containers_by_id_[gid]
     descriptors := container.pids_[pid]
     handle := next_handle_++
     descriptors[handle] = descriptor
     return handle
 
-  unregister_descriptor gid/int pid/int handle/int -> none:
+  unregister_descriptor pid/int handle/int -> none:
+    gid := gid_from_pid_ pid
     container := containers_by_id_.get gid --if_absent=: return
     descriptors := container.pids_.get pid --if_absent=: return
     descriptors.remove handle

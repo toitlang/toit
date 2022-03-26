@@ -14,41 +14,11 @@
 // directory of this repository.
 
 import uuid
-
-/*
-
-import ..containers
-import ..flash.allocation
-import ..flash.reservation
+import .allocation
+import .reservation
 
 IMAGE_WORD_SIZE  ::= BYTES_PER_WORD
 IMAGE_CHUNK_SIZE ::= (BITS_PER_WORD + 1) * IMAGE_WORD_SIZE
-
-/**
-System implementation of the API for installing container images in
-   flash, and starting and stopping containers based on them.
-*/
-class ContainersApi:
-  manager_/ContainerManager ::= ?
-
-  constructor .broker_ .manager_:
-    broker_.register_procedure RPC_CONTAINERS_IMAGE_WRITER_OPEN:: | size gid pid |
-      image_writer_open size gid pid
-    broker_.register_descriptor_procedure RPC_CONTAINERS_IMAGE_WRITER_WRITE:: | writer arguments |
-      writer.write arguments[1]
-    broker_.register_descriptor_procedure RPC_CONTAINERS_IMAGE_WRITER_COMMIT:: | writer |
-      image/ContainerImage := manager_.add_flash_image writer.commit
-      image.id.to_byte_array
-    broker_.register_descriptor_procedure RPC_CONTAINERS_IMAGE_WRITER_CLOSE:: | writer arguments gid pid |
-      manager_.unregister_descriptor gid pid arguments[0]
-      writer.close
-
-  image_writer_open size/int gid/int pid/int -> int:
-    relocated_size := size - (size / IMAGE_CHUNK_SIZE) * IMAGE_WORD_SIZE
-    reservation := manager_.image_registry.reserve relocated_size
-    if reservation == null: throw "FIXME: kasper"
-    writer := ContainerImageWriter reservation
-    return manager_.register_descriptor gid pid writer
 
 // TODO(kasper): Let this inherit from something that takes care of cleaning
 // up the descriptor tables on close.
@@ -94,5 +64,3 @@ image_writer_commit_ image id/ByteArray:
 
 image_writer_close_ image:
   #primitive.image.writer_close
-
-*/
