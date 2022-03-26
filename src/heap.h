@@ -32,6 +32,44 @@ namespace toit {
 
 class ObjectNotifier;
 
+#ifdef LEGACY_GC
+typedef Block InitialMemory;
+#else
+struct InitialMemory {
+  Chunk* chunk_1;
+  Chunk* chunk_2;
+};
+#endif
+
+// A class that uses a RAII destructor to free memory already
+// allocated if a later alllocation fails.
+class InitialMemoryManager {
+ public:
+  ProcessGroup* process_group = null;
+#ifdef LEGACY_GC
+  Block* initial_memory = null;
+#else
+  InitialMemory* initial_memory = &chunks;
+  InitialMemory chunks = {null, null};
+#endif
+
+  void dont_auto_free() {
+    process_group = null;
+#ifdef LEGACY_GC
+    initial_memory = null;
+#else
+    chunks.chunk_1 = null;
+    chunks.chunk_2 = null;
+#endif
+  }
+
+  // Allocates initial pages for heap.  Returns success.
+  bool Allocate();
+
+  // Frees any of the fields that are not null.
+  ~InitialMemoryManager();
+};
+
 // An object heap contains all objects created at runtime.
 #ifdef LEGACY_GC
 class ObjectHeap : public RawHeap {
@@ -61,7 +99,7 @@ class ObjectHeap : public RawHeap {
 #else
 class ObjectHeap {
  public:
-  ObjectHeap(Process* owner, Program* program);
+  ObjectHeap(Program* program, Process* owner, InitialMemory* initial_memory);
   ~ObjectHeap();
 
   // TODO: In the new heap there is no max allocation size.
