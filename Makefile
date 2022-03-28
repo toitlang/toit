@@ -83,6 +83,11 @@ ifneq ("$(IDF_PATH)", "$(CURDIR)/third_party/esp-idf")
 	$(info -- Not using Toitware ESP-IDF fork.)
 endif
 
+# We mark this phony because adding and removing .cc files means that
+# cmake needs to be rerun, but we don't detect that, so it might not
+# get run enough.  It takes <1s on Linux to run cmake, so it's
+# usually best to run it eagerly.
+.PHONY: build/host/CMakeCache.txt
 build/$(HOST)/CMakeCache.txt:
 	$(MAKE) rebuild-cmake
 
@@ -110,9 +115,7 @@ snapshots: tools download-packages
 
 .PHONY: version-file
 version-file: build/$(HOST)/CMakeCache.txt
-	$(MAKE) rebuild-cmake
 	(cd build/$(HOST) && ninja build_version_file)
-
 
 # CROSS-COMPILE
 .PHONY: all-cross
@@ -126,6 +129,7 @@ ifeq ("$(wildcard ./toolchains/$(CROSS_ARCH).cmake)","")
 	$(error invalid cross-compile target '$(CROSS_ARCH)')
 endif
 
+.PHONY: build/$(CROSS_ARCH)/CMakeCache.txt
 build/$(CROSS_ARCH)/CMakeCache.txt:
 	$(MAKE) rebuild-cross-cmake
 
@@ -144,7 +148,6 @@ snapshots-cross: tools download-packages build/$(CROSS_ARCH)/CMakeCache.txt
 
 .PHONY: version-file-cross
 version-file-cross: build/$(CROSS_ARCH)/CMakeCache.txt
-	$(MAKE) rebuild-cross-cmake
 	(cd build/$(CROSS_ARCH) && ninja build_version_file)
 
 
