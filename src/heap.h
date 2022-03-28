@@ -45,7 +45,6 @@ struct InitialMemory {
 // allocated if a later alllocation fails.
 class InitialMemoryManager {
  public:
-  ProcessGroup* process_group = null;
 #ifdef LEGACY_GC
   Block* initial_memory = null;
 #else
@@ -54,7 +53,6 @@ class InitialMemoryManager {
 #endif
 
   void dont_auto_free() {
-    process_group = null;
 #ifdef LEGACY_GC
     initial_memory = null;
 #else
