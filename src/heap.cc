@@ -258,6 +258,29 @@ class ScavengeState : public RootCallback {
 
 #endif  // def LEGACY_GC
 
+bool InitialMemoryManager::allocate() {
+#ifdef LEGACY_GC
+  initial_memory = VM::current()->heap_memory()->allocate_initial_block();
+  return initial_memory != null;
+#else
+  chunks.chunk_1 = ObjectMemory::allocate_chunk(null, TOIT_PAGE_SIZE);
+  chunks.chunk_2 = ObjectMemory::allocate_chunk(null, TOIT_PAGE_SIZE);
+  return chunks.chunk_1 != null && chunks.chunk_2 != null;
+#endif
+}
+
+InitialMemoryManager::~InitialMemoryManager() {
+  delete process_group;
+#ifdef LEGACY_GC
+  if (initial_memory) {
+    VM::current()->heap_memory()->free_unused_block(initial_memory);
+  }
+#else
+  if (chunks.chunk_1) ObjectMemory::free_chunk(chunks.chunk_1);
+  if (chunks.chunk_2) ObjectMemory::free_chunk(chunks.chunk_2);
+#endif
+}
+
 #ifdef LEGACY_GC
 ObjectHeap::ObjectHeap(Program* program, Process* owner, Block* block)
     : RawHeap(owner)
@@ -266,10 +289,10 @@ ObjectHeap::ObjectHeap(Program* program, Process* owner, Block* block)
   if (block == null) return;
   _blocks.append(block);
 #else
-ObjectHeap::ObjectHeap(Program* program, Process* owner)
+ObjectHeap::ObjectHeap(Program* program, Process* owner, InitialMemory* initial_memory)
     : _program(program)
     , _owner(owner)
-    , _two_space_heap(program, this)
+    , _two_space_heap(program, this, initial_memory->chunk_1, initial_memory->chunk_2)
     , _external_memory(0) {
 #endif
   _task = allocate_task();
