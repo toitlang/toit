@@ -2,6 +2,8 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+import binary show LITTLE_ENDIAN
+
 /**
 Contains various utility functions.
 */
@@ -485,3 +487,57 @@ Converts a number between 0 and 15 to an upper case
 */
 to_upper_case_hex c/int -> int:
   return "0123456789ABCDEF"[c]
+
+print_objects marker/string="" gc/bool=true:
+  if gc:
+    before := gc_count
+    while gc_count == before: RecognizableFiller_
+  print_histogram_ marker object_histogram_
+
+class RecognizableFiller_:
+  a/int := 0
+  b/int := 0
+  c/int := 0
+  d/int := 0
+  e/int := 0
+  f/int := 0
+  g/int := 0
+
+class HistogramEntry_:
+  index/int
+  count/int := 0
+  size/int := 0
+  constructor .index .count .size:
+
+  accumulate other -> none:
+    count += other.count
+    size += other.size
+
+print_histogram_ marker/string histogram/ByteArray:
+  entries := []
+  (histogram.size / (2 * 4)).repeat:
+    count := LITTLE_ENDIAN.uint32 histogram (it * 2 + 0) * 4
+    size  := LITTLE_ENDIAN.uint32 histogram (it * 2 + 1) * 4
+    if size > 0:
+      entry := HistogramEntry_ it count size
+      entries.add entry
+  entries.sort --in_place: | a b | (b.size > a.size) ? 1 : (b.size < a.size ? -1 : 0)
+  total := HistogramEntry_ -1 0 0
+  entries.do: total.accumulate it
+
+  if not marker.is_empty: marker = " @ $marker"
+  print_ "*" * 16
+  print_ "Objects$marker:"
+  print_ "  ┌─────────┬─────────┬─────────┐"
+  print_ "  │  Bytes  │  Count  │  Class  │"
+  print_ "  ├─────────┼─────────┼─────────┤"
+  entries.do:
+    // We print the lines with standard | characters to make it easier to
+    // work with the output using grep, cut, and other command line tools.
+    print_ "  | $(%6d it.size)  | $(%6d it.count)  | $(%6d it.index)  |"
+  print_ "  └─────────┴─────────┴─────────┘"
+  print_ "  Total: $(total.size) bytes in $(total.count) objects"
+  print_ "*" * 16
+
+object_histogram_ -> ByteArray:
+  #primitive.debug.object_histogram
