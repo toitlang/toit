@@ -154,7 +154,7 @@ PRIMITIVE(config_rx) {
 
 PRIMITIVE(set_idle_threshold) {
   ARGS(int, channel_num, uint16, threshold)
-  esp_err_t err = rmt_get_rx_idle_thresh(static_cast<rmt_channel_t>(channel_num), &threshold);
+  esp_err_t err = rmt_set_rx_idle_thresh(static_cast<rmt_channel_t>(channel_num), threshold);
   if (err != ESP_OK) return Primitive::os_error(err, process);
   return process->program()->null_object();
 }
