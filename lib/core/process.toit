@@ -12,9 +12,9 @@ spawn lambda/Lambda -> int:
   return hatch_primitive_ lambda.method_ lambda.arguments_
 
 /**
-Alias for $spawn.
+Deprecated. Use $spawn instead.
 */
-hatch_ lambda/Lambda:  // TODO(kasper): Mark as deprecated
+hatch_ lambda/Lambda:
   return spawn lambda
 
 hatch_primitive_ method arguments:
@@ -24,7 +24,6 @@ hatch_primitive_ method arguments:
 __hatch_entry__:
   current := task
   current.initialize_entry_task_
-  process_send_ -1 SYSTEM_SPAWNED_ null
   lambda := Lambda.__
     hatch_method_
     hatch_args_
@@ -40,11 +39,3 @@ resource_freeing_module_ := get_generic_resource_group_
 
 get_generic_resource_group_:
   #primitive.core.get_generic_resource_group
-
-/// Only used by the system process, otherwise throws "NOT ALLOWED".
-/// May also throw "NOT ALLOWED" if the process already terminated.
-signal_kill_ id:
-  if not signal_kill_primitive_ id: throw "NOT ALLOWED"
-
-signal_kill_primitive_ id:
-  #primitive.core.signal_kill

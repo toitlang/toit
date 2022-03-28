@@ -185,7 +185,7 @@ class Scheduler {
 
   Process* find_process(Locker& locker, int process_id);
 
-  SystemMessage* new_termination_message(int gid);
+  SystemMessage* new_process_message(SystemMessage::Type type, int gid);
 
   // Called by the launch thread, to signal that time has passed.
   // The tick is used to drive process preemption.
