@@ -40,7 +40,7 @@ class Signals:
   All signals are initialized to 0 period and 0 level.
 
   # Advanced
-  If the given $size is not divisible by 2, then the byte array allocted for
+  If the given $size is not divisible by 2, then the byte array allocated for
     $bytes_ is padded with two bytes to make the $bytes_ usable by the RMT
     primitives.
   */
