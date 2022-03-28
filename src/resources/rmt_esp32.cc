@@ -191,7 +191,7 @@ void flush_buffer(RingbufHandle_t rb) {
 }
 
 PRIMITIVE(transfer_and_read) {
-  ARGS(int, tx_num, int, rx_num, Blob, items_bytes, int, max_output_len)
+  ARGS(int, tx_num, int, rx_num, Blob, items_bytes, int, max_output_len, int, receive_timeout)
   if (items_bytes.length() % 4 != 0) INVALID_ARGUMENT;
 
   Error* error = null;
@@ -218,8 +218,7 @@ PRIMITIVE(transfer_and_read) {
   }
 
   size_t length = 0;
-  // TODO add the final wait as a parameter (send the idle threshold).
-  void* received_bytes = xRingbufferReceive(rb, &length, 3000);
+  void* received_bytes = xRingbufferReceive(rb, &length, receive_timeout);
   if (received_bytes != null) {
     if (length <= max_output_len) {
       ByteArray::Bytes bytes(data);

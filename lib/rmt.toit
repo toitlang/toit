@@ -167,6 +167,7 @@ class Channel:
 
   idle_threshold_/int? := null
   rx_buffer_size_/int? := null
+  rx_clk_div_/int?     := null
   /**
   Constructs a channel using the given $num using the given $pin.
 
@@ -203,12 +204,16 @@ class Channel:
     rmt_config_rx_ pin.num num mem_block_num clk_div flags idle_threshold filter_en filter_ticks_thresh rx_buffer_size
     idle_threshold_ = idle_threshold
     rx_buffer_size_ = rx_buffer_size
+    rx_clk_div_ = clk_div
 
   idle_threshold -> int?:
     return idle_threshold_
 
   rx_buffer_size -> int?:
     return rx_buffer_size_
+
+  rx_clk_div -> int?:
+    return rx_clk_div_
 
   /**
   Configure the channel for TX.
@@ -293,9 +298,12 @@ The $rx channel must be configured for receiving (see $Channel.config_rx).
 The $tx channel must be configured for transferring (see $Channel.config_tx).
 */
 transfer_and_receive --rx/Channel --tx/Channel signals/Signals max_returned_bytes/int -> Signals:
-  if max_returned_bytes > rx.rx_buffer_size: throw "maximum returned buffer size greater than allocated RX buffer size"
+  if not rx.rx_buffer_size or not rx.rx_clk_div: throw "rx channel not configured"
 
-  result := rmt_transfer_and_read_ tx.num rx.num signals.bytes_ max_returned_bytes
+  if not rx.rx_buffer_size or max_returned_bytes > rx.rx_buffer_size: throw "maximum returned buffer size greater than allocated RX buffer size"
+
+  receive_timeout := rx.idle_threshold * rx.rx_clk_div
+  result := rmt_transfer_and_read_ tx.num rx.num signals.bytes_ max_returned_bytes receive_timeout
   return Signals.from_bytes result
 
 resource_group_ ::= rmt_init_
@@ -324,5 +332,5 @@ rmt_config_bidirectional_pin_ pin/int tx/int:
 rmt_transfer_ tx_ch/int signals_bytes/*/Blob*/:
   #primitive.rmt.transfer
 
-rmt_transfer_and_read_ tx_ch/int rx_ch/int signals_bytes/*/Blob*/ max_output_len/int:
+rmt_transfer_and_read_ tx_ch/int rx_ch/int signals_bytes/*/Blob*/ max_output_len/int receive_timeout/int:
   #primitive.rmt.transfer_and_read
