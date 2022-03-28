@@ -153,7 +153,10 @@ void* OS::allocate_pages(uword size) {
   if (result == null) return null;
   uword result_end = reinterpret_cast<uword>(result) + size;
   int attempt = 0;
-  while (result < _single_range.address || result_end > reinterpret_cast<uword>(_single_range.address) + _single_range.size) {
+  uword numeric = reinterpret_cast<uword>(result);
+  while (result < _single_range.address ||
+         result_end > reinterpret_cast<uword>(_single_range.address) + _single_range.size ||
+         numeric != Utils::round_up(numeric, TOIT_PAGE_SIZE)) {
     if (attempt++ > 20) FATAL("Out of memory");
     // We did not get a result in the right range.
     // Try to use a random address in the right range.
@@ -163,6 +166,7 @@ void* OS::allocate_pages(uword size) {
     r <<= TOIT_PAGE_SIZE_LOG2;  // Do this on a separate line so that it is done on a word-sized integer.
     uword suggestion = reinterpret_cast<uword>(_single_range.address) + (r & mask);
     result = try_grab_aligned(reinterpret_cast<void*>(suggestion), size);
+    numeric = reinterpret_cast<uword>(result);
   }
   use_virtual_memory(result, original_size);
   return result;

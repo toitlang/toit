@@ -493,6 +493,13 @@ int ObjectHeap::gc() {
 
 #else
 
+class HasForwardingAddress : public LivenessOracle {
+ public:
+  virtual bool is_alive(HeapObject* object) {
+    return object->has_forwarding_address();
+  }
+};
+
 int ObjectHeap::gc() {
   if (program() == null) FATAL("cannot gc external process");
 
@@ -524,16 +531,39 @@ int ObjectHeap::gc() {
     Iterator objects(ss.blocks, program());
     while (!objects.eos()) ss.process_to_objects(objects);
 
+    HasForwardingAddress is_alive_oracle;
+
+    process_registered_finalizers(&ss, &is_alive_oracle);
+
+    // Process the finalizers in the to space.
+    while (!objects.eos()) ss.process_to_objects(objects);
+    ASSERT(objects.eos());
+
+    process_registered_vm_finalizers(&ss, &is_alive_oracle);
+
+    // Complete the scavenge.
+    while (!objects.eos()) ss.process_to_objects(objects);
+    ASSERT(objects.eos());
+
+    take_blocks(&ss.blocks);
+  }
+
+  return complete_scavenge(blocks_before);
+}
+
+#endif  // LEGACY_GC
+
+void ObjectHeap::process_registered_finalizers(RootCallback* ss, LivenessOracle* from_space) {
     // Process the registered finalizer list.
     if (!_registered_finalizers.is_empty() && Flags::tracegc && Flags::verbose) printf(" - Processing registered finalizers\n");
     ObjectHeap* heap = this;
-    _registered_finalizers.remove_wherever([&ss, heap](FinalizerNode* node) -> bool {
-      bool is_alive = node->key()->has_forwarding_address();
+    _registered_finalizers.remove_wherever([ss, heap, from_space](FinalizerNode* node) -> bool {
+      bool is_alive = from_space->is_alive(node->key());
       if (!is_alive) {
         // Clear the key so it is not retained.
         node->set_key(heap->program()->null_object());
       }
-      node->roots_do(&ss);
+      node->roots_do(ss);
       if (is_alive && Flags::tracegc && Flags::verbose) printf(" - Finalizer %p is alive\n", node);
       if (is_alive) return false;  // Keep node in list.
       // From here down, the node is going to be unlinked by returning true.
@@ -545,18 +575,16 @@ int ObjectHeap::gc() {
       }
       return true; // Remove node from list.
     });
+}
 
-    // Process the finalizers in the to space.
-    while (!objects.eos()) ss.process_to_objects(objects);
-    ASSERT(objects.eos());
-
+void ObjectHeap::process_registered_vm_finalizers(RootCallback* ss, LivenessOracle* from_space) {
     // Process registered VM finalizers.
-    _registered_vm_finalizers.remove_wherever([&ss, this](VMFinalizerNode* node) -> bool {
-      bool is_alive = node->key()->has_forwarding_address();
+    _registered_vm_finalizers.remove_wherever([ss, this, from_space](VMFinalizerNode* node) -> bool {
+      bool is_alive = from_space->is_alive(node->key());
 
       if (is_alive && Flags::tracegc && Flags::verbose) printf(" - Finalizer %p is alive\n", node);
       if (is_alive) {
-        node->roots_do(&ss);
+        node->roots_do(ss);
         return false; // Keep node in list.
       }
       if (Flags::tracegc && Flags::verbose) printf(" - Processing registered finalizer %p for external memory.\n", node);
@@ -564,14 +592,11 @@ int ObjectHeap::gc() {
       delete node;
       return true; // Remove node from list.
     });
+}
 
-    // Complete the scavenge.
-    while (!objects.eos()) ss.process_to_objects(objects);
-    ASSERT(objects.eos());
+#ifdef LEGACY_GC
 
-    take_blocks(&ss.blocks);
-  }
-
+int ObjectHeap::complete_scavenge(int blocks_before) {
   _pending_limit = _calculate_limit();  // GC limit to install after next GC.
   _limit = _max_heap_size;  // Only the hard limit for the rest of this primitive.
   if (Flags::tracegc) {
