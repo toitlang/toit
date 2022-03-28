@@ -16,8 +16,8 @@ import system.api.service_discovery
     ServiceDiscoveryServiceClient
 
 // Notification kinds.
-SERVICES_MANAGER_NOTIFY_OPEN_CLIENT  /int ::= 0
-SERVICES_MANAGER_NOTIFY_CLOSE_CLIENT /int ::= 1
+SERVICES_MANAGER_NOTIFY_ADD_PROCESS    /int ::= 0
+SERVICES_MANAGER_NOTIFY_REMOVE_PROCESS /int ::= 1
 
 // RPC procedure numbers used for using services from clients.
 RPC_SERVICES_OPEN_           /int ::= 300
@@ -40,7 +40,7 @@ abstract class ServiceClient:
   constructor.lookup name/string major/int minor/int --server/int?=null:
     pid/int? := null
     if server:
-      process_send_ server SYSTEM_RPC_NOTIFY_ [SERVICES_MANAGER_NOTIFY_OPEN_CLIENT, current_process_]
+      process_send_ server SYSTEM_RPC_NOTIFY_ [SERVICES_MANAGER_NOTIFY_ADD_PROCESS, current_process_]
       pid = server
     else:
       pid = _client_.discover name
@@ -90,7 +90,10 @@ abstract class ServiceClient:
     // If this client is closed, we've already closed all its resources.
     id := _id_
     if not id: return
-    rpc.invoke _pid_ RPC_SERVICES_CLOSE_RESOURCE_ [id, handle]
+    // TODO(kasper): Should we avoid using the task deadline here
+    // and use our own? If we're timing out and trying to call
+    // close after timing out, it should still work.
+    critical_do: rpc.invoke _pid_ RPC_SERVICES_CLOSE_RESOURCE_ [id, handle]
 
 abstract class ServiceDefinition:
   _names_/List ::= ?
@@ -238,11 +241,7 @@ abstract class ServiceResourceProxy:
     if not handle: return
     _handle_ = null
     remove_finalizer this
-    catch --trace:
-      // TODO(kasper): Should we avoid using the task deadline here
-      // and use our own? If we're timing out and trying to call
-      // close after timing out, it should still work.
-      critical_do: client_._close_resource_ handle
+    catch --trace: client_._close_resource_ handle
 
 class ServiceManager_ implements SystemMessageHandler_:
   static instance := ServiceManager_
@@ -317,12 +316,15 @@ class ServiceManager_ implements SystemMessageHandler_:
   on_message type/int gid/int pid/int message/any -> none:
     assert: type == SYSTEM_RPC_NOTIFY_
     kind/int ::= message[0]
-    requester/int ::= message[1]
-    if kind == SERVICES_MANAGER_NOTIFY_OPEN_CLIENT:
-      broker_.add_process requester
-    else if kind == SERVICES_MANAGER_NOTIFY_CLOSE_CLIENT:
-      broker_.remove_process requester
-      close_all requester
+    // The other process isn't necessarily the sender of the
+    // notifications. They almost always come from the system
+    // process and are sent as part of the discovery handshake.
+    other/int ::= message[1]
+    if kind == SERVICES_MANAGER_NOTIFY_ADD_PROCESS:
+      broker_.add_process other
+    else if kind == SERVICES_MANAGER_NOTIFY_REMOVE_PROCESS:
+      broker_.remove_process other
+      close_all other
     else:
       unreachable
 
