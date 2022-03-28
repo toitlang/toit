@@ -305,12 +305,14 @@ The $rx channel must be configured for receiving (see $Channel.config_rx).
 The $tx channel must be configured for transferring (see $Channel.config_tx).
 */
 transfer_and_receive --rx/Channel --tx/Channel --transfer/Signals --receive/Signals max_returned_bytes/int -> Signals:
+  print "function call"
   if not rx.rx_buffer_size and rx.rx_clk_div: throw "rx channel not configured"
 
   if max_returned_bytes > rx.rx_buffer_size: throw "maximum returned buffer size greater than allocated RX buffer size"
 
   receive_timeout := rx.idle_threshold * rx.rx_clk_div
-  result := rmt_transfer_and_read_ tx.num rx.num transfer.bytes_ receive.bytes_ max_returned_bytes receive_timeout
+  print "primitive call"
+  result := rmt_transfer_and_receive_ tx.num rx.num transfer.bytes_ receive.bytes_ max_returned_bytes receive_timeout
   return Signals.from_bytes result
 
 resource_group_ ::= rmt_init_
@@ -342,5 +344,5 @@ rmt_config_bidirectional_pin_ pin/int tx/int:
 rmt_transfer_ tx_ch/int signals_bytes/*/Blob*/:
   #primitive.rmt.transfer
 
-rmt_transfer_and_read_ tx_ch/int rx_ch/int transfer_bytes/*/Blob*/ read_bytes max_output_len/int receive_timeout/int
-  #primitive.rmt.transfer_and_read
+rmt_transfer_and_receive_ tx_ch/int rx_ch/int transfer_bytes/*/Blob*/ read_bytes max_output_len/int receive_timeout/int:
+  #primitive.rmt.transfer_and_receive
