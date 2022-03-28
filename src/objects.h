@@ -1293,7 +1293,7 @@ class PromotedTrack : public HeapObject {
 
   static PromotedTrack* initialize(PromotedTrack* next, uword start, uword end);
 
-  static inline int header_size() { return HEADER_SIZE; }
+  static inline uword header_size() { return HEADER_SIZE; }
 
  private:
   static const int END_OFFSET = HeapObject::SIZE;

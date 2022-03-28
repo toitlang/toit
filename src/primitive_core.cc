@@ -968,7 +968,7 @@ PRIMITIVE(random_seed) {
 PRIMITIVE(add_entropy) {
   PRIVILEGED;
   ARGS(Blob, data);
-  VM::current()->entropy_mixer()->add_entropy(data.address(), data.length());
+  EntropyMixer::instance()->add_entropy(data.address(), data.length());
   return process->program()->null_object();
 }
 
