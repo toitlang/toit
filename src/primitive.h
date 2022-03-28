@@ -61,6 +61,7 @@ namespace toit {
   M(math,    MODULE_MATH)                    \
   M(x509,    MODULE_X509)                    \
   M(flash_kv, MODULE_FLASH_KV)               \
+  M(debug,   MODULE_DEBUG)                   \
 
 #define MODULE_CORE(PRIMITIVE)               \
   PRIMITIVE(write_string_on_stdout, 2)       \
@@ -566,6 +567,9 @@ namespace toit {
   PRIMITIVE(write_bytes, 3)                  \
   PRIMITIVE(delete, 2)                       \
   PRIMITIVE(erase, 1)                        \
+
+#define MODULE_DEBUG(PRIMITIVE)              \
+  PRIMITIVE(object_histogram, 0)             \
 
 // ----------------------------------------------------------------------------
 
