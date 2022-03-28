@@ -209,6 +209,9 @@ class Channel:
   idle_threshold -> int?:
     return idle_threshold_
 
+  idle_threshold= threshold/int -> none:
+    rmt_set_idle_threshold_ num threshold
+
   rx_buffer_size -> int?:
     return rx_buffer_size_
 
@@ -320,6 +323,9 @@ rmt_unuse_ resource_group resource:
 rmt_config_rx_ pin_num/int channel_num/int mem_block_num/int clk_div/int flags/int
     idle_threshold/int filter_en/bool filter_ticks_thresh/int rx_buffer_size/int:
   #primitive.rmt.config_rx
+
+rmt_set_idle_threshold_ channel_num/int threshold/int:
+  #primitive.rmt.set_idle_threshold
 
 rmt_config_tx_ pin_num/int channel_num/int mem_block_num/int clk_div/int flags/int
     carrier_en/bool carrier_freq_hz/int carrier_level/int carrier_duty_percent/int

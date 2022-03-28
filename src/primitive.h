@@ -381,6 +381,7 @@ namespace toit {
   PRIMITIVE(use, 2)                          \
   PRIMITIVE(unuse, 2)                        \
   PRIMITIVE(config_rx, 9)                    \
+  PRIMITIVE(set_idle_threshold, 2)       \
   PRIMITIVE(config_tx, 12)                   \
   PRIMITIVE(config_bidirectional_pin, 2)     \
   PRIMITIVE(transfer, 2)                     \

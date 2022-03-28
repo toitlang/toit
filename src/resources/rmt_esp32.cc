@@ -152,6 +152,13 @@ PRIMITIVE(config_rx) {
   return process->program()->null_object();
 }
 
+PRIMITIVE(set_idle_threshold) {
+  ARGS(int, channel_num, uint16, threshold)
+  esp_err_t err = rmt_get_rx_idle_thresh(static_cast<rmt_channel_t>(channel_num), &threshold);
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+  return process->program()->null_object();
+}
+
 PRIMITIVE(config_bidirectional_pin) {
   ARGS(int, pin, int, tx);
 
