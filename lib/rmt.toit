@@ -301,7 +301,7 @@ The $rx channel must be configured for receiving (see $Channel.config_rx).
 The $tx channel must be configured for transferring (see $Channel.config_tx).
 */
 transfer_and_receive --rx/Channel --tx/Channel signals/Signals max_returned_bytes/int -> Signals:
-  if not rx.rx_buffer_size or not rx.rx_clk_div: throw "rx channel not configured"
+  if not rx.rx_buffer_size and rx.rx_clk_div: throw "rx channel not configured"
 
   if not rx.rx_buffer_size or max_returned_bytes > rx.rx_buffer_size: throw "maximum returned buffer size greater than allocated RX buffer size"
 
