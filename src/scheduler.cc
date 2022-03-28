@@ -75,16 +75,16 @@ Scheduler::~Scheduler() {
   OS::dispose(_mutex);
 }
 
-SystemMessage* Scheduler::new_termination_message(int gid) {
-  uint8* data = unvoid_cast<uint8*>(malloc(MESSAGING_TERMINATION_MESSAGE_SIZE));
+SystemMessage* Scheduler::new_process_message(SystemMessage::Type type, int gid) {
+  uint8* data = unvoid_cast<uint8*>(malloc(MESSAGING_PROCESS_MESSAGE_SIZE));
   if (data == NULL) return NULL;
 
   // We must encode a proper message in the data. Otherwise, we cannot free it
   // later without running into issues when we traverse the data to find pointers
   // to external memory areas.
-  MessageEncoder::encode_termination_message(data, 0);
+  MessageEncoder::encode_process_message(data, 0);
 
-  SystemMessage* result = _new SystemMessage(SystemMessage::TERMINATED, gid, -1, data);
+  SystemMessage* result = _new SystemMessage(type, gid, -1, data);
   if (result == NULL) {
     free(data);
   }
@@ -101,7 +101,7 @@ Scheduler::ExitState Scheduler::run_boot_program(Program* program, char** args, 
   ASSERT(ok);
   Locker locker(_mutex);
   ProcessGroup* group = ProcessGroup::create(group_id, program);
-  SystemMessage* termination = new_termination_message(group_id);
+  SystemMessage* termination = new_process_message(SystemMessage::TERMINATED, group_id);
   Process* process = _new Process(program, group, termination, args, manager.initial_memory);
   manager.dont_auto_free();
   return launch_program(locker, process);
@@ -122,7 +122,7 @@ Scheduler::ExitState Scheduler::run_boot_program(
   // memory while booting.
   ASSERT(ok);
   Locker locker(_mutex);
-  SystemMessage* termination = new_termination_message(group_id);
+  SystemMessage* termination = new_process_message(SystemMessage::TERMINATED, group_id);
   Process* process = _new Process(boot_program, group, termination, application_bundle, args, manager.initial_memory);
   manager.dont_auto_free();
   return launch_program(locker, process);
@@ -197,7 +197,7 @@ int Scheduler::next_group_id() {
 
 int Scheduler::run_program(Program* program, char** args, ProcessGroup* group, InitialMemory* initial_memory) {
   Locker locker(_mutex);
-  SystemMessage* termination = new_termination_message(group->id());
+  SystemMessage* termination = new_process_message(SystemMessage::TERMINATED, group->id());
   if (termination == null) {
     return INVALID_PROCESS_ID;
   }
@@ -222,7 +222,7 @@ Process* Scheduler::run_external(ProcessRunner* runner) {
   Locker locker(_mutex);
   ProcessGroup* group = ProcessGroup::create(group_id, null);
   if (group == null) return null;
-  SystemMessage* termination = new_termination_message(group_id);
+  SystemMessage* termination =  new_process_message(SystemMessage::TERMINATED, group_id);
   if (termination == null) {
     delete group;
     return null;
@@ -272,12 +272,15 @@ scheduler_err_t Scheduler::send_system_message(Locker& locker, SystemMessage* me
   switch (message->type()) {
     case SystemMessage::TERMINATED:
       int value;
-      if (MessageDecoder::decode_termination_message(message->data(), &value)) {
+      if (MessageDecoder::decode_process_message(message->data(), &value)) {
         ExitReason reason = (value == 0) ? EXIT_DONE : EXIT_ERROR;
         terminate_execution(locker, ExitState(reason, value));
       }
       break;
-
+    case SystemMessage::SPAWNED: {
+      // Do nothing. With no boot process, we don't care newly about spawned processes.
+      break;
+    }
     default:
       FATAL("unhandled system message %d", message->type());
   }
@@ -301,7 +304,7 @@ bool Scheduler::signal_process(Process* sender, int target_id, Process::Signal s
 Process* Scheduler::hatch(Program* program, ProcessGroup* process_group, Method method, uint8* arguments, InitialMemory* initial_memory) {
   Locker locker(_mutex);
 
-  SystemMessage* termination = new_termination_message(process_group->id());
+  SystemMessage* termination = new_process_message(SystemMessage::TERMINATED, process_group->id());
   if (!termination) return null;
   Process* process = _new Process(program, process_group, termination, method, arguments, initial_memory);
   if (!process) {
@@ -309,8 +312,18 @@ Process* Scheduler::hatch(Program* program, ProcessGroup* process_group, Method 
     return null;
   }
 
+  SystemMessage* spawned = new_process_message(SystemMessage::SPAWNED, process_group->id());
+  if (!spawned) {
+    delete termination;
+    delete process;
+    return null;
+  }
+  spawned->set_pid(process->id());
+  // Send the SPAWNED message before returning from the call to spawn. This is necessary
+  // to make sure the system doesn't conclude that there are no processes left just after
+  // spawning, but before the spawned process starts up.
+  send_system_message(locker, spawned);
   new_process(locker, process);
-
   return process;
 }
 
