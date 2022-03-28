@@ -258,7 +258,7 @@ class ScavengeState : public RootCallback {
 
 #endif  // def LEGACY_GC
 
-bool InitialMemoryManager::Allocate() {
+bool InitialMemoryManager::allocate() {
 #ifdef LEGACY_GC
   initial_memory = VM::current()->heap_memory()->allocate_initial_block();
   return initial_memory != null;

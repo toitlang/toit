@@ -94,7 +94,7 @@ SystemMessage* Scheduler::new_termination_message(int gid) {
 Scheduler::ExitState Scheduler::run_boot_program(Program* program, char** args, int group_id) {
   // Allocation takes the memory lock which must happen before taking the scheduler lock.
   InitialMemoryManager manager;
-  bool ok = manager.Allocate();
+  bool ok = manager.allocate();
   USE(ok);
   // We assume that allocate_initial_block succeeds since we can't run out of
   // memory while booting.
@@ -116,7 +116,7 @@ Scheduler::ExitState Scheduler::run_boot_program(
   ProcessGroup* group = ProcessGroup::create(group_id, boot_program);
   // Allocation takes the memory lock which must happen before taking the scheduler lock.
   InitialMemoryManager manager;
-  bool ok = manager.Allocate();
+  bool ok = manager.allocate();
   USE(ok);
   // We assume that allocate_initial_block succeeds since we can't run out of
   // memory while booting.

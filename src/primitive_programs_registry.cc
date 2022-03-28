@@ -41,7 +41,7 @@ PRIMITIVE(spawn) {
   if (!program->is_valid(offset, OS::image_uuid())) OUT_OF_BOUNDS;
 
   InitialMemoryManager manager;
-  if (!manager.Allocate()) ALLOCATION_FAILED;
+  if (!manager.allocate()) ALLOCATION_FAILED;
 
   ProcessGroup* process_group = ProcessGroup::create(group_id, program);
   if (!process_group) MALLOC_FAILED;

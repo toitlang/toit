@@ -34,7 +34,7 @@ PRIMITIVE(launch) {
   ARGS(Blob, bytes, int, gid, bool, pass_args);
 
   InitialMemoryManager manager;
-  bool ok = manager.Allocate();
+  bool ok = manager.allocate();
   USE(ok);
   ASSERT(ok);
 

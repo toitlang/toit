@@ -64,7 +64,7 @@ class InitialMemoryManager {
   }
 
   // Allocates initial pages for heap.  Returns success.
-  bool Allocate();
+  bool allocate();
 
   // Frees any of the fields that are not null.
   ~InitialMemoryManager();

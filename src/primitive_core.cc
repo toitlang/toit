@@ -108,7 +108,7 @@ PRIMITIVE(hatch) {
   Method method(process->program()->bytecodes, method_id);
 
   InitialMemoryManager manager;
-  if (!manager.Allocate()) ALLOCATION_FAILED;
+  if (!manager.allocate()) ALLOCATION_FAILED;
 
   int length = 0;
   { MessageEncoder size_encoder(process, null);
