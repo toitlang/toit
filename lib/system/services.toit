@@ -34,20 +34,26 @@ _client_ /ServiceDiscoveryService ::= ServiceDiscoveryServiceClient.lookup
 abstract class ServiceClient:
   _name_/string ::= ?
   _version_/List ::= ?
-  _pid_/int? ::= null
+  _pid_/int? ::= ?
   _id_/int? := null
 
   constructor.lookup name/string major/int minor/int --server/int?=null:
+    pid/int? := null
     if server:
       process_send_ server SYSTEM_RPC_NOTIFY_ [SERVICES_MANAGER_NOTIFY_OPEN_CLIENT, current_process_]
-      _pid_ = server
+      pid = server
     else:
-      _pid_ = _client_.discover name
-    if not _pid_: throw "Cannot find service:$name"
-    definition ::= rpc.invoke _pid_ RPC_SERVICES_OPEN_ [name, major, minor]
+      pid = _client_.discover name
+      if not pid: throw "Cannot find service:$name"
+    // Open the client by doing a RPC-call to the discovered process.
+    // This returns the client id necessary for invoking service methods.
+    definition ::= rpc.invoke pid RPC_SERVICES_OPEN_ [name, major, minor]
     _name_ = definition[0]
     _version_ = definition[1]
+    _pid_ = pid
     _id_ = definition[2]
+    // Close the client if the reference goes away, so the service
+    // process can clean things up.
     add_finalizer this:: close
 
   id -> int?:
