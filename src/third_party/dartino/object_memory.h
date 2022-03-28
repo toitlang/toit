@@ -19,7 +19,6 @@ namespace toit {
 class Chunk;
 class FreeList;
 class GenerationalScavengeVisitor;
-class Heap;
 class HeapObject;
 class HeapObjectVisitor;
 class MarkingStack;
@@ -59,6 +58,7 @@ class Chunk : public ChunkList::Element {
  public:
   // The space owning this chunk.
   Space* owner() const { return owner_; }
+  void set_owner(Space* value);
 
   // Returns the first address in this chunk.
   uword start() const { return start_; }
@@ -108,8 +108,6 @@ class Chunk : public ChunkList::Element {
 
   Chunk(Space* owner, uword start, uword size, bool external = false);
   ~Chunk();
-
-  void set_owner(Space* value) { owner_ = value; }
 
   friend class ObjectMemory;
   friend class SemiSpace;
@@ -290,7 +288,7 @@ class Space {
 
 class SemiSpace : public Space {
  public:
-  SemiSpace(Program* program, Resizing resizeable, PageType page_type, uword maximum_initial_size);
+  SemiSpace(Program* program, Chunk* chunk);
 
   // Returns the total size of allocated objects.
   virtual uword used();
@@ -334,6 +332,104 @@ class SemiSpace : public Space {
   uword try_allocate(uword size);
 };
 
+class FreeList {
+ public:
+#if defined(_MSC_VER)
+  // Work around Visual Studo 2013 bug 802058
+  FreeList(void) {
+    memset(buckets_, 0, NUMBER_OF_BUCKETS * sizeof(FreeListRegion*));
+  }
+#endif
+
+  void add_region(uword free_start, uword free_size) {
+    FreeListRegion* result = FreeListRegion::create_at(free_start, free_size);
+    if (!result) {
+      // Since the region was too small to be turned into an actual
+      // free list region it was just filled with one-word fillers.
+      // It can be coalesced with other free regions later.
+      return;
+    }
+    const int WORD_BITS = sizeof(uword) * BYTE_BIT_SIZE;
+    int bucket = WORD_BITS - Utils::clz(free_size);
+    if (bucket >= NUMBER_OF_BUCKETS) bucket = NUMBER_OF_BUCKETS - 1;
+    result->set_next_region(buckets_[bucket]);
+    buckets_[bucket] = result;
+  }
+
+  FreeListRegion* get_region(uword min_size) {
+    const int WORD_BITS = sizeof(uword) * BYTE_BIT_SIZE;
+    int smallest_bucket = WORD_BITS - Utils::clz(min_size);
+    ASSERT(smallest_bucket > 0);
+
+    // Take the first region in the largest list guaranteed to satisfy the
+    // allocation.
+    for (int i = NUMBER_OF_BUCKETS - 1; i >= smallest_bucket; i--) {
+      FreeListRegion* result = buckets_[i];
+      if (result != null) {
+        ASSERT(result->size() >= min_size);
+        FreeListRegion* next_region =
+            reinterpret_cast<FreeListRegion*>(result->next_region());
+        result->set_next_region(null);
+        buckets_[i] = next_region;
+        return result;
+      }
+    }
+
+    // Search the bucket containing regions that could, but are not
+    // guaranteed to, satisfy the allocation.
+    if (smallest_bucket > NUMBER_OF_BUCKETS) smallest_bucket = NUMBER_OF_BUCKETS;
+    FreeListRegion* previous = null;
+    FreeListRegion* current = buckets_[smallest_bucket - 1];
+    while (current != null) {
+      if (current->size() >= min_size) {
+        if (previous != null) {
+          previous->set_next_region(current->next_region());
+        } else {
+          buckets_[smallest_bucket - 1] =
+              reinterpret_cast<FreeListRegion*>(current->next_region());
+        }
+        current->set_next_region(null);
+        return current;
+      }
+      previous = current;
+      current = reinterpret_cast<FreeListRegion*>(current->next_region());
+    }
+
+    return null;
+  }
+
+  void clear() {
+    for (int i = 0; i < NUMBER_OF_BUCKETS; i++) {
+      buckets_[i] = null;
+    }
+  }
+
+  void merge(FreeList* other) {
+    for (int i = 0; i < NUMBER_OF_BUCKETS; i++) {
+      FreeListRegion* region = other->buckets_[i];
+      if (region != null) {
+        FreeListRegion* last_region = region;
+        while (last_region->next_region() != null) {
+          last_region = FreeListRegion::cast(last_region->next_region());
+        }
+        last_region->set_next_region(buckets_[i]);
+        buckets_[i] = region;
+      }
+    }
+  }
+
+ private:
+  // Buckets of power of two sized free lists regions. Bucket i
+  // contains regions of size larger than 2 ** (i + 1).
+  static const int NUMBER_OF_BUCKETS = 12;
+#if defined(_MSC_VER)
+  // Work around Visual Studo 2013 bug 802058
+  FreeListRegion* buckets_[NUMBER_OF_BUCKETS];
+#else
+  FreeListRegion* buckets_[NUMBER_OF_BUCKETS] = {null};
+#endif
+};
+
 class OldSpace : public Space {
  public:
   OldSpace(Program* program, TwoSpaceHeap* heap);
@@ -354,7 +450,7 @@ class OldSpace : public Space {
   // there is no room to allocate the object.
   uword allocate(uword size);
 
-  FreeList* free_list() { return free_list_; }
+  FreeList* free_list() { return &free_list_; }
 
   void clear_free_list();
   void mark_chunk_ends_free();
@@ -366,7 +462,7 @@ class OldSpace : public Space {
   // For the objects promoted to the old space during scavenge.
   inline void start_scavenge() { start_tracking_allocations(); }
   bool complete_scavenge_generational(GenerationalScavengeVisitor* visitor);
-  inline void EndScavenge() { end_tracking_allocations(); }
+  inline void end_scavenge() { end_tracking_allocations(); }
 
   void start_tracking_allocations();
   void end_tracking_allocations();
@@ -388,8 +484,8 @@ class OldSpace : public Space {
   void set_used_after_last_gc(uword used) { used_after_last_gc_ = used; }
 
   // For detecting pointless GCs that are really an out-of-memory situation.
-  void EvaluatePointlessness();
-  uword MinimumProgress();
+  inline void evaluate_pointlessness() {};  // TODO: Implement.
+  uword minimum_progress();
   void report_new_space_progress(uword bytes_collected);
 
  private:
@@ -398,7 +494,7 @@ class OldSpace : public Space {
   Chunk* allocate_and_use_chunk(uword size);
 
   TwoSpaceHeap* heap_;
-  FreeList* free_list_;  // Free list structure.
+  FreeList free_list_;  // Free list structure.
   bool tracking_allocations_ = false;
   PromotedTrack* promoted_track_ = null;
   bool compacting_ = true;

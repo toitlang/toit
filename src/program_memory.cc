@@ -89,7 +89,7 @@ ProgramBlockList::~ProgramBlockList() {
 void ProgramBlockList::free_blocks(ProgramRawHeap* heap) {
   while (auto block = _blocks.remove_first()) {
     block->wipe();
-    VM::current()->program_heap_memory()->free_block(block, heap);
+    ProgramHeapMemory::instance()->free_block(block, heap);
   }
   _length = 0;
 }
@@ -105,7 +105,7 @@ void ProgramBlockList::take_blocks(ProgramBlockList* list, ProgramRawHeap* heap)
 
 void ProgramBlockList::set_writable(bool value) {
   for (auto block : _blocks) {
-    VM::current()->program_heap_memory()->set_writable(block, value);
+    ProgramHeapMemory::instance()->set_writable(block, value);
   }
 }
 
@@ -233,6 +233,8 @@ void ProgramHeapMemory::set_writable(ProgramBlock* block, bool value) {
   OS::set_writable(block, value);
 #endif
 }
+
+ProgramHeapMemory ProgramHeapMemory::_instance;
 
 void ProgramRawHeap::take_blocks(ProgramBlockList* blocks) {
   _blocks.take_blocks(blocks, this);

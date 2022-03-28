@@ -185,15 +185,17 @@ class ProgramHeapMemory {
 
   Mutex* mutex() const { return _memory_mutex; }
 
- private:
+  static ProgramHeapMemory* instance() { return &_instance; }
+
   ProgramHeapMemory();
   ~ProgramHeapMemory();
+
+ private:
+  static ProgramHeapMemory _instance;
 
   ProgramBlockList _free_list;
   Mutex* _memory_mutex;
   word _largest_number_of_blocks_in_a_heap = 0;  // In pages.
-
-  friend class VM;
 };
 
 class ProgramRawHeap {

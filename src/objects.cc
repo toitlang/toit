@@ -84,83 +84,6 @@ bool Blob::slow_equals(const char* c_string) const {
   return memcmp(address(), c_string, length()) == 0;
 }
 
-
-bool Object::mutable_byte_content(Process* process, uint8** content, int* length, Error** error) {
-  if (is_byte_array()) {
-    auto byte_array = ByteArray::cast(this);
-    // External byte arrays can have structs in them. This is captured in the external tag.
-    // We only allow extracting the byte content from an external byte arrays iff it is tagged with RawByteType.
-    if (byte_array->has_external_address() && byte_array->external_tag() != RawByteTag) return false;
-    ByteArray::Bytes bytes(byte_array);
-    *length = bytes.length();
-    *content = bytes.address();
-    return true;
-  }
-  if (!is_instance()) return false;
-
-  auto program = process->program();
-  auto instance = Instance::cast(this);
-  if (instance->class_id() == program->byte_array_cow_class_id()) {
-    Object* backing = instance->at(0);
-    auto is_mutable = instance->at(1);
-    if (is_mutable == process->program()->true_object()) {
-      return backing->mutable_byte_content(process, content, length, error);
-    }
-    ASSERT(is_mutable == process->program()->false_object());
-
-    const uint8* immutable_content;
-    int immutable_length;
-    if (!backing->byte_content(program, &immutable_content, &immutable_length, STRINGS_OR_BYTE_ARRAYS)) {
-      return false;
-    }
-
-    Object* new_backing = process->allocate_byte_array(immutable_length, error);
-    if (new_backing == null) {
-      *content = null;
-      *length = 0;
-      // We return 'true' as this should have worked, but we might just have
-      // run out of memory. The 'error' contains the reason things failed.
-      return true;
-    }
-
-    ByteArray::Bytes bytes(ByteArray::cast(new_backing));
-    memcpy(bytes.address(), immutable_content, immutable_length);
-
-    instance->at_put(0, new_backing);
-    instance->at_put(1, process->program()->true_object());
-    return new_backing->mutable_byte_content(process, content, length, error);
-  } else if (instance->class_id() == program->byte_array_slice_class_id()) {
-    auto byte_array = instance->at(0);
-    auto from = instance->at(1);
-    auto to = instance->at(2);
-    if (!byte_array->is_heap_object()) return false;
-    // TODO(florian): we could eventually accept larger integers here.
-    if (!from->is_smi()) return false;
-    if (!to->is_smi()) return false;
-    int from_value = Smi::cast(from)->value();
-    int to_value = Smi::cast(to)->value();
-    bool inner_success = HeapObject::cast(byte_array)->mutable_byte_content(process, content, length, error);
-    if (!inner_success) return false;
-    // If the content is null, then we probably failed allocating the object.
-    // Might work after a GC.
-    if (content == null) return inner_success;
-    if (0 <= from_value && from_value <= to_value && to_value <= *length) {
-      *content += from_value;
-      *length = to_value - from_value;
-      return true;
-    }
-  }
-  return false;
-}
-
-bool Object::mutable_byte_content(Process* process, MutableBlob* blob, Error** error) {
-  uint8* content = null;
-  int length = 0;
-  auto result = mutable_byte_content(process, &content, &length, error);
-  *blob = MutableBlob(content, length);
-  return result;
-}
-
 int HeapObject::size(Program* program) {
   int size = program->instance_size_for(this);
   if (size != 0) return size;
@@ -357,40 +280,6 @@ void Stack::transfer_from_interpreter(Interpreter* interpreter) {
   _set_try_top(interpreter->_try_sp - _stack_limit_addr());
   _set_in_stack_overflow(interpreter->_in_stack_overflow);
   ASSERT(top() > 0 && top() <= length());
-}
-
-void ByteArray::resize_external(Process* process, word new_length) {
-  ASSERT(has_external_address());
-  ASSERT(external_tag() == RawByteTag);
-  ASSERT(new_length <= _external_length());
-  process->unregister_external_allocation(_external_length());
-  process->register_external_allocation(new_length);
-  _set_external_length(new_length);
-  uint8* new_data = AllocationManager::reallocate(_external_address(), new_length);
-  if (new_data != null) {
-    // Realloc succeeded.
-    _set_external_address(new_data);
-  } else if (new_length == 0) {
-    // Realloc was really just a free.
-    _set_external_address(null);
-  } else {
-    // Realloc failed because we are very close to out-of-memory.  The malloc
-    // implementation doesn't normally shrink small existing allocations,
-    // lacking an implementation for that.  Instead it will allocate a new area
-    // and copy the data there, an operation that can fail under memory
-    // pressure.  In that rare case we leave the larger buffer attached to the
-    // byte array, which can be a bit of a waste.
-  }
-}
-
-uint8* ByteArray::neuter(Process* process) {
-  ASSERT(has_external_address());
-  ASSERT(external_tag() == RawByteTag);
-  Bytes bytes(this);
-  process->unregister_external_allocation(bytes.length());
-  _set_external_address(null);
-  _set_external_length(0);
-  return bytes.address();
 }
 
 bool String::starts_with_vowel() {

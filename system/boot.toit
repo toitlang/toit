@@ -15,9 +15,7 @@
 
 import .flash.registry
 import .containers
-import .system_rpc_broker
-
-import .api.containers
+import .services
 
 main:
   container_manager/ContainerManager := initialize
@@ -30,11 +28,8 @@ Initialize the system and create the all important $ContainerManager
 */
 initialize -> ContainerManager:
   flash_registry ::= FlashRegistry.scan
-  rpc_broker := SystemRpcBroker
-  container_manager := ContainerManager flash_registry rpc_broker
-  rpc_broker.install container_manager
-  ContainerApi rpc_broker container_manager  // Set up RPC-based APIs.
-  return container_manager
+  service_manager := SystemServiceManager
+  return ContainerManager flash_registry service_manager
 
 /**
 Boot the system and run the necessary containers. Returns when the

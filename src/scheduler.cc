@@ -92,14 +92,19 @@ SystemMessage* Scheduler::new_termination_message(int gid) {
 }
 
 Scheduler::ExitState Scheduler::run_boot_program(Program* program, char** args, int group_id) {
+  // Allocation takes the memory lock which must happen before taking the scheduler lock.
+  InitialMemoryManager manager;
+  bool ok = manager.allocate();
+  USE(ok);
   // We assume that allocate_initial_block succeeds since we can't run out of
   // memory while booting.
-  // Allocation takes the memory lock which must happen before taking the scheduler lock.
-  Block* initial_block = VM::current()->heap_memory()->allocate_initial_block();
+  ASSERT(ok);
   Locker locker(_mutex);
   ProcessGroup* group = ProcessGroup::create(group_id, program);
   SystemMessage* termination = new_termination_message(group_id);
-  return launch_program(locker, _new Process(program, group, termination, args, initial_block));
+  Process* process = _new Process(program, group, termination, args, manager.initial_memory);
+  manager.dont_auto_free();
+  return launch_program(locker, process);
 }
 
 #ifndef TOIT_FREERTOS
@@ -109,13 +114,17 @@ Scheduler::ExitState Scheduler::run_boot_program(
     char** args,
     int group_id) {
   ProcessGroup* group = ProcessGroup::create(group_id, boot_program);
+  // Allocation takes the memory lock which must happen before taking the scheduler lock.
+  InitialMemoryManager manager;
+  bool ok = manager.allocate();
+  USE(ok);
   // We assume that allocate_initial_block succeeds since we can't run out of
   // memory while booting.
-  // Allocation takes the memory lock which must happen before taking the scheduler lock.
-  Block* initial_block = VM::current()->heap_memory()->allocate_initial_block();
+  ASSERT(ok);
   Locker locker(_mutex);
   SystemMessage* termination = new_termination_message(group_id);
-  Process* process = _new Process(boot_program, group, termination, application_bundle, args, initial_block);
+  Process* process = _new Process(boot_program, group, termination, application_bundle, args, manager.initial_memory);
+  manager.dont_auto_free();
   return launch_program(locker, process);
 }
 #endif
@@ -186,13 +195,13 @@ int Scheduler::next_group_id() {
   return _next_group_id++;
 }
 
-int Scheduler::run_program(Program* program, char** args, ProcessGroup* group, Block* initial_block) {
+int Scheduler::run_program(Program* program, char** args, ProcessGroup* group, InitialMemory* initial_memory) {
   Locker locker(_mutex);
   SystemMessage* termination = new_termination_message(group->id());
   if (termination == null) {
     return INVALID_PROCESS_ID;
   }
-  Process* process = _new Process(program, group, termination, args, initial_block);
+  Process* process = _new Process(program, group, termination, args, initial_memory);
   if (process == null) {
     delete termination;
     return INVALID_PROCESS_ID;
@@ -289,12 +298,12 @@ bool Scheduler::signal_process(Process* sender, int target_id, Process::Signal s
   return true;
 }
 
-Process* Scheduler::hatch(Program* program, ProcessGroup* process_group, Method method, uint8* arguments, Block* initial_block) {
+Process* Scheduler::hatch(Program* program, ProcessGroup* process_group, Method method, uint8* arguments, InitialMemory* initial_memory) {
   Locker locker(_mutex);
 
   SystemMessage* termination = new_termination_message(process_group->id());
   if (!termination) return null;
-  Process* process = _new Process(program, process_group, termination, method, arguments, initial_block);
+  Process* process = _new Process(program, process_group, termination, method, arguments, initial_memory);
   if (!process) {
     delete termination;
     return null;
@@ -752,6 +761,8 @@ void Scheduler::terminate_execution(Locker& locker, ExitState exit) {
   OS::signal(_has_processes);
 }
 
+#ifdef LEGACY_GC
+
 word Scheduler::largest_number_of_blocks_in_a_process() {
   Locker locker(_mutex);
   word largest = 0;
@@ -760,6 +771,8 @@ word Scheduler::largest_number_of_blocks_in_a_process() {
   }
   return largest;
 }
+
+#endif
 
 void Scheduler::tick(Locker& locker) {
   int64 now = OS::get_monotonic_time();

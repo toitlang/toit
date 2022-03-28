@@ -30,11 +30,52 @@ extern "C" uword toit_image_size;
 
 namespace toit {
 
+class ObjectNotifier;
+
 #ifdef LEGACY_GC
-class Heap : public RawHeap {
+typedef Block InitialMemory;
+#else
+struct InitialMemory {
+  Chunk* chunk_1;
+  Chunk* chunk_2;
+};
+#endif
+
+// A class that uses a RAII destructor to free memory already
+// allocated if a later alllocation fails.
+class InitialMemoryManager {
  public:
-  Heap(Process* owner, Program* program, Block* initial_block);
-  ~Heap();
+  ProcessGroup* process_group = null;
+#ifdef LEGACY_GC
+  Block* initial_memory = null;
+#else
+  InitialMemory* initial_memory = &chunks;
+  InitialMemory chunks = {null, null};
+#endif
+
+  void dont_auto_free() {
+    process_group = null;
+#ifdef LEGACY_GC
+    initial_memory = null;
+#else
+    chunks.chunk_1 = null;
+    chunks.chunk_2 = null;
+#endif
+  }
+
+  // Allocates initial pages for heap.  Returns success.
+  bool allocate();
+
+  // Frees any of the fields that are not null.
+  ~InitialMemoryManager();
+};
+
+// An object heap contains all objects created at runtime.
+#ifdef LEGACY_GC
+class ObjectHeap : public RawHeap {
+ public:
+  ObjectHeap(Process* owner, Program* program, Block* initial_block);
+  ~ObjectHeap();
 
   class Iterator {
    public:
@@ -56,10 +97,10 @@ class Heap : public RawHeap {
 
   static int max_allocation_size() { return Block::max_payload_size(); }
 #else
-class Heap {
+class ObjectHeap {
  public:
-  Heap(Process* owner, Program* program);
-  ~Heap();
+  ObjectHeap(Program* program, Process* owner, InitialMemory* initial_memory);
+  ~ObjectHeap();
 
   // TODO: In the new heap there is no max allocation size.
   static int max_allocation_size() { return TOIT_PAGE_SIZE - 96; }
@@ -76,9 +117,6 @@ class Heap {
   String* allocate_internal_string(int length);
   Double* allocate_double(double value);
   LargeInteger* allocate_large_integer(int64 value);
-
-  // Returns the number of bytes allocated in this heap.
-  virtual int payload_size();
 
   Program* program() { return _program; }
 
@@ -128,57 +166,12 @@ class Heap {
   Process* owner() { return _owner; }
 #endif
 
- protected:
-  Program* const _program;
-#ifdef LEGACY_GC
-  HeapObject* _allocate_raw(int byte_size);
-  virtual AllocationResult _expand();
-#else
-  HeapObject* _allocate_raw(int byte_size) {
-    return _two_space_heap.allocate(byte_size);
-  }
-#endif
-
-  bool _in_gc = false;
-  bool _gc_allowed = true;
-  int64 _total_bytes_allocated = 0;
-  AllocationResult _last_allocation_result = ALLOCATION_SUCCESS;
-
-#ifndef LEGACY_GC
-  Process* _owner;
-  TwoSpaceHeap _two_space_heap;
-};
-#else
-};
-#endif
-
-class NoGC {
- public:
-  explicit NoGC(Heap* heap) : _heap(heap) {
-    heap->enter_no_gc();
-  }
-  ~NoGC() {
-    _heap->leave_no_gc();
-  }
-
- private:
-  Heap* _heap;
-};
-
-class ObjectNotifier;
-
-// An object heap contains all objects created at runtime.
-class ObjectHeap final : public Heap {
  public:
 #ifdef LEGACY_GC
   ObjectHeap(Program* program, Process* owner, Block* initial_block);
 #else
   ObjectHeap(Program* program, Process* owner);
 #endif
-  ~ObjectHeap();
-
-  // Returns the number of bytes allocated in this heap.
-  virtual int payload_size();
 
   Task* allocate_task();
   Stack* allocate_stack(int length);
@@ -223,8 +216,28 @@ class ObjectHeap final : public Heap {
   void unregister_external_allocation(word size);
   bool has_max_heap_size() const { return _max_heap_size != 0; }
   void install_heap_limit() { _limit = _pending_limit; }
+  void iterate_roots(RootCallback* callback);
 
  private:
+  Program* const _program;
+#ifdef LEGACY_GC
+  HeapObject* _allocate_raw(int byte_size);
+#else
+  HeapObject* _allocate_raw(int byte_size) {
+    return _two_space_heap.allocate(byte_size);
+  }
+#endif
+
+  bool _in_gc = false;
+  bool _gc_allowed = true;
+  int64 _total_bytes_allocated = 0;
+  AllocationResult _last_allocation_result = ALLOCATION_SUCCESS;
+
+#ifndef LEGACY_GC
+  Process* _owner;
+  TwoSpaceHeap _two_space_heap;
+#endif
+
   // An estimate of how much memory overhead malloc has.
   static const word _EXTERNAL_MEMORY_ALLOCATOR_OVERHEAD = 2 * sizeof(word);
 
@@ -262,6 +275,19 @@ class ObjectHeap final : public Heap {
 #endif
 
   friend class ObjectNotifier;
+};
+
+class NoGC {
+ public:
+  explicit NoGC(ObjectHeap* heap) : _heap(heap) {
+    heap->enter_no_gc();
+  }
+  ~NoGC() {
+    _heap->leave_no_gc();
+  }
+
+ private:
+  ObjectHeap* _heap;
 };
 
 } // namespace toit

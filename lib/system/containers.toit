@@ -7,39 +7,33 @@ User-space side of the RPC API for installing container images in flash, and
   stopping and starting containers based on them.
 */
 
-import rpc
 import uuid
+import system.api.containers show ContainersService ContainersServiceClient
+import rpc show CloseableProxy
 
-RPC_CONTAINER_LIST_IMAGES     ::= 100
-RPC_CONTAINER_START_IMAGE     ::= 101
-RPC_CONTAINER_UNINSTALL_IMAGE ::= 102
-
-RPC_CONTAINER_IMAGE_WRITER_OPEN   := 103
-RPC_CONTAINER_IMAGE_WRITER_WRITE  := 104
-RPC_CONTAINER_IMAGE_WRITER_COMMIT := 105
-RPC_CONTAINER_IMAGE_WRITER_CLOSE  := 106
+client_ /ContainersService ::= ContainersServiceClient.lookup
 
 images -> List:
-  array := rpc.invoke RPC_CONTAINER_LIST_IMAGES null
-  return List array.size: uuid.Uuid array[it]
+  return client_.list_images
 
 start id/uuid.Uuid -> int:
-  return rpc.invoke RPC_CONTAINER_START_IMAGE id.to_byte_array
+  return client_.start_image id
 
 uninstall id/uuid.Uuid -> none:
-  rpc.invoke RPC_CONTAINER_UNINSTALL_IMAGE id.to_byte_array
+  client_.uninstall_image id
 
-class ContainerImageWriter extends rpc.CloseableProxy:
+class ContainerImageWriter extends CloseableProxy:
   size/int ::= ?
 
   constructor .size:
-    super (rpc.invoke RPC_CONTAINER_IMAGE_WRITER_OPEN size)
+    super (client_.image_writer_open size)
 
   write bytes/ByteArray -> none:
-    rpc.invoke RPC_CONTAINER_IMAGE_WRITER_WRITE [handle_, bytes]
+    client_.image_writer_write handle_ bytes
 
   commit -> uuid.Uuid:
-    return uuid.Uuid (rpc.invoke RPC_CONTAINER_IMAGE_WRITER_COMMIT [handle_])
+    return client_.image_writer_commit handle_
 
   close_rpc_selector_ -> int:
-    return RPC_CONTAINER_IMAGE_WRITER_CLOSE
+    unreachable
+    return -1

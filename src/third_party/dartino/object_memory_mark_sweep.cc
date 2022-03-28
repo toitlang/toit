@@ -26,15 +26,14 @@ namespace toit {
 
 OldSpace::OldSpace(Program* program, TwoSpaceHeap* owner)
     : Space(program, CAN_RESIZE, OLD_SPACE_PAGE),
-      heap_(owner),
-      free_list_(new FreeList()) {}
+      heap_(owner) {}
 
-OldSpace::~OldSpace() { delete free_list_; }
+OldSpace::~OldSpace() { }
 
 void OldSpace::flush() {
   if (top_ != 0) {
     uword free_size = limit_ - top_;
-    free_list_->add_region(top_, free_size);
+    free_list_.add_region(top_, free_size);
     if (tracking_allocations_ && promoted_track_ != null) {
       // The latest promoted_track_ entry is set to cover the entire
       // current allocation area, so that we skip it when traversing the
@@ -137,7 +136,7 @@ uword OldSpace::allocate_from_free_list(uword size) {
   // Flush the rest of the active region into the free list.
   flush();
 
-  FreeListRegion* region = free_list_->get_region(
+  FreeListRegion* region = free_list_.get_region(
       tracking_allocations_ ? size + PromotedTrack::header_size() : size);
   if (region != null) {
     top_ = region->_raw();
@@ -345,20 +344,21 @@ bool OldSpace::complete_scavenge_generational(
   return found_work;
 }
 
-void OldSpace::clear_free_list() { free_list_->clear(); }
+void OldSpace::clear_free_list() { free_list_.clear(); }
 
 void OldSpace::mark_chunk_ends_free() {
   for (auto chunk : chunk_list_) {
     uword top = chunk->compaction_top();
     uword end = chunk->usable_end();
-    if (top != end) free_list_->add_region(top, end - top);
+    if (top != end) free_list_.add_region(top, end - top);
     top = Utils::round_up(top, GcMetadata::CARD_SIZE);
     GcMetadata::initialize_starts_for_chunk(chunk, top);
     GcMetadata::initialize_remembered_set_for_chunk(chunk, top);
   }
 }
 
-void FixPointersVisitor::visit_block(Object** start, Object** end) {
+void FixPointersVisitor::do_roots(Object** start, int length) {
+  Object** end = start + length;
   for (Object** current = start; current < end; current++) {
     Object* object = *current;
     if (GcMetadata::get_page_type(object) == OLD_SPACE_PAGE) {

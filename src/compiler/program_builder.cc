@@ -22,7 +22,6 @@
 #include "../process.h"
 #include "../interpreter.h"
 #include "../utils.h"
-#include "../vm.h"
 
 namespace toit {
 namespace compiler {
@@ -30,7 +29,7 @@ namespace compiler {
 ProgramBuilder::ProgramBuilder(Program* program)
     // We assume that allocate_initial_block succeeds since ProgramBuilder is
     // run on the server.
-    : _program_heap(program, VM::current()->program_heap_memory()->allocate_initial_block())
+    : _program_heap(program, ProgramHeapMemory::instance()->allocate_initial_block())
     , _program(program) {
 }
 

@@ -382,6 +382,7 @@ namespace toit {
   PRIMITIVE(unuse, 2)                        \
   PRIMITIVE(config_rx, 9)                    \
   PRIMITIVE(config_tx, 12)                   \
+  PRIMITIVE(config_bidirectional_pin, 2)     \
   PRIMITIVE(transfer, 2)                     \
   PRIMITIVE(transfer_and_read, 4)            \
 

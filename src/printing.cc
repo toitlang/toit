@@ -39,7 +39,7 @@ void print_name_console(String* string) {
   print_name(&p, string);
 }
 
-void print_heap_console(Heap* heap, const char* title) {
+void print_heap_console(ObjectHeap* heap, const char* title) {
   ConsolePrinter p(null);
   print_heap(&p, heap, title);
 }
@@ -455,11 +455,14 @@ void print_object_short(Printer* printer, Object* object, bool is_top_level) {
   p.accept(object);
 }
 
-void print_heap(Printer* printer, Heap* heap, const char* title) {
+void print_heap(Printer* printer, ObjectHeap* heap, const char* title) {
   printer->printf("%s:\n", title);
-  for (Heap::Iterator i = heap->object_iterator(); !i.eos(); i.advance()) {
+#ifdef LEGACY_GC
+  // TODO: Do we need this?
+  for (ObjectHeap::Iterator i = heap->object_iterator(); !i.eos(); i.advance()) {
     print_object(printer, i.current());
   }
+#endif
 }
 
 void Printer::print_buffer(const uint8_t* s, int len) {

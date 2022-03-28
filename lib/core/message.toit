@@ -10,11 +10,14 @@ MESSAGE_SYSTEM_        ::= 2
 
 // System message types.
 SYSTEM_TERMINATED_     ::= 0
-SYSTEM_HATCHED_        ::= 1
+SYSTEM_SPAWNED_        ::= 1
 SYSTEM_MIRROR_MESSAGE_ ::= 2  // Used for sending stack traces and profile information.
-SYSTEM_RPC_REQUEST_    ::= 3
-SYSTEM_RPC_REPLY_      ::= 4
-SYSTEM_RPC_CANCEL_     ::= 5
+
+// System message types for service RPCs.
+SYSTEM_RPC_REQUEST_  ::= 3
+SYSTEM_RPC_REPLY_    ::= 4
+SYSTEM_RPC_CANCEL_   ::= 5
+SYSTEM_RPC_NOTIFY_   ::= 6
 
 /**
 Sends the $message to the system with the $type.
@@ -52,7 +55,7 @@ interface SystemMessageHandler_:
   Implementation of this method must not lead to message processing (that is calls to
     $process_messages_).
   */
-  on_message type gid pid message
+  on_message type/int gid/int pid/int message/any -> none
 
 /**
 Sets the $handler as the system message handler for message of the $type.

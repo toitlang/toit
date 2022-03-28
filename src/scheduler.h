@@ -15,6 +15,7 @@
 
 #pragma once
 
+#include "heap.h"
 #include "linked.h"
 #include "messaging.h"
 #include "os.h"
@@ -83,7 +84,7 @@ class Scheduler {
 #endif  // TOIT_FREERTOS
 
   // Run a new program. Returns the process ID of the root process.
-  int run_program(Program* program, char** args, ProcessGroup* group, Block* initial_block);
+  int run_program(Program* program, char** args, ProcessGroup* group, InitialMemory* initial_memory);
 
   // Run a new external program. Returns the process.
   Process* run_external(ProcessRunner* runner);
@@ -101,7 +102,7 @@ class Scheduler {
   // deliver the signal.
   bool signal_process(Process* sender, int target_id, Process::Signal signal);
 
-  Process* hatch(Program* program, ProcessGroup* process_group, Method method, uint8* arguments, Block* initial_block);
+  Process* hatch(Program* program, ProcessGroup* process_group, Method method, uint8* arguments, InitialMemory* initial_memory);
 
   // Returns a new process id (only called from Process constructor).
   int next_process_id();
@@ -133,7 +134,9 @@ class Scheduler {
   // Returns false if the process doesn't exist, true otherwise.
   bool process_stats(Array* array, int group_id, int process_id);
 
+#ifdef LEGACY_GC
   word largest_number_of_blocks_in_a_process();
+#endif
 
   static const int INVALID_PROCESS_ID = -1;
 
