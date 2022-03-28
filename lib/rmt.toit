@@ -303,7 +303,7 @@ The $tx channel must be configured for transferring (see $Channel.config_tx).
 transfer_and_receive --rx/Channel --tx/Channel signals/Signals max_returned_bytes/int -> Signals:
   if not rx.rx_buffer_size and rx.rx_clk_div: throw "rx channel not configured"
 
-  if not rx.rx_buffer_size or max_returned_bytes > rx.rx_buffer_size: throw "maximum returned buffer size greater than allocated RX buffer size"
+  if max_returned_bytes > rx.rx_buffer_size: throw "maximum returned buffer size greater than allocated RX buffer size"
 
   receive_timeout := rx.idle_threshold * rx.rx_clk_div
   result := rmt_transfer_and_read_ tx.num rx.num signals.bytes_ max_returned_bytes receive_timeout
