@@ -53,13 +53,14 @@ class Process : public ProcessListFromProcessGroup::Element,
 
   static const char* StateName[];
 
-  Process(Program* program, ProcessGroup* group, SystemMessage* termination, char** args, Block* initial_block);
+  Process(Program* program, ProcessGroup* group, SystemMessage* termination, char** args, InitialMemory* initial_memory);
 #ifndef TOIT_FREERTOS
-  Process(Program* program, ProcessGroup* group, SystemMessage* termination, SnapshotBundle bundle, char** args, Block* initial_block);
+  Process(Program* program, ProcessGroup* group, SystemMessage* termination, SnapshotBundle bundle, char** args, InitialMemory* initial_memory);
 #endif
-  Process(Program* program, ProcessGroup* group, SystemMessage* termination, Method method, uint8* arguments, Block* initial_block);
+  Process(Program* program, ProcessGroup* group, SystemMessage* termination, Method method, uint8* arguments, InitialMemory* initial_memory);
   ~Process();
 
+  // Constructor for an external process (no Toit code).
   Process(ProcessRunner* runner, ProcessGroup* group, SystemMessage* termination);
 
   int id() const { return _id; }
@@ -229,7 +230,7 @@ class Process : public ProcessListFromProcessGroup::Element,
   }
 
  private:
-  Process(Program* program, ProcessRunner* runner, ProcessGroup* group, SystemMessage* termination, Block* initial_block);
+  Process(Program* program, ProcessRunner* runner, ProcessGroup* group, SystemMessage* termination, InitialMemory* initial_memory);
   void _append_message(Message* message);
   void _ensure_random_seeded();
 

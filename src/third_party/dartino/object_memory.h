@@ -58,6 +58,7 @@ class Chunk : public ChunkList::Element {
  public:
   // The space owning this chunk.
   Space* owner() const { return owner_; }
+  void set_owner(Space* value);
 
   // Returns the first address in this chunk.
   uword start() const { return start_; }
@@ -107,8 +108,6 @@ class Chunk : public ChunkList::Element {
 
   Chunk(Space* owner, uword start, uword size, bool external = false);
   ~Chunk();
-
-  void set_owner(Space* value) { owner_ = value; }
 
   friend class ObjectMemory;
   friend class SemiSpace;
@@ -289,7 +288,7 @@ class Space {
 
 class SemiSpace : public Space {
  public:
-  SemiSpace(Program* program, Resizing resizeable, PageType page_type, uword maximum_initial_size);
+  SemiSpace(Program* program, Chunk* chunk);
 
   // Returns the total size of allocated objects.
   virtual uword used();

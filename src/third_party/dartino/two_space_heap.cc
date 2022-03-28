@@ -11,12 +11,12 @@
 
 namespace toit {
 
-TwoSpaceHeap::TwoSpaceHeap(Program* program, ObjectHeap* process_heap)
+TwoSpaceHeap::TwoSpaceHeap(Program* program, ObjectHeap* process_heap, Chunk* chunk_1, Chunk* chunk_2)
     : program_(program),
       process_heap_(process_heap),
       old_space_(program, this),
-      semi_space_a_(program, Space::CANNOT_RESIZE, NEW_SPACE_PAGE, 0),
-      semi_space_b_(program, Space::CANNOT_RESIZE, NEW_SPACE_PAGE, 0),
+      semi_space_a_(program, chunk_1),
+      semi_space_b_(program, chunk_2),
       semi_space_(&semi_space_a_),
       unused_semi_space_(&semi_space_b_) {
   semi_space_size_ = TOIT_PAGE_SIZE;

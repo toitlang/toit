@@ -106,8 +106,9 @@ PRIMITIVE(hatch) {
   int method_id = Smi::cast(entry)->value();
   ASSERT(method_id != -1);
   Method method(process->program()->bytecodes, method_id);
-  Block* block = VM::current()->heap_memory()->allocate_initial_block();
-  if (!block) ALLOCATION_FAILED;
+
+  InitialMemoryManager manager;
+  if (!manager.allocate()) ALLOCATION_FAILED;
 
   int length = 0;
   { MessageEncoder size_encoder(process, null);
@@ -117,26 +118,20 @@ PRIMITIVE(hatch) {
 
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + EXTERNAL_BYTE_ARRAY_MALLOC_TAG);
   uint8* buffer = unvoid_cast<uint8*>(malloc(length));
-  if (buffer == null) {
-    VM::current()->heap_memory()->free_unused_block(block);
-    MALLOC_FAILED;
-  }
+  if (buffer == null) MALLOC_FAILED;
 
   MessageEncoder encoder(process, buffer);
   if (!encoder.encode(arguments)) {
-    VM::current()->heap_memory()->free_unused_block(block);
     encoder.free_copied();
     free(buffer);
     if (encoder.malloc_failed()) MALLOC_FAILED;
     OTHER_ERROR;
   }
 
-  Process* child = VM::current()->scheduler()->hatch(process->program(), process->group(), method, buffer, block);
-  if (!child) {
-    VM::current()->heap_memory()->free_unused_block(block);
-    MALLOC_FAILED;
-  }
+  Process* child = VM::current()->scheduler()->hatch(process->program(), process->group(), method, buffer, manager.initial_memory);
+  if (!child) MALLOC_FAILED;
 
+  manager.dont_auto_free();
   return Smi::from(child->id());
 }
 

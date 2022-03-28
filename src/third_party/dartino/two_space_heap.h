@@ -15,7 +15,7 @@ namespace toit {
 // TwoSpaceHeap represents the container for all HeapObjects.
 class TwoSpaceHeap {
  public:
-  TwoSpaceHeap(Program* program, ObjectHeap* process_heap);
+  TwoSpaceHeap(Program* program, ObjectHeap* process_heap, Chunk* chunk_1, Chunk* chunk_2);
   ~TwoSpaceHeap();
 
   // Allocate raw object. Returns null if a garbage collection is
