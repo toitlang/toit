@@ -130,7 +130,7 @@ SystemMessage* Process::take_termination_message(uint8 result) {
   message->set_pid(id());
 
   // Encode the exit value as small integer in the termination message.
-  MessageEncoder::encode_termination_message(message->data(), result);
+  MessageEncoder::encode_process_message(message->data(), result);
 
   return message;
 }

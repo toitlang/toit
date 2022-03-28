@@ -16,6 +16,7 @@
 set(TOIT_EXTERNAL_SCRIPT "${CMAKE_CURRENT_LIST_DIR}/CMakeLists.txt")
 
 set(TOIT_REPOS
+    https://github.com/nilwes/LIS3DH
     https://github.com/toitlang/jaguar
     https://github.com/toitlang/pkg-ar
     https://github.com/toitlang/pkg-host
@@ -47,6 +48,7 @@ set(TOIT_REPOS
     https://github.com/toitware/toit-m5stack-core2
     https://github.com/toitware/toit-morse
     https://github.com/toitware/toit-morse-tutorial
+    https://github.com/toitware/toit-msa311
     https://github.com/toitware/toit-newton-raphson
     https://github.com/toitware/toit-pixel-display
     https://github.com/toitware/toit-png-display
