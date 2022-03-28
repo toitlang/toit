@@ -198,15 +198,17 @@ void flush_buffer(RingbufHandle_t rb) {
 }
 
 PRIMITIVE(transfer_and_read) {
-  ARGS(int, tx_num, int, rx_num, Blob, items_bytes, int, max_output_len, int, receive_timeout)
-  if (items_bytes.length() % 4 != 0) INVALID_ARGUMENT;
+  ARGS(int, tx_num, int, rx_num, Blob, transfer_bytes, Blob, read_bytes, int, max_output_len, int, receive_timeout)
+  if (transfer_bytes.length() % 4 != 0) INVALID_ARGUMENT;
+  if (read_bytes.length() % 4 != 0) INVALID_ARGUMENT;
 
   Error* error = null;
   // Force external, so we can adjust the length after the read.
   ByteArray* data = process->allocate_byte_array(max_output_len, &error, true);
   if (data == null) return error;
 
-  const rmt_item32_t* items = reinterpret_cast<const rmt_item32_t*>(items_bytes.address());
+  const rmt_item32_t* transfer_items = reinterpret_cast<const rmt_item32_t*>(transfer_bytes.address());
+  const rmt_item32_t* read_items = reinterpret_cast<const rmt_item32_t*>(read_bytes.address());
   rmt_channel_t rx_channel = (rmt_channel_t) rx_num;
 
   RingbufHandle_t rb = null;
@@ -215,10 +217,13 @@ PRIMITIVE(transfer_and_read) {
 
   flush_buffer(rb);
 
+  err = rmt_write_items(static_cast<rmt_channel_t>(tx_num), transfer_items, transfer_bytes.length() / 4, true);
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+
   err = rmt_rx_start(rx_channel, true);
   if (err != ESP_OK) return Primitive::os_error(err, process);
 
-  err = rmt_write_items(static_cast<rmt_channel_t>(tx_num), items, items_bytes.length() / 4, true);
+  err = rmt_write_items(static_cast<rmt_channel_t>(tx_num), read_items, transfer_bytes.length() / 4, true);
   if (err != ESP_OK) {
     rmt_rx_stop(rx_channel);
     return Primitive::os_error(err, process);

@@ -287,10 +287,14 @@ transfer channel/Channel signals/Signals -> none:
   rmt_transfer_ channel.num signals.bytes_
 
 /**
-Transfers the given $signals while simultaneously receiving.
+Transfers the given signals while simultaneously receiving.
 
-The $signals are transferred over the given $tx channel and signals are
-  received on the $rx channel.
+The transfers the given $transfer signals followed by the given $receive
+  signals. The signals are transferred over the given $tx channel and signals
+  are received on the $rx channel.
+
+The RMT controller starts receiving signals after the given $transfer signals
+  have been transferred.
 
 The given $max_returned_bytes specifies the maximum byte size of the returned
   signals. The $max_returned_bytes must be smaller than the configured RX
@@ -300,13 +304,13 @@ The $rx channel must be configured for receiving (see $Channel.config_rx).
 
 The $tx channel must be configured for transferring (see $Channel.config_tx).
 */
-transfer_and_receive --rx/Channel --tx/Channel signals/Signals max_returned_bytes/int -> Signals:
+transfer_and_receive --rx/Channel --tx/Channel --transfer/Signals --receive/Signals max_returned_bytes/int -> Signals:
   if not rx.rx_buffer_size and rx.rx_clk_div: throw "rx channel not configured"
 
   if max_returned_bytes > rx.rx_buffer_size: throw "maximum returned buffer size greater than allocated RX buffer size"
 
   receive_timeout := rx.idle_threshold * rx.rx_clk_div
-  result := rmt_transfer_and_read_ tx.num rx.num signals.bytes_ max_returned_bytes receive_timeout
+  result := rmt_transfer_and_read_ tx.num rx.num transfer.bytes_ receive.bytes_ max_returned_bytes receive_timeout
   return Signals.from_bytes result
 
 resource_group_ ::= rmt_init_
@@ -338,5 +342,5 @@ rmt_config_bidirectional_pin_ pin/int tx/int:
 rmt_transfer_ tx_ch/int signals_bytes/*/Blob*/:
   #primitive.rmt.transfer
 
-rmt_transfer_and_read_ tx_ch/int rx_ch/int signals_bytes/*/Blob*/ max_output_len/int receive_timeout/int:
+rmt_transfer_and_read_ tx_ch/int rx_ch/int transfer_bytes/*/Blob*/ read_bytes max_output_len/int receive_timeout/int
   #primitive.rmt.transfer_and_read

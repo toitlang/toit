@@ -382,11 +382,11 @@ namespace toit {
   PRIMITIVE(use, 2)                          \
   PRIMITIVE(unuse, 2)                        \
   PRIMITIVE(config_rx, 9)                    \
-  PRIMITIVE(set_idle_threshold, 2)       \
+  PRIMITIVE(set_idle_threshold, 2)           \
   PRIMITIVE(config_tx, 12)                   \
   PRIMITIVE(config_bidirectional_pin, 2)     \
   PRIMITIVE(transfer, 2)                     \
-  PRIMITIVE(transfer_and_read, 5)            \
+  PRIMITIVE(transfer_and_read, 6)            \
 
 #define MODULE_CRYPTO(PRIMITIVE)             \
   PRIMITIVE(sha1_start, 1)                   \
