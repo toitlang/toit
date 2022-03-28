@@ -38,7 +38,7 @@ class LogServiceDefinition extends services.ServiceDefinition implements LogServ
   constructor:
     super LogService.NAME --major=LogService.MAJOR --minor=LogService.MINOR
 
-  handle index/int arguments/any -> any:
+  handle client/int index/int arguments/any -> any:
     if index == LogService.LOG_INDEX: return log arguments
     unreachable
 

@@ -78,7 +78,7 @@ class FooServiceDefinition extends services.ServiceDefinition implements FooServ
     clients.remove client
     super client
 
-  handle index/int arguments/any -> any:
+  handle client/int index/int arguments/any -> any:
     if index == FooService.GET_CLIENTS_INDEX: return get_clients
     unreachable
 

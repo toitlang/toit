@@ -15,21 +15,38 @@
 
 import system.services
   show
-    RPC_SERVICES_MANAGER_NOTIFY_OPEN_CLIENT
-    RPC_SERVICES_MANAGER_NOTIFY_CLOSE_CLIENT
+    ServiceDefinition
+    SERVICES_MANAGER_NOTIFY_OPEN_CLIENT
+    SERVICES_MANAGER_NOTIFY_CLOSE_CLIENT
 
-class ServiceDiscoveryManager:
+import system.api.service_discovery show ServiceDiscoveryService
+
+class SystemServiceManager extends ServiceDefinition implements ServiceDiscoveryService:
   service_managers_/Map ::= {:}     // Map<int, Set<int>>
   services_by_id_/Map ::= {:}       // Map<int, Set<string>>
   services_by_name_/Map ::= {:}     // Map<name, int>
 
-  install_manager pid/int -> none:
-    service_managers_[pid] = {}
+  constructor:
+    super
+        ServiceDiscoveryService.NAME
+        --major=ServiceDiscoveryService.MAJOR
+        --minor=ServiceDiscoveryService.MINOR
+    install
+
+  handle client/int index/int arguments/any -> any:
+    if index == ServiceDiscoveryService.DISCOVER_INDEX:
+      return discover arguments client
+    if index == ServiceDiscoveryService.LISTEN_INDEX:
+      return listen arguments client
+    if index == ServiceDiscoveryService.UNLISTEN_INDEX:
+      return unlisten arguments
+    unreachable
 
   listen name/string pid/int -> none:
     if services_by_name_.contains name:
       throw "Already registered service:$name"
     services_by_name_[name] = pid
+    service_managers_.get pid --init=(: {})
     names := services_by_id_.get pid --init=(: {})
     names.add name
 
@@ -38,9 +55,11 @@ class ServiceDiscoveryManager:
     if not pid: return
     services_by_name_.remove name
     names := services_by_id_.get pid
-    if names:
-      names.remove name
-      if names.is_empty: services_by_id_.remove pid
+    if not names: return
+    names.remove name
+    if not names.is_empty: return
+    service_managers_.remove pid
+    services_by_id_.remove pid
 
   discover name/string pid/int -> int:
     target := services_by_name_.get name
@@ -49,14 +68,21 @@ class ServiceDiscoveryManager:
     clients := service_managers_[target]
     if clients:
       clients.add pid
-      process_send_ target SYSTEM_SERVICE_NOTIFY_ [RPC_SERVICES_MANAGER_NOTIFY_OPEN_CLIENT, pid]
+      process_send_ target SYSTEM_RPC_NOTIFY_ [SERVICES_MANAGER_NOTIFY_OPEN_CLIENT, pid]
     return target
 
   on_process_stop pid/int -> none:
     names := services_by_id_.get pid
-    if names: names.do: unlisten it
+    // Iterate over a copy of the names, so we can manipulate the
+    // underlying set in the call to unlisten.
+    if names: (Array_.from names).do: unlisten it
     // Tell service managers about the termination.
-    service_managers_.remove pid
     service_managers_.do: | manager clients |
       if clients.contains pid:
-        process_send_ manager SYSTEM_SERVICE_NOTIFY_ [RPC_SERVICES_MANAGER_NOTIFY_CLOSE_CLIENT, pid]
+        process_send_ manager SYSTEM_RPC_NOTIFY_ [SERVICES_MANAGER_NOTIFY_CLOSE_CLIENT, pid]
+
+  discover name/string -> int:
+    unreachable  // <-- TODO(kasper): nasty
+
+  listen name/string -> none:
+    unreachable  // <-- TODO(kasper): nasty
