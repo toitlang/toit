@@ -74,7 +74,7 @@ class MyServiceDefinition extends services.ServiceDefinition implements MyServic
         --patch=3
     alias MyService.NAME --major=MyService.MAJOR --minor=MyService.MINOR
 
-  handle client/int index/int arguments/any -> any:
+  handle pid/int client/int index/int arguments/any -> any:
     if index == MyService.FOO_INDEX: return foo
     if index == MyService.BAR_INDEX: return bar arguments
     if index == MyServiceExtended.BAZ_INDEX: return baz arguments

@@ -33,11 +33,11 @@ class SystemServiceManager extends ServiceDefinition implements ServiceDiscovery
         --minor=ServiceDiscoveryService.MINOR
     install
 
-  handle client/int index/int arguments/any -> any:
+  handle pid/int client/int index/int arguments/any -> any:
     if index == ServiceDiscoveryService.DISCOVER_INDEX:
-      return discover arguments client
+      return discover arguments pid
     if index == ServiceDiscoveryService.LISTEN_INDEX:
-      return listen arguments client
+      return listen arguments pid
     if index == ServiceDiscoveryService.UNLISTEN_INDEX:
       return unlisten arguments
     unreachable
@@ -61,10 +61,9 @@ class SystemServiceManager extends ServiceDefinition implements ServiceDiscovery
     service_managers_.remove pid
     services_by_id_.remove pid
 
-  discover name/string pid/int -> int:
+  discover name/string pid/int -> int?:
     target := services_by_name_.get name
-    if not target:
-      throw "Cannot find service:$name"
+    if not target: return null
     clients := service_managers_[target]
     if clients:
       clients.add pid

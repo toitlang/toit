@@ -89,27 +89,3 @@ Objects that are RPC-serializable can be serialized to a RPC-compatible
 interface RpcSerializable:
   /// Must return a value that can be encoded using the built-in message encoder.
   serialize_for_rpc -> any
-
-/**
-Has a close method suitable for objects that use a handle/descriptor
-  to make RPC calls.
-  The close method is designed to be robust.  It is called from a finalizer,
-  can be called multiple times before that, and attempts to avoid failures
-  during cancellation.
-*/
-abstract class CloseableProxy:
-  handle_/int? := ?
-
-  constructor .handle_:
-    add_finalizer this:: this.close
-
-  abstract close_rpc_selector_ -> int
-
-  close:
-    to_close := handle_
-    if to_close:
-      handle_ = null
-      remove_finalizer this
-      catch --trace:
-        critical_do:
-          invoke close_rpc_selector_ [to_close]

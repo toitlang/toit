@@ -11,7 +11,7 @@ interface ServiceDiscoveryService:
   static MINOR /int    ::= 1
 
   static DISCOVER_INDEX /int ::= 0
-  discover name/string -> int
+  discover name/string -> int?
 
   static LISTEN_INDEX /int ::= 1
   listen name/string -> none
@@ -26,7 +26,7 @@ class ServiceDiscoveryServiceClient extends ServiceClient implements ServiceDisc
       minor=ServiceDiscoveryService.MINOR:
     super.lookup name major minor --server=-1
 
-  discover name/string -> int:
+  discover name/string -> int?:
     return invoke_ ServiceDiscoveryService.DISCOVER_INDEX name
 
   listen name/string -> none:

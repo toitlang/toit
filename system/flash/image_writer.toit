@@ -14,23 +14,24 @@
 // directory of this repository.
 
 import uuid
+import system.services show ServiceResource ServiceDefinition
+
 import .allocation
 import .reservation
 
 IMAGE_WORD_SIZE  ::= BYTES_PER_WORD
 IMAGE_CHUNK_SIZE ::= (BITS_PER_WORD + 1) * IMAGE_WORD_SIZE
 
-// TODO(kasper): Let this inherit from something that takes care of cleaning
-// up the descriptor tables on close.
-class ContainerImageWriter:
+class ContainerImageWriter extends ServiceResource:
   reservation_/FlashReservation? := ?
   image_/ByteArray ::= ?
 
   // TODO(kasper): Start writing out as soon as we can.
   buffer_/ByteArray := ByteArray 0
 
-  constructor .reservation_:
+  constructor service/ServiceDefinition client/int .reservation_:
     image_ = image_writer_create_ reservation_.offset reservation_.size
+    super service client
 
   write data/ByteArray -> none:
     // TODO(kasper): Start writing out sooner.
@@ -45,8 +46,7 @@ class ContainerImageWriter:
     close
     return result
 
-  close -> none:
-    if not reservation_: return
+  on_closed -> none:
     reservation_.close
     reservation_ = null
     image_writer_close_ image_

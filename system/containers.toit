@@ -17,8 +17,8 @@ import uuid
 import monitor
 import encoding.base64 as base64
 
-import system.services show ServiceDefinition
-import system.api.containers show ContainersService
+import system.services show ServiceDefinition ServiceResource
+import system.api.containers show ContainerService
 
 import .flash.allocation
 import .flash.image_writer
@@ -28,45 +28,28 @@ import .services
 class Container:
   image/ContainerImage ::= ?
   gid_/int ::= ?
-
-  // We keep the closeable descriptors registered in a map under the pid that
-  // opened them. This allows us to call 'close' on the associated objects
-  // automatically when processes terminate.
-  pids_/Map ::= {:}  // Map<int, Map<int, Object>>
+  pids_/Set ::= ?  // Set<int>
 
   constructor .image .gid_ pid/int:
-    pids_[pid] = {:}
+    pids_ = { pid }
 
   id -> int:
     return gid_
 
   on_stop_ -> none:
-    pids_.do --keys: on_process_stop_ it
+    pids_.do: on_process_stop_ it
 
   on_process_start_ pid/int -> none:
     assert: not pids_.is_empty
-    pids_.get pid --init=: {:}
+    pids_.add pid
 
   on_process_stop_ pid/int -> none:
-    // TODO(kasper): This is an ugly mess. Rewrite.
-    descriptors := pids_.get pid
     pids_.remove pid
-    if not descriptors or descriptors.is_empty:
-      if pids_.is_empty: image.manager.on_container_stop_ this
-      return
-    pending/int := descriptors.size
-    descriptors.do: | handle/int descriptor |
-      // TODO(kasper): Avoid generating a new task for each descriptor.
-      task::
-        catch --trace:
-          descriptor.close  // This needs to run in a separate task, because it may sleep, block.
-        pending--
-        if pending == 0:
-          if pids_.is_empty: image.manager.on_container_stop_ this
+    if pids_.is_empty: image.manager.on_container_stop_ this
 
   on_process_error_ pid/int error/int -> none:
     on_process_stop_ pid
-    pids_.do --keys: container_kill_pid_ it
+    pids_.do: container_kill_pid_ it
     image.on_container_error this error
 
 abstract class ContainerImage:
@@ -118,39 +101,35 @@ class ContainerImageFlash extends ContainerImage:
     // TODO(kasper): Check in the other methods before using this?
     allocation_ = null
 
-abstract class ContainersServiceDefinition extends ServiceDefinition
-    implements ContainersService:
+abstract class ContainerServiceDefinition extends ServiceDefinition
+    implements ContainerService:
   constructor:
-    super ContainersService.NAME
-        --major=ContainersService.MAJOR
-        --minor=ContainersService.MINOR
+    super ContainerService.NAME
+        --major=ContainerService.MAJOR
+        --minor=ContainerService.MINOR
     install
 
-  handle client/int index/int arguments/any -> any:
-    if index == ContainersService.LIST_IMAGES_INDEX:
+  handle pid/int client/int index/int arguments/any -> any:
+    if index == ContainerService.LIST_IMAGES_INDEX:
       return list_images
-    if index == ContainersService.START_IMAGE_INDEX:
+    if index == ContainerService.START_IMAGE_INDEX:
       return start_image (uuid.Uuid arguments)
-    if index == ContainersService.UNINSTALL_IMAGE_INDEX:
+    if index == ContainerService.UNINSTALL_IMAGE_INDEX:
       return uninstall_image (uuid.Uuid arguments)
-    if index == ContainersService.IMAGE_WRITER_OPEN_INDEX:
+    if index == ContainerService.IMAGE_WRITER_OPEN_INDEX:
       return image_writer_open client arguments
-    if index == ContainersService.IMAGE_WRITER_WRITE_INDEX:
-      return image_writer_write client arguments[0] arguments[1]
-    if index == ContainersService.IMAGE_WRITER_COMMIT_INDEX:
-      return (image_writer_commit client arguments).to_byte_array
-    if index == ContainersService.IMAGE_WRITER_CLOSE_INDEX:
-      return image_writer_close client arguments
+    if index == ContainerService.IMAGE_WRITER_WRITE_INDEX:
+      writer ::= (resource client arguments[0]) as ContainerImageWriter
+      return image_writer_write writer arguments[1]
+    if index == ContainerService.IMAGE_WRITER_COMMIT_INDEX:
+      writer ::= (resource client arguments[0]) as ContainerImageWriter
+      return (image_writer_commit writer).to_byte_array
     unreachable
 
   abstract image_registry -> FlashRegistry
   abstract images -> List
   abstract add_flash_image allocation/FlashAllocation -> ContainerImage
   abstract lookup_image id/uuid.Uuid -> ContainerImage?
-
-  abstract register_descriptor client/int descriptor/Object -> int
-  abstract lookup_descriptor client/int handle/int -> any
-  abstract unregister_descriptor client/int handle/int -> none
 
   list_images -> List:
     return images.map --in_place: | image/ContainerImage |
@@ -169,37 +148,20 @@ abstract class ContainersServiceDefinition extends ServiceDefinition
   image_writer_open size/int -> int:
     unreachable  // <-- TODO(kasper): Nasty.
 
-  image_writer_write handle/int bytes/ByteArray -> none:
-    unreachable  // <-- TODO(kasper): Nasty.
-
-  image_writer_commit handle/int -> uuid.Uuid:
-    unreachable  // <-- TODO(kasper): Nasty.
-
-  image_writer_close handle/int -> none:
-    unreachable  // <-- TODO(kasper): Nasty.
-
-  image_writer_open client/int size/int -> int?:
+  image_writer_open client/int size/int -> ServiceResource:
     relocated_size := size - (size / IMAGE_CHUNK_SIZE) * IMAGE_WORD_SIZE
     reservation := image_registry.reserve relocated_size
-    if reservation == null: throw "FIXME: kasper"
-    writer := ContainerImageWriter reservation
-    return register_descriptor client writer
+    if reservation == null: throw "No space left in flash"
+    return ContainerImageWriter this client reservation
 
-  image_writer_write client/int handle/int bytes/ByteArray -> none:
-    writer := lookup_descriptor client handle
+  image_writer_write writer/ContainerImageWriter bytes/ByteArray -> none:
     writer.write bytes
 
-  image_writer_commit client/int handle/int -> uuid.Uuid:
-    writer := lookup_descriptor client handle
+  image_writer_commit writer/ContainerImageWriter -> uuid.Uuid:
     image := add_flash_image writer.commit
     return image.id
 
-  image_writer_close client/int handle/int -> none:
-    writer := lookup_descriptor client handle
-    unregister_descriptor client handle
-    writer.close
-
-class ContainerManager extends ContainersServiceDefinition implements SystemMessageHandler_:
+class ContainerManager extends ContainerServiceDefinition implements SystemMessageHandler_:
   image_registry/FlashRegistry ::= ?
   service_manager_/SystemServiceManager ::= ?
 
@@ -228,33 +190,6 @@ class ContainerManager extends ContainersServiceDefinition implements SystemMess
 
   lookup_container id/int -> Container?:
     return containers_by_id_.get id
-
-  // TODO(kasper): Get rid of this slow implementation. The descriptor
-  // handling will be done purely on the pids going forward.
-  gid_from_pid_ pid/int-> int:
-    containers_by_id_.do --values: | container/Container |
-      if container.pids_.contains pid: return container.id
-    unreachable
-
-  lookup_descriptor pid/int handle/int -> Object?:
-    gid := gid_from_pid_ pid
-    container := containers_by_id_.get gid --if_absent=: return null
-    descriptors := container.pids_.get pid --if_absent=: return null
-    return descriptors.get handle
-
-  register_descriptor pid/int descriptor/Object -> int:
-    gid := gid_from_pid_ pid
-    container := containers_by_id_[gid]
-    descriptors := container.pids_[pid]
-    handle := next_handle_++
-    descriptors[handle] = descriptor
-    return handle
-
-  unregister_descriptor pid/int handle/int -> none:
-    gid := gid_from_pid_ pid
-    container := containers_by_id_.get gid --if_absent=: return
-    descriptors := container.pids_.get pid --if_absent=: return
-    descriptors.remove handle
 
   add_flash_image allocation/FlashAllocation -> ContainerImage:
     image := ContainerImageFlash this allocation

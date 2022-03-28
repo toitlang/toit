@@ -64,7 +64,7 @@ test_uninstall:
   logger := LogServiceClient.lookup
   service.uninstall
   exception := catch: logger.log "Don't let me do this!"
-  expect.expect (exception.starts_with "No such procedure registered:")
+  expect.expect_equals "key not found" exception
 
 test_hello --close=false:
   logger := LogServiceClient.lookup
@@ -86,7 +86,7 @@ class LogServiceDefinition extends services.ServiceDefinition implements LogServ
   constructor:
     super LogService.NAME --major=LogService.MAJOR --minor=LogService.MINOR --patch=5
 
-  handle client/int index/int arguments/any -> any:
+  handle pid/int client/int index/int arguments/any -> any:
     if index == LogService.LOG_INDEX: return log arguments
     unreachable
 
