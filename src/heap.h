@@ -68,8 +68,9 @@ class InitialMemoryManager {
   ~InitialMemoryManager();
 };
 
-// An object heap contains all objects created at runtime.
 #ifdef LEGACY_GC
+
+// Legacy-GC: An object heap contains all objects created at runtime.
 class ObjectHeap : public RawHeap {
  public:
   ObjectHeap(Process* owner, Program* program, Block* initial_block);
@@ -115,6 +116,10 @@ class ObjectHeap {
   String* allocate_internal_string(int length);
   Double* allocate_double(double value);
   LargeInteger* allocate_large_integer(int64 value);
+
+  void process_registered_finalizers(RootCallback* ss, LivenessOracle* from_space);
+  void process_registered_vm_finalizers(RootCallback* ss, LivenessOracle* from_space);
+  int complete_scavenge(int blocks_before);
 
   Program* program() { return _program; }
 

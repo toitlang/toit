@@ -119,8 +119,14 @@ void SemiSpace::start_scavenge() {
 void TwoSpaceHeap::collect_new_space() {
   SemiSpace* from = space();
 
+  uint64 start = OS::get_monotonic_time();
+
   if (has_empty_new_space()) {
     collect_old_space_if_needed(false);
+    if (Flags::tracegc) {
+      uint64 end = OS::get_monotonic_time();
+      printf("Old-space-only GC: %dus\n", static_cast<int>(end - start));
+    }
     return;
   }
 
@@ -152,9 +158,24 @@ void TwoSpaceHeap::collect_new_space() {
     work_found = to->complete_scavenge_generational(&visitor);
     work_found |= old_space()->complete_scavenge_generational(&visitor);
   }
-  old_space()->end_scavenge();
 
-  from->process_weak_pointers(to, old_space());
+  process_heap_->process_registered_finalizers(&visitor, from);
+
+  work_found = true;
+  while (work_found) {
+    work_found = to->complete_scavenge_generational(&visitor);
+    work_found |= old_space()->complete_scavenge_generational(&visitor);
+  }
+
+  process_heap_->process_registered_vm_finalizers(&visitor, from);
+
+  work_found = true;
+  while (work_found) {
+    work_found = to->complete_scavenge_generational(&visitor);
+    work_found |= old_space()->complete_scavenge_generational(&visitor);
+  }
+
+  old_space()->end_scavenge();
 
   // Second space argument is used to size the new-space.
   swap_semi_spaces();
@@ -162,6 +183,14 @@ void TwoSpaceHeap::collect_new_space() {
 #ifdef DEBUG
   if (Flags::validate_heap) old_space()->verify();
 #endif
+
+  if (Flags::tracegc) {
+    uint64 end = OS::get_monotonic_time();
+    printf("Scavenge: %dk->%dk, %dus\n",
+        static_cast<int>(from->used() >> 10),
+        static_cast<int>(to->used() >> 10),
+        static_cast<int>(end - start));
+  }
 
   ASSERT(from->used() >= to->used());
   // Find out how much garbage was found.
@@ -177,7 +206,7 @@ void TwoSpaceHeap::collect_new_space() {
 }
 
 void TwoSpaceHeap::collect_old_space_if_needed(bool force) {
-  if (force || old_space()->needs_garbage_collection()) {
+  if (false && (force || old_space()->needs_garbage_collection())) {  // TODO: Activate Old-space GC.
     old_space()->flush();
     collect_old_space();
 #ifdef DEBUG

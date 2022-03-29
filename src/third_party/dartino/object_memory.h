@@ -134,8 +134,13 @@ class HeapObjectVisitor {
   Program* program_;
 };
 
+class LivenessOracle {
+ public:
+  virtual bool is_alive(HeapObject* object) = 0;
+};
+
 // Space is a chain of chunks. It supports allocation and traversal.
-class Space {
+class Space : public LivenessOracle {
  public:
   static const uword DEFAULT_MINIMUM_CHUNK_SIZE = TOIT_PAGE_SIZE;
   static const uword DEFAULT_MAXIMUM_CHUNK_SIZE = 256 * KB;
