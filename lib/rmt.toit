@@ -34,6 +34,9 @@ class Signals:
 
   bytes_/ByteArray
 
+  /** Creates the empty signal collection. */
+  constructor.ZERO: return Signals 0
+
   /**
   Creates a collection of signals of the given $size.
 
