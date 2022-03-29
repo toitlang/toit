@@ -178,7 +178,7 @@ PRIMITIVE(config_bidirectional_pin) {
   return process->program()->null_object();
 }
 
-PRIMITIVE(transfer) {
+PRIMITIVE(transmit) {
   ARGS(int, tx_num, Blob, items_bytes)
   if (items_bytes.length() % 4 != 0) INVALID_ARGUMENT;
 
@@ -197,9 +197,9 @@ void flush_buffer(RingbufHandle_t rb) {
   }
 }
 
-PRIMITIVE(transfer_and_receive) {
-  ARGS(int, tx_num, int, rx_num, Blob, transfer_bytes, Blob, receive_bytes, int, max_output_len, int, receive_timeout)
-  if (transfer_bytes.length() % 4 != 0) INVALID_ARGUMENT;
+PRIMITIVE(transmit_and_receive) {
+  ARGS(int, tx_num, int, rx_num, Blob, transmit_bytes, Blob, receive_bytes, int, max_output_len, int, receive_timeout)
+  if (transmit_bytes.length() % 4 != 0) INVALID_ARGUMENT;
   if (receive_bytes.length() % 4 != 0) INVALID_ARGUMENT;
 
   Error* error = null;
@@ -207,7 +207,7 @@ PRIMITIVE(transfer_and_receive) {
   ByteArray* data = process->allocate_byte_array(max_output_len, &error, true);
   if (data == null) return error;
 
-  const rmt_item32_t* transfer_items = reinterpret_cast<const rmt_item32_t*>(transfer_bytes.address());
+  const rmt_item32_t* transmit_items = reinterpret_cast<const rmt_item32_t*>(transmit_bytes.address());
   const rmt_item32_t* receive_items = reinterpret_cast<const rmt_item32_t*>(receive_bytes.address());
   rmt_channel_t rx_channel = (rmt_channel_t) rx_num;
 
@@ -216,8 +216,8 @@ PRIMITIVE(transfer_and_receive) {
   if (err != ESP_OK) return Primitive::os_error(err, process);
 
   flush_buffer(rb);
-  if (transfer_bytes.length() > 0) {
-    err = rmt_write_items(static_cast<rmt_channel_t>(tx_num), transfer_items, transfer_bytes.length() / 4, true);
+  if (transmit_bytes.length() > 0) {
+    err = rmt_write_items(static_cast<rmt_channel_t>(tx_num), transmit_items, transmit_bytes.length() / 4, true);
     if (err != ESP_OK) return Primitive::os_error(err, process);
   }
   err = rmt_rx_start(rx_channel, true);
