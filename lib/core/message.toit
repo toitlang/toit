@@ -70,13 +70,14 @@ process_messages_:
   if is_processing_messages_: throw "RECURSIVE_MESSAGE_PROCESSING"
   is_processing_messages_ = true
   try:
-    while true:
-      if not task_has_messages_: break
+    while task_has_messages_:
       message := task_receive_message_
       if message is __Monitor__:
         message.notify_
         continue
       else if not message:
+        // Under certain conditions messages can be canceled while
+        // enqueued. Such messages are returned as null. Skip them.
         continue
 
       // The message processing can be called on a canceled task
