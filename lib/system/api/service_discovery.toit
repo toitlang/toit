@@ -20,11 +20,11 @@ interface ServiceDiscoveryService:
   unlisten name/string -> none
 
 class ServiceDiscoveryServiceClient extends ServiceClient implements ServiceDiscoveryService:
-  constructor.lookup
-      name=ServiceDiscoveryService.NAME
-      major=ServiceDiscoveryService.MAJOR
-      minor=ServiceDiscoveryService.MINOR:
-    super.lookup name major minor --server=-1
+  constructor --open/bool=true:
+    super --open=open
+
+  open -> ServiceDiscoveryServiceClient?:
+    return (open_ ServiceDiscoveryService.NAME ServiceDiscoveryService.MAJOR ServiceDiscoveryService.MINOR --pid=-1) and this
 
   discover name/string -> int?:
     return invoke_ ServiceDiscoveryService.DISCOVER_INDEX name

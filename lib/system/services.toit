@@ -29,32 +29,38 @@ RPC_SERVICES_CLOSE_RESOURCE_ /int ::= 303
 CLIENT_ID_LIMIT_       /int ::= 0x3fff_ffff
 RESOURCE_HANDLE_LIMIT_ /int ::= 0x3fff_ffff
 
-_client_ /ServiceDiscoveryService ::= ServiceDiscoveryServiceClient.lookup
+_client_ /ServiceDiscoveryService ::= ServiceDiscoveryServiceClient
 
 abstract class ServiceClient:
-  _name_/string ::= ?
-  _version_/List ::= ?
-  _pid_/int? ::= ?
   _id_/int? := null
+  _pid_/int? := null
 
-  constructor.lookup name/string major/int minor/int --server/int?=null:
-    pid/int? := null
-    if server:
-      process_send_ server SYSTEM_RPC_NOTIFY_ [SERVICES_MANAGER_NOTIFY_ADD_PROCESS, current_process_]
-      pid = server
+  _name_/string? := null
+  _version_/List? := null
+
+  constructor --open/bool=true:
+    if open and not this.open: throw "Cannot find service"
+
+  abstract open -> ServiceClient?
+
+  open_ name/string major/int minor/int --pid/int?=null -> ServiceClient?:
+    if _id_: throw "Already opened"
+    if pid:
+      process_send_ pid SYSTEM_RPC_NOTIFY_ [SERVICES_MANAGER_NOTIFY_ADD_PROCESS, current_process_]
     else:
       pid = _client_.discover name
-      if not pid: throw "Cannot find service:$name"
+      if not pid: return null
     // Open the client by doing a RPC-call to the discovered process.
     // This returns the client id necessary for invoking service methods.
     definition ::= rpc.invoke pid RPC_SERVICES_OPEN_ [name, major, minor]
-    _name_ = definition[0]
-    _version_ = definition[1]
     _pid_ = pid
     _id_ = definition[2]
+    _name_ = definition[0]
+    _version_ = definition[1]
     // Close the client if the reference goes away, so the service
     // process can clean things up.
     add_finalizer this:: close
+    return this
 
   id -> int?:
     return _id_
@@ -74,9 +80,10 @@ abstract class ServiceClient:
   close -> none:
     id := _id_
     if not id: return
-    _id_ = null
+    pid := _pid_
+    _id_ = _name_ = _version_ = _pid_ = null
     remove_finalizer this
-    rpc.invoke _pid_ RPC_SERVICES_CLOSE_ id
+    rpc.invoke pid RPC_SERVICES_CLOSE_ id
 
   stringify -> string:
     return "service:$_name_@$(_version_.join ".")"
