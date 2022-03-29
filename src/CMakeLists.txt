@@ -18,7 +18,12 @@ file(GLOB toit_core_SRC
   "*.cc"
   )
 
-list(FILTER toit_core_SRC EXCLUDE REGEX "/(toit|toit_run_image).cc$")
+list(FILTER toit_core_SRC EXCLUDE REGEX "/(toit|toit_run_image|vm).cc$")
+
+file(GLOB toit_vm_runtime_SRC
+  "vm.h"
+  "vm.cc"
+  )
 
 file(GLOB toit_resources_SRC
   "resources/*.h"
@@ -46,7 +51,7 @@ file(GLOB gc_sources_SRC
   "third_party/dartino/two_space_heap.cc"
   )
 
-set(toit_vm_SRC ${toit_resources_SRC} ${toit_event_sources_SRC} ${lwip_on_linux_sources_SRC} ${gc_sources_SRC})
+set(toit_vm_SRC ${toit_vm_runtime_SRC} ${toit_resources_SRC} ${toit_event_sources_SRC} ${lwip_on_linux_sources_SRC} ${gc_sources_SRC})
 
 add_library(
   toit_core
