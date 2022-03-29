@@ -495,7 +495,7 @@ int ObjectHeap::gc() {
 
 class HasForwardingAddress : public LivenessOracle {
  public:
-  virtual bool is_alive(HeapObject* object) {
+  virtual bool is_alive(HeapObject* object) override {
     return object->has_forwarding_address();
   }
 };

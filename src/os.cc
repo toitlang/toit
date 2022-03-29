@@ -125,9 +125,9 @@ static void* try_grab_aligned(void* suggestion, uword size) {
   ASSERT(size == Utils::round_up(size, TOIT_PAGE_SIZE));
   void* result = OS::grab_virtual_memory(suggestion, size);
   if (result == null) return result;
-  uword numeric = reinterpret_cast<uword>(result);
-  uword rounded = Utils::round_up(numeric, TOIT_PAGE_SIZE);
-  if (numeric == rounded) return result;
+  uword numeric_address = reinterpret_cast<uword>(result);
+  uword rounded = Utils::round_up(numeric_address, TOIT_PAGE_SIZE);
+  if (numeric_address == rounded) return result;
   // If we got an allocation that was not toit-page-aligned,
   // then it's a pretty good guess that the next few aligned
   // addresses might work.
@@ -151,12 +151,12 @@ void* OS::allocate_pages(uword size) {
   // First attempt, let the OS pick a location.
   void* result = try_grab_aligned(null, size);
   if (result == null) return null;
-  uword result_end = reinterpret_cast<uword>(result) + size;
+  uword numeric_address = reinterpret_cast<uword>(result);
+  uword result_end = numeric_address + size;
   int attempt = 0;
-  uword numeric = reinterpret_cast<uword>(result);
   while (result < _single_range.address ||
          result_end > reinterpret_cast<uword>(_single_range.address) + _single_range.size ||
-         numeric != Utils::round_up(numeric, TOIT_PAGE_SIZE)) {
+         numeric_address != Utils::round_up(numeric_address, TOIT_PAGE_SIZE)) {
     if (attempt++ > 20) FATAL("Out of memory");
     // We did not get a result in the right range.
     // Try to use a random address in the right range.
@@ -166,7 +166,8 @@ void* OS::allocate_pages(uword size) {
     r <<= TOIT_PAGE_SIZE_LOG2;  // Do this on a separate line so that it is done on a word-sized integer.
     uword suggestion = reinterpret_cast<uword>(_single_range.address) + (r & mask);
     result = try_grab_aligned(reinterpret_cast<void*>(suggestion), size);
-    numeric = reinterpret_cast<uword>(result);
+    numeric_address = reinterpret_cast<uword>(result);
+    result_end = numeric_address + size;
   }
   use_virtual_memory(result, original_size);
   return result;
