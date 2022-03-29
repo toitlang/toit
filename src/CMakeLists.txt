@@ -76,7 +76,11 @@ set_target_properties(toit_run_image
 # On linux, we need to link statically against libgcc as well.
 if ("${CMAKE_SYSTEM_NAME}" MATCHES "Linux")
   set(TOIT_LINK_LIBS_LIBGCC -static-libgcc)
-  set(TOIT_LINK_SEGFAULT SegFault)
+
+  find_library(SEGFAULT_LIB SegFault)
+  if (SEGFAULT_LIB)
+    set(TOIT_LINK_SEGFAULT SegFault)
+  endif()
 endif()
 
 if (DEFINED USE_LWIP)
