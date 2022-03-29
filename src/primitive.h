@@ -164,7 +164,7 @@ namespace toit {
   PRIMITIVE(signal_kill, 1)                  \
   PRIMITIVE(current_process_id, 0)           \
   PRIMITIVE(process_send, 3)                 \
-  PRIMITIVE(task_peek_message_type, 0)       \
+  PRIMITIVE(task_has_messages, 0)            \
   PRIMITIVE(task_receive_message, 0)         \
   PRIMITIVE(concat_strings, 1)               \
   PRIMITIVE(task_current, 0)                 \
@@ -188,8 +188,6 @@ namespace toit {
   PRIMITIVE(create_off_heap_byte_array, 1)   \
   PRIMITIVE(add_finalizer, 2)                \
   PRIMITIVE(remove_finalizer, 1)             \
-  PRIMITIVE(next_finalizer_to_run, 0)        \
-  PRIMITIVE(set_finalizer_notifier, 1)       \
   PRIMITIVE(large_integer_unary_minus, 1)    \
   PRIMITIVE(large_integer_not, 1)            \
   PRIMITIVE(large_integer_and, 2)            \
@@ -429,8 +427,8 @@ namespace toit {
 
 #define MODULE_EVENTS(PRIMITIVE)             \
   PRIMITIVE(read_state, 2)                   \
-  PRIMITIVE(register_object_notifier, 3)     \
-  PRIMITIVE(unregister_object_notifier, 2)   \
+  PRIMITIVE(register_monitor_notifier, 3)    \
+  PRIMITIVE(unregister_monitor_notifier, 2)  \
 
 #define MODULE_SNAPSHOT(PRIMITIVE)           \
   PRIMITIVE(launch, 3)                       \

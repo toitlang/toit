@@ -538,10 +538,6 @@ int ObjectHeap::gc() {
       // From here down, the node is going to be unlinked by returning true.
       if (Flags::tracegc && Flags::verbose) printf(" - Finalizer %p is unreachable\n", node);
       heap->_runnable_finalizers.append(node);
-      // Signal finalizers are ready to run.
-      if (heap->_finalizer_notifier != null) {
-        heap->_finalizer_notifier->notify();
-      }
       return true; // Remove node from list.
     });
 
@@ -681,15 +677,6 @@ Object* ObjectHeap::next_finalizer_to_run() {
   Object* result = node->lambda();
   delete node;
   return result;
-}
-
-void ObjectHeap::set_finalizer_notifier(ObjectNotifier* notifier) {
-  ASSERT(_finalizer_notifier == null);
-  _finalizer_notifier = notifier;
-
-  if (!_runnable_finalizers.is_empty()) {
-    notifier->notify();
-  }
 }
 
 #ifdef LEGACY_GC

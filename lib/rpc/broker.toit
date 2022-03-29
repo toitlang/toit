@@ -195,7 +195,7 @@ monitor RpcRequestQueue_:
     while unprocessed_ > tasks_ and tasks_ < processing_tasks_.size:
       tasks_++
       task_index := processing_tasks_.index_of null
-      processing_tasks_[task_index] = task --background::
+      processing_tasks_[task_index] = task --name="Processing task" --background::
         // The task code runs outside the monitor, so the monitor
         // is unlocked when the requests are being processed but
         // locked when the requests are being dequeued.
