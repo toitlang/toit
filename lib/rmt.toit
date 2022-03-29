@@ -26,7 +26,7 @@ The period is specified in number of ticks, so the actual time the level is
   sustained is determined by the RMT controller configuration.
 
 At the lower level, a signal consists of 16 bits: 15 bits for the period and 1
-  bit for the level. Signals must be transfered as pairs also known as an item.
+  bit for the level. Signals must be transferred as pairs also known as an item.
 */
 class Signals:
   /** The number of signals in the collection. */
@@ -178,7 +178,7 @@ class Channel:
   /**
   Constructs a channel using the given $num using the given $pin.
 
-  The givn $num must be in the range [0,7] and must not be in use.
+  The given $num must be in the range [0,7] and must not be in use.
   */
   constructor .pin .num:
     res_ = rmt_use_ resource_group_ num
@@ -237,7 +237,7 @@ class Channel:
   - $carrier_level is the way the carrier way is modulated.
     Set to 1 to transmit on low output level and 0 to transmit on high output level.
   - $carrier_duty_percent is the proportion of time the carrier wave is low.
-  - $loop_en is whether the transmitter continously writes the provided signals in a loop.
+  - $loop_en is whether the transmitter continuously writes the provided signals in a loop.
   - $idle_output_en is whether the transmitter outputs when idle.
   - $idle_level is the level transmitted by the transmitter when idle.
 
@@ -288,7 +288,7 @@ class Channel:
 /**
 Transfers the given $signals over the given $channel.
 
-The $channel must be configured for transfering (see $Channel.config_tx).
+The $channel must be configured for transferring (see $Channel.config_tx).
 */
 transfer channel/Channel signals/Signals -> none:
   rmt_transfer_ channel.num signals.bytes_
