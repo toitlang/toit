@@ -1778,19 +1778,25 @@ PRIMITIVE(process_send) {
   return Smi::from(result);
 }
 
-PRIMITIVE(task_peek_message_type) {
+PRIMITIVE(task_has_messages) {
+  if (process->object_heap()->has_finalizer_to_run()) {
+    return BOOL(true);
+  }
   Message* message = process->peek_message();
-  if (message == null) return Smi::from(MESSAGE_INVALID);
-  return Smi::from(message->message_type());
+  return BOOL(message != null);
 }
 
 PRIMITIVE(task_receive_message) {
+  ObjectHeap* heap = process->object_heap();
+  if (heap->has_finalizer_to_run()) {
+    return heap->next_finalizer_to_run();
+  }
+
   Message* message = process->peek_message();
   MessageType message_type = message->message_type();
-
   Object* result = process->program()->null_object();
 
-  if (message_type == MESSAGE_OBJECT_NOTIFY) {
+  if (message_type == MESSAGE_MONITOR_NOTIFY) {
     ObjectNotifyMessage* object_notify = static_cast<ObjectNotifyMessage*>(message);
     ObjectNotifier* notifier = object_notify->object_notifier();
     if (notifier != null) result = notifier->object();
@@ -1831,28 +1837,6 @@ PRIMITIVE(add_finalizer) {
 PRIMITIVE(remove_finalizer) {
   ARGS(HeapObject, object)
   return BOOL(process->remove_finalizer(object));
-}
-
-PRIMITIVE(set_finalizer_notifier) {
-  ARGS(HeapObject, object);
-
-  ObjectNotifier* notifier = _new ObjectNotifier(process, object);
-  if (notifier == null) MALLOC_FAILED;
-
-  ObjectNotifyMessage* message = _new ObjectNotifyMessage(notifier);
-  if (message == null) {
-    delete notifier;
-    MALLOC_FAILED;
-  }
-  notifier->set_message(message);
-
-  process->register_external_allocation(sizeof(ObjectNotifier));
-  process->object_heap()->set_finalizer_notifier(notifier);
-  return process->program()->null_object();
-}
-
-PRIMITIVE(next_finalizer_to_run) {
-  return process->object_heap()->next_finalizer_to_run();
 }
 
 PRIMITIVE(gc_count) {

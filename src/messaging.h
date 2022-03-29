@@ -30,8 +30,9 @@ typedef LinkedFIFO<Message> MessageFIFO;
 
 enum MessageType {
   MESSAGE_INVALID = 0,
-  MESSAGE_OBJECT_NOTIFY = 1,
-  MESSAGE_SYSTEM = 2,
+  MESSAGE_MONITOR_NOTIFY = 1,
+  MESSAGE_PENDING_FINALIZER = 2,
+  MESSAGE_SYSTEM = 3,
 };
 
 enum {
@@ -48,7 +49,7 @@ class Message : public MessageFIFO::Element {
 
   virtual MessageType message_type() const = 0;
 
-  bool is_object_notify() const { return message_type() == MESSAGE_OBJECT_NOTIFY; }
+  bool is_object_notify() const { return message_type() == MESSAGE_MONITOR_NOTIFY; }
   bool is_system() const { return message_type() == MESSAGE_SYSTEM; }
 };
 
@@ -95,9 +96,10 @@ class ObjectNotifyMessage : public Message {
  public:
   explicit ObjectNotifyMessage(ObjectNotifier* notifier)
       : _notifier(notifier)
-      , _queued(false) {}
+      , _queued(false) {
+  }
 
-  virtual MessageType message_type() const override { return MESSAGE_OBJECT_NOTIFY; }
+  virtual MessageType message_type() const override { return MESSAGE_MONITOR_NOTIFY; }
 
   bool is_queued() const { return _queued; }
   ObjectNotifier* object_notifier() const { return _notifier; }

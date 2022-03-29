@@ -56,8 +56,8 @@ class Timer_:
   close:
     timer_delete_ timer_resource_group_ timer_
 
-  arm target deadline/int:
-    register_object_notifier_ target timer_resource_group_ timer_
+  arm monitor/__Monitor__ deadline/int:
+    register_monitor_notifier_ monitor timer_resource_group_ timer_
     timer_arm_ timer_ deadline
 
   /**

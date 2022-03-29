@@ -8,6 +8,21 @@ import binary show LITTLE_ENDIAN
 Contains various utility functions.
 */
 
+/** The number of bits per byte. */
+BITS_PER_BYTE ::= 8
+
+/** The number of bits per word. */
+BITS_PER_WORD ::= BYTES_PER_WORD * BITS_PER_BYTE
+
+/** The number of bytes per word. */
+BYTES_PER_WORD ::= word_size_
+
+/** The number of bytes per kilobyte. */
+KB ::= 1024
+
+/** The number of bytes per megabyte. */
+MB ::= 1024 * 1024
+
 /**
 Whether $x and $y are identical objects.
 Every object is identical to itself.
@@ -132,10 +147,6 @@ Currently only the first 16 bytes of the $seed are used.
 set_random_seed seed:
   #primitive.core.random_seed
 
-/** Deprecated. Use $set_random_seed. */
-random_seed seed:
-  set_random_seed seed
-
 random_add_entropy_ data:
   #primitive.core.add_entropy
 
@@ -203,61 +214,6 @@ Exits the VM with the given $status.
 exit status:
   if status == 0: __halt__
   else: __exit__ status
-
-/** The number of bits per byte. */
-BITS_PER_BYTE ::= 8
-
-/** The number of bits per word. */
-BITS_PER_WORD ::= BYTES_PER_WORD * BITS_PER_BYTE
-
-/** The number of bytes per word. */
-BYTES_PER_WORD ::= word_size_
-
-/** The number of bytes per kilobyte. */
-KB ::= 1024
-
-/** The number of bytes per megabyte. */
-MB ::= 1024 * 1024
-
-// Support for finalization.
-
-/**
-Registers the given $lambda as a finalizer for the $object.
-
-Calls the finalizer if all references to the object are lost. (See limitations below).
-
-# Errors
-It is an error to assign a finalizer to a smi or an instance that already has
-  a finalizer (see $remove_finalizer).
-It is also an error to assign null as a finalizer.
-# Warning
-Misuse of this API can lead to undefined behavior that is hard to debug.
-
-# Advanced
-Finalizers are not automatically called when a program exits. This is also true for
-  objects that weren't reachable anymore before the program exited.
-An arbitrary amount of time may pass from the $object becomes unreachable and
-  the finalizer is called.
-*/
-add_finalizer object lambda:
-  #primitive.core.add_finalizer
-
-/**
-Unregisters the finalizer registered for $object.
-Returns whether the object had a finalizer.
-*/
-remove_finalizer object -> bool:
-  #primitive.core.remove_finalizer
-
-// Internal functions for finalizer handling.
-
-/** Sets the receiver of finalize notification to the $notifier. */
-set_finalizer_notifier_ notifier:
-  #primitive.core.set_finalizer_notifier
-
-/** Returns the next finalizer to run, or null when unavailable. */
-next_finalizer_to_run_:
-  #primitive.core.next_finalizer_to_run
 
 /**
 Creates an off-heap byte array with the given $size.

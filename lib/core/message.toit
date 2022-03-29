@@ -2,12 +2,6 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-// Message types.
-// Keep in sync with constants in process.h.
-MESSAGE_INVALID_       ::= 0
-MESSAGE_OBJECT_NOTIFY_ ::= 1
-MESSAGE_SYSTEM_        ::= 2
-
 // System message types.
 SYSTEM_TERMINATED_     ::= 0
 SYSTEM_SPAWNED_        ::= 1
@@ -60,14 +54,11 @@ interface SystemMessageHandler_:
 /**
 Sets the $handler as the system message handler for message of the $type.
 */
-set_system_message_handler_ type handler/SystemMessageHandler_:
+set_system_message_handler_ type/int handler/SystemMessageHandler_:
   system_message_handlers_[type] = handler
 
-/**
-The system message handler for the $type.
-*/
-get_system_message_handler_ type:
-  return system_message_handlers_.get type
+/** Flag to track if we're currently processing messages. */
+is_processing_messages_ := false
 
 /**
 Processes the incoming messages sent to tasks in this process.
@@ -80,36 +71,40 @@ process_messages_:
   is_processing_messages_ = true
   try:
     while true:
-      message_type := task_peek_message_type_
-      if message_type == MESSAGE_INVALID_: break
-      received := task_receive_message_
-      if message_type == MESSAGE_SYSTEM_:
-        type ::= received[0]
-        gid ::= received[1]
-        pid ::= received[2]
-        args ::= received[3]
-        received = null  // Allow garbage collector to free.
-        system_message_handlers_.get type
-          --if_present=: | handler |
-            // The message processing can be called on a canceled task
-            // when it is terminating. We need to make sure that the
-            // handler code can run even in that case, so we do it in
-            // a critical section and we do not care about the current
-            // task's deadline if any.
-            critical_do --no-respect_deadline:
-              handler.on_message type gid pid args
-          --if_absent=:
-            print_ "WARNING: unhandled system message $type $args"
-      else if message_type == MESSAGE_OBJECT_NOTIFY_:
-        if received: received.notify_
-      else:
-        assert: false
+      if not task_has_messages_: break
+      message := task_receive_message_
+      if message is __Monitor__:
+        message.notify_
+        continue
+      else if not message:
+        continue
+
+      // The message processing can be called on a canceled task
+      // when it is terminating. We need to make sure that the
+      // handler code can run even in that case, so we do it in
+      // a critical section and we do not care about the current
+      // task's deadline if any.
+      critical_do --no-respect_deadline:
+        if message is Array_:
+          type ::= message[0]
+          handler ::= system_message_handlers_.get type --if_absent=:
+            print_ "WARNING: unhandled system message $type"
+            continue
+          gid ::= message[1]
+          pid ::= message[2]
+          arguments ::= message[3]
+          message = null  // Allow garbage collector to free.
+
+          handler.on_message type gid pid arguments
+        else if message is Lambda:
+          pending_finalizers_.add message
+        else:
+          assert: false
   finally:
     is_processing_messages_ = false
 
-
-task_peek_message_type_:
-  #primitive.core.task_peek_message_type
+task_has_messages_ -> bool:
+  #primitive.core.task_has_messages
 
 task_receive_message_:
   #primitive.core.task_receive_message

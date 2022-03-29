@@ -25,8 +25,8 @@ __hatch_entry__:
   current := task
   current.initialize_entry_task_
   lambda := Lambda.__
-    hatch_method_
-    hatch_args_
+      hatch_method_
+      hatch_args_
   current.evaluate_ lambda
 
 hatch_method_:
@@ -35,7 +35,10 @@ hatch_method_:
 hatch_args_:
   #primitive.core.hatch_args
 
-resource_freeing_module_ := get_generic_resource_group_
+current_process_ -> int:
+  #primitive.core.current_process_id
+
+resource_freeing_module_ ::= get_generic_resource_group_
 
 get_generic_resource_group_:
   #primitive.core.get_generic_resource_group
