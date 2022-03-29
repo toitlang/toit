@@ -227,7 +227,6 @@ class Channel:
 
   /**
   Configure the channel for TX.
-
   - $mem_block_num is the number of memory blocks (256 bytes or 128 signals)
     used by this channel.
   - $clk_div is the source clock divider. Must be in the range [0,255].
