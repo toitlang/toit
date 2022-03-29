@@ -13,6 +13,7 @@ A $Channel corresponds to a channel in the ESP32 RMT controller.
 $Signals represent a collection of signals to be sent by the RMT controller.
 */
 
+/** Bytes per ESP32 signal. */
 BYTES_PER_SIGNAL ::= 2
 
 /**
@@ -27,6 +28,8 @@ The period is specified in number of ticks, so the actual time the level is
 
 At the lower level, a signal consists of 16 bits: 15 bits for the period and 1
   bit for the level. Signals must be transmitted as pairs also known as an item.
+  For this reason, the bytes backing a collection of signal is always adjusted
+  to be divisible by 4.
 */
 class Signals:
   /** The number of signals in the collection. */
@@ -45,7 +48,7 @@ class Signals:
   # Advanced
   If the given $size is not divisible by 2, then the byte array allocated for
     $bytes_ is padded with two bytes to make the $bytes_ usable by the RMT
-    primitives.
+    primitives. The final signal is initialized to 0 period and level 1.
   */
   constructor .size:
     bytes_ = ByteArray
@@ -185,7 +188,6 @@ class Channel:
 
   /**
   Configure the channel for RX.
-
   - $mem_block_num is the number of memory blocks (256 bytes or 128 signals)
     used by this channel.
   - $clk_div is the source clock divider. Must be in the range [0,255].
