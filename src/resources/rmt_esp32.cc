@@ -201,36 +201,32 @@ PRIMITIVE(transfer_and_receive) {
   ARGS(int, tx_num, int, rx_num, Blob, transfer_bytes, Blob, receive_bytes, int, max_output_len, int, receive_timeout)
   if (transfer_bytes.length() % 4 != 0) INVALID_ARGUMENT;
   if (receive_bytes.length() % 4 != 0) INVALID_ARGUMENT;
-  printf("hej0\n");
+
   Error* error = null;
   // Force external, so we can adjust the length after the read.
   ByteArray* data = process->allocate_byte_array(max_output_len, &error, true);
   if (data == null) return error;
-  printf("hej1\n");
+
   const rmt_item32_t* transfer_items = reinterpret_cast<const rmt_item32_t*>(transfer_bytes.address());
   const rmt_item32_t* read_items = reinterpret_cast<const rmt_item32_t*>(receive_bytes.address());
   rmt_channel_t rx_channel = (rmt_channel_t) rx_num;
-  printf("hej2\n");
 
   RingbufHandle_t rb = null;
   esp_err_t err = rmt_get_ringbuf_handle(rx_channel, &rb);
   if (err != ESP_OK) return Primitive::os_error(err, process);
-  printf("hej3\n");
 
   flush_buffer(rb);
 
   err = rmt_write_items(static_cast<rmt_channel_t>(tx_num), transfer_items, transfer_bytes.length() / 4, true);
   if (err != ESP_OK) return Primitive::os_error(err, process);
-  printf("hej4\n");
   err = rmt_rx_start(rx_channel, true);
   if (err != ESP_OK) return Primitive::os_error(err, process);
-  printf("hej5\n");
   err = rmt_write_items(static_cast<rmt_channel_t>(tx_num), read_items, transfer_bytes.length() / 4, true);
   if (err != ESP_OK) {
     rmt_rx_stop(rx_channel);
     return Primitive::os_error(err, process);
   }
-  printf("hej6\n");
+
   size_t length = 0;
   void* received_bytes = xRingbufferReceive(rb, &length, receive_timeout);
   if (received_bytes != null) {
