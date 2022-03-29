@@ -457,12 +457,9 @@ void print_object_short(Printer* printer, Object* object, bool is_top_level) {
 
 void print_heap(Printer* printer, ObjectHeap* heap, const char* title) {
   printer->printf("%s:\n", title);
-#ifdef LEGACY_GC
-  // TODO: Do we need this?
-  for (ObjectHeap::Iterator i = heap->object_iterator(); !i.eos(); i.advance()) {
-    print_object(printer, i.current());
-  }
-#endif
+  heap->do_objects([&] void (HeapObject* object) -> {
+    print_object(printer, object);
+  });
 }
 
 void Printer::print_buffer(const uint8_t* s, int len) {

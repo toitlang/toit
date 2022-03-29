@@ -42,9 +42,8 @@ PRIMITIVE(object_histogram) {
   memset(data, 0, size);
 
   // Iterate through the object heap to collect the histogram.
-  for (ObjectHeap::Iterator it = process->object_heap()->object_iterator(); !it.eos(); it.advance()) {
-    HeapObject* object = it.current();
-    if (object == result) continue;  // Don't count the resulting byte array.
+  process->object_heap()->do_objects([&](HeapObject* object) -> void {
+    if (object == result) return;  // Don't count the resulting byte array.
     int class_index = Smi::cast(object->class_id())->value();
     int size = object->size(program);
     if (object->is_byte_array() && ByteArray::cast(object)->has_external_address()) {
@@ -59,7 +58,7 @@ PRIMITIVE(object_histogram) {
     }
     data[class_index * UINT32_PER_ENTRY + 0] += 1;
     data[class_index * UINT32_PER_ENTRY + 1] += size;
-  }
+  });
   return result;
 }
 
