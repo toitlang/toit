@@ -49,14 +49,9 @@ monitor FinalizationStack_:
     lambdas_.add lambda
     ensure_finalization_task_
 
-  remove_next -> Lambda?:
-    while true:
-      if lambdas_.is_empty:
-        deadline := Time.monotonic_us + IDLE_TIME_MS * 1_000
-        if not (try_await --deadline=deadline: not lambdas_.is_empty):
-          return null
-        continue
-      return lambdas_.remove_last
+  wait_for_next -> bool:
+    deadline := Time.monotonic_us + IDLE_TIME_MS * 1_000
+    return try_await --deadline=deadline: not lambdas_.is_empty
 
   ensure_finalization_task_ -> none:
     if task_ or lambdas_.is_empty: return
@@ -66,8 +61,8 @@ monitor FinalizationStack_:
     task_ = task --name="Finalization task" --background::
       try:
         while not task.is_canceled:
-          next := remove_next
-          if not next: break
+          if lambdas_.is_empty and not wait_for_next: break
+          next := lambdas_.remove_last
           catch --trace: next.call
       finally:
         task_ = null
