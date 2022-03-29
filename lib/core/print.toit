@@ -2,6 +2,7 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+import monitor
 import system.api.print show PrintService PrintServiceClient
 
 /**
@@ -83,8 +84,15 @@ write_on_stderr_ message/string add_newline/bool -> none:
 /**
 Print service used by $print.
 */
-service_/PrintService ::= (PrintServiceClient --no-open).open or
-    (StandardPrintService_)
+service_value_/PrintService? := null
+service_mutex_/monitor.Mutex ::= monitor.Mutex
+
+service_ -> PrintService:
+  service := service_value_
+  if service: return service
+  return service_mutex_.do:
+    service_value_ = (PrintServiceClient --no-open).open or
+        StandardPrintService_
 
 /**
 Standard print service used when the system print service cannot
