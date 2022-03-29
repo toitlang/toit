@@ -197,8 +197,8 @@ class ObjectHeap {
   bool add_vm_finalizer(HeapObject* key);
   bool remove_vm_finalizer(HeapObject* key);
 
+  bool has_finalizer_to_run() const { return !_runnable_finalizers.is_empty(); }
   Object* next_finalizer_to_run();
-  void set_finalizer_notifier(ObjectNotifier* notifier);
 
   // Tells how many gc operations this heap has experienced.
   int gc_count() { return _gc_count; }
