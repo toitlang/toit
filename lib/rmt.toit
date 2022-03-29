@@ -50,6 +50,7 @@ class Signals:
   constructor .size:
     bytes_ = ByteArray
         round_up (size * 2) 4
+    if size % 2 == 1: set_signal_ size 0 1
 
   /**
   Creates signals that alternate between a level of 0 and 1 with the periods
@@ -128,6 +129,9 @@ class Signals:
   */
   set_signal i/int period/int level/int -> none:
     check_bounds_ i
+    set_signal_ i period level
+
+  set_signal_ i/int period/int level/int -> none:
     idx := i * 2
     if not 0 <= period <= 0x7FFF or level != 0 and level != 1: throw "INVALID_ARGUMENT"
 
