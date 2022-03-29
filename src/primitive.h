@@ -61,6 +61,7 @@ namespace toit {
   M(math,    MODULE_MATH)                    \
   M(x509,    MODULE_X509)                    \
   M(flash_kv, MODULE_FLASH_KV)               \
+  M(debug,   MODULE_DEBUG)                   \
 
 #define MODULE_CORE(PRIMITIVE)               \
   PRIMITIVE(write_string_on_stdout, 2)       \
@@ -381,10 +382,11 @@ namespace toit {
   PRIMITIVE(use, 2)                          \
   PRIMITIVE(unuse, 2)                        \
   PRIMITIVE(config_rx, 9)                    \
+  PRIMITIVE(set_idle_threshold, 2)       \
   PRIMITIVE(config_tx, 12)                   \
   PRIMITIVE(config_bidirectional_pin, 2)     \
   PRIMITIVE(transfer, 2)                     \
-  PRIMITIVE(transfer_and_read, 4)            \
+  PRIMITIVE(transfer_and_read, 5)            \
 
 #define MODULE_CRYPTO(PRIMITIVE)             \
   PRIMITIVE(sha1_start, 1)                   \
@@ -566,6 +568,9 @@ namespace toit {
   PRIMITIVE(write_bytes, 3)                  \
   PRIMITIVE(delete, 2)                       \
   PRIMITIVE(erase, 1)                        \
+
+#define MODULE_DEBUG(PRIMITIVE)              \
+  PRIMITIVE(object_histogram, 0)             \
 
 // ----------------------------------------------------------------------------
 

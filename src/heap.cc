@@ -270,7 +270,6 @@ bool InitialMemoryManager::allocate() {
 }
 
 InitialMemoryManager::~InitialMemoryManager() {
-  delete process_group;
 #ifdef LEGACY_GC
   if (initial_memory) {
     VM::current()->heap_memory()->free_unused_block(initial_memory);

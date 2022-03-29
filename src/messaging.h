@@ -35,7 +35,7 @@ enum MessageType {
 };
 
 enum {
-  MESSAGING_TERMINATION_MESSAGE_SIZE = 3,
+  MESSAGING_PROCESS_MESSAGE_SIZE = 3,
 
   MESSAGING_ENCODING_MAX_NESTING      = 4,
   MESSAGING_ENCODING_MAX_EXTERNALS    = 8,
@@ -55,8 +55,9 @@ class Message : public MessageFIFO::Element {
 class SystemMessage : public Message {
  public:
   // Some system messages that are created from within the VM.
-  enum {
+  enum Type {
     TERMINATED = 0,
+    SPAWNED = 1,
   };
 
   SystemMessage(int type, int gid, int pid, uint8* data) : _type(type), _gid(gid), _pid(pid), _data(data) { }
@@ -125,8 +126,7 @@ class MessageEncoder {
   explicit MessageEncoder(uint8* buffer) : _buffer(buffer) { }
   MessageEncoder(Process* process, uint8* buffer);
 
-  static int termination_message_size();
-  static void encode_termination_message(uint8* buffer, uint8 value);
+  static void encode_process_message(uint8* buffer, uint8 value);
 
   int size() const { return _cursor; }
   bool malloc_failed() const { return _malloc_failed; }
@@ -173,7 +173,7 @@ class MessageDecoder {
   explicit MessageDecoder(uint8* buffer) : _buffer(buffer) { }
   MessageDecoder(Process* process, uint8* buffer);
 
-  static bool decode_termination_message(uint8* buffer, int* value);
+  static bool decode_process_message(uint8* buffer, int* value);
 
   bool allocation_failed() const { return _allocation_failed; }
 
