@@ -29,11 +29,11 @@ interface ContainerService:
   image_writer_commit handle/int -> uuid.Uuid
 
 class ContainerServiceClient extends ServiceClient implements ContainerService:
-  constructor.lookup
-      name=ContainerService.NAME
-      major=ContainerService.MAJOR
-      minor=ContainerService.MINOR:
-    super.lookup name major minor
+  constructor --open/bool=true:
+    super --open=open
+
+  open -> ContainerServiceClient?:
+    return (open_ ContainerService.NAME ContainerService.MAJOR ContainerService.MINOR) and this
 
   list_images -> List:
     array := invoke_ ContainerService.LIST_IMAGES_INDEX null

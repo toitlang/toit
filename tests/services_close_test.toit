@@ -42,7 +42,7 @@ test_close --separate_process/bool=false:
   expect.expect_equals 0 service.clients.size
 
 test_foo --close=false -> FooServiceClient:
-  client := FooServiceClient.lookup
+  client := FooServiceClient
   clients := client.list_clients
   expect.expect_not_null clients
   expect.expect (clients.index_of client.id) >= 0
@@ -54,8 +54,11 @@ test_foo --close=false -> FooServiceClient:
 // ------------------------------------------------------------------
 
 class FooServiceClient extends services.ServiceClient implements FooService:
-  constructor.lookup name=FooService.NAME major=FooService.MAJOR minor=FooService.MINOR:
-    super.lookup name major minor
+  constructor --open/bool=true:
+    super --open=open
+
+  open -> FooServiceClient?:
+    return (open_ FooService.NAME FooService.MAJOR FooService.MINOR) and this
 
   list_clients -> List:
     return List.from (invoke_ FooService.LIST_CLIENTS_INDEX null)

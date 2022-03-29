@@ -11,7 +11,7 @@ import uuid
 import system.api.containers show ContainerServiceClient
 import system.services show ServiceResourceProxy
 
-_client_ /ContainerServiceClient ::= ContainerServiceClient.lookup
+_client_ /ContainerServiceClient ::= ContainerServiceClient
 
 images -> List:
   return _client_.list_images

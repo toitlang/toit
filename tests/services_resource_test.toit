@@ -45,7 +45,7 @@ test_uninstall:
   service.install
   test_open "resource-1" false --no-close_client
   expect.expect_equals 0 (service.close_count "resource-1")
-  client := ResourceServiceClient.lookup
+  client := ResourceServiceClient
   expect.expect_equals 0 (service.close_count "resource-1")
   service.uninstall
   expect.expect_equals 1 (service.close_count "resource-1")
@@ -76,7 +76,7 @@ test_multiple_resources:
 test_custom_close:
   service := ResourceServiceDefinition
   service.install
-  client := ResourceServiceClient.lookup
+  client := ResourceServiceClient
   resource := ResourceProxy client "resource"
   expect.expect_equals 0 (service.close_count "resource")
   resource.myclose
@@ -87,7 +87,7 @@ test_custom_close:
   service.wait
 
 test_open key/string close/bool --close_client/bool=false -> ResourceServiceClient:
-  client := ResourceServiceClient.lookup
+  client := ResourceServiceClient
   resource := ResourceProxy client key
   client.resources.add resource
   expect.expect_equals 0 (client.close_count key)
@@ -104,8 +104,11 @@ test_open key/string close/bool --close_client/bool=false -> ResourceServiceClie
 class ResourceServiceClient extends services.ServiceClient implements ResourceService:
   resources/List ::= []  // Keep around to avoid GC and finalization behavior.
 
-  constructor.lookup name=ResourceService.NAME major=ResourceService.MAJOR minor=ResourceService.MINOR:
-    super.lookup name major minor
+  constructor --open/bool=true:
+    super --open=open
+
+  open -> ResourceServiceClient?:
+    return (open_ ResourceService.NAME ResourceService.MAJOR ResourceService.MINOR) and this
 
   open key/string -> int:
     return invoke_ ResourceService.OPEN_INDEX key
