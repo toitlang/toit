@@ -5,7 +5,7 @@
 import uuid
 import system.services show ServiceClient
 
-interface ContainersService:
+interface ContainerService:
   static NAME  /string ::= "system/containers"
   static MAJOR /int    ::= 0
   static MINOR /int    ::= 1
@@ -28,34 +28,28 @@ interface ContainersService:
   static IMAGE_WRITER_COMMIT_INDEX /int ::= 5
   image_writer_commit handle/int -> uuid.Uuid
 
-  static IMAGE_WRITER_CLOSE_INDEX /int ::= 6
-  image_writer_close handle/int -> none
-
-class ContainersServiceClient extends ServiceClient implements ContainersService:
+class ContainerServiceClient extends ServiceClient implements ContainerService:
   constructor.lookup
-      name=ContainersService.NAME
-      major=ContainersService.MAJOR
-      minor=ContainersService.MINOR:
+      name=ContainerService.NAME
+      major=ContainerService.MAJOR
+      minor=ContainerService.MINOR:
     super.lookup name major minor
 
   list_images -> List:
-    array := invoke_ ContainersService.LIST_IMAGES_INDEX null
+    array := invoke_ ContainerService.LIST_IMAGES_INDEX null
     return List array.size: uuid.Uuid array[it]
 
   start_image id/uuid.Uuid -> int?:
-    return invoke_ ContainersService.START_IMAGE_INDEX id.to_byte_array
+    return invoke_ ContainerService.START_IMAGE_INDEX id.to_byte_array
 
   uninstall_image id/uuid.Uuid -> none:
-    invoke_ ContainersService.UNINSTALL_IMAGE_INDEX id.to_byte_array
+    invoke_ ContainerService.UNINSTALL_IMAGE_INDEX id.to_byte_array
 
   image_writer_open size/int -> int:
-    return invoke_ ContainersService.IMAGE_WRITER_OPEN_INDEX size
+    return invoke_ ContainerService.IMAGE_WRITER_OPEN_INDEX size
 
   image_writer_write handle/int bytes/ByteArray -> none:
-    invoke_ ContainersService.IMAGE_WRITER_WRITE_INDEX [handle, bytes]
+    invoke_ ContainerService.IMAGE_WRITER_WRITE_INDEX [handle, bytes]
 
   image_writer_commit handle/int -> uuid.Uuid:
-    return uuid.Uuid (invoke_ ContainersService.IMAGE_WRITER_COMMIT_INDEX handle)
-
-  image_writer_close handle/int -> none:
-    invoke_ ContainersService.IMAGE_WRITER_CLOSE_INDEX handle
+    return uuid.Uuid (invoke_ ContainerService.IMAGE_WRITER_COMMIT_INDEX handle)

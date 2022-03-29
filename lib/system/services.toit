@@ -16,240 +16,334 @@ import system.api.service_discovery
     ServiceDiscoveryServiceClient
 
 // Notification kinds.
-SERVICES_MANAGER_NOTIFY_OPEN_CLIENT  /int ::= 11
-SERVICES_MANAGER_NOTIFY_CLOSE_CLIENT /int ::= 12
+SERVICES_MANAGER_NOTIFY_ADD_PROCESS    /int ::= 0
+SERVICES_MANAGER_NOTIFY_REMOVE_PROCESS /int ::= 1
 
-// RPC procedure numbers used for opening and closing services from clients.
-RPC_SERVICES_OPEN  /int         ::= 300
-RPC_SERVICES_CLOSE /int         ::= 301
-RPC_SERVICES_METHOD_START_ /int ::= 400
+// RPC procedure numbers used for using services from clients.
+RPC_SERVICES_OPEN_           /int ::= 300
+RPC_SERVICES_CLOSE_          /int ::= 301
+RPC_SERVICES_INVOKE_         /int ::= 302
+RPC_SERVICES_CLOSE_RESOURCE_ /int ::= 303
 
-client_ /ServiceDiscoveryService ::= ServiceDiscoveryServiceClient.lookup
+// Internal limits.
+CLIENT_ID_LIMIT_       /int ::= 0x3fff_ffff
+RESOURCE_HANDLE_LIMIT_ /int ::= 0x3fff_ffff
+
+_client_ /ServiceDiscoveryService ::= ServiceDiscoveryServiceClient.lookup
 
 abstract class ServiceClient:
-  name/string ::= ?
-  version_/List ::= ?
-
-  pid_/int ::= ?
-  procedure_/int? := null
+  _name_/string ::= ?
+  _version_/List ::= ?
+  _pid_/int? ::= ?
+  _id_/int? := null
 
   constructor.lookup name/string major/int minor/int --server/int?=null:
+    pid/int? := null
     if server:
-      process_send_ server SYSTEM_RPC_NOTIFY_ [SERVICES_MANAGER_NOTIFY_OPEN_CLIENT, current_process_]
-      pid_ = server
+      process_send_ server SYSTEM_RPC_NOTIFY_ [SERVICES_MANAGER_NOTIFY_ADD_PROCESS, current_process_]
+      pid = server
     else:
-      pid_ = client_.discover name
-    definition ::= rpc.invoke pid_ RPC_SERVICES_OPEN [name, major, minor]
-    this.name = definition[0]
-    version_ = definition[1]
-    procedure_ = definition[2]
+      pid = _client_.discover name
+      if not pid: throw "Cannot find service:$name"
+    // Open the client by doing a RPC-call to the discovered process.
+    // This returns the client id necessary for invoking service methods.
+    definition ::= rpc.invoke pid RPC_SERVICES_OPEN_ [name, major, minor]
+    _name_ = definition[0]
+    _version_ = definition[1]
+    _pid_ = pid
+    _id_ = definition[2]
+    // Close the client if the reference goes away, so the service
+    // process can clean things up.
     add_finalizer this:: close
 
+  id -> int?:
+    return _id_
+
+  name -> string:
+    return _name_
+
   major -> int:
-    return version_[0]
+    return _version_[0]
 
   minor -> int:
-    return version_[1]
+    return _version_[1]
 
   patch -> int:
-    return version_[2]
+    return _version_[2]
 
   close -> none:
-    if not procedure_: return
-    procedure := procedure_
-    procedure_ = null
+    id := _id_
+    if not id: return
+    _id_ = null
     remove_finalizer this
-    rpc.invoke pid_ RPC_SERVICES_CLOSE procedure
+    rpc.invoke _pid_ RPC_SERVICES_CLOSE_ id
 
   stringify -> string:
-    return "service:$name@$major.$minor.$patch"
+    return "service:$_name_@$(_version_.join ".")"
 
   invoke_ index/int arguments/any -> any:
-    if not procedure_: throw "Client closed"
-    return rpc.invoke pid_ procedure_ [index, arguments]
+    id := _id_
+    if not id: throw "Client closed"
+    return rpc.invoke _pid_ RPC_SERVICES_INVOKE_ [id, index, arguments]
+
+  _close_resource_ handle/int -> none:
+    // If this client is closed, we've already closed all its resources.
+    id := _id_
+    if not id: return
+    // TODO(kasper): Should we avoid using the task deadline here
+    // and use our own? If we're timing out and trying to call
+    // close after timing out, it should still work.
+    critical_do: rpc.invoke _pid_ RPC_SERVICES_CLOSE_RESOURCE_ [id, handle]
 
 abstract class ServiceDefinition:
-  names_/List ::= ?
-  versions_/List ::= ?
-  manager_/ServiceManager_? := null
-  procedure_/int? := null
-  clients_/int := 0
+  _names_/List ::= ?
+  _versions_/List ::= ?
+  _manager_/ServiceManager_? := null
+
+  _clients_/Set ::= {}     // Set<int>
+  _resources_/Map ::= {:}  // Map<int, Map<int, Object>>
+  _resource_handle_next_/int := ?
 
   // TODO(kasper): Consider what happens if the same definition is installed
   // after being uninstalled. Do we need to use an extra latch for that?
-  uninstalled_/monitor.Latch ::= monitor.Latch
+  _uninstalled_/monitor.Latch ::= monitor.Latch
 
   constructor name/string --major/int --minor/int --patch/int=0:
-    names_ = [name]
-    versions_ = [[major, minor, patch]]
+    _names_ = [name]
+    _versions_ = [[major, minor, patch]]
+    _resource_handle_next_ = random RESOURCE_HANDLE_LIMIT_
 
-  abstract handle client/int index/int arguments/any-> any
+  abstract handle pid/int client/int index/int arguments/any-> any
+
+  on_opened client/int -> none:
+    // Override in subclasses.
+
+  on_closed client/int -> none:
+    // Override in subclasses.
 
   name -> string:
-    return names_.first
+    return _names_.first
 
   version -> string:
-    return versions_.first.join "."
-
-  procedure -> int:
-    return procedure_
-
-  install -> none:
-    manager_ = ServiceManager_.instance
-    procedure_ = manager_.install this
-    names_.do: manager_.listen it this
-
-  wait -> none:
-    uninstalled_.get
-
-  uninstall -> none:
-    names_.do: manager_.unlisten it
-    manager_.uninstall procedure_
-    clients_ = 0
-    procedure_ = null
-    manager_ = null
-    uninstalled_.set 0
-
-  open client/int -> none:
-    clients_++
-
-  close client/int -> none:
-    if --clients_ == 0: uninstall
-
-  alias name/string --major/int --minor/int -> none:
-    names_.add name
-    versions_.add [major, minor]
+    return _versions_.first.join "."
 
   stringify -> string:
     return "service:$name@$version"
 
-  resolve_ name/string major/int minor/int -> List?:
-    index := names_.index_of name
-    if index < 0: return null
-    version := versions_[index]
+  alias name/string --major/int --minor/int -> none:
+    _names_.add name
+    _versions_.add [major, minor]
+
+  install -> none:
+    if _manager_: throw "Already installed"
+    _manager_ = ServiceManager_.instance
+    _names_.do: _manager_.listen it this
+
+  uninstall -> none:
+    if not _manager_: return
+    _clients_.do: _manager_.close it
+    if _manager_: _uninstall_
+
+  resource client/int handle/int -> ServiceResource:
+    return _find_resource_ client handle
+
+  wait -> none:
+    _uninstalled_.get
+
+  _open_ client/int -> List:
+    _clients_.add client
+    catch --trace: on_opened client
+    return [ _names_[0], _versions_[0], client ]
+
+  _close_ client/int -> none:
+    _clients_.remove client
+    resources ::= _resources_.get client
+    if resources:
+      // Iterate over a copy of the values, so we can remove
+      // entries from the map when closing resources.
+      resources.values.do: | resource/ServiceResource |
+        catch --trace: resource.close
+    catch --trace: on_closed client
+    if _clients_.is_empty: _uninstall_
+
+  _register_resource_ client/int resource/ServiceResource -> int:
+    handle ::= _new_resource_handle_
+    resources ::= _resources_.get client --init=(: {:})
+    resources[handle] = resource
+    return handle
+
+  _find_resource_ client/int handle/int -> ServiceResource?:
+    resources ::= _resources_.get client --if_absent=(: return null)
+    return resources.get handle
+
+  _unregister_resource_ client/int handle/int -> none:
+    resources ::= _resources_.get client
+    if not resources: return
+    result ::= resources.get handle
+    if not result: return
+    resources.remove handle
+    if resources.is_empty: _resources_.remove client
+
+  _new_resource_handle_ -> int:
+    handle ::= _resource_handle_next_
+    next ::= handle + 1
+    _resource_handle_next_ = (next >= RESOURCE_HANDLE_LIMIT_) ? 0 : next
+    return handle
+
+  _validate_ name/string major/int minor/int -> none:
+    index := _names_.index_of name
+    if index < 0: throw "Cannot find service$name, found $this"
+    version := _versions_[index]
     if major != version[0]:
       throw "Cannot find service:$name@$(major).x, found $this"
     if minor > version[1]:
       throw "Cannot find service:$name@$(major).$(minor).x, found $this"
-    return [names_[0], versions_[0], procedure_]
+
+  _uninstall_ -> none:
+    if not _resources_.is_empty: throw "Leaked $_resources_"
+    _names_.do: _manager_.unlisten it
+    _manager_ = null
+    _uninstalled_.set 0
+
+abstract class ServiceResource implements rpc.RpcSerializable:
+  _service_/ServiceDefinition? := ?
+  _client_/int ::= ?
+  _handle_/int? := null
+
+  constructor ._service_ ._client_:
+    _handle_ = _service_._register_resource_ _client_ this
+
+  abstract on_closed -> none
+
+  close -> none:
+    handle := _handle_
+    if not handle: return
+    service := _service_
+    _handle_ = _service_ = null
+    service._unregister_resource_ _client_ handle
+    on_closed
+
+  serialize_for_rpc -> int:
+    return _handle_
+
+abstract class ServiceResourceProxy:
+  client_/ServiceClient ::= ?
+  _handle_/int? := ?
+
+  constructor .client_ ._handle_:
+    add_finalizer this:: close
+
+  handle_ -> int:
+    return _handle_
+
+  close:
+    handle := _handle_
+    if not handle: return
+    _handle_ = null
+    remove_finalizer this
+    catch --trace: client_._close_resource_ handle
 
 class ServiceManager_ implements SystemMessageHandler_:
   static instance := ServiceManager_
 
   broker_/ServiceRpcBroker_ ::= ServiceRpcBroker_
 
-  procedures_/Set ::= {}              // Set<int>
-  procedures_by_client_/Map ::= {:}   // Map<int, Set<int>>
+  clients_/Map ::= {:}                // Map<int, int>
+  clients_by_pid_/Map ::= {:}         // Map<int, Set<int>>
 
   services_by_name_/Map ::= {:}       // Map<string, ServiceDefinition>
-  services_by_procedure_/Map ::= {:}  // Map<int, ServiceDefinition>
-
-  counts_by_procedure_/Map ::= {:}    // Map<int, Map<int, int>>
+  services_by_client_/Map ::= {:}     // Map<int, ServiceDefinition>
 
   constructor:
     set_system_message_handler_ SYSTEM_RPC_NOTIFY_ this
-    broker_.register_procedure RPC_SERVICES_OPEN:: | arguments _ pid |
+    broker_.register_procedure RPC_SERVICES_OPEN_:: | arguments _ pid |
       open pid arguments[0] arguments[1] arguments[2]
-    broker_.register_procedure RPC_SERVICES_CLOSE:: | arguments _ pid |
-      close pid arguments
+    broker_.register_procedure RPC_SERVICES_CLOSE_:: | arguments |
+      close arguments
+    broker_.register_procedure RPC_SERVICES_INVOKE_:: | arguments _ pid |
+      client/int ::= arguments[0]
+      service ::= services_by_client_[client]
+      service.handle pid client arguments[1] arguments[2]
+    broker_.register_procedure RPC_SERVICES_CLOSE_RESOURCE_:: | arguments |
+      client/int ::= arguments[0]
+      service ::= services_by_client_[client]
+      resource/ServiceResource? := service._find_resource_ client arguments[1]
+      if resource: resource.close
     broker_.install
-
-  install service/ServiceDefinition -> int:
-    procedure := random_procedure_
-    services_by_procedure_[procedure] = service
-    broker_.register_procedure procedure:: | arguments _ pid |
-      service.handle pid arguments[0] arguments[1]
-    return procedure
-
-  uninstall procedure/int -> none:
-    broker_.unregister_procedure procedure
-    services_by_procedure_.remove procedure
-    procedures_.remove procedure
-    counts/Map? ::= counts_by_procedure_.get procedure
-    if not counts: return
-    counts_by_procedure_.remove procedure
-    counts.do: | client/int count/int |
-      procedures/Set? := procedures_by_client_.get client
-      if not procedures: continue.do
-      procedures.remove procedure
-      if procedures.is_empty: procedures_by_client_.remove client
 
   listen name/string service/ServiceDefinition -> none:
     services_by_name_[name] = service
-    client_.listen name
+    _client_.listen name
 
   unlisten name/string -> none:
-    client_.unlisten name
+    _client_.unlisten name
     services_by_name_.remove name
 
-  open client/int name/string major/int minor/int -> List?:
-    service/ServiceDefinition ::= services_by_name_[name]
-    resolved ::= service.resolve_ name major minor
-    if not resolved: return null
-    procedure ::= service.procedure
-    counts/Map ::= counts_by_procedure_.get procedure --init=(: {:})
-    count/int ::= counts.update client --init=(: 0): it + 1
-    if count > 1: return resolved
-    procedures/Set ::= procedures_by_client_.get client --init=(: {})
-    procedures.add procedure
-    task:: service.open client
-    return resolved
+  open pid/int name/string major/int minor/int -> List:
+    service/ServiceDefinition? ::= services_by_name_[name]
+    if not service: throw "Unknown service $name"
+    service._validate_ name major minor
+    client ::= assign_client_id_ pid
+    services_by_client_[client] = service
+    clients/Set ::= clients_by_pid_.get pid --init=(: {})
+    clients.add client
+    return service._open_ client
 
-  close client/int procedure/int -> none:
-    counts/Map? ::= counts_by_procedure_.get procedure
-    if not counts: throw "No such client (pid=$client)"
-    count/int ::= counts.update client: it - 1
-    if count > 0: return
-    service/ServiceDefinition := services_by_procedure_[procedure]
-    procedures/Set ::= procedures_by_client_.get client
-    counts.remove client
-    if counts.is_empty: counts_by_procedure_.remove procedure
-    procedures.remove procedure
-    if procedures.is_empty: procedures_by_client_.remove client
-    task:: service.close client
+  close client/int -> none:
+    pid/int? := clients_.get client
+    if not pid: return  // Already closed.
+    clients_.remove client
+    // Unregister the client in the service client set.
+    service/ServiceDefinition := services_by_client_[client]
+    services_by_client_.remove client
+    // Only unregister the client from the clients set
+    // for the pid if we haven't already done so as part
+    // of a call to $close_all.
+    clients/Set? ::= clients_by_pid_.get pid
+    if clients:
+      clients.remove client
+      if clients.is_empty: clients_by_pid_.remove pid
+    service._close_ client
 
-  close_all client/int -> none:
-    procedures/Set? ::= procedures_by_client_.get client
-    if not procedures: return
-    closed/List ::= []
-    procedures.do: | procedure/int |
-      counts/Map? ::= counts_by_procedure_.get procedure
-      if not counts: continue.do
-      counts.remove client
-      if counts.is_empty: counts_by_procedure_.remove procedure
-      service/ServiceDefinition := services_by_procedure_[procedure]
-      closed.add service
-    procedures_by_client_.remove client
-    task:: closed.do: it.close client
+  close_all pid/int -> none:
+    clients/Set? ::= clients_by_pid_.get pid
+    if not clients: return
+    // We avoid manipulating the clients set in the $close
+    // method by taking ownership of it here.
+    clients_by_pid_.remove pid
+    task:: clients.do: close it
 
   on_message type/int gid/int pid/int message/any -> none:
     assert: type == SYSTEM_RPC_NOTIFY_
     kind/int ::= message[0]
-    client/int ::= message[1]
-    if kind == SERVICES_MANAGER_NOTIFY_OPEN_CLIENT:
-      broker_.add_client client
-    else if kind == SERVICES_MANAGER_NOTIFY_CLOSE_CLIENT:
-      broker_.remove_client client
-      close_all client
+    // The other process isn't necessarily the sender of the
+    // notifications. They almost always come from the system
+    // process and are sent as part of the discovery handshake.
+    other/int ::= message[1]
+    if kind == SERVICES_MANAGER_NOTIFY_ADD_PROCESS:
+      broker_.add_process other
+    else if kind == SERVICES_MANAGER_NOTIFY_REMOVE_PROCESS:
+      broker_.remove_process other
+      close_all other
     else:
       unreachable
 
-  random_procedure_ -> int:
+  assign_client_id_ pid/int -> int:
     while true:
-      guess := (random 1_000_000_000) + RPC_SERVICES_METHOD_START_
-      if procedures_.contains guess: continue
-      procedures_.add guess
+      guess := random CLIENT_ID_LIMIT_
+      if clients_.contains guess: continue
+      clients_[guess] = pid
       return guess
 
 class ServiceRpcBroker_ extends broker.RpcBroker:
-  clients_ ::= {}
+  pids_ ::= {}
 
   accept gid/int pid/int -> bool:
-    return clients_.contains pid
+    return pids_.contains pid
 
-  add_client pid/int -> none:
-    clients_.add pid
+  add_process pid/int -> none:
+    pids_.add pid
 
-  remove_client pid/int -> none:
-    clients_.remove pid
+  remove_process pid/int -> none:
+    pids_.remove pid
     cancel_requests pid
