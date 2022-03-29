@@ -38,7 +38,7 @@ class Signals:
   bytes_/ByteArray
 
   /** The empty signal collection. */
-  static ZERO := Signals 0
+  static ZERO ::= Signals 0
 
   /**
   Creates a collection of signals of the given $size.
