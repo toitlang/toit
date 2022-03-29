@@ -457,7 +457,7 @@ void print_object_short(Printer* printer, Object* object, bool is_top_level) {
 
 void print_heap(Printer* printer, ObjectHeap* heap, const char* title) {
   printer->printf("%s:\n", title);
-  heap->do_objects([&] void (HeapObject* object) -> {
+  heap->do_objects([&] (HeapObject* object) -> void {
     print_object(printer, object);
   });
 }
