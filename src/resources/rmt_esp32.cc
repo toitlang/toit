@@ -208,7 +208,7 @@ PRIMITIVE(transfer_and_receive) {
   if (data == null) return error;
 
   const rmt_item32_t* transfer_items = reinterpret_cast<const rmt_item32_t*>(transfer_bytes.address());
-  const rmt_item32_t* read_items = reinterpret_cast<const rmt_item32_t*>(receive_bytes.address());
+  const rmt_item32_t* receive_items = reinterpret_cast<const rmt_item32_t*>(receive_bytes.address());
   rmt_channel_t rx_channel = (rmt_channel_t) rx_num;
 
   RingbufHandle_t rb = null;
@@ -216,15 +216,19 @@ PRIMITIVE(transfer_and_receive) {
   if (err != ESP_OK) return Primitive::os_error(err, process);
 
   flush_buffer(rb);
-
-  err = rmt_write_items(static_cast<rmt_channel_t>(tx_num), transfer_items, transfer_bytes.length() / 4, true);
-  if (err != ESP_OK) return Primitive::os_error(err, process);
+  if (transfer_bytes.length() > 0) {
+    err = rmt_write_items(static_cast<rmt_channel_t>(tx_num), transfer_items, transfer_bytes.length() / 4, true);
+    if (err != ESP_OK) return Primitive::os_error(err, process);
+  }
   err = rmt_rx_start(rx_channel, true);
   if (err != ESP_OK) return Primitive::os_error(err, process);
-  err = rmt_write_items(static_cast<rmt_channel_t>(tx_num), read_items, transfer_bytes.length() / 4, true);
-  if (err != ESP_OK) {
-    rmt_rx_stop(rx_channel);
-    return Primitive::os_error(err, process);
+
+  if (receive_bytes.length() > 0) {
+    err = rmt_write_items(static_cast<rmt_channel_t>(tx_num), receive_items, receive_bytes.length() / 4, true);
+    if (err != ESP_OK) {
+      rmt_rx_stop(rx_channel);
+      return Primitive::os_error(err, process);
+    }
   }
 
   size_t length = 0;
@@ -244,7 +248,6 @@ PRIMITIVE(transfer_and_receive) {
 
   rmt_rx_stop(rx_channel);
   data->resize_external(process, length);
-
   return data;
 }
 
