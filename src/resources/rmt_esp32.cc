@@ -197,16 +197,18 @@ void flush_buffer(RingbufHandle_t rb) {
   }
 }
 
-PRIMITIVE(transfer_and_read) {
-  ARGS(int, tx_num, int, rx_num, Blob, items_bytes, int, max_output_len, int, receive_timeout)
-  if (items_bytes.length() % 4 != 0) INVALID_ARGUMENT;
+PRIMITIVE(transfer_and_receive) {
+  ARGS(int, tx_num, int, rx_num, Blob, transfer_bytes, Blob, receive_bytes, int, max_output_len, int, receive_timeout)
+  if (transfer_bytes.length() % 4 != 0) INVALID_ARGUMENT;
+  if (receive_bytes.length() % 4 != 0) INVALID_ARGUMENT;
 
   Error* error = null;
   // Force external, so we can adjust the length after the read.
   ByteArray* data = process->allocate_byte_array(max_output_len, &error, true);
   if (data == null) return error;
 
-  const rmt_item32_t* items = reinterpret_cast<const rmt_item32_t*>(items_bytes.address());
+  const rmt_item32_t* transfer_items = reinterpret_cast<const rmt_item32_t*>(transfer_bytes.address());
+  const rmt_item32_t* receive_items = reinterpret_cast<const rmt_item32_t*>(receive_bytes.address());
   rmt_channel_t rx_channel = (rmt_channel_t) rx_num;
 
   RingbufHandle_t rb = null;
@@ -214,14 +216,19 @@ PRIMITIVE(transfer_and_read) {
   if (err != ESP_OK) return Primitive::os_error(err, process);
 
   flush_buffer(rb);
-
+  if (transfer_bytes.length() > 0) {
+    err = rmt_write_items(static_cast<rmt_channel_t>(tx_num), transfer_items, transfer_bytes.length() / 4, true);
+    if (err != ESP_OK) return Primitive::os_error(err, process);
+  }
   err = rmt_rx_start(rx_channel, true);
   if (err != ESP_OK) return Primitive::os_error(err, process);
 
-  err = rmt_write_items(static_cast<rmt_channel_t>(tx_num), items, items_bytes.length() / 4, true);
-  if (err != ESP_OK) {
-    rmt_rx_stop(rx_channel);
-    return Primitive::os_error(err, process);
+  if (receive_bytes.length() > 0) {
+    err = rmt_write_items(static_cast<rmt_channel_t>(tx_num), receive_items, receive_bytes.length() / 4, true);
+    if (err != ESP_OK) {
+      rmt_rx_stop(rx_channel);
+      return Primitive::os_error(err, process);
+    }
   }
 
   size_t length = 0;
@@ -241,7 +248,6 @@ PRIMITIVE(transfer_and_read) {
 
   rmt_rx_stop(rx_channel);
   data->resize_external(process, length);
-
   return data;
 }
 

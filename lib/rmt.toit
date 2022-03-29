@@ -34,19 +34,23 @@ class Signals:
 
   bytes_/ByteArray
 
+  /** Creates the empty signal collection. */
+  constructor.ZERO: return Signals 0
+
   /**
   Creates a collection of signals of the given $size.
 
   All signals are initialized to 0 period and 0 level.
 
   # Advanced
-  If the given $size is not divisible by 2, then the byte array allocted for
+  If the given $size is not divisible by 2, then the byte array allocated for
     $bytes_ is padded with two bytes to make the $bytes_ usable by the RMT
     primitives.
   */
   constructor .size:
     bytes_ = ByteArray
         round_up (size * 2) 4
+    if size % 2 == 1: set_signal_ size 0 1
 
   /**
   Creates signals that alternate between a level of 0 and 1 with the periods
@@ -125,6 +129,9 @@ class Signals:
   */
   set_signal i/int period/int level/int -> none:
     check_bounds_ i
+    set_signal_ i period level
+
+  set_signal_ i/int period/int level/int -> none:
     idx := i * 2
     if not 0 <= period <= 0x7FFF or level != 0 and level != 1: throw "INVALID_ARGUMENT"
 
@@ -287,10 +294,14 @@ transfer channel/Channel signals/Signals -> none:
   rmt_transfer_ channel.num signals.bytes_
 
 /**
-Transfers the given $signals while simultaneously receiving.
+Transfers the given signals while simultaneously receiving.
 
-The $signals are transferred over the given $tx channel and signals are
-  received on the $rx channel.
+The transfers the given $transfer signals followed by the given $receive
+  signals. The signals are transferred over the given $tx channel and signals
+  are received on the $rx channel.
+
+The RMT controller starts receiving signals after the given $transfer signals
+  have been transferred.
 
 The given $max_returned_bytes specifies the maximum byte size of the returned
   signals. The $max_returned_bytes must be smaller than the configured RX
@@ -300,13 +311,13 @@ The $rx channel must be configured for receiving (see $Channel.config_rx).
 
 The $tx channel must be configured for transferring (see $Channel.config_tx).
 */
-transfer_and_receive --rx/Channel --tx/Channel signals/Signals max_returned_bytes/int -> Signals:
+transfer_and_receive --rx/Channel --tx/Channel --transfer/Signals=Signals.ZERO --receive/Signals=Signals.ZERO max_returned_bytes/int -> Signals:
   if not rx.rx_buffer_size and rx.rx_clk_div: throw "rx channel not configured"
 
   if max_returned_bytes > rx.rx_buffer_size: throw "maximum returned buffer size greater than allocated RX buffer size"
 
   receive_timeout := rx.idle_threshold * rx.rx_clk_div
-  result := rmt_transfer_and_read_ tx.num rx.num signals.bytes_ max_returned_bytes receive_timeout
+  result := rmt_transfer_and_receive_ tx.num rx.num transfer.bytes_ receive.bytes_ max_returned_bytes receive_timeout
   return Signals.from_bytes result
 
 resource_group_ ::= rmt_init_
@@ -338,5 +349,5 @@ rmt_config_bidirectional_pin_ pin/int tx/int:
 rmt_transfer_ tx_ch/int signals_bytes/*/Blob*/:
   #primitive.rmt.transfer
 
-rmt_transfer_and_read_ tx_ch/int rx_ch/int signals_bytes/*/Blob*/ max_output_len/int receive_timeout/int:
-  #primitive.rmt.transfer_and_read
+rmt_transfer_and_receive_ tx_ch/int rx_ch/int transfer_bytes/*/Blob*/ read_bytes max_output_len/int receive_timeout/int:
+  #primitive.rmt.transfer_and_receive
