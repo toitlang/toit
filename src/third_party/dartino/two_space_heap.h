@@ -12,6 +12,21 @@
 
 namespace toit {
 
+class HeapObjectFunctionVisitor : public HeapObjectVisitor {
+ public:
+  HeapObjectFunctionVisitor(Program* program, const std::function<void (HeapObject*)>& func)
+    : HeapObjectVisitor(program)
+    , _func(func) {}
+
+  virtual uword visit(HeapObject* object) override {
+    _func(object);
+    return object->size(program_);
+  }
+
+ private:
+  const std::function<void (HeapObject*)>& _func;
+};
+
 // TwoSpaceHeap represents the container for all HeapObjects.
 class TwoSpaceHeap {
  public:
@@ -54,6 +69,11 @@ class TwoSpaceHeap {
   void iterate_objects(HeapObjectVisitor* visitor) {
     semi_space_->iterate_objects(visitor);
     old_space_.iterate_objects(visitor);
+  }
+
+  void do_objects(const std::function<void (HeapObject*)>& func) {
+    HeapObjectFunctionVisitor visitor(program_, func);
+    iterate_objects(&visitor);
   }
 
   // Flush will write cached values back to object memory.

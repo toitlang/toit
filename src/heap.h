@@ -95,6 +95,16 @@ class ObjectHeap : public RawHeap {
   Iterator object_iterator() { return Iterator(_blocks, _program); }
 
   static int max_allocation_size() { return Block::max_payload_size(); }
+
+  void do_objects(const std::function<void (HeapObject*)>& func) {
+    Iterator iterator(_blocks, _program);
+    while (!iterator.eos()) {
+      HeapObject* object = iterator.current();
+      func(object);
+      iterator.advance();
+    }
+  }
+
 #else
 class ObjectHeap {
  public:
@@ -103,6 +113,11 @@ class ObjectHeap {
 
   // TODO: In the new heap there is no max allocation size.
   static int max_allocation_size() { return TOIT_PAGE_SIZE - 96; }
+
+  inline void do_objects(const std::function<void (HeapObject*)>& func) {
+    _two_space_heap.do_objects(func);
+  }
+
 #endif
 
   // Shared allocation operations.
