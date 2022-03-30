@@ -13,10 +13,11 @@ A $Channel corresponds to a channel in the ESP32 RMT controller.
 $Signals represent a collection of signals to be sent by the RMT controller.
 */
 
+/** Bytes per ESP32 signal. */
 BYTES_PER_SIGNAL ::= 2
 
 /**
-A collection of signals to be transferred or received with the RMT controller.
+A collection of signals to be transmitted or received with the RMT controller.
 
 An RMT signal consists of a level (low or high) and a period (the number of
   ticks the level is sustained).
@@ -26,7 +27,9 @@ The period is specified in number of ticks, so the actual time the level is
   sustained is determined by the RMT controller configuration.
 
 At the lower level, a signal consists of 16 bits: 15 bits for the period and 1
-  bit for the level. Signals must be transfered as pairs also known as an item.
+  bit for the level. Signals must be transmitted as pairs also known as an item.
+  For this reason, the bytes backing a collection of signal is always adjusted
+  to be divisible by 4.
 */
 class Signals:
   /** The number of signals in the collection. */
@@ -34,8 +37,8 @@ class Signals:
 
   bytes_/ByteArray
 
-  /** Creates the empty signal collection. */
-  constructor.ZERO: return Signals 0
+  /** The empty signal collection. */
+  static ZERO ::= Signals 0
 
   /**
   Creates a collection of signals of the given $size.
@@ -45,7 +48,7 @@ class Signals:
   # Advanced
   If the given $size is not divisible by 2, then the byte array allocated for
     $bytes_ is padded with two bytes to make the $bytes_ usable by the RMT
-    primitives.
+    primitives. The final signal is initialized to 0 period and level 1.
   */
   constructor .size:
     bytes_ = ByteArray
@@ -178,14 +181,13 @@ class Channel:
   /**
   Constructs a channel using the given $num using the given $pin.
 
-  The givn $num must be in the range [0,7] and must not be in use.
+  The given $num must be in the range [0,7] and must not be in use.
   */
   constructor .pin .num:
     res_ = rmt_use_ resource_group_ num
 
   /**
   Configure the channel for RX.
-
   - $mem_block_num is the number of memory blocks (256 bytes or 128 signals)
     used by this channel.
   - $clk_div is the source clock divider. Must be in the range [0,255].
@@ -227,7 +229,6 @@ class Channel:
 
   /**
   Configure the channel for TX.
-
   - $mem_block_num is the number of memory blocks (256 bytes or 128 signals)
     used by this channel.
   - $clk_div is the source clock divider. Must be in the range [0,255].
@@ -237,7 +238,7 @@ class Channel:
   - $carrier_level is the way the carrier way is modulated.
     Set to 1 to transmit on low output level and 0 to transmit on high output level.
   - $carrier_duty_percent is the proportion of time the carrier wave is low.
-  - $loop_en is whether the transmitter continously writes the provided signals in a loop.
+  - $loop_en is whether the transmitter continuously writes the provided signals in a loop.
   - $idle_output_en is whether the transmitter outputs when idle.
   - $idle_level is the level transmitted by the transmitter when idle.
 
@@ -286,22 +287,22 @@ class Channel:
       res_ = null
 
 /**
-Transfers the given $signals over the given $channel.
+Transmits the given $signals over the given $channel.
 
-The $channel must be configured for transfering (see $Channel.config_tx).
+The $channel must be configured for transmitting (see $Channel.config_tx).
 */
-transfer channel/Channel signals/Signals -> none:
-  rmt_transfer_ channel.num signals.bytes_
+transmit channel/Channel signals/Signals -> none:
+  rmt_transmit_ channel.num signals.bytes_
 
 /**
-Transfers the given signals while simultaneously receiving.
+Transmits the given signals while simultaneously receiving.
 
-The transfers the given $transfer signals followed by the given $receive
-  signals. The signals are transferred over the given $tx channel and signals
+The transmits the given $transmit signals followed by the given $receive
+  signals. The signals are transmitted over the given $tx channel and signals
   are received on the $rx channel.
 
-The RMT controller starts receiving signals after the given $transfer signals
-  have been transferred.
+The RMT controller starts receiving signals after the given $transmit signals
+  have been transmitted.
 
 The given $max_returned_bytes specifies the maximum byte size of the returned
   signals. The $max_returned_bytes must be smaller than the configured RX
@@ -309,15 +310,15 @@ The given $max_returned_bytes specifies the maximum byte size of the returned
 
 The $rx channel must be configured for receiving (see $Channel.config_rx).
 
-The $tx channel must be configured for transferring (see $Channel.config_tx).
+The $tx channel must be configured for transmitting (see $Channel.config_tx).
 */
-transfer_and_receive --rx/Channel --tx/Channel --transfer/Signals=Signals.ZERO --receive/Signals=Signals.ZERO max_returned_bytes/int -> Signals:
+transmit_and_receive --rx/Channel --tx/Channel --transmit/Signals=Signals.ZERO --receive/Signals=Signals.ZERO max_returned_bytes/int -> Signals:
   if not rx.rx_buffer_size and rx.rx_clk_div: throw "rx channel not configured"
 
   if max_returned_bytes > rx.rx_buffer_size: throw "maximum returned buffer size greater than allocated RX buffer size"
 
   receive_timeout := rx.idle_threshold * rx.rx_clk_div
-  result := rmt_transfer_and_receive_ tx.num rx.num transfer.bytes_ receive.bytes_ max_returned_bytes receive_timeout
+  result := rmt_transmit_and_receive_ tx.num rx.num transmit.bytes_ receive.bytes_ max_returned_bytes receive_timeout
   return Signals.from_bytes result
 
 resource_group_ ::= rmt_init_
@@ -346,8 +347,8 @@ rmt_config_tx_ pin_num/int channel_num/int mem_block_num/int clk_div/int flags/i
 rmt_config_bidirectional_pin_ pin/int tx/int:
   #primitive.rmt.config_bidirectional_pin
 
-rmt_transfer_ tx_ch/int signals_bytes/*/Blob*/:
-  #primitive.rmt.transfer
+rmt_transmit_ tx_ch/int signals_bytes/*/Blob*/:
+  #primitive.rmt.transmit
 
-rmt_transfer_and_receive_ tx_ch/int rx_ch/int transfer_bytes/*/Blob*/ read_bytes max_output_len/int receive_timeout/int:
-  #primitive.rmt.transfer_and_receive
+rmt_transmit_and_receive_ tx_ch/int rx_ch/int transmit_bytes/*/Blob*/ receive_bytes max_output_len/int receive_timeout/int:
+  #primitive.rmt.transmit_and_receive

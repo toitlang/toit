@@ -35,21 +35,24 @@ run_server:
   service.wait
 
 run_client:
-  service/MyService := MyServiceClient.lookup
+  service/MyService := MyServiceClient
   expect.expect_equals "service:myservice/extended@1.2.3" "$service"
   expect.expect_equals 42 service.foo
   expect.expect_equals 16 (service.bar 7)
   expect.expect_equals 40 (service.bar 19)
 
-  extended/MyServiceExtended := MyServiceExtendedClient.lookup
+  extended/MyServiceExtended := MyServiceExtendedClient
   expect.expect_equals "service:myservice/extended@1.2.3" "$extended"
   extended.baz "Hello, World!"
 
 // ------------------------------------------------------------------
 
 class MyServiceClient extends services.ServiceClient implements MyService:
-  constructor.lookup name=MyService.NAME major=MyService.MAJOR minor=MyService.MINOR:
-    super.lookup name major minor
+  constructor --open/bool=true:
+    super --open=open
+
+  open -> MyServiceClient?:
+    return (open_ MyService.NAME MyService.MAJOR MyService.MINOR) and this
 
   foo -> int:
     return invoke_ MyService.FOO_INDEX null
@@ -58,8 +61,11 @@ class MyServiceClient extends services.ServiceClient implements MyService:
     return invoke_ MyService.BAR_INDEX x
 
 class MyServiceExtendedClient extends MyServiceClient implements MyServiceExtended:
-  constructor.lookup name=MyServiceExtended.NAME major=MyServiceExtended.MAJOR minor=MyServiceExtended.MINOR:
-    super.lookup name major minor
+  constructor --open/bool=true:
+    super --open=open
+
+  open -> MyServiceExtendedClient?:
+    return (open_ MyServiceExtended.NAME MyServiceExtended.MAJOR MyServiceExtended.MINOR) and this
 
   baz x/string -> none:
     invoke_ MyServiceExtended.BAZ_INDEX x
@@ -74,7 +80,7 @@ class MyServiceDefinition extends services.ServiceDefinition implements MyServic
         --patch=3
     alias MyService.NAME --major=MyService.MAJOR --minor=MyService.MINOR
 
-  handle client/int index/int arguments/any -> any:
+  handle pid/int client/int index/int arguments/any -> any:
     if index == MyService.FOO_INDEX: return foo
     if index == MyService.BAR_INDEX: return bar arguments
     if index == MyServiceExtended.BAZ_INDEX: return baz arguments
