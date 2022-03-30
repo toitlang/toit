@@ -5,6 +5,14 @@
 /** Exception throwing and handling. */
 
 /**
+Assertion failed error.
+
+Thrown when an assertion fails both by the 'assert:' language construct
+  and by other assertion checking libraries.
+*/
+ASSERTION_FAILED_ERROR ::= "ASSERTION_FAILED"
+
+/**
 Cancelled error.
 
 Thrown when a $task has been cancelled.

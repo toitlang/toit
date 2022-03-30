@@ -16,14 +16,11 @@ Expects the given $condition to be true.
 Otherwise reports an error (using the provided $message, if given) and exits the program.
 */
 expect condition/bool --message/string?=null:
-  if not condition:
-    print (message ? ": $message" : ".")
-    system_send_ SYSTEM_MIRROR_MESSAGE_ (encode_error_ "ASSERTION_FAILED" (message ? message : ""))
-    // We check messages here in case there is no system process.  This allows
-    // the stack trace to be discovered in the message queue and printed out,
-    // since no system process is going to handle i
-    process_messages_
-    exit -1
+  if condition: return
+  print (message ? ": $message" : ".")
+  catch --trace:
+    rethrow ASSERTION_FAILED_ERROR (encode_error_ ASSERTION_FAILED_ERROR (message ? message : ""))
+  exit -1
 
 /**
 Expects the given $condition to be false.
