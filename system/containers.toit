@@ -122,7 +122,7 @@ abstract class ContainerServiceDefinition extends ServiceDefinition
       writer ::= (resource client arguments[0]) as ContainerImageWriter
       return image_writer_write writer arguments[1]
     if index == ContainerService.IMAGE_WRITER_COMMIT_INDEX:
-      writer ::= (resource client arguments[0]) as ContainerImageWriter
+      writer ::= (resource client arguments) as ContainerImageWriter
       return (image_writer_commit writer).to_byte_array
     unreachable
 
