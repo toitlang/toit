@@ -73,29 +73,50 @@ class Bus:
     i2c_close_ i2c_
 
   /**
-  Gets the device connected on the $address.
+  Gets the device connected on the $i2c_address.
 
   It is an error to connect a device on an address already in use.
-    The address can be released with $Device.close.
+    The device can be released with $Device.close.
   */
-  device address/int -> Device:
-    if devices_.contains address: throw "Device already connected"
-    device := Device.init_ this address
-    devices_[address] = device
+  device i2c_address/int -> Device:
+    if devices_.contains i2c_address: throw "Device already connected"
+    device := Device.init_ this i2c_address
+    devices_[i2c_address] = device
     return device
 
-  write_ address/int bytes/ByteArray [failure]:
-    r := i2c_write_ i2c_ address bytes
+  /** See $(Device.write bytes). */
+  write_ i2c_address/int bytes/ByteArray [failure]:
+    r := i2c_write_ i2c_ i2c_address bytes
     if r: return failure.call "I2C_WRITE_FAILED"
     return r
 
-  read_ address/int size/int [failure] -> ByteArray:
-    b := i2c_read_ i2c_ address size
+  /** See $(Device.write_reg register bytes). */
+  write_reg_ i2c_address/int register/int bytes/ByteArray [failure]:
+    r := i2c_write_reg_ i2c_ i2c_address register bytes
+    if r: return failure.call "I2C_WRITE_FAILED"
+    return r
+
+  /** See $(Device.write_address address bytes). */
+  write_address_ i2c_address/int address/ByteArray bytes/ByteArray [failure]:
+    r := i2c_write_address_ i2c_ i2c_address address bytes
+    if r: return failure.call "I2C_WRITE_FAILED"
+    return r
+
+  /** See $(Device.read size). */
+  read_ i2c_address/int size/int [failure] -> ByteArray:
+    b := i2c_read_ i2c_ i2c_address size
     if not b: return failure.call "I2C_READ_FAILED"
     return b
 
-  read_reg_ address/int reg/int size/int [failure] -> ByteArray:
-    b := i2c_read_reg_ i2c_ address reg size
+  /** See $(Device.read_reg register size). */
+  read_reg_ i2c_address/int reg/int size/int [failure] -> ByteArray:
+    b := i2c_read_reg_ i2c_ i2c_address reg size
+    if not b: return failure.call "I2C_READ_FAILED"
+    return b
+
+  /** See $(Device.read_address address size). */
+  read_address_ i2c_address/int address/ByteArray size/int [failure] -> ByteArray:
+    b := i2c_read_address_ i2c_ i2c_address address size
     if not b: return failure.call "I2C_READ_FAILED"
     return b
 
@@ -127,52 +148,123 @@ class Device implements serial.Device:
     return registers_
 
   /**
-  Variant of $(write bytes [failure]).
+  Writes the $bytes to the device.
 
-  Throws if the write fails.
+  # Advanced
+  The write operation is executed by sending:
+  - a 'start',
+  - the device's I2C address with the READ/WRITE bit set to WRITE. This is accomplished by
+    shifting the I2C address by one and clearing the least-significant bit. The device must ack.
+  - each byte. The device must ack each byte.
+  - a stop.
   */
   write bytes/ByteArray:
     write bytes: throw it
 
   /**
-  Writes the $bytes to the device.
-
+  Variant of $(write bytes).
   Calls the $failure block if the write fails.
   */
   write bytes/ByteArray [failure]:
     i2c_.write_ address bytes failure
 
   /**
-  Variant of $(read size [failure]).
+  Writes the $bytes to the device at the given $register.
 
-  Throws if the read fails.
+  The $register value must satisfy 0 <= $register < 256.
+  This is a convenience method and equivalent to prepending the $register byte to $bytes
+    and then calling $(write bytes).
+  */
+  write_reg register/int bytes/ByteArray:
+    write bytes: throw it
+
+  /**
+  Variant of $(write_reg register bytes).
+  Calls the $failure block if the write fails.
+  */
+  write_reg register/int bytes/ByteArray [failure]:
+    i2c_.write_reg_ address register bytes failure
+
+  /**
+  Writes the $bytes to the device at the given $address.
+
+  This is a convenience method and equivalent to prepending the $address bytes to $bytes
+    and then calling $(write bytes).
+  */
+  write_address address/ByteArray bytes/ByteArray:
+    write_address address bytes: throw it
+
+  /**
+  Variant of $(write_address address bytes).
+  Calls the $failure block if the write fails.
+  */
+  write_address address/ByteArray bytes/ByteArray [failure]:
+    i2c_.write_address_ this.address address bytes failure
+
+  /**
+  Reads $size bytes from the device.
+
+  # Advanced
+  The read operation is executed by sending:
+  - a 'start',
+  - the device's I2C address with the READ/WRITE bit set to READ. This is accomplished by
+    shifting the I2C address by one and setting the least-significant bit. The device must ack.
+  Then it reads $size bytes, sending an 'ack' for each byte except for the last, where
+    receival is confirmed with a 'nack'.
+  Finally it sends a 'stop'.
   */
   read size/int -> ByteArray:
     return read size: throw it
 
   /**
-  Reads $size bytes from the device.
-
+  Variant of $(read size).
   Calls the $failure block if the read fails.
   */
   read size/int [failure] -> ByteArray:
     return i2c_.read_ address size failure
 
   /**
-  Variant of $(read_reg register size [failure]).
+  Reads $size bytes from the given $register.
 
-  Throws if the read fails.
+  The $register value must satisfy 0 <= $register < 256.
+  Equivalent to calling $read_address with a byte array containing
+    the register value.
   */
   read_reg register/int size/int -> ByteArray:
     return read_reg register size: throw it
 
   /**
-  Reads $size bytes from the $register.
-
+  Variant of $(read_reg register size).
   Calls the $failure block if the read fails.
   */
   read_reg register/int size/int [failure] -> ByteArray:
     return i2c_.read_reg_ address register size failure
+
+  /**
+  Reads $size bytes from the given $address.
+
+  # Advanced
+  The read operation is executed by sending:
+  - a 'start',
+  - the device's I2C address with the READ/WRITE bit set to WRITE. This is accomplished by
+    shifting the I2C address by one and clearing the least-significant bit. The device must ack.
+  - the $address bytes, each needing an 'ack'.
+  - another 'start'
+  - the device's I2C address with the READ/WRITE bit set to READ. This is accomplished by
+    shifting the I2C address by one and setting the least-significant bit. The device must ack.
+  Then it reads $size bytes, sending an 'ack' for each byte except for the last, where
+    receival is confirmed with a 'nack'.
+  Finally it sends a 'stop'.
+  */
+  read_address address/ByteArray size/int -> ByteArray:
+    return read_address address size: throw it
+
+  /**
+  Variant of $(read_address address size).
+  Calls the $failure block if the read fails.
+  */
+  read_address address/ByteArray size/int [failure] -> ByteArray:
+    return i2c_.read_address_ this.address address size failure
 
   /** Closes this device and releases the I2C address. */
   close -> none:
@@ -220,5 +312,14 @@ i2c_read_ i2c address size:
 i2c_read_reg_ i2c address reg size:
   #primitive.i2c.read_reg
 
+i2c_read_address_ i2c i2c_address reg_address size:
+  #primitive.i2c.read_address
+
 i2c_write_ i2c address bytes:
   #primitive.i2c.write
+
+i2c_write_reg_ i2c address reg bytes:
+  #primitive.i2c.write_reg
+
+i2c_write_address_ i2c i2c_address reg_address bytes:
+  #primitive.i2c.write_address

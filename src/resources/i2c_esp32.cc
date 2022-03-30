@@ -23,6 +23,7 @@
 #include "../process.h"
 #include "../resource.h"
 #include "../resource_pool.h"
+#include "../utils.h"
 #include "../vm.h"
 
 #include "../event_sources/system_esp32.h"
@@ -112,147 +113,155 @@ PRIMITIVE(close) {
   return process->program()->null_object();
 }
 
-static bool build_command(i2c_cmd_handle_t cmd, uint8 address, int reg, bool write, uint8* data, size_t length) {
-  // Initiate the sequence by issuing a `start`. That will notify slaves to
-  // listen (if possible) and promote self to current master, in case of
-  // multi-master setup.
-  if (i2c_master_start(cmd) != ESP_OK) return false;
+static Object* write_i2c(Process* process, I2CResourceGroup* i2c, int i2c_address, const uint8* address, int address_length, Blob buffer) {
 
-  if (reg != -1) {
-    // First we notify the slave about the register we will use.
-
-    // First write the address. That will notify our targeted slave to
-    // read. It's an error if the slave doesn't ack.
-    if (i2c_master_write_byte(cmd, (address << 1) | I2C_MASTER_WRITE, true) != ESP_OK) {
-      return false;
-    }
-
-    // Now write the register we want to address. Likewise, it's an error
-    // if the slave doesn't pick up all the bytes.
-    if (length > 0) {
-      if (i2c_master_write_byte(cmd, (uint8)reg, true) != ESP_OK) {
-        return false;
-      }
-    }
-
-    // The slave now knows the register we will use. Send a start to let
-    // them, know about the next command.
-    if (i2c_master_start(cmd) != ESP_OK) return false;
+  const uint8* data = buffer.address();
+  int length = buffer.length();
+  if (!esp_ptr_internal(data)) {
+    // Copy buffer to stack, if the buffer is not in memory.
+    uint8* copy = unvoid_cast<uint8*>(malloc(length));
+    if (copy == null) MALLOC_FAILED;
+    memcpy(copy, data, length);
+    data = copy;
   }
-
-  if (write) {
-    // First write the address. That will notify our targeted slave to
-    // read. It's an error if the slave doesn't ack.
-    if (i2c_master_write_byte(cmd, (address << 1) | I2C_MASTER_WRITE, true) != ESP_OK) {
-      return false;
-    }
-
-    // Now queue up all the bytes to be written. Likewise, it's an error
-    // if the slave doesn't pick up all the bytes.
-    if (length > 0) {
-      if (i2c_master_write(cmd, data, length, true) != ESP_OK) {
-        return false;
-      }
-    }
-  } else {
-    // First write the address. That will notify our targeted slave to
-    // write. It's an error if the slave doesn't ack.
-    if (i2c_master_write_byte(cmd, (address << 1) | I2C_MASTER_READ, true) != ESP_OK) {
-      return false;
-    }
-
-    // Now queue up all the bytes to be read. Likewise, it's an error
-    // if the slave doesn't pick up all the bytes.
-    if (length > 0) {
-      if (i2c_master_read(cmd, data, length, I2C_MASTER_LAST_NACK) != ESP_OK) {
-        return false;
-      }
-    }
-  }
-
-  // Finally issue the stop. That will allow other masters to communicate.
-  if (i2c_master_stop(cmd) != ESP_OK) return false;
-
-  return true;
-}
-
-PRIMITIVE(write) {
-  ARGS(I2CResourceGroup, i2c, int, address, Blob, buffer);
+  Defer release_copy { [&]() { if (data != buffer.address()) free(const_cast<uint8*>(data)); } };
 
   i2c_cmd_handle_t cmd = i2c_cmd_link_create();
   if (cmd == null) MALLOC_FAILED;
+  Defer release_cmd_handle { [&]() { i2c_cmd_link_delete(cmd); } };
 
-  // TODO(florian): we are using `const_cast` here, as the `build_command` is
-  // written for both reads and writes. The buffer here is only read, so the
-  // cast is safe, but it would be better if we could avoid it.
-  uint8* data = const_cast<uint8*>(buffer.address());
+  // NOTE:
+  // 'i2c_master_X' functions allocate data, but return `ESP_FAIL` if that allocation
+  // fails. There is no way to differentiate the kind of error.
 
-  // Copy buffer to stack, if the buffer is not in memory.
-  uint8 copy[buffer.length()];
-  if (!esp_ptr_internal(data)) {
-    memmove(copy, data, buffer.length());
-    data = copy;
+  // Initiate the sequence by issuing a `start`. That will notify slaves to
+  // listen (if possible) and promote self to current master, in case of
+  // multi-master setup.
+  if (i2c_master_start(cmd) != ESP_OK) MALLOC_FAILED;
+
+  // Write the i2c address with the write-bit. The device must ack.
+  if (i2c_master_write_byte(cmd, (i2c_address << 1) | I2C_MASTER_WRITE, true) != ESP_OK) MALLOC_FAILED;
+
+  // First we notify the slave about the register/address we will use.
+  if (address != null) {
+    // Write the register address. Each byte must be acked.
+    for (int i = 0; i < address_length; i++) {
+      if (i2c_master_write_byte(cmd, address[i], true) != ESP_OK) MALLOC_FAILED;
+    }
   }
 
-  if (!build_command(cmd, address, -1, true, data, buffer.length())) {
-    i2c_cmd_link_delete(cmd);
-    MALLOC_FAILED;
+  // Queue up all the bytes to be written. Each byte must be acked.
+  if (buffer.length() > 0) {
+    if (i2c_master_write(cmd, data, length, true) != ESP_OK) MALLOC_FAILED;
   }
 
+  // Finally issue the stop. That will allow other masters to communicate.
+  if (i2c_master_stop(cmd) != ESP_OK) MALLOC_FAILED;
+
+  // Ship the built command.
   esp_err_t err = i2c_master_cmd_begin(i2c->port(), cmd, 1000 / portTICK_RATE_MS);
-  i2c_cmd_link_delete(cmd);
   if (err != ESP_OK) return Smi::from(err);
 
   return process->program()->null_object();
 }
 
-PRIMITIVE(read) {
-  ARGS(I2CResourceGroup, i2c, int, address, int, length);
+static Object* read_i2c(Process* process, I2CResourceGroup* i2c, int i2c_address, const uint8* address, int address_length, int length) {
 
   Error* error = null;
   ByteArray* array = process->allocate_byte_array(length, &error);
   if (array == null) return error;
+  uint8* data = ByteArray::Bytes(array).address();
 
   i2c_cmd_handle_t cmd = i2c_cmd_link_create();
   if (cmd == null) MALLOC_FAILED;
+  Defer release_cmd_handle { [&]() { i2c_cmd_link_delete(cmd); } };
 
-  if (!build_command(cmd, address, -1, false, ByteArray::Bytes(array).address(), length)) {
-    i2c_cmd_link_delete(cmd);
-    MALLOC_FAILED;
+  // NOTE:
+  // 'i2c_master_X' functions allocate data, but return `ESP_FAIL` if that allocation
+  // fails. There is no way to differentiate the kind of error.
+
+  // Initiate the sequence by issuing a `start`. That will notify slaves to
+  // listen (if possible) and promote self to current master, in case of
+  // multi-master setup.
+  if (i2c_master_start(cmd) != ESP_OK) MALLOC_FAILED;
+
+  if (address != null) {
+    // First we notify the slave about the register/address we will use.
+
+    // Write the i2c address with the write-bit. The device must ack.
+    if (i2c_master_write_byte(cmd, (i2c_address << 1) | I2C_MASTER_WRITE, true) != ESP_OK) MALLOC_FAILED;
+
+    // Write the register address. Each byte must be acked.
+    for (int i = 0; i < address_length; i++) {
+      if (i2c_master_write_byte(cmd, address[i], true) != ESP_OK) MALLOC_FAILED;
+    }
+
+    // Prepare the slave for the next command.
+    if (i2c_master_start(cmd) != ESP_OK) MALLOC_FAILED;
   }
 
+  // Write the address with the read-bit set. The slave must ack.
+  if (i2c_master_write_byte(cmd, (i2c_address << 1) | I2C_MASTER_READ, true) != ESP_OK) MALLOC_FAILED;
+
+  // Queue up all the bytes that must be read.
+  if (length > 0) {
+    if (i2c_master_read(cmd, data, length, I2C_MASTER_LAST_NACK) != ESP_OK) MALLOC_FAILED;
+  }
+
+  // Finally issue the stop. That will allow other masters to communicate.
+  if (i2c_master_stop(cmd) != ESP_OK) MALLOC_FAILED;
+
+  // Ship the built command.
   esp_err_t err = i2c_master_cmd_begin(i2c->port(), cmd, 1000 / portTICK_RATE_MS);
-  i2c_cmd_link_delete(cmd);
-  if (err != ESP_OK) return process->program()->null_object();
+  // TODO(florian): we could return the error code here: Smi::from(err).
+  // We would need to type-dispatch on the Toit side to know whether it was an error or not.
+  if (err != ESP_OK) return null;
 
   return array;
+}
+
+PRIMITIVE(write) {
+  ARGS(I2CResourceGroup, i2c, int, i2c_address, Blob, buffer);
+
+  return write_i2c(process, i2c, i2c_address, null, 0, buffer);
+}
+
+PRIMITIVE(write_reg) {
+  ARGS(I2CResourceGroup, i2c, int, i2c_address, int, reg, Blob, buffer);
+
+  if (!(0 <= reg && reg < 256)) INVALID_ARGUMENT;
+
+  uint8 reg_address[1] = { static_cast<uint8>(reg) };
+  return write_i2c(process, i2c, i2c_address, reg_address, 1, buffer);
+}
+
+PRIMITIVE(write_address) {
+  ARGS(I2CResourceGroup, i2c, int, i2c_address, Blob, address, Blob, buffer);
+
+  return write_i2c(process, i2c, i2c_address, address.address(), address.length(), buffer);
+}
+
+PRIMITIVE(read) {
+  ARGS(I2CResourceGroup, i2c, int, i2c_address, int, length);
+
+  return read_i2c(process, i2c, i2c_address, null, 0, length);
 }
 
 
 PRIMITIVE(read_reg) {
-  ARGS(I2CResourceGroup, i2c, int, address, int, reg, int, length)
+  ARGS(I2CResourceGroup, i2c, int, i2c_address, int, reg, int, length)
 
   if (!(0 <= reg && reg < 256)) INVALID_ARGUMENT;
 
-  Error* error = null;
-  ByteArray* array = process->allocate_byte_array(length, &error);
-  if (array == null) return error;
-
-  i2c_cmd_handle_t cmd = i2c_cmd_link_create();
-  if (cmd == null) MALLOC_FAILED;
-
-  if (!build_command(cmd, address, reg, false, ByteArray::Bytes(array).address(), length)) {
-    i2c_cmd_link_delete(cmd);
-    MALLOC_FAILED;
-  }
-
-  esp_err_t err = i2c_master_cmd_begin(i2c->port(), cmd, 1000 / portTICK_RATE_MS);
-  i2c_cmd_link_delete(cmd);
-  if (err != ESP_OK) return process->program()->null_object();
-
-  return array;
+  uint8 address[1] = { static_cast<uint8>(reg) };
+  return read_i2c(process, i2c, i2c_address, address, 1, length);
 }
 
+PRIMITIVE(read_address) {
+  ARGS(I2CResourceGroup, i2c, int, i2c_address, Blob, address, int, length);
+
+  return read_i2c(process, i2c, i2c_address, address.address(), address.length(), length);
+}
 
 } // namespace toit
 

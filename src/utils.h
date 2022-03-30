@@ -398,5 +398,9 @@ extern void iram_safe_memcpy(T* dest, const U* src, size_t bytes) {
   iram_safe_char_memcpy(reinterpret_cast<char*>(dest), reinterpret_cast<const char*>(src), bytes);
 }
 
+struct Defer {
+  std::function<void()> fun;
+  ~Defer() { fun(); }
+};
 
 } // namespace toit

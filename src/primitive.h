@@ -350,8 +350,11 @@ namespace toit {
   PRIMITIVE(init, 3)                         \
   PRIMITIVE(close, 1)                        \
   PRIMITIVE(write, 3)                        \
+  PRIMITIVE(write_reg, 4)                    \
+  PRIMITIVE(write_address, 4)                \
   PRIMITIVE(read, 3)                         \
   PRIMITIVE(read_reg, 4)                     \
+  PRIMITIVE(read_address, 4)                 \
 
 #define MODULE_I2S(PRIMITIVE)                \
   PRIMITIVE(init, 0)                        \
