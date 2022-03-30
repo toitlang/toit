@@ -187,24 +187,91 @@ class LazyInitializer_:
     // The __invoke_initializer__ builtin does a tail call to the method with the given id.
     return __invoke_initializer__ id_or_task_
 
+  initializing -> Task_:
+    if id_or_task_ is Task_: return id_or_task_
+    if id_or_task_ is InitializingTask_: return (id_or_task_ as InitializingTask_).task
+    throw "BAD_LAZY_INITIALIZER_CALL"
+
+  add_waiting task/Task_:
+    if id_or_task_ is Task_: id_or_task_ = InitializingTask_ id_or_task_
+    if not id_or_task_ is InitializingTask_: throw "BAD_LAZY_INITIALIZER_CALL"
+    (id_or_task_ as InitializingTask_).add_waiting task
+
+  do_waiting [block]:
+    if id_or_task_ is Task_: return
+    if not id_or_task_ is InitializingTask_: throw "BAD_LAZY_INITIALIZER_CALL"
+    current := (id_or_task_ as InitializingTask_).waiting
+    while current:
+      block.call current.task
+      current = current.next
+
+
+class InitializingTask_:
+  task / Task_
+  waiting / WaitingTask_? := null
+  last_waiting / WaitingTask_? := null
+
+  constructor .task:
+
+  add_waiting task/Task_:
+    new_last := WaitingTask_ task
+    if not waiting:
+      waiting = new_last
+      last_waiting = waiting
+    else:
+      last_waiting.next = new_last
+      last_waiting = new_last
+
+class WaitingTask_:
+  task /Task_
+  next /WaitingTask_? := null
+  constructor .task:
+
 /**
 Runs the $initializer function for the given $global.
 */
 run_global_initializer_ global/int initializer/LazyInitializer_:
-  if initializer.id_or_task_ is not int:
-    // There is already an initialization in progress.
-    initialization_in_progress_failure_ global
+  while true:
+    if initializer.id_or_task_ is not int:
+      // There is already an initialization in progress.
+      initializing_task := initializer.initializing
+      this_task := task
+      if initializing_task == this_task:
+        // The initializer of the variable is trying to access the global
+        // that is currently initialized.
+        initialization_in_progress_failure_ global
 
-  __store_global_with_id__ global (LazyInitializer_ task)
+      // Another task is already initializing this global.
+      // Mark us as waiting.
+      initializer.add_waiting this_task
+      next := this_task.suspend_
+      task_yield_to_ next
 
-  // If the initializer fails, we store the original initializer back in
-  // the global. This means that it is possible to invoke a global that throws
-  // again.
-  result / any := initializer
-  try:
-    result = initializer.call
-    return result
-  finally:
-    // Either store the computed result, if the initializer succeeded, or
-    // store the original initializer if it failed.
-    __store_global_with_id__ global result
+      // We have been woken up. This means that the previous initializer finished (successfully or not).
+      new_value := __load_global_with_id__ global
+      if new_value is not LazyInitializer_:
+        return new_value
+      // We still don't have a value. Either we have to try ourselves, or another task is already trying.
+      // Start from the beginning of this function.
+      initializer = new_value as LazyInitializer_
+      continue
+
+    // We are the first to initialize this global.
+    // Replace the existing initializer with an initializer with our task. Other tasks may
+    // add themselves to wait for us to finish.
+    task_initializer := (LazyInitializer_ task)
+    __store_global_with_id__ global task_initializer
+    // If the initializer fails, we store the original initializer back in
+    // the global. This means that it is possible to invoke a global that throws
+    // again.
+    result / any := initializer
+    try:
+      result = initializer.call
+      return result
+    finally:
+      // Either store the computed result, if the initializer succeeded, or
+      // store the original initializer if it failed.
+      __store_global_with_id__ global result
+      // Wake up all waiting tasks.
+      task_initializer.do_waiting:
+        (it as Task_).resume_

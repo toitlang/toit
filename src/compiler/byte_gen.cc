@@ -779,6 +779,11 @@ void ByteGen::visit_CallBuiltin(CallBuiltin* node) {
       __ store_global_var_dynamic();
       break;
 
+    case Builtin::LOAD_GLOBAL:
+      visit_for_value(node->arguments()[0]);
+      __ load_global_var_dynamic();
+      break;
+
     case Builtin::INVOKE_INITIALIZER:
       visit_for_value(node->arguments()[0]);
       __ invoke_initializer_tail();

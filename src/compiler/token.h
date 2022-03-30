@@ -162,6 +162,7 @@ enum Precedence {
   I(__invoke_lambda__)                                         \
   I(__invoke_initializer__)                                    \
   I(__store_global_with_id__)                                  \
+  I(__load_global_with_id__)                                   \
   I(Object)                                                    \
   I(Interface_)                                                \
   I(Task_)                                                     \
