@@ -26,14 +26,13 @@ ESP32_CHIP=esp32
 HOST=host
 BUILD_TYPE=Release
 
-# You can optionally bundle an extra program image into the programs section of
-# of the flash. This allows the entry program to find the program and run it.
-ESP32_EXTRA_PROGRAM=
+# The system process is started from its own entry point.
+ESP32_SYSTEM_ENTRY=system/boot.toit
 
-# Extra entries stored in the flash must have the same uuid as the VM image
+# Extra entries stored in the flash must have the same uuid as the system image
 # to make sure they are produced by the same toolchain. On most platforms it
-# is possible to use 'make ... ESP32_UNIQUE_ID=$(uuidgen)' to ensure this.
-ESP32_UNIQUE_ID=00000000-0000-0000-0000-000000000000
+# is possible to use 'make ... ESP32_SYSTEM_ID=$(uuidgen)' to ensure this.
+ESP32_SYSTEM_ID=00000000-0000-0000-0000-000000000000
 
 export IDF_TARGET=$(ESP32_CHIP)
 
@@ -164,13 +163,13 @@ else
 endif
 
 .PHONY: esp32
-esp32: check-env build/$(ESP32_CHIP)/toit.bin
+esp32: check-env build/$(ESP32_CHIP)/toit.bin  build/$(ESP32_CHIP)/programs.bin
 
 build/$(ESP32_CHIP)/toit.bin build/$(ESP32_CHIP)/toit.elf: build/$(ESP32_CHIP)/lib/libtoit_vm.a
 build/$(ESP32_CHIP)/toit.bin build/$(ESP32_CHIP)/toit.elf: build/$(ESP32_CHIP)/lib/libtoit_image.a
 build/$(ESP32_CHIP)/toit.bin build/$(ESP32_CHIP)/toit.elf: tools snapshots build/config.json
 	$(MAKE) -j $(NUM_CPU) -C toolchains/$(ESP32_CHIP)/
-	$(TOITVM_BIN) tools/inject_config.toit build/config.json --unique_id=$(ESP32_UNIQUE_ID) build/$(ESP32_CHIP)/toit.bin
+	$(TOITVM_BIN) tools/inject_config.toit build/config.json --unique_id=$(ESP32_SYSTEM_ID) build/$(ESP32_CHIP)/toit.bin
 
 .PHONY: build/$(ESP32_CHIP)/lib/libtoit_vm.a  # Marked phony to force regeneration.
 build/$(ESP32_CHIP)/lib/libtoit_vm.a: build/$(ESP32_CHIP)/CMakeCache.txt build/$(ESP32_CHIP)/include/sdkconfig.h
@@ -179,21 +178,21 @@ build/$(ESP32_CHIP)/lib/libtoit_vm.a: build/$(ESP32_CHIP)/CMakeCache.txt build/$
 build/$(ESP32_CHIP)/lib/libtoit_image.a: build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s build/$(ESP32_CHIP)/CMakeCache.txt build/$(ESP32_CHIP)/include/sdkconfig.h
 	(cd build/$(ESP32_CHIP) && ninja toit_image)
 
-build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s: tools snapshots build/snapshot
+build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s: build/$(ESP32_CHIP)/system.snapshot tools snapshots
 	mkdir -p build/$(ESP32_CHIP)
-	$(TOITVM_BIN) $(SNAPSHOT_DIR)/snapshot_to_image.snapshot build/snapshot $@
+	$(TOITVM_BIN) $(SNAPSHOT_DIR)/snapshot_to_image.snapshot $< $@
 
-.PHONY: build/snapshot  # Marked phony to force regeneration.
-build/snapshot: $(TOITC_BIN) $(ESP32_ENTRY)
-	$(TOITC_BIN) -w $@ $(ESP32_ENTRY)
+.PHONY: build/$(ESP32_CHIP)/system.snapshot  # Marked phony to force regeneration.
+build/$(ESP32_CHIP)/system.snapshot: $(ESP32_SYSTEM_ENTRY) tools
+	$(TOITC_BIN) -w $@ $<
 
 .PHONY: build/$(ESP32_CHIP)/program.snapshot  # Marked phony to force regeneration.
-build/$(ESP32_CHIP)/program.snapshot: $(ESP32_EXTRA_PROGRAM) tools
+build/$(ESP32_CHIP)/program.snapshot: $(ESP32_ENTRY) tools
 	mkdir -p build/$(ESP32_CHIP)
-	$(TOITC_BIN) -w $@ $(ESP32_EXTRA_PROGRAM)
+	$(TOITC_BIN) -w $@ $<
 
 build/$(ESP32_CHIP)/programs.bin: build/$(ESP32_CHIP)/program.snapshot tools
-	$(TOITVM_BIN) tools/snapshot_to_image.toit --unique_id=$(ESP32_UNIQUE_ID) -m32 --binary --relocate=0x3f420000 $< $@
+	$(TOITVM_BIN) tools/snapshot_to_image.toit --unique_id=$(ESP32_SYSTEM_ID) -m32 --binary --relocate=0x3f420000 $< $@
 
 build/$(ESP32_CHIP)/CMakeCache.txt:
 	mkdir -p build/$(ESP32_CHIP)
@@ -212,12 +211,12 @@ build/config.json:
 # ESP32 VARIANTS FLASH
 .PHONY: flash
 flash: check-env-flash sdk esp32
-ifdef ESP32_EXTRA_PROGRAM
-flash: build/$(ESP32_CHIP)/programs.bin
-	python $(IDF_PATH)/components/esptool_py/esptool/esptool.py --chip $(ESP32_CHIP) --port $(ESP32_PORT) --baud 921600 --before default_reset --after hard_reset write_flash -z --flash_mode dio --flash_freq 40m --flash_size detect 0x1000 build/$(ESP32_CHIP)/bootloader/bootloader.bin 0x10000 build/$(ESP32_CHIP)/toit.bin 0x8000 build/$(ESP32_CHIP)/partitions.bin 0x200000 build/$(ESP32_CHIP)/programs.bin
-else
-	python $(IDF_PATH)/components/esptool_py/esptool/esptool.py --chip $(ESP32_CHIP) --port $(ESP32_PORT) --baud 921600 --before default_reset --after hard_reset write_flash -z --flash_mode dio --flash_freq 40m --flash_size detect 0x1000 build/$(ESP32_CHIP)/bootloader/bootloader.bin 0x10000 build/$(ESP32_CHIP)/toit.bin 0x8000 build/$(ESP32_CHIP)/partitions.bin
-endif
+	python $(IDF_PATH)/components/esptool_py/esptool/esptool.py --chip $(ESP32_CHIP) --port $(ESP32_PORT) --baud 921600 \
+	    --before default_reset --after hard_reset write_flash -z --flash_mode dio --flash_freq 40m --flash_size detect \
+		0x001000 build/$(ESP32_CHIP)/bootloader/bootloader.bin \
+		0x008000 build/$(ESP32_CHIP)/partitions.bin \
+		0x010000 build/$(ESP32_CHIP)/toit.bin \
+		0x200000 build/$(ESP32_CHIP)/programs.bin
 
 .PHONY: check-env-flash
 check-env-flash:
