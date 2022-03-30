@@ -32,6 +32,10 @@ void GcMetadata::set_up_singleton() {
   number_of_cards_ = size >> CARD_SIZE_LOG_2;
 
   uword mark_bits_size = size >> MARK_BITS_SHIFT;
+  // Ensure there is a little slack after the mark bits for the border case
+  // where we check a one-word object at the end of a page for blackness.
+  mark_bits_size++;
+
   uword mark_stack_overflow_bits_size = size >> CARD_SIZE_IN_BITS_LOG_2;
 
   uword cumulative_mark_bits_size = size >> CUMULATIVE_MARK_BITS_SHIFT;
@@ -74,9 +78,9 @@ void GcMetadata::set_up_singleton() {
   page_type_bytes_ = mark_stack_overflow_bits_ + mark_stack_overflow_bits_size;
 
 #ifndef LEGACY_GC
-  // TODO: The mark bits and cumulative mark bits are the biggest, so they should not
+  // The mark bits and cumulative mark bits are the biggest, so they are not
   // be mapped in immediately in order to reduce the memory footprint of very
-  // small programs.  We should do it when we create pages that need them.
+  // small programs.  We do it when we create pages that need them.
   OS::use_virtual_memory(metadata_, number_of_cards_);
   OS::use_virtual_memory(object_starts_, number_of_cards_);
   OS::use_virtual_memory(mark_stack_overflow_bits_, mark_stack_overflow_bits_size);
@@ -262,7 +266,7 @@ void GcMetadata::slow_mark(HeapObject* object, uword size) {
 
   bits++;
   uint32 words = size >> WORD_SHIFT;
-  ASSERT(words + mask_shift >= 32);
+  ASSERT(words + mask_shift > 32);
   for (words -= 32 - mask_shift; words >= 32; words -= 32)
     *bits++ = 0xffffffffu;
   *bits |= (1 << words) - 1;

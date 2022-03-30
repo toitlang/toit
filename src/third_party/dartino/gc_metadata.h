@@ -90,7 +90,19 @@ class GcMetadata {
     memset(reinterpret_cast<uint8*>(base), 0, size);
   }
 
+  static void map_mark_bits_for(Chunk* chunk) {
+    ASSERT(in_metadata_range(chunk->start()));
+    uword base = chunk->start();
+    uword size = chunk->size() >> MARK_BITS_SHIFT;
+    base = (base >> MARK_BITS_SHIFT) + singleton_.mark_bits_bias_;
+    // When checking if one-word objects are black we may look one
+    // bit into the next page.  Round up the area we map to account
+    // for this possibility.
+    OS::use_virtual_memory(reinterpret_cast<void*>(base), size + 1);
+  }
+
   static void mark_pages_for_chunk(Chunk* chunk, PageType page_type) {
+    map_mark_bits_for(chunk);
     uword index = chunk->start() - singleton_.lowest_address_;
     if (index >= singleton_.heap_extent_) return;
     uword size = chunk->size() >> TOIT_PAGE_SIZE_LOG2;
@@ -151,8 +163,7 @@ class GcMetadata {
   static INLINE uint32* mark_bits_for(HeapObject* object) {
     uword address = reinterpret_cast<uword>(object);
     ASSERT(in_metadata_range(address));
-    uword result =
-        (singleton_.mark_bits_bias_ + (address >> MARK_BITS_SHIFT)) & ~3;
+    uword result = (singleton_.mark_bits_bias_ + (address >> MARK_BITS_SHIFT)) & ~3;
     return reinterpret_cast<uint32*>(result);
   }
 
@@ -242,6 +253,11 @@ class GcMetadata {
   // This is used when scanning the heap after mark stack overflow, looking for
   // objects that are conceptually queued, but which are missing from the
   // explicit marking queue.
+  // For one-word objects this function may return either true or false for
+  // grey or black objects.  This is not important since one-word objects
+  // cannot contain any pointers, and it is therefore not relevant whether
+  // they are grey or black.  If a chunk ends with a one-word object this
+  // routine may harmlessly read one bit from the mark bits of the next chunk.
   static bool is_grey(HeapObject* object) {
     return is_marked(object) &&
            !is_marked(reinterpret_cast<HeapObject*>(
@@ -258,27 +274,30 @@ class GcMetadata {
 
   // Marks all the bits (1 bit per word) that correspond to a live object.
   // This marks the object black (scanned) and sets up the bitmap data we need
-  // for compaction.
+  // for compaction.  For one-word objects it only sets one bit.
   static void mark_all(HeapObject* object, uword size) {
-    // If there were 1-word live objects we could not see the difference
-    // between grey objects (only first word is marked) and black objects (all
-    // words are marked).
-    ASSERT(size > sizeof(uword));
+    ASSERT(size > 0);
 #ifdef NO_UNALIGNED_ACCESS
     const int mask_mask = 31;
 #else
+    // There is probably a little-endian assumption here.
     const int mask_mask = 7;
 #endif
-    int mask_shift =
-        ((reinterpret_cast<uword>(object) >> WORD_SHIFT) & mask_mask);
+    int mask_shift = (reinterpret_cast<uword>(object) >> WORD_SHIFT) & mask_mask;
     uword size_in_words = size >> WORD_SHIFT;
     // Jump to the slow case routine to handle crossing an int32_t boundary.
     // If we have unaligned access then this slow case never happens for
     // objects < 24 words in size. Otherwise it can happen for small objects
     // that straddle a 32-word boundary.
-    if (mask_shift + size_in_words > 31) return slow_mark(object, size);
+    if (mask_shift + size_in_words > 32) {
+      return slow_mark(object, size);
+    }
 
-    uint32 mask = ((1 << size_in_words) - 1) << mask_shift;
+    // TODO: On 64 bit CPUs it's probably faster to do this without the ?:
+    // in a 64 bit register.  May also be worth trying a  32 entry lookup
+    // table.
+    uint32 mask = size_in_words == 32 ? 0xffffffff : ((1 << size_in_words) - 1);
+    mask <<= mask_shift;
 
 #ifdef NO_UNALIGNED_ACCESS
     uint32* bits = mark_bits_for(object);

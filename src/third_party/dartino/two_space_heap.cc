@@ -206,7 +206,7 @@ void TwoSpaceHeap::collect_new_space() {
 }
 
 void TwoSpaceHeap::collect_old_space_if_needed(bool force) {
-  if (false && (force || old_space()->needs_garbage_collection())) {  // TODO: Activate Old-space GC.
+  if (force || old_space()->needs_garbage_collection()) {
     old_space()->flush();
     collect_old_space();
 #ifdef DEBUG
@@ -226,7 +226,14 @@ void TwoSpaceHeap::collect_old_space() {
     validate();
   }
 
+  uint64 start = OS::get_monotonic_time();
+
   perform_shared_garbage_collection();
+
+  if (Flags::tracegc) {
+    uint64 end = OS::get_monotonic_time();
+    printf("Mark-sweep: %dus\n", static_cast<int>(end - start));
+  }
 
   if (Flags::validate_heap) {
     validate();
