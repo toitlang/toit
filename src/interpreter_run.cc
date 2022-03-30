@@ -174,12 +174,11 @@ Method Program::find_method(Object* receiver, int offset) {
     OverflowState state = OVERFLOW_EXCEPTION;                         \
     sp = check_stack_overflow(sp, &state, target);                    \
     switch (state) {                                                  \
-      case OVERFLOW_RESUME: break;                                    \
+      case OVERFLOW_RESUME:                                           \
+        break;                                                        \
       case OVERFLOW_OOM:                                              \
       case OVERFLOW_EXCEPTION:                                        \
-        target = handle_stack_overflow(state);                        \
-        REGISTER_METHOD(target);                                      \
-        break;                                                        \
+        goto THROW_IMPLEMENTATION;                                    \
       case OVERFLOW_WATCHDOG:                                         \
         target = handle_watchdog();                                   \
         REGISTER_METHOD(target);                                      \
@@ -1041,6 +1040,7 @@ Interpreter::Result Interpreter::run() {
     }
   OPCODE_END();
 
+  THROW_IMPLEMENTATION:
   OPCODE_BEGIN(THROW);
     // Setup for unwinding.
     // The exception is already in TOS.

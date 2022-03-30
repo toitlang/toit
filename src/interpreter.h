@@ -162,6 +162,8 @@ class Interpreter {
   inline bool typecheck_class(Program* program, Object* value, int class_index, bool is_nullable) const;
   inline bool typecheck_interface(Program* program, Object* value, int interface_selector_index, bool is_nullable) const;
 
+  void push_encoded_error();
+
   bool is_stack_empty() const {
     return _sp == _base;
   }

@@ -160,6 +160,8 @@ void Interpreter::prepare_process() {
   store_stack();
 }
 
+#define PUSH(o) ({ Object* _o_ = o; *(--sp) = _o_; })
+
 Object** Interpreter::check_stack_overflow(Object** sp, OverflowState* state, Method method) {
   ASSERT(*state == OVERFLOW_EXCEPTION);
   if (_watermark == PREEMPTION_MARKER) {
@@ -174,18 +176,27 @@ Object** Interpreter::check_stack_overflow(Object** sp, OverflowState* state, Me
   }
 
   int length = _process->task()->stack()->length();
-  if (length == Stack::max_length()) return sp;
+  int new_length = -1;
+  if (length < Stack::max_length()) {
+    // The max_height doesn't include space for the frame of the next call (if there is one).
+    // For simplicity just always assume that there will be a call at max-height and add `FRAME_SIZE`.
+    int needed_space = method.max_height() + Interpreter::FRAME_SIZE + Stack::OVERFLOW_HEADROOM;
+    int headroom = sp - _limit;
+    ASSERT(headroom < needed_space);  // We shouldn't try to grow the stack otherwise.
 
-  // The max_height doesn't include space for the frame of the next call (if there is one).
-  // For simplicity just always assume that there will be a call at max-height and add `FRAME_SIZE`.
-  int needed_space = method.max_height() + Interpreter::FRAME_SIZE + Stack::OVERFLOW_HEADROOM;
-  int headroom = sp - _limit;
-  ASSERT(headroom < needed_space);  // We shouldn't try to grow the stack otherwise.
+    new_length = Utils::max(length + (length >> 1), (length - headroom) + needed_space);
+    new_length = Utils::min(Stack::max_length(), new_length);
+    int new_headroom = headroom + (new_length - length);
+    if (new_headroom < needed_space) new_length = -1;  // Growing the stack will not bring us out of the red zone.
+  }
 
-  int new_length = Utils::max(length + (length >> 1), (length - headroom) + needed_space);
-  new_length = Utils::min(Stack::max_length(), new_length);
-  int new_headroom = headroom + (new_length - length);
-  if (new_headroom < needed_space) return sp;  // Growing the stack will not bring us out of the red zone.
+  if (new_length < 0) {
+    // TODO(kasper): Encode stack trace as error.
+    // TODO(kasper): Wrap in Exception_ object.
+    PUSH(_process->program()->app_sdk_version());
+    return sp;
+  }
+
   Stack* new_stack = _process->object_heap()->allocate_stack(new_length);
 
   // Garbage collect up to three times.
@@ -203,6 +214,7 @@ Object** Interpreter::check_stack_overflow(Object** sp, OverflowState* state, Me
 
   // Then check for out of memory.
   if (new_stack == null) {
+    // TODO(kasper): Push out-of-memory error on the stack.
     *state = OVERFLOW_OOM;
     return sp;
   }
@@ -232,6 +244,10 @@ Method Interpreter::handle_watchdog() {
   reset_stack_limit();
   _process->clear_signal(Process::WATCHDOG);
   return _process->program()->watchdog();
+}
+
+void Interpreter::push_encoded_error() {
+
 }
 
 void Interpreter::trace(uint8* bcp) {
