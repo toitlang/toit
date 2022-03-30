@@ -72,7 +72,7 @@ class BufferPrinter : public Printer {
 void print_object(Printer* printer, Object* object);
 void print_object_short(Printer* printer, Object* object, bool is_top_level = true);
 void print_name(Printer* printer, String* string);
-void print_heap(Printer* printer, Heap* heap, const char* title);
+void print_heap(Printer* printer, ObjectHeap* heap, const char* title);
 void print_bytecode(Printer* printer, uint8* bcp, int bci);
 void print_bytecode(Printer* printer, Method method, int bci);
 
@@ -81,7 +81,7 @@ void print_method_console(int method_id, Program* program, int bytecode_size);
 void print_method_console(Smi* method_id, Program* program, int bytecode_size);
 void print_object_short_console(Object* object, bool is_top_level = true);
 void print_name_console(String* string);
-void print_heap_console(Heap* heap, const char* title);
+void print_heap_console(ObjectHeap* heap, const char* title);
 void print_bytecode_console(uint8* bcp);
 
 #endif

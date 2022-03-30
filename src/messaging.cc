@@ -67,10 +67,10 @@ MessageEncoder::MessageEncoder(Process* process, uint8* buffer)
     , _buffer(buffer) {
 }
 
-void MessageEncoder::encode_termination_message(uint8* buffer, uint8 value) {
+void MessageEncoder::encode_process_message(uint8* buffer, uint8 value) {
   MessageEncoder encoder(null, buffer);
   encoder.encode(Smi::from(value));
-  ASSERT(encoder.size() <= MESSAGING_TERMINATION_MESSAGE_SIZE);
+  ASSERT(encoder.size() <= MESSAGING_PROCESS_MESSAGE_SIZE);
 }
 
 void MessageEncoder::free_copied() {
@@ -272,7 +272,7 @@ MessageDecoder::MessageDecoder(Process* process, uint8* buffer)
     , _buffer(buffer) {
 }
 
-bool MessageDecoder::decode_termination_message(uint8* buffer, int* value) {
+bool MessageDecoder::decode_process_message(uint8* buffer, int* value) {
   MessageDecoder decoder(null, buffer);
   // TODO(kasper): Make this more robust. We don't know the content.
   Object* object = decoder.decode();
@@ -587,7 +587,7 @@ Interpreter::Result ExternalSystemMessageHandler::run() {
 
 void ExternalSystemMessageHandler::collect_garbage(bool try_hard) {
   if (_process) {
-    _vm->scheduler()->scavenge(_process, true, try_hard);
+    _vm->scheduler()->gc(_process, true, try_hard);
   }
 }
 

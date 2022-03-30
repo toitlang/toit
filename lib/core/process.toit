@@ -2,12 +2,20 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-// Hatch a new process using this program heap and running the passed in lambda.
+/**
+Spawns a new process that starts executing the given lambda.
+The new process does not share any memory with the spawning process. If the lambda
+  captures variables, those are copied to the new process.
+May throw if the captured variables can't be serialized.
+*/
+spawn lambda/Lambda -> int:
+  return hatch_primitive_ lambda.method_ lambda.arguments_
+
+/**
+Deprecated. Use $spawn instead.
+*/
 hatch_ lambda/Lambda:
-  id := hatch_primitive_
-    lambda.method_
-    lambda.arguments_
-  return id
+  return spawn lambda
 
 hatch_primitive_ method arguments:
   #primitive.core.hatch
@@ -16,10 +24,9 @@ hatch_primitive_ method arguments:
 __hatch_entry__:
   current := task
   current.initialize_entry_task_
-  process_send_ -1 SYSTEM_HATCHED_ null
   lambda := Lambda.__
-    hatch_method_
-    hatch_args_
+      hatch_method_
+      hatch_args_
   current.evaluate_ lambda
 
 hatch_method_:
@@ -28,15 +35,10 @@ hatch_method_:
 hatch_args_:
   #primitive.core.hatch_args
 
-resource_freeing_module_ := get_generic_resource_group_
+current_process_ -> int:
+  #primitive.core.current_process_id
+
+resource_freeing_module_ ::= get_generic_resource_group_
 
 get_generic_resource_group_:
   #primitive.core.get_generic_resource_group
-
-/// Only used by the system process, otherwise throws "NOT ALLOWED".
-/// May also throw "NOT ALLOWED" if the process already terminated.
-signal_kill_ id:
-  if not signal_kill_primitive_ id: throw "NOT ALLOWED"
-
-signal_kill_primitive_ id:
-  #primitive.core.signal_kill

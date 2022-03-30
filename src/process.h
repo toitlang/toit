@@ -53,13 +53,14 @@ class Process : public ProcessListFromProcessGroup::Element,
 
   static const char* StateName[];
 
-  Process(Program* program, ProcessGroup* group, SystemMessage* termination, char** args, Block* initial_block);
+  Process(Program* program, ProcessGroup* group, SystemMessage* termination, char** args, InitialMemory* initial_memory);
 #ifndef TOIT_FREERTOS
-  Process(Program* program, ProcessGroup* group, SystemMessage* termination, SnapshotBundle bundle, char** args, Block* initial_block);
+  Process(Program* program, ProcessGroup* group, SystemMessage* termination, SnapshotBundle bundle, char** args, InitialMemory* initial_memory);
 #endif
-  Process(Program* program, ProcessGroup* group, SystemMessage* termination, Method method, uint8* arguments, Block* initial_block);
+  Process(Program* program, ProcessGroup* group, SystemMessage* termination, Method method, uint8* arguments, InitialMemory* initial_memory);
   ~Process();
 
+  // Constructor for an external process (no Toit code).
   Process(ProcessRunner* runner, ProcessGroup* group, SystemMessage* termination);
 
   int id() const { return _id; }
@@ -72,15 +73,15 @@ class Process : public ProcessListFromProcessGroup::Element,
   void mark_as_priviliged() { _is_privileged = true; }
 
   // Garbage collection operation for runtime objects.
-  int scavenge() {
+  int gc() {
     if (program() == null) return 0;
-    int result = object_heap()->scavenge();
+    int result = object_heap()->gc();
     _memory_usage = object_heap()->usage("object heap after gc");
     return result;
   }
 
-  bool idle_since_scavenge() const { return _idle_since_scavenge; }
-  void set_idle_since_scavenge(bool value) { _idle_since_scavenge = value; }
+  bool idle_since_gc() const { return _idle_since_gc; }
+  void set_idle_since_gc(bool value) { _idle_since_gc = value; }
 
   bool has_finalizer(HeapObject* key, Object* lambda) {
     return object_heap()->has_finalizer(key, lambda);
@@ -157,9 +158,11 @@ class Process : public ProcessListFromProcessGroup::Element,
   Object* allocate_string_or_error(const char* content, int length);
   ByteArray* allocate_byte_array(int length, Error** error, bool force_external=false);
 
+#ifdef LEGACY_GC
   word number_of_blocks() {
     return _object_heap.number_of_blocks();
   }
+#endif
 
   void set_max_heap_size(word bytes) {
     _object_heap.set_max_heap_size(bytes);
@@ -167,7 +170,7 @@ class Process : public ProcessListFromProcessGroup::Element,
 
   bool should_allow_external_allocation(word size) {
     bool result = _object_heap.should_allow_external_allocation(size);
-    _object_heap.set_last_allocation_result(result ? Heap::ALLOCATION_SUCCESS : Heap::ALLOCATION_HIT_LIMIT);
+    _object_heap.set_last_allocation_result(result ? ObjectHeap::ALLOCATION_SUCCESS : ObjectHeap::ALLOCATION_HIT_LIMIT);
     return result;
   }
 
@@ -227,7 +230,7 @@ class Process : public ProcessListFromProcessGroup::Element,
   }
 
  private:
-  Process(Program* program, ProcessRunner* runner, ProcessGroup* group, SystemMessage* termination, Block* initial_block);
+  Process(Program* program, ProcessRunner* runner, ProcessGroup* group, SystemMessage* termination, InitialMemory* initial_memory);
   void _append_message(Message* message);
   void _ensure_random_seeded();
 
@@ -267,7 +270,7 @@ class Process : public ProcessListFromProcessGroup::Element,
   SchedulerThread* _scheduler_thread;
 
   bool _construction_failed = false;
-  bool _idle_since_scavenge = true;
+  bool _idle_since_gc = true;
 
   int64 _last_run_us = 0;
   int64 _unyielded_for_us = 0;
@@ -312,7 +315,7 @@ class AllocationManager {
     // with realloc.
     _ptr = malloc(length);
     if (_ptr == null) {
-      _process->object_heap()->set_last_allocation_result(Heap::ALLOCATION_OUT_OF_MEMORY);
+      _process->object_heap()->set_last_allocation_result(ObjectHeap::ALLOCATION_OUT_OF_MEMORY);
     } else {
       _process->register_external_allocation(length);
       _size = length;

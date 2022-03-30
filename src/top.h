@@ -296,7 +296,6 @@ class Block;
 class ProgramBlock;
 class ConditionVariable;
 class Encoder;
-class Heap;
 class ProgramHeap;
 class HeapMemory;
 class ProgramHeapMemory;

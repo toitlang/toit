@@ -75,16 +75,16 @@ Scheduler::~Scheduler() {
   OS::dispose(_mutex);
 }
 
-SystemMessage* Scheduler::new_termination_message(int gid) {
-  uint8* data = unvoid_cast<uint8*>(malloc(MESSAGING_TERMINATION_MESSAGE_SIZE));
+SystemMessage* Scheduler::new_process_message(SystemMessage::Type type, int gid) {
+  uint8* data = unvoid_cast<uint8*>(malloc(MESSAGING_PROCESS_MESSAGE_SIZE));
   if (data == NULL) return NULL;
 
   // We must encode a proper message in the data. Otherwise, we cannot free it
   // later without running into issues when we traverse the data to find pointers
   // to external memory areas.
-  MessageEncoder::encode_termination_message(data, 0);
+  MessageEncoder::encode_process_message(data, 0);
 
-  SystemMessage* result = _new SystemMessage(SystemMessage::TERMINATED, gid, -1, data);
+  SystemMessage* result = _new SystemMessage(type, gid, -1, data);
   if (result == NULL) {
     free(data);
   }
@@ -92,14 +92,19 @@ SystemMessage* Scheduler::new_termination_message(int gid) {
 }
 
 Scheduler::ExitState Scheduler::run_boot_program(Program* program, char** args, int group_id) {
+  // Allocation takes the memory lock which must happen before taking the scheduler lock.
+  InitialMemoryManager manager;
+  bool ok = manager.allocate();
+  USE(ok);
   // We assume that allocate_initial_block succeeds since we can't run out of
   // memory while booting.
-  // Allocation takes the memory lock which must happen before taking the scheduler lock.
-  Block* initial_block = VM::current()->heap_memory()->allocate_initial_block();
+  ASSERT(ok);
   Locker locker(_mutex);
   ProcessGroup* group = ProcessGroup::create(group_id, program);
-  SystemMessage* termination = new_termination_message(group_id);
-  return launch_program(locker, _new Process(program, group, termination, args, initial_block));
+  SystemMessage* termination = new_process_message(SystemMessage::TERMINATED, group_id);
+  Process* process = _new Process(program, group, termination, args, manager.initial_memory);
+  manager.dont_auto_free();
+  return launch_program(locker, process);
 }
 
 #ifndef TOIT_FREERTOS
@@ -109,13 +114,17 @@ Scheduler::ExitState Scheduler::run_boot_program(
     char** args,
     int group_id) {
   ProcessGroup* group = ProcessGroup::create(group_id, boot_program);
+  // Allocation takes the memory lock which must happen before taking the scheduler lock.
+  InitialMemoryManager manager;
+  bool ok = manager.allocate();
+  USE(ok);
   // We assume that allocate_initial_block succeeds since we can't run out of
   // memory while booting.
-  // Allocation takes the memory lock which must happen before taking the scheduler lock.
-  Block* initial_block = VM::current()->heap_memory()->allocate_initial_block();
+  ASSERT(ok);
   Locker locker(_mutex);
-  SystemMessage* termination = new_termination_message(group_id);
-  Process* process = _new Process(boot_program, group, termination, application_bundle, args, initial_block);
+  SystemMessage* termination = new_process_message(SystemMessage::TERMINATED, group_id);
+  Process* process = _new Process(boot_program, group, termination, application_bundle, args, manager.initial_memory);
+  manager.dont_auto_free();
   return launch_program(locker, process);
 }
 #endif
@@ -186,13 +195,13 @@ int Scheduler::next_group_id() {
   return _next_group_id++;
 }
 
-int Scheduler::run_program(Program* program, char** args, ProcessGroup* group, Block* initial_block) {
+int Scheduler::run_program(Program* program, char** args, ProcessGroup* group, InitialMemory* initial_memory) {
   Locker locker(_mutex);
-  SystemMessage* termination = new_termination_message(group->id());
+  SystemMessage* termination = new_process_message(SystemMessage::TERMINATED, group->id());
   if (termination == null) {
     return INVALID_PROCESS_ID;
   }
-  Process* process = _new Process(program, group, termination, args, initial_block);
+  Process* process = _new Process(program, group, termination, args, initial_memory);
   if (process == null) {
     delete termination;
     return INVALID_PROCESS_ID;
@@ -213,7 +222,7 @@ Process* Scheduler::run_external(ProcessRunner* runner) {
   Locker locker(_mutex);
   ProcessGroup* group = ProcessGroup::create(group_id, null);
   if (group == null) return null;
-  SystemMessage* termination = new_termination_message(group_id);
+  SystemMessage* termination =  new_process_message(SystemMessage::TERMINATED, group_id);
   if (termination == null) {
     delete group;
     return null;
@@ -263,12 +272,15 @@ scheduler_err_t Scheduler::send_system_message(Locker& locker, SystemMessage* me
   switch (message->type()) {
     case SystemMessage::TERMINATED:
       int value;
-      if (MessageDecoder::decode_termination_message(message->data(), &value)) {
+      if (MessageDecoder::decode_process_message(message->data(), &value)) {
         ExitReason reason = (value == 0) ? EXIT_DONE : EXIT_ERROR;
         terminate_execution(locker, ExitState(reason, value));
       }
       break;
-
+    case SystemMessage::SPAWNED: {
+      // Do nothing. With no boot process, we don't care newly about spawned processes.
+      break;
+    }
     default:
       FATAL("unhandled system message %d", message->type());
   }
@@ -289,19 +301,29 @@ bool Scheduler::signal_process(Process* sender, int target_id, Process::Signal s
   return true;
 }
 
-Process* Scheduler::hatch(Program* program, ProcessGroup* process_group, Method method, uint8* arguments, Block* initial_block) {
+Process* Scheduler::hatch(Program* program, ProcessGroup* process_group, Method method, uint8* arguments, InitialMemory* initial_memory) {
   Locker locker(_mutex);
 
-  SystemMessage* termination = new_termination_message(process_group->id());
+  SystemMessage* termination = new_process_message(SystemMessage::TERMINATED, process_group->id());
   if (!termination) return null;
-  Process* process = _new Process(program, process_group, termination, method, arguments, initial_block);
+  Process* process = _new Process(program, process_group, termination, method, arguments, initial_memory);
   if (!process) {
     delete termination;
     return null;
   }
 
+  SystemMessage* spawned = new_process_message(SystemMessage::SPAWNED, process_group->id());
+  if (!spawned) {
+    delete termination;
+    delete process;
+    return null;
+  }
+  spawned->set_pid(process->id());
+  // Send the SPAWNED message before returning from the call to spawn. This is necessary
+  // to make sure the system doesn't conclude that there are no processes left just after
+  // spawning, but before the spawned process starts up.
+  send_system_message(locker, spawned);
   new_process(locker, process);
-
   return process;
 }
 
@@ -381,7 +403,7 @@ bool Scheduler::kill(const Program* program) {
   return false;
 }
 
-void Scheduler::scavenge(Process* process, bool malloc_failed, bool try_hard) {
+void Scheduler::gc(Process* process, bool malloc_failed, bool try_hard) {
   bool doing_idle_process_gc = try_hard || malloc_failed || process->system_refused_memory();
   bool doing_cross_process_gc = false;
   uint64 start = OS::get_monotonic_time();
@@ -422,18 +444,18 @@ void Scheduler::scavenge(Process* process, bool malloc_failed, bool try_hard) {
     }
   }
 
-  int scavenges = 0;
+  int gcs = 0;
   if (doing_idle_process_gc) {
     ProcessListFromScheduler targets;
     { Locker locker(_mutex);
       for (ProcessGroup* group : _groups) {
         bool done = false;
         for (Process* target : group->processes()) {
-          if (target->state() != Process::RUNNING && !target->idle_since_scavenge()) {
+          if (target->state() != Process::RUNNING && !target->idle_since_gc()) {
             if (target->state() != Process::SUSPENDED_AWAITING_GC) {
-              scavenge_suspend_process(locker, target);
+              gc_suspend_process(locker, target);
             }
-            target->set_idle_since_scavenge(true);  // Will be true in a little while.
+            target->set_idle_since_gc(true);  // Will be true in a little while.
             targets.append(target);
             if (!try_hard) {
               done = true;
@@ -446,30 +468,30 @@ void Scheduler::scavenge(Process* process, bool malloc_failed, bool try_hard) {
     }
 
     for (Process* target : targets) {
-      target->scavenge();
-      scavenges++;
+      target->gc();
+      gcs++;
     }
 
     { Locker locker(_mutex);
       while (!targets.is_empty()) {
         Process* target = targets.remove_first();
         if (target->state() != Process::SUSPENDED_AWAITING_GC) {
-          scavenge_resume_process(locker, target);
+          gc_resume_process(locker, target);
         }
       }
     }
   }
 
-  process->scavenge();
+  process->gc();
 
   if (doing_cross_process_gc) {
     Locker locker(_mutex);
     _gc_cross_processes = false;
 #ifdef TOIT_GC_LOGGING
     int64 microseconds = OS::get_monotonic_time() - start;
-    printf("[gc @ %p%s | cross process gc with %d scavenges, took %d.%03dms]\n",
+    printf("[gc @ %p%s | cross process gc with %d gcs, took %d.%03dms]\n",
         process, VM::current()->scheduler()->is_boot_process(process) ? "*" : " ",
-        scavenges + 1,
+        gcs + 1,
         static_cast<int>(microseconds / 1000),
         static_cast<int>(microseconds % 1000));
 #endif
@@ -531,7 +553,7 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
   if (interpreted) {
     Interpreter* interpreter = scheduler_thread->interpreter();
     interpreter->activate(process);
-    process->set_idle_since_scavenge(false);
+    process->set_idle_since_gc(false);
     if (process->signals() == 0) {
       Unlocker unlock(locker);
       result = interpreter->run();
@@ -543,7 +565,7 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
     }
     interpreter->deactivate();
   } else if (process->signals() == 0) {
-    ASSERT(process->idle_since_scavenge());
+    ASSERT(process->idle_since_gc());
     Unlocker unlock(locker);
     result = runner->run();
   }
@@ -629,7 +651,7 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
   }
 }
 
-void Scheduler::scavenge_suspend_process(Locker& locker, Process* process) {
+void Scheduler::gc_suspend_process(Locker& locker, Process* process) {
   ASSERT(process->state() != Process::RUNNING);  // Preempt the process first.
   ASSERT(process->state() != Process::SUSPENDED_AWAITING_GC);
   ASSERT(!process->is_suspended());
@@ -642,7 +664,7 @@ void Scheduler::scavenge_suspend_process(Locker& locker, Process* process) {
   ASSERT(process->is_suspended());
 }
 
-void Scheduler::scavenge_resume_process(Locker& locker, Process* process) {
+void Scheduler::gc_resume_process(Locker& locker, Process* process) {
   ASSERT(process->state() != Process::SUSPENDED_AWAITING_GC);
   ASSERT(process->is_suspended());
   bool was_scheduled = process->state() == Process::SUSPENDED_SCHEDULED;
@@ -752,6 +774,8 @@ void Scheduler::terminate_execution(Locker& locker, ExitState exit) {
   OS::signal(_has_processes);
 }
 
+#ifdef LEGACY_GC
+
 word Scheduler::largest_number_of_blocks_in_a_process() {
   Locker locker(_mutex);
   word largest = 0;
@@ -760,6 +784,8 @@ word Scheduler::largest_number_of_blocks_in_a_process() {
   }
   return largest;
 }
+
+#endif
 
 void Scheduler::tick(Locker& locker) {
   int64 now = OS::get_monotonic_time();

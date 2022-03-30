@@ -33,7 +33,7 @@ const char* Process::StateName[] = {
   "RUNNING",
 };
 
-Process::Process(Program* program, ProcessRunner* runner, ProcessGroup* group, SystemMessage* termination, Block* initial_block)
+Process::Process(Program* program, ProcessRunner* runner, ProcessGroup* group, SystemMessage* termination, InitialMemory* initial_memory)
     : _id(VM::current()->scheduler()->next_process_id())
     , _next_task_id(0)
     , _program(program)
@@ -44,7 +44,7 @@ Process::Process(Program* program, ProcessRunner* runner, ProcessGroup* group, S
     , _entry(Method::invalid())
     , _hatch_method(Method::invalid())
     , _hatch_arguments(null)
-    , _object_heap(program, this, initial_block)
+    , _object_heap(program, this, initial_memory)
     , _memory_usage(Usage("initial object heap"))
     , _last_bytes_allocated(0)
     , _termination_message(termination)
@@ -64,15 +64,15 @@ Process::Process(Program* program, ProcessRunner* runner, ProcessGroup* group, S
   ASSERT(_group->lookup(_id) == this);
 }
 
-Process::Process(Program* program, ProcessGroup* group, SystemMessage* termination, char** args, Block* initial_block)
-   : Process(program, null, group, termination, initial_block) {
+Process::Process(Program* program, ProcessGroup* group, SystemMessage* termination, char** args, InitialMemory* initial_memory)
+   : Process(program, null, group, termination, initial_memory) {
   _entry = program->entry();
   _args = args;
 }
 
 #ifndef TOIT_FREERTOS
-Process::Process(Program* program, ProcessGroup* group, SystemMessage* termination, SnapshotBundle bundle, char** args, Block* initial_block)
-  : Process(program, null, group, termination, initial_block) {
+Process::Process(Program* program, ProcessGroup* group, SystemMessage* termination, SnapshotBundle bundle, char** args, InitialMemory* initial_memory)
+  : Process(program, null, group, termination, initial_memory) {
   _entry = program->entry();
   _args = args;
 
@@ -90,14 +90,15 @@ Process::Process(Program* program, ProcessGroup* group, SystemMessage* terminati
 }
 #endif
 
-Process::Process(Program* program, ProcessGroup* group, SystemMessage* termination, Method method, uint8* arguments, Block* initial_block)
-   : Process(program, null, group, termination, initial_block) {
+Process::Process(Program* program, ProcessGroup* group, SystemMessage* termination, Method method, uint8* arguments, InitialMemory* initial_memory)
+   : Process(program, null, group, termination, initial_memory) {
   _entry = program->hatch_entry();
   _args = null;
   _hatch_method = method;
   _hatch_arguments = arguments;
 }
 
+// Constructor for an external process (no Toit code).
 Process::Process(ProcessRunner* runner, ProcessGroup* group, SystemMessage* termination)
     : Process(null, runner, group, termination, null) {
 }
@@ -129,7 +130,7 @@ SystemMessage* Process::take_termination_message(uint8 result) {
   message->set_pid(id());
 
   // Encode the exit value as small integer in the termination message.
-  MessageEncoder::encode_termination_message(message->data(), result);
+  MessageEncoder::encode_process_message(message->data(), result);
 
   return message;
 }
@@ -294,7 +295,7 @@ void Process::send_mail(Message* message) {
 void Process::_ensure_random_seeded() {
   if (_random_seeded) return;
   uint8 seed[16];
-  VM::current()->entropy_mixer()->get_entropy(seed, sizeof(seed));
+  EntropyMixer::instance()->get_entropy(seed, sizeof(seed));
   random_seed(seed, sizeof(seed));
   _random_seeded = true;
 }

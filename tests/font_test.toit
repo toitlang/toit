@@ -23,6 +23,21 @@ main:
   test_pixel_width_bad_utf_8
   test_known_text_extents
   test_missing_glyph_substitution
+  test_hash
+
+test_hash:
+  sans := Font.get "sans10"
+  sans.hash_code
+
+  s := Set
+  s.add sans
+  expect_equals 1 s.size
+
+  sans2 := Font.get "sans10"
+  sans2.hash_code
+
+  s.add sans2
+  expect_equals 2 s.size
 
 test_known_pixel_widths:
   expect_equals 0 (sans10.pixel_width "")

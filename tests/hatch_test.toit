@@ -9,7 +9,7 @@ main:
 
 /*
 test_simple
-  other := hatch_::
+  other := spawn::
     respond:
       expect_equals 42 it
       it + 45
@@ -18,13 +18,13 @@ test_simple
     other.send 42
 
 test_nested
-  other := hatch_:: respond: | n | task:: respond: n + it + 3
+  other := spawn:: respond: | n | task:: respond: n + it + 3
   expect_equals
     6
     (other.send 1).send 2
 
 test_code
-  worker := hatch_::
+  worker := spawn::
     respond: it.call
     respond: it.call + 1
   expect_equals
@@ -42,8 +42,8 @@ test_fib
 
 fib n
   if n <= 2: return 1
-  n1 := hatch_:: respond: fib it - 1
-  n2 := hatch_:: respond: fib it - 2
+  n1 := spawn:: respond: fib it - 1
+  n2 := spawn:: respond: fib it - 2
   return (n1.send n) + (n2.send n)
 
 test_chain
@@ -58,9 +58,9 @@ test_chain
     (create_chain 200 99).send 1
 
 create_chain n seed
-  result := hatch_:: respond: it + seed
+  result := spawn:: respond: it + seed
   for i := 0; i < n; i++:
     sub := result
-    result = hatch_:: respond: sub.send (it + 1)
+    result = spawn:: respond: sub.send (it + 1)
   return result
 */

@@ -12,7 +12,7 @@ main:
   test_leaks
 
 test_leaks:
-  50000.repeat:
+  50_000.repeat:
     a := ByteArray 96
     s := crypto.Sha256
     s1 := crypto.Sha1

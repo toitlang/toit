@@ -22,7 +22,6 @@
 #include "sources.h"
 #include "windows.h"
 
-#include "../vm.h"
 #include "../snapshot_bundle.h"
 
 #include <vector>
@@ -99,8 +98,6 @@ class Compiler {
                          const Configuration& config);
 
  private:
-  VM _vm;  // Needed to support allocation of program structures.
-
   /// Analyzes the given sources.
   ///
   /// This mode does not run the program or generates any snapshots. It simply

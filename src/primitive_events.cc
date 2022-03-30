@@ -30,16 +30,16 @@ PRIMITIVE(read_state) {
   return Smi::from(resource_group->event_source()->read_state(resource));
 }
 
-PRIMITIVE(register_object_notifier) {
-  ARGS(Object, object, ResourceGroup, resource_group, Resource, resource);
+PRIMITIVE(register_monitor_notifier) {
+  ARGS(Object, monitor, ResourceGroup, resource_group, Resource, resource);
 
   ObjectNotifier* notifier = resource->object_notifier();
   if (notifier) {
-    notifier->update_object(object);
+    notifier->update_object(monitor);
     return process->program()->null_object();
   }
 
-  notifier = _new ObjectNotifier(process, object);
+  notifier = _new ObjectNotifier(process, monitor);
   if (notifier == null) MALLOC_FAILED;
 
   ObjectNotifyMessage* message = _new ObjectNotifyMessage(notifier);
@@ -53,7 +53,7 @@ PRIMITIVE(register_object_notifier) {
   return process->program()->null_object();
 }
 
-PRIMITIVE(unregister_object_notifier) {
+PRIMITIVE(unregister_monitor_notifier) {
   ARGS(ByteArray, group_proxy, ByteArray, resource_proxy);
 
   ResourceGroup* group = group_proxy->as_external<ResourceGroup>();

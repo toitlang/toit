@@ -30,12 +30,13 @@ typedef LinkedFIFO<Message> MessageFIFO;
 
 enum MessageType {
   MESSAGE_INVALID = 0,
-  MESSAGE_OBJECT_NOTIFY = 1,
-  MESSAGE_SYSTEM = 2,
+  MESSAGE_MONITOR_NOTIFY = 1,
+  MESSAGE_PENDING_FINALIZER = 2,
+  MESSAGE_SYSTEM = 3,
 };
 
 enum {
-  MESSAGING_TERMINATION_MESSAGE_SIZE = 3,
+  MESSAGING_PROCESS_MESSAGE_SIZE = 3,
 
   MESSAGING_ENCODING_MAX_NESTING      = 4,
   MESSAGING_ENCODING_MAX_EXTERNALS    = 8,
@@ -48,22 +49,23 @@ class Message : public MessageFIFO::Element {
 
   virtual MessageType message_type() const = 0;
 
-  bool is_object_notify() const { return message_type() == MESSAGE_OBJECT_NOTIFY; }
+  bool is_object_notify() const { return message_type() == MESSAGE_MONITOR_NOTIFY; }
   bool is_system() const { return message_type() == MESSAGE_SYSTEM; }
 };
 
 class SystemMessage : public Message {
  public:
   // Some system messages that are created from within the VM.
-  enum {
+  enum Type {
     TERMINATED = 0,
+    SPAWNED = 1,
   };
 
   SystemMessage(int type, int gid, int pid, uint8* data) : _type(type), _gid(gid), _pid(pid), _data(data) { }
   SystemMessage(int type, int gid, int pid) : _type(type), _gid(gid), _pid(pid), _data(null) { }
   virtual ~SystemMessage() override { free_data_and_externals(); }
 
-  MessageType message_type() const { return MESSAGE_SYSTEM; }
+  virtual MessageType message_type() const override { return MESSAGE_SYSTEM; }
 
   int type() const { return _type; }
   int gid() const { return _gid; }
@@ -94,10 +96,12 @@ class ObjectNotifyMessage : public Message {
  public:
   explicit ObjectNotifyMessage(ObjectNotifier* notifier)
       : _notifier(notifier)
-      , _queued(false) {}
+      , _queued(false) {
+  }
+
+  virtual MessageType message_type() const override { return MESSAGE_MONITOR_NOTIFY; }
 
   bool is_queued() const { return _queued; }
-  MessageType message_type() const { return MESSAGE_OBJECT_NOTIFY; }
   ObjectNotifier* object_notifier() const { return _notifier; }
 
   void mark_queued() {
@@ -124,8 +128,7 @@ class MessageEncoder {
   explicit MessageEncoder(uint8* buffer) : _buffer(buffer) { }
   MessageEncoder(Process* process, uint8* buffer);
 
-  static int termination_message_size();
-  static void encode_termination_message(uint8* buffer, uint8 value);
+  static void encode_process_message(uint8* buffer, uint8 value);
 
   int size() const { return _cursor; }
   bool malloc_failed() const { return _malloc_failed; }
@@ -172,7 +175,7 @@ class MessageDecoder {
   explicit MessageDecoder(uint8* buffer) : _buffer(buffer) { }
   MessageDecoder(Process* process, uint8* buffer);
 
-  static bool decode_termination_message(uint8* buffer, int* value);
+  static bool decode_process_message(uint8* buffer, int* value);
 
   bool allocation_failed() const { return _allocation_failed; }
 

@@ -45,7 +45,8 @@ namespace toit {
   FLAG_BOOL(deploy,  no_fork,               _NO_FORK, "Don't fork the compiler")    \
   FLAG_BOOL(debug,   trace,                 false, "Trace interpreter")             \
   FLAG_BOOL(debug,   primitives,            false, "Trace primitives")              \
-  FLAG_BOOL(debug,   tracegc,               false, "Trace garbage collector")       \
+  FLAG_BOOL(deploy,  tracegc,               false, "Trace garbage collector")       \
+  FLAG_BOOL(debug,   validate_heap,         false, "Check garbage collector")       \
   FLAG_BOOL(debug,   gcalot,                false, "Garbage collect after each allocation in the interpreter") \
   FLAG_BOOL(debug,   preemptalot,           false, "Preempt process after each pop bytecode") \
   FLAG_BOOL(debug,   lookup,                false, "Trace lookup")                  \

@@ -40,21 +40,18 @@ PRIMITIVE(spawn) {
 
   if (!program->is_valid(offset, OS::image_uuid())) OUT_OF_BOUNDS;
 
+  InitialMemoryManager manager;
+  if (!manager.allocate()) ALLOCATION_FAILED;
+
   ProcessGroup* process_group = ProcessGroup::create(group_id, program);
   if (!process_group) MALLOC_FAILED;
 
-  Block* initial_block = VM::current()->heap_memory()->allocate_initial_block();
-  if (!initial_block) {
-    delete process_group;
-    ALLOCATION_FAILED;
-  }
-
-  int pid = VM::current()->scheduler()->run_program(program, {}, process_group, initial_block);
+  int pid = VM::current()->scheduler()->run_program(program, {}, process_group, manager.initial_memory);
   if (pid == Scheduler::INVALID_PROCESS_ID) {
     delete process_group;
-    VM::current()->heap_memory()->free_unused_block(initial_block);
     MALLOC_FAILED;
   }
+  manager.dont_auto_free();
   return Smi::from(pid);
 }
 
