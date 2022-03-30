@@ -178,6 +178,30 @@ bool Space::includes(uword address) {
 }
 
 #ifdef DEBUG
+
+class InSpaceVisitor : public RootCallback {
+ public:
+  explicit InSpaceVisitor(Space* space) : space(space) {}
+  void do_roots(Object** p, int length) {
+    for (int i = 0; i < length; i++) {
+      Object* object = p[i];
+      if (object->is_smi()) continue;
+      if (space->includes(reinterpret_cast<uword>(object))) {
+        in_space = true;
+        break;
+      }
+    }
+  }
+  Space* space;
+  bool in_space = false;
+};
+
+bool HeapObject::contains_pointers_to(Program* program, Space* space) {
+  InSpaceVisitor visitor(space);
+  roots_do(program, &visitor);
+  return visitor.in_space;
+}
+
 void Space::find(uword w, const char* name) {
   for (auto chunk : chunk_list_) chunk->find(w, name);
 }

@@ -219,13 +219,50 @@ void OldSpace::zap_object_starts() {
   }
 }
 
+class RememberedSetRebuilder2 : public RootCallback {
+ public:
+  virtual void do_roots(Object** pointers, int length) override {
+    for (int i = 0; i < length; i++) {
+      Object* object = pointers[i];
+      if (GcMetadata::get_page_type(object) == NEW_SPACE_PAGE) {
+        found = true;
+        break;
+      }
+    }
+  }
+
+  bool found;
+};
+
+class RememberedSetRebuilder : public HeapObjectVisitor {
+ public:
+  RememberedSetRebuilder(Program* program) : HeapObjectVisitor(program) {}
+
+  virtual uword visit(HeapObject* object) override {
+    pointer_callback.found = false;
+    object->roots_do(program_, &pointer_callback);
+    if (pointer_callback.found) {
+      *GcMetadata::remembered_set_for(reinterpret_cast<uword>(object)) = GcMetadata::NEW_SPACE_POINTERS;
+    }
+    return object->size(program_);
+  }
+
+  RememberedSetRebuilder2 pointer_callback;
+};
+
+// Until we have a write barrier we have to iterate the whole
+// of old space.
+void OldSpace::rebuild_remembered_set() {
+  RememberedSetRebuilder rebuilder(program_);
+  iterate_objects(&rebuilder);
+}
+
 void OldSpace::visit_remembered_set(ScavengeVisitor* visitor) {
   flush();
   for (auto chunk : chunk_list_) {
     // Scan the byte-map for cards that may have new-space pointers.
     uword current = chunk->start();
-    uword bytes =
-        reinterpret_cast<uword>(GcMetadata::remembered_set_for(current));
+    uword bytes = reinterpret_cast<uword>(GcMetadata::remembered_set_for(current));
     uword earliest_iteration_start = current;
     while (current < chunk->end()) {
       if (Utils::is_aligned(bytes, sizeof(uword))) {
@@ -512,11 +549,9 @@ void OldSpace::verify() {
     uword current = chunk->start();
     while (!has_sentinel_at(current)) {
       HeapObject* object = HeapObject::from_address(current);
-      /* TODO(erik): Implement contains_pointers_to so we can verify the remembered set
-      if (object->contains_pointers_to(heap_->space())) {
+      if (object->contains_pointers_to(program_, heap_->space())) {
         ASSERT(*GcMetadata::remembered_set_for(current));
       }
-      */
       current += object->size(program_);
     }
   }

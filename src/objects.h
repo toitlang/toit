@@ -27,6 +27,7 @@ class Blob;
 class Chunk;
 class MutableBlob;
 class Error;
+class Space;
 
 enum BlobKind {
   STRINGS_OR_BYTE_ARRAYS,
@@ -272,6 +273,9 @@ class HeapObject : public Object {
     *word_count = SIZE / WORD_SIZE;
     *extra_bytes = 0;
   }
+
+  // Not very fast - used for asserts.
+  bool contains_pointers_to(Program* program, Space* space);
 
  protected:
   void _set_header(Smi* class_id, TypeTag class_tag) {
