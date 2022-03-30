@@ -219,7 +219,7 @@ void OldSpace::zap_object_starts() {
   }
 }
 
-void OldSpace::visit_remembered_set(GenerationalScavengeVisitor* visitor) {
+void OldSpace::visit_remembered_set(ScavengeVisitor* visitor) {
   flush();
   for (auto chunk : chunk_list_) {
     // Scan the byte-map for cards that may have new-space pointers.
@@ -315,8 +315,8 @@ void OldSpace::unlink_promoted_track() {
 
 // Called multiple times until there is no more work.  Finds objects moved to
 // the old-space and traverses them to find and fix more new-space pointers.
-bool OldSpace::complete_scavenge_generational(
-    GenerationalScavengeVisitor* visitor) {
+bool OldSpace::complete_scavenge(
+    ScavengeVisitor* visitor) {
   flush();
   ASSERT(tracking_allocations_);
 
