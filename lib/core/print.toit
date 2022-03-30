@@ -2,6 +2,9 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+import monitor
+import system.api.print show PrintService PrintServiceClient
+
 /**
 Prints the $message.
 
@@ -9,7 +12,7 @@ Prints the $message.
 The resulting message is stringified using $Object.stringify.
 */
 print message/any:
-  print_ message
+  service_.print message.stringify
 
 /**
 Prints an empty line.
@@ -18,7 +21,7 @@ This function is generally used to improve the output of the console output, but
   have no effect on other receivers of the print message.
 */
 print:
-  print ""
+  service_.print ""
 
 /**
 Prints the given $object for debugging.
@@ -77,3 +80,24 @@ Does not yield the currently running task.
 */
 write_on_stderr_ message/string add_newline/bool -> none:
   #primitive.core.write_string_on_stderr
+
+/**
+Print service used by $print.
+*/
+service_value_/PrintService? := null
+service_mutex_/monitor.Mutex ::= monitor.Mutex
+
+service_ -> PrintService:
+  service := service_value_
+  if service: return service
+  return service_mutex_.do:
+    service_value_ = (PrintServiceClient --no-open).open or
+        StandardPrintService_
+
+/**
+Standard print service used when the system print service cannot
+  be resolved.
+*/
+class StandardPrintService_ implements PrintService:
+  print message/string -> none:
+    write_on_stdout_ message true
