@@ -76,7 +76,7 @@ class Frame extends Mirror:
     super json program
 
   is_user_boundary -> bool:
-    return (method_info != null) and method_info.name == "_USER_BOUNDARY_"
+    return (method_info != null) and stacktrace_method_string.starts_with "__entry__"
 
   stringify -> string:
     prefix := "$(%3d index): " + stacktrace_method_string

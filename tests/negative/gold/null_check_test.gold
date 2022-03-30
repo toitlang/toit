@@ -22,4 +22,3 @@ tests/negative/null_check_test.toit:37:7: error: Type mismatch: can't assign 'nu
 As check failed: null is not a int.
   0: gee                       tests/negative/null_check_test.toit:17:5
   1: main                      tests/negative/null_check_test.toit:31:3
-  2: __entry__.<lambda>        <sdk>/core/entry.toit:48:20

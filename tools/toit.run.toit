@@ -62,8 +62,8 @@ class ContainerImageSnapshot extends ContainerImage:
     unreachable  // Not implemented yet.
 
 main:
-  // The snapshot for the application program is passed in hatch_args_.
-  snapshot_bundle ::= hatch_args_
+  // The snapshot for the application program is passed in the spawn arguments.
+  snapshot_bundle ::= spawn_arguments_
   if snapshot_bundle is not ByteArray:
     print_on_stderr_ "toit.run.toit must be provided a snapshot"
     exit 1
