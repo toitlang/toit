@@ -158,3 +158,6 @@ i2s_write_ i2s bytes -> int:
 
 i2s_read_ i2s -> ByteArray:
   #primitive.i2s.read
+
+i2s_read_to_buffer_ i2s buffer:
+  #primitive.i2s.read_to_buffer
