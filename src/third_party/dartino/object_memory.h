@@ -18,7 +18,7 @@ namespace toit {
 
 class Chunk;
 class FreeList;
-class GenerationalScavengeVisitor;
+class ScavengeVisitor;
 class HeapObject;
 class HeapObjectVisitor;
 class MarkingStack;
@@ -319,7 +319,7 @@ class SemiSpace : public Space {
 
   // For the mutable heap.
   void start_scavenge();
-  bool complete_scavenge_generational(GenerationalScavengeVisitor* visitor);
+  bool complete_scavenge(ScavengeVisitor* visitor);
 
   void update_base_and_limit(Chunk* chunk, uword top);
 
@@ -462,11 +462,11 @@ class OldSpace : public Space {
   void zap_object_starts();
 
   // Find pointers to young-space.
-  void visit_remembered_set(GenerationalScavengeVisitor* visitor);
+  void visit_remembered_set(ScavengeVisitor* visitor);
 
   // For the objects promoted to the old space during scavenge.
   inline void start_scavenge() { start_tracking_allocations(); }
-  bool complete_scavenge_generational(GenerationalScavengeVisitor* visitor);
+  bool complete_scavenge(ScavengeVisitor* visitor);
   inline void end_scavenge() { end_tracking_allocations(); }
 
   void start_tracking_allocations();
