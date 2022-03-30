@@ -8,7 +8,7 @@ throw exception:
 rethrow exception trace:
 lookup_failure_ receiver selector_or_selector_offset:
 as_check_failure_ receiver id:
-run_global_initializer_ id initializer sentinel:
+run_global_initializer_ id initializer:
 program_failure_ bci:
 unreachable:
 

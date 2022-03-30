@@ -31,6 +31,6 @@ namespace toit {
   E(out_of_memory,            out_of_memory_, 0)                  \
   E(watchdog,                 watchdog_, 0)                       \
   E(task_entry,               task_entry_, 1)                     \
-  E(run_global_initializer,   run_global_initializer_, 3)         \
+  E(run_global_initializer,   run_global_initializer_, 2)         \
 
 } // namespace toit
