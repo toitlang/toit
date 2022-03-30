@@ -79,7 +79,7 @@ void GcMetadata::set_up_singleton() {
 
 #ifndef LEGACY_GC
   // The mark bits and cumulative mark bits are the biggest, so they are not
-  // be mapped in immediately in order to reduce the memory footprint of very
+  // mapped in immediately in order to reduce the memory footprint of very
   // small programs.  We do it when we create pages that need them.
   OS::use_virtual_memory(metadata_, number_of_cards_);
   OS::use_virtual_memory(object_starts_, number_of_cards_);
