@@ -163,7 +163,7 @@ class ScavengeVisitor : public RootCallback {
 
  private:
   template <class SomeSpace>
-  static inline HeapObject* clone_in_to_space(Program* program, HeapObject* original, SomeSpace* to);
+  static inline HeapObject* clone_into_space(Program* program, HeapObject* original, SomeSpace* to);
 
   Program* program_;
   uword to_start_;

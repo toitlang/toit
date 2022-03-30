@@ -65,7 +65,7 @@ SemiSpace* TwoSpaceHeap::take_space() {
 }
 
 template <class SomeSpace>
-HeapObject* ScavengeVisitor::clone_in_to_space(Program* program, HeapObject* original, SomeSpace* to) {
+HeapObject* ScavengeVisitor::clone_into_space(Program* program, HeapObject* original, SomeSpace* to) {
   ASSERT(!to->includes(original->_raw()));
   ASSERT(!original->has_forwarding_address());
   // Copy the object to the 'to' space and insert a forwarding pointer.
@@ -90,17 +90,17 @@ void ScavengeVisitor::do_roots(Object** start, int count) {
       if (in_to_space(destination)) *record_ = GcMetadata::NEW_SPACE_POINTERS;
     } else {
       if (old_object->_raw() < water_mark_) {
-        HeapObject* moved_object = clone_in_to_space(program_, old_object, old_);
+        HeapObject* moved_object = clone_into_space(program_, old_object, old_);
         // The old space may fill up.  This is a bad moment for a GC, so we
         // promote to the to-space instead.
         if (moved_object == NULL) {
           trigger_old_space_gc_ = true;
-          moved_object = clone_in_to_space(program_, old_object, to_);
+          moved_object = clone_into_space(program_, old_object, to_);
           *record_ = GcMetadata::NEW_SPACE_POINTERS;
         }
         *p = moved_object;
       } else {
-        *p = clone_in_to_space(program_, old_object, to_);
+        *p = clone_into_space(program_, old_object, to_);
         *record_ = GcMetadata::NEW_SPACE_POINTERS;
       }
       ASSERT(*p != NULL);  // In an emergency we can move to to-space.
@@ -229,12 +229,17 @@ void TwoSpaceHeap::collect_old_space() {
   }
 
   uint64 start = OS::get_monotonic_time();
+  uword old_size = old_space()->used();
 
   perform_garbage_collection();
 
   if (Flags::tracegc) {
     uint64 end = OS::get_monotonic_time();
-    printf("Mark-sweep: %dus\n", static_cast<int>(end - start));
+    uword new_size = old_space()->used();
+    printf("Mark-sweep: %dk->%dk, %dus\n",
+        static_cast<int>(old_size >> 10),
+        static_cast<int>(new_size >> 10),
+        static_cast<int>(end - start));
   }
 
   if (Flags::validate_heap) {
@@ -252,6 +257,14 @@ void TwoSpaceHeap::perform_garbage_collection() {
   MarkingVisitor marking_visitor(new_space, &stack);
 
   process_heap_->iterate_roots(&marking_visitor);
+
+  stack.process(&marking_visitor, old_space(), new_space);
+
+  process_heap_->process_registered_finalizers(&marking_visitor, old_space());
+
+  stack.process(&marking_visitor, old_space(), new_space);
+
+  process_heap_->process_registered_vm_finalizers(&marking_visitor, old_space());
 
   stack.process(&marking_visitor, old_space(), new_space);
 

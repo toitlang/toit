@@ -193,18 +193,6 @@ class Space : public LivenessOracle {
 
   void clear_mark_bits();
 
-  // Tells whether garbage collection is needed.  Only to be called when
-  // bump allocation has failed, or on old space after a new-space GC.
-  // For a fixed-size new-space it always returns true because we always
-  // want to do a new-space GC when the single chunk fills up.
-  bool needs_garbage_collection() {
-    return allocation_budget_ <= 0 || !resizeable_;
-  }
-
-  bool in_no_allocation_failure_scope() {
-    return no_allocation_failure_nesting_ != 0;
-  }
-
   bool is_empty() const { return chunk_list_.is_empty(); }
 
   ChunkListIterator chunk_list_begin() { return chunk_list_.begin(); }
@@ -266,15 +254,6 @@ class Space : public LivenessOracle {
 
   uword top() { return top_; }
 
-  void increment_no_allocation_failure_nesting() {
-    ASSERT(resizeable_);  // Fixed size heap cannot guarantee allocation.
-    ++no_allocation_failure_nesting_;
-  }
-
-  void decrement_no_allocation_failure_nesting() {
-    --no_allocation_failure_nesting_;
-  }
-
   Program* program_;
   ChunkList chunk_list_;
   uword used_;              // Allocated bytes.
@@ -285,8 +264,6 @@ class Space : public LivenessOracle {
   // hit, we may still trigger a GC because we are getting close to the limit
   // for the committed size of the chunks in the heap.
   word allocation_budget_;
-  int no_allocation_failure_nesting_;
-  bool resizeable_;
 
   PageType page_type_;
 };
@@ -333,8 +310,6 @@ class SemiSpace : public Space {
   Chunk* allocate_and_use_chunk(uword size);
 
   uword allocate_in_new_chunk(uword size);
-
-  uword try_allocate(uword size);
 };
 
 class FreeList {
@@ -491,6 +466,12 @@ class OldSpace : public Space {
 
   void set_used_after_last_gc(uword used) { used_after_last_gc_ = used; }
 
+  // Tells whether garbage collection is needed.  Only to be called when
+  // bump allocation has failed, or on old space after a new-space GC.
+  bool needs_garbage_collection() {
+    return allocation_budget_ <= 0;
+  }
+
   // For detecting pointless GCs that are really an out-of-memory situation.
   inline void evaluate_pointlessness() {};  // TODO: Implement.
   uword minimum_progress();
@@ -512,18 +493,6 @@ class OldSpace : public Space {
   uword new_space_garbage_found_since_last_gc_ = 0;
   int successive_pointless_gcs_ = 0;
   uword used_after_last_gc_ = 0;
-};
-
-class NoAllocationFailureScope {
- public:
-  explicit NoAllocationFailureScope(Space* space) : space_(space) {
-    space->increment_no_allocation_failure_nesting();
-  }
-
-  ~NoAllocationFailureScope() { space_->decrement_no_allocation_failure_nesting(); }
-
- private:
-  Space* space_;
 };
 
 // ObjectMemory controls all memory used by object heaps.

@@ -61,7 +61,13 @@ HeapObject* OldSpace::new_location(HeapObject* old_location) {
 }
 
 bool OldSpace::is_alive(HeapObject* old_location) {
-  ASSERT(includes(old_location->_raw()));
+  // We can't assert that the object is in old-space, because
+  // at the end of a mark-sweep the new-space objects are also
+  // marked and can be checked for liveness.  The finalizers
+  // for new-space objects can thus be run at the end of a mark-
+  // sweep GC.  This removes them from the finalizer list, but
+  // they will remain (untouched) in the new-space until the
+  // next scavenge.
   return GcMetadata::is_marked(old_location);
 }
 
@@ -173,7 +179,7 @@ uword OldSpace::allocate(uword size) {
     return result;
   }
 
-  if (!in_no_allocation_failure_scope() && needs_garbage_collection()) {
+  if (needs_garbage_collection()) {
     return 0;
   }
 

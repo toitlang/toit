@@ -24,8 +24,6 @@ Space::Space(Program* program, Space::Resizing resizeable, PageType page_type)
       top_(0),
       limit_(0),
       allocation_budget_(0),
-      no_allocation_failure_nesting_(0),
-      resizeable_(resizeable == CAN_RESIZE),
       page_type_(page_type) {}
 
 SemiSpace::SemiSpace(Program* program, Chunk* chunk)
@@ -94,7 +92,7 @@ void SemiSpace::append(Chunk* chunk) {
   chunk_list_.append(chunk);
 }
 
-uword SemiSpace::try_allocate(uword size) {
+uword SemiSpace::allocate(uword size) {
   // Make sure there is room for chunk end sentinel by using > instead of >=.
   // Use this ordering of the comparison to avoid very large allocations
   // turning into 'successful' allocations of negative size.
@@ -112,42 +110,6 @@ uword SemiSpace::try_allocate(uword size) {
   }
 
   return 0;
-}
-
-uword SemiSpace::allocate_in_new_chunk(uword size) {
-  // Allocate new chunk that is big enough to fit the object.
-  uword default_chunk_size = get_default_chunk_size(used());
-  uword chunk_size =
-      size >= default_chunk_size
-          ? (size + WORD_SIZE)  // Make sure there is room for sentinel.
-          : default_chunk_size;
-
-  Chunk* chunk = ObjectMemory::allocate_chunk(this, chunk_size);
-  if (chunk != null) {
-    // Link it into the space.
-    append(chunk);
-
-    // Update limits.
-    allocation_budget_ -= chunk->size();
-    update_base_and_limit(chunk, chunk->start());
-
-    // Allocate.
-    uword result = try_allocate(size);
-    if (result != 0) return result;
-  }
-  return 0;
-}
-
-uword SemiSpace::allocate(uword size) {
-  ASSERT(size >= HeapObject::SIZE);
-  ASSERT(Utils::is_aligned(size, WORD_SIZE));
-
-  uword result = try_allocate(size);
-  if (result != 0) return result;
-
-  if (!in_no_allocation_failure_scope() && needs_garbage_collection()) return 0;
-
-  return allocate_in_new_chunk(size);
 }
 
 uword SemiSpace::used() {
