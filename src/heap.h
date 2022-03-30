@@ -96,7 +96,7 @@ class ObjectHeap : public RawHeap {
 
   static int max_allocation_size() { return Block::max_payload_size(); }
 
-  inline void do_objects(const std::function<void (HeapObject*)>& func) {
+  void do_objects(const std::function<void (HeapObject*)>& func) {
     Iterator iterator(_blocks, _program);
     while (!iterator.eos()) {
       HeapObject* object = iterator.current();
