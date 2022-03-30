@@ -5,4 +5,3 @@ Initialization of static field 'A.global' in progress.
   3: run_global_initializer_.<block> <sdk>/core/objects.toit:205:26
   4: run_global_initializer_   <sdk>/core/objects.toit:193:1
   5: main                      tests/negative/cyclic_static_field_test.toit:14:8
-  6: __entry__.<lambda>        <sdk>/core/entry.toit:48:20

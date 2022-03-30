@@ -1695,7 +1695,7 @@ PRIMITIVE(task_new) {
   ARGS(Instance, code);
   Task* task = process->object_heap()->allocate_task();
   if (task == null) ALLOCATION_FAILED;
-  Method entry = process->program()->task_entry();
+  Method entry = process->program()->entry_task();
   if (!entry.is_valid()) FATAL("Cannot locate task entry method");
 
   Object* tru = process->program()->true_object();
