@@ -24,7 +24,7 @@ __entry__task lambda -> none:
   // The entry stack setup is a bit complicated, so when we
   // transfer to a task stack for the first time, the
   // `task transfer` primitive will provide a value for us
-  // on the stack. The `null` assigned to `fake` below is
+  // on the stack. The `null` assigned to `life` below is
   // skipped and we let the value passed to us take its place.
   life := null
   assert: life == 42
