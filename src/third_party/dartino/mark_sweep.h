@@ -14,7 +14,10 @@ namespace toit {
 
 class MarkingStack {
  public:
-  explicit MarkingStack(Program* program) : next_(&backing_[0]), limit_(&backing_[CHUNK_SIZE]) {}
+  explicit MarkingStack(Program* program)
+    : program_(program)
+    , next_(&backing_[0])
+    , limit_(&backing_[CHUNK_SIZE]) {}
 
   void push(HeapObject* object) {
     ASSERT(GcMetadata::is_marked(object));
