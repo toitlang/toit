@@ -18,8 +18,11 @@ file(GLOB toit_core_SRC
   "*.cc"
   )
 
+# Exclude files with a main(), and files that are not used in the
+# compiler.
 list(FILTER toit_core_SRC EXCLUDE REGEX "/(toit|toit_run_image|vm).cc$")
 
+# Files that are used in the VM, but not in the compiler.
 file(GLOB toit_vm_runtime_SRC
   "vm.h"
   "vm.cc"
