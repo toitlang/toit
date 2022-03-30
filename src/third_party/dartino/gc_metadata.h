@@ -294,7 +294,7 @@ class GcMetadata {
     }
 
     // TODO: On 64 bit CPUs it's probably faster to do this without the ?:
-    // in a 64 bit register.  May also be worth trying a  32 entry lookup
+    // in a 64 bit register.  May also be worth trying a 32 entry lookup
     // table.
     uint32 mask = size_in_words == 32 ? 0xffffffff : ((1 << size_in_words) - 1);
     mask <<= mask_shift;
