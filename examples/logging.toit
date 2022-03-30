@@ -7,7 +7,7 @@ import system.services
 main:
   service := LogServiceDefinition
   service.install
-  logger := LogServiceClient.lookup
+  logger := LogServiceClient
   logger.log "Hello"
   logger.log "World"
   logger.close
@@ -26,8 +26,11 @@ interface LogService:
 // ------------------------------------------------------------------
 
 class LogServiceClient extends services.ServiceClient implements LogService:
-  constructor.lookup name=LogService.NAME major=LogService.MAJOR minor=LogService.MINOR:
-    super.lookup name major minor
+  constructor --open/bool=true:
+    super --open=open
+
+  open -> LogServiceClient?:
+    return (open_ LogService.NAME LogService.MAJOR LogService.MINOR) and this
 
   log message/string -> none:
     invoke_ LogService.LOG_INDEX message
@@ -38,7 +41,7 @@ class LogServiceDefinition extends services.ServiceDefinition implements LogServ
   constructor:
     super LogService.NAME --major=LogService.MAJOR --minor=LogService.MINOR
 
-  handle client/int index/int arguments/any -> any:
+  handle pid/int client/int index/int arguments/any -> any:
     if index == LogService.LOG_INDEX: return log arguments
     unreachable
 

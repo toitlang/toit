@@ -32,25 +32,50 @@ test_logging --separate_process/bool=false:
 test_illegal_name:
   service := LogServiceDefinition
   service.install
-  expect.expect_throw "Cannot find service:":
-    LogServiceClient.lookup ""
-  expect.expect_throw "Cannot find service:logs":
-    LogServiceClient.lookup "logs"
-  expect.expect_throw "Cannot find service:log.illegal":
-    LogServiceClient.lookup "log.illegal"
+
+  expect.expect_throw "Cannot find service":
+    FlexibleServiceClient ""
+  expect.expect_null
+    (FlexibleServiceClient "" --no-open).open
+
+  expect.expect_throw "Cannot find service":
+    FlexibleServiceClient "logs"
+  expect.expect_null
+    (FlexibleServiceClient "logs" --no-open).open
+
+  expect.expect_throw "Cannot find service":
+    FlexibleServiceClient "log.illegal"
+  expect.expect_null
+    (FlexibleServiceClient "log.illegal" --no-open).open
+
   service.uninstall
 
 test_versions:
   service := LogServiceDefinition
   service.install
-  expect.expect_throw "Cannot find service:log@0.x, found service:log@1.2.5":
-    LogServiceClient.lookup LogService.NAME 0
-  expect.expect_throw "Cannot find service:log@2.x, found service:log@1.2.5":
-    LogServiceClient.lookup LogService.NAME 2
-  expect.expect_throw "Cannot find service:log@1.3.x, found service:log@1.2.5":
-    LogServiceClient.lookup LogService.NAME 1 3
 
-  client := LogServiceClient.lookup LogService.NAME 1 1
+  expect.expect_throw "Cannot find service:log@0.x, found service:log@1.2.5":
+    FlexibleServiceClient LogService.NAME 0
+  expect.expect_no_throw:
+    (FlexibleServiceClient LogService.NAME 0 --no-open)
+  expect.expect_throw "Cannot find service:log@0.x, found service:log@1.2.5":
+    (FlexibleServiceClient LogService.NAME 0 --no-open).open
+
+  expect.expect_throw "Cannot find service:log@2.x, found service:log@1.2.5":
+    FlexibleServiceClient LogService.NAME 2
+  expect.expect_no_throw:
+    (FlexibleServiceClient LogService.NAME 2 --no-open)
+  expect.expect_throw "Cannot find service:log@2.x, found service:log@1.2.5":
+    (FlexibleServiceClient LogService.NAME 2 --no-open).open
+
+  expect.expect_throw "Cannot find service:log@1.3.x, found service:log@1.2.5":
+    FlexibleServiceClient LogService.NAME 1 3
+  expect.expect_no_throw:
+    (FlexibleServiceClient LogService.NAME 1 3 --no-open)
+  expect.expect_throw "Cannot find service:log@1.3.x, found service:log@1.2.5":
+    (FlexibleServiceClient LogService.NAME 1 3 --no-open).open
+
+  client := FlexibleServiceClient LogService.NAME 1 1
   expect.expect_equals 1 client.major
   expect.expect_equals 2 client.minor
   expect.expect_equals 5 client.patch
@@ -61,24 +86,38 @@ test_uninstall:
   service := LogServiceDefinition
   service.install
   test_hello --no-close
-  logger := LogServiceClient.lookup
+  logger := LogServiceClient
   service.uninstall
   exception := catch: logger.log "Don't let me do this!"
-  expect.expect (exception.starts_with "No such procedure registered:")
+  expect.expect_equals "key not found" exception
 
 test_hello --close=false:
-  logger := LogServiceClient.lookup
+  logger := LogServiceClient
   logger.log "Hello!"
   if close: logger.close
 
 // ------------------------------------------------------------------
 
 class LogServiceClient extends services.ServiceClient implements LogService:
-  constructor.lookup name=LogService.NAME major=LogService.MAJOR minor=LogService.MINOR:
-    super.lookup name major minor
+  constructor --open/bool=true:
+    super --open=open
+
+  open -> LogServiceClient?:
+    return (open_ LogService.NAME LogService.MAJOR LogService.MINOR) and this
 
   log message/string -> none:
     invoke_ LogService.LOG_INDEX message
+
+class FlexibleServiceClient extends services.ServiceClient:
+  name_/string ::= ?
+  major_/int ::= ?
+  minor_/int ::= ?
+
+  constructor .name_/string=LogService.NAME .major_/int=LogService.MAJOR .minor_/int=LogService.MINOR --open/bool=true:
+    super --open=open
+
+  open -> FlexibleServiceClient?:
+    return (open_ name_ major_ minor_) and this
 
 // ------------------------------------------------------------------
 
@@ -86,7 +125,7 @@ class LogServiceDefinition extends services.ServiceDefinition implements LogServ
   constructor:
     super LogService.NAME --major=LogService.MAJOR --minor=LogService.MINOR --patch=5
 
-  handle client/int index/int arguments/any -> any:
+  handle pid/int client/int index/int arguments/any -> any:
     if index == LogService.LOG_INDEX: return log arguments
     unreachable
 
