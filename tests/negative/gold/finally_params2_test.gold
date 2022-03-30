@@ -1,3 +1,2 @@
 As check failed: an Exception_ is not a int.
   0: main                      tests/negative/finally_params2_test.toit:8:23
-  1: __entry__.<lambda>        <sdk>/core/entry.toit:48:20
