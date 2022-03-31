@@ -17,6 +17,9 @@ import .flash.registry
 import .containers
 import .services
 
+import .network
+import .wifi
+
 main:
   container_manager/ContainerManager := initialize
   boot container_manager
@@ -28,7 +31,10 @@ Initialize the system and create the all important $ContainerManager
 */
 initialize -> ContainerManager:
   flash_registry ::= FlashRegistry.scan
-  service_manager := SystemServiceManager
+  service_manager ::= SystemServiceManager
+  network/NetworkServiceDefinition ::= platform == PLATFORM_FREERTOS
+      ? WifiServiceDefinition
+      : NetworkServiceDefinition
   return ContainerManager flash_registry service_manager
 
 /**
