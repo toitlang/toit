@@ -34,7 +34,8 @@ void GcMetadata::set_up_singleton() {
   uword mark_bits_size = size >> MARK_BITS_SHIFT;
   // Ensure there is a little slack after the mark bits for the border case
   // where we check a one-word object at the end of a page for blackness.
-  mark_bits_size++;
+  // We need everything to stay word-aligned, so we add a full word of padding.
+  mark_bits_size += sizeof(uword);
 
   uword mark_stack_overflow_bits_size = size >> CARD_SIZE_IN_BITS_LOG_2;
 

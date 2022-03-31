@@ -188,9 +188,13 @@ void TwoSpaceHeap::collect_new_space() {
 
   if (Flags::tracegc) {
     uint64 end = OS::get_monotonic_time();
-    printf("Scavenge: %dk->%dk, %dus\n",
-        static_cast<int>(from->used() >> 10),
-        static_cast<int>(to->used() >> 10),
+    int f = from->used();
+    int t = to->used();
+    printf("Scavenge: %d%c->%d%c, %dus\n",
+        (f >> 10) ? (f >> 10) : f,
+        (f >> 10) ? 'k' : 'b',
+        (t >> 10) ? (t >> 10) : t,
+        (t >> 10) ? 'k' : 'b',
         static_cast<int>(end - start));
   }
 
@@ -231,14 +235,18 @@ void TwoSpaceHeap::collect_old_space() {
   uint64 start = OS::get_monotonic_time();
   uword old_size = old_space()->used();
 
-  perform_garbage_collection();
+  bool compacted = perform_garbage_collection();
 
   if (Flags::tracegc) {
     uint64 end = OS::get_monotonic_time();
-    uword new_size = old_space()->used();
-    printf("Mark-sweep: %dk->%dk, %dus\n",
-        static_cast<int>(old_size >> 10),
-        static_cast<int>(new_size >> 10),
+    int f = old_size;
+    int t = old_space()->used();
+    printf("Mark-sweep%s: %d%c->%d%c, %dus\n",
+        compacted ? "-compact" : "",
+        (f >> 10) ? (f >> 10) : f,
+        (f >> 10) ? 'k' : 'b',
+        (t >> 10) ? (t >> 10) : t,
+        (t >> 10) ? 'k' : 'b',
         static_cast<int>(end - start));
   }
 
@@ -247,7 +255,7 @@ void TwoSpaceHeap::collect_old_space() {
   }
 }
 
-void TwoSpaceHeap::perform_garbage_collection() {
+bool TwoSpaceHeap::perform_garbage_collection() {
   // Mark all reachable objects.  We mark all live objects in new-space too, to
   // detect liveness paths that go through new-space, but we just clear the
   // mark bits afterwards.  Dead objects in new-space are only cleared in a
@@ -268,7 +276,9 @@ void TwoSpaceHeap::perform_garbage_collection() {
 
   stack.process(&marking_visitor, old_space(), new_space);
 
-  if (old_space()->compacting()) {
+  bool compact = !old_space()->compacting();
+
+  if (!compact) {
     // If the last GC was compacting we don't have fragmentation, so it
     // is fair to evaluate if we are making progress or just doing
     // pointless GCs.
@@ -284,6 +294,8 @@ void TwoSpaceHeap::perform_garbage_collection() {
 #ifdef DEBUG
   if (Flags::validate_heap) old_space()->verify();
 #endif
+
+  return compact;
 }
 
 void TwoSpaceHeap::sweep_heap() {

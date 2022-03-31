@@ -414,18 +414,16 @@ void FixPointersVisitor::do_roots(Object** start, int length) {
 }
 
 // This is faster than the builtin memmove because we know the source and
-// destination are aligned and we know the size is at least 2 words.  Also
+// destination are aligned and we know the size is at least 1 word.  Also
 // we know that any overlap is only in one direction.
 static void INLINE object_mem_move(uword dest, uword source, uword size) {
   ASSERT(source > dest);
-  ASSERT(size >= WORD_SIZE * 2);
+  ASSERT(size >= WORD_SIZE);
   uword t0 = *reinterpret_cast<uword*>(source);
-  uword t1 = *reinterpret_cast<uword*>(source + WORD_SIZE);
   *reinterpret_cast<uword*>(dest) = t0;
-  *reinterpret_cast<uword*>(dest + WORD_SIZE) = t1;
   uword end = source + size;
-  source += WORD_SIZE * 2;
-  dest += WORD_SIZE * 2;
+  source += WORD_SIZE;
+  dest += WORD_SIZE;
   while (source != end) {
     *reinterpret_cast<uword*>(dest) = *reinterpret_cast<uword*>(source);
     source += WORD_SIZE;
@@ -448,7 +446,7 @@ CompactingVisitor::CompactingVisitor(Program* program,
                                      FixPointersVisitor* fix_pointers_visitor)
     : HeapObjectVisitor(program),
       used_(0),
-      dest_(space->chunk_list_begin(), space->chunk_list_begin()),
+      dest_(space->chunk_list_begin(), space->chunk_list_end()),
       fix_pointers_visitor_(fix_pointers_visitor) {}
 
 uword CompactingVisitor::visit(HeapObject* object) {
@@ -457,7 +455,9 @@ uword CompactingVisitor::visit(HeapObject* object) {
   uint32 bits = *bits_addr >> pos;
   if ((bits & 1) == 0) {
     // Object is unmarked.
-    if (bits != 0) return (find_first_set(bits) - 1) << WORD_SIZE_LOG_2;
+    if (bits != 0) {
+      return (find_first_set(bits) - 1) << WORD_SIZE_LOG_2;
+    }
     // If all the bits in this mark word are zero, then let's see if we can
     // skip a bit more.
     uword next_live_object = object->_raw() + ((32 - pos) << WORD_SIZE_LOG_2);

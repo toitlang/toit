@@ -469,7 +469,7 @@ class OldSpace : public Space {
   // Tells whether garbage collection is needed.  Only to be called when
   // bump allocation has failed, or on old space after a new-space GC.
   bool needs_garbage_collection() {
-    return allocation_budget_ <= 0;
+    return used_ > 0 && allocation_budget_ <= 0;
   }
 
   // For detecting pointless GCs that are really an out-of-memory situation.

@@ -109,7 +109,7 @@ class TwoSpaceHeap {
   void collect_new_space();
   void collect_old_space();
   void collect_old_space_if_needed(bool force);
-  void perform_garbage_collection();
+  bool perform_garbage_collection();
   void sweep_heap();
   void compact_heap();
 

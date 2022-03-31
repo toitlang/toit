@@ -67,7 +67,9 @@ HeapObject* SemiSpace::new_location(HeapObject* old_location) {
 }
 
 bool SemiSpace::is_alive(HeapObject* old_location) {
-  ASSERT(includes(old_location->_raw()));
+  // If we are doing a scavenge and are asked whether an old-space object is
+  // alive, return true.
+  if (!includes(old_location->_raw())) return true;
   return old_location->has_forwarding_address();
 }
 

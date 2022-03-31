@@ -90,19 +90,24 @@ class GcMetadata {
     memset(reinterpret_cast<uint8*>(base), 0, size);
   }
 
-  static void map_mark_bits_for(Chunk* chunk) {
+  // On virtual memory systems (non-embedded) we have to map the
+  // pages needed for heap metadata when we allocate the
+  // corresponding chunk.
+  static void map_metadata_for(Chunk* chunk) {
     ASSERT(in_metadata_range(chunk->start()));
     uword base = chunk->start();
-    uword size = chunk->size() >> MARK_BITS_SHIFT;
-    base = (base >> MARK_BITS_SHIFT) + singleton_.mark_bits_bias_;
-    // When checking if one-word objects are black we may look one
-    // bit into the next page.  Round up the area we map to account
-    // for this possibility.
-    OS::use_virtual_memory(reinterpret_cast<void*>(base), size + 1);
+    uword mark_size = chunk->size() >> MARK_BITS_SHIFT;
+    uword mark_bits = (base >> MARK_BITS_SHIFT) + singleton_.mark_bits_bias_;
+    // When checking if one-word objects are black we may look one bit into the
+    // next page.  Add one to the area to account for this possibility.
+    OS::use_virtual_memory(reinterpret_cast<void*>(mark_bits), mark_size + 1);
+    uword cumulative_mark_bits = (base >> CUMULATIVE_MARK_BITS_SHIFT) + singleton_.cumulative_mark_bits_bias_;
+    uword cumulative_mark_size = chunk->size() >> CUMULATIVE_MARK_BITS_SHIFT;
+    OS::use_virtual_memory(reinterpret_cast<void*>(cumulative_mark_bits), cumulative_mark_size);
   }
 
   static void mark_pages_for_chunk(Chunk* chunk, PageType page_type) {
-    map_mark_bits_for(chunk);
+    map_metadata_for(chunk);
     uword index = chunk->start() - singleton_.lowest_address_;
     if (index >= singleton_.heap_extent_) return;
     uword size = chunk->size() >> TOIT_PAGE_SIZE_LOG2;
