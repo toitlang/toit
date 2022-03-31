@@ -4,6 +4,9 @@
 
 class Font:
   proxy_ := ?
+  hash_code / int ::= hash_code_counter_++
+
+  static hash_code_counter_ := 1234
 
   proxy: return proxy_
 
@@ -42,8 +45,6 @@ class Font:
     array := create_array_ glyph_byte_data
     proxy_ = font_get_nonbuiltin_ resource_freeing_module_ array
     add_finalizer this:: this.finalize_
-
-  constructor.protected_ .proxy_:
 
   /**
   The bounding box of the given string $str in this font.

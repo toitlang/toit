@@ -12,8 +12,6 @@ task_background_ := 0
 // Whether the system is idle.
 is_task_idle_ := false
 
-is_processing_messages_ := false
-
 task_resumed_ := null
 
 exit_with_error_ := false
@@ -32,12 +30,12 @@ Calls $code in a new task.
 If the $background flag is set, then the new task will not block termination.
   The $background task flag is passed on to sub-tasks.
 */
-task code --background/bool=false :
-  return create_task_ "User task" code --background=background
+task code/Lambda --name/string="User task" --background/bool=false:
+  return create_task_ code name background
 
 // Base API for creating and activating a task.
-create_task_ name code --background/bool=false:
-  new_task := task_new_:: task.evaluate_ code
+create_task_ code/Lambda name/string background/bool -> Task_:
+  new_task := task_new_ code
   new_task.name = name
   new_task.background = background or task.background
   new_task.initialize_
@@ -56,10 +54,6 @@ The Toit programming language is cooperatively scheduled, so it is important
 */
 yield:
   task_yield_to_ task.next_running_
-
-// Helper method to mark the stack where user code starts.
-_USER_BOUNDARY_ lambda:
-  return lambda.call
 
 // ----------------------------------------------------------------------------
 
@@ -105,17 +99,14 @@ class Task_:
     name = "Main task"
     initialize_
     previous_running_ = next_running_ = this
-    // Create new system task without finalization behavior.
-    system_task_ = create_task_ "System task" --background::(SystemState_).run_finalizers
 
-  evaluate_ code:
+  evaluate_ [code]:
     exception := null
     // Always have an outer catch clause. Without this, a throw will crash the VM.
     // In that, we have an inner, but very pretty, root exception handling.
     // This can fail in rare cases where --trace will OOM, kernel reject the message, etc.
     try:
-      exception = catch --trace:
-        _USER_BOUNDARY_ code
+      exception = catch --trace code
     finally: | is_exception trace_exception |
       // If we got an exception here, either
       // 1) the catch failed to guard against the exception so we assume
@@ -239,19 +230,8 @@ class Task_:
 
 // ----------------------------------------------------------------------------
 
-task_new_ lambda:
+task_new_ lambda/Lambda:
   #primitive.core.task_new
-
-task_entry_ code:
-  // The entry stack setup is a bit complicated, so when we
-  // transfer to a task stack for the first time, the
-  // `task transfer` primitive will provide a value for us
-  // on the stack. The `null` assigned to `fake` below is
-  // skipped and we let the value passed to us take its place.
-  life := null
-  assert: life == 42
-  code.call
-  throw "Should not get here"
 
 task_transfer_ to detach_stack:
   #primitive.core.task_transfer
@@ -266,23 +246,3 @@ task_yield_to_ to:
   // Messages must be processed after returning to a running task,
   // not before transfering away from a suspended one.
   process_messages_
-
-system_task_ := null
-
-// Execute all finalizers. The call next_finalizer_to_run_
-// returns null when there are no finalizers to run.
-monitor SystemState_:
-  constructor:
-    set_finalizer_notifier_ this
-
-  run_finalizers:
-    while true:
-      lambda := null
-      await: lambda = next_finalizer_to_run_
-      catch --trace: lambda.call
-
-
-// Primitives to support the task implementation.
-
-current_process_:
-  #primitive.core.current_process_id

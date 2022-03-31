@@ -1047,10 +1047,9 @@ static const uint8* wrap_direct_script_expression(const char* direct_script, Dia
   if (Flags::trace) printf("Parsing provided script\n");
   std::string header =
     "main:\n"
-    "  print eval\n"
-    "eval:\n"
-    "  return _USER_BOUNDARY_::\n"
-    "    ";  // Expression will be added here.
+    "  print __entry__expression\n"
+    "__entry__expression:\n"
+    "  return "; // Expression will be added here.
   if (strchr(direct_script, '\n') != null) {
     diagnostics->report_error("Command line expression does not support newline");
     exit(1);

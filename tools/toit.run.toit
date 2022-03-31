@@ -14,16 +14,13 @@
 // directory of this repository.
 
 import ar show *
-import log.rpc as log
 import uuid
 
 import ..system.boot
 import ..system.containers
-import ..system.system_rpc_broker
 
-import .snapshot as snapshot
 import .mirror as mirror
-import .logging as logging
+import .snapshot as snapshot
 
 class ContainerImageSnapshot extends ContainerImage:
   id/uuid.Uuid ::= ?
@@ -64,23 +61,14 @@ class ContainerImageSnapshot extends ContainerImage:
   delete -> none:
     unreachable  // Not implemented yet.
 
-// TODO(kasper): This probably shouldn't be here.
-setup_logging broker/SystemRpcBroker -> none:
-  // Expected args format: [ names/List<string>?, level/int, message/string, tags/Map<String, any>? ].
-  broker.register_procedure log.RPC_SYSTEM_LOG:: | args |
-    write_on_stdout_
-        logging.log_format args[0] args[1] args[2] args[3] --no-timestamp
-        true
-
 main:
-  // The snapshot for the application program is passed in hatch_args_.
-  snapshot_bundle ::= hatch_args_
+  // The snapshot for the application program is passed in the spawn arguments.
+  snapshot_bundle ::= spawn_arguments_
   if snapshot_bundle is not ByteArray:
     print_on_stderr_ "toit.run.toit must be provided a snapshot"
     exit 1
 
   container_manager/ContainerManager := initialize
-  setup_logging container_manager.rpc_broker
   image := ContainerImageSnapshot container_manager snapshot_bundle
   container_manager.register_image image
   exit (boot container_manager)

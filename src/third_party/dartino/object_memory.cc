@@ -216,8 +216,6 @@ void Chunk::find(uword word, const char* name) {
 #endif
 
 Chunk* ObjectMemory::allocate_chunk(Space* owner, uword size) {
-  ASSERT(owner != null);
-
   size = Utils::round_up(size, TOIT_PAGE_SIZE);
   void* memory = OS::allocate_pages(size);
   uword lowest = GcMetadata::lowest_old_space_address();
@@ -228,7 +226,11 @@ Chunk* ObjectMemory::allocate_chunk(Space* owner, uword size) {
          GcMetadata::heap_extent());
 
   uword base = reinterpret_cast<uword>(memory);
-  Chunk* chunk = new Chunk(owner, base, size);
+  Chunk* chunk = _new Chunk(owner, base, size);
+  if (!chunk) {
+    OS::free_pages(memory, size);
+    return null;
+  }
 
   ASSERT(base == Utils::round_up(base, TOIT_PAGE_SIZE));
   ASSERT(size == Utils::round_up(size, TOIT_PAGE_SIZE));
@@ -236,9 +238,16 @@ Chunk* ObjectMemory::allocate_chunk(Space* owner, uword size) {
 #ifdef DEBUG
   chunk->scramble();
 #endif
-  GcMetadata::mark_pages_for_chunk(chunk, owner->page_type());
+  if (owner) {
+    GcMetadata::mark_pages_for_chunk(chunk, owner->page_type());
+  }
   allocated_ += size;
   return chunk;
+}
+
+void Chunk::set_owner(Space* value) {
+  owner_ = value;
+  GcMetadata::mark_pages_for_chunk(this, value->page_type());
 }
 
 void ObjectMemory::free_chunk(Chunk* chunk) {

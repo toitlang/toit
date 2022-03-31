@@ -21,6 +21,7 @@
 #include "objects_inline.h"
 #include "os.h"
 #include "primitive.h"
+#include "printing.h"
 #include "resource.h"
 #include "scheduler.h"
 #include "vm.h"
@@ -43,7 +44,6 @@ VM::VM() {
   OS::reset_monotonic_time();  // Reset "up time".
   Primitive::set_up();
   _heap_memory = _new HeapMemory();
-  _program_heap_memory = _new ProgramHeapMemory();
   _scheduler = _new Scheduler();
 
   _event_manager = _new EventSourceManager();
@@ -55,10 +55,25 @@ VM::~VM() {
   delete _event_manager;
   delete _scheduler;
   delete _heap_memory;
-  delete _program_heap_memory;
   _current = null;
 }
 
 VM* VM::_current = null;
+
+#ifdef DEBUG
+
+void print_heap_console(ObjectHeap* heap, const char* title) {
+  ConsolePrinter p(null);
+  print_heap(&p, heap, title);
+}
+
+void print_heap(Printer* printer, ObjectHeap* heap, const char* title) {
+  printer->printf("%s:\n", title);
+  heap->do_objects([&] (HeapObject* object) -> void {
+    print_object(printer, object);
+  });
+}
+
+#endif
 
 } // namespace toit

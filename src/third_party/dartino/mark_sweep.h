@@ -14,7 +14,10 @@ namespace toit {
 
 class MarkingStack {
  public:
-  explicit MarkingStack(Program* program) : next_(&backing_[0]), limit_(&backing_[CHUNK_SIZE]) {}
+  explicit MarkingStack(Program* program)
+    : program_(program)
+    , next_(&backing_[0])
+    , limit_(&backing_[CHUNK_SIZE]) {}
 
   void push(HeapObject* object) {
     ASSERT(GcMetadata::is_marked(object));
@@ -49,9 +52,8 @@ class MarkingVisitor : public RootCallback {
         new_space_size_(new_space->size()),
         marking_stack_(marking_stack) {}
 
-  virtual void visit_class(Object** p) {}
-
-  virtual void visit_block(Object** start, Object** end) {
+  virtual void do_roots(Object** start, int length) {
+    Object** end = start + length;
     // Mark live all HeapObjects pointed to by pointers in [start, end)
     for (Object** p = start; p < end; p++) mark_pointer(*p);
   }
@@ -70,111 +72,11 @@ class MarkingVisitor : public RootCallback {
   MarkingStack* marking_stack_;
 };
 
-class FreeList {
- public:
-#if defined(_MSC_VER)
-  // Work around Visual Studo 2013 bug 802058
-  FreeList(void) {
-    memset(buckets_, 0, NUMBER_OF_BUCKETS * sizeof(FreeListRegion*));
-  }
-#endif
-
-  void add_region(uword free_start, uword free_size) {
-    FreeListRegion* result = FreeListRegion::create_at(free_start, free_size);
-    if (!result) {
-      // Since the region was too small to be turned into an actual
-      // free list region it was just filled with one-word fillers.
-      // It can be coalesced with other free regions later.
-      return;
-    }
-    const int WORD_BITS = sizeof(uword) * BYTE_BIT_SIZE;
-    int bucket = WORD_BITS - Utils::clz(free_size);
-    if (bucket >= NUMBER_OF_BUCKETS) bucket = NUMBER_OF_BUCKETS - 1;
-    result->set_next_region(buckets_[bucket]);
-    buckets_[bucket] = result;
-  }
-
-  FreeListRegion* get_region(uword min_size) {
-    const int WORD_BITS = sizeof(uword) * BYTE_BIT_SIZE;
-    int smallest_bucket = WORD_BITS - Utils::clz(min_size);
-    ASSERT(smallest_bucket > 0);
-
-    // Take the first region in the largest list guaranteed to satisfy the
-    // allocation.
-    for (int i = NUMBER_OF_BUCKETS - 1; i >= smallest_bucket; i--) {
-      FreeListRegion* result = buckets_[i];
-      if (result != null) {
-        ASSERT(result->size() >= min_size);
-        FreeListRegion* next_region =
-            reinterpret_cast<FreeListRegion*>(result->next_region());
-        result->set_next_region(null);
-        buckets_[i] = next_region;
-        return result;
-      }
-    }
-
-    // Search the bucket containing regions that could, but are not
-    // guaranteed to, satisfy the allocation.
-    if (smallest_bucket > NUMBER_OF_BUCKETS) smallest_bucket = NUMBER_OF_BUCKETS;
-    FreeListRegion* previous = null;
-    FreeListRegion* current = buckets_[smallest_bucket - 1];
-    while (current != null) {
-      if (current->size() >= min_size) {
-        if (previous != null) {
-          previous->set_next_region(current->next_region());
-        } else {
-          buckets_[smallest_bucket - 1] =
-              reinterpret_cast<FreeListRegion*>(current->next_region());
-        }
-        current->set_next_region(null);
-        return current;
-      }
-      previous = current;
-      current = reinterpret_cast<FreeListRegion*>(current->next_region());
-    }
-
-    return null;
-  }
-
-  void clear() {
-    for (int i = 0; i < NUMBER_OF_BUCKETS; i++) {
-      buckets_[i] = null;
-    }
-  }
-
-  void merge(FreeList* other) {
-    for (int i = 0; i < NUMBER_OF_BUCKETS; i++) {
-      FreeListRegion* region = other->buckets_[i];
-      if (region != null) {
-        FreeListRegion* last_region = region;
-        while (last_region->next_region() != null) {
-          last_region = FreeListRegion::cast(last_region->next_region());
-        }
-        last_region->set_next_region(buckets_[i]);
-        buckets_[i] = region;
-      }
-    }
-  }
-
- private:
-  // Buckets of power of two sized free lists regions. Bucket i
-  // contains regions of size larger than 2 ** (i + 1).
-  static const int NUMBER_OF_BUCKETS = 12;
-#if defined(_MSC_VER)
-  // Work around Visual Studo 2013 bug 802058
-  FreeListRegion* buckets_[NUMBER_OF_BUCKETS];
-#else
-  FreeListRegion* buckets_[NUMBER_OF_BUCKETS] = {null};
-#endif
-};
-
 class FixPointersVisitor : public RootCallback {
  public:
   FixPointersVisitor() : source_address_(0) {}
 
-  virtual void visit_class(Object** p) {}
-
-  virtual void visit_block(Object** start, Object** end);
+  virtual void do_roots(Object** start, int length);
 
   void set_source_address(uword address) { source_address_ = address; }
 
