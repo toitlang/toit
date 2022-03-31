@@ -178,74 +178,98 @@ lambda_ method arguments/any arg_count -> Lambda:
     arguments = create_array_ arguments
   return Lambda.__ method arguments
 
+/**
+The task that runs an initializer and all blocked tasks that are
+  waiting for that task to finish.
+
+Uses a tasks $Task_.next_blocked_ to maintain the list of blocked tasks.
+*/
+class LazyInitializerBlockedTasks_:
+  initializing /Task_
+  blocked_first /Task_ := ?
+  blocked_last /Task_ := ?
+
+  constructor .initializing first_blocked/Task_:
+    blocked_first = first_blocked
+    blocked_last = first_blocked
+
+  add waiting/Task_:
+    assert: blocked_last.next_blocked_ == null
+    assert: waiting.next_blocked_ == null
+    blocked_last.next_blocked_ = waiting
+    blocked_last = waiting
+
+  do_and_clear [block]:
+    current /Task_? := blocked_first
+    while current:
+      next := current.next_blocked_
+      current.next_blocked_ = null
+      block.call current
+      current = next
+
+/**
+Class to correctly initialize lazy statics.
+
+The $id_or_tasks_ can be:
+- the method ID that should be called to initialize the global
+- the task that is currently running the initializer, or
+- a $LazyInitializerBlockedTasks_ object that has the initializing task and all blocked tasks.
+*/
 class LazyInitializer_:
-  constructor .id_or_task_:
-  id_or_task_ / any := ?
+  id_or_tasks_ / any := ?
+
+  constructor .id_or_tasks_:
 
   call:
-    assert: id_or_task_ is int
+    assert: id_or_tasks_ is int
     // The __invoke_initializer__ builtin does a tail call to the method with the given id.
-    return __invoke_initializer__ id_or_task_
+    return __invoke_initializer__ id_or_tasks_
 
   initializing -> Task_:
-    if id_or_task_ is Task_: return id_or_task_
-    if id_or_task_ is InitializingTask_: return (id_or_task_ as InitializingTask_).task
-    throw "BAD_LAZY_INITIALIZER_CALL"
+    if id_or_tasks_ is Task_: return id_or_tasks_
+    return (id_or_tasks_ as LazyInitializerBlockedTasks_).initializing
 
-  add_waiting task/Task_:
-    if id_or_task_ is Task_: id_or_task_ = InitializingTask_ id_or_task_
-    if not id_or_task_ is InitializingTask_: throw "BAD_LAZY_INITIALIZER_CALL"
-    (id_or_task_ as InitializingTask_).add_waiting task
-
-  do_waiting [block]:
-    if id_or_task_ is Task_: return
-    if not id_or_task_ is InitializingTask_: throw "BAD_LAZY_INITIALIZER_CALL"
-    current := (id_or_task_ as InitializingTask_).waiting
-    while current:
-      block.call current.task
-      current = current.next
-
-
-class InitializingTask_:
-  task / Task_
-  waiting / WaitingTask_? := null
-  last_waiting / WaitingTask_? := null
-
-  constructor .task:
-
-  add_waiting task/Task_:
-    new_last := WaitingTask_ task
-    if not waiting:
-      waiting = new_last
-      last_waiting = waiting
+  suspend_blocked blocked/Task_:
+    if id_or_tasks_ is Task_:
+      // First blocked task.
+      id_or_tasks_ = LazyInitializerBlockedTasks_ id_or_tasks_ blocked
     else:
-      last_waiting.next = new_last
-      last_waiting = new_last
+      // Add to the blocked queue.
+      (id_or_tasks_ as LazyInitializerBlockedTasks_).add blocked
 
-class WaitingTask_:
-  task /Task_
-  next /WaitingTask_? := null
-  constructor .task:
+    // Suspend the task.
+    task_blocked_++
+    try:
+      next := blocked.suspend_
+      task_yield_to_ next
+    finally:
+      task_blocked_--
+
+  /**
+  Resumes all blocked tasks and removes them from the linked list.
+  */
+  wake_blocked:
+    if id_or_tasks_ is not LazyInitializerBlockedTasks_: return
+    (id_or_tasks_ as LazyInitializerBlockedTasks_).do_and_clear: | blocked/Task_ |
+      blocked.resume_
 
 /**
 Runs the $initializer function for the given $global.
 */
 run_global_initializer_ global/int initializer/LazyInitializer_:
+  this_task := task
   while true:
-    if initializer.id_or_task_ is not int:
+    if initializer.id_or_tasks_ is not int:
       // There is already an initialization in progress.
       initializing_task := initializer.initializing
-      this_task := task
       if initializing_task == this_task:
         // The initializer of the variable is trying to access the global
         // that is currently initialized.
         initialization_in_progress_failure_ global
 
       // Another task is already initializing this global.
-      // Mark us as waiting.
-      initializer.add_waiting this_task
-      next := this_task.suspend_
-      task_yield_to_ next
+      // Suspend us and mark us as waiting.
+      initializer.suspend_blocked this_task
 
       // We have been woken up. This means that the previous initializer finished (successfully or not).
       new_value := __load_global_with_id__ global
@@ -259,7 +283,7 @@ run_global_initializer_ global/int initializer/LazyInitializer_:
     // We are the first to initialize this global.
     // Replace the existing initializer with an initializer with our task. Other tasks may
     // add themselves to wait for us to finish.
-    task_initializer := (LazyInitializer_ task)
+    task_initializer := (LazyInitializer_ this_task)
     __store_global_with_id__ global task_initializer
     // If the initializer fails, we store the original initializer back in
     // the global. This means that it is possible to invoke a global that throws
@@ -273,5 +297,4 @@ run_global_initializer_ global/int initializer/LazyInitializer_:
       // store the original initializer if it failed.
       __store_global_with_id__ global result
       // Wake up all waiting tasks.
-      task_initializer.do_waiting:
-        (it as Task_).resume_
+      task_initializer.wake_blocked

@@ -58,7 +58,7 @@ global_test --read_global/Lambda --set_global/Lambda [--set_global_fun] --fail_f
         expect_throw "try again": read_global.call
       else:
         // Implicitly makes sure that the order is correct.
-        expect_equals task_id  read_global.call
+        expect_equals task_id read_global.call
         set_global.call (task_id + 1)
       done.up
     started_task.get
