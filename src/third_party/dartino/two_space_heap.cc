@@ -322,7 +322,6 @@ class HeapObjectPointerVisitor : public HeapObjectVisitor {
 
  private:
   RootCallback* visitor_;
-  Program *program_;
 };
 
 void TwoSpaceHeap::compact_heap() {
