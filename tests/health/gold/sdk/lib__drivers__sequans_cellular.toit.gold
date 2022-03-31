@@ -1,3 +1,6 @@
+<sdk>/drivers/sequans_cellular.toit:467:30: error: Super of a class must be a class
+class Interface_ extends net.Interface:
+                             ^~~~~~~~~
 <sdk>/drivers/cellular_base.toit:89:34: warning: Class 'COPS' is deprecated
       result := session.send COPS.scan
                                  ^
@@ -43,6 +46,9 @@
 <sdk>/drivers/sequans_cellular.toit:454:5: warning: Deprecated 'SequansCellular.on_reset'
     on_reset session
     ^~~~~~~~
+<sdk>/drivers/sequans_cellular.toit:461:5: error: Type mismatch. Expected 'Interface'. Got 'Interface_'
+    return Interface_ this
+    ^~~~~~
 <sdk>/drivers/sequans_cellular.toit:495:15: warning: Class 'UdpSocket' is deprecated
     socket := UdpSocket cellular_ id port
               ^~~~~~~~~
