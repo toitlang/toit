@@ -30,7 +30,7 @@ class NetworkServiceClient extends ServiceClient implements NetworkService:
     return invoke_ NetworkService.ADDRESS_INDEX handle
 
 class NetworkResource extends ServiceResourceProxy:
-  constructor.connect client/NetworkServiceClient:
+  constructor client/NetworkServiceClient:
     super client (client.connect)
 
   address -> net.IpAddress:

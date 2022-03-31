@@ -4,7 +4,7 @@
 
 import monitor
 
-import .net
+import .net as net
 import .tcp as tcp
 import .udp as udp
 
@@ -21,42 +21,41 @@ service_ -> NetworkServiceClient?:
   return service_value_ or service_mutex_.do:
     service_value_ = (NetworkServiceClient --no-open).open
 
-open -> Interface:
+open -> net.Interface:
   service := service_
   if not service: throw "Network unavailable"
-  network := NetworkResource.connect service_
-  return SystemInterface_ network
+  return SystemInterface_ service
 
 // TODO(kasper): Find a way to listen for network closing.
-class SystemInterface_ extends Interface:
-  network_/NetworkResource? := ?
-  constructor .network_:
+class SystemInterface_ extends NetworkResource implements net.Interface:
+  constructor service/NetworkServiceClient:
+    super service
 
   resolve host/string -> List:
-    if not network_: throw "Network closed"
+    if not handle_: throw "Network closed"
     return [dns.dns_lookup host]
 
   udp_open --port/int?=null -> udp.Socket:
-    if not network_: throw "Network closed"
+    if not handle_: throw "Network closed"
     return Socket "0.0.0.0" (port ? port : 0)
 
-  tcp_connect address/SocketAddress -> tcp.Socket:
-    if not network_: throw "Network closed"
+  tcp_connect host/string port/int -> tcp.Socket:
+    ips := resolve host
+    return tcp_connect
+        net.SocketAddress ips[0] port
+
+  tcp_connect address/net.SocketAddress -> tcp.Socket:
+    if not handle_: throw "Network closed"
     result := TcpSocket
     result.connect address.ip.stringify address.port
     return result
 
   tcp_listen port/int -> tcp.ServerSocket:
-    if not network_: throw "Network closed"
+    if not handle_: throw "Network closed"
     result := TcpServerSocket
     result.listen "0.0.0.0" port
     return result
 
-  address -> IpAddress:
-    if not network_: throw "Network closed"
-    return network_.address
-
-  close -> none:
-    if not network_: return
-    network_.close
-    network_ = null
+  address -> net.IpAddress:
+    if not handle_: throw "Network closed"
+    return super
