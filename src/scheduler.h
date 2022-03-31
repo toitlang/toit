@@ -125,9 +125,6 @@ class Scheduler {
   // processes in the system.
   void gc(Process* process, bool malloc_failed, bool try_hard);
 
-  // Print stack traces for all live processes.
-  void print_stack_traces();
-
   // Primitive support.
 
   // Fills in an array of length 3 with stats for the process with the given ids.
@@ -176,8 +173,6 @@ class Scheduler {
   bool has_exit_reason() { return _exit_state.reason != EXIT_NONE; }
 
   scheduler_err_t send_system_message(Locker& locker, SystemMessage* message);
-
-  void print_process(Locker& locker, Process* process, Interpreter* interpreter);
 
   void terminate_execution(Locker& locker, ExitState exit);
 
