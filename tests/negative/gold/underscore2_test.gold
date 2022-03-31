@@ -4,4 +4,3 @@ tests/negative/underscore2_test.toit:9:11: error: Type mismatch. Expected 'strin
 As check failed: an int (42) is not a string.
   0: foo                       tests/negative/underscore2_test.toit:6:11
   1: main                      tests/negative/underscore2_test.toit:9:3
-  2: __entry__.<lambda>        <sdk>/core/entry.toit:48:20
