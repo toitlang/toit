@@ -27,14 +27,6 @@
 #include  <signal.h>
 #include  <stdlib.h>
 
-#ifdef TOIT_POSIX
-void signal_handler(int sig) {
-  signal(sig, SIG_IGN);
-  toit::VM::current()->scheduler()->print_stack_traces();
-  signal(SIGQUIT, signal_handler);
-}
-#endif
-
 namespace toit {
 
 void SchedulerThread::entry() {
@@ -137,10 +129,6 @@ Scheduler::ExitState Scheduler::launch_program(Locker& locker, Process* process)
   interpreter.deactivate();
   process->mark_as_priviliged();
   ASSERT(process->is_privileged());
-
-#ifdef TOIT_POSIX
-  signal(SIGQUIT, signal_handler);
-#endif
 
   // Update the state and start the boot process.
   ASSERT(_boot_process == null);
@@ -499,22 +487,6 @@ void Scheduler::gc(Process* process, bool malloc_failed, bool try_hard) {
   }
 }
 
-void Scheduler::print_stack_traces() {
-  Locker locker(_mutex);
-  Interpreter interpreter;
-  for (ProcessGroup* group : _groups) {
-    for (Process* p : group->_processes) {
-      if (p->scheduler_thread() != null) {
-        p->signal(Process::PRINT_STACK_TRACE);
-        continue;
-      }
-      interpreter.activate(p);
-      print_process(locker, p, &interpreter);
-      interpreter.deactivate();
-    }
-  }
-}
-
 void Scheduler::add_process(Locker& locker, Process* process) {
   _num_processes++;
   process_ready(locker, process);
@@ -558,11 +530,6 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
       Unlocker unlock(locker);
       result = interpreter->run();
     }
-    // Handle stack trace printing while the interpreter is still activated.
-    if (process->signals() & Process::PRINT_STACK_TRACE) {
-      print_process(locker, process, interpreter);
-      process->clear_signal(Process::PRINT_STACK_TRACE);
-    }
     interpreter->deactivate();
   } else if (process->signals() == 0) {
     ASSERT(process->idle_since_gc());
@@ -583,9 +550,6 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
     } else if (signals & Process::PREEMPT) {
       result = Interpreter::Result(Interpreter::Result::PREEMPTED);
       process->clear_signal(Process::PREEMPT);
-    } else if (signals & Process::PRINT_STACK_TRACE) {
-      ASSERT(!interpreted);
-      process->clear_signal(Process::PRINT_STACK_TRACE);
     } else if (signals & Process::WATCHDOG) {
       process->clear_signal(Process::WATCHDOG);
     } else {
@@ -726,37 +690,6 @@ void Scheduler::process_ready(Locker& locker, Process* process) {
     OS::signal(_has_processes);
   }
   _ready_processes.append(process);
-}
-
-void Scheduler::print_process(Locker& locker, Process* process, Interpreter* interpreter) {
- // TODO(Anders): Printing has been removed. Convert it when fixing "Put this back into effect".
-#ifdef DEBUG
-  const int BUFFER_LENGTH = 1000;
-  char* buffer = unvoid_cast<char*>(malloc(BUFFER_LENGTH));
-  BufferPrinter printer(process->program(), buffer, BUFFER_LENGTH);
-
-  printer.printf("Process #%d (%s):\n", process->id(), Process::StateName[process->state()]);
-
-  // TODO: Print all tasks.
-  Task* task = process->task();
-  printer.printf("- task #%d:\n", task->id());
-#endif
-  /*
-  TODO: Put this back into effect - move out to Resource?
-  for (EventSource* c = VM::current()->event_manager()->event_sources(); c != null; c = c->next()) {
-    Locker locker(c->mutex());
-    int i = 0;
-    for (EventSource::Id* id = c->ids(); id != null; id = id->next) {
-      if (id->module->process() == process) {
-        if (i == 0) {
-          printer.printf("* %s resources:\n", c->name());
-        }
-        printer.printf("  - 0x%x: state:0x%x notifier:%p\n", id->id, id->state, id->object_notifier);
-        i++;
-      }
-    }
-  }
-  */
 }
 
 void Scheduler::terminate_execution(Locker& locker, ExitState exit) {

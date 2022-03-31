@@ -20,20 +20,6 @@ hatch_ lambda/Lambda:
 hatch_primitive_ method arguments:
   #primitive.core.hatch
 
-// Entry point for process just being hatched.
-__hatch_entry__:
-  current := task
-  current.initialize_entry_task_
-  lambda := Lambda.__
-      hatch_method_
-      hatch_args_
-  current.evaluate_ lambda
-
-hatch_method_:
-  #primitive.core.hatch_method
-
-hatch_args_:
-  #primitive.core.hatch_args
 
 current_process_ -> int:
   #primitive.core.current_process_id
