@@ -175,7 +175,7 @@ Object** Interpreter::push_error(Object** sp, Object* type, const char* message)
   if (buffer.malloc_failed()) return push_out_of_memory_error(sp);
   ProgramOrientedEncoder encoder(process->program(), &buffer);
   store_stack(sp);
-  bool success = encoder.encode_error(type, "", process->task()->stack());
+  bool success = encoder.encode_error(type, message, process->task()->stack());
   sp = load_stack();
   if (!success) return push_out_of_memory_error(sp);
 
