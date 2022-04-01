@@ -1682,11 +1682,6 @@ PRIMITIVE(task_stack) {
   return task->stack();
 }
 
-PRIMITIVE(task_reset_stack_limit) {
-  process->scheduler_thread()->interpreter()->reset_stack_limit();
-  return Smi::from(0);
-}
-
 PRIMITIVE(task_current) {
   return process->object_heap()->task();
 }

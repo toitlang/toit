@@ -172,17 +172,14 @@ Method Program::find_method(Object* receiver, int offset) {
 #define CHECK_STACK_OVERFLOW(target)                                  \
   if (sp - target.max_height() < _watermark) {                        \
     OverflowState state = OVERFLOW_EXCEPTION;                         \
-    sp = check_stack_overflow(sp, &state, target);                    \
+    sp = handle_stack_overflow(sp, &state, target);                   \
     switch (state) {                                                  \
       case OVERFLOW_RESUME:                                           \
         break;                                                        \
       case OVERFLOW_OOM:                                              \
+      case OVERFLOW_WATCHDOG:                                         \
       case OVERFLOW_EXCEPTION:                                        \
         goto THROW_IMPLEMENTATION;                                    \
-      case OVERFLOW_WATCHDOG:                                         \
-        target = handle_watchdog();                                   \
-        REGISTER_METHOD(target);                                      \
-        break;                                                        \
       case OVERFLOW_PREEMPT:                                          \
         static_assert(FRAME_SIZE == 2, "Unexpected frame size");      \
         PUSH(reinterpret_cast<Object*>(target.entry()));              \
@@ -194,13 +191,12 @@ Method Program::find_method(Object* receiver, int offset) {
 
 #define CHECK_PREEMPT()                                               \
   if (_watermark == PREEMPTION_MARKER) {                              \
-    _watermark = null;                                                \
-    static_assert(FRAME_SIZE == 2, "Unexpected frame size");          \
-    if (_process->signals() & Process::WATCHDOG) {                    \
-      Method method = handle_watchdog();                              \
-      REGISTER_METHOD(method);                                        \
-      CALL_METHOD(method, 0);                                         \
+    OverflowState state = OVERFLOW_EXCEPTION;                         \
+    sp = handle_preempt(sp, &state);                                  \
+    if (state == OVERFLOW_WATCHDOG) {                                 \
+      goto THROW_IMPLEMENTATION;                                      \
     }                                                                 \
+    static_assert(FRAME_SIZE == 2, "Unexpected frame size");          \
     PUSH(reinterpret_cast<Object*>(bcp));                             \
     PUSH(program->frame_marker());                                    \
     store_stack(sp);                                                  \

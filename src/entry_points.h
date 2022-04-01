@@ -28,9 +28,6 @@ namespace toit {
   E(allocation_failure,       allocation_failure_, 1)             \
   E(code_failure,             too_few_code_arguments_failure_, 4) \
   E(program_failure,          program_failure_, 1)                \
-  E(stack_overflow,           stack_overflow_, 0)                 \
-  E(out_of_memory,            out_of_memory_, 0)                  \
-  E(watchdog,                 watchdog_, 0)                       \
   E(run_global_initializer,   run_global_initializer_, 2)         \
 
 } // namespace toit

@@ -114,10 +114,6 @@ class Interpreter {
 
   void preempt();
 
-  // Called by the [task_reset_stack_limit] primitive as we're unwinding from
-  // having thrown a stack overflow exception.
-  void reset_stack_limit();
-
  private:
   Object** const PREEMPTION_MARKER = reinterpret_cast<Object**>(UINTPTR_MAX);
   Process* _process;
@@ -150,9 +146,11 @@ class Interpreter {
     OVERFLOW_OOM,
   };
 
-  Object** check_stack_overflow(Object** sp, OverflowState* state, Method target);
-  Method handle_stack_overflow(OverflowState state);
-  Method handle_watchdog();
+  Object** handle_preempt(Object** sp, OverflowState* state);
+  Object** handle_stack_overflow(Object** sp, OverflowState* state, Method target);
+
+  Object** push_error(Object** sp, Object* type, const char* message);
+  Object** push_out_of_memory_error(Object** sp);
 
   Object* hash_do(Program* program, Object* current, Object* backing, int step, Object* block, Object** entry_return);
 
@@ -161,8 +159,6 @@ class Interpreter {
 
   inline bool typecheck_class(Program* program, Object* value, int class_index, bool is_nullable) const;
   inline bool typecheck_interface(Program* program, Object* value, int interface_selector_index, bool is_nullable) const;
-
-  void push_encoded_error();
 
   bool is_stack_empty() const {
     return _sp == _base;

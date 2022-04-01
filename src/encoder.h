@@ -117,6 +117,7 @@ class ProgramOrientedEncoder : public Encoder {
   bool encode(Object* object);
 
   bool encode_error(Object* type, Object* message, Stack* stack);
+  bool encode_error(Object* type, const char* message, Stack* stack);
 
 #ifdef PROFILER
   bool encode_profile(Profiler* profile, String* title, int cutoff);

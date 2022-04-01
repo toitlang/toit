@@ -263,6 +263,7 @@ void ProgramBuilder::set_built_in_class_tags_and_sizes() {
   set_built_in_class_tag_and_size(Symbols::LazyInitializer_);
   set_built_in_class_tag_and_size(Symbols::Task_, TypeTag::TASK_TAG);
   set_built_in_class_tag_and_size(Symbols::LargeArray_);
+  set_built_in_class_tag_and_size(Symbols::Exception_);
 }
 
 void ProgramBuilder::set_up_skeleton_program() {
@@ -276,6 +277,12 @@ void ProgramBuilder::set_up_skeleton_program() {
   // Allocate empty structures.
   _program->set_empty_array(_program_heap.allocate_array(0, _program->null_object()));
   _program->set_snapshot_arguments(_program->empty_array());
+
+  // Pre-allocate the out of memory error.
+  Instance* out_of_memory_error = _program_heap.allocate_instance(_program->exception_class_id());
+  out_of_memory_error->at_put(0, lookup_symbol("OUT_OF_MEMORY"));
+  out_of_memory_error->at_put(1, _program->null_object());  // Empty stack trace.
+  _program->set_out_of_memory_error(out_of_memory_error);
 
   // Bind default literals.
   _literals.push_back(_program->true_object());
@@ -303,7 +310,9 @@ void ProgramBuilder::set_up_skeleton_program() {
   _program->set_permission_denied(lookup_symbol("PERMISSION_DENIED"));
   _program->set_quota_exceeded(lookup_symbol("QUOTA_EXCEEDED"));
   _program->set_read_failed(lookup_symbol("READ_FAILED"));
+  _program->set_stack_overflow(lookup_symbol("STACK_OVERFLOW"));
   _program->set_unimplemented(lookup_symbol("UNIMPLEMENTED"));
+  _program->set_watchdog_interrupt(lookup_symbol("WATCHDOG_INTERRUPT"));
   _program->set_wrong_object_type(lookup_symbol("WRONG_OBJECT_TYPE"));
   _program->set_app_sdk_version(lookup_symbol(vm_git_version()));
   _program->set_app_sdk_info(lookup_symbol(vm_git_info()));
