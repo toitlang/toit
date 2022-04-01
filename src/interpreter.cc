@@ -33,8 +33,7 @@ Interpreter::Interpreter()
     , _base(null)
     , _sp(null)
     , _try_sp(null)
-    , _watermark(null)
-    , _in_stack_overflow(false) {
+    , _watermark(null) {
 #ifdef PROFILER
   _is_profiler_active = false;
 #endif
@@ -80,7 +79,7 @@ Object** Interpreter::load_stack() {
   set_profiler_state();
 #endif
   Object** watermark = _watermark;
-  Object** new_watermark = _in_stack_overflow ? _limit : _limit + Stack::OVERFLOW_HEADROOM;
+  Object** new_watermark = _limit + 3;
   while (true) {
     // Updates watermark unless preemption marker is set (will be set after preemption).
     if (watermark == PREEMPTION_MARKER) break;
@@ -163,11 +162,11 @@ void Interpreter::prepare_process() {
 Object** Interpreter::push_error(Object** sp, Object* type, const char* message) {
   Process* process = _process;
   Instance* instance = process->object_heap()->allocate_instance(process->program()->exception_class_id());
-  if (instance == null) {
-    sp = gc(sp, false, 0, false);
+  for (int attempts = 1; instance == null && attempts < 4; attempts++) {
+    sp = gc(sp, false, attempts, false);
     instance = process->object_heap()->allocate_instance(process->program()->exception_class_id());
   }
-  instance->at_put(0, type);
+  if (instance == null) return push_out_of_memory_error(sp);
 
   MallocedBuffer buffer(STACK_ENCODING_BUFFER_SIZE);
   if (buffer.malloc_failed()) return push_out_of_memory_error(sp);
@@ -179,13 +178,16 @@ Object** Interpreter::push_error(Object** sp, Object* type, const char* message)
 
   Error* error = null;
   ByteArray* trace = process->allocate_byte_array(buffer.size(), &error);
-  if (trace == null) {
-    sp = gc(sp, false, 0, false);
+  for (int attempts = 1; instance == null && attempts < 4; attempts++) {
+    sp = gc(sp, false, attempts, false);
     trace = process->allocate_byte_array(buffer.size(), &error);
   }
+  if (trace == null) return push_out_of_memory_error(sp);
+
   ByteArray::Bytes bytes(trace);
   memcpy(bytes.address(), buffer.content(), buffer.size());
 
+  instance->at_put(0, type);
   instance->at_put(1, trace);
   *(--sp) = instance;
   return sp;
@@ -221,7 +223,7 @@ Object** Interpreter::handle_stack_overflow(Object** sp, OverflowState* state, M
   if (length < Stack::max_length()) {
     // The max_height doesn't include space for the frame of the next call (if there is one).
     // For simplicity just always assume that there will be a call at max-height and add `FRAME_SIZE`.
-    int needed_space = method.max_height() + Interpreter::FRAME_SIZE + Stack::OVERFLOW_HEADROOM;
+    int needed_space = method.max_height() + Interpreter::FRAME_SIZE + 3;
     int headroom = sp - _limit;
     ASSERT(headroom < needed_space);  // We shouldn't try to grow the stack otherwise.
 

@@ -126,7 +126,6 @@ class Interpreter {
 
   // Stack overflow handling.
   std::atomic<Object**> _watermark;
-  bool _in_stack_overflow;
 
   void trace(uint8* bcp);
   Method lookup_entry();

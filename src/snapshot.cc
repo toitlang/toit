@@ -735,7 +735,7 @@ static void allocation_size(TypeTag heap_tag, int optional_length,
     case TypeTag::LARGE_INTEGER_TAG:
       return LargeInteger::allocation_size(word_count, extra_bytes);
     default:
-      FATAL("Unexpected class tag %d", heap_tag);
+      FATAL("Unexpected class tag");
   }
 }
 
@@ -755,7 +755,6 @@ Object* SnapshotReader::read_object() {
   bool in_table = type == SnapshotTypeTag::IN_TABLE_TAG;
   int optional_length = extra;
   TypeTag heap_tag = (TypeTag) (read_byte());
-  printf("reading object type = %d\n", heap_tag);
   HeapObject* result = allocate_object(heap_tag, optional_length);
   if (in_table) _table[_index++] = result;
   result->_set_header(Smi::cast(read_object()));
@@ -763,7 +762,6 @@ Object* SnapshotReader::read_object() {
   ASSERT(ARRAY_TAG <= result->class_tag() && result->class_tag() <= LARGE_INTEGER_TAG);
   switch (heap_tag) {
     case TypeTag::ARRAY_TAG:
-      printf("[reading array of length %d]\n", optional_length);
       static_cast<Array*>(result)->read_content(this, optional_length);
       break;
     case TypeTag::BYTE_ARRAY_TAG:
@@ -1238,7 +1236,7 @@ void BaseSnapshotWriter::write_heap_object(HeapObject* object) {
     case TypeTag::LARGE_INTEGER_TAG:
       FATAL("Should never write large integer object to snapshot");
     default:
-      FATAL("Unexpected class tag %d", object->class_tag());
+      FATAL("Unexpected class tag");
   }
 }
 
