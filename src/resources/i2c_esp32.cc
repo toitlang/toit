@@ -145,8 +145,12 @@ static Object* write_i2c(Process* process, I2CResourceGroup* i2c, int i2c_addres
   // First we notify the slave about the register/address we will use.
   if (address != null) {
     // Write the register address. Each byte must be acked.
-    for (int i = 0; i < address_length; i++) {
-      if (i2c_master_write_byte(cmd, address[i], true) != ESP_OK) MALLOC_FAILED;
+    if (address_length > 1 && esp_ptr_internal(address)) {
+      if (i2c_master_write(cmd, data, length, true) != ESP_OK) MALLOC_FAILED;
+    } else {
+      for (int i = 0; i < address_length; i++) {
+        if (i2c_master_write_byte(cmd, address[i], true) != ESP_OK) MALLOC_FAILED;
+      }
     }
   }
 
@@ -192,8 +196,12 @@ static Object* read_i2c(Process* process, I2CResourceGroup* i2c, int i2c_address
     if (i2c_master_write_byte(cmd, (i2c_address << 1) | I2C_MASTER_WRITE, true) != ESP_OK) MALLOC_FAILED;
 
     // Write the register address. Each byte must be acked.
-    for (int i = 0; i < address_length; i++) {
-      if (i2c_master_write_byte(cmd, address[i], true) != ESP_OK) MALLOC_FAILED;
+    if (address_length > 1 && esp_ptr_internal(address)) {
+      if (i2c_master_write(cmd, data, length, true) != ESP_OK) MALLOC_FAILED;
+    } else {
+      for (int i = 0; i < address_length; i++) {
+        if (i2c_master_write_byte(cmd, address[i], true) != ESP_OK) MALLOC_FAILED;
+      }
     }
 
     // Prepare the slave for the next command.
