@@ -340,6 +340,11 @@ class HeapObjectPointerVisitor : public HeapObjectVisitor {
   RootCallback* visitor_;
 };
 
+class EverythingIsAlive : public LivenessOracle {
+ public:
+  bool is_alive(HeapObject* object) { return true; }
+};
+
 void TwoSpaceHeap::compact_heap() {
   SemiSpace* new_space = space();
 
@@ -367,6 +372,10 @@ void TwoSpaceHeap::compact_heap() {
   new_space->iterate_objects(&new_space_visitor);
 
   process_heap_->iterate_roots(&fix);
+  // At this point dead objects have been cleared out of the finalizer lists.
+  EverythingIsAlive yes;
+  process_heap_->process_registered_finalizers(&fix, &yes);
+  process_heap_->process_registered_vm_finalizers(&fix, &yes);
 
   new_space->clear_mark_bits();
   old_space()->clear_mark_bits();

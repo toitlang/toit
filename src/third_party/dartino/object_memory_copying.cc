@@ -29,7 +29,6 @@ Space::Space(Program* program, Space::Resizing resizeable, PageType page_type)
 SemiSpace::SemiSpace(Program* program, Chunk* chunk)
     : Space(program, CANNOT_RESIZE, NEW_SPACE_PAGE) {
   ASSERT(chunk);
-  chunk->set_owner(this);
   append(chunk);
   update_base_and_limit(chunk, chunk->start());
 }
@@ -74,14 +73,14 @@ bool SemiSpace::is_alive(HeapObject* old_location) {
 }
 
 void Space::append(Chunk* chunk) {
-  ASSERT(chunk->owner() == this);
+  chunk->set_owner(this);
   // Insert chunk in increasing address order in the list.  This is
   // useful for the partial compactor.
   chunk_list_.insert_before(chunk, [&chunk](Chunk* it) { return it->start() > chunk->start(); });
 }
 
 void SemiSpace::append(Chunk* chunk) {
-  ASSERT(chunk->owner() == this);
+  chunk->set_owner(this);
   if (!is_empty()) {
     // Update the accounting.
     used_ += top() - chunk_list_.last()->start();
