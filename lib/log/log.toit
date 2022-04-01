@@ -112,24 +112,6 @@ class Logger:
       keys_ = keys
       values_ = values
 
-  static merge_tags_ tags/Map? keys/List? values/List? [block] -> none:
-    if tags and not tags.is_empty:
-      merged_keys := keys ? keys.copy : []
-      merged_values := values ? values.copy : []
-      tags.do: | key value |
-        // We assume that the number of keys is typically less than a
-        // handful, so we optimize for memory usage by finding the existing
-        // index through a linear search instead of using an extra map.
-        index := keys ? keys.index_of key : -1
-        if index >= 0:
-          merged_values[index] = value.stringify
-        else:
-          merged_keys.add key
-          merged_values.add value.stringify
-      block.call merged_keys merged_values
-    else:
-      block.call keys values
-
   /** Adds the $name to a copy of this logger. */
   with_name name/string -> Logger:
     return Logger.internal_ this --name=name
@@ -208,3 +190,26 @@ class Logger:
   */
   fatal message/string --tags/Map?=null -> none:
     log FATAL_LEVEL message --tags=tags
+
+  /**
+  Merge any tags provided in the $tags map with the preexisting $keys
+    and $values lists.
+
+  The new tags in $tags take override any existing key/value pairs
+    represented in the lists.
+  */
+  static merge_tags_ tags/Map? keys/List? values/List? [block] -> any:
+    if not tags or tags.is_empty: return block.call keys values
+    merged_keys := keys ? keys.copy : []
+    merged_values := values ? values.copy : []
+    tags.do: | key value |
+      // We assume that the number of keys is typically less than a
+      // handful, so we optimize for memory usage by finding the existing
+      // index through a linear search instead of using an extra map.
+      index := keys ? keys.index_of key : -1
+      if index >= 0:
+        merged_values[index] = value.stringify
+      else:
+        merged_keys.add key
+        merged_values.add value.stringify
+    return block.call merged_keys merged_values
