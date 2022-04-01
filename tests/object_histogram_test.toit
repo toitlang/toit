@@ -5,5 +5,3 @@
 main:
   x := 2.2342342
   print_objects
-
-
