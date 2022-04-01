@@ -35,6 +35,7 @@ initialize -> ContainerManager:
   network/NetworkServiceDefinition ::= platform == PLATFORM_FREERTOS
       ? WifiServiceDefinition
       : NetworkServiceDefinition
+  network.install
   return ContainerManager flash_registry service_manager
 
 /**

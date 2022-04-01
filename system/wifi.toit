@@ -13,6 +13,8 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+import system.api.wifi show WifiService
+import system.api.network show NetworkService
 import system.services show ServiceDefinition ServiceResource
 
 import esp32
@@ -24,6 +26,15 @@ WIFI_DHCP_TIMEOUT_     ::= Duration --s=16
 
 class WifiServiceDefinition extends NetworkServiceDefinition:
   state_/WifiState? := null
+
+  constructor:
+    super WifiService.NAME --major=WifiService.MAJOR --minor=WifiService.MINOR
+    alias NetworkService.NAME --major=NetworkService.MAJOR --minor=NetworkService.MINOR
+
+  handle pid/int client/int index/int arguments/any -> any:
+    if index == WifiService.CONNECT_SSID_PASSWORD_INDEX:
+      return connect client arguments[0] arguments[1]
+    return super pid client index arguments
 
   connect client/int -> ServiceResource:
     return connect client null null

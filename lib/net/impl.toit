@@ -24,12 +24,12 @@ service_ -> NetworkServiceClient?:
 open -> net.Interface:
   service := service_
   if not service: throw "Network unavailable"
-  return SystemInterface_ service
+  return SystemInterface_ service service.connect
 
 // TODO(kasper): Find a way to listen for network closing.
 class SystemInterface_ extends NetworkResource implements net.Interface:
-  constructor service/NetworkServiceClient:
-    super service
+  constructor service/NetworkServiceClient handle/int:
+    super service handle
 
   resolve host/string -> List:
     if not handle_: throw "Network closed"

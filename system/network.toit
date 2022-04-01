@@ -20,11 +20,10 @@ import net
 import net.modules.udp
 
 class NetworkServiceDefinition extends ServiceDefinition implements NetworkService:
-  constructor:
-    super NetworkService.NAME
-        --major=NetworkService.MAJOR
-        --minor=NetworkService.MINOR
-    install
+  constructor name/string=NetworkService.NAME
+      --major/int=NetworkService.MAJOR
+      --minor/int=NetworkService.MINOR:
+    super name --major=major --minor=minor
 
   handle pid/int client/int index/int arguments/any -> any:
     if index == NetworkService.CONNECT_INDEX:
