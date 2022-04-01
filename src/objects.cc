@@ -276,7 +276,6 @@ void Stack::transfer_from_interpreter(Interpreter* interpreter) {
   ASSERT(top() == -1);
   _set_top(interpreter->_sp - _stack_limit_addr());
   _set_try_top(interpreter->_try_sp - _stack_limit_addr());
-
   ASSERT(top() >= 0);
   ASSERT(top() <= length());
 }

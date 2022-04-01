@@ -27,6 +27,10 @@
 
 namespace toit {
 
+// We push the exception and two elements for the unwinding implementation
+// on the stack when we handle stack overflows.
+static const int RESERVED_STACK_FOR_STACK_OVERFLOWS = 3;
+
 Interpreter::Interpreter()
     : _process(null)
     , _limit(null)
@@ -48,7 +52,6 @@ void Interpreter::deactivate() {
 }
 
 void Interpreter::preempt() {
-  // TODO: Use overflow marker / signal.
   _watermark = PREEMPTION_MARKER;
 }
 
@@ -79,7 +82,7 @@ Object** Interpreter::load_stack() {
   set_profiler_state();
 #endif
   Object** watermark = _watermark;
-  Object** new_watermark = _limit + 3;
+  Object** new_watermark = _limit + RESERVED_STACK_FOR_STACK_OVERFLOWS;
   while (true) {
     // Updates watermark unless preemption marker is set (will be set after preemption).
     if (watermark == PREEMPTION_MARKER) break;
@@ -204,7 +207,7 @@ Object** Interpreter::handle_preempt(Object** sp, OverflowState* state) {
 
   Process* process = _process;
   if (process->signals() & Process::WATCHDOG) {
-    *state = OVERFLOW_WATCHDOG;
+    *state = OVERFLOW_EXCEPTION;
     Object* type = process->program()->watchdog_interrupt();
     return push_error(sp, type, "");
   } else {
@@ -214,8 +217,9 @@ Object** Interpreter::handle_preempt(Object** sp, OverflowState* state) {
 }
 
 Object** Interpreter::handle_stack_overflow(Object** sp, OverflowState* state, Method method) {
-  ASSERT(*state == OVERFLOW_EXCEPTION);
-  if (_watermark == PREEMPTION_MARKER) return handle_preempt(sp, state);
+  if (_watermark == PREEMPTION_MARKER) {
+    return handle_preempt(sp, state);
+  }
 
   Process* process = _process;
   int length = _process->task()->stack()->length();
@@ -223,7 +227,7 @@ Object** Interpreter::handle_stack_overflow(Object** sp, OverflowState* state, M
   if (length < Stack::max_length()) {
     // The max_height doesn't include space for the frame of the next call (if there is one).
     // For simplicity just always assume that there will be a call at max-height and add `FRAME_SIZE`.
-    int needed_space = method.max_height() + Interpreter::FRAME_SIZE + 3;
+    int needed_space = method.max_height() + Interpreter::FRAME_SIZE + RESERVED_STACK_FOR_STACK_OVERFLOWS;
     int headroom = sp - _limit;
     ASSERT(headroom < needed_space);  // We shouldn't try to grow the stack otherwise.
 
@@ -234,6 +238,7 @@ Object** Interpreter::handle_stack_overflow(Object** sp, OverflowState* state, M
   }
 
   if (new_length < 0) {
+    *state = OVERFLOW_EXCEPTION;
     Object* type = process->program()->stack_overflow();
     return push_error(sp, type, "");
   }
@@ -255,7 +260,7 @@ Object** Interpreter::handle_stack_overflow(Object** sp, OverflowState* state, M
 
   // Then check for out of memory.
   if (new_stack == null) {
-    *state = OVERFLOW_OOM;
+    *state = OVERFLOW_EXCEPTION;
     return push_out_of_memory_error(sp);
   }
 

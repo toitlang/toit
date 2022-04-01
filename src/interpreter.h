@@ -141,8 +141,6 @@ class Interpreter {
     OVERFLOW_RESUME,
     OVERFLOW_PREEMPT,
     OVERFLOW_EXCEPTION,
-    OVERFLOW_WATCHDOG,
-    OVERFLOW_OOM,
   };
 
   Object** handle_preempt(Object** sp, OverflowState* state);

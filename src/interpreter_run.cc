@@ -167,33 +167,32 @@ Method Program::find_method(Object* receiver, int offset) {
 #define REGISTER_METHOD(target)
 #endif
 
-// CHECK_STACK_OVERFLOW returns the target iff there still is room on the stack.
-// Otherwise, it will return the stack_overflow method.
+// CHECK_STACK_OVERFLOW checks if there is enough stack space to call
+// the given target method.
 #define CHECK_STACK_OVERFLOW(target)                                  \
   if (sp - target.max_height() < _watermark) {                        \
-    OverflowState state = OVERFLOW_EXCEPTION;                         \
+    OverflowState state;                                              \
     sp = handle_stack_overflow(sp, &state, target);                   \
     switch (state) {                                                  \
       case OVERFLOW_RESUME:                                           \
         break;                                                        \
-      case OVERFLOW_OOM:                                              \
-      case OVERFLOW_WATCHDOG:                                         \
-      case OVERFLOW_EXCEPTION:                                        \
-        goto THROW_IMPLEMENTATION;                                    \
       case OVERFLOW_PREEMPT:                                          \
         static_assert(FRAME_SIZE == 2, "Unexpected frame size");      \
         PUSH(reinterpret_cast<Object*>(target.entry()));              \
         PUSH(program->frame_marker());                                \
         store_stack(sp);                                              \
         return Result(Result::PREEMPTED);                             \
+      case OVERFLOW_EXCEPTION:                                        \
+        goto THROW_IMPLEMENTATION;                                    \
     }                                                                 \
   }
 
+// CHECK_PREEMPT checks for preemption and watchdog interrupts.
 #define CHECK_PREEMPT()                                               \
   if (_watermark == PREEMPTION_MARKER) {                              \
-    OverflowState state = OVERFLOW_EXCEPTION;                         \
+    OverflowState state;                                              \
     sp = handle_preempt(sp, &state);                                  \
-    if (state == OVERFLOW_WATCHDOG) {                                 \
+    if (state == OVERFLOW_EXCEPTION) {                                \
       goto THROW_IMPLEMENTATION;                                      \
     }                                                                 \
     static_assert(FRAME_SIZE == 2, "Unexpected frame size");          \
