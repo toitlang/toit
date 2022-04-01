@@ -26,7 +26,7 @@ Logs the $message at the given $level to the default logger.
 
 Includes the given $tags in the log message.
 */
-log level message --tags=null -> none:
+log level/int message/string --tags/Map?=null -> none:
   default_.log level message --tags=tags
 
 /**
@@ -34,7 +34,7 @@ Logs the $message to the default logger at debug level ($DEBUG_LEVEL).
 
 Includes the given $tags in the log message.
 */
-debug message --tags=null -> none:
+debug message/string --tags/Map?=null -> none:
   default_.log DEBUG_LEVEL message --tags=tags
 
 /**
@@ -42,7 +42,7 @@ Logs the $message to the default logger at info level ($INFO_LEVEL).
 
 Includes the given $tags in the log message.
 */
-info message --tags=null -> none:
+info message/string --tags/Map?=null -> none:
   default_.log INFO_LEVEL message --tags=tags
 
 /**
@@ -50,7 +50,7 @@ Logs the $message to the default logger at warning level ($WARN_LEVEL).
 
 Includes the given $tags in the log message.
 */
-warn message --tags=null -> none:
+warn message/string --tags/Map?=null -> none:
   default_.log WARN_LEVEL message --tags=tags
 
 /**
@@ -58,7 +58,7 @@ Logs the $message to the default logger at error level ($ERROR_LEVEL).
 
 Includes the given $tags in the log message.
 */
-error message --tags=null -> none:
+error message/string --tags/Map?=null -> none:
   default_.log ERROR_LEVEL message --tags=tags
 
 /**
@@ -66,7 +66,7 @@ Logs the $message to the default logger at fatal level ($FATAL_LEVEL).
 
 Includes the given $tags in the log message.
 */
-fatal message --tags=null -> none:
+fatal message/string --tags/Map?=null -> none:
   default_.log FATAL_LEVEL message --tags=tags
 
 /**
@@ -81,8 +81,10 @@ A logger can be associated with a set of tags that are added to all logged
 class Logger:
   target_/Target
   level_/int
-  tags_/Map
+
   names_/List?
+  keys_/List? ::= null
+  values_/List? ::= null
 
   /**
   Constructs a logger with the given $level_ and $target_.
@@ -91,27 +93,45 @@ class Logger:
 
   The log is associated with the $name.
   */
-  constructor .level_/int .target_/Target --name=null:
-    names_ = name ? [name] : []
-    tags_ = {:}
+  constructor .level_/int .target_/Target --name/string?=null:
+    names_ = name ? [name] : null
 
   constructor.internal_ parent/Logger --name/string?=null --level/int?=null --tags/Map?=null:
     level_ = level ? (max level parent.level_) : parent.level_
     target_ = parent.target_
-    if tags and not tags.is_empty:
-      tags_ = {:}
-      parent.tags_.do: | k v | tags_[k] = v
-      tags.do: | k v | tags_[k] = v
-    else:
-      tags_ = parent.tags_
+    parent_names ::= parent.names_
     if name:
-      names_ = parent.names_.copy
-      names_.add name
+      if parent_names:
+        names_ = parent_names.copy
+        names_.add name
+      else:
+        names_ = [name]
     else:
-      names_ = parent.names_
+      names_ = parent_names
+    merge_tags_ tags parent.keys_ parent.values_: | keys values |
+      keys_ = keys
+      values_ = values
+
+  static merge_tags_ tags/Map? keys/List? values/List? [block] -> none:
+    if tags and not tags.is_empty:
+      merged_keys := keys ? keys.copy : []
+      merged_values := values ? values.copy : []
+      tags.do: | key value |
+        // We assume that the number of keys is typically less than a
+        // handful, so we optimize for memory usage by finding the existing
+        // index through a linear search instead of using an extra map.
+        index := keys ? keys.index_of key : -1
+        if index >= 0:
+          merged_values[index] = value.stringify
+        else:
+          merged_keys.add key
+          merged_values.add value.stringify
+      block.call merged_keys merged_values
+    else:
+      block.call keys values
 
   /** Adds the $name to a copy of this logger. */
-  with_name name -> Logger:
+  with_name name/string -> Logger:
     return Logger.internal_ this --name=name
 
   /**
@@ -119,7 +139,7 @@ class Logger:
 
   The level can only be increased to log fewer messages.
   */
-  with_level level -> Logger:
+  with_level level/int -> Logger:
     return Logger.internal_ this --level=level
 
   /**
@@ -145,19 +165,8 @@ class Logger:
   */
   log level/int message/string --tags/Map?=null -> none:
     if level < level_: return
-
-    tags_for_this_message/Map := ?
-    if tags and not tags.is_empty:
-      if not tags_.is_empty:
-        tags_for_this_message = {:}
-        tags_.do: | k v | tags_for_this_message[k] = v
-        tags.do: | k v | tags_for_this_message[k] = v
-      else:
-        tags_for_this_message = tags
-    else:
-      tags_for_this_message = tags_
-
-    target_.log names_ level message tags_for_this_message
+    merge_tags_ tags keys_ values_: | keys/List? values/List? |
+      target_.log level message names_ keys values
     if level == FATAL_LEVEL: throw "FATAL"
 
   /**
