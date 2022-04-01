@@ -19,8 +19,9 @@ namespace toit {
 
 // All functions that can be called directly from the interpreter.
 #define ENTRY_POINTS(E) \
-  E(entry,                    __entry__, 0)                       \
-  E(hatch_entry,              __hatch_entry__, 0)                 \
+  E(entry_main,               __entry__main, 0)                   \
+  E(entry_spawn,              __entry__spawn, 0)                  \
+  E(entry_task,               __entry__task, 1)                   \
   E(lookup_failure,           lookup_failure_, 2)                 \
   E(as_check_failure,         as_check_failure_, 2)               \
   E(primitive_lookup_failure, primitive_lookup_failure_, 2)       \
@@ -30,7 +31,6 @@ namespace toit {
   E(stack_overflow,           stack_overflow_, 0)                 \
   E(out_of_memory,            out_of_memory_, 0)                  \
   E(watchdog,                 watchdog_, 0)                       \
-  E(task_entry,               task_entry_, 1)                     \
-  E(run_global_initializer,   run_global_initializer_, 3)         \
+  E(run_global_initializer,   run_global_initializer_, 2)         \
 
 } // namespace toit

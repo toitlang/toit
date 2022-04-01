@@ -87,13 +87,6 @@ class Box_:
   constructor .value_:
   value_ := ?
 
-class LazyInitializer_:
-  constructor .id_:
-  id_ / int ::= ?
-
-  call:
-    return __invoke_initializer__ id_
-
 class Null_:
   stringify:
     return "null"
@@ -185,17 +178,24 @@ lambda_ method arguments/any arg_count -> Lambda:
     arguments = create_array_ arguments
   return Lambda.__ method arguments
 
+class LazyInitializer_:
+  constructor .id_or_task_:
+  id_or_task_ / any := ?
+
+  call:
+    assert: id_or_task_ is int
+    // The __invoke_initializer__ builtin does a tail call to the method with the given id.
+    return __invoke_initializer__ id_or_task_
+
 /**
 Runs the $initializer function for the given $global.
-
-The $initialization_in_progress_sentinel should be stored in the global while the
-  initializer is run.
 */
-run_global_initializer_ global/int initializer/LazyInitializer_ initialization_in_progress_sentinel:
-  if initializer == initialization_in_progress_sentinel:
+run_global_initializer_ global/int initializer/LazyInitializer_:
+  if initializer.id_or_task_ is not int:
+    // There is already an initialization in progress.
     initialization_in_progress_failure_ global
 
-  __store_global_with_id__ global initialization_in_progress_sentinel
+  __store_global_with_id__ global (LazyInitializer_ task)
 
   // If the initializer fails, we store the original initializer back in
   // the global. This means that it is possible to invoke a global that throws

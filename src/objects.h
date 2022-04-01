@@ -327,7 +327,7 @@ class HeapObject : public Object {
   friend class GcMetadata;
   friend class CompactingVisitor;
   friend class SweepingVisitor;
-  friend class GenerationalScavengeVisitor;
+  friend class ScavengeVisitor;
 };
 
 class Array : public HeapObject {

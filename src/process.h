@@ -35,9 +35,8 @@ class Process : public ProcessListFromProcessGroup::Element,
  public:
   enum Signal {
     KILL              = 1 << 0,
-    PRINT_STACK_TRACE = 1 << 1,
-    PREEMPT           = 1 << 2,
-    WATCHDOG          = 1 << 3,
+    PREEMPT           = 1 << 1,
+    WATCHDOG          = 1 << 2,
   };
 
   enum State {

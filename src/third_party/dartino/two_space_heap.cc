@@ -65,7 +65,7 @@ SemiSpace* TwoSpaceHeap::take_space() {
 }
 
 template <class SomeSpace>
-HeapObject* GenerationalScavengeVisitor::clone_in_to_space(Program* program, HeapObject* original, SomeSpace* to) {
+HeapObject* ScavengeVisitor::clone_in_to_space(Program* program, HeapObject* original, SomeSpace* to) {
   ASSERT(!to->includes(original->_raw()));
   ASSERT(!original->has_forwarding_address());
   // Copy the object to the 'to' space and insert a forwarding pointer.
@@ -79,7 +79,7 @@ HeapObject* GenerationalScavengeVisitor::clone_in_to_space(Program* program, Hea
   return target;
 }
 
-void GenerationalScavengeVisitor::do_roots(Object** start, int count) {
+void ScavengeVisitor::do_roots(Object** start, int count) {
   Object** end = start + count;
   for (Object** p = start; p < end; p++) {
     if (!in_from_space(*p)) continue;
@@ -145,7 +145,7 @@ void TwoSpaceHeap::collect_new_space() {
   // Allocate from start of to-space..
   to->update_base_and_limit(to->chunk(), to->chunk()->start());
 
-  GenerationalScavengeVisitor visitor(program_, this);
+  ScavengeVisitor visitor(program_, this);
   to->start_scavenge();
   old_space()->start_scavenge();
 
@@ -155,24 +155,24 @@ void TwoSpaceHeap::collect_new_space() {
 
   bool work_found = true;
   while (work_found) {
-    work_found = to->complete_scavenge_generational(&visitor);
-    work_found |= old_space()->complete_scavenge_generational(&visitor);
+    work_found = to->complete_scavenge(&visitor);
+    work_found |= old_space()->complete_scavenge(&visitor);
   }
 
   process_heap_->process_registered_finalizers(&visitor, from);
 
   work_found = true;
   while (work_found) {
-    work_found = to->complete_scavenge_generational(&visitor);
-    work_found |= old_space()->complete_scavenge_generational(&visitor);
+    work_found = to->complete_scavenge(&visitor);
+    work_found |= old_space()->complete_scavenge(&visitor);
   }
 
   process_heap_->process_registered_vm_finalizers(&visitor, from);
 
   work_found = true;
   while (work_found) {
-    work_found = to->complete_scavenge_generational(&visitor);
-    work_found |= old_space()->complete_scavenge_generational(&visitor);
+    work_found = to->complete_scavenge(&visitor);
+    work_found |= old_space()->complete_scavenge(&visitor);
   }
 
   old_space()->end_scavenge();
@@ -206,7 +206,7 @@ void TwoSpaceHeap::collect_new_space() {
 }
 
 void TwoSpaceHeap::collect_old_space_if_needed(bool force) {
-  if (false && (force || old_space()->needs_garbage_collection())) {  // TODO: Activate Old-space GC.
+  if (force || old_space()->needs_garbage_collection()) {
     old_space()->flush();
     collect_old_space();
 #ifdef DEBUG
@@ -226,14 +226,21 @@ void TwoSpaceHeap::collect_old_space() {
     validate();
   }
 
-  perform_shared_garbage_collection();
+  uint64 start = OS::get_monotonic_time();
+
+  perform_garbage_collection();
+
+  if (Flags::tracegc) {
+    uint64 end = OS::get_monotonic_time();
+    printf("Mark-sweep: %dus\n", static_cast<int>(end - start));
+  }
 
   if (Flags::validate_heap) {
     validate();
   }
 }
 
-void TwoSpaceHeap::perform_shared_garbage_collection() {
+void TwoSpaceHeap::perform_garbage_collection() {
   // Mark all reachable objects.  We mark all live objects in new-space too, to
   // detect liveness paths that go through new-space, but we just clear the
   // mark bits afterwards.  Dead objects in new-space are only cleared in a
@@ -252,11 +259,11 @@ void TwoSpaceHeap::perform_shared_garbage_collection() {
     // pointless GCs.
     old_space()->evaluate_pointlessness();
     // Do a non-compacting GC this time for speed.
-    sweep_shared_heap();
+    sweep_heap();
   } else {
     // Last GC was sweeping, so we do a compaction this time to avoid
     // fragmentation.
-    compact_shared_heap();
+    compact_heap();
   }
 
 #ifdef DEBUG
@@ -264,7 +271,7 @@ void TwoSpaceHeap::perform_shared_garbage_collection() {
 #endif
 }
 
-void TwoSpaceHeap::sweep_shared_heap() {
+void TwoSpaceHeap::sweep_heap() {
   SemiSpace* new_space = space();
 
   old_space()->set_compacting(false);
@@ -303,7 +310,7 @@ class HeapObjectPointerVisitor : public HeapObjectVisitor {
   Program *program_;
 };
 
-void TwoSpaceHeap::compact_shared_heap() {
+void TwoSpaceHeap::compact_heap() {
   SemiSpace* new_space = space();
 
   old_space()->set_compacting(true);
