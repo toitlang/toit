@@ -70,6 +70,9 @@ foreach(file ${TOIT_TESTS})
 endforeach()
 
 foreach(file ${TOIT_FORCE_TESTS})
+  if("${file}" IN_LIST TOIT_SKIP_TESTS)
+    continue()
+  endif()
   add_test(
     NAME ${file}
     COMMAND $<TARGET_FILE:toit.run> --force ${file}
@@ -79,6 +82,9 @@ foreach(file ${TOIT_FORCE_TESTS})
 endforeach()
 
 foreach(file ${TOIT_NO_BOOT_TESTS})
+  if("${file}" IN_LIST TOIT_SKIP_TESTS)
+    continue()
+  endif()
   add_test(
     NAME ${file}
     # Assumes that `none` doesn't exist.
@@ -89,6 +95,9 @@ foreach(file ${TOIT_NO_BOOT_TESTS})
 endforeach()
 
 foreach(file ${TOIT_COMPILER_TESTS})
+  if("${file}" IN_LIST TOIT_SKIP_TESTS)
+    continue()
+  endif()
   add_test(
     NAME ${file}
     COMMAND $<TARGET_FILE:toit.run> ${file} $<TARGET_FILE:toit.run>
@@ -105,6 +114,9 @@ add_test(
   )
 
 foreach(file ${TOIT_SLOW_TESTS})
+  if("${file}" IN_LIST TOIT_SKIP_TESTS)
+    continue()
+  endif()
   add_test(
     NAME ${file}
     COMMAND $<TARGET_FILE:toit.run> ${file}

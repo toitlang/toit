@@ -47,3 +47,9 @@ if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows" OR "${CMAKE_SYSTEM_NAME}" STREQUAL
     tests/tls_test_slow.toit
   )
 endif()
+
+# badssl.com seems to be down.
+list(APPEND TOIT_SKIP_TESTS
+  tests/tls_test_slow.toit
+  tests/tls_client_cert_test.toit
+)
