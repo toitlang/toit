@@ -118,7 +118,7 @@ static Object* write_i2c(Process* process, I2CResourceGroup* i2c, int i2c_addres
   const uint8* data = buffer.address();
   int length = buffer.length();
   if (!esp_ptr_internal(data)) {
-    // Copy buffer to stack, if the buffer is not in memory.
+    // Copy buffer to malloc heap, if the buffer is not in memory.
     uint8* copy = unvoid_cast<uint8*>(malloc(length));
     if (copy == null) MALLOC_FAILED;
     memcpy(copy, data, length);
