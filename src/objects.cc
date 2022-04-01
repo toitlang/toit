@@ -153,7 +153,7 @@ FreeListRegion* FreeListRegion::create_at(uword start, uword size) {
     return self;
   }
   for (uword i = 0; i < size; i += WORD_SIZE) {
-    auto one_word = reinterpret_cast<FreeListRegion*>(start + i);
+    auto one_word = reinterpret_cast<FreeListRegion*>(HeapObject::from_address(start + i));
     one_word->_set_header(Smi::from(SINGLE_FREE_WORD_CLASS_ID), SINGLE_FREE_WORD_TAG);
   }
   return null;

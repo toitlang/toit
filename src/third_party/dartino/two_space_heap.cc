@@ -250,6 +250,10 @@ void TwoSpaceHeap::collect_old_space() {
         static_cast<int>(end - start));
   }
 
+  old_space()->set_allocation_budget(Utils::min(
+      static_cast<uword>(TOIT_PAGE_SIZE),
+      static_cast<uword>(old_space()->used() * 1.5)));
+
   if (Flags::validate_heap) {
     validate();
   }

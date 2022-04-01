@@ -330,7 +330,7 @@ class FreeList {
       return;
     }
     const int WORD_BITS = sizeof(uword) * BYTE_BIT_SIZE;
-    int bucket = WORD_BITS - Utils::clz(free_size);
+    int bucket = WORD_BITS - Utils::clz(free_size) - 1;
     if (bucket >= NUMBER_OF_BUCKETS) bucket = NUMBER_OF_BUCKETS - 1;
     result->set_next_region(buckets_[bucket]);
     buckets_[bucket] = result;

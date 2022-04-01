@@ -77,9 +77,7 @@ void Space::append(Chunk* chunk) {
   ASSERT(chunk->owner() == this);
   // Insert chunk in increasing address order in the list.  This is
   // useful for the partial compactor.
-  if (!chunk_list_.insert_before(chunk, [&chunk](Chunk* it) { return it->start() > chunk->start(); })) {
-    chunk_list_.append(chunk);
-  }
+  chunk_list_.insert_before(chunk, [&chunk](Chunk* it) { return it->start() > chunk->start(); });
 }
 
 void SemiSpace::append(Chunk* chunk) {
