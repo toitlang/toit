@@ -13,28 +13,14 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-import system.services show ServiceDefinition ServiceResource
-import system.api.network show NetworkService
-
 import net
 import net.modules.udp
 
-class NetworkServiceDefinition extends ServiceDefinition implements NetworkService:
-  constructor name/string=NetworkService.NAME
-      --major/int=NetworkService.MAJOR
-      --minor/int=NetworkService.MINOR:
-    super name --major=major --minor=minor
+import system.services show ServiceDefinition ServiceResource
 
-  handle pid/int client/int index/int arguments/any -> any:
-    if index == NetworkService.CONNECT_INDEX:
-      return connect client
-    if index == NetworkService.ADDRESS_INDEX:
-      return address ((resource client arguments) as NetworkResource)
-    unreachable
+import ..shared.network_base
 
-  connect -> int:
-    unreachable  // TODO(kasper): Nasty.
-
+class NetworkServiceDefinition extends NetworkServiceDefinitionBase:
   connect client/int -> ServiceResource:
     return NetworkResource this client
 

@@ -18,6 +18,7 @@ import uuid
 
 import ..system.boot
 import ..system.containers
+import ..system.extensions.host.initialize
 
 import .mirror as mirror
 import .snapshot as snapshot
@@ -68,7 +69,7 @@ main:
     print_on_stderr_ "toit.run.toit must be provided a snapshot"
     exit 1
 
-  container_manager/ContainerManager := initialize
+  container_manager/ContainerManager := initialize_host
   image := ContainerImageSnapshot container_manager snapshot_bundle
   container_manager.register_image image
   exit (boot container_manager)
