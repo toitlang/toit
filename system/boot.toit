@@ -16,7 +16,7 @@
 import .containers
 
 /**
-Start the system and run the necessary containers. Returns when the
+Boot the system and run the necessary containers. Returns when the
   containers have run to completion or an error has occurred.
 
 Returns an error code which is 0 when no errors occurred.

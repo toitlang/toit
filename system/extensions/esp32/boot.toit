@@ -15,7 +15,6 @@
 
 import .wifi
 import ...boot
-import ...containers
 import ...initialize
 
 main:
