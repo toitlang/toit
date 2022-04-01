@@ -146,7 +146,7 @@ static Object* write_i2c(Process* process, I2CResourceGroup* i2c, int i2c_addres
   if (address != null) {
     // Write the register address. Each byte must be acked.
     if (address_length > 1 && esp_ptr_internal(address)) {
-      if (i2c_master_write(cmd, data, length, true) != ESP_OK) MALLOC_FAILED;
+      if (i2c_master_write(cmd, address, address_length, true) != ESP_OK) MALLOC_FAILED;
     } else {
       for (int i = 0; i < address_length; i++) {
         if (i2c_master_write_byte(cmd, address[i], true) != ESP_OK) MALLOC_FAILED;
@@ -197,7 +197,7 @@ static Object* read_i2c(Process* process, I2CResourceGroup* i2c, int i2c_address
 
     // Write the register address. Each byte must be acked.
     if (address_length > 1 && esp_ptr_internal(address)) {
-      if (i2c_master_write(cmd, data, length, true) != ESP_OK) MALLOC_FAILED;
+      if (i2c_master_write(cmd, address, address_length, true) != ESP_OK) MALLOC_FAILED;
     } else {
       for (int i = 0; i < address_length; i++) {
         if (i2c_master_write_byte(cmd, address[i], true) != ESP_OK) MALLOC_FAILED;
