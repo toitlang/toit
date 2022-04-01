@@ -154,9 +154,8 @@ class Device implements serial.Device:
   The write operation is executed by sending:
   - a 'start',
   - the device's I2C address with the READ/WRITE bit set to WRITE. This is accomplished by
-    shifting the I2C address by one and clearing the least-significant bit. The device must ack.
-  - each byte. The device must ack each byte.
-  - a stop.
+    shifting the I2C address by one and clearing the least-significant bit. The device must ack
+  - each byte.
   */
   write bytes/ByteArray:
     write bytes: throw it
@@ -210,7 +209,7 @@ class Device implements serial.Device:
   - the device's I2C address with the READ/WRITE bit set to READ. This is accomplished by
     shifting the I2C address by one and setting the least-significant bit. The device must ack.
   Then it reads $size bytes, sending an 'ack' for each byte except for the last, where
-    receival is confirmed with a 'nack'.
+    receipt is confirmed with a 'nack'.
   Finally it sends a 'stop'.
   */
   read size/int -> ByteArray:
@@ -244,7 +243,7 @@ class Device implements serial.Device:
   Reads $size bytes from the given $address.
 
   # Advanced
-  The read operation is executed by sending:
+  The read_address operation is executed by sending:
   - a 'start',
   - the device's I2C address with the READ/WRITE bit set to WRITE. This is accomplished by
     shifting the I2C address by one and clearing the least-significant bit. The device must ack.
@@ -253,7 +252,7 @@ class Device implements serial.Device:
   - the device's I2C address with the READ/WRITE bit set to READ. This is accomplished by
     shifting the I2C address by one and setting the least-significant bit. The device must ack.
   Then it reads $size bytes, sending an 'ack' for each byte except for the last, where
-    receival is confirmed with a 'nack'.
+    receipt is confirmed with a 'nack'.
   Finally it sends a 'stop'.
   */
   read_address address/ByteArray size/int -> ByteArray:
@@ -261,7 +260,7 @@ class Device implements serial.Device:
 
   /**
   Variant of $(read_address address size).
-  Calls the $failure block if the read fails.
+  Calls the $failure block if the operation fails.
   */
   read_address address/ByteArray size/int [failure] -> ByteArray:
     return i2c_.read_address_ this.address address size failure
