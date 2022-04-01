@@ -451,7 +451,6 @@ Interpreter::Result Interpreter::run() {
       if (instance->class_id() == program->lazy_initializer_class_id()) {
         PUSH(Smi::from(global_index));
         PUSH(instance);
-        PUSH(program->initialization_in_progress_object());
         Method target = program->run_global_initializer();
         CALL_METHOD(target, _length_);
       } else {

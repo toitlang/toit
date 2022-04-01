@@ -15,17 +15,15 @@ export *
 open -> Interface:
   return impl.open
 
-// TODO: Should probably be an interface!
-abstract class Interface implements udp.Interface tcp.Interface:
-  tcp_connect host/string port/int -> tcp.Socket:
-    ips := resolve host
-    return tcp_connect
-      SocketAddress ips[0] port
+interface Interface implements udp.Interface tcp.Interface:
+  address -> IpAddress
+  resolve host/string -> List
 
-  abstract resolve host/string -> List
-  abstract udp_open -> udp.Socket
-  abstract udp_open --port/int? -> udp.Socket
-  abstract tcp_connect address/SocketAddress -> tcp.Socket
-  abstract tcp_listen port/int -> tcp.ServerSocket
-  abstract address -> IpAddress
-  abstract close
+  udp_open -> udp.Socket
+  udp_open --port/int? -> udp.Socket
+
+  tcp_connect host/string port/int -> tcp.Socket
+  tcp_connect address/SocketAddress -> tcp.Socket
+  tcp_listen port/int -> tcp.ServerSocket
+
+  close

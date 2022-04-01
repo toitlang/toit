@@ -109,14 +109,14 @@ class TwoSpaceHeap {
   void collect_new_space();
   void collect_old_space();
   void collect_old_space_if_needed(bool force);
-  void perform_shared_garbage_collection();
-  void sweep_shared_heap();
-  void compact_shared_heap();
+  void perform_garbage_collection();
+  void sweep_heap();
+  void compact_heap();
 
  private:
   static const uword UNLIMITED_EXPANSION = 0x80000000u - TOIT_PAGE_SIZE;
 
-  friend class GenerationalScavengeVisitor;
+  friend class ScavengeVisitor;
 
   Program* program_;
   ObjectHeap* process_heap_;
@@ -131,9 +131,9 @@ class TwoSpaceHeap {
 };
 
 // Helper class for copying HeapObjects.
-class GenerationalScavengeVisitor : public RootCallback {
+class ScavengeVisitor : public RootCallback {
  public:
-  explicit GenerationalScavengeVisitor(Program* program, TwoSpaceHeap* heap)
+  explicit ScavengeVisitor(Program* program, TwoSpaceHeap* heap)
       : program_(program),
         to_start_(heap->unused_semi_space_->single_chunk_start()),
         to_size_(heap->unused_semi_space_->single_chunk_size()),

@@ -27,6 +27,7 @@ class Wifi:
 
   close:
     if resource_group_:
+      logger_.debug "closing"
       wifi_close_ resource_group_
       resource_group_ = null
 
@@ -68,7 +69,7 @@ class Wifi:
     if (state & TOIT_WIFI_DHCP_SUCCESS_) != 0:
       ip := wifi_get_ip_ resource
       address_ = net.IpAddress.parse ip
-      logger_.info "got ip" --tags={"ip": ip}
+      logger_.info "dhcp assigned address" --tags={"ip": ip}
       return ip
     close
     throw "IP_ASSIGN_FAILED"
@@ -76,13 +77,15 @@ class Wifi:
   rssi -> int?:
     return wifi_get_rssi_ resource_group_
 
+// ----------------------------------------------------------------------------
+
 wifi_init_:
   #primitive.wifi.init
 
 wifi_close_ resource_group:
   #primitive.wifi.close
 
-wifi_connect_ resource_group ssid password :
+wifi_connect_ resource_group ssid password:
   #primitive.wifi.connect
 
 wifi_setup_ip_ resource_group:

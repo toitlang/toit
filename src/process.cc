@@ -66,14 +66,14 @@ Process::Process(Program* program, ProcessRunner* runner, ProcessGroup* group, S
 
 Process::Process(Program* program, ProcessGroup* group, SystemMessage* termination, char** args, InitialMemory* initial_memory)
    : Process(program, null, group, termination, initial_memory) {
-  _entry = program->entry();
+  _entry = program->entry_main();
   _args = args;
 }
 
 #ifndef TOIT_FREERTOS
 Process::Process(Program* program, ProcessGroup* group, SystemMessage* termination, SnapshotBundle bundle, char** args, InitialMemory* initial_memory)
   : Process(program, null, group, termination, initial_memory) {
-  _entry = program->entry();
+  _entry = program->entry_main();
   _args = args;
 
   int size;
@@ -92,7 +92,7 @@ Process::Process(Program* program, ProcessGroup* group, SystemMessage* terminati
 
 Process::Process(Program* program, ProcessGroup* group, SystemMessage* termination, Method method, uint8* arguments, InitialMemory* initial_memory)
    : Process(program, null, group, termination, initial_memory) {
-  _entry = program->hatch_entry();
+  _entry = program->entry_spawn();
   _args = null;
   _hatch_method = method;
   _hatch_arguments = arguments;

@@ -157,7 +157,7 @@ uword SemiSpace::used() {
 
 // Called multiple times until there is no more work.  Finds objects moved to
 // the to-space and traverses them to find and fix more new-space pointers.
-bool SemiSpace::complete_scavenge_generational(GenerationalScavengeVisitor* visitor) {
+bool SemiSpace::complete_scavenge(ScavengeVisitor* visitor) {
   bool found_work = false;
   // No need to update remembered set for semispace->semispace pointers.
   uint8 dummy;

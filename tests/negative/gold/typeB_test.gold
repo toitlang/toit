@@ -2,4 +2,3 @@ As check failed: an int (499) is not a string.
   0: main.<block>              tests/negative/typeB_test.toit:10:13
   1: run                       tests/negative/typeB_test.toit:5:21
   2: main                      tests/negative/typeB_test.toit:10:3
-  3: __entry__.<lambda>        <sdk>/core/entry.toit:48:20

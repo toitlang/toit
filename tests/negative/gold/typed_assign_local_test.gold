@@ -3,4 +3,3 @@ tests/negative/typed_assign_local_test.toit:8:9: error: Type mismatch. Expected 
         ^
 As check failed: a string ("str") is not a int.
   0: main                      tests/negative/typed_assign_local_test.toit:8:9
-  1: __entry__.<lambda>        <sdk>/core/entry.toit:48:20
