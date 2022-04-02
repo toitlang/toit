@@ -1927,7 +1927,7 @@ PRIMITIVE(varint_decode) {
 PRIMITIVE(encode_error) {
   ARGS(Object, type, Object, message);
   MallocedBuffer buffer(STACK_ENCODING_BUFFER_SIZE);
-  if (buffer.malloc_failed()) MALLOC_FAILED;
+  if (!buffer.has_content()) MALLOC_FAILED;
   ProgramOrientedEncoder encoder(process->program(), &buffer);
   process->scheduler_thread()->interpreter()->store_stack();
   bool success = encoder.encode_error(type, message, process->task()->stack());

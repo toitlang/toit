@@ -59,11 +59,19 @@ class Buffer {
 class MallocedBuffer : public Buffer {
  public:
   explicit MallocedBuffer(int length) {
+    allocate(length);
+  }
+
+  bool allocate(int length) {
     ASSERT(length > 0);
     _length = length;
     _buffer = reinterpret_cast<uint8*>(malloc(length));
     _pos = 0;
-    if (_buffer == null) _length = 0;
+    if (_buffer == null) {
+      _length = 0;
+      return false;
+    }
+    return true;
   }
 
   ~MallocedBuffer() {
@@ -75,8 +83,15 @@ class MallocedBuffer : public Buffer {
     _pos++;
   }
 
-  bool malloc_failed() { return _length == 0; }
-  uint8* content() { return _buffer; }
+  bool has_content() const { return _length > 0; }
+  uint8* content() const { return _buffer; }
+
+  uint8* take_content() {
+    uint8* result = _buffer;
+    _buffer = null;
+    _length = 0;
+    return result;
+  }
 
   virtual bool has_overflow() {
     return _pos >= _length;

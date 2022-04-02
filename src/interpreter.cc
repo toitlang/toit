@@ -162,42 +162,79 @@ void Interpreter::prepare_process() {
 #define STACK_ENCODING_BUFFER_SIZE (16*1024)
 #endif
 
+// TODO(kasper): Share these definitions?
+#define PUSH(o)            ({ Object* _o_ = o; *(--sp) = _o_; })
+#define POP()              (*(sp++))
+#define DROP(n)            ({ int _n_ = n; sp += _n_; })
+#define STACK_AT(n)        ({ int _n_ = n; (*(sp + _n_)); })
+#define STACK_AT_PUT(n, o) ({ int _n_ = n; Object* _o_ = o; *(sp + _n_) = _o_; })
+
 Object** Interpreter::push_error(Object** sp, Object* type, const char* message) {
   Process* process = _process;
+  PUSH(type);
+
+  // Stack: Type, ...
+
   Instance* instance = process->object_heap()->allocate_instance(process->program()->exception_class_id());
   for (int attempts = 1; instance == null && attempts < 4; attempts++) {
     sp = gc(sp, false, attempts, false);
     instance = process->object_heap()->allocate_instance(process->program()->exception_class_id());
   }
-  if (instance == null) return push_out_of_memory_error(sp);
+  if (instance == null) {
+    DROP(1);
+    return push_out_of_memory_error(sp);
+  }
+
+  type = POP();
+  PUSH(instance);
+  PUSH(type);
+
+  // Stack: Type, Instance, ...
 
   MallocedBuffer buffer(STACK_ENCODING_BUFFER_SIZE);
-  if (buffer.malloc_failed()) return push_out_of_memory_error(sp);
+  if (!buffer.has_content()) {
+    sp = gc(sp, true, 1, false);
+    if (!buffer.allocate(STACK_ENCODING_BUFFER_SIZE)) {
+      DROP(2);
+      return push_out_of_memory_error(sp);
+    }
+  }
+  ASSERT(buffer.has_content());
+
   ProgramOrientedEncoder encoder(process->program(), &buffer);
   store_stack(sp);
-  bool success = encoder.encode_error(type, message, process->task()->stack());
+  bool success = encoder.encode_error(STACK_AT(0), message, process->task()->stack());
   sp = load_stack();
-  if (!success) return push_out_of_memory_error(sp);
 
-  Error* error = null;
-  ByteArray* trace = process->allocate_byte_array(buffer.size(), &error);
-  for (int attempts = 1; instance == null && attempts < 4; attempts++) {
-    sp = gc(sp, false, attempts, false);
-    trace = process->allocate_byte_array(buffer.size(), &error);
+  if (success) {
+    Error* error = null;
+    ByteArray* trace = process->allocate_byte_array(buffer.size(), &error);
+    for (int attempts = 1; instance == null && attempts < 4; attempts++) {
+      sp = gc(sp, false, attempts, false);
+      trace = process->allocate_byte_array(buffer.size(), &error);
+    }
+    if (trace == null) {
+      DROP(2);
+      return push_out_of_memory_error(sp);
+    }
+    ByteArray::Bytes bytes(trace);
+    memcpy(bytes.address(), buffer.content(), buffer.size());
+    PUSH(trace);
+  } else {
+    STACK_AT_PUT(0, process->program()->out_of_bounds());
+    PUSH(process->program()->null_object());
   }
-  if (trace == null) return push_out_of_memory_error(sp);
 
-  ByteArray::Bytes bytes(trace);
-  memcpy(bytes.address(), buffer.content(), buffer.size());
+  // Stack: Trace, Type, Instance, ...
 
-  instance->at_put(0, type);
-  instance->at_put(1, trace);
-  *(--sp) = instance;
+  instance = Instance::cast(STACK_AT(2));
+  instance->at_put(1, POP());  // Trace.
+  instance->at_put(0, POP());  // Type.
   return sp;
 }
 
 Object** Interpreter::push_out_of_memory_error(Object** sp) {
-  *(--sp) = _process->program()->out_of_memory_error();
+  PUSH(_process->program()->out_of_memory_error());
   return sp;
 }
 
