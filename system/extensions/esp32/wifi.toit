@@ -24,6 +24,7 @@ import system.services show ServiceDefinition ServiceResource
 
 import ..shared.network_base
 
+WIFI_RETRY_DELAY_     ::= Duration --s=1
 WIFI_CONNECT_TIMEOUT_ ::= Duration --s=10
 WIFI_DHCP_TIMEOUT_    ::= Duration --s=16
 
@@ -147,7 +148,7 @@ class WifiModule:
           reason ::= wifi_disconnect_reason_ resource
           logger_.info "retrying" --tags={"reason": reason}
           wifi_disconnect_ resource_group_ resource
-          sleep --ms=1_000  // Retry with 1s delay.
+          sleep WIFI_RETRY_DELAY_
           continue
         else if (state & WIFI_DISCONNECTED) != 0:
           reason ::= wifi_disconnect_reason_ resource
