@@ -247,6 +247,7 @@ class RememberedSetRebuilder : public HeapObjectVisitor {
     return object->size(program_);
   }
 
+ private:
   RememberedSetRebuilder2 pointer_callback;
 };
 
