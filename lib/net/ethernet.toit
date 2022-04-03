@@ -122,7 +122,7 @@ connect -> net.Interface
 
   return EthernetInterface_
 
-class EthernetInterface_ extends net.Interface:
+class EthernetInterface_ implements net.Interface:
   static open_count_/int := 0
   open_/bool := true
 
@@ -141,6 +141,11 @@ class EthernetInterface_ extends net.Interface:
     with_ethernet_:
       return Socket "0.0.0.0" (port ? port : 0)
     unreachable
+
+  tcp_connect host/string port/int -> tcp.Socket:
+    ips := resolve host
+    return tcp_connect
+        net.SocketAddress ips[0] port
 
   tcp_connect address/net.SocketAddress -> tcp.Socket:
     with_ethernet_:

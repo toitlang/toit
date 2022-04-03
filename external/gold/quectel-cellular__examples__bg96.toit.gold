@@ -1,0 +1,6 @@
+<pkg:..>/quectel_cellular.toit:532:30: error: Super of a class must be a class
+class Interface_ extends net.Interface:
+                             ^~~~~~~~~
+<pkg:..>/quectel_cellular.toit:478:5: error: Type mismatch. Expected 'Interface'. Got 'Interface_'
+    return Interface_ this
+    ^~~~~~
