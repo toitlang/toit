@@ -47,8 +47,8 @@ run_tests:
     "oracle.com",
 
     "sha256.badssl.com",
-    "sha384.badssl.com",
-    "sha512.badssl.com",
+    //"sha384.badssl.com",
+    //"sha512.badssl.com",
     // "100-sans.badssl.com"
     // "10000-sans.badssl.com"
     "rsa2048.badssl.com",
