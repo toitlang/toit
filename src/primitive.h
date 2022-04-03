@@ -292,7 +292,6 @@ namespace toit {
   PRIMITIVE(disconnect, 2)                   \
   PRIMITIVE(disconnect_reason, 1)            \
   PRIMITIVE(get_ip, 1)                       \
-  PRIMITIVE(get_stored_ip, 0)                \
   PRIMITIVE(get_rssi, 1)                     \
 
 #define MODULE_ETHERNET(PRIMITIVE)           \
@@ -354,11 +353,12 @@ namespace toit {
   PRIMITIVE(read_reg, 4)                     \
 
 #define MODULE_I2S(PRIMITIVE)                \
-  PRIMITIVE(init, 0)                        \
+  PRIMITIVE(init, 0)                         \
   PRIMITIVE(create, 12)                      \
   PRIMITIVE(close, 2)                        \
   PRIMITIVE(write, 2)                        \
   PRIMITIVE(read,  1)                        \
+  PRIMITIVE(read_to_buffer, 2)               \
 
 #define MODULE_SPI(PRIMITIVE)                \
   PRIMITIVE(init, 3)                         \

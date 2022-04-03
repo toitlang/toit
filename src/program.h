@@ -31,7 +31,6 @@ namespace toit {
   ROOT(HeapObject, null_object)              \
   ROOT(HeapObject, true_object)              \
   ROOT(HeapObject, false_object)             \
-  ROOT(HeapObject, initialization_in_progress_object) \
   ROOT(String,     error)                    \
   ROOT(String,     allocation_failed)        \
   ROOT(String,     allocation_size_exceeded) \

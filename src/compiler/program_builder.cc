@@ -272,10 +272,6 @@ void ProgramBuilder::set_up_skeleton_program() {
   _program->null_object()->_set_header(_program, _program->null_class_id());
   _program->set_true_object(_program_heap.allocate_instance(_program->true_class_id()));
   _program->set_false_object(_program_heap.allocate_instance(_program->false_class_id()));
-  auto sentinel = _program_heap.allocate_instance(_program->lazy_initializer_class_id());
-  sentinel->at_put(0, Smi::from(-1));
-  _program->set_initialization_in_progress_object(sentinel);
-
 
   // Allocate empty structures.
   _program->set_empty_array(_program_heap.allocate_array(0, _program->null_object()));

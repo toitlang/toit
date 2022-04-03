@@ -192,8 +192,10 @@ class InSpaceVisitor : public RootCallback {
       }
     }
   }
-  Space* space;
   bool in_space = false;
+
+ private:
+  Space* space;
 };
 
 bool HeapObject::contains_pointers_to(Program* program, Space* space) {

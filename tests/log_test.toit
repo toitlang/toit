@@ -3,32 +3,32 @@
 // be found in the tests/LICENSE file.
 
 import log
-import ..tools.logging show log_format
-
+import system.api.print
+import .services_print_test show PrintServiceDefinition
 import expect show *
 
-class TestTarget extends log.DefaultTarget:
-  expected_ := null
+service/PrintServiceDefinition ::= PrintServiceDefinition
 
-  log names level message tags -> none:
-    out := log_format names level message tags --no-timestamp
-    expect_equals expected_ out
-
-target_ := TestTarget
-
-expect output [block]:
-  target_.expected_ = output
-  block.call log.default_
+expect output/string? [block]:
+  expect_equals 0 service.messages.size
+  try:
+    block.call
+  finally:
+    result := service.messages
+    if output:
+      expect_equals 1 result.size
+      expect_equals output result.first
+    else:
+      expect_equals 0 result.size
 
 main:
-  log.default_ = log.Logger log.DEBUG_LEVEL target_
+  service.install
 
   expect "DEBUG: hest": log.debug "hest"
   expect "DEBUG: hest {fisk: ko}": log.debug "hest" --tags={"fisk": "ko"}
   expect "INFO: hest {fisk: ko, age: 42}": log.info "hest" --tags={"fisk": "ko", "age": 42}
 
-
-  logger := log.Logger log.INFO_LEVEL target_
+  logger := log.Logger log.INFO_LEVEL log.DefaultTarget
   expect null: logger.debug "hest"
   expect "INFO: hest": log.info "hest"
   expect "WARN: hest": log.warn "hest"
@@ -56,3 +56,5 @@ main:
 
   gog_magog_logger := hv_logger.with_tag "gog" "magog"
   expect "[42.103] INFO: hest {gog: magog, fisk: ko, age: 42}": gog_magog_logger.info "hest" --tags={"fisk": "ko", "age": 42}
+
+  service.uninstall

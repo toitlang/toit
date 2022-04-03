@@ -41,11 +41,15 @@ PRIMITIVE(object_histogram) {
   process->register_external_allocation(size);
   memset(data, 0, size);
 
+  CAPTURE3(
+      Program*, program,
+      uint32*, data,
+      ByteArray*, result);
   // Iterate through the object heap to collect the histogram.
   process->object_heap()->do_objects([&](HeapObject* object) -> void {
-    if (object == result) return;  // Don't count the resulting byte array.
+    if (object == capture.result) return;  // Don't count the resulting byte array.
     int class_index = Smi::cast(object->class_id())->value();
-    int size = object->size(program);
+    int size = object->size(capture.program);
     if (object->is_byte_array() && ByteArray::cast(object)->has_external_address()) {
       ByteArray* byte_array = ByteArray::cast(object);
       word tag = byte_array->external_tag();
@@ -56,8 +60,8 @@ PRIMITIVE(object_histogram) {
     } else if (object->is_string() && !String::cast(object)->content_on_heap()) {
       size += String::cast(object)->length() + 1;
     }
-    data[class_index * UINT32_PER_ENTRY + 0] += 1;
-    data[class_index * UINT32_PER_ENTRY + 1] += size;
+    capture.data[class_index * UINT32_PER_ENTRY + 0] += 1;
+    capture.data[class_index * UINT32_PER_ENTRY + 1] += size;
   });
   return result;
 }
