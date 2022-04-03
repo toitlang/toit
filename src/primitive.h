@@ -353,11 +353,12 @@ namespace toit {
   PRIMITIVE(read_reg, 4)                     \
 
 #define MODULE_I2S(PRIMITIVE)                \
-  PRIMITIVE(init, 0)                        \
+  PRIMITIVE(init, 0)                         \
   PRIMITIVE(create, 12)                      \
   PRIMITIVE(close, 2)                        \
   PRIMITIVE(write, 2)                        \
   PRIMITIVE(read,  1)                        \
+  PRIMITIVE(read_to_buffer, 2)               \
 
 #define MODULE_SPI(PRIMITIVE)                \
   PRIMITIVE(init, 3)                         \
