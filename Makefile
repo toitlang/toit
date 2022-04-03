@@ -27,7 +27,7 @@ HOST=host
 BUILD_TYPE=Release
 
 # The system process is started from its own entry point.
-ESP32_SYSTEM_ENTRY=system/boot.toit
+ESP32_SYSTEM_ENTRY=system/extensions/esp32/boot.toit
 
 # Extra entries stored in the flash must have the same uuid as the system image
 # to make sure they are produced by the same toolchain. On most platforms it

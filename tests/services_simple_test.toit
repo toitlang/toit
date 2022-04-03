@@ -5,7 +5,7 @@
 import system.services
 import expect
 
-interface LogService:
+interface SimpleService:
   static NAME/string ::= "log"
   static MAJOR/int   ::= 1
   static MINOR/int   ::= 2
@@ -21,7 +21,7 @@ main:
   test_uninstall
 
 test_logging --separate_process/bool=false:
-  service := LogServiceDefinition
+  service := SimpleServiceDefinition
   service.install
   if separate_process:
     spawn:: test_hello
@@ -30,7 +30,7 @@ test_logging --separate_process/bool=false:
   service.wait
 
 test_illegal_name:
-  service := LogServiceDefinition
+  service := SimpleServiceDefinition
   service.install
 
   expect.expect_throw "Cannot find service":
@@ -51,31 +51,31 @@ test_illegal_name:
   service.uninstall
 
 test_versions:
-  service := LogServiceDefinition
+  service := SimpleServiceDefinition
   service.install
 
   expect.expect_throw "Cannot find service:log@0.x, found service:log@1.2.5":
-    FlexibleServiceClient LogService.NAME 0
+    FlexibleServiceClient SimpleService.NAME 0
   expect.expect_no_throw:
-    (FlexibleServiceClient LogService.NAME 0 --no-open)
+    (FlexibleServiceClient SimpleService.NAME 0 --no-open)
   expect.expect_throw "Cannot find service:log@0.x, found service:log@1.2.5":
-    (FlexibleServiceClient LogService.NAME 0 --no-open).open
+    (FlexibleServiceClient SimpleService.NAME 0 --no-open).open
 
   expect.expect_throw "Cannot find service:log@2.x, found service:log@1.2.5":
-    FlexibleServiceClient LogService.NAME 2
+    FlexibleServiceClient SimpleService.NAME 2
   expect.expect_no_throw:
-    (FlexibleServiceClient LogService.NAME 2 --no-open)
+    (FlexibleServiceClient SimpleService.NAME 2 --no-open)
   expect.expect_throw "Cannot find service:log@2.x, found service:log@1.2.5":
-    (FlexibleServiceClient LogService.NAME 2 --no-open).open
+    (FlexibleServiceClient SimpleService.NAME 2 --no-open).open
 
   expect.expect_throw "Cannot find service:log@1.3.x, found service:log@1.2.5":
-    FlexibleServiceClient LogService.NAME 1 3
+    FlexibleServiceClient SimpleService.NAME 1 3
   expect.expect_no_throw:
-    (FlexibleServiceClient LogService.NAME 1 3 --no-open)
+    (FlexibleServiceClient SimpleService.NAME 1 3 --no-open)
   expect.expect_throw "Cannot find service:log@1.3.x, found service:log@1.2.5":
-    (FlexibleServiceClient LogService.NAME 1 3 --no-open).open
+    (FlexibleServiceClient SimpleService.NAME 1 3 --no-open).open
 
-  client := FlexibleServiceClient LogService.NAME 1 1
+  client := FlexibleServiceClient SimpleService.NAME 1 1
   expect.expect_equals 1 client.major
   expect.expect_equals 2 client.minor
   expect.expect_equals 5 client.patch
@@ -83,37 +83,37 @@ test_versions:
   service.wait
 
 test_uninstall:
-  service := LogServiceDefinition
+  service := SimpleServiceDefinition
   service.install
   test_hello --no-close
-  logger := LogServiceClient
+  logger := SimpleServiceClient
   service.uninstall
   exception := catch: logger.log "Don't let me do this!"
   expect.expect_equals "key not found" exception
 
 test_hello --close=false:
-  logger := LogServiceClient
+  logger := SimpleServiceClient
   logger.log "Hello!"
   if close: logger.close
 
 // ------------------------------------------------------------------
 
-class LogServiceClient extends services.ServiceClient implements LogService:
+class SimpleServiceClient extends services.ServiceClient implements SimpleService:
   constructor --open/bool=true:
     super --open=open
 
-  open -> LogServiceClient?:
-    return (open_ LogService.NAME LogService.MAJOR LogService.MINOR) and this
+  open -> SimpleServiceClient?:
+    return (open_ SimpleService.NAME SimpleService.MAJOR SimpleService.MINOR) and this
 
   log message/string -> none:
-    invoke_ LogService.LOG_INDEX message
+    invoke_ SimpleService.LOG_INDEX message
 
 class FlexibleServiceClient extends services.ServiceClient:
   name_/string ::= ?
   major_/int ::= ?
   minor_/int ::= ?
 
-  constructor .name_/string=LogService.NAME .major_/int=LogService.MAJOR .minor_/int=LogService.MINOR --open/bool=true:
+  constructor .name_/string=SimpleService.NAME .major_/int=SimpleService.MAJOR .minor_/int=SimpleService.MINOR --open/bool=true:
     super --open=open
 
   open -> FlexibleServiceClient?:
@@ -121,12 +121,12 @@ class FlexibleServiceClient extends services.ServiceClient:
 
 // ------------------------------------------------------------------
 
-class LogServiceDefinition extends services.ServiceDefinition implements LogService:
+class SimpleServiceDefinition extends services.ServiceDefinition implements SimpleService:
   constructor:
-    super LogService.NAME --major=LogService.MAJOR --minor=LogService.MINOR --patch=5
+    super SimpleService.NAME --major=SimpleService.MAJOR --minor=SimpleService.MINOR --patch=5
 
   handle pid/int client/int index/int arguments/any -> any:
-    if index == LogService.LOG_INDEX: return log arguments
+    if index == SimpleService.LOG_INDEX: return log arguments
     unreachable
 
   log message/string -> none:
