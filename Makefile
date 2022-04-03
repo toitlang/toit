@@ -27,7 +27,7 @@ HOST=host
 BUILD_TYPE=Release
 
 # The system process is started from its own entry point.
-ESP32_SYSTEM_ENTRY=system/boot.toit
+ESP32_SYSTEM_ENTRY=system/extensions/esp32/boot.toit
 
 # Extra entries stored in the flash must have the same uuid as the system image
 # to make sure they are produced by the same toolchain. On most platforms it
@@ -192,7 +192,7 @@ build/$(ESP32_CHIP)/program.snapshot: $(ESP32_ENTRY) tools
 	$(TOITC_BIN) -w $@ $<
 
 build/$(ESP32_CHIP)/programs.bin: build/$(ESP32_CHIP)/program.snapshot tools
-	$(TOITVM_BIN) tools/snapshot_to_image.toit --unique_id=$(ESP32_SYSTEM_ID) -m32 --binary --relocate=0x3f420000 $< $@
+	$(TOITVM_BIN) tools/snapshot_to_image.toit --unique_id=$(ESP32_SYSTEM_ID) -m32 --binary --relocate=0x3f430000 $< $@
 
 build/$(ESP32_CHIP)/CMakeCache.txt:
 	mkdir -p build/$(ESP32_CHIP)
