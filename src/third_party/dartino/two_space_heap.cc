@@ -282,7 +282,7 @@ bool TwoSpaceHeap::perform_garbage_collection() {
 
   bool compact = !old_space()->compacting();
 
-  if (!compact) {
+  if (true || !compact) {
     // If the last GC was compacting we don't have fragmentation, so it
     // is fair to evaluate if we are making progress or just doing
     // pointless GCs.
@@ -299,7 +299,7 @@ bool TwoSpaceHeap::perform_garbage_collection() {
   if (Flags::validate_heap) old_space()->verify();
 #endif
 
-  return compact;
+  return false;
 }
 
 void TwoSpaceHeap::sweep_heap() {

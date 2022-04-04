@@ -312,6 +312,7 @@ void OldSpace::visit_remembered_set(ScavengeVisitor* visitor) {
 
           if (iteration_start > earliest_iteration_start) {
             uint8 iteration_low_byte = static_cast<uint8>(iteration_start);
+            ASSERT(iteration_low_byte == 0);
             iteration_start -= iteration_low_byte;
             iteration_start += *starts;
           } else {
@@ -583,6 +584,25 @@ void MarkingStack::process(RootCallback* visitor, Space* old_space,
       new_space->iterate_overflowed_objects(visitor, this);
     }
   }
+}
+
+PromotedTrack* PromotedTrack::initialize(PromotedTrack* next, uword location, uword end) {
+  ASSERT(end - location > header_size());
+  auto self = reinterpret_cast<PromotedTrack*>(HeapObject::from_address(location));
+
+  GcMetadata::record_start(location);
+  // We mark the PromotedTrack object as dirty (containing new-space
+  // pointers). This is because the remembered-set scanner mainly looks at
+  // these dirty-bytes.  It ensures that the remembered-set scanner does not
+  // skip past the PromotedTrack object header and start scanning newly
+  // allocated objects inside the PromotedTrack area before they are
+  // traversable.
+  GcMetadata::insert_into_remembered_set(location);
+
+  self->_set_header(Smi::from(PROMOTED_TRACK_CLASS_ID), PROMOTED_TRACK_TAG);
+  self->_at_put(NEXT_OFFSET, next);
+  self->_word_at_put(END_OFFSET, end);
+  return self;
 }
 
 }  // namespace toit

@@ -209,7 +209,7 @@ Object** Interpreter::push_error(Object** sp, Object* type, const char* message)
   if (success) {
     Error* error = null;
     ByteArray* trace = process->allocate_byte_array(buffer.size(), &error);
-    for (int attempts = 1; instance == null && attempts < 4; attempts++) {
+    for (int attempts = 1; trace == null && attempts < 4; attempts++) {
       sp = gc(sp, false, attempts, false);
       trace = process->allocate_byte_array(buffer.size(), &error);
     }
