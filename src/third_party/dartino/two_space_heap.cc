@@ -257,6 +257,8 @@ void TwoSpaceHeap::collect_old_space() {
   if (Flags::validate_heap) {
     validate();
   }
+  // TODO(Erik): The heuristics need tidying.
+  old_space()->adjust_allocation_budget(0);
 }
 
 bool TwoSpaceHeap::perform_garbage_collection() {
@@ -282,7 +284,7 @@ bool TwoSpaceHeap::perform_garbage_collection() {
 
   bool compact = !old_space()->compacting();
 
-  if (true || !compact) {
+  if (!compact) {
     // If the last GC was compacting we don't have fragmentation, so it
     // is fair to evaluate if we are making progress or just doing
     // pointless GCs.
@@ -299,7 +301,7 @@ bool TwoSpaceHeap::perform_garbage_collection() {
   if (Flags::validate_heap) old_space()->verify();
 #endif
 
-  return false;
+  return compact;
 }
 
 void TwoSpaceHeap::sweep_heap() {

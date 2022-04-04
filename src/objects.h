@@ -278,8 +278,6 @@ class HeapObject : public Object {
   // Not very fast - used for asserts.
   bool contains_pointers_to(Program* program, Space* space);
 
-  const char* tag_name();
-
  protected:
   void _set_header(Smi* class_id, TypeTag class_tag) {
     uword header = class_id->value();

@@ -25,37 +25,6 @@
 
 namespace toit {
 
-const char* HeapObject::tag_name() {
-  switch (class_tag()) {
-    case TypeTag::ARRAY_TAG:
-      return "Array";
-    case TypeTag::STRING_TAG:
-      return "string";
-    case TypeTag::INSTANCE_TAG:
-      return "instance";
-    case TypeTag::ODDBALL_TAG:
-      return "oddball";
-    case TypeTag::DOUBLE_TAG:
-      return "double";
-    case TypeTag::BYTE_ARRAY_TAG:
-      return "ByteArray";
-    case TypeTag::LARGE_INTEGER_TAG:
-      return "LargeInteger_";
-    case TypeTag::STACK_TAG:
-      return "Stack";
-    case TypeTag::TASK_TAG:
-      return "Task";
-    case TypeTag::FREE_LIST_REGION_TAG:
-      return "FreeList";
-    case TypeTag::SINGLE_FREE_WORD_TAG:
-      return "SingleFreeWord";
-    case TypeTag::PROMOTED_TRACK_TAG:
-      return "PromotedTrack";
-    default:
-      return "Unknown";
-  }
-}
-
 bool Object::byte_content(Program* program, const uint8** content, int* length, BlobKind strings_only) {
   if (is_string()) {
     String::Bytes bytes(String::cast(this));
