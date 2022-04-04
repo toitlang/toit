@@ -184,6 +184,7 @@ enum Precedence {
   IN(stack_, "<stack>")                                        \
   I(Array_)                                                    \
   I(Box_)                                                      \
+  I(Exception_)                                                \
   I(LazyInitializer_)                                          \
   I(SmallArray_)                                               \
   I(ByteArray)                                                 \

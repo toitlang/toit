@@ -27,14 +27,17 @@
 
 namespace toit {
 
+// We push the exception and two elements for the unwinding implementation
+// on the stack when we handle stack overflows.
+static const int RESERVED_STACK_FOR_STACK_OVERFLOWS = 3;
+
 Interpreter::Interpreter()
     : _process(null)
     , _limit(null)
     , _base(null)
     , _sp(null)
     , _try_sp(null)
-    , _watermark(null)
-    , _in_stack_overflow(false) {
+    , _watermark(null) {
 #ifdef PROFILER
   _is_profiler_active = false;
 #endif
@@ -49,7 +52,6 @@ void Interpreter::deactivate() {
 }
 
 void Interpreter::preempt() {
-  // TODO: Use overflow marker / signal.
   _watermark = PREEMPTION_MARKER;
 }
 
@@ -80,7 +82,7 @@ Object** Interpreter::load_stack() {
   set_profiler_state();
 #endif
   Object** watermark = _watermark;
-  Object** new_watermark = _in_stack_overflow ? _limit : _limit + Stack::OVERFLOW_HEADROOM;
+  Object** new_watermark = _limit + RESERVED_STACK_FOR_STACK_OVERFLOWS;
   while (true) {
     // Updates watermark unless preemption marker is set (will be set after preemption).
     if (watermark == PREEMPTION_MARKER) break;
@@ -102,12 +104,6 @@ void Interpreter::store_stack(Object** sp) {
     if (watermark == PREEMPTION_MARKER) break;
     if (_watermark.compare_exchange_strong(watermark, null)) break;
   }
-}
-
-void Interpreter::reset_stack_limit() {
-  _in_stack_overflow = false;
-  store_stack(null);
-  load_stack();
 }
 
 #ifdef PROFILER
@@ -160,78 +156,157 @@ void Interpreter::prepare_process() {
   store_stack();
 }
 
-Object** Interpreter::check_stack_overflow(Object** sp, OverflowState* state, Method method) {
-  ASSERT(*state == OVERFLOW_EXCEPTION);
-  if (_watermark == PREEMPTION_MARKER) {
-    if (_process->signals() & Process::WATCHDOG) {
-      *state = OVERFLOW_WATCHDOG;
-      return sp;
-    }
+#ifdef IOT_DEVICE
+#define STACK_ENCODING_BUFFER_SIZE (2*1024)
+#else
+#define STACK_ENCODING_BUFFER_SIZE (16*1024)
+#endif
 
-    _watermark = null;
-    *state = OVERFLOW_PREEMPT;
-    return sp;
+// TODO(kasper): Share these definitions?
+#define PUSH(o)            ({ Object* _o_ = o; *(--sp) = _o_; })
+#define POP()              (*(sp++))
+#define DROP(n)            ({ int _n_ = n; sp += _n_; })
+#define STACK_AT(n)        ({ int _n_ = n; (*(sp + _n_)); })
+#define STACK_AT_PUT(n, o) ({ int _n_ = n; Object* _o_ = o; *(sp + _n_) = _o_; })
+
+Object** Interpreter::push_error(Object** sp, Object* type, const char* message) {
+  Process* process = _process;
+  PUSH(type);
+
+  // Stack: Type, ...
+
+  Instance* instance = process->object_heap()->allocate_instance(process->program()->exception_class_id());
+  for (int attempts = 1; instance == null && attempts < 4; attempts++) {
+    sp = gc(sp, false, attempts, false);
+    instance = process->object_heap()->allocate_instance(process->program()->exception_class_id());
+  }
+  if (instance == null) {
+    DROP(1);
+    return push_out_of_memory_error(sp);
   }
 
+  type = POP();
+  PUSH(instance);
+  PUSH(type);
+
+  // Stack: Type, Instance, ...
+
+  MallocedBuffer buffer(STACK_ENCODING_BUFFER_SIZE);
+  for (int attempts = 1; !buffer.has_content() && attempts < 4; attempts++) {
+    sp = gc(sp, true, attempts, false);
+    buffer.allocate(STACK_ENCODING_BUFFER_SIZE);
+  }
+  if (!buffer.has_content()) {
+    DROP(2);
+    return push_out_of_memory_error(sp);
+  }
+
+  ProgramOrientedEncoder encoder(process->program(), &buffer);
+  store_stack(sp);
+  bool success = encoder.encode_error(STACK_AT(0), message, process->task()->stack());
+  sp = load_stack();
+
+  if (success) {
+    Error* error = null;
+    ByteArray* trace = process->allocate_byte_array(buffer.size(), &error);
+    for (int attempts = 1; instance == null && attempts < 4; attempts++) {
+      sp = gc(sp, false, attempts, false);
+      trace = process->allocate_byte_array(buffer.size(), &error);
+    }
+    if (trace == null) {
+      DROP(2);
+      return push_out_of_memory_error(sp);
+    }
+    ByteArray::Bytes bytes(trace);
+    memcpy(bytes.address(), buffer.content(), buffer.size());
+    PUSH(trace);
+  } else {
+    STACK_AT_PUT(0, process->program()->out_of_bounds());
+    PUSH(process->program()->null_object());
+  }
+
+  // Stack: Trace, Type, Instance, ...
+
+  instance = Instance::cast(STACK_AT(2));
+  instance->at_put(1, POP());  // Trace.
+  instance->at_put(0, POP());  // Type.
+  return sp;
+}
+
+Object** Interpreter::push_out_of_memory_error(Object** sp) {
+  PUSH(_process->program()->out_of_memory_error());
+  return sp;
+}
+
+Object** Interpreter::handle_preempt(Object** sp, OverflowState* state) {
+  // Reset the watermark now that we're handling the preemption.
+  _watermark = null;
+
+  Process* process = _process;
+  if (process->signals() & Process::WATCHDOG) {
+    *state = OVERFLOW_EXCEPTION;
+    Object* type = process->program()->watchdog_interrupt();
+    return push_error(sp, type, "");
+  } else {
+    *state = OVERFLOW_PREEMPT;
+  }
+  return sp;
+}
+
+Object** Interpreter::handle_stack_overflow(Object** sp, OverflowState* state, Method method) {
+  if (_watermark == PREEMPTION_MARKER) {
+    return handle_preempt(sp, state);
+  }
+
+  Process* process = _process;
   int length = _process->task()->stack()->length();
-  if (length == Stack::max_length()) return sp;
+  int new_length = -1;
+  if (length < Stack::max_length()) {
+    // The max_height doesn't include space for the frame of the next call (if there is one).
+    // For simplicity just always assume that there will be a call at max-height and add `FRAME_SIZE`.
+    int needed_space = method.max_height() + Interpreter::FRAME_SIZE + RESERVED_STACK_FOR_STACK_OVERFLOWS;
+    int headroom = sp - _limit;
+    ASSERT(headroom < needed_space);  // We shouldn't try to grow the stack otherwise.
 
-  // The max_height doesn't include space for the frame of the next call (if there is one).
-  // For simplicity just always assume that there will be a call at max-height and add `FRAME_SIZE`.
-  int needed_space = method.max_height() + Interpreter::FRAME_SIZE + Stack::OVERFLOW_HEADROOM;
-  int headroom = sp - _limit;
-  ASSERT(headroom < needed_space);  // We shouldn't try to grow the stack otherwise.
+    new_length = Utils::max(length + (length >> 1), (length - headroom) + needed_space);
+    new_length = Utils::min(Stack::max_length(), new_length);
+    int new_headroom = headroom + (new_length - length);
+    if (new_headroom < needed_space) new_length = -1;  // Growing the stack will not bring us out of the red zone.
+  }
 
-  int new_length = Utils::max(length + (length >> 1), (length - headroom) + needed_space);
-  new_length = Utils::min(Stack::max_length(), new_length);
-  int new_headroom = headroom + (new_length - length);
-  if (new_headroom < needed_space) return sp;  // Growing the stack will not bring us out of the red zone.
-  Stack* new_stack = _process->object_heap()->allocate_stack(new_length);
+  if (new_length < 0) {
+    *state = OVERFLOW_EXCEPTION;
+    Object* type = process->program()->stack_overflow();
+    return push_error(sp, type, "");
+  }
+
+  Stack* new_stack = process->object_heap()->allocate_stack(new_length);
 
   // Garbage collect up to three times.
   for (int attempts = 1; new_stack == null && attempts < 4; attempts++) {
 #ifdef TOIT_GC_LOGGING
     if (attempts == 3) {
       printf("[gc @ %p%s | 3rd time stack allocate failure %d->%d]\n",
-          _process, VM::current()->scheduler()->is_boot_process(_process) ? "*" : " ",
+          process, VM::current()->scheduler()->is_boot_process(process) ? "*" : " ",
           length, new_length);
     }
 #endif
     sp = gc(sp, false, attempts, false);
-    new_stack = _process->object_heap()->allocate_stack(new_length);
+    new_stack = process->object_heap()->allocate_stack(new_length);
   }
 
   // Then check for out of memory.
   if (new_stack == null) {
-    *state = OVERFLOW_OOM;
-    return sp;
+    *state = OVERFLOW_EXCEPTION;
+    return push_out_of_memory_error(sp);
   }
 
   store_stack(sp);
-  _process->task()->stack()->copy_to(new_stack, new_length);
-  _process->task()->set_stack(new_stack);
+  process->task()->stack()->copy_to(new_stack, new_length);
+  process->task()->set_stack(new_stack);
   sp = load_stack();
   *state = OVERFLOW_RESUME;
   return sp;
-}
-
-Method Interpreter::handle_stack_overflow(OverflowState state) {
-  ASSERT(!_in_stack_overflow && _watermark != _limit);  // Stack overflow shouldn't occur while handling stack overflow.
-  ASSERT(state == OVERFLOW_EXCEPTION || state == OVERFLOW_OOM);
-  _watermark = _limit;
-  _in_stack_overflow = true;
-  if (state == OVERFLOW_EXCEPTION) {
-    return _process->program()->stack_overflow();
-  } else {
-    return _process->program()->out_of_memory();
-  }
-}
-
-Method Interpreter::handle_watchdog() {
-  ASSERT(!_in_stack_overflow && _watermark != _limit);  // Watchdog shouldn't occur while handling stack overflow.
-  reset_stack_limit();
-  _process->clear_signal(Process::WATCHDOG);
-  return _process->program()->watchdog();
 }
 
 void Interpreter::trace(uint8* bcp) {
