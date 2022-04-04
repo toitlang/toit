@@ -494,6 +494,7 @@ Interpreter::Result Interpreter::run() {
       result = _process->object_heap()->allocate_instance(Smi::from(class_index));
     }
     if (result == null) {
+      printf("[throwing for alloc %d]\n", class_index);
       sp = push_error(sp, program->allocation_failed(), "");
       goto THROW_IMPLEMENTATION;
     }
@@ -981,9 +982,16 @@ Interpreter::Result Interpreter::run() {
         if (result == program->cross_process_gc()) {
           force_cross_process = true;
           malloc_failed = true;
+        } else if (!(malloc_failed || allocation_failed)) {
+          break;
         }
 
-        if (attempts > 3 || !(malloc_failed || allocation_failed)) break;
+        if (attempts > 3) {
+          printf("[throwing exception for primitive]\n");
+          sp = push_error(sp, result, "");
+          goto THROW_IMPLEMENTATION;
+        }
+
 #ifdef TOIT_GC_LOGGING
         if (attempts == 3) {
           printf("[gc @ %p%s | 3rd time primitive failure %d::%d%s]\n",
@@ -992,9 +1000,8 @@ Interpreter::Result Interpreter::run() {
               malloc_failed ? " (malloc)" : "");
         }
 #endif
-        sp = gc(sp, malloc_failed, attempts, force_cross_process);
 
-        _sp = sp;
+        _sp = gc(sp, malloc_failed, attempts, force_cross_process);
         result = entry(_process, sp + parameter_offset + arity - 1); // Skip the frame.
         sp = _sp;
       }

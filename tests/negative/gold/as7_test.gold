@@ -1,2 +1,0 @@
-As check failed: a string ("str") is not a int.
-  0: main                      tests/negative/as7_test.toit:9:5

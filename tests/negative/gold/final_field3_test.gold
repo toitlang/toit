@@ -1,7 +1,3 @@
 tests/negative/final_field3_test.toit:11:11: error: Can't assign to final field 'field'
   a.field = 499
           ^
-EXCEPTION error. 
-FINAL_FIELD_ASSIGNMENT_FAILED
-  0: A.field=                  tests/negative/final_field3_test.toit:7:3
-  1: main                      tests/negative/final_field3_test.toit:11:11
