@@ -441,8 +441,8 @@ Task* ObjectHeap::allocate_task() {
   Task* result = unvoid_cast<Task*>(allocate_instance(program()->class_tag_for(task_id), task_id, Smi::from(program()->instance_size_for(task_id))));
   if (result == null) return null;  // Allocation failure.
   Task::cast(result)->_initialize(stack, Smi::from(owner()->next_task_id()));
-  int instance_size = program()->instance_size_for(result);
-  for (int i = Task::ID_INDEX + 1; i < result->length(instance_size); i++) {
+  int fields = Instance::fields_from_size(program()->instance_size_for(result));
+  for (int i = Task::ID_INDEX + 1; i < fields; i++) {
     result->at_put(i, program()->null_object());
   }
   stack->set_task(result);

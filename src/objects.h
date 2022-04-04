@@ -1148,9 +1148,6 @@ class Method {
 
 class Instance : public HeapObject {
  public:
-  // Returns the number of real fields in instance.
-  int length(int instance_size) { return length_from_size(instance_size); }
-
   Object* at(int index) {
     return _at(_offset_from(index));
   }
@@ -1166,7 +1163,8 @@ class Instance : public HeapObject {
   void read_content(SnapshotReader* st);
 #endif
 
-  static int length_from_size(int instance_size) {
+  // Returns the number of fields in an instance of the given size.
+  static int fields_from_size(int instance_size) {
     return (instance_size - HEADER_SIZE) / WORD_SIZE;
   }
 

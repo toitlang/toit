@@ -253,8 +253,8 @@ void Stack::copy_to(HeapObject* other, int other_length) {
 }
 
 void Instance::roots_do(int instance_size, RootCallback* cb) {
-  int len = length_from_size(instance_size);
-  cb->do_roots(_root_at(_offset_from(0)), len);
+  int fields = fields_from_size(instance_size);
+  cb->do_roots(_root_at(_offset_from(0)), fields);
 }
 
 bool Object::encode_on(ProgramOrientedEncoder* encoder) {
@@ -396,9 +396,9 @@ void ByteArray::write_content(SnapshotWriter* st) {
 }
 
 void Instance::write_content(int instance_size, SnapshotWriter* st) {
-  int len = length_from_size(instance_size);
-  st->write_cardinal(len);
-  for (int index = 0; index < len; index++) {
+  int fields = fields_from_size(instance_size);
+  st->write_cardinal(fields);
+  for (int index = 0; index < fields; index++) {
     st->write_object(at(index));
   }
 }
