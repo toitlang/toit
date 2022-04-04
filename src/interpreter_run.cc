@@ -493,18 +493,17 @@ Interpreter::Result Interpreter::run() {
       sp = gc(sp, false, attempts, false);
       result = _process->object_heap()->allocate_instance(Smi::from(class_index));
     }
-    if (result != null) {
-      Instance* instance = Instance::cast(result);
-      int instance_size = program->instance_size_for(instance);
-      for (int i = 0; i < instance->length(instance_size); i++) {
-        instance->at_put(i, program->null_object());
-      }
-      PUSH(result);
-      if (Flags::gcalot) sp = gc(sp, false, 1, false);
-    } else {
-      PUSH(Smi::from(class_index));
-      CALL_METHOD(program->allocation_failure(), _length_);
+    if (result == null) {
+      sp = push_error(sp, program->allocation_failed(), "");
+      goto THROW_IMPLEMENTATION;
     }
+    Instance* instance = Instance::cast(result);
+    int instance_size = program->instance_size_for(instance);
+    for (int i = 0; i < instance->length(instance_size); i++) {
+      instance->at_put(i, program->null_object());
+    }
+    PUSH(result);
+    if (Flags::gcalot) sp = gc(sp, false, 1, false);
     _process->object_heap()->install_heap_limit();
   OPCODE_END();
 
@@ -976,10 +975,10 @@ Interpreter::Result Interpreter::run() {
       for (int attempts = 1; true; attempts++) {
         if (!Primitive::is_error(result)) goto done;
         result = Primitive::unmark_from_error(result);
-        bool malloc_failed = (result == _process->program()->malloc_failed());
-        bool allocation_failed = (result == _process->program()->allocation_failed());
+        bool malloc_failed = (result == program->malloc_failed());
+        bool allocation_failed = (result == program->allocation_failed());
         bool force_cross_process = false;
-        if (result == _process->program()->cross_process_gc()) {
+        if (result == program->cross_process_gc()) {
           force_cross_process = true;
           malloc_failed = true;
         }
@@ -1060,7 +1059,7 @@ Interpreter::Result Interpreter::run() {
     // Discard arguments in callers frame.
     DROP(arity);
     ASSERT(!is_stack_empty());
-    PUSH(_process->program()->null_object());
+    PUSH(program->null_object());
     DISPATCH(0);
   OPCODE_END();
 
@@ -1306,7 +1305,7 @@ Interpreter::Result Interpreter::run() {
       // Discard arguments in callers frame.
       DROP(1);
       ASSERT(!is_stack_empty());
-      STACK_AT_PUT(0, _process->program()->null_object());
+      STACK_AT_PUT(0, program->null_object());
       DISPATCH(0);
     }
 
@@ -1346,7 +1345,7 @@ Interpreter::Result Interpreter::run() {
       // Discard arguments in callers frame.
       DROP(2);
       ASSERT(!is_stack_empty());
-      STACK_AT_PUT(0, _process->program()->null_object());
+      STACK_AT_PUT(0, program->null_object());
       DISPATCH(0);
     }
 
