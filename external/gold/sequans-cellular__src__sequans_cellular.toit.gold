@@ -1,0 +1,6 @@
+sequans-cellular/src/sequans_cellular.toit:452:30: error: Super of a class must be a class
+class Interface_ extends net.Interface:
+                             ^~~~~~~~~
+sequans-cellular/src/sequans_cellular.toit:447:5: error: Type mismatch. Expected 'Interface'. Got 'Interface_'
+    return Interface_ this
+    ^~~~~~

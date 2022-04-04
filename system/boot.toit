@@ -13,23 +13,7 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-import .flash.registry
 import .containers
-import .services
-
-main:
-  container_manager/ContainerManager := initialize
-  boot container_manager
-  // TODO(kasper): Should we reboot here after a little while?
-
-/**
-Initialize the system and create the all important $ContainerManager
-  instance.
-*/
-initialize -> ContainerManager:
-  flash_registry ::= FlashRegistry.scan
-  service_manager := SystemServiceManager
-  return ContainerManager flash_registry service_manager
 
 /**
 Boot the system and run the necessary containers. Returns when the

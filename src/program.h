@@ -27,17 +27,21 @@ namespace toit {
 
 // List of all roots in program_heap.
 #define PROGRAM_ROOTS(ROOT)                  \
-  ROOT(Array,      empty_array)              \
   ROOT(HeapObject, null_object)              \
   ROOT(HeapObject, true_object)              \
   ROOT(HeapObject, false_object)             \
-  ROOT(HeapObject, initialization_in_progress_object) \
-  ROOT(String,     error)                    \
+  ROOT(Array,      empty_array)              \
+  ROOT(Array,      snapshot_arguments)       \
+  ROOT(Instance,   out_of_memory_error)      \
+  ROOT(String,     app_sdk_version)          \
+  ROOT(String,     app_sdk_info)             \
+  \
   ROOT(String,     allocation_failed)        \
   ROOT(String,     allocation_size_exceeded) \
   ROOT(String,     already_closed)           \
   ROOT(String,     already_exists)           \
   ROOT(String,     division_by_zero)         \
+  ROOT(String,     error)                    \
   ROOT(String,     file_not_found)           \
   ROOT(String,     hardware_error)           \
   ROOT(String,     illegal_utf_8)            \
@@ -53,11 +57,11 @@ namespace toit {
   ROOT(String,     permission_denied)        \
   ROOT(String,     quota_exceeded)           \
   ROOT(String,     read_failed)              \
+  ROOT(String,     stack_overflow)           \
   ROOT(String,     unimplemented)            \
+  ROOT(String,     watchdog_interrupt)       \
   ROOT(String,     wrong_object_type)        \
-  ROOT(Array,      snapshot_arguments)       \
-  ROOT(String,     app_sdk_version)          \
-  ROOT(String,     app_sdk_info)             \
+
 
 #define BUILTIN_CLASS_IDS(ID)    \
   ID(string_class_id)            \
@@ -79,6 +83,7 @@ namespace toit {
   ID(task_class_id)              \
   ID(large_array_class_id)       \
   ID(lazy_initializer_class_id)  \
+  ID(exception_class_id)         \
 
 static const int FREE_LIST_REGION_CLASS_ID = -1;
 static const int SINGLE_FREE_WORD_CLASS_ID = -2;

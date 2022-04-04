@@ -200,9 +200,9 @@ class ScavengeState : public RootCallback {
     if (from->is_stack()) {
       Stack* stack = Stack::cast(from);
       int length = stack->length();
-      // Shrink stacks to 3x headroom (1x headroom required).
+      // Shrink stacks so they have as much space left as newly allocated stacks.
       // TODO(anders): Skip the active Task, or perhaps use different target?
-      int target = stack->top() - 3 * Stack::OVERFLOW_HEADROOM;
+      int target = stack->top() - Stack::initial_length();
       int new_length = length - Utils::max(0, target);
       result = allocate(Stack::allocation_size(new_length));
       // As the size could have changed, use stack-specific method for copying content.
