@@ -151,11 +151,7 @@ class Exception_:
   constructor .value .trace:
 
 // Spontaneous entry points invoked by the interpreter when failure occurs at runtime.
-// stack_trace is passed to avoid extra frame in trace.
-allocation_failure_ class_id:
-  rethrow "ALLOCATION_FAILED"
-    encode_error_ "ALLOCATION_FAILED" class_id
-
+// We use 'rethrow' to avoid extra frame in trace.
 lookup_failure_ receiver selector_or_selector_offset:
   rethrow "LOOKUP_FAILED"
     encode_error_ "LOOKUP_FAILED"

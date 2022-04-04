@@ -1192,7 +1192,7 @@ static int optional_length(HeapObject* object, Program* program) {
   case TypeTag::ARRAY_TAG: return Array::cast(object)->length();
   case TypeTag::BYTE_ARRAY_TAG: return ByteArray::Bytes(ByteArray::cast(object)).length();
   case TypeTag::STRING_TAG: return String::cast(object)->length();
-  case TypeTag::INSTANCE_TAG: return Instance::cast(object)->length(program->instance_size_for(object));
+  case TypeTag::INSTANCE_TAG: return Instance::fields_from_size(program->instance_size_for(object));
   default:
     return 0;
   }

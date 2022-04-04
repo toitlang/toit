@@ -1,5 +1,5 @@
 Trying to access uninitialized static field 'A.static_field'.
   0: A.static_field            tests/negative/uninitialized_static_field_test.toit:6:26
-  1: run_global_initializer_.<block> <sdk>/core/objects.toit:205:26
-  2: run_global_initializer_   <sdk>/core/objects.toit:193:1
+  1: run_global_initializer_.<block> <sdk>/core/objects.toit:293:28
+  2: run_global_initializer_   <sdk>/core/objects.toit:259:1
   3: main                      tests/negative/uninitialized_static_field_test.toit:10:10

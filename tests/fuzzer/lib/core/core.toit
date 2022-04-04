@@ -52,7 +52,6 @@ __entry__spawn:
 __entry__task lambda:
 
 primitive_lookup_failure_ module index:
-allocation_failure_ class_name:
 too_few_code_arguments_failure_ is_block expected provided bci:
 uninitialized_global_failure_ global_name:
 

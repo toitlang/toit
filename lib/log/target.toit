@@ -3,7 +3,6 @@
 // found in the lib/LICENSE file.
 
 import bytes
-import monitor
 import system.api.logging show LoggingService LoggingServiceClient
 
 import .level
@@ -15,15 +14,11 @@ class DefaultTarget implements Target:
   log level/int message/string names/List? keys/List? values/List? -> none:
     service_.log level message names keys values
 
-service_value_/LoggingService? := null
-service_mutex_/monitor.Mutex ::= monitor.Mutex
-
-service_ -> LoggingService:
-  service := service_value_
-  if service: return service
-  return service_mutex_.do:
-    service_value_ = (LoggingServiceClient --no-open).open or
-        StandardLoggingService_
+/**
+Logging service used by $DefaultTarget.
+*/
+service_/LoggingService ::= (LoggingServiceClient --no-open).open or
+    StandardLoggingService_
 
 /**
 Standard logging service used when the system logging service cannot
