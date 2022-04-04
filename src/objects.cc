@@ -250,7 +250,6 @@ void Stack::copy_to(HeapObject* other, int other_length) {
   to->_set_length(other_length);
   to->_set_top(displacement + top());
   to->_set_try_top(displacement + try_top());
-  to->_set_in_stack_overflow(in_stack_overflow());
 }
 
 void Instance::roots_do(int instance_size, RootCallback* cb) {
@@ -263,13 +262,12 @@ bool Object::encode_on(ProgramOrientedEncoder* encoder) {
 }
 
 void Stack::transfer_to_interpreter(Interpreter* interpreter) {
-  ASSERT(top() > 0);
+  ASSERT(top() >= 0);
   ASSERT(top() <= length());
   interpreter->_limit = _stack_limit_addr();
   interpreter->_base = _stack_base_addr();
   interpreter->_sp = _stack_sp_addr();
   interpreter->_try_sp = _stack_try_sp_addr();
-  interpreter->_in_stack_overflow = in_stack_overflow();
   ASSERT(top() == (interpreter->_sp - _stack_limit_addr()));
   _set_top(-1);
 }
@@ -278,8 +276,8 @@ void Stack::transfer_from_interpreter(Interpreter* interpreter) {
   ASSERT(top() == -1);
   _set_top(interpreter->_sp - _stack_limit_addr());
   _set_try_top(interpreter->_try_sp - _stack_limit_addr());
-  _set_in_stack_overflow(interpreter->_in_stack_overflow);
-  ASSERT(top() > 0 && top() <= length());
+  ASSERT(top() >= 0);
+  ASSERT(top() <= length());
 }
 
 bool String::starts_with_vowel() {
