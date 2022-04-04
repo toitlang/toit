@@ -95,6 +95,7 @@ class Emitter {
   void load_false() { load_literal(1); }
 
   void load_global_var(int global_id, bool is_lazy);
+  void load_global_var_dynamic();
   void store_global_var(int global_id);
   void store_global_var_dynamic();
 

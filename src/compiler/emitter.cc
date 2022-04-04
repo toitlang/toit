@@ -174,6 +174,12 @@ void Emitter::load_global_var(int global_id, bool is_lazy) {
   _stack.push(ExpressionStack::OBJECT);
 }
 
+void Emitter::load_global_var_dynamic() {
+  emit_opcode(LOAD_GLOBAL_VAR_DYNAMIC);
+  _stack.pop();
+  _stack.push(ExpressionStack::OBJECT);
+}
+
 void Emitter::store_global_var(int global_id) {
   emit_possibly_wide(STORE_GLOBAL_VAR, global_id);
 }

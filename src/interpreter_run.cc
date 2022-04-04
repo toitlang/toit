@@ -421,6 +421,17 @@ Interpreter::Result Interpreter::run() {
     PUSH(global_variables[global_index]);
   OPCODE_END();
 
+  OPCODE_BEGIN(LOAD_GLOBAL_VAR_DYNAMIC);
+    int global_index = Smi::cast(POP())->value();
+    if (!(0 <= global_index && global_index < program->global_variables.length())) {
+      PUSH(Smi::from(program->absolute_bci_from_bcp(bcp)));
+      Method target = program->program_failure();
+      CALL_METHOD(target, LOAD_GLOBAL_VAR_DYNAMIC_LENGTH);
+    }
+    Object** global_variables = _process->object_heap()->global_variables();
+    PUSH(global_variables[global_index]);
+  OPCODE_END();
+
   OPCODE_BEGIN_WITH_WIDE(LOAD_GLOBAL_VAR_LAZY, global_index);
     Object** global_variables = _process->object_heap()->global_variables();
     Object* value = global_variables[global_index];

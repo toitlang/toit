@@ -121,6 +121,7 @@ enum BytecodeFormat {
   BYTECODE(LOAD_SMI_U32,               5, OP_WU, "load smi")                   \
   \
   BYTECODE(LOAD_GLOBAL_VAR,            2, OP_BG, "load global var")            \
+  BYTECODE(LOAD_GLOBAL_VAR_DYNAMIC,    1, OP,    "load global var dynamic")    \
   BYTECODE(LOAD_GLOBAL_VAR_WIDE,       3, OP_SG, "load global var wide")       \
   BYTECODE(LOAD_GLOBAL_VAR_LAZY,       2, OP_BG, "load global var lazy")       \
   BYTECODE(LOAD_GLOBAL_VAR_LAZY_WIDE,  3, OP_SG, "load global var lazy wide")  \

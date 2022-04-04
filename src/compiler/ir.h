@@ -963,6 +963,7 @@ class Builtin : public Node {
     YIELD,
     DEEP_SLEEP,
     STORE_GLOBAL,
+    LOAD_GLOBAL,
     INVOKE_INITIALIZER,
     GLOBAL_ID,
   };
@@ -985,6 +986,8 @@ class Builtin : public Node {
       return _new Builtin(DEEP_SLEEP);
     } else if (id == Symbols::__store_global_with_id__) {
       return _new Builtin(STORE_GLOBAL);
+    } else if (id == Symbols::__load_global_with_id__) {
+      return _new Builtin(LOAD_GLOBAL);
     } else if (id == Symbols::__invoke_initializer__) {
       return _new Builtin(INVOKE_INITIALIZER);
     }
@@ -1004,6 +1007,7 @@ class Builtin : public Node {
       case DEEP_SLEEP:
       case EXIT:
       case INVOKE_INITIALIZER:
+      case LOAD_GLOBAL:
       case GLOBAL_ID:
         return 1;
 
