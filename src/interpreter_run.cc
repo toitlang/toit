@@ -498,8 +498,8 @@ Interpreter::Result Interpreter::run() {
       goto THROW_IMPLEMENTATION;
     }
     Instance* instance = Instance::cast(result);
-    int instance_size = program->instance_size_for(instance);
-    for (int i = 0; i < instance->length(instance_size); i++) {
+    int fields = Instance::fields_from_size(program->instance_size_for(instance));
+    for (int i = 0; i < fields; i++) {
       instance->at_put(i, program->null_object());
     }
     PUSH(result);
