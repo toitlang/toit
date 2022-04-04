@@ -400,8 +400,8 @@ class LongPrintVisitor : public PrintVisitor {
   void visit_instance(Instance* instance) {
     print_heap_address(instance);
     _printer->printf("Instance of class %ld\n", instance->class_id()->value());
-    int len = instance->length(_printer->program()->instance_size_for(instance));
-    for (int index = 0; index < len; index++) {
+    int fields = Instance::fields_from_size(_printer->program()->instance_size_for(instance));
+    for (int index = 0; index < fields; index++) {
       _printer->printf(" - %d: ", index);
       _sub.accept(instance->at(index));
       _printer->printf("\n");
