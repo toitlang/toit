@@ -12,7 +12,7 @@ main:
       allocate_too_much
     else:
       20.repeat:
-        hatch_:: allocate_too_much
+        spawn:: allocate_too_much
 
 allocate_too_much:
   if not ON_DEVICE: set_max_heap_size_ 30_000

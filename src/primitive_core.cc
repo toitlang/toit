@@ -75,7 +75,7 @@ PRIMITIVE(write_string_on_stderr) {
 }
 
 PRIMITIVE(hatch_method) {
-  Method method = process->object_heap()->hatch_method();
+  Method method = process->hatch_method();
   int id = method.is_valid()
       ? process->program()->absolute_bci_from_bcp(method.header_bcp())
       : -1;
@@ -83,25 +83,55 @@ PRIMITIVE(hatch_method) {
 }
 
 PRIMITIVE(hatch_args) {
-  return process->object_heap()->hatch_arguments();
+  uint8* arguments = process->hatch_arguments();
+  if (!arguments) return process->program()->empty_array();
+
+  MessageDecoder decoder(process, arguments);
+  Object* decoded = decoder.decode();
+  if (decoder.allocation_failed()) {
+    decoder.remove_disposing_finalizers();
+    ALLOCATION_FAILED;
+  }
+
+  process->clear_hatch_arguments();
+  free(arguments);
+  decoder.register_external_allocations();
+  return decoded;
 }
 
 PRIMITIVE(hatch) {
-  ARGS(Object, entry, Blob, array)
+  ARGS(Object, entry, Object, arguments)
   if (!entry->is_smi()) WRONG_TYPE;
 
   int method_id = Smi::cast(entry)->value();
   ASSERT(method_id != -1);
   Method method(process->program()->bytecodes, method_id);
-  Block* block = VM::current()->heap_memory()->allocate_initial_block();
-  if (!block) ALLOCATION_FAILED;
 
-  Process* child = VM::current()->scheduler()->hatch(process->program(), process->group(), method, array.address(), array.length(), block);
-  if (!child) {
-    VM::current()->heap_memory()->free_unused_block(block);
-    MALLOC_FAILED;
+  InitialMemoryManager manager;
+  if (!manager.allocate()) ALLOCATION_FAILED;
+
+  int length = 0;
+  { MessageEncoder size_encoder(process, null);
+    if (!size_encoder.encode(arguments)) WRONG_TYPE;
+    length = size_encoder.size();
   }
 
+  HeapTagScope scope(ITERATE_CUSTOM_TAGS + EXTERNAL_BYTE_ARRAY_MALLOC_TAG);
+  uint8* buffer = unvoid_cast<uint8*>(malloc(length));
+  if (buffer == null) MALLOC_FAILED;
+
+  MessageEncoder encoder(process, buffer);
+  if (!encoder.encode(arguments)) {
+    encoder.free_copied();
+    free(buffer);
+    if (encoder.malloc_failed()) MALLOC_FAILED;
+    OTHER_ERROR;
+  }
+
+  Process* child = VM::current()->scheduler()->hatch(process->program(), process->group(), method, buffer, manager.initial_memory);
+  if (!child) MALLOC_FAILED;
+
+  manager.dont_auto_free();
   return Smi::from(child->id());
 }
 
@@ -933,7 +963,7 @@ PRIMITIVE(random_seed) {
 PRIMITIVE(add_entropy) {
   PRIVILEGED;
   ARGS(Blob, data);
-  VM::current()->entropy_mixer()->add_entropy(data.address(), data.length());
+  EntropyMixer::instance()->add_entropy(data.address(), data.length());
   return process->program()->null_object();
 }
 
@@ -1652,11 +1682,6 @@ PRIMITIVE(task_stack) {
   return task->stack();
 }
 
-PRIMITIVE(task_reset_stack_limit) {
-  process->scheduler_thread()->interpreter()->reset_stack_limit();
-  return Smi::from(0);
-}
-
 PRIMITIVE(task_current) {
   return process->object_heap()->task();
 }
@@ -1665,7 +1690,7 @@ PRIMITIVE(task_new) {
   ARGS(Instance, code);
   Task* task = process->object_heap()->allocate_task();
   if (task == null) ALLOCATION_FAILED;
-  Method entry = process->program()->task_entry();
+  Method entry = process->program()->entry_task();
   if (!entry.is_valid()) FATAL("Cannot locate task entry method");
 
   Object* tru = process->program()->true_object();
@@ -1715,7 +1740,7 @@ PRIMITIVE(process_send) {
   SystemMessage* message = null;
   MessageEncoder encoder(process, buffer);
   if (encoder.encode(array)) {
-    message = _new SystemMessage(type, process->group()->id(), process->id(), buffer, length);
+    message = _new SystemMessage(type, process->group()->id(), process->id(), buffer);
   }
 
   if (message == null) {
@@ -1725,7 +1750,9 @@ PRIMITIVE(process_send) {
     OTHER_ERROR;
   }
 
-  // From here on, the destructor of SystemMessage will free the data.
+  // From here on, the destructor of SystemMessage will free the buffer and
+  // potentially the externals too if ownership isn't transferred elsewhere
+  // when the message is received.
   scheduler_err_t result = (process_id >= 0)
       ? VM::current()->scheduler()->send_message(process_id, message)
       : VM::current()->scheduler()->send_system_message(message);
@@ -1737,26 +1764,34 @@ PRIMITIVE(process_send) {
     // TODO(kasper): Consider doing in-place shrinking of internal, non-constant
     // byte arrays and strings.
   } else {
-    // Sending failed. Free the copied bits.
+    // Sending failed. Free any copied bits, but make sure to not free the externals
+    // that have not been neutered on this path.
     encoder.free_copied();
+    message->free_data_but_keep_externals();
     delete message;
   }
   return Smi::from(result);
 }
 
-PRIMITIVE(task_peek_message_type) {
+PRIMITIVE(task_has_messages) {
+  if (process->object_heap()->has_finalizer_to_run()) {
+    return BOOL(true);
+  }
   Message* message = process->peek_message();
-  if (message == null) return Smi::from(MESSAGE_INVALID);
-  return Smi::from(message->message_type());
+  return BOOL(message != null);
 }
 
 PRIMITIVE(task_receive_message) {
+  ObjectHeap* heap = process->object_heap();
+  if (heap->has_finalizer_to_run()) {
+    return heap->next_finalizer_to_run();
+  }
+
   Message* message = process->peek_message();
   MessageType message_type = message->message_type();
-
   Object* result = process->program()->null_object();
 
-  if (message_type == MESSAGE_OBJECT_NOTIFY) {
+  if (message_type == MESSAGE_MONITOR_NOTIFY) {
     ObjectNotifyMessage* object_notify = static_cast<ObjectNotifyMessage*>(message);
     ObjectNotifier* notifier = object_notify->object_notifier();
     if (notifier != null) result = notifier->object();
@@ -1772,6 +1807,7 @@ PRIMITIVE(task_receive_message) {
       ALLOCATION_FAILED;
     }
     decoder.register_external_allocations();
+    system->free_data_but_keep_externals();
 
     array->at_put(0, Smi::from(system->type()));
     array->at_put(1, Smi::from(system->gid()));
@@ -1796,28 +1832,6 @@ PRIMITIVE(add_finalizer) {
 PRIMITIVE(remove_finalizer) {
   ARGS(HeapObject, object)
   return BOOL(process->remove_finalizer(object));
-}
-
-PRIMITIVE(set_finalizer_notifier) {
-  ARGS(HeapObject, object);
-
-  ObjectNotifier* notifier = _new ObjectNotifier(process, object);
-  if (notifier == null) MALLOC_FAILED;
-
-  ObjectNotifyMessage* message = _new ObjectNotifyMessage(notifier);
-  if (message == null) {
-    delete notifier;
-    MALLOC_FAILED;
-  }
-  notifier->set_message(message);
-
-  process->register_external_allocation(sizeof(ObjectNotifier));
-  process->object_heap()->set_finalizer_notifier(notifier);
-  return process->program()->null_object();
-}
-
-PRIMITIVE(next_finalizer_to_run) {
-  return process->object_heap()->next_finalizer_to_run();
 }
 
 PRIMITIVE(gc_count) {
@@ -1913,7 +1927,7 @@ PRIMITIVE(varint_decode) {
 PRIMITIVE(encode_error) {
   ARGS(Object, type, Object, message);
   MallocedBuffer buffer(STACK_ENCODING_BUFFER_SIZE);
-  if (buffer.malloc_failed()) MALLOC_FAILED;
+  if (!buffer.has_content()) MALLOC_FAILED;
   ProgramOrientedEncoder encoder(process->program(), &buffer);
   process->scheduler_thread()->interpreter()->store_stack();
   bool success = encoder.encode_error(type, message, process->task()->stack());

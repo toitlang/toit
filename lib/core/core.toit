@@ -8,6 +8,7 @@ import .comparable
 import .entry
 import .events
 import .exceptions
+import .finalization
 import .for_testing_
 import .message
 import .monitor_impl

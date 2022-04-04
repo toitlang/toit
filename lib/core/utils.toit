@@ -2,9 +2,26 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+import binary show LITTLE_ENDIAN
+
 /**
 Contains various utility functions.
 */
+
+/** The number of bits per byte. */
+BITS_PER_BYTE ::= 8
+
+/** The number of bits per word. */
+BITS_PER_WORD ::= BYTES_PER_WORD * BITS_PER_BYTE
+
+/** The number of bytes per word. */
+BYTES_PER_WORD ::= word_size_
+
+/** The number of bytes per kilobyte. */
+KB ::= 1024
+
+/** The number of bytes per megabyte. */
+MB ::= 1024 * 1024
 
 /**
 Whether $x and $y are identical objects.
@@ -130,10 +147,6 @@ Currently only the first 16 bytes of the $seed are used.
 set_random_seed seed:
   #primitive.core.random_seed
 
-/** Deprecated. Use $set_random_seed. */
-random_seed seed:
-  set_random_seed seed
-
 random_add_entropy_ data:
   #primitive.core.add_entropy
 
@@ -201,61 +214,6 @@ Exits the VM with the given $status.
 exit status:
   if status == 0: __halt__
   else: __exit__ status
-
-/** The number of bits per byte. */
-BITS_PER_BYTE ::= 8
-
-/** The number of bits per word. */
-BITS_PER_WORD ::= BYTES_PER_WORD * BITS_PER_BYTE
-
-/** The number of bytes per word. */
-BYTES_PER_WORD ::= word_size_
-
-/** The number of bytes per kilobyte. */
-KB ::= 1024
-
-/** The number of bytes per megabyte. */
-MB ::= 1024 * 1024
-
-// Support for finalization.
-
-/**
-Registers the given $lambda as a finalizer for the $object.
-
-Calls the finalizer if all references to the object are lost. (See limitations below).
-
-# Errors
-It is an error to assign a finalizer to a smi or an instance that already has
-  a finalizer (see $remove_finalizer).
-It is also an error to assign null as a finalizer.
-# Warning
-Misuse of this API can lead to undefined behavior that is hard to debug.
-
-# Advanced
-Finalizers are not automatically called when a program exits. This is also true for
-  objects that weren't reachable anymore before the program exited.
-An arbitrary amount of time may pass from the $object becomes unreachable and
-  the finalizer is called.
-*/
-add_finalizer object lambda:
-  #primitive.core.add_finalizer
-
-/**
-Unregisters the finalizer registered for $object.
-Returns whether the object had a finalizer.
-*/
-remove_finalizer object -> bool:
-  #primitive.core.remove_finalizer
-
-// Internal functions for finalizer handling.
-
-/** Sets the receiver of finalize notification to the $notifier. */
-set_finalizer_notifier_ notifier:
-  #primitive.core.set_finalizer_notifier
-
-/** Returns the next finalizer to run, or null when unavailable. */
-next_finalizer_to_run_:
-  #primitive.core.next_finalizer_to_run
 
 /**
 Creates an off-heap byte array with the given $size.
@@ -485,3 +443,57 @@ Converts a number between 0 and 15 to an upper case
 */
 to_upper_case_hex c/int -> int:
   return "0123456789ABCDEF"[c]
+
+print_objects marker/string="" gc/bool=true:
+  if gc:
+    before := gc_count
+    while gc_count == before: RecognizableFiller_
+  print_histogram_ marker object_histogram_
+
+class RecognizableFiller_:
+  a/int := 0
+  b/int := 0
+  c/int := 0
+  d/int := 0
+  e/int := 0
+  f/int := 0
+  g/int := 0
+
+class HistogramEntry_:
+  index/int
+  count/int := 0
+  size/int := 0
+  constructor .index .count .size:
+
+  accumulate other -> none:
+    count += other.count
+    size += other.size
+
+print_histogram_ marker/string histogram/ByteArray:
+  entries := []
+  (histogram.size / (2 * 4)).repeat:
+    count := LITTLE_ENDIAN.uint32 histogram (it * 2 + 0) * 4
+    size  := LITTLE_ENDIAN.uint32 histogram (it * 2 + 1) * 4
+    if size > 0:
+      entry := HistogramEntry_ it count size
+      entries.add entry
+  entries.sort --in_place: | a b | (b.size > a.size) ? 1 : (b.size < a.size ? -1 : 0)
+  total := HistogramEntry_ -1 0 0
+  entries.do: total.accumulate it
+
+  if not marker.is_empty: marker = " @ $marker"
+  print_ "*" * 16
+  print_ "Objects$marker:"
+  print_ "  ┌─────────┬─────────┬─────────┐"
+  print_ "  │  Bytes  │  Count  │  Class  │"
+  print_ "  ├─────────┼─────────┼─────────┤"
+  entries.do:
+    // We print the lines with standard | characters to make it easier to
+    // work with the output using grep, cut, and other command line tools.
+    print_ "  | $(%6d it.size)  | $(%6d it.count)  | $(%6d it.index)  |"
+  print_ "  └─────────┴─────────┴─────────┘"
+  print_ "  Total: $(total.size) bytes in $(total.count) objects"
+  print_ "*" * 16
+
+object_histogram_ -> ByteArray:
+  #primitive.debug.object_histogram

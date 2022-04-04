@@ -55,9 +55,12 @@ class EntropyMixer {
     return result == 0;
   }
 
+  static EntropyMixer* instance() { return &_instance; }
+
  private:
   mbedtls_entropy_context _context;
   Mutex* _mutex;
+  static EntropyMixer _instance;
 };
 
 }

@@ -68,9 +68,9 @@ test_send_as_reply
   expect_equals "reply from [a]" answer
   respond: expect_equals "from [b]" it; "reply from [self]"
 
-test_send_as_reply_hatched
+test_send_as_reply_spawned
   self := task
-  b := hatch_::
+  b := spawn::
     receive: | message sender |
       // got message from [a], let [self] know.
       expect_equals "from [a]" message
@@ -82,7 +82,7 @@ test_send_as_reply_hatched
       yield // give the task above a chance to reach its send
       expect_equals 1 STATE
       sender.reply "reply from [b]"
-  a := hatch_::
+  a := spawn::
     receive: | message sender |
       // got message from [self], let [b] know.
       answer := b.send "from [a]"

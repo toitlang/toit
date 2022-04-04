@@ -18,6 +18,7 @@
 #ifdef TOIT_FREERTOS
 
 #include "driver/rmt.h"
+#include "driver/gpio.h"
 
 #include "../objects_inline.h"
 #include "../primitive.h"
@@ -68,7 +69,6 @@ PRIMITIVE(use) {
 
   if (!rmt_channels.take(channel_num)) ALREADY_IN_USE;
 
-  // TODO install RMT driver for channel?
   IntResource* resource = resource_group->register_id(channel_num);
   if (!resource) {
     rmt_channels.put(channel_num);
@@ -152,7 +152,30 @@ PRIMITIVE(config_rx) {
   return process->program()->null_object();
 }
 
-PRIMITIVE(transfer) {
+PRIMITIVE(set_idle_threshold) {
+  ARGS(int, channel_num, uint16, threshold)
+  esp_err_t err = rmt_set_rx_idle_thresh(static_cast<rmt_channel_t>(channel_num), threshold);
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+  return process->program()->null_object();
+}
+
+PRIMITIVE(config_bidirectional_pin) {
+  ARGS(int, pin, int, tx);
+
+  // Set open collector?
+  if (pin < 32) {
+    GPIO.enable_w1ts = (0x1 << pin);
+  } else {
+    GPIO.enable1_w1ts.data = (0x1 << (pin - 32));
+  }
+  rmt_set_pin(static_cast<rmt_channel_t>(tx), RMT_MODE_TX, static_cast<gpio_num_t>(pin));
+  PIN_INPUT_ENABLE(GPIO_PIN_MUX_REG[pin]);
+  GPIO.pin[pin].pad_driver = 1;
+
+  return process->program()->null_object();
+}
+
+PRIMITIVE(transmit) {
   ARGS(int, tx_num, Blob, items_bytes)
   if (items_bytes.length() % 4 != 0) INVALID_ARGUMENT;
 
@@ -171,16 +194,18 @@ void flush_buffer(RingbufHandle_t rb) {
   }
 }
 
-PRIMITIVE(transfer_and_read) {
-  ARGS(int, tx_num, int, rx_num, Blob, items_bytes, int, max_output_len)
-  if (items_bytes.length() % 4 != 0) INVALID_ARGUMENT;
+PRIMITIVE(transmit_and_receive) {
+  ARGS(int, tx_num, int, rx_num, Blob, transmit_bytes, Blob, receive_bytes, int, max_output_len, int, receive_timeout)
+  if (transmit_bytes.length() % 4 != 0) INVALID_ARGUMENT;
+  if (receive_bytes.length() % 4 != 0) INVALID_ARGUMENT;
 
   Error* error = null;
   // Force external, so we can adjust the length after the read.
   ByteArray* data = process->allocate_byte_array(max_output_len, &error, true);
   if (data == null) return error;
 
-  const rmt_item32_t* items = reinterpret_cast<const rmt_item32_t*>(items_bytes.address());
+  const rmt_item32_t* transmit_items = reinterpret_cast<const rmt_item32_t*>(transmit_bytes.address());
+  const rmt_item32_t* receive_items = reinterpret_cast<const rmt_item32_t*>(receive_bytes.address());
   rmt_channel_t rx_channel = (rmt_channel_t) rx_num;
 
   RingbufHandle_t rb = null;
@@ -188,18 +213,23 @@ PRIMITIVE(transfer_and_read) {
   if (err != ESP_OK) return Primitive::os_error(err, process);
 
   flush_buffer(rb);
-
+  if (transmit_bytes.length() > 0) {
+    err = rmt_write_items(static_cast<rmt_channel_t>(tx_num), transmit_items, transmit_bytes.length() / 4, true);
+    if (err != ESP_OK) return Primitive::os_error(err, process);
+  }
   err = rmt_rx_start(rx_channel, true);
   if (err != ESP_OK) return Primitive::os_error(err, process);
 
-  err = rmt_write_items(static_cast<rmt_channel_t>(tx_num), items, items_bytes.length() / 4, true);
-  if (err != ESP_OK) {
-    rmt_rx_stop(rx_channel);
-    return Primitive::os_error(err, process);
+  if (receive_bytes.length() > 0) {
+    err = rmt_write_items(static_cast<rmt_channel_t>(tx_num), receive_items, receive_bytes.length() / 4, true);
+    if (err != ESP_OK) {
+      rmt_rx_stop(rx_channel);
+      return Primitive::os_error(err, process);
+    }
   }
 
   size_t length = 0;
-  void* received_bytes = xRingbufferReceive(rb, &length, 50);
+  void* received_bytes = xRingbufferReceive(rb, &length, receive_timeout);
   if (received_bytes != null) {
     if (length <= max_output_len) {
       ByteArray::Bytes bytes(data);
@@ -215,7 +245,6 @@ PRIMITIVE(transfer_and_read) {
 
   rmt_rx_stop(rx_channel);
   data->resize_external(process, length);
-
   return data;
 }
 

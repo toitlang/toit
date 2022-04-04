@@ -28,7 +28,7 @@ extern "C" uword toit_image;
 extern "C" uword toit_image_size;
 
 int Array::max_length_in_process() {
-  return (Heap::max_allocation_size() - HEADER_SIZE) / WORD_SIZE;
+  return (ObjectHeap::max_allocation_size() - HEADER_SIZE) / WORD_SIZE;
 }
 
 int Array::max_length_in_program() {
@@ -36,11 +36,11 @@ int Array::max_length_in_program() {
 }
 
 int Stack::max_length() {
-  return (Heap::max_allocation_size() - HEADER_SIZE) / WORD_SIZE;
+  return (ObjectHeap::max_allocation_size() - HEADER_SIZE) / WORD_SIZE;
 }
 
 word ByteArray::max_internal_size_in_process() {
-  return Heap::max_allocation_size() - HEADER_SIZE;
+  return ObjectHeap::max_allocation_size() - HEADER_SIZE;
 }
 
 word ByteArray::max_internal_size_in_program() {
@@ -48,7 +48,7 @@ word ByteArray::max_internal_size_in_program() {
 }
 
 word String::max_internal_size_in_process() {
-  word result = Heap::max_allocation_size() - OVERHEAD;
+  word result = ObjectHeap::max_allocation_size() - OVERHEAD;
   return result;
 }
 
@@ -71,15 +71,6 @@ T* ByteArray::as_external() {
 
 inline bool HeapObject::on_program_heap(Process* process) {
   return process->on_program_heap(this);
-}
-
-inline void PromotedTrack::zap() {
-  uword header = SINGLE_FREE_WORD_CLASS_ID;
-  header = (header << CLASS_TAG_BIT_SIZE) | SINGLE_FREE_WORD_TAG;
-  Object* filler = Smi::from(header);
-  for (uword p = _raw(); p < _raw() + HEADER_SIZE; p += WORD_SIZE) {
-    *reinterpret_cast<Object**>(p) = filler;
-  }
 }
 
 } // namespace toit

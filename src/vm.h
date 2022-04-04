@@ -19,7 +19,6 @@
 
 namespace toit {
 
-class EntropyMixer;
 class EventSource;
 class EventSourceManager;
 class Scheduler;
@@ -40,19 +39,14 @@ class VM {
 
   Scheduler* scheduler() const { return _scheduler; }
   HeapMemory* heap_memory() const { return _heap_memory; }
-  ProgramHeapMemory* program_heap_memory() const { return _program_heap_memory; }
 
   EventSourceManager* event_manager() const { return _event_manager; }
   EventSource* nop_event_source() const { return _nop_event_source; }
 
-  EntropyMixer* entropy_mixer() { return &_entropy_mixer; }
-
  private:
   static VM* _current;
   HeapMemory* _heap_memory;
-  ProgramHeapMemory* _program_heap_memory;
   Scheduler* _scheduler;
-  EntropyMixer _entropy_mixer;
 
   EventSourceManager* _event_manager = null;
   EventSource* _nop_event_source = null;

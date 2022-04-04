@@ -178,6 +178,32 @@ bool Space::includes(uword address) {
 }
 
 #ifdef DEBUG
+
+class InSpaceVisitor : public RootCallback {
+ public:
+  explicit InSpaceVisitor(Space* space) : space(space) {}
+  void do_roots(Object** p, int length) {
+    for (int i = 0; i < length; i++) {
+      Object* object = p[i];
+      if (object->is_smi()) continue;
+      if (space->includes(reinterpret_cast<uword>(object))) {
+        in_space = true;
+        break;
+      }
+    }
+  }
+  bool in_space = false;
+
+ private:
+  Space* space;
+};
+
+bool HeapObject::contains_pointers_to(Program* program, Space* space) {
+  InSpaceVisitor visitor(space);
+  roots_do(program, &visitor);
+  return visitor.in_space;
+}
+
 void Space::find(uword w, const char* name) {
   for (auto chunk : chunk_list_) chunk->find(w, name);
 }
@@ -216,11 +242,8 @@ void Chunk::find(uword word, const char* name) {
 #endif
 
 Chunk* ObjectMemory::allocate_chunk(Space* owner, uword size) {
-  ASSERT(owner != null);
-
   size = Utils::round_up(size, TOIT_PAGE_SIZE);
-  void* memory =
-      OS::allocate_pages(size, GcMetadata::heap_allocation_arena());
+  void* memory = OS::allocate_pages(size);
   uword lowest = GcMetadata::lowest_old_space_address();
   USE(lowest);
   if (memory == null) return null;
@@ -229,7 +252,11 @@ Chunk* ObjectMemory::allocate_chunk(Space* owner, uword size) {
          GcMetadata::heap_extent());
 
   uword base = reinterpret_cast<uword>(memory);
-  Chunk* chunk = new Chunk(owner, base, size);
+  Chunk* chunk = _new Chunk(owner, base, size);
+  if (!chunk) {
+    OS::free_pages(memory, size);
+    return null;
+  }
 
   ASSERT(base == Utils::round_up(base, TOIT_PAGE_SIZE));
   ASSERT(size == Utils::round_up(size, TOIT_PAGE_SIZE));
@@ -237,21 +264,16 @@ Chunk* ObjectMemory::allocate_chunk(Space* owner, uword size) {
 #ifdef DEBUG
   chunk->scramble();
 #endif
-  GcMetadata::mark_pages_for_chunk(chunk, owner->page_type());
+  if (owner) {
+    GcMetadata::mark_pages_for_chunk(chunk, owner->page_type());
+  }
   allocated_ += size;
   return chunk;
 }
 
-Chunk* ObjectMemory::create_fixed_chunk(Space* owner, void* memory, uword size) {
-  ASSERT(owner != null);
-  ASSERT(size == Utils::round_up(size, TOIT_PAGE_SIZE));
-
-  uword base = reinterpret_cast<uword>(memory);
-  ASSERT(base % TOIT_PAGE_SIZE == 0);
-
-  Chunk* chunk = new Chunk(owner, base, size, true);
-  GcMetadata::mark_pages_for_chunk(chunk, owner->page_type());
-  return chunk;
+void Chunk::set_owner(Space* value) {
+  owner_ = value;
+  GcMetadata::mark_pages_for_chunk(this, value->page_type());
 }
 
 void ObjectMemory::free_chunk(Chunk* chunk) {
@@ -262,13 +284,5 @@ void ObjectMemory::free_chunk(Chunk* chunk) {
   allocated_ -= chunk->size();
   delete chunk;
 }
-
-#ifdef DEBUG
-NoAllocationScope::NoAllocationScope(Heap* heap) : heap_(heap) {
-  heap->increment_no_allocation();
-}
-
-NoAllocationScope::~NoAllocationScope() { heap_->decrement_no_allocation(); }
-#endif
 
 }  // namespace toit

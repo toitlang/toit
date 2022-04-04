@@ -4,7 +4,7 @@
 
 // https://github.com/toitware/toit/issues/4
 
-// This test makes sure the main process terminates before the hatched process.
+// This test makes sure the main process terminates before the spawned process.
 main:
-  hatch_::
+  spawn::
     task:: sleep --ms=100

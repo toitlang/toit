@@ -56,16 +56,21 @@ class NestingTracker {
   int* _nesting;
 };
 
+void SystemMessage::free_data_and_externals() {
+  MessageDecoder::deallocate(_data);
+  _data = null;
+}
+
 MessageEncoder::MessageEncoder(Process* process, uint8* buffer)
     : _process(process)
     , _program(process ? process->program() : null)
     , _buffer(buffer) {
 }
 
-void MessageEncoder::encode_termination_message(uint8* buffer, uint8 value) {
+void MessageEncoder::encode_process_message(uint8* buffer, uint8 value) {
   MessageEncoder encoder(null, buffer);
   encoder.encode(Smi::from(value));
-  ASSERT(encoder.size() <= MESSAGING_TERMINATION_MESSAGE_SIZE);
+  ASSERT(encoder.size() <= MESSAGING_PROCESS_MESSAGE_SIZE);
 }
 
 void MessageEncoder::free_copied() {
@@ -267,7 +272,7 @@ MessageDecoder::MessageDecoder(Process* process, uint8* buffer)
     , _buffer(buffer) {
 }
 
-bool MessageDecoder::decode_termination_message(uint8* buffer, int* value) {
+bool MessageDecoder::decode_process_message(uint8* buffer, int* value) {
   MessageDecoder decoder(null, buffer);
   // TODO(kasper): Make this more robust. We don't know the content.
   Object* object = decoder.decode();
@@ -333,6 +338,49 @@ Object* MessageDecoder::decode() {
       FATAL("[message decoder: unhandled message tag: %d]", tag);
   }
   return null;
+}
+
+void MessageDecoder::deallocate(uint8* buffer) {
+  if (buffer == null) return;
+  MessageDecoder decoder(buffer);
+  decoder.deallocate();
+  free(buffer);
+}
+
+void MessageDecoder::deallocate() {
+  int tag = read_uint8();
+  switch (tag) {
+    case TAG_POSITIVE_SMI:
+    case TAG_NEGATIVE_SMI:
+      read_cardinal();
+      break;
+    case TAG_NULL:
+    case TAG_TRUE:
+    case TAG_FALSE:
+      break;
+    case TAG_STRING:
+    case TAG_BYTE_ARRAY:
+      read_cardinal();
+      free(read_pointer());
+      break;
+    case TAG_STRING_INLINE:
+    case TAG_BYTE_ARRAY_INLINE: {
+      int length = read_cardinal();
+      _cursor += length;
+      break;
+    }
+    case TAG_ARRAY: {
+      int length = read_cardinal();
+      for (int i = 0; i < length; i++) deallocate();
+      break;
+    }
+    case TAG_DOUBLE:
+    case TAG_LARGE_INTEGER:
+      read_uint64();
+      break;
+    default:
+      FATAL("[message decoder: unhandled message tag: %d]", tag);
+  }
 }
 
 Object* MessageDecoder::decode_string(bool inlined) {
@@ -490,8 +538,7 @@ bool ExternalSystemMessageHandler::send(int pid, int type, void* data, int lengt
   MessageEncoder encoder(buffer);
   encoder.encode_byte_array_external(data, length);
 
-  SystemMessage* message = _new SystemMessage(type, _process->group()->id(), _process->id(),
-      buffer, buffer_size);
+  SystemMessage* message = _new SystemMessage(type, _process->group()->id(), _process->id(), buffer);
   if (message == null) {
     if (discard) encoder.free_copied();
     free(buffer);
@@ -499,14 +546,16 @@ bool ExternalSystemMessageHandler::send(int pid, int type, void* data, int lengt
   }
   scheduler_err_t result = _vm->scheduler()->send_message(pid, message);
   if (result == MESSAGE_OK) return true;
+  message->free_data_but_keep_externals();
   if (discard) encoder.free_copied();
   delete message;
   return false;
 }
 
 Interpreter::Result ExternalSystemMessageHandler::run() {
+  Process* process = _process;
   while (true) {
-    Message* message = _process->peek_message();
+    Message* message = process->peek_message();
     if (message == null) {
       return Interpreter::Result(Interpreter::Result::YIELDED);
     }
@@ -525,7 +574,10 @@ Interpreter::Result ExternalSystemMessageHandler::run() {
 
       int pid = system->pid();
       int type = system->type();
-      _process->remove_first_message();
+      if (success) {
+        system->free_data_but_keep_externals();
+      }
+      process->remove_first_message();
       if (success) {
         on_message(pid, type, data, length);
       }
@@ -535,7 +587,7 @@ Interpreter::Result ExternalSystemMessageHandler::run() {
 
 void ExternalSystemMessageHandler::collect_garbage(bool try_hard) {
   if (_process) {
-    _vm->scheduler()->scavenge(_process, true, try_hard);
+    _vm->scheduler()->gc(_process, true, try_hard);
   }
 }
 

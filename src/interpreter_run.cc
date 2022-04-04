@@ -131,31 +131,15 @@ Method Program::find_method(Object* receiver, int offset) {
     arg = bcp[1];                                           \
   interpret_##opcode##_impl:
 
-// This costs about 20-25% in interpreter performance, but can
-// make crash reports easier to understand.
+#define PUSH(o)            ({ Object* _o_ = o; *(--sp) = _o_; })
+#define POP()              (*(sp++))
+#define DROP(n)            ({ int _n_ = n; sp += _n_; })
+#define STACK_AT(n)        ({ int _n_ = n; (*(sp + _n_)); })
+#define STACK_AT_PUT(n, o) ({ int _n_ = n; Object* _o_ = o; *(sp + _n_) = _o_; })
 
-#ifdef CRASH_ON_STACK_OVERFLOW
-
-# define PUSH(o)            ({ Object* _o_ = o; *(--sp) = _o_; if (sp < _limit) *(int*)(_limit - sp) = 0; })
-# define STACK_AT_PUT(n, o) ({ int _n_ = n; Object* _o_ = o; *(sp + _n_) = _o_; if (sp + _n_ < _limit) *(int*)(_limit - sp - _n_) = 0; })
-# define STACK_MOVE(to, from, amount) \
-    ({ int _to_ = to; int _from_ = from; int _amount_ = amount; \
-       if (sp + _to_ - _amount_ < _limit) *(int*)(_limit - sp - _to_ + _amount_) = 0; \
-       memmove(sp + _to_ - _amount_, sp + _from_ - _amount_, amount * sizeof(Object*)); })
-
-#else
-
-# define PUSH(o)            ({ Object* _o_ = o; *(--sp) = _o_; })
-# define STACK_AT_PUT(n, o) ({ int _n_ = n; Object* _o_ = o; *(sp + _n_) = _o_; })
-# define STACK_MOVE(to, from, amount) \
+#define STACK_MOVE(to, from, amount) \
     ({ int _to_ = to; int _from_ = from; int _amount_ = amount; \
        memmove(sp + _to_ - _amount_, sp + _from_ - _amount_, amount * sizeof(Object*)); })
-
-#endif
-
-#define POP()               (*(sp++))
-#define STACK_AT(n)         ({ int _n_ = n; (*(sp + _n_)); })
-#define DROP(n)             ({ int _n_ = n; sp += _n_; })
 
 #define B_ARG1(name) uint8 name = bcp[1];
 #define S_ARG1(name) uint16 name = Utils::read_unaligned_uint16(bcp + 1);
@@ -167,22 +151,14 @@ Method Program::find_method(Object* receiver, int offset) {
 #define REGISTER_METHOD(target)
 #endif
 
-// CHECK_STACK_OVERFLOW returns the target iff there still is room on the stack.
-// Otherwise, it will return the stack_overflow method.
+// CHECK_STACK_OVERFLOW checks if there is enough stack space to call
+// the given target method.
 #define CHECK_STACK_OVERFLOW(target)                                  \
   if (sp - target.max_height() < _watermark) {                        \
-    OverflowState state = OVERFLOW_EXCEPTION;                         \
-    sp = check_stack_overflow(sp, &state, target);                    \
+    OverflowState state;                                              \
+    sp = handle_stack_overflow(sp, &state, target);                   \
     switch (state) {                                                  \
-      case OVERFLOW_RESUME: break;                                    \
-      case OVERFLOW_OOM:                                              \
-      case OVERFLOW_EXCEPTION:                                        \
-        target = handle_stack_overflow(state);                        \
-        REGISTER_METHOD(target);                                      \
-        break;                                                        \
-      case OVERFLOW_WATCHDOG:                                         \
-        target = handle_watchdog();                                   \
-        REGISTER_METHOD(target);                                      \
+      case OVERFLOW_RESUME:                                           \
         break;                                                        \
       case OVERFLOW_PREEMPT:                                          \
         static_assert(FRAME_SIZE == 2, "Unexpected frame size");      \
@@ -190,18 +166,20 @@ Method Program::find_method(Object* receiver, int offset) {
         PUSH(program->frame_marker());                                \
         store_stack(sp);                                              \
         return Result(Result::PREEMPTED);                             \
+      case OVERFLOW_EXCEPTION:                                        \
+        goto THROW_IMPLEMENTATION;                                    \
     }                                                                 \
   }
 
+// CHECK_PREEMPT checks for preemption and watchdog interrupts.
 #define CHECK_PREEMPT()                                               \
   if (_watermark == PREEMPTION_MARKER) {                              \
-    _watermark = null;                                                \
-    static_assert(FRAME_SIZE == 2, "Unexpected frame size");          \
-    if (_process->signals() & Process::WATCHDOG) {                    \
-      Method method = handle_watchdog();                              \
-      REGISTER_METHOD(method);                                        \
-      CALL_METHOD(method, 0);                                         \
+    OverflowState state;                                              \
+    sp = handle_preempt(sp, &state);                                  \
+    if (state == OVERFLOW_EXCEPTION) {                                \
+      goto THROW_IMPLEMENTATION;                                      \
     }                                                                 \
+    static_assert(FRAME_SIZE == 2, "Unexpected frame size");          \
     PUSH(reinterpret_cast<Object*>(bcp));                             \
     PUSH(program->frame_marker());                                    \
     store_stack(sp);                                                  \
@@ -451,7 +429,6 @@ Interpreter::Result Interpreter::run() {
       if (instance->class_id() == program->lazy_initializer_class_id()) {
         PUSH(Smi::from(global_index));
         PUSH(instance);
-        PUSH(program->initialization_in_progress_object());
         Method target = program->run_global_initializer();
         CALL_METHOD(target, _length_);
       } else {
@@ -513,11 +490,9 @@ Interpreter::Result Interpreter::run() {
             class_index);
       }
 #endif //TOIT_GC_LOGGING
-      sp = scavenge(sp, false, attempts);
+      sp = gc(sp, false, attempts, false);
       result = _process->object_heap()->allocate_instance(Smi::from(class_index));
     }
-    // Scavenge might have taken place in object heap but local
-    // "klass" is from program heap.
     if (result != null) {
       Instance* instance = Instance::cast(result);
       int instance_size = program->instance_size_for(instance);
@@ -525,7 +500,7 @@ Interpreter::Result Interpreter::run() {
         instance->at_put(i, program->null_object());
       }
       PUSH(result);
-      if (Flags::gcalot) sp = scavenge(sp, false, 1);
+      if (Flags::gcalot) sp = gc(sp, false, 1, false);
     } else {
       PUSH(Smi::from(class_index));
       CALL_METHOD(program->allocation_failure(), _length_);
@@ -1003,6 +978,11 @@ Interpreter::Result Interpreter::run() {
         result = Primitive::unmark_from_error(result);
         bool malloc_failed = (result == _process->program()->malloc_failed());
         bool allocation_failed = (result == _process->program()->allocation_failed());
+        bool force_cross_process = false;
+        if (result == _process->program()->cross_process_gc()) {
+          force_cross_process = true;
+          malloc_failed = true;
+        }
 
         if (attempts > 3 || !(malloc_failed || allocation_failed)) break;
 #ifdef TOIT_GC_LOGGING
@@ -1013,14 +993,14 @@ Interpreter::Result Interpreter::run() {
               malloc_failed ? " (malloc)" : "");
         }
 #endif
-        sp = scavenge(sp, malloc_failed, attempts);
+        sp = gc(sp, malloc_failed, attempts, force_cross_process);
 
         _sp = sp;
         result = entry(_process, sp + parameter_offset + arity - 1); // Skip the frame.
         sp = _sp;
       }
 
-      // Scavenge might have taken place in object heap but local "method" is from program heap.
+      // GC might have taken place in object heap but local "method" is from program heap.
       PUSH(result);
       DISPATCH(PRIMITIVE_LENGTH);
 
@@ -1038,6 +1018,7 @@ Interpreter::Result Interpreter::run() {
     }
   OPCODE_END();
 
+  THROW_IMPLEMENTATION:
   OPCODE_BEGIN(THROW);
     // Setup for unwinding.
     // The exception is already in TOS.

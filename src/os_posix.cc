@@ -282,7 +282,7 @@ const uint8* OS::image_uuid() {
     if (success) return uuid;
   }
 
-  VM::current()->entropy_mixer()->get_entropy(uuid, UUID_SIZE);
+  EntropyMixer::instance()->get_entropy(uuid, UUID_SIZE);
   file = fopen(path, "w");
   if (file == null) {
     perror("OS::image_uuid/fopen");

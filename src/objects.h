@@ -27,6 +27,7 @@ class Blob;
 class Chunk;
 class MutableBlob;
 class Error;
+class Space;
 
 enum BlobKind {
   STRINGS_OR_BYTE_ARRAYS,
@@ -273,6 +274,9 @@ class HeapObject : public Object {
     *extra_bytes = 0;
   }
 
+  // Not very fast - used for asserts.
+  bool contains_pointers_to(Program* program, Space* space);
+
  protected:
   void _set_header(Smi* class_id, TypeTag class_tag) {
     uword header = class_id->value();
@@ -318,7 +322,6 @@ class HeapObject : public Object {
   friend class Space;
   friend class SemiSpace;
   friend class OldSpace;
-  friend class Heap;
   friend class ProgramHeap;
   friend class TwoSpaceHeap;
   friend class BaseSnapshotWriter;
@@ -328,7 +331,7 @@ class HeapObject : public Object {
   friend class GcMetadata;
   friend class CompactingVisitor;
   friend class SweepingVisitor;
-  friend class GenerationalScavengeVisitor;
+  friend class ScavengeVisitor;
 };
 
 class Array : public HeapObject {
@@ -402,7 +405,6 @@ class Array : public HeapObject {
   }
 
   friend class ObjectHeap;
-  friend class Heap;
   friend class ProgramHeap;
 
  protected:
@@ -599,7 +601,6 @@ class ByteArray : public HeapObject {
   }
 
   friend class ObjectHeap;
-  friend class Heap;
   friend class ProgramHeap;
   friend class ShortPrintVisitor;
   friend class VMFinalizerNode;
@@ -643,7 +644,7 @@ class LargeInteger : public HeapObject {
     ASSERT(!Smi::is_valid(value));
     _int64_at_put(VALUE_OFFSET, value);
   }
-  friend class Heap;
+  friend class ObjectHeap;
   friend class ProgramHeap;
   friend class SnapshotReader;
 };
@@ -663,7 +664,6 @@ class Stack : public HeapObject {
   int length() { return _word_at(LENGTH_OFFSET); }
   int top() { return _word_at(TOP_OFFSET); }
   int try_top() { return _word_at(TRY_TOP_OFFSET); }
-  bool in_stack_overflow() { return _word_at(IN_STACK_OVERFLOW_OFFSET); }
 
   void transfer_to_interpreter(Interpreter* interpreter);
   void transfer_from_interpreter(Interpreter* interpreter);
@@ -692,27 +692,20 @@ class Stack : public HeapObject {
     *extra_bytes = 0;
   }
 
-  // Since stack overflows are handled on the stack that is overflowing, we need
-  // to reserve some slots for it.
-  static const int OVERFLOW_HEADROOM = 64;
-
  private:
   static const int TASK_OFFSET = HeapObject::SIZE;
   static const int LENGTH_OFFSET = TASK_OFFSET + WORD_SIZE;
   static const int TOP_OFFSET = LENGTH_OFFSET + WORD_SIZE;
   static const int TRY_TOP_OFFSET = TOP_OFFSET + WORD_SIZE;
-  static const int IN_STACK_OVERFLOW_OFFSET = TRY_TOP_OFFSET + WORD_SIZE;
-  static const int HEADER_SIZE = IN_STACK_OVERFLOW_OFFSET + WORD_SIZE;
+  static const int HEADER_SIZE = TRY_TOP_OFFSET + WORD_SIZE;
 
   void _set_length(int value) { _word_at_put(LENGTH_OFFSET, value); }
   void _set_top(int value) { _word_at_put(TOP_OFFSET, value); }
   void _set_try_top(int value) { _word_at_put(TRY_TOP_OFFSET, value); }
-  void _set_in_stack_overflow(bool value) { _word_at_put(IN_STACK_OVERFLOW_OFFSET, value); }
   void _initialize(int length) {
     _set_length(length);
     _set_top(length);
     _set_try_top(length);
-    _set_in_stack_overflow(false);
   }
   Object** _stack_base_addr() { return reinterpret_cast<Object**>(_raw_at(_array_offset_from(length()))); }
   Object** _stack_limit_addr() { return reinterpret_cast<Object**>(_raw_at(_array_offset_from(0))); }
@@ -740,7 +733,6 @@ class Stack : public HeapObject {
 
   static int _array_offset_from(int index) { return HEADER_SIZE + index  * WORD_SIZE; }
   friend class ObjectHeap;
-  friend class Heap;
   friend class ProgramHeap;
 };
 
@@ -771,7 +763,7 @@ class Double : public HeapObject {
 
   void _initialize(double value) { _set_value(value); }
   void _set_value(double value) { _double_at_put(VALUE_OFFSET, value); }
-  friend class Heap;
+  friend class ObjectHeap;
   friend class ProgramHeap;
 };
 
@@ -1032,9 +1024,8 @@ class String : public HeapObject {
 
   bool _is_valid_utf8();
 
-  friend class Heap;
-  friend class ProgramHeap;
   friend class ObjectHeap;
+  friend class ProgramHeap;
   friend class VMFinalizerNode;
 };
 
@@ -1195,7 +1186,7 @@ class Instance : public HeapObject {
 
   static int _offset_from(int index) { return HEADER_SIZE + index  * WORD_SIZE; }
 
-  friend class Heap;
+  friend class ObjectHeap;
   friend class ProgramHeap;
 };
 
@@ -1298,7 +1289,7 @@ class PromotedTrack : public HeapObject {
 
   static PromotedTrack* initialize(PromotedTrack* next, uword start, uword end);
 
-  static inline int header_size() { return HEADER_SIZE; }
+  static inline uword header_size() { return HEADER_SIZE; }
 
  private:
   static const int END_OFFSET = HeapObject::SIZE;

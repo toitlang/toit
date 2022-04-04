@@ -4,6 +4,7 @@
 
 #include "gc_metadata.h"
 #include "object_memory.h"
+#include "two_space_heap.h"
 
 #include "../../heap.h"
 #include "../../objects.h"
@@ -27,18 +28,12 @@ Space::Space(Program* program, Space::Resizing resizeable, PageType page_type)
       resizeable_(resizeable == CAN_RESIZE),
       page_type_(page_type) {}
 
-SemiSpace::SemiSpace(Program* program, Space::Resizing resizeable, PageType page_type,
-                     uword maximum_initial_size)
-    : Space(program, resizeable, page_type) {
-  if (resizeable_ && maximum_initial_size > 0) {
-    uword size = Utils::min(
-        Utils::round_up(maximum_initial_size, TOIT_PAGE_SIZE),
-        DEFAULT_MAXIMUM_CHUNK_SIZE);
-    Chunk* chunk = ObjectMemory::allocate_chunk(this, size);
-    if (chunk == null) FATAL("Failed to allocate %d bytes.\n", size);
-    append(chunk);
-    update_base_and_limit(chunk, chunk->start());
-  }
+SemiSpace::SemiSpace(Program* program, Chunk* chunk)
+    : Space(program, CANNOT_RESIZE, NEW_SPACE_PAGE) {
+  ASSERT(chunk);
+  chunk->set_owner(this);
+  append(chunk);
+  update_base_and_limit(chunk, chunk->start());
 }
 
 bool SemiSpace::is_flushed() {
@@ -162,7 +157,7 @@ uword SemiSpace::used() {
 
 // Called multiple times until there is no more work.  Finds objects moved to
 // the to-space and traverses them to find and fix more new-space pointers.
-bool SemiSpace::complete_scavenge_generational(GenerationalScavengeVisitor* visitor) {
+bool SemiSpace::complete_scavenge(ScavengeVisitor* visitor) {
   bool found_work = false;
   // No need to update remembered set for semispace->semispace pointers.
   uint8 dummy;

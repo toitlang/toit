@@ -15,6 +15,7 @@
 #include "../../objects.h"
 #include "mark_sweep.h"
 #include "object_memory.h"
+#include "two_space_heap.h"
 
 #ifdef _MSC_VER
 #include <intrin.h>
@@ -25,15 +26,14 @@ namespace toit {
 
 OldSpace::OldSpace(Program* program, TwoSpaceHeap* owner)
     : Space(program, CAN_RESIZE, OLD_SPACE_PAGE),
-      heap_(owner),
-      free_list_(new FreeList()) {}
+      heap_(owner) {}
 
-OldSpace::~OldSpace() { delete free_list_; }
+OldSpace::~OldSpace() { }
 
 void OldSpace::flush() {
   if (top_ != 0) {
     uword free_size = limit_ - top_;
-    free_list_->add_region(top_, free_size);
+    free_list_.add_region(top_, free_size);
     if (tracking_allocations_ && promoted_track_ != null) {
       // The latest promoted_track_ entry is set to cover the entire
       // current allocation area, so that we skip it when traversing the
@@ -120,7 +120,6 @@ uword OldSpace::allocate_in_new_chunk(uword size) {
     }
   }
 
-  hard_limit_hit_ = true;
   allocation_budget_ = -1;  // Trigger GC.
   return 0;
 }
@@ -137,7 +136,7 @@ uword OldSpace::allocate_from_free_list(uword size) {
   // Flush the rest of the active region into the free list.
   flush();
 
-  FreeListRegion* region = free_list_->get_region(
+  FreeListRegion* region = free_list_.get_region(
       tracking_allocations_ ? size + PromotedTrack::header_size() : size);
   if (region != null) {
     top_ = region->_raw();
@@ -220,13 +219,51 @@ void OldSpace::zap_object_starts() {
   }
 }
 
-void OldSpace::visit_remembered_set(GenerationalScavengeVisitor* visitor) {
+class RememberedSetRebuilder2 : public RootCallback {
+ public:
+  virtual void do_roots(Object** pointers, int length) override {
+    for (int i = 0; i < length; i++) {
+      Object* object = pointers[i];
+      if (GcMetadata::get_page_type(object) == NEW_SPACE_PAGE) {
+        found = true;
+        break;
+      }
+    }
+  }
+
+  bool found;
+};
+
+class RememberedSetRebuilder : public HeapObjectVisitor {
+ public:
+  RememberedSetRebuilder(Program* program) : HeapObjectVisitor(program) {}
+
+  virtual uword visit(HeapObject* object) override {
+    pointer_callback.found = false;
+    object->roots_do(program_, &pointer_callback);
+    if (pointer_callback.found) {
+      *GcMetadata::remembered_set_for(reinterpret_cast<uword>(object)) = GcMetadata::NEW_SPACE_POINTERS;
+    }
+    return object->size(program_);
+  }
+
+ private:
+  RememberedSetRebuilder2 pointer_callback;
+};
+
+// Until we have a write barrier we have to iterate the whole
+// of old space.
+void OldSpace::rebuild_remembered_set() {
+  RememberedSetRebuilder rebuilder(program_);
+  iterate_objects(&rebuilder);
+}
+
+void OldSpace::visit_remembered_set(ScavengeVisitor* visitor) {
   flush();
   for (auto chunk : chunk_list_) {
     // Scan the byte-map for cards that may have new-space pointers.
     uword current = chunk->start();
-    uword bytes =
-        reinterpret_cast<uword>(GcMetadata::remembered_set_for(current));
+    uword bytes = reinterpret_cast<uword>(GcMetadata::remembered_set_for(current));
     uword earliest_iteration_start = current;
     while (current < chunk->end()) {
       if (Utils::is_aligned(bytes, sizeof(uword))) {
@@ -316,8 +353,8 @@ void OldSpace::unlink_promoted_track() {
 
 // Called multiple times until there is no more work.  Finds objects moved to
 // the old-space and traverses them to find and fix more new-space pointers.
-bool OldSpace::complete_scavenge_generational(
-    GenerationalScavengeVisitor* visitor) {
+bool OldSpace::complete_scavenge(
+    ScavengeVisitor* visitor) {
   flush();
   ASSERT(tracking_allocations_);
 
@@ -345,20 +382,21 @@ bool OldSpace::complete_scavenge_generational(
   return found_work;
 }
 
-void OldSpace::clear_free_list() { free_list_->clear(); }
+void OldSpace::clear_free_list() { free_list_.clear(); }
 
 void OldSpace::mark_chunk_ends_free() {
   for (auto chunk : chunk_list_) {
     uword top = chunk->compaction_top();
     uword end = chunk->usable_end();
-    if (top != end) free_list_->add_region(top, end - top);
+    if (top != end) free_list_.add_region(top, end - top);
     top = Utils::round_up(top, GcMetadata::CARD_SIZE);
     GcMetadata::initialize_starts_for_chunk(chunk, top);
     GcMetadata::initialize_remembered_set_for_chunk(chunk, top);
   }
 }
 
-void FixPointersVisitor::visit_block(Object** start, Object** end) {
+void FixPointersVisitor::do_roots(Object** start, int length) {
+  Object** end = start + length;
   for (Object** current = start; current < end; current++) {
     Object* object = *current;
     if (GcMetadata::get_page_type(object) == OLD_SPACE_PAGE) {
@@ -512,11 +550,9 @@ void OldSpace::verify() {
     uword current = chunk->start();
     while (!has_sentinel_at(current)) {
       HeapObject* object = HeapObject::from_address(current);
-      /* TODO(erik): Implement contains_pointers_to so we can verify the remembered set
-      if (object->contains_pointers_to(heap_->space())) {
+      if (object->contains_pointers_to(program_, heap_->space())) {
         ASSERT(*GcMetadata::remembered_set_for(current));
       }
-      */
       current += object->size(program_);
     }
   }

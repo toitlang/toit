@@ -12,15 +12,30 @@
 
 namespace toit {
 
+class HeapObjectFunctionVisitor : public HeapObjectVisitor {
+ public:
+  HeapObjectFunctionVisitor(Program* program, const std::function<void (HeapObject*)>& func)
+    : HeapObjectVisitor(program)
+    , _func(func) {}
+
+  virtual uword visit(HeapObject* object) override {
+    _func(object);
+    return object->size(program_);
+  }
+
+ private:
+  const std::function<void (HeapObject*)>& _func;
+};
+
 // TwoSpaceHeap represents the container for all HeapObjects.
 class TwoSpaceHeap {
  public:
-  explicit TwoSpaceHeap(Program* program);
+  TwoSpaceHeap(Program* program, ObjectHeap* process_heap, Chunk* chunk_1, Chunk* chunk_2);
   ~TwoSpaceHeap();
 
   // Allocate raw object. Returns null if a garbage collection is
   // needed.
-  Object* allocate(uword size);
+  HeapObject* allocate(uword size);
 
   // Max memory that can be added by adding new chunks.  Accounts for whole
   // chunks, not just the used memory in them.
@@ -40,33 +55,40 @@ class TwoSpaceHeap {
   void find(uword word);
 #endif
 
+  void validate();
+
   // Returns false for allocation failure.
   bool initialize();
 
-  OldSpace* old_space() { return old_space_; }
-  SemiSpace* unused_space() { return unused_semispace_; }
+  OldSpace* old_space() { return &old_space_; }
+  SemiSpace* unused_space() { return unused_semi_space_; }
 
   void swap_semi_spaces();
 
   // Iterate over all objects in the heap.
   void iterate_objects(HeapObjectVisitor* visitor) {
     semi_space_->iterate_objects(visitor);
-    old_space_->iterate_objects(visitor);
+    old_space_.iterate_objects(visitor);
+  }
+
+  void do_objects(const std::function<void (HeapObject*)>& func) {
+    HeapObjectFunctionVisitor visitor(program_, func);
+    iterate_objects(&visitor);
   }
 
   // Flush will write cached values back to object memory.
   // Flush must be called before traveral of heap.
   void flush() {
     semi_space_->flush();
-    old_space_->flush();
+    old_space_.flush();
   }
 
   // Returns the number of bytes allocated in the space.
-  int used() { return old_space_->used() + semi_space_->used(); }
+  int used() { return old_space_.used() + semi_space_->used(); }
 
-  Object* new_space_allocation_failure(uword size) {
-    if (size >= (semispace_size_ >> 1)) {
-      uword result = old_space_->allocate(size);
+  HeapObject* new_space_allocation_failure(uword size) {
+    if (size >= (semi_space_size_ >> 1)) {
+      uword result = old_space_.allocate(size);
       if (result != 0) {
         // The code that populates newly allocated objects assumes that they
         // are in new space and does not have a write barrier.  We mark the
@@ -84,30 +106,40 @@ class TwoSpaceHeap {
 
   void freed_foreign_memory(uword size);
 
+  void collect_new_space();
+  void collect_old_space();
+  void collect_old_space_if_needed(bool force);
+  void perform_garbage_collection();
+  void sweep_heap();
+  void compact_heap();
+
  private:
   static const uword UNLIMITED_EXPANSION = 0x80000000u - TOIT_PAGE_SIZE;
 
-  friend class GenerationalScavengeVisitor;
+  friend class ScavengeVisitor;
 
   Program* program_;
+  ObjectHeap* process_heap_;
+  OldSpace old_space_;
+  SemiSpace semi_space_a_;
+  SemiSpace semi_space_b_;
   SemiSpace* semi_space_;
-  OldSpace* old_space_;
-  SemiSpace* unused_semispace_;
+  SemiSpace* unused_semi_space_;
   uword water_mark_;
   uword max_size_;
-  uword semispace_size_;
+  uword semi_space_size_;
 };
 
 // Helper class for copying HeapObjects.
-class GenerationalScavengeVisitor : public RootCallback {
+class ScavengeVisitor : public RootCallback {
  public:
-  explicit GenerationalScavengeVisitor(Program* program, TwoSpaceHeap* heap)
+  explicit ScavengeVisitor(Program* program, TwoSpaceHeap* heap)
       : program_(program),
-        to_start_(heap->unused_semispace_->single_chunk_start()),
-        to_size_(heap->unused_semispace_->single_chunk_size()),
+        to_start_(heap->unused_semi_space_->single_chunk_start()),
+        to_size_(heap->unused_semi_space_->single_chunk_size()),
         from_start_(heap->space()->single_chunk_start()),
         from_size_(heap->space()->single_chunk_size()),
-        to_(heap->unused_semispace_),
+        to_(heap->unused_semi_space_),
         old_(heap->old_space()),
         record_(&dummy_record_),
         water_mark_(heap->water_mark_) {}

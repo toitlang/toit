@@ -1,4 +1,3 @@
 As check failed: an int (499) is not a string.
   0: foo                       tests/negative/return_type2_test.toit:8:3
   1: main                      tests/negative/return_type2_test.toit:11:3
-  2: __entry__.<lambda>        <sdk>/core/entry.toit:48:20

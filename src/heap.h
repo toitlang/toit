@@ -23,16 +23,58 @@
 #include "objects.h"
 #include "primitive.h"
 #include "printing.h"
+#include "third_party/dartino/two_space_heap.h"
 
 extern "C" uword toit_image;
 extern "C" uword toit_image_size;
 
 namespace toit {
 
-class Heap : public RawHeap {
+class ObjectNotifier;
+
+#ifdef LEGACY_GC
+typedef Block InitialMemory;
+#else
+struct InitialMemory {
+  Chunk* chunk_1;
+  Chunk* chunk_2;
+};
+#endif
+
+// A class that uses a RAII destructor to free memory already
+// allocated if a later alllocation fails.
+class InitialMemoryManager {
  public:
-  Heap(Process* owner, Program* program, Block* initial_block);
-  ~Heap();
+#ifdef LEGACY_GC
+  Block* initial_memory = null;
+#else
+  InitialMemory* initial_memory = &chunks;
+  InitialMemory chunks = {null, null};
+#endif
+
+  void dont_auto_free() {
+#ifdef LEGACY_GC
+    initial_memory = null;
+#else
+    chunks.chunk_1 = null;
+    chunks.chunk_2 = null;
+#endif
+  }
+
+  // Allocates initial pages for heap.  Returns success.
+  bool allocate();
+
+  // Frees any of the fields that are not null.
+  ~InitialMemoryManager();
+};
+
+#ifdef LEGACY_GC
+
+// Legacy-GC: An object heap contains all objects created at runtime.
+class ObjectHeap : public RawHeap {
+ public:
+  ObjectHeap(Process* owner, Program* program, Block* initial_block);
+  ~ObjectHeap();
 
   class Iterator {
    public:
@@ -54,6 +96,30 @@ class Heap : public RawHeap {
 
   static int max_allocation_size() { return Block::max_payload_size(); }
 
+  void do_objects(const std::function<void (HeapObject*)>& func) {
+    Iterator iterator(_blocks, _program);
+    while (!iterator.eos()) {
+      HeapObject* object = iterator.current();
+      func(object);
+      iterator.advance();
+    }
+  }
+
+#else
+class ObjectHeap {
+ public:
+  ObjectHeap(Program* program, Process* owner, InitialMemory* initial_memory);
+  ~ObjectHeap();
+
+  // TODO: In the new heap there is no max allocation size.
+  static int max_allocation_size() { return TOIT_PAGE_SIZE - 96; }
+
+  inline void do_objects(const std::function<void (HeapObject*)>& func) {
+    _two_space_heap.do_objects(func);
+  }
+
+#endif
+
   // Shared allocation operations.
   Instance* allocate_instance(Smi* class_id);
   Instance* allocate_instance(TypeTag class_tag, Smi* class_id, Smi* instance_size);
@@ -66,14 +132,15 @@ class Heap : public RawHeap {
   Double* allocate_double(double value);
   LargeInteger* allocate_large_integer(int64 value);
 
-  // Returns the number of bytes allocated in this heap.
-  virtual int payload_size();
+  void process_registered_finalizers(RootCallback* ss, LivenessOracle* from_space);
+  void process_registered_vm_finalizers(RootCallback* ss, LivenessOracle* from_space);
+  int complete_scavenge(int blocks_before);
 
   Program* program() { return _program; }
 
   int64 total_bytes_allocated() { return _total_bytes_allocated; }
 
-#ifndef DEPLOY
+#if !defined(DEPLOY) && defined(LEGACY_GC)
   void enter_gc() {
     ASSERT(!_in_gc);
     ASSERT(_gc_allowed);
@@ -112,42 +179,17 @@ class Heap : public RawHeap {
   void set_last_allocation_result(AllocationResult result) {
     _last_allocation_result = result;
   }
+#ifndef LEGACY_GC
+  Usage usage(const char* name);
+  Process* owner() { return _owner; }
+#endif
 
- protected:
-  Program* const _program;
-  HeapObject* _allocate_raw(int byte_size);
-  virtual AllocationResult _expand();
-  bool _in_gc;
-  bool _gc_allowed;
-  int64 _total_bytes_allocated;
-  AllocationResult _last_allocation_result;
-
-  friend class ProgramSnapshotReader;
-  friend class compiler::ProgramBuilder;
-};
-
-class NoGC {
  public:
-  explicit NoGC(Heap* heap) : _heap(heap) {
-    heap->enter_no_gc();
-  }
-  ~NoGC() {
-    _heap->leave_no_gc();
-  }
-
- private:
-  Heap* _heap;
-};
-
-class ObjectNotifier;
-// An object heap contains all objects created at runtime.
-class ObjectHeap final : public Heap {
- public:
+#ifdef LEGACY_GC
   ObjectHeap(Program* program, Process* owner, Block* initial_block);
-  ~ObjectHeap();
-
-  // Returns the number of bytes allocated in this heap.
-  virtual int payload_size();
+#else
+  ObjectHeap(Program* program, Process* owner);
+#endif
 
   Task* allocate_task();
   Stack* allocate_stack(int length);
@@ -165,14 +207,8 @@ class ObjectHeap final : public Heap {
   Task* task() { return _task; }
   void set_task(Task* task) { _task = task; }
 
-  Method hatch_method() { return _hatch_method; }
-  void set_hatch_method(Method method) { _hatch_method = method; }
-
-  HeapObject* hatch_arguments() { return _hatch_arguments; }
-  void set_hatch_arguments(HeapObject* array) { _hatch_arguments = array; }
-
   // Garbage collection operation for runtime objects.
-  int scavenge();
+  int gc();
 
   bool add_finalizer(HeapObject* key, Object* lambda);
   bool has_finalizer(HeapObject* key, Object* lambda);
@@ -181,8 +217,8 @@ class ObjectHeap final : public Heap {
   bool add_vm_finalizer(HeapObject* key);
   bool remove_vm_finalizer(HeapObject* key);
 
+  bool has_finalizer_to_run() const { return !_runnable_finalizers.is_empty(); }
   Object* next_finalizer_to_run();
-  void set_finalizer_notifier(ObjectNotifier* notifier);
 
   // Tells how many gc operations this heap has experienced.
   int gc_count() { return _gc_count; }
@@ -198,8 +234,28 @@ class ObjectHeap final : public Heap {
   void unregister_external_allocation(word size);
   bool has_max_heap_size() const { return _max_heap_size != 0; }
   void install_heap_limit() { _limit = _pending_limit; }
+  void iterate_roots(RootCallback* callback);
 
  private:
+  Program* const _program;
+#ifdef LEGACY_GC
+  HeapObject* _allocate_raw(int byte_size);
+#else
+  HeapObject* _allocate_raw(int byte_size) {
+    return _two_space_heap.allocate(byte_size);
+  }
+#endif
+
+  bool _in_gc = false;
+  bool _gc_allowed = true;
+  int64 _total_bytes_allocated = 0;
+  AllocationResult _last_allocation_result = ALLOCATION_SUCCESS;
+
+#ifndef LEGACY_GC
+  Process* _owner;
+  TwoSpaceHeap _two_space_heap;
+#endif
+
   // An estimate of how much memory overhead malloc has.
   static const word _EXTERNAL_MEMORY_ALLOCATOR_OVERHEAD = 2 * sizeof(word);
 
@@ -208,35 +264,48 @@ class ObjectHeap final : public Heap {
 
   // Number of bytes used before forcing a scavenge, including external memory.
   // Set to zero to have no limit.
-  word _limit;
-  // This limit will be installed at the end of the current primitive
-  word _pending_limit;
-  word _max_heap_size;  // Configured max heap size, incl. external allocation.
-  std::atomic<word> _external_memory;  // In bytes.
-  Task* _task;
-  Method _hatch_method;
-  HeapObject* _hatch_arguments;
+  word _limit = 0;
+  // This limit will be installed at the end of the current primitive.
+  word _pending_limit = 0;
+
+  word _max_heap_size = 0;  // Configured max heap size, incl. external allocation.
+  std::atomic<word> _external_memory;  // Allocated external memory in bytes.
+
+  Task* _task = null;
   ObjectNotifierList _object_notifiers;
 
   // A finalizer is in one of the following lists.
-  FinalizerNodeFIFO _registered_finalizers;  // Contains registered finalizers.
-  FinalizerNodeFIFO _runnable_finalizers; // Contains finalizers that must be executed.
+  FinalizerNodeFIFO _registered_finalizers;       // Contains registered finalizers.
+  FinalizerNodeFIFO _runnable_finalizers;         // Contains finalizers that must be executed.
   VMFinalizerNodeFIFO _registered_vm_finalizers;  // Contains registered VM finalizers.
-  ObjectNotifier* _finalizer_notifier;
+  ObjectNotifier* _finalizer_notifier = null;
 
-  int _gc_count;
-  Object** _global_variables;
-
-  Object** _copy_global_variables();
+  int _gc_count = 0;
+  Object** _global_variables = null;
 
   HeapRootList _external_roots;
 
   // Calculate the memory limit for scavenge based on the number of live blocks
   // and the externally allocated memory.
   word _calculate_limit();
+#ifdef LEGACY_GC
   AllocationResult _expand();
+#endif
 
   friend class ObjectNotifier;
+};
+
+class NoGC {
+ public:
+  explicit NoGC(ObjectHeap* heap) : _heap(heap) {
+    heap->enter_no_gc();
+  }
+  ~NoGC() {
+    _heap->leave_no_gc();
+  }
+
+ private:
+  ObjectHeap* _heap;
 };
 
 } // namespace toit
