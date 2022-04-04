@@ -192,14 +192,14 @@ Object** Interpreter::push_error(Object** sp, Object* type, const char* message)
   // Stack: Type, Instance, ...
 
   MallocedBuffer buffer(STACK_ENCODING_BUFFER_SIZE);
-  if (!buffer.has_content()) {
-    sp = gc(sp, true, 1, false);
-    if (!buffer.allocate(STACK_ENCODING_BUFFER_SIZE)) {
-      DROP(2);
-      return push_out_of_memory_error(sp);
-    }
+  for (int attempts = 1; !buffer.has_content() && attempts < 4; attempts++) {
+    sp = gc(sp, true, attempts, false);
+    buffer.allocate(STACK_ENCODING_BUFFER_SIZE);
   }
-  ASSERT(buffer.has_content());
+  if (!buffer.has_content()) {
+    DROP(2);
+    return push_out_of_memory_error(sp);
+  }
 
   ProgramOrientedEncoder encoder(process->program(), &buffer);
   store_stack(sp);

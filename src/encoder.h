@@ -58,20 +58,16 @@ class Buffer {
 
 class MallocedBuffer : public Buffer {
  public:
-  explicit MallocedBuffer(int length) {
+  explicit MallocedBuffer(int length) : _buffer(null) {
     allocate(length);
   }
 
-  bool allocate(int length) {
+  void allocate(int length) {
     ASSERT(length > 0);
-    _length = length;
+    ASSERT(_buffer == null);
     _buffer = reinterpret_cast<uint8*>(malloc(length));
+    _length = (_buffer != null) ? length : 0;
     _pos = 0;
-    if (_buffer == null) {
-      _length = 0;
-      return false;
-    }
-    return true;
   }
 
   ~MallocedBuffer() {
