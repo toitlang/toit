@@ -494,7 +494,6 @@ Interpreter::Result Interpreter::run() {
       result = _process->object_heap()->allocate_instance(Smi::from(class_index));
     }
     if (result == null) {
-      printf("[throwing for alloc %d]\n", class_index);
       sp = push_error(sp, program->allocation_failed(), "");
       goto THROW_IMPLEMENTATION;
     }
@@ -987,7 +986,6 @@ Interpreter::Result Interpreter::run() {
         }
 
         if (attempts > 3) {
-          printf("[throwing exception for primitive]\n");
           sp = push_error(sp, result, "");
           goto THROW_IMPLEMENTATION;
         }
@@ -1001,7 +999,8 @@ Interpreter::Result Interpreter::run() {
         }
 #endif
 
-        _sp = gc(sp, malloc_failed, attempts, force_cross_process);
+        sp = gc(sp, malloc_failed, attempts, force_cross_process);
+        _sp = sp;
         result = entry(_process, sp + parameter_offset + arity - 1); // Skip the frame.
         sp = _sp;
       }
