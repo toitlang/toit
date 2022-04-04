@@ -16,6 +16,10 @@
 .ONESHELL: # Run all lines of targets in one shell
 .SHELLFLAGS += -e
 
+# General options.
+HOST=host
+BUILD_TYPE=Release
+
 # Use 'make ESP32_ENTRY=examples/mandelbrot.toit esp32' to compile a different
 # example for the ESP32 firmware.
 ESP32_ENTRY=examples/hello.toit
@@ -23,8 +27,6 @@ ESP32_WIFI_SSID=
 ESP32_WIFI_PASSWORD=
 ESP32_PORT=
 ESP32_CHIP=esp32
-HOST=host
-BUILD_TYPE=Release
 
 # The system process is started from its own entry point.
 ESP32_SYSTEM_ENTRY=system/extensions/esp32/boot.toit
