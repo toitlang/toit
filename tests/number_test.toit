@@ -1178,17 +1178,13 @@ test_operators:
     3.compare_to float.INFINITY               // => -1
 
 test_bit_fields:
-  expect_equals 13 13[0..64]
-  expect_equals -13 -13[0..64]
+  expect_equals -1   (255.sign_extend --bits=8)
+  expect_equals 1    (  1.sign_extend --bits=8)
+  expect_equals -128 (128.sign_extend --bits=8)
+  expect_equals 127  (127.sign_extend --bits=8)
 
-  expect_equals 0b1010  0b1100_1010_0011[4..8]
-  expect_equals -6     (0b1100_1010_0011[4..8].sign_extend --bits=4)
+  expect_equals -1   (  1.sign_extend --bits=1)
+  expect_equals 0    (  0.sign_extend --bits=1)
 
-  expect_equals 0b1010  0b1100_1010_0011[7..4]
-  expect_equals -6     (0b1100_1010_0011[7..4].sign_extend --bits=4)
-
-  expect_equals 0x9f    0x9fff_ffff_ffff_ffff[56..64]
-  expect_equals -97    (0x9fff_ffff_ffff_ffff[56..64].sign_extend --bits=8)
-
-  expect_equals 0x9f    0x9fff_ffff_ffff_ffff[63..56]
-  expect_equals -97    (0x9fff_ffff_ffff_ffff[63..56].sign_extend --bits=8)
+  expect_equals int.MAX (int.MAX.sign_extend --bits=64)
+  expect_equals int.MIN (int.MIN.sign_extend --bits=64)
