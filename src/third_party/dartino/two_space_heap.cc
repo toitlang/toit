@@ -151,6 +151,8 @@ void TwoSpaceHeap::collect_new_space() {
 
   process_heap_->iterate_roots(&visitor);
 
+  old_space()->rebuild_remembered_set();
+
   old_space()->visit_remembered_set(&visitor);
 
   bool work_found = true;

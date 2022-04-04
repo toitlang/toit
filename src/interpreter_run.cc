@@ -131,31 +131,15 @@ Method Program::find_method(Object* receiver, int offset) {
     arg = bcp[1];                                           \
   interpret_##opcode##_impl:
 
-// This costs about 20-25% in interpreter performance, but can
-// make crash reports easier to understand.
+#define PUSH(o)            ({ Object* _o_ = o; *(--sp) = _o_; })
+#define POP()              (*(sp++))
+#define DROP(n)            ({ int _n_ = n; sp += _n_; })
+#define STACK_AT(n)        ({ int _n_ = n; (*(sp + _n_)); })
+#define STACK_AT_PUT(n, o) ({ int _n_ = n; Object* _o_ = o; *(sp + _n_) = _o_; })
 
-#ifdef CRASH_ON_STACK_OVERFLOW
-
-# define PUSH(o)            ({ Object* _o_ = o; *(--sp) = _o_; if (sp < _limit) *(int*)(_limit - sp) = 0; })
-# define STACK_AT_PUT(n, o) ({ int _n_ = n; Object* _o_ = o; *(sp + _n_) = _o_; if (sp + _n_ < _limit) *(int*)(_limit - sp - _n_) = 0; })
-# define STACK_MOVE(to, from, amount) \
-    ({ int _to_ = to; int _from_ = from; int _amount_ = amount; \
-       if (sp + _to_ - _amount_ < _limit) *(int*)(_limit - sp - _to_ + _amount_) = 0; \
-       memmove(sp + _to_ - _amount_, sp + _from_ - _amount_, amount * sizeof(Object*)); })
-
-#else
-
-# define PUSH(o)            ({ Object* _o_ = o; *(--sp) = _o_; })
-# define STACK_AT_PUT(n, o) ({ int _n_ = n; Object* _o_ = o; *(sp + _n_) = _o_; })
-# define STACK_MOVE(to, from, amount) \
+#define STACK_MOVE(to, from, amount) \
     ({ int _to_ = to; int _from_ = from; int _amount_ = amount; \
        memmove(sp + _to_ - _amount_, sp + _from_ - _amount_, amount * sizeof(Object*)); })
-
-#endif
-
-#define POP()               (*(sp++))
-#define STACK_AT(n)         ({ int _n_ = n; (*(sp + _n_)); })
-#define DROP(n)             ({ int _n_ = n; sp += _n_; })
 
 #define B_ARG1(name) uint8 name = bcp[1];
 #define S_ARG1(name) uint16 name = Utils::read_unaligned_uint16(bcp + 1);
@@ -167,22 +151,14 @@ Method Program::find_method(Object* receiver, int offset) {
 #define REGISTER_METHOD(target)
 #endif
 
-// CHECK_STACK_OVERFLOW returns the target iff there still is room on the stack.
-// Otherwise, it will return the stack_overflow method.
+// CHECK_STACK_OVERFLOW checks if there is enough stack space to call
+// the given target method.
 #define CHECK_STACK_OVERFLOW(target)                                  \
   if (sp - target.max_height() < _watermark) {                        \
-    OverflowState state = OVERFLOW_EXCEPTION;                         \
-    sp = check_stack_overflow(sp, &state, target);                    \
+    OverflowState state;                                              \
+    sp = handle_stack_overflow(sp, &state, target);                   \
     switch (state) {                                                  \
-      case OVERFLOW_RESUME: break;                                    \
-      case OVERFLOW_OOM:                                              \
-      case OVERFLOW_EXCEPTION:                                        \
-        target = handle_stack_overflow(state);                        \
-        REGISTER_METHOD(target);                                      \
-        break;                                                        \
-      case OVERFLOW_WATCHDOG:                                         \
-        target = handle_watchdog();                                   \
-        REGISTER_METHOD(target);                                      \
+      case OVERFLOW_RESUME:                                           \
         break;                                                        \
       case OVERFLOW_PREEMPT:                                          \
         static_assert(FRAME_SIZE == 2, "Unexpected frame size");      \
@@ -190,18 +166,20 @@ Method Program::find_method(Object* receiver, int offset) {
         PUSH(program->frame_marker());                                \
         store_stack(sp);                                              \
         return Result(Result::PREEMPTED);                             \
+      case OVERFLOW_EXCEPTION:                                        \
+        goto THROW_IMPLEMENTATION;                                    \
     }                                                                 \
   }
 
+// CHECK_PREEMPT checks for preemption and watchdog interrupts.
 #define CHECK_PREEMPT()                                               \
   if (_watermark == PREEMPTION_MARKER) {                              \
-    _watermark = null;                                                \
-    static_assert(FRAME_SIZE == 2, "Unexpected frame size");          \
-    if (_process->signals() & Process::WATCHDOG) {                    \
-      Method method = handle_watchdog();                              \
-      REGISTER_METHOD(method);                                        \
-      CALL_METHOD(method, 0);                                         \
+    OverflowState state;                                              \
+    sp = handle_preempt(sp, &state);                                  \
+    if (state == OVERFLOW_EXCEPTION) {                                \
+      goto THROW_IMPLEMENTATION;                                      \
     }                                                                 \
+    static_assert(FRAME_SIZE == 2, "Unexpected frame size");          \
     PUSH(reinterpret_cast<Object*>(bcp));                             \
     PUSH(program->frame_marker());                                    \
     store_stack(sp);                                                  \
@@ -1051,6 +1029,7 @@ Interpreter::Result Interpreter::run() {
     }
   OPCODE_END();
 
+  THROW_IMPLEMENTATION:
   OPCODE_BEGIN(THROW);
     // Setup for unwinding.
     // The exception is already in TOS.

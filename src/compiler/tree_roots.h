@@ -43,6 +43,7 @@ namespace compiler {
   T(true, True_)                        \
   T(lazy_initializer, LazyInitializer_) \
   T(stack, Stack_)                      \
+  T(exception, Exception_)              \
 
 } // namespace toit::compiler
 } // namespace toit

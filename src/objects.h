@@ -27,6 +27,7 @@ class Blob;
 class Chunk;
 class MutableBlob;
 class Error;
+class Space;
 
 enum BlobKind {
   STRINGS_OR_BYTE_ARRAYS,
@@ -272,6 +273,9 @@ class HeapObject : public Object {
     *word_count = SIZE / WORD_SIZE;
     *extra_bytes = 0;
   }
+
+  // Not very fast - used for asserts.
+  bool contains_pointers_to(Program* program, Space* space);
 
  protected:
   void _set_header(Smi* class_id, TypeTag class_tag) {
@@ -660,7 +664,6 @@ class Stack : public HeapObject {
   int length() { return _word_at(LENGTH_OFFSET); }
   int top() { return _word_at(TOP_OFFSET); }
   int try_top() { return _word_at(TRY_TOP_OFFSET); }
-  bool in_stack_overflow() { return _word_at(IN_STACK_OVERFLOW_OFFSET); }
 
   void transfer_to_interpreter(Interpreter* interpreter);
   void transfer_from_interpreter(Interpreter* interpreter);
@@ -689,27 +692,20 @@ class Stack : public HeapObject {
     *extra_bytes = 0;
   }
 
-  // Since stack overflows are handled on the stack that is overflowing, we need
-  // to reserve some slots for it.
-  static const int OVERFLOW_HEADROOM = 64;
-
  private:
   static const int TASK_OFFSET = HeapObject::SIZE;
   static const int LENGTH_OFFSET = TASK_OFFSET + WORD_SIZE;
   static const int TOP_OFFSET = LENGTH_OFFSET + WORD_SIZE;
   static const int TRY_TOP_OFFSET = TOP_OFFSET + WORD_SIZE;
-  static const int IN_STACK_OVERFLOW_OFFSET = TRY_TOP_OFFSET + WORD_SIZE;
-  static const int HEADER_SIZE = IN_STACK_OVERFLOW_OFFSET + WORD_SIZE;
+  static const int HEADER_SIZE = TRY_TOP_OFFSET + WORD_SIZE;
 
   void _set_length(int value) { _word_at_put(LENGTH_OFFSET, value); }
   void _set_top(int value) { _word_at_put(TOP_OFFSET, value); }
   void _set_try_top(int value) { _word_at_put(TRY_TOP_OFFSET, value); }
-  void _set_in_stack_overflow(bool value) { _word_at_put(IN_STACK_OVERFLOW_OFFSET, value); }
   void _initialize(int length) {
     _set_length(length);
     _set_top(length);
     _set_try_top(length);
-    _set_in_stack_overflow(false);
   }
   Object** _stack_base_addr() { return reinterpret_cast<Object**>(_raw_at(_array_offset_from(length()))); }
   Object** _stack_limit_addr() { return reinterpret_cast<Object**>(_raw_at(_array_offset_from(0))); }

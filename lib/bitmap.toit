@@ -109,6 +109,10 @@ bitmap_zap byte_array color:
 bytemap_zap byte_array color:
   #primitive.bitmap.byte_zap
 
+/**
+Deprecated.
+Use null for the lookup table instead.
+*/
 IDENTITY_LOOKUP_TABLE ::= ByteArray 0x100: it
 
 OVERWRITE ::= 0
@@ -177,7 +181,7 @@ For both the source and destination we can define how many bytes to skip per
 blit source destination/ByteArray pixels_per_line/int
     --source_pixel_stride=1 --source_line_stride=(pixels_per_line * source_pixel_stride)
     --destination_pixel_stride=1 --destination_line_stride=(pixels_per_line * destination_pixel_stride.abs)
-    --lookup_table/ByteArray=IDENTITY_LOOKUP_TABLE
+    --lookup_table/ByteArray?=null
     --shift=0
     --mask=0xff
     --operation=OVERWRITE:
