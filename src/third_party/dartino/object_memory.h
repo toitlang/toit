@@ -464,6 +464,9 @@ class OldSpace : public Space {
   // Find pointers to young-space.
   void visit_remembered_set(ScavengeVisitor* visitor);
 
+  // Until the write barrier works.
+  void rebuild_remembered_set();
+
   // For the objects promoted to the old space during scavenge.
   inline void start_scavenge() { start_tracking_allocations(); }
   bool complete_scavenge(ScavengeVisitor* visitor);
