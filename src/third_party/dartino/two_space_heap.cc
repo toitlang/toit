@@ -133,6 +133,8 @@ void TwoSpaceHeap::collect_new_space() {
   old_space()->flush();
   from->flush();
 
+  old_space()->rebuild_remembered_set();
+
 #ifdef DEBUG
   if (Flags::validate_heap) old_space()->verify();
 #endif
@@ -150,8 +152,6 @@ void TwoSpaceHeap::collect_new_space() {
   old_space()->start_scavenge();
 
   process_heap_->iterate_roots(&visitor);
-
-  old_space()->rebuild_remembered_set();
 
   old_space()->visit_remembered_set(&visitor);
 
