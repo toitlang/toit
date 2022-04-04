@@ -134,7 +134,6 @@ class ObjectHeap {
 
   void process_registered_finalizers(RootCallback* ss, LivenessOracle* from_space);
   void process_registered_vm_finalizers(RootCallback* ss, LivenessOracle* from_space);
-  int complete_scavenge(int blocks_before);
 
   Program* program() { return _program; }
 
