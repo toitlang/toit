@@ -418,6 +418,7 @@ void FixPointersVisitor::do_roots(Object** start, int length) {
 // This is faster than the builtin memmove because we know the source and
 // destination are aligned and we know the size is at least 1 word.  Also
 // we know that any overlap is only in one direction.
+// TODO(Erik): Check this is still true on ESP32.
 static void INLINE object_mem_move(uword dest, uword source, uword size) {
   ASSERT(source > dest);
   ASSERT(size >= WORD_SIZE);
