@@ -16,6 +16,9 @@ _client_ /ContainerServiceClient ::= ContainerServiceClient
 images -> List:
   return _client_.list_images
 
+current -> uuid.Uuid:
+  return _client_.current_image
+
 start id/uuid.Uuid -> int:
   return _client_.start_image id
 
