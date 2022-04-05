@@ -873,6 +873,25 @@ abstract class int extends num:
     return 0 == this ? 0 : (0 > this ? -1 : 1)
 
   /**
+  Sign-extend an n-bit two's complement number to a full (64 bit)
+    signed Toit integer.
+
+  # Examples
+  ```
+  255.sign_extend --bits=8  // => -1
+  128.sign_extend --bits=8  // => -128
+  127.sign_extend --bits=8  // => 127
+  ```
+  */
+  sign_extend --bits/int -> int:
+    if not 1 <= bits <= 63:
+      if bits == 64: return this
+      throw "OUT_OF_RANGE"
+    if (this >> (bits - 1)) & 1 == 0:
+      return this
+    return this | ~((1 << bits) - 1)
+
+  /**
   The hash code of this number.
   */
   hash_code -> int:
