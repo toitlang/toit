@@ -151,7 +151,12 @@ class Program : public FlashAllocation {
   }
 
   inline int instance_size_for(Smi* class_id) {
-    return instance_size_from_class_bits(class_bits[class_id->value()]);
+    word value = class_id->value();
+    if (value < 0) {
+      if (value == SINGLE_FREE_WORD_CLASS_ID) return sizeof(word);
+      return 0;  // Variable sized object - free-list region or promoted track.
+    }
+    return instance_size_from_class_bits(class_bits[value]);
   }
 
   static inline int instance_size_from_class_bits(int class_bits) {

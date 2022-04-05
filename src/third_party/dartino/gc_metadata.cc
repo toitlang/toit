@@ -22,7 +22,7 @@ void GcMetadata::set_up() { singleton_.set_up_singleton(); }
 void GcMetadata::set_up_singleton() {
   OS::HeapMemoryRange range = OS::get_heap_memory_range();
 
-  lowest_address_ = reinterpret_cast<uword>(range.address);
+  lowest_address_ = Utils::round_down(reinterpret_cast<uword>(range.address), TOIT_PAGE_SIZE);
   uword size = range.size;
   heap_extent_ = size;
   heap_start_munged_ = (lowest_address_ >> 1) |
@@ -34,7 +34,8 @@ void GcMetadata::set_up_singleton() {
   uword mark_bits_size = size >> MARK_BITS_SHIFT;
   // Ensure there is a little slack after the mark bits for the border case
   // where we check a one-word object at the end of a page for blackness.
-  mark_bits_size++;
+  // We need everything to stay word-aligned, so we add a full word of padding.
+  mark_bits_size += sizeof(uword);
 
   uword mark_stack_overflow_bits_size = size >> CARD_SIZE_IN_BITS_LOG_2;
 

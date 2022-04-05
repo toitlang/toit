@@ -65,7 +65,7 @@ SemiSpace* TwoSpaceHeap::take_space() {
 }
 
 template <class SomeSpace>
-HeapObject* ScavengeVisitor::clone_in_to_space(Program* program, HeapObject* original, SomeSpace* to) {
+HeapObject* ScavengeVisitor::clone_into_space(Program* program, HeapObject* original, SomeSpace* to) {
   ASSERT(!to->includes(original->_raw()));
   ASSERT(!original->has_forwarding_address());
   // Copy the object to the 'to' space and insert a forwarding pointer.
@@ -90,17 +90,17 @@ void ScavengeVisitor::do_roots(Object** start, int count) {
       if (in_to_space(destination)) *record_ = GcMetadata::NEW_SPACE_POINTERS;
     } else {
       if (old_object->_raw() < water_mark_) {
-        HeapObject* moved_object = clone_in_to_space(program_, old_object, old_);
+        HeapObject* moved_object = clone_into_space(program_, old_object, old_);
         // The old space may fill up.  This is a bad moment for a GC, so we
         // promote to the to-space instead.
         if (moved_object == NULL) {
           trigger_old_space_gc_ = true;
-          moved_object = clone_in_to_space(program_, old_object, to_);
+          moved_object = clone_into_space(program_, old_object, to_);
           *record_ = GcMetadata::NEW_SPACE_POINTERS;
         }
         *p = moved_object;
       } else {
-        *p = clone_in_to_space(program_, old_object, to_);
+        *p = clone_into_space(program_, old_object, to_);
         *record_ = GcMetadata::NEW_SPACE_POINTERS;
       }
       ASSERT(*p != NULL);  // In an emergency we can move to to-space.
@@ -133,6 +133,8 @@ void TwoSpaceHeap::collect_new_space() {
   old_space()->flush();
   from->flush();
 
+  old_space()->rebuild_remembered_set();
+
 #ifdef DEBUG
   if (Flags::validate_heap) old_space()->verify();
 #endif
@@ -150,8 +152,6 @@ void TwoSpaceHeap::collect_new_space() {
   old_space()->start_scavenge();
 
   process_heap_->iterate_roots(&visitor);
-
-  old_space()->rebuild_remembered_set();
 
   old_space()->visit_remembered_set(&visitor);
 
@@ -188,9 +188,13 @@ void TwoSpaceHeap::collect_new_space() {
 
   if (Flags::tracegc) {
     uint64 end = OS::get_monotonic_time();
-    printf("Scavenge: %dk->%dk, %dus\n",
-        static_cast<int>(from->used() >> 10),
-        static_cast<int>(to->used() >> 10),
+    int f = from->used();
+    int t = to->used();
+    printf("Scavenge: %d%c->%d%c, %dus\n",
+        (f >> 10) ? (f >> 10) : f,
+        (f >> 10) ? 'k' : 'b',
+        (t >> 10) ? (t >> 10) : t,
+        (t >> 10) ? 'k' : 'b',
         static_cast<int>(end - start));
   }
 
@@ -229,20 +233,35 @@ void TwoSpaceHeap::collect_old_space() {
   }
 
   uint64 start = OS::get_monotonic_time();
+  uword old_size = old_space()->used();
 
-  perform_garbage_collection();
+  bool compacted = perform_garbage_collection();
 
   if (Flags::tracegc) {
     uint64 end = OS::get_monotonic_time();
-    printf("Mark-sweep: %dus\n", static_cast<int>(end - start));
+    int f = old_size;
+    int t = old_space()->used();
+    printf("Mark-sweep%s: %d%c->%d%c, %dus\n",
+        compacted ? "-compact" : "",
+        (f >> 10) ? (f >> 10) : f,
+        (f >> 10) ? 'k' : 'b',
+        (t >> 10) ? (t >> 10) : t,
+        (t >> 10) ? 'k' : 'b',
+        static_cast<int>(end - start));
   }
+
+  old_space()->set_allocation_budget(Utils::min(
+      static_cast<uword>(TOIT_PAGE_SIZE),
+      static_cast<uword>(old_space()->used() * 1.5)));
 
   if (Flags::validate_heap) {
     validate();
   }
+  // TODO(Erik): The heuristics need tidying.
+  old_space()->adjust_allocation_budget(0);
 }
 
-void TwoSpaceHeap::perform_garbage_collection() {
+bool TwoSpaceHeap::perform_garbage_collection() {
   // Mark all reachable objects.  We mark all live objects in new-space too, to
   // detect liveness paths that go through new-space, but we just clear the
   // mark bits afterwards.  Dead objects in new-space are only cleared in a
@@ -255,7 +274,17 @@ void TwoSpaceHeap::perform_garbage_collection() {
 
   stack.process(&marking_visitor, old_space(), new_space);
 
-  if (old_space()->compacting()) {
+  process_heap_->process_registered_finalizers(&marking_visitor, old_space());
+
+  stack.process(&marking_visitor, old_space(), new_space);
+
+  process_heap_->process_registered_vm_finalizers(&marking_visitor, old_space());
+
+  stack.process(&marking_visitor, old_space(), new_space);
+
+  bool compact = !old_space()->compacting();
+
+  if (!compact) {
     // If the last GC was compacting we don't have fragmentation, so it
     // is fair to evaluate if we are making progress or just doing
     // pointless GCs.
@@ -271,6 +300,8 @@ void TwoSpaceHeap::perform_garbage_collection() {
 #ifdef DEBUG
   if (Flags::validate_heap) old_space()->verify();
 #endif
+
+  return compact;
 }
 
 void TwoSpaceHeap::sweep_heap() {
@@ -309,7 +340,11 @@ class HeapObjectPointerVisitor : public HeapObjectVisitor {
 
  private:
   RootCallback* visitor_;
-  Program *program_;
+};
+
+class EverythingIsAlive : public LivenessOracle {
+ public:
+  bool is_alive(HeapObject* object) { return true; }
 };
 
 void TwoSpaceHeap::compact_heap() {
@@ -339,6 +374,10 @@ void TwoSpaceHeap::compact_heap() {
   new_space->iterate_objects(&new_space_visitor);
 
   process_heap_->iterate_roots(&fix);
+  // At this point dead objects have been cleared out of the finalizer lists.
+  EverythingIsAlive yes;
+  process_heap_->process_registered_finalizers(&fix, &yes);
+  process_heap_->process_registered_vm_finalizers(&fix, &yes);
 
   new_space->clear_mark_bits();
   old_space()->clear_mark_bits();

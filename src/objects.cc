@@ -102,8 +102,8 @@ int HeapObject::size(Program* program) {
       return LargeInteger::allocation_size();
     case TypeTag::FREE_LIST_REGION_TAG:
       return FreeListRegion::cast(this)->size();
-    case TypeTag::SINGLE_FREE_WORD_TAG:
-      return WORD_SIZE;
+    case TypeTag::PROMOTED_TRACK_TAG:
+      return PromotedTrack::cast(this)->size();
     default:
       FATAL("Unexpected class tag");
       return -1;
@@ -131,6 +131,9 @@ void HeapObject::roots_do(Program* program, RootCallback* cb) {
     case TypeTag::SINGLE_FREE_WORD_TAG:
       // No roots.
       break;
+    case TypeTag::PROMOTED_TRACK_TAG:
+      // Normally do nothing for these.
+      break;
     default:
       FATAL("Unexpected class tag");
   }
@@ -143,14 +146,14 @@ void HeapObject::_set_header(Program* program, Smi* id) {
 
 FreeListRegion* FreeListRegion::create_at(uword start, uword size) {
   if (size >= MINIMUM_SIZE) {
-    auto self = reinterpret_cast<FreeListRegion*>(start);
+    auto self = reinterpret_cast<FreeListRegion*>(HeapObject::from_address(start));
     self->_set_header(Smi::from(FREE_LIST_REGION_CLASS_ID), FREE_LIST_REGION_TAG);
     self->_word_at_put(SIZE_OFFSET, size);
     self->_at_put(NEXT_OFFSET, null);
     return self;
   }
   for (uword i = 0; i < size; i += WORD_SIZE) {
-    auto one_word = reinterpret_cast<FreeListRegion*>(start + i);
+    auto one_word = reinterpret_cast<FreeListRegion*>(HeapObject::from_address(start + i));
     one_word->_set_header(Smi::from(SINGLE_FREE_WORD_CLASS_ID), SINGLE_FREE_WORD_TAG);
   }
   return null;
@@ -363,15 +366,6 @@ void PromotedTrack::zap() {
   for (uword p = _raw(); p < _raw() + HEADER_SIZE; p += WORD_SIZE) {
     *reinterpret_cast<Object**>(p) = filler;
   }
-}
-
-PromotedTrack* PromotedTrack::initialize(PromotedTrack* next, uword location, uword end) {
-  ASSERT(end - location > header_size());
-  auto self = reinterpret_cast<PromotedTrack*>(location);
-  self->_set_header(Smi::from(PROMOTED_TRACK_CLASS_ID), PROMOTED_TRACK_TAG);
-  self->_at_put(NEXT_OFFSET, next);
-  self->_word_at_put(END_OFFSET, end);
-  return self;
 }
 
 #ifndef TOIT_FREERTOS

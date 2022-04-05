@@ -235,7 +235,9 @@ class HeapObject : public Object {
 
   static const int CLASS_ID_BIT_SIZE = 10;
   static const int CLASS_ID_OFFSET = CLASS_TAG_OFFSET + CLASS_TAG_BIT_SIZE;
-  static const uword CLASS_ID_MASK = (1 << CLASS_ID_BIT_SIZE) - 1;
+  // This mask lets class_id() return negative values.  The GC uses
+  // negative class ids for on-heap pseudo-objects like free memory.
+  static const uword CLASS_ID_MASK = -1;
 
   static const int SIZE = HEADER_OFFSET + WORD_SIZE;
 
@@ -1246,7 +1248,7 @@ class PromotedTrack : public HeapObject {
   // We only want to traverse the newly-promoted objects explicitly.
   uword size() {
     ASSERT(class_tag() == PROMOTED_TRACK_TAG);
-    return HEADER_SIZE;
+    return end() - _raw();
   }
 
   // Returns the address of the first object in the track.

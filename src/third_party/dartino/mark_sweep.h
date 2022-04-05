@@ -88,7 +88,7 @@ class CompactingVisitor : public HeapObjectVisitor {
  public:
   CompactingVisitor(Program* program, OldSpace* space, FixPointersVisitor* fix_pointers_visitor);
 
-  virtual void chunk_start(Chunk* chunk) {
+  virtual void chunk_start(Chunk* chunk) override {
     GcMetadata::initialize_starts_for_chunk(chunk);
     uint32* last_bits = GcMetadata::mark_bits_for(chunk->usable_end());
     // When compacting the heap, we skip dead objects.  In order to do this
@@ -114,7 +114,7 @@ class SweepingVisitor : public HeapObjectVisitor {
  public:
   SweepingVisitor(Program* program, OldSpace* space);
 
-  virtual void chunk_start(Chunk* chunk) {
+  virtual void chunk_start(Chunk* chunk) override {
     GcMetadata::initialize_starts_for_chunk(chunk);
   }
 

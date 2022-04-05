@@ -109,7 +109,7 @@ class TwoSpaceHeap {
   void collect_new_space();
   void collect_old_space();
   void collect_old_space_if_needed(bool force);
-  void perform_garbage_collection();
+  bool perform_garbage_collection();
   void sweep_heap();
   void compact_heap();
 
@@ -163,7 +163,7 @@ class ScavengeVisitor : public RootCallback {
 
  private:
   template <class SomeSpace>
-  static inline HeapObject* clone_in_to_space(Program* program, HeapObject* original, SomeSpace* to);
+  static inline HeapObject* clone_into_space(Program* program, HeapObject* original, SomeSpace* to);
 
   Program* program_;
   uword to_start_;
