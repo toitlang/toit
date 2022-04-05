@@ -36,6 +36,9 @@ class Container:
   id -> int:
     return gid_
 
+  is_process_running pid/int -> bool:
+    return pids_.contains pid
+
   on_stop_ -> none:
     pids_.do: on_process_stop_ it
 
@@ -97,9 +100,14 @@ class ContainerImageFlash extends ContainerImage:
 
   delete -> none:
     stop_all
-    manager.image_registry.free allocation_
-    // TODO(kasper): Check in the other methods before using this?
+    // TODO(kasper): We clear the allocation field, so maybe we should check for
+    // null in the methods that use the field?
+    allocation := allocation_
     allocation_ = null
+    try:
+      manager.unregister_image allocation.id
+    finally:
+      manager.image_registry.free allocation
 
 abstract class ContainerServiceDefinition extends ServiceDefinition
     implements ContainerService:
@@ -112,6 +120,8 @@ abstract class ContainerServiceDefinition extends ServiceDefinition
   handle pid/int client/int index/int arguments/any -> any:
     if index == ContainerService.LIST_IMAGES_INDEX:
       return list_images
+    if index == ContainerService.CURRENT_IMAGE_INDEX:
+      return current_image pid
     if index == ContainerService.START_IMAGE_INDEX:
       return start_image (uuid.Uuid arguments)
     if index == ContainerService.UNINSTALL_IMAGE_INDEX:
@@ -130,10 +140,18 @@ abstract class ContainerServiceDefinition extends ServiceDefinition
   abstract images -> List
   abstract add_flash_image allocation/FlashAllocation -> ContainerImage
   abstract lookup_image id/uuid.Uuid -> ContainerImage?
+  abstract lookup_image_from_pid pid/int -> ContainerImage?
 
   list_images -> List:
     return images.map --in_place: | image/ContainerImage |
       image.id.to_byte_array
+
+  current_image -> ByteArray:
+    unreachable  // <-- TODO(kasper): Nasty.
+
+  current_image pid/int -> ByteArray:
+    image/ContainerImage := lookup_image_from_pid pid
+    return image.id.to_byte_array
 
   start_image id/uuid.Uuid -> int?:
     image/ContainerImage? := lookup_image id
@@ -168,7 +186,6 @@ class ContainerManager extends ContainerServiceDefinition implements SystemMessa
   images_/Map ::= {:}               // Map<uuid.Uuid, ContainerImage>
   containers_by_id_/Map ::= {:}     // Map<int, Container>
   containers_by_image_/Map ::= {:}  // Map<uuid.Uuid, Container>
-  next_handle_/int := 0
   done_ ::= monitor.Latch
 
   constructor .image_registry .service_manager_:
@@ -185,8 +202,18 @@ class ContainerManager extends ContainerServiceDefinition implements SystemMessa
   lookup_image id/uuid.Uuid -> ContainerImage?:
     return images_.get id
 
+  lookup_image_from_pid pid/int -> ContainerImage?:
+    // TODO(kasper): This is rather inefficient implementation because
+    // the running containers are indexed by gid, not pid.
+    containers_by_id_.do: | gid/int container/Container |
+      if container.is_process_running pid: return container.image
+    return null
+
   register_image image/ContainerImage -> none:
     images_[image.id] = image
+
+  unregister_image id/uuid.Uuid -> none:
+    images_.remove id
 
   lookup_container id/int -> Container?:
     return containers_by_id_.get id

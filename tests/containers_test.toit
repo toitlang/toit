@@ -6,6 +6,8 @@ import system.containers
 import expect show *
 
 main:
-  expect_equals 1 containers.images.size
+  images/List := containers.images
+  expect_list_equals [containers.current] images
+
   writer := containers.ContainerImageWriter 4096
   writer.close
