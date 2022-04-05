@@ -77,6 +77,7 @@ Method Interpreter::lookup_entry() {
 
 Object** Interpreter::load_stack() {
   Stack* stack = _process->task()->stack();
+  GcMetadata::insert_into_remembered_set(stack);
   stack->transfer_to_interpreter(this);
 #ifdef PROFILER
   set_profiler_state();
@@ -134,6 +135,7 @@ Object** Interpreter::gc(Object** sp, bool malloc_failed, int attempts, bool for
     if (VM::current()->scheduler()->is_boot_process(_process)) {
       OS::out_of_memory("Out of memory in system process");
     }
+    GcMetadata::insert_into_remembered_set(_process->task()->stack());
     return sp;
   }
   store_stack(sp);

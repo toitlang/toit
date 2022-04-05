@@ -2,9 +2,12 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE.md file.
 
+#include "../../top.h"
+
+#ifndef LEGACY_GC
+
 #include "../../flags.h"
 #include "../../heap.h"
-#include "../../top.h"
 #include "../../objects.h"
 #include "two_space_heap.h"
 #include "mark_sweep.h"
@@ -133,8 +136,6 @@ void TwoSpaceHeap::collect_new_space() {
   old_space()->flush();
   from->flush();
 
-  old_space()->rebuild_remembered_set();
-
 #ifdef DEBUG
   if (Flags::validate_heap) old_space()->verify();
 #endif
@@ -190,11 +191,14 @@ void TwoSpaceHeap::collect_new_space() {
     uint64 end = OS::get_monotonic_time();
     int f = from->used();
     int t = to->used();
-    printf("Scavenge: %d%c->%d%c, %dus\n",
+    int old = old_space()->used();
+    printf("Scavenge: %d%c->%d%c (old-gen %d%c) %dus\n",
         (f >> 10) ? (f >> 10) : f,
         (f >> 10) ? 'k' : 'b',
         (t >> 10) ? (t >> 10) : t,
         (t >> 10) ? 'k' : 'b',
+        (old >> 10) ? (old >> 10) : old,
+        (old >> 10) ? 'k' : 'b',
         static_cast<int>(end - start));
   }
 
@@ -430,3 +434,5 @@ void TwoSpaceHeap::find(uword word) {
 #endif  // DEBUG
 
 }  // namespace toit
+
+#endif  // LEGACY_GC

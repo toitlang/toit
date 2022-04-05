@@ -19,8 +19,11 @@
 #include "top.h"
 
 #include "heap_report.h"
+#include "objects.h"
 #include "sha256.h"
 #include "uuid.h"
+
+#include "objects_inline.h"
 
 #ifdef TOIT_FREERTOS
 

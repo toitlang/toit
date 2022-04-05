@@ -280,8 +280,8 @@ void ProgramBuilder::set_up_skeleton_program() {
 
   // Pre-allocate the out of memory error.
   Instance* out_of_memory_error = _program_heap.allocate_instance(_program->exception_class_id());
-  out_of_memory_error->at_put(0, lookup_symbol("OUT_OF_MEMORY"));
-  out_of_memory_error->at_put(1, _program->null_object());  // Empty stack trace.
+  out_of_memory_error->at_put_no_write_barrier(0, lookup_symbol("OUT_OF_MEMORY"));
+  out_of_memory_error->at_put_no_write_barrier(1, _program->null_object());  // Empty stack trace.
   _program->set_out_of_memory_error(out_of_memory_error);
 
   // Bind default literals.
@@ -330,7 +330,7 @@ void ProgramBuilder::set_snapshot_arguments(char** argv) {
   Array* result = _program_heap.allocate_array(argc, _program->null_object());
   for (int index = 0; index < argc; index++) {
     String* arg = _program_heap.allocate_string(argv[index]);
-    result->at_put(index, arg);
+    result->at_put_no_write_barrier(index, arg);
   }
   _program->set_snapshot_arguments(result);
 }

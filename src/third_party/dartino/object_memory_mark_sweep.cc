@@ -11,6 +11,10 @@
 //   We skip PromotedTrack areas because we know we will get to them later and
 //   they contain uninitialized memory.
 
+#include "../../top.h"
+
+#ifndef LEGACY_GC
+
 #include "../../utils.h"
 #include "../../objects.h"
 #include "mark_sweep.h"
@@ -607,3 +611,5 @@ PromotedTrack* PromotedTrack::initialize(PromotedTrack* next, uword location, uw
 }
 
 }  // namespace toit
+
+#endif  // LEGACY_GC

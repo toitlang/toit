@@ -20,12 +20,13 @@ file(GLOB toit_core_SRC
 
 # Exclude files with a main(), and files that are not used in the
 # compiler.
-list(FILTER toit_core_SRC EXCLUDE REGEX "/(toit|toit_run_image|vm).cc$")
+list(FILTER toit_core_SRC EXCLUDE REGEX "/(toit|toit_run_image|vm|objects_runtime).cc$")
 
 # Files that are used in the VM, but not in the compiler.
 file(GLOB toit_vm_runtime_SRC
   "vm.h"
   "vm.cc"
+  "objects_runtime.cc"
   )
 
 file(GLOB toit_resources_SRC

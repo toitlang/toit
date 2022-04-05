@@ -131,4 +131,14 @@ void ByteArray::resize_external(Process* process, word new_length) {
   }
 }
 
+void Task::_initialize(Stack* stack, Smi* id) {
+  set_stack(stack);
+  at_put(ID_INDEX, id);
+}
+
+void Task::set_stack(Stack* value) {
+  at_put(STACK_INDEX, value);
+  GcMetadata::insert_into_remembered_set(value);
+}
+
 }

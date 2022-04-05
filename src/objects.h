@@ -351,7 +351,14 @@ class Array : public HeapObject {
     return _at(_offset_from(index));
   }
 
-  INLINE void at_put(int index, Object* value) {
+  INLINE void at_put(int index, Smi* value) {
+    ASSERT(index >= 0 && index < length());
+    _at_put(_offset_from(index), value);
+  }
+
+  INLINE void at_put(int index, Object* value);
+
+  INLINE void at_put_no_write_barrier(int index, Object* value) {
     ASSERT(index >= 0 && index < length());
     _at_put(_offset_from(index), value);
   }
@@ -386,22 +393,23 @@ class Array : public HeapObject {
     *extra_bytes = 0;
   }
 
-  void fill(int from, Object* filler) {
-    int len = length();
-    for (int index = from; index < len; index++) {
-      at_put(index, filler);
-    }
-  }
+  inline void fill(int from, Object* filler);
 
  private:
   static const int LENGTH_OFFSET = HeapObject::SIZE;
   static const int HEADER_SIZE = LENGTH_OFFSET + WORD_SIZE;
 
   void _set_length(int value) { _word_at_put(LENGTH_OFFSET, value); }
-  void _initialize(int length, Object* filler) {
+
+  // Can only be called on newly allocated objects that will be either
+  // in new-space or were added to the remembered set on creation.
+  void _initialize_no_write_barrier(int length, Object* filler) {
     _set_length(length);
-    fill(0, filler);
+    for (int index = 0; index < length; index++) {
+      at_put_no_write_barrier(index, filler);
+    }
   }
+
   void _initialize(int length) {
     _set_length(length);
   }
@@ -1154,9 +1162,17 @@ class Instance : public HeapObject {
     return _at(_offset_from(index));
   }
 
-  void at_put(int index, Object* value) {
+  inline void at_put(int index, Smi* value) {
     _at_put(_offset_from(index), value);
   }
+
+  void at_put_no_write_barrier(int index, Object* value) {
+    _at_put(_offset_from(index), value);
+  }
+
+  // Using this from the compiler will cause link errors.  Use
+  // at_put_no_write_barrier in the compiler instead.
+  void at_put(int index, Object* value);
 
   void roots_do(int instance_size, RootCallback* cb);
 
@@ -1304,36 +1320,33 @@ class Task : public Instance {
   static const int RESULT_INDEX = ID_INDEX + 1;
 
   Stack* stack() { return Stack::cast(at(STACK_INDEX)); }
-  void set_stack(Stack* value) { at_put(STACK_INDEX, value); }
+  void set_stack(Stack* value);
 
   int id() { return Smi::cast(at(ID_INDEX))->value(); }
 
-  void set_result(Object* value) { at_put(RESULT_INDEX, value); }
+  inline void set_result(Object* value);
 
   static Task* cast(Object* value) {
     ASSERT(value->is_task());
     return static_cast<Task*>(value);
   }
+
   void detach_stack() {
     at_put(STACK_INDEX, Smi::zero());
   }
+
   bool has_stack() {
     return at(STACK_INDEX)->is_stack();
   }
+
  private:
-  void _initialize(Stack* stack, Smi* id) {
-    set_stack(stack);
-    at_put(ID_INDEX, id);
-  }
+  void _initialize(Stack* stack, Smi* id);
+
   friend class ObjectHeap;
 };
 
 inline Task* Stack::task() {
   return Task::cast(_at(TASK_OFFSET));
-}
-
-inline void Stack::set_task(Task* value) {
-  _at_put(TASK_OFFSET, value);
 }
 
 inline bool Object::is_double() {

@@ -78,7 +78,7 @@ Array* ObjectHeap::allocate_array(int length, Object* filler) {
   }
   // Initialize object.
   result->_set_header(_program, _program->array_class_id());
-  Array::cast(result)->_initialize(length, filler);
+  Array::cast(result)->_initialize_no_write_barrier(length, filler);
   return Array::cast(result);
 }
 
@@ -447,6 +447,13 @@ Task* ObjectHeap::allocate_task() {
   }
   stack->set_task(result);
   return result;
+}
+
+void ObjectHeap::set_task(Task* task) {
+  _task = task;
+  // The interpreter doesn't use the write barrier when pushing to the
+  // stack so we have to add it here.
+  GcMetadata::insert_into_remembered_set(task->stack());
 }
 
 Stack* ObjectHeap::allocate_stack(int length) {
