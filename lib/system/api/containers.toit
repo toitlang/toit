@@ -14,6 +14,7 @@ interface ContainerService:
   list_images -> List
 
   static CURRENT_IMAGE_INDEX /int ::= 6
+  current_image -> uuid.Uuid
 
   static START_IMAGE_INDEX /int ::= 1
   start_image id/uuid.Uuid -> int?
