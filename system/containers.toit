@@ -100,9 +100,14 @@ class ContainerImageFlash extends ContainerImage:
 
   delete -> none:
     stop_all
-    manager.image_registry.free allocation_
-    // TODO(kasper): Check in the other methods before using this?
+    // TODO(kasper): We clear the allocation field, so maybe we should check for
+    // null in the methods that use the field?
+    allocation := allocation_
     allocation_ = null
+    try:
+      manager.unregister_image allocation.id
+    finally:
+      manager.image_registry.free allocation
 
 abstract class ContainerServiceDefinition extends ServiceDefinition
     implements ContainerService:
@@ -206,6 +211,9 @@ class ContainerManager extends ContainerServiceDefinition implements SystemMessa
 
   register_image image/ContainerImage -> none:
     images_[image.id] = image
+
+  unregister_image id/uuid.Uuid -> none:
+    images_.remove id
 
   lookup_container id/int -> Container?:
     return containers_by_id_.get id
