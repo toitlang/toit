@@ -26,29 +26,40 @@ class ContainerImageWriter extends ServiceResource:
   reservation_/FlashReservation? := ?
   image_/ByteArray ::= ?
 
-  // TODO(kasper): Start writing out as soon as we can.
-  buffer_/ByteArray := ByteArray 0
+  // We buffer the partial last chunk, because we have to write
+  // the image in full chunks.
+  partial_chunk_/ByteArray? := ByteArray IMAGE_CHUNK_SIZE
+  partial_chunk_fill_/int := 0
 
   constructor service/ServiceDefinition client/int .reservation_:
     image_ = image_writer_create_ reservation_.offset reservation_.size
     super service client
 
   write data/ByteArray -> none:
-    // TODO(kasper): Start writing out sooner.
-    buffer_ += data
+    List.chunk_up 0 data.size (IMAGE_CHUNK_SIZE - partial_chunk_fill_) IMAGE_CHUNK_SIZE: | from to size |
+      if size == IMAGE_CHUNK_SIZE:
+        assert: partial_chunk_fill_ == 0
+        image_writer_write_ image_ data from to
+      else:
+        partial_chunk_.replace partial_chunk_fill_ data from to
+        partial_chunk_fill_ += size
+        if partial_chunk_fill_ == IMAGE_CHUNK_SIZE:
+          image_writer_write_ image_ partial_chunk_ 0 IMAGE_CHUNK_SIZE
+          partial_chunk_fill_ = 0
 
   commit -> FlashAllocation:
-    List.chunk_up 0 buffer_.size IMAGE_CHUNK_SIZE: | from to |
-      image_writer_write_ image_ buffer_ from to
-    // TODO(kasper): Better uuid generation? Let user control?
-    image_writer_commit_ image_ (uuid.uuid5 "programs" "$Time.monotonic_us").to_byte_array
-    result := FlashAllocation reservation_.offset
-    close
-    return result
+    try:
+      if partial_chunk_fill_ > 0: throw "Incomplete image"
+      // TODO(kasper): Better uuid generation? Let user control?
+      image_writer_commit_ image_ (uuid.uuid5 "programs" "$Time.monotonic_us").to_byte_array
+      return FlashAllocation reservation_.offset
+    finally:
+      close
 
   on_closed -> none:
     reservation_.close
     reservation_ = null
+    partial_chunk_ = null
     image_writer_close_ image_
 
 // ----------------------------------------------------------------------------
