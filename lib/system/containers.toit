@@ -20,7 +20,9 @@ current -> uuid.Uuid:
   return _client_.current_image
 
 start id/uuid.Uuid -> int:
-  return _client_.start_image id
+  result/int? := _client_.start_image id
+  if result: return result
+  throw "No such container: $id"
 
 uninstall id/uuid.Uuid -> none:
   _client_.uninstall_image id

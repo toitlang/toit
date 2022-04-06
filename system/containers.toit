@@ -259,7 +259,9 @@ class ContainerManager extends ContainerServiceDefinition implements SystemMessa
     else if type == SYSTEM_SPAWNED_:
       if container: container.on_process_start_ pid
     else if type == SYSTEM_MIRROR_MESSAGE_:
-      if not (container and container.image.trace arguments):
+      origin_id/uuid.Uuid? ::= find_trace_origin_id arguments
+      origin/ContainerImage? ::= origin_id and lookup_image origin_id
+      if not (origin and origin.trace arguments):
         print_for_manually_decoding_ arguments
     else:
       unreachable
@@ -276,10 +278,28 @@ print_for_manually_decoding_ message/ByteArray --from=0 --to=message.size:
   BLOCK_SIZE := 1500
   for i := from; i < to; i += BLOCK_SIZE:
     end := i >= to - BLOCK_SIZE
-    prefix := i == from ? "build/host/sdk/bin/toit.run tools/system_message.toit build/snapshot -b " : ""
-    base64_text := base64.encode (message.copy i (end ? to : i + BLOCK_SIZE))
+    prefix := i == from ? "build/host/sdk/bin/toit.run tools/system_message.toit <SNAPSHOT> -b " : ""
+    base64_text := base64.encode message[i .. (end ? to : i + BLOCK_SIZE)]
     postfix := end ? "" : "\\"
     print_ "$prefix$base64_text$postfix"
+
+find_trace_origin_id trace/ByteArray -> uuid.Uuid?:
+  // Short strings are encoded with a single unsigned byte length ('U').
+  skip_string ::= : | p |
+    if trace[p] != 'S' or trace[p + 1] != 'U': return null
+    p + trace[p + 2] + 3
+
+  catch --no-trace:
+    // The trace is a ubjson encoded array with 5 elements. The first entry
+    // is an integer encoding of the 'X' character.
+    if trace[0..6] != #['[', '#', 'U', 5, 'U', 'X']: return null
+    // The next two entries are short version strings.
+    position := skip_string.call 6
+    position = skip_string.call position
+    // The fourth entry is the byte array for the program id.
+    if trace[position..position + 6] != #['[', '$', 'U', '#', 'U', 16]: return null
+    return uuid.Uuid trace[position + 6..position + 22]
+  return null
 
 // ----------------------------------------------------------------------------
 

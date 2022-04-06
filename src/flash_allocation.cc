@@ -26,7 +26,7 @@ FlashAllocation::FlashAllocation() : _header(0) {}
 
 FlashAllocation::Header::Header(uint32 allocation_offset) {
   uint8 uuid[UUID_SIZE] = {0};
-  initialize(allocation_offset, uuid);
+  initialize(allocation_offset, uuid, null);
 }
 
 void FlashAllocation::Header::set_uuid(const uint8* uuid) {

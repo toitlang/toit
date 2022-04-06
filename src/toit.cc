@@ -54,7 +54,6 @@ static void print_usage(int exit_code) {
   printf("  { <snapshot> <args>... |                  // Run snapshot file.\n");
   printf("    <toitfile> <args>... |                  // Run Toit file.\n");
   printf("    -w <snapshot> <toitfile> <args>... |    // Write snapshot file.\n");
-  printf("    -i <image> <snapshot> |                 // Write image file from snapshot.\n");
   printf("    -s <expression> |                       // Evaluate Toit expression.\n");
   printf("    --analyze <toitfiles>...                // Analyze Toit files.\n");
   printf("  }\n");
@@ -67,33 +66,12 @@ static void print_version() {
   exit(0);
 }
 
-void write_image_from_bundle(char* image_filename, SnapshotBundle bundle) {
-  auto image = bundle.snapshot().read_image();
-
-  auto relocation_bits = ImageInputStream::build_relocation_bits(image);
-  ImageInputStream input(image, relocation_bits);
-
-  FILE* file = fopen(image_filename, "wb");
-  if (!file) {
-    fprintf(stderr, "Unable to open image file %s\n", image_filename);
-    print_usage(1);
-  }
-  while (!input.eos()) {
-    int buffer_size_in_words = input.words_to_read();
-    word buffer[buffer_size_in_words];
-    int words = input.read(buffer);
-    fwrite(buffer, words * WORD_SIZE, 1, file);
-  }
-  fclose(file);
-  image.release();
-}
-
 // Tries to load a snapshot from a file, gracefully return null if the loading failed.
 static ProgramImage attempt_to_load_snapshot(char* bundle_path) {
   auto bundle = SnapshotBundle::read_from_file(bundle_path, true);
   // Just ignore the wrapper if we are unable to load the file.
   if (!bundle.is_valid()) return ProgramImage::invalid();
-  auto result = bundle.snapshot().read_image();
+  auto result = bundle.snapshot().read_image(null);
   free(bundle.buffer());
   return result;
 }
@@ -106,7 +84,7 @@ int run_program(char* boot_program_path, SnapshotBundle bundle, char** argv) {
       auto boot_image = attempt_to_load_snapshot(boot_program_path);
       auto application_image = ProgramImage::invalid();
       if (!boot_image.is_valid()) {
-        application_image = bundle.snapshot().read_image();
+        application_image = bundle.snapshot().read_image(null);
       }
       int group_id = vm.scheduler()->next_group_id();
       if (!boot_image.is_valid()) {
@@ -208,18 +186,6 @@ int main(int argc, char **argv) {
     // TODO(florian): it looks like we don't free the bundle. There is a copy
     //   of the bundle in the byte-array (which is automatically freed), but the
     //   initial memory isn't released.
-  } else if (strcmp(argv[1], "-i") == 0) {
-    // Image writing.
-    if (argc != 4) {
-      fprintf(stderr, "Missing argument to '-i' flag\n");
-      print_usage(1);
-    }
-    char* image_filename = argv[2];
-    char* bundle_filename = argv[3];
-    auto bundle = SnapshotBundle::read_from_file(bundle_filename);
-    if (!bundle.is_valid()) print_usage(1);
-    write_image_from_bundle(image_filename, bundle);
-    free(bundle.buffer());
   } else {
     char* bundle_filename = null;
 

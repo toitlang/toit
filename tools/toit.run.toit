@@ -46,7 +46,7 @@ class ContainerImageSnapshot extends ContainerImage:
     ar_reader := ArReader.from_bytes bundle_
     offsets := ar_reader.find --offsets snapshot.SnapshotBundle.SNAPSHOT_NAME
     gid ::= container_next_gid_
-    pid ::= launch_snapshot_ bundle_[offsets.from..offsets.to] gid true
+    pid ::= launch_snapshot_ bundle_[offsets.from..offsets.to] gid id.to_byte_array
     container := Container this gid pid
     manager.on_container_start_ container
     return container
@@ -77,9 +77,7 @@ main:
 // ----------------------------------------------------------------------------
 
 /**
-Starts a new process using the given $snapshot.
-
-Passes the arguments of this process if $pass_arguments is set.
+Starts a new process using the given $snapshot to build the program.
 */
-launch_snapshot_ snapshot/ByteArray gid/int pass_arguments/bool -> int:
+launch_snapshot_ snapshot/ByteArray gid/int id/ByteArray -> int:
   #primitive.snapshot.launch
