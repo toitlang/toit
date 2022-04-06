@@ -190,8 +190,8 @@ bool MessageEncoder::encode_byte_array(ByteArray* object) {
 bool MessageEncoder::encode_bundles(SnapshotBundle system, SnapshotBundle application) {
   write_uint8(TAG_ARRAY);
   write_cardinal(2);
-  encode_byte_array_external(system.buffer(), system.size());
-  encode_byte_array_external(application.buffer(), application.size());
+  return encode_byte_array_external(system.buffer(), system.size()) &&
+      encode_byte_array_external(application.buffer(), application.size());
 }
 #endif
 
