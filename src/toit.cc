@@ -21,7 +21,6 @@
 #include "interpreter.h"
 #include "scheduler.h"
 #include "vm.h"
-#include "objects_inline.h"
 #include "os.h"
 #include "printing.h"
 #include "snapshot.h"
@@ -30,6 +29,8 @@
 #include "compiler/compiler.h"
 #include "compiler/filesystem_local.h"
 #include "third_party/dartino/gc_metadata.h"
+
+#include "objects_inline.h"
 
 #include <errno.h>
 #include <libgen.h>

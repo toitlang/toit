@@ -416,7 +416,8 @@ void Double::write_content(SnapshotWriter* st) {
 void Instance::read_content(SnapshotReader* st) {
   int len = st->read_cardinal();
   for (int index = 0; index < len; index++) {
-    at_put(index, st->read_object());
+    // Only used to read snapshots onto the program heap, which has no write barrier.
+    at_put_no_write_barrier(index, st->read_object());
   }
 }
 
@@ -442,7 +443,8 @@ void Double::read_content(SnapshotReader* st) {
 
 void Array::read_content(SnapshotReader* st, int len) {
   _set_length(len);
-  for (int index = 0; index < len; index++) at_put(index, st->read_object());
+  // Only used to read snapshots onto the program heap, which has no write barrier.
+  for (int index = 0; index < len; index++) at_put_no_write_barrier(index, st->read_object());
 }
 
 void ByteArray::read_content(SnapshotReader* st, int len) {

@@ -2,12 +2,14 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE.md file.
 
-#include "gc_metadata.h"
+#include "../../top.h"
 
 #include <stdio.h>
 
 #include "../../utils.h"
 #include "../../objects.h"
+
+#include "gc_metadata.h"
 
 namespace toit {
 
@@ -109,6 +111,8 @@ void GcMetadata::set_up_singleton() {
   start = reinterpret_cast<uword>(cumulative_mark_bit_counts_);
   cumulative_mark_bits_bias_ = start - shifted;
 }
+
+#ifndef LEGACY_GC
 
 // Impossible end-of-object address, since they are aligned.
 static const uword NO_END_FOUND = 3;
@@ -288,5 +292,7 @@ void GcMetadata::mark_stack_overflow(HeapObject* object) {
   // would mean we would not scan the necessary object.
   if (*start == NO_OBJECT_START || *start > low_byte) *start = low_byte;
 }
+
+#endif  // LEGACY_GC
 
 }  // namespace toit

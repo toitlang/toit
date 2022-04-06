@@ -7,6 +7,10 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+#include "../../top.h"
+
+#ifndef LEGACY_GC
+
 #include "../../objects.h"
 #include "../../os.h"
 #include "../../utils.h"
@@ -286,3 +290,5 @@ void ObjectMemory::free_chunk(Chunk* chunk) {
 }
 
 }  // namespace toit
+
+#endif  // LEGACY_GC

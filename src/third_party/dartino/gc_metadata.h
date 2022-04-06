@@ -339,6 +339,14 @@ class GcMetadata {
   // Unaligned, so cannot clash with a real object start.
   static const int NO_OBJECT_START = 2;
 
+#ifdef LEGACY_GC
+
+  inline static void record_start(uword address) {}
+  template<typename T>
+  inline static void insert_into_remembered_set(T address) {}
+
+#else  // not LEGACY_GC
+
   // We need to track the start of an object for each card, so that we can
   // iterate just part of the heap.  This does that for newly allocated objects
   // in old-space.  The cards are less than 256 bytes large (see the assert
@@ -352,11 +360,15 @@ class GcMetadata {
 
   // An object at this address may contain a pointer from old-space to
   // new-space.
-  inline static void insert_into_remembered_set(uword address) {
-    address >>= CARD_SIZE_LOG_2;
-    address += singleton_.remembered_set_bias_;
-    *reinterpret_cast<uint8*>(address) = NEW_SPACE_POINTERS;
+  template<typename T>
+  INLINE static void insert_into_remembered_set(T address) {
+    static_assert(sizeof(T) == sizeof(uword));
+    uword mark_byte = reinterpret_cast<uword>(address) >> CARD_SIZE_LOG_2;
+    mark_byte += singleton_.remembered_set_bias_;
+    *reinterpret_cast<uint8*>(mark_byte) = NEW_SPACE_POINTERS;
   }
+
+#endif  // not LEGACY_GC
 
   // May this card contain pointers from old-space to new-space?
   inline static bool is_marked_dirty(uword address) {

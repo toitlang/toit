@@ -293,21 +293,18 @@ class AllocationManager {
   explicit AllocationManager(Process* process)
     : _ptr(null)
     , _size(0)
-    , _process(process)
-    , _hit_limit(false) {}
+    , _process(process) {}
 
   AllocationManager(Process* process, void* ptr, word size)
     : _ptr(ptr)
     , _size(size)
-    , _process(process)
-    , _hit_limit(false) {
+    , _process(process) {
     process->register_external_allocation(size);
   }
 
   uint8_t* alloc(word length) {
     ASSERT(_ptr == null);
     if (!_process->should_allow_external_allocation(length)) {
-      _hit_limit = true;
       return null;
     }
     // Don't change this to use C++ array 'new' because that isn't compatible
@@ -353,7 +350,6 @@ class AllocationManager {
   void* _ptr;
   word _size;
   Process* _process;
-  bool _hit_limit;
 };
 
 } // namespace toit

@@ -6,6 +6,10 @@
 #include "object_memory.h"
 #include "two_space_heap.h"
 
+#include "../../top.h"
+
+#ifndef LEGACY_GC
+
 #include "../../heap.h"
 #include "../../objects.h"
 
@@ -145,3 +149,5 @@ void SemiSpace::process_weak_pointers(SemiSpace* to_space, OldSpace* old_space) 
 }
 
 }  // namespace toit
+
+#endif  // LEGACY_GC

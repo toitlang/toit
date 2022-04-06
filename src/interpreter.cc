@@ -77,6 +77,7 @@ Method Interpreter::lookup_entry() {
 
 Object** Interpreter::load_stack() {
   Stack* stack = _process->task()->stack();
+  GcMetadata::insert_into_remembered_set(stack);
   stack->transfer_to_interpreter(this);
 #ifdef PROFILER
   set_profiler_state();

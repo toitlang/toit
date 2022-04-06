@@ -19,6 +19,7 @@
 
 #define _FILE_OFFSET_BITS 64
 
+#include "objects.h"
 #include "primitive_file.h"
 #include "primitive.h"
 #include "process.h"
@@ -33,6 +34,8 @@
 #include <sys/types.h>
 #include <windows.h>
 #include <unistd.h>
+
+#include "objects_inline.h"
 
 namespace toit {
 

@@ -16,6 +16,8 @@
 #include "visitor.h"
 #include "objects.h"
 
+#include "objects_inline.h"
+
 namespace toit {
 
 void Visitor::accept(Object* object) {

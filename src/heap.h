@@ -204,7 +204,7 @@ class ObjectHeap {
 
   Object** global_variables() const { return _global_variables; }
   Task* task() { return _task; }
-  void set_task(Task* task) { _task = task; }
+  void set_task(Task* task);
 
   // Garbage collection operation for runtime objects.
   int gc();
