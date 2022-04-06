@@ -95,7 +95,7 @@ int main(int argc, char** argv) {
   int bytecodes_size = compiled.snapshot().size();
 
   // Take the snapshot and "extract" it in some aligned memory.
-  auto anchored_image = compiled.snapshot().read_image();
+  auto anchored_image = compiled.snapshot().read_image(null);
 
   {
     // Check that we get the same snapshot after having exploded it.

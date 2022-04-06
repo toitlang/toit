@@ -56,20 +56,9 @@ function (run_and_check IMAGE)
   endif()
 endfunction()
 
-set(IMAGE_TOITC "${OUTPUT_PREFIX}-toitc.image")
 set(IMAGE_S2I "${OUTPUT_PREFIX}-s2i.image")
 set(IMAGE_S "${OUTPUT_PREFIX}-s2i.s")
 set(IMAGE_O "${OUTPUT_PREFIX}-s2i.o")
-
-# Compile the snapshot to an image using the compiler.
-execute_process(
-  COMMAND "${TOITC}" -i "${IMAGE_TOITC}" "${SNAP}"
-  WORKING_DIRECTORY "${WORKING_DIR}"
-  COMMAND_ERROR_IS_FATAL ANY
-  )
-
-# Run it and verify that the output is as expected.
-run_and_check("${IMAGE_TOITC}")
 
 # Compile the snapshot to an image using the toit tool.
 execute_process(

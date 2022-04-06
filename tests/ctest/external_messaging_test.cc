@@ -53,7 +53,7 @@ void MessageHandler::on_message(int sender, int type, void* data, int length) {
 int run_program(Snapshot snapshot) {
   VM vm;
   vm.load_platform_event_sources();
-  auto image = snapshot.read_image();
+  auto image = snapshot.read_image(null);
   int group_id = vm.scheduler()->next_group_id();
 
   MessageHandler handler(&vm);
