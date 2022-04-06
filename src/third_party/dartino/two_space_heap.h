@@ -159,7 +159,7 @@ class ScavengeVisitor : public RootCallback {
 
   bool trigger_old_space_gc() { return trigger_old_space_gc_; }
 
-  inline void set_record_to_dummy_address() {
+  void set_record_to_dummy_address() {
     record_ = &dummy_record_;
   }
 
