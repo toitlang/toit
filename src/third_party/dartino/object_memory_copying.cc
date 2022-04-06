@@ -125,8 +125,7 @@ uword SemiSpace::used() {
 bool SemiSpace::complete_scavenge(ScavengeVisitor* visitor) {
   bool found_work = false;
   // No need to update remembered set for semispace->semispace pointers.
-  uint8 dummy;
-  visitor->set_record_new_space_pointers(&dummy);
+  visitor->set_record_to_dummy_address();
 
   for (auto chunk : chunk_list_) {
     uword current = chunk->scavenge_pointer();

@@ -39,7 +39,7 @@ class TwoSpaceHeap {
 
   // Max memory that can be added by adding new chunks.  Accounts for whole
   // chunks, not just the used memory in them.
-  uword max_expansion() { return UNLIMITED_EXPANSION; }
+  uword max_expansion();
 
   SemiSpace* space() { return semi_space_; }
 
@@ -158,6 +158,10 @@ class ScavengeVisitor : public RootCallback {
   virtual void do_roots(Object** start, int count);
 
   bool trigger_old_space_gc() { return trigger_old_space_gc_; }
+
+  inline void set_record_to_dummy_address() {
+    record_ = &dummy_record_;
+  }
 
   void set_record_new_space_pointers(uint8* p) { record_ = p; }
 
