@@ -135,7 +135,6 @@ Object** Interpreter::gc(Object** sp, bool malloc_failed, int attempts, bool for
     if (VM::current()->scheduler()->is_boot_process(_process)) {
       OS::out_of_memory("Out of memory in system process");
     }
-    GcMetadata::insert_into_remembered_set(_process->task()->stack());
     return sp;
   }
   store_stack(sp);

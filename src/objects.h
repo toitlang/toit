@@ -220,6 +220,11 @@ class HeapObject : public Object {
     _at_put(HEADER_OFFSET, destination);
   }
 
+  // For asserts.  The remembered set is a card marking scheme, so it may
+  // return true when neighbouring objects are in the set.  Always returns true
+  // for objects in the new-space.
+  bool in_remembered_set();
+
   // Pseudo virtual member functions.
   int size(Program* program);  // Returns the byte size of this object.
   void roots_do(Program* program, RootCallback* cb);  // For GC.
@@ -393,7 +398,7 @@ class Array : public HeapObject {
     *extra_bytes = 0;
   }
 
-  inline void fill(int from, Object* filler);
+  void fill(int from, Object* filler);
 
  private:
   static const int LENGTH_OFFSET = HeapObject::SIZE;
@@ -404,6 +409,7 @@ class Array : public HeapObject {
   // Can only be called on newly allocated objects that will be either
   // in new-space or were added to the remembered set on creation.
   void _initialize_no_write_barrier(int length, Object* filler) {
+    ASSERT(in_remembered_set());
     _set_length(length);
     for (int index = 0; index < length; index++) {
       at_put_no_write_barrier(index, filler);
@@ -1162,7 +1168,7 @@ class Instance : public HeapObject {
     return _at(_offset_from(index));
   }
 
-  inline void at_put(int index, Smi* value) {
+  INLINE void at_put(int index, Smi* value) {
     _at_put(_offset_from(index), value);
   }
 

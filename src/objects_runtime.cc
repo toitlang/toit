@@ -141,4 +141,11 @@ void Task::set_stack(Stack* value) {
   GcMetadata::insert_into_remembered_set(value);
 }
 
+bool HeapObject::in_remembered_set() {
+  if (*GcMetadata::remembered_set_for(_raw()) == GcMetadata::NEW_SPACE_POINTERS) {
+    return true;
+  }
+  return GcMetadata::get_page_type(this) == NEW_SPACE_PAGE;
+}
+
 }
