@@ -41,8 +41,6 @@ abstract class ContainerImageFromSnapshot extends ContainerImage:
     write_on_stderr_ mirror_string (not mirror_string.ends_with "\n")
     return true
 
-  abstract start -> Container
-
   on_container_error container/Container error/int -> none:
     // If a container started from the entry container image gets an error,
     // we exit eagerly.
@@ -84,8 +82,8 @@ main:
   // The snapshot bundles for the system and application programs are passed in the
   // spawn arguments.
   bundles/Array_ ::= spawn_arguments_
-  system_bundle := bundles[0]
-  application_bundle := bundles[1]
+  system_bundle ::= bundles[0]
+  application_bundle ::= bundles[1]
   if application_bundle is not ByteArray:
     print_on_stderr_ "toit.run.toit must be provided a snapshot"
     exit 1
