@@ -54,7 +54,7 @@ class Process : public ProcessListFromProcessGroup::Element,
 
   Process(Program* program, ProcessGroup* group, SystemMessage* termination, char** args, InitialMemory* initial_memory);
 #ifndef TOIT_FREERTOS
-  Process(Program* program, ProcessGroup* group, SystemMessage* termination, SnapshotBundle bundle, char** args, InitialMemory* initial_memory);
+  Process(Program* program, ProcessGroup* group, SystemMessage* termination, SnapshotBundle system, SnapshotBundle application, char** args, InitialMemory* initial_memory);
 #endif
   Process(Program* program, ProcessGroup* group, SystemMessage* termination, Method method, uint8* arguments, InitialMemory* initial_memory);
   ~Process();

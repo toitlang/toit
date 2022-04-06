@@ -66,33 +66,24 @@ static void print_version() {
   exit(0);
 }
 
-// Tries to load a snapshot from a file, gracefully return null if the loading failed.
-static ProgramImage attempt_to_load_snapshot(char* bundle_path) {
-  auto bundle = SnapshotBundle::read_from_file(bundle_path, true);
-  // Just ignore the wrapper if we are unable to load the file.
-  if (!bundle.is_valid()) return ProgramImage::invalid();
-  auto result = bundle.snapshot().read_image(null);
-  free(bundle.buffer());
-  return result;
-}
-
-int run_program(char* boot_program_path, SnapshotBundle bundle, char** argv) {
+int run_program(char* boot_bundle_path, SnapshotBundle application_bundle, char** argv) {
   while (true) {
     Scheduler::ExitState exit;
     { VM vm;
       vm.load_platform_event_sources();
-      auto boot_image = attempt_to_load_snapshot(boot_program_path);
-      auto application_image = ProgramImage::invalid();
-      if (!boot_image.is_valid()) {
-        application_image = bundle.snapshot().read_image(null);
-      }
+      auto boot_bundle = SnapshotBundle::read_from_file(boot_bundle_path, true);
+      auto boot_image = boot_bundle.is_valid()
+          ? boot_bundle.snapshot().read_image(null)
+          : ProgramImage::invalid();
       int group_id = vm.scheduler()->next_group_id();
-      if (!boot_image.is_valid()) {
-        exit = vm.scheduler()->run_boot_program(application_image.program(), argv, group_id);
+      if (boot_image.is_valid()) {
+        exit = vm.scheduler()->run_boot_program(
+            boot_image.program(), boot_bundle, application_bundle, argv, group_id);
       } else {
-        exit = vm.scheduler()->run_boot_program(boot_image.program(), bundle, argv, group_id);
+        auto application_image = application_bundle.snapshot().read_image(null);
+        exit = vm.scheduler()->run_boot_program(application_image.program(), argv, group_id);
+        application_image.release();
       }
-      application_image.release();
       boot_image.release();
     }
     switch (exit.reason) {
@@ -139,7 +130,7 @@ int main(int argc, char **argv) {
     argc -= 2;
     argv += 2;
   } else {
-    // The wrapping boot bundle is run_boot.snapshot, stored next to the executing toit.run.
+    // The wrapping boot bundle is toit.run.snapshot, stored next to the executing toit.run.
     char* toit_run_path = compiler::FilesystemLocal::get_executable_path();
     char* bin_path = dirname(toit_run_path);
     const char* postfix = "/toit.run.snapshot";

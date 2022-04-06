@@ -19,6 +19,7 @@
 #include "objects.h"
 #include "heap.h"
 #include "interpreter.h"
+#include "snapshot_bundle.h"
 
 namespace toit {
 
@@ -138,6 +139,10 @@ class MessageEncoder {
 
   bool encode(Object* object);
   bool encode_byte_array_external(void* data, int length);
+
+#ifndef TOIT_FREERTOS
+  bool encode_bundles(SnapshotBundle system, SnapshotBundle application);
+#endif
 
  private:
   Process* _process = null;

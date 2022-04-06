@@ -1,5 +1,9 @@
-----
-Received a Toit system message. Executing the command below will
-make it human readable:
-----
-build/host/sdk/bin/toit.run tools/system_message.toit <SNAPSHOT> -b WyNVBVVYU1UpdjEuNy4wLXByZS4yMjArc3RhY2stdHJhY2Utb3JpZ2luLjlmYWM0NTNTVQBbJFUjVRAAAAAAAAAAAAAAAAAAAAAAWyNVBFVFU1UPQVNfQ0hFQ0tfRkFJTEVEWyNVA1VBVQJbI1UCWklXbFsjVQJVU1sjVQ9bI1UDVUZVAElXbFsjVQNVRlUBSVzMWyNVA1VGVQJJMLJbI1UDVUZVA0lE/lsjVQNVRlUESUUmWyNVA1VGVQVsAACGQlsjVQNVRlUGbAAAhmpbI1UDVUZVB2wAAIahWyNVA1VGVQhJGrtbI1UDVUZVCUkb2FsjVQNVRlUKSRvtWyNVA1VGVQtJG8hbI1UDVUZVDElsDlsjVQNVRlUNSWwhWyNVA1VGVQ5JGs8=
+As check failed: null is not a ServiceResource.
+  0: ServiceDefinition.resource <sdk>/system/services.toit:155:5
+  1: ContainerServiceDefinition.handle <...>/system/containers.toit:132:19
+  2: ServiceManager_.<lambda>  <sdk>/system/services.toit:273:15
+  3: RpcRequest_.process.<block> <sdk>/rpc/broker.toit:98:26
+  4: RpcRequest_.process       <sdk>/rpc/broker.toit:95:3
+  5: RpcRequestQueue_.ensure_processing_task_.<lambda>.<block>.<block> <sdk>/rpc/broker.toit:209:20
+  6: RpcRequestQueue_.ensure_processing_task_.<lambda>.<block> <sdk>/rpc/broker.toit:203:9
+  7: RpcRequestQueue_.ensure_processing_task_.<lambda> <sdk>/rpc/broker.toit:198:81

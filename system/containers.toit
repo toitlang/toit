@@ -186,6 +186,8 @@ class ContainerManager extends ContainerServiceDefinition implements SystemMessa
   images_/Map ::= {:}               // Map<uuid.Uuid, ContainerImage>
   containers_by_id_/Map ::= {:}     // Map<int, Container>
   containers_by_image_/Map ::= {:}  // Map<uuid.Uuid, Container>
+
+  system_image_/ContainerImage? := null
   done_ ::= monitor.Latch
 
   constructor .image_registry .service_manager_:
@@ -211,6 +213,10 @@ class ContainerManager extends ContainerServiceDefinition implements SystemMessa
 
   register_image image/ContainerImage -> none:
     images_[image.id] = image
+
+  register_system_image image/ContainerImage -> none:
+    register_image image
+    system_image_ = image
 
   unregister_image id/uuid.Uuid -> none:
     images_.remove id
@@ -239,7 +245,11 @@ class ContainerManager extends ContainerServiceDefinition implements SystemMessa
 
   on_container_stop_ container/Container -> none:
     containers_by_id_.remove container.id
-    if containers_by_id_.is_empty: done_.set 0
+    // TODO(kasper): We are supposed to always have a running system process. Maybe
+    // we can generalize this handling and support background processes that do not
+    // restrict us from exiting?
+    remaining ::= containers_by_id_.size
+    if remaining <= 1: done_.set 0
 
   on_image_stop_all_ image/ContainerImage -> none:
     containers/Map? ::= containers_by_image_.get image.id
