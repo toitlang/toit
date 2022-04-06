@@ -408,8 +408,8 @@ class Array : public HeapObject {
 
   // Can only be called on newly allocated objects that will be either
   // in new-space or were added to the remembered set on creation.
+  // Is also called from the compiler, where there are no write barriers.
   void _initialize_no_write_barrier(int length, Object* filler) {
-    ASSERT(in_remembered_set());
     _set_length(length);
     for (int index = 0; index < length; index++) {
       at_put_no_write_barrier(index, filler);
