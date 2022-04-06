@@ -71,21 +71,21 @@ Process::Process(Program* program, ProcessGroup* group, SystemMessage* terminati
 }
 
 #ifndef TOIT_FREERTOS
-Process::Process(Program* program, ProcessGroup* group, SystemMessage* termination, SnapshotBundle bundle, char** args, InitialMemory* initial_memory)
+Process::Process(Program* program, ProcessGroup* group, SystemMessage* termination, SnapshotBundle system, SnapshotBundle application, char** args, InitialMemory* initial_memory)
   : Process(program, null, group, termination, initial_memory) {
   _entry = program->entry_main();
   _args = args;
 
   int size;
   { MessageEncoder encoder(null);
-    encoder.encode_byte_array_external(bundle.buffer(), bundle.size());
+    encoder.encode_bundles(system, application);
     size = encoder.size();
   }
 
   uint8* buffer = unvoid_cast<uint8*>(malloc(size));
   ASSERT(buffer != null)
   MessageEncoder encoder(buffer);
-  encoder.encode_byte_array_external(bundle.buffer(), bundle.size());
+  encoder.encode_bundles(system, application);
   _hatch_arguments = buffer;
 }
 #endif

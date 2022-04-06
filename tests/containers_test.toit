@@ -7,7 +7,8 @@ import expect show *
 
 main:
   images/List := containers.images
-  expect_list_equals [containers.current] images
+  expect_equals 2 images.size
+  expect (images.index_of containers.current) >= 0
 
   writer := containers.ContainerImageWriter 4096
   writer.close
