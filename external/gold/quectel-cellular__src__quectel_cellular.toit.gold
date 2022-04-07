@@ -1,6 +1,6 @@
-quectel-cellular/src/quectel_cellular.toit:532:30: error: Super of a class must be a class
+quectel-cellular/src/quectel_cellular.toit:534:30: error: Super of a class must be a class
 class Interface_ extends net.Interface:
                              ^~~~~~~~~
-quectel-cellular/src/quectel_cellular.toit:478:5: error: Type mismatch. Expected 'Interface'. Got 'Interface_'
+quectel-cellular/src/quectel_cellular.toit:477:5: error: Type mismatch. Expected 'Interface'. Got 'Interface_'
     return Interface_ this
     ^~~~~~
