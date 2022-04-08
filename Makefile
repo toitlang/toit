@@ -164,8 +164,15 @@ else
 	NUM_CPU := 2
 endif
 
+
+.PHONY: check-esp32-env
+check-esp32-env:
+ifeq ("", "$(shell command -v xtensa-esp32-elf-g++)")
+	$(error xtensa-esp32-elf-g++ not in path. Did you `source third_party/esp-idf/export.sh`?)
+endif
+
 .PHONY: esp32
-esp32: check-env build/$(ESP32_CHIP)/toit.bin  build/$(ESP32_CHIP)/programs.bin
+esp32: check-env check-esp32-env build/$(ESP32_CHIP)/toit.bin  build/$(ESP32_CHIP)/programs.bin
 
 build/$(ESP32_CHIP)/toit.bin build/$(ESP32_CHIP)/toit.elf: build/$(ESP32_CHIP)/lib/libtoit_vm.a
 build/$(ESP32_CHIP)/toit.bin build/$(ESP32_CHIP)/toit.elf: build/$(ESP32_CHIP)/lib/libtoit_image.a
