@@ -137,6 +137,7 @@ class ObjectHeap {
   Program* program() { return _program; }
 
   int64 total_bytes_allocated() { return _total_bytes_allocated; }
+  uword limit() const { return _limit; }
 
 #if !defined(DEPLOY) && defined(LEGACY_GC)
   void enter_gc() {

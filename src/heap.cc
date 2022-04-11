@@ -482,6 +482,7 @@ void ObjectHeap::iterate_roots(RootCallback* callback) {
 
 int ObjectHeap::gc() {
   _two_space_heap.collect_new_space();
+  _gc_count++;
   _pending_limit = _calculate_limit();  // GC limit to install after next GC.
   _limit = _max_heap_size;  // Only the hard limit for the rest of this primitive.
   return 0;  // TODO: Return blocks freed?

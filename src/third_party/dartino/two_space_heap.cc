@@ -26,6 +26,13 @@ TwoSpaceHeap::TwoSpaceHeap(Program* program, ObjectHeap* process_heap, Chunk* ch
   max_size_ = 256 * TOIT_PAGE_SIZE;
 }
 
+uword TwoSpaceHeap::max_expansion() {
+  uword limit = process_heap_->limit();
+  if (limit == 0) return UNLIMITED_EXPANSION;
+  if (limit < old_space()->used()) return 0;
+  return old_space()->used() - limit;
+}
+
 bool TwoSpaceHeap::initialize() {
   Chunk* chunk = ObjectMemory::allocate_chunk(semi_space_, semi_space_size_);
   if (chunk == NULL) return false;
