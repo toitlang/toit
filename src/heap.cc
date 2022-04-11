@@ -66,6 +66,7 @@ Instance* ObjectHeap::allocate_instance(TypeTag class_tag, Smi* class_id, Smi* i
   if (result == null) return null;  // Allocation failure.
   // Initialize object.
   result->_set_header(class_id, class_tag);
+  result->initialize(instance_size->value());
   return result;
 }
 
@@ -79,19 +80,6 @@ Array* ObjectHeap::allocate_array(int length, Object* filler) {
   // Initialize object.
   result->_set_header(_program, _program->array_class_id());
   Array::cast(result)->_initialize_no_write_barrier(length, filler);
-  return Array::cast(result);
-}
-
-Array* ObjectHeap::allocate_array(int length) {
-  ASSERT(length >= 0);
-  ASSERT(length <= Array::max_length_in_process());
-  HeapObject* result = _allocate_raw(Array::allocation_size(length));
-  if (result == null) {
-    return null;  // Allocation failure.
-  }
-  // Initialize object.
-  result->_set_header(_program, _program->array_class_id());
-  Array::cast(result)->_initialize(length);
   return Array::cast(result);
 }
 

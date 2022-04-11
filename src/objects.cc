@@ -260,6 +260,13 @@ void Instance::roots_do(int instance_size, RootCallback* cb) {
   cb->do_roots(_root_at(_offset_from(0)), fields);
 }
 
+void Instance::initialize(int instance_size) {
+  int fields = fields_from_size(instance_size);
+  for (int i = 0; i < fields; i++) {
+    at_put(i, Smi::from(0));
+  }
+}
+
 bool Object::encode_on(ProgramOrientedEncoder* encoder) {
   return encoder->encode(this);
 }

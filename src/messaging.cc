@@ -416,7 +416,7 @@ Object* MessageDecoder::decode_string(bool inlined) {
 
 Object* MessageDecoder::decode_array() {
   int length = read_cardinal();
-  Array* result = _process->object_heap()->allocate_array(length);
+  Array* result = _process->object_heap()->allocate_array(length, Smi::zero());
   if (result == null) {
     _allocation_failed = true;
     return null;

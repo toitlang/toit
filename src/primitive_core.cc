@@ -1465,7 +1465,7 @@ PRIMITIVE(array_expand) {
   if (length < 0) OUT_OF_BOUNDS;
   if (length > Array::max_length_in_process()) OUT_OF_RANGE;
   if (old_length < 0 || old_length > old->length() || old_length > length) OUT_OF_RANGE;
-  Object* result = process->object_heap()->allocate_array(length);
+  Object* result = process->object_heap()->allocate_array(length, Smi::from(0));
   if (result == null) ALLOCATION_FAILED;
   Array* new_array = Array::cast(result);
   new_array->copy_from(old, old_length);
@@ -1796,7 +1796,7 @@ PRIMITIVE(task_receive_message) {
     ObjectNotifier* notifier = object_notify->object_notifier();
     if (notifier != null) result = notifier->object();
   } else if (message_type == MESSAGE_SYSTEM) {
-    Array* array = process->object_heap()->allocate_array(4);
+    Array* array = process->object_heap()->allocate_array(4, Smi::from(0));
     if (array == null) ALLOCATION_FAILED;
     SystemMessage* system = static_cast<SystemMessage*>(message);
     MessageDecoder decoder(process, system->data());
