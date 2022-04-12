@@ -77,8 +77,9 @@ class Scheduler {
 #ifndef TOIT_FREERTOS
   // Run the boot program and wait for all processes to run to completion.
   ExitState run_boot_program(
-    Program* boot_program,  // It is then the responsibility of the boot_program to launch the application.
-    SnapshotBundle application_bundle,
+    Program* boot_program,
+    SnapshotBundle system,  // It is then the responsibility of the system process to launch the application.
+    SnapshotBundle application,
     char** args,
     int group_id);
 #endif  // TOIT_FREERTOS

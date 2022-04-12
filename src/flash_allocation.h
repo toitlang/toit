@@ -86,10 +86,14 @@ class FlashAllocation {
     // a complete flash write will mark this allocation as valid.
     void set_uuid(const uint8* uuid);
 
-    void initialize(uint32 allocation_offset, const uint8* uuid) {
+    void initialize(uint32 allocation_offset, const uint8* uuid, const uint8* id) {
       _marker = MARKER;
       _me = allocation_offset;
-      memset(_id, 0, id_size());
+      if (id == null) {
+        memset(_id, 0, id_size());
+      } else {
+        memcpy(_id, id, id_size());
+      }
       _pages_in_flash = 0;
       memset(_meta_data, 0xFF, meta_data_size());
       set_uuid(uuid);
@@ -98,8 +102,8 @@ class FlashAllocation {
     friend class FlashAllocation;
   };
 
-  void set_header(uint32 allocation_offset, uint8* uuid) {
-    _header.initialize(allocation_offset, uuid);
+  void set_header(uint32 allocation_offset, uint8* uuid, const uint8* id = null) {
+    _header.initialize(allocation_offset, uuid, id);
   }
 
   // Returns the size for programs stored in flash.

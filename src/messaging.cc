@@ -186,6 +186,15 @@ bool MessageEncoder::encode_byte_array(ByteArray* object) {
   return true;
 }
 
+#ifndef TOIT_FREERTOS
+bool MessageEncoder::encode_bundles(SnapshotBundle system, SnapshotBundle application) {
+  write_uint8(TAG_ARRAY);
+  write_cardinal(2);
+  return encode_byte_array_external(system.buffer(), system.size()) &&
+      encode_byte_array_external(application.buffer(), application.size());
+}
+#endif
+
 bool MessageEncoder::encode_byte_array_external(void* data, int length) {
   write_uint8(TAG_BYTE_ARRAY);
   write_cardinal(length);
@@ -407,7 +416,7 @@ Object* MessageDecoder::decode_string(bool inlined) {
 
 Object* MessageDecoder::decode_array() {
   int length = read_cardinal();
-  Array* result = _process->object_heap()->allocate_array(length);
+  Array* result = _process->object_heap()->allocate_array(length, Smi::zero());
   if (result == null) {
     _allocation_failed = true;
     return null;

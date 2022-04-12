@@ -19,6 +19,7 @@
 #include "objects.h"
 #include "heap.h"
 #include "interpreter.h"
+#include "snapshot_bundle.h"
 
 namespace toit {
 
@@ -38,7 +39,7 @@ enum MessageType {
 enum {
   MESSAGING_PROCESS_MESSAGE_SIZE = 3,
 
-  MESSAGING_ENCODING_MAX_NESTING      = 4,
+  MESSAGING_ENCODING_MAX_NESTING      = 8,
   MESSAGING_ENCODING_MAX_EXTERNALS    = 8,
   MESSAGING_ENCODING_MAX_INLINED_SIZE = 128,
 };
@@ -138,6 +139,10 @@ class MessageEncoder {
 
   bool encode(Object* object);
   bool encode_byte_array_external(void* data, int length);
+
+#ifndef TOIT_FREERTOS
+  bool encode_bundles(SnapshotBundle system, SnapshotBundle application);
+#endif
 
  private:
   Process* _process = null;

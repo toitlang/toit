@@ -642,7 +642,7 @@ PRIMITIVE(scan_next) {
       }
 
       int uuids = fields.num_uuids16 + fields.num_uuids32 + fields.num_uuids128;
-      Array* service_classes = process->object_heap()->allocate_array(uuids);
+      Array* service_classes = process->object_heap()->allocate_array(uuids, Smi::from(0));
       if (!service_classes) ALLOCATION_FAILED;
 
       int index = 0;

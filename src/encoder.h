@@ -58,12 +58,16 @@ class Buffer {
 
 class MallocedBuffer : public Buffer {
  public:
-  explicit MallocedBuffer(int length) {
+  explicit MallocedBuffer(int length) : _buffer(null) {
+    allocate(length);
+  }
+
+  void allocate(int length) {
     ASSERT(length > 0);
-    _length = length;
+    ASSERT(_buffer == null);
     _buffer = reinterpret_cast<uint8*>(malloc(length));
+    _length = (_buffer != null) ? length : 0;
     _pos = 0;
-    if (_buffer == null) _length = 0;
   }
 
   ~MallocedBuffer() {
@@ -75,8 +79,15 @@ class MallocedBuffer : public Buffer {
     _pos++;
   }
 
-  bool malloc_failed() { return _length == 0; }
-  uint8* content() { return _buffer; }
+  bool has_content() const { return _length > 0; }
+  uint8* content() const { return _buffer; }
+
+  uint8* take_content() {
+    uint8* result = _buffer;
+    _buffer = null;
+    _length = 0;
+    return result;
+  }
 
   virtual bool has_overflow() {
     return _pos >= _length;
@@ -117,6 +128,7 @@ class ProgramOrientedEncoder : public Encoder {
   bool encode(Object* object);
 
   bool encode_error(Object* type, Object* message, Stack* stack);
+  bool encode_error(Object* type, const char* message, Stack* stack);
 
 #ifdef PROFILER
   bool encode_profile(Profiler* profile, String* title, int cutoff);

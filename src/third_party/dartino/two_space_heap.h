@@ -39,7 +39,7 @@ class TwoSpaceHeap {
 
   // Max memory that can be added by adding new chunks.  Accounts for whole
   // chunks, not just the used memory in them.
-  uword max_expansion() { return UNLIMITED_EXPANSION; }
+  uword max_expansion();
 
   SemiSpace* space() { return semi_space_; }
 
@@ -109,7 +109,7 @@ class TwoSpaceHeap {
   void collect_new_space();
   void collect_old_space();
   void collect_old_space_if_needed(bool force);
-  void perform_garbage_collection();
+  bool perform_garbage_collection();
   void sweep_heap();
   void compact_heap();
 
@@ -159,11 +159,15 @@ class ScavengeVisitor : public RootCallback {
 
   bool trigger_old_space_gc() { return trigger_old_space_gc_; }
 
+  void set_record_to_dummy_address() {
+    record_ = &dummy_record_;
+  }
+
   void set_record_new_space_pointers(uint8* p) { record_ = p; }
 
  private:
   template <class SomeSpace>
-  static inline HeapObject* clone_in_to_space(Program* program, HeapObject* original, SomeSpace* to);
+  static inline HeapObject* clone_into_space(Program* program, HeapObject* original, SomeSpace* to);
 
   Program* program_;
   uword to_start_;

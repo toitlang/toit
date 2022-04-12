@@ -102,7 +102,8 @@ Scheduler::ExitState Scheduler::run_boot_program(Program* program, char** args, 
 #ifndef TOIT_FREERTOS
 Scheduler::ExitState Scheduler::run_boot_program(
     Program* boot_program,
-    SnapshotBundle application_bundle,
+    SnapshotBundle system,
+    SnapshotBundle application,
     char** args,
     int group_id) {
   ProcessGroup* group = ProcessGroup::create(group_id, boot_program);
@@ -115,7 +116,7 @@ Scheduler::ExitState Scheduler::run_boot_program(
   ASSERT(ok);
   Locker locker(_mutex);
   SystemMessage* termination = new_process_message(SystemMessage::TERMINATED, group_id);
-  Process* process = _new Process(boot_program, group, termination, application_bundle, args, manager.initial_memory);
+  Process* process = _new Process(boot_program, group, termination, system, application, args, manager.initial_memory);
   manager.dont_auto_free();
   return launch_program(locker, process);
 }

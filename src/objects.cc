@@ -102,8 +102,8 @@ int HeapObject::size(Program* program) {
       return LargeInteger::allocation_size();
     case TypeTag::FREE_LIST_REGION_TAG:
       return FreeListRegion::cast(this)->size();
-    case TypeTag::SINGLE_FREE_WORD_TAG:
-      return WORD_SIZE;
+    case TypeTag::PROMOTED_TRACK_TAG:
+      return PromotedTrack::cast(this)->size();
     default:
       FATAL("Unexpected class tag");
       return -1;
@@ -131,6 +131,9 @@ void HeapObject::roots_do(Program* program, RootCallback* cb) {
     case TypeTag::SINGLE_FREE_WORD_TAG:
       // No roots.
       break;
+    case TypeTag::PROMOTED_TRACK_TAG:
+      // Normally do nothing for these.
+      break;
     default:
       FATAL("Unexpected class tag");
   }
@@ -143,14 +146,14 @@ void HeapObject::_set_header(Program* program, Smi* id) {
 
 FreeListRegion* FreeListRegion::create_at(uword start, uword size) {
   if (size >= MINIMUM_SIZE) {
-    auto self = reinterpret_cast<FreeListRegion*>(start);
+    auto self = reinterpret_cast<FreeListRegion*>(HeapObject::from_address(start));
     self->_set_header(Smi::from(FREE_LIST_REGION_CLASS_ID), FREE_LIST_REGION_TAG);
     self->_word_at_put(SIZE_OFFSET, size);
     self->_at_put(NEXT_OFFSET, null);
     return self;
   }
   for (uword i = 0; i < size; i += WORD_SIZE) {
-    auto one_word = reinterpret_cast<FreeListRegion*>(start + i);
+    auto one_word = reinterpret_cast<FreeListRegion*>(HeapObject::from_address(start + i));
     one_word->_set_header(Smi::from(SINGLE_FREE_WORD_CLASS_ID), SINGLE_FREE_WORD_TAG);
   }
   return null;
@@ -250,12 +253,18 @@ void Stack::copy_to(HeapObject* other, int other_length) {
   to->_set_length(other_length);
   to->_set_top(displacement + top());
   to->_set_try_top(displacement + try_top());
-  to->_set_in_stack_overflow(in_stack_overflow());
 }
 
 void Instance::roots_do(int instance_size, RootCallback* cb) {
-  int len = length_from_size(instance_size);
-  cb->do_roots(_root_at(_offset_from(0)), len);
+  int fields = fields_from_size(instance_size);
+  cb->do_roots(_root_at(_offset_from(0)), fields);
+}
+
+void Instance::initialize(int instance_size) {
+  int fields = fields_from_size(instance_size);
+  for (int i = 0; i < fields; i++) {
+    at_put(i, Smi::from(0));
+  }
 }
 
 bool Object::encode_on(ProgramOrientedEncoder* encoder) {
@@ -263,13 +272,12 @@ bool Object::encode_on(ProgramOrientedEncoder* encoder) {
 }
 
 void Stack::transfer_to_interpreter(Interpreter* interpreter) {
-  ASSERT(top() > 0);
+  ASSERT(top() >= 0);
   ASSERT(top() <= length());
   interpreter->_limit = _stack_limit_addr();
   interpreter->_base = _stack_base_addr();
   interpreter->_sp = _stack_sp_addr();
   interpreter->_try_sp = _stack_try_sp_addr();
-  interpreter->_in_stack_overflow = in_stack_overflow();
   ASSERT(top() == (interpreter->_sp - _stack_limit_addr()));
   _set_top(-1);
 }
@@ -278,8 +286,8 @@ void Stack::transfer_from_interpreter(Interpreter* interpreter) {
   ASSERT(top() == -1);
   _set_top(interpreter->_sp - _stack_limit_addr());
   _set_try_top(interpreter->_try_sp - _stack_limit_addr());
-  _set_in_stack_overflow(interpreter->_in_stack_overflow);
-  ASSERT(top() > 0 && top() <= length());
+  ASSERT(top() >= 0);
+  ASSERT(top() <= length());
 }
 
 bool String::starts_with_vowel() {
@@ -367,15 +375,6 @@ void PromotedTrack::zap() {
   }
 }
 
-PromotedTrack* PromotedTrack::initialize(PromotedTrack* next, uword location, uword end) {
-  ASSERT(end - location > header_size());
-  auto self = reinterpret_cast<PromotedTrack*>(location);
-  self->_set_header(Smi::from(PROMOTED_TRACK_CLASS_ID), PROMOTED_TRACK_TAG);
-  self->_at_put(NEXT_OFFSET, next);
-  self->_word_at_put(END_OFFSET, end);
-  return self;
-}
-
 #ifndef TOIT_FREERTOS
 
 void Array::write_content(SnapshotWriter* st) {
@@ -398,9 +397,9 @@ void ByteArray::write_content(SnapshotWriter* st) {
 }
 
 void Instance::write_content(int instance_size, SnapshotWriter* st) {
-  int len = length_from_size(instance_size);
-  st->write_cardinal(len);
-  for (int index = 0; index < len; index++) {
+  int fields = fields_from_size(instance_size);
+  st->write_cardinal(fields);
+  for (int index = 0; index < fields; index++) {
     st->write_object(at(index));
   }
 }
@@ -424,7 +423,8 @@ void Double::write_content(SnapshotWriter* st) {
 void Instance::read_content(SnapshotReader* st) {
   int len = st->read_cardinal();
   for (int index = 0; index < len; index++) {
-    at_put(index, st->read_object());
+    // Only used to read snapshots onto the program heap, which has no write barrier.
+    at_put_no_write_barrier(index, st->read_object());
   }
 }
 
@@ -450,7 +450,8 @@ void Double::read_content(SnapshotReader* st) {
 
 void Array::read_content(SnapshotReader* st, int len) {
   _set_length(len);
-  for (int index = 0; index < len; index++) at_put(index, st->read_object());
+  // Only used to read snapshots onto the program heap, which has no write barrier.
+  for (int index = 0; index < len; index++) at_put_no_write_barrier(index, st->read_object());
 }
 
 void ByteArray::read_content(SnapshotReader* st, int len) {

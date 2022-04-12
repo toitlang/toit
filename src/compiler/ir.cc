@@ -847,6 +847,7 @@ class Printer : public Visitor {
       case Builtin::YIELD: name = "yield"; break;
       case Builtin::DEEP_SLEEP: name = "deep_sleep"; break;
       case Builtin::STORE_GLOBAL: name = "store_global"; break;
+      case Builtin::LOAD_GLOBAL: name = "load_global"; break;
       case Builtin::INVOKE_INITIALIZER: name = "invoke_initializer"; break;
       case Builtin::GLOBAL_ID: name = "global_id"; break;
     }

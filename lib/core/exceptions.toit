@@ -151,11 +151,7 @@ class Exception_:
   constructor .value .trace:
 
 // Spontaneous entry points invoked by the interpreter when failure occurs at runtime.
-// stack_trace is passed to avoid extra frame in trace.
-allocation_failure_ class_id:
-  rethrow "ALLOCATION_FAILED"
-    encode_error_ "ALLOCATION_FAILED" class_id
-
+// We use 'rethrow' to avoid extra frame in trace.
 lookup_failure_ receiver selector_or_selector_offset:
   rethrow "LOOKUP_FAILED"
     encode_error_ "LOOKUP_FAILED"
@@ -192,27 +188,3 @@ too_few_code_arguments_failure_ is_block expected provided bci:
   rethrow "CODE_INVOCATION_FAILED"
     encode_error_ "CODE_INVOCATION_FAILED"
         create_array_ is_block expected provided bci
-
-stack_overflow_:
-  try:
-    rethrow "STACK_OVERFLOW"
-      encode_error_ "STACK_OVERFLOW" ""
-  finally:
-    reset_stack_limit_
-
-out_of_memory_:
-  try:
-    rethrow "OUT OF MEMORY"
-      encode_error_ "OUT OF MEMORY" ""
-  finally:
-    reset_stack_limit_
-
-watchdog_:
-  try:
-    rethrow "WATCHDOG INTERRUPT"
-      encode_error_ "WATCHDOG INTERRUPT" ""
-  finally:
-    reset_stack_limit_
-
-reset_stack_limit_:
-  #primitive.core.task_reset_stack_limit

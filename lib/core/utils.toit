@@ -107,13 +107,7 @@ encode_ object:
 /** Encodes $exception, $message and the current stack trace into a ubjson encoded byte array. */
 encode_error_ exception message -> ByteArray?:
   #primitive.core.encode_error:
-    // Use print_ as the most likely error is we ran out of system memory,
-    // and we could be in a stack overflow.
-    if "EXCEPTION" == exception and "ALLOCATION_FAILED" == message:
-      // Now, when we are out of memory, is not the time to be concatenating strings.
-      print_ "encode_error_ primitive failed: EXCEPTION, ALLOCATION_FAILED"
-    else:
-      print_ "encode_error_ primitive failed: $exception, $message"
+    print_ "encode_error_ primitive failed: $exception, $message"
     return null
 
 /**

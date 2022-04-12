@@ -397,6 +397,9 @@ class TypeChecker : public ReturningVisitor<Type> {
       case Builtin::STORE_GLOBAL:
         return Type::none();
 
+      case Builtin::LOAD_GLOBAL:
+        return Type::any();
+
       case Builtin::INVOKE_INITIALIZER:
         return Type::any();
 

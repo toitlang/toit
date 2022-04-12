@@ -19,7 +19,9 @@ BIG_STRING := "\"$("a" * BIG_STRING_SIZE)\""
 
 VARIABLE_ELEMENT_COUNT ::= 800
 
-toitc     / string := ""
+toitrun           / string := ""
+snapshot_to_image / string := ""
+
 test_dir  / string := ""
 toit_file / string := ""
 snap_file / string := ""
@@ -61,15 +63,16 @@ compile bigger_chunk_count small_string_size -> int:
   stream := file.Stream.for_write toit_file
   (Writer stream).write str
   stream.close
-  pipe.backticks toitc "-w" snap_file toit_file
-  pipe.backticks toitc "-i" img_file snap_file
+  pipe.backticks toitrun "-w" snap_file toit_file
+  pipe.backticks toitrun snapshot_to_image "--binary" snap_file img_file
   return file.size img_file
 
 // Tests that the image creation works when a heap page is completely full.
 main args:
   i := 0
   ignored_snap := args[i++]
-  toitc = args[i++]
+  toitrun = args[i++]
+  snapshot_to_image = args[i++]
 
   test_dir = directory.mkdtemp "/tmp/test-snapshot_to_image-"
   toit_file = "$test_dir/test.toit"

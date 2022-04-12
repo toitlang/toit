@@ -73,7 +73,7 @@ Array* ProgramHeap::allocate_array(int length, Object* filler) {
   }
   // Initialize object.
   result->_set_header(_program, _program->array_class_id());
-  Array::cast(result)->_initialize(length, filler);
+  Array::cast(result)->_initialize_no_write_barrier(length, filler);
   return Array::cast(result);
 }
 

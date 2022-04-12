@@ -1,6 +1,6 @@
-<pkg:..>/sequans_cellular.toit:452:30: error: Super of a class must be a class
+<pkg:..>/sequans_cellular.toit:453:30: error: Super of a class must be a class
 class Interface_ extends net.Interface:
                              ^~~~~~~~~
-<pkg:..>/sequans_cellular.toit:447:5: error: Type mismatch. Expected 'Interface'. Got 'Interface_'
+<pkg:..>/sequans_cellular.toit:448:5: error: Type mismatch. Expected 'Interface'. Got 'Interface_'
     return Interface_ this
     ^~~~~~

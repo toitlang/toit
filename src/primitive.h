@@ -171,7 +171,6 @@ namespace toit {
   PRIMITIVE(task_new, 1)                     \
   PRIMITIVE(task_transfer, 2)                \
   PRIMITIVE(task_stack, 1)                   \
-  PRIMITIVE(task_reset_stack_limit, 0)       \
   PRIMITIVE(gc_count, 0)                     \
   PRIMITIVE(byte_array_is_raw_bytes, 1)      \
   PRIMITIVE(byte_array_length, 1)            \

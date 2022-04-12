@@ -90,19 +90,24 @@ class GcMetadata {
     memset(reinterpret_cast<uint8*>(base), 0, size);
   }
 
-  static void map_mark_bits_for(Chunk* chunk) {
+  // On virtual memory systems (non-embedded) we have to map the
+  // pages needed for heap metadata when we allocate the
+  // corresponding chunk.
+  static void map_metadata_for(Chunk* chunk) {
     ASSERT(in_metadata_range(chunk->start()));
     uword base = chunk->start();
-    uword size = chunk->size() >> MARK_BITS_SHIFT;
-    base = (base >> MARK_BITS_SHIFT) + singleton_.mark_bits_bias_;
-    // When checking if one-word objects are black we may look one
-    // bit into the next page.  Round up the area we map to account
-    // for this possibility.
-    OS::use_virtual_memory(reinterpret_cast<void*>(base), size + 1);
+    uword mark_size = chunk->size() >> MARK_BITS_SHIFT;
+    uword mark_bits = (base >> MARK_BITS_SHIFT) + singleton_.mark_bits_bias_;
+    // When checking if one-word objects are black we may look one bit into the
+    // next page.  Add one to the area to account for this possibility.
+    OS::use_virtual_memory(reinterpret_cast<void*>(mark_bits), mark_size + 1);
+    uword cumulative_mark_bits = (base >> CUMULATIVE_MARK_BITS_SHIFT) + singleton_.cumulative_mark_bits_bias_;
+    uword cumulative_mark_size = chunk->size() >> CUMULATIVE_MARK_BITS_SHIFT;
+    OS::use_virtual_memory(reinterpret_cast<void*>(cumulative_mark_bits), cumulative_mark_size);
   }
 
   static void mark_pages_for_chunk(Chunk* chunk, PageType page_type) {
-    map_mark_bits_for(chunk);
+    map_metadata_for(chunk);
     uword index = chunk->start() - singleton_.lowest_address_;
     if (index >= singleton_.heap_extent_) return;
     uword size = chunk->size() >> TOIT_PAGE_SIZE_LOG2;
@@ -334,6 +339,14 @@ class GcMetadata {
   // Unaligned, so cannot clash with a real object start.
   static const int NO_OBJECT_START = 2;
 
+#ifdef LEGACY_GC
+
+  inline static void record_start(uword address) {}
+  template<typename T>
+  inline static void insert_into_remembered_set(T address) {}
+
+#else  // not LEGACY_GC
+
   // We need to track the start of an object for each card, so that we can
   // iterate just part of the heap.  This does that for newly allocated objects
   // in old-space.  The cards are less than 256 bytes large (see the assert
@@ -347,11 +360,15 @@ class GcMetadata {
 
   // An object at this address may contain a pointer from old-space to
   // new-space.
-  inline static void insert_into_remembered_set(uword address) {
-    address >>= CARD_SIZE_LOG_2;
-    address += singleton_.remembered_set_bias_;
-    *reinterpret_cast<uint8*>(address) = NEW_SPACE_POINTERS;
+  template<typename T>
+  INLINE static void insert_into_remembered_set(T address) {
+    static_assert(sizeof(T) == sizeof(uword));
+    uword mark_byte = reinterpret_cast<uword>(address) >> CARD_SIZE_LOG_2;
+    mark_byte += singleton_.remembered_set_bias_;
+    *reinterpret_cast<uint8*>(mark_byte) = NEW_SPACE_POINTERS;
   }
+
+#endif  // not LEGACY_GC
 
   // May this card contain pointers from old-space to new-space?
   inline static bool is_marked_dirty(uword address) {

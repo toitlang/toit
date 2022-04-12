@@ -11,6 +11,10 @@
 //   We skip PromotedTrack areas because we know we will get to them later and
 //   they contain uninitialized memory.
 
+#include "../../top.h"
+
+#ifndef LEGACY_GC
+
 #include "../../utils.h"
 #include "../../objects.h"
 #include "mark_sweep.h"
@@ -61,7 +65,13 @@ HeapObject* OldSpace::new_location(HeapObject* old_location) {
 }
 
 bool OldSpace::is_alive(HeapObject* old_location) {
-  ASSERT(includes(old_location->_raw()));
+  // We can't assert that the object is in old-space, because
+  // at the end of a mark-sweep the new-space objects are also
+  // marked and can be checked for liveness.  The finalizers
+  // for new-space objects can thus be run at the end of a mark-
+  // sweep GC.  This removes them from the finalizer list, but
+  // they will remain (untouched) in the new-space until the
+  // next scavenge.
   return GcMetadata::is_marked(old_location);
 }
 
@@ -173,7 +183,7 @@ uword OldSpace::allocate(uword size) {
     return result;
   }
 
-  if (!in_no_allocation_failure_scope() && needs_garbage_collection()) {
+  if (needs_garbage_collection()) {
     return 0;
   }
 
@@ -219,13 +229,51 @@ void OldSpace::zap_object_starts() {
   }
 }
 
+class RememberedSetRebuilder2 : public RootCallback {
+ public:
+  virtual void do_roots(Object** pointers, int length) override {
+    for (int i = 0; i < length; i++) {
+      Object* object = pointers[i];
+      if (GcMetadata::get_page_type(object) == NEW_SPACE_PAGE) {
+        found = true;
+        break;
+      }
+    }
+  }
+
+  bool found;
+};
+
+class RememberedSetRebuilder : public HeapObjectVisitor {
+ public:
+  RememberedSetRebuilder(Program* program) : HeapObjectVisitor(program) {}
+
+  virtual uword visit(HeapObject* object) override {
+    pointer_callback.found = false;
+    object->roots_do(program_, &pointer_callback);
+    if (pointer_callback.found) {
+      *GcMetadata::remembered_set_for(reinterpret_cast<uword>(object)) = GcMetadata::NEW_SPACE_POINTERS;
+    }
+    return object->size(program_);
+  }
+
+ private:
+  RememberedSetRebuilder2 pointer_callback;
+};
+
+// Until we have a write barrier we have to iterate the whole
+// of old space.
+void OldSpace::rebuild_remembered_set() {
+  RememberedSetRebuilder rebuilder(program_);
+  iterate_objects(&rebuilder);
+}
+
 void OldSpace::visit_remembered_set(ScavengeVisitor* visitor) {
   flush();
   for (auto chunk : chunk_list_) {
     // Scan the byte-map for cards that may have new-space pointers.
     uword current = chunk->start();
-    uword bytes =
-        reinterpret_cast<uword>(GcMetadata::remembered_set_for(current));
+    uword bytes = reinterpret_cast<uword>(GcMetadata::remembered_set_for(current));
     uword earliest_iteration_start = current;
     while (current < chunk->end()) {
       if (Utils::is_aligned(bytes, sizeof(uword))) {
@@ -268,6 +316,7 @@ void OldSpace::visit_remembered_set(ScavengeVisitor* visitor) {
 
           if (iteration_start > earliest_iteration_start) {
             uint8 iteration_low_byte = static_cast<uint8>(iteration_start);
+            ASSERT(iteration_low_byte == 0);
             iteration_start -= iteration_low_byte;
             iteration_start += *starts;
           } else {
@@ -371,18 +420,17 @@ void FixPointersVisitor::do_roots(Object** start, int length) {
 }
 
 // This is faster than the builtin memmove because we know the source and
-// destination are aligned and we know the size is at least 2 words.  Also
+// destination are aligned and we know the size is at least 1 word.  Also
 // we know that any overlap is only in one direction.
+// TODO(Erik): Check this is still true on ESP32.
 static void INLINE object_mem_move(uword dest, uword source, uword size) {
   ASSERT(source > dest);
-  ASSERT(size >= WORD_SIZE * 2);
+  ASSERT(size >= WORD_SIZE);
   uword t0 = *reinterpret_cast<uword*>(source);
-  uword t1 = *reinterpret_cast<uword*>(source + WORD_SIZE);
   *reinterpret_cast<uword*>(dest) = t0;
-  *reinterpret_cast<uword*>(dest + WORD_SIZE) = t1;
   uword end = source + size;
-  source += WORD_SIZE * 2;
-  dest += WORD_SIZE * 2;
+  source += WORD_SIZE;
+  dest += WORD_SIZE;
   while (source != end) {
     *reinterpret_cast<uword*>(dest) = *reinterpret_cast<uword*>(source);
     source += WORD_SIZE;
@@ -405,7 +453,7 @@ CompactingVisitor::CompactingVisitor(Program* program,
                                      FixPointersVisitor* fix_pointers_visitor)
     : HeapObjectVisitor(program),
       used_(0),
-      dest_(space->chunk_list_begin(), space->chunk_list_begin()),
+      dest_(space->chunk_list_begin(), space->chunk_list_end()),
       fix_pointers_visitor_(fix_pointers_visitor) {}
 
 uword CompactingVisitor::visit(HeapObject* object) {
@@ -414,7 +462,9 @@ uword CompactingVisitor::visit(HeapObject* object) {
   uint32 bits = *bits_addr >> pos;
   if ((bits & 1) == 0) {
     // Object is unmarked.
-    if (bits != 0) return (find_first_set(bits) - 1) << WORD_SIZE_LOG_2;
+    if (bits != 0) {
+      return (find_first_set(bits) - 1) << WORD_SIZE_LOG_2;
+    }
     // If all the bits in this mark word are zero, then let's see if we can
     // skip a bit more.
     uword next_live_object = object->_raw() + ((32 - pos) << WORD_SIZE_LOG_2);
@@ -512,11 +562,9 @@ void OldSpace::verify() {
     uword current = chunk->start();
     while (!has_sentinel_at(current)) {
       HeapObject* object = HeapObject::from_address(current);
-      /* TODO(erik): Implement contains_pointers_to so we can verify the remembered set
-      if (object->contains_pointers_to(heap_->space())) {
+      if (object->contains_pointers_to(program_, heap_->space())) {
         ASSERT(*GcMetadata::remembered_set_for(current));
       }
-      */
       current += object->size(program_);
     }
   }
@@ -543,4 +591,25 @@ void MarkingStack::process(RootCallback* visitor, Space* old_space,
   }
 }
 
+PromotedTrack* PromotedTrack::initialize(PromotedTrack* next, uword location, uword end) {
+  ASSERT(end - location > header_size());
+  auto self = reinterpret_cast<PromotedTrack*>(HeapObject::from_address(location));
+
+  GcMetadata::record_start(location);
+  // We mark the PromotedTrack object as dirty (containing new-space
+  // pointers). This is because the remembered-set scanner mainly looks at
+  // these dirty-bytes.  It ensures that the remembered-set scanner does not
+  // skip past the PromotedTrack object header and start scanning newly
+  // allocated objects inside the PromotedTrack area before they are
+  // traversable.
+  GcMetadata::insert_into_remembered_set(location);
+
+  self->_set_header(Smi::from(PROMOTED_TRACK_CLASS_ID), PROMOTED_TRACK_TAG);
+  self->_at_put(NEXT_OFFSET, next);
+  self->_word_at_put(END_OFFSET, end);
+  return self;
+}
+
 }  // namespace toit
+
+#endif  // LEGACY_GC

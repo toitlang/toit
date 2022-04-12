@@ -428,7 +428,7 @@ class ImageSnapshotReader : public SnapshotReader {
     : SnapshotReader(buffer, length, &_image_allocator) { }
 
   // Reads the snapshot.
-  ProgramImage read_image();
+  ProgramImage read_image(const uint8* id);
 
  protected:
   bool read_header();
@@ -550,9 +550,9 @@ class EmittingSnapshotWriter : public BaseSnapshotWriter {
   int write_uint32_at(int byte_offset, uint32 value);
 };
 
-ProgramImage Snapshot::read_image() {
+ProgramImage Snapshot::read_image(const uint8* id) {
   ImageSnapshotReader reader(_buffer, _size);
-  return reader.read_image();
+  return reader.read_image(id);
 }
 
 SnapshotReader::SnapshotReader(const uint8* buffer, int length, SnapshotAllocator* allocator)
@@ -896,7 +896,7 @@ bool ImageAllocator::initialize(int normal_block_count,
   return true;
 }
 
-ProgramImage ImageSnapshotReader::read_image() {
+ProgramImage ImageSnapshotReader::read_image(const uint8* id) {
   // Also calls SnapshotReader::initialize() which calls _allocator->initialize().
   // _allocator is an ImageAllocator
   //   which is a subclass of HeapAllocator
@@ -907,7 +907,8 @@ ProgramImage ImageSnapshotReader::read_image() {
   _image_allocator.set_program(_program);
   // Initialize the uuid to 0. It can be patched from the outside.
   uint8 uuid[UUID_SIZE] = {0};
-  _program->set_header(0, uuid);
+  _program->set_header(0, uuid, id);
+
   _image_allocator.expand();
   _program->read(this);
   _image_allocator.image()->mark_read_only();
@@ -1192,7 +1193,7 @@ static int optional_length(HeapObject* object, Program* program) {
   case TypeTag::ARRAY_TAG: return Array::cast(object)->length();
   case TypeTag::BYTE_ARRAY_TAG: return ByteArray::Bytes(ByteArray::cast(object)).length();
   case TypeTag::STRING_TAG: return String::cast(object)->length();
-  case TypeTag::INSTANCE_TAG: return Instance::cast(object)->length(program->instance_size_for(object));
+  case TypeTag::INSTANCE_TAG: return Instance::fields_from_size(program->instance_size_for(object));
   default:
     return 0;
   }

@@ -66,6 +66,7 @@ Instance* ObjectHeap::allocate_instance(TypeTag class_tag, Smi* class_id, Smi* i
   if (result == null) return null;  // Allocation failure.
   // Initialize object.
   result->_set_header(class_id, class_tag);
+  result->initialize(instance_size->value());
   return result;
 }
 
@@ -78,20 +79,7 @@ Array* ObjectHeap::allocate_array(int length, Object* filler) {
   }
   // Initialize object.
   result->_set_header(_program, _program->array_class_id());
-  Array::cast(result)->_initialize(length, filler);
-  return Array::cast(result);
-}
-
-Array* ObjectHeap::allocate_array(int length) {
-  ASSERT(length >= 0);
-  ASSERT(length <= Array::max_length_in_process());
-  HeapObject* result = _allocate_raw(Array::allocation_size(length));
-  if (result == null) {
-    return null;  // Allocation failure.
-  }
-  // Initialize object.
-  result->_set_header(_program, _program->array_class_id());
-  Array::cast(result)->_initialize(length);
+  Array::cast(result)->_initialize_no_write_barrier(length, filler);
   return Array::cast(result);
 }
 
@@ -200,9 +188,9 @@ class ScavengeState : public RootCallback {
     if (from->is_stack()) {
       Stack* stack = Stack::cast(from);
       int length = stack->length();
-      // Shrink stacks to 3x headroom (1x headroom required).
+      // Shrink stacks so they have as much space left as newly allocated stacks.
       // TODO(anders): Skip the active Task, or perhaps use different target?
-      int target = stack->top() - 3 * Stack::OVERFLOW_HEADROOM;
+      int target = stack->top() - Stack::initial_length();
       int new_length = length - Utils::max(0, target);
       result = allocate(Stack::allocation_size(new_length));
       // As the size could have changed, use stack-specific method for copying content.
@@ -441,12 +429,19 @@ Task* ObjectHeap::allocate_task() {
   Task* result = unvoid_cast<Task*>(allocate_instance(program()->class_tag_for(task_id), task_id, Smi::from(program()->instance_size_for(task_id))));
   if (result == null) return null;  // Allocation failure.
   Task::cast(result)->_initialize(stack, Smi::from(owner()->next_task_id()));
-  int instance_size = program()->instance_size_for(result);
-  for (int i = Task::ID_INDEX + 1; i < result->length(instance_size); i++) {
+  int fields = Instance::fields_from_size(program()->instance_size_for(result));
+  for (int i = Task::ID_INDEX + 1; i < fields; i++) {
     result->at_put(i, program()->null_object());
   }
   stack->set_task(result);
   return result;
+}
+
+void ObjectHeap::set_task(Task* task) {
+  _task = task;
+  // The interpreter doesn't use the write barrier when pushing to the
+  // stack so we have to add it here.
+  GcMetadata::insert_into_remembered_set(task->stack());
 }
 
 Stack* ObjectHeap::allocate_stack(int length) {
@@ -487,6 +482,9 @@ void ObjectHeap::iterate_roots(RootCallback* callback) {
 
 int ObjectHeap::gc() {
   _two_space_heap.collect_new_space();
+  _gc_count++;
+  _pending_limit = _calculate_limit();  // GC limit to install after next GC.
+  _limit = _max_heap_size;  // Only the hard limit for the rest of this primitive.
   return 0;  // TODO: Return blocks freed?
 }
 
@@ -547,51 +545,6 @@ int ObjectHeap::gc() {
     take_blocks(&ss.blocks);
   }
 
-  return complete_scavenge(blocks_before);
-}
-
-#endif  // LEGACY_GC
-
-void ObjectHeap::process_registered_finalizers(RootCallback* ss, LivenessOracle* from_space) {
-    // Process the registered finalizer list.
-    if (!_registered_finalizers.is_empty() && Flags::tracegc && Flags::verbose) printf(" - Processing registered finalizers\n");
-    ObjectHeap* heap = this;
-    _registered_finalizers.remove_wherever([ss, heap, from_space](FinalizerNode* node) -> bool {
-      bool is_alive = from_space->is_alive(node->key());
-      if (!is_alive) {
-        // Clear the key so it is not retained.
-        node->set_key(heap->program()->null_object());
-      }
-      node->roots_do(ss);
-      if (is_alive && Flags::tracegc && Flags::verbose) printf(" - Finalizer %p is alive\n", node);
-      if (is_alive) return false;  // Keep node in list.
-      // From here down, the node is going to be unlinked by returning true.
-      if (Flags::tracegc && Flags::verbose) printf(" - Finalizer %p is unreachable\n", node);
-      heap->_runnable_finalizers.append(node);
-      return true; // Remove node from list.
-    });
-}
-
-void ObjectHeap::process_registered_vm_finalizers(RootCallback* ss, LivenessOracle* from_space) {
-    // Process registered VM finalizers.
-    _registered_vm_finalizers.remove_wherever([ss, this, from_space](VMFinalizerNode* node) -> bool {
-      bool is_alive = from_space->is_alive(node->key());
-
-      if (is_alive && Flags::tracegc && Flags::verbose) printf(" - Finalizer %p is alive\n", node);
-      if (is_alive) {
-        node->roots_do(ss);
-        return false; // Keep node in list.
-      }
-      if (Flags::tracegc && Flags::verbose) printf(" - Processing registered finalizer %p for external memory.\n", node);
-      node->free_external_memory(owner());
-      delete node;
-      return true; // Remove node from list.
-    });
-}
-
-#ifdef LEGACY_GC
-
-int ObjectHeap::complete_scavenge(int blocks_before) {
   _pending_limit = _calculate_limit();  // GC limit to install after next GC.
   _limit = _max_heap_size;  // Only the hard limit for the rest of this primitive.
   if (Flags::tracegc) {
@@ -641,7 +594,44 @@ int ObjectHeap::complete_scavenge(int blocks_before) {
   return blocks_before - blocks_after;
 }
 
-#endif  // def LEGACY_GC
+#endif  // LEGACY_GC
+
+void ObjectHeap::process_registered_finalizers(RootCallback* ss, LivenessOracle* from_space) {
+  // Process the registered finalizer list.
+  if (!_registered_finalizers.is_empty() && Flags::tracegc && Flags::verbose) printf(" - Processing registered finalizers\n");
+  ObjectHeap* heap = this;
+  _registered_finalizers.remove_wherever([ss, heap, from_space](FinalizerNode* node) -> bool {
+    bool is_alive = from_space->is_alive(node->key());
+    if (!is_alive) {
+      // Clear the key so it is not retained.
+      node->set_key(heap->program()->null_object());
+    }
+    node->roots_do(ss);
+    if (is_alive && Flags::tracegc && Flags::verbose) printf(" - Finalizer %p is alive\n", node);
+    if (is_alive) return false;  // Keep node in list.
+    // From here down, the node is going to be unlinked by returning true.
+    if (Flags::tracegc && Flags::verbose) printf(" - Finalizer %p is unreachable\n", node);
+    heap->_runnable_finalizers.append(node);
+    return true; // Remove node from list.
+  });
+}
+
+void ObjectHeap::process_registered_vm_finalizers(RootCallback* ss, LivenessOracle* from_space) {
+  // Process registered VM finalizers.
+  _registered_vm_finalizers.remove_wherever([ss, this, from_space](VMFinalizerNode* node) -> bool {
+    bool is_alive = from_space->is_alive(node->key());
+
+    if (is_alive && Flags::tracegc && Flags::verbose) printf(" - Finalizer %p is alive\n", node);
+    if (is_alive) {
+      node->roots_do(ss);
+      return false; // Keep node in list.
+    }
+    if (Flags::tracegc && Flags::verbose) printf(" - Processing registered finalizer %p for external memory.\n", node);
+    node->free_external_memory(owner());
+    delete node;
+    return true; // Remove node from list.
+  });
+}
 
 bool ObjectHeap::has_finalizer(HeapObject* key, Object* lambda) {
   for (FinalizerNode* node : _registered_finalizers) {

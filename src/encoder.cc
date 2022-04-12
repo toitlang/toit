@@ -252,6 +252,18 @@ bool ProgramOrientedEncoder::encode_error(Object* type, Object* message, Stack* 
   return !buffer()->has_overflow();
 }
 
+bool ProgramOrientedEncoder::encode_error(Object* type, const char* message, Stack* stack) {
+  write_byte('[');
+  write_byte('#');
+  write_int(4);
+  write_int('E');
+  EncodeVisitor visitor(this);
+  visitor.accept(type);
+  write_string(message);
+  visitor.accept(stack);
+  return !buffer()->has_overflow();
+}
+
 #ifdef PROFILER
 bool ProgramOrientedEncoder::encode_profile(Profiler* profiler, String* title, int cutoff) {
   profiler->encode_on(this, title, cutoff);
