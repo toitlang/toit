@@ -495,7 +495,6 @@ void Scheduler::add_process(Locker& locker, Process* process) {
 }
 
 Object* Scheduler::process_stats(Array* array, int group_id, int process_id, Process* calling_process) {
-  ASSERT(array->length() == 7);
   Locker locker(_mutex);
   ProcessGroup* group = null;
   for (auto g : _groups) {

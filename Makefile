@@ -18,7 +18,7 @@
 
 # General options.
 HOST=host
-BUILD_TYPE=Release
+BUILD_TYPE=Debug
 
 # Use 'make ESP32_ENTRY=examples/mandelbrot.toit esp32' to compile a different
 # example for the ESP32 firmware.
