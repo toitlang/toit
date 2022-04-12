@@ -494,24 +494,40 @@ void Scheduler::add_process(Locker& locker, Process* process) {
   start_thread(locker, ONLY_IF_PROCESSES_ARE_READY);
 }
 
-bool Scheduler::process_stats(Array* array, int group_id, int process_id) {
+Object* Scheduler::process_stats(Array* array, int group_id, int process_id, Process* calling_process) {
   ASSERT(array->length() == 7);
   Locker locker(_mutex);
   ProcessGroup* group = null;
   for (auto g : _groups) {
     if (g->id() == group_id) group = g;
   }
-  if (group == null) return false;  // Group not found.
-  Process* process = group->lookup(process_id);
-  if (process == null) return false;  // Process not found.
-  array->at_put(0, Smi::from(process->gc_count()));
-  array->at_put(1, Smi::from(process->usage()->allocated()));
-  array->at_put(2, Smi::from(process->usage()->reserved()));
-  array->at_put(3, Smi::from(process->message_count()));
-  array->at_put(4, Smi::from(process->object_heap()->total_bytes_allocated()));
-  array->at_put(5, Smi::from(group_id));
-  array->at_put(6, Smi::from(process_id));
-  return true;
+  if (group == null) return calling_process->program()->null_object();
+  Process* subject_process = group->lookup(process_id);
+  if (subject_process == null) return calling_process->program()->null_object();  // Process not found.
+  uword length = array->length();
+  switch (length) {
+    default:
+    case 7:
+      array->at_put(6, Smi::from(process_id));
+    case 6:
+      array->at_put(5, Smi::from(group_id));
+    case 5: {
+      Object* total = Primitive::integer(subject_process->object_heap()->total_bytes_allocated(), calling_process);
+      if (Primitive::is_error(total)) return total;
+      array->at_put(4, total);
+    }
+    case 4:
+      array->at_put(3, Smi::from(subject_process->message_count()));
+    case 3:
+      array->at_put(2, Smi::from(subject_process->usage()->reserved()));
+    case 2:
+      array->at_put(1, Smi::from(subject_process->usage()->allocated()));
+    case 1:
+      array->at_put(0, Smi::from(subject_process->gc_count()));
+    case 0:
+      (void)0;  // Do nothing.
+  }
+  return array;
 }
 
 void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* scheduler_thread) {

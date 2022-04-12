@@ -167,8 +167,6 @@ class Space : public LivenessOracle {
   // processing.
   virtual HeapObject* new_location(HeapObject* old_location) = 0;
 
-  void set_used(uword used) { used_ = used; }
-
   // Returns the total size of allocated chunks.
   uword size();
 
@@ -256,7 +254,6 @@ class Space : public LivenessOracle {
 
   Program* program_;
   ChunkList chunk_list_;
-  uword used_;              // Allocated bytes.
   uword top_;               // Allocation top in current chunk.
   uword limit_;             // Allocation limit in current chunk.
   // The allocation budget can be used to trigger a GC early, eg. in response
@@ -476,6 +473,7 @@ class OldSpace : public Space {
   inline void evaluate_pointlessness() {};  // TODO: Implement.
   uword minimum_progress();
   void report_new_space_progress(uword bytes_collected);
+  void set_used(uword used) { used_ = used; }
 
  private:
   uword allocate_from_free_list(uword size);
@@ -493,6 +491,7 @@ class OldSpace : public Space {
   uword new_space_garbage_found_since_last_gc_ = 0;
   int successive_pointless_gcs_ = 0;
   uword used_after_last_gc_ = 0;
+  uword used_ = 0;               // Allocated bytes.
 };
 
 // ObjectMemory controls all memory used by object heaps.

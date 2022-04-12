@@ -128,9 +128,9 @@ class Scheduler {
 
   // Primitive support.
 
-  // Fills in an array of length 3 with stats for the process with the given ids.
-  // Returns false if the process doesn't exist, true otherwise.
-  bool process_stats(Array* array, int group_id, int process_id);
+  // Fills in an array with stats for the process with the given ids.
+  // Returns an exception if the process doesn't exist, the array otherwise.
+  Object* process_stats(Array* array, int group_id, int process_id, Process* calling_process);
 
 #ifdef LEGACY_GC
   word largest_number_of_blocks_in_a_process();

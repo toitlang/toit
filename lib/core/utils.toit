@@ -268,15 +268,19 @@ The stats, listed by index in the array, are:
 
 The "bytes allocated in the heap" tracks the total number of allocations, but
   doesn't deduct the sizes of objects that die. It is a way to follow the
-  allocation pressure of the process.
-
-Also see $bytes_allocated_delta for tracking allocation patterns.
+  allocation pressure of the process.  It corresponds to the value returned
+  by $bytes_allocated_delta.
 
 The "allocated memory" is the combined size of all live objects on the heap.
 The "reserved memory" is the size of the heap.
+
+By passing the optional $list argument to be filled in, you can avoid causing
+  an allocation, which may interfere with the tracking of allocations.  But note
+  that at some point the bytes_allocated number becomes so large that it needs
+  a small allocation of its own.
 */
-process_stats -> List:
-  result := process_stats -1 -1
+process_stats list/List=(List 7) -> List:
+  result := process_stats_ list -1 -1
   assert: result  // The current process always exists.
   return result
 
@@ -286,18 +290,16 @@ Variant of $(process_stats).
 Returns an array with stats for the process identified by the $group and the
   $id.
 */
-process_stats group id -> List?:
-  stats := process_stats_ group id
-  if not stats: return null
-  return List_.from_array_ stats
+process_stats group id list/List=(List 7) -> List?:
+  return process_stats_ list group id
 
-process_stats_ group id:
-  #primitive.core.process_stats:
-    return null
+process_stats_ list group id:
+  #primitive.core.process_stats
 
 /**
 Returns the number of bytes allocated, since the last call to this function.
 For the first call, returns number of allocated bytes since system start.
+#Deprecated, because it doesn't nest.  Use $process_stats instead.
 */
 bytes_allocated_delta -> int:
   #primitive.core.bytes_allocated_delta

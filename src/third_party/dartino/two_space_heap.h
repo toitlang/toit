@@ -113,6 +113,8 @@ class TwoSpaceHeap {
   void sweep_heap();
   void compact_heap();
 
+  uword total_bytes_allocated();
+
  private:
   static const uword UNLIMITED_EXPANSION = 0x80000000u - TOIT_PAGE_SIZE;
 
@@ -128,6 +130,7 @@ class TwoSpaceHeap {
   uword water_mark_;
   uword max_size_;
   uword semi_space_size_;
+  uword total_bytes_allocated_ = 0;
 };
 
 // Helper class for copying HeapObjects.
