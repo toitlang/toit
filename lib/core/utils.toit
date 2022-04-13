@@ -299,7 +299,7 @@ process_stats_ list group id:
 /**
 Returns the number of bytes allocated, since the last call to this function.
 For the first call, returns number of allocated bytes since system start.
-#Deprecated, because it doesn't nest.  Use $process_stats instead.
+Deprecated.  This function doesn't nest.  Use $process_stats instead.
 */
 bytes_allocated_delta -> int:
   #primitive.core.bytes_allocated_delta
