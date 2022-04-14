@@ -186,7 +186,7 @@ PRIMITIVE(transmit) {
   return process->program()->null_object();
 }
 
-void flush_buffer(RingbufHandle_t rb) {
+static void flush_buffer(RingbufHandle_t rb) {
   void* bytes = null;
   size_t length = 0;
   while((bytes = xRingbufferReceive(rb, &length, 0))) {
