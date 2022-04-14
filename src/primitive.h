@@ -388,6 +388,15 @@ namespace toit {
   PRIMITIVE(transmit, 2)                     \
   PRIMITIVE(transmit_and_receive, 6)         \
 
+#define MODULE_PCNT(PRIMITIVE)               \
+  PRIMITIVE(init, 0)                         \
+  PRIMITIVE(use, 2)                          \
+  PRIMITIVE(unuse, 2)                        \
+  PRIMITIVE(start, 1)                        \
+  PRIMITIVE(stop, 1)                         \
+  PRIMITIVE(value, 1)                        \
+  PRIMITIVE(clear, 1)                        \
+
 #define MODULE_CRYPTO(PRIMITIVE)             \
   PRIMITIVE(sha1_start, 1)                   \
   PRIMITIVE(sha1_add, 4)                     \
