@@ -37,6 +37,7 @@ namespace toit {
   M(spi,     MODULE_SPI)                     \
   M(uart,    MODULE_UART)                    \
   M(rmt,     MODULE_RMT)                     \
+  M(pcnt,    MODULE_PCNT)                    \
   M(crypto,  MODULE_CRYPTO)                  \
   M(encoding,MODULE_ENCODING)                \
   M(font,    MODULE_FONT)                    \
@@ -390,12 +391,14 @@ namespace toit {
 
 #define MODULE_PCNT(PRIMITIVE)               \
   PRIMITIVE(init, 0)                         \
-  PRIMITIVE(use, 2)                          \
-  PRIMITIVE(unuse, 2)                        \
+  PRIMITIVE(new_unit, 3)                     \
+  PRIMITIVE(close_unit, 1)                   \
+  PRIMITIVE(new_channel, 2)                  \
+  PRIMITIVE(close_channel, 2)                \
   PRIMITIVE(start, 1)                        \
   PRIMITIVE(stop, 1)                         \
-  PRIMITIVE(value, 1)                        \
   PRIMITIVE(clear, 1)                        \
+  PRIMITIVE(get_count, 1)                    \
 
 #define MODULE_CRYPTO(PRIMITIVE)             \
   PRIMITIVE(sha1_start, 1)                   \
@@ -640,6 +643,16 @@ namespace toit {
   if (0 > _value_##name || _value_##name > UINT8_MAX) OUT_OF_RANGE;   \
   uint8 name = (uint8) _value_##name;
 
+#define _A_T_int16(N, name)                                                  \
+  Object* _raw_##name = __args[-(N)];                                        \
+  if (!_raw_##name->is_smi()) {                                              \
+    if (_raw_##name->is_large_integer()) OUT_OF_RANGE;                       \
+    else WRONG_TYPE;                                                         \
+  }                                                                          \
+  word _value_##name = Smi::cast(_raw_##name)->value();                      \
+  if (INT16_MIN > _value_##name || _value_##name > INT16_MAX) OUT_OF_RANGE;  \
+  int16 name = (int16) _value_##name;
+
 #define _A_T_uint16(N, name)                                          \
   Object* _raw_##name = __args[-(N)];                                 \
   if (!_raw_##name->is_smi()) {                                       \
@@ -813,6 +826,7 @@ namespace toit {
 #define _A_T_PWMResourceGroup(N, name)    MAKE_UNPACKING_MACRO(PWMResourceGroup, N, name)
 #define _A_T_RpcResourceGroup(N, name)    MAKE_UNPACKING_MACRO(RpcResourceGroup, N, name)
 #define _A_T_RMTResourceGroup(N, name)    MAKE_UNPACKING_MACRO(RMTResourceGroup, N, name)
+#define _A_T_PcntUnitResourceGroup(N, name)   MAKE_UNPACKING_MACRO(PcntUnitResourceGroup, N, name)
 
 #define _A_T_Resource(N, name)            MAKE_UNPACKING_MACRO(Resource, N, name)
 #define _A_T_Directory(N, name)           MAKE_UNPACKING_MACRO(Directory, N, name)
@@ -841,6 +855,7 @@ namespace toit {
 #define _A_T_I2SResource(N, name)         MAKE_UNPACKING_MACRO(I2SResource, N, name)
 #define _A_T_AdcState(N, name)            MAKE_UNPACKING_MACRO(AdcState, N, name)
 #define _A_T_PWMResource(N, name)         MAKE_UNPACKING_MACRO(PWMResource, N, name)
+#define _A_T_PcntUnitResource(N, name)    MAKE_UNPACKING_MACRO(PcntUnitResource, N, name)
 #define _A_T_GAPResource(N, name)         MAKE_UNPACKING_MACRO(GAPResource, N, name)
 #define _A_T_GATTResource(N, name)        MAKE_UNPACKING_MACRO(GATTResource, N, name)
 #define _A_T_BLEServerConfigGroup(N, name)  MAKE_UNPACKING_MACRO(BLEServerConfigGroup, N, name)

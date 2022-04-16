@@ -29,181 +29,260 @@
 
 namespace toit {
 
-class PcntResource : public Resource {
+const pcnt_unit_t kInvalidUnitId = static_cast<pcnt_unit_t>(-1);
+const pcnt_channel_t kInvalidChannel = static_cast<pcnt_channel_t>(-1);
+
+ResourcePool<pcnt_unit_t, kInvalidUnitId> pcnt_unit_ids(
+    PCNT_UNIT_0, PCNT_UNIT_1, PCNT_UNIT_2, PCNT_UNIT_3
+#if SOC_PCNT_UNIT_NUM > 4
+    , PCNT_UNIT_4, PCNT_UNIT_5, PCNT_UNIT_6, PCNT_UNIT_7
+#endif
+);
+
+class PcntChannelResourceGroup : public ResourceGroup {
  public:
-  TAG(PcntResource);
-  PWMResource(ResourceGroup* group, pcnt_unit_t unit)
-    : Resource(group)
-    , _unit(unit) {
+  TAG(PcntChannelResourceGroup);
+  PcntChannelResourceGroup(Process* process, pcnt_unit_t unit)
+     : ResourceGroup(process)
+     , _unit(unit) { }
+
+  pcnt_channel_t any() {
+    return _pcnt_channels.any();
   }
 
-  pcnt_unit_t unit() { return _unit; }
+  void put(pcnt_channel_t channel) {
+    _pcnt_channels.put(channel);
+  }
+
+ protected:
+  virtual void on_unregister_resource(Resource* r) override {
+    // In v4.3.2 we should disable the channel by setting the pins to PCNT_PIN_NOT_USED.
+    // https://docs.espressif.com/projects/esp-idf/en/v4.3.2/esp32/api-reference/peripherals/pcnt.html?#configuration
+    // In later versions (after 4.4) we have to call `pcnt_del_channel`.
+    // https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/peripherals/pcnt.html#install-pcnt-channel
+    // This static assert might hit, even though the code is still OK. Check the documentation if
+    // the code from 'master' (as of 2022-04-16) has already made it into the release you are using.
+    static_assert(ESP_IDF_VERSION_MAJOR == 4 && ESP_IDF_VERSION_MINOR == 3,
+                  "Newer ESP-IDF might need different code");
+    pcnt_channel_t channel = static_cast<pcnt_channel_t>(static_cast<IntResource*>(r)->id());
+    pcnt_config_t config {
+      .pulse_gpio_num = PCNT_PIN_NOT_USED,
+      .ctrl_gpio_num = PCNT_PIN_NOT_USED,
+      .unit = _unit,
+      .channel = channel,
+    };
+    pcnt_unit_config(&config);
+    _pcnt_channels.put(channel);
+  }
 
  private:
   pcnt_unit_t _unit;
+  ResourcePool<pcnt_channel_t, kInvalidChannel> _pcnt_channels = ResourcePool<pcnt_channel_t, kInvalidChannel>(
+    PCNT_CHANNEL_0, PCNT_CHANNEL_1
+  );
 };
 
-class PcntResourceGroup : public ResourceGroup {
+class PcntUnitResource : public Resource {
  public:
-  TAG(PcntResourceGroup);
-  PcntResourceGroup(Process* process, pcnt_unit_t counter)
-     : ResourceGroup(process)
-     , _timer(timer)
-     , _max_value(max_value) {}
-
-  ~PWMResourceGroup() {
-    ledc_timer_rst(SPEED_MODE, _timer);
-    ledc_timers.put(_timer);
+  TAG(PcntUnitResource);
+  PcntUnitResource(ResourceGroup* group, pcnt_unit_t unit_id, int16 low_limit, int16 high_limit)
+    : Resource(group)
+    , _unit_id(unit_id)
+    , _low_limit(low_limit)
+    , _high_limit(high_limit)
+    , _channel_resource_group(group->process(), unit_id) {
   }
 
-  ledc_timer_t timer() { return _timer; }
-  uint32 max_value() { return _max_value; }
-
- protected:
-  virtual void on_unregister_resource(Resource* r) {
-    PWMResource* pwm = reinterpret_cast<PWMResource*>(r);
-    ledc_stop(SPEED_MODE, pwm->channel(), 0);
-    ledc_channels.put(pwm->channel());
+  void tear_down() {
+    _channel_resource_group.tear_down();
+    // In v4.3.2 there is no way to shut down the counter.
+    // In later versions we have to call `pcnt_del_unit`.
+    // https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/peripherals/pcnt.html#install-pcnt-unit
+    // This static assert might hit, even though the code is still OK. Check the documentation if
+    // the code from 'master' (as of 2022-04-16) has already made it into the release you are using.
+    // If yes, stop the unit and the delete it.
+    static_assert(ESP_IDF_VERSION_MAJOR == 4 && ESP_IDF_VERSION_MINOR == 3,
+                  "Newer ESP-IDF might need different code");
   }
+
+  // The unit id should not be exposed to the user.
+  pcnt_unit_t unit_id() { return _unit_id; }
+
+  // The limits could be exposed to the user, but the framework doesn't
+  // give any way to read these values, so they would need to be stored by Toit.
+  int16 low_limit() const { return _low_limit; }
+  int16 high_limit() const { return _high_limit; }
+  PcntChannelResourceGroup* channel_resource_group() { return &_channel_resource_group; }
 
  private:
-  ledc_timer_t _timer;
-  uint32 _max_value;
+  pcnt_unit_t _unit_id;
+  int16 _low_limit;
+  int16 _high_limit;
+  PcntChannelResourceGroup _channel_resource_group;
 };
 
-uint32 msb(uint32 n){
-  return 31 - Utils::clz(n);
-}
+class PcntUnitResourceGroup : public ResourceGroup {
+ public:
+  TAG(PcntUnitResourceGroup);
+  explicit PcntUnitResourceGroup(Process* process)
+     : ResourceGroup(process) {}
 
-MODULE_IMPLEMENTATION(pwm, MODULE_PWM)
+ protected:
+  virtual void on_unregister_resource(Resource* r) override {
+    PcntUnitResource* unit = reinterpret_cast<PcntUnitResource*>(r);
+    unit->tear_down();
+  }
+};
+
+MODULE_IMPLEMENTATION(pcnt, MODULE_PCNT)
 
 PRIMITIVE(init) {
-  ARGS(int64, frequency)
+  ByteArray* proxy = process->object_heap()->allocate_proxy();
+  if (proxy == null) ALLOCATION_FAILED;
 
-  if (frequency <= 0 || frequency > 40000000) OUT_OF_BOUNDS;
+  PcntUnitResourceGroup* pcnt = _new PcntUnitResourceGroup(process);
+  if (pcnt == null) MALLOC_FAILED;
 
-  uint32 bits = msb(frequency << 1);
-  uint32 resolution_bits = kMaxFrequencyBits - bits;
+  proxy->set_external_address(pcnt);
+  return proxy;
+}
+
+PRIMITIVE(new_unit) {
+  ARGS(PcntUnitResourceGroup, unit_resource_group, uint16, low_limit, int16, high_limit)
+
+  if (low_limit > 0 || high_limit < 0) OUT_OF_RANGE;
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;
 
-  ledc_timer_t timer = ledc_timers.any();
-  if (timer == kInvalidLedcTimer) OUT_OF_RANGE;
+  pcnt_unit_t unit_id = pcnt_unit_ids.any();
+  if (unit_id == kInvalidUnitId) ALREADY_IN_USE;
 
-  ledc_timer_config_t config = {
-    .speed_mode = SPEED_MODE,
-    .duty_resolution = (ledc_timer_bit_t)resolution_bits,
-    .timer_num = timer,
-    .freq_hz = uint32(frequency),
-    .clk_cfg = LEDC_AUTO_CLK,
-  };
-
-  esp_err_t err = ledc_timer_config(&config);
-  if (err != ESP_OK) {
-    ledc_timers.put(timer);
-    return Primitive::os_error(err, process);
+  PcntUnitResource* unit = null;
+  { HeapTagScope scope(ITERATE_CUSTOM_TAGS + EXTERNAL_BYTE_ARRAY_MALLOC_TAG);
+    // Later versions (v4.4+) initialize the unit with the low and high limit.
+    // For now we pass it to the resource so we can create the channel with the values.
+    unit = _new PcntUnitResource(unit_resource_group, unit_id, low_limit, high_limit);
+    if (unit == null) {
+      pcnt_unit_ids.put(unit_id);
+      MALLOC_FAILED;
+    }
   }
 
-  PWMResourceGroup* gpio = _new PWMResourceGroup(process, timer, (1 << resolution_bits) - 1);
-  if (!gpio) {
-    ledc_timer_rst(SPEED_MODE, timer);
-    ledc_timers.put(timer);
-    MALLOC_FAILED;
-  }
-  proxy->set_external_address(gpio);
+  // In v4.3.2 the unit is not allocated, but everything happens when a channel
+  // is allocated.
+  // In later versions we have to call `pcnt_new_unit`.
+  // https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/peripherals/pcnt.html#install-pcnt-unit
+  // This static assert might hit, even though the code is still OK. Check the documentation if
+  // the code from 'master' (as of 2022-04-16) has already made it into the release you are using.
+  // If yes, create a new unit.
+  static_assert(ESP_IDF_VERSION_MAJOR == 4 && ESP_IDF_VERSION_MINOR == 3,
+                "Newer ESP-IDF might need different code");
 
+  proxy->set_external_address(unit);
   return proxy;
 }
 
-PRIMITIVE(close) {
-  ARGS(PWMResourceGroup, resource_group);
+PRIMITIVE(close_unit) {
+  ARGS(PcntUnitResource, unit)
 
-  resource_group->tear_down();
-
-  resource_group_proxy->clear_external_address();
+  unit->tear_down();
+  pcnt_unit_ids.put(unit->unit_id());
+  unit_proxy->clear_external_address();
 
   return process->program()->null_object();
 }
 
-static uint32 compute_duty_factor(PWMResourceGroup* pwm, double factor) {
-  factor = Utils::max(Utils::min(factor, 1.0), 0.0);
-  return uint32(factor * pwm->max_value());
-}
-
-PRIMITIVE(start) {
-  ARGS(PWMResourceGroup, resource_group, int, pin, double, factor);
+PRIMITIVE(new_channel) {
+  ARGS(PcntUnitResource, unit, int, pin_number)
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;
 
-  ledc_channel_t channel = ledc_channels.any();
-  if (channel == kInvalidLedcChannel) OUT_OF_RANGE;
+  auto channel_resource_group = unit->channel_resource_group();
 
-  ledc_channel_config_t config = {
-    .gpio_num = pin,
-    .speed_mode = SPEED_MODE,
+  pcnt_channel_t channel = channel_resource_group->any();
+  if (channel == kInvalidChannel) ALREADY_IN_USE;
+  bool successful = false;
+  // TODO(florian): not allowed to use 'new', and thus `std::function`.
+  // Defer put_if_unsuccessful { [&]() { if (!successful) channel_resource_group->put(channel); } };
+
+  // Don't call `channel_resource_group->register_id`, as we don't want the
+  // tear-down functions to be called as long as we haven't done the
+  // hardware calls.
+  IntResource* resource = _new IntResource(channel_resource_group, channel);
+  if (resource == null) MALLOC_FAILED;
+
+  proxy->set_external_address(resource);
+
+  pcnt_config_t config {
+    .pulse_gpio_num = pin_number,
+    .ctrl_gpio_num = PCNT_PIN_NOT_USED,
+    .lctrl_mode = PCNT_MODE_KEEP,
+    .hctrl_mode = PCNT_MODE_KEEP,
+    .pos_mode = PCNT_COUNT_INC,
+    .neg_mode = PCNT_COUNT_DIS,
+    .counter_h_lim = unit->high_limit(),
+    .counter_l_lim = unit->low_limit(),
+    .unit = unit->unit_id(),
     .channel = channel,
-    .timer_sel = resource_group->timer(),
-    .duty = compute_duty_factor(resource_group, factor),
-    .hpoint = 0,
   };
-  esp_err_t err = ledc_channel_config(&config);
-  if (err != ESP_OK) {
-    ledc_channels.put(channel);
-    return Primitive::os_error(err, process);
-  }
+  // For v4.3.2:
+  // There is an error `ESP_ERR_INVALID_STATE` that could be returned by the
+  // config function. Apparently one shouldn't initialize the driver multiple times.
+  // However, each channel must be configured separately, so there isn't really a way
+  // around that. Furthermore, the sources seem to indicate that this error is
+  // never thrown.
+  esp_err_t err = pcnt_unit_config(&config);
+  if (err != ESP_OK) return Primitive::os_error(err, process);
 
-  PWMResource* pwm = _new PWMResource(resource_group, channel);
-  if (!pwm) {
-    ledc_stop(SPEED_MODE, channel, 0);
-    ledc_channels.put(channel);
-    MALLOC_FAILED;
-  }
+  // Without a call to 'clear' the unit would not start counting.
+  pcnt_counter_clear(config.unit);
 
-  resource_group->register_resource(pwm);
-
-  proxy->set_external_address(pwm);
-
+  successful = true;  // So we don't put the channel_id back into the pool.
+  channel_resource_group->register_resource(resource);
   return proxy;
-}
-
-PRIMITIVE(factor) {
-  ARGS(PWMResourceGroup, resource_group, PWMResource, resource);
-
-  uint32 duty = ledc_get_duty(SPEED_MODE, resource->channel());
-  if (duty == LEDC_ERR_DUTY) {
-    return Primitive::os_error(LEDC_ERR_DUTY, process);
-  }
-
-  return Primitive::allocate_double(duty / double(resource_group->max_value()), process);
-}
-
-PRIMITIVE(set_factor) {
-  ARGS(PWMResourceGroup, resource_group, PWMResource, resource, double, factor);
-
-  uint32 duty = compute_duty_factor(resource_group, factor);
-  esp_err_t err = ledc_set_duty(SPEED_MODE, resource->channel(), duty);
-  if (err != ESP_OK) {
-    return Primitive::os_error(err, process);
-  }
-
-  err = ledc_update_duty(SPEED_MODE, resource->channel());
-  if (err != ESP_OK) {
-    return Primitive::os_error(err, process);
-  }
-
-  return process->program()->null_object();
 }
 
 PRIMITIVE(close_channel) {
-  ARGS(PWMResourceGroup, resource_group, PWMResource, resource);
-
-  resource_group->unregister_resource(resource);
-
-  resource_proxy->clear_external_address();
-
+  ARGS(PcntUnitResource, unit, IntResource, channel_resource)
+  auto group = unit->channel_resource_group();
+  group->unregister_id(channel_resource->id());
+  channel_resource_proxy->clear_external_address();
   return process->program()->null_object();
+}
+
+PRIMITIVE(start) {
+  ARGS(PcntUnitResource, unit)
+
+  esp_err_t err = pcnt_counter_resume(unit->unit_id());
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+  return process->program()->null_object();
+}
+
+PRIMITIVE(stop) {
+  ARGS(PcntUnitResource, unit)
+
+  esp_err_t err = pcnt_counter_pause(unit->unit_id());
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+  return process->program()->null_object();
+}
+
+PRIMITIVE(clear) {
+  ARGS(PcntUnitResource, unit)
+
+  esp_err_t err = pcnt_counter_clear(unit->unit_id());
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+  return process->program()->null_object();
+}
+
+PRIMITIVE(get_count) {
+  ARGS(PcntUnitResource, unit)
+
+  int16 value = -1;
+  esp_err_t err = pcnt_get_counter_value(unit->unit_id(), &value);
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+  return Smi::from(value);
 }
 
 } // namespace toit
