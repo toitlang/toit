@@ -39,23 +39,71 @@ ResourcePool<pcnt_unit_t, kInvalidUnitId> pcnt_unit_ids(
 #endif
 );
 
-class PcntChannelResourceGroup : public ResourceGroup {
+class PcntUnitResource : public Resource {
  public:
-  TAG(PcntChannelResourceGroup);
-  PcntChannelResourceGroup(Process* process, pcnt_unit_t unit)
-     : ResourceGroup(process)
-     , _unit(unit) { }
-
-  pcnt_channel_t any() {
-    return _pcnt_channels.any();
+  TAG(PcntUnitResource);
+  PcntUnitResource(ResourceGroup* group, pcnt_unit_t unit_id, int16 low_limit, int16 high_limit)
+    : Resource(group)
+    , _unit_id(unit_id)
+    , _low_limit(low_limit)
+    , _high_limit(high_limit) {
   }
 
-  void put(pcnt_channel_t channel) {
-    _pcnt_channels.put(channel);
+  bool is_open_channel(pcnt_channel_t channel) {
+    if (channel == kInvalidChannel) return false;
+    int index = static_cast<int>(channel);
+    return 0 <= index && index < PCNT_CHANNEL_MAX && _used_channels[index];
   }
 
- protected:
-  virtual void on_unregister_resource(Resource* r) override {
+  esp_err_t add_channel(int pin_number, pcnt_channel_t* channel) {
+    *channel = kInvalidChannel;
+    // In v4.3.2 we just use a channel id.
+    // https://docs.espressif.com/projects/esp-idf/en/v4.3.2/esp32/api-reference/peripherals/pcnt.html?#configuration
+    // In later versions we have to call `pcnt_add_channel`.
+    // https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/peripherals/pcnt.html#install-pcnt-channel
+    // This static assert might hit, even though the code is still OK. Check the documentation if
+    // the code from 'master' (as of 2022-04-16) has already made it into the release you are using.
+    static_assert(ESP_IDF_VERSION_MAJOR == 4 && ESP_IDF_VERSION_MINOR == 3,
+                  "Newer ESP-IDF might need different code");
+    for (int i = 0; i < PCNT_CHANNEL_MAX; i++) {
+      if (!_used_channels[i]) {
+        *channel = static_cast<pcnt_channel_t>(i);
+        break;
+      }
+    }
+    if (*channel == kInvalidChannel) {
+      return ESP_OK;
+    }
+
+    pcnt_config_t config {
+      .pulse_gpio_num = pin_number,
+      .ctrl_gpio_num = PCNT_PIN_NOT_USED,
+      .lctrl_mode = PCNT_MODE_KEEP,
+      .hctrl_mode = PCNT_MODE_KEEP,
+      .pos_mode = PCNT_COUNT_INC,
+      .neg_mode = PCNT_COUNT_DIS,
+      .counter_h_lim = _high_limit,
+      .counter_l_lim = _low_limit,
+      .unit = _unit_id,
+      .channel = *channel,
+    };
+    // For v4.3.2:
+    // There is an error `ESP_ERR_INVALID_STATE` that could be returned by the
+    // config function. Apparently one shouldn't initialize the driver multiple times.
+    // However, each channel must be configured separately, so there isn't really a way
+    // around that. Furthermore, the sources seem to indicate that this error is
+    // never thrown.
+    esp_err_t err = pcnt_unit_config(&config);
+    if (err != ESP_OK) return err;
+
+    _used_channels[static_cast<int>(*channel)] = true;
+
+    // Without a call to 'clear' the unit would not start counting.
+    return pcnt_counter_clear(config.unit);
+  }
+
+  esp_err_t close_channel(pcnt_channel_t channel) {
+    ASSERT(is_open_channel(channel));
     // In v4.3.2 we should disable the channel by setting the pins to PCNT_PIN_NOT_USED.
     // https://docs.espressif.com/projects/esp-idf/en/v4.3.2/esp32/api-reference/peripherals/pcnt.html?#configuration
     // In later versions (after 4.4) we have to call `pcnt_del_channel`.
@@ -64,37 +112,27 @@ class PcntChannelResourceGroup : public ResourceGroup {
     // the code from 'master' (as of 2022-04-16) has already made it into the release you are using.
     static_assert(ESP_IDF_VERSION_MAJOR == 4 && ESP_IDF_VERSION_MINOR == 3,
                   "Newer ESP-IDF might need different code");
-    pcnt_channel_t channel = static_cast<pcnt_channel_t>(static_cast<IntResource*>(r)->id());
     pcnt_config_t config {
       .pulse_gpio_num = PCNT_PIN_NOT_USED,
       .ctrl_gpio_num = PCNT_PIN_NOT_USED,
-      .unit = _unit,
+      .unit = _unit_id,
       .channel = channel,
     };
-    pcnt_unit_config(&config);
-    _pcnt_channels.put(channel);
-  }
-
- private:
-  pcnt_unit_t _unit;
-  ResourcePool<pcnt_channel_t, kInvalidChannel> _pcnt_channels = ResourcePool<pcnt_channel_t, kInvalidChannel>(
-    PCNT_CHANNEL_0, PCNT_CHANNEL_1
-  );
-};
-
-class PcntUnitResource : public Resource {
- public:
-  TAG(PcntUnitResource);
-  PcntUnitResource(ResourceGroup* group, pcnt_unit_t unit_id, int16 low_limit, int16 high_limit)
-    : Resource(group)
-    , _unit_id(unit_id)
-    , _low_limit(low_limit)
-    , _high_limit(high_limit)
-    , _channel_resource_group(group->process(), unit_id) {
+    // TODO(florian): when should we consider the channel to be free again?
+    // Probably not that important yet, but more important when we actually call `pcnt_del_channel`.
+    _used_channels[static_cast<int>(channel)] = false;
+    return pcnt_unit_config(&config);
   }
 
   void tear_down() {
-    _channel_resource_group.tear_down();
+    for (int i = 0; i < PCNT_CHANNEL_MAX; i++) {
+      if (!_used_channels[i]) continue;
+      auto channel = static_cast<pcnt_channel_t>(i);
+      if (channel != kInvalidChannel) {
+        // In the teardown we don't handle errors for cloning the channel.
+        close_channel(channel);
+      }
+    }
     // In v4.3.2 there is no way to shut down the counter.
     // In later versions we have to call `pcnt_del_unit`.
     // https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/peripherals/pcnt.html#install-pcnt-unit
@@ -108,17 +146,11 @@ class PcntUnitResource : public Resource {
   // The unit id should not be exposed to the user.
   pcnt_unit_t unit_id() { return _unit_id; }
 
-  // The limits could be exposed to the user, but the framework doesn't
-  // give any way to read these values, so they would need to be stored by Toit.
-  int16 low_limit() const { return _low_limit; }
-  int16 high_limit() const { return _high_limit; }
-  PcntChannelResourceGroup* channel_resource_group() { return &_channel_resource_group; }
-
  private:
   pcnt_unit_t _unit_id;
   int16 _low_limit;
   int16 _high_limit;
-  PcntChannelResourceGroup _channel_resource_group;
+  bool _used_channels[PCNT_CHANNEL_MAX] = { false, };
 };
 
 class PcntUnitResourceGroup : public ResourceGroup {
@@ -185,70 +217,27 @@ PRIMITIVE(new_unit) {
 
 PRIMITIVE(close_unit) {
   ARGS(PcntUnitResource, unit)
-
   unit->tear_down();
   pcnt_unit_ids.put(unit->unit_id());
   unit_proxy->clear_external_address();
-
   return process->program()->null_object();
 }
 
 PRIMITIVE(new_channel) {
   ARGS(PcntUnitResource, unit, int, pin_number)
-
-  ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
-
-  auto channel_resource_group = unit->channel_resource_group();
-
-  pcnt_channel_t channel = channel_resource_group->any();
-  if (channel == kInvalidChannel) ALREADY_IN_USE;
-  bool successful = false;
-  // TODO(florian): not allowed to use 'new', and thus `std::function`.
-  // Defer put_if_unsuccessful { [&]() { if (!successful) channel_resource_group->put(channel); } };
-
-  // Don't call `channel_resource_group->register_id`, as we don't want the
-  // tear-down functions to be called as long as we haven't done the
-  // hardware calls.
-  IntResource* resource = _new IntResource(channel_resource_group, channel);
-  if (resource == null) MALLOC_FAILED;
-
-  proxy->set_external_address(resource);
-
-  pcnt_config_t config {
-    .pulse_gpio_num = pin_number,
-    .ctrl_gpio_num = PCNT_PIN_NOT_USED,
-    .lctrl_mode = PCNT_MODE_KEEP,
-    .hctrl_mode = PCNT_MODE_KEEP,
-    .pos_mode = PCNT_COUNT_INC,
-    .neg_mode = PCNT_COUNT_DIS,
-    .counter_h_lim = unit->high_limit(),
-    .counter_l_lim = unit->low_limit(),
-    .unit = unit->unit_id(),
-    .channel = channel,
-  };
-  // For v4.3.2:
-  // There is an error `ESP_ERR_INVALID_STATE` that could be returned by the
-  // config function. Apparently one shouldn't initialize the driver multiple times.
-  // However, each channel must be configured separately, so there isn't really a way
-  // around that. Furthermore, the sources seem to indicate that this error is
-  // never thrown.
-  esp_err_t err = pcnt_unit_config(&config);
+  pcnt_channel_t channel = kInvalidChannel;
+  esp_err_t err = unit->add_channel(pin_number, &channel);
   if (err != ESP_OK) return Primitive::os_error(err, process);
-
-  // Without a call to 'clear' the unit would not start counting.
-  pcnt_counter_clear(config.unit);
-
-  successful = true;  // So we don't put the channel_id back into the pool.
-  channel_resource_group->register_resource(resource);
-  return proxy;
+  if (channel == kInvalidChannel) ALREADY_IN_USE;
+  return Smi::from(static_cast<int>(channel));
 }
 
 PRIMITIVE(close_channel) {
-  ARGS(PcntUnitResource, unit, IntResource, channel_resource)
-  auto group = unit->channel_resource_group();
-  group->unregister_id(channel_resource->id());
-  channel_resource_proxy->clear_external_address();
+  ARGS(PcntUnitResource, unit, int, channel_id)
+  pcnt_channel_t channel = static_cast<pcnt_channel_t>(channel_id);
+  if (!unit->is_open_channel(channel)) INVALID_ARGUMENT;
+  esp_err_t err = unit->close_channel(channel);
+  if (err != ESP_OK) return Primitive::os_error(err, process);
   return process->program()->null_object();
 }
 

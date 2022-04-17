@@ -31,7 +31,7 @@ A pulse-counter channel.
 */
 class Channel:
   unit_/Unit
-  channel_resource_/ByteArray
+  channel_id_/int
   closed_/bool := false
 
   /**
@@ -41,7 +41,7 @@ class Channel:
   */
   constructor.private_ unit/Unit pin/gpio.Pin:
     unit_ = unit
-    channel_resource_ = pcnt_new_channel_ unit.unit_resource_ pin.num
+    channel_id_ = pcnt_new_channel_ unit.unit_resource_ pin.num
 
   /**
   Closes this channel.
@@ -51,7 +51,7 @@ class Channel:
   close:
     if closed_: return
     closed_ = true
-    pcnt_close_channel_ unit_.unit_resource_ channel_resource_
+    pcnt_close_channel_ unit_.unit_resource_ channel_id_
 
 /**
 A pulse-counter unit.
