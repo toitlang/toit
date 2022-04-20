@@ -131,6 +131,8 @@ void TwoSpaceHeap::collect_new_space() {
 
   uint64 start = OS::get_monotonic_time();
 
+  total_bytes_allocated_ += from->used();
+
   if (has_empty_new_space()) {
     collect_old_space_if_needed(false);
     if (Flags::tracegc) {
@@ -151,7 +153,6 @@ void TwoSpaceHeap::collect_new_space() {
 
   uword old_used = old_space()->used();
 
-  to->set_used(0);
   // Allocate from start of to-space..
   to->update_base_and_limit(to->chunk(), to->chunk()->start());
 
@@ -187,6 +188,8 @@ void TwoSpaceHeap::collect_new_space() {
 
   old_space()->end_scavenge();
 
+  total_bytes_allocated_ -= to->used();
+
   // Second space argument is used to size the new-space.
   swap_semi_spaces();
 
@@ -220,6 +223,12 @@ void TwoSpaceHeap::collect_new_space() {
     old_space()->report_new_space_progress(progress);
   }
   collect_old_space_if_needed(visitor.trigger_old_space_gc());
+}
+
+uword TwoSpaceHeap::total_bytes_allocated() {
+  uword result = total_bytes_allocated_;
+  result += space()->used();
+  return result;
 }
 
 void TwoSpaceHeap::collect_old_space_if_needed(bool force) {

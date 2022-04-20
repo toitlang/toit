@@ -358,7 +358,11 @@ void ObjectHeap::register_external_allocation(word size) {
   if (size == 0) return;
   // Overloading on an atomic type makes an atomic += and returns new value.
   _external_memory += _EXTERNAL_MEMORY_ALLOCATOR_OVERHEAD + size;
+#ifdef LEGACY_GC
   _total_bytes_allocated += size;
+#else
+  _external_bytes_allocated += size;
+#endif
 }
 
 void ObjectHeap::unregister_external_allocation(word size) {
