@@ -21,6 +21,9 @@ import system.services show ServiceDefinition ServiceResource
 import ..shared.network_base
 
 class NetworkServiceDefinition extends NetworkServiceDefinitionBase:
+  constructor:
+    super "system/network/host" --major=0 --minor=1
+
   connect client/int -> ServiceResource:
     return NetworkResource this client
 

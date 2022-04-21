@@ -6,7 +6,7 @@ import system.services
 import expect
 
 interface MyService:
-  static NAME/string ::= "myservice"
+  static UUID/string ::= "867f200f-9311-48a5-83a2-1033597b8961"
   static MAJOR/int   ::= 0
   static MINOR/int   ::= 1
 
@@ -17,7 +17,7 @@ interface MyService:
   bar x/int -> int
 
 interface MyServiceExtended extends MyService:
-  static NAME/string ::= "myservice/extended"
+  static UUID/string ::= "711e9020-69cd-4e86-84c7-6e0a92a26fa6"
   static MAJOR/int   ::= 1
   static MINOR/int   ::= 2
 
@@ -52,7 +52,7 @@ class MyServiceClient extends services.ServiceClient implements MyService:
     super --open=open
 
   open -> MyServiceClient?:
-    return (open_ MyService.NAME MyService.MAJOR MyService.MINOR) and this
+    return (open_ MyService.UUID MyService.MAJOR MyService.MINOR) and this
 
   foo -> int:
     return invoke_ MyService.FOO_INDEX null
@@ -65,7 +65,7 @@ class MyServiceExtendedClient extends MyServiceClient implements MyServiceExtend
     super --open=open
 
   open -> MyServiceExtendedClient?:
-    return (open_ MyServiceExtended.NAME MyServiceExtended.MAJOR MyServiceExtended.MINOR) and this
+    return (open_ MyServiceExtended.UUID MyServiceExtended.MAJOR MyServiceExtended.MINOR) and this
 
   baz x/string -> none:
     invoke_ MyServiceExtended.BAZ_INDEX x
@@ -74,11 +74,9 @@ class MyServiceExtendedClient extends MyServiceClient implements MyServiceExtend
 
 class MyServiceDefinition extends services.ServiceDefinition implements MyServiceExtended:
   constructor:
-    super MyServiceExtended.NAME
-        --major=MyServiceExtended.MAJOR
-        --minor=MyServiceExtended.MINOR
-        --patch=3
-    alias MyService.NAME --major=MyService.MAJOR --minor=MyService.MINOR
+    super "myservice/extended" --major=1 --minor=2 --patch=3
+    provides MyService.UUID MyService.MAJOR MyService.MINOR
+    provides MyServiceExtended.UUID MyServiceExtended.MAJOR MyServiceExtended.MINOR
 
   handle pid/int client/int index/int arguments/any -> any:
     if index == MyService.FOO_INDEX: return foo

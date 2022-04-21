@@ -27,7 +27,8 @@ class PrintServiceDefinition extends ServiceDefinition implements PrintService:
   messages_/List := []
 
   constructor:
-    super PrintService.NAME --major=PrintService.MAJOR --minor=PrintService.MINOR
+    super "system/print/test" --major=1 --minor=2
+    provides PrintService.UUID PrintService.MAJOR PrintService.MINOR
 
   handle pid/int client/int index/int arguments/any -> any:
     if index == PrintService.PRINT_INDEX: return print arguments

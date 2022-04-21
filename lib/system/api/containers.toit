@@ -6,7 +6,7 @@ import uuid
 import system.services show ServiceClient
 
 interface ContainerService:
-  static NAME  /string ::= "system/containers"
+  static UUID  /string ::= "358ee529-45a4-409e-8fab-7a28f71e5c51"
   static MAJOR /int    ::= 0
   static MINOR /int    ::= 2
 
@@ -36,7 +36,7 @@ class ContainerServiceClient extends ServiceClient implements ContainerService:
     super --open=open
 
   open -> ContainerServiceClient?:
-    return (open_ ContainerService.NAME ContainerService.MAJOR ContainerService.MINOR) and this
+    return (open_ ContainerService.UUID ContainerService.MAJOR ContainerService.MINOR) and this
 
   list_images -> List:
     array := invoke_ ContainerService.LIST_IMAGES_INDEX null

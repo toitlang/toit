@@ -5,7 +5,7 @@
 import system.services show ServiceClient
 
 interface LoggingService:
-  static NAME  /string ::= "system/logging"
+  static UUID  /string ::= "89e6340c-67f5-4055-b1d1-b4f4c2755f67"
   static MAJOR /int    ::= 0
   static MINOR /int    ::= 1
 
@@ -17,7 +17,7 @@ class LoggingServiceClient extends ServiceClient implements LoggingService:
     super --open=open
 
   open -> LoggingServiceClient?:
-    return (open_ LoggingService.NAME LoggingService.MAJOR LoggingService.MINOR) and this
+    return (open_ LoggingService.UUID LoggingService.MAJOR LoggingService.MINOR) and this
 
   log level/int message/string names/List? keys/List? values/List? -> none:
     invoke_ LoggingService.LOG_INDEX [level, message, names, keys, values]
