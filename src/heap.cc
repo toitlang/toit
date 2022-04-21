@@ -285,8 +285,8 @@ ObjectHeap::ObjectHeap(Program* program, Process* owner, InitialMemory* initial_
         initial_memory ? initial_memory->chunk_1 : null,
         initial_memory ? initial_memory->chunk_2 : null)
     , _external_memory(0) {
-#endif
   if (!initial_memory) return;
+#endif
   _task = allocate_task();
   ASSERT(_task);  // Should not fail, because a newly created heap has at least
                   // enough space for the task structure.
