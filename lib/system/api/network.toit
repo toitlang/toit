@@ -6,7 +6,7 @@ import net
 import system.services show ServiceClient ServiceResourceProxy
 
 interface NetworkService:
-  static NAME  /string ::= "system/network"
+  static UUID  /string ::= "063e228a-3a7a-44a8-b024-d55127255ccb"
   static MAJOR /int    ::= 0
   static MINOR /int    ::= 1
 
@@ -21,7 +21,7 @@ class NetworkServiceClient extends ServiceClient implements NetworkService:
     super --open=open
 
   open -> NetworkServiceClient?:
-    return (open_ NetworkService.NAME NetworkService.MAJOR NetworkService.MINOR) and this
+    return (open_ NetworkService.UUID NetworkService.MAJOR NetworkService.MINOR) and this
 
   connect -> int:
     return invoke_ NetworkService.CONNECT_INDEX null

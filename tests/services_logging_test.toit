@@ -69,7 +69,8 @@ class LoggingServiceDefinition extends ServiceDefinition implements LoggingServi
   logs_/List := []
 
   constructor:
-    super LoggingService.NAME --major=LoggingService.MAJOR --minor=LoggingService.MINOR
+    super "system/logging/test" --major=1 --minor=2
+    provides LoggingService.UUID LoggingService.MAJOR LoggingService.MINOR
 
   handle pid/int client/int index/int arguments/any -> any:
     if index == LoggingService.LOG_INDEX: return logs_.add arguments
