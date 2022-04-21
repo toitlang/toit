@@ -5,7 +5,7 @@
 import system.api.network show NetworkService NetworkServiceClient
 
 interface WifiService extends NetworkService:
-  static NAME  /string ::= "system/network/wifi"
+  static UUID  /string ::= "2436edc6-4cd8-4834-8ebc-ed883990da40"
   static MAJOR /int    ::= 0
   static MINOR /int    ::= 1
 
@@ -17,7 +17,7 @@ class WifiServiceClient extends NetworkServiceClient implements WifiService:
     super --open=open
 
   open -> WifiServiceClient?:
-    return (open_ WifiService.NAME WifiService.MAJOR WifiService.MINOR) and this
+    return (open_ WifiService.UUID WifiService.MAJOR WifiService.MINOR) and this
 
   connect ssid/string password/string -> int:
     return invoke_ WifiService.CONNECT_SSID_PASSWORD_INDEX [ssid, password]

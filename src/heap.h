@@ -136,7 +136,11 @@ class ObjectHeap {
 
   Program* program() { return _program; }
 
+#ifdef LEGACY_GC
   int64 total_bytes_allocated() { return _total_bytes_allocated; }
+#else
+  int64 total_bytes_allocated() { return _external_bytes_allocated + _two_space_heap.total_bytes_allocated(); }
+#endif
   uword limit() const { return _limit; }
 
 #if !defined(DEPLOY) && defined(LEGACY_GC)
@@ -247,7 +251,11 @@ class ObjectHeap {
 
   bool _in_gc = false;
   bool _gc_allowed = true;
+#ifdef LEGACY_GC
   int64 _total_bytes_allocated = 0;
+#else
+  int64 _external_bytes_allocated = 0;
+#endif
   AllocationResult _last_allocation_result = ALLOCATION_SUCCESS;
 
 #ifndef LEGACY_GC

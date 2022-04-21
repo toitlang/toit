@@ -43,16 +43,16 @@ abstract class ServiceClient:
 
   abstract open -> ServiceClient?
 
-  open_ name/string major/int minor/int --pid/int?=null -> ServiceClient?:
+  open_ uuid/string major/int minor/int --pid/int?=null -> ServiceClient?:
     if _id_: throw "Already opened"
     if pid:
       process_send_ pid SYSTEM_RPC_NOTIFY_ [SERVICES_MANAGER_NOTIFY_ADD_PROCESS, current_process_]
     else:
-      pid = _client_.discover name
+      pid = _client_.discover uuid
       if not pid: return null
     // Open the client by doing a RPC-call to the discovered process.
     // This returns the client id necessary for invoking service methods.
-    definition ::= rpc.invoke pid RPC_SERVICES_OPEN_ [name, major, minor]
+    definition ::= rpc.invoke pid RPC_SERVICES_OPEN_ [uuid, major, minor]
     _pid_ = pid
     _id_ = definition[2]
     _name_ = definition[0]
@@ -103,8 +103,11 @@ abstract class ServiceClient:
     critical_do: rpc.invoke _pid_ RPC_SERVICES_CLOSE_RESOURCE_ [id, handle]
 
 abstract class ServiceDefinition:
-  _names_/List ::= ?
-  _versions_/List ::= ?
+  name/string ::= ?
+  _version_/List ::= ?
+
+  _uuids_/List ::= []
+  _versions_/List ::= []
   _manager_/ServiceManager_? := null
 
   _clients_/Set ::= {}     // Set<int>
@@ -115,9 +118,8 @@ abstract class ServiceDefinition:
   // after being uninstalled. Do we need to use an extra latch for that?
   _uninstalled_/monitor.Latch ::= monitor.Latch
 
-  constructor name/string --major/int --minor/int --patch/int=0:
-    _names_ = [name]
-    _versions_ = [[major, minor, patch]]
+  constructor .name --major/int --minor/int --patch/int=0:
+    _version_ = [major, minor, patch]
     _resource_handle_next_ = random RESOURCE_HANDLE_LIMIT_
 
   abstract handle pid/int client/int index/int arguments/any-> any
@@ -128,23 +130,20 @@ abstract class ServiceDefinition:
   on_closed client/int -> none:
     // Override in subclasses.
 
-  name -> string:
-    return _names_.first
-
   version -> string:
-    return _versions_.first.join "."
+    return _version_.join "."
 
   stringify -> string:
     return "service:$name@$version"
 
-  alias name/string --major/int --minor/int -> none:
-    _names_.add name
+  provides uuid/string major/int minor/int -> none:
+    _uuids_.add uuid
     _versions_.add [major, minor]
 
   install -> none:
     if _manager_: throw "Already installed"
     _manager_ = ServiceManager_.instance
-    _names_.do: _manager_.listen it this
+    _uuids_.do: _manager_.listen it this
 
   uninstall -> none:
     if not _manager_: return
@@ -160,7 +159,7 @@ abstract class ServiceDefinition:
   _open_ client/int -> List:
     _clients_.add client
     catch --trace: on_opened client
-    return [ _names_[0], _versions_[0], client ]
+    return [ name, _version_, client ]
 
   _close_ client/int -> none:
     _clients_.remove client
@@ -197,18 +196,18 @@ abstract class ServiceDefinition:
     _resource_handle_next_ = (next >= RESOURCE_HANDLE_LIMIT_) ? 0 : next
     return handle
 
-  _validate_ name/string major/int minor/int -> none:
-    index := _names_.index_of name
-    if index < 0: throw "Cannot find service$name, found $this"
+  _validate_ uuid/string major/int minor/int -> none:
+    index := _uuids_.index_of uuid
+    if index < 0: throw "$this does not provide service:$uuid"
     version := _versions_[index]
     if major != version[0]:
-      throw "Cannot find service:$name@$(major).x, found $this"
+      throw "$this does not provide service:$uuid@$(major).x"
     if minor > version[1]:
-      throw "Cannot find service:$name@$(major).$(minor).x, found $this"
+      throw "$this does not provide service:$uuid@$(major).$(minor).x"
 
   _uninstall_ -> none:
     if not _resources_.is_empty: throw "Leaked $_resources_"
-    _names_.do: _manager_.unlisten it
+    _uuids_.do: _manager_.unlisten it
     _manager_ = null
     _uninstalled_.set 0
 
@@ -258,7 +257,7 @@ class ServiceManager_ implements SystemMessageHandler_:
   clients_/Map ::= {:}                // Map<int, int>
   clients_by_pid_/Map ::= {:}         // Map<int, Set<int>>
 
-  services_by_name_/Map ::= {:}       // Map<string, ServiceDefinition>
+  services_by_uuid_/Map ::= {:}       // Map<string, ServiceDefinition>
   services_by_client_/Map ::= {:}     // Map<int, ServiceDefinition>
 
   constructor:
@@ -278,18 +277,18 @@ class ServiceManager_ implements SystemMessageHandler_:
       if resource: resource.close
     broker_.install
 
-  listen name/string service/ServiceDefinition -> none:
-    services_by_name_[name] = service
-    _client_.listen name
+  listen uuid/string service/ServiceDefinition -> none:
+    services_by_uuid_[uuid] = service
+    _client_.listen uuid
 
-  unlisten name/string -> none:
-    _client_.unlisten name
-    services_by_name_.remove name
+  unlisten uuid/string -> none:
+    _client_.unlisten uuid
+    services_by_uuid_.remove uuid
 
-  open pid/int name/string major/int minor/int -> List:
-    service/ServiceDefinition? ::= services_by_name_[name]
-    if not service: throw "Unknown service $name"
-    service._validate_ name major minor
+  open pid/int uuid/string major/int minor/int -> List:
+    service/ServiceDefinition? ::= services_by_uuid_[uuid]
+    if not service: throw "Unknown service:$uuid"
+    service._validate_ uuid major minor
     client ::= assign_client_id_ pid
     services_by_client_[client] = service
     clients/Set ::= clients_by_pid_.get pid --init=(: {})

@@ -24,7 +24,6 @@ static void write_sentinel_at(uword address) {
 
 Space::Space(Program* program, Space::Resizing resizeable, PageType page_type)
     : program_(program),
-      used_(0),
       top_(0),
       limit_(0),
       allocation_budget_(0),
@@ -32,6 +31,7 @@ Space::Space(Program* program, Space::Resizing resizeable, PageType page_type)
 
 SemiSpace::SemiSpace(Program* program, Chunk* chunk)
     : Space(program, CANNOT_RESIZE, NEW_SPACE_PAGE) {
+  if (!chunk) return;
   ASSERT(chunk);
   append(chunk);
   update_base_and_limit(chunk, chunk->start());
@@ -85,10 +85,6 @@ void Space::append(Chunk* chunk) {
 
 void SemiSpace::append(Chunk* chunk) {
   chunk->set_owner(this);
-  if (!is_empty()) {
-    // Update the accounting.
-    used_ += top() - chunk_list_.last()->start();
-  }
   // For the semispaces, we always append the chunk to the end of the space.
   // This ensures that when iterating over newly promoted objects during a
   // scavenge we will see the objects newly promoted to newly allocated chunks.
@@ -116,8 +112,8 @@ uword SemiSpace::allocate(uword size) {
 }
 
 uword SemiSpace::used() {
-  if (is_empty()) return used_;
-  return used_ + (top() - chunk_list_.last()->start());
+  ASSERT(chunk_list_.first() == chunk_list_.last());
+  return (top() - chunk_list_.last()->start());
 }
 
 // Called multiple times until there is no more work.  Finds objects moved to

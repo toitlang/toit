@@ -279,8 +279,13 @@ ObjectHeap::ObjectHeap(Program* program, Process* owner, Block* block)
 ObjectHeap::ObjectHeap(Program* program, Process* owner, InitialMemory* initial_memory)
     : _program(program)
     , _owner(owner)
-    , _two_space_heap(program, this, initial_memory->chunk_1, initial_memory->chunk_2)
+    , _two_space_heap(
+        program,
+        this,
+        initial_memory ? initial_memory->chunk_1 : null,
+        initial_memory ? initial_memory->chunk_2 : null)
     , _external_memory(0) {
+  if (!initial_memory) return;
 #endif
   _task = allocate_task();
   ASSERT(_task);  // Should not fail, because a newly created heap has at least
@@ -358,7 +363,11 @@ void ObjectHeap::register_external_allocation(word size) {
   if (size == 0) return;
   // Overloading on an atomic type makes an atomic += and returns new value.
   _external_memory += _EXTERNAL_MEMORY_ALLOCATOR_OVERHEAD + size;
+#ifdef LEGACY_GC
   _total_bytes_allocated += size;
+#else
+  _external_bytes_allocated += size;
+#endif
 }
 
 void ObjectHeap::unregister_external_allocation(word size) {

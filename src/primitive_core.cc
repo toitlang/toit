@@ -941,13 +941,30 @@ PRIMITIVE(bytes_allocated_delta) {
 }
 
 PRIMITIVE(process_stats) {
-  ARGS(int, group, int, id);
-  Array* result = process->object_heap()->allocate_array(7, Smi::zero());
-  if (result == null) ALLOCATION_FAILED;
-  if (group == -1) group = process->group()->id();
-  if (id == -1) id = process->id();
-  bool success = VM::current()->scheduler()->process_stats(result, group, id);
-  return success ? result : process->program()->null_object();
+  ARGS(Object, list_object, int, group, int, id);
+  Array* result = null;
+  if (list_object->is_instance()) {
+    Instance* list = Instance::cast(list_object);
+    if (list->class_id() == process->program()->list_class_id()) {
+      Object* array_object;
+      if ((array_object = list->at(0))->is_array()) {
+        result = Array::cast(array_object);
+      } else {
+        OUT_OF_RANGE;  // List is so big it uses arraylets.
+      }
+    }
+  }
+  if (result == null) INVALID_ARGUMENT;
+  if (group == -1 || id == -1) {
+    if (group != -1 || id != -1) INVALID_ARGUMENT;
+    group = process->group()->id();
+    id = process->id();
+  }
+  Object* returned = VM::current()->scheduler()->process_stats(result, group, id, process);
+  // Don't return the array - return the list that contains it.
+  if (result == returned) return list_object;
+  // Probably null or an exception.
+  return returned;
 }
 
 PRIMITIVE(random) {

@@ -32,9 +32,8 @@ class WifiServiceDefinition extends NetworkServiceDefinitionBase:
   state_/WifiState? := null
 
   constructor:
-    super "$WifiService.NAME/esp32" --major=0 --minor=1
-    alias WifiService.NAME --major=WifiService.MAJOR --minor=WifiService.MINOR
-    alias NetworkService.NAME --major=NetworkService.MAJOR --minor=NetworkService.MINOR
+    super "system/wifi/esp32" --major=0 --minor=1
+    provides WifiService.UUID WifiService.MAJOR WifiService.MINOR
 
   handle pid/int client/int index/int arguments/any -> any:
     if index == WifiService.CONNECT_SSID_PASSWORD_INDEX:
