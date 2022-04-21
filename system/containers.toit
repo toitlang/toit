@@ -112,9 +112,8 @@ class ContainerImageFlash extends ContainerImage:
 abstract class ContainerServiceDefinition extends ServiceDefinition
     implements ContainerService:
   constructor:
-    super ContainerService.NAME
-        --major=ContainerService.MAJOR
-        --minor=ContainerService.MINOR
+    super "system/containers" --major=0 --minor=2
+    provides ContainerService.UUID ContainerService.MAJOR ContainerService.MINOR
     install
 
   handle pid/int client/int index/int arguments/any -> any:

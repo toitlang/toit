@@ -6,7 +6,7 @@ import system.services
 import expect
 
 interface FooService:
-  static NAME/string ::= "foo"
+  static UUID/string ::= "27d4a329-8b0a-4dcc-9e1c-2296475461fa"
   static MAJOR/int   ::= 0
   static MINOR/int   ::= 0
 
@@ -58,7 +58,7 @@ class FooServiceClient extends services.ServiceClient implements FooService:
     super --open=open
 
   open -> FooServiceClient?:
-    return (open_ FooService.NAME FooService.MAJOR FooService.MINOR) and this
+    return (open_ FooService.UUID FooService.MAJOR FooService.MINOR) and this
 
   list_clients -> List:
     return List.from (invoke_ FooService.LIST_CLIENTS_INDEX null)
@@ -69,7 +69,8 @@ class FooServiceDefinition extends services.ServiceDefinition implements FooServ
   clients := {}
 
   constructor:
-    super FooService.NAME --major=FooService.MAJOR --minor=FooService.MINOR
+    super "foo" --major=1 --minor=1
+    provides FooService.UUID FooService.MAJOR FooService.MINOR
 
   handle pid/int client/int index/int arguments/any -> any:
     if index == FooService.LIST_CLIENTS_INDEX: return list_clients

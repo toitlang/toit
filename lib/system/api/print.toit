@@ -5,7 +5,7 @@
 import system.services show ServiceClient
 
 interface PrintService:
-  static NAME  /string ::= "system/print"
+  static UUID  /string ::= "0b7e3aa1-9fc9-4632-bb09-4605cd11897e"
   static MAJOR /int    ::= 0
   static MINOR /int    ::= 1
 
@@ -17,7 +17,7 @@ class PrintServiceClient extends ServiceClient implements PrintService:
     super --open=open
 
   open -> PrintServiceClient?:
-    return (open_ PrintService.NAME PrintService.MAJOR PrintService.MINOR) and this
+    return (open_ PrintService.UUID PrintService.MAJOR PrintService.MINOR) and this
 
   print message/string -> none:
     invoke_ PrintService.PRINT_INDEX message

@@ -24,13 +24,11 @@ import system.api.service_discovery show ServiceDiscoveryService
 class SystemServiceManager extends ServiceDefinition implements ServiceDiscoveryService:
   service_managers_/Map ::= {:}  // Map<int, Set<int>>
   services_by_pid_/Map ::= {:}   // Map<int, Set<string>>
-  services_by_name_/Map ::= {:}  // Map<name, int>
+  services_by_uuid_/Map ::= {:}  // Map<string, int>
 
   constructor:
-    super
-        ServiceDiscoveryService.NAME
-        --major=ServiceDiscoveryService.MAJOR
-        --minor=ServiceDiscoveryService.MINOR
+    super "system/service-discovery" --major=0 --minor=1 --patch=1
+    provides ServiceDiscoveryService.UUID ServiceDiscoveryService.MAJOR ServiceDiscoveryService.MINOR
     install
 
   handle pid/int client/int index/int arguments/any -> any:
@@ -42,27 +40,27 @@ class SystemServiceManager extends ServiceDefinition implements ServiceDiscovery
       return unlisten arguments
     unreachable
 
-  listen name/string pid/int -> none:
-    if services_by_name_.contains name:
-      throw "Already registered service:$name"
-    services_by_name_[name] = pid
+  listen uuid/string pid/int -> none:
+    if services_by_uuid_.contains uuid:
+      throw "Already registered service:$uuid"
+    services_by_uuid_[uuid] = pid
     service_managers_.get pid --init=(: {})
-    names := services_by_pid_.get pid --init=(: {})
-    names.add name
+    uuids := services_by_pid_.get pid --init=(: {})
+    uuids.add uuid
 
-  unlisten name/string -> none:
-    pid := services_by_name_.get name
+  unlisten uuid/string -> none:
+    pid := services_by_uuid_.get uuid
     if not pid: return
-    services_by_name_.remove name
-    names := services_by_pid_.get pid
-    if not names: return
-    names.remove name
-    if not names.is_empty: return
+    services_by_uuid_.remove uuid
+    uuids := services_by_pid_.get pid
+    if not uuids: return
+    uuids.remove uuid
+    if not uuids.is_empty: return
     service_managers_.remove pid
     services_by_pid_.remove pid
 
-  discover name/string pid/int -> int?:
-    target := services_by_name_.get name
+  discover uuid/string pid/int -> int?:
+    target := services_by_uuid_.get uuid
     if not target: return null
     processes := service_managers_[target]
     if processes:
@@ -71,18 +69,18 @@ class SystemServiceManager extends ServiceDefinition implements ServiceDiscovery
     return target
 
   on_process_stop pid/int -> none:
-    names := services_by_pid_.get pid
-    // Iterate over a copy of the names, so we can manipulate the
+    uuids := services_by_pid_.get pid
+    // Iterate over a copy of the uuids, so we can manipulate the
     // underlying set in the call to unlisten.
-    if names: (Array_.from names).do: unlisten it
+    if uuids: (Array_.from uuids).do: unlisten it
     // Tell service managers about the termination.
     service_managers_.do: | manager/int processes/Set |
       if not processes.contains pid: continue.do
       processes.remove pid
       process_send_ manager SYSTEM_RPC_NOTIFY_ [SERVICES_MANAGER_NOTIFY_REMOVE_PROCESS, pid]
 
-  discover name/string -> int:
+  discover uuid/string -> int:
     unreachable  // <-- TODO(kasper): nasty
 
-  listen name/string -> none:
+  listen uuid/string -> none:
     unreachable  // <-- TODO(kasper): nasty

@@ -16,7 +16,7 @@ main:
 // ------------------------------------------------------------------
 
 interface LogService:
-  static NAME/string ::= "log"
+  static UUID/string ::= "00e1aca5-4861-4ec6-86e6-eea82936af13"
   static MAJOR/int   ::= 1
   static MINOR/int   ::= 0
 
@@ -30,7 +30,7 @@ class LogServiceClient extends services.ServiceClient implements LogService:
     super --open=open
 
   open -> LogServiceClient?:
-    return (open_ LogService.NAME LogService.MAJOR LogService.MINOR) and this
+    return (open_ LogService.UUID LogService.MAJOR LogService.MINOR) and this
 
   log message/string -> none:
     invoke_ LogService.LOG_INDEX message
@@ -39,7 +39,8 @@ class LogServiceClient extends services.ServiceClient implements LogService:
 
 class LogServiceDefinition extends services.ServiceDefinition implements LogService:
   constructor:
-    super LogService.NAME --major=LogService.MAJOR --minor=LogService.MINOR
+    super "log" --major=1 --minor=0
+    provides LogService.UUID LogService.MAJOR LogService.MINOR
 
   handle pid/int client/int index/int arguments/any -> any:
     if index == LogService.LOG_INDEX: return log arguments
