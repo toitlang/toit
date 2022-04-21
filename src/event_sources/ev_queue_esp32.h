@@ -15,6 +15,10 @@
 
 #pragma once
 
+#include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
+#include "freertos/semphr.h"
+
 #include "../resource.h"
 #include "../os.h"
 
