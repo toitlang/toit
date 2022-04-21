@@ -279,9 +279,14 @@ ObjectHeap::ObjectHeap(Program* program, Process* owner, Block* block)
 ObjectHeap::ObjectHeap(Program* program, Process* owner, InitialMemory* initial_memory)
     : _program(program)
     , _owner(owner)
-    , _two_space_heap(program, this, initial_memory->chunk_1, initial_memory->chunk_2)
+    , _two_space_heap(
+        program,
+        this,
+        initial_memory ? initial_memory->chunk_1 : null,
+        initial_memory ? initial_memory->chunk_2 : null)
     , _external_memory(0) {
 #endif
+  if (!initial_memory) return;
   _task = allocate_task();
   ASSERT(_task);  // Should not fail, because a newly created heap has at least
                   // enough space for the task structure.
