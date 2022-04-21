@@ -31,6 +31,7 @@ Space::Space(Program* program, Space::Resizing resizeable, PageType page_type)
 
 SemiSpace::SemiSpace(Program* program, Chunk* chunk)
     : Space(program, CANNOT_RESIZE, NEW_SPACE_PAGE) {
+  if (!chunk) return;
   ASSERT(chunk);
   append(chunk);
   update_base_and_limit(chunk, chunk->start());

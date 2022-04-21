@@ -252,15 +252,15 @@ class Space : public LivenessOracle {
 
   uword top() { return top_; }
 
-  Program* program_;
+  Program* program_ = null;
   ChunkList chunk_list_;
-  uword top_;               // Allocation top in current chunk.
-  uword limit_;             // Allocation limit in current chunk.
+  uword top_ = 0;               // Allocation top in current chunk.
+  uword limit_ = 0;             // Allocation limit in current chunk.
   // The allocation budget can be used to trigger a GC early, eg. in response
   // to large amounts of external allocation. If the allocation budget is not
   // hit, we may still trigger a GC because we are getting close to the limit
   // for the committed size of the chunks in the heap.
-  word allocation_budget_;
+  word allocation_budget_ = 0;
 
   PageType page_type_;
 };
