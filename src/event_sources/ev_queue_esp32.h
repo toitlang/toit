@@ -15,8 +15,6 @@
 
 #pragma once
 
-#include <driver/uart.h>
-
 #include "../resource.h"
 #include "../os.h"
 
@@ -24,13 +22,17 @@ namespace toit {
 
 class EventQueueResource : public Resource {
 public:
-  TAG(UARTResource);
-
   EventQueueResource(ResourceGroup* group, QueueHandle_t queue)
       : Resource(group)
       , _queue(queue){}
 
+  virtual ~EventQueueResource() { };
+
   QueueHandle_t queue() { return _queue; }
+
+  // Receives one event with a zero timeout.  Provides the data argument for the
+  // dispatch call on the event source.  Returns whether an event was available.
+  virtual bool receive_event(word* data) = 0;
 
 private:
   QueueHandle_t _queue; // Note: The queue is freed from the driver uninstall.

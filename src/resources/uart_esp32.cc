@@ -60,9 +60,18 @@ public:
 
   uart_port_t port() const { return _port; }
 
+  bool receive_event(word* data) override;
+
 private:
   uart_port_t _port;
 };
+
+bool UARTResource::receive_event(word* data) {
+  uart_event_t event;
+  bool more = xQueueReceive(queue(), &event, 0);
+  if (more) *data = event.type;
+  return more;
+}
 
 class UARTResourceGroup : public ResourceGroup {
  public:

@@ -33,7 +33,7 @@ EventQueueEventSource::EventQueueEventSource()
     , _queue_set(xQueueCreateSet(32)) {
   xQueueAddToSet(_stop, _queue_set);
 
-  // Create OS thread to handle UART.
+  // Create OS thread to handle events.
   spawn();
 
   ASSERT(_instance == null);
@@ -68,9 +68,9 @@ void EventQueueEventSource::entry() {
     // Then loop through all queues.
     for (auto r : resources()) {
       auto evq_res = static_cast<EventQueueResource*>(r);
-      uart_event_t event;
-      while (xQueueReceive(evq_res->queue(), &event, 0)) {
-        dispatch(locker, r, event.type);
+      word data;
+      while (evq_res->receive_event(&data)) {
+        dispatch(locker, r, data);
       }
     }
   }
@@ -82,9 +82,11 @@ void EventQueueEventSource::on_register_resource(Locker& locker, Resource* r) {
   // repeatedly try to drain the queue before adding it to the set.
   int attempts = 0;
   do {
-    if (attempts++ > 16) FATAL("couldn't register UART resource");
-    uart_event_t event;
-    while (xQueueReceive(evq_res->queue(), &event, 0));
+    if (attempts++ > 16) FATAL("couldn't register event resource");
+    word data;
+    while (evq_res->receive_event(&data)) {
+      dispatch(locker, r, data);
+    }
   } while (xQueueAddToSet(evq_res->queue(), _queue_set) != pdPASS);
 }
 
@@ -94,9 +96,11 @@ void EventQueueEventSource::on_unregister_resource(Locker& locker, Resource* r) 
   // repeatedly try to drain the queue before removing it from the set.
   int attempts = 0;
   do {
-    if (attempts++ > 16) FATAL("couldn't unregister UART resource");
-    uart_event_t event;
-    while (xQueueReceive(evq_res->queue(), &event, 0));
+    if (attempts++ > 16) FATAL("couldn't unregister event resource");
+    word data;
+    while (evq_res->receive_event(&data)) {
+      // Don't dispatch while unregistering.
+    }
   } while (xQueueRemoveFromSet(evq_res->queue(), _queue_set) != pdPASS);
 }
 
