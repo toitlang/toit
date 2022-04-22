@@ -243,7 +243,8 @@ PRIMITIVE(transmit_and_receive) {
     }
   }
 
-  rmt_rx_stop(rx_channel);
+  err = rmt_rx_stop(rx_channel);
+  if (err != ESP_OK) return Primitive::os_error(err, process);
   data->resize_external(process, length);
   return data;
 }
