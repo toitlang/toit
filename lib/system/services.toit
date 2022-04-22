@@ -286,7 +286,7 @@ class ServiceManager_ implements SystemMessageHandler_:
     services_by_uuid_.remove uuid
 
   open pid/int uuid/string major/int minor/int -> List:
-    service/ServiceDefinition? ::= services_by_uuid_[uuid]
+    service/ServiceDefinition? ::= services_by_uuid_.get uuid
     if not service: throw "Unknown service:$uuid"
     service._validate_ uuid major minor
     client ::= assign_client_id_ pid
