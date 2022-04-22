@@ -32,7 +32,7 @@ public:
 
   virtual ~EventQueueResource() { };
 
-  QueueHandle_t queue() { return _queue; }
+  QueueHandle_t queue() const { return _queue; }
 
   // Receives one event with a zero timeout.  Provides the data argument for the
   // dispatch call on the event source.  Returns whether an event was available.
