@@ -87,10 +87,19 @@ class I2SResource: public EventQueueResource {
   i2s_port_t port() const { return _port; }
   int alignment() const { return _alignment; }
 
+  bool receive_event(word* data) override;
+
  private:
   i2s_port_t _port;
   int _alignment;
 };
+
+bool I2SResource::receive_event(word* data) {
+  i2s_event_t event;
+  bool more = xQueueReceive(queue(), &event, 0);
+  if (more) *data = event.type;
+  return more;
+}
 
 static bool set_mclk_pin(i2s_port_t i2s_num, int io_num) {
   bool is_0 = i2s_num == I2S_NUM_0;

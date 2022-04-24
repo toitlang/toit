@@ -6,7 +6,7 @@ import system.services
 import expect
 
 interface SimpleService:
-  static NAME/string ::= "log"
+  static UUID/string ::= "10660fd6-3df8-4123-ac6e-e295484a4891"
   static MAJOR/int   ::= 1
   static MINOR/int   ::= 2
 
@@ -54,28 +54,28 @@ test_versions:
   service := SimpleServiceDefinition
   service.install
 
-  expect.expect_throw "Cannot find service:log@0.x, found service:log@1.2.5":
-    FlexibleServiceClient SimpleService.NAME 0
+  expect.expect_throw "service:log@1.2.5 does not provide service:$SimpleService.UUID@0.x":
+    FlexibleServiceClient SimpleService.UUID 0
   expect.expect_no_throw:
-    (FlexibleServiceClient SimpleService.NAME 0 --no-open)
-  expect.expect_throw "Cannot find service:log@0.x, found service:log@1.2.5":
-    (FlexibleServiceClient SimpleService.NAME 0 --no-open).open
+    (FlexibleServiceClient SimpleService.UUID 0 --no-open)
+  expect.expect_throw "service:log@1.2.5 does not provide service:$SimpleService.UUID@0.x":
+    (FlexibleServiceClient SimpleService.UUID 0 --no-open).open
 
-  expect.expect_throw "Cannot find service:log@2.x, found service:log@1.2.5":
-    FlexibleServiceClient SimpleService.NAME 2
+  expect.expect_throw "service:log@1.2.5 does not provide service:$SimpleService.UUID@2.x":
+    FlexibleServiceClient SimpleService.UUID 2
   expect.expect_no_throw:
-    (FlexibleServiceClient SimpleService.NAME 2 --no-open)
-  expect.expect_throw "Cannot find service:log@2.x, found service:log@1.2.5":
-    (FlexibleServiceClient SimpleService.NAME 2 --no-open).open
+    (FlexibleServiceClient SimpleService.UUID 2 --no-open)
+  expect.expect_throw "service:log@1.2.5 does not provide service:$SimpleService.UUID@2.x":
+    (FlexibleServiceClient SimpleService.UUID 2 --no-open).open
 
-  expect.expect_throw "Cannot find service:log@1.3.x, found service:log@1.2.5":
-    FlexibleServiceClient SimpleService.NAME 1 3
+  expect.expect_throw "service:log@1.2.5 does not provide service:$SimpleService.UUID@1.3.x":
+    FlexibleServiceClient SimpleService.UUID 1 3
   expect.expect_no_throw:
-    (FlexibleServiceClient SimpleService.NAME 1 3 --no-open)
-  expect.expect_throw "Cannot find service:log@1.3.x, found service:log@1.2.5":
-    (FlexibleServiceClient SimpleService.NAME 1 3 --no-open).open
+    (FlexibleServiceClient SimpleService.UUID 1 3 --no-open)
+  expect.expect_throw "service:log@1.2.5 does not provide service:$SimpleService.UUID@1.3.x":
+    (FlexibleServiceClient SimpleService.UUID 1 3 --no-open).open
 
-  client := FlexibleServiceClient SimpleService.NAME 1 1
+  client := FlexibleServiceClient SimpleService.UUID 1 1
   expect.expect_equals 1 client.major
   expect.expect_equals 2 client.minor
   expect.expect_equals 5 client.patch
@@ -103,27 +103,28 @@ class SimpleServiceClient extends services.ServiceClient implements SimpleServic
     super --open=open
 
   open -> SimpleServiceClient?:
-    return (open_ SimpleService.NAME SimpleService.MAJOR SimpleService.MINOR) and this
+    return (open_ SimpleService.UUID SimpleService.MAJOR SimpleService.MINOR) and this
 
   log message/string -> none:
     invoke_ SimpleService.LOG_INDEX message
 
 class FlexibleServiceClient extends services.ServiceClient:
-  name_/string ::= ?
+  uuid_/string ::= ?
   major_/int ::= ?
   minor_/int ::= ?
 
-  constructor .name_/string=SimpleService.NAME .major_/int=SimpleService.MAJOR .minor_/int=SimpleService.MINOR --open/bool=true:
+  constructor .uuid_/string=SimpleService.UUID .major_/int=SimpleService.MAJOR .minor_/int=SimpleService.MINOR --open/bool=true:
     super --open=open
 
   open -> FlexibleServiceClient?:
-    return (open_ name_ major_ minor_) and this
+    return (open_ uuid_ major_ minor_) and this
 
 // ------------------------------------------------------------------
 
 class SimpleServiceDefinition extends services.ServiceDefinition implements SimpleService:
   constructor:
-    super SimpleService.NAME --major=SimpleService.MAJOR --minor=SimpleService.MINOR --patch=5
+    super "log" --major=1 --minor=2 --patch=5
+    provides SimpleService.UUID SimpleService.MAJOR SimpleService.MINOR
 
   handle pid/int client/int index/int arguments/any -> any:
     if index == SimpleService.LOG_INDEX: return log arguments

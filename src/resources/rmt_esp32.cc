@@ -28,10 +28,13 @@
 
 namespace toit {
 
+const rmt_channel_t kInvalidChannel = static_cast<rmt_channel_t>(-1);
 
-ResourcePool<int, -1> rmt_channels(
-    RMT_CHANNEL_0, RMT_CHANNEL_1, RMT_CHANNEL_2, RMT_CHANNEL_3,
-    RMT_CHANNEL_4, RMT_CHANNEL_5, RMT_CHANNEL_6, RMT_CHANNEL_7
+ResourcePool<rmt_channel_t, kInvalidChannel> rmt_channels(
+    RMT_CHANNEL_0, RMT_CHANNEL_1, RMT_CHANNEL_2, RMT_CHANNEL_3
+#if SOC_RMT_CHANNELS_NUM > 4
+    , RMT_CHANNEL_4, RMT_CHANNEL_5, RMT_CHANNEL_6, RMT_CHANNEL_7
+#endif
 );
 
 class RMTResourceGroup : public ResourceGroup {
@@ -67,11 +70,12 @@ PRIMITIVE(use) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;
 
-  if (!rmt_channels.take(channel_num)) ALREADY_IN_USE;
+  rmt_channel_t requested = static_cast<rmt_channel_t>(channel_num);
+  if (!rmt_channels.take(requested)) ALREADY_IN_USE;
 
   IntResource* resource = resource_group->register_id(channel_num);
   if (!resource) {
-    rmt_channels.put(channel_num);
+    rmt_channels.put(requested);
     MALLOC_FAILED;
   }
   proxy->set_external_address(resource);
@@ -186,7 +190,7 @@ PRIMITIVE(transmit) {
   return process->program()->null_object();
 }
 
-void flush_buffer(RingbufHandle_t rb) {
+static void flush_buffer(RingbufHandle_t rb) {
   void* bytes = null;
   size_t length = 0;
   while((bytes = xRingbufferReceive(rb, &length, 0))) {
@@ -243,7 +247,8 @@ PRIMITIVE(transmit_and_receive) {
     }
   }
 
-  rmt_rx_stop(rx_channel);
+  err = rmt_rx_stop(rx_channel);
+  if (err != ESP_OK) return Primitive::os_error(err, process);
   data->resize_external(process, length);
   return data;
 }

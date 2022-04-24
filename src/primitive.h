@@ -72,7 +72,7 @@ namespace toit {
   PRIMITIVE(seconds_since_epoch_local, 7)    \
   PRIMITIVE(set_tz, 1)                       \
   PRIMITIVE(platform, 0)                     \
-  PRIMITIVE(process_stats, 2)                \
+  PRIMITIVE(process_stats, 3)                \
   PRIMITIVE(bytes_allocated_delta, 0)        \
   PRIMITIVE(string_length, 1)                \
   PRIMITIVE(string_at, 2)                    \
