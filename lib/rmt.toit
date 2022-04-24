@@ -201,6 +201,9 @@ class Channel:
   If $mem_block_num is greater than 1, then it will take the memory of the
     subsequent channels. For instance, if channel 2 is configured with a
     $mem_block_num = 3, then channels 3 and 4 are unusable.
+
+  The $clk_div divides the APB (advanced peripheral bus) clock. The APB clock is set to 80MHz.
+  The $filter_ticks_thresh counts APB bus ticks. As such, a value of 80 is equivalent to 1us.
   */
   config_rx
       --mem_block_num/int=1
