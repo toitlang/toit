@@ -1,10 +1,10 @@
 * text=auto eol=lf
 
 # Source files should not be normalized to avoid confusing clang-format-diff.py
-*.c -diff
-*.cc -diff
-*.cpp -diff
-*.h -diff
+*.c text
+*.cc text
+*.cpp text
+*.h text
 
 # Explicitly declare text files we want to be normalized.
 *.mk text
