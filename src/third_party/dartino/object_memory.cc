@@ -157,19 +157,6 @@ void Space::iterate_objects(HeapObjectVisitor* visitor) {
   }
 }
 
-void SemiSpace::complete_scavenge(RootCallback* visitor) {
-  flush();
-  for (auto chunk : chunk_list_) {
-    uword current = chunk->start();
-    while (!has_sentinel_at(current)) {
-      HeapObject* object = HeapObject::from_address(current);
-      object->roots_do(program_, visitor);
-      current += object->size(program_);
-      flush();
-    }
-  }
-}
-
 void Space::clear_mark_bits() {
   flush();
   for (auto chunk : chunk_list_) GcMetadata::clear_mark_bits_for(chunk);

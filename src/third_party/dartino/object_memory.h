@@ -287,10 +287,6 @@ class SemiSpace : public Space {
   // there is no room to allocate the object.
   uword allocate(uword size);
 
-  // For the program semispaces.  There is no other space into which we
-  // promote, so it does all work in one go.
-  void complete_scavenge(RootCallback* visitor);
-
   // For the mutable heap.
   void start_scavenge();
   bool complete_scavenge(ScavengeVisitor* visitor);
