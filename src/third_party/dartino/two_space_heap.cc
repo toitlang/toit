@@ -20,12 +20,14 @@ TwoSpaceHeap::TwoSpaceHeap(Program* program, ObjectHeap* process_heap, Chunk* ch
       old_space_(program, this),
       semi_space_(program, chunk) {
   semi_space_size_ = TOIT_PAGE_SIZE;
-  max_size_ = 256 * TOIT_PAGE_SIZE;
 }
 
 uword TwoSpaceHeap::max_expansion() {
+  if (!process_heap_->has_max_heap_size()) return UNLIMITED_EXPANSION;
   uword limit = process_heap_->limit();
-  if (limit == 0) return UNLIMITED_EXPANSION;
+  printf("limit %dbytes\n", (int)limit);
+  if (limit <= TOIT_PAGE_SIZE) return 0;
+  limit -= TOIT_PAGE_SIZE;  // New space is one page.
   if (limit < old_space()->used()) return 0;
   return old_space()->used() - limit;
 }
@@ -53,6 +55,18 @@ HeapObject* TwoSpaceHeap::allocate(uword size) {
 
 void TwoSpaceHeap::swap_semi_spaces(SemiSpace& from, SemiSpace& to) {
   water_mark_ = to.top();
+  if (old_space()->is_empty() && to.used() < TOIT_PAGE_SIZE / 2) {
+    // Don't start promoting to old space until a the post GC heap size
+    // hits at least half a page.
+    water_mark_ = to.single_chunk_start();
+  }
+  if (process_heap_->has_max_heap_size()) {
+    uword limit = process_heap_->limit();
+    if (limit <= TOIT_PAGE_SIZE) {
+      // If we can't expand old space it's faster to not even try.
+      water_mark_ = to.single_chunk_start();
+    }
+  }
   swap(from, to);
 }
 
@@ -179,7 +193,8 @@ void TwoSpaceHeap::collect_new_space() {
     int f = from_used;
     int t = to_used;
     int old = old_space()->used();
-    printf("Scavenge: %d%c->%d%c (old-gen %d%c) %dus\n",
+    printf("%p Scavenge: %d%c->%d%c (old-gen %d%c) %dus\n",
+        process_heap_->owner(),
         (f >> 10) ? (f >> 10) : f,
         (f >> 10) ? 'k' : 'b',
         (t >> 10) ? (t >> 10) : t,
@@ -243,7 +258,8 @@ void TwoSpaceHeap::collect_old_space() {
     uint64 end = OS::get_monotonic_time();
     int f = old_size;
     int t = old_space()->used();
-    printf("Mark-sweep%s: %d%c->%d%c, %dus\n",
+    printf("%p Mark-sweep%s: %d%c->%d%c, %dus\n",
+        process_heap_->owner(),
         compacted ? "-compact" : "",
         (f >> 10) ? (f >> 10) : f,
         (f >> 10) ? 'k' : 'b',
