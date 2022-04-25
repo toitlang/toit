@@ -403,4 +403,14 @@ struct Defer {
   ~Defer() { fun(); }
 };
 
+template <typename T>
+class DeferDelete {
+ public:
+  DeferDelete(T* obj) : _obj(obj) {}
+  ~DeferDelete() { delete _obj; }
+
+ private:
+  T* _obj;
+};
+
 } // namespace toit
