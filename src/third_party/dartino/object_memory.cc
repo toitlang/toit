@@ -201,10 +201,15 @@ void Space::find(uword w, const char* name) {
 #endif
 
 std::atomic<uword> ObjectMemory::allocated_;
+Chunk* ObjectMemory::spare_chunk_ = null;
+Mutex* ObjectMemory::spare_chunk_mutex_ = null;
 
 void ObjectMemory::set_up() {
   allocated_ = 0;
   GcMetadata::set_up();
+  spare_chunk_ = allocate_chunk(null, TOIT_PAGE_SIZE);
+  if (!spare_chunk_) FATAL("Can't allocate initial spare chunk");
+  spare_chunk_mutex_ = OS::allocate_mutex(6, "Spare memory chunk");
 }
 
 void ObjectMemory::tear_down() {

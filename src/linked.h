@@ -419,6 +419,33 @@ class DoubleLinkedListElement {
 
   ~DoubleLinkedListElement() {}
 
+  // Copy constructor:
+  DoubleLinkedListElement& operator=(DoubleLinkedListElement&& other) {
+    ASSERT(_next == this);
+    ASSERT(_prev == this);
+    if (other._next != &other) {
+      _next = other._next;
+      _next->_prev = this;
+      _prev = other._prev;
+      _prev->_next = this;
+    }
+    other._next = &other;
+    other._prev = &other;
+    return *this;
+  }
+
+  // Move constructor:
+  DoubleLinkedListElement(DoubleLinkedListElement&& other) : _next(this), _prev(this) {
+    if (other._next != &other) {
+      _next = other._next;
+      _next->_prev = this;
+      _prev = other._prev;
+      _prev->_next = this;
+    }
+    other._next = &other;
+    other._prev = &other;
+  }
+
  protected:
   bool is_not_linked() const {
     return _next == this;

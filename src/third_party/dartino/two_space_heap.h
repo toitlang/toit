@@ -30,7 +30,7 @@ class HeapObjectFunctionVisitor : public HeapObjectVisitor {
 // TwoSpaceHeap represents the container for all HeapObjects.
 class TwoSpaceHeap {
  public:
-  TwoSpaceHeap(Program* program, ObjectHeap* process_heap, Chunk* chunk_1, Chunk* chunk_2);
+  TwoSpaceHeap(Program* program, ObjectHeap* process_heap, Chunk* chunk);
   ~TwoSpaceHeap();
 
   // Allocate raw object. Returns null if a garbage collection is
@@ -41,7 +41,7 @@ class TwoSpaceHeap {
   // chunks, not just the used memory in them.
   uword max_expansion();
 
-  SemiSpace* space() { return semi_space_; }
+  SemiSpace* space() { return &semi_space_; }
 
   SemiSpace* take_space();
 
@@ -61,13 +61,12 @@ class TwoSpaceHeap {
   bool initialize();
 
   OldSpace* old_space() { return &old_space_; }
-  SemiSpace* unused_space() { return unused_semi_space_; }
 
-  void swap_semi_spaces();
+  void swap_semi_spaces(SemiSpace& from, SemiSpace& to);
 
   // Iterate over all objects in the heap.
   void iterate_objects(HeapObjectVisitor* visitor) {
-    semi_space_->iterate_objects(visitor);
+    semi_space_.iterate_objects(visitor);
     old_space_.iterate_objects(visitor);
   }
 
@@ -79,12 +78,12 @@ class TwoSpaceHeap {
   // Flush will write cached values back to object memory.
   // Flush must be called before traveral of heap.
   void flush() {
-    semi_space_->flush();
+    semi_space_.flush();
     old_space_.flush();
   }
 
   // Returns the number of bytes allocated in the space.
-  int used() { return old_space_.used() + semi_space_->used(); }
+  int used() { return old_space_.used() + semi_space_.used(); }
 
   HeapObject* new_space_allocation_failure(uword size) {
     if (size >= (semi_space_size_ >> 1)) {
@@ -100,7 +99,7 @@ class TwoSpaceHeap {
     return null;
   }
 
-  bool has_empty_new_space() { return semi_space_->top() == semi_space_->single_chunk_start(); }
+  bool has_empty_new_space() { return semi_space_.top() == semi_space_.single_chunk_start(); }
 
   void allocated_foreign_memory(uword size);
 
@@ -123,10 +122,7 @@ class TwoSpaceHeap {
   Program* program_;
   ObjectHeap* process_heap_;
   OldSpace old_space_;
-  SemiSpace semi_space_a_;
-  SemiSpace semi_space_b_;
-  SemiSpace* semi_space_;
-  SemiSpace* unused_semi_space_;
+  SemiSpace semi_space_;
   uword water_mark_;
   uword max_size_;
   uword semi_space_size_;
@@ -136,16 +132,26 @@ class TwoSpaceHeap {
 // Helper class for copying HeapObjects.
 class ScavengeVisitor : public RootCallback {
  public:
-  explicit ScavengeVisitor(Program* program, TwoSpaceHeap* heap)
+  explicit ScavengeVisitor(Program* program, TwoSpaceHeap* heap, Chunk* to_chunk)
       : program_(program),
-        to_start_(heap->unused_semi_space_->single_chunk_start()),
-        to_size_(heap->unused_semi_space_->single_chunk_size()),
+        to_start_(to_chunk->start()),
+        to_size_(to_chunk->size()),
         from_start_(heap->space()->single_chunk_start()),
         from_size_(heap->space()->single_chunk_size()),
-        to_(heap->unused_semi_space_),
+        to_(program, to_chunk),
         old_(heap->old_space()),
         record_(&dummy_record_),
         water_mark_(heap->water_mark_) {}
+
+  SemiSpace* to_space() { return &to_; }
+
+  void complete_scavenge() {
+    bool work_found = true;
+    while (work_found) {
+      work_found = to_.complete_scavenge(this);
+      work_found |= old_->complete_scavenge(this);
+    }
+  }
 
   virtual void do_root(Object** p) { do_roots(p, 1); }
 
@@ -177,7 +183,7 @@ class ScavengeVisitor : public RootCallback {
   uword to_size_;
   uword from_start_;
   uword from_size_;
-  SemiSpace* to_;
+  SemiSpace to_;
   OldSpace* old_;
   bool trigger_old_space_gc_ = false;
   uint8* record_;
