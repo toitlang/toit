@@ -9,8 +9,6 @@
 
 #include "../../top.h"
 
-#ifndef LEGACY_GC
-
 #include "../../objects.h"
 #include "../../os.h"
 #include "../../utils.h"
@@ -18,6 +16,8 @@
 #include "mark_sweep.h"
 
 namespace toit {
+
+#ifndef LEGACY_GC
 
 Chunk::Chunk(Space* owner, uword start, uword size, bool external)
       : owner_(owner),
@@ -204,14 +204,6 @@ std::atomic<uword> ObjectMemory::allocated_;
 Chunk* ObjectMemory::spare_chunk_ = null;
 Mutex* ObjectMemory::spare_chunk_mutex_ = null;
 
-void ObjectMemory::set_up() {
-  allocated_ = 0;
-  GcMetadata::set_up();
-  spare_chunk_ = allocate_chunk(null, TOIT_PAGE_SIZE);
-  if (!spare_chunk_) FATAL("Can't allocate initial spare chunk");
-  spare_chunk_mutex_ = OS::allocate_mutex(6, "Spare memory chunk");
-}
-
 void ObjectMemory::tear_down() {
   GcMetadata::tear_down();
 }
@@ -281,6 +273,20 @@ void ObjectMemory::free_chunk(Chunk* chunk) {
   delete chunk;
 }
 
-}  // namespace toit
+void ObjectMemory::set_up() {
+  allocated_ = 0;
+  GcMetadata::set_up();
+  spare_chunk_ = allocate_chunk(null, TOIT_PAGE_SIZE);
+  if (!spare_chunk_) FATAL("Can't allocate initial spare chunk");
+  spare_chunk_mutex_ = OS::allocate_mutex(6, "Spare memory chunk");
+}
+
+#else  // LEGACY_GC
+
+void ObjectMemory::set_up() {
+  GcMetadata::set_up();
+}
 
 #endif  // LEGACY_GC
+
+}  // namespace toit
