@@ -406,11 +406,11 @@ struct Defer {
 template <typename T>
 class DeferDelete {
  public:
-  DeferDelete(T* obj) : _obj(obj) {}
-  ~DeferDelete() { delete _obj; }
+  DeferDelete(T* object) : _object(object) {}
+  ~DeferDelete() { delete _object; }
 
  private:
-  T* _obj;
+  T* _object;
 };
 
 } // namespace toit
