@@ -25,7 +25,6 @@ TwoSpaceHeap::TwoSpaceHeap(Program* program, ObjectHeap* process_heap, Chunk* ch
 uword TwoSpaceHeap::max_expansion() {
   if (!process_heap_->has_max_heap_size()) return UNLIMITED_EXPANSION;
   uword limit = process_heap_->limit();
-  printf("limit %dbytes\n", (int)limit);
   if (limit <= TOIT_PAGE_SIZE) return 0;
   limit -= TOIT_PAGE_SIZE;  // New space is one page.
   if (limit < old_space()->used()) return 0;
@@ -56,7 +55,7 @@ HeapObject* TwoSpaceHeap::allocate(uword size) {
 void TwoSpaceHeap::swap_semi_spaces(SemiSpace& from, SemiSpace& to) {
   water_mark_ = to.top();
   if (old_space()->is_empty() && to.used() < TOIT_PAGE_SIZE / 2) {
-    // Don't start promoting to old space until a the post GC heap size
+    // Don't start promoting to old space until the post GC heap size
     // hits at least half a page.
     water_mark_ = to.single_chunk_start();
   }
