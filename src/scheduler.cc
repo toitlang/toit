@@ -95,6 +95,7 @@ Scheduler::ExitState Scheduler::run_boot_program(Program* program, char** args, 
   ProcessGroup* group = ProcessGroup::create(group_id, program);
   SystemMessage* termination = new_process_message(SystemMessage::TERMINATED, group_id);
   Process* process = _new Process(program, group, termination, args, manager.initial_memory);
+  ASSERT(process);
   manager.dont_auto_free();
   return launch_program(locker, process);
 }
@@ -117,6 +118,7 @@ Scheduler::ExitState Scheduler::run_boot_program(
   Locker locker(_mutex);
   SystemMessage* termination = new_process_message(SystemMessage::TERMINATED, group_id);
   Process* process = _new Process(boot_program, group, termination, system, application, args, manager.initial_memory);
+  ASSERT(process);
   manager.dont_auto_free();
   return launch_program(locker, process);
 }

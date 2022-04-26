@@ -234,7 +234,21 @@ class Space : public LivenessOracle {
     return chunk_list_.first();
   }
 
+  Chunk* remove_chunk() {
+    return chunk_list_.remove_first();
+  }
+
   PageType page_type() { return page_type_; }
+
+  inline void swap(Space& other) {
+    using std::swap;
+    swap(program_, other.program_);
+    swap(chunk_list_, other.chunk_list_);
+    swap(top_, other.top_);
+    swap(limit_, other.limit_);
+    swap(allocation_budget_, other.allocation_budget_);
+    swap(page_type_, other.page_type_);
+  }
 
  protected:
   Space(Program* program, Resizing resizeable, PageType page_type);
@@ -264,6 +278,10 @@ class Space : public LivenessOracle {
 
   PageType page_type_;
 };
+
+inline void swap(Space& a, Space& b) {
+  a.swap(b);
+}
 
 class SemiSpace : public Space {
  public:
@@ -299,11 +317,19 @@ class SemiSpace : public Space {
 
   void process_weak_pointers(SemiSpace* to_space, OldSpace* old_space);
 
+  inline void swap(SemiSpace& other) {
+    static_cast<Space&>(*this).swap(static_cast<Space&>(other));
+  }
+
  private:
   Chunk* allocate_and_use_chunk(uword size);
 
   uword allocate_in_new_chunk(uword size);
 };
+
+inline void swap(SemiSpace& a, SemiSpace& b) {
+  a.swap(b);
+}
 
 class FreeList {
  public:
@@ -507,8 +533,16 @@ class ObjectMemory {
 
   static uword allocated() { return allocated_; }
 
+  static inline Mutex* spare_chunk_mutex() { return spare_chunk_mutex_; }
+
+  static inline Chunk* spare_chunk(Locker& locker) { return spare_chunk_; }
+  static inline void set_spare_chunk(Locker& locker, Chunk* spare_chunk) { spare_chunk_ = spare_chunk; }
+
  private:
   static std::atomic<uword> allocated_;
+
+  static Chunk* spare_chunk_;
+  static Mutex* spare_chunk_mutex_;
 
   friend class SemiSpace;
   friend class Space;
