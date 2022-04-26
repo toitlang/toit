@@ -371,6 +371,7 @@ run_test dot_font:
     YS.do: | y |
       bitmap_zap fb 0
       4.repeat: | orientation |
+        sleep --ms=1
         ax := x + AX_OFF[orientation]
         ay := y + AY_OFF[orientation]
         bitmap_draw_text ax ay 1 orientation "a" dot_font fb 128
