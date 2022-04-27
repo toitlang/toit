@@ -91,7 +91,7 @@ static void start() {
   RtcMemory::set_up();
   FlashRegistry::set_up();
   OS::set_up();
-  GcMetadata::set_up();
+  ObjectMemory::set_up();
 
   // The Toit firmware only supports OTAs if we can find the OTA app partition.
   bool supports_ota = NULL != esp_partition_find_first(

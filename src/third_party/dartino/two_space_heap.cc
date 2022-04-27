@@ -14,37 +14,28 @@
 
 namespace toit {
 
-TwoSpaceHeap::TwoSpaceHeap(Program* program, ObjectHeap* process_heap, Chunk* chunk_1, Chunk* chunk_2)
+TwoSpaceHeap::TwoSpaceHeap(Program* program, ObjectHeap* process_heap, Chunk* chunk)
     : program_(program),
       process_heap_(process_heap),
       old_space_(program, this),
-      semi_space_a_(program, chunk_1),
-      semi_space_b_(program, chunk_2),
-      semi_space_(&semi_space_a_),
-      unused_semi_space_(&semi_space_b_) {
+      semi_space_(program, chunk) {
   semi_space_size_ = TOIT_PAGE_SIZE;
-  max_size_ = 256 * TOIT_PAGE_SIZE;
 }
 
 uword TwoSpaceHeap::max_expansion() {
+  if (!process_heap_->has_max_heap_size()) return UNLIMITED_EXPANSION;
   uword limit = process_heap_->limit();
-  if (limit == 0) return UNLIMITED_EXPANSION;
+  if (limit <= TOIT_PAGE_SIZE) return 0;
+  limit -= TOIT_PAGE_SIZE;  // New space is one page.
   if (limit < old_space()->used()) return 0;
   return old_space()->used() - limit;
 }
 
 bool TwoSpaceHeap::initialize() {
-  Chunk* chunk = ObjectMemory::allocate_chunk(semi_space_, semi_space_size_);
+  Chunk* chunk = ObjectMemory::allocate_chunk(&semi_space_, semi_space_size_);
   if (chunk == NULL) return false;
-  Chunk* unused_chunk =
-      ObjectMemory::allocate_chunk(unused_semi_space_, semi_space_size_);
-  if (unused_chunk == NULL) {
-    ObjectMemory::free_chunk(chunk);
-    return false;
-  }
-  semi_space_->append(chunk);
-  semi_space_->update_base_and_limit(chunk, chunk->start());
-  unused_semi_space_->append(unused_chunk);
+  semi_space_.append(chunk);
+  semi_space_.update_base_and_limit(chunk, chunk->start());
   water_mark_ = chunk->start();
   return true;
 }
@@ -54,24 +45,28 @@ TwoSpaceHeap::~TwoSpaceHeap() {
 }
 
 HeapObject* TwoSpaceHeap::allocate(uword size) {
-  uword result = semi_space_->allocate(size);
+  uword result = semi_space_.allocate(size);
   if (result == 0) {
     return new_space_allocation_failure(size);
   }
   return HeapObject::from_address(result);
 }
 
-void TwoSpaceHeap::swap_semi_spaces() {
-  SemiSpace* temp = semi_space_;
-  semi_space_ = unused_semi_space_;
-  unused_semi_space_ = temp;
-  water_mark_ = semi_space_->top();
-}
-
-SemiSpace* TwoSpaceHeap::take_space() {
-  SemiSpace* result = semi_space_;
-  semi_space_ = NULL;
-  return result;
+void TwoSpaceHeap::swap_semi_spaces(SemiSpace& from, SemiSpace& to) {
+  water_mark_ = to.top();
+  if (old_space()->is_empty() && to.used() < TOIT_PAGE_SIZE / 2) {
+    // Don't start promoting to old space until the post GC heap size
+    // hits at least half a page.
+    water_mark_ = to.single_chunk_start();
+  }
+  if (process_heap_->has_max_heap_size()) {
+    uword limit = process_heap_->limit();
+    if (limit <= TOIT_PAGE_SIZE) {
+      // If we can't expand old space it's faster to not even try.
+      water_mark_ = to.single_chunk_start();
+    }
+  }
+  swap(from, to);
 }
 
 template <class SomeSpace>
@@ -105,12 +100,12 @@ void ScavengeVisitor::do_roots(Object** start, int count) {
         // promote to the to-space instead.
         if (moved_object == NULL) {
           trigger_old_space_gc_ = true;
-          moved_object = clone_into_space(program_, old_object, to_);
+          moved_object = clone_into_space(program_, old_object, &to_);
           *record_ = GcMetadata::NEW_SPACE_POINTERS;
         }
         *p = moved_object;
       } else {
-        *p = clone_into_space(program_, old_object, to_);
+        *p = clone_into_space(program_, old_object, &to_);
         *record_ = GcMetadata::NEW_SPACE_POINTERS;
       }
       ASSERT(*p != NULL);  // In an emergency we can move to to-space.
@@ -149,60 +144,56 @@ void TwoSpaceHeap::collect_new_space() {
   if (Flags::validate_heap) old_space()->verify();
 #endif
 
-  SemiSpace* to = unused_space();
-
   uword old_used = old_space()->used();
+  word from_used;
+  word to_used;
+  bool trigger_old_space_gc;
 
-  // Allocate from start of to-space..
-  to->update_base_and_limit(to->chunk(), to->chunk()->start());
+  {
+    Locker locker(ObjectMemory::spare_chunk_mutex());
+    Chunk* spare_chunk = ObjectMemory::spare_chunk(locker);
 
-  ScavengeVisitor visitor(program_, this);
-  to->start_scavenge();
-  old_space()->start_scavenge();
+    ScavengeVisitor visitor(program_, this, spare_chunk);
+    SemiSpace* to = visitor.to_space();
+    to->start_scavenge();
+    old_space()->start_scavenge();
 
-  process_heap_->iterate_roots(&visitor);
+    process_heap_->iterate_roots(&visitor);
 
-  old_space()->visit_remembered_set(&visitor);
+    old_space()->visit_remembered_set(&visitor);
 
-  bool work_found = true;
-  while (work_found) {
-    work_found = to->complete_scavenge(&visitor);
-    work_found |= old_space()->complete_scavenge(&visitor);
+    visitor.complete_scavenge();
+
+    process_heap_->process_registered_finalizers(&visitor, from);
+
+    visitor.complete_scavenge();
+
+    process_heap_->process_registered_vm_finalizers(&visitor, from);
+
+    visitor.complete_scavenge();
+
+    old_space()->end_scavenge();
+
+    total_bytes_allocated_ -= to->used();
+
+    from_used = from->used();
+    to_used = to->used();
+    trigger_old_space_gc = visitor.trigger_old_space_gc();
+
+    Chunk* spare_chunk_after = from->remove_chunk();
+
+    ObjectMemory::set_spare_chunk(locker, spare_chunk_after);
+
+    swap_semi_spaces(*from, *to);
   }
-
-  process_heap_->process_registered_finalizers(&visitor, from);
-
-  work_found = true;
-  while (work_found) {
-    work_found = to->complete_scavenge(&visitor);
-    work_found |= old_space()->complete_scavenge(&visitor);
-  }
-
-  process_heap_->process_registered_vm_finalizers(&visitor, from);
-
-  work_found = true;
-  while (work_found) {
-    work_found = to->complete_scavenge(&visitor);
-    work_found |= old_space()->complete_scavenge(&visitor);
-  }
-
-  old_space()->end_scavenge();
-
-  total_bytes_allocated_ -= to->used();
-
-  // Second space argument is used to size the new-space.
-  swap_semi_spaces();
-
-#ifdef DEBUG
-  if (Flags::validate_heap) old_space()->verify();
-#endif
 
   if (Flags::tracegc) {
     uint64 end = OS::get_monotonic_time();
-    int f = from->used();
-    int t = to->used();
+    int f = from_used;
+    int t = to_used;
     int old = old_space()->used();
-    printf("Scavenge: %d%c->%d%c (old-gen %d%c) %dus\n",
+    printf("%p Scavenge: %d%c->%d%c (old-gen %d%c) %dus\n",
+        process_heap_->owner(),
         (f >> 10) ? (f >> 10) : f,
         (f >> 10) ? 'k' : 'b',
         (t >> 10) ? (t >> 10) : t,
@@ -212,9 +203,9 @@ void TwoSpaceHeap::collect_new_space() {
         static_cast<int>(end - start));
   }
 
-  ASSERT(from->used() >= to->used());
+  ASSERT(from_used >= to_used);
   // Find out how much garbage was found.
-  word progress = (from->used() - to->used()) - (old_space()->used() - old_used);
+  word progress = (from_used - to_used) - (old_space()->used() - old_used);
   // There's a little overhead when allocating in old space which was not there
   // in new space, so we might overstate the number of promoted bytes a little,
   // which could result in an understatement of the garbage found, even to make
@@ -222,7 +213,12 @@ void TwoSpaceHeap::collect_new_space() {
   if (progress > 0) {
     old_space()->report_new_space_progress(progress);
   }
-  collect_old_space_if_needed(visitor.trigger_old_space_gc());
+
+#ifdef DEBUG
+  if (Flags::validate_heap) old_space()->verify();
+#endif
+
+  collect_old_space_if_needed(trigger_old_space_gc);
 }
 
 uword TwoSpaceHeap::total_bytes_allocated() {
@@ -261,7 +257,8 @@ void TwoSpaceHeap::collect_old_space() {
     uint64 end = OS::get_monotonic_time();
     int f = old_size;
     int t = old_space()->used();
-    printf("Mark-sweep%s: %d%c->%d%c, %dus\n",
+    printf("%p Mark-sweep%s: %d%c->%d%c, %dus\n",
+        process_heap_->owner(),
         compacted ? "-compact" : "",
         (f >> 10) ? (f >> 10) : f,
         (f >> 10) ? 'k' : 'b',
@@ -408,8 +405,7 @@ void TwoSpaceHeap::compact_heap() {
 
 #ifdef DEBUG
 void TwoSpaceHeap::find(uword word) {
-  semi_space_->find(word, "data semi_space");
-  unused_semi_space_->find(word, "unused semi_space");
+  semi_space_.find(word, "data semi_space");
   old_space_.find(word, "oldspace");
 #ifdef DARTINO_TARGET_OS_LINUX
   FILE* fp = fopen("/proc/self/maps", "r");

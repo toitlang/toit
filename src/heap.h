@@ -35,30 +35,17 @@ class ObjectNotifier;
 #ifdef LEGACY_GC
 typedef Block InitialMemory;
 #else
-struct InitialMemory {
-  Chunk* chunk_1;
-  Chunk* chunk_2;
-};
+typedef Chunk InitialMemory;
 #endif
 
 // A class that uses a RAII destructor to free memory already
 // allocated if a later alllocation fails.
 class InitialMemoryManager {
  public:
-#ifdef LEGACY_GC
-  Block* initial_memory = null;
-#else
-  InitialMemory* initial_memory = &chunks;
-  InitialMemory chunks = {null, null};
-#endif
+  InitialMemory* initial_memory = null;
 
   void dont_auto_free() {
-#ifdef LEGACY_GC
     initial_memory = null;
-#else
-    chunks.chunk_1 = null;
-    chunks.chunk_2 = null;
-#endif
   }
 
   // Allocates initial pages for heap.  Returns success.

@@ -115,7 +115,7 @@ int main(int argc, char **argv) {
 
   FlashRegistry::set_up();
   OS::set_up();
-  GcMetadata::set_up();
+  ObjectMemory::set_up();
 
   int exit_state = 0;
   char* boot_bundle_path = null;

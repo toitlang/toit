@@ -308,6 +308,10 @@ The given $max_returned_bytes specifies the maximum byte size of the returned
   signals. The $max_returned_bytes must be smaller than the configured RX
   buffer size for the $rx channel.
 
+If $max_returned_bytes is not sufficient to store all received signals, then the
+  result is truncated. If it is important to detect this condition, then the user should
+  set $max_returned_bytes to a value greater than the maximum expected signal byte size.
+
 The $rx channel must be configured for receiving (see $Channel.config_rx).
 
 The $tx channel must be configured for transmitting (see $Channel.config_tx).

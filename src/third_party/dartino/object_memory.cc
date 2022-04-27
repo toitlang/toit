@@ -9,8 +9,6 @@
 
 #include "../../top.h"
 
-#ifndef LEGACY_GC
-
 #include "../../objects.h"
 #include "../../os.h"
 #include "../../utils.h"
@@ -18,6 +16,8 @@
 #include "mark_sweep.h"
 
 namespace toit {
+
+#ifndef LEGACY_GC
 
 Chunk::Chunk(Space* owner, uword start, uword size, bool external)
       : owner_(owner),
@@ -157,19 +157,6 @@ void Space::iterate_objects(HeapObjectVisitor* visitor) {
   }
 }
 
-void SemiSpace::complete_scavenge(RootCallback* visitor) {
-  flush();
-  for (auto chunk : chunk_list_) {
-    uword current = chunk->start();
-    while (!has_sentinel_at(current)) {
-      HeapObject* object = HeapObject::from_address(current);
-      object->roots_do(program_, visitor);
-      current += object->size(program_);
-      flush();
-    }
-  }
-}
-
 void Space::clear_mark_bits() {
   flush();
   for (auto chunk : chunk_list_) GcMetadata::clear_mark_bits_for(chunk);
@@ -214,11 +201,8 @@ void Space::find(uword w, const char* name) {
 #endif
 
 std::atomic<uword> ObjectMemory::allocated_;
-
-void ObjectMemory::set_up() {
-  allocated_ = 0;
-  GcMetadata::set_up();
-}
+Chunk* ObjectMemory::spare_chunk_ = null;
+Mutex* ObjectMemory::spare_chunk_mutex_ = null;
 
 void ObjectMemory::tear_down() {
   GcMetadata::tear_down();
@@ -289,6 +273,20 @@ void ObjectMemory::free_chunk(Chunk* chunk) {
   delete chunk;
 }
 
-}  // namespace toit
+void ObjectMemory::set_up() {
+  allocated_ = 0;
+  GcMetadata::set_up();
+  spare_chunk_ = allocate_chunk(null, TOIT_PAGE_SIZE);
+  if (!spare_chunk_) FATAL("Can't allocate initial spare chunk");
+  spare_chunk_mutex_ = OS::allocate_mutex(6, "Spare memory chunk");
+}
+
+#else  // LEGACY_GC
+
+void ObjectMemory::set_up() {
+  GcMetadata::set_up();
+}
 
 #endif  // LEGACY_GC
+
+}  // namespace toit
