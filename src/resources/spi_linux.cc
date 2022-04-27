@@ -25,23 +25,7 @@
 
 namespace toit {
 
-MODULE_IMPLEMENTATION(spi, MODULE_SPI);
-
-PRIMITIVE(init) {
-  UNIMPLEMENTED_PRIMITIVE;
-}
-
-PRIMITIVE(close) {
-  UNIMPLEMENTED_PRIMITIVE;
-}
-
-PRIMITIVE(device) {
-  UNIMPLEMENTED_PRIMITIVE;
-}
-
-PRIMITIVE(device_close) {
-  UNIMPLEMENTED_PRIMITIVE;
-}
+MODULE_IMPLEMENTATION(spi_linux, MODULE_SPI_LINUX);
 
 PRIMITIVE(transfer) {
   ARGS(int, fd, int, length, Object, tx, int, from_tx, Object, rx, int, from_rx, int, delay_usecs, bool, cs_change);
