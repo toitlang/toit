@@ -62,12 +62,7 @@ void SystemMessage::free_data_and_externals() {
 MessageEncoder::MessageEncoder(Process* process, uint8* buffer)
     : _process(process)
     , _program(process ? process->program() : null)
-    , _buffer(buffer)
-    , _cursor(0)
-    , _nesting(0)
-    , _malloc_failed(false)
-    , _copied_count(0)
-    , _externals_count(0) {
+    , _buffer(buffer) {
 }
 
 void MessageEncoder::encode_termination_message(uint8* buffer, uint8 value) {
@@ -258,14 +253,11 @@ void MessageEncoder::write_uint64(uint64 value) {
 MessageDecoder::MessageDecoder(Process* process, uint8* buffer)
     : _process(process)
     , _program(process ? process->program() : null)
-    , _buffer(buffer)
-    , _cursor(0)
-    , _allocation_failed(false)
-    , _externals_count(0) {
+    , _buffer(buffer) {
 }
 
 bool MessageDecoder::decode_termination_message(uint8* buffer, int* value) {
-  MessageDecoder decoder(null, buffer);
+  MessageDecoder decoder(buffer);
   // TODO(kasper): Make this more robust. We don't know the content.
   Object* object = decoder.decode();
   if (object->is_smi()) {

@@ -134,18 +134,18 @@ class MessageEncoder {
   bool encode(Object* object);
 
  private:
-  Process* _process;
-  Program* _program;
+  Process* _process = null;
+  Program* _program = null;
   uint8* _buffer;  // The buffer is null when we're encoding for size.
-  int _cursor;
-  int _nesting;
+  int _cursor = 0;
+  int _nesting = 0;
 
-  bool _malloc_failed;
+  bool _malloc_failed = false;
 
-  unsigned _copied_count;
+  unsigned _copied_count = 0;
   void* _copied[MESSAGING_ENCODING_MAX_EXTERNALS];
 
-  unsigned _externals_count;
+  unsigned _externals_count = 0;
   ByteArray* _externals[MESSAGING_ENCODING_MAX_EXTERNALS];
 
   bool encoding_for_size() const { return _buffer == null; }
@@ -185,14 +185,14 @@ class MessageDecoder {
   static void deallocate(uint8* buffer);
 
  private:
-  Process* _process;
-  Program* _program;
+  Process* _process = null;
+  Program* _program = null;
   uint8* _buffer;
-  int _cursor;
+  int _cursor = 0;
 
-  bool _allocation_failed;
+  bool _allocation_failed = false;
 
-  unsigned _externals_count;
+  unsigned _externals_count = 0;
   HeapObject* _externals[MESSAGING_ENCODING_MAX_EXTERNALS];
   word _externals_sizes[MESSAGING_ENCODING_MAX_EXTERNALS];
 
