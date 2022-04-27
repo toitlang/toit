@@ -287,7 +287,7 @@ print_for_manually_decoding_ message/ByteArray --from=0 --to=message.size:
   BLOCK_SIZE := 1500
   for i := from; i < to; i += BLOCK_SIZE:
     end := i >= to - BLOCK_SIZE
-    prefix := i == from ? "build/host/sdk/bin/toit.run tools/system_message.toit <SNAPSHOT> -b " : ""
+    prefix := i == from ? "build/host/sdk/bin/toit.run tools/system_message.toit \"\$SNAPSHOT\" -b " : ""
     base64_text := base64.encode message[i..(end ? to : i + BLOCK_SIZE)]
     postfix := end ? "" : "\\"
     print_ "$prefix$base64_text$postfix"
