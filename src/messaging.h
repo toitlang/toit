@@ -167,6 +167,7 @@ class MessageEncoder {
 
 class MessageDecoder {
  public:
+  explicit MessageDecoder(uint8* buffer) : _buffer(buffer) { }
   MessageDecoder(Process* process, uint8* buffer);
 
   static bool decode_termination_message(uint8* buffer, int* value);
