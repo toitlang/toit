@@ -27,7 +27,7 @@
 #endif
 
 // Use semispace non-generational GC.
-#define LEGACY_GC 1
+//#define LEGACY_GC 1
 
 // Support for profiling configuration
 #if defined(PROF)
@@ -203,7 +203,7 @@ static_assert(sizeof(word) == 4, "invalid type size");
 // Please use _new at allocation point to ensure proper tracking of memory usage.
 // This also ensures that we call the nothrow version of new, which can handle an
 // allocation failure (returns null instead of calling the constructor).
-#ifdef DEBUG
+#ifdef DEBUGdfjlsdkjfls
 #define malloc(size) toit::tracing_malloc(size, __FILE__, __LINE__)
 #define realloc(ptr, size) toit::tracing_realloc(ptr, size, __FILE__, __LINE__)
 #define free(p) toit::tracing_free(p, __FILE__, __LINE__)
@@ -240,7 +240,7 @@ class NewMarker	{
 void trace_new(void* p, const NewMarker& record, char const* name);
 
 template <class T> inline T* operator*(const NewMarker& mark, T* p) {
-  trace_new(p, mark, typeid(T).name());
+  //trace_new(p, mark, typeid(T).name());
   return p;
 }
 #endif

@@ -25,7 +25,7 @@ set(CMAKE_CXX_COMPILER xtensa-esp32-elf-g++)
 set(CMAKE_C_COMPILER_WORKS 1)
 set(CMAKE_CXX_COMPILER_WORKS 1)
 
-set(CMAKE_C_FLAGS "-mlongcalls -DESP32 -DDEPLOY=1 -D__FREERTOS__=1 -Wno-sign-compare" CACHE STRING "c flags")
+set(CMAKE_C_FLAGS "-mlongcalls -DESP32 -DDEBUG=1 -D__FREERTOS__=1 -Wno-sign-compare" CACHE STRING "c flags")
 set(CMAKE_CXX_FLAGS "${CMAKE_C_FLAGS} -DRAW=1 -fno-rtti" CACHE STRING "c++ flags")
 
 set(CMAKE_C_FLAGS_DEBUG "-O0 -g" CACHE STRING "c Debug flags")

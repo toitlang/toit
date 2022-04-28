@@ -279,6 +279,7 @@ bool TwoSpaceHeap::perform_garbage_collection() {
   MarkingStack stack(program_);
   MarkingVisitor marking_visitor(new_space, &stack);
 
+  new_space->clear_mark_bits();
   new_space->assert_mark_bits_clear();
   old_space()->assert_mark_bits_clear();
 
@@ -317,8 +318,6 @@ bool TwoSpaceHeap::perform_garbage_collection() {
 }
 
 void TwoSpaceHeap::sweep_heap() {
-  SemiSpace* new_space = space();
-
   old_space()->set_compacting(false);
 
   old_space()->process_weak_pointers();
@@ -326,10 +325,6 @@ void TwoSpaceHeap::sweep_heap() {
   // Sweep over the old-space and rebuild the freelist.
   SweepingVisitor sweeping_visitor(program_, old_space());
   old_space()->iterate_objects(&sweeping_visitor);
-
-  // These are only needed during the mark phase, we can clear them without
-  // looking at them.
-  new_space->clear_mark_bits();
 
   uword used_after = sweeping_visitor.used();
   old_space()->set_used(used_after);
@@ -391,7 +386,6 @@ void TwoSpaceHeap::compact_heap() {
   process_heap_->process_registered_finalizers(&fix, &yes);
   process_heap_->process_registered_vm_finalizers(&fix, &yes);
 
-  new_space->clear_mark_bits();
   old_space()->clear_mark_bits();
   old_space()->mark_chunk_ends_free();
 }

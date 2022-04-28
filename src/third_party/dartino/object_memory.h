@@ -179,6 +179,7 @@ class Space : public LivenessOracle {
   void iterate_overflowed_objects(RootCallback* visitor, MarkingStack* stack);
 
   void assert_mark_bits_clear();
+  void initialize_metadata();
 
   // Returns true if the address is inside this space.  Not particularly fast.
   // See GcMetadata::PageType for a faster possibility.
@@ -252,6 +253,8 @@ class Space : public LivenessOracle {
     swap(limit_, other.limit_);
     swap(allocation_budget_, other.allocation_budget_);
     swap(page_type_, other.page_type_);
+    for (auto chunk : chunk_list_) chunk->set_owner(this);
+    for (auto chunk : other.chunk_list_) chunk->set_owner(&other);
   }
 
  protected:

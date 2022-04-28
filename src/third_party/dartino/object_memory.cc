@@ -171,7 +171,9 @@ void Space::assert_mark_bits_clear() {
 
 void Space::clear_mark_bits() {
   flush();
-  for (auto chunk : chunk_list_) GcMetadata::clear_mark_bits_for(chunk);
+  for (auto chunk : chunk_list_) {
+    chunk->initialize_metadata();
+  }
 }
 
 bool Space::includes(uword address) {
@@ -275,7 +277,7 @@ Chunk* ObjectMemory::allocate_chunk(Space* owner, uword size) {
 void Chunk::set_owner(Space* value) {
   owner_ = value;
   GcMetadata::mark_pages_for_chunk(this, value->page_type());
-  initialize_metadata();
+  //initialize_metadata();
 }
 
 void Chunk::initialize_metadata() const {
