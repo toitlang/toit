@@ -124,7 +124,6 @@ class TwoSpaceHeap {
   OldSpace old_space_;
   SemiSpace semi_space_;
   uword water_mark_;
-  uword max_size_;
   uword semi_space_size_;
   uword total_bytes_allocated_ = 0;
 };

@@ -6,3 +6,4 @@ import expect show *
 
 main args:
   expect_list_equals ["foo", "bar", "gee"] args
+  expect_equals "[foo, bar, gee]" args.stringify
