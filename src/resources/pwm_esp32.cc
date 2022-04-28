@@ -27,10 +27,10 @@
 #include "../vm.h"
 
 
-#ifdef CONFIG_IDF_TARGET_ESP32C3
-    #define SPEED_MODE LEDC_LOW_SPEED_MODE
-#else
+#if SOC_LEDC_SUPPORT_HS_MODE
     #define SPEED_MODE LEDC_HIGH_SPEED_MODE
+#else
+    #define SPEED_MODE LEDC_LOW_SPEED_MODE
 #endif
 
 namespace toit {
@@ -53,16 +53,16 @@ ResourcePool<ledc_channel_t, kInvalidLedcChannel> ledc_channels(
     LEDC_CHANNEL_2,
     LEDC_CHANNEL_3,
     LEDC_CHANNEL_4,
-#ifndef CONFIG_IDF_TARGET_ESP32C3
-    LEDC_CHANNEL_5,
+    LEDC_CHANNEL_5
+#if SOC_LEDC_CHANNEL_NUM > 6
+    ,
     LEDC_CHANNEL_6,
     LEDC_CHANNEL_7
-#else
-    LEDC_CHANNEL_5
 #endif
 );
 
 const uint32_t kMaxFrequencyBits = 26;
+const uint32_t kMaxFrequency = 40000000;  // 40MHz with duty resolution of 1 bit.
 
 class PWMResource : public Resource {
  public:
@@ -113,29 +113,37 @@ uint32 msb(uint32 n){
 MODULE_IMPLEMENTATION(pwm, MODULE_PWM)
 
 PRIMITIVE(init) {
-  ARGS(int64, frequency)
+  ARGS(int, frequency, int, max_frequency)
 
-  if (frequency <= 0 || frequency > 40000000) OUT_OF_BOUNDS;
+  if (frequency <= 0 || frequency > max_frequency || max_frequency > kMaxFrequency) OUT_OF_BOUNDS;
 
-  uint32 bits = msb(frequency << 1);
+  uint32 bits = msb(max_frequency << 1);
   uint32 resolution_bits = kMaxFrequencyBits - bits;
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;
 
   ledc_timer_t timer = ledc_timers.any();
-  if (timer == kInvalidLedcTimer) OUT_OF_RANGE;
+  if (timer == kInvalidLedcTimer) ALREADY_IN_USE;
 
   ledc_timer_config_t config = {
     .speed_mode = SPEED_MODE,
     .duty_resolution = (ledc_timer_bit_t)resolution_bits,
     .timer_num = timer,
-    .freq_hz = uint32(frequency),
+    // Start with the max_frequency, so that the clocks are correctly chosen.
+    .freq_hz = static_cast<uint32>(max_frequency),
     .clk_cfg = LEDC_AUTO_CLK,
   };
 
   esp_err_t err = ledc_timer_config(&config);
   if (err != ESP_OK) {
+    ledc_timers.put(timer);
+    return Primitive::os_error(err, process);
+  }
+
+  err = ledc_set_freq(SPEED_MODE, timer, frequency);
+  if (err != ESP_OK) {
+    ledc_timer_rst(SPEED_MODE, timer);
     ledc_timers.put(timer);
     return Primitive::os_error(err, process);
   }
@@ -225,6 +233,30 @@ PRIMITIVE(set_factor) {
 
   err = ledc_update_duty(SPEED_MODE, resource->channel());
   if (err != ESP_OK) {
+    return Primitive::os_error(err, process);
+  }
+
+  return process->program()->null_object();
+}
+
+PRIMITIVE(frequency) {
+  ARGS(PWMResourceGroup, resource_group);
+
+  uint32 frequency = ledc_get_freq(SPEED_MODE, resource_group->timer());
+  if (frequency == 0) OTHER_ERROR;
+
+  ASSERT(frequency <= kMaxFrequency);
+  return Smi::from(static_cast<word>(frequency));
+}
+
+PRIMITIVE(set_frequency) {
+  ARGS(PWMResourceGroup, resource_group, int, frequency);
+
+  if (frequency <= 0 || frequency > kMaxFrequency) OUT_OF_BOUNDS;
+
+  esp_err_t err = ledc_set_freq(SPEED_MODE, resource_group->timer(), static_cast<uint32>(frequency));
+  if (err != ESP_OK) {
+    // This can happen if the max frequency for this timer was set too low or too high.
     return Primitive::os_error(err, process);
   }
 
