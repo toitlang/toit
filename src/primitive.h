@@ -474,11 +474,13 @@ namespace toit {
   PRIMITIVE(close, 1)                       \
 
 #define MODULE_PWM(PRIMITIVE)                \
-  PRIMITIVE(init, 1)                         \
+  PRIMITIVE(init, 2)                         \
   PRIMITIVE(close, 1)                        \
   PRIMITIVE(start, 3)                        \
   PRIMITIVE(factor, 2)                       \
   PRIMITIVE(set_factor, 3)                   \
+  PRIMITIVE(frequency, 1)                    \
+  PRIMITIVE(set_frequency, 2)                \
   PRIMITIVE(close_channel, 2)                \
 
 #define MODULE_PROGRAMS_REGISTRY(PRIMITIVE)  \

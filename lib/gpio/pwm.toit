@@ -74,8 +74,33 @@ The PWM instance controls a timer configured at the given frequency. All
 class Pwm:
   pwm_ := ?
 
-  constructor --frequency/int:
-    pwm_ = pwm_init_ frequency
+  /**
+  Constructs the PWM generator with the given $frequency and $max_frequency.
+
+  The resolution of the PWM is dependent on the max frequency. The higher it is
+    the less resolution there is.
+
+  The frequency of the PWM must lie within a certain factor of the max frequency.
+    For example, given a $max_frequency of 10KHz, the lowest frequency that is
+    accepted is 20Hz.
+
+  The $max_frequency is limited to 40MHz.
+  The lowest acceptable frequency is 1Hz.
+
+  # Advanced
+  On the ESP32, the duty resolution is computed as follows:
+  ```
+  uint32 bits = msb(max_frequency << 1);
+  uint32 resolution_bits = kMaxFrequencyBits - bits;
+  duty_resolution = (ledc_timer_bit_t)resolution_bits,
+  ```
+  This provides the highest duty resolution for the given max frequency.
+
+  See https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/peripherals/ledc.html#supported-range-of-frequency-and-duty-resolutions
+    for the limitations of the frequency with respect to the duty resolution.
+  */
+  constructor --frequency/int --max_frequency/int=frequency:
+    pwm_ = pwm_init_ frequency max_frequency
 
   /**
   Starts a new $PwmChannel on the provided pin. The channel is started,
@@ -88,6 +113,21 @@ class Pwm:
   start pin/Pin --duty_factor/num=0.0 -> PwmChannel:
     channel := pwm_start_ pwm_ pin.num duty_factor.to_float
     return PwmChannel.from_pwm_ this channel
+
+  /** The frequency of this PWM. */
+  frequency -> int:
+    return pwm_frequency_ pwm_
+
+  /**
+  Sets the frequency of the PWM.
+
+  The $value parameter must be lower than the max frequency that was used
+    during construction of this instance.
+
+  It may not be too far below the max frequency, either.
+  */
+  frequency= value/int:
+    pwm_set_frequency_ pwm_ value
 
   /**
   Closes the instance and all channels associated with it.
@@ -133,7 +173,7 @@ class PwmChannel:
     pwm_close_channel_ pwm_.pwm_ channel_
     channel_ = null
 
-pwm_init_ frequency:
+pwm_init_ frequency max_frequency:
   #primitive.pwm.init
 
 pwm_close_ pwm:
@@ -147,6 +187,12 @@ pwm_factor_ pwm channel:
 
 pwm_set_factor_ pwm channel factor:
   #primitive.pwm.set_factor
+
+pwm_frequency_ pwm:
+  #primitive.pwm.frequency
+
+pwm_set_frequency_ pwm frequency:
+  #primitive.pwm.set_frequency
 
 pwm_close_channel_ pwm channel:
   #primitive.pwm.close_channel
