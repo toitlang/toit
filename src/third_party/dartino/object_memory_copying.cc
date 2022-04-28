@@ -24,9 +24,6 @@ static void write_sentinel_at(uword address) {
 
 Space::Space(Program* program, Space::Resizing resizeable, PageType page_type)
     : program_(program),
-      top_(0),
-      limit_(0),
-      allocation_budget_(0),
       page_type_(page_type) {}
 
 SemiSpace::SemiSpace(Program* program, Chunk* chunk)
@@ -35,6 +32,8 @@ SemiSpace::SemiSpace(Program* program, Chunk* chunk)
   ASSERT(chunk);
   append(chunk);
   update_base_and_limit(chunk, chunk->start());
+  GcMetadata::initialize_starts_for_chunk(chunk);
+  GcMetadata::clear_mark_bits_for(chunk);
 }
 
 bool SemiSpace::is_flushed() {

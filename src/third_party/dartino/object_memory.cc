@@ -27,6 +27,10 @@ Chunk::Chunk(Space* owner, uword start, uword size, bool external)
         scavenge_pointer_(start_) {
   if (GcMetadata::in_metadata_range(start)) {
     GcMetadata::initialize_overflow_bits_for_chunk(this);
+    GcMetadata::initialize_starts_for_chunk(this);
+    GcMetadata::initialize_remembered_set_for_chunk(this);
+  } else {
+    FATAL("Not in metadata range: %p\n", (void*)start);
   }
 }
 
@@ -155,6 +159,18 @@ void Space::iterate_objects(HeapObjectVisitor* visitor) {
     }
     visitor->chunk_end(chunk, current);
   }
+}
+
+void Space::assert_mark_bits_clear() {
+#ifdef DEBUG
+  for (auto chunk : chunk_list_) {
+    uint32* bits = GcMetadata::mark_bits_for(chunk->start());
+    uint32* bits_end = GcMetadata::mark_bits_for(chunk->start() + chunk->size());
+    for (uint32* b = bits; b < bits_end; b++) {
+      ASSERT(*b == 0);
+    }
+  }
+#endif
 }
 
 void Space::clear_mark_bits() {
