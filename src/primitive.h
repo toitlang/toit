@@ -36,6 +36,7 @@ namespace toit {
   M(i2c,     MODULE_I2C)                     \
   M(i2s,     MODULE_I2S)                     \
   M(spi,     MODULE_SPI)                     \
+  M(spi_linux, MODULE_SPI_LINUX)             \
   M(uart,    MODULE_UART)                    \
   M(crypto,  MODULE_CRYPTO)                  \
   M(encoding,MODULE_ENCODING)                \
@@ -357,6 +358,9 @@ namespace toit {
   PRIMITIVE(close, 1)                        \
   PRIMITIVE(device, 7)                       \
   PRIMITIVE(device_close, 2)                 \
+  PRIMITIVE(transfer, 8)                     \
+
+#define MODULE_SPI_LINUX(PRIMITIVE)          \
   PRIMITIVE(transfer, 8)                     \
 
 #define MODULE_UART(PRIMITIVE)               \
