@@ -75,7 +75,7 @@ bool OS::use_virtual_memory(void* addr, uword sz) {
   // Calls to use_virtual_memory are rounded up by one due to the single-word
   // object problem, but we don't want to poison data belonging to the next
   // page's metadata.
-  if (sz != 0) memset(addr, 0xc1, sz - 1);
+  memset(addr, 0xc1, sz - 1);
 #endif
   if (result == 0) return true;
   if (errno == ENOMEM) return false;

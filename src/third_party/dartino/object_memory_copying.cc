@@ -29,11 +29,9 @@ Space::Space(Program* program, Space::Resizing resizeable, PageType page_type)
 SemiSpace::SemiSpace(Program* program, Chunk* chunk)
     : Space(program, CANNOT_RESIZE, NEW_SPACE_PAGE) {
   if (!chunk) return;
-  ASSERT(chunk);
   append(chunk);
   update_base_and_limit(chunk, chunk->start());
-  GcMetadata::initialize_starts_for_chunk(chunk);
-  GcMetadata::clear_mark_bits_for(chunk);
+  chunk->set_owner(this);
 }
 
 bool SemiSpace::is_flushed() {

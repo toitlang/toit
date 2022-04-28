@@ -90,6 +90,8 @@ class Chunk : public ChunkList::Element {
   }
   uword scavenge_pointer() const { return scavenge_pointer_; }
 
+  void initialize_metadata() const;
+
 #ifdef DEBUG
   // Fill the space with garbage.
   void scramble();
