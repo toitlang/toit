@@ -206,7 +206,7 @@ build/$(ESP32_CHIP)/programs.bin: build/$(ESP32_CHIP)/program.snapshot tools
 build/$(ESP32_CHIP)/CMakeCache.txt:
 	mkdir -p build/$(ESP32_CHIP)
 	touch build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s
-	(cd build/$(ESP32_CHIP) && IMAGE=build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s cmake ../../ -G Ninja -DTOITC=$(TOITC_BIN) -DTOITPKG=$(TOITPKG_BIN) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DCMAKE_TOOLCHAIN_FILE=../../toolchains/$(ESP32_CHIP)/$(ESP32_CHIP).cmake --no-warn-unused-cli)
+	(cd build/$(ESP32_CHIP) && cmake ../../ -G Ninja -DTOIT_IMAGE=build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s -DTOITC=$(TOITC_BIN) -DTOITPKG=$(TOITPKG_BIN) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DCMAKE_TOOLCHAIN_FILE=../../toolchains/$(ESP32_CHIP)/$(ESP32_CHIP).cmake --no-warn-unused-cli)
 
 build/$(ESP32_CHIP)/include/sdkconfig.h:
 	mkdir -p build/$(ESP32_CHIP)

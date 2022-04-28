@@ -175,13 +175,13 @@ endif()
 #ifdef IMAGE
 enable_language(C ASM)
 
-get_filename_component(TOIT_IMAGE "$ENV{IMAGE}" REALPATH BASE_DIR "${CMAKE_SOURCE_DIR}")
+get_filename_component(ABS_TOIT_IMAGE "${TOIT_IMAGE}" REALPATH BASE_DIR "${CMAKE_SOURCE_DIR}")
 
 add_library(
   toit_image
   STATIC
   EXCLUDE_FROM_ALL
-  ${TOIT_IMAGE}
+  ${ABS_TOIT_IMAGE}
 )
 
 set_target_properties(toit_image PROPERTIES LINKER_LANGUAGE ASM)
