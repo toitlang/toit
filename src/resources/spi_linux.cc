@@ -20,12 +20,26 @@
 #include "../primitive.h"
 #include "../process.h"
 
+#include <fcntl.h>
+#include <errno.h>
 #include <sys/ioctl.h>
 #include <linux/spi/spidev.h>
 
 namespace toit {
 
+// Defined in primitive_file_posix.cc.
+extern Object* return_open_error(Process* process, int err);
+
 MODULE_IMPLEMENTATION(spi_linux, MODULE_SPI_LINUX);
+
+PRIMITIVE(open) {
+  ARGS(cstring, pathname);
+  // We always set the close-on-exec flag otherwise we leak descriptors when we fork.
+  // File descriptors that are intended for subprocesses have the flags cleared.
+  int fd = open(pathname, O_CLOEXEC | O_RDWR);
+  if (fd < 0) return return_open_error(process, errno);
+  return Smi::from(fd);
+}
 
 PRIMITIVE(transfer) {
   ARGS(int, fd, int, length, Object, tx, int, from_tx, Object, rx, int, from_rx, int, delay_usecs, bool, cs_change);

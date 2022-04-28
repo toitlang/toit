@@ -371,6 +371,7 @@ namespace toit {
   PRIMITIVE(transfer, 8)                     \
 
 #define MODULE_SPI_LINUX(PRIMITIVE)          \
+  PRIMITIVE(open, 1)                         \
   PRIMITIVE(transfer, 8)                     \
 
 #define MODULE_UART(PRIMITIVE)               \
