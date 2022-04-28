@@ -13,6 +13,9 @@
 
 namespace toit {
 
+#undef ASSERT
+#define ASSERT(cond) if (!(cond)) { toit::fail(__FILE__, __LINE__, "assertion failure, %s.", #cond); }
+
 GcMetadata GcMetadata::singleton_;
 
 void GcMetadata::tear_down() {

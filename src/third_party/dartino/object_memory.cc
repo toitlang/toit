@@ -19,6 +19,9 @@ namespace toit {
 
 #ifndef LEGACY_GC
 
+#undef ASSERT
+#define ASSERT(cond) if (!(cond)) { toit::fail(__FILE__, __LINE__, "assertion failure, %s.", #cond); }
+
 Chunk::Chunk(Space* owner, uword start, uword size, bool external)
       : owner_(owner),
         start_(start),
@@ -162,15 +165,13 @@ void Space::iterate_objects(HeapObjectVisitor* visitor) {
 }
 
 void Space::assert_mark_bits_clear() {
-#ifdef DEBUG
   for (auto chunk : chunk_list_) {
     uint32* bits = GcMetadata::mark_bits_for(chunk->start());
     uint32* bits_end = GcMetadata::mark_bits_for(chunk->start() + chunk->size());
     for (uint32* b = bits; b < bits_end; b++) {
-      ASSERT(*b == 0);
+      if (*b) FATAL("Mark bits not clear");
     }
   }
-#endif
 }
 
 void Space::clear_mark_bits() {
@@ -178,13 +179,23 @@ void Space::clear_mark_bits() {
   for (auto chunk : chunk_list_) GcMetadata::clear_mark_bits_for(chunk);
 }
 
+void SemiSpace::prepare_metadata_for_mark_sweep() {
+  flush();
+  for (auto chunk : chunk_list_) {
+    GcMetadata::clear_mark_bits_for(chunk);
+    // Starts in new-space are only used for mark stack overflows,
+    // not for the remembered set.  The mark stack overflow sets the
+    // object start for the cards it needs.
+    GcMetadata::initialize_starts_for_chunk(chunk);
+    GcMetadata::initialize_overflow_bits_for_chunk(chunk);
+  }
+}
+
 bool Space::includes(uword address) {
   for (auto chunk : chunk_list_)
     if (chunk->includes(address)) return true;
   return false;
 }
-
-#ifdef DEBUG
 
 class InSpaceVisitor : public RootCallback {
  public:
@@ -211,6 +222,7 @@ bool HeapObject::contains_pointers_to(Program* program, Space* space) {
   return visitor.in_space;
 }
 
+#ifdef DEBUG
 void Space::find(uword w, const char* name) {
   for (auto chunk : chunk_list_) chunk->find(w, name);
 }

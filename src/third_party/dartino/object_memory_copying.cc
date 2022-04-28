@@ -15,6 +15,8 @@
 
 namespace toit {
 
+#undef ASSERT
+#define ASSERT(cond) if (!(cond)) { toit::fail(__FILE__, __LINE__, "assertion failure, %s.", #cond); }
 class Program;
 
 static void write_sentinel_at(uword address) {

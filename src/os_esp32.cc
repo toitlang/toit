@@ -374,6 +374,7 @@ void OS::ungrab_virtual_memory(void* address, uword size) {
 }
 
 bool OS::use_virtual_memory(void* address, uword size) {
+  if (size != 0) memset(address, 0xc1, size - 1);
   return true;
 }
 

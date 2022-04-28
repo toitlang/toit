@@ -298,6 +298,8 @@ class SemiSpace : public Space {
   // flush will make the current chunk consistent for iteration.
   virtual void flush();
 
+  void prepare_metadata_for_mark_sweep();
+
   bool is_flushed();
 
   void trigger_gc_soon() { limit_ = top_ + SENTINEL_SIZE; }
@@ -478,9 +480,7 @@ class OldSpace : public Space {
 
   void compute_compaction_destinations();
 
-#ifdef DEBUG
   void verify();
-#endif
 
   void set_compacting(bool value) { compacting_ = value; }
   bool compacting() { return compacting_; }

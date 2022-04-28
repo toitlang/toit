@@ -28,6 +28,12 @@
 
 namespace toit {
 
+#undef ASSERT
+#define ASSERT(cond) if (!(cond)) {                                \
+  printf("Failure at %s:%d: %s\n", __FILE__, __LINE__, #cond);     \
+  toit::fail(__FILE__, __LINE__, "assertion failure, %s.", #cond); \
+}
+
 OldSpace::OldSpace(Program* program, TwoSpaceHeap* owner)
     : Space(program, CAN_RESIZE, OLD_SPACE_PAGE),
       heap_(owner) {}
@@ -540,7 +546,6 @@ void OldSpace::process_weak_pointers() {
   // TODO(erik): Process finalizers.
 }
 
-#ifdef DEBUG
 void OldSpace::verify() {
   // Verify that the object starts table contains only legitimate object start
   // addresses for each chunk in the space.
@@ -559,6 +564,11 @@ void OldSpace::verify() {
       if (object_address + obj->size(program_) > card + 2 * GcMetadata::CARD_SIZE) {
         // If this object stretches over the whole of the next card then the
         // next entry in the object starts table must be invalid.
+        if (starts[1] != GcMetadata::NO_OBJECT_START) {
+          printf("starts[0] is %d\n", starts[0]);
+          printf("starts[1] is %d\n", starts[1]);
+          printf("Object at %p size %d\n", obj, (int)obj->size(program_));
+        }
         ASSERT(starts[1] == GcMetadata::NO_OBJECT_START);
       }
     }
@@ -576,7 +586,6 @@ void OldSpace::verify() {
     }
   }
 }
-#endif
 
 void MarkingStack::empty(RootCallback* visitor) {
   while (!is_empty()) {

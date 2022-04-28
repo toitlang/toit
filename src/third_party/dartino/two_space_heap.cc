@@ -14,6 +14,9 @@
 
 namespace toit {
 
+#undef ASSERT
+#define ASSERT(cond) if (!(cond)) { toit::fail(__FILE__, __LINE__, "assertion failure, %s.", #cond); }
+
 TwoSpaceHeap::TwoSpaceHeap(Program* program, ObjectHeap* process_heap, Chunk* chunk)
     : program_(program),
       process_heap_(process_heap),
@@ -132,9 +135,7 @@ void TwoSpaceHeap::collect_new_space() {
   old_space()->flush();
   from->flush();
 
-#ifdef DEBUG
   if (Flags::validate_heap) old_space()->verify();
-#endif
 
   uword old_used = old_space()->used();
   word from_used;
@@ -206,9 +207,7 @@ void TwoSpaceHeap::collect_new_space() {
     old_space()->report_new_space_progress(progress);
   }
 
-#ifdef DEBUG
   if (Flags::validate_heap) old_space()->verify();
-#endif
 
   collect_old_space_if_needed(trigger_old_space_gc);
 }
@@ -223,9 +222,7 @@ void TwoSpaceHeap::collect_old_space_if_needed(bool force) {
   if (force || old_space()->needs_garbage_collection()) {
     old_space()->flush();
     collect_old_space();
-#ifdef DEBUG
     if (Flags::validate_heap) old_space()->verify();
-#endif
   }
 }
 
@@ -309,9 +306,7 @@ bool TwoSpaceHeap::perform_garbage_collection() {
     compact_heap();
   }
 
-#ifdef DEBUG
   if (Flags::validate_heap) old_space()->verify();
-#endif
 
   return compact;
 }

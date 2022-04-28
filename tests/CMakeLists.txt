@@ -127,7 +127,7 @@ foreach(file ${TOIT_SLOW_TESTS})
 endforeach()
 
 if ((NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "Windows") AND (NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "MSYS"))
-  add_subdirectory(lsp)
+  #add_subdirectory(lsp)
 endif()
 
 add_subdirectory(minus_s)
