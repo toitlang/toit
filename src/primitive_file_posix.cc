@@ -66,7 +66,7 @@ class AutoCloser {
   int _fd;
 };
 
-static Object* return_open_error(Process* process, int err) {
+Object* return_open_error(Process* process, int err) {
   if (err == EPERM || err == EACCES || err == EROFS) PERMISSION_DENIED;
   if (err == EDQUOT || err == EMFILE || err == ENFILE || err == ENOSPC) QUOTA_EXCEEDED;
   if (err == EEXIST) ALREADY_EXISTS;
