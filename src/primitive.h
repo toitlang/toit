@@ -384,13 +384,15 @@ namespace toit {
 
 #define MODULE_RMT(PRIMITIVE)                \
   PRIMITIVE(init, 0)                         \
-  PRIMITIVE(use, 2)                          \
-  PRIMITIVE(unuse, 2)                        \
-  PRIMITIVE(config_rx, 9)                    \
+  PRIMITIVE(channel_new, 3)                  \
+  PRIMITIVE(channel_del, 2)                  \
+  PRIMITIVE(config_rx, 8)                    \
+  PRIMITIVE(config_tx, 11)                   \
+  PRIMITIVE(get_idle_threshold, 1)           \
   PRIMITIVE(set_idle_threshold, 2)           \
-  PRIMITIVE(config_tx, 12)                   \
   PRIMITIVE(config_bidirectional_pin, 2)     \
   PRIMITIVE(transmit, 2)                     \
+  PRIMITIVE(receive, 3)                      \
   PRIMITIVE(transmit_and_receive, 6)         \
 
 #define MODULE_CRYPTO(PRIMITIVE)             \
@@ -839,6 +841,7 @@ namespace toit {
 #define _A_T_I2SResource(N, name)         MAKE_UNPACKING_MACRO(I2SResource, N, name)
 #define _A_T_AdcState(N, name)            MAKE_UNPACKING_MACRO(AdcState, N, name)
 #define _A_T_PWMResource(N, name)         MAKE_UNPACKING_MACRO(PWMResource, N, name)
+#define _A_T_RMTResource(N, name)         MAKE_UNPACKING_MACRO(RMTResource, N, name)
 #define _A_T_GAPResource(N, name)         MAKE_UNPACKING_MACRO(GAPResource, N, name)
 #define _A_T_GATTResource(N, name)        MAKE_UNPACKING_MACRO(GATTResource, N, name)
 #define _A_T_BLEServerConfigGroup(N, name)  MAKE_UNPACKING_MACRO(BLEServerConfigGroup, N, name)
