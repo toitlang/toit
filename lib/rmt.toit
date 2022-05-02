@@ -53,7 +53,7 @@ class Signals:
   The underlying RMT peripheral can only work on byte arrays that are divisible by
     4 (equivalent to 2 signals).
 
-  This constructor furthermore always adds an end-marker signal.
+  This constructor always adds an end-marker signal.
 
   In consequence, the size of the backing byte array might be 4 bytes larger than
     $size * $BYTES_PER_SIGNAL.
