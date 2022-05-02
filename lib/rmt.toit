@@ -81,7 +81,7 @@ class Signals:
     signals := Signals size
     level := first_level
     size.repeat:
-      signals.set_signal it (block.call it level) level
+      signals.set it --period=(block.call it level) --level=level
       level ^= 1
 
     return signals
@@ -104,33 +104,33 @@ class Signals:
     size = bytes_.size / 2
 
   /**
-  Gets the signal period of the $i'th signal.
+  Returns the signal period of the $i'th signal.
 
-  The given $i must be in the range [0,$size[.
+  The given $i must be in the range [0..$size[.
   */
-  signal_period i/int -> int:
+  period i/int -> int:
     check_bounds_ i
     return signal_period_ i
 
   /**
-  Gets the signal level of the $i'th signal.
+  Returns the signal level of the $i'th signal.
 
-  The given $i must be in the range [0,$size[.
+  The given $i must be in the range [0..$size[.
   */
-  signal_level i/int -> int:
+  level i/int -> int:
     check_bounds_ i
     return signal_level_ i
 
   /**
-  Set the $i'th signal to the given $period and $level.
+  Sets the $i'th signal to the given $period and $level.
 
-  The given $i must be in the range [0,$size[.
+  The given $i must be in the range [0..$size[.
 
-  The given $period must be in the range [0,0x7FFF].
+  The given $period must be in the range [0..0x7FFF].
 
   The given $level must be 0 or 1.
   */
-  set_signal i/int period/int level/int -> none:
+  set i/int --period/int --level/int -> none:
     check_bounds_ i
     set_signal_ i period level
 
@@ -144,13 +144,13 @@ class Signals:
   /**
   Invokes the given $block on each signal of this signal collection.
 
-  The block is invoked with the period and the level of each signal.
+  The block is invoked with the level and period of each signal.
   */
   do [block]:
     size.repeat:
       block.call
-        signal_period_ it
         signal_level_ it
+        signal_period_ it
 
   check_bounds_ i:
     if not 0 <= i < size: throw "OUT_OF_BOUNDS"
