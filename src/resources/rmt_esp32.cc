@@ -272,71 +272,42 @@ static void flush_buffer(RingbufHandle_t rb) {
   }
 }
 
-PRIMITIVE(receive) {
-  ARGS(RMTResource, resource, int, max_output_len, int, timeout_ms)
-
+// Transmits and receives items.
+// The transmit_items_length and receive_items_length must be the number of items,
+//   and not the size in bytes.
+// If transmit_items is not null, starts by transmitting them on the tx channel.
+// Then starts receiving on the rx channel.
+// If receive_items is not null, transmits those items on the tx channel.
+// Finally waits for at most receive_timeout_ms on the rx_channel to receive max_output_len items.
+// If there are more items truncates them. If there are fewer, returns the ones that are there.
+static Object* transmit_and_receive(rmt_channel_t tx_channel,
+                                    rmt_channel_t rx_channel,
+                                    const rmt_item32_t* transmit_items,
+                                    int transmit_items_length,
+                                    const rmt_item32_t* receive_items,
+                                    int receive_items_length,
+                                    int max_output_len,
+                                    int receive_timeout_ms,
+                                    Process* process) {
   Error* error = null;
   // Force external, so we can adjust the length after the read.
   ByteArray* data = process->allocate_byte_array(max_output_len, &error, true);
   if (data == null) return error;
-
-  rmt_channel_t channel = resource->channel();
-  RingbufHandle_t rb = null;
-  esp_err_t err = rmt_get_ringbuf_handle(channel, &rb);
-  if (err != ESP_OK) return Primitive::os_error(err, process);
-
-  err = rmt_rx_start(channel, true);
-  if (err != ESP_OK) return Primitive::os_error(err, process);
-
-  size_t length = 0;
-  TickType_t timeout_ticks = static_cast<TickType_t>(pdMS_TO_TICKS(timeout_ms));
-  if (timeout_ticks == 0 && timeout_ms != 0) timeout_ticks = 1;
-  void* received_bytes = xRingbufferReceive(rb, &length, timeout_ticks);
-  if (received_bytes != null) {
-    if (length > max_output_len) {
-      length = max_output_len;
-    }
-    ByteArray::Bytes bytes(data);
-    memcpy(bytes.address(), received_bytes, length);
-    vRingbufferReturnItem(rb, received_bytes);
-  }
-
-  err = rmt_rx_stop(channel);
-  if (err != ESP_OK) return Primitive::os_error(err, process);
-  data->resize_external(process, length);
-  return data;
-}
-
-PRIMITIVE(transmit_and_receive) {
-  ARGS(RMTResource, tx, RMTResource, rx, Blob, transmit_bytes, Blob, receive_bytes, int, max_output_len, int, receive_timeout_ms)
-  if (transmit_bytes.length() % 4 != 0) INVALID_ARGUMENT;
-  if (receive_bytes.length() % 4 != 0) INVALID_ARGUMENT;
-
-  rmt_channel_t rx_channel = rx->channel();
-  rmt_channel_t tx_channel = tx->channel();
-
-  Error* error = null;
-  // Force external, so we can adjust the length after the read.
-  ByteArray* data = process->allocate_byte_array(max_output_len, &error, true);
-  if (data == null) return error;
-
-  const rmt_item32_t* transmit_items = reinterpret_cast<const rmt_item32_t*>(transmit_bytes.address());
-  const rmt_item32_t* receive_items = reinterpret_cast<const rmt_item32_t*>(receive_bytes.address());
 
   RingbufHandle_t rb = null;
   esp_err_t err = rmt_get_ringbuf_handle(rx_channel, &rb);
   if (err != ESP_OK) return Primitive::os_error(err, process);
 
   flush_buffer(rb);
-  if (transmit_bytes.length() > 0) {
-    err = rmt_write_items(tx_channel, transmit_items, transmit_bytes.length() / 4, true);
+  if (transmit_items != null) {
+    err = rmt_write_items(tx_channel, transmit_items, transmit_items_length, true);
     if (err != ESP_OK) return Primitive::os_error(err, process);
   }
   err = rmt_rx_start(rx_channel, true);
   if (err != ESP_OK) return Primitive::os_error(err, process);
 
-  if (receive_bytes.length() > 0) {
-    err = rmt_write_items(tx_channel, receive_items, receive_bytes.length() / 4, true);
+  if (receive_items != null) {
+    err = rmt_write_items(tx_channel, receive_items, receive_items_length, true);
     if (err != ESP_OK) {
       rmt_rx_stop(rx_channel);
       return Primitive::os_error(err, process);
@@ -360,6 +331,44 @@ PRIMITIVE(transmit_and_receive) {
   if (err != ESP_OK) return Primitive::os_error(err, process);
   data->resize_external(process, length);
   return data;
+}
+
+PRIMITIVE(receive) {
+  ARGS(RMTResource, resource, int, max_output_len, int, timeout_ms)
+
+  auto tx_channel = kInvalidChannel;
+  auto rx_channel = resource->channel();
+  const rmt_item32_t* transmit_items = null;
+  const rmt_item32_t* receive_items = null;
+  int transmit_items_length = 0;
+  int receive_items_length = 0;
+  return transmit_and_receive(tx_channel, rx_channel,
+                              transmit_items, transmit_items_length,
+                              receive_items, receive_items_length,
+                              max_output_len,
+                              timeout_ms,
+                              process);
+}
+
+PRIMITIVE(transmit_and_receive) {
+  ARGS(RMTResource, tx, RMTResource, rx, Blob, transmit_bytes, Blob, receive_bytes, int, max_output_len, int, receive_timeout_ms)
+  if (transmit_bytes.length() % 4 != 0) INVALID_ARGUMENT;
+  if (receive_bytes.length() % 4 != 0) INVALID_ARGUMENT;
+
+  rmt_channel_t rx_channel = rx->channel();
+  rmt_channel_t tx_channel = tx->channel();
+
+  const rmt_item32_t* transmit_items = reinterpret_cast<const rmt_item32_t*>(transmit_bytes.address());
+  const rmt_item32_t* receive_items = reinterpret_cast<const rmt_item32_t*>(receive_bytes.address());
+  int transmit_items_length = transmit_bytes.length() / 4;
+  int receive_items_length = receive_bytes.length() / 4;
+
+  return transmit_and_receive(tx_channel, rx_channel,
+                              transmit_items, transmit_items_length,
+                              receive_items, receive_items_length,
+                              max_output_len,
+                              receive_timeout_ms,
+                              process);
 }
 
 
