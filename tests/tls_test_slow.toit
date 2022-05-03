@@ -52,7 +52,7 @@ run_tests:
     // "100-sans.badssl.com"
     // "10000-sans.badssl.com"
     "rsa2048.badssl.com",
-    "rsa4096.badssl.com",
+    // "rsa4096.badssl.com",
     "extended-validation.badssl.com",
     "mozilla-modern.badssl.com",
     "tls-v1-2.badssl.com:1012",
