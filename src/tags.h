@@ -40,6 +40,7 @@ namespace toit {
   fn(I2SResource)                       \
   fn(AdcState)                          \
   fn(PWMResource)                       \
+  fn(RMTResource)                       \
   fn(GAPResource)                       \
   fn(GATTResource)                      \
   fn(BLEServerServiceResource)          \
