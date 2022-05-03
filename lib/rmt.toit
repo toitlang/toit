@@ -394,7 +394,7 @@ class Channel:
   /** Closes the channel. */
   close:
     if resource_:
-      rmt_channel_del_ resource_group_ resource_
+      rmt_channel_delete_ resource_group_ resource_
       resource_ = null
       configured_ = 0
       rx_buffer_size_ = null
@@ -525,8 +525,8 @@ rmt_init_:
 rmt_channel_new_ resource_group memory_block_count channel_num:
   #primitive.rmt.channel_new
 
-rmt_channel_del_ resource_group resource:
-  #primitive.rmt.channel_del
+rmt_channel_delete_ resource_group resource:
+  #primitive.rmt.channel_delete
 
 rmt_config_rx_ resource/ByteArray pin_num/int clk_div/int flags/int
     idle_threshold/int filter_en/bool filter_ticks_thresh/int rx_buffer_size/int:

@@ -1,4 +1,4 @@
-# ESP32 Tests
+# ESP32 tests
 
 This directory contains tests for ESP functionality.
 

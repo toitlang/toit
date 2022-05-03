@@ -120,7 +120,6 @@ test_resource pin/gpio.Pin:
   channel.close
 
 
-
 test_simple_pulse control/Control rmt_pin/gpio.Pin --tester/bool=false:
   PULSE_LENGTH ::= 100
   if tester:

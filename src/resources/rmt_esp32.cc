@@ -45,8 +45,8 @@ class RMTResource : public Resource {
       , _channel(channel)
       , _memory_block_count(memory_block_count) {}
 
-  rmt_channel_t channel() { return _channel; }
-  int memory_block_count() { return _memory_block_count; }
+  rmt_channel_t channel() const { return _channel; }
+  int memory_block_count() const { return _memory_block_count; }
 
  private:
   rmt_channel_t _channel;
@@ -147,7 +147,7 @@ PRIMITIVE(channel_new) {
   return proxy;
 }
 
-PRIMITIVE(channel_del) {
+PRIMITIVE(channel_delete) {
   ARGS(RMTResourceGroup, resource_group, RMTResource, resource)
   resource_group->unregister_resource(resource);
   resource_proxy->clear_external_address();
@@ -342,12 +342,6 @@ PRIMITIVE(transmit_and_receive) {
       return Primitive::os_error(err, process);
     }
   }
-
-  uint16 thr;
-  rmt_get_rx_idle_thresh(rx_channel, &thr);
-  uint8 cnt;
-  rmt_get_clk_div(rx_channel, &cnt);
-
 
   size_t length = 0;
   TickType_t timeout_ticks = static_cast<TickType_t>(pdMS_TO_TICKS(receive_timeout_ms));

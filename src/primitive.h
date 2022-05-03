@@ -385,7 +385,7 @@ namespace toit {
 #define MODULE_RMT(PRIMITIVE)                \
   PRIMITIVE(init, 0)                         \
   PRIMITIVE(channel_new, 3)                  \
-  PRIMITIVE(channel_del, 2)                  \
+  PRIMITIVE(channel_delete, 2)               \
   PRIMITIVE(config_rx, 8)                    \
   PRIMITIVE(config_tx, 11)                   \
   PRIMITIVE(get_idle_threshold, 1)           \
