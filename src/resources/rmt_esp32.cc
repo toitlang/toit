@@ -99,7 +99,7 @@ PRIMITIVE(channel_new) {
     if (!rmt_channels.take(channel)) channel = kInvalidChannel;
   } else {
     // Try to find adjacent channels that are still free.
-    int current_start_id = channel_num == -1 ? 0 : channel_num;
+    int current_start_id = (channel_num == -1) ? 0 : channel_num;
     while (current_start_id + memory_block_count <= SOC_RMT_CHANNELS_NUM) {
       int taken = 0;
       for (int i = 0; i < memory_block_count; i++) {
