@@ -30,6 +30,10 @@ At the lower level, a signal consists of 16 bits: 15 bits for the period and 1
   bit for the level. Signals must be transmitted as pairs also known as an item.
   For this reason, the bytes backing a collection of signal is always adjusted
   to be divisible by 4.
+
+This class fills in the unused bytes with values that have no effect on the output.
+  Due to https://github.com/espressif/esp-idf/issues/8864 it always allocates an
+  additional signal so it can add an end marker.
 */
 class Signals:
   /** The number of signals in the collection. */
@@ -46,14 +50,22 @@ class Signals:
   All signals are initialized to 0 period and 0 level.
 
   # Advanced
-  If the given $size is not divisible by 2, then the byte array allocated for
-    $bytes_ is padded with two bytes to make the $bytes_ usable by the RMT
-    primitives. The final signal is initialized to 0 period and level 1.
+  The underlying RMT peripheral can only work on byte arrays that are divisible by
+    4 (equivalent to 2 signals).
+
+  This constructor always adds an end-marker signal.
+
+  In consequence, the size of the backing byte array might be 4 bytes larger than
+    $size * $BYTES_PER_SIGNAL.
   */
   constructor .size:
+    size_with_end_marker := size + 1
     bytes_ = ByteArray
-        round_up (size * 2) 4
-    if size % 2 == 1: set_signal_ size 0 1
+        round_up (size_with_end_marker * 2) 4
+    // Work around https://github.com/espressif/esp-idf/issues/8864 and always add a
+    // high end marker.
+    set_signal_ size 0 1
+    if size_with_end_marker % 2 == 1: set_signal_ (size + 1) 0 1
 
   /**
   Creates signals that alternate between a level of 0 and 1 with the periods
