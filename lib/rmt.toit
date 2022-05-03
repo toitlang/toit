@@ -225,7 +225,7 @@ class Channel:
     selected by providing a channel id in the range [0,7]. See the advanced section for
     when this can be useful.
 
-  This constructor does not configure the channel for input or output yet. Call $configure
+  This constructor does not configure the channel for input or output yet. Call $config
     (either `--input` or `--output`) to do so.
 
   # Advanced
@@ -258,23 +258,23 @@ class Channel:
   /**
   Variant of $(constructor pin).
 
-  Configures the channel for input. See $(configure --input).
+  Configures the channel for input. See $(config --input).
   */
   constructor --input/bool pin/gpio.Pin --memory_block_count/int=1 --channel_id/int?=null:
     if not input: throw "INVALID_ARGUMENT"
     result := Channel pin --memory_block_count=memory_block_count --channel_id=channel_id
-    result.configure --input
+    result.config --input
     return result
 
   /**
   Variant of $(constructor pin).
 
-  Configures the channel for output. See $(configure --output).
+  Configures the channel for output. See $(config --output).
   */
   constructor --output/bool pin/gpio.Pin --memory_block_count/int=1 --channel_id/int?=null:
     if not output: throw "INVALID_ARGUMENT"
     result := Channel pin --memory_block_count=memory_block_count --channel_id=channel_id
-    result.configure --output
+    result.config --output
     return result
 
   /**
@@ -291,7 +291,7 @@ class Channel:
   The $clk_div divides the APB (advanced peripheral bus) clock. The APB clock is set to 80MHz.
   The $filter_ticks_threshold counts APB bus ticks. As such, a value of 80 is equivalent to 1us.
   */
-  configure --input/bool
+  config --input/bool
       --clk_div /int = DEFAULT_IN_CLK_DIV
       --flags /int = DEFAULT_IN_FLAGS
       --idle_threshold /int = DEFAULT_IN_IDLE_THRESHOLD
@@ -318,7 +318,7 @@ class Channel:
   # Advanced
   The $clk_div divides the APB (advanced peripheral bus) clock. The APB clock is set to 80MHz.
   */
-  configure --output/bool
+  config --output/bool
       --clk_div /int = DEFAULT_OUT_CLK_DIV
       --flags /int = DEFAULT_OUT_FLAGS
       --enable_carrier /bool = DEFAULT_OUT_ENABLE_CARRIER
@@ -361,7 +361,7 @@ class Channel:
   /**
   Receives signals.
 
-  This channel must be configured for receiving (see $(configure --input)).
+  This channel must be configured for receiving (see $(config --input)).
 
   If $max_bytes is not sufficient to store all received signals, then the
     result is truncated. If it is important to detect this condition, then the user should
@@ -385,7 +385,7 @@ class Channel:
   /**
   Transmits the given $signals.
 
-  This channel must be configured for writing (see $(configure --output)).
+  This channel must be configured for writing (see $(config --output)).
   */
   write signals/Signals -> none:
     if not is_output: throw "INVALID_STATE"
@@ -420,7 +420,7 @@ class BidirectionalChannel:
 
   The output channel is configured with a high idle level, and the pin is set to open-drain.
 
-  See $Channel.configure for an explanation on the parameters.
+  See $Channel.config for an explanation on the parameters.
   */
   constructor pin/gpio.Pin
       --clk_div /int = Channel.DEFAULT_CLK_DIV
@@ -436,8 +436,8 @@ class BidirectionalChannel:
       --out_clk_div /int = clk_div:
     in_channel_  = Channel pin --channel_id=in_channel_id --memory_block_count=in_memory_block_count
     out_channel_ = Channel pin --channel_id=out_channel_id --memory_block_count=out_memory_block_count
-    out_channel_.configure --output --idle_level=1 --clk_div=out_clk_div
-    in_channel_.configure --input
+    out_channel_.config --output --idle_level=1 --clk_div=out_clk_div
+    in_channel_.config --input
         --clk_div=in_clk_div
         --enable_filter=in_enable_filter
         --filter_ticks_threshold=in_filter_ticks_threshold
