@@ -106,25 +106,24 @@ Chunk* OldSpace::allocate_and_use_chunk(uword size) {
 
 uword OldSpace::allocate_in_new_chunk(uword size) {
   ASSERT(top_ == 0);  // Space is flushed.
-  // Allocate new chunk that is big enough to fit the object.
+  // Allocate new chunk.  After a certain heap size we start allocating
+  // multi-page chunks to improve fragmentation.
   int tracking_size = tracking_allocations_ ? 0 : PromotedTrack::header_size();
   uword max_expansion = heap_->max_expansion();
-  uword smallest_chunk_size =
-      Utils::min(get_default_chunk_size(used()), max_expansion);
-  uword chunk_size =
-      (size + tracking_size + WORD_SIZE >= smallest_chunk_size)
-          ? (size + tracking_size + WORD_SIZE)  // Make room for sentinel.
-          : smallest_chunk_size;
+  uword smallest_chunk_size = Utils::min(get_default_chunk_size(used()), max_expansion);
+  uword max_space_needed = size + tracking_size + WORD_SIZE;  // Make room for sentinel.
+  // Toit uses arraylets and external objects, so all objects should fit on a page.
+  ASSERT(max_space_needed <= TOIT_PAGE_SIZE);
+  uword chunk_size = Utils::max(max_space_needed, smallest_chunk_size);
 
   if (chunk_size <= max_expansion) {
-    if (chunk_size + (chunk_size >> 1) > max_expansion) {
-      // If we are near the limit, then just get memory up to the limit from
-      // the OS to reduce the number of small chunks in the heap, which can
-      // cause some fragmentation.
-      chunk_size = max_expansion;
-    }
-
+    chunk_size = Utils::round_up(chunk_size, TOIT_PAGE_SIZE);
     Chunk* chunk = allocate_and_use_chunk(chunk_size);
+    while (chunk == null && chunk_size > TOIT_PAGE_SIZE) {
+      // If we fail to get a multi-page chunk, try for a smaller chunk.
+      chunk_size = Utils::round_up(chunk_size >> 1, TOIT_PAGE_SIZE);
+      chunk = allocate_and_use_chunk(chunk_size);
+    }
     if (chunk != null) {
       return allocate(size);
     }
