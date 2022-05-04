@@ -283,13 +283,14 @@ class GcMetadata {
   static void mark_all(HeapObject* object, uword size) {
     ASSERT(size > 0);
     // It's grey - first bit is marked.
-    ASSERT(all_bits_are(object, WORD_SIZE, 1));
+    ASSERT(all_mark_bits_are(object, WORD_SIZE, 1));
     // It could actually be black already - when we have a mark stack overflow we
     // can find grey objects and mark them black even though they are on the marking
     // stack (they are in the same line as an object that is not on the stack because
     // of overflow).
-    ASSERT(all_bits_are(reinterpret_cast<HeapObject*>(reinterpret_cast<uword>(object)) + WORD_SIZE, size - WORD_SIZE, 0) ||
-           all_bits_are(reinterpret_cast<HeapObject*>(reinterpret_cast<uword>(object)) + WORD_SIZE, size - WORD_SIZE, 1));
+    auto rest_of_object = reinterpret_cast<HeapObject*>(reinterpret_cast<uword>(object) + WORD_SIZE);
+    ASSERT(all_mark_bits_are(rest_of_object, size - WORD_SIZE, 0) ||
+           all_mark_bits_are(rest_of_object, size - WORD_SIZE, 1));
 #ifdef NO_UNALIGNED_ACCESS
     const int mask_mask = 31;
 #else
@@ -319,10 +320,10 @@ class GcMetadata {
       *bits |= mask;
     }
     // It's black - all bits are marked.
-    ASSERT(all_bits_are(object, size, 1));
+    ASSERT(all_mark_bits_are(object, size, 1));
   }
 
-  static bool all_bits_are(HeapObject* object, uword size, int value) {
+  static bool all_mark_bits_are(HeapObject* object, uword size, int value) {
     uword addr = reinterpret_cast<uword>(object);
     for (uword i = 0; i < size; i += WORD_SIZE) {
       uint8* meta_addr = reinterpret_cast<uint8*>(bytewise_mark_bits_for(reinterpret_cast<HeapObject*>(addr + i)));

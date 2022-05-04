@@ -117,8 +117,6 @@ bool throwing_new_allowed = false;
 
 }
 
-#ifndef __SANITIZE_THREAD__
-
 // Override new operator (normal version) so we can log allocations.
 void* operator new(size_t size) {
   // We should not call this since the constructor will fail with a null
@@ -212,5 +210,3 @@ void operator delete[](void* ptr, const std::nothrow_t& tag) {
 #endif
   free(ptr);
 }
-
-#endif  // __SANITIZE_THREAD__

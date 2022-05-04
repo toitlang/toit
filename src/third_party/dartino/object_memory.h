@@ -156,6 +156,7 @@ class Space : public LivenessOracle {
 
   // flush will make the current chunk consistent for iteration.
   virtual void flush() = 0;
+  virtual bool is_flushed() = 0;
 
   // Used for weak processing.  Can only be called:
   // 1) For copying collections: right after copying but before you delete the
@@ -302,7 +303,7 @@ class SemiSpace : public Space {
 
   void prepare_metadata_for_mark_sweep();
 
-  bool is_flushed();
+  virtual bool is_flushed();
 
   void trigger_gc_soon() { limit_ = top_ + SENTINEL_SIZE; }
 
@@ -449,6 +450,8 @@ class OldSpace : public Space {
 
   // flush will make the current chunk consistent for iteration.
   virtual void flush();
+
+  virtual bool is_flushed() { return top_ == 0; }
 
   // Allocate raw object. Returns 0 if a garbage collection is needed
   // and causes a fatal error if no garbage collection is needed and

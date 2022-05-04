@@ -224,6 +224,8 @@ void TwoSpaceHeap::collect_old_space_if_needed(bool force) {
   }
 #endif
   if (force || old_space()->needs_garbage_collection()) {
+    ASSERT(old_space()->is_flushed());
+    ASSERT(space()->is_flushed());
     collect_old_space();
   }
 }
