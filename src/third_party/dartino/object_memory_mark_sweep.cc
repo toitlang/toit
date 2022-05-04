@@ -99,7 +99,7 @@ Chunk* OldSpace::allocate_and_use_chunk(uword size) {
     use_whole_chunk(chunk);
     GcMetadata::initialize_starts_for_chunk(chunk);
     GcMetadata::initialize_remembered_set_for_chunk(chunk);
-    GcMetadata::clear_mark_bits_for(chunk);
+    GcMetadata::clear_mark_bits_for_chunk(chunk);
   }
   return chunk;
 }
@@ -569,7 +569,7 @@ void OldSpace::validate() {
     uword current = chunk->start();
     while (!has_sentinel_at(current)) {
       HeapObject* object = HeapObject::from_address(current);
-      if (object->contains_pointers_to(program_, heap_->space())) {
+      if (object->contains_pointers_to(program_, heap_->new_space())) {
         ASSERT(*GcMetadata::remembered_set_for(current));
       }
       current += object->size(program_);

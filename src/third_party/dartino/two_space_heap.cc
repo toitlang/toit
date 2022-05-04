@@ -114,7 +114,7 @@ void SemiSpace::start_scavenge() {
 #ifndef LEGACY_GC
 
 void TwoSpaceHeap::collect_new_space() {
-  SemiSpace* from = space();
+  SemiSpace* from = new_space();
 
   uint64 start = OS::get_monotonic_time();
 
@@ -211,7 +211,7 @@ void TwoSpaceHeap::collect_new_space() {
 
 uword TwoSpaceHeap::total_bytes_allocated() {
   uword result = total_bytes_allocated_;
-  result += space()->used();
+  result += new_space()->used();
   return result;
 }
 
@@ -220,19 +220,19 @@ void TwoSpaceHeap::collect_old_space_if_needed(bool force) {
   if (Flags::validate_heap) {
     validate();
     old_space()->validate_before_mark_sweep(OLD_SPACE_PAGE, false);
-    space()->validate_before_mark_sweep(NEW_SPACE_PAGE, true);
+    new_space()->validate_before_mark_sweep(NEW_SPACE_PAGE, true);
   }
 #endif
   if (force || old_space()->needs_garbage_collection()) {
     ASSERT(old_space()->is_flushed());
-    ASSERT(space()->is_flushed());
+    ASSERT(new_space()->is_flushed());
     collect_old_space();
   }
 }
 
 #ifdef DEBUG
 void TwoSpaceHeap::validate() {
-  space()->validate();
+  new_space()->validate();
   old_space()->validate();
 }
 #endif
@@ -276,21 +276,21 @@ bool TwoSpaceHeap::perform_garbage_collection() {
   // detect liveness paths that go through new-space, but we just clear the
   // mark bits afterwards.  Dead objects in new-space are only cleared in a
   // new-space GC (scavenge).
-  SemiSpace* new_space = space();
+  SemiSpace* semi_space = new_space();
   MarkingStack stack(program_);
-  MarkingVisitor marking_visitor(new_space, &stack);
+  MarkingVisitor marking_visitor(semi_space, &stack);
 
   process_heap_->iterate_roots(&marking_visitor);
 
-  stack.process(&marking_visitor, old_space(), new_space);
+  stack.process(&marking_visitor, old_space(), semi_space);
 
   process_heap_->process_registered_finalizers(&marking_visitor, old_space());
 
-  stack.process(&marking_visitor, old_space(), new_space);
+  stack.process(&marking_visitor, old_space(), semi_space);
 
   process_heap_->process_registered_vm_finalizers(&marking_visitor, old_space());
 
-  stack.process(&marking_visitor, old_space(), new_space);
+  stack.process(&marking_visitor, old_space(), semi_space);
 
   bool compact = !old_space()->compacting();
 
@@ -315,7 +315,7 @@ bool TwoSpaceHeap::perform_garbage_collection() {
 }
 
 void TwoSpaceHeap::sweep_heap() {
-  SemiSpace* new_space = space();
+  SemiSpace* semi_space = new_space();
 
   old_space()->set_compacting(false);
 
@@ -327,7 +327,7 @@ void TwoSpaceHeap::sweep_heap() {
 
   // These are only needed during the mark phase, we can clear them without
   // looking at them.
-  new_space->clear_mark_bits();
+  semi_space->clear_mark_bits();
 
   uword used_after = sweeping_visitor.used();
   old_space()->set_used(used_after);
@@ -358,7 +358,7 @@ class EverythingIsAlive : public LivenessOracle {
 };
 
 void TwoSpaceHeap::compact_heap() {
-  SemiSpace* new_space = space();
+  SemiSpace* semi_space = new_space();
 
   old_space()->set_compacting(true);
 
@@ -381,7 +381,7 @@ void TwoSpaceHeap::compact_heap() {
   fix.set_source_address(0);
 
   HeapObjectPointerVisitor new_space_visitor(program_, &fix);
-  new_space->iterate_objects(&new_space_visitor);
+  semi_space->iterate_objects(&new_space_visitor);
 
   process_heap_->iterate_roots(&fix);
   // At this point dead objects have been cleared out of the finalizer lists.
@@ -389,7 +389,7 @@ void TwoSpaceHeap::compact_heap() {
   process_heap_->process_registered_finalizers(&fix, &yes);
   process_heap_->process_registered_vm_finalizers(&fix, &yes);
 
-  new_space->clear_mark_bits();
+  semi_space->clear_mark_bits();
   old_space()->clear_mark_bits();
   old_space()->mark_chunk_ends_free();
 }

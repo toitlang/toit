@@ -159,13 +159,13 @@ void Space::iterate_objects(HeapObjectVisitor* visitor) {
 
 void Space::clear_mark_bits() {
   flush();
-  for (auto chunk : chunk_list_) GcMetadata::clear_mark_bits_for(chunk);
+  for (auto chunk : chunk_list_) GcMetadata::clear_mark_bits_for_chunk(chunk);
 }
 
 void SemiSpace::prepare_metadata_for_mark_sweep() {
   flush();
   for (auto chunk : chunk_list_) {
-    GcMetadata::clear_mark_bits_for(chunk);
+    GcMetadata::clear_mark_bits_for_chunk(chunk);
     // Starts in new-space are only used for mark stack overflows,
     // not for the remembered set.  The mark stack overflow sets the
     // object start for the cards it needs.
@@ -283,7 +283,7 @@ void Chunk::set_owner(Space* value) {
 }
 
 void Chunk::initialize_metadata() const {
-  GcMetadata::clear_mark_bits_for(this);
+  GcMetadata::clear_mark_bits_for_chunk(this);
   GcMetadata::initialize_overflow_bits_for_chunk(this);
   GcMetadata::initialize_starts_for_chunk(this);
   GcMetadata::initialize_remembered_set_for_chunk(this);

@@ -41,7 +41,7 @@ class TwoSpaceHeap {
   // chunks, not just the used memory in them.
   uword max_expansion();
 
-  SemiSpace* space() { return &semi_space_; }
+  SemiSpace* new_space() { return &semi_space_; }
 
   SemiSpace* take_space();
 
@@ -132,8 +132,8 @@ class ScavengeVisitor : public RootCallback {
       : program_(program),
         to_start_(to_chunk->start()),
         to_size_(to_chunk->size()),
-        from_start_(heap->space()->single_chunk_start()),
-        from_size_(heap->space()->single_chunk_size()),
+        from_start_(heap->new_space()->single_chunk_start()),
+        from_size_(heap->new_space()->single_chunk_size()),
         to_(program, to_chunk),
         old_(heap->old_space()),
         record_(&dummy_record_),

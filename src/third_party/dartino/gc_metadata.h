@@ -82,7 +82,7 @@ class GcMetadata {
     memset(from, 0, to - from);
   }
 
-  static void clear_mark_bits_for(const Chunk* chunk) {
+  static void clear_mark_bits_for_chunk(const Chunk* chunk) {
     ASSERT(in_metadata_range(chunk->start()));
     uword base = chunk->start();
     uword size = chunk->size() >> MARK_BITS_SHIFT;
@@ -93,7 +93,7 @@ class GcMetadata {
   // On virtual memory systems (non-embedded) we have to map the
   // pages needed for heap metadata when we allocate the
   // corresponding chunk.
-  static void map_metadata_for(Chunk* chunk) {
+  static void map_metadata_for_chunk(Chunk* chunk) {
     ASSERT(in_metadata_range(chunk->start()));
     uword base = chunk->start();
     uword mark_size = chunk->size() >> MARK_BITS_SHIFT;
@@ -107,7 +107,7 @@ class GcMetadata {
   }
 
   static void mark_pages_for_chunk(Chunk* chunk, PageType page_type) {
-    map_metadata_for(chunk);
+    map_metadata_for_chunk(chunk);
     uword index = chunk->start() - singleton_.lowest_address_;
     if (index >= singleton_.heap_extent_) return;
     uword size = chunk->size() >> TOIT_PAGE_SIZE_LOG2;
