@@ -157,21 +157,21 @@ void Space::iterate_objects(HeapObjectVisitor* visitor) {
   }
 }
 
-void Space::assert_mark_bits_clear() {
-#ifdef DEBUG
-  for (auto chunk : chunk_list_) {
-    uint32* bits = GcMetadata::mark_bits_for(chunk->start());
-    uint32* bits_end = GcMetadata::mark_bits_for(chunk->start() + chunk->size());
-    for (uint32* b = bits; b < bits_end; b++) {
-      ASSERT(*b == 0);
-    }
-  }
-#endif
-}
-
 void Space::clear_mark_bits() {
   flush();
   for (auto chunk : chunk_list_) GcMetadata::clear_mark_bits_for(chunk);
+}
+
+void SemiSpace::prepare_metadata_for_mark_sweep() {
+  flush();
+  for (auto chunk : chunk_list_) {
+    GcMetadata::clear_mark_bits_for(chunk);
+    // Starts in new-space are only used for mark stack overflows,
+    // not for the remembered set.  The mark stack overflow sets the
+    // object start for the cards it needs.
+    GcMetadata::initialize_starts_for_chunk(chunk);
+    GcMetadata::initialize_overflow_bits_for_chunk(chunk);
+  }
 }
 
 bool Space::includes(uword address) {
@@ -179,8 +179,6 @@ bool Space::includes(uword address) {
     if (chunk->includes(address)) return true;
   return false;
 }
-
-#ifdef DEBUG
 
 class InSpaceVisitor : public RootCallback {
  public:
@@ -207,6 +205,7 @@ bool HeapObject::contains_pointers_to(Program* program, Space* space) {
   return visitor.in_space;
 }
 
+#ifdef DEBUG
 void Space::find(uword w, const char* name) {
   for (auto chunk : chunk_list_) chunk->find(w, name);
 }
@@ -218,6 +217,11 @@ Mutex* ObjectMemory::spare_chunk_mutex_ = null;
 
 void ObjectMemory::tear_down() {
   GcMetadata::tear_down();
+  if (!spare_chunk_mutex_) FATAL("ObjectMemory::tear_down without set_up");
+  OS::dispose(spare_chunk_mutex_);
+  spare_chunk_mutex_ = null;
+  free_chunk(spare_chunk_);
+  spare_chunk_ = null;
 }
 
 #ifdef DEBUG
@@ -299,6 +303,7 @@ void ObjectMemory::set_up() {
   GcMetadata::set_up();
   spare_chunk_ = allocate_chunk(null, TOIT_PAGE_SIZE);
   if (!spare_chunk_) FATAL("Can't allocate initial spare chunk");
+  if (spare_chunk_mutex_) FATAL("Can't call ObjectMemory::set_up twice");
   spare_chunk_mutex_ = OS::allocate_mutex(6, "Spare memory chunk");
 }
 

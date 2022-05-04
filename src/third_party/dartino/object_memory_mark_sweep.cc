@@ -541,7 +541,7 @@ void OldSpace::process_weak_pointers() {
 }
 
 #ifdef DEBUG
-void OldSpace::verify() {
+void OldSpace::validate() {
   // Verify that the object starts table contains only legitimate object start
   // addresses for each chunk in the space.
   for (auto chunk : chunk_list_) {
@@ -574,6 +574,7 @@ void OldSpace::verify() {
       }
       current += object->size(program_);
     }
+    ASSERT(current == chunk->end() - WORD_SIZE);
   }
 }
 #endif

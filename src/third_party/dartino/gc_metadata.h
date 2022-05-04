@@ -282,6 +282,14 @@ class GcMetadata {
   // for compaction.  For one-word objects it only sets one bit.
   static void mark_all(HeapObject* object, uword size) {
     ASSERT(size > 0);
+    // It's grey - first bit is marked.
+    ASSERT(all_bits_are(object, WORD_SIZE, 1));
+    // It could actually be black already - when we have a mark stack overflow we
+    // can find grey objects and mark them black even though they are on the marking
+    // stack (they are in the same line as an object that is not on the stack because
+    // of overflow).
+    ASSERT(all_bits_are(reinterpret_cast<HeapObject*>(reinterpret_cast<uword>(object)) + WORD_SIZE, size - WORD_SIZE, 0) ||
+           all_bits_are(reinterpret_cast<HeapObject*>(reinterpret_cast<uword>(object)) + WORD_SIZE, size - WORD_SIZE, 1));
 #ifdef NO_UNALIGNED_ACCESS
     const int mask_mask = 31;
 #else
@@ -295,21 +303,33 @@ class GcMetadata {
     // objects < 24 words in size. Otherwise it can happen for small objects
     // that straddle a 32-word boundary.
     if (mask_shift + size_in_words > 32) {
-      return slow_mark(object, size);
-    }
-
-    // TODO: On 64 bit CPUs it's probably faster to do this without the ?:
-    // in a 64 bit register.  May also be worth trying a 32 entry lookup
-    // table.
-    uint32 mask = size_in_words == 32 ? 0xffffffff : ((1 << size_in_words) - 1);
-    mask <<= mask_shift;
+      slow_mark(object, size);
+    } else {
+      // TODO: On 64 bit CPUs it's probably faster to do this without the ?:
+      // in a 64 bit register.  May also be worth trying a 32 entry lookup
+      // table.
+      uint32 mask = size_in_words == 32 ? 0xffffffff : ((1 << size_in_words) - 1);
+      mask <<= mask_shift;
 
 #ifdef NO_UNALIGNED_ACCESS
-    uint32* bits = mark_bits_for(object);
+      uint32* bits = mark_bits_for(object);
 #else
-    uint32* bits = bytewise_mark_bits_for(object);
+      uint32* bits = bytewise_mark_bits_for(object);
 #endif
-    *bits |= mask;
+      *bits |= mask;
+    }
+    // It's black - all bits are marked.
+    ASSERT(all_bits_are(object, size, 1));
+  }
+
+  static bool all_bits_are(HeapObject* object, uword size, int value) {
+    uword addr = reinterpret_cast<uword>(object);
+    for (uword i = 0; i < size; i += WORD_SIZE) {
+      uint8* meta_addr = reinterpret_cast<uint8*>(bytewise_mark_bits_for(reinterpret_cast<HeapObject*>(addr + i)));
+      uint8 bit = *meta_addr >> (((addr + i) >> WORD_SIZE_LOG_2) & 7);
+      if ((bit & 1) != value) return false;
+    }
+    return true;
   }
 
   static INLINE uword get_destination(HeapObject* pre_compaction) {
