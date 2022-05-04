@@ -100,6 +100,8 @@ class Chunk : public ChunkList::Element {
   void find(uword word, const char* name);
 #endif
 
+  ~Chunk();
+
  private:
   Space* owner_;
   const uword start_;
@@ -109,11 +111,8 @@ class Chunk : public ChunkList::Element {
   uword compaction_top_;
 
   Chunk(Space* owner, uword start, uword size, bool external = false);
-  ~Chunk();
 
   friend class ObjectMemory;
-  friend class SemiSpace;
-  friend class Space;
 };
 
 // Abstract base class for visiting all objects in a space.

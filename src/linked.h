@@ -595,6 +595,43 @@ class DoubleLinkedList {
     a->unlink();
   }
 
+  // Calls a predicate on each element of the list.  During the
+  // predicate the element is unlinked from the list and can be
+  // deleted or added to a different list.  If the predicate returns
+  // false the element is reinserted in the position it came from.
+  template <typename Predicate>
+  inline void remove_wherever(Predicate predicate) {
+    for (auto current = _anchor.next(); current != &_anchor; ) {
+      auto next = current->next();
+      // The element is not in the list during the predicate call, since the
+      // predicate may delete it or put it in a different list.
+      unlink(current);
+      if (!predicate(current->container())) {
+        // Predicate didn't ask for this element to be removed, so put it back.
+        next->insert_before(current);
+      }
+      current = next;
+    }
+  }
+
+  // Calls a predicate on each element of the list.  During the
+  // predicate the element is not unlinked from the list and cannot be
+  // removed from the list, deleted or added to a different list.  If the
+  // predicate returns true the element is removed from the list and deleted.
+  template <typename Predicate>
+  inline void delete_wherever(Predicate predicate) {
+    for (auto current = _anchor.next(); current != &_anchor; ) {
+      if (predicate(current->container())) {
+        auto next = current->next();
+        unlink(current);
+        delete current;
+        current = next;
+      } else {
+        current = current->next();
+      }
+    }
+  }
+
   inline T* first() const {
     if (is_empty()) return null;
     return _anchor.next()->container();
