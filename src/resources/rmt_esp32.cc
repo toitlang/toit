@@ -317,7 +317,21 @@ static Object* transmit_and_receive(rmt_channel_t tx_channel,
   size_t length = 0;
   TickType_t timeout_ticks = static_cast<TickType_t>(pdMS_TO_TICKS(receive_timeout_ms));
   if (timeout_ticks == 0 && receive_timeout_ms != 0) timeout_ticks = 1;
-  void* received_bytes = xRingbufferReceive(rb, &length, timeout_ticks);
+  TickType_t current_ticks = xTaskGetTickCount();
+  TickType_t end_ticks = current_ticks + timeout_ticks;
+  void* received_bytes = null;
+  do {
+    received_bytes = xRingbufferReceive(rb, &length, timeout_ticks);
+    if (received_bytes == null || length != 0) break;
+
+    // We got a 0-length item. The RMT sometimes does this. Ignore it.
+    vRingbufferReturnItem(rb, received_bytes);
+    current_ticks = xTaskGetTickCount();
+    // The timeout_ticks might underflow, but in that case we would
+    // exit the loop anyway.
+    timeout_ticks = end_ticks - current_ticks;
+  } while (current_ticks < end_ticks);
+
   if (received_bytes != null) {
     if (length > max_output_len) {
       length = max_output_len;
