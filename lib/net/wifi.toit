@@ -3,17 +3,11 @@
 // found in the lib/LICENSE file.
 
 import net
-import monitor
 import system.api.wifi show WifiServiceClient
 
 import .impl
 
-service_value_/WifiServiceClient? := null
-service_mutex_/monitor.Mutex ::= monitor.Mutex
-
-service_ -> WifiServiceClient?:
-  return service_value_ or service_mutex_.do:
-    service_value_ = (WifiServiceClient --no-open).open
+service_/WifiServiceClient? ::= (WifiServiceClient --no-open).open
 
 open --ssid/string --password/string -> net.Interface:
   service := service_

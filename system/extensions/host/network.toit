@@ -24,19 +24,9 @@ class NetworkServiceDefinition extends NetworkServiceDefinitionBase:
   constructor:
     super "system/network/host" --major=0 --minor=1
 
-  connect client/int -> ServiceResource:
-    return NetworkResource this client
-
-  address resource/NetworkResource -> ByteArray:
-    socket := udp.Socket
-    try:
-      socket.connect
-        net.SocketAddress
-          net.IpAddress.parse "8.8.8.8"
-          80
-      return socket.local_address.ip.to_byte_array
-    finally:
-      socket.close
+  connect client/int -> List:
+    resource := NetworkResource this client
+    return [resource.serialize_for_rpc, 0]
 
 class NetworkResource extends ServiceResource:
   constructor service/ServiceDefinition client/int:
