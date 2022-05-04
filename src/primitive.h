@@ -392,8 +392,11 @@ namespace toit {
   PRIMITIVE(set_idle_threshold, 2)           \
   PRIMITIVE(config_bidirectional_pin, 2)     \
   PRIMITIVE(transmit, 2)                     \
+  PRIMITIVE(transmit_done, 2)                \
+  PRIMITIVE(prepare_receive, 1)              \
+  PRIMITIVE(start_receive, 2)                \
   PRIMITIVE(receive, 3)                      \
-  PRIMITIVE(transmit_and_receive, 6)         \
+  PRIMITIVE(stop_receive, 1)                 \
 
 #define MODULE_CRYPTO(PRIMITIVE)             \
   PRIMITIVE(sha1_start, 1)                   \

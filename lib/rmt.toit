@@ -12,11 +12,22 @@ A $Channel corresponds to a channel in the ESP32 RMT controller.
 
 $Signals represent a collection of signals to be sent by the RMT controller.
 
-# WARNING
-This implementation is incomplete and may block while receiving data from the RMT unit.
-  Contrary to other blocking Toit calls, this call prevents other tasks to run. Even worse,
-  it prevents the garbage collector to run while waiting. This can lead to a full
-  freeze of the Toit system until the receiving function returns.
+# Examples
+
+## Pulse
+Emits a precisely timed pulse of 50us on pin 18.
+```
+import gpio
+import rmt
+
+main:
+  pin := gpio.Pin 18
+  channel := rmt.Channel pin --output --idle_level=0
+  pulse := rmt.Signals 1
+  pulse.set 0 --level=1 --duration=50
+  channel.write pulse
+  channel.close
+```
 */
 
 /**
@@ -182,6 +193,13 @@ class Signals:
     idx := i * 2
     return (LITTLE_ENDIAN.uint16 bytes_ idx) & 0x7fff
 
+  stringify -> string:
+    result := ""
+    do: | level period |
+      if result != "": result += " "
+      result += "$level-$period"
+    return result
+
 /**
 An RMT channel.
 
@@ -196,7 +214,6 @@ class Channel:
   static DEFAULT_IN_ENABLE_FILTER ::= true
   static DEFAULT_IN_FILTER_TICKS_THRESHOLD ::= 100
   static DEFAULT_IN_FLAGS ::= 0
-  static DEFAULT_IN_BUFFER_SIZE ::= 128
   static DEFAULT_OUT_CLK_DIV ::= DEFAULT_CLK_DIV
   static DEFAULT_OUT_FLAGS ::= 0
   static DEFAULT_OUT_ENABLE_CARRIER ::= false
@@ -204,15 +221,17 @@ class Channel:
   static DEFAULT_OUT_CARRIER_LEVEL ::= 1
   static DEFAULT_OUT_CARRIER_DUTY_PERCENT ::= 33
   static DEFAULT_OUT_IDLE_LEVEL ::= null
-  static DEFAULT_READ_TIMEOUT_MS ::= 100
 
   pin       /gpio.Pin
   resource_ /ByteArray? := ?
 
-  rx_buffer_size_/int? := null
+  static NOT_CONFIGURED_ ::= 0
+  static CONFIGURED_AS_INPUT_ ::= 1
+  static CONFIGURED_AS_OUTPUT_ ::= 2
+  configured_ /int := NOT_CONFIGURED_
 
-  // 0 = not configured, 1 = configured for input, 2 = configured for output
-  configured_ /int := 0
+  /** Whether the channel has started reading with $start_reading. */
+  is_reading_ /bool := false
 
   /**
   Constructs a channel using the given $num using the given $pin.
@@ -233,6 +252,10 @@ class Channel:
   The $memory_block_count determines how many memory blocks are assigned to this channel.
     Memory blocks are of size 256 bytes or 128 signals. They are in continuous memory and
     there are only a limited number of them.
+
+  Generally, output channels don't need extra blocks as interrupts will copy data into
+    the buffer when necessary. However, input channels can only receive as many signals
+    (in one sequence) as there is space in the memory blocks.
 
   If a channel requests more than one memory block, then the following internal channel id is
     marked as used as well.
@@ -267,8 +290,10 @@ class Channel:
       --idle_threshold /int = DEFAULT_IN_IDLE_THRESHOLD
       --enable_filter /bool = DEFAULT_IN_ENABLE_FILTER
       --filter_ticks_threshold /int = DEFAULT_IN_FILTER_TICKS_THRESHOLD
-      --buffer_size /int = DEFAULT_IN_BUFFER_SIZE:
+      --buffer_size /int? = null:
     if not input: throw "INVALID_ARGUMENT"
+    if not 1 <= memory_block_count <= 8: throw "INVALID_ARGUMENT"
+
     result := Channel pin --memory_block_count=memory_block_count --channel_id=channel_id
     result.configure --input
         --clk_div=clk_div
@@ -294,6 +319,8 @@ class Channel:
       --carrier_duty_percent /int = DEFAULT_OUT_CARRIER_DUTY_PERCENT
       --idle_level /int? = DEFAULT_OUT_IDLE_LEVEL:
     if not output: throw "INVALID_ARGUMENT"
+    if not 1 <= memory_block_count <= 8: throw "INVALID_ARGUMENT"
+
     result := Channel pin --memory_block_count=memory_block_count --channel_id=channel_id
     result.configure --output
         --clk_div=clk_div
@@ -307,17 +334,39 @@ class Channel:
 
   /**
   Configures the channel for input.
-  - $clk_div is the source clock divider. Must be in the range [0,255].
-  - $flags is the configuration flags. See the ESP-IDF documentation for available flags.f
-  - $idle_threshold is the number of clock cycles the receiver will run without seeing an edge.
-  - $enable_filter is whether the filter is enabled.
-  - $filter_ticks_threshold pulses shorter than this value is filtered away.
-    Only works with $enable_filter. The value must be in the range [0,255].
-  - $buffer_size determines the size in bytes of the receive buffer. It must be bigger than
 
-  # Advanced
-  The $clk_div divides the APB (advanced peripheral bus) clock. The APB clock is set to 80MHz.
-  The $filter_ticks_threshold counts APB bus ticks. As such, a value of 80 is equivalent to 1us.
+  The $clk_div divides the 80MHz clock. The value must be in range [1, 255].
+  The RMT unit works with ticks. All sent and received signals count ticks.
+
+  The $flags can be found in the ESP-IDF documentation.
+
+  The $idle_threshold determines how many ticks the channel must not change before it is
+    considered idle (and thus finishes a signal sequence). The value must be in
+    range [1, 32767] (15 bits).
+
+  If $enable_filter is set, discards signals that are shorter than $filter_ticks_threshold.
+    Contrary to most other parameters, the filter counts the APB ticks and not the
+    divided clock ticks. The value must be in range [0, 255].
+
+  The $buffer_size determines how many signals can be buffered before the channel is
+    considered full. This buffer is used internally to copy signals from the RMT
+    memory blocks (which have been reserved in the constructor) to user code.
+
+  The maximum size of any item in this buffer is less than half of the buffer size.
+    This means that the buffer should be 8 bytes + the maximum expected size (which
+    must be a multiple of 4, as each signal is handled in pairs of 16 bits).
+
+  By default it is set to twice the size of the reserved memory blocks (which limit
+    the size of the received signal sequence). However, due to the book-keeping overhead
+    this means that some very long signal sequences can not be received. If necessary,
+    adjust to a bigger size.
+
+  If the input is well known and has a limited size it's ok to request a smaller size.
+    In that case request at least twice the expected size + 8.
+
+  Another use case, where bigger buffers are necessary, is when the input can receive
+    multiple sequences where the handling of the data might not be fast enough. In that
+    case, too, it is necessary to increase the buffer size.
   */
   configure --input/bool
       --clk_div /int = DEFAULT_IN_CLK_DIV
@@ -325,26 +374,33 @@ class Channel:
       --idle_threshold /int = DEFAULT_IN_IDLE_THRESHOLD
       --enable_filter /bool = DEFAULT_IN_ENABLE_FILTER
       --filter_ticks_threshold /int = DEFAULT_IN_FILTER_TICKS_THRESHOLD
-      --buffer_size /int = DEFAULT_IN_BUFFER_SIZE:
+      --buffer_size /int? = null:
     if not input: throw "INVALID_ARGUMENT"
     if not resource_: throw "ALREADY_CLOSED"
-    rmt_config_rx_ resource_ pin.num clk_div flags idle_threshold enable_filter filter_ticks_threshold buffer_size
-    rx_buffer_size_ = buffer_size
-    configured_ = 1
+    if not 1 <= clk_div <= 0xFF: throw "INVALID_ARGUMENT"
+    if not 1 <= idle_threshold <=0x7FFF: throw "INVALID_ARGUMENT"
+    if enable_filter and not 0 <= filter_ticks_threshold <= 0xFF: throw "INVALID_ARGUMENT"
+    if buffer_size and buffer_size < 1: throw "INVALID_ARGUMENT"
+
+    rmt_config_rx_ resource_ pin.num clk_div flags idle_threshold enable_filter filter_ticks_threshold (buffer_size or -1)
+    configured_ = CONFIGURED_AS_INPUT_
 
   /**
-  Configure the channel for output.
-  - $clk_div is the source clock divider. Must be in the range [0,255].
-  - $flags is the configuration flags. See the ESP-IDF documentation for available flags.
-  - $enable_carrier is whether a carrier wave is used.
-  - $carrier_frequency_hz is the frequency of the carrier wave.
-  - $carrier_level is the way the carrier way is modulated.
-    Set to 1 to transmit on low output level and 0 to transmit on high output level.
-  - $carrier_duty_percent is the proportion of time the carrier wave is low.
-  - $idle_level is the level transmitted by the transmitter when idle. If null, no idle level is output.
+  Configures the channel for output.
 
-  # Advanced
-  The $clk_div divides the APB (advanced peripheral bus) clock. The APB clock is set to 80MHz.
+  The $clk_div divides the 80MHz clock. The value must be in range [1, 255].
+  The RMT unit works with ticks. All sent and received signals count ticks.
+
+  The $flags can be found in the ESP-IDF documentation.
+  When the carrier is enabled ($enable_carrier) the output signal is a square wave that
+    is modulated by the pulses. In that case the clock frequency (80MHz) is divided by the
+    $carrier_frequency_hz, yielding duty units. These are then divided according to the
+    $carrier_duty_percent.
+  The $carrier_level indicates at which level of the RMT pulses the carrier (and thus any
+    output) is enabled. When set to 1 transmits on low output level, and when equal to 0
+    transmits on high output level.
+
+  The $idle_level is the level that the channel is set to when it is idle.
   */
   configure --output/bool
       --clk_div /int = DEFAULT_OUT_CLK_DIV
@@ -356,59 +412,117 @@ class Channel:
       --idle_level /int? = DEFAULT_OUT_IDLE_LEVEL:
     if not output: throw "INVALID_ARGUMENT"
     if not resource_: throw "ALREADY_CLOSED"
+    if not 1 <= clk_div <= 255: throw "INVALID_ARGUMENT"
+    if idle_level != null and idle_level != 0 and idle_level != 1: throw "INVALID_ARGUMENT"
+    if enable_carrier:
+      if carrier_frequency_hz < 1: throw "INVALID_ARGUMENT"
+      if not 1 <= carrier_duty_percent <= 100: throw "INVALID_ARGUMENT"
+      if carrier_level != 0 and carrier_level != 1: throw "INVALID_ARGUMENT"
+
     enable_idle_output := idle_level ? true : false
     idle_level = idle_level or -1
     enable_loop := false
     rmt_config_tx_ resource_ pin.num clk_div flags enable_carrier carrier_frequency_hz carrier_level carrier_duty_percent enable_loop enable_idle_output idle_level
-    rx_buffer_size_ = null
-    configured_ = 2
+    configured_ = CONFIGURED_AS_OUTPUT_
+
+  /**
+  Takes the $in and $out channel that share the same pin and configures them to be
+    bidirectional.
+
+  The $out channel must be configured as output (see $(configure --output)) and must
+    have been configured before the $in channel, which must be configured as input (see
+    $(configure --input)).
+
+  Sets the pin to open-drain, as the input channel would otherwise just read the signals of
+    the output channel.
+
+  This function can be used to implement protocols that communicate over one wire, like
+    the 1-wire protocol or the one used for DHTxx sensors.
+
+  Any new call to $configure requires a new call to this function.
+  */
+  static make_bidirectional --in/Channel --out/Channel:
+    if not in.is_input or not out.is_output: throw "INVALID_STATE"
+    if in.pin.num != out.pin.num: throw "INVALID_ARGUMENT"
+    rmt_config_bidirectional_pin_ out.pin.num out.resource_
 
   is_configured -> bool:
-    return configured_ != 0
+    return configured_ != NOT_CONFIGURED_
 
   is_input -> bool:
-    return configured_ == 1
+    return configured_ == CONFIGURED_AS_INPUT_
 
   is_output -> bool:
-    return configured_ == 2
+    return configured_ == CONFIGURED_AS_OUTPUT_
 
   idle_threshold -> int?:
     return rmt_get_idle_threshold_ resource_
 
   idle_threshold= threshold/int -> none:
+    if not 1 <= threshold <=0x7FFF: throw "INVALID_ARGUMENT"
     rmt_set_idle_threshold_ resource_ threshold
 
-  /**
-  Returns the buffer size in bytes.
+  is_reading -> bool:
+    return is_reading_
 
-  This value is null if the channel is not configured for input.
+  /**
+  Starts receiving signals for this channel.
+
+  This channel must be configured for receiving (see $(configure --input)).
+
+  If $flush is set (the default) flushes all buffered signals.
   */
-  buffer_size -> int?:
-    return rx_buffer_size_
+  start_reading --flush/bool=true -> none:
+    if not is_input: throw "INVALID_STATE"
+    is_reading_ = true
+    rmt_start_receive_ resource_ flush
+
+  /**
+  Stops receiving.
+  */
+  stop_reading -> none:
+    is_reading_ = false
+    rmt_stop_receive_ resource_
 
   /**
   Receives signals.
 
   This channel must be configured for receiving (see $(configure --input)).
 
-  If $max_bytes is not sufficient to store all received signals, then the
-    result is truncated. If it is important to detect this condition, then the user should
-    set $max_bytes to a value greater than the maximum expected signal byte size.
+  The result may contain trailing 0-period signals. Those should be ignored.
 
-  Warning: currently the receiver is blocking which may cause multiple issues:
-  - the watchdog timer might be triggered
-  - no global garbage collection can run while the receiver is waiting.
+  If the channel hasn't yet started to read, starts reading ($start_reading).
+    However, does not flush
 
-  The $timeout_ms must be big enough for the RMT peripheral to copy the data into its
-    internal buffer. At the very least the timeout thus must be bigger than the idle threshold.
-    However, because of context switches etc, several milliseconds are usually required
-    before the data is available in the internal buffers.
+  If $stop_reading is true, stops reading after the next signal is received.
+  If $stop_reading is false, always keeps the channel reading.
+  If $stop_reading is null, stops reading if the channel wasn't reading yet.
   */
-  read max_bytes/int --timeout_ms/int=DEFAULT_READ_TIMEOUT_MS -> Signals:
+  read --stop_reading/bool?=null -> Signals:
     if not is_input: throw "INVALID_STATE"
-    if max_bytes > buffer_size: throw "maximum returned buffer size greater than allocated buffer size"
-    bytes := rmt_receive_ resource_ max_bytes timeout_ms
-    return Signals.from_bytes bytes
+
+    was_reading := is_reading_
+    if stop_reading == null: stop_reading = not was_reading
+
+    if not was_reading: start_reading
+    // Increase sleep time over time.
+    // TODO(florian): switch to an event-based model.
+    // Note that reading could take at worst almost a minute:
+    // If the channel uses all 8 memory blocks, it can receive 8 * 64 signals.
+    // Each signal can count 2^15 ticks. If the clock (80MHz) is furthermore divided
+    // by 255 (the max), then reading can take a long time...
+    sleep_time := 1
+    try:
+      // Let the system prepare a buffer we will use to write the received data into.
+      bytes := rmt_prepare_receive_ resource_
+      while true:
+        result := rmt_receive_ resource_ bytes true
+        if result: return Signals.from_bytes result
+        sleep --ms=sleep_time
+        if sleep_time < 10: sleep_time++
+        else if sleep_time < 100: sleep_time *= 2
+    finally:
+      if stop_reading: this.stop_reading
 
   /**
   Transmits the given $signals.
@@ -417,7 +531,27 @@ class Channel:
   */
   write signals/Signals -> none:
     if not is_output: throw "INVALID_STATE"
-    rmt_transmit_ resource_ signals.bytes_
+
+    // Start sending the data.
+    // We receive a write_buffer with external memory that we need to keep alive
+    // until the sending is done. This buffer may be the $signals.bytes_ buffer
+    // if that one is external.
+    buffer := rmt_transmit_ resource_ signals.bytes_
+
+    // Increase sleep time over time.
+    // TODO(florian): switch to an event-based model.
+    // Note that the signal size is not limited, and that writing
+    //   the signals can take significant time.
+    sleep_time := 1
+    // Send the buffer, to ensure that the compiler doesn't optimize the local variable away.
+    while not rmt_transmit_done_ resource_ buffer:
+      sleep --ms=sleep_time
+      if sleep_time < 10: sleep_time++
+      else if sleep_time < 100: sleep_time *= 2
+
+  // TODO(florian): add a `write --loop`.
+  // This function can only take a limited amount of memory (contrary to $write).
+  // It should copy the data into the internal buffers, and then reconfigure the channel.
 
   /** Closes the channel. */
   close:
@@ -425,145 +559,6 @@ class Channel:
       rmt_channel_delete_ resource_group_ resource_
       resource_ = null
       configured_ = 0
-      rx_buffer_size_ = null
-
-write_and_read -> Signals
-    --in_channel / Channel
-    --out_channel / Channel
-    --before_read / Signals=Signals.ZERO
-    --during_read / Signals=Signals.ZERO
-    max_bytes/int
-    --timeout_ms/int=Channel.DEFAULT_READ_TIMEOUT_MS:
-  if max_bytes > in_channel.buffer_size: throw "maximum returned buffer size greater than allocated buffer size"
-  if not in_channel.is_input: throw "INVALID_STATE"
-  if not out_channel.is_output: throw "INVALID_STATE"
-
-  result := rmt_transmit_and_receive_
-      out_channel.resource_
-      in_channel.resource_
-      before_read.bytes_
-      during_read.bytes_
-      max_bytes
-      timeout_ms
-  return Signals.from_bytes result
-
-/**
-A bidirectional channel.
-
-This channel uses two hardware channels to be able to read and write at the same time.
-This only makes sense if the pin is set to open-drain mode, as the receiver would otherwise just
-  read the output of the output channel. The constructor automatically sets the pin to open-drain.
-
-This class can be used to implement protocols that communicate over one wire, like the 1-wire protocol
-  or the one used for DHTxx sensors.
-*/
-class BidirectionalChannel:
-  in_channel_  / Channel
-  out_channel_ / Channel
-
-  /**
-  Constructs a bidirectional channel.
-
-  This operation at least two hardware channels (one for input and one for output).
-
-  The output channel is configured with a high idle level, and the pin is set to open-drain.
-
-  See $Channel.configure for an explanation on the parameters.
-  */
-  constructor pin/gpio.Pin
-      --clk_div /int = Channel.DEFAULT_CLK_DIV
-      --in_channel_id /int = -1
-      --in_memory_block_count /int = 1
-      --in_clk_div /int = clk_div
-      --in_enable_filter /bool = Channel.DEFAULT_IN_ENABLE_FILTER
-      --in_filter_ticks_threshold /int = Channel.DEFAULT_IN_FILTER_TICKS_THRESHOLD
-      --in_idle_threshold /int = Channel.DEFAULT_IN_IDLE_THRESHOLD
-      --in_buffer_size = Channel.DEFAULT_IN_BUFFER_SIZE
-      --out_channel_id /int = -1
-      --out_memory_block_count /int = 1
-      --out_clk_div /int = clk_div:
-    in_channel_  = Channel pin --channel_id=in_channel_id --memory_block_count=in_memory_block_count
-    out_channel_ = Channel pin --channel_id=out_channel_id --memory_block_count=out_memory_block_count
-    out_channel_.configure --output --idle_level=1 --clk_div=out_clk_div
-    in_channel_.configure --input
-        --clk_div=in_clk_div
-        --enable_filter=in_enable_filter
-        --filter_ticks_threshold=in_filter_ticks_threshold
-        --idle_threshold=in_idle_threshold
-        --buffer_size=in_buffer_size
-    rmt_config_bidirectional_pin_ out_channel_.pin.num out_channel_.resource_
-
-  /**
-  Transmits the given $signals.
-
-  See $Channel.write.
-  */
-  write signals/Signals -> none:
-    out_channel_.write signals
-
-  /**
-  Receives $max_bytes items.
-
-  See $Channel.read.
-  */
-  read max_bytes/int --timeout_ms/int=Channel.DEFAULT_READ_TIMEOUT_MS -> Signals:
-    return in_channel_.read max_bytes --timeout_ms=timeout_ms
-
-  /**
-  Transmits the given signals while simultaneously receiving.
-
-  First transmits the $before_read signals. Then starts receiving and
-    emits the $during_read signals.
-
-  The given $max_bytes specifies the maximum byte size of the returned
-    signals. The $max_bytes must be smaller than the configured
-    buffer size for receiving.
-
-  If $max_bytes is not sufficient to store all received signals, then the
-    result is truncated. If it is important to detect this condition, then the user should
-    set $max_bytes to a value greater than the maximum expected signal byte size.
-
-  The $timeout_ms must be big enough for the RMT peripheral to copy the data into its
-    internal buffer. At the very least the timeout thus must be bigger than the idle threshold.
-    However, because of context switches etc, several milliseconds are usually required
-    before the data is available in the internal buffers.
-  The $timeout_ms only starts counting after the $during_read signals have been emitted. It is
-    not necessary to include the duration of them.
-  */
-  write_and_read -> Signals
-      --before_read/Signals=Signals.ZERO
-      --during_read/Signals=Signals.ZERO
-      max_bytes/int
-      --timeout_ms/int=Channel.DEFAULT_READ_TIMEOUT_MS:
-    if max_bytes > in_channel_.buffer_size: throw "maximum returned buffer size greater than allocated buffer size"
-    result := rmt_transmit_and_receive_
-        out_channel_.resource_
-        in_channel_.resource_
-        before_read.bytes_
-        during_read.bytes_
-        max_bytes
-        timeout_ms
-    return Signals.from_bytes result
-
-  /**
-  Returns the idle threshold of the input channel.
-
-  See $Channel.idle_threshold.
-  */
-  idle_threshold -> int:
-    return in_channel_.idle_threshold
-
-  /**
-  Sets the idle threshold of the input channel.
-
-  See $Channel.idle_threshold=.
-  */
-  idle_threshold= new_value/int:
-    in_channel_.idle_threshold = new_value
-
-  close:
-    in_channel_.close
-    out_channel_.close
 
 resource_group_ ::= rmt_init_
 
@@ -594,11 +589,20 @@ rmt_get_idle_threshold_ resource/ByteArray -> int:
 rmt_config_bidirectional_pin_ pin/int tx_resource/ByteArray:
   #primitive.rmt.config_bidirectional_pin
 
-rmt_transmit_ tx_resource/ByteArray signals_bytes/*/Blob*/:
+rmt_transmit_ resource/ByteArray signals_bytes/*/Blob*/:
   #primitive.rmt.transmit
 
-rmt_receive_ rx_resource/ByteArray max_output_len/int receive_timeout/int:
-  #primitive.rmt.receive
+rmt_transmit_done_ resource/ByteArray signals_bytes/*/Blob*/:
+  #primitive.rmt.transmit_done
 
-rmt_transmit_and_receive_ tx_resource/ByteArray rx_resource/ByteArray transmit_bytes/*/Blob*/ receive_bytes max_output_len/int receive_timeout/int:
-  #primitive.rmt.transmit_and_receive
+rmt_start_receive_ resource/ByteArray flush/bool:
+  #primitive.rmt.start_receive
+
+rmt_stop_receive_ resource/ByteArray:
+  #primitive.rmt.stop_receive
+
+rmt_prepare_receive_ resource/ByteArray -> ByteArray:
+  #primitive.rmt.prepare_receive
+
+rmt_receive_ resource/ByteArray target/ByteArray resize/bool:
+  #primitive.rmt.receive
