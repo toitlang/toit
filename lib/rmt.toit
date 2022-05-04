@@ -292,7 +292,7 @@ class Channel:
       --carrier_frequency_hz /int = DEFAULT_OUT_CARRIER_FREQUENCY
       --carrier_level /int = DEFAULT_OUT_CARRIER_LEVEL
       --carrier_duty_percent /int = DEFAULT_OUT_CARRIER_DUTY_PERCENT
-      --idle_level/int? = DEFAULT_OUT_IDLE_LEVEL:
+      --idle_level /int? = DEFAULT_OUT_IDLE_LEVEL:
     if not output: throw "INVALID_ARGUMENT"
     result := Channel pin --memory_block_count=memory_block_count --channel_id=channel_id
     result.configure --output
@@ -353,7 +353,7 @@ class Channel:
       --carrier_frequency_hz /int = DEFAULT_OUT_CARRIER_FREQUENCY
       --carrier_level /int = DEFAULT_OUT_CARRIER_LEVEL
       --carrier_duty_percent /int = DEFAULT_OUT_CARRIER_DUTY_PERCENT
-      --idle_level/int? = DEFAULT_OUT_IDLE_LEVEL:
+      --idle_level /int? = DEFAULT_OUT_IDLE_LEVEL:
     if not output: throw "INVALID_ARGUMENT"
     if not resource_: throw "ALREADY_CLOSED"
     enable_idle_output := idle_level ? true : false
