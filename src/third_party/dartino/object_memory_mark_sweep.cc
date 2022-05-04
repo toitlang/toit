@@ -502,7 +502,6 @@ uword CompactingVisitor::visit(HeapObject* object) {
     }
   }
 
-  fix_pointers_visitor_->set_source_address(object->_raw());
   HeapObject::from_address(dest_.address)->roots_do(program_, fix_pointers_visitor_);
   used_ += size;
   dest_.address += size;

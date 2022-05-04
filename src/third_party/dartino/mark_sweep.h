@@ -74,14 +74,9 @@ class MarkingVisitor : public RootCallback {
 
 class FixPointersVisitor : public RootCallback {
  public:
-  FixPointersVisitor() : source_address_(0) {}
+  FixPointersVisitor() {}
 
   virtual void do_roots(Object** start, int length);
-
-  void set_source_address(uword address) { source_address_ = address; }
-
- private:
-  uword source_address_;
 };
 
 class CompactingVisitor : public HeapObjectVisitor {
