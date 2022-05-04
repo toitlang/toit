@@ -378,7 +378,6 @@ void TwoSpaceHeap::compact_heap() {
   uword used_after = compacting_visitor.used();
   old_space()->set_used(used_after);
   old_space()->set_used_after_last_gc(used_after);
-  fix.set_source_address(0);
 
   HeapObjectPointerVisitor new_space_visitor(program_, &fix);
   new_space->iterate_objects(&new_space_visitor);
