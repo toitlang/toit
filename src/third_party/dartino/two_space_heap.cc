@@ -133,7 +133,7 @@ void TwoSpaceHeap::collect_new_space() {
   from->flush();
 
 #ifdef DEBUG
-  if (Flags::validate_heap) old_space()->verify();
+  if (Flags::validate_heap) validate();
 #endif
 
   uword old_used = old_space()->used();
@@ -206,10 +206,6 @@ void TwoSpaceHeap::collect_new_space() {
     old_space()->report_new_space_progress(progress);
   }
 
-#ifdef DEBUG
-  if (Flags::validate_heap) old_space()->verify();
-#endif
-
   collect_old_space_if_needed(trigger_old_space_gc);
 }
 
@@ -220,25 +216,28 @@ uword TwoSpaceHeap::total_bytes_allocated() {
 }
 
 void TwoSpaceHeap::collect_old_space_if_needed(bool force) {
-  if (force || old_space()->needs_garbage_collection()) {
-    old_space()->flush();
-    collect_old_space();
 #ifdef DEBUG
-    if (Flags::validate_heap) old_space()->verify();
-#endif
-  }
-}
-
-void TwoSpaceHeap::validate() {
-#ifdef DEBUG
-  // TODO (erik).
-#endif
-}
-
-void TwoSpaceHeap::collect_old_space() {
   if (Flags::validate_heap) {
     validate();
+    old_space()->validate_before_mark_sweep(OLD_SPACE_PAGE, false);
+    space()->validate_before_mark_sweep(NEW_SPACE_PAGE, true);
   }
+#endif
+  if (force || old_space()->needs_garbage_collection()) {
+    ASSERT(old_space()->is_flushed());
+    ASSERT(space()->is_flushed());
+    collect_old_space();
+  }
+}
+
+#ifdef DEBUG
+void TwoSpaceHeap::validate() {
+  space()->validate();
+  old_space()->validate();
+}
+#endif
+
+void TwoSpaceHeap::collect_old_space() {
 
   uint64 start = OS::get_monotonic_time();
   uword old_size = old_space()->used();
@@ -263,9 +262,11 @@ void TwoSpaceHeap::collect_old_space() {
       static_cast<uword>(TOIT_PAGE_SIZE),
       static_cast<uword>(old_space()->used() * 1.5)));
 
+#ifdef DEBUG
   if (Flags::validate_heap) {
     validate();
   }
+#endif
   // TODO(Erik): The heuristics need tidying.
   old_space()->adjust_allocation_budget(0);
 }
@@ -278,9 +279,6 @@ bool TwoSpaceHeap::perform_garbage_collection() {
   SemiSpace* new_space = space();
   MarkingStack stack(program_);
   MarkingVisitor marking_visitor(new_space, &stack);
-
-  new_space->assert_mark_bits_clear();
-  old_space()->assert_mark_bits_clear();
 
   process_heap_->iterate_roots(&marking_visitor);
 
@@ -310,7 +308,7 @@ bool TwoSpaceHeap::perform_garbage_collection() {
   }
 
 #ifdef DEBUG
-  if (Flags::validate_heap) old_space()->verify();
+  if (Flags::validate_heap) validate();
 #endif
 
   return compact;

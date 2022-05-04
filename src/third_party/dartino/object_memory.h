@@ -156,6 +156,7 @@ class Space : public LivenessOracle {
 
   // flush will make the current chunk consistent for iteration.
   virtual void flush() = 0;
+  virtual bool is_flushed() = 0;
 
   // Used for weak processing.  Can only be called:
   // 1) For copying collections: right after copying but before you delete the
@@ -177,8 +178,6 @@ class Space : public LivenessOracle {
 
   // Iterate all the objects that are grey, after a mark stack overflow.
   void iterate_overflowed_objects(RootCallback* visitor, MarkingStack* stack);
-
-  void assert_mark_bits_clear();
 
   // Returns true if the address is inside this space.  Not particularly fast.
   // See GcMetadata::PageType for a faster possibility.
@@ -254,6 +253,8 @@ class Space : public LivenessOracle {
     swap(page_type_, other.page_type_);
   }
 
+  void validate_before_mark_sweep(PageType page_type, bool object_starts_should_be_clear);
+
  protected:
   Space(Program* program, Resizing resizeable, PageType page_type);
 
@@ -300,7 +301,9 @@ class SemiSpace : public Space {
   // flush will make the current chunk consistent for iteration.
   virtual void flush();
 
-  bool is_flushed();
+  void prepare_metadata_for_mark_sweep();
+
+  virtual bool is_flushed();
 
   void trigger_gc_soon() { limit_ = top_ + SENTINEL_SIZE; }
 
@@ -317,13 +320,13 @@ class SemiSpace : public Space {
 
   virtual void append(Chunk* chunk);
 
-  void set_read_only() { top_ = limit_ = 0; }
-
   void process_weak_pointers(SemiSpace* to_space, OldSpace* old_space);
 
   inline void swap(SemiSpace& other) {
     static_cast<Space&>(*this).swap(static_cast<Space&>(other));
   }
+
+  void validate();
 
  private:
   Chunk* allocate_and_use_chunk(uword size);
@@ -448,6 +451,8 @@ class OldSpace : public Space {
   // flush will make the current chunk consistent for iteration.
   virtual void flush();
 
+  virtual bool is_flushed() { return top_ == 0; }
+
   // Allocate raw object. Returns 0 if a garbage collection is needed
   // and causes a fatal error if no garbage collection is needed and
   // there is no room to allocate the object.
@@ -480,9 +485,7 @@ class OldSpace : public Space {
 
   void compute_compaction_destinations();
 
-#ifdef DEBUG
-  void verify();
-#endif
+  void validate();
 
   void set_compacting(bool value) { compacting_ = value; }
   bool compacting() { return compacting_; }

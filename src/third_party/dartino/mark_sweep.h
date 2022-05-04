@@ -100,7 +100,7 @@ class CompactingVisitor : public HeapObjectVisitor {
     *last_bits |= 1u << 31;
   }
 
-  virtual uword visit(HeapObject* object);
+  virtual uword visit(HeapObject* object) override;
 
   uword used() const { return used_; }
 
@@ -118,9 +118,9 @@ class SweepingVisitor : public HeapObjectVisitor {
     GcMetadata::initialize_starts_for_chunk(chunk);
   }
 
-  virtual uword visit(HeapObject* object);
+  virtual uword visit(HeapObject* object) override;
 
-  virtual void chunk_end(Chunk* chunk, uword end) {
+  virtual void chunk_end(Chunk* chunk, uword end) override {
     add_free_list_region(end);
     GcMetadata::clear_mark_bits_for(chunk);
   }
