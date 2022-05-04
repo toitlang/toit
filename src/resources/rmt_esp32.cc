@@ -275,9 +275,9 @@ static void flush_buffer(RingbufHandle_t rb) {
 // Transmits and receives items.
 // The transmit_items_length and receive_items_length must be the number of items,
 //   and not the size in bytes.
-// If transmit_items is not null, starts by transmitting them on the tx channel.
+// If transmit_items_length is not 0, starts by transmitting them on the tx channel.
 // Then starts receiving on the rx channel.
-// If receive_items is not null, transmits those items on the tx channel.
+// If receive_items_length is not 0, transmits those items on the tx channel.
 // Finally waits for at most receive_timeout_ms on the rx_channel to receive max_output_len items.
 // If there are more items truncates them. If there are fewer, returns the ones that are there.
 static Object* transmit_and_receive(rmt_channel_t tx_channel,
@@ -299,14 +299,14 @@ static Object* transmit_and_receive(rmt_channel_t tx_channel,
   if (err != ESP_OK) return Primitive::os_error(err, process);
 
   flush_buffer(rb);
-  if (transmit_items != null) {
+  if (transmit_items_length != 0) {
     err = rmt_write_items(tx_channel, transmit_items, transmit_items_length, true);
     if (err != ESP_OK) return Primitive::os_error(err, process);
   }
   err = rmt_rx_start(rx_channel, true);
   if (err != ESP_OK) return Primitive::os_error(err, process);
 
-  if (receive_items != null) {
+  if (receive_items_length != 0) {
     err = rmt_write_items(tx_channel, receive_items, receive_items_length, true);
     if (err != ESP_OK) {
       rmt_rx_stop(rx_channel);
@@ -370,7 +370,6 @@ PRIMITIVE(transmit_and_receive) {
                               receive_timeout_ms,
                               process);
 }
-
 
 } // namespace toit
 #endif // TOIT_FREERTOS
