@@ -342,11 +342,6 @@ Block* OS::allocate_block() {
   return (result == null) ? null : new (result) Block();
 }
 
-ProgramBlock* OS::allocate_program_block() {
-  void* result = _aligned_malloc(TOIT_PAGE_SIZE, TOIT_PAGE_SIZE);
-  return (result == null) ? null : new (result) ProgramBlock();
-}
-
 void OS::set_writable(ProgramBlock* block, bool value) {
   // TODO(anders): Unimplemented.
 }
