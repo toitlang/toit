@@ -316,7 +316,6 @@ void OldSpace::visit_remembered_set(ScavengeVisitor* visitor) {
 
           if (iteration_start > earliest_iteration_start) {
             uint8 iteration_low_byte = static_cast<uint8>(iteration_start);
-            ASSERT(iteration_low_byte == 0);
             iteration_start -= iteration_low_byte;
             iteration_start += *starts;
           } else {
@@ -362,6 +361,10 @@ void OldSpace::unlink_promoted_track() {
   }
 }
 
+void OldSpace::start_scavenge() {
+  start_tracking_allocations();
+}
+
 // Called multiple times until there is no more work.  Finds objects moved to
 // the old-space and traverses them to find and fix more new-space pointers.
 bool OldSpace::complete_scavenge(
@@ -391,6 +394,10 @@ bool OldSpace::complete_scavenge(
     previous->zap();
   }
   return found_work;
+}
+
+void OldSpace::end_scavenge() {
+  end_tracking_allocations();
 }
 
 void OldSpace::clear_free_list() { free_list_.clear(); }

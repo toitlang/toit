@@ -47,7 +47,7 @@ class GcMetadata {
   // One word per uint32 of mark bits, corresponding to 32 words of heap.
   static const int CUMULATIVE_MARK_BITS_SHIFT = 5;
 
-  static void initialize_starts_for_chunk(Chunk* chunk, uword only_above = 0) {
+  static void initialize_starts_for_chunk(const Chunk* chunk, uword only_above = 0) {
     uword start = chunk->start();
     uword end = chunk->end();
     if (only_above >= end) return;
@@ -61,7 +61,7 @@ class GcMetadata {
     memset(from, NO_OBJECT_START, to - from);
   }
 
-  static void initialize_remembered_set_for_chunk(Chunk* chunk, uword only_above = 0) {
+  static void initialize_remembered_set_for_chunk(const Chunk* chunk, uword only_above = 0) {
     uword start = chunk->start();
     uword end = chunk->end();
     if (only_above >= end) return;
@@ -75,14 +75,14 @@ class GcMetadata {
     memset(from, GcMetadata::NO_NEW_SPACE_POINTERS, to - from);
   }
 
-  static void initialize_overflow_bits_for_chunk(Chunk* chunk) {
+  static void initialize_overflow_bits_for_chunk(const Chunk* chunk) {
     ASSERT(in_metadata_range(chunk->start()));
     uint8* from = overflow_bits_for(chunk->start());
     uint8* to = overflow_bits_for(chunk->end());
     memset(from, 0, to - from);
   }
 
-  static void clear_mark_bits_for(Chunk* chunk) {
+  static void clear_mark_bits_for(const Chunk* chunk) {
     ASSERT(in_metadata_range(chunk->start()));
     uword base = chunk->start();
     uword size = chunk->size() >> MARK_BITS_SHIFT;

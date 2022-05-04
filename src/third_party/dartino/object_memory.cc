@@ -25,8 +25,8 @@ Chunk::Chunk(Space* owner, uword start, uword size, bool external)
         end_(start + size),
         external_(external),
         scavenge_pointer_(start_) {
-  if (GcMetadata::in_metadata_range(start)) {
-    GcMetadata::initialize_overflow_bits_for_chunk(this);
+  if (!GcMetadata::in_metadata_range(start)) {
+    FATAL("Not in metadata range: %p\n", (void*)start);
   }
 }
 
@@ -157,6 +157,18 @@ void Space::iterate_objects(HeapObjectVisitor* visitor) {
   }
 }
 
+void Space::assert_mark_bits_clear() {
+#ifdef DEBUG
+  for (auto chunk : chunk_list_) {
+    uint32* bits = GcMetadata::mark_bits_for(chunk->start());
+    uint32* bits_end = GcMetadata::mark_bits_for(chunk->start() + chunk->size());
+    for (uint32* b = bits; b < bits_end; b++) {
+      ASSERT(*b == 0);
+    }
+  }
+#endif
+}
+
 void Space::clear_mark_bits() {
   flush();
   for (auto chunk : chunk_list_) GcMetadata::clear_mark_bits_for(chunk);
@@ -254,6 +266,7 @@ Chunk* ObjectMemory::allocate_chunk(Space* owner, uword size) {
 #endif
   if (owner) {
     GcMetadata::mark_pages_for_chunk(chunk, owner->page_type());
+    chunk->initialize_metadata();
   }
   allocated_ += size;
   return chunk;
@@ -262,6 +275,14 @@ Chunk* ObjectMemory::allocate_chunk(Space* owner, uword size) {
 void Chunk::set_owner(Space* value) {
   owner_ = value;
   GcMetadata::mark_pages_for_chunk(this, value->page_type());
+  initialize_metadata();
+}
+
+void Chunk::initialize_metadata() const {
+  GcMetadata::clear_mark_bits_for(this);
+  GcMetadata::initialize_overflow_bits_for_chunk(this);
+  GcMetadata::initialize_starts_for_chunk(this);
+  GcMetadata::initialize_remembered_set_for_chunk(this);
 }
 
 void ObjectMemory::free_chunk(Chunk* chunk) {

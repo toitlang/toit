@@ -57,9 +57,6 @@ class TwoSpaceHeap {
 
   void validate();
 
-  // Returns false for allocation failure.
-  bool initialize();
-
   OldSpace* old_space() { return &old_space_; }
 
   void swap_semi_spaces(SemiSpace& from, SemiSpace& to);

@@ -470,6 +470,8 @@ void ByteArray::read_content(SnapshotReader* st, int len) {
   }
 }
 
+#endif  // TOIT_FREERTOS
+
 word ByteArray::max_internal_size() {
   return Utils::max(max_internal_size_in_process(), max_internal_size_in_program());
 }
@@ -477,7 +479,5 @@ word ByteArray::max_internal_size() {
 word String::max_internal_size() {
   return Utils::max(max_internal_size_in_process(), max_internal_size_in_program());
 }
-
-#endif  // TOIT_FREERTOS
 
 }  // namespace toit

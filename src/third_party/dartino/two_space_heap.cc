@@ -20,6 +20,7 @@ TwoSpaceHeap::TwoSpaceHeap(Program* program, ObjectHeap* process_heap, Chunk* ch
       old_space_(program, this),
       semi_space_(program, chunk) {
   semi_space_size_ = TOIT_PAGE_SIZE;
+  if (chunk) water_mark_ = chunk->start();
 }
 
 uword TwoSpaceHeap::max_expansion() {
@@ -29,15 +30,6 @@ uword TwoSpaceHeap::max_expansion() {
   limit -= TOIT_PAGE_SIZE;  // New space is one page.
   if (limit < old_space()->used()) return 0;
   return old_space()->used() - limit;
-}
-
-bool TwoSpaceHeap::initialize() {
-  Chunk* chunk = ObjectMemory::allocate_chunk(&semi_space_, semi_space_size_);
-  if (chunk == NULL) return false;
-  semi_space_.append(chunk);
-  semi_space_.update_base_and_limit(chunk, chunk->start());
-  water_mark_ = chunk->start();
-  return true;
 }
 
 TwoSpaceHeap::~TwoSpaceHeap() {
@@ -286,6 +278,9 @@ bool TwoSpaceHeap::perform_garbage_collection() {
   SemiSpace* new_space = space();
   MarkingStack stack(program_);
   MarkingVisitor marking_visitor(new_space, &stack);
+
+  new_space->assert_mark_bits_clear();
+  old_space()->assert_mark_bits_clear();
 
   process_heap_->iterate_roots(&marking_visitor);
 

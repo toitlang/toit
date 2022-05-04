@@ -24,17 +24,14 @@ static void write_sentinel_at(uword address) {
 
 Space::Space(Program* program, Space::Resizing resizeable, PageType page_type)
     : program_(program),
-      top_(0),
-      limit_(0),
-      allocation_budget_(0),
       page_type_(page_type) {}
 
 SemiSpace::SemiSpace(Program* program, Chunk* chunk)
     : Space(program, CANNOT_RESIZE, NEW_SPACE_PAGE) {
   if (!chunk) return;
-  ASSERT(chunk);
   append(chunk);
   update_base_and_limit(chunk, chunk->start());
+  chunk->set_owner(this);
 }
 
 bool SemiSpace::is_flushed() {

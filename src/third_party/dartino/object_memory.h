@@ -90,6 +90,8 @@ class Chunk : public ChunkList::Element {
   }
   uword scavenge_pointer() const { return scavenge_pointer_; }
 
+  void initialize_metadata() const;
+
 #ifdef DEBUG
   // Fill the space with garbage.
   void scramble();
@@ -175,6 +177,8 @@ class Space : public LivenessOracle {
 
   // Iterate all the objects that are grey, after a mark stack overflow.
   void iterate_overflowed_objects(RootCallback* visitor, MarkingStack* stack);
+
+  void assert_mark_bits_clear();
 
   // Returns true if the address is inside this space.  Not particularly fast.
   // See GcMetadata::PageType for a faster possibility.
@@ -274,7 +278,7 @@ class Space : public LivenessOracle {
   // to large amounts of external allocation. If the allocation budget is not
   // hit, we may still trigger a GC because we are getting close to the limit
   // for the committed size of the chunks in the heap.
-  word allocation_budget_ = 0;
+  word allocation_budget_ = TOIT_PAGE_SIZE;
 
   PageType page_type_;
 };
@@ -462,9 +466,9 @@ class OldSpace : public Space {
   void rebuild_remembered_set();
 
   // For the objects promoted to the old space during scavenge.
-  inline void start_scavenge() { start_tracking_allocations(); }
+  void start_scavenge();
   bool complete_scavenge(ScavengeVisitor* visitor);
-  inline void end_scavenge() { end_tracking_allocations(); }
+  void end_scavenge();
 
   void start_tracking_allocations();
   void end_tracking_allocations();
@@ -488,6 +492,7 @@ class OldSpace : public Space {
   // Tells whether garbage collection is needed.  Only to be called when
   // bump allocation has failed, or on old space after a new-space GC.
   bool needs_garbage_collection() {
+    if (tracking_allocations_) return false;  // We are already in a scavenge.
     return used_ > 0 && allocation_budget_ <= 0;
   }
 
