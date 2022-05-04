@@ -427,6 +427,26 @@ class Channel:
       configured_ = 0
       rx_buffer_size_ = null
 
+write_and_read -> Signals
+    --in_channel / Channel
+    --out_channel / Channel
+    --before_read / Signals=Signals.ZERO
+    --during_read / Signals=Signals.ZERO
+    max_bytes/int
+    --timeout_ms/int=Channel.DEFAULT_READ_TIMEOUT_MS:
+  if max_bytes > in_channel.buffer_size: throw "maximum returned buffer size greater than allocated buffer size"
+  if not in_channel.is_input: throw "INVALID_STATE"
+  if not out_channel.is_output: throw "INVALID_STATE"
+
+  result := rmt_transmit_and_receive_
+      out_channel.resource_
+      in_channel.resource_
+      before_read.bytes_
+      during_read.bytes_
+      max_bytes
+      timeout_ms
+  return Signals.from_bytes result
+
 /**
 A bidirectional channel.
 
