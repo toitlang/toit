@@ -291,12 +291,7 @@ class GcMetadata {
     auto rest_of_object = reinterpret_cast<HeapObject*>(reinterpret_cast<uword>(object) + WORD_SIZE);
     ASSERT(all_mark_bits_are(rest_of_object, size - WORD_SIZE, 0) ||
            all_mark_bits_are(rest_of_object, size - WORD_SIZE, 1));
-#ifdef NO_UNALIGNED_ACCESS
     const int mask_mask = 31;
-#else
-    // There is probably a little-endian assumption here.
-    const int mask_mask = 7;
-#endif
     int mask_shift = (reinterpret_cast<uword>(object) >> WORD_SHIFT) & mask_mask;
     uword size_in_words = size >> WORD_SHIFT;
     // Jump to the slow case routine to handle crossing an int32_t boundary.
@@ -312,11 +307,7 @@ class GcMetadata {
       uint32 mask = size_in_words == 32 ? 0xffffffff : ((1 << size_in_words) - 1);
       mask <<= mask_shift;
 
-#ifdef NO_UNALIGNED_ACCESS
       uint32* bits = mark_bits_for(object);
-#else
-      uint32* bits = bytewise_mark_bits_for(object);
-#endif
       *bits |= mask;
     }
     // It's black - all bits are marked.
