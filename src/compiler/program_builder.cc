@@ -29,7 +29,7 @@ namespace compiler {
 ProgramBuilder::ProgramBuilder(Program* program)
     // We assume that allocate_initial_block succeeds since ProgramBuilder is
     // run on the server.
-    : _program_heap(program, ProgramHeapMemory::instance()->allocate_initial_block())
+    : _program_heap(program, ProgramBlock::allocate_program_block())
     , _program(program) {
 }
 

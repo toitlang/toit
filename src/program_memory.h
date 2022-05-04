@@ -63,6 +63,11 @@ class ProgramBlock : public ProgramBlockLinkedList::Element {
     _reset();
   }
 
+  static ProgramBlock* allocate_program_block() {
+    void* result = malloc(TOIT_PAGE_SIZE);
+    return new (result) ProgramBlock();
+  }
+
   void* top() const { return _top; }
   void* base() const { return Utils::address_at(const_cast<ProgramBlock*>(this), sizeof(ProgramBlock)); }
   void* limit() const { return Utils::address_at(const_cast<ProgramBlock*>(this), TOIT_PAGE_SIZE); }
@@ -70,15 +75,6 @@ class ProgramBlock : public ProgramBlockLinkedList::Element {
   HeapObject* allocate_raw(int byte_size);
 
   bool is_empty() { return top() == base(); }
-
-  // Returns the memory block that contains the object.
-  static ProgramBlock* from(HeapObject* object);
-
-  // Tells whether this block of memory contains the object.
-  bool contains(HeapObject* object);
-
-  // Shift top with delta (not block content).
-  void shrink_top(int delta);
 
   void do_pointers(Program* program, PointerCallback* callback);
 
@@ -108,8 +104,6 @@ class ProgramBlock : public ProgramBlockLinkedList::Element {
   friend class ProgramBlockList;
   friend class ProgramHeap;
   friend class ProgramHeapMemory;
-  friend class OS;
-  friend class ProgramRawMemory;
 };
 
 class ProgramBlockList {
@@ -172,16 +166,7 @@ class ProgramBlockList {
 class ProgramHeapMemory {
  public:
 
-  // Memory management (MT safe operations)
-  ProgramBlock* allocate_block(ProgramRawHeap* heap);
-  ProgramBlock* allocate_initial_block();
-  void free_block(ProgramBlock* block, ProgramRawHeap* heap);
   void set_writable(ProgramBlock* block, bool value);
-
-  // This is used for the case where we allocated an initial block for a new
-  // heap, but the new heap creation failed, so the block was never associated
-  // with a heap.
-  void free_unused_block(ProgramBlock* block);
 
   Mutex* mutex() const { return _memory_mutex; }
 
@@ -193,9 +178,7 @@ class ProgramHeapMemory {
  private:
   static ProgramHeapMemory _instance;
 
-  ProgramBlockList _free_list;
   Mutex* _memory_mutex;
-  word _largest_number_of_blocks_in_a_heap = 0;  // In pages.
 };
 
 class ProgramRawHeap {

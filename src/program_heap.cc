@@ -161,8 +161,7 @@ HeapObject* ProgramHeap::_allocate_raw(int byte_size) {
 }
 
 ProgramHeap::AllocationResult ProgramHeap::_expand() {
-  ProgramBlock* block = ProgramHeapMemory::instance()->allocate_block(this);
-  if (block == null) return ALLOCATION_OUT_OF_MEMORY;
+  ProgramBlock* block = ProgramBlock::allocate_program_block();
   _blocks.append(block);
   return ALLOCATION_SUCCESS;
 }
