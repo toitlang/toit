@@ -35,14 +35,14 @@
 
 namespace toit {
 
-ProgramHeap::ProgramHeap(Program* program, ProgramBlock* initial_block)
+ProgramHeap::ProgramHeap(Program* program)
     : ProgramRawHeap()
     , _program(program)
     , _in_gc(false)
     , _gc_allowed(true)
     , _total_bytes_allocated(0)
     , _last_allocation_result(ALLOCATION_SUCCESS) {
-  _blocks.append(initial_block);
+  _blocks.append(ProgramBlock::allocate_program_block());
 }
 
 ProgramHeap::~ProgramHeap() {
