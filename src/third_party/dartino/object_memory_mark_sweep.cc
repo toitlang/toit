@@ -106,25 +106,24 @@ Chunk* OldSpace::allocate_and_use_chunk(uword size) {
 
 uword OldSpace::allocate_in_new_chunk(uword size) {
   ASSERT(top_ == 0);  // Space is flushed.
-  // Allocate new chunk that is big enough to fit the object.
+  // Allocate new chunk.  After a certain heap size we start allocating
+  // multi-page chunks to improve fragmentation.
   int tracking_size = tracking_allocations_ ? 0 : PromotedTrack::header_size();
   uword max_expansion = heap_->max_expansion();
-  uword smallest_chunk_size =
-      Utils::min(get_default_chunk_size(used()), max_expansion);
-  uword chunk_size =
-      (size + tracking_size + WORD_SIZE >= smallest_chunk_size)
-          ? (size + tracking_size + WORD_SIZE)  // Make room for sentinel.
-          : smallest_chunk_size;
+  uword smallest_chunk_size = Utils::min(get_default_chunk_size(used()), max_expansion);
+  uword max_space_needed = size + tracking_size + WORD_SIZE;  // Make room for sentinel.
+  // Toit uses arraylets and external objects, so all objects should fit on a page.
+  ASSERT(max_space_needed <= TOIT_PAGE_SIZE);
+  uword chunk_size = Utils::max(max_space_needed, smallest_chunk_size);
 
   if (chunk_size <= max_expansion) {
-    if (chunk_size + (chunk_size >> 1) > max_expansion) {
-      // If we are near the limit, then just get memory up to the limit from
-      // the OS to reduce the number of small chunks in the heap, which can
-      // cause some fragmentation.
-      chunk_size = max_expansion;
-    }
-
+    chunk_size = Utils::round_up(chunk_size, TOIT_PAGE_SIZE);
     Chunk* chunk = allocate_and_use_chunk(chunk_size);
+    while (chunk == null && chunk_size > TOIT_PAGE_SIZE) {
+      // If we fail to get a multi-page chunk, try for a smaller chunk.
+      chunk_size = Utils::round_up(chunk_size >> 1, TOIT_PAGE_SIZE);
+      chunk = allocate_and_use_chunk(chunk_size);
+    }
     if (chunk != null) {
       return allocate(size);
     }
@@ -316,7 +315,6 @@ void OldSpace::visit_remembered_set(ScavengeVisitor* visitor) {
 
           if (iteration_start > earliest_iteration_start) {
             uint8 iteration_low_byte = static_cast<uint8>(iteration_start);
-            ASSERT(iteration_low_byte == 0);
             iteration_start -= iteration_low_byte;
             iteration_start += *starts;
           } else {
@@ -362,6 +360,10 @@ void OldSpace::unlink_promoted_track() {
   }
 }
 
+void OldSpace::start_scavenge() {
+  start_tracking_allocations();
+}
+
 // Called multiple times until there is no more work.  Finds objects moved to
 // the old-space and traverses them to find and fix more new-space pointers.
 bool OldSpace::complete_scavenge(
@@ -391,6 +393,10 @@ bool OldSpace::complete_scavenge(
     previous->zap();
   }
   return found_work;
+}
+
+void OldSpace::end_scavenge() {
+  end_tracking_allocations();
 }
 
 void OldSpace::clear_free_list() { free_list_.clear(); }
@@ -495,7 +501,6 @@ uword CompactingVisitor::visit(HeapObject* object) {
     }
   }
 
-  fix_pointers_visitor_->set_source_address(object->_raw());
   HeapObject::from_address(dest_.address)->roots_do(program_, fix_pointers_visitor_);
   used_ += size;
   dest_.address += size;
@@ -534,7 +539,7 @@ void OldSpace::process_weak_pointers() {
 }
 
 #ifdef DEBUG
-void OldSpace::verify() {
+void OldSpace::validate() {
   // Verify that the object starts table contains only legitimate object start
   // addresses for each chunk in the space.
   for (auto chunk : chunk_list_) {
@@ -567,6 +572,7 @@ void OldSpace::verify() {
       }
       current += object->size(program_);
     }
+    ASSERT(current == chunk->end() - WORD_SIZE);
   }
 }
 #endif

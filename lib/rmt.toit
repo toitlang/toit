@@ -258,23 +258,51 @@ class Channel:
   /**
   Variant of $(constructor pin).
 
-  Configures the channel for input. See $(configure --input).
+  Configures the channel for input. See $(configure --input) for input parameters.
   */
-  constructor --input/bool pin/gpio.Pin --memory_block_count/int=1 --channel_id/int?=null:
+  constructor --input/bool pin/gpio.Pin --memory_block_count/int=1
+      --channel_id /int? = null
+      --clk_div /int = DEFAULT_IN_CLK_DIV
+      --flags /int = DEFAULT_IN_FLAGS
+      --idle_threshold /int = DEFAULT_IN_IDLE_THRESHOLD
+      --enable_filter /bool = DEFAULT_IN_ENABLE_FILTER
+      --filter_ticks_threshold /int = DEFAULT_IN_FILTER_TICKS_THRESHOLD
+      --buffer_size /int = DEFAULT_IN_BUFFER_SIZE:
     if not input: throw "INVALID_ARGUMENT"
     result := Channel pin --memory_block_count=memory_block_count --channel_id=channel_id
     result.configure --input
+        --clk_div=clk_div
+        --flags=flags
+        --idle_threshold=idle_threshold
+        --enable_filter=enable_filter
+        --filter_ticks_threshold=filter_ticks_threshold
+        --buffer_size=buffer_size
     return result
 
   /**
   Variant of $(constructor pin).
 
-  Configures the channel for output. See $(configure --output).
+  Configures the channel for output. See $(configure --output) for output parameters.
   */
-  constructor --output/bool pin/gpio.Pin --memory_block_count/int=1 --channel_id/int?=null:
+  constructor --output/bool pin/gpio.Pin --memory_block_count/int=1
+      --channel_id /int? = null
+      --clk_div /int = DEFAULT_OUT_CLK_DIV
+      --flags /int = DEFAULT_OUT_FLAGS
+      --enable_carrier /bool = DEFAULT_OUT_ENABLE_CARRIER
+      --carrier_frequency_hz /int = DEFAULT_OUT_CARRIER_FREQUENCY
+      --carrier_level /int = DEFAULT_OUT_CARRIER_LEVEL
+      --carrier_duty_percent /int = DEFAULT_OUT_CARRIER_DUTY_PERCENT
+      --idle_level /int? = DEFAULT_OUT_IDLE_LEVEL:
     if not output: throw "INVALID_ARGUMENT"
     result := Channel pin --memory_block_count=memory_block_count --channel_id=channel_id
     result.configure --output
+        --clk_div=clk_div
+        --flags=flags
+        --enable_carrier=enable_carrier
+        --carrier_frequency_hz=carrier_frequency_hz
+        --carrier_level=carrier_level
+        --carrier_duty_percent=carrier_duty_percent
+        --idle_level=idle_level
     return result
 
   /**
@@ -325,7 +353,7 @@ class Channel:
       --carrier_frequency_hz /int = DEFAULT_OUT_CARRIER_FREQUENCY
       --carrier_level /int = DEFAULT_OUT_CARRIER_LEVEL
       --carrier_duty_percent /int = DEFAULT_OUT_CARRIER_DUTY_PERCENT
-      --idle_level/int? = DEFAULT_OUT_IDLE_LEVEL:
+      --idle_level /int? = DEFAULT_OUT_IDLE_LEVEL:
     if not output: throw "INVALID_ARGUMENT"
     if not resource_: throw "ALREADY_CLOSED"
     enable_idle_output := idle_level ? true : false
@@ -398,6 +426,26 @@ class Channel:
       resource_ = null
       configured_ = 0
       rx_buffer_size_ = null
+
+write_and_read -> Signals
+    --in_channel / Channel
+    --out_channel / Channel
+    --before_read / Signals=Signals.ZERO
+    --during_read / Signals=Signals.ZERO
+    max_bytes/int
+    --timeout_ms/int=Channel.DEFAULT_READ_TIMEOUT_MS:
+  if max_bytes > in_channel.buffer_size: throw "maximum returned buffer size greater than allocated buffer size"
+  if not in_channel.is_input: throw "INVALID_STATE"
+  if not out_channel.is_output: throw "INVALID_STATE"
+
+  result := rmt_transmit_and_receive_
+      out_channel.resource_
+      in_channel.resource_
+      before_read.bytes_
+      during_read.bytes_
+      max_bytes
+      timeout_ms
+  return Signals.from_bytes result
 
 /**
 A bidirectional channel.

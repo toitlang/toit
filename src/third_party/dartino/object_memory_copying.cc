@@ -24,17 +24,14 @@ static void write_sentinel_at(uword address) {
 
 Space::Space(Program* program, Space::Resizing resizeable, PageType page_type)
     : program_(program),
-      top_(0),
-      limit_(0),
-      allocation_budget_(0),
       page_type_(page_type) {}
 
 SemiSpace::SemiSpace(Program* program, Chunk* chunk)
     : Space(program, CANNOT_RESIZE, NEW_SPACE_PAGE) {
   if (!chunk) return;
-  ASSERT(chunk);
   append(chunk);
   update_base_and_limit(chunk, chunk->start());
+  chunk->set_owner(this);
 }
 
 bool SemiSpace::is_flushed() {
@@ -63,6 +60,61 @@ void SemiSpace::flush() {
     write_sentinel_at(top_);
   }
 }
+
+#ifdef DEBUG
+void SemiSpace::validate() {
+  // Iterate all objects, checking their size makes sense.
+  for (auto chunk : chunk_list_) {
+    uword current = chunk->start();
+    while (!has_sentinel_at(current)) {
+      HeapObject* object = HeapObject::from_address(current);
+      current += object->size(program_);
+    }
+    ASSERT(current < chunk->end());
+  }
+}
+
+void Space::validate_before_mark_sweep(PageType expected_page_type, bool object_starts_should_be_clear) {
+  for (auto chunk : chunk_list_) {
+    uword start = chunk->start();
+    uword end = chunk->end();
+
+    if (object_starts_should_be_clear) {
+      // Verify that the object starts table contains no entries (they are added as
+      // needed if there is a mark stack overflow).
+      uint8* starts = GcMetadata::starts_for(start);
+      uint8* end_of_starts = GcMetadata::starts_for(end);
+      for (uint8* p = starts; p < end_of_starts; p++) {
+        ASSERT(*p == GcMetadata::NO_OBJECT_START);
+        USE(p);
+      }
+    }
+
+    // Verify the overflow bits are not already set before there is a mark
+    // stack overflow.
+    uint8* overflow = GcMetadata::overflow_bits_for(start);
+    uint8* end_of_overflow = GcMetadata::overflow_bits_for(end);
+    for (uint8* p = overflow; p < end_of_overflow; p++) {
+      ASSERT(*p == 0);
+      USE(p);
+    }
+
+    // Verify the pages have the right type.
+    for (uword p = start; p < end; p += TOIT_PAGE_SIZE) {
+      PageType type = GcMetadata::get_page_type(p);
+      ASSERT(type == expected_page_type);
+      USE(type);
+    }
+
+    // Verify that no objects are marked before we start marking.
+    uint32* mark_bits_end = GcMetadata::mark_bits_for(end);
+    for (uint32* p = GcMetadata::mark_bits_for(start); p < mark_bits_end; p++) {
+      ASSERT(*p == 0);
+      USE(p);
+    }
+  }
+}
+#endif
 
 HeapObject* SemiSpace::new_location(HeapObject* old_location) {
   ASSERT(includes(old_location->_raw()));

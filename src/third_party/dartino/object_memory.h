@@ -90,6 +90,8 @@ class Chunk : public ChunkList::Element {
   }
   uword scavenge_pointer() const { return scavenge_pointer_; }
 
+  void initialize_metadata() const;
+
 #ifdef DEBUG
   // Fill the space with garbage.
   void scramble();
@@ -154,6 +156,7 @@ class Space : public LivenessOracle {
 
   // flush will make the current chunk consistent for iteration.
   virtual void flush() = 0;
+  virtual bool is_flushed() = 0;
 
   // Used for weak processing.  Can only be called:
   // 1) For copying collections: right after copying but before you delete the
@@ -250,6 +253,8 @@ class Space : public LivenessOracle {
     swap(page_type_, other.page_type_);
   }
 
+  void validate_before_mark_sweep(PageType page_type, bool object_starts_should_be_clear);
+
  protected:
   Space(Program* program, Resizing resizeable, PageType page_type);
 
@@ -274,7 +279,7 @@ class Space : public LivenessOracle {
   // to large amounts of external allocation. If the allocation budget is not
   // hit, we may still trigger a GC because we are getting close to the limit
   // for the committed size of the chunks in the heap.
-  word allocation_budget_ = 0;
+  word allocation_budget_ = TOIT_PAGE_SIZE;
 
   PageType page_type_;
 };
@@ -296,7 +301,9 @@ class SemiSpace : public Space {
   // flush will make the current chunk consistent for iteration.
   virtual void flush();
 
-  bool is_flushed();
+  void prepare_metadata_for_mark_sweep();
+
+  virtual bool is_flushed();
 
   void trigger_gc_soon() { limit_ = top_ + SENTINEL_SIZE; }
 
@@ -313,13 +320,13 @@ class SemiSpace : public Space {
 
   virtual void append(Chunk* chunk);
 
-  void set_read_only() { top_ = limit_ = 0; }
-
   void process_weak_pointers(SemiSpace* to_space, OldSpace* old_space);
 
   inline void swap(SemiSpace& other) {
     static_cast<Space&>(*this).swap(static_cast<Space&>(other));
   }
+
+  void validate();
 
  private:
   Chunk* allocate_and_use_chunk(uword size);
@@ -444,6 +451,8 @@ class OldSpace : public Space {
   // flush will make the current chunk consistent for iteration.
   virtual void flush();
 
+  virtual bool is_flushed() { return top_ == 0; }
+
   // Allocate raw object. Returns 0 if a garbage collection is needed
   // and causes a fatal error if no garbage collection is needed and
   // there is no room to allocate the object.
@@ -462,9 +471,9 @@ class OldSpace : public Space {
   void rebuild_remembered_set();
 
   // For the objects promoted to the old space during scavenge.
-  inline void start_scavenge() { start_tracking_allocations(); }
+  void start_scavenge();
   bool complete_scavenge(ScavengeVisitor* visitor);
-  inline void end_scavenge() { end_tracking_allocations(); }
+  void end_scavenge();
 
   void start_tracking_allocations();
   void end_tracking_allocations();
@@ -476,9 +485,7 @@ class OldSpace : public Space {
 
   void compute_compaction_destinations();
 
-#ifdef DEBUG
-  void verify();
-#endif
+  void validate();
 
   void set_compacting(bool value) { compacting_ = value; }
   bool compacting() { return compacting_; }
@@ -488,6 +495,7 @@ class OldSpace : public Space {
   // Tells whether garbage collection is needed.  Only to be called when
   // bump allocation has failed, or on old space after a new-space GC.
   bool needs_garbage_collection() {
+    if (tracking_allocations_) return false;  // We are already in a scavenge.
     return used_ > 0 && allocation_budget_ <= 0;
   }
 
