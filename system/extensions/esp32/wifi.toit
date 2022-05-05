@@ -40,10 +40,10 @@ class WifiServiceDefinition extends NetworkServiceDefinitionBase:
       return connect client arguments[0] arguments[1]
     return super pid client index arguments
 
-  connect client/int -> ServiceResource:
+  connect client/int -> List:
     return connect client null null
 
-  connect client/int ssid/string? password/string? -> ServiceResource:
+  connect client/int ssid/string? password/string? -> List:
     if not ssid:
       config := esp32.image_config or {:}
       wifi_config := config.get "wifi" --if_absent=: {:}
@@ -53,7 +53,8 @@ class WifiServiceDefinition extends NetworkServiceDefinitionBase:
     module ::= state_.up ssid password
     if module.ssid_ != ssid or module.password_ != password:
       throw "wifi already connected with different credentials"
-    return WifiResource this client state_
+    resource := WifiResource this client state_
+    return [resource.serialize_for_rpc, NetworkService.PROXY_ADDRESS]
 
   address resource/WifiResource -> ByteArray:
     return state_.wifi.address.to_byte_array

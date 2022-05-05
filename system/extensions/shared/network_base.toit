@@ -26,10 +26,21 @@ abstract class NetworkServiceDefinitionBase extends ServiceDefinition implements
       return connect client
     if index == NetworkService.ADDRESS_INDEX:
       return address (resource client arguments)
+    if index == NetworkService.RESOLVE_INDEX:
+      return resolve (resource client arguments[0]) arguments[1]
     unreachable
 
-  connect -> int:
+  connect -> List:
     unreachable  // TODO(kasper): Nasty.
 
   abstract connect client/int -> ServiceResource
-  abstract address resource/ServiceResource -> ByteArray
+
+  address resource/ServiceResource -> ByteArray:
+    // Service clients should not call this. This service defintion hasn't asked
+    // for this call to be proxied, so the client must implement itself.
+    unreachable
+
+  resolve resource/ServiceResource host/string -> List:
+    // Service clients should not call this. This service defintion hasn't asked
+    // for this call to be proxied, so the client must implement itself.
+    unreachable
