@@ -287,7 +287,7 @@ uint32_t BLEResourceGroup::on_event(Resource* resource, word data, uint32_t stat
           Locker locker(_mutex);
           GATTResource* gatt = ble_resource->as<GATTResource*>();
           ASSERT(gatt->handle() == kInvalidHandle);
-          ble_resource->as<GATTResource*>()->set_handle(event->connect.conn_handle);
+          gatt->set_handle(event->connect.conn_handle);
         }
         state &= ~kBLEDisconnected;
         state |= kBLEConnected;
@@ -304,11 +304,20 @@ uint32_t BLEResourceGroup::on_event(Resource* resource, word data, uint32_t stat
       }
       break;
     case BLE_GAP_EVENT_DISCONNECT:
+      auto ble_resource = resource->as<BLEResource*>();
+      if (ble_resource->kind() == BLEResource::GATT) {
+        Locker locker(_mutex);
+        GATTResource* gatt = ble_resource->as<GATTResource*>();
+        ASSERT(gatt->handle() != kInvalidHandle);
+        gatt->set_handle(kInvalidHandle);
+        if (static_cast<ResourceList::Element*>(gatt)->is_not_linked()) {
+          delete gatt;
+        }
+      }
       if (_server_config != null) {
         state &= ~kBLEConnected;
         state |= kBLEDisconnected;
       }
-
       break;
   }
 

@@ -46,12 +46,12 @@ class Resource : public ResourceList::Element, public ResourceListFromEventSourc
   template<typename T>
   T as() { return static_cast<T>(this); }
 
-  ResourceGroup* resource_group() { return _resource_group; }
+  ResourceGroup* resource_group() const { return _resource_group; }
 
-  uint32_t state() { return _state; }
+  uint32_t state() const { return _state; }
   void set_state(uint32_t state) { _state = state; }
 
-  ObjectNotifier* object_notifier() { return _object_notifier; }
+  ObjectNotifier* object_notifier() const { return _object_notifier; }
   void set_object_notifier(ObjectNotifier* object_notifier) { _object_notifier = object_notifier; }
 
   // When a resource group is torn down we call this.  Normally it deletes it, but
@@ -61,10 +61,10 @@ class Resource : public ResourceList::Element, public ResourceListFromEventSourc
     delete this;
   }
 
-private:
+ private:
   ResourceGroup* _resource_group;
-
   uint32_t _state;
+
   // The object_notifier is manipulated under the EventSource lock.
   ObjectNotifier* _object_notifier;
 };
