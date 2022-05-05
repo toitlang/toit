@@ -283,15 +283,14 @@ uint32_t BLEResourceGroup::on_event(Resource* resource, word data, uint32_t stat
         auto ble_resource = resource->as<BLEResource*>();
 
         // Success.
-        if (ble_resource->kind() == BLEResource::GAP) {
-          state &= ~kBLEDisconnected;
-          state |= kBLEConnected;
-        } else {
+        if (ble_resource->kind() == BLEResource::GATT) {
           Locker locker(_mutex);
           GATTResource* gatt = ble_resource->as<GATTResource*>();
           ASSERT(gatt->handle() == kInvalidHandle);
           ble_resource->as<GATTResource*>()->set_handle(event->connect.conn_handle);
         }
+        state &= ~kBLEDisconnected;
+        state |= kBLEConnected;
       } else {
         state |= kBLEConnectFailed;
       }
@@ -797,7 +796,7 @@ PRIMITIVE(connect) {
 
   ble_addr_t addr = { 0 };
   addr.type = address.address()[0];
-  memmove(addr.val, address.address() + 1, 6);
+  memcpy_reverse(addr.val, address.address() + 1, 6);
 
   err = ble_gap_connect(own_addr_type, &addr, 3000, NULL,
                         BLEEventSource::on_gap, gatt);
