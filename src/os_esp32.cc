@@ -378,7 +378,13 @@ void OS::out_of_memory(const char* reason) {
   if (true) {
     panic_put_string(reason);
     panic_put_string("; restarting to attempt to recover.\n");
-    esp_restart();
+
+    // We use deep sleep here to preserve the RTC memory that contains our
+    // bookkeeping data for out-of-memory situations. Using esp_restart()
+    // would clear the RTC memory.
+    esp_sleep_enable_timer_wakeup(100000);  // 100 ms.
+    RtcMemory::before_deep_sleep();
+    esp_deep_sleep_start();
   }
 
 #ifdef TOIT_CMPCTMALLOC
@@ -407,6 +413,7 @@ void OS::out_of_memory(const char* reason) {
 
 #endif // def TOIT_CMPCTMALLOC
 
+  // TODO(kasper): This should probably be avoided because it clears RTC memory.
   esp_restart();
 }
 
