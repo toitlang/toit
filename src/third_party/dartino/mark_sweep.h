@@ -117,7 +117,7 @@ class SweepingVisitor : public HeapObjectVisitor {
 
   virtual void chunk_end(Chunk* chunk, uword end) override {
     add_free_list_region(end);
-    GcMetadata::clear_mark_bits_for(chunk);
+    GcMetadata::clear_mark_bits_for_chunk(chunk);
   }
 
   uword used() const { return used_; }

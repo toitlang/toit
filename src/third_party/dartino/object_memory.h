@@ -25,7 +25,6 @@ class MarkingStack;
 class Object;
 class OldSpace;
 class RootCallback;
-class ProgramHeapRelocator;
 class Program;
 class PromotedTrack;
 class Smi;
@@ -112,8 +111,6 @@ class Chunk : public ChunkList::Element {
   ~Chunk();
 
   friend class ObjectMemory;
-  friend class SemiSpace;
-  friend class Space;
 };
 
 // Abstract base class for visiting all objects in a space.
@@ -259,10 +256,6 @@ class Space : public LivenessOracle {
   Space(Program* program, Resizing resizeable, PageType page_type);
 
   friend class Chunk;
-  friend class CompactingVisitor;
-  friend class NoAllocationFailureScope;
-  friend class Program;
-  friend class ProgramHeapRelocator;
   friend class TwoSpaceHeap;
 
   virtual void append(Chunk* chunk);
@@ -551,9 +544,6 @@ class ObjectMemory {
 
   static Chunk* spare_chunk_;
   static Mutex* spare_chunk_mutex_;
-
-  friend class SemiSpace;
-  friend class Space;
 };
 
 }  // namespace toit
