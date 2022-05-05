@@ -26,8 +26,8 @@
 #include <typeinfo>
 #endif
 
-// Use semispace non-generational GC.
-#define LEGACY_GC 1
+// Use compacting generational GC.
+//#define LEGACY_GC 1
 
 // Support for profiling configuration
 #if defined(PROF)
