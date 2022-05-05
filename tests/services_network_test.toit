@@ -68,7 +68,7 @@ class FakeNetworkServiceDefinition extends ServiceDefinition:
   resolve_/List? := null
 
   constructor:
-    super "system/network/test" --major=1 --minor=2
+    super "system/network/test" --major=1 --minor=2  // Major and minor versions do not matter here.
     provides FakeNetworkService.UUID FakeNetworkService.MAJOR FakeNetworkService.MINOR
 
   handle pid/int client/int index/int arguments/any -> any:

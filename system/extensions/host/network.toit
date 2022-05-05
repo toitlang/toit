@@ -17,6 +17,7 @@ import net
 import net.modules.udp
 
 import system.services show ServiceDefinition ServiceResource
+import system.api.network show NetworkService
 
 import ..shared.network_base
 
@@ -26,7 +27,7 @@ class NetworkServiceDefinition extends NetworkServiceDefinitionBase:
 
   connect client/int -> List:
     resource := NetworkResource this client
-    return [resource.serialize_for_rpc, 0]
+    return [resource.serialize_for_rpc, NetworkService.PROXY_NONE]
 
 class NetworkResource extends ServiceResource:
   constructor service/ServiceDefinition client/int:

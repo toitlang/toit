@@ -14,6 +14,7 @@ interface NetworkService:
   Proxy mask bits that indicate which operations must be proxied
     through the service. See $connect.
   */
+  static PROXY_NONE    /int ::= 0
   static PROXY_ADDRESS /int ::= 1 << 0
   static PROXY_RESOLVE /int ::= 1 << 1
 
