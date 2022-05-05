@@ -105,6 +105,7 @@ Chunk* OldSpace::allocate_and_use_chunk(uword size) {
 }
 
 uword OldSpace::allocate_in_new_chunk(uword size) {
+  if (allocation_budget_ < 0) return 0;
   ASSERT(top_ == 0);  // Space is flushed.
   // Allocate new chunk.  After a certain heap size we start allocating
   // multi-page chunks to improve fragmentation.
@@ -126,10 +127,13 @@ uword OldSpace::allocate_in_new_chunk(uword size) {
     }
     if (chunk != null) {
       return allocate(size);
+    } else {
+      heap_->report_malloc_failed();
     }
   }
 
-  allocation_budget_ = -1;  // Trigger GC.
+  // Speed up later attempts during this scavenge to promote objects.
+  allocation_budget_ = -1;
   return 0;
 }
 
@@ -402,9 +406,12 @@ void OldSpace::end_scavenge() {
 void OldSpace::clear_free_list() { free_list_.clear(); }
 
 void OldSpace::mark_chunk_ends_free() {
-  chunk_list_.delete_wherever([&](Chunk* chunk) -> bool {
+  chunk_list_.remove_wherever([&](Chunk* chunk) -> bool {
     uword top = chunk->compaction_top();
-    if (top == chunk->start()) return true;  // Remove empty chunks from list.
+    if (top == chunk->start()) {
+      ObjectMemory::free_chunk(chunk);
+      return true;  // Remove empty chunks from list.
+    }
     uword end = chunk->usable_end();
     if (top != end) free_list_.add_region(top, end - top);
     top = Utils::round_up(top, GcMetadata::CARD_SIZE);

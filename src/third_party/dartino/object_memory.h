@@ -74,9 +74,6 @@ class Chunk : public ChunkList::Element {
   // Returns the size of this chunk in bytes.
   uword size() const { return end_ - start_; }
 
-  // Is the chunk externally allocated by the embedder.
-  bool is_external() const { return external_; }
-
   // Test for inclusion.
   bool includes(uword address) {
     return (address >= start_) && (address < end_);
@@ -99,17 +96,16 @@ class Chunk : public ChunkList::Element {
   void find(uword word, const char* name);
 #endif
 
-  ~Chunk();
-
  private:
+  ~Chunk();  // Use ObjectMemory::free_chunk().
+
   Space* owner_;
   const uword start_;
   const uword end_;
-  const bool external_;
   uword scavenge_pointer_;
   uword compaction_top_;
 
-  Chunk(Space* owner, uword start, uword size, bool external = false);
+  Chunk(Space* owner, uword start, uword size);
 
   friend class ObjectMemory;
 };

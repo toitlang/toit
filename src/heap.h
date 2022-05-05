@@ -98,12 +98,14 @@ class ObjectHeap {
   ObjectHeap(Program* program, Process* owner, InitialMemory* initial_memory);
   ~ObjectHeap();
 
-  // TODO: In the new heap there is no max allocation size.
+  // TODO: In the new heap there need not be a max allocation size.
   static int max_allocation_size() { return TOIT_PAGE_SIZE - 96; }
 
   inline void do_objects(const std::function<void (HeapObject*)>& func) {
     _two_space_heap.do_objects(func);
   }
+
+  inline bool cross_process_gc_needed() const { return _two_space_heap.cross_process_gc_needed(); }
 
 #endif
 
@@ -157,7 +159,13 @@ class ObjectHeap {
 #endif
 
   bool system_refused_memory() const {
-    return _last_allocation_result == ALLOCATION_OUT_OF_MEMORY;
+    return
+#ifdef LEGACY_GC
+        _last_allocation_result == ALLOCATION_OUT_OF_MEMORY;
+#else
+        _last_allocation_result == ALLOCATION_OUT_OF_MEMORY ||
+        _two_space_heap.cross_process_gc_needed();
+#endif
   }
 
   enum AllocationResult {
@@ -198,7 +206,7 @@ class ObjectHeap {
   void set_task(Task* task);
 
   // Garbage collection operation for runtime objects.
-  int gc();
+  int gc(bool try_hard);
 
   bool add_finalizer(HeapObject* key, Object* lambda);
   bool has_finalizer(HeapObject* key, Object* lambda);

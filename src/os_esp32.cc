@@ -385,8 +385,8 @@ OS::HeapMemoryRange OS::get_heap_memory_range() {
   // Internal SRAM 0 192k 3ffe_0000 - 4000_0000    4007_0000 - 400a_0000
   // Internal SRAM 1 128k                          400a_0000 - 400c_0000
   HeapMemoryRange range;
-  range.address = reinterpret_cast<void*>(0x3ffae000);
-  range.size = 392 * KB;
+  range.address = reinterpret_cast<void*>(0x3ffc0000);
+  range.size = 256 * KB;
   return range;
 }
 
@@ -625,7 +625,7 @@ class HeapSummaryCollector {
     int count = 0;
     for (int i = 0; i < NUMBER_OF_MALLOC_TAGS; i++) {
       // Leave out free space and allocation types with no allocations.
-      if (i == FREE_MALLOC_TAG || sizes_[i] == 0) continue;
+      if (sizes_[i] == 0) continue;
       printf("  | %7d   | %6d  |  %-19s  |\n",
           sizes_[i], counts_[i], HeapSummaryPage::name_of_type(i));
       size += sizes_[i];

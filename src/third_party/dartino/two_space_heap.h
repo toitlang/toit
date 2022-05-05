@@ -61,6 +61,8 @@ class TwoSpaceHeap {
 
   void swap_semi_spaces(SemiSpace& from, SemiSpace& to);
 
+  Process* process();
+
   // Iterate over all objects in the heap.
   void iterate_objects(HeapObjectVisitor* visitor) {
     semi_space_.iterate_objects(visitor);
@@ -102,10 +104,12 @@ class TwoSpaceHeap {
 
   void freed_foreign_memory(uword size);
 
-  void collect_new_space();
-  void collect_old_space();
-  void collect_old_space_if_needed(bool force);
-  bool perform_garbage_collection();
+  void collect_new_space(bool try_hard);
+  void collect_old_space(bool force_compact);
+  void collect_old_space_if_needed(bool force_compact, bool force);
+  bool perform_garbage_collection(bool force_compact);
+  bool cross_process_gc_needed() const { return malloc_failed_; }
+  void report_malloc_failed() { malloc_failed_ = true; }
   void sweep_heap();
   void compact_heap();
 
@@ -123,6 +127,7 @@ class TwoSpaceHeap {
   uword water_mark_;
   uword semi_space_size_;
   uword total_bytes_allocated_ = 0;
+  bool malloc_failed_ = false;
 };
 
 // Helper class for copying HeapObjects.
