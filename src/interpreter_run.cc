@@ -492,8 +492,16 @@ Interpreter::Result Interpreter::run() {
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(ALLOCATE, class_index);
-    Object* result = _process->object_heap()->allocate_instance(Smi::from(class_index));
-    for (int attempts = 1; result == null && attempts < 4; attempts++) {
+    Object* result = null;
+    int attempts = 0;
+    while (true) {
+      result = _process->object_heap()->allocate_instance(Smi::from(class_index));
+      if (result != null) break;
+      attempts++;
+      if (attempts == 4) {
+        sp = push_error(sp, program->allocation_failed(), "");
+        goto THROW_IMPLEMENTATION;
+      }
 #ifdef TOIT_GC_LOGGING
       if (attempts == 3) {
         printf("[gc @ %p%s | 3rd time allocate failure %zd]\n",
@@ -502,11 +510,6 @@ Interpreter::Result Interpreter::run() {
       }
 #endif //TOIT_GC_LOGGING
       sp = gc(sp, false, attempts, false);
-      result = _process->object_heap()->allocate_instance(Smi::from(class_index));
-    }
-    if (result == null) {
-      sp = push_error(sp, program->allocation_failed(), "");
-      goto THROW_IMPLEMENTATION;
     }
     Instance* instance = Instance::cast(result);
     int fields = Instance::fields_from_size(program->instance_size_for(instance));

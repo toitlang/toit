@@ -35,7 +35,13 @@ class TwoSpaceHeap {
 
   // Allocate raw object. Returns null if a garbage collection is
   // needed.
-  HeapObject* allocate(uword size);
+  INLINE HeapObject* allocate(uword size) {
+    uword result = semi_space_.allocate(size);
+    if (result == 0) {
+      return new_space_allocation_failure(size);
+    }
+    return HeapObject::from_address(result);
+  }
 
   // Max memory that can be added by adding new chunks.  Accounts for whole
   // chunks, not just the used memory in them.
@@ -82,19 +88,7 @@ class TwoSpaceHeap {
   // Returns the number of bytes allocated in the space.
   int used() { return old_space_.used() + semi_space_.used(); }
 
-  HeapObject* new_space_allocation_failure(uword size) {
-    if (size >= (semi_space_size_ >> 1)) {
-      uword result = old_space_.allocate(size);
-      if (result != 0) {
-        // The code that populates newly allocated objects assumes that they
-        // are in new space and does not have a write barrier.  We mark the
-        // object dirty immediately, so it is checked by the next GC.
-        GcMetadata::insert_into_remembered_set(result);
-        return HeapObject::from_address(result);
-      }
-    }
-    return null;
-  }
+  HeapObject* new_space_allocation_failure(uword size);
 
   bool has_empty_new_space() { return semi_space_.top() == semi_space_.single_chunk_start(); }
 

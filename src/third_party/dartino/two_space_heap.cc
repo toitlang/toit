@@ -36,12 +36,18 @@ TwoSpaceHeap::~TwoSpaceHeap() {
   // TODO(erik): Call all finalizers.
 }
 
-HeapObject* TwoSpaceHeap::allocate(uword size) {
-  uword result = semi_space_.allocate(size);
-  if (result == 0) {
-    return new_space_allocation_failure(size);
+HeapObject* TwoSpaceHeap::new_space_allocation_failure(uword size) {
+  if (size >= (semi_space_size_ >> 1)) {
+    uword result = old_space_.allocate(size);
+    if (result != 0) {
+      // The code that populates newly allocated objects assumes that they
+      // are in new space and does not have a write barrier.  We mark the
+      // object dirty immediately, so it is checked by the next GC.
+      GcMetadata::insert_into_remembered_set(result);
+      return HeapObject::from_address(result);
+    }
   }
-  return HeapObject::from_address(result);
+  return null;
 }
 
 void TwoSpaceHeap::swap_semi_spaces(SemiSpace& from, SemiSpace& to) {

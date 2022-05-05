@@ -58,15 +58,11 @@ class ScavengeScope : public Locker {
 Instance* ObjectHeap::allocate_instance(Smi* class_id) {
   int size = program()->instance_size_for(class_id);
   TypeTag class_tag = program()->class_tag_for(class_id);
-  return allocate_instance(class_tag, class_id, Smi::from(size));
-}
-
-Instance* ObjectHeap::allocate_instance(TypeTag class_tag, Smi* class_id, Smi* instance_size) {
-  Instance* result = unvoid_cast<Instance*>(_allocate_raw(instance_size->value()));
+  Instance* result = unvoid_cast<Instance*>(_allocate_raw(size));
   if (result == null) return null;  // Allocation failure.
   // Initialize object.
   result->_set_header(class_id, class_tag);
-  result->initialize(instance_size->value());
+  result->initialize(size);
   return result;
 }
 
@@ -428,7 +424,7 @@ Task* ObjectHeap::allocate_task() {
   if (stack == null) return null;  // Allocation failure.
   // Then allocate the task.
   Smi* task_id = program()->task_class_id();
-  Task* result = unvoid_cast<Task*>(allocate_instance(program()->class_tag_for(task_id), task_id, Smi::from(program()->instance_size_for(task_id))));
+  Task* result = unvoid_cast<Task*>(allocate_instance(task_id));
   if (result == null) return null;  // Allocation failure.
   Task::cast(result)->_initialize(stack, Smi::from(owner()->next_task_id()));
   int fields = Instance::fields_from_size(program()->instance_size_for(result));

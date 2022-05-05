@@ -109,7 +109,7 @@ class ObjectHeap {
 
   // Shared allocation operations.
   Instance* allocate_instance(Smi* class_id);
-  Instance* allocate_instance(TypeTag class_tag, Smi* class_id, Smi* instance_size);
+  Instance* allocate_instance2(TypeTag class_tag, Smi* class_id, int size);
   Array* allocate_array(int length, Object* filler);
   ByteArray* allocate_external_byte_array(int length, uint8* memory, bool dispose, bool clear_content = true);
   String* allocate_external_string(int length, uint8* memory, bool dispose);
@@ -231,7 +231,7 @@ class ObjectHeap {
 #ifdef LEGACY_GC
   HeapObject* _allocate_raw(int byte_size);
 #else
-  HeapObject* _allocate_raw(int byte_size) {
+  inline HeapObject* _allocate_raw(int byte_size) {
     return _two_space_heap.allocate(byte_size);
   }
 #endif
