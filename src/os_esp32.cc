@@ -625,7 +625,7 @@ class HeapSummaryCollector {
     int count = 0;
     for (int i = 0; i < NUMBER_OF_MALLOC_TAGS; i++) {
       // Leave out free space and allocation types with no allocations.
-      if (sizes_[i] == 0) continue;
+      if (i == FREE_MALLOC_TAG || sizes_[i] == 0) continue;
       printf("  | %7d   | %6d  |  %-19s  |\n",
           sizes_[i], counts_[i], HeapSummaryPage::name_of_type(i));
       size += sizes_[i];

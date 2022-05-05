@@ -207,7 +207,7 @@ void TwoSpaceHeap::collect_new_space(bool try_hard) {
         (t >> 10) ? 'k' : 'b',
         (old >> 10) ? (old >> 10) : old,
         (old >> 10) ? 'k' : 'b',
-        overhead > TOIT_PAGE_SIZE ? buffer : "",
+        (overhead >= TOIT_PAGE_SIZE) ? buffer : "",
         static_cast<int>(end - start));
   }
 
@@ -277,7 +277,7 @@ void TwoSpaceHeap::collect_old_space(bool force_compact) {
         (f >> 10) ? 'k' : 'b',
         (t >> 10) ? (t >> 10) : t,
         (t >> 10) ? 'k' : 'b',
-        overhead >= TOIT_PAGE_SIZE ? buffer : "",
+        (overhead >= TOIT_PAGE_SIZE) ? buffer : "",
         static_cast<int>(end - start));
   }
 
