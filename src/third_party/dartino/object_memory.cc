@@ -247,9 +247,10 @@ Chunk* ObjectMemory::allocate_chunk(Space* owner, uword size) {
   uword lowest = GcMetadata::lowest_old_space_address();
   USE(lowest);
   if (memory == null) return null;
-  ASSERT(reinterpret_cast<uword>(memory) >= lowest);
-  ASSERT(reinterpret_cast<uword>(memory) - lowest + size <=
-         GcMetadata::heap_extent());
+  if (reinterpret_cast<uword>(memory) < lowest ||
+      reinterpret_cast<uword>(memory) - lowest + size > GcMetadata::heap_extent()) {
+    FATAL("Toit heap outside expected range");
+  }
 
   uword base = reinterpret_cast<uword>(memory);
   Chunk* chunk = _new Chunk(owner, base, size);
