@@ -402,14 +402,16 @@ void OldSpace::end_scavenge() {
 void OldSpace::clear_free_list() { free_list_.clear(); }
 
 void OldSpace::mark_chunk_ends_free() {
-  for (auto chunk : chunk_list_) {
+  chunk_list_.delete_wherever([&](Chunk* chunk) -> bool {
     uword top = chunk->compaction_top();
+    if (top == chunk->start()) return true;  // Remove empty chunks from list.
     uword end = chunk->usable_end();
     if (top != end) free_list_.add_region(top, end - top);
     top = Utils::round_up(top, GcMetadata::CARD_SIZE);
     GcMetadata::initialize_starts_for_chunk(chunk, top);
     GcMetadata::initialize_remembered_set_for_chunk(chunk, top);
-  }
+    return false;
+  });
 }
 
 void FixPointersVisitor::do_roots(Object** start, int length) {
