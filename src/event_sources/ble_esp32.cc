@@ -129,7 +129,7 @@ void BLEEventSource::on_unregister_resource(Locker& locker, Resource* r) {
       break;
     case BLEResource::GATT:
       // The GATT resources will be disconnected when we shut down the
-      // the NimBLE stack.
+      // NimBLE stack.
       break;
   }
 }
