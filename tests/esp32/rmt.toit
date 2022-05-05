@@ -244,6 +244,85 @@ test_bidirectional pin1/gpio.Pin pin2/gpio.Pin:
 
   pin3.close
 
+test_multiple_sequences pin_in/gpio.Pin pin_out/gpio.Pin:
+  PULSE_LENGTH ::= 50
+  IDLE_LENGTH ::= 100
+  SIGNAL_COUNT ::= 13
+
+  out := rmt.Channel pin_out --output --idle_level=0
+  in := rmt.Channel pin_in --input --idle_threshold=IDLE_LENGTH
+
+  // Local block to compute the pulse-length for the x'th signal.
+  pulse_length_for := : | signal_id |
+    result := PULSE_LENGTH + signal_id * 2
+    expect result < IDLE_LENGTH
+    result
+
+  check_signal_sequence := : | signals sequence_id |
+    expect 1 <= signals.size <= 2
+    expect_equals 1 (signals.level 0)
+    expect ((signals.period 0) - (pulse_length_for.call (sequence_id * 2))).abs <= SLACK
+    if signals.size == 2: expect_equals 0 (signals.period 1)
+
+  out_signals := rmt.Signals SIGNAL_COUNT
+  up := true
+  SIGNAL_COUNT.repeat:
+    if up:
+      up = false
+      out_signals.set it --level=1 --period=(pulse_length_for.call it)
+    else:
+      up = true
+      // Trigger an idle for the input.
+      out_signals.set it --level=0 --period=(IDLE_LENGTH * 2)
+
+  // Start reading, then write all the signals.
+  // They should be buffered and readable.
+  in.start_reading
+  out.write out_signals
+  (SIGNAL_COUNT / 2).repeat:
+    in_signals := in.read
+    check_signal_sequence.call in_signals it
+  in.stop_reading
+
+  // Start reading, then write all the signals.
+  // Stop reading, then read them one by one by starting again and stopping for each.
+  // It's crucial we don't flush the buffer when starting now.
+  in.start_reading
+  out.write out_signals
+  (SIGNAL_COUNT / 2).repeat:
+    if not in.is_reading:
+      in.start_reading --no-flush
+    in_signals := in.read
+    in.stop_reading
+    check_signal_sequence.call in_signals it
+  in.stop_reading
+
+  // Start reading, then write all the signals. Stop reading.
+  // Start reading again, flushing the buffer, then write (in parallel).
+  // We should only see the new data.
+  in.start_reading
+  out.write out_signals
+  in.stop_reading
+  SECOND_PULSE_PERIOD ::= 13
+  in_parallel
+    :: | wait_for_ready done |
+      wait_for_ready.call
+      sleep --ms=200
+      second_out_signals := rmt.Signals 1
+      second_out_signals.set 0 --level=1 --period=SECOND_PULSE_PERIOD
+      out.write second_out_signals
+      done.call
+    :: | ready |
+      ready.call
+      in_signals := in.read
+      expect 1 <= in_signals.size <= 2
+      expect_equals 1 (in_signals.level 0)
+      expect ((in_signals.period 0) - SECOND_PULSE_PERIOD).abs <= SLACK
+      if in_signals.size == 2: expect_equals 0 (in_signals.period 1)
+
+  in.close
+  out.close
+
 main:
   pin1 := gpio.Pin RMT_PIN_1
   pin2 := gpio.Pin RMT_PIN_2
@@ -254,6 +333,7 @@ main:
   test_multiple_pulses pin1 pin2
   test_long_sequence pin1 pin2
   test_bidirectional pin1 pin2
+  test_multiple_sequences pin1 pin2
 
   pin1.close
   pin2.close
