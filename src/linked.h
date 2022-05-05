@@ -446,11 +446,11 @@ class DoubleLinkedListElement {
     other._prev = &other;
   }
 
- protected:
   bool is_not_linked() const {
     return _next == this;
   }
 
+ protected:
   DoubleLinkedListElement* unlink() {
     ASSERT(is_linked());
     DoubleLinkedListElement* next = _next;
