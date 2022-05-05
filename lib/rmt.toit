@@ -225,10 +225,10 @@ class Channel:
   pin       /gpio.Pin
   resource_ /ByteArray? := ?
 
-  static NOT_CONFIGURED_ ::= 0
+  static CONFIGURED_NONE_ ::= 0
   static CONFIGURED_AS_INPUT_ ::= 1
   static CONFIGURED_AS_OUTPUT_ ::= 2
-  configured_ /int := NOT_CONFIGURED_
+  configured_ /int := CONFIGURED_NONE_
 
   /** Whether the channel has started reading with $start_reading. */
   is_reading_ /bool := false
@@ -447,7 +447,7 @@ class Channel:
     rmt_config_bidirectional_pin_ out.pin.num out.resource_
 
   is_configured -> bool:
-    return configured_ != NOT_CONFIGURED_
+    return configured_ != CONFIGURED_NONE_
 
   is_input -> bool:
     return configured_ == CONFIGURED_AS_INPUT_
@@ -503,8 +503,8 @@ class Channel:
 
     was_reading := is_reading_
     if stop_reading == null: stop_reading = not was_reading
-
     if not was_reading: start_reading
+
     // Increase sleep time over time.
     // TODO(florian): switch to an event-based model.
     // Note that reading could take at worst almost a minute:

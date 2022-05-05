@@ -22,7 +22,7 @@ RMT_PIN_1 ::= 18
 RMT_PIN_2 ::= 19
 RMT_PIN_3 ::= 15
 
-// Because of the resistors we use the reading isn't fully precise.
+// Because of the resistors and a weak pull-up, the reading isn't fully precise.
 // We allow 5us error.
 SLACK ::= 5
 

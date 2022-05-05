@@ -286,8 +286,8 @@ PRIMITIVE(transmit) {
 
   rmt_channel_t channel = resource->channel();
   const rmt_item32_t* items = reinterpret_cast<const rmt_item32_t*>(address);
-  bool wait_until_done;
-  esp_err_t err = rmt_write_items(channel, items, items_bytes.length() / 4, wait_until_done=false);
+  bool wait_until_done;  // Local for naming argument in call.
+  esp_err_t err = rmt_write_items(channel, items, items_bytes.length() / 4, (wait_until_done=false));
   if (err != ESP_OK) return Primitive::os_error(err, process);
 
   return keep_alive;
@@ -351,7 +351,7 @@ PRIMITIVE(receive) {
   if (err != ESP_OK) return Primitive::os_error(err, process);
 
   size_t received_length;
-  auto received_bytes = xRingbufferReceive(rb, &received_length, 1);
+  auto received_bytes = xRingbufferReceive(rb, &received_length, 0);
   if (received_bytes == null) return process->program()->null_object();
   if (received_length == 0) {
     // We got a 0-length item. The RMT sometimes does this. Ignore it.
