@@ -342,8 +342,6 @@ void TwoSpaceHeap::sweep_heap() {
 
   old_space()->set_compacting(false);
 
-  old_space()->process_weak_pointers();
-
   // Sweep over the old-space and rebuild the freelist.
   SweepingVisitor sweeping_visitor(program_, old_space());
   old_space()->iterate_objects(&sweeping_visitor);
@@ -388,10 +386,6 @@ void TwoSpaceHeap::compact_heap() {
   old_space()->compute_compaction_destinations();
 
   old_space()->clear_free_list();
-
-  // Weak processing when the destination addresses have been calculated, but
-  // before they are moved (which ruins the liveness data).
-  old_space()->process_weak_pointers();
 
   old_space()->zap_object_starts();
 

@@ -543,10 +543,6 @@ uword SweepingVisitor::visit(HeapObject* object) {
   return size;
 }
 
-void OldSpace::process_weak_pointers() {
-  // TODO(erik): Process finalizers.
-}
-
 #ifdef DEBUG
 void OldSpace::validate() {
   // Verify that the object starts table contains only legitimate object start

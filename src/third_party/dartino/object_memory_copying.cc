@@ -191,10 +191,6 @@ bool SemiSpace::complete_scavenge(ScavengeVisitor* visitor) {
   return found_work;
 }
 
-void SemiSpace::process_weak_pointers(SemiSpace* to_space, OldSpace* old_space) {
-  // TODO(erik): Process finalizers.
-}
-
 }  // namespace toit
 
 #endif  // LEGACY_GC
