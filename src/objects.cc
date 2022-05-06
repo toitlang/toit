@@ -159,6 +159,12 @@ FreeListRegion* FreeListRegion::create_at(uword start, uword size) {
   return null;
 }
 
+Object* FreeListRegion::single_free_word_header() {
+  uword header = SINGLE_FREE_WORD_CLASS_ID;
+  header = (header << CLASS_TAG_BIT_SIZE) | SINGLE_FREE_WORD_TAG;
+  return Smi::from(header);
+}
+
 class PointerRootCallback : public RootCallback {
  public:
   explicit PointerRootCallback(PointerCallback* callback) : callback(callback) {}

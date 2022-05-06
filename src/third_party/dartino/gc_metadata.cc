@@ -148,7 +148,7 @@ restart:
         return dest;
       }
       *dest_table = dest.address;
-      dest.address += pop_count(*mark_bits) << WORD_SHIFT;
+      dest.address += Utils::popcount(*mark_bits) << WORD_SHIFT;
       src += LINE_SIZE;
       mark_bits++;
       dest_table++;

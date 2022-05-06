@@ -81,6 +81,20 @@ class Utils {
     }
   }
 
+  // Count ones in the binary representation.
+  template<typename T>
+  static inline int popcount(T x) {
+    typename std::make_unsigned<T>::type u = x;
+    if (sizeof(T) == sizeof(long long)) {
+      return __builtin_popcountll(u);
+    } else if (sizeof(T) == sizeof(long)) {
+      return __builtin_popcountl(u);
+    } else {
+      ASSERT(sizeof(T) <= sizeof(unsigned));
+      return __builtin_popcount(u);
+    }
+  }
+
   template<typename T>
   static inline T address_at(T base, int byte_offset) {
     return reinterpret_cast<T>(((uword) base) + byte_offset);

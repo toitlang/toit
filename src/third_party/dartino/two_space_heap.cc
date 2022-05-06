@@ -343,14 +343,12 @@ void TwoSpaceHeap::sweep_heap() {
   old_space()->set_compacting(false);
 
   // Sweep over the old-space and rebuild the freelist.
-  SweepingVisitor sweeping_visitor(program_, old_space());
-  old_space()->iterate_objects(&sweeping_visitor);
+  uword used_after = old_space()->sweep();
 
   // These are only needed during the mark phase, we can clear them without
   // looking at them.
   semi_space->clear_mark_bits();
 
-  uword used_after = sweeping_visitor.used();
   old_space()->set_used(used_after);
   old_space()->set_used_after_last_gc(used_after);
 }
