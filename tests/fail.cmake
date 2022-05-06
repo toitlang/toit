@@ -24,7 +24,6 @@ if ("${CMAKE_SIZEOF_VOID_P}" EQUAL 4)
 endif()
 
 list(APPEND TOIT_SKIP_TESTS
-  tests/rpc_test.toit
 )
 
 if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows" OR "${CMAKE_SYSTEM_NAME}" STREQUAL "MSYS")
