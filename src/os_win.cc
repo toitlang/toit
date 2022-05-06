@@ -314,7 +314,7 @@ bool OS::use_virtual_memory(void* addr, uword sz) {
   uword rounded = Utils::round_down(address, 4096);
   uword size = Utils::round_up(end - rounded, 4096);
   void* result = VirtualAlloc(reinterpret_cast<void*>(rounded), size, MEM_COMMIT, PAGE_READWRITE);
-  if (result != reinterpret_cast<void*>(address)) FATAL("use_virtual_memory");
+  if (result != reinterpret_cast<void*>(rounded)) FATAL("use_virtual_memory");
   return true;
 }
 
