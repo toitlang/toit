@@ -19,11 +19,10 @@ namespace toit {
 
 #ifndef LEGACY_GC
 
-Chunk::Chunk(Space* owner, uword start, uword size, bool external)
+Chunk::Chunk(Space* owner, uword start, uword size)
       : owner_(owner),
         start_(start),
         end_(start + size),
-        external_(external),
         scavenge_pointer_(start_) {
   if (!GcMetadata::in_metadata_range(start)) {
     FATAL("Not in metadata range: %p\n", (void*)start);
@@ -31,15 +30,12 @@ Chunk::Chunk(Space* owner, uword start, uword size, bool external)
 }
 
 Chunk::~Chunk() {
-  // If the memory for this chunk is external we leave it alone
-  // and let the embedder deallocate it.
-  if (is_external()) return;
   GcMetadata::mark_pages_for_chunk(this, UNKNOWN_SPACE_PAGE);
   OS::free_pages(reinterpret_cast<void*>(start_), size());
 }
 
 Space::~Space() {
-  // TODO(erik): Call finalizers.
+  // ObjectHeap destructor already called all finalizers.
   free_all_chunks();
 }
 
@@ -251,9 +247,10 @@ Chunk* ObjectMemory::allocate_chunk(Space* owner, uword size) {
   uword lowest = GcMetadata::lowest_old_space_address();
   USE(lowest);
   if (memory == null) return null;
-  ASSERT(reinterpret_cast<uword>(memory) >= lowest);
-  ASSERT(reinterpret_cast<uword>(memory) - lowest + size <=
-         GcMetadata::heap_extent());
+  if (reinterpret_cast<uword>(memory) < lowest ||
+      reinterpret_cast<uword>(memory) - lowest + size > GcMetadata::heap_extent()) {
+    FATAL("Toit heap outside expected range");
+  }
 
   uword base = reinterpret_cast<uword>(memory);
   Chunk* chunk = _new Chunk(owner, base, size);
@@ -291,8 +288,7 @@ void Chunk::initialize_metadata() const {
 
 void ObjectMemory::free_chunk(Chunk* chunk) {
 #ifdef DEBUG
-  // Do not touch external memory. It might be read-only.
-  if (!chunk->is_external()) chunk->scramble();
+  chunk->scramble();
 #endif
   allocated_ -= chunk->size();
   delete chunk;

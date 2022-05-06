@@ -72,9 +72,9 @@ class Process : public ProcessListFromProcessGroup::Element,
   void mark_as_priviliged() { _is_privileged = true; }
 
   // Garbage collection operation for runtime objects.
-  int gc() {
+  int gc(bool try_hard) {
     if (program() == null) return 0;
-    int result = object_heap()->gc();
+    int result = object_heap()->gc(try_hard);
     _memory_usage = object_heap()->usage("object heap after gc");
     return result;
   }

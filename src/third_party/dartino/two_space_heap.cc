@@ -32,6 +32,10 @@ uword TwoSpaceHeap::max_expansion() {
   return old_space()->used() - limit;
 }
 
+Process* TwoSpaceHeap::process() {
+  return process_heap_->owner();
+}
+
 TwoSpaceHeap::~TwoSpaceHeap() {
   // TODO(erik): Call all finalizers.
 }
@@ -113,15 +117,19 @@ void SemiSpace::start_scavenge() {
 
 #ifndef LEGACY_GC
 
-void TwoSpaceHeap::collect_new_space() {
+void TwoSpaceHeap::collect_new_space(bool try_hard) {
   SemiSpace* from = new_space();
 
   uint64 start = OS::get_monotonic_time();
 
+  // Might get set during scavenge if we fail to promote to a full old-space
+  // that can't be expanded.
+  malloc_failed_ = false;
+
   total_bytes_allocated_ += from->used();
 
   if (has_empty_new_space()) {
-    collect_old_space_if_needed(false);
+    collect_old_space_if_needed(try_hard, try_hard);
     if (Flags::tracegc) {
       uint64 end = OS::get_monotonic_time();
       printf("Old-space-only GC: %dus\n", static_cast<int>(end - start));
@@ -184,7 +192,14 @@ void TwoSpaceHeap::collect_new_space() {
     int f = from_used;
     int t = to_used;
     int old = old_space()->used();
-    printf("%p Scavenge: %d%c->%d%c (old-gen %d%c) %dus\n",
+
+    uword overhead = old_space()->size() - old;
+
+    char buffer[30];
+    buffer[sizeof(buffer) - 1] = '\0';
+    snprintf(buffer, sizeof(buffer) - 1, " +%dk overhead", static_cast<int>(overhead) >> 10);
+
+    printf("%p Scavenge: %d%c->%d%c (old-gen %d%c%s) %dus\n",
         process_heap_->owner(),
         (f >> 10) ? (f >> 10) : f,
         (f >> 10) ? 'k' : 'b',
@@ -192,6 +207,7 @@ void TwoSpaceHeap::collect_new_space() {
         (t >> 10) ? 'k' : 'b',
         (old >> 10) ? (old >> 10) : old,
         (old >> 10) ? 'k' : 'b',
+        (overhead >= TOIT_PAGE_SIZE) ? buffer : "",
         static_cast<int>(end - start));
   }
 
@@ -206,7 +222,7 @@ void TwoSpaceHeap::collect_new_space() {
     old_space()->report_new_space_progress(progress);
   }
 
-  collect_old_space_if_needed(trigger_old_space_gc);
+  collect_old_space_if_needed(try_hard, trigger_old_space_gc);
 }
 
 uword TwoSpaceHeap::total_bytes_allocated() {
@@ -215,7 +231,7 @@ uword TwoSpaceHeap::total_bytes_allocated() {
   return result;
 }
 
-void TwoSpaceHeap::collect_old_space_if_needed(bool force) {
+void TwoSpaceHeap::collect_old_space_if_needed(bool force_compact, bool force) {
 #ifdef DEBUG
   if (Flags::validate_heap) {
     validate();
@@ -223,10 +239,10 @@ void TwoSpaceHeap::collect_old_space_if_needed(bool force) {
     new_space()->validate_before_mark_sweep(NEW_SPACE_PAGE, true);
   }
 #endif
-  if (force || old_space()->needs_garbage_collection()) {
+  if (force || force_compact || old_space()->needs_garbage_collection()) {
     ASSERT(old_space()->is_flushed());
     ASSERT(new_space()->is_flushed());
-    collect_old_space();
+    collect_old_space(force_compact);
   }
 }
 
@@ -237,24 +253,31 @@ void TwoSpaceHeap::validate() {
 }
 #endif
 
-void TwoSpaceHeap::collect_old_space() {
+void TwoSpaceHeap::collect_old_space(bool force_compact) {
 
   uint64 start = OS::get_monotonic_time();
-  uword old_size = old_space()->used();
+  uword old_used = old_space()->used();
 
-  bool compacted = perform_garbage_collection();
+  bool compacted = perform_garbage_collection(force_compact);
 
   if (Flags::tracegc) {
     uint64 end = OS::get_monotonic_time();
-    int f = old_size;
+    int f = old_used;
     int t = old_space()->used();
-    printf("%p Mark-sweep%s: %d%c->%d%c, %dus\n",
+    uword overhead = old_space()->size() - t;
+
+    char buffer[30];
+    buffer[sizeof(buffer) - 1] = '\0';
+    snprintf(buffer, sizeof(buffer) - 1, " +%dk overhead", static_cast<int>(overhead) >> 10);
+
+    printf("%p Mark-sweep%s: %d%c->%d%c%s %dus\n",
         process_heap_->owner(),
         compacted ? "-compact" : "",
         (f >> 10) ? (f >> 10) : f,
         (f >> 10) ? 'k' : 'b',
         (t >> 10) ? (t >> 10) : t,
         (t >> 10) ? 'k' : 'b',
+        (overhead >= TOIT_PAGE_SIZE) ? buffer : "",
         static_cast<int>(end - start));
   }
 
@@ -271,7 +294,7 @@ void TwoSpaceHeap::collect_old_space() {
   old_space()->adjust_allocation_budget(0);
 }
 
-bool TwoSpaceHeap::perform_garbage_collection() {
+bool TwoSpaceHeap::perform_garbage_collection(bool force_compact) {
   // Mark all reachable objects.  We mark all live objects in new-space too, to
   // detect liveness paths that go through new-space, but we just clear the
   // mark bits afterwards.  Dead objects in new-space are only cleared in a
@@ -292,7 +315,7 @@ bool TwoSpaceHeap::perform_garbage_collection() {
 
   stack.process(&marking_visitor, old_space(), semi_space);
 
-  bool compact = !old_space()->compacting();
+  bool compact = force_compact || !old_space()->compacting();
 
   if (!compact) {
     // If the last GC was compacting we don't have fragmentation, so it

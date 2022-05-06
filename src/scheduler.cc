@@ -459,7 +459,7 @@ void Scheduler::gc(Process* process, bool malloc_failed, bool try_hard) {
     }
 
     for (Process* target : targets) {
-      target->gc();
+      target->gc(try_hard);
       gcs++;
     }
 
@@ -473,7 +473,7 @@ void Scheduler::gc(Process* process, bool malloc_failed, bool try_hard) {
     }
   }
 
-  process->gc();
+  process->gc(try_hard);
 
   if (doing_cross_process_gc) {
     Locker locker(_mutex);

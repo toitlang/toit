@@ -385,8 +385,8 @@ OS::HeapMemoryRange OS::get_heap_memory_range() {
   // Internal SRAM 0 192k 3ffe_0000 - 4000_0000    4007_0000 - 400a_0000
   // Internal SRAM 1 128k                          400a_0000 - 400c_0000
   HeapMemoryRange range;
-  range.address = reinterpret_cast<void*>(0x3ffae000);
-  range.size = 392 * KB;
+  range.address = reinterpret_cast<void*>(0x3ffc0000);
+  range.size = 256 * KB;
   return range;
 }
 

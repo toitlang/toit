@@ -309,7 +309,6 @@ ObjectHeap::~ObjectHeap() {
   ASSERT(_object_notifiers.is_empty());
 
 #ifdef LEGACY_GC
-  // TODO: ObjectHeap deletion in new GC.
   // Deleting a heap is like a scavenge where nothing survives.
   ScavengeScope scope(VM::current()->heap_memory(), this);
   _blocks.free_blocks(this);
@@ -482,8 +481,8 @@ void ObjectHeap::iterate_roots(RootCallback* callback) {
 
 #ifndef LEGACY_GC
 
-int ObjectHeap::gc() {
-  _two_space_heap.collect_new_space();
+int ObjectHeap::gc(bool try_hard) {
+  _two_space_heap.collect_new_space(try_hard);
   _gc_count++;
   _pending_limit = _calculate_limit();  // GC limit to install after next GC.
   _limit = _max_heap_size;  // Only the hard limit for the rest of this primitive.
@@ -499,7 +498,7 @@ class HasForwardingAddress : public LivenessOracle {
   }
 };
 
-int ObjectHeap::gc() {
+int ObjectHeap::gc(bool try_hard) {
   if (program() == null) FATAL("cannot gc external process");
 
   word blocks_before = _blocks.length();
