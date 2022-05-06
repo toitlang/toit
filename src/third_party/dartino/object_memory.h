@@ -310,8 +310,6 @@ class SemiSpace : public Space {
 
   virtual void append(Chunk* chunk);
 
-  void process_weak_pointers(SemiSpace* to_space, OldSpace* old_space);
-
   inline void swap(SemiSpace& other) {
     static_cast<Space&>(*this).swap(static_cast<Space&>(other));
   }
@@ -470,8 +468,6 @@ class OldSpace : public Space {
   void unlink_promoted_track();
 
   void use_whole_chunk(Chunk* chunk);
-
-  void process_weak_pointers();
 
   void compute_compaction_destinations();
 
