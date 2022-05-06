@@ -4,6 +4,6 @@ As check failed: null is not a ServiceResource.
   2: ServiceManager_.<lambda>  <sdk>/system/services.toit:272:15
   3: RpcRequest_.process.<block> <sdk>/rpc/broker.toit:98:26
   4: RpcRequest_.process       <sdk>/rpc/broker.toit:95:3
-  5: RpcRequestQueue_.ensure_processing_task_.<lambda>.<block>.<block> <sdk>/rpc/broker.toit:209:20
-  6: RpcRequestQueue_.ensure_processing_task_.<lambda>.<block> <sdk>/rpc/broker.toit:203:9
-  7: RpcRequestQueue_.ensure_processing_task_.<lambda> <sdk>/rpc/broker.toit:198:81
+  5: RpcRequestQueue_.ensure_processing_task_.<lambda>.<block>.<block> <sdk>/rpc/broker.toit:214:20
+  6: RpcRequestQueue_.ensure_processing_task_.<lambda>.<block> <sdk>/rpc/broker.toit:209:9
+  7: RpcRequestQueue_.ensure_processing_task_.<lambda> <sdk>/rpc/broker.toit:204:81

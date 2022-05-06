@@ -146,7 +146,7 @@ monitor RpcRequestQueue_:
     ensure_processing_task_
     return true
 
-  remove_first -> RpcRequest_?:
+  remove_first task_index/int -> RpcRequest_?:
     while true:
       request := first_
       if not request:
@@ -159,6 +159,12 @@ monitor RpcRequestQueue_:
       next := request.next
       if identical last_ request: last_ = next
       first_ = next
+
+      // Mark the request as being processed by the task with the
+      // given index while still holding the monitor lock. This
+      // ensures that the returned request can be canceled even
+      // though it isn't in the linked list anymore.
+      processing_requests_[task_index] = request
       return request
 
   cancel [predicate] -> none:
@@ -202,10 +208,9 @@ monitor RpcRequestQueue_:
         assert: identical processing_tasks_[task_index] task
         try:
           while not task.is_canceled:
-            next := remove_first
+            next := remove_first task_index
             if not next: break
             try:
-              processing_requests_[task_index] = next
               next.process
             finally:
               // This doesn't have to be in a finally-block because the call
