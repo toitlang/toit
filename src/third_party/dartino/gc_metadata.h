@@ -18,9 +18,6 @@
 
 namespace toit {
 
-#undef INLINE
-#define INLINE inline
-
 class Program;
 
 class GcMetadata {
