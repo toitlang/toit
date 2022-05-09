@@ -66,7 +66,7 @@ write barrier for initialization writes.
 Objects are promoted to old space when they survive their second GC,
 but if old-space allocation fails they can stay longer in new space.
 
-There is no read-barrier.
+There is no read barrier.
 
 ## Old space
 
