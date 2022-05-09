@@ -3,7 +3,8 @@
 This is a two-space generational GC heap with scavenge (Cheney semispace
 collector) for the new space (young generation) and a mark-sweep heap for
 the old space (old generation).  It was originally written by Erik Corry
-for Google's Dartino project and has since been adapted for the Toit VM.
+for Google's Dartino project and has since been adapted and improved for the
+Toit VM.
 
 The GC never uses more space after GC than before (fragmentation can't get
 worse).
