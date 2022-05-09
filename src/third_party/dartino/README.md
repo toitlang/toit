@@ -89,7 +89,7 @@ squeeze out spaces.  This means that after a compacting GC all chunks are
 tightly packed with no waste, except for an area at the end of the chunk that
 was too small to contain the first object in the following chunk.
 
-An on-heap chained data structure keeps track of
+An on-heap linked data structure keeps track of
 promoted-and-not-yet-scanned areas during new-space GC.
 (This is called PromotedTrack.)
 
@@ -137,6 +137,13 @@ need to be able to skip dead objects when iterating the remembered set, so we
 have to insert free area markings on the heap itself.  In the future it might be
 possible to postpone this work, doing it just-in-time only on the lines in the
 remembered set during new-space GC.
+
+Free areas below a certain size are not linked into the free-list structure
+and are thus never used for allocation (promotion from new-space).  They would
+be unlikely to be used, since large free-list areas are used first for
+efficiency and a single medium-sized allocation will trigger the next GC.  They
+will in any case be squeezed out by the next compacting GC. Therefore it is a
+waste of time to link them up and manage them.
 
 ### Compacting old-space
 
