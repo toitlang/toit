@@ -59,7 +59,7 @@ remembered_set_bias[o >> 7] = 1
 
 We can optionally filter so the write barrier is only triggered for
 objects in old-space, but it is safe to execute it regardless. However
-newly allocated objects are only created new-space so we don't need a
+newly allocated objects are only created in new-space so we don't need a
 write barrier for initialization writes.
 
 Objects are promoted to old space when they survive their second GC,
@@ -103,7 +103,7 @@ implemented:
 
 Marking proceeds with the usual white-grey-black coloring.  Objects start white,
 and are marked grey when they are determined to be live.  When they are marked
-gray they are also pushed on the marking stack so they can be scanned.  When they are
+grey they are also pushed on the marking stack so they can be scanned.  When they are
 popped from the marking stack they are marked black and their pointers are scanned.
 
 If we grey an object when the marking stack is full we cannot push the object
@@ -171,3 +171,11 @@ it into the process when a heap chunk allocation indicates that it is needed.
 | One remembered set byte per card.               | 1/128 |  1/256     |
 |-------------------------------------------------|-------|------------|
 | Total:                                          |  7.9% |  5.5%      |
+
+We could reduce the metadata overhead on 32 bit platforms by about 35% to about
+5.2% by rounding all object sizes up to a multiple of two words. This would
+make it impossible to tell the difference between grey and black objects
+for small objects that are only 2 words long, but these objects can only contain
+a single pointer so they can be scanned without pushing them on the marking
+stack, using iteration.  This lets them go straight from white to black without
+an intermediate grey stage.
