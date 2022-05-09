@@ -2,7 +2,7 @@ This license applies to all parts of Dartino (the files in third_party/dartino).
 
 ---
 
-Copyright (c) 2015, the Dartino project authors.
+Copyright (c) 2022, the Dartino project authors.
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
