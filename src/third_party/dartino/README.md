@@ -28,7 +28,7 @@ Lines (sometimes called cards in the context of the remembered set) are
 32 words long (128 bytes on 32 bit systems, 256 bytes on 64 bit systems).
 The objects in a line can always be iterated without having to start from
 the beginning of a chunk.  This is used for iterating over the remembered
-set to find pointers into new-space.  It is also used for recovering from
+set to find pointers into new space.  It is also used for recovering from
 mark stack overflow.
 
 Lines are made iterable by having a single byte per line that determines
@@ -41,7 +41,7 @@ previous line and start iterating there.  Objects can span line boundaries.
 ## New space
 
 Each heap has a single young generation chunk, and there is a common
-spare young generation chunk used by all heaps (processes).  A new-space GC
+spare young generation chunk used by all heaps (processes).  A new space GC
 consists of taking the shared spare chunk, copying
 surviving objects to that chunk and donating the now-empty semispace
 chunk to the system as the new spare chunk.
@@ -58,30 +58,31 @@ the write barrier when writing a pointer into a field of an object o is:
 remembered_set_bias[o >> 7] = 1
 ```
 
-We can optionally filter so the write barrier is only triggered for
-objects in old-space, but it is safe to execute it regardless. However
-newly allocated objects are only created in new-space so we don't need a
-write barrier for initialization writes.
+We can optionally filter, so the write barrier is only triggered for
+objects in old space, but it is safe to execute it regardless and often
+filtering will take more time than unconditional execution.  However,
+newly allocated objects are only created in new space so we don't need a
+write barrier for initialization writes, which are easy to identify.
 
 Objects are promoted to old space when they survive their second GC,
-but if old-space allocation fails they can stay longer in new space.
+but if old space allocation fails they can stay longer in new space.
 
 There is no read barrier.
 
 ## Old space
 
-The old generation is a mark-sweep old-space.
+The old generation is a mark-sweep old space.
 
 Allocation in old space exclusively takes place when surviving objects are
-promoted from new-space.  We use worst-fit free-list allocation to get big
+promoted from new space.  We use worst-fit free-list allocation to get big
 regions for fast bump allocation.  This has the effect that objects from the
 same cohort (allocated between the same two GCs) tend to stay together when
-moved to the old GC.  This gives better locality, but the new-space GCs
+moved to the old GC.  This gives better locality, but the new space GCs
 scramble allocation order within a given cohort.
 
 The old generation is optionally moving - we can do both mark-sweep and
 mark-sweep-compact collections of the old space.  Currently we alternate
-between mark-sweep and mark-sweep-compact.  The mark-sweep part is identical,
+between mark-sweep and mark-sweep-compact.  The marking part is identical,
 so we could postpone this decision.
 
 Object order does not change during compaction - all objects just slide down to
@@ -90,7 +91,7 @@ tightly packed with no waste, except for an area at the end of the chunk that
 was too small to contain the first object in the following chunk.
 
 An on-heap linked data structure keeps track of
-promoted-and-not-yet-scanned areas during new-space GC.
+promoted-and-not-yet-scanned areas during new space GC.
 (This is called PromotedTrack.)
 
 Currently all GCs are stop-the-world, and we don't restart the program until
@@ -100,7 +101,7 @@ implemented:
 * Delay sweep after GC.
 * Only compact part of the heap (this was tried in Dartino with mediocre results).
 * Make marking incremental in shorter stop-the-world increments (the current write barrier can be adapted for incremental marking).
-* Run the program between new-space and old-space GC (currently they are back-to-back whenever an old-space GC happens).
+* Run the program between new space and old space GC (currently they are back-to-back whenever an old space GC happens).
 
 Marking proceeds with the usual white-grey-black coloring.  Objects start white,
 and are marked grey when they are determined to be live.  When they are marked
@@ -111,7 +112,7 @@ If we grey an object when the marking stack is full we cannot push the object
 and we have a mark stack overflow.  We have a rule against allocating during
 GC (when malloc is often exhausted), so we can't expand the stack.  Instead,
 this is handled by marking the 32-word line
-with a flag that shows there are unstacked grey objects on the line. At a later
+with a flag that shows there are unstacked grey objects on the line.  At a later
 point we scan the line for grey objects, blackening and scanning the objects we
 find in the same way we would if they were found on the mark stack.  This is
 surprisingly efficient because overflow bits are contiguous and a single byte of
@@ -126,7 +127,7 @@ At the end of a mark-sweep or mark-sweep-compact GC there are mark bits in the
 new space, which we ignore.  This means that the new space can harmlessly
 contain unreachable objects with broken pointers in them.
 
-### Sweeping old-space
+### Sweeping old space
 
 After marking, if we are not compacting, we can sweep to find free memory for
 allocation.  This mainly takes place in the mark bits which are much smaller
@@ -136,16 +137,16 @@ However, the heap needs to stay iterable for the remembered set and we
 need to be able to skip dead objects when iterating the remembered set, so we
 have to insert free area markings on the heap itself.  In the future it might be
 possible to postpone this work, doing it just-in-time only on the lines in the
-remembered set during new-space GC.
+remembered set during new space GC.
 
 Free areas below a certain size are not linked into the free-list structure
-and are thus never used for allocation (promotion from new-space).  They would
+and are thus never used for allocation (promotion from new space).  They would
 be unlikely to be used, since large free-list areas are used first for
 efficiency and a single medium-sized allocation will trigger the next GC.  They
-will in any case be squeezed out by the next compacting GC. Therefore it is a
+will in any case be squeezed out by the next compacting GC.  Therefore it is a
 waste of time to link them up and manage them.
 
-### Compacting old-space
+### Compacting old space
 
 If we are compacting we make use of the mark bits to determine the location each
 object is sliding to.  By iterating over the mark bits and counting the 1s, we
@@ -181,7 +182,7 @@ it into the process when a heap chunk allocation indicates that it is needed.
 | Total:                                          |  7.9% |  5.5%      |
 
 We could reduce the metadata overhead on 32 bit platforms by about 35% to about
-5.2% by rounding all object sizes up to a multiple of two words. This would
+5.2% by rounding all object sizes up to a multiple of two words.  This would
 make it impossible to tell the difference between grey and black objects
 for small objects that are only 2 words long, but these objects can only contain
 a single pointer so they can be scanned without pushing them on the marking
