@@ -150,6 +150,11 @@ FreeListRegion* FreeListRegion::create_at(uword start, uword size) {
     self->_set_header(Smi::from(FREE_LIST_REGION_CLASS_ID), FREE_LIST_REGION_TAG);
     self->_word_at_put(SIZE_OFFSET, size);
     self->_at_put(NEXT_OFFSET, null);
+#ifdef DEBUG
+    for (uword i = MINIMUM_SIZE; i < size; i += WORD_SIZE) {
+      self->_word_at_put(i, 0xdeadbea7);
+    }
+#endif
     return self;
   }
   for (uword i = 0; i < size; i += WORD_SIZE) {
