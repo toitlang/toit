@@ -520,6 +520,7 @@ uword CompactingVisitor::visit(HeapObject* object) {
 // something that will trigger a crash or assert.  We don't link them into
 // the freelist structures though as that would be too much difference
 // between debug and release mode.
+#ifdef DEBUG
 static void fill_even_small_areas_with_freelist_entries(uword line, uint32 bits) {
   uint8 start = *GcMetadata::starts_for(line);
   if (start != GcMetadata::NO_OBJECT_START && start != 0) {
@@ -554,6 +555,7 @@ static void fill_even_small_areas_with_freelist_entries(uword line, uint32 bits)
     line += free_at_start * WORD_SIZE;
   }
 }
+#endif
 
 // Sweep method that mostly looks at the mark bits.  For speed it doesn't touch
 // the live objects, but writes freelist structures in the gaps between them.
