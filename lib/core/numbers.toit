@@ -612,7 +612,6 @@ abstract class int extends num:
     return parse_ data from to --radix=radix --on_error=on_error
 
   static parse_ data from/int to/int=data.size --radix=10 [--on_error] -> int?:
-    if not 0 <= from < to <= data.size: return on_error.call RANGE_ERR_
     if radix == 10:
       return parse_10_ data from to --on_error=on_error
     else if radix == 16:
@@ -663,20 +662,22 @@ abstract class int extends num:
       continue.generic_parser_ result
 
   static parse_10_ data from/int to/int [--on_error] -> int?:
-    return generic_parser_ data from to --on_error=on_error: | char result is_last negative |
-      if not '0' <= char <= '9': return on_error.call PARSE_ERR_
-      // The max int64 ends with a '7' and the min int64 ends with an '8'
-      if result > MAX_INT64_DIV_10_ or (result == MAX_INT64_DIV_10_ and char > '7'):
-        if negative and result == MAX_INT64_DIV_10_ and is_last and char == '8':
-          return int.MIN
-        return on_error.call RANGE_ERR_
-      continue.generic_parser_ result * 10 + char - '0'
+    #primitive.core.int_parse:
+      return generic_parser_ data from to --on_error=on_error: | char result is_last negative |
+        if not '0' <= char <= '9': return on_error.call PARSE_ERR_
+        // The max int64 ends with a '7' and the min int64 ends with an '8'
+        if result > MAX_INT64_DIV_10_ or (result == MAX_INT64_DIV_10_ and char > '7'):
+          if negative and result == MAX_INT64_DIV_10_ and is_last and char == '8':
+            return int.MIN
+          return on_error.call RANGE_ERR_
+        continue.generic_parser_ result * 10 + char - '0'
 
   static generic_parser_ data from/int to/int [--on_error] [parse_char] -> int?:
     result := 0
     negative := false
     underscore := false
     size := to - from
+    if size == 0: throw "OUT_OF_BOUNDS"
     size.repeat:
       char := data[from + it]
       if char == '-':

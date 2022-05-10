@@ -782,6 +782,33 @@ PRIMITIVE(float_round) {
   return Primitive::allocate_double(round(receiver * factor) / factor, process);
 }
 
+PRIMITIVE(int_parse) {
+  ARGS(Blob, input, int, from, int, to, int, block_arg_dont_use_this);
+  if (!(0 <= from && from < to && to <= input.length())) OUT_OF_RANGE;
+  // Difficult cases, handled by Toit code.
+  if (to - from > 18) OUT_OF_RANGE;
+  uint64 result = 0;
+  bool negative = false;
+  int index = 0;
+  if (input.address()[0] == '-') {
+    negative = true;
+    index++;
+    if (to - from == 1) INVALID_ARGUMENT;
+  }
+  for (; index < to - from; index++) {
+    char c = input.address()[index];
+    if ('0' <= c && c <= '9') {
+      result *= 10;
+      result += c - '0';
+    } else if (c == '_') {
+      if (index == 0 || index == to - from - 1 || (negative && index == 1)) INVALID_ARGUMENT;
+    } else {
+      INVALID_ARGUMENT;
+    }
+  }
+  return Primitive::integer(negative ? -result : result, process);
+}
+
 PRIMITIVE(float_parse) {
   ARGS(Blob, input, int, from, int, to);
   if (!(0 <= from && from < to && to <= input.length())) OUT_OF_RANGE;
