@@ -3,6 +3,7 @@
 // found in the lib/LICENSE file.
 
 import binary
+import bitmap
 
 LIST_INITIAL_LENGTH_ ::= 4
 HASHED_COLLECTION_INITIAL_LENGTH_ ::= 4
@@ -1412,7 +1413,13 @@ abstract class ByteArrayBase_ implements ByteArray:
   Fills $value into list elements [$from..$to[.
   */
   fill --from/int=0 --to/int=size value:
-    (to - from).repeat: this[it + from] = value
+    if from == 0 and to == size:
+      bitmap.bytemap_zap this value
+    else if to - from < 10:
+      // Cutoff tuned for ESP32 - tradeoff between looping and alllocating a slice object.
+      (to - from).repeat: this[it + from] = value
+    else:
+      bitmap.bytemap_zap this[from..to] value
 
   /**
   Fills values, computed by evaluating $block, into list elements [$from..$to[.
