@@ -785,18 +785,20 @@ PRIMITIVE(float_round) {
 PRIMITIVE(int_parse) {
   ARGS(Blob, input, int, from, int, to, int, block_arg_dont_use_this);
   if (!(0 <= from && from < to && to <= input.length())) OUT_OF_RANGE;
-  // Difficult cases, handled by Toit code.
+  // Difficult cases, handled by Toit code.  If the ASCII length is always less
+  // than 18 we don't have to worry about 64 bit overflow.
   if (to - from > 18) OUT_OF_RANGE;
   uint64 result = 0;
   bool negative = false;
   int index = from;
-  if (input.address()[index] == '-') {
+  const uint8* in = input.address();
+  if (in[index] == '-') {
     negative = true;
     index++;
     if (index == to) INVALID_ARGUMENT;
   }
   for (; index < to; index++) {
-    char c = input.address()[index];
+    char c = in[index];
     if ('0' <= c && c <= '9') {
       result *= 10;
       result += c - '0';
