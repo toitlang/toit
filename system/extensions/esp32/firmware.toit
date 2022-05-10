@@ -89,7 +89,7 @@ ota_write_ bytes/ByteArray -> int:
   #primitive.esp32.ota_write
 
 /// If size is non-zero, checks the new partition and sets the system to boot from it.
-/// If expected_checksum is non-null, uses that SHA256 hash to perform the check.
+/// If checksum is non-null, uses that SHA256 hash to perform the check.
 /// Also clears the current OTA process so a new one can start.
-ota_end_ size/int expected_checksum/ByteArray? -> none:
+ota_end_ size/int checksum/ByteArray? -> none:
   #primitive.esp32.ota_end
