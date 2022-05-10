@@ -1,15 +1,6 @@
-// Copyright (c) 2015, the Dartino project authors. Please see the AUTHORS file
+// Copyright (c) 2022, the Dartino project authors. Please see the AUTHORS file
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE.md file.
-// Mark-sweep old-space.
-// * Uses worst-fit free-list allocation to get big regions for fast bump
-//   allocation.
-// * Non-moving for now.
-// * Has on-heap chained data structure keeping track of
-//   promoted-and-not-yet-scanned areas.  This is called PromotedTrack.
-// * No remembered set yet.  When scavenging we have to scan all of old space.
-//   We skip PromotedTrack areas because we know we will get to them later and
-//   they contain uninitialized memory.
 
 #include "../../top.h"
 
