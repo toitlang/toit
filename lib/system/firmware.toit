@@ -6,7 +6,6 @@
 User-space side of the RPC API for updating the firmware.
 */
 
-import uuid
 import system.api.firmware show FirmwareServiceClient
 import system.services show ServiceResourceProxy
 
