@@ -1,3 +1,15 @@
 tests/fuzzer/lib/core/core.toit:5:9: error: Unresolved identifier: 'fail'
 always: fail  // So that we don't need to worry if a test succeeds.
         ^~~~
+<sdk>/core/numbers.toit:593:12: warning: Deprecated 'int.parse'
+    return parse data 0 data.size --radix=radix --on_error=: throw it
+           ^~~~~
+<sdk>/core/numbers.toit:597:12: warning: Deprecated 'int.parse'
+    return parse data from to --radix=radix --on_error=: throw it
+           ^~~~~
+<sdk>/core/numbers.toit:606:12: warning: Deprecated 'int.parse'
+    return parse data 0 data.size --radix=radix --on_error=on_error
+           ^~~~~
+<sdk>/core/string.toit:327:14: warning: Deprecated 'int.parse'
+        : int.parse format start (pos - 1) --radix=10 --on_error=: throw it
+             ^

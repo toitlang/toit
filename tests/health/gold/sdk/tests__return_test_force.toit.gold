@@ -13,3 +13,15 @@ tests/return_test_force.toit:40:4: error: Logical operation argument can't be 'n
 tests/return_test_force.toit:40:21: error: Logical operation argument can't be 'none'
   (return 499) and (throw "bad")
                     ^~~~~
+<sdk>/core/numbers.toit:593:12: warning: Deprecated 'int.parse'
+    return parse data 0 data.size --radix=radix --on_error=: throw it
+           ^~~~~
+<sdk>/core/numbers.toit:597:12: warning: Deprecated 'int.parse'
+    return parse data from to --radix=radix --on_error=: throw it
+           ^~~~~
+<sdk>/core/numbers.toit:606:12: warning: Deprecated 'int.parse'
+    return parse data 0 data.size --radix=radix --on_error=on_error
+           ^~~~~
+<sdk>/core/string.toit:327:14: warning: Deprecated 'int.parse'
+        : int.parse format start (pos - 1) --radix=10 --on_error=: throw it
+             ^

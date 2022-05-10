@@ -4,3 +4,15 @@ tests/lsp/static_definition_test.toit:25:11: error: Can't invoke method on 'none
 tests/lsp/static_definition_test.toit:40:18: error: Can't invoke method on 'none' type
   prefix.Foo.bar.something
                  ^~~~~~~~~
+<sdk>/core/numbers.toit:593:12: warning: Deprecated 'int.parse'
+    return parse data 0 data.size --radix=radix --on_error=: throw it
+           ^~~~~
+<sdk>/core/numbers.toit:597:12: warning: Deprecated 'int.parse'
+    return parse data from to --radix=radix --on_error=: throw it
+           ^~~~~
+<sdk>/core/numbers.toit:606:12: warning: Deprecated 'int.parse'
+    return parse data 0 data.size --radix=radix --on_error=on_error
+           ^~~~~
+<sdk>/core/string.toit:327:14: warning: Deprecated 'int.parse'
+        : int.parse format start (pos - 1) --radix=10 --on_error=: throw it
+             ^
