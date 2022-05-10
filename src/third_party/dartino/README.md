@@ -169,17 +169,17 @@ allocations.  On targets with virtual memory this is a little more involved:
 We reserve some space in the virtual memory space for metadata and only map
 it into the process when a heap chunk allocation indicates that it is needed.
 
-|                     Overhead on:                | 32bit |  64bit     |
-|-------------------------------------------------|-------|------------|
-| One remembered set byte per card.               | 1/128 |  1/256     |
-| One object start offset byte per card.          | 1/128 |  1/256     |
-| One mark bit per word.                          | 1/32  |  1/64      |
-| One uword per 32 mark bits (sum of mark bits).  | 1/32  |  1/32      |
-| One bit per card (overflow).                    | 1/1024|  1/2048    |
-| One byte per page (page type).                  | 1/4096|  1/32768   |
-| One remembered set byte per card.               | 1/128 |  1/256     |
-|-------------------------------------------------|-------|------------|
-| Total:                                          |  7.9% |  5.5%      |
+|                     Overhead on:                | 32bit  |  64bit   |
+|-------------------------------------------------|--------|----------|
+| One remembered set byte per card.               | 1/128  |  1/256   |
+| One object start offset byte per card.          | 1/128  |  1/256   |
+| One mark bit per word.                          | 1/32   |  1/64    |
+| One uword per 32 mark bits (sum of mark bits).  | 1/32   |  1/32    |
+| One bit per card (overflow).                    | 1/1024 |  1/2048  |
+| One byte per page (page type).                  | 1/4096 |  1/32768 |
+| One remembered set byte per card.               | 1/128  |  1/256   |
+|-------------------------------------------------|--------|----------|
+| Total:                                          |  7.9%  |  5.5%    |
 
 We could reduce the metadata overhead on 32 bit platforms by about 35% to about
 5.2% by rounding all object sizes up to a multiple of two words.  This would
