@@ -22,15 +22,3 @@ tests/byte_array_test.toit:16:29: warning: Byte-array element not in range 0-255
 tests/byte_array_test.toit:16:33: warning: Byte-array element not in range 0-255
   bytes = #[-1, -1, -1, -1, -1, -1]
                                 ^~
-<sdk>/core/numbers.toit:593:12: warning: Deprecated 'int.parse'
-    return parse data 0 data.size --radix=radix --on_error=: throw it
-           ^~~~~
-<sdk>/core/numbers.toit:597:12: warning: Deprecated 'int.parse'
-    return parse data from to --radix=radix --on_error=: throw it
-           ^~~~~
-<sdk>/core/numbers.toit:606:12: warning: Deprecated 'int.parse'
-    return parse data 0 data.size --radix=radix --on_error=on_error
-           ^~~~~
-<sdk>/core/string.toit:327:14: warning: Deprecated 'int.parse'
-        : int.parse format start (pos - 1) --radix=10 --on_error=: throw it
-             ^

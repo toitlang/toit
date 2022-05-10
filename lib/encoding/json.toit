@@ -484,7 +484,7 @@ class Decoder:
 
     data := bytes_ is StringView_ ? bytes_.str_ : bytes_
     if o < 0: return float.parse_ data start -o
-    return int.parse data start o --on_error=: throw it
+    return int.parse_ data start o --radix=10 --on_error=: throw it
 
   decode_true_:
     "true".do: expect_ it

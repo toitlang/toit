@@ -7,15 +7,3 @@ tests/lsp/field_storing_completion_test.toit:41:23: error: Field-storing paramet
 tests/lsp/field_storing_completion_test.toit:55:14: error: Field-storing parameter not allowed in static functions
   static foo .field_B1:
              ^~~~~~~~~
-<sdk>/core/numbers.toit:593:12: warning: Deprecated 'int.parse'
-    return parse data 0 data.size --radix=radix --on_error=: throw it
-           ^~~~~
-<sdk>/core/numbers.toit:597:12: warning: Deprecated 'int.parse'
-    return parse data from to --radix=radix --on_error=: throw it
-           ^~~~~
-<sdk>/core/numbers.toit:606:12: warning: Deprecated 'int.parse'
-    return parse data 0 data.size --radix=radix --on_error=on_error
-           ^~~~~
-<sdk>/core/string.toit:327:14: warning: Deprecated 'int.parse'
-        : int.parse format start (pos - 1) --radix=10 --on_error=: throw it
-             ^

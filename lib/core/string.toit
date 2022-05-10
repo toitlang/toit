@@ -324,7 +324,7 @@ abstract class string implements Comparable:
     while '0' <= char <= '9': char = format.safe_at_ pos++
     alignment_width := start == pos - 1
         ? 0
-        : int.parse format start (pos - 1) --radix=10 --on_error=: throw it
+        : int.parse_ format start (pos - 1) --radix=10 --on_error=: throw it
     if char == '.':
       start = pos
       char = format.safe_at_ pos++
