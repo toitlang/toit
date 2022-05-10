@@ -789,19 +789,19 @@ PRIMITIVE(int_parse) {
   if (to - from > 18) OUT_OF_RANGE;
   uint64 result = 0;
   bool negative = false;
-  int index = 0;
-  if (input.address()[0] == '-') {
+  int index = from;
+  if (input.address()[index] == '-') {
     negative = true;
     index++;
-    if (to - from == 1) INVALID_ARGUMENT;
+    if (index == to) INVALID_ARGUMENT;
   }
-  for (; index < to - from; index++) {
+  for (; index < to; index++) {
     char c = input.address()[index];
     if ('0' <= c && c <= '9') {
       result *= 10;
       result += c - '0';
     } else if (c == '_') {
-      if (index == 0 || index == to - from - 1 || (negative && index == 1)) INVALID_ARGUMENT;
+      if (index == from || index == to - 1 || (negative && index == from + 1)) INVALID_ARGUMENT;
     } else {
       INVALID_ARGUMENT;
     }

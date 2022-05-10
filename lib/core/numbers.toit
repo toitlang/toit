@@ -590,11 +590,11 @@ abstract class int extends num:
   ```
   */
   static parse data --radix=10 -> int:
-    return parse data --radix=radix --on_error=: throw it
+    return parse data 0 data.size --radix=radix --on_error=: throw it
 
   /** Deprecated. Use $(parse data --radix) with a slice instead. */
   static parse data from/int to/int=data.size --radix=10 -> int:
-    return parse data[from..to] --radix=radix --on_error=: throw it
+    return parse data from to --radix=radix --on_error=: throw it
 
   /**
   Variant of $(parse data from to --radix).
@@ -603,15 +603,12 @@ abstract class int extends num:
     lambda.
   */
   static parse data --radix=10 [--on_error] -> int?:
-    return parse_ data 0 data.size --radix=radix --on_error=on_error
+    return parse data 0 data.size --radix=radix --on_error=on_error
 
   /**
   Deprecated. Use $(parse data --radix [--on_error]) with a slice instead.
   */
   static parse data from/int to/int=data.size --radix=10 [--on_error] -> int?:
-    return parse_ data from to --radix=radix --on_error=on_error
-
-  static parse_ data from/int to/int=data.size --radix=10 [--on_error] -> int?:
     if radix == 10:
       return parse_10_ data from to --on_error=on_error
     else if radix == 16:

@@ -231,10 +231,26 @@ test_parse_integer:
   expect_int_parsing_error: (int_parse_helper "g" --radix=16)
   expect_int_parsing_error: (int_parse_helper "h" --radix=17)
 
+  expect_int_parsing_error: (int_parse_helper "_")
+  expect_int_parsing_error: (int_parse_helper "_123")
+  expect_int_parsing_error: int.parse "1_123" 1
+  expect_int_parsing_error: int.parse "1012_" 1
+  expect_int_parsing_error: int.parse "1012_1" 1 5
+
   expect_number_out_of_bounds: (int.parse "123" -1 --on_error=: throw it)
   expect_number_out_of_bounds: (int.parse "123" 0 4 --on_error=: throw it)
   expect_number_out_of_bounds: (int.parse "123" 0 0 --on_error=: throw it)
   expect_number_out_of_bounds: (int.parse "")
+
+  expect_equals
+      23
+      int.parse "123" 1
+  expect_equals
+      -23
+      int.parse "1-23" 1
+  expect_equals
+      23
+      int.parse "1-23" 2
 
   expect_equals 9 (int.parse "1001" --radix=2)
   expect_equals int.MAX (int.parse       "111111111111111111111111111111111111111111111111111111111111111" --radix=2)
