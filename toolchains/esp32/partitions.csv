@@ -19,6 +19,8 @@
 # bootloader,,  ,         0x001000,  0x007000
 # partitions,,  ,         0x008000,  0x000c00
 nvs,      data, nvs,      0x009000,  0x004000,
-factory,  app,  factory,  0x010000,  0x1e0000,
-coredump, data, coredump, 0x1f0000,  0x010000,
-programs, 0x40, 0x00,     0x200000,  0x200000, encrypted
+otadata,  data, ota,      0x00d000,  0x002000,
+phy_init, data, phy,      0x00f000,  0x001000,
+ota_0,    app,  ota_0,    0x010000,  0x120000,
+ota_1,    app,  ota_1,    0x130000,  0x120000,
+programs, 0x40, 0x00,     0x250000,  0x150000, encrypted
