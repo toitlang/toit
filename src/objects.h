@@ -1251,6 +1251,8 @@ class FreeListRegion : public HeapObject {
 
   static FreeListRegion* create_at(uword start, uword size);
 
+  static Object* single_free_word_header();
+
  private:
   static const int SIZE_OFFSET = HeapObject::SIZE;
   static const int NEXT_OFFSET = SIZE_OFFSET + WORD_SIZE;

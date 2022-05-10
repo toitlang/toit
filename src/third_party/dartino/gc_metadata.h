@@ -330,7 +330,7 @@ class GcMetadata {
     uint32 mask = ~(0xffffffffu << word_position);
     uint32 bits = *mark_bits_for(pre_compaction) & mask;
     uword base = *cumulative_mark_bits_for(pre_compaction);
-    return base + (pop_count(bits) << WORD_SHIFT);
+    return base + (Utils::popcount(bits) << WORD_SHIFT);
   }
 
   static int heap_allocation_arena() {
@@ -408,19 +408,6 @@ class GcMetadata {
   static uword end_of_destination_of_last_live_object_starting_before(
       Program* program, uword line, uword limit, uword* src_end_return = null);
   static uword last_line_that_fits(Program* program, uword line, uword dest_limit);
-
-  static INLINE int pop_count(uint32 x) {
-    x = (x & 0x55555555) + ((x >> 1) & 0x55555555);
-    // x has 16 2-bit sums.
-    x = (x & 0x33333333) + ((x >> 2) & 0x33333333);
-    // x has 8 4-bit sums from 0-4.
-    x = (x & 0x0f0f0f0f) + ((x >> 4) & 0x0f0f0f0f);
-    // x has 4 8-bit sums from 0-8, so only occupying 3 bits.
-    x += x >> 8;
-    // x has 2 8-bit sums from 0-16 in the 2nd and 4th bytes.
-    x += x >> 16;
-    return x & 63;  // 0 to 32.
-  }
 
   // Heap metadata (remembered set etc.).
   uword lowest_address_;

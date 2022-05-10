@@ -478,6 +478,8 @@ class OldSpace : public Space {
 
   void set_used_after_last_gc(uword used) { used_after_last_gc_ = used; }
 
+  uword sweep();
+
   // Tells whether garbage collection is needed.  Only to be called when
   // bump allocation has failed, or on old space after a new-space GC.
   bool needs_garbage_collection() {
