@@ -513,7 +513,7 @@ uword CompactingVisitor::visit(HeapObject* object) {
 // between debug and release mode.
 #ifdef DEBUG
 static void fill_even_small_areas_with_freelist_entries(uword line, uint32 bits) {
-  uint8 start = *GcMetadata::starts_for(line) & (CARD_SIZE - 1);
+  uint8 start = *GcMetadata::starts_for(line) & (GcMetadata::CARD_SIZE - 1);
   if (start != GcMetadata::NO_OBJECT_START && start != 0) {
     // We may need be careful so that the object starts data doesn't end up
     // pointing into the middle of a free list area.
