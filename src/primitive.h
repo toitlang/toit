@@ -129,6 +129,7 @@ namespace toit {
   PRIMITIVE(float_sign, 1)                   \
   PRIMITIVE(float_is_nan, 1)                 \
   PRIMITIVE(float_is_finite, 1)              \
+  PRIMITIVE(int_parse, 4)                    \
   PRIMITIVE(smi_less_than, 2)                \
   PRIMITIVE(smi_less_than_or_equal, 2)       \
   PRIMITIVE(smi_greater_than, 2)             \
