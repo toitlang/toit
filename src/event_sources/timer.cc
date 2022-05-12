@@ -52,13 +52,17 @@ TimerEventSource::~TimerEventSource() {
 
 void TimerEventSource::arm(Timer* timer, int64_t timeout) {
   Locker locker(mutex());
+  bool is_linked = _timers.is_linked(timer);
+  if (is_linked && timer->timeout() == timeout) {
+    return;
+  }
 
   // Get current timeout, if any.
   auto head = _timers.first();
   int64_t old_timeout = head ? head->timeout() : timeout + 1;
 
   // Remove in case it was already enqueued.
-  if (_timers.is_linked(timer)) {
+  if (is_linked) {
     _timers.unlink(timer);
   }
 

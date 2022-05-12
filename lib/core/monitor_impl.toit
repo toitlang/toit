@@ -49,7 +49,7 @@ class __Monitor__:
     if deadline:
       timer = self.acquire_timer_
       // Arrange for the notify_ method to be called if the timeout expires.
-      timer.arm this deadline
+      timer.set_target this
 
     // Unlock the monitor before the entering the loop to make the
     // state the same as it will be just after having been notified.
@@ -88,6 +88,7 @@ class __Monitor__:
           if deadline and Time.monotonic_us >= deadline: return false
         // Wait until notified. When we get back the monitor might be owned by
         // someone else.
+        if timer: timer.arm deadline
         await_ self
     finally:
       if timer: self.release_timer_ timer
@@ -101,7 +102,7 @@ class __Monitor__:
       if deadline:
         timer = self.acquire_timer_
         // Arrange for the notify_ method to be called if the timeout expires.
-        timer.arm this deadline
+        timer.set_target this
 
     is_non_critical ::= self.critical_count_ == 0
     try:
@@ -114,6 +115,7 @@ class __Monitor__:
         if not owner_: break
         // Wait until notified. When we get back the monitor might be owned by
         // someone else.
+        if timer: timer.arm deadline
         wait_ self
     finally:
       if timer: self.release_timer_ timer

@@ -173,15 +173,6 @@ class Task_:
     previous_running_ = previous
     next_running_ = current
 
-  // Use a timer temporarily. The timer will be released and made available
-  // for reuse afterwards.
-  with_timer_ [block]:
-    timer := acquire_timer_
-    try:
-      block.call timer
-    finally:
-      release_timer_ timer
-
   // Acquiring a timer will reuse the first previously released timer if
   // available. We use a single element cache to avoid creating timer objects
   // repeatedly when it isn't necessary.
@@ -199,6 +190,7 @@ class Task_:
     if existing:
       timer.close
     else:
+      timer.clear_target
       timer_ = timer
 
   // Task state initialized by the VM.
