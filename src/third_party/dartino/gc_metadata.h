@@ -374,7 +374,7 @@ class GcMetadata {
   // new-space.
   template<typename T>
   INLINE static void insert_into_remembered_set(T address) {
-    static_assert(sizeof(T) == sizeof(uword));
+    static_assert(sizeof(T) == sizeof(uword), "invalid type size");
     uword mark_byte = reinterpret_cast<uword>(address) >> CARD_SIZE_LOG_2;
     mark_byte += singleton_.remembered_set_bias_;
     *reinterpret_cast<uint8*>(mark_byte) = NEW_SPACE_POINTERS;
