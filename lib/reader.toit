@@ -475,6 +475,14 @@ class BufferedReader implements Reader:
   ```
   */
   peek_string n -> string:
+    // Fast case.
+    if n == 0: return ""
+    if buffered >= n:
+      first := arrays_.first
+      end := first_array_position_ + n
+      if first.size >= end:
+        return first.to_string first_array_position_ end
+    // Slow case.
     return (bytes n).to_string
 
   /** Deprecated. */
@@ -488,7 +496,7 @@ class BufferedReader implements Reader:
     line.
   Carriage returns (`'\r'`) are removed from lines terminated by `'\r\n'`.
   */
-  read_line keep_newlines = false -> string?:
+  read_line keep_newlines=false -> string?:
     delimiter_pos := index_of '\n'
     if delimiter_pos == null:
       rest_size := buffered
