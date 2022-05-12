@@ -1,5 +1,12 @@
+<<<<<<< HEAD
 tests/negative/invalid_program_test.toit:9:3: error: Argument mismatch for 'run_global_initializer_'
 Too few arguments provided
   run_global_initializer_ 10000 (LazyInitializer_ -2)
   ^~~~~~~~~~~~~~~~~~~~~~~
 Compilation failed.
+=======
+INVALID_PROGRAM error. 
+1925
+  0: run_global_initializer_   <sdk>/core/objects.toit:259:1
+  1: main                      tests/negative/invalid_program_test.toit:9:3
+>>>>>>> 1b1e8fd (Work around spurious timer notifications by re-arming timer (#732))
