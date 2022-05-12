@@ -6,11 +6,11 @@ import monitor
 
 /** Makes the current task sleep for the $duration. */
 sleep duration/Duration:
-  sleeper_.sleep_until (Time.monotonic_us + duration.in_us)
+  sleeper_.sleep_until_ (Time.monotonic_us + duration.in_us)
 
 /** Makes the current task sleep for the given $ms of milliseconds. */
 sleep --ms/int:
-  sleeper_.sleep_until (Time.monotonic_us + ms * 1000)
+  sleeper_.sleep_until_ (Time.monotonic_us + ms * 1000)
 
 /**
 Timer resource group.
@@ -30,12 +30,27 @@ monitor Sleeper_:
   /**
   Sleep until $wakeup.
   */
-  sleep_until wakeup/int -> none:
+  sleep_until_ wakeup/int -> none:
+    self := task
     // Eagerly throw if we trying to sleep past the task deadline.
-    deadline := task.deadline
+    deadline := self.deadline
     if deadline and deadline < wakeup: throw DEADLINE_EXCEEDED_ERROR
-    // Wait until the wakeup time at which point $try_await_ returns false.
-    try_await_ wakeup: false
+    // Acquire a suitable timer. These are often reused, so this is
+    // unlikely to allocate.
+    timer ::= self.acquire_timer_
+    try:
+      timer.set_target this
+      is_non_critical ::= self.critical_count_ == 0
+      while true:
+        // Check for task cancelation and timeout.
+        if is_non_critical and self.is_canceled_: throw CANCELED_ERROR
+        if Time.monotonic_us >= wakeup: return
+        // Arm the timer and wait until we're notified. We might be notified
+        // too early (spurious wakeup), so we arm the timer on every iteration.
+        timer.arm wakeup
+        await_ self
+    finally:
+      self.release_timer_ timer
 
 /**
 Internal timer used by sleep to wake up at the appropriate time.
