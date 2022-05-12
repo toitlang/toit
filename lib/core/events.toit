@@ -5,7 +5,7 @@
 read_state_ module id:
   #primitive.events.read_state
 
-register_object_notifier_ object module id:
+register_object_notifier_ monitor/__Monitor__? module id -> none:
   #primitive.events.register_object_notifier
 
 unregister_object_notifier_ module id:
