@@ -176,12 +176,14 @@ class Task_:
   // Acquiring a timer will reuse the first previously released timer if
   // available. We use a single element cache to avoid creating timer objects
   // repeatedly when it isn't necessary.
-  acquire_timer_ -> Timer_:
+  acquire_timer_ monitor/__Monitor__ -> Timer_:
     timer := timer_
     if timer:
       timer_ = null
-      return timer
-    return Timer_
+    else:
+      timer = Timer_
+    timer.set_target monitor
+    return timer
 
   // Releasing a timer will make it available for reuse or close it if the
   // single element cache is already filled.

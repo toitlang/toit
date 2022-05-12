@@ -37,9 +37,8 @@ monitor Sleeper_:
     if deadline and deadline < wakeup: throw DEADLINE_EXCEEDED_ERROR
     // Acquire a suitable timer. These are often reused, so this is
     // unlikely to allocate.
-    timer ::= self.acquire_timer_
+    timer ::= self.acquire_timer_ this
     try:
-      timer.set_target this
       is_non_critical ::= self.critical_count_ == 0
       while true:
         // Check for task cancelation and timeout.

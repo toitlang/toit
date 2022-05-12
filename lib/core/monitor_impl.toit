@@ -47,9 +47,8 @@ class __Monitor__:
     self := task
     timer/Timer_? := null
     if deadline:
-      timer = self.acquire_timer_
       // Arrange for the notify_ method to be called if the timeout expires.
-      timer.set_target this
+      timer = self.acquire_timer_ this
 
     // Unlock the monitor before the entering the loop to make the
     // state the same as it will be just after having been notified.
@@ -100,9 +99,8 @@ class __Monitor__:
     if owner_:
       deadline = self.deadline
       if deadline:
-        timer = self.acquire_timer_
         // Arrange for the notify_ method to be called if the timeout expires.
-        timer.set_target this
+        timer = self.acquire_timer_ this
 
     is_non_critical ::= self.critical_count_ == 0
     try:
