@@ -508,53 +508,6 @@ uword CompactingVisitor::visit(HeapObject* object) {
   return size;
 }
 
-// In debug mode we make more of an effort to overwrite dead objects with
-// something that will trigger a crash or assert.  We don't link them into
-// the freelist structures though as that would be too much difference
-// between debug and release mode.
-#ifdef DEBUG
-static void fill_even_small_areas_with_freelist_entries(uword line, uint32 bits, uword end) {
-  uint8 start = *GcMetadata::starts_for(line) & (GcMetadata::CARD_SIZE - 1);
-  if (start != GcMetadata::NO_OBJECT_START && start != 0) {
-    // We may need be careful so that the object starts data doesn't end up
-    // pointing into the middle of a free list area.
-    if ((bits & (1 << (start / WORD_SIZE))) == 0) {
-      // Object start points at an object that is now dead, so we may have an issue.
-      // We flip the bit just before so that the object start location cannot be in
-      // the middle of a freelist structure.
-      bits |= 1 << ((start / WORD_SIZE) - 1);
-    }
-  }
-  uint64 b = 0xffffffff;
-  b <<= 32;
-  b |= bits;
-  while (b != 0xffffffff) {
-    if ((b & 1) != 0) {
-      int trailing_ones = Utils::ctz(~b);
-      if (trailing_ones == 64) {
-        b = 0;
-      } else {
-        b >>= trailing_ones;
-      }
-      line += trailing_ones * WORD_SIZE;
-      if (!b) break;
-    }
-    int free_at_start = Utils::ctz(b);
-    int words_to_mark_free = free_at_start;
-    if (line + words_to_mark_free * WORD_SIZE == end) {
-      // Sentinel at the end of the chunk must not be overwritten by a
-      // FreeListRegion.
-      words_to_mark_free--;
-    }
-    if (words_to_mark_free >= 3) {
-      FreeListRegion::create_at(line, words_to_mark_free * WORD_SIZE);
-    }
-    b >>= free_at_start;
-    line += free_at_start * WORD_SIZE;
-  }
-}
-#endif
-
 // Sweep method that mostly looks at the mark bits.  For speed it doesn't touch
 // the live objects, but writes freelist structures in the gaps between them.
 uword OldSpace::sweep() {
@@ -585,9 +538,6 @@ uword OldSpace::sweep() {
               *reinterpret_cast<word*>(line + (i << WORD_SIZE_LOG_2)) = SINGLE_FREE_WORD;
             }
           }
-#ifdef DEBUG
-          fill_even_small_areas_with_freelist_entries(line, bits, end);
-#endif
         }
         line += GcMetadata::CARD_SIZE;
         mark_bits++;
@@ -637,9 +587,6 @@ uword OldSpace::sweep() {
                 *reinterpret_cast<word*>(line + (i << WORD_SIZE_LOG_2)) = SINGLE_FREE_WORD;
               }
             }
-#ifdef DEBUG
-            fill_even_small_areas_with_freelist_entries(line, bits, end);
-#endif
           }
           uword end_of_free = line + (free_words_at_start << WORD_SIZE_LOG_2);
           free_list_.add_region(start_of_free, end_of_free - start_of_free);
