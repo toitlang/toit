@@ -143,6 +143,11 @@ test_repro_server archive_path toitc toitlsp compiler_input:
     check_compiler_output (BufferedReader cpp_from)
   finally:
     cpp_from.close
+    exit_value := pipe.wait_for cpp_pid
+    expect_equals null
+        pipe.exit_signal exit_value
+    expect_equals 0
+        pipe.exit_code exit_value
 
   pipe.kill_ toitlsp_pid 9
   pipe.wait_for toitlsp_pid
