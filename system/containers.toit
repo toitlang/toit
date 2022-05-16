@@ -193,9 +193,20 @@ class ContainerManager extends ContainerServiceDefinition implements SystemMessa
     set_system_message_handler_ SYSTEM_TERMINATED_ this
     set_system_message_handler_ SYSTEM_SPAWNED_ this
     set_system_message_handler_ SYSTEM_MIRROR_MESSAGE_ this
+
+    unrelocated/List? := null
     image_registry.do: | allocation/FlashAllocation |
-      if allocation.type != FLASH_ALLOCATION_PROGRAM_TYPE: continue.do
-      add_flash_image allocation
+      if allocation.type == FLASH_ALLOCATION_PROGRAM_TYPE:
+        add_flash_image allocation
+      else if allocation.type == FLASH_ALLOCATION_PROGRAM_UNRELOCATED_TYPE:
+        if unrelocated: unrelocated.add allocation
+        else: unrelocated = [allocation]
+
+    if unrelocated:
+      unrelocated.do: | allocation/FlashAllocation |
+        if images_.contains allocation.id: continue.do
+        add_flash_image (relocate allocation image_registry)
+        image_registry.free allocation
 
   images -> List:
     return images_.values

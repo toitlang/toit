@@ -31,7 +31,7 @@ import services.arguments
 BINARY_FLAG      ::= "binary"
 M32_FLAG         ::= "machine-32-bit"
 M64_FLAG         ::= "machine-64-bit"
-RELOCATE_OPTION  ::= "relocate"
+OFFSET_OPTION    ::= "offset"
 UNIQUE_ID_OPTION ::= "unique_id"
 
 abstract class RelocatedOutput:
@@ -60,39 +60,29 @@ abstract class RelocatedOutput:
           (mask & 1) != 0
       mask = mask >> 1
 
-class BinaryRelocatedOutput extends RelocatedOutput:
+class BinaryRelocatableOutput:
   static HEADER_SIZE ::= 48
 
-  size/int ::= ?
-  relocation_base/int ::= ?
+  out ::= ?
+  relocatable/ByteArray ::= ?
+  offset/int ::= ?
   image_uuid/uuid.Uuid ::= ?
-
   buffer_/ByteArray := ByteArray 4
-  skip_header_bytes_ := HEADER_SIZE
 
-  constructor out .size .relocation_base .image_uuid:
-    super out
+  constructor .out .relocatable .offset .image_uuid:
 
-  write_start -> none:
+  write -> none:
     write_uint32 0xDEADFACE                        // Marker.
-    write_uint32 0                                 // Offset in partition.
+    write_uint32 offset                            // Offset in partition.
     write_uuid (uuid.uuid5 "program" "$Time.now")  // Program id.
-    out.write #[0xFF, 0xFF, 0xFF, 0xFF, 0xFF]      // Metadata.
+    metadata := ByteArray 5: 0xFF
+    RelocatedOutput.ENDIAN.put_uint32 metadata 0 relocatable.size
+    out.write metadata                             // Metadata.
+    size := relocatable.size + HEADER_SIZE
     write_uint16 (size + 4095) / 4096              // Pages in flash.
-    out.write #[0x02]                              // Type = program.
+    out.write #[0x01]                              // Type = program unrelocated.
     write_uuid image_uuid                          // Image uuid.
-
-  write_word word/int is_relocatable/bool -> none:
-    // Skip the words that are part of the header. They are all written
-    // using $write_start.
-    if skip_header_bytes_ > 0:
-      skip_header_bytes_ -= 4
-      return
-    if is_relocatable: word += relocation_base
-    write_uint32 word
-
-  write_end -> none:
-    // Nothing to add here.
+    out.write relocatable
 
   write_uint16 halfword/int:
     RelocatedOutput.ENDIAN.put_uint16 buffer_ 0 halfword
@@ -128,7 +118,7 @@ class SourceRelocatedOutput extends RelocatedOutput:
     out.write "\n"
 
 print_usage:
-  print_ "Usage: snapshot_to_image [--$BINARY_FLAG] [--$RELOCATE_OPTION=0x...] [-m32|-m64] <snapshot> <output>"
+  print_ "Usage: snapshot_to_image [--$BINARY_FLAG] [--$OFFSET_OPTION=0x...] [-m32|-m64] <snapshot> <output>"
 
 main args:
   parser := arguments.ArgumentParser
@@ -136,7 +126,7 @@ main args:
   parser.add_flag M64_FLAG --short="m64"
   parser.add_flag BINARY_FLAG
 
-  parser.add_option RELOCATE_OPTION
+  parser.add_option OFFSET_OPTION
   parser.add_option UNIQUE_ID_OPTION --default="00000000-0000-0000-0000-000000000000"
 
   parsed := parser.parse args
@@ -154,13 +144,13 @@ main args:
   else:
     default_word_size = 4  // Use 32-bit non-binary output.
 
-  relocation_base/int? := null
-  relocate_option := parsed[RELOCATE_OPTION]
-  if relocate_option:
-    if not (relocate_option.starts_with "0x"):
+  offset/int? := null
+  offset_option := parsed[OFFSET_OPTION]
+  if offset_option:
+    if not (offset_option.starts_with "0x"):
       print_usage
       return
-    relocation_base = int.parse relocate_option[2..] --radix=16
+    offset = int.parse offset_option[2..] --radix=16
 
   word_size := null
   if parsed[M32_FLAG]:
@@ -177,8 +167,8 @@ main args:
     print_ "Error: Cannot generate 64-bit non-binary output"
     return
 
-  if not binary_output and relocation_base:
-    print_ "Error: Relocation only works for 32-bit binary output"
+  if not binary_output and offset:
+    print_ "Error: Offsets only work for 32-bit binary output"
     return
 
   out := file.Stream.for_write output_path
@@ -187,10 +177,10 @@ main args:
   image := build_image program word_size
   relocatable := image.build_relocatable
   if binary_output:
-    if relocation_base:
+    if offset:
       image_uuid := uuid.parse parsed[UNIQUE_ID_OPTION]
-      output := BinaryRelocatedOutput out relocatable.size relocation_base image_uuid
-      output.write word_size relocatable
+      output := BinaryRelocatableOutput out relocatable offset image_uuid
+      output.write
     else:
       out.write relocatable
   else:

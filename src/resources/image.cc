@@ -41,34 +41,48 @@ PRIMITIVE(writer_create) {
   return result;
 }
 
-PRIMITIVE(writer_write) {
-  ARGS(ImageOutputStream, output, Blob, content_bytes, int, from, int, to);
-  if (to < from || from < 0) INVALID_ARGUMENT;
-  if (to > content_bytes.length()) OUT_OF_BOUNDS;
-
-  const word* data = reinterpret_cast<const word*>(content_bytes.address() + from);
-  int length = (to - from) / WORD_SIZE;
+static bool write_image_chunk(ImageOutputStream* output, const word* data, int length) {
   int output_byte_size = (length - 1) * WORD_SIZE;  // The first word is relocation bits, not part of the output.
   word buffer[WORD_BIT_SIZE];
 
   bool first = output->empty();
   int offset = FlashRegistry::offset(output->cursor());
-  if (offset < 0 || offset + output_byte_size > FlashRegistry::allocations_size()) OUT_OF_BOUNDS;
+  if (offset < 0 || offset + output_byte_size > FlashRegistry::allocations_size()) {
+    // TODO(kasper): Should be OUT_OF_BOUNDS.
+    return false;
+  }
   output->write(data, length, buffer);
 
-  bool success = false;
   if (first) {
     // Do not write the program header just yet.
     const int header_size = sizeof(Program::Header);
     ASSERT(Utils::is_aligned(header_size, WORD_SIZE));
     const int header_words = header_size / WORD_SIZE;
-    success = FlashRegistry::write_chunk(&buffer[header_words], offset + header_size, output_byte_size - header_size);
+    return FlashRegistry::write_chunk(&buffer[header_words], offset + header_size, output_byte_size - header_size);
   } else {
-    success = FlashRegistry::write_chunk(buffer, offset, output_byte_size);
+    return FlashRegistry::write_chunk(buffer, offset, output_byte_size);
   }
+}
 
-  if (success) return process->program()->null_object();
-  HARDWARE_ERROR;
+PRIMITIVE(writer_write) {
+  ARGS(ImageOutputStream, output, Blob, content_bytes, int, from, int, to);
+  if (to < from || from < 0) INVALID_ARGUMENT;
+  if (to > content_bytes.length()) OUT_OF_BOUNDS;
+  const word* data = reinterpret_cast<const word*>(content_bytes.address() + from);
+  int length = (to - from) / WORD_SIZE;
+  if (!write_image_chunk(output, data, length)) HARDWARE_ERROR;
+  return process->program()->null_object();
+}
+
+PRIMITIVE(writer_write_all) {
+  ARGS(ImageOutputStream, output, int, from, int, to);
+  while (from < to) {
+    const word* data = unvoid_cast<const word*>(FlashRegistry::memory(from, to - from));
+    int length = Utils::min((to - from) / WORD_SIZE, WORD_BIT_SIZE + 1);
+    if (!write_image_chunk(output, data, length)) HARDWARE_ERROR;
+    from += length * WORD_SIZE;
+  }
+  return process->program()->null_object();
 }
 
 PRIMITIVE(writer_commit) {
