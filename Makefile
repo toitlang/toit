@@ -232,7 +232,7 @@ flash: check-env-flash sdk esp32
 		0x001000 build/$(ESP32_CHIP)/bootloader/bootloader.bin \
 		0x008000 build/$(ESP32_CHIP)/partitions.bin \
 		0x010000 build/$(ESP32_CHIP)/toit.bin \
-		0x200000 build/$(ESP32_CHIP)/programs.bin
+		0x250000 build/$(ESP32_CHIP)/programs.bin
 
 .PHONY: check-env-flash
 check-env-flash:

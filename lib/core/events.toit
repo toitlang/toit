@@ -60,7 +60,7 @@ monitor ResourceState_:
 read_state_ module id:
   #primitive.events.read_state
 
-register_monitor_notifier_ monitor/__Monitor__ module id -> none:
+register_monitor_notifier_ monitor/__Monitor__? module id -> none:
   #primitive.events.register_monitor_notifier
 
 unregister_monitor_notifier_ module id -> none:

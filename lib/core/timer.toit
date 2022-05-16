@@ -74,7 +74,12 @@ class Timer_:
     register_monitor_notifier_ monitor timer_resource_group_ timer_
 
   clear_target -> none:
-    unregister_monitor_notifier_ timer_resource_group_ timer_
+    // We're reusing the timers, so it is faster to clear out the
+    // monitor object on the notifier than it is to clear out the
+    // whole notifier structure. This way, we typically do not have
+    // to allocate when calling $set_target and instead we just
+    // update the monitor reference in the notifier.
+    register_monitor_notifier_ null timer_resource_group_ timer_
 
 /**
 Initiates the timer resource group.
