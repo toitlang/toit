@@ -24,8 +24,9 @@ void GcMetadata::set_up() { singleton_.set_up_singleton(); }
 void GcMetadata::set_up_singleton() {
   OS::HeapMemoryRange range = OS::get_heap_memory_range();
 
-  lowest_address_ = Utils::round_down(reinterpret_cast<uword>(range.address), TOIT_PAGE_SIZE);
-  uword size = range.size;
+  uword range_address = reinterpret_cast<uword>(range.address);
+  lowest_address_ = Utils::round_down(range_address, TOIT_PAGE_SIZE);
+  uword size = Utils::round_up(range.size + range_address - lowest_address_, TOIT_PAGE_SIZE);
   heap_extent_ = size;
   heap_start_munged_ = (lowest_address_ >> 1) |
                        (static_cast<uword>(1) << (8 * sizeof(uword) - 1));
