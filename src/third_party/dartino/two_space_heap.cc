@@ -149,6 +149,8 @@ void TwoSpaceHeap::collect_new_space(bool try_hard) {
   word to_used;
   bool trigger_old_space_gc;
 
+  if (!ObjectMemory::spare_chunk_mutex()) FATAL("ObjectMemory::set_up() not called");
+
   {
     Locker locker(ObjectMemory::spare_chunk_mutex());
     Chunk* spare_chunk = ObjectMemory::spare_chunk(locker);

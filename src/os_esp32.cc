@@ -352,7 +352,7 @@ void OS::free_block(Block* block) {
 void* OS::allocate_pages(uword size) {
   size = Utils::round_up(size, TOIT_PAGE_SIZE);
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + TOIT_HEAP_MALLOC_TAG);
-  void* allocation = heap_caps_aligned_alloc(TOIT_PAGE_SIZE, size, MALLOC_CAP_8BIT | MALLOC_CAP_DEFAULT);
+  void* allocation = heap_caps_aligned_alloc(TOIT_PAGE_SIZE, size, MALLOC_CAP_8BIT | MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA);
   return allocation;
 }
 
@@ -383,12 +383,17 @@ void OS::unuse_virtual_memory(void* address, uword size) {}
 
 OS::HeapMemoryRange OS::get_heap_memory_range() {
   //                           DRAM range            IRAM range
+  HeapMemoryRange range;
+#ifdef CONFIG_IDF_TARGET_ESP32S3
+  range.address = reinterpret_cast<void*>(0x3ffa0000);
+  range.size = 512 * KB;
+#else
   // Internal SRAM 2 200k 3ffa_e000 - 3ffe_0000
   // Internal SRAM 0 192k 3ffe_0000 - 4000_0000    4007_0000 - 400a_0000
   // Internal SRAM 1 128k                          400a_0000 - 400c_0000
-  HeapMemoryRange range;
   range.address = reinterpret_cast<void*>(0x3ffc0000);
   range.size = 256 * KB;
+#endif
   return range;
 }
 
