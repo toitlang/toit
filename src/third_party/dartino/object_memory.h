@@ -497,6 +497,7 @@ class OldSpace : public Space {
   uword allocate_from_free_list(uword size);
   uword allocate_in_new_chunk(uword size);
   Chunk* allocate_and_use_chunk(uword size);
+  void validate_sweep(Chunk* chunk);
 
   TwoSpaceHeap* heap_;
   FreeList free_list_;  // Free list structure.

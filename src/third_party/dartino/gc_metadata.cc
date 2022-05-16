@@ -208,7 +208,7 @@ restart:
       uint32* overhang_bits =
           mark_bits_for(end_of_last_source_object_moved - WORD_SIZE);
       ASSERT((*overhang_bits & 1) != 0);
-      *overhang_bits &= ~((1 << overhang) - 1);
+      *overhang_bits &= ~((1u << overhang) - 1);
     }
     src_start = src;
   }
@@ -274,13 +274,13 @@ void GcMetadata::slow_mark(HeapObject* object, uword size) {
   ASSERT(words + mask_shift > 32);
   for (words -= 32 - mask_shift; words >= 32; words -= 32)
     *bits++ = 0xffffffffu;
-  *bits |= (1 << words) - 1;
+  *bits |= (1u << words) - 1;
 }
 
 void GcMetadata::mark_stack_overflow(HeapObject* object) {
   uword address = object->_raw();
   uint8* overflow_bits = overflow_bits_for(address);
-  *overflow_bits |= 1 << ((address >> CARD_SIZE_LOG_2) & 7);
+  *overflow_bits |= 1u << ((address >> CARD_SIZE_LOG_2) & 7);
   // We can have a mark stack overflow in new-space where we do not normally
   // maintain object starts. By updating the object starts for this card we
   // can be sure that the necessary objects in this card are walkable.
