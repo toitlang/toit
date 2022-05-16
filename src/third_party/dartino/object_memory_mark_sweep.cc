@@ -533,7 +533,7 @@ uword OldSpace::sweep() {
           // word things, but that's OK because they are iterable.
           // TODO: Use fast SIMD instructions to write these 32 pointers.
           for (int i = 0; i < GcMetadata::CARD_SIZE / WORD_SIZE; i++) {
-            if ((bits & (1u << i)) == 0) {
+            if ((bits & (1U << i)) == 0) {
               *reinterpret_cast<word*>(line + (i << WORD_SIZE_LOG_2)) = SINGLE_FREE_WORD;
             }
           }
@@ -585,11 +585,11 @@ uword OldSpace::sweep() {
       ASSERT(mark_bits == GcMetadata::mark_bits_for(line));
       used += Utils::popcount(bits);
       int free_words_at_start = Utils::ctz(bits);
-      if (bits + (1u << free_words_at_start) != 0) {
+      if (bits + (1U << free_words_at_start) != 0) {
         // The bits don't follow the pattern 1*0*, so we have to zap more
         // free areas in this line.
         for (int i = free_words_at_start; i < 32; i++) {
-          if ((bits & (1u << i)) == 0) {
+          if ((bits & (1U << i)) == 0) {
             *reinterpret_cast<word*>(line + (i << WORD_SIZE_LOG_2)) = SINGLE_FREE_WORD;
           }
         }
@@ -605,7 +605,7 @@ uword OldSpace::sweep() {
       line += GcMetadata::CARD_SIZE;
       mark_bits++;
     }
-    end_of_chunk:
+  end_of_chunk:
     // Repair sentinel in case it was zapped by a marking bitmap.
     *reinterpret_cast<Object**>(end - WORD_SIZE) = chunk_end_sentinel();
 #ifdef DEBUG
@@ -633,7 +633,7 @@ void OldSpace::validate_sweep(Chunk* chunk) {
     ASSERT(object->is_a_free_object() == !alive);
     if (*starts != GcMetadata::NO_OBJECT_START) {
       ASSERT(*starts < GcMetadata::CARD_SIZE);
-      uword location = *starts | (object_iterator & ~0xffll);
+      uword location = *starts | (object_iterator & ~0xffLL);
       if (alive) {
         // Starts can't point to the middle of a live object.
         ASSERT(location <= object_iterator || location >= object_iterator + size);
