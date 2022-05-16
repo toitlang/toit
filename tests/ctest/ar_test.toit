@@ -32,13 +32,17 @@ do_ctest exe_dir tmp_dir file_mapping --in_memory=false:
       generator_path
       args
   to := pipes[0]
-  pid  := pipes[3]
+  pid := pipes[3]
   tar := Tar to
   file_mapping.do: |name content|
     tar.add name content
   tar.close --no-close_writer
   to.close
-  pipe.wait_for pid
+  exit_value := pipe.wait_for pid
+  expect_equals null
+    pipe.exit_signal exit_value
+  expect_equals 0
+    pipe.exit_code exit_value
   return file.read_content tmp_path
 
 extract archive_file contained_file -> ByteArray:
