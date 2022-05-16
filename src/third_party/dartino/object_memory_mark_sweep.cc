@@ -507,47 +507,6 @@ uword CompactingVisitor::visit(HeapObject* object) {
   return size;
 }
 
-// In debug mode we make more of an effort to overwrite dead objects with
-// something that will trigger a crash or assert.  We don't link them into
-// the freelist structures though as that would be too much difference
-// between debug and release mode.
-#ifdef DEBUG
-static void fill_even_small_areas_with_freelist_entries(uword line, uint32 bits) {
-  uint8 start = *GcMetadata::starts_for(line) & (GcMetadata::CARD_SIZE - 1);
-  if (start != GcMetadata::NO_OBJECT_START && start != 0) {
-    // We may need be careful so that the object starts data doesn't end up
-    // pointing into the middle of a free list area.
-    if ((bits & (1 << (start / WORD_SIZE))) == 0) {
-      // Object start points at an object that is now dead, so we may have an issue.
-      // We flip the bit just before so that the object start location cannot be in
-      // the middle of a freelist structure.
-      bits |= 1 << ((start / WORD_SIZE) - 1);
-    }
-  }
-  uint64 b = 0xffffffff;
-  b <<= 32;
-  b |= bits;
-  while (b != 0xffffffff) {
-    if ((b & 1) != 0) {
-      int trailing_ones = Utils::ctz(~b);
-      if (trailing_ones == 64) {
-        b = 0;
-      } else {
-        b >>= trailing_ones;
-      }
-      line += trailing_ones * WORD_SIZE;
-      if (!b) break;
-    }
-    int free_at_start = Utils::ctz(b);
-    if (free_at_start >= 3) {
-      FreeListRegion::create_at(line, free_at_start * WORD_SIZE);
-    }
-    b >>= free_at_start;
-    line += free_at_start * WORD_SIZE;
-  }
-}
-#endif
-
 // Sweep method that mostly looks at the mark bits.  For speed it doesn't touch
 // the live objects, but writes freelist structures in the gaps between them.
 uword OldSpace::sweep() {
@@ -574,13 +533,10 @@ uword OldSpace::sweep() {
           // word things, but that's OK because they are iterable.
           // TODO: Use fast SIMD instructions to write these 32 pointers.
           for (int i = 0; i < GcMetadata::CARD_SIZE / WORD_SIZE; i++) {
-            if ((bits & (1 << i)) == 0) {
+            if ((bits & (1U << i)) == 0) {
               *reinterpret_cast<word*>(line + (i << WORD_SIZE_LOG_2)) = SINGLE_FREE_WORD;
             }
           }
-#ifdef DEBUG
-          fill_even_small_areas_with_freelist_entries(line, bits);
-#endif
         }
         line += GcMetadata::CARD_SIZE;
         mark_bits++;
@@ -588,73 +544,124 @@ uword OldSpace::sweep() {
         used += Utils::popcount(bits);
         continue;
       }
+      // All 32 bits are zero so we have found a free area at least 32 words long.
       uword start_of_free = line;
       uint8* object_start_location = GcMetadata::starts_for(line);
       if (line != chunk->start()) {
         // Free area may have started in previous line.
         uint32 previous_mark_bits = mark_bits[-1];
         if ((previous_mark_bits & 0x80000000) == 0) {  // Check last bit.
+          ASSERT(previous_mark_bits != 0);
           // Count most significant zeros to get free bytes at end of previous line.
           start_of_free -= Utils::clz(previous_mark_bits) << WORD_SIZE_LOG_2;
           // Object starts may be pointing into the free area, which we have to
           // fix.
-          uint8* object_start_location = GcMetadata::starts_for(start_of_free);
+          uint8* previous_object_start_location = object_start_location - 1;
+          ASSERT(previous_object_start_location == GcMetadata::starts_for(start_of_free));
           // The object starts may point to the middle of this free area, which
           // is not the valid start of an object.  So we reset it to the start of
           // the free area, which is a place we can always iterate from.
-          *object_start_location = start_of_free;
+          *previous_object_start_location = start_of_free;
         }
       }
       // Scan to find the end of the free area.
-      while (true) {
+      while (bits == 0) {
         ASSERT(object_start_location == GcMetadata::starts_for(line));
         *object_start_location++ = GcMetadata::NO_OBJECT_START;
         line += GcMetadata::CARD_SIZE;
         mark_bits++;
+        ASSERT(object_start_location == GcMetadata::starts_for(line));
+        ASSERT(mark_bits == GcMetadata::mark_bits_for(line));
         if (line == end) {
           // The last free space must end one word earlier to make space for
           // the end-of-chunk sentinel.
           free_list_.add_region(start_of_free, end - start_of_free - WORD_SIZE);
-          break;
+          goto end_of_chunk;
         }
-        uint32 bits = *mark_bits;
-        if (bits != 0) {
-          // Found a mark bit indicating the end of the free area.
-          used += Utils::popcount(bits);
-          int free_words_at_start = Utils::ctz(bits);
-          if (bits + (1 << free_words_at_start) != 0) {
-            // The bits don't follow the pattern 1*0*, so we have to zap more
-            // free areas in this line.
-            for (int i = free_words_at_start; i < 32; i++) {
-              if ((bits & (1 << i)) == 0) {
-                *reinterpret_cast<word*>(line + (i << WORD_SIZE_LOG_2)) = SINGLE_FREE_WORD;
-              }
-            }
-#ifdef DEBUG
-            fill_even_small_areas_with_freelist_entries(line, bits);
-#endif
+        bits = *mark_bits;
+      }
+      // Found a mark bit indicating the end of the free area.
+      ASSERT(bits == *mark_bits);
+      ASSERT(mark_bits == GcMetadata::mark_bits_for(line));
+      used += Utils::popcount(bits);
+      int free_words_at_start = Utils::ctz(bits);
+      if (bits + (1U << free_words_at_start) != 0) {
+        // The bits don't follow the pattern 1*0*, so we have to zap more
+        // free areas in this line.
+        for (int i = free_words_at_start; i < 32; i++) {
+          if ((bits & (1U << i)) == 0) {
+            *reinterpret_cast<word*>(line + (i << WORD_SIZE_LOG_2)) = SINGLE_FREE_WORD;
           }
-          uword end_of_free = line + (free_words_at_start << WORD_SIZE_LOG_2);
-          free_list_.add_region(start_of_free, end_of_free - start_of_free);
-          // We set the object starts for this card to NO_OBJECT_START, but
-          // that's not very helpful.  Repair it to point to the end of the
-          // free area, which is a valid place to iterate from.
-          uint8* end_starts_location = GcMetadata::starts_for(end_of_free);
-          *end_starts_location = end_of_free;
-          line += GcMetadata::CARD_SIZE;
-          mark_bits++;
-          break;
         }
       }
+      uword end_of_free = line + (free_words_at_start << WORD_SIZE_LOG_2);
+      free_list_.add_region(start_of_free, end_of_free - start_of_free);
+      // We set the object starts for this card to NO_OBJECT_START, but
+      // that's not very helpful.  Repair it to point to the end of the
+      // free area, which is a valid place to iterate from.
+      uint8* end_starts_location = GcMetadata::starts_for(end_of_free);
+      ASSERT(end_of_free < end);
+      *end_starts_location = end_of_free;
+      line += GcMetadata::CARD_SIZE;
+      mark_bits++;
     }
+  end_of_chunk:
     // Repair sentinel in case it was zapped by a marking bitmap.
     *reinterpret_cast<Object**>(end - WORD_SIZE) = chunk_end_sentinel();
+#ifdef DEBUG
+    validate_sweep(chunk);
+#endif
     GcMetadata::clear_mark_bits_for_chunk(chunk);
   }
   return used << WORD_SIZE_LOG_2;
 }
 
 #ifdef DEBUG
+// Check that all dead objects are replaced with freelist objects and
+// that starts point at valid iteration points.
+void OldSpace::validate_sweep(Chunk* chunk) {
+  uword line = chunk->start();
+  uword object_iterator = line;
+  uword end = line + chunk->size();
+  while (line != end && object_iterator != end - WORD_SIZE) {
+    uint32* mark_bits = GcMetadata::mark_bits_for(object_iterator);
+    uint8* starts = GcMetadata::starts_for(object_iterator);
+    HeapObject* object = HeapObject::from_address(object_iterator);
+    uword size = object->size(program_);
+    bool alive = (*mark_bits & (1 << ((object_iterator - line) / WORD_SIZE))) != 0;
+    ASSERT(GcMetadata::all_mark_bits_are(object, size, alive ? 1 : 0));
+    ASSERT(object->is_a_free_object() == !alive);
+    if (*starts != GcMetadata::NO_OBJECT_START) {
+      ASSERT(*starts < GcMetadata::CARD_SIZE);
+      uword location = *starts | (object_iterator & ~0xffLL);
+      if (alive) {
+        // Starts can't point to the middle of a live object.
+        ASSERT(location <= object_iterator || location >= object_iterator + size);
+      } else {
+        // Starts can point to the middle of a free object as long as there are
+        // nested free objects that end at the same point.
+        if (location > object_iterator && location < object_iterator + size) {
+          uword stepping = location;
+          while (stepping < object_iterator + size) {
+            HeapObject* free_object = HeapObject::from_address(stepping);
+            ASSERT(free_object->is_a_free_object());
+            stepping += free_object->size(program_);
+          }
+          ASSERT(stepping == object_iterator + size);
+        }
+      }
+    }
+    uword new_line = Utils::round_down(object_iterator + size, GcMetadata::CARD_SIZE);
+    if (new_line != line) {
+      for (line += GcMetadata::CARD_SIZE; line < new_line; line += GcMetadata::CARD_SIZE) {
+        ASSERT(*GcMetadata::starts_for(line) == GcMetadata::NO_OBJECT_START);
+      }
+      ASSERT(line == new_line);
+    }
+    object_iterator += size;
+  }
+}
+
 void OldSpace::validate() {
   // Verify that the object starts table contains only legitimate object start
   // addresses for each chunk in the space.

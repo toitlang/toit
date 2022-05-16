@@ -6,11 +6,11 @@ import monitor
 
 /** Makes the current task sleep for the $duration. */
 sleep duration/Duration:
-  task.with_timer_: it.sleep duration.in_us
+  sleeper_.sleep_until_ (Time.monotonic_us + duration.in_us)
 
 /** Makes the current task sleep for the given $ms of milliseconds. */
 sleep --ms/int:
-  task.with_timer_: it.sleep ms * 1000
+  sleeper_.sleep_until_ (Time.monotonic_us + ms * 1000)
 
 /**
 Timer resource group.
@@ -20,23 +20,36 @@ The resource group is used by the timer primitives to keep track of timers
 */
 timer_resource_group_ ::= timer_init_
 
+/** Sleeper monitor. */
+sleeper_/Sleeper_ ::= Sleeper_
+
 /**
 Internal sleeper monitor to implement $sleep functionality.
 */
 monitor Sleeper_:
   /**
-  Sleep until $deadline.
+  Sleep until $wakeup.
   */
-  sleep_until deadline/int:
-    task_deadline := task.deadline
-    if task_deadline and task_deadline < deadline:
-      // We have a smaller task deadline, so this will throw.
-      // Use await for common "throwing" behavior.
-      await: false
-
-    // Will not expire, use try_await_ directly do avoid throwing then expired.
-    while (try_await_ deadline: false):
-
+  sleep_until_ wakeup/int -> none:
+    self := task
+    // Eagerly throw if we trying to sleep past the task deadline.
+    deadline := self.deadline
+    if deadline and deadline < wakeup: throw DEADLINE_EXCEEDED_ERROR
+    // Acquire a suitable timer. These are often reused, so this is
+    // unlikely to allocate.
+    timer ::= self.acquire_timer_ this
+    try:
+      is_non_critical ::= self.critical_count_ == 0
+      while true:
+        // Check for task cancelation and timeout.
+        if is_non_critical and self.is_canceled_: throw CANCELED_ERROR
+        if Time.monotonic_us >= wakeup: return
+        // Arm the timer and wait until we're notified. We might be notified
+        // too early (spurious wakeup), so we arm the timer on every iteration.
+        timer.arm wakeup
+        await_ self
+    finally:
+      self.release_timer_ timer
 
 /**
 Internal timer used by sleep to wake up at the appropriate time.
@@ -44,8 +57,6 @@ Internal timer used by sleep to wake up at the appropriate time.
 class Timer_:
   /** Timer resource. */
   timer_ ::= ?
-  /** Sleeper monitor. */
-  sleeper_/Sleeper_ ::= Sleeper_
 
   /**
   Constructs a timer with an internal timer resource.
@@ -56,16 +67,19 @@ class Timer_:
   close:
     timer_delete_ timer_resource_group_ timer_
 
-  arm monitor/__Monitor__ deadline/int:
-    register_monitor_notifier_ monitor timer_resource_group_ timer_
+  arm deadline/int -> none:
     timer_arm_ timer_ deadline
 
-  /**
-  Sleeps for $us microseconds.
-  */
-  sleep us:
-    sleeper_.sleep_until
-      Time.monotonic_us + us
+  set_target monitor/__Monitor__ -> none:
+    register_monitor_notifier_ monitor timer_resource_group_ timer_
+
+  clear_target -> none:
+    // We're reusing the timers, so it is faster to clear out the
+    // monitor object on the notifier than it is to clear out the
+    // whole notifier structure. This way, we typically do not have
+    // to allocate when calling $set_target and instead we just
+    // update the monitor reference in the notifier.
+    register_monitor_notifier_ null timer_resource_group_ timer_
 
 /**
 Initiates the timer resource group.
@@ -79,7 +93,7 @@ timer_create_ timer_resource_group:
   #primitive.timer.create
 
 /**
-Arm $timer for notification in $us micro seconds.
+Arm $timer for notification in $us microseconds.
 The $timer resource is notified when the time has elapsed.
 */
 timer_arm_ timer us:

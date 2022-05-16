@@ -143,10 +143,12 @@ class ConditionVariable {
     if (!_mutex->is_locked()) {
       FATAL("wait on unlocked mutex");
     }
-    int timeout_ticks = portMAX_DELAY;
-    if (timeout_in_ms > 0) {
-      timeout_ticks = timeout_in_ms / portTICK_PERIOD_MS;
-    }
+
+    // Use ceiling division to avoid rounding the ticks down and thus
+    // not waiting long enough.
+    int timeout_ticks = (timeout_in_ms > 0)
+        ? (timeout_in_ms + portTICK_PERIOD_MS - 1) / portTICK_PERIOD_MS
+        : portMAX_DELAY;
 
     ConditionVariableWaiter w = {
       .task = xTaskGetCurrentTaskHandle()
