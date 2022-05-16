@@ -69,7 +69,7 @@ main args:
   start_piping pipe.stdin pipe_to --log_stream=log_file --mutex=mutex
   start_piping pipe_from pipe.stdout --log_stream=log_file --mutex=mutex
 
-  exit_value := pipe.wait_for cpp_pid
+  exit_value := pipe.wait_for pid
   exit_code := pipe.exit_code exit_value
   exit_signal := pipe.exit_signal exit_value
   if exit_signal:
