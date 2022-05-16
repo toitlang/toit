@@ -109,7 +109,13 @@ class LspClient:
   */
   server/LspServer? ::= ?
 
-  constructor.internal_ .connection_ .toitc .supports_config_ --.server:
+  /**
+  The language server process ID.
+  Only set, when the client was configured without `--spawn_process`.
+  */
+  server_pid ::= ?
+
+  constructor.internal_ .connection_ .toitc .supports_config_ --.server --.server_pid=null:
     configuration =  {
       "toitPath": toitc,
       "shouldWriteReproOnCrash": true,
@@ -131,8 +137,7 @@ class LspClient:
       server_to   := pipes[0]
       server_from := pipes[1]
       pid         := pipes[3]
-      pipe.dont_wait_for pid
-      return [server_to, server_from]
+      return [server_to, server_from, null, pid]
     else:
       server_from := FakePipe
       server_to   := FakePipe
@@ -140,8 +145,8 @@ class LspClient:
       server := LspServer server_rpc_connection compiler_exe UriPathTranslator
           --use_rpc_filesystem=use_rpc_filesystem
       task::
-        catch --trace: server.run
-      return [server_to, server_from, server]
+        server.run
+      return [server_to, server_from, server, null]
 
 
   static start -> LspClient
@@ -156,11 +161,11 @@ class LspClient:
         --use_rpc_filesystem=use_rpc_filesystem
     server_to   := start_result[0]
     server_from := start_result[1]
-    server := spawn_process ? null : start_result[2]
+    server := start_result[2]
     reader := BufferedReader server_from
     writer := server_to
     rpc_connection := RpcConnection reader writer
-    client := LspClient.internal_ rpc_connection compiler_exe supports_config --server=server
+    client := LspClient.internal_ rpc_connection compiler_exe supports_config --server=server --server_pid=start_result[3]
     client.run_
     return client
 
@@ -180,6 +185,14 @@ class LspClient:
           if is_request:
             id := parsed["id"]
             connection_.reply id response
+      if server_pid:
+        exit_value := pipe.wait_for server_pid
+        exit_signal := pipe.exit_signal exit_value
+        exit_code := pipe.exit_code exit_value
+        if exit_signal:
+          throw "LSP server exited with signal $exit_signal"
+        if exit_code != 0:
+          throw "LSP server exited with exit code $exit_code"
 
   fetch_configuration_ params:
     items := params["items"]
