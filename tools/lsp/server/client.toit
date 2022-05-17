@@ -173,11 +173,11 @@ class LspClient:
   to_path uri/string -> string: return translator_.to_path uri
 
   run_:
-    task:: catch --trace:
+    task::
       while true:
         parsed := connection_.read
         if parsed == null: break
-        task:: catch --trace:
+        task::
           method := parsed["method"]
           params := parsed.get "params"
           response := handle_ method params
