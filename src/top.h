@@ -26,9 +26,6 @@
 #include <typeinfo>
 #endif
 
-// Use compacting generational GC.
-//#define LEGACY_GC 1
-
 // Support for profiling configuration
 #if defined(PROF)
 #define DEPLOY

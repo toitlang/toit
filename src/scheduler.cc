@@ -186,7 +186,7 @@ int Scheduler::next_group_id() {
   return _next_group_id++;
 }
 
-int Scheduler::run_program(Program* program, char** args, ProcessGroup* group, InitialMemory* initial_memory) {
+int Scheduler::run_program(Program* program, char** args, ProcessGroup* group, Chunk* initial_memory) {
   Locker locker(_mutex);
   SystemMessage* termination = new_process_message(SystemMessage::TERMINATED, group->id());
   if (termination == null) {
@@ -292,7 +292,7 @@ bool Scheduler::signal_process(Process* sender, int target_id, Process::Signal s
   return true;
 }
 
-Process* Scheduler::hatch(Program* program, ProcessGroup* process_group, Method method, uint8* arguments, InitialMemory* initial_memory) {
+Process* Scheduler::hatch(Program* program, ProcessGroup* process_group, Method method, uint8* arguments, Chunk* initial_memory) {
   Locker locker(_mutex);
 
   SystemMessage* termination = new_process_message(SystemMessage::TERMINATED, process_group->id());
@@ -724,19 +724,6 @@ void Scheduler::terminate_execution(Locker& locker, ExitState exit) {
 
   OS::signal(_has_processes);
 }
-
-#ifdef LEGACY_GC
-
-word Scheduler::largest_number_of_blocks_in_a_process() {
-  Locker locker(_mutex);
-  word largest = 0;
-  for (ProcessGroup* group : _groups) {
-    largest = Utils::max(largest, group->largest_number_of_blocks_in_a_process());
-  }
-  return largest;
-}
-
-#endif
 
 void Scheduler::tick(Locker& locker) {
   int64 now = OS::get_monotonic_time();

@@ -33,28 +33,6 @@
 
 namespace toit {
 
-#ifdef LEGACY_GC
-
-class ScavengeScope : public Locker {
- public:
-  ScavengeScope(HeapMemory* heap_memory, RawHeap* heap)
-      : Locker(heap_memory->mutex())
-      , _heap_memory(heap_memory)
-      , _heap(heap) {
-    heap_memory->enter_scavenge(heap);
-  }
-
-  ~ScavengeScope() {
-    _heap_memory->leave_scavenge(_heap);
-  }
-
- private:
-  HeapMemory* _heap_memory;
-  RawHeap* _heap;
-};
-
-#endif
-
 Instance* ObjectHeap::allocate_instance(Smi* class_id) {
   int size = program()->instance_size_for(class_id);
   TypeTag class_tag = program()->class_tag_for(class_id);
@@ -129,157 +107,23 @@ String* ObjectHeap::allocate_internal_string(int length) {
   return String::cast(result);
 }
 
-#ifdef LEGACY_GC
-
-HeapObject* ObjectHeap::_allocate_raw(int byte_size) {
-  ASSERT(byte_size > 0);
-  ASSERT(byte_size <= max_allocation_size());
-  HeapObject* result = _blocks.last()->allocate_raw(byte_size);
-  if (result == null) {
-    AllocationResult expand_result = _expand();
-    set_last_allocation_result(expand_result);
-    if (expand_result != ALLOCATION_SUCCESS) return null;
-    result = _blocks.last()->allocate_raw(byte_size);
-  }
-  if (result == null) return null;
-  _total_bytes_allocated += byte_size;
-  return result;
-}
-
-ObjectHeap::AllocationResult ObjectHeap::_expand() {
-  word used = (_blocks.length() << TOIT_PAGE_SIZE_LOG2) + _external_memory;
-  if (_limit != 0 && used >= _limit) {
-#ifdef TOIT_GC_LOGGING
-    printf("[gc @ %p%s | soft limit reached (%zd >= %zd)]\n",
-        owner(), VM::current()->scheduler()->is_boot_process(owner()) ? "*" : " ",
-        used, _limit);
-#endif
-    return ALLOCATION_HIT_LIMIT;
-  }
-  Block* block = VM::current()->heap_memory()->allocate_block(this);
-  if (block == null) return ALLOCATION_OUT_OF_MEMORY;
-  _blocks.append(block);
-  return ALLOCATION_SUCCESS;
-}
-
-class ScavengeState : public RootCallback {
- public:
-  explicit ScavengeState(ObjectHeap* heap)
-      : _heap(heap), _process(heap->owner()), _scope(VM::current()->heap_memory(), heap) {
-    blocks.append(VM::current()->heap_memory()->allocate_block_during_scavenge(heap));
-  }
-
-  HeapObject* allocate(int byte_size) {
-    HeapObject* result = blocks.last()->allocate_raw(byte_size);
-    if (result == null) {
-      blocks.append(VM::current()->heap_memory()->allocate_block_during_scavenge(_heap));
-      result = blocks.last()->allocate_raw(byte_size);
-      if (result == null) {
-        FATAL("Cannot allocate memory");
-      }
-    }
-    return result;
-  }
-
-  // Copy and install forward address in from.
-  HeapObject* copy_object(HeapObject* from) {
-    int object_size = from->size(_heap->program());
-    HeapObject* result;
-    if (from->is_stack()) {
-      Stack* stack = Stack::cast(from);
-      int length = stack->length();
-      // Shrink stacks so they have as much space left as newly allocated stacks.
-      // TODO(anders): Skip the active Task, or perhaps use different target?
-      int target = stack->top() - Stack::initial_length();
-      int new_length = length - Utils::max(0, target);
-      result = allocate(Stack::allocation_size(new_length));
-      // As the size could have changed, use stack-specific method for copying content.
-      stack->copy_to(result, new_length);
-    } else {
-      result = allocate(object_size);
-      // Copy the object content raw to the destination.
-      memcpy(result->_raw_at(0), from->_raw_at(0), Utils::round_up(object_size, WORD_SIZE));
-    }
-    if (Flags::tracegc && Flags::verbose) printf(" - copy object from %p to %p\n", from, result);
-    // Insert forwarding pointer in from object overwriting the object's Smi header.
-    // The fact that the header is a Smi and the forwarding pointer is a heap pointer,
-    // allows us to distinguish the two.
-    from->_at_put(HeapObject::HEADER_OFFSET, result);
-    ASSERT(from->has_forwarding_address());
-    return result;
-  }
-
-  // Callback defined in RootCallback.
-  virtual void do_roots(Object** roots, int length) {
-    for (int i = 0; i < length; i++) {
-      if (Flags::tracegc && Flags::verbose) printf(" - do root %p\n", &roots[i]);
-      Object* content = roots[i];
-      if (!content->is_heap_object()) continue;  // Do nothing.
-      HeapObject* heap_object = HeapObject::cast(content);
-      if (heap_object->on_program_heap(_process)) continue;  // Do nothing, content is outside heap.
-      roots[i] = heap_object->has_forwarding_address()  // Has the object already been copied to new-space.
-          ? heap_object->forwarding_address() // Update the root with the forwarding.
-          : copy_object(heap_object);         // Otherwise, copy the object.
-    }
-  }
-
-  void process_to_objects(ObjectHeap::Iterator& objects) {
-    while (!objects.eos()) {
-      if (Flags::tracegc && Flags::verbose) printf(" - process object %p\n", objects.current());
-      objects.current()->roots_do(_heap->program(), this);
-      objects.advance();
-    }
-  }
-
-  void process_to_space() {
-    ObjectHeap::Iterator objects(blocks, _heap->program());
-    while (!objects.eos()) process_to_objects(objects);
-    ASSERT(objects.eos());
-  }
-
-  BlockList blocks;
- private:
-  ObjectHeap* _heap;
-  Process* _process;
-  ScavengeScope _scope;
-};
-
-#endif  // def LEGACY_GC
-
 bool InitialMemoryManager::allocate() {
-#ifdef LEGACY_GC
-  initial_memory = VM::current()->heap_memory()->allocate_initial_block();
-#else
   initial_memory = ObjectMemory::allocate_chunk(null, TOIT_PAGE_SIZE);
-#endif
   return initial_memory != null;
 }
 
 InitialMemoryManager::~InitialMemoryManager() {
   if (initial_memory) {
-#ifdef LEGACY_GC
-    VM::current()->heap_memory()->free_unused_block(initial_memory);
-#else
     ObjectMemory::free_chunk(initial_memory);
-#endif
   }
 }
 
-#ifdef LEGACY_GC
-ObjectHeap::ObjectHeap(Program* program, Process* owner, Block* block)
-    : RawHeap(owner)
-    , _program(program)
-    , _external_memory(0) {
-  if (block == null) return;
-  _blocks.append(block);
-#else
-ObjectHeap::ObjectHeap(Program* program, Process* owner, InitialMemory* initial_memory)
+ObjectHeap::ObjectHeap(Program* program, Process* owner, Chunk* initial_memory)
     : _program(program)
     , _owner(owner)
     , _two_space_heap(program, this, initial_memory)
     , _external_memory(0) {
   if (!initial_memory) return;
-#endif
   _task = allocate_task();
   ASSERT(_task);  // Should not fail, because a newly created heap has at least
                   // enough space for the task structure.
@@ -307,31 +151,7 @@ ObjectHeap::~ObjectHeap() {
   delete _finalizer_notifier;
 
   ASSERT(_object_notifiers.is_empty());
-
-#ifdef LEGACY_GC
-  // Deleting a heap is like a scavenge where nothing survives.
-  ScavengeScope scope(VM::current()->heap_memory(), this);
-  _blocks.free_blocks(this);
-#endif
 }
-
-#ifdef LEGACY_GC
-word ObjectHeap::_calculate_limit() {
-  word length = ((_blocks.length() + 2) << TOIT_PAGE_SIZE_LOG2) + _external_memory;
-  word new_limit = Utils::max(_MIN_BLOCK_LIMIT << TOIT_PAGE_SIZE_LOG2, length + length / 2);
-  if (has_max_heap_size()) {
-    new_limit = Utils::min(_max_heap_size, new_limit);
-  }
-  return new_limit;
-}
-
-bool ObjectHeap::should_allow_external_allocation(word size) {
-  if (_limit == 0) return true;
-  word external_allowed = _limit - (Utils::min(_MIN_BLOCK_LIMIT, _blocks.length()) << TOIT_PAGE_SIZE_LOG2);
-  return external_allowed >= _external_memory + _EXTERNAL_MEMORY_ALLOCATOR_OVERHEAD + size;
-}
-
-# else
 
 word ObjectHeap::_calculate_limit() {
   word length = _two_space_heap.used() + _external_memory;
@@ -349,17 +169,11 @@ bool ObjectHeap::should_allow_external_allocation(word size) {
   return external_allowed >= _external_memory + _EXTERNAL_MEMORY_ALLOCATOR_OVERHEAD + size;
 }
 
-#endif
-
 void ObjectHeap::register_external_allocation(word size) {
   if (size == 0) return;
   // Overloading on an atomic type makes an atomic += and returns new value.
   _external_memory += _EXTERNAL_MEMORY_ALLOCATOR_OVERHEAD + size;
-#ifdef LEGACY_GC
-  _total_bytes_allocated += size;
-#else
   _external_bytes_allocated += size;
-#endif
 }
 
 void ObjectHeap::unregister_external_allocation(word size) {
@@ -479,8 +293,6 @@ void ObjectHeap::iterate_roots(RootCallback* callback) {
   }
 }
 
-#ifndef LEGACY_GC
-
 int ObjectHeap::gc(bool try_hard) {
   _two_space_heap.collect_new_space(try_hard);
   _gc_count++;
@@ -488,114 +300,6 @@ int ObjectHeap::gc(bool try_hard) {
   _limit = _max_heap_size;  // Only the hard limit for the rest of this primitive.
   return 0;  // TODO: Return blocks freed?
 }
-
-#else
-
-class HasForwardingAddress : public LivenessOracle {
- public:
-  virtual bool is_alive(HeapObject* object) override {
-    return object->has_forwarding_address();
-  }
-};
-
-int ObjectHeap::gc(bool try_hard) {
-  if (program() == null) FATAL("cannot gc external process");
-
-  word blocks_before = _blocks.length();
-#ifdef TOIT_GC_LOGGING
-  int64 start_time = OS::get_monotonic_time();
-  word external_memory_before = _external_memory;
-#ifdef TOIT_FREERTOS
-  multi_heap_info_t before;
-  heap_caps_get_info(&before, MALLOC_CAP_8BIT);
-#endif //TOIT_FREERTOS
-#endif //TOIT_GC_LOGGING
-
-  enter_gc();
-  // Reset this until we get a new failure after GC.
-  set_last_allocation_result(ALLOCATION_SUCCESS);
-  if (Flags::tracegc) {
-    printf("[Begin object scavenge #(%zdk, %zdk, external %zdk)]\n",
-           _blocks.length() << (TOIT_PAGE_SIZE_LOG2 - KB_LOG2),
-           _limit >> KB_LOG2,
-           _external_memory >> KB_LOG2);
-  }
-
-  { ScavengeState ss(this);
-
-    iterate_roots(&ss);
-
-    // Process the to space.
-    Iterator objects(ss.blocks, program());
-    while (!objects.eos()) ss.process_to_objects(objects);
-
-    HasForwardingAddress is_alive_oracle;
-
-    process_registered_finalizers(&ss, &is_alive_oracle);
-
-    // Process the finalizers in the to space.
-    while (!objects.eos()) ss.process_to_objects(objects);
-    ASSERT(objects.eos());
-
-    process_registered_vm_finalizers(&ss, &is_alive_oracle);
-
-    // Complete the scavenge.
-    while (!objects.eos()) ss.process_to_objects(objects);
-    ASSERT(objects.eos());
-
-    take_blocks(&ss.blocks);
-  }
-
-  _pending_limit = _calculate_limit();  // GC limit to install after next GC.
-  _limit = _max_heap_size;  // Only the hard limit for the rest of this primitive.
-  if (Flags::tracegc) {
-    printf("[End object scavenge #(%zdk, %zdk, external %zdk)]\n",
-        _blocks.length() << (TOIT_PAGE_SIZE_LOG2 - KB_LOG2),
-        _pending_limit >> KB_LOG2,
-        _external_memory >> KB_LOG2);
-  }
-  _gc_count++;
-  leave_gc();
-
-  word blocks_after = _blocks.length();
-#ifdef TOIT_GC_LOGGING
-  word toit_before = (blocks_before << TOIT_PAGE_SIZE_LOG2) + external_memory_before;
-  word toit_after = (blocks_after << TOIT_PAGE_SIZE_LOG2) + _external_memory;
-  int64 microseconds = OS::get_monotonic_time() - start_time;
-#ifdef TOIT_FREERTOS
-  multi_heap_info_t after;
-  heap_caps_get_info(&after, MALLOC_CAP_8BIT);
-  word capacity_before = before.total_allocated_bytes + before.total_free_bytes;
-  word capacity_after = after.total_allocated_bytes + after.total_free_bytes;
-  int used_before = before.total_allocated_bytes * 100 / capacity_before;
-  int used_after = after.total_allocated_bytes * 100 / capacity_after;
-  printf("[gc @ %p%s "
-         "| objects: %zd%s/%zd%s -> %zd%s/%zd%s "
-         "| overall: %zd%s/%zd%s@%d%% -> %zd%s/%zd%s@%d%% "
-         "| free: %zd%s/%zd%s -> %zd%s/%zd%s "
-         "| %d.%03dms]\n",
-      owner(), VM::current()->scheduler()->is_boot_process(owner()) ? "*" : " ",
-      FORMAT(external_memory_before), FORMAT(toit_before),                           // objects-before
-      FORMAT(_external_memory), FORMAT(toit_after),                                  // objects-after
-      FORMAT(before.total_allocated_bytes), FORMAT(capacity_before), used_before,    // overall-before
-      FORMAT(after.total_allocated_bytes), FORMAT(capacity_after), used_after,       // overall-after
-      FORMAT(before.largest_free_block), FORMAT(before.total_free_bytes),            // free-before
-      FORMAT(after.largest_free_block), FORMAT(after.total_free_bytes),              // free-after
-      static_cast<int>(microseconds / 1000), static_cast<int>(microseconds % 1000)); // time
-#else
-  printf("[gc @ %p%s "
-         "| objects: %zd%s/%zd%s -> %zd%s/%zd%s "
-         "| %d.%03dms]\n",
-      owner(), VM::current()->scheduler()->is_boot_process(owner()) ? "*" : " ",
-      FORMAT(external_memory_before), FORMAT(toit_before),                           // objects-before
-      FORMAT(_external_memory), FORMAT(toit_after),                                  // objects-after
-      static_cast<int>(microseconds / 1000), static_cast<int>(microseconds % 1000)); // time
-#endif // TOIT_FREERTOS
-#endif // TOIT_GC_LOGGING
-  return blocks_before - blocks_after;
-}
-
-#endif  // LEGACY_GC
 
 void ObjectHeap::process_registered_finalizers(RootCallback* ss, LivenessOracle* from_space) {
   // Process the registered finalizer list.
@@ -695,62 +399,9 @@ Object* ObjectHeap::next_finalizer_to_run() {
   return result;
 }
 
-#ifdef LEGACY_GC
-
-// We initialize lazily - this is because the number of objects can grow during
-// iteration.
-ObjectHeap::Iterator::Iterator(BlockList& list, Program* program)
-  : _list(list)
-  , _iterator(list.end())  // Set to null.
-  , _block(null)
-  , _current(null)
-  , _program(program) {}
-
-bool ObjectHeap::Iterator::eos() {
-  return _list.is_empty()
-      || (_block == null
-          ? _list.first()->is_empty()
-          :  (_current >= _block->top() && _block == _list.last()));
-}
-
-void ObjectHeap::Iterator::ensure_started() {
-  ASSERT(!eos());
-  if (_block == null) {
-     _iterator = _list.begin();
-     _block = *_iterator;
-     _current = _block->base();
-  }
-}
-
-HeapObject* ObjectHeap::Iterator::current() {
-  ensure_started();
-  if (_current >= _block->top() && _block != _list.last()) {
-    _block = *++_iterator;
-    _current = _block->base();
-  }
-  ASSERT(!_block->is_empty());
-  return HeapObject::cast(_current);
-}
-
-void ObjectHeap::Iterator::advance() {
-  ensure_started();
-
-  ASSERT(HeapObject::cast(_current)->header()->is_smi());  // Header is not a forwarding pointer.
-  _current = Utils::address_at(_current, HeapObject::cast(_current)->size(_program));
-  if (_current >= _block->top() && _block != _list.last()) {
-    _block = *++_iterator;
-    _current = _block->base();
-    ASSERT(!_block->is_empty());
-  }
-}
-
-#else  // def LEGACY_GC
-
 Usage ObjectHeap::usage(const char* name) {
   return Usage(name, 0, 0);  // TODO: Usage report.
 }
-
-#endif  // def LEGACY_GC
 
 ObjectNotifier::ObjectNotifier(Process* process, Object* object)
     : _process(process)
