@@ -226,7 +226,8 @@ class EventSource : public EventSourceList::Element {
   void register_resource_group(ResourceGroup* resource_group);
   virtual void unregister_resource_group(ResourceGroup* resource_group);
 
-  void set_object_notifier(Resource* r, ObjectNotifier* notifier);
+  bool update_resource_monitor(Resource* r, Process* process, Object* monitor);
+  void delete_resource_monitor(Resource* r);
 
   uint32_t read_state(Resource* r);
 
