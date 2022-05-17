@@ -202,10 +202,17 @@ class ContainerManager extends ContainerServiceDefinition implements SystemMessa
         if unrelocated: unrelocated.add allocation
         else: unrelocated = [allocation]
 
+    // Run through the unrelocated programs and relocate them unless we
+    // already did that successfully before in which case they will have
+    // shown up as relocated programs (added to the images map).
     if unrelocated:
       unrelocated.do: | allocation/FlashAllocation |
-        if images_.contains allocation.id: continue.do
-        add_flash_image (relocate allocation image_registry)
+        if not images_.contains allocation.id:
+          add_flash_image (relocate allocation image_registry)
+        // We always free the unrelocated programs by erasing them from flash
+        // if the relocation attempt is succesful (doesn't throw). Maybe it
+        // would make sense to make sure that a rescan finds the relocated
+        // image before doing this?
         image_registry.free allocation
 
   images -> List:
