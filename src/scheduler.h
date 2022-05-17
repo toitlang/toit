@@ -85,7 +85,7 @@ class Scheduler {
 #endif  // TOIT_FREERTOS
 
   // Run a new program. Returns the process ID of the root process.
-  int run_program(Program* program, char** args, ProcessGroup* group, Chunk* initial_memory);
+  int run_program(Program* program, char** args, ProcessGroup* group, Chunk* initial_chunk);
 
   // Run a new external program. Returns the process.
   Process* run_external(ProcessRunner* runner);
@@ -103,7 +103,7 @@ class Scheduler {
   // deliver the signal.
   bool signal_process(Process* sender, int target_id, Process::Signal signal);
 
-  Process* hatch(Program* program, ProcessGroup* process_group, Method method, uint8* arguments, Chunk* initial_memory);
+  Process* hatch(Program* program, ProcessGroup* process_group, Method method, uint8* arguments, Chunk* initial_chunk);
 
   // Returns a new process id (only called from Process constructor).
   int next_process_id();

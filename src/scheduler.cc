@@ -94,7 +94,7 @@ Scheduler::ExitState Scheduler::run_boot_program(Program* program, char** args, 
   Locker locker(_mutex);
   ProcessGroup* group = ProcessGroup::create(group_id, program);
   SystemMessage* termination = new_process_message(SystemMessage::TERMINATED, group_id);
-  Process* process = _new Process(program, group, termination, args, manager.initial_memory);
+  Process* process = _new Process(program, group, termination, args, manager.initial_chunk);
   ASSERT(process);
   manager.dont_auto_free();
   return launch_program(locker, process);
@@ -117,7 +117,7 @@ Scheduler::ExitState Scheduler::run_boot_program(
   ASSERT(ok);
   Locker locker(_mutex);
   SystemMessage* termination = new_process_message(SystemMessage::TERMINATED, group_id);
-  Process* process = _new Process(boot_program, group, termination, system, application, args, manager.initial_memory);
+  Process* process = _new Process(boot_program, group, termination, system, application, args, manager.initial_chunk);
   ASSERT(process);
   manager.dont_auto_free();
   return launch_program(locker, process);
@@ -186,13 +186,13 @@ int Scheduler::next_group_id() {
   return _next_group_id++;
 }
 
-int Scheduler::run_program(Program* program, char** args, ProcessGroup* group, Chunk* initial_memory) {
+int Scheduler::run_program(Program* program, char** args, ProcessGroup* group, Chunk* initial_chunk) {
   Locker locker(_mutex);
   SystemMessage* termination = new_process_message(SystemMessage::TERMINATED, group->id());
   if (termination == null) {
     return INVALID_PROCESS_ID;
   }
-  Process* process = _new Process(program, group, termination, args, initial_memory);
+  Process* process = _new Process(program, group, termination, args, initial_chunk);
   if (process == null) {
     delete termination;
     return INVALID_PROCESS_ID;
@@ -292,12 +292,12 @@ bool Scheduler::signal_process(Process* sender, int target_id, Process::Signal s
   return true;
 }
 
-Process* Scheduler::hatch(Program* program, ProcessGroup* process_group, Method method, uint8* arguments, Chunk* initial_memory) {
+Process* Scheduler::hatch(Program* program, ProcessGroup* process_group, Method method, uint8* arguments, Chunk* initial_chunk) {
   Locker locker(_mutex);
 
   SystemMessage* termination = new_process_message(SystemMessage::TERMINATED, process_group->id());
   if (!termination) return null;
-  Process* process = _new Process(program, process_group, termination, method, arguments, initial_memory);
+  Process* process = _new Process(program, process_group, termination, method, arguments, initial_chunk);
   if (!process) {
     delete termination;
     return null;

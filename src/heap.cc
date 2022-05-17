@@ -108,22 +108,22 @@ String* ObjectHeap::allocate_internal_string(int length) {
 }
 
 bool InitialMemoryManager::allocate() {
-  initial_memory = ObjectMemory::allocate_chunk(null, TOIT_PAGE_SIZE);
-  return initial_memory != null;
+  initial_chunk = ObjectMemory::allocate_chunk(null, TOIT_PAGE_SIZE);
+  return initial_chunk != null;
 }
 
 InitialMemoryManager::~InitialMemoryManager() {
-  if (initial_memory) {
-    ObjectMemory::free_chunk(initial_memory);
+  if (initial_chunk) {
+    ObjectMemory::free_chunk(initial_chunk);
   }
 }
 
-ObjectHeap::ObjectHeap(Program* program, Process* owner, Chunk* initial_memory)
+ObjectHeap::ObjectHeap(Program* program, Process* owner, Chunk* initial_chunk)
     : _program(program)
     , _owner(owner)
-    , _two_space_heap(program, this, initial_memory)
+    , _two_space_heap(program, this, initial_chunk)
     , _external_memory(0) {
-  if (!initial_memory) return;
+  if (!initial_chunk) return;
   _task = allocate_task();
   ASSERT(_task);  // Should not fail, because a newly created heap has at least
                   // enough space for the task structure.

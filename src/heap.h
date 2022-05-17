@@ -36,10 +36,10 @@ class ObjectNotifier;
 // allocated if a later alllocation fails.
 class InitialMemoryManager {
  public:
-  Chunk* initial_memory = null;
+  Chunk* initial_chunk = null;
 
   void dont_auto_free() {
-    initial_memory = null;
+    initial_chunk = null;
   }
 
   // Allocates initial pages for heap.  Returns success.
@@ -51,7 +51,7 @@ class InitialMemoryManager {
 
 class ObjectHeap {
  public:
-  ObjectHeap(Program* program, Process* owner, Chunk* initial_memory);
+  ObjectHeap(Program* program, Process* owner, Chunk* initial_chunk);
   ~ObjectHeap();
 
   // TODO: In the new heap there need not be a max allocation size.
