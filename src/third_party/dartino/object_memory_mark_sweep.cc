@@ -632,7 +632,6 @@ void OldSpace::validate_sweep(Chunk* chunk) {
     ASSERT(GcMetadata::all_mark_bits_are(object, size, alive ? 1 : 0));
     ASSERT(object->is_a_free_object() == !alive);
     if (*starts != GcMetadata::NO_OBJECT_START) {
-      ASSERT(*starts < GcMetadata::CARD_SIZE);
       uword location = *starts | (object_iterator & ~0xffLL);
       if (alive) {
         // Starts can't point to the middle of a live object.
