@@ -29,7 +29,7 @@ relocate allocation/FlashAllocation registry/FlashRegistry -> FlashAllocation:
   size := binary.LITTLE_ENDIAN.uint32 allocation.metadata 0
   relocated_size ::= size - (size / IMAGE_CHUNK_SIZE) * IMAGE_WORD_SIZE
   reservation ::= registry.reserve relocated_size
-  if reservation == null: throw "No space left in flash"
+  if not reservation: throw "No space left in flash"
   image ::= image_writer_create_ reservation.offset reservation.size
   try:
     from ::= allocation.offset + FLASH_ALLOCATION_HEADER_SIZE

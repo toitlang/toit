@@ -210,7 +210,7 @@ class ContainerManager extends ContainerServiceDefinition implements SystemMessa
         if not images_.contains allocation.id:
           add_flash_image (relocate allocation image_registry)
         // We always free the unrelocated programs by erasing them from flash
-        // if the relocation attempt is succesful (doesn't throw). Maybe it
+        // if the relocation attempt is successful (doesn't throw). Maybe it
         // would make sense to make sure that a rescan finds the relocated
         // image before doing this?
         image_registry.free allocation
