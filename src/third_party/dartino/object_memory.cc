@@ -17,8 +17,6 @@
 
 namespace toit {
 
-#ifndef LEGACY_GC
-
 Chunk::Chunk(Space* owner, uword start, uword size)
       : owner_(owner),
         start_(start),
@@ -302,13 +300,5 @@ void ObjectMemory::set_up() {
   if (spare_chunk_mutex_) FATAL("Can't call ObjectMemory::set_up twice");
   spare_chunk_mutex_ = OS::allocate_mutex(6, "Spare memory chunk");
 }
-
-#else  // LEGACY_GC
-
-void ObjectMemory::set_up() {
-  GcMetadata::set_up();
-}
-
-#endif  // LEGACY_GC
 
 }  // namespace toit

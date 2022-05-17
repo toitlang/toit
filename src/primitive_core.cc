@@ -128,7 +128,7 @@ PRIMITIVE(hatch) {
     OTHER_ERROR;
   }
 
-  Process* child = VM::current()->scheduler()->hatch(process->program(), process->group(), method, buffer, manager.initial_memory);
+  Process* child = VM::current()->scheduler()->hatch(process->program(), process->group(), method, buffer, manager.initial_chunk);
   if (!child) MALLOC_FAILED;
 
   manager.dont_auto_free();
