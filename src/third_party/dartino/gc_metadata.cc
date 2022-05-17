@@ -61,11 +61,7 @@ void GcMetadata::set_up_singleton() {
   // We create all the metadata with just one allocation.  Otherwise we will
   // lose memory when the malloc rounds a series of big allocations up to 4k
   // page boundaries.
-#ifdef LEGACY_GC
-  metadata_ = null;
-#else
   metadata_ = reinterpret_cast<uint8*>(OS::grab_virtual_memory(null, metadata_size_));
-#endif
 
   remembered_set_ = metadata_;
 
@@ -81,7 +77,6 @@ void GcMetadata::set_up_singleton() {
 
   page_type_bytes_ = mark_stack_overflow_bits_ + mark_stack_overflow_bits_size;
 
-#ifndef LEGACY_GC
   // The mark bits and cumulative mark bits are the biggest, so they are not
   // mapped in immediately in order to reduce the memory footprint of very
   // small programs.  We do it when we create pages that need them.
@@ -90,7 +85,6 @@ void GcMetadata::set_up_singleton() {
   OS::use_virtual_memory(mark_stack_overflow_bits_, mark_stack_overflow_bits_size);
   OS::use_virtual_memory(page_type_bytes_, page_type_size_);
   memset(page_type_bytes_, UNKNOWN_SPACE_PAGE, page_type_size_);
-#endif
 
   uword start = reinterpret_cast<uword>(object_starts_);
   uword lowest = lowest_address_;
@@ -112,8 +106,6 @@ void GcMetadata::set_up_singleton() {
   start = reinterpret_cast<uword>(cumulative_mark_bit_counts_);
   cumulative_mark_bits_bias_ = start - shifted;
 }
-
-#ifndef LEGACY_GC
 
 // Impossible end-of-object address, since they are aligned.
 static const uword NO_END_FOUND = 3;
@@ -293,7 +285,5 @@ void GcMetadata::mark_stack_overflow(HeapObject* object) {
   // would mean we would not scan the necessary object.
   if (*start == NO_OBJECT_START || *start > low_byte) *start = low_byte;
 }
-
-#endif  // LEGACY_GC
 
 }  // namespace toit
