@@ -8,8 +8,6 @@
 
 #include "../../top.h"
 
-#ifndef LEGACY_GC
-
 #include "../../heap.h"
 #include "../../objects.h"
 
@@ -192,5 +190,3 @@ bool SemiSpace::complete_scavenge(ScavengeVisitor* visitor) {
 }
 
 }  // namespace toit
-
-#endif  // LEGACY_GC

@@ -4,8 +4,6 @@
 
 #include "../../top.h"
 
-#ifndef LEGACY_GC
-
 #include "../../flags.h"
 #include "../../heap.h"
 #include "../../objects.h"
@@ -114,8 +112,6 @@ void SemiSpace::start_scavenge() {
 
   for (auto chunk : chunk_list_) chunk->set_scavenge_pointer(chunk->start());
 }
-
-#ifndef LEGACY_GC
 
 void TwoSpaceHeap::collect_new_space(bool try_hard) {
   SemiSpace* from = new_space();
@@ -410,8 +406,6 @@ void TwoSpaceHeap::compact_heap() {
   old_space()->mark_chunk_ends_free();
 }
 
-#endif
-
 #ifdef DEBUG
 void TwoSpaceHeap::find(uword word) {
   semi_space_.find(word, "data semi_space");
@@ -455,5 +449,3 @@ void TwoSpaceHeap::find(uword word) {
 #endif  // DEBUG
 
 }  // namespace toit
-
-#endif  // LEGACY_GC

@@ -50,7 +50,7 @@ PRIMITIVE(launch) {
       program,
       process->args(),
       process_group,
-      manager.initial_memory);
+      manager.initial_chunk);
   ASSERT(pid != Scheduler::INVALID_PROCESS_ID);
   manager.dont_auto_free();
   return Smi::from(pid);

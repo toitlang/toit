@@ -33,7 +33,7 @@ const char* Process::StateName[] = {
   "RUNNING",
 };
 
-Process::Process(Program* program, ProcessRunner* runner, ProcessGroup* group, SystemMessage* termination, InitialMemory* initial_memory)
+Process::Process(Program* program, ProcessRunner* runner, ProcessGroup* group, SystemMessage* termination, Chunk* initial_chunk)
     : _id(VM::current()->scheduler()->next_process_id())
     , _next_task_id(0)
     , _program(program)
@@ -44,7 +44,7 @@ Process::Process(Program* program, ProcessRunner* runner, ProcessGroup* group, S
     , _entry(Method::invalid())
     , _hatch_method(Method::invalid())
     , _hatch_arguments(null)
-    , _object_heap(program, this, initial_memory)
+    , _object_heap(program, this, initial_chunk)
     , _memory_usage(Usage("initial object heap"))
     , _last_bytes_allocated(0)
     , _termination_message(termination)
@@ -64,15 +64,15 @@ Process::Process(Program* program, ProcessRunner* runner, ProcessGroup* group, S
   ASSERT(_group->lookup(_id) == this);
 }
 
-Process::Process(Program* program, ProcessGroup* group, SystemMessage* termination, char** args, InitialMemory* initial_memory)
-   : Process(program, null, group, termination, initial_memory) {
+Process::Process(Program* program, ProcessGroup* group, SystemMessage* termination, char** args, Chunk* initial_chunk)
+   : Process(program, null, group, termination, initial_chunk) {
   _entry = program->entry_main();
   _args = args;
 }
 
 #ifndef TOIT_FREERTOS
-Process::Process(Program* program, ProcessGroup* group, SystemMessage* termination, SnapshotBundle system, SnapshotBundle application, char** args, InitialMemory* initial_memory)
-  : Process(program, null, group, termination, initial_memory) {
+Process::Process(Program* program, ProcessGroup* group, SystemMessage* termination, SnapshotBundle system, SnapshotBundle application, char** args, Chunk* initial_chunk)
+  : Process(program, null, group, termination, initial_chunk) {
   _entry = program->entry_main();
   _args = args;
 
@@ -90,8 +90,8 @@ Process::Process(Program* program, ProcessGroup* group, SystemMessage* terminati
 }
 #endif
 
-Process::Process(Program* program, ProcessGroup* group, SystemMessage* termination, Method method, uint8* arguments, InitialMemory* initial_memory)
-   : Process(program, null, group, termination, initial_memory) {
+Process::Process(Program* program, ProcessGroup* group, SystemMessage* termination, Method method, uint8* arguments, Chunk* initial_chunk)
+   : Process(program, null, group, termination, initial_chunk) {
   _entry = program->entry_spawn();
   _args = null;
   _hatch_method = method;

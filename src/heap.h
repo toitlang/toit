@@ -32,20 +32,14 @@ namespace toit {
 
 class ObjectNotifier;
 
-#ifdef LEGACY_GC
-typedef Block InitialMemory;
-#else
-typedef Chunk InitialMemory;
-#endif
-
 // A class that uses a RAII destructor to free memory already
 // allocated if a later alllocation fails.
 class InitialMemoryManager {
  public:
-  InitialMemory* initial_memory = null;
+  Chunk* initial_chunk = null;
 
   void dont_auto_free() {
-    initial_memory = null;
+    initial_chunk = null;
   }
 
   // Allocates initial pages for heap.  Returns success.
@@ -55,47 +49,9 @@ class InitialMemoryManager {
   ~InitialMemoryManager();
 };
 
-#ifdef LEGACY_GC
-
-// Legacy-GC: An object heap contains all objects created at runtime.
-class ObjectHeap : public RawHeap {
- public:
-  ObjectHeap(Process* owner, Program* program, Block* initial_block);
-  ~ObjectHeap();
-
-  class Iterator {
-   public:
-    explicit Iterator(BlockList& list, Program* program);
-    HeapObject* current();
-    bool eos();
-    void advance();
-
-   private:
-    void ensure_started();
-    BlockList& _list;
-    BlockLinkedList::Iterator _iterator;
-    Block* _block;
-    void* _current;
-    Program* _program;
-  };
-
-  Iterator object_iterator() { return Iterator(_blocks, _program); }
-
-  static int max_allocation_size() { return Block::max_payload_size(); }
-
-  void do_objects(const std::function<void (HeapObject*)>& func) {
-    Iterator iterator(_blocks, _program);
-    while (!iterator.eos()) {
-      HeapObject* object = iterator.current();
-      func(object);
-      iterator.advance();
-    }
-  }
-
-#else
 class ObjectHeap {
  public:
-  ObjectHeap(Program* program, Process* owner, InitialMemory* initial_memory);
+  ObjectHeap(Program* program, Process* owner, Chunk* initial_chunk);
   ~ObjectHeap();
 
   // TODO: In the new heap there need not be a max allocation size.
@@ -106,8 +62,6 @@ class ObjectHeap {
   }
 
   inline bool cross_process_gc_needed() const { return _two_space_heap.cross_process_gc_needed(); }
-
-#endif
 
   // Shared allocation operations.
   Instance* allocate_instance(Smi* class_id);
@@ -125,47 +79,18 @@ class ObjectHeap {
 
   Program* program() { return _program; }
 
-#ifdef LEGACY_GC
-  int64 total_bytes_allocated() { return _total_bytes_allocated; }
-#else
   int64 total_bytes_allocated() { return _external_bytes_allocated + _two_space_heap.total_bytes_allocated(); }
-#endif
   uword limit() const { return _limit; }
 
-#if !defined(DEPLOY) && defined(LEGACY_GC)
-  void enter_gc() {
-    ASSERT(!_in_gc);
-    ASSERT(_gc_allowed);
-    _in_gc = true;
-  }
-  void leave_gc() {
-    ASSERT(_in_gc);
-    _in_gc = false;
-  }
-  void enter_no_gc() {
-    ASSERT(!_in_gc);
-    ASSERT(_gc_allowed);
-    _gc_allowed = false;
-  }
-  void leave_no_gc() {
-    ASSERT(!_gc_allowed);
-    _gc_allowed = true;
-  }
-#else
   void enter_gc() {}
   void leave_gc() {}
   void enter_no_gc() {}
   void leave_no_gc() {}
-#endif
 
   bool system_refused_memory() const {
     return
-#ifdef LEGACY_GC
-        _last_allocation_result == ALLOCATION_OUT_OF_MEMORY;
-#else
         _last_allocation_result == ALLOCATION_OUT_OF_MEMORY ||
         _two_space_heap.cross_process_gc_needed();
-#endif
   }
 
   enum AllocationResult {
@@ -177,17 +102,12 @@ class ObjectHeap {
   void set_last_allocation_result(AllocationResult result) {
     _last_allocation_result = result;
   }
-#ifndef LEGACY_GC
+
   Usage usage(const char* name);
   Process* owner() { return _owner; }
-#endif
 
  public:
-#ifdef LEGACY_GC
-  ObjectHeap(Program* program, Process* owner, Block* initial_block);
-#else
   ObjectHeap(Program* program, Process* owner);
-#endif
 
   Task* allocate_task();
   Stack* allocate_stack(int length);
@@ -236,27 +156,17 @@ class ObjectHeap {
 
  private:
   Program* const _program;
-#ifdef LEGACY_GC
-  HeapObject* _allocate_raw(int byte_size);
-#else
   HeapObject* _allocate_raw(int byte_size) {
     return _two_space_heap.allocate(byte_size);
   }
-#endif
 
   bool _in_gc = false;
   bool _gc_allowed = true;
-#ifdef LEGACY_GC
-  int64 _total_bytes_allocated = 0;
-#else
   int64 _external_bytes_allocated = 0;
-#endif
   AllocationResult _last_allocation_result = ALLOCATION_SUCCESS;
 
-#ifndef LEGACY_GC
   Process* _owner;
   TwoSpaceHeap _two_space_heap;
-#endif
 
   // An estimate of how much memory overhead malloc has.
   static const word _EXTERNAL_MEMORY_ALLOCATOR_OVERHEAD = 2 * sizeof(word);
@@ -290,9 +200,6 @@ class ObjectHeap {
   // Calculate the memory limit for scavenge based on the number of live blocks
   // and the externally allocated memory.
   word _calculate_limit();
-#ifdef LEGACY_GC
-  AllocationResult _expand();
-#endif
 
   friend class ObjectNotifier;
 };
