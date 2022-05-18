@@ -453,6 +453,7 @@ namespace toit {
 #define MODULE_IMAGE(PRIMITIVE)              \
   PRIMITIVE(writer_create, 2)                \
   PRIMITIVE(writer_write, 4)                 \
+  PRIMITIVE(writer_write_all, 3)             \
   PRIMITIVE(writer_commit, 2)                \
   PRIMITIVE(writer_close, 1)                 \
 

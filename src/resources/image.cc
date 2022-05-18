@@ -41,14 +41,9 @@ PRIMITIVE(writer_create) {
   return result;
 }
 
-PRIMITIVE(writer_write) {
-  ARGS(ImageOutputStream, output, Blob, content_bytes, int, from, int, to);
-  if (to < from || from < 0) INVALID_ARGUMENT;
-  if (to > content_bytes.length()) OUT_OF_BOUNDS;
-
-  const word* data = reinterpret_cast<const word*>(content_bytes.address() + from);
-  int length = (to - from) / WORD_SIZE;
-  int output_byte_size = (length - 1) * WORD_SIZE;  // The first word is relocation bits, not part of the output.
+static Object* write_image_chunk(Process* process, ImageOutputStream* output, const word* data, int length) {
+  // The first word is relocation bits, not part of the output.
+  int output_byte_size = (length - 1) * WORD_SIZE;
   word buffer[WORD_BIT_SIZE];
 
   bool first = output->empty();
@@ -66,9 +61,30 @@ PRIMITIVE(writer_write) {
   } else {
     success = FlashRegistry::write_chunk(buffer, offset, output_byte_size);
   }
+  if (!success) HARDWARE_ERROR;
+  return null;
+}
 
-  if (success) return process->program()->null_object();
-  HARDWARE_ERROR;
+PRIMITIVE(writer_write) {
+  ARGS(ImageOutputStream, output, Blob, content_bytes, int, from, int, to);
+  if (to < from || from < 0) INVALID_ARGUMENT;
+  if (to > content_bytes.length()) OUT_OF_BOUNDS;
+  const word* data = reinterpret_cast<const word*>(content_bytes.address() + from);
+  int length = (to - from) / WORD_SIZE;
+  Object* error = write_image_chunk(process, output, data, length);
+  return error ? error : process->program()->null_object();
+}
+
+PRIMITIVE(writer_write_all) {
+  ARGS(ImageOutputStream, output, int, from, int, to);
+  while (from < to) {
+    const word* data = unvoid_cast<const word*>(FlashRegistry::memory(from, to - from));
+    int length = Utils::min((to - from) / WORD_SIZE, WORD_BIT_SIZE + 1);
+    Object* error = write_image_chunk(process, output, data, length);
+    if (error) return error;
+    from += length * WORD_SIZE;
+  }
+  return process->program()->null_object();
 }
 
 PRIMITIVE(writer_commit) {

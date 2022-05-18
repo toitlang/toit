@@ -21,10 +21,9 @@
 
 namespace toit {
 
-// Keep in sync with flash_allocation.toit.
-static const uint8 QUEUE_TYPE = 1;
-static const uint8 PROGRAM_TYPE = 2;
-static const uint8 KEY_VALUE_STORE_TYPE = 3;
+// Keep in sync with system/flash/allocation.toit.
+static const uint8 PROGRAM_TYPE = 0;
+static const uint8 PROGRAM_UNRELOCATED_TYPE = 1;
 
 static const int FLASH_PAGE_SIZE = 4 * KB;
 static const int FLASH_SEGMENT_SIZE = 16;

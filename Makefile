@@ -208,7 +208,7 @@ build/$(ESP32_CHIP)/program.snapshot: $(ESP32_ENTRY) tools
 	$(TOITC_BIN) -w $@ $<
 
 build/$(ESP32_CHIP)/programs.bin: build/$(ESP32_CHIP)/program.snapshot tools
-	$(TOITVM_BIN) tools/snapshot_to_image.toit --unique_id=$(ESP32_SYSTEM_ID) -m32 --binary --relocate=0x3f430000 $< $@
+	$(TOITVM_BIN) tools/snapshot_to_image.toit --unique_id=$(ESP32_SYSTEM_ID) -m32 --binary --offset=0x0 $< $@
 
 build/$(ESP32_CHIP)/CMakeCache.txt: check-esp32-env
 	mkdir -p build/$(ESP32_CHIP)
