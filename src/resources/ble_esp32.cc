@@ -483,15 +483,18 @@ void BLEServerConfigGroup::entry() {
   nimble_port_run();
 }
 
-static bool object_to_mbuf(Process* process, Object* object, struct os_mbuf** res) {
-  *res = null;
+static Object* object_to_mbuf(Process* process, Object* object, os_mbuf** result) {
+  *result = null;
   if (object != process->program()->null_object()) {
     Blob bytes;
-    if (!object->byte_content(process->program(), &bytes, STRINGS_OR_BYTE_ARRAYS)) return false;
-    if (bytes.length() > 0)
-      *res = ble_hs_mbuf_from_flat(bytes.address(), bytes.length());
+    if (!object->byte_content(process->program(), &bytes, STRINGS_OR_BYTE_ARRAYS)) WRONG_TYPE;
+    if (bytes.length() > 0) {
+      os_mbuf* mbuf = ble_hs_mbuf_from_flat(bytes.address(), bytes.length());
+      if (!mbuf) MALLOC_FAILED;
+      *result = mbuf;
+    }
   }
-  return true;
+  return null;  // No error.
 }
 
 MODULE_IMPLEMENTATION(ble, MODULE_BLE)
@@ -870,7 +873,7 @@ PRIMITIVE(request_data) {
     INVALID_ARGUMENT;
   }
 
-  const struct os_mbuf* mbuf = gatt->mbuf();
+  const os_mbuf* mbuf = gatt->mbuf();
   if (!mbuf) return process->program()->null_object();
   Object* ret_val = convert_mbuf_to_heap_object(process, mbuf);
 
@@ -979,7 +982,8 @@ PRIMITIVE(add_server_characteristic) {
   ble_uuid_any_t uuid = uuid_from_blob(uuid_blob);
 
   os_mbuf* om = null;
-  if (!object_to_mbuf(process, value, &om)) WRONG_TYPE;
+  Object* error = object_to_mbuf(process, value, &om);
+  if (error) return error;
 
   Mutex* resource_group_mutex = static_cast<BLEServerConfigGroup*>(service->resource_group())->mutex();
 
@@ -998,8 +1002,9 @@ PRIMITIVE(add_server_characteristic) {
 PRIMITIVE(set_characteristics_value) {
   ARGS(BLEServerCharacteristicResource, resource, Object, value);
 
-  struct os_mbuf* om;
-  if (!object_to_mbuf(process, value, &om)) WRONG_TYPE;
+  os_mbuf* om = null;
+  Object* error = object_to_mbuf(process, value, &om);
+  if (error) return error;
 
   resource->set_mbuf_to_send(om);
 
@@ -1010,8 +1015,9 @@ PRIMITIVE(notify_characteristics_value) {
   ARGS(BLEServerCharacteristicResource, resource, Object, value);
 
   if (resource->is_notify_enabled() || resource->is_indicate_enabled()) {
-    struct os_mbuf* om;
-    if (!object_to_mbuf(process, value, &om)) WRONG_TYPE;
+    os_mbuf* om = null;
+    Object* error = object_to_mbuf(process, value, &om);
+    if (error) return error;
 
     int err = ESP_OK;
     if (resource->is_notify_enabled()) {
