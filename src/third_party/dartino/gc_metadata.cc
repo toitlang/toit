@@ -25,9 +25,21 @@ void GcMetadata::set_up_singleton() {
   OS::HeapMemoryRange range = OS::get_heap_memory_range();
 
   uword range_address = reinterpret_cast<uword>(range.address);
+#ifdef TOIT_FREERTOS
+  printf("Malloc reports heap from %p-%p (%dk)\n",
+      range.address,
+      unvoid_cast<char*>(range.address) + range.size,
+      static_cast<int>(range.size >> 10));
+#endif
   lowest_address_ = Utils::round_down(range_address, TOIT_PAGE_SIZE);
   uword size = Utils::round_up(range.size + range_address - lowest_address_, TOIT_PAGE_SIZE);
   heap_extent_ = size;
+#ifdef TOIT_FREERTOS
+  printf("(Metadata allocated for  %p-%p (%dk))\n",
+      reinterpret_cast<void*>(lowest_address_),
+      reinterpret_cast<char*>(lowest_address_) + heap_extent_,
+      static_cast<int>(heap_extent_ >> 10));
+#endif
   heap_start_munged_ = (lowest_address_ >> 1) |
                        (static_cast<uword>(1) << (8 * sizeof(uword) - 1));
   heap_extent_munged_ = size >> 1;
