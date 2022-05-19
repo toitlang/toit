@@ -21,13 +21,8 @@ TwoSpaceHeap::TwoSpaceHeap(Program* program, ObjectHeap* process_heap, Chunk* ch
   if (chunk) water_mark_ = chunk->start();
 }
 
-uword TwoSpaceHeap::max_expansion() {
-  if (!process_heap_->has_max_heap_size()) return UNLIMITED_EXPANSION;
-  uword limit = process_heap_->limit();
-  if (limit <= TOIT_PAGE_SIZE) return 0;
-  limit -= TOIT_PAGE_SIZE;  // New space is one page.
-  if (limit < old_space()->used()) return 0;
-  return old_space()->used() - limit;
+word TwoSpaceHeap::max_external_allocation() {
+  return process_heap_->max_external_allocation();
 }
 
 Process* TwoSpaceHeap::process() {
@@ -44,6 +39,25 @@ HeapObject* TwoSpaceHeap::allocate(uword size) {
     return new_space_allocation_failure(size);
   }
   return HeapObject::from_address(result);
+}
+
+HeapObject* TwoSpaceHeap::new_space_allocation_failure(uword size) {
+  if (!process_heap_->has_limit()) {
+    // When we are rerunning a primitive after a GC we don't want to
+    // trigger a new GC unless we abolutely have to, so we allow allocation
+    // directly into old-space.  We recognize this situation by there not
+    // being an allocation limit (it is installed when the primitive
+    // completes).
+    uword result = old_space_.allocate(size);
+    if (result != 0) {
+      // The code that populates newly allocated objects assumes that they
+      // are in new space and does not have a write barrier.  We mark the
+      // object dirty immediately, so it is checked by the next GC.
+      GcMetadata::insert_into_remembered_set(result);
+      return HeapObject::from_address(result);
+    }
+  }
+  return null;
 }
 
 void TwoSpaceHeap::swap_semi_spaces(SemiSpace& from, SemiSpace& to) {
@@ -113,7 +127,7 @@ void SemiSpace::start_scavenge() {
   for (auto chunk : chunk_list_) chunk->set_scavenge_pointer(chunk->start());
 }
 
-void TwoSpaceHeap::collect_new_space(bool try_hard) {
+bool TwoSpaceHeap::collect_new_space(bool try_hard) {
   SemiSpace* from = new_space();
 
   uint64 start = OS::get_monotonic_time();
@@ -125,12 +139,11 @@ void TwoSpaceHeap::collect_new_space(bool try_hard) {
   total_bytes_allocated_ += from->used();
 
   if (has_empty_new_space()) {
-    collect_old_space_if_needed(try_hard, try_hard);
     if (Flags::tracegc) {
-      uint64 end = OS::get_monotonic_time();
-      printf("Old-space-only GC: %dus\n", static_cast<int>(end - start));
+      printf("Old-space-only GC:\n");
     }
-    return;
+    collect_old_space_if_needed(try_hard, try_hard);
+    return true;
   }
 
   old_space()->flush();
@@ -141,6 +154,7 @@ void TwoSpaceHeap::collect_new_space(bool try_hard) {
 #endif
 
   uword old_used = old_space()->used();
+  word old_external = process_heap_->external_memory();
   word from_used;
   word to_used;
   bool trigger_old_space_gc;
@@ -189,23 +203,47 @@ void TwoSpaceHeap::collect_new_space(bool try_hard) {
     uint64 end = OS::get_monotonic_time();
     int f = from_used;
     int t = to_used;
+    int o = old_used;
+    int oe = old_external;
+    int ne = process_heap_->external_memory();
     int old = old_space()->used();
 
     uword overhead = old_space()->size() - old;
 
-    char buffer[30];
-    buffer[sizeof(buffer) - 1] = '\0';
-    snprintf(buffer, sizeof(buffer) - 1, " +%dk overhead", static_cast<int>(overhead) >> 10);
+    char overhead_buffer[40];
+    if (overhead < TOIT_PAGE_SIZE) {
+      overhead_buffer[0] = '\0';
+    } else {
+      overhead_buffer[sizeof(overhead_buffer) - 1] = '\0';
+      snprintf(overhead_buffer, sizeof(overhead_buffer) - 1, " +%dk overhead", static_cast<int>(overhead) >> 10);
+    }
 
-    printf("%p Scavenge: %d%c->%d%c (old-gen %d%c%s) %dus\n",
+    char external_buffer[40];
+    external_buffer[sizeof(external_buffer) - 1] = '\0';
+    if (oe >> 10 == ne >> 10) {
+      if (oe >> 10 == 0) {
+        external_buffer[0] = '\0';
+      } else {
+        snprintf(external_buffer, sizeof(external_buffer) - 1, ", external %dk", oe >> 10);
+      }
+    } else {
+      snprintf(external_buffer, sizeof(external_buffer) - 1, ", external %dk->%dk",
+          oe >> 10,
+          ne >> 10);
+    }
+
+    printf("%p Scavenge: %d%c->%d%c (old-gen %d%c->%d%c%s%s) %dus\n",
         process_heap_->owner(),
         (f >> 10) ? (f >> 10) : f,
         (f >> 10) ? 'k' : 'b',
         (t >> 10) ? (t >> 10) : t,
         (t >> 10) ? 'k' : 'b',
+        (o >> 10) ? (o >> 10) : o,
+        (o >> 10) ? 'k' : 'b',
         (old >> 10) ? (old >> 10) : old,
         (old >> 10) ? 'k' : 'b',
-        (overhead >= TOIT_PAGE_SIZE) ? buffer : "",
+        overhead_buffer,
+        external_buffer,
         static_cast<int>(end - start));
   }
 
@@ -220,7 +258,7 @@ void TwoSpaceHeap::collect_new_space(bool try_hard) {
     old_space()->report_new_space_progress(progress);
   }
 
-  collect_old_space_if_needed(try_hard, trigger_old_space_gc);
+  return collect_old_space_if_needed(try_hard, trigger_old_space_gc);
 }
 
 uword TwoSpaceHeap::total_bytes_allocated() {
@@ -229,7 +267,7 @@ uword TwoSpaceHeap::total_bytes_allocated() {
   return result;
 }
 
-void TwoSpaceHeap::collect_old_space_if_needed(bool force_compact, bool force) {
+bool TwoSpaceHeap::collect_old_space_if_needed(bool force_compact, bool force) {
 #ifdef DEBUG
   if (Flags::validate_heap) {
     validate();
@@ -237,11 +275,14 @@ void TwoSpaceHeap::collect_old_space_if_needed(bool force_compact, bool force) {
     new_space()->validate_before_mark_sweep(NEW_SPACE_PAGE, true);
   }
 #endif
-  if (force || force_compact || old_space()->needs_garbage_collection()) {
-    ASSERT(old_space()->is_flushed());
-    ASSERT(new_space()->is_flushed());
-    collect_old_space(force_compact);
+  if (!force && !force_compact && !old_space()->needs_garbage_collection()) {
+    return false;
   }
+
+  ASSERT(old_space()->is_flushed());
+  ASSERT(new_space()->is_flushed());
+  collect_old_space(force_compact);
+  return true;
 }
 
 #ifdef DEBUG
@@ -255,6 +296,7 @@ void TwoSpaceHeap::collect_old_space(bool force_compact) {
 
   uint64 start = OS::get_monotonic_time();
   uword old_used = old_space()->used();
+  uword old_external = process_heap_->external_memory();
 
   bool compacted = perform_garbage_collection(force_compact);
 
@@ -263,33 +305,50 @@ void TwoSpaceHeap::collect_old_space(bool force_compact) {
     int f = old_used;
     int t = old_space()->used();
     uword overhead = old_space()->size() - t;
+    int oe = old_external;
+    int ne = process_heap_->external_memory();
 
-    char buffer[30];
-    buffer[sizeof(buffer) - 1] = '\0';
-    snprintf(buffer, sizeof(buffer) - 1, " +%dk overhead", static_cast<int>(overhead) >> 10);
+    char overhead_buffer[40];
+    if (overhead < TOIT_PAGE_SIZE) {
+      overhead_buffer[0] = '\0';
+    } else {
+      overhead_buffer[sizeof(overhead_buffer) - 1] = '\0';
+      snprintf(overhead_buffer, sizeof(overhead_buffer) - 1, " +%dk overhead", static_cast<int>(overhead) >> 10);
+    }
 
-    printf("%p Mark-sweep%s: %d%c->%d%c%s %dus\n",
+    char external_buffer[40];
+    external_buffer[sizeof(external_buffer) - 1] = '\0';
+    if (oe >> 10 == ne >> 10) {
+      if (oe >> 10 == 0) {
+        external_buffer[0] = '\0';
+      } else {
+        snprintf(external_buffer, sizeof(external_buffer) - 1, " (external %dk)", oe >> 10);
+      }
+    } else {
+      snprintf(external_buffer, sizeof(external_buffer) - 1, " (external %dk->%dk)",
+          oe >> 10,
+          ne >> 10);
+    }
+
+    printf("%p Mark-sweep%s: %d%c->%d%c%s%s %dus\n",
         process_heap_->owner(),
         compacted ? "-compact" : "",
         (f >> 10) ? (f >> 10) : f,
         (f >> 10) ? 'k' : 'b',
         (t >> 10) ? (t >> 10) : t,
         (t >> 10) ? 'k' : 'b',
-        (overhead >= TOIT_PAGE_SIZE) ? buffer : "",
+        overhead_buffer,
+        external_buffer,
         static_cast<int>(end - start));
   }
 
-  old_space()->set_allocation_budget(Utils::min(
-      static_cast<uword>(TOIT_PAGE_SIZE),
-      static_cast<uword>(old_space()->used() * 1.5)));
+  old_space()->set_promotion_failed(false);
 
 #ifdef DEBUG
   if (Flags::validate_heap) {
     validate();
   }
 #endif
-  // TODO(Erik): The heuristics need tidying.
-  old_space()->adjust_allocation_budget(0);
 }
 
 bool TwoSpaceHeap::perform_garbage_collection(bool force_compact) {

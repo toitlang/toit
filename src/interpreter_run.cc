@@ -515,7 +515,7 @@ Interpreter::Result Interpreter::run() {
     }
     PUSH(result);
     if (Flags::gcalot) sp = gc(sp, false, 1, false);
-    _process->object_heap()->install_heap_limit();
+    _process->object_heap()->check_install_heap_limit();
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(IS_CLASS, encoded);
@@ -1029,7 +1029,7 @@ Interpreter::Result Interpreter::run() {
       DROP(arity);
       ASSERT(!is_stack_empty());
       PUSH(result);
-      _process->object_heap()->install_heap_limit();
+      _process->object_heap()->check_install_heap_limit();
       DISPATCH(0);
     }
   OPCODE_END();
