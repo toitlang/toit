@@ -86,8 +86,8 @@ run_tests:
     //  "dh-composite.badssl.com", // Should we not connect to sites with crappy certs?
     "subdomain.preloaded-hsts.badssl.com/Common Name",
     "captive-portal.badssl.com",
-    "mitm-software.badssl.com/unknown root cert",
-    "sha1-2017.badssl.com/unacceptable hash",
+    "mitm-software.badssl.com",
+    "sha1-2017.badssl.com",
     ]
   working.do: | site |
     test_site site true
