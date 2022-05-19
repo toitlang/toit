@@ -89,12 +89,12 @@ class GATTResource : public BLEResource {
     _error = 0;
   }
 
-  const struct os_mbuf* mbuf() const {
+  const os_mbuf* mbuf() const {
     Locker locker(_mutex);
     return _mbuf;
   }
 
-  void set_mbuf(struct os_mbuf* mbuf) {
+  void set_mbuf(os_mbuf* mbuf) {
     Locker locker(_mutex);
     if (_mbuf) os_mbuf_free(_mbuf);
     _mbuf = mbuf;
