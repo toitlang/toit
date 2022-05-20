@@ -36,7 +36,7 @@ BLEEventSource* BLEEventSource::_instance = null;
 
 BLEEventSource::BLEEventSource()
     : LazyEventSource("BLE", 1)
-    , Thread("BLE") {
+    , Thread("BLEEventSource") {
   _instance = this;
 }
 
@@ -79,8 +79,6 @@ void BLEEventSource::entry() {
 
   while (!_stop) {
     if (_should_run) {
-      nimble_port_init();
-
       _running = true;
       OS::signal(_resources_changed);
 
