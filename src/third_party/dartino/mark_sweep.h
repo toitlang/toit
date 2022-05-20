@@ -1,4 +1,4 @@
-// Copyright (c) 2015, the Dartino project authors. Please see the AUTHORS file
+// Copyright (c) 2022, the Dartino project authors. Please see the AUTHORS file
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE.md file.
 
@@ -74,21 +74,16 @@ class MarkingVisitor : public RootCallback {
 
 class FixPointersVisitor : public RootCallback {
  public:
-  FixPointersVisitor() : source_address_(0) {}
+  FixPointersVisitor() {}
 
   virtual void do_roots(Object** start, int length);
-
-  void set_source_address(uword address) { source_address_ = address; }
-
- private:
-  uword source_address_;
 };
 
 class CompactingVisitor : public HeapObjectVisitor {
  public:
   CompactingVisitor(Program* program, OldSpace* space, FixPointersVisitor* fix_pointers_visitor);
 
-  virtual void chunk_start(Chunk* chunk) {
+  virtual void chunk_start(Chunk* chunk) override {
     GcMetadata::initialize_starts_for_chunk(chunk);
     uint32* last_bits = GcMetadata::mark_bits_for(chunk->usable_end());
     // When compacting the heap, we skip dead objects.  In order to do this
@@ -100,7 +95,7 @@ class CompactingVisitor : public HeapObjectVisitor {
     *last_bits |= 1u << 31;
   }
 
-  virtual uword visit(HeapObject* object);
+  virtual uword visit(HeapObject* object) override;
 
   uword used() const { return used_; }
 
@@ -114,15 +109,15 @@ class SweepingVisitor : public HeapObjectVisitor {
  public:
   SweepingVisitor(Program* program, OldSpace* space);
 
-  virtual void chunk_start(Chunk* chunk) {
+  virtual void chunk_start(Chunk* chunk) override {
     GcMetadata::initialize_starts_for_chunk(chunk);
   }
 
-  virtual uword visit(HeapObject* object);
+  virtual uword visit(HeapObject* object) override;
 
-  virtual void chunk_end(Chunk* chunk, uword end) {
+  virtual void chunk_end(Chunk* chunk, uword end) override {
     add_free_list_region(end);
-    GcMetadata::clear_mark_bits_for(chunk);
+    GcMetadata::clear_mark_bits_for_chunk(chunk);
   }
 
   uword used() const { return used_; }

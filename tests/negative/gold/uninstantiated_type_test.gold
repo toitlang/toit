@@ -2,4 +2,3 @@ As check failed: null is not a A.
   0: bar                       tests/negative/uninstantiated_type_test.toit:8:11
   1: foo                       tests/negative/uninstantiated_type_test.toit:11:10
   2: main                      tests/negative/uninstantiated_type_test.toit:16:9
-  3: __entry__.<lambda>        <sdk>/core/entry.toit:48:20

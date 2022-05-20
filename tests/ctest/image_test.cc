@@ -85,7 +85,7 @@ int main(int argc, char** argv) {
   if (argc != 2) FATAL("wrong number of arguments");
   throwing_new_allowed = true;
   OS::set_up();
-  GcMetadata::set_up();
+  ObjectMemory::set_up();
 
   auto compiled = compile(argv[1]);
   // Compiler resets it in its destructor.
@@ -95,7 +95,7 @@ int main(int argc, char** argv) {
   int bytecodes_size = compiled.snapshot().size();
 
   // Take the snapshot and "extract" it in some aligned memory.
-  auto anchored_image = compiled.snapshot().read_image();
+  auto anchored_image = compiled.snapshot().read_image(null);
 
   {
     // Check that we get the same snapshot after having exploded it.

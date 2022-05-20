@@ -35,7 +35,7 @@ task code/Lambda --name/string="User task" --background/bool=false:
 
 // Base API for creating and activating a task.
 create_task_ code/Lambda name/string background/bool -> Task_:
-  new_task := task_new_:: task.evaluate_ code
+  new_task := task_new_ code
   new_task.name = name
   new_task.background = background or task.background
   new_task.initialize_
@@ -54,10 +54,6 @@ The Toit programming language is cooperatively scheduled, so it is important
 */
 yield:
   task_yield_to_ task.next_running_
-
-// Helper method to mark the stack where user code starts.
-_USER_BOUNDARY_ lambda:
-  return lambda.call
 
 // ----------------------------------------------------------------------------
 
@@ -104,14 +100,13 @@ class Task_:
     initialize_
     previous_running_ = next_running_ = this
 
-  evaluate_ code:
+  evaluate_ [code]:
     exception := null
     // Always have an outer catch clause. Without this, a throw will crash the VM.
     // In that, we have an inner, but very pretty, root exception handling.
     // This can fail in rare cases where --trace will OOM, kernel reject the message, etc.
     try:
-      exception = catch --trace:
-        _USER_BOUNDARY_ code
+      exception = catch --trace code
     finally: | is_exception trace_exception |
       // If we got an exception here, either
       // 1) the catch failed to guard against the exception so we assume
@@ -178,24 +173,17 @@ class Task_:
     previous_running_ = previous
     next_running_ = current
 
-  // Use a timer temporarily. The timer will be released and made available
-  // for reuse afterwards.
-  with_timer_ [block]:
-    timer := acquire_timer_
-    try:
-      block.call timer
-    finally:
-      release_timer_ timer
-
   // Acquiring a timer will reuse the first previously released timer if
   // available. We use a single element cache to avoid creating timer objects
   // repeatedly when it isn't necessary.
-  acquire_timer_ -> Timer_:
+  acquire_timer_ monitor/__Monitor__ -> Timer_:
     timer := timer_
     if timer:
       timer_ = null
-      return timer
-    return Timer_
+    else:
+      timer = Timer_
+    timer.set_target monitor
+    return timer
 
   // Releasing a timer will make it available for reuse or close it if the
   // single element cache is already filled.
@@ -204,6 +192,7 @@ class Task_:
     if existing:
       timer.close
     else:
+      timer.clear_target
       timer_ = timer
 
   // Task state initialized by the VM.
@@ -235,19 +224,8 @@ class Task_:
 
 // ----------------------------------------------------------------------------
 
-task_new_ lambda:
+task_new_ lambda/Lambda:
   #primitive.core.task_new
-
-task_entry_ code:
-  // The entry stack setup is a bit complicated, so when we
-  // transfer to a task stack for the first time, the
-  // `task transfer` primitive will provide a value for us
-  // on the stack. The `null` assigned to `fake` below is
-  // skipped and we let the value passed to us take its place.
-  life := null
-  assert: life == 42
-  code.call
-  throw "Should not get here"
 
 task_transfer_ to detach_stack:
   #primitive.core.task_transfer

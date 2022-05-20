@@ -35,6 +35,7 @@ namespace toit {
   M(i2c,     MODULE_I2C)                     \
   M(i2s,     MODULE_I2S)                     \
   M(spi,     MODULE_SPI)                     \
+  M(spi_linux, MODULE_SPI_LINUX)             \
   M(uart,    MODULE_UART)                    \
   M(rmt,     MODULE_RMT)                     \
   M(crypto,  MODULE_CRYPTO)                  \
@@ -71,7 +72,7 @@ namespace toit {
   PRIMITIVE(seconds_since_epoch_local, 7)    \
   PRIMITIVE(set_tz, 1)                       \
   PRIMITIVE(platform, 0)                     \
-  PRIMITIVE(process_stats, 2)                \
+  PRIMITIVE(process_stats, 3)                \
   PRIMITIVE(bytes_allocated_delta, 0)        \
   PRIMITIVE(string_length, 1)                \
   PRIMITIVE(string_at, 2)                    \
@@ -128,6 +129,7 @@ namespace toit {
   PRIMITIVE(float_sign, 1)                   \
   PRIMITIVE(float_is_nan, 1)                 \
   PRIMITIVE(float_is_finite, 1)              \
+  PRIMITIVE(int_parse, 4)                    \
   PRIMITIVE(smi_less_than, 2)                \
   PRIMITIVE(smi_less_than_or_equal, 2)       \
   PRIMITIVE(smi_greater_than, 2)             \
@@ -171,7 +173,6 @@ namespace toit {
   PRIMITIVE(task_new, 1)                     \
   PRIMITIVE(task_transfer, 2)                \
   PRIMITIVE(task_stack, 1)                   \
-  PRIMITIVE(task_reset_stack_limit, 0)       \
   PRIMITIVE(gc_count, 0)                     \
   PRIMITIVE(byte_array_is_raw_bytes, 1)      \
   PRIMITIVE(byte_array_length, 1)            \
@@ -292,7 +293,6 @@ namespace toit {
   PRIMITIVE(disconnect, 2)                   \
   PRIMITIVE(disconnect_reason, 1)            \
   PRIMITIVE(get_ip, 1)                       \
-  PRIMITIVE(get_stored_ip, 0)                \
   PRIMITIVE(get_rssi, 1)                     \
 
 #define MODULE_ETHERNET(PRIMITIVE)           \
@@ -350,21 +350,29 @@ namespace toit {
   PRIMITIVE(init, 3)                         \
   PRIMITIVE(close, 1)                        \
   PRIMITIVE(write, 3)                        \
+  PRIMITIVE(write_reg, 4)                    \
+  PRIMITIVE(write_address, 4)                \
   PRIMITIVE(read, 3)                         \
   PRIMITIVE(read_reg, 4)                     \
+  PRIMITIVE(read_address, 4)                 \
 
 #define MODULE_I2S(PRIMITIVE)                \
-  PRIMITIVE(init, 0)                        \
+  PRIMITIVE(init, 0)                         \
   PRIMITIVE(create, 12)                      \
   PRIMITIVE(close, 2)                        \
   PRIMITIVE(write, 2)                        \
   PRIMITIVE(read,  1)                        \
+  PRIMITIVE(read_to_buffer, 2)               \
 
 #define MODULE_SPI(PRIMITIVE)                \
   PRIMITIVE(init, 3)                         \
   PRIMITIVE(close, 1)                        \
   PRIMITIVE(device, 7)                       \
   PRIMITIVE(device_close, 2)                 \
+  PRIMITIVE(transfer, 8)                     \
+
+#define MODULE_SPI_LINUX(PRIMITIVE)          \
+  PRIMITIVE(open, 1)                         \
   PRIMITIVE(transfer, 8)                     \
 
 #define MODULE_UART(PRIMITIVE)               \
@@ -377,14 +385,19 @@ namespace toit {
 
 #define MODULE_RMT(PRIMITIVE)                \
   PRIMITIVE(init, 0)                         \
-  PRIMITIVE(use, 2)                          \
-  PRIMITIVE(unuse, 2)                        \
-  PRIMITIVE(config_rx, 9)                    \
+  PRIMITIVE(channel_new, 3)                  \
+  PRIMITIVE(channel_delete, 2)               \
+  PRIMITIVE(config_rx, 8)                    \
+  PRIMITIVE(config_tx, 11)                   \
+  PRIMITIVE(get_idle_threshold, 1)           \
   PRIMITIVE(set_idle_threshold, 2)           \
-  PRIMITIVE(config_tx, 12)                   \
   PRIMITIVE(config_bidirectional_pin, 2)     \
   PRIMITIVE(transmit, 2)                     \
-  PRIMITIVE(transmit_and_receive, 6)         \
+  PRIMITIVE(transmit_done, 2)                \
+  PRIMITIVE(prepare_receive, 1)              \
+  PRIMITIVE(start_receive, 2)                \
+  PRIMITIVE(receive, 3)                      \
+  PRIMITIVE(stop_receive, 1)                 \
 
 #define MODULE_CRYPTO(PRIMITIVE)             \
   PRIMITIVE(sha1_start, 1)                   \
@@ -440,6 +453,7 @@ namespace toit {
 #define MODULE_IMAGE(PRIMITIVE)              \
   PRIMITIVE(writer_create, 2)                \
   PRIMITIVE(writer_write, 4)                 \
+  PRIMITIVE(writer_write_all, 3)             \
   PRIMITIVE(writer_commit, 2)                \
   PRIMITIVE(writer_close, 1)                 \
 
@@ -467,11 +481,13 @@ namespace toit {
   PRIMITIVE(close, 1)                       \
 
 #define MODULE_PWM(PRIMITIVE)                \
-  PRIMITIVE(init, 1)                         \
+  PRIMITIVE(init, 2)                         \
   PRIMITIVE(close, 1)                        \
   PRIMITIVE(start, 3)                        \
   PRIMITIVE(factor, 2)                       \
   PRIMITIVE(set_factor, 3)                   \
+  PRIMITIVE(frequency, 1)                    \
+  PRIMITIVE(set_frequency, 2)                \
   PRIMITIVE(close_channel, 2)                \
 
 #define MODULE_PROGRAMS_REGISTRY(PRIMITIVE)  \
@@ -830,6 +846,7 @@ namespace toit {
 #define _A_T_I2SResource(N, name)         MAKE_UNPACKING_MACRO(I2SResource, N, name)
 #define _A_T_AdcState(N, name)            MAKE_UNPACKING_MACRO(AdcState, N, name)
 #define _A_T_PWMResource(N, name)         MAKE_UNPACKING_MACRO(PWMResource, N, name)
+#define _A_T_RMTResource(N, name)         MAKE_UNPACKING_MACRO(RMTResource, N, name)
 #define _A_T_GAPResource(N, name)         MAKE_UNPACKING_MACRO(GAPResource, N, name)
 #define _A_T_GATTResource(N, name)        MAKE_UNPACKING_MACRO(GATTResource, N, name)
 #define _A_T_BLEServerConfigGroup(N, name)  MAKE_UNPACKING_MACRO(BLEServerConfigGroup, N, name)

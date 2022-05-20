@@ -14,11 +14,6 @@ exec [block]: return block.call
 cyclic := foo_cyclic
 foo_cyclic: return cyclic
 
-parallel_global := yielding
-parallel_latch := monitor.Latch
-yielding:
-  return parallel_latch.get
-
 multi_attempt := try_multi_init
 multi_init_counter := 0
 try_multi_init:
@@ -40,18 +35,6 @@ main:
   expect_equals (7 - 3) (BAZ[1] - BAZ[0])
 
   expect_throw "INITIALIZATION_IN_PROGRESS": cyclic
-
-  task_started := monitor.Latch
-  task_done := monitor.Latch
-  task::
-    task_started.set true
-    expect_equals 499 parallel_global
-    task_done.set true
-
-  task_started.get
-  expect_throw "INITIALIZATION_IN_PROGRESS": parallel_global
-  parallel_latch.set 499
-  expect task_done.get
 
   expect_throw "not yet": multi_attempt
   expect_throw "not yet": multi_attempt

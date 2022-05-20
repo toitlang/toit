@@ -26,7 +26,7 @@ main:
   test_is_aligned
   test_is_power_of_two
   test_operators
-
+  test_bit_fields
 expect_error name [code]:
   expect_equals
     name
@@ -231,10 +231,26 @@ test_parse_integer:
   expect_int_parsing_error: (int_parse_helper "g" --radix=16)
   expect_int_parsing_error: (int_parse_helper "h" --radix=17)
 
-  expect_number_out_of_range: (int.parse "123" -1 --on_error=: throw it)
-  expect_number_out_of_range: (int.parse "123" 0 4 --on_error=: throw it)
-  expect_number_out_of_range: (int.parse "123" 0 0 --on_error=: throw it)
-  expect_number_out_of_range: (int.parse "")
+  expect_int_parsing_error: (int_parse_helper "_")
+  expect_int_parsing_error: (int_parse_helper "_123")
+  expect_int_parsing_error: int.parse "1_123" 1
+  expect_int_parsing_error: int.parse "1012_" 1
+  expect_int_parsing_error: int.parse "1012_1" 1 5
+
+  expect_number_out_of_bounds: (int.parse "123" -1 --on_error=: throw it)
+  expect_number_out_of_bounds: (int.parse "123" 0 4 --on_error=: throw it)
+  expect_number_out_of_bounds: (int.parse "123" 0 0 --on_error=: throw it)
+  expect_number_out_of_bounds: (int.parse "")
+
+  expect_equals
+      23
+      int.parse "123" 1
+  expect_equals
+      -23
+      int.parse "1-23" 1
+  expect_equals
+      23
+      int.parse "1-23" 2
 
   expect_equals 9 (int.parse "1001" --radix=2)
   expect_equals int.MAX (int.parse       "111111111111111111111111111111111111111111111111111111111111111" --radix=2)
@@ -1176,3 +1192,15 @@ test_operators:
     float.INFINITY.compare_to float.INFINITY  // => 0
   expect_equals -1
     3.compare_to float.INFINITY               // => -1
+
+test_bit_fields:
+  expect_equals -1   (255.sign_extend --bits=8)
+  expect_equals 1    (  1.sign_extend --bits=8)
+  expect_equals -128 (128.sign_extend --bits=8)
+  expect_equals 127  (127.sign_extend --bits=8)
+
+  expect_equals -1   (  1.sign_extend --bits=1)
+  expect_equals 0    (  0.sign_extend --bits=1)
+
+  expect_equals int.MAX (int.MAX.sign_extend --bits=64)
+  expect_equals int.MIN (int.MIN.sign_extend --bits=64)

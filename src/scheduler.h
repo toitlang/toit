@@ -77,14 +77,15 @@ class Scheduler {
 #ifndef TOIT_FREERTOS
   // Run the boot program and wait for all processes to run to completion.
   ExitState run_boot_program(
-    Program* boot_program,  // It is then the responsibility of the boot_program to launch the application.
-    SnapshotBundle application_bundle,
+    Program* boot_program,
+    SnapshotBundle system,  // It is then the responsibility of the system process to launch the application.
+    SnapshotBundle application,
     char** args,
     int group_id);
 #endif  // TOIT_FREERTOS
 
   // Run a new program. Returns the process ID of the root process.
-  int run_program(Program* program, char** args, ProcessGroup* group, InitialMemory* initial_memory);
+  int run_program(Program* program, char** args, ProcessGroup* group, Chunk* initial_chunk);
 
   // Run a new external program. Returns the process.
   Process* run_external(ProcessRunner* runner);
@@ -102,7 +103,7 @@ class Scheduler {
   // deliver the signal.
   bool signal_process(Process* sender, int target_id, Process::Signal signal);
 
-  Process* hatch(Program* program, ProcessGroup* process_group, Method method, uint8* arguments, InitialMemory* initial_memory);
+  Process* hatch(Program* program, ProcessGroup* process_group, Method method, uint8* arguments, Chunk* initial_chunk);
 
   // Returns a new process id (only called from Process constructor).
   int next_process_id();
@@ -125,18 +126,11 @@ class Scheduler {
   // processes in the system.
   void gc(Process* process, bool malloc_failed, bool try_hard);
 
-  // Print stack traces for all live processes.
-  void print_stack_traces();
-
   // Primitive support.
 
-  // Fills in an array of length 3 with stats for the process with the given ids.
-  // Returns false if the process doesn't exist, true otherwise.
-  bool process_stats(Array* array, int group_id, int process_id);
-
-#ifdef LEGACY_GC
-  word largest_number_of_blocks_in_a_process();
-#endif
+  // Fills in an array with stats for the process with the given ids.
+  // Returns an exception if the process doesn't exist, the array otherwise.
+  Object* process_stats(Array* array, int group_id, int process_id, Process* calling_process);
 
   static const int INVALID_PROCESS_ID = -1;
 
@@ -176,8 +170,6 @@ class Scheduler {
   bool has_exit_reason() { return _exit_state.reason != EXIT_NONE; }
 
   scheduler_err_t send_system_message(Locker& locker, SystemMessage* message);
-
-  void print_process(Locker& locker, Process* process, Interpreter* interpreter);
 
   void terminate_execution(Locker& locker, ExitState exit);
 

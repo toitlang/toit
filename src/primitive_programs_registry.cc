@@ -46,7 +46,7 @@ PRIMITIVE(spawn) {
   ProcessGroup* process_group = ProcessGroup::create(group_id, program);
   if (!process_group) MALLOC_FAILED;
 
-  int pid = VM::current()->scheduler()->run_program(program, {}, process_group, manager.initial_memory);
+  int pid = VM::current()->scheduler()->run_program(program, {}, process_group, manager.initial_chunk);
   if (pid == Scheduler::INVALID_PROCESS_ID) {
     delete process_group;
     MALLOC_FAILED;

@@ -8,7 +8,7 @@ throw exception:
 rethrow exception trace:
 lookup_failure_ receiver selector_or_selector_offset:
 as_check_failure_ receiver id:
-run_global_initializer_ id initializer sentinel:
+run_global_initializer_ id initializer:
 program_failure_ bci:
 unreachable:
 
@@ -45,16 +45,14 @@ class ByteArraySlice_:
 interface Interface_:
 class Class_:
 class Stack_:
+class Exception_:
 
-__entry__:
-__hatch_entry__:
+__entry__main:
+__entry__spawn:
+__entry__task lambda:
+
 primitive_lookup_failure_ module index:
-allocation_failure_ class_name:
 too_few_code_arguments_failure_ is_block expected provided bci:
-stack_overflow_:
-out_of_memory_:
-watchdog_:
-task_entry_ code:
 uninitialized_global_failure_ global_name:
 
 create_array_ x:

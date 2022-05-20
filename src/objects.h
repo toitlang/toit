@@ -27,6 +27,7 @@ class Blob;
 class Chunk;
 class MutableBlob;
 class Error;
+class Space;
 
 enum BlobKind {
   STRINGS_OR_BYTE_ARRAYS,
@@ -219,6 +220,11 @@ class HeapObject : public Object {
     _at_put(HEADER_OFFSET, destination);
   }
 
+  // For asserts.  The remembered set is a card marking scheme, so it may
+  // return true when neighbouring objects are in the set.  Always returns true
+  // for objects in the new-space.
+  bool in_remembered_set();
+
   // Pseudo virtual member functions.
   int size(Program* program);  // Returns the byte size of this object.
   void roots_do(Program* program, RootCallback* cb);  // For GC.
@@ -234,7 +240,9 @@ class HeapObject : public Object {
 
   static const int CLASS_ID_BIT_SIZE = 10;
   static const int CLASS_ID_OFFSET = CLASS_TAG_OFFSET + CLASS_TAG_BIT_SIZE;
-  static const uword CLASS_ID_MASK = (1 << CLASS_ID_BIT_SIZE) - 1;
+  // This mask lets class_id() return negative values.  The GC uses
+  // negative class ids for on-heap pseudo-objects like free memory.
+  static const uword CLASS_ID_MASK = -1;
 
   static const int SIZE = HEADER_OFFSET + WORD_SIZE;
 
@@ -272,6 +280,11 @@ class HeapObject : public Object {
     *word_count = SIZE / WORD_SIZE;
     *extra_bytes = 0;
   }
+
+  // Not very fast - used for asserts.
+  bool contains_pointers_to(Program* program, Space* space);
+
+  bool is_a_free_object();
 
  protected:
   void _set_header(Smi* class_id, TypeTag class_tag) {
@@ -327,7 +340,7 @@ class HeapObject : public Object {
   friend class GcMetadata;
   friend class CompactingVisitor;
   friend class SweepingVisitor;
-  friend class GenerationalScavengeVisitor;
+  friend class ScavengeVisitor;
 };
 
 class Array : public HeapObject {
@@ -345,7 +358,14 @@ class Array : public HeapObject {
     return _at(_offset_from(index));
   }
 
-  INLINE void at_put(int index, Object* value) {
+  INLINE void at_put(int index, Smi* value) {
+    ASSERT(index >= 0 && index < length());
+    _at_put(_offset_from(index), value);
+  }
+
+  INLINE void at_put(int index, Object* value);
+
+  INLINE void at_put_no_write_barrier(int index, Object* value) {
     ASSERT(index >= 0 && index < length());
     _at_put(_offset_from(index), value);
   }
@@ -380,22 +400,24 @@ class Array : public HeapObject {
     *extra_bytes = 0;
   }
 
-  void fill(int from, Object* filler) {
-    int len = length();
-    for (int index = from; index < len; index++) {
-      at_put(index, filler);
-    }
-  }
+  void fill(int from, Object* filler);
 
  private:
   static const int LENGTH_OFFSET = HeapObject::SIZE;
   static const int HEADER_SIZE = LENGTH_OFFSET + WORD_SIZE;
 
   void _set_length(int value) { _word_at_put(LENGTH_OFFSET, value); }
-  void _initialize(int length, Object* filler) {
+
+  // Can only be called on newly allocated objects that will be either
+  // in new-space or were added to the remembered set on creation.
+  // Is also called from the compiler, where there are no write barriers.
+  void _initialize_no_write_barrier(int length, Object* filler) {
     _set_length(length);
-    fill(0, filler);
+    for (int index = 0; index < length; index++) {
+      at_put_no_write_barrier(index, filler);
+    }
   }
+
   void _initialize(int length) {
     _set_length(length);
   }
@@ -660,7 +682,6 @@ class Stack : public HeapObject {
   int length() { return _word_at(LENGTH_OFFSET); }
   int top() { return _word_at(TOP_OFFSET); }
   int try_top() { return _word_at(TRY_TOP_OFFSET); }
-  bool in_stack_overflow() { return _word_at(IN_STACK_OVERFLOW_OFFSET); }
 
   void transfer_to_interpreter(Interpreter* interpreter);
   void transfer_from_interpreter(Interpreter* interpreter);
@@ -689,27 +710,20 @@ class Stack : public HeapObject {
     *extra_bytes = 0;
   }
 
-  // Since stack overflows are handled on the stack that is overflowing, we need
-  // to reserve some slots for it.
-  static const int OVERFLOW_HEADROOM = 64;
-
  private:
   static const int TASK_OFFSET = HeapObject::SIZE;
   static const int LENGTH_OFFSET = TASK_OFFSET + WORD_SIZE;
   static const int TOP_OFFSET = LENGTH_OFFSET + WORD_SIZE;
   static const int TRY_TOP_OFFSET = TOP_OFFSET + WORD_SIZE;
-  static const int IN_STACK_OVERFLOW_OFFSET = TRY_TOP_OFFSET + WORD_SIZE;
-  static const int HEADER_SIZE = IN_STACK_OVERFLOW_OFFSET + WORD_SIZE;
+  static const int HEADER_SIZE = TRY_TOP_OFFSET + WORD_SIZE;
 
   void _set_length(int value) { _word_at_put(LENGTH_OFFSET, value); }
   void _set_top(int value) { _word_at_put(TOP_OFFSET, value); }
   void _set_try_top(int value) { _word_at_put(TRY_TOP_OFFSET, value); }
-  void _set_in_stack_overflow(bool value) { _word_at_put(IN_STACK_OVERFLOW_OFFSET, value); }
   void _initialize(int length) {
     _set_length(length);
     _set_top(length);
     _set_try_top(length);
-    _set_in_stack_overflow(false);
   }
   Object** _stack_base_addr() { return reinterpret_cast<Object**>(_raw_at(_array_offset_from(length()))); }
   Object** _stack_limit_addr() { return reinterpret_cast<Object**>(_raw_at(_array_offset_from(0))); }
@@ -1152,16 +1166,24 @@ class Method {
 
 class Instance : public HeapObject {
  public:
-  // Returns the number of real fields in instance.
-  int length(int instance_size) { return length_from_size(instance_size); }
-
   Object* at(int index) {
     return _at(_offset_from(index));
   }
 
-  void at_put(int index, Object* value) {
+  INLINE void at_put(int index, Smi* value) {
     _at_put(_offset_from(index), value);
   }
+
+  void at_put_no_write_barrier(int index, Object* value) {
+    _at_put(_offset_from(index), value);
+  }
+
+  // Using this from the compiler will cause link errors.  Use
+  // at_put_no_write_barrier in the compiler instead.
+  void at_put(int index, Object* value);
+
+  // Fills instance fields with Smi zero.
+  void initialize(int instance_size);
 
   void roots_do(int instance_size, RootCallback* cb);
 
@@ -1170,7 +1192,8 @@ class Instance : public HeapObject {
   void read_content(SnapshotReader* st);
 #endif
 
-  static int length_from_size(int instance_size) {
+  // Returns the number of fields in an instance of the given size.
+  static int fields_from_size(int instance_size) {
     return (instance_size - HEADER_SIZE) / WORD_SIZE;
   }
 
@@ -1230,6 +1253,8 @@ class FreeListRegion : public HeapObject {
 
   static FreeListRegion* create_at(uword start, uword size);
 
+  static Object* single_free_word_header();
+
  private:
   static const int SIZE_OFFSET = HeapObject::SIZE;
   static const int NEXT_OFFSET = SIZE_OFFSET + WORD_SIZE;
@@ -1252,7 +1277,7 @@ class PromotedTrack : public HeapObject {
   // We only want to traverse the newly-promoted objects explicitly.
   uword size() {
     ASSERT(class_tag() == PROMOTED_TRACK_TAG);
-    return HEADER_SIZE;
+    return end() - _raw();
   }
 
   // Returns the address of the first object in the track.
@@ -1308,36 +1333,33 @@ class Task : public Instance {
   static const int RESULT_INDEX = ID_INDEX + 1;
 
   Stack* stack() { return Stack::cast(at(STACK_INDEX)); }
-  void set_stack(Stack* value) { at_put(STACK_INDEX, value); }
+  void set_stack(Stack* value);
 
   int id() { return Smi::cast(at(ID_INDEX))->value(); }
 
-  void set_result(Object* value) { at_put(RESULT_INDEX, value); }
+  inline void set_result(Object* value);
 
   static Task* cast(Object* value) {
     ASSERT(value->is_task());
     return static_cast<Task*>(value);
   }
+
   void detach_stack() {
     at_put(STACK_INDEX, Smi::zero());
   }
+
   bool has_stack() {
     return at(STACK_INDEX)->is_stack();
   }
+
  private:
-  void _initialize(Stack* stack, Smi* id) {
-    set_stack(stack);
-    at_put(ID_INDEX, id);
-  }
+  void _initialize(Stack* stack, Smi* id);
+
   friend class ObjectHeap;
 };
 
 inline Task* Stack::task() {
   return Task::cast(_at(TASK_OFFSET));
-}
-
-inline void Stack::set_task(Task* value) {
-  _at_put(TASK_OFFSET, value);
 }
 
 inline bool Object::is_double() {

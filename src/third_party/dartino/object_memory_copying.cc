@@ -1,10 +1,12 @@
-// Copyright (c) 2015, the Dartino project authors. Please see the AUTHORS file
+// Copyright (c) 2022, the Dartino project authors. Please see the AUTHORS file
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE.md file.
 
 #include "gc_metadata.h"
 #include "object_memory.h"
 #include "two_space_heap.h"
+
+#include "../../top.h"
 
 #include "../../heap.h"
 #include "../../objects.h"
@@ -20,20 +22,14 @@ static void write_sentinel_at(uword address) {
 
 Space::Space(Program* program, Space::Resizing resizeable, PageType page_type)
     : program_(program),
-      used_(0),
-      top_(0),
-      limit_(0),
-      allocation_budget_(0),
-      no_allocation_failure_nesting_(0),
-      resizeable_(resizeable == CAN_RESIZE),
       page_type_(page_type) {}
 
 SemiSpace::SemiSpace(Program* program, Chunk* chunk)
     : Space(program, CANNOT_RESIZE, NEW_SPACE_PAGE) {
-  ASSERT(chunk);
-  chunk->set_owner(this);
+  if (!chunk) return;
   append(chunk);
   update_base_and_limit(chunk, chunk->start());
+  chunk->set_owner(this);
 }
 
 bool SemiSpace::is_flushed() {
@@ -63,38 +59,89 @@ void SemiSpace::flush() {
   }
 }
 
+#ifdef DEBUG
+void SemiSpace::validate() {
+  // Iterate all objects, checking their size makes sense.
+  for (auto chunk : chunk_list_) {
+    uword current = chunk->start();
+    while (!has_sentinel_at(current)) {
+      HeapObject* object = HeapObject::from_address(current);
+      current += object->size(program_);
+    }
+    ASSERT(current < chunk->end());
+  }
+}
+
+void Space::validate_before_mark_sweep(PageType expected_page_type, bool object_starts_should_be_clear) {
+  for (auto chunk : chunk_list_) {
+    uword start = chunk->start();
+    uword end = chunk->end();
+
+    if (object_starts_should_be_clear) {
+      // Verify that the object starts table contains no entries (they are added as
+      // needed if there is a mark stack overflow).
+      uint8* starts = GcMetadata::starts_for(start);
+      uint8* end_of_starts = GcMetadata::starts_for(end);
+      for (uint8* p = starts; p < end_of_starts; p++) {
+        ASSERT(*p == GcMetadata::NO_OBJECT_START);
+        USE(p);
+      }
+    }
+
+    // Verify the overflow bits are not already set before there is a mark
+    // stack overflow.
+    uint8* overflow = GcMetadata::overflow_bits_for(start);
+    uint8* end_of_overflow = GcMetadata::overflow_bits_for(end);
+    for (uint8* p = overflow; p < end_of_overflow; p++) {
+      ASSERT(*p == 0);
+      USE(p);
+    }
+
+    // Verify the pages have the right type.
+    for (uword p = start; p < end; p += TOIT_PAGE_SIZE) {
+      PageType type = GcMetadata::get_page_type(p);
+      ASSERT(type == expected_page_type);
+      USE(type);
+    }
+
+    // Verify that no objects are marked before we start marking.
+    uint32* mark_bits_end = GcMetadata::mark_bits_for(end);
+    for (uint32* p = GcMetadata::mark_bits_for(start); p < mark_bits_end; p++) {
+      ASSERT(*p == 0);
+      USE(p);
+    }
+  }
+}
+#endif
+
 HeapObject* SemiSpace::new_location(HeapObject* old_location) {
   ASSERT(includes(old_location->_raw()));
   return old_location->forwarding_address();
 }
 
 bool SemiSpace::is_alive(HeapObject* old_location) {
-  ASSERT(includes(old_location->_raw()));
+  // If we are doing a scavenge and are asked whether an old-space object is
+  // alive, return true.
+  if (!includes(old_location->_raw())) return true;
   return old_location->has_forwarding_address();
 }
 
 void Space::append(Chunk* chunk) {
-  ASSERT(chunk->owner() == this);
+  chunk->set_owner(this);
   // Insert chunk in increasing address order in the list.  This is
   // useful for the partial compactor.
-  if (!chunk_list_.insert_before(chunk, [&chunk](Chunk* it) { return it->start() > chunk->start(); })) {
-    chunk_list_.append(chunk);
-  }
+  chunk_list_.insert_before(chunk, [&chunk](Chunk* it) { return it->start() > chunk->start(); });
 }
 
 void SemiSpace::append(Chunk* chunk) {
-  ASSERT(chunk->owner() == this);
-  if (!is_empty()) {
-    // Update the accounting.
-    used_ += top() - chunk_list_.last()->start();
-  }
+  chunk->set_owner(this);
   // For the semispaces, we always append the chunk to the end of the space.
   // This ensures that when iterating over newly promoted objects during a
   // scavenge we will see the objects newly promoted to newly allocated chunks.
   chunk_list_.append(chunk);
 }
 
-uword SemiSpace::try_allocate(uword size) {
+uword SemiSpace::allocate(uword size) {
   // Make sure there is room for chunk end sentinel by using > instead of >=.
   // Use this ordering of the comparison to avoid very large allocations
   // turning into 'successful' allocations of negative size.
@@ -114,54 +161,17 @@ uword SemiSpace::try_allocate(uword size) {
   return 0;
 }
 
-uword SemiSpace::allocate_in_new_chunk(uword size) {
-  // Allocate new chunk that is big enough to fit the object.
-  uword default_chunk_size = get_default_chunk_size(used());
-  uword chunk_size =
-      size >= default_chunk_size
-          ? (size + WORD_SIZE)  // Make sure there is room for sentinel.
-          : default_chunk_size;
-
-  Chunk* chunk = ObjectMemory::allocate_chunk(this, chunk_size);
-  if (chunk != null) {
-    // Link it into the space.
-    append(chunk);
-
-    // Update limits.
-    allocation_budget_ -= chunk->size();
-    update_base_and_limit(chunk, chunk->start());
-
-    // Allocate.
-    uword result = try_allocate(size);
-    if (result != 0) return result;
-  }
-  return 0;
-}
-
-uword SemiSpace::allocate(uword size) {
-  ASSERT(size >= HeapObject::SIZE);
-  ASSERT(Utils::is_aligned(size, WORD_SIZE));
-
-  uword result = try_allocate(size);
-  if (result != 0) return result;
-
-  if (!in_no_allocation_failure_scope() && needs_garbage_collection()) return 0;
-
-  return allocate_in_new_chunk(size);
-}
-
 uword SemiSpace::used() {
-  if (is_empty()) return used_;
-  return used_ + (top() - chunk_list_.last()->start());
+  ASSERT(chunk_list_.first() == chunk_list_.last());
+  return (top() - chunk_list_.last()->start());
 }
 
 // Called multiple times until there is no more work.  Finds objects moved to
 // the to-space and traverses them to find and fix more new-space pointers.
-bool SemiSpace::complete_scavenge_generational(GenerationalScavengeVisitor* visitor) {
+bool SemiSpace::complete_scavenge(ScavengeVisitor* visitor) {
   bool found_work = false;
   // No need to update remembered set for semispace->semispace pointers.
-  uint8 dummy;
-  visitor->set_record_new_space_pointers(&dummy);
+  visitor->set_record_to_dummy_address();
 
   for (auto chunk : chunk_list_) {
     uword current = chunk->scavenge_pointer();
@@ -177,10 +187,6 @@ bool SemiSpace::complete_scavenge_generational(GenerationalScavengeVisitor* visi
   }
 
   return found_work;
-}
-
-void SemiSpace::process_weak_pointers(SemiSpace* to_space, OldSpace* old_space) {
-  // TODO(erik): Process finalizers.
 }
 
 }  // namespace toit

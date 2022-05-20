@@ -135,10 +135,5 @@ List<const char*> string_split(const char* str, const char* delim);
 // in the returned list.
 List<const char*> string_split(char* str, const char* delim);
 
-struct Defer {
-  std::function<void()> fun;
-  ~Defer() { fun(); }
-};
-
 } // namespace toit::compiler
 } // namespace toit

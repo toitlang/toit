@@ -35,9 +35,8 @@ class Process : public ProcessListFromProcessGroup::Element,
  public:
   enum Signal {
     KILL              = 1 << 0,
-    PRINT_STACK_TRACE = 1 << 1,
-    PREEMPT           = 1 << 2,
-    WATCHDOG          = 1 << 3,
+    PREEMPT           = 1 << 1,
+    WATCHDOG          = 1 << 2,
   };
 
   enum State {
@@ -53,11 +52,11 @@ class Process : public ProcessListFromProcessGroup::Element,
 
   static const char* StateName[];
 
-  Process(Program* program, ProcessGroup* group, SystemMessage* termination, char** args, InitialMemory* initial_memory);
+  Process(Program* program, ProcessGroup* group, SystemMessage* termination, char** args, Chunk* initial_chunk);
 #ifndef TOIT_FREERTOS
-  Process(Program* program, ProcessGroup* group, SystemMessage* termination, SnapshotBundle bundle, char** args, InitialMemory* initial_memory);
+  Process(Program* program, ProcessGroup* group, SystemMessage* termination, SnapshotBundle system, SnapshotBundle application, char** args, Chunk* initial_chunk);
 #endif
-  Process(Program* program, ProcessGroup* group, SystemMessage* termination, Method method, uint8* arguments, InitialMemory* initial_memory);
+  Process(Program* program, ProcessGroup* group, SystemMessage* termination, Method method, uint8* arguments, Chunk* initial_chunk);
   ~Process();
 
   // Constructor for an external process (no Toit code).
@@ -73,9 +72,9 @@ class Process : public ProcessListFromProcessGroup::Element,
   void mark_as_priviliged() { _is_privileged = true; }
 
   // Garbage collection operation for runtime objects.
-  int gc() {
+  int gc(bool try_hard) {
     if (program() == null) return 0;
-    int result = object_heap()->gc();
+    int result = object_heap()->gc(try_hard);
     _memory_usage = object_heap()->usage("object heap after gc");
     return result;
   }
@@ -158,12 +157,6 @@ class Process : public ProcessListFromProcessGroup::Element,
   Object* allocate_string_or_error(const char* content, int length);
   ByteArray* allocate_byte_array(int length, Error** error, bool force_external=false);
 
-#ifdef LEGACY_GC
-  word number_of_blocks() {
-    return _object_heap.number_of_blocks();
-  }
-#endif
-
   void set_max_heap_size(word bytes) {
     _object_heap.set_max_heap_size(bytes);
   }
@@ -230,7 +223,7 @@ class Process : public ProcessListFromProcessGroup::Element,
   }
 
  private:
-  Process(Program* program, ProcessRunner* runner, ProcessGroup* group, SystemMessage* termination, InitialMemory* initial_memory);
+  Process(Program* program, ProcessRunner* runner, ProcessGroup* group, SystemMessage* termination, Chunk* initial_chunk);
   void _append_message(Message* message);
   void _ensure_random_seeded();
 
@@ -294,21 +287,18 @@ class AllocationManager {
   explicit AllocationManager(Process* process)
     : _ptr(null)
     , _size(0)
-    , _process(process)
-    , _hit_limit(false) {}
+    , _process(process) {}
 
   AllocationManager(Process* process, void* ptr, word size)
     : _ptr(ptr)
     , _size(size)
-    , _process(process)
-    , _hit_limit(false) {
+    , _process(process) {
     process->register_external_allocation(size);
   }
 
   uint8_t* alloc(word length) {
     ASSERT(_ptr == null);
     if (!_process->should_allow_external_allocation(length)) {
-      _hit_limit = true;
       return null;
     }
     // Don't change this to use C++ array 'new' because that isn't compatible
@@ -354,7 +344,6 @@ class AllocationManager {
   void* _ptr;
   word _size;
   Process* _process;
-  bool _hit_limit;
 };
 
 } // namespace toit

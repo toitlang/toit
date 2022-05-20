@@ -1,3 +1,6 @@
+<sdk>/drivers/quectel_cellular.toit:515:30: error: Super of a class must be a class
+class Interface_ extends net.Interface:
+                             ^~~~~~~~~
 <sdk>/drivers/cellular_base.toit:89:34: warning: Class 'COPS' is deprecated
       result := session.send COPS.scan
                                  ^
@@ -28,6 +31,9 @@
 <sdk>/drivers/cellular_base.toit:262:15: warning: Class 'COPS' is deprecated
           COPS.manual operator.op --timeout=timeout --rat=operator.rat
               ^
+<sdk>/drivers/quectel_cellular.toit:463:5: error: Type mismatch. Expected 'Interface'. Got 'Interface_'
+    return Interface_ this
+    ^~~~~~
 <sdk>/drivers/quectel_cellular.toit:467:22: warning: Class 'CFUN' is deprecated
     session.send CFUN.airplane
                      ^

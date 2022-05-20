@@ -46,24 +46,24 @@ run_tests:
 
     "oracle.com",
 
-    "sha256.badssl.com",
-    "sha384.badssl.com",
-    "sha512.badssl.com",
+    //"sha256.badssl.com",
+    //"sha384.badssl.com",
+    //"sha512.badssl.com",
     // "100-sans.badssl.com"
     // "10000-sans.badssl.com"
     "ecc256.badssl.com",
     "ecc384.badssl.com",
-    "rsa2048.badssl.com",
-    "rsa4096.badssl.com",
+    //"rsa2048.badssl.com",
+    // "rsa4096.badssl.com",
     "extended-validation.badssl.com",
-    "mozilla-modern.badssl.com",
-    "tls-v1-2.badssl.com:1012",
-    "hsts.badssl.com",
-    "upgrade.badssl.com",
-    "preloaded-hsts.badssl.com",
-    "https-everywhere.badssl.com",
-    "long-extended-subdomain-name-containing-many-letters-and-dashes.badssl.com",
-    "longextendedsubdomainnamewithoutdashesinordertotestwordwrapping.badssl.com",
+    //"mozilla-modern.badssl.com",
+    //"tls-v1-2.badssl.com:1012",
+    //"hsts.badssl.com",
+    //"upgrade.badssl.com",
+    //"preloaded-hsts.badssl.com",
+    //"https-everywhere.badssl.com",
+    //"long-extended-subdomain-name-containing-many-letters-and-dashes.badssl.com",
+    //"longextendedsubdomainnamewithoutdashesinordertotestwordwrapping.badssl.com",
     // "dh2048.badssl.com"  // Diffie Hellman doesn't work in Chrome either.
     ]
   non_working := [
@@ -86,8 +86,8 @@ run_tests:
     //  "dh-composite.badssl.com", // Should we not connect to sites with crappy certs?
     "subdomain.preloaded-hsts.badssl.com/Common Name",
     "captive-portal.badssl.com",
-    "mitm-software.badssl.com/unknown root cert",
-    "sha1-2017.badssl.com/unacceptable hash",
+    "mitm-software.badssl.com",
+    "sha1-2017.badssl.com",
     ]
   working.do: | site |
     test_site site true

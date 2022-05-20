@@ -101,7 +101,7 @@ class Snapshot {
 
   bool is_valid() const { return _buffer != null; }
 
-  ProgramImage read_image();
+  ProgramImage read_image(const uint8* id);
   Object* read_object(Process* process);
 
   const uint8* buffer() const { return _buffer; }

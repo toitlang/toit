@@ -18,8 +18,6 @@ main args:
         toit_run,
         input
       ]
-  to   := pipes[0]
-  from := pipes[1]
   pid  := pipes[3]
   exit_value := pipe.wait_for pid
 

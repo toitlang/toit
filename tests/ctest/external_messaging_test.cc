@@ -55,7 +55,7 @@ void MessageHandler::on_message(int sender, int type, void* data, int length) {
 int run_program(Snapshot snapshot) {
   VM vm;
   vm.load_platform_event_sources();
-  auto image = snapshot.read_image();
+  auto image = snapshot.read_image(null);
   int group_id = vm.scheduler()->next_group_id();
 
   MessageHandler handler(&vm);
@@ -82,7 +82,7 @@ int main(int argc, char **argv) {
   if (argc != 2) FATAL("wrong number of arguments");
   FlashRegistry::set_up();
   OS::set_up();
-  GcMetadata::set_up();
+  ObjectMemory::set_up();
 
   auto compiled = compile(argv[1]);
   int result = run_program(compiled.snapshot());

@@ -6,7 +6,7 @@ import system.services
 import expect
 
 interface ResourceService:
-  static NAME/string ::= "resource"
+  static UUID/string ::= "74921323-3400-4d32-b8be-54b241daca05"
   static MAJOR/int   ::= 1
   static MINOR/int   ::= 2
 
@@ -108,7 +108,7 @@ class ResourceServiceClient extends services.ServiceClient implements ResourceSe
     super --open=open
 
   open -> ResourceServiceClient?:
-    return (open_ ResourceService.NAME ResourceService.MAJOR ResourceService.MINOR) and this
+    return (open_ ResourceService.UUID ResourceService.MAJOR ResourceService.MINOR) and this
 
   open key/string -> int:
     return invoke_ ResourceService.OPEN_INDEX key
@@ -132,7 +132,8 @@ class ResourceServiceDefinition extends services.ServiceDefinition implements Re
   resources/Map ::= {:}
 
   constructor:
-    super ResourceService.NAME --major=ResourceService.MAJOR --minor=ResourceService.MINOR --patch=5
+    super "resource" --major=1 --minor=2 --patch=5
+    provides ResourceService.UUID ResourceService.MAJOR ResourceService.MINOR
 
   handle pid/int client/int index/int arguments/any -> any:
     if index == ResourceService.OPEN_INDEX:

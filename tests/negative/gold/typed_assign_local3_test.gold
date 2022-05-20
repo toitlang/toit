@@ -3,4 +3,3 @@ tests/negative/typed_assign_local3_test.toit:12:4: error: Type mismatch. Expecte
    ^~
 As check failed: an int (1) is not a A.
   0: main                      tests/negative/typed_assign_local3_test.toit:12:4
-  1: __entry__.<lambda>        <sdk>/core/entry.toit:48:20

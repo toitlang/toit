@@ -1,4 +1,17 @@
-// Copyright (C) 2019 Toitware ApS. All rights reserved.
+// Copyright (C) 2019 Toitware ApS.
+//
+// This library is free software; you can redistribute it and/or
+// modify it under the terms of the GNU Lesser General Public
+// License as published by the Free Software Foundation; version
+// 2.1 only.
+//
+// This library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+// Lesser General Public License for more details.
+//
+// The license can be found in the file `LICENSE` in the top level
+// directory of this repository.
 
 import host.pipe
 import writer
@@ -56,4 +69,10 @@ main args:
   start_piping pipe.stdin pipe_to --log_stream=log_file --mutex=mutex
   start_piping pipe_from pipe.stdout --log_stream=log_file --mutex=mutex
 
-  exit (pipe.wait_for pid)
+  exit_value := pipe.wait_for pid
+  exit_code := pipe.exit_code exit_value
+  exit_signal := pipe.exit_signal exit_value
+  if exit_signal:
+    throw "$TOIT_RUN exited with signal $exit_signal"
+  if exit_code != 0:
+    throw "$TOIT_RUN exited with code $exit_code"

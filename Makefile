@@ -16,6 +16,10 @@
 .ONESHELL: # Run all lines of targets in one shell
 .SHELLFLAGS += -e
 
+# General options.
+HOST=host
+BUILD_TYPE=Release
+
 # Use 'make ESP32_ENTRY=examples/mandelbrot.toit esp32' to compile a different
 # example for the ESP32 firmware.
 ESP32_ENTRY=examples/hello.toit
@@ -23,11 +27,9 @@ ESP32_WIFI_SSID=
 ESP32_WIFI_PASSWORD=
 ESP32_PORT=
 ESP32_CHIP=esp32
-HOST=host
-BUILD_TYPE=Release
 
 # The system process is started from its own entry point.
-ESP32_SYSTEM_ENTRY=system/boot.toit
+ESP32_SYSTEM_ENTRY=system/extensions/esp32/boot.toit
 
 # Extra entries stored in the flash must have the same uuid as the system image
 # to make sure they are produced by the same toolchain. On most platforms it
@@ -162,8 +164,22 @@ else
 	NUM_CPU := 2
 endif
 
+
+.PHONY: check-esp32-env
+check-esp32-env:
+ifeq ("", "$(shell command -v xtensa-esp32-elf-g++)")
+	$(error xtensa-esp32-elf-g++ not in path. Did you `source third_party/esp-idf/export.sh`?)
+endif
+
 .PHONY: esp32
-esp32: check-env build/$(ESP32_CHIP)/toit.bin  build/$(ESP32_CHIP)/programs.bin
+esp32:
+	if [ "$(shell command -v xtensa-esp32-elf-g++)" == "" ]; then
+		source $(IDF_PATH)/export.sh;
+	fi;
+	$(MAKE) esp32-no-env
+
+.PHONY: esp32-no-env
+esp32-no-env: check-env check-esp32-env build/$(ESP32_CHIP)/toit.bin  build/$(ESP32_CHIP)/programs.bin
 
 build/$(ESP32_CHIP)/toit.bin build/$(ESP32_CHIP)/toit.elf: build/$(ESP32_CHIP)/lib/libtoit_vm.a
 build/$(ESP32_CHIP)/toit.bin build/$(ESP32_CHIP)/toit.elf: build/$(ESP32_CHIP)/lib/libtoit_image.a
@@ -192,12 +208,12 @@ build/$(ESP32_CHIP)/program.snapshot: $(ESP32_ENTRY) tools
 	$(TOITC_BIN) -w $@ $<
 
 build/$(ESP32_CHIP)/programs.bin: build/$(ESP32_CHIP)/program.snapshot tools
-	$(TOITVM_BIN) tools/snapshot_to_image.toit --unique_id=$(ESP32_SYSTEM_ID) -m32 --binary --relocate=0x3f420000 $< $@
+	$(TOITVM_BIN) tools/snapshot_to_image.toit --unique_id=$(ESP32_SYSTEM_ID) -m32 --binary --offset=0x0 $< $@
 
-build/$(ESP32_CHIP)/CMakeCache.txt:
+build/$(ESP32_CHIP)/CMakeCache.txt: check-esp32-env
 	mkdir -p build/$(ESP32_CHIP)
 	touch build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s
-	(cd build/$(ESP32_CHIP) && IMAGE=build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s cmake ../../ -G Ninja -DTOITC=$(TOITC_BIN) -DTOITPKG=$(TOITPKG_BIN) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DCMAKE_TOOLCHAIN_FILE=../../toolchains/$(ESP32_CHIP)/$(ESP32_CHIP).cmake --no-warn-unused-cli)
+	(cd build/$(ESP32_CHIP) && cmake ../../ -G Ninja -DTOIT_IMAGE=build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s -DTOITC=$(TOITC_BIN) -DTOITPKG=$(TOITPKG_BIN) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DCMAKE_TOOLCHAIN_FILE=../../toolchains/$(ESP32_CHIP)/$(ESP32_CHIP).cmake --no-warn-unused-cli)
 
 build/$(ESP32_CHIP)/include/sdkconfig.h:
 	mkdir -p build/$(ESP32_CHIP)
@@ -216,7 +232,7 @@ flash: check-env-flash sdk esp32
 		0x001000 build/$(ESP32_CHIP)/bootloader/bootloader.bin \
 		0x008000 build/$(ESP32_CHIP)/partitions.bin \
 		0x010000 build/$(ESP32_CHIP)/toit.bin \
-		0x200000 build/$(ESP32_CHIP)/programs.bin
+		0x250000 build/$(ESP32_CHIP)/programs.bin
 
 .PHONY: check-env-flash
 check-env-flash:

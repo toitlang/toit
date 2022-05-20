@@ -24,7 +24,7 @@ class FlashRegistry:
   static SCAN_HOLE_ ::= 0
   static SCAN_ALLOCATION_ ::= 1
 
-  allocations_/Map ::= {:}  // Map<uuid.Uuid, FlashAllocation>
+  allocations_/Map ::= {:}  // Map<int, FlashAllocation>
   holes_/List? := null      // List<FlashHole_>
 
   constructor.scan:
@@ -56,7 +56,7 @@ class FlashRegistry:
 
   // Frees a previously allocated region in the flash.
   free allocation/FlashAllocation -> none:
-    allocations_.remove allocation.id
+    allocations_.remove allocation.offset
     // Erasing the first page removes the full header. This is enough
     // to fully invalidate the allocation.
     flash_registry_erase_ allocation.offset FLASH_REGISTRY_PAGE_SIZE
@@ -81,7 +81,7 @@ class FlashRegistry:
         size := (info >> 10) * FLASH_REGISTRY_PAGE_SIZE
         type := (info >> 2) & 0xFF
         allocation/FlashAllocation := FlashAllocation offset size type
-        found[allocation.id] = allocation
+        found[allocation.offset] = allocation
     // Update the allocations map, keeping existing allocation objects.
     update_allocations_ found
     // Return the coalesced list of holes.
@@ -107,16 +107,16 @@ class FlashRegistry:
     // Use an extra list for the allocations to be freed because we cannot update
     // the allocations map while iterating over it.
     freed := []
-    allocations_.do: | id/uuid.Uuid allocation/FlashAllocation |
-      if found.contains id:
-        found.remove id
+    allocations_.do: | offset/int allocation/FlashAllocation |
+      if found.contains offset:
+        found.remove offset
       else:
         freed.add allocation
     // Remove any old freed allocations.
     freed.do: free it
     // Add the new allocations found.
-    found.do: | id/uuid.Uuid allocation/FlashAllocation |
-      allocations_[id] = allocation
+    found.do: | offset/int allocation/FlashAllocation |
+      allocations_[offset] = allocation
 
 class FlashHole_:
   offset/int := ?

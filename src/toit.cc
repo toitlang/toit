@@ -21,7 +21,6 @@
 #include "interpreter.h"
 #include "scheduler.h"
 #include "vm.h"
-#include "objects_inline.h"
 #include "os.h"
 #include "printing.h"
 #include "snapshot.h"
@@ -30,6 +29,8 @@
 #include "compiler/compiler.h"
 #include "compiler/filesystem_local.h"
 #include "third_party/dartino/gc_metadata.h"
+
+#include "objects_inline.h"
 
 #include <errno.h>
 #include <libgen.h>
@@ -54,7 +55,6 @@ static void print_usage(int exit_code) {
   printf("  { <snapshot> <args>... |                  // Run snapshot file.\n");
   printf("    <toitfile> <args>... |                  // Run Toit file.\n");
   printf("    -w <snapshot> <toitfile> <args>... |    // Write snapshot file.\n");
-  printf("    -i <image> <snapshot> |                 // Write image file from snapshot.\n");
   printf("    -s <expression> |                       // Evaluate Toit expression.\n");
   printf("    --analyze <toitfiles>...                // Analyze Toit files.\n");
   printf("  }\n");
@@ -67,54 +67,24 @@ static void print_version() {
   exit(0);
 }
 
-void write_image_from_bundle(char* image_filename, SnapshotBundle bundle) {
-  auto image = bundle.snapshot().read_image();
-
-  auto relocation_bits = ImageInputStream::build_relocation_bits(image);
-  ImageInputStream input(image, relocation_bits);
-
-  FILE* file = fopen(image_filename, "wb");
-  if (!file) {
-    fprintf(stderr, "Unable to open image file %s\n", image_filename);
-    print_usage(1);
-  }
-  while (!input.eos()) {
-    int buffer_size_in_words = input.words_to_read();
-    word buffer[buffer_size_in_words];
-    int words = input.read(buffer);
-    fwrite(buffer, words * WORD_SIZE, 1, file);
-  }
-  fclose(file);
-  image.release();
-}
-
-// Tries to load a snapshot from a file, gracefully return null if the loading failed.
-static ProgramImage attempt_to_load_snapshot(char* bundle_path) {
-  auto bundle = SnapshotBundle::read_from_file(bundle_path, true);
-  // Just ignore the wrapper if we are unable to load the file.
-  if (!bundle.is_valid()) return ProgramImage::invalid();
-  auto result = bundle.snapshot().read_image();
-  free(bundle.buffer());
-  return result;
-}
-
-int run_program(char* boot_program_path, SnapshotBundle bundle, char** argv) {
+int run_program(char* boot_bundle_path, SnapshotBundle application_bundle, char** argv) {
   while (true) {
     Scheduler::ExitState exit;
     { VM vm;
       vm.load_platform_event_sources();
-      auto boot_image = attempt_to_load_snapshot(boot_program_path);
-      auto application_image = ProgramImage::invalid();
-      if (!boot_image.is_valid()) {
-        application_image = bundle.snapshot().read_image();
-      }
+      auto boot_bundle = SnapshotBundle::read_from_file(boot_bundle_path, true);
+      auto boot_image = boot_bundle.is_valid()
+          ? boot_bundle.snapshot().read_image(null)
+          : ProgramImage::invalid();
       int group_id = vm.scheduler()->next_group_id();
-      if (!boot_image.is_valid()) {
-        exit = vm.scheduler()->run_boot_program(application_image.program(), argv, group_id);
+      if (boot_image.is_valid()) {
+        exit = vm.scheduler()->run_boot_program(
+            boot_image.program(), boot_bundle, application_bundle, argv, group_id);
       } else {
-        exit = vm.scheduler()->run_boot_program(boot_image.program(), bundle, argv, group_id);
+        auto application_image = application_bundle.snapshot().read_image(null);
+        exit = vm.scheduler()->run_boot_program(application_image.program(), argv, group_id);
+        application_image.release();
       }
-      application_image.release();
       boot_image.release();
     }
     switch (exit.reason) {
@@ -145,7 +115,7 @@ int main(int argc, char **argv) {
 
   FlashRegistry::set_up();
   OS::set_up();
-  GcMetadata::set_up();
+  ObjectMemory::set_up();
 
   int exit_state = 0;
   char* boot_bundle_path = null;
@@ -161,7 +131,7 @@ int main(int argc, char **argv) {
     argc -= 2;
     argv += 2;
   } else {
-    // The wrapping boot bundle is run_boot.snapshot, stored next to the executing toit.run.
+    // The wrapping boot bundle is toit.run.snapshot, stored next to the executing toit.run.
     char* toit_run_path = compiler::FilesystemLocal::get_executable_path();
     char* bin_path = dirname(toit_run_path);
     const char* postfix = "/toit.run.snapshot";
@@ -208,18 +178,6 @@ int main(int argc, char **argv) {
     // TODO(florian): it looks like we don't free the bundle. There is a copy
     //   of the bundle in the byte-array (which is automatically freed), but the
     //   initial memory isn't released.
-  } else if (strcmp(argv[1], "-i") == 0) {
-    // Image writing.
-    if (argc != 4) {
-      fprintf(stderr, "Missing argument to '-i' flag\n");
-      print_usage(1);
-    }
-    char* image_filename = argv[2];
-    char* bundle_filename = argv[3];
-    auto bundle = SnapshotBundle::read_from_file(bundle_filename);
-    if (!bundle.is_valid()) print_usage(1);
-    write_image_from_bundle(image_filename, bundle);
-    free(bundle.buffer());
   } else {
     char* bundle_filename = null;
 

@@ -162,6 +162,7 @@ enum Precedence {
   I(__invoke_lambda__)                                         \
   I(__invoke_initializer__)                                    \
   I(__store_global_with_id__)                                  \
+  I(__load_global_with_id__)                                   \
   I(Object)                                                    \
   I(Interface_)                                                \
   I(Task_)                                                     \
@@ -184,6 +185,7 @@ enum Precedence {
   IN(stack_, "<stack>")                                        \
   I(Array_)                                                    \
   I(Box_)                                                      \
+  I(Exception_)                                                \
   I(LazyInitializer_)                                          \
   I(SmallArray_)                                               \
   I(ByteArray)                                                 \

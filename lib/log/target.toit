@@ -2,27 +2,52 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+import bytes
+import system.api.logging show LoggingService LoggingServiceClient
+
 import .level
 
 interface Target:
-  log names/List/*<string>*/ level/int message/string tags/Map/*<string, any>*/ -> none
+  log level/int message/string names/List? keys/List? values/List? -> none
 
 class DefaultTarget implements Target:
-  log names/List/*<string>*/ level/int message/string tags/Map/*<string, any>*/ -> none:
-    names_string ::= names.is_empty ? "" : "[$(names.join ",")] "
-    tags_string := ""
-    if not tags.is_empty:
-      first := true
-      tags.do: | key value |
-        if not first: tags_string += ","
-        tags_string += " $key=$value"
-        first = false
-    print "$names_string$(level_name level): $message$tags_string"
+  log level/int message/string names/List? keys/List? values/List? -> none:
+    service_.log level message names keys values
 
-level_name level -> string:
-  if level == DEBUG_LEVEL: return "DEBUG"
-  if level == INFO_LEVEL: return "INFO"
-  if level == WARN_LEVEL: return "WARN"
-  if level == ERROR_LEVEL: return "ERROR"
-  if level == FATAL_LEVEL: return "FATAL"
-  unreachable
+/**
+Logging service used by $DefaultTarget.
+*/
+service_/LoggingService ::= (LoggingServiceClient --no-open).open or
+    StandardLoggingService_
+
+/**
+Standard logging service used when the system logging service cannot
+  be resolved.
+*/
+class StandardLoggingService_ implements LoggingService:
+  buffer_/bytes.Buffer ::= bytes.Buffer.with_initial_size 64
+
+  log level/int message/string names/List? keys/List? values/List? -> none:
+    buffer ::= buffer_
+    if names and names.size > 0:
+      buffer.write "["
+      names.size.repeat:
+        if it > 0: buffer.write "."
+        buffer.write names[it]
+      buffer.write "] "
+
+    buffer.write (level_name level)
+    buffer.write ": "
+    buffer.write message
+
+    if keys and keys.size > 0:
+      buffer.write " {"
+      keys.size.repeat:
+        if it > 0: buffer.write ", "
+        buffer.write keys[it]
+        buffer.write ": "
+        buffer.write values[it]
+      buffer.write "}"
+
+    print buffer.to_string
+    buffer.clear

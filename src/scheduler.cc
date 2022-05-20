@@ -27,14 +27,6 @@
 #include  <signal.h>
 #include  <stdlib.h>
 
-#ifdef TOIT_POSIX
-void signal_handler(int sig) {
-  signal(sig, SIG_IGN);
-  toit::VM::current()->scheduler()->print_stack_traces();
-  signal(SIGQUIT, signal_handler);
-}
-#endif
-
 namespace toit {
 
 void SchedulerThread::entry() {
@@ -102,7 +94,8 @@ Scheduler::ExitState Scheduler::run_boot_program(Program* program, char** args, 
   Locker locker(_mutex);
   ProcessGroup* group = ProcessGroup::create(group_id, program);
   SystemMessage* termination = new_process_message(SystemMessage::TERMINATED, group_id);
-  Process* process = _new Process(program, group, termination, args, manager.initial_memory);
+  Process* process = _new Process(program, group, termination, args, manager.initial_chunk);
+  ASSERT(process);
   manager.dont_auto_free();
   return launch_program(locker, process);
 }
@@ -110,7 +103,8 @@ Scheduler::ExitState Scheduler::run_boot_program(Program* program, char** args, 
 #ifndef TOIT_FREERTOS
 Scheduler::ExitState Scheduler::run_boot_program(
     Program* boot_program,
-    SnapshotBundle application_bundle,
+    SnapshotBundle system,
+    SnapshotBundle application,
     char** args,
     int group_id) {
   ProcessGroup* group = ProcessGroup::create(group_id, boot_program);
@@ -123,7 +117,8 @@ Scheduler::ExitState Scheduler::run_boot_program(
   ASSERT(ok);
   Locker locker(_mutex);
   SystemMessage* termination = new_process_message(SystemMessage::TERMINATED, group_id);
-  Process* process = _new Process(boot_program, group, termination, application_bundle, args, manager.initial_memory);
+  Process* process = _new Process(boot_program, group, termination, system, application, args, manager.initial_chunk);
+  ASSERT(process);
   manager.dont_auto_free();
   return launch_program(locker, process);
 }
@@ -137,10 +132,6 @@ Scheduler::ExitState Scheduler::launch_program(Locker& locker, Process* process)
   interpreter.deactivate();
   process->mark_as_priviliged();
   ASSERT(process->is_privileged());
-
-#ifdef TOIT_POSIX
-  signal(SIGQUIT, signal_handler);
-#endif
 
   // Update the state and start the boot process.
   ASSERT(_boot_process == null);
@@ -195,13 +186,13 @@ int Scheduler::next_group_id() {
   return _next_group_id++;
 }
 
-int Scheduler::run_program(Program* program, char** args, ProcessGroup* group, InitialMemory* initial_memory) {
+int Scheduler::run_program(Program* program, char** args, ProcessGroup* group, Chunk* initial_chunk) {
   Locker locker(_mutex);
   SystemMessage* termination = new_process_message(SystemMessage::TERMINATED, group->id());
   if (termination == null) {
     return INVALID_PROCESS_ID;
   }
-  Process* process = _new Process(program, group, termination, args, initial_memory);
+  Process* process = _new Process(program, group, termination, args, initial_chunk);
   if (process == null) {
     delete termination;
     return INVALID_PROCESS_ID;
@@ -301,12 +292,12 @@ bool Scheduler::signal_process(Process* sender, int target_id, Process::Signal s
   return true;
 }
 
-Process* Scheduler::hatch(Program* program, ProcessGroup* process_group, Method method, uint8* arguments, InitialMemory* initial_memory) {
+Process* Scheduler::hatch(Program* program, ProcessGroup* process_group, Method method, uint8* arguments, Chunk* initial_chunk) {
   Locker locker(_mutex);
 
   SystemMessage* termination = new_process_message(SystemMessage::TERMINATED, process_group->id());
   if (!termination) return null;
-  Process* process = _new Process(program, process_group, termination, method, arguments, initial_memory);
+  Process* process = _new Process(program, process_group, termination, method, arguments, initial_chunk);
   if (!process) {
     delete termination;
     return null;
@@ -468,7 +459,7 @@ void Scheduler::gc(Process* process, bool malloc_failed, bool try_hard) {
     }
 
     for (Process* target : targets) {
-      target->gc();
+      target->gc(try_hard);
       gcs++;
     }
 
@@ -482,7 +473,7 @@ void Scheduler::gc(Process* process, bool malloc_failed, bool try_hard) {
     }
   }
 
-  process->gc();
+  process->gc(try_hard);
 
   if (doing_cross_process_gc) {
     Locker locker(_mutex);
@@ -499,46 +490,45 @@ void Scheduler::gc(Process* process, bool malloc_failed, bool try_hard) {
   }
 }
 
-void Scheduler::print_stack_traces() {
-  Locker locker(_mutex);
-  Interpreter interpreter;
-  for (ProcessGroup* group : _groups) {
-    for (Process* p : group->_processes) {
-      if (p->scheduler_thread() != null) {
-        p->signal(Process::PRINT_STACK_TRACE);
-        continue;
-      }
-      interpreter.activate(p);
-      print_process(locker, p, &interpreter);
-      interpreter.deactivate();
-    }
-  }
-}
-
 void Scheduler::add_process(Locker& locker, Process* process) {
   _num_processes++;
   process_ready(locker, process);
   start_thread(locker, ONLY_IF_PROCESSES_ARE_READY);
 }
 
-bool Scheduler::process_stats(Array* array, int group_id, int process_id) {
-  ASSERT(array->length() == 7);
+Object* Scheduler::process_stats(Array* array, int group_id, int process_id, Process* calling_process) {
   Locker locker(_mutex);
   ProcessGroup* group = null;
   for (auto g : _groups) {
     if (g->id() == group_id) group = g;
   }
-  if (group == null) return false;  // Group not found.
-  Process* process = group->lookup(process_id);
-  if (process == null) return false;  // Process not found.
-  array->at_put(0, Smi::from(process->gc_count()));
-  array->at_put(1, Smi::from(process->usage()->allocated()));
-  array->at_put(2, Smi::from(process->usage()->reserved()));
-  array->at_put(3, Smi::from(process->message_count()));
-  array->at_put(4, Smi::from(process->object_heap()->total_bytes_allocated()));
-  array->at_put(5, Smi::from(group_id));
-  array->at_put(6, Smi::from(process_id));
-  return true;
+  if (group == null) return calling_process->program()->null_object();
+  Process* subject_process = group->lookup(process_id);
+  if (subject_process == null) return calling_process->program()->null_object();  // Process not found.
+  uword length = array->length();
+  switch (length) {
+    default:
+    case 7:
+      array->at_put(6, Smi::from(process_id));
+    case 6:
+      array->at_put(5, Smi::from(group_id));
+    case 5: {
+      Object* total = Primitive::integer(subject_process->object_heap()->total_bytes_allocated(), calling_process);
+      if (Primitive::is_error(total)) return total;
+      array->at_put(4, total);
+    }
+    case 4:
+      array->at_put(3, Smi::from(subject_process->message_count()));
+    case 3:
+      array->at_put(2, Smi::from(subject_process->usage()->reserved()));
+    case 2:
+      array->at_put(1, Smi::from(subject_process->usage()->allocated()));
+    case 1:
+      array->at_put(0, Smi::from(subject_process->gc_count()));
+    case 0:
+      (void)0;  // Do nothing.
+  }
+  return array;
 }
 
 void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* scheduler_thread) {
@@ -557,11 +547,6 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
     if (process->signals() == 0) {
       Unlocker unlock(locker);
       result = interpreter->run();
-    }
-    // Handle stack trace printing while the interpreter is still activated.
-    if (process->signals() & Process::PRINT_STACK_TRACE) {
-      print_process(locker, process, interpreter);
-      process->clear_signal(Process::PRINT_STACK_TRACE);
     }
     interpreter->deactivate();
   } else if (process->signals() == 0) {
@@ -583,9 +568,6 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
     } else if (signals & Process::PREEMPT) {
       result = Interpreter::Result(Interpreter::Result::PREEMPTED);
       process->clear_signal(Process::PREEMPT);
-    } else if (signals & Process::PRINT_STACK_TRACE) {
-      ASSERT(!interpreted);
-      process->clear_signal(Process::PRINT_STACK_TRACE);
     } else if (signals & Process::WATCHDOG) {
       process->clear_signal(Process::WATCHDOG);
     } else {
@@ -728,37 +710,6 @@ void Scheduler::process_ready(Locker& locker, Process* process) {
   _ready_processes.append(process);
 }
 
-void Scheduler::print_process(Locker& locker, Process* process, Interpreter* interpreter) {
- // TODO(Anders): Printing has been removed. Convert it when fixing "Put this back into effect".
-#ifdef DEBUG
-  const int BUFFER_LENGTH = 1000;
-  char* buffer = unvoid_cast<char*>(malloc(BUFFER_LENGTH));
-  BufferPrinter printer(process->program(), buffer, BUFFER_LENGTH);
-
-  printer.printf("Process #%d (%s):\n", process->id(), Process::StateName[process->state()]);
-
-  // TODO: Print all tasks.
-  Task* task = process->task();
-  printer.printf("- task #%d:\n", task->id());
-#endif
-  /*
-  TODO: Put this back into effect - move out to Resource?
-  for (EventSource* c = VM::current()->event_manager()->event_sources(); c != null; c = c->next()) {
-    Locker locker(c->mutex());
-    int i = 0;
-    for (EventSource::Id* id = c->ids(); id != null; id = id->next) {
-      if (id->module->process() == process) {
-        if (i == 0) {
-          printer.printf("* %s resources:\n", c->name());
-        }
-        printer.printf("  - 0x%x: state:0x%x notifier:%p\n", id->id, id->state, id->object_notifier);
-        i++;
-      }
-    }
-  }
-  */
-}
-
 void Scheduler::terminate_execution(Locker& locker, ExitState exit) {
   if (!has_exit_reason()) {
     _exit_state = exit;
@@ -773,19 +724,6 @@ void Scheduler::terminate_execution(Locker& locker, ExitState exit) {
 
   OS::signal(_has_processes);
 }
-
-#ifdef LEGACY_GC
-
-word Scheduler::largest_number_of_blocks_in_a_process() {
-  Locker locker(_mutex);
-  word largest = 0;
-  for (ProcessGroup* group : _groups) {
-    largest = Utils::max(largest, group->largest_number_of_blocks_in_a_process());
-  }
-  return largest;
-}
-
-#endif
 
 void Scheduler::tick(Locker& locker) {
   int64 now = OS::get_monotonic_time();

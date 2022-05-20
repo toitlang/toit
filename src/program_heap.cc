@@ -35,14 +35,14 @@
 
 namespace toit {
 
-ProgramHeap::ProgramHeap(Program* program, ProgramBlock* initial_block)
+ProgramHeap::ProgramHeap(Program* program)
     : ProgramRawHeap()
     , _program(program)
     , _in_gc(false)
     , _gc_allowed(true)
     , _total_bytes_allocated(0)
     , _last_allocation_result(ALLOCATION_SUCCESS) {
-  _blocks.append(initial_block);
+  _blocks.append(ProgramBlock::allocate_program_block());
 }
 
 ProgramHeap::~ProgramHeap() {
@@ -73,7 +73,7 @@ Array* ProgramHeap::allocate_array(int length, Object* filler) {
   }
   // Initialize object.
   result->_set_header(_program, _program->array_class_id());
-  Array::cast(result)->_initialize(length, filler);
+  Array::cast(result)->_initialize_no_write_barrier(length, filler);
   return Array::cast(result);
 }
 
@@ -161,8 +161,7 @@ HeapObject* ProgramHeap::_allocate_raw(int byte_size) {
 }
 
 ProgramHeap::AllocationResult ProgramHeap::_expand() {
-  ProgramBlock* block = ProgramHeapMemory::instance()->allocate_block(this);
-  if (block == null) return ALLOCATION_OUT_OF_MEMORY;
+  ProgramBlock* block = ProgramBlock::allocate_program_block();
   _blocks.append(block);
   return ALLOCATION_SUCCESS;
 }

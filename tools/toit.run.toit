@@ -18,17 +18,17 @@ import uuid
 
 import ..system.boot
 import ..system.containers
+import ..system.extensions.host.initialize
 
 import .mirror as mirror
 import .snapshot as snapshot
 
-class ContainerImageSnapshot extends ContainerImage:
+abstract class ContainerImageFromSnapshot extends ContainerImage:
   id/uuid.Uuid ::= ?
   bundle_/ByteArray ::= ?
   program_/snapshot.Program? := null
 
-  constructor manager/ContainerManager .bundle_:
-    id = uuid.uuid5 "fisk" "hest"  // TODO(kasper): Fix this.
+  constructor manager/ContainerManager .bundle_ .id:
     super manager
 
   trace encoded/ByteArray -> bool:
@@ -41,15 +41,6 @@ class ContainerImageSnapshot extends ContainerImage:
     write_on_stderr_ mirror_string (not mirror_string.ends_with "\n")
     return true
 
-  start -> Container:
-    ar_reader := ArReader.from_bytes bundle_
-    offsets := ar_reader.find --offsets snapshot.SnapshotBundle.SNAPSHOT_NAME
-    gid ::= container_next_gid_
-    pid ::= launch_snapshot_ bundle_[offsets.from..offsets.to] gid true
-    container := Container this gid pid
-    manager.on_container_start_ container
-    return container
-
   on_container_error container/Container error/int -> none:
     // If a container started from the entry container image gets an error,
     // we exit eagerly.
@@ -61,24 +52,45 @@ class ContainerImageSnapshot extends ContainerImage:
   delete -> none:
     unreachable  // Not implemented yet.
 
+class SystemContainerImage extends ContainerImageFromSnapshot:
+  constructor manager/ContainerManager bundle/ByteArray:
+    super manager bundle uuid.NIL
+
+  start -> Container:
+    // This container is already running as the system process.
+    container := Container this 0 (current_process_)
+    manager.on_container_start_ container
+    return container
+
+class ApplicationContainerImage extends ContainerImageFromSnapshot:
+  constructor manager/ContainerManager bundle/ByteArray:
+    super manager bundle (uuid.uuid5 "fisk" "hest")  // TODO(kasper): Use a better id.
+
+  start -> Container:
+    ar_reader := ArReader.from_bytes bundle_
+    offsets := ar_reader.find --offsets snapshot.SnapshotBundle.SNAPSHOT_NAME
+    gid ::= container_next_gid_
+    pid ::= launch_snapshot_ bundle_[offsets.from..offsets.to] gid id.to_byte_array
+    container := Container this gid pid
+    manager.on_container_start_ container
+    return container
+
+  static launch_snapshot_ snapshot/ByteArray gid/int id/ByteArray -> int:
+    #primitive.snapshot.launch
+
 main:
-  // The snapshot for the application program is passed in hatch_args_.
-  snapshot_bundle ::= hatch_args_
-  if snapshot_bundle is not ByteArray:
+  // The snapshot bundles for the system and application programs are passed in the
+  // spawn arguments.
+  bundles/Array_ ::= spawn_arguments_
+  system_bundle ::= bundles[0]
+  application_bundle ::= bundles[1]
+  if application_bundle is not ByteArray:
     print_on_stderr_ "toit.run.toit must be provided a snapshot"
     exit 1
 
-  container_manager/ContainerManager := initialize
-  image := ContainerImageSnapshot container_manager snapshot_bundle
-  container_manager.register_image image
+  container_manager/ContainerManager := initialize_host
+  container_manager.register_system_image
+      SystemContainerImage container_manager system_bundle
+  container_manager.register_image
+      ApplicationContainerImage container_manager application_bundle
   exit (boot container_manager)
-
-// ----------------------------------------------------------------------------
-
-/**
-Starts a new process using the given $snapshot.
-
-Passes the arguments of this process if $pass_arguments is set.
-*/
-launch_snapshot_ snapshot/ByteArray gid/int pass_arguments/bool -> int:
-  #primitive.snapshot.launch

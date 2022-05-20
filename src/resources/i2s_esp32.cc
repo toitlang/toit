@@ -87,10 +87,19 @@ class I2SResource: public EventQueueResource {
   i2s_port_t port() const { return _port; }
   int alignment() const { return _alignment; }
 
+  bool receive_event(word* data) override;
+
  private:
   i2s_port_t _port;
   int _alignment;
 };
+
+bool I2SResource::receive_event(word* data) {
+  i2s_event_t event;
+  bool more = xQueueReceive(queue(), &event, 0);
+  if (more) *data = event.type;
+  return more;
+}
 
 static bool set_mclk_pin(i2s_port_t i2s_num, int io_num) {
   bool is_0 = i2s_num == I2S_NUM_0;
@@ -282,6 +291,19 @@ PRIMITIVE(read) {
   return data;
 }
 
+PRIMITIVE(read_to_buffer) {
+  ARGS(I2SResource, i2s, MutableBlob, buffer);
+
+  if (buffer.length() % i2s->alignment() != 0) INVALID_ARGUMENT;
+
+  size_t read = 0;
+  esp_err_t err = i2s_read(i2s->port(), static_cast<void*>(buffer.address()), buffer.length(), &read, 0);
+  if (err != ESP_OK) {
+    return Primitive::os_error(err, process);
+  }
+
+  return Smi::from(read);
+}
 
 } // namespace toit
 

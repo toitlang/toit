@@ -25,6 +25,17 @@ set(TOIT_REPOS
     https://github.com/toitlang/pkg-ntp
     https://github.com/toitlang/pkg-tar
     https://github.com/toitlang/pkg-testing
+    https://github.com/toitware/bme280-driver
+    # https://github.com/toitware/cellular
+    https://github.com/toitware/dbc
+    https://github.com/toitware/icm20948-driver
+    https://github.com/toitware/max31865-driver
+    https://github.com/toitware/mcp2518fd-driver
+    https://github.com/toitware/mcp342x-driver
+    https://github.com/toitware/mqtt
+    # https://github.com/toitware/quectel-cellular
+    # https://github.com/toitware/sequans-cellular
+    https://github.com/toitware/sts3x-driver
     https://github.com/toitware/toit-A3967
     https://github.com/toitware/toit-axp192
     https://github.com/toitware/toit-cert-roots
@@ -58,18 +69,8 @@ set(TOIT_REPOS
     https://github.com/toitware/toit-ssd1306
     https://github.com/toitware/toit-tm1640
     https://github.com/toitware/toit-vcnl4040
-    https://github.com/toitware/mqtt
-    https://github.com/toitware/cellular
-    https://github.com/toitware/sequans-cellular
-    https://github.com/toitware/quectel-cellular
-    https://github.com/toitware/ublox-cellular
+    # https://github.com/toitware/ublox-cellular
     https://github.com/toitware/ublox-gnss-driver
-    https://github.com/toitware/icm20948-driver
-    https://github.com/toitware/max31865-driver
-    https://github.com/toitware/mcp2518fd-driver
-    https://github.com/toitware/mcp342x-driver
-    https://github.com/toitware/bme280-driver
-    https://github.com/toitware/sts3x-driver
 )
 
 set(DOWNLOADS_DIR "${CMAKE_CURRENT_LIST_DIR}/downloads")

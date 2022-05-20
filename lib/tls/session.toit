@@ -208,7 +208,7 @@ class Session:
   read_more_ -> bool:
     from := tls_get_incoming_from_ tls_
     ba := reader_.read
-    if not ba: return false
+    if not ba or not tls_: return false
     tls_set_incoming_ tls_ ba 0
     return true
 

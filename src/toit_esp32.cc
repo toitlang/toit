@@ -91,13 +91,19 @@ static void start() {
   RtcMemory::set_up();
   FlashRegistry::set_up();
   OS::set_up();
-  GcMetadata::set_up();
+  ObjectMemory::set_up();
 
   // The Toit firmware only supports OTAs if we can find the OTA app partition.
   bool supports_ota = NULL != esp_partition_find_first(
       ESP_PARTITION_TYPE_APP,
       ESP_PARTITION_SUBTYPE_APP_OTA_MIN,
       NULL);
+
+  // Determine if we're running from a non-boot image chosen by the bootloader.
+  // This seems to happen when the bootloader detects that the boot image is
+  // damaged, so it decides to boot the other one.
+  bool firmware_rejected = supports_ota &&
+      esp_ota_get_boot_partition() != esp_ota_get_running_partition();
 
   const Program* program = setup_program(supports_ota);
   Scheduler::ExitState exit_state;
@@ -111,13 +117,18 @@ static void start() {
   OS::tear_down();
   FlashRegistry::tear_down();
 
-  bool firmware_updated = supports_ota &&
+  // Determine if the firmware has been updated. We update the boot partition
+  // when a new firmware has been installed, so if we're not in a situation
+  // where the boot image was rejected and the boot image has changed as part
+  // of running the VM, we consider it a firmware update.
+  bool firmware_updated = !firmware_rejected && supports_ota &&
       esp_ota_get_boot_partition() != esp_ota_get_running_partition();
+
   if (firmware_updated) {
     // If we're updating the firmware, we call esp_restart to ensure we fully
     // reset the chip with the new firmware.
     ets_printf("Firmware updated; doing chip reset\n");
-    esp_restart();
+    esp_restart();  // Careful: This clears the RTC memory.
   }
 
   switch (exit_state.reason) {

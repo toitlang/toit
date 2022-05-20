@@ -1,13 +1,15 @@
-// Copyright (c) 2016, the Dartino project authors. Please see the AUTHORS file
+// Copyright (c) 2022, the Dartino project authors. Please see the AUTHORS file
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE.md file.
 
-#include "gc_metadata.h"
+#include "../../top.h"
 
 #include <stdio.h>
 
 #include "../../utils.h"
 #include "../../objects.h"
+
+#include "gc_metadata.h"
 
 namespace toit {
 
@@ -22,8 +24,9 @@ void GcMetadata::set_up() { singleton_.set_up_singleton(); }
 void GcMetadata::set_up_singleton() {
   OS::HeapMemoryRange range = OS::get_heap_memory_range();
 
-  lowest_address_ = reinterpret_cast<uword>(range.address);
-  uword size = range.size;
+  uword range_address = reinterpret_cast<uword>(range.address);
+  lowest_address_ = Utils::round_down(range_address, TOIT_PAGE_SIZE);
+  uword size = Utils::round_up(range.size + range_address - lowest_address_, TOIT_PAGE_SIZE);
   heap_extent_ = size;
   heap_start_munged_ = (lowest_address_ >> 1) |
                        (static_cast<uword>(1) << (8 * sizeof(uword) - 1));
@@ -34,7 +37,8 @@ void GcMetadata::set_up_singleton() {
   uword mark_bits_size = size >> MARK_BITS_SHIFT;
   // Ensure there is a little slack after the mark bits for the border case
   // where we check a one-word object at the end of a page for blackness.
-  mark_bits_size++;
+  // We need everything to stay word-aligned, so we add a full word of padding.
+  mark_bits_size += sizeof(uword);
 
   uword mark_stack_overflow_bits_size = size >> CARD_SIZE_IN_BITS_LOG_2;
 
@@ -57,11 +61,7 @@ void GcMetadata::set_up_singleton() {
   // We create all the metadata with just one allocation.  Otherwise we will
   // lose memory when the malloc rounds a series of big allocations up to 4k
   // page boundaries.
-#ifdef LEGACY_GC
-  metadata_ = null;
-#else
   metadata_ = reinterpret_cast<uint8*>(OS::grab_virtual_memory(null, metadata_size_));
-#endif
 
   remembered_set_ = metadata_;
 
@@ -77,7 +77,6 @@ void GcMetadata::set_up_singleton() {
 
   page_type_bytes_ = mark_stack_overflow_bits_ + mark_stack_overflow_bits_size;
 
-#ifndef LEGACY_GC
   // The mark bits and cumulative mark bits are the biggest, so they are not
   // mapped in immediately in order to reduce the memory footprint of very
   // small programs.  We do it when we create pages that need them.
@@ -86,7 +85,6 @@ void GcMetadata::set_up_singleton() {
   OS::use_virtual_memory(mark_stack_overflow_bits_, mark_stack_overflow_bits_size);
   OS::use_virtual_memory(page_type_bytes_, page_type_size_);
   memset(page_type_bytes_, UNKNOWN_SPACE_PAGE, page_type_size_);
-#endif
 
   uword start = reinterpret_cast<uword>(object_starts_);
   uword lowest = lowest_address_;
@@ -143,7 +141,7 @@ restart:
         return dest;
       }
       *dest_table = dest.address;
-      dest.address += pop_count(*mark_bits) << WORD_SHIFT;
+      dest.address += Utils::popcount(*mark_bits) << WORD_SHIFT;
       src += LINE_SIZE;
       mark_bits++;
       dest_table++;
@@ -203,7 +201,7 @@ restart:
       uint32* overhang_bits =
           mark_bits_for(end_of_last_source_object_moved - WORD_SIZE);
       ASSERT((*overhang_bits & 1) != 0);
-      *overhang_bits &= ~((1 << overhang) - 1);
+      *overhang_bits &= ~((1u << overhang) - 1);
     }
     src_start = src;
   }
@@ -269,13 +267,13 @@ void GcMetadata::slow_mark(HeapObject* object, uword size) {
   ASSERT(words + mask_shift > 32);
   for (words -= 32 - mask_shift; words >= 32; words -= 32)
     *bits++ = 0xffffffffu;
-  *bits |= (1 << words) - 1;
+  *bits |= (1u << words) - 1;
 }
 
 void GcMetadata::mark_stack_overflow(HeapObject* object) {
   uword address = object->_raw();
   uint8* overflow_bits = overflow_bits_for(address);
-  *overflow_bits |= 1 << ((address >> CARD_SIZE_LOG_2) & 7);
+  *overflow_bits |= 1u << ((address >> CARD_SIZE_LOG_2) & 7);
   // We can have a mark stack overflow in new-space where we do not normally
   // maintain object starts. By updating the object starts for this card we
   // can be sure that the necessary objects in this card are walkable.

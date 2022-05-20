@@ -27,6 +27,8 @@ if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows" OR "${CMAKE_SYSTEM_NAME}" STREQUAL
   )
 endif()
 
-list(APPEND TOIT_SKIP_TESTS
-#  tests/ctest/external_messaging_test.cc
-)
+if ("${CMAKE_SYSTEM_NAME}" MATCHES "Darwin")
+  list(APPEND TOIT_SKIP_TESTS
+    tests/ctest/external_messaging_test.cc
+  )
+endif()

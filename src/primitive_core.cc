@@ -128,7 +128,7 @@ PRIMITIVE(hatch) {
     OTHER_ERROR;
   }
 
-  Process* child = VM::current()->scheduler()->hatch(process->program(), process->group(), method, buffer, manager.initial_memory);
+  Process* child = VM::current()->scheduler()->hatch(process->program(), process->group(), method, buffer, manager.initial_chunk);
   if (!child) MALLOC_FAILED;
 
   manager.dont_auto_free();
@@ -236,13 +236,14 @@ PRIMITIVE(byte_array_convert_to_string) {
 PRIMITIVE(blob_index_of) {
   ARGS(Blob, bytes, int, byte, int, from, int, to);
   if (!(0 <= from && from <= to && to <= bytes.length())) OUT_OF_BOUNDS;
-#ifdef __x86_64__
+#if defined(__x86_64__) && !defined(__SANITIZE_THREAD__)
   const uint8* address = bytes.address();
   // Algorithm from https://github.com/erikcorry/struhchuh.
   // Search for "*" using only aligned SSE2 128 bit loads. This may load data
   // either side of the string, but can never cause a fault because the loads are
   // in 128 bit sections also covered by the string and the fault hardware works
-  // at a higher granularity.
+  // at a higher granularity.  Threadsanitizer doesn't understand this and reports
+  // use-after-frees.
   int last_bits = reinterpret_cast<uintptr_t>(address + from) & 15;
   // The movemask_epi8 instruction takes the top bit of each of the 16 bytes and
   // puts them in the low 16 bits of the register, so we use a 16 bit mask here.
@@ -781,6 +782,35 @@ PRIMITIVE(float_round) {
   return Primitive::allocate_double(round(receiver * factor) / factor, process);
 }
 
+PRIMITIVE(int_parse) {
+  ARGS(Blob, input, int, from, int, to, int, block_arg_dont_use_this);
+  if (!(0 <= from && from < to && to <= input.length())) OUT_OF_RANGE;
+  // Difficult cases, handled by Toit code.  If the ASCII length is always less
+  // than 18 we don't have to worry about 64 bit overflow.
+  if (to - from > 18) OUT_OF_RANGE;
+  uint64 result = 0;
+  bool negative = false;
+  int index = from;
+  const uint8* in = input.address();
+  if (in[index] == '-') {
+    negative = true;
+    index++;
+    if (index == to) INVALID_ARGUMENT;
+  }
+  for (; index < to; index++) {
+    char c = in[index];
+    if ('0' <= c && c <= '9') {
+      result *= 10;
+      result += c - '0';
+    } else if (c == '_') {
+      if (index == from || index == to - 1 || (negative && index == from + 1)) INVALID_ARGUMENT;
+    } else {
+      INVALID_ARGUMENT;
+    }
+  }
+  return Primitive::integer(negative ? -result : result, process);
+}
+
 PRIMITIVE(float_parse) {
   ARGS(Blob, input, int, from, int, to);
   if (!(0 <= from && from < to && to <= input.length())) OUT_OF_RANGE;
@@ -941,13 +971,30 @@ PRIMITIVE(bytes_allocated_delta) {
 }
 
 PRIMITIVE(process_stats) {
-  ARGS(int, group, int, id);
-  Array* result = process->object_heap()->allocate_array(7, Smi::zero());
-  if (result == null) ALLOCATION_FAILED;
-  if (group == -1) group = process->group()->id();
-  if (id == -1) id = process->id();
-  bool success = VM::current()->scheduler()->process_stats(result, group, id);
-  return success ? result : process->program()->null_object();
+  ARGS(Object, list_object, int, group, int, id);
+  Array* result = null;
+  if (list_object->is_instance()) {
+    Instance* list = Instance::cast(list_object);
+    if (list->class_id() == process->program()->list_class_id()) {
+      Object* array_object;
+      if ((array_object = list->at(0))->is_array()) {
+        result = Array::cast(array_object);
+      } else {
+        OUT_OF_RANGE;  // List is so big it uses arraylets.
+      }
+    }
+  }
+  if (result == null) INVALID_ARGUMENT;
+  if (group == -1 || id == -1) {
+    if (group != -1 || id != -1) INVALID_ARGUMENT;
+    group = process->group()->id();
+    id = process->id();
+  }
+  Object* returned = VM::current()->scheduler()->process_stats(result, group, id, process);
+  // Don't return the array - return the list that contains it.
+  if (result == returned) return list_object;
+  // Probably null or an exception.
+  return returned;
 }
 
 PRIMITIVE(random) {
@@ -1465,7 +1512,7 @@ PRIMITIVE(array_expand) {
   if (length < 0) OUT_OF_BOUNDS;
   if (length > Array::max_length_in_process()) OUT_OF_RANGE;
   if (old_length < 0 || old_length > old->length() || old_length > length) OUT_OF_RANGE;
-  Object* result = process->object_heap()->allocate_array(length);
+  Object* result = process->object_heap()->allocate_array(length, Smi::from(0));
   if (result == null) ALLOCATION_FAILED;
   Array* new_array = Array::cast(result);
   new_array->copy_from(old, old_length);
@@ -1682,11 +1729,6 @@ PRIMITIVE(task_stack) {
   return task->stack();
 }
 
-PRIMITIVE(task_reset_stack_limit) {
-  process->scheduler_thread()->interpreter()->reset_stack_limit();
-  return Smi::from(0);
-}
-
 PRIMITIVE(task_current) {
   return process->object_heap()->task();
 }
@@ -1695,7 +1737,7 @@ PRIMITIVE(task_new) {
   ARGS(Instance, code);
   Task* task = process->object_heap()->allocate_task();
   if (task == null) ALLOCATION_FAILED;
-  Method entry = process->program()->task_entry();
+  Method entry = process->program()->entry_task();
   if (!entry.is_valid()) FATAL("Cannot locate task entry method");
 
   Object* tru = process->program()->true_object();
@@ -1801,7 +1843,7 @@ PRIMITIVE(task_receive_message) {
     ObjectNotifier* notifier = object_notify->object_notifier();
     if (notifier != null) result = notifier->object();
   } else if (message_type == MESSAGE_SYSTEM) {
-    Array* array = process->object_heap()->allocate_array(4);
+    Array* array = process->object_heap()->allocate_array(4, Smi::from(0));
     if (array == null) ALLOCATION_FAILED;
     SystemMessage* system = static_cast<SystemMessage*>(message);
     MessageDecoder decoder(process, system->data());
@@ -1932,7 +1974,7 @@ PRIMITIVE(varint_decode) {
 PRIMITIVE(encode_error) {
   ARGS(Object, type, Object, message);
   MallocedBuffer buffer(STACK_ENCODING_BUFFER_SIZE);
-  if (buffer.malloc_failed()) MALLOC_FAILED;
+  if (!buffer.has_content()) MALLOC_FAILED;
   ProgramOrientedEncoder encoder(process->program(), &buffer);
   process->scheduler_thread()->interpreter()->store_stack();
   bool success = encoder.encode_error(type, message, process->task()->stack());
