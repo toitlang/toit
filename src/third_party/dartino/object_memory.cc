@@ -247,6 +247,7 @@ Chunk* ObjectMemory::allocate_chunk(Space* owner, uword size) {
   if (memory == null) return null;
   if (reinterpret_cast<uword>(memory) < lowest ||
       reinterpret_cast<uword>(memory) - lowest + size > GcMetadata::heap_extent()) {
+    printf("New allocation %p-%p\n", memory, unvoid_cast<char*>(memory) + size);
     FATAL("Toit heap outside expected range");
   }
 
