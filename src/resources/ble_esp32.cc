@@ -533,6 +533,7 @@ PRIMITIVE(init) {
 
   ble_hs_cfg.sync_cb = ble_on_sync;
 
+  // Nimble needs to be initialized before the server setup is being executed.
   nimble_port_init();
 
   if (__args[0] != process->program()->null_object()) {

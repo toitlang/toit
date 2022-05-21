@@ -50,7 +50,7 @@ bool BLEEventSource::start() {
   ASSERT(_resources_changed == null);
   _resources_changed = OS::allocate_condition_variable(mutex());
   if (_resources_changed == null) return false;
-  if (!spawn()) {
+  if (!spawn(NIMBLE_STACK_SIZE)) {
     OS::dispose(_resources_changed);
     _resources_changed = null;
     return false;
@@ -87,7 +87,6 @@ void BLEEventSource::entry() {
         nimble_port_run();
       }
 
-      nimble_port_freertos_deinit();
       _running = false;
       OS::signal(_resources_changed);
     }
