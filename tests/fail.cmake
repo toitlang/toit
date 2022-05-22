@@ -50,6 +50,5 @@ if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows" OR "${CMAKE_SYSTEM_NAME}" STREQUAL
     tests/class_field_limit_test_compiler.toit
     tests/cow_read_only_test_compiler.toit
     tests/fork_stress_test_slow.toit
-    tests/tls_test_slow.toit
   )
 endif()
