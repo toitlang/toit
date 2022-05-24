@@ -733,7 +733,7 @@ void Scheduler::tick(Locker& locker) {
     if (process == null) continue;
     if (process == _boot_process) continue;
     int64 runtime = process->current_run_duration(now);
-    if (Flags::enable_watchdog && runtime > WATCHDOG_PERIOD_US) {
+    if (runtime > WATCHDOG_PERIOD_US) {
       process->signal(Process::WATCHDOG);
     }
   }
