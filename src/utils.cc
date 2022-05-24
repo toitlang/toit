@@ -300,13 +300,13 @@ bool Utils::is_valid_utf_8(const uint8* buffer, int length) {
   return (state & UTF_MASK) == UTF_BASE;
 #else
   int32_t state = UTF_BASE;
-  int allowed_nibble = START;
+  int allowed_nibbles = START;
   for (int i = 0; i < length; i++) {
     unsigned char c = buffer[i];
     int high_nibble = c >> 4;
-    if ((allowed_nibble & (1 << high_nibble)) == 0) return false;
+    if ((allowed_nibbles & (1 << high_nibble)) == 0) return false;
     state = UTF_8_STATE_TABLE_32[high_nibble] >> (state & UTF_MASK);  // The '&' is optimized out.
-    allowed_nibble = MALFORMED_TABLE[c];
+    allowed_nibbles = MALFORMED_TABLE[c];
   }
   return (state & UTF_MASK) == UTF_BASE;
 #endif
