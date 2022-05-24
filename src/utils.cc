@@ -26,13 +26,14 @@ namespace toit {
 /**
 9 States that handle all UTF-8 state
 We use 6 bits per state, so in all we need 54 bits and it fits in a 64 bit
-unsigned int.
+unsigned int.  (The state machine is better explained in the 32 bit version
+below.  Search for "Part two of the verification".)
 */
 static const uint64 UTF_MASK              = 0x3f;
 static const uint64 UTF_BASE              = 0;   // Initial state, also the one we want to end in.
 static const uint64 UTF_LAST              = 6;   // Expect the last byte of a multi-byte sequence.
 static const uint64 UTF_PENULTIMATE       = 12;  // Expect the 2nd last of a multi-byte sequence.
-static const uint64 UTF_ANTEPENULTIMATE   = 18;  // 15 Expect the 3rd last of a multi-byte sequence.
+static const uint64 UTF_ANTEPENULTIMATE   = 18;  // Expect the 3rd last of a multi-byte sequence.
 static const uint64 UTF_OVERLONG_4_CHECK  = 24;  // Look out for overlong 4-byte sequences.
 static const uint64 UTF_RANGE_CHECK       = 30;  // Look out for sequences that are above 0x10ffff.
 static const uint64 UTF_OVERLONG_3_CHECK  = 36;  // Look out for overlong 3-byte sequences.
