@@ -172,13 +172,9 @@ class ObjectHeap {
   Process* _owner;
   TwoSpaceHeap _two_space_heap;
 
-  // An estimate of how much memory overhead malloc has.
   static const word _UNLIMITED_EXPANSION = 0x7fffffff;
 
-  // Minimum number of heap blocks we limit ourselves to.
-  static const word _MIN_BLOCK_LIMIT = 4;
-
-  // Number of bytes used before forcing a scavenge, including external memory.
+  // Number of bytes used before forcing a GC, including external memory.
   // Set to zero to have no limit.
   word _limit = 0;
   // This limit will be installed at the end of the current primitive.
