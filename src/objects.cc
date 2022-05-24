@@ -221,18 +221,22 @@ void Array::roots_do(RootCallback* cb) {
 
 void Stack::roots_do(Program* program, RootCallback* cb) {
   int top = this->top();
+  Object** roots = _root_at(_array_offset_from(top));
+  int used_length = length() - top;
   // Skip over pointers into the bytecodes.
+#ifndef MAX_ROM_ADDRESS
   void* bytecodes_from = program->bytecodes.data();
   void* bytecodes_to = &program->bytecodes.data()[program->bytecodes.length()];
   // Assert that the frame-marker is skipped this way as well.
   ASSERT(bytecodes_from <= program->frame_marker() && program->frame_marker() < bytecodes_to);
-  Object** roots = _root_at(_array_offset_from(top));
-  int used_length = length() - top;
   for (int i = 0; i < used_length; i++) {
     Object* root_object = roots[i];
     if (bytecodes_from <= root_object && root_object < bytecodes_to) continue;
     cb->do_root(&roots[i]);
   }
+#else
+  cb->do_roots(roots, used_length);
+#endif
 }
 
 int Stack::frames_do(Program* program, FrameCallback* cb) {

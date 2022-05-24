@@ -56,7 +56,18 @@ void GcMetadata::set_up_singleton() {
 
   uword cumulative_mark_bits_size = size >> CUMULATIVE_MARK_BITS_SHIFT;
 
+#ifdef KNOWN_ROM_ADDRESSES
+  // If the ROM address (address of objects like null, or byte codes) is known,
+  // then we can save a lot of time when marking by having one byte per 4k page
+  // that tells us whether it's a ROM or RAM address.
+  uword lowest_page_table_address = lowest_address_;
+  uword highest_page_table_address = lowest_page_table_address + size;
+  lowest_page_table_address = Utils::min(lowest_page_table_address, Utils::round_down(MIN_ROM_ADDRESS, TOIT_PAGE_SIZE));
+  highest_page_table_address = Utils::max(highest_page_table_address, Utils::round_up(MAX_ROM_ADDRESS, TOIT_PAGE_SIZE));
+  uword page_type_size_ = highest_page_table_address - lowest_page_table_address >> TOIT_PAGE_SIZE_LOG2;
+#else
   uword page_type_size_ = size >> TOIT_PAGE_SIZE_LOG2;
+#endif
 
   metadata_size_ = Utils::round_up(
                                                                // Overhead on:        32bit   64bit
@@ -117,6 +128,12 @@ void GcMetadata::set_up_singleton() {
   shifted = lowest >> CUMULATIVE_MARK_BITS_SHIFT;
   start = reinterpret_cast<uword>(cumulative_mark_bit_counts_);
   cumulative_mark_bits_bias_ = start - shifted;
+
+#ifdef KNOWN_ROM_ADDRESSES
+  shifted = lowest_page_table_address >> TOIT_PAGE_SIZE_LOG2;
+  start = reinterpret_cast<uword>(page_type_bytes_);
+  page_type_bias_ = start - shifted;
+#endif
 }
 
 // Impossible end-of-object address, since they are aligned.

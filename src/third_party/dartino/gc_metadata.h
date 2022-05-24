@@ -136,8 +136,15 @@ class GcMetadata {
 
   // Safe to call with any object, even a Smi.
   static INLINE bool in_new_or_old_space(Object* object) {
+#ifdef KNOWN_ROM_ADDRESSES
+    if (object->is_smi()) return false;
+    uword addr = reinterpret_cast<uword>(object);
+    uint8 type = *reinterpret_cast<uint8*>((addr >> TOIT_PAGE_SIZE_LOG2) + singleton_.page_type_bias_);
+    return type != UNKNOWN_SPACE_PAGE;
+#else
     PageType page_type = get_page_type(object);
     return page_type != UNKNOWN_SPACE_PAGE;
+#endif
   }
 
   static inline uint8* starts_for(uword address) {
@@ -247,7 +254,7 @@ class GcMetadata {
   static INLINE bool mark_grey_if_not_marked(HeapObject* object) {
     uword address = reinterpret_cast<uword>(object);
     address = (singleton_.mark_bits_bias_ + (address >> MARK_BITS_SHIFT)) & ~3;
-    uint32 mask = 1u << ((reinterpret_cast<uword>(object) >> WORD_SHIFT) & 31);
+    uint32 mask = 1u << ((reinterpret_cast<uword>(object) >> WORD_SHIFT) & 31);  // The '&' is removed by the optimizer.
     uint32 bits = *reinterpret_cast<uint32*>(address);
     if ((bits & mask) != 0) return true;
     *reinterpret_cast<uint32*>(address) = bits | mask;
@@ -419,6 +426,9 @@ class GcMetadata {
   uword mark_bits_bias_;
   uword overflow_bits_bias_;
   uword cumulative_mark_bits_bias_;
+#ifdef KNOWN_ROM_ADDRESSES
+  uword page_type_bias_;
+#endif
 };
 
 }  // namespace toit

@@ -160,9 +160,9 @@ static const int TOIT_PAGE_SIZE_LOG2 = TOIT_PAGE_SIZE_LOG2_64;
 #else
 static const int TOIT_PAGE_SIZE_LOG2 = TOIT_PAGE_SIZE_LOG2_32;
 #endif
-static const int TOIT_PAGE_SIZE = (1 << TOIT_PAGE_SIZE_LOG2);
-static const int TOIT_PAGE_SIZE_32 = (1 << TOIT_PAGE_SIZE_LOG2_32);
-static const int TOIT_PAGE_SIZE_64 = (1 << TOIT_PAGE_SIZE_LOG2_64);
+static const uword TOIT_PAGE_SIZE = (1 << TOIT_PAGE_SIZE_LOG2);
+static const uword TOIT_PAGE_SIZE_32 = (1 << TOIT_PAGE_SIZE_LOG2_32);
+static const uword TOIT_PAGE_SIZE_64 = (1 << TOIT_PAGE_SIZE_LOG2_64);
 
 static const int LARGE_INT_BIT_SIZE = INT64_SIZE * 8;
 static const int WORD_BIT_SIZE = WORD_SIZE * 8;  // Number of bits in a word.
@@ -184,6 +184,12 @@ static_assert(sizeof(word) == 8, "invalid type size");
 #endif
 #ifdef BUILD_32
 static_assert(sizeof(word) == 4, "invalid type size");
+#endif
+
+#ifdef TOIT_FREERTOS
+#define KNOWN_ROM_ADDRESSES
+static const uword MAX_ROM_ADDRESS = 0x41000000;
+static const uword MIN_ROM_ADDRESS = 0x400C0000;
 #endif
 
 #define NOCOPY(type) type(const type&); void operator=(const type&);
