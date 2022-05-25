@@ -24,7 +24,7 @@ namespace toit {
 #ifdef BUILD_64
 
 /**
-9 States that handle all UTF-8 state
+9 states that handle all UTF-8 states.
 We use 6 bits per state, so in all we need 54 bits and it fits in a 64 bit
 unsigned int.  (The state machine is better explained in the 32 bit version
 below.  Search for "Part two of the verification".)
@@ -299,7 +299,7 @@ bool Utils::is_valid_utf_8(const uint8* buffer, int length) {
   }
   return (state & UTF_MASK) == UTF_BASE;
 #else
-  int32_t state = UTF_BASE;
+  int32 state = UTF_BASE;
   int allowed_nibbles = START;
   for (int i = 0; i < length; i++) {
     unsigned char c = buffer[i];
