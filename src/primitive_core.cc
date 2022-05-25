@@ -2098,6 +2098,7 @@ PRIMITIVE(profiler_uninstall) {
 PRIMITIVE(set_max_heap_size) {
   ARGS(word, max_bytes);
   process->set_max_heap_size(max_bytes);
+  process->object_heap()->update_pending_limit();
   return process->program()->null_object();
 }
 

@@ -72,11 +72,10 @@ class Process : public ProcessListFromProcessGroup::Element,
   void mark_as_priviliged() { _is_privileged = true; }
 
   // Garbage collection operation for runtime objects.
-  int gc(bool try_hard) {
-    if (program() == null) return 0;
-    int result = object_heap()->gc(try_hard);
+  void gc(bool try_hard) {
+    if (program() == null) return;
+    object_heap()->gc(try_hard);
     _memory_usage = object_heap()->usage("object heap after gc");
-    return result;
   }
 
   bool idle_since_gc() const { return _idle_since_gc; }
@@ -162,7 +161,8 @@ class Process : public ProcessListFromProcessGroup::Element,
   }
 
   bool should_allow_external_allocation(word size) {
-    bool result = _object_heap.should_allow_external_allocation(size);
+    word max = _object_heap.max_external_allocation();
+    bool result = max >= size;
     _object_heap.set_last_allocation_result(result ? ObjectHeap::ALLOCATION_SUCCESS : ObjectHeap::ALLOCATION_HIT_LIMIT);
     return result;
   }
@@ -298,7 +298,8 @@ class AllocationManager {
 
   uint8_t* alloc(word length) {
     ASSERT(_ptr == null);
-    if (!_process->should_allow_external_allocation(length)) {
+    bool ok = _process->should_allow_external_allocation(length);
+    if (!ok) {
       return null;
     }
     // Don't change this to use C++ array 'new' because that isn't compatible
