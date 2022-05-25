@@ -18,6 +18,7 @@
 #include "os.h"
 #include "vm.h"
 #include "process.h"
+#include "scheduler.h"
 
 namespace toit {
 
@@ -157,8 +158,9 @@ void EventSource::dispatch(const Locker& locker, Resource* r, word data) {
 void EventSource::try_notify(Resource* r, const Locker& locker, bool force) {
   if (!force && r->state() == 0) return;
 
-  if (r->object_notifier() != null) {
-    r->object_notifier()->notify();
+  ObjectNotifier* notifier = r->object_notifier();
+  if (notifier != null) {
+    VM::current()->scheduler()->send_notify_message(notifier);
   }
 }
 
@@ -182,7 +184,7 @@ bool EventSource::update_resource_monitor(Resource* r, Process* process, Object*
   }
 
   if (r->state() != 0) {
-    notifier->notify();
+    VM::current()->scheduler()->send_notify_message(notifier);
   }
   return true;
 }
