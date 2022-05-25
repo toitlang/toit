@@ -438,10 +438,6 @@ ObjectNotifier::~ObjectNotifier() {
   if (_message && _message->clear_object_notifier()) delete _message;
 }
 
-void ObjectNotifier::notify() {
-  _process->send_mail(_message);
-}
-
 void ObjectNotifier::roots_do(RootCallback* cb) {
   cb->do_root(reinterpret_cast<Object**>(&_object));
 }

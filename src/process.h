@@ -122,9 +122,6 @@ class Process : public ProcessListFromProcessGroup::Element,
 
   SystemMessage* take_termination_message(uint8 result);
 
-  // Signals that a message is for this process.
-  void send_mail(Message* message);
-
   uint64_t random();
   void random_seed(const uint8_t* buffer, size_t size);
 
