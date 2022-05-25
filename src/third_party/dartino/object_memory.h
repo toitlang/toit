@@ -146,7 +146,7 @@ class Space : public LivenessOracle {
   enum Resizing { CAN_RESIZE, CANNOT_RESIZE };
 
   // Returns the total size of allocated objects.
-  virtual uword used() = 0;
+  virtual uword used() const = 0;
 
   // flush will make the current chunk consistent for iteration.
   virtual void flush() = 0;
@@ -249,7 +249,7 @@ class Space : public LivenessOracle {
 
   void free_all_chunks();
 
-  uword top() { return top_; }
+  uword top() const { return top_; }
 
   Program* program_ = null;
   ChunkList chunk_list_;
@@ -267,7 +267,7 @@ class SemiSpace : public Space {
   SemiSpace(Program* program, Chunk* chunk);
 
   // Returns the total size of allocated objects.
-  virtual uword used();
+  virtual uword used() const;
 
   virtual bool is_alive(HeapObject* old_location);
   virtual HeapObject* new_location(HeapObject* old_location);
@@ -418,7 +418,7 @@ class OldSpace : public Space {
 
   virtual HeapObject* new_location(HeapObject* old_location);
 
-  virtual uword used();
+  virtual uword used() const;
 
   // flush will make the current chunk consistent for iteration.
   virtual void flush();
@@ -501,7 +501,6 @@ class OldSpace : public Space {
   // semispace even though they are old enough for promotion.  We also use this
   // to trigger an old-space GC early.
   bool promotion_failed_ = false;
-
 };
 
 // ObjectMemory controls all memory used by object heaps.

@@ -38,6 +38,7 @@ class TwoSpaceHeap {
   HeapObject* allocate(uword size);
 
   SemiSpace* new_space() { return &semi_space_; }
+  const SemiSpace* new_space() const { return &semi_space_; }
 
   SemiSpace* take_space();
 
@@ -80,7 +81,7 @@ class TwoSpaceHeap {
   }
 
   // Returns the number of bytes allocated in the space.
-  int used() { return old_space_.used() + semi_space_.used(); }
+  int used() const { return old_space_.used() + semi_space_.used(); }
 
   HeapObject* new_space_allocation_failure(uword size);
 
@@ -100,7 +101,7 @@ class TwoSpaceHeap {
   void compact_heap();
   void set_promotion_failed() { old_space_.set_promotion_failed(true); }
 
-  uword total_bytes_allocated();
+  uword total_bytes_allocated() const;
 
   word max_external_allocation();
 

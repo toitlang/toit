@@ -77,10 +77,10 @@ class ObjectHeap {
   void process_registered_finalizers(RootCallback* ss, LivenessOracle* from_space);
   void process_registered_vm_finalizers(RootCallback* ss, LivenessOracle* from_space);
 
-  Program* program() { return _program; }
+  Program* program() const { return _program; }
 
-  int64 total_bytes_allocated() { return _external_memory + _two_space_heap.total_bytes_allocated(); }
-  uword external_memory() { return _external_memory; }
+  int64 total_bytes_allocated() const { return _external_memory + _two_space_heap.total_bytes_allocated(); }
+  uword external_memory() const { return _external_memory; }
   bool has_limit() const { return _limit != _max_heap_size; }
   uword limit() const { return _limit; }
 
@@ -153,16 +153,24 @@ class ObjectHeap {
   void register_external_allocation(word size);
   void unregister_external_allocation(word size);
   bool has_max_heap_size() const { return _max_heap_size != 0; }
+
   void check_install_heap_limit() {
     if (_limit != _pending_limit) install_heap_limit();
   }
+
   void iterate_roots(RootCallback* callback);
+
+  // Update the memory limit for triggering the next old-space GC.  We base
+  // this on a multiple of the number of chunks in use and the externally
+  // allocated memory just after the previous GC.
+  word update_pending_limit();
 
  private:
   Program* const _program;
   HeapObject* _allocate_raw(int byte_size) {
     return _two_space_heap.allocate(byte_size);
   }
+
   void install_heap_limit();
 
   bool _in_gc = false;
@@ -196,11 +204,6 @@ class ObjectHeap {
   Object** _global_variables = null;
 
   HeapRootList _external_roots;
-
-  // Calculate the memory limit for triggering the next old-space GC.  We base this
-  // on a multiple of the number of chunks in use and the externally allocated memory
-  // just after the previous GC.
-  word _calculate_limit();
 
   friend class ObjectNotifier;
   friend class Process;

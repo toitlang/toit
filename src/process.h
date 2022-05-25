@@ -78,8 +78,6 @@ class Process : public ProcessListFromProcessGroup::Element,
     _memory_usage = object_heap()->usage("object heap after gc");
   }
 
-  void calculate_heap_limit() { object_heap()->_calculate_limit(); }
-
   bool idle_since_gc() const { return _idle_since_gc; }
   void set_idle_since_gc(bool value) { _idle_since_gc = value; }
 

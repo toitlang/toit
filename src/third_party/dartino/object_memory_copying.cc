@@ -166,7 +166,7 @@ uword SemiSpace::allocate(uword size) {
   return 0;
 }
 
-uword SemiSpace::used() {
+uword SemiSpace::used() const {
   ASSERT(chunk_list_.first() == chunk_list_.last());
   return (top() - chunk_list_.last()->start());
 }

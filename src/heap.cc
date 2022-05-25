@@ -129,7 +129,7 @@ ObjectHeap::ObjectHeap(Program* program, Process* owner, Chunk* initial_chunk)
                   // enough space for the task structure.
   _global_variables = program->global_variables.copy();
   // Currently the heap is empty and it has one block allocated for objects.
-  _calculate_limit();
+  update_pending_limit();
   _limit = _pending_limit;
 }
 
@@ -154,12 +154,12 @@ ObjectHeap::~ObjectHeap() {
   ASSERT(_object_notifiers.is_empty());
 }
 
-word ObjectHeap::_calculate_limit() {
+word ObjectHeap::update_pending_limit() {
   word length = _two_space_heap.size() + _external_memory;
-  word MIN = TOIT_PAGE_SIZE;
   // We call a new GC when the heap size has doubled, in an attempt to do
   // meaningful work before the next GC, but while still not allowing the heap
   // to grow too much when there is garbage to be found.
+  word MIN = TOIT_PAGE_SIZE;
   word new_limit = Utils::max(MIN, length * 2);
   if (has_max_heap_size()) {
     // If the user set a max then we feel more justified in using up to that
@@ -172,7 +172,7 @@ word ObjectHeap::_calculate_limit() {
 }
 
 word ObjectHeap::max_external_allocation() {
-  if (!has_limit() && _max_heap_size == 0) return _UNLIMITED_EXPANSION;
+  if (!has_limit() && !has_max_heap_size()) return _UNLIMITED_EXPANSION;
   word total = _external_memory + _two_space_heap.size();
   if (total >= _limit) return 0;
   return _limit - total;
@@ -304,15 +304,21 @@ void ObjectHeap::iterate_roots(RootCallback* callback) {
 void ObjectHeap::gc(bool try_hard) {
   bool old_space_done = _two_space_heap.collect_new_space(try_hard);
   _gc_count++;
-  // GC limit to install after this primitive terminates.
-  if (old_space_done) _calculate_limit();
-  // Only the hard limit for the rest of this primitive.
+  // Update the pending limit that will be installed after the current
+  // primitive (that caused the GC) completes.
+  if (old_space_done) update_pending_limit();
+  // Use only the hard limit for the rest of this primitive.  We don't want to
+  // trigger any heuristic GCs before the primitive is over or we might cause a
+  // triple GC, which throws an exception.
   _limit = _max_heap_size;
 }
 
+// Install a new allocation limit at the end of a primitive that caused a GC.
 void ObjectHeap::install_heap_limit() {
   word total = _external_memory + _two_space_heap.size();
   if (total > _pending_limit) {
+    // If we already went over the heuristic limit that triggers a new GC we set
+    // a flag that means the next scavenge won't promote into old space.
     _two_space_heap.set_promotion_failed();
   }
   _limit = _pending_limit;

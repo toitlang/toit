@@ -121,7 +121,7 @@ uword OldSpace::allocate_in_new_chunk(uword size) {
   }
 
   // Speed up later attempts during this scavenge to promote objects.
-  promotion_failed_ = true;
+  set_promotion_failed(true);
   return 0;
 }
 
@@ -183,7 +183,7 @@ uword OldSpace::allocate(uword size) {
   return result;
 }
 
-uword OldSpace::used() { return used_; }
+uword OldSpace::used() const { return used_; }
 
 void OldSpace::start_tracking_allocations() {
   flush();

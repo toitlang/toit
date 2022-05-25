@@ -261,7 +261,7 @@ bool TwoSpaceHeap::collect_new_space(bool try_hard) {
   return collect_old_space_if_needed(try_hard, trigger_old_space_gc);
 }
 
-uword TwoSpaceHeap::total_bytes_allocated() {
+uword TwoSpaceHeap::total_bytes_allocated() const {
   uword result = total_bytes_allocated_;
   result += new_space()->used();
   return result;
