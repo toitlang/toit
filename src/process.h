@@ -52,11 +52,11 @@ class Process : public ProcessListFromProcessGroup::Element,
 
   static const char* StateName[];
 
-  Process(Program* program, ProcessGroup* group, SystemMessage* termination, char** args, InitialMemory* initial_memory);
+  Process(Program* program, ProcessGroup* group, SystemMessage* termination, char** args, Chunk* initial_chunk);
 #ifndef TOIT_FREERTOS
-  Process(Program* program, ProcessGroup* group, SystemMessage* termination, SnapshotBundle system, SnapshotBundle application, char** args, InitialMemory* initial_memory);
+  Process(Program* program, ProcessGroup* group, SystemMessage* termination, SnapshotBundle system, SnapshotBundle application, char** args, Chunk* initial_chunk);
 #endif
-  Process(Program* program, ProcessGroup* group, SystemMessage* termination, Method method, uint8* arguments, InitialMemory* initial_memory);
+  Process(Program* program, ProcessGroup* group, SystemMessage* termination, Method method, uint8* arguments, Chunk* initial_chunk);
   ~Process();
 
   // Constructor for an external process (no Toit code).
@@ -72,11 +72,10 @@ class Process : public ProcessListFromProcessGroup::Element,
   void mark_as_priviliged() { _is_privileged = true; }
 
   // Garbage collection operation for runtime objects.
-  int gc() {
-    if (program() == null) return 0;
-    int result = object_heap()->gc();
+  void gc(bool try_hard) {
+    if (program() == null) return;
+    object_heap()->gc(try_hard);
     _memory_usage = object_heap()->usage("object heap after gc");
-    return result;
   }
 
   bool idle_since_gc() const { return _idle_since_gc; }
@@ -123,9 +122,6 @@ class Process : public ProcessListFromProcessGroup::Element,
 
   SystemMessage* take_termination_message(uint8 result);
 
-  // Signals that a message is for this process.
-  void send_mail(Message* message);
-
   uint64_t random();
   void random_seed(const uint8_t* buffer, size_t size);
 
@@ -157,18 +153,13 @@ class Process : public ProcessListFromProcessGroup::Element,
   Object* allocate_string_or_error(const char* content, int length);
   ByteArray* allocate_byte_array(int length, Error** error, bool force_external=false);
 
-#ifdef LEGACY_GC
-  word number_of_blocks() {
-    return _object_heap.number_of_blocks();
-  }
-#endif
-
   void set_max_heap_size(word bytes) {
     _object_heap.set_max_heap_size(bytes);
   }
 
   bool should_allow_external_allocation(word size) {
-    bool result = _object_heap.should_allow_external_allocation(size);
+    word max = _object_heap.max_external_allocation();
+    bool result = max >= size;
     _object_heap.set_last_allocation_result(result ? ObjectHeap::ALLOCATION_SUCCESS : ObjectHeap::ALLOCATION_HIT_LIMIT);
     return result;
   }
@@ -229,7 +220,7 @@ class Process : public ProcessListFromProcessGroup::Element,
   }
 
  private:
-  Process(Program* program, ProcessRunner* runner, ProcessGroup* group, SystemMessage* termination, InitialMemory* initial_memory);
+  Process(Program* program, ProcessRunner* runner, ProcessGroup* group, SystemMessage* termination, Chunk* initial_chunk);
   void _append_message(Message* message);
   void _ensure_random_seeded();
 
@@ -304,7 +295,8 @@ class AllocationManager {
 
   uint8_t* alloc(word length) {
     ASSERT(_ptr == null);
-    if (!_process->should_allow_external_allocation(length)) {
+    bool ok = _process->should_allow_external_allocation(length);
+    if (!ok) {
       return null;
     }
     // Don't change this to use C++ array 'new' because that isn't compatible

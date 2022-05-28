@@ -15,7 +15,9 @@
 
 import uuid
 
+import .firmware
 import .wifi
+
 import ...boot
 import ...initialize
 import ...containers
@@ -40,8 +42,10 @@ class SystemImage extends ContainerImage:
     unreachable  // Not implemented yet.
 
 main:
-  wifi ::= WifiServiceDefinition
-  container_manager ::= initialize_system [wifi]
+  container_manager ::= initialize_system [
+      FirmwareServiceDefinition,
+      WifiServiceDefinition
+  ]
   container_manager.register_system_image
       SystemImage container_manager
   boot container_manager

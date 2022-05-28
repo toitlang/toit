@@ -181,6 +181,15 @@ PRIMITIVE(ota_end) {
   ARGS(int, size, Object, expected);
   esp_err_t err = ESP_OK;
 
+  const int BLOCK = 1024;
+  AllocationManager allocation(process);
+  uint8* buffer = allocation.alloc(BLOCK);
+  if (buffer == null) ALLOCATION_FAILED;
+
+  Sha256* sha256 = _new Sha256(null);
+  if (sha256 == null) ALLOCATION_FAILED;
+  DeferDelete<Sha256> d(sha256);
+
   if (size != 0) {
     if (ota_partition == null) {
       ESP_LOGE("Toit", "Cannot end OTA session before starting it");
@@ -213,17 +222,14 @@ PRIMITIVE(ota_end) {
     Blob checksum_bytes;
     if (expected->byte_content(process->program(), &checksum_bytes, STRINGS_OR_BYTE_ARRAYS)) {
       if (checksum_bytes.length() != Sha256::HASH_LENGTH) INVALID_ARGUMENT;
-      Sha256 sha(null);
-      const int BLOCK = 1024;
-      uint8 buffer[BLOCK];
       for (int i = 0; i < size; i += BLOCK) {
         int chunk = Utils::min(BLOCK, size - i);
         err = esp_partition_read(ota_partition, i, buffer, chunk);
         if (err != ESP_OK) OUT_OF_BOUNDS;
-        sha.add(buffer, chunk);
+        sha256->add(buffer, chunk);
       }
       uint8 calculated[Sha256::HASH_LENGTH];
-      sha.get(calculated);
+      sha256->get(calculated);
       int diff = 0;
       for (int i = 0; i < Sha256::HASH_LENGTH; i++) {
         diff |= calculated[i] ^ checksum_bytes.address()[i];

@@ -94,7 +94,8 @@ Scheduler::ExitState Scheduler::run_boot_program(Program* program, char** args, 
   Locker locker(_mutex);
   ProcessGroup* group = ProcessGroup::create(group_id, program);
   SystemMessage* termination = new_process_message(SystemMessage::TERMINATED, group_id);
-  Process* process = _new Process(program, group, termination, args, manager.initial_memory);
+  Process* process = _new Process(program, group, termination, args, manager.initial_chunk);
+  ASSERT(process);
   manager.dont_auto_free();
   return launch_program(locker, process);
 }
@@ -116,7 +117,8 @@ Scheduler::ExitState Scheduler::run_boot_program(
   ASSERT(ok);
   Locker locker(_mutex);
   SystemMessage* termination = new_process_message(SystemMessage::TERMINATED, group_id);
-  Process* process = _new Process(boot_program, group, termination, system, application, args, manager.initial_memory);
+  Process* process = _new Process(boot_program, group, termination, system, application, args, manager.initial_chunk);
+  ASSERT(process);
   manager.dont_auto_free();
   return launch_program(locker, process);
 }
@@ -184,13 +186,13 @@ int Scheduler::next_group_id() {
   return _next_group_id++;
 }
 
-int Scheduler::run_program(Program* program, char** args, ProcessGroup* group, InitialMemory* initial_memory) {
+int Scheduler::run_program(Program* program, char** args, ProcessGroup* group, Chunk* initial_chunk) {
   Locker locker(_mutex);
   SystemMessage* termination = new_process_message(SystemMessage::TERMINATED, group->id());
   if (termination == null) {
     return INVALID_PROCESS_ID;
   }
-  Process* process = _new Process(program, group, termination, args, initial_memory);
+  Process* process = _new Process(program, group, termination, args, initial_chunk);
   if (process == null) {
     delete termination;
     return INVALID_PROCESS_ID;
@@ -278,6 +280,14 @@ scheduler_err_t Scheduler::send_system_message(Locker& locker, SystemMessage* me
   return MESSAGE_OK;
 }
 
+void Scheduler::send_notify_message(ObjectNotifier* notifier) {
+  Locker locker(_mutex);
+  Process* process = notifier->process();
+  if (process->state() == Process::TERMINATING) return;
+  process->_append_message(notifier->message());
+  process_ready(locker, process);
+}
+
 bool Scheduler::signal_process(Process* sender, int target_id, Process::Signal signal) {
   if (sender != _boot_process) return false;
 
@@ -290,12 +300,12 @@ bool Scheduler::signal_process(Process* sender, int target_id, Process::Signal s
   return true;
 }
 
-Process* Scheduler::hatch(Program* program, ProcessGroup* process_group, Method method, uint8* arguments, InitialMemory* initial_memory) {
+Process* Scheduler::hatch(Program* program, ProcessGroup* process_group, Method method, uint8* arguments, Chunk* initial_chunk) {
   Locker locker(_mutex);
 
   SystemMessage* termination = new_process_message(SystemMessage::TERMINATED, process_group->id());
   if (!termination) return null;
-  Process* process = _new Process(program, process_group, termination, method, arguments, initial_memory);
+  Process* process = _new Process(program, process_group, termination, method, arguments, initial_chunk);
   if (!process) {
     delete termination;
     return null;
@@ -457,7 +467,7 @@ void Scheduler::gc(Process* process, bool malloc_failed, bool try_hard) {
     }
 
     for (Process* target : targets) {
-      target->gc();
+      target->gc(try_hard);
       gcs++;
     }
 
@@ -471,7 +481,7 @@ void Scheduler::gc(Process* process, bool malloc_failed, bool try_hard) {
     }
   }
 
-  process->gc();
+  process->gc(try_hard);
 
   if (doing_cross_process_gc) {
     Locker locker(_mutex);
@@ -723,19 +733,6 @@ void Scheduler::terminate_execution(Locker& locker, ExitState exit) {
   OS::signal(_has_processes);
 }
 
-#ifdef LEGACY_GC
-
-word Scheduler::largest_number_of_blocks_in_a_process() {
-  Locker locker(_mutex);
-  word largest = 0;
-  for (ProcessGroup* group : _groups) {
-    largest = Utils::max(largest, group->largest_number_of_blocks_in_a_process());
-  }
-  return largest;
-}
-
-#endif
-
 void Scheduler::tick(Locker& locker) {
   int64 now = OS::get_monotonic_time();
 
@@ -744,7 +741,7 @@ void Scheduler::tick(Locker& locker) {
     if (process == null) continue;
     if (process == _boot_process) continue;
     int64 runtime = process->current_run_duration(now);
-    if (runtime > WATCHDOG_PERIOD_US) {
+    if (Flags::enable_watchdog && runtime > WATCHDOG_PERIOD_US) {
       process->signal(Process::WATCHDOG);
     }
   }

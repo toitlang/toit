@@ -159,6 +159,25 @@ FreeListRegion* FreeListRegion::create_at(uword start, uword size) {
   return null;
 }
 
+Object* FreeListRegion::single_free_word_header() {
+  uword header = SINGLE_FREE_WORD_CLASS_ID;
+  header = (header << CLASS_TAG_BIT_SIZE) | SINGLE_FREE_WORD_TAG;
+  return Smi::from(header);
+}
+
+bool HeapObject::is_a_free_object() {
+  int tag = class_tag();
+  if (tag == FREE_LIST_REGION_TAG) {
+    ASSERT(class_id()->value() == FREE_LIST_REGION_CLASS_ID);
+    return true;
+  }
+  if (tag == SINGLE_FREE_WORD_TAG) {
+    ASSERT(class_id()->value() == SINGLE_FREE_WORD_CLASS_ID);
+    return true;
+  }
+  return false;
+}
+
 class PointerRootCallback : public RootCallback {
  public:
   explicit PointerRootCallback(PointerCallback* callback) : callback(callback) {}
@@ -470,6 +489,8 @@ void ByteArray::read_content(SnapshotReader* st, int len) {
   }
 }
 
+#endif  // TOIT_FREERTOS
+
 word ByteArray::max_internal_size() {
   return Utils::max(max_internal_size_in_process(), max_internal_size_in_program());
 }
@@ -477,7 +498,5 @@ word ByteArray::max_internal_size() {
 word String::max_internal_size() {
   return Utils::max(max_internal_size_in_process(), max_internal_size_in_program());
 }
-
-#endif  // TOIT_FREERTOS
 
 }  // namespace toit

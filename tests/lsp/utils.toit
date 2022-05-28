@@ -84,14 +84,22 @@ run_toit toitc args -> List?:
   cpp_to   := cpp_pipes[0]
   cpp_from := cpp_pipes[1]
   cpp_pid  := cpp_pipes[3]
-  pipe.dont_wait_for cpp_pid
-  cpp_to.close
-
-  lines := []
   try:
-    reader := BufferedReader cpp_from
-    while line := reader.read_line:
-      lines.add line
+    cpp_to.close
+
+    lines := []
+    try:
+      reader := BufferedReader cpp_from
+      while line := reader.read_line:
+        lines.add line
+    finally:
+      cpp_from.close
+    return lines
   finally:
-    cpp_from.close
-  return lines
+    exit_value := pipe.wait_for cpp_pid
+    exit_code := pipe.exit_code exit_value
+    exit_signal := pipe.exit_signal exit_value
+    if exit_signal:
+      throw "$toitc exited with signal $exit_signal"
+    if exit_code != 0:
+      throw "$toitc exited with code $exit_code"

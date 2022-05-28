@@ -193,9 +193,27 @@ class ContainerManager extends ContainerServiceDefinition implements SystemMessa
     set_system_message_handler_ SYSTEM_TERMINATED_ this
     set_system_message_handler_ SYSTEM_SPAWNED_ this
     set_system_message_handler_ SYSTEM_MIRROR_MESSAGE_ this
+
+    unrelocated/List? := null
     image_registry.do: | allocation/FlashAllocation |
-      if allocation.type != FLASH_ALLOCATION_PROGRAM_TYPE: continue.do
-      add_flash_image allocation
+      if allocation.type == FLASH_ALLOCATION_PROGRAM_TYPE:
+        add_flash_image allocation
+      else if allocation.type == FLASH_ALLOCATION_PROGRAM_UNRELOCATED_TYPE:
+        if unrelocated: unrelocated.add allocation
+        else: unrelocated = [allocation]
+
+    // Run through the unrelocated programs and relocate them unless we
+    // already did that successfully before in which case they will have
+    // shown up as relocated programs (added to the images map).
+    if unrelocated:
+      unrelocated.do: | allocation/FlashAllocation |
+        if not images_.contains allocation.id:
+          add_flash_image (relocate allocation image_registry)
+        // We always free the unrelocated programs by erasing them from flash
+        // if the relocation attempt is successful (doesn't throw). Maybe it
+        // would make sense to make sure that a rescan finds the relocated
+        // image before doing this?
+        image_registry.free allocation
 
   images -> List:
     return images_.values
@@ -287,7 +305,7 @@ print_for_manually_decoding_ message/ByteArray --from=0 --to=message.size:
   BLOCK_SIZE := 1500
   for i := from; i < to; i += BLOCK_SIZE:
     end := i >= to - BLOCK_SIZE
-    prefix := i == from ? "build/host/sdk/bin/toit.run tools/system_message.toit <SNAPSHOT> -b " : ""
+    prefix := i == from ? "build/host/sdk/bin/toit.run tools/system_message.toit \"\$SNAPSHOT\" -b " : ""
     base64_text := base64.encode message[i..(end ? to : i + BLOCK_SIZE)]
     postfix := end ? "" : "\\"
     print_ "$prefix$base64_text$postfix"

@@ -18,6 +18,7 @@
 #include "os.h"
 #include "vm.h"
 #include "process.h"
+#include "scheduler.h"
 
 namespace toit {
 
@@ -157,22 +158,43 @@ void EventSource::dispatch(const Locker& locker, Resource* r, word data) {
 void EventSource::try_notify(Resource* r, const Locker& locker, bool force) {
   if (!force && r->state() == 0) return;
 
-  if (r->object_notifier() != null) {
-    r->object_notifier()->notify();
+  ObjectNotifier* notifier = r->object_notifier();
+  if (notifier != null) {
+    VM::current()->scheduler()->send_notify_message(notifier);
   }
 }
 
-void EventSource::set_object_notifier(Resource* r, ObjectNotifier* notifier) {
+bool EventSource::update_resource_monitor(Resource* r, Process* process, Object* monitor) {
   Locker locker(_mutex);
 
+  ObjectNotifier* notifier = r->object_notifier();
   if (notifier) {
-    ASSERT(r->object_notifier() == null);
-    r->set_object_notifier(notifier);
-    if (r->state() != 0) notifier->notify();
+    notifier->update_object(monitor);
   } else {
-    delete r->object_notifier();
-    r->set_object_notifier(null);
+    notifier = _new ObjectNotifier(process, monitor);
+    if (notifier == null) return false;
+
+    ObjectNotifyMessage* message = _new ObjectNotifyMessage(notifier);
+    if (message == null) {
+      delete notifier;
+      return false;
+    }
+    notifier->set_message(message);
+    r->set_object_notifier(notifier);
   }
+
+  if (r->state() != 0) {
+    VM::current()->scheduler()->send_notify_message(notifier);
+  }
+  return true;
+}
+
+void EventSource::delete_resource_monitor(Resource* r) {
+  Locker locker(_mutex);
+  ObjectNotifier* notifier = r->object_notifier();
+  if (!notifier) return;
+  delete notifier;
+  r->set_object_notifier(null);
 }
 
 uint32_t EventSource::read_state(Resource* r) {

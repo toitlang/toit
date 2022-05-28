@@ -1,4 +1,4 @@
-// Copyright (c) 2016, the Dartino project authors. Please see the AUTHORS file
+// Copyright (c) 2022, the Dartino project authors. Please see the AUTHORS file
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE.md file.
 
@@ -24,9 +24,22 @@ void GcMetadata::set_up() { singleton_.set_up_singleton(); }
 void GcMetadata::set_up_singleton() {
   OS::HeapMemoryRange range = OS::get_heap_memory_range();
 
-  lowest_address_ = Utils::round_down(reinterpret_cast<uword>(range.address), TOIT_PAGE_SIZE);
-  uword size = range.size;
+  uword range_address = reinterpret_cast<uword>(range.address);
+#ifdef TOIT_FREERTOS
+  printf("Malloc reports heap from %p-%p (%dk)\n",
+      range.address,
+      unvoid_cast<char*>(range.address) + range.size,
+      static_cast<int>(range.size >> 10));
+#endif
+  lowest_address_ = Utils::round_down(range_address, TOIT_PAGE_SIZE);
+  uword size = Utils::round_up(range.size + range_address - lowest_address_, TOIT_PAGE_SIZE);
   heap_extent_ = size;
+#ifdef TOIT_FREERTOS
+  printf("(Metadata allocated for  %p-%p (%dk))\n",
+      reinterpret_cast<void*>(lowest_address_),
+      reinterpret_cast<char*>(lowest_address_) + heap_extent_,
+      static_cast<int>(heap_extent_ >> 10));
+#endif
   heap_start_munged_ = (lowest_address_ >> 1) |
                        (static_cast<uword>(1) << (8 * sizeof(uword) - 1));
   heap_extent_munged_ = size >> 1;
@@ -60,11 +73,7 @@ void GcMetadata::set_up_singleton() {
   // We create all the metadata with just one allocation.  Otherwise we will
   // lose memory when the malloc rounds a series of big allocations up to 4k
   // page boundaries.
-#ifdef LEGACY_GC
-  metadata_ = null;
-#else
   metadata_ = reinterpret_cast<uint8*>(OS::grab_virtual_memory(null, metadata_size_));
-#endif
 
   remembered_set_ = metadata_;
 
@@ -80,7 +89,6 @@ void GcMetadata::set_up_singleton() {
 
   page_type_bytes_ = mark_stack_overflow_bits_ + mark_stack_overflow_bits_size;
 
-#ifndef LEGACY_GC
   // The mark bits and cumulative mark bits are the biggest, so they are not
   // mapped in immediately in order to reduce the memory footprint of very
   // small programs.  We do it when we create pages that need them.
@@ -89,7 +97,6 @@ void GcMetadata::set_up_singleton() {
   OS::use_virtual_memory(mark_stack_overflow_bits_, mark_stack_overflow_bits_size);
   OS::use_virtual_memory(page_type_bytes_, page_type_size_);
   memset(page_type_bytes_, UNKNOWN_SPACE_PAGE, page_type_size_);
-#endif
 
   uword start = reinterpret_cast<uword>(object_starts_);
   uword lowest = lowest_address_;
@@ -111,8 +118,6 @@ void GcMetadata::set_up_singleton() {
   start = reinterpret_cast<uword>(cumulative_mark_bit_counts_);
   cumulative_mark_bits_bias_ = start - shifted;
 }
-
-#ifndef LEGACY_GC
 
 // Impossible end-of-object address, since they are aligned.
 static const uword NO_END_FOUND = 3;
@@ -148,7 +153,7 @@ restart:
         return dest;
       }
       *dest_table = dest.address;
-      dest.address += pop_count(*mark_bits) << WORD_SHIFT;
+      dest.address += Utils::popcount(*mark_bits) << WORD_SHIFT;
       src += LINE_SIZE;
       mark_bits++;
       dest_table++;
@@ -208,7 +213,7 @@ restart:
       uint32* overhang_bits =
           mark_bits_for(end_of_last_source_object_moved - WORD_SIZE);
       ASSERT((*overhang_bits & 1) != 0);
-      *overhang_bits &= ~((1 << overhang) - 1);
+      *overhang_bits &= ~((1u << overhang) - 1);
     }
     src_start = src;
   }
@@ -274,13 +279,13 @@ void GcMetadata::slow_mark(HeapObject* object, uword size) {
   ASSERT(words + mask_shift > 32);
   for (words -= 32 - mask_shift; words >= 32; words -= 32)
     *bits++ = 0xffffffffu;
-  *bits |= (1 << words) - 1;
+  *bits |= (1u << words) - 1;
 }
 
 void GcMetadata::mark_stack_overflow(HeapObject* object) {
   uword address = object->_raw();
   uint8* overflow_bits = overflow_bits_for(address);
-  *overflow_bits |= 1 << ((address >> CARD_SIZE_LOG_2) & 7);
+  *overflow_bits |= 1u << ((address >> CARD_SIZE_LOG_2) & 7);
   // We can have a mark stack overflow in new-space where we do not normally
   // maintain object starts. By updating the object starts for this card we
   // can be sure that the necessary objects in this card are walkable.
@@ -292,7 +297,5 @@ void GcMetadata::mark_stack_overflow(HeapObject* object) {
   // would mean we would not scan the necessary object.
   if (*start == NO_OBJECT_START || *start > low_byte) *start = low_byte;
 }
-
-#endif  // LEGACY_GC
 
 }  // namespace toit

@@ -284,6 +284,8 @@ class HeapObject : public Object {
   // Not very fast - used for asserts.
   bool contains_pointers_to(Program* program, Space* space);
 
+  bool is_a_free_object();
+
  protected:
   void _set_header(Smi* class_id, TypeTag class_tag) {
     uword header = class_id->value();
@@ -1250,6 +1252,8 @@ class FreeListRegion : public HeapObject {
   }
 
   static FreeListRegion* create_at(uword start, uword size);
+
+  static Object* single_free_word_header();
 
  private:
   static const int SIZE_OFFSET = HeapObject::SIZE;

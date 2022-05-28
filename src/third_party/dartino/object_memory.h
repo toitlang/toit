@@ -1,4 +1,4 @@
-// Copyright (c) 2014, the Dartino project authors. Please see the AUTHORS file
+// Copyright (c) 2022, the Dartino project authors. Please see the AUTHORS file
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE.md file.
 
@@ -25,7 +25,6 @@ class MarkingStack;
 class Object;
 class OldSpace;
 class RootCallback;
-class ProgramHeapRelocator;
 class Program;
 class PromotedTrack;
 class Smi;
@@ -75,9 +74,6 @@ class Chunk : public ChunkList::Element {
   // Returns the size of this chunk in bytes.
   uword size() const { return end_ - start_; }
 
-  // Is the chunk externally allocated by the embedder.
-  bool is_external() const { return external_; }
-
   // Test for inclusion.
   bool includes(uword address) {
     return (address >= start_) && (address < end_);
@@ -90,6 +86,8 @@ class Chunk : public ChunkList::Element {
   }
   uword scavenge_pointer() const { return scavenge_pointer_; }
 
+  void initialize_metadata() const;
+
 #ifdef DEBUG
   // Fill the space with garbage.
   void scramble();
@@ -99,19 +97,17 @@ class Chunk : public ChunkList::Element {
 #endif
 
  private:
+  ~Chunk();  // Use ObjectMemory::free_chunk().
+
   Space* owner_;
   const uword start_;
   const uword end_;
-  const bool external_;
   uword scavenge_pointer_;
   uword compaction_top_;
 
-  Chunk(Space* owner, uword start, uword size, bool external = false);
-  ~Chunk();
+  Chunk(Space* owner, uword start, uword size);
 
   friend class ObjectMemory;
-  friend class SemiSpace;
-  friend class Space;
 };
 
 // Abstract base class for visiting all objects in a space.
@@ -150,10 +146,11 @@ class Space : public LivenessOracle {
   enum Resizing { CAN_RESIZE, CANNOT_RESIZE };
 
   // Returns the total size of allocated objects.
-  virtual uword used() = 0;
+  virtual uword used() const = 0;
 
   // flush will make the current chunk consistent for iteration.
   virtual void flush() = 0;
+  virtual bool is_flushed() = 0;
 
   // Used for weak processing.  Can only be called:
   // 1) For copying collections: right after copying but before you delete the
@@ -179,15 +176,6 @@ class Space : public LivenessOracle {
   // Returns true if the address is inside this space.  Not particularly fast.
   // See GcMetadata::PageType for a faster possibility.
   bool includes(uword address);
-
-  // Adjust the allocation budget based on the current heap size.
-  void adjust_allocation_budget(uword used_outside_space);
-
-  void increase_allocation_budget(uword size);
-
-  void decrease_allocation_budget(uword size);
-
-  void set_allocation_budget(word new_budget);
 
   void clear_mark_bits();
 
@@ -234,43 +222,52 @@ class Space : public LivenessOracle {
     return chunk_list_.first();
   }
 
+  Chunk* remove_chunk() {
+    return chunk_list_.remove_first();
+  }
+
   PageType page_type() { return page_type_; }
+
+  inline void swap(Space& other) {
+    using std::swap;
+    swap(program_, other.program_);
+    swap(chunk_list_, other.chunk_list_);
+    swap(top_, other.top_);
+    swap(limit_, other.limit_);
+    swap(page_type_, other.page_type_);
+  }
+
+  void validate_before_mark_sweep(PageType page_type, bool object_starts_should_be_clear);
 
  protected:
   Space(Program* program, Resizing resizeable, PageType page_type);
 
   friend class Chunk;
-  friend class CompactingVisitor;
-  friend class NoAllocationFailureScope;
-  friend class Program;
-  friend class ProgramHeapRelocator;
   friend class TwoSpaceHeap;
 
   virtual void append(Chunk* chunk);
 
   void free_all_chunks();
 
-  uword top() { return top_; }
+  uword top() const { return top_; }
 
   Program* program_ = null;
   ChunkList chunk_list_;
   uword top_ = 0;               // Allocation top in current chunk.
   uword limit_ = 0;             // Allocation limit in current chunk.
-  // The allocation budget can be used to trigger a GC early, eg. in response
-  // to large amounts of external allocation. If the allocation budget is not
-  // hit, we may still trigger a GC because we are getting close to the limit
-  // for the committed size of the chunks in the heap.
-  word allocation_budget_ = 0;
-
   PageType page_type_;
 };
+
+inline void swap(Space& a, Space& b) {
+  a.swap(b);
+}
 
 class SemiSpace : public Space {
  public:
   SemiSpace(Program* program, Chunk* chunk);
 
   // Returns the total size of allocated objects.
-  virtual uword used();
+  virtual uword used() const;
 
   virtual bool is_alive(HeapObject* old_location);
   virtual HeapObject* new_location(HeapObject* old_location);
@@ -278,7 +275,9 @@ class SemiSpace : public Space {
   // flush will make the current chunk consistent for iteration.
   virtual void flush();
 
-  bool is_flushed();
+  void prepare_metadata_for_mark_sweep();
+
+  virtual bool is_flushed();
 
   void trigger_gc_soon() { limit_ = top_ + SENTINEL_SIZE; }
 
@@ -286,10 +285,6 @@ class SemiSpace : public Space {
   // and causes a fatal error if no garbage collection is needed and
   // there is no room to allocate the object.
   uword allocate(uword size);
-
-  // For the program semispaces.  There is no other space into which we
-  // promote, so it does all work in one go.
-  void complete_scavenge(RootCallback* visitor);
 
   // For the mutable heap.
   void start_scavenge();
@@ -299,15 +294,21 @@ class SemiSpace : public Space {
 
   virtual void append(Chunk* chunk);
 
-  void set_read_only() { top_ = limit_ = 0; }
+  inline void swap(SemiSpace& other) {
+    static_cast<Space&>(*this).swap(static_cast<Space&>(other));
+  }
 
-  void process_weak_pointers(SemiSpace* to_space, OldSpace* old_space);
+  void validate();
 
  private:
   Chunk* allocate_and_use_chunk(uword size);
 
   uword allocate_in_new_chunk(uword size);
 };
+
+inline void swap(SemiSpace& a, SemiSpace& b) {
+  a.swap(b);
+}
 
 class FreeList {
  public:
@@ -417,10 +418,12 @@ class OldSpace : public Space {
 
   virtual HeapObject* new_location(HeapObject* old_location);
 
-  virtual uword used();
+  virtual uword used() const;
 
   // flush will make the current chunk consistent for iteration.
   virtual void flush();
+
+  virtual bool is_flushed() { return top_ == 0; }
 
   // Allocate raw object. Returns 0 if a garbage collection is needed
   // and causes a fatal error if no garbage collection is needed and
@@ -440,9 +443,9 @@ class OldSpace : public Space {
   void rebuild_remembered_set();
 
   // For the objects promoted to the old space during scavenge.
-  inline void start_scavenge() { start_tracking_allocations(); }
+  void start_scavenge();
   bool complete_scavenge(ScavengeVisitor* visitor);
-  inline void end_scavenge() { end_tracking_allocations(); }
+  void end_scavenge();
 
   void start_tracking_allocations();
   void end_tracking_allocations();
@@ -450,23 +453,22 @@ class OldSpace : public Space {
 
   void use_whole_chunk(Chunk* chunk);
 
-  void process_weak_pointers();
-
   void compute_compaction_destinations();
 
-#ifdef DEBUG
-  void verify();
-#endif
+  void validate();
 
   void set_compacting(bool value) { compacting_ = value; }
   bool compacting() { return compacting_; }
 
   void set_used_after_last_gc(uword used) { used_after_last_gc_ = used; }
 
+  uword sweep();
+
   // Tells whether garbage collection is needed.  Only to be called when
   // bump allocation has failed, or on old space after a new-space GC.
   bool needs_garbage_collection() {
-    return used_ > 0 && allocation_budget_ <= 0;
+    if (tracking_allocations_) return false;  // We are already in a scavenge.
+    return used_ > 0 && promotion_failed_;
   }
 
   // For detecting pointless GCs that are really an out-of-memory situation.
@@ -474,11 +476,13 @@ class OldSpace : public Space {
   uword minimum_progress();
   void report_new_space_progress(uword bytes_collected);
   void set_used(uword used) { used_ = used; }
+  void set_promotion_failed(bool value) { promotion_failed_ = value; }
 
  private:
   uword allocate_from_free_list(uword size);
   uword allocate_in_new_chunk(uword size);
   Chunk* allocate_and_use_chunk(uword size);
+  void validate_sweep(Chunk* chunk);
 
   TwoSpaceHeap* heap_;
   FreeList free_list_;  // Free list structure.
@@ -492,6 +496,11 @@ class OldSpace : public Space {
   int successive_pointless_gcs_ = 0;
   uword used_after_last_gc_ = 0;
   uword used_ = 0;               // Allocated bytes.
+  // Record whether a promotion failed during a scavenge, so we can save time
+  // by not trying to promote later objects - they are put in the other
+  // semispace even though they are old enough for promotion.  We also use this
+  // to trigger an old-space GC early.
+  bool promotion_failed_ = false;
 };
 
 // ObjectMemory controls all memory used by object heaps.
@@ -511,11 +520,16 @@ class ObjectMemory {
 
   static uword allocated() { return allocated_; }
 
+  static inline Mutex* spare_chunk_mutex() { return spare_chunk_mutex_; }
+
+  static inline Chunk* spare_chunk(Locker& locker) { return spare_chunk_; }
+  static inline void set_spare_chunk(Locker& locker, Chunk* spare_chunk) { spare_chunk_ = spare_chunk; }
+
  private:
   static std::atomic<uword> allocated_;
 
-  friend class SemiSpace;
-  friend class Space;
+  static Chunk* spare_chunk_;
+  static Mutex* spare_chunk_mutex_;
 };
 
 }  // namespace toit

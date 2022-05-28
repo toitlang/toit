@@ -9,7 +9,8 @@ __entry__main -> none:
   current := task
   current.initialize_entry_task_
   current.evaluate_:
-    #primitive.intrinsics.main main_arguments_
+    args := List_.from_array_ main_arguments_
+    #primitive.intrinsics.main args
 
 // This is the entry point for processes just being spawned.
 // It calls the lambda passed in the spawn arguments.

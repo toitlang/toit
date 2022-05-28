@@ -1,4 +1,4 @@
-// Copyright (c) 2014, the Dartino project authors. Please see the AUTHORS file
+// Copyright (c) 2022, the Dartino project authors. Please see the AUTHORS file
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE.md file.
 
@@ -9,8 +9,6 @@
 
 #include "../../top.h"
 
-#ifndef LEGACY_GC
-
 #include "../../objects.h"
 #include "../../os.h"
 #include "../../utils.h"
@@ -19,27 +17,23 @@
 
 namespace toit {
 
-Chunk::Chunk(Space* owner, uword start, uword size, bool external)
+Chunk::Chunk(Space* owner, uword start, uword size)
       : owner_(owner),
         start_(start),
         end_(start + size),
-        external_(external),
         scavenge_pointer_(start_) {
-  if (GcMetadata::in_metadata_range(start)) {
-    GcMetadata::initialize_overflow_bits_for_chunk(this);
+  if (!GcMetadata::in_metadata_range(start)) {
+    FATAL("Not in metadata range: %p\n", (void*)start);
   }
 }
 
 Chunk::~Chunk() {
-  // If the memory for this chunk is external we leave it alone
-  // and let the embedder deallocate it.
-  if (is_external()) return;
   GcMetadata::mark_pages_for_chunk(this, UNKNOWN_SPACE_PAGE);
   OS::free_pages(reinterpret_cast<void*>(start_), size());
 }
 
 Space::~Space() {
-  // TODO(erik): Call finalizers.
+  // ObjectHeap destructor already called all finalizers.
   free_all_chunks();
 }
 
@@ -82,22 +76,6 @@ HeapObject *Space::object_at_offset(word offset) {
   ASSERT(start <= address);
 
   return HeapObject::from_address(address);
-}
-
-void Space::adjust_allocation_budget(uword used_outside_space) {
-  uword used_bytes = used() + used_outside_space;
-  // Allow heap size to double (but we may hit maximum heap size limits before
-  // that).
-  allocation_budget_ = used_bytes + TOIT_PAGE_SIZE;
-}
-
-void Space::increase_allocation_budget(uword size) { allocation_budget_ += size; }
-
-void Space::decrease_allocation_budget(uword size) { allocation_budget_ -= size; }
-
-void Space::set_allocation_budget(word new_budget) {
-  allocation_budget_ = Utils::max(
-      static_cast<word>(get_default_chunk_size(new_budget)), new_budget);
 }
 
 void Space::iterate_overflowed_objects(RootCallback* visitor, MarkingStack* stack) {
@@ -157,22 +135,21 @@ void Space::iterate_objects(HeapObjectVisitor* visitor) {
   }
 }
 
-void SemiSpace::complete_scavenge(RootCallback* visitor) {
-  flush();
-  for (auto chunk : chunk_list_) {
-    uword current = chunk->start();
-    while (!has_sentinel_at(current)) {
-      HeapObject* object = HeapObject::from_address(current);
-      object->roots_do(program_, visitor);
-      current += object->size(program_);
-      flush();
-    }
-  }
-}
-
 void Space::clear_mark_bits() {
   flush();
-  for (auto chunk : chunk_list_) GcMetadata::clear_mark_bits_for(chunk);
+  for (auto chunk : chunk_list_) GcMetadata::clear_mark_bits_for_chunk(chunk);
+}
+
+void SemiSpace::prepare_metadata_for_mark_sweep() {
+  flush();
+  for (auto chunk : chunk_list_) {
+    GcMetadata::clear_mark_bits_for_chunk(chunk);
+    // Starts in new-space are only used for mark stack overflows,
+    // not for the remembered set.  The mark stack overflow sets the
+    // object start for the cards it needs.
+    GcMetadata::initialize_starts_for_chunk(chunk);
+    GcMetadata::initialize_overflow_bits_for_chunk(chunk);
+  }
 }
 
 bool Space::includes(uword address) {
@@ -180,8 +157,6 @@ bool Space::includes(uword address) {
     if (chunk->includes(address)) return true;
   return false;
 }
-
-#ifdef DEBUG
 
 class InSpaceVisitor : public RootCallback {
  public:
@@ -208,20 +183,23 @@ bool HeapObject::contains_pointers_to(Program* program, Space* space) {
   return visitor.in_space;
 }
 
+#ifdef DEBUG
 void Space::find(uword w, const char* name) {
   for (auto chunk : chunk_list_) chunk->find(w, name);
 }
 #endif
 
 std::atomic<uword> ObjectMemory::allocated_;
-
-void ObjectMemory::set_up() {
-  allocated_ = 0;
-  GcMetadata::set_up();
-}
+Chunk* ObjectMemory::spare_chunk_ = null;
+Mutex* ObjectMemory::spare_chunk_mutex_ = null;
 
 void ObjectMemory::tear_down() {
   GcMetadata::tear_down();
+  if (!spare_chunk_mutex_) FATAL("ObjectMemory::tear_down without set_up");
+  OS::dispose(spare_chunk_mutex_);
+  spare_chunk_mutex_ = null;
+  free_chunk(spare_chunk_);
+  spare_chunk_ = null;
 }
 
 #ifdef DEBUG
@@ -251,9 +229,11 @@ Chunk* ObjectMemory::allocate_chunk(Space* owner, uword size) {
   uword lowest = GcMetadata::lowest_old_space_address();
   USE(lowest);
   if (memory == null) return null;
-  ASSERT(reinterpret_cast<uword>(memory) >= lowest);
-  ASSERT(reinterpret_cast<uword>(memory) - lowest + size <=
-         GcMetadata::heap_extent());
+  if (reinterpret_cast<uword>(memory) < lowest ||
+      reinterpret_cast<uword>(memory) - lowest + size > GcMetadata::heap_extent()) {
+    printf("New allocation %p-%p\n", memory, unvoid_cast<char*>(memory) + size);
+    FATAL("Toit heap outside expected range");
+  }
 
   uword base = reinterpret_cast<uword>(memory);
   Chunk* chunk = _new Chunk(owner, base, size);
@@ -270,6 +250,7 @@ Chunk* ObjectMemory::allocate_chunk(Space* owner, uword size) {
 #endif
   if (owner) {
     GcMetadata::mark_pages_for_chunk(chunk, owner->page_type());
+    chunk->initialize_metadata();
   }
   allocated_ += size;
   return chunk;
@@ -278,17 +259,31 @@ Chunk* ObjectMemory::allocate_chunk(Space* owner, uword size) {
 void Chunk::set_owner(Space* value) {
   owner_ = value;
   GcMetadata::mark_pages_for_chunk(this, value->page_type());
+  initialize_metadata();
+}
+
+void Chunk::initialize_metadata() const {
+  GcMetadata::clear_mark_bits_for_chunk(this);
+  GcMetadata::initialize_overflow_bits_for_chunk(this);
+  GcMetadata::initialize_starts_for_chunk(this);
+  GcMetadata::initialize_remembered_set_for_chunk(this);
 }
 
 void ObjectMemory::free_chunk(Chunk* chunk) {
 #ifdef DEBUG
-  // Do not touch external memory. It might be read-only.
-  if (!chunk->is_external()) chunk->scramble();
+  chunk->scramble();
 #endif
   allocated_ -= chunk->size();
   delete chunk;
 }
 
-}  // namespace toit
+void ObjectMemory::set_up() {
+  allocated_ = 0;
+  GcMetadata::set_up();
+  spare_chunk_ = allocate_chunk(null, TOIT_PAGE_SIZE);
+  if (!spare_chunk_) FATAL("Can't allocate initial spare chunk");
+  if (spare_chunk_mutex_) FATAL("Can't call ObjectMemory::set_up twice");
+  spare_chunk_mutex_ = OS::allocate_mutex(6, "Spare memory chunk");
+}
 
-#endif  // LEGACY_GC
+}  // namespace toit

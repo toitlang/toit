@@ -1,4 +1,4 @@
 INVALID_PROGRAM error. 
-1891
+1915
   0: run_global_initializer_   <sdk>/core/objects.toit:259:1
   1: main                      tests/negative/invalid_program_test.toit:9:3

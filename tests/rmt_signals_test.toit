@@ -16,7 +16,7 @@ main:
 test_signals_construction:
   signals := Signals 4
   expect_equals 4 signals.size
-  expect_equals 8 signals.bytes_.size
+  expect_equals 12 signals.bytes_.size
 
   signals = Signals 5
   expect_equals 5 signals.size
@@ -39,16 +39,16 @@ test_signals_from_alternating:
 
   level := 0
   periods.size.repeat:
-    expect_equals level (signals.signal_level it)
+    expect_equals level (signals.level it)
     level = level ^ 1
-    expect_equals it (signals.signal_period it)
+    expect_equals it (signals.period it)
 
   signals = Signals.alternating --first_level=1 periods
   level = 1
   periods.size.repeat:
-    expect_equals level (signals.signal_level it)
+    expect_equals level (signals.level it)
     level = level ^ 1
-    expect_equals it (signals.signal_period it)
+    expect_equals it (signals.period it)
 
   expect_throw "INVALID_ARGUMENT":
     Signals.alternating --first_level=2 []
@@ -58,22 +58,22 @@ test_signals_from_alternating:
 
 test_signals_getters:
   signals := Signals.alternating --first_level=0 [0, 0x7fff, 0x7fff, 0]
-  expect_equals 0 (signals.signal_level 0)
-  expect_equals 0 (signals.signal_period 0)
+  expect_equals 0 (signals.level 0)
+  expect_equals 0 (signals.period 0)
 
-  expect_equals 1 (signals.signal_level 1)
-  expect_equals 0x7FFF (signals.signal_period 1)
+  expect_equals 1 (signals.level 1)
+  expect_equals 0x7FFF (signals.period 1)
 
-  expect_equals 0 (signals.signal_level 2)
-  expect_equals 0x7FFF (signals.signal_period 2)
+  expect_equals 0 (signals.level 2)
+  expect_equals 0x7FFF (signals.period 2)
 
-  expect_equals 1 (signals.signal_level 3)
-  expect_equals 0 (signals.signal_period 3)
+  expect_equals 1 (signals.level 3)
+  expect_equals 0 (signals.period 3)
 
-  expect_throw "OUT_OF_BOUNDS": signals.signal_level -1
-  expect_throw "OUT_OF_BOUNDS": signals.signal_period -1
-  expect_throw "OUT_OF_BOUNDS": signals.signal_level 4
-  expect_throw "OUT_OF_BOUNDS": signals.signal_period 4
+  expect_throw "OUT_OF_BOUNDS": signals.level -1
+  expect_throw "OUT_OF_BOUNDS": signals.period -1
+  expect_throw "OUT_OF_BOUNDS": signals.level 4
+  expect_throw "OUT_OF_BOUNDS": signals.period 4
 
 test_signals_setter:
   signals := Signals 3
@@ -81,23 +81,23 @@ test_signals_setter:
     expect_equals 0 period
     expect_equals 0 level
 
-  signals.set_signal 0 8 1
+  signals.set 0 --period=8 --level=1
   expect_equals 8
-    signals.signal_period 0
+    signals.period 0
   expect_equals 1
-    signals.signal_level 0
+    signals.level 0
 
-  signals.set_signal 1 0x7FFF 0
+  signals.set 1 --period=0x7FFF --level=0
   expect_equals 0x7FFF
-    signals.signal_period 1
+    signals.period 1
   expect_equals 0
-    signals.signal_level 1
+    signals.level 1
 
-  signals.set_signal 2 0 1
+  signals.set 2 --period=0 --level=1
   expect_equals 0
-    signals.signal_period 2
+    signals.period 2
   expect_equals 1
-    signals.signal_level 0
+    signals.level 0
 
 test_signals_do:
   bytes := #[
@@ -108,7 +108,7 @@ test_signals_do:
     ]
   signals := Signals.from_bytes bytes
   item_count := 0
-  signals.do: | period level |
+  signals.do: | level  period |
     expect_equals item_count period
     expect_equals 0 level
     item_count++

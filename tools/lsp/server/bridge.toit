@@ -69,4 +69,10 @@ main args:
   start_piping pipe.stdin pipe_to --log_stream=log_file --mutex=mutex
   start_piping pipe_from pipe.stdout --log_stream=log_file --mutex=mutex
 
-  exit (pipe.wait_for pid)
+  exit_value := pipe.wait_for pid
+  exit_code := pipe.exit_code exit_value
+  exit_signal := pipe.exit_signal exit_value
+  if exit_signal:
+    throw "$TOIT_RUN exited with signal $exit_signal"
+  if exit_code != 0:
+    throw "$TOIT_RUN exited with code $exit_code"

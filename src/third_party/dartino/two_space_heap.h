@@ -1,4 +1,4 @@
-// Copyright (c) 2014, the Dartino project authors. Please see the AUTHORS file
+// Copyright (c) 2022, the Dartino project authors. Please see the AUTHORS file
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE.md file.
 
@@ -30,18 +30,15 @@ class HeapObjectFunctionVisitor : public HeapObjectVisitor {
 // TwoSpaceHeap represents the container for all HeapObjects.
 class TwoSpaceHeap {
  public:
-  TwoSpaceHeap(Program* program, ObjectHeap* process_heap, Chunk* chunk_1, Chunk* chunk_2);
+  TwoSpaceHeap(Program* program, ObjectHeap* process_heap, Chunk* chunk);
   ~TwoSpaceHeap();
 
   // Allocate raw object. Returns null if a garbage collection is
   // needed.
   HeapObject* allocate(uword size);
 
-  // Max memory that can be added by adding new chunks.  Accounts for whole
-  // chunks, not just the used memory in them.
-  uword max_expansion();
-
-  SemiSpace* space() { return semi_space_; }
+  SemiSpace* new_space() { return &semi_space_; }
+  const SemiSpace* new_space() const { return &semi_space_; }
 
   SemiSpace* take_space();
 
@@ -57,17 +54,17 @@ class TwoSpaceHeap {
 
   void validate();
 
-  // Returns false for allocation failure.
-  bool initialize();
-
   OldSpace* old_space() { return &old_space_; }
-  SemiSpace* unused_space() { return unused_semi_space_; }
 
-  void swap_semi_spaces();
+  word size() { return old_space_.size() + new_space()->size(); }
+
+  void swap_semi_spaces(SemiSpace& from, SemiSpace& to);
+
+  Process* process();
 
   // Iterate over all objects in the heap.
   void iterate_objects(HeapObjectVisitor* visitor) {
-    semi_space_->iterate_objects(visitor);
+    semi_space_.iterate_objects(visitor);
     old_space_.iterate_objects(visitor);
   }
 
@@ -79,73 +76,71 @@ class TwoSpaceHeap {
   // Flush will write cached values back to object memory.
   // Flush must be called before traveral of heap.
   void flush() {
-    semi_space_->flush();
+    semi_space_.flush();
     old_space_.flush();
   }
 
   // Returns the number of bytes allocated in the space.
-  int used() { return old_space_.used() + semi_space_->used(); }
+  int used() const { return old_space_.used() + semi_space_.used(); }
 
-  HeapObject* new_space_allocation_failure(uword size) {
-    if (size >= (semi_space_size_ >> 1)) {
-      uword result = old_space_.allocate(size);
-      if (result != 0) {
-        // The code that populates newly allocated objects assumes that they
-        // are in new space and does not have a write barrier.  We mark the
-        // object dirty immediately, so it is checked by the next GC.
-        GcMetadata::insert_into_remembered_set(result);
-        return HeapObject::from_address(result);
-      }
-    }
-    return null;
-  }
+  HeapObject* new_space_allocation_failure(uword size);
 
-  bool has_empty_new_space() { return semi_space_->top() == semi_space_->single_chunk_start(); }
+  bool has_empty_new_space() { return semi_space_.top() == semi_space_.single_chunk_start(); }
 
   void allocated_foreign_memory(uword size);
 
   void freed_foreign_memory(uword size);
 
-  void collect_new_space();
-  void collect_old_space();
-  void collect_old_space_if_needed(bool force);
-  bool perform_garbage_collection();
+  bool collect_new_space(bool try_hard);
+  void collect_old_space(bool force_compact);
+  bool collect_old_space_if_needed(bool force_compact, bool force);
+  bool perform_garbage_collection(bool force_compact);
+  bool cross_process_gc_needed() const { return malloc_failed_; }
+  void report_malloc_failed() { malloc_failed_ = true; }
   void sweep_heap();
   void compact_heap();
+  void set_promotion_failed() { old_space_.set_promotion_failed(true); }
 
-  uword total_bytes_allocated();
+  uword total_bytes_allocated() const;
+
+  word max_external_allocation();
 
  private:
-  static const uword UNLIMITED_EXPANSION = 0x80000000u - TOIT_PAGE_SIZE;
-
   friend class ScavengeVisitor;
 
   Program* program_;
   ObjectHeap* process_heap_;
   OldSpace old_space_;
-  SemiSpace semi_space_a_;
-  SemiSpace semi_space_b_;
-  SemiSpace* semi_space_;
-  SemiSpace* unused_semi_space_;
+  SemiSpace semi_space_;
   uword water_mark_;
-  uword max_size_;
   uword semi_space_size_;
   uword total_bytes_allocated_ = 0;
+  bool malloc_failed_ = false;
 };
 
 // Helper class for copying HeapObjects.
 class ScavengeVisitor : public RootCallback {
  public:
-  explicit ScavengeVisitor(Program* program, TwoSpaceHeap* heap)
+  explicit ScavengeVisitor(Program* program, TwoSpaceHeap* heap, Chunk* to_chunk)
       : program_(program),
-        to_start_(heap->unused_semi_space_->single_chunk_start()),
-        to_size_(heap->unused_semi_space_->single_chunk_size()),
-        from_start_(heap->space()->single_chunk_start()),
-        from_size_(heap->space()->single_chunk_size()),
-        to_(heap->unused_semi_space_),
+        to_start_(to_chunk->start()),
+        to_size_(to_chunk->size()),
+        from_start_(heap->new_space()->single_chunk_start()),
+        from_size_(heap->new_space()->single_chunk_size()),
+        to_(program, to_chunk),
         old_(heap->old_space()),
         record_(&dummy_record_),
         water_mark_(heap->water_mark_) {}
+
+  SemiSpace* to_space() { return &to_; }
+
+  void complete_scavenge() {
+    bool work_found = true;
+    while (work_found) {
+      work_found = to_.complete_scavenge(this);
+      work_found |= old_->complete_scavenge(this);
+    }
+  }
 
   virtual void do_root(Object** p) { do_roots(p, 1); }
 
@@ -177,7 +172,7 @@ class ScavengeVisitor : public RootCallback {
   uword to_size_;
   uword from_start_;
   uword from_size_;
-  SemiSpace* to_;
+  SemiSpace to_;
   OldSpace* old_;
   bool trigger_old_space_gc_ = false;
   uint8* record_;

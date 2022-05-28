@@ -85,7 +85,7 @@ int main(int argc, char** argv) {
   if (argc != 2) FATAL("wrong number of arguments");
   throwing_new_allowed = true;
   OS::set_up();
-  GcMetadata::set_up();
+  ObjectMemory::set_up();
 
   auto compiled = compile(argv[1]);
   // Compiler resets it in its destructor.

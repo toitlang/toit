@@ -225,7 +225,6 @@ class OS {
   static void free_pages(void* address, uword size);
 
   static Block* allocate_block();
-  static ProgramBlock* allocate_program_block();
   static void free_block(Block* block);
   static void free_block(ProgramBlock* block);
   static void set_writable(ProgramBlock* block, bool value);

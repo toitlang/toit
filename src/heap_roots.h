@@ -71,10 +71,9 @@ class ObjectNotifier : public ObjectNotifierList::Element {
   ObjectNotifier(Process* process, Object* object);
   ~ObjectNotifier();
 
+  Process* process() const { return _process; }
+  ObjectNotifyMessage* message() const { return _message; }
   Object* object() const { return _object; }
-
-  // Notify the state of the object has changed.
-  void notify();
 
   void set_message(ObjectNotifyMessage* message) {
     _message = message;

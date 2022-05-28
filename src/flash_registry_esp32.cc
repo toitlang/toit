@@ -89,7 +89,6 @@ void FlashRegistry::set_up() {
   const void* memory = null;
   esp_partition_mmap(allocations_partition, 0, allocations_size(), SPI_FLASH_MMAP_DATA, &memory, &allocations_handle);
   allocations_memory_ = static_cast<const char*>(memory);
-  printf("[flash reg] address %p, size 0x%08x\n", allocations_memory(), allocations_size());
   ASSERT(allocations_memory() != null);
 }
 

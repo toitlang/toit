@@ -128,7 +128,7 @@ PRIMITIVE(hatch) {
     OTHER_ERROR;
   }
 
-  Process* child = VM::current()->scheduler()->hatch(process->program(), process->group(), method, buffer, manager.initial_memory);
+  Process* child = VM::current()->scheduler()->hatch(process->program(), process->group(), method, buffer, manager.initial_chunk);
   if (!child) MALLOC_FAILED;
 
   manager.dont_auto_free();
@@ -236,13 +236,14 @@ PRIMITIVE(byte_array_convert_to_string) {
 PRIMITIVE(blob_index_of) {
   ARGS(Blob, bytes, int, byte, int, from, int, to);
   if (!(0 <= from && from <= to && to <= bytes.length())) OUT_OF_BOUNDS;
-#ifdef __x86_64__
+#if defined(__x86_64__) && !defined(__SANITIZE_THREAD__)
   const uint8* address = bytes.address();
   // Algorithm from https://github.com/erikcorry/struhchuh.
   // Search for "*" using only aligned SSE2 128 bit loads. This may load data
   // either side of the string, but can never cause a fault because the loads are
   // in 128 bit sections also covered by the string and the fault hardware works
-  // at a higher granularity.
+  // at a higher granularity.  Threadsanitizer doesn't understand this and reports
+  // use-after-frees.
   int last_bits = reinterpret_cast<uintptr_t>(address + from) & 15;
   // The movemask_epi8 instruction takes the top bit of each of the 16 bytes and
   // puts them in the low 16 bits of the register, so we use a 16 bit mask here.
@@ -779,6 +780,35 @@ PRIMITIVE(float_round) {
   if (receiver > pow(10,54)) return _raw_receiver;
   int factor = pow(10, precission);
   return Primitive::allocate_double(round(receiver * factor) / factor, process);
+}
+
+PRIMITIVE(int_parse) {
+  ARGS(Blob, input, int, from, int, to, int, block_arg_dont_use_this);
+  if (!(0 <= from && from < to && to <= input.length())) OUT_OF_RANGE;
+  // Difficult cases, handled by Toit code.  If the ASCII length is always less
+  // than 18 we don't have to worry about 64 bit overflow.
+  if (to - from > 18) OUT_OF_RANGE;
+  uint64 result = 0;
+  bool negative = false;
+  int index = from;
+  const uint8* in = input.address();
+  if (in[index] == '-') {
+    negative = true;
+    index++;
+    if (index == to) INVALID_ARGUMENT;
+  }
+  for (; index < to; index++) {
+    char c = in[index];
+    if ('0' <= c && c <= '9') {
+      result *= 10;
+      result += c - '0';
+    } else if (c == '_') {
+      if (index == from || index == to - 1 || (negative && index == from + 1)) INVALID_ARGUMENT;
+    } else {
+      INVALID_ARGUMENT;
+    }
+  }
+  return Primitive::integer(negative ? -result : result, process);
 }
 
 PRIMITIVE(float_parse) {
@@ -2068,6 +2098,7 @@ PRIMITIVE(profiler_uninstall) {
 PRIMITIVE(set_max_heap_size) {
   ARGS(word, max_bytes);
   process->set_max_heap_size(max_bytes);
+  process->object_heap()->update_pending_limit();
   return process->program()->null_object();
 }
 

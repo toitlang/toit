@@ -71,6 +71,12 @@ bool OS::use_virtual_memory(void* addr, uword sz) {
   uword rounded = Utils::round_down(address, getpagesize());
   uword size = Utils::round_up(end - rounded, getpagesize());
   int result = mprotect(reinterpret_cast<void*>(rounded), size, PROT_READ | PROT_WRITE);
+#ifdef DEBUG
+  // Calls to use_virtual_memory are rounded up by one due to the single-word
+  // object problem, but we don't want to poison data belonging to the next
+  // page's metadata.
+  memset(addr, 0xc1, sz - 1);
+#endif
   if (result == 0) return true;
   if (errno == ENOMEM) return false;
   perror("mprotect");
@@ -94,38 +100,6 @@ Block* OS::allocate_block() {
   void* result = allocate_pages(TOIT_PAGE_SIZE);
   if (!result) return null;
   return new (result) Block();
-}
-
-ProgramBlock* OS::allocate_program_block() {
-#if BUILD_64
-  uword size = TOIT_PAGE_SIZE * 2;
-  void* result = mmap(null, size,
-       PROT_READ | PROT_WRITE,
-       MAP_PRIVATE | MAP_ANON, -1, 0);
-  if (result == MAP_FAILED) return null;
-  uword addr = reinterpret_cast<uword>(result);
-  uword aligned = Utils::round_up(addr, TOIT_PAGE_SIZE);
-  if (aligned != addr) {
-    // Unmap the part at the beginning that we can't use because of alignment.
-    int unmap_result = munmap(reinterpret_cast<void*>(addr), aligned - addr);
-    USE(unmap_result);
-    ASSERT(unmap_result == 0);
-  }
-  if (aligned + TOIT_PAGE_SIZE != addr + size) {
-    // Unmap the part at the end that we can't use because of alignment.
-    int unmap_result = munmap(reinterpret_cast<void*>(aligned + TOIT_PAGE_SIZE), addr + size - aligned - TOIT_PAGE_SIZE);
-    USE(unmap_result);
-    ASSERT(unmap_result == 0);
-  }
-  return new (reinterpret_cast<void*>(aligned)) ProgramBlock();
-#else
-  // Using 4k pages on 32 bit we know that the result of mmap will always be
-  // page aligned.
-  void* result = mmap(null, TOIT_PAGE_SIZE,
-       PROT_READ | PROT_WRITE,
-       MAP_PRIVATE | MAP_ANON, -1, 0);
-  return (result == MAP_FAILED) ? null : new (result) ProgramBlock();
-#endif
 }
 
 void OS::set_writable(ProgramBlock* block, bool value) {

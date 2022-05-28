@@ -30,7 +30,7 @@ namespace toit {
 
 class ProgramHeap : public ProgramRawHeap {
  public:
-  ProgramHeap(Program* program, ProgramBlock* initial_block);
+  ProgramHeap(Program* program);
   ~ProgramHeap();
 
   class Iterator {
@@ -75,7 +75,7 @@ class ProgramHeap : public ProgramRawHeap {
 
   Program* program() { return _program; }
 
-  int64 total_bytes_allocated() { return _total_bytes_allocated; }
+  int64 total_bytes_allocated() const { return _total_bytes_allocated; }
 
 #ifndef DEPLOY
   void enter_gc() {

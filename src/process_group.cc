@@ -45,17 +45,6 @@ Process* ProcessGroup::lookup(int process_id) {
   return null;
 }
 
-#ifdef LEGACY_GC
-word ProcessGroup::largest_number_of_blocks_in_a_process() {
-  ASSERT(VM::current()->scheduler()->is_locked());
-  word largest = 0;
-  for (auto process : _processes) {
-    largest = Utils::max(largest, process->number_of_blocks());
-  }
-  return largest;
-}
-#endif
-
 void ProcessGroup::add(Process* process) {
   ASSERT(VM::current()->scheduler()->is_locked());
   _processes.prepend(process);

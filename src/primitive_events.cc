@@ -31,25 +31,10 @@ PRIMITIVE(read_state) {
 }
 
 PRIMITIVE(register_monitor_notifier) {
-  ARGS(Object, monitor, ResourceGroup, resource_group, Resource, resource);
+  ARGS(Object, monitor, ResourceGroup, group, Resource, resource);
 
-  ObjectNotifier* notifier = resource->object_notifier();
-  if (notifier) {
-    notifier->update_object(monitor);
-    return process->program()->null_object();
-  }
-
-  notifier = _new ObjectNotifier(process, monitor);
-  if (notifier == null) MALLOC_FAILED;
-
-  ObjectNotifyMessage* message = _new ObjectNotifyMessage(notifier);
-  if (message == null) {
-    delete notifier;
-    MALLOC_FAILED;
-  }
-  notifier->set_message(message);
-
-  resource_group->event_source()->set_object_notifier(resource, notifier);
+  EventSource* source = group->event_source();
+  if (!source->update_resource_monitor(resource, process, monitor)) MALLOC_FAILED;
   return process->program()->null_object();
 }
 
@@ -58,8 +43,8 @@ PRIMITIVE(unregister_monitor_notifier) {
 
   ResourceGroup* group = group_proxy->as_external<ResourceGroup>();
   Resource* resource = resource_proxy->as_external<Resource>();
-  if (group && resource && resource->object_notifier()) {
-    group->event_source()->set_object_notifier(resource, null);
+  if (group && resource) {
+    group->event_source()->delete_resource_monitor(resource);
   }
   return process->program()->null_object();
 }

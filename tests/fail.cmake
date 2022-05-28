@@ -14,16 +14,14 @@
 # directory of this repository.
 
 if ("${CMAKE_SIZEOF_VOID_P}" EQUAL 4)
-  # The test crashes (instead of failing). Ctest doesn't have a way to deal with that.
+  # For tests that crash (instead of failing). Ctest doesn't have a way to deal
+  # with that, so we skip the test.
   # See https://gitlab.kitware.com/cmake/cmake/-/issues/20397
-  # For now simply skip it.
   set(TOIT_SKIP_TESTS
-    # Note: the test shouldn't crash. In the internal version the test succeeds.
-    tests/max_heap_size_test.toit
   )
 endif()
 
-set(TOIT_FAILING_TESTS
+list(APPEND TOIT_SKIP_TESTS
 )
 
 if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows" OR "${CMAKE_SYSTEM_NAME}" STREQUAL "MSYS")
