@@ -39,7 +39,7 @@ monitor Latch:
   Receives the value.
 
   This method blocks until the value is available.
-  Should be called at most once for each instance of the class.
+  May be called multiple times.
   */
   get:
     await: has_value_
@@ -56,6 +56,10 @@ monitor Latch:
   set value:
     value_ = value
     has_value_ = true
+
+  /** Whether this latch has already a value set. */
+  has_value -> bool:
+    return has_value_
 
   has_value_ := false
   value_ := null
