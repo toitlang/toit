@@ -39,6 +39,7 @@ namespace toit {
   fn(UARTResource)                      \
   fn(I2SResource)                       \
   fn(AdcState)                          \
+  fn(PcntUnitResource)                  \
   fn(PWMResource)                       \
   fn(RMTResource)                       \
   fn(GAPResource)                       \
@@ -73,6 +74,8 @@ namespace toit {
   fn(SubprocessResourceGroup)           \
   fn(PersistentResourceGroup)           \
   fn(X509ResourceGroup)                 \
+  fn(PcntChannelResourceGroup)          \
+  fn(PcntUnitResourceGroup)             \
   fn(PWMResourceGroup)                  \
 
 #define MAKE_ENUM(name)                 \
