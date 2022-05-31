@@ -72,9 +72,12 @@ void* tracing_malloc(size_t size, const char* file, int line) {
 #undef realloc
 void* tracing_realloc(void* ptr, size_t size, const char* file, int line) {
   void* result = realloc(ptr, size);
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wuse-after-free"
   if (Flags::cheap) {
     printf("%s:%d: realloc [%p] %zd [%p]\n", file, line, ptr, size, result);
   }
+#pragma GCC diagnostic pop
   return result;
 }
 
