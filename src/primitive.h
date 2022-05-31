@@ -488,7 +488,7 @@ namespace toit {
   PRIMITIVE(config_interrupt, 2)             \
 
 #define MODULE_ADC(PRIMITIVE)               \
-  PRIMITIVE(init, 3)                        \
+  PRIMITIVE(init, 4)                        \
   PRIMITIVE(get, 2)                         \
   PRIMITIVE(close, 1)                       \
 
