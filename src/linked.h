@@ -464,6 +464,7 @@ class DoubleLinkedListElement {
 
  private:
   T* container() { return static_cast<T*>(this); }
+  const T* container() const { return static_cast<const T*>(this); }
 
   void insert_after(DoubleLinkedListElement* entry) {
     ASSERT(entry->_next == entry);
@@ -562,6 +563,43 @@ class DoubleLinkedList {
     Element* _entry;
   };
 
+  class ConstIterator {
+   public:
+    explicit ConstIterator(const Element* entry)
+        : _entry(entry) {}
+
+    inline const T* operator->() {
+      return _entry->container();
+    }
+
+    inline const T* operator*() {
+      return _entry->container();
+    }
+
+    inline bool operator==(const ConstIterator& other) const {
+      return _entry == other._entry;
+    }
+
+    inline bool operator!=(const ConstIterator& other) const {
+      return _entry != other._entry;
+    }
+
+    inline ConstIterator& operator++() {
+      _entry = _entry->next();
+      return *this;
+    }
+
+    inline ConstIterator& operator--() {
+      _entry = _entry->prev();
+      return *this;
+    }
+
+   private:
+    friend class DoubleLinkedList;
+
+    const Element* _entry;
+  };
+
   // Inserts before the element where predicate(T*) first returns true.
   // If the predicate never returns true, appends instead.  Returns whether or
   // not it was appended.
@@ -653,8 +691,10 @@ class DoubleLinkedList {
   }
 
   Iterator begin() { return Iterator(_anchor.next()); }
+  ConstIterator begin() const { return ConstIterator(_anchor.next()); }
 
   Iterator end() { return Iterator(&_anchor); }
+  ConstIterator end() const { return ConstIterator(&_anchor); }
 
  protected:
   Element _anchor;

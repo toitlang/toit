@@ -56,7 +56,7 @@ class TwoSpaceHeap {
 
   OldSpace* old_space() { return &old_space_; }
 
-  word size() { return old_space_.size() + new_space()->size(); }
+  word size() const { return old_space_.size() + new_space()->size(); }
 
   void swap_semi_spaces(SemiSpace& from, SemiSpace& to);
 

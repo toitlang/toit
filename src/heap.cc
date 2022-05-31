@@ -422,10 +422,6 @@ Object* ObjectHeap::next_finalizer_to_run() {
   return result;
 }
 
-Usage ObjectHeap::usage(const char* name) {
-  return Usage(name, 0, 0);  // TODO: Usage report.
-}
-
 ObjectNotifier::ObjectNotifier(Process* process, Object* object)
     : _process(process)
     , _object(object)

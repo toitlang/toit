@@ -528,9 +528,9 @@ Object* Scheduler::process_stats(Array* array, int group_id, int process_id, Pro
     case 4:
       array->at_put(3, Smi::from(subject_process->message_count()));
     case 3:
-      array->at_put(2, Smi::from(subject_process->usage()->reserved()));
+      array->at_put(2, Smi::from(subject_process->object_heap()->bytes_reserved()));
     case 2:
-      array->at_put(1, Smi::from(subject_process->usage()->allocated()));
+      array->at_put(1, Smi::from(subject_process->object_heap()->bytes_allocated()));
     case 1:
       array->at_put(0, Smi::from(subject_process->gc_count()));
     case 0:

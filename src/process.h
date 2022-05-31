@@ -75,7 +75,6 @@ class Process : public ProcessListFromProcessGroup::Element,
   void gc(bool try_hard) {
     if (program() == null) return;
     object_heap()->gc(try_hard);
-    _memory_usage = object_heap()->usage("object heap after gc");
   }
 
   bool idle_since_gc() const { return _idle_since_gc; }
@@ -101,12 +100,9 @@ class Process : public ProcessListFromProcessGroup::Element,
   Program* program() { return _program; }
   ProcessGroup* group() { return _group; }
   ObjectHeap* object_heap() { return &_object_heap; }
-  Usage* usage() { return &_memory_usage; }
   Task* task() { return object_heap()->task(); }
 
   ProcessRunner* runner() const { return _runner; }
-
-  void print();
 
   Method entry() const { return _entry; }
   char** args() { return _args; }
@@ -242,7 +238,6 @@ class Process : public ProcessListFromProcessGroup::Element,
   uint8* _hatch_arguments;
 
   ObjectHeap _object_heap;
-  Usage _memory_usage;
   int64 _last_bytes_allocated;
 
   MessageFIFO _messages;
