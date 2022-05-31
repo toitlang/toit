@@ -81,7 +81,7 @@ class Utils {
     }
   }
 
-  static uint8 popcount_table[256];
+  static const uint8 popcount_table[256];
 
   // Count ones in the binary representation.
   template<typename T>

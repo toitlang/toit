@@ -319,7 +319,7 @@ bool Utils::is_valid_utf_8(const uint8* buffer, int length) {
 #define L4 4, 5, 5, 6, 5, 6, 6, 7,
 #define L5 5, 6, 6, 7, 6, 7, 7, 8,
 
-uint8 Utils::popcount_table[256] = {
+const uint8 Utils::popcount_table[256] = {
   L0 L1 L1 L2 L1 L2 L2 L3
   L1 L2 L2 L3 L2 L3 L3 L4
   L1 L2 L2 L3 L2 L3 L3 L4
