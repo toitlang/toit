@@ -16,10 +16,10 @@ main:
 
 test_empty:
   parser := ArgumentParser
-  expect_error "Unknown option -f": parser.parse --exit_on_error=false ["-f"]
-  expect_error "Unknown option --foo": parser.parse --exit_on_error=false ["--foo"]
-  expect_error "Unknown option --foo": parser.parse --exit_on_error=false ["--foo=value"]
-  expect_error "Unknown option --foo": parser.parse --exit_on_error=false ["--foo", "value"]
+  expect_error "Unknown option -f": parser.parse ["-f"]
+  expect_error "Unknown option --foo": parser.parse ["--foo"]
+  expect_error "Unknown option --foo": parser.parse ["--foo=value"]
+  expect_error "Unknown option --foo": parser.parse ["--foo", "value"]
 
 test_command:
   parser := ArgumentParser
@@ -39,10 +39,10 @@ test_command:
   expect_equals "foo" r.rest[0]
 
   sub1.add_flag "foo" --short="f"
-  expect_error "Unknown option --foo": parser.parse --exit_on_error=false ["--foo"]
-  expect_error "Unknown option -f": parser.parse --exit_on_error=false ["-f"]
-  expect_error "Unknown option --foo": parser.parse --exit_on_error=false ["sub2", "--foo"]
-  expect_error "Unknown option -f": parser.parse --exit_on_error=false ["sub2", "-f"]
+  expect_error "Unknown option --foo": parser.parse ["--foo"]
+  expect_error "Unknown option -f": parser.parse ["-f"]
+  expect_error "Unknown option --foo": parser.parse ["sub2", "--foo"]
+  expect_error "Unknown option -f": parser.parse ["sub2", "-f"]
 
   r = parser.parse ["sub1"]
   expect (not r["foo"])
@@ -155,12 +155,12 @@ test_option:
   expect (not r["verbose"])
   expect r["foobar"]
 
-  expect_error "No value provided for option --x": parser.parse --exit_on_error=false ["--x"]
-  expect_error "No value provided for option --xy": parser.parse --exit_on_error=false ["--xy"]
-  expect_error "No value provided for option --a": parser.parse --exit_on_error=false ["--a"]
-  expect_error "No value provided for option --ab": parser.parse --exit_on_error=false ["--ab"]
+  expect_error "No value provided for option --x": parser.parse ["--x"]
+  expect_error "No value provided for option --xy": parser.parse ["--xy"]
+  expect_error "No value provided for option --a": parser.parse ["--a"]
+  expect_error "No value provided for option --ab": parser.parse ["--ab"]
 
-  expect_error "Option was provided multiple times: --ab=2": parser.parse --exit_on_error=false ["--ab=0", "--ab=2"]
+  expect_error "Option was provided multiple times: --ab=2": parser.parse ["--ab=0", "--ab=2"]
 
 test_option_alias:
   parser := ArgumentParser
@@ -172,10 +172,10 @@ test_option_alias:
   expect_equals "123" r["evaluate"]
   r = parser.parse ["--evaluate=123"]
   expect_equals "123" r["evaluate"]
-  expect_error "Unknown option --evaluate123": parser.parse --exit_on_error=false ["--evaluate123"]
+  expect_error "Unknown option --evaluate123": parser.parse ["--evaluate123"]
 
-  expect_error "No value provided for option -e": parser.parse --exit_on_error=false ["-e"]
-  expect_error "Unknown option --e234": parser.parse --exit_on_error=false ["--e234"]
+  expect_error "No value provided for option -e": parser.parse ["-e"]
+  expect_error "Unknown option --e234": parser.parse ["--e234"]
 
   r = parser.parse ["-e", "234"]
   expect_equals "234" r["evaluate"]
@@ -210,7 +210,7 @@ test_multi_option:
   expect_list_equals ["123"] r["option"]
   r = parser.parse ["--option=123"]
   expect_list_equals ["123"] r["option"]
-  expect_error "Unknown option --option123": parser.parse --exit_on_error=false ["--option123"]
+  expect_error "Unknown option --option123": parser.parse ["--option123"]
 
   r = parser.parse ["--option", "123", "--option=456"]
   expect_list_equals ["123", "456"] r["option"]
@@ -221,7 +221,7 @@ test_multi_option:
   expect_list_equals ["123"] r["multi"]
   r = parser.parse ["--multi=123"]
   expect_list_equals ["123"] r["multi"]
-  expect_error "Unknown option --multi123": parser.parse --exit_on_error=false ["--multi123"]
+  expect_error "Unknown option --multi123": parser.parse ["--multi123"]
 
   r = parser.parse ["--multi", "123", "--multi=456"]
   expect_list_equals ["123", "456"] r["multi"]
