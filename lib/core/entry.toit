@@ -36,6 +36,14 @@ __entry__task lambda -> none:
 main_arguments_:
   #primitive.core.args
 
+/**
+Returns the name of the toit file, image, or snapshot that the
+  current program was run from.  May return null if this information
+  is not available.
+*/
+program_name -> string?:
+  #primitive.core.command
+
 spawn_method_ -> int:
   #primitive.core.hatch_method
 

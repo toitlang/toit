@@ -81,6 +81,7 @@ int main(int argc, char **argv) {
   ObjectMemory::set_up();
 
   char* image_filename = argv[1];
+  Flags::program_name = image_filename;
   FILE* file = fopen(image_filename, "rb");
   if (file == null) {
     FATAL("Couldn't open file");
