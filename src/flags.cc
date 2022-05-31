@@ -137,6 +137,8 @@ static void process_argument(const char* argument) {
   FLAGS_DO(PROCESS_DEBUG_FLAG, PROCESS_DEPLOY_FLAG);
 }
 
+const char* Flags::command = null;
+
 int Flags::process_args(int* argc, char** argv) {
   // Compute number of provided flag arguments.
   int number_of_flags = 0;

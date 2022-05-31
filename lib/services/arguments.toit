@@ -3,11 +3,21 @@
 // found in the lib/LICENSE file.
 
 class ArgumentParser:
-  /// Returns a new $ArgumentParser for the given command.
-  add_command name/string -> ArgumentParser:
+  constructor --.rest_minimum/int?=null --.rest_description/string?=null:
+
+  /**
+  Add a new command to the parser.
+  The optional `rest` argument is a list of strings, each of which describes the
+    non-option rest arguments that follow the command.  It is used to check usage
+    and provide error messages.
+  Returns a new $ArgumentParser for the given command.
+  */
+  add_command name/string --rest/List?=null -> ArgumentParser:
     // TODO(kasper): Check if we already have a parser for the given
     // command name. Don't allow duplicates.
-    return commands_[name] = ArgumentParser
+    minimum := rest ? rest.size : null
+    description := rest ? "<$(rest.join "> <")>" : null
+    return commands_[name] = ArgumentParser --rest_minimum=minimum --rest_description=description
 
   /// Adds a boolean flag for the given name. Always defaults to false. Can be
   ///   set to true by passing '--<name>' or '-<short>' if short isn't null.
@@ -20,7 +30,7 @@ class ArgumentParser:
     options_["--$name"] = Option_ name --default=default
     if short: add_alias name short
 
-  /// Adds an option that can be provide multiple times.
+  /// Adds an option that can be provided multiple times.
   add_multi_option name/string --split_commas/bool=true --short/string?=null -> none:
     options_["--$name"] = Option_ name --is_multi_option --split_commas=split_commas
     if short: add_alias name short
@@ -31,11 +41,56 @@ class ArgumentParser:
 
   /// Parses the given $arguments. Returns a new instance of $Arguments.
   parse arguments -> Arguments:
-    return parse_ this null arguments 0
+    try:
+      return parse_ this null arguments 0
+    finally: | is_exception exception |
+      if is_exception:
+        print_on_stderr_ "$exception.value"
+        print_on_stderr_
+            usage arguments
+        exit 1
 
   commands_ := {:}
   options_ := {:}
+  rest_description/string?
+  rest_minimum/int?
 
+  /// Provides a usage guide for the user.  The arguments list is
+  ///   used to limit usage to a subcommand if any.
+  usage arguments index/int=0 --invoked_command=program_name -> string:
+    result := "Usage:"
+    prefix := "toit.run $invoked_command "
+    parser := this
+    while arguments.size > index:
+      command := arguments[index]
+      if parser.commands_.contains command:
+        prefix += command + " "
+        parser = commands_[command]
+        index++
+      else:
+        break
+    return "Usage:" + (parser.usage_ --prefix=prefix)
+
+  usage_ --prefix -> string:
+    options_.do: | name option |
+      if name.starts_with "--":
+        display_name := name
+        options_.do: | shortname shortoption |
+          if shortname != name and shortoption == option:
+            display_name = "$display_name|$shortname"
+        if option.is_flag:
+          prefix = "$(prefix)[$display_name] "
+        else:
+          star := option.is_multi_option ? "*" : ""
+          prefix = "<$(prefix)[$display_name=<$name[2..]>]$star "
+    if commands_.is_empty:
+      if rest_description:
+        return "\n$prefix $rest_description"
+      return "\n$prefix"
+    result := ""
+    commands_.do: | command subparser |
+      result += subparser.usage_ --prefix="$prefix$command "
+    return result
 
 class Arguments:
   constructor .command_:
@@ -140,6 +195,9 @@ parse_ grammar command arguments index:
     else:
       rest.add argument
     index++
+
+  if grammar.rest_minimum and rest.size < grammar.rest_minimum:
+    throw "Too few arguments"
 
   // Construct an [Arguments] object and return it.
   return Arguments command options rest
