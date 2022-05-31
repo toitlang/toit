@@ -40,7 +40,7 @@ class ArgumentParser:
     options_["-$short"] = options_["--$name"]
 
   /// Parses the given $arguments. Returns a new instance of $Arguments.
-  parse arguments -> Arguments:
+  parse arguments --exit_on_error/bool=true -> Arguments:
     try:
       return parse_ this null arguments 0
     finally: | is_exception exception |
@@ -48,7 +48,9 @@ class ArgumentParser:
         print_on_stderr_ "$exception.value"
         print_on_stderr_
             usage arguments
-        exit 1
+        if exit_on_error:
+          exit 1
+        throw exception.value
 
   commands_ := {:}
   options_ := {:}
@@ -82,7 +84,7 @@ class ArgumentParser:
           prefix = "$(prefix)[$display_name] "
         else:
           star := option.is_multi_option ? "*" : ""
-          prefix = "<$(prefix)[$display_name=<$name[2..]>]$star "
+          prefix = "$(prefix)[$display_name=<$name[2..]>]$star "
     if commands_.is_empty:
       if rest_description:
         return "\n$prefix $rest_description"
