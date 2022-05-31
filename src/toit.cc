@@ -169,7 +169,7 @@ int main(int argc, char **argv) {
       print_usage(1);
     }
     int bundle_argv_index = with_flag ? 2 : 1;
-    Flags::command = argv[bundle_argv_index];
+    Flags::program_name = argv[bundle_argv_index];
     char* bundle_file = argv[bundle_argv_index];
     auto bundle = SnapshotBundle::read_from_file(bundle_file);
     if (!bundle.is_valid()) print_usage(1);
@@ -320,7 +320,7 @@ int main(int argc, char **argv) {
       }
     }
 
-    Flags::command = source_path;
+    Flags::program_name = source_path;
 
     // We break after the first argument that isn't a flag.
     // This means that there is always at most one source-file.

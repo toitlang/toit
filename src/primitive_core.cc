@@ -474,9 +474,9 @@ PRIMITIVE(read_int_little_endian) {
 }
 
 PRIMITIVE(command) {
-  if (Flags::command == null) return process->program()->null_object();
+  if (Flags::program_name == null) return process->program()->null_object();
   Error* error = null;
-  String* arg = process->allocate_string(Flags::command, &error);
+  String* arg = process->allocate_string(Flags::program_name, &error);
   if (arg == null) return error;
   return arg;
 }

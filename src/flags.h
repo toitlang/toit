@@ -81,7 +81,7 @@ class Flags {
  public:
   FLAGS_DO(DECLARE_DEBUG_FLAG, DECLARE_DEPLOY_FLAG)
 
-  static const char* command;
+  static const char* program_name;
 
 #ifndef IOT_DEVICE
   static int process_args(int* argc, char** argv);

@@ -59,7 +59,7 @@ class ArgumentParser:
 
   /// Provides a usage guide for the user.  The arguments list is
   ///   used to limit usage to a subcommand if any.
-  usage arguments index/int=0 --invoked_command=program_name -> string:
+  usage arguments/List index/int=0 --invoked_command=program_name -> string:
     result := "Usage:"
     prefix := "toit.run $invoked_command "
     parser := this
