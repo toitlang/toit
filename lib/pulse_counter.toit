@@ -29,17 +29,17 @@ main:
 A pulse-counter channel.
 */
 class Channel:
-  unit_/Unit
-  channel_id_/int
-  closed_/bool := false
+  unit_ /Unit
+  // Null if the channel is closed.
+  channel_id_ /int? := ?
 
   /**
   Constructs a channel for the $unit using the given given $pin.
 
   The pin is automatically set to input with a pullup.
   */
-  constructor.private_ unit/Unit pin/gpio.Pin \
-      on_positive_edge/int on_negative_edge/int \
+  constructor.private_ unit/Unit pin/gpio.Pin
+      on_positive_edge/int on_negative_edge/int
       control_pin/gpio.Pin? when_control_low/int when_control_high/int:
     check_edge_mode_ on_positive_edge
     check_edge_mode_ on_negative_edge
@@ -51,6 +51,7 @@ class Channel:
     channel_id_ = pcnt_new_channel_ unit.unit_resource_ pin.num \
         on_positive_edge on_negative_edge \
         control_pin_num when_control_low when_control_high
+    add_finalizer this:: close
 
   /**
   Closes this channel.
@@ -58,9 +59,12 @@ class Channel:
   The resources for the channel are returned and can be used for a different configuration.
   */
   close:
-    if closed_: return
-    closed_ = true
-    pcnt_close_channel_ unit_.unit_resource_ channel_id_
+    if not channel_id_: return
+    remove_finalizer this
+    channel_id := channel_id_
+    channel_id_ = null
+    unit_.remove_channel_ this
+    pcnt_close_channel_ unit_.unit_resource_ channel_id
 
   static check_edge_mode_ edge_mode/int -> none:
     if not (Unit.DO_NOTHING <= edge_mode <= Unit.DECREMENT): throw "INVALID_ARGUMENT"
@@ -74,8 +78,8 @@ A pulse-counter unit.
 The unit shares a counter that is changed by its channels.
 */
 class Unit:
-  unit_resource_ /ByteArray
-  closed_/bool := false
+  unit_resource_ /ByteArray? := ?
+  channels_ /List ::= []
 
   /** The channel Does nothing, when the edge change occurs. */
   static DO_NOTHING /int ::= 0
@@ -126,6 +130,7 @@ class Unit:
     else:
       glitch_filter_ns = -1
     unit_resource_ = pcnt_new_unit_ resource_group_ low high glitch_filter_ns
+    add_finalizer this:: close
 
   /**
   Adds the channel to this counter.
@@ -150,9 +155,23 @@ class Unit:
       --control_pin /gpio.Pin? = null
       --when_control_low /int = KEEP
       --when_control_high /int = KEEP:
-     return Channel.private_ this pin \
-         on_positive_edge on_negative_edge \
-         control_pin when_control_low when_control_high
+    if is_closed: throw "ALREADY_CLOSED"
+    channel := Channel.private_ this pin \
+        on_positive_edge on_negative_edge \
+        control_pin when_control_low when_control_high
+    channels_.add channel
+    return channel
+
+  /**
+  Removes the channel from the internal list.
+  This function must be called by the $Channel when it is closed.
+  */
+  remove_channel_ channel/Channel -> none:
+    channels_.remove channel
+
+  /** Whether this unit is closed. */
+  is_closed -> bool:
+    return unit_resource_ == null
 
   /**
   Closes this unit.
@@ -160,33 +179,42 @@ class Unit:
   Frees all the underlying resources.
   */
   close:
-    if closed_: return
-    // TODO(florian): do we need to keep track of the channels and close them?
-    // The underlying resources are already freed.
-    closed_ = true
-    pcnt_close_unit_ unit_resource_
+    if is_closed: return
+    unit_resource := unit_resource_
+    unit_resource_ = null
+    remove_finalizer this
+    channels_.do: it.close
+    assert: channels_.is_empty
+    pcnt_close_unit_ unit_resource
 
   /**
   The value of the counter.
 
   The ESP32 hardware supports up to 16 bits, but the range can be limited by providing
     `high` and `low` values to the constructor.
+
+  The unit must not be closed.
   */
   value -> int:
+    if is_closed: throw "ALREADY_CLOSED"
     return pcnt_get_count_ unit_resource_
 
   /**
   Resets the counter to 0.
   */
   clear -> none:
+    if is_closed: throw "ALREADY_CLOSED"
     pcnt_clear_ unit_resource_
 
   /**
   Resumes the counter.
 
   It is safe to call this method multiple times.
+
+  The unit must not be closed.
   */
   start -> none:
+    if is_closed: throw "ALREADY_CLOSED"
     pcnt_start_ unit_resource_
 
   /**
@@ -195,6 +223,8 @@ class Unit:
   It is safe to call this method multiple times.
 
   The value of the unit is unaffected by this method.
+
+  The unit must not be closed.
   */
   stop -> none:
     pcnt_stop_ unit_resource_

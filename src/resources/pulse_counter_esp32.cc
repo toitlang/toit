@@ -46,7 +46,7 @@ class PcntUnitResource : public Resource {
  public:
   TAG(PcntUnitResource);
   PcntUnitResource(ResourceGroup* group, pcnt_unit_t unit_id, int16 low_limit, int16 high_limit, uint32 glitch_filter_ns)
-    : Resource(group)
+      : Resource(group)
     , _unit_id(unit_id)
     , _low_limit(low_limit)
     , _high_limit(high_limit)
@@ -167,7 +167,7 @@ class PcntUnitResource : public Resource {
   }
 
   // The unit id should not be exposed to the user.
-  pcnt_unit_t unit_id() { return _unit_id; }
+  pcnt_unit_t unit_id() const { return _unit_id; }
 
   // Returns the APB ticks for a given glitch filter configuration.
   // The glitch filter runs on the APB clock, which generally is clocked at 80MHz.
@@ -193,7 +193,7 @@ class PcntUnitResourceGroup : public ResourceGroup {
  public:
   TAG(PcntUnitResourceGroup);
   explicit PcntUnitResourceGroup(Process* process)
-     : ResourceGroup(process) {}
+      : ResourceGroup(process) {}
 
  protected:
   virtual void on_unregister_resource(Resource* r) override {
