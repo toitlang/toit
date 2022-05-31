@@ -79,6 +79,7 @@ The unit shares a counter that is changed by its channels.
 */
 class Unit:
   unit_resource_ /ByteArray? := ?
+  is_closed_ /bool := false
   channels_ /List ::= []
 
   /** The channel Does nothing, when the edge change occurs. */
@@ -171,7 +172,7 @@ class Unit:
 
   /** Whether this unit is closed. */
   is_closed -> bool:
-    return unit_resource_ == null
+    return is_closed_
 
   /**
   Closes this unit.
@@ -180,11 +181,15 @@ class Unit:
   */
   close:
     if is_closed: return
+    is_closed_ = true
+    remove_finalizer this
+    // The $Channel.close method needs the unit resource. Don't clear it
+    // before the channels are closed.
+    // Make a copy, since the `close` methods will change the channels_ list.
+    channels_.copy.do: it.close
+    assert: channels_.is_empty
     unit_resource := unit_resource_
     unit_resource_ = null
-    remove_finalizer this
-    channels_.do: it.close
-    assert: channels_.is_empty
     pcnt_close_unit_ unit_resource
 
   /**
