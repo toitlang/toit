@@ -131,8 +131,14 @@ Method Program::find_method(Object* receiver, int offset) {
     arg = bcp[1];                                           \
   interpret_##opcode##_impl:
 
+// Avoid unused value warnings.
+template<typename T>
+static inline T& maybe_unused_value(T& x) {
+  return x;
+}
+
 #define PUSH(o)            ({ Object* _o_ = o; *(--sp) = _o_; })
-#define POP()              (*(sp++))
+#define POP()              (maybe_unused_value(*(sp++)))
 #define DROP(n)            ({ int _n_ = n; sp += _n_; })
 #define STACK_AT(n)        ({ int _n_ = n; (*(sp + _n_)); })
 #define STACK_AT_PUT(n, o) ({ int _n_ = n; Object* _o_ = o; *(sp + _n_) = _o_; })
