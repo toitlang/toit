@@ -280,6 +280,14 @@ scheduler_err_t Scheduler::send_system_message(Locker& locker, SystemMessage* me
   return MESSAGE_OK;
 }
 
+void Scheduler::send_notify_message(ObjectNotifier* notifier) {
+  Locker locker(_mutex);
+  Process* process = notifier->process();
+  if (process->state() == Process::TERMINATING) return;
+  process->_append_message(notifier->message());
+  process_ready(locker, process);
+}
+
 bool Scheduler::signal_process(Process* sender, int target_id, Process::Signal signal) {
   if (sender != _boot_process) return false;
 
@@ -733,7 +741,7 @@ void Scheduler::tick(Locker& locker) {
     if (process == null) continue;
     if (process == _boot_process) continue;
     int64 runtime = process->current_run_duration(now);
-    if (runtime > WATCHDOG_PERIOD_US) {
+    if (Flags::enable_watchdog && runtime > WATCHDOG_PERIOD_US) {
       process->signal(Process::WATCHDOG);
     }
   }

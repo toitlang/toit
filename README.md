@@ -137,7 +137,9 @@ Fetched in submodule path 'esp-idf/components/coap/libcoap/ext/tinydtls', but it
 try following the steps outlined [here](https://github.com/toitlang/toit/issues/88). It is an issue in the upstream ESP-IDF repository
 caused by the `tinydtls` component having changed its remote URL.
 
-To use the [offical ESP-IDF](https://github.com/espressif/esp-idf), or [any other variation](https://github.com/espressif/esp-idf/network/members), make sure it is available in your file system and point IDF_PATH to its path instead before building.
+To use the [offical ESP-IDF](https://github.com/espressif/esp-idf), or [any other variation](https://github.com/espressif/esp-idf/network/members), you need to add the Toit specific patches first.
+
+Then make sure it is available in your file system and point IDF_PATH to its path instead before building.
 
 ``` sh
 export IDF_PATH=<A_DIFFERENT_ESP_IDF>

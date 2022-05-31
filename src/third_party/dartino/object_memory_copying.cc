@@ -128,9 +128,14 @@ bool SemiSpace::is_alive(HeapObject* old_location) {
 
 void Space::append(Chunk* chunk) {
   chunk->set_owner(this);
-  // Insert chunk in increasing address order in the list.  This is
-  // useful for the partial compactor.
-  chunk_list_.insert_before(chunk, [&chunk](Chunk* it) { return it->start() > chunk->start(); });
+  // We could insert chunks in increasing address order.  See the git history
+  // pre-May-22 for the code for that.  This might be useful for a partial
+  // compactor, but we don't have partial compaction currently.  Instead we
+  // just append the new chunk at the end, which gives predictable behaviour
+  // even with randomized allocation addresses, and ensures that if the space
+  // shrinks down again the smallest (oldest) chunks will be left, avoiding a
+  // large mostly-empty chunk at the start of the space.
+  chunk_list_.append(chunk);
 }
 
 void SemiSpace::append(Chunk* chunk) {
@@ -161,7 +166,7 @@ uword SemiSpace::allocate(uword size) {
   return 0;
 }
 
-uword SemiSpace::used() {
+uword SemiSpace::used() const {
   ASSERT(chunk_list_.first() == chunk_list_.last());
   return (top() - chunk_list_.last()->start());
 }

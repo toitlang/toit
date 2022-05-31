@@ -99,6 +99,9 @@ class Scheduler {
   // Send message to the process by id. Returns an error code to signal whether the message was delivered.
   scheduler_err_t send_message(int process_id, Message* message);
 
+  // Send notify message.
+  void send_notify_message(ObjectNotifier* notifier);
+
   // Send a signal to a target process. Returns true if sender was able to
   // deliver the signal.
   bool signal_process(Process* sender, int target_id, Process::Signal signal);

@@ -77,9 +77,11 @@ class ObjectHeap {
   void process_registered_finalizers(RootCallback* ss, LivenessOracle* from_space);
   void process_registered_vm_finalizers(RootCallback* ss, LivenessOracle* from_space);
 
-  Program* program() { return _program; }
+  Program* program() const { return _program; }
 
-  int64 total_bytes_allocated() { return _external_bytes_allocated + _two_space_heap.total_bytes_allocated(); }
+  int64 total_bytes_allocated() const { return _external_memory + _two_space_heap.total_bytes_allocated(); }
+  uword external_memory() const { return _external_memory; }
+  bool has_limit() const { return _limit != _max_heap_size; }
   uword limit() const { return _limit; }
 
   void enter_gc() {}
@@ -126,7 +128,7 @@ class ObjectHeap {
   void set_task(Task* task);
 
   // Garbage collection operation for runtime objects.
-  int gc(bool try_hard);
+  void gc(bool try_hard);
 
   bool add_finalizer(HeapObject* key, Object* lambda);
   bool has_finalizer(HeapObject* key, Object* lambda);
@@ -147,12 +149,21 @@ class ObjectHeap {
   void set_max_heap_size(word bytes) { _max_heap_size = bytes; }
   word max_heap_size() const { return _max_heap_size; }
 
-  bool should_allow_external_allocation(word size);
+  word max_external_allocation();
   void register_external_allocation(word size);
   void unregister_external_allocation(word size);
   bool has_max_heap_size() const { return _max_heap_size != 0; }
-  void install_heap_limit() { _limit = _pending_limit; }
+
+  void check_install_heap_limit() {
+    if (_limit != _pending_limit) install_heap_limit();
+  }
+
   void iterate_roots(RootCallback* callback);
+
+  // Update the memory limit for triggering the next old-space GC.  We base
+  // this on a multiple of the number of chunks in use and the externally
+  // allocated memory just after the previous GC.
+  word update_pending_limit();
 
  private:
   Program* const _program;
@@ -160,21 +171,18 @@ class ObjectHeap {
     return _two_space_heap.allocate(byte_size);
   }
 
+  void install_heap_limit();
+
   bool _in_gc = false;
   bool _gc_allowed = true;
-  int64 _external_bytes_allocated = 0;
   AllocationResult _last_allocation_result = ALLOCATION_SUCCESS;
 
   Process* _owner;
   TwoSpaceHeap _two_space_heap;
 
-  // An estimate of how much memory overhead malloc has.
-  static const word _EXTERNAL_MEMORY_ALLOCATOR_OVERHEAD = 2 * sizeof(word);
+  static const word _UNLIMITED_EXPANSION = 0x7fffffff;
 
-  // Minimum number of heap blocks we limit ourselves to.
-  static const word _MIN_BLOCK_LIMIT = 4;
-
-  // Number of bytes used before forcing a scavenge, including external memory.
+  // Number of bytes used before forcing a GC, including external memory.
   // Set to zero to have no limit.
   word _limit = 0;
   // This limit will be installed at the end of the current primitive.
@@ -197,11 +205,8 @@ class ObjectHeap {
 
   HeapRootList _external_roots;
 
-  // Calculate the memory limit for scavenge based on the number of live blocks
-  // and the externally allocated memory.
-  word _calculate_limit();
-
   friend class ObjectNotifier;
+  friend class Process;
 };
 
 class NoGC {

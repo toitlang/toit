@@ -286,12 +286,6 @@ int Process::message_count() {
   return count;
 }
 
-void Process::send_mail(Message* message) {
-  if (_state == TERMINATING) return;
-  _append_message(message);
-  VM::current()->scheduler()->process_ready(this);
-}
-
 void Process::_ensure_random_seeded() {
   if (_random_seeded) return;
   uint8 seed[16];
