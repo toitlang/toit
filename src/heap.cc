@@ -122,7 +122,8 @@ ObjectHeap::ObjectHeap(Program* program, Process* owner, Chunk* initial_chunk)
     : _program(program)
     , _owner(owner)
     , _two_space_heap(program, this, initial_chunk)
-    , _external_memory(0) {
+    , _external_memory(0)
+    , _total_external_memory(0) {
   if (!initial_chunk) return;
   _task = allocate_task();
   ASSERT(_task);  // Should not fail, because a newly created heap has at least
@@ -182,6 +183,7 @@ void ObjectHeap::register_external_allocation(word size) {
   if (size == 0) return;
   // Overloading on an atomic type makes an atomic += and returns new value.
   _external_memory += size;
+  _total_external_memory += size;
 }
 
 void ObjectHeap::unregister_external_allocation(word size) {
