@@ -41,10 +41,6 @@ int OS::num_cores() {
 }
 
 
-void OS::free_block(Block* block) {
-  free_pages(void_cast(block), TOIT_PAGE_SIZE);
-}
-
 void OS::free_block(ProgramBlock* block) {
   free_pages(void_cast(block), TOIT_PAGE_SIZE);
 }
@@ -94,12 +90,6 @@ void OS::unuse_virtual_memory(void* addr, uword sz) {
     perror("mprotect");
     exit(1);
   }
-}
-
-Block* OS::allocate_block() {
-  void* result = allocate_pages(TOIT_PAGE_SIZE);
-  if (!result) return null;
-  return new (result) Block();
 }
 
 void OS::set_writable(ProgramBlock* block, bool value) {

@@ -46,7 +46,7 @@ void Space::free_all_chunks() {
   top_ = limit_ = 0;
 }
 
-uword Space::size() {
+uword Space::size() const {
   uword result = 0;
   for (auto chunk : chunk_list_) result += chunk->size();
   ASSERT(used() <= result);

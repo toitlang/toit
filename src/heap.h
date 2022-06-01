@@ -19,7 +19,6 @@
 
 #include "heap_roots.h"
 #include "linked.h"
-#include "memory.h"
 #include "objects.h"
 #include "primitive.h"
 #include "printing.h"
@@ -79,7 +78,9 @@ class ObjectHeap {
 
   Program* program() const { return _program; }
 
-  int64 total_bytes_allocated() const { return _external_memory + _two_space_heap.total_bytes_allocated(); }
+  int64 total_bytes_allocated() const { return _total_external_memory + _two_space_heap.total_bytes_allocated(); }
+  int64 bytes_reserved() const { return _external_memory + _two_space_heap.size(); }
+  int64 bytes_allocated() const { return _external_memory + _two_space_heap.used(); }
   uword external_memory() const { return _external_memory; }
   bool has_limit() const { return _limit != _max_heap_size; }
   uword limit() const { return _limit; }
@@ -105,7 +106,6 @@ class ObjectHeap {
     _last_allocation_result = result;
   }
 
-  Usage usage(const char* name);
   Process* owner() { return _owner; }
 
  public:
@@ -190,6 +190,7 @@ class ObjectHeap {
 
   word _max_heap_size = 0;  // Configured max heap size, incl. external allocation.
   std::atomic<word> _external_memory;  // Allocated external memory in bytes.
+  std::atomic<word> _total_external_memory;  // Includes memory that was later freed.
 
   Task* _task = null;
   ObjectNotifierList _object_notifiers;
