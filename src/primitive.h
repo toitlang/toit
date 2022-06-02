@@ -159,6 +159,7 @@ namespace toit {
   PRIMITIVE(object_class_id, 1)              \
   PRIMITIVE(number_to_integer, 1)            \
   PRIMITIVE(float_sqrt, 1)                   \
+  PRIMITIVE(command, 0)                      \
   PRIMITIVE(args, 0)                         \
   PRIMITIVE(hatch, 2)                        \
   PRIMITIVE(hatch_method, 0)                 \

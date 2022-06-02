@@ -45,7 +45,6 @@ Process::Process(Program* program, ProcessRunner* runner, ProcessGroup* group, S
     , _hatch_method(Method::invalid())
     , _hatch_arguments(null)
     , _object_heap(program, this, initial_chunk)
-    , _memory_usage(Usage("initial object heap"))
     , _last_bytes_allocated(0)
     , _termination_message(termination)
     , _random_seeded(false)
@@ -337,14 +336,6 @@ void Process::signal(Signal signal) {
 
 void Process::clear_signal(Signal signal) {
   _signals &= ~signal;
-}
-
-void Process::print() {
-  printf("Process #%d\n", _id);
-  Usage u = object_heap()->usage("heap");
-  ProgramUsage p = program()->usage();
-  u.print(2);
-  p.print(2);
 }
 
 }
