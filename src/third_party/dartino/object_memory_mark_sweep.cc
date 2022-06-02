@@ -443,16 +443,6 @@ static void INLINE object_mem_move(uword dest, uword source, uword size) {
   }
 }
 
-static int INLINE find_first_set(uint32 x) {
-#ifdef _MSC_VER
-  unsigned long index;  // NOLINT
-  bool non_zero = _BitScanForward(&index, x);
-  return index + non_zero;
-#else
-  return __builtin_ffs(x);
-#endif
-}
-
 CompactingVisitor::CompactingVisitor(Program* program,
                                      OldSpace* space,
                                      FixPointersVisitor* fix_pointers_visitor)
@@ -468,7 +458,7 @@ uword CompactingVisitor::visit(HeapObject* object) {
   if ((bits & 1) == 0) {
     // Object is unmarked.
     if (bits != 0) {
-      return (find_first_set(bits) - 1) << WORD_SIZE_LOG_2;
+      return Utils::ctz(bits) << WORD_SIZE_LOG_2;
     }
     // If all the bits in this mark word are zero, then let's see if we can
     // skip a bit more.
@@ -476,7 +466,7 @@ uword CompactingVisitor::visit(HeapObject* object) {
     // This never runs over the end of the chunk because the last word in the
     // chunk (the sentinel) is artificially marked live.
     while (*++bits_addr == 0) next_live_object += GcMetadata::CARD_SIZE;
-    next_live_object += (find_first_set(*bits_addr) - 1) << WORD_SIZE_LOG_2;
+    next_live_object += Utils::ctz(*bits_addr) << WORD_SIZE_LOG_2;
     ASSERT(next_live_object - object->_raw() >= (uword)object->size(program_));
     return next_live_object - object->_raw();
   }

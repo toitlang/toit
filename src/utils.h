@@ -81,10 +81,21 @@ class Utils {
     }
   }
 
+  static const uint8 popcount_table[256];
+
   // Count ones in the binary representation.
   template<typename T>
   static inline int popcount(T x) {
     typename std::make_unsigned<T>::type u = x;
+#ifdef __XTENSA__
+    int result = 0;
+    for (int i = 0; i < sizeof(u); i++) {
+      uint8 b = u & 0xff;
+      result += popcount_table[b];
+      u >>= 8;
+    }
+    return result;
+#else
     if (sizeof(T) == sizeof(long long)) {
       return __builtin_popcountll(u);
     } else if (sizeof(T) == sizeof(long)) {
@@ -93,6 +104,7 @@ class Utils {
       ASSERT(sizeof(T) <= sizeof(unsigned));
       return __builtin_popcount(u);
     }
+#endif
   }
 
   template<typename T>

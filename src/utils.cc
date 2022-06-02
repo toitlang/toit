@@ -312,6 +312,20 @@ bool Utils::is_valid_utf_8(const uint8* buffer, int length) {
 #endif
 }
 
+#define L0 0, 1, 1, 2, 1, 2, 2, 3,
+#define L1 1, 2, 2, 3, 2, 3, 3, 4,
+#define L2 2, 3, 3, 4, 3, 4, 4, 5,
+#define L3 3, 4, 4, 5, 4, 5, 5, 6,
+#define L4 4, 5, 5, 6, 5, 6, 6, 7,
+#define L5 5, 6, 6, 7, 6, 7, 7, 8,
+
+const uint8 Utils::popcount_table[256] = {
+  L0 L1 L1 L2 L1 L2 L2 L3
+  L1 L2 L2 L3 L2 L3 L3 L4
+  L1 L2 L2 L3 L2 L3 L3 L4
+  L2 L3 L3 L4 L3 L4 L4 L5
+};
+
 const char* vm_git_version() { return VM_GIT_VERSION; }
 const char* vm_git_info() { return VM_GIT_INFO; }
 const char* vm_sdk_model() { return TOIT_MODEL; }
