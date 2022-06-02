@@ -44,7 +44,7 @@ class Adc:
   Note that chip-specific limitations apply, generally the precision at
     various voltage ranges.
 
-  If $allow_dangerous is provided, actives ADC pins that are dangerous to use.
+  If $allow_restricted is provided, allows pins that are restricted.
     See the ESP32 section below.
 
   # ESP32
@@ -52,10 +52,10 @@ class Adc:
     ADC2 (pins 0, 2, 4, 12-15, 25-27) has lots of restrictions. It can't be
     used when WiFi is active, and some of the pins are
     strapping pins). By default, ADC2 is disabled, and users need to pass in the
-    $allow_dangerous flag to allow its use.
+    $allow_restricted flag to allow its use.
   */
-  constructor .pin --max_voltage/float?=null --allow_dangerous/bool=false:
-    state_ = adc_init_ resource_freeing_module_ pin.num allow_dangerous (max_voltage ? max_voltage : 0.0)
+  constructor .pin --max_voltage/float?=null --allow_restricted/bool=false:
+    state_ = adc_init_ resource_freeing_module_ pin.num allow_restricted (max_voltage ? max_voltage : 0.0)
 
   /**
   Measures the voltage on the Pin.
@@ -71,7 +71,7 @@ class Adc:
       adc_close_ state_
       state_ = null
 
-adc_init_ group num allow_dangerous max:
+adc_init_ group num allow_restricted max:
   #primitive.adc.init
 
 adc_get_ state samples:

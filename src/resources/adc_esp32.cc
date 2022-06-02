@@ -134,7 +134,7 @@ static adc_atten_t get_atten(int mv) {
 MODULE_IMPLEMENTATION(adc, MODULE_ADC)
 
 PRIMITIVE(init) {
-  ARGS(SimpleResourceGroup, group, int, pin, bool, allow_dangerous, double, max);
+  ARGS(SimpleResourceGroup, group, int, pin, bool, allow_restricted, double, max);
 
   if (max < 0.0) INVALID_ARGUMENT;
 
@@ -151,7 +151,7 @@ PRIMITIVE(init) {
 
     err = adc1_config_channel_atten((adc1_channel_t)chan, atten);
     if (err != ESP_OK) return Primitive::os_error(err, process);
-  } else if (allow_dangerous) {
+  } else if (allow_restricted) {
     chan = get_adc2_channel(pin);
     if (chan >= 0) {
       unit = ADC_UNIT_2;
