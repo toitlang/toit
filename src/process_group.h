@@ -43,8 +43,6 @@ class ProcessGroup : public ProcessGroupList::Element {
   // if there are more processes left in the group.
   bool remove(Process* process);
 
-  word largest_number_of_blocks_in_a_process();
-
   ProcessListFromProcessGroup& processes() { return _processes; }
 
  private:
