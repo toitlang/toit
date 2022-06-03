@@ -424,8 +424,8 @@ void FixPointersVisitor::do_roots(Object** start, int length) {
 // This is faster than the builtin memmove because we know the source and
 // destination are aligned and we know the size is at least 1 word.  Also
 // we know that any overlap is only in one direction.
-// In particular this is a huge win on the ESP32, more than doubling the
-// speed of the mark-sweep-compact.
+// In particular this is a big win on the ESP32, giving about 15% improvement
+// on the speed of mark-sweep-compact.
 static void INLINE object_mem_move(uword dest, uword source, uword size) {
   // Within one page we can be sure that source > dest because we are
   // compacting down, but the chunks are not in any particular order so we
