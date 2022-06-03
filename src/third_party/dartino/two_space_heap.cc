@@ -29,10 +29,6 @@ Process* TwoSpaceHeap::process() {
   return process_heap_->owner();
 }
 
-TwoSpaceHeap::~TwoSpaceHeap() {
-  // TODO(erik): Call all finalizers.
-}
-
 HeapObject* TwoSpaceHeap::allocate(uword size) {
   uword result = semi_space_.allocate(size);
   if (result == 0) {

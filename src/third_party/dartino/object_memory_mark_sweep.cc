@@ -424,7 +424,8 @@ void FixPointersVisitor::do_roots(Object** start, int length) {
 // This is faster than the builtin memmove because we know the source and
 // destination are aligned and we know the size is at least 1 word.  Also
 // we know that any overlap is only in one direction.
-// TODO(Erik): Check this is still true on ESP32.
+// In particular this is a huge win on the ESP32, more than doubling the
+// speed of the mark-sweep-compact.
 static void INLINE object_mem_move(uword dest, uword source, uword size) {
   // Within one page we can be sure that source > dest because we are
   // compacting down, but the chunks are not in any particular order so we
@@ -520,7 +521,6 @@ uword OldSpace::sweep() {
           // areas are at least 32 words long.
           // The object starts may end up pointing at one of these single free
           // word things, but that's OK because they are iterable.
-          // TODO: Use fast SIMD instructions to write these 32 pointers.
           for (int i = 0; i < GcMetadata::CARD_SIZE / WORD_SIZE; i++) {
             if ((bits & (1U << i)) == 0) {
               *reinterpret_cast<word*>(line + (i << WORD_SIZE_LOG_2)) = SINGLE_FREE_WORD;
