@@ -533,7 +533,7 @@ PRIMITIVE(init) {
 
   ble_hs_cfg.sync_cb = ble_on_sync;
 
-  // Nimble needs to be initialized before the server setup is being executed.
+  // NimBLE needs to be initialized before the server setup is executed.
   nimble_port_init();
 
   if (__args[0] != process->program()->null_object()) {
@@ -542,6 +542,7 @@ PRIMITIVE(init) {
     int ret = group->init_server();
     if (ret != ESP_OK) {
       group->tear_down();
+      delete gap;  // Resource isn't registered in group yet.
       return Primitive::os_error(ret, process);
     }
   }
