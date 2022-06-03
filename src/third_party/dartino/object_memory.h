@@ -146,7 +146,7 @@ class Space : public LivenessOracle {
   enum Resizing { CAN_RESIZE, CANNOT_RESIZE };
 
   // Returns the total size of allocated objects.
-  virtual uword used() = 0;
+  virtual uword used() const = 0;
 
   // flush will make the current chunk consistent for iteration.
   virtual void flush() = 0;
@@ -165,7 +165,7 @@ class Space : public LivenessOracle {
   virtual HeapObject* new_location(HeapObject* old_location) = 0;
 
   // Returns the total size of allocated chunks.
-  uword size();
+  uword size() const;
 
   // Iterate over all objects in this space.
   void iterate_objects(HeapObjectVisitor* visitor);
@@ -176,15 +176,6 @@ class Space : public LivenessOracle {
   // Returns true if the address is inside this space.  Not particularly fast.
   // See GcMetadata::PageType for a faster possibility.
   bool includes(uword address);
-
-  // Adjust the allocation budget based on the current heap size.
-  void adjust_allocation_budget(uword used_outside_space);
-
-  void increase_allocation_budget(uword size);
-
-  void decrease_allocation_budget(uword size);
-
-  void set_allocation_budget(word new_budget);
 
   void clear_mark_bits();
 
@@ -243,7 +234,6 @@ class Space : public LivenessOracle {
     swap(chunk_list_, other.chunk_list_);
     swap(top_, other.top_);
     swap(limit_, other.limit_);
-    swap(allocation_budget_, other.allocation_budget_);
     swap(page_type_, other.page_type_);
   }
 
@@ -259,18 +249,12 @@ class Space : public LivenessOracle {
 
   void free_all_chunks();
 
-  uword top() { return top_; }
+  uword top() const { return top_; }
 
   Program* program_ = null;
   ChunkList chunk_list_;
   uword top_ = 0;               // Allocation top in current chunk.
   uword limit_ = 0;             // Allocation limit in current chunk.
-  // The allocation budget can be used to trigger a GC early, eg. in response
-  // to large amounts of external allocation. If the allocation budget is not
-  // hit, we may still trigger a GC because we are getting close to the limit
-  // for the committed size of the chunks in the heap.
-  word allocation_budget_ = TOIT_PAGE_SIZE;
-
   PageType page_type_;
 };
 
@@ -283,7 +267,7 @@ class SemiSpace : public Space {
   SemiSpace(Program* program, Chunk* chunk);
 
   // Returns the total size of allocated objects.
-  virtual uword used();
+  virtual uword used() const;
 
   virtual bool is_alive(HeapObject* old_location);
   virtual HeapObject* new_location(HeapObject* old_location);
@@ -434,7 +418,7 @@ class OldSpace : public Space {
 
   virtual HeapObject* new_location(HeapObject* old_location);
 
-  virtual uword used();
+  virtual uword used() const;
 
   // flush will make the current chunk consistent for iteration.
   virtual void flush();
@@ -484,7 +468,7 @@ class OldSpace : public Space {
   // bump allocation has failed, or on old space after a new-space GC.
   bool needs_garbage_collection() {
     if (tracking_allocations_) return false;  // We are already in a scavenge.
-    return used_ > 0 && allocation_budget_ <= 0;
+    return used_ > 0 && promotion_failed_;
   }
 
   // For detecting pointless GCs that are really an out-of-memory situation.
@@ -492,6 +476,7 @@ class OldSpace : public Space {
   uword minimum_progress();
   void report_new_space_progress(uword bytes_collected);
   void set_used(uword used) { used_ = used; }
+  void set_promotion_failed(bool value) { promotion_failed_ = value; }
 
  private:
   uword allocate_from_free_list(uword size);
@@ -511,6 +496,11 @@ class OldSpace : public Space {
   int successive_pointless_gcs_ = 0;
   uword used_after_last_gc_ = 0;
   uword used_ = 0;               // Allocated bytes.
+  // Record whether a promotion failed during a scavenge, so we can save time
+  // by not trying to promote later objects - they are put in the other
+  // semispace even though they are old enough for promotion.  We also use this
+  // to trigger an old-space GC early.
+  bool promotion_failed_ = false;
 };
 
 // ObjectMemory controls all memory used by object heaps.

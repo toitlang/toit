@@ -123,23 +123,23 @@ class LinkedList {
     explicit Iterator(LinkedListElement<T, N>* entry)
         : _entry(entry) {}
 
-    inline T* operator->() {
+    T* operator->() {
       return _entry->container();
     }
 
-    inline T* operator*() {
+    T* operator*() {
       return _entry->container();
     }
 
-    inline bool operator==(const Iterator&other) const {
+    bool operator==(const Iterator&other) const {
       return _entry == other._entry;
     }
 
-    inline bool operator!=(const Iterator&other) const {
+    bool operator!=(const Iterator&other) const {
       return _entry != other._entry;
     }
 
-    inline Iterator& operator++() {
+    Iterator& operator++() {
       _entry = _entry->next();
       return *this;
     }
@@ -155,23 +155,23 @@ class LinkedList {
     explicit ConstIterator(const LinkedListElement<T, N>* entry)
         : _entry(entry) {}
 
-    inline const T* operator->() {
+    const T* operator->() {
       return _entry->container();
     }
 
-    inline const T* operator*() {
+    const T* operator*() {
       return _entry->container();
     }
 
-    inline bool operator==(const ConstIterator&other) const {
+    bool operator==(const ConstIterator&other) const {
       return _entry == other._entry;
     }
 
-    inline bool operator!=(const ConstIterator&other) const {
+    bool operator!=(const ConstIterator&other) const {
       return _entry != other._entry;
     }
 
-    inline ConstIterator& operator++() {
+    ConstIterator& operator++() {
       _entry = _entry->next();
       return *this;
     }
@@ -464,6 +464,7 @@ class DoubleLinkedListElement {
 
  private:
   T* container() { return static_cast<T*>(this); }
+  const T* container() const { return static_cast<const T*>(this); }
 
   void insert_after(DoubleLinkedListElement* entry) {
     ASSERT(entry->_next == entry);
@@ -530,28 +531,28 @@ class DoubleLinkedList {
     explicit Iterator(Element* entry)
         : _entry(entry) {}
 
-    inline T* operator->() {
+    T* operator->() {
       return _entry->container();
     }
 
-    inline T* operator*() {
+    T* operator*() {
       return _entry->container();
     }
 
-    inline bool operator==(const Iterator&other) const {
+    bool operator==(const Iterator&other) const {
       return _entry == other._entry;
     }
 
-    inline bool operator!=(const Iterator&other) const {
+    bool operator!=(const Iterator&other) const {
       return _entry != other._entry;
     }
 
-    inline Iterator& operator++() {
+    Iterator& operator++() {
       _entry = _entry->next();
       return *this;
     }
 
-    inline Iterator& operator--() {
+    Iterator& operator--() {
       _entry = _entry->prev();
       return *this;
     }
@@ -560,6 +561,43 @@ class DoubleLinkedList {
     friend class DoubleLinkedList;
 
     Element* _entry;
+  };
+
+  class ConstIterator {
+   public:
+    explicit ConstIterator(const Element* entry)
+        : _entry(entry) {}
+
+    const T* operator->() {
+      return _entry->container();
+    }
+
+    const T* operator*() {
+      return _entry->container();
+    }
+
+    bool operator==(const ConstIterator& other) const {
+      return _entry == other._entry;
+    }
+
+    bool operator!=(const ConstIterator& other) const {
+      return _entry != other._entry;
+    }
+
+    ConstIterator& operator++() {
+      _entry = _entry->next();
+      return *this;
+    }
+
+    ConstIterator& operator--() {
+      _entry = _entry->prev();
+      return *this;
+    }
+
+   private:
+    friend class DoubleLinkedList;
+
+    const Element* _entry;
   };
 
   // Inserts before the element where predicate(T*) first returns true.
@@ -653,8 +691,10 @@ class DoubleLinkedList {
   }
 
   Iterator begin() { return Iterator(_anchor.next()); }
+  ConstIterator begin() const { return ConstIterator(_anchor.next()); }
 
   Iterator end() { return Iterator(&_anchor); }
+  ConstIterator end() const { return ConstIterator(&_anchor); }
 
  protected:
   Element _anchor;

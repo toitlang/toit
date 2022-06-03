@@ -45,7 +45,6 @@ Process::Process(Program* program, ProcessRunner* runner, ProcessGroup* group, S
     , _hatch_method(Method::invalid())
     , _hatch_arguments(null)
     , _object_heap(program, this, initial_chunk)
-    , _memory_usage(Usage("initial object heap"))
     , _last_bytes_allocated(0)
     , _termination_message(termination)
     , _random_seeded(false)
@@ -286,12 +285,6 @@ int Process::message_count() {
   return count;
 }
 
-void Process::send_mail(Message* message) {
-  if (_state == TERMINATING) return;
-  _append_message(message);
-  VM::current()->scheduler()->process_ready(this);
-}
-
 void Process::_ensure_random_seeded() {
   if (_random_seeded) return;
   uint8 seed[16];
@@ -343,14 +336,6 @@ void Process::signal(Signal signal) {
 
 void Process::clear_signal(Signal signal) {
   _signals &= ~signal;
-}
-
-void Process::print() {
-  printf("Process #%d\n", _id);
-  Usage u = object_heap()->usage("heap");
-  ProgramUsage p = program()->usage();
-  u.print(2);
-  p.print(2);
 }
 
 }

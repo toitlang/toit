@@ -37,11 +37,8 @@ class TwoSpaceHeap {
   // needed.
   HeapObject* allocate(uword size);
 
-  // Max memory that can be added by adding new chunks.  Accounts for whole
-  // chunks, not just the used memory in them.
-  uword max_expansion();
-
   SemiSpace* new_space() { return &semi_space_; }
+  const SemiSpace* new_space() const { return &semi_space_; }
 
   SemiSpace* take_space();
 
@@ -58,6 +55,8 @@ class TwoSpaceHeap {
   void validate();
 
   OldSpace* old_space() { return &old_space_; }
+
+  word size() const { return old_space_.size() + new_space()->size(); }
 
   void swap_semi_spaces(SemiSpace& from, SemiSpace& to);
 
@@ -82,21 +81,9 @@ class TwoSpaceHeap {
   }
 
   // Returns the number of bytes allocated in the space.
-  int used() { return old_space_.used() + semi_space_.used(); }
+  int used() const { return old_space_.used() + semi_space_.used(); }
 
-  HeapObject* new_space_allocation_failure(uword size) {
-    if (size >= (semi_space_size_ >> 1)) {
-      uword result = old_space_.allocate(size);
-      if (result != 0) {
-        // The code that populates newly allocated objects assumes that they
-        // are in new space and does not have a write barrier.  We mark the
-        // object dirty immediately, so it is checked by the next GC.
-        GcMetadata::insert_into_remembered_set(result);
-        return HeapObject::from_address(result);
-      }
-    }
-    return null;
-  }
+  HeapObject* new_space_allocation_failure(uword size);
 
   bool has_empty_new_space() { return semi_space_.top() == semi_space_.single_chunk_start(); }
 
@@ -104,20 +91,21 @@ class TwoSpaceHeap {
 
   void freed_foreign_memory(uword size);
 
-  void collect_new_space(bool try_hard);
+  bool collect_new_space(bool try_hard);
   void collect_old_space(bool force_compact);
-  void collect_old_space_if_needed(bool force_compact, bool force);
+  bool collect_old_space_if_needed(bool force_compact, bool force);
   bool perform_garbage_collection(bool force_compact);
   bool cross_process_gc_needed() const { return malloc_failed_; }
   void report_malloc_failed() { malloc_failed_ = true; }
   void sweep_heap();
   void compact_heap();
+  void set_promotion_failed() { old_space_.set_promotion_failed(true); }
 
-  uword total_bytes_allocated();
+  uword total_bytes_allocated() const;
+
+  word max_external_allocation();
 
  private:
-  static const uword UNLIMITED_EXPANSION = 0x80000000u - TOIT_PAGE_SIZE;
-
   friend class ScavengeVisitor;
 
   Program* program_;

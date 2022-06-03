@@ -122,14 +122,16 @@ ObjectHeap::ObjectHeap(Program* program, Process* owner, Chunk* initial_chunk)
     : _program(program)
     , _owner(owner)
     , _two_space_heap(program, this, initial_chunk)
-    , _external_memory(0) {
+    , _external_memory(0)
+    , _total_external_memory(0) {
   if (!initial_chunk) return;
   _task = allocate_task();
   ASSERT(_task);  // Should not fail, because a newly created heap has at least
                   // enough space for the task structure.
   _global_variables = program->global_variables.copy();
   // Currently the heap is empty and it has one block allocated for objects.
-  _limit = _pending_limit = _calculate_limit();
+  update_pending_limit();
+  _limit = _pending_limit;
 }
 
 ObjectHeap::~ObjectHeap() {
@@ -153,34 +155,42 @@ ObjectHeap::~ObjectHeap() {
   ASSERT(_object_notifiers.is_empty());
 }
 
-word ObjectHeap::_calculate_limit() {
-  word length = _two_space_heap.used() + _external_memory;
-  word MIN = 4096;
-  word new_limit = Utils::max(MIN, length + length / 2);
+word ObjectHeap::update_pending_limit() {
+  word length = _two_space_heap.size() + _external_memory;
+  // We call a new GC when the heap size has doubled, in an attempt to do
+  // meaningful work before the next GC, but while still not allowing the heap
+  // to grow too much when there is garbage to be found.
+  word MIN = TOIT_PAGE_SIZE;
+  word new_limit = Utils::max(MIN, length * 2);
   if (has_max_heap_size()) {
-    new_limit = Utils::min(_max_heap_size, new_limit);
+    // If the user set a max then we feel more justified in using up to that
+    // much memory, so we allow the heap to quadruple before the next GC, but
+    // limited by the max.
+    new_limit = Utils::min(_max_heap_size, new_limit * 2);
   }
+  _pending_limit = new_limit;
   return new_limit;
 }
 
-bool ObjectHeap::should_allow_external_allocation(word size) {
-  if (_limit == 0) return true;
-  word external_allowed = _limit - 4096;
-  return external_allowed >= _external_memory + _EXTERNAL_MEMORY_ALLOCATOR_OVERHEAD + size;
+word ObjectHeap::max_external_allocation() {
+  if (!has_limit() && !has_max_heap_size()) return _UNLIMITED_EXPANSION;
+  word total = _external_memory + _two_space_heap.size();
+  if (total >= _limit) return 0;
+  return _limit - total;
 }
 
 void ObjectHeap::register_external_allocation(word size) {
   if (size == 0) return;
   // Overloading on an atomic type makes an atomic += and returns new value.
-  _external_memory += _EXTERNAL_MEMORY_ALLOCATOR_OVERHEAD + size;
-  _external_bytes_allocated += size;
+  _external_memory += size;
+  _total_external_memory += size;
 }
 
 void ObjectHeap::unregister_external_allocation(word size) {
   if (size == 0) return;
   // Overloading on an atomic type makes an atomic += and returns new value.
   uword old_external_memory = _external_memory;
-  uword external_memory = _external_memory -= _EXTERNAL_MEMORY_ALLOCATOR_OVERHEAD + size;
+  uword external_memory = _external_memory -= size;
   USE(old_external_memory);
   USE(external_memory);
   // Check that the external memory does not underflow into 'negative' range.
@@ -293,12 +303,27 @@ void ObjectHeap::iterate_roots(RootCallback* callback) {
   }
 }
 
-int ObjectHeap::gc(bool try_hard) {
-  _two_space_heap.collect_new_space(try_hard);
+void ObjectHeap::gc(bool try_hard) {
+  bool old_space_done = _two_space_heap.collect_new_space(try_hard);
   _gc_count++;
-  _pending_limit = _calculate_limit();  // GC limit to install after next GC.
-  _limit = _max_heap_size;  // Only the hard limit for the rest of this primitive.
-  return 0;  // TODO: Return blocks freed?
+  // Update the pending limit that will be installed after the current
+  // primitive (that caused the GC) completes.
+  if (old_space_done) update_pending_limit();
+  // Use only the hard limit for the rest of this primitive.  We don't want to
+  // trigger any heuristic GCs before the primitive is over or we might cause a
+  // triple GC, which throws an exception.
+  _limit = _max_heap_size;
+}
+
+// Install a new allocation limit at the end of a primitive that caused a GC.
+void ObjectHeap::install_heap_limit() {
+  word total = _external_memory + _two_space_heap.size();
+  if (total > _pending_limit) {
+    // If we already went over the heuristic limit that triggers a new GC we set
+    // a flag that means the next scavenge won't promote into old space.
+    _two_space_heap.set_promotion_failed();
+  }
+  _limit = _pending_limit;
 }
 
 void ObjectHeap::process_registered_finalizers(RootCallback* ss, LivenessOracle* from_space) {
@@ -399,10 +424,6 @@ Object* ObjectHeap::next_finalizer_to_run() {
   return result;
 }
 
-Usage ObjectHeap::usage(const char* name) {
-  return Usage(name, 0, 0);  // TODO: Usage report.
-}
-
 ObjectNotifier::ObjectNotifier(Process* process, Object* object)
     : _process(process)
     , _object(object)
@@ -413,10 +434,6 @@ ObjectNotifier::ObjectNotifier(Process* process, Object* object)
 ObjectNotifier::~ObjectNotifier() {
   unlink();
   if (_message && _message->clear_object_notifier()) delete _message;
-}
-
-void ObjectNotifier::notify() {
-  _process->send_mail(_message);
 }
 
 void ObjectNotifier::roots_do(RootCallback* cb) {

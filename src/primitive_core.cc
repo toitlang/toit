@@ -15,6 +15,7 @@
 
 #include "encoder.h"
 #include "entropy_mixer.h"
+#include "flags.h"
 #include "heap.h"
 #include "heap_report.h"
 #include "objects_inline.h"
@@ -470,6 +471,14 @@ PRIMITIVE(read_int_little_endian) {
     value |= source.address()[offset + i - 1];
   }
   return Primitive::integer(value, process);
+}
+
+PRIMITIVE(command) {
+  if (Flags::program_name == null) return process->program()->null_object();
+  Error* error = null;
+  String* arg = process->allocate_string(Flags::program_name, &error);
+  if (arg == null) return error;
+  return arg;
 }
 
 PRIMITIVE(args) {
@@ -2098,6 +2107,7 @@ PRIMITIVE(profiler_uninstall) {
 PRIMITIVE(set_max_heap_size) {
   ARGS(word, max_bytes);
   process->set_max_heap_size(max_bytes);
+  process->object_heap()->update_pending_limit();
   return process->program()->null_object();
 }
 

@@ -133,6 +133,7 @@ Method Program::find_method(Object* receiver, int offset) {
 
 #define PUSH(o)            ({ Object* _o_ = o; *(--sp) = _o_; })
 #define POP()              (*(sp++))
+#define DROP1()            (sp++)
 #define DROP(n)            ({ int _n_ = n; sp += _n_; })
 #define STACK_AT(n)        ({ int _n_ = n; (*(sp + _n_)); })
 #define STACK_AT_PUT(n, o) ({ int _n_ = n; Object* _o_ = o; *(sp + _n_) = _o_; })
@@ -488,7 +489,7 @@ Interpreter::Result Interpreter::run() {
 
   OPCODE_BEGIN(POP_1);
     if (Flags::preemptalot) preempt();
-    POP();
+    DROP1();
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(ALLOCATE, class_index);
@@ -515,7 +516,7 @@ Interpreter::Result Interpreter::run() {
     }
     PUSH(result);
     if (Flags::gcalot) sp = gc(sp, false, 1, false);
-    _process->object_heap()->install_heap_limit();
+    _process->object_heap()->check_install_heap_limit();
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(IS_CLASS, encoded);
@@ -714,7 +715,7 @@ Interpreter::Result Interpreter::run() {
       Object* value = STACK_AT(0);
       Instance::cast(receiver)->at_put(field_index, value);
       STACK_AT_PUT(1, value);
-      POP();
+      DROP1();
       DISPATCH(INVOKE_VIRTUAL_SET_LENGTH);
     }
     CALL_METHOD(target, INVOKE_VIRTUAL_SET_LENGTH);
@@ -737,21 +738,21 @@ Interpreter::Result Interpreter::run() {
     if (a0 == a1) {
       // All identical objects, except for NaNs, are equal to themselves.
       STACK_AT_PUT(1, boolean(program, !(a0->is_double() && isnan(Double::cast(a0)->value()))));
-      POP();
+      DROP1();
       DISPATCH(INVOKE_EQ_LENGTH);
     } else if (a0 == program->null_object() || a1 == program->null_object()) {
       STACK_AT_PUT(1, program->false_object());
-      POP();
+      DROP1();
       DISPATCH(INVOKE_EQ_LENGTH);
     } else if (are_smis(a0, a1)) {
       word i0 = Smi::cast(a0)->value();
       word i1 = Smi::cast(a1)->value();
       STACK_AT_PUT(1, boolean(program, i0 == i1));
-      POP();
+      DROP1();
       DISPATCH(INVOKE_EQ_LENGTH);
     } else if (int result = compare_numbers(a0, a1)) {
       STACK_AT_PUT(1, boolean(program, (result & COMPARE_FLAG_EQUAL) != 0));
-      POP();
+      DROP1();
       DISPATCH(INVOKE_EQ_LENGTH);
     }
     PUSH(a0);
@@ -767,11 +768,11 @@ Interpreter::Result Interpreter::run() {
       word i0 = Smi::cast(a0)->value();                                \
       word i1 = Smi::cast(a1)->value();                                \
       STACK_AT_PUT(1, boolean(program, i0 op i1));                     \
-      POP();                                                           \
+      DROP1();                                                          \
       DISPATCH(opcode##_LENGTH);                                       \
     } else if (int result = compare_numbers(a0, a1)) {                 \
       STACK_AT_PUT(1, boolean(program, (result & bit) != 0));          \
-      POP();                                                           \
+      DROP1();                                                          \
       DISPATCH(opcode##_LENGTH);                                       \
     }                                                                  \
     PUSH(a0);                                                          \
@@ -793,7 +794,7 @@ Interpreter::Result Interpreter::run() {
       word i0 = Smi::cast(a0)->value();                                \
       word i1 = Smi::cast(a1)->value();                                \
       STACK_AT_PUT(1, Smi::from(op(i0, i1)));                          \
-      POP();                                                           \
+      DROP1();                                                          \
       DISPATCH(opcode##_LENGTH);                                       \
     }                                                                  \
     PUSH(a0);                                                          \
@@ -814,7 +815,7 @@ Interpreter::Result Interpreter::run() {
       word i0 = Smi::cast(a0)->value();                                \
       word i1 = Smi::cast(a1)->value();                                \
       STACK_AT_PUT(1, Smi::from(i0 op i1));                            \
-      POP();                                                           \
+      DROP1();                                                          \
       DISPATCH(opcode##_LENGTH);                                       \
     }                                                                  \
     PUSH(a0);                                                          \
@@ -833,7 +834,7 @@ Interpreter::Result Interpreter::run() {
     Smi* result;                                                       \
     if (op(a0, a1, &result)) {                                         \
       STACK_AT_PUT(1, result);                                         \
-      POP();                                                           \
+      DROP1();                                                          \
       DISPATCH(opcode##_LENGTH);                                       \
     }                                                                  \
     PUSH(a0);                                                          \
@@ -856,7 +857,7 @@ Interpreter::Result Interpreter::run() {
 
     if (fast_at(_process, receiver, arg, false, &value)) {
       STACK_AT_PUT(1, value);
-      POP();
+      DROP1();
       DISPATCH(INVOKE_AT_LENGTH);
     }
     PUSH(receiver);
@@ -871,8 +872,8 @@ Interpreter::Result Interpreter::run() {
 
     if (fast_at(_process, receiver, arg, true, &value)) {
       STACK_AT_PUT(2, value);
-      POP();
-      POP();
+      DROP1();
+      DROP1();
       DISPATCH(INVOKE_AT_PUT_LENGTH);
     }
     PUSH(receiver);
@@ -1029,7 +1030,7 @@ Interpreter::Result Interpreter::run() {
       DROP(arity);
       ASSERT(!is_stack_empty());
       PUSH(result);
-      _process->object_heap()->install_heap_limit();
+      _process->object_heap()->check_install_heap_limit();
       DISPATCH(0);
     }
   OPCODE_END();
@@ -1397,7 +1398,7 @@ Interpreter::Result Interpreter::run() {
     // On entry to the byte code, the TOS has the result of the previous block
     // invocation or a dummy value.  We discard it.  Next is the location of
     // the previous entry that was handled, or null the first time.
-    POP();
+    DROP1();
     // The bytecode should be run on an empty stack.
     ASSERT(STACK_AT(NUMBER_OF_BYTECODE_LOCALS) == program->frame_marker());
     int parameter_offset = NUMBER_OF_BYTECODE_LOCALS + Interpreter::FRAME_SIZE;

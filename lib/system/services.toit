@@ -27,7 +27,7 @@ RPC_SERVICES_CLOSE_RESOURCE_ /int ::= 303
 
 // Internal limits.
 CLIENT_ID_LIMIT_       /int ::= 0x3fff_ffff
-RESOURCE_HANDLE_LIMIT_ /int ::= 0x3fff_ffff
+RESOURCE_HANDLE_LIMIT_ /int ::= 0x1fff_ffff  // Will be shifted up by one.
 
 _client_ /ServiceDiscoveryService ::= ServiceDiscoveryServiceClient
 
@@ -83,6 +83,7 @@ abstract class ServiceClient:
     pid := _pid_
     _id_ = _name_ = _version_ = _pid_ = null
     remove_finalizer this
+    ServiceResourceProxyManager_.unregister_all id
     rpc.invoke pid RPC_SERVICES_CLOSE_ id
 
   stringify -> string:
@@ -172,8 +173,8 @@ abstract class ServiceDefinition:
     catch --trace: on_closed client
     if _clients_.is_empty: _uninstall_
 
-  _register_resource_ client/int resource/ServiceResource -> int:
-    handle ::= _new_resource_handle_
+  _register_resource_ client/int resource/ServiceResource notifiable/bool -> int:
+    handle ::= _new_resource_handle_ notifiable
     resources ::= _resources_.get client --init=(: {:})
     resources[handle] = resource
     return handle
@@ -190,11 +191,11 @@ abstract class ServiceDefinition:
     resources.remove handle
     if resources.is_empty: _resources_.remove client
 
-  _new_resource_handle_ -> int:
+  _new_resource_handle_ notifiable/bool -> int:
     handle ::= _resource_handle_next_
     next ::= handle + 1
     _resource_handle_next_ = (next >= RESOURCE_HANDLE_LIMIT_) ? 0 : next
-    return handle
+    return (handle << 1) + (notifiable ? 1 : 0)
 
   _validate_ uuid/string major/int minor/int -> none:
     index := _uuids_.index_of uuid
@@ -216,10 +217,21 @@ abstract class ServiceResource implements rpc.RpcSerializable:
   _client_/int ::= ?
   _handle_/int? := null
 
-  constructor ._service_ ._client_:
-    _handle_ = _service_._register_resource_ _client_ this
+  constructor ._service_ ._client_ --notifiable/bool=false:
+    _handle_ = _service_._register_resource_ _client_ this notifiable
 
   abstract on_closed -> none
+
+  /**
+  The $notify_ method is used for sending notifications to remote clients'
+    resource proxies. The notifications are delivered asynchronously and
+    the method returns immediately.
+  */
+  notify_ notification/any -> none:
+    handle := _handle_
+    if not handle: throw "ALREADY_CLOSED"
+    if handle & 1 == 0: throw "Resource not notifiable"
+    _service_._manager_.notify _client_ handle notification
 
   close -> none:
     handle := _handle_
@@ -238,16 +250,61 @@ abstract class ServiceResourceProxy:
 
   constructor .client_ ._handle_:
     add_finalizer this:: close
+    if _handle_ & 1 == 1:
+      ServiceResourceProxyManager_.instance.register client_.id _handle_ this
 
   handle_ -> int:
     return _handle_
+
+  /**
+  The $on_notified_ method is called asynchronously when the remote resource
+    has been notified through a call to $ServiceResource.notify_.
+  */
+  on_notified_ notification/any -> none:
+    // Override in subclasses.
 
   close:
     handle := _handle_
     if not handle: return
     _handle_ = null
     remove_finalizer this
+    if handle & 1 == 1:
+      ServiceResourceProxyManager_.instance.unregister client_.id handle
     catch --trace: client_._close_resource_ handle
+
+class ServiceResourceProxyManager_ implements SystemMessageHandler_:
+  static instance ::= ServiceResourceProxyManager_
+  static proxies_/Map? := null
+
+  constructor:
+    proxies_ = {:}
+    set_system_message_handler_ SYSTEM_RPC_NOTIFY_RESOURCE_ this
+
+  register client/int handle/int proxy/ServiceResourceProxy -> none:
+    proxies := proxies_.get client --init=(: {:})
+    proxies[handle] = proxy
+
+  unregister client/int handle/int -> none:
+    proxies := proxies_.get client
+    if not proxies: return
+    proxies.remove handle
+    if proxies.is_empty: proxies_.remove client
+
+  // This method is static to avoid creating an instance of the
+  // proxy manager when it isn't needed.
+  static unregister_all client/int -> none:
+    proxies := proxies_
+    if not proxies: return
+    proxies.remove client
+
+  on_message type/int gid/int pid/int message/any -> none:
+    assert: type == SYSTEM_RPC_NOTIFY_RESOURCE_
+    client ::= message[0]
+    handle ::= message[1]
+    proxies ::= proxies_.get client
+    if not proxies: return
+    proxy ::= proxies.get handle
+    if proxy: proxy.on_notified_ message[2]
 
 class ServiceManager_ implements SystemMessageHandler_:
   static instance := ServiceManager_
@@ -294,6 +351,12 @@ class ServiceManager_ implements SystemMessageHandler_:
     clients/Set ::= clients_by_pid_.get pid --init=(: {})
     clients.add client
     return service._open_ client
+
+  notify client/int handle/int notification/any -> none:
+    pid/int? := clients_.get client
+    if not pid: return  // Already closed.
+    process_send_ pid SYSTEM_RPC_NOTIFY_RESOURCE_ [client, handle, notification]
+    yield  // Yield to allow intra-process messages to be processed.
 
   close client/int -> none:
     pid/int? := clients_.get client

@@ -94,22 +94,21 @@ Chunk* OldSpace::allocate_and_use_chunk(uword size) {
 }
 
 uword OldSpace::allocate_in_new_chunk(uword size) {
-  if (allocation_budget_ < 0) return 0;
+  if (promotion_failed_) return 0;
   ASSERT(top_ == 0);  // Space is flushed.
   // Allocate new chunk.  After a certain heap size we start allocating
   // multi-page chunks to improve fragmentation.
   int tracking_size = tracking_allocations_ ? 0 : PromotedTrack::header_size();
-  uword max_expansion = heap_->max_expansion();
-  uword smallest_chunk_size = Utils::min(get_default_chunk_size(used()), max_expansion);
-  uword max_space_needed = size + tracking_size + WORD_SIZE;  // Make room for sentinel.
+  uword max_expansion = heap_->max_external_allocation();
+  uword smallest_chunk_size = Utils::round_down(Utils::min(get_default_chunk_size(used()), max_expansion), TOIT_PAGE_SIZE);
+  uword min_space_needed = size + tracking_size + WORD_SIZE;  // Make room for sentinel.
   // Toit uses arraylets and external objects, so all objects should fit on a page.
-  ASSERT(max_space_needed <= TOIT_PAGE_SIZE);
-  uword chunk_size = Utils::max(max_space_needed, smallest_chunk_size);
+  ASSERT(min_space_needed <= TOIT_PAGE_SIZE);
+  uword chunk_size = Utils::round_up(Utils::max(min_space_needed, smallest_chunk_size), TOIT_PAGE_SIZE);
 
   if (chunk_size <= max_expansion) {
-    chunk_size = Utils::round_up(chunk_size, TOIT_PAGE_SIZE);
     Chunk* chunk = allocate_and_use_chunk(chunk_size);
-    while (chunk == null && chunk_size > TOIT_PAGE_SIZE) {
+    while (chunk == null && chunk_size > TOIT_PAGE_SIZE && chunk_size >= min_space_needed) {
       // If we fail to get a multi-page chunk, try for a smaller chunk.
       chunk_size = Utils::round_up(chunk_size >> 1, TOIT_PAGE_SIZE);
       chunk = allocate_and_use_chunk(chunk_size);
@@ -122,7 +121,7 @@ uword OldSpace::allocate_in_new_chunk(uword size) {
   }
 
   // Speed up later attempts during this scavenge to promote objects.
-  allocation_budget_ = -1;
+  set_promotion_failed(true);
   return 0;
 }
 
@@ -170,7 +169,6 @@ uword OldSpace::allocate(uword size) {
   if (limit_ - top_ >= static_cast<uword>(size)) {
     uword result = top_;
     top_ += size;
-    allocation_budget_ -= size;
     GcMetadata::record_start(result);
     return result;
   }
@@ -185,7 +183,7 @@ uword OldSpace::allocate(uword size) {
   return result;
 }
 
-uword OldSpace::used() { return used_; }
+uword OldSpace::used() const { return used_; }
 
 void OldSpace::start_tracking_allocations() {
   flush();
@@ -428,7 +426,10 @@ void FixPointersVisitor::do_roots(Object** start, int length) {
 // we know that any overlap is only in one direction.
 // TODO(Erik): Check this is still true on ESP32.
 static void INLINE object_mem_move(uword dest, uword source, uword size) {
-  ASSERT(source > dest);
+  // Within one page we can be sure that source > dest because we are
+  // compacting down, but the chunks are not in any particular order so we
+  // can't guarantee that in general.
+  ASSERT(source / TOIT_PAGE_SIZE != dest / TOIT_PAGE_SIZE || source > dest);
   ASSERT(size >= WORD_SIZE);
   uword t0 = *reinterpret_cast<uword*>(source);
   *reinterpret_cast<uword*>(dest) = t0;
@@ -440,16 +441,6 @@ static void INLINE object_mem_move(uword dest, uword source, uword size) {
     source += WORD_SIZE;
     dest += WORD_SIZE;
   }
-}
-
-static int INLINE find_first_set(uint32 x) {
-#ifdef _MSC_VER
-  unsigned long index;  // NOLINT
-  bool non_zero = _BitScanForward(&index, x);
-  return index + non_zero;
-#else
-  return __builtin_ffs(x);
-#endif
 }
 
 CompactingVisitor::CompactingVisitor(Program* program,
@@ -467,7 +458,7 @@ uword CompactingVisitor::visit(HeapObject* object) {
   if ((bits & 1) == 0) {
     // Object is unmarked.
     if (bits != 0) {
-      return (find_first_set(bits) - 1) << WORD_SIZE_LOG_2;
+      return Utils::ctz(bits) << WORD_SIZE_LOG_2;
     }
     // If all the bits in this mark word are zero, then let's see if we can
     // skip a bit more.
@@ -475,7 +466,7 @@ uword CompactingVisitor::visit(HeapObject* object) {
     // This never runs over the end of the chunk because the last word in the
     // chunk (the sentinel) is artificially marked live.
     while (*++bits_addr == 0) next_live_object += GcMetadata::CARD_SIZE;
-    next_live_object += (find_first_set(*bits_addr) - 1) << WORD_SIZE_LOG_2;
+    next_live_object += Utils::ctz(*bits_addr) << WORD_SIZE_LOG_2;
     ASSERT(next_live_object - object->_raw() >= (uword)object->size(program_));
     return next_live_object - object->_raw();
   }

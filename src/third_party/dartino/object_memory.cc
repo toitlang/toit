@@ -46,7 +46,7 @@ void Space::free_all_chunks() {
   top_ = limit_ = 0;
 }
 
-uword Space::size() {
+uword Space::size() const {
   uword result = 0;
   for (auto chunk : chunk_list_) result += chunk->size();
   ASSERT(used() <= result);
@@ -76,22 +76,6 @@ HeapObject *Space::object_at_offset(word offset) {
   ASSERT(start <= address);
 
   return HeapObject::from_address(address);
-}
-
-void Space::adjust_allocation_budget(uword used_outside_space) {
-  uword used_bytes = used() + used_outside_space;
-  // Allow heap size to double (but we may hit maximum heap size limits before
-  // that).
-  allocation_budget_ = used_bytes + TOIT_PAGE_SIZE;
-}
-
-void Space::increase_allocation_budget(uword size) { allocation_budget_ += size; }
-
-void Space::decrease_allocation_budget(uword size) { allocation_budget_ -= size; }
-
-void Space::set_allocation_budget(word new_budget) {
-  allocation_budget_ = Utils::max(
-      static_cast<word>(get_default_chunk_size(new_budget)), new_budget);
 }
 
 void Space::iterate_overflowed_objects(RootCallback* visitor, MarkingStack* stack) {
@@ -247,6 +231,7 @@ Chunk* ObjectMemory::allocate_chunk(Space* owner, uword size) {
   if (memory == null) return null;
   if (reinterpret_cast<uword>(memory) < lowest ||
       reinterpret_cast<uword>(memory) - lowest + size > GcMetadata::heap_extent()) {
+    printf("New allocation %p-%p\n", memory, unvoid_cast<char*>(memory) + size);
     FATAL("Toit heap outside expected range");
   }
 

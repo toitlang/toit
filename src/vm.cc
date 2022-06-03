@@ -43,7 +43,6 @@ VM::VM() {
 
   OS::reset_monotonic_time();  // Reset "up time".
   Primitive::set_up();
-  _heap_memory = _new HeapMemory();
   _scheduler = _new Scheduler();
 
   _event_manager = _new EventSourceManager();
@@ -54,7 +53,6 @@ VM::VM() {
 VM::~VM() {
   delete _event_manager;
   delete _scheduler;
-  delete _heap_memory;
   _current = null;
 }
 

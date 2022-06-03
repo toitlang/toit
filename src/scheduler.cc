@@ -280,6 +280,14 @@ scheduler_err_t Scheduler::send_system_message(Locker& locker, SystemMessage* me
   return MESSAGE_OK;
 }
 
+void Scheduler::send_notify_message(ObjectNotifier* notifier) {
+  Locker locker(_mutex);
+  Process* process = notifier->process();
+  if (process->state() == Process::TERMINATING) return;
+  process->_append_message(notifier->message());
+  process_ready(locker, process);
+}
+
 bool Scheduler::signal_process(Process* sender, int target_id, Process::Signal signal) {
   if (sender != _boot_process) return false;
 
@@ -520,9 +528,9 @@ Object* Scheduler::process_stats(Array* array, int group_id, int process_id, Pro
     case 4:
       array->at_put(3, Smi::from(subject_process->message_count()));
     case 3:
-      array->at_put(2, Smi::from(subject_process->usage()->reserved()));
+      array->at_put(2, Smi::from(subject_process->object_heap()->bytes_reserved()));
     case 2:
-      array->at_put(1, Smi::from(subject_process->usage()->allocated()));
+      array->at_put(1, Smi::from(subject_process->object_heap()->bytes_allocated()));
     case 1:
       array->at_put(0, Smi::from(subject_process->gc_count()));
     case 0:
@@ -733,7 +741,7 @@ void Scheduler::tick(Locker& locker) {
     if (process == null) continue;
     if (process == _boot_process) continue;
     int64 runtime = process->current_run_duration(now);
-    if (runtime > WATCHDOG_PERIOD_US) {
+    if (Flags::enable_watchdog && runtime > WATCHDOG_PERIOD_US) {
       process->signal(Process::WATCHDOG);
     }
   }

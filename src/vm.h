@@ -38,14 +38,12 @@ class VM {
   void load_platform_event_sources();
 
   Scheduler* scheduler() const { return _scheduler; }
-  HeapMemory* heap_memory() const { return _heap_memory; }
 
   EventSourceManager* event_manager() const { return _event_manager; }
   EventSource* nop_event_source() const { return _nop_event_source; }
 
  private:
   static VM* _current;
-  HeapMemory* _heap_memory;
   Scheduler* _scheduler;
 
   EventSourceManager* _event_manager = null;
