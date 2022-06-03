@@ -589,7 +589,7 @@ class LspServer:
 
 main args -> none:
   parser := ArgumentParser
-  parser.describe_rest "[toit-path-override]"
+  parser.describe_rest ["[toit-path-override]"]
   parser.add_flag "rpc-filesystem"
   parser.add_option "rpc-sdk-path"
   parser.add_option "home-path"
