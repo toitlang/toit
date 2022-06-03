@@ -159,4 +159,6 @@ int Flags::process_args(int* argc, char** argv) {
 }
 #endif
 
+const char* Flags::program_name = null;
+
 }

@@ -329,17 +329,8 @@ void OS::unuse_virtual_memory(void* addr, uword sz) {
   }
 }
 
-void OS::free_block(Block* block) {
-  _aligned_free(block);
-}
-
 void OS::free_block(ProgramBlock* block) {
   _aligned_free(block);
-}
-
-Block* OS::allocate_block() {
-  void* result = _aligned_malloc(TOIT_PAGE_SIZE, TOIT_PAGE_SIZE);
-  return (result == null) ? null : new (result) Block();
 }
 
 void OS::set_writable(ProgramBlock* block, bool value) {

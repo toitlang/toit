@@ -33,6 +33,7 @@
 #include "memory.h"
 #include "rtc_memory_esp32.h"
 #include "driver/uart.h"
+#include "utils.h"
 
 #include <soc/soc.h>
 #include <soc/uart_reg.h>
@@ -349,10 +350,6 @@ void OS::signal(ConditionVariable* condition_variable) { condition_variable->sig
 void OS::signal_all(ConditionVariable* condition_variable) { condition_variable->signal_all(); }
 void OS::dispose(ConditionVariable* condition_variable) { delete condition_variable; }
 
-void OS::free_block(Block* block) {
-  heap_caps_free(reinterpret_cast<void*>(block));
-}
-
 void* OS::allocate_pages(uword size) {
   size = Utils::round_up(size, TOIT_PAGE_SIZE);
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + TOIT_HEAP_MALLOC_TAG);
@@ -362,13 +359,6 @@ void* OS::allocate_pages(uword size) {
 
 void OS::free_pages(void* address, uword size) {
   heap_caps_free(address);
-}
-
-Block* OS::allocate_block() {
-  void* allocation = allocate_pages(TOIT_PAGE_SIZE);
-  if (allocation == null) return null;
-  ASSERT(Utils::is_aligned(reinterpret_cast<intptr_t>(allocation), TOIT_PAGE_SIZE));
-  return new (allocation) Block();
 }
 
 void* OS::grab_virtual_memory(void* address, uword size) {

@@ -165,7 +165,7 @@ class Space : public LivenessOracle {
   virtual HeapObject* new_location(HeapObject* old_location) = 0;
 
   // Returns the total size of allocated chunks.
-  uword size();
+  uword size() const;
 
   // Iterate over all objects in this space.
   void iterate_objects(HeapObjectVisitor* visitor);

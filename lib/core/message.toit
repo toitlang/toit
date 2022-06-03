@@ -8,10 +8,11 @@ SYSTEM_SPAWNED_        ::= 1
 SYSTEM_MIRROR_MESSAGE_ ::= 2  // Used for sending stack traces and profile information.
 
 // System message types for service RPCs.
-SYSTEM_RPC_REQUEST_  ::= 3
-SYSTEM_RPC_REPLY_    ::= 4
-SYSTEM_RPC_CANCEL_   ::= 5
-SYSTEM_RPC_NOTIFY_   ::= 6
+SYSTEM_RPC_REQUEST_         ::= 3
+SYSTEM_RPC_REPLY_           ::= 4
+SYSTEM_RPC_CANCEL_          ::= 5
+SYSTEM_RPC_NOTIFY_          ::= 6
+SYSTEM_RPC_NOTIFY_RESOURCE_ ::= 7
 
 /**
 Sends the $message to the system with the $type.
