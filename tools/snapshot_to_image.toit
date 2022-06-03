@@ -26,7 +26,7 @@ import .snapshot
 import binary show LITTLE_ENDIAN ByteOrder
 import uuid
 import host.file
-import services.arguments
+import host.arguments
 
 BINARY_FLAG      ::= "binary"
 M32_FLAG         ::= "machine-32-bit"
@@ -122,6 +122,7 @@ print_usage:
 
 main args:
   parser := arguments.ArgumentParser
+  parser.describe_rest ["snapshot-file", "output-file"]
   parser.add_flag M32_FLAG --short="m32"
   parser.add_flag M64_FLAG --short="m64"
   parser.add_flag BINARY_FLAG
@@ -130,9 +131,6 @@ main args:
   parser.add_option UNIQUE_ID_OPTION --default="00000000-0000-0000-0000-000000000000"
 
   parsed := parser.parse args
-  if parsed.rest.size != 2:
-    print_usage
-    return
 
   snapshot_path/string := parsed.rest[0]
   output_path/string := parsed.rest[1]

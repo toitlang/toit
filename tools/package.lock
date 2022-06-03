@@ -8,5 +8,5 @@ packages:
     hash: 175bcdfd59b2597c0825ef8765a20498a7e6a2db
   pkg-host:
     url: github.com/toitlang/pkg-host
-    version: 1.0.0
-    hash: 8c8d57301062a62d827c81687e09923d7d909ff7
+    version: 1.4.0
+    hash: d339a3c39f91565104db5959075cb5c843b49924

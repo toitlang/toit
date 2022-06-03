@@ -17,7 +17,7 @@ import binary show LITTLE_ENDIAN
 import bytes
 import crypto.sha256 as crypto
 import host.file
-import services.arguments show *
+import host.arguments show *
 import uuid
 import writer
 import encoding.json
@@ -36,6 +36,7 @@ IMAGE_DATA_MAGIC_2 ::= 0xc09f19
 */
 main args/List:
   parser := ArgumentParser
+  parser.describe_rest ["config-path", "bin-path", "[out-path]"]
   parser.add_option "unique_id"
   parsed := parser.parse args
   config_path/string := parsed.rest[0] as string
