@@ -16,6 +16,7 @@
 import uuid
 import monitor
 import encoding.base64 as base64
+import log
 
 import system.services show ServiceDefinition ServiceResource
 import system.api.containers show ContainerService
@@ -178,6 +179,8 @@ abstract class ContainerServiceDefinition extends ServiceDefinition
     image := add_flash_image writer.commit
     return image.id
 
+system_logger_ ::= log.default.with_name "system"
+
 class ContainerManager extends ContainerServiceDefinition implements SystemMessageHandler_:
   image_registry/FlashRegistry ::= ?
   service_manager_/SystemServiceManager ::= ?
@@ -289,26 +292,11 @@ class ContainerManager extends ContainerServiceDefinition implements SystemMessa
       origin_id/uuid.Uuid? ::= find_trace_origin_id arguments
       origin/ContainerImage? ::= origin_id and lookup_image origin_id
       if not (origin and origin.trace arguments):
-        print_for_manually_decoding_ arguments
+        // We need to execute this in a new task, as it could do a service lookup and that would
+        // lead to recursive message processing
+        task:: system_logger_.log_ log.FATAL_LEVEL "Received Toit system message" --trace=arguments
     else:
       unreachable
-
-print_for_manually_decoding_ message/ByteArray --from=0 --to=message.size:
-  // Print a message on output so that that you can easily decode.
-  // The message is base64 encoded to limit the output size.
-  print_ "----"
-  print_ "Received a Toit system message. Executing the command below will"
-  print_ "make it human readable:"
-  print_ "----"
-  // Block size must be a multiple of 3 for this to work, due to the 3/4 nature
-  // of base64 encoding.
-  BLOCK_SIZE := 1500
-  for i := from; i < to; i += BLOCK_SIZE:
-    end := i >= to - BLOCK_SIZE
-    prefix := i == from ? "build/host/sdk/bin/toit.run tools/system_message.toit \"\$SNAPSHOT\" -b " : ""
-    base64_text := base64.encode message[i..(end ? to : i + BLOCK_SIZE)]
-    postfix := end ? "" : "\\"
-    print_ "$prefix$base64_text$postfix"
 
 find_trace_origin_id trace/ByteArray -> uuid.Uuid?:
   // Short strings are encoded with a single unsigned byte length ('U').
