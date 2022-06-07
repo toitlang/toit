@@ -320,6 +320,7 @@ namespace toit {
   PRIMITIVE(get_gatt, 1)                     \
   PRIMITIVE(request_result, 1)               \
   PRIMITIVE(request_data, 1)                 \
+  PRIMITIVE(send_data, 3)                    \
   PRIMITIVE(request_service, 2)              \
   PRIMITIVE(request_characteristic, 3)       \
   PRIMITIVE(request_attribute, 2)            \

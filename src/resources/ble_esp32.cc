@@ -876,6 +876,21 @@ PRIMITIVE(request_data) {
   }
 }
 
+PRIMITIVE(send_data) {
+  ARGS(GATTResource, gatt, uint16, handle, Object, value);
+
+  os_mbuf* om = null;
+  Object* error = object_to_mbuf(process, value, &om);
+  if (error) return error;
+
+  int err = ble_gattc_write(gatt->handle(), handle, om, NULL, NULL);
+  if (err != ESP_OK) {
+    return Primitive::os_error(err, process);
+  }
+
+  return process->program()->null_object();
+}
+
 PRIMITIVE(request_service) {
   ARGS(GATTResource, gatt, Blob, uuid);
 
