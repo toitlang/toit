@@ -14,7 +14,7 @@
 // directory of this repository.
 
 import core as core
-import services.arguments show *
+import host.arguments show *
 import encoding.json as json
 import encoding.base64 as base64
 import reader show BufferedReader
@@ -589,6 +589,7 @@ class LspServer:
 
 main args -> none:
   parser := ArgumentParser
+  parser.describe_rest ["[toit-path-override]"]
   parser.add_flag "rpc-filesystem"
   parser.add_option "rpc-sdk-path"
   parser.add_option "home-path"
@@ -598,10 +599,7 @@ main args -> none:
 
   toit_path_override := null
   if not parsed.rest.is_empty:
-    if parsed.rest.size == 1:
-      toit_path_override = parsed.rest[0]
-    else:
-      throw "Bad arguments"
+    toit_path_override = parsed.rest[0]
 
   use_rpc_filesystem := parsed["rpc-filesystem"]
   rpc_sdk_path_placeholder := parsed["rpc-sdk-path"]
