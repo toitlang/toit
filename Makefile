@@ -173,9 +173,7 @@ endif
 
 .PHONY: esp32
 esp32:
-	if [ "$(shell command -v xtensa-esp32-elf-g++)" == "" ]; then
-		source $(IDF_PATH)/export.sh;
-	fi;
+	if [ "$(shell command -v xtensa-esp32-elf-g++)" = "" ]; then source $(IDF_PATH)/export.sh; fi
 	$(MAKE) esp32-no-env
 
 .PHONY: esp32-no-env
