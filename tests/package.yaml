@@ -4,7 +4,7 @@ dependencies:
     version: ^1.0.0
   host:
     url: github.com/toitlang/pkg-host
-    version: ^1.4.0
+    version: ^1.4.1
   tar:
     url: github.com/toitlang/pkg-tar
     version: ^1.0.0
