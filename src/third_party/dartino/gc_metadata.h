@@ -295,16 +295,17 @@ class GcMetadata {
     int mask_shift = (reinterpret_cast<uword>(object) >> WORD_SHIFT) & mask_mask;
     uword size_in_words = size >> WORD_SHIFT;
     // Jump to the slow case routine to handle crossing an int32_t boundary.
-    // If we have unaligned access then this slow case never happens for
-    // objects < 24 words in size. Otherwise it can happen for small objects
-    // that straddle a 32-word boundary.
+    // This can happen even for small objects if they cross an int32_t boundary.
     if (mask_shift + size_in_words > 32) {
       slow_mark(object, size);
     } else {
-      // TODO: On 64 bit CPUs it's probably faster to do this without the ?:
-      // in a 64 bit register.  May also be worth trying a 32 entry lookup
-      // table.
+#ifdef BUILD_64
+      // Use a 64 bit mask to avoid checking for a shift distance of 32.
+      uint64 mask = 1;
+      mask = ((mask << size_in_words) - 1);
+#else
       uint32 mask = size_in_words == 32 ? 0xffffffff : ((1u << size_in_words) - 1);
+#endif
       mask <<= mask_shift;
 
       uint32* bits = mark_bits_for(object);

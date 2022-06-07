@@ -31,7 +31,6 @@ class HeapObjectFunctionVisitor : public HeapObjectVisitor {
 class TwoSpaceHeap {
  public:
   TwoSpaceHeap(Program* program, ObjectHeap* process_heap, Chunk* chunk);
-  ~TwoSpaceHeap();
 
   // Allocate raw object. Returns null if a garbage collection is
   // needed.
