@@ -35,12 +35,6 @@ namespace toit {
 #define _NO_FORK false
 #endif
 
-#ifdef TOIT_FREERTOS
-#define _TRACEGC true
-#else
-#define _TRACEGC false
-#endif
-
 #define FLAGS_DO(debug, deploy)                                                     \
   FLAG_BOOL(deploy,  bool_deploy,        false, "Test bool deploy flag")            \
   FLAG_INT(deploy,   int_deploy,             0, "Test int deploy flag")             \
@@ -51,7 +45,7 @@ namespace toit {
   FLAG_BOOL(deploy,  no_fork,               _NO_FORK, "Don't fork the compiler")    \
   FLAG_BOOL(debug,   trace,                 false, "Trace interpreter")             \
   FLAG_BOOL(debug,   primitives,            false, "Trace primitives")              \
-  FLAG_BOOL(deploy,  tracegc,               _TRACEGC, "Trace garbage collector")    \
+  FLAG_BOOL(deploy,  tracegc,               false, "Trace garbage collector")       \
   FLAG_BOOL(debug,   validate_heap,         false, "Check garbage collector")       \
   FLAG_BOOL(debug,   gcalot,                false, "Garbage collect after each allocation in the interpreter") \
   FLAG_BOOL(debug,   preemptalot,           false, "Preempt process after each pop bytecode") \
