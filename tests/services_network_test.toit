@@ -14,10 +14,7 @@ import system.api.network
   show
     NetworkService
     NetworkServiceClient
-    SocketResource
-    UdpSocketResource
-    TcpSocketResource
-    TcpServerSocketResource
+    ProxyingNetworkServiceDefinition
 
 service_/NetworkServiceClient? ::= (FakeNetworkServiceClient --no-open).open
 
@@ -86,39 +83,18 @@ class FakeNetworkServiceClient extends NetworkServiceClient:
   open -> FakeNetworkServiceClient?:
     return (open_ FakeNetworkService.UUID FakeNetworkService.MAJOR FakeNetworkService.MINOR) and this
 
-class FakeNetworkServiceDefinition extends ServiceDefinition:
+class FakeNetworkServiceDefinition extends ProxyingNetworkServiceDefinition:
   proxy_mask_/int := 0
-  network_/net.Interface ::= net.open
-
   address_/ByteArray? := null
   resolve_/List? := null
 
   constructor:
-    super "system/network/test" --major=1 --minor=2  // Major and minor versions do not matter here.
+    network ::= net.open
+    super "system/network/test" network --major=1 --minor=2  // Major and minor versions do not matter here.
     provides FakeNetworkService.UUID FakeNetworkService.MAJOR FakeNetworkService.MINOR
 
-  handle pid/int client/int index/int arguments/any -> any:
-    SocketResource.handle this client index arguments:
-      return it  // Handled socket operation successfully.
-    UdpSocketResource.handle this client index arguments:
-      return it  // Handled UDP socket operation successfully.
-    TcpSocketResource.handle this client index arguments:
-      return it  // Handled TCP socket operation successfully.
-    TcpServerSocketResource.handle this client index arguments:
-      return it  // Handled TCP server socket operation successfully.
-    if index == NetworkService.CONNECT_INDEX:
-      return connect client
-    if index == NetworkService.ADDRESS_INDEX:
-      return address (resource client arguments)
-    if index == NetworkService.RESOLVE_INDEX:
-      return resolve (resource client arguments[0]) arguments[1]
-    if index == NetworkService.UDP_OPEN_INDEX:
-      return udp_open client arguments[1]
-    if index == NetworkService.TCP_CONNECT_INDEX:
-      return tcp_connect client arguments[1] arguments[2]
-    if index == NetworkService.TCP_LISTEN_INDEX:
-      return tcp_listen client arguments[1]
-    unreachable
+  proxy_mask -> int:
+    return proxy_mask_
 
   update_proxy_mask_ mask/int add/bool:
     if add: proxy_mask_ |= mask
@@ -142,32 +118,8 @@ class FakeNetworkServiceDefinition extends ServiceDefinition:
   disable_udp_proxying -> none:
     update_proxy_mask_ NetworkService.PROXY_UDP false
 
-  connect client/int -> List:
-    resource := FakeNetworkResource this client
-    return [resource.serialize_for_rpc, proxy_mask_]
-
   address resource/ServiceResource -> ByteArray:
     return address_
 
   resolve resource/ServiceResource host/string -> List:
     return resolve_
-
-  udp_open client/int port/int? -> ServiceResource:
-    socket ::= network_.udp_open --port=port
-    return UdpSocketResource this client socket
-
-  tcp_connect client/int ip/ByteArray port/int -> ServiceResource:
-    socket ::= network_.tcp_connect (net.IpAddress ip).stringify port
-    return TcpSocketResource this client socket
-
-  tcp_listen client/int port/int -> ServiceResource:
-    socket ::= network_.tcp_listen port
-    return TcpServerSocketResource this client socket
-
-class FakeNetworkResource extends ServiceResource:
-  constructor service/ServiceDefinition client/int:
-    super service client
-
-  on_closed -> none:
-    // Do nothing.
-
