@@ -46,11 +46,12 @@ class Socket implements net.Socket:
   close:
     state := state_
     if state == null: return
-    state_ = null
-    udp_close_ state.group state.resource
-    state.dispose
-    // Remove the finalizer installed in the constructor.
-    remove_finalizer this
+    critical_do:
+      state_ = null
+      udp_close_ state.group state.resource
+      state.dispose
+      // Remove the finalizer installed in the constructor.
+      remove_finalizer this
 
   connect address/net.SocketAddress:
     state := ensure_state_

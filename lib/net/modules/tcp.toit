@@ -40,11 +40,12 @@ class TcpSocket_:
   close:
     state := state_
     if state == null: return
-    state_ = null
-    tcp_close_ state.group state.resource
-    state.dispose
-    // Remove the finalizer installed in [open_].
-    remove_finalizer this
+    critical_do:
+      state_ = null
+      tcp_close_ state.group state.resource
+      state.dispose
+      // Remove the finalizer installed in [open_].
+      remove_finalizer this
 
   mtu -> int: return TOIT_MTU_TCP
 
