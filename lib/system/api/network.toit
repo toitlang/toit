@@ -6,7 +6,12 @@ import net
 import net.udp
 import net.tcp
 
-import system.services show ServiceClient ServiceResourceProxy
+import system.services
+  show
+    ServiceClient
+    ServiceDefinition
+    ServiceResource
+    ServiceResourceProxy
 
 interface NetworkService:
   static UUID  /string ::= "063e228a-3a7a-44a8-b024-d55127255ccb"
@@ -164,17 +169,119 @@ class NetworkResource extends ServiceResourceProxy:
   udp_open --port/int?=null -> udp.Socket:
     client ::= client_ as NetworkServiceClient
     socket ::= client.udp_open handle_ port
-    return UdpSocketResource_ client socket
+    return UdpSocketResourceProxy_ client socket
 
   tcp_connect address/net.SocketAddress -> tcp.Socket:
     client ::= client_ as NetworkServiceClient
     socket ::= client.tcp_connect handle_ address.ip.to_byte_array address.port
-    return TcpSocketResource_ client socket
+    return TcpSocketResourceProxy_ client socket
 
   tcp_listen port/int -> tcp.ServerSocket:
     client ::= client_ as NetworkServiceClient
     socket ::= client.tcp_listen handle_ port
-    return TcpServerSocketResource_ client socket
+    return TcpServerSocketResourceProxy_ client socket
+
+abstract class SocketResource extends ServiceResource:
+  constructor service/ServiceDefinition client/int:
+    super service client
+
+  static handle service/ServiceDefinition client/int index/int arguments/any [reply] -> none:
+    if index == NetworkService.SOCKET_GET_OPTION_INDEX:
+      // Unimplemented for now: socket_get_option handle/int option/string -> any
+      unreachable
+    if index == NetworkService.SOCKET_SET_OPTION_INDEX:
+      // Unimplemented for now: socket_set_option handle/int option/string value/any -> none
+      unreachable
+    if index == NetworkService.SOCKET_LOCAL_ADDRESS_INDEX:
+      resource ::= (service.resource client arguments) as SocketResource
+      address ::= resource.local_address
+      reply.call [address.ip.to_byte_array, address.port]
+    if index == NetworkService.SOCKET_PEER_ADDRESS_INDEX:
+      resource ::= (service.resource client arguments) as SocketResource
+      address ::= resource.peer_address
+      reply.call [address.ip.to_byte_array, address.port]
+    if index == NetworkService.SOCKET_READ_INDEX:
+      resource ::= (service.resource client arguments) as SocketResource
+      reply.call resource.read
+    if index == NetworkService.SOCKET_WRITE_INDEX:
+      resource ::= (service.resource client arguments[0]) as SocketResource
+      reply.call (resource.write arguments[1])
+    if index == NetworkService.SOCKET_MTU_INDEX:
+      resource ::= (service.resource client arguments) as SocketResource
+      reply.call resource.mtu
+    return  // Unhandled invocation.
+
+  abstract local_address -> net.SocketAddress
+  abstract peer_address -> net.SocketAddress
+  abstract read -> ByteArray?
+  abstract write data -> int
+  abstract mtu -> int
+
+class UdpSocketResource extends SocketResource:
+  socket_/udp.Socket ::= ?
+
+  constructor service/ServiceDefinition client/int .socket_:
+    super service client
+
+  static handle service/ServiceDefinition client/int index/int arguments/any [reply] -> none:
+    if index == NetworkService.UDP_CONNECT_INDEX:
+      resource ::= (service.resource client arguments[0]) as UdpSocketResource
+      socket ::= resource.socket_
+      reply.call (socket.connect (convert_to_socket_address_ arguments 1))
+    if index == NetworkService.UDP_RECEIVE_INDEX:
+      resource ::= (service.resource client arguments) as UdpSocketResource
+      socket ::= resource.socket_
+      datagram ::= socket.receive
+      address ::= datagram.address
+      reply.call [datagram.data, address.ip.to_byte_array, address.port]
+    if index == NetworkService.UDP_SEND_INDEX:
+      resource ::= (service.resource client arguments[0]) as UdpSocketResource
+      socket ::= resource.socket_
+      datagram ::= udp.Datagram arguments[1] (convert_to_socket_address_ arguments 2)
+      reply.call (socket.send datagram)
+    return  // Unhandled invocation.
+
+  local_address -> net.SocketAddress: return socket_.local_address
+  peer_address -> net.SocketAddress: unreachable
+  read -> ByteArray?: return socket_.read
+  write data -> int: return socket_.write data
+  mtu -> int: return socket_.mtu
+  on_closed -> none: socket_.close
+
+class TcpSocketResource extends SocketResource:
+  socket_/tcp.Socket ::= ?
+
+  constructor service/ServiceDefinition client/int .socket_:
+    super service client
+
+  static handle service/ServiceDefinition client/int index/int arguments/any [reply] -> none:
+    if index == NetworkService.TCP_CLOSE_WRITE_INDEX:
+      resource ::= (service.resource client arguments) as TcpSocketResource
+      socket ::= resource.socket_
+      reply.call socket.close_write
+    return  // Unhandled invocation.
+
+  local_address -> net.SocketAddress: return socket_.local_address
+  peer_address -> net.SocketAddress: return socket_.peer_address
+  read -> ByteArray?: return socket_.read
+  write data -> int: return socket_.write data
+  mtu -> int: return socket_.mtu
+  on_closed -> none: socket_.close
+
+class TcpServerSocketResource extends ServiceResource:
+  socket_/tcp.ServerSocket ::= ?
+
+  constructor service/ServiceDefinition client/int .socket_:
+    super service client
+
+  static handle service/ServiceDefinition client/int index/int arguments/any [reply] -> none:
+    if index == NetworkService.TCP_ACCEPT_INDEX:
+      resource ::= (service.resource client arguments) as TcpServerSocketResource
+      socket ::= resource.socket_
+      reply.call (TcpSocketResource service client socket.accept)
+    return  // Unhandled invocation.
+
+  on_closed -> none: socket_.close
 
 // ----------------------------------------------------------------------------
 
@@ -183,7 +290,7 @@ convert_to_socket_address_ address/List offset/int=0 -> net.SocketAddress:
   port ::= address[offset + 1]
   return net.SocketAddress ip port
 
-class SocketResource_ extends ServiceResourceProxy:
+class SocketResourceProxy_ extends ServiceResourceProxy:
   static WRITE_DATA_SIZE_MAX_ /int ::= 2048
 
   constructor client/NetworkServiceClient handle/int:
@@ -210,7 +317,7 @@ class SocketResource_ extends ServiceResourceProxy:
   close_write:
     return (client_ as NetworkServiceClient).tcp_close_write handle_
 
-class UdpSocketResource_ extends SocketResource_ implements udp.Socket:
+class UdpSocketResourceProxy_ extends SocketResourceProxy_ implements udp.Socket:
   constructor client/NetworkServiceClient handle/int:
     super client handle
 
@@ -243,7 +350,7 @@ class UdpSocketResource_ extends SocketResource_ implements udp.Socket:
         NetworkService.SOCKET_OPTION_UDP_BROADCAST
         value
 
-class TcpSocketResource_ extends SocketResource_ implements tcp.Socket:
+class TcpSocketResourceProxy_ extends SocketResourceProxy_ implements tcp.Socket:
   constructor client/NetworkServiceClient handle/int:
     super client handle
 
@@ -262,7 +369,7 @@ class TcpSocketResource_ extends SocketResource_ implements tcp.Socket:
         NetworkService.SOCKET_OPTION_TCP_NO_DELAY
         value
 
-class TcpServerSocketResource_ extends ServiceResourceProxy implements tcp.ServerSocket:
+class TcpServerSocketResourceProxy_ extends ServiceResourceProxy implements tcp.ServerSocket:
   constructor client/NetworkServiceClient handle/int:
     super client handle
 
@@ -273,4 +380,4 @@ class TcpServerSocketResource_ extends ServiceResourceProxy implements tcp.Serve
   accept -> tcp.Socket?:
     client ::= client_ as NetworkServiceClient
     socket ::= client.tcp_accept handle_
-    return TcpSocketResource_ client socket
+    return TcpSocketResourceProxy_ client socket

@@ -57,6 +57,8 @@ abstract class NetworkServiceDefinitionBase extends ServiceDefinition implements
     unreachable
   tcp_accept handle/int -> int:
     unreachable
+  tcp_close_write handle/int -> none:
+    unreachable
 
   socket_get_option handle/int option/string -> any:
     unreachable
@@ -71,6 +73,4 @@ abstract class NetworkServiceDefinitionBase extends ServiceDefinition implements
   socket_write handle/int data -> int:
     unreachable
   socket_mtu handle/int -> int:
-    unreachable
-  socket_close_write handle/int -> none:
     unreachable

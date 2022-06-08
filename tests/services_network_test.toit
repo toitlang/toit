@@ -8,8 +8,16 @@ import net.tcp
 import writer
 
 import system.services show ServiceDefinition ServiceResource
-import system.api.network show NetworkService NetworkServiceClient
 import expect
+
+import system.api.network
+  show
+    NetworkService
+    NetworkServiceClient
+    SocketResource
+    UdpSocketResource
+    TcpSocketResource
+    TcpServerSocketResource
 
 service_/NetworkServiceClient? ::= (FakeNetworkServiceClient --no-open).open
 
@@ -90,18 +98,26 @@ class FakeNetworkServiceDefinition extends ServiceDefinition:
     provides FakeNetworkService.UUID FakeNetworkService.MAJOR FakeNetworkService.MINOR
 
   handle pid/int client/int index/int arguments/any -> any:
+    SocketResource.handle this client index arguments:
+      return it  // Handled socket operation successfully.
+    UdpSocketResource.handle this client index arguments:
+      return it  // Handled UDP socket operation successfully.
+    TcpSocketResource.handle this client index arguments:
+      return it  // Handled TCP socket operation successfully.
+    TcpServerSocketResource.handle this client index arguments:
+      return it  // Handled TCP server socket operation successfully.
     if index == NetworkService.CONNECT_INDEX:
       return connect client
     if index == NetworkService.ADDRESS_INDEX:
       return address (resource client arguments)
     if index == NetworkService.RESOLVE_INDEX:
       return resolve (resource client arguments[0]) arguments[1]
+    if index == NetworkService.UDP_OPEN_INDEX:
+      return udp_open client arguments[1]
     if index == NetworkService.TCP_CONNECT_INDEX:
       return tcp_connect client arguments[1] arguments[2]
-    if index == NetworkService.SOCKET_READ_INDEX:
-      return socket_read (resource client arguments)
-    if index == NetworkService.SOCKET_WRITE_INDEX:
-      return socket_write (resource client arguments[0]) arguments[1]
+    if index == NetworkService.TCP_LISTEN_INDEX:
+      return tcp_listen client arguments[1]
     unreachable
 
   update_proxy_mask_ mask/int add/bool:
@@ -118,11 +134,11 @@ class FakeNetworkServiceDefinition extends ServiceDefinition:
 
   enable_tcp_proxying -> none:
     update_proxy_mask_ NetworkService.PROXY_TCP true
-  disable_tcp_proxying -> none:
-    update_proxy_mask_ NetworkService.PROXY_TCP false
-
   enable_udp_proxying -> none:
     update_proxy_mask_ NetworkService.PROXY_UDP true
+
+  disable_tcp_proxying -> none:
+    update_proxy_mask_ NetworkService.PROXY_TCP false
   disable_udp_proxying -> none:
     update_proxy_mask_ NetworkService.PROXY_UDP false
 
@@ -136,15 +152,17 @@ class FakeNetworkServiceDefinition extends ServiceDefinition:
   resolve resource/ServiceResource host/string -> List:
     return resolve_
 
+  udp_open client/int port/int? -> ServiceResource:
+    socket ::= network_.udp_open --port=port
+    return UdpSocketResource this client socket
+
   tcp_connect client/int ip/ByteArray port/int -> ServiceResource:
     socket ::= network_.tcp_connect (net.IpAddress ip).stringify port
-    return FakeTcpSocketResource this client socket
+    return TcpSocketResource this client socket
 
-  socket_read resource/ServiceResource -> ByteArray?:
-    return (resource as FakeSocket).read
-
-  socket_write resource/ServiceResource data -> int:
-    return (resource as FakeSocket).write data
+  tcp_listen client/int port/int -> ServiceResource:
+    socket ::= network_.tcp_listen port
+    return TcpServerSocketResource this client socket
 
 class FakeNetworkResource extends ServiceResource:
   constructor service/ServiceDefinition client/int:
@@ -153,24 +171,3 @@ class FakeNetworkResource extends ServiceResource:
   on_closed -> none:
     // Do nothing.
 
-abstract class FakeSocket extends ServiceResource:
-  constructor service/ServiceDefinition client/int:
-    super service client
-
-  abstract read -> ByteArray?
-  abstract write data -> int
-
-class FakeTcpSocketResource extends FakeSocket:
-  socket/tcp.Socket
-
-  constructor service/ServiceDefinition client/int .socket:
-    super service client
-
-  read -> ByteArray?:
-    return socket.read
-
-  write data -> int:
-    return socket.write data
-
-  on_closed -> none:
-    socket.close
