@@ -64,6 +64,9 @@ interface NetworkService:
   static TCP_ACCEPT_INDEX /int ::= 202
   tcp_accept handle/int -> int
 
+  static TCP_CLOSE_WRITE_INDEX /int ::= 203
+  tcp_close_write handle/int -> none
+
   static SOCKET_GET_OPTION_INDEX /int ::= 300
   socket_get_option handle/int option/string -> any
 
@@ -84,9 +87,6 @@ interface NetworkService:
 
   static SOCKET_MTU_INDEX /int ::= 306
   socket_mtu handle/int -> int
-
-  static SOCKET_CLOSE_WRITE_INDEX /int ::= 307
-  socket_close_write handle/int -> none
 
 class NetworkServiceClient extends ServiceClient implements NetworkService:
   constructor --open/bool=true:
@@ -125,6 +125,9 @@ class NetworkServiceClient extends ServiceClient implements NetworkService:
   tcp_accept handle/int -> int:
     return invoke_ NetworkService.TCP_ACCEPT_INDEX handle
 
+  tcp_close_write handle/int -> none:
+    invoke_ NetworkService.TCP_CLOSE_WRITE_INDEX handle
+
   socket_get_option handle/int option/string -> any:
     return invoke_ NetworkService.SOCKET_GET_OPTION_INDEX [handle, option]
 
@@ -145,9 +148,6 @@ class NetworkServiceClient extends ServiceClient implements NetworkService:
 
   socket_mtu handle/int -> int:
     return invoke_ NetworkService.SOCKET_MTU_INDEX handle
-
-  socket_close_write handle/int -> none:
-    invoke_ NetworkService.SOCKET_CLOSE_WRITE_INDEX handle
 
 class NetworkResource extends ServiceResourceProxy:
   constructor client/NetworkServiceClient handle/int:
@@ -208,7 +208,7 @@ class SocketResource_ extends ServiceResourceProxy:
     return (client_ as NetworkServiceClient).socket_mtu handle_
 
   close_write:
-    return (client_ as NetworkServiceClient).socket_close_write handle_
+    return (client_ as NetworkServiceClient).tcp_close_write handle_
 
 class UdpSocketResource_ extends SocketResource_ implements udp.Socket:
   constructor client/NetworkServiceClient handle/int:
