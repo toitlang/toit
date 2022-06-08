@@ -291,9 +291,9 @@ class Freer {
 // o can be an IntResource, a Smi or null (which returns -1).
 // -2 is returned otherwise.
 static int get_fd(Object* obj) {
-  if (obj->is_smi()) {
+  if (is_smi(obj)) {
     return Smi::cast(obj)->value();
-  } else if (obj->is_byte_array()) {
+  } else if (is_byte_array(obj)) {
     ByteArray* ba = ByteArray::cast(obj);
     if (!ba->has_external_address()) return -2;
     if (ba->external_tag() != IntResource::tag) return -2;
@@ -352,7 +352,7 @@ PRIMITIVE(fork) {
   char** argv = reinterpret_cast<char**>(allocation.calloc(args->length() + 1, sizeof(char*)));
   if (argv == null) ALLOCATION_FAILED;
   for (word i = 0; i < args->length(); i++) {
-    if (!args->at(i)->is_string()) {
+    if (!is_string(args->at(i))) {
       WRONG_TYPE;
     }
     argv[i] = String::cast(args->at(i))->as_cstr();

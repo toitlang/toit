@@ -32,7 +32,7 @@ void VMFinalizerNode::roots_do(RootCallback* cb) {
 void VMFinalizerNode::free_external_memory(Process* process) {
   uint8* memory = null;
   word accounting_size = 0;
-  if (key()->is_byte_array()) {
+  if (is_byte_array(key())) {
     ByteArray* byte_array = ByteArray::cast(key());
     if (byte_array->external_tag() == MappedFileTag) return;  // TODO(erik): release mapped file, so flash storage can be reclaimed.
     ASSERT(byte_array->has_external_address());
@@ -42,7 +42,7 @@ void VMFinalizerNode::free_external_memory(Process* process) {
     // Accounting size is 0 if the byte array is tagged, since we don't account
     // memory for Resources etc.
     ASSERT(byte_array->external_tag() == RawByteTag || byte_array->external_tag() == NullStructTag);
-  } else if (key()->is_string()) {
+  } else if (is_string(key())) {
     String* string = String::cast(key());
     memory = string->as_external();
     // Add one because the strings are allocated with a null termination byte.

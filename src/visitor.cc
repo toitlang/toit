@@ -21,7 +21,7 @@
 namespace toit {
 
 void Visitor::accept(Object* object) {
-  if (object->is_smi()) {
+  if (is_smi(object)) {
     visit_smi(Smi::cast(object));
     return;
   }

@@ -1150,8 +1150,8 @@ void BaseSnapshotWriter::write_reference(int index) {
 }
 
 void BaseSnapshotWriter::write_object(Object* object) {
-  if (object->is_smi()) write_integer(Smi::cast(object)->value());
-  else if (object->is_large_integer()) write_integer(LargeInteger::cast(object)->value());
+  if (is_smi(object)) write_integer(Smi::cast(object)->value());
+  else if (is_large_integer(object)) write_integer(LargeInteger::cast(object)->value());
   else write_heap_object(HeapObject::cast(object));
 }
 
@@ -1213,7 +1213,7 @@ void BaseSnapshotWriter::write_heap_object(HeapObject* object) {
                       length);
   write_byte(tag);
   _allocator.allocate_object(tag, length);
-  ASSERT(object->header()->is_smi());
+  ASSERT(is_smi(object->header()));
   write_object(object->header());
   switch (object->class_tag()) {
     case TypeTag::ARRAY_TAG:
@@ -1276,7 +1276,7 @@ class RelocationBits : public PointerCallback {
  public:
   void object_address(Object** p) {
     // Only make heap objects relocatable.
-    if ((*p)->is_heap_object()) set_bit_for(reinterpret_cast<word*>(p));
+    if (is_heap_object(*p)) set_bit_for(reinterpret_cast<word*>(p));
   }
 
   void c_address(void** p, bool is_sentinel) {

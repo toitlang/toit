@@ -164,7 +164,7 @@ class InSpaceVisitor : public RootCallback {
   void do_roots(Object** p, int length) {
     for (int i = 0; i < length; i++) {
       Object* object = p[i];
-      if (object->is_smi()) continue;
+      if (is_smi(object)) continue;
       if (space->includes(reinterpret_cast<uword>(object))) {
         in_space = true;
         break;

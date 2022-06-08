@@ -101,7 +101,7 @@ bool MessageEncoder::encode(Object* object) {
     return false;
   }
 
-  if (object->is_smi()) {
+  if (is_smi(object)) {
     word value = Smi::cast(object)->value();
     if (value >= 0) {
       write_uint8(TAG_POSITIVE_SMI);
@@ -111,12 +111,12 @@ bool MessageEncoder::encode(Object* object) {
       write_cardinal(-value);
     }
     return true;
-  } else if (object->is_instance()) {
+  } else if (is_instance(object)) {
     Instance* instance = Instance::cast(object);
     Smi* class_id = instance->class_id();
     if (class_id == _program->list_class_id()) {
       Object* backing = instance->at(0);
-      if (backing->is_array()) {
+      if (is_array(backing)) {
         Array* array = Array::cast(backing);
         return encode_array(array, Smi::cast(instance->at(1))->value());
       }
@@ -137,22 +137,22 @@ bool MessageEncoder::encode(Object* object) {
   } else if (object == _program->false_object()) {
     write_uint8(TAG_FALSE);
     return true;
-  } else if (object->is_byte_array()) {
+  } else if (is_byte_array(object)) {
     return encode_byte_array(ByteArray::cast(object));
-  } else if (object->is_double()) {
+  } else if (is_double(object)) {
     write_uint8(TAG_DOUBLE);
     write_uint64(bit_cast<uint64>(Double::cast(object)->value()));
     return true;
-  } else if (object->is_string()) {
+  } else if (is_string(object)) {
     return encode_copy(object, TAG_STRING);
-  } else if (object->is_array()) {
+  } else if (is_array(object)) {
     Array* array = Array::cast(object);
     return encode_array(array, array->length());
-  } else if (object->is_large_integer()) {
+  } else if (is_large_integer(object)) {
     write_uint8(TAG_LARGE_INTEGER);
     write_uint64(bit_cast<uint64>(Double::cast(object)->value()));
     return true;
-  } else if (object->is_heap_object()) {
+  } else if (is_heap_object(object)) {
     printf("[message encoder: cannot encode object with class tag = %d]\n", HeapObject::cast(object)->class_tag());
   }
   return false;
@@ -285,7 +285,7 @@ bool MessageDecoder::decode_process_message(uint8* buffer, int* value) {
   MessageDecoder decoder(null, buffer);
   // TODO(kasper): Make this more robust. We don't know the content.
   Object* object = decoder.decode();
-  if (object->is_smi()) {
+  if (is_smi(object)) {
     *value = Smi::cast(object)->value();
     return true;
   }
