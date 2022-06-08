@@ -180,7 +180,7 @@ PRIMITIVE(receive) {
 
   // TODO: Support IPv6.
   ByteArray* address = null;
-  if (output->is_array()) {
+  if (is_array(output)) {
     Error* error = null;
     address = process->allocate_byte_array(4, &error);
     if (address == null) return error;
@@ -212,7 +212,7 @@ PRIMITIVE(receive) {
   ASSERT(read == available);
   memcpy(ByteArray::Bytes(array).address(), buffer, read);
 
-  if (output->is_array()) {
+  if (is_array(output)) {
     Array* out = Array::cast(output);
     ASSERT(out->length() == 3);
     out->at_put(0, array);
