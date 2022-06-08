@@ -148,7 +148,7 @@ class Smi : public Object {
 
   static Smi* from(word value) {
     ASSERT(is_valid(value));
-    return reinterpret_cast<Smi*>(value << SMI_TAG_SIZE);
+    return reinterpret_cast<Smi*>(static_cast<uword>(value) << SMI_TAG_SIZE);
   }
 
   static Smi* cast(Object* obj) {
