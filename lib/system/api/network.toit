@@ -32,8 +32,8 @@ interface NetworkService:
   The socket options can be read or written using $socket_get_option
     and $socket_set_option.
   */
-  static SOCKET_OPTION_UDP_BROADCAST /string ::= "udp-broadcast"
-  static SOCKET_OPTION_TCP_NO_DELAY  /string ::= "tcp-no-delay"
+  static SOCKET_OPTION_UDP_BROADCAST /int ::= 0
+  static SOCKET_OPTION_TCP_NO_DELAY  /int ::= 100
 
   // The connect call returns a handle to the network resource and
   // the proxy mask bits in a list. The proxy mask bits indicate
@@ -73,10 +73,10 @@ interface NetworkService:
   tcp_close_write handle/int -> none
 
   static SOCKET_GET_OPTION_INDEX /int ::= 300
-  socket_get_option handle/int option/string -> any
+  socket_get_option handle/int option/int -> any
 
   static SOCKET_SET_OPTION_INDEX /int ::= 301
-  socket_set_option handle/int option/string value/any -> none
+  socket_set_option handle/int option/int value/any -> none
 
   static SOCKET_LOCAL_ADDRESS_INDEX /int ::= 302
   socket_local_address handle/int -> List
@@ -133,10 +133,10 @@ class NetworkServiceClient extends ServiceClient implements NetworkService:
   tcp_close_write handle/int -> none:
     invoke_ NetworkService.TCP_CLOSE_WRITE_INDEX handle
 
-  socket_get_option handle/int option/string -> any:
+  socket_get_option handle/int option/int -> any:
     return invoke_ NetworkService.SOCKET_GET_OPTION_INDEX [handle, option]
 
-  socket_set_option handle/int option/string value/any -> none:
+  socket_set_option handle/int option/int value/any -> none:
     invoke_ NetworkService.SOCKET_SET_OPTION_INDEX [handle, option, value]
 
   socket_local_address handle/int -> List:
@@ -256,11 +256,20 @@ abstract class ProxyingNetworkServiceDefinition extends ServiceDefinition:
       socket ::= convert_to_socket_ client arguments
       return socket.mtu
     if index == NetworkService.SOCKET_GET_OPTION_INDEX:
-      // Unimplemented for now: socket_get_option handle/int option/string -> any
-      unreachable
+      socket ::= convert_to_socket_ client arguments[0]
+      option ::= arguments[1]
+      if option == NetworkService.SOCKET_OPTION_UDP_BROADCAST:
+        return socket.broadcast
+      if option == NetworkService.SOCKET_OPTION_TCP_NO_DELAY:
+        return socket.no_delay
     if index == NetworkService.SOCKET_SET_OPTION_INDEX:
-      // Unimplemented for now: socket_set_option handle/int option/string value/any -> none
-      unreachable
+      socket ::= convert_to_socket_ client arguments[0]
+      option ::= arguments[1]
+      value ::= arguments[2]
+      if option == NetworkService.SOCKET_OPTION_UDP_BROADCAST:
+        return socket.broadcast = value
+      if option == NetworkService.SOCKET_OPTION_TCP_NO_DELAY:
+        return socket.no_delay = value
     unreachable
 
   convert_to_socket_ client/int handle/int -> any: /* udp.Socket | tcp.Socket | tcp.ServerSocket */

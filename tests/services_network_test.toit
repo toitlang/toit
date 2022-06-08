@@ -19,11 +19,11 @@ import system.api.network
 service_/NetworkServiceClient? ::= (FakeNetworkServiceClient --no-open).open
 
 main:
-  service := FakeNetworkServiceDefinition
+  service := FakeNetworkServiceDefinition net.open
   service.install
   test_address service
   test_resolve service
-  test_tcp_connect service
+  test_tcp service
   service.uninstall
 
 test_address service/FakeNetworkServiceDefinition:
@@ -52,19 +52,28 @@ test_resolve service/FakeNetworkServiceDefinition:
   expect.expect_equals [net.IpAddress #[3, 4, 5, 6]] (open_fake.resolve "www.google.com")
   service.resolve = null
 
-test_tcp_connect service/FakeNetworkServiceDefinition:
+test_tcp service/FakeNetworkServiceDefinition:
+  test_tcp_network open_fake
   service.enable_tcp_proxying
-  fake := open_fake
-  socket/tcp.Socket := fake.tcp_connect "www.google.com" 80
-  writer := writer.Writer socket
-  writer.write """GET / HTTP/1.1\r\nConnection: close\r\n\r\n"""
-  size/int := 0
-  while data := socket.read:
-    size += data.size
-  expect.expect size > 0
-  socket.close
-  fake.close
+  test_tcp_network open_fake
   service.disable_tcp_proxying
+
+test_tcp_network network/net.Interface:
+  socket/tcp.Socket := network.tcp_connect "www.google.com" 80
+  try:
+    expect.expect_equals 80 socket.peer_address.port
+    expect.expect_equals network.address socket.local_address.ip
+
+    writer := writer.Writer socket
+    writer.write "GET / HTTP/1.1\r\nConnection: close\r\n\r\n"
+    response := #[]
+    while data := socket.read:
+      response += data
+    expected := "HTTP/1.1 200 OK\r\n"
+    expect.expect_equals expected response[0..expected.size].to_string
+  finally:
+    socket.close
+    network.close
 
 // --------------------------------------------------------------------------
 
@@ -88,8 +97,7 @@ class FakeNetworkServiceDefinition extends ProxyingNetworkServiceDefinition:
   address_/ByteArray? := null
   resolve_/List? := null
 
-  constructor:
-    network ::= net.open
+  constructor network/net.Interface:
     super "system/network/test" network --major=1 --minor=2  // Major and minor versions do not matter here.
     provides FakeNetworkService.UUID FakeNetworkService.MAJOR FakeNetworkService.MINOR
 
