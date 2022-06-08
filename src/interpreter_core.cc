@@ -277,7 +277,7 @@ Object* Interpreter::hash_do(Program* program, Object* current, Object* backing,
         // Too many tombstones in a row.
         Object* distance = Instance::cast(first_tombstone_object)->at(0);
         word new_distance = c - first_tombstone;
-        if (!distance->is_smi() || distance == Smi::from(0) || !Smi::is_valid(new_distance)) {
+        if (!distance->is_smi() || Smi::cast(distance)->value() == 0 || !Smi::is_valid(new_distance)) {
           // We can't overwrite the distance on a 0 instance of Tombstone_,
           // because it's the singleton instance, used many places.
           // Bail out to Toit code to fix this.
