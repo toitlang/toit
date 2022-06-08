@@ -1,0 +1,15 @@
+sequans-cellular/src/sequans_cellular.toit:453:30: error: Super of a class must be a class
+class Interface_ extends net.Interface:
+                             ^~~~~~~~~
+sequans-cellular/src/sequans_cellular.toit:75:7: error: Missing implementations for interface methods
+class TcpSocket extends Socket_ implements tcp.Socket:
+      ^~~~~~~~~
+<sdk>/net/tcp.toit:22:3: note: Missing implementation for 'no_delay'
+  no_delay -> bool
+  ^~~~~~~~
+<sdk>/net/tcp.toit:25:3: note: Missing implementation for 'no_delay'
+  no_delay= value/bool
+  ^~~~~~~~~
+sequans-cellular/src/sequans_cellular.toit:448:5: error: Type mismatch. Expected 'Interface'. Got 'Interface_'
+    return Interface_ this
+    ^~~~~~

@@ -1,0 +1,15 @@
+ublox-cellular/src/ublox_cellular.toit:587:30: error: Super of a class must be a class
+class Interface_ extends net.Interface:
+                             ^~~~~~~~~
+ublox-cellular/src/ublox_cellular.toit:86:7: error: Missing implementations for interface methods
+class TcpSocket extends Socket_ implements tcp.Socket:
+      ^~~~~~~~~
+<sdk>/net/tcp.toit:22:3: note: Missing implementation for 'no_delay'
+  no_delay -> bool
+  ^~~~~~~~
+<sdk>/net/tcp.toit:25:3: note: Missing implementation for 'no_delay'
+  no_delay= value/bool
+  ^~~~~~~~~
+ublox-cellular/src/ublox_cellular.toit:570:5: error: Type mismatch. Expected 'Interface'. Got 'Interface_'
+    return Interface_ this
+    ^~~~~~
