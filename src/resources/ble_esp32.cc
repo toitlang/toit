@@ -491,7 +491,7 @@ PRIMITIVE(init) {
   if (proxy == null) ALLOCATION_FAILED;
 
   int id = ble_pool.any();
-  if (id == kInvalidBLE) OUT_OF_BOUNDS;
+  if (id == kInvalidBLE) ALREADY_IN_USE;
 
   esp_err_t err = esp_nimble_hci_and_controller_init();
 
