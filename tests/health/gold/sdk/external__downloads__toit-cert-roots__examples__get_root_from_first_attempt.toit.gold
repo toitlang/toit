@@ -1,0 +1,21 @@
+<pkg:pkg-http>/connection.toit:176:7: error: Missing implementations for interface methods
+class DetachedSocket_ implements tcp.Socket:
+      ^~~~~~~~~~~~~~~
+<sdk>/net/tcp.toit:22:3: note: Missing implementation for 'no_delay'
+  no_delay -> bool
+  ^~~~~~~~
+<sdk>/net/tcp.toit:25:3: note: Missing implementation for 'no_delay'
+  no_delay= value/bool
+  ^~~~~~~~~
+<pkg:..>/certificate_roots.toit:4798:3: warning: Deprecated 'GLOBALSIGN_ROOT_CA_R2'
+  GLOBALSIGN_ROOT_CA_R2,
+  ^~~~~~~~~~~~~~~~~~~~~
+<pkg:..>/certificate_roots.toit:4812:3: warning: Deprecated 'DST_ROOT_CA_X3'
+  DST_ROOT_CA_X3,
+  ^~~~~~~~~~~~~~
+<pkg:..>/certificate_roots.toit:4821:3: warning: Deprecated 'CYBERTRUST_GLOBAL_ROOT'
+  CYBERTRUST_GLOBAL_ROOT,
+  ^~~~~~~~~~~~~~~~~~~~~~
+<pkg:..>/certificate_roots.toit:4867:3: warning: Deprecated 'GLOBALSIGN_ECC_ROOT_CA_R4'
+  GLOBALSIGN_ECC_ROOT_CA_R4,
+  ^~~~~~~~~~~~~~~~~~~~~~~~~

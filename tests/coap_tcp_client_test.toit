@@ -159,4 +159,5 @@ monitor TestSocket implements Reader:
     return ByteArray r.size: r[it]
 
   // Ignore value, as it's only relevant if the implementation has Nagle implemented.
-  set_no_delay value:
+  no_delay -> bool: return false
+  no_delay= value/bool -> none: // Do nothing.

@@ -3,12 +3,15 @@
 // found in the lib/LICENSE file.
 
 import net
+import net.udp
+import net.tcp
+
 import system.services show ServiceClient ServiceResourceProxy
 
 interface NetworkService:
   static UUID  /string ::= "063e228a-3a7a-44a8-b024-d55127255ccb"
   static MAJOR /int    ::= 0
-  static MINOR /int    ::= 2
+  static MINOR /int    ::= 3
 
   /**
   Proxy mask bits that indicate which operations must be proxied
@@ -17,6 +20,15 @@ interface NetworkService:
   static PROXY_NONE    /int ::= 0
   static PROXY_ADDRESS /int ::= 1 << 0
   static PROXY_RESOLVE /int ::= 1 << 1
+  static PROXY_UDP     /int ::= 1 << 2
+  static PROXY_TCP     /int ::= 1 << 3
+
+  /**
+  The socket options can be read or written using $socket_get_option
+    and $socket_set_option.
+  */
+  static SOCKET_OPTION_UDP_BROADCAST /string ::= "udp-broadcast"
+  static SOCKET_OPTION_TCP_NO_DELAY  /string ::= "tcp-no-delay"
 
   // The connect call returns a handle to the network resource and
   // the proxy mask bits in a list. The proxy mask bits indicate
@@ -30,6 +42,51 @@ interface NetworkService:
 
   static RESOLVE_INDEX /int ::= 2
   resolve handle/int host/string -> List
+
+  static UDP_OPEN_INDEX /int ::= 100
+  udp_open handle/int port/int? -> int
+
+  static UDP_CONNECT_INDEX /int ::= 101
+  udp_connect handle/int ip/ByteArray port/int -> none
+
+  static UDP_RECEIVE_INDEX /int ::= 102
+  udp_receive handle/int -> List
+
+  static UDP_SEND_INDEX /int ::= 103
+  udp_send handle/int data/ByteArray ip/ByteArray port/int -> none
+
+  static TCP_CONNECT_INDEX /int ::= 200
+  tcp_connect handle/int ip/ByteArray port/int -> int
+
+  static TCP_LISTEN_INDEX /int ::= 201
+  tcp_listen handle/int port/int -> int
+
+  static TCP_ACCEPT_INDEX /int ::= 202
+  tcp_accept handle/int -> int
+
+  static SOCKET_GET_OPTION_INDEX /int ::= 300
+  socket_get_option handle/int option/string -> any
+
+  static SOCKET_SET_OPTION_INDEX /int ::= 301
+  socket_set_option handle/int option/string value/any -> none
+
+  static SOCKET_LOCAL_ADDRESS_INDEX /int ::= 302
+  socket_local_address handle/int -> List
+
+  static SOCKET_PEER_ADDRESS_INDEX /int ::= 303
+  socket_peer_address handle/int -> List
+
+  static SOCKET_READ_INDEX /int ::= 304
+  socket_read handle/int -> ByteArray?
+
+  static SOCKET_WRITE_INDEX /int ::= 305
+  socket_write handle/int data -> int
+
+  static SOCKET_MTU_INDEX /int ::= 306
+  socket_mtu handle/int -> int
+
+  static SOCKET_CLOSE_WRITE_INDEX /int ::= 307
+  socket_close_write handle/int -> none
 
 class NetworkServiceClient extends ServiceClient implements NetworkService:
   constructor --open/bool=true:
@@ -47,6 +104,51 @@ class NetworkServiceClient extends ServiceClient implements NetworkService:
   resolve handle/int host/string -> List:
     return invoke_ NetworkService.RESOLVE_INDEX [handle, host]
 
+  udp_open handle/int port/int? -> int:
+    return invoke_ NetworkService.UDP_OPEN_INDEX [handle, port]
+
+  udp_connect handle/int ip/ByteArray port/int -> none:
+    invoke_ NetworkService.UDP_CONNECT_INDEX [handle, ip, port]
+
+  udp_receive handle/int -> List:
+    return invoke_ NetworkService.UDP_RECEIVE_INDEX handle
+
+  udp_send handle/int data/ByteArray ip/ByteArray port/int -> none:
+    invoke_ NetworkService.UDP_SEND_INDEX [handle, data, ip, port]
+
+  tcp_connect handle/int ip/ByteArray port/int -> int:
+    return invoke_ NetworkService.TCP_CONNECT_INDEX [handle, ip, port]
+
+  tcp_listen handle/int port/int -> int:
+    return invoke_ NetworkService.TCP_LISTEN_INDEX [handle, port]
+
+  tcp_accept handle/int -> int:
+    return invoke_ NetworkService.TCP_ACCEPT_INDEX handle
+
+  socket_get_option handle/int option/string -> any:
+    return invoke_ NetworkService.SOCKET_GET_OPTION_INDEX [handle, option]
+
+  socket_set_option handle/int option/string value/any -> none:
+    invoke_ NetworkService.SOCKET_SET_OPTION_INDEX [handle, option, value]
+
+  socket_local_address handle/int -> List:
+    return invoke_ NetworkService.SOCKET_LOCAL_ADDRESS_INDEX handle
+
+  socket_peer_address handle/int -> List:
+    return invoke_ NetworkService.SOCKET_PEER_ADDRESS_INDEX handle
+
+  socket_read handle/int -> ByteArray?:
+    return invoke_ NetworkService.SOCKET_READ_INDEX handle
+
+  socket_write handle/int data:
+    return invoke_ NetworkService.SOCKET_WRITE_INDEX [handle, data]
+
+  socket_mtu handle/int -> int:
+    return invoke_ NetworkService.SOCKET_MTU_INDEX handle
+
+  socket_close_write handle/int -> none:
+    invoke_ NetworkService.SOCKET_CLOSE_WRITE_INDEX handle
+
 class NetworkResource extends ServiceResourceProxy:
   constructor client/NetworkServiceClient handle/int:
     super client handle
@@ -58,3 +160,117 @@ class NetworkResource extends ServiceResourceProxy:
   resolve host/string -> List:
     results := (client_ as NetworkServiceClient).resolve handle_ host
     return results.map: net.IpAddress it
+
+  udp_open --port/int?=null -> udp.Socket:
+    client ::= client_ as NetworkServiceClient
+    socket ::= client.udp_open handle_ port
+    return UdpSocketResource_ client socket
+
+  tcp_connect address/net.SocketAddress -> tcp.Socket:
+    client ::= client_ as NetworkServiceClient
+    socket ::= client.tcp_connect handle_ address.ip.to_byte_array address.port
+    return TcpSocketResource_ client socket
+
+  tcp_listen port/int -> tcp.ServerSocket:
+    client ::= client_ as NetworkServiceClient
+    socket ::= client.tcp_listen handle_ port
+    return TcpServerSocketResource_ client socket
+
+// ----------------------------------------------------------------------------
+
+convert_to_socket_address_ address/List offset/int=0 -> net.SocketAddress:
+  ip ::= net.IpAddress address[offset]
+  port ::= address[offset + 1]
+  return net.SocketAddress ip port
+
+class SocketResource_ extends ServiceResourceProxy:
+  static WRITE_DATA_SIZE_MAX_ /int ::= 2048
+
+  constructor client/NetworkServiceClient handle/int:
+    super client handle
+
+  local_address -> net.SocketAddress:
+    return convert_to_socket_address_
+        (client_ as NetworkServiceClient).socket_local_address handle_
+
+  peer_address -> net.SocketAddress:
+    return convert_to_socket_address_
+        (client_ as NetworkServiceClient).socket_peer_address handle_
+
+  read -> ByteArray?:
+    return (client_ as NetworkServiceClient).socket_read handle_
+
+  write data from=0 to=data.size -> int:
+    to = min to (from + WRITE_DATA_SIZE_MAX_)
+    return (client_ as NetworkServiceClient).socket_write handle_ data[from..to]
+
+  mtu -> int:
+    return (client_ as NetworkServiceClient).socket_mtu handle_
+
+  close_write:
+    return (client_ as NetworkServiceClient).socket_close_write handle_
+
+class UdpSocketResource_ extends SocketResource_ implements udp.Socket:
+  constructor client/NetworkServiceClient handle/int:
+    super client handle
+
+  receive -> udp.Datagram:
+    result ::= (client_ as NetworkServiceClient).udp_receive handle_
+    return udp.Datagram result[0] (convert_to_socket_address_ result 1)
+
+  send datagram/udp.Datagram -> none:
+    address ::= datagram.address
+    (client_ as NetworkServiceClient).udp_send
+        handle_
+        datagram.data
+        address.ip.to_byte_array
+        address.port
+
+  connect address/net.SocketAddress -> none:
+    (client_ as NetworkServiceClient).udp_connect
+        handle_
+        address.ip.to_byte_array
+        address.port
+
+  broadcast -> bool:
+    return (client_ as NetworkServiceClient).socket_get_option
+        handle_
+        NetworkService.SOCKET_OPTION_UDP_BROADCAST
+
+  broadcast= value/bool:
+    (client_ as NetworkServiceClient).socket_set_option
+        handle_
+        NetworkService.SOCKET_OPTION_UDP_BROADCAST
+        value
+
+class TcpSocketResource_ extends SocketResource_ implements tcp.Socket:
+  constructor client/NetworkServiceClient handle/int:
+    super client handle
+
+  // TODO(kasper): Remove this.
+  set_no_delay enabled/bool -> none:
+    no_delay = enabled
+
+  no_delay -> bool:
+    return (client_ as NetworkServiceClient).socket_get_option
+        handle_
+        NetworkService.SOCKET_OPTION_TCP_NO_DELAY
+
+  no_delay= value/bool -> none:
+    (client_ as NetworkServiceClient).socket_set_option
+        handle_
+        NetworkService.SOCKET_OPTION_TCP_NO_DELAY
+        value
+
+class TcpServerSocketResource_ extends ServiceResourceProxy implements tcp.ServerSocket:
+  constructor client/NetworkServiceClient handle/int:
+    super client handle
+
+  local_address -> net.SocketAddress:
+    return convert_to_socket_address_
+        (client_ as NetworkServiceClient).socket_local_address handle_
+
+  accept -> tcp.Socket?:
+    client ::= client_ as NetworkServiceClient
+    socket ::= client.tcp_accept handle_
+    return TcpSocketResource_ client socket

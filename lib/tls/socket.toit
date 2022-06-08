@@ -69,10 +69,10 @@ class Socket implements tcp.Socket:
     operation will fall back to performing the full handshake.
   */
   handshake --session_state/ByteArray?=null -> none:
-    socket_.set_no_delay true
+    no_delay ::= socket_.no_delay
+    socket_.no_delay = true
     session_.handshake --session_state=session_state
-    // TODO(anders): Set as before handshake, when state can be read.
-    socket_.set_no_delay false
+    socket_.no_delay = no_delay
 
   /**
   Gets the session state, a ByteArray that can be used to resume
@@ -104,8 +104,15 @@ class Socket implements tcp.Socket:
   peer_address -> net.SocketAddress:
     return socket_.peer_address
 
-  set_no_delay value/bool:
-    socket_.set_no_delay value
+  // TODO(kasper): Remove this.
+  set_no_delay enabled/bool -> none:
+    no_delay = enabled
+
+  no_delay -> bool:
+    return socket_.no_delay
+
+  no_delay= value/bool:
+    socket_.no_delay = value
 
   mtu -> int:
     return socket_.mtu - TLS_HEADER_SIZE_

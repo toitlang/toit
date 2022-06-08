@@ -52,6 +52,7 @@ class SystemInterface_ extends NetworkResource implements net.Interface:
 
   udp_open --port/int?=null -> udp.Socket:
     if not handle_: throw "Network closed"
+    if (proxy_mask_ & NetworkService.PROXY_UDP) != 0: return super --port=port
     return Socket "0.0.0.0" (port ? port : 0)
 
   tcp_connect host/string port/int -> tcp.Socket:
@@ -61,12 +62,14 @@ class SystemInterface_ extends NetworkResource implements net.Interface:
 
   tcp_connect address/net.SocketAddress -> tcp.Socket:
     if not handle_: throw "Network closed"
+    if (proxy_mask_ & NetworkService.PROXY_TCP) != 0: return super address
     result := TcpSocket
     result.connect address.ip.stringify address.port
     return result
 
   tcp_listen port/int -> tcp.ServerSocket:
     if not handle_: throw "Network closed"
+    if (proxy_mask_ & NetworkService.PROXY_TCP) != 0: return super port
     result := TcpServerSocket
     result.listen "0.0.0.0" port
     return result

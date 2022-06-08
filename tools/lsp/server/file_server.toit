@@ -170,7 +170,7 @@ class TcpFileServer implements FileServer:
   accept_:
     socket := server_.accept
     try:
-      socket.set_no_delay true
+      socket.no_delay = true
       reader := BufferedReader socket
       writer := Writer socket
       protocol.handle reader writer

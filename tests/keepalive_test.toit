@@ -17,10 +17,10 @@ test_keep_alive:
 
     expect_equals false socket.keep_alive
 
-    socket.set_keep_alive true
+    socket.keep_alive = true
     expect_equals true socket.keep_alive
 
-    socket.set_keep_alive false
+    socket.keep_alive = false
     expect_equals false socket.keep_alive
 
     socket.close
