@@ -1,3 +1,0 @@
-<pkg:..>/color_tft.toit:237:40: warning: Deprecated 'IDENTITY_LOOKUP_TABLE'
-    table := invert_colors_ ? INVERT : IDENTITY_LOOKUP_TABLE
-                                       ^~~~~~~~~~~~~~~~~~~~~
