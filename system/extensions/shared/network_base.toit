@@ -35,8 +35,9 @@ abstract class NetworkServiceDefinitionBase extends ServiceDefinition implements
 
   abstract connect client/int -> ServiceResource
 
-  // Service clients should not call the following methods. This service defintion
-  // hasn't asked for these calls to be proxied, so the client must implement itself.
+  // Service clients should not call the following methods. This service definition
+  // hasn't asked for these calls to be proxied (through the returned mask), so the
+  // client must implement them.
   address resource/ServiceResource -> ByteArray:
     unreachable
   resolve resource/ServiceResource host/string -> List:
