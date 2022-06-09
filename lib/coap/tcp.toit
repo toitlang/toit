@@ -53,7 +53,7 @@ class TcpTransport implements Transport:
   current_reader_/Reader_? := null
 
   constructor .socket_ --send_csm=true:
-    socket_.set_no_delay true
+    socket_.no_delay = true
     reader_ = reader.BufferedReader socket_
     writer_ = writer.Writer socket_
 

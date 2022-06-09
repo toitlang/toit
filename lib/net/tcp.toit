@@ -15,7 +15,14 @@ interface Socket implements reader.Reader:
   local_address -> SocketAddress
   peer_address -> SocketAddress
 
-  set_no_delay enabled/bool
+  // TODO(kasper): Remove this.
+  set_no_delay enabled/bool -> none
+
+  // Returns true if TCP_NODELAY option is enabled.
+  no_delay -> bool
+
+  // Enable or disable TCP_NODELAY option.
+  no_delay= value/bool
 
   read -> ByteArray?
   write data from/int=0 to/int=data.size -> int

@@ -35,12 +35,43 @@ abstract class NetworkServiceDefinitionBase extends ServiceDefinition implements
 
   abstract connect client/int -> ServiceResource
 
+  // Service clients should not call the following methods. This service definition
+  // hasn't asked for these calls to be proxied (through the returned mask), so the
+  // client must implement them.
   address resource/ServiceResource -> ByteArray:
-    // Service clients should not call this. This service defintion hasn't asked
-    // for this call to be proxied, so the client must implement itself.
+    unreachable
+  resolve resource/ServiceResource host/string -> List:
     unreachable
 
-  resolve resource/ServiceResource host/string -> List:
-    // Service clients should not call this. This service defintion hasn't asked
-    // for this call to be proxied, so the client must implement itself.
+  udp_open handle/int port/int? -> int:
+    unreachable
+  udp_connect handle/int ip/ByteArray port/int -> none:
+    unreachable
+  udp_receive handle/int -> List:
+    unreachable
+  udp_send handle/int data/ByteArray ip/ByteArray port/int -> none:
+    unreachable
+
+  tcp_connect handle/int ip/ByteArray port/int -> int:
+    unreachable
+  tcp_listen handle/int port/int -> int:
+    unreachable
+  tcp_accept handle/int -> int:
+    unreachable
+  tcp_close_write handle/int -> none:
+    unreachable
+
+  socket_get_option handle/int option/string -> any:
+    unreachable
+  socket_set_option handle/int option/string value/any -> none:
+    unreachable
+  socket_local_address handle/int -> List:
+    unreachable
+  socket_peer_address handle/int -> List:
+    unreachable
+  socket_read handle/int -> ByteArray?:
+    unreachable
+  socket_write handle/int data -> int:
+    unreachable
+  socket_mtu handle/int -> int:
     unreachable
