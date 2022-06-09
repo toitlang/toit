@@ -1272,7 +1272,7 @@ abstract class ByteArrayBase_ implements ByteArray:
   Returns a hash code that depends on the content of this ByteArray.
   */
   hash_code -> int:
-    #primitive.core.string_slice_hash_code
+    #primitive.core.blob_hash_code
 
   /**
   Invokes the given $block on each element of this instance.
@@ -1592,7 +1592,7 @@ class CowByteArray_ implements ByteArray:
     return backing_ == other
 
   hash_code -> int:
-    #primitive.core.string_slice_hash_code
+    #primitive.core.blob_hash_code
 
   do [block] -> none:
     backing_.do block

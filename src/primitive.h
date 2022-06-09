@@ -141,7 +141,7 @@ namespace toit {
   PRIMITIVE(float_greater_than, 2)           \
   PRIMITIVE(float_greater_than_or_equal, 2)  \
   PRIMITIVE(string_hash_code, 1)             \
-  PRIMITIVE(string_slice_hash_code, 1)       \
+  PRIMITIVE(blob_hash_code, 1)               \
   PRIMITIVE(hash_simple_json_string, 2)      \
   PRIMITIVE(compare_simple_json_string, 3)   \
   PRIMITIVE(size_of_json_number, 2)          \
