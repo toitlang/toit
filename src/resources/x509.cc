@@ -92,11 +92,11 @@ PRIMITIVE(parse) {
 
   const uint8_t* data = null;
   size_t length = 0;
-  if (input->is_byte_array()) {
+  if (is_byte_array(input)) {
     ByteArray::Bytes bytes(ByteArray::cast(input));
     data = bytes.address();
     length = bytes.length();
-  } else if (input->is_string()) {
+  } else if (is_string(input)) {
     // For PEM format, give a null terminated byte array (and the size of the
     // full array), otherwise parsing will fail.
     String* str = String::cast(input);

@@ -107,7 +107,7 @@ class EncodeVisitor : public Visitor {
 
   void visit_instance(Instance* instance) {
     Smi* class_id = instance->class_id();
-    if (class_id == _encoder->program()->list_class_id() && instance->at(0)->is_array()) {
+    if (class_id == _encoder->program()->list_class_id() && is_array(instance->at(0))) {
       // The backing storage in a list can be either an array -- or a
       // large array. Only optimize if it isn't large.
       // We use the same layout assumptions for List_ as the interpreter.

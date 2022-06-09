@@ -50,14 +50,14 @@ PRIMITIVE(object_histogram) {
     if (object == capture.result) return;  // Don't count the resulting byte array.
     int class_index = Smi::cast(object->class_id())->value();
     int size = object->size(capture.program);
-    if (object->is_byte_array() && ByteArray::cast(object)->has_external_address()) {
+    if (is_byte_array(object) && ByteArray::cast(object)->has_external_address()) {
       ByteArray* byte_array = ByteArray::cast(object);
       word tag = byte_array->external_tag();
       if (tag == RawByteTag) {
         ByteArray::Bytes bytes(byte_array);
         size += bytes.length();
       }
-    } else if (object->is_string() && !String::cast(object)->content_on_heap()) {
+    } else if (is_string(object) && !String::cast(object)->content_on_heap()) {
       size += String::cast(object)->length() + 1;
     }
     capture.data[class_index * UINT32_PER_ENTRY + 0] += 1;

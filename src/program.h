@@ -276,9 +276,9 @@ class Program : public FlashAllocation {
   //   not its bytecodes.
   inline Object* frame_marker() const {
     uword bytecodes_address = reinterpret_cast<uword>(bytecodes.data());
-    ASSERT(reinterpret_cast<Object*>(bytecodes_address)->is_smi());
+    ASSERT(is_smi(reinterpret_cast<Object*>(bytecodes_address)));
     auto result = reinterpret_cast<Object*>(bytecodes_address + Object::HEAP_TAG);
-    ASSERT(result->is_heap_object());
+    ASSERT(is_heap_object(result));
     return result;
   }
 

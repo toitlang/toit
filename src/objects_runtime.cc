@@ -22,7 +22,7 @@
 namespace toit {
 
 bool Object::mutable_byte_content(Process* process, uint8** content, int* length, Error** error) {
-  if (is_byte_array()) {
+  if (is_byte_array(this)) {
     auto byte_array = ByteArray::cast(this);
     // External byte arrays can have structs in them. This is captured in the external tag.
     // We only allow extracting the byte content from an external byte arrays iff it is tagged with RawByteType.
@@ -32,7 +32,7 @@ bool Object::mutable_byte_content(Process* process, uint8** content, int* length
     *content = bytes.address();
     return true;
   }
-  if (!is_instance()) return false;
+  if (!is_instance(this)) return false;
 
   auto program = process->program();
   auto instance = Instance::cast(this);
@@ -69,10 +69,10 @@ bool Object::mutable_byte_content(Process* process, uint8** content, int* length
     auto byte_array = instance->at(0);
     auto from = instance->at(1);
     auto to = instance->at(2);
-    if (!byte_array->is_heap_object()) return false;
+    if (!is_heap_object(byte_array)) return false;
     // TODO(florian): we could eventually accept larger integers here.
-    if (!from->is_smi()) return false;
-    if (!to->is_smi()) return false;
+    if (!is_smi(from)) return false;
+    if (!is_smi(to)) return false;
     int from_value = Smi::cast(from)->value();
     int to_value = Smi::cast(to)->value();
     bool inner_success = HeapObject::cast(byte_array)->mutable_byte_content(process, content, length, error);
