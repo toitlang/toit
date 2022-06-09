@@ -10,6 +10,8 @@ main:
   test --timeout=false
   test --timeout=true
 
+// Check we can call close in a finally clause even when our task is
+// being cancelled.
 test --timeout/bool -> none:
   server_ready := Latch
   connected := Latch
@@ -50,10 +52,11 @@ test --timeout/bool -> none:
 
   sleep --ms=1000
 
+  // Check we slept long enough for the other task to close.
   expect
       state.resource == null
   
   // Of course the socket is not null, this is just there to ensure we don't GC
-  // the socket until now.
-  expect
-      socket != null
+  // the socket until now, which might trigger a finalizer-based close instead
+  // of the finally-based close we are trying to test.
+  expect_not_null socket
