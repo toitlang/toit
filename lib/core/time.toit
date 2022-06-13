@@ -63,16 +63,16 @@ class Duration implements Comparable:
   static MICROSECONDS_PER_HOUR        ::= 3600_000_000
 
   /** The number of milliseconds per second. */
-  static MILLISECONDS_PER_SECOND      ::=    1_000
+  static MILLISECONDS_PER_SECOND ::=    1_000
   /** The number of milliseconds per minute. */
-  static MILLISECONDS_PER_MINUTE      ::=   60_000
+  static MILLISECONDS_PER_MINUTE ::=   60_000
   /** The number of milliseconds per hour. */
-  static MILLISECONDS_PER_HOUR        ::= 3600_000
+  static MILLISECONDS_PER_HOUR   ::= 3600_000
 
   /** The number of seconds per minute. */
-  static SECONDS_PER_MINUTE      ::=   60
+  static SECONDS_PER_MINUTE ::=   60
   /** The number of seconds per hour. */
-  static SECONDS_PER_HOUR        ::= 3600
+  static SECONDS_PER_HOUR   ::= 3600
 
   ns_ / int
 
