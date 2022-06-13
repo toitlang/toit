@@ -67,9 +67,9 @@ class Adc:
     if samples <= MAX_SAMPLES_PER_CALL_: return adc_get_ state_ samples
     // Sample in chunks of 64, so we don't spend too much time in
     // the primitive.
-    sampled := 0
     full_chunk_factor := MAX_SAMPLES_PER_CALL_.to_float / samples
     result := 0.0
+    sampled := 0
     while sampled < samples:
       is_full_chunk := sampled + MAX_SAMPLES_PER_CALL_ <= samples
       chunk_size := is_full_chunk ? MAX_SAMPLES_PER_CALL_ : samples - sampled
