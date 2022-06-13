@@ -74,6 +74,7 @@ func (mpc *multiplexConn) dispatch() {
 		}
 		if err != nil {
 			mpc.logger.Debug("Error while reading from compiler", zap.Error(err))
+			break
 		}
 
 		to := toParser
@@ -84,9 +85,11 @@ func (mpc *multiplexConn) dispatch() {
 		written, err := io.CopyN(to, from, int64(size))
 		if err != nil {
 			mpc.logger.Debug("Error while reading from compiler", zap.Error(err))
+			break
 		}
 		if written != int64(size) {
 			mpc.logger.Debug("Error while copying data from compiler", zap.Error(err))
+			break
 		}
 	}
 }
