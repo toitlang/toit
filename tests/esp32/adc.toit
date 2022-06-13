@@ -40,6 +40,23 @@ main:
   value = adc.get
   expect value > 3.0
 
+  // Test that we correctly measure when the sample size is big.
+  control_pin.set 0
+  values := [
+    adc.get --samples=5,
+    adc.get --samples=64,
+    adc.get --samples=127,
+    adc.get --samples=128,
+    adc.get --samples=255,
+    adc.get --samples=256,
+    adc.get --samples=1023,
+    adc.get --samples=1024,
+  ]
+  average := values.reduce: | a b | a + b
+  average /= values.size
+  diffs := values.map: | v | (v - average).abs
+  expect (diffs.every: it < 0.1)
+
   if not test_restricted: return
   print "Testing restricted ADC"
   print "This only works if no WiFi is running"
