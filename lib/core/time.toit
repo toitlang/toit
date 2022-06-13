@@ -53,7 +53,7 @@ class Duration implements Comparable:
   /** The number of nanoseconds per hour. */
   static NANOSECONDS_PER_HOUR        ::= 3600_000_000_000
 
-  ns_ / int
+  ns_ /int
 
   /**
   Constructs a duration of $h hours, $m minutes, $ms milliseconds, $us
@@ -143,7 +143,7 @@ class Duration implements Comparable:
   /**
   The absolute value of this duration.
   */
-  abs:
+  abs -> Duration:
     if ns_ == int.MIN: throw "OUT_OF_RANGE"
     if ns_ < 0: return Duration --ns=-ns_
     return this
@@ -418,7 +418,7 @@ class Duration implements Comparable:
 
   Prefer to use this for 0-durations to avoid allocations.
   */
-  static ZERO / Duration ::= Duration 0
+  static ZERO /Duration ::= Duration 0
 
 
 /** A decomposed view of a $Time object. */
@@ -440,16 +440,16 @@ class TimeInfo:
   static SUNDAY    ::= 7
 
   /** The corresponding time instance. */
-  time / Time
+  time /Time
 
   /** Year. */
-  year / int
+  year /int
 
   /**
   Month of the year.
   In the range 1-12.
   */
-  month / int
+  month /int
 
   /**
   Day of the month.
@@ -473,13 +473,13 @@ class TimeInfo:
   Seconds after the minute.
   Generally in the range 0 to 59. May be 60 in case of leap-seconds.
   */
-  s / int
+  s /int
 
   /**
   Nanoseconds after the second.
   In the range 0-999_999_999.
   */
-  ns / int
+  ns /int
 
   /**
   Weekday.
@@ -489,7 +489,7 @@ class TimeInfo:
     $weekday value module 7, which gives a value in the range 0 to 6, but shuffles
     Sunday down to the beginning of the week.
   */
-  weekday / int
+  weekday /int
 
   /**
   Days since January 1st.
@@ -497,13 +497,13 @@ class TimeInfo:
   In combination with the year also known as ordinal date.
   */
   // 0-365, days since January 1.
-  yearday / int
+  yearday /int
 
   /** Whether this instance is in UTC. */
-  is_utc / bool
+  is_utc /bool
 
   /** Whether this instance is computed with daylight saving active. */
-  is_dst / bool
+  is_dst /bool
 
   constructor.__ .time --.is_utc:
     info := time_info_ time.s_since_epoch is_utc
@@ -584,10 +584,10 @@ If you need a decomposed view of a $Time, then convert it to a $TimeInfo
 */
 class Time implements Comparable:
 
-  seconds_ / int
-  ns_      / int
-  local_   / TimeInfo? := null
-  utc_     / TimeInfo? := null
+  seconds_ /int
+  ns_      /int
+  local_   /TimeInfo? := null
+  utc_     /TimeInfo? := null
 
   /**
   Constructs a time instance from the given parameters.
