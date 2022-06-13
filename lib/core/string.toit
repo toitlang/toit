@@ -1183,7 +1183,7 @@ class StringSlice_ extends string:
     return hash_
 
   compute_hash_ -> int:
-    #primitive.core.string_slice_hash_code
+    #primitive.core.blob_hash_code
 
 // Unsigned base 8 and base 16 stringification.
 printf_style_int_stringify_ value/int base/int -> string:

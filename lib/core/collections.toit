@@ -1058,6 +1058,11 @@ interface ByteArray:
   operator == other -> bool
 
   /**
+  Returns a hash code that depends on the content of this ByteArray.
+  */
+  hash_code -> int
+
+  /**
   Invokes the given $block on each byte of this instance.
   */
   do [block]
@@ -1262,6 +1267,12 @@ abstract class ByteArrayBase_ implements ByteArray:
   operator == other -> bool:
     if other is not ByteArray: return false
     #primitive.core.blob_equals
+
+  /**
+  Returns a hash code that depends on the content of this ByteArray.
+  */
+  hash_code -> int:
+    #primitive.core.blob_hash_code
 
   /**
   Invokes the given $block on each element of this instance.
@@ -1579,6 +1590,9 @@ class CowByteArray_ implements ByteArray:
 
   operator == other -> bool:
     return backing_ == other
+
+  hash_code -> int:
+    #primitive.core.blob_hash_code
 
   do [block] -> none:
     backing_.do block
@@ -2195,7 +2209,7 @@ The == operator should be compatible with the hash_code method so
   However, objects that test unequal are not required to have
   different hash codes: Hash code clashes are allowed, but should
   be rare to maintain good performance.
-Strings and numbers fulfill these requirements and can be used as
+Strings, byte arrays, and numbers fulfill these requirements and can be used as
   keys in sets.
 */
 class Set extends HashedInsertionOrderedCollection_ implements Collection:
@@ -2477,7 +2491,7 @@ The == operator should be compatible with the hash_code method so
   However, objects that test unequal are not required to have
   different hash codes: Hash code clashes are allowed, but should
   be rare to maintain good performance.
-Strings and numbers fulfill these requirements and can be used as
+Strings, byte arrays, and numbers fulfill these requirements and can be used as
   keys in maps.
 */
 class Map extends HashedInsertionOrderedCollection_:

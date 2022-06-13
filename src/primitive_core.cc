@@ -1038,7 +1038,7 @@ PRIMITIVE(string_hash_code) {
   return Smi::from(receiver->hash_code());
 }
 
-PRIMITIVE(string_slice_hash_code) {
+PRIMITIVE(blob_hash_code) {
   ARGS(Blob, receiver);
   auto hash = String::compute_hash_code_for(reinterpret_cast<const char*>(receiver.address()),
                                             receiver.length());
