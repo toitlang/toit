@@ -39,11 +39,14 @@ namespace toit {
 
 static int get_adc1_channel(int pin) {
   switch (pin) {
-    case 0: return ADC1_CHANNEL_0;
-    case 1: return ADC1_CHANNEL_1;
-    case 2: return ADC1_CHANNEL_2;
-    case 3: return ADC1_CHANNEL_3;
-    case 4: return ADC1_CHANNEL_4;
+    case 36: return ADC1_CHANNEL_0;
+    case 37: return ADC1_CHANNEL_1;
+    case 38: return ADC1_CHANNEL_2;
+    case 39: return ADC1_CHANNEL_3;
+    case 32: return ADC1_CHANNEL_4;
+    case 33: return ADC1_CHANNEL_5;
+    case 34: return ADC1_CHANNEL_6;
+    case 35: return ADC1_CHANNEL_7;
     default: return adc1_channel_t(-1);
   }
 }
@@ -51,6 +54,15 @@ static int get_adc1_channel(int pin) {
 static int get_adc2_channel(int pin) {
   switch (pin) {
     case 4: return ADC2_CHANNEL_0;
+    case 0: return ADC2_CHANNEL_1;
+    case 2: return ADC2_CHANNEL_2;
+    case 15: return ADC2_CHANNEL_3;
+    case 13: return ADC2_CHANNEL_4;
+    case 12: return ADC2_CHANNEL_5;
+    case 14: return ADC2_CHANNEL_6;
+    case 27: return ADC2_CHANNEL_7;
+    case 25: return ADC2_CHANNEL_8;
+    case 26: return ADC2_CHANNEL_9;
     default: return adc2_channel_t(-1);
   }
 }
