@@ -198,6 +198,8 @@ PRIMITIVE(init) {
 PRIMITIVE(get) {
   ARGS(AdcState, state, int, samples);
 
+  if (samples < 1 || samples > 64) OUT_OF_RANGE;
+
   uint32_t adc_reading = 0;
 
   // Multisampling.
