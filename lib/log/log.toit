@@ -24,50 +24,50 @@ default_ := Logger DEBUG_LEVEL DefaultTarget
 /**
 Logs the $message at the given $level to the default logger.
 
-Includes the given $tags in the log message.
+Includes the given $tags and $exception in the log message.
 */
-log level/int message/string --tags/Map?=null -> none:
-  default_.log level message --tags=tags
+log level/int message/string --tags/Map?=null --trace/ByteArray?=null -> none:
+  default_.log level message --tags=tags --trace=trace
 
 /**
 Logs the $message to the default logger at debug level ($DEBUG_LEVEL).
 
-Includes the given $tags in the log message.
+Includes the given $tags and $exception in the log message.
 */
-debug message/string --tags/Map?=null -> none:
-  default_.log DEBUG_LEVEL message --tags=tags
+debug message/string --tags/Map?=null --trace/ByteArray?=null-> none:
+  default_.log DEBUG_LEVEL message --tags=tags --trace=trace
 
 /**
 Logs the $message to the default logger at info level ($INFO_LEVEL).
 
-Includes the given $tags in the log message.
+Includes the given $tags and $exception in the log message.
 */
-info message/string --tags/Map?=null -> none:
-  default_.log INFO_LEVEL message --tags=tags
+info message/string --tags/Map?=null --trace/ByteArray?=null-> none:
+  default_.log INFO_LEVEL message --tags=tags --trace=trace
 
 /**
 Logs the $message to the default logger at warning level ($WARN_LEVEL).
 
-Includes the given $tags in the log message.
+Includes the given $tags and $exception in the log message.
 */
-warn message/string --tags/Map?=null -> none:
-  default_.log WARN_LEVEL message --tags=tags
+warn message/string --tags/Map?=null --trace/ByteArray?=null-> none:
+  default_.log WARN_LEVEL message --tags=tags --trace=trace
 
 /**
 Logs the $message to the default logger at error level ($ERROR_LEVEL).
 
-Includes the given $tags in the log message.
+Includes the given $tags and $exception in the log message.
 */
-error message/string --tags/Map?=null -> none:
-  default_.log ERROR_LEVEL message --tags=tags
+error message/string --tags/Map?=null --trace/ByteArray?=null-> none:
+  default_.log ERROR_LEVEL message --tags=tags --trace=trace
 
 /**
 Logs the $message to the default logger at fatal level ($FATAL_LEVEL).
 
-Includes the given $tags in the log message.
+Includes the given $tags and $exception in the log message.
 */
-fatal message/string --tags/Map?=null -> none:
-  default_.log FATAL_LEVEL message --tags=tags
+fatal message/string --tags/Map?=null --trace/ByteArray?=null-> none:
+  default_.log FATAL_LEVEL message --tags=tags --trace=trace
 
 /**
 A logger that logs messages to a given target.
@@ -143,53 +143,56 @@ class Logger:
   /**
   Logs the $message at the given $level.
 
-  Includes the given $tags in the log message.
+  Includes the given $tags and $exception in the log message.
   */
-  log level/int message/string --tags/Map?=null -> none:
+  log level/int message/string --tags/Map?=null --trace/ByteArray?=null -> none:
     if level < level_: return
-    merge_tags_ tags keys_ values_: | keys/List? values/List? |
-      target_.log level message names_ keys values
+    log_ level message --tags=tags --trace=trace
     if level == FATAL_LEVEL: throw "FATAL"
 
   /**
   Logs the $message at debug level ($DEBUG_LEVEL).
 
-  Includes the given $tags in the log message.
+  Includes the given $tags and $exception in the log message.
   */
-  debug message/string --tags/Map?=null -> none:
-    log DEBUG_LEVEL message --tags=tags
+  debug message/string --tags/Map?=null --trace/ByteArray?=null -> none:
+    log DEBUG_LEVEL message --tags=tags --trace=trace
 
   /**
   Logs the $message at info level ($INFO_LEVEL).
 
-  Includes the given $tags in the log message.
+  Includes the given $tags and $exception in the log message.
   */
-  info message/string --tags/Map?=null -> none:
-    log INFO_LEVEL message --tags=tags
+  info message/string --tags/Map?=null --trace/ByteArray?=null -> none:
+    log INFO_LEVEL message --tags=tags --trace=trace
 
   /**
   Logs the $message at warning level ($WARN_LEVEL).
 
-  Includes the given $tags in the log message.
+  Includes the given $tags and $exception in the log message.
   */
-  warn message/string --tags/Map?=null -> none:
-    log WARN_LEVEL message --tags=tags
+  warn message/string --tags/Map?=null --trace/ByteArray?=null -> none:
+    log WARN_LEVEL message --tags=tags --trace=trace
 
   /**
   Logs the $message at error level ($ERROR_LEVEL).
 
-  Includes the given $tags in the log message.
+  Includes the given $tags and $exception in the log message.
   */
-  error message/string --tags/Map?=null -> none:
-    log ERROR_LEVEL message --tags=tags
+  error message/string --tags/Map?=null --trace/ByteArray?=null -> none:
+    log ERROR_LEVEL message --tags=tags --trace=trace
 
   /**
   Logs the $message at fatal level ($FATAL_LEVEL).
 
-  Includes the given $tags in the log message.
+  Includes the given $tags and $exception in the log message.
   */
-  fatal message/string --tags/Map?=null -> none:
-    log FATAL_LEVEL message --tags=tags
+  fatal message/string --tags/Map?=null --trace/ByteArray?=null -> none:
+    log FATAL_LEVEL message --tags=tags --trace=trace
+
+  log_ level/int message/string --tags/Map?=null --trace/ByteArray?=null:
+    merge_tags_ tags keys_ values_: | keys/List? values/List? |
+      target_.log level message names_ keys values trace
 
   /**
   Merge any tags provided in the $tags map with the preexisting $keys

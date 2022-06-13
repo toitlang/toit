@@ -10,7 +10,7 @@ interface LoggingService:
   static MINOR /int    ::= 1
 
   static LOG_INDEX /int ::= 0
-  log level/int message/string names/List? keys/List? values/List? -> none
+  log level/int message/string names/List? keys/List? values/List? trace/ByteArray? -> none
 
 class LoggingServiceClient extends ServiceClient implements LoggingService:
   constructor --open/bool=true:
@@ -19,5 +19,5 @@ class LoggingServiceClient extends ServiceClient implements LoggingService:
   open -> LoggingServiceClient?:
     return (open_ LoggingService.UUID LoggingService.MAJOR LoggingService.MINOR) and this
 
-  log level/int message/string names/List? keys/List? values/List? -> none:
-    invoke_ LoggingService.LOG_INDEX [level, message, names, keys, values]
+  log level/int message/string names/List? keys/List? values/List? trace/ByteArray? -> none:
+    invoke_ LoggingService.LOG_INDEX [level, message, names, keys, values, trace]

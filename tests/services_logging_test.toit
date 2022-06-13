@@ -10,7 +10,7 @@ import system.api.logging show LoggingService
 
 service ::= LoggingServiceDefinition
 
-expect_log level/int message/string names/List? keys/List? values/List? [block]:
+expect_log level/int message/string names/List? keys/List? values/List? trace/ByteArray?=null [block]:
   expect.expect_equals 0 service.logs.size
   try:
     block.call
@@ -37,6 +37,11 @@ expect_log level/int message/string names/List? keys/List? values/List? [block]:
     else:
       expect.expect_null log_values
 
+    log_trace/ByteArray? := result.first[5]
+    if trace:
+      expect.expect_bytes_equal trace log_trace
+    else:
+      expect.expect_null log_trace
 main:
   service.install
   [ log.DEBUG_LEVEL, log.WARN_LEVEL, log.INFO_LEVEL, log.ERROR_LEVEL ].do: | level/int |
@@ -60,6 +65,10 @@ main:
   expect_log log.ERROR_LEVEL "gris" ["grums"] ["mums"] ["99"]:
     logger := (log.default.with_tag "mums" 43).with_name "grums"
     logger.error "gris" --tags={"mums": 99}
+  expect_log log.ERROR_LEVEL "ko" ["dumbo"] null null #[31,192,21]:
+    logger := log.default.with_name "dumbo"
+    logger.error "ko" --trace=#[31,192,21]
+
   service.uninstall
   // TODO(kasper): How do we handle services that come and go
   // from the client side?
@@ -81,5 +90,5 @@ class LoggingServiceDefinition extends ServiceDefinition implements LoggingServi
     logs_ = []
     return result
 
-  log level/int message/string names/List? keys/List? values/List? -> none:
+  log level/int message/string names/List? keys/List? values/List? trace/ByteArray? -> none:
     unreachable  // Unused.
