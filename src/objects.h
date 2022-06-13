@@ -34,6 +34,20 @@ enum BlobKind {
   STRINGS_ONLY
 };
 
+// Type testers.
+INLINE bool is_smi(Object* o);
+INLINE bool is_heap_object(Object* o);
+INLINE bool is_double(Object* o);
+INLINE bool is_task(Object* o);
+INLINE bool is_instance(Object* o);
+INLINE bool is_array(Object* o);
+INLINE bool is_byte_array(Object* o);
+INLINE bool is_stack(Object* o);
+INLINE bool is_string(Object* o);
+INLINE bool is_large_integer(Object* o);
+INLINE bool is_free_list_region(Object* o);
+INLINE bool is_promoted_track(Object* o);
+
 class Object {
  public:
   static const int SMI_TAG_SIZE = 1;
@@ -45,20 +59,6 @@ class Object {
   static const uword NON_SMI_TAG_MASK = (1 << NON_SMI_TAG_SIZE) - 1;
   static const int HEAP_TAG = 0x1;
   static const int MARKED_TAG = 0x3;
-
-  // Type testers.
-  INLINE bool is_smi() const { return (reinterpret_cast<uword>(this) & SMI_TAG_MASK) == SMI_TAG; }
-  INLINE bool is_heap_object() const { return (reinterpret_cast<uword>(this) & NON_SMI_TAG_MASK) == HEAP_TAG; }
-  INLINE bool is_double();
-  INLINE bool is_instance();
-  INLINE bool is_array();
-  INLINE bool is_byte_array();
-  INLINE bool is_stack();
-  INLINE bool is_string();
-  INLINE bool is_task();
-  INLINE bool is_large_integer();
-  INLINE bool is_free_list_region();
-  INLINE bool is_promoted_track();
 
   static Object* cast(Object* obj) { return obj; }
 
@@ -148,11 +148,11 @@ class Smi : public Object {
 
   static Smi* from(word value) {
     ASSERT(is_valid(value));
-    return reinterpret_cast<Smi*>(value << SMI_TAG_SIZE);
+    return reinterpret_cast<Smi*>(static_cast<uword>(value) << SMI_TAG_SIZE);
   }
 
   static Smi* cast(Object* obj) {
-    ASSERT(obj->is_smi());
+    ASSERT(is_smi(obj));
     return static_cast<Smi*>(obj);
   }
 
@@ -196,7 +196,7 @@ class HeapObject : public Object {
  public:
   INLINE Smi* header() {
     Object* result = _at(HEADER_OFFSET);
-    ASSERT(result->is_smi());
+    ASSERT(is_smi(result));
     return Smi::cast(result);
   }
   INLINE Smi* class_id() {
@@ -207,7 +207,7 @@ class HeapObject : public Object {
   }
 
   INLINE bool has_forwarding_address() {
-    return _at(HEADER_OFFSET)->is_heap_object();
+    return is_heap_object(_at(HEADER_OFFSET));
   }
 
   // During GC the header can be a heap object (a forwarding pointer).
@@ -258,7 +258,7 @@ class HeapObject : public Object {
   }
 
   static HeapObject* cast(Object* obj) {
-    ASSERT(obj->is_heap_object());
+    ASSERT(is_heap_object(obj));
     return static_cast<HeapObject*>(obj);
   }
 
@@ -387,7 +387,7 @@ class Array : public HeapObject {
 #endif
 
   static Array* cast(Object* array) {
-     ASSERT(array->is_array());
+     ASSERT(is_array(array));
      return static_cast<Array*>(array);
   }
 
@@ -524,7 +524,7 @@ class ByteArray : public HeapObject {
 #endif
 
   static ByteArray* cast(Object* byte_array) {
-     ASSERT(byte_array->is_byte_array());
+     ASSERT(is_byte_array(byte_array));
      return static_cast<ByteArray*>(byte_array);
   }
 
@@ -643,7 +643,7 @@ class LargeInteger : public HeapObject {
   int64 value() { return _int64_at(VALUE_OFFSET); }
 
   static LargeInteger* cast(Object* value) {
-     ASSERT(value->is_large_integer());
+     ASSERT(is_large_integer(value));
      return static_cast<LargeInteger*>(value);
   }
 
@@ -699,7 +699,7 @@ class Stack : public HeapObject {
   static INLINE int max_length();
 
   static Stack* cast(Object* stack) {
-    ASSERT(stack->is_stack());
+    ASSERT(is_stack(stack));
     return static_cast<Stack*>(stack);
   }
 
@@ -760,7 +760,7 @@ class Double : public HeapObject {
   int64 bits() { return _int64_at(VALUE_OFFSET); }
 
   static Double* cast(Object* value) {
-     ASSERT(value->is_double());
+     ASSERT(is_double(value));
      return static_cast<Double*>(value);
   }
 
@@ -871,7 +871,7 @@ class String : public HeapObject {
   char* cstr_dup();
 
   static String* cast(Object* object) {
-     ASSERT(object->is_string());
+     ASSERT(is_string(object));
      return static_cast<String*>(object);
   }
 
@@ -1198,7 +1198,7 @@ class Instance : public HeapObject {
   }
 
   static Instance* cast(Object* value) {
-    ASSERT(value->is_instance() || value->is_task());
+    ASSERT(is_instance(value) || is_task(value));
     return static_cast<Instance*>(value);
   }
 
@@ -1235,7 +1235,7 @@ class FreeListRegion : public HeapObject {
   void roots_do(int instance_size, RootCallback* cb) {}
 
   static FreeListRegion* cast(Object* value) {
-    ASSERT(value->is_free_list_region());
+    ASSERT(is_free_list_region(value));
     return static_cast<FreeListRegion*>(value);
   }
 
@@ -1290,7 +1290,7 @@ class PromotedTrack : public HeapObject {
   void roots_do(int instance_size, RootCallback* cb) {}
 
   static PromotedTrack* cast(Object* value) {
-    ASSERT(value->is_promoted_track());
+    ASSERT(is_promoted_track(value));
     return static_cast<PromotedTrack*>(value);
   }
 
@@ -1340,7 +1340,7 @@ class Task : public Instance {
   inline void set_result(Object* value);
 
   static Task* cast(Object* value) {
-    ASSERT(value->is_task());
+    ASSERT(is_task(value));
     return static_cast<Task*>(value);
   }
 
@@ -1349,7 +1349,7 @@ class Task : public Instance {
   }
 
   bool has_stack() {
-    return at(STACK_INDEX)->is_stack();
+    return is_stack(at(STACK_INDEX));
   }
 
  private:
@@ -1362,45 +1362,53 @@ inline Task* Stack::task() {
   return Task::cast(_at(TASK_OFFSET));
 }
 
-inline bool Object::is_double() {
-  return is_heap_object() && HeapObject::cast(this)->class_tag() == DOUBLE_TAG;
+inline bool is_smi(Object* o) {
+  return (reinterpret_cast<uword>(o) & Object::SMI_TAG_MASK) == Object::SMI_TAG;
 }
 
-inline bool Object::is_task() {
-  return is_heap_object() && HeapObject::cast(this)->class_tag() == TASK_TAG;
+inline bool is_heap_object(Object* o) {
+  return (reinterpret_cast<uword>(o) & Object::NON_SMI_TAG_MASK) == Object::HEAP_TAG;
 }
 
-inline bool Object::is_instance() {
-  return is_heap_object() && HeapObject::cast(this)->class_tag() == INSTANCE_TAG;
+inline bool is_double(Object* o) {
+  return is_heap_object(o) && HeapObject::cast(o)->class_tag() == DOUBLE_TAG;
 }
 
-inline bool Object::is_array() {
-  return is_heap_object() && HeapObject::cast(this)->class_tag() == ARRAY_TAG;
+inline bool is_task(Object* o) {
+  return is_heap_object(o) && HeapObject::cast(o)->class_tag() == TASK_TAG;
 }
 
-inline bool Object::is_byte_array() {
-  return is_heap_object() && HeapObject::cast(this)->class_tag() == BYTE_ARRAY_TAG;
+inline bool is_instance(Object* o) {
+  return is_heap_object(o) && HeapObject::cast(o)->class_tag() == INSTANCE_TAG;
 }
 
-inline bool Object::is_stack() {
-  return is_heap_object() && HeapObject::cast(this)->class_tag() == STACK_TAG;
+inline bool is_array(Object* o) {
+  return is_heap_object(o) && HeapObject::cast(o)->class_tag() == ARRAY_TAG;
 }
 
-inline bool Object::is_string() {
-  return is_heap_object() && HeapObject::cast(this)->class_tag() == STRING_TAG;
+inline bool is_byte_array(Object* o) {
+  return is_heap_object(o) && HeapObject::cast(o)->class_tag() == BYTE_ARRAY_TAG;
 }
 
-inline bool Object::is_large_integer() {
-  return is_heap_object() && HeapObject::cast(this)->class_tag() == LARGE_INTEGER_TAG;
+inline bool is_stack(Object* o) {
+  return is_heap_object(o) && HeapObject::cast(o)->class_tag() == STACK_TAG;
 }
 
-inline bool Object::is_free_list_region() {
-  return is_heap_object() && (HeapObject::cast(this)->class_tag() == FREE_LIST_REGION_TAG ||
-                              HeapObject::cast(this)->class_tag() == SINGLE_FREE_WORD_TAG);
+inline bool is_string(Object* o) {
+  return is_heap_object(o) && HeapObject::cast(o)->class_tag() == STRING_TAG;
 }
 
-inline bool Object::is_promoted_track() {
-  return is_heap_object() && HeapObject::cast(this)->class_tag() == PROMOTED_TRACK_TAG;
+inline bool is_large_integer(Object* o) {
+  return is_heap_object(o) && HeapObject::cast(o)->class_tag() == LARGE_INTEGER_TAG;
+}
+
+inline bool is_free_list_region(Object* o) {
+  return is_heap_object(o) && (HeapObject::cast(o)->class_tag() == FREE_LIST_REGION_TAG ||
+                               HeapObject::cast(o)->class_tag() == SINGLE_FREE_WORD_TAG);
+}
+
+inline bool is_promoted_track(Object* o) {
+  return is_heap_object(o) && HeapObject::cast(o)->class_tag() == PROMOTED_TRACK_TAG;
 }
 
 inline HeapObject* Object::unmark() {

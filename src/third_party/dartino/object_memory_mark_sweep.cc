@@ -424,7 +424,8 @@ void FixPointersVisitor::do_roots(Object** start, int length) {
 // This is faster than the builtin memmove because we know the source and
 // destination are aligned and we know the size is at least 1 word.  Also
 // we know that any overlap is only in one direction.
-// TODO(Erik): Check this is still true on ESP32.
+// In particular this is a big win on the ESP32, giving about 15% improvement
+// on the speed of mark-sweep-compact.
 static void INLINE object_mem_move(uword dest, uword source, uword size) {
   // Within one page we can be sure that source > dest because we are
   // compacting down, but the chunks are not in any particular order so we
@@ -443,16 +444,6 @@ static void INLINE object_mem_move(uword dest, uword source, uword size) {
   }
 }
 
-static int INLINE find_first_set(uint32 x) {
-#ifdef _MSC_VER
-  unsigned long index;  // NOLINT
-  bool non_zero = _BitScanForward(&index, x);
-  return index + non_zero;
-#else
-  return __builtin_ffs(x);
-#endif
-}
-
 CompactingVisitor::CompactingVisitor(Program* program,
                                      OldSpace* space,
                                      FixPointersVisitor* fix_pointers_visitor)
@@ -468,7 +459,7 @@ uword CompactingVisitor::visit(HeapObject* object) {
   if ((bits & 1) == 0) {
     // Object is unmarked.
     if (bits != 0) {
-      return (find_first_set(bits) - 1) << WORD_SIZE_LOG_2;
+      return Utils::ctz(bits) << WORD_SIZE_LOG_2;
     }
     // If all the bits in this mark word are zero, then let's see if we can
     // skip a bit more.
@@ -476,7 +467,7 @@ uword CompactingVisitor::visit(HeapObject* object) {
     // This never runs over the end of the chunk because the last word in the
     // chunk (the sentinel) is artificially marked live.
     while (*++bits_addr == 0) next_live_object += GcMetadata::CARD_SIZE;
-    next_live_object += (find_first_set(*bits_addr) - 1) << WORD_SIZE_LOG_2;
+    next_live_object += Utils::ctz(*bits_addr) << WORD_SIZE_LOG_2;
     ASSERT(next_live_object - object->_raw() >= (uword)object->size(program_));
     return next_live_object - object->_raw();
   }
@@ -530,7 +521,6 @@ uword OldSpace::sweep() {
           // areas are at least 32 words long.
           // The object starts may end up pointing at one of these single free
           // word things, but that's OK because they are iterable.
-          // TODO: Use fast SIMD instructions to write these 32 pointers.
           for (int i = 0; i < GcMetadata::CARD_SIZE / WORD_SIZE; i++) {
             if ((bits & (1U << i)) == 0) {
               *reinterpret_cast<word*>(line + (i << WORD_SIZE_LOG_2)) = SINGLE_FREE_WORD;

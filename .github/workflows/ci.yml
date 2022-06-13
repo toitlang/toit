@@ -149,8 +149,7 @@ jobs:
         run: |
           make all
           if [ "$RUNNER_OS" == "Linux" ]; then
-            make CROSS_ARCH=host32 all-cross
-            make HOST=debug BUILD_TYPE=Debug all
+            make CROSS_ARCH=host32 BUILD_TYPE=Debug all-cross
           fi
 
       # Test.
@@ -159,15 +158,10 @@ jobs:
           make test
           make test-health
 
-      - name: Test 32bit
+      - name: Test 32bit debug
         if: runner.os == 'Linux'
         run: |
-          make HOST=host32 test
-
-      - name: Test debug
-        if: runner.os == 'Linux'
-        run: |
-          make HOST=debug BUILD_TYPE=Debug test
+          make HOST=host32 BUILD_TYPE=Debug test
 
       # Test external code.
       - name: Test external
@@ -194,7 +188,7 @@ jobs:
           make test-external-health
           if [ "$RUNNER_OS" == "Linux" ]; then
             cmake -DTOIT_TEST_EXTERNAL=ON build/host32
-            make CROSS_ARCH=host32 rebuild-cross-cmake
+            make CROSS_ARCH=host32 BUILD_TYPE=Debug rebuild-cross-cmake
             cd build/host32
             ninja check_external
             cd ../..

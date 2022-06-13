@@ -266,7 +266,7 @@ HeapObject* ProgramHeap::Iterator::current() {
 void ProgramHeap::Iterator::advance() {
   ensure_started();
 
-  ASSERT(HeapObject::cast(_current)->header()->is_smi());  // Header is not a forwarding pointer.
+  ASSERT(is_smi(HeapObject::cast(_current)->header()));  // Header is not a forwarding pointer.
   _current = Utils::address_at(_current, HeapObject::cast(_current)->size(_program));
   if (_current >= _block->top() && _block != _list.last()) {
     _block = *++_iterator;

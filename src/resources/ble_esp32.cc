@@ -183,13 +183,12 @@ class BLEResourceGroup : public ResourceGroup {
 };
 
 
-class BLEServerConfigGroup : public ResourceGroup, public Thread {
+class BLEServerConfigGroup : public ResourceGroup {
  public:
   TAG(BLEServerConfigGroup);
 
   BLEServerConfigGroup(Process* process, EventSource* event_source)
       : ResourceGroup(process, event_source)
-      , Thread("toit.ble")
       , _gatt_services(null)
       , _mutex(OS::allocate_mutex(3, "")) {
   }
@@ -211,8 +210,6 @@ class BLEServerConfigGroup : public ResourceGroup, public Thread {
   BLEServerServiceList services() const { return _services; }
 
   uint32_t on_event(Resource* resource, word data, uint32_t state) override;
-
-  void entry() override;
 
   void set_subscription_status(uint16 attr_handle, uint16 conn_handle, bool indicate, bool notify);
 
@@ -340,8 +337,6 @@ static void ble_on_reset(int reason) {
 
 int BLEResourceGroup::init_server() {
   if (_server_config != null) {
-    nimble_port_init();
-
     ble_svc_gap_init();
     ble_svc_gatt_init();
 
@@ -414,10 +409,6 @@ int BLEResourceGroup::init_server() {
     }
 
     ble_hs_cfg.reset_cb = ble_on_reset;
-    // Start the host thread.
-    if (!_server_config->spawn(NIMBLE_STACK_SIZE)) {
-      _server_config->tear_down();
-    };
   }
 
   return ESP_OK;
@@ -479,10 +470,6 @@ void BLEServerConfigGroup::set_subscription_status(uint16 attr_handle, uint16 co
   }
 }
 
-void BLEServerConfigGroup::entry() {
-  nimble_port_run();
-}
-
 static Object* object_to_mbuf(Process* process, Object* object, os_mbuf** result) {
   *result = null;
   if (object != process->program()->null_object()) {
@@ -504,7 +491,7 @@ PRIMITIVE(init) {
   if (proxy == null) ALLOCATION_FAILED;
 
   int id = ble_pool.any();
-  if (id == kInvalidBLE) OUT_OF_BOUNDS;
+  if (id == kInvalidBLE) ALREADY_IN_USE;
 
   esp_err_t err = esp_nimble_hci_and_controller_init();
 
@@ -546,8 +533,8 @@ PRIMITIVE(init) {
 
   ble_hs_cfg.sync_cb = ble_on_sync;
 
-  group->register_resource(gap);
-  group->set_gap(gap);
+  // NimBLE needs to be initialized before the server setup is executed.
+  nimble_port_init();
 
   if (__args[0] != process->program()->null_object()) {
     ARGS(BLEServerConfigGroup, server_config);
@@ -555,9 +542,13 @@ PRIMITIVE(init) {
     int ret = group->init_server();
     if (ret != ESP_OK) {
       group->tear_down();
+      delete gap;  // Resource isn't registered in group yet.
       return Primitive::os_error(ret, process);
     }
   }
+
+  group->register_resource(gap);
+  group->set_gap(gap);
 
   proxy->set_external_address(group);
   return proxy;
@@ -883,6 +874,21 @@ PRIMITIVE(request_data) {
   } else {
     ALLOCATION_FAILED;
   }
+}
+
+PRIMITIVE(send_data) {
+  ARGS(GATTResource, gatt, uint16, handle, Object, value);
+
+  os_mbuf* om = null;
+  Object* error = object_to_mbuf(process, value, &om);
+  if (error) return error;
+
+  int err = ble_gattc_write(gatt->handle(), handle, om, NULL, NULL);
+  if (err != ESP_OK) {
+    return Primitive::os_error(err, process);
+  }
+
+  return process->program()->null_object();
 }
 
 PRIMITIVE(request_service) {

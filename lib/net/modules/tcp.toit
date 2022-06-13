@@ -40,11 +40,12 @@ class TcpSocket_:
   close:
     state := state_
     if state == null: return
-    state_ = null
-    tcp_close_ state.group state.resource
-    state.dispose
-    // Remove the finalizer installed in [open_].
-    remove_finalizer this
+    critical_do:
+      state_ = null
+      tcp_close_ state.group state.resource
+      state.dispose
+      // Remove the finalizer installed in [open_].
+      remove_finalizer this
 
   mtu -> int: return TOIT_MTU_TCP
 
@@ -127,12 +128,16 @@ class TcpSocket extends TcpSocket_ implements net.Socket Reader:
         get_option_ TOIT_TCP_OPTION_PEER_ADDRESS_
       get_option_ TOIT_TCP_OPTION_PEER_PORT_
 
-  keep_alive: return get_option_ TOIT_TCP_OPTION_KEEP_ALIVE_
-  no_delay: return get_option_ TOIT_TCP_OPTION_NO_DELAY_
   window_size: return get_option_ TOIT_TCP_OPTION_WINDOW_SIZE_
 
-  set_keep_alive value: return set_option_ TOIT_TCP_OPTION_KEEP_ALIVE_ value
-  set_no_delay value: return set_option_ TOIT_TCP_OPTION_NO_DELAY_ value
+  keep_alive -> bool: return get_option_ TOIT_TCP_OPTION_KEEP_ALIVE_
+  keep_alive= value/bool: return set_option_ TOIT_TCP_OPTION_KEEP_ALIVE_ value
+
+  // TODO(kasper): Remove this again.
+  set_no_delay enabled/bool -> none: no_delay = enabled
+
+  no_delay -> bool: return get_option_ TOIT_TCP_OPTION_NO_DELAY_
+  no_delay= value/bool -> none: set_option_ TOIT_TCP_OPTION_NO_DELAY_ value
 
   // TODO(kasper): Make window size a named parameter to [connect]?
   connect hostname port:

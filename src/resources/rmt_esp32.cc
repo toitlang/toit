@@ -269,7 +269,7 @@ PRIMITIVE(transmit) {
   // As such, we need an external address.
   const uint8* address = items_bytes.address();
   Object* keep_alive = _raw_items_bytes;
-  if (_raw_items_bytes->is_byte_array() && ByteArray::cast(_raw_items_bytes)->has_external_address()) {
+  if (is_byte_array(_raw_items_bytes) && ByteArray::cast(_raw_items_bytes)->has_external_address()) {
     // Nothing to do. We already have an external address.
   } else {
     // Create an external byte array with the same size.

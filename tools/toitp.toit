@@ -17,7 +17,7 @@
 
 // Tools for decoding a snapshot.
 import .snapshot
-import services.arguments show *
+import host.arguments show *
 
 usage --exit_code:
   print "Usage:"
@@ -132,6 +132,7 @@ filter := ""
 
 main args:
   parser := ArgumentParser
+  parser.describe_rest ["snapshot-file", "[filter]"]
   parser.add_flag "help"            --short="h"
   parser.add_flag "literals"        --short="l"
   parser.add_option "literal"
@@ -145,7 +146,6 @@ main args:
 
   parsed := parser.parse args
   if parsed["help"]: usage --exit_code=0
-  if parsed.rest.is_empty or parsed.rest.size > 2: usage --exit_code=1
   if parsed.rest.size > 1: filter = parsed.rest[1]
   snapshot := SnapshotBundle.from_file parsed.rest[0]
   program := snapshot.decode
