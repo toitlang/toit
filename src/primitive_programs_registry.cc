@@ -82,7 +82,13 @@ PRIMITIVE(list_bundled) {
   Array* result = process->object_heap()->allocate_array(length * 2, Smi::from(0));
   if (!result) ALLOCATION_FAILED;
   for (int i = 0; i < length; i++) {
+    // We store the distance from the start of the table to the image
+    // because it naturally fits as a smi even if the virtual addresses
+    // involved are large. We tag the entry so we can tell the difference
+    // between flash offsets in the data/programs partition and offsets
+    // of images bundled with the VM.
     uword diff = table[1 + i * 2] - reinterpret_cast<uword>(table);
+    ASSERT(Utils::is_aligned(diff, 4));
     result->at_put(i * 2, Smi::from(diff + 1));
     result->at_put(i * 2 + 1, Smi::from(table[1 + i * 2 + 1]));
   }
