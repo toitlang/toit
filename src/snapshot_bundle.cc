@@ -14,6 +14,7 @@
 // directory of this repository.
 
 #include "top.h"
+#include <mbedtls/sha256.h>
 
 #ifndef TOIT_FREERTOS
 
@@ -24,6 +25,7 @@ namespace toit {
 
 static const char* const MAGIC_NAME = "toit";
 static const char* const MAGIC_CONTENT = "like a tiger";
+static const char* const SHA_NAME = "sha256";
 static const char* const SNAPSHOT_NAME = "snapshot";
 static const char* const SOURCE_MAP_NAME = "source-map";
 static const char* const DEBUG_SNAPSHOT_NAME = "D-snapshot";
@@ -53,7 +55,15 @@ SnapshotBundle::SnapshotBundle(List<uint8> snapshot,
     if (status != 0) FATAL("Couldn't create snapshot");
   };
 
+  mbedtls_sha256_context sha_context;
+  mbedtls_sha256_init(&sha_context);
+  mbedtls_sha256_update_ret(&sha_context, snapshot.data(), snapshot.length());
+  uint8 sum[32];
+  mbedtls_sha256_finish_ret(&sha_context, sum);
+  mbedtls_sha256_free(&sha_context);
+
   add(SNAPSHOT_NAME, snapshot);
+  add(SHA_NAME, List<uint8>(sum, 32));
   add(SOURCE_MAP_NAME, source_map_data);
   add(DEBUG_SNAPSHOT_NAME, debug_snapshot);
   add(DEBUG_SOURCE_MAP_NAME, debug_source_map_data);
