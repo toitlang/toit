@@ -50,11 +50,7 @@ const FlashAllocation* FlashRegistry::at(int offset) {
   ASSERT(is_allocations_set_up());
   ASSERT(0 <= offset && offset < allocations_size());
   const FlashAllocation* probe = reinterpret_cast<const FlashAllocation*>(memory(offset, 0));
-  if ((offset & 1) == 0) {
-    return (probe->is_valid(offset, OS::image_uuid())) ? probe : null;
-  } else {
-    return (probe->is_valid(0, OS::image_uuid())) ? probe : null;
-  }
+  return (probe->is_valid(offset, OS::image_uuid())) ? probe : null;
 }
 
 bool FlashRegistry::pad_and_write(const void* chunk, int offset, int size) {
