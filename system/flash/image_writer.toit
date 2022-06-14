@@ -35,7 +35,7 @@ relocate allocation/FlashAllocation registry/FlashRegistry -> FlashAllocation:
     from ::= allocation.offset + FLASH_ALLOCATION_HEADER_SIZE
     to ::= from + size
     image_writer_write_all_ image from to
-    image_writer_commit_ image allocation.id.to_byte_array
+    image_writer_commit_ image
     return FlashAllocation reservation.offset
   finally:
     reservation.close
@@ -69,8 +69,7 @@ class ContainerImageWriter extends ServiceResource:
   commit -> FlashAllocation:
     try:
       if partial_chunk_fill_ > 0: throw "Incomplete image"
-      // TODO(kasper): Better uuid generation? Let user control?
-      image_writer_commit_ image_ (uuid.uuid5 "programs" "$Time.monotonic_us").to_byte_array
+      image_writer_commit_ image_
       return FlashAllocation reservation_.offset
     finally:
       close
@@ -92,7 +91,7 @@ image_writer_write_ image part/ByteArray from/int to/int:
 image_writer_write_all_ image from/int to/int:
   #primitive.image.writer_write_all
 
-image_writer_commit_ image id/ByteArray:
+image_writer_commit_ image:
   #primitive.image.writer_commit
 
 image_writer_close_ image:

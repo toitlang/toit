@@ -15,6 +15,7 @@
 
 import ar show *
 import uuid
+import crypto.sha256
 
 import ..system.boot
 import ..system.containers
@@ -24,11 +25,17 @@ import .mirror as mirror
 import .snapshot as snapshot
 
 abstract class ContainerImageFromSnapshot extends ContainerImage:
-  id/uuid.Uuid ::= ?
   bundle_/ByteArray ::= ?
   program_/snapshot.Program? := null
+  id/uuid.Uuid ::= ?
 
-  constructor manager/ContainerManager .bundle_ .id:
+  constructor manager/ContainerManager .bundle_:
+    // TODO(kasper): Get the program id directly from the bundle, so we can
+    // keep the logic for generating the ids in one place and avoid having
+    // to recompute them whenever the VM starts.
+    sha ::= sha256.Sha256
+    sha.add bundle_
+    id = uuid.uuid5 "program" sha.get
     super manager
 
   trace encoded/ByteArray -> bool:
@@ -54,7 +61,7 @@ abstract class ContainerImageFromSnapshot extends ContainerImage:
 
 class SystemContainerImage extends ContainerImageFromSnapshot:
   constructor manager/ContainerManager bundle/ByteArray:
-    super manager bundle uuid.NIL
+    super manager bundle
 
   start -> Container:
     // This container is already running as the system process.
@@ -64,7 +71,7 @@ class SystemContainerImage extends ContainerImageFromSnapshot:
 
 class ApplicationContainerImage extends ContainerImageFromSnapshot:
   constructor manager/ContainerManager bundle/ByteArray:
-    super manager bundle (uuid.uuid5 "fisk" "hest")  // TODO(kasper): Use a better id.
+    super manager bundle
 
   start -> Container:
     ar_reader := ArReader.from_bytes bundle_

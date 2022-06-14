@@ -23,6 +23,7 @@
 #include "os.h"
 #include "tags.h"
 #include "top.h"
+#include "uuid.h"
 
 namespace toit {
 
@@ -271,16 +272,21 @@ class ImageOutputStream {
 
   static const int CHUNK_SIZE = 1 + WORD_BIT_SIZE;
 
-  void* cursor() const { return current; }
-  bool empty() const { return current == _image.begin(); }
+  void* cursor() const { return _current; }
+  bool empty() const { return _current == _image.begin(); }
 
   void write(const word* buffer, int size, word* output = null);
 
   ProgramImage image() const { return _image; }
 
+  const uint8* program_id() const { return &_program_id[0]; }
+  void set_program_id(const uint8* id);
+
  private:
   ProgramImage _image;
-  word* current;
+  word* _current;
+
+  uint8 _program_id[UUID_SIZE];
 };
 
 } // namespace toit

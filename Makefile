@@ -194,7 +194,7 @@ build/$(ESP32_CHIP)/lib/libtoit_image.a: build/$(ESP32_CHIP)/$(ESP32_CHIP).image
 
 build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s: build/$(ESP32_CHIP)/system.snapshot tools snapshots
 	mkdir -p build/$(ESP32_CHIP)
-	$(TOITVM_BIN) $(SNAPSHOT_DIR)/snapshot_to_image.snapshot $< $@
+	$(TOITVM_BIN) $(SNAPSHOT_DIR)/snapshot_to_image.snapshot --unique_id=$(ESP32_SYSTEM_ID) -o $@ $<
 
 .PHONY: build/$(ESP32_CHIP)/system.snapshot  # Marked phony to force regeneration.
 build/$(ESP32_CHIP)/system.snapshot: $(ESP32_SYSTEM_ENTRY) tools
@@ -205,8 +205,8 @@ build/$(ESP32_CHIP)/program.snapshot: $(ESP32_ENTRY) tools
 	mkdir -p build/$(ESP32_CHIP)
 	$(TOITC_BIN) -w $@ $<
 
-build/$(ESP32_CHIP)/programs.bin: build/$(ESP32_CHIP)/program.snapshot tools
-	$(TOITVM_BIN) tools/snapshot_to_image.toit --unique_id=$(ESP32_SYSTEM_ID) -m32 --binary --offset=0x0 $< $@
+build/$(ESP32_CHIP)/programs.bin: build/$(ESP32_CHIP)/program.snapshot tools snapshots
+	$(TOITVM_BIN) $(SNAPSHOT_DIR)/snapshot_to_image.snapshot --unique_id=$(ESP32_SYSTEM_ID) -m32 --binary --offset=0x0 -o $@ $<
 
 build/$(ESP32_CHIP)/CMakeCache.txt: check-esp32-env
 	mkdir -p build/$(ESP32_CHIP)

@@ -1359,11 +1359,13 @@ int ImageInputStream::read(word* buffer) {
 
 ImageOutputStream::ImageOutputStream(ProgramImage image)
     : _image(image)
-    , current(image.begin()) {}
+    , _current(image.begin()) {
+  memset(_program_id, 0, sizeof(_program_id));
+}
 
 void ImageOutputStream::write(const word* buffer, int size, word* output) {
   ASSERT(1 < size && size <= CHUNK_SIZE);
-  if (output == null) output = current;
+  if (output == null) output = _current;
   // The input buffer is often part of network packets with various headers,
   // so the embedded words aren't guaranteed to be word-aligned.
   word mask = Utils::read_unaligned_word(&buffer[0]);
@@ -1373,8 +1375,12 @@ void ImageOutputStream::write(const word* buffer, int size, word* output) {
     if (mask & 1U) value += reinterpret_cast<word>(_image.begin());
     mask = mask >> 1;
     output[index - 1] = value;
-    current++;
+    _current++;
   }
+}
+
+void ImageOutputStream::set_program_id(const uint8* id) {
+  memmove(_program_id, id, sizeof(_program_id));
 }
 
 }  // namespace toit

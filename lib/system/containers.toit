@@ -17,7 +17,7 @@ images -> List:
   return _client_.list_images
 
 current -> uuid.Uuid:
-  return _client_.current_image
+  return uuid.Uuid current_image_id_
 
 start id/uuid.Uuid -> int:
   result/int? := _client_.start_image id
@@ -38,3 +38,8 @@ class ContainerImageWriter extends ServiceResourceProxy:
 
   commit -> uuid.Uuid:
     return _client_.image_writer_commit handle_
+
+// ----------------------------------------------------------------------------
+
+current_image_id_ -> ByteArray:
+  #primitive.image.current_id

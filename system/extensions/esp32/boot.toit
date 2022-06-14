@@ -22,10 +22,13 @@ import ...boot
 import ...initialize
 import ...containers
 
+import system.containers show current
+
 // TODO(kasper): It feels annoying to have to put this here. Maybe we
 // can have some sort of reasonable default in the ContainerManager?
 class SystemImage extends ContainerImage:
-  id ::= uuid.NIL
+  id ::= current
+
   constructor manager/ContainerManager:
     super manager
 
