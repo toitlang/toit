@@ -2192,8 +2192,17 @@ Expression* Parser::parse_byte_array() {
   start_delimited(IndentationStack::LITERAL, Token::LSHARP_BRACK, Token::RBRACK);
   ListBuilder<Expression*> elements;
   do {
-    if (current_token_if_delimiter() == Token::RBRACK) break;
-    elements.add(parse_expression(true));
+    // Speep up parsing of large byte array literals by recognizing a common
+    // case here without going through the whole machinery.  Worth about a 25%
+    // reduction in runtime.
+    if (current_state().token == Token::INTEGER && peek_token() == Token::COMMA) {
+      Expression* expression = NEW_NODE(LiteralInteger(current_token_data()), current_range());
+      consume();
+      elements.add(expression);
+    } else {
+      if (current_token_if_delimiter() == Token::RBRACK) break;
+      elements.add(parse_expression(true));
+    }
   } while (optional_delimiter(Token::COMMA));
   end_delimited(IndentationStack::LITERAL, Token::RBRACK);
   return NEW_NODE(LiteralByteArray(elements.build()), range);
