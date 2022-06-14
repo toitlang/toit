@@ -60,6 +60,10 @@ class SnapshotBundle {
   const uint8* buffer() const { return _buffer; }
   int size() const { return _size; }
 
+  // Read the UUID from the file into a 16 byte buffer.  Returns false if the
+  // UUID was not in the snapshot file.
+  bool uuid(uint8* buffer_16) const;
+
   /// Whether the given [file] is likely a bundle file.
   /// This function is applying a heuristic to determine whether
   /// the content looks like a bundle file.
