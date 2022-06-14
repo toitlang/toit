@@ -67,21 +67,26 @@ static void print_version() {
   exit(0);
 }
 
+static ProgramImage read_image_from_bundle(SnapshotBundle bundle) {
+  if (!bundle.is_valid()) return ProgramImage::invalid();
+  uint8 buffer[UUID_SIZE];
+  uint8* id = bundle.uuid(buffer) ? buffer : null;
+  return bundle.snapshot().read_image(id);
+}
+
 int run_program(char* boot_bundle_path, SnapshotBundle application_bundle, char** argv) {
   while (true) {
     Scheduler::ExitState exit;
     { VM vm;
       vm.load_platform_event_sources();
       auto boot_bundle = SnapshotBundle::read_from_file(boot_bundle_path, true);
-      auto boot_image = boot_bundle.is_valid()
-          ? boot_bundle.snapshot().read_image(null)
-          : ProgramImage::invalid();
+      ProgramImage boot_image = read_image_from_bundle(boot_bundle);
       int group_id = vm.scheduler()->next_group_id();
       if (boot_image.is_valid()) {
         exit = vm.scheduler()->run_boot_program(
             boot_image.program(), boot_bundle, application_bundle, argv, group_id);
       } else {
-        auto application_image = application_bundle.snapshot().read_image(null);
+        auto application_image = read_image_from_bundle(application_bundle);
         exit = vm.scheduler()->run_boot_program(application_image.program(), argv, group_id);
         application_image.release();
       }

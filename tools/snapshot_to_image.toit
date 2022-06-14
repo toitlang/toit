@@ -172,11 +172,12 @@ main args:
     print_on_stderr_ "Error: Offsets only work for 32-bit binary output"
     exit 1
 
-  system_uuid ::= uuid.parse parsed[UNIQUE_ID_OPTION]
-  program_id ::= snapshot_to_uuid snapshot_path
 
   out := file.Stream.for_write output_path
   snapshot_bundle := SnapshotBundle.from_file snapshot_path
+  system_uuid ::= uuid.parse parsed[UNIQUE_ID_OPTION]
+  program_id ::= snapshot_bundle.uuid
+
   program := snapshot_bundle.decode
   image := build_image program word_size --system_uuid=system_uuid --program_id=program_id
   relocatable := image.build_relocatable
@@ -190,14 +191,3 @@ main args:
     output := SourceRelocatedOutput out
     output.write word_size relocatable
   out.close
-
-snapshot_to_uuid path/string -> uuid.Uuid:
-  // TODO(kasper): Get the program id directly from the bundle, so we can
-  // keep the logic for generating the ids in one place.
-  sha ::= sha256.Sha256
-  input := file.Stream.for_read path
-  try:
-    while chunk := input.read: sha.add chunk
-  finally:
-    input.close
-  return uuid.uuid5 "program" sha.get
