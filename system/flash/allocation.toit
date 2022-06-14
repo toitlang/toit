@@ -19,7 +19,6 @@ import .region
 import .registry
 
 FLASH_ALLOCATION_PROGRAM_TYPE ::= 0
-FLASH_ALLOCATION_PROGRAM_UNRELOCATED_TYPE ::= 1
 FLASH_ALLOCATION_HEADER_SIZE ::= 48
 
 class FlashAllocation implements FlashRegion:
