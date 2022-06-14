@@ -78,8 +78,8 @@ void* FlashRegistry::memory(int offset, int size) {
 
 #ifdef TOIT_FREERTOS
   const uword* table = &toit_image_table;
-  uword diff = static_cast<uword>(offset & ~1);
-  return reinterpret_cast<void*>(reinterpret_cast<uword>(table) - diff);
+  uword diff = static_cast<uword>(offset - 1);
+  return reinterpret_cast<void*>(reinterpret_cast<uword>(table) + diff);
 #else
   return null;
 #endif

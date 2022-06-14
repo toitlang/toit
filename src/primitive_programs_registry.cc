@@ -77,7 +77,7 @@ PRIMITIVE(kill) {
   return BOOL(VM::current()->scheduler()->kill(program));
 }
 
-PRIMITIVE(list_builtin) {
+PRIMITIVE(list_bundled) {
 #ifdef TOIT_FREERTOS
   const uword* table = &toit_image_table;
   int length = table[0];
@@ -85,8 +85,8 @@ PRIMITIVE(list_builtin) {
   Array* result = process->object_heap()->allocate_array(length * 2, Smi::from(0));
   if (!result) ALLOCATION_FAILED;
   for (int i = 0; i < length; i++) {
-    uword diff = reinterpret_cast<uword>(table) - table[1 + i * 2];
-    result->at_put(i * 2, Smi::from(diff | 1));
+    uword diff = table[1 + i * 2] - reinterpret_cast<uword>(table);
+    result->at_put(i * 2, Smi::from(diff + 1));
     result->at_put(i * 2 + 1, Smi::from(table[1 + i * 2 + 1]));
   }
   return result;

@@ -24,23 +24,6 @@ import .reservation
 IMAGE_WORD_SIZE  ::= BYTES_PER_WORD
 IMAGE_CHUNK_SIZE ::= (BITS_PER_WORD + 1) * IMAGE_WORD_SIZE
 
-relocate allocation/FlashAllocation registry/FlashRegistry -> FlashAllocation:
-  assert: allocation.type == FLASH_ALLOCATION_PROGRAM_UNRELOCATED_TYPE
-  size := binary.LITTLE_ENDIAN.uint32 allocation.metadata 0
-  relocated_size ::= size - (size / IMAGE_CHUNK_SIZE) * IMAGE_WORD_SIZE
-  reservation ::= registry.reserve relocated_size
-  if not reservation: throw "No space left in flash"
-  image ::= image_writer_create_ reservation.offset reservation.size
-  try:
-    from ::= allocation.offset + FLASH_ALLOCATION_HEADER_SIZE
-    to ::= from + size
-    image_writer_write_all_ image from to
-    image_writer_commit_ image
-    return FlashAllocation reservation.offset
-  finally:
-    reservation.close
-    if image: image_writer_close_ image
-
 class ContainerImageWriter extends ServiceResource:
   reservation_/FlashReservation? := ?
   image_/ByteArray ::= ?
@@ -87,9 +70,6 @@ image_writer_create_ offset size:
 
 image_writer_write_ image part/ByteArray from/int to/int:
   #primitive.image.writer_write
-
-image_writer_write_all_ image from/int to/int:
-  #primitive.image.writer_write_all
 
 image_writer_commit_ image:
   #primitive.image.writer_commit

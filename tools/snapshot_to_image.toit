@@ -67,7 +67,6 @@ class SourceRelocatedOutput extends RelocatedOutput:
     super out
 
   write_start -> none:
-    writeln "        .section .rodata"
     writeln "        .align 4"
     writeln "toit_image_$part:"
 
@@ -128,6 +127,17 @@ main args:
   out := file.Stream.for_write output_path
   system_uuid ::= uuid.parse parsed[UNIQUE_ID_OPTION]
 
+  if not binary_output:
+    parts ::= parsed.rest.size
+    out.write "        .section .rodata\n"
+    out.write "        .globl toit_image_table\n"
+    out.write "        .align 4\n"
+    out.write "toit_image_table:\n"
+    out.write "        .long $parts\n"
+    parts.repeat:
+      out.write "        .long toit_image_$it\n"
+      out.write "        .long toit_image_end_$it - toit_image_$it\n"
+
   part/int := 0
   parsed.rest.do: | snapshot_path/string |
     snapshot_bundle := SnapshotBundle.from_file snapshot_path
@@ -135,21 +145,10 @@ main args:
     program := snapshot_bundle.decode
     image := build_image program word_size --system_uuid=system_uuid --program_id=program_id
     relocatable := image.build_relocatable
-
     if binary_output:
       out.write relocatable
     else:
       output := SourceRelocatedOutput out part++
       output.write word_size relocatable
-
-  if not binary_output:
-    out.write "        .section .rodata\n"
-    out.write "        .globl toit_image_table\n"
-    out.write "        .align 4\n"
-    out.write "toit_image_table:\n"
-    out.write "        .long $part\n"
-    part.repeat:
-      out.write "        .long toit_image_$it\n"
-      out.write "        .long toit_image_end_$it - toit_image_$it\n"
 
   out.close
