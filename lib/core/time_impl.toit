@@ -13,13 +13,7 @@ time_info_ seconds/int is_utc/bool:
   #primitive.core.time_info
 
 /**
-Stores the given $rules in the `TZ` environment variable and
-  calls `tzset`, thus activating it.
-Valid TZ values can be easily obtained by looking at the last line of the
-  zoneinfo files on Linux machines:
-```
-tail -n1 /usr/share/zoneinfo/Europe/Copenhagen
-```
+Deprecated. Use $set_timezone instead.
 */
 set_tz_ rules/string:
   #primitive.core.set_tz
