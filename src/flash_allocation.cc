@@ -38,7 +38,7 @@ void FlashAllocation::validate() {  }
 bool FlashAllocation::is_valid(uint32 allocation_offset, const uint8* uuid) const {
   uint32 checked_offset = (allocation_offset & 1) == 0
       ? allocation_offset  // Allocation in data/program partition.
-      : 0;                 // Allocation in read-only data sction.
+      : 0;                 // Allocation in read-only data section.
   if (!is_valid_allocation(checked_offset)) return false;
   return _header.is_valid(uuid);
 }
