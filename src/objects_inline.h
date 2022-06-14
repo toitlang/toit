@@ -24,9 +24,6 @@
 
 namespace toit {
 
-extern "C" uword toit_image;
-extern "C" uword toit_image_size;
-
 int Array::max_length_in_process() {
   return (ObjectHeap::max_allocation_size() - HEADER_SIZE) / WORD_SIZE;
 }

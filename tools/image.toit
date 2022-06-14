@@ -464,6 +464,7 @@ class ToitHeader extends ToitObjectType:
   }
 
   static MARKER_ ::= 0xDEADFACE
+  static PROGRAM_TYPE_ ::= 0
 
   fill_into image/Image --at/int --system_uuid/uuid.Uuid --program_id/uuid.Uuid:
     memory := image.offheap
@@ -477,8 +478,8 @@ class ToitHeader extends ToitObjectType:
     anchored.put_uint32 "_me" at
     anchored.put_bytes "_id" program_id.to_byte_array
     anchored.put_bytes "_meta_data" 0xFF --size=META_DATA_SIZE
-    anchored.put_uint16 "_pages_in_flash" 0
-    anchored.put_uint8 "_type" 0 // TODO(florian): we don't seem to initialize the type field in the C++ code.
+    anchored.put_uint16 "_pages_in_flash" (image.all_memory.size / 4096)
+    anchored.put_uint8 "_type" PROGRAM_TYPE_
     anchored.put_bytes "_uuid" system_uuid.to_byte_array
 
 class ToitProgram extends ToitObjectType:

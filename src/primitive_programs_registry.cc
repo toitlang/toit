@@ -21,6 +21,10 @@
 #include "scheduler.h"
 #include "vm.h"
 
+#ifdef TOIT_FREERTOS
+extern "C" uword toit_image_table;
+#endif
+
 namespace toit {
 
 MODULE_IMPLEMENTATION(programs_registry, MODULE_PROGRAMS_REGISTRY)
@@ -37,7 +41,6 @@ PRIMITIVE(spawn) {
   if (allocation->type() != PROGRAM_TYPE) INVALID_ARGUMENT;
 
   Program* program = static_cast<Program*>(allocation);
-
   if (!program->is_valid(offset, OS::image_uuid())) OUT_OF_BOUNDS;
 
   InitialMemoryManager manager;
@@ -57,20 +60,39 @@ PRIMITIVE(spawn) {
 
 PRIMITIVE(is_running) {
   ARGS(int, offset, int, size);
+
   FlashAllocation* allocation = static_cast<FlashAllocation*>(FlashRegistry::memory(offset, size));
   if (allocation->type() != PROGRAM_TYPE) INVALID_ARGUMENT;
-
   Program* program = static_cast<Program*>(allocation);
+
   return BOOL(VM::current()->scheduler()->is_running(program));
 }
 
 PRIMITIVE(kill) {
   ARGS(int, offset, int, size);
+
   FlashAllocation* allocation = static_cast<FlashAllocation*>(FlashRegistry::memory(offset, size));
   if (allocation->type() != PROGRAM_TYPE) INVALID_ARGUMENT;
-
   Program* program = static_cast<Program*>(allocation);
   return BOOL(VM::current()->scheduler()->kill(program));
+}
+
+PRIMITIVE(list_builtin) {
+#ifdef TOIT_FREERTOS
+  const uword* table = &toit_image_table;
+  int length = table[0];
+
+  Array* result = process->object_heap()->allocate_array(length * 2, Smi::from(0));
+  if (!result) ALLOCATION_FAILED;
+  for (int i = 0; i < length; i++) {
+    uword diff = reinterpret_cast<uword>(table) - table[1 + i * 2];
+    result->at_put(i * 2, Smi::from(diff | 1));
+    result->at_put(i * 2 + 1, Smi::from(table[1 + i * 2 + 1]));
+  }
+  return result;
+#else
+  return process->program()->empty_array();
+#endif
 }
 
 } // namespace toit

@@ -54,6 +54,8 @@
 #include "objects_inline.h"
 #include "third_party/dartino/gc_metadata.h"
 
+extern "C" uword toit_image_table;
+
 namespace toit {
 
 const Program* setup_program(bool supports_ota) {
@@ -84,7 +86,8 @@ const Program* setup_program(bool supports_ota) {
 #endif
   }
 
-  return reinterpret_cast<const Program*>(&toit_image);
+  uword* table = &toit_image_table;
+  return reinterpret_cast<const Program*>(table[1]);
 }
 
 static void start() {

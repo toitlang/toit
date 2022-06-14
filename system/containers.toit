@@ -192,6 +192,12 @@ class ContainerManager extends ContainerServiceDefinition implements SystemMessa
         if unrelocated: unrelocated.add allocation
         else: unrelocated = [allocation]
 
+    x := container_list_builtin_
+    print "builtin = $(List.from x)"
+    for i := 0; i < x.size; i += 2:
+      allocation := FlashAllocation x[i]
+      print "found allocation | size = $allocation.size | id = $allocation.id"
+
     // Run through the unrelocated programs and relocate them unless we
     // already did that successfully before in which case they will have
     // shown up as relocated programs (added to the images map).
@@ -327,3 +333,6 @@ container_next_gid_ -> int:
 
 container_kill_pid_ pid/int -> bool:
   #primitive.core.signal_kill
+
+container_list_builtin_ -> Array_:
+  #primitive.programs_registry.list_builtin
