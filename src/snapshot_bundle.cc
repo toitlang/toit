@@ -14,6 +14,7 @@
 // directory of this repository.
 
 #include "top.h"
+#include "uuid.h"
 #include <mbedtls/sha256.h>
 
 #ifndef TOIT_FREERTOS
@@ -25,9 +26,9 @@ namespace toit {
 
 static const char* const MAGIC_NAME = "toit";
 static const char* const MAGIC_CONTENT = "like a tiger";
-static const char* const SHA_NAME = "sha256";
 static const char* const SNAPSHOT_NAME = "snapshot";
 static const char* const SOURCE_MAP_NAME = "source-map";
+static const char* const UUID_NAME = "uuid";
 static const char* const DEBUG_SNAPSHOT_NAME = "D-snapshot";
 static const char* const DEBUG_SOURCE_MAP_NAME = "D-source-map";
 
@@ -55,15 +56,30 @@ SnapshotBundle::SnapshotBundle(List<uint8> snapshot,
     if (status != 0) FATAL("Couldn't create snapshot");
   };
 
+  // Generate UUID using sha256 checksum of:
+  //   4 bytes of snapshot length (little endian)
+  //   snapshot
+  //   source_map
   mbedtls_sha256_context sha_context;
   mbedtls_sha256_init(&sha_context);
+  static const int SHA256 = 0;
+  static const int SHA256_HASH_LENGTH = 32;
+  mbedtls_sha256_starts_ret(&sha_context, SHA256);
+  uint8 length_bytes[sizeof(uint32)];
+  Utils::write_unaligned_uint32_le(length_bytes, snapshot.length());
+  mbedtls_sha256_update_ret(&sha_context, length_bytes, sizeof(uint32));
   mbedtls_sha256_update_ret(&sha_context, snapshot.data(), snapshot.length());
-  uint8 sum[32];
+  mbedtls_sha256_update_ret(&sha_context, source_map_data.data(), source_map_data.length());
+  uint8 sum[SHA256_HASH_LENGTH];
   mbedtls_sha256_finish_ret(&sha_context, sum);
   mbedtls_sha256_free(&sha_context);
 
+  // Fix checksum bytes to make a legal UUID.
+  sum[6] = (sum[6] & 0xf) | 0x50;
+  sum[8] = (sum[8] & 0x3f) | 0x80;
+
   add(SNAPSHOT_NAME, snapshot);
-  add(SHA_NAME, List<uint8>(sum, 32));
+  add(UUID_NAME, List<uint8>(sum, UUID_SIZE));
   add(SOURCE_MAP_NAME, source_map_data);
   add(DEBUG_SNAPSHOT_NAME, debug_snapshot);
   add(DEBUG_SOURCE_MAP_NAME, debug_source_map_data);
@@ -99,6 +115,15 @@ Snapshot SnapshotBundle::snapshot() {
   int status = reader.find("snapshot", &file);
   if (status != 0) FATAL("Invalid SnapshotBundle");
   return Snapshot(file.content(), file.byte_size);
+}
+
+bool SnapshotBundle::uuid(uint8* buffer_16) const {
+  ar::MemoryReader reader(_buffer, _size);
+  ar::File file;
+  int status = reader.find("uuid", &file);
+  if (status != 0 || file.byte_size < UUID_SIZE) return false;
+  memcpy(buffer_16, file.content(), UUID_SIZE);
+  return true;
 }
 
 SnapshotBundle SnapshotBundle::read_from_file(const char* bundle_filename, bool silent) {
