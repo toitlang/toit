@@ -24,7 +24,6 @@ import .image
 import .snapshot
 
 import binary show LITTLE_ENDIAN ByteOrder
-import crypto.sha256
 import uuid
 import host.file
 import host.arguments
