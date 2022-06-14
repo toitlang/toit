@@ -24,6 +24,14 @@ namespace toit {
 
 MODULE_IMPLEMENTATION(image, MODULE_IMAGE)
 
+PRIMITIVE(current_id) {
+  const uint8* id = process->program()->id();
+  ByteArray* result = process->object_heap()->allocate_external_byte_array(
+      Program::Header::id_size(), const_cast<uint8*>(id), false, false);
+  if (!result) ALLOCATION_FAILED;
+  return result;
+}
+
 PRIMITIVE(writer_create) {
   ARGS(int, offset, int, byte_size);
   if (offset < 0 || offset + byte_size > FlashRegistry::allocations_size()) OUT_OF_BOUNDS;
@@ -53,7 +61,9 @@ static Object* write_image_chunk(Process* process, ImageOutputStream* output, co
 
   bool success = false;
   if (first) {
-    // Do not write the program header just yet.
+    // Do not write the program header just yet, but capture the program id from there.
+    Program::Header* header = reinterpret_cast<Program::Header*>(&buffer[0]);
+    output->set_program_id(header->id());
     const int header_size = sizeof(Program::Header);
     ASSERT(Utils::is_aligned(header_size, WORD_SIZE));
     const int header_words = header_size / WORD_SIZE;
@@ -88,7 +98,7 @@ PRIMITIVE(writer_write_all) {
 }
 
 PRIMITIVE(writer_commit) {
-  ARGS(ImageOutputStream, output, Blob, id_bytes);
+  ARGS(ImageOutputStream, output);
 
   ProgramImage image = output->image();
   if (!image.is_valid() || output->cursor() != image.end()) OUT_OF_BOUNDS;
@@ -98,7 +108,7 @@ PRIMITIVE(writer_commit) {
   int header_offset = FlashRegistry::offset(image.begin());
   uint8 meta_data[FlashAllocation::Header::meta_data_size()];
   memset(meta_data, 0, FlashAllocation::Header::meta_data_size());
-  if (FlashAllocation::initialize(header_offset, PROGRAM_TYPE, id_bytes.address(), image.byte_size(), meta_data)) {
+  if (FlashAllocation::initialize(header_offset, PROGRAM_TYPE, output->program_id(), image.byte_size(), meta_data)) {
     return process->program()->null_object();
   }
   HARDWARE_ERROR;

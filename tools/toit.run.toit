@@ -15,25 +15,32 @@
 
 import ar show *
 import uuid
+import crypto.sha256
 
 import ..system.boot
 import ..system.containers
 import ..system.extensions.host.initialize
 
 import .mirror as mirror
-import .snapshot as snapshot
+import .snapshot show Program SnapshotBundle
 
 abstract class ContainerImageFromSnapshot extends ContainerImage:
-  id/uuid.Uuid ::= ?
   bundle_/ByteArray ::= ?
-  program_/snapshot.Program? := null
+  program_/Program? := null
+  id/uuid.Uuid? := null
 
-  constructor manager/ContainerManager .bundle_ .id:
+  constructor manager/ContainerManager .bundle_:
     super manager
+    reader := ArReader.from_bytes bundle_
+    initialize reader
+
+  initialize reader/ArReader -> none:
+    offsets := reader.find --offsets SnapshotBundle.UUID_NAME
+    id = uuid.Uuid bundle_[offsets.from..offsets.to]
 
   trace encoded/ByteArray -> bool:
     // Parse the snapshot lazily the first time debugging information is needed.
-    if not program_: program_ = (snapshot.SnapshotBundle bundle_).decode
+    if not program_: program_ = (SnapshotBundle bundle_).decode
     // Decode the stack trace.
     mirror ::= mirror.decode encoded program_: return false
     mirror_string := mirror.stringify
@@ -54,7 +61,7 @@ abstract class ContainerImageFromSnapshot extends ContainerImage:
 
 class SystemContainerImage extends ContainerImageFromSnapshot:
   constructor manager/ContainerManager bundle/ByteArray:
-    super manager bundle uuid.NIL
+    super manager bundle
 
   start -> Container:
     // This container is already running as the system process.
@@ -63,14 +70,21 @@ class SystemContainerImage extends ContainerImageFromSnapshot:
     return container
 
 class ApplicationContainerImage extends ContainerImageFromSnapshot:
+  snapshot/ByteArray? := null
+
   constructor manager/ContainerManager bundle/ByteArray:
-    super manager bundle (uuid.uuid5 "fisk" "hest")  // TODO(kasper): Use a better id.
+    super manager bundle
+
+  initialize reader/ArReader -> none:
+    offsets := reader.find --offsets SnapshotBundle.SNAPSHOT_NAME
+    snapshot = bundle_[offsets.from..offsets.to]
+    // We must read the $id last because it comes after the snapshot in
+    // the archive.
+    super reader
 
   start -> Container:
-    ar_reader := ArReader.from_bytes bundle_
-    offsets := ar_reader.find --offsets snapshot.SnapshotBundle.SNAPSHOT_NAME
     gid ::= container_next_gid_
-    pid ::= launch_snapshot_ bundle_[offsets.from..offsets.to] gid id.to_byte_array
+    pid ::= launch_snapshot_ snapshot gid id.to_byte_array
     container := Container this gid pid
     manager.on_container_start_ container
     return container

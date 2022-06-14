@@ -8,13 +8,10 @@ import system.services show ServiceClient
 interface ContainerService:
   static UUID  /string ::= "358ee529-45a4-409e-8fab-7a28f71e5c51"
   static MAJOR /int    ::= 0
-  static MINOR /int    ::= 2
+  static MINOR /int    ::= 3
 
   static LIST_IMAGES_INDEX /int ::= 0
   list_images -> List
-
-  static CURRENT_IMAGE_INDEX /int ::= 6
-  current_image -> uuid.Uuid
 
   static START_IMAGE_INDEX /int ::= 1
   start_image id/uuid.Uuid -> int?
@@ -41,9 +38,6 @@ class ContainerServiceClient extends ServiceClient implements ContainerService:
   list_images -> List:
     array := invoke_ ContainerService.LIST_IMAGES_INDEX null
     return List array.size: uuid.Uuid array[it]
-
-  current_image -> uuid.Uuid:
-    return uuid.Uuid (invoke_ ContainerService.CURRENT_IMAGE_INDEX null)
 
   start_image id/uuid.Uuid -> int?:
     return invoke_ ContainerService.START_IMAGE_INDEX id.to_byte_array

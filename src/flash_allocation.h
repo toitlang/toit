@@ -56,13 +56,14 @@ class FlashAllocation {
 
     static int meta_data_size() { return sizeof(_meta_data); }
     static int id_size() { return sizeof(_id); }
+    const uint8* id() const { return _id; }
 
    private:
     // Data section for the header.
     uint32 _marker;  // Magic marker.
     uint32 _me;      // Offset in allocation partition for validation.
 
-    uint8 _id[16];
+    uint8 _id[UUID_SIZE];
 
     uint8 _meta_data[5];  // Allocation specific meta data (picked to ensure 16 byte alignment).
     uint16 _pages_in_flash;
@@ -73,7 +74,6 @@ class FlashAllocation {
     static const uint32 MARKER = 0xDEADFACE;
 
     bool is_valid(const uint8* uuid) const;
-    const uint8* id() const { return _id; }
     uint8 type() const { return _type; }
     const uint8* meta_data() const { return _meta_data; }
 

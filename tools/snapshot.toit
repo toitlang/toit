@@ -16,6 +16,7 @@
 import ar show *
 import host.file
 import binary show *
+import uuid show Uuid NIL
 
 // Library for parsing a snapshot file into a useful structure.
 /**
@@ -160,11 +161,13 @@ class SnapshotBundle:
   static MAGIC_CONTENT / string ::= "like a tiger"
   static SNAPSHOT_NAME / string ::= "snapshot"
   static SOURCE_MAP_NAME / string ::= "source-map"
+  static UUID_NAME / string ::= "uuid"
 
   byte_array ::= ?
   file_name        / string?          ::= ?
   program_snapshot / ProgramSnapshot  ::= ?
   source_map       / SourceMap        ::= ?
+  uuid             / Uuid             ::= ?
 
   constructor.from_file name/string:
     return SnapshotBundle name (file.read_content name)
@@ -178,6 +181,8 @@ class SnapshotBundle:
     source_map_offsets := extract_ar_offsets_ byte_array SOURCE_MAP_NAME
     program_snapshot = ProgramSnapshot byte_array program_snapshot_offsets.from program_snapshot_offsets.to
     source_map = SourceMap byte_array source_map_offsets.from source_map_offsets.to
+    uuid_offsets := extract_ar_offsets_ byte_array UUID_NAME
+    uuid = uuid_offsets ? (Uuid byte_array[uuid_offsets.from..uuid_offsets.to]) : NIL
 
   static is_bundle_content buffer/ByteArray -> bool:
     magic_file_offsets := extract_ar_offsets_ --silent buffer MAGIC_NAME

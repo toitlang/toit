@@ -62,7 +62,7 @@ set(IMAGE_O "${OUTPUT_PREFIX}-s2i.o")
 
 # Compile the snapshot to an image using the toit tool.
 execute_process(
-  COMMAND "${TOITVM}" "${SNAPSHOT_TO_IMAGE}" "${SNAP}" "${IMAGE_S}"
+  COMMAND "${TOITVM}" "${SNAPSHOT_TO_IMAGE}" -o "${IMAGE_S}" "${SNAP}"
   WORKING_DIRECTORY "${WORKING_DIR}"
   COMMAND_ERROR_IS_FATAL ANY
   )
@@ -81,7 +81,7 @@ endif()
 
 # Compile to binary image.
 execute_process(
-  COMMAND "${TOITVM}" "${SNAPSHOT_TO_IMAGE}" --binary "${SNAP}" "${IMAGE_S2I}"
+  COMMAND "${TOITVM}" "${SNAPSHOT_TO_IMAGE}" --binary -o "${IMAGE_S2I}" "${SNAP}"
   WORKING_DIRECTORY "${WORKING_DIR}"
   COMMAND_ERROR_IS_FATAL ANY
   )

@@ -16,6 +16,7 @@
 import .snapshot as snapshot
 import bytes
 import binary show LITTLE_ENDIAN ByteOrder
+import uuid
 
 abstract class Memory:
   static ENDIAN_ /ByteOrder ::= LITTLE_ENDIAN
@@ -464,19 +465,21 @@ class ToitHeader extends ToitObjectType:
 
   static MARKER_ ::= 0xDEADFACE
 
-  fill_into image/Image --at/int:
+  fill_into image/Image --at/int --system_uuid/uuid.Uuid --program_id/uuid.Uuid:
     memory := image.offheap
     anchored := LAYOUT.anchor --at=at memory
     assert: at % memory.word_size == 0
     assert: anchored["_uuid"] % memory.word_size == 0
+    assert: program_id.to_byte_array.size == ID_SIZE
+    assert: system_uuid.to_byte_array.size == UUID_SIZE
 
     anchored.put_uint32 "_marker" MARKER_
     anchored.put_uint32 "_me" at
-    anchored.put_bytes "_id" 0 --size=ID_SIZE
+    anchored.put_bytes "_id" program_id.to_byte_array
     anchored.put_bytes "_meta_data" 0xFF --size=META_DATA_SIZE
     anchored.put_uint16 "_pages_in_flash" 0
     anchored.put_uint8 "_type" 0 // TODO(florian): we don't seem to initialize the type field in the C++ code.
-    anchored.put_bytes "_uuid" 0 --size=UUID_SIZE
+    anchored.put_bytes "_uuid" system_uuid.to_byte_array
 
 class ToitProgram extends ToitObjectType:
   static CLASS_TAG_BIT_SIZE ::= 4
@@ -558,7 +561,7 @@ class ToitProgram extends ToitObjectType:
   snapshot_program /snapshot.Program
   constructor .snapshot_program:
 
-  write_to image/Image -> int:
+  write_to image/Image --system_uuid/uuid.Uuid --program_id/uuid.Uuid -> int:
     word_size := image.word_size
     offheap := image.offheap
 
@@ -573,7 +576,7 @@ class ToitProgram extends ToitObjectType:
     // and just dynamically build up the memory here.
 
     header := ToitHeader  // Doesn't need data from the snapshot.
-    header.fill_into image --at=anchored["header"]
+    header.fill_into image --at=anchored["header"] --system_uuid=system_uuid --program_id=program_id
 
     class_tags := snapshot_program.class_tags
     class_instance_sizes := snapshot_program.class_instance_sizes
@@ -1152,9 +1155,9 @@ class ToitInteger extends ToitHeapObject:
     anchored.put_int64 "value" o_.value
     return to_encoded_address address
 
-build_image snapshot/snapshot.Program word_size/int -> Image:
+build_image snapshot/snapshot.Program word_size/int --system_uuid/uuid.Uuid --program_id/uuid.Uuid -> Image:
   ToitProgram.init_constants snapshot
   image := Image snapshot word_size
   program := ToitProgram snapshot
-  program.write_to image
+  program.write_to image --system_uuid=system_uuid --program_id=program_id
   return image
