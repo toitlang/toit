@@ -74,7 +74,7 @@ SnapshotBundle::SnapshotBundle(List<uint8> snapshot,
   mbedtls_sha256_finish_ret(&sha_context, sum);
   mbedtls_sha256_free(&sha_context);
 
-  // Fix checksum bytes to make a legal UUID.
+  // Fix checksum bytes to make a UUID5-like ID.
   sum[6] = (sum[6] & 0xf) | 0x50;
   sum[8] = (sum[8] & 0x3f) | 0x80;
 
