@@ -3,7 +3,6 @@
 // be found in the tests/LICENSE file.
 
 import expect show *
-import core.time_impl show set_tz_
 
 h1  ::= Duration --h=1
 m1  ::= Duration --m=1
