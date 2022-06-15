@@ -253,7 +253,10 @@ main:
   expect_equals (Duration --h=1 --m=1)  d2 - d1
   expect_equals (Duration --h=-1)       -d1
   expect_equals (Duration --h=4 --m=2)  d2 * 2
+  expect_equals (Duration --h=4 --m=2)  d2 * 2.0
+  expect_equals (Duration --h=1 --s=30) d2 * 0.5
   expect_equals (Duration --h=1 --s=30) d2 / 2
+  expect_equals (Duration --h=4 --m=2)  d2 / 0.5
 
   with_dst := Time.local 2020 10 25 2 59 --dst
   without_dst := Time.local 2020 10 25 2 59 --no-dst

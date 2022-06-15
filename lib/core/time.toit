@@ -418,8 +418,8 @@ class Duration implements Comparable:
   print 5 * t_5s  // Error, num's * does not know Duration!
   ```
   */
-  operator * factor/int -> Duration:
-    return Duration ns_ * factor
+  operator * factor/num -> Duration:
+    return Duration (ns_ * factor).to_int
 
   /**
   Divides the duration by the $factor.
@@ -431,8 +431,8 @@ class Duration implements Comparable:
   print t_9s / 3  // >> 3s
   ```
   */
-  operator / factor/int -> Duration:
-    return Duration ns_ / factor
+  operator / factor/num -> Duration:
+    return Duration (ns_ / factor).to_int
 
   /**
   A constant 0-duration singleton.
