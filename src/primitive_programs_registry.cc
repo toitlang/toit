@@ -74,7 +74,7 @@ PRIMITIVE(kill) {
   return BOOL(VM::current()->scheduler()->kill(program));
 }
 
-PRIMITIVE(list_bundled) {
+PRIMITIVE(bundled_images) {
 #ifdef TOIT_FREERTOS
   const uword* table = &toit_image_table;
   int length = table[0];

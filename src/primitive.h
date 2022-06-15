@@ -509,7 +509,7 @@ namespace toit {
   PRIMITIVE(spawn, 3)                        \
   PRIMITIVE(is_running, 2)                   \
   PRIMITIVE(kill, 2)                         \
-  PRIMITIVE(list_bundled, 0)                 \
+  PRIMITIVE(bundled_images, 0)               \
 
 #define MODULE_FLASH_REGISTRY(PRIMITIVE)     \
   PRIMITIVE(next, 1)                         \

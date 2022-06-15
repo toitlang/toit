@@ -190,9 +190,9 @@ class ContainerManager extends ContainerServiceDefinition implements SystemMessa
 
     // Run through the bundled images in the VM, but skip the
     // first one which is always the system image.
-    builtins := container_list_bundled_
-    for i := 2; i < builtins.size; i += 2:
-      allocation := FlashAllocation builtins[i]
+    bundled := container_bundled_images_
+    for i := 2; i < bundled.size; i += 2:
+      allocation := FlashAllocation bundled[i]
       if not images_.contains allocation.id: add_flash_image allocation
 
   system_image -> ContainerImage:
@@ -321,5 +321,5 @@ container_next_gid_ -> int:
 container_kill_pid_ pid/int -> bool:
   #primitive.core.signal_kill
 
-container_list_bundled_ -> Array_:
-  #primitive.programs_registry.list_bundled
+container_bundled_images_ -> Array_:
+  #primitive.programs_registry.bundled_images
