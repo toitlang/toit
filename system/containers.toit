@@ -195,6 +195,9 @@ class ContainerManager extends ContainerServiceDefinition implements SystemMessa
       allocation := FlashAllocation builtins[i]
       if not images_.contains allocation.id: add_flash_image allocation
 
+  system_image -> ContainerImage:
+    return system_image_
+
   images -> List:
     return images_.values.filter: it != system_image_
 

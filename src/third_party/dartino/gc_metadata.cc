@@ -26,7 +26,7 @@ void GcMetadata::set_up_singleton() {
 
   uword range_address = reinterpret_cast<uword>(range.address);
 #ifdef TOIT_FREERTOS
-  printf("Malloc reports heap from %p-%p (%dk)\n",
+  printf("[toit] heap malloc range is %p-%p (%dk)\n",
       range.address,
       unvoid_cast<char*>(range.address) + range.size,
       static_cast<int>(range.size >> 10));
@@ -35,7 +35,7 @@ void GcMetadata::set_up_singleton() {
   uword size = Utils::round_up(range.size + range_address - lowest_address_, TOIT_PAGE_SIZE);
   heap_extent_ = size;
 #ifdef TOIT_FREERTOS
-  printf("(Metadata allocated for  %p-%p (%dk))\n",
+  printf("[toit] heap metadata covers %p-%p (%dk)\n",
       reinterpret_cast<void*>(lowest_address_),
       reinterpret_cast<char*>(lowest_address_) + heap_extent_,
       static_cast<int>(heap_extent_ >> 10));
