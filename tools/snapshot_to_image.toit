@@ -87,7 +87,7 @@ print_usage parser/arguments.ArgumentParser:
 
 main args:
   parser := arguments.ArgumentParser
-  parser.describe_rest --max=arguments.UNLIMITED ["snapshot-files"]
+  parser.describe_rest ["snapshot-files", "..."]
   parser.add_flag M32_FLAG --short="m32"
   parser.add_flag M64_FLAG --short="m64"
   parser.add_flag BINARY_FLAG
