@@ -44,7 +44,7 @@ run_tests:
     "ebay.de",
     //"$(dns_lookup "amazon.com")/amazon.com",  // Connect to the IP address at the TCP level, but
 
-    "github.com",
+    "dkhostmaster.dk",
 
     "sha256.badssl.com",
     //"sha384.badssl.com",
