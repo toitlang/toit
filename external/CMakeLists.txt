@@ -20,7 +20,8 @@ set(TOIT_REPOS
     https://github.com/toitlang/jaguar
     https://github.com/toitlang/pkg-ar
     https://github.com/toitlang/pkg-host
-    https://github.com/toitlang/pkg-http
+    # TODO(kasper): Renable once we can handle tests failing on Windows.
+    # https://github.com/toitlang/pkg-http
     https://github.com/toitlang/pkg-modbus
     https://github.com/toitlang/pkg-ntp
     https://github.com/toitlang/pkg-tar
