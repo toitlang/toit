@@ -419,7 +419,7 @@ class Duration implements Comparable:
   ```
   */
   operator * factor/num -> Duration:
-    return Duration (ns_ * factor).to_int
+    return Duration (factor * ns_).to_int
 
   /**
   Divides the duration by the $factor.
