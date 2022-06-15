@@ -57,6 +57,7 @@ function(ADD_TOIT_TARGET SOURCE TARGET DEP_FILE ENV)
   add_custom_command(
     OUTPUT "${TARGET}"
     DEPFILE ${DEP_FILE}
+    DEPENDS "${TOITC}"
     COMMAND ${CMAKE_COMMAND} -E env ${ENV} ASAN_OPTIONS=detect_leaks=false "${TOITC}" --dependency-file "${DEP_FILE}" --dependency-format ninja -w "${TARGET}" "${SOURCE}"
   )
 endfunction(ADD_TOIT_TARGET)
