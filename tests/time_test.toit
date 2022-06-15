@@ -175,7 +175,7 @@ main:
   expect_equals 11 local.s
   expect_equals 123456789 local.ns
 
-  set_tz_ "CET-1CEST,M3.5.0,M10.5.0/3"
+  set_timezone "CET-1CEST,M3.5.0,M10.5.0/3"
   time3 = Time.local 2020 09 08 18 03 11 --ns=123456789
   expect_equals 1599580991 time3.s_since_epoch
   expect_equals 123456789 time3.ns_part
@@ -190,7 +190,7 @@ main:
   expect_equals 123456789 local.ns
   expect local.is_dst
 
-  set_tz_ "EST5EDT,M3.2.0,M11.1.0"
+  set_timezone "EST5EDT,M3.2.0,M11.1.0"
   time4 := Time.local 2020 09 08 18 03 11 --ns=123456789
   expect_equals 1599602591 time4.s_since_epoch
   expect_equals 123456789 time4.ns_part
@@ -208,7 +208,7 @@ main:
   time4_100_days_later := time4 + (Duration --h=24 * 100)
   expect_not time4_100_days_later.local.is_dst
 
-  set_tz_ "CET-1CEST,M3.5.0,M10.5.0/3"
+  set_timezone "CET-1CEST,M3.5.0,M10.5.0/3"
   earlier := Time.local 2020 10 25 2 59
   later / Time := ?
   if earlier.local.is_dst:
