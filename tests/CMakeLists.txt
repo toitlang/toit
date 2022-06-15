@@ -144,7 +144,7 @@ add_subdirectory(lock_file)
 
 include(fail.cmake)
 foreach(test ${TOIT_FAILING_TESTS})
-  if("${file}" IN_LIST TOIT_SKIP_TESTS)
+  if("${test}" IN_LIST TOIT_SKIP_TESTS)
     continue()
   endif()
   set_tests_properties(${test} PROPERTIES WILL_FAIL TRUE)

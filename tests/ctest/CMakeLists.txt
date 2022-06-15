@@ -91,5 +91,8 @@ foreach(file ${TOIT_TESTS})
 endforeach()
 
 foreach(test ${TOIT_FAILING_TESTS})
+  if ("${test}" IN_LIST TOIT_SKIP_TESTS)
+    continue()
+  endif()
   set_tests_properties(${test} PROPERTIES WILL_FAIL TRUE)
 endforeach()
