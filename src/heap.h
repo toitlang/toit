@@ -24,9 +24,6 @@
 #include "printing.h"
 #include "third_party/dartino/two_space_heap.h"
 
-extern "C" uword toit_image;
-extern "C" uword toit_image_size;
-
 namespace toit {
 
 class ObjectNotifier;

@@ -85,18 +85,6 @@ PRIMITIVE(writer_write) {
   return error ? error : process->program()->null_object();
 }
 
-PRIMITIVE(writer_write_all) {
-  ARGS(ImageOutputStream, output, int, from, int, to);
-  while (from < to) {
-    const word* data = unvoid_cast<const word*>(FlashRegistry::memory(from, to - from));
-    int length = Utils::min((to - from) / WORD_SIZE, WORD_BIT_SIZE + 1);
-    Object* error = write_image_chunk(process, output, data, length);
-    if (error) return error;
-    from += length * WORD_SIZE;
-  }
-  return process->program()->null_object();
-}
-
 PRIMITIVE(writer_commit) {
   ARGS(ImageOutputStream, output);
 

@@ -184,26 +184,19 @@ class ContainerManager extends ContainerServiceDefinition implements SystemMessa
     set_system_message_handler_ SYSTEM_SPAWNED_ this
     set_system_message_handler_ SYSTEM_MIRROR_MESSAGE_ this
 
-    unrelocated/List? := null
     image_registry.do: | allocation/FlashAllocation |
-      if allocation.type == FLASH_ALLOCATION_PROGRAM_TYPE:
-        add_flash_image allocation
-      else if allocation.type == FLASH_ALLOCATION_PROGRAM_UNRELOCATED_TYPE:
-        if unrelocated: unrelocated.add allocation
-        else: unrelocated = [allocation]
+      if allocation.type != FLASH_ALLOCATION_PROGRAM_TYPE: continue.do
+      add_flash_image allocation
 
-    // Run through the unrelocated programs and relocate them unless we
-    // already did that successfully before in which case they will have
-    // shown up as relocated programs (added to the images map).
-    if unrelocated:
-      unrelocated.do: | allocation/FlashAllocation |
-        if not images_.contains allocation.id:
-          add_flash_image (relocate allocation image_registry)
-        // We always free the unrelocated programs by erasing them from flash
-        // if the relocation attempt is successful (doesn't throw). Maybe it
-        // would make sense to make sure that a rescan finds the relocated
-        // image before doing this?
-        image_registry.free allocation
+    // Run through the bundled images in the VM, but skip the
+    // first one which is always the system image.
+    bundled := container_bundled_images_
+    for i := 2; i < bundled.size; i += 2:
+      allocation := FlashAllocation bundled[i]
+      if not images_.contains allocation.id: add_flash_image allocation
+
+  system_image -> ContainerImage:
+    return system_image_
 
   images -> List:
     return images_.values.filter: it != system_image_
@@ -327,3 +320,6 @@ container_next_gid_ -> int:
 
 container_kill_pid_ pid/int -> bool:
   #primitive.core.signal_kill
+
+container_bundled_images_ -> Array_:
+  #primitive.programs_registry.bundled_images

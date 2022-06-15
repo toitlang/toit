@@ -177,7 +177,7 @@ esp32:
 	    $(MAKE) esp32-no-env
 
 .PHONY: esp32-no-env
-esp32-no-env: check-env check-esp32-env build/$(ESP32_CHIP)/toit.bin  build/$(ESP32_CHIP)/programs.bin
+esp32-no-env: check-env check-esp32-env build/$(ESP32_CHIP)/toit.bin
 
 build/$(ESP32_CHIP)/toit.bin build/$(ESP32_CHIP)/toit.elf: build/$(ESP32_CHIP)/lib/libtoit_vm.a
 build/$(ESP32_CHIP)/toit.bin build/$(ESP32_CHIP)/toit.elf: build/$(ESP32_CHIP)/lib/libtoit_image.a
@@ -192,9 +192,13 @@ build/$(ESP32_CHIP)/lib/libtoit_vm.a: build/$(ESP32_CHIP)/CMakeCache.txt build/$
 build/$(ESP32_CHIP)/lib/libtoit_image.a: build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s build/$(ESP32_CHIP)/CMakeCache.txt build/$(ESP32_CHIP)/include/sdkconfig.h
 	(cd build/$(ESP32_CHIP) && ninja toit_image)
 
-build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s: build/$(ESP32_CHIP)/system.snapshot tools snapshots
+build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s: tools snapshots
+build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s: build/$(ESP32_CHIP)/system.snapshot
+build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s: build/$(ESP32_CHIP)/program.snapshot
 	mkdir -p build/$(ESP32_CHIP)
-	$(TOITVM_BIN) $(SNAPSHOT_DIR)/snapshot_to_image.snapshot --unique_id=$(ESP32_SYSTEM_ID) -o $@ $<
+	$(TOITVM_BIN) $(SNAPSHOT_DIR)/snapshot_to_image.snapshot --unique_id=$(ESP32_SYSTEM_ID) -o $@ \
+	    build/$(ESP32_CHIP)/system.snapshot \
+	    build/$(ESP32_CHIP)/program.snapshot
 
 .PHONY: build/$(ESP32_CHIP)/system.snapshot  # Marked phony to force regeneration.
 build/$(ESP32_CHIP)/system.snapshot: $(ESP32_SYSTEM_ENTRY) tools
@@ -204,9 +208,6 @@ build/$(ESP32_CHIP)/system.snapshot: $(ESP32_SYSTEM_ENTRY) tools
 build/$(ESP32_CHIP)/program.snapshot: $(ESP32_ENTRY) tools
 	mkdir -p build/$(ESP32_CHIP)
 	$(TOITC_BIN) -w $@ $<
-
-build/$(ESP32_CHIP)/programs.bin: build/$(ESP32_CHIP)/program.snapshot tools snapshots
-	$(TOITVM_BIN) $(SNAPSHOT_DIR)/snapshot_to_image.snapshot --unique_id=$(ESP32_SYSTEM_ID) -m32 --binary --offset=0x0 -o $@ $<
 
 build/$(ESP32_CHIP)/CMakeCache.txt: check-esp32-env
 	mkdir -p build/$(ESP32_CHIP)
@@ -229,8 +230,7 @@ flash: check-env-flash sdk esp32
 	    --before default_reset --after hard_reset write_flash -z --flash_mode dio --flash_freq 40m --flash_size detect \
 		0x001000 build/$(ESP32_CHIP)/bootloader/bootloader.bin \
 		0x008000 build/$(ESP32_CHIP)/partitions.bin \
-		0x010000 build/$(ESP32_CHIP)/toit.bin \
-		0x250000 build/$(ESP32_CHIP)/programs.bin
+		0x010000 build/$(ESP32_CHIP)/toit.bin
 
 .PHONY: check-env-flash
 check-env-flash:

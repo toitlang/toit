@@ -468,7 +468,6 @@ namespace toit {
   PRIMITIVE(current_id, 0)                   \
   PRIMITIVE(writer_create, 2)                \
   PRIMITIVE(writer_write, 4)                 \
-  PRIMITIVE(writer_write_all, 3)             \
   PRIMITIVE(writer_commit, 1)                \
   PRIMITIVE(writer_close, 1)                 \
 
@@ -510,6 +509,7 @@ namespace toit {
   PRIMITIVE(spawn, 3)                        \
   PRIMITIVE(is_running, 2)                   \
   PRIMITIVE(kill, 2)                         \
+  PRIMITIVE(bundled_images, 0)               \
 
 #define MODULE_FLASH_REGISTRY(PRIMITIVE)     \
   PRIMITIVE(next, 1)                         \

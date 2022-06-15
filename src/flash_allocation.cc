@@ -36,6 +36,7 @@ void FlashAllocation::Header::set_uuid(const uint8* uuid) {
 void FlashAllocation::validate() {  }
 
 bool FlashAllocation::is_valid(uint32 allocation_offset, const uint8* uuid) const {
+  if ((allocation_offset & 1) == 1) return is_valid_allocation(0);
   if (!is_valid_allocation(allocation_offset)) return false;
   return _header.is_valid(uuid);
 }

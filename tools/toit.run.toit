@@ -15,7 +15,6 @@
 
 import ar show *
 import uuid
-import crypto.sha256
 
 import ..system.boot
 import ..system.containers

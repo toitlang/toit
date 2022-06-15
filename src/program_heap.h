@@ -23,9 +23,6 @@
 #include "primitive.h"
 #include "printing.h"
 
-extern "C" uword toit_image;
-extern "C" uword toit_image_size;
-
 namespace toit {
 
 class ProgramHeap : public ProgramRawHeap {

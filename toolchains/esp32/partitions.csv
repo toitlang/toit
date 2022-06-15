@@ -21,6 +21,6 @@
 nvs,      data, nvs,      0x009000,  0x004000,
 otadata,  data, ota,      0x00d000,  0x002000,
 phy_init, data, phy,      0x00f000,  0x001000,
-ota_0,    app,  ota_0,    0x010000,  0x120000,
-ota_1,    app,  ota_1,    0x130000,  0x120000,
-programs, 0x40, 0x00,     0x250000,  0x150000, encrypted
+ota_0,    app,  ota_0,    0x010000,  0x140000,
+ota_1,    app,  ota_1,    0x150000,  0x140000,
+programs, 0x40, 0x00,     0x290000,  0x110000, encrypted
