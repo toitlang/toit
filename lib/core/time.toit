@@ -594,6 +594,25 @@ class TimeInfo:
     return to_iso8601_string
 
 /**
+Stores the given $rules in the `TZ` environment variable and
+  calls `tzset`, thus activating it.
+
+Valid TZ values can be easily obtained by looking at the last line of the
+  zoneinfo files on Linux machines:
+```
+tail -n1 /usr/share/zoneinfo/Europe/Copenhagen
+```
+
+# Examples
+```
+set_timezone "CET-1CEST,M3.5.0,M10.5.0/3"  // Central European Timezone (as of 2022).
+set_timezone "PST8PDT,M3.2.0,M11.1.0"  // Pacific Time (as of 2022).
+```
+*/
+set_timezone rules/string:
+  #primitive.core.set_tz
+
+/**
 A wall clock time.
 
 The wall clock time is represented as a Unix time (https://en.wikipedia.org/wiki/Unix_time).
