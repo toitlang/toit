@@ -178,12 +178,13 @@ uint32_t WifiResourceGroup::on_event(Resource* resource, word data, uint32_t sta
       break;
 
     case WIFI_EVENT_STA_BEACON_TIMEOUT:
-      // The beacon timeout mechanism is used by ESP32 station to detect whether the AP is alive or not.
-      // If the station continuously loses 60 beacons of the connected AP, the beacon timeout happens.
+      // The beacon timeout mechanism is used by ESP32 station to detect whether the AP
+      // is alive or not. If the station continuously loses 60 beacons of the connected
+      // AP, the beacon timeout happens.
       //
-      // After the beacon times out, the station sends 5 probe requests to the AP. If still no probe response
-      // or beacon is received from AP, the station disconnects from the AP and raises the event
-      // WIFI_EVENT_STA_DISCONNECTED.
+      // After the beacon times out, the station sends 5 probe requests to the AP. If
+      // still no probe response or beacon is received from AP, the station disconnects
+      // from the AP and raises the WIFI_EVENT_STA_DISCONNECTED event.
       break;
 
     case IP_EVENT_STA_GOT_IP: {
