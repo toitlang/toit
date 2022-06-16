@@ -99,7 +99,7 @@ class DnsQuery_:
           if answer:
             return decode_response_ answer.data server
 
-          retry_timeout = retry_timeout * 2
+          retry_timeout = retry_timeout * 1.5
 
       finally:
         socket.close
