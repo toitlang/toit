@@ -64,7 +64,7 @@ class WifiServiceDefinition extends NetworkServiceDefinitionBase:
     try:
       module.set_ssid ssid password
       with_timeout WIFI_CONNECT_TIMEOUT_: module.connect
-      with_timeout WIFI_DHCP_TIMEOUT_: module.wait_for_ip
+      with_timeout WIFI_DHCP_TIMEOUT_: module.wait_for_ip_address
       return module
     finally: | is_exception exception |
       if is_exception:
@@ -76,9 +76,14 @@ class WifiServiceDefinition extends NetworkServiceDefinitionBase:
 class WifiResource extends ServiceResource:
   state_/WifiState ::= ?
   constructor service/ServiceDefinition client/int .state_:
-    super service client
+    super service client --notifiable
+    state_.wifi.add_resource this
+
+  notify_closed -> none:
+    notify_ NetworkService.NOTIFY_CLOSED
 
   on_closed -> none:
+    state_.wifi.remove_resource this
     state_.down
 
 monitor WifiState:
@@ -93,7 +98,13 @@ monitor WifiState:
   up ssid/string password/string -> WifiModule:
     usage_++
     if wifi_: return wifi_
-    return wifi_ = service_.turn_on ssid password
+    try:
+      return wifi_ = service_.turn_on ssid password
+    finally: | is_exception exception |
+      if is_exception:
+        // Do not count the usage if we didn't manage
+        // to produce a working $WifiModule.
+        usage_--
 
   down -> none:
     usage_--
@@ -128,9 +139,21 @@ class WifiModule:
     ssid_ = ssid
     password_ = password
 
+  // TODO(kasper): For now, we just keep these in a list. We could
+  // consider making the resource hashable to improve on this.
+  resources_ ::= []
+
+  add_resource resource/WifiResource -> none:
+    resources_.add resource
+
+  remove_resource resource/WifiResource -> none:
+    // TODO(kasper): This is O(n), but we don't expect
+    // many resources.
+    resources_.remove resource
+
   close:
-    if not resource_group_:
-      return
+    if not resource_group_: return
+
     if wifi_events_:
       wifi_events_.dispose
       wifi_events_ = null
@@ -140,6 +163,10 @@ class WifiModule:
     logger_.debug "closing"
     wifi_close_ resource_group_
     resource_group_ = null
+
+    // Notify the resources' proxies that they have been closed.
+    resources_.do: | resource/WifiResource | resource.notify_closed
+    resources_.clear
 
   address -> net.IpAddress:
     return address_
@@ -194,7 +221,8 @@ class WifiModule:
     return wifi_get_rssi_ resource_group_
 
   on_event_ state/int:
-    print_ "[callback] got wifi event: $state"
+    if (state & (WIFI_DISCONNECTED | WIFI_IP_LOST)) != 0:
+      task:: close
 
 // ----------------------------------------------------------------------------
 

@@ -253,6 +253,9 @@ abstract class ServiceResourceProxy:
     if _handle_ & 1 == 1:
       ServiceResourceProxyManager_.instance.register client_.id _handle_ this
 
+  is_closed -> bool:
+    return _handle_ == null
+
   handle_ -> int:
     return _handle_
 
