@@ -221,6 +221,10 @@ class WifiModule:
     return wifi_get_rssi_ resource_group_
 
   on_event_ state/int:
+    // TODO(kasper): We should be clearing the state in the
+    // $monitor.ResourceState_ object, but since we're only
+    // closing here it doesn't really matter. Room for
+    // improvement though.
     if (state & (WIFI_DISCONNECTED | WIFI_IP_LOST)) != 0:
       task:: close
 
