@@ -11,12 +11,13 @@ monitor ResourceState_:
 
   group: return group_
   resource: return resource_
+  set_callback callback/Lambda -> none: callback_ = callback
 
   wait_for_state bits:
     return wait_for_state_ bits
 
   wait:
-    return wait_for_state_ 0xffffff
+    return wait_for_state_ 0x3fff_ffff
 
   clear:
     state_ = 0
@@ -29,6 +30,7 @@ monitor ResourceState_:
       unregister_monitor_notifier_ group_ resource_
       resource_ = null
       group_ = null
+      callback_ = null
       remove_finalizer this
 
   // Called on timeouts and when the state changes because of the call
@@ -36,8 +38,10 @@ monitor ResourceState_:
   notify_:
     resource := resource_
     if resource:
-      state := read_state_ group_ resource
-      state_ |= state
+      state := state_ | (read_state_ group_ resource)
+      state_ = state
+      callback := callback_
+      if callback: callback.call state
     // Always call the super implementation to avoid getting
     // into a situation, where timeouts might be ignored.
     super
@@ -55,6 +59,7 @@ monitor ResourceState_:
 
   group_ := ?
   resource_ := ?
+  callback_/Lambda? := null
   state_ := 0
 
 read_state_ module id:
