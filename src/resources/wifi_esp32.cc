@@ -326,7 +326,7 @@ PRIMITIVE(disconnect) {
   ARGS(WifiResourceGroup, group, WifiEvents, wifi);
 
   group->unregister_resource(wifi);
-
+  wifi_proxy->clear_external_address();
   return process->program()->null_object();
 }
 
