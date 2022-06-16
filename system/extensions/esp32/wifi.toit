@@ -184,14 +184,16 @@ class WifiModule:
           wifi_events_.set_callback:: on_event_ it
           return
         else if (state & WIFI_RETRY) != 0:
-          wifi_events_.clear_state WIFI_RETRY
+          // We will be creating a new ResourceState object on the next
+          // iteration, so we need to dispose the one from this attempt.
+          wifi_events_.dispose
+          wifi_events_ = null
           reason ::= wifi_disconnect_reason_ resource
           logger_.info "retrying" --tags={"reason": reason}
           wifi_disconnect_ resource_group_ resource
           sleep WIFI_RETRY_DELAY_
           continue
         else if (state & WIFI_DISCONNECTED) != 0:
-          wifi_events_.clear_state WIFI_DISCONNECTED
           reason ::= wifi_disconnect_reason_ resource
           logger_.warn "connect failed" --tags={"reason": reason}
           close
@@ -212,8 +214,6 @@ class WifiModule:
       address_ = address
       ip_events_.set_callback:: on_event_ it
       return address
-    else if (state & WIFI_IP_LOST) != 0:
-      ip_events_.clear_state WIFI_IP_LOST
     close
     throw "IP_ASSIGN_FAILED"
 
