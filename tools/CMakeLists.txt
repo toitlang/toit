@@ -15,7 +15,7 @@
 
 include(toit.cmake)
 
-set(TOOLS system_message snapshot_to_image inject_config)
+set(TOOLS system_message snapshot_to_image inject_config toitp stacktrace)
 
 foreach (TOOL ${TOOLS})
   set(TOOL_SNAPSHOT ${CMAKE_BINARY_DIR}/sdk/snapshots/${TOOL}.snapshot)
@@ -37,5 +37,4 @@ add_custom_target(
 add_dependencies(build_snapshots build_tool_snapshots)
 
 toit_project(lsp "${CMAKE_CURRENT_LIST_DIR}/lsp/server")
-toit_project(stacktrace "${CMAKE_CURRENT_LIST_DIR}/stacktrace")
 toit_project(tools "${CMAKE_CURRENT_LIST_DIR}")
