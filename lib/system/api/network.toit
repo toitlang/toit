@@ -35,6 +35,12 @@ interface NetworkService:
   static SOCKET_OPTION_UDP_BROADCAST /int ::= 0
   static SOCKET_OPTION_TCP_NO_DELAY  /int ::= 100
 
+  /**
+  The notification constants are used as arguments to $ServiceResource.notify_
+    and consequently $ServiceResourceProxy.on_notified_.
+  */
+  static NOTIFY_CLOSED /int ::= 200
+
   // The connect call returns a handle to the network resource and
   // the proxy mask bits in a list. The proxy mask bits indicate
   // which operations the service definition wants the client to
