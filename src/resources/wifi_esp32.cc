@@ -36,9 +36,10 @@ namespace toit {
 
 enum {
   WIFI_CONNECTED    = 1 << 0,
-  WIFI_DHCP_SUCCESS = 1 << 1,
-  WIFI_DISCONNECTED = 1 << 2,
-  WIFI_RETRY        = 1 << 3,
+  WIFI_IP_ASSIGNED  = 1 << 1,
+  WIFI_IP_LOST      = 1 << 2,
+  WIFI_DISCONNECTED = 1 << 3,
+  WIFI_RETRY        = 1 << 4,
 };
 
 const int kInvalidWifi = -1;
@@ -117,11 +118,12 @@ class WifiEvents : public SystemResource {
     FATAL_IF_NOT_ESP_OK(esp_wifi_stop());
   }
 
-  uint8_t disconnect_reason() { return _disconnect_reason; }
+  uint8 disconnect_reason() const { return _disconnect_reason; }
+  void set_disconnect_reason(uint8 reason) { _disconnect_reason = reason; }
 
  private:
   friend class WifiResourceGroup;
-  uint8_t _disconnect_reason;
+  uint8 _disconnect_reason;
 };
 
 class IPEvents : public SystemResource {
@@ -135,7 +137,7 @@ class IPEvents : public SystemResource {
     free(_ip);
   }
 
-  const char* ip() {
+  const char* ip() const {
     return _ip;
   }
 
@@ -164,7 +166,7 @@ uint32_t WifiResourceGroup::on_event(Resource* resource, word data, uint32_t sta
           state |= WIFI_DISCONNECTED;
           break;
       }
-      static_cast<WifiEvents*>(resource)->_disconnect_reason = reason;
+      static_cast<WifiEvents*>(resource)->set_disconnect_reason(reason);
       break;
     }
 
@@ -175,34 +177,46 @@ uint32_t WifiResourceGroup::on_event(Resource* resource, word data, uint32_t sta
     case WIFI_EVENT_STA_STOP:
       break;
 
+    case WIFI_EVENT_STA_BEACON_TIMEOUT:
+      // The beacon timeout mechanism is used by ESP32 station to detect whether the AP
+      // is alive or not. If the station continuously loses 60 beacons of the connected
+      // AP, the beacon timeout happens.
+      //
+      // After the beacon times out, the station sends 5 probe requests to the AP. If
+      // still no probe response or beacon is received from AP, the station disconnects
+      // from the AP and raises the WIFI_EVENT_STA_DISCONNECTED event.
+      break;
+
     case IP_EVENT_STA_GOT_IP: {
       ip_event_got_ip_t* event = reinterpret_cast<ip_event_got_ip_t*>(system_event->event_data);
       uint32_t addr = event->ip_info.ip.addr;
-      sprintf(static_cast<IPEvents*>(resource)->_ip,
+      sprintf(
+          static_cast<IPEvents*>(resource)->_ip,
 #ifdef CONFIG_IDF_TARGET_ESP32C3
-              "%lu.%lu.%lu.%lu",
+          "%lu.%lu.%lu.%lu",
 #else
-	      "%d.%d.%d.%d",
+          "%d.%d.%d.%d",
 #endif
-              (addr >> 0) & 0xff,
-              (addr >> 8) & 0xff,
-              (addr >> 16) & 0xff,
-              (addr >> 24) & 0xff);
-      state |= WIFI_DHCP_SUCCESS;
+          (addr >> 0) & 0xff,
+          (addr >> 8) & 0xff,
+          (addr >> 16) & 0xff,
+          (addr >> 24) & 0xff);
+      state |= WIFI_IP_ASSIGNED;
       break;
     }
 
     case IP_EVENT_STA_LOST_IP:
+      state |= WIFI_IP_LOST;
       break;
 
     default:
       printf(
 #ifdef CONFIG_IDF_TARGET_ESP32C3
-        "unhandled WiFi event: %lu\n",
+          "unhandled WiFi event: %lu\n",
 #else
-	"unhandled Wifi event: %d\n",
+          "unhandled WiFi event: %d\n",
 #endif
-        system_event->id
+          system_event->id
       );
   }
 
@@ -312,7 +326,7 @@ PRIMITIVE(disconnect) {
   ARGS(WifiResourceGroup, group, WifiEvents, wifi);
 
   group->unregister_resource(wifi);
-
+  wifi_proxy->clear_external_address();
   return process->program()->null_object();
 }
 

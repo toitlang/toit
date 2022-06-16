@@ -64,7 +64,7 @@ class WifiServiceDefinition extends NetworkServiceDefinitionBase:
     try:
       module.set_ssid ssid password
       with_timeout WIFI_CONNECT_TIMEOUT_: module.connect
-      with_timeout WIFI_DHCP_TIMEOUT_: module.get_ip
+      with_timeout WIFI_DHCP_TIMEOUT_: module.wait_for_ip_address
       return module
     finally: | is_exception exception |
       if is_exception:
@@ -76,9 +76,14 @@ class WifiServiceDefinition extends NetworkServiceDefinitionBase:
 class WifiResource extends ServiceResource:
   state_/WifiState ::= ?
   constructor service/ServiceDefinition client/int .state_:
-    super service client
+    super service client --notifiable
+    state_.wifi.add_resource this
+
+  notify_closed -> none:
+    notify_ NetworkService.NOTIFY_CLOSED
 
   on_closed -> none:
+    state_.wifi.remove_resource this
     state_.down
 
 monitor WifiState:
@@ -93,7 +98,13 @@ monitor WifiState:
   up ssid/string password/string -> WifiModule:
     usage_++
     if wifi_: return wifi_
-    return wifi_ = service_.turn_on ssid password
+    try:
+      return wifi_ = service_.turn_on ssid password
+    finally: | is_exception exception |
+      if is_exception:
+        // Do not count the usage if we didn't manage
+        // to produce a working $WifiModule.
+        usage_--
 
   down -> none:
     usage_--
@@ -107,13 +118,17 @@ monitor WifiState:
 
 class WifiModule:
   static WIFI_CONNECTED    ::= 1 << 0
-  static WIFI_DHCP_SUCCESS ::= 1 << 1
-  static WIFI_DISCONNECTED ::= 1 << 2
-  static WIFI_RETRY        ::= 1 << 3
+  static WIFI_IP_ASSIGNED  ::= 1 << 1
+  static WIFI_IP_LOST      ::= 1 << 2
+  static WIFI_DISCONNECTED ::= 1 << 3
+  static WIFI_RETRY        ::= 1 << 4
 
   logger_/log.Logger ::= log.default.with_name "wifi"
 
   resource_group_ := wifi_init_
+
+  wifi_events_/monitor.ResourceState_? := null
+  ip_events_/monitor.ResourceState_? := null
 
   ssid_ := null
   password_ := null
@@ -124,11 +139,34 @@ class WifiModule:
     ssid_ = ssid
     password_ = password
 
+  // TODO(kasper): For now, we just keep these in a list. We could
+  // consider making the resource hashable to improve on this.
+  resources_ ::= []
+
+  add_resource resource/WifiResource -> none:
+    resources_.add resource
+
+  remove_resource resource/WifiResource -> none:
+    // TODO(kasper): This is O(n), but we don't expect
+    // many resources.
+    resources_.remove resource
+
   close:
-    if resource_group_:
-      logger_.debug "closing"
-      wifi_close_ resource_group_
-      resource_group_ = null
+    if not resource_group_: return
+
+    if wifi_events_:
+      wifi_events_.dispose
+      wifi_events_ = null
+    if ip_events_:
+      ip_events_.dispose
+      ip_events_ = null
+    logger_.debug "closing"
+    wifi_close_ resource_group_
+    resource_group_ = null
+
+    // Notify the resources' proxies that they have been closed.
+    resources_.do: | resource/WifiResource | resource.notify_closed
+    resources_.clear
 
   address -> net.IpAddress:
     return address_
@@ -138,13 +176,18 @@ class WifiModule:
       logger_.debug "connecting"
       while true:
         resource := wifi_connect_ resource_group_ ssid_ password_
-        res := monitor.ResourceState_ resource_group_ resource
-        state := res.wait
-        res.dispose
+        wifi_events_ = monitor.ResourceState_ resource_group_ resource
+        state := wifi_events_.wait
         if (state & WIFI_CONNECTED) != 0:
+          wifi_events_.clear_state WIFI_CONNECTED
           logger_.debug "connected"
+          wifi_events_.set_callback:: on_event_ it
           return
         else if (state & WIFI_RETRY) != 0:
+          // We will be creating a new ResourceState object on the next
+          // iteration, so we need to dispose the one from this attempt.
+          wifi_events_.dispose
+          wifi_events_ = null
           reason ::= wifi_disconnect_reason_ resource
           logger_.info "retrying" --tags={"reason": reason}
           wifi_disconnect_ resource_group_ resource
@@ -159,21 +202,31 @@ class WifiModule:
       if is_exception and exception.value == DEADLINE_EXCEEDED_ERROR:
         logger_.warn "connect failed" --tags={"reason": "timeout"}
 
-  get_ip:
+  wait_for_ip_address -> net.IpAddress:
     resource := wifi_setup_ip_ resource_group_
-    res := monitor.ResourceState_ resource_group_ resource
-    state := res.wait
-    res.dispose
-    if (state & WIFI_DHCP_SUCCESS) != 0:
-      ip := wifi_get_ip_ resource
-      address_ = net.IpAddress.parse ip
+    ip_events_ = monitor.ResourceState_ resource_group_ resource
+    state := ip_events_.wait
+    if (state & WIFI_IP_ASSIGNED) != 0:
+      ip_events_.clear_state WIFI_IP_ASSIGNED
+      ip/string ::= wifi_get_ip_ resource
       logger_.info "dhcp assigned address" --tags={"ip": ip}
-      return ip
+      address ::= net.IpAddress.parse ip
+      address_ = address
+      ip_events_.set_callback:: on_event_ it
+      return address
     close
     throw "IP_ASSIGN_FAILED"
 
   rssi -> int?:
     return wifi_get_rssi_ resource_group_
+
+  on_event_ state/int:
+    // TODO(kasper): We should be clearing the state in the
+    // $monitor.ResourceState_ object, but since we're only
+    // closing here it doesn't really matter. Room for
+    // improvement though.
+    if (state & (WIFI_DISCONNECTED | WIFI_IP_LOST)) != 0:
+      task:: close
 
 // ----------------------------------------------------------------------------
 

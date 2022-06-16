@@ -166,6 +166,9 @@ class EthernetInterface_ implements net.Interface:
       return it.address
     unreachable
 
+  is_closed -> bool:
+    return not open_
+
   close -> none:
     if not open_: return
     open_ = false
