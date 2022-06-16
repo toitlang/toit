@@ -15,7 +15,7 @@
 
 include(toit.cmake)
 
-set(TOOLS system_message snapshot_to_image inject_config)
+set(TOOLS system_message snapshot_to_image inject_config toitp stacktrace)
 
 foreach (TOOL ${TOOLS})
   set(TOOL_SNAPSHOT ${CMAKE_BINARY_DIR}/sdk/snapshots/${TOOL}.snapshot)
