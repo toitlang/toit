@@ -339,6 +339,9 @@ namespace toit {
   PRIMITIVE(ota_begin, 2)                    \
   PRIMITIVE(ota_write, 1)                    \
   PRIMITIVE(ota_end, 2)                      \
+  PRIMITIVE(ota_state, 0)                    \
+  PRIMITIVE(ota_validate, 0)                 \
+  PRIMITIVE(ota_rollback, 0)                 \
   PRIMITIVE(reset_reason, 0)                 \
   PRIMITIVE(enable_external_wakeup, 2)       \
   PRIMITIVE(wakeup_cause, 0)                 \
