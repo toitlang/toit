@@ -86,6 +86,7 @@ PRIMITIVE(object_histogram) {
       /* dispose = */ true,
       /* clear_content = */ false);
   if (result == null) ALLOCATION_FAILED;
+  process->object_heap()->register_external_allocation(encoding_buffer.size());
   encoding_buffer.take_content();  // Don't free the content!
   return result;
 }
