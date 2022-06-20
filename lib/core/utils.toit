@@ -440,6 +440,12 @@ Converts a number between 0 and 15 to an upper case
 to_upper_case_hex c/int -> int:
   return "0123456789ABCDEF"[c]
 
+/**
+Produces a histogram of object types and their memory
+  requirements.  The histogram is sent as a system
+  mirror message, which means it is usually printed on
+  the console.
+*/
 print_objects marker/string="" gc/bool=true:
   if gc:
     before := gc_count
