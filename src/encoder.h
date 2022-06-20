@@ -114,6 +114,8 @@ class Encoder {
   void write_byte_array_header(int length);
   void write_string(const char* string);
 
+  static int bytes_to_encode(int64 value);
+
  protected:
   Buffer* buffer() const { return _buffer; }
 

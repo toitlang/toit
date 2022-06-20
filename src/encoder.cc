@@ -290,6 +290,14 @@ const int64 MY_INT32_MIN = -2147483647;
 const int64 MY_INT32_MAX = 2147483647;
 const int64 MY_UINT8_MAX = 255;
 
+int Encoder::bytes_to_encode(int64 i) {
+  if (i >= 0 && i <= MY_UINT8_MAX) return 2;
+  if (i >= MY_INT8_MIN && i <= MY_INT8_MAX) return 2;
+  if (i >= MY_INT16_MIN && i <= MY_INT16_MAX) return 3;
+  if (i >= MY_INT32_MIN && i <= MY_INT32_MAX) return 5;
+  return 9;
+}
+
 void Encoder::write_int(int64 i) {
   if (i >= 0 && i <= MY_UINT8_MAX) {
     _buffer->put_byte('U');

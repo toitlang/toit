@@ -329,6 +329,45 @@ class Profile extends Mirror:
   stringify -> string:
     return "Profile of $title ($total bytecodes executed, cutoff $(cutoff.to_float/10)%):\n$table"
 
+class HistogramEntry:
+  class_name /string
+  count /int
+  size /int
+
+  constructor .class_name .count .size:
+
+  stringify -> string:
+    return "  │ $(%7d count) │ $(%6d size >> 10)k $(%4d size & 1023)b │ $(%-45s class_name)│"
+
+class Histogram extends Mirror:
+  static tag ::= 'O'  // For Objects.
+
+  entries /List := []
+
+  constructor json program/Program [on_error]:
+    pos := 4
+    entries = List
+
+    for i := 1; i < json.size; i += 3:
+      class_name := program.class_name_for json[i]
+      if class_name != "RecognizableFiller_":
+        entries.add
+          HistogramEntry class_name json[i + 1] json[i + 2]
+    entries.sort --in_place: | a b | b.size - a.size
+    super json program
+
+  table:
+    return entries.join "\n"
+
+  stringify -> string:
+    return "Object heap Histogram:\n"
+        + "  ┌─────────┬───────────────┬──────────────────────────────────────────────┐\n"
+        + "  │  Count  │  Bytes        │  Class                                       │\n"
+        + "  ├─────────┼───────────────┼──────────────────────────────────────────────┤\n"
+        + table
+        + "\n"
+        + "  └─────────┴───────────────┴──────────────────────────────────────────────┘"
+
 class CoreDump extends Mirror:
   static tag ::= 'c'
   core_dump ::= ?
@@ -614,6 +653,7 @@ decode_json_ json program/Program [on_error]:
   else if tag == Error.tag:       return Error      json program on_error
   else if tag == Instance.tag:    return Instance   json program on_error
   else if tag == Profile.tag:     return Profile    json program on_error
+  else if tag == Histogram.tag:   return Histogram  json program on_error
   else if tag == HeapReport.tag:  return HeapReport json program on_error
   else if tag == HeapPage.tag:    return HeapPage   json program on_error
   else if tag == CoreDump.tag:    return CoreDump   json program on_error
