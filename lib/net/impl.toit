@@ -11,7 +11,8 @@ import .modules.dns as dns
 import .modules.tcp
 import .modules.udp
 
-import system.api.network show NetworkService NetworkServiceClient NetworkResource
+import system.api.network show NetworkService NetworkServiceClient
+import system.base.network show NetworkResource
 
 service_/NetworkServiceClient? ::= (NetworkServiceClient --no-open).open
 
