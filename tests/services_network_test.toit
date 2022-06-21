@@ -6,15 +6,11 @@ import net
 import net.impl
 import net.tcp
 import writer
-
-import system.services show ServiceDefinition ServiceResource
 import expect
 
-import system.api.network
-  show
-    NetworkService
-    NetworkServiceClient
-    ProxyingNetworkServiceDefinition
+import system.services show ServiceDefinition ServiceResource
+import system.api.network show NetworkService NetworkServiceClient
+import system.base.network show ProxyingNetworkServiceDefinition
 
 service_/NetworkServiceClient? ::= (FakeNetworkServiceClient --no-open).open
 
