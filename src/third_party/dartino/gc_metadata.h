@@ -284,7 +284,8 @@ class GcMetadata {
     // It could actually be black already - when we have a mark stack overflow we
     // can find grey objects and mark them black even though they are on the marking
     // stack (they are in the same line as an object that is not on the stack because
-    // of overflow).
+    // of overflow).  Later we pop them off the stack and process them again.
+    // This is rare.
     auto rest_of_object = reinterpret_cast<HeapObject*>(reinterpret_cast<uword>(object) + WORD_SIZE);
     ASSERT(all_mark_bits_are(rest_of_object, size - WORD_SIZE, 0) ||
            all_mark_bits_are(rest_of_object, size - WORD_SIZE, 1));
