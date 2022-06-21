@@ -309,6 +309,15 @@ class GcMetadata {
     // This means we use the byte compare on 64 bit with a page size >= 16k,
     // and on 32 bit with a page size >= 8k.
     if (page_boundary_mask > 0xff) page_boundary_mask = 0xff;
+
+    // Assert that the mark bits array is sufficiently aligned that we can do
+    // the end-of-page test on the mark bits instead of the object.
+    uword first_object_on_page = reinterpret_cast<uword>(object) & ~(TOIT_PAGE_SIZE - 1);
+    uword first_mark_bits_on_page = bytewise_mark_bits_for(reinterpret_cast<HeapObject*>(first_object_on_page));
+    USE(first_object_on_page);
+    USE(first_mark_bits_on_page);
+    ASSERT(Utils::round_up(first_mark_bits_on_page, page_boundary_mask + 1) == first_mark_bits_on_page);
+
     // Limit to 25 words (or 57) since marking 26 bits could span 5 bytes and a
     // 32 bit write can only set 4 bytes.
     uword max_fast_word_size = sizeof(word) * 8 - 7;

@@ -75,24 +75,24 @@ void GcMetadata::set_up_singleton() {
   // page boundaries.
   metadata_ = reinterpret_cast<uint8*>(OS::grab_virtual_memory(null, metadata_size_));
 
-  remembered_set_ = metadata_;
+  // Mark bits must be page aligned so that mark_all detects page boundary
+  // crossings, so we do that first.
+  mark_bits_ = reinterpret_cast<uint32*>(metadata_);
 
-  object_starts_ = metadata_ + number_of_cards_;
+  cumulative_mark_bit_counts_ = reinterpret_cast<uword*>(metadata_ + mark_bits_size);
 
-  mark_bits_ = reinterpret_cast<uint32*>(metadata_ + 2 * number_of_cards_);
-  cumulative_mark_bit_counts_ = reinterpret_cast<uword*>(
-      reinterpret_cast<uword>(mark_bits_) + mark_bits_size);
+  remembered_set_ = metadata_ + mark_bits_size + cumulative_mark_bits_size;
 
-  mark_stack_overflow_bits_ =
-      reinterpret_cast<uint8_t*>(cumulative_mark_bit_counts_) +
-      cumulative_mark_bits_size;
+  object_starts_ = remembered_set_ + number_of_cards_;
+
+  mark_stack_overflow_bits_ = object_starts_ + number_of_cards_;
 
   page_type_bytes_ = mark_stack_overflow_bits_ + mark_stack_overflow_bits_size;
 
   // The mark bits and cumulative mark bits are the biggest, so they are not
   // mapped in immediately in order to reduce the memory footprint of very
   // small programs.  We do it when we create pages that need them.
-  OS::use_virtual_memory(metadata_, number_of_cards_);
+  OS::use_virtual_memory(remembered_set_, number_of_cards_);
   OS::use_virtual_memory(object_starts_, number_of_cards_);
   OS::use_virtual_memory(mark_stack_overflow_bits_, mark_stack_overflow_bits_size);
   OS::use_virtual_memory(page_type_bytes_, page_type_size_);
