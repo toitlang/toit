@@ -265,21 +265,29 @@ uword GcMetadata::object_address_from_start(uword card, uint8 start) {
   return object_address;
 }
 
-// Mark all bits of an object whose mark bits cross a 32 bit boundary.
+// Mark all bits of an object whose mark bits may cross a 32 bit boundary.
 void GcMetadata::slow_mark(HeapObject* object, uword size) {
   int mask_shift = ((reinterpret_cast<uword>(object) >> WORD_SHIFT) & 31);
   uint32* bits = mark_bits_for(object);
+  uint32 words = size >> WORD_SHIFT;
 
-  ASSERT(mask_shift < 32);
-  uint32 mask = 0xffffffffu << mask_shift;
-  *bits |= mask;
+  if (words + mask_shift >= 32) {
+    uint32 mask = 0xffffffffu;
+    *bits |= mask << mask_shift;
+  } else {
+    uint32 mask = 1;
+    mask = (mask << words) - 1;
+    *bits |= mask << mask_shift;
+    return;
+  }
 
   bits++;
-  uint32 words = size >> WORD_SHIFT;
-  ASSERT(words + mask_shift > 32);
+  ASSERT(words + mask_shift >= 32);
   for (words -= 32 - mask_shift; words >= 32; words -= 32)
     *bits++ = 0xffffffffu;
-  *bits |= (1u << words) - 1;
+  if (words != 0) {
+    *bits |= (1u << words) - 1;
+  }
 }
 
 void GcMetadata::mark_stack_overflow(HeapObject* object) {
