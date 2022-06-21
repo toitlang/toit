@@ -8,6 +8,9 @@ import net.tcp
 
 import system.services show ServiceClient
 
+// For references in documentation comments.
+import system.services show ServiceResource ServiceResourceProxy
+
 interface NetworkService:
   static UUID  /string ::= "063e228a-3a7a-44a8-b024-d55127255ccb"
   static MAJOR /int    ::= 0
