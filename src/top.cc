@@ -71,17 +71,14 @@ void* tracing_malloc(size_t size, const char* file, int line) {
 
 #undef realloc
 void* tracing_realloc(void* ptr, size_t size, const char* file, int line) {
-  // Store the old pointer in a word, so that the compiler doesn't detect a
-  // use-after-free.
-  word old_ptr = reinterpret_cast<word>(ptr);
   void* result = realloc(ptr, size);
   if (Flags::cheap) {
     #pragma GCC diagnostic push
     #pragma GCC diagnostic ignored "-Wuse-after-free"
     // Gcc is too smart and spots the old pointer being passed to printf here,
-    // but it is also dumb and doesn't realize that a %p doesn't dereference
-    // the pointer.
-    printf("%s:%d: realloc [%p] %zd [%p]\n", file, line, reinterpret_cast<void*>(old_ptr), size, result);
+    // even if you temporarily cast it to an integer.  But it is also dumb and
+    // doesn't realize that a %p doesn't dereference the pointer.
+    printf("%s:%d: realloc [%p] %zd [%p]\n", file, line, ptr, size, result);
     #pragma GCC diagnostic pop
   }
   return result;
