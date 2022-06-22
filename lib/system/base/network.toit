@@ -58,6 +58,14 @@ class NetworkResource extends ServiceResource:
   on_closed -> none:
     critical_do: state_.down
 
+/**
+The $NetworkState monitor handles tracking the usage of a $NetworkModule. The
+  $up method is used to signal that a client needs to use the module and the
+  $down method is used to signal that it is no longer needed.
+
+Multiple clients can request access to the $NetworkModule simultaneously,
+  so the accesses need to be synchronized through the monitor operations.
+*/
 monitor NetworkState:
   module_/NetworkModule? := null
   usage_/int := 0
