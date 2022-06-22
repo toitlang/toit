@@ -21,15 +21,12 @@ import esp32
 import system.api.wifi show WifiService
 import system.api.network show NetworkService
 import system.services show ServiceDefinition ServiceResource
+import system.base.network show NetworkModule NetworkResource NetworkState
 
 import ..shared.network_base
 
-WIFI_RETRY_DELAY_     ::= Duration --s=1
-WIFI_CONNECT_TIMEOUT_ ::= Duration --s=10
-WIFI_DHCP_TIMEOUT_    ::= Duration --s=16
-
 class WifiServiceDefinition extends NetworkServiceDefinitionBase:
-  state_/WifiState? := null
+  state_/NetworkState? := null
 
   constructor:
     super "system/wifi/esp32" --major=0 --minor=1
@@ -49,110 +46,56 @@ class WifiServiceDefinition extends NetworkServiceDefinitionBase:
       wifi_config := config.get "wifi" --if_absent=: {:}
       ssid = wifi_config["ssid"]
       password = wifi_config.get "password" --if_absent=: ""
-    if not state_: state_ = WifiState this
-    module ::= state_.up ssid password
-    if module.ssid_ != ssid or module.password_ != password:
+
+    if not state_: state_ = NetworkState
+    module ::= (state_.up: WifiModule this ssid password) as WifiModule
+    if module.ssid != ssid or module.password != password:
       throw "wifi already connected with different credentials"
-    resource := WifiResource this client state_
+
+    resource := NetworkResource this client state_ --notifiable
     return [resource.serialize_for_rpc, NetworkService.PROXY_ADDRESS]
 
-  address resource/WifiResource -> ByteArray:
-    return state_.wifi.address.to_byte_array
+  address resource/NetworkResource -> ByteArray:
+    return (state_.module as WifiModule).address.to_byte_array
 
-  turn_on ssid/string password/string -> WifiModule:
-    module := WifiModule
-    try:
-      module.set_ssid ssid password
-      with_timeout WIFI_CONNECT_TIMEOUT_: module.connect
-      with_timeout WIFI_DHCP_TIMEOUT_: module.wait_for_ip_address
-      return module
-    finally: | is_exception exception |
-      if is_exception:
-        module.close
+  on_module_closed module/WifiModule -> none:
+    resources_do: it.notify_ NetworkService.NOTIFY_CLOSED
+    state_ = null
 
-  turn_off module/WifiModule -> none:
-    module.close
-
-class WifiResource extends ServiceResource:
-  state_/WifiState ::= ?
-  constructor service/ServiceDefinition client/int .state_:
-    super service client --notifiable
-    state_.wifi.add_resource this
-
-  notify_closed -> none:
-    notify_ NetworkService.NOTIFY_CLOSED
-
-  on_closed -> none:
-    state_.wifi.remove_resource this
-    state_.down
-
-monitor WifiState:
-  service_/WifiServiceDefinition ::= ?
-  wifi_/WifiModule? := null
-  usage_/int := 0
-  constructor .service_:
-
-  wifi -> WifiModule?:
-    return wifi_
-
-  up ssid/string password/string -> WifiModule:
-    usage_++
-    if wifi_: return wifi_
-    try:
-      return wifi_ = service_.turn_on ssid password
-    finally: | is_exception exception |
-      if is_exception:
-        // Do not count the usage if we didn't manage
-        // to produce a working $WifiModule.
-        usage_--
-
-  down -> none:
-    usage_--
-    if usage_ > 0 or not wifi_: return
-    try:
-      service_.turn_off wifi_
-    finally:
-      // Assume the WiFi is off even if turning
-      // it off threw an exception.
-      wifi_ = null
-
-class WifiModule:
+class WifiModule implements NetworkModule:
   static WIFI_CONNECTED    ::= 1 << 0
   static WIFI_IP_ASSIGNED  ::= 1 << 1
   static WIFI_IP_LOST      ::= 1 << 2
   static WIFI_DISCONNECTED ::= 1 << 3
   static WIFI_RETRY        ::= 1 << 4
 
+  static WIFI_RETRY_DELAY_     ::= Duration --s=1
+  static WIFI_CONNECT_TIMEOUT_ ::= Duration --s=10
+  static WIFI_DHCP_TIMEOUT_    ::= Duration --s=16
+
   logger_/log.Logger ::= log.default.with_name "wifi"
+  service/WifiServiceDefinition
+  ssid/string
+  password/string
 
   resource_group_ := wifi_init_
-
   wifi_events_/monitor.ResourceState_? := null
   ip_events_/monitor.ResourceState_? := null
-
-  ssid_ := null
-  password_ := null
-
   address_/net.IpAddress? := null
 
-  set_ssid ssid password:
-    ssid_ = ssid
-    password_ = password
+  constructor .service .ssid .password:
+    // Do nothing that can fail.
 
-  // TODO(kasper): For now, we just keep these in a list. We could
-  // consider making the resource hashable to improve on this.
-  resources_ ::= []
+  address -> net.IpAddress:
+    return address_
 
-  add_resource resource/WifiResource -> none:
-    resources_.add resource
+  connect -> none:
+    with_timeout WIFI_CONNECT_TIMEOUT_: wait_for_connected_
+    with_timeout WIFI_DHCP_TIMEOUT_: wait_for_ip_address_
 
-  remove_resource resource/WifiResource -> none:
-    // TODO(kasper): This is O(n), but we don't expect
-    // many resources.
-    resources_.remove resource
-
-  close:
-    if not resource_group_: return
+  disconnect -> none:
+    if not resource_group_:
+      return
 
     if wifi_events_:
       wifi_events_.dispose
@@ -160,22 +103,17 @@ class WifiModule:
     if ip_events_:
       ip_events_.dispose
       ip_events_ = null
+
     logger_.debug "closing"
     wifi_close_ resource_group_
     resource_group_ = null
+    service.on_module_closed this
 
-    // Notify the resources' proxies that they have been closed.
-    resources_.do: | resource/WifiResource | resource.notify_closed
-    resources_.clear
-
-  address -> net.IpAddress:
-    return address_
-
-  connect:
+  wait_for_connected_:
     try:
       logger_.debug "connecting"
       while true:
-        resource := wifi_connect_ resource_group_ ssid_ password_
+        resource := wifi_connect_ resource_group_ ssid password
         wifi_events_ = monitor.ResourceState_ resource_group_ resource
         state := wifi_events_.wait
         if (state & WIFI_CONNECTED) != 0:
@@ -196,13 +134,12 @@ class WifiModule:
         else if (state & WIFI_DISCONNECTED) != 0:
           reason ::= wifi_disconnect_reason_ resource
           logger_.warn "connect failed" --tags={"reason": reason}
-          close
           throw "CONNECT_FAILED: $reason"
     finally: | is_exception exception |
       if is_exception and exception.value == DEADLINE_EXCEEDED_ERROR:
         logger_.warn "connect failed" --tags={"reason": "timeout"}
 
-  wait_for_ip_address -> net.IpAddress:
+  wait_for_ip_address_ -> net.IpAddress:
     resource := wifi_setup_ip_ resource_group_
     ip_events_ = monitor.ResourceState_ resource_group_ resource
     state := ip_events_.wait
@@ -214,7 +151,6 @@ class WifiModule:
       address_ = address
       ip_events_.set_callback:: on_event_ it
       return address
-    close
     throw "IP_ASSIGN_FAILED"
 
   rssi -> int?:
@@ -226,7 +162,7 @@ class WifiModule:
     // closing here it doesn't really matter. Room for
     // improvement though.
     if (state & (WIFI_DISCONNECTED | WIFI_IP_LOST)) != 0:
-      task:: close
+      task:: disconnect
 
 // ----------------------------------------------------------------------------
 
