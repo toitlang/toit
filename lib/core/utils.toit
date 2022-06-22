@@ -255,16 +255,37 @@ PLATFORM_WINDOWS ::= "Windows"
 PLATFORM_MACOS ::= "macOS"
 PLATFORM_LINUX ::= "Linux"
 
+/// Index for $process_stats
+STATS_INDEX_GC_COUNT                       ::= 0
+/// Index for $process_stats
+STATS_INDEX_ALLOCATED_MEMORY               ::= 1
+/// Index for $process_stats
+STATS_INDEX_RESERVED_MEMORY                ::= 2
+/// Index for $process_stats
+STATS_INDEX_PROCESS_MESSAGE_COUNT          ::= 3
+/// Index for $process_stats
+STATS_INDEX_BYTES_ALLOCATED_IN_OBJECT_HEAP ::= 4
+/// Index for $process_stats
+STATS_INDEX_GROUP_ID                       ::= 5
+/// Index for $process_stats
+STATS_INDEX_PROCESS_ID                     ::= 6
+/// Index for $process_stats
+STATS_INDEX_SYSTEM_FREE_MEMORY             ::= 7
+/// Index for $process_stats
+STATS_INDEX_SYSTEM_LARGEST_FREE            ::= 8
+
 /**
 Returns an array with stats for the current process.
 The stats, listed by index in the array, are:
-0. GC count
-1. Allocated memory
-2. Reserved memory
+0. GC count for the process
+1. Allocated memory on the Toit heap of the process
+2. Reserved memory on the Toit heap of the process
 3. Process message count
 4. Bytes allocated in object heap
 5. Group ID
 6. Process ID
+7. Free memory in the system
+8. Largest free area in the system
 
 The "bytes allocated in the heap" tracks the total number of allocations, but
   doesn't deduct the sizes of objects that die. It is a way to follow the
@@ -278,8 +299,13 @@ By passing the optional $list argument to be filled in, you can avoid causing
   an allocation, which may interfere with the tracking of allocations.  But note
   that at some point the bytes_allocated number becomes so large that it needs
   a small allocation of its own.
+
+# Examples
+```
+print "There have been $((process_stats)[STATS_INDEX_GC_COUNT]) GCs for this process"
+```
 */
-process_stats list/List=(List 7) -> List:
+process_stats list/List=(List 9) -> List:
   result := process_stats_ list -1 -1
   assert: result  // The current process always exists.
   return result
@@ -290,7 +316,7 @@ Variant of $(process_stats).
 Returns an array with stats for the process identified by the $group and the
   $id.
 */
-process_stats group id list/List=(List 7) -> List?:
+process_stats group id list/List=(List 9) -> List?:
   return process_stats_ list group id
 
 process_stats_ list group id:
