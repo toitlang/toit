@@ -401,10 +401,10 @@ class HeapPage extends Mirror:
   //   W 7 - LwIP
   //   H 8 - Malloc heap overhead
 
-  GRANULARITY_ ::= 8
-  HEADER_ ::= 8
-  PAGE_HEADER_ ::= 24
-  PAGE_ ::= 4096
+  static GRANULARITY_ ::= 8
+  static HEADER_ ::= 8
+  static PAGE_HEADER_ ::= 24
+  static PAGE_ ::= 4096
 
   constructor json program [on_error]:
     address = json[1]
@@ -522,8 +522,8 @@ class ColorBlockOutputter_ extends UnicodeBlockOutputter_:
   foreground := -1
 
   // Escape sequences for 256 color terminals.
-  BG ::= "\u001b[48;5;"
-  FG ::= "\u001b[38;5;"
+  static BG ::= "\u001b[48;5;"
+  static FG ::= "\u001b[38;5;"
 
   // See 256-color scheme at http://www.lihaoyi.com/post/BuildyourownCommandLinewithANSIescapecodes.html#256-colors
   colors ::= {
