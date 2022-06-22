@@ -48,10 +48,9 @@ class WifiServiceDefinition extends NetworkServiceDefinitionBase:
       password = wifi_config.get "password" --if_absent=: ""
 
     if not state_: state_ = NetworkState
-    module ::= state_.up: WifiModule this ssid password
-    // TODO(kasper): Re-enable this check.
-    // if module.ssid != ssid or module.password != password:
-    //   throw "wifi already connected with different credentials"
+    module ::= (state_.up: WifiModule this ssid password) as WifiModule
+    if module.ssid != ssid or module.password != password:
+      throw "wifi already connected with different credentials"
 
     resource := NetworkResource this client state_ --notifiable
     return [resource.serialize_for_rpc, NetworkService.PROXY_ADDRESS]
