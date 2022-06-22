@@ -76,7 +76,13 @@ void* tracing_realloc(void* ptr, size_t size, const char* file, int line) {
   word old_ptr = reinterpret_cast<word>(ptr);
   void* result = realloc(ptr, size);
   if (Flags::cheap) {
+    #pragma GCC diagnostic push
+    #pragma GCC diagnostic ignored "-Wuse-after-free"
+    // Gcc is too smart and spots the old pointer being passed to printf here,
+    // but it is also dumb and doesn't realize that a %p doesn't dereference
+    // the pointer.
     printf("%s:%d: realloc [%p] %zd [%p]\n", file, line, reinterpret_cast<void*>(old_ptr), size, result);
+    #pragma GCC diagnostic pop
   }
   return result;
 }
