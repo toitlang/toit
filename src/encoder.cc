@@ -278,7 +278,7 @@ void Encoder::write_byte(uint8 c) {
 void Encoder::write_header(int size, uint8 tag) {
   write_byte('[');
   write_byte('#');
-  write_int(size + 1);
+  write_int32(size + 1);
   write_int(tag); // The tag is always the first element.
 }
 
@@ -289,14 +289,6 @@ const int64 MY_INT16_MAX = 32767;
 const int64 MY_INT32_MIN = -2147483647;
 const int64 MY_INT32_MAX = 2147483647;
 const int64 MY_UINT8_MAX = 255;
-
-int Encoder::bytes_to_encode(int64 i) {
-  if (i >= 0 && i <= MY_UINT8_MAX) return 2;
-  if (i >= MY_INT8_MIN && i <= MY_INT8_MAX) return 2;
-  if (i >= MY_INT16_MIN && i <= MY_INT16_MAX) return 3;
-  if (i >= MY_INT32_MIN && i <= MY_INT32_MAX) return 5;
-  return 9;
-}
 
 void Encoder::write_int(int64 i) {
   if (i >= 0 && i <= MY_UINT8_MAX) {
@@ -315,6 +307,12 @@ void Encoder::write_int(int64 i) {
     _buffer->put_byte('L');
     _buffer->put_int64(i);
   }
+}
+
+void Encoder::write_int32(int64 i) {
+  ASSERT(i >= MY_INT32_MIN && i <= MY_INT32_MAX);
+  _buffer->put_byte('l');
+  _buffer->put_int32(i);
 }
 
 void Encoder::write_double(double value) {

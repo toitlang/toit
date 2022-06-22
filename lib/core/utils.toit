@@ -450,7 +450,7 @@ print_objects marker/string="" gc/bool=true:
   if gc:
     before := gc_count
     while gc_count == before: RecognizableFiller_
-  encoded_histogram := object_histogram_
+  encoded_histogram := object_histogram_ marker
   system_send_ SYSTEM_MIRROR_MESSAGE_ encoded_histogram
   process_messages_
 
@@ -463,5 +463,5 @@ class RecognizableFiller_:
   f/int := 0
   g/int := 0
 
-object_histogram_ -> ByteArray:
+object_histogram_ marker/string -> ByteArray:
   #primitive.debug.object_histogram

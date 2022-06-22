@@ -342,13 +342,15 @@ class HistogramEntry:
 class Histogram extends Mirror:
   static tag ::= 'O'  // For Objects.
 
-  entries /List := []
+  marker_ /string
+  entries /List ::= []
 
   constructor json program/Program [on_error]:
-    pos := 4
-    entries = List
+    assert:   json[0] == tag
+    marker_ = json[1]
+    first_entry := 2
 
-    for i := 1; i < json.size; i += 3:
+    for i := first_entry; i < json.size; i += 3:
       class_name := program.class_name_for json[i]
       if class_name != "RecognizableFiller_":
         entries.add
@@ -360,7 +362,8 @@ class Histogram extends Mirror:
     return entries.join "\n"
 
   stringify -> string:
-    return "Object heap Histogram:\n"
+    marker := marker_ == "" ? "" : " for $marker_"
+    return "Object heap histogram$marker:\n"
         + "  ┌─────────┬───────────────┬──────────────────────────────────────────────┐\n"
         + "  │  Count  │  Bytes        │  Class                                       │\n"
         + "  ├─────────┼───────────────┼──────────────────────────────────────────────┤\n"
