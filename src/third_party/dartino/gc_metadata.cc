@@ -213,7 +213,7 @@ restart:
       uint32* overhang_bits =
           mark_bits_for(end_of_last_source_object_moved - WORD_SIZE);
       ASSERT((*overhang_bits & 1) != 0);
-      *overhang_bits &= ~((1u << overhang) - 1);
+      *overhang_bits &= ~((1U << overhang) - 1);
     }
     src_start = src;
   }
@@ -266,15 +266,20 @@ uword GcMetadata::object_address_from_start(uword card, uint8 start) {
 }
 
 // Mark all bits of an object whose mark bits may cross a 32 bit boundary.
+// This routine only uses aligned 32 bit operations for the marking.
 void GcMetadata::slow_mark(HeapObject* object, uword size) {
   int mask_shift = ((reinterpret_cast<uword>(object) >> WORD_SHIFT) & 31);
   uint32* bits = mark_bits_for(object);
   uint32 words = size >> WORD_SHIFT;
 
   if (words + mask_shift >= 32) {
-    uint32 mask = 0xffffffffu;
+    // Handle the first word of marking where some bits at the start of the 32
+    // bit word are not set.
+    uint32 mask = 0xffffffff;
     *bits |= mask << mask_shift;
   } else {
+    // This is the case where the marked area both starts and ends in the same
+    // 32 bit word.
     uint32 mask = 1;
     mask = (mask << words) - 1;
     *bits |= mask << mask_shift;
@@ -283,17 +288,20 @@ void GcMetadata::slow_mark(HeapObject* object, uword size) {
 
   bits++;
   ASSERT(words + mask_shift >= 32);
-  for (words -= 32 - mask_shift; words >= 32; words -= 32)
-    *bits++ = 0xffffffffu;
+  for (words -= 32 - mask_shift; words >= 32; words -= 32) {
+    // Full words where all 32 bits are marked.
+    *bits++ = 0xffffffff;
+  }
   if (words != 0) {
-    *bits |= (1u << words) - 1;
+    // The last word where some bits near the end of the word are not marked.
+    *bits |= (1U << words) - 1;
   }
 }
 
 void GcMetadata::mark_stack_overflow(HeapObject* object) {
   uword address = object->_raw();
   uint8* overflow_bits = overflow_bits_for(address);
-  *overflow_bits |= 1u << ((address >> CARD_SIZE_LOG_2) & 7);
+  *overflow_bits |= 1U << ((address >> CARD_SIZE_LOG_2) & 7);
   // We can have a mark stack overflow in new-space where we do not normally
   // maintain object starts. By updating the object starts for this card we
   // can be sure that the necessary objects in this card are walkable.

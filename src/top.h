@@ -177,8 +177,10 @@ static const uword MAX_HEAP = 1ull * GB;  // Metadata ca. 8.5Mbytes.
 static const uword MAX_HEAP = 512ull * MB;  // Metadata ca. 8.2Mbytes.
 #endif
 
+// Perhaps some ARM CPUs and platforms allow unaligned operations, but to be
+// safe we disable them here.
 #if !defined(__arm__)
-#define UNALIGNED_ACCESS
+#define ALLOW_UNALIGNED_ACCESS
 #endif
 
 static_assert(sizeof(int32) == 4, "invalid type size");

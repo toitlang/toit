@@ -236,7 +236,7 @@ class GcMetadata {
   static inline bool is_marked(HeapObject* object) {
     uword address = reinterpret_cast<uword>(object);
     address = (singleton_.mark_bits_bias_ + (address >> MARK_BITS_SHIFT)) & ~3;
-    uint32 mask = 1u << ((reinterpret_cast<uword>(object) >> WORD_SHIFT) & 31);
+    uint32 mask = 1U << ((reinterpret_cast<uword>(object) >> WORD_SHIFT) & 31);
     return (*reinterpret_cast<uint32*>(address) & mask) != 0;
   }
 
@@ -244,7 +244,7 @@ class GcMetadata {
   static INLINE bool mark_grey_if_not_marked(HeapObject* object) {
     uword address = reinterpret_cast<uword>(object);
     address = (singleton_.mark_bits_bias_ + (address >> MARK_BITS_SHIFT)) & ~3;
-    uint32 mask = 1u << ((reinterpret_cast<uword>(object) >> WORD_SHIFT) & 31);
+    uint32 mask = 1U << ((reinterpret_cast<uword>(object) >> WORD_SHIFT) & 31);
     uint32 bits = *reinterpret_cast<uint32*>(address);
     if ((bits & mask) != 0) return true;
     *reinterpret_cast<uint32*>(address) = bits | mask;
@@ -270,7 +270,7 @@ class GcMetadata {
   // stack.
   static inline void mark(HeapObject* object) {
     uint32* bits = mark_bits_for(object);
-    uint32 mask = 1u << ((reinterpret_cast<uword>(object) >> WORD_SHIFT) & 31);
+    uint32 mask = 1U << ((reinterpret_cast<uword>(object) >> WORD_SHIFT) & 31);
     *bits |= mask;
   }
 
@@ -290,7 +290,7 @@ class GcMetadata {
     ASSERT(all_mark_bits_are(rest_of_object, size - WORD_SIZE, 0) ||
            all_mark_bits_are(rest_of_object, size - WORD_SIZE, 1));
     uword size_in_words = size >> WORD_SHIFT;
-#ifdef UNALIGNED_ACCESS
+#ifdef ALLOW_UNALIGNED_ACCESS
     uword bits = bytewise_mark_bits_for(object);
     // We can handle any 25 bits (57 bits on a 64 bit platform) by using an
     // unaligned word write, but we need to be careful that we don't cause race
@@ -344,14 +344,14 @@ class GcMetadata {
       uint64 mask = 1;
       mask = ((mask << size_in_words) - 1);
 #else
-      uint32 mask = size_in_words == 32 ? 0xffffffff : ((1u << size_in_words) - 1);
+      uint32 mask = size_in_words == 32 ? 0xffffffff : ((1U << size_in_words) - 1);
 #endif  // BUILD_64
       mask <<= mask_shift;
 
       uint32* bits = mark_bits_for(object);
       *bits |= mask;
     }
-#endif  // UNALIGNED_ACCESS
+#endif  // ALLOW_UNALIGNED_ACCESS
     // It's black - all bits are marked.
     ASSERT(all_mark_bits_are(object, size, 1));
   }
@@ -369,7 +369,7 @@ class GcMetadata {
   static INLINE uword get_destination(HeapObject* pre_compaction) {
     uword word_position =
         (reinterpret_cast<uword>(pre_compaction) >> WORD_SHIFT) & 31;
-    uint32 mask = ~(0xffffffffu << word_position);
+    uint32 mask = ~(0xffffffff << word_position);
     uint32 bits = *mark_bits_for(pre_compaction) & mask;
     uword base = *cumulative_mark_bits_for(pre_compaction);
     return base + (Utils::popcount(bits) << WORD_SHIFT);
