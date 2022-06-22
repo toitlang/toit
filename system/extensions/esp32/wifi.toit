@@ -59,7 +59,7 @@ class WifiServiceDefinition extends NetworkServiceDefinitionBase:
     return (state_.module as WifiModule).address.to_byte_array
 
   on_module_closed module/WifiModule -> none:
-    resources_do_: it.notify_ NetworkService.NOTIFY_CLOSED
+    resources_do: it.notify_ NetworkService.NOTIFY_CLOSED
     state_ = null
 
 class WifiModule implements NetworkModule:

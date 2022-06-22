@@ -154,7 +154,7 @@ abstract class ServiceDefinition:
   resource client/int handle/int -> ServiceResource:
     return _find_resource_ client handle
 
-  resources_do_ [block] -> none:
+  resources_do [block] -> none:
     _resources_.do: | client/int resources/Map |
       resources.do: | handle/int resource/ServiceResource |
         block.call resource client
