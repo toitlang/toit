@@ -12,7 +12,7 @@ import .modules.tcp
 import .modules.udp
 
 import system.api.network show NetworkService NetworkServiceClient
-import system.base.network show NetworkResource
+import system.base.network show NetworkResourceProxy
 
 service_/NetworkServiceClient? ::= (NetworkServiceClient --no-open).open
 
@@ -21,7 +21,7 @@ open -> net.Interface:
   if not service: throw "Network unavailable"
   return SystemInterface_ service service.connect
 
-class SystemInterface_ extends NetworkResource implements net.Interface:
+class SystemInterface_ extends NetworkResourceProxy implements net.Interface:
   // The proxy mask contains bits for all the operations that must be
   // proxied through the service client. The service definition tells the
   // client about the bits on connect.

@@ -18,7 +18,7 @@ import system.services
     ServiceResource
     ServiceResourceProxy
 
-class NetworkResource extends ServiceResourceProxy:
+class NetworkResourceProxy extends ServiceResourceProxy:
   constructor client/NetworkServiceClient handle/int:
     super client handle
 
@@ -45,16 +45,67 @@ class NetworkResource extends ServiceResourceProxy:
     socket ::= client.tcp_listen handle_ port
     return TcpServerSocketResourceProxy_ client socket
 
+// ----------------------------------------------------------------------------
+
+interface NetworkModule:
+  connect -> none
+  disconnect -> none
+
+class NetworkResource extends ServiceResource:
+  state_/NetworkState ::= ?
+  constructor service/ServiceDefinition client/int .state_ --notifiable/bool=false:
+    super service client --notifiable=notifiable
+  on_closed -> none:
+    critical_do: state_.down
+
+monitor NetworkState:
+  module_/NetworkModule? := null
+  usage_/int := 0
+
+  module -> NetworkModule?:
+    return module_
+
+  up [create] -> NetworkModule:
+    usage_++
+    if module_: return module_
+    module/NetworkModule? := null
+    try:
+      module = create.call
+      module.connect
+      module_ = module
+      return module
+    finally: | is_exception exception |
+      if is_exception:
+        // Do not count the usage if we didn't manage
+        // to produce a working module.
+        usage_--
+        // Disconnect the module if it was created, but connecting
+        // failed with an exception.
+        if module: module.disconnect
+
+  down -> none:
+    usage_--
+    if usage_ > 0 or not module_: return
+    try:
+      module_.disconnect
+    finally:
+      // Assume the module is off even if turning
+      // it off threw an exception.
+      module_ = null
+
+// ----------------------------------------------------------------------------
+
 /**
 The $ProxyingNetworkServiceDefinition makes it easy to proxy a network
   interface and expose it as a provided service. The service can then
   be used across process boundaries, which makes it possible to run
   network drivers separate from the rest of the system.
 */
-abstract class ProxyingNetworkServiceDefinition extends ServiceDefinition:
-  network_/net.Interface ::= ?
+abstract class ProxyingNetworkServiceDefinition extends ServiceDefinition implements NetworkModule:
+  state_/NetworkState ::= NetworkState
+  network_/net.Interface? := null
 
-  constructor name/string .network_ --major/int --minor/int --patch/int=0:
+  constructor name/string --major/int --minor/int --patch/int=0:
     super name --major=major --minor=minor --patch=patch
 
   /**
@@ -66,6 +117,21 @@ abstract class ProxyingNetworkServiceDefinition extends ServiceDefinition:
   See the description of the proxy mask in the $NetworkService interface.
   */
   abstract proxy_mask -> int
+
+  /**
+  Opens the proxied network.
+
+  Subclasses may decide to use the call to establish the underlying
+    connection in which case the call may throw exceptions and
+    possibly time out. In case of such exceptions, $close_network
+    is not called.
+  */
+  abstract open_network -> net.Interface
+
+  /**
+  Closes the proxied network.
+  */
+  abstract close_network network/net.Interface -> none
 
   handle pid/int client/int index/int arguments/any -> any:
     if index == NetworkService.SOCKET_READ_INDEX:
@@ -141,8 +207,19 @@ abstract class ProxyingNetworkServiceDefinition extends ServiceDefinition:
     return resource.socket
 
   connect client/int -> List:
-    resource := ProxyingNetworkResource_ this client
+    // We use 'this' service definition as the network module, so we get told
+    // when the module disconnects as a result of calling $NetworkState.down.
+    state_.up: this
+    resource := NetworkResource this client state_
     return [resource.serialize_for_rpc, proxy_mask]
+
+  connect -> none:
+    network_ = open_network
+
+  disconnect -> none:
+    if not network_: return
+    close_network network_
+    network_ = null
 
   address resource/ServiceResource -> ByteArray:
     return network_.address.to_byte_array
@@ -250,12 +327,6 @@ class TcpServerSocketResourceProxy_ extends ServiceResourceProxy implements tcp.
     client ::= client_ as NetworkServiceClient
     socket ::= client.tcp_accept handle_
     return TcpSocketResourceProxy_ client socket
-
-class ProxyingNetworkResource_ extends ServiceResource:
-  constructor service/ServiceDefinition client/int:
-    super service client
-  on_closed -> none:
-    // Do nothing.
 
 class ProxyingSocketResource_ extends ServiceResource:
   socket/any ::= ?
