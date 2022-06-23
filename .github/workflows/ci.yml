@@ -66,7 +66,7 @@ jobs:
         run: |
           git fetch --tags
 
-      # We only need the tpkg and mbedtls submodule for building.
+      # We only need the mbedtls submodule for building.
       - name: Initialize mbedtls submodule
         run: |
           cd third_party/esp-idf
