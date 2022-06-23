@@ -365,7 +365,7 @@ class Histogram extends Mirror:
     marker := marker_ == "" ? "" : " for $marker_"
     return "Object heap histogram$marker:\n"
         + "  ┌─────────┬───────────────┬──────────────────────────────────────────────┐\n"
-        + "  │  Count  │  Bytes        │  Class                                       │\n"
+        + "  │   Count │         Bytes │ Class                                        │\n"
         + "  ├─────────┼───────────────┼──────────────────────────────────────────────┤\n"
         + table
         + "\n"
