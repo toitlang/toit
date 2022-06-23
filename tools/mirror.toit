@@ -358,16 +358,13 @@ class Histogram extends Mirror:
     entries.sort --in_place: | a b | b.size - a.size
     super json program
 
-  table:
-    return entries.join "\n"
-
   stringify -> string:
     marker := marker_ == "" ? "" : " for $marker_"
     return "Object heap histogram$marker:\n"
         + "  ┌─────────┬───────────────┬──────────────────────────────────────────────┐\n"
         + "  │   Count │         Bytes │ Class                                        │\n"
         + "  ├─────────┼───────────────┼──────────────────────────────────────────────┤\n"
-        + table
+        + (entries.join "\n")
         + "\n"
         + "  └─────────┴───────────────┴──────────────────────────────────────────────┘"
 

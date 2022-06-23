@@ -27,6 +27,21 @@ struct PerClass {
   uint32 size;
 };
 
+static int encode_histogram(ProgramOrientedEncoder* encoder, PerClass* data, int length, int entries, const char* marker) {
+  encoder->write_header(entries * 3 + 1, 'O');  // O for objects.  See mirror.toit.
+  encoder->write_string(marker);
+  int non_trivial_entries = 0;
+  for (int i = 0; i < length; i++) {
+    if (data[i].size > 0) {
+      non_trivial_entries++;
+      encoder->write_int(i);
+      encoder->write_int(data[i].count);
+      encoder->write_int(data[i].size);
+    }
+  }
+  return non_trivial_entries;
+}
+
 PRIMITIVE(object_histogram) {
   ARGS(cstring, marker);
   Program* program = process->program();
@@ -57,41 +72,28 @@ PRIMITIVE(object_histogram) {
     data[class_index].count++;
     data[class_index].size += size;
   });
-  int non_trivial_entries = 0;
-  int bytes_needed = 0;
-  bool size_known = false;
-  // Encode twice.  First time with a dry run to calculate the size of the
-  // encoded data.
-  for (int attempt = 0; attempt < 2; attempt++) {
-    MallocedBuffer encoding_buffer(size_known ? bytes_needed : 1);
-    if (!encoding_buffer.has_content()) MALLOC_FAILED;
-    ProgramOrientedEncoder encoder(program, &encoding_buffer);
-    encoder.write_header(non_trivial_entries * 3 + 1, 'O');  // O for objects.  See mirror.toit.
-    encoder.write_string(marker);
-    for (int i = 0; i < length; i++) {
-      if (data[i].size > 0) {
-        non_trivial_entries++;
-        encoder.write_int(i);
-        encoder.write_int(data[i].count);
-        encoder.write_int(data[i].size);
-      }
-    }
-    if (size_known) {
-      ByteArray* result = process->object_heap()->allocate_external_byte_array(
-          encoding_buffer.size(),
-          encoding_buffer.content(),
-          /* dispose = */ true,
-          /* clear_content = */ false);
-      if (result == null) ALLOCATION_FAILED;
-      process->object_heap()->register_external_allocation(encoding_buffer.size());
-      encoding_buffer.take_content();  // Don't free the content!
-      return result;
-    } else {
-      bytes_needed = encoding_buffer.size();
-      size_known = true;
-    }
-  }
-  UNREACHABLE();
+
+  // First encoding to find the size.
+  MallocedBuffer length_counting_buffer(1);
+  if (!length_counting_buffer.has_content()) MALLOC_FAILED;
+  ProgramOrientedEncoder length_counting_encoder(program, &length_counting_buffer);
+  int non_trivial_entries = encode_histogram(&length_counting_encoder, data, length, 0, marker);
+
+  // Second encoding to actually encode into a buffer.
+  MallocedBuffer encoding_buffer(length_counting_buffer.size());
+  if (!encoding_buffer.has_content()) MALLOC_FAILED;
+  ProgramOrientedEncoder encoder(program, &encoding_buffer);
+  encode_histogram(&encoder, data, length, non_trivial_entries, marker);
+
+  ByteArray* result = process->object_heap()->allocate_external_byte_array(
+      encoding_buffer.size(),
+      encoding_buffer.content(),
+      /* dispose = */ true,
+      /* clear_content = */ false);
+  if (result == null) ALLOCATION_FAILED;
+  process->object_heap()->register_external_allocation(encoding_buffer.size());
+  encoding_buffer.take_content();  // Don't free the content!
+  return result;
 }
 
 } // namespace toit
