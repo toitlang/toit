@@ -255,24 +255,26 @@ PLATFORM_WINDOWS ::= "Windows"
 PLATFORM_MACOS ::= "macOS"
 PLATFORM_LINUX ::= "Linux"
 
-/// Index for $process_stats
+/// Index for $process_stats.
 STATS_INDEX_GC_COUNT                       ::= 0
-/// Index for $process_stats
+/// Index for $process_stats.
 STATS_INDEX_ALLOCATED_MEMORY               ::= 1
-/// Index for $process_stats
+/// Index for $process_stats.
 STATS_INDEX_RESERVED_MEMORY                ::= 2
-/// Index for $process_stats
+/// Index for $process_stats.
 STATS_INDEX_PROCESS_MESSAGE_COUNT          ::= 3
-/// Index for $process_stats
+/// Index for $process_stats.
 STATS_INDEX_BYTES_ALLOCATED_IN_OBJECT_HEAP ::= 4
-/// Index for $process_stats
+/// Index for $process_stats.
 STATS_INDEX_GROUP_ID                       ::= 5
-/// Index for $process_stats
+/// Index for $process_stats.
 STATS_INDEX_PROCESS_ID                     ::= 6
-/// Index for $process_stats
+/// Index for $process_stats.
 STATS_INDEX_SYSTEM_FREE_MEMORY             ::= 7
-/// Index for $process_stats
+/// Index for $process_stats.
 STATS_INDEX_SYSTEM_LARGEST_FREE            ::= 8
+// The size the list needs to have to contain all these stats.  Must be last.
+STATS_LIST_SIZE_                           ::= 9
 
 /**
 Returns an array with stats for the current process.
@@ -305,7 +307,7 @@ By passing the optional $list argument to be filled in, you can avoid causing
 print "There have been $((process_stats)[STATS_INDEX_GC_COUNT]) GCs for this process"
 ```
 */
-process_stats list/List=(List 9) -> List:
+process_stats list/List=(List STATS_LIST_SIZE_) -> List:
   result := process_stats_ list -1 -1
   assert: result  // The current process always exists.
   return result
@@ -316,7 +318,7 @@ Variant of $(process_stats).
 Returns an array with stats for the process identified by the $group and the
   $id.
 */
-process_stats group id list/List=(List 9) -> List?:
+process_stats group id list/List=(List STATS_LIST_SIZE_) -> List?:
   return process_stats_ list group id
 
 process_stats_ list group id:
