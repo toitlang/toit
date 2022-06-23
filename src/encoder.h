@@ -113,6 +113,9 @@ class Encoder {
   void write_double(double value);
   void write_byte_array_header(int length);
   void write_string(const char* string);
+  // Always uses the 32 bit encoding even if a smaller one would suffice.  This
+  // helps make the size of something predictable.
+  void write_int32(int64 value);
 
  protected:
   Buffer* buffer() const { return _buffer; }

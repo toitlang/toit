@@ -440,11 +440,19 @@ Converts a number between 0 and 15 to an upper case
 to_upper_case_hex c/int -> int:
   return "0123456789ABCDEF"[c]
 
+/**
+Produces a histogram of object types and their memory
+  requirements.  The histogram is sent as a system
+  mirror message, which means it is usually printed on
+  the console.
+*/
 print_objects marker/string="" gc/bool=true:
   if gc:
     before := gc_count
     while gc_count == before: RecognizableFiller_
-  print_histogram_ marker object_histogram_
+  encoded_histogram := object_histogram_ marker
+  system_send_ SYSTEM_MIRROR_MESSAGE_ encoded_histogram
+  process_messages_
 
 class RecognizableFiller_:
   a/int := 0
@@ -455,41 +463,5 @@ class RecognizableFiller_:
   f/int := 0
   g/int := 0
 
-class HistogramEntry_:
-  index/int
-  count/int := 0
-  size/int := 0
-  constructor .index .count .size:
-
-  accumulate other -> none:
-    count += other.count
-    size += other.size
-
-print_histogram_ marker/string histogram/ByteArray:
-  entries := []
-  (histogram.size / (2 * 4)).repeat:
-    count := LITTLE_ENDIAN.uint32 histogram (it * 2 + 0) * 4
-    size  := LITTLE_ENDIAN.uint32 histogram (it * 2 + 1) * 4
-    if size > 0:
-      entry := HistogramEntry_ it count size
-      entries.add entry
-  entries.sort --in_place: | a b | (b.size > a.size) ? 1 : (b.size < a.size ? -1 : 0)
-  total := HistogramEntry_ -1 0 0
-  entries.do: total.accumulate it
-
-  if not marker.is_empty: marker = " @ $marker"
-  print_ "*" * 16
-  print_ "Objects$marker:"
-  print_ "  ┌─────────┬─────────┬─────────┐"
-  print_ "  │  Bytes  │  Count  │  Class  │"
-  print_ "  ├─────────┼─────────┼─────────┤"
-  entries.do:
-    // We print the lines with standard | characters to make it easier to
-    // work with the output using grep, cut, and other command line tools.
-    print_ "  | $(%6d it.size)  | $(%6d it.count)  | $(%6d it.index)  |"
-  print_ "  └─────────┴─────────┴─────────┘"
-  print_ "  Total: $(total.size) bytes in $(total.count) objects"
-  print_ "*" * 16
-
-object_histogram_ -> ByteArray:
+object_histogram_ marker/string -> ByteArray:
   #primitive.debug.object_histogram
