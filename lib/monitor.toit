@@ -126,7 +126,7 @@ monitor Signal:
 
   The $condition is evaluated on entry, but if it returns false initially, it
     is only re-evaluated when the signal has been raised and the current task
-    has been unblocked.
+    has been woken up.
   */
   wait [condition] -> none:
     if condition.call: return
@@ -135,13 +135,14 @@ monitor Signal:
   /**
   Raises the signal and unblocks the tasks that are already waiting.
 
-  If $count is provided and not null, no more than $count tasks are
-    unblocked.
+  If $max is provided and not null, no more than $max tasks are
+    woken up in the order in which they started waiting (FIFO).
+    The most common use case is to wake waiters up one at a time.
   */
-  raise --count/int?=null -> none:
-    if count:
-      if count < 1: throw "INVALID_ARGUMENT"
-      current_ = min awaited_ (current_ + count)
+  raise --max/int?=null -> none:
+    if max:
+      if max < 1: throw "INVALID_ARGUMENT"
+      current_ = min awaited_ (current_ + max)
     else:
       current_ = awaited_
 
@@ -150,6 +151,10 @@ monitor Signal:
     while true:
       awaited := awaited_
       if current_ == awaited:
+        // No other task is waiting for this signal to be raised,
+        // so it is safe to reset the counters. This helps avoid
+        // the ever increasing counter issue that may lead to poor
+        // performance in (very) extreme cases.
         current_ = awaited = 0
       awaited_ = ++awaited
       await: current_ >= awaited
