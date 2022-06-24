@@ -131,7 +131,7 @@ static void reset_rtc(const char* reason) {
 
 // Patch the primordial entrypoint of the image (before launching FreeRTOS).
 extern "C" void IRAM_ATTR start_cpu0() {
-  ets_printf("[toit] <%s>\n", toit::vm_git_version());
+  ets_printf("[toit] Starting <%s>\n", toit::vm_git_version());
   if (!is_rtc_valid()) {
     reset_rtc("invalid checksum");
   } else {
