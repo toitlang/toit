@@ -79,7 +79,8 @@ class Pin:
   Closes the pin and releases resources associated with it.
   */
   close:
-    if resource_:
+    if not resource_: return
+    critical_do:
       state_.dispose
       gpio_unuse_ resource_group_ resource_
       resource_ = null
@@ -125,7 +126,7 @@ class Pin:
   Blocks until the Pin reads the value configured.
 
   Use $with_timeout to automatically abort the operation after a fixed amount
-   of time.
+    of time.
   */
   wait_for value -> none:
     gpio_config_interrupt_ num true
