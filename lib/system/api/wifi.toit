@@ -9,7 +9,7 @@ interface WifiService extends NetworkService:
   static MAJOR /int    ::= 0
   static MINOR /int    ::= 2
 
-  static CONNECT_SSID_PASSWORD_INDEX /int ::= 100
+  static CONNECT_SSID_PASSWORD_INDEX /int ::= 1000
   connect ssid/string password/string -> List
 
 class WifiServiceClient extends NetworkServiceClient implements WifiService:
