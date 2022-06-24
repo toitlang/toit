@@ -5,7 +5,7 @@ import reader show BufferedReader
 
 usage:
   print "Usage: echo Backtrace:0x400870c0:0x3ffc9df0 0x4010661d:0x3ffc9e70 0x401143a3:0x3ffc9ea0 | toit.run stacktrace.toit [--disassemble] [--objdump objdump_executable] /path/to/toit.elf"
-  print "or: toit.run stacktrace.toit [--disassemble] [--objdump objdump_executable] [--backtrace=\"Backtrace:0x400870c0:0x3ffc9df0 0x4010661d:0x3ffc9e70 0x401143a3:0x3ffc9ea0\" /path/to/toit.elf"
+  print "or: toit.run stacktrace.toit [--disassemble] [--objdump objdump_executable] --backtrace=\"Backtrace:0x400870c0:0x3ffc9df0 0x4010661d:0x3ffc9e70 0x401143a3:0x3ffc9ea0\" /path/to/toit.elf"
   exit 1
 
 OBJDUMP ::= "xtensa-esp32-elf-objdump"
