@@ -132,7 +132,8 @@ class Bus:
   Close the I2S bus and releases resources associated to it.
   */
   close:
-    if i2s_:
+    if not i2s_: return
+    critical_do:
       state_.dispose
       i2s_close_ resource_group_ i2s_
       i2s_ = null
