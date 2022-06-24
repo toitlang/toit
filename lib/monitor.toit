@@ -76,6 +76,9 @@ monitor Semaphore:
 
   /**
   Constructs a semaphore with an initial $count and an optional $limit.
+
+  When the $limit is reached, further attempts to increment the
+    counter using $up are ignored and leaves the counter unchanged.
   */
   constructor --count/int=0 --limit/int?=null:
     if limit and (limit < 1 or count > limit): throw "INVALID_ARGUMENT"
@@ -125,9 +128,9 @@ monitor Signal:
   Waits until the given $condition returns true.
 
   The $condition is evaluated on entry.
-  
+
   This task is blocked until the $condition returns true.
-  
+
   The condition is re-evaluated (on this task) whenever the signal has been raised.
   */
   wait [condition] -> none:

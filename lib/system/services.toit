@@ -143,6 +143,7 @@ abstract class ServiceDefinition:
   install -> none:
     if _manager_: throw "Already installed"
     _manager_ = ServiceManager_.instance
+    _clients_closed_ = 0
     _uuids_.do: _manager_.listen it this
 
   uninstall --wait/bool=false -> none:
