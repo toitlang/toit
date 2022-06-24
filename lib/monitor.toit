@@ -113,7 +113,7 @@ monitor Signal:
   awaited_ /int := 0
 
   /**
-  Waits until the signal has been raised while this task has been waiting.
+  Waits until the signal has been raised.
 
   Raises that occur before $wait has been called are not taken into
     account, so care must be taken to avoid losing information.
@@ -124,9 +124,11 @@ monitor Signal:
   /**
   Waits until the given $condition returns true.
 
-  The $condition is evaluated on entry, but if it returns false initially, it
-    is only re-evaluated when the signal has been raised and the current task
-    has been woken up.
+  The $condition is evaluated on entry.
+  
+  This task is blocked until the $condition returns true.
+  
+  The condition is re-evaluated (on this task) whenever the signal has been raised.
   */
   wait [condition] -> none:
     if condition.call: return
