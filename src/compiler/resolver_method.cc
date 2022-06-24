@@ -1018,10 +1018,37 @@ void MethodResolver::resolve_fill_method() {
   _scope = _scope->outer();
 }
 
+/// Whether the given name resembles a constant name.
+/// We want to warn users when they forget a 'static' inside a class.
+static bool has_constant_name(Symbol name) {
+  if (!name.is_valid()) return false;
+  const char* str = name.c_str();
+  bool seen_capital = false;
+  int len = static_cast<int>(strlen(str));
+  for (int i = 0; i < len; i++) {
+    char c = str[i];
+    if ('A' <= c && c <= 'Z') {
+      seen_capital = true;
+      continue;
+    }
+    if (c == '_') continue;
+    return false;
+  }
+  return seen_capital;
+}
+
 void MethodResolver::resolve_field(ir::Field* ir_field) {
   auto ast_field = _ir_to_ast_map->at(ir_field)->as_Field();
   _resolution_mode = FIELD;
 
+  if (ir_field->is_final() &&
+      ast_field->initializer() != null &&
+      !ast_field->initializer()->is_LiteralUndefined() &&
+      has_constant_name(ir_field->name())) {
+    diagnostics()->report_warning(ast_field->name(),
+                                  "Final field with constant-like name: '%s'. Missing 'static'?",
+                                  ir_field->name().c_str());
+  }
   // Resolve the field's types.
   auto ast_type = ast_field->type();
   if (ast_type == null) {
