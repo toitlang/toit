@@ -167,17 +167,20 @@ abstract class ServiceDefinition:
     return [ name, _version_, client ]
 
   _close_ client/int -> none:
-    _clients_.remove client
-    _clients_closed_++
     resources ::= _resources_.get client
     if resources:
       // Iterate over a copy of the values, so we can remove
       // entries from the map when closing resources.
       resources.values.do: | resource/ServiceResource |
         catch --trace: resource.close
-    catch --trace: on_closed client
-    // Notify all waiters that we've closed a client.
+    // Unregister the client and notify all waiters that we've
+    // closed a client. This unblocks any tasks waiting to uninstall
+    // this service.
+    _clients_.remove client
+    _clients_closed_++
     _clients_closed_signal_.raise
+    // Finally, let the service know that the client is now closed.
+    catch --trace: on_closed client
 
   _register_resource_ client/int resource/ServiceResource notifiable/bool -> int:
     handle ::= _new_resource_handle_ notifiable
