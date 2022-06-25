@@ -447,7 +447,7 @@ void OS::out_of_memory(const char* reason) {
     }
   }
 
-  dump_heap_fragmentation(&panic_put_char);
+  toit::dump_heap_fragmentation(&panic_put_char);
 
   for (int i = 0; i < num_tasks; i++) {
     if (tasks[i].xHandle != xTaskGetCurrentTaskHandle() && strncmp(tasks[i].pcTaskName, "IDLE", 4) != 0) {
@@ -462,6 +462,10 @@ void OS::out_of_memory(const char* reason) {
 }
 
 #ifdef TOIT_CMPCTMALLOC
+
+void OS::dump_heap_fragmentation() {
+  toit::dump_heap_fragmentation(&panic_put_char);
+}
 
 void OS::set_heap_tag(word tag) {
   heap_caps_set_option(MALLOC_OPTION_THREAD_TAG, reinterpret_cast<void*>(tag));

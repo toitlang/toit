@@ -22,7 +22,9 @@ import .snapshot
 import .mirror as mirror
 
 handle_system_message encoded_system_message snapshot_content:
-  program := (SnapshotBundle snapshot_content).decode
+  program := null
+  if snapshot_content:
+    program = (SnapshotBundle snapshot_content).decode
   m := mirror.decode encoded_system_message program:
     pipe.print_to_stdout it
     return
@@ -39,6 +41,7 @@ usage prog_name:
       $prog_name <snapshot> <system message or heap_dump file>
       $prog_name <snapshot> -b <base64-encoded-ubjson>
       # Eg snapshot file can be toit.run.snapshot
+      # For system messages like heap dumps the snapshot can be 'nosnapshot'
 
     If no system-message file is given, the stack trace is read from stdin."""
   exit 1
@@ -47,13 +50,15 @@ main args:
   prog_name := "system_message"
   if not 1 <= args.size <= 3: usage prog_name
   snapshot := args[0]
-  if not file.is_file snapshot:
-    pipe.print_to_stderr "No such snapshot file: $snapshot"
-    usage prog_name
-  snapshot_content := file.read_content snapshot
-  if not SnapshotBundle.is_bundle_content snapshot_content:
-    pipe.print_to_stderr "Not a snapshot file: $snapshot"
-    usage prog_name
+  snapshot_content := null
+  if snapshot != "nosnapshot":
+    if not file.is_file snapshot:
+      pipe.print_to_stderr "No such snapshot file: $snapshot"
+      usage prog_name
+    snapshot_content = file.read_content snapshot
+    if not SnapshotBundle.is_bundle_content snapshot_content:
+      pipe.print_to_stderr "Not a snapshot file: $snapshot"
+      usage prog_name
   encoded_system_message := null
   if args.size == 3:
     if args[1] != "-b" or args[2].contains ".": usage prog_name

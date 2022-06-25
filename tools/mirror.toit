@@ -23,9 +23,9 @@ import encoding.base64 as base64
 
 abstract class Mirror:
   json ::= ?
-  program/Program ::= ?
+  program/Program? ::= ?
 
-  constructor .json .program/Program:
+  constructor .json .program/Program?:
 
   abstract stringify -> string
 
@@ -634,7 +634,7 @@ decode byte_array program [on_error]:
   // Then decode the payload.
   return decode_json_ json[4] program on_error
 
-decode_json_ json program/Program [on_error]:
+decode_json_ json program/Program? [on_error]:
   // First recognize basic types.
   if json is num: return json
   if json is string: return json

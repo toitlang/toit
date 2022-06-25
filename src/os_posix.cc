@@ -258,6 +258,9 @@ void OS::out_of_memory(const char* reason) {
   abort();
 }
 
+void OS::dump_heap_fragmentation() {
+}
+
 const uint8* OS::image_uuid() {
   static uint8* uuid = null;
   if (uuid) return uuid;

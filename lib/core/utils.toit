@@ -493,3 +493,11 @@ class RecognizableFiller_:
 
 object_histogram_ marker/string -> ByteArray:
   #primitive.debug.object_histogram
+
+/**
+Writes a report on the malloc heap content on the serial port.
+This report is automatically decoded by jag monitor.
+Only works on embedded platforms.
+*/
+heap_fragmentation_report -> none:
+  #primitive.core.dump_heap

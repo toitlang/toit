@@ -2195,7 +2195,7 @@ class ByteArrayHeapFragmentationDumper : public HeapFragmentationDumper {
   uword position_;
 };
 
-#if defined(TOIT_LINUX) || defined (TOIT_FREERTOS)
+#if defined(TOIT_NOT_CURRENTLY_IN_USE)
 // Moved into its own function because the FragmentationDumper is a large
 // object that will increase the stack size if it is inlined.
 static __attribute__((noinline)) uword get_heap_dump_size(const char* description) {
@@ -2223,44 +2223,9 @@ PRIMITIVE(dump_heap) {
 #ifndef TOIT_CMPCTMALLOC
   UNIMPLEMENTED_PRIMITIVE;
 #else
-  ARGS(int, padding);
-  if (padding < 0 || padding > 0x10000) OUT_OF_RANGE;
-#if defined(TOIT_LINUX)
-  if (heap_caps_iterate_tagged_memory_areas == null) {
-    // This always happens on the server unless we are running with
-    // cmpctmalloc (using LD_PRELOAD), which supports iterating the heap in
-    // this way.
-    return process->program()->null_object();
-  }
-#endif
-
-#if defined(TOIT_LINUX) || defined (TOIT_FREERTOS)
-  const char* description = "Heap usage report";
-
-  uword size = get_heap_dump_size(description);
-
-  Error* error = null;
-  ByteArray* result = process->allocate_byte_array(size + padding, &error);
-  if (result == null) return error;
-  ByteArray::Bytes bytes(result);
-  uint8* contents = bytes.address();
-
-  word actual_size = heap_dump_to_byte_array(description, contents, size + padding);
-  if (actual_size < 0) {
-    // Due to other threads allocating and freeing we may not succeed in creating
-    // a heap layout dump, in which case we return null.
-    return process->program()->null_object();
-  }
-
-  // Fill up with ubjson no-ops.
-  memset(contents + actual_size, 'N', size + padding - actual_size);
-
-  return result;
-#else
-  return process->program()->null_object();
-#endif
-
+  OS::dump_heap_fragmentation();
 #endif // def TOIT_CMPCTMALLOC
+  return process->program()->null_object();
 }
 
 PRIMITIVE(serial_print_heap_report) {

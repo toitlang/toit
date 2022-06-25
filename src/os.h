@@ -171,6 +171,7 @@ class OS {
   static int num_cores();
 
   static void out_of_memory(const char* reason);
+  static void dump_heap_fragmentation();
 
   static Mutex* global_mutex() { return _global_mutex; }
   static Mutex* scheduler_mutex() { return _scheduler_mutex; }

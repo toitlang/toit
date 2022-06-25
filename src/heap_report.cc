@@ -140,7 +140,7 @@ void HeapFragmentationDumper::switch_to_page(uword address) {
 class FlashHeapFragmentationDumper : public HeapFragmentationDumper {
  public:
   FlashHeapFragmentationDumper(const esp_partition_t* partition)
-    : HeapFragmentationDumper("Out of memory heap report", null),
+    : HeapFragmentationDumper("Heap fragmentation report", null),
       partition_(partition),
       sha256_(null),
       position_(0) {
@@ -202,7 +202,7 @@ class FlashHeapFragmentationDumper : public HeapFragmentationDumper {
 class SerialFragmentationDumper : public HeapFragmentationDumper {
  public:
   SerialFragmentationDumper(output_char_t* output_char_fn)
-    : HeapFragmentationDumper("Out of memory heap report", null)
+    : HeapFragmentationDumper("Heap fragmentation report", null)
     , output_char_fn_(output_char_fn) {
     write_start();
   }
@@ -227,12 +227,12 @@ class SerialFragmentationDumper : public HeapFragmentationDumper {
 };
 
 void dump_heap_fragmentation(output_char_t* output_char_fn) {
-  const char* p = "toit serial decode ";
+  const char* p = "jag decode ";
   while (*p) output_char_fn(*p++);
 
   SerialFragmentationDumper dumper(output_char_fn);
 
-  int flags = MALLOC_ITERATE_ALL_ALLOCATIONS | MALLOC_ITERATE_UNALLOCATED | MALLOC_ITERATE_UNLOCKED;
+  int flags = MALLOC_ITERATE_ALL_ALLOCATIONS | MALLOC_ITERATE_UNALLOCATED;
   heap_caps_iterate_tagged_memory_areas(&dumper, null, HeapFragmentationDumper::log_allocation, flags);
   if (!dumper.has_overflow()) {
     dumper.write_end();  // Also writes length field at start.
