@@ -48,6 +48,7 @@ class WifiServiceDefinition extends NetworkServiceDefinitionBase:
       wifi_config := config.get "wifi" --if_absent=: {:}
       ssid = wifi_config["ssid"]
       password = wifi_config.get "password" --if_absent=: ""
+    if ssid.size == 0: throw "wifi ssid not provided"
 
     if not state_: state_ = NetworkState
     module ::= (state_.up: WifiModule.sta this ssid password) as WifiModule
@@ -185,13 +186,12 @@ class WifiModule implements NetworkModule:
     resource := wifi_setup_ip_ resource_group_
     ip_events_ = monitor.ResourceState_ resource_group_ resource
     state := ip_events_.wait
-    if (state & WIFI_IP_ASSIGNED) != 0:
-      ip_events_.clear_state WIFI_IP_ASSIGNED
-      ip ::= wifi_get_ip_ resource_group_
-      address_ = net.IpAddress ip
-      logger_.info "network address dynamically assigned through dhcp" --tags={"ip": address_}
-      ip_events_.set_callback:: on_event_ it
-    throw "IP_ASSIGN_FAILED"
+    if (state & WIFI_IP_ASSIGNED) == 0: throw "IP_ASSIGN_FAILED"
+    ip_events_.clear_state WIFI_IP_ASSIGNED
+    ip ::= wifi_get_ip_ resource_group_
+    address_ = net.IpAddress ip
+    logger_.info "network address dynamically assigned through dhcp" --tags={"ip": address_}
+    ip_events_.set_callback:: on_event_ it
 
   wait_for_static_ip_address_ -> none:
     ip ::= wifi_get_ip_ resource_group_

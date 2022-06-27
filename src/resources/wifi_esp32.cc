@@ -174,7 +174,7 @@ uint32 WifiResourceGroup::on_event(Resource* resource, word data, uint32 state) 
       break;
 
     case WIFI_EVENT_STA_DISCONNECTED: {
-      uint8_t reason = reinterpret_cast<wifi_event_sta_disconnected_t*>(system_event->event_data)->reason;
+      uint8 reason = reinterpret_cast<wifi_event_sta_disconnected_t*>(system_event->event_data)->reason;
       switch (reason) {
         case WIFI_REASON_ASSOC_LEAVE:
         case WIFI_REASON_ASSOC_EXPIRE:
@@ -376,7 +376,6 @@ PRIMITIVE(setup_ip) {
   proxy->set_external_address(ip_events);
   return proxy;
 }
-
 
 PRIMITIVE(disconnect) {
   ARGS(WifiResourceGroup, group, WifiEvents, wifi);
