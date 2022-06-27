@@ -288,9 +288,10 @@ namespace toit {
   PRIMITIVE(set_session, 2)                  \
 
 #define MODULE_WIFI(PRIMITIVE)               \
-  PRIMITIVE(init, 0)                         \
+  PRIMITIVE(init, 1)                         \
   PRIMITIVE(close, 1)                        \
   PRIMITIVE(connect, 3)                      \
+  PRIMITIVE(establish, 5)                    \
   PRIMITIVE(setup_ip, 1)                     \
   PRIMITIVE(disconnect, 2)                   \
   PRIMITIVE(disconnect_reason, 1)            \

@@ -52,18 +52,20 @@ ResourcePool<int, kInvalidWifi> wifi_pool(
 class WifiResourceGroup : public ResourceGroup {
  public:
   TAG(WifiResourceGroup);
-  WifiResourceGroup(Process* process, SystemEventSource* event_source, int id,
-                    esp_netif_t* netif)
+  WifiResourceGroup(Process* process, SystemEventSource* event_source, int id, esp_netif_t* netif)
       : ResourceGroup(process, event_source)
       , _id(id)
       , _netif(netif) {
+    clear_ip_address();
   }
 
+  uint32 ip_address() const { return _ip_address; }
+  bool has_ip_address() const { return _ip_address != 0; }
+
+  void set_ip_address(uint32 address) { _ip_address = address; }
+  void clear_ip_address() { _ip_address = 0; }
+
   esp_err_t connect(const char* ssid, const char* password) {
-    wifi_config_t config;
-    memset(&config, 0, sizeof(config));
-    strncpy(char_cast(config.sta.ssid), ssid, sizeof(config.sta.ssid));
-    strncpy(char_cast(config.sta.password), password, sizeof(config.sta.password));
     // Configure the WiFi to _start_ the channel scan from the last connected channel.
     // If there has been no previous connection, then the channel is 0 which causes a normal scan.
     uint8 channel = RtcMemory::wifi_channel();
@@ -71,9 +73,38 @@ class WifiResourceGroup : public ResourceGroup {
       channel = 0;
       RtcMemory::set_wifi_channel(0);
     }
-    config.sta.channel = channel;
-    esp_err_t err = esp_wifi_set_config(WIFI_IF_STA, &config);
+
+    esp_err_t err = esp_wifi_set_mode(WIFI_MODE_STA);
     if (err != ESP_OK) return err;
+
+    wifi_config_t config;
+    memset(&config, 0, sizeof(config));
+    strncpy(char_cast(config.sta.ssid), ssid, sizeof(config.sta.ssid));
+    strncpy(char_cast(config.sta.password), password, sizeof(config.sta.password));
+    config.sta.channel = channel;
+    err = esp_wifi_set_config(WIFI_IF_STA, &config);
+    if (err != ESP_OK) return err;
+
+    return esp_wifi_start();
+  }
+
+  esp_err_t establish(const char* ssid, const char* password, bool broadcast, int channel) {
+    esp_err_t err = esp_wifi_set_mode(WIFI_MODE_AP);
+    if (err != ESP_OK) return err;
+
+    wifi_config_t config;
+    memset(&config, 0, sizeof(config));
+    strncpy(char_cast(config.ap.ssid), ssid, sizeof(config.ap.ssid));
+    strncpy(char_cast(config.ap.password), password, sizeof(config.ap.password));
+    config.ap.channel = channel;
+    config.ap.authmode = WIFI_AUTH_WPA2_PSK;
+    config.ap.ssid_hidden = broadcast ? 0 : 1;
+    config.ap.max_connection = 4;
+    config.ap.beacon_interval = 100;
+    config.ap.pairwise_cipher = WIFI_CIPHER_TYPE_CCMP;
+    err = esp_wifi_set_config(WIFI_IF_AP, &config);
+    if (err != ESP_OK) return err;
+
     return esp_wifi_start();
   }
 
@@ -90,11 +121,12 @@ class WifiResourceGroup : public ResourceGroup {
     wifi_pool.put(_id);
   }
 
-  uint32_t on_event(Resource* resource, word data, uint32_t state);
+  uint32 on_event(Resource* resource, word data, uint32 state);
 
  private:
   int _id;
   esp_netif_t *_netif;
+  uint32 _ip_address;
 
   void cache_wifi_channel() {
     uint8 primary_channel;
@@ -103,8 +135,7 @@ class WifiResourceGroup : public ResourceGroup {
 
     RtcMemory::set_wifi_channel(primary_channel);
   }
- };
-
+};
 
 class WifiEvents : public SystemResource {
  public:
@@ -130,23 +161,11 @@ class IPEvents : public SystemResource {
  public:
   TAG(IPEvents);
   explicit IPEvents(WifiResourceGroup* group)
-      : SystemResource(group, IP_EVENT)
-      , _ip((char*)calloc(1, 16)) {}
-
-  ~IPEvents() {
-    free(_ip);
+      : SystemResource(group, IP_EVENT) {
   }
-
-  const char* ip() const {
-    return _ip;
-  }
-
- private:
-  friend class WifiResourceGroup;
-  char* _ip;
 };
 
-uint32_t WifiResourceGroup::on_event(Resource* resource, word data, uint32_t state) {
+uint32 WifiResourceGroup::on_event(Resource* resource, word data, uint32 state) {
   SystemEvent* system_event = reinterpret_cast<SystemEvent*>(data);
   switch (system_event->id) {
     case WIFI_EVENT_STA_CONNECTED:
@@ -187,27 +206,32 @@ uint32_t WifiResourceGroup::on_event(Resource* resource, word data, uint32_t sta
       // from the AP and raises the WIFI_EVENT_STA_DISCONNECTED event.
       break;
 
+    case WIFI_EVENT_AP_START:
+      state |= WIFI_CONNECTED;
+      break;
+
+    case WIFI_EVENT_AP_STOP:
+      state |= WIFI_DISCONNECTED;
+      break;
+
+    case WIFI_EVENT_AP_STACONNECTED:
+      break;
+
+    case WIFI_EVENT_AP_STADISCONNECTED:
+      break;
+
     case IP_EVENT_STA_GOT_IP: {
       ip_event_got_ip_t* event = reinterpret_cast<ip_event_got_ip_t*>(system_event->event_data);
-      uint32_t addr = event->ip_info.ip.addr;
-      sprintf(
-          static_cast<IPEvents*>(resource)->_ip,
-#ifdef CONFIG_IDF_TARGET_ESP32C3
-          "%lu.%lu.%lu.%lu",
-#else
-          "%d.%d.%d.%d",
-#endif
-          (addr >> 0) & 0xff,
-          (addr >> 8) & 0xff,
-          (addr >> 16) & 0xff,
-          (addr >> 24) & 0xff);
+      set_ip_address(event->ip_info.ip.addr);
       state |= WIFI_IP_ASSIGNED;
       break;
     }
 
-    case IP_EVENT_STA_LOST_IP:
+    case IP_EVENT_STA_LOST_IP: {
       state |= WIFI_IP_LOST;
+      clear_ip_address();
       break;
+    }
 
     default:
       printf(
@@ -226,6 +250,8 @@ uint32_t WifiResourceGroup::on_event(Resource* resource, word data, uint32_t sta
 MODULE_IMPLEMENTATION(wifi, MODULE_WIFI)
 
 PRIMITIVE(init) {
+  ARGS(bool, ap);
+
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + WIFI_MALLOC_TAG);
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;
@@ -233,7 +259,7 @@ PRIMITIVE(init) {
   int id = wifi_pool.any();
   if (id == kInvalidWifi) OUT_OF_BOUNDS;
 
-  esp_netif_t* netif = esp_netif_create_default_wifi_sta();
+  esp_netif_t* netif = ap ? esp_netif_create_default_wifi_ap() : esp_netif_create_default_wifi_sta();
   if (!netif) {
     wifi_pool.put(id);
     MALLOC_FAILED;
@@ -250,9 +276,6 @@ PRIMITIVE(init) {
   }
 
   err = esp_wifi_set_storage(WIFI_STORAGE_RAM);
-  if (err == ESP_OK) {
-    err = esp_wifi_set_mode(WIFI_MODE_STA);
-  }
   if (err != ESP_OK) {
     FATAL_IF_NOT_ESP_OK(esp_wifi_deinit());
     esp_netif_destroy(netif);
@@ -260,12 +283,20 @@ PRIMITIVE(init) {
     return Primitive::os_error(err, process);
   }
 
-  WifiResourceGroup* resource_group = _new WifiResourceGroup(process, SystemEventSource::instance(), id, netif);
+  WifiResourceGroup* resource_group = _new WifiResourceGroup(
+      process, SystemEventSource::instance(), id, netif);
   if (!resource_group) {
     FATAL_IF_NOT_ESP_OK(esp_wifi_deinit());
     esp_netif_destroy(netif);
     wifi_pool.put(id);
     MALLOC_FAILED;
+  }
+
+  if (ap) {
+    esp_netif_ip_info_t ip;
+    if (esp_netif_get_ip_info(netif, &ip) == ESP_OK) {
+      resource_group->set_ip_address(ip.ip.addr);
+    }
   }
 
   proxy->set_external_address(resource_group);
@@ -305,6 +336,32 @@ PRIMITIVE(connect) {
   return proxy;
 }
 
+PRIMITIVE(establish) {
+  ARGS(WifiResourceGroup, group, cstring, ssid, cstring, password, bool, broadcast, int, channel);
+  HeapTagScope scope(ITERATE_CUSTOM_TAGS + WIFI_MALLOC_TAG);
+
+  if (ssid == null || password == null) {
+    INVALID_ARGUMENT;
+  }
+
+  ByteArray* proxy = process->object_heap()->allocate_proxy();
+  if (proxy == null) ALLOCATION_FAILED;
+
+  WifiEvents* wifi = _new WifiEvents(group);
+  if (wifi == null) MALLOC_FAILED;
+
+  group->register_resource(wifi);
+
+  esp_err_t err = group->establish(ssid, password, broadcast, channel);
+  if (err != ESP_OK) {
+    group->unregister_resource(wifi);
+    return Primitive::os_error(err, process);
+  }
+
+  proxy->set_external_address(wifi);
+  return proxy;
+}
+
 PRIMITIVE(setup_ip) {
   ARGS(WifiResourceGroup, group);
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + WIFI_MALLOC_TAG);
@@ -316,7 +373,6 @@ PRIMITIVE(setup_ip) {
   if (ip_events == null) MALLOC_FAILED;
 
   group->register_resource(ip_events);
-
   proxy->set_external_address(ip_events);
   return proxy;
 }
@@ -352,13 +408,26 @@ PRIMITIVE(disconnect_reason) {
 }
 
 PRIMITIVE(get_ip) {
-  ARGS(IPEvents, ip);
-  return process->allocate_string_or_error(ip->ip());
+  ARGS(WifiResourceGroup, group);
+  if (!group->has_ip_address()) {
+    return process->program()->null_object();
+  }
+
+  ByteArray* result = process->object_heap()->allocate_internal_byte_array(4);
+  if (!result) ALLOCATION_FAILED;
+  ByteArray::Bytes bytes(result);
+
+  uint32 address = group->ip_address();
+  bytes.at_put(0, (address >>  0) & 0xff);
+  bytes.at_put(1, (address >>  8) & 0xff);
+  bytes.at_put(2, (address >> 16) & 0xff);
+  bytes.at_put(3, (address >> 24) & 0xff);
+  return result;
 }
 
 PRIMITIVE(get_rssi) {
-  ARGS(WifiResourceGroup, wifi);
-  int rssi = wifi->rssi();
+  ARGS(WifiResourceGroup, group);
+  int rssi = group->rssi();
   if (rssi == 0) return process->program()->null_object();
   return Smi::from(rssi);
 }

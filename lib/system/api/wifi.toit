@@ -12,6 +12,9 @@ interface WifiService extends NetworkService:
   static CONNECT_SSID_PASSWORD_INDEX /int ::= 100
   connect ssid/string password/string -> List
 
+  static ESTABLISH_INDEX /int ::= 101
+  establish ssid/string password/string broadcast/bool channel/int -> List
+
 class WifiServiceClient extends NetworkServiceClient implements WifiService:
   constructor --open/bool=true:
     super --open=open
@@ -21,3 +24,6 @@ class WifiServiceClient extends NetworkServiceClient implements WifiService:
 
   connect ssid/string password/string -> List:
     return invoke_ WifiService.CONNECT_SSID_PASSWORD_INDEX [ssid, password]
+
+  establish ssid/string password/string broadcast/bool channel/int -> List:
+    return invoke_ WifiService.ESTABLISH_INDEX [ssid, password, broadcast, channel]
