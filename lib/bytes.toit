@@ -11,7 +11,7 @@ The $Buffer class can be used to build up binary data. The collected
 The $Reader class makes a byte array readable, by providing a `read` method.
 */
 
-import binary show BIG_ENDIAN
+import binary show BIG_ENDIAN LITTLE_ENDIAN
 import reader
 
 INITIAL_BUFFER_LENGTH_ ::= 64
@@ -99,23 +99,38 @@ Due to the operations that take an offset (like $put_int16_big_endian),
   consumers must buffer their data to allow future modifications of it.
 */
 // TODO(4201): missing function `write_from`.
-interface BufferConsumer:
+abstract class BufferConsumer:
   /**
   The size of the consumed data.
   This value increases with operations that write into this consumer,
     such as $put_byte or $write. It is reset with $clear, and unchanged
     by operations that take an offset, such as $put_int16_big_endian.
   */
-  size -> int
+  abstract size -> int
   /**
   Writes the $byte into the consumer.
   This is equivalent to using $write with a one-sized byte array.
   */
-  put_byte byte/int -> none
+  abstract write_byte byte/int -> none
+  /**
+  Deprecated.  Use $write_byte.
+  */
+  put_byte byte/int -> none:
+    write_byte byte
+  /**
+  Writes the byte of $data at the given $offset.
+  The $offset must be valid and the backing store must be able to
+    write a byte at this offset. If necessary use $grow before
+    doing this operation.
+  */
+  abstract put_byte offset/int data/int -> none
   /** Writes the given $data into this consumer. */
-  write data from/int=0 to/int=data.size -> int
+  abstract write data from/int=0 to/int=data.size -> int
+  /** Deprecated.  Use $write_producer. */
+  put_producer producer/Producer -> none:
+    write_producer producer
   /** Writes the data from the $producer into this consumer. */
-  put_producer producer/Producer -> none
+  abstract write_producer producer/Producer -> none
   /**
   Grows this consumer by $amount bytes.
   This operation is equivalent to writing an empty byte-array of size $amount.
@@ -126,7 +141,7 @@ interface BufferConsumer:
   Further write operations (like $put_byte or $write) append their data
     after the grown bytes.
   */
-  grow amount/int -> none
+  abstract grow amount/int -> none
 
   /**
   Reserves $amount bytes.
@@ -135,17 +150,33 @@ interface BufferConsumer:
   This method is purely for efficiency, so that this consumer doesn't need to
     regrow its internal backing store too often.
   */
-  reserve amount/int -> none
+  abstract reserve amount/int -> none
 
   /**
   Closes this buffer.
   It is an error to write to this consumer after a call to $close.
   It is legal to close this consumer multiple times.
   */
-  close -> none
+  abstract close -> none
 
   /** Resets the buffer, discarding all accumulated data. */
-  clear -> none
+  abstract clear -> none
+
+  /**
+  Writes the 64 bits of $data at the end.
+  The backing store is automatically grown by 64 bits.
+  */
+  abstract write_int64_big_endian offset/int -> none
+  /**
+  Writes the 32 bits of $data at the end.
+  The backing store is automatically grown by 32 bits.
+  */
+  abstract write_int32_big_endian offset/int -> none
+  /**
+  Writes the 16 bits of $data at the end.
+  The backing store is automatically grown by 16 bits.
+  */
+  abstract write_int16_big_endian offset/int -> none
 
   /**
   Writes the 64 bits of $data at the given $offset.
@@ -153,21 +184,59 @@ interface BufferConsumer:
     write 64 bits at this offset. If necessary use $grow before
     doing this operation.
   */
-  put_int64_big_endian offset/int data/int -> none
+  abstract put_int64_big_endian offset/int data/int -> none
   /**
   Writes the 32 bits of $data at the given $offset.
   The $offset must be valid and the backing store must be able to
     write 32 bits at this offset. If necessary use $grow before
     doing this operation.
   */
-  put_int32_big_endian offset/int data/int -> none
+  abstract put_int32_big_endian offset/int data/int -> none
   /**
   Writes the 16 bits of $data at the given $offset.
   The $offset must be valid and the backing store must be able to
     write 16 bits at this offset. If necessary use $grow before
     doing this operation.
   */
-  put_int16_big_endian offset/int data/int -> none
+  abstract put_int16_big_endian offset/int data/int -> none
+
+  /**
+  Writes the 64 bits of $data at the end.
+  The backing store is automatically grown by 64 bits.
+  */
+  abstract write_int64_little_endian offset/int -> none
+  /**
+  Writes the 32 bits of $data at the end.
+  The backing store is automatically grown by 32 bits.
+  */
+  abstract write_int32_little_endian offset/int -> none
+  /**
+  Writes the 16 bits of $data at the end.
+  The backing store is automatically grown by 16 bits.
+  */
+  abstract write_int16_little_endian offset/int -> none
+
+  /**
+  Writes the 64 bits of $data at the given $offset.
+  The $offset must be valid and the backing store must be able to
+    write 64 bits at this offset. If necessary use $grow before
+    doing this operation.
+  */
+  abstract put_int64_little_endian offset/int data/int -> none
+  /**
+  Writes the 32 bits of $data at the given $offset.
+  The $offset must be valid and the backing store must be able to
+    write 32 bits at this offset. If necessary use $grow before
+    doing this operation.
+  */
+  abstract put_int32_little_endian offset/int data/int -> none
+  /**
+  Writes the 16 bits of $data at the given $offset.
+  The $offset must be valid and the backing store must be able to
+    write 16 bits at this offset. If necessary use $grow before
+    doing this operation.
+  */
+  abstract put_int16_little_endian offset/int data/int -> none
 
 /**
 A consumer that counts the number of written bytes.
@@ -179,21 +248,23 @@ This class is used when writing happens in two phases:
 In this scenario data is processed twice, but the resulting
   buffer is allocated with the right size from the beginning.
 */
-class BufferSizeCounter implements BufferConsumer:
+class BufferSizeCounter extends BufferConsumer:
   /** See $BufferConsumer.size. */
   size := 0
-  /** See $BufferConsumer.put_byte. */
-  put_byte byte/int -> none: size++
+  /** See $BufferConsumer.write_byte. */
+  put_byte offset/int byte/int -> none:
+  /** See $BufferConsumer.write_byte. */
+  write_byte byte/int -> none: size++
   /** See $BufferConsumer.write. */
   write data from/int=0 to/int=data.size -> int:
     size += to - from
     return to - from
   /**
-  See $BufferConsumer.put_producer.
+  See $BufferConsumer.write_producer.
 
   This operation only requests the size of the $producer.
   */
-  put_producer producer/Producer -> none: size += producer.size
+  write_producer producer/Producer -> none: size += producer.size
   /** See $BufferConsumer.grow. */
   grow amount/int -> none: size +=  amount
   /** See $BufferConsumer.reserve. */
@@ -206,12 +277,36 @@ class BufferSizeCounter implements BufferConsumer:
     size that was seen so far.
   */
   clear -> none: size = 0
+  /** See $BufferConsumer.write_int64_big_endian. */
+  write_int64_big_endian data/int -> none:
+    size += 8
+  /** See $BufferConsumer.write_int32_big_endian. */
+  write_int32_big_endian data/int -> none:
+    size += 4
+  /** See $BufferConsumer.write_int16_big_endian. */
+  write_int16_big_endian data/int -> none:
+    size += 2
   /** See $BufferConsumer.put_int64_big_endian. */
   put_int64_big_endian offset/int data/int -> none:
   /** See $BufferConsumer.put_int32_big_endian. */
   put_int32_big_endian offset/int data/int -> none:
   /** See $BufferConsumer.put_int16_big_endian. */
   put_int16_big_endian offset/int data/int -> none:
+  /** See $BufferConsumer.write_int64_little_endian. */
+  write_int64_little_endian data/int -> none:
+    size += 8
+  /** See $BufferConsumer.write_int32_little_endian. */
+  write_int32_little_endian data/int -> none:
+    size += 4
+  /** See $BufferConsumer.write_int16_little_endian. */
+  write_int16_little_endian data/int -> none:
+    size += 2
+  /** See $BufferConsumer.put_int64_little_endian. */
+  put_int64_little_endian offset/int data/int -> none:
+  /** See $BufferConsumer.put_int32_little_endian. */
+  put_int32_little_endian offset/int data/int -> none:
+  /** See $BufferConsumer.put_int16_little_endian. */
+  put_int16_little_endian offset/int data/int -> none:
 
 /**
 A buffer that can be used to build byte data.
@@ -220,7 +315,7 @@ A buffer that can be used to build byte data.
 - `BytesBuilder`: Dart
 - `ByteArrayOutputStream`: Java
 */
-class Buffer implements BufferConsumer:
+class Buffer extends BufferConsumer:
   init_size_/int
   buffer_ /ByteArray := ?
   offset_ := 0
@@ -271,10 +366,14 @@ class Buffer implements BufferConsumer:
   to_string -> string:
     return buffer_.to_string 0 offset_
 
-  /** See $BufferConsumer.put_byte. */
-  put_byte byte/int -> none:
+  /** See $BufferConsumer.write_byte. */
+  write_byte byte/int -> none:
     ensure_ 1
     buffer_[offset_++] = byte
+
+  /** See $BufferConsumer.put_byte. */
+  put_byte offset/int byte/int -> none:
+    buffer_[offset] = byte
 
   /** Writes all data from the reader $r into this buffer. */
   write_from r/reader.Reader:
@@ -290,8 +389,8 @@ class Buffer implements BufferConsumer:
     offset_ += count
     return count
 
-  /** See $BufferConsumer.put_producer. */
-  put_producer producer/Producer -> none:
+  /** See $BufferConsumer.write_producer. */
+  write_producer producer/Producer -> none:
     ensure_ producer.size
     producer.write_to buffer_ offset_
     offset_ += producer.size
@@ -322,6 +421,24 @@ class Buffer implements BufferConsumer:
     // Replace the byte-array, if it grew out of init size.
     if buffer_.size > init_size_ * 2: buffer_ = ByteArray init_size_
 
+  /** See $BufferConsumer.write_int16_big_endian. */
+  write_int16_big_endian data/int -> none:
+    ensure_ 2
+    put_int16_big_endian offset_ data
+    offset_ += 2
+
+  /** See $BufferConsumer.write_int32_big_endian. */
+  write_int32_big_endian data/int -> none:
+    ensure_ 4
+    put_int32_big_endian offset_ data
+    offset_ += 4
+
+  /** See $BufferConsumer.write_int64_big_endian. */
+  write_int64_big_endian data/int -> none:
+    ensure_ 8
+    put_int64_big_endian offset_ data
+    offset_ += 8
+
   /** See $BufferConsumer.put_int16_big_endian. */
   put_int16_big_endian offset/int data/int -> none:
     BIG_ENDIAN.put_int16 buffer_ offset data
@@ -333,6 +450,36 @@ class Buffer implements BufferConsumer:
   /** See $BufferConsumer.put_int64_big_endian. */
   put_int64_big_endian offset/int data/int -> none:
     BIG_ENDIAN.put_int64 buffer_ offset data
+
+  /** See $BufferConsumer.write_int16_little_endian. */
+  write_int16_little_endian data/int -> none:
+    ensure_ 2
+    put_int16_little_endian offset_ data
+    offset_ += 2
+
+  /** See $BufferConsumer.write_int32_little_endian. */
+  write_int32_little_endian data/int -> none:
+    ensure_ 4
+    put_int32_little_endian offset_ data
+    offset_ += 4
+
+  /** See $BufferConsumer.write_int64_little_endian. */
+  write_int64_little_endian data/int -> none:
+    ensure_ 8
+    put_int64_little_endian offset_ data
+    offset_ += 8
+
+  /** See $BufferConsumer.put_int16_little_endian. */
+  put_int16_little_endian offset/int data/int -> none:
+    LITTLE_ENDIAN.put_int16 buffer_ offset data
+
+  /** See $BufferConsumer.put_int32_little_endian. */
+  put_int32_little_endian offset/int data/int -> none:
+    LITTLE_ENDIAN.put_int32 buffer_ offset data
+
+  /** See $BufferConsumer.put_int64_little_endian. */
+  put_int64_little_endian offset/int data/int -> none:
+    LITTLE_ENDIAN.put_int64 buffer_ offset data
 
   ensure_ size:
     new_minimum_size := offset_ + size
