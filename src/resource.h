@@ -39,7 +39,8 @@ class Resource : public ResourceList::Element, public ResourceListFromEventSourc
   explicit Resource(ResourceGroup* resource_group)
     : _resource_group(resource_group)
     , _state(0)
-    , _object_notifier(null) {}
+    , _object_notifier(null) {
+  }
 
   virtual ~Resource();
 

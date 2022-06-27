@@ -157,10 +157,10 @@ class WifiEvents : public SystemResource {
   uint8 _disconnect_reason;
 };
 
-class IPEvents : public SystemResource {
+class WifiIpEvents : public SystemResource {
  public:
-  TAG(IPEvents);
-  explicit IPEvents(WifiResourceGroup* group)
+  TAG(WifiIpEvents);
+  explicit WifiIpEvents(WifiResourceGroup* group)
       : SystemResource(group, IP_EVENT) {
   }
 };
@@ -305,6 +305,7 @@ PRIMITIVE(init) {
 
 PRIMITIVE(close) {
   ARGS(WifiResourceGroup, group);
+
   group->tear_down();
   group_proxy->clear_external_address();
   return process->program()->null_object();
@@ -369,7 +370,7 @@ PRIMITIVE(setup_ip) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;
 
-  IPEvents* ip_events = _new IPEvents(group);
+  WifiIpEvents* ip_events = _new WifiIpEvents(group);
   if (ip_events == null) MALLOC_FAILED;
 
   group->register_resource(ip_events);

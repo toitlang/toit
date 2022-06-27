@@ -23,7 +23,6 @@
 namespace toit {
 
 Resource::~Resource() {
-  printf("[~Resource: this=%p]\n", this);
   delete _object_notifier;
 }
 
@@ -42,9 +41,7 @@ void ResourceGroup::tear_down() {
       _event_source->unregister_resource(resource);
     }
     on_unregister_resource(resource);
-    printf("[make_deletable %p]\n", resource);
     resource->make_deletable();
-    printf("[make_deletable %p => done]\n", resource);
   }
 
   if (_event_source != null) {
