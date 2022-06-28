@@ -79,8 +79,8 @@ class WifiResourceGroup : public ResourceGroup {
 
     wifi_config_t config;
     memset(&config, 0, sizeof(config));
-    strncpy(char_cast(config.sta.ssid), ssid, sizeof(config.sta.ssid));
-    strncpy(char_cast(config.sta.password), password, sizeof(config.sta.password));
+    strncpy(char_cast(config.sta.ssid), ssid, sizeof(config.sta.ssid) - 1);
+    strncpy(char_cast(config.sta.password), password, sizeof(config.sta.password) - 1);
     config.sta.channel = channel;
     err = esp_wifi_set_config(WIFI_IF_STA, &config);
     if (err != ESP_OK) return err;
@@ -94,8 +94,8 @@ class WifiResourceGroup : public ResourceGroup {
 
     wifi_config_t config;
     memset(&config, 0, sizeof(config));
-    strncpy(char_cast(config.ap.ssid), ssid, sizeof(config.ap.ssid));
-    strncpy(char_cast(config.ap.password), password, sizeof(config.ap.password));
+    strncpy(char_cast(config.ap.ssid), ssid, sizeof(config.ap.ssid) - 1);
+    strncpy(char_cast(config.ap.password), password, sizeof(config.ap.password) - 1);
     config.ap.channel = channel;
     config.ap.authmode = WIFI_AUTH_WPA2_PSK;
     config.ap.ssid_hidden = broadcast ? 0 : 1;
@@ -416,12 +416,7 @@ PRIMITIVE(get_ip) {
   ByteArray* result = process->object_heap()->allocate_internal_byte_array(4);
   if (!result) ALLOCATION_FAILED;
   ByteArray::Bytes bytes(result);
-
-  uint32 address = group->ip_address();
-  bytes.at_put(0, (address >>  0) & 0xff);
-  bytes.at_put(1, (address >>  8) & 0xff);
-  bytes.at_put(2, (address >> 16) & 0xff);
-  bytes.at_put(3, (address >> 24) & 0xff);
+  Utils::write_unaligned_uint32_le(bytes.address(), group->ip_address());
   return result;
 }
 
