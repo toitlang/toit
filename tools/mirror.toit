@@ -329,6 +329,45 @@ class Profile extends Mirror:
   stringify -> string:
     return "Profile of $title ($total bytecodes executed, cutoff $(cutoff.to_float/10)%):\n$table"
 
+class HistogramEntry:
+  class_name /string
+  count /int
+  size /int
+
+  constructor .class_name .count .size:
+
+  stringify -> string:
+    return "  │ $(%7d count) │ $(%6d size >> 10)k $(%4d size & 1023)b │ $(%-45s class_name)│"
+
+class Histogram extends Mirror:
+  static tag ::= 'O'  // For Objects.
+
+  marker_ /string
+  entries /List ::= []
+
+  constructor json program/Program [on_error]:
+    assert:   json[0] == tag
+    marker_ = json[1]
+    first_entry := 2
+
+    for i := first_entry; i < json.size; i += 3:
+      class_name := program.class_name_for json[i]
+      if class_name != "RecognizableFiller_":
+        entries.add
+          HistogramEntry class_name json[i + 1] json[i + 2]
+    entries.sort --in_place: | a b | b.size - a.size
+    super json program
+
+  stringify -> string:
+    marker := marker_ == "" ? "" : " for $marker_"
+    return "Object heap histogram$marker:\n"
+        + "  ┌─────────┬───────────────┬──────────────────────────────────────────────┐\n"
+        + "  │   Count │         Bytes │ Class                                        │\n"
+        + "  ├─────────┼───────────────┼──────────────────────────────────────────────┤\n"
+        + (entries.join "\n")
+        + "\n"
+        + "  └─────────┴───────────────┴──────────────────────────────────────────────┘"
+
 class CoreDump extends Mirror:
   static tag ::= 'c'
   core_dump ::= ?
@@ -401,10 +440,10 @@ class HeapPage extends Mirror:
   //   W 7 - LwIP
   //   H 8 - Malloc heap overhead
 
-  GRANULARITY_ ::= 8
-  HEADER_ ::= 8
-  PAGE_HEADER_ ::= 24
-  PAGE_ ::= 4096
+  static GRANULARITY_ ::= 8
+  static HEADER_ ::= 8
+  static PAGE_HEADER_ ::= 24
+  static PAGE_ ::= 4096
 
   constructor json program [on_error]:
     address = json[1]
@@ -522,8 +561,8 @@ class ColorBlockOutputter_ extends UnicodeBlockOutputter_:
   foreground := -1
 
   // Escape sequences for 256 color terminals.
-  BG ::= "\u001b[48;5;"
-  FG ::= "\u001b[38;5;"
+  static BG ::= "\u001b[48;5;"
+  static FG ::= "\u001b[38;5;"
 
   // See 256-color scheme at http://www.lihaoyi.com/post/BuildyourownCommandLinewithANSIescapecodes.html#256-colors
   colors ::= {
@@ -614,6 +653,7 @@ decode_json_ json program/Program [on_error]:
   else if tag == Error.tag:       return Error      json program on_error
   else if tag == Instance.tag:    return Instance   json program on_error
   else if tag == Profile.tag:     return Profile    json program on_error
+  else if tag == Histogram.tag:   return Histogram  json program on_error
   else if tag == HeapReport.tag:  return HeapReport json program on_error
   else if tag == HeapPage.tag:    return HeapPage   json program on_error
   else if tag == CoreDump.tag:    return CoreDump   json program on_error

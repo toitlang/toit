@@ -32,7 +32,7 @@ main:
 run_server:
   service := MyServiceDefinition
   service.install
-  service.wait
+  service.uninstall --wait
 
 run_client:
   service/MyService := MyServiceClient

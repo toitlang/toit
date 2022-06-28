@@ -37,7 +37,7 @@ test_resources --close/bool=false --separate_process/bool=false:
       test_open "resource-0" close
   else:
     test_open "resource-0" close --close_client
-  service.wait
+  service.uninstall --wait
   expect.expect_equals 1 (service.close_count "resource-0")
 
 test_uninstall:
@@ -71,7 +71,7 @@ test_multiple_resources:
   expect.expect_equals 1 (service.close_count "resource-4")
   expect.expect_equals 1 (service.close_count "resource-5")
   expect.expect_equals 1 (service.close_count "resource-6")
-  service.wait
+  service.uninstall --wait
 
 test_custom_close:
   service := ResourceServiceDefinition
@@ -84,7 +84,7 @@ test_custom_close:
   resource.close
   expect.expect_equals 1 (service.close_count "resource")
   client.close
-  service.wait
+  service.uninstall --wait
 
 test_open key/string close/bool --close_client/bool=false -> ResourceServiceClient:
   client := ResourceServiceClient

@@ -5,6 +5,7 @@ import reader show BufferedReader
 
 usage:
   print "Usage: echo Backtrace:0x400870c0:0x3ffc9df0 0x4010661d:0x3ffc9e70 0x401143a3:0x3ffc9ea0 | toit.run stacktrace.toit [--disassemble] [--objdump objdump_executable] /path/to/toit.elf"
+  print "or: toit.run stacktrace.toit [--disassemble] [--objdump objdump_executable] --backtrace=\"Backtrace:0x400870c0:0x3ffc9df0 0x4010661d:0x3ffc9e70 0x401143a3:0x3ffc9ea0\" /path/to/toit.elf"
   exit 1
 
 OBJDUMP ::= "xtensa-esp32-elf-objdump"
@@ -14,6 +15,7 @@ main args/List:
   parser.describe_rest ["/path/to/toit.elf"]
   parser.add_flag "disassemble" --short="d"
   parser.add_option "objdump" --default=OBJDUMP
+  parser.add_option "backtrace" --default="-"
   parsed := parser.parse args:
     usage
     exit 1
@@ -60,14 +62,19 @@ main args/List:
       disassembly_lines[address] = line
 
   backtrace / string? := null
-  error := catch:
-    with_timeout --ms=2000:
-      backtrace = (BufferedReader pipe.stdin).read_line
-  if error == "DEADLINE_EXCEEDED":
-    print "Timed out waiting for stdin"
-    usage
-  if error:
-    throw error
+  if parsed["backtrace"] == "-":
+    error := catch:
+      with_timeout --ms=2000:
+        backtrace = (BufferedReader pipe.stdin).read_line
+    if error == "DEADLINE_EXCEEDED":
+      print "Timed out waiting for stdin"
+      usage
+    if error:
+      throw error
+  else:
+    backtrace = parsed["backtrace"]
+    if not (backtrace.starts_with "Backtrace:"):
+      backtrace = "Backtrace:$backtrace"
 
   /* Sample output without --disassemble:
   0x400870c0: toit::Interpreter::_run() + 0x132c

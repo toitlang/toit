@@ -90,7 +90,8 @@ class Port implements reader.Reader:
   Closes this UART port and release all associated resources.
   */
   close:
-    if uart_:
+    if not uart_: return
+    critical_do:
       state_.dispose
       uart_close_ resource_group_ uart_
       uart_ = null

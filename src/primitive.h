@@ -602,7 +602,7 @@ namespace toit {
   PRIMITIVE(erase, 1)                        \
 
 #define MODULE_DEBUG(PRIMITIVE)              \
-  PRIMITIVE(object_histogram, 0)             \
+  PRIMITIVE(object_histogram, 1)             \
 
 // ----------------------------------------------------------------------------
 

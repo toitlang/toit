@@ -38,7 +38,7 @@ test_close --separate_process/bool=false:
     expect.expect_equals 1 service.clients.size
     client.close
     expect.expect_equals 0 service.clients.size
-  service.wait
+  service.uninstall --wait
   expect.expect_equals 0 service.clients.size
 
 test_foo --close=false -> FooServiceClient:
