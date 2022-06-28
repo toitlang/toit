@@ -103,7 +103,7 @@ abstract class BufferConsumer:
   /**
   The size of the consumed data.
   This value increases with operations that write into this consumer,
-    such as $put_byte or $write. It is reset with $clear, and unchanged
+    such as $write_byte or $write. It is reset with $clear, and unchanged
     by operations that take an offset, such as $put_int16_big_endian.
   */
   abstract size -> int
@@ -138,7 +138,7 @@ abstract class BufferConsumer:
   The allocated bytes are filled with 0s and can be accessed
     with all methods that take an offset (such as $put_int16_big_endian).
 
-  Further write operations (like $put_byte or $write) append their data
+  Further write operations (like $write_byte or $write) append their data
     after the grown bytes.
   */
   abstract grow amount/int -> none
