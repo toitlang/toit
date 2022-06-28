@@ -96,6 +96,8 @@ To build Toit and its dependencies the build host requires:
 * [Ninja](https://ninja-build.org/)
 * [GCC](https://gcc.gnu.org/)
 * [Go >= 1.16](https://go.dev/)
+* python-is-python3: on Ubuntu machines
+* glibc-tools: optional and only available on newer Ubuntus
 
 If you are using a Linux distribution with `apt` capabilities, you can
 issue the following command to install these:
