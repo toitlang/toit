@@ -166,17 +166,17 @@ abstract class BufferConsumer:
   Writes the 64 bits of $data at the end.
   The backing store is automatically grown by 64 bits.
   */
-  abstract write_int64_big_endian offset/int -> none
+  abstract write_int64_big_endian data/int -> none
   /**
   Writes the 32 bits of $data at the end.
   The backing store is automatically grown by 32 bits.
   */
-  abstract write_int32_big_endian offset/int -> none
+  abstract write_int32_big_endian data/int -> none
   /**
   Writes the 16 bits of $data at the end.
   The backing store is automatically grown by 16 bits.
   */
-  abstract write_int16_big_endian offset/int -> none
+  abstract write_int16_big_endian data/int -> none
 
   /**
   Writes the 64 bits of $data at the given $offset.
@@ -204,17 +204,17 @@ abstract class BufferConsumer:
   Writes the 64 bits of $data at the end.
   The backing store is automatically grown by 64 bits.
   */
-  abstract write_int64_little_endian offset/int -> none
+  abstract write_int64_little_endian data/int -> none
   /**
   Writes the 32 bits of $data at the end.
   The backing store is automatically grown by 32 bits.
   */
-  abstract write_int32_little_endian offset/int -> none
+  abstract write_int32_little_endian data/int -> none
   /**
   Writes the 16 bits of $data at the end.
   The backing store is automatically grown by 16 bits.
   */
-  abstract write_int16_little_endian offset/int -> none
+  abstract write_int16_little_endian data/int -> none
 
   /**
   Writes the 64 bits of $data at the given $offset.
