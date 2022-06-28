@@ -25,8 +25,9 @@ namespace toit {
   fn(Peer)                              \
   fn(UDPSocket)                         \
   fn(WifiEvents)                        \
+  fn(WifiIpEvents)                      \
   fn(EthernetEvents)                    \
-  fn(IPEvents)                          \
+  fn(EthernetIpEvents)                  \
   fn(SPIDevice)                         \
   fn(X509Certificate)                   \
   fn(AesCbcContext)                     \

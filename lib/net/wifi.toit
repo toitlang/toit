@@ -13,3 +13,10 @@ open --ssid/string --password/string -> net.Interface:
   service := service_
   if not service: throw "WiFi unavailable"
   return SystemInterface_ service (service.connect ssid password)
+
+establish --ssid/string --password/string -> net.Interface
+    --broadcast/bool=true
+    --channel/int=1:
+  service := service_
+  if not service: throw "WiFi unavailable"
+  return SystemInterface_ service (service.establish ssid password broadcast channel)
