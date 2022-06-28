@@ -18,8 +18,6 @@
 #include "profiler.h"
 #include "encoder.h"
 
-#ifdef PROFILER
-
 namespace toit {
 
 Profiler::Profiler(int task_id) : task_id_(task_id) {
@@ -172,5 +170,3 @@ int Profiler::compute_index_for_absolute_bci(int absolute_bci) {
 }
 
 } // namespace toit
-
-#endif

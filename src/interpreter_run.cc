@@ -88,14 +88,9 @@ Method Program::find_method(Object* receiver, int offset) {
 // OPCODE_TRACE is only called from within Interpreter::run which gives access to:
 //   uint8* bcp;
 //   uword index;
-#ifdef PROFILER
 #define OPCODE_TRACE()                                         \
   if (_is_profiler_active) profile_increment(bcp);             \
   if (Flags::trace) trace(bcp);
-#else
-#define OPCODE_TRACE()                                         \
-  if (Flags::trace) trace(bcp);
-#endif
 
 // Dispatching helper macros.
 #define DISPATCH(n)                                                                \
@@ -145,12 +140,8 @@ Method Program::find_method(Object* receiver, int offset) {
 #define B_ARG1(name) uint8 name = bcp[1];
 #define S_ARG1(name) uint16 name = Utils::read_unaligned_uint16(bcp + 1);
 
-#ifdef PROFILER
-#define REGISTER_METHOD(target)                             \
+#define REGISTER_METHOD(target) \
   if (_is_profiler_active) profile_register_method(target);
-#else
-#define REGISTER_METHOD(target)
-#endif
 
 // CHECK_STACK_OVERFLOW checks if there is enough stack space to call
 // the given target method.
@@ -279,10 +270,7 @@ Interpreter::Result Interpreter::run() {
     ASSERT(frame_marker == program->frame_marker());
   }
   uint8* bcp = reinterpret_cast<uint8*>(POP());
-
-#ifdef PROFILER
   set_profiler_state();
-#endif
 
   DISPATCH(0);
 

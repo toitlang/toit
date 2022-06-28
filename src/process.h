@@ -179,20 +179,20 @@ class Process : public ProcessListFromProcessGroup::Element,
     return result;
   }
 
-  #ifdef PROFILER
-   int install_profiler(int task_id) {
-     ASSERT(profiler() == null);
-     _profiler = _new Profiler(task_id);
-     if (_profiler == null) return -1;
-     return profiler()->allocated_bytes();
-   }
-   Profiler* profiler() { return _profiler; }
-   void uninstall_profiler() {
-     Profiler* p = profiler();
-     _profiler = null;
-     delete p;
-   }
-  #endif
+  Profiler* profiler() const { return _profiler; }
+
+  int install_profiler(int task_id) {
+    ASSERT(profiler() == null);
+    _profiler = _new Profiler(task_id);
+    if (_profiler == null) return -1;
+    return profiler()->allocated_bytes();
+  }
+
+  void uninstall_profiler() {
+    Profiler* p = profiler();
+    _profiler = null;
+    delete p;
+  }
 
   void set_last_run(int64 us) {
     _last_run_us = us;
@@ -260,9 +260,7 @@ class Process : public ProcessListFromProcessGroup::Element,
   int64 _last_run_us = 0;
   int64 _unyielded_for_us = 0;
 
-#ifdef PROFILER
   Profiler* _profiler = null;
-#endif
 
   ResourceGroupListFromProcess _resource_groups;
   friend class HeapObject;

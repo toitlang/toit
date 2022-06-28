@@ -117,6 +117,7 @@ class Interpreter {
  private:
   Object** const PREEMPTION_MARKER = reinterpret_cast<Object**>(UINTPTR_MAX);
   Process* _process;
+  bool _is_profiler_active;
 
   // Cached pointers into the stack object.
   Object** _limit;
@@ -130,12 +131,9 @@ class Interpreter {
   void trace(uint8* bcp);
   Method lookup_entry();
 
-#ifdef PROFILER
-  bool _is_profiler_active;
   void profile_register_method(Method method);
   void profile_increment(uint8* bcp);
   void set_profiler_state();
-#endif
 
   enum OverflowState {
     OVERFLOW_RESUME,
