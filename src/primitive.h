@@ -288,9 +288,10 @@ namespace toit {
   PRIMITIVE(set_session, 2)                  \
 
 #define MODULE_WIFI(PRIMITIVE)               \
-  PRIMITIVE(init, 0)                         \
+  PRIMITIVE(init, 1)                         \
   PRIMITIVE(close, 1)                        \
   PRIMITIVE(connect, 3)                      \
+  PRIMITIVE(establish, 5)                    \
   PRIMITIVE(setup_ip, 1)                     \
   PRIMITIVE(disconnect, 2)                   \
   PRIMITIVE(disconnect_reason, 1)            \
@@ -339,6 +340,9 @@ namespace toit {
   PRIMITIVE(ota_begin, 2)                    \
   PRIMITIVE(ota_write, 1)                    \
   PRIMITIVE(ota_end, 2)                      \
+  PRIMITIVE(ota_state, 0)                    \
+  PRIMITIVE(ota_validate, 0)                 \
+  PRIMITIVE(ota_rollback, 0)                 \
   PRIMITIVE(reset_reason, 0)                 \
   PRIMITIVE(enable_external_wakeup, 2)       \
   PRIMITIVE(wakeup_cause, 0)                 \
@@ -599,7 +603,7 @@ namespace toit {
   PRIMITIVE(erase, 1)                        \
 
 #define MODULE_DEBUG(PRIMITIVE)              \
-  PRIMITIVE(object_histogram, 0)             \
+  PRIMITIVE(object_histogram, 1)             \
 
 // ----------------------------------------------------------------------------
 
@@ -856,8 +860,9 @@ namespace toit {
 #define _A_T_Timer(N, name)               MAKE_UNPACKING_MACRO(Timer, N, name)
 #define _A_T_UDPSocket(N, name)           MAKE_UNPACKING_MACRO(UDPSocket, N, name)
 #define _A_T_WifiEvents(N, name)          MAKE_UNPACKING_MACRO(WifiEvents, N, name)
+#define _A_T_WifiIpEvents(N, name)        MAKE_UNPACKING_MACRO(WifiIpEvents, N, name)
 #define _A_T_EthernetEvents(N, name)      MAKE_UNPACKING_MACRO(EthernetEvents, N, name)
-#define _A_T_IPEvents(N, name)            MAKE_UNPACKING_MACRO(IPEvents, N, name)
+#define _A_T_EthernetIpEvents(N, name)    MAKE_UNPACKING_MACRO(EthernetIpEvents, N, name)
 #define _A_T_MbedTLSSocket(N, name)       MAKE_UNPACKING_MACRO(MbedTLSSocket, N, name)
 #define _A_T_BaseMbedTLSSocket(N, name)   MAKE_UNPACKING_MACRO(BaseMbedTLSSocket, N, name)
 #define _A_T_SslSession(N, name)          MAKE_UNPACKING_MACRO(SslSession, N, name)

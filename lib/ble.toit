@@ -34,10 +34,10 @@ class Address:
   stringify -> string:
     buffer := bytes.Buffer
     6.repeat:
-      if it > 0: buffer.put_byte ':'
+      if it > 0: buffer.write_byte ':'
       byte := raw_[1 + it]
-      buffer.put_byte HEX_TABLE_[byte >> 4]
-      buffer.put_byte HEX_TABLE_[byte & 0xf]
+      buffer.write_byte HEX_TABLE_[byte >> 4]
+      buffer.write_byte HEX_TABLE_[byte & 0xf]
     return buffer.to_string
 
   /**

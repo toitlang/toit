@@ -293,7 +293,7 @@ class Writer implements protobuf.Writer:
 
   send_message_header_:
     if not message_header_written_:
-      out_.put_byte TPACK_VERSION_1
+      out_.write_byte TPACK_VERSION_1
       message_header_written_ = true
 
   write_field_type_ type/int as_field/int? -> int:
@@ -340,7 +340,7 @@ class Writer implements protobuf.Writer:
       if can_skip and not value:
         return
       write_field_type_ TPACK_FIELD_TYPE_MASKINT_ as_field
-      out_.put_byte (value ? 1 : 0)
+      out_.write_byte (value ? 1 : 0)
     else if protobuf_type == protobuf.PROTOBUF_TYPE_STRING:
       if can_skip and value == "":
         return

@@ -42,7 +42,7 @@ test_notify:
 
   resource.close
   client.close
-  service.wait
+  service.uninstall --wait
 
 // ------------------------------------------------------------------
 

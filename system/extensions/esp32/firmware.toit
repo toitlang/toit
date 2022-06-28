@@ -22,6 +22,14 @@ class FirmwareServiceDefinition extends ServiceDefinition implements FirmwareSer
     provides FirmwareService.UUID FirmwareService.MAJOR FirmwareService.MINOR
 
   handle pid/int client/int index/int arguments/any -> any:
+    if index == FirmwareService.IS_VALIDATION_PENDING_INDEX:
+      return is_validation_pending
+    if index == FirmwareService.IS_ROLLBACK_POSSIBLE_INDEX:
+      return is_rollback_possible
+    if index == FirmwareService.VALIDATE_INDEX:
+      return validate
+    if index == FirmwareService.ROLLBACK_INDEX:
+      return rollback
     if index == FirmwareService.FIRMWARE_WRITER_OPEN_INDEX:
       return firmware_writer_open client arguments[0] arguments[1]
     if index == FirmwareService.FIRMWARE_WRITER_WRITE_INDEX:
@@ -31,6 +39,18 @@ class FirmwareServiceDefinition extends ServiceDefinition implements FirmwareSer
       writer ::= (resource client arguments[0]) as FirmwareWriter
       return firmware_writer_commit writer arguments[1]
     unreachable
+
+  is_validation_pending -> bool:
+    return (ota_state_ & OTA_STATE_VALIDATION_PENDING_) != 0
+
+  is_rollback_possible -> bool:
+    return (ota_state_ & OTA_STATE_ROLLBACK_POSSIBLE_) != 0
+
+  validate -> bool:
+    return ota_validate_
+
+  rollback -> none:
+    ota_rollback_
 
   firmware_writer_open from/int to/int -> int:
     unreachable  // TODO(kasper): Nasty.
@@ -93,3 +113,15 @@ ota_write_ bytes/ByteArray -> int:
 /// Also clears the current OTA process so a new one can start.
 ota_end_ size/int checksum/ByteArray? -> none:
   #primitive.esp32.ota_end
+
+OTA_STATE_VALIDATION_PENDING_ /int ::= 1 << 0
+OTA_STATE_ROLLBACK_POSSIBLE_  /int ::= 1 << 1
+
+ota_state_ -> int:
+  #primitive.esp32.ota_state
+
+ota_validate_ -> bool:
+  #primitive.esp32.ota_validate
+
+ota_rollback_ -> none:
+  #primitive.esp32.ota_rollback

@@ -1,0 +1,21 @@
+<sdk>/services/arguments.toit:11:30: warning: Class 'ArgumentParser' is deprecated
+    return commands_[name] = ArgumentParser
+                             ^~~~~~~~~~~~~~
+tests/argument_parser_test.toit:18:13: warning: Class 'ArgumentParser' is deprecated
+  parser := ArgumentParser
+            ^~~~~~~~~~~~~~
+tests/argument_parser_test.toit:25:13: warning: Class 'ArgumentParser' is deprecated
+  parser := ArgumentParser
+            ^~~~~~~~~~~~~~
+tests/argument_parser_test.toit:55:13: warning: Class 'ArgumentParser' is deprecated
+  parser := ArgumentParser
+            ^~~~~~~~~~~~~~
+tests/argument_parser_test.toit:101:13: warning: Class 'ArgumentParser' is deprecated
+  parser := ArgumentParser
+            ^~~~~~~~~~~~~~
+tests/argument_parser_test.toit:166:13: warning: Class 'ArgumentParser' is deprecated
+  parser := ArgumentParser
+            ^~~~~~~~~~~~~~
+tests/argument_parser_test.toit:201:13: warning: Class 'ArgumentParser' is deprecated
+  parser := ArgumentParser
+            ^~~~~~~~~~~~~~

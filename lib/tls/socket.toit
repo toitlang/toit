@@ -13,7 +13,7 @@ import .certificate
 TLS Socket implementation that can upgrade a TCP socket to a secure TLS socket.
 */
 class Socket implements tcp.Socket:
-  TLS_HEADER_SIZE_ ::= 29
+  static TLS_HEADER_SIZE_ ::= 29
 
   socket_/tcp.Socket
   session_/Session

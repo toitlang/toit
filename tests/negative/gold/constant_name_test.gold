@@ -1,0 +1,10 @@
+tests/negative/constant_name_test.toit:10:3: error: Can't use '_' as name for a field
+  _ ::= 42
+  ^
+tests/negative/constant_name_test.toit:9:3: warning: Final field with constant-like name: 'CONST'. Missing 'static'?
+  CONST ::= 499
+  ^~~~~
+tests/negative/constant_name_test.toit:11:3: warning: Final field with constant-like name: 'A_B'. Missing 'static'?
+  A_B ::= 43
+  ^~~
+Compilation failed.

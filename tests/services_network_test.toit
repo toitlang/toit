@@ -6,20 +6,16 @@ import net
 import net.impl
 import net.tcp
 import writer
-
-import system.services show ServiceDefinition ServiceResource
 import expect
 
-import system.api.network
-  show
-    NetworkService
-    NetworkServiceClient
-    ProxyingNetworkServiceDefinition
+import system.services show ServiceDefinition ServiceResource
+import system.api.network show NetworkService NetworkServiceClient
+import system.base.network show ProxyingNetworkServiceDefinition
 
 service_/NetworkServiceClient? ::= (FakeNetworkServiceClient --no-open).open
 
 main:
-  service := FakeNetworkServiceDefinition net.open
+  service := FakeNetworkServiceDefinition
   service.install
   test_address service
   test_resolve service
@@ -97,12 +93,18 @@ class FakeNetworkServiceDefinition extends ProxyingNetworkServiceDefinition:
   address_/ByteArray? := null
   resolve_/List? := null
 
-  constructor network/net.Interface:
-    super "system/network/test" network --major=1 --minor=2  // Major and minor versions do not matter here.
+  constructor:
+    super "system/network/test" --major=1 --minor=2  // Major and minor versions do not matter here.
     provides FakeNetworkService.UUID FakeNetworkService.MAJOR FakeNetworkService.MINOR
 
   proxy_mask -> int:
     return proxy_mask_
+
+  open_network -> net.Interface:
+    return net.open
+
+  close_network network/net.Interface -> none:
+    network.close
 
   update_proxy_mask_ mask/int add/bool:
     if add: proxy_mask_ |= mask

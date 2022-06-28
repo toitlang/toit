@@ -17,6 +17,8 @@ open -> Interface:
 
 interface Interface implements udp.Interface tcp.Interface:
   address -> IpAddress
+  is_closed -> bool
+
   resolve host/string -> List
 
   udp_open -> udp.Socket
@@ -26,4 +28,4 @@ interface Interface implements udp.Interface tcp.Interface:
   tcp_connect address/SocketAddress -> tcp.Socket
   tcp_listen port/int -> tcp.ServerSocket
 
-  close
+  close -> none

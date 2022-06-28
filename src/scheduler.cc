@@ -27,6 +27,11 @@
 #include  <signal.h>
 #include  <stdlib.h>
 
+#ifdef TOIT_FREERTOS
+#include <freertos/FreeRTOS.h>
+#endif  // TOIT_FREERTOS
+
+
 namespace toit {
 
 void SchedulerThread::entry() {
@@ -514,8 +519,24 @@ Object* Scheduler::process_stats(Array* array, int group_id, int process_id, Pro
   Process* subject_process = group->lookup(process_id);
   if (subject_process == null) return calling_process->program()->null_object();  // Process not found.
   uword length = array->length();
+#ifdef TOIT_FREERTOS
+  multi_heap_info_t info;
+  heap_caps_get_info(&info, MALLOC_CAP_8BIT);
+#else
+  struct multi_heap_info_t {
+      uword total_free_bytes;
+      uword largest_free_block;
+  } info;
+  info.total_free_bytes = Smi::MAX_SMI_VALUE;
+  info.largest_free_block = Smi::MAX_SMI_VALUE;
+#endif
+  uword max = Smi::MAX_SMI_VALUE;
   switch (length) {
     default:
+    case 9:
+      array->at_put(8, Smi::from(Utils::min(max, info.largest_free_block)));
+    case 8:
+      array->at_put(7, Smi::from(Utils::min(max, info.total_free_bytes)));
     case 7:
       array->at_put(6, Smi::from(process_id));
     case 6:

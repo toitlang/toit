@@ -11,7 +11,8 @@ import .modules.dns as dns
 import .modules.tcp
 import .modules.udp
 
-import system.api.network show NetworkService NetworkServiceClient NetworkResource
+import system.api.network show NetworkService NetworkServiceClient
+import system.base.network show NetworkResourceProxy
 
 service_/NetworkServiceClient? ::= (NetworkServiceClient --no-open).open
 
@@ -20,8 +21,7 @@ open -> net.Interface:
   if not service: throw "Network unavailable"
   return SystemInterface_ service service.connect
 
-// TODO(kasper): Find a way to listen for network closing.
-class SystemInterface_ extends NetworkResource implements net.Interface:
+class SystemInterface_ extends NetworkResourceProxy implements net.Interface:
   // The proxy mask contains bits for all the operations that must be
   // proxied through the service client. The service definition tells the
   // client about the bits on connect.
@@ -33,7 +33,7 @@ class SystemInterface_ extends NetworkResource implements net.Interface:
     super service handle
 
   address -> net.IpAddress:
-    if not handle_: throw "Network closed"
+    if is_closed: throw "Network closed"
     if (proxy_mask_ & NetworkService.PROXY_ADDRESS) != 0: return super
     socket := Socket
     try:
@@ -45,13 +45,17 @@ class SystemInterface_ extends NetworkResource implements net.Interface:
     finally:
       socket.close
 
+  on_notified_ notification/any -> none:
+    if notification == NetworkService.NOTIFY_CLOSED:
+      task:: close
+
   resolve host/string -> List:
-    if not handle_: throw "Network closed"
+    if is_closed: throw "Network closed"
     if (proxy_mask_ & NetworkService.PROXY_RESOLVE) != 0: return super host
     return [dns.dns_lookup host]
 
   udp_open --port/int?=null -> udp.Socket:
-    if not handle_: throw "Network closed"
+    if is_closed: throw "Network closed"
     if (proxy_mask_ & NetworkService.PROXY_UDP) != 0: return super --port=port
     return Socket "0.0.0.0" (port ? port : 0)
 
@@ -61,14 +65,14 @@ class SystemInterface_ extends NetworkResource implements net.Interface:
         net.SocketAddress ips[0] port
 
   tcp_connect address/net.SocketAddress -> tcp.Socket:
-    if not handle_: throw "Network closed"
+    if is_closed: throw "Network closed"
     if (proxy_mask_ & NetworkService.PROXY_TCP) != 0: return super address
     result := TcpSocket
     result.connect address.ip.stringify address.port
     return result
 
   tcp_listen port/int -> tcp.ServerSocket:
-    if not handle_: throw "Network closed"
+    if is_closed: throw "Network closed"
     if (proxy_mask_ & NetworkService.PROXY_TCP) != 0: return super port
     result := TcpServerSocket
     result.listen "0.0.0.0" port

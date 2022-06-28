@@ -177,7 +177,8 @@ class Session:
   Closes the TLS session and releases any resources associated with it.
   */
   close:
-    if tls_:
+    if not tls_: return
+    critical_do:
       tls_close_ tls_
       tls_ = null
       group_.unuse

@@ -72,6 +72,11 @@ namespace toit {
 
 MODULE_IMPLEMENTATION(esp32, MODULE_ESP32)
 
+enum {
+  OTA_STATE_VALIDATION_PENDING = 1 << 0,
+  OTA_STATE_ROLLBACK_POSSIBLE  = 1 << 1,
+};
+
 static const esp_partition_t* ota_partition = null;
 static int ota_size = 0;
 static int ota_written = 0;
@@ -253,6 +258,36 @@ PRIMITIVE(ota_end) {
     OUT_OF_BOUNDS;
   }
   return Smi::zero();
+}
+
+static bool is_validation_pending() {
+  const esp_partition_t* running = esp_ota_get_running_partition();
+  esp_ota_img_states_t ota_state;
+  esp_err_t err = esp_ota_get_state_partition(running, &ota_state);
+  // If we are running from the factory partition esp_ota_get_state_partition fails.
+  return (err == ESP_OK && ota_state == ESP_OTA_IMG_PENDING_VERIFY);
+}
+
+PRIMITIVE(ota_state) {
+  int state = 0;
+  if (esp_ota_check_rollback_is_possible()) state |= OTA_STATE_ROLLBACK_POSSIBLE;
+  if (is_validation_pending()) state |= OTA_STATE_VALIDATION_PENDING;
+  return Smi::from(state);
+}
+
+PRIMITIVE(ota_validate) {
+  if (!is_validation_pending()) return BOOL(false);
+  esp_err_t err = esp_ota_mark_app_valid_cancel_rollback();
+  return BOOL(err == ESP_OK);
+}
+
+PRIMITIVE(ota_rollback) {
+  PRIVILEGED;
+  bool is_rollback_possible = esp_ota_check_rollback_is_possible();
+  if (!is_rollback_possible) PERMISSION_DENIED;
+  esp_err_t err = esp_ota_mark_app_invalid_rollback_and_reboot();
+  ESP_LOGE("Toit", "esp_ota_end esp_ota_mark_app_invalid_rollback_and_reboot (%s)!", esp_err_to_name(err));
+  OTHER_ERROR;
 }
 
 PRIMITIVE(reset_reason) {

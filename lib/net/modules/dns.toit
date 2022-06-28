@@ -27,9 +27,6 @@ Look up a domain name.
 If given a numeric address like 127.0.0.1 it merely parses
   the numbers without a network round trip.
 
-Does not currently cache results, so there is normally a
-  network round trip on every use.
-
 By default the server is "8.8.8.8" which is the Google DNS
   service.
 
@@ -42,10 +39,19 @@ dns_lookup -> net.IpAddress
   q := DnsQuery_ host
   return q.get --server=server --timeout=timeout
 
+INTERNET_CLASS  ::= 1
+
+A_RECORD        ::= 1
+CNAME_RECORD    ::= 5
+
+NO_ERROR        ::= 0
+FORMAT_ERROR    ::= 1
+SERVER_FAILURE  ::= 2
+NAME_ERROR      ::= 3
+NOT_IMPLEMENTED ::= 4
+REFUSED         ::= 5
+
 class DnsQuery_:
-  static A     ::= 1  // A address.
-  static CNAME ::= 5  // Canonical name.
-  static CLASS ::= 1  // The Internet class.
   id/int
   name/string
 
@@ -99,7 +105,7 @@ class DnsQuery_:
           if answer:
             return decode_response_ answer.data server
 
-          retry_timeout = retry_timeout * 2
+          retry_timeout = retry_timeout * 1.5
 
       finally:
         socket.close
@@ -149,8 +155,8 @@ class DnsQuery_:
       query.replace position part
       position += part.size
     query[position++] = 0
-    BIG_ENDIAN.put_uint16 query position     A
-    BIG_ENDIAN.put_uint16 query position + 2 CLASS
+    BIG_ENDIAN.put_uint16 query position     A_RECORD
+    BIG_ENDIAN.put_uint16 query position + 2 INTERNET_CLASS
     assert: position + 4 == query.size
     return query
 
@@ -175,26 +181,26 @@ class DnsQuery_:
     // authoritative.
     if response[2] & ~4 != 0x81: throw (DnsException "Unexpected response: $(%x response[2])")
     error := response[3] & 0xf
-    if error != 0:
+    if error != NO_ERROR:
       detail := "error code $error"
       if 0 <= error < ERROR_MESSAGES_.size: detail = ERROR_MESSAGES_[error]
       throw (DnsException "Server responded: $detail")
     position := 12
     queries := BIG_ENDIAN.uint16 response 4
     if queries != 1: throw (DnsException "Unexpected number of queries in response")
-    q_name := name_ response position: position = it
+    q_name := decode_name response position: position = it
     position += 4
     if not case_compare_ q_name name:
       throw (DnsException "Response name mismatch")
     (BIG_ENDIAN.uint16 response 6).repeat:
-      r_name := name_ response position: position = it
+      r_name := decode_name response position: position = it
 
       type := BIG_ENDIAN.uint16 response position
       position += 2
 
       clas := BIG_ENDIAN.uint16 response position
       position += 2
-      if clas != CLASS: throw (DnsException "Unexpected response class: $clas")
+      if clas != INTERNET_CLASS: throw (DnsException "Unexpected response class: $clas")
 
       ttl := BIG_ENDIAN.int32 response position
       position += 4
@@ -207,7 +213,7 @@ class DnsQuery_:
 
       rd_length := BIG_ENDIAN.uint16 response position
       position += 2
-      if type == A:
+      if type == A_RECORD:
         if rd_length != 4: throw (DnsException "Unexpected IP address length $rd_length")
         if case_compare_ r_name q_name:
           result := net.IpAddress
@@ -217,31 +223,35 @@ class DnsQuery_:
             CACHE_[name] = CacheEntry result ttl name_server
           return result
         // Skip name that does not match.
-      else if type == CNAME:
-        q_name = name_ response position: null
+      else if type == CNAME_RECORD:
+        q_name = decode_name response position: null
       position += rd_length
     throw (DnsException "Response did not contain matching A record")
 
-  name_ packet/ByteArray position/int [position_block]:
-    parts := []
-    parts_ packet position parts position_block
-    return parts.join "."
+/**
+Decodes a name from a DNS (RFC 1035) packet.
+The block is invoked with the index of the next data in the packet.
+*/
+decode_name packet/ByteArray position/int [position_block] -> string:
+  parts := []
+  parts_ packet position parts position_block
+  return parts.join "."
 
-  parts_ packet/ByteArray position/int parts/List [position_block] -> none:
-    while packet[position] != 0:
-      size := packet[position]
-      if size <= 63:
-        position++
-        parts.add
-          packet.to_string position position + size
-        position += size
-      else:
-        if size < 192: throw (DnsException "")
-        pointer := (BIG_ENDIAN.uint16 packet position) & 0x3fff
-        parts_ packet pointer parts: null
-        position_block.call position + 2
-        return
-    position_block.call position + 1
+parts_ packet/ByteArray position/int parts/List [position_block] -> none:
+  while packet[position] != 0:
+    size := packet[position]
+    if size <= 63:
+      position++
+      parts.add
+        packet.to_string position position + size
+      position += size
+    else:
+      if size < 192: throw (DnsException "")
+      pointer := (BIG_ENDIAN.uint16 packet position) & 0x3fff
+      parts_ packet pointer parts: null
+      position_block.call position + 2
+      return
+  position_block.call position + 1
 
 /// Limits the size of the cache to avoid using too much memory.
 trim_cache_ -> none:

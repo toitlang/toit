@@ -1,35 +1,36 @@
+import host.file
 import host.pipe
+import host.arguments
 import reader show BufferedReader
 
 usage:
   print "Usage: echo Backtrace:0x400870c0:0x3ffc9df0 0x4010661d:0x3ffc9e70 0x401143a3:0x3ffc9ea0 | toit.run stacktrace.toit [--disassemble] [--objdump objdump_executable] /path/to/toit.elf"
+  print "or: toit.run stacktrace.toit [--disassemble] [--objdump objdump_executable] --backtrace=\"Backtrace:0x400870c0:0x3ffc9df0 0x4010661d:0x3ffc9e70 0x401143a3:0x3ffc9ea0\" /path/to/toit.elf"
   exit 1
 
 OBJDUMP ::= "xtensa-esp32-elf-objdump"
 
 main args/List:
+  parser := arguments.ArgumentParser
+  parser.describe_rest ["/path/to/toit.elf"]
+  parser.add_flag "disassemble" --short="d"
+  parser.add_option "objdump" --default=OBJDUMP
+  parser.add_option "backtrace" --default="-"
+  parsed := parser.parse args:
+    usage
+    exit 1
   if args.size < 1: usage
-  disassemble := false
-  objdump_exe := OBJDUMP
-  while args.size > 0 and args[0].starts_with "--":
-    if args[0] == "--disassemble":
-      disassemble = true
-      args = args[1..]
-    else if args[0].starts_with "--objdump=":
-      objdump_exe = args[0][10..]
-      args = args[1..]
-    else if args[0] == "--objdump":
-      if args.size < 2: usage
-      objdump_exe = args[1]
-      args = args[2..]
-    else if args[0] == "--":
-      args = args[1..]
-      break
-  if args.size != 1: usage
+  disassemble := parsed["disassemble"]
+  objdump_exe := parsed["objdump"]
   objdump / BufferedReader? := null
+  symbols_only := false
+  elf_file := parsed.rest[0]
+  elf_size := file.size elf_file
   exception := catch:
+    flags := disassemble ? "-dC" : "-tC"
     objdump = BufferedReader
-        pipe.from objdump_exe "-dC" args[0]
+        pipe.from objdump_exe flags elf_file
+    objdump.ensure (min 1000 elf_size) // Read once to see if objdump understands the file.
   if exception:
     throw "$exception: $objdump_exe"
   symbols := []
@@ -37,14 +38,23 @@ main args/List:
   while line := objdump.read_line:
     if line.size < 11: continue
     if line[8] == ' ':
-      // Line format: nnnnnnnn <symbol>:
-      if line[9] != '<': continue
-      if not line.ends_with ">:": continue
-      name := line[10..line.size - 2].copy
       address := int.parse --radix=16 line[0..8]
-      symbol := Symbol address name
-      symbols.add symbol
-    else if line[8] == ':':
+      if disassemble:
+        // Line format: nnnnnnnn <symbol>:
+        if line[9] != '<': continue
+        if not line.ends_with ">:": continue
+        name := line[10..line.size - 2].copy
+        symbol := Symbol address name
+        symbols.add symbol
+      else:
+        // Line format: nnnnnnnn flags   section   	size     <name>
+        tab := line.index_of "\t"
+        if tab == -1: continue
+        name := tab + 10
+        if name >= line.size: continue
+        symbol := Symbol address line[name..]
+        symbols.add symbol
+    else if disassemble and line[8] == ':':
       // Line format: nnnnnnnn:      0898    l32i.n  a9, a8, 0
       8.repeat:
         if not '0' <= line[it] <= '9' and not 'a' <= line[it] <= 'f': continue
@@ -52,14 +62,19 @@ main args/List:
       disassembly_lines[address] = line
 
   backtrace / string? := null
-  error := catch:
-    with_timeout --ms=2000:
-      backtrace = (BufferedReader pipe.stdin).read_line
-  if error == "DEADLINE_EXCEEDED":
-    print "Timed out waiting for stdin"
-    usage
-  if error:
-    throw error
+  if parsed["backtrace"] == "-":
+    error := catch:
+      with_timeout --ms=2000:
+        backtrace = (BufferedReader pipe.stdin).read_line
+    if error == "DEADLINE_EXCEEDED":
+      print "Timed out waiting for stdin"
+      usage
+    if error:
+      throw error
+  else:
+    backtrace = parsed["backtrace"]
+    if not (backtrace.starts_with "Backtrace:"):
+      backtrace = "Backtrace:$backtrace"
 
   /* Sample output without --disassemble:
   0x400870c0: toit::Interpreter::_run() + 0x132c

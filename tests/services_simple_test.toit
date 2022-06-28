@@ -27,7 +27,7 @@ test_logging --separate_process/bool=false:
     spawn:: test_hello
   else:
     test_hello --close
-  service.wait
+  service.uninstall --wait
 
 test_illegal_name:
   service := SimpleServiceDefinition
@@ -80,7 +80,7 @@ test_versions:
   expect.expect_equals 2 client.minor
   expect.expect_equals 5 client.patch
   client.close
-  service.wait
+  service.uninstall --wait
 
 test_uninstall:
   service := SimpleServiceDefinition

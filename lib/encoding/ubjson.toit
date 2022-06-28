@@ -56,38 +56,38 @@ class Encoder:
     return (buffer_ as bytes.Buffer).bytes
 
   encode_map_ map:
-    buffer_.put_byte '{'
-    buffer_.put_byte '#'
+    buffer_.write_byte '{'
+    buffer_.write_byte '#'
     encode_int_ map.size
     map.do: | key value |
       encode_string_inner_ key
       encode_ value
 
   encode_bytes_ bytes:
-    buffer_.put_byte '['
-    buffer_.put_byte '$'
-    buffer_.put_byte 'U'
-    buffer_.put_byte '#'
+    buffer_.write_byte '['
+    buffer_.write_byte '$'
+    buffer_.write_byte 'U'
+    buffer_.write_byte '#'
     encode_int_ bytes.size
     buffer_.write bytes
 
   encode_byte_producer_ bytes:
-    buffer_.put_byte '['
-    buffer_.put_byte '$'
-    buffer_.put_byte 'U'
-    buffer_.put_byte '#'
+    buffer_.write_byte '['
+    buffer_.write_byte '$'
+    buffer_.write_byte 'U'
+    buffer_.write_byte '#'
     encode_int_ bytes.size
-    buffer_.put_producer bytes
+    buffer_.write_producer bytes
 
   encode_list_ list:
-    buffer_.put_byte '['
-    buffer_.put_byte '#'
+    buffer_.write_byte '['
+    buffer_.write_byte '#'
     encode_int_ list.size
     for i := 0; i < list.size; i++:
       encode_ list[i]
 
   encode_string_ str:
-    buffer_.put_byte 'S'
+    buffer_.write_byte 'S'
     encode_string_inner_ str
 
   encode_string_inner_ str:
@@ -95,38 +95,38 @@ class Encoder:
     buffer_.write str
 
   encode_float_ f:
-    buffer_.put_byte 'D'
+    buffer_.write_byte 'D'
     offset := offset_reserved_ 8
     buffer_.put_int64_big_endian offset f.bits
 
   encode_int_ i:
     if 0 <= i <= binary.UINT8_MAX:
-      buffer_.put_byte 'U'
-      buffer_.put_byte i
+      buffer_.write_byte 'U'
+      buffer_.write_byte i
     else if binary.INT8_MIN <= i <= binary.INT8_MAX:
-      buffer_.put_byte 'i'
-      buffer_.put_byte i
+      buffer_.write_byte 'i'
+      buffer_.write_byte i
     else if binary.INT16_MIN <= i <= binary.INT16_MAX:
-      buffer_.put_byte 'I'
+      buffer_.write_byte 'I'
       offset := offset_reserved_ 2
       buffer_.put_int16_big_endian offset i
     else if binary.INT32_MIN <= i <= binary.INT32_MAX:
-      buffer_.put_byte 'l'
+      buffer_.write_byte 'l'
       offset := offset_reserved_ 4
       buffer_.put_int32_big_endian offset i
     else:
-      buffer_.put_byte 'L'
+      buffer_.write_byte 'L'
       offset := offset_reserved_ 8
       buffer_.put_int64_big_endian offset i
 
   encode_true_:
-    buffer_.put_byte 'T'
+    buffer_.write_byte 'T'
 
   encode_false_:
-    buffer_.put_byte 'F'
+    buffer_.write_byte 'F'
 
   encode_null_:
-    buffer_.put_byte 'Z'
+    buffer_.write_byte 'Z'
 
   offset_reserved_ size:
     offset := buffer_.size

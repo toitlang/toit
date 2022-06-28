@@ -158,23 +158,20 @@ class GcMetadata {
                                     singleton_.overflow_bits_bias_);
   }
 
-  static INLINE uint32* bytewise_mark_bits_for(HeapObject* object) {
+  static INLINE uword bytewise_mark_bits_for(HeapObject* object) {
     uword address = reinterpret_cast<uword>(object);
     ASSERT(in_metadata_range(address));
-    uword result = (singleton_.mark_bits_bias_ + (address >> MARK_BITS_SHIFT));
-    return reinterpret_cast<uint32*>(result);
+    return singleton_.mark_bits_bias_ + (address >> MARK_BITS_SHIFT);
   }
 
-  static INLINE uint32* mark_bits_for(HeapObject* object) {
-    uword address = reinterpret_cast<uword>(object);
+  static INLINE uint32* mark_bits_for(uword address) {
     ASSERT(in_metadata_range(address));
     uword result = (singleton_.mark_bits_bias_ + (address >> MARK_BITS_SHIFT)) & ~3;
     return reinterpret_cast<uint32*>(result);
   }
 
-  static INLINE uint32* mark_bits_for(uword address) {
-    ASSERT(in_metadata_range(address));
-    return mark_bits_for(reinterpret_cast<HeapObject*>(address));
+  static INLINE uint32* mark_bits_for(HeapObject* object) {
+    return mark_bits_for(reinterpret_cast<uword>(object));
   }
 
   static INLINE int word_index_in_line(HeapObject* object) {
@@ -239,7 +236,7 @@ class GcMetadata {
   static inline bool is_marked(HeapObject* object) {
     uword address = reinterpret_cast<uword>(object);
     address = (singleton_.mark_bits_bias_ + (address >> MARK_BITS_SHIFT)) & ~3;
-    uint32 mask = 1u << ((reinterpret_cast<uword>(object) >> WORD_SHIFT) & 31);
+    uint32 mask = 1U << ((reinterpret_cast<uword>(object) >> WORD_SHIFT) & 31);
     return (*reinterpret_cast<uint32*>(address) & mask) != 0;
   }
 
@@ -247,7 +244,7 @@ class GcMetadata {
   static INLINE bool mark_grey_if_not_marked(HeapObject* object) {
     uword address = reinterpret_cast<uword>(object);
     address = (singleton_.mark_bits_bias_ + (address >> MARK_BITS_SHIFT)) & ~3;
-    uint32 mask = 1u << ((reinterpret_cast<uword>(object) >> WORD_SHIFT) & 31);
+    uint32 mask = 1U << ((reinterpret_cast<uword>(object) >> WORD_SHIFT) & 31);
     uint32 bits = *reinterpret_cast<uint32*>(address);
     if ((bits & mask) != 0) return true;
     *reinterpret_cast<uint32*>(address) = bits | mask;
@@ -273,7 +270,7 @@ class GcMetadata {
   // stack.
   static inline void mark(HeapObject* object) {
     uint32* bits = mark_bits_for(object);
-    uint32 mask = 1u << ((reinterpret_cast<uword>(object) >> WORD_SHIFT) & 31);
+    uint32 mask = 1U << ((reinterpret_cast<uword>(object) >> WORD_SHIFT) & 31);
     *bits |= mask;
   }
 
@@ -287,13 +284,56 @@ class GcMetadata {
     // It could actually be black already - when we have a mark stack overflow we
     // can find grey objects and mark them black even though they are on the marking
     // stack (they are in the same line as an object that is not on the stack because
-    // of overflow).
+    // of overflow).  Later we pop them off the stack and process them again.
+    // This is rare.
     auto rest_of_object = reinterpret_cast<HeapObject*>(reinterpret_cast<uword>(object) + WORD_SIZE);
     ASSERT(all_mark_bits_are(rest_of_object, size - WORD_SIZE, 0) ||
            all_mark_bits_are(rest_of_object, size - WORD_SIZE, 1));
+    uword size_in_words = size >> WORD_SHIFT;
+#ifdef ALLOW_UNALIGNED_ACCESS
+    uword bits = bytewise_mark_bits_for(object);
+    // We can handle any 25 bits (57 bits on a 64 bit platform) by using an
+    // unaligned word write, but we need to be careful that we don't cause race
+    // conditions by going into the mark bits for the next page which may be
+    // being marked by a different core.  The issue arises when we use a
+    // word-sized bit operation on an unaligned mark bit that corresponds to an
+    // object that is too close to the end of a page (the next page may belong
+    // to a different process).
+    // The boundary check is done on the mark bits rather than the object address.
+    // Each byte has 8 mark bits, each corresponding to a word in the object
+    // space, so we divide by both 8 and the word size (4 or 8).  Then subtract
+    // 1 to make an all-ones mask.
+    uword page_boundary_mask = (TOIT_PAGE_SIZE / BYTE_BIT_SIZE / WORD_SIZE) - 1;
+    // More efficient to mask with this because we can usually use byte compare
+    // instructions.  Therefore we conservatively reduce the size of this mask.
+    // This means we use the byte compare on 64 bit with a page size >= 16k,
+    // and on 32 bit with a page size >= 8k.
+    if (page_boundary_mask > 0xff) page_boundary_mask = 0xff;
+
+    // Assert that the mark bits array is sufficiently aligned that we can do
+    // the end-of-page test on the mark bits instead of the object.
+    uword first_object_on_page = reinterpret_cast<uword>(object) & ~(TOIT_PAGE_SIZE - 1);
+    uword first_mark_bits_on_page = bytewise_mark_bits_for(reinterpret_cast<HeapObject*>(first_object_on_page));
+    USE(first_object_on_page);
+    USE(first_mark_bits_on_page);
+    ASSERT(Utils::round_up(first_mark_bits_on_page, page_boundary_mask + 1) == first_mark_bits_on_page);
+
+    // Limit to 25 words (or 57) since marking 26 bits could span 5 bytes and a
+    // 32 bit write can only set 4 bytes.
+    uword max_fast_word_size = sizeof(word) * 8 - 7;
+    if (size_in_words > max_fast_word_size || (page_boundary_mask & bits) > (page_boundary_mask & (bits + WORD_SIZE))) {
+      slow_mark(object, size);
+    } else {
+      uword mask = 1;
+      mask = (mask << size_in_words) - 1;  // Make zeros followed by 1-25 ones.
+      const int mask_mask = BYTE_BIT_SIZE - 1;  // Get position within one byte of mark bits.
+      int mask_shift = (reinterpret_cast<uword>(object) >> WORD_SHIFT) & mask_mask;
+      mask <<= mask_shift;  // Shift up by 0-7 bits.
+      *reinterpret_cast<uword*>(bits) |= mask;
+    }
+#else
     const int mask_mask = 31;
     int mask_shift = (reinterpret_cast<uword>(object) >> WORD_SHIFT) & mask_mask;
-    uword size_in_words = size >> WORD_SHIFT;
     // Jump to the slow case routine to handle crossing an int32_t boundary.
     // This can happen even for small objects if they cross an int32_t boundary.
     if (mask_shift + size_in_words > 32) {
@@ -304,13 +344,14 @@ class GcMetadata {
       uint64 mask = 1;
       mask = ((mask << size_in_words) - 1);
 #else
-      uint32 mask = size_in_words == 32 ? 0xffffffff : ((1u << size_in_words) - 1);
-#endif
+      uint32 mask = size_in_words == 32 ? 0xffffffff : ((1U << size_in_words) - 1);
+#endif  // BUILD_64
       mask <<= mask_shift;
 
       uint32* bits = mark_bits_for(object);
       *bits |= mask;
     }
+#endif  // ALLOW_UNALIGNED_ACCESS
     // It's black - all bits are marked.
     ASSERT(all_mark_bits_are(object, size, 1));
   }
@@ -328,7 +369,7 @@ class GcMetadata {
   static INLINE uword get_destination(HeapObject* pre_compaction) {
     uword word_position =
         (reinterpret_cast<uword>(pre_compaction) >> WORD_SHIFT) & 31;
-    uint32 mask = ~(0xffffffffu << word_position);
+    uint32 mask = ~(0xffffffff << word_position);
     uint32 bits = *mark_bits_for(pre_compaction) & mask;
     uword base = *cumulative_mark_bits_for(pre_compaction);
     return base + (Utils::popcount(bits) << WORD_SHIFT);

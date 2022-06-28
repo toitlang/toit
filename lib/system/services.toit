@@ -111,13 +111,12 @@ abstract class ServiceDefinition:
   _versions_/List ::= []
   _manager_/ServiceManager_? := null
 
-  _clients_/Set ::= {}     // Set<int>
+  _clients_/Set ::= {}  // Set<int>
+  _clients_closed_/int := 0
+  _clients_closed_signal_ ::= monitor.Signal
+
   _resources_/Map ::= {:}  // Map<int, Map<int, Object>>
   _resource_handle_next_/int := ?
-
-  // TODO(kasper): Consider what happens if the same definition is installed
-  // after being uninstalled. Do we need to use an extra latch for that?
-  _uninstalled_/monitor.Latch ::= monitor.Latch
 
   constructor .name --major/int --minor/int --patch/int=0:
     _version_ = [major, minor, patch]
@@ -144,9 +143,13 @@ abstract class ServiceDefinition:
   install -> none:
     if _manager_: throw "Already installed"
     _manager_ = ServiceManager_.instance
+    _clients_closed_ = 0
     _uuids_.do: _manager_.listen it this
 
-  uninstall -> none:
+  uninstall --wait/bool=false -> none:
+    if wait:
+      _clients_closed_signal_.wait:
+        _clients_closed_ > 0 and _clients_.is_empty
     if not _manager_: return
     _clients_.do: _manager_.close it
     if _manager_: _uninstall_
@@ -154,8 +157,10 @@ abstract class ServiceDefinition:
   resource client/int handle/int -> ServiceResource:
     return _find_resource_ client handle
 
-  wait -> none:
-    _uninstalled_.get
+  resources_do [block] -> none:
+    _resources_.do: | client/int resources/Map |
+      resources.do: | handle/int resource/ServiceResource |
+        block.call resource client
 
   _open_ client/int -> List:
     _clients_.add client
@@ -163,15 +168,20 @@ abstract class ServiceDefinition:
     return [ name, _version_, client ]
 
   _close_ client/int -> none:
-    _clients_.remove client
     resources ::= _resources_.get client
     if resources:
       // Iterate over a copy of the values, so we can remove
       // entries from the map when closing resources.
       resources.values.do: | resource/ServiceResource |
         catch --trace: resource.close
+    // Unregister the client and notify all waiters that we've
+    // closed a client. This unblocks any tasks waiting to uninstall
+    // this service.
+    _clients_.remove client
+    _clients_closed_++
+    _clients_closed_signal_.raise
+    // Finally, let the service know that the client is now closed.
     catch --trace: on_closed client
-    if _clients_.is_empty: _uninstall_
 
   _register_resource_ client/int resource/ServiceResource notifiable/bool -> int:
     handle ::= _new_resource_handle_ notifiable
@@ -210,7 +220,6 @@ abstract class ServiceDefinition:
     if not _resources_.is_empty: throw "Leaked $_resources_"
     _uuids_.do: _manager_.unlisten it
     _manager_ = null
-    _uninstalled_.set 0
 
 abstract class ServiceResource implements rpc.RpcSerializable:
   _service_/ServiceDefinition? := ?
@@ -252,6 +261,9 @@ abstract class ServiceResourceProxy:
     add_finalizer this:: close
     if _handle_ & 1 == 1:
       ServiceResourceProxyManager_.instance.register client_.id _handle_ this
+
+  is_closed -> bool:
+    return _handle_ == null
 
   handle_ -> int:
     return _handle_
@@ -329,9 +341,9 @@ class ServiceManager_ implements SystemMessageHandler_:
       service.handle pid client arguments[1] arguments[2]
     broker_.register_procedure RPC_SERVICES_CLOSE_RESOURCE_:: | arguments |
       client/int ::= arguments[0]
-      service ::= services_by_client_[client]
-      resource/ServiceResource? := service._find_resource_ client arguments[1]
-      if resource: resource.close
+      services_by_client_.get client --if_present=: | service/ServiceDefinition |
+        resource/ServiceResource? := service._find_resource_ client arguments[1]
+        if resource: resource.close
     broker_.install
 
   listen uuid/string service/ServiceDefinition -> none:
