@@ -37,7 +37,15 @@ class Writer:
     size := to - from
     while from < to:
       from += writer_.write data[from..to]
-      if from != to: yield
+      if from != to:
+        yield
+        while data is string and from != to and data[from] == null:  // Not on a character boundary.
+          // Can't slice here, would cut up UTF-8 string in an illegal way.
+          cut_point := from + 1
+          while cut_point != to and data[cut_point] == null:
+            cut_point++
+          snip := data.to_byte_array from cut_point
+          from += writer_.write snip
     return size
 
   /**
