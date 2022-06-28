@@ -14,7 +14,7 @@ combine_and_replace lines replacement_index replacement_line:
       builder.write replacement_line
     else:
       builder.write lines[i]
-    builder.put_byte '\n'
+    builder.write_byte '\n'
   return builder.bytes.to_string
 
 class Location:
