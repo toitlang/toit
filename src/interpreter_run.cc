@@ -87,9 +87,7 @@ Method Program::find_method(Object* receiver, int offset) {
 
 // OPCODE_TRACE is only called from within Interpreter::run which gives access to:
 //   uint8* bcp;
-//   uword index;
-#define OPCODE_TRACE()                                         \
-  if (_is_profiler_active) profile_increment(bcp);             \
+#define OPCODE_TRACE() \
   if (Flags::trace) trace(bcp);
 
 // Dispatching helper macros.

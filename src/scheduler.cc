@@ -145,7 +145,6 @@ Scheduler::ExitState Scheduler::launch_program(Locker& locker, Process* process)
   add_process(locker, process);
 
   int64 next_tick_time = OS::get_monotonic_time() + TICK_PERIOD_US;
-
   while (_num_processes > 0 && _num_threads > 0) {
     int64 time = OS::get_monotonic_time();
     if (time >= next_tick_time) {
@@ -153,9 +152,8 @@ Scheduler::ExitState Scheduler::launch_program(Locker& locker, Process* process)
       tick(locker);
     }
     ASSERT(time < next_tick_time);
-    int delay_ms = 1 + ((next_tick_time - time - 1) / 1000); // Ceiling division.
-
-    OS::wait(_has_threads, delay_ms);
+    int64 delay_us = next_tick_time - time;
+    OS::wait_us(_has_threads, delay_us);
   }
 
   if (!has_exit_reason()) {
@@ -435,8 +433,8 @@ void Scheduler::gc(Process* process, bool malloc_failed, bool try_hard) {
       // timing out and not succeeding.
       int64 deadline = start + 1000000;  // Wait for up to 1 second.
       while (_gc_waiting_for_preemption > 0) {
-        int64 wait_ms = Utils::max(1LL, (deadline - OS::get_monotonic_time()) / 1000);
-        if (!OS::wait(_gc_condition, wait_ms)) {
+        int64 wait_us = Utils::max(1LL, deadline - OS::get_monotonic_time());
+        if (!OS::wait_us(_gc_condition, wait_us)) {
 #ifdef TOIT_GC_LOGGING
           printf("[gc @ %p%s | timed out waiting for %d processes to stop]\n",
               process, VM::current()->scheduler()->is_boot_process(process) ? "*" : " ",
@@ -597,6 +595,7 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
     } else if (signals & Process::PREEMPT) {
       result = Interpreter::Result(Interpreter::Result::PREEMPTED);
       process->clear_signal(Process::PREEMPT);
+      // TODO(kasper): Check for active profiler.
     } else if (signals & Process::WATCHDOG) {
       process->clear_signal(Process::WATCHDOG);
     } else {

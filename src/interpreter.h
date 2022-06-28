@@ -132,7 +132,6 @@ class Interpreter {
   Method lookup_entry();
 
   void profile_register_method(Method method);
-  void profile_increment(uint8* bcp);
   void set_profiler_state();
 
   enum OverflowState {

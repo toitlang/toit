@@ -59,12 +59,6 @@ void Interpreter::profile_register_method(Method method) {
   if (profiler != null) profiler->register_method(absolute_bci);
 }
 
-void Interpreter::profile_increment(uint8* bcp) {
-  int absolute_bci = process()->program()->absolute_bci_from_bcp(bcp);
-  Profiler* profiler = process()->profiler();
-  if (profiler != null) profiler->increment(absolute_bci);
-}
-
 Method Interpreter::lookup_entry() {
   Method result = _process->entry();
   if (!result.is_valid()) FATAL("Cannot locate entry method for interpreter");
