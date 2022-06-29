@@ -108,12 +108,28 @@ jobs:
           key: ${{ runner.os }}-ccache-${{ github.sha }}
           restore-keys: ${{ runner.os }}-ccache-
 
+      # Cache deb files.
+      - name: Apt Cache
+        if: runner.os == 'Linux'
+        uses: actions/cache@v2
+        with:
+          path: /var/cache/apt-cacher-ng
+          key: ${{ runner.os }}-apt-${{ github.sha }}
+          restore-keys: ${{ runner.os }}-apt
+
+      - name: Install apt-cacher-ng
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get -q update
+          sudo apt-get -q install apt-cacher-ng -y
+          echo "Acquire::http::Proxy \"http://localhost:3142\";" | sudo tee /etc/apt/apt.conf.d/00proxy
+
       # Fetch the dependencies. Different for each platform.
       - name: Install dependencies - Linux
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get update
-          sudo apt-get install ninja-build ccache gcc-multilib g++-multilib
+          sudo apt-get -q update
+          sudo apt-get -q install ninja-build ccache gcc-multilib g++-multilib
           ninja --version
           cmake --version
           gcc --version
