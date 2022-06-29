@@ -327,7 +327,7 @@ class Profile extends Mirror:
     return result
 
   stringify -> string:
-    return "Profile of $title ($total bytecodes executed, cutoff $(cutoff.to_float/10)%):\n$table"
+    return "Profile of $title ($total ticks, cutoff $(cutoff.to_float/10)%):\n$table"
 
 class HistogramEntry:
   class_name /string
