@@ -41,15 +41,14 @@ class Stack extends Mirror:
 
   stringify -> string:
     if frames.is_empty: return "the empty stack"
-    result := ""
+    result := []
     previous_index := -1
     frames.do:
-      if not result.is_empty: result += "\n"
-      if it.index != previous_index + 1: result += "...\n"
+      if it.index != previous_index + 1: result.add "..."
+      if it.is_user_boundary: return result.join "\n"
       previous_index = it.index
-      if it.is_user_boundary: return result
-      result += it.stringify
-    return result
+      result.add it.stringify
+    return result.join "\n"
 
 
 class Frame extends Mirror:
@@ -113,9 +112,8 @@ class Array extends Mirror:
 
   stringify -> string:
     if size == content.size: return "$content"
-    result := "#$(size)["
-    content.do: result += "$it, "
-    return result + " ...]"
+    elements := content.join ", "
+    return "List #$(size)[$elements, ...]"
 
 // We use MList to avoid name collision with List.
 class MList extends Mirror:
@@ -130,9 +128,8 @@ class MList extends Mirror:
 
   stringify -> string:
     if size == content.size: return "List $content"
-    result := "List #$(size)["
-    content.do: result += "$it, "
-    return result + " ...]"
+    elements := content.join ", "
+    return "List #$(size)[$elements, ...]"
 
 
 class Error extends Mirror:
@@ -298,7 +295,7 @@ class Record:
 
   stringify program total/int -> string:
     percentage ::= (count * 100).to_float/total
-    return "$(%5.1f percentage)% $(%-20s method.stringify program)\n"
+    return "$(%5.1f percentage)% $(%-20s method.stringify program)"
 
 class Profile extends Mirror:
   static tag ::= 'P'
@@ -322,9 +319,8 @@ class Profile extends Mirror:
     super json program
 
   table:
-    result := ""
-    entries.do: result += it.stringify program total
-    return result
+    result := entries.map: it.stringify program total
+    return result.join "\n"
 
   stringify -> string:
     return "Profile of $title ($total bytecodes executed, cutoff $(cutoff.to_float/10)%):\n$table"
