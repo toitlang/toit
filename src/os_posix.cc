@@ -95,10 +95,7 @@ class ConditionVariable {
   }
 
   bool wait_us(int64 us) {
-    if (us <= 0LL) {
-      printf("[waiting for less than 0 (%lld)]\n", us);
-      return false;
-    }
+    if (us <= 0LL) return false;
 
     // TODO: We really should use monotonic time here.
     struct timespec deadline = { 0, };

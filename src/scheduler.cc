@@ -615,12 +615,14 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
     case Interpreter::Result::PREEMPTED: {
       Profiler* profiler = process->profiler();
       Task* task = process->task();
-      if (profiler && task && preemption_method_header_bcp && profiler->should_profile_task(task->id())) {
+      if (profiler && task && profiler->should_profile_task(task->id())) {
         Stack* stack = task->stack();
         if (stack) {
           int bci = stack->absolute_bci_at_preemption(process->program());
-          if (bci >= 0) {
-            profiler->register_method(process->program()->absolute_bci_from_bcp(preemption_method_header_bcp));
+          ASSERT(preemption_method_header_bcp);
+          if (bci >= 0 && preemption_method_header_bcp) {
+            int method = process->program()->absolute_bci_from_bcp(preemption_method_header_bcp);
+            profiler->register_method(method);
             profiler->increment(bci);
           }
         }
