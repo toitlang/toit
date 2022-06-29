@@ -120,16 +120,16 @@ jobs:
       - name: Install apt-cacher-ng
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get -q update
-          sudo apt-get -q install apt-cacher-ng -y
+          sudo apt-get update -q
+          sudo apt-get install -q apt-cacher-ng
           echo "Acquire::http::Proxy \"http://localhost:3142\";" | sudo tee /etc/apt/apt.conf.d/00proxy
 
       # Fetch the dependencies. Different for each platform.
       - name: Install dependencies - Linux
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get -q update
-          sudo apt-get -q install ninja-build ccache gcc-multilib g++-multilib
+          sudo apt-get update -q
+          sudo apt-get install -q ninja-build ccache gcc-multilib g++-multilib
           ninja --version
           cmake --version
           gcc --version
