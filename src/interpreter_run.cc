@@ -1273,7 +1273,6 @@ Interpreter::Result Interpreter::run() {
         FATAL("Cannot handle non-numeric deep sleep argument");
       }
       static_assert(FRAME_SIZE == 2, "Unexpected frame size");
-      PUSH(Smi::from(0));  // <----
       PUSH(reinterpret_cast<Object*>(bcp + HALT_LENGTH));
       PUSH(program->frame_marker());
       store_stack(sp);
