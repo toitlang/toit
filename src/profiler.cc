@@ -52,7 +52,7 @@ void Profiler::stop() {
 
 void Profiler::print() {
   printf("Profile:\n");
-  for (int index = 0; index < table_size; index++) {
+  for (int index = 1; index < table_size; index++) {
     int method_id = offset_table[index];
     int64 count = counter_table[index];
     if (count > 0) printf("  %5d:%8lld\n", method_id, static_cast<long long>(count));
@@ -62,13 +62,13 @@ void Profiler::print() {
 void Profiler::encode_on(ProgramOrientedEncoder* encoder, String* title, int cutoff) {
   // Compute total number of counts.
   int64 total_count = 0;
-  for (int index = 0; index < table_size; index++) {
+  for (int index = 1; index < table_size; index++) {
     total_count += counter_table[index];
   }
   // Compute number of reported lines based on cutoff.
   const int64 cutoff_count = (int64) (((double) total_count * cutoff) / 1000.0);
   int real_entries = 0;
-  for (int index = 0; index < table_size; index++) {
+  for (int index = 1; index < table_size; index++) {
     if (counter_table[index] > cutoff_count) real_entries++;
   }
   // Encode the report.
@@ -76,7 +76,7 @@ void Profiler::encode_on(ProgramOrientedEncoder* encoder, String* title, int cut
   encoder->encode(title);
   encoder->write_int(cutoff);
   encoder->write_int(total_count);
-  for (int index = 0; index < table_size; index++) {
+  for (int index = 1; index < table_size; index++) {
     if (counter_table[index] > cutoff_count) {
       int method_id = offset_table[index];
       encoder->write_int(method_id);

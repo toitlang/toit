@@ -1077,6 +1077,8 @@ class Method {
   uint8* bcp_from_bci(int bci) const { return &_bytes[ENTRY_OFFSET + bci]; }
   uint8* header_bcp() const { return _bytes; }
 
+  static uint8* header_from_entry(uint8* entry) { return entry - ENTRY_OFFSET; }
+
  private: // Friend access for ProgramBuilder.
   void _initialize_block(int arity, List<uint8> bytecodes, int max_height) {
     _initialize(BLOCK, 0, arity, bytecodes, max_height);

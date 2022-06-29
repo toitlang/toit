@@ -566,6 +566,7 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
   ProcessRunner* runner = process->runner();
   bool interpreted = (runner == null);
   Interpreter::Result result(Interpreter::Result::PREEMPTED);
+  uint8* preemption_method_header_bcp = null;
   if (interpreted) {
     if (process->profiler() && process->profiler()->is_active()) {
       notify_profiler(locker, 1);
@@ -578,6 +579,7 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
       Unlocker unlock(locker);
       result = interpreter->run();
     }
+    preemption_method_header_bcp = interpreter->preemption_method_header_bcp();
     interpreter->deactivate();
 
     if (process->profiler() && process->profiler()->is_active()) {
@@ -613,11 +615,14 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
     case Interpreter::Result::PREEMPTED: {
       Profiler* profiler = process->profiler();
       Task* task = process->task();
-      if (profiler && task && profiler->should_profile_task(task->id())) {
+      if (profiler && task && preemption_method_header_bcp && profiler->should_profile_task(task->id())) {
         Stack* stack = task->stack();
         if (stack) {
           int bci = stack->absolute_bci_at_preemption(process->program());
-          if (bci >= 0) profiler->increment(bci);
+          if (bci >= 0) {
+            profiler->register_method(process->program()->absolute_bci_from_bcp(preemption_method_header_bcp));
+            profiler->increment(bci);
+          }
         }
       }
       wait_for_any_gc_to_complete(locker, process, Process::IDLE);
