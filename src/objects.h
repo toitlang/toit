@@ -683,7 +683,7 @@ class Stack : public HeapObject {
   int top() { return _word_at(TOP_OFFSET); }
   int try_top() { return _word_at(TRY_TOP_OFFSET); }
 
-  int bci_at_preemption(Program* program);
+  int absolute_bci_at_preemption(Program* program);
 
   void transfer_to_interpreter(Interpreter* interpreter);
   void transfer_from_interpreter(Interpreter* interpreter);

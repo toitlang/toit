@@ -219,7 +219,7 @@ void Array::roots_do(RootCallback* cb) {
   cb->do_roots(_root_at(_offset_from(0)), length());
 }
 
-int Stack::bci_at_preemption(Program* program) {
+int Stack::absolute_bci_at_preemption(Program* program) {
   // Check that the stack has both words.
   if (_stack_sp_addr() + 1 >= _stack_base_addr()) return -1;
   // Check that the frame marker is correct.

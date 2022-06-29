@@ -201,9 +201,13 @@ class Scheduler {
   static const int TICK_PERIOD_PROFILING_US = 500;       // 0.5 ms.
 #endif
 
-  // Called by the launch thread, to signal that time has passed.
+  // Called by the launch thread to signal that time has passed.
   // The tick is used to drive process preemption.
-  void tick(Locker& locker);
+  void tick(Locker& locker, int64 now);
+  void tick_schedule(Locker& locker, int64 now, bool reschedule);
+
+  // Get the time for the next tick for process preemption.
+  int64 tick_next() const { return _next_tick; }
 
   Mutex* _mutex;
   ConditionVariable* _has_processes;
@@ -222,6 +226,7 @@ class Scheduler {
   int _num_processes;
   int _next_group_id;
   int _next_process_id;
+  int64 _next_tick = 0;
   ProcessListFromScheduler _ready_processes;
 
   int _num_threads;

@@ -144,18 +144,14 @@ Scheduler::ExitState Scheduler::launch_program(Locker& locker, Process* process)
   _boot_process = process;
   add_process(locker, process);
 
-  int64 last_time = OS::get_monotonic_time();
+  tick_schedule(locker, OS::get_monotonic_time(), true);
   while (_num_processes > 0 && _num_threads > 0) {
     int64 time = OS::get_monotonic_time();
-    int period_us = (_num_profiled_processes > 0)
-        ? TICK_PERIOD_PROFILING_US
-        : TICK_PERIOD_US;
-    int64 next_time = last_time + period_us;
-    if (time >= next_time) {
-      last_time = time;
-      tick(locker);
+    int64 next = tick_next();
+    if (time >= next) {
+      tick(locker, time);
     } else {
-      int64 delay_us = next_time - time;
+      int64 delay_us = next - time;
       OS::wait_us(_has_threads, delay_us);
     }
   }
@@ -606,15 +602,6 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
     } else if (signals & Process::PREEMPT) {
       result = Interpreter::Result(Interpreter::Result::PREEMPTED);
       process->clear_signal(Process::PREEMPT);
-      Profiler* profiler = process->profiler();
-      Task* task = process->task();
-      if (profiler && task && profiler->should_profile_task(task->id())) {
-        Stack* stack = task->stack();
-        if (stack) {
-          int bci = stack->bci_at_preemption(process->program());
-          if (bci >= 0) profiler->increment(bci);
-        }
-      }
     } else if (signals & Process::WATCHDOG) {
       process->clear_signal(Process::WATCHDOG);
     } else {
@@ -623,10 +610,20 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
   }
 
   switch (result.state()) {
-    case Interpreter::Result::PREEMPTED:
+    case Interpreter::Result::PREEMPTED: {
+      Profiler* profiler = process->profiler();
+      Task* task = process->task();
+      if (profiler && task && profiler->should_profile_task(task->id())) {
+        Stack* stack = task->stack();
+        if (stack) {
+          int bci = stack->absolute_bci_at_preemption(process->program());
+          if (bci >= 0) profiler->increment(bci);
+        }
+      }
       wait_for_any_gc_to_complete(locker, process, Process::IDLE);
       process_ready(locker, process);
       break;
+    }
 
     case Interpreter::Result::YIELDED:
       process->clear_unyielded_for();
@@ -772,8 +769,8 @@ void Scheduler::terminate_execution(Locker& locker, ExitState exit) {
   OS::signal(_has_processes);
 }
 
-void Scheduler::tick(Locker& locker) {
-  int64 now = OS::get_monotonic_time();
+void Scheduler::tick(Locker& locker, int64 now) {
+  tick_schedule(locker, now, true);
 
   for (SchedulerThread* thread : _threads) {
     Process* process = thread->interpreter()->process();
@@ -799,22 +796,24 @@ void Scheduler::tick(Locker& locker) {
   }
 }
 
+void Scheduler::tick_schedule(Locker& locker, int64 now, bool reschedule) {
+  int period = (_num_profiled_processes > 0)
+      ? TICK_PERIOD_PROFILING_US
+      : TICK_PERIOD_US;
+  int64 next = now + period;
+  if (!reschedule && next >= tick_next()) return;
+  _next_tick = next;
+  if (!reschedule) OS::signal(_has_threads);
+}
+
 void Scheduler::notify_profiler(int change) {
   Locker locker(_mutex);
   notify_profiler(locker, change);
 }
 
 void Scheduler::notify_profiler(Locker& locker, int change) {
-  int before = _num_profiled_processes;
-  _num_profiled_processes = before + change;
-  if (change > 0 && before == 0) {
-    // Let the preemption thread know what we have activated the
-    // first profiler.
-
-    // TODO(kasper): Avoid doing this if the tick will come soon
-    // enough anyway. How do we tell in an elegant way?
-    OS::signal(_has_threads);
-  }
+  _num_profiled_processes += change;
+  tick_schedule(locker, OS::get_monotonic_time(), false);
 }
 
 Process* Scheduler::find_process(Locker& locker, int process_id) {
