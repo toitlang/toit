@@ -219,6 +219,17 @@ void Array::roots_do(RootCallback* cb) {
   cb->do_roots(_root_at(_offset_from(0)), length());
 }
 
+int Stack::absolute_bci_at_preemption(Program* program) {
+  // Check that the stack has both words.
+  if (_stack_sp_addr() + 1 >= _stack_base_addr()) return -1;
+  // Check that the frame marker is correct.
+  if (at(0) != program->frame_marker()) return -1;
+  // Get the bytecode pointer and convert it to an index.
+  uint8* bcp = reinterpret_cast<uint8*>(at(1));
+  if (!program->bytecodes.is_inside(bcp)) return -1;
+  return program->absolute_bci_from_bcp(bcp);
+}
+
 void Stack::roots_do(Program* program, RootCallback* cb) {
   int top = this->top();
   // Skip over pointers into the bytecodes.

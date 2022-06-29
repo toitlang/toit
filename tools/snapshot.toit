@@ -547,9 +547,7 @@ class ToitMethod:
       line += " T$(bci + index)"
     else if format == OP_SF:
       line += " T$(bci + (method.uint16 bci + 1))"
-    else if format == OP_BB:
-      line += " T$(bci - index)"
-    else if format == OP_SB:
+    else if format == OP_SB_SB:
       line += " T$(bci - (method.uint16 bci + 1))"
     else if format == OP_BCI:
       is_nullable := (index & 1) != 0
@@ -729,30 +727,29 @@ OP_BL    ::=  4
 OP_BC    ::=  5
 OP_BG    ::=  6
 OP_BF    ::=  7
-OP_BB    ::=  8
-OP_BCI   ::=  9
-OP_BII   ::= 10
-OP_BLC   ::= 11
-OP_SU    ::= 12
-OP_SF    ::= 13
-OP_BS_BU ::= 14
-OP_SD    ::= 15
-OP_SO    ::= 16
-OP_WU    ::= 17
-OP_BS_SO ::= 18
-OP_BU_SO ::= 19
-OP_BU_SU ::= 20
-OP_BU_WU ::= 21
-OP_SD_BS_BU ::= 22
-OP_SS    ::= 23
-OP_SL    ::= 24
-OP_SG    ::= 25
-OP_SC    ::= 26
-OP_SS_SO ::= 27
-OP_SCI   ::= 28
-OP_SII   ::= 29
-OP_SB    ::= 30
-OP_SU_SU ::= 31
+OP_BCI   ::=  8
+OP_BII   ::=  9
+OP_BLC   ::= 10
+OP_SU    ::= 11
+OP_SF    ::= 12
+OP_BS_BU ::= 13
+OP_SD    ::= 14
+OP_SO    ::= 15
+OP_WU    ::= 16
+OP_BS_SO ::= 17
+OP_BU_SO ::= 18
+OP_BU_SU ::= 19
+OP_BU_WU ::= 20
+OP_SD_BS_BU ::= 21
+OP_SS    ::= 22
+OP_SL    ::= 23
+OP_SG    ::= 24
+OP_SC    ::= 25
+OP_SS_SO ::= 26
+OP_SCI   ::= 27
+OP_SII   ::= 28
+OP_SB_SB ::= 29
+OP_SU_SU ::= 30
 
 class Bytecode:
   name        ::= ""
@@ -846,12 +843,9 @@ BYTE_CODES ::= [
   Bytecode "BRANCH"                     3 OP_SF "branch",
   Bytecode "BRANCH_IF_TRUE"             3 OP_SF "branch if true",
   Bytecode "BRANCH_IF_FALSE"            3 OP_SF "branch if false",
-  Bytecode "BRANCH_BACK"                2 OP_BB "branch back",
-  Bytecode "BRANCH_BACK_WIDE"           3 OP_SB "branch back wide",
-  Bytecode "BRANCH_BACK_IF_TRUE"        2 OP_BB "branch back if true",
-  Bytecode "BRANCH_BACK_IF_TRUE_WIDE"   3 OP_SB "branch back if true wide",
-  Bytecode "BRANCH_BACK_IF_FALSE"       2 OP_BB "branch back if false",
-  Bytecode "BRANCH_BACK_IF_FALSE_WIDE"  3 OP_SB "branch back if false wide",
+  Bytecode "BRANCH_BACK"                5 OP_SB_SB "branch back",
+  Bytecode "BRANCH_BACK_IF_TRUE"        5 OP_SB_SB "branch back if true",
+  Bytecode "BRANCH_BACK_IF_FALSE"       5 OP_SB_SB "branch back if false",
   Bytecode "PRIMITIVE"                  4 OP_BU_SU "invoke primitive",
   Bytecode "THROW"                      2 OP_BU "throw",
   Bytecode "RETURN"                     3 OP_BS_BU "return",

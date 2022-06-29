@@ -38,9 +38,6 @@ Interpreter::Interpreter()
     , _sp(null)
     , _try_sp(null)
     , _watermark(null) {
-#ifdef PROFILER
-  _is_profiler_active = false;
-#endif
 }
 
 void Interpreter::activate(Process* process) {
@@ -55,20 +52,6 @@ void Interpreter::preempt() {
   _watermark = PREEMPTION_MARKER;
 }
 
-#ifdef PROFILER
-void Interpreter::profile_register_method(Method method) {
-  int absolute_bci = process()->program()->absolute_bci_from_bcp(method.header_bcp());
-  Profiler* profiler = process()->profiler();
-  if (profiler != null) profiler->register_method(absolute_bci);
-}
-
-void Interpreter::profile_increment(uint8* bcp) {
-  int absolute_bci = process()->program()->absolute_bci_from_bcp(bcp);
-  Profiler* profiler = process()->profiler();
-  if (profiler != null) profiler->increment(absolute_bci);
-}
-#endif
-
 Method Interpreter::lookup_entry() {
   Method result = _process->entry();
   if (!result.is_valid()) FATAL("Cannot locate entry method for interpreter");
@@ -79,9 +62,6 @@ Object** Interpreter::load_stack() {
   Stack* stack = _process->task()->stack();
   GcMetadata::insert_into_remembered_set(stack);
   stack->transfer_to_interpreter(this);
-#ifdef PROFILER
-  set_profiler_state();
-#endif
   Object** watermark = _watermark;
   Object** new_watermark = _limit + RESERVED_STACK_FOR_STACK_OVERFLOWS;
   while (true) {
@@ -106,13 +86,6 @@ void Interpreter::store_stack(Object** sp) {
     if (_watermark.compare_exchange_strong(watermark, null)) break;
   }
 }
-
-#ifdef PROFILER
-void Interpreter::set_profiler_state() {
-  Profiler* profiler = process()->profiler();
-  _is_profiler_active = profiler != null && profiler->should_profile_task(process()->task()->id());
-}
-#endif
 
 void Interpreter::prepare_task(Method entry, Instance* code) {
   push(code);

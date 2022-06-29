@@ -129,6 +129,10 @@ class Scheduler {
   // processes in the system.
   void gc(Process* process, bool malloc_failed, bool try_hard);
 
+  // Profiler support.
+  void activate_profiler(Process* process) { notify_profiler(1); }
+  void deactivate_profiler(Process* process) { notify_profiler(-1); }
+
   // Primitive support.
 
   // Fills in an array with stats for the process with the given ids.
@@ -144,10 +148,12 @@ class Scheduler {
   // Introduce a new process to the Scheduler. The Scheduler will not terminate until
   // all processes has completed.
   void new_process(Locker& locker, Process* process);
-
   void add_process(Locker& locker, Process* process);
-
   void run_process(Locker& locker, Process* process, SchedulerThread* scheduler_thread);
+
+  // Profiler support.
+  void notify_profiler(int change);
+  void notify_profiler(Locker& locker, int change);
 
   // Suspend/resume support for processes. Allows other threads to temporarily suspend
   // a process and remove it from the ready list (if it's not idle). Resuming a process
@@ -182,15 +188,26 @@ class Scheduler {
 
   SystemMessage* new_process_message(SystemMessage::Type type, int gid);
 
-  // Called by the launch thread, to signal that time has passed.
-  // The tick is used to drive process preemption.
-  static const int64 TICK_PERIOD_US = 100000;  // 100 ms.
 #ifdef TOIT_FREERTOS
-  static const int64 WATCHDOG_PERIOD_US = 10 * 1000 * 1000;  // 10 s.
+  static const int64 WATCHDOG_PERIOD_US = 10 * 1000 * 1000;   // 10 s.
 #else
   static const int64 WATCHDOG_PERIOD_US = 600 * 1000 * 1000;  // 10 m.
 #endif
-  void tick(Locker& locker);
+
+  static const int TICK_PERIOD_US = 100 * 1000;          // 100 ms.
+#ifdef TOIT_FREERTOS
+  static const int TICK_PERIOD_PROFILING_US = 10 * 100;  // 10 ms.
+#else
+  static const int TICK_PERIOD_PROFILING_US = 500;       // 0.5 ms.
+#endif
+
+  // Called by the launch thread to signal that time has passed.
+  // The tick is used to drive process preemption.
+  void tick(Locker& locker, int64 now);
+  void tick_schedule(Locker& locker, int64 now, bool reschedule);
+
+  // Get the time for the next tick for process preemption.
+  int64 tick_next() const { return _next_tick; }
 
   Mutex* _mutex;
   ConditionVariable* _has_processes;
@@ -209,11 +226,15 @@ class Scheduler {
   int _num_processes;
   int _next_group_id;
   int _next_process_id;
+  int64 _next_tick = 0;
   ProcessListFromScheduler _ready_processes;
 
   int _num_threads;
   int _max_threads;
   SchedulerThreadList _threads;
+
+  // Keep track of the number of ready processes with an active profiler.
+  int _num_profiled_processes = 0;
 
   // Keep track of the boot process if it still alive.
   Process* _boot_process;

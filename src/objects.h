@@ -683,6 +683,8 @@ class Stack : public HeapObject {
   int top() { return _word_at(TOP_OFFSET); }
   int try_top() { return _word_at(TRY_TOP_OFFSET); }
 
+  int absolute_bci_at_preemption(Program* program);
+
   void transfer_to_interpreter(Interpreter* interpreter);
   void transfer_from_interpreter(Interpreter* interpreter);
 
@@ -720,11 +722,13 @@ class Stack : public HeapObject {
   void _set_length(int value) { _word_at_put(LENGTH_OFFSET, value); }
   void _set_top(int value) { _word_at_put(TOP_OFFSET, value); }
   void _set_try_top(int value) { _word_at_put(TRY_TOP_OFFSET, value); }
+
   void _initialize(int length) {
     _set_length(length);
     _set_top(length);
     _set_try_top(length);
   }
+
   Object** _stack_base_addr() { return reinterpret_cast<Object**>(_raw_at(_array_offset_from(length()))); }
   Object** _stack_limit_addr() { return reinterpret_cast<Object**>(_raw_at(_array_offset_from(0))); }
   Object** _stack_sp_addr() { return reinterpret_cast<Object**>(_raw_at(_array_offset_from(top()))); }
@@ -748,8 +752,8 @@ class Stack : public HeapObject {
   }
 
   uword* _array_address(int index) { return _raw_at(_array_offset_from(index)); }
-
   static int _array_offset_from(int index) { return HEADER_SIZE + index  * WORD_SIZE; }
+
   friend class ObjectHeap;
   friend class ProgramHeap;
 };
@@ -1072,6 +1076,8 @@ class Method {
 
   uint8* bcp_from_bci(int bci) const { return &_bytes[ENTRY_OFFSET + bci]; }
   uint8* header_bcp() const { return _bytes; }
+
+  static uint8* header_from_entry(uint8* entry) { return entry - ENTRY_OFFSET; }
 
  private: // Friend access for ProgramBuilder.
   void _initialize_block(int arity, List<uint8> bytecodes, int max_height) {

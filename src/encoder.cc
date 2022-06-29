@@ -264,12 +264,10 @@ bool ProgramOrientedEncoder::encode_error(Object* type, const char* message, Sta
   return !buffer()->has_overflow();
 }
 
-#ifdef PROFILER
 bool ProgramOrientedEncoder::encode_profile(Profiler* profiler, String* title, int cutoff) {
   profiler->encode_on(this, title, cutoff);
   return !buffer()->has_overflow();
 }
-#endif
 
 void Encoder::write_byte(uint8 c) {
   _buffer->put_byte(c);
