@@ -9,7 +9,7 @@ import net
 DNS_DEFAULT_TIMEOUT ::= Duration --s=20
 DNS_RETRY_TIMEOUT ::= Duration --s=1
 HOSTS_ ::= {"localhost": "127.0.0.1"}
-CACHE_ ::= Map  // From name to CacheEntry.
+CACHE_ ::= Map  // From name to CacheEntry_.
 MAX_CACHE_SIZE_ ::= platform == "FreeRTOS" ? 30 : 1000
 MAX_TRIMMED_CACHE_SIZE_ ::= MAX_CACHE_SIZE_ / 3 * 2
 
@@ -39,18 +39,18 @@ dns_lookup -> net.IpAddress
   q := DnsQuery_ host
   return q.get --server=server --timeout=timeout
 
-INTERNET_CLASS  ::= 1
+CLASS_INTERNET ::= 1
 
-A_RECORD        ::= 1
-CNAME_RECORD    ::= 5
-AAAA_RECORD     ::= 28  // IPv6 DNS lookup.
+RECORD_A       ::= 1
+RECORD_CNAME   ::= 5
+RECORD_AAAA    ::= 28  // IPv6 DNS lookup.
 
-NO_ERROR        ::= 0
-FORMAT_ERROR    ::= 1
-SERVER_FAILURE  ::= 2
-NAME_ERROR      ::= 3
-NOT_IMPLEMENTED ::= 4
-REFUSED         ::= 5
+ERROR_NONE            ::= 0
+ERROR_FORMAT          ::= 1
+ERROR_SERVER_FAILURE  ::= 2
+ERROR_NAME            ::= 3
+ERROR_NOT_IMPLEMENTED ::= 4
+ERROR_REFUSED         ::= 5
 
 class DnsQuery_:
   id/int
@@ -81,7 +81,7 @@ class DnsQuery_:
     hit := find_in_cache_ server
     if hit: return hit
 
-    query := create_query_
+    query := create_query name id
     socket := udp.Socket
     with_timeout timeout:
       try:
@@ -136,31 +136,6 @@ class DnsQuery_:
         if not '0' <= it <= '9': return false
     return dots == 3
 
-  create_query_ -> ByteArray:
-    parts := name.split "."
-    length := 1
-    parts.do: | part |
-      if part.size > 63: throw (DnsException "LABEL_TOO_LARGE")
-      if part.size < 1: throw (DnsException "LABEL_TOO_SHORT")
-      part.do:
-        if it == 0 or it == null: throw (DnsException "INVALID_DOMAIN_NAME")
-      length += part.size + 1
-    query := ByteArray 12 + length + 4
-    BIG_ENDIAN.put_uint16 query 0 id
-    query[2] = 0x01  // Set RD bit.
-    query_count := 1
-    BIG_ENDIAN.put_uint16 query 4 query_count
-    position := 12
-    parts.do: | part |
-      query[position++] = part.size
-      query.replace position part
-      position += part.size
-    query[position++] = 0
-    BIG_ENDIAN.put_uint16 query position     A_RECORD
-    BIG_ENDIAN.put_uint16 query position + 2 INTERNET_CLASS
-    assert: position + 4 == query.size
-    return query
-
   // We pass the name_server because we don't use the cache entry if the user
   // is trying a different name server.
   find_in_cache_ name_server/string -> net.IpAddress?:
@@ -182,7 +157,7 @@ class DnsQuery_:
     // authoritative.
     if response[2] & ~4 != 0x81: throw (DnsException "Unexpected response: $(%x response[2])")
     error := response[3] & 0xf
-    if error != NO_ERROR:
+    if error != ERROR_NONE:
       detail := "error code $error"
       if 0 <= error < ERROR_MESSAGES_.size: detail = ERROR_MESSAGES_[error]
       throw (DnsException "Server responded: $detail")
@@ -201,7 +176,7 @@ class DnsQuery_:
 
       clas := BIG_ENDIAN.uint16 response position
       position += 2
-      if clas != INTERNET_CLASS: throw (DnsException "Unexpected response class: $clas")
+      if clas != CLASS_INTERNET: throw (DnsException "Unexpected response class: $clas")
 
       ttl := BIG_ENDIAN.int32 response position
       position += 4
@@ -214,17 +189,17 @@ class DnsQuery_:
 
       rd_length := BIG_ENDIAN.uint16 response position
       position += 2
-      if type == A_RECORD:
+      if type == RECORD_A:
         if rd_length != 4: throw (DnsException "Unexpected IP address length $rd_length")
         if case_compare_ r_name q_name:
           result := net.IpAddress
               response.copy position position + 4
           if ttl > 0:
             trim_cache_
-            CACHE_[name] = CacheEntry result ttl name_server
+            CACHE_[name] = CacheEntry_ result ttl name_server
           return result
         // Skip name that does not match.
-      else if type == CNAME_RECORD:
+      else if type == RECORD_CNAME:
         q_name = decode_name response position: null
       position += rd_length
     throw (DnsException "Response did not contain matching A record")
@@ -274,7 +249,7 @@ trim_cache_ -> none:
     toggle = not toggle
     toggle
 
-class CacheEntry:
+class CacheEntry_:
   server / string          // Unparsed server name like "8.8.8.8".
   end / int                // Time in µs, compatible with Time.monotonic_us.
   address / net.IpAddress
@@ -285,3 +260,34 @@ class CacheEntry:
   valid name_server/string -> bool:
     if Time.monotonic_us > end: return false
     return name_server == server
+
+/**
+Creates a UDP packet to look up the given name.
+Regular DNS lookup is used, namely the A record for the domain.
+The $query_id should be a 16 bit unsigned number which will be included in
+  the reply.
+*/
+create_query name/string query_id/int -> ByteArray:
+  parts := name.split "."
+  length := 1
+  parts.do: | part |
+    if part.size > 63: throw (DnsException "LABEL_TOO_LARGE")
+    if part.size < 1: throw (DnsException "LABEL_TOO_SHORT")
+    part.do:
+      if it == 0 or it == null: throw (DnsException "INVALID_DOMAIN_NAME")
+    length += part.size + 1
+  query := ByteArray 12 + length + 4
+  BIG_ENDIAN.put_uint16 query 0 query_id
+  query[2] = 0x01  // Set RD bit.
+  query_count := 1
+  BIG_ENDIAN.put_uint16 query 4 query_count
+  position := 12
+  parts.do: | part |
+    query[position++] = part.size
+    query.replace position part
+    position += part.size
+  query[position++] = 0
+  BIG_ENDIAN.put_uint16 query position     RECORD_A
+  BIG_ENDIAN.put_uint16 query position + 2 CLASS_INTERNET
+  assert: position + 4 == query.size
+  return query
