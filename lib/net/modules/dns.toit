@@ -43,6 +43,7 @@ INTERNET_CLASS  ::= 1
 
 A_RECORD        ::= 1
 CNAME_RECORD    ::= 5
+AAAA_RECORD     ::= 28  // IPv6 DNS lookup.
 
 NO_ERROR        ::= 0
 FORMAT_ERROR    ::= 1
