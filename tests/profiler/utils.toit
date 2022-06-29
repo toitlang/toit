@@ -6,14 +6,14 @@ import host.pipe
 import reader show BufferedReader
 
 /**
-Runs the given test with $args containing `toitc` as first argument, and
+Runs the given test with $args containing `toit.run` as first argument, and
   the input as second.
 
 Returns the lines of the output.
 Throws if the program didn't terminate with exit code 0.
 */
 run args -> List:
-  toitc := args[0]
+  toitrun := args[0]
   profiled_path := args[1]
 
   pipes := pipe.fork
@@ -21,8 +21,8 @@ run args -> List:
       pipe.PIPE_INHERITED  // stdin
       pipe.PIPE_INHERITED  // stdout
       pipe.PIPE_CREATED    // stderr
-      toitc
-      [ toitc, profiled_path ]
+      toitrun
+      [ toitrun, profiled_path ]
 
   stderr := pipes[2]
   pid := pipes[3]
