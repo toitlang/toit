@@ -219,7 +219,7 @@ abstract class string implements Comparable:
 
   # Examples
   ```
-  "Amélie".do --runes: print "$(%c it)"" // A, m, é, l, i, e
+  "Amélie".do --runes: print "$(%c it)" // A, m, é, l, i, e
   ```
   */
   do --runes/bool [block] -> none:
