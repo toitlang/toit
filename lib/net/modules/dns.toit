@@ -39,18 +39,18 @@ dns_lookup -> net.IpAddress
   q := DnsQuery_ host
   return q.get --server=server --timeout=timeout
 
-INTERNET_CLASS  ::= 1
+CLASS_INTERNET ::= 1
 
-A_RECORD        ::= 1
-CNAME_RECORD    ::= 5
-AAAA_RECORD     ::= 28  // IPv6 DNS lookup.
+RECORD_A       ::= 1
+RECORD_CNAME   ::= 5
+RECORD_AAAA    ::= 28  // IPv6 DNS lookup.
 
-NO_ERROR        ::= 0
-FORMAT_ERROR    ::= 1
-SERVER_FAILURE  ::= 2
-NAME_ERROR      ::= 3
-NOT_IMPLEMENTED ::= 4
-REFUSED         ::= 5
+ERROR_NONE            ::= 0
+ERROR_FORMAT          ::= 1
+ERROR_SERVER_FAILURE  ::= 2
+ERROR_NAME            ::= 3
+ERROR_NOT_IMPLEMENTED ::= 4
+ERROR_REFUSED         ::= 5
 
 class DnsQuery_:
   id/int
@@ -157,7 +157,7 @@ class DnsQuery_:
     // authoritative.
     if response[2] & ~4 != 0x81: throw (DnsException "Unexpected response: $(%x response[2])")
     error := response[3] & 0xf
-    if error != NO_ERROR:
+    if error != ERROR_NONE:
       detail := "error code $error"
       if 0 <= error < ERROR_MESSAGES_.size: detail = ERROR_MESSAGES_[error]
       throw (DnsException "Server responded: $detail")
@@ -176,7 +176,7 @@ class DnsQuery_:
 
       clas := BIG_ENDIAN.uint16 response position
       position += 2
-      if clas != INTERNET_CLASS: throw (DnsException "Unexpected response class: $clas")
+      if clas != CLASS_INTERNET: throw (DnsException "Unexpected response class: $clas")
 
       ttl := BIG_ENDIAN.int32 response position
       position += 4
@@ -189,7 +189,7 @@ class DnsQuery_:
 
       rd_length := BIG_ENDIAN.uint16 response position
       position += 2
-      if type == A_RECORD:
+      if type == RECORD_A:
         if rd_length != 4: throw (DnsException "Unexpected IP address length $rd_length")
         if case_compare_ r_name q_name:
           result := net.IpAddress
@@ -199,7 +199,7 @@ class DnsQuery_:
             CACHE_[name] = CacheEntry_ result ttl name_server
           return result
         // Skip name that does not match.
-      else if type == CNAME_RECORD:
+      else if type == RECORD_CNAME:
         q_name = decode_name response position: null
       position += rd_length
     throw (DnsException "Response did not contain matching A record")
@@ -287,7 +287,7 @@ create_query name/string query_id/int -> ByteArray:
     query.replace position part
     position += part.size
   query[position++] = 0
-  BIG_ENDIAN.put_uint16 query position     A_RECORD
-  BIG_ENDIAN.put_uint16 query position + 2 INTERNET_CLASS
+  BIG_ENDIAN.put_uint16 query position     RECORD_A
+  BIG_ENDIAN.put_uint16 query position + 2 CLASS_INTERNET
   assert: position + 4 == query.size
   return query
