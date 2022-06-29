@@ -144,16 +144,20 @@ Scheduler::ExitState Scheduler::launch_program(Locker& locker, Process* process)
   _boot_process = process;
   add_process(locker, process);
 
-  int64 next_tick_time = OS::get_monotonic_time() + TICK_PERIOD_US;
+  int64 last_time = OS::get_monotonic_time();
   while (_num_processes > 0 && _num_threads > 0) {
     int64 time = OS::get_monotonic_time();
-    if (time >= next_tick_time) {
-      next_tick_time = time + Scheduler::TICK_PERIOD_US;
+    int period_us = (_num_profiled_processes > 0)
+        ? TICK_PERIOD_PROFILING_US
+        : TICK_PERIOD_US;
+    int64 next_time = last_time + period_us;
+    if (time >= next_time) {
+      last_time = time;
       tick(locker);
+    } else {
+      int64 delay_us = next_time - time;
+      OS::wait_us(_has_threads, delay_us);
     }
-    ASSERT(time < next_tick_time);
-    int64 delay_us = next_tick_time - time;
-    OS::wait_us(_has_threads, delay_us);
   }
 
   if (!has_exit_reason()) {
@@ -272,7 +276,7 @@ scheduler_err_t Scheduler::send_system_message(Locker& locker, SystemMessage* me
       }
       break;
     case SystemMessage::SPAWNED: {
-      // Do nothing. With no boot process, we don't care newly about spawned processes.
+      // Do nothing. With no boot process, we don't care about newly spawned processes.
       break;
     }
     default:
@@ -431,10 +435,9 @@ void Scheduler::gc(Process* process, bool malloc_failed, bool try_hard) {
       // to be preempted, but since we only GC them if we can get them to
       // be "suspendable" or "suspended" later, we can live with this
       // timing out and not succeeding.
-      int64 deadline = start + 1000000;  // Wait for up to 1 second.
+      int64 deadline = start + 1000000LL;  // Wait for up to 1 second.
       while (_gc_waiting_for_preemption > 0) {
-        int64 wait_us = Utils::max(1LL, deadline - OS::get_monotonic_time());
-        if (!OS::wait_us(_gc_condition, wait_us)) {
+        if (!OS::wait_us(_gc_condition, deadline - OS::get_monotonic_time())) {
 #ifdef TOIT_GC_LOGGING
           printf("[gc @ %p%s | timed out waiting for %d processes to stop]\n",
               process, VM::current()->scheduler()->is_boot_process(process) ? "*" : " ",
@@ -568,6 +571,10 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
   bool interpreted = (runner == null);
   Interpreter::Result result(Interpreter::Result::PREEMPTED);
   if (interpreted) {
+    if (process->profiler() && process->profiler()->is_active()) {
+      notify_profiler(locker, 1);
+    }
+
     Interpreter* interpreter = scheduler_thread->interpreter();
     interpreter->activate(process);
     process->set_idle_since_gc(false);
@@ -576,6 +583,10 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
       result = interpreter->run();
     }
     interpreter->deactivate();
+
+    if (process->profiler() && process->profiler()->is_active()) {
+      notify_profiler(locker, -1);
+    }
   } else if (process->signals() == 0) {
     ASSERT(process->idle_since_gc());
     Unlocker unlock(locker);
@@ -595,7 +606,15 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
     } else if (signals & Process::PREEMPT) {
       result = Interpreter::Result(Interpreter::Result::PREEMPTED);
       process->clear_signal(Process::PREEMPT);
-      // TODO(kasper): Check for active profiler.
+      Profiler* profiler = process->profiler();
+      Task* task = process->task();
+      if (profiler && task && profiler->should_profile_task(task->id())) {
+        Stack* stack = task->stack();
+        if (stack) {
+          int bci = stack->bci_at_preemption(process->program());
+          if (bci >= 0) profiler->increment(bci);
+        }
+      }
     } else if (signals & Process::WATCHDOG) {
       process->clear_signal(Process::WATCHDOG);
     } else {
@@ -766,13 +785,35 @@ void Scheduler::tick(Locker& locker) {
     }
   }
 
-  if (_ready_processes.is_empty()) return;
+  if (_num_profiled_processes == 0 && _ready_processes.is_empty()) {
+    // No need to do preemption when there are no active profilers
+    // and no other processes ready to run.
+    return;
+  }
 
   for (SchedulerThread* thread : _threads) {
     Process* process = thread->interpreter()->process();
     if (process != null) {
       process->signal(Process::PREEMPT);
     }
+  }
+}
+
+void Scheduler::notify_profiler(int change) {
+  Locker locker(_mutex);
+  notify_profiler(locker, change);
+}
+
+void Scheduler::notify_profiler(Locker& locker, int change) {
+  int before = _num_profiled_processes;
+  _num_profiled_processes = before + change;
+  if (change > 0 && before == 0) {
+    // Let the preemption thread know what we have activated the
+    // first profiler.
+
+    // TODO(kasper): Avoid doing this if the tick will come soon
+    // enough anyway. How do we tell in an elegant way?
+    OS::signal(_has_threads);
   }
 }
 

@@ -2044,6 +2044,8 @@ PRIMITIVE(profiler_start) {
   // Force the interpreter to recompute if profiling is active.
   process->scheduler_thread()->interpreter()->store_stack();
   process->scheduler_thread()->interpreter()->load_stack();
+  // Tell the scheduler that a new process has an active profiler.
+  VM::current()->scheduler()->activate_profiler(process);
   return process->program()->true_object();
 }
 
@@ -2055,6 +2057,8 @@ PRIMITIVE(profiler_stop) {
   // Force the interpreter to recompute if profiling is active.
   process->scheduler_thread()->interpreter()->store_stack();
   process->scheduler_thread()->interpreter()->load_stack();
+  // Tell the scheduler to deactivate profiling for the process.
+  VM::current()->scheduler()->deactivate_profiler(process);
   return process->program()->true_object();
 }
 

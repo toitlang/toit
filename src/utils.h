@@ -358,6 +358,10 @@ class List {
   T* end() { return &_data[_length]; }
   const T* end() const { return &_data[_length]; }
 
+  bool is_inside(const T* pointer) const {
+    return (pointer >= begin() && pointer < end());
+  }
+
   const List<T> sublist(int from, int to) const {
     ASSERT(0 <= from && from <= to && to < _length);
     return List<T>(&_data[from], to - from);
