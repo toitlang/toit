@@ -141,19 +141,23 @@ class ConditionVariable {
   }
 
   void wait() {
-    wait(0);
+    wait_ticks(portMAX_DELAY);
   }
 
-  bool wait(int timeout_in_ms) {
+  bool wait_us(int64 us) {
+    if (us <= 0LL) return false;
+
+    // Use ceiling divisions to avoid rounding the ticks down and thus
+    // not waiting long enough.
+    uint32 ms = 1 + static_cast<uint32>((us - 1) / 1000LL);
+    uint32 ticks = (ms + portTICK_PERIOD_MS - 1) / portTICK_PERIOD_MS;
+    return wait_ticks(ticks);
+  }
+
+  bool wait_ticks(uint32 ticks) {
     if (!_mutex->is_locked()) {
       FATAL("wait on unlocked mutex");
     }
-
-    // Use ceiling division to avoid rounding the ticks down and thus
-    // not waiting long enough.
-    int timeout_ticks = (timeout_in_ms > 0)
-        ? (timeout_in_ms + portTICK_PERIOD_MS - 1) / portTICK_PERIOD_MS
-        : portMAX_DELAY;
 
     ConditionVariableWaiter w = {
       .task = xTaskGetCurrentTaskHandle()
@@ -168,7 +172,7 @@ class ConditionVariable {
 #else
     uint32 value = 0;
 #endif
-    bool success = xTaskNotifyWait(0x00, 0xffffffff, &value, timeout_ticks) == pdTRUE;
+    bool success = xTaskNotifyWait(0x00, 0xffffffff, &value, ticks) == pdTRUE;
 
     _mutex->lock();
     TAILQ_REMOVE(&_waiter_list, &w, link);
@@ -344,11 +348,11 @@ void OS::unlock(Mutex* mutex) { mutex->unlock(); }
 
 // Condition variable forwarders.
 ConditionVariable* OS::allocate_condition_variable(Mutex* mutex) { return _new ConditionVariable(mutex); }
-void OS::wait(ConditionVariable* condition_variable) { condition_variable->wait(); }
-bool OS::wait(ConditionVariable* condition_variable, int timeout_in_ms) { return condition_variable->wait(timeout_in_ms); }
-void OS::signal(ConditionVariable* condition_variable) { condition_variable->signal(); }
-void OS::signal_all(ConditionVariable* condition_variable) { condition_variable->signal_all(); }
-void OS::dispose(ConditionVariable* condition_variable) { delete condition_variable; }
+void OS::wait(ConditionVariable* condition) { condition->wait(); }
+bool OS::wait_us(ConditionVariable* condition, int64 us) { return condition->wait_us(us); }
+void OS::signal(ConditionVariable* condition) { condition->signal(); }
+void OS::signal_all(ConditionVariable* condition) { condition->signal_all(); }
+void OS::dispose(ConditionVariable* condition) { delete condition; }
 
 void* OS::allocate_pages(uword size) {
   size = Utils::round_up(size, TOIT_PAGE_SIZE);

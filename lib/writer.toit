@@ -40,10 +40,15 @@ class Writer:
       if from != to:
         yield
         while data is string and from != to and data[from] == null:  // Not on a character boundary.
-          // Can't slice here, would cut up UTF-8 string in an illegal way.
+          // We can't slice a string at non-character boundaries.
+          // If the `write` function only wrote parts of a character, we
+          // extract the rest of the character as a byte array and write it
+          // this way.  Uses `while` instead of `if` because even a 2-byte
+          // byte array might not be written in one operation.
           cut_point := from + 1
           while cut_point != to and data[cut_point] == null:
             cut_point++
+          // `to_byte_array` doesn't have an issue with character boundaries.
           snip := data.to_byte_array from cut_point
           from += writer_.write snip
     return size

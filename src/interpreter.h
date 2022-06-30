@@ -113,6 +113,7 @@ class Interpreter {
   void prepare_task(Method entry, Instance* code);
 
   void preempt();
+  uint8* preemption_method_header_bcp() const { return _preemption_method_header_bcp; }
 
  private:
   Object** const PREEMPTION_MARKER = reinterpret_cast<Object**>(UINTPTR_MAX);
@@ -127,15 +128,11 @@ class Interpreter {
   // Stack overflow handling.
   std::atomic<Object**> _watermark;
 
+  // Preemption method.
+  uint8* _preemption_method_header_bcp;
+
   void trace(uint8* bcp);
   Method lookup_entry();
-
-#ifdef PROFILER
-  bool _is_profiler_active;
-  void profile_register_method(Method method);
-  void profile_increment(uint8* bcp);
-  void set_profiler_state();
-#endif
 
   enum OverflowState {
     OVERFLOW_RESUME,
@@ -143,7 +140,6 @@ class Interpreter {
     OVERFLOW_EXCEPTION,
   };
 
-  Object** handle_preempt(Object** sp, OverflowState* state);
   Object** handle_stack_overflow(Object** sp, OverflowState* state, Method target);
 
   Object** push_error(Object** sp, Object* type, const char* message);

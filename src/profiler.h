@@ -17,8 +17,6 @@
 
 #include "top.h"
 
-#ifdef PROFILER
-
 namespace toit {
 
 // This is a simple profile designed for an interpreter and minimal space usage.
@@ -66,5 +64,3 @@ class Profiler {
 };
 
 } // namespace toit
-
-#endif

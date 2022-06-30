@@ -68,9 +68,6 @@ class TcpSocket_:
       if state_bits & TOIT_TCP_NEEDS_GC_ != 0:
         state_bits = null
         tcp_gc_ state.group
-        // We can get connect requests so fast that this causes a watchdog
-        // to trigger, so insert a sleep here.
-        sleep --ms=1
     if state_bits == 0:
       return failure.call "NOT_CONNECTED"
     if (state_bits & error_bits) == 0:

@@ -13,14 +13,14 @@ bar:
 
 foo:
   sum := 0
-  for i := 0; i < ITERATIONS; i++:
+  for i := 0; i < ITERATIONS * 2; i++:
     sum += i
-  expect_equals 499500 sum
+  expect_equals 1999000 sum
 
   bar
 
 main:
   Profiler.install false
-  Profiler.do: foo
+  Profiler.do: 10_000.repeat: foo
   Profiler.report "Profiler Test"
   Profiler.uninstall
