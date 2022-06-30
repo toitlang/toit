@@ -60,9 +60,8 @@ namespace toit {
   FLAG_BOOL(debug,   print_bytecodes,       false, "Print the bytecodes for each method") \
   FLAG_BOOL(debug,   disable_tree_shaking,  false, "Disables tree-shaking")         \
   FLAG_BOOL(debug,   report_tree_shaking,   false, "Report stats on tree shaking")  \
-  FLAG_BOOL(debug,   print_dependency_tree, false, "Prints the dependency tree used in the source-shaking")               \
+  FLAG_BOOL(debug,   print_dependency_tree, false, "Prints the dependency tree used in the source-shaking") \
   FLAG_BOOL(deploy,  enable_asserts,        _ASSERT_DEFAULT, "Enables asserts")     \
-  FLAG_BOOL(deploy,  enable_watchdog,       true, "Enables watchdog timeouts")     \
   FLAG_INT(deploy,   max_recursion_depth,   2000,  "Max recursion depth in the parser") \
   FLAG_STRING(deploy, lib_path,             null,  "The library path")              \
   FLAG_STRING(deploy, archive_entry_path,   null,  "The entry path in an archive")  \

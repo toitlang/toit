@@ -159,14 +159,10 @@ Method Program::find_method(Object* receiver, int offset) {
     }                                                                 \
   }
 
-// CHECK_PREEMPT checks for preemption and watchdog interrupts.
+// CHECK_PREEMPT checks for preemption by looking at the watermark.
 #define CHECK_PREEMPT(entry)                                          \
   if (_watermark == PREEMPTION_MARKER) {                              \
-    OverflowState state;                                              \
-    sp = handle_preempt(sp, &state);                                  \
-    if (state == OVERFLOW_EXCEPTION) {                                \
-      goto THROW_IMPLEMENTATION;                                      \
-    }                                                                 \
+    _watermark = null;                                                \
     _preemption_method_header_bcp = Method::header_from_entry(entry); \
     static_assert(FRAME_SIZE == 2, "Unexpected frame size");          \
     PUSH(reinterpret_cast<Object*>(bcp));                             \

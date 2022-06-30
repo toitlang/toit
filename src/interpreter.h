@@ -140,7 +140,6 @@ class Interpreter {
     OVERFLOW_EXCEPTION,
   };
 
-  Object** handle_preempt(Object** sp, OverflowState* state);
   Object** handle_stack_overflow(Object** sp, OverflowState* state, Method target);
 
   Object** push_error(Object** sp, Object* type, const char* message);

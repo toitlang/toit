@@ -188,12 +188,6 @@ class Scheduler {
 
   SystemMessage* new_process_message(SystemMessage::Type type, int gid);
 
-#ifdef TOIT_FREERTOS
-  static const int64 WATCHDOG_PERIOD_US = 10 * 1000 * 1000;   // 10 s.
-#else
-  static const int64 WATCHDOG_PERIOD_US = 600 * 1000 * 1000;  // 10 m.
-#endif
-
   static const int TICK_PERIOD_US = 100 * 1000;          // 100 ms.
 #ifdef TOIT_FREERTOS
   static const int TICK_PERIOD_PROFILING_US = 10 * 100;  // 10 ms.

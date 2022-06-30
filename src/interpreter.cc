@@ -212,24 +212,12 @@ Object** Interpreter::push_out_of_memory_error(Object** sp) {
   return sp;
 }
 
-Object** Interpreter::handle_preempt(Object** sp, OverflowState* state) {
-  // Reset the watermark now that we're handling the preemption.
-  _watermark = null;
-
-  Process* process = _process;
-  if (process->signals() & Process::WATCHDOG) {
-    *state = OVERFLOW_EXCEPTION;
-    Object* type = process->program()->watchdog_interrupt();
-    return push_error(sp, type, "");
-  } else {
-    *state = OVERFLOW_PREEMPT;
-  }
-  return sp;
-}
-
 Object** Interpreter::handle_stack_overflow(Object** sp, OverflowState* state, Method method) {
   if (_watermark == PREEMPTION_MARKER) {
-    return handle_preempt(sp, state);
+    // Reset the watermark now that we're handling the preemption.
+    _watermark = null;
+    *state = OVERFLOW_PREEMPT;
+    return sp;
   }
 
   Process* process = _process;

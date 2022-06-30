@@ -36,7 +36,6 @@ class Process : public ProcessListFromProcessGroup::Element,
   enum Signal {
     KILL              = 1 << 0,
     PREEMPT           = 1 << 1,
-    WATCHDOG          = 1 << 2,
   };
 
   enum State {
@@ -194,22 +193,6 @@ class Process : public ProcessListFromProcessGroup::Element,
     delete p;
   }
 
-  void set_last_run(int64 us) {
-    _last_run_us = us;
-  }
-
-  void increment_unyielded_for(int64 us) {
-    _unyielded_for_us += us;
-  }
-
-  void clear_unyielded_for() {
-    _unyielded_for_us = 0;
-  }
-
-  int64 current_run_duration(int64 now) {
-    return _unyielded_for_us + (now - _last_run_us);
-  }
-
   inline bool on_program_heap(HeapObject* object) {
     uword address = reinterpret_cast<uword>(object);
     return address - _program_heap_address < _program_heap_size;
@@ -256,9 +239,6 @@ class Process : public ProcessListFromProcessGroup::Element,
 
   bool _construction_failed = false;
   bool _idle_since_gc = true;
-
-  int64 _last_run_us = 0;
-  int64 _unyielded_for_us = 0;
 
   Profiler* _profiler = null;
 
