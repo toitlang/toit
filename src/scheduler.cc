@@ -560,8 +560,6 @@ Object* Scheduler::process_stats(Array* array, int group_id, int process_id, Pro
 void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* scheduler_thread) {
   wait_for_any_gc_to_complete(locker, process, Process::RUNNING);
   process->set_scheduler_thread(scheduler_thread);
-  int64 start = OS::get_monotonic_time();
-  process->set_last_run(start);
 
   ProcessRunner* runner = process->runner();
   bool interpreted = (runner == null);
@@ -591,7 +589,6 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
     result = runner->run();
   }
 
-  process->increment_unyielded_for(OS::get_monotonic_time() - start);
   process->set_scheduler_thread(null);
 
   while (result.state() != Interpreter::Result::TERMINATED) {
@@ -604,8 +601,6 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
     } else if (signals & Process::PREEMPT) {
       result = Interpreter::Result(Interpreter::Result::PREEMPTED);
       process->clear_signal(Process::PREEMPT);
-    } else if (signals & Process::WATCHDOG) {
-      process->clear_signal(Process::WATCHDOG);
     } else {
       UNREACHABLE();
     }
@@ -633,7 +628,6 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
     }
 
     case Interpreter::Result::YIELDED:
-      process->clear_unyielded_for();
       wait_for_any_gc_to_complete(locker, process, Process::IDLE);
       if (process->has_messages()) {
         process_ready(locker, process);
@@ -778,16 +772,6 @@ void Scheduler::terminate_execution(Locker& locker, ExitState exit) {
 
 void Scheduler::tick(Locker& locker, int64 now) {
   tick_schedule(locker, now, true);
-
-  for (SchedulerThread* thread : _threads) {
-    Process* process = thread->interpreter()->process();
-    if (process == null) continue;
-    if (process == _boot_process) continue;
-    int64 runtime = process->current_run_duration(now);
-    if (Flags::enable_watchdog && runtime > WATCHDOG_PERIOD_US) {
-      process->signal(Process::WATCHDOG);
-    }
-  }
 
   if (_num_profiled_processes == 0 && _ready_processes.is_empty()) {
     // No need to do preemption when there are no active profilers
