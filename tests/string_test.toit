@@ -871,6 +871,8 @@ main:
 
   test_hash_code
 
+  test_substitute
+
   expect "fisk".size == 4 --message="string size test"
   expect ("A"[0]) == 'A' --message="string at test"
   expect ("fisk" + "fugl").size == 8
@@ -1636,3 +1638,29 @@ test_hash_code:
   expect_equals str.hash_code slice.hash_code
 
   expect_not hash1 == slice.hash_code
+
+test_substitute:
+  MAP ::= {
+    "variable": "fixed",
+    "value": "cost",
+  }
+  result := "Replace {{variable}} with {{value}}".substitute: MAP[it]
+  expect_equals "Replace fixed with cost" result
+
+  result = "Replace {{variable}} with {{value}} trailing text".substitute: MAP[it]
+  expect_equals "Replace fixed with cost trailing text" result
+
+  result = "".substitute: MAP[it]
+  expect_equals "" result
+
+  result = "{{variable}}".substitute: MAP[it]
+  expect_equals "fixed" result
+
+  result = "42foobarfizz103".substitute --open="foo" --close="fizz": "BAR"
+  expect_equals "42BAR103" result
+
+  result = "{{variable}} is not variable".substitute: MAP[it]
+  expect_equals "fixed is not variable" result
+
+  // Check that we remember to stringify.
+  "The time is {{time}} now.".substitute: Time.now.local
