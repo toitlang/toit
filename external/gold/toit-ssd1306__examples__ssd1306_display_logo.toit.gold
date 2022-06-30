@@ -1,0 +1,6 @@
+<pkg:..>/ssd1306.toit:69:10: warning: Class 'SSD1306' is deprecated
+    super.from_subclass_ --reset=reset
+         ^
+<pkg:..>/ssd1306.toit:88:10: warning: Class 'SSD1306' is deprecated
+    super.from_subclass_ --reset=reset
+         ^
