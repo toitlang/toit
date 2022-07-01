@@ -10,7 +10,7 @@ interface CellularService extends NetworkService:
   static MINOR /int    ::= 1
 
   static CONNECT_INDEX /int ::= 1000
-  connect config/Map -> List
+  connect keys/List? values/List? -> List
 
 class CellularServiceClient extends NetworkServiceClient implements CellularService:
   constructor --open/bool=true:
@@ -19,11 +19,5 @@ class CellularServiceClient extends NetworkServiceClient implements CellularServ
   open -> CellularServiceClient?:
     return (open_ CellularService.UUID CellularService.MAJOR CellularService.MINOR) and this
 
-  connect config/Map -> List:
-    // TODO(kasper): Introduce helper for this.
-    keys := []
-    values := []
-    config.do: | key value |
-      keys.add key
-      values.add value
+  connect keys/List? values/List? -> List:
     return invoke_ CellularService.CONNECT_INDEX [keys, values]

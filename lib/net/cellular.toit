@@ -26,7 +26,10 @@ CONFIG_OPEN_DRAIN  /int ::= 2
 
 service_/CellularServiceClient? ::= (CellularServiceClient --no-open).open
 
-open config/Map -> net.Interface:
+open config/Map? -> net.Interface:
   service := service_
   if not service: throw "cellular unavailable"
-  return SystemInterface_ service (service.connect config)
+  has_config ::= config and not config.is_empty
+  keys ::= has_config ? config.keys : null
+  values ::= has_config ? config.values : null
+  return SystemInterface_ service (service.connect keys values)
