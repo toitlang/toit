@@ -111,9 +111,6 @@
 #define CONFIG_TOIT_BIT_DISPLAY 1
 #endif
 
-// Define PROFILER if the bytecode profiler should be included.
-#define PROFILER
-
 typedef intptr_t word;
 typedef uintptr_t uword;
 
@@ -326,21 +323,18 @@ namespace compiler {
   class ProgramBuilder;
 }
 
-class Object;
-class Smi;
 class Array;
 class ByteArray;
-class Instance;
-class HeapObject;
 class Double;
-class Stack;
-class Task;
-class String;
+class HeapObject;
+class Instance;
 class LargeInteger;
-
-#ifdef PROFILER
+class Object;
 class Profiler;
-#endif
+class Smi;
+class Stack;
+class String;
+class Task;
 
 // If you capture too many variables, then the functor does heap allocations.
 // These can fail on the device, and we can't catch that deep in the compiler's

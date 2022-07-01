@@ -120,9 +120,8 @@ void print_bytecode(Printer* printer, uint8* bcp, int bci) {
     case OP_BF:
       printer->printf(" T%u", bci + index);
       break;
-    case OP_SB:
+    case OP_SB_SB:
       index = Utils::read_unaligned_uint16(bcp + 1);
-    case OP_BB:
       printer->printf(" T%d", bci - index);
       break;
     case OP_SCI:

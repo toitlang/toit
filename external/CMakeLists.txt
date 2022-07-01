@@ -16,12 +16,12 @@
 set(TOIT_EXTERNAL_SCRIPT "${CMAKE_CURRENT_LIST_DIR}/CMakeLists.txt")
 
 set(TOIT_REPOS
+    https://github.com/kasperl/toit-qubitro
     https://github.com/nilwes/LIS3DH
     https://github.com/toitlang/jaguar
     https://github.com/toitlang/pkg-ar
     https://github.com/toitlang/pkg-host
-    # TODO(kasper): Renable once we can handle tests failing on Windows.
-    # https://github.com/toitlang/pkg-http
+    https://github.com/toitlang/pkg-http
     https://github.com/toitlang/pkg-modbus
     https://github.com/toitlang/pkg-ntp
     https://github.com/toitlang/pkg-tar

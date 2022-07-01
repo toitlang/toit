@@ -309,7 +309,6 @@ void ProgramBuilder::set_up_skeleton_program() {
   _program->set_read_failed(lookup_symbol("READ_FAILED"));
   _program->set_stack_overflow(lookup_symbol("STACK_OVERFLOW"));
   _program->set_unimplemented(lookup_symbol("UNIMPLEMENTED"));
-  _program->set_watchdog_interrupt(lookup_symbol("WATCHDOG_INTERRUPT"));
   _program->set_wrong_object_type(lookup_symbol("WRONG_OBJECT_TYPE"));
   _program->set_app_sdk_version(lookup_symbol(vm_git_version()));
   _program->set_app_sdk_info(lookup_symbol(vm_git_info()));

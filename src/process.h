@@ -36,7 +36,6 @@ class Process : public ProcessListFromProcessGroup::Element,
   enum Signal {
     KILL              = 1 << 0,
     PREEMPT           = 1 << 1,
-    WATCHDOG          = 1 << 2,
   };
 
   enum State {
@@ -179,35 +178,19 @@ class Process : public ProcessListFromProcessGroup::Element,
     return result;
   }
 
-  #ifdef PROFILER
-   int install_profiler(int task_id) {
-     ASSERT(profiler() == null);
-     _profiler = _new Profiler(task_id);
-     if (_profiler == null) return -1;
-     return profiler()->allocated_bytes();
-   }
-   Profiler* profiler() { return _profiler; }
-   void uninstall_profiler() {
-     Profiler* p = profiler();
-     _profiler = null;
-     delete p;
-   }
-  #endif
+  Profiler* profiler() const { return _profiler; }
 
-  void set_last_run(int64 us) {
-    _last_run_us = us;
+  int install_profiler(int task_id) {
+    ASSERT(profiler() == null);
+    _profiler = _new Profiler(task_id);
+    if (_profiler == null) return -1;
+    return profiler()->allocated_bytes();
   }
 
-  void increment_unyielded_for(int64 us) {
-    _unyielded_for_us += us;
-  }
-
-  void clear_unyielded_for() {
-    _unyielded_for_us = 0;
-  }
-
-  int64 current_run_duration(int64 now) {
-    return _unyielded_for_us + (now - _last_run_us);
+  void uninstall_profiler() {
+    Profiler* p = profiler();
+    _profiler = null;
+    delete p;
   }
 
   inline bool on_program_heap(HeapObject* object) {
@@ -257,12 +240,7 @@ class Process : public ProcessListFromProcessGroup::Element,
   bool _construction_failed = false;
   bool _idle_since_gc = true;
 
-  int64 _last_run_us = 0;
-  int64 _unyielded_for_us = 0;
-
-#ifdef PROFILER
   Profiler* _profiler = null;
-#endif
 
   ResourceGroupListFromProcess _resource_groups;
   friend class HeapObject;

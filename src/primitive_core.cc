@@ -2030,50 +2030,34 @@ PRIMITIVE(rebuild_hash_index) {
 
 PRIMITIVE(profiler_install) {
   ARGS(bool, profile_all_tasks);
-#ifdef PROFILER
   if (process->profiler() != null) ALREADY_EXISTS;
   int result = process->install_profiler(profile_all_tasks ? -1 : process->task()->id());
   if (result == -1) MALLOC_FAILED;
   return Smi::from(result);
-#else
-  USE(profile_all_tasks);
-  PERMISSION_DENIED;
-#endif
 }
 
 PRIMITIVE(profiler_start) {
-#ifdef PROFILER
   Profiler* profiler = process->profiler();
   if (profiler == null) ALREADY_CLOSED;
   if (profiler->is_active()) return process->program()->false_object();
   profiler->start();
-  // Force the interpreter to recompute if profiling is active.
-  process->scheduler_thread()->interpreter()->store_stack();
-  process->scheduler_thread()->interpreter()->load_stack();
+  // Tell the scheduler that a new process has an active profiler.
+  VM::current()->scheduler()->activate_profiler(process);
   return process->program()->true_object();
-#else
-  PERMISSION_DENIED;
-#endif
 }
 
 PRIMITIVE(profiler_stop) {
-#ifdef PROFILER
   Profiler* profiler = process->profiler();
   if (profiler == null) ALREADY_CLOSED;
   if (!profiler->is_active()) return process->program()->false_object();
   profiler->stop();
-  // Force the interpreter to recompute if profiling is active.
-  process->scheduler_thread()->interpreter()->store_stack();
-  process->scheduler_thread()->interpreter()->load_stack();
+  // Tell the scheduler to deactivate profiling for the process.
+  VM::current()->scheduler()->deactivate_profiler(process);
   return process->program()->true_object();
-#else
-  PERMISSION_DENIED;
-#endif
 }
 
 PRIMITIVE(profiler_encode) {
   ARGS(String, title, int, cutoff);
-#ifdef PROFILER
   Profiler* profiler = process->profiler();
   if (profiler == null) ALREADY_CLOSED;
   MallocedBuffer buffer(4096);
@@ -2086,22 +2070,13 @@ PRIMITIVE(profiler_encode) {
   ByteArray::Bytes bytes(result);
   memcpy(bytes.address(), buffer.content(), buffer.size());
   return result;
-#else
-  USE(title);
-  USE(cutoff);
-  PERMISSION_DENIED;
-#endif
 }
 
 PRIMITIVE(profiler_uninstall) {
-#ifdef PROFILER
   Profiler* profiler = process->profiler();
   if (profiler == null) ALREADY_CLOSED;
   process->uninstall_profiler();
   return process->program()->null_object();
-#else
-  PERMISSION_DENIED;
-#endif
 }
 
 PRIMITIVE(set_max_heap_size) {

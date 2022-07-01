@@ -59,7 +59,6 @@ namespace toit {
   ROOT(String,     read_failed)              \
   ROOT(String,     stack_overflow)           \
   ROOT(String,     unimplemented)            \
-  ROOT(String,     watchdog_interrupt)       \
   ROOT(String,     wrong_object_type)        \
 
 

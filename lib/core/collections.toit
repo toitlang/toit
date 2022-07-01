@@ -2230,18 +2230,18 @@ class Set extends HashedInsertionOrderedCollection_ implements Collection:
 
   /**
   Finds an object where you have the $hash code, but you haven't
-     necessarily created the object yet.
-   Returns either a matching object that was found in the set,
-     or a newly created object that was returned by the not_found
-     block and inserted into the set.
-   If a matching entry is not found, then the $initial block
-     is called.  It can create an object that will be added to
-     the set, or it can non-locally return in which case the set
-     is unchanged.  If it evaluates to null then nothing is added.
-   When a potential match is found in the set, the $compare block
-     is called with the potential match.  If it returns true then
-     the find call returns the found object.  If it returns false
-     the search continues.
+    necessarily created the object yet.
+  Returns either a matching object that was found in the set,
+    or a newly created object that was returned by the not_found
+    block and inserted into the set.
+  If a matching entry is not found, then the $initial block
+    is called.  It can create an object that will be added to
+    the set, or it can non-locally return in which case the set
+    is unchanged.  If it evaluates to null then nothing is added.
+  When a potential match is found in the set, the $compare block
+    is called with the potential match.  If it returns true then
+    the find call returns the found object.  If it returns false
+    the search continues.
   */
   get_by_hash_ hash/int [--initial] [--compare] -> any:
     if not index_:

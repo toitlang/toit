@@ -6,16 +6,16 @@
 // and then printing the results.
 log_execution_time name/string --iterations/int=1 --allocations/bool=true [block] -> none:
   assert: iterations > 0
-  reset_watchdog := platform == PLATFORM_FREERTOS
   stats := List 5
   process_stats stats
   bytes_allocated := stats[4]
+
   duration ::= Duration.of:
-    iterations.repeat:
-      block.call
-      if reset_watchdog: sleep --ms=1
+    iterations.repeat: block.call
+
   process_stats stats
   bytes_allocated = stats[4] - bytes_allocated
+
   if iterations == 1:
     print "$name: $(%.2f duration.in_us/1000.0) ms"
     if allocations: print "$name: $(%.3f bytes_allocated/1000.0) kb"

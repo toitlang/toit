@@ -52,7 +52,6 @@ namespace toit {
   FORMAT(OP_BC, 2)               \
   FORMAT(OP_BG, 2)               \
   FORMAT(OP_BF, 2)               \
-  FORMAT(OP_BB, 2)               \
   FORMAT(OP_BCI, 2)              \
   FORMAT(OP_BII, 2)              \
   FORMAT(OP_BLC, 2)              \
@@ -74,9 +73,8 @@ namespace toit {
   FORMAT(OP_SS_SO, 5)            \
   FORMAT(OP_SCI, 3)              \
   FORMAT(OP_SII, 3)              \
-  FORMAT(OP_SB, 3)               \
+  FORMAT(OP_SB_SB, 5)            \
   FORMAT(OP_SU_SU, 5)            \
-
 
 
 // Format Toit bytecodes
@@ -180,12 +178,9 @@ enum BytecodeFormat {
   BYTECODE(BRANCH,                     3, OP_SF, "branch")                     \
   BYTECODE(BRANCH_IF_TRUE,             3, OP_SF, "branch if true")             \
   BYTECODE(BRANCH_IF_FALSE,            3, OP_SF, "branch if false")            \
-  BYTECODE(BRANCH_BACK,                2, OP_BB, "branch back")                \
-  BYTECODE(BRANCH_BACK_WIDE,           3, OP_SB, "branch back wide")           \
-  BYTECODE(BRANCH_BACK_IF_TRUE,        2, OP_BB, "branch back if true")        \
-  BYTECODE(BRANCH_BACK_IF_TRUE_WIDE,   3, OP_SB, "branch back if true wide")   \
-  BYTECODE(BRANCH_BACK_IF_FALSE,       2, OP_BB, "branch back if false")       \
-  BYTECODE(BRANCH_BACK_IF_FALSE_WIDE,  3, OP_SB, "branch back if false wide")  \
+  BYTECODE(BRANCH_BACK,                5, OP_SB_SB, "branch back")             \
+  BYTECODE(BRANCH_BACK_IF_TRUE,        5, OP_SB_SB, "branch back if true")     \
+  BYTECODE(BRANCH_BACK_IF_FALSE,       5, OP_SB_SB, "branch back if false")    \
   BYTECODE(PRIMITIVE,                  4, OP_BU_SU, "invoke primitive")        \
   BYTECODE(THROW,                      2, OP_BU, "throw")                      \
   BYTECODE(RETURN,                     3, OP_BS_BU, "return")                  \

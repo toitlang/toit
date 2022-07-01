@@ -7,6 +7,7 @@ import expect show *
 
 main args:
   lines := run args
+  print (lines.join "\n")
   expect (lines.first.starts_with "Profile of Profiler Test")
 
   expect_equals "foo" (lines[1].copy 7 30).trim
