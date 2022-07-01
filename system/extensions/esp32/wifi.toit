@@ -52,7 +52,7 @@ class WifiServiceDefinition extends NetworkServiceDefinitionBase:
   connect client/int config/Map? -> List:
     if not config:
       image := esp32.image_config or {:}
-      config = config.get "wifi" --if_absent=: {:}
+      config = image.get "wifi" --if_absent=: {:}
 
     ssid/string? := config.get wifi.CONFIG_SSID
     if not ssid or ssid.is_empty: throw "wifi ssid not provided"
