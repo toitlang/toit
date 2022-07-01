@@ -145,7 +145,7 @@ PRIMITIVE(init) {
 PRIMITIVE(create) {
   ARGS(I2SResourceGroup, group, int, sck_pin, int, ws_pin, int, tx_pin,
        int, rx_pin, int, mclk_pin,
-       int, sample_rate, int, bits_per_sample, int, buffer_size,
+       uint32, sample_rate, int, bits_per_sample, int, buffer_size,
        bool, is_master, int, mclk_multiplier, bool, use_apll);
 
   int fixed_mclk = 0;
