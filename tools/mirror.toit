@@ -335,7 +335,7 @@ class HistogramEntry:
   stringify -> string:
     k := size < 1024 ? "       " : "$(%6d size >> 10)k"
     c := count == 0 ? "       " : "$(%7d count)"
-    return "  │ $c │ $k $(%4d size & 1023) │ $(%-45s class_name)│"
+    return "  │ $c │ $k $(%4d size & 0x3ff) │ $(%-45s class_name)│"
 
 class Histogram extends Mirror:
   static tag ::= 'O'  // For Objects.
