@@ -17,6 +17,7 @@ import net
 import monitor
 import log
 import esp32
+import wifi
 
 import system.api.wifi show WifiService
 import system.api.network show NetworkService
@@ -33,7 +34,7 @@ class WifiServiceDefinition extends NetworkServiceDefinitionBase:
     provides WifiService.UUID WifiService.MAJOR WifiService.MINOR
 
   handle pid/int client/int index/int arguments/any -> any:
-    if index == WifiService.CONNECT_SSID_PASSWORD_INDEX:
+    if index == WifiService.CONNECT_INDEX:
       return connect client arguments[0] arguments[1]
     if index == WifiService.ESTABLISH_INDEX:
       return establish client arguments[0] arguments[1] arguments[2] arguments[3]
@@ -42,13 +43,14 @@ class WifiServiceDefinition extends NetworkServiceDefinitionBase:
   connect client/int -> List:
     return connect client null null
 
-  connect client/int ssid/string? password/string? -> List:
-    if not ssid:
-      config := esp32.image_config or {:}
-      wifi_config := config.get "wifi" --if_absent=: {:}
-      ssid = wifi_config["ssid"]
-      password = wifi_config.get "password" --if_absent=: ""
-    if ssid.size == 0: throw "wifi ssid not provided"
+  connect client/int config/Map? -> List:
+    if not config:
+      image := esp32.image_config or {:}
+      config = config.get "wifi" --if_absent=: {:}
+
+    ssid/string? := config.get wifi.CONFIG_SSID
+    if not ssid or ssid.is_empty: throw "wifi ssid not provided"
+    password/string := config.get wifi.CONFIG_PASSWORD --if_absent=: ""
 
     if not state_: state_ = NetworkState
     module ::= (state_.up: WifiModule.sta this ssid password) as WifiModule
@@ -60,11 +62,18 @@ class WifiServiceDefinition extends NetworkServiceDefinitionBase:
     resource := NetworkResource this client state_ --notifiable
     return [resource.serialize_for_rpc, NetworkService.PROXY_ADDRESS]
 
-  establish client/int ssid/string password/string broadcast/bool channel/int -> List:
+  establish client/int config/Map? -> List:
+    if not config: config = {:}
+
+    ssid/string? := config.get wifi.CONFIG_SSID
+    if not ssid or ssid.is_empty: throw "wifi ssid not provided"
+    password/string := config.get wifi.CONFIG_PASSWORD --if_absent=: ""
     if password.size != 0 and password.size < 8:
       throw "wifi password must be at least 8 characters"
+    channel/int := config.get wifi.CONFIG_CHANNEL --if_absent=(: 1)
     if channel < 1 or channel > 13:
       throw "wifi channel must be between 1 and 13"
+    broadcast/bool := config.get wifi.CONFIG_BROADCAST --if_absent=(: true)
 
     if not state_: state_ = NetworkState
     module ::= (state_.up: WifiModule.ap this ssid password broadcast channel) as WifiModule
