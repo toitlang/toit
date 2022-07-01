@@ -480,21 +480,31 @@ Object* MessageDecoder::decode_array() {
 Object* MessageDecoder::decode_map() {
   int size = read_cardinal();
   Instance* result = _process->object_heap()->allocate_instance(_program->map_class_id());
-  Array* backing = _process->object_heap()->allocate_array(size * 2, Smi::zero());
-  if (result == null || result == null) {
+  if (result == null) {
+    _allocation_failed = true;
+    return null;
+  }
+  if (size == 0) {
+    result->at_put(Instance::MAP_SIZE_OFFSET, Smi::from(0));
+    result->at_put(Instance::MAP_SPACES_LEFT_OFFSET, Smi::from(0));
+    result->at_put(Instance::MAP_INDEX_OFFSET, _program->null_object());
+    result->at_put(Instance::MAP_BACKING_OFFSET, _program->null_object());
+    return result;
+  }
+  Array* array = _process->object_heap()->allocate_array(size * 2, Smi::zero());
+  if (array == null) {
     _allocation_failed = true;
     return null;
   }
   for (int i = 0; i < size * 2; i++) {
     Object* inner = decode();
     if (_allocation_failed) return null;
-    backing->at_put(i, inner);
+    array->at_put(i, inner);
   }
-  printf("Decoding map, size %d, backing %p\n", (int)size, backing);
   result->at_put(Instance::MAP_SIZE_OFFSET, Smi::from(size));
   result->at_put(Instance::MAP_SPACES_LEFT_OFFSET, Smi::from(0));
   result->at_put(Instance::MAP_INDEX_OFFSET, _program->null_object());
-  result->at_put(Instance::MAP_BACKING_OFFSET, backing);
+  result->at_put(Instance::MAP_BACKING_OFFSET, array);
   return result;
 }
 

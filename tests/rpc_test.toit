@@ -516,14 +516,10 @@ test myself/int arguments/any:
   else:
     actual = rpc.invoke myself PROCEDURE_ECHO arguments
   if arguments is List:
-    expect.expect_list_equals expected actual
+    expect.expect_structural_equals expected actual
+  else if actual is Map:
+    expect.expect_structural_equals expected actual
   else:
-    if actual is Map:
-      print "It's a map, size $actual.size"
-      print "Backing is $actual.backing_"
-      actual.backing_.size.repeat:
-        print "  $it: $actual.backing_[it]"
-      print "Index is $actual.index_"
     expect.expect_equals expected actual
 
 test_illegal myself/int arguments/any:

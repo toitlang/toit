@@ -236,10 +236,18 @@ Object* Interpreter::hash_do(Program* program, Object* current, Object* backing,
   if (!is_smi(current)) {
     // First time.
     if (!is_instance(backing)) {
-      return program->null_object();  // We are done.
+      // Normally the backing is null (empty map) or a list instance.
+      // However a newly deserialized map has an array instead.
+      if (!is_array(backing)) {
+        return program->null_object();  // We are done.
+      }
+      if (step < 0) {
+        // Start at the end of the array.
+        c = Array::cast(backing)->length() + step;
+      }
     } else if (step < 0) {
-      // Start at the end.
-      c = Smi::cast(Instance::cast(backing)->at(1))->value() + step;
+      // Start at the end of the list.
+      c = Smi::cast(Instance::cast(backing)->at(Instance::LIST_SIZE_OFFSET))->value() + step;
     }
     Smi* block = Smi::cast(*from_block(Smi::cast(block_on_stack)));
     Method target = Method(program->bytecodes, block->value());
@@ -278,7 +286,7 @@ Object* Interpreter::hash_do(Program* program, Object* current, Object* backing,
     if (is_smi(entry) || HeapObject::cast(entry)->class_id() != program->tombstone_class_id()) {
       if (first_tombstone != INVALID_TOMBSTONE && tombstones_skipped > 10) {
         // Too many tombstones in a row.
-        Object* distance = Instance::cast(first_tombstone_object)->at(0);
+        Object* distance = Instance::cast(first_tombstone_object)->at(Instance::TOMBSTONE_DISTANCE_OFFSET);
         word new_distance = c - first_tombstone;
         if (!is_smi(distance) || distance == Smi::from(0) || !Smi::is_valid(new_distance)) {
           // We can't overwrite the distance on a 0 instance of Tombstone_,
@@ -299,7 +307,7 @@ Object* Interpreter::hash_do(Program* program, Object* current, Object* backing,
       } else {
         tombstones_skipped++;
       }
-      Object* skip = Instance::cast(entry)->at(0);
+      Object* skip = Instance::cast(entry)->at(Instance::TOMBSTONE_DISTANCE_OFFSET);
       if (is_smi(skip)) {
         word distance = Smi::cast(skip)->value();
         if (distance != 0 && (distance ^ step) >= 0) { // If signs match.

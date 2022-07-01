@@ -1233,6 +1233,7 @@ class Instance : public HeapObject {
   static const int STRING_SLICE_STRING_OFFSET = 0;
   static const int STRING_SLICE_FROM_OFFSET = 1;
   static const int STRING_SLICE_TO_OFFSET = 2;
+  static const int TOMBSTONE_DISTANCE_OFFSET = 0;
 
  private:
   static const int HEADER_SIZE = HeapObject::SIZE;
