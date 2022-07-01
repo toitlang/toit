@@ -46,6 +46,7 @@ main:
   test_performance myself
   test_blocking myself broker
   test_sequential myself broker
+  test_map myself
 
   test_request_queue_cancel myself
   test_timeouts myself broker --cancel
@@ -267,6 +268,10 @@ test_sequential myself/int broker/RpcBroker -> none:
   // Unregister procedure and make sure it's gone.
   broker.unregister_procedure name
   expect.expect_throw "No such procedure registered: 800": rpc.invoke myself name []
+
+test_map myself/int -> none:
+  m := {"foo": 42, "bar": [1, 2]}
+  test myself m
 
 cancel queue/RpcRequestQueue_ pid/int id/int -> int:
   result/int := 0
@@ -513,6 +518,12 @@ test myself/int arguments/any:
   if arguments is List:
     expect.expect_list_equals expected actual
   else:
+    if actual is Map:
+      print "It's a map, size $actual.size"
+      print "Backing is $actual.backing_"
+      actual.backing_.size.repeat:
+        print "  $it: $actual.backing_[it]"
+      print "Index is $actual.index_"
     expect.expect_equals expected actual
 
 test_illegal myself/int arguments/any:
