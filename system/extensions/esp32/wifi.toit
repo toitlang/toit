@@ -17,7 +17,7 @@ import net
 import monitor
 import log
 import esp32
-import wifi
+import net.wifi
 
 import system.api.wifi show WifiService
 import system.api.network show NetworkService
@@ -35,13 +35,19 @@ class WifiServiceDefinition extends NetworkServiceDefinitionBase:
 
   handle pid/int client/int index/int arguments/any -> any:
     if index == WifiService.CONNECT_INDEX:
-      return connect client arguments[0] arguments[1]
+      return connect client (build_config arguments[0] arguments[1])
     if index == WifiService.ESTABLISH_INDEX:
-      return establish client arguments[0] arguments[1] arguments[2] arguments[3]
+      return establish client (build_config arguments[0] arguments[1])
     return super pid client index arguments
 
+  static build_config keys/List? values/List -> Map?:
+    if not keys: return null
+    config ::= {:}
+    keys.size.repeat: config[keys[it]] = values[it]
+    return config
+
   connect client/int -> List:
-    return connect client null null
+    return connect client null
 
   connect client/int config/Map? -> List:
     if not config:
@@ -70,10 +76,10 @@ class WifiServiceDefinition extends NetworkServiceDefinitionBase:
     password/string := config.get wifi.CONFIG_PASSWORD --if_absent=: ""
     if password.size != 0 and password.size < 8:
       throw "wifi password must be at least 8 characters"
-    channel/int := config.get wifi.CONFIG_CHANNEL --if_absent=(: 1)
+    channel/int := config.get wifi.CONFIG_CHANNEL --if_absent=: 1
     if channel < 1 or channel > 13:
       throw "wifi channel must be between 1 and 13"
-    broadcast/bool := config.get wifi.CONFIG_BROADCAST --if_absent=(: true)
+    broadcast/bool := config.get wifi.CONFIG_BROADCAST --if_absent=: true
 
     if not state_: state_ = NetworkState
     module ::= (state_.up: WifiModule.ap this ssid password broadcast channel) as WifiModule

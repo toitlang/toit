@@ -7,12 +7,12 @@ import system.api.network show NetworkService NetworkServiceClient
 interface WifiService extends NetworkService:
   static UUID  /string ::= "2436edc6-4cd8-4834-8ebc-ed883990da40"
   static MAJOR /int    ::= 0
-  static MINOR /int    ::= 2
+  static MINOR /int    ::= 4
 
-  static CONNECT_INDEX /int ::= 100
+  static CONNECT_INDEX /int ::= 1000
   connect keys/List? values/List? -> List
 
-  static ESTABLISH_INDEX /int ::= 101
+  static ESTABLISH_INDEX /int ::= 1001
   establish keys/List? values/List? -> List
 
 class WifiServiceClient extends NetworkServiceClient implements WifiService:
