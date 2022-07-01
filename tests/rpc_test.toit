@@ -273,6 +273,16 @@ test_map myself/int -> none:
   m := {"foo": 42, "bar": [1, 2]}
   test myself m
 
+  // Test the find function on the map.
+  roundtripped := rpc.invoke myself PROCEDURE_ECHO m
+  expect.expect_structural_equals m["foo"] roundtripped["foo"]
+  expect.expect_structural_equals m["bar"] roundtripped["bar"]
+
+  // Reverse order.
+  roundtripped = rpc.invoke myself PROCEDURE_ECHO m
+  expect.expect_structural_equals m["bar"] roundtripped["bar"]
+  expect.expect_structural_equals m["foo"] roundtripped["foo"]
+
 cancel queue/RpcRequestQueue_ pid/int id/int -> int:
   result/int := 0
   queue.cancel: | request/RpcRequest_ |
