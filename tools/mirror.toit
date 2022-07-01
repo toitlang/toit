@@ -333,7 +333,9 @@ class HistogramEntry:
   constructor .class_name .count .size:
 
   stringify -> string:
-    return "  │ $(%7d count) │ $(%6d size >> 10)k $(%4d size & 1023)b │ $(%-45s class_name)│"
+    k := size < 1024 ? "       " : "$(%6d size >> 10)k"
+    c := count == 0 ? "       " : "$(%7d count)"
+    return "  │ $c │ $k $(%4d size & 0x3ff) │ $(%-45s class_name)│"
 
 class Histogram extends Mirror:
   static tag ::= 'O'  // For Objects.
@@ -356,13 +358,16 @@ class Histogram extends Mirror:
 
   stringify -> string:
     marker := marker_ == "" ? "" : " for $marker_"
-    return "Object heap histogram$marker:\n"
-        + "  ┌─────────┬───────────────┬──────────────────────────────────────────────┐\n"
-        + "  │   Count │         Bytes │ Class                                        │\n"
-        + "  ├─────────┼───────────────┼──────────────────────────────────────────────┤\n"
-        + (entries.join "\n")
-        + "\n"
-        + "  └─────────┴───────────────┴──────────────────────────────────────────────┘"
+    total := HistogramEntry "Total" 0
+        entries.reduce --initial=0: | a b | a + b.size
+    return "Objects$marker:\n"
+        + "  ┌─────────┬──────────────┬──────────────────────────────────────────────┐\n"
+        + "  │   Count │        Bytes │ Class                                        │\n"
+        + "  ├─────────┼──────────────┼──────────────────────────────────────────────┤\n"
+        + (entries.join "\n") +                                                      "\n"
+        + "  ╞═════════╪══════════════╪══════════════════════════════════════════════╡\n"
+        + total.stringify +                                                          "\n"
+        + "  └─────────┴──────────────┴──────────────────────────────────────────────┘"
 
 class CoreDump extends Mirror:
   static tag ::= 'c'
