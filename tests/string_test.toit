@@ -1664,3 +1664,20 @@ test_substitute:
 
   // Check that we remember to stringify.
   "The time is {{time}} now.".substitute: Time.now.local
+
+  // Whitespace trimming.
+  result = "{{  variable  }} is not variable".substitute: MAP[it]
+  expect_equals "fixed is not variable" result
+
+  // Null means no change.
+  result = "{{  variable  }} is not variable".substitute: null
+  expect_equals "{{  variable  }} is not variable" result
+
+  // The opening sequence can be in the middle.
+  result = " - {{{{}} - ".substitute: it == "{{"
+  expect_equals " - true - " result
+
+  // But we don't count opens and closes, so the closing sequence can't be in
+  // the middle.
+  result = " - {{{{}}}} - ".substitute: it == "{{"
+  expect_equals " - true}} - " result
