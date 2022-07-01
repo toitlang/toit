@@ -27,6 +27,18 @@
 
 namespace toit {
 
+class SPIResourceGroup : public ResourceGroup {
+ public:
+  TAG(SPIResourceGroup);
+  SPIResourceGroup(Process* process, EventSource* event_source, spi_host_device_t host_device, int dma_chan);
+  ~SPIResourceGroup();
+  spi_host_device_t host_device() { return _host_device; }
+
+ private:
+  spi_host_device_t _host_device;
+  int _dma_chan;
+};
+
 class SPIDevice : public Resource {
  public:
   static const int BUFFER_SIZE = 16;

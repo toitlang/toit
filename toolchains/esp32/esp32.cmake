@@ -93,5 +93,9 @@ include_directories(
   $ENV{IDF_PATH}/components/bt/include/esp32/include
   $ENV{IDF_PATH}/components/bt/host/nimble/nimble/nimble/host/services/gap/include
   $ENV{IDF_PATH}/components/bt/host/nimble/nimble/nimble/host/services/gatt/include
+  $ENV{IDF_PATH}/components/fatfs/vfs
+  $ENV{IDF_PATH}/components/fatfs/src
+  $ENV{IDF_PATH}/components/spi_flash/include
+  $ENV{IDF_PATH}/components/wear_levelling/include
   ${SKDCONFIG_INCLUDE_DIR}
   )
