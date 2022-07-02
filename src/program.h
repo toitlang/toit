@@ -70,6 +70,7 @@ namespace toit {
   ID(byte_array_slice_class_id)  \
   ID(string_slice_class_id)      \
   ID(list_class_id)              \
+  ID(map_class_id)               \
   ID(tombstone_class_id)         \
   ID(stack_class_id)             \
   ID(null_class_id)              \
