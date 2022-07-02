@@ -65,41 +65,37 @@ Understands operator equality and memberwise structural equality of lists and
   maps.
 */
 expect_structural_equals expected/Object actual/Object:
-  if not structural_equals expected actual:
+  if not structural_equals_ expected actual:
     expect false --message="Expected <$expected>, but was <$actual>"
 
-structural_equals expected actual -> bool:
+structural_equals_ expected actual -> bool:
   if expected is List:
-    return list_equals expected actual
+    return list_equals_ expected actual
   else if expected is Map:
-    return map_equals expected actual
+    return map_equals_ expected actual
   else:
     return expected == actual
 
 /** Expects the $actual list to be equal to the $expected list. */
 expect_list_equals expected/List actual/List:
-  if not list_equals expected actual:
+  if not list_equals_ expected actual:
     expect false --message="Expected <$expected>, but was <$actual>"
 
-list_equals expected/List actual -> bool:
+list_equals_ expected/List actual -> bool:
   if actual is List and actual.size == expected.size:
     all_good := true
     for i := 0; i < expected.size; i++:
-      if not structural_equals expected[i] actual[i]:
+      if not structural_equals_ expected[i] actual[i]:
         all_good = false
         break
     if all_good: return true
   return false
 
-expect_map_equals expected/Map actual/Map:
-  if not map_equals expected actual:
-    expect false --message="Expected <$expected>, but was <$actual>"
-
-map_equals expected/Map actual -> bool:
+map_equals_ expected/Map actual -> bool:
   if actual is Map and actual.size == expected.size:
     all_good := true
     expected.do: | key value |
-      if not structural_equals
+      if not structural_equals_
           value
           actual.get key --if_absent=(: all_good = false; null):
         all_good = false

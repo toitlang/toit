@@ -2046,19 +2046,18 @@ abstract class HashedInsertionOrderedCollection_:
         if not backing_: backing_ = List
         not_found.call  // May not return.
         return APPEND_
+      else if size_ != 1:
+        // Map built by deserializer, has no index.
+        rebuild_ size --allow_shrink
       else:
-        if size_ != 1:
-          // Map built by deserializer, has no index.
-          rebuild_ size --allow_shrink
+        k := backing_[0]
+        if k is not Tombstone_:
+          if compare_ key k:
+            return 0
+          append_position = not_found.call
+          rebuild_ 1 --allow_shrink
         else:
-          k := backing_[0]
-          if k is not Tombstone_:
-            if compare_ key k:
-              return 0
-            append_position = not_found.call
-            rebuild_ 1 --allow_shrink
-          else:
-            rebuild_ 1 --allow_shrink
+          rebuild_ 1 --allow_shrink
 
     return find_body_ key hash append_position not_found
       (: rebuild_ it --allow_shrink=false)

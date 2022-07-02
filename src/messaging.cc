@@ -128,7 +128,7 @@ bool MessageEncoder::encode(Object* object) {
         printf("Can't serialize large array\n");
       }
     } else if (class_id == _program->map_class_id()) {
-      return encode_map(Instance::cast(object));
+      return encode_map(instance);
     } else if (class_id == _program->byte_array_cow_class_id()) {
       return encode_copy(object, TAG_BYTE_ARRAY);
     } else if (class_id == _program->byte_array_slice_class_id()) {
@@ -178,19 +178,22 @@ bool MessageEncoder::encode_array(Array* object, int size) {
 
 bool MessageEncoder::encode_map(Instance* instance) {
   write_uint8(TAG_MAP);
-  Object* bk = instance->at(Instance::MAP_BACKING_OFFSET);
-  if (is_smi(bk)) return false;
-  HeapObject* backing = HeapObject::cast(bk);
-  Object* sz = instance->at(Instance::MAP_SIZE_OFFSET);
-  if (!is_smi(sz)) return false;
-  word size = Smi::cast(sz)->value();
+
+  Object* object = instance->at(Instance::MAP_BACKING_OFFSET);
+  if (is_smi(object)) return false;
+  HeapObject* backing = HeapObject::cast(object);
+
+  object = instance->at(Instance::MAP_SIZE_OFFSET);
+  if (!is_smi(object)) return false;
+  word size = Smi::cast(object)->value();
+
   write_cardinal(size);
   if (size == 0) return true;  // Do this before looking at the backing, which may be null.
   Smi* class_id = backing->class_id();
   if (class_id == _program->list_class_id()) {
-    bk = Instance::cast(backing)->at(Instance::LIST_ARRAY_OFFSET);
-    if (is_smi(bk)) return false;
-    backing = HeapObject::cast(bk);
+    object = Instance::cast(backing)->at(Instance::LIST_ARRAY_OFFSET);
+    if (is_smi(object)) return false;
+    backing = HeapObject::cast(object);
   }
   class_id = backing->class_id();
   if (class_id != _program->array_class_id()) {
@@ -200,14 +203,14 @@ bool MessageEncoder::encode_map(Instance* instance) {
     return false;
   }
   Array* array = Array::cast(backing);
-  int i = 0;
-  for (int index = 0; i < size; index += 2) {
-    Object* key = array->at(index);
-    Object* value = array->at(index + 1);
+  int count = 0;
+  for (int i = 0; count < size; i += 2) {
+    Object* key = array->at(i);
+    Object* value = array->at(i + 1);
     if (is_smi(key) || HeapObject::cast(key)->class_id() != _program->tombstone_class_id()) {
       if (!encode(key)) return false;
       if (!encode(value)) return false;
-      i++;
+      count++;
     }
   }
   return true;

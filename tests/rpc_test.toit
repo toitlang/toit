@@ -283,6 +283,30 @@ test_map myself/int -> none:
   expect.expect_structural_equals m["bar"] roundtripped["bar"]
   expect.expect_structural_equals m["foo"] roundtripped["foo"]
 
+  // Map in map.
+  m = {
+      "hest": "horse",
+      "reptile": {
+            "tudse": "toad",
+            "t-reks": "t-rex",  // Not really.
+      }
+  }
+  test myself m
+
+  roundtripped = rpc.invoke myself PROCEDURE_ECHO m
+  expect.expect_equals "t-rex" roundtripped["reptile"]["t-reks"]
+
+  roundtripped["hest"] = "best"  // Can modify the map after going through RPC.
+
+  // Can't add to the map after going through RPC.  We could fix this in the
+  // map class, but it's harder to fix the same issue for growable lists that
+  // turn into ungrowable arrays after RPC.
+  expect.expect_throw "ARRAY_CANNOT_CHANGE_SIZE": roundtripped["kat"] = "cat"
+
+  // Empty map in list in list.
+  l := [[{:}]]
+  test myself l
+
 cancel queue/RpcRequestQueue_ pid/int id/int -> int:
   result/int := 0
   queue.cancel: | request/RpcRequest_ |
@@ -525,9 +549,7 @@ test myself/int arguments/any:
     expected = arguments.serialize_for_rpc
   else:
     actual = rpc.invoke myself PROCEDURE_ECHO arguments
-  if arguments is List:
-    expect.expect_structural_equals expected actual
-  else if actual is Map:
+  if arguments is List or arguments is Map:
     expect.expect_structural_equals expected actual
   else:
     expect.expect_equals expected actual
