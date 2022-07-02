@@ -301,7 +301,7 @@ test_map myself/int -> none:
   // Can't add to the map after going through RPC.  We could fix this in the
   // map class, but it's harder to fix the same issue for growable lists that
   // turn into ungrowable arrays after RPC.
-  expect.expect_throw "ARRAY_CANNOT_CHANGE_SIZE": roundtripped["kat"] = "cat"
+  expect.expect_throw "COLLECTION_CANNOT_CHANGE_SIZE": roundtripped["kat"] = "cat"
 
   // Empty map in list in list.
   l := [[{:}]]
