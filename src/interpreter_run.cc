@@ -1386,7 +1386,7 @@ Interpreter::Result Interpreter::run() {
     int parameter_offset = NUMBER_OF_BYTECODE_LOCALS + Interpreter::FRAME_SIZE;
 
     Instance* collection = Instance::cast(STACK_AT(parameter_offset + COLLECTION));
-    Object* backing = collection->at(Instance::MAP_BACKING_OFFSET);
+    Object* backing = collection->at(Instance::MAP_BACKING_INDEX);
     int step = Smi::cast(STACK_AT(parameter_offset + STEP))->value();
     if (program->true_object() == STACK_AT(parameter_offset + REVERSED)) step = -step;
     Object* entry;
@@ -1515,8 +1515,8 @@ Interpreter::Result Interpreter::run() {
     // could mess with our assumptions.
     // We only support small arrays as index_.
     if (state == STATE_START || state == STATE_AFTER_COMPARE) {
-      Object* index_spaces_left_object = collection->at(Instance::MAP_SPACES_LEFT_OFFSET);
-      Object* size_object = collection->at(Instance::MAP_SIZE_OFFSET);
+      Object* index_spaces_left_object = collection->at(Instance::MAP_SPACES_LEFT_INDEX);
+      Object* size_object = collection->at(Instance::MAP_SIZE_INDEX);
       Object* not_found_block = *from_block(Smi::cast(STACK_AT(parameter_offset + NOT_FOUND)));
       Object* rebuild_block   = *from_block(Smi::cast(STACK_AT(parameter_offset + REBUILD)));
       Object* compare_block   = *from_block(Smi::cast(STACK_AT(parameter_offset + COMPARE)));
@@ -1538,7 +1538,7 @@ Interpreter::Result Interpreter::run() {
         UNREACHABLE();
       }
     }
-    Object* index_object = collection->at(Instance::MAP_INDEX_OFFSET);
+    Object* index_object = collection->at(Instance::MAP_INDEX_INDEX);
     word index_mask;
     if (is_array(index_object)) {
       index_mask = Array::cast(index_object)->length() - 1;
@@ -1580,9 +1580,9 @@ Interpreter::Result Interpreter::run() {
         // Calculate index for: index_[slot] = new_hash_and_position
         index_position = Smi::cast(STACK_AT(SLOT))->value() & index_mask;
         // index_spaces_left_--
-        Object* index_spaces_left_object = collection->at(Instance::MAP_SPACES_LEFT_OFFSET);
+        Object* index_spaces_left_object = collection->at(Instance::MAP_SPACES_LEFT_INDEX);
         word index_spaces_left = Smi::cast(index_spaces_left_object)->value();
-        collection->at_put(Instance::MAP_SPACES_LEFT_OFFSET, Smi::from(index_spaces_left - 1));
+        collection->at_put(Instance::MAP_SPACES_LEFT_INDEX, Smi::from(index_spaces_left - 1));
       } else {
         // Calculate index for: index_[deleted_slot] = new_hash_and_position
         index_position = deleted_slot & index_mask;
@@ -1673,10 +1673,10 @@ Interpreter::Result Interpreter::run() {
       }
       if (hash_and_position == 0 || exhausted) {
         // Found free slot.
-        Object* index_spaces_left_object = collection->at(Instance::MAP_SPACES_LEFT_OFFSET);
+        Object* index_spaces_left_object = collection->at(Instance::MAP_SPACES_LEFT_INDEX);
         word index_spaces_left = Smi::cast(index_spaces_left_object)->value();
         if (index_spaces_left == 0 || exhausted) {
-          Object* size_object = collection->at(Instance::MAP_SIZE_OFFSET);
+          Object* size_object = collection->at(Instance::MAP_SIZE_INDEX);
           STACK_AT_PUT(OLD_SIZE, size_object);
           STACK_AT_PUT(STATE, Smi::from(STATE_REBUILD)); // Go there if not_found returns.
         } else {
@@ -1705,7 +1705,7 @@ Interpreter::Result Interpreter::run() {
       // Found non-free slot.
       Smi* position = Smi::from((hash_and_position >> HASH_SHIFT_) - 1);
       // k := backing_[position]
-      Object* backing_object = HeapObject::cast(collection->at(Instance::MAP_BACKING_OFFSET));
+      Object* backing_object = HeapObject::cast(collection->at(Instance::MAP_BACKING_INDEX));
       Object* k;
       bool success = fast_at(_process, backing_object, position, false, &k);
       ASSERT(success);
