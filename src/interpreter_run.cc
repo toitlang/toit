@@ -1546,7 +1546,7 @@ Interpreter::Result Interpreter::run() {
     } else {
       bool bail = true;
       if (is_instance(index_object) && HeapObject::cast(index_object)->class_id() == program->large_array_class_id()) {
-        Object* size_object = Instance::cast(index_object)->at(0);
+        Object* size_object = Instance::cast(index_object)->at(Instance::LARGE_ARRAY_SIZE_INDEX);
         if (is_smi(size_object)) {
           index_mask = Smi::cast(size_object)->value() - 1;
           bail = false;
