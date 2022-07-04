@@ -61,16 +61,14 @@ MODULE_IMPLEMENTATION(core, MODULE_CORE)
 
 PRIMITIVE(write_string_on_stdout) {
   ARGS(cstring, message, bool, add_newline);
-  fprintf(stdout, "%s", message);
-  if (add_newline) fprintf(stdout, "\n");
+  fprintf(stdout, "%s%s", message, add_newline ? "\n" : "");
   fflush(stdout);
   return _raw_message;
 }
 
 PRIMITIVE(write_string_on_stderr) {
   ARGS(cstring, message, bool, add_newline);
-  fprintf(stderr, "%s", message);
-  if (add_newline) fprintf(stderr, "\n");
+  fprintf(stderr, "%s%s", message, add_newline ? "\n" : "");
   fflush(stderr);
   return _raw_message;
 }
