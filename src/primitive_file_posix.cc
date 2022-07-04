@@ -20,7 +20,7 @@
 #include "process.h"
 #include "objects_inline.h"
 
-#ifdef TOIT_POSIX
+#if defined(TOIT_POSIX) || defined(TOIT_FREERTOS)
 
 #include <dirent.h>
 #include <errno.h>
@@ -30,6 +30,13 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#ifdef TOIT_FREERTOS
+// The ESP32 has no notion of a shell and no cwd, so assume all paths are absolute.
+#define FILE_OPEN_(dirfd, ...)                             open(__VA_ARGS__)
+#define FILE_UNLINK_(dirfd, pathname, flags)               unlink(pathname)
+#define FILE_RENAME_(olddirfd, oldpath, newdirfd, newpath) rename(oldpath, newpath)
+#define FILE_MKDIR_(dirfd, ...)                            mkdir(__VA_ARGS__)
+#else
 // Old C library version of stat.
 extern "C" {
 
@@ -37,6 +44,11 @@ extern int __fxstat64(int ver, int fd, struct stat64* stat_buf);
 extern int __fxstatat64(int ver, int dirfd, const char* path, struct stat64* stat_buf, int flags);
 
 }
+#define FILE_OPEN_(...)     openat(__VA_ARGS__)
+#define FILE_UNLINK_(...)   unlinkat(__VA_ARGS__)
+#define FILE_RENAME_(...)   renameat(__VA_ARGS__)
+#define FILE_MKDIR_(...)    mkdirat(__VA_ARGS__)
+#endif // TOIT_FREERTOS
 
 #ifdef BUILD_64
 # define STAT_VERSION 1
@@ -118,7 +130,7 @@ PRIMITIVE(open) {
   if ((flags & FILE_CREAT) != 0) os_flags |= O_CREAT;
   if ((flags & FILE_TRUNC) != 0) os_flags |= O_TRUNC;
   bool is_dev_null = strcmp(pathname, "/dev/null") == 0;
-  int fd = openat(current_dir(process), pathname, os_flags, mode);
+  int fd = FILE_OPEN_(current_dir(process), pathname, os_flags, mode);
   AutoCloser closer(fd);
   if (fd < 0) return return_open_error(process, errno);
 #ifndef TOIT_LINUX
@@ -170,13 +182,20 @@ PRIMITIVE(opendir) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;
 
-  int fd = openat(current_dir(process), pathname, O_RDONLY | O_DIRECTORY);
+#ifndef TOIT_FREERTOS
+  int fd = FILE_OPEN_(current_dir(process), pathname, O_RDONLY | O_DIRECTORY);
   if (fd < 0) return return_open_error(process, errno);
   DIR* dir = fdopendir(fd);
   if (dir == null) {
     close(fd);
     return return_open_error(process, errno);
   }
+#else
+  DIR* dir = opendir(pathname);
+  if (dir == null) {
+    return return_open_error(process, errno);
+  }
+#endif
 
   LeakyDirectory* directory = _new LeakyDirectory(dir);
   if (directory == null) {
@@ -192,14 +211,20 @@ PRIMITIVE(opendir2) {
   ARGS(SimpleResourceGroup, group, cstring, pathname);
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;
-
-  int fd = openat(current_dir(process), pathname, O_RDONLY | O_DIRECTORY);
+#ifndef TOIT_FREERTOS
+  int fd = FILE_OPEN_(current_dir(process), pathname, O_RDONLY | O_DIRECTORY);
   if (fd < 0) return return_open_error(process, errno);
   DIR* dir = fdopendir(fd);
   if (dir == null) {
     close(fd);
     return return_open_error(process, errno);
   }
+#else
+  DIR* dir = opendir(pathname);
+  if (dir == null) {
+    return return_open_error(process, errno);
+  }
+#endif
 
   Directory* directory = _new Directory(group, dir);
   if (directory == null) {
@@ -342,7 +367,11 @@ Object* time_stamp(Process* process, struct timespec time) {
 // Otherwise returns an array with indices from the FILE_ST_xxx constants.
 PRIMITIVE(stat) {
   ARGS(cstring, pathname, bool, follow_links);
-#ifndef TOIT_LINUX
+#if defined(TOIT_FREERTOS)
+  USE(follow_links);
+  struct stat statbuf;
+  int result = stat(pathname, &statbuf); // FAT does not have symbolic links
+#elif !defined(TOIT_LINUX)
   struct stat statbuf;
   int result = fstatat(current_dir(process), pathname, &statbuf, follow_links ? 0 : AT_SYMLINK_NOFOLLOW);
 #else
@@ -373,7 +402,7 @@ PRIMITIVE(stat) {
   Object* size = Primitive::integer(statbuf.st_size, process);
   if (Primitive::is_error(size)) return size;
 
-#if defined(TOIT_LINUX)
+#if defined(TOIT_LINUX) || defined(TOIT_FREERTOS)
   Object* atime = time_stamp(process, statbuf.st_atim);
   if (Primitive::is_error(atime)) return atime;
 
@@ -409,38 +438,42 @@ PRIMITIVE(stat) {
 
 PRIMITIVE(unlink) {
   ARGS(cstring, pathname);
-  int result = unlinkat(current_dir(process), pathname, 0);
+  int result = FILE_UNLINK_(current_dir(process), pathname, 0);
   if (result < 0) return return_open_error(process, errno);
   return process->program()->null_object();
 }
 
 PRIMITIVE(rmdir) {
   ARGS(cstring, pathname);
-  int result = unlinkat(current_dir(process), pathname, AT_REMOVEDIR);
+  int result = FILE_UNLINK_(current_dir(process), pathname, AT_REMOVEDIR);
   if (result < 0) return return_open_error(process, errno);
   return process->program()->null_object();
 }
 
 PRIMITIVE(rename) {
   ARGS(cstring, old_name, cstring, new_name);
-  int result = renameat(current_dir(process), old_name, current_dir(process), new_name);
+  int result = FILE_RENAME_(current_dir(process), old_name, current_dir(process), new_name);
   if (result < 0) return return_open_error(process, errno);
   return process->program()->null_object();
 }
 
 PRIMITIVE(chdir) {
+#ifndef TOIT_FREERTOS
   ARGS(cstring, pathname);
   int old_dir = current_dir(process);
-  int new_dir = openat(old_dir, pathname, O_DIRECTORY | O_RDONLY);
+  int new_dir = FILE_OPEN_(old_dir, pathname, O_DIRECTORY | O_RDONLY);
   if (new_dir < 0) return return_open_error(process, errno);
   process->set_current_directory(new_dir);
   close(old_dir);
   return process->program()->null_object();
+#else
+  UNIMPLEMENTED_PRIMITIVE;
+#endif
 }
 
 PRIMITIVE(mkdir) {
   ARGS(cstring, pathname, int, mode);
-  int result = mkdirat(current_dir(process), pathname, mode);
+  int result = FILE_MKDIR_(current_dir(process), pathname, mode);
   return result < 0
     ? return_open_error(process, errno)
     : process->program()->null_object();
@@ -488,6 +521,14 @@ PRIMITIVE(is_open_file) {
 
 PRIMITIVE(realpath) {
   ARGS(cstring, filename);
+#ifdef TOIT_FREERTOS
+  Error* error = null;
+  String* result = process->allocate_string(filename, &error);
+  if (result == null) {
+    return error;
+  }
+  return result;
+#else
   char* c_result = realpath(filename, null);
   if (c_result == null) {
     if (errno == ENOMEM) MALLOC_FAILED;
@@ -501,6 +542,7 @@ PRIMITIVE(realpath) {
     return error;
   }
   return result;
+#endif // TOIT_FREERTOS
 }
 
 PRIMITIVE(cwd) {
