@@ -59,16 +59,48 @@ expect_not_null actual:
   if actual == null:
     expect false --message="Expected not null"
 
+/**
+Expects the $actual object to be structurally equal to the $expected object.
+Understands operator equality and memberwise structural equality of lists and
+  maps.
+*/
+expect_structural_equals expected/Object actual/Object:
+  if not structural_equals_ expected actual:
+    expect false --message="Expected <$expected>, but was <$actual>"
+
+structural_equals_ expected actual -> bool:
+  if expected is List:
+    return list_equals_ expected actual
+  else if expected is Map:
+    return map_equals_ expected actual
+  else:
+    return expected == actual
+
 /** Expects the $actual list to be equal to the $expected list. */
 expect_list_equals expected/List actual/List:
-  if actual.size == expected.size:
+  if not list_equals_ expected actual:
+    expect false --message="Expected <$expected>, but was <$actual>"
+
+list_equals_ expected/List actual -> bool:
+  if actual is List and actual.size == expected.size:
     all_good := true
     for i := 0; i < expected.size; i++:
-      if expected[i] != actual[i]:
+      if not structural_equals_ expected[i] actual[i]:
         all_good = false
         break
-    if all_good: return
-  expect false --message="Expected <$expected>, but was <$actual>"
+    if all_good: return true
+  return false
+
+map_equals_ expected/Map actual -> bool:
+  if actual is Map and actual.size == expected.size:
+    all_good := true
+    expected.do: | key value |
+      if not structural_equals_
+          value
+          actual.get key --if_absent=(: all_good = false; null):
+        all_good = false
+    if all_good: return true
+  return false
 
 /**
 Expects the $actual byte array to be equal to the $expected byte array.

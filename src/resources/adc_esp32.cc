@@ -223,11 +223,10 @@ PRIMITIVE(get) {
 }
 
 PRIMITIVE(close) {
-  ARGS(ByteArray, raw_state);
+  ARGS(AdcState, state);
 
-  delete raw_state->as_external();
-
-  raw_state->clear_external_address();
+  state->resource_group()->unregister_resource(state);
+  state_proxy->clear_external_address();
 
   return process->program()->null_object();
 }

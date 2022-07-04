@@ -46,6 +46,7 @@ main:
   test_performance myself
   test_blocking myself broker
   test_sequential myself broker
+  test_map myself
 
   test_request_queue_cancel myself
   test_timeouts myself broker --cancel
@@ -267,6 +268,44 @@ test_sequential myself/int broker/RpcBroker -> none:
   // Unregister procedure and make sure it's gone.
   broker.unregister_procedure name
   expect.expect_throw "No such procedure registered: 800": rpc.invoke myself name []
+
+test_map myself/int -> none:
+  m := {"foo": 42, "bar": [1, 2]}
+  test myself m
+
+  // Test the find function on the map.
+  roundtripped := rpc.invoke myself PROCEDURE_ECHO m
+  expect.expect_structural_equals m["foo"] roundtripped["foo"]
+  expect.expect_structural_equals m["bar"] roundtripped["bar"]
+
+  // Reverse order.
+  roundtripped = rpc.invoke myself PROCEDURE_ECHO m
+  expect.expect_structural_equals m["bar"] roundtripped["bar"]
+  expect.expect_structural_equals m["foo"] roundtripped["foo"]
+
+  // Map in map.
+  m = {
+      "hest": "horse",
+      "reptile": {
+            "tudse": "toad",
+            "t-reks": "t-rex",  // Not really.
+      }
+  }
+  test myself m
+
+  roundtripped = rpc.invoke myself PROCEDURE_ECHO m
+  expect.expect_equals "t-rex" roundtripped["reptile"]["t-reks"]
+
+  roundtripped["hest"] = "best"  // Can modify the map after going through RPC.
+
+  // Can't add to the map after going through RPC.  We could fix this in the
+  // map class, but it's harder to fix the same issue for growable lists that
+  // turn into ungrowable arrays after RPC.
+  expect.expect_throw "ARRAY_CANNOT_CHANGE_SIZE": roundtripped["kat"] = "cat"
+
+  // Empty map in list in list.
+  l := [[{:}]]
+  test myself l
 
 cancel queue/RpcRequestQueue_ pid/int id/int -> int:
   result/int := 0
@@ -510,8 +549,8 @@ test myself/int arguments/any:
     expected = arguments.serialize_for_rpc
   else:
     actual = rpc.invoke myself PROCEDURE_ECHO arguments
-  if arguments is List:
-    expect.expect_list_equals expected actual
+  if arguments is List or arguments is Map:
+    expect.expect_structural_equals expected actual
   else:
     expect.expect_equals expected actual
 

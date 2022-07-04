@@ -250,6 +250,7 @@ void ProgramBuilder::set_built_in_class_tags_and_sizes() {
   set_built_in_class_tag_and_size(Symbols::StringSlice_);
   set_built_in_class_tag_and_size(Symbols::List_);
   set_built_in_class_tag_and_size(Symbols::Tombstone_);
+  set_built_in_class_tag_and_size(Symbols::Map);
   set_built_in_class_tag_and_size(Symbols::Stack_, TypeTag::STACK_TAG, 0);
   set_built_in_class_tag_and_size(Symbols::Object);
   set_built_in_class_tag_and_size(Symbols::True_, TypeTag::ODDBALL_TAG);
