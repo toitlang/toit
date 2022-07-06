@@ -244,15 +244,17 @@ endif
 clean:
 	rm -rf build/
 
+INSTALL_SRC_ARCH := $(HOST)
+
 .PHONY: install-sdk install
 install-sdk: all
-	install -D --target-directory="$(DESTDIR)$(prefix)"/bin "$(CURDIR)"/build/$(HOST)/sdk/bin/*
+	install -D --target-directory="$(DESTDIR)$(prefix)"/bin "$(CURDIR)"/build/$(INSTALL_SRC_ARCH)/sdk/bin/*
 	chmod 644 "$(DESTDIR)$(prefix)"/bin/*.snapshot
 	mkdir -p "$(DESTDIR)$(prefix)"/lib
 	cp -R "$(CURDIR)"/lib/* "$(DESTDIR)$(prefix)"/lib
 	find "$(DESTDIR)$(prefix)"/lib -type f -exec chmod 644 {} \;
 	mkdir -p "$(DESTDIR)$(prefix)"/snapshots
-	cp "$(CURDIR)"/build/$(HOST)/sdk/snapshots/* "$(DESTDIR)$(prefix)"/snapshots
+	cp "$(CURDIR)"/build/$(INSTALL_SRC_ARCH)/sdk/snapshots/* "$(DESTDIR)$(prefix)"/snapshots
 	find "$(DESTDIR)$(prefix)"/snapshots -type f -exec chmod 644 {} \;
 
 install: install-sdk
