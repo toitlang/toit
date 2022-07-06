@@ -151,6 +151,25 @@ snapshots-cross: tools download-packages build/$(CROSS_ARCH)/CMakeCache.txt
 version-file-cross: build/$(CROSS_ARCH)/CMakeCache.txt
 	(cd build/$(CROSS_ARCH) && ninja build_version_file)
 
+PI_CROSS_ARCH := pi
+
+.PHONY: pi-sysroot
+pi-sysroot: build/$(PI_CROSS_ARCH)/sysroot/usr
+
+.PHONY: check-env-sysroot
+check-env-sysroot:
+ifeq ("", "$(shell command -v dpkg)")
+	$(error dpkg not in path.)
+endif
+
+build/$(PI_CROSS_ARCH)/sysroot/usr: check-env-sysroot
+	# This rule is brittle, since it only depends on the 'usr' folder of the sysroot.
+	# If the sysroot script fails, it might be incomplete, but another call to
+	# the rule won't do anything anymore.
+	# Generally we use this rule on the buildbot and are thus not too concerned.
+	mkdir -p build/$(PI_CROSS_ARCH)/sysroot
+	# The sysroot script doesn't like symlinks in the path. This is why we call 'realpath'.
+	third_party/rpi/sysroot.py --distro raspbian --sysroot $$(realpath build/$(PI_CROSS_ARCH)/sysroot) libc6-dev libstdc++-6-dev
 
 # ESP32 VARIANTS
 SNAPSHOT_DIR = build/$(HOST)/sdk/snapshots
