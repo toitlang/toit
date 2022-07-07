@@ -63,6 +63,7 @@ set(TOIT_REPOS
     https://github.com/toitware/toit-msa311
     https://github.com/toitware/toit-newton-raphson
     https://github.com/toitware/toit-pixel-display
+    https://github.com/toitware/toit-pixel-strip
     https://github.com/toitware/toit-png-display
     https://github.com/toitware/toit-resistance-to-temperature
     https://github.com/toitware/toit-si7006
