@@ -166,6 +166,60 @@ monitor Signal:
       if condition.call: return
 
 /**
+A synchronization gate.
+
+The gate can be open or closed. When a task tries to $enter, it waits
+  until the gate is open.
+*/
+class Gate:
+  signal_ /Signal ::= Signal
+  open_ /bool := ?
+
+  /**
+  Constructs a new gate.
+
+  If $open is true, starts with the gate open.
+  */
+  constructor --open/bool=false:
+    open_ = open
+
+  /**
+  Opens the gate.
+
+  Does nothing if the gate is already open.
+  */
+  open -> none:
+    if is_open: return
+    open_ = true
+    signal_.raise
+
+  /**
+  Closes the gate.
+
+  Any task that is trying to $enter will block until the gate is opened again.
+  */
+  close:
+    open_ = false
+
+  /**
+  Enters the gate.
+
+  This method blocks until the gate is open.
+  */
+  enter -> none:
+    signal_.wait: open_
+
+  /**
+  Whether the gate is open.
+  */
+  is_open -> bool: return open_
+
+  /**
+  Whether the gate is closed.
+  */
+  is_closed -> bool: return not open_
+
+/**
 A one-way communication channel between tasks.
 Multiple messages (objects) can be sent, and the capacity indicates how many
   unreceived message it can buffer.
