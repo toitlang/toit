@@ -238,23 +238,49 @@ test_entry_timeouts:
 
 test_channel:
   channel := Channel 5
-  task:: channel_sender channel
-  task:: channel_receiver channel
+  sent := Latch
+  done := Latch
+  task:: channel_sender channel sent
+  task:: channel_receiver channel sent done
+  done.get
 
-channel_sender channel/Channel:
+  // Test that the channel blocks at 5 entries.
+
+  expect_equals 5 channel.capacity
+  expect_equals 0 channel.buffered_count
+
+  sent_count := 0
+  task::
+    10.repeat:
+      channel.send it
+      sent_count++
+
+  while sent_count != 4: yield
+  10.repeat: yield
+  // There was still space for one number.
+  expect_equals 5 sent_count
+  expect_equals 5 channel.buffered_count
+
+  10.repeat: channel.receive
+  expect_equals 0 channel.buffered_count
+  expect_equals 10 sent_count
+
+channel_sender channel/Channel latch/Latch:
   channel.send "Foo"
   channel.send "Bar"
   channel.send "Baz"
   channel.send "Boo"
+  latch.set true
 
-channel_receiver channel/Channel:
+channel_receiver channel/Channel sent/Latch done/Latch:
   expect_equals "Foo"
     channel.receive
-  sleep --ms=200
+  sent.get
   str := channel.receive
   while next := channel.receive --blocking=false:
     str += next
   expect_equals "BarBazBoo" str
+  done.set true
 
 monitor Outer:
   block -> none:

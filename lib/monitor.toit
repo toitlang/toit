@@ -175,12 +175,13 @@ This class must not be extended.
 */
 monitor Channel:
   buffer_ ::= ?
-  c_ := 0
-  p_ := 0
+  start_ := 0
+  buffered_count_ := 0
 
   /** Constructs a channel with a buffer of the given $capacity. */
   constructor capacity:
-    buffer_ = List capacity + 1
+    if capacity <= 0: throw "INVALID_ARGUMENT"
+    buffer_ = List capacity
 
   /**
   Sends a message with the $value on the channel.
@@ -190,12 +191,10 @@ monitor Channel:
     them is woken up and receives the $value.
   */
   send value/any -> none:
-    n := 0
-    await:
-      n = (p_ + 1) % buffer_.size
-      n != c_
-    buffer_[p_] = value
-    p_ = n
+    await: buffered_count_ < buffer_.size
+    index := (start_ + buffered_count_) % buffer_.size
+    buffer_[index] = value
+    buffered_count_++
 
   /**
   Tries to send a message with the $value on the channel. This operation never blocks.
@@ -206,10 +205,10 @@ monitor Channel:
     if the channel is full and the message was not delivered
   */
   try_send value/any -> bool:
-    n := (p_ + 1) % buffer_.size
-    if c_ == n: return false
-    buffer_[p_] = value
-    p_ = n
+    if buffered_count_ >= buffer_.size: return false
+    index := (start_ + buffered_count_) % buffer_.size
+    buffer_[index] = value
+    buffered_count_++
     return true
 
   /**
@@ -222,11 +221,22 @@ monitor Channel:
   The order in which waiting tasks are unblocked is unspecified.
   */
   receive --blocking/bool=true -> any:
-    if not blocking and c_ == p_: return null
-    await: c_ != p_
-    value := buffer_[c_]
-    c_ = (c_ + 1) % buffer_.size
+    if not blocking and buffered_count_ == 0: return null
+    await: buffered_count_ > 0
+    value := buffer_[start_]
+    start_ = (start_ + 1) % buffer_.size
+    buffered_count_--
     return value
+
+  /**
+  The capacity of the channel.
+  */
+  capacity -> int: return buffer_.size
+
+  /**
+  The amount of messages that are currently queued in the channel.
+  */
+  buffered_count -> int: return buffered_count_
 
 /**
 A two-way communication channel between tasks with replies to each message.
