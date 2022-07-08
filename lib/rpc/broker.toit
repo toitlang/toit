@@ -205,9 +205,9 @@ monitor RpcRequestQueue_:
         // The task code runs outside the monitor, so the monitor
         // is unlocked when the requests are being processed but
         // locked when the requests are being dequeued.
-        assert: identical processing_tasks_[task_index] task
+        assert: identical processing_tasks_[task_index] Task.current
         try:
-          while not task.is_canceled:
+          while not Task.current.is_canceled:
             next := remove_first task_index
             if not next: break
             try:

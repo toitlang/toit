@@ -51,11 +51,11 @@ generate code:
     value := code.call
     result.mailbox_ = null
     mailbox.reply value
-  t.tls = result
+  (t as Task_).tls = result
   return result
 
 yield value:
-  gen := task.tls
+  gen := Task_.current.tls
   if not gen: throw "Cannot yield outside generator"
   if not gen.is_running_: throw "Cannot yield from non-running generator"
   gen.is_running_ = false

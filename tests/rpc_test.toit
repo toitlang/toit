@@ -375,7 +375,7 @@ test_timeouts myself/int broker/RpcBroker --cancel/bool -> none:
       // Block until canceled.
       (monitor.Latch).get
     finally:
-      if task.is_canceled:
+      if Task.current.is_canceled:
         critical_do: latches[index].set "Canceled: $index"
 
   // Use 'with_timeout' to trigger the timeout.
@@ -394,8 +394,8 @@ test_timeouts myself/int broker/RpcBroker --cancel/bool -> none:
       try:
         rpc.invoke myself name index
       finally: | is_exception exception |
-        expect.expect task.is_canceled
-        critical_do: join.set task
+        expect.expect Task.current.is_canceled
+        critical_do: join.set Task.current
     sleep --ms=10
     subtask.cancel
     expect.expect_identical subtask join.get
@@ -500,7 +500,7 @@ test_terminate myself/int broker/TestBroker n/int -> none:
   n.repeat: task::
     try:
       exception := catch: with_timeout --ms=200: rpc.invoke myself name []
-      expect.expect (task.is_canceled or exception == DEADLINE_EXCEEDED_ERROR)
+      expect.expect (Task.current.is_canceled or exception == DEADLINE_EXCEEDED_ERROR)
     finally:
       critical_do: done.up
 
@@ -528,7 +528,7 @@ test_terminate myself/int broker/TestBroker n/int -> none:
   dead := task::
     expect.expect_throw DEADLINE_EXCEEDED_ERROR:
       with_timeout --ms=100: test myself 99
-    finished.set task
+    finished.set Task.current
   expect.expect_identical dead finished.get
 
   // If we revive the process, messages are accepted again.

@@ -176,10 +176,10 @@ yield_a_lot:
   10.repeat: yield
 
 task_with_deadline lambda:
-  deadline := task.deadline
+  deadline := Task_.current.deadline
   if deadline:
     task::
-      task.with_deadline_ deadline:
+      Task_.current.with_deadline_ deadline:
         lambda.call
   else:
     task::
@@ -322,7 +322,7 @@ class MessageHandler implements SystemMessageHandler_:
     else if kind == KIND_NON_BLOCKING_AWAIT:
       inner.non_blocking_await
     else if kind == KIND_NO_DEADLINE:
-      expect_null task.deadline
+      expect_null Task_.current.deadline
     calls++
 
 test_process_messages_in_locked:
