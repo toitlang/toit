@@ -58,7 +58,8 @@ include_directories(
   $ENV{IDF_PATH}/components/esp_timer/include
   $ENV{IDF_PATH}/components/esp_wifi/include
   $ENV{IDF_PATH}/components/freertos/include
-  $ENV{IDF_PATH}/components/freertos/xtensa/include
+  $ENV{IDF_PATH}/components/freertos/include/esp_additions
+  $ENV{IDF_PATH}/components/freertos/include/esp_additions/freertos
   $ENV{IDF_PATH}/components/freertos/port/xtensa/include
   $ENV{IDF_PATH}/components/hal/include
   $ENV{IDF_PATH}/components/hal/esp32/include
@@ -75,6 +76,7 @@ include_directories(
   $ENV{IDF_PATH}/components/nvs_flash/include
   $ENV{IDF_PATH}/components/spi_flash/include
   $ENV{IDF_PATH}/components/soc/esp32/include
+  $ENV{IDF_PATH}/components/esp_hw_support/include/soc
   $ENV{IDF_PATH}/components/soc/include
   $ENV{IDF_PATH}/components/soc/soc/include
   $ENV{IDF_PATH}/components/soc/soc/esp32/include
