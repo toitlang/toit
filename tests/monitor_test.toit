@@ -11,6 +11,7 @@ main:
   with_timeout --ms=10_000: run
   run
   test_channel
+  test_semaphore
 
 run:
   test_simple_monitor
@@ -350,3 +351,51 @@ test_process_messages_in_locked kind/int:
       outer.block
       expect_equals 1 handler.calls
   done.set 0
+
+test_semaphore:
+  semaphore := Semaphore
+  expect_equals 0 semaphore.count
+
+  started := Latch
+  done := false
+  task::
+    started.set true
+    semaphore.down
+    expect_equals 0 semaphore.count
+    done = true
+
+  started.get
+  10.repeat: yield
+  expect_not done
+  semaphore.up
+  10.repeat: yield
+  expect done
+
+  // Test limit, initial value and multiple ups/downs.
+  semaphore = Semaphore --limit=3 --count=2
+  started = Latch
+  consume := Latch
+  done = false
+  task::
+    started.set true
+    consume.get
+    5.repeat:
+      // We wait for more than the limit.
+      semaphore.down
+    expect_equals 0 semaphore.count
+    done = true
+
+  started.get
+  expect_equals 2 semaphore.count
+  10.repeat:
+    semaphore.up
+  // Stops at the limit.
+  expect_equals 3 semaphore.count
+  consume.set true
+  10.repeat: yield
+  expect_equals 0 semaphore.count
+  expect_not done
+  semaphore.up
+  semaphore.up
+  10.repeat: yield
+  expect done

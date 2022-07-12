@@ -39,32 +39,32 @@ bool Interpreter::fast_at(Process* process, Object* receiver, Object* arg, bool 
     Program* program = process->program();
     Object* array_object;
     // Note: Assignment in condition.
-    if (class_id == program->list_class_id() && is_array(array_object = instance->at(Instance::LIST_ARRAY_OFFSET))) {
+    if (class_id == program->list_class_id() && is_array(array_object = instance->at(Instance::LIST_ARRAY_INDEX))) {
       // The backing storage in a list can be either an array -- or a
       // large array. Only optimize here if it isn't large.
       array = Array::cast(array_object);
-      length = Smi::cast(instance->at(Instance::LIST_SIZE_OFFSET))->value();
+      length = Smi::cast(instance->at(Instance::LIST_SIZE_INDEX))->value();
     } else if (class_id == program->byte_array_slice_class_id()) {
-      if (!(is_smi(instance->at(Instance::BYTE_ARRAY_SLICE_FROM_OFFSET)) &&
-            is_smi(instance->at(Instance::BYTE_ARRAY_SLICE_TO_OFFSET  )))) {
+      if (!(is_smi(instance->at(Instance::BYTE_ARRAY_SLICE_FROM_INDEX)) &&
+            is_smi(instance->at(Instance::BYTE_ARRAY_SLICE_TO_INDEX  )))) {
         return false;
       }
 
-      word from = Smi::cast(instance->at(Instance::BYTE_ARRAY_SLICE_FROM_OFFSET))->value();
-      word to = Smi::cast(instance->at(Instance::BYTE_ARRAY_SLICE_TO_OFFSET))->value();
+      word from = Smi::cast(instance->at(Instance::BYTE_ARRAY_SLICE_FROM_INDEX))->value();
+      word to = Smi::cast(instance->at(Instance::BYTE_ARRAY_SLICE_TO_INDEX))->value();
       n = from + n;
       if (n >= to) return false;
 
-      Object* data = instance->at(Instance::BYTE_ARRAY_SLICE_BYTE_ARRAY_OFFSET);
+      Object* data = instance->at(Instance::BYTE_ARRAY_SLICE_BYTE_ARRAY_INDEX);
       if (is_byte_array(data)) {
-        byte_array = ByteArray::cast(instance->at(Instance::BYTE_ARRAY_SLICE_BYTE_ARRAY_OFFSET));
+        byte_array = ByteArray::cast(instance->at(Instance::BYTE_ARRAY_SLICE_BYTE_ARRAY_INDEX));
       } else if (is_instance(data)) {
         Instance* data_instance = Instance::cast(data);
         if (data_instance->class_id() != program->byte_array_cow_class_id() ||
-            (is_put && data_instance->at(Instance::BYTE_ARRAY_COW_IS_MUTABLE_OFFSET) == program->false_object())) {
+            (is_put && data_instance->at(Instance::BYTE_ARRAY_COW_IS_MUTABLE_INDEX) == program->false_object())) {
           return false;
         }
-        byte_array = ByteArray::cast(data_instance->at(Instance::BYTE_ARRAY_COW_BACKING_OFFSET));
+        byte_array = ByteArray::cast(data_instance->at(Instance::BYTE_ARRAY_COW_BACKING_INDEX));
       } else {
         return false;
       }
@@ -72,14 +72,14 @@ bool Interpreter::fast_at(Process* process, Object* receiver, Object* arg, bool 
       Object* size_object;
       Object* vector_object;
       if (class_id == program->large_array_class_id()) {
-        size_object = instance->at(Instance::LARGE_ARRAY_SIZE_OFFSET);
-        vector_object = instance->at(Instance::LARGE_ARRAY_VECTOR_OFFSET);
+        size_object = instance->at(Instance::LARGE_ARRAY_SIZE_INDEX);
+        vector_object = instance->at(Instance::LARGE_ARRAY_VECTOR_INDEX);
       } else {
         // List backed by large array.
-        size_object = instance->at(Instance::LIST_SIZE_OFFSET);
-        Instance* large_array = Instance::cast(instance->at(Instance::LIST_ARRAY_OFFSET));
+        size_object = instance->at(Instance::LIST_SIZE_INDEX);
+        Instance* large_array = Instance::cast(instance->at(Instance::LIST_ARRAY_INDEX));
         ASSERT(large_array->class_id() == program->large_array_class_id());
-        vector_object = large_array->at(Instance::LARGE_ARRAY_VECTOR_OFFSET);
+        vector_object = large_array->at(Instance::LARGE_ARRAY_VECTOR_INDEX);
       }
       word size;
       if (is_smi(size_object)) {
@@ -94,8 +94,8 @@ bool Interpreter::fast_at(Process* process, Object* receiver, Object* arg, bool 
       }
       return fast_at(process, arraylet, Smi::from(n % Array::ARRAYLET_SIZE), is_put, value);
     } else if (class_id == program->byte_array_cow_class_id()) {
-      if (is_put && instance->at(Instance::BYTE_ARRAY_COW_IS_MUTABLE_OFFSET) == program->false_object()) return false;
-      byte_array = ByteArray::cast(instance->at(Instance::BYTE_ARRAY_COW_BACKING_OFFSET));
+      if (is_put && instance->at(Instance::BYTE_ARRAY_COW_IS_MUTABLE_INDEX) == program->false_object()) return false;
+      byte_array = ByteArray::cast(instance->at(Instance::BYTE_ARRAY_COW_BACKING_INDEX));
     } else {
       return false;
     }
@@ -247,7 +247,7 @@ Object* Interpreter::hash_do(Program* program, Object* current, Object* backing,
       }
     } else if (step < 0) {
       // Start at the end of the list.
-      c = Smi::cast(Instance::cast(backing)->at(Instance::LIST_SIZE_OFFSET))->value() + step;
+      c = Smi::cast(Instance::cast(backing)->at(Instance::LIST_SIZE_INDEX))->value() + step;
     }
     Smi* block = Smi::cast(*from_block(Smi::cast(block_on_stack)));
     Method target = Method(program->bytecodes, block->value());
@@ -286,7 +286,7 @@ Object* Interpreter::hash_do(Program* program, Object* current, Object* backing,
     if (is_smi(entry) || HeapObject::cast(entry)->class_id() != program->tombstone_class_id()) {
       if (first_tombstone != INVALID_TOMBSTONE && tombstones_skipped > 10) {
         // Too many tombstones in a row.
-        Object* distance = Instance::cast(first_tombstone_object)->at(Instance::TOMBSTONE_DISTANCE_OFFSET);
+        Object* distance = Instance::cast(first_tombstone_object)->at(Instance::TOMBSTONE_DISTANCE_INDEX);
         word new_distance = c - first_tombstone;
         if (!is_smi(distance) || distance == Smi::from(0) || !Smi::is_valid(new_distance)) {
           // We can't overwrite the distance on a 0 instance of Tombstone_,
@@ -307,7 +307,7 @@ Object* Interpreter::hash_do(Program* program, Object* current, Object* backing,
       } else {
         tombstones_skipped++;
       }
-      Object* skip = Instance::cast(entry)->at(Instance::TOMBSTONE_DISTANCE_OFFSET);
+      Object* skip = Instance::cast(entry)->at(Instance::TOMBSTONE_DISTANCE_INDEX);
       if (is_smi(skip)) {
         word distance = Smi::cast(skip)->value();
         if (distance != 0 && (distance ^ step) >= 0) { // If signs match.
