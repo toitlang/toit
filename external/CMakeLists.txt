@@ -204,10 +204,9 @@ function(add_repo_tests REPO)
       WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
       CONFIGURATIONS external
     )
-  endforeach()
-
-  foreach(test ${FAILING_TESTS})
-    set_tests_properties(${test} PROPERTIES WILL_FAIL TRUE)
+    if("${FILE}" IN_LIST FAILING_TESTS)
+      set_tests_properties(${FILE} PROPERTIES WILL_FAIL TRUE)
+    endif()
   endforeach()
 endfunction()
 
