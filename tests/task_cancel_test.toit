@@ -77,7 +77,7 @@ test_cancel_no_trace:
 
 test_cancel_in_catch:
   task::
-    task.cancel
+    Task.current.cancel
     catch
       --trace=: expect false
       --unwind=: expect false
