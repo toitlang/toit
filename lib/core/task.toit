@@ -73,7 +73,7 @@ If a task finishes with an exception it brings down the whole program.
 */
 interface Task:
   /**
-  Returns the $Task for the current task.
+  Returns the current task.
   */
   static current -> Task:
     #primitive.core.task_current
