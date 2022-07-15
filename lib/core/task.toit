@@ -73,7 +73,7 @@ If a task finishes with an exception it brings down the whole program.
 */
 interface Task:
   /**
-  Returns the $Task for the current task.
+  Returns the current task.
   */
   static current -> Task:
     #primitive.core.task_current
@@ -82,7 +82,7 @@ interface Task:
   Cancels the task.
 
   If the task has `finally` clauses, those are executed.
-  However, these must not yield, as the task won't run again. Use `do_critical` to
+  However, these must not yield, as the task won't run again. Use $critical_do to
   run code that must yield.
   */
   cancel -> none
