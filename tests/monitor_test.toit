@@ -27,6 +27,7 @@ run:
   test_sleep_in_await
   test_block_in_await
   test_process_messages_in_locked
+  test_gate
 
 monitor A:
   foo_ready := false
@@ -351,6 +352,34 @@ test_process_messages_in_locked kind/int:
       outer.block
       expect_equals 1 handler.calls
   done.set 0
+
+test_gate:
+  gate := Gate
+
+  2.repeat:
+    task_is_running := Latch
+    task_finished := false
+    task::
+      task_is_running.set true
+      gate.enter
+      task_finished = true
+
+    expect gate.is_locked
+    expect_not gate.is_unlocked
+
+    task_is_running.get
+    10.repeat: yield
+    expect_not task_finished
+
+    gate.unlock
+    10.repeat: yield
+    expect task_finished
+
+    expect gate.is_unlocked
+
+    gate.enter
+    gate.lock
+    expect gate.is_locked
 
 test_semaphore:
   semaphore := Semaphore
