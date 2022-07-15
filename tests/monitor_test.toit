@@ -363,19 +363,19 @@ test_gate:
       gate.enter
       task_finished = true
 
-    expect gate.is_closed
-    expect_not gate.is_open
+    expect gate.is_locked
+    expect_not gate.is_unlocked
 
     task_is_running.get
     10.repeat: yield
     expect_not task_finished
 
-    gate.open
+    gate.unlock
     10.repeat: yield
     expect task_finished
 
-    expect gate.is_open
+    expect gate.is_unlocked
 
     gate.enter
-    gate.close
-    expect gate.is_closed
+    gate.lock
+    expect gate.is_locked

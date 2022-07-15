@@ -173,33 +173,33 @@ The gate can be open or closed. When a task tries to $enter, it waits
 */
 class Gate:
   signal_ /Signal ::= Signal
-  open_ /bool := ?
+  locked_ /bool := ?
 
   /**
   Constructs a new gate.
 
-  If $open is true, starts with the gate open.
+  If $unlocked is true, starts with the gate open.
   */
-  constructor --open/bool=false:
-    open_ = open
+  constructor --unlocked/bool=false:
+    locked_ = not unlocked
 
   /**
-  Opens the gate.
+  Unlocks the gate, allowing tasks to enter.
 
-  Does nothing if the gate is already open.
+  Does nothing if the gate is already unlocked.
   */
-  open -> none:
-    if is_open: return
-    open_ = true
+  unlock -> none:
+    if not is_locked: return
+    locked_ = false
     signal_.raise
 
   /**
-  Closes the gate.
+  Lockes the gate.
 
   Any task that is trying to $enter will block until the gate is opened again.
   */
-  close:
-    open_ = false
+  lock:
+    locked_ = false
 
   /**
   Enters the gate.
@@ -207,17 +207,17 @@ class Gate:
   This method blocks until the gate is open.
   */
   enter -> none:
-    signal_.wait: open_
+    signal_.wait: is_unlocked
 
   /**
-  Whether the gate is open.
+  Whether the gate is unlocked.
   */
-  is_open -> bool: return open_
+  is_unlocked -> bool: return not locked_
 
   /**
-  Whether the gate is closed.
+  Whether the gate is locked.
   */
-  is_closed -> bool: return not open_
+  is_locked -> bool: return locked_
 
 /**
 A one-way communication channel between tasks.
