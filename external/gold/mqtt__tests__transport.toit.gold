@@ -1,12 +1,9 @@
-<pkg:..>/full_client.toit:668:17: warning: Deprecated 'task'
+<pkg:..>/full_client.toit:670:17: warning: Deprecated 'task'
       while not task.is_canceled:
                 ^~~~
-<pkg:..>/full_client.toit:954:15: warning: Deprecated 'task'
+<pkg:..>/full_client.toit:956:15: warning: Deprecated 'task'
     while not task.is_canceled:
               ^~~~
-<pkg:..>/full_client.toit:118:22: error: Type mismatch. Expected 'Task_'. Got 'Task'
-    activity_task_ = task --background::
-                     ^~~~
 <pkg:..>/full_client.toit:56:15: warning: Deprecated 'task'
     while not task.is_canceled and not connection_.is_closed:
               ^~~~
@@ -16,15 +13,6 @@
 <pkg:..>/packets.toit:359:14: warning: Deprecated 'BufferConsumer.put_byte'
       buffer.put_byte topic_qos.max_qos
              ^~~~~~~~
-<pkg:..>/broker.toit:151:20: error: Type mismatch. Expected 'Task_'. Got 'Task'
-    reader_task_ = task::
-                   ^~~~
-<pkg:..>/broker.toit:166:20: error: Type mismatch. Expected 'Task_'. Got 'Task'
-    writer_task_ = task::
-                   ^~~~
-mqtt/tests/transport.toit:186:18: error: Type mismatch. Expected 'Task_'. Got 'Task'
-    read_task_ = task --background::
-                 ^~~~
 <pkg:..>/packets.toit:73:14: warning: Deprecated 'BufferConsumer.put_byte'
       buffer.put_byte 0
              ^~~~~~~~
