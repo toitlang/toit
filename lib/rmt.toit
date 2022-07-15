@@ -44,10 +44,6 @@ At the lower level, a signal consists of 16 bits: 15 bits for the period and 1
   bit for the level. Signals must be written as pairs also known as an item.
   For this reason, the bytes backing a collection of signal is always adjusted
   to be divisible by 4.
-
-This class fills in the unused bytes with values that have no effect on the output.
-  Due to https://github.com/espressif/esp-idf/issues/8864 it always allocates an
-  additional signal so it can add an end marker.
 */
 class Signals:
   /** Bytes per ESP32 signal. */
@@ -78,13 +74,13 @@ class Signals:
   // TODO(florian): take a clock-divider as argument and allow the user to specify
   // durations in us. Then also add a `do --us_periods:`.
   constructor .size:
-    size_with_end_marker := size + 1
     bytes_ = ByteArray
-        round_up (size_with_end_marker * 2) 4
-    // Work around https://github.com/espressif/esp-idf/issues/8864 and always add a
-    // high end marker.
-    set_signal_ size 0 1
-    if size_with_end_marker % 2 == 1: set_signal_ (size + 1) 0 1
+        round_up (size * 2) 4
+    // Terminate the signals with a high end-marker. The duration 0 signals the
+    // end of the sequence, but with a level equal to 0 the peripheral would still
+    // emit a short pulse when its pin is set to open-drain.
+    // See https://github.com/espressif/esp-idf/issues/8864
+    if size % 2 == 1: set_signal_ size 0 1
 
   /**
   Creates signals that alternate between a level of 0 and 1 with the periods

@@ -265,10 +265,17 @@ PRIMITIVE(init) {
     MALLOC_FAILED;
   }
 
+  esp_err_t err = nvs_flash_init();
+  if (err != ESP_OK) {
+    esp_netif_destroy(netif);
+    wifi_pool.put(id);
+    return Primitive::os_error(err, process);
+  }
+
   // Create a thread that takes care of logging into the Wifi AP.
   wifi_init_config_t init_config = WIFI_INIT_CONFIG_DEFAULT();
   init_config.nvs_enable = 0;
-  esp_err_t err = esp_wifi_init(&init_config);
+  err = esp_wifi_init(&init_config);
   if (err != ESP_OK) {
     esp_netif_destroy(netif);
     wifi_pool.put(id);

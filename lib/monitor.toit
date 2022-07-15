@@ -71,7 +71,7 @@ A semaphore synchronization primitive.
 This class must not be extended.
 */
 monitor Semaphore:
-  count_ /int := 0
+  count_ /int := ?
   limit_ /int?
 
   /**
@@ -81,8 +81,10 @@ monitor Semaphore:
     counter using $up are ignored and leaves the counter unchanged.
   */
   constructor --count/int=0 --limit/int?=null:
+    if count < 0: throw "INVALID_ARGUMENT"
     if limit and (limit < 1 or count > limit): throw "INVALID_ARGUMENT"
     limit_ = limit
+    count_ = count
 
   /**
   Increments an internal counter.
@@ -104,6 +106,10 @@ monitor Semaphore:
   down -> none:
     await: count_ > 0
     count_--
+
+  /** The current count of the semaphore. */
+  count -> int:
+    return count_
 
 /**
 A signal synchronization primitive.
@@ -199,7 +205,7 @@ class Gate:
   Any task that is trying to $enter will block until the gate is opened again.
   */
   lock:
-    locked_ = false
+    locked_ = true
 
   /**
   Enters the gate.
