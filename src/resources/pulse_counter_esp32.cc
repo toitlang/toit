@@ -18,7 +18,6 @@
 #ifdef TOIT_FREERTOS
 
 #include <driver/pcnt.h>
-#include <esp32/clk.h>
 
 #include "../objects_inline.h"
 #include "../primitive.h"
@@ -67,13 +66,13 @@ class PcntUnitResource : public Resource {
                         pcnt_ctrl_mode_t when_control_high,
                         pcnt_channel_t* channel) {
     *channel = kInvalidChannel;
-    // In v4.3.2 we just use a channel id.
+    // In v4.4.1 we just use a channel id.
     // https://docs.espressif.com/projects/esp-idf/en/v4.3.2/esp32/api-reference/peripherals/pcnt.html?#configuration
-    // In later versions we have to call `pcnt_add_channel`.
+    // In later versions we have to call `pcnt_new_channel`.
     // https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/peripherals/pcnt.html#install-pcnt-channel
     // This static assert might hit, even though the code is still OK. Check the documentation if
-    // the code from 'master' (as of 2022-04-16) has already made it into the release you are using.
-    static_assert(ESP_IDF_VERSION_MAJOR == 4 && ESP_IDF_VERSION_MINOR == 3,
+    // the code from 'master' (as of 2022-07-01) has already made it into the release you are using.
+    static_assert(ESP_IDF_VERSION_MAJOR == 4 && ESP_IDF_VERSION_MINOR == 4,
                   "Newer ESP-IDF might need different code");
     for (int i = 0; i < PCNT_CHANNEL_MAX; i++) {
       if (!_used_channels[i]) {
@@ -97,7 +96,7 @@ class PcntUnitResource : public Resource {
       .unit = _unit_id,
       .channel = *channel,
     };
-    // For v4.3.2:
+    // For v4.4.1:
     // There is an error `ESP_ERR_INVALID_STATE` that could be returned by the
     // config function. Apparently one shouldn't initialize the driver multiple times.
     // However, each channel must be configured separately, so there isn't really a way
@@ -109,8 +108,9 @@ class PcntUnitResource : public Resource {
     _used_channels[static_cast<int>(*channel)] = true;
 
     if (_glitch_filter_ns >= 0) {
+
       // The glitch-filter value should have been checked in the constructor.
-      int glitch_filter_thres = esp_clk_apb_freq() / 1000000 * _glitch_filter_ns / 1000;
+      int glitch_filter_thres = APB_CLK_FREQ / 1000000 * _glitch_filter_ns / 1000;
       pcnt_set_filter_value(_unit_id, static_cast<uint16_t>(glitch_filter_thres));
       pcnt_filter_enable(_unit_id);
     }
@@ -125,13 +125,13 @@ class PcntUnitResource : public Resource {
 
   esp_err_t close_channel(pcnt_channel_t channel) {
     ASSERT(is_open_channel(channel));
-    // In v4.3.2 we should disable the channel by setting the pins to PCNT_PIN_NOT_USED.
-    // https://docs.espressif.com/projects/esp-idf/en/v4.3.2/esp32/api-reference/peripherals/pcnt.html?#configuration
+    // In v4.4.1 we should disable the channel by setting the pins to PCNT_PIN_NOT_USED.
+    // https://docs.espressif.com/projects/esp-idf/en/v4.4.1/esp32/api-reference/peripherals/pcnt.html?#configuration
     // In later versions (after 4.4) we have to call `pcnt_del_channel`.
     // https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/peripherals/pcnt.html#install-pcnt-channel
     // This static assert might hit, even though the code is still OK. Check the documentation if
     // the code from 'master' (as of 2022-04-16) has already made it into the release you are using.
-    static_assert(ESP_IDF_VERSION_MAJOR == 4 && ESP_IDF_VERSION_MINOR == 3,
+    static_assert(ESP_IDF_VERSION_MAJOR == 4 && ESP_IDF_VERSION_MINOR == 4,
                   "Newer ESP-IDF might need different code");
     pcnt_config_t config {
       .pulse_gpio_num = PCNT_PIN_NOT_USED,
@@ -156,13 +156,13 @@ class PcntUnitResource : public Resource {
     }
     _cleared = false;
 
-    // In v4.3.2 there is no way to shut down the counter.
+    // In v4.4.1 there is no way to shut down the counter.
     // In later versions we have to call `pcnt_del_unit`.
     // https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/peripherals/pcnt.html#install-pcnt-unit
     // This static assert might hit, even though the code is still OK. Check the documentation if
-    // the code from 'master' (as of 2022-04-16) has already made it into the release you are using.
+    // the code from 'master' (as of 2022-07-01) has already made it into the release you are using.
     // If yes, stop the unit and the delete it.
-    static_assert(ESP_IDF_VERSION_MAJOR == 4 && ESP_IDF_VERSION_MINOR == 3,
+    static_assert(ESP_IDF_VERSION_MAJOR == 4 && ESP_IDF_VERSION_MINOR == 4,
                   "Newer ESP-IDF might need different code");
   }
 
@@ -173,7 +173,7 @@ class PcntUnitResource : public Resource {
   // The glitch filter runs on the APB clock, which generally is clocked at 80MHz.
   static int glitch_filter_ns_to_ticks(int glitch_filter_ns) {
     // The glitch-filter value should have been checked in the constructor.
-    return esp_clk_apb_freq() / 1000000 * glitch_filter_ns / 1000;
+    return APB_CLK_FREQ / 1000000 * glitch_filter_ns / 1000;
   }
 
   static bool validate_glitch_filter_ticks(int ticks) {
@@ -243,14 +243,14 @@ PRIMITIVE(new_unit) {
     }
   }
 
-  // In v4.3.2 the unit is not allocated, but everything happens when a channel
+  // In v4.4.1 the unit is not allocated, but everything happens when a channel
   // is allocated.
   // In later versions we have to call `pcnt_new_unit`.
   // https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/peripherals/pcnt.html#install-pcnt-unit
   // This static assert might hit, even though the code is still OK. Check the documentation if
-  // the code from 'master' (as of 2022-04-16) has already made it into the release you are using.
+  // the code from 'master' (as of 2022-07-01) has already made it into the release you are using.
   // If yes, create a new unit.
-  static_assert(ESP_IDF_VERSION_MAJOR == 4 && ESP_IDF_VERSION_MINOR == 3,
+  static_assert(ESP_IDF_VERSION_MAJOR == 4 && ESP_IDF_VERSION_MINOR == 4,
                 "Newer ESP-IDF might need different code");
 
   proxy->set_external_address(unit);

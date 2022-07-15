@@ -250,10 +250,6 @@ class Task_ implements Task:
   previous_running_ := null
   next_blocked_ := null
 
-  // TODO(kasper): Generalize this a bit. It is only used
-  // for implementing generators for now.
-  tls := null
-
   // Timer used for all sleep operations on this task.
   timer_ := null
 

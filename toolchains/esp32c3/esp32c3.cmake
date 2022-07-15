@@ -43,12 +43,9 @@ set(SKDCONFIG_INCLUDE_DIR "build/esp32c3/include" CACHE FILEPATH "Path to the sd
 include_directories(
   $ENV{IDF_PATH}/components/app_update/include
   $ENV{IDF_PATH}/components/bootloader_support/include
-  
-  $ENV{IDF_PATH}/components/driver/include
   $ENV{IDF_PATH}/components/driver/esp32c3/include
-  
+  $ENV{IDF_PATH}/components/driver/include
   $ENV{IDF_PATH}/components/esp32c3/include
-  
   $ENV{IDF_PATH}/components/esp_adc_cal/include
   $ENV{IDF_PATH}/components/esp_common/include
   $ENV{IDF_PATH}/components/esp_eth/include
@@ -61,12 +58,11 @@ include_directories(
   $ENV{IDF_PATH}/components/esp_timer/include
   $ENV{IDF_PATH}/components/esp_wifi/include
   $ENV{IDF_PATH}/components/freertos/include
-  $ENV{IDF_PATH}/components/freertos/xtensa/include
+  $ENV{IDF_PATH}/components/freertos/include/esp_additions
+  $ENV{IDF_PATH}/components/freertos/include/esp_additions/freertos
   $ENV{IDF_PATH}/components/freertos/port/xtensa/include
-  
   $ENV{IDF_PATH}/components/hal/include
   $ENV{IDF_PATH}/components/hal/esp32c3/include
-  
   $ENV{IDF_PATH}/components/heap/include
   $ENV{IDF_PATH}/components/log/include
   $ENV{IDF_PATH}/components/lwip/include/lwip
@@ -79,29 +75,26 @@ include_directories(
   $ENV{IDF_PATH}/components/newlib/platform_include
   $ENV{IDF_PATH}/components/nvs_flash/include
   $ENV{IDF_PATH}/components/spi_flash/include
-  
- 
-  $ENV{IDF_PATH}/components/ 
-  $ENV{IDF_PATH}/components/soc/include
   $ENV{IDF_PATH}/components/soc/esp32c3/include
-  
+  $ENV{IDF_PATH}/components/esp_hw_support/include/soc
+  $ENV{IDF_PATH}/components/soc/include
+  $ENV{IDF_PATH}/components/soc/soc/include
+  $ENV{IDF_PATH}/components/soc/soc/esp32c3/include
+  $ENV{IDF_PATH}/components/soc/src/esp32c3/include
   $ENV{IDF_PATH}/components/tcpip_adapter/include
   $ENV{IDF_PATH}/components/vfs/include
   $ENV{IDF_PATH}/components/ulp/include
-
   $ENV{IDF_PATH}/components/xtensa/esp32/include
   $ENV{IDF_PATH}/components/xtensa/include
-  
   $ENV{IDF_PATH}/components/riscv/include
-  
-  $ENV{IDF_PATH}/components/bt/host/nimble/nimble/nimble/host/util/include
-  $ENV{IDF_PATH}/components/bt/include/esp32c3/include
   $ENV{IDF_PATH}/components/bt/host/nimble/esp-hci/include
   $ENV{IDF_PATH}/components/bt/host/nimble/nimble/nimble/include
   $ENV{IDF_PATH}/components/bt/host/nimble/nimble/porting/nimble/include
   $ENV{IDF_PATH}/components/bt/host/nimble/nimble/porting/npl/freertos/include
   $ENV{IDF_PATH}/components/bt/host/nimble/nimble/nimble/host/include
   $ENV{IDF_PATH}/components/bt/host/nimble/nimble/nimble/host/util/include
+  $ENV{IDF_PATH}/components/bt/include/esp32c3/include
   $ENV{IDF_PATH}/components/bt/host/nimble/nimble/nimble/host/services/gap/include
+  $ENV{IDF_PATH}/components/bt/host/nimble/nimble/nimble/host/services/gatt/include
   ${SKDCONFIG_INCLUDE_DIR}
   )
