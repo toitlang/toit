@@ -150,7 +150,7 @@ test_multiple_blocks:
     : 7
   expect_equals 11 - 7 x
 
-  x = exec(: 11)
+  x = exec (: 11)
     :
       3
   expect_equals 11 - 3 x

@@ -133,7 +133,7 @@ Proc5:
 
 Proc6 EnumParIn:
   EnumParOut := EnumParIn
-  if not Func3(EnumParIn):
+  if not Func3 EnumParIn:
     EnumParOut = Ident4
   if EnumParIn == Ident1:
     EnumParOut = Ident1

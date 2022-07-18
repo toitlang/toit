@@ -1,0 +1,46 @@
+tests/negative/no_space_paren_test.toit:5:14: warning: Parenthesis should not be attached. Attempted call?
+global := foo(3)
+             ^
+tests/negative/no_space_paren_test.toit:16:6: warning: Parenthesis should not be attached. Attempted call?
+  foo(local)
+     ^
+tests/negative/no_space_paren_test.toit:17:6: warning: Parenthesis should not be attached. Attempted call?
+  foo("str")
+     ^
+tests/negative/no_space_paren_test.toit:18:12: warning: Parenthesis should not be attached. Attempted call?
+  bar local(499)
+           ^
+tests/negative/no_space_paren_test.toit:19:10: warning: Parenthesis should not be attached. Attempted call?
+  foo foo(42)
+         ^
+tests/negative/no_space_paren_test.toit:20:6: warning: Parenthesis should not be attached. Attempted call?
+  bar(local) 3
+     ^
+tests/negative/no_space_paren_test.toit:21:6: warning: Parenthesis should not be attached. Attempted call?
+  foo([1, 2, 3])
+     ^
+tests/negative/no_space_paren_test.toit:22:6: warning: Parenthesis should not be attached. Attempted call?
+  gee()
+     ^
+tests/negative/no_space_paren_test.toit:22:7: error: Unexpected )
+  gee()
+      ^
+tests/negative/no_space_paren_test.toit:22:6: error: Missing closing ')'
+  gee()
+     ^~
+tests/negative/no_space_paren_test.toit:19:7: error: Argument mismatch for 'foo'
+Too few arguments provided
+  foo foo(42)
+      ^~~
+tests/negative/no_space_paren_test.toit:19:3: error: Argument mismatch for 'foo'
+Too many arguments provided
+  foo foo(42)
+  ^~~
+tests/negative/no_space_paren_test.toit:22:3: error: Argument mismatch for 'gee'
+Method does not take any arguments, but one was provided
+  gee()
+  ^~~
+tests/negative/no_space_paren_test.toit:23:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+Compilation failed.
