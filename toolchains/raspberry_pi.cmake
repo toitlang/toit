@@ -13,9 +13,12 @@
 # The license can be found in the file `LICENSE` in the top level
 # directory of this repository.
 
-include("${CMAKE_CURRENT_LIST_DIR}/arm.cmake")
+set(ARM_TARGET "arm-linux-gnueabihf")
+# Compile for Raspberry Pi 3 and up.
+set(ARM_CPU_FLAGS "-mcpu=cortex-a53 -mfpu=neon-fp-armv8 -mthumb")
 
-set(FIND_LIBRARY_USE_LIB64_PATHS OFF)
+# The Raspberry Pi doesn't seem to use position independent executables.
+set(CMAKE_C_LINK_FLAGS "${CMAKE_CXX_LINK_FLAGS} -no-pie")
+set(CMAKE_CXX_LINK_FLAGS "${CMAKE_CXX_LINK_FLAGS} -no-pie")
 
-set(GOOS "linux")
-set(GOARCH "arm")
+include("${CMAKE_CURRENT_LIST_DIR}/arm32.cmake")
