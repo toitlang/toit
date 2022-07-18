@@ -1,0 +1,16 @@
+tests/negative/assign_self_test.toit:3:9: warning: Assignment of local to itself
+  local = local
+        ^
+tests/negative/assign_self_test.toit:4:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+tests/negative/assign_self_test.toit:10:11: warning: Assignment of local to itself, did you forget 'this.'?
+    field = field
+          ^
+tests/negative/assign_self_test.toit:16:11: warning: Assignment of local to itself
+    field = field
+          ^
+tests/negative/assign_self_test.toit:13:11: warning: Assignment of local to itself, did you forget 'this.'?
+    field = field
+          ^
+Compilation failed.
