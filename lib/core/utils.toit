@@ -176,7 +176,7 @@ Calls the given $block but throws an exception if a timeout of $us microseconds
 */
 with_timeout --us/int [block]:
   deadline := Time.monotonic_us + us
-  return task.with_deadline_ deadline block
+  return Task_.current.with_deadline_ deadline block
 
 /**
 Enters and calls the given critical $block.
@@ -186,7 +186,7 @@ Within $block, the current task won't be interrupted by cancellation exceptions.
   $block can be interrupted by a timeout (see $with_timeout) if $respect_deadline is true.
 */
 critical_do --respect_deadline/bool=true [block]:
-  self ::= task
+  self ::= Task_.current
   deadline/int? := null
   self.critical_count_++
   if not respect_deadline:

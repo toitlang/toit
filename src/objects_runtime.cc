@@ -37,8 +37,8 @@ bool Object::mutable_byte_content(Process* process, uint8** content, int* length
   auto program = process->program();
   auto instance = Instance::cast(this);
   if (instance->class_id() == program->byte_array_cow_class_id()) {
-    Object* backing = instance->at(Instance::BYTE_ARRAY_COW_BACKING_OFFSET);
-    auto is_mutable = instance->at(Instance::BYTE_ARRAY_COW_IS_MUTABLE_OFFSET);
+    Object* backing = instance->at(Instance::BYTE_ARRAY_COW_BACKING_INDEX);
+    auto is_mutable = instance->at(Instance::BYTE_ARRAY_COW_IS_MUTABLE_INDEX);
     if (is_mutable == process->program()->true_object()) {
       return backing->mutable_byte_content(process, content, length, error);
     }
@@ -66,9 +66,9 @@ bool Object::mutable_byte_content(Process* process, uint8** content, int* length
     instance->at_put(1, process->program()->true_object());
     return new_backing->mutable_byte_content(process, content, length, error);
   } else if (instance->class_id() == program->byte_array_slice_class_id()) {
-    auto byte_array = instance->at(Instance::BYTE_ARRAY_SLICE_BYTE_ARRAY_OFFSET);
-    auto from = instance->at(Instance::BYTE_ARRAY_SLICE_FROM_OFFSET);
-    auto to = instance->at(Instance::BYTE_ARRAY_SLICE_TO_OFFSET);
+    auto byte_array = instance->at(Instance::BYTE_ARRAY_SLICE_BYTE_ARRAY_INDEX);
+    auto from = instance->at(Instance::BYTE_ARRAY_SLICE_FROM_INDEX);
+    auto to = instance->at(Instance::BYTE_ARRAY_SLICE_TO_INDEX);
     if (!is_heap_object(byte_array)) return false;
     // TODO(florian): we could eventually accept larger integers here.
     if (!is_smi(from)) return false;

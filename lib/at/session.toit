@@ -324,7 +324,7 @@ class Session:
     command_deadline_ = now + command.timeout.in_us
     responses_ = []
 
-    task.with_deadline_ command_deadline_:
+    Task_.current.with_deadline_ command_deadline_:
       try:
         write_command_ command
       finally: | is_exception exception |

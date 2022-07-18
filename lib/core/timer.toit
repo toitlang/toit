@@ -31,7 +31,7 @@ monitor Sleeper_:
   Sleep until $wakeup.
   */
   sleep_until_ wakeup/int -> none:
-    self := task
+    self := Task_.current
     // Eagerly throw if we trying to sleep past the task deadline.
     deadline := self.deadline
     if deadline and deadline < wakeup: throw DEADLINE_EXCEEDED_ERROR

@@ -862,7 +862,7 @@ abstract class Array_ extends List:
 
   /** See $super. */
   resize new_size:
-    throw "ARRAY_CANNOT_CHANGE_SIZE"
+    throw "COLLECTION_CANNOT_CHANGE_SIZE"
 
   /** See $super. */
   operator + collection -> Array_:

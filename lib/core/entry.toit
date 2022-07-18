@@ -6,7 +6,7 @@
 // calling the main function and halting the system after
 // it returns.
 __entry__main -> none:
-  current := task
+  current := Task_.current
   current.initialize_entry_task_
   current.evaluate_:
     args := List_.from_array_ main_arguments_
@@ -15,7 +15,7 @@ __entry__main -> none:
 // This is the entry point for processes just being spawned.
 // It calls the lambda passed in the spawn arguments.
 __entry__spawn -> none:
-  current := task
+  current := Task_.current
   current.initialize_entry_task_
   lambda := Lambda.__ spawn_method_ spawn_arguments_
   current.evaluate_: lambda.call
@@ -29,7 +29,7 @@ __entry__task lambda -> none:
   // skipped and we let the value passed to us take its place.
   life := null
   assert: life == 42
-  task.evaluate_: lambda.call
+  Task_.current.evaluate_: lambda.call
 
 // --------------------------------------------------------
 
