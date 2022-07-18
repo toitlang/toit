@@ -40,7 +40,7 @@ jobs:
           echo ::set-output name=debug_dir::debug-ci/$RUNNER_OS-${{ matrix.shard }}
           if [ "$RUNNER_OS" == "Linux" ]; then
             echo ::set-output name=artifact::toit-linux.tar.gz
-            echo ::set-output name=raspberry_pi_artifact::toit-raspberry_pi.tar.gz
+            echo ::set-output name=raspberry_pi_artifact::toit-rpi.tar.gz
             echo ::set-output name=total_shards::10
           elif [ "$RUNNER_OS" == "macOS" ]; then
             echo ::set-output name=artifact::toit-macos.tar.gz
