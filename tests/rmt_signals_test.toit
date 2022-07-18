@@ -16,7 +16,7 @@ main:
 test_signals_construction:
   signals := Signals 4
   expect_equals 4 signals.size
-  expect_equals 12 signals.bytes_.size
+  expect_equals 8 signals.bytes_.size
 
   signals = Signals 5
   expect_equals 5 signals.size

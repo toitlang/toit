@@ -71,7 +71,7 @@ A semaphore synchronization primitive.
 This class must not be extended.
 */
 monitor Semaphore:
-  count_ /int := 0
+  count_ /int := ?
   limit_ /int?
 
   /**
@@ -81,8 +81,10 @@ monitor Semaphore:
     counter using $up are ignored and leaves the counter unchanged.
   */
   constructor --count/int=0 --limit/int?=null:
+    if count < 0: throw "INVALID_ARGUMENT"
     if limit and (limit < 1 or count > limit): throw "INVALID_ARGUMENT"
     limit_ = limit
+    count_ = count
 
   /**
   Increments an internal counter.
@@ -104,6 +106,10 @@ monitor Semaphore:
   down -> none:
     await: count_ > 0
     count_--
+
+  /** The current count of the semaphore. */
+  count -> int:
+    return count_
 
 /**
 A signal synchronization primitive.
@@ -164,6 +170,60 @@ monitor Signal:
       awaited_ = ++awaited
       await: current_ >= awaited
       if condition.call: return
+
+/**
+A synchronization gate.
+
+The gate can be open or closed. When a task tries to $enter, it waits
+  until the gate is open.
+*/
+class Gate:
+  signal_ /Signal ::= Signal
+  locked_ /bool := ?
+
+  /**
+  Constructs a new gate.
+
+  If $unlocked is true, starts with the gate open.
+  */
+  constructor --unlocked/bool=false:
+    locked_ = not unlocked
+
+  /**
+  Unlocks the gate, allowing tasks to enter.
+
+  Does nothing if the gate is already unlocked.
+  */
+  unlock -> none:
+    if not is_locked: return
+    locked_ = false
+    signal_.raise
+
+  /**
+  Lockes the gate.
+
+  Any task that is trying to $enter will block until the gate is opened again.
+  */
+  lock:
+    locked_ = true
+
+  /**
+  Enters the gate.
+
+  This method blocks until the gate is open.
+  */
+  enter -> none:
+    signal_.wait: is_unlocked
+
+  /**
+  Whether the gate is unlocked.
+  */
+  is_unlocked -> bool: return not locked_
+
+  /**
+  Whether the gate is locked.
+  */
+  is_locked -> bool: return locked_
 
 /**
 A one-way communication channel between tasks.
