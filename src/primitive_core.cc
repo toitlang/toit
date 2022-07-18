@@ -1353,6 +1353,21 @@ PRIMITIVE(float_sqrt) {
   return Primitive::allocate_double((double) sqrt(receiver), process);
 }
 
+PRIMITIVE(float_ceil) {
+  ARGS(double, receiver);
+  return Primitive::allocate_double((double) ceil(receiver), process);
+}
+
+PRIMITIVE(float_floor) {
+  ARGS(double, receiver);
+  return Primitive::allocate_double((double) floor(receiver), process);
+}
+
+PRIMITIVE(float_trunc) {
+  ARGS(double, receiver);
+  return Primitive::allocate_double((double) trunc(receiver), process);
+}
+
 static bool is_validated_string(Program* program, Object* object) {
   // The only objects that are known to have valid UTF-8 sequences are
   // strings and string-slices.
