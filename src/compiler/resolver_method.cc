@@ -4031,7 +4031,30 @@ ir::Expression* MethodResolver::_assign_identifier(ast::Binary* node,
   } else {
     ir_value = resolve_expression(ast_right, "Can't use block value in assignment", true);
   }
-  return create_set(ir_value);
+  auto result = create_set(ir_value);
+  if (result->is_AssignmentLocal()) {
+    bool reported_warning = false;
+    auto assig = result->as_AssignmentLocal();
+    auto local = assig->local();
+    auto right = assig->right();
+    if (right->is_ReferenceLocal() && right->as_ReferenceLocal()->target() == local) {
+      if (_method->is_constructor() || _method->is_instance()) {
+        auto fields = _method->holder()->fields();
+        for (int i = 0; i < fields.length(); i++) {
+          auto field_name = fields[i]->name();
+          if (field_name.is_valid() && field_name == local->name()) {
+            diagnostics()->report_warning(node, "Assigning local to itself has no effect. Did you forget 'this.'?");
+            reported_warning = true;
+            break;
+          }
+        }
+      }
+      if (!reported_warning) {
+        diagnostics()->report_warning(node, "Assigning local to itself");
+      }
+    }
+  }
+  return result;
 }
 
 
