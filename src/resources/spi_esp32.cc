@@ -207,13 +207,17 @@ PRIMITIVE(device_close) {
 }
 
 PRIMITIVE(transfer) {
-  ARGS(SPIDevice, device, MutableBlob, tx, int, command, int64, address, int, from, int, to, bool, read, int, dc);
+  ARGS(SPIDevice, device, MutableBlob, tx, int, command, int64, address, int, from, int, to, bool, read, int, dc, bool, keep_cs_active);
 
   if (from < 0 || from > to || to > tx.length()) OUT_OF_BOUNDS;
 
   size_t length = to - from;
 
+  uint32_t flags = 0;
+  if (keep_cs_active) flags |= SPI_TRANS_CS_KEEP_ACTIVE;
+
   spi_transaction_t trans = {
+    .flags = flags,
     .cmd = uint16(command),
     .addr = uint64(address),
     .length = length * 8,
@@ -244,6 +248,23 @@ PRIMITIVE(transfer) {
     memcpy(tx.address() + from, trans.rx_buffer, length);
   }
 
+  return process->program()->null_object();
+}
+
+PRIMITIVE(acquire_bus) {
+  ARGS(SPIDevice, device);
+  esp_err_t err = spi_device_acquire_bus(device->handle(), portMAX_DELAY);
+  if (err != ESP_OK) {
+    return Primitive::os_error(err, process);
+  }
+  return process->program()->null_object();
+}
+
+PRIMITIVE(release_bus) {
+  ARGS(SPIDevice, device);
+  printf("Releasing the bus\n");
+  spi_device_release_bus(device->handle());
+  printf("Released\n");
   return process->program()->null_object();
 }
 
