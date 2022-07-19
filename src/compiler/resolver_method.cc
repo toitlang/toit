@@ -4034,14 +4034,14 @@ ir::Expression* MethodResolver::_assign_identifier(ast::Binary* node,
         for (int i = 0; i < fields.length(); i++) {
           auto field_name = fields[i]->name();
           if (field_name.is_valid() && field_name == local->name()) {
-            diagnostics()->report_warning(node, "Assignment of local to itself, did you forget 'this.'?");
+            diagnostics()->report_warning(node, "Assigning local to itself has no effect. Did you forget 'this.'?");
             reported_warning = true;
             break;
           }
         }
       }
       if (!reported_warning) {
-        diagnostics()->report_warning(node, "Assignment of local to itself");
+        diagnostics()->report_warning(node, "Assigning local to itself");
       }
     }
   }
