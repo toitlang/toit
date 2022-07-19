@@ -79,12 +79,23 @@ class Port implements reader.Reader:
 
   /**
   Changes the baud rate.
+  Deprecated. Use $baud_rate= instead
+  */
+  set_baud_rate new_rate/int:
+    uart_set_baud_rate_ uart_ new_rate
+
+  /**
+  Sets the baud rate to the given $new_rate.
 
   The receiver should be ready to read and write data at the specified
     baud rate.
   */
-  set_baud_rate baud_rate/int:
-    uart_set_baud_rate_ uart_ baud_rate
+  baud_rate= new_rate/int:
+    uart_set_baud_rate_ uart_ new_rate
+
+  /** The current baud rate. */
+  baud_rate:
+    return uart_get_baud_rate_ uart_
 
   /**
   Closes this UART port and release all associated resources.
@@ -153,6 +164,9 @@ uart_create_ group tx rx rts cts baud_rate data_bits stop_bits parity tx_flags:
 
 uart_set_baud_rate_ uart baud:
   #primitive.uart.set_baud_rate
+
+uart_get_baud_rate_ uart:
+  #primitive.uart.get_baud_rate
 
 uart_close_ group uart:
   #primitive.uart.close

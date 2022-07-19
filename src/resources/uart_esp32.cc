@@ -241,6 +241,18 @@ PRIMITIVE(close) {
   return process->program()->null_object();
 }
 
+PRIMITIVE(get_baud_rate) {
+  ARGS(UARTResource, uart);
+
+  uint32_t baud_rate;
+  esp_err_t err = uart_get_baudrate(uart->port(), &baud_rate);
+  if (err != ESP_OK) {
+    return Primitive::os_error(err, process);
+  }
+
+  return Primitive::integer(baud_rate, process);
+}
+
 PRIMITIVE(set_baud_rate) {
   ARGS(UARTResource, uart, int, baud_rate);
 

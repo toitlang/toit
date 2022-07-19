@@ -389,6 +389,7 @@ namespace toit {
   PRIMITIVE(init, 0)                         \
   PRIMITIVE(create, 10)                      \
   PRIMITIVE(close, 2)                        \
+  PRIMITIVE(get_baud_rate, 1)                \
   PRIMITIVE(set_baud_rate, 2)                \
   PRIMITIVE(write, 6)                        \
   PRIMITIVE(read, 1)                         \
