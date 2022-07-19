@@ -290,6 +290,7 @@ test:
 
 .PHONY: update-gold
 update-gold:
+	$(MAKE) rebuild-cmake
 	(cd build/$(HOST) && ninja update_gold)
 	(cd build/$(HOST) && ninja update_minus_s_gold)
 

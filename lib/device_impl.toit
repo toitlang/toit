@@ -5,6 +5,7 @@
 import device
 import encoding.ubjson
 import uuid
+import esp32
 
 /**
 Implementation of ESP32 device library. Use the APIs in the device library.
@@ -21,7 +22,7 @@ class Device_ implements device.Device_:
   constructor.init_:
 
   name -> string?:
-    return get_mac_address_.stringify
+    return esp32.image_config.get "name" --if_absent=: hardware_id.stringify
 
   hardware_id -> uuid.Uuid:
     if not hardware_id_: hardware_id_ = uuid.uuid5 "hw_id" get_mac_address_

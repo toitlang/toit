@@ -1927,6 +1927,10 @@ Expression* Parser::parse_primary(bool allow_colon) {
   } else if (current_token() == Token::DOUBLE_COLON) {
     return parse_block_or_lambda(current_indentation());
   } else if (current_token() == Token::LPAREN) {
+    if (is_current_token_attached() && previous_token() == Token::IDENTIFIER) {
+      diagnostics()->report_warning(current_range(),
+                                    "Parenthesis should not be attached. Attempted call?");
+    }
     start_delimited(IndentationStack::DELIMITED, Token::LPAREN, Token::RPAREN);
     Expression* expression = parse_expression(true);
     end_delimited(IndentationStack::DELIMITED, Token::RPAREN);
@@ -2666,6 +2670,11 @@ Source::Range Parser::current_range_safe() {
 Source::Range Parser::previous_range() {
   auto& previous_state = _scanner_state_queue.get(-1);
   return _source->range(previous_state.from, previous_state.to);
+}
+
+Token::Kind Parser::previous_token() {
+  auto& previous_state = _scanner_state_queue.get(-1);
+  return previous_state.token();
 }
 
 bool Parser::optional(Token::Kind kind) {
