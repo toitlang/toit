@@ -1,3 +1,6 @@
+<pkg:mqtt>/full_client.toit:614:54: warning: Parenthesis should not be attached. Attempted call?
+    transport_ = ActivityMonitoringTransport.private_(transport)
+                                                     ^
 <pkg:mqtt>/packets.toit:59:12: warning: Deprecated 'BufferConsumer.put_byte'
     buffer.put_byte type << 4 | flags
            ^~~~~~~~
