@@ -27,6 +27,8 @@ main:
   test_is_power_of_two
   test_operators
   test_bit_fields
+  test_abs_floor_ceil_truncate
+
 expect_error name [code]:
   expect_equals
     name
@@ -1204,3 +1206,49 @@ test_bit_fields:
 
   expect_equals int.MAX (int.MAX.sign_extend --bits=64)
   expect_equals int.MIN (int.MIN.sign_extend --bits=64)
+
+test_abs_floor_ceil_truncate:
+  expect_identical 0.0 0.0.abs
+  expect_identical 0.0 0.0.floor
+  expect_identical 0.0 0.0.ceil
+  expect_identical 0.0 0.0.truncate
+
+  expect_identical 0.0 -0.0.abs
+  expect_identical -0.0 -0.0.floor
+  expect_identical -0.0 -0.0.ceil
+  expect_identical -0.0 -0.0.truncate
+
+  expect_identical 1.0 1.0.abs
+  expect_identical 1.0 1.0.floor
+  expect_identical 1.0 1.0.ceil
+  expect_identical 1.0 1.0.truncate
+
+  expect_identical 1.5 1.5.abs
+  expect_identical 1.0 1.5.floor
+  expect_identical 2.0 1.5.ceil
+  expect_identical 1.0 1.5.truncate
+
+  expect_identical 1.0 -1.0.abs
+  expect_identical -1.0 -1.0.floor
+  expect_identical -1.0 -1.0.ceil
+  expect_identical -1.0 -1.0.truncate
+
+  expect_identical 1.5 -1.5.abs
+  expect_identical -2.0 -1.5.floor
+  expect_identical -1.0 -1.5.ceil
+  expect_identical -1.0 -1.5.truncate
+
+  expect_identical float.INFINITY float.INFINITY.abs
+  expect_identical float.INFINITY float.INFINITY.floor
+  expect_identical float.INFINITY float.INFINITY.ceil
+  expect_identical float.INFINITY float.INFINITY.truncate
+
+  expect_identical float.INFINITY (-float.INFINITY).abs
+  expect_identical -float.INFINITY (-float.INFINITY).floor
+  expect_identical -float.INFINITY (-float.INFINITY).ceil
+  expect_identical -float.INFINITY (-float.INFINITY).truncate
+
+  expect_identical float.NAN float.NAN.abs
+  expect_identical float.NAN float.NAN.floor
+  expect_identical float.NAN float.NAN.ceil
+  expect_identical float.NAN float.NAN.truncate
