@@ -1350,22 +1350,22 @@ PRIMITIVE(number_to_integer) {
 
 PRIMITIVE(float_sqrt) {
   ARGS(double, receiver);
-  return Primitive::allocate_double((double) sqrt(receiver), process);
+  return Primitive::allocate_double(sqrt(receiver), process);
 }
 
 PRIMITIVE(float_ceil) {
   ARGS(double, receiver);
-  return Primitive::allocate_double((double) ceil(receiver), process);
+  return Primitive::allocate_double(ceil(receiver), process);
 }
 
 PRIMITIVE(float_floor) {
   ARGS(double, receiver);
-  return Primitive::allocate_double((double) floor(receiver), process);
+  return Primitive::allocate_double(floor(receiver), process);
 }
 
 PRIMITIVE(float_trunc) {
   ARGS(double, receiver);
-  return Primitive::allocate_double((double) trunc(receiver), process);
+  return Primitive::allocate_double(trunc(receiver), process);
 }
 
 static bool is_validated_string(Program* program, Object* object) {
