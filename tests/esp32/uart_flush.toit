@@ -68,6 +68,7 @@ main:
 
     // When the baud rate is too low we seem to have problems reading... :(
     // Generally, it's enough to do a second round.
+    // https://github.com/espressif/esp-idf/issues/9397
     data := port2.read
     print "$data.size"
     // expect_equals TEST_STR data.to_string_non_throwing
