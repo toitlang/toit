@@ -35,8 +35,9 @@ class Pin:
   */
   num/int
 
-  pull_up_/bool ::= false
-  pull_down_/bool ::= false
+  // Pull up and pull down are only kept for the deprecated function $config.
+  pull_up_/bool := false
+  pull_down_/bool := false
   resource_/ByteArray? := null
   state_/monitor.ResourceState_? ::= null
   last_set_/int := 0
@@ -62,15 +63,24 @@ class Pin:
   Opens a GPIO Pin on $num in a custom mode.
 
   If the Pin is to be used by another peripheral, both $input and $output can be
-    left as `false`.
+    left as `false`. The library that uses the pin should call $configure with the
+    configuration it needs.
+
+  If a pin should be used both as $input and as an $output, $open_drain is often needed to
+    avoid short-circuits. See $configure for more information.
   */
-  constructor .num --input/bool=false --output/bool=false --pull_up/bool=false --pull_down/bool=false:
+  constructor .num
+      --input/bool=false
+      --output/bool=false
+      --pull_up/bool=false
+      --pull_down/bool=false
+      --open_drain/bool=false:
     pull_up_ = pull_up
     pull_down_ = pull_down
     resource_ = gpio_use_ resource_group_ num
     // TODO(anders): Ideally we would create this resource ad-hoc, in input-mode.
     state_ = monitor.ResourceState_ resource_group_ resource_
-    if input or output: config --input=input --output=output
+    if input or output: configure --input=input --output=output
 
   constructor.virtual_:
     num = -1
@@ -91,10 +101,59 @@ class Pin:
   If $open_drain is true, the output configuration will use
     - pull-low for 0
     - open-drain for 1
+
+  Deprecated. Use $configure instead. Note that $configure behaves differently than
+    $config when a pin was initialized with a pull-up or pull-down resistor. This function
+    ($config) maintains the pull-up/pull-down configuration of the pin. However, $configure
+    resets that configuration.
   */
+  // When removing this function, it's safe to remove `pull_down_` and `pull_up_` as well.
   config --input/bool=false --output/bool=false --open_drain/bool=false:
     if open_drain and not output: throw "INVALID_ARGUMENT"
     gpio_config_ num (input and pull_up_) (input and pull_down_) input output open_drain
+
+  /**
+  Changes the configuration of this pin.
+
+  If $input is true, the pin is configured as an input.
+  If $output is true, the pin is configured as an output. If $open_drain is set, then the pin
+    value is set to 1 (not pulling to ground). Otherwise the pin outputs 0.
+
+  It is safe to use a pin as $input and $output at the same time, but typically this
+    requires the $open_drain flag.
+
+  If a pin is used as $input and $output without $open_drain, then the
+    pin can only read the value that was set with $set. It can/should not read a
+    value that was set by the outside. In fact, doing so could damage the microcontroller, as
+    the external device would need to short circuit the pin.
+
+  If a pin is configured to be an input, it can have a $pull_up or $pull_down.
+
+  If $open_drain is set, then the pin can only pull the pin to the ground. Together, with
+    a $pull_up resistor this still allows the pin to emit both 0 and 1. In this configuration,
+    connected devices can also safely pull the pin to ground without damaging the microcontroller.
+    This configuration is typically used in communications that only use one data bus for
+    input and output, such as the DHT11/DHT22, the i2c bus, and the one-wire bus. Note, that
+    the corresponding libraries (like the i2c library) already take care of setting this
+    configuration for you.
+  Note that it is not safe to ground an $open_drain pin and to connect it externally to VCC.
+
+  Also note, that only one entity on an open-drain bus needs to pull the bus high. As such,
+    it can be useful to set $open_drain without $pull_up.
+  */
+  configure
+      --input/bool=false
+      --output/bool=false
+      --pull_up/bool=false
+      --pull_down/bool=false
+      --open_drain/bool=false:
+    if open_drain and not output: throw "INVALID_ARGUMENT"
+    if pull_up and not input: throw "INVALID_ARGUMENT"
+    if pull_down and not input: throw "INVALID_ARGUMENT"
+    if pull_down and pull_up: throw "INVALID_ARGUMENT"
+    pull_down_ = pull_down
+    pull_up_ = pull_up
+    gpio_config_ num pull_up pull_down input output open_drain
 
   /**
   Gets the value of the pin.
@@ -161,8 +220,19 @@ class VirtualPin extends Pin:
   /** Closes the pin. */
   close:
 
-  /** Does nothing. */
+  /**
+  Does nothing.
+  Deprecated. Use $configure instead.
+  */
   config --input/bool=false --output/bool=false --open_drain/bool=false:
+
+  /** Does nothing. */
+  configure
+      --input/bool=false
+      --output/bool=false
+      --pull_up/bool=false
+      --pull_down/bool=false
+      --open_drain/bool=false:
 
   /** Not supported. */
   get: throw "UNSUPPORTED"
@@ -194,7 +264,16 @@ class InvertedPin extends Pin:
 
   /** Configures the underlying pin. */
   config --input/bool=false --output/bool=false --open_drain/bool=false -> none:
-    original_pin_.config --input=input --output=output --open_drain=open_drain
+    // Avoid warning of call to deprecated method by casting to 'any'.
+    (original_pin_ as any).config --input=input --output=output --open_drain=open_drain
+
+  configure
+      --input/bool=false
+      --output/bool=false
+      --pull_up/bool=false
+      --pull_down/bool=false
+      --open_drain/bool=false:
+    original_pin_.configure --input=input --output=output --pull_up=pull_up --pull_down=pull_down --open_drain=open_drain
 
   /** Returns 1 if the physical pin is at 0, and vice versa. */
   get -> int:

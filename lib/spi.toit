@@ -90,7 +90,7 @@ class Bus:
     dc_num := -1
     if dc:
       dc_num = dc.num
-      dc.config --output
+      dc.configure --output
 
     d := spi_device_ spi_ cs_num dc_num command_bits address_bits frequency mode
     return Device_.init_ this d
