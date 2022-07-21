@@ -37,6 +37,7 @@ namespace toit {
   M(spi,     MODULE_SPI)                     \
   M(spi_linux, MODULE_SPI_LINUX)             \
   M(uart,    MODULE_UART)                    \
+  M(uart_linux, MODULE_UART_LINUX)           \
   M(rmt,     MODULE_RMT)                     \
   M(pcnt,    MODULE_PCNT)                    \
   M(crypto,  MODULE_CRYPTO)                  \
@@ -388,6 +389,16 @@ namespace toit {
 #define MODULE_UART(PRIMITIVE)               \
   PRIMITIVE(init, 0)                         \
   PRIMITIVE(create, 10)                      \
+  PRIMITIVE(close, 2)                        \
+  PRIMITIVE(get_baud_rate, 1)                \
+  PRIMITIVE(set_baud_rate, 2)                \
+  PRIMITIVE(write, 6)                        \
+  PRIMITIVE(read, 1)                         \
+  PRIMITIVE(wait_tx, 1)                      \
+
+#define MODULE_UART_LINUX(PRIMITIVE)         \
+  PRIMITIVE(init, 0)                         \
+  PRIMITIVE(create, 6)                       \
   PRIMITIVE(close, 2)                        \
   PRIMITIVE(get_baud_rate, 1)                \
   PRIMITIVE(set_baud_rate, 2)                \
