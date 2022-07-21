@@ -110,20 +110,26 @@ jobs:
           restore-keys: ${{ runner.os }}-ccache-
 
       # Cache deb files.
-      - name: Apt Cache
+      - name: Apt Cache - Linux
         if: runner.os == 'Linux'
         uses: actions/cache@v2
         with:
-          path: /var/cache/apt-cacher-ng
+          path: ${{ github.workspace }}/apt-cacher-ng
           key: ${{ runner.os }}-apt-${{ github.sha }}
           restore-keys: ${{ runner.os }}-apt
 
-      - name: Install apt-cacher-ng
+      - name: Install and configure apt-cacher-ng - Linux
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update -q
           sudo apt-get install -q apt-cacher-ng
+          sudo systemctl stop apt-cacher-ng
+          if [[ -f apt-cacher-ng/cache.tar.gz ]]; then
+            sudo tar -xzf apt-cacher-ng/cache.tar.gz -C /var/cache/apt-cacher-ng
+          fi
           echo "Acquire::http::Proxy \"http://localhost:3142\";" | sudo tee /etc/apt/apt.conf.d/00proxy
+          echo "PassThroughPattern: .*" | sudo tee -a /etc/apt-cacher-ng/acng.conf
+          sudo systemctl restart apt-cacher-ng
 
       # Fetch the dependencies. Different for each platform.
       - name: Install dependencies - Linux
@@ -147,6 +153,13 @@ jobs:
           ninja --version
           ccache --version
           cmake --version
+
+      - name: Copy apt cache back - Linux
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p apt-cacher-ng
+          sudo tar -czf apt-cacher-ng/cache.tar.gz -C /var/cache/apt-cacher-ng .
+          sudo chown $(whoami) apt-cacher-ng/cache.tar.gz
 
       - name: Setup compilation env
         shell: bash
