@@ -136,13 +136,12 @@ class Port implements reader.Reader:
       state_bits = state.wait_for_state (bits | ERROR_STATE_)
     if not state_.resource: return null  // Closed from a different task.
     assert: state_bits != 0
-    if (state_bits & ERROR_STATE_) == 0:
-      return state
-    // TODO(florian): the udp implementation calls into the C++ code where it calls
-    // getsockopt. I don't know how to do this for the uart file descriptor.
-    error := "UART_ERROR"
-    close
-    throw error
+    // If the ERROR_STATE_ bit is set the next operation (read or write) will fail and
+    // give an appropriate error message.
+    // The UDP implementation simply closes by itself and uses getsockopt to get the error. There
+    // doesn't seem to be anything similar for normal file descriptors, which is why we call
+    // read/write instead.
+    return state
 
   ensure_state_:
     if state_: return state_
