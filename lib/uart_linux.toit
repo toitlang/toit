@@ -94,7 +94,7 @@ class Port implements reader.Reader:
   write data from=0 to=data.size --break_length=0 --wait=false -> int:
     while true:
       state := ensure_state_ WRITE_STATE_
-      written := uart_write_ state_.resource data from to break_length wait
+      written := uart_write_ state.resource data from to break_length wait
       if written == 0 and from != to:
         // We shouldn't have tried to write.
         state.clear_state WRITE_STATE_
@@ -114,7 +114,7 @@ class Port implements reader.Reader:
     while true:
       state := ensure_state_ READ_STATE_
       if not state: return null
-      res := uart_read_ state_.resource
+      res := uart_read_ state.resource
       if res: return res
       state.clear_state READ_STATE_
 
