@@ -158,6 +158,16 @@ class TouchResourceGroup : public ResourceGroup {
     ResourceGroup::tear_down();
   }
 
+  virtual void on_unregister_resource(Resource* resource) override {
+    touch_pad_t pad = static_cast<touch_pad_t>(static_cast<IntResource*>(resource)->id());
+
+    // Reset the threshold so it's not use for deep-sleep wake-ups.
+    touch_pad_set_thresh(pad, 0);
+
+    // Apparently there is nothing else to do to free touch pins.
+    // Asked on the forum: https://www.esp32.com/viewtopic.php?f=13&t=28973
+  }
+
   esp_err_t init() {
     esp_err_t err = touch_pad_init();
     if (err != ESP_OK) return err;
@@ -211,15 +221,10 @@ PRIMITIVE(use) {
 
 PRIMITIVE(unuse) {
   ARGS(TouchResourceGroup, resource_group, IntResource, resource);
-  touch_pad_t pad = static_cast<touch_pad_t>(resource->id());
 
-  // Reset the threshold so it's not use for deep-sleep wake-ups.
-  touch_pad_set_thresh(pad, 0);
-
-  // Apparently there is nothing else to do to free touch pins.
-  // Asked on the forum: https://www.esp32.com/viewtopic.php?f=13&t=28973
-
+  resource_group->unregister_resource(resource);
   resource_proxy->clear_external_address();
+
   return process->program()->null_object();
 }
 
