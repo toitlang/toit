@@ -40,6 +40,7 @@ namespace toit {
   fn(UARTResource)                      \
   fn(I2SResource)                       \
   fn(AdcState)                          \
+  fn(DacResource)                       \
   fn(PcntUnitResource)                  \
   fn(PWMResource)                       \
   fn(RMTResource)                       \
@@ -54,6 +55,7 @@ namespace toit {
 
 #define RESOURCE_GROUP_CLASSES_DO(fn)   \
   fn(SimpleResourceGroup)               \
+  fn(DacResourceGroup)                  \
   fn(GPIOResourceGroup)                 \
   fn(I2CResourceGroup)                  \
   fn(I2SResourceGroup)                  \
