@@ -1403,6 +1403,30 @@ class float extends num:
     return round_ --precision=precision
 
   /**
+  Returns the smallest integral value not less than this number.
+
+  If this value is not finite (NaN, infinity, or negative infinity), then returns this number.
+  */
+  ceil -> float:
+    #primitive.core.float_ceil
+
+  /**
+  Returns the largest integer not greater than this number.
+
+  If this value is not finite (NaN, infinity, or negative infinity), then returns this number.
+  */
+  floor -> float:
+    #primitive.core.float_floor
+
+  /**
+  Rounds this to the nearest value that is not larger in magnitude than this number.
+
+  If this value is not finite (NaN, infinity, or negative infinity), then returns this number.
+  */
+  truncate -> float:
+    #primitive.core.float_trunc
+
+  /**
   See $super.
 
   If $precision is null format "%.20lg" in C++ is used.

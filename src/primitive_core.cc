@@ -61,16 +61,14 @@ MODULE_IMPLEMENTATION(core, MODULE_CORE)
 
 PRIMITIVE(write_string_on_stdout) {
   ARGS(cstring, message, bool, add_newline);
-  fprintf(stdout, "%s", message);
-  if (add_newline) fprintf(stdout, "\n");
+  fprintf(stdout, "%s%s", message, add_newline ? "\n" : "");
   fflush(stdout);
   return _raw_message;
 }
 
 PRIMITIVE(write_string_on_stderr) {
   ARGS(cstring, message, bool, add_newline);
-  fprintf(stderr, "%s", message);
-  if (add_newline) fprintf(stderr, "\n");
+  fprintf(stderr, "%s%s", message, add_newline ? "\n" : "");
   fflush(stderr);
   return _raw_message;
 }
@@ -1352,7 +1350,22 @@ PRIMITIVE(number_to_integer) {
 
 PRIMITIVE(float_sqrt) {
   ARGS(double, receiver);
-  return Primitive::allocate_double((double) sqrt(receiver), process);
+  return Primitive::allocate_double(sqrt(receiver), process);
+}
+
+PRIMITIVE(float_ceil) {
+  ARGS(double, receiver);
+  return Primitive::allocate_double(ceil(receiver), process);
+}
+
+PRIMITIVE(float_floor) {
+  ARGS(double, receiver);
+  return Primitive::allocate_double(floor(receiver), process);
+}
+
+PRIMITIVE(float_trunc) {
+  ARGS(double, receiver);
+  return Primitive::allocate_double(trunc(receiver), process);
 }
 
 static bool is_validated_string(Program* program, Object* object) {

@@ -423,6 +423,9 @@ class Parser {
   /// The range of the previous token.
   Source::Range previous_range();
 
+  // The previous token.
+  Token::Kind previous_token();
+
   Symbol current_token_data() {
     if (current_state().scanner_state.data.is_valid()) {
       return current_state().scanner_state.data;

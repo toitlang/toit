@@ -127,7 +127,7 @@ catch [--trace] [--unwind] [block]:
       value ::= exception.value
       // If the task is unwinding due to cancelation, don't catch the exception and
       // don't print a stack trace; just unwind.
-      is_canceled_unwind := value == CANCELED_ERROR and task.is_canceled
+      is_canceled_unwind := value == CANCELED_ERROR and Task.current.is_canceled
       if not is_canceled_unwind:
         if stack and trace.call value stack:
           exception.trace = null  // Avoid reporting the same stack trace multiple times.

@@ -11,6 +11,7 @@ main:
   with_timeout --ms=10_000: run
   run
   test_channel
+  test_semaphore
 
 run:
   test_simple_monitor
@@ -26,6 +27,7 @@ run:
   test_sleep_in_await
   test_block_in_await
   test_process_messages_in_locked
+  test_gate
 
 monitor A:
   foo_ready := false
@@ -176,10 +178,10 @@ yield_a_lot:
   10.repeat: yield
 
 task_with_deadline lambda:
-  deadline := task.deadline
+  deadline := Task_.current.deadline
   if deadline:
     task::
-      task.with_deadline_ deadline:
+      Task_.current.with_deadline_ deadline:
         lambda.call
   else:
     task::
@@ -348,7 +350,7 @@ class MessageHandler implements SystemMessageHandler_:
     else if kind == KIND_NON_BLOCKING_AWAIT:
       inner.non_blocking_await
     else if kind == KIND_NO_DEADLINE:
-      expect_null task.deadline
+      expect_null Task_.current.deadline
     calls++
 
 test_process_messages_in_locked:
@@ -376,3 +378,79 @@ test_process_messages_in_locked kind/int:
       outer.block
       expect_equals 1 handler.calls
   done.set 0
+
+test_gate:
+  gate := Gate
+
+  2.repeat:
+    task_is_running := Latch
+    task_finished := false
+    task::
+      task_is_running.set true
+      gate.enter
+      task_finished = true
+
+    expect gate.is_locked
+    expect_not gate.is_unlocked
+
+    task_is_running.get
+    10.repeat: yield
+    expect_not task_finished
+
+    gate.unlock
+    10.repeat: yield
+    expect task_finished
+
+    expect gate.is_unlocked
+
+    gate.enter
+    gate.lock
+    expect gate.is_locked
+
+test_semaphore:
+  semaphore := Semaphore
+  expect_equals 0 semaphore.count
+
+  started := Latch
+  done := false
+  task::
+    started.set true
+    semaphore.down
+    expect_equals 0 semaphore.count
+    done = true
+
+  started.get
+  10.repeat: yield
+  expect_not done
+  semaphore.up
+  10.repeat: yield
+  expect done
+
+  // Test limit, initial value and multiple ups/downs.
+  semaphore = Semaphore --limit=3 --count=2
+  started = Latch
+  consume := Latch
+  done = false
+  task::
+    started.set true
+    consume.get
+    5.repeat:
+      // We wait for more than the limit.
+      semaphore.down
+    expect_equals 0 semaphore.count
+    done = true
+
+  started.get
+  expect_equals 2 semaphore.count
+  10.repeat:
+    semaphore.up
+  // Stops at the limit.
+  expect_equals 3 semaphore.count
+  consume.set true
+  10.repeat: yield
+  expect_equals 0 semaphore.count
+  expect_not done
+  semaphore.up
+  semaphore.up
+  10.repeat: yield
+  expect done
