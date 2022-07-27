@@ -249,7 +249,7 @@ test_channel:
   // Test that the channel blocks at 5 entries.
 
   expect_equals 5 channel.capacity
-  expect_equals 0 channel.buffered_count
+  expect_equals 0 channel.size
 
   sent_count := 0
   task::
@@ -261,10 +261,10 @@ test_channel:
   10.repeat: yield
   // There was still space for one number.
   expect_equals 5 sent_count
-  expect_equals 5 channel.buffered_count
+  expect_equals 5 channel.size
 
   10.repeat: channel.receive
-  expect_equals 0 channel.buffered_count
+  expect_equals 0 channel.size
   expect_equals 10 sent_count
 
 channel_sender channel/Channel latch/Latch:

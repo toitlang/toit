@@ -236,7 +236,7 @@ This class must not be extended.
 monitor Channel:
   buffer_ ::= ?
   start_ := 0
-  buffered_count_ := 0
+  size_ := 0
 
   /** Constructs a channel with a buffer of the given $capacity. */
   constructor capacity:
@@ -251,10 +251,10 @@ monitor Channel:
     them is woken up and receives the $value.
   */
   send value/any -> none:
-    await: buffered_count_ < buffer_.size
-    index := (start_ + buffered_count_) % buffer_.size
+    await: size_ < buffer_.size
+    index := (start_ + size_) % buffer_.size
     buffer_[index] = value
-    buffered_count_++
+    size_++
 
   /**
   Tries to send a message with the $value on the channel. This operation never blocks.
@@ -265,10 +265,10 @@ monitor Channel:
     if the channel is full and the message was not delivered
   */
   try_send value/any -> bool:
-    if buffered_count_ >= buffer_.size: return false
-    index := (start_ + buffered_count_) % buffer_.size
+    if size_ >= buffer_.size: return false
+    index := (start_ + size_) % buffer_.size
     buffer_[index] = value
-    buffered_count_++
+    size_++
     return true
 
   /**
@@ -281,11 +281,11 @@ monitor Channel:
   The order in which waiting tasks are unblocked is unspecified.
   */
   receive --blocking/bool=true -> any:
-    if not blocking and buffered_count_ == 0: return null
-    await: buffered_count_ > 0
+    if not blocking and size_ == 0: return null
+    await: size_ > 0
     value := buffer_[start_]
     start_ = (start_ + 1) % buffer_.size
-    buffered_count_--
+    size_--
     return value
 
   /**
@@ -296,7 +296,7 @@ monitor Channel:
   /**
   The amount of messages that are currently queued in the channel.
   */
-  buffered_count -> int: return buffered_count_
+  size -> int: return size_
 
 /**
 A two-way communication channel between tasks with replies to each message.
