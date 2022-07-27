@@ -42,7 +42,7 @@ class Bus:
   spi_ := ?
   /**
   Mutex to serialize reservation attempts of multiple devices.
-  See $Device.reserve_bus.
+  See $Device.with_reserved_bus.
 
   When trying to acquire the bus, the ESP-IDF currently (as of 2022-07-19) does not allow to set a timeout.
     This means that the program would be stuck in the primitive. We thus use this mutex to avoid that
@@ -124,7 +124,7 @@ interface Device extends serial.Device:
 
   When $keep_cs_active is true, then the chip select pin is kept active
     after the transfer. This functionality is only allowed when the
-    bus is reserved for this device. See $reserve_bus.
+    bus is reserved for this device. See $with_reserved_bus.
   */
   transfer
       data/ByteArray
@@ -148,7 +148,7 @@ interface Device extends serial.Device:
     after the bus has been reserved.
   2. When using the `--keep_cs_active` flag of the $transfer function, the bus must be reserved.
   */
-  reserve_bus [block]
+  with_reserved_bus [block]
 
   /** Closes this SPI device and releases resources associated with it. */
   close
@@ -204,8 +204,8 @@ class Device_ implements Device:
     if keep_cs_active and not owning_bus_: throw "INVALID_STATE"
     return spi_transfer_ device_ data command address from to read dc keep_cs_active
 
-  /** See $Device.reserve_bus. */
-  reserve_bus [block]:
+  /** See $Device.with_reserved_bus. */
+  with_reserved_bus [block]:
     spi_.reservation_mutex_.do:
       spi_acquire_bus_ device_
       owning_bus_ = true
