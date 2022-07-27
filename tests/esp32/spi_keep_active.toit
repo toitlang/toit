@@ -49,7 +49,6 @@ main:
   in := gpio.Pin IN_CS --input
 
   2.repeat: | test_iteration/int |
-    print "starting round $test_iteration"
     channel_to_task := DebugChannel
     channel_from_task := DebugChannel
 

@@ -262,9 +262,7 @@ PRIMITIVE(acquire_bus) {
 
 PRIMITIVE(release_bus) {
   ARGS(SPIDevice, device);
-  printf("Releasing the bus\n");
   spi_device_release_bus(device->handle());
-  printf("Released\n");
   return process->program()->null_object();
 }
 
