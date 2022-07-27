@@ -53,7 +53,7 @@ main:
     channel_from_task := DebugChannel
 
     task::
-      device.reserve_bus:
+      device.with_reserved_bus:
         expect_equals "keep_active" channel_to_task.receive
         device.transfer #[1, 2, 3] --keep_cs_active
         channel_from_task.send "cs_is_active"
