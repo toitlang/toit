@@ -380,7 +380,9 @@ namespace toit {
   PRIMITIVE(close, 1)                        \
   PRIMITIVE(device, 7)                       \
   PRIMITIVE(device_close, 2)                 \
-  PRIMITIVE(transfer, 8)                     \
+  PRIMITIVE(transfer, 9)                     \
+  PRIMITIVE(acquire_bus, 1)                  \
+  PRIMITIVE(release_bus, 1)                  \
 
 #define MODULE_SPI_LINUX(PRIMITIVE)          \
   PRIMITIVE(open, 1)                         \
@@ -891,7 +893,7 @@ namespace toit {
 #define _A_T_ZlibRle(N, name)             MAKE_UNPACKING_MACRO(ZlibRle, N, name)
 #define _A_T_UARTResource(N, name)        MAKE_UNPACKING_MACRO(UARTResource, N, name)
 #define _A_T_I2SResource(N, name)         MAKE_UNPACKING_MACRO(I2SResource, N, name)
-#define _A_T_AdcState(N, name)            MAKE_UNPACKING_MACRO(AdcState, N, name)
+#define _A_T_AdcResource(N, name)         MAKE_UNPACKING_MACRO(AdcResource, N, name)
 #define _A_T_PWMResource(N, name)         MAKE_UNPACKING_MACRO(PWMResource, N, name)
 #define _A_T_PcntUnitResource(N, name)    MAKE_UNPACKING_MACRO(PcntUnitResource, N, name)
 #define _A_T_RMTResource(N, name)         MAKE_UNPACKING_MACRO(RMTResource, N, name)

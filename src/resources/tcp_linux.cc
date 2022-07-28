@@ -205,7 +205,7 @@ PRIMITIVE(accept) {
 
   int fd = resource_group->accept(listen_fd);
   if (fd == -1) {
-    if (errno == EWOULDBLOCK) {
+    if (errno == EWOULDBLOCK || errno == EAGAIN) {
       return process->program()->null_object();
     }
     return Primitive::os_error(errno, process);
@@ -267,7 +267,7 @@ PRIMITIVE(write) {
 
   int wrote = send(fd, data.address() + from, to - from, MSG_NOSIGNAL);
   if (wrote == -1) {
-    if (errno == EWOULDBLOCK) return Smi::from(-1);
+    if (errno == EWOULDBLOCK || errno == EAGAIN) return Smi::from(-1);
     return Primitive::os_error(errno, process);
   }
 
@@ -293,7 +293,7 @@ PRIMITIVE(read)  {
 
   int read = recv(fd, ByteArray::Bytes(array).address(), available, 0);
   if (read == -1) {
-    if (errno == EWOULDBLOCK) return Smi::from(-1);
+    if (errno == EWOULDBLOCK || errno == EAGAIN) return Smi::from(-1);
     return Primitive::os_error(errno, process);
   }
   if (read == 0) return process->program()->null_object();
