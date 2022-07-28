@@ -129,9 +129,9 @@ class Pin:
     of time.
   */
   wait_for value -> none:
+    if get == value: return
     gpio_config_interrupt_ num true
     try:
-      if get == value: return
       expected_state := value == 1 ? GPIO_STATE_UP_ : GPIO_STATE_DOWN_
       state := state_.wait_for_state expected_state
       state_.clear_state expected_state
