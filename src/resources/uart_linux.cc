@@ -266,7 +266,6 @@ PRIMITIVE(create) {
   return resource_proxy;
 }
 
-
 PRIMITIVE(close) {
   ARGS(UARTResourceGroup, resource_group, IntResource, uart_resource);
   resource_group->close_uart(uart_resource->id());
