@@ -18,7 +18,6 @@
 #ifdef TOIT_FREERTOS
 
 #include <driver/uart.h>
-#include <hal/uart_types.h>
 
 #include "../objects_inline.h"
 #include "../process.h"
@@ -241,6 +240,18 @@ PRIMITIVE(close) {
   return process->program()->null_object();
 }
 
+PRIMITIVE(get_baud_rate) {
+  ARGS(UARTResource, uart);
+
+  uint32_t baud_rate;
+  esp_err_t err = uart_get_baudrate(uart->port(), &baud_rate);
+  if (err != ESP_OK) {
+    return Primitive::os_error(err, process);
+  }
+
+  return Primitive::integer(baud_rate, process);
+}
+
 PRIMITIVE(set_baud_rate) {
   ARGS(UARTResource, uart, int, baud_rate);
 
@@ -290,16 +301,11 @@ PRIMITIVE(read) {
     return Primitive::os_error(err, process);
   }
 
-  // The uart_get_buffered_data_len is not thread safe, so it's not guaranteed that
-  // we get an updated value. As false negatives can lead to deadlock, we don't trust
-  // when it returns 0. To work around this, we instead try to read 8 bytes, whenever
-  // we are suggested 0; it is always safe to try to read too much, so this is only a
-  // performance issue.
-  size_t capacity = Utils::max(available, (size_t)8);
-
   Error* error = null;
-  ByteArray* data = process->allocate_byte_array(capacity, &error, /*force_external*/ true);
+  ByteArray* data = process->allocate_byte_array(available, &error, /*force_external*/ available != 0);
   if (data == null) return error;
+
+  if (available == 0) return data;
 
   ByteArray::Bytes rx(data);
   int read = uart_read_bytes(uart->port(), rx.address(), rx.length(), 0);
@@ -310,8 +316,6 @@ PRIMITIVE(read) {
   if (read < available) {
     return process->allocate_string_or_error("broken UART read");
   }
-
-  data->resize_external(process, read);
 
   return data;
 }

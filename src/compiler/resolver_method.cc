@@ -2579,6 +2579,13 @@ void MethodResolver::_visit_potential_call_identifier(ast::Node* ast_target,
     push(ir_target);
   } else if (ir_target->is_ReferenceLocal() || ir_target->is_ReferenceGlobal()) {
     if (shape_without_implicit_this == CallShape(0)) {
+      if (ir_target->is_ReferenceGlobal() &&
+          ir_target->as_ReferenceGlobal()->target() == _method &&
+          _current_lambda == null) {
+        report_error(ast_target,
+                     "Can't access global '%s' while initializing it",
+                     _method->name().c_str());
+      }
       push(ir_target);  // Not a call.
     } else {
       const char* kind = null;
