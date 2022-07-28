@@ -18,7 +18,6 @@
 #ifdef TOIT_FREERTOS
 
 #include <driver/uart.h>
-#include <hal/uart_types.h>
 
 #include "../objects_inline.h"
 #include "../process.h"
