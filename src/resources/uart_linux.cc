@@ -148,10 +148,10 @@ class UARTResourceGroup : public ResourceGroup {
     // Don't interpret INTR, QUIT and SUSP characters.
     tty.c_lflag &= ~ISIG;
 
-    // Disable special handling of bytes on receive. Just give the raw data:
+    // Disable special handling of bytes on receive. Just give the raw data.
     tty.c_iflag &= ~(IGNBRK|BRKINT|PARMRK|ISTRIP|INLCR|IGNCR|ICRNL);
 
-    // Disable any special handling for the output:
+    // Disable any special handling for the output.
     tty.c_oflag &= ~OPOST;
     tty.c_oflag &= ~ONLCR;
 
