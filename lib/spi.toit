@@ -4,6 +4,7 @@
 
 import gpio
 import serial
+import monitor
 
 /**
 SPI is a serial communication bus able to address multiple devices along a main 3-wire bus with an additional 1 wire per device.
@@ -39,6 +40,15 @@ Each device on the bus is enabled with its own chip-select pin. See $Bus.device.
 */
 class Bus:
   spi_ := ?
+  /**
+  Mutex to serialize reservation attempts of multiple devices.
+  See $Device.with_reserved_bus.
+
+  When trying to acquire the bus, the ESP-IDF currently (as of 2022-07-19) does not allow to set a timeout.
+    This means that the program would be stuck in the primitive. We thus use this mutex to avoid that
+    situation.
+  */
+  reservation_mutex_/monitor.Mutex ::= monitor.Mutex
 
   /**
   Constructs a new SPI bus using the given $mosi, $miso, and $clock pins.
@@ -111,6 +121,10 @@ interface Device extends serial.Device:
     value of $dc.
   If a commands and/or address sections was defined, use $command and
     $address to set the values.
+
+  When $keep_cs_active is true, then the chip select pin is kept active
+    after the transfer. This functionality is only allowed when the
+    bus is reserved for this device. See $with_reserved_bus.
   */
   transfer
       data/ByteArray
@@ -120,6 +134,21 @@ interface Device extends serial.Device:
       --dc/int=0
       --command/int=0
       --address/int=0
+      --keep_cs_active/bool=false
+
+  /**
+  Reserves the bus for this device while executing the given $block.
+
+  Starts by acquiring the bus. Once that's succeeded, executes the $block. Finally, releases
+    the bus before returning.
+
+  Reserving the bus can be useful in two contexts:
+  1. The CS pin is controlled by the user. Since the hardware only supports a limited number of
+    automatic CS pins, it might be necessary to set some CS pins by hand. This should be done
+    after the bus has been reserved.
+  2. When using the `--keep_cs_active` flag of the $transfer function, the bus must be reserved.
+  */
+  with_reserved_bus [block]
 
   /** Closes this SPI device and releases resources associated with it. */
   close
@@ -128,6 +157,7 @@ interface Device extends serial.Device:
 class Device_ implements Device:
   spi_/Bus := ?
   device_ := ?
+  owning_bus_/bool := false
 
   registers_/Registers? := null
 
@@ -169,8 +199,21 @@ class Device_ implements Device:
       --read/bool=false
       --dc/int=0
       --command/int=0
-      --address/int=0:
-    return spi_transfer_ device_ data command address from to read dc
+      --address/int=0
+      --keep_cs_active/bool=false:
+    if keep_cs_active and not owning_bus_: throw "INVALID_STATE"
+    return spi_transfer_ device_ data command address from to read dc keep_cs_active
+
+  /** See $Device.with_reserved_bus. */
+  with_reserved_bus [block]:
+    spi_.reservation_mutex_.do:
+      spi_acquire_bus_ device_
+      owning_bus_ = true
+      try:
+        block.call
+      finally:
+        owning_bus_ = false
+        spi_release_bus_ device_
 
 /** Register description of a device connected to an SPI bus. */
 class Registers extends serial.Registers:
@@ -244,5 +287,11 @@ spi_device_ spi cs/int dc/int frequency/int mode/int command_bits/int address_bi
 spi_device_close_ spi device:
   #primitive.spi.device_close
 
-spi_transfer_ device data/ByteArray command/int address/int from to read/bool dc/int:
+spi_transfer_ device data/ByteArray command/int address/int from to read/bool dc/int keep_cs_active/bool:
   #primitive.spi.transfer
+
+spi_acquire_bus_ device:
+  #primitive.spi.acquire_bus
+
+spi_release_bus_ device:
+  #primitive.spi.release_bus
