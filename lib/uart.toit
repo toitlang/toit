@@ -79,12 +79,23 @@ class Port implements reader.Reader:
 
   /**
   Changes the baud rate.
+  Deprecated. Use $baud_rate= instead
+  */
+  set_baud_rate new_rate/int:
+    uart_set_baud_rate_ uart_ new_rate
+
+  /**
+  Sets the baud rate to the given $new_rate.
 
   The receiver should be ready to read and write data at the specified
     baud rate.
   */
-  set_baud_rate baud_rate/int:
-    uart_set_baud_rate_ uart_ baud_rate
+  baud_rate= new_rate/int:
+    uart_set_baud_rate_ uart_ new_rate
+
+  /** The current baud rate. */
+  baud_rate -> int:
+    return uart_get_baud_rate_ uart_
 
   /**
   Closes this UART port and release all associated resources.
@@ -113,13 +124,18 @@ class Port implements reader.Reader:
     position += my_uart.write data[position..data.size]
   ```
 
-  If $wait is true, the method blocks until all bytes have been written to the pin.
-    Otherwise, returns as soon as the data is fully buffered.
+  If $wait is true, the method blocks until all bytes that were written have been emitted to the
+    physical pins. This is equivalent to calling $flush. Otherwise, returns as soon as the data is
+    buffered.
 
   Returns the number of bytes written.
   */
   write data from=0 to=data.size --break_length=0 --wait=false -> int:
-    return uart_write_ uart_ data from to break_length wait
+    written := uart_write_ uart_ data from to break_length wait
+    if written >= 0: return written
+    assert: wait
+    flush
+    return -written
 
   /**
   Reads data from the port.
@@ -140,6 +156,17 @@ class Port implements reader.Reader:
         // It was closed (disposed).
         return null
 
+  /**
+  Flushes the output buffer, waiting until all written data has been transmitted.
+
+  Often, one can just use the `--wait` flag of the $write function instead.
+  */
+  flush -> none:
+    while true:
+      flushed := uart_wait_tx_ uart_
+      if flushed: return
+      sleep --ms=1
+
 resource_group_ ::= uart_init_
 
 READ_STATE_  ::= 1 << 0
@@ -154,11 +181,24 @@ uart_create_ group tx rx rts cts baud_rate data_bits stop_bits parity tx_flags:
 uart_set_baud_rate_ uart baud:
   #primitive.uart.set_baud_rate
 
+uart_get_baud_rate_ uart:
+  #primitive.uart.get_baud_rate
+
 uart_close_ group uart:
   #primitive.uart.close
 
+/**
+Writes the $data to the uart.
+Returns the amount of bytes that were written.
+
+If $wait is true, but the baud rate was too low to wait, returns a negative number, where
+  the absolute value is the amount of bytes that were written.
+*/
 uart_write_ uart data from to break_length wait:
   #primitive.uart.write
+
+uart_wait_tx_ uart:
+  #primitive.uart.wait_tx
 
 uart_read_ uart:
   #primitive.uart.read

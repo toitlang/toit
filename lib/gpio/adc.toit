@@ -35,7 +35,7 @@ class Adc:
   static MAX_SAMPLES_PER_CALL_ ::= 64
 
   pin/Pin
-  state_ := ?
+  resource_ := ?
 
   /**
   Initializes an Adc unit for the $pin.
@@ -57,14 +57,14 @@ class Adc:
     $allow_restricted flag to allow its use.
   */
   constructor .pin --max_voltage/float?=null --allow_restricted/bool=false:
-    state_ = adc_init_ resource_freeing_module_ pin.num allow_restricted (max_voltage ? max_voltage : 0.0)
+    resource_ = adc_init_ resource_freeing_module_ pin.num allow_restricted (max_voltage ? max_voltage : 0.0)
 
   /**
   Measures the voltage on the Pin.
   */
   get --samples=64 -> float:
     if samples < 1: throw "OUT_OF_BOUNDS"
-    if samples <= MAX_SAMPLES_PER_CALL_: return adc_get_ state_ samples
+    if samples <= MAX_SAMPLES_PER_CALL_: return adc_get_ resource_ samples
     // Sample in chunks of 64, so we don't spend too much time in
     // the primitive.
     full_chunk_factor := MAX_SAMPLES_PER_CALL_.to_float / samples
@@ -73,7 +73,7 @@ class Adc:
     while sampled < samples:
       is_full_chunk := sampled + MAX_SAMPLES_PER_CALL_ <= samples
       chunk_size := is_full_chunk ? MAX_SAMPLES_PER_CALL_ : samples - sampled
-      value := adc_get_ state_ chunk_size
+      value := adc_get_ resource_ chunk_size
       result += value * (is_full_chunk ? full_chunk_factor : (chunk_size.to_float / samples))
       sampled += chunk_size
     return result
@@ -82,15 +82,15 @@ class Adc:
   Closes the ADC unit and releases the associated resources.
   */
   close:
-    if state_:
-      adc_close_ state_
-      state_ = null
+    if resource_:
+      adc_close_ resource_
+      resource_ = null
 
 adc_init_ group num allow_restricted max:
   #primitive.adc.init
 
-adc_get_ state samples:
+adc_get_ resource samples:
   #primitive.adc.get
 
-adc_close_ state:
+adc_close_ resource:
   #primitive.adc.close

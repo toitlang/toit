@@ -39,7 +39,7 @@ namespace toit {
   fn(ZlibRle)                           \
   fn(UARTResource)                      \
   fn(I2SResource)                       \
-  fn(AdcState)                          \
+  fn(AdcResource)                       \
   fn(DacResource)                       \
   fn(PcntUnitResource)                  \
   fn(PWMResource)                       \
