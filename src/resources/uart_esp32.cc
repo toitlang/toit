@@ -18,7 +18,6 @@
 #ifdef TOIT_FREERTOS
 
 #include <driver/uart.h>
-#include <hal/uart_types.h>
 
 #include "../objects_inline.h"
 #include "../process.h"
@@ -239,6 +238,18 @@ PRIMITIVE(close) {
   uart->unregister_resource(res);
   res_proxy->clear_external_address();
   return process->program()->null_object();
+}
+
+PRIMITIVE(get_baud_rate) {
+  ARGS(UARTResource, uart);
+
+  uint32_t baud_rate;
+  esp_err_t err = uart_get_baudrate(uart->port(), &baud_rate);
+  if (err != ESP_OK) {
+    return Primitive::os_error(err, process);
+  }
+
+  return Primitive::integer(baud_rate, process);
 }
 
 PRIMITIVE(set_baud_rate) {
