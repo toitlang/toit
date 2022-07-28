@@ -71,6 +71,22 @@ enable_external_wakeup pin_mask/int on_any_high/bool -> none:
 ext1_wakeup_status pin_mask/int -> int:
   #primitive.esp32.ext1_wakeup_status
 
+/**
+Enables waking up from touchpad triggers.
+The ESP32 wakes up if any configured pin has its value drop below their threshold.
+Use $touchpad_wakeup_status to find which pin has triggered the wakeup.
+*/
+enable_touchpad_wakeup -> none:
+  #primitive.esp32.enable_touchpad_wakeup
+
+/**
+Returns the pin number that triggered the wakeup.
+
+Returns -1 if the wakeup wasn't caused by a touchpad.
+*/
+touchpad_wakeup_status -> int:
+  #primitive.esp32.touchpad_wakeup_status
+
 image_config -> Map?:
   config_data := image_config_
   if config_data[0] == 0: return null

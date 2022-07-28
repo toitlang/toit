@@ -67,6 +67,7 @@
 #include "esp_spi_flash.h"
 
 #include "event_sources/system_esp32.h"
+#include "resources/touch_esp32.h"
 
 namespace toit {
 
@@ -310,6 +311,23 @@ PRIMITIVE(enable_external_wakeup) {
   return process->program()->null_object();
 }
 
+PRIMITIVE(enable_touchpad_wakeup) {
+#ifndef CONFIG_IDF_TARGET_ESP32C3
+  esp_err_t err = esp_sleep_enable_touchpad_wakeup();
+  if (err != ESP_OK) {
+    ESP_LOGE("Toit", "Failed: sleep_enable_touchpad_wakeup");
+    OTHER_ERROR;
+  }
+  err = esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
+  if (err != ESP_OK) {
+    ESP_LOGE("Toit", "Failed: sleep_enable_touchpad_wakeup - power domain");
+    OTHER_ERROR;
+  }
+  keep_touch_active();
+#endif
+  return process->program()->null_object();
+}
+
 PRIMITIVE(wakeup_cause) {
   return Smi::from(esp_sleep_get_wakeup_cause());
 }
@@ -324,7 +342,16 @@ PRIMITIVE(ext1_wakeup_status) {
   }
   return Primitive::integer(status, process);
 #else
-  return process->program()->null_object();
+  return Smi::from(-1);
+#endif
+}
+
+PRIMITIVE(touchpad_wakeup_status) {
+#ifndef CONFIG_IDF_TARGET_ESP32C3
+  touch_pad_t pad = esp_sleep_get_touchpad_wakeup_status();
+  return Primitive::integer(touch_pad_to_pin_num(pad), process);
+#else
+  return Smi::from(-1);
 #endif
 }
 
