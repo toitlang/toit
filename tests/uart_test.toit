@@ -2,7 +2,7 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import uart_linux
+import uart
 import host.pipe
 import host.directory
 import log
@@ -79,8 +79,8 @@ with_socat tmp_dir/string [block] --logger/log.Logger:
       print stderr_bytes.to_string
 
 run_test tty0/string tty1/string:
-  port1 := uart_linux.Port tty0 --baud_rate=9600
-  port2 := uart_linux.Port tty1 --baud_rate=9600
+  port1 := uart.Port tty0 --baud_rate=9600
+  port2 := uart.Port tty1 --baud_rate=9600
 
   expect_equals 9600 port1.baud_rate
   expect_equals 9600 port2.baud_rate

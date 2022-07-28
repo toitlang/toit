@@ -227,7 +227,7 @@ class UARTResourceGroup : public ResourceGroup {
 // Defined in primitive_file_posix.cc.
 extern Object* return_open_error(Process* process, int err);
 
-MODULE_IMPLEMENTATION(uart_linux, MODULE_UART_LINUX);
+MODULE_IMPLEMENTATION(uart, MODULE_UART);
 
 PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
@@ -241,6 +241,10 @@ PRIMITIVE(init) {
 }
 
 PRIMITIVE(create) {
+  UNIMPLEMENTED_PRIMITIVE;
+}
+
+PRIMITIVE(create_path) {
   ARGS(UARTResourceGroup, resource_group, cstring, path, int, baud_rate, int, data_bits, int, stop_bits, int, parity);
 
   speed_t speed;
