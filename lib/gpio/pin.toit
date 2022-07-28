@@ -137,7 +137,6 @@ class Pin:
     the corresponding libraries (like the i2c library) already take care of setting this
     configuration for you.
   Note that it is not safe to ground an $open_drain pin and to connect it externally to VCC.
-
   Also note, that only one entity on an open-drain bus needs to pull the bus high. As such,
     it can be useful to set $open_drain without $pull_up.
   */
