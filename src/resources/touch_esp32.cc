@@ -35,13 +35,15 @@
 
 namespace toit {
 
+static constexpr touch_pad_t kInvalidTouchPad = static_cast<touch_pad_t>(-1);
+
 #ifdef CONFIG_IDF_TARGET_ESP32
 
 static touch_pad_t get_touch_pad(int pin) {
   switch (pin) {
-    case 0: return TOUCH_PAD_NUM1;
-    case 2: return TOUCH_PAD_NUM2;
-    case 4: return TOUCH_PAD_NUM0;
+    case 0:  return TOUCH_PAD_NUM1;
+    case 2:  return TOUCH_PAD_NUM2;
+    case 4:  return TOUCH_PAD_NUM0;
     case 12: return TOUCH_PAD_NUM5;
     case 13: return TOUCH_PAD_NUM4;
     case 14: return TOUCH_PAD_NUM6;
@@ -49,7 +51,7 @@ static touch_pad_t get_touch_pad(int pin) {
     case 27: return TOUCH_PAD_NUM7;
     case 32: return TOUCH_PAD_NUM9;
     case 33: return TOUCH_PAD_NUM8;
-    default: return touch_pad_t(-1);
+    default: return kInvalidTouchPad;
   }
 }
 
@@ -73,21 +75,21 @@ int touch_pad_to_pin_num(touch_pad_t pad) {
 
 static touch_pad_t get_touch_pad(int pin) {
   switch (pin) {
-    case 1: return TOUCH_PAD_NUM1;
-    case 2: return TOUCH_PAD_NUM2;
-    case 3: return TOUCH_PAD_NUM3;
-    case 4: return TOUCH_PAD_NUM4;
-    case 5: return TOUCH_PAD_NUM5;
-    case 6: return TOUCH_PAD_NUM6;
-    case 7: return TOUCH_PAD_NUM7;
-    case 8: return TOUCH_PAD_NUM8;
-    case 9: return TOUCH_PAD_NUM9;
+    case 1:  return TOUCH_PAD_NUM1;
+    case 2:  return TOUCH_PAD_NUM2;
+    case 3:  return TOUCH_PAD_NUM3;
+    case 4:  return TOUCH_PAD_NUM4;
+    case 5:  return TOUCH_PAD_NUM5;
+    case 6:  return TOUCH_PAD_NUM6;
+    case 7:  return TOUCH_PAD_NUM7;
+    case 8:  return TOUCH_PAD_NUM8;
+    case 9:  return TOUCH_PAD_NUM9;
     case 10: return TOUCH_PAD_NUM10;
     case 11: return TOUCH_PAD_NUM11;
     case 12: return TOUCH_PAD_NUM12;
     case 13: return TOUCH_PAD_NUM13;
     case 14: return TOUCH_PAD_NUM14;
-    default: return touch_pad_t(-1);
+    default: return kInvalidTouchPad;
   }
 }
 
@@ -114,12 +116,12 @@ int touch_pad_to_pin_num(touch_pad_t pad) {
 #elif CONFIG_IDF_TARGET_ESP32C3
 
 static touch_pad_t get_touch_pad(int pin) {
-  // Esp32c3 does not have touch support.
-  return touch_pad_t(-1);
+  // ESP32C3 does not have touch support.
+  return kInvalidTouchPad;
 }
 
 int touch_pad_to_pin_num(touch_pad_t pad) {
-  // Esp32c3 does not have touch support.
+  // ESP32C3 does not have touch support.
   return -1;
 }
 
@@ -130,7 +132,7 @@ int touch_pad_to_pin_num(touch_pad_t pad) {
 #else
 
 static touch_pad_t get_touch_pad(int pin) {
-  return touch_pad_t(-1);
+  return kInvalidTouchPad;
 }
 
 int touch_pad_to_pin_num(touch_pad_t pad) {
@@ -203,7 +205,7 @@ PRIMITIVE(use) {
   // This obviously fails, if someone calls the primitive directly without acquiring the pin first.
 
   touch_pad_t pad = get_touch_pad(num);
-  if (pad < 0) OUT_OF_RANGE;
+  if (pad == kInvalidTouchPad) OUT_OF_RANGE;
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;

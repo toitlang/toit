@@ -5,7 +5,7 @@
 import .gpio
 
 /**
-Touch Sensor support.
+Touch sensor support.
 
 This library provides ways to use some GPIO pins as capacitive touch pads.
 
@@ -31,7 +31,7 @@ A touch pad can be used to wake the device from deep sleep. See the 'esp32' libr
 */
 
 /**
-Touch Sensor.
+Touch sensor.
 */
 class Touch:
 
