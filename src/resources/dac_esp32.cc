@@ -1,4 +1,4 @@
-// Copyright (C) 2021 Toitware ApS.
+// Copyright (C) 2022 Toitware ApS.
 //
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -36,13 +36,15 @@ namespace toit {
 static constexpr int kDacMinFrequency = 130;
 static constexpr int kDacMaxFrequency = 5500;
 
+static constexpr dac_channel_t kInvalidChannel = static_cast<dac_channel_t>(-1);
+
 #ifdef CONFIG_IDF_TARGET_ESP32
 
 static dac_channel_t get_dac_channel(int pin) {
   switch (pin) {
     case 25: return DAC_CHANNEL_1;
     case 26: return DAC_CHANNEL_2;
-    default: return dac_channel_t(-1);
+    default: return kInvalidChannel;
   }
 }
 
@@ -52,7 +54,7 @@ static dac_channel_t get_dac_channel(int pin) {
   switch (pin) {
     case 17: return DAC_CHANNEL_1;
     case 18: return DAC_CHANNEL_2;
-    default: return dac_channel_t(-1);
+    default: return kInvalidChannel;
   }
 }
 
@@ -60,7 +62,7 @@ static dac_channel_t get_dac_channel(int pin) {
 
 static dac_channel_t get_dac_channel(int pin) {
   // The ESP32-C3 does not have any DAC.
-  return dac_channel_t(-1);
+  return kInvalidChannel;
 }
 
 #elif CONFIG_IDF_TARGET_ESP32
@@ -70,7 +72,7 @@ static dac_channel_t get_dac_channel(int pin) {
 #else
 
 static dac_channel_t get_dac_channel(int pin) {
-  return dac_channel_t(-1);
+  return kInvalidChannel;
 }
 
 #endif
@@ -161,23 +163,25 @@ PRIMITIVE(use) {
   // TODO(florian): The compiler complains that the result of the comparison
   // is always false (`-Wtautological-constant-out-of-range-compare`). I believe we use
   // this in many other places. Do we care?
-  if (channel == -1) INVALID_ARGUMENT;
+  if (channel == kInvalidChannel) INVALID_ARGUMENT;
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;
 
-  // TODO(florian): the AdcState is allocated with a `HeapTagScope`. Do we need
-  // to do the same here?
   DacResource* resource = _new DacResource(group, channel);
   if (resource == null) MALLOC_FAILED;
-  // TODO(florian): if we fail, do we need to release the resource that isn't
-  // registered yet?
 
   esp_err_t err = dac_output_voltage(channel, initial_value);
-  if (err != ESP_OK) return Primitive::os_error(err, process);
+  if (err != ESP_OK) {
+    delete resource;
+    return Primitive::os_error(err, process);
+  }
 
   err = dac_output_enable(channel);
-  if (err != ESP_OK) return Primitive::os_error(err, process);
+  if (err != ESP_OK) {
+    delete resource;
+    return Primitive::os_error(err, process);
+  }
 
   group->register_resource(resource);
 

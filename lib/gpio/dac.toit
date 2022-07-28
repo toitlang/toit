@@ -46,7 +46,7 @@ class Dac:
   resource_ := ?
 
   /**
-  Initializes a Dac channel.
+  Initializes a DAC channel.
 
   If provided, sets the output of the dac to the given $initial_voltage. Otherwise, the
     pin is set to emit 0V.
