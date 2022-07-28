@@ -21,7 +21,13 @@ set(S2I_TEST_DIR ${CMAKE_BINARY_DIR}/snapshot_to_image_test)
 add_custom_target(build_toit_run_image DEPENDS $<TARGET_FILE:toit_run_image>)
 add_dependencies(build_tools build_toit_run_image)
 
+include(fail.cmake)
+
 foreach(input ${INPUT})
+  if("${input}" IN_LIST TOIT_SKIP_TESTS)
+    continue()
+  endif()
+
   get_filename_component(base ${input} NAME_WLE)
   set(snap ${S2I_TEST_DIR}/${base}.snap)
   set(dep ${S2I_TEST_DIR}/${base}.dep)
@@ -55,9 +61,17 @@ foreach(input ${INPUT})
         -P "${CMAKE_CURRENT_LIST_DIR}/image.cmake"
     )
   set_tests_properties(${test_name} PROPERTIES TIMEOUT 40)
+
+  if("${input}" IN_LIST TOIT_FAILING_TESTS)
+    set_tests_properties(${input} PROPERTIES WILL_FAIL TRUE)
+  endif()
 endforeach()
 
 foreach(file ${S2I_TESTS})
+  if("${file}" IN_LIST TOIT_SKIP_TESTS)
+    continue()
+  endif()
+
   get_filename_component(base ${file} NAME_WE)
   set(snap ${S2I_TEST_DIR}/${base}.snap)
 
@@ -70,9 +84,8 @@ foreach(file ${S2I_TESTS})
     WORKING_DIRECTORY "${TOIT_SDK_SOURCE_DIR}"
     )
   set_tests_properties(${test_name} PROPERTIES TIMEOUT 40)
-endforeach()
 
-include(fail.cmake)
-foreach(test ${TOIT_FAILING_TESTS})
-  set_tests_properties(${test} PROPERTIES WILL_FAIL TRUE)
+  if("${file}" IN_LIST TOIT_FAILING_TESTS)
+    set_tests_properties(${file} PROPERTIES WILL_FAIL TRUE)
+  endif()
 endforeach()
