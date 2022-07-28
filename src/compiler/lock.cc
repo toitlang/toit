@@ -21,6 +21,7 @@
 
 #include "../top.h"
 
+#include "filesystem_local.h"
 #include "lock.h"
 #include "scanner.h"
 #include "sources.h"
@@ -896,13 +897,15 @@ PackageLock PackageLock::read(const std::string& lock_file_path,
 
       std::string error_path;
       if (!entry.path.empty()) {
+        char* localized = FilesystemLocal::to_local_path(entry.path.c_str());
         ASSERT(i == -1);
-        if (!fs->is_absolute(entry.path.c_str())) {
+        if (!fs->is_absolute(localized)) {
           builder.join(package_lock_dir);
         }
-        error_path = entry.path;
-        builder.join(entry.path);
+        error_path = std::string(localized);
+        builder.join(error_path);
         builder.canonicalize();
+        free(localized);
       } else {
         if (i == -1) continue;
         if (!fs->is_absolute(package_dirs[i])) {
