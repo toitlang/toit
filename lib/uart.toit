@@ -11,7 +11,7 @@ import writer
 Support for Universal asynchronous receiver-transmitter (UART).
 
 UART features asynchronous communication with an external device on two data
-  pins and two optional flow-control pins.
+  pins and two optional flow-control pins. Commonly they are called "serial ports".
 */
 
 /**
@@ -98,7 +98,7 @@ class Port implements reader.Reader:
     return uart_get_baud_rate_ uart_
 
   /**
-  Closes this UART port and release all associated resources.
+  Closes this UART port and releases all associated resources.
   */
   close:
     if not uart_: return
