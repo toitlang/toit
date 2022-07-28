@@ -108,7 +108,7 @@ jobs:
           restore-keys: ${{ runner.os }}-ccache-
 
       # Cache deb files.
-      - name: Apt Cache - Linux
+      - name: Apt cache - Linux
         if: runner.os == 'Linux'
         uses: actions/cache@v2
         with:
