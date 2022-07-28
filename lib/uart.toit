@@ -94,7 +94,7 @@ class Port implements reader.Reader:
     uart_set_baud_rate_ uart_ new_rate
 
   /** The current baud rate. */
-  baud_rate:
+  baud_rate -> int:
     return uart_get_baud_rate_ uart_
 
   /**

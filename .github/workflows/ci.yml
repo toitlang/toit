@@ -10,10 +10,8 @@ jobs:
     strategy:
       # The matrix will run all possible combinations in parallel.
       matrix:
-        # macos-10.15, as we currently need Clang 12 (https://github.com/toitlang/toit/issues/130)
-        # windows-2022, as it's currently later than windows-latest.
         # ubuntu-18.04 so that we don't depend on a recent glibc.
-        container: [ ubuntu-18.04, macos-10.15, windows-2022 ]
+        container: [ ubuntu-18.04, macos-latest, windows-latest ]
         shard: [1, 2, 3, 4, 5]
 
         include:

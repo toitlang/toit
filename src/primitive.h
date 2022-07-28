@@ -379,7 +379,9 @@ namespace toit {
   PRIMITIVE(close, 1)                        \
   PRIMITIVE(device, 7)                       \
   PRIMITIVE(device_close, 2)                 \
-  PRIMITIVE(transfer, 8)                     \
+  PRIMITIVE(transfer, 9)                     \
+  PRIMITIVE(acquire_bus, 1)                  \
+  PRIMITIVE(release_bus, 1)                  \
 
 #define MODULE_SPI_LINUX(PRIMITIVE)          \
   PRIMITIVE(open, 1)                         \
