@@ -127,7 +127,6 @@ class UARTResourceGroup : public ResourceGroup {
       return -2;
     }
 
-
     // Lock the device.
     if (flock(fd, LOCK_EX | LOCK_NB) != 0) goto fail;
 
@@ -200,7 +199,6 @@ class UARTResourceGroup : public ResourceGroup {
 
     if (tcflush(fd, TCIOFLUSH) != 0) goto fail;
 
-
     return fd;
 
     fail:
@@ -260,11 +258,9 @@ PRIMITIVE(create) {
   if (id == -2) INVALID_ARGUMENT;
 
   IntResource* resource = resource_group->register_id(id);
-  // TODO(florian): if we can't allocate the resource, don't we need to
-  // close the uart?
-  // Is there a way to allocate the resource before opening the uart?
-  // The udp_linux.cc does not close the socket either.
-  // I guess we don't really need to worry, as we are on Linux?
+  // We are running on Linux. As such we should never have malloc that fails.
+  // Normally, we would need to clean up, if the allocation fails, but if that
+  // happens on Linux, we are in big trouble anyway.
   if (!resource) MALLOC_FAILED;
   resource_proxy->set_external_address(resource);
   return resource_proxy;
