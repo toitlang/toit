@@ -30,8 +30,14 @@ static void report_no_such_method(List<ir::Node*> candidates,
                                   Diagnostics* diagnostics) {
   // Note that the candidates could contain the super-class separator ClassScope::SUPER_CLASS_SEPARATOR.
   // All other nodes must be ir::Method* nodes.
-  if (candidates.is_empty() ||
-      (candidates.length() == 1 && candidates[0] == ClassScope::SUPER_CLASS_SEPARATOR)) {
+  bool all_separators = true;
+  for (auto& candidate : candidates) {
+    if (candidate != ClassScope::SUPER_CLASS_SEPARATOR) {
+      all_separators = false;
+      break;
+    }
+  }
+  if (all_separators) {
     ASSERT(!is_static);
     if (klass->name().is_valid()) {
       diagnostics->report_error(range,
@@ -224,11 +230,18 @@ void report_no_such_instance_method(ir::Class* klass,
   // TODO(florian): filtering the methods every time is linear and
   // could be too slow. Consider adding a caching mechanism.
   ListBuilder<ir::Node*> candidates_builder;
-  for (auto method : klass->methods()) {
-    if (method->name() == selector.name()) {
-      candidates_builder.add(method);
+  auto current = klass;
+  while (true) {
+    for (auto method : current->methods()) {
+      if (method->name() == selector.name()) {
+        candidates_builder.add(method);
+      }
     }
+    current = current->super();
+    if (current == null) break;
+    candidates_builder.add(ClassScope::SUPER_CLASS_SEPARATOR);
   }
+
   auto candidates = candidates_builder.build();
   report_no_such_method(candidates,
                         klass,
