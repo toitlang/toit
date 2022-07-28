@@ -263,6 +263,9 @@ PRIMITIVE(set_baud_rate) {
   return process->program()->null_object();
 }
 
+// Writes the data to the UART.
+// If wait is true, waits, unless the baud-rate is too low. If the function did
+// not wait, returns the negative value of the written bytes.
 PRIMITIVE(write) {
   ARGS(UARTResource, uart, Blob, data, int, from, int, to, int, break_length, bool, wait);
 
@@ -282,14 +285,41 @@ PRIMITIVE(write) {
     OUT_OF_RANGE;
   }
 
+
   if (wait) {
-    esp_err_t err = uart_wait_tx_done(uart->port(), portMAX_DELAY);
+    uint32 baud_rate;
+    esp_err_t err = uart_get_baudrate(uart->port(), &baud_rate);
     if (err != ESP_OK) {
+      return Primitive::os_error(err, process);
+    }
+    if (baud_rate < 100000) {
+      return Smi::from(-wrote);
+    }
+    // One tick takes ~10ms. We don't expect to ever hit the timeout with
+    // a baud rate that high.
+    err = uart_wait_tx_done(uart->port(), 1);
+    if (err == ESP_ERR_TIMEOUT) {
+      return Smi::from(-wrote);
+    } else if (err != ESP_OK) {
       return Primitive::os_error(err, process);
     }
   }
 
   return Smi::from(wrote);
+}
+
+PRIMITIVE(wait_tx) {
+  ARGS(UARTResource, uart);
+
+  esp_err_t err = uart_wait_tx_done(uart->port(), 0);
+  if (err == ESP_ERR_TIMEOUT) {
+    return BOOL(false);
+  }
+  if (err != ESP_OK) {
+    return Primitive::os_error(err, process);
+  }
+
+  return BOOL(true);
 }
 
 PRIMITIVE(read) {

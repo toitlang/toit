@@ -124,13 +124,18 @@ class Port implements reader.Reader:
     position += my_uart.write data[position..data.size]
   ```
 
-  If $wait is true, the method blocks until all bytes have been written to the pin.
-    Otherwise, returns as soon as the data is fully buffered.
+  If $wait is true, the method blocks until all bytes that were written have been emitted to the
+    physical pins. This is equivalent to calling $flush. Otherwise, returns as soon as the data is
+    buffered.
 
   Returns the number of bytes written.
   */
   write data from=0 to=data.size --break_length=0 --wait=false -> int:
-    return uart_write_ uart_ data from to break_length wait
+    written := uart_write_ uart_ data from to break_length wait
+    if written >= 0: return written
+    assert: wait
+    flush
+    return -written
 
   /**
   Reads data from the port.
@@ -150,6 +155,17 @@ class Port implements reader.Reader:
       else:
         // It was closed (disposed).
         return null
+
+  /**
+  Flushes the output buffer, waiting until all written data has been transmitted.
+
+  Often, one can just use the `--wait` flag of the $write function instead.
+  */
+  flush -> none:
+    while true:
+      flushed := uart_wait_tx_ uart_
+      if flushed: return
+      sleep --ms=1
 
 resource_group_ ::= uart_init_
 
@@ -171,8 +187,18 @@ uart_get_baud_rate_ uart:
 uart_close_ group uart:
   #primitive.uart.close
 
+/**
+Writes the $data to the uart.
+Returns the amount of bytes that were written.
+
+If $wait is true, but the baud rate was too low to wait, returns a negative number, where
+  the absolute value is the amount of bytes that were written.
+*/
 uart_write_ uart data from to break_length wait:
   #primitive.uart.write
+
+uart_wait_tx_ uart:
+  #primitive.uart.wait_tx
 
 uart_read_ uart:
   #primitive.uart.read
