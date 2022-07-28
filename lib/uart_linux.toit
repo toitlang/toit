@@ -15,7 +15,7 @@ UART features asynchronous communication with an external device on two data
 */
 
 /**
-The UART Port exposes the hardware features for communicating with an external
+The UART port exposes the hardware features for communicating with an external
   peripheral using asynchronous communication.
 */
 class Port implements reader.Reader:
@@ -69,7 +69,7 @@ class Port implements reader.Reader:
       uart_close_ state.group state.resource
 
   /**
-  Writes data to the Port.
+  Writes data to the port.
 
   If $break_length is greater than 0, an additional break signal is added after
     the data is written. The duration of the break signal is bit-duration * $break_length,
