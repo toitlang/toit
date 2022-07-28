@@ -301,16 +301,11 @@ PRIMITIVE(read) {
     return Primitive::os_error(err, process);
   }
 
-  // The uart_get_buffered_data_len is not thread safe, so it's not guaranteed that
-  // we get an updated value. As false negatives can lead to deadlock, we don't trust
-  // when it returns 0. To work around this, we instead try to read 8 bytes, whenever
-  // we are suggested 0; it is always safe to try to read too much, so this is only a
-  // performance issue.
-  size_t capacity = Utils::max(available, (size_t)8);
-
   Error* error = null;
-  ByteArray* data = process->allocate_byte_array(capacity, &error, /*force_external*/ true);
+  ByteArray* data = process->allocate_byte_array(available, &error, /*force_external*/ available != 0);
   if (data == null) return error;
+
+  if (available == 0) return data;
 
   ByteArray::Bytes rx(data);
   int read = uart_read_bytes(uart->port(), rx.address(), rx.length(), 0);
@@ -321,8 +316,6 @@ PRIMITIVE(read) {
   if (read < available) {
     return process->allocate_string_or_error("broken UART read");
   }
-
-  data->resize_external(process, read);
 
   return data;
 }
