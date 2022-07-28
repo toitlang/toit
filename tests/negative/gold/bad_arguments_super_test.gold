@@ -1,0 +1,8 @@
+tests/negative/bad_arguments_super_test.toit:13:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+tests/negative/bad_arguments_super_test.toit:12:5: error: Argument mismatch for 'B.foo'
+Too few arguments provided
+  b.foo
+    ^~~
+Compilation failed.
