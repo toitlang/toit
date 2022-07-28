@@ -187,7 +187,7 @@ PRIMITIVE(receive)  {
   socklen_t addr_len = sizeof(addr);
   int read = recvfrom(fd, ByteArray::Bytes(array).address(), available, 0, reinterpret_cast<sockaddr*>(&addr), &addr_len);
   if (read == -1) {
-    if (errno == EWOULDBLOCK) {
+    if (errno == EWOULDBLOCK || errno == EAGAIN) {
       return Smi::from(-1);
     }
     return Primitive::os_error(errno, process);
@@ -234,7 +234,7 @@ PRIMITIVE(send) {
 
   int wrote = sendto(fd, data.address() + from, to - from, 0, addr, size);
   if (wrote == -1) {
-    if (errno == EWOULDBLOCK) return Smi::from(0);
+    if (errno == EWOULDBLOCK || errno == EAGAIN) return Smi::from(0);
     return Primitive::os_error(errno, process);
   }
 
