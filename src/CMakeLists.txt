@@ -20,7 +20,7 @@ file(GLOB toit_core_SRC
 
 # Exclude files with a main(), and files that are not used in the
 # compiler.
-list(FILTER toit_core_SRC EXCLUDE REGEX "/(toit|toit_run_image|vm|objects_runtime).cc$")
+list(FILTER toit_core_SRC EXCLUDE REGEX "/(toit|toit_run_image|run|vm|objects_runtime).cc$")
 
 # Files that are used in the VM, but not in the compiler.
 file(GLOB toit_vm_runtime_SRC
@@ -90,6 +90,7 @@ add_executable(
   toit.run
   toit.cc
   ${BOOT_SNAPSHOT_CC}
+  run.cc
   )
 
 add_executable(

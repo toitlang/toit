@@ -79,12 +79,8 @@ macro(toit_project NAME PATH)
     add_custom_target(
       sync_packages
       COMMAND "${TOITPKG}" sync
+      DEPENDS "${TOITPKG}"
     )
-  endif()
-
-  # TODO(florian): find toitpkg in path.
-  if (NOT DEFINED TOITPKG)
-    message(FATAL_ERROR "Missing TOITPKG")
   endif()
 
   set(DOWNLOAD_TARGET_NAME "download-${NAME}-packages")
