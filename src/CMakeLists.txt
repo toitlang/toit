@@ -168,8 +168,6 @@ ADD_TOIT_TARGET(
   "ASAN_OPTIONS=detect_leaks=false"
 )
 
-toit_project(boot ${BOOT_SNAPSHOT_SOURCE})
-
 add_custom_target(
   build_tools
   DEPENDS toit.run toit.compile

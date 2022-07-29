@@ -57,12 +57,21 @@ function(ADD_TOIT_TARGET SOURCE TARGET DEP_FILE ENV)
   add_custom_command(
     OUTPUT "${TARGET}"
     DEPFILE ${DEP_FILE}
-    DEPENDS "${TOITC}"
+    DEPENDS "${TOITC}" download_packages
     COMMAND ${CMAKE_COMMAND} -E env ${ENV} ASAN_OPTIONS=detect_leaks=false "${TOITC}" --dependency-file "${DEP_FILE}" --dependency-format ninja -w "${TARGET}" "${SOURCE}"
   )
 endfunction(ADD_TOIT_TARGET)
 
 macro(toit_project NAME PATH)
+  if (NOT DEFINED TOITPKG)
+    set(TOITPKG "$ENV{TOITPKG}")
+    if ("${TOITPKG}" STREQUAL "")
+      # TOITPKG is normally set to the toit.pkg executable.
+      # However, for cross-compilation the compiler must be provided manually.
+      message(FATAL_ERROR "TOITPKG not provided")
+    endif()
+  endif()
+
   if (NOT TARGET download_packages)
     add_custom_target(
       download_packages
@@ -87,6 +96,7 @@ macro(toit_project NAME PATH)
         "-DTOIT_PROJECT=${PATH}"
         "-DTOITPKG=${TOITPKG}"
         -P "${TOIT_DOWNLOAD_PACKAGE_SCRIPT}"
+    DEPENDS "${TOITPKG}"
   )
   add_dependencies(download_packages "${DOWNLOAD_TARGET_NAME}")
   add_dependencies("${DOWNLOAD_TARGET_NAME}" sync_packages)
