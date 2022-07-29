@@ -28,7 +28,6 @@
 #include "snapshot_bundle.h"
 #include "utils.h"
 #include "compiler/compiler.h"
-#include "compiler/filesystem_local.h"
 #include "third_party/dartino/gc_metadata.h"
 
 #include "objects_inline.h"
@@ -89,15 +88,6 @@ int main(int argc, char **argv) {
     strcpy(boot_bundle_path, argv[2]);
     argc -= 2;
     argv += 2;
-  } else {
-    // The wrapping boot bundle is toit.run.snapshot, stored next to the executing toit.run.
-    char* toit_run_path = compiler::FilesystemLocal::get_executable_path();
-    char* bin_path = dirname(toit_run_path);
-    const char* postfix = "/toit.run.snapshot";
-    boot_bundle_path = unvoid_cast<char*>(malloc(strlen(bin_path) + strlen(postfix) + 1));
-    strcpy(boot_bundle_path, bin_path);
-    strcat(boot_bundle_path, postfix);
-    delete [] toit_run_path;
   }
 
   // Help must be used on its own.

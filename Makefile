@@ -272,7 +272,6 @@ INSTALL_SRC_ARCH := $(HOST)
 .PHONY: install-sdk install
 install-sdk: all
 	install -D --target-directory="$(DESTDIR)$(prefix)"/bin "$(CURDIR)"/build/$(INSTALL_SRC_ARCH)/sdk/bin/*
-	chmod 644 "$(DESTDIR)$(prefix)"/bin/*.snapshot
 	mkdir -p "$(DESTDIR)$(prefix)"/lib
 	cp -R "$(CURDIR)"/lib/* "$(DESTDIR)$(prefix)"/lib
 	find "$(DESTDIR)$(prefix)"/lib -type f -exec chmod 644 {} \;

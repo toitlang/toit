@@ -72,9 +72,24 @@ set_source_files_properties(interpreter_core.cc PROPERTIES COMPILE_FLAGS "-O3")
 set_source_files_properties(interpreter_run.cc PROPERTIES COMPILE_FLAGS "-O3 ${TOIT_INTERPRETER_FLAGS} $ENV{LOCAL_INTERPRETER_CXXFLAGS}")
 set_source_files_properties(utils.cc PROPERTIES COMPILE_FLAGS "-DTOIT_MODEL=\"\\\"${TOIT_MODEL}\\\"\" -DVM_GIT_INFO=\"\\\"${VM_GIT_INFO}\\\"\" -DVM_GIT_VERSION=\"\\\"${TOIT_GIT_VERSION}\\\"\"")
 
+set(GEN_DIR "${PROJECT_BINARY_DIR}/generated")
+
+set(BOOT_SNAPSHOT ${GEN_DIR}/toit.run.snapshot)
+set(BOOT_SNAPSHOT_CC ${GEN_DIR}/toit.run.snapshot.cc)
+
+add_custom_command(
+  OUTPUT "${BOOT_SNAPSHOT_CC}"
+  # We can't use ${BOOT_SNAPSHOT} here, as that would include the full path.
+  # xxd just got a patch to change the name, but it's not really released/widely available yet.
+  COMMAND xxd -i "toit.run.snapshot" "${BOOT_SNAPSHOT_CC}"
+  DEPENDS "${BOOT_SNAPSHOT}"
+  WORKING_DIRECTORY "${GEN_DIR}"
+)
+
 add_executable(
   toit.run
   toit.cc
+  ${BOOT_SNAPSHOT_CC}
   )
 
 add_executable(
@@ -144,8 +159,6 @@ target_link_libraries(
   )
 
 include(${TOIT_SDK_SOURCE_DIR}/tools/toit.cmake)
-
-set(BOOT_SNAPSHOT ${CMAKE_BINARY_DIR}/sdk/bin/toit.run.snapshot)
 
 ADD_TOIT_TARGET(
   ${TOIT_SDK_SOURCE_DIR}/tools/toit.run.toit
