@@ -20,7 +20,7 @@ file(GLOB toit_core_SRC
 
 # Exclude files with a main(), and files that are not used in the
 # compiler.
-list(FILTER toit_core_SRC EXCLUDE REGEX "/(toit|toit_run_image|run|vm|objects_runtime).cc$")
+list(FILTER toit_core_SRC EXCLUDE REGEX "/(toit|toit_run_image|run|vessel|vm|objects_runtime).cc$")
 
 # Files that are used in the VM, but not in the compiler.
 file(GLOB toit_vm_runtime_SRC
@@ -158,6 +158,28 @@ target_link_libraries(
   toit_run_image
   ${TOIT_LINK_LIBS}
   )
+
+set(TOIT_LINK_LIBS_NO_COMPILER ${TOIT_LINK_LIBS})
+list(REMOVE_ITEM TOIT_LINK_LIBS_NO_COMPILER toit_compiler)
+
+set(VESSEL_SIZES 150 250 500 1000 5000)
+foreach(VESSEL_SIZE ${VESSEL_SIZES})
+  set(VESSEL_TARGET vessel${VESSEL_SIZE})
+  add_executable(
+    ${VESSEL_TARGET}
+    vessel.cc
+    vessel/vessel${VESSEL_SIZE}.cc
+    ${BOOT_SNAPSHOT_CC}
+    run.cc
+    )
+  set_target_properties(${VESSEL_TARGET}
+    PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/sdk/vessels"
+    )
+  target_link_libraries(
+    ${VESSEL_TARGET} ${TOIT_LINK_LIBS_NO_COMPILER}
+  )
+endforeach()
 
 include(${TOIT_SDK_SOURCE_DIR}/tools/toit.cmake)
 
