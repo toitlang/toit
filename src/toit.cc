@@ -23,6 +23,7 @@
 #include "vm.h"
 #include "os.h"
 #include "printing.h"
+#include "run.h"
 #include "snapshot.h"
 #include "snapshot_bundle.h"
 #include "utils.h"
@@ -65,53 +66,6 @@ static void print_usage(int exit_code) {
 static void print_version() {
   printf("Toit version: %s\n", vm_git_version());
   exit(0);
-}
-
-static ProgramImage read_image_from_bundle(SnapshotBundle bundle) {
-  if (!bundle.is_valid()) return ProgramImage::invalid();
-  uint8 buffer[UUID_SIZE];
-  uint8* id = bundle.uuid(buffer) ? buffer : null;
-  return bundle.snapshot().read_image(id);
-}
-
-int run_program(char* boot_bundle_path, SnapshotBundle application_bundle, char** argv) {
-  while (true) {
-    Scheduler::ExitState exit;
-    { VM vm;
-      vm.load_platform_event_sources();
-      auto boot_bundle = SnapshotBundle::read_from_file(boot_bundle_path, true);
-      ProgramImage boot_image = read_image_from_bundle(boot_bundle);
-      int group_id = vm.scheduler()->next_group_id();
-      if (boot_image.is_valid()) {
-        exit = vm.scheduler()->run_boot_program(
-            boot_image.program(), boot_bundle, application_bundle, argv, group_id);
-      } else {
-        auto application_image = read_image_from_bundle(application_bundle);
-        exit = vm.scheduler()->run_boot_program(application_image.program(), argv, group_id);
-        application_image.release();
-      }
-      boot_image.release();
-    }
-    switch (exit.reason) {
-      case Scheduler::EXIT_NONE:
-        UNREACHABLE();
-
-      case Scheduler::EXIT_DONE:
-        return 0;
-
-      case Scheduler::EXIT_ERROR:
-        return exit.value;
-
-      case Scheduler::EXIT_DEEP_SLEEP: {
-        struct timespec sleep_time;
-        sleep_time.tv_sec = exit.value / 1000;
-        sleep_time.tv_nsec = (exit.value % 1000) * 1000000;
-
-        while (nanosleep(&sleep_time, &sleep_time) != 0 && errno == EINTR) { }
-        break;
-      }
-    }
-  }
 }
 
 int main(int argc, char **argv) {
