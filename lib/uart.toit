@@ -28,8 +28,9 @@ class Port implements reader.Reader:
   static PARITY_ODD      ::= 3
 
   uart_ := ?
+  state_/ResourceState_
+  should_ensure_write_state_/bool
 
-  state_/ResourceState_ ::= ?
   /** Amount of encountered errors. */
   errors := 0
 
@@ -75,7 +76,25 @@ class Port implements reader.Reader:
       stop_bits
       parity
       tx_flags
+    should_ensure_write_state_ = false
     state_ = ResourceState_ resource_group_ uart_
+
+  /**
+  Constructs a UART port using a $device path.
+
+  This constructor does not work on embedded devices, such as the ESP32.
+
+  The $baud_rate must match one that is supported by the operating system. See $Port.baud_rate=.
+  */
+  constructor device/string
+      --baud_rate/int
+      --data_bits/int=8
+      --stop_bits/int=STOP_BITS_1
+      --parity/int=PARITY_DISABLED:
+    group := resource_group_
+    should_ensure_write_state_ = true
+    uart_ = uart_create_path_ group device baud_rate data_bits stop_bits parity
+    state_ = ResourceState_ group uart_
 
   /**
   Changes the baud rate.
@@ -89,6 +108,11 @@ class Port implements reader.Reader:
 
   The receiver should be ready to read and write data at the specified
     baud rate.
+
+  Some platforms only support a fixed set of baud rates. For example, on Linux only the
+    following baud rates are supported: 50, 75, 110, 134, 150, 200, 300, 600, 1200,
+    1800, 2400, 4800, 9600, 19200, 38400, 57600, 115200, 230400, 460800, 576000, 921600,
+    1152000, 1500000, 2000000, 2500000, 3000000, 3500000, 4000000.
   */
   baud_rate= new_rate/int:
     uart_set_baud_rate_ uart_ new_rate
@@ -131,26 +155,35 @@ class Port implements reader.Reader:
   Returns the number of bytes written.
   */
   write data from=0 to=data.size --break_length=0 --wait=false -> int:
-    written := uart_write_ uart_ data from to break_length wait
-    if written >= 0: return written
-    assert: wait
-    flush
-    return -written
+    while true:
+      if should_ensure_write_state_: ensure_state_ WRITE_STATE_
+      // $_ensure_state might return with an error state. In that case the 'uart_write_' will
+      // fail with a better error message.
+      written := uart_write_ uart_ data from to break_length wait
+      if should_ensure_write_state_ and written == 0 and from != to:
+        // We shouldn't have tried to write.
+        state_.clear_state WRITE_STATE_
+        continue
+
+      if written >= 0: return written
+      assert: wait
+      flush
+      return -written
 
   /**
   Reads data from the port.
 
-  This method will block until data is available.
+  This method blocks until data is available.
   */
   read -> ByteArray?:
     while true:
-      state := state_.wait_for_state READ_STATE_ | ERROR_STATE_
-      if state & ERROR_STATE_ != 0:
+      state_bits := ensure_state_ READ_STATE_
+      if state_bits & ERROR_STATE_ != 0:
         state_.clear_state ERROR_STATE_
         errors++
-      else if state & READ_STATE_ != 0:
+      else if state_bits & READ_STATE_ != 0:
         data := uart_read_ uart_
-        if data.size > 0: return data
+        if data and data.size > 0: return data
         state_.clear_state READ_STATE_
       else:
         // It was closed (disposed).
@@ -167,16 +200,30 @@ class Port implements reader.Reader:
       if flushed: return
       sleep --ms=1
 
+  ensure_state_ bits/int -> int:
+    if not uart_: throw "CLOSED"
+    state := state_
+    state_bits/int? := null
+    while state_bits == null:
+      state_bits = state.wait_for_state (bits | ERROR_STATE_)
+    if not state_.resource: return -1  // Closed from a different task.
+    assert: state_bits != 0
+    return state_bits
+
 resource_group_ ::= uart_init_
 
 READ_STATE_  ::= 1 << 0
 ERROR_STATE_ ::= 1 << 1
+WRITE_STATE_ ::= 1 << 2
 
 uart_init_:
   #primitive.uart.init
 
 uart_create_ group tx rx rts cts baud_rate data_bits stop_bits parity tx_flags:
   #primitive.uart.create
+
+uart_create_path_ resource_group device baud_rate data_bits stop_bits parity:
+  #primitive.uart.create_path
 
 uart_set_baud_rate_ uart baud:
   #primitive.uart.set_baud_rate
