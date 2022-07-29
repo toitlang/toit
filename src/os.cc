@@ -98,7 +98,7 @@ AlignedMemoryBase::~AlignedMemoryBase() {}
 
 AlignedMemory::AlignedMemory(size_t size_in_bytes, size_t alignment) : size_in_bytes(size_in_bytes) {
   raw = malloc(alignment + size_in_bytes);
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
   memset(raw, 0xcd, alignment + size_in_bytes);
 #endif
   aligned = void_cast(Utils::round_up(unvoid_cast<char*>(raw), alignment));
@@ -106,7 +106,7 @@ AlignedMemory::AlignedMemory(size_t size_in_bytes, size_t alignment) : size_in_b
 
 AlignedMemory::~AlignedMemory() {
   if (raw != null) {
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
     memset(address(), 0xde, size_in_bytes);
 #endif
     free(raw);

@@ -41,7 +41,7 @@ class TwoSpaceHeap {
 
   SemiSpace* take_space();
 
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
   // Used for debugging.  Give it an address, and it will tell you where there
   // are pointers to that address.  If the address is part of the heap it will
   // also tell you which part.  Reduced functionality if you are not on Linux,

@@ -127,8 +127,7 @@ bool SnapshotBundle::uuid(uint8* buffer_16) const {
 }
 
 SnapshotBundle SnapshotBundle::read_from_file(const char* bundle_filename, bool silent) {
-  FILE *file;
-  file = fopen(bundle_filename, "rb");
+  FILE* file = fopen(bundle_filename, "rb");
   if (!file) {
     if (silent) return SnapshotBundle::invalid();
     fprintf(stderr, "Unable to open snapshot file %s\n", bundle_filename);

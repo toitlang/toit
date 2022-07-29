@@ -88,7 +88,7 @@ class Chunk : public ChunkList::Element {
 
   void initialize_metadata() const;
 
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
   // Fill the space with garbage.
   void scramble();
 
@@ -198,7 +198,7 @@ class Space : public LivenessOracle {
   word offset_of(HeapObject* object);
   HeapObject* object_at_offset(word offset);
 
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
   void find(uword word, const char* name);
 #endif
 

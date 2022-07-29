@@ -22,7 +22,7 @@
 
 namespace toit {
 
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
 
 void print_object_console(Object* object) {
   ConsolePrinter p(null);

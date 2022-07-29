@@ -23,7 +23,7 @@ namespace toit {
 #define FLAG_INT(macro, name, value, doc)  macro(int, int, name, value, doc)
 #define FLAG_STRING(macro, name, value, doc) macro(const char*, string, name, value, doc)
 
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
 #define _ASSERT_DEFAULT true
 #else
 #define _ASSERT_DEFAULT false
@@ -68,7 +68,7 @@ namespace toit {
   FLAG_STRING(deploy, sandbox,              null,  "syscall-sandbox: compiler or sandbox")  \
   FLAG_STRING(deploy, compiler_sandbox,     null,  "syscall-sandbox for the forked compiler: compiler or sandbox")  \
 
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
 #define DECLARE_DEBUG_FLAG(type, prefix, name, value, doc) static type name;
 #else
 #define DECLARE_DEBUG_FLAG(type, prefix, name, value, doc) static const type name = value;
