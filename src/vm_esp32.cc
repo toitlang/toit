@@ -23,7 +23,6 @@
 #include "event_sources/ble_esp32.h"
 #include "event_sources/lwip_esp32.h"
 #include "event_sources/system_esp32.h"
-#include "event_sources/gpio_esp32.h"
 #include "event_sources/timer.h"
 #include "event_sources/tls.h"
 #include "event_sources/ev_queue_esp32.h"
@@ -36,7 +35,6 @@ void VM::load_platform_event_sources() {
   event_manager()->add_event_source(_new TimerEventSource());
   event_manager()->add_event_source(_new LwIPEventSource());
   event_manager()->add_event_source(_new SystemEventSource());
-  event_manager()->add_event_source(_new GPIOEventSource());
   event_manager()->add_event_source(_new EventQueueEventSource());
   event_manager()->add_event_source(_new TLSEventSource());
   event_manager()->add_event_source(_new BLEEventSource());

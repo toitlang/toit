@@ -38,6 +38,7 @@ namespace toit {
   fn(Adler32)                           \
   fn(ZlibRle)                           \
   fn(UARTResource)                      \
+  fn(GPIOResource)                      \
   fn(I2SResource)                       \
   fn(AdcResource)                       \
   fn(PcntUnitResource)                  \

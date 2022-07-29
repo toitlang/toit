@@ -28,7 +28,6 @@
 #include "../resource.h"
 #include "../vm.h"
 
-#include "../event_sources/gpio_esp32.h"
 #include "../event_sources/system_esp32.h"
 
 namespace toit {

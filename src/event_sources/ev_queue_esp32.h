@@ -36,13 +36,16 @@ public:
 
   // Receives one event with a zero timeout.  Provides the data argument for the
   // dispatch call on the event source.  Returns whether an event was available.
-  virtual bool receive_event(word* data) = 0;
+  virtual bool receive_event(word* data) { return false; }
+
+  // Checks if the pin number matches the resource it dispatches with the new
+  // value.
+  // Returns whether the pin number matched.
+  virtual bool check_gpio(word pin) { return false; }
 
 private:
   QueueHandle_t _queue; // Note: The queue is freed from the driver uninstall.
 };
-
-
 
 class EventQueueEventSource : public EventSource, public Thread {
  public:
@@ -50,6 +53,8 @@ class EventQueueEventSource : public EventSource, public Thread {
 
   EventQueueEventSource();
   ~EventQueueEventSource() override;
+
+  QueueHandle_t gpio_queue() { return _gpio_queue; }
 
  private:
   void entry() override;
@@ -60,6 +65,7 @@ class EventQueueEventSource : public EventSource, public Thread {
   static EventQueueEventSource* _instance;
 
   QueueHandle_t _stop;
+  QueueHandle_t _gpio_queue;
   QueueSetHandle_t _queue_set;
 };
 
