@@ -31,13 +31,7 @@ extern unsigned char vessel_snapshot_data[];
 
 namespace toit {
 
-// Prints the version and exits.
-static void print_version() {
-  printf("Toit version: %s\n", vm_git_version());
-  exit(0);
-}
-
-static const uint8 kToken[] = VESSEL_TOKEN;
+static const uint8 kToken[] = { VESSEL_TOKEN };
 
 int main(int argc, char **argv) {
   Flags::process_args(&argc, argv);
@@ -47,8 +41,7 @@ int main(int argc, char **argv) {
   ObjectMemory::set_up();
 
   bool modified = false;
-  for (int i = 0; i < sizeof(kToken); i++) {
-    printf("checking %d\n", i);
+  for (size_t i = 0; i < sizeof(kToken); i++) {
     if (vessel_snapshot_data[i] != kToken[i]) {
       modified = true;
       break;
@@ -61,7 +54,13 @@ int main(int argc, char **argv) {
 
   int snapshot_size = reinterpret_cast<uint32*>(vessel_snapshot_data)[0];
   uint8* snapshot = &vessel_snapshot_data[4];
-  SnapshotBundle bundle(snapshot, snapshot_size);
+  // TODO(florian): we currently create a copy, as the snapshot is freed at the end.
+  // See toit.cc.
+  uint8* copy = unvoid_cast<uint8*>(malloc(snapshot_size));
+  memcpy(copy, snapshot, snapshot_size);
+  SnapshotBundle bundle(copy, snapshot_size);
+  // Drop the executable name.
+  argv++;
   int exit_state = run_program(null, bundle, argv);
 
   GcMetadata::tear_down();

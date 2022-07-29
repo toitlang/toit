@@ -15,4 +15,7 @@
 
 #include "token.h"
 
-unsigned char vessel_snapshot_data[150000] = VESSEL_TOKEN;
+// We add the token twice. This way we can safely use the token values in other
+// constants without needing to worry that the compiler replaces the wrong
+// data.
+unsigned char vessel_snapshot_data[250000] = { VESSEL_TOKEN, VESSEL_TOKEN };

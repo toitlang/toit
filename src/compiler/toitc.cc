@@ -15,6 +15,7 @@
 
 #include "../top.h"
 #include "../flags.h"
+#include "../vessel/token.h"
 #include "compiler.h"
 
 #include <errno.h>
@@ -22,6 +23,8 @@
 
 namespace toit {
 namespace compiler {
+
+static const uint8 kVesselToken[] = { VESSEL_TOKEN };
 
 static void print_usage(int exit_code) {
   // We don't expose the `--lsp` flag in the help. It's internal and not
@@ -47,6 +50,53 @@ static void print_usage(int exit_code) {
 static void print_version() {
   printf("Toit version: %s\n", vm_git_version());
   exit(0);
+}
+
+int fill_vessel(const char* out_path, const SnapshotBundle& bundle) {
+  const char* vessel_path = "/home/flo/work/opentoit/build/host/sdk/vessels/vessel500";
+  FILE* file = fopen(vessel_path, "rb");
+  if (!file) {
+    fprintf(stderr, "Unable to open vessel file %s\n", vessel_path);
+    return -1;
+  }
+  // Find content size of file.
+  fseek(file, 0, SEEK_END);
+  long fsize = ftell(file);
+  int size = fsize;
+  // Read entire content.
+  uint8* vessel_content = unvoid_cast<uint8*>(malloc(size));
+  if (vessel_content == null) {
+    fprintf(stderr, "Unable to allocate buffer for vessel %s\n", vessel_path);
+    return -1;
+  }
+  fseek(file, 0, SEEK_SET);
+  int read_count = fread(vessel_content, fsize, 1, file);
+  fclose(file);
+  if (read_count != 1) {
+    free(vessel_content);
+    fprintf(stderr, "Unable to read vessel '%s'\n", vessel_path);
+    return -1;
+  }
+  for (size_t i = 0; i < size - sizeof(kVesselToken); i++) {
+    bool found_token = true;
+    // We must find two copies of the token next to each other.
+    for (size_t j = 0; j < sizeof(kVesselToken) * 2; j++) {
+      if (vessel_content[i + j] != kVesselToken[j % sizeof(kVesselToken)]) {
+        found_token = false;
+        break;
+      }
+    }
+    if (found_token) {
+      *reinterpret_cast<uint32*>(&vessel_content[i]) = bundle.size();
+      memcpy(&vessel_content[i + 4], bundle.buffer(), bundle.size());
+      FILE* file_out = fopen(out_path, "wb");
+      fwrite(vessel_content, size, 1, file_out);
+      fclose(file_out);
+      return 0;
+    }
+  }
+  printf("Token not found\n");
+  return -1;
 }
 
 int main(int argc, char **argv) {
@@ -77,6 +127,7 @@ int main(int argc, char **argv) {
   }
 
   char* bundle_filename = null;
+  char* vessel_filename = null;
 
   int source_path_count = 0;
   const char* source_path;
@@ -176,6 +227,18 @@ int main(int argc, char **argv) {
       for_analysis = strcmp(argv[processed_args], "--analyze") == 0;
       processed_args++;
       ways_to_run++;
+    } else if (strcmp(argv[processed_args], "--vessel") == 0) {
+      // Vessel writing.
+      processed_args++;
+      if (processed_args == argc) {
+        fprintf(stderr, "Missing argument to '--vessel'\n");
+        print_usage(1);
+      }
+      if (vessel_filename != null) {
+        fprintf(stderr, "Only one '--vessel' flag is allowed.\n");
+        print_usage(1);
+      }
+      vessel_filename = argv[processed_args++];
     } else if (argv[processed_args][0] == '-' &&
                 strcmp(argv[processed_args], "--") != 0) {
       fprintf(stderr, "Unknown flag '%s'\n", argv[processed_args]);
@@ -264,18 +327,22 @@ int main(int argc, char **argv) {
     compiler::Compiler compiler;
     compiler.analyze(List<const char*>(source_paths, source_path_count),
                       compiler_config);
-  } else if (bundle_filename != null) {
+  } else if (bundle_filename != null || vessel_filename != null) {
     auto compiled = SnapshotBundle::invalid();
     compiler::Compiler compiler;
     auto source_path = source_path_count == 0 ? null : source_paths[0];
     compiled = compiler.compile(source_path,
                                 direct_script,
                                 args,
-                                bundle_filename,
+                                bundle_filename == null ? vessel_filename: bundle_filename,
                                 compiler_config);
 
-    if (!compiled.write_to_file(bundle_filename)) {
-      print_usage(1);
+    if (bundle_filename != null) {
+      if (!compiled.write_to_file(bundle_filename)) {
+        print_usage(1);
+      }
+    } else {
+      fill_vessel(vessel_filename, compiled);
     }
     free(compiled.buffer());
   } else {

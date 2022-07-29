@@ -27,6 +27,8 @@ add_executable(
   toitc.cc
   )
 
+add_dependencies(build_tools toit.compile)
+
 target_link_libraries(toit.compile -static-libstdc++)
 
 if ("${CMAKE_SYSTEM_NAME}" MATCHES "MSYS")
@@ -39,9 +41,9 @@ endif()
 
 target_link_libraries(
   toit.compile
-  toit_core
   toit_compiler
   toit_core
+  toit_snapshot_bundle
   mbedtls
   ${TOIT_WINDOWS_LIBS}
   pthread

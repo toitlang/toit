@@ -17,7 +17,7 @@
 #include <stdio.h>
 
 #include "ar.h"
-#include "../utils.h"
+#include "utils.h"
 
 namespace toit {
 namespace ar {
