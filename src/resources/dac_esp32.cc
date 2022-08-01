@@ -79,7 +79,6 @@ static dac_channel_t get_dac_channel(int pin) {
 
 class DacResourceGroup;
 
-// TODO(florian): access to this variable needs to be protected by a lock.
 static int _cosine_user_count = 0;
 
 class DacResource : public Resource {
@@ -97,11 +96,13 @@ class DacResource : public Resource {
     esp_err_t err = ESP_OK;
     if (_uses_cosine) return err;
     _uses_cosine = true;
-    // TODO(florian): this needs to be protected in a lock.
-    _cosine_user_count++;
-    if (_cosine_user_count == 1) {
-      // First user.
-      err = dac_cw_generator_enable();
+    {
+      Locker locker(OS::global_mutex());
+      _cosine_user_count++;
+      if (_cosine_user_count == 1) {
+        // First user.
+        err = dac_cw_generator_enable();
+      }
     }
     return err;
   }
@@ -110,11 +111,13 @@ class DacResource : public Resource {
     esp_err_t err = ESP_OK;
     if (!_uses_cosine) return err;
     _uses_cosine = false;
-    // TODO(florian): this needs to be protected in a lock.
-    _cosine_user_count--;
-    if (_cosine_user_count == 0) {
-      // Last user.
-      err = dac_cw_generator_disable();
+    {
+      Locker locker(OS::global_mutex());
+      _cosine_user_count--;
+      if (_cosine_user_count == 0) {
+        // Last user.
+        err = dac_cw_generator_disable();
+      }
     }
     return err;
   }
@@ -160,9 +163,6 @@ PRIMITIVE(use) {
   ARGS(DacResourceGroup, group, int, pin, uint8, initial_value);
 
   dac_channel_t channel = get_dac_channel(pin);
-  // TODO(florian): The compiler complains that the result of the comparison
-  // is always false (`-Wtautological-constant-out-of-range-compare`). I believe we use
-  // this in many other places. Do we care?
   if (channel == kInvalidChannel) INVALID_ARGUMENT;
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
