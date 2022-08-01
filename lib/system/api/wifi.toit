@@ -7,10 +7,10 @@ import system.api.network show NetworkService NetworkServiceClient
 interface WifiService extends NetworkService:
   static UUID  /string ::= "2436edc6-4cd8-4834-8ebc-ed883990da40"
   static MAJOR /int    ::= 0
-  static MINOR /int    ::= 5
+  static MINOR /int    ::= 6
 
   static CONNECT_INDEX /int ::= 1000
-  connect config/Map? -> List
+  connect config/Map? save/bool -> List
 
   static ESTABLISH_INDEX /int ::= 1001
   establish config/Map? -> List
@@ -22,8 +22,8 @@ class WifiServiceClient extends NetworkServiceClient implements WifiService:
   open -> WifiServiceClient?:
     return (open_ WifiService.UUID WifiService.MAJOR WifiService.MINOR) and this
 
-  connect config/Map? -> List:
-    return invoke_ WifiService.CONNECT_INDEX config
+  connect config/Map? save/bool -> List:
+    return invoke_ WifiService.CONNECT_INDEX [config, save]
 
   establish config/Map? -> List:
     return invoke_ WifiService.ESTABLISH_INDEX config
