@@ -144,6 +144,8 @@ int touch_pad_to_pin_num(touch_pad_t pad) {
 // When using touch pads for deep sleep wakeup we must not deinit the touch
 // pad when the resource-group is torn down.
 static bool should_keep_touch_active = false;
+static bool touch_is_initialized = false;
+static int touch_user_count = 0;
 
 void keep_touch_active() {
   should_keep_touch_active = true;
@@ -155,15 +157,26 @@ class TouchResourceGroup : public ResourceGroup {
   explicit TouchResourceGroup(Process* process)
       : ResourceGroup(process) {}
 
+  // Make the delete public.
+  // Avoid using this constructor except when initializing the group, but needing
+  // to bail out.
+  void operator delete(void* ptr) {
+    ResourceGroup::operator delete(ptr);
+  }
+
+
   void tear_down() override {
     {
       Locker locker(OS::global_mutex());
-      _user_count--;
-      if (_user_count == 0 && !should_keep_touch_active) {
+      touch_user_count--;
+      if (touch_user_count == 0 && !should_keep_touch_active) {
         touch_pad_deinit();
-        _is_initialized = false;
+        touch_is_initialized = false;
       }
     }
+    // Clear the status field which would be used to determine
+    // which pin woke the ESP32 from deep-sleep.
+    touch_pad_clear_status();
     ResourceGroup::tear_down();
   }
 
@@ -171,38 +184,15 @@ class TouchResourceGroup : public ResourceGroup {
     touch_pad_t pad = static_cast<touch_pad_t>(static_cast<IntResource*>(resource)->id());
 
     // Reset the threshold so it's not use for deep-sleep wake-ups.
-    touch_pad_set_thresh(pad, 0);
+    if (!should_keep_touch_active) {
+      touch_pad_set_thresh(pad, 0);
+    }
 
     // Apparently there is nothing else to do to free touch pins.
     // Asked on the forum: https://www.esp32.com/viewtopic.php?f=13&t=28973
   }
 
-  esp_err_t init() {
-    esp_err_t err;
-    {
-      Locker locker(OS::global_mutex());
-      if (_user_count == 0 && !_is_initialized) {
-        err = touch_pad_init();
-        if (err != ESP_OK) return err;
-        _is_initialized = true;
-        _user_count++;
-      }
-    err = touch_pad_set_voltage(TOUCH_HVOLT_2V7, TOUCH_LVOLT_0V5, TOUCH_HVOLT_ATTEN_1V);
-    if (err != ESP_OK) return err;
-    // Start the hard-ware FSM, so that `touch_pad_get_status` is up to date.
-    // The hardware FSM is also necessary for waking up from deep-sleep.
-    err = touch_pad_set_fsm_mode(TOUCH_FSM_MODE_TIMER);
-    return err;
-    }
-  }
-
- private:
-  static bool _is_initialized;
-  static int _user_count;
 };
-
-bool TouchResourceGroup::_is_initialized = false;
-int TouchResourceGroup::_user_count = 0;
 
 MODULE_IMPLEMENTATION(touch, MODULE_TOUCH)
 
@@ -213,8 +203,24 @@ PRIMITIVE(init) {
   TouchResourceGroup* touch = _new TouchResourceGroup(process);
   if (!touch) MALLOC_FAILED;
 
-  esp_err_t err = touch->init();
-  if (err != ESP_OK) return Primitive::os_error(err, process);
+  Locker locker(OS::global_mutex());
+
+  if (touch_user_count == 0 && !touch_is_initialized) {
+    esp_err_t err = touch_pad_init();
+    if (err != ESP_OK) {
+      process->remove_resource_group(touch);
+      delete touch;
+      return Primitive::os_error(err, process);
+    }
+
+    ESP_ERROR_CHECK(touch_pad_set_voltage(TOUCH_HVOLT_2V7, TOUCH_LVOLT_0V5, TOUCH_HVOLT_ATTEN_1V));
+    // Start the hard-ware FSM, so that `touch_pad_get_status` is up to date.
+    // The hardware FSM is also necessary for waking up from deep-sleep.
+    ESP_ERROR_CHECK(touch_pad_set_fsm_mode(TOUCH_FSM_MODE_TIMER));
+
+    touch_is_initialized = true;
+    touch_user_count++;
+  }
 
   proxy->set_external_address(touch);
   return proxy;
@@ -229,15 +235,16 @@ PRIMITIVE(use) {
   touch_pad_t pad = get_touch_pad(num);
   if (pad == kInvalidTouchPad) OUT_OF_RANGE;
 
+  auto resource = _new IntResource(resource_group, pad);
+  if (!resource) MALLOC_FAILED;
+
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;
 
   esp_err_t err = touch_pad_config(pad, threshold);
   if (err != ESP_OK) return Primitive::os_error(err, process);
 
-  auto resource = _new IntResource(resource_group, pad);
-  if (!resource) MALLOC_FAILED;
-
+  resource_group->register_resource(resource);
   proxy->set_external_address(resource);
 
   return proxy;
@@ -245,7 +252,12 @@ PRIMITIVE(use) {
 
 PRIMITIVE(unuse) {
   ARGS(TouchResourceGroup, resource_group, IntResource, resource);
+  touch_pad_t pad = static_cast<touch_pad_t>(static_cast<IntResource*>(resource)->id());
 
+  // This call is an explicit 'close' call, so make sure the touch pad is deactived.
+  // Unregistering the resource won't do that if we have to keep the touch pad alive for
+  // deep sleep.
+  touch_pad_set_thresh(pad, 0);
   resource_group->unregister_resource(resource);
   resource_proxy->clear_external_address();
 

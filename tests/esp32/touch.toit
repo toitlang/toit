@@ -38,8 +38,17 @@ main:
     touch33 := gpio.Touch (gpio.Pin 33)
     calibrate touch33
     print "pin 33: $touch33.threshold $(touch33.read --raw)"
+
+    print "waiting for touch on pin 32"
+    while not touch32.get: sleep --ms=1
+
+    print "waiting for touch on pin 33"
+    while not touch33.get: sleep --ms=1
+
     touch33.close
 
     print "going into deep sleep"
+    sleep --ms=500
+    print "ESP32 should not wake up from pin 33, but should wake up from pin 32"
     esp32.enable_touchpad_wakeup
     esp32.deep_sleep (Duration --s=10)
