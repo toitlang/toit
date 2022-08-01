@@ -50,7 +50,7 @@ ResourcePool<int, -1> gpio_pins(
 );
 
 class GPIOResource : public EventQueueResource {
-public:
+ public:
   TAG(GPIOResource);
 
   GPIOResource(ResourceGroup* group, int pin)
@@ -62,7 +62,7 @@ public:
 
   bool check_gpio(word pin) override;
 
-private:
+ private:
   int _pin;
 };
 
@@ -74,36 +74,8 @@ class GPIOResourceGroup : public ResourceGroup {
     queue = EventQueueEventSource::instance()->gpio_queue();
   }
 
-  virtual void on_register_resource(Resource* r) {
-    gpio_num_t pin = static_cast<gpio_num_t>(static_cast<GPIOResource*>(r)->pin());
-    SystemEventSource::instance()->run([&]() -> void {
-      FATAL_IF_NOT_ESP_OK(gpio_isr_handler_add(pin, isr_handler, reinterpret_cast<void*>(pin)));
-    });
-  }
-
-  virtual void on_unregister_resource(Resource* r) {
-    gpio_num_t pin = static_cast<gpio_num_t>(static_cast<GPIOResource*>(r)->pin());
-
-    SystemEventSource::instance()->run([&]() -> void {
-      FATAL_IF_NOT_ESP_OK(gpio_isr_handler_remove(gpio_num_t(pin)));
-    });
-
-    // Clear all state associated with the GPIO pin.
-    // NOTE: Don't use gpio_reset_pin - it will put on an internal pull-up that's
-    // kept during deep sleep.
-
-    gpio_config_t cfg = {
-      .pin_bit_mask = 1ULL << pin,
-      .mode = GPIO_MODE_DISABLE,
-      .pull_up_en = GPIO_PULLUP_DISABLE,
-      .pull_down_en = GPIO_PULLDOWN_DISABLE,
-      .intr_type = GPIO_INTR_DISABLE,
-    };
-    gpio_config(&cfg);
-    if (pin < 34) gpio_set_level(pin, 0);
-
-    gpio_pins.put(pin);
-  }
+  virtual void on_register_resource(Resource* r);
+  virtual void on_unregister_resource(Resource* r);
 
  private:
   virtual uint32_t on_event(Resource* resource, word data, uint32_t state) {
@@ -114,6 +86,37 @@ class GPIOResourceGroup : public ResourceGroup {
 
   static void IRAM_ATTR isr_handler(void* arg);
 };
+
+void GPIOResourceGroup::on_register_resource(Resource* r) {
+  gpio_num_t pin = static_cast<gpio_num_t>(static_cast<GPIOResource*>(r)->pin());
+  SystemEventSource::instance()->run([&]() -> void {
+    FATAL_IF_NOT_ESP_OK(gpio_isr_handler_add(pin, isr_handler, reinterpret_cast<void*>(pin)));
+  });
+}
+
+void GPIOResourceGroup::on_unregister_resource(Resource* r) {
+  gpio_num_t pin = static_cast<gpio_num_t>(static_cast<GPIOResource*>(r)->pin());
+
+  SystemEventSource::instance()->run([&]() -> void {
+    FATAL_IF_NOT_ESP_OK(gpio_isr_handler_remove(gpio_num_t(pin)));
+  });
+
+  // Clear all state associated with the GPIO pin.
+  // NOTE: Don't use gpio_reset_pin - it will put on an internal pull-up that's
+  // kept during deep sleep.
+
+  gpio_config_t cfg = {
+    .pin_bit_mask = 1ULL << pin,
+    .mode = GPIO_MODE_DISABLE,
+    .pull_up_en = GPIO_PULLUP_DISABLE,
+    .pull_down_en = GPIO_PULLDOWN_DISABLE,
+    .intr_type = GPIO_INTR_DISABLE,
+  };
+  gpio_config(&cfg);
+  if (pin < 34) gpio_set_level(pin, 0);
+
+  gpio_pins.put(pin);
+}
 
 QueueHandle_t IRAM_ATTR GPIOResourceGroup::queue;
 

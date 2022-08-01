@@ -54,6 +54,10 @@ EventQueueEventSource::~EventQueueEventSource() {
 
   join();
 
+  SystemEventSource::instance()->run([&]() -> void {
+    gpio_uninstall_isr_service();
+  });
+
   vQueueDelete(_queue_set);
   vQueueDelete(_gpio_queue);
   vSemaphoreDelete(_stop);
@@ -80,8 +84,8 @@ void EventQueueEventSource::entry() {
     while (xQueueReceive(_gpio_queue, &pin, 0)) {
       bool data = gpio_get_level(gpio_num_t(pin)) != 0;
       for (auto r : resources()) {
-        auto evq_res = static_cast<EventQueueResource*>(r);
-        if (evq_res->check_gpio(pin)) {
+        auto resource = static_cast<EventQueueResource*>(r);
+        if (resource->check_gpio(pin)) {
           dispatch(locker, r, data);
         }
       }
@@ -89,9 +93,9 @@ void EventQueueEventSource::entry() {
 
     // Then loop through other queues.
     for (auto r : resources()) {
-      auto evq_res = static_cast<EventQueueResource*>(r);
+      auto resource = static_cast<EventQueueResource*>(r);
       word data;
-      while (evq_res->receive_event(&data)) {
+      while (resource->receive_event(&data)) {
         dispatch(locker, r, data);
       }
     }
@@ -99,37 +103,35 @@ void EventQueueEventSource::entry() {
 }
 
 void EventQueueEventSource::on_register_resource(Locker& locker, Resource* r) {
-  auto evq_res = static_cast<EventQueueResource*>(r);
-  QueueHandle_t queue = evq_res->queue();
-  if (queue) {
-    // We can only add to the queue set when the queue is empty, so we
-    // repeatedly try to drain the queue before adding it to the set.
-    int attempts = 0;
-    do {
-      if (attempts++ > 16) FATAL("couldn't register event resource");
-      word data;
-      while (evq_res->receive_event(&data)) {
-        dispatch(locker, r, data);
-      }
-    } while (xQueueAddToSet(queue, _queue_set) != pdPASS);
-  }
+  auto resource = static_cast<EventQueueResource*>(r);
+  QueueHandle_t queue = resource->queue();
+  if (queue == null) return;
+  // We can only add to the queue set when the queue is empty, so we
+  // repeatedly try to drain the queue before adding it to the set.
+  int attempts = 0;
+  do {
+    if (attempts++ > 16) FATAL("couldn't register event resource");
+    word data;
+    while (resource->receive_event(&data)) {
+      dispatch(locker, r, data);
+    }
+  } while (xQueueAddToSet(queue, _queue_set) != pdPASS);
 }
 
 void EventQueueEventSource::on_unregister_resource(Locker& locker, Resource* r) {
-  auto evq_res = static_cast<EventQueueResource*>(r);
-  QueueHandle_t queue = evq_res->queue();
-  if (queue) {
-    // We can only remove from the queue set when the queue is empty, so we
-    // repeatedly try to drain the queue before removing it from the set.
-    int attempts = 0;
-    do {
-      if (attempts++ > 16) FATAL("couldn't unregister event resource");
-      word data;
-      while (evq_res->receive_event(&data)) {
-        // Don't dispatch while unregistering.
-      }
-    } while (xQueueRemoveFromSet(queue, _queue_set) != pdPASS);
-  }
+  auto resource = static_cast<EventQueueResource*>(r);
+  QueueHandle_t queue = resource->queue();
+  if (queue == null) return;
+  // We can only remove from the queue set when the queue is empty, so we
+  // repeatedly try to drain the queue before removing it from the set.
+  int attempts = 0;
+  do {
+    if (attempts++ > 16) FATAL("couldn't unregister event resource");
+    word data;
+    while (resource->receive_event(&data)) {
+      // Don't dispatch while unregistering.
+    }
+  } while (xQueueRemoveFromSet(queue, _queue_set) != pdPASS);
 }
 
 } // namespace toit
