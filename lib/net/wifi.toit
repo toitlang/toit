@@ -17,7 +17,7 @@ service_/WifiServiceClient? ::= (WifiServiceClient --no-open).open
 
 open --ssid/string --password/string -> net.Interface
     --save/bool=false:
-  return open {
+  return open --save=save {
     CONFIG_SSID: ssid,
     CONFIG_PASSWORD: password,
   }
