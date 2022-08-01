@@ -102,13 +102,13 @@ class Socket implements net.Socket:
 
   ensure_state_ bits:
     state := ensure_state_
-    state_bits / int? := null
+    state_bits /int? := null
     while state_bits == null:
       state_bits = state.wait_for_state (bits | TOIT_UDP_ERROR_ | TOIT_UDP_NEEDS_GC_)
       if state_bits & TOIT_UDP_NEEDS_GC_ != 0:
         state_bits = null
         udp_gc_ state.group
-    if not state_.resource: return null  // Closed from a different task.
+    if not state_: return null  // Closed from a different task.
     assert: state_bits != 0
     if (state_bits & TOIT_UDP_ERROR_) == 0:
       return state

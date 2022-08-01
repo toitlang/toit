@@ -393,6 +393,7 @@ namespace toit {
 #define MODULE_UART(PRIMITIVE)               \
   PRIMITIVE(init, 0)                         \
   PRIMITIVE(create, 10)                      \
+  PRIMITIVE(create_path, 6)                  \
   PRIMITIVE(close, 2)                        \
   PRIMITIVE(get_baud_rate, 1)                \
   PRIMITIVE(set_baud_rate, 2)                \
