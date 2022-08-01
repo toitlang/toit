@@ -233,6 +233,10 @@ PRIMITIVE(create) {
   return proxy;
 }
 
+PRIMITIVE(create_path) {
+  UNIMPLEMENTED_PRIMITIVE;
+}
+
 PRIMITIVE(close) {
   ARGS(UARTResourceGroup, uart, UARTResource, res);
   uart->unregister_resource(res);

@@ -134,10 +134,11 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update -q
-          sudo apt-get install -q ninja-build ccache gcc-multilib g++-multilib
+          sudo apt-get install -q ninja-build ccache gcc-multilib g++-multilib socat
           ninja --version
           cmake --version
           gcc --version
+          socat -V
       - name: Install dependencies - macOS
         if: runner.os == 'macOS'
         run: |
