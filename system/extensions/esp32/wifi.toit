@@ -35,16 +35,10 @@ class WifiServiceDefinition extends NetworkServiceDefinitionBase:
 
   handle pid/int client/int index/int arguments/any -> any:
     if index == WifiService.CONNECT_INDEX:
-      return connect client (build_config arguments[0] arguments[1])
+      return connect client arguments
     if index == WifiService.ESTABLISH_INDEX:
-      return establish client (build_config arguments[0] arguments[1])
+      return establish client arguments
     return super pid client index arguments
-
-  static build_config keys/List? values/List -> Map?:
-    if not keys: return null
-    config ::= {:}
-    keys.size.repeat: config[keys[it]] = values[it]
-    return config
 
   connect client/int -> List:
     return connect client null

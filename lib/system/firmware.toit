@@ -9,7 +9,7 @@ User-space side of the RPC API for updating the firmware.
 import system.api.firmware show FirmwareServiceClient
 import system.services show ServiceResourceProxy
 
-_client_ /FirmwareServiceClient ::= FirmwareServiceClient
+_client_ /FirmwareServiceClient? ::= (FirmwareServiceClient --no-open).open
 
 /**
 Returns whether the currently executing firmware is
@@ -21,6 +21,7 @@ Firmware that is not validated automatically rolls back to
   to reboot into the current firmware.
 */
 is_validation_pending -> bool:
+  if not _client_: return false
   return _client_.is_validation_pending
 
 /**
@@ -28,6 +29,7 @@ Returns whether another firmware is installed and can be
   rolled back to.
 */
 is_rollback_possible -> bool:
+  if not _client_: return false
   return _client_.is_rollback_possible
 
 /**
@@ -39,6 +41,7 @@ Returns true if the validation was successful and
   not needed ($is_validation_pending is false).
 */
 validate -> bool:
+  if not _client_: throw "UNSUPPORTED"
   return _client_.validate
 
 /**
@@ -49,6 +52,7 @@ Throws an exception if the previous firmware is invalid
   or not present.
 */
 rollback -> none:
+  if not _client_: throw "UNSUPPORTED"
   _client_.rollback
 
 /**
@@ -63,6 +67,7 @@ It is common that newly installed firmware boots with
 */
 class FirmwareWriter extends ServiceResourceProxy:
   constructor from/int to/int:
+    if not _client_: throw "UNSUPPORTED"
     super _client_ (_client_.firmware_writer_open from to)
 
   write bytes/ByteArray -> none:
