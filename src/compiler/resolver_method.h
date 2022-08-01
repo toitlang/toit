@@ -219,14 +219,15 @@ class MethodResolver : public ast::Visitor {
   void _visit_potential_call_dot(ast::Dot* ast_dot,
                                  CallBuilder& call_builder,
                                  ast::LspSelection* named_lsp_selection);
-  void _visit_potential_call_index(ast::Index* ast_index,
+  void _visit_potential_call_index(ast::Node* ast_target,
                                    CallBuilder& call_builder);
-  void _visit_potential_call_index_slice(ast::IndexSlice* ast_index_slice,
+  void _visit_potential_call_index_slice(ast::Node* ast_target,
                                          CallBuilder& call_builder);
   void _visit_potential_call_super(ast::Node* ast_target,
                                    CallBuilder& call_builder,
                                    bool is_constructor_super_call);
-  void _visit_potential_call(ast::Node* ast_target,
+  void _visit_potential_call(ast::Expression* potential_call,
+                             ast::Node* ast_target,
                              List<ast::Expression*> ast_arguments = List<ast::Expression*>());
 
   ir::Expression* _instantiate_runtime(Symbol id,

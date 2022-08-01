@@ -46,15 +46,15 @@ bool Object::byte_content(Program* program, const uint8** content, int* length, 
     auto instance = Instance::cast(this);
     auto class_id = instance->class_id();
     if (strings_only == STRINGS_OR_BYTE_ARRAYS && class_id == program->byte_array_cow_class_id()) {
-      auto backing = instance->at(Instance::BYTE_ARRAY_COW_BACKING_OFFSET);
+      auto backing = instance->at(Instance::BYTE_ARRAY_COW_BACKING_INDEX);
       return backing->byte_content(program, content, length, strings_only);
     } else if ((strings_only == STRINGS_OR_BYTE_ARRAYS && class_id == program->byte_array_slice_class_id()) || class_id == program->string_slice_class_id()) {
-      ASSERT(Instance::STRING_SLICE_STRING_OFFSET == Instance::BYTE_ARRAY_SLICE_BYTE_ARRAY_OFFSET);
-      ASSERT(Instance::STRING_SLICE_FROM_OFFSET == Instance::BYTE_ARRAY_SLICE_FROM_OFFSET);
-      ASSERT(Instance::STRING_SLICE_TO_OFFSET == Instance::BYTE_ARRAY_SLICE_TO_OFFSET);
-      auto wrapped = instance->at(Instance::STRING_SLICE_STRING_OFFSET);
-      auto from = instance->at(Instance::STRING_SLICE_FROM_OFFSET);
-      auto to = instance->at(Instance::STRING_SLICE_TO_OFFSET);
+      ASSERT(Instance::STRING_SLICE_STRING_INDEX == Instance::BYTE_ARRAY_SLICE_BYTE_ARRAY_INDEX);
+      ASSERT(Instance::STRING_SLICE_FROM_INDEX == Instance::BYTE_ARRAY_SLICE_FROM_INDEX);
+      ASSERT(Instance::STRING_SLICE_TO_INDEX == Instance::BYTE_ARRAY_SLICE_TO_INDEX);
+      auto wrapped = instance->at(Instance::STRING_SLICE_STRING_INDEX);
+      auto from = instance->at(Instance::STRING_SLICE_FROM_INDEX);
+      auto to = instance->at(Instance::STRING_SLICE_TO_INDEX);
       if (!is_heap_object(wrapped)) return false;
       // TODO(florian): we could eventually accept larger integers here.
       if (!is_smi(from)) return false;

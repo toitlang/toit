@@ -151,6 +151,29 @@ snapshots-cross: tools download-packages build/$(CROSS_ARCH)/CMakeCache.txt
 version-file-cross: build/$(CROSS_ARCH)/CMakeCache.txt
 	(cd build/$(CROSS_ARCH) && ninja build_version_file)
 
+PI_CROSS_ARCH := raspberry_pi
+
+.PHONY: pi-sysroot
+pi-sysroot: build/$(PI_CROSS_ARCH)/sysroot/usr
+
+.PHONY: check-env-sysroot
+check-env-sysroot:
+ifeq ("", "$(shell command -v dpkg)")
+	$(error dpkg not in path.)
+endif
+
+build/$(PI_CROSS_ARCH)/sysroot/usr: check-env-sysroot
+	# This rule is brittle, since it only depends on the 'usr' folder of the sysroot.
+	# If the sysroot script fails, it might be incomplete, but another call to
+	# the rule won't do anything anymore.
+	# Generally we use this rule on the buildbot and are thus not too concerned.
+	mkdir -p build/$(PI_CROSS_ARCH)/sysroot
+	# The sysroot script doesn't like symlinks in the path. This is why we call 'realpath'.
+	third_party/rpi/sysroot.py --distro raspbian --sysroot $$(realpath build/$(PI_CROSS_ARCH)/sysroot) libc6-dev libstdc++-6-dev
+
+.PHONY: pi
+pi: pi-sysroot
+	$(MAKE) CROSS_ARCH=raspberry_pi SYSROOT="$(CURDIR)/build/$(PI_CROSS_ARCH)/sysroot" all-cross
 
 # ESP32 VARIANTS
 SNAPSHOT_DIR = build/$(HOST)/sdk/snapshots
@@ -244,15 +267,17 @@ endif
 clean:
 	rm -rf build/
 
+INSTALL_SRC_ARCH := $(HOST)
+
 .PHONY: install-sdk install
 install-sdk: all
-	install -D --target-directory="$(DESTDIR)$(prefix)"/bin "$(CURDIR)"/build/$(HOST)/sdk/bin/*
+	install -D --target-directory="$(DESTDIR)$(prefix)"/bin "$(CURDIR)"/build/$(INSTALL_SRC_ARCH)/sdk/bin/*
 	chmod 644 "$(DESTDIR)$(prefix)"/bin/*.snapshot
 	mkdir -p "$(DESTDIR)$(prefix)"/lib
 	cp -R "$(CURDIR)"/lib/* "$(DESTDIR)$(prefix)"/lib
 	find "$(DESTDIR)$(prefix)"/lib -type f -exec chmod 644 {} \;
 	mkdir -p "$(DESTDIR)$(prefix)"/snapshots
-	cp "$(CURDIR)"/build/$(HOST)/sdk/snapshots/* "$(DESTDIR)$(prefix)"/snapshots
+	cp "$(CURDIR)"/build/$(INSTALL_SRC_ARCH)/sdk/snapshots/* "$(DESTDIR)$(prefix)"/snapshots
 	find "$(DESTDIR)$(prefix)"/snapshots -type f -exec chmod 644 {} \;
 
 install: install-sdk
@@ -265,6 +290,7 @@ test:
 
 .PHONY: update-gold
 update-gold:
+	$(MAKE) rebuild-cmake
 	(cd build/$(HOST) && ninja update_gold)
 	(cd build/$(HOST) && ninja update_minus_s_gold)
 

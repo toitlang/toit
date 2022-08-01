@@ -116,12 +116,12 @@ bool MessageEncoder::encode(Object* object) {
     Instance* instance = Instance::cast(object);
     Smi* class_id = instance->class_id();
     if (class_id == _program->list_class_id()) {
-      Object* backing = instance->at(Instance::LIST_ARRAY_OFFSET);
+      Object* backing = instance->at(Instance::LIST_ARRAY_INDEX);
       if (is_smi(backing)) return false;
       class_id = HeapObject::cast(backing)->class_id();
       if (class_id == _program->array_class_id()) {
         Array* array = Array::cast(backing);
-        Object* size = instance->at(Instance::LIST_SIZE_OFFSET);
+        Object* size = instance->at(Instance::LIST_SIZE_INDEX);
         if (!is_smi(size)) return false;
         return encode_array(array, Smi::cast(size)->value());
       } else if (class_id == _program->large_array_class_id()) {
@@ -179,11 +179,11 @@ bool MessageEncoder::encode_array(Array* object, int size) {
 bool MessageEncoder::encode_map(Instance* instance) {
   write_uint8(TAG_MAP);
 
-  Object* object = instance->at(Instance::MAP_BACKING_OFFSET);
+  Object* object = instance->at(Instance::MAP_BACKING_INDEX);
   if (is_smi(object)) return false;
   HeapObject* backing = HeapObject::cast(object);
 
-  object = instance->at(Instance::MAP_SIZE_OFFSET);
+  object = instance->at(Instance::MAP_SIZE_INDEX);
   if (!is_smi(object)) return false;
   word size = Smi::cast(object)->value();
 
@@ -191,7 +191,7 @@ bool MessageEncoder::encode_map(Instance* instance) {
   if (size == 0) return true;  // Do this before looking at the backing, which may be null.
   Smi* class_id = backing->class_id();
   if (class_id == _program->list_class_id()) {
-    object = Instance::cast(backing)->at(Instance::LIST_ARRAY_OFFSET);
+    object = Instance::cast(backing)->at(Instance::LIST_ARRAY_INDEX);
     if (is_smi(object)) return false;
     backing = HeapObject::cast(object);
   }
@@ -488,10 +488,10 @@ Object* MessageDecoder::decode_map() {
     return null;
   }
   if (size == 0) {
-    result->at_put(Instance::MAP_SIZE_OFFSET, Smi::from(0));
-    result->at_put(Instance::MAP_SPACES_LEFT_OFFSET, Smi::from(0));
-    result->at_put(Instance::MAP_INDEX_OFFSET, _program->null_object());
-    result->at_put(Instance::MAP_BACKING_OFFSET, _program->null_object());
+    result->at_put(Instance::MAP_SIZE_INDEX, Smi::from(0));
+    result->at_put(Instance::MAP_SPACES_LEFT_INDEX, Smi::from(0));
+    result->at_put(Instance::MAP_INDEX_INDEX, _program->null_object());
+    result->at_put(Instance::MAP_BACKING_INDEX, _program->null_object());
     return result;
   }
   Array* array = _process->object_heap()->allocate_array(size * 2, Smi::zero());
@@ -504,10 +504,10 @@ Object* MessageDecoder::decode_map() {
     if (_allocation_failed) return null;
     array->at_put(i, inner);
   }
-  result->at_put(Instance::MAP_SIZE_OFFSET, Smi::from(size));
-  result->at_put(Instance::MAP_SPACES_LEFT_OFFSET, Smi::from(0));
-  result->at_put(Instance::MAP_INDEX_OFFSET, _program->null_object());
-  result->at_put(Instance::MAP_BACKING_OFFSET, array);
+  result->at_put(Instance::MAP_SIZE_INDEX, Smi::from(size));
+  result->at_put(Instance::MAP_SPACES_LEFT_INDEX, Smi::from(0));
+  result->at_put(Instance::MAP_INDEX_INDEX, _program->null_object());
+  result->at_put(Instance::MAP_BACKING_INDEX, array);
   return result;
 }
 

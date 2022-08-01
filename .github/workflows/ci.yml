@@ -10,10 +10,8 @@ jobs:
     strategy:
       # The matrix will run all possible combinations in parallel.
       matrix:
-        # macos-10.15, as we currently need Clang 12 (https://github.com/toitlang/toit/issues/130)
-        # windows-2022, as it's currently later than windows-latest.
         # ubuntu-18.04 so that we don't depend on a recent glibc.
-        container: [ ubuntu-18.04, macos-10.15, windows-2022 ]
+        container: [ ubuntu-18.04, macos-latest, windows-latest ]
         shard: [1, 2, 3, 4, 5]
 
         include:
@@ -40,6 +38,7 @@ jobs:
           echo ::set-output name=debug_dir::debug-ci/$RUNNER_OS-${{ matrix.shard }}
           if [ "$RUNNER_OS" == "Linux" ]; then
             echo ::set-output name=artifact::toit-linux.tar.gz
+            echo ::set-output name=raspberry_pi_artifact::toit-rpi.tar.gz
             echo ::set-output name=total_shards::10
           elif [ "$RUNNER_OS" == "macOS" ]; then
             echo ::set-output name=artifact::toit-macos.tar.gz
@@ -109,30 +108,37 @@ jobs:
           restore-keys: ${{ runner.os }}-ccache-
 
       # Cache deb files.
-      - name: Apt Cache
+      - name: Apt cache - Linux
         if: runner.os == 'Linux'
         uses: actions/cache@v2
         with:
-          path: /var/cache/apt-cacher-ng
+          path: ${{ github.workspace }}/apt-cacher-ng
           key: ${{ runner.os }}-apt-${{ github.sha }}
           restore-keys: ${{ runner.os }}-apt
 
-      - name: Install apt-cacher-ng
+      - name: Install and configure apt-cacher-ng - Linux
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update -q
           sudo apt-get install -q apt-cacher-ng
+          sudo systemctl stop apt-cacher-ng
+          if [[ -f apt-cacher-ng/cache.tar.gz ]]; then
+            sudo tar -xzf apt-cacher-ng/cache.tar.gz -C /var/cache/apt-cacher-ng
+          fi
           echo "Acquire::http::Proxy \"http://localhost:3142\";" | sudo tee /etc/apt/apt.conf.d/00proxy
+          echo "PassThroughPattern: .*" | sudo tee -a /etc/apt-cacher-ng/acng.conf
+          sudo systemctl restart apt-cacher-ng
 
       # Fetch the dependencies. Different for each platform.
       - name: Install dependencies - Linux
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update -q
-          sudo apt-get install -q ninja-build ccache gcc-multilib g++-multilib
+          sudo apt-get install -q ninja-build ccache gcc-multilib g++-multilib socat
           ninja --version
           cmake --version
           gcc --version
+          socat -V
       - name: Install dependencies - macOS
         if: runner.os == 'macOS'
         run: |
@@ -146,6 +152,13 @@ jobs:
           ninja --version
           ccache --version
           cmake --version
+
+      - name: Copy apt cache back - Linux
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p apt-cacher-ng
+          sudo tar -czf apt-cacher-ng/cache.tar.gz -C /var/cache/apt-cacher-ng .
+          sudo chown $(whoami) apt-cacher-ng/cache.tar.gz
 
       - name: Setup compilation env
         shell: bash
@@ -168,8 +181,14 @@ jobs:
             make CROSS_ARCH=host32 BUILD_TYPE=Debug all-cross
           fi
 
+      - name: Build Raspberry Pi
+        if: runner.os == 'Linux' && matrix.shard == 1
+        run: |
+          make pi
+
       # Test.
       - name: Test
+        shell: bash  # This is crucial, as the powershell doesn't abort when there is an error.
         run: |
           make test
           make test-health
@@ -226,6 +245,14 @@ jobs:
           cp -R ./build/host/sdk ./build/host/toit
           tar -czf build/${{ steps.constants.outputs.artifact }} -C ./build/host -h --exclude toit/bin/mbedtls toit
 
+      - name: Pack Raspberry Pi artifacts
+        if: matrix.shard == 1 && runner.os == 'Linux'
+        shell: bash
+        # Note that we use `cp -R` first, since that works on every platform.
+        run: |
+          cp -R ./build/raspberry_pi/sdk ./build/raspberry_pi/toit
+          tar -czf build/${{ steps.constants.outputs.raspberry_pi_artifact }} -C ./build/raspberry_pi -h --exclude toit/bin/mbedtls toit
+
       - name: Prepare debug repros
         if: always()
         continue-on-error: true
@@ -251,6 +278,13 @@ jobs:
           name: ${{ runner.os }}-build
           path: build/${{ steps.constants.outputs.artifact }}
 
+      - name: Upload Raspberry Pi artifacts
+        if: matrix.shard == 1 && runner.os == 'Linux'
+        uses: actions/upload-artifact@v2
+        with:
+          name: ${{ runner.os }}-build
+          path: build/${{ steps.constants.outputs.raspberry_pi_artifact }}
+
       - name: Upload release artifacts
         if: |
           (github.event_name) == 'release' &&
@@ -259,6 +293,18 @@ jobs:
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: build/${{ steps.constants.outputs.artifact }}
+          tag: ${{ github.ref }}
+          overwrite: true
+
+      - name: Upload release Raspberry Pi artifacts
+        if: |
+          (github.event_name) == 'release' &&
+          (matrix.shard == 1) &&
+          (runner.os == 'Linux')
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: build/${{ steps.constants.outputs.raspberry_pi_artifact }}
           tag: ${{ github.ref }}
           overwrite: true
 

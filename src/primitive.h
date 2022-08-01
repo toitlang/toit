@@ -159,6 +159,9 @@ namespace toit {
   PRIMITIVE(object_class_id, 1)              \
   PRIMITIVE(number_to_integer, 1)            \
   PRIMITIVE(float_sqrt, 1)                   \
+  PRIMITIVE(float_ceil, 1)                   \
+  PRIMITIVE(float_floor, 1)                  \
+  PRIMITIVE(float_trunc, 1)                  \
   PRIMITIVE(command, 0)                      \
   PRIMITIVE(args, 0)                         \
   PRIMITIVE(hatch, 2)                        \
@@ -376,7 +379,9 @@ namespace toit {
   PRIMITIVE(close, 1)                        \
   PRIMITIVE(device, 7)                       \
   PRIMITIVE(device_close, 2)                 \
-  PRIMITIVE(transfer, 8)                     \
+  PRIMITIVE(transfer, 9)                     \
+  PRIMITIVE(acquire_bus, 1)                  \
+  PRIMITIVE(release_bus, 1)                  \
 
 #define MODULE_SPI_LINUX(PRIMITIVE)          \
   PRIMITIVE(open, 1)                         \
@@ -385,10 +390,13 @@ namespace toit {
 #define MODULE_UART(PRIMITIVE)               \
   PRIMITIVE(init, 0)                         \
   PRIMITIVE(create, 10)                      \
+  PRIMITIVE(create_path, 6)                  \
   PRIMITIVE(close, 2)                        \
+  PRIMITIVE(get_baud_rate, 1)                \
   PRIMITIVE(set_baud_rate, 2)                \
   PRIMITIVE(write, 6)                        \
   PRIMITIVE(read, 1)                         \
+  PRIMITIVE(wait_tx, 1)                      \
 
 #define MODULE_RMT(PRIMITIVE)                \
   PRIMITIVE(init, 0)                         \
@@ -875,7 +883,7 @@ namespace toit {
 #define _A_T_ZlibRle(N, name)             MAKE_UNPACKING_MACRO(ZlibRle, N, name)
 #define _A_T_UARTResource(N, name)        MAKE_UNPACKING_MACRO(UARTResource, N, name)
 #define _A_T_I2SResource(N, name)         MAKE_UNPACKING_MACRO(I2SResource, N, name)
-#define _A_T_AdcState(N, name)            MAKE_UNPACKING_MACRO(AdcState, N, name)
+#define _A_T_AdcResource(N, name)         MAKE_UNPACKING_MACRO(AdcResource, N, name)
 #define _A_T_PWMResource(N, name)         MAKE_UNPACKING_MACRO(PWMResource, N, name)
 #define _A_T_PcntUnitResource(N, name)    MAKE_UNPACKING_MACRO(PcntUnitResource, N, name)
 #define _A_T_RMTResource(N, name)         MAKE_UNPACKING_MACRO(RMTResource, N, name)
