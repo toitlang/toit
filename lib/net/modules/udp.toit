@@ -108,7 +108,7 @@ class Socket implements net.Socket:
       if state_bits & TOIT_UDP_NEEDS_GC_ != 0:
         state_bits = null
         udp_gc_ state.group
-    if not state_.resource: return null  // Closed from a different task.
+    if not state_ or not state_.resource: return null  // Closed from a different task.
     assert: state_bits != 0
     if (state_bits & TOIT_UDP_ERROR_) == 0:
       return state
