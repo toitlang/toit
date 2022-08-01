@@ -15,16 +15,18 @@ CONFIG_CHANNEL   /string ::= "channel"
 
 service_/WifiServiceClient? ::= (WifiServiceClient --no-open).open
 
-open --ssid/string --password/string -> net.Interface:
+open --ssid/string --password/string -> net.Interface
+    --save/bool=false:
   return open {
     CONFIG_SSID: ssid,
     CONFIG_PASSWORD: password,
   }
 
-open config/Map? -> net.Interface:
+open config/Map? -> net.Interface
+    --save/bool=false:
   service := service_
   if not service: throw "WiFi unavailable"
-  return SystemInterface_ service (service.connect config)
+  return SystemInterface_ service (service.connect config save)
 
 establish --ssid/string --password/string -> net.Interface
     --broadcast/bool=true
