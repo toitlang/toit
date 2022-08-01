@@ -156,7 +156,14 @@ class TouchResourceGroup : public ResourceGroup {
       : ResourceGroup(process) {}
 
   void tear_down() override {
-    if (!should_keep_touch_active) touch_pad_deinit();
+    {
+      Locker locker(OS::global_mutex());
+      _user_count--;
+      if (_user_count == 0 && !should_keep_touch_active) {
+        touch_pad_deinit();
+        _is_initialized = false;
+      }
+    }
     ResourceGroup::tear_down();
   }
 
@@ -171,16 +178,31 @@ class TouchResourceGroup : public ResourceGroup {
   }
 
   esp_err_t init() {
-    esp_err_t err = touch_pad_init();
-    if (err != ESP_OK) return err;
+    esp_err_t err;
+    {
+      Locker locker(OS::global_mutex());
+      if (_user_count == 0 && !_is_initialized) {
+        err = touch_pad_init();
+        if (err != ESP_OK) return err;
+        _is_initialized = true;
+        _user_count++;
+      }
     err = touch_pad_set_voltage(TOUCH_HVOLT_2V7, TOUCH_LVOLT_0V5, TOUCH_HVOLT_ATTEN_1V);
     if (err != ESP_OK) return err;
     // Start the hard-ware FSM, so that `touch_pad_get_status` is up to date.
     // The hardware FSM is also necessary for waking up from deep-sleep.
     err = touch_pad_set_fsm_mode(TOUCH_FSM_MODE_TIMER);
     return err;
+    }
   }
+
+ private:
+  static bool _is_initialized;
+  static int _user_count;
 };
+
+bool TouchResourceGroup::_is_initialized = false;
+int TouchResourceGroup::_user_count = 0;
 
 MODULE_IMPLEMENTATION(touch, MODULE_TOUCH)
 
