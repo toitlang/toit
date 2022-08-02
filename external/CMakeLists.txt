@@ -44,11 +44,6 @@ set(TOIT_REPOS
     https://github.com/toitware/toit-e-paper
     https://github.com/toitware/toit-font-clock
     https://github.com/toitware/toit-font-google-100dpi-roboto
-    https://github.com/toitware/toit-font-welch-tiny
-    https://github.com/toitware/toit-font-x11-adobe-100
-    https://github.com/toitware/toit-font-x11-adobe-75
-    https://github.com/toitware/toit-font-x11-b-and-h
-    https://github.com/toitware/toit-font-x11-mutt
     https://github.com/toitware/toit-gnss-location
     https://github.com/toitware/toit-heading
     https://github.com/toitware/toit-hx711
