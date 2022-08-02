@@ -53,6 +53,7 @@ namespace toit {
   M(blob,    MODULE_BLOB)                    \
   M(gpio,    MODULE_GPIO)                    \
   M(adc,     MODULE_ADC)                     \
+  M(dac,     MODULE_DAC)                     \
   M(pwm,     MODULE_PWM)                     \
   M(touch,   MODULE_TOUCH)                   \
   M(programs_registry, MODULE_PROGRAMS_REGISTRY) \
@@ -509,6 +510,13 @@ namespace toit {
   PRIMITIVE(get, 2)                         \
   PRIMITIVE(close, 1)                       \
 
+#define MODULE_DAC(PRIMITIVE)               \
+  PRIMITIVE(init, 0)                        \
+  PRIMITIVE(use, 3)                         \
+  PRIMITIVE(unuse, 2)                       \
+  PRIMITIVE(set, 2)                         \
+  PRIMITIVE(cosine_wave, 5)                 \
+
 #define MODULE_PWM(PRIMITIVE)                \
   PRIMITIVE(init, 2)                         \
   PRIMITIVE(close, 1)                        \
@@ -672,6 +680,16 @@ namespace toit {
   word _word_##name = Smi::cast(_raw_##name)->value();  \
   int name = _word_##name;                              \
   if (name != _word_##name) OUT_OF_RANGE;               \
+
+#define _A_T_int8(N, name)                                                \
+  Object* _raw_##name = __args[-(N)];                                     \
+  if (!is_smi(_raw_##name)) {                                             \
+    if (is_large_integer(_raw_##name)) OUT_OF_RANGE;                      \
+    else WRONG_TYPE;                                                      \
+  }                                                                       \
+  word _value_##name = Smi::cast(_raw_##name)->value();                   \
+  if (INT8_MIN > _value_##name || _value_##name > INT8_MAX) OUT_OF_RANGE; \
+  int8 name = (int8) _value_##name;
 
 #define _A_T_uint8(N, name)                                           \
   Object* _raw_##name = __args[-(N)];                                 \
@@ -843,6 +861,7 @@ namespace toit {
   if (!name) ALREADY_CLOSED;                                     \
 
 #define _A_T_SimpleResourceGroup(N, name) MAKE_UNPACKING_MACRO(SimpleResourceGroup, N, name)
+#define _A_T_DacResourceGroup(N, name)    MAKE_UNPACKING_MACRO(DacResourceGroup, N, name)
 #define _A_T_GPIOResourceGroup(N, name)   MAKE_UNPACKING_MACRO(GPIOResourceGroup, N, name)
 #define _A_T_TouchResourceGroup(N, name)  MAKE_UNPACKING_MACRO(TouchResourceGroup, N, name)
 #define _A_T_I2CResourceGroup(N, name)    MAKE_UNPACKING_MACRO(I2CResourceGroup, N, name)
@@ -893,9 +912,11 @@ namespace toit {
 #define _A_T_Sha256(N, name)              MAKE_UNPACKING_MACRO(Sha256, N, name)
 #define _A_T_Adler32(N, name)             MAKE_UNPACKING_MACRO(Adler32, N, name)
 #define _A_T_ZlibRle(N, name)             MAKE_UNPACKING_MACRO(ZlibRle, N, name)
+#define _A_T_GPIOResource(N, name)        MAKE_UNPACKING_MACRO(GPIOResource, N, name)
 #define _A_T_UARTResource(N, name)        MAKE_UNPACKING_MACRO(UARTResource, N, name)
 #define _A_T_I2SResource(N, name)         MAKE_UNPACKING_MACRO(I2SResource, N, name)
 #define _A_T_AdcResource(N, name)         MAKE_UNPACKING_MACRO(AdcResource, N, name)
+#define _A_T_DacResource(N, name)         MAKE_UNPACKING_MACRO(DacResource, N, name)
 #define _A_T_PWMResource(N, name)         MAKE_UNPACKING_MACRO(PWMResource, N, name)
 #define _A_T_PcntUnitResource(N, name)    MAKE_UNPACKING_MACRO(PcntUnitResource, N, name)
 #define _A_T_RMTResource(N, name)         MAKE_UNPACKING_MACRO(RMTResource, N, name)

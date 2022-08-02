@@ -32,7 +32,7 @@
 #include "../resource_pool.h"
 #include "../vm.h"
 
-#include "../event_sources/gpio_esp32.h"
+#include "../event_sources/ev_queue_esp32.h"
 #include "../event_sources/system_esp32.h"
 
 namespace toit {
@@ -49,36 +49,87 @@ ResourcePool<int, -1> gpio_pins(
     32, 33, 34, 35, 36, 37, 38, 39
 );
 
+class GPIOResource : public EventQueueResource {
+ public:
+  TAG(GPIOResource);
+
+  GPIOResource(ResourceGroup* group, int pin)
+      // GPIO resources share a queue, which is always on the event source, so pass null.
+      : EventQueueResource(group, null)
+      , _pin(pin) {}
+
+  int pin() const { return _pin; }
+
+  bool check_gpio(word pin) override;
+
+ private:
+  int _pin;
+};
+
 class GPIOResourceGroup : public ResourceGroup {
  public:
   TAG(GPIOResourceGroup);
   explicit GPIOResourceGroup(Process* process)
-      : ResourceGroup(process, GPIOEventSource::instance()) {}
-
-  virtual void on_unregister_resource(Resource* r) {
-    gpio_num_t pin = static_cast<gpio_num_t>(static_cast<IntResource*>(r)->id());
-    // Clear all state associated with the GPIO pin.
-    // NOTE: Don't use gpio_reset_pin - it will put on an internal pull-up that's
-    // kept during deep sleep.
-
-    gpio_config_t cfg = {
-      .pin_bit_mask = 1ULL << pin,
-      .mode = GPIO_MODE_DISABLE,
-      .pull_up_en = GPIO_PULLUP_DISABLE,
-      .pull_down_en = GPIO_PULLDOWN_DISABLE,
-      .intr_type = GPIO_INTR_DISABLE,
-    };
-    gpio_config(&cfg);
-    if (pin < 34) gpio_set_level(pin, 0);
-
-    gpio_pins.put(pin);
+      : ResourceGroup(process, EventQueueEventSource::instance()) {
+    queue = EventQueueEventSource::instance()->gpio_queue();
   }
+
+  virtual void on_register_resource(Resource* r);
+  virtual void on_unregister_resource(Resource* r);
 
  private:
   virtual uint32_t on_event(Resource* resource, word data, uint32_t state) {
     return state | (data ? GPIO_STATE_UP : GPIO_STATE_DOWN);
   }
+
+  static QueueHandle_t IRAM_ATTR queue;
+
+  static void IRAM_ATTR isr_handler(void* arg);
 };
+
+void GPIOResourceGroup::on_register_resource(Resource* r) {
+  gpio_num_t pin = static_cast<gpio_num_t>(static_cast<GPIOResource*>(r)->pin());
+  SystemEventSource::instance()->run([&]() -> void {
+    FATAL_IF_NOT_ESP_OK(gpio_isr_handler_add(pin, isr_handler, reinterpret_cast<void*>(pin)));
+  });
+}
+
+void GPIOResourceGroup::on_unregister_resource(Resource* r) {
+  gpio_num_t pin = static_cast<gpio_num_t>(static_cast<GPIOResource*>(r)->pin());
+
+  SystemEventSource::instance()->run([&]() -> void {
+    FATAL_IF_NOT_ESP_OK(gpio_isr_handler_remove(gpio_num_t(pin)));
+  });
+
+  // Clear all state associated with the GPIO pin.
+  // NOTE: Don't use gpio_reset_pin - it will put on an internal pull-up that's
+  // kept during deep sleep.
+
+  gpio_config_t cfg = {
+    .pin_bit_mask = 1ULL << pin,
+    .mode = GPIO_MODE_DISABLE,
+    .pull_up_en = GPIO_PULLUP_DISABLE,
+    .pull_down_en = GPIO_PULLDOWN_DISABLE,
+    .intr_type = GPIO_INTR_DISABLE,
+  };
+  gpio_config(&cfg);
+  if (pin < 34) gpio_set_level(pin, 0);
+
+  gpio_pins.put(pin);
+}
+
+QueueHandle_t IRAM_ATTR GPIOResourceGroup::queue;
+
+void IRAM_ATTR GPIOResourceGroup::isr_handler(void* arg) {
+  word id = unvoid_cast<word>(arg);
+  xQueueSendToBackFromISR(queue, &id, null);
+  return;
+}
+
+bool GPIOResource::check_gpio(word pin) {
+  if (pin != _pin) return false;
+  return true;
+}
 
 MODULE_IMPLEMENTATION(gpio, MODULE_GPIO)
 
@@ -101,20 +152,22 @@ PRIMITIVE(use) {
 
   if (!gpio_pins.take(num)) ALREADY_IN_USE;
 
-  IntResource* resource = resource_group->register_id(num);
+  GPIOResource* resource = _new GPIOResource(resource_group, num);
   if (!resource) {
     gpio_pins.put(num);
     MALLOC_FAILED;
   }
+  resource_group->register_resource(resource);
+
   proxy->set_external_address(resource);
 
   return proxy;
 }
 
 PRIMITIVE(unuse) {
-  ARGS(GPIOResourceGroup, resource_group, IntResource, resource);
+  ARGS(GPIOResourceGroup, resource_group, GPIOResource, resource);
 
-  int num = resource->id();
+  int num = resource->pin();
   resource_group->unregister_id(num);
   resource_proxy->clear_external_address();
   return process->program()->null_object();
