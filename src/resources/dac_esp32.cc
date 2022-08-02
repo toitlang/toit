@@ -98,7 +98,7 @@ class DacResource : public Resource {
 };
 
 esp_err_t DacResource::use_cosine() {
-  Locker locker(OS::global_mutex());
+  Locker locker(OS::resource_mutex());
   esp_err_t err = ESP_OK;
   if (_uses_cosine) return err;
   _uses_cosine = true;
@@ -111,7 +111,7 @@ esp_err_t DacResource::use_cosine() {
 }
 
 esp_err_t DacResource::unuse_cosine() {
-  Locker locker(OS::global_mutex());
+  Locker locker(OS::resource_mutex());
   esp_err_t err = ESP_OK;
   if (!_uses_cosine) return err;
   _uses_cosine = false;
