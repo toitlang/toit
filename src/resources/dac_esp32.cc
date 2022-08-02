@@ -79,7 +79,7 @@ static dac_channel_t get_dac_channel(int pin) {
 
 class DacResourceGroup;
 
-static int _cosine_user_count = 0;
+static int cosine_user_count = 0;
 
 class DacResource : public Resource {
  public:
@@ -92,40 +92,39 @@ class DacResource : public Resource {
 
   dac_channel_t channel() const { return _channel; }
 
-  esp_err_t use_cosine() {
-    esp_err_t err = ESP_OK;
-    if (_uses_cosine) return err;
-    _uses_cosine = true;
-    {
-      Locker locker(OS::global_mutex());
-      _cosine_user_count++;
-      if (_cosine_user_count == 1) {
-        // First user.
-        err = dac_cw_generator_enable();
-      }
-    }
-    return err;
-  }
-
-  esp_err_t unuse_cosine() {
-    esp_err_t err = ESP_OK;
-    if (!_uses_cosine) return err;
-    _uses_cosine = false;
-    {
-      Locker locker(OS::global_mutex());
-      _cosine_user_count--;
-      if (_cosine_user_count == 0) {
-        // Last user.
-        err = dac_cw_generator_disable();
-      }
-    }
-    return err;
-  }
+  esp_err_t use_cosine();
+  esp_err_t unuse_cosine();
 
  private:
   dac_channel_t _channel;
   bool _uses_cosine = false;
 };
+
+esp_err_t DacResource::use_cosine() {
+  Locker locker(OS::global_mutex());
+  esp_err_t err = ESP_OK;
+  if (_uses_cosine) return err;
+  _uses_cosine = true;
+  cosine_user_count++;
+  if (cosine_user_count == 1) {
+    // First user.
+    err = dac_cw_generator_enable();
+  }
+  return err;
+}
+
+esp_err_t DacResource::unuse_cosine() {
+  Locker locker(OS::global_mutex());
+  esp_err_t err = ESP_OK;
+  if (!_uses_cosine) return err;
+  _uses_cosine = false;
+  cosine_user_count--;
+  if (cosine_user_count == 0) {
+    // Last user.
+    err = dac_cw_generator_disable();
+  }
+  return err;
+}
 
 class DacResourceGroup : public ResourceGroup {
  public:
