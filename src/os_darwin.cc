@@ -97,7 +97,6 @@ void OS::set_writable(ProgramBlock* block, bool value) {
 }
 
 void OS::tear_down() {
-  free(_global_mutex);
   free(_scheduler_mutex);
   free(_resource_mutex);
 }

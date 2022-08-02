@@ -221,7 +221,6 @@ void OS::set_up() {
   ASSERT(sizeof(void*) == sizeof(pthread_t));
   (void) pthread_key_create(&thread_key, null);
   Thread::ensure_system_thread();
-  _global_mutex = allocate_mutex(0, "Global mutex");
   _scheduler_mutex = allocate_mutex(4, "Scheduler mutex");
   _resource_mutex = allocate_mutex(99, "Resource mutex");
 }
@@ -335,7 +334,6 @@ void OS::set_writable(ProgramBlock* block, bool value) {
 }
 
 void OS::tear_down() {
-  dispose(_global_mutex);
   dispose(_scheduler_mutex);
   dispose(_resource_mutex);
 }

@@ -36,19 +36,19 @@ class ResourcePool {
 
   // Get any resource from the pool. Returns Invalid if none is available.
   T any() {
-    Locker locker(OS::global_mutex());
+    Locker locker(OS::resource_mutex());
     return any(locker);
   }
 
   // Take a given resource from the pool. Returns false if it's not available.
   bool take(T t) {
-    Locker locker(OS::global_mutex());
+    Locker locker(OS::resource_mutex());
     return take(locker, t);
   }
 
   // Take a given resource from the pool if available, otherwise take any.
   T preferred(T t) {
-    Locker locker(OS::global_mutex());
+    Locker locker(OS::resource_mutex());
 
     if (take(locker, t)) {
       return t;
@@ -59,7 +59,7 @@ class ResourcePool {
 
   // Put a resource back in the pool.
   void put(T value) {
-    Locker locker(OS::global_mutex());
+    Locker locker(OS::resource_mutex());
     _values = _new Value({value, _values});
   }
 

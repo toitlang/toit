@@ -32,7 +32,6 @@
 #endif
 namespace toit {
 
-Mutex* OS::_global_mutex = null;
 Mutex* OS::_scheduler_mutex = null;
 Mutex* OS::_resource_mutex = null;
 
@@ -65,7 +64,7 @@ int64 OS::get_monotonic_time() {
 }
 
 void OS::reset_monotonic_time() {
-  Locker locker(OS::global_mutex());
+  Locker locker(OS::resource_mutex());
 
   int64 timestamp = 0;
   if (!monotonic_gettime(&timestamp)) {
