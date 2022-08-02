@@ -259,11 +259,22 @@ PRIMITIVE(init) {
   int id = wifi_pool.any();
   if (id == kInvalidWifi) OUT_OF_BOUNDS;
 
-  esp_netif_t* netif = ap ? esp_netif_create_default_wifi_ap() : esp_netif_create_default_wifi_sta();
+  // We cannot use the esp_netif_create_default_wifi_xxx() functions,
+  // because they do not correctly check for malloc failure and they
+  // install unnecessary default event handlers.
+  esp_netif_t* netif = null;
+  if (ap) {
+    esp_netif_config_t netif_ap_config = ESP_NETIF_DEFAULT_WIFI_AP();
+    netif = esp_netif_new(&netif_ap_config);
+  } else {
+    esp_netif_config_t netif_sta_config = ESP_NETIF_DEFAULT_WIFI_STA();
+    netif = esp_netif_new(&netif_sta_config);
+  }
   if (!netif) {
     wifi_pool.put(id);
     MALLOC_FAILED;
   }
+  esp_netif_attach_wifi_station(netif);
 
   esp_err_t err = nvs_flash_init();
   if (err != ESP_OK) {
