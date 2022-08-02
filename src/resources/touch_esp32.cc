@@ -167,7 +167,7 @@ class TouchResourceGroup : public ResourceGroup {
 
   void tear_down() override {
     {
-      Locker locker(OS::global_mutex());
+      Locker locker(OS::resource_mutex());
       touch_user_count--;
       if (touch_user_count == 0 && !should_keep_touch_active) {
         touch_pad_deinit();
@@ -203,7 +203,7 @@ PRIMITIVE(init) {
   TouchResourceGroup* touch = _new TouchResourceGroup(process);
   if (!touch) MALLOC_FAILED;
 
-  Locker locker(OS::global_mutex());
+  Locker locker(OS::resource_mutex());
 
   if (touch_user_count == 0 && !touch_is_initialized) {
     esp_err_t err = touch_pad_init();
