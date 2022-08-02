@@ -55,6 +55,7 @@ namespace toit {
   M(adc,     MODULE_ADC)                     \
   M(dac,     MODULE_DAC)                     \
   M(pwm,     MODULE_PWM)                     \
+  M(touch,   MODULE_TOUCH)                   \
   M(programs_registry, MODULE_PROGRAMS_REGISTRY) \
   M(flash,   MODULE_FLASH_REGISTRY)          \
   M(file,    MODULE_FILE)                    \
@@ -349,8 +350,10 @@ namespace toit {
   PRIMITIVE(ota_rollback, 0)                 \
   PRIMITIVE(reset_reason, 0)                 \
   PRIMITIVE(enable_external_wakeup, 2)       \
+  PRIMITIVE(enable_touchpad_wakeup, 0)       \
   PRIMITIVE(wakeup_cause, 0)                 \
   PRIMITIVE(ext1_wakeup_status, 1)           \
+  PRIMITIVE(touchpad_wakeup_status, 0)       \
   PRIMITIVE(total_deep_sleep_time, 0)        \
   PRIMITIVE(total_run_time, 0)               \
   PRIMITIVE(image_config, 0)                 \
@@ -523,6 +526,14 @@ namespace toit {
   PRIMITIVE(frequency, 1)                    \
   PRIMITIVE(set_frequency, 2)                \
   PRIMITIVE(close_channel, 2)                \
+
+#define MODULE_TOUCH(PRIMITIVE)              \
+  PRIMITIVE(init, 0)                         \
+  PRIMITIVE(use, 3)                          \
+  PRIMITIVE(unuse, 2)                        \
+  PRIMITIVE(read, 1)                         \
+  PRIMITIVE(get_threshold, 1)                \
+  PRIMITIVE(set_threshold, 2)                \
 
 #define MODULE_PROGRAMS_REGISTRY(PRIMITIVE)  \
   PRIMITIVE(next_group_id, 0)                \
@@ -852,6 +863,7 @@ namespace toit {
 #define _A_T_SimpleResourceGroup(N, name) MAKE_UNPACKING_MACRO(SimpleResourceGroup, N, name)
 #define _A_T_DacResourceGroup(N, name)    MAKE_UNPACKING_MACRO(DacResourceGroup, N, name)
 #define _A_T_GPIOResourceGroup(N, name)   MAKE_UNPACKING_MACRO(GPIOResourceGroup, N, name)
+#define _A_T_TouchResourceGroup(N, name)  MAKE_UNPACKING_MACRO(TouchResourceGroup, N, name)
 #define _A_T_I2CResourceGroup(N, name)    MAKE_UNPACKING_MACRO(I2CResourceGroup, N, name)
 #define _A_T_I2SResourceGroup(N, name)    MAKE_UNPACKING_MACRO(I2SResourceGroup, N, name)
 #define _A_T_PersistentResourceGroup(N, name) MAKE_UNPACKING_MACRO(PersistentResourceGroup, N, name)
