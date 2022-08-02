@@ -274,10 +274,11 @@ PRIMITIVE(init) {
     MALLOC_FAILED;
   }
 
-  esp_netif_attach_wifi_station(netif);
   if (ap) {
+    esp_netif_attach_wifi_ap(netif);
     esp_wifi_set_default_wifi_ap_handlers();
   } else {
+    esp_netif_attach_wifi_station(netif);
     esp_wifi_set_default_wifi_sta_handlers();
   }
 
