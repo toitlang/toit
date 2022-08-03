@@ -111,6 +111,7 @@ add_executable(
 add_executable(
   toit_run_image
   toit_run_image.cc
+  ${BOOT_SNAPSHOT_CC}
   run.cc
   )
 
