@@ -59,7 +59,7 @@ void SemiSpace::flush() {
   }
 }
 
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
 void SemiSpace::validate() {
   // Iterate all objects, checking their size makes sense.
   for (auto chunk : chunk_list_) {

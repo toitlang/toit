@@ -184,13 +184,13 @@ void ByteGen::update_absolute_positions(int absolute_entry_bci,
 }
 
 void ByteGen::visit(Node* node) {
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
   bool is_for_value = this->is_for_value();
   int height = emitter()->height();
   int locals = _locals_count;
 #endif
   node->accept(this);
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
   ASSERT(is_for_value == this->is_for_value());
   int definitions = _locals_count - locals;
   int expected = height + definitions + (is_for_value ? 1 : 0);

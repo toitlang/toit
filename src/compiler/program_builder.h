@@ -86,7 +86,7 @@ class ProgramBuilder {
   // Prepare this program heap for execution.
   Program* cook();
 
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
   void print();
   void print_tos();
 #endif

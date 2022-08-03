@@ -880,7 +880,7 @@ bool ImageAllocator::initialize(int normal_block_count,
   _memory = _image->address();
   if (_memory == null) return false;
 
-#ifndef DEBUG
+#ifndef TOIT_DEBUG
   // Keep the uninitialized 0xcd markers in debug mode, but otherwise
   // initialize the memory to 0 to make the image more deterministic.
   memset(_memory, 0, memory_byte_size);

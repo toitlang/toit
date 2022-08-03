@@ -58,7 +58,7 @@ VM::~VM() {
 
 VM* VM::_current = null;
 
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
 
 void print_heap_console(ObjectHeap* heap, const char* title) {
   ConsolePrinter p(null);

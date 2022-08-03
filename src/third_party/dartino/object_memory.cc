@@ -183,7 +183,7 @@ bool HeapObject::contains_pointers_to(Program* program, Space* space) {
   return visitor.in_space;
 }
 
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
 void Space::find(uword w, const char* name) {
   for (auto chunk : chunk_list_) chunk->find(w, name);
 }
@@ -202,7 +202,7 @@ void ObjectMemory::tear_down() {
   spare_chunk_ = null;
 }
 
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
 void Chunk::scramble() {
   void* p = reinterpret_cast<void*>(start_);
   memset(p, 0xab, size());
@@ -245,7 +245,7 @@ Chunk* ObjectMemory::allocate_chunk(Space* owner, uword size) {
   ASSERT(base == Utils::round_up(base, TOIT_PAGE_SIZE));
   ASSERT(size == Utils::round_up(size, TOIT_PAGE_SIZE));
 
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
   chunk->scramble();
 #endif
   if (owner) {
@@ -270,7 +270,7 @@ void Chunk::initialize_metadata() const {
 }
 
 void ObjectMemory::free_chunk(Chunk* chunk) {
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
   chunk->scramble();
 #endif
   allocated_ -= chunk->size();
