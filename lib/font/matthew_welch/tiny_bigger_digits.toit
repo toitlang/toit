@@ -34,6 +34,7 @@ This block has 95 assigned code points, and they are all
   present in this font.
   This block contains characters in the range 0x0000-0x007f.
   The bitmaps for this block in this font take up about 2150 bytes.
+Deprecated.  Removed in favour of the font_tiny package.
 */
 ASCII ::= #[
   0x97,0xf0,0x17,0x70,

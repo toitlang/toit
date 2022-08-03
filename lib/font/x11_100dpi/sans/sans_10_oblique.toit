@@ -35,6 +35,7 @@ This block has 95 assigned code points, and they are all
   present in this font.
   This block contains characters in the range 0x0000-0x007f.
   The bitmaps for this block in this font take up about 1764 bytes.
+Deprecated.  Removed in favour of the font_x11_adobe package.
 */
 ASCII ::= #[
   0x97,0xf0,0x17,0x70,
@@ -251,6 +252,7 @@ This block has 96 assigned code points, and they are all
   present in this font.
   This block contains characters in the range 0x0080-0x00ff.
   The bitmaps for this block in this font take up about 2064 bytes.
+Deprecated.  Removed in favour of the font_x11_adobe package.
 */
 LATIN_1_SUPPLEMENT ::= #[
   0x97,0xf0,0x17,0x70,
@@ -469,6 +471,7 @@ This block has 128 assigned code points, and 127 of
   them are present in this font.
   This block contains characters in the range 0x0100-0x017f.
   The bitmaps for this block in this font take up about 2879 bytes.
+Deprecated.  Removed in favour of the font_x11_adobe package.
 */
 LATIN_EXTENDED_A ::= #[
   0x97,0xf0,0x17,0x70,
@@ -749,6 +752,7 @@ This block has 208 assigned code points, but only 83 of
   them are present in this font.
   This block contains characters in the range 0x0180-0x024f.
   The bitmaps for this block in this font take up about 2059 bytes.
+Deprecated.  Removed in favour of the font_x11_adobe package.
 */
 LATIN_EXTENDED_B ::= #[
   0x97,0xf0,0x17,0x70,
@@ -953,6 +957,7 @@ This block has 96 assigned code points, but only 12 of
   0x029e.
   This block contains characters in the range 0x0250-0x02af.
   The bitmaps for this block in this font take up about 422 bytes.
+Deprecated.  Removed in favour of the font_x11_adobe package.
 */
 IPA_EXTENSIONS ::= #[
   0x97,0xf0,0x17,0x70,
@@ -1003,6 +1008,7 @@ This block has 80 assigned code points, but only 19 of
   them are present in this font.
   This block contains characters in the range 0x02b0-0x02ff.
   The bitmaps for this block in this font take up about 422 bytes.
+Deprecated.  Removed in favour of the font_x11_adobe package.
 */
 SPACING_MODIFIER_LETTERS ::= #[
   0x97,0xf0,0x17,0x70,
@@ -1072,6 +1078,7 @@ This block has 135 assigned code points, but only 5 of
   mu.
   This block contains characters in the range 0x0370-0x03ff.
   The bitmaps for this block in this font take up about 284 bytes.
+Deprecated.  Removed in favour of the font_x11_adobe package.
 */
 GREEK_AND_COPTIC ::= #[
   0x97,0xf0,0x17,0x70,
@@ -1108,6 +1115,7 @@ This block has 256 assigned code points, and 220 of
   them are present in this font.
   This block contains characters in the range 0x1e00-0x1eff.
   The bitmaps for this block in this font take up about 5126 bytes.
+Deprecated.  Removed in favour of the font_x11_adobe package.
 */
 LATIN_EXTENDED_ADDITIONAL ::= #[
   0x97,0xf0,0x17,0x70,
@@ -1574,6 +1582,7 @@ This block has 111 assigned code points, but only 34 of
   them are present in this font.
   This block contains characters in the range 0x2000-0x206f.
   The bitmaps for this block in this font take up about 590 bytes.
+Deprecated.  Removed in favour of the font_x11_adobe package.
 */
 GENERAL_PUNCTUATION ::= #[
   0x97,0xf0,0x17,0x70,
@@ -1671,6 +1680,7 @@ This block has 42 assigned code points, but only 3 of
   threeinferior.
   This block contains characters in the range 0x2070-0x209f.
   The bitmaps for this block in this font take up about 261 bytes.
+Deprecated.  Removed in favour of the font_x11_adobe package.
 */
 SUPERSCRIPTS_AND_SUBSCRIPTS ::= #[
   0x97,0xf0,0x17,0x70,
@@ -1708,6 +1718,7 @@ This block has 32 assigned code points, but only 5 of
   Kip.
   This block contains characters in the range 0x20a0-0x20cf.
   The bitmaps for this block in this font take up about 339 bytes.
+Deprecated.  Removed in favour of the font_x11_adobe package.
 */
 CURRENCY_SYMBOLS ::= #[
   0x97,0xf0,0x17,0x70,
@@ -1750,6 +1761,7 @@ This block has 80 assigned code points, but only 6 of
   turned capital F.
   This block contains characters in the range 0x2100-0x214f.
   The bitmaps for this block in this font take up about 352 bytes.
+Deprecated.  Removed in favour of the font_x11_adobe package.
 */
 LETTERLIKE_SYMBOLS ::= #[
   0x97,0xf0,0x17,0x70,
@@ -1788,6 +1800,7 @@ This block has 256 assigned code points, but only 15 of
   them are present in this font.
   This block contains characters in the range 0x2200-0x22ff.
   The bitmaps for this block in this font take up about 457 bytes.
+Deprecated.  Removed in favour of the font_x11_adobe package.
 */
 MATHEMATICAL_OPERATORS ::= #[
   0x97,0xf0,0x17,0x70,
