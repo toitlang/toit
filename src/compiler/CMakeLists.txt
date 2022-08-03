@@ -58,7 +58,6 @@ target_link_libraries(
   toit.compile
   toit_compiler
   toit_core
-  toit_snapshot_bundle
   mbedtls
   ${TOIT_WINDOWS_LIBS}
   pthread

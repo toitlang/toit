@@ -35,12 +35,6 @@ file(GLOB toit_core_SRC
   "*.cc"
   )
 
-# Sources needed to manipulate snapshot bundles.
-# These are only needed by the compiler and by programs that want to run bundles.
-file(GLOB toit_snapshot_bundle_SRC
-  "ar.cc"
-  "snapshot_bundle.cc")
-
 # Sources that are only needed to run a program.
 file(GLOB run_SRC
   "run.cc"
@@ -95,11 +89,6 @@ add_library(
   ${toit_vm_SRC}
   ${toit_core_SRC}
   )
-
-add_library(
-  toit_snapshot_bundle
-  ${toit_snapshot_bundle_SRC}
-)
 
 set_source_files_properties(interpreter_core.cc PROPERTIES COMPILE_FLAGS "-O3")
 set_source_files_properties(interpreter_run.cc PROPERTIES COMPILE_FLAGS "-O3 ${TOIT_INTERPRETER_FLAGS} $ENV{LOCAL_INTERPRETER_CXXFLAGS}")
@@ -174,7 +163,6 @@ set(TOIT_LINK_LIBS
   ${TOIT_NETWORK_LIBS}
   ${TOIT_LINK_GROUP_END_FLAGS}
   toit_compiler          # TODO(florian): should not be here by default.
-  toit_snapshot_bundle   # TODO(florian): should not be here by default.
   pthread
   ${CMAKE_DL_LIBS}
   ${TOIT_LINK_LIBS_LIBGCC}
