@@ -35,29 +35,23 @@
 // Build configuration:
 //  TOIT_DEBUG  : Debug build with plenty of debug information and verification.
 //                All test code is included.
-//  TOIT_FAST   : Optimized build but this includes printing and validation code.
-//                All test code is included.
 //  TOIT_DEPLOY : Optimized and minimal build for deployment.
 //
-//  BUILD set to either "TOIT_DEBUG", "TOIT_FAST", or "TOIT_DEPLOY".
+//  BUILD set to either "TOIT_DEBUG" or "TOIT_DEPLOY".
 #if defined(TOIT_DEBUG)
-#if defined(TOIT_FAST) || defined(TOIT_DEPLOY)
-#define MULTIPLE_CONFIGURATION_ERROR
-#endif
-#elif defined(TOIT_FAST)
-#if defined(TOIT_DEBUG) ||defined(TOIT_DEPLOY)
+#if defined(TOIT_DEPLOY)
 #define MULTIPLE_CONFIGURATION_ERROR
 #endif
 #elif defined(TOIT_DEPLOY)
-#if defined(TOIT_DEBUG) || defined(TOIT_FAST)
+#if defined(TOIT_DEBUG)
 #define MULTIPLE_CONFIGURATION_ERROR
 #endif
 #else
-#error "No build configuration specified: use one of -DTOIT_DEBUG -DTOIT_FAST -DTOIT_DEPLOY"
+#error "No build configuration specified: use one of -DTOIT_DEBUG -DTOIT_DEPLOY"
 #endif
 
 #if defined(MULTIPLE_CONFIGURATION_ERROR)
-#error "More than one build configuration specified: use only one of -DTOIT_DEBUG -DTOIT_FAST -DTOIT_DEPLOY"
+#error "More than one build configuration specified: use only one of -DTOIT_DEBUG -DTOIT_DEPLOY"
 #endif
 
 // -----------------------------------------------------------------------------
