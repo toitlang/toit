@@ -27,6 +27,11 @@
 
 #include "objects_inline.h"
 
+extern "C" {
+  extern unsigned char toit_run_snapshot[];
+  extern unsigned int toit_run_snapshot_len;
+};
+
 namespace toit {
 
 ProgramImage read_image_from_bundle(SnapshotBundle bundle) {
@@ -37,7 +42,20 @@ ProgramImage read_image_from_bundle(SnapshotBundle bundle) {
 }
 
 int run_program(const char* boot_bundle_path, SnapshotBundle application_bundle, char** argv) {
-  auto boot_bundle = SnapshotBundle::read_from_file(boot_bundle_path, true);
+  if (boot_bundle_path != null) {
+    auto boot_bundle = SnapshotBundle::read_from_file(boot_bundle_path, true);
+    int result = run_program(boot_bundle, application_bundle, argv);
+    // TODO(florian): we should free the boot_bundle buffer here, but that's already
+    // done by the `run_program` as the buffer is sent in a message and then freed as an external byte array.
+    // That should not happen.
+    return result;
+  }
+  // TODO(florian): we are currently doing a copy of the snapshot as the
+  // snapshot is sent in a message, and then freed as part of the finalizer when
+  // releasing external memory.
+  auto copy = unvoid_cast<uint8*>(malloc(toit_run_snapshot_len));
+  memcpy(copy, toit_run_snapshot, toit_run_snapshot_len);
+  SnapshotBundle boot_bundle(copy, toit_run_snapshot_len);
   return run_program(boot_bundle, application_bundle, argv);
 }
 
