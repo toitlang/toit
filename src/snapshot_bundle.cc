@@ -20,7 +20,7 @@
 #ifndef TOIT_FREERTOS
 
 #include "snapshot_bundle.h"
-#include "compiler/ar.h"
+#include "ar.h"
 
 namespace toit {
 

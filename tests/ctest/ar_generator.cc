@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include <limits.h>
 
-#include "../../src/compiler/ar.h"
+#include "../../src/ar.h"
 #include "../../src/compiler/list.h"
 #include "../../src/compiler/tar.h"
 #include "../../src/utils.h"

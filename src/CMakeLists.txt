@@ -13,6 +13,8 @@
 # The license can be found in the file `LICENSE` in the top level
 # directory of this repository.
 
+add_custom_target(build_tools)
+
 add_subdirectory(compiler)
 
 # Use D flags to switch tools to deterministic mode (no timestamps etc.)
@@ -33,9 +35,21 @@ file(GLOB toit_core_SRC
   "*.cc"
   )
 
-# Exclude files with a main(), and files that are not used in the
-# compiler.
-list(FILTER toit_core_SRC EXCLUDE REGEX "/(toit|toit_run_image|vm|objects_runtime|run).cc$")
+# Sources needed to manipulate snapshot bundles.
+# These are only needed by the compiler and by programs that want to run bundles.
+file(GLOB toit_snapshot_bundle_SRC
+  "ar.cc"
+  "snapshot_bundle.cc")
+
+# Sources that are only needed to run a program.
+file(GLOB run_SRC
+  "run.cc"
+  ${toit_snapshot_bundle_SRC}
+)
+
+# Exclude files with a main(), and files that are not used in the compiler.
+list(FILTER toit_core_SRC EXCLUDE REGEX "/(toit|toit_run_image|vessel|vm|objects_runtime).cc$")
+list(REMOVE_ITEM toit_core_SRC ${run_SRC})
 
 # Files that are used in the VM, but not in the compiler.
 file(GLOB toit_vm_runtime_SRC
@@ -83,6 +97,11 @@ add_library(
   ${toit_core_SRC}
   )
 
+add_library(
+  toit_snapshot_bundle
+  ${toit_snapshot_bundle_SRC}
+)
+
 set_source_files_properties(interpreter_core.cc PROPERTIES COMPILE_FLAGS "-O3")
 set_source_files_properties(interpreter_run.cc PROPERTIES COMPILE_FLAGS "-O3 ${TOIT_INTERPRETER_FLAGS} $ENV{LOCAL_INTERPRETER_CXXFLAGS}")
 set_source_files_properties(utils.cc PROPERTIES COMPILE_FLAGS "-DTOIT_MODEL=\"\\\"${TOIT_MODEL}\\\"\" -DVM_GIT_INFO=\"\\\"${VM_GIT_INFO}\\\"\" -DVM_GIT_VERSION=\"\\\"${TOIT_GIT_VERSION}\\\"\"")
@@ -105,8 +124,10 @@ add_executable(
   toit.run
   toit.cc
   ${BOOT_SNAPSHOT_CC}
-  run.cc
+  ${run_SRC}
   )
+
+add_dependencies(build_tools toit.run)
 
 add_executable(
   toit_run_image
@@ -176,6 +197,29 @@ target_link_libraries(
   ${TOIT_LINK_LIBS}
   )
 
+set(TOIT_LINK_LIBS_NO_COMPILER ${TOIT_LINK_LIBS})
+list(REMOVE_ITEM TOIT_LINK_LIBS_NO_COMPILER toit_compiler)
+
+set(VESSEL_SIZES 150 250 500 1000 5000)
+foreach(VESSEL_SIZE ${VESSEL_SIZES})
+  set(VESSEL_TARGET vessel${VESSEL_SIZE})
+  add_executable(
+    ${VESSEL_TARGET}
+    vessel.cc
+    vessel/vessel${VESSEL_SIZE}.cc
+    ${BOOT_SNAPSHOT_CC}
+    ${run_SRC}
+    )
+  set_target_properties(${VESSEL_TARGET}
+    PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/sdk/vessels"
+    )
+  target_link_libraries(
+    ${VESSEL_TARGET} ${TOIT_LINK_LIBS_NO_COMPILER}
+  )
+  add_dependencies(build_tools ${VESSEL_TARGET})
+endforeach()
+
 include(${TOIT_SDK_SOURCE_DIR}/tools/toit.cmake)
 
 set(BOOT_SNAPSHOT_SOURCE ${TOIT_SDK_SOURCE_DIR}/tools/toit.run.toit)
@@ -184,11 +228,6 @@ ADD_TOIT_TARGET(
   ${BOOT_SNAPSHOT}
   ${CMAKE_CURRENT_BINARY_DIR}/boot.dep
   "ASAN_OPTIONS=detect_leaks=false"
-)
-
-add_custom_target(
-  build_tools
-  DEPENDS toit.run toit.compile
 )
 
 if (DEFINED USE_LWIP)
