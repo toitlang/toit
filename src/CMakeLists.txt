@@ -174,7 +174,8 @@ set(TOIT_LINK_LIBS
   toit_vm
   ${TOIT_NETWORK_LIBS}
   ${TOIT_LINK_GROUP_END_FLAGS}
-  toit_compiler
+  toit_compiler          # TODO(florian): should not be here by default.
+  toit_snapshot_bundle   # TODO(florian): should not be here by default.
   pthread
   ${CMAKE_DL_LIBS}
   ${TOIT_LINK_LIBS_LIBGCC}
@@ -197,9 +198,6 @@ target_link_libraries(
   ${TOIT_LINK_LIBS}
   )
 
-set(TOIT_LINK_LIBS_NO_COMPILER ${TOIT_LINK_LIBS})
-list(REMOVE_ITEM TOIT_LINK_LIBS_NO_COMPILER toit_compiler)
-
 set(VESSEL_SIZES 150 250 500 1000 5000)
 foreach(VESSEL_SIZE ${VESSEL_SIZES})
   set(VESSEL_TARGET vessel${VESSEL_SIZE})
@@ -215,7 +213,7 @@ foreach(VESSEL_SIZE ${VESSEL_SIZES})
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/sdk/vessels"
     )
   target_link_libraries(
-    ${VESSEL_TARGET} ${TOIT_LINK_LIBS_NO_COMPILER}
+    ${VESSEL_TARGET} ${TOIT_LINK_LIBS}
   )
   add_dependencies(build_tools ${VESSEL_TARGET})
 endforeach()
