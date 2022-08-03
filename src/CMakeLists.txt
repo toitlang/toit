@@ -44,7 +44,6 @@ file(GLOB toit_snapshot_bundle_SRC
 # Sources that are only needed to run a program.
 file(GLOB run_SRC
   "run.cc"
-  ${toit_snapshot_bundle_SRC}
 )
 
 # Exclude files with a main(), and files that are not used in the compiler.
