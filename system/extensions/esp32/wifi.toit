@@ -17,6 +17,7 @@ import net
 import monitor
 import log
 import esp32
+import device
 import net.wifi
 
 import system.api.wifi show WifiService
@@ -27,7 +28,10 @@ import system.base.network show NetworkModule NetworkResource NetworkState
 import ..shared.network_base
 
 class WifiServiceDefinition extends NetworkServiceDefinitionBase:
+  static WIFI_CONFIG_STORE_KEY ::= "system/wifi"
+
   state_/NetworkState? := null
+  store_/device.FlashStore ::= device.FlashStore
 
   constructor:
     super "system/wifi/esp32" --major=0 --minor=1
@@ -35,28 +39,25 @@ class WifiServiceDefinition extends NetworkServiceDefinitionBase:
 
   handle pid/int client/int index/int arguments/any -> any:
     if index == WifiService.CONNECT_INDEX:
-      return connect client (build_config arguments[0] arguments[1])
+      return connect client arguments[0] arguments[1]
     if index == WifiService.ESTABLISH_INDEX:
-      return establish client (build_config arguments[0] arguments[1])
+      return establish client arguments
     return super pid client index arguments
 
-  static build_config keys/List? values/List -> Map?:
-    if not keys: return null
-    config ::= {:}
-    keys.size.repeat: config[keys[it]] = values[it]
-    return config
-
   connect client/int -> List:
-    return connect client null
+    return connect client null false
 
-  connect client/int config/Map? -> List:
-    if not config:
-      image := esp32.image_config or {:}
-      config = image.get "wifi" --if_absent=: {:}
+  connect client/int config/Map? save/bool -> List:
+    effective := config
+    if not effective:
+      catch --trace: effective = store_.get WIFI_CONFIG_STORE_KEY
+      if not effective:
+        image := esp32.image_config or {:}
+        effective = image.get "wifi" --if_absent=: {:}
 
-    ssid/string? := config.get wifi.CONFIG_SSID
+    ssid/string? := effective.get wifi.CONFIG_SSID
     if not ssid or ssid.is_empty: throw "wifi ssid not provided"
-    password/string := config.get wifi.CONFIG_PASSWORD --if_absent=: ""
+    password/string := effective.get wifi.CONFIG_PASSWORD --if_absent=: ""
 
     if not state_: state_ = NetworkState
     module ::= (state_.up: WifiModule.sta this ssid password) as WifiModule
@@ -64,6 +65,12 @@ class WifiServiceDefinition extends NetworkServiceDefinitionBase:
       throw "wifi already established in AP mode"
     if module.ssid != ssid or module.password != password:
       throw "wifi already connected with different credentials"
+
+    if save:
+      if config:
+        store_.set WIFI_CONFIG_STORE_KEY config
+      else:
+        store_.delete WIFI_CONFIG_STORE_KEY
 
     resource := NetworkResource this client state_ --notifiable
     return [resource.serialize_for_rpc, NetworkService.PROXY_ADDRESS]

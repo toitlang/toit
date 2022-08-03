@@ -149,7 +149,7 @@ void EpollEventSource::entry() {
 
             case kRemove: {
                 if (epoll_ctl(_epoll_fd, EPOLL_CTL_DEL, id, null) == -1) {
-                  FATAL("failed to add 0x%lx to epoll: %d", id, errno);
+                  FATAL("failed to remove 0x%lx from epoll: %d", id, errno);
                 }
                 // Don't close STD pipes.
                 if (id > 2) close(id);

@@ -7,10 +7,10 @@ import system.api.network show NetworkService NetworkServiceClient
 interface CellularService extends NetworkService:
   static UUID  /string ::= "83798564-d965-49bf-b69d-7f05a082f4f0"
   static MAJOR /int    ::= 0
-  static MINOR /int    ::= 1
+  static MINOR /int    ::= 2
 
   static CONNECT_INDEX /int ::= 1000
-  connect keys/List? values/List? -> List
+  connect config/Map? -> List
 
 class CellularServiceClient extends NetworkServiceClient implements CellularService:
   constructor --open/bool=true:
@@ -19,5 +19,5 @@ class CellularServiceClient extends NetworkServiceClient implements CellularServ
   open -> CellularServiceClient?:
     return (open_ CellularService.UUID CellularService.MAJOR CellularService.MINOR) and this
 
-  connect keys/List? values/List? -> List:
-    return invoke_ CellularService.CONNECT_INDEX [keys, values]
+  connect config/Map? -> List:
+    return invoke_ CellularService.CONNECT_INDEX config

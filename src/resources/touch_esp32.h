@@ -1,4 +1,4 @@
-// Copyright (C) 2018 Toitware ApS.
+// Copyright (C) 2021 Toitware ApS.
 //
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -13,34 +13,20 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-#pragma once
+#include "../top.h"
 
-#include "driver/i2c.h"
+#ifdef TOIT_FREERTOS
 
-#include "../resource.h"
-#include "../os.h"
+#include <driver/touch_sensor.h>
 
 namespace toit {
 
-class GPIOEventSource : public EventSource, public Thread {
- public:
-  static GPIOEventSource* instance() { return _instance; }
+int touch_pad_to_pin_num(touch_pad_t pad);
 
-  GPIOEventSource();
-  ~GPIOEventSource();
-
- private:
-  void entry();
-
-  void on_register_resource(Locker& locker, Resource* r) override;
-  void on_unregister_resource(Locker& locker, Resource* r) override;
-
-  static void IRAM_ATTR isr_handler(void* arg);
-
-  static GPIOEventSource* _instance;
-
-  bool _stop;
-  QueueHandle_t _queue;
-};
+// Signals the touch-pad peripheral that it should not deinit when not used anymore.
+// This is primarily used to allow wakeup from deep-sleep.
+void keep_touch_active();
 
 } // namespace toit
+
+#endif // TOIT_FREERTOS

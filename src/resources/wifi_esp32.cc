@@ -117,7 +117,7 @@ class WifiResourceGroup : public ResourceGroup {
 
   ~WifiResourceGroup() {
     FATAL_IF_NOT_ESP_OK(esp_wifi_deinit());
-    esp_netif_destroy(_netif);
+    esp_netif_destroy_default_wifi(_netif);
     wifi_pool.put(_id);
   }
 
@@ -259,15 +259,32 @@ PRIMITIVE(init) {
   int id = wifi_pool.any();
   if (id == kInvalidWifi) OUT_OF_BOUNDS;
 
-  esp_netif_t* netif = ap ? esp_netif_create_default_wifi_ap() : esp_netif_create_default_wifi_sta();
+  // We cannot use the esp_netif_create_default_wifi_xxx() functions,
+  // because they do not correctly check for malloc failure.
+  esp_netif_t* netif = null;
+  if (ap) {
+    esp_netif_config_t netif_ap_config = ESP_NETIF_DEFAULT_WIFI_AP();
+    netif = esp_netif_new(&netif_ap_config);
+  } else {
+    esp_netif_config_t netif_sta_config = ESP_NETIF_DEFAULT_WIFI_STA();
+    netif = esp_netif_new(&netif_sta_config);
+  }
   if (!netif) {
     wifi_pool.put(id);
     MALLOC_FAILED;
   }
 
+  if (ap) {
+    esp_netif_attach_wifi_ap(netif);
+    esp_wifi_set_default_wifi_ap_handlers();
+  } else {
+    esp_netif_attach_wifi_station(netif);
+    esp_wifi_set_default_wifi_sta_handlers();
+  }
+
   esp_err_t err = nvs_flash_init();
   if (err != ESP_OK) {
-    esp_netif_destroy(netif);
+    esp_netif_destroy_default_wifi(netif);
     wifi_pool.put(id);
     return Primitive::os_error(err, process);
   }
@@ -277,7 +294,7 @@ PRIMITIVE(init) {
   init_config.nvs_enable = 0;
   err = esp_wifi_init(&init_config);
   if (err != ESP_OK) {
-    esp_netif_destroy(netif);
+    esp_netif_destroy_default_wifi(netif);
     wifi_pool.put(id);
     return Primitive::os_error(err, process);
   }
@@ -285,7 +302,7 @@ PRIMITIVE(init) {
   err = esp_wifi_set_storage(WIFI_STORAGE_RAM);
   if (err != ESP_OK) {
     FATAL_IF_NOT_ESP_OK(esp_wifi_deinit());
-    esp_netif_destroy(netif);
+    esp_netif_destroy_default_wifi(netif);
     wifi_pool.put(id);
     return Primitive::os_error(err, process);
   }
@@ -294,7 +311,7 @@ PRIMITIVE(init) {
       process, SystemEventSource::instance(), id, netif);
   if (!resource_group) {
     FATAL_IF_NOT_ESP_OK(esp_wifi_deinit());
-    esp_netif_destroy(netif);
+    esp_netif_destroy_default_wifi(netif);
     wifi_pool.put(id);
     MALLOC_FAILED;
   }
