@@ -480,7 +480,7 @@ namespace toit {
   PRIMITIVE(current_id, 0)                   \
   PRIMITIVE(writer_create, 2)                \
   PRIMITIVE(writer_write, 4)                 \
-  PRIMITIVE(writer_commit, 1)                \
+  PRIMITIVE(writer_commit, 2)                \
   PRIMITIVE(writer_close, 1)                 \
 
 #define MODULE_BLOB(PRIMITIVE)               \

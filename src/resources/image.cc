@@ -86,7 +86,8 @@ PRIMITIVE(writer_write) {
 }
 
 PRIMITIVE(writer_commit) {
-  ARGS(ImageOutputStream, output);
+  ARGS(ImageOutputStream, output, Blob, metadata);
+  if (metadata.length() != FlashAllocation::Header::meta_data_size()) INVALID_ARGUMENT;
 
   ProgramImage image = output->image();
   if (!image.is_valid() || output->cursor() != image.end()) OUT_OF_BOUNDS;
@@ -94,9 +95,7 @@ PRIMITIVE(writer_commit) {
   // Write program header as the last thing. Only a complete flash write
   // will mark the program as valid.
   int header_offset = FlashRegistry::offset(image.begin());
-  uint8 meta_data[FlashAllocation::Header::meta_data_size()];
-  memset(meta_data, 0, FlashAllocation::Header::meta_data_size());
-  if (FlashAllocation::initialize(header_offset, PROGRAM_TYPE, output->program_id(), image.byte_size(), meta_data)) {
+  if (FlashAllocation::initialize(header_offset, PROGRAM_TYPE, output->program_id(), image.byte_size(), metadata.address())) {
     return process->program()->null_object();
   }
   HARDWARE_ERROR;
