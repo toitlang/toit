@@ -35,7 +35,7 @@ file(GLOB toit_core_SRC
 
 # Exclude files with a main(), and files that are not used in the
 # compiler.
-list(FILTER toit_core_SRC EXCLUDE REGEX "/(toit|toit_run_image|vm|objects_runtime).cc$")
+list(FILTER toit_core_SRC EXCLUDE REGEX "/(toit|toit_run_image|vm|objects_runtime|run).cc$")
 
 # Files that are used in the VM, but not in the compiler.
 file(GLOB toit_vm_runtime_SRC
@@ -90,11 +90,13 @@ set_source_files_properties(utils.cc PROPERTIES COMPILE_FLAGS "-DTOIT_MODEL=\"\\
 add_executable(
   toit.run
   toit.cc
+  run.cc
   )
 
 add_executable(
   toit_run_image
   toit_run_image.cc
+  run.cc
   )
 
 set_target_properties(toit_run_image
