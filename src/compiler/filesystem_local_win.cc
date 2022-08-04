@@ -80,4 +80,4 @@ char* FilesystemLocal::to_local_path(const char* path) {
 } // namespace toit::compiler
 } // namespace toit
 
-#endif // TOIT_LINUX
+#endif // TOIT_WINDOWS

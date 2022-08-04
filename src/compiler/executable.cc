@@ -16,6 +16,7 @@
 #include "sources.h"
 
 #include <stdio.h>
+#include <fcntl.h>
 
 #include "../top.h"
 #include "../snapshot_bundle.h"
@@ -26,6 +27,12 @@
 
 namespace toit {
 namespace compiler {
+
+#ifdef TOIT_WINDOWS
+static const char* EXECUTABLE_SUFFIX = ".exe";
+#else
+static const char* EXECUTABLE_SUFFIX = "";
+#endif
 
 static const uint8 VESSEL_TOKEN[] = { VESSEL_TOKEN_VALUES };
 // We could generate this constant in the build system, but that would make things
@@ -39,7 +46,7 @@ int create_executable(const char* out_path, const SnapshotBundle& bundle) {
   bool found_vessel = false;
   for (int i = 0; ARRAY_SIZE(VESSEL_SIZES); i++) {
     if (bundle.size() < VESSEL_SIZES[i] * 1024) {
-      builder.join(std::string("vessel") + std::to_string(VESSEL_SIZES[i]));
+      builder.join(std::string("vessel") + std::to_string(VESSEL_SIZES[i]) + std::string(EXECUTABLE_SUFFIX));
       found_vessel = true;
       break;
     }
@@ -93,14 +100,16 @@ int create_executable(const char* out_path, const SnapshotBundle& bundle) {
     if (found_token) {
       *reinterpret_cast<uint32*>(&vessel_content[i]) = bundle.size();
       memcpy(&vessel_content[i + 4], bundle.buffer(), bundle.size());
-      FILE* file_out = fopen(out_path, "wb");
+      // Use 'open', so we can give executable permissions.
+      int fd = open(out_path, O_WRONLY | O_CREAT, 0777);
+      FILE* file_out = fdopen(fd, "wb");
       if (file_out == NULL) {
-        perror("write_executable");
+        perror("create_executable");
         return -1;
       }
-      int written = fwrite(vessel_content, size, 1, file_out);
+      int written = fwrite(vessel_content, 1, size, file_out);
       if (written != size) {
-        perror("write_executable");
+        perror("create_executable");
         return -1;
       }
       fclose(file_out);
