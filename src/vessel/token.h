@@ -14,5 +14,5 @@
 // directory of this repository.
 
 // A readable prefix, followed by 16 bytes of random data.
-#define VESSEL_TOKEN 't', 'o', 'i', 't', '-', 'v', 'e', 's', 's', 'e', 'l', \
+#define VESSEL_TOKEN_VALUES 't', 'o', 'i', 't', '-', 'v', 'e', 's', 's', 'e', 'l', \
     0x1f, 0xd9, 0x79, 0xbc, 0xf1, 0x43, 0xbb, 0x7f, 0x91, 0xda, 0x90, 0x61, 0xb5, 0xc3, 0x30, 0xce

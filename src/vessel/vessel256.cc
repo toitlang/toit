@@ -18,4 +18,4 @@
 // We add the token twice. This way we can safely use the token values in other
 // constants without needing to worry that the compiler replaces the wrong
 // data.
-unsigned char vessel_snapshot_data[5000000] = { VESSEL_TOKEN, VESSEL_TOKEN };
+unsigned char vessel_snapshot_data[256 * 1024] = { VESSEL_TOKEN_VALUES, VESSEL_TOKEN_VALUES };

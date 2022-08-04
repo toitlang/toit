@@ -1,4 +1,4 @@
-// Copyright (C) 2018 Toitware ApS.
+// Copyright (C) 2022 Toitware ApS.
 //
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -27,19 +27,19 @@
 namespace toit {
 namespace compiler {
 
-static const uint8 kVesselToken[] = { VESSEL_TOKEN };
-// We could generate this constant in the buildsystem, but that would make things
+static const uint8 VESSEL_TOKEN[] = { VESSEL_TOKEN_VALUES };
+// We could generate this constant in the build system, but that would make things
 // just much more complicated for something that doesn't change that frequently.
-static int kVesselSizes[] = { 150, 250, 500, 1000, 5000, };
+static int VESSEL_SIZES[] = { 128, 256, 512, 1024, 8192, };
 
 int create_executable(const char* out_path, const SnapshotBundle& bundle) {
   FilesystemLocal fs;
   PathBuilder builder(&fs);
   builder.add(fs.vessel_root());
   bool found_vessel = false;
-  for (int i = 0; sizeof(kVesselSizes); i++) {
-    if (bundle.size() < kVesselSizes[i] * 1000) {
-      builder.join(std::string("vessel") + std::to_string(kVesselSizes[i]));
+  for (int i = 0; ARRAY_SIZE(VESSEL_SIZES); i++) {
+    if (bundle.size() < VESSEL_SIZES[i] * 1024) {
+      builder.join(std::string("vessel") + std::to_string(VESSEL_SIZES[i]));
       found_vessel = true;
       break;
     }
@@ -56,7 +56,11 @@ int create_executable(const char* out_path, const SnapshotBundle& bundle) {
     return -1;
   }
   // Find content size of file.
-  fseek(file, 0, SEEK_END);
+  int status = fseek(file, 0, SEEK_END);
+  if (status != 0) {
+    perror("create_executable");
+    return -1;
+  }
   long fsize = ftell(file);
   int size = fsize;
   // Read entire content.
@@ -65,7 +69,11 @@ int create_executable(const char* out_path, const SnapshotBundle& bundle) {
     fprintf(stderr, "Unable to allocate buffer for vessel %s\n", vessel_path);
     return -1;
   }
-  fseek(file, 0, SEEK_SET);
+  status = fseek(file, 0, SEEK_SET);
+  if (status != 0) {
+    perror("create_executable");
+    return -1;
+  }
   int read_count = fread(vessel_content, fsize, 1, file);
   fclose(file);
   if (read_count != 1) {
@@ -73,11 +81,11 @@ int create_executable(const char* out_path, const SnapshotBundle& bundle) {
     fprintf(stderr, "Unable to read vessel '%s'\n", vessel_path);
     return -1;
   }
-  for (size_t i = 0; i < size - sizeof(kVesselToken); i++) {
+  for (size_t i = 0; i < size - sizeof(VESSEL_TOKEN); i++) {
     bool found_token = true;
     // We must find two copies of the token next to each other.
-    for (size_t j = 0; j < sizeof(kVesselToken) * 2; j++) {
-      if (vessel_content[i + j] != kVesselToken[j % sizeof(kVesselToken)]) {
+    for (size_t j = 0; j < sizeof(VESSEL_TOKEN) * 2; j++) {
+      if (vessel_content[i + j] != VESSEL_TOKEN[j % sizeof(VESSEL_TOKEN)]) {
         found_token = false;
         break;
       }
@@ -86,7 +94,15 @@ int create_executable(const char* out_path, const SnapshotBundle& bundle) {
       *reinterpret_cast<uint32*>(&vessel_content[i]) = bundle.size();
       memcpy(&vessel_content[i + 4], bundle.buffer(), bundle.size());
       FILE* file_out = fopen(out_path, "wb");
-      fwrite(vessel_content, size, 1, file_out);
+      if (file_out == NULL) {
+        perror("write_executable");
+        return -1;
+      }
+      int written = fwrite(vessel_content, size, 1, file_out);
+      if (written != size) {
+        perror("write_executable");
+        return -1;
+      }
       fclose(file_out);
       return 0;
     }

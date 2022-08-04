@@ -131,7 +131,7 @@ int main(int argc, char **argv) {
         print_usage(1);
       }
       if (exe_filename != null) {
-        fprintf(stderr, "Only one '--vessel' flag is allowed.\n");
+        fprintf(stderr, "Only one '-o' flag is allowed.\n");
         print_usage(1);
       }
       exe_filename = argv[processed_args++];
@@ -286,7 +286,7 @@ int main(int argc, char **argv) {
     compiled = compiler.compile(source_path,
                                 direct_script,
                                 args,
-                                bundle_filename == null ? exe_filename: bundle_filename,
+                                bundle_filename == null ? exe_filename : bundle_filename,
                                 compiler_config);
 
     if (bundle_filename != null) {

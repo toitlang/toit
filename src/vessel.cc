@@ -1,4 +1,4 @@
-// Copyright (C) 2018 Toitware ApS.
+// Copyright (C) 2022 Toitware ApS.
 //
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -31,7 +31,7 @@ extern unsigned char vessel_snapshot_data[];
 
 namespace toit {
 
-static const uint8 kToken[] = { VESSEL_TOKEN };
+static const uint8 VESSEL_TOKEN[] = { VESSEL_TOKEN_VALUES };
 
 int main(int argc, char **argv) {
   Flags::process_args(&argc, argv);
@@ -41,8 +41,8 @@ int main(int argc, char **argv) {
   ObjectMemory::set_up();
 
   bool modified = false;
-  for (size_t i = 0; i < sizeof(kToken); i++) {
-    if (vessel_snapshot_data[i] != kToken[i]) {
+  for (size_t i = 0; i < sizeof(VESSEL_TOKEN); i++) {
+    if (vessel_snapshot_data[i] != VESSEL_TOKEN[i]) {
       modified = true;
       break;
     }
@@ -55,18 +55,18 @@ int main(int argc, char **argv) {
   int snapshot_size = reinterpret_cast<uint32*>(vessel_snapshot_data)[0];
   uint8* snapshot = &vessel_snapshot_data[4];
   // TODO(florian): we currently create a copy, as the snapshot is freed at the end.
-  // See toit.cc.
+  // See run.cc.
   uint8* copy = unvoid_cast<uint8*>(malloc(snapshot_size));
   memcpy(copy, snapshot, snapshot_size);
   SnapshotBundle bundle(copy, snapshot_size);
   // Drop the executable name.
   argv++;
-  int exit_state = run_program(null, bundle, argv);
+  int exit_code = run_program(null, bundle, argv);
 
   GcMetadata::tear_down();
   OS::tear_down();
   FlashRegistry::tear_down();
-  return exit_state;
+  return exit_code;
 }
 
 } // namespace toit

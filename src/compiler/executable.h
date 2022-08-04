@@ -15,15 +15,6 @@
 
 #pragma once
 
-#include <vector>
-
-#include "../top.h"
-#include "../bytecodes.h"
-
-#include "ast.h"
-#include "label.h"
-#include "list.h"
-
 namespace toit {
 
 class SnapshotBundle;

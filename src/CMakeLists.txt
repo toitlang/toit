@@ -185,7 +185,7 @@ target_link_libraries(
   ${TOIT_LINK_LIBS}
   )
 
-set(VESSEL_SIZES 150 250 500 1000 5000)
+set(VESSEL_SIZES 128 256 512 1024 8192)
 foreach(VESSEL_SIZE ${VESSEL_SIZES})
   set(VESSEL_TARGET vessel${VESSEL_SIZE})
   add_executable(
