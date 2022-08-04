@@ -64,6 +64,9 @@ abstract class ContainerImage:
   trace encoded/ByteArray -> bool:
     return false
 
+  run_on_boot -> bool:
+    return false
+
   // TODO(kasper): This isn't super nice. It feels a bit odd that the
   // image is told that one of its containers has an error.
   on_container_error container/Container error/int -> none:
@@ -81,6 +84,11 @@ class ContainerImageFlash extends ContainerImage:
 
   id -> uuid.Uuid:
     return allocation_.id
+
+  run_on_boot -> bool:
+    // TODO(kasper): Clean this up a bit by not hardcoding the
+    // metadata encoding quite so much.
+    return allocation_.metadata[0] == 1
 
   start -> Container:
     gid ::= container_next_gid_

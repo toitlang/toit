@@ -27,6 +27,5 @@ boot container_manager/ContainerManager -> int:
   // track of the number of running processes.
   container_manager.system_image.start
   container_manager.images.do: | image/ContainerImage |
-    // TODO(kasper): Only start containers that should run on boot.
-    image.start
+    if image.run_on_boot: image.start
   return container_manager.wait_until_done
