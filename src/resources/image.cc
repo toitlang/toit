@@ -87,7 +87,7 @@ PRIMITIVE(writer_write) {
 
 PRIMITIVE(writer_commit) {
   ARGS(ImageOutputStream, output, Blob, metadata);
-  if (metadata.length() != FlashAllocation::Header::meta_data_size()) INVALID_ARGUMENT;
+  if (metadata.length() != FlashAllocation::Header::metadata_size()) INVALID_ARGUMENT;
 
   ProgramImage image = output->image();
   if (!image.is_valid() || output->cursor() != image.end()) OUT_OF_BOUNDS;

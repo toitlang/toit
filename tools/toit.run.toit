@@ -81,6 +81,9 @@ class ApplicationContainerImage extends ContainerImageFromSnapshot:
     // the archive.
     super reader
 
+  run_on_boot -> bool:
+    return true
+
   start -> Container:
     gid ::= container_next_gid_
     pid ::= launch_snapshot_ snapshot gid id.to_byte_array

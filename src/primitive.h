@@ -549,7 +549,7 @@ namespace toit {
   PRIMITIVE(get_id, 1)                       \
   PRIMITIVE(get_size, 1)                     \
   PRIMITIVE(get_type, 1)                     \
-  PRIMITIVE(get_meta_data, 1)                \
+  PRIMITIVE(get_metadata, 1)                 \
   PRIMITIVE(reserve_hole, 2)                 \
   PRIMITIVE(cancel_reservation, 1)           \
   PRIMITIVE(erase_flash_registry, 0)         \

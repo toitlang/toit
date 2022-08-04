@@ -88,7 +88,7 @@ class ContainerImageFlash extends ContainerImage:
   run_on_boot -> bool:
     // TODO(kasper): Clean this up a bit by not hardcoding the
     // metadata encoding quite so much.
-    return allocation_.metadata[0] == 0xFF
+    return allocation_.metadata[0] == 1
 
   start -> Container:
     gid ::= container_next_gid_
