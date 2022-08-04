@@ -41,6 +41,7 @@ namespace toit {
   fn(GPIOResource)                      \
   fn(I2SResource)                       \
   fn(AdcResource)                       \
+  fn(DacResource)                       \
   fn(PcntUnitResource)                  \
   fn(PWMResource)                       \
   fn(RMTResource)                       \
@@ -55,6 +56,7 @@ namespace toit {
 
 #define RESOURCE_GROUP_CLASSES_DO(fn)   \
   fn(SimpleResourceGroup)               \
+  fn(DacResourceGroup)                  \
   fn(GPIOResourceGroup)                 \
   fn(I2CResourceGroup)                  \
   fn(I2SResourceGroup)                  \
@@ -79,6 +81,7 @@ namespace toit {
   fn(PcntChannelResourceGroup)          \
   fn(PcntUnitResourceGroup)             \
   fn(PWMResourceGroup)                  \
+  fn(TouchResourceGroup)                \
 
 #define MAKE_ENUM(name)                 \
   name##Tag,                            \

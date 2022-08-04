@@ -387,7 +387,7 @@ Object* ProgramBuilder::top() {
   return _stack.back();
 }
 
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
 
 void ProgramBuilder::print() {
   ConsolePrinter printer(program());

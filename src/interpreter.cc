@@ -272,7 +272,7 @@ Object** Interpreter::handle_stack_overflow(Object** sp, OverflowState* state, M
 }
 
 void Interpreter::trace(uint8* bcp) {
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
   auto program = _process->program();
   ConsolePrinter printer(program);
   printf("[%6d] ", program->absolute_bci_from_bcp(bcp));

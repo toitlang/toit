@@ -174,6 +174,7 @@ class OS {
 
   static Mutex* global_mutex() { return _global_mutex; }
   static Mutex* scheduler_mutex() { return _scheduler_mutex; }
+  static Mutex* resource_mutex() { return _resource_mutex; }
 
   // Mutex (used with Locker).
   static Mutex* allocate_mutex(int level, const char* title);
@@ -255,6 +256,7 @@ class OS {
 
   static Mutex* _global_mutex;
   static Mutex* _scheduler_mutex;
+  static Mutex* _resource_mutex;
   static HeapMemoryRange _single_range;
 
   friend class ConditionVariable;

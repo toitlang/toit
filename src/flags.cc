@@ -17,7 +17,7 @@
 
 namespace toit {
 
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
 #define MATERIALIZE_DEBUG_FLAG(type, prefix, name, value, doc) type Flags::name = value;
 #else
 #define MATERIALIZE_DEBUG_FLAG(type, prefix, name, value, doc)
@@ -46,7 +46,7 @@ static void print_flag_string(const char* name, const char* value, const char* i
 }
 #define XSTR(str) #str
 
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
 #define PRINT_DEBUG_FLAG(type, prefix, name, value, doc) \
   print_flag_##prefix(XSTR(name), Flags::name, value, doc);
 #else
@@ -117,7 +117,7 @@ static bool process_flag_string(const char* name_ptr, const char* value_ptr,
   return false;
 }
 
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
 #define PROCESS_DEBUG_FLAG(type, prefix, name, value, doc)                \
   if (process_flag_##prefix(name_ptr, value_ptr, XSTR(name), &Flags::name)) \
     return;

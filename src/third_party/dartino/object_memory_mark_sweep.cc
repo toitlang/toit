@@ -597,7 +597,7 @@ uword OldSpace::sweep() {
   end_of_chunk:
     // Repair sentinel in case it was zapped by a marking bitmap.
     *reinterpret_cast<Object**>(end - WORD_SIZE) = chunk_end_sentinel();
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
     validate_sweep(chunk);
 #endif
     GcMetadata::clear_mark_bits_for_chunk(chunk);
@@ -605,7 +605,7 @@ uword OldSpace::sweep() {
   return used << WORD_SIZE_LOG_2;
 }
 
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
 // Check that all dead objects are replaced with freelist objects and
 // that starts point at valid iteration points.
 void OldSpace::validate_sweep(Chunk* chunk) {

@@ -53,7 +53,9 @@ namespace toit {
   M(blob,    MODULE_BLOB)                    \
   M(gpio,    MODULE_GPIO)                    \
   M(adc,     MODULE_ADC)                     \
+  M(dac,     MODULE_DAC)                     \
   M(pwm,     MODULE_PWM)                     \
+  M(touch,   MODULE_TOUCH)                   \
   M(programs_registry, MODULE_PROGRAMS_REGISTRY) \
   M(flash,   MODULE_FLASH_REGISTRY)          \
   M(file,    MODULE_FILE)                    \
@@ -348,8 +350,10 @@ namespace toit {
   PRIMITIVE(ota_rollback, 0)                 \
   PRIMITIVE(reset_reason, 0)                 \
   PRIMITIVE(enable_external_wakeup, 2)       \
+  PRIMITIVE(enable_touchpad_wakeup, 0)       \
   PRIMITIVE(wakeup_cause, 0)                 \
   PRIMITIVE(ext1_wakeup_status, 1)           \
+  PRIMITIVE(touchpad_wakeup_status, 0)       \
   PRIMITIVE(total_deep_sleep_time, 0)        \
   PRIMITIVE(total_run_time, 0)               \
   PRIMITIVE(image_config, 0)                 \
@@ -506,6 +510,13 @@ namespace toit {
   PRIMITIVE(get, 2)                         \
   PRIMITIVE(close, 1)                       \
 
+#define MODULE_DAC(PRIMITIVE)               \
+  PRIMITIVE(init, 0)                        \
+  PRIMITIVE(use, 3)                         \
+  PRIMITIVE(unuse, 2)                       \
+  PRIMITIVE(set, 2)                         \
+  PRIMITIVE(cosine_wave, 5)                 \
+
 #define MODULE_PWM(PRIMITIVE)                \
   PRIMITIVE(init, 2)                         \
   PRIMITIVE(close, 1)                        \
@@ -515,6 +526,14 @@ namespace toit {
   PRIMITIVE(frequency, 1)                    \
   PRIMITIVE(set_frequency, 2)                \
   PRIMITIVE(close_channel, 2)                \
+
+#define MODULE_TOUCH(PRIMITIVE)              \
+  PRIMITIVE(init, 0)                         \
+  PRIMITIVE(use, 3)                          \
+  PRIMITIVE(unuse, 2)                        \
+  PRIMITIVE(read, 1)                         \
+  PRIMITIVE(get_threshold, 1)                \
+  PRIMITIVE(set_threshold, 2)                \
 
 #define MODULE_PROGRAMS_REGISTRY(PRIMITIVE)  \
   PRIMITIVE(next_group_id, 0)                \
@@ -661,6 +680,16 @@ namespace toit {
   word _word_##name = Smi::cast(_raw_##name)->value();  \
   int name = _word_##name;                              \
   if (name != _word_##name) OUT_OF_RANGE;               \
+
+#define _A_T_int8(N, name)                                                \
+  Object* _raw_##name = __args[-(N)];                                     \
+  if (!is_smi(_raw_##name)) {                                             \
+    if (is_large_integer(_raw_##name)) OUT_OF_RANGE;                      \
+    else WRONG_TYPE;                                                      \
+  }                                                                       \
+  word _value_##name = Smi::cast(_raw_##name)->value();                   \
+  if (INT8_MIN > _value_##name || _value_##name > INT8_MAX) OUT_OF_RANGE; \
+  int8 name = (int8) _value_##name;
 
 #define _A_T_uint8(N, name)                                           \
   Object* _raw_##name = __args[-(N)];                                 \
@@ -832,7 +861,9 @@ namespace toit {
   if (!name) ALREADY_CLOSED;                                     \
 
 #define _A_T_SimpleResourceGroup(N, name) MAKE_UNPACKING_MACRO(SimpleResourceGroup, N, name)
+#define _A_T_DacResourceGroup(N, name)    MAKE_UNPACKING_MACRO(DacResourceGroup, N, name)
 #define _A_T_GPIOResourceGroup(N, name)   MAKE_UNPACKING_MACRO(GPIOResourceGroup, N, name)
+#define _A_T_TouchResourceGroup(N, name)  MAKE_UNPACKING_MACRO(TouchResourceGroup, N, name)
 #define _A_T_I2CResourceGroup(N, name)    MAKE_UNPACKING_MACRO(I2CResourceGroup, N, name)
 #define _A_T_I2SResourceGroup(N, name)    MAKE_UNPACKING_MACRO(I2SResourceGroup, N, name)
 #define _A_T_PersistentResourceGroup(N, name) MAKE_UNPACKING_MACRO(PersistentResourceGroup, N, name)
@@ -885,6 +916,7 @@ namespace toit {
 #define _A_T_UARTResource(N, name)        MAKE_UNPACKING_MACRO(UARTResource, N, name)
 #define _A_T_I2SResource(N, name)         MAKE_UNPACKING_MACRO(I2SResource, N, name)
 #define _A_T_AdcResource(N, name)         MAKE_UNPACKING_MACRO(AdcResource, N, name)
+#define _A_T_DacResource(N, name)         MAKE_UNPACKING_MACRO(DacResource, N, name)
 #define _A_T_PWMResource(N, name)         MAKE_UNPACKING_MACRO(PWMResource, N, name)
 #define _A_T_PcntUnitResource(N, name)    MAKE_UNPACKING_MACRO(PcntUnitResource, N, name)
 #define _A_T_RMTResource(N, name)         MAKE_UNPACKING_MACRO(RMTResource, N, name)
