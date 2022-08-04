@@ -47,7 +47,6 @@ int run_program(const char* boot_bundle_path, SnapshotBundle application_bundle,
     int result = run_program(boot_bundle, application_bundle, argv);
     // TODO(florian): we should free the boot_bundle buffer here, but that's already
     // done by the `run_program` as the buffer is sent in a message and then freed as an external byte array.
-    // That should not happen.
     return result;
   }
   // TODO(florian): we are currently doing a copy of the snapshot as the
