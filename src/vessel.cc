@@ -34,6 +34,7 @@ namespace toit {
 static const uint8 VESSEL_TOKEN[] = { VESSEL_TOKEN_VALUES };
 
 int main(int argc, char **argv) {
+  Flags::program_name = argv[0];
   Flags::process_args(&argc, argv);
 
   FlashRegistry::set_up();
