@@ -18,6 +18,23 @@ file(GLOB TOITP_TESTS "*_toitp_test.toit")
 set(TOITP_TEST_DIR ${CMAKE_BINARY_DIR}/toitp_test)
 
 include(fail.cmake)
+include("${TOIT_SDK_SOURCE_DIR}/tools/toit.cmake")
+
+set(TOITP_SOURCE "${TOIT_SDK_SOURCE_DIR}/tools/toitp.toit")
+set(TOITP_EXE "${CMAKE_CURRENT_BINARY_DIR}/toitp${CMAKE_EXECUTABLE_SUFFIX}")
+set(TOITP_DEP "${CMAKE_CURRENT_BINARY_DIR}/toitp.dep")
+
+# For simplicity build the toitp executable for this test.
+# We could try to use the one that is build in the tools directory but this approach is easier.
+ADD_TOIT_EXE(
+  ${TOITP_SOURCE}
+  ${TOITP_EXE}
+  ${TOITP_DEP}
+  "")
+
+add_custom_target(build_test_toitp_exe DEPENDS ${TOITP_EXE})
+add_dependencies(check build_test_toitp_exe)
+add_dependencies(check_slow build_test_toitp_exe)
 
 foreach(file ${TOITP_TESTS})
   get_filename_component(base ${file} NAME_WE)
@@ -29,7 +46,7 @@ foreach(file ${TOITP_TESTS})
   set(snap ${TOITP_TEST_DIR}/${test_name}_input.snap)
   set(dep ${TOITP_TEST_DIR}/${test_name}_input.dep)
 
-  ADD_TOIT_TARGET(
+  ADD_TOIT_SNAP(
     ${input}
     ${snap}
     ${dep}
@@ -47,7 +64,8 @@ foreach(file ${TOITP_TESTS})
   if (NOT "${toitp_test_name}" IN_LIST TOIT_SKIP_TESTS)
     add_test(
       NAME ${toitp_test_name}
-      COMMAND $<TARGET_FILE:toit.run> ${toitp_test} ${snap} $<TARGET_FILE:toit.run> ${TOIT_SDK_SOURCE_DIR}/tools/toitp.toit
+      COMMAND $<TARGET_FILE:toit.run> ${toitp_test} ${snap} $<TARGET_FILE:toit.run> ${TOITP_EXE}
+      DEPENDS ${TOITP_EXE}
       )
     set_tests_properties(${toitp_test_name} PROPERTIES TIMEOUT 40)
     if ("${toitp_test_name}" IN_LIST TOIT_FAILING_TESTS)

@@ -145,10 +145,6 @@ add_custom_target(
   COMMAND echo ${TOIT_GIT_VERSION} > "${CMAKE_BINARY_DIR}/sdk/VERSION"
 )
 
-add_custom_target(
-  build_snapshots
-)
-
 add_subdirectory(src)
 add_subdirectory(tools)
 

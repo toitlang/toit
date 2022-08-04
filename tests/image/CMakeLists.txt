@@ -33,7 +33,7 @@ foreach(input ${INPUT})
   set(dep ${S2I_TEST_DIR}/${base}.dep)
   set(expected_out "${CMAKE_CURRENT_SOURCE_DIR}/${base}.out")
 
-  ADD_TOIT_TARGET(
+  ADD_TOIT_SNAP(
     "${TOIT_SDK_SOURCE_DIR}/${input}"
     ${snap}
     ${dep}

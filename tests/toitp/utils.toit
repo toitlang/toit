@@ -10,7 +10,7 @@ run_toitp test_args/List toitp_args/List -> string:
   toitc := test_args[i++]
   toitp := test_args[i++]
 
-  command_list := [toitc, toitp, snap]
+  command_list := [toitp, snap]
   command_list.add_all toitp_args
   return pipe.backticks command_list
 

@@ -253,8 +253,8 @@ int main(int argc, char **argv) {
     fprintf(stderr, "When writing dependencies, both '--dependency-file' and '--dependency-format' must be provided\n");
     print_usage(1);
   }
-  if (dep_format == compiler::Compiler::DepFormat::ninja && bundle_filename == null) {
-    fprintf(stderr, "Ninja dependency-format can only be used when compiling a snapshot\n");
+  if (dep_format == compiler::Compiler::DepFormat::ninja && bundle_filename == null && exe_filename == null) {
+    fprintf(stderr, "Ninja dependency-format can only be used when compiling a snapshot or an executable\n");
     print_usage(1);
   }
 
