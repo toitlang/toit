@@ -8,6 +8,8 @@ User-space side of the RPC API for installing container images in flash, and
 */
 
 import uuid
+import monitor
+
 import system.api.containers show ContainerServiceClient
 import system.services show ServiceResourceProxy
 
@@ -19,13 +21,35 @@ images -> List:
 current -> uuid.Uuid:
   return uuid.Uuid current_image_id_
 
-start id/uuid.Uuid -> int:
-  result/int? := _client_.start_image id
-  if result: return result
+start id/uuid.Uuid -> Container:
+  handle/int? := _client_.start_image id
+  if handle: return Container id handle
   throw "No such container: $id"
 
 uninstall id/uuid.Uuid -> none:
   _client_.uninstall_image id
+
+class Container extends ServiceResourceProxy:
+  id/uuid.Uuid
+  result_/monitor.Latch ::= monitor.Latch
+
+  constructor .id handle/int:
+    super _client_ handle
+
+  close -> none:
+    // Make sure anyone waiting for the result now or in the future
+    // knows that we got closed before getting an exit code.
+    if not result_.has_value: result_.set null
+    super
+
+  wait -> int:
+    code/int? := result_.get
+    if not code: throw "CLOSED"
+    return code
+
+  on_notified_ code/int -> none:
+    result_.set code
+    task:: close
 
 class ContainerImageWriter extends ServiceResourceProxy:
   size/int ::= ?

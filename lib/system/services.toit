@@ -231,6 +231,9 @@ abstract class ServiceResource implements rpc.RpcSerializable:
 
   abstract on_closed -> none
 
+  is_closed -> bool:
+    return _handle_ == null
+
   /**
   The $notify_ method is used for sending notifications to remote clients'
     resource proxies. The notifications are delivered asynchronously and
@@ -368,7 +371,7 @@ class ServiceManager_ implements SystemMessageHandler_:
     pid/int? := clients_.get client
     if not pid: return  // Already closed.
     process_send_ pid SYSTEM_RPC_NOTIFY_RESOURCE_ [client, handle, notification]
-    yield  // Yield to allow intra-process messages to be processed.
+    if not is_processing_messages_: yield  // Yield to allow intra-process messages to be processed.
 
   close client/int -> none:
     pid/int? := clients_.get client
