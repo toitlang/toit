@@ -14,8 +14,8 @@ packages:
     hash: f844400722165252148f087cdf189abab0a47f3d
   pkg-host:
     url: github.com/toitlang/pkg-host
-    version: 1.4.1
-    hash: 444a69af53c5c2010074bceaef1afef615f14047
+    version: 1.6.0
+    hash: d05b91390e76c3543a9968b042aed330210bafa4
   pkg-tar:
     url: github.com/toitlang/pkg-tar
     version: 1.0.0
