@@ -34,6 +34,11 @@ static const char* EXECUTABLE_SUFFIX = ".exe";
 static const char* EXECUTABLE_SUFFIX = "";
 #endif
 
+#ifndef O_BINARY
+// On Windows `O_BINARY` is necessary to avoid newline conversions.
+#define O_BINARY 0
+#endif
+
 static const uint8 VESSEL_TOKEN[] = { VESSEL_TOKEN_VALUES };
 // We could generate this constant in the build system, but that would make things
 // just much more complicated for something that doesn't change that frequently.
@@ -101,7 +106,7 @@ int create_executable(const char* out_path, const SnapshotBundle& bundle) {
       *reinterpret_cast<uint32*>(&vessel_content[i]) = bundle.size();
       memcpy(&vessel_content[i + 4], bundle.buffer(), bundle.size());
       // Use 'open', so we can give executable permissions.
-      int fd = open(out_path, O_WRONLY | O_CREAT, 0777);
+      int fd = open(out_path, O_WRONLY | O_CREAT | O_BINARY, 0777);
       FILE* file_out = fdopen(fd, "wb");
       if (file_out == NULL) {
         perror("create_executable");
