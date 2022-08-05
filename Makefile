@@ -176,7 +176,7 @@ pi: pi-sysroot
 	$(MAKE) CROSS_ARCH=raspberry_pi SYSROOT="$(CURDIR)/build/$(PI_CROSS_ARCH)/sysroot" all-cross
 
 # ESP32 VARIANTS
-TOIT_TOOLS_DIR = build/$(HOST)/sdk/toit_tools
+TOIT_TOOLS_DIR = build/$(HOST)/sdk/tools
 
 ifeq ($(DETECTED_OS), Linux)
 	NUM_CPU := $(shell nproc)
@@ -204,7 +204,7 @@ esp32-no-env: check-env check-esp32-env build/$(ESP32_CHIP)/toit.bin
 
 build/$(ESP32_CHIP)/toit.bin build/$(ESP32_CHIP)/toit.elf: build/$(ESP32_CHIP)/lib/libtoit_vm.a
 build/$(ESP32_CHIP)/toit.bin build/$(ESP32_CHIP)/toit.elf: build/$(ESP32_CHIP)/lib/libtoit_image.a
-build/$(ESP32_CHIP)/toit.bin build/$(ESP32_CHIP)/toit.elf: tools toit_tools build/config.json
+build/$(ESP32_CHIP)/toit.bin build/$(ESP32_CHIP)/toit.elf: tools toit-tools build/config.json
 	$(MAKE) -j $(NUM_CPU) -C toolchains/$(ESP32_CHIP)/
 	$(TOITVM_BIN) tools/inject_config.toit build/config.json --unique_id=$(ESP32_SYSTEM_ID) build/$(ESP32_CHIP)/toit.bin
 
@@ -215,7 +215,7 @@ build/$(ESP32_CHIP)/lib/libtoit_vm.a: build/$(ESP32_CHIP)/CMakeCache.txt build/$
 build/$(ESP32_CHIP)/lib/libtoit_image.a: build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s build/$(ESP32_CHIP)/CMakeCache.txt build/$(ESP32_CHIP)/include/sdkconfig.h
 	(cd build/$(ESP32_CHIP) && ninja toit_image)
 
-build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s: tools toit_tools
+build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s: tools toit-tools
 build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s: build/$(ESP32_CHIP)/system.snapshot
 build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s: build/$(ESP32_CHIP)/program.snapshot
 	mkdir -p build/$(ESP32_CHIP)
