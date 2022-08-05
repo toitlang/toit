@@ -450,14 +450,14 @@ class ToitObjectType extends ToitObject:
 
 class ToitHeader extends ToitObjectType:
   static ID_SIZE ::= 16
-  static META_DATA_SIZE ::= 5
+  static METADATA_SIZE ::= 5
   static UUID_SIZE ::= 16
 
   static LAYOUT /ObjectType ::= ObjectType --packed {
     "_marker": PrimitiveType.UINT32,
     "_me": PrimitiveType.UINT32,
     "_id": PrimitiveType (LayoutSize 0 ID_SIZE),
-    "_meta_data": PrimitiveType (LayoutSize 0 META_DATA_SIZE),
+    "_metadata": PrimitiveType (LayoutSize 0 METADATA_SIZE),
     "_pages_in_flash": PrimitiveType.UINT16,
     "_type": PrimitiveType.UINT8,
     "_uuid": PrimitiveType (LayoutSize 0 UUID_SIZE),
@@ -477,7 +477,7 @@ class ToitHeader extends ToitObjectType:
     anchored.put_uint32 "_marker" MARKER_
     anchored.put_uint32 "_me" at
     anchored.put_bytes "_id" program_id.to_byte_array
-    anchored.put_bytes "_meta_data" 0xFF --size=META_DATA_SIZE
+    anchored.put_bytes "_metadata" #[1, 0, 0, 0, 0]
     anchored.put_uint16 "_pages_in_flash" (image.all_memory.size / 4096)
     anchored.put_uint8 "_type" PROGRAM_TYPE_
     anchored.put_bytes "_uuid" system_uuid.to_byte_array

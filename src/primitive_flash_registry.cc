@@ -107,14 +107,14 @@ PRIMITIVE(get_type) {
   return Smi::from(allocation->type());
 }
 
-PRIMITIVE(get_meta_data) {
+PRIMITIVE(get_metadata) {
   ARGS(int, offset);
-  ByteArray* meta_data = process->object_heap()->allocate_proxy();
-  if (meta_data == null) ALLOCATION_FAILED;
+  ByteArray* metadata = process->object_heap()->allocate_proxy();
+  if (metadata == null) ALLOCATION_FAILED;
   const FlashAllocation* allocation = FlashRegistry::at(offset);
   // Add support invalidation of proxy. TODO(Lau) The proxy is read-only and backed by flash.
-  meta_data->set_external_address(FlashAllocation::Header::meta_data_size(), const_cast<uint8*>(allocation->meta_data()));
-  return meta_data;
+  metadata->set_external_address(FlashAllocation::Header::metadata_size(), const_cast<uint8*>(allocation->metadata()));
+  return metadata;
 }
 
 PRIMITIVE(reserve_hole) {

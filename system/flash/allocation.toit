@@ -52,7 +52,7 @@ flash_registry_get_type_ offset:
   #primitive.flash.get_type
 
 flash_registry_get_metadata_ offset:
-  #primitive.flash.get_meta_data
+  #primitive.flash.get_metadata
 
 flash_registry_get_size_ offset:
   #primitive.flash.get_size
