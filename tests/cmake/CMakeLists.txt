@@ -21,8 +21,8 @@ include(${TOIT_SDK_SOURCE_DIR}/tools/toit.cmake)
 # works in that case too.
 set(CMAKE_TEST_INPUT_DIR "${CMAKE_BINARY_DIR}/cmake_test/dir with spaces")
 set(CMAKE_TEST_INPUT "${CMAKE_TEST_INPUT_DIR}/input.toit")
-set(CMAKE_TEST_SNAPSHOT "${CMAKE_BINARY_DIR}/cmake_test/cmake.snapshot")
-set(CMAKE_TEST_EXE "${CMAKE_BINARY_DIR}/cmake_test/cmake.exe")
+set(CMAKE_TEST_SNAPSHOT "${CMAKE_BINARY_DIR}/cmake_test/cmake_test.snapshot")
+set(CMAKE_TEST_EXE "${CMAKE_BINARY_DIR}/cmake_test/cmake_test.exe")
 
 ADD_TOIT_SNAPSHOT(
   "${CMAKE_TEST_INPUT}"
