@@ -167,8 +167,7 @@ PRIMITIVE(use) {
 PRIMITIVE(unuse) {
   ARGS(GPIOResourceGroup, resource_group, GPIOResource, resource);
 
-  int num = resource->pin();
-  resource_group->unregister_id(num);
+  resource_group->unregister_resource(resource);
   resource_proxy->clear_external_address();
   return process->program()->null_object();
 }
