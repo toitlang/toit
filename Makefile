@@ -58,7 +58,7 @@ prefix ?= /opt/toit-sdk
 all: sdk
 
 .PHONY: sdk
-sdk: tools snapshots version-file
+sdk: tools toit-tools version-file
 
 check-env:
 ifndef IGNORE_SUBMODULE
@@ -93,7 +93,6 @@ build/$(HOST)/CMakeCache.txt:
 	$(MAKE) rebuild-cmake
 
 BIN_DIR = $(CURDIR)/build/$(HOST)/sdk/bin
-TOITVM_BIN = $(BIN_DIR)/toit.run$(EXE_SUFFIX)
 TOITPKG_BIN = $(BIN_DIR)/toit.pkg$(EXE_SUFFIX)
 TOITC_BIN = $(BIN_DIR)/toit.compile$(EXE_SUFFIX)
 
@@ -110,9 +109,9 @@ rebuild-cmake:
 tools: check-env build/$(HOST)/CMakeCache.txt
 	(cd build/$(HOST) && ninja build_tools)
 
-.PHONY: snapshots
-snapshots: tools download-packages
-	(cd build/$(HOST) && ninja build_snapshots)
+.PHONY: toit-tools
+toit-tools: tools download-packages
+	(cd build/$(HOST) && ninja build_toit_tools)
 
 .PHONY: version-file
 version-file: build/$(HOST)/CMakeCache.txt
@@ -120,7 +119,7 @@ version-file: build/$(HOST)/CMakeCache.txt
 
 # CROSS-COMPILE
 .PHONY: all-cross
-all-cross: tools-cross snapshots-cross version-file-cross
+all-cross: tools-cross toit-tools-cross version-file-cross
 
 check-env-cross:
 ifndef CROSS_ARCH
@@ -143,9 +142,9 @@ rebuild-cross-cmake:
 tools-cross: check-env-cross tools build/$(CROSS_ARCH)/CMakeCache.txt
 	(cd build/$(CROSS_ARCH) && ninja build_tools)
 
-.PHONY: snapshots-cross
-snapshots-cross: tools download-packages build/$(CROSS_ARCH)/CMakeCache.txt
-	(cd build/$(CROSS_ARCH) && ninja build_snapshots)
+.PHONY: toit-tools-cross
+toit-tools-cross: tools download-packages build/$(CROSS_ARCH)/CMakeCache.txt
+	(cd build/$(CROSS_ARCH) && ninja build_toit_tools)
 
 .PHONY: version-file-cross
 version-file-cross: build/$(CROSS_ARCH)/CMakeCache.txt
@@ -176,7 +175,7 @@ pi: pi-sysroot
 	$(MAKE) CROSS_ARCH=raspberry_pi SYSROOT="$(CURDIR)/build/$(PI_CROSS_ARCH)/sysroot" all-cross
 
 # ESP32 VARIANTS
-SNAPSHOT_DIR = build/$(HOST)/sdk/snapshots
+TOIT_TOOLS_DIR = build/$(HOST)/sdk/tools
 
 ifeq ($(DETECTED_OS), Linux)
 	NUM_CPU := $(shell nproc)
@@ -204,9 +203,9 @@ esp32-no-env: check-env check-esp32-env build/$(ESP32_CHIP)/toit.bin
 
 build/$(ESP32_CHIP)/toit.bin build/$(ESP32_CHIP)/toit.elf: build/$(ESP32_CHIP)/lib/libtoit_vm.a
 build/$(ESP32_CHIP)/toit.bin build/$(ESP32_CHIP)/toit.elf: build/$(ESP32_CHIP)/lib/libtoit_image.a
-build/$(ESP32_CHIP)/toit.bin build/$(ESP32_CHIP)/toit.elf: tools snapshots build/config.json
+build/$(ESP32_CHIP)/toit.bin build/$(ESP32_CHIP)/toit.elf: tools toit-tools build/config.json
 	$(MAKE) -j $(NUM_CPU) -C toolchains/$(ESP32_CHIP)/
-	$(TOITVM_BIN) tools/inject_config.toit build/config.json --unique_id=$(ESP32_SYSTEM_ID) build/$(ESP32_CHIP)/toit.bin
+	$(TOIT_TOOLS_DIR)/inject_config$(EXE_SUFFIX) build/config.json --unique_id=$(ESP32_SYSTEM_ID) build/$(ESP32_CHIP)/toit.bin
 
 .PHONY: build/$(ESP32_CHIP)/lib/libtoit_vm.a  # Marked phony to force regeneration.
 build/$(ESP32_CHIP)/lib/libtoit_vm.a: build/$(ESP32_CHIP)/CMakeCache.txt build/$(ESP32_CHIP)/include/sdkconfig.h
@@ -215,11 +214,11 @@ build/$(ESP32_CHIP)/lib/libtoit_vm.a: build/$(ESP32_CHIP)/CMakeCache.txt build/$
 build/$(ESP32_CHIP)/lib/libtoit_image.a: build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s build/$(ESP32_CHIP)/CMakeCache.txt build/$(ESP32_CHIP)/include/sdkconfig.h
 	(cd build/$(ESP32_CHIP) && ninja toit_image)
 
-build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s: tools snapshots
+build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s: tools toit-tools
 build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s: build/$(ESP32_CHIP)/system.snapshot
 build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s: build/$(ESP32_CHIP)/program.snapshot
 	mkdir -p build/$(ESP32_CHIP)
-	$(TOITVM_BIN) $(SNAPSHOT_DIR)/snapshot_to_image.snapshot --unique_id=$(ESP32_SYSTEM_ID) -o $@ \
+	$(TOIT_TOOLS_DIR)/snapshot_to_image$(EXE_SUFFIX) --unique_id=$(ESP32_SYSTEM_ID) -o $@ \
 	    build/$(ESP32_CHIP)/system.snapshot \
 	    build/$(ESP32_CHIP)/program.snapshot
 
@@ -275,9 +274,9 @@ install-sdk: all
 	mkdir -p "$(DESTDIR)$(prefix)"/lib
 	cp -R "$(CURDIR)"/lib/* "$(DESTDIR)$(prefix)"/lib
 	find "$(DESTDIR)$(prefix)"/lib -type f -exec chmod 644 {} \;
-	mkdir -p "$(DESTDIR)$(prefix)"/snapshots
-	cp "$(CURDIR)"/build/$(INSTALL_SRC_ARCH)/sdk/snapshots/* "$(DESTDIR)$(prefix)"/snapshots
-	find "$(DESTDIR)$(prefix)"/snapshots -type f -exec chmod 644 {} \;
+	mkdir -p "$(DESTDIR)$(prefix)"/tools
+	cp "$(CURDIR)"/build/$(INSTALL_SRC_ARCH)/sdk/toit_tools/* "$(DESTDIR)$(prefix)"/tools
+	find "$(DESTDIR)$(prefix)"/tools -type f -exec chmod 755 {} \;
 
 install: install-sdk
 
