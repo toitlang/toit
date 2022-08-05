@@ -16,6 +16,9 @@ interface ContainerService:
   static START_IMAGE_INDEX /int ::= 1
   start_image id/uuid.Uuid -> int?
 
+  static STOP_CONTAINER_INDEX /int ::= 6
+  stop_container handle/int -> none
+
   static UNINSTALL_IMAGE_INDEX /int ::= 2
   uninstall_image id/uuid.Uuid -> none
 
@@ -41,6 +44,9 @@ class ContainerServiceClient extends ServiceClient implements ContainerService:
 
   start_image id/uuid.Uuid -> int?:
     return invoke_ ContainerService.START_IMAGE_INDEX id.to_byte_array
+
+  stop_container handle/int -> none:
+    invoke_ ContainerService.STOP_CONTAINER_INDEX handle
 
   uninstall_image id/uuid.Uuid -> none:
     invoke_ ContainerService.UNINSTALL_IMAGE_INDEX id.to_byte_array

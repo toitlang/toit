@@ -40,6 +40,13 @@ class Container:
   is_process_running pid/int -> bool:
     return pids_.contains pid
 
+  stop -> none:
+    if pids_.is_empty: return
+    pids_.do: container_kill_pid_ it
+    pids_.clear
+    image.manager.on_container_stop_ this
+    resources.do: it.on_container_stop 0
+
   on_stop_ -> none:
     pids_.do: on_process_stop_ it
 
@@ -61,13 +68,17 @@ class Container:
 
 class ContainerResource extends ServiceResource:
   container/Container
-  index_/int? ::= ?
+  hash_code/int ::= hash_code_next
 
   constructor .container service/ServiceDefinition client/int:
-    resources ::= container.resources
-    index_ = resources.size
     super service client --notifiable
-    resources.add this
+    container.resources.add this
+
+  static hash_code_next_/int := 0
+  static hash_code_next -> int:
+    next := hash_code_next_
+    hash_code_next_ = (next + 1) & 0x1fff_ffff
+    return next
 
   on_container_stop code/int -> none:
     if is_closed: return
@@ -75,13 +86,6 @@ class ContainerResource extends ServiceResource:
 
   on_closed -> none:
     container.resources.remove this
-
-  hash_code -> int:
-    // After this container resource has been closed, another
-    // resource might get the same index and thus the same hash
-    // code. This isn't a problem, because we typically only need
-    // to keep track of open resources in hashed collections.
-    return index_
 
 abstract class ContainerImage:
   manager/ContainerManager ::= ?
@@ -157,6 +161,9 @@ abstract class ContainerServiceDefinition extends ServiceDefinition
       return list_images
     if index == ContainerService.START_IMAGE_INDEX:
       return start_image client (uuid.Uuid arguments)
+    if index == ContainerService.STOP_CONTAINER_INDEX:
+      resource ::= (resource client arguments) as ContainerResource
+      return stop_container resource
     if index == ContainerService.UNINSTALL_IMAGE_INDEX:
       return uninstall_image (uuid.Uuid arguments)
     if index == ContainerService.IMAGE_WRITER_OPEN_INDEX:
@@ -185,6 +192,9 @@ abstract class ContainerServiceDefinition extends ServiceDefinition
     image/ContainerImage? := lookup_image id
     if not image: return null
     return ContainerResource image.start this client
+
+  stop_container resource/ContainerResource? -> none:
+    resource.container.stop
 
   uninstall_image id/uuid.Uuid -> none:
     image/ContainerImage? := lookup_image id

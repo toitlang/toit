@@ -42,6 +42,9 @@ class Container extends ServiceResourceProxy:
     if not result_.has_value: result_.set null
     super
 
+  stop -> none:
+    _client_.stop_container handle_
+
   wait -> int:
     code/int? := result_.get
     if not code: throw "CLOSED"
