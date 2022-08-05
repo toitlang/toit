@@ -70,6 +70,7 @@ class Filesystem {
   const char* cwd();
 
   const char* library_root();
+  const char* vessel_root();
 
   /// Registers an intercepted file.
   /// The path must be absolute.
@@ -110,6 +111,7 @@ class Filesystem {
 
   UnorderedMap<std::string, InterceptedFile> _intercepted;
   const char* _library_root = null;
+  const char* _vessel_root = null;
   const char* _cwd = null;
 };
 

@@ -61,6 +61,29 @@ const char* Filesystem::library_root() {
   return _library_root;
 }
 
+const char* Filesystem::vessel_root() {
+  if (_vessel_root == null) {
+    auto sdk = sdk_path();
+    const char* VESSEL_SUFFIX = "vessels";
+    PathBuilder builder(this);
+    builder.join(sdk);
+    int sdk_length = builder.length();
+    builder.join(VESSEL_SUFFIX);
+    if (is_directory(builder.c_str())) {
+      _vessel_root = builder.strdup();
+    } else {
+      builder.reset_to(sdk_length);
+      builder.join("..", "vessels");
+      builder.canonicalize();
+      // Always assign the string, without testing.
+      // If the path is wrong there will be an error very soon, because the compiler can't
+      // find the vessel.
+      _vessel_root = builder.strdup();
+    }
+  }
+  return _vessel_root;
+}
+
 void Filesystem::canonicalize(char* path) {
   if (path[0] == '\0') return;
   if (SourceManager::is_virtual_file(path)) return;
