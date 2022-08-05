@@ -208,7 +208,7 @@ endforeach()
 include(${TOIT_SDK_SOURCE_DIR}/tools/toit.cmake)
 
 set(BOOT_SNAPSHOT_SOURCE ${TOIT_SDK_SOURCE_DIR}/tools/toit.run.toit)
-ADD_TOIT_SNAP(
+ADD_TOIT_SNAPSHOT(
   ${BOOT_SNAPSHOT_SOURCE}
   ${BOOT_SNAPSHOT}
   ${CMAKE_CURRENT_BINARY_DIR}/boot.dep

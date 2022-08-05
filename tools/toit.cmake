@@ -42,7 +42,7 @@ if (DEFINED EXECUTING_SCRIPT)
 endif()
 
 # Creates a custom command to build ${TARGET} with correct dependencies.
-function(ADD_TOIT_SNAP SOURCE TARGET DEP_FILE ENV)
+function(ADD_TOIT_SNAPSHOT SOURCE TARGET DEP_FILE ENV)
   if (NOT DEFINED TOITC)
     set(TOITC "$ENV{TOITC}")
     if ("${TOITC}" STREQUAL "")
@@ -60,7 +60,7 @@ function(ADD_TOIT_SNAP SOURCE TARGET DEP_FILE ENV)
     DEPENDS "${TOITC}" download_packages
     COMMAND ${CMAKE_COMMAND} -E env ${ENV} ASAN_OPTIONS=detect_leaks=false "${TOITC}" --dependency-file "${DEP_FILE}" --dependency-format ninja -w "${TARGET}" "${SOURCE}"
   )
-endfunction(ADD_TOIT_SNAP)
+endfunction(ADD_TOIT_SNAPSHOT)
 
 # Creates a custom command to build ${TARGET} with correct dependencies.
 function(ADD_TOIT_EXE SOURCE TARGET DEP_FILE ENV)

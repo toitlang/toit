@@ -58,7 +58,7 @@ prefix ?= /opt/toit-sdk
 all: sdk
 
 .PHONY: sdk
-sdk: tools toit_tools version-file
+sdk: tools toit-tools version-file
 
 check-env:
 ifndef IGNORE_SUBMODULE
@@ -110,8 +110,8 @@ rebuild-cmake:
 tools: check-env build/$(HOST)/CMakeCache.txt
 	(cd build/$(HOST) && ninja build_tools)
 
-.PHONY: toit_tools
-toit_tools: tools download-packages
+.PHONY: toit-tools
+toit-tools: tools download-packages
 	(cd build/$(HOST) && ninja build_toit_tools)
 
 .PHONY: version-file
@@ -120,7 +120,7 @@ version-file: build/$(HOST)/CMakeCache.txt
 
 # CROSS-COMPILE
 .PHONY: all-cross
-all-cross: tools-cross toit_tools-cross version-file-cross
+all-cross: tools-cross toit-tools-cross version-file-cross
 
 check-env-cross:
 ifndef CROSS_ARCH
@@ -143,8 +143,8 @@ rebuild-cross-cmake:
 tools-cross: check-env-cross tools build/$(CROSS_ARCH)/CMakeCache.txt
 	(cd build/$(CROSS_ARCH) && ninja build_tools)
 
-.PHONY: toit_tools-cross
-toit_tools-cross: tools download-packages build/$(CROSS_ARCH)/CMakeCache.txt
+.PHONY: toit-tools-cross
+toit-tools-cross: tools download-packages build/$(CROSS_ARCH)/CMakeCache.txt
 	(cd build/$(CROSS_ARCH) && ninja build_toit_tools)
 
 .PHONY: version-file-cross
@@ -176,7 +176,7 @@ pi: pi-sysroot
 	$(MAKE) CROSS_ARCH=raspberry_pi SYSROOT="$(CURDIR)/build/$(PI_CROSS_ARCH)/sysroot" all-cross
 
 # ESP32 VARIANTS
-SNAPSHOT_DIR = build/$(HOST)/sdk/toit_tools
+TOIT_TOOLS_DIR = build/$(HOST)/sdk/toit_tools
 
 ifeq ($(DETECTED_OS), Linux)
 	NUM_CPU := $(shell nproc)
@@ -219,7 +219,7 @@ build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s: tools toit_tools
 build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s: build/$(ESP32_CHIP)/system.snapshot
 build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s: build/$(ESP32_CHIP)/program.snapshot
 	mkdir -p build/$(ESP32_CHIP)
-	$(TOITVM_BIN) $(SNAPSHOT_DIR)/snapshot_to_image.snapshot --unique_id=$(ESP32_SYSTEM_ID) -o $@ \
+	$(TOITVM_BIN) $(TOIT_TOOLS_DIR)/snapshot_to_image$(EXE_SUFFIX) --unique_id=$(ESP32_SYSTEM_ID) -o $@ \
 	    build/$(ESP32_CHIP)/system.snapshot \
 	    build/$(ESP32_CHIP)/program.snapshot
 
