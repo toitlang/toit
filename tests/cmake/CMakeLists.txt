@@ -62,7 +62,7 @@ add_custom_command(
 # Used for the 'test_cmake' below.
 add_custom_command(
   OUTPUT ${CMAKE_TEST_EXE_OUTPUT}
-  COMMAND ${CMAKE_TEST_EXE} > ${CMAKE_TEST_SOURCE_OUTPUT}
+  COMMAND ${CMAKE_TEST_EXE} > ${CMAKE_TEST_EXE_OUTPUT}
   DEPENDS ${CMAKE_TEST_EXE}
 )
 
@@ -75,15 +75,15 @@ add_custom_target(
 
 # Used for the 'test_cmake' below.
 add_custom_target(
-  test_cmake_bin
-  COMMAND diff ${CMAKE_TEST_SNAPSHOT_OUTPUT} ${CMAKE_TEST_SOURCE_OUTPUT}
+  test_cmake_exe
+  COMMAND diff ${CMAKE_TEST_EXE_OUTPUT} ${CMAKE_TEST_SOURCE_OUTPUT}
   DEPENDS ${CMAKE_TEST_EXE_OUTPUT} ${CMAKE_TEST_SOURCE_OUTPUT}
 )
 
 # Target called from test.cmake.
 add_custom_target(
   test_cmake
-  DEPENDS test_cmake_snapshot test_cmake_bin
+  DEPENDS test_cmake_snapshot test_cmake_exe
 )
 
 set(TEST_FILE "${CMAKE_CURRENT_SOURCE_DIR}/test.cmake")
