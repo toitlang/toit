@@ -1,7 +1,7 @@
 As check failed: null is not a ServiceResource.
   0: ServiceDefinition.resource <sdk>/system/services.toit:158:5
-  1: ContainerServiceDefinition.handle <...>/system/containers.toit:137:19
-  2: ServiceManager_.<lambda>  <sdk>/system/services.toit:341:15
+  1: ContainerServiceDefinition.handle <...>/system/containers.toit:165:19
+  2: ServiceManager_.<lambda>  <sdk>/system/services.toit:344:15
   3: RpcRequest_.process.<block> <sdk>/rpc/broker.toit:98:26
   4: RpcRequest_.process       <sdk>/rpc/broker.toit:95:3
   5: RpcRequestQueue_.ensure_processing_task_.<lambda>.<block>.<block> <sdk>/rpc/broker.toit:214:20

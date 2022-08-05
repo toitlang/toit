@@ -29,6 +29,7 @@ class Container:
   image/ContainerImage ::= ?
   gid_/int ::= ?
   pids_/Set ::= ?  // Set<int>
+  resources/Set ::= {}
 
   constructor .image .gid_ pid/int:
     pids_ = { pid }
@@ -48,12 +49,39 @@ class Container:
 
   on_process_stop_ pid/int -> none:
     pids_.remove pid
-    if pids_.is_empty: image.manager.on_container_stop_ this
+    if not pids_.is_empty: return
+    image.manager.on_container_stop_ this
+    resources.do: it.on_container_stop 0
 
   on_process_error_ pid/int error/int -> none:
     on_process_stop_ pid
     pids_.do: container_kill_pid_ it
     image.on_container_error this error
+    resources.do: it.on_container_stop error
+
+class ContainerResource extends ServiceResource:
+  container/Container
+  index_/int? ::= ?
+
+  constructor .container service/ServiceDefinition client/int:
+    resources ::= container.resources
+    index_ = resources.size
+    super service client --notifiable
+    resources.add this
+
+  on_container_stop code/int -> none:
+    if is_closed: return
+    notify_ code
+
+  on_closed -> none:
+    container.resources.remove this
+
+  hash_code -> int:
+    // After this container resource has been closed, another
+    // resource might get the same index and thus the same hash
+    // code. This isn't a problem, because we typically only need
+    // to keep track of open resources in hashed collections.
+    return index_
 
 abstract class ContainerImage:
   manager/ContainerManager ::= ?
@@ -128,7 +156,7 @@ abstract class ContainerServiceDefinition extends ServiceDefinition
     if index == ContainerService.LIST_IMAGES_INDEX:
       return list_images
     if index == ContainerService.START_IMAGE_INDEX:
-      return start_image (uuid.Uuid arguments)
+      return start_image client (uuid.Uuid arguments)
     if index == ContainerService.UNINSTALL_IMAGE_INDEX:
       return uninstall_image (uuid.Uuid arguments)
     if index == ContainerService.IMAGE_WRITER_OPEN_INDEX:
@@ -150,10 +178,13 @@ abstract class ContainerServiceDefinition extends ServiceDefinition
     return images.map --in_place: | image/ContainerImage |
       image.id.to_byte_array
 
-  start_image id/uuid.Uuid -> int?:
+  start_image id/uuid.Uuid -> int:
+    unreachable  // <-- TODO(kasper): Nasty.
+
+  start_image client/int id/uuid.Uuid -> ContainerResource?:
     image/ContainerImage? := lookup_image id
     if not image: return null
-    return image.start.id
+    return ContainerResource image.start this client
 
   uninstall_image id/uuid.Uuid -> none:
     image/ContainerImage? := lookup_image id
