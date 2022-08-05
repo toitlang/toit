@@ -46,7 +46,7 @@ foreach(file ${TOITP_TESTS})
   set(snap ${TOITP_TEST_DIR}/${test_name}_input.snap)
   set(dep ${TOITP_TEST_DIR}/${test_name}_input.dep)
 
-  ADD_TOIT_SNAP(
+  ADD_TOIT_SNAPSHOT(
     ${input}
     ${snap}
     ${dep}

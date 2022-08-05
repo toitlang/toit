@@ -55,15 +55,15 @@ class ElementsMetaData {
   };
 
  private:
-  int _meta_data_address;
+  int _metadata_address;
   word _first_segment_address;
   uint8 _header_data[NUMBER_OF_WRITE_SEGMENTS];
 
  public:
   ElementsMetaData(word address) {
-    _meta_data_address = address + sizeof(FlashAllocation::Header);
-    _first_segment_address = Utils::round_up(_meta_data_address + NUMBER_OF_WRITE_SEGMENTS, FLASH_SEGMENT_SIZE);
-    FlashRegistry::read_raw_chunk(_meta_data_address, _header_data, NUMBER_OF_WRITE_SEGMENTS);
+    _metadata_address = address + sizeof(FlashAllocation::Header);
+    _first_segment_address = Utils::round_up(_metadata_address + NUMBER_OF_WRITE_SEGMENTS, FLASH_SEGMENT_SIZE);
+    FlashRegistry::read_raw_chunk(_metadata_address, _header_data, NUMBER_OF_WRITE_SEGMENTS);
   }
 
   ~ElementsMetaData() { }
@@ -94,13 +94,13 @@ class ElementsMetaData {
   bool mark_insert(int segment_offset, int size, List<uint8_t> buffer);
 
   bool mark_skip(int segment_offset) {
-    return FlashRegistry::write_raw_chunk(&SKIP_SEGMENT, _meta_data_address + segment_offset, 1);
+    return FlashRegistry::write_raw_chunk(&SKIP_SEGMENT, _metadata_address + segment_offset, 1);
   }
 
   bool mark_skip(int segment_offset, uint8* segments, int size) {
     ASSERT(NUMBER_OF_WRITE_SEGMENTS);
     memset(segments, SKIP_SEGMENT, size);
-    return FlashRegistry::write_raw_chunk(segments, _meta_data_address + segment_offset, size);
+    return FlashRegistry::write_raw_chunk(segments, _metadata_address + segment_offset, size);
   }
 
   static int number_of_continues(int size) {

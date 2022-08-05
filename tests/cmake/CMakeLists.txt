@@ -24,7 +24,7 @@ set(CMAKE_TEST_INPUT "${CMAKE_TEST_INPUT_DIR}/input.toit")
 set(CMAKE_TEST_SNAPSHOT "${CMAKE_BINARY_DIR}/cmake_test/cmake.snapshot")
 set(CMAKE_TEST_EXE "${CMAKE_BINARY_DIR}/cmake_test/cmake.exe")
 
-ADD_TOIT_SNAP(
+ADD_TOIT_SNAPSHOT(
   "${CMAKE_TEST_INPUT}"
   "${CMAKE_TEST_SNAPSHOT}"
   "${CMAKE_TEST_SNAPSHOT}.dep"
@@ -62,7 +62,7 @@ add_custom_command(
 # Used for the 'test_cmake' below.
 add_custom_command(
   OUTPUT ${CMAKE_TEST_EXE_OUTPUT}
-  COMMAND ${CMAKE_TEST_BIN} > ${CMAKE_TEST_SOURCE_OUTPUT}
+  COMMAND ${CMAKE_TEST_EXE} > ${CMAKE_TEST_SOURCE_OUTPUT}
   DEPENDS ${CMAKE_TEST_SNAPSHOT}
 )
 

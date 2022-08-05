@@ -29,6 +29,7 @@ class Container:
   image/ContainerImage ::= ?
   gid_/int ::= ?
   pids_/Set ::= ?  // Set<int>
+  resources/Set ::= {}
 
   constructor .image .gid_ pid/int:
     pids_ = { pid }
@@ -39,6 +40,13 @@ class Container:
   is_process_running pid/int -> bool:
     return pids_.contains pid
 
+  stop -> none:
+    if pids_.is_empty: return
+    pids_.do: container_kill_pid_ it
+    pids_.clear
+    image.manager.on_container_stop_ this
+    resources.do: it.on_container_stop 0
+
   on_stop_ -> none:
     pids_.do: on_process_stop_ it
 
@@ -48,12 +56,36 @@ class Container:
 
   on_process_stop_ pid/int -> none:
     pids_.remove pid
-    if pids_.is_empty: image.manager.on_container_stop_ this
+    if not pids_.is_empty: return
+    image.manager.on_container_stop_ this
+    resources.do: it.on_container_stop 0
 
   on_process_error_ pid/int error/int -> none:
     on_process_stop_ pid
     pids_.do: container_kill_pid_ it
     image.on_container_error this error
+    resources.do: it.on_container_stop error
+
+class ContainerResource extends ServiceResource:
+  container/Container
+  hash_code/int ::= hash_code_next
+
+  constructor .container service/ServiceDefinition client/int:
+    super service client --notifiable
+    container.resources.add this
+
+  static hash_code_next_/int := 0
+  static hash_code_next -> int:
+    next := hash_code_next_
+    hash_code_next_ = (next + 1) & 0x1fff_ffff
+    return next
+
+  on_container_stop code/int -> none:
+    if is_closed: return
+    notify_ code
+
+  on_closed -> none:
+    container.resources.remove this
 
 abstract class ContainerImage:
   manager/ContainerManager ::= ?
@@ -62,6 +94,9 @@ abstract class ContainerImage:
   abstract id -> uuid.Uuid
 
   trace encoded/ByteArray -> bool:
+    return false
+
+  run_on_boot -> bool:
     return false
 
   // TODO(kasper): This isn't super nice. It feels a bit odd that the
@@ -81,6 +116,11 @@ class ContainerImageFlash extends ContainerImage:
 
   id -> uuid.Uuid:
     return allocation_.id
+
+  run_on_boot -> bool:
+    // TODO(kasper): Clean this up a bit by not hardcoding the
+    // metadata encoding quite so much.
+    return allocation_.metadata[0] == 1
 
   start -> Container:
     gid ::= container_next_gid_
@@ -120,7 +160,10 @@ abstract class ContainerServiceDefinition extends ServiceDefinition
     if index == ContainerService.LIST_IMAGES_INDEX:
       return list_images
     if index == ContainerService.START_IMAGE_INDEX:
-      return start_image (uuid.Uuid arguments)
+      return start_image client (uuid.Uuid arguments)
+    if index == ContainerService.STOP_CONTAINER_INDEX:
+      resource ::= (resource client arguments) as ContainerResource
+      return stop_container resource
     if index == ContainerService.UNINSTALL_IMAGE_INDEX:
       return uninstall_image (uuid.Uuid arguments)
     if index == ContainerService.IMAGE_WRITER_OPEN_INDEX:
@@ -142,10 +185,16 @@ abstract class ContainerServiceDefinition extends ServiceDefinition
     return images.map --in_place: | image/ContainerImage |
       image.id.to_byte_array
 
-  start_image id/uuid.Uuid -> int?:
+  start_image id/uuid.Uuid -> int:
+    unreachable  // <-- TODO(kasper): Nasty.
+
+  start_image client/int id/uuid.Uuid -> ContainerResource?:
     image/ContainerImage? := lookup_image id
     if not image: return null
-    return image.start.id
+    return ContainerResource image.start this client
+
+  stop_container resource/ContainerResource? -> none:
+    resource.container.stop
 
   uninstall_image id/uuid.Uuid -> none:
     image/ContainerImage? := lookup_image id

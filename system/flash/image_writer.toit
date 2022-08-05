@@ -24,6 +24,8 @@ import .reservation
 IMAGE_WORD_SIZE  ::= BYTES_PER_WORD
 IMAGE_CHUNK_SIZE ::= (BITS_PER_WORD + 1) * IMAGE_WORD_SIZE
 
+IMAGE_EMPTY_METADATA_ ::= #[0, 0, 0, 0, 0]
+
 class ContainerImageWriter extends ServiceResource:
   reservation_/FlashReservation? := ?
   image_/ByteArray ::= ?
@@ -52,7 +54,7 @@ class ContainerImageWriter extends ServiceResource:
   commit -> FlashAllocation:
     try:
       if partial_chunk_fill_ > 0: throw "Incomplete image"
-      image_writer_commit_ image_
+      image_writer_commit_ image_ IMAGE_EMPTY_METADATA_
       return FlashAllocation reservation_.offset
     finally:
       close
@@ -71,7 +73,7 @@ image_writer_create_ offset size:
 image_writer_write_ image part/ByteArray from/int to/int:
   #primitive.image.writer_write
 
-image_writer_commit_ image:
+image_writer_commit_ image metadata/ByteArray:
   #primitive.image.writer_commit
 
 image_writer_close_ image:
