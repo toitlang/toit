@@ -63,7 +63,7 @@ add_custom_command(
 add_custom_command(
   OUTPUT ${CMAKE_TEST_EXE_OUTPUT}
   COMMAND ${CMAKE_TEST_EXE} > ${CMAKE_TEST_SOURCE_OUTPUT}
-  DEPENDS ${CMAKE_TEST_SNAPSHOT}
+  DEPENDS ${CMAKE_TEST_EXE}
 )
 
 # Used for the 'test_cmake' below.
