@@ -93,7 +93,6 @@ build/$(HOST)/CMakeCache.txt:
 	$(MAKE) rebuild-cmake
 
 BIN_DIR = $(CURDIR)/build/$(HOST)/sdk/bin
-TOITVM_BIN = $(BIN_DIR)/toit.run$(EXE_SUFFIX)
 TOITPKG_BIN = $(BIN_DIR)/toit.pkg$(EXE_SUFFIX)
 TOITC_BIN = $(BIN_DIR)/toit.compile$(EXE_SUFFIX)
 
@@ -206,7 +205,7 @@ build/$(ESP32_CHIP)/toit.bin build/$(ESP32_CHIP)/toit.elf: build/$(ESP32_CHIP)/l
 build/$(ESP32_CHIP)/toit.bin build/$(ESP32_CHIP)/toit.elf: build/$(ESP32_CHIP)/lib/libtoit_image.a
 build/$(ESP32_CHIP)/toit.bin build/$(ESP32_CHIP)/toit.elf: tools toit-tools build/config.json
 	$(MAKE) -j $(NUM_CPU) -C toolchains/$(ESP32_CHIP)/
-	$(TOITVM_BIN) tools/inject_config.toit build/config.json --unique_id=$(ESP32_SYSTEM_ID) build/$(ESP32_CHIP)/toit.bin
+	$(TOIT_TOOLS_DIR)/inject_config$(EXE_SUFFIX) build/config.json --unique_id=$(ESP32_SYSTEM_ID) build/$(ESP32_CHIP)/toit.bin
 
 .PHONY: build/$(ESP32_CHIP)/lib/libtoit_vm.a  # Marked phony to force regeneration.
 build/$(ESP32_CHIP)/lib/libtoit_vm.a: build/$(ESP32_CHIP)/CMakeCache.txt build/$(ESP32_CHIP)/include/sdkconfig.h
@@ -219,7 +218,7 @@ build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s: tools toit-tools
 build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s: build/$(ESP32_CHIP)/system.snapshot
 build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s: build/$(ESP32_CHIP)/program.snapshot
 	mkdir -p build/$(ESP32_CHIP)
-	$(TOITVM_BIN) $(TOIT_TOOLS_DIR)/snapshot_to_image$(EXE_SUFFIX) --unique_id=$(ESP32_SYSTEM_ID) -o $@ \
+	$(TOIT_TOOLS_DIR)/snapshot_to_image$(EXE_SUFFIX) --unique_id=$(ESP32_SYSTEM_ID) -o $@ \
 	    build/$(ESP32_CHIP)/system.snapshot \
 	    build/$(ESP32_CHIP)/program.snapshot
 
