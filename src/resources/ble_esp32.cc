@@ -73,6 +73,7 @@ enum {
   kBLECharTypeWriteOnly = 2,
   kBLECharTypeReadWrite = 3,
   kBLECharTypeNotification = 4,
+  kBLECharTypeWriteOnlyNoRsp = 5,
 };
 
 const uint8 kBluetoothBaseUUID[16] = {
@@ -375,6 +376,9 @@ int BLEResourceGroup::init_server() {
             break;
           case kBLECharTypeWriteOnly:
             gatt_svr_chars[characteristic_idx].flags = BLE_GATT_CHR_F_WRITE;
+            break;
+          case kBLECharTypeWriteOnlyNoRsp:
+            gatt_svr_chars[characteristic_idx].flags = BLE_GATT_CHR_F_WRITE_NO_RSP;
             break;
           case kBLECharTypeReadWrite:
             gatt_svr_chars[characteristic_idx].flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_READ;
@@ -1057,8 +1061,26 @@ PRIMITIVE(get_characteristics_value) {
   } else {
     ALLOCATION_FAILED;
   }
+}
 
-  return ret_val;
+PRIMITIVE(set_preferred_mtu) {
+  ARGS(int, mtu);
+
+  int ret_val = ble_att_set_preferred_mtu(mtu);
+
+  if (ret_val) {
+    INVALID_ARGUMENT;
+  } else {
+    return process->program()->null_object();
+  }
+}
+
+PRIMITIVE(get_att_mtu) {
+  ARGS(BLEServerCharacteristicResource, resource);
+
+  word mtu = ble_att_mtu(resource->conn_handle());
+
+  return Smi::from(mtu);
 }
 
 } // namespace toit
