@@ -337,6 +337,8 @@ namespace toit {
   PRIMITIVE(set_characteristics_value, 2)    \
   PRIMITIVE(notify_characteristics_value, 2) \
   PRIMITIVE(get_characteristics_value, 1)    \
+  PRIMITIVE(get_att_mtu, 1)                  \
+  PRIMITIVE(set_preferred_mtu, 1)            \
 
 #define MODULE_DHCP(PRIMITIVE)               \
   PRIMITIVE(wait_for_lwip_dhcp_on_linux, 0)  \
