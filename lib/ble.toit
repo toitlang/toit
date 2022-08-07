@@ -34,10 +34,10 @@ class Address:
   stringify -> string:
     buffer := bytes.Buffer
     6.repeat:
-      if it > 0: buffer.put_byte ':'
+      if it > 0: buffer.write_byte ':'
       byte := raw_[1 + it]
-      buffer.put_byte HEX_TABLE_[byte >> 4]
-      buffer.put_byte HEX_TABLE_[byte & 0xf]
+      buffer.write_byte HEX_TABLE_[byte >> 4]
+      buffer.write_byte HEX_TABLE_[byte & 0xf]
     return buffer.to_string
 
   /**
@@ -56,7 +56,7 @@ class Address:
     return raw_[6] | raw_[5] << 8 | raw_[4] << 16
 
 BLE_CONNECT_MODE_NONE          ::= 0
-BLE_CONNECT_MODE_DIRECTIONAL   ::= 1 
+BLE_CONNECT_MODE_DIRECTIONAL   ::= 1
 BLE_CONNECT_MODE_UNDIRECTIONAL ::= 2
 
 /**
@@ -99,16 +99,16 @@ class Advertiser:
   The data is advertised for the given $duration and once every $interval.
     If the $duration is null, then the data is advertised indefinitely.
 
-  The advertise will include the given $connection_mode, use one 
+  The advertise will include the given $connection_mode, use one
     of the BLE_CONNECTION_MODE_* constants.
 
   Use $set_data to set the data.
 
   Only one advertiser can advertise at any given time.
   */
-  start 
-      --duration/Duration?=null 
-      --interval/Duration=DEFAULT_INTERVAL 
+  start
+      --duration/Duration?=null
+      --interval/Duration=DEFAULT_INTERVAL
       --connection_mode/int=BLE_CONNECT_MODE_NONE:
     duration_us := duration ? (max 0 duration.in_us) : -1
     ble_advertise_start_ device.resource_group_ duration_us interval.in_us connection_mode
@@ -235,6 +235,12 @@ class RemoteCharacteristic:
     data := ble_request_data_ client.gatt_
     return data
 
+  /**
+  Writes the value of the characteristic on the remote service.
+  */
+  write_value value/ByteArray -> none:
+    ble_send_data_ service.client_.gatt_ handle value
+
 /**
 A client connected to a remote device.
 */
@@ -286,17 +292,17 @@ class ServerConfiguration:
     services.add service
     return service
 
-/** 
-Defines a BLE service with characteristics. 
+/**
+Defines a BLE service with characteristics.
 */
 class Service:
   /**
   The UUID of the service.
-  
+
   For 16 and 32 bit UUIDs, form the BLE variant with the top-level uuid function.
   */
   uuid/uuid_pkg.Uuid
-  
+
   server_configuration_/ServerConfiguration
   resource_/ByteArray?
 
@@ -323,7 +329,7 @@ class Service:
   add_notification_characteristic uuid -> NotificationCharacteristic:
     char := NotificationCharacteristic this uuid
     characteristics_[uuid] = char
-    return char 
+    return char
 
   get_characteristic uuid -> Characteristic?:
     return characteristics_.get uuid
@@ -354,24 +360,24 @@ abstract class Characteristic:
 
 /**
 Base class of characteristics that clients can write to.
-*/  
+*/
 abstract class WritableCharacteristic extends Characteristic:
   constructor service/Service resource uuid:
     super service resource uuid
-  
+
   value -> ByteArray?:
     state_.wait_for_state BLE_WAIT_RECV_
     data := ble_get_characteristics_value_ state_.resource
     state_.clear_state BLE_WAIT_RECV_
     return data
 
-/** 
+/**
 A characteristic that can only be read by clients.
 */
 class ReadOnlyCharacteristic extends Characteristic:
   value_/ByteArray := #[]
 
-  constructor service/Service uuid/uuid_pkg.Uuid value/ByteArray:  
+  constructor service/Service uuid/uuid_pkg.Uuid value/ByteArray:
     resource := ble_add_server_characteristic_ service.resource_ uuid.to_byte_array BLE_CHR_TYPE_READ_ONLY_ value
     super service resource uuid
     value_ = value
@@ -394,7 +400,7 @@ class WriteOnlyCharacteristic extends WritableCharacteristic:
 A characteristic that allows both read and write by the client.
 */
 class ReadWriteCharacteristic extends WritableCharacteristic:
-  constructor service/Service uuid/uuid_pkg.Uuid value/ByteArray:  
+  constructor service/Service uuid/uuid_pkg.Uuid value/ByteArray:
     resource := ble_add_server_characteristic_ service.resource_ uuid.to_byte_array BLE_CHR_TYPE_READ_WRITE_ value
     super service resource uuid
 
@@ -402,11 +408,11 @@ class ReadWriteCharacteristic extends WritableCharacteristic:
     ble_set_characteristics_value_ state_.resource value
 
 
-/** 
+/**
 A characteristic that the client can subscribe to changes on.
 */
 class NotificationCharacteristic extends Characteristic:
-  constructor service/Service uuid/uuid_pkg.Uuid:  
+  constructor service/Service uuid/uuid_pkg.Uuid:
     resource := ble_add_server_characteristic_ service.resource_ uuid.to_byte_array BLE_CHR_TYPE_NOTIFICATION_ null
     super service resource uuid
 
@@ -418,7 +424,7 @@ The local BLE device.
 
 After construction, the BLE stack is initialized and ready to use.
 
-If services is not empty, sets up the services for the advertiser. 
+If services is not empty, sets up the services for the advertiser.
 */
 class Device:
   resource_group_ := ?
@@ -559,6 +565,9 @@ ble_request_result_ gatt:
 
 ble_request_data_ gatt:
   #primitive.ble.request_data
+
+ble_send_data_ gatt handle value:
+  #primitive.ble.send_data
 
 ble_request_service_ gatt service_id:
   #primitive.ble.request_service

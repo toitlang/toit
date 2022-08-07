@@ -59,7 +59,6 @@ namespace toit {
   ROOT(String,     read_failed)              \
   ROOT(String,     stack_overflow)           \
   ROOT(String,     unimplemented)            \
-  ROOT(String,     watchdog_interrupt)       \
   ROOT(String,     wrong_object_type)        \
 
 
@@ -71,6 +70,7 @@ namespace toit {
   ID(byte_array_slice_class_id)  \
   ID(string_slice_class_id)      \
   ID(list_class_id)              \
+  ID(map_class_id)               \
   ID(tombstone_class_id)         \
   ID(stack_class_id)             \
   ID(null_class_id)              \
@@ -276,9 +276,9 @@ class Program : public FlashAllocation {
   //   not its bytecodes.
   inline Object* frame_marker() const {
     uword bytecodes_address = reinterpret_cast<uword>(bytecodes.data());
-    ASSERT(reinterpret_cast<Object*>(bytecodes_address)->is_smi());
+    ASSERT(is_smi(reinterpret_cast<Object*>(bytecodes_address)));
     auto result = reinterpret_cast<Object*>(bytecodes_address + Object::HEAP_TAG);
-    ASSERT(result->is_heap_object());
+    ASSERT(is_heap_object(result));
     return result;
   }
 

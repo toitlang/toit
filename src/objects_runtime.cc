@@ -22,7 +22,7 @@
 namespace toit {
 
 bool Object::mutable_byte_content(Process* process, uint8** content, int* length, Error** error) {
-  if (is_byte_array()) {
+  if (is_byte_array(this)) {
     auto byte_array = ByteArray::cast(this);
     // External byte arrays can have structs in them. This is captured in the external tag.
     // We only allow extracting the byte content from an external byte arrays iff it is tagged with RawByteType.
@@ -32,13 +32,13 @@ bool Object::mutable_byte_content(Process* process, uint8** content, int* length
     *content = bytes.address();
     return true;
   }
-  if (!is_instance()) return false;
+  if (!is_instance(this)) return false;
 
   auto program = process->program();
   auto instance = Instance::cast(this);
   if (instance->class_id() == program->byte_array_cow_class_id()) {
-    Object* backing = instance->at(0);
-    auto is_mutable = instance->at(1);
+    Object* backing = instance->at(Instance::BYTE_ARRAY_COW_BACKING_INDEX);
+    auto is_mutable = instance->at(Instance::BYTE_ARRAY_COW_IS_MUTABLE_INDEX);
     if (is_mutable == process->program()->true_object()) {
       return backing->mutable_byte_content(process, content, length, error);
     }
@@ -66,13 +66,13 @@ bool Object::mutable_byte_content(Process* process, uint8** content, int* length
     instance->at_put(1, process->program()->true_object());
     return new_backing->mutable_byte_content(process, content, length, error);
   } else if (instance->class_id() == program->byte_array_slice_class_id()) {
-    auto byte_array = instance->at(0);
-    auto from = instance->at(1);
-    auto to = instance->at(2);
-    if (!byte_array->is_heap_object()) return false;
+    auto byte_array = instance->at(Instance::BYTE_ARRAY_SLICE_BYTE_ARRAY_INDEX);
+    auto from = instance->at(Instance::BYTE_ARRAY_SLICE_FROM_INDEX);
+    auto to = instance->at(Instance::BYTE_ARRAY_SLICE_TO_INDEX);
+    if (!is_heap_object(byte_array)) return false;
     // TODO(florian): we could eventually accept larger integers here.
-    if (!from->is_smi()) return false;
-    if (!to->is_smi()) return false;
+    if (!is_smi(from)) return false;
+    if (!is_smi(to)) return false;
     int from_value = Smi::cast(from)->value();
     int to_value = Smi::cast(to)->value();
     bool inner_success = HeapObject::cast(byte_array)->mutable_byte_content(process, content, length, error);

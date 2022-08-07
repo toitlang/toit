@@ -26,13 +26,13 @@
 namespace toit {
 
 bool Object::byte_content(Program* program, const uint8** content, int* length, BlobKind strings_only) {
-  if (is_string()) {
+  if (is_string(this)) {
     String::Bytes bytes(String::cast(this));
     *length = bytes.length();
     *content = bytes.address();
     return true;
   }
-  if (strings_only == STRINGS_OR_BYTE_ARRAYS && is_byte_array()) {
+  if (strings_only == STRINGS_OR_BYTE_ARRAYS && is_byte_array(this)) {
     ByteArray* byte_array = ByteArray::cast(this);
     // External byte arrays can have structs in them. This is captured in the external tag.
     // We only allow extracting the byte content from an external byte arrays iff it is tagged with RawByteType.
@@ -42,20 +42,23 @@ bool Object::byte_content(Program* program, const uint8** content, int* length, 
     *content = bytes.address();
     return true;
   }
-  if (is_instance()) {
+  if (is_instance(this)) {
     auto instance = Instance::cast(this);
     auto class_id = instance->class_id();
     if (strings_only == STRINGS_OR_BYTE_ARRAYS && class_id == program->byte_array_cow_class_id()) {
-      auto backing = instance->at(0);
+      auto backing = instance->at(Instance::BYTE_ARRAY_COW_BACKING_INDEX);
       return backing->byte_content(program, content, length, strings_only);
     } else if ((strings_only == STRINGS_OR_BYTE_ARRAYS && class_id == program->byte_array_slice_class_id()) || class_id == program->string_slice_class_id()) {
-      auto wrapped = instance->at(0);
-      auto from = instance->at(1);
-      auto to = instance->at(2);
-      if (!wrapped->is_heap_object()) return false;
+      ASSERT(Instance::STRING_SLICE_STRING_INDEX == Instance::BYTE_ARRAY_SLICE_BYTE_ARRAY_INDEX);
+      ASSERT(Instance::STRING_SLICE_FROM_INDEX == Instance::BYTE_ARRAY_SLICE_FROM_INDEX);
+      ASSERT(Instance::STRING_SLICE_TO_INDEX == Instance::BYTE_ARRAY_SLICE_TO_INDEX);
+      auto wrapped = instance->at(Instance::STRING_SLICE_STRING_INDEX);
+      auto from = instance->at(Instance::STRING_SLICE_FROM_INDEX);
+      auto to = instance->at(Instance::STRING_SLICE_TO_INDEX);
+      if (!is_heap_object(wrapped)) return false;
       // TODO(florian): we could eventually accept larger integers here.
-      if (!from->is_smi()) return false;
-      if (!to->is_smi()) return false;
+      if (!is_smi(from)) return false;
+      if (!is_smi(to)) return false;
       int from_value = Smi::cast(from)->value();
       int to_value = Smi::cast(to)->value();
       bool inner_success = HeapObject::cast(wrapped)->byte_content(program, content, length, strings_only);
@@ -219,6 +222,17 @@ void Array::roots_do(RootCallback* cb) {
   cb->do_roots(_root_at(_offset_from(0)), length());
 }
 
+int Stack::absolute_bci_at_preemption(Program* program) {
+  // Check that the stack has both words.
+  if (_stack_sp_addr() + 1 >= _stack_base_addr()) return -1;
+  // Check that the frame marker is correct.
+  if (at(0) != program->frame_marker()) return -1;
+  // Get the bytecode pointer and convert it to an index.
+  uint8* bcp = reinterpret_cast<uint8*>(at(1));
+  if (!program->bytecodes.is_inside(bcp)) return -1;
+  return program->absolute_bci_from_bcp(bcp);
+}
+
 void Stack::roots_do(Program* program, RootCallback* cb) {
   int top = this->top();
   // Skip over pointers into the bytecodes.
@@ -356,7 +370,7 @@ char* String::cstr_dup() {
 
 bool String::equals(Object* other) {
   if (this == other) return true;
-  if (!other->is_string()) return false;
+  if (!is_string(other)) return false;
   String* other_string = String::cast(other);
   if (hash_code() != other_string->hash_code()) return false;
   Bytes bytes(this);

@@ -18,6 +18,14 @@ test_warnings:
   bytes.do: expect_equals 255 it
 
 main:
+  test_basic
+  test_warnings
+  test_slices
+  test_cow_mutable_byte_content
+  test_to_string
+  test_hash_code
+
+test_basic:
   2.repeat:
     bytes := #[1, 2]
     expect bytes is ByteArray
@@ -115,11 +123,6 @@ main:
   b5 = #[1, 2, 3, 4, 5]
   b5 = ByteArray 0
   b5 = #[1 + 1]
-
-  test_warnings
-  test_slices
-  test_cow_mutable_byte_content
-  test_to_string
 
 test_slices:
   for i := 0; i < 4; i++:
@@ -250,3 +253,44 @@ test_to_string:
     HEST.to_string 3 2
   expect_throw "OUT_OF_BOUNDS":
     HEST.to_string_non_throwing 3 2
+
+test_hash_code:
+  expect_equals
+    "".hash_code
+    #[].hash_code
+
+  expect_equals
+    "abc".hash_code
+    #['a', 'b', 'c'].hash_code
+
+  256.repeat:
+    ba := #[0, 1, 2]
+    old := ba.hash_code
+    if it != 1:
+      ba[1] = it
+      new := ba.hash_code
+      expect_not_equals old new
+    ba2 := #[0, it, 2]
+    expect_equals
+      ba.hash_code
+      ba2.hash_code
+
+  a := List 30: #[42, 103, random 256, 9]
+  a.size.repeat: | x |
+    a.size.repeat: | y |
+      eq := a[x] == a[y]
+      if eq:
+        expect_equals a[x][2] a[y][2]
+        expect_equals (a[x].hash_code) (a[y].hash_code)
+      else:
+        expect_not_equals a[x][2] a[y][2]
+
+  ba := #[23, 3, 2, 5, 255, 2, 3, 2, 3, 2, 5, 2, 5, 1, 5, 1, 5, 1, 5, 81, 150, 234, 52, 3, 5, 7, 9, 10, 234, 2, 5, 8, 9, 2, 0, 53, 23, 2, 1, 2, 3]
+  expect_equals
+    ba[1..ba.size - 1].hash_code
+    (ba.copy 1 (ba.size - 1)).hash_code
+
+  ba = ByteArray 256: random 256
+  expect_equals
+    ba[1..ba.size - 1].hash_code
+    (ba.copy 1 (ba.size - 1)).hash_code

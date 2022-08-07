@@ -16,6 +16,7 @@
 set(TOIT_EXTERNAL_SCRIPT "${CMAKE_CURRENT_LIST_DIR}/CMakeLists.txt")
 
 set(TOIT_REPOS
+    https://github.com/kasperl/toit-qubitro
     https://github.com/nilwes/LIS3DH
     https://github.com/toitlang/jaguar
     https://github.com/toitlang/pkg-ar
@@ -43,11 +44,6 @@ set(TOIT_REPOS
     https://github.com/toitware/toit-e-paper
     https://github.com/toitware/toit-font-clock
     https://github.com/toitware/toit-font-google-100dpi-roboto
-    https://github.com/toitware/toit-font-welch-tiny
-    https://github.com/toitware/toit-font-x11-adobe-100
-    https://github.com/toitware/toit-font-x11-adobe-75
-    https://github.com/toitware/toit-font-x11-b-and-h
-    https://github.com/toitware/toit-font-x11-mutt
     https://github.com/toitware/toit-gnss-location
     https://github.com/toitware/toit-heading
     https://github.com/toitware/toit-hx711
@@ -62,6 +58,7 @@ set(TOIT_REPOS
     https://github.com/toitware/toit-msa311
     https://github.com/toitware/toit-newton-raphson
     https://github.com/toitware/toit-pixel-display
+    https://github.com/toitware/toit-pixel-strip
     https://github.com/toitware/toit-png-display
     https://github.com/toitware/toit-resistance-to-temperature
     https://github.com/toitware/toit-si7006
@@ -202,10 +199,9 @@ function(add_repo_tests REPO)
       WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
       CONFIGURATIONS external
     )
-  endforeach()
-
-  foreach(test ${FAILING_TESTS})
-    set_tests_properties(${test} PROPERTIES WILL_FAIL TRUE)
+    if("${FILE}" IN_LIST FAILING_TESTS)
+      set_tests_properties(${FILE} PROPERTIES WILL_FAIL TRUE)
+    endif()
   endforeach()
 endfunction()
 

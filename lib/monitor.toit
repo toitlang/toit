@@ -35,13 +35,16 @@ A latch that allows one task to wait until a value (object) has been provided
 This class must not be extended.
 */
 monitor Latch:
+  has_value_ / bool := false
+  value_ := null
+
   /**
   Receives the value.
 
   This method blocks until the value is available.
   May be called multiple times.
   */
-  get:
+  get -> any:
     await: has_value_
     return value_
 
@@ -53,54 +56,13 @@ monitor Latch:
   Future calls to $get return immediately and use this $value.
   Must be called at most once for each instance of the monitor.
   */
-  set value:
+  set value/any -> none:
     value_ = value
     has_value_ = true
 
   /** Whether this latch has already a value set. */
   has_value -> bool:
     return has_value_
-
-  has_value_ := false
-  value_ := null
-
-/** A monitor that ensures an initializer is only called once. */
-monitor Once:
-  static STATE_UNINITIALIZED_ ::= 0
-  static STATE_INITIALIZED_   ::= 1
-  static STATE_EXCEPTION_     ::= 2
-
-  initializer_/Lambda? := ?
-  state_ := STATE_UNINITIALIZED_
-  value_ := null
-
-  /**
-  Constructs the once monitor with the given $initializer_.
-
-  The $initializer_ must be a lambda.
-  */
-  constructor .initializer_:
-    if not initializer_: throw "invalid argument"
-
-  /**
-  Gets the result of the initialization.
-
-  Calls the initializer the first time this method is called.
-  If the initialization throws an exception, then this methods throws that
-    exception. Future attempts to get the value will run the initializer again.
-  The trace of the initialization is printed but not rethrown.
-  */
-  get:
-    if initializer_:
-      exception := catch --trace: value_ = initializer_.call
-      initializer_ = null
-      if exception:
-        state_ = STATE_EXCEPTION_
-        value_ = exception
-      else:
-        state_ = STATE_INITIALIZED_
-    if state_ == STATE_INITIALIZED_: return value_
-    else: throw value_
 
 /**
 A semaphore synchronization primitive.
@@ -109,13 +71,31 @@ A semaphore synchronization primitive.
 This class must not be extended.
 */
 monitor Semaphore:
+  count_ /int := ?
+  limit_ /int?
+
+  /**
+  Constructs a semaphore with an initial $count and an optional $limit.
+
+  When the $limit is reached, further attempts to increment the
+    counter using $up are ignored and leaves the counter unchanged.
+  */
+  constructor --count/int=0 --limit/int?=null:
+    if count < 0: throw "INVALID_ARGUMENT"
+    if limit and (limit < 1 or count > limit): throw "INVALID_ARGUMENT"
+    limit_ = limit
+    count_ = count
+
   /**
   Increments an internal counter.
 
   Originally called the V operation.
   */
-  up:
-    count_++
+  up -> none:
+    count := count_
+    limit := limit_
+    if limit and count >= limit: return
+    count_ = count + 1
 
   /**
   Decrements an internal counter.
@@ -123,11 +103,127 @@ monitor Semaphore:
 
   Originally called the P operation.
   */
-  down:
+  down -> none:
     await: count_ > 0
     count_--
 
-  count_ := 0
+  /** The current count of the semaphore. */
+  count -> int:
+    return count_
+
+/**
+A signal synchronization primitive.
+
+# Inheritance
+This class must not be extended.
+*/
+monitor Signal:
+  current_ /int := 0
+  awaited_ /int := 0
+
+  /**
+  Waits until the signal has been raised.
+
+  Raises that occur before $wait has been called are not taken into
+    account, so care must be taken to avoid losing information.
+  */
+  wait -> none:
+    wait_: true
+
+  /**
+  Waits until the given $condition returns true.
+
+  The $condition is evaluated on entry.
+
+  This task is blocked until the $condition returns true.
+
+  The condition is re-evaluated (on this task) whenever the signal has been raised.
+  */
+  wait [condition] -> none:
+    if condition.call: return
+    wait_ condition
+
+  /**
+  Raises the signal and unblocks the tasks that are already waiting.
+
+  If $max is provided and not null, no more than $max tasks are
+    woken up in the order in which they started waiting (FIFO).
+    The most common use case is to wake waiters up one at a time.
+  */
+  raise --max/int?=null -> none:
+    if max:
+      if max < 1: throw "INVALID_ARGUMENT"
+      current_ = min awaited_ (current_ + max)
+    else:
+      current_ = awaited_
+
+  // Helper method for condition waiting.
+  wait_ [condition] -> none:
+    while true:
+      awaited := awaited_
+      if current_ == awaited:
+        // No other task is waiting for this signal to be raised,
+        // so it is safe to reset the counters. This helps avoid
+        // the ever increasing counter issue that may lead to poor
+        // performance in (very) extreme cases.
+        current_ = awaited = 0
+      awaited_ = ++awaited
+      await: current_ >= awaited
+      if condition.call: return
+
+/**
+A synchronization gate.
+
+The gate can be open or closed. When a task tries to $enter, it waits
+  until the gate is open.
+*/
+class Gate:
+  signal_ /Signal ::= Signal
+  locked_ /bool := ?
+
+  /**
+  Constructs a new gate.
+
+  If $unlocked is true, starts with the gate open.
+  */
+  constructor --unlocked/bool=false:
+    locked_ = not unlocked
+
+  /**
+  Unlocks the gate, allowing tasks to enter.
+
+  Does nothing if the gate is already unlocked.
+  */
+  unlock -> none:
+    if not is_locked: return
+    locked_ = false
+    signal_.raise
+
+  /**
+  Lockes the gate.
+
+  Any task that is trying to $enter will block until the gate is opened again.
+  */
+  lock:
+    locked_ = true
+
+  /**
+  Enters the gate.
+
+  This method blocks until the gate is open.
+  */
+  enter -> none:
+    signal_.wait: is_unlocked
+
+  /**
+  Whether the gate is unlocked.
+  */
+  is_unlocked -> bool: return not locked_
+
+  /**
+  Whether the gate is locked.
+  */
+  is_locked -> bool: return locked_
 
 /**
 A one-way communication channel between tasks.
@@ -138,9 +234,14 @@ Multiple messages (objects) can be sent, and the capacity indicates how many
 This class must not be extended.
 */
 monitor Channel:
+  buffer_ ::= ?
+  start_ := 0
+  size_ := 0
+
   /** Constructs a channel with a buffer of the given $capacity. */
   constructor capacity:
-    buffer_ = List capacity + 1
+    if capacity <= 0: throw "INVALID_ARGUMENT"
+    buffer_ = List capacity
 
   /**
   Sends a message with the $value on the channel.
@@ -149,13 +250,11 @@ monitor Channel:
   If there are tasks blocked waiting for a value (with $receive), then one of
     them is woken up and receives the $value.
   */
-  send value:
-    n := 0
-    await:
-      n = (p_ + 1) % buffer_.size
-      n != c_
-    buffer_[p_] = value
-    p_ = n
+  send value/any -> none:
+    await: size_ < buffer_.size
+    index := (start_ + size_) % buffer_.size
+    buffer_[index] = value
+    size_++
 
   /**
   Tries to send a message with the $value on the channel. This operation never blocks.
@@ -165,11 +264,11 @@ monitor Channel:
   Returns true if the message was successfully delivered to the channel. Returns false
     if the channel is full and the message was not delivered
   */
-  try_send value -> bool:
-    n := (p_ + 1) % buffer_.size
-    if c_ == n: return false
-    buffer_[p_] = value
-    p_ = n
+  try_send value/any -> bool:
+    if size_ >= buffer_.size: return false
+    index := (start_ + size_) % buffer_.size
+    buffer_[index] = value
+    size_++
     return true
 
   /**
@@ -181,16 +280,23 @@ monitor Channel:
     unblocks one waiting task.
   The order in which waiting tasks are unblocked is unspecified.
   */
-  receive --blocking/bool=true:
-    if not blocking and c_ == p_: return null
-    await: c_ != p_
-    value := buffer_[c_]
-    c_ = (c_ + 1) % buffer_.size
+  receive --blocking/bool=true -> any:
+    if not blocking and size_ == 0: return null
+    await: size_ > 0
+    value := buffer_[start_]
+    start_ = (start_ + 1) % buffer_.size
+    size_--
     return value
 
-  buffer_ := ?
-  c_ := 0
-  p_ := 0
+  /**
+  The capacity of the channel.
+  */
+  capacity -> int: return buffer_.size
+
+  /**
+  The amount of messages that are currently queued in the channel.
+  */
+  size -> int: return size_
 
 /**
 A two-way communication channel between tasks with replies to each message.
@@ -201,18 +307,26 @@ A two-way communication channel between tasks with replies to each message.
 This class must not be extended.
 */
 monitor Mailbox:
+  static STATE_READY_    / int ::= 0
+  static STATE_SENT_     / int ::= 1
+  static STATE_RECEIVED_ / int ::= 2
+  static STATE_REPLIED_  / int ::= 3
+
+  state_ / int := STATE_READY_
+  message_ / any := null
+
   /**
   Sends the $message to another task.
 
   This operation blocks until the other task replies.
   */
-  send message:
-    await: state_ == 0
-    state_ = 1
+  send message/any -> any:
+    await: state_ == STATE_READY_
+    state_ = STATE_SENT_
     message_ = message
-    await: state_ == 3
+    await: state_ == STATE_REPLIED_
     result := message_
-    state_ = 0
+    state_ = STATE_READY_
     message_ = null
     return result
 
@@ -222,10 +336,10 @@ monitor Mailbox:
   This task must respond to the message, using $reply. Failure to do so leads
     to indefinitely blocked tasks.
   */
-  receive:
-    await: state_ == 1
+  receive -> any:
+    await: state_ == STATE_SENT_
     result := message_
-    state_ = 2
+    state_ = STATE_RECEIVED_
     message_ = null
     return result
 
@@ -233,138 +347,7 @@ monitor Mailbox:
   Replies to the other task with a reply message (object).
   This unblocks the other task, which is waiting in $send.
   */
-  reply message:
-    assert: state_ == 2
-    state_ = 3
+  reply message/any -> none:
+    if state_ != STATE_RECEIVED_: throw "No message received"
+    state_ = STATE_REPLIED_
     message_ = message
-
-  state_ := 0  // 0 = ready, 1 = sent, 2 = received, 3 = replied
-  message_ := null
-
-/**
-A tracker that keeps a state and lets you wait for changes.
-
-Used to notify some listeners of changes to a set of states.
-
-The listener calls $StateTracker.wait_for_new_state with a set of
-  key-values that are its current knowledge of the state. When the state
-  changes, the $StateTracker.wait_for_new_state method returns with a new
-  map, giving the current state.
-The state is updated with $StateTracker.[]=.
-*/
-monitor StateTracker:
-  states_ := {:}
-  logs_ := {:}
-
-  /**
-  Waits for a new state.
-
-  The given $known_state is the callers known state. It also indicates what
-    keys of the state the caller is interested in. A new state must have some
-    value different from the $known_state.
-  */
-  wait_for_new_state known_state/Map -> Map:
-    result := null
-    await:
-      difference := false
-      result = {:}
-      known_state.do --keys: | key |
-        if states_.contains key:
-          value := states_.get key
-          if known_state[key] != value: difference = true
-          result[key] = value
-        else if logs_.contains key:
-          list := logs_.get key
-          if not (list == known_state[key]):  // Pairwise == comparison.
-            difference = true
-          result[key] = list.copy
-        else:
-          result[key] = known_state[key]
-      continue.await difference
-    return result
-
-  /**
-  Stores $value in the state for the given $key.
-
-  If the $key is already present, overwrites the previous value.
-  Overwriting with a different value will notify listeners.
-  */
-  operator []= key value:
-    states_[key] = value
-
-  /**
-  Increments the value associated with the $key by 1 (or the given $by).
-
-  Used for implementing reference-count-like functionality.
-  The count is started at 0 (1 after incrementing) if it did not already exist.
-
-  If the $key exists, then its value must be an integer.
-  */
-  increment key --by=1:
-    if not states_.contains key:
-      states_[key] = 0
-    states_[key] += by
-
-  /**
-  Decrements the value associated with the $key by 1 (or the given $by).
-
-  For implementing reference-count-like functionality.
-  It is an error if the key does not already exists or the value is not an integer.
-  */
-  decrement key --by=1:
-    states_[key] -= by
-
-  /**
-  Adds the given $line to the log of this tracker stored under the key
-    $subject.
-
-  Once $retained_lines have been added, the oldest line is removed.
-
-  Asking for the $subject in $wait_for_new_state returns a list with up to
-    $retained_lines entries.
-  */
-  log --subject/string="log" line/string --retained_lines/int=8 -> none:
-    list := logs_.get subject --init=: []
-    if list.size < retained_lines:
-      list.add line
-    else:
-      (list.size - 1).repeat:
-        list[it] = list[it + 1]
-      list[list.size - 1] = line
-
-/**
-Signal dispatcher.
-
-Allow lambdas to be registered and unregistered from signals.
-
-The lambdas registered for a specific signal are called when notifying the
-  signal.
-*/
-class SignalDispatcher:
-  handlers_ ::= {:}
-
-  /**
-  Registers the $lambda with the given $signal.
-
-  If the lambda throws when it is called, then it $notify will throw.
-  */
-  register signal/int lambda/Lambda:
-    set := handlers_.get signal --init=(: {})
-    set.add lambda
-
-  /** Unregisters the given $lambda from the $signal. */
-  unregister signal/int lambda/Lambda:
-    handlers_.get signal --if_present=:
-      it.remove lambda
-      if it.is_empty: handlers_.remove signal
-
-  /**
-  Calls all registrations for the given $signal.
-
-  Registrations are called in an unspecified order, and if any called
-    registration throws, then this method throws.
-  */
-  notify signal/int value=null:
-    handlers_.get signal --if_present=:
-      it.do:
-        it.call value

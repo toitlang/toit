@@ -39,6 +39,9 @@ set(SKIP_PREFIXES
     "${TOIT_SDK_SOURCE_DIR}/tests/negative/"
     "${TOIT_SDK_SOURCE_DIR}/tools/tpkg/tests/"
     "${TOIT_SDK_SOURCE_DIR}/.git/"
+    # Don't go into the top-level external/ directory which is covered by
+    # the external health tests.
+    "${TOIT_SDK_SOURCE_DIR}/external/"
     # Don't go into the packages directory which only contains external packages.
     "${TOIT_SDK_SOURCE_DIR}/packages/"
     # Normally not necessary as toit files in the build directory are generally

@@ -31,7 +31,6 @@ class HeapObjectFunctionVisitor : public HeapObjectVisitor {
 class TwoSpaceHeap {
  public:
   TwoSpaceHeap(Program* program, ObjectHeap* process_heap, Chunk* chunk);
-  ~TwoSpaceHeap();
 
   // Allocate raw object. Returns null if a garbage collection is
   // needed.
@@ -42,7 +41,7 @@ class TwoSpaceHeap {
 
   SemiSpace* take_space();
 
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
   // Used for debugging.  Give it an address, and it will tell you where there
   // are pointers to that address.  If the address is part of the heap it will
   // also tell you which part.  Reduced functionality if you are not on Linux,
@@ -145,7 +144,7 @@ class ScavengeVisitor : public RootCallback {
   virtual void do_root(Object** p) { do_roots(p, 1); }
 
   inline bool in_from_space(Object* object) {
-    if (object->is_smi()) return false;
+    if (is_smi(object)) return false;
     return reinterpret_cast<uword>(object) - from_start_ < from_size_;
   }
 

@@ -4,10 +4,13 @@
 
 import net
 import net.impl
+import net.tcp
+import writer
+import expect
 
 import system.services show ServiceDefinition ServiceResource
 import system.api.network show NetworkService NetworkServiceClient
-import expect
+import system.base.network show ProxyingNetworkServiceDefinition
 
 service_/NetworkServiceClient? ::= (FakeNetworkServiceClient --no-open).open
 
@@ -16,6 +19,7 @@ main:
   service.install
   test_address service
   test_resolve service
+  test_tcp service
   service.uninstall
 
 test_address service/FakeNetworkServiceDefinition:
@@ -44,6 +48,29 @@ test_resolve service/FakeNetworkServiceDefinition:
   expect.expect_equals [net.IpAddress #[3, 4, 5, 6]] (open_fake.resolve "www.google.com")
   service.resolve = null
 
+test_tcp service/FakeNetworkServiceDefinition:
+  test_tcp_network open_fake
+  service.enable_tcp_proxying
+  test_tcp_network open_fake
+  service.disable_tcp_proxying
+
+test_tcp_network network/net.Interface:
+  socket/tcp.Socket := network.tcp_connect "www.google.com" 80
+  try:
+    expect.expect_equals 80 socket.peer_address.port
+    expect.expect_equals network.address socket.local_address.ip
+
+    writer := writer.Writer socket
+    writer.write "GET / HTTP/1.1\r\nConnection: close\r\n\r\n"
+    response := #[]
+    while data := socket.read:
+      response += data
+    expected := "HTTP/1.1 200 OK\r\n"
+    expect.expect_equals expected response[0..expected.size].to_string
+  finally:
+    socket.close
+    network.close
+
 // --------------------------------------------------------------------------
 
 open_fake -> net.Interface:
@@ -61,9 +88,8 @@ class FakeNetworkServiceClient extends NetworkServiceClient:
   open -> FakeNetworkServiceClient?:
     return (open_ FakeNetworkService.UUID FakeNetworkService.MAJOR FakeNetworkService.MINOR) and this
 
-class FakeNetworkServiceDefinition extends ServiceDefinition:
+class FakeNetworkServiceDefinition extends ProxyingNetworkServiceDefinition:
   proxy_mask_/int := 0
-
   address_/ByteArray? := null
   resolve_/List? := null
 
@@ -71,14 +97,14 @@ class FakeNetworkServiceDefinition extends ServiceDefinition:
     super "system/network/test" --major=1 --minor=2  // Major and minor versions do not matter here.
     provides FakeNetworkService.UUID FakeNetworkService.MAJOR FakeNetworkService.MINOR
 
-  handle pid/int client/int index/int arguments/any -> any:
-    if index == NetworkService.CONNECT_INDEX:
-      return connect client
-    if index == NetworkService.ADDRESS_INDEX:
-      return address (resource client arguments)
-    if index == NetworkService.RESOLVE_INDEX:
-      return resolve (resource client arguments[0]) arguments[1]
-    unreachable
+  proxy_mask -> int:
+    return proxy_mask_
+
+  open_network -> net.Interface:
+    return net.open
+
+  close_network network/net.Interface -> none:
+    network.close
 
   update_proxy_mask_ mask/int add/bool:
     if add: proxy_mask_ |= mask
@@ -92,19 +118,18 @@ class FakeNetworkServiceDefinition extends ServiceDefinition:
     update_proxy_mask_ NetworkService.PROXY_RESOLVE (value != null)
     resolve_ = value
 
-  connect client/int -> List:
-    resource := FakeNetworkResource this client
-    return [resource.serialize_for_rpc, proxy_mask_]
+  enable_tcp_proxying -> none:
+    update_proxy_mask_ NetworkService.PROXY_TCP true
+  enable_udp_proxying -> none:
+    update_proxy_mask_ NetworkService.PROXY_UDP true
+
+  disable_tcp_proxying -> none:
+    update_proxy_mask_ NetworkService.PROXY_TCP false
+  disable_udp_proxying -> none:
+    update_proxy_mask_ NetworkService.PROXY_UDP false
 
   address resource/ServiceResource -> ByteArray:
     return address_
 
   resolve resource/ServiceResource host/string -> List:
     return resolve_
-
-class FakeNetworkResource extends ServiceResource:
-  constructor service/ServiceDefinition client/int:
-    super service client
-
-  on_closed -> none:
-    // Do nothing.

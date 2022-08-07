@@ -491,7 +491,7 @@ PRIMITIVE(get_nonbuiltin) {
     Object* block_array = arrays->at(index);
     const uint8* bytes;
     int length;
-    if (!block_array->is_heap_object()) WRONG_TYPE;
+    if (!is_heap_object(block_array)) WRONG_TYPE;
     if (!block_array->byte_content(process->program(), &bytes, &length, STRINGS_OR_BYTE_ARRAYS)) WRONG_TYPE;
     // TODO: We should perhaps avoid redoing this verification if the data is
     // in flash and we already did it once.

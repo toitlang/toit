@@ -16,6 +16,7 @@ main:
   ping_ping_test
   ping_ping_timeout_test
   broadcast_test
+  close_test
 
 ping_ping_test:
   times := 10
@@ -127,4 +128,28 @@ broadcast_receiver ready:
 
   expect_equals "hello world" datagram.data.to_string
 
+  socket.close
+
+
+close_test:
+  ready := monitor.Channel 1
+
+  socket := udp.Socket "0.0.0.0" 0
+
+  task::
+    packet := socket.receive
+    ready.send packet
+    // While we are in this `receive` a different task closes the socket.
+    // Test that we don't throw an exception, but just get a null.
+    packet = socket.receive
+    expect_equals null packet
+
+  socket.send
+    net.Datagram #['f', 'o', 'o']
+      net.SocketAddress
+        net.IpAddress.parse "127.0.0.1"
+        socket.local_address.port
+
+  ready.receive
+  sleep --ms=100
   socket.close

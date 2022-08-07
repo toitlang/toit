@@ -619,7 +619,7 @@ PRIMITIVE(set_option) {
         break;
 
       case TCP_WINDOW_SIZE:
-        if (!capture.raw->is_smi()) return process->program()->wrong_object_type();
+        if (!is_smi(capture.raw)) return process->program()->wrong_object_type();
 
       default:
         return process->program()->unimplemented();

@@ -58,7 +58,7 @@ monitor FinalizationStack_:
     // locked when the finalizers are being added and removed.
     task_ = task --name="Finalization task" --background::
       try:
-        while not task.is_canceled:
+        while not Task.current.is_canceled:
           if lambdas_.is_empty and not wait_for_next: break
           next := lambdas_.remove_last
           catch --trace: next.call

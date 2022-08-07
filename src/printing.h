@@ -23,7 +23,7 @@
 
 namespace toit {
 
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
 
 class Printer {
  public:

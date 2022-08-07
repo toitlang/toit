@@ -164,6 +164,7 @@ class MessageEncoder {
   bool encode_array(Array* object, int size);
   bool encode_byte_array(ByteArray* object);
   bool encode_copy(Object* object, int tag);
+  bool encode_map(Instance* object);
 
   void write_uint8(uint8 value) {
     if (!encoding_for_size()) _buffer[_cursor] = value;
@@ -211,6 +212,7 @@ class MessageDecoder {
 
   Object* decode_string(bool inlined);
   Object* decode_array();
+  Object* decode_map();
   Object* decode_byte_array(bool inlined);
   Object* decode_double();
   Object* decode_large_integer();

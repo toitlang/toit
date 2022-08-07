@@ -27,6 +27,11 @@
 #include  <signal.h>
 #include  <stdlib.h>
 
+#ifdef TOIT_FREERTOS
+#include <freertos/FreeRTOS.h>
+#endif  // TOIT_FREERTOS
+
+
 namespace toit {
 
 void SchedulerThread::entry() {
@@ -139,18 +144,16 @@ Scheduler::ExitState Scheduler::launch_program(Locker& locker, Process* process)
   _boot_process = process;
   add_process(locker, process);
 
-  int64 next_tick_time = OS::get_monotonic_time() + TICK_PERIOD_US;
-
+  tick_schedule(locker, OS::get_monotonic_time(), true);
   while (_num_processes > 0 && _num_threads > 0) {
     int64 time = OS::get_monotonic_time();
-    if (time >= next_tick_time) {
-      next_tick_time = time + Scheduler::TICK_PERIOD_US;
-      tick(locker);
+    int64 next = tick_next();
+    if (time >= next) {
+      tick(locker, time);
+    } else {
+      int64 delay_us = next - time;
+      OS::wait_us(_has_threads, delay_us);
     }
-    ASSERT(time < next_tick_time);
-    int delay_ms = 1 + ((next_tick_time - time - 1) / 1000); // Ceiling division.
-
-    OS::wait(_has_threads, delay_ms);
   }
 
   if (!has_exit_reason()) {
@@ -269,7 +272,7 @@ scheduler_err_t Scheduler::send_system_message(Locker& locker, SystemMessage* me
       }
       break;
     case SystemMessage::SPAWNED: {
-      // Do nothing. With no boot process, we don't care newly about spawned processes.
+      // Do nothing. With no boot process, we don't care about newly spawned processes.
       break;
     }
     default:
@@ -428,10 +431,9 @@ void Scheduler::gc(Process* process, bool malloc_failed, bool try_hard) {
       // to be preempted, but since we only GC them if we can get them to
       // be "suspendable" or "suspended" later, we can live with this
       // timing out and not succeeding.
-      int64 deadline = start + 1000000;  // Wait for up to 1 second.
+      int64 deadline = start + 1000000LL;  // Wait for up to 1 second.
       while (_gc_waiting_for_preemption > 0) {
-        int64 wait_ms = Utils::max(1LL, (deadline - OS::get_monotonic_time()) / 1000);
-        if (!OS::wait(_gc_condition, wait_ms)) {
+        if (!OS::wait_us(_gc_condition, deadline - OS::get_monotonic_time())) {
 #ifdef TOIT_GC_LOGGING
           printf("[gc @ %p%s | timed out waiting for %d processes to stop]\n",
               process, VM::current()->scheduler()->is_boot_process(process) ? "*" : " ",
@@ -514,8 +516,24 @@ Object* Scheduler::process_stats(Array* array, int group_id, int process_id, Pro
   Process* subject_process = group->lookup(process_id);
   if (subject_process == null) return calling_process->program()->null_object();  // Process not found.
   uword length = array->length();
+#ifdef TOIT_FREERTOS
+  multi_heap_info_t info;
+  heap_caps_get_info(&info, MALLOC_CAP_8BIT);
+#else
+  struct multi_heap_info_t {
+      uword total_free_bytes;
+      uword largest_free_block;
+  } info;
+  info.total_free_bytes = Smi::MAX_SMI_VALUE;
+  info.largest_free_block = Smi::MAX_SMI_VALUE;
+#endif
+  uword max = Smi::MAX_SMI_VALUE;
   switch (length) {
     default:
+    case 9:
+      array->at_put(8, Smi::from(Utils::min(max, info.largest_free_block)));
+    case 8:
+      array->at_put(7, Smi::from(Utils::min(max, info.total_free_bytes)));
     case 7:
       array->at_put(6, Smi::from(process_id));
     case 6:
@@ -542,13 +560,16 @@ Object* Scheduler::process_stats(Array* array, int group_id, int process_id, Pro
 void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* scheduler_thread) {
   wait_for_any_gc_to_complete(locker, process, Process::RUNNING);
   process->set_scheduler_thread(scheduler_thread);
-  int64 start = OS::get_monotonic_time();
-  process->set_last_run(start);
 
   ProcessRunner* runner = process->runner();
   bool interpreted = (runner == null);
   Interpreter::Result result(Interpreter::Result::PREEMPTED);
+  uint8* preemption_method_header_bcp = null;
   if (interpreted) {
+    if (process->profiler() && process->profiler()->is_active()) {
+      notify_profiler(locker, 1);
+    }
+
     Interpreter* interpreter = scheduler_thread->interpreter();
     interpreter->activate(process);
     process->set_idle_since_gc(false);
@@ -556,14 +577,18 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
       Unlocker unlock(locker);
       result = interpreter->run();
     }
+    preemption_method_header_bcp = interpreter->preemption_method_header_bcp();
     interpreter->deactivate();
+
+    if (process->profiler() && process->profiler()->is_active()) {
+      notify_profiler(locker, -1);
+    }
   } else if (process->signals() == 0) {
     ASSERT(process->idle_since_gc());
     Unlocker unlock(locker);
     result = runner->run();
   }
 
-  process->increment_unyielded_for(OS::get_monotonic_time() - start);
   process->set_scheduler_thread(null);
 
   while (result.state() != Interpreter::Result::TERMINATED) {
@@ -576,21 +601,33 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
     } else if (signals & Process::PREEMPT) {
       result = Interpreter::Result(Interpreter::Result::PREEMPTED);
       process->clear_signal(Process::PREEMPT);
-    } else if (signals & Process::WATCHDOG) {
-      process->clear_signal(Process::WATCHDOG);
     } else {
       UNREACHABLE();
     }
   }
 
   switch (result.state()) {
-    case Interpreter::Result::PREEMPTED:
+    case Interpreter::Result::PREEMPTED: {
+      Profiler* profiler = process->profiler();
+      Task* task = process->task();
+      if (profiler && task && profiler->should_profile_task(task->id())) {
+        Stack* stack = task->stack();
+        if (stack) {
+          int bci = stack->absolute_bci_at_preemption(process->program());
+          ASSERT(preemption_method_header_bcp);
+          if (bci >= 0 && preemption_method_header_bcp) {
+            int method = process->program()->absolute_bci_from_bcp(preemption_method_header_bcp);
+            profiler->register_method(method);
+            profiler->increment(bci);
+          }
+        }
+      }
       wait_for_any_gc_to_complete(locker, process, Process::IDLE);
       process_ready(locker, process);
       break;
+    }
 
     case Interpreter::Result::YIELDED:
-      process->clear_unyielded_for();
       wait_for_any_gc_to_complete(locker, process, Process::IDLE);
       if (process->has_messages()) {
         process_ready(locker, process);
@@ -733,20 +770,14 @@ void Scheduler::terminate_execution(Locker& locker, ExitState exit) {
   OS::signal(_has_processes);
 }
 
-void Scheduler::tick(Locker& locker) {
-  int64 now = OS::get_monotonic_time();
+void Scheduler::tick(Locker& locker, int64 now) {
+  tick_schedule(locker, now, true);
 
-  for (SchedulerThread* thread : _threads) {
-    Process* process = thread->interpreter()->process();
-    if (process == null) continue;
-    if (process == _boot_process) continue;
-    int64 runtime = process->current_run_duration(now);
-    if (Flags::enable_watchdog && runtime > WATCHDOG_PERIOD_US) {
-      process->signal(Process::WATCHDOG);
-    }
+  if (_num_profiled_processes == 0 && _ready_processes.is_empty()) {
+    // No need to do preemption when there are no active profilers
+    // and no other processes ready to run.
+    return;
   }
-
-  if (_ready_processes.is_empty()) return;
 
   for (SchedulerThread* thread : _threads) {
     Process* process = thread->interpreter()->process();
@@ -754,6 +785,26 @@ void Scheduler::tick(Locker& locker) {
       process->signal(Process::PREEMPT);
     }
   }
+}
+
+void Scheduler::tick_schedule(Locker& locker, int64 now, bool reschedule) {
+  int period = (_num_profiled_processes > 0)
+      ? TICK_PERIOD_PROFILING_US
+      : TICK_PERIOD_US;
+  int64 next = now + period;
+  if (!reschedule && next >= tick_next()) return;
+  _next_tick = next;
+  if (!reschedule) OS::signal(_has_threads);
+}
+
+void Scheduler::notify_profiler(int change) {
+  Locker locker(_mutex);
+  notify_profiler(locker, change);
+}
+
+void Scheduler::notify_profiler(Locker& locker, int change) {
+  _num_profiled_processes += change;
+  tick_schedule(locker, OS::get_monotonic_time(), false);
 }
 
 Process* Scheduler::find_process(Locker& locker, int process_id) {

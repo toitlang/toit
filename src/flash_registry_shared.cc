@@ -17,6 +17,10 @@
 #include "os.h"
 #include "flash_registry.h"
 
+#ifdef TOIT_FREERTOS
+extern "C" uword toit_image_table;
+#endif
+
 namespace toit {
 
 int FlashRegistry::find_next(int offset, ReservationList::Iterator* it) {
@@ -45,7 +49,7 @@ int FlashRegistry::find_next(int offset, ReservationList::Iterator* it) {
 const FlashAllocation* FlashRegistry::at(int offset) {
   ASSERT(is_allocations_set_up());
   ASSERT(0 <= offset && offset < allocations_size());
-  const FlashAllocation* probe = reinterpret_cast<const FlashAllocation*>(allocations_memory() + offset);
+  const FlashAllocation* probe = reinterpret_cast<const FlashAllocation*>(memory(offset, 0));
   return (probe->is_valid(offset, OS::image_uuid())) ? probe : null;
 }
 
@@ -66,9 +70,19 @@ bool FlashRegistry::pad_and_write(const void* chunk, int offset, int size) {
 }
 
 void* FlashRegistry::memory(int offset, int size) {
-  ASSERT(allocations_memory() != null);
-  ASSERT(0 <= offset && offset + size <= allocations_size());
-  return const_cast<char*>(allocations_memory()) + offset;
+  if ((offset & 1) == 0) {
+    ASSERT(allocations_memory() != null);
+    ASSERT(0 <= offset && offset + size <= allocations_size());
+    return const_cast<char*>(allocations_memory()) + offset;
+  }
+
+#ifdef TOIT_FREERTOS
+  const uword* table = &toit_image_table;
+  uword diff = static_cast<uword>(offset - 1);
+  return reinterpret_cast<void*>(reinterpret_cast<uword>(table) + diff);
+#else
+  return null;
+#endif
 }
 
 }

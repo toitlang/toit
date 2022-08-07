@@ -1,3 +1,20 @@
+# Copyright (C) 2022 Toitware ApS.
+#
+# This library is free software; you can redistribute it and/or
+# modify it under the terms of the GNU Lesser General Public
+# License as published by the Free Software Foundation; version
+# 2.1 only.
+#
+# This library is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# Lesser General Public License for more details.
+#
+# The license can be found in the file `LICENSE` in the top level
+# directory of this repository.
+
+add_custom_target(build_tools)
+
 add_subdirectory(compiler)
 
 # Use D flags to switch tools to deterministic mode (no timestamps etc.)
@@ -18,9 +35,14 @@ file(GLOB toit_core_SRC
   "*.cc"
   )
 
-# Exclude files with a main(), and files that are not used in the
-# compiler.
-list(FILTER toit_core_SRC EXCLUDE REGEX "/(toit|toit_run_image|vm|objects_runtime).cc$")
+# Sources that are only needed to run a program.
+file(GLOB run_SRC
+  "run.cc"
+)
+
+# Exclude files with a main(), and files that are not used in the compiler.
+list(FILTER toit_core_SRC EXCLUDE REGEX "/(toit|toit_run_image|vessel|vm|objects_runtime).cc$")
+list(REMOVE_ITEM toit_core_SRC ${run_SRC})
 
 # Files that are used in the VM, but not in the compiler.
 file(GLOB toit_vm_runtime_SRC
@@ -72,14 +94,34 @@ set_source_files_properties(interpreter_core.cc PROPERTIES COMPILE_FLAGS "-O3")
 set_source_files_properties(interpreter_run.cc PROPERTIES COMPILE_FLAGS "-O3 ${TOIT_INTERPRETER_FLAGS} $ENV{LOCAL_INTERPRETER_CXXFLAGS}")
 set_source_files_properties(utils.cc PROPERTIES COMPILE_FLAGS "-DTOIT_MODEL=\"\\\"${TOIT_MODEL}\\\"\" -DVM_GIT_INFO=\"\\\"${VM_GIT_INFO}\\\"\" -DVM_GIT_VERSION=\"\\\"${TOIT_GIT_VERSION}\\\"\"")
 
+set(GEN_DIR "${PROJECT_BINARY_DIR}/generated")
+
+set(BOOT_SNAPSHOT ${GEN_DIR}/toit.run.snapshot)
+set(BOOT_SNAPSHOT_CC ${GEN_DIR}/toit.run.snapshot.cc)
+
+add_custom_command(
+  OUTPUT "${BOOT_SNAPSHOT_CC}"
+  # We can't use ${BOOT_SNAPSHOT} here, as that would include the full path.
+  # xxd just got a patch to change the name, but it's not really released/widely available yet.
+  COMMAND xxd -i "toit.run.snapshot" "${BOOT_SNAPSHOT_CC}"
+  DEPENDS "${BOOT_SNAPSHOT}"
+  WORKING_DIRECTORY "${GEN_DIR}"
+)
+
 add_executable(
   toit.run
   toit.cc
+  ${BOOT_SNAPSHOT_CC}
+  ${run_SRC}
   )
+
+add_dependencies(build_tools toit.run)
 
 add_executable(
   toit_run_image
   toit_run_image.cc
+  ${BOOT_SNAPSHOT_CC}
+  run.cc
   )
 
 set_target_properties(toit_run_image
@@ -120,7 +162,7 @@ set(TOIT_LINK_LIBS
   toit_vm
   ${TOIT_NETWORK_LIBS}
   ${TOIT_LINK_GROUP_END_FLAGS}
-  toit_compiler
+  toit_compiler          # TODO(florian): should not be here by default.
   pthread
   ${CMAKE_DL_LIBS}
   ${TOIT_LINK_LIBS_LIBGCC}
@@ -143,28 +185,35 @@ target_link_libraries(
   ${TOIT_LINK_LIBS}
   )
 
+set(VESSEL_SIZES 128 256 512 1024 8192)
+foreach(VESSEL_SIZE ${VESSEL_SIZES})
+  set(VESSEL_TARGET vessel${VESSEL_SIZE})
+  add_executable(
+    ${VESSEL_TARGET}
+    vessel.cc
+    vessel/vessel${VESSEL_SIZE}.cc
+    ${BOOT_SNAPSHOT_CC}
+    ${run_SRC}
+    )
+  set_target_properties(${VESSEL_TARGET}
+    PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/sdk/vessels"
+    )
+  target_link_libraries(
+    ${VESSEL_TARGET} ${TOIT_LINK_LIBS}
+  )
+  add_dependencies(build_tools ${VESSEL_TARGET})
+endforeach()
+
 include(${TOIT_SDK_SOURCE_DIR}/tools/toit.cmake)
 
-set(BOOT_SNAPSHOT ${CMAKE_BINARY_DIR}/sdk/bin/toit.run.snapshot)
-
-ADD_TOIT_TARGET(
-  ${TOIT_SDK_SOURCE_DIR}/tools/toit.run.toit
+set(BOOT_SNAPSHOT_SOURCE ${TOIT_SDK_SOURCE_DIR}/tools/toit.run.toit)
+ADD_TOIT_SNAPSHOT(
+  ${BOOT_SNAPSHOT_SOURCE}
   ${BOOT_SNAPSHOT}
   ${CMAKE_CURRENT_BINARY_DIR}/boot.dep
   "ASAN_OPTIONS=detect_leaks=false"
 )
-
-add_custom_target(
-  build_tools
-  DEPENDS toit.run toit.compile
-)
-
-add_custom_target(
-  build_boot_snapshot
-  DEPENDS ${BOOT_SNAPSHOT}
-)
-
-add_dependencies(build_snapshots build_boot_snapshot)
 
 if (DEFINED USE_LWIP)
   include_directories(toit.run PRIVATE ${LWIP_INCLUDE_DIRS})

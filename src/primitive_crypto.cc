@@ -54,7 +54,7 @@ PRIMITIVE(sha1_get) {
   sha1->get_hash(hash);
   memcpy(ByteArray::Bytes(result).address(), hash, 20);
   sha1->resource_group()->unregister_resource(sha1);
-  sha1_proxy->set_external_address(static_cast<Sha1*>(null));
+  sha1_proxy->clear_external_address();
   return result;
 }
 
@@ -85,7 +85,7 @@ PRIMITIVE(sha256_get) {
   ByteArray::Bytes bytes(result);
   sha256->get(bytes.address());
   sha256->resource_group()->unregister_resource(sha256);
-  sha256_proxy->set_external_address(static_cast<Sha256*>(null));
+  sha256_proxy->clear_external_address();
   return result;
 }
 
@@ -117,7 +117,7 @@ PRIMITIVE(siphash_get) {
   if (result == null) return error;
   siphash->get_hash(ByteArray::Bytes(result).address());
   siphash->resource_group()->unregister_resource(siphash);
-  siphash_proxy->set_external_address(static_cast<Siphash*>(null));
+  siphash_proxy->clear_external_address();
   return result;
 }
 

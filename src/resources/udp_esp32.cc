@@ -277,7 +277,7 @@ PRIMITIVE(receive)  {
     if (packet == null) return Smi::from(-1);
 
     ByteArray* address = null;
-    if (capture.output->is_array()) {
+    if (is_array(capture.output)) {
       // TODO: Support IPv6.
       Error* error = null;
       address = capture.process->allocate_byte_array(4, &error);
@@ -291,7 +291,7 @@ PRIMITIVE(receive)  {
 
     memcpy(ByteArray::Bytes(array).address(), p->payload, p->len);
 
-    if (capture.output->is_array()) {
+    if (is_array(capture.output)) {
       Array* out = Array::cast(capture.output);
       ASSERT(out->length() == 3);
       out->at_put(0, array);
@@ -346,7 +346,7 @@ PRIMITIVE(send) {
     p->payload = const_cast<uint8_t*>(content);
 
     err_t err;
-    if (capture.address->is_byte_array()) {
+    if (is_byte_array(capture.address)) {
       err = udp_sendto(capture.socket->upcb(), p, &capture.addr, capture.port);
     } else {
       err = udp_send(capture.socket->upcb(), p);

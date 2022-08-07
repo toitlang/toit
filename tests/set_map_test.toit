@@ -17,6 +17,13 @@ test_map:
   expect (map.contains "fjummer")
   map.remove "fjummer"
   expect (not map.contains "fjummer")
+  map[#['f', 'j', 'u', 'm', 'm', 'e', 'r']] = 243
+  for i := 0; i < n; i++:
+    expect (map.contains i.stringify)
+    expect (map.contains i)
+  expect (map.contains #['f', 'j', 'u', 'm', 'm', 'e', 'r'])
+  map.remove #['f', 'j', 'u', 'm', 'm', 'e', 'r']
+  expect (not map.contains #['f', 'j', 'u', 'm', 'm', 'e', 'r'])
   for i := 0; i < n; i++:
     expect (map.contains i.stringify)
     expect (map.contains i)

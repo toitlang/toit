@@ -36,6 +36,7 @@ void FlashAllocation::Header::set_uuid(const uint8* uuid) {
 void FlashAllocation::validate() {  }
 
 bool FlashAllocation::is_valid(uint32 allocation_offset, const uint8* uuid) const {
+  if ((allocation_offset & 1) == 1) return is_valid_allocation(0);
   if (!is_valid_allocation(allocation_offset)) return false;
   return _header.is_valid(uuid);
 }
@@ -55,11 +56,11 @@ bool FlashAllocation::Header::is_valid_allocation(const uint32 allocation_offset
   return (_marker == MARKER) && (_me == allocation_offset);
 }
 
-bool FlashAllocation::initialize(uint32 offset, uint8 type, const uint8* id, int size, uint8* meta_data) {
+bool FlashAllocation::initialize(uint32 offset, uint8 type, const uint8* id, int size, const uint8* metadata) {
   if (static_cast<unsigned>(size) < sizeof(Header)) return false;
   const uint8* uuid = OS::image_uuid();
   void* result = FlashRegistry::memory(offset, size);
-  Header header(offset, type, id, uuid, size, meta_data);
+  Header header(offset, type, id, uuid, size, metadata);
   bool success = FlashRegistry::write_chunk(&header, offset, sizeof(header));
   FlashRegistry::flush();
   return success && static_cast<FlashAllocation*>(result)->is_valid(offset, uuid);

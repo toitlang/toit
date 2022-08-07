@@ -15,11 +15,3 @@
 
 set(TOIT_FAILING_TESTS
 )
-
-if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows" OR "${CMAKE_SYSTEM_NAME}" STREQUAL "MSYS")
-  list(APPEND TOIT_FAILING_TESTS
-    tests/negative/pkg_bad_path/main_test.toit
-    tests/negative/pkg_not_found/main_test.toit
-    tests/negative/pkg_not_found/relative_test.toit
-  )
-endif()

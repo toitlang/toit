@@ -33,6 +33,7 @@ enum MessageTag {
   TAG_ARRAY,
   TAG_DOUBLE,
   TAG_LARGE_INTEGER,
+  TAG_MAP,
 
   // MessageEncoder::encode_copy() relies on the fact that 'inline' tags
   // for strings and byte arrays directly follow their non-inline variants.
@@ -101,7 +102,7 @@ bool MessageEncoder::encode(Object* object) {
     return false;
   }
 
-  if (object->is_smi()) {
+  if (is_smi(object)) {
     word value = Smi::cast(object)->value();
     if (value >= 0) {
       write_uint8(TAG_POSITIVE_SMI);
@@ -111,15 +112,23 @@ bool MessageEncoder::encode(Object* object) {
       write_cardinal(-value);
     }
     return true;
-  } else if (object->is_instance()) {
+  } else if (is_instance(object)) {
     Instance* instance = Instance::cast(object);
     Smi* class_id = instance->class_id();
     if (class_id == _program->list_class_id()) {
-      Object* backing = instance->at(0);
-      if (backing->is_array()) {
+      Object* backing = instance->at(Instance::LIST_ARRAY_INDEX);
+      if (is_smi(backing)) return false;
+      class_id = HeapObject::cast(backing)->class_id();
+      if (class_id == _program->array_class_id()) {
         Array* array = Array::cast(backing);
-        return encode_array(array, Smi::cast(instance->at(1))->value());
+        Object* size = instance->at(Instance::LIST_SIZE_INDEX);
+        if (!is_smi(size)) return false;
+        return encode_array(array, Smi::cast(size)->value());
+      } else if (class_id == _program->large_array_class_id()) {
+        printf("Can't serialize large array\n");
       }
+    } else if (class_id == _program->map_class_id()) {
+      return encode_map(instance);
     } else if (class_id == _program->byte_array_cow_class_id()) {
       return encode_copy(object, TAG_BYTE_ARRAY);
     } else if (class_id == _program->byte_array_slice_class_id()) {
@@ -137,22 +146,22 @@ bool MessageEncoder::encode(Object* object) {
   } else if (object == _program->false_object()) {
     write_uint8(TAG_FALSE);
     return true;
-  } else if (object->is_byte_array()) {
+  } else if (is_byte_array(object)) {
     return encode_byte_array(ByteArray::cast(object));
-  } else if (object->is_double()) {
+  } else if (is_double(object)) {
     write_uint8(TAG_DOUBLE);
     write_uint64(bit_cast<uint64>(Double::cast(object)->value()));
     return true;
-  } else if (object->is_string()) {
+  } else if (is_string(object)) {
     return encode_copy(object, TAG_STRING);
-  } else if (object->is_array()) {
+  } else if (is_array(object)) {
     Array* array = Array::cast(object);
     return encode_array(array, array->length());
-  } else if (object->is_large_integer()) {
+  } else if (is_large_integer(object)) {
     write_uint8(TAG_LARGE_INTEGER);
     write_uint64(bit_cast<uint64>(Double::cast(object)->value()));
     return true;
-  } else if (object->is_heap_object()) {
+  } else if (is_heap_object(object)) {
     printf("[message encoder: cannot encode object with class tag = %d]\n", HeapObject::cast(object)->class_tag());
   }
   return false;
@@ -163,6 +172,46 @@ bool MessageEncoder::encode_array(Array* object, int size) {
   write_cardinal(size);
   for (int i = 0; i < size; i++) {
     if (!encode(object->at(i))) return false;
+  }
+  return true;
+}
+
+bool MessageEncoder::encode_map(Instance* instance) {
+  write_uint8(TAG_MAP);
+
+  Object* object = instance->at(Instance::MAP_BACKING_INDEX);
+  if (is_smi(object)) return false;
+  HeapObject* backing = HeapObject::cast(object);
+
+  object = instance->at(Instance::MAP_SIZE_INDEX);
+  if (!is_smi(object)) return false;
+  word size = Smi::cast(object)->value();
+
+  write_cardinal(size);
+  if (size == 0) return true;  // Do this before looking at the backing, which may be null.
+  Smi* class_id = backing->class_id();
+  if (class_id == _program->list_class_id()) {
+    object = Instance::cast(backing)->at(Instance::LIST_ARRAY_INDEX);
+    if (is_smi(object)) return false;
+    backing = HeapObject::cast(object);
+  }
+  class_id = backing->class_id();
+  if (class_id != _program->array_class_id()) {
+    if (class_id == _program->large_array_class_id()) {
+      printf("Can't serialize large map\n");
+    }
+    return false;
+  }
+  Array* array = Array::cast(backing);
+  int count = 0;
+  for (int i = 0; count < size; i += 2) {
+    Object* key = array->at(i);
+    Object* value = array->at(i + 1);
+    if (is_smi(key) || HeapObject::cast(key)->class_id() != _program->tombstone_class_id()) {
+      if (!encode(key)) return false;
+      if (!encode(value)) return false;
+      count++;
+    }
   }
   return true;
 }
@@ -285,7 +334,7 @@ bool MessageDecoder::decode_process_message(uint8* buffer, int* value) {
   MessageDecoder decoder(null, buffer);
   // TODO(kasper): Make this more robust. We don't know the content.
   Object* object = decoder.decode();
-  if (object->is_smi()) {
+  if (is_smi(object)) {
     *value = Smi::cast(object)->value();
     return true;
   }
@@ -335,6 +384,8 @@ Object* MessageDecoder::decode() {
       return decode_string(true);
     case TAG_ARRAY:
       return decode_array();
+    case TAG_MAP:
+      return decode_map();
     case TAG_BYTE_ARRAY:
       return decode_byte_array(false);
     case TAG_BYTE_ARRAY_INLINE:
@@ -426,6 +477,37 @@ Object* MessageDecoder::decode_array() {
     if (_allocation_failed) return null;
     result->at_put(i, inner);
   }
+  return result;
+}
+
+Object* MessageDecoder::decode_map() {
+  int size = read_cardinal();
+  Instance* result = _process->object_heap()->allocate_instance(_program->map_class_id());
+  if (result == null) {
+    _allocation_failed = true;
+    return null;
+  }
+  if (size == 0) {
+    result->at_put(Instance::MAP_SIZE_INDEX, Smi::from(0));
+    result->at_put(Instance::MAP_SPACES_LEFT_INDEX, Smi::from(0));
+    result->at_put(Instance::MAP_INDEX_INDEX, _program->null_object());
+    result->at_put(Instance::MAP_BACKING_INDEX, _program->null_object());
+    return result;
+  }
+  Array* array = _process->object_heap()->allocate_array(size * 2, Smi::zero());
+  if (array == null) {
+    _allocation_failed = true;
+    return null;
+  }
+  for (int i = 0; i < size * 2; i++) {
+    Object* inner = decode();
+    if (_allocation_failed) return null;
+    array->at_put(i, inner);
+  }
+  result->at_put(Instance::MAP_SIZE_INDEX, Smi::from(size));
+  result->at_put(Instance::MAP_SPACES_LEFT_INDEX, Smi::from(0));
+  result->at_put(Instance::MAP_INDEX_INDEX, _program->null_object());
+  result->at_put(Instance::MAP_BACKING_INDEX, array);
   return result;
 }
 

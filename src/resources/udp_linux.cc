@@ -167,7 +167,7 @@ PRIMITIVE(receive)  {
 
   // TODO: Support IPv6.
   ByteArray* address = null;
-  if (output->is_array()) {
+  if (is_array(output)) {
     Error* error = null;
     address = process->allocate_byte_array(4, &error);
     if (address == null) return error;
@@ -187,7 +187,7 @@ PRIMITIVE(receive)  {
   socklen_t addr_len = sizeof(addr);
   int read = recvfrom(fd, ByteArray::Bytes(array).address(), available, 0, reinterpret_cast<sockaddr*>(&addr), &addr_len);
   if (read == -1) {
-    if (errno == EWOULDBLOCK) {
+    if (errno == EWOULDBLOCK || errno == EAGAIN) {
       return Smi::from(-1);
     }
     return Primitive::os_error(errno, process);
@@ -197,7 +197,7 @@ PRIMITIVE(receive)  {
   // Please note that the array might change length so no ByteArray::Bytes variables can pass this point.
   array->resize_external(process, read);
 
-  if (output->is_array()) {
+  if (is_array(output)) {
     Array* out = Array::cast(output);
     ASSERT(out->length() == 3);
     out->at_put(0, array);
@@ -234,7 +234,7 @@ PRIMITIVE(send) {
 
   int wrote = sendto(fd, data.address() + from, to - from, 0, addr, size);
   if (wrote == -1) {
-    if (errno == EWOULDBLOCK) return Smi::from(0);
+    if (errno == EWOULDBLOCK || errno == EAGAIN) return Smi::from(0);
     return Primitive::os_error(errno, process);
   }
 

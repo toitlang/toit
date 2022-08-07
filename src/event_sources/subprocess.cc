@@ -124,7 +124,7 @@ bool SubprocessEventSource::ignore_result(IntResource* resource) {
   // happens rarely when the primitive is restarted due to allocation failure,
   // and we want to make sure it's not going to cause rare problems.
   unregister_resource(locker, resource);
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
   unregister_resource(locker, resource);
 #endif
   ProcessWaitResult* already_exited = _results.remove_where([&](ProcessWaitResult* result) {

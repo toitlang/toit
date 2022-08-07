@@ -114,7 +114,7 @@ static bool is_rtc_valid() {
 }
 
 static void reset_rtc(const char* reason) {
-  ets_printf("clearing RTC memory: %s\n", reason);
+  ets_printf("[toit] DEBUG: clearing RTC memory: %s\n", reason);
   // Clear the RTC .bss segment.
   memset(&_rtc_bss_start, 0, (&_rtc_bss_end - &_rtc_bss_start) * sizeof(_rtc_bss_start));
   // Our RTC state is kept in the noinit segment, which means that it isn't
@@ -131,8 +131,9 @@ static void reset_rtc(const char* reason) {
 
 // Patch the primordial entrypoint of the image (before launching FreeRTOS).
 extern "C" void IRAM_ATTR start_cpu0() {
+  ets_printf("[toit] INFO: starting <%s>\n", toit::vm_git_version());
   if (!is_rtc_valid()) {
-    reset_rtc("RTC memory is in inconsistent state");
+    reset_rtc("invalid checksum");
   } else {
     rtc.boot_count++;
     rtc.total_deep_sleep_time += calibrated_rtc_time() - rtc.deep_sleep_time_stamp;

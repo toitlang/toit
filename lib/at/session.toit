@@ -324,13 +324,13 @@ class Session:
     command_deadline_ = now + command.timeout.in_us
     responses_ = []
 
-    task.with_deadline_ command_deadline_:
+    Task_.current.with_deadline_ command_deadline_:
       try:
         write_command_ command
       finally: | is_exception exception |
         // Abort stream if write failed (especially timeout), as this will leave
         // the session in an undefined state.
-        if is_exception: abort_ exception
+        if is_exception: abort_ exception.value
 
     if result := processor_.wait_for_result command_deadline_:
       if not ok_termination_.contains result.code.to_byte_array:

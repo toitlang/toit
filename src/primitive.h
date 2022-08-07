@@ -53,7 +53,9 @@ namespace toit {
   M(blob,    MODULE_BLOB)                    \
   M(gpio,    MODULE_GPIO)                    \
   M(adc,     MODULE_ADC)                     \
+  M(dac,     MODULE_DAC)                     \
   M(pwm,     MODULE_PWM)                     \
+  M(touch,   MODULE_TOUCH)                   \
   M(programs_registry, MODULE_PROGRAMS_REGISTRY) \
   M(flash,   MODULE_FLASH_REGISTRY)          \
   M(file,    MODULE_FILE)                    \
@@ -141,7 +143,7 @@ namespace toit {
   PRIMITIVE(float_greater_than, 2)           \
   PRIMITIVE(float_greater_than_or_equal, 2)  \
   PRIMITIVE(string_hash_code, 1)             \
-  PRIMITIVE(string_slice_hash_code, 1)       \
+  PRIMITIVE(blob_hash_code, 1)               \
   PRIMITIVE(hash_simple_json_string, 2)      \
   PRIMITIVE(compare_simple_json_string, 3)   \
   PRIMITIVE(size_of_json_number, 2)          \
@@ -159,6 +161,9 @@ namespace toit {
   PRIMITIVE(object_class_id, 1)              \
   PRIMITIVE(number_to_integer, 1)            \
   PRIMITIVE(float_sqrt, 1)                   \
+  PRIMITIVE(float_ceil, 1)                   \
+  PRIMITIVE(float_floor, 1)                  \
+  PRIMITIVE(float_trunc, 1)                  \
   PRIMITIVE(command, 0)                      \
   PRIMITIVE(args, 0)                         \
   PRIMITIVE(hatch, 2)                        \
@@ -288,9 +293,10 @@ namespace toit {
   PRIMITIVE(set_session, 2)                  \
 
 #define MODULE_WIFI(PRIMITIVE)               \
-  PRIMITIVE(init, 0)                         \
+  PRIMITIVE(init, 1)                         \
   PRIMITIVE(close, 1)                        \
   PRIMITIVE(connect, 3)                      \
+  PRIMITIVE(establish, 5)                    \
   PRIMITIVE(setup_ip, 1)                     \
   PRIMITIVE(disconnect, 2)                   \
   PRIMITIVE(disconnect_reason, 1)            \
@@ -320,6 +326,7 @@ namespace toit {
   PRIMITIVE(get_gatt, 1)                     \
   PRIMITIVE(request_result, 1)               \
   PRIMITIVE(request_data, 1)                 \
+  PRIMITIVE(send_data, 3)                    \
   PRIMITIVE(request_service, 2)              \
   PRIMITIVE(request_characteristic, 3)       \
   PRIMITIVE(request_attribute, 2)            \
@@ -338,10 +345,15 @@ namespace toit {
   PRIMITIVE(ota_begin, 2)                    \
   PRIMITIVE(ota_write, 1)                    \
   PRIMITIVE(ota_end, 2)                      \
+  PRIMITIVE(ota_state, 0)                    \
+  PRIMITIVE(ota_validate, 0)                 \
+  PRIMITIVE(ota_rollback, 0)                 \
   PRIMITIVE(reset_reason, 0)                 \
   PRIMITIVE(enable_external_wakeup, 2)       \
+  PRIMITIVE(enable_touchpad_wakeup, 0)       \
   PRIMITIVE(wakeup_cause, 0)                 \
   PRIMITIVE(ext1_wakeup_status, 1)           \
+  PRIMITIVE(touchpad_wakeup_status, 0)       \
   PRIMITIVE(total_deep_sleep_time, 0)        \
   PRIMITIVE(total_run_time, 0)               \
   PRIMITIVE(image_config, 0)                 \
@@ -371,7 +383,9 @@ namespace toit {
   PRIMITIVE(close, 1)                        \
   PRIMITIVE(device, 7)                       \
   PRIMITIVE(device_close, 2)                 \
-  PRIMITIVE(transfer, 8)                     \
+  PRIMITIVE(transfer, 9)                     \
+  PRIMITIVE(acquire_bus, 1)                  \
+  PRIMITIVE(release_bus, 1)                  \
 
 #define MODULE_SPI_LINUX(PRIMITIVE)          \
   PRIMITIVE(open, 1)                         \
@@ -380,10 +394,13 @@ namespace toit {
 #define MODULE_UART(PRIMITIVE)               \
   PRIMITIVE(init, 0)                         \
   PRIMITIVE(create, 10)                      \
+  PRIMITIVE(create_path, 6)                  \
   PRIMITIVE(close, 2)                        \
+  PRIMITIVE(get_baud_rate, 1)                \
   PRIMITIVE(set_baud_rate, 2)                \
   PRIMITIVE(write, 6)                        \
   PRIMITIVE(read, 1)                         \
+  PRIMITIVE(wait_tx, 1)                      \
 
 #define MODULE_RMT(PRIMITIVE)                \
   PRIMITIVE(init, 0)                         \
@@ -464,9 +481,9 @@ namespace toit {
   PRIMITIVE(deserialize, 1)                  \
 
 #define MODULE_IMAGE(PRIMITIVE)              \
+  PRIMITIVE(current_id, 0)                   \
   PRIMITIVE(writer_create, 2)                \
   PRIMITIVE(writer_write, 4)                 \
-  PRIMITIVE(writer_write_all, 3)             \
   PRIMITIVE(writer_commit, 2)                \
   PRIMITIVE(writer_close, 1)                 \
 
@@ -489,9 +506,16 @@ namespace toit {
   PRIMITIVE(config_interrupt, 2)             \
 
 #define MODULE_ADC(PRIMITIVE)               \
-  PRIMITIVE(init, 3)                        \
+  PRIMITIVE(init, 4)                        \
   PRIMITIVE(get, 2)                         \
   PRIMITIVE(close, 1)                       \
+
+#define MODULE_DAC(PRIMITIVE)               \
+  PRIMITIVE(init, 0)                        \
+  PRIMITIVE(use, 3)                         \
+  PRIMITIVE(unuse, 2)                       \
+  PRIMITIVE(set, 2)                         \
+  PRIMITIVE(cosine_wave, 5)                 \
 
 #define MODULE_PWM(PRIMITIVE)                \
   PRIMITIVE(init, 2)                         \
@@ -503,11 +527,20 @@ namespace toit {
   PRIMITIVE(set_frequency, 2)                \
   PRIMITIVE(close_channel, 2)                \
 
+#define MODULE_TOUCH(PRIMITIVE)              \
+  PRIMITIVE(init, 0)                         \
+  PRIMITIVE(use, 3)                          \
+  PRIMITIVE(unuse, 2)                        \
+  PRIMITIVE(read, 1)                         \
+  PRIMITIVE(get_threshold, 1)                \
+  PRIMITIVE(set_threshold, 2)                \
+
 #define MODULE_PROGRAMS_REGISTRY(PRIMITIVE)  \
   PRIMITIVE(next_group_id, 0)                \
   PRIMITIVE(spawn, 3)                        \
   PRIMITIVE(is_running, 2)                   \
   PRIMITIVE(kill, 2)                         \
+  PRIMITIVE(bundled_images, 0)               \
 
 #define MODULE_FLASH_REGISTRY(PRIMITIVE)     \
   PRIMITIVE(next, 1)                         \
@@ -516,7 +549,7 @@ namespace toit {
   PRIMITIVE(get_id, 1)                       \
   PRIMITIVE(get_size, 1)                     \
   PRIMITIVE(get_type, 1)                     \
-  PRIMITIVE(get_meta_data, 1)                \
+  PRIMITIVE(get_metadata, 1)                 \
   PRIMITIVE(reserve_hole, 2)                 \
   PRIMITIVE(cancel_reservation, 1)           \
   PRIMITIVE(erase_flash_registry, 0)         \
@@ -597,7 +630,7 @@ namespace toit {
   PRIMITIVE(erase, 1)                        \
 
 #define MODULE_DEBUG(PRIMITIVE)              \
-  PRIMITIVE(object_histogram, 0)             \
+  PRIMITIVE(object_histogram, 1)             \
 
 // ----------------------------------------------------------------------------
 
@@ -625,7 +658,7 @@ namespace toit {
 
 #define __ARG__(N, name, type, test)    \
   Object* _raw_##name = __args[-(N)];   \
-  if (!_raw_##name->test()) WRONG_TYPE; \
+  if (!test(_raw_##name)) WRONG_TYPE; \
   type* name = type::cast(_raw_##name);
 
 #define _A_T_Array(N, name)         __ARG__(N, name, Array, is_array)
@@ -640,18 +673,28 @@ namespace toit {
 // Covers the range of int or Smi, whichever is smaller.
 #define _A_T_int(N, name)                               \
   Object* _raw_##name = __args[-(N)];                   \
-  if (!_raw_##name->is_smi()) {                         \
-    if (_raw_##name->is_large_integer()) OUT_OF_RANGE;  \
+  if (!is_smi(_raw_##name)) {                           \
+    if (is_large_integer(_raw_##name)) OUT_OF_RANGE;    \
     else WRONG_TYPE;                                    \
   }                                                     \
   word _word_##name = Smi::cast(_raw_##name)->value();  \
   int name = _word_##name;                              \
   if (name != _word_##name) OUT_OF_RANGE;               \
 
+#define _A_T_int8(N, name)                                                \
+  Object* _raw_##name = __args[-(N)];                                     \
+  if (!is_smi(_raw_##name)) {                                             \
+    if (is_large_integer(_raw_##name)) OUT_OF_RANGE;                      \
+    else WRONG_TYPE;                                                      \
+  }                                                                       \
+  word _value_##name = Smi::cast(_raw_##name)->value();                   \
+  if (INT8_MIN > _value_##name || _value_##name > INT8_MAX) OUT_OF_RANGE; \
+  int8 name = (int8) _value_##name;
+
 #define _A_T_uint8(N, name)                                           \
   Object* _raw_##name = __args[-(N)];                                 \
-  if (!_raw_##name->is_smi()) {                                       \
-    if (_raw_##name->is_large_integer()) OUT_OF_RANGE;                \
+  if (!is_smi(_raw_##name)) {                                         \
+    if (is_large_integer(_raw_##name)) OUT_OF_RANGE;                  \
     else WRONG_TYPE;                                                  \
   }                                                                   \
   word _value_##name = Smi::cast(_raw_##name)->value();               \
@@ -660,8 +703,8 @@ namespace toit {
 
 #define _A_T_int16(N, name)                                                  \
   Object* _raw_##name = __args[-(N)];                                        \
-  if (!_raw_##name->is_smi()) {                                              \
-    if (_raw_##name->is_large_integer()) OUT_OF_RANGE;                       \
+  if (!is_smi(_raw_##name)) {                                                \
+    if (is_large_integer(_raw_##name)) OUT_OF_RANGE;                         \
     else WRONG_TYPE;                                                         \
   }                                                                          \
   word _value_##name = Smi::cast(_raw_##name)->value();                      \
@@ -670,8 +713,8 @@ namespace toit {
 
 #define _A_T_uint16(N, name)                                          \
   Object* _raw_##name = __args[-(N)];                                 \
-  if (!_raw_##name->is_smi()) {                                       \
-    if (_raw_##name->is_large_integer()) OUT_OF_RANGE;                \
+  if (!is_smi(_raw_##name)) {                                         \
+    if (is_large_integer(_raw_##name)) OUT_OF_RANGE;                  \
     else WRONG_TYPE;                                                  \
   }                                                                   \
   word _value_##name = Smi::cast(_raw_##name)->value();               \
@@ -681,9 +724,9 @@ namespace toit {
 #define _A_T_int32(N, name)                                                  \
   Object* _raw_##name = __args[-(N)];                                        \
   int64 _value_##name;                                                       \
-  if (_raw_##name->is_smi()) {                                               \
+  if (is_smi(_raw_##name)) {                                                 \
     _value_##name = Smi::cast(_raw_##name)->value();                         \
-  } else if (_raw_##name->is_large_integer()) {                              \
+  } else if (is_large_integer(_raw_##name))   {                              \
     _value_##name = LargeInteger::cast(_raw_##name)->value();                \
   } else {                                                                   \
     WRONG_TYPE;                                                              \
@@ -694,9 +737,9 @@ namespace toit {
 #define _A_T_uint32(N, name)                                                 \
   Object* _raw_##name = __args[-(N)];                                        \
   int64 _value_##name;                                                       \
-  if (_raw_##name->is_smi()) {                                               \
+  if (is_smi(_raw_##name)) {                                                 \
     _value_##name = Smi::cast(_raw_##name)->value();                         \
-  } else if (_raw_##name->is_large_integer()) {                              \
+  } else if (is_large_integer(_raw_##name)) {                                \
     _value_##name = LargeInteger::cast(_raw_##name)->value();                \
   } else {                                                                   \
     WRONG_TYPE;                                                              \
@@ -708,9 +751,9 @@ namespace toit {
 #define _A_T_int64(N, name)                             \
   Object* _raw_##name = __args[-(N)];                   \
   int64 name;                                           \
-  if (_raw_##name->is_smi()) {                          \
+  if (is_smi(_raw_##name)) {                            \
     name = (int64) Smi::cast(_raw_##name)->value();     \
-  } else if (_raw_##name->is_large_integer()) {         \
+  } else if (is_large_integer(_raw_##name)) {           \
     name = LargeInteger::cast(_raw_##name)->value();    \
   } else {                                              \
     WRONG_TYPE;                                         \
@@ -718,24 +761,24 @@ namespace toit {
 
 #define _A_T_word(N, name)                \
   Object* _raw_##name = __args[-(N)];     \
-  if (!_raw_##name->is_smi()) WRONG_TYPE; \
+  if (!is_smi(_raw_##name)) WRONG_TYPE;   \
   word name = Smi::cast(_raw_##name)->value();
 
 #define _A_T_double(N, name)                 \
   Object* _raw_##name = __args[-(N)];        \
-  if (!_raw_##name->is_double()) WRONG_TYPE; \
+  if (!is_double(_raw_##name)) WRONG_TYPE;   \
   double name = Double::cast(_raw_##name)->value();
 
 #define _A_T_to_double(N, name)                                \
   Object* _raw_##name = __args[-(N)];                          \
   double name;                                                 \
-  if (_raw_##name->is_smi()) {                                 \
+  if (is_smi(_raw_##name)) {                                   \
     name = (double) Smi::cast(_raw_##name)->value();           \
   }                                                            \
-  else if (_raw_##name->is_large_integer()) {                  \
+  else if (is_large_integer(_raw_##name)) {                    \
     name = (double) LargeInteger::cast(_raw_##name)->value();  \
   }                                                            \
-  else if (_raw_##name->is_double()) {                         \
+  else if (is_double(_raw_##name)) {                           \
     name = Double::cast(_raw_##name)->value();                 \
   } else WRONG_TYPE;
 
@@ -769,7 +812,7 @@ namespace toit {
   uword name##_length = 0;                                              \
   const uint8* name = 0;                                                \
   uint8* _freed_##name = 0;                                             \
-  if (_raw_##name->is_string()) {                                       \
+  if (is_string(_raw_##name)) {                                         \
     /* Avoid copying */                                                 \
     auto str = String::cast(_raw_##name);                               \
     name = unsigned_cast(str->as_cstr());                               \
@@ -818,7 +861,9 @@ namespace toit {
   if (!name) ALREADY_CLOSED;                                     \
 
 #define _A_T_SimpleResourceGroup(N, name) MAKE_UNPACKING_MACRO(SimpleResourceGroup, N, name)
+#define _A_T_DacResourceGroup(N, name)    MAKE_UNPACKING_MACRO(DacResourceGroup, N, name)
 #define _A_T_GPIOResourceGroup(N, name)   MAKE_UNPACKING_MACRO(GPIOResourceGroup, N, name)
+#define _A_T_TouchResourceGroup(N, name)  MAKE_UNPACKING_MACRO(TouchResourceGroup, N, name)
 #define _A_T_I2CResourceGroup(N, name)    MAKE_UNPACKING_MACRO(I2CResourceGroup, N, name)
 #define _A_T_I2SResourceGroup(N, name)    MAKE_UNPACKING_MACRO(I2SResourceGroup, N, name)
 #define _A_T_PersistentResourceGroup(N, name) MAKE_UNPACKING_MACRO(PersistentResourceGroup, N, name)
@@ -854,8 +899,9 @@ namespace toit {
 #define _A_T_Timer(N, name)               MAKE_UNPACKING_MACRO(Timer, N, name)
 #define _A_T_UDPSocket(N, name)           MAKE_UNPACKING_MACRO(UDPSocket, N, name)
 #define _A_T_WifiEvents(N, name)          MAKE_UNPACKING_MACRO(WifiEvents, N, name)
+#define _A_T_WifiIpEvents(N, name)        MAKE_UNPACKING_MACRO(WifiIpEvents, N, name)
 #define _A_T_EthernetEvents(N, name)      MAKE_UNPACKING_MACRO(EthernetEvents, N, name)
-#define _A_T_IPEvents(N, name)            MAKE_UNPACKING_MACRO(IPEvents, N, name)
+#define _A_T_EthernetIpEvents(N, name)    MAKE_UNPACKING_MACRO(EthernetIpEvents, N, name)
 #define _A_T_MbedTLSSocket(N, name)       MAKE_UNPACKING_MACRO(MbedTLSSocket, N, name)
 #define _A_T_BaseMbedTLSSocket(N, name)   MAKE_UNPACKING_MACRO(BaseMbedTLSSocket, N, name)
 #define _A_T_SslSession(N, name)          MAKE_UNPACKING_MACRO(SslSession, N, name)
@@ -866,9 +912,11 @@ namespace toit {
 #define _A_T_Sha256(N, name)              MAKE_UNPACKING_MACRO(Sha256, N, name)
 #define _A_T_Adler32(N, name)             MAKE_UNPACKING_MACRO(Adler32, N, name)
 #define _A_T_ZlibRle(N, name)             MAKE_UNPACKING_MACRO(ZlibRle, N, name)
+#define _A_T_GPIOResource(N, name)        MAKE_UNPACKING_MACRO(GPIOResource, N, name)
 #define _A_T_UARTResource(N, name)        MAKE_UNPACKING_MACRO(UARTResource, N, name)
 #define _A_T_I2SResource(N, name)         MAKE_UNPACKING_MACRO(I2SResource, N, name)
-#define _A_T_AdcState(N, name)            MAKE_UNPACKING_MACRO(AdcState, N, name)
+#define _A_T_AdcResource(N, name)         MAKE_UNPACKING_MACRO(AdcResource, N, name)
+#define _A_T_DacResource(N, name)         MAKE_UNPACKING_MACRO(DacResource, N, name)
 #define _A_T_PWMResource(N, name)         MAKE_UNPACKING_MACRO(PWMResource, N, name)
 #define _A_T_PcntUnitResource(N, name)    MAKE_UNPACKING_MACRO(PcntUnitResource, N, name)
 #define _A_T_RMTResource(N, name)         MAKE_UNPACKING_MACRO(RMTResource, N, name)

@@ -880,7 +880,7 @@ bool ImageAllocator::initialize(int normal_block_count,
   _memory = _image->address();
   if (_memory == null) return false;
 
-#ifndef DEBUG
+#ifndef TOIT_DEBUG
   // Keep the uninitialized 0xcd markers in debug mode, but otherwise
   // initialize the memory to 0 to make the image more deterministic.
   memset(_memory, 0, memory_byte_size);
@@ -1150,8 +1150,8 @@ void BaseSnapshotWriter::write_reference(int index) {
 }
 
 void BaseSnapshotWriter::write_object(Object* object) {
-  if (object->is_smi()) write_integer(Smi::cast(object)->value());
-  else if (object->is_large_integer()) write_integer(LargeInteger::cast(object)->value());
+  if (is_smi(object)) write_integer(Smi::cast(object)->value());
+  else if (is_large_integer(object)) write_integer(LargeInteger::cast(object)->value());
   else write_heap_object(HeapObject::cast(object));
 }
 
@@ -1213,7 +1213,7 @@ void BaseSnapshotWriter::write_heap_object(HeapObject* object) {
                       length);
   write_byte(tag);
   _allocator.allocate_object(tag, length);
-  ASSERT(object->header()->is_smi());
+  ASSERT(is_smi(object->header()));
   write_object(object->header());
   switch (object->class_tag()) {
     case TypeTag::ARRAY_TAG:
@@ -1276,7 +1276,7 @@ class RelocationBits : public PointerCallback {
  public:
   void object_address(Object** p) {
     // Only make heap objects relocatable.
-    if ((*p)->is_heap_object()) set_bit_for(reinterpret_cast<word*>(p));
+    if (is_heap_object(*p)) set_bit_for(reinterpret_cast<word*>(p));
   }
 
   void c_address(void** p, bool is_sentinel) {
@@ -1359,11 +1359,13 @@ int ImageInputStream::read(word* buffer) {
 
 ImageOutputStream::ImageOutputStream(ProgramImage image)
     : _image(image)
-    , current(image.begin()) {}
+    , _current(image.begin()) {
+  memset(_program_id, 0, sizeof(_program_id));
+}
 
 void ImageOutputStream::write(const word* buffer, int size, word* output) {
   ASSERT(1 < size && size <= CHUNK_SIZE);
-  if (output == null) output = current;
+  if (output == null) output = _current;
   // The input buffer is often part of network packets with various headers,
   // so the embedded words aren't guaranteed to be word-aligned.
   word mask = Utils::read_unaligned_word(&buffer[0]);
@@ -1373,8 +1375,12 @@ void ImageOutputStream::write(const word* buffer, int size, word* output) {
     if (mask & 1U) value += reinterpret_cast<word>(_image.begin());
     mask = mask >> 1;
     output[index - 1] = value;
-    current++;
+    _current++;
   }
+}
+
+void ImageOutputStream::set_program_id(const uint8* id) {
+  memmove(_program_id, id, sizeof(_program_id));
 }
 
 }  // namespace toit

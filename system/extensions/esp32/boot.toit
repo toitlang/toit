@@ -14,6 +14,7 @@
 // directory of this repository.
 
 import uuid
+import system.containers
 
 import .firmware
 import .wifi
@@ -25,7 +26,8 @@ import ...containers
 // TODO(kasper): It feels annoying to have to put this here. Maybe we
 // can have some sort of reasonable default in the ContainerManager?
 class SystemImage extends ContainerImage:
-  id ::= uuid.NIL
+  id ::= containers.current
+
   constructor manager/ContainerManager:
     super manager
 

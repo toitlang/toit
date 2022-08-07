@@ -174,6 +174,7 @@ class OS {
 
   static Mutex* global_mutex() { return _global_mutex; }
   static Mutex* scheduler_mutex() { return _scheduler_mutex; }
+  static Mutex* resource_mutex() { return _resource_mutex; }
 
   // Mutex (used with Locker).
   static Mutex* allocate_mutex(int level, const char* title);
@@ -187,7 +188,7 @@ class OS {
   static ConditionVariable* allocate_condition_variable(Mutex* mutex);
   static void wait(ConditionVariable* condition_variable);
   // Returns false if a timeout occurs.
-  static bool wait(ConditionVariable* condition_variable, int timeout_in_ms);
+  static bool wait_us(ConditionVariable* condition_variable, int64 us);
   static void signal(ConditionVariable* condition_variable);
   static void signal_all(ConditionVariable* condition_variable);
   static void dispose(ConditionVariable* condition_variable);
@@ -255,6 +256,7 @@ class OS {
 
   static Mutex* _global_mutex;
   static Mutex* _scheduler_mutex;
+  static Mutex* _resource_mutex;
   static HeapMemoryRange _single_range;
 
   friend class ConditionVariable;

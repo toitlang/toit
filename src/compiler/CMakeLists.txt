@@ -1,3 +1,18 @@
+# Copyright (C) 2022 Toitware ApS.
+#
+# This library is free software; you can redistribute it and/or
+# modify it under the terms of the GNU Lesser General Public
+# License as published by the Free Software Foundation; version
+# 2.1 only.
+#
+# This library is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# Lesser General Public License for more details.
+#
+# The license can be found in the file `LICENSE` in the top level
+# directory of this repository.
+
 file(GLOB toit_compiler_SRC
     "*.h"
     "*.cc"
@@ -27,6 +42,8 @@ add_executable(
   toitc.cc
   )
 
+add_dependencies(build_tools toit.compile)
+
 target_link_libraries(toit.compile -static-libstdc++)
 
 if ("${CMAKE_SYSTEM_NAME}" MATCHES "MSYS")
@@ -39,7 +56,6 @@ endif()
 
 target_link_libraries(
   toit.compile
-  toit_core
   toit_compiler
   toit_core
   mbedtls

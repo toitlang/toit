@@ -43,17 +43,38 @@ Durations are limited to ~292 years (signed 64 bit nanoseconds).
 class Duration implements Comparable:
 
   /** The number of nanoseconds per microsecond. */
-  static NANOSECONDS_PER_MICROSECOND ::=            1_000
+  static NANOSECONDS_PER_MICROSECOND /int ::=            1_000
   /** The number of nanoseconds per millisecond. */
-  static NANOSECONDS_PER_MILLISECOND ::=        1_000_000
+  static NANOSECONDS_PER_MILLISECOND /int ::=        1_000_000
   /** The number of nanoseconds per second. */
-  static NANOSECONDS_PER_SECOND      ::=    1_000_000_000
+  static NANOSECONDS_PER_SECOND /int      ::=    1_000_000_000
   /** The number of nanoseconds per minute. */
-  static NANOSECONDS_PER_MINUTE      ::=   60_000_000_000
+  static NANOSECONDS_PER_MINUTE /int      ::=   60_000_000_000
   /** The number of nanoseconds per hour. */
-  static NANOSECONDS_PER_HOUR        ::= 3600_000_000_000
+  static NANOSECONDS_PER_HOUR /int        ::= 3600_000_000_000
 
-  ns_ / int
+  /** The number of microseconds per millisecond. */
+  static MICROSECONDS_PER_MILLISECOND /int ::=        1_000
+  /** The number of microseconds per second. */
+  static MICROSECONDS_PER_SECOND /int      ::=    1_000_000
+  /** The number of microseconds per minute. */
+  static MICROSECONDS_PER_MINUTE /int      ::=   60_000_000
+  /** The number of microseconds per hour. */
+  static MICROSECONDS_PER_HOUR /int        ::= 3600_000_000
+
+  /** The number of milliseconds per second. */
+  static MILLISECONDS_PER_SECOND /int ::=    1_000
+  /** The number of milliseconds per minute. */
+  static MILLISECONDS_PER_MINUTE /int ::=   60_000
+  /** The number of milliseconds per hour. */
+  static MILLISECONDS_PER_HOUR /int   ::= 3600_000
+
+  /** The number of seconds per minute. */
+  static SECONDS_PER_MINUTE /int ::=   60
+  /** The number of seconds per hour. */
+  static SECONDS_PER_HOUR /int   ::= 3600
+
+  ns_ /int
 
   /**
   Constructs a duration of $h hours, $m minutes, $ms milliseconds, $us
@@ -143,7 +164,7 @@ class Duration implements Comparable:
   /**
   The absolute value of this duration.
   */
-  abs:
+  abs -> Duration:
     if ns_ == int.MIN: throw "OUT_OF_RANGE"
     if ns_ < 0: return Duration --ns=-ns_
     return this
@@ -397,8 +418,8 @@ class Duration implements Comparable:
   print 5 * t_5s  // Error, num's * does not know Duration!
   ```
   */
-  operator * factor/int -> Duration:
-    return Duration ns_ * factor
+  operator * factor/num -> Duration:
+    return Duration (factor * ns_).to_int
 
   /**
   Divides the duration by the $factor.
@@ -410,15 +431,15 @@ class Duration implements Comparable:
   print t_9s / 3  // >> 3s
   ```
   */
-  operator / factor/int -> Duration:
-    return Duration ns_ / factor
+  operator / factor/num -> Duration:
+    return Duration (ns_ / factor).to_int
 
   /**
   A constant 0-duration singleton.
 
   Prefer to use this for 0-durations to avoid allocations.
   */
-  static ZERO / Duration ::= Duration 0
+  static ZERO /Duration ::= Duration 0
 
 
 /** A decomposed view of a $Time object. */
@@ -440,16 +461,16 @@ class TimeInfo:
   static SUNDAY    ::= 7
 
   /** The corresponding time instance. */
-  time / Time
+  time /Time
 
   /** Year. */
-  year / int
+  year /int
 
   /**
   Month of the year.
   In the range 1-12.
   */
-  month / int
+  month /int
 
   /**
   Day of the month.
@@ -473,13 +494,13 @@ class TimeInfo:
   Seconds after the minute.
   Generally in the range 0 to 59. May be 60 in case of leap-seconds.
   */
-  s / int
+  s /int
 
   /**
   Nanoseconds after the second.
   In the range 0-999_999_999.
   */
-  ns / int
+  ns /int
 
   /**
   Weekday.
@@ -489,7 +510,7 @@ class TimeInfo:
     $weekday value module 7, which gives a value in the range 0 to 6, but shuffles
     Sunday down to the beginning of the week.
   */
-  weekday / int
+  weekday /int
 
   /**
   Days since January 1st.
@@ -497,13 +518,13 @@ class TimeInfo:
   In combination with the year also known as ordinal date.
   */
   // 0-365, days since January 1.
-  yearday / int
+  yearday /int
 
   /** Whether this instance is in UTC. */
-  is_utc / bool
+  is_utc /bool
 
   /** Whether this instance is computed with daylight saving active. */
-  is_dst / bool
+  is_dst /bool
 
   constructor.__ .time --.is_utc:
     info := time_info_ time.s_since_epoch is_utc
@@ -573,6 +594,25 @@ class TimeInfo:
     return to_iso8601_string
 
 /**
+Stores the given $rules in the `TZ` environment variable and
+  calls `tzset`, thus activating it.
+
+Valid TZ values can be easily obtained by looking at the last line of the
+  zoneinfo files on Linux machines:
+```
+tail -n1 /usr/share/zoneinfo/Europe/Copenhagen
+```
+
+# Examples
+```
+set_timezone "CET-1CEST,M3.5.0,M10.5.0/3"  // Central European Timezone (as of 2022).
+set_timezone "PST8PDT,M3.2.0,M11.1.0"  // Pacific Time (as of 2022).
+```
+*/
+set_timezone rules/string:
+  #primitive.core.set_tz
+
+/**
 A wall clock time.
 
 The wall clock time is represented as a Unix time (https://en.wikipedia.org/wiki/Unix_time).
@@ -584,10 +624,10 @@ If you need a decomposed view of a $Time, then convert it to a $TimeInfo
 */
 class Time implements Comparable:
 
-  seconds_ / int
-  ns_      / int
-  local_   / TimeInfo? := null
-  utc_     / TimeInfo? := null
+  seconds_ /int
+  ns_      /int
+  local_   /TimeInfo? := null
+  utc_     /TimeInfo? := null
 
   /**
   Constructs a time instance from the given parameters.

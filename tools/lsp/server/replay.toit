@@ -13,7 +13,7 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-import services.arguments show ArgumentParser
+import host.arguments show ArgumentParser
 import host.file
 import monitor
 import host.pipe
@@ -55,6 +55,7 @@ Use:
 */
 main args:
   parser := ArgumentParser
+  parser.describe_rest ["debug-file"]
   parser.add_flag "print-out"
   parser.add_flag "use-std-ports"
   parser.add_flag "log-formatted"

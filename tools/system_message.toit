@@ -30,7 +30,6 @@ handle_system_message encoded_system_message snapshot_content:
     pipe.print_to_stdout m.terminal_stringify
   else:
     pipe.print_to_stdout m.stringify
-  pipe.print_to_stdout ""
 
 usage prog_name:
   pipe.print_to_stderr """

@@ -39,6 +39,7 @@ This block has 95 assigned code points, and they are all
   present in this font.
   This block contains characters in the range 0x0000-0x007f.
   The bitmaps for this block in this font take up about 1626 bytes.
+Deprecated.  Removed in favour of the font_clearly_u package.
 */
 ASCII ::= #[
   0x97,0xf0,0x17,0x70,
@@ -250,6 +251,7 @@ This block has 96 assigned code points, and they are all
   present in this font.
   This block contains characters in the range 0x0080-0x00ff.
   The bitmaps for this block in this font take up about 1952 bytes.
+Deprecated.  Removed in favour of the font_clearly_u package.
 */
 LATIN_1_SUPPLEMENT ::= #[
   0x97,0xf0,0x17,0x70,
@@ -463,6 +465,7 @@ This block has 128 assigned code points, and they are all
   present in this font.
   This block contains characters in the range 0x0100-0x017f.
   The bitmaps for this block in this font take up about 2794 bytes.
+Deprecated.  Removed in favour of the font_clearly_u package.
 */
 LATIN_EXTENDED_A ::= #[
   0x97,0xf0,0x17,0x70,
@@ -740,6 +743,7 @@ This block has 208 assigned code points, and 178 of
   them are present in this font.
   This block contains characters in the range 0x0180-0x024f.
   The bitmaps for this block in this font take up about 3926 bytes.
+Deprecated.  Removed in favour of the font_clearly_u package.
 */
 LATIN_EXTENDED_B ::= #[
   0x97,0xf0,0x17,0x70,
@@ -1117,6 +1121,7 @@ This block has 96 assigned code points, and 94 of
   them are present in this font.
   This block contains characters in the range 0x0250-0x02af.
   The bitmaps for this block in this font take up about 1734 bytes.
+Deprecated.  Removed in favour of the font_clearly_u package.
 */
 IPA_EXTENSIONS ::= #[
   0x97,0xf0,0x17,0x70,
@@ -1326,6 +1331,7 @@ This block has 80 assigned code points, and 62 of
   them are present in this font.
   This block contains characters in the range 0x02b0-0x02ff.
   The bitmaps for this block in this font take up about 937 bytes.
+Deprecated.  Removed in favour of the font_clearly_u package.
 */
 SPACING_MODIFIER_LETTERS ::= #[
   0x97,0xf0,0x17,0x70,
@@ -1471,6 +1477,7 @@ This block has 135 assigned code points, and 110 of
   them are present in this font.
   This block contains characters in the range 0x0370-0x03ff.
   The bitmaps for this block in this font take up about 2154 bytes.
+Deprecated.  Removed in favour of the font_clearly_u package.
 */
 GREEK_AND_COPTIC ::= #[
   0x97,0xf0,0x17,0x70,
@@ -1712,6 +1719,7 @@ This block has 256 assigned code points, and 244 of
   them are present in this font.
   This block contains characters in the range 0x0400-0x04ff.
   The bitmaps for this block in this font take up about 5221 bytes.
+Deprecated.  Removed in favour of the font_clearly_u package.
 */
 CYRILLIC ::= #[
   0x97,0xf0,0x17,0x70,
@@ -2221,6 +2229,7 @@ This block has 48 assigned code points, but only 16 of
   them are present in this font.
   This block contains characters in the range 0x0500-0x052f.
   The bitmaps for this block in this font take up about 451 bytes.
+Deprecated.  Removed in favour of the font_clearly_u package.
 */
 CYRILLIC_SUPPLEMENT ::= #[
   0x97,0xf0,0x17,0x70,
@@ -2274,6 +2283,7 @@ This block has 91 assigned code points, and 86 of
   them are present in this font.
   This block contains characters in the range 0x0530-0x058f.
   The bitmaps for this block in this font take up about 1750 bytes.
+Deprecated.  Removed in favour of the font_clearly_u package.
 */
 ARMENIAN ::= #[
   0x97,0xf0,0x17,0x70,
@@ -2467,6 +2477,7 @@ This block has 50 assigned code points, and 49 of
   them are present in this font.
   This block contains characters in the range 0x0780-0x07bf.
   The bitmaps for this block in this font take up about 919 bytes.
+Deprecated.  Removed in favour of the font_clearly_u package.
 */
 THAANA ::= #[
   0x97,0xf0,0x17,0x70,
@@ -2586,6 +2597,7 @@ This block has 88 assigned code points, and 78 of
   them are present in this font.
   This block contains characters in the range 0x10a0-0x10ff.
   The bitmaps for this block in this font take up about 1644 bytes.
+Deprecated.  Removed in favour of the font_clearly_u package.
 */
 GEORGIAN ::= #[
   0x97,0xf0,0x17,0x70,
@@ -2763,6 +2775,7 @@ This block has 256 assigned code points, and 240 of
   them are present in this font.
   This block contains characters in the range 0x1100-0x11ff.
   The bitmaps for this block in this font take up about 5661 bytes.
+Deprecated.  Removed in favour of the font_clearly_u package.
 */
 HANGUL_JAMO ::= #[
   0x97,0xf0,0x17,0x70,
@@ -3264,6 +3277,7 @@ This block has 358 assigned code points, and 345 of
   them are present in this font.
   This block contains characters in the range 0x1200-0x137f.
   The bitmaps for this block in this font take up about 9154 bytes.
+Deprecated.  Removed in favour of the font_clearly_u package.
 */
 ETHIOPIC ::= #[
   0x97,0xf0,0x17,0x70,
@@ -3975,6 +3989,7 @@ This block has 92 assigned code points, and 85 of
   them are present in this font.
   This block contains characters in the range 0x13a0-0x13ff.
   The bitmaps for this block in this font take up about 1991 bytes.
+Deprecated.  Removed in favour of the font_clearly_u package.
 */
 CHEROKEE ::= #[
   0x97,0xf0,0x17,0x70,
@@ -4166,6 +4181,7 @@ This block has 640 assigned code points, and 630 of
   them are present in this font.
   This block contains characters in the range 0x1400-0x167f.
   The bitmaps for this block in this font take up about 12956 bytes.
+Deprecated.  Removed in favour of the font_clearly_u package.
 */
 UNIFIED_CANADIAN_ABORIGINAL_SYLLABICS ::= #[
   0x97,0xf0,0x17,0x70,
@@ -5447,6 +5463,7 @@ This block has 29 assigned code points, and they are all
   present in this font.
   This block contains characters in the range 0x1680-0x169f.
   The bitmaps for this block in this font take up about 765 bytes.
+Deprecated.  Removed in favour of the font_clearly_u package.
 */
 OGHAM ::= #[
   0x97,0xf0,0x17,0x70,
@@ -5526,6 +5543,7 @@ This block has 89 assigned code points, and 81 of
   them are present in this font.
   This block contains characters in the range 0x16a0-0x16ff.
   The bitmaps for this block in this font take up about 1508 bytes.
+Deprecated.  Removed in favour of the font_clearly_u package.
 */
 RUNIC ::= #[
   0x97,0xf0,0x17,0x70,
@@ -5709,6 +5727,7 @@ This block has 256 assigned code points, and 246 of
   them are present in this font.
   This block contains characters in the range 0x1e00-0x1eff.
   The bitmaps for this block in this font take up about 5600 bytes.
+Deprecated.  Removed in favour of the font_clearly_u package.
 */
 LATIN_EXTENDED_ADDITIONAL ::= #[
   0x97,0xf0,0x17,0x70,
@@ -6222,6 +6241,7 @@ This block has 233 assigned code points, and they are all
   present in this font.
   This block contains characters in the range 0x1f00-0x1fff.
   The bitmaps for this block in this font take up about 5321 bytes.
+Deprecated.  Removed in favour of the font_clearly_u package.
 */
 GREEK_EXTENDED ::= #[
   0x97,0xf0,0x17,0x70,
@@ -6709,6 +6729,7 @@ This block has 111 assigned code points, and 77 of
   them are present in this font.
   This block contains characters in the range 0x2000-0x206f.
   The bitmaps for this block in this font take up about 1817 bytes.
+Deprecated.  Removed in favour of the font_clearly_u package.
 */
 GENERAL_PUNCTUATION ::= #[
   0x97,0xf0,0x17,0x70,
@@ -6884,6 +6905,7 @@ This block has 42 assigned code points, and 28 of
   them are present in this font.
   This block contains characters in the range 0x2070-0x209f.
   The bitmaps for this block in this font take up about 507 bytes.
+Deprecated.  Removed in favour of the font_clearly_u package.
 */
 SUPERSCRIPTS_AND_SUBSCRIPTS ::= #[
   0x97,0xf0,0x17,0x70,
@@ -6961,6 +6983,7 @@ This block has 32 assigned code points, but only 16 of
   them are present in this font.
   This block contains characters in the range 0x20a0-0x20cf.
   The bitmaps for this block in this font take up about 547 bytes.
+Deprecated.  Removed in favour of the font_clearly_u package.
 */
 CURRENCY_SYMBOLS ::= #[
   0x97,0xf0,0x17,0x70,
@@ -7014,6 +7037,7 @@ This block has 80 assigned code points, and 59 of
   them are present in this font.
   This block contains characters in the range 0x2100-0x214f.
   The bitmaps for this block in this font take up about 1481 bytes.
+Deprecated.  Removed in favour of the font_clearly_u package.
 */
 LETTERLIKE_SYMBOLS ::= #[
   0x97,0xf0,0x17,0x70,
@@ -7153,6 +7177,7 @@ This block has 60 assigned code points, and 49 of
   them are present in this font.
   This block contains characters in the range 0x2150-0x218f.
   The bitmaps for this block in this font take up about 1256 bytes.
+Deprecated.  Removed in favour of the font_clearly_u package.
 */
 NUMBER_FORMS ::= #[
   0x97,0xf0,0x17,0x70,
@@ -7272,6 +7297,7 @@ This block has 112 assigned code points, and 100 of
   them are present in this font.
   This block contains characters in the range 0x2190-0x21ff.
   The bitmaps for this block in this font take up about 1959 bytes.
+Deprecated.  Removed in favour of the font_clearly_u package.
 */
 ARROWS ::= #[
   0x97,0xf0,0x17,0x70,
@@ -7493,6 +7519,7 @@ This block has 256 assigned code points, and 242 of
   them are present in this font.
   This block contains characters in the range 0x2200-0x22ff.
   The bitmaps for this block in this font take up about 5073 bytes.
+Deprecated.  Removed in favour of the font_clearly_u package.
 */
 MATHEMATICAL_OPERATORS ::= #[
   0x97,0xf0,0x17,0x70,
@@ -7998,6 +8025,7 @@ This block has 256 assigned code points, and 154 of
   them are present in this font.
   This block contains characters in the range 0x2300-0x23ff.
   The bitmaps for this block in this font take up about 3698 bytes.
+Deprecated.  Removed in favour of the font_clearly_u package.
 */
 MISCELLANEOUS_TECHNICAL ::= #[
   0x97,0xf0,0x17,0x70,
@@ -8327,6 +8355,7 @@ This block has 39 assigned code points, and they are all
   present in this font.
   This block contains characters in the range 0x2400-0x243f.
   The bitmaps for this block in this font take up about 1039 bytes.
+Deprecated.  Removed in favour of the font_clearly_u package.
 */
 CONTROL_PICTURES ::= #[
   0x97,0xf0,0x17,0x70,
@@ -8436,6 +8465,7 @@ This block has 11 assigned code points, and 10 of
   0x2449.
   This block contains characters in the range 0x2440-0x245f.
   The bitmaps for this block in this font take up about 271 bytes.
+Deprecated.  Removed in favour of the font_clearly_u package.
 */
 OPTICAL_CHARACTER_RECOGNITION ::= #[
   0x97,0xf0,0x17,0x70,
@@ -8477,6 +8507,7 @@ This block has 160 assigned code points, and 139 of
   them are present in this font.
   This block contains characters in the range 0x2460-0x24ff.
   The bitmaps for this block in this font take up about 5283 bytes.
+Deprecated.  Removed in favour of the font_clearly_u package.
 */
 ENCLOSED_ALPHANUMERICS ::= #[
   0x97,0xf0,0x17,0x70,
@@ -8776,6 +8807,7 @@ This block has 96 assigned code points, and 88 of
   them are present in this font.
   This block contains characters in the range 0x25a0-0x25ff.
   The bitmaps for this block in this font take up about 1814 bytes.
+Deprecated.  Removed in favour of the font_clearly_u package.
 */
 GEOMETRIC_SHAPES ::= #[
   0x97,0xf0,0x17,0x70,
@@ -8974,6 +9006,7 @@ This block has 192 assigned code points, but only 1 of
   0x2741.
   This block contains characters in the range 0x2700-0x27bf.
   The bitmaps for this block in this font take up about 164 bytes.
+Deprecated.  Removed in favour of the font_clearly_u package.
 */
 DINGBATS ::= #[
   0x97,0xf0,0x17,0x70,
@@ -8997,6 +9030,7 @@ This block has 256 assigned code points, and they are all
   present in this font.
   This block contains characters in the range 0x2800-0x28ff.
   The bitmaps for this block in this font take up about 3799 bytes.
+Deprecated.  Removed in favour of the font_clearly_u package.
 */
 BRAILLE_PATTERNS ::= #[
   0x97,0xf0,0x17,0x70,
@@ -9530,6 +9564,7 @@ This block has 94 assigned code points, and they are all
   present in this font.
   This block contains characters in the range 0x3130-0x318f.
   The bitmaps for this block in this font take up about 2236 bytes.
+Deprecated.  Removed in favour of the font_clearly_u package.
 */
 HANGUL_COMPATIBILITY_JAMO ::= #[
   0x97,0xf0,0x17,0x70,
@@ -9739,6 +9774,7 @@ This block has 255 assigned code points, but only 58 of
   them are present in this font.
   This block contains characters in the range 0x3200-0x32ff.
   The bitmaps for this block in this font take up about 2254 bytes.
+Deprecated.  Removed in favour of the font_clearly_u package.
 */
 ENCLOSED_CJK_LETTERS_AND_MONTHS ::= #[
   0x97,0xf0,0x17,0x70,
@@ -9876,6 +9912,7 @@ This block has 11172 assigned code points, but only 2350 of
   them are present in this font.
   This block contains characters in the range 0xac00-0xd7af.
   The bitmaps for this block in this font take up about 76869 bytes.
+Deprecated.  Removed in favour of the font_clearly_u package.
 */
 HANGUL_SYLLABLES ::= #[
   0x97,0xf0,0x17,0x70,
@@ -14597,6 +14634,7 @@ This block has 6400 assigned code points, but only 372 of
   them are present in this font.
   This block contains characters in the range 0xe000-0xf8ff.
   The bitmaps for this block in this font take up about 8853 bytes.
+Deprecated.  Removed in favour of the font_clearly_u package.
 */
 PRIVATE_USE_AREA ::= #[
   0x97,0xf0,0x17,0x70,
@@ -15362,6 +15400,7 @@ This block has 58 assigned code points, and they are all
   present in this font.
   This block contains characters in the range 0xfb00-0xfb4f.
   The bitmaps for this block in this font take up about 1327 bytes.
+Deprecated.  Removed in favour of the font_clearly_u package.
 */
 ALPHABETIC_PRESENTATION_FORMS ::= #[
   0x97,0xf0,0x17,0x70,
@@ -15499,6 +15538,7 @@ This block has 26 assigned code points, and 18 of
   them are present in this font.
   This block contains characters in the range 0xfe50-0xfe6f.
   The bitmaps for this block in this font take up about 373 bytes.
+Deprecated.  Removed in favour of the font_clearly_u package.
 */
 SMALL_FORM_VARIANTS ::= #[
   0x97,0xf0,0x17,0x70,
@@ -15556,6 +15596,7 @@ This block has 141 assigned code points, and 140 of
   them are present in this font.
   This block contains characters in the range 0xfe70-0xfeff.
   The bitmaps for this block in this font take up about 2912 bytes.
+Deprecated.  Removed in favour of the font_clearly_u package.
 */
 ARABIC_PRESENTATION_FORMS_B ::= #[
   0x97,0xf0,0x17,0x70,
@@ -15857,6 +15898,7 @@ This block has 225 assigned code points, and 152 of
   them are present in this font.
   This block contains characters in the range 0xff00-0xffef.
   The bitmaps for this block in this font take up about 3047 bytes.
+Deprecated.  Removed in favour of the font_clearly_u package.
 */
 HALFWIDTH_AND_FULLWIDTH_FORMS ::= #[
   0x97,0xf0,0x17,0x70,
@@ -16183,6 +16225,7 @@ This block has 5 assigned code points, but only 1 of
   replacement character �.
   This block contains characters in the range 0xfff0-0xffff.
   The bitmaps for this block in this font take up about 160 bytes.
+Deprecated.  Removed in favour of the font_clearly_u package.
 */
 SPECIALS ::= #[
   0x97,0xf0,0x17,0x70,

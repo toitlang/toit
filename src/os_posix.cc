@@ -94,19 +94,15 @@ class ConditionVariable {
     }
   }
 
-  bool wait(int timeout_in_ms) {
-    if (timeout_in_ms == 0) {
-      // No timeout.
-      wait();
-      return true;
-    }
+  bool wait_us(int64 us) {
+    if (us <= 0LL) return false;
 
     // TODO: We really should use monotonic time here.
     struct timespec deadline = { 0, };
     if (!OS::get_real_time(&deadline)) {
       FATAL("cannot get time for deadline");
     }
-    OS::timespec_increment(&deadline, timeout_in_ms * 1000000LL);
+    OS::timespec_increment(&deadline, us * 1000LL);
     int error = pthread_cond_timedwait(&_cond, &_mutex->_mutex, &deadline);
     if (error == 0) return true;
     if (error == ETIMEDOUT) return false;
@@ -226,6 +222,7 @@ void OS::set_up() {
   Thread::ensure_system_thread();
   _global_mutex = allocate_mutex(0, "Global mutex");
   _scheduler_mutex = allocate_mutex(4, "Scheduler mutex");
+  _resource_mutex = allocate_mutex(99, "Resource mutex");
 }
 
 Thread* Thread::current() {
@@ -243,11 +240,11 @@ void OS::unlock(Mutex* mutex) { mutex->unlock(); }
 
 // Condition variable forwarders.
 ConditionVariable* OS::allocate_condition_variable(Mutex* mutex) { return _new ConditionVariable(mutex); }
-void OS::wait(ConditionVariable* condition_variable) { condition_variable->wait(); }
-bool OS::wait(ConditionVariable* condition_variable, int timeout_in_ms) { return condition_variable->wait(timeout_in_ms); }
-void OS::signal(ConditionVariable* condition_variable) { condition_variable->signal(); }
-void OS::signal_all(ConditionVariable* condition_variable) { condition_variable->signal_all(); }
-void OS::dispose(ConditionVariable* condition_variable) { delete condition_variable; }
+void OS::wait(ConditionVariable* condition) { condition->wait(); }
+bool OS::wait_us(ConditionVariable* condition, int64 us) { return condition->wait_us(us); }
+void OS::signal(ConditionVariable* condition) { condition->signal(); }
+void OS::signal_all(ConditionVariable* condition) { condition->signal_all(); }
+void OS::dispose(ConditionVariable* condition) { delete condition; }
 
 void OS::close(int fd) {
   ::close(fd);

@@ -23,11 +23,11 @@
 #include "vm.h"
 #include "os.h"
 #include "printing.h"
+#include "run.h"
 #include "snapshot.h"
 #include "snapshot_bundle.h"
 #include "utils.h"
 #include "compiler/compiler.h"
-#include "compiler/filesystem_local.h"
 #include "third_party/dartino/gc_metadata.h"
 
 #include "objects_inline.h"
@@ -67,48 +67,6 @@ static void print_version() {
   exit(0);
 }
 
-int run_program(char* boot_bundle_path, SnapshotBundle application_bundle, char** argv) {
-  while (true) {
-    Scheduler::ExitState exit;
-    { VM vm;
-      vm.load_platform_event_sources();
-      auto boot_bundle = SnapshotBundle::read_from_file(boot_bundle_path, true);
-      auto boot_image = boot_bundle.is_valid()
-          ? boot_bundle.snapshot().read_image(null)
-          : ProgramImage::invalid();
-      int group_id = vm.scheduler()->next_group_id();
-      if (boot_image.is_valid()) {
-        exit = vm.scheduler()->run_boot_program(
-            boot_image.program(), boot_bundle, application_bundle, argv, group_id);
-      } else {
-        auto application_image = application_bundle.snapshot().read_image(null);
-        exit = vm.scheduler()->run_boot_program(application_image.program(), argv, group_id);
-        application_image.release();
-      }
-      boot_image.release();
-    }
-    switch (exit.reason) {
-      case Scheduler::EXIT_NONE:
-        UNREACHABLE();
-
-      case Scheduler::EXIT_DONE:
-        return 0;
-
-      case Scheduler::EXIT_ERROR:
-        return exit.value;
-
-      case Scheduler::EXIT_DEEP_SLEEP: {
-        struct timespec sleep_time;
-        sleep_time.tv_sec = exit.value / 1000;
-        sleep_time.tv_nsec = (exit.value % 1000) * 1000000;
-
-        while (nanosleep(&sleep_time, &sleep_time) != 0 && errno == EINTR) { }
-        break;
-      }
-    }
-  }
-}
-
 int main(int argc, char **argv) {
   Flags::process_args(&argc, argv);
   if (argc < 2) print_usage(1);
@@ -130,15 +88,6 @@ int main(int argc, char **argv) {
     strcpy(boot_bundle_path, argv[2]);
     argc -= 2;
     argv += 2;
-  } else {
-    // The wrapping boot bundle is toit.run.snapshot, stored next to the executing toit.run.
-    char* toit_run_path = compiler::FilesystemLocal::get_executable_path();
-    char* bin_path = dirname(toit_run_path);
-    const char* postfix = "/toit.run.snapshot";
-    boot_bundle_path = unvoid_cast<char*>(malloc(strlen(bin_path) + strlen(postfix) + 1));
-    strcpy(boot_bundle_path, bin_path);
-    strcat(boot_bundle_path, postfix);
-    delete [] toit_run_path;
   }
 
   // Help must be used on its own.

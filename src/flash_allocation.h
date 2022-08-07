@@ -23,7 +23,6 @@ namespace toit {
 
 // Keep in sync with system/flash/allocation.toit.
 static const uint8 PROGRAM_TYPE = 0;
-static const uint8 PROGRAM_UNRELOCATED_TYPE = 1;
 
 static const int FLASH_PAGE_SIZE = 4 * KB;
 static const int FLASH_SEGMENT_SIZE = 16;
@@ -37,34 +36,35 @@ class FlashAllocation {
 
   void validate();
 
-  static bool initialize(uint32 offset, uint8 type, const uint8* id, int size, uint8* meta_data);
+  static bool initialize(uint32 offset, uint8 type, const uint8* id, int size, const uint8* metadata);
 
   class __attribute__ ((__packed__)) Header {
    public:
     explicit Header(uint32 allocation_offset);
 
-    Header(uint32 allocation_offset, uint8 type, const uint8* id, const uint8* uuid, int size, uint8* meta_data) {
+    Header(uint32 allocation_offset, uint8 type, const uint8* id, const uint8* uuid, int size, const uint8* metadata) {
       _marker = MARKER;
       _me = allocation_offset;
       _type = type;
       ASSERT(Utils::is_aligned(size, FLASH_PAGE_SIZE));
       memcpy(_id, id, id_size());
       _pages_in_flash = static_cast<uint16>(Utils::round_up(size, FLASH_PAGE_SIZE) >> 12);
-      memcpy(_meta_data, meta_data, meta_data_size());
+      memcpy(_metadata, metadata, metadata_size());
       set_uuid(uuid);
     }
 
-    static int meta_data_size() { return sizeof(_meta_data); }
+    static int metadata_size() { return sizeof(_metadata); }
     static int id_size() { return sizeof(_id); }
+    const uint8* id() const { return _id; }
 
    private:
     // Data section for the header.
     uint32 _marker;  // Magic marker.
     uint32 _me;      // Offset in allocation partition for validation.
 
-    uint8 _id[16];
+    uint8 _id[UUID_SIZE];
 
-    uint8 _meta_data[5];  // Allocation specific meta data (picked to ensure 16 byte alignment).
+    uint8 _metadata[5];  // Allocation specific meta data (picked to ensure 16 byte alignment).
     uint16 _pages_in_flash;
     uint8 _type;
 
@@ -73,9 +73,8 @@ class FlashAllocation {
     static const uint32 MARKER = 0xDEADFACE;
 
     bool is_valid(const uint8* uuid) const;
-    const uint8* id() const { return _id; }
     uint8 type() const { return _type; }
-    const uint8* meta_data() const { return _meta_data; }
+    const uint8* metadata() const { return _metadata; }
 
     int size() const { return _pages_in_flash << 12; }
 
@@ -94,7 +93,7 @@ class FlashAllocation {
         memcpy(_id, id, id_size());
       }
       _pages_in_flash = 0;
-      memset(_meta_data, 0xFF, meta_data_size());
+      memset(_metadata, 0xFF, metadata_size());
       set_uuid(uuid);
     }
 
@@ -113,7 +112,7 @@ class FlashAllocation {
 
   // Returns a pointer to the id of the program.
   const uint8* id() const { return _header.id(); }
-  const uint8* meta_data() const { return _header.meta_data(); }
+  const uint8* metadata() const { return _header.metadata(); }
 
  private:
   Header _header;

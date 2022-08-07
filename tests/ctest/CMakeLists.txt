@@ -39,9 +39,6 @@ add_custom_target(
     )
 
 foreach(file ${CC_FILES})
-  if("${file}" IN_LIST TOIT_SKIP_TESTS)
-    continue()
-  endif()
   get_filename_component(exe ${file} NAME_WE)
   add_executable(
     ${exe}
@@ -63,33 +60,44 @@ endforeach()
 
 foreach(file ${CC_TESTS})
   file(RELATIVE_PATH test_name ${PROJECT_SOURCE_DIR} ${file})
+
   if("${test_name}" IN_LIST TOIT_SKIP_TESTS)
     continue()
   endif()
+
   get_filename_component(exe ${file} NAME_WE)
   string(REGEX REPLACE "_test.cc$" "_input.toit" test_input ${file})
-  add_test(NAME ${test_name} COMMAND ${CTEST_DIR}/${exe} ${test_input})
+  add_test(
+    NAME ${test_name}
+    COMMAND ${CTEST_DIR}/${exe} ${test_input}
+  )
   set_tests_properties(${test_name} PROPERTIES TIMEOUT 40)
   # Make sure the test is built before we run the tests.
   add_dependencies(check ${exe})
   add_dependencies(check_slow ${exe})
+
+  if("${test_name}" IN_LIST TOIT_FAILING_TESTS)
+    set_tests_properties(${test_name} PROPERTIES WILL_FAIL TRUE)
+  endif()
 endforeach()
 
 foreach(file ${TOIT_TESTS})
   file(RELATIVE_PATH test_name ${PROJECT_SOURCE_DIR} ${file})
+
   if("${test_name}" IN_LIST TOIT_SKIP_TESTS)
     continue()
   endif()
-  add_test(NAME
-    ${test_name}
+
+  add_test(
+    NAME ${test_name}
     COMMAND $<TARGET_FILE:toit.run> ${file} ${CTEST_DIR})
 
   set_tests_properties(${test_name} PROPERTIES TIMEOUT 40)
   # Make sure the test is built before we run the tests.
   add_dependencies(check ${exe})
   add_dependencies(check_slow ${exe})
-endforeach()
 
-foreach(test ${TOIT_FAILING_TESTS})
-  set_tests_properties(${test} PROPERTIES WILL_FAIL TRUE)
+  if("${test_name}" IN_LIST TOIT_FAILING_TESTS)
+    set_tests_properties(${test_name} PROPERTIES WILL_FAIL TRUE)
+  endif()
 endforeach()

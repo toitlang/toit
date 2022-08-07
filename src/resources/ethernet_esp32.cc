@@ -58,7 +58,8 @@ class EthernetResourceGroup : public ResourceGroup {
  public:
   TAG(EthernetResourceGroup);
   EthernetResourceGroup(Process* process, SystemEventSource* event_source, int id,
-                        esp_netif_t* netif, esp_eth_handle_t eth_handle, void* netif_glue)
+                        esp_netif_t* netif, esp_eth_handle_t eth_handle,
+                        esp_eth_netif_glue_handle_t netif_glue)
       : ResourceGroup(process, event_source)
       , _id(id)
       , _netif(netif)
@@ -85,7 +86,7 @@ class EthernetResourceGroup : public ResourceGroup {
   int _id;
   esp_netif_t *_netif;
   esp_eth_handle_t _eth_handle;
-  void* _netif_glue;
+  esp_eth_netif_glue_handle_t _netif_glue;
  };
 
 class EthernetEvents : public SystemResource {
@@ -102,15 +103,12 @@ class EthernetEvents : public SystemResource {
   friend class EthernetResourceGroup;
 };
 
-class IPEvents : public SystemResource {
+class EthernetIpEvents : public SystemResource {
  public:
-  TAG(IPEvents);
-  explicit IPEvents(EthernetResourceGroup* group)
-      : SystemResource(group, IP_EVENT, IP_EVENT_ETH_GOT_IP)
-      , _ip((char*)calloc(1, 16)) {}
-
-  ~IPEvents() {
-    free(_ip);
+  TAG(EthernetIpEvents);
+  explicit EthernetIpEvents(EthernetResourceGroup* group)
+      : SystemResource(group, IP_EVENT, IP_EVENT_ETH_GOT_IP) {
+    clear_ip();
   }
 
   const char* ip() {
@@ -125,9 +123,13 @@ class IPEvents : public SystemResource {
             (addr >> 24) & 0xff);
   }
 
+  void clear_ip() {
+    memset(_ip, 0, sizeof(_ip));
+  }
+
  private:
   friend class EthernetResourceGroup;
-  char* _ip;
+  char _ip[16];
 };
 
 uint32_t EthernetResourceGroup::on_event(Resource* resource, word data, uint32_t state) {
@@ -154,7 +156,7 @@ uint32_t EthernetResourceGroup::on_event(Resource* resource, word data, uint32_t
     switch (system_event->id) {
       case IP_EVENT_ETH_GOT_IP: {
         ip_event_got_ip_t* event = reinterpret_cast<ip_event_got_ip_t*>(system_event->event_data);
-        static_cast<IPEvents*>(resource)->update_ip(event->ip_info.ip.addr);
+        static_cast<EthernetIpEvents*>(resource)->update_ip(event->ip_info.ip.addr);
         state |= ETHERNET_DHCP_SUCCESS;
         break;
       }
@@ -191,14 +193,6 @@ PRIMITIVE(init_esp32) {
     MALLOC_FAILED;
   }
 
-  // Needed for esp-idf 4.3, not 4.4.
-  esp_err_t err = esp_eth_set_default_handlers(netif);
-  if (err != ESP_OK) {
-    ethernet_pool.put(id);
-    esp_netif_destroy(netif);
-    return Primitive::os_error(err, process);
-  }
-
   // Init MAC and PHY configs to default.
   eth_mac_config_t mac_config = ETH_MAC_DEFAULT_CONFIG();
   eth_phy_config_t phy_config = ETH_PHY_DEFAULT_CONFIG();
@@ -210,7 +204,7 @@ PRIMITIVE(init_esp32) {
 
   // TODO(anders): If phy initialization fails, we're leaking this.
   esp_eth_mac_t* mac = esp_eth_mac_new_esp32(&mac_config);
-  
+
   if (!mac) {
     ethernet_pool.put(id);
     esp_netif_destroy(netif);
@@ -234,7 +228,7 @@ PRIMITIVE(init_esp32) {
 
   esp_eth_config_t config = ETH_DEFAULT_CONFIG(mac, phy);
   esp_eth_handle_t eth_handle = NULL;
-  err = esp_eth_driver_install(&config, &eth_handle);
+  esp_err_t err = esp_eth_driver_install(&config, &eth_handle);
   if (err != ESP_OK) {
     ethernet_pool.put(id);
     esp_netif_destroy(netif);
@@ -242,7 +236,7 @@ PRIMITIVE(init_esp32) {
     return Primitive::os_error(err, process);
   }
 
-  void* netif_glue = esp_eth_new_netif_glue(eth_handle);
+  esp_eth_netif_glue_handle_t netif_glue = esp_eth_new_netif_glue(eth_handle);
   // Attach Ethernet driver to TCP/IP stack.
   err = esp_netif_attach(netif, netif_glue);
   if (err != ESP_OK) {
@@ -284,14 +278,6 @@ PRIMITIVE(init_spi) {
     MALLOC_FAILED;
   }
 
-  // Needed for esp-idf 4.3, not 4.4.
-  esp_err_t err = esp_eth_set_default_handlers(netif);
-  if (err != ESP_OK) {
-    ethernet_pool.put(id);
-    esp_netif_destroy(netif);
-    return Primitive::os_error(err, process);
-  }
-
   // Init MAC and PHY configs to default.
   eth_mac_config_t mac_config = ETH_MAC_DEFAULT_CONFIG();
   mac_config.smi_mdc_gpio_num = -1;
@@ -318,7 +304,7 @@ PRIMITIVE(init_spi) {
 
   esp_eth_config_t config = ETH_DEFAULT_CONFIG(mac, phy);
   esp_eth_handle_t eth_handle = NULL;
-  err = esp_eth_driver_install(&config, &eth_handle);
+  esp_err_t err = esp_eth_driver_install(&config, &eth_handle);
   if (err != ESP_OK) {
     ethernet_pool.put(id);
     esp_netif_destroy(netif);
@@ -330,7 +316,7 @@ PRIMITIVE(init_spi) {
   ESP_ERROR_CHECK(esp_read_mac(mac_addr, ESP_MAC_ETH));
   ESP_ERROR_CHECK(esp_eth_ioctl(eth_handle, ETH_CMD_S_MAC_ADDR, mac_addr));
 
-  void* netif_glue = esp_eth_new_netif_glue(eth_handle);
+  esp_eth_netif_glue_handle_t netif_glue = esp_eth_new_netif_glue(eth_handle);
   // Attach Ethernet driver to TCP/IP stack.
   err = esp_netif_attach(netif, netif_glue);
   if (err != ESP_OK) {
@@ -383,7 +369,7 @@ PRIMITIVE(setup_ip) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;
 
-  IPEvents* ip_events = _new IPEvents(group);
+  EthernetIpEvents* ip_events = _new EthernetIpEvents(group);
   if (ip_events == null) MALLOC_FAILED;
 
   group->register_resource(ip_events);
@@ -402,7 +388,7 @@ PRIMITIVE(disconnect) {
 }
 
 PRIMITIVE(get_ip) {
-  ARGS(IPEvents, ip);
+  ARGS(EthernetIpEvents, ip);
   return process->allocate_string_or_error(ip->ip());
 }
 

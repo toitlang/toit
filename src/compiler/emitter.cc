@@ -454,7 +454,9 @@ void Emitter::branch(Condition condition, Label* label) {
   if (label->is_bound()) {
     int offset = -(label->position() - position);
     ASSERT(offset >= 0);
-    emit_possibly_wide(op, offset);
+    emit_opcode(op);
+    emit_uint16(offset);
+    emit_uint16(position);
   } else {
     label->use(position, height());
     emit_opcode(op);

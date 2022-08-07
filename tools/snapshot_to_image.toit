@@ -26,13 +26,13 @@ import .snapshot
 import binary show LITTLE_ENDIAN ByteOrder
 import uuid
 import host.file
-import services.arguments
+import host.arguments
 
 BINARY_FLAG      ::= "binary"
 M32_FLAG         ::= "machine-32-bit"
 M64_FLAG         ::= "machine-64-bit"
-OFFSET_OPTION    ::= "offset"
 UNIQUE_ID_OPTION ::= "unique_id"
+OUTPUT_OPTION    ::= "output"
 
 abstract class RelocatedOutput:
   static ENDIAN/ByteOrder ::= LITTLE_ENDIAN
@@ -60,82 +60,44 @@ abstract class RelocatedOutput:
           (mask & 1) != 0
       mask = mask >> 1
 
-class BinaryRelocatableOutput:
-  static HEADER_SIZE ::= 48
-
-  out ::= ?
-  relocatable/ByteArray ::= ?
-  offset/int ::= ?
-  image_uuid/uuid.Uuid ::= ?
-  buffer_/ByteArray := ByteArray 4
-
-  constructor .out .relocatable .offset .image_uuid:
-
-  write -> none:
-    write_uint32 0xDEADFACE                        // Marker.
-    write_uint32 offset                            // Offset in partition.
-    write_uuid (uuid.uuid5 "program" "$Time.now")  // Program id.
-    metadata := ByteArray 5: 0xFF
-    RelocatedOutput.ENDIAN.put_uint32 metadata 0 relocatable.size
-    out.write metadata                             // Metadata.
-    size := relocatable.size + HEADER_SIZE
-    write_uint16 (size + 4095) / 4096              // Pages in flash.
-    out.write #[0x01]                              // Type = program unrelocated.
-    write_uuid image_uuid                          // Image uuid.
-    out.write relocatable
-
-  write_uint16 halfword/int:
-    RelocatedOutput.ENDIAN.put_uint16 buffer_ 0 halfword
-    out.write buffer_[0..2]
-
-  write_uint32 word/int:
-    RelocatedOutput.ENDIAN.put_uint32 buffer_ 0 word
-    out.write buffer_
-
-  write_uuid uuid/uuid.Uuid:
-    out.write uuid.to_byte_array
-
 class SourceRelocatedOutput extends RelocatedOutput:
-  constructor out:
+  part/int
+
+  constructor out .part:
     super out
 
   write_start -> none:
-    writeln "        .globl toit_image"
-    writeln "        .globl toit_image_size"
-    writeln "        .section .rodata"
     writeln "        .align 4"
-    writeln "toit_image:"
+    writeln "toit_image_$part:"
 
   write_word word/int is_relocatable/bool:
-    if is_relocatable: writeln "        .long toit_image + 0x$(%x word)"
+    if is_relocatable: writeln "        .long toit_image_$part + 0x$(%x word)"
     else:              writeln "        .long 0x$(%x word)"
 
   write_end -> none:
-    writeln "toit_image_size: .long toit_image_size - toit_image"
+    writeln "toit_image_end_$part:"
 
   writeln text/string:
     out.write text
     out.write "\n"
 
-print_usage:
-  print_ "Usage: snapshot_to_image [--$BINARY_FLAG] [--$OFFSET_OPTION=0x...] [-m32|-m64] <snapshot> <output>"
+print_usage parser/arguments.ArgumentParser:
+  print_on_stderr_ parser.usage
+  exit 1
 
 main args:
   parser := arguments.ArgumentParser
+  parser.describe_rest ["snapshot-files", "..."]
   parser.add_flag M32_FLAG --short="m32"
   parser.add_flag M64_FLAG --short="m64"
   parser.add_flag BINARY_FLAG
 
-  parser.add_option OFFSET_OPTION
   parser.add_option UNIQUE_ID_OPTION --default="00000000-0000-0000-0000-000000000000"
+  parser.add_option OUTPUT_OPTION --short="o"
 
   parsed := parser.parse args
-  if parsed.rest.size != 2:
-    print_usage
-    return
 
-  snapshot_path/string := parsed.rest[0]
-  output_path/string := parsed.rest[1]
+  output_path/string := parsed[OUTPUT_OPTION]
 
   default_word_size := BYTES_PER_WORD
   binary_output := false
@@ -144,46 +106,49 @@ main args:
   else:
     default_word_size = 4  // Use 32-bit non-binary output.
 
-  offset/int? := null
-  offset_option := parsed[OFFSET_OPTION]
-  if offset_option:
-    if not (offset_option.starts_with "0x"):
-      print_usage
-      return
-    offset = int.parse offset_option[2..] --radix=16
+  if binary_output and parsed.rest.size != 1:
+    print_on_stderr_ "Error: Cannot convert multiple snapshots to binary images"
+    exit 1
 
   word_size := null
   if parsed[M32_FLAG]:
     word_size = 4
   if parsed[M64_FLAG]:
     if word_size:
-      print_usage  // Already set to -m32.
-      return
+      print_usage parser  // Already set to -m32.
     word_size = 8
   if not word_size:
     word_size = default_word_size
 
   if not binary_output and word_size != 4:
-    print_ "Error: Cannot generate 64-bit non-binary output"
-    return
-
-  if not binary_output and offset:
-    print_ "Error: Offsets only work for 32-bit binary output"
-    return
+    print_on_stderr_ "Error: Cannot generate 64-bit non-binary output"
+    exit 1
 
   out := file.Stream.for_write output_path
-  snapshot_bundle := SnapshotBundle.from_file snapshot_path
-  program := snapshot_bundle.decode
-  image := build_image program word_size
-  relocatable := image.build_relocatable
-  if binary_output:
-    if offset:
-      image_uuid := uuid.parse parsed[UNIQUE_ID_OPTION]
-      output := BinaryRelocatableOutput out relocatable offset image_uuid
-      output.write
-    else:
+  system_uuid ::= uuid.parse parsed[UNIQUE_ID_OPTION]
+
+  if not binary_output:
+    parts ::= parsed.rest.size
+    out.write "        .section .rodata\n"
+    out.write "        .globl toit_image_table\n"
+    out.write "        .align 4\n"
+    out.write "toit_image_table:\n"
+    out.write "        .long $parts\n"
+    parts.repeat:
+      out.write "        .long toit_image_$it\n"
+      out.write "        .long toit_image_end_$it - toit_image_$it\n"
+
+  part/int := 0
+  parsed.rest.do: | snapshot_path/string |
+    snapshot_bundle := SnapshotBundle.from_file snapshot_path
+    program_id ::= snapshot_bundle.uuid
+    program := snapshot_bundle.decode
+    image := build_image program word_size --system_uuid=system_uuid --program_id=program_id
+    relocatable := image.build_relocatable
+    if binary_output:
       out.write relocatable
-  else:
-    output := SourceRelocatedOutput out
-    output.write word_size relocatable
+    else:
+      output := SourceRelocatedOutput out part++
+      output.write word_size relocatable
+
   out.close

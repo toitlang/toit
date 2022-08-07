@@ -114,9 +114,11 @@ void TimerEventSource::entry() {
         break;
       }
     }
-
-    int delay_ms = (delay_us + 1000 - 1) / 1000;  // Ceiling division.
-    OS::wait(_timer_changed, delay_ms);
+    if (delay_us > 0) {
+      OS::wait_us(_timer_changed, delay_us);
+    } else {
+      OS::wait(_timer_changed);
+    }
   }
 }
 

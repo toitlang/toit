@@ -3,7 +3,7 @@
 // be found in the tests/LICENSE file.
 
 import font show *
-import font.x11_100dpi.sans.sans_08 as sans_08
+import font_x11_adobe.sans_08
 import expect show *
 
 import line_wrap show line_wrap

@@ -9,7 +9,7 @@ import net
 DNS_DEFAULT_TIMEOUT ::= Duration --s=20
 DNS_RETRY_TIMEOUT ::= Duration --s=1
 HOSTS_ ::= {"localhost": "127.0.0.1"}
-CACHE_ ::= Map  // From name to CacheEntry.
+CACHE_ ::= Map  // From name to CacheEntry_.
 MAX_CACHE_SIZE_ ::= platform == "FreeRTOS" ? 30 : 1000
 MAX_TRIMMED_CACHE_SIZE_ ::= MAX_CACHE_SIZE_ / 3 * 2
 
@@ -27,9 +27,6 @@ Look up a domain name.
 If given a numeric address like 127.0.0.1 it merely parses
   the numbers without a network round trip.
 
-Does not currently cache results, so there is normally a
-  network round trip on every use.
-
 By default the server is "8.8.8.8" which is the Google DNS
   service.
 
@@ -42,10 +39,20 @@ dns_lookup -> net.IpAddress
   q := DnsQuery_ host
   return q.get --server=server --timeout=timeout
 
+CLASS_INTERNET ::= 1
+
+RECORD_A       ::= 1
+RECORD_CNAME   ::= 5
+RECORD_AAAA    ::= 28  // IPv6 DNS lookup.
+
+ERROR_NONE            ::= 0
+ERROR_FORMAT          ::= 1
+ERROR_SERVER_FAILURE  ::= 2
+ERROR_NAME            ::= 3
+ERROR_NOT_IMPLEMENTED ::= 4
+ERROR_REFUSED         ::= 5
+
 class DnsQuery_:
-  static A     ::= 1  // A address.
-  static CNAME ::= 5  // Canonical name.
-  static CLASS ::= 1  // The Internet class.
   id/int
   name/string
 
@@ -74,7 +81,7 @@ class DnsQuery_:
     hit := find_in_cache_ server
     if hit: return hit
 
-    query := create_query_
+    query := create_query name id
     socket := udp.Socket
     with_timeout timeout:
       try:
@@ -99,7 +106,7 @@ class DnsQuery_:
           if answer:
             return decode_response_ answer.data server
 
-          retry_timeout = retry_timeout * 2
+          retry_timeout = retry_timeout * 1.5
 
       finally:
         socket.close
@@ -129,31 +136,6 @@ class DnsQuery_:
         if not '0' <= it <= '9': return false
     return dots == 3
 
-  create_query_ -> ByteArray:
-    parts := name.split "."
-    length := 1
-    parts.do: | part |
-      if part.size > 63: throw (DnsException "LABEL_TOO_LARGE")
-      if part.size < 1: throw (DnsException "LABEL_TOO_SHORT")
-      part.do:
-        if it == 0 or it == null: throw (DnsException "INVALID_DOMAIN_NAME")
-      length += part.size + 1
-    query := ByteArray 12 + length + 4
-    BIG_ENDIAN.put_uint16 query 0 id
-    query[2] = 0x01  // Set RD bit.
-    query_count := 1
-    BIG_ENDIAN.put_uint16 query 4 query_count
-    position := 12
-    parts.do: | part |
-      query[position++] = part.size
-      query.replace position part
-      position += part.size
-    query[position++] = 0
-    BIG_ENDIAN.put_uint16 query position     A
-    BIG_ENDIAN.put_uint16 query position + 2 CLASS
-    assert: position + 4 == query.size
-    return query
-
   // We pass the name_server because we don't use the cache entry if the user
   // is trying a different name server.
   find_in_cache_ name_server/string -> net.IpAddress?:
@@ -175,26 +157,26 @@ class DnsQuery_:
     // authoritative.
     if response[2] & ~4 != 0x81: throw (DnsException "Unexpected response: $(%x response[2])")
     error := response[3] & 0xf
-    if error != 0:
+    if error != ERROR_NONE:
       detail := "error code $error"
       if 0 <= error < ERROR_MESSAGES_.size: detail = ERROR_MESSAGES_[error]
       throw (DnsException "Server responded: $detail")
     position := 12
     queries := BIG_ENDIAN.uint16 response 4
     if queries != 1: throw (DnsException "Unexpected number of queries in response")
-    q_name := name_ response position: position = it
+    q_name := decode_name response position: position = it
     position += 4
     if not case_compare_ q_name name:
       throw (DnsException "Response name mismatch")
     (BIG_ENDIAN.uint16 response 6).repeat:
-      r_name := name_ response position: position = it
+      r_name := decode_name response position: position = it
 
       type := BIG_ENDIAN.uint16 response position
       position += 2
 
       clas := BIG_ENDIAN.uint16 response position
       position += 2
-      if clas != CLASS: throw (DnsException "Unexpected response class: $clas")
+      if clas != CLASS_INTERNET: throw (DnsException "Unexpected response class: $clas")
 
       ttl := BIG_ENDIAN.int32 response position
       position += 4
@@ -207,41 +189,45 @@ class DnsQuery_:
 
       rd_length := BIG_ENDIAN.uint16 response position
       position += 2
-      if type == A:
+      if type == RECORD_A:
         if rd_length != 4: throw (DnsException "Unexpected IP address length $rd_length")
         if case_compare_ r_name q_name:
           result := net.IpAddress
               response.copy position position + 4
           if ttl > 0:
             trim_cache_
-            CACHE_[name] = CacheEntry result ttl name_server
+            CACHE_[name] = CacheEntry_ result ttl name_server
           return result
         // Skip name that does not match.
-      else if type == CNAME:
-        q_name = name_ response position: null
+      else if type == RECORD_CNAME:
+        q_name = decode_name response position: null
       position += rd_length
     throw (DnsException "Response did not contain matching A record")
 
-  name_ packet/ByteArray position/int [position_block]:
-    parts := []
-    parts_ packet position parts position_block
-    return parts.join "."
+/**
+Decodes a name from a DNS (RFC 1035) packet.
+The block is invoked with the index of the next data in the packet.
+*/
+decode_name packet/ByteArray position/int [position_block] -> string:
+  parts := []
+  parts_ packet position parts position_block
+  return parts.join "."
 
-  parts_ packet/ByteArray position/int parts/List [position_block] -> none:
-    while packet[position] != 0:
-      size := packet[position]
-      if size <= 63:
-        position++
-        parts.add
-          packet.to_string position position + size
-        position += size
-      else:
-        if size < 192: throw (DnsException "")
-        pointer := (BIG_ENDIAN.uint16 packet position) & 0x3fff
-        parts_ packet pointer parts: null
-        position_block.call position + 2
-        return
-    position_block.call position + 1
+parts_ packet/ByteArray position/int parts/List [position_block] -> none:
+  while packet[position] != 0:
+    size := packet[position]
+    if size <= 63:
+      position++
+      parts.add
+        packet.to_string position position + size
+      position += size
+    else:
+      if size < 192: throw (DnsException "")
+      pointer := (BIG_ENDIAN.uint16 packet position) & 0x3fff
+      parts_ packet pointer parts: null
+      position_block.call position + 2
+      return
+  position_block.call position + 1
 
 /// Limits the size of the cache to avoid using too much memory.
 trim_cache_ -> none:
@@ -263,7 +249,7 @@ trim_cache_ -> none:
     toggle = not toggle
     toggle
 
-class CacheEntry:
+class CacheEntry_:
   server / string          // Unparsed server name like "8.8.8.8".
   end / int                // Time in µs, compatible with Time.monotonic_us.
   address / net.IpAddress
@@ -274,3 +260,34 @@ class CacheEntry:
   valid name_server/string -> bool:
     if Time.monotonic_us > end: return false
     return name_server == server
+
+/**
+Creates a UDP packet to look up the given name.
+Regular DNS lookup is used, namely the A record for the domain.
+The $query_id should be a 16 bit unsigned number which will be included in
+  the reply.
+*/
+create_query name/string query_id/int -> ByteArray:
+  parts := name.split "."
+  length := 1
+  parts.do: | part |
+    if part.size > 63: throw (DnsException "LABEL_TOO_LARGE")
+    if part.size < 1: throw (DnsException "LABEL_TOO_SHORT")
+    part.do:
+      if it == 0 or it == null: throw (DnsException "INVALID_DOMAIN_NAME")
+    length += part.size + 1
+  query := ByteArray 12 + length + 4
+  BIG_ENDIAN.put_uint16 query 0 query_id
+  query[2] = 0x01  // Set RD bit.
+  query_count := 1
+  BIG_ENDIAN.put_uint16 query 4 query_count
+  position := 12
+  parts.do: | part |
+    query[position++] = part.size
+    query.replace position part
+    position += part.size
+  query[position++] = 0
+  BIG_ENDIAN.put_uint16 query position     RECORD_A
+  BIG_ENDIAN.put_uint16 query position + 2 CLASS_INTERNET
+  assert: position + 4 == query.size
+  return query

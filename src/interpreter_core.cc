@@ -24,7 +24,7 @@ namespace toit {
 // Perform a fast at. Return whether the fast at was performed. The return
 // value is in the value parameter.
 bool Interpreter::fast_at(Process* process, Object* receiver, Object* arg, bool is_put, Object** value) {
-  if (!arg->is_smi()) return false;
+  if (!is_smi(arg)) return false;
 
   word n = Smi::cast(arg)->value();
   if (n < 0) return false;
@@ -33,35 +33,38 @@ bool Interpreter::fast_at(Process* process, Object* receiver, Object* arg, bool 
   Array* array = null;
   word length = 0;
 
-  if (receiver->is_instance()) {
+  if (is_instance(receiver)) {
     Instance* instance = Instance::cast(receiver);
     Smi* class_id = instance->class_id();
     Program* program = process->program();
     Object* array_object;
     // Note: Assignment in condition.
-    if (class_id == program->list_class_id() && (array_object = instance->at(0))->is_array()) {
+    if (class_id == program->list_class_id() && is_array(array_object = instance->at(Instance::LIST_ARRAY_INDEX))) {
       // The backing storage in a list can be either an array -- or a
       // large array. Only optimize here if it isn't large.
       array = Array::cast(array_object);
-      length = Smi::cast(instance->at(1))->value();
+      length = Smi::cast(instance->at(Instance::LIST_SIZE_INDEX))->value();
     } else if (class_id == program->byte_array_slice_class_id()) {
-      if (!(instance->at(1)->is_smi() && instance->at(2)->is_smi())) return false;
+      if (!(is_smi(instance->at(Instance::BYTE_ARRAY_SLICE_FROM_INDEX)) &&
+            is_smi(instance->at(Instance::BYTE_ARRAY_SLICE_TO_INDEX  )))) {
+        return false;
+      }
 
-      word from = Smi::cast(instance->at(1))->value();
-      word to = Smi::cast(instance->at(2))->value();
+      word from = Smi::cast(instance->at(Instance::BYTE_ARRAY_SLICE_FROM_INDEX))->value();
+      word to = Smi::cast(instance->at(Instance::BYTE_ARRAY_SLICE_TO_INDEX))->value();
       n = from + n;
       if (n >= to) return false;
 
-      Object* data = instance->at(0);
-      if (data->is_byte_array()) {
-        byte_array = ByteArray::cast(instance->at(0));
-      } else if (data->is_instance()) {
+      Object* data = instance->at(Instance::BYTE_ARRAY_SLICE_BYTE_ARRAY_INDEX);
+      if (is_byte_array(data)) {
+        byte_array = ByteArray::cast(instance->at(Instance::BYTE_ARRAY_SLICE_BYTE_ARRAY_INDEX));
+      } else if (is_instance(data)) {
         Instance* data_instance = Instance::cast(data);
         if (data_instance->class_id() != program->byte_array_cow_class_id() ||
-            (is_put && data_instance->at(1) == program->false_object())) {
+            (is_put && data_instance->at(Instance::BYTE_ARRAY_COW_IS_MUTABLE_INDEX) == program->false_object())) {
           return false;
         }
-        byte_array = ByteArray::cast(data_instance->at(0));
+        byte_array = ByteArray::cast(data_instance->at(Instance::BYTE_ARRAY_COW_BACKING_INDEX));
       } else {
         return false;
       }
@@ -69,17 +72,17 @@ bool Interpreter::fast_at(Process* process, Object* receiver, Object* arg, bool 
       Object* size_object;
       Object* vector_object;
       if (class_id == program->large_array_class_id()) {
-        size_object = instance->at(0);
-        vector_object = instance->at(1);
+        size_object = instance->at(Instance::LARGE_ARRAY_SIZE_INDEX);
+        vector_object = instance->at(Instance::LARGE_ARRAY_VECTOR_INDEX);
       } else {
         // List backed by large array.
-        size_object = instance->at(1);
-        Instance* large_array = Instance::cast(instance->at(0));
+        size_object = instance->at(Instance::LIST_SIZE_INDEX);
+        Instance* large_array = Instance::cast(instance->at(Instance::LIST_ARRAY_INDEX));
         ASSERT(large_array->class_id() == program->large_array_class_id());
-        vector_object = large_array->at(1);
+        vector_object = large_array->at(Instance::LARGE_ARRAY_VECTOR_INDEX);
       }
       word size;
-      if (size_object->is_smi()) {
+      if (is_smi(size_object)) {
         size = Smi::cast(size_object)->value();
       } else {
         return false;
@@ -91,14 +94,14 @@ bool Interpreter::fast_at(Process* process, Object* receiver, Object* arg, bool 
       }
       return fast_at(process, arraylet, Smi::from(n % Array::ARRAYLET_SIZE), is_put, value);
     } else if (class_id == program->byte_array_cow_class_id()) {
-      if (is_put && instance->at(1) == program->false_object()) return false;
-      byte_array = ByteArray::cast(instance->at(0));
+      if (is_put && instance->at(Instance::BYTE_ARRAY_COW_IS_MUTABLE_INDEX) == program->false_object()) return false;
+      byte_array = ByteArray::cast(instance->at(Instance::BYTE_ARRAY_COW_BACKING_INDEX));
     } else {
       return false;
     }
-  } else if (receiver->is_byte_array()) {
+  } else if (is_byte_array(receiver)) {
     byte_array = ByteArray::cast(receiver);
-  } else if (receiver->is_array()) {
+  } else if (is_array(receiver)) {
     array = Array::cast(receiver);
     length = array->length();
   } else {
@@ -123,7 +126,7 @@ bool Interpreter::fast_at(Process* process, Object* receiver, Object* arg, bool 
     if (!bytes.is_valid_index(n)) return false;
 
     if (is_put) {
-      if (!(*value)->is_smi()) return false;
+      if (!is_smi(*value)) return false;
 
       uint8 byte_value = (uint8) Smi::cast(*value)->value();
       bytes.at_put(n, byte_value);
@@ -142,19 +145,19 @@ int Interpreter::compare_numbers(Object* lhs, Object* rhs) {
   int64 rhs_int = 0;
   bool lhs_is_int;
   bool rhs_is_int;
-  if (lhs->is_smi()) {
+  if (is_smi(lhs)) {
     lhs_is_int = true;
     lhs_int = Smi::cast(lhs)->value();
-  } else if (lhs->is_large_integer()) {
+  } else if (is_large_integer(lhs)) {
     lhs_is_int = true;
     lhs_int = LargeInteger::cast(lhs)->value();
   } else {
     lhs_is_int = false;
   }
-  if (rhs->is_smi()) {
+  if (is_smi(rhs)) {
     rhs_is_int = true;
     rhs_int = Smi::cast(rhs)->value();
-  } else if (rhs->is_large_integer()) {
+  } else if (is_large_integer(rhs)) {
     rhs_is_int = true;
     rhs_int = LargeInteger::cast(rhs)->value();
   } else {
@@ -175,14 +178,14 @@ int Interpreter::compare_numbers(Object* lhs, Object* rhs) {
   double rhs_double;
   if (lhs_is_int) {
     lhs_double = static_cast<double>(lhs_int);
-  } else if (lhs->is_double()) {
+  } else if (is_double(lhs)) {
     lhs_double = Double::cast(lhs)->value();
   } else {
     return COMPARE_FAILED;
   }
   if (rhs_is_int) {
     rhs_double = static_cast<double>(rhs_int);
-  } else if (rhs->is_double()) {
+  } else if (is_double(rhs)) {
     rhs_double = Double::cast(rhs)->value();
   } else {
     return COMPARE_FAILED;
@@ -230,13 +233,21 @@ int Interpreter::compare_numbers(Object* lhs, Object* rhs) {
 //       A null indicates we are done.
 Object* Interpreter::hash_do(Program* program, Object* current, Object* backing, int step, Object* block_on_stack, Object** entry_return) {
   word c = 0;
-  if (!current->is_smi()) {
+  if (!is_smi(current)) {
     // First time.
-    if (!backing->is_instance()) {
-      return program->null_object();  // We are done.
+    if (!is_instance(backing)) {
+      // Normally the backing is null (empty map) or a list instance.
+      // However a newly deserialized map has an array instead.
+      if (!is_array(backing)) {
+        return program->null_object();  // We are done.
+      }
+      if (step < 0) {
+        // Start at the end of the array.
+        c = Array::cast(backing)->length() + step;
+      }
     } else if (step < 0) {
-      // Start at the end.
-      c = Smi::cast(Instance::cast(backing)->at(1))->value() + step;
+      // Start at the end of the list.
+      c = Smi::cast(Instance::cast(backing)->at(Instance::LIST_SIZE_INDEX))->value() + step;
     }
     Smi* block = Smi::cast(*from_block(Smi::cast(block_on_stack)));
     Method target = Method(program->bytecodes, block->value());
@@ -272,12 +283,12 @@ Object* Interpreter::hash_do(Program* program, Object* current, Object* backing,
     if (!in_range) {
       return program->null_object();  // Done - success.
     }
-    if (entry->is_smi() || HeapObject::cast(entry)->class_id() != program->tombstone_class_id()) {
+    if (is_smi(entry) || HeapObject::cast(entry)->class_id() != program->tombstone_class_id()) {
       if (first_tombstone != INVALID_TOMBSTONE && tombstones_skipped > 10) {
         // Too many tombstones in a row.
-        Object* distance = Instance::cast(first_tombstone_object)->at(0);
+        Object* distance = Instance::cast(first_tombstone_object)->at(Instance::TOMBSTONE_DISTANCE_INDEX);
         word new_distance = c - first_tombstone;
-        if (!distance->is_smi() || distance == Smi::from(0) || !Smi::is_valid(new_distance)) {
+        if (!is_smi(distance) || distance == Smi::from(0) || !Smi::is_valid(new_distance)) {
           // We can't overwrite the distance on a 0 instance of Tombstone_,
           // because it's the singleton instance, used many places.
           // Bail out to Toit code to fix this.
@@ -296,8 +307,8 @@ Object* Interpreter::hash_do(Program* program, Object* current, Object* backing,
       } else {
         tombstones_skipped++;
       }
-      Object* skip = Instance::cast(entry)->at(0);
-      if (skip->is_smi()) {
+      Object* skip = Instance::cast(entry)->at(Instance::TOMBSTONE_DISTANCE_INDEX);
+      if (is_smi(skip)) {
         word distance = Smi::cast(skip)->value();
         if (distance != 0 && (distance ^ step) >= 0) { // If signs match.
           c += distance;

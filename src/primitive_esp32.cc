@@ -67,10 +67,16 @@
 #include "esp_spi_flash.h"
 
 #include "event_sources/system_esp32.h"
+#include "resources/touch_esp32.h"
 
 namespace toit {
 
 MODULE_IMPLEMENTATION(esp32, MODULE_ESP32)
+
+enum {
+  OTA_STATE_VALIDATION_PENDING = 1 << 0,
+  OTA_STATE_ROLLBACK_POSSIBLE  = 1 << 1,
+};
 
 static const esp_partition_t* ota_partition = null;
 static int ota_size = 0;
@@ -255,6 +261,36 @@ PRIMITIVE(ota_end) {
   return Smi::zero();
 }
 
+static bool is_validation_pending() {
+  const esp_partition_t* running = esp_ota_get_running_partition();
+  esp_ota_img_states_t ota_state;
+  esp_err_t err = esp_ota_get_state_partition(running, &ota_state);
+  // If we are running from the factory partition esp_ota_get_state_partition fails.
+  return (err == ESP_OK && ota_state == ESP_OTA_IMG_PENDING_VERIFY);
+}
+
+PRIMITIVE(ota_state) {
+  int state = 0;
+  if (esp_ota_check_rollback_is_possible()) state |= OTA_STATE_ROLLBACK_POSSIBLE;
+  if (is_validation_pending()) state |= OTA_STATE_VALIDATION_PENDING;
+  return Smi::from(state);
+}
+
+PRIMITIVE(ota_validate) {
+  if (!is_validation_pending()) return BOOL(false);
+  esp_err_t err = esp_ota_mark_app_valid_cancel_rollback();
+  return BOOL(err == ESP_OK);
+}
+
+PRIMITIVE(ota_rollback) {
+  PRIVILEGED;
+  bool is_rollback_possible = esp_ota_check_rollback_is_possible();
+  if (!is_rollback_possible) PERMISSION_DENIED;
+  esp_err_t err = esp_ota_mark_app_invalid_rollback_and_reboot();
+  ESP_LOGE("Toit", "esp_ota_end esp_ota_mark_app_invalid_rollback_and_reboot (%s)!", esp_err_to_name(err));
+  OTHER_ERROR;
+}
+
 PRIMITIVE(reset_reason) {
   return Smi::from(esp_reset_reason());
 }
@@ -275,6 +311,23 @@ PRIMITIVE(enable_external_wakeup) {
   return process->program()->null_object();
 }
 
+PRIMITIVE(enable_touchpad_wakeup) {
+#ifndef CONFIG_IDF_TARGET_ESP32C3
+  esp_err_t err = esp_sleep_enable_touchpad_wakeup();
+  if (err != ESP_OK) {
+    ESP_LOGE("Toit", "Failed: sleep_enable_touchpad_wakeup");
+    OTHER_ERROR;
+  }
+  err = esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
+  if (err != ESP_OK) {
+    ESP_LOGE("Toit", "Failed: sleep_enable_touchpad_wakeup - power domain");
+    OTHER_ERROR;
+  }
+  keep_touch_active();
+#endif
+  return process->program()->null_object();
+}
+
 PRIMITIVE(wakeup_cause) {
   return Smi::from(esp_sleep_get_wakeup_cause());
 }
@@ -289,7 +342,16 @@ PRIMITIVE(ext1_wakeup_status) {
   }
   return Primitive::integer(status, process);
 #else
-  return process->program()->null_object();
+  return Smi::from(-1);
+#endif
+}
+
+PRIMITIVE(touchpad_wakeup_status) {
+#ifndef CONFIG_IDF_TARGET_ESP32C3
+  touch_pad_t pad = esp_sleep_get_touchpad_wakeup_status();
+  return Primitive::integer(touch_pad_to_pin_num(pad), process);
+#else
+  return Smi::from(-1);
 #endif
 }
 

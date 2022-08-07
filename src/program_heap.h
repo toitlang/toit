@@ -23,9 +23,6 @@
 #include "primitive.h"
 #include "printing.h"
 
-extern "C" uword toit_image;
-extern "C" uword toit_image_size;
-
 namespace toit {
 
 class ProgramHeap : public ProgramRawHeap {
@@ -77,7 +74,7 @@ class ProgramHeap : public ProgramRawHeap {
 
   int64 total_bytes_allocated() const { return _total_bytes_allocated; }
 
-#ifndef DEPLOY
+#ifndef TOIT_DEPLOY
   void enter_gc() {
     ASSERT(!_in_gc);
     ASSERT(_gc_allowed);

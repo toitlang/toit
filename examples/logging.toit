@@ -11,7 +11,7 @@ main:
   logger.log "Hello"
   logger.log "World"
   logger.close
-  service.wait
+  service.uninstall
 
 // ------------------------------------------------------------------
 

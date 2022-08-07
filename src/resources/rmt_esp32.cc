@@ -32,7 +32,7 @@ const rmt_channel_t kInvalidChannel = static_cast<rmt_channel_t>(-1);
 
 ResourcePool<rmt_channel_t, kInvalidChannel> rmt_channels(
     RMT_CHANNEL_0, RMT_CHANNEL_1, RMT_CHANNEL_2, RMT_CHANNEL_3
-#if SOC_RMT_CHANNELS_NUM > 4
+#if SOC_RMT_CHANNELS_PER_GROUP > 4
     , RMT_CHANNEL_4, RMT_CHANNEL_5, RMT_CHANNEL_6, RMT_CHANNEL_7
 #endif
 );
@@ -100,7 +100,7 @@ PRIMITIVE(channel_new) {
   } else {
     // Try to find adjacent channels that are still free.
     int current_start_id = (channel_num == -1) ? 0 : channel_num;
-    while (current_start_id + memory_block_count <= SOC_RMT_CHANNELS_NUM) {
+    while (current_start_id + memory_block_count <= SOC_RMT_CHANNELS_PER_GROUP) {
       int taken = 0;
       for (int i = 0; i < memory_block_count; i++) {
         bool succeeded = rmt_channels.take(static_cast<rmt_channel_t>(current_start_id + i));
@@ -253,7 +253,7 @@ PRIMITIVE(config_bidirectional_pin) {
   } else {
     GPIO.enable1_w1ts.data = (0x1 << (pin - 32));
   }
-  rmt_set_pin(resource->channel(), RMT_MODE_TX, static_cast<gpio_num_t>(pin));
+  rmt_set_gpio(resource->channel(), RMT_MODE_TX, static_cast<gpio_num_t>(pin), false);
   PIN_INPUT_ENABLE(GPIO_PIN_MUX_REG[pin]);
   GPIO.pin[pin].pad_driver = 1;
 
@@ -269,7 +269,7 @@ PRIMITIVE(transmit) {
   // As such, we need an external address.
   const uint8* address = items_bytes.address();
   Object* keep_alive = _raw_items_bytes;
-  if (_raw_items_bytes->is_byte_array() && ByteArray::cast(_raw_items_bytes)->has_external_address()) {
+  if (is_byte_array(_raw_items_bytes) && ByteArray::cast(_raw_items_bytes)->has_external_address()) {
     // Nothing to do. We already have an external address.
   } else {
     // Create an external byte array with the same size.

@@ -46,6 +46,7 @@ main:
   test_performance myself
   test_blocking myself broker
   test_sequential myself broker
+  test_map myself
 
   test_request_queue_cancel myself
   test_timeouts myself broker --cancel
@@ -268,6 +269,44 @@ test_sequential myself/int broker/RpcBroker -> none:
   broker.unregister_procedure name
   expect.expect_throw "No such procedure registered: 800": rpc.invoke myself name []
 
+test_map myself/int -> none:
+  m := {"foo": 42, "bar": [1, 2]}
+  test myself m
+
+  // Test the find function on the map.
+  roundtripped := rpc.invoke myself PROCEDURE_ECHO m
+  expect.expect_structural_equals m["foo"] roundtripped["foo"]
+  expect.expect_structural_equals m["bar"] roundtripped["bar"]
+
+  // Reverse order.
+  roundtripped = rpc.invoke myself PROCEDURE_ECHO m
+  expect.expect_structural_equals m["bar"] roundtripped["bar"]
+  expect.expect_structural_equals m["foo"] roundtripped["foo"]
+
+  // Map in map.
+  m = {
+      "hest": "horse",
+      "reptile": {
+            "tudse": "toad",
+            "t-reks": "t-rex",  // Not really.
+      }
+  }
+  test myself m
+
+  roundtripped = rpc.invoke myself PROCEDURE_ECHO m
+  expect.expect_equals "t-rex" roundtripped["reptile"]["t-reks"]
+
+  roundtripped["hest"] = "best"  // Can modify the map after going through RPC.
+
+  // Can't add to the map after going through RPC.  We could fix this in the
+  // map class, but it's harder to fix the same issue for growable lists that
+  // turn into ungrowable arrays after RPC.
+  expect.expect_throw "COLLECTION_CANNOT_CHANGE_SIZE": roundtripped["kat"] = "cat"
+
+  // Empty map in list in list.
+  l := [[{:}]]
+  test myself l
+
 cancel queue/RpcRequestQueue_ pid/int id/int -> int:
   result/int := 0
   queue.cancel: | request/RpcRequest_ |
@@ -336,7 +375,7 @@ test_timeouts myself/int broker/RpcBroker --cancel/bool -> none:
       // Block until canceled.
       (monitor.Latch).get
     finally:
-      if task.is_canceled:
+      if Task.current.is_canceled:
         critical_do: latches[index].set "Canceled: $index"
 
   // Use 'with_timeout' to trigger the timeout.
@@ -355,8 +394,8 @@ test_timeouts myself/int broker/RpcBroker --cancel/bool -> none:
       try:
         rpc.invoke myself name index
       finally: | is_exception exception |
-        expect.expect task.is_canceled
-        critical_do: join.set task
+        expect.expect Task.current.is_canceled
+        critical_do: join.set Task.current
     sleep --ms=10
     subtask.cancel
     expect.expect_identical subtask join.get
@@ -461,7 +500,7 @@ test_terminate myself/int broker/TestBroker n/int -> none:
   n.repeat: task::
     try:
       exception := catch: with_timeout --ms=200: rpc.invoke myself name []
-      expect.expect (task.is_canceled or exception == DEADLINE_EXCEEDED_ERROR)
+      expect.expect (Task.current.is_canceled or exception == DEADLINE_EXCEEDED_ERROR)
     finally:
       critical_do: done.up
 
@@ -489,7 +528,7 @@ test_terminate myself/int broker/TestBroker n/int -> none:
   dead := task::
     expect.expect_throw DEADLINE_EXCEEDED_ERROR:
       with_timeout --ms=100: test myself 99
-    finished.set task
+    finished.set Task.current
   expect.expect_identical dead finished.get
 
   // If we revive the process, messages are accepted again.
@@ -510,8 +549,8 @@ test myself/int arguments/any:
     expected = arguments.serialize_for_rpc
   else:
     actual = rpc.invoke myself PROCEDURE_ECHO arguments
-  if arguments is List:
-    expect.expect_list_equals expected actual
+  if arguments is List or arguments is Map:
+    expect.expect_structural_equals expected actual
   else:
     expect.expect_equals expected actual
 

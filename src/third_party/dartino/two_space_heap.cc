@@ -29,10 +29,6 @@ Process* TwoSpaceHeap::process() {
   return process_heap_->owner();
 }
 
-TwoSpaceHeap::~TwoSpaceHeap() {
-  // TODO(erik): Call all finalizers.
-}
-
 HeapObject* TwoSpaceHeap::allocate(uword size) {
   uword result = semi_space_.allocate(size);
   if (result == 0) {
@@ -149,7 +145,7 @@ bool TwoSpaceHeap::collect_new_space(bool try_hard) {
   old_space()->flush();
   from->flush();
 
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
   if (Flags::validate_heap) validate();
 #endif
 
@@ -268,7 +264,7 @@ uword TwoSpaceHeap::total_bytes_allocated() const {
 }
 
 bool TwoSpaceHeap::collect_old_space_if_needed(bool force_compact, bool force) {
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
   if (Flags::validate_heap) {
     validate();
     old_space()->validate_before_mark_sweep(OLD_SPACE_PAGE, false);
@@ -285,7 +281,7 @@ bool TwoSpaceHeap::collect_old_space_if_needed(bool force_compact, bool force) {
   return true;
 }
 
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
 void TwoSpaceHeap::validate() {
   new_space()->validate();
   old_space()->validate();
@@ -344,7 +340,7 @@ void TwoSpaceHeap::collect_old_space(bool force_compact) {
 
   old_space()->set_promotion_failed(false);
 
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
   if (Flags::validate_heap) {
     validate();
   }
@@ -387,7 +383,7 @@ bool TwoSpaceHeap::perform_garbage_collection(bool force_compact) {
     compact_heap();
   }
 
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
   if (Flags::validate_heap) validate();
 #endif
 
@@ -465,7 +461,7 @@ void TwoSpaceHeap::compact_heap() {
   old_space()->mark_chunk_ends_free();
 }
 
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
 void TwoSpaceHeap::find(uword word) {
   semi_space_.find(word, "data semi_space");
   old_space_.find(word, "oldspace");
@@ -505,6 +501,6 @@ void TwoSpaceHeap::find(uword word) {
   fclose(fp);
 #endif  // __linux
 }
-#endif  // DEBUG
+#endif  // TOIT_DEBUG
 
 }  // namespace toit

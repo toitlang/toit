@@ -862,7 +862,7 @@ abstract class Array_ extends List:
 
   /** See $super. */
   resize new_size:
-    throw "ARRAY_CANNOT_CHANGE_SIZE"
+    throw "COLLECTION_CANNOT_CHANGE_SIZE"
 
   /** See $super. */
   operator + collection -> Array_:
@@ -1056,6 +1056,11 @@ interface ByteArray:
   Returns whether the $other instance is a $ByteArray with the same content.
   */
   operator == other -> bool
+
+  /**
+  Returns a hash code that depends on the content of this ByteArray.
+  */
+  hash_code -> int
 
   /**
   Invokes the given $block on each byte of this instance.
@@ -1262,6 +1267,12 @@ abstract class ByteArrayBase_ implements ByteArray:
   operator == other -> bool:
     if other is not ByteArray: return false
     #primitive.core.blob_equals
+
+  /**
+  Returns a hash code that depends on the content of this ByteArray.
+  */
+  hash_code -> int:
+    #primitive.core.blob_hash_code
 
   /**
   Invokes the given $block on each element of this instance.
@@ -1579,6 +1590,9 @@ class CowByteArray_ implements ByteArray:
 
   operator == other -> bool:
     return backing_ == other
+
+  hash_code -> int:
+    #primitive.core.blob_hash_code
 
   do [block] -> none:
     backing_.do block
@@ -2032,8 +2046,10 @@ abstract class HashedInsertionOrderedCollection_:
         if not backing_: backing_ = List
         not_found.call  // May not return.
         return APPEND_
+      else if size_ != 1:
+        // Map built by deserializer, has no index.
+        rebuild_ size --allow_shrink
       else:
-        assert: size_ == 1
         k := backing_[0]
         if k is not Tombstone_:
           if compare_ key k:
@@ -2195,7 +2211,7 @@ The == operator should be compatible with the hash_code method so
   However, objects that test unequal are not required to have
   different hash codes: Hash code clashes are allowed, but should
   be rare to maintain good performance.
-Strings and numbers fulfill these requirements and can be used as
+Strings, byte arrays, and numbers fulfill these requirements and can be used as
   keys in sets.
 */
 class Set extends HashedInsertionOrderedCollection_ implements Collection:
@@ -2216,18 +2232,18 @@ class Set extends HashedInsertionOrderedCollection_ implements Collection:
 
   /**
   Finds an object where you have the $hash code, but you haven't
-     necessarily created the object yet.
-   Returns either a matching object that was found in the set,
-     or a newly created object that was returned by the not_found
-     block and inserted into the set.
-   If a matching entry is not found, then the $initial block
-     is called.  It can create an object that will be added to
-     the set, or it can non-locally return in which case the set
-     is unchanged.  If it evaluates to null then nothing is added.
-   When a potential match is found in the set, the $compare block
-     is called with the potential match.  If it returns true then
-     the find call returns the found object.  If it returns false
-     the search continues.
+    necessarily created the object yet.
+  Returns either a matching object that was found in the set,
+    or a newly created object that was returned by the not_found
+    block and inserted into the set.
+  If a matching entry is not found, then the $initial block
+    is called.  It can create an object that will be added to
+    the set, or it can non-locally return in which case the set
+    is unchanged.  If it evaluates to null then nothing is added.
+  When a potential match is found in the set, the $compare block
+    is called with the potential match.  If it returns true then
+    the find call returns the found object.  If it returns false
+    the search continues.
   */
   get_by_hash_ hash/int [--initial] [--compare] -> any:
     if not index_:
@@ -2477,7 +2493,7 @@ The == operator should be compatible with the hash_code method so
   However, objects that test unequal are not required to have
   different hash codes: Hash code clashes are allowed, but should
   be rare to maintain good performance.
-Strings and numbers fulfill these requirements and can be used as
+Strings, byte arrays, and numbers fulfill these requirements and can be used as
   keys in maps.
 */
 class Map extends HashedInsertionOrderedCollection_:

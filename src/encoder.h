@@ -113,6 +113,9 @@ class Encoder {
   void write_double(double value);
   void write_byte_array_header(int length);
   void write_string(const char* string);
+  // Always uses the 32 bit encoding even if a smaller one would suffice.  This
+  // helps make the size of something predictable.
+  void write_int32(int64 value);
 
  protected:
   Buffer* buffer() const { return _buffer; }
@@ -130,9 +133,7 @@ class ProgramOrientedEncoder : public Encoder {
   bool encode_error(Object* type, Object* message, Stack* stack);
   bool encode_error(Object* type, const char* message, Stack* stack);
 
-#ifdef PROFILER
   bool encode_profile(Profiler* profile, String* title, int cutoff);
-#endif
 
   Program* program() { return _program; }
 

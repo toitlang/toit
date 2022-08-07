@@ -34,6 +34,7 @@ namespace toit {
 
 Mutex* OS::_global_mutex = null;
 Mutex* OS::_scheduler_mutex = null;
+Mutex* OS::_resource_mutex = null;
 
 void OS::timespec_increment(timespec* ts, int64 ns) {
   const int64 ns_per_second = 1000000000LL;
@@ -98,7 +99,7 @@ AlignedMemoryBase::~AlignedMemoryBase() {}
 
 AlignedMemory::AlignedMemory(size_t size_in_bytes, size_t alignment) : size_in_bytes(size_in_bytes) {
   raw = malloc(alignment + size_in_bytes);
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
   memset(raw, 0xcd, alignment + size_in_bytes);
 #endif
   aligned = void_cast(Utils::round_up(unvoid_cast<char*>(raw), alignment));
@@ -106,7 +107,7 @@ AlignedMemory::AlignedMemory(size_t size_in_bytes, size_t alignment) : size_in_b
 
 AlignedMemory::~AlignedMemory() {
   if (raw != null) {
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
     memset(address(), 0xde, size_in_bytes);
 #endif
     free(raw);

@@ -257,7 +257,7 @@ class LazyInitializer_:
 Runs the $initializer function for the given $global.
 */
 run_global_initializer_ global/int initializer/LazyInitializer_:
-  this_task := task
+  this_task := Task_.current
   while true:
     if initializer.id_or_tasks_ is not int:
       // There is already an initialization in progress.

@@ -25,21 +25,9 @@ void GcMetadata::set_up_singleton() {
   OS::HeapMemoryRange range = OS::get_heap_memory_range();
 
   uword range_address = reinterpret_cast<uword>(range.address);
-#ifdef TOIT_FREERTOS
-  printf("Malloc reports heap from %p-%p (%dk)\n",
-      range.address,
-      unvoid_cast<char*>(range.address) + range.size,
-      static_cast<int>(range.size >> 10));
-#endif
   lowest_address_ = Utils::round_down(range_address, TOIT_PAGE_SIZE);
   uword size = Utils::round_up(range.size + range_address - lowest_address_, TOIT_PAGE_SIZE);
   heap_extent_ = size;
-#ifdef TOIT_FREERTOS
-  printf("(Metadata allocated for  %p-%p (%dk))\n",
-      reinterpret_cast<void*>(lowest_address_),
-      reinterpret_cast<char*>(lowest_address_) + heap_extent_,
-      static_cast<int>(heap_extent_ >> 10));
-#endif
   heap_start_munged_ = (lowest_address_ >> 1) |
                        (static_cast<uword>(1) << (8 * sizeof(uword) - 1));
   heap_extent_munged_ = size >> 1;
@@ -75,24 +63,24 @@ void GcMetadata::set_up_singleton() {
   // page boundaries.
   metadata_ = reinterpret_cast<uint8*>(OS::grab_virtual_memory(null, metadata_size_));
 
-  remembered_set_ = metadata_;
+  // Mark bits must be page aligned so that mark_all detects page boundary
+  // crossings, so we do that first.
+  mark_bits_ = reinterpret_cast<uint32*>(metadata_);
 
-  object_starts_ = metadata_ + number_of_cards_;
+  cumulative_mark_bit_counts_ = reinterpret_cast<uword*>(metadata_ + mark_bits_size);
 
-  mark_bits_ = reinterpret_cast<uint32*>(metadata_ + 2 * number_of_cards_);
-  cumulative_mark_bit_counts_ = reinterpret_cast<uword*>(
-      reinterpret_cast<uword>(mark_bits_) + mark_bits_size);
+  remembered_set_ = metadata_ + mark_bits_size + cumulative_mark_bits_size;
 
-  mark_stack_overflow_bits_ =
-      reinterpret_cast<uint8_t*>(cumulative_mark_bit_counts_) +
-      cumulative_mark_bits_size;
+  object_starts_ = remembered_set_ + number_of_cards_;
+
+  mark_stack_overflow_bits_ = object_starts_ + number_of_cards_;
 
   page_type_bytes_ = mark_stack_overflow_bits_ + mark_stack_overflow_bits_size;
 
   // The mark bits and cumulative mark bits are the biggest, so they are not
   // mapped in immediately in order to reduce the memory footprint of very
   // small programs.  We do it when we create pages that need them.
-  OS::use_virtual_memory(metadata_, number_of_cards_);
+  OS::use_virtual_memory(remembered_set_, number_of_cards_);
   OS::use_virtual_memory(object_starts_, number_of_cards_);
   OS::use_virtual_memory(mark_stack_overflow_bits_, mark_stack_overflow_bits_size);
   OS::use_virtual_memory(page_type_bytes_, page_type_size_);
@@ -213,7 +201,7 @@ restart:
       uint32* overhang_bits =
           mark_bits_for(end_of_last_source_object_moved - WORD_SIZE);
       ASSERT((*overhang_bits & 1) != 0);
-      *overhang_bits &= ~((1u << overhang) - 1);
+      *overhang_bits &= ~((1U << overhang) - 1);
     }
     src_start = src;
   }
@@ -265,27 +253,43 @@ uword GcMetadata::object_address_from_start(uword card, uint8 start) {
   return object_address;
 }
 
-// Mark all bits of an object whose mark bits cross a 32 bit boundary.
+// Mark all bits of an object whose mark bits may cross a 32 bit boundary.
+// This routine only uses aligned 32 bit operations for the marking.
 void GcMetadata::slow_mark(HeapObject* object, uword size) {
   int mask_shift = ((reinterpret_cast<uword>(object) >> WORD_SHIFT) & 31);
   uint32* bits = mark_bits_for(object);
+  uint32 words = size >> WORD_SHIFT;
 
-  ASSERT(mask_shift < 32);
-  uint32 mask = 0xffffffffu << mask_shift;
-  *bits |= mask;
+  if (words + mask_shift >= 32) {
+    // Handle the first word of marking where some bits at the start of the 32
+    // bit word are not set.
+    uint32 mask = 0xffffffff;
+    *bits |= mask << mask_shift;
+  } else {
+    // This is the case where the marked area both starts and ends in the same
+    // 32 bit word.
+    uint32 mask = 1;
+    mask = (mask << words) - 1;
+    *bits |= mask << mask_shift;
+    return;
+  }
 
   bits++;
-  uint32 words = size >> WORD_SHIFT;
-  ASSERT(words + mask_shift > 32);
-  for (words -= 32 - mask_shift; words >= 32; words -= 32)
-    *bits++ = 0xffffffffu;
-  *bits |= (1u << words) - 1;
+  ASSERT(words + mask_shift >= 32);
+  for (words -= 32 - mask_shift; words >= 32; words -= 32) {
+    // Full words where all 32 bits are marked.
+    *bits++ = 0xffffffff;
+  }
+  if (words != 0) {
+    // The last word where some bits near the end of the word are not marked.
+    *bits |= (1U << words) - 1;
+  }
 }
 
 void GcMetadata::mark_stack_overflow(HeapObject* object) {
   uword address = object->_raw();
   uint8* overflow_bits = overflow_bits_for(address);
-  *overflow_bits |= 1u << ((address >> CARD_SIZE_LOG_2) & 7);
+  *overflow_bits |= 1U << ((address >> CARD_SIZE_LOG_2) & 7);
   // We can have a mark stack overflow in new-space where we do not normally
   // maintain object starts. By updating the object starts for this card we
   // can be sure that the necessary objects in this card are walkable.

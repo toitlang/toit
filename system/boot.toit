@@ -22,7 +22,10 @@ Boot the system and run the necessary containers. Returns when the
 Returns an error code which is 0 when no errors occurred.
 */
 boot container_manager/ContainerManager -> int:
-  // TODO(kasper): Only start containers that should run on boot.
+  // Always start the system image which is technically already
+  // running. This allows the container manager to correctly keep
+  // track of the number of running processes.
+  container_manager.system_image.start
   container_manager.images.do: | image/ContainerImage |
-    image.start
+    if image.run_on_boot: image.start
   return container_manager.wait_until_done

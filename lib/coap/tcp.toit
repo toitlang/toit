@@ -53,7 +53,7 @@ class TcpTransport implements Transport:
   current_reader_/Reader_? := null
 
   constructor .socket_ --send_csm=true:
-    socket_.set_no_delay true
+    socket_.no_delay = true
     reader_ = reader.BufferedReader socket_
     writer_ = writer.Writer socket_
 
@@ -115,7 +115,7 @@ class TcpMessage extends Message:
 
     header := bytes.Buffer
     // Reserve a byte for data0.
-    header.put_byte 0
+    header.write_byte 0
     data0 := (token ? token.bytes.size : 0) & TKL_MASK_
     if size >= _4_BYTE_OFFSET:
       data0 |= _4_BYTE_MARKER << LENGTH_SHIFT_
@@ -129,17 +129,17 @@ class TcpMessage extends Message:
       header.write array
     else if size >= _1_BYTE_OFFSET:
       data0 |= _1_BYTE_MARKER << LENGTH_SHIFT_
-      header.put_byte size - _1_BYTE_OFFSET
+      header.write_byte size - _1_BYTE_OFFSET
     else:
       data0 |= size << LENGTH_SHIFT_
 
-    header.put_byte code
+    header.write_byte code
     if token: header.write token.bytes
 
     header.write optionsData.buffer 0 optionsData.size
 
     if payload:
-      header.put_byte Message.PAYLOAD_MARKER_
+      header.write_byte Message.PAYLOAD_MARKER_
 
     data := header.bytes
     data[0] = data0

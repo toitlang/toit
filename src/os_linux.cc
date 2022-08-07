@@ -67,7 +67,7 @@ bool OS::use_virtual_memory(void* addr, uword sz) {
   uword rounded = Utils::round_down(address, getpagesize());
   uword size = Utils::round_up(end - rounded, getpagesize());
   int result = mprotect(reinterpret_cast<void*>(rounded), size, PROT_READ | PROT_WRITE);
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
   // Calls to use_virtual_memory are rounded up by one due to the single-word
   // object problem, but we don't want to poison data belonging to the next
   // page's metadata.
@@ -99,6 +99,7 @@ void OS::set_writable(ProgramBlock* block, bool value) {
 void OS::tear_down() {
   dispose(_global_mutex);
   dispose(_scheduler_mutex);
+  dispose(_resource_mutex);
 }
 
 const char* OS::get_platform() {

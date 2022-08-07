@@ -27,15 +27,18 @@ list(APPEND TOIT_SKIP_TESTS
 if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows" OR "${CMAKE_SYSTEM_NAME}" STREQUAL "MSYS")
   list(APPEND TOIT_FAILING_TESTS
     tests/close_test.toit
+    tests/containers_test.toit
     tests/dns_test.toit
     tests/interface_address_test.toit
     tests/keepalive_test.toit
     tests/regress/issue3_test.toit
+    tests/services_network_test.toit
     tests/socket_close_test.toit
     tests/socket_option_test.toit
     tests/socket_task_test.toit
     tests/socket_test.toit
     tests/socket_timeout_test.toit
+    tests/tcp_close_test.toit
     tests/time_test.toit
     tests/tls2_test.toit
     tests/udp_test.toit
@@ -43,5 +46,12 @@ if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows" OR "${CMAKE_SYSTEM_NAME}" STREQUAL
     tests/class_field_limit_test_compiler.toit
     tests/cow_read_only_test_compiler.toit
     tests/tls_test_slow.toit
+    tests/uart_test.toit
+  )
+endif()
+
+if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Darwin")
+  list(APPEND TOIT_FAILING_TESTS
+    tests/uart_test.toit
   )
 endif()

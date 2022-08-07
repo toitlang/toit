@@ -18,8 +18,10 @@ exit_with_error_ := false
 
 /**
 Returns the object for the current task.
+
+Deprecated: Use $Task.current instead.
 */
-task:
+task -> Task:
   #primitive.core.task_current
 
 /**
@@ -30,14 +32,14 @@ Calls $code in a new task.
 If the $background flag is set, then the new task will not block termination.
   The $background task flag is passed on to sub-tasks.
 */
-task code/Lambda --name/string="User task" --background/bool=false:
+task code/Lambda --name/string="User task" --background/bool=false -> Task:
   return create_task_ code name background
 
 // Base API for creating and activating a task.
-create_task_ code/Lambda name/string background/bool -> Task_:
+create_task_ code/Lambda name/string background/bool -> Task:
   new_task := task_new_ code
   new_task.name = name
-  new_task.background = background or task.background
+  new_task.background = background or Task_.current.background
   new_task.initialize_
   // Activate the new task.
   new_task.previous_running_ = new_task.next_running_ = new_task
@@ -53,11 +55,48 @@ The Toit programming language is cooperatively scheduled, so it is important
   opportunity to run.
 */
 yield:
-  task_yield_to_ task.next_running_
+  task_yield_to_ Task_.current.next_running_
 
 // ----------------------------------------------------------------------------
 
-class Task_:
+/**
+A task.
+
+Tasks represent a thread of running code.
+Tasks are cooperative and thus must yield in order to allow other tasks to run.
+
+Tasks are created by calling $(task code). They can either terminate by themselves
+  (gracefully or with an exception) or by being canceled from the outside with
+  $cancel.
+
+If a task finishes with an exception it brings down the whole program.
+*/
+interface Task:
+  /**
+  Returns the current task.
+  */
+  static current -> Task:
+    #primitive.core.task_current
+
+  /**
+  Cancels the task.
+
+  If the task has `finally` clauses, those are executed.
+  However, these must not yield, as the task won't run again. Use $critical_do to
+  run code that must yield.
+  */
+  cancel -> none
+
+  /** Whether this task is canceled. */
+  is_canceled -> bool
+
+class Task_ implements Task:
+  /**
+  Same as $task, but returns it as a $Task_ object instead.
+  */
+  static current -> Task_:
+    #primitive.core.task_current
+
   operator == other:
     return other is Task_ and other.id_ == id_
 
@@ -65,7 +104,7 @@ class Task_:
     return "$name<$(id_)@$(current_process_)>"
 
   with_deadline_ deadline [block]:
-    assert: task == this
+    assert: Task_.current == this
     if not deadline_ or deadline < deadline_:
       old_deadline := deadline_
       deadline_ = deadline
@@ -156,14 +195,14 @@ class Task_:
       return next
 
   resume_ -> none:
-    current := null
+    current /Task_? := ?
     if is_task_idle_:
       current = task_resumed_
       if not current:
         task_resumed_ = this
         return
     else:
-      current = task
+      current = Task_.current
 
     // Link the task into the linked list of running tasks
     // at the very end of it.
@@ -211,10 +250,6 @@ class Task_:
   previous_running_ := null
   next_blocked_ := null
 
-  // TODO(kasper): Generalize this a bit. It is only used
-  // for implementing generators for now.
-  tls := null
-
   // Timer used for all sleep operations on this task.
   timer_ := null
 
@@ -224,14 +259,14 @@ class Task_:
 
 // ----------------------------------------------------------------------------
 
-task_new_ lambda/Lambda:
+task_new_ lambda/Lambda -> Task_:
   #primitive.core.task_new
 
-task_transfer_ to detach_stack:
+task_transfer_ to/Task_ detach_stack:
   #primitive.core.task_transfer
 
-task_yield_to_ to:
-  if task != to:   // Skip self transfer.
+task_yield_to_ to/Task_:
+  if Task_.current != to:   // Skip self transfer.
     task_transfer_ to false
 
   // TODO(kasper): Consider not looking at the incoming messages at

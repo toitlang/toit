@@ -107,11 +107,14 @@ class EncodeVisitor : public Visitor {
 
   void visit_instance(Instance* instance) {
     Smi* class_id = instance->class_id();
-    if (class_id == _encoder->program()->list_class_id() && instance->at(0)->is_array()) {
+    if (class_id == _encoder->program()->list_class_id() && is_array(instance->at(Instance::LIST_ARRAY_INDEX))) {
       // The backing storage in a list can be either an array -- or a
       // large array. Only optimize if it isn't large.
       // We use the same layout assumptions for List_ as the interpreter.
-      visit_list(instance, Array::cast(instance->at(0)), Smi::cast(instance->at(1))->value());
+      visit_list(
+          instance,
+          Array::cast(instance->at(Instance::LIST_ARRAY_INDEX)),
+          Smi::cast(instance->at(Instance::LIST_SIZE_INDEX))->value());
     } else {
       _encoder->write_header(1, 'I');
       _encoder->write_int(class_id->value());
@@ -264,12 +267,10 @@ bool ProgramOrientedEncoder::encode_error(Object* type, const char* message, Sta
   return !buffer()->has_overflow();
 }
 
-#ifdef PROFILER
 bool ProgramOrientedEncoder::encode_profile(Profiler* profiler, String* title, int cutoff) {
   profiler->encode_on(this, title, cutoff);
   return !buffer()->has_overflow();
 }
-#endif
 
 void Encoder::write_byte(uint8 c) {
   _buffer->put_byte(c);
@@ -278,7 +279,7 @@ void Encoder::write_byte(uint8 c) {
 void Encoder::write_header(int size, uint8 tag) {
   write_byte('[');
   write_byte('#');
-  write_int(size + 1);
+  write_int32(size + 1);
   write_int(tag); // The tag is always the first element.
 }
 
@@ -307,6 +308,12 @@ void Encoder::write_int(int64 i) {
     _buffer->put_byte('L');
     _buffer->put_int64(i);
   }
+}
+
+void Encoder::write_int32(int64 i) {
+  ASSERT(i >= MY_INT32_MIN && i <= MY_INT32_MAX);
+  _buffer->put_byte('l');
+  _buffer->put_int32(i);
 }
 
 void Encoder::write_double(double value) {

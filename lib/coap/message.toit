@@ -102,7 +102,7 @@ class Message:
       delta_bits := option_bits_ delta
       length := it.value.size
       length_bits := option_bits_ length
-      buffer.put_byte
+      buffer.write_byte
         (delta_bits & OPTION_DELTA_MASK_) << OPTION_DELTA_SHIFT_
           | length_bits & OPTION_LENGTH_MASK_
       option_write_ext_ delta_bits delta buffer
@@ -164,7 +164,7 @@ class Message:
 
   static option_write_ext_ bits value buffer:
     if bits == OPTION_1_BYTE_MARKER_:
-      buffer.put_byte value - OPTION_1_BYTE_MARKER_
+      buffer.write_byte value - OPTION_1_BYTE_MARKER_
     else if bits == OPTION_2_BYTE_MARKER_:
       array := ByteArray 2
       binary.BIG_ENDIAN.put_uint16 array 0 value - OPTION_2_BYTE_OFFSET_
