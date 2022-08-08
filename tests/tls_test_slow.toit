@@ -73,7 +73,7 @@ run_tests:
     "untrusted-root.badssl.com/unknown root cert",
     //  "revoked.badssl.com",  // We don't have support for cert revocation yet.
     //  "pinning-test.badssl.com",  // We don't have support for cert pinning yet.
-    "sha1-intermediate.badssl.com/unacceptable hash",  // Expired.
+    //  "sha1-intermediate.badssl.com/unacceptable hash",  // Expired.
     // The peer rejects us here because we don't have any hash algorithm in common.
     "rc4-md5.badssl.com/7780@received from our peer",
     "rc4.badssl.com/7780@received from our peer",
