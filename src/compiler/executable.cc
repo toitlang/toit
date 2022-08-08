@@ -72,7 +72,7 @@ static int sign_if_necessary(const char* out_path) {
   if (WIFEXITED(status) != 0) return WEXITSTATUS(status);
   if (WIFSIGNALED(status) != 0) return -1;
 
-  fail:
+   fail:
     perror("sign_if_necessary");
     free(out_path_mutable);
     return -1;
