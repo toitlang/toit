@@ -15,6 +15,13 @@
 
 set(TEST_EXECUTABLES)
 
+# Tests the vessel-generation for different snapshot sizes.
+# 1. Builds Toit files that are then compiled with the Toit compiler.
+# 2. Runs the generated executables.
+
+# The sizes of byte-arrays inside the generated Toit files.
+# By varying the size we ensure that the compiler picks the correct vessel (or at
+# least one that is bigger than the snapshot).
 set(SIZES 1 128 256 512 1024 1048576)
 set(TEST_GENERATOR_SRC "${CMAKE_CURRENT_LIST_DIR}/test_generator.toit")
 
