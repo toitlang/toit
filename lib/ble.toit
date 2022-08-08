@@ -363,7 +363,7 @@ abstract class Characteristic:
     state_ = ResourceState_ service.server_configuration_.resource_group_ resource
 
   /**
-    The currently negotiated mtu of the characteristic. Only meaning full when a client is connected
+    The currently negotiated mtu of the characteristic. Only meaningful when a client is connected
   */
   att_mtu -> int:
     mtu := ble_get_mtu_ state_.resource
@@ -384,7 +384,6 @@ abstract class WritableCharacteristic extends Characteristic:
       state_.wait_for_state BLE_WAIT_RECV_
       data = ble_get_characteristics_value_ state_.resource
       state_.clear_state BLE_WAIT_RECV_
-
     return data
 
 /**
@@ -416,7 +415,7 @@ class WriteOnlyCharacteristic extends WritableCharacteristic:
     resource := ble_add_server_characteristic_
         service.resource_
         uuid.to_byte_array
-        require_response?BLE_CHR_TYPE_WRITE_ONLY_:BLE_CHR_TYPE_WRITE_ONLY_NO_RSP_
+        require_response ? BLE_CHR_TYPE_WRITE_ONLY_ : BLE_CHR_TYPE_WRITE_ONLY_NO_RSP_
         null
     super service resource uuid
 
@@ -463,7 +462,7 @@ class Device:
   resource_group_ := ?
   resource_state_/ResourceState_? := null
 
-  constructor.default server_configuration/ServerConfiguration?=null --preferred_mtu/num=BLE_DEFAULT_PREFERRED_MTU_:
+  constructor.default server_configuration/ServerConfiguration?=null --preferred_mtu/int=BLE_DEFAULT_PREFERRED_MTU_:
     server_configuration_resource_group := server_configuration != null
         ? server_configuration.resource_group_
         : null
@@ -561,7 +560,6 @@ CONNECTED_EVENT_            ::= 1 << 3
 CONNECT_FAILED_EVENT_       ::= 1 << 4
 DISCONNECTED_EVENT_         ::= 1 << 5
 
-
 ble_set_preferred_mtu_ mtu:
   #primitive.ble.set_preferred_mtu
 
@@ -626,8 +624,8 @@ ble_add_server_service_ resource_group_ uuid:
   #primitive.ble.add_server_service
 
 ble_add_server_characteristic_ service_resource uuid type value:
-  ble_run_with_quota_backoff_:
-    return ble_add_server_characteristic_primitive_ service_resource uuid type value
+  return ble_run_with_quota_backoff_:
+    ble_add_server_characteristic_primitive_ service_resource uuid type value
   unreachable
 
 ble_add_server_characteristic_primitive_ service_resource uuid type value:
