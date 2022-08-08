@@ -241,7 +241,7 @@ class RemoteCharacteristic:
   Writes the value of the characteristic on the remote service.
   */
   write_value value/ByteArray -> none:
-    ble_run_with_quota_backoff_ :
+    ble_run_with_quota_backoff_:
       ble_send_data_ service.client_.gatt_ handle value
 
 /**
@@ -365,10 +365,10 @@ abstract class Characteristic:
   /**
     The currently negotiated mtu of the characteristic. Only meaning full when a client is connected
   */
-  att_mtu -> num:
-    low_level_response := ble_get_mtu_ state_.resource
-    if low_level_response == 0: return BLE_DEFAULT_PREFERRED_MTU_
-    return low_level_response
+  att_mtu -> int:
+    mtu := ble_get_mtu_ state_.resource
+    if mtu == 0: return BLE_DEFAULT_PREFERRED_MTU_
+    return mtu
 
 
 /**
@@ -626,7 +626,7 @@ ble_add_server_service_ resource_group_ uuid:
   #primitive.ble.add_server_service
 
 ble_add_server_characteristic_ service_resource uuid type value:
-  ble_run_with_quota_backoff_ :
+  ble_run_with_quota_backoff_:
     return ble_add_server_characteristic_primitive_ service_resource uuid type value
   unreachable
 
@@ -634,7 +634,7 @@ ble_add_server_characteristic_primitive_ service_resource uuid type value:
   #primitive.ble.add_server_characteristic
 
 ble_set_characteristics_value_ gatt new_value -> none:
-  ble_run_with_quota_backoff_ :
+  ble_run_with_quota_backoff_:
     ble_set_characteristics_value_primitive_ gatt new_value
 
 ble_set_characteristics_value_primitive_ gatt new_value:
@@ -650,13 +650,8 @@ ble_get_mtu_ gatt:
   #primitive.ble.get_att_mtu
 
 ble_run_with_quota_backoff_ [block]:
-  u := Time.monotonic_us
+  start := Time.monotonic_us
   while true:
-    e := catch:
-      return block.call
-    if e == "QUOTA_EXCEEDED":
-      sleep --ms=10
-      if Time.monotonic_us - u > 2 * 1000 * 1000:
-        throw "Timeout waiting for BLE layer to empty buffers"
-      continue
-    throw e
+    catch --unwind=(: it != "QUOTA_EXCEEDED"): return block.call
+    sleep --ms=10
+    if Time.monotonic_us - start > 2_000_000: throw DEADLINE_EXCEEDED_ERROR
