@@ -18,12 +18,20 @@
 #include <stdio.h>
 #include <fcntl.h>
 
+#ifdef TOIT_DARWIN
+// For spawning codesign.
+#include <spawn.h>
+#include <wait.h>
+extern "C" char** environ;
+#endif
+
 #include "../top.h"
 #include "../snapshot_bundle.h"
 #include "../vessel/token.h"
 #include "executable.h"
 #include "filesystem_local.h"
 #include "util.h"
+
 
 namespace toit {
 namespace compiler {
@@ -43,6 +51,34 @@ static const uint8 VESSEL_TOKEN[] = { VESSEL_TOKEN_VALUES };
 // We could generate this constant in the build system, but that would make things
 // just much more complicated for something that doesn't change that frequently.
 static int VESSEL_SIZES[] = { 128, 256, 512, 1024, 8192, };
+
+static int sign_if_necessary(const char* out_path) {
+#ifndef TOIT_DARWIN
+  return 0;
+#else
+  char codesign[] = { "codesign" };
+  char minus_s[] = { "-s" };
+  char dash[] = { "-" };
+  char* out_path_mutable = strdup(out_path);
+  // The spawn functions want mutable argv arguments. They are unlikely to modify it, but that's what it wants.
+  char* argv[] = { codesign, minus_s, dash, out_path_mutable, null };
+  int status = 0;
+  pid_t child_pid;
+  if (posix_spawnp(&child_pid, "codesign", null, null, argv, environ) != 0) goto fail;
+  do {
+    if (waitpid(child_pid, &status, 0) == -1) goto fail;
+  } while (WIFEXITED(status) == 0 && WIFSIGNALED(status) == 0);
+
+  free(out_path_mutable);
+  if (WIFEXITED(status) != 0) return WEXITSTATUS(status);
+  if (WIFSIGNALED(status) != 0) return -1;
+
+  fail:
+    perror("sign_if_necessary");
+    free(out_path_mutable);
+    return -1;
+#endif
+}
 
 int create_executable(const char* out_path, const SnapshotBundle& bundle) {
   FilesystemLocal fs;
@@ -118,6 +154,9 @@ int create_executable(const char* out_path, const SnapshotBundle& bundle) {
         return -1;
       }
       fclose(file_out);
+      if (sign_if_necessary(out_path) != 0) {
+        fprintf(stderr, "Error while signing the generated executable '%s'. The program might still work.\n", out_path);
+      }
       return 0;
     }
   }
