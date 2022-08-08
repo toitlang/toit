@@ -482,7 +482,7 @@ static Object* object_to_mbuf(Process* process, Object* object, os_mbuf** result
     if (bytes.length() > 0) {
       os_mbuf* mbuf = ble_hs_mbuf_from_flat(bytes.address(), bytes.length());
       // A null response is not an allocation error, as the mbufs are allocated on boot based on configuration settings.
-      // Therefore, a QC will do little to help the situation and will eventually result in the VM thinking it is out of memory.
+      // Therefore, a GC will do little to help the situation and will eventually result in the VM thinking it is out of memory.
       // The mbuf will be freed eventually by the NimBLE stack. The client code will
       // have to wait and then try again.
       if (!mbuf) QUOTA_EXCEEDED;
