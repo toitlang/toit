@@ -57,7 +57,7 @@ function(ADD_TOIT_SNAPSHOT SOURCE TARGET DEP_FILE ENV)
   add_custom_command(
     OUTPUT "${TARGET}"
     DEPFILE ${DEP_FILE}
-    DEPENDS "${TOITC}" download_packages
+    DEPENDS "${TOITC}" download_packages "${SOURCE}"
     COMMAND ${CMAKE_COMMAND} -E env ${ENV} ASAN_OPTIONS=detect_leaks=false "${TOITC}" --dependency-file "${DEP_FILE}" --dependency-format ninja -w "${TARGET}" "${SOURCE}"
   )
 endfunction(ADD_TOIT_SNAPSHOT)
@@ -78,7 +78,7 @@ function(ADD_TOIT_EXE SOURCE TARGET DEP_FILE ENV)
   add_custom_command(
     OUTPUT "${TARGET}"
     DEPFILE ${DEP_FILE}
-    DEPENDS "${TOITC}" download_packages
+    DEPENDS "${TOITC}" download_packages "${SOURCE}"
     COMMAND ${CMAKE_COMMAND} -E env ${ENV} ASAN_OPTIONS=detect_leaks=false "${TOITC}" --dependency-file "${DEP_FILE}" --dependency-format ninja -o "${TARGET}" "${SOURCE}"
   )
 endfunction(ADD_TOIT_EXE)
