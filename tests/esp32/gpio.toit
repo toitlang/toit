@@ -3,7 +3,7 @@
 // be found in the tests/LICENSE file.
 
 /**
-Tests gpio configurations.
+Tests gpio pins.
 
 Setup:
 Connect pin 16 to pin 26, optionally with a 330 Ohm resistor to avoid short circuits.
@@ -20,6 +20,15 @@ should_reconfigure := true
 main:
   pin1 := gpio.Pin PIN1
   pin2 := gpio.Pin PIN2
+
+  // Test that we can close a pin and open it again.
+  pin1.close
+  pin2.close
+
+  pin1 = gpio.Pin PIN1
+  pin2 = gpio.Pin PIN2
+
+  // Test pin configurations.
 
   pin1.configure --output
   pin2.configure --input
