@@ -32,7 +32,6 @@ extern "C" char** environ;
 #include "filesystem_local.h"
 #include "util.h"
 
-
 namespace toit {
 namespace compiler {
 
