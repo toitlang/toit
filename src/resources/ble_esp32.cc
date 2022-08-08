@@ -73,6 +73,7 @@ enum {
   kBLECharTypeWriteOnly = 2,
   kBLECharTypeReadWrite = 3,
   kBLECharTypeNotification = 4,
+  kBLECharTypeWriteOnlyNoRsp = 5,
 };
 
 const uint8 kBluetoothBaseUUID[16] = {
@@ -376,6 +377,9 @@ int BLEResourceGroup::init_server() {
           case kBLECharTypeWriteOnly:
             gatt_svr_chars[characteristic_idx].flags = BLE_GATT_CHR_F_WRITE;
             break;
+          case kBLECharTypeWriteOnlyNoRsp:
+            gatt_svr_chars[characteristic_idx].flags = BLE_GATT_CHR_F_WRITE_NO_RSP;
+            break;
           case kBLECharTypeReadWrite:
             gatt_svr_chars[characteristic_idx].flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_READ;
             break;
@@ -477,7 +481,11 @@ static Object* object_to_mbuf(Process* process, Object* object, os_mbuf** result
     if (!object->byte_content(process->program(), &bytes, STRINGS_OR_BYTE_ARRAYS)) WRONG_TYPE;
     if (bytes.length() > 0) {
       os_mbuf* mbuf = ble_hs_mbuf_from_flat(bytes.address(), bytes.length());
-      if (!mbuf) MALLOC_FAILED;
+      // A null response is not an allocation error, as the mbufs are allocated on boot based on configuration settings.
+      // Therefore, a GC will do little to help the situation and will eventually result in the VM thinking it is out of memory.
+      // The mbuf will be freed eventually by the NimBLE stack. The client code will
+      // have to wait and then try again.
+      if (!mbuf) QUOTA_EXCEEDED;
       *result = mbuf;
     }
   }
@@ -1057,8 +1065,26 @@ PRIMITIVE(get_characteristics_value) {
   } else {
     ALLOCATION_FAILED;
   }
+}
 
-  return ret_val;
+PRIMITIVE(set_preferred_mtu) {
+  ARGS(int, mtu);
+
+  int result = ble_att_set_preferred_mtu(mtu);
+
+  if (result) {
+    INVALID_ARGUMENT;
+  } else {
+    return process->program()->null_object();
+  }
+}
+
+PRIMITIVE(get_att_mtu) {
+  ARGS(BLEServerCharacteristicResource, resource);
+
+  uint16 mtu = ble_att_mtu(resource->conn_handle());
+
+  return Smi::from(mtu);
 }
 
 } // namespace toit
