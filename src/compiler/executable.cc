@@ -21,7 +21,7 @@
 #ifdef TOIT_DARWIN
 // For spawning codesign.
 #include <spawn.h>
-#include <wait.h>
+#include <sys/wait.h>
 extern "C" char** environ;
 #endif
 
