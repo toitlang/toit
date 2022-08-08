@@ -363,7 +363,7 @@ abstract class Characteristic:
     state_ = ResourceState_ service.server_configuration_.resource_group_ resource
 
   /**
-    The currently negotiated mtu of the characteristic. Only meaningful when a client is connected
+  The currently negotiated mtu of the characteristic. Only meaningful when a client is connected.
   */
   att_mtu -> int:
     mtu := ble_get_mtu_ state_.resource
