@@ -7,4 +7,7 @@ tests/negative/constant_name_test.toit:9:3: warning: Final field with constant-l
 tests/negative/constant_name_test.toit:11:3: warning: Final field with constant-like name: 'A_B'. Missing 'static'?
   A_B ::= 43
   ^~~
+tests/negative/constant_name_test.toit:12:3: warning: Final field with constant-like name: 'A_B499'. Missing 'static'?
+  A_B499 ::= 43
+  ^~~~~~
 Compilation failed.

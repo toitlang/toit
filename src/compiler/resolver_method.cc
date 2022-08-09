@@ -1031,6 +1031,7 @@ static bool has_constant_name(Symbol name) {
       seen_capital = true;
       continue;
     }
+    if ('0' <= c && c <= '9') continue;
     if (c == '_') continue;
     return false;
   }
