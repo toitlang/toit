@@ -32,6 +32,7 @@
 #endif
 namespace toit {
 
+Mutex* OS::_print_mutex = null;
 Mutex* OS::_global_mutex = null;
 Mutex* OS::_scheduler_mutex = null;
 Mutex* OS::_resource_mutex = null;

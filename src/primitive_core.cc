@@ -60,15 +60,17 @@ namespace toit {
 MODULE_IMPLEMENTATION(core, MODULE_CORE)
 
 PRIMITIVE(write_string_on_stdout) {
+  Locker locker(OS::print_mutex());
   ARGS(cstring, message, bool, add_newline);
-  fprintf(stdout, "%s%s", message, add_newline ? "\n" : "");
+  fprintf(stdout, "X%s%s", message, add_newline ? "\n" : "");
   fflush(stdout);
   return _raw_message;
 }
 
 PRIMITIVE(write_string_on_stderr) {
+  Locker locker(OS::print_mutex());
   ARGS(cstring, message, bool, add_newline);
-  fprintf(stderr, "%s%s", message, add_newline ? "\n" : "");
+  fprintf(stderr, "Y%s%s", message, add_newline ? "\n" : "");
   fflush(stderr);
   return _raw_message;
 }

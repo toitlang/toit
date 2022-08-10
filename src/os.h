@@ -172,6 +172,7 @@ class OS {
 
   static void out_of_memory(const char* reason);
 
+  static Mutex* print_mutex() { return _print_mutex; }
   static Mutex* global_mutex() { return _global_mutex; }
   static Mutex* scheduler_mutex() { return _scheduler_mutex; }
   static Mutex* resource_mutex() { return _resource_mutex; }
@@ -254,6 +255,7 @@ class OS {
   static bool monotonic_gettime(int64* timestamp);
   static void timespec_increment(timespec* ts, int64 ns);
 
+  static Mutex* _print_mutex;
   static Mutex* _global_mutex;
   static Mutex* _scheduler_mutex;
   static Mutex* _resource_mutex;
