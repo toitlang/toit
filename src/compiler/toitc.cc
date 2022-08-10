@@ -29,18 +29,18 @@ static void print_usage(int exit_code) {
   // relevant for users.
   printf("Usage:\n");
   printf("toit\n");
-  printf("  [-h] [--help]                             // This help message\n");
-  printf("  [--version]                               // Prints version information\n");
-  printf("  [-X<flag>]*                               // Provide a compiler flag\n");
-  printf("  [--dependency-file <file>]                // Write a dependency file ('-' for stdout)\n");
-  printf("  [--dependency-format {plain|ninja}]       // The format of the dependency file\n");
-  printf("  [--project-root <path>]                   // Path to the project root. Any package.lock file must be in that folder\n");
-  printf("  [--force]                                 // Finish compilation even with errors (if possible).\n");
-  printf("  [-Werror]                                 // Treat warnings like errors.\n");
-  printf("  [--show-package-warnings]                 // Show warnings from packages.\n");
-  printf("  { -o <executable> <toitfile> |            // Write executable.\n");
-  printf("    -w <snapshot> <toitfile> <args>... |    // Write snapshot file.\n");
-  printf("    --analyze <toitfiles>...                // Analyze Toit files.\n");
+  printf("  [-h] [--help]                         // This help message\n");
+  printf("  [--version]                           // Prints version information\n");
+  printf("  [-X<flag>]*                           // Provide a compiler flag\n");
+  printf("  [--dependency-file <file>]            // Write a dependency file ('-' for stdout)\n");
+  printf("  [--dependency-format {plain|ninja}]   // The format of the dependency file\n");
+  printf("  [--project-root <path>]               // Path to the project root. Any package.lock file must be in that folder\n");
+  printf("  [--force]                             // Finish compilation even with errors (if possible).\n");
+  printf("  [-Werror]                             // Treat warnings like errors.\n");
+  printf("  [--show-package-warnings]             // Show warnings from packages.\n");
+  printf("  { -o <executable> <toitfile> |        // Write executable.\n");
+  printf("    -w <snapshot> <toitfile>            // Write snapshot file.\n");
+  printf("    --analyze <toitfiles>...            // Analyze Toit files.\n");
   printf("  }\n");
   exit(exit_code);
 }
@@ -285,7 +285,6 @@ int main(int argc, char **argv) {
     auto source_path = source_path_count == 0 ? null : source_paths[0];
     compiled = compiler.compile(source_path,
                                 direct_script,
-                                args,
                                 bundle_filename == null ? exe_filename : bundle_filename,
                                 compiler_config);
 

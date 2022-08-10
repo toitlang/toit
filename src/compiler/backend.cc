@@ -119,7 +119,7 @@ static List<uint16> encode_typecheck_interface_list(const List<ir::Class*> inter
   return result;
 }
 
-Program* Backend::emit(ir::Program* ir_program, char** snapshot_args) {
+Program* Backend::emit(ir::Program* ir_program) {
   // Compile everything.
 
   auto classes = ir_program->classes();
@@ -221,7 +221,6 @@ Program* Backend::emit(ir::Program* ir_program, char** snapshot_args) {
 
   set_entry_points(ir_program->entry_points(), &dispatch_table, &program_builder);
 
-  if (snapshot_args != null) program_builder.set_snapshot_arguments(snapshot_args);
   program_builder.cook();
 
   return program;
