@@ -71,6 +71,8 @@ const int ENTRY_UNIT_INDEX = 0;
 const int CORE_UNIT_INDEX = 1;
 
 struct PipelineConfiguration {
+  char** snapshot_args;
+
   const char* out_path;
   const char* dep_file;
   Compiler::DepFormat dep_format;
@@ -366,6 +368,7 @@ void Compiler::language_server(const Compiler::Configuration& compiler_config) {
   const char* mode = reader.next("mode");
   SourceManager source_manager(fs);
   PipelineConfiguration configuration = {
+    .snapshot_args = null,
     .out_path = null,
     .dep_file = null,
     .dep_format = DepFormat::none,
@@ -535,6 +538,7 @@ void Compiler::analyze(List<const char*> source_paths,
   SourceManager source_manager(&fs);
   AnalysisDiagnostics diagnostics(&source_manager, compiler_config.show_package_warnings);
   PipelineConfiguration configuration = {
+    .snapshot_args = null,
     .out_path = null,
     .dep_file = compiler_config.dep_file,
     .dep_format = compiler_config.dep_format,
@@ -636,6 +640,7 @@ static const uint8* wrap_direct_script_expression(const char* direct_script, Dia
 
 SnapshotBundle Compiler::compile(const char* source_path,
                                  const char* direct_script,
+                                 char** snapshot_args,
                                  const char* out_path,
                                  const Compiler::Configuration& compiler_config) {
   // We accept '/' paths on Windows as well.
@@ -660,6 +665,7 @@ SnapshotBundle Compiler::compile(const char* source_path,
   ASSERT(source_path != null);
 
   PipelineConfiguration configuration = {
+    .snapshot_args = snapshot_args,
     .out_path = out_path,
     .dep_file = compiler_config.dep_file,
     .dep_format = compiler_config.dep_format,
@@ -684,6 +690,7 @@ SnapshotBundle Compiler::compile(const char* source_path,
   NullDiagnostics null_diagnostics(configuration.source_manager);
   PipelineConfiguration debug_configuration = main_configuration;
   debug_configuration.diagnostics = &null_diagnostics;
+  debug_configuration.snapshot_args = null;
   // TODO(florian): the dep-file needs to keep track of both compilations.
   debug_configuration.dep_file = null;
   debug_configuration.dep_format = DepFormat::none;
@@ -1601,7 +1608,7 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths) {
   mark_eager_globals(ir_program->globals());
 
   Backend backend(source_manager(), &source_mapper);
-  auto program = backend.emit(ir_program);
+  auto program = backend.emit(ir_program, _configuration.snapshot_args);
   SnapshotGenerator generator(program);
   generator.generate(program);
   int source_map_size;
