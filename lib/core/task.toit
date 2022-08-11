@@ -2,6 +2,8 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+import ..system.services show ServiceManager_
+
 // How many tasks are active.
 task_count_ := 0
 // How many tasks are blocked.
@@ -90,6 +92,14 @@ interface Task:
   /** Whether this task is canceled. */
   is_canceled -> bool
 
+  /**
+  Returns the deadline for the task as a microsecond timestamp that can be
+    compared against return values from $Time.monotonic_us.
+
+  Returns null if the task has no deadline.
+  */
+  deadline -> int?
+
 class Task_ implements Task:
   /**
   Same as $task, but returns it as a $Task_ object instead.
@@ -175,8 +185,8 @@ class Task_ implements Task:
     if previous == this:
       // If we encounted a root-error, terminate the process.
       if exit_with_error_: __exit__ 1
-      // Check whether only background tasks are running.
-      if task_count_ == task_background_: __halt__
+      // Check whether no service definitions and only background tasks are running.
+      if ServiceManager_.is_empty and task_count_ == task_background_: __halt__
       is_task_idle_ = true
       while true:
         process_messages_

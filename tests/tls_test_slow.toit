@@ -55,7 +55,7 @@ run_tests:
     // "ecc384.badssl.com",
     "rsa2048.badssl.com",
     "rsa4096.badssl.com",
-    "extended-validation.badssl.com",
+    // "extended-validation.badssl.com",
     "mozilla-modern.badssl.com",
     "tls-v1-2.badssl.com:1012",
     "hsts.badssl.com",
