@@ -335,6 +335,7 @@ class ServiceResourceProxyManager_ implements SystemMessageHandler_:
 
 class ServiceManager_ implements SystemMessageHandler_:
   static instance := ServiceManager_
+  static uninitialized/bool := true
 
   broker_/ServiceRpcBroker_ ::= ServiceRpcBroker_
 
@@ -360,6 +361,10 @@ class ServiceManager_ implements SystemMessageHandler_:
         resource/ServiceResource? := service._find_resource_ client arguments[1]
         if resource: resource.close
     broker_.install
+    uninitialized = false
+
+  static is_empty -> bool:
+    return uninitialized or instance.services_by_uuid_.is_empty
 
   listen uuid/string service/ServiceDefinition -> none:
     services_by_uuid_[uuid] = service
