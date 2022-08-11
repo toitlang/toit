@@ -108,11 +108,12 @@ class WifiResourceGroup : public ResourceGroup {
     return esp_wifi_start();
   }
 
-  int rssi() {
+  bool rssi(int8* output) {
     wifi_ap_record_t ap_info;
     esp_err_t err = esp_wifi_sta_get_ap_info(&ap_info);
-    if (err != ERR_OK) return 0;
-    return ap_info.rssi;
+    if (err != ERR_OK) return false;
+    *output = ap_info.rssi;
+    return true;
   }
 
   ~WifiResourceGroup() {
@@ -446,8 +447,8 @@ PRIMITIVE(get_ip) {
 
 PRIMITIVE(get_rssi) {
   ARGS(WifiResourceGroup, group);
-  int rssi = group->rssi();
-  if (rssi == 0) return process->program()->null_object();
+  int8 rssi;
+  if (!group->rssi(&rssi)) return process->program()->null_object();
   return Smi::from(rssi);
 }
 

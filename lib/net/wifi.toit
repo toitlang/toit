@@ -15,18 +15,28 @@ CONFIG_CHANNEL   /string ::= "channel"
 
 service_/WifiServiceClient? ::= (WifiServiceClient --no-open).open
 
-open --ssid/string --password/string -> net.Interface
+interface Interface extends net.Interface:
+  /**
+  Returns the signal strength of the current access point association
+    as a float in the range [0..1].
+
+  Throws an exception if this network isn't currently connected to an
+    access point.
+  */
+  signal_strength -> float
+
+open --ssid/string --password/string -> Interface
     --save/bool=false:
   return open --save=save {
     CONFIG_SSID: ssid,
     CONFIG_PASSWORD: password,
   }
 
-open config/Map? -> net.Interface
+open config/Map? -> Interface
     --save/bool=false:
   service := service_
   if not service: throw "WiFi unavailable"
-  return SystemInterface_ service (service.connect config save)
+  return WifiInterface_ service (service.connect config save)
 
 establish --ssid/string --password/string -> net.Interface
     --broadcast/bool=true
@@ -38,7 +48,18 @@ establish --ssid/string --password/string -> net.Interface
     CONFIG_CHANNEL: channel,
   }
 
-establish config/Map? -> net.Interface:
+establish config/Map? -> Interface:
   service := service_
   if not service: throw "WiFi unavailable"
-  return SystemInterface_ service (service.establish config)
+  return WifiInterface_ service (service.establish config)
+
+class WifiInterface_ extends SystemInterface_ implements Interface:
+  constructor client/WifiServiceClient connection/List:
+    super client connection
+
+  signal_strength -> float:
+    rssi := (client_ as WifiServiceClient).rssi handle_
+    if not rssi: throw "wifi not connected in STA mode"
+    // RSSI is usually in the range [-100..-35].
+    rssi = min 65 (max 0 rssi + 100)
+    return rssi / 65.0

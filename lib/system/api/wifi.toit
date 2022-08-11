@@ -7,13 +7,16 @@ import system.api.network show NetworkService NetworkServiceClient
 interface WifiService extends NetworkService:
   static UUID  /string ::= "2436edc6-4cd8-4834-8ebc-ed883990da40"
   static MAJOR /int    ::= 0
-  static MINOR /int    ::= 6
+  static MINOR /int    ::= 7
 
   static CONNECT_INDEX /int ::= 1000
   connect config/Map? save/bool -> List
 
   static ESTABLISH_INDEX /int ::= 1001
   establish config/Map? -> List
+
+  static RSSI_INDEX /int ::= 1002
+  rssi handle/int -> int?
 
 class WifiServiceClient extends NetworkServiceClient implements WifiService:
   constructor --open/bool=true:
@@ -27,3 +30,6 @@ class WifiServiceClient extends NetworkServiceClient implements WifiService:
 
   establish config/Map? -> List:
     return invoke_ WifiService.ESTABLISH_INDEX config
+
+  rssi handle/int -> int?:
+    return invoke_ WifiService.RSSI_INDEX handle
