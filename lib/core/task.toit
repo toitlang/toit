@@ -94,7 +94,7 @@ interface Task:
   Returns the deadline for the task as a microsecond timestamp that can be
     compared against return values from $Time.monotonic_us.
 
-  If the task has no deadline, the $deadline getter returns null.
+  Returns null if the task has no deadline.
   */
   deadline -> int?
 
