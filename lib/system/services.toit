@@ -37,18 +37,30 @@ abstract class ServiceClient:
 
   _name_/string? := null
   _version_/List? := null
+  _default_timeout_/int? ::= ?
+
+  static DEFAULT_OPEN_TIMEOUT_MS /int ::= 100
 
   constructor --open/bool=true:
+    // If we're opening the client as part of constructing it, we instruct the
+    // service discovery service to wait for the requested service to be provided.
+    _default_timeout_ = open ? DEFAULT_OPEN_TIMEOUT_MS : null
     if open and not this.open: throw "Cannot find service"
 
   abstract open -> ServiceClient?
 
-  open_ uuid/string major/int minor/int --pid/int?=null -> ServiceClient?:
+  open_ uuid/string major/int minor/int -> ServiceClient?
+      --pid/int?=null
+      --timeout/int?=_default_timeout_:
     if _id_: throw "Already opened"
     if pid:
       process_send_ pid SYSTEM_RPC_NOTIFY_ [SERVICES_MANAGER_NOTIFY_ADD_PROCESS, current_process_]
     else:
-      pid = _client_.discover uuid
+      if timeout:
+        catch --unwind=(: it != DEADLINE_EXCEEDED_ERROR):
+          with_timeout --ms=timeout: pid = _client_.discover uuid true
+      else:
+        pid = _client_.discover uuid false
       if not pid: return null
     // Open the client by doing a RPC-call to the discovered process.
     // This returns the client id necessary for invoking service methods.
@@ -323,6 +335,7 @@ class ServiceResourceProxyManager_ implements SystemMessageHandler_:
 
 class ServiceManager_ implements SystemMessageHandler_:
   static instance := ServiceManager_
+  static uninitialized/bool := true
 
   broker_/ServiceRpcBroker_ ::= ServiceRpcBroker_
 
@@ -348,6 +361,10 @@ class ServiceManager_ implements SystemMessageHandler_:
         resource/ServiceResource? := service._find_resource_ client arguments[1]
         if resource: resource.close
     broker_.install
+    uninitialized = false
+
+  static is_empty -> bool:
+    return uninitialized or instance.services_by_uuid_.is_empty
 
   listen uuid/string service/ServiceDefinition -> none:
     services_by_uuid_[uuid] = service
