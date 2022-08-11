@@ -49,7 +49,9 @@ abstract class ServiceClient:
 
   abstract open -> ServiceClient?
 
-  open_ uuid/string major/int minor/int --pid/int?=null --timeout/int?=_default_timeout_ -> ServiceClient?:
+  open_ uuid/string major/int minor/int -> ServiceClient?
+      --pid/int?=null
+      --timeout/int?=_default_timeout_:
     if _id_: throw "Already opened"
     if pid:
       process_send_ pid SYSTEM_RPC_NOTIFY_ [SERVICES_MANAGER_NOTIFY_ADD_PROCESS, current_process_]
