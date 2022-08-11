@@ -319,12 +319,15 @@ class ContainerManager extends ContainerServiceDefinition implements SystemMessa
       unreachable
 
 print_for_manually_decoding_ message/ByteArray --from=0 --to=message.size:
-  // Print a message on output so that that you can easily decode.
-  // The message is base64 encoded to limit the output size.
-  print_ "----"
-  print_ "Received a Toit stack trace. Executing the command below will"
-  print_ "make it human readable:"
-  print_ "----"
+  // Print a message on output that can easily be decoded by users and tools.
+  // The message is base64 encoded to limit the output size and we make
+  // sure to print it with a single call to print, so the chance of other prints
+  // interfering with the output is minimized.
+  lines ::= []
+  lines.add "----"
+  lines.add "Received a Toit system message. Executing the command below will"
+  lines.add "make it human readable:"
+  lines.add "----"
   // Block size must be a multiple of 3 for this to work, due to the 3/4 nature
   // of base64 encoding.
   BLOCK_SIZE := 1500
@@ -333,7 +336,8 @@ print_for_manually_decoding_ message/ByteArray --from=0 --to=message.size:
     prefix := i == from ? "jag decode " : ""
     base64_text := base64.encode message[i..(end ? to : i + BLOCK_SIZE)]
     postfix := end ? "" : "\\"
-    print_ "$prefix$base64_text$postfix"
+    lines.add "$prefix$base64_text$postfix"
+  print_ (lines.join "\n")
 
 find_trace_origin_id trace/ByteArray -> uuid.Uuid?:
   // Short strings are encoded with a single unsigned byte length ('U').
