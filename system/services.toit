@@ -19,12 +19,15 @@ import system.services
     SERVICES_MANAGER_NOTIFY_ADD_PROCESS
     SERVICES_MANAGER_NOTIFY_REMOVE_PROCESS
 
+import monitor
 import system.api.service_discovery show ServiceDiscoveryService
 
 class SystemServiceManager extends ServiceDefinition implements ServiceDiscoveryService:
   service_managers_/Map ::= {:}  // Map<int, Set<int>>
   services_by_pid_/Map ::= {:}   // Map<int, Set<string>>
   services_by_uuid_/Map ::= {:}  // Map<string, int>
+
+  signal_/monitor.Signal ::= monitor.Signal
 
   constructor:
     super "system/service-discovery" --major=0 --minor=1 --patch=1
@@ -33,7 +36,7 @@ class SystemServiceManager extends ServiceDefinition implements ServiceDiscovery
 
   handle pid/int client/int index/int arguments/any -> any:
     if index == ServiceDiscoveryService.DISCOVER_INDEX:
-      return discover arguments pid
+      return discover arguments[0] arguments[1] pid
     if index == ServiceDiscoveryService.LISTEN_INDEX:
       return listen arguments pid
     if index == ServiceDiscoveryService.UNLISTEN_INDEX:
@@ -47,6 +50,7 @@ class SystemServiceManager extends ServiceDefinition implements ServiceDiscovery
     service_managers_.get pid --init=(: {})
     uuids := services_by_pid_.get pid --init=(: {})
     uuids.add uuid
+    signal_.raise
 
   unlisten uuid/string -> none:
     pid := services_by_uuid_.get uuid
@@ -59,9 +63,15 @@ class SystemServiceManager extends ServiceDefinition implements ServiceDiscovery
     service_managers_.remove pid
     services_by_pid_.remove pid
 
-  discover uuid/string pid/int -> int?:
-    target := services_by_uuid_.get uuid
-    if not target: return null
+  discover uuid/string wait/bool pid/int -> int?:
+    target/int? := null
+    if wait:
+      signal_.wait:
+        target = services_by_uuid_.get uuid
+        target != null
+    else:
+      target = services_by_uuid_.get uuid
+      if not target: return null
     processes := service_managers_[target]
     if processes:
       processes.add pid
@@ -79,7 +89,7 @@ class SystemServiceManager extends ServiceDefinition implements ServiceDiscovery
       processes.remove pid
       process_send_ manager SYSTEM_RPC_NOTIFY_ [SERVICES_MANAGER_NOTIFY_REMOVE_PROCESS, pid]
 
-  discover uuid/string -> int:
+  discover uuid/string wait/bool -> int?:
     unreachable  // <-- TODO(kasper): nasty
 
   listen uuid/string -> none:
