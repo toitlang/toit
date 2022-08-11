@@ -178,7 +178,7 @@ class Task_ implements Task:
       // If we encounted a root-error, terminate the process.
       if exit_with_error_: __exit__ 1
       // Check whether no service definitions and only background tasks are running.
-      if ServiceManager_.is_empty and task_count_ == task_background_:  __halt__
+      if ServiceManager_.is_empty and task_count_ == task_background_: __halt__
       is_task_idle_ = true
       while true:
         process_messages_
