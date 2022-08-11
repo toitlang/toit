@@ -92,6 +92,14 @@ interface Task:
   /** Whether this task is canceled. */
   is_canceled -> bool
 
+  /**
+  Returns the deadline for the task as a microsecond timestamp that can be
+    compared against return values from $Time.monotonic_us.
+
+  Returns null if the task has no deadline.
+  */
+  deadline -> int?
+
 class Task_ implements Task:
   /**
   Same as $task, but returns it as a $Task_ object instead.
