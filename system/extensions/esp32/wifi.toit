@@ -42,6 +42,9 @@ class WifiServiceDefinition extends NetworkServiceDefinitionBase:
       return connect client arguments[0] arguments[1]
     if index == WifiService.ESTABLISH_INDEX:
       return establish client arguments
+    if index == WifiService.RSSI_INDEX:
+      network := (resource client arguments) as NetworkResource
+      return rssi network
     return super pid client index arguments
 
   connect client/int -> List:
@@ -105,6 +108,9 @@ class WifiServiceDefinition extends NetworkServiceDefinitionBase:
 
   address resource/NetworkResource -> ByteArray:
     return (state_.module as WifiModule).address.to_byte_array
+
+  rssi resource/NetworkResource -> int?:
+    return (state_.module as WifiModule).rssi
 
   on_module_closed module/WifiModule -> none:
     resources_do: it.notify_ NetworkService.NOTIFY_CLOSED
@@ -257,5 +263,5 @@ wifi_disconnect_reason_ resource:
 wifi_get_ip_ resource_group -> ByteArray?:
   #primitive.wifi.get_ip
 
-wifi_get_rssi_ resource_group:
+wifi_get_rssi_ resource_group -> int?:
   #primitive.wifi.get_rssi
