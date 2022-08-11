@@ -37,22 +37,28 @@ abstract class ServiceClient:
 
   _name_/string? := null
   _version_/List? := null
-  _wait_by_default_/bool ::= ?
+  _default_timeout_/int? ::= ?
+
+  static DEFAULT_OPEN_TIMEOUT_MS /int ::= 100
 
   constructor --open/bool=true:
     // If we're opening the client as part of constructing it, we instruct the
     // service discovery service to wait for the requested service to be provided.
-    _wait_by_default_ = open
+    _default_timeout_ = open ? DEFAULT_OPEN_TIMEOUT_MS : null
     if open and not this.open: throw "Cannot find service"
 
   abstract open -> ServiceClient?
 
-  open_ uuid/string major/int minor/int --pid/int?=null --wait/bool=_wait_by_default_ -> ServiceClient?:
+  open_ uuid/string major/int minor/int --pid/int?=null --timeout/int?=_default_timeout_ -> ServiceClient?:
     if _id_: throw "Already opened"
     if pid:
       process_send_ pid SYSTEM_RPC_NOTIFY_ [SERVICES_MANAGER_NOTIFY_ADD_PROCESS, current_process_]
     else:
-      pid = _client_.discover uuid wait
+      if timeout:
+        catch --unwind=(: it != DEADLINE_EXCEEDED_ERROR):
+          with_timeout --ms=timeout: pid = _client_.discover uuid true
+      else:
+        pid = _client_.discover uuid false
       if not pid: return null
     // Open the client by doing a RPC-call to the discovered process.
     // This returns the client id necessary for invoking service methods.

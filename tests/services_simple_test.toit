@@ -33,18 +33,18 @@ test_illegal_name:
   service := SimpleServiceDefinition
   service.install
 
-  expect.expect_throw DEADLINE_EXCEEDED_ERROR:
-    with_timeout --ms=100: FlexibleServiceClient ""
+  expect.expect_throw "Cannot find service":
+    FlexibleServiceClient ""
   expect.expect_null
     (FlexibleServiceClient "" --no-open).open
 
-  expect.expect_throw DEADLINE_EXCEEDED_ERROR:
-    with_timeout --ms=100: FlexibleServiceClient "logs"
+  expect.expect_throw "Cannot find service":
+    FlexibleServiceClient "logs"
   expect.expect_null
     (FlexibleServiceClient "logs" --no-open).open
 
-  expect.expect_throw DEADLINE_EXCEEDED_ERROR:
-    with_timeout --ms=100: FlexibleServiceClient "log.illegal"
+  expect.expect_throw "Cannot find service":
+    FlexibleServiceClient "log.illegal"
   expect.expect_null
     (FlexibleServiceClient "log.illegal" --no-open).open
 
