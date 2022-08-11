@@ -37,18 +37,22 @@ abstract class ServiceClient:
 
   _name_/string? := null
   _version_/List? := null
+  _wait_by_default_/bool ::= ?
 
   constructor --open/bool=true:
+    // If we're opening the client as part of constructing it, we instruct the
+    // service discovery service to wait for the requested service to be provided.
+    _wait_by_default_ = open
     if open and not this.open: throw "Cannot find service"
 
   abstract open -> ServiceClient?
 
-  open_ uuid/string major/int minor/int --pid/int?=null -> ServiceClient?:
+  open_ uuid/string major/int minor/int --pid/int?=null --wait/bool=_wait_by_default_ -> ServiceClient?:
     if _id_: throw "Already opened"
     if pid:
       process_send_ pid SYSTEM_RPC_NOTIFY_ [SERVICES_MANAGER_NOTIFY_ADD_PROCESS, current_process_]
     else:
-      pid = _client_.discover uuid
+      pid = _client_.discover uuid wait
       if not pid: return null
     // Open the client by doing a RPC-call to the discovered process.
     // This returns the client id necessary for invoking service methods.
