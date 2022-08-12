@@ -4,14 +4,22 @@
 
 import system.services
 
+// This example illustrates how to define and use a simple logging
+// service across two processes.
+//
+// See https://github.com/toitlang/toit/discussions/869 for more
+// details on how the service framework work.
+
 main:
-  service := LogServiceDefinition
-  service.install
+  spawn::
+    service := LogServiceDefinition
+    service.install
+    service.uninstall --wait  // Wait until last client closes.
+
   logger := LogServiceClient
   logger.log "Hello"
   logger.log "World"
   logger.close
-  service.uninstall
 
 // ------------------------------------------------------------------
 
