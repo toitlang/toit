@@ -34,7 +34,7 @@ file(WRITE ${IN_FILE2} "
 message := \"hello world\"
 ")
 
-file(WRITE ${SOURCE_TRIGGER} "
+file(WRITE "${SOURCE_TRIGGER}" "
 test1
 ")
 backtick(${CMAKE_COMMAND} --build "${BIN_DIR}" --target test_cmake)
@@ -42,7 +42,7 @@ backtick(${CMAKE_COMMAND} --build "${BIN_DIR}" --target test_cmake)
 file(WRITE ${IN_FILE2} "
 message := \"hello world2\"
 ")
-file(WRITE ${SOURCE_TRIGGER} "
+file(WRITE "${SOURCE_TRIGGER}" "
 test2
 ")
 backtick(${CMAKE_COMMAND} --build "${BIN_DIR}" --target test_cmake)
