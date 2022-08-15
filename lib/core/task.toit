@@ -53,7 +53,7 @@ The Toit programming language is cooperatively scheduled, so it is important
 */
 yield:
   process_messages_
-  task_yield_to_ Task_.current.next_running_
+  task_transfer_to_ Task_.current.next_running_ false
 
 // ----------------------------------------------------------------------------
 
@@ -175,7 +175,7 @@ class Task_ implements Task:
     if timer_:
       timer_.close
       timer_ = null
-    task_transfer_ next true  // Passing null will detach the calling execution stack from the task.
+    task_transfer_to_ next true
 
   suspend_:
     processed := false
@@ -258,7 +258,7 @@ class Task_ implements Task:
   // Timer used for all sleep operations on this task.
   timer_ := null
 
-  // TODO(kasper): Make this fields private. We don't want users
+  // TODO(kasper): Make these fields private. We don't want users
   // to write to these fields.
   name := null
   background := null
@@ -273,9 +273,5 @@ class Task_ implements Task:
 task_new_ lambda/Lambda -> Task_:
   #primitive.core.task_new
 
-task_transfer_ to/Task_ detach_stack:
+task_transfer_to_ to/Task_ detach_stack:
   #primitive.core.task_transfer
-
-task_yield_to_ to/Task_:
-  if Task_.current != to:   // Skip self transfer.
-    task_transfer_ to false

@@ -179,7 +179,7 @@ class __Monitor__:
     try:
       self.monitor_ = this
       next := self.suspend_
-      task_yield_to_ next
+      task_transfer_to_ next false
     finally:
       task_blocked_--
       self.monitor_ = null

@@ -1781,15 +1781,16 @@ PRIMITIVE(task_new) {
 
 PRIMITIVE(task_transfer) {
   ARGS(Task, to, bool, detach_stack);
-  if (!to->has_stack()) OTHER_ERROR;  // Make sure we don't transfer to a dead task.
-  process->scheduler_thread()->interpreter()->store_stack();
-  if (detach_stack) {
-    // Remove the link from the task to the stack.
-    Task* from = process->object_heap()->task();
-    from->detach_stack();
+  Task* from = process->object_heap()->task();
+  if (from != to) {
+    // Make sure we don't transfer to a dead task.
+    if (!to->has_stack()) OTHER_ERROR;
+    process->scheduler_thread()->interpreter()->store_stack();
+    // Remove the link from the task to the stack if requested.
+    if (detach_stack) from->detach_stack();
+    process->object_heap()->set_task(to);
+    process->scheduler_thread()->interpreter()->load_stack();
   }
-  process->object_heap()->set_task(to);
-  process->scheduler_thread()->interpreter()->load_stack();
   return Smi::from(42);
 }
 

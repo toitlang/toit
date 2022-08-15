@@ -241,7 +241,7 @@ class LazyInitializer_:
     task_blocked_++
     try:
       next := blocked.suspend_
-      task_yield_to_ next
+      task_transfer_to_ next false
     finally:
       task_blocked_--
 
