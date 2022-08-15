@@ -118,11 +118,11 @@ process_messages_:
             // ...
             try:
               while true:
-                e := catch --unwind=(: it != DEADLINE_EXCEEDED_ERROR):
-                  with_timeout --ms=100:
-                    doit := kurten.receive
-                    doit.call
-                if e: break
+                doit/Lambda? := null
+                catch --unwind=(: it != DEADLINE_EXCEEDED_ERROR):
+                  with_timeout --ms=100: doit = kurten.receive
+                if not doit: break
+                doit.call
             finally:
               handler_task_ = null
           xxx = kurten
