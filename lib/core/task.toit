@@ -57,6 +57,7 @@ The Toit programming language is cooperatively scheduled, so it is important
   opportunity to run.
 */
 yield:
+  process_messages_
   task_yield_to_ Task_.current.next_running_
 
 // ----------------------------------------------------------------------------
@@ -197,6 +198,7 @@ class Task_ implements Task:
           return resumed
         __yield__
     else:
+      process_messages_
       // Unlink from the linked of running tasks.
       next := next_running_
       previous.next_running_ = next
@@ -247,7 +249,7 @@ class Task_ implements Task:
   // Task state initialized by the VM.
   id_ := null
 
-  // Deadline and cancel support.
+  // Deadline and cancelation support.
   deadline_ := null
   is_canceled_ := null
   critical_count_ := null
@@ -255,9 +257,11 @@ class Task_ implements Task:
   // If the task is blocked in a monitor, this reference that monitor.
   monitor_ := null
 
-  // All running tasks are chained together in linked list.
+  // All running tasks are chained together in doubly linked list.
   next_running_ := null
   previous_running_ := null
+
+  // Waiting tasks are chained together in a singly linked list.
   next_blocked_ := null
 
   // Timer used for all sleep operations on this task.
@@ -278,10 +282,3 @@ task_transfer_ to/Task_ detach_stack:
 task_yield_to_ to/Task_:
   if Task_.current != to:   // Skip self transfer.
     task_transfer_ to false
-
-  // TODO(kasper): Consider not looking at the incoming messages at
-  // all yield points. Maybe only once per run through the runnable tasks?
-
-  // Messages must be processed after returning to a running task,
-  // not before transfering away from a suspended one.
-  process_messages_
