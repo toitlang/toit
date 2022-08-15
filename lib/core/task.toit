@@ -10,13 +10,8 @@ task_count_ := 0
 task_blocked_ := 0
 // How many tasks are running in the background.
 task_background_ := 0
-
-// Whether the system is idle.
-is_task_idle_ := false
-
-task_resumed_ := null
-
-exit_with_error_ := false
+// Did any task exit with an error?
+task_exit_with_error_ := false
 
 /**
 Returns the object for the current task.
@@ -140,6 +135,7 @@ class Task_ implements Task:
   initialize_:
     is_canceled_ = false
     critical_count_ = 0
+    state_ = STATE_SUSPENDED
     task_count_++
     if background: task_background_++
 
@@ -171,7 +167,7 @@ class Task_ implements Task:
       exit_ exception != null
 
   exit_ has_error/bool:
-    if has_error: exit_with_error_ = true
+    if has_error: task_exit_with_error_ = true
     task_count_--
     if background: task_background_--
     // Yield to the next task.
@@ -182,47 +178,42 @@ class Task_ implements Task:
     task_transfer_ next true  // Passing null will detach the calling execution stack from the task.
 
   suspend_:
-    previous := previous_running_
-    if previous == this:
-      // If we encounted a root-error, terminate the process.
-      if exit_with_error_: __exit__ 1
-      // Check whether no service definitions and only background tasks are running.
-      if ServiceManager_.is_empty and task_count_ == task_background_: __halt__
-      is_task_idle_ = true
+    processed := false
+    state_ = STATE_SUSPENDING
+    if identical this previous_running_:
       while true:
+        // If any task exited with an error, terminate the process.
+        if task_exit_with_error_: __exit__ 1
+        // Check whether no service definitions and only background tasks are running.
+        if ServiceManager_.is_empty and task_count_ == task_background_: __halt__
         process_messages_
-        resumed := task_resumed_
-        if resumed:
-          is_task_idle_ = false
-          task_resumed_ = null
-          return resumed
+        if state_ == STATE_RUNNING: return this
+        if not identical this previous_running_: break
         __yield__
     else:
       process_messages_
-      // Unlink from the linked of running tasks.
-      next := next_running_
-      previous.next_running_ = next
-      next.previous_running_ = previous
-      next_running_ = previous_running_ = this
-      return next
+      if state_ == STATE_RUNNING: return this
+    // Unlink from the linked of running tasks unless we got resumed
+    // by the message processing.
+    next := next_running_
+    previous := previous_running_
+    previous.next_running_ = next
+    next.previous_running_ = previous
+    next_running_ = previous_running_ = this
+    state_ = STATE_SUSPENDED
+    return next
 
   resume_ -> none:
-    current /Task_? := ?
-    if is_task_idle_:
-      current = task_resumed_
-      if not current:
-        task_resumed_ = this
-        return
-    else:
-      current = Task_.current
-
     // Link the task into the linked list of running tasks
     // at the very end of it.
-    previous := current.previous_running_
-    current.previous_running_ = this
-    previous.next_running_ = this
-    previous_running_ = previous
-    next_running_ = current
+    if state_ == STATE_SUSPENDED:
+      current/Task_ := Task_.current
+      previous := current.previous_running_
+      current.previous_running_ = this
+      previous.next_running_ = this
+      previous_running_ = previous
+      next_running_ = current
+    state_ = STATE_RUNNING
 
   // Acquiring a timer will reuse the first previously released timer if
   // available. We use a single element cache to avoid creating timer objects
@@ -267,9 +258,15 @@ class Task_ implements Task:
   // Timer used for all sleep operations on this task.
   timer_ := null
 
+  // TODO(kasper): Make this fields private. We don't want users
+  // to write to these fields.
   name := null
-
   background := null
+
+  static STATE_RUNNING    /int ::= 0
+  static STATE_SUSPENDING /int ::= 1
+  static STATE_SUSPENDED  /int ::= 2
+  state_ := null  // TODO(kasper): Document this.
 
 // ----------------------------------------------------------------------------
 
