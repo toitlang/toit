@@ -10,20 +10,20 @@ jobs:
     strategy:
       # The matrix will run all possible combinations in parallel.
       matrix:
-        # ubuntu-18.04 so that we don't depend on a recent glibc.
-        container: [ ubuntu-18.04, macos-latest, windows-latest ]
+        # ubuntu-20.04 so that we don't depend on a recent glibc.
+        container: [ ubuntu-20.04, macos-latest, windows-latest ]
         shard: [1, 2, 3, 4, 5]
 
         include:
-          - container: ubuntu-18.04
+          - container: ubuntu-20.04
             shard: 6
-          - container: ubuntu-18.04
+          - container: ubuntu-20.04
             shard: 7
-          - container: ubuntu-18.04
+          - container: ubuntu-20.04
             shard: 8
-          - container: ubuntu-18.04
+          - container: ubuntu-20.04
             shard: 9
-          - container: ubuntu-18.04
+          - container: ubuntu-20.04
             shard: 10
 
     runs-on: ${{ matrix.container }}
