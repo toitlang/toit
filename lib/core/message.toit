@@ -64,11 +64,11 @@ is_processing_messages_ := false
 /**
 Processes the incoming messages sent to tasks in this process.
 
-To avoid infinite recursions, processing of messages must not lead to further
-  processing of messages.
+If we're already processing messages in another task, there is
+  no need to take any action here.
 */
 process_messages_:
-  if is_processing_messages_: throw "RECURSIVE_MESSAGE_PROCESSING"
+  if is_processing_messages_: return
   is_processing_messages_ = true
   try:
     while task_has_messages_:
@@ -81,27 +81,40 @@ process_messages_:
         // enqueued. Such messages are returned as null. Skip them.
         continue
 
-      // The message processing can be called on a canceled task
-      // when it is terminating. We need to make sure that the
-      // handler code can run even in that case, so we do it in
-      // a critical section and we do not care about the current
-      // task's deadline if any.
-      critical_do --no-respect_deadline:
-        if message is Array_:
-          type ::= message[0]
-          handler ::= system_message_handlers_.get type --if_absent=:
-            print_ "WARNING: unhandled system message $type"
-            continue
-          gid ::= message[1]
-          pid ::= message[2]
-          arguments ::= message[3]
-          message = null  // Allow garbage collector to free.
+      if message is Array_:
+        type ::= message[0]
+        handler ::= system_message_handlers_.get type --if_absent=:
+          print_ "WARNING: unhandled system message $type"
+          continue
+        gid ::= message[1]
+        pid ::= message[2]
+        arguments ::= message[3]
+        message = null  // Allow garbage collector to free.
 
-          handler.on_message type gid pid arguments
-        else if message is Lambda:
-          pending_finalizers_.add message
-        else:
-          assert: false
+        // TODO(kasper): Explain how we use critical_do to avoid yielding
+        // when we leave monitor operations.
+        done := false
+        print_ "[INFO] starting handler task"
+        processor/any := task::
+          print_ "[INFO] in handler task"
+          try:
+            critical_do: handler.on_message type gid pid arguments
+          finally:
+            print_ "we be done"
+            done = true
+        print_ "[INFO] before yield"
+        task_yield_to_ processor
+        print_ "[INFO] after yield"
+        if not done: print_ "[WARNING] handler not done when ready for next message"
+        else: print_ "[INFO] handler done when ready for next message"
+      else if message is Lambda:
+        // The message processing can be called on a canceled task
+        // when it is terminating. We need to make sure that the
+        // add method can run even in that case, so we do it in
+        // a critical section.
+        critical_do: pending_finalizers_.add message
+      else:
+        assert: false
   finally:
     is_processing_messages_ = false
 

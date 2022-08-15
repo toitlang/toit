@@ -57,7 +57,7 @@ class Container extends ServiceResourceProxy:
     // notifications. Closing involves RPCs and thus waiting for replies
     // which isn't allowed in the message processing context that runs
     // the $on_notified_ method. For that reason, we create a new task.
-    task:: close
+    close
 
 class ContainerImageWriter extends ServiceResourceProxy:
   size/int ::= ?

@@ -291,7 +291,7 @@ class ContainerManager extends ContainerServiceDefinition implements SystemMessa
     // we can generalize this handling and support background processes that do not
     // restrict us from exiting?
     remaining ::= containers_by_id_.size
-    if remaining <= 1: done_.set 0
+    if remaining <= 1 and not done_.has_value: done_.set 0
 
   on_image_stop_all_ image/ContainerImage -> none:
     containers/Map? ::= containers_by_image_.get image.id

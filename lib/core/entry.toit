@@ -29,6 +29,7 @@ __entry__task lambda -> none:
   // skipped and we let the value passed to us take its place.
   life := null
   assert: life == 42
+  print_ "innerish"
   Task_.current.evaluate_: lambda.call
 
 // --------------------------------------------------------
