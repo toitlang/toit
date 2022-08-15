@@ -120,14 +120,12 @@ process_messages_:
                 while true:
                   doit/Lambda? := null
                   catch --unwind=(: it != DEADLINE_EXCEEDED_ERROR):
-                    with_timeout --ms=100:
-                      // TODO(kasper): Is there a race condition that drops lambdas
-                      // here? I think so.
-                      doit = kurten.receive
+                    with_timeout --ms=100: doit = kurten.receive
                   if not doit: break
                   doit.call  // <----- TODO(kasper): Reconsider critical do here. We don't really want yielding.
             finally:
-              handler_task_ = null
+              if identical handler_task_ Task.current:
+                handler_task_ = null
           xxx = kurten
 
         critical_do: xxx.send lambda
@@ -138,6 +136,7 @@ process_messages_:
           handler_lambdas_ = xxx
         else:
           // print_ "[WARNING] handler not done when ready for next message"
+          xxx.send null
 
       else if message is Lambda:
         // The message processing can be called on a canceled task
