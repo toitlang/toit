@@ -52,7 +52,7 @@ file(WRITE ${IN_FILE1} "
 main:
   print \"compiles after rm\"
 ")
-file(WRITE ${SOURCE_TRIGGER} "
+file(WRITE "${SOURCE_TRIGGER}" "
 test3
 ")
 backtick(${CMAKE_COMMAND} --build "${BIN_DIR}" --target test_cmake)
