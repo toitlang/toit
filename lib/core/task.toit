@@ -4,19 +4,10 @@
 
 import ..system.services show ServiceManager_
 
-// How many tasks are active.
+// How many tasks are alive?
 task_count_ := 0
-// How many tasks are blocked.
-task_blocked_ := 0
-// How many tasks are running in the background.
+// How many tasks are alive, but running in the background?
 task_background_ := 0
-
-// Whether the system is idle.
-is_task_idle_ := false
-
-task_resumed_ := null
-
-exit_with_error_ := false
 
 /**
 Returns the object for the current task.
@@ -40,8 +31,8 @@ task code/Lambda --name/string="User task" --background/bool=false -> Task:
 // Base API for creating and activating a task.
 create_task_ code/Lambda name/string background/bool -> Task:
   new_task := task_new_ code
-  new_task.name = name
-  new_task.background = background or Task_.current.background
+  new_task.name_ = name
+  new_task.background_ = background or Task_.current.background
   new_task.initialize_
   // Activate the new task.
   new_task.previous_running_ = new_task.next_running_ = new_task
@@ -57,7 +48,8 @@ The Toit programming language is cooperatively scheduled, so it is important
   opportunity to run.
 */
 yield:
-  task_yield_to_ Task_.current.next_running_
+  process_messages_
+  task_transfer_to_ Task_.current.next_running_ false
 
 // ----------------------------------------------------------------------------
 
@@ -107,11 +99,14 @@ class Task_ implements Task:
   static current -> Task_:
     #primitive.core.task_current
 
+  background -> bool:
+    return background_
+
   operator == other:
     return other is Task_ and other.id_ == id_
 
   stringify:
-    return "$name<$(id_)@$(current_process_)>"
+    return "$name_<$(id_)@$(current_process_)>"
 
   with_deadline_ deadline [block]:
     assert: Task_.current == this
@@ -139,14 +134,17 @@ class Task_ implements Task:
   initialize_:
     is_canceled_ = false
     critical_count_ = 0
+    state_ = STATE_SUSPENDED
     task_count_++
-    if background: task_background_++
+    if background_: task_background_++
 
   // Configures the main task. Called by __entry__
   initialize_entry_task_:
     assert: task_count_ == 0
-    name = "Main task"
+    name_ = "Main task"
+    background_ = false
     initialize_
+    state_ = STATE_RUNNING
     previous_running_ = next_running_ = this
 
   evaluate_ [code]:
@@ -170,57 +168,57 @@ class Task_ implements Task:
       exit_ exception != null
 
   exit_ has_error/bool:
-    if has_error: exit_with_error_ = true
-    task_count_--
-    if background: task_background_--
-    // Yield to the next task.
-    next := suspend_
+    // If any task exits with an error, we terminate the process eagerly.
+    if has_error: __exit__ 1
+    // Clean up resources.
     if timer_:
       timer_.close
       timer_ = null
-    task_transfer_ next true  // Passing null will detach the calling execution stack from the task.
+    // Process messages and update task counts. We do this before we
+    // determine if the process is done to allow new tasks to spin
+    // up as part of the processing and impact the decision.
+    process_messages_
+    task_count_--
+    if background: task_background_--
+    // If no services are defined and only background tasks are alive
+    // at this point, we terminate the process gracefully.
+    if ServiceManager_.is_empty and task_count_ == task_background_: __halt__
+    // Suspend this task and transfer control to the next one.
+    next := suspend_
+    task_transfer_to_ next true
 
   suspend_:
-    previous := previous_running_
-    if previous == this:
-      // If we encounted a root-error, terminate the process.
-      if exit_with_error_: __exit__ 1
-      // Check whether no service definitions and only background tasks are running.
-      if ServiceManager_.is_empty and task_count_ == task_background_: __halt__
-      is_task_idle_ = true
-      while true:
-        process_messages_
-        resumed := task_resumed_
-        if resumed:
-          is_task_idle_ = false
-          task_resumed_ = null
-          return resumed
-        __yield__
-    else:
-      // Unlink from the linked of running tasks.
-      next := next_running_
-      previous.next_running_ = next
-      next.previous_running_ = previous
-      next_running_ = previous_running_ = this
-      return next
+    state_ = STATE_SUSPENDING
+    while true:
+      process_messages_
+      // Check if we got resumed through the message processing.
+      if state_ == STATE_RUNNING: return this
+      // If this task not the only task left, we unlink it from
+      // the linked list of running tasks and mark it suspended.
+      if not identical this previous_running_:
+        next := next_running_
+        previous := previous_running_
+        previous.next_running_ = next
+        next.previous_running_ = previous
+        next_running_ = previous_running_ = this
+        state_ = STATE_SUSPENDED
+        return next
+      // This task is the only task left. We keep it in the
+      // suspending state and tell the system to wake us up when
+      // new messages arrive.
+      __yield__
 
   resume_ -> none:
-    current /Task_? := ?
-    if is_task_idle_:
-      current = task_resumed_
-      if not current:
-        task_resumed_ = this
-        return
-    else:
-      current = Task_.current
-
     // Link the task into the linked list of running tasks
     // at the very end of it.
-    previous := current.previous_running_
-    current.previous_running_ = this
-    previous.next_running_ = this
-    previous_running_ = previous
-    next_running_ = current
+    if state_ == STATE_SUSPENDED:
+      current ::= Task_.current
+      previous := current.previous_running_
+      current.previous_running_ = this
+      previous.next_running_ = this
+      previous_running_ = previous
+      next_running_ = current
+    state_ = STATE_RUNNING
 
   // Acquiring a timer will reuse the first previously released timer if
   // available. We use a single element cache to avoid creating timer objects
@@ -247,7 +245,11 @@ class Task_ implements Task:
   // Task state initialized by the VM.
   id_ := null
 
-  // Deadline and cancel support.
+  // Task state initialized by Toit code.
+  name_ := null
+  background_ := null
+
+  // Deadline and cancelation support.
   deadline_ := null
   is_canceled_ := null
   critical_count_ := null
@@ -255,33 +257,25 @@ class Task_ implements Task:
   // If the task is blocked in a monitor, this reference that monitor.
   monitor_ := null
 
-  // All running tasks are chained together in linked list.
+  // All running tasks are chained together in a doubly linked list.
   next_running_ := null
   previous_running_ := null
+
+  // Waiting tasks are chained together in a singly linked list.
   next_blocked_ := null
 
   // Timer used for all sleep operations on this task.
   timer_ := null
 
-  name := null
-
-  background := null
+  static STATE_RUNNING    /int ::= 0
+  static STATE_SUSPENDING /int ::= 1
+  static STATE_SUSPENDED  /int ::= 2
+  state_ := null  // TODO(kasper): Document this.
 
 // ----------------------------------------------------------------------------
 
 task_new_ lambda/Lambda -> Task_:
   #primitive.core.task_new
 
-task_transfer_ to/Task_ detach_stack:
+task_transfer_to_ to/Task_ detach_stack:
   #primitive.core.task_transfer
-
-task_yield_to_ to/Task_:
-  if Task_.current != to:   // Skip self transfer.
-    task_transfer_ to false
-
-  // TODO(kasper): Consider not looking at the incoming messages at
-  // all yield points. Maybe only once per run through the runnable tasks?
-
-  // Messages must be processed after returning to a running task,
-  // not before transfering away from a suspended one.
-  process_messages_
