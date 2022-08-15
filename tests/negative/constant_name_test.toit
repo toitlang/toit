@@ -9,6 +9,7 @@ class A:
   CONST ::= 499
   _ ::= 42
   A_B ::= 43
+  A_B499 ::= 43
   __ ::= 42
 
   NON_CONST := 1
