@@ -114,20 +114,23 @@ process_messages_:
 
         if not kkk:
           kurten ::= monitor.Channel 1
-          kkk = task::
-            // ...
+          kkk = task --no-background::
             try:
-              while true:
-                doit/Lambda? := null
-                catch --unwind=(: it != DEADLINE_EXCEEDED_ERROR):
-                  with_timeout --ms=100: doit = kurten.receive
-                if not doit: break
-                doit.call
+              critical_do:
+                while true:
+                  doit/Lambda? := null
+                  catch --unwind=(: it != DEADLINE_EXCEEDED_ERROR):
+                    with_timeout --ms=100:
+                      // TODO(kasper): Is there a race condition that drops lambdas
+                      // here? I think so.
+                      doit = kurten.receive
+                  if not doit: break
+                  doit.call  // <----- TODO(kasper): Reconsider critical do here. We don't really want yielding.
             finally:
               handler_task_ = null
           xxx = kurten
 
-        xxx.send lambda
+        critical_do: xxx.send lambda
         task_transfer_to_ kkk false
 
         if done:
@@ -146,7 +149,6 @@ process_messages_:
         assert: false
   finally:
     is_processing_messages_ = false
-
 
 monitor MessageProcessor_:
   static IDLE_TIME_MS ::= 50

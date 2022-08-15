@@ -179,9 +179,13 @@ class Task_ implements Task:
     // up as part of the processing and impact the decision.
     process_messages_
     task_count_--
-    if background: task_background_--
+    if background_: task_background_--
     // If no services are defined and only background tasks are alive
     // at this point, we terminate the process gracefully.
+
+    // TODO(kasper): It is problematic that we check this condition
+    // here, but not when a service is uninstalled.
+
     if ServiceManager_.is_empty and task_count_ == task_background_: __halt__
     // Suspend this task and transfer control to the next one.
     next := suspend_
