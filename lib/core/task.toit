@@ -35,8 +35,8 @@ task code/Lambda --name/string="User task" --background/bool=false -> Task:
 // Base API for creating and activating a task.
 create_task_ code/Lambda name/string background/bool -> Task:
   new_task := task_new_ code
-  new_task.name = name
-  new_task.background = background or Task_.current.background
+  new_task.name_ = name
+  new_task.background_ = background or Task_.current.background
   new_task.initialize_
   // Activate the new task.
   new_task.previous_running_ = new_task.next_running_ = new_task
@@ -103,11 +103,14 @@ class Task_ implements Task:
   static current -> Task_:
     #primitive.core.task_current
 
+  background -> bool:
+    return background_
+
   operator == other:
     return other is Task_ and other.id_ == id_
 
   stringify:
-    return "$name<$(id_)@$(current_process_)>"
+    return "$name_<$(id_)@$(current_process_)>"
 
   with_deadline_ deadline [block]:
     assert: Task_.current == this
@@ -137,13 +140,15 @@ class Task_ implements Task:
     critical_count_ = 0
     state_ = STATE_SUSPENDED
     task_count_++
-    if background: task_background_++
+    if background_: task_background_++
 
   // Configures the main task. Called by __entry__
   initialize_entry_task_:
     assert: task_count_ == 0
-    name = "Main task"
+    name_ = "Main task"
+    background_ = false
     initialize_
+    state_ = STATE_RUNNING
     previous_running_ = next_running_ = this
 
   evaluate_ [code]:
@@ -240,6 +245,10 @@ class Task_ implements Task:
   // Task state initialized by the VM.
   id_ := null
 
+  // Task state initialized by Toit code.
+  name_ := null
+  background_ := null
+
   // Deadline and cancelation support.
   deadline_ := null
   is_canceled_ := null
@@ -257,11 +266,6 @@ class Task_ implements Task:
 
   // Timer used for all sleep operations on this task.
   timer_ := null
-
-  // TODO(kasper): Make these fields private. We don't want users
-  // to write to these fields.
-  name := null
-  background := null
 
   static STATE_RUNNING    /int ::= 0
   static STATE_SUSPENDING /int ::= 1
