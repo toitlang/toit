@@ -64,7 +64,8 @@ set_system_message_handler_ type/int handler/SystemMessageHandler_:
 is_processing_messages_ := false
 
 // ...
-message_processor_ ::= MessageProcessor_
+handler_task_/any := null
+handler_lambdas_/monitor.Channel? := null
 
 /**
 Processes the incoming messages sent to tasks in this process.
@@ -106,19 +107,12 @@ process_messages_:
           finally:
             done = true
 
-        processor ::= message_processor_.add lambda
-        task_transfer_to_ processor false
-        if not done:
-          message_processor_.detach
-
-/*
         kkk := handler_task_
         xxx := handler_lambdas_
         handler_task_ = null
         handler_lambdas_ = null
 
         if not kkk:
-          print_ "[INFO] creating new message processing task"
           kurten ::= monitor.Channel 1
           kkk = task::
             // ...
@@ -140,8 +134,8 @@ process_messages_:
           handler_task_ = kkk
           handler_lambdas_ = xxx
         else:
-          print_ "[WARNING] handler not done when ready for next message"
-*/
+          // print_ "[WARNING] handler not done when ready for next message"
+
       else if message is Lambda:
         // The message processing can be called on a canceled task
         // when it is terminating. We need to make sure that the
@@ -159,15 +153,6 @@ monitor MessageProcessor_:
   lambda_ := null
   task_ := null
 
-  run lambda/Lambda -> Task:
-    if lambda_ or not task_:
-      lambda_ = null
-      create_processing_task_
-
-
-  detach -> none:
-    task_ = null
-    lambda_ = null
 
   wait_for_next self/Task -> bool:
     deadline := Time.monotonic_us + IDLE_TIME_MS * 1_000
