@@ -128,7 +128,7 @@ process_messages_:
                 handler_task_ = null
           xxx = kurten
 
-        critical_do: xxx.send lambda
+        critical_do --no-respect_deadline: xxx.send lambda
         task_transfer_to_ kkk false
 
         if done:
