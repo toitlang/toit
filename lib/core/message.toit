@@ -2,6 +2,8 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+import monitor
+
 // System message types.
 SYSTEM_TERMINATED_     ::= 0
 SYSTEM_SPAWNED_        ::= 1
@@ -61,6 +63,9 @@ set_system_message_handler_ type/int handler/SystemMessageHandler_:
 /** Flag to track if we're currently processing messages. */
 is_processing_messages_ := false
 
+// ...
+message_processor_ ::= MessageProcessor_
+
 /**
 Processes the incoming messages sent to tasks in this process.
 
@@ -70,6 +75,7 @@ If we're already processing messages in another task, there is
 process_messages_:
   if is_processing_messages_: return
   is_processing_messages_ = true
+
   try:
     while task_has_messages_:
       message := task_receive_message_
@@ -91,22 +97,51 @@ process_messages_:
         arguments ::= message[3]
         message = null  // Allow garbage collector to free.
 
-        // TODO(kasper): Explain how we use critical_do to avoid yielding
-        // when we leave monitor operations.
         done := false
-        print_ "[INFO] starting handler task"
-        processor/any := task::
-          print_ "[INFO] in handler task"
+        lambda := ::
           try:
+            // TODO(kasper): Explain how we use critical_do to avoid yielding
+            // when we leave monitor operations.
             critical_do: handler.on_message type gid pid arguments
           finally:
-            print_ "we be done"
             done = true
-        print_ "[INFO] before yield"
-        task_yield_to_ processor
-        print_ "[INFO] after yield"
-        if not done: print_ "[WARNING] handler not done when ready for next message"
-        else: print_ "[INFO] handler done when ready for next message"
+
+        processor ::= message_processor_.add lambda
+        task_transfer_to_ processor false
+        if not done:
+          message_processor_.detach
+
+/*
+        kkk := handler_task_
+        xxx := handler_lambdas_
+        handler_task_ = null
+        handler_lambdas_ = null
+
+        if not kkk:
+          print_ "[INFO] creating new message processing task"
+          kurten ::= monitor.Channel 1
+          kkk = task::
+            // ...
+            try:
+              while true:
+                e := catch --unwind=(: it != DEADLINE_EXCEEDED_ERROR):
+                  with_timeout --ms=100:
+                    doit := kurten.receive
+                    doit.call
+                if e: break
+            finally:
+              handler_task_ = null
+          xxx = kurten
+
+        xxx.send lambda
+        task_transfer_to_ kkk false
+
+        if done:
+          handler_task_ = kkk
+          handler_lambdas_ = xxx
+        else:
+          print_ "[WARNING] handler not done when ready for next message"
+*/
       else if message is Lambda:
         // The message processing can be called on a canceled task
         // when it is terminating. We need to make sure that the
@@ -117,6 +152,42 @@ process_messages_:
         assert: false
   finally:
     is_processing_messages_ = false
+
+
+monitor MessageProcessor_:
+  static IDLE_TIME_MS ::= 50
+  lambda_ := null
+  task_ := null
+
+  run lambda/Lambda -> Task:
+    if lambda_ or not task_:
+      lambda_ = null
+      create_processing_task_
+
+
+  detach -> none:
+    task_ = null
+    lambda_ = null
+
+  wait_for_next self/Task -> bool:
+    deadline := Time.monotonic_us + IDLE_TIME_MS * 1_000
+    return try_await --deadline=deadline: (not identical task_ self) or lambda_ != null
+
+  create_processing_task_ -> none:
+    // The task code runs outside the monitor, so the monitor
+    // is unlocked when the messages are being processed.
+    task_ = task --name="Message processing task"::
+      try:
+        self ::= Task.current
+        critical_do:
+          while true:
+            if not wait_for_next self: break
+            next := lambda_
+            if not next: break
+            catch --trace: next.call
+            lambda_ = null
+      finally:
+        task_ = null
 
 task_has_messages_ -> bool:
   #primitive.core.task_has_messages

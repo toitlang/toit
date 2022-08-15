@@ -152,7 +152,6 @@ class Task_ implements Task:
     previous_running_ = next_running_ = this
 
   evaluate_ [code]:
-    print_ "inner!"
     exception := null
     // Always have an outer catch clause. Without this, a throw will crash the VM.
     // In that, we have an inner, but very pretty, root exception handling.
