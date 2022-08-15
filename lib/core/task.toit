@@ -4,9 +4,9 @@
 
 import ..system.services show ServiceManager_
 
-// How many tasks are active?
+// How many tasks are alive?
 task_count_ := 0
-// How many tasks are active, but running in the background?
+// How many tasks are alive, but running in the background?
 task_background_ := 0
 
 /**
@@ -170,17 +170,20 @@ class Task_ implements Task:
   exit_ has_error/bool:
     // If any task exits with an error, we terminate the process eagerly.
     if has_error: __exit__ 1
-    // Update task counts.
-    task_count_--
-    if background: task_background_--
-    // Check whether no service definitions and only background tasks are
-    // running at this point. We do not process messages.
-    if ServiceManager_.is_empty and task_count_ == task_background_: __halt__
-    // Clean up additional ressources.
+    // Clean up resources.
     if timer_:
       timer_.close
       timer_ = null
-    // Suspend this task and yield to the next task.
+    // Process messages and update task counts. We do this before we
+    // determine if the process is done to allow new tasks to spin
+    // up as part of the processing and impact the decision.
+    process_messages_
+    task_count_--
+    if background: task_background_--
+    // If no services are defined and only background tasks are alive
+    // at this point, we terminate the process gracefully.
+    if ServiceManager_.is_empty and task_count_ == task_background_: __halt__
+    // Suspend this task and transfer control to the next one.
     next := suspend_
     task_transfer_to_ next true
 
@@ -202,7 +205,7 @@ class Task_ implements Task:
         return next
       // This task is the only task left. We keep it in the
       // suspending state and tell the system to wake us up when
-      // new message arrive.
+      // new messages arrive.
       __yield__
 
   resume_ -> none:
