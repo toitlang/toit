@@ -4,14 +4,10 @@
 
 import ..system.services show ServiceManager_
 
-// How many tasks are active.
+// How many tasks are active?
 task_count_ := 0
-// How many tasks are blocked.
-task_blocked_ := 0
-// How many tasks are running in the background.
+// How many tasks are active, but running in the background?
 task_background_ := 0
-// Did any task exit with an error?
-task_exit_with_error_ := false
 
 /**
 Returns the object for the current task.
@@ -172,47 +168,48 @@ class Task_ implements Task:
       exit_ exception != null
 
   exit_ has_error/bool:
-    if has_error: task_exit_with_error_ = true
+    // If any task exits with an error, we terminate the process eagerly.
+    if has_error: __exit__ 1
+    // Update task counts.
     task_count_--
     if background: task_background_--
-    // Yield to the next task.
-    next := suspend_
+    // Check whether no service definitions and only background tasks are
+    // running at this point. We do not process messages.
+    if ServiceManager_.is_empty and task_count_ == task_background_: __halt__
+    // Clean up additional ressources.
     if timer_:
       timer_.close
       timer_ = null
+    // Suspend this task and yield to the next task.
+    next := suspend_
     task_transfer_to_ next true
 
   suspend_:
-    processed := false
     state_ = STATE_SUSPENDING
-    if identical this previous_running_:
-      while true:
-        // If any task exited with an error, terminate the process.
-        if task_exit_with_error_: __exit__ 1
-        // Check whether no service definitions and only background tasks are running.
-        if ServiceManager_.is_empty and task_count_ == task_background_: __halt__
-        process_messages_
-        if state_ == STATE_RUNNING: return this
-        if not identical this previous_running_: break
-        __yield__
-    else:
+    while true:
       process_messages_
+      // Check if we got resumed through the message processing.
       if state_ == STATE_RUNNING: return this
-    // Unlink from the linked of running tasks unless we got resumed
-    // by the message processing.
-    next := next_running_
-    previous := previous_running_
-    previous.next_running_ = next
-    next.previous_running_ = previous
-    next_running_ = previous_running_ = this
-    state_ = STATE_SUSPENDED
-    return next
+      // If this task not the only task left, we unlink it from
+      // the linked list of running tasks and mark it suspended.
+      if not identical this previous_running_:
+        next := next_running_
+        previous := previous_running_
+        previous.next_running_ = next
+        next.previous_running_ = previous
+        next_running_ = previous_running_ = this
+        state_ = STATE_SUSPENDED
+        return next
+      // This task is the only task left. We keep it in the
+      // suspending state and tell the system to wake us up when
+      // new message arrive.
+      __yield__
 
   resume_ -> none:
     // Link the task into the linked list of running tasks
     // at the very end of it.
     if state_ == STATE_SUSPENDED:
-      current/Task_ := Task_.current
+      current ::= Task_.current
       previous := current.previous_running_
       current.previous_running_ = this
       previous.next_running_ = this
@@ -257,7 +254,7 @@ class Task_ implements Task:
   // If the task is blocked in a monitor, this reference that monitor.
   monitor_ := null
 
-  // All running tasks are chained together in doubly linked list.
+  // All running tasks are chained together in a doubly linked list.
   next_running_ := null
   previous_running_ := null
 
