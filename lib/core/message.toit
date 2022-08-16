@@ -93,11 +93,15 @@ process_messages_:
       // task's deadline if any.
       critical_do --no-respect_deadline:
         if message is Array_:
-          processor := message_processor_
-          if not processor.run message:
-            processor = MessageProcessor_ message
-            message_processor_ = processor
-          processor.detach_if_not_done_
+          type := message[0]
+          if type == SYSTEM_RPC_REQUEST_ or type == SYSTEM_RPC_REPLY_:
+            MessageProcessor_.invoke_handler type message
+          else:
+            processor := message_processor_
+            if not processor.run message:
+              processor = MessageProcessor_ message
+              message_processor_ = processor
+            processor.detach_if_not_done_
         else if message is Lambda:
           pending_finalizers_.add message
         else:
@@ -108,8 +112,8 @@ process_messages_:
 monitor MessageProcessor_:
   static IDLE_TIME_MS /int ::= 100
 
-  message_/Array_? := null
   task_/Task? := null
+  message_/Array_? := null
 
   constructor .message_:
     // The task code runs outside the monitor, so the monitor
@@ -127,18 +131,20 @@ monitor MessageProcessor_:
               next = wait_for_next
               if not next: break
             try:
-              type ::= next[0]
-              handler ::= system_message_handlers_.get type --if_absent=:
-                print_ "WARNING: unhandled system message $type"
-                continue
-              gid ::= next[1]
-              pid ::= next[2]
-              arguments ::= next[3]
-              handler.on_message type gid pid arguments
+              invoke_handler next[0] next
             finally:
               message_ = null
       finally:
         task_ = null
+
+  static invoke_handler type/int message/Array_ -> none:
+    handler ::= system_message_handlers_.get type --if_absent=:
+      print_ "WARNING: unhandled system message $type"
+      return
+    gid ::= message[1]
+    pid ::= message[2]
+    arguments ::= message[3]
+    handler.on_message type gid pid arguments
 
   run message/Array_ -> bool:
     if message_ or not task_: return false
