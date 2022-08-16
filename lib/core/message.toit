@@ -133,8 +133,10 @@ monitor MessageProcessor_:
         // they will complete quickly.
         critical_do:
           while true:
-            next ::= wait_for_next
-            if not next: break
+            next := lambda_
+            if not next:
+              next = wait_for_next
+              if not next: break
             try:
               next.call
             finally:
