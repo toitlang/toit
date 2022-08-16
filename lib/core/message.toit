@@ -93,20 +93,9 @@ process_messages_:
       // task's deadline if any.
       critical_do --no-respect_deadline:
         if message is Array_:
-          lambda := ::
-            type ::= message[0]
-            handler ::= system_message_handlers_.get type
-            if handler:
-              gid ::= message[1]
-              pid ::= message[2]
-              arguments ::= message[3]
-              message = null  // Allow garbage collector to free.
-              handler.on_message type gid pid arguments
-            else:
-              print_ "WARNING: unhandled system message $type"
           processor := message_processor_
-          if not processor.run lambda:
-            processor = MessageProcessor_ lambda
+          if not processor.run message:
+            processor = MessageProcessor_ message
             message_processor_ = processor
           processor.detach_if_not_done_
         else if message is Lambda:
@@ -119,10 +108,10 @@ process_messages_:
 monitor MessageProcessor_:
   static IDLE_TIME_MS /int ::= 100
 
-  lambda_/Lambda? := null
+  message_/Array_? := null
   task_/Task? := null
 
-  constructor .lambda_:
+  constructor .message_:
     // The task code runs outside the monitor, so the monitor
     // is unlocked when the messages are being processed.
     task_ = task --name="Message processing task" --no-background::
@@ -133,35 +122,42 @@ monitor MessageProcessor_:
         // they will complete quickly.
         critical_do:
           while true:
-            next := lambda_
+            next := message_
             if not next:
               next = wait_for_next
               if not next: break
             try:
-              next.call
+              type ::= next[0]
+              handler ::= system_message_handlers_.get type --if_absent=:
+                print_ "WARNING: unhandled system message $type"
+                continue
+              gid ::= next[1]
+              pid ::= next[2]
+              arguments ::= next[3]
+              handler.on_message type gid pid arguments
             finally:
-              lambda_ = null
+              message_ = null
       finally:
         task_ = null
 
-  run lambda/Lambda -> bool:
-    if lambda_ or not task_: return false
-    lambda_ = lambda
+  run message/Array_ -> bool:
+    if message_ or not task_: return false
+    message_ = message
     return true
 
   detach_if_not_done_ -> none:
     task/any := task_
     if task: task_transfer_to_ task false
-    // If we come back here and the lambda hasn't been cleared out,
+    // If we come back here and the message hasn't been cleared out,
     // we detach this message processor by clearing out the task
-    // field. This forces it to stop when it is done with the lambda.
-    if lambda_: task_ = null
+    // field. This forces it to stop when it is done with the message.
+    if message_: task_ = null
 
-  wait_for_next -> Lambda?:
+  wait_for_next -> Array_?:
     deadline ::= Time.monotonic_us + IDLE_TIME_MS * 1_000
-    try_await --deadline=deadline: lambda_ or not task_
-    // If we got a lambda, we must return it and deal with even if we timed out.
-    return lambda_
+    try_await --deadline=deadline: message_ or not task_
+    // If we got a message, we must return it and deal with even if we timed out.
+    return message_
 
 task_has_messages_ -> bool:
   #primitive.core.task_has_messages
