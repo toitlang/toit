@@ -1,13 +1,13 @@
-tests/negative/constructor_receiver_test.toit:21:4: warning: Deprecated use of static method syntax to call an unnamed constructor. Use (<Class>).<member> instead.
+tests/negative/constructor_receiver_test.toit:21:4: error: Class 'A' does not have any static member or constructor with name 'member'
   A.member
    ^
-tests/negative/constructor_receiver_test.toit:22:4: warning: Deprecated use of static method syntax to call an unnamed constructor. Use (<Class>).<member> instead.
+tests/negative/constructor_receiver_test.toit:22:4: error: Class 'B' does not have any static member or constructor with name 'member'
   B.member
    ^
-tests/negative/constructor_receiver_test.toit:24:8: warning: Deprecated use of static method syntax to call an unnamed constructor. Use (<Class>).<member> instead.
+tests/negative/constructor_receiver_test.toit:24:8: error: Class 'A' does not have any static member or constructor with name 'member'
   pre.A.member
        ^
-tests/negative/constructor_receiver_test.toit:25:8: warning: Deprecated use of static method syntax to call an unnamed constructor. Use (<Class>).<member> instead.
+tests/negative/constructor_receiver_test.toit:25:8: error: Class 'B' does not have any static member or constructor with name 'member'
   pre.B.member
        ^
 tests/negative/constructor_receiver_test.toit:33:3: error: Unresolved identifier: 'unresolved'
