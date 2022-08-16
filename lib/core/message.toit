@@ -88,64 +88,70 @@ process_messages_:
         // enqueued. Such messages are returned as null. Skip them.
         continue
 
-      if message is Array_:
-        type ::= message[0]
-        handler ::= system_message_handlers_.get type --if_absent=:
-          print_ "WARNING: unhandled system message $type"
-          continue
-        gid ::= message[1]
-        pid ::= message[2]
-        arguments ::= message[3]
-        message = null  // Allow garbage collector to free.
+      // The message processing can be called on a canceled task
+      // when it is terminating. We need to make sure that the
+      // handler code can run even in that case, so we do it in
+      // a critical section and we do not care about the current
+      // task's deadline if any.
+      critical_do --no-respect_deadline:
+        if message is Array_:
+          type ::= message[0]
+          handler ::= system_message_handlers_.get type --if_absent=:
+            print_ "WARNING: unhandled system message $type"
+            continue
+          gid ::= message[1]
+          pid ::= message[2]
+          arguments ::= message[3]
+          message = null  // Allow garbage collector to free.
 
-        done := false
-        lambda := ::
-          try:
-            // TODO(kasper): Explain how we use critical_do to avoid yielding
-            // when we leave monitor operations.
-            critical_do: handler.on_message type gid pid arguments
-          finally:
-            done = true
-
-        kkk := handler_task_
-        xxx := handler_lambdas_
-        handler_task_ = null
-        handler_lambdas_ = null
-
-        if not kkk:
-          kurten ::= monitor.Channel 1
-          kkk = task --no-background::
+          done := false
+          lambda := ::
             try:
-              critical_do:
-                while true:
-                  doit/Lambda? := null
-                  catch --unwind=(: it != DEADLINE_EXCEEDED_ERROR):
-                    with_timeout --ms=100: doit = kurten.receive
-                  if not doit: break
-                  doit.call  // <----- TODO(kasper): Reconsider critical do here. We don't really want yielding.
+              // TODO(kasper): Explain how we use critical_do to avoid yielding
+              // when we leave monitor operations.
+              critical_do: handler.on_message type gid pid arguments
             finally:
-              if identical handler_task_ Task.current:
-                handler_task_ = null
-          xxx = kurten
+              done = true
 
-        critical_do --no-respect_deadline: xxx.send lambda
-        task_transfer_to_ kkk false
+          kkk := handler_task_
+          xxx := handler_lambdas_
+          handler_task_ = null
+          handler_lambdas_ = null
 
-        if done:
-          handler_task_ = kkk
-          handler_lambdas_ = xxx
+          if not kkk:
+            kurten ::= monitor.Channel 1
+            kkk = task --no-background::
+              try:
+                critical_do:
+                  while true:
+                    doit/Lambda? := null
+                    catch --unwind=(: it != DEADLINE_EXCEEDED_ERROR):
+                      with_timeout --ms=100:
+                        doit = kurten.receive
+                    if not doit and kurten.size > 0:
+                      // TODO(kasper): There is a race condition here. Ugh.
+                      doit = kurten.receive
+                    if not doit: break
+                    doit.call  // <----- TODO(kasper): Reconsider critical do here. We don't really want yielding.
+              finally:
+                if identical handler_task_ Task.current:
+                  handler_task_ = null
+            xxx = kurten
+
+          xxx.send lambda
+          task_transfer_to_ kkk false
+
+          if done:
+            handler_task_ = kkk
+            handler_lambdas_ = xxx
+          else:
+            // print_ "[WARNING] handler not done when ready for next message"
+            xxx.send null
+
+        else if message is Lambda:
+          pending_finalizers_.add message
         else:
-          // print_ "[WARNING] handler not done when ready for next message"
-          xxx.send null
-
-      else if message is Lambda:
-        // The message processing can be called on a canceled task
-        // when it is terminating. We need to make sure that the
-        // add method can run even in that case, so we do it in
-        // a critical section.
-        critical_do: pending_finalizers_.add message
-      else:
-        assert: false
+          assert: false
   finally:
     is_processing_messages_ = false
 
