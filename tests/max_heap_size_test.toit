@@ -17,12 +17,7 @@ expect_allocation_failed [code]:
 main:
   // We can limit ourselves to as little as a 4k heap (on 32 bit) which
   // means no old-space.
-
-  // TODO(kasper): Bumped lower limit 12 (4k) to 13 (8k) to unblock work
-  // on the new message processing scheme, which seems a bit more memory
-  // hungry.
-
-  for i := 13; i < 17; i++:
+  for i := 12; i < 17; i++:
     doesnt_fail 1 << i
   for i := 14; i < 17; i++:
     doesnt_fail_external 1 << i

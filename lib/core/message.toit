@@ -93,9 +93,7 @@ process_messages_:
       // task's deadline if any.
       critical_do --no-respect_deadline:
         if message is Array_:
-          entered := false
           lambda := ::
-            entered = true
             type ::= message[0]
             handler ::= system_message_handlers_.get type
             if handler:
@@ -106,17 +104,11 @@ process_messages_:
               handler.on_message type gid pid arguments
             else:
               print_ "WARNING: unhandled system message $type"
-
-          reused := true
           processor := message_processor_
           if not processor.run lambda:
             processor = MessageProcessor_ lambda
             message_processor_ = processor
-            reused = false
           processor.detach_if_necessary_
-          if not entered:
-            throw "WARNING: message handler lambda not entered (reused=$reused)"
-
         else if message is Lambda:
           pending_finalizers_.add message
         else:
