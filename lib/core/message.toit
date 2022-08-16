@@ -127,7 +127,7 @@ monitor MessageProcessor_:
   constructor .lambda_:
     // The task code runs outside the monitor, so the monitor
     // is unlocked when the messages are being processed.
-    task_ = task::
+    task_ = task --name="Message processing task" --no-background::
       try:
         // Message handlers run in critical regions, so they
         // cannot be canceled and they avoid yielding after

@@ -25,14 +25,15 @@ Calls $code in a new task.
 If the $background flag is set, then the new task will not block termination.
   The $background task flag is passed on to sub-tasks.
 */
-task code/Lambda --name/string="User task" --background/bool=false -> Task:
+task code/Lambda --name/string="User task" --background/bool?=null -> Task:
+  if background == null: background = Task_.current.background
   return create_task_ code name background
 
 // Base API for creating and activating a task.
 create_task_ code/Lambda name/string background/bool -> Task:
   new_task := task_new_ code
   new_task.name_ = name
-  new_task.background_ = background or Task_.current.background
+  new_task.background_ = background
   new_task.initialize_
   // Activate the new task.
   new_task.previous_running_ = new_task.next_running_ = new_task
@@ -182,10 +183,6 @@ class Task_ implements Task:
     if background_: task_background_--
     // If no services are defined and only background tasks are alive
     // at this point, we terminate the process gracefully.
-
-    // TODO(kasper): It is problematic that we check this condition
-    // here, but not when a service is uninstalled.
-
     if ServiceManager_.is_empty and task_count_ == task_background_: __halt__
     // Suspend this task and transfer control to the next one.
     next := suspend_
