@@ -57,8 +57,9 @@ monitor FinalizationStack_:
     // is unlocked when the finalizers are being processed but
     // locked when the finalizers are being added and removed.
     task_ = task --name="Finalization task" --background::
+      self ::= Task.current
       try:
-        while not Task.current.is_canceled:
+        while not self.is_canceled:
           if lambdas_.is_empty and not wait_for_next: break
           next := lambdas_.remove_last
           catch --trace: next.call

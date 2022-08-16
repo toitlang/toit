@@ -95,21 +95,21 @@ process_messages_:
       // task's deadline if any.
       critical_do --no-respect_deadline:
         if message is Array_:
-          type ::= message[0]
-          handler ::= system_message_handlers_.get type --if_absent=:
-            print_ "WARNING: unhandled system message $type"
-            continue
-          gid ::= message[1]
-          pid ::= message[2]
-          arguments ::= message[3]
-          message = null  // Allow garbage collector to free.
-
           done := false
           lambda := ::
             try:
-              // TODO(kasper): Explain how we use critical_do to avoid yielding
-              // when we leave monitor operations.
-              critical_do: handler.on_message type gid pid arguments
+              type ::= message[0]
+              handler ::= system_message_handlers_.get type
+              if handler:
+                gid ::= message[1]
+                pid ::= message[2]
+                arguments ::= message[3]
+                message = null  // Allow garbage collector to free.
+                // TODO(kasper): Explain how we use critical_do to avoid yielding
+                // when we leave monitor operations.
+                critical_do: handler.on_message type gid pid arguments
+              else:
+                print_ "WARNING: unhandled system message $type"
             finally:
               done = true
 
@@ -154,32 +154,47 @@ process_messages_:
           assert: false
   finally:
     is_processing_messages_ = false
-
+/*
 monitor MessageProcessor_:
   static IDLE_TIME_MS ::= 50
-  lambda_ := null
-  task_ := null
+  lambda_/Lambda? := null
+  processor_ := null
 
+  run lambda/Lambda -> none:
+    processor := null
+    if lambda_:
+      // ...
+    else:
+      lambda_ = lambda
+      processor := processor_
+      if not processor:
+        processor := create_processor_task_
+        processor_ = processor
+        task_transfer_to_ processor false
 
-  wait_for_next self/Task -> bool:
-    deadline := Time.monotonic_us + IDLE_TIME_MS * 1_000
-    return try_await --deadline=deadline: (not identical task_ self) or lambda_ != null
+  wait_for_next self/Task -> Lambda?:
+    deadline ::= Time.monotonic_us + IDLE_TIME_MS * 1_000
+    success ::= try_await --deadline=deadline: (identical processor_ self) and lambda_ != null
+    return success ? lambda_ : null
 
-  create_processing_task_ -> none:
+  create_processor_task_ -> Task_:
     // The task code runs outside the monitor, so the monitor
     // is unlocked when the messages are being processed.
-    task_ = task --name="Message processing task"::
+    processor := task --name="Message processor task"::
+      self ::= Task.current
       try:
-        self ::= Task.current
         critical_do:
-          while true:
-            if not wait_for_next self: break
-            next := lambda_
+          while not self.is_canceled:
+            next ::= wait_for_next self
             if not next: break
-            catch --trace: next.call
-            lambda_ = null
+            try:
+              next.call
+            finally:
+              lambda_ = null
       finally:
-        task_ = null
+        if identical self processor_: processor_ = null
+    return processor as Task_
+*/
 
 task_has_messages_ -> bool:
   #primitive.core.task_has_messages
