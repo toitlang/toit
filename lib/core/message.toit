@@ -93,7 +93,9 @@ process_messages_:
       // task's deadline if any.
       critical_do --no-respect_deadline:
         if message is Array_:
+          entered := false
           lambda := ::
+            entered = true
             type ::= message[0]
             handler ::= system_message_handlers_.get type
             if handler:
@@ -105,11 +107,15 @@ process_messages_:
             else:
               print_ "WARNING: unhandled system message $type"
 
+          reused := true
           processor := message_processor_
           if not processor.run lambda:
             processor = MessageProcessor_ lambda
             message_processor_ = processor
+            reused = false
           processor.detach_if_necessary_
+          if not entered:
+            throw "WARNING: message handler lambda not entered (reused=$reused)"
 
         else if message is Lambda:
           pending_finalizers_.add message
@@ -149,18 +155,19 @@ monitor MessageProcessor_:
     lambda_ = lambda
     return true
 
-  detach_if_necessary_:
+  detach_if_necessary_ -> none:
     task/any := task_
     if task: task_transfer_to_ task false
-    // If we come back here and the lambda hasn't been
-    // cleared out, we detach this processor from the
-    // task so it stops when it is done with the lambda.
+    // If we come back here and the lambda hasn't been cleared out,
+    // we detach this message processor by clearing out the task
+    // field. This forces it to stop when it is done with the lambda.
     if lambda_: task_ = null
 
   wait_for_next -> Lambda?:
     deadline ::= Time.monotonic_us + IDLE_TIME_MS * 1_000
-    success ::= try_await --deadline=deadline: task_ == null or lambda_ != null
-    return success ? lambda_ : null
+    try_await --deadline=deadline: lambda_ or not task_
+    // If we got a lambda, we must return it and deal with even if we timed out.
+    return lambda_
 
 task_has_messages_ -> bool:
   #primitive.core.task_has_messages

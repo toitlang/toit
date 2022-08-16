@@ -139,7 +139,7 @@ class Task_ implements Task:
     task_count_++
     if background_: task_background_++
 
-  // Configures the main task. Called by __entry__
+  // Configures the main task. Called by __entry__main and __entry__spawn.
   initialize_entry_task_:
     assert: task_count_ == 0
     name_ = "Main task"
