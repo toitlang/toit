@@ -122,17 +122,15 @@ process_messages_:
             kurten ::= monitor.Channel 1
             kkk = task --no-background::
               try:
-                critical_do:
-                  while true:
-                    doit/Lambda? := null
+                while true:
+                  doit/Lambda? := null
+                  critical_do:
                     catch --unwind=(: it != DEADLINE_EXCEEDED_ERROR):
-                      with_timeout --ms=100:
-                        doit = kurten.receive
-                    if not doit and kurten.size > 0:
-                      // TODO(kasper): There is a race condition here. Ugh.
-                      doit = kurten.receive
-                    if not doit: break
-                    doit.call  // <----- TODO(kasper): Reconsider critical do here. We don't really want yielding.
+                      with_timeout --ms=100: doit = kurten.receive
+                    // TODO(kasper): There is a race condition here. Ugh.
+                    if not doit and kurten.size > 0: doit = kurten.receive
+                  if not doit: break
+                  doit.call
               finally:
                 if identical handler_task_ Task.current:
                   handler_task_ = null
