@@ -2,8 +2,6 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import monitor
-
 // System message types.
 SYSTEM_TERMINATED_     ::= 0
 SYSTEM_SPAWNED_        ::= 1
@@ -131,11 +129,12 @@ monitor MessageProcessor_:
     // is unlocked when the messages are being processed.
     task_ = task::
       try:
-        // TODO(kasper): Explain how we use critical_do to avoid yielding
-        // when we leave monitor operations.
-        self ::= Task.current
+        // Message handlers run in critical regions, so they
+        // cannot be canceled and they avoid yielding after
+        // monitor operations. This makes it more likely that
+        // they will complete quickly.
         critical_do:
-          while not self.is_canceled:
+          while true:
             next ::= wait_for_next
             if not next: break
             try:
