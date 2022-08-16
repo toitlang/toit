@@ -147,11 +147,36 @@ random_add_entropy_ data:
 /**
 Returns the number of initial zeros in the argument.
 The argument is treated as an unsigned 64 bit number.  Thus
-  it returns 64 if given the value 0, and it returns 0 if given
-  a negative input.
+  it returns 0 if given a negative input.
+# Examples
+```
+count_leading_zeros 0x00FF    // => 56
+count_leading_zeros 0x0025    // => 58
+count_leading_zeros 0         // => 64
+count_leading_zeros int.MIN   // => 0
+```
 */
 count_leading_zeros value/int:
   #primitive.core.count_leading_zeros
+
+/**
+Returns the number of trailing zeros in the argument.
+The argument is treated as an unsigned 64 bit number.
+  Thus it returns 1 if given the input -2.
+# Examples
+```
+count_trailing_zeros 0b101000  // => 3
+count_trailing_zeros 0b101100  // => 2
+count_trailing_zeros 0b101110  // => 1
+count_trailing_zeros 0b101111  // => 0
+count_trailing_zeros 0         // => 64
+count_trailing_zeros int.MIN   // => 63
+```
+*/
+count_trailing_zeros value/int:
+  if value == 0: return 64
+  value ^= value - 1
+  return 63 - (count_leading_zeros value)
 
 /**
 Calls the given $block but throws an exception if the $timeout is exceeded.
