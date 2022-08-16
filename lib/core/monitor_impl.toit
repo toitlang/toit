@@ -3,7 +3,7 @@
 // found in the lib/LICENSE file.
 
 // Implementation of Monitor, see
-// https://en.wikipedia.org/wiki/Monitor_(synchronization) This class is
+// https://en.wikipedia.org/wiki/Monitor_(synchronization). This class is
 // special, in that if you use the 'monitor' keyword instead of the 'class'
 // method, then your class inherits from this class, and all public methods are
 // wrapped in a locked: call. Since the lock is not reentrant this means

@@ -234,8 +234,7 @@ class WifiModule implements NetworkModule:
     // $monitor.ResourceState_ object, but since we're only
     // closing here it doesn't really matter. Room for
     // improvement though.
-    if (state & (WIFI_DISCONNECTED | WIFI_IP_LOST)) != 0:
-      task:: disconnect
+    if (state & (WIFI_DISCONNECTED | WIFI_IP_LOST)) != 0: disconnect
 
 // ----------------------------------------------------------------------------
 

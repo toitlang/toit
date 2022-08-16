@@ -47,9 +47,11 @@ monitor FinalizationStack_:
     lambdas_.add lambda
     ensure_finalization_task_
 
-  wait_for_next -> bool:
+  wait_for_next -> Lambda?:
     deadline := Time.monotonic_us + IDLE_TIME_MS * 1_000
-    return try_await --deadline=deadline: not lambdas_.is_empty
+    try_await --deadline=deadline: not lambdas_.is_empty
+    // If we got a lambda, we must return it and deal with even if we timed out.
+    return lambdas_.is_empty ? null : lambdas_.remove_last
 
   ensure_finalization_task_ -> none:
     if task_ or lambdas_.is_empty: return
@@ -57,10 +59,15 @@ monitor FinalizationStack_:
     // is unlocked when the finalizers are being processed but
     // locked when the finalizers are being added and removed.
     task_ = task --name="Finalization task" --background::
+      self ::= Task.current
       try:
-        while not Task.current.is_canceled:
-          if lambdas_.is_empty and not wait_for_next: break
-          next := lambdas_.remove_last
+        while not self.is_canceled:
+          next/Lambda? := null
+          if lambdas_.is_empty:
+            next = wait_for_next
+            if not next: break
+          else:
+            next = lambdas_.remove_last
           catch --trace: next.call
       finally:
         task_ = null

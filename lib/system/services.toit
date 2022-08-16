@@ -412,7 +412,7 @@ class ServiceManager_ implements SystemMessageHandler_:
     // We avoid manipulating the clients set in the $close
     // method by taking ownership of it here.
     clients_by_pid_.remove pid
-    task:: clients.do: close it
+    clients.do: close it
 
   on_message type/int gid/int pid/int message/any -> none:
     assert: type == SYSTEM_RPC_NOTIFY_
