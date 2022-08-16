@@ -9,10 +9,6 @@ task_count_ := 0
 // How many tasks are alive, but running in the background?
 task_background_ := 0
 
-TASK_DEFAULT_            /int ::= 0
-TASK_BACKGROUND_         /int ::= 1
-TASK_MESSAGE_PROCESSING_ /int ::= 2
-
 /**
 Returns the object for the current task.
 
@@ -30,14 +26,13 @@ If the $background flag is set, then the new task will not block termination.
   The $background task flag is passed on to sub-tasks.
 */
 task code/Lambda --name/string="User task" --background/bool=false -> Task:
-  background = background or Task_.current.background
-  return create_task_ name (background ? TASK_BACKGROUND_ : TASK_DEFAULT_) code
+  return create_task_ code name background
 
 // Base API for creating and activating a task.
-create_task_ name/string kind/int code/Lambda -> Task_:
+create_task_ code/Lambda name/string background/bool -> Task:
   new_task := task_new_ code
   new_task.name_ = name
-  new_task.kind_ = kind
+  new_task.background_ = background or Task_.current.background
   new_task.initialize_
   // Activate the new task.
   new_task.previous_running_ = new_task.next_running_ = new_task
@@ -105,7 +100,7 @@ class Task_ implements Task:
     #primitive.core.task_current
 
   background -> bool:
-    return kind_ == TASK_BACKGROUND_
+    return background_
 
   operator == other:
     return other is Task_ and other.id_ == id_
@@ -141,21 +136,16 @@ class Task_ implements Task:
     critical_count_ = 0
     state_ = STATE_SUSPENDED
     task_count_++
-    if background: task_background_++
+    if background_: task_background_++
 
   // Configures the main task. Called by __entry__
   initialize_entry_task_:
     assert: task_count_ == 0
     name_ = "Main task"
-    kind_ = TASK_DEFAULT_
+    background_ = false
     initialize_
     state_ = STATE_RUNNING
     previous_running_ = next_running_ = this
-
-  yield_if_non_critical_ -> none:
-    if critical_count_ > 0 or kind_ == TASK_MESSAGE_PROCESSING_: return
-    process_messages_
-    task_transfer_to_ next_running_ false
 
   evaluate_ [code]:
     exception := null
@@ -189,9 +179,13 @@ class Task_ implements Task:
     // up as part of the processing and impact the decision.
     process_messages_
     task_count_--
-    if background: task_background_--
+    if background_: task_background_--
     // If no services are defined and only background tasks are alive
     // at this point, we terminate the process gracefully.
+
+    // TODO(kasper): It is problematic that we check this condition
+    // here, but not when a service is uninstalled.
+
     if ServiceManager_.is_empty and task_count_ == task_background_: __halt__
     // Suspend this task and transfer control to the next one.
     next := suspend_
@@ -257,7 +251,7 @@ class Task_ implements Task:
 
   // Task state initialized by Toit code.
   name_ := null
-  kind_ := null
+  background_ := null
 
   // Deadline and cancelation support.
   deadline_ := null

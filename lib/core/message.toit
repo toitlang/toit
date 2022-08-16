@@ -2,6 +2,8 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+import monitor
+
 // System message types.
 SYSTEM_TERMINATED_     ::= 0
 SYSTEM_SPAWNED_        ::= 1
@@ -122,21 +124,24 @@ monitor MessageProcessor_:
   static IDLE_TIME_MS /int ::= 100
 
   lambda_/Lambda? := null
-  task_/Task_? := null
+  task_/Task? := null
 
   constructor .lambda_:
     // The task code runs outside the monitor, so the monitor
     // is unlocked when the messages are being processed.
-    task_ = create_task_ "Message processing task" TASK_MESSAGE_PROCESSING_::
+    task_ = task::
       try:
+        // TODO(kasper): Explain how we use critical_do to avoid yielding
+        // when we leave monitor operations.
         self ::= Task.current
-        while not self.is_canceled:
-          next ::= wait_for_next
-          if not next: break
-          try:
-            next.call
-          finally:
-            lambda_ = null
+        critical_do:
+          while not self.is_canceled:
+            next ::= wait_for_next
+            if not next: break
+            try:
+              next.call
+            finally:
+              lambda_ = null
       finally:
         task_ = null
 
@@ -146,7 +151,7 @@ monitor MessageProcessor_:
     return true
 
   detach_if_necessary_:
-    task ::= task_
+    task/any := task_
     if task: task_transfer_to_ task false
     // If we come back here and the lambda hasn't been
     // cleared out, we detach this processor from the

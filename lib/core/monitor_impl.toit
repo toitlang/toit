@@ -127,7 +127,7 @@ class __Monitor__:
       resume_ --state_changed
       // To guarantee some level of fairness, we yield to avoid letting
       // the calling task starve the others.
-      self.yield_if_non_critical_
+      if is_non_critical: yield
 
   wait_ self:
     // Add self to end of waiters list.
