@@ -63,9 +63,9 @@ set_system_message_handler_ type/int handler/SystemMessageHandler_:
 /** Flag to track if we're currently processing messages. */
 is_processing_messages_ := false
 
-// ...
-handler_task_/any := null
-handler_lambdas_/monitor.Channel? := null
+// We cache a message processor, so we don't have to keep allocating
+// new tasks for processing messages all the time.
+message_processor_/MessageProcessor_ := MessageProcessor_ null
 
 /**
 Processes the incoming messages sent to tasks in this process.
@@ -95,56 +95,23 @@ process_messages_:
       // task's deadline if any.
       critical_do --no-respect_deadline:
         if message is Array_:
-          done := false
           lambda := ::
-            try:
-              type ::= message[0]
-              handler ::= system_message_handlers_.get type
-              if handler:
-                gid ::= message[1]
-                pid ::= message[2]
-                arguments ::= message[3]
-                message = null  // Allow garbage collector to free.
-                // TODO(kasper): Explain how we use critical_do to avoid yielding
-                // when we leave monitor operations.
-                critical_do: handler.on_message type gid pid arguments
-              else:
-                print_ "WARNING: unhandled system message $type"
-            finally:
-              done = true
+            type ::= message[0]
+            handler ::= system_message_handlers_.get type
+            if handler:
+              gid ::= message[1]
+              pid ::= message[2]
+              arguments ::= message[3]
+              message = null  // Allow garbage collector to free.
+              handler.on_message type gid pid arguments
+            else:
+              print_ "WARNING: unhandled system message $type"
 
-          kkk := handler_task_
-          xxx := handler_lambdas_
-          handler_task_ = null
-          handler_lambdas_ = null
-
-          if not kkk:
-            kurten ::= monitor.Channel 1
-            kkk = task --no-background::
-              try:
-                while true:
-                  doit/Lambda? := null
-                  critical_do:
-                    catch --unwind=(: it != DEADLINE_EXCEEDED_ERROR):
-                      with_timeout --ms=100: doit = kurten.receive
-                    // TODO(kasper): There is a race condition here. Ugh.
-                    if not doit and kurten.size > 0: doit = kurten.receive
-                  if not doit: break
-                  doit.call
-              finally:
-                if identical handler_task_ Task.current:
-                  handler_task_ = null
-            xxx = kurten
-
-          xxx.send lambda
-          task_transfer_to_ kkk false
-
-          if done:
-            handler_task_ = kkk
-            handler_lambdas_ = xxx
-          else:
-            // print_ "[WARNING] handler not done when ready for next message"
-            xxx.send null
+          processor := message_processor_
+          if not processor.run lambda:
+            processor = MessageProcessor_ lambda
+            message_processor_ = processor
+          processor.detach_if_necessary_
 
         else if message is Lambda:
           pending_finalizers_.add message
@@ -152,47 +119,49 @@ process_messages_:
           assert: false
   finally:
     is_processing_messages_ = false
-/*
+
 monitor MessageProcessor_:
-  static IDLE_TIME_MS ::= 50
+  static IDLE_TIME_MS /int ::= 100
+
   lambda_/Lambda? := null
-  processor_ := null
+  task_/Task? := null
 
-  run lambda/Lambda -> none:
-    processor := null
-    if lambda_:
-      // ...
-    else:
-      lambda_ = lambda
-      processor := processor_
-      if not processor:
-        processor := create_processor_task_
-        processor_ = processor
-        task_transfer_to_ processor false
-
-  wait_for_next self/Task -> Lambda?:
-    deadline ::= Time.monotonic_us + IDLE_TIME_MS * 1_000
-    success ::= try_await --deadline=deadline: (identical processor_ self) and lambda_ != null
-    return success ? lambda_ : null
-
-  create_processor_task_ -> Task_:
+  constructor .lambda_:
     // The task code runs outside the monitor, so the monitor
     // is unlocked when the messages are being processed.
-    processor := task --name="Message processor task"::
-      self ::= Task.current
+    task_ = task::
       try:
+        // TODO(kasper): Explain how we use critical_do to avoid yielding
+        // when we leave monitor operations.
+        self ::= Task.current
         critical_do:
           while not self.is_canceled:
-            next ::= wait_for_next self
+            next ::= wait_for_next
             if not next: break
             try:
               next.call
             finally:
               lambda_ = null
       finally:
-        if identical self processor_: processor_ = null
-    return processor as Task_
-*/
+        task_ = null
+
+  run lambda/Lambda -> bool:
+    if lambda_ or not task_: return false
+    lambda_ = lambda
+    return true
+
+  detach_if_necessary_:
+    task/any := task_
+    if task: task_transfer_to_ task false
+    // If we come back here and the lambda hasn't been
+    // cleared out, we detach this processor from the
+    // task so it stops when it is done with the lambda.
+    if lambda_: task_ = null
+
+  wait_for_next -> Lambda?:
+    deadline ::= Time.monotonic_us + IDLE_TIME_MS * 1_000
+    success ::= try_await --deadline=deadline: task_ == null or lambda_ != null
+    return success ? lambda_ : null
 
 task_has_messages_ -> bool:
   #primitive.core.task_has_messages
