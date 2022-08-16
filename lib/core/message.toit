@@ -108,7 +108,7 @@ process_messages_:
           if not processor.run lambda:
             processor = MessageProcessor_ lambda
             message_processor_ = processor
-          processor.detach_if_necessary_
+          processor.detach_if_not_done_
         else if message is Lambda:
           pending_finalizers_.add message
         else:
@@ -149,7 +149,7 @@ monitor MessageProcessor_:
     lambda_ = lambda
     return true
 
-  detach_if_necessary_ -> none:
+  detach_if_not_done_ -> none:
     task/any := task_
     if task: task_transfer_to_ task false
     // If we come back here and the lambda hasn't been cleared out,
