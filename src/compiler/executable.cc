@@ -56,11 +56,11 @@ static int sign_if_necessary(const char* out_path) {
   return 0;
 #else
   char codesign[] = { "codesign" };
-  char minus_s[] = { "-s" };
+  char minus_sf[] = { "-sf" };
   char dash[] = { "-" };
   char* out_path_mutable = strdup(out_path);
   // The spawn functions want mutable argv arguments. They are unlikely to modify it, but that's what it wants.
-  char* argv[] = { codesign, minus_s, dash, out_path_mutable, null };
+  char* argv[] = { codesign, minus_sf, dash, out_path_mutable, null };
   int status = 0;
   pid_t child_pid;
   if (posix_spawnp(&child_pid, "codesign", null, null, argv, environ) != 0) goto fail;
