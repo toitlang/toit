@@ -1161,26 +1161,32 @@ PRIMITIVE(string_compare) {
 PRIMITIVE(string_rune_count) {
   ARGS(Blob, bytes)
   word count = 0;
+  const uword WORD_MASK = WORD_SIZE - 1;
   const uint8* address = bytes.address();
   int len = bytes.length();
-  // This algorithm counts the runes in 4-byte chunks of UTF-8.  For a 64 bit
-  // platform we could move to 8-byte chunks for more speed.
-  // We have to ensure that the memory reads are 4-byte aligned to avoid memory
+  // This algorithm counts the runes in word-sized chunks of UTF-8.
+  // We have to ensure that the memory reads are word aligned to avoid memory
   // faults.
   // The first mask will make sure we skip over the bytes we don't need.
-  int skipped_start_bytes = reinterpret_cast<uword>(address) & 3;
+  int skipped_start_bytes = reinterpret_cast<uword>(address) & WORD_MASK;
   address -= skipped_start_bytes;  // Align the address
   len += skipped_start_bytes;
 
+#ifdef BUILD_64
+  const uword HIGH_BITS_IN_BYTES = 0x8080808080808080LL;
+#else
+  const uword HIGH_BITS_IN_BYTES = 0x80808080;
+#endif
+
   // Create a mask that skips the first bytes we shouldn't count.
   // This code assumes a little-endian architecture.
-  uint32 mask = 0x80808080 << (skipped_start_bytes * 8);
+  uword mask = HIGH_BITS_IN_BYTES << (skipped_start_bytes * BYTE_BIT_SIZE);
 
   // Iterate over all 4-byte chunks (potentially leaving one last for after the
   // loop). The mask is updated at the end of the loop to count the full 4-byte
   // chunks of the next iteration.
-  for (word i = 0; i < len; i += 4) {
-    uint32 w = *reinterpret_cast<const uint32*>(address + i);
+  for (word i = 0; i < len; i += WORD_SIZE) {
+    uword w = *reinterpret_cast<const uword*>(address + i);
     // The high bit in each byte of w should reflect whether we have an ASCII
     // character or the first byte of a multi-byte sequence.
     // w & (w << 1) captures the 11 prefix in the high bits of the first
@@ -1188,25 +1194,36 @@ PRIMITIVE(string_rune_count) {
     // ~w captures the 0 in the high bit of an ASCII (single-byte) character.
     w = (w & (w << 1)) | ~w;
     // The mask removes the other bits, leaving the high bit in each byte.  It
-    // also trims data from beyond the end of the string in the final position,
-    // which is handled first.
-    count += __builtin_popcount(w & mask);  // Count the 1's in w.
-    // After the final position we look at all bytes in the other positions.
-    mask = 0x80808080;
+    // also trims data from before the start of the string in the initial
+    // position, which is handled first.
+    w &= mask;
+#ifdef BUILD_64
+    count += Utils::popcount(w);
+#else
+    // Count the 1's in w, which can only be at the bit positions 7, 15, 23,
+    // and 31.  We could use popcount, but ESP32 does not have an instruction
+    // for that so we can do better, knowing that there are only 4 positions
+    // that can be 1.
+    w += w >> 16;
+    // Now we have a 2-bit count at bit positions 7-8 and 15-16.
+    count += ((w >> 7) + (w >> 15)) & 7;
+#endif
+    // After the first position we look at all bytes in the other positions.
+    mask = HIGH_BITS_IN_BYTES;
   }
 
-  if ((len & 3) != 0) {
+  if ((len & WORD_MASK) != 0) {
     // We counted too many bytes in the last chunk. Count the extra runes we
     // caught this way and remove it from the total.
-    uint32 last_chunk = *reinterpret_cast<const uint32*>(address + (len & ~3));
-    int last_chunk_bytes = len & 3;
+    uword last_chunk = *reinterpret_cast<const uword*>(address + (len & ~WORD_MASK));
+    int last_chunk_bytes = len & WORD_MASK;
     // Skip the the 'last_chunk_bytes' as they should be counted, but keep the
     // mask for the remaining ones.
-    uint32 end_mask = 0x80808080 << (last_chunk_bytes * 8);
-    uint32 w = last_chunk;
+    uword end_mask = HIGH_BITS_IN_BYTES << (last_chunk_bytes * BYTE_BIT_SIZE);
+    uword w = last_chunk;
     w = (w & (w << 1)) | ~w;
     // Remove them from the total count.
-    count -= __builtin_popcount(w & end_mask);
+    count -= Utils::popcount(w & end_mask);
   }
 
   return Primitive::integer(count, process);
