@@ -972,10 +972,11 @@ abstract class int extends num:
     for index := 0; index < this; index++: block.call index
 
   /**
-  Returns the number of initial zeros in binary representation of the integer.
+  Returns the number of initial zeros in the binary representation of the
+    integer.
   The integer is treated as an unsigned 64 bit number.  Thus
     it returns 0 if called on a negative integer.
-# Examples
+  # Examples
   ```
   (0x00FF).count_leading_zeros  // => 56
   (0x0025).count_leading_zeros  // => 58
@@ -992,7 +993,7 @@ abstract class int extends num:
     integer.
   The integer is treated as an unsigned 64 bit number.
     Thus it returns 1 if called on -2.
-# Examples
+  # Examples
   ```
   (0b101000).count_trailing_zeros   // => 3
   (0b101100).count_trailing_zeros   // => 2
