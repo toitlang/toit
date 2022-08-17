@@ -154,6 +154,7 @@ count_leading_zeros 0x00FF    // => 56
 count_leading_zeros 0x0025    // => 58
 count_leading_zeros 0         // => 64
 count_leading_zeros int.MIN   // => 0
+count_leading_zeros int.MAX   // => 1
 ```
 */
 count_leading_zeros value/int:
@@ -171,6 +172,7 @@ count_trailing_zeros 0b101110  // => 1
 count_trailing_zeros 0b101111  // => 0
 count_trailing_zeros 0         // => 64
 count_trailing_zeros int.MIN   // => 63
+count_trailing_zeros int.MAX   // => 0
 ```
 */
 count_trailing_zeros value/int:
