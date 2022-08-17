@@ -990,7 +990,7 @@ abstract class int extends num:
   /**
   Returns the number of trailing zeros in the binary representation of the
     integer.
-  The inteter is treated as an unsigned 64 bit number.
+  The integer is treated as an unsigned 64 bit number.
     Thus it returns 1 if called on -2.
 # Examples
   ```
