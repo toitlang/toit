@@ -1026,6 +1026,11 @@ PRIMITIVE(count_leading_zeros) {
   return Smi::from(Utils::clz(v));
 }
 
+PRIMITIVE(popcount) {
+  ARGS(int64, v);
+  return Smi::from(Utils::popcount(v));
+}
+
 PRIMITIVE(string_length) {
   ARGS(StringOrSlice, receiver);
   return Smi::from(receiver.length());

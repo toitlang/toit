@@ -108,6 +108,7 @@ namespace toit {
   PRIMITIVE(random_seed, 1)                  \
   PRIMITIVE(add_entropy, 1)                  \
   PRIMITIVE(count_leading_zeros, 1)          \
+  PRIMITIVE(popcount, 1)                     \
   PRIMITIVE(number_to_float, 1)              \
   PRIMITIVE(put_uint_big_endian, 5)          \
   PRIMITIVE(read_int_big_endian, 4)          \

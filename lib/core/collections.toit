@@ -2009,7 +2009,7 @@ abstract class HashedInsertionOrderedCollection_:
     enough := 1 + old_size + (old_size >> 3)  // old_size * 1.125.
     new_index_size := max
       minimum
-      1 << (64 - (count_leading_zeros enough))
+      1 << (64 - enough.count_leading_zeros)
 
     index_spaces_left_ = (new_index_size * 0.85).to_int
     if index_spaces_left_ <= old_size: index_spaces_left_ = old_size + 1
