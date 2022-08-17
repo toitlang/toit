@@ -1182,9 +1182,8 @@ PRIMITIVE(string_rune_count) {
   // This code assumes a little-endian architecture.
   uword mask = HIGH_BITS_IN_BYTES << (skipped_start_bytes * BYTE_BIT_SIZE);
 
-  // Iterate over all 4-byte chunks (potentially leaving one last for after the
-  // loop). The mask is updated at the end of the loop to count the full 4-byte
-  // chunks of the next iteration.
+  // Iterate over all word-sized chunks. The mask is updated at the end of the
+  // loop to count the full word-sized chunks of the next iteration.
   for (word i = 0; i < len; i += WORD_SIZE) {
     uword w = *reinterpret_cast<const uword*>(address + i);
     // The high bit in each byte of w should reflect whether we have an ASCII
