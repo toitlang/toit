@@ -52,7 +52,8 @@
 namespace toit {
 
 // Flags used to get memory for the Toit heap, which needs to be fast and 8-bit
-// capable.
+// capable.  We will set this to the most useful value when we have detected
+// which types of RAM are available.
 static int toit_heap_caps_flags = 0;
 
 void panic_put_char(char c) {
@@ -342,6 +343,8 @@ void OS::set_up() {
   _scheduler_mutex = allocate_mutex(4, "Scheduler mutex");
   _resource_mutex = allocate_mutex(99, "Resource mutex");
 #ifdef CONFIG_IDF_TARGET_ESP32
+  // This will normally return 1 or 3.  Perhaps later, more
+  // CPU revisions will appear.
   _cpu_revision = esp_efuse_get_chip_ver();
 #endif
 }
@@ -394,7 +397,8 @@ OS::HeapMemoryRange OS::get_heap_memory_range() {
   toit_heap_caps_flags = MALLOC_CAP_8BIT | MALLOC_CAP_SPIRAM;
   heap_caps_get_info(&info, toit_heap_caps_flags);
 
-  if (info.lowest_address == null || _cpu_revision < 3) {
+  bool cpu_has_spiram_bug = _cpu_revision < 3;
+  if (info.lowest_address == null || cpu_has_spiram_bug) {
     if (info.lowest_address != null) {
       printf("[toit] INFO: SPIRAM not supported on CPU revision %d, using only internal RAM\n", _cpu_revision);
     }
@@ -418,8 +422,7 @@ OS::HeapMemoryRange OS::get_heap_memory_range() {
     return range;
   }
 
-  // In this case used hard coded ranges for internal RAM.
-
+  // In this case use hard coded ranges for internal RAM.
   HeapMemoryRange range;
 #ifdef CONFIG_IDF_TARGET_ESP32S3
   range.address = reinterpret_cast<void*>(0x3ffa0000);

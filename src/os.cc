@@ -35,7 +35,9 @@ namespace toit {
 Mutex* OS::_global_mutex = null;
 Mutex* OS::_scheduler_mutex = null;
 Mutex* OS::_resource_mutex = null;
-int    OS::_cpu_revision = 999;
+// Unless we explicily detect an old CPU revision we assume we have a high
+// (recent) CPU with no problems.
+int    OS::_cpu_revision = 1000000;
 
 void OS::timespec_increment(timespec* ts, int64 ns) {
   const int64 ns_per_second = 1000000000LL;
