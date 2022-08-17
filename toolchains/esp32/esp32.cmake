@@ -45,6 +45,8 @@ include_directories(
   $ENV{IDF_PATH}/components/bootloader_support/include
   $ENV{IDF_PATH}/components/driver/esp32/include
   $ENV{IDF_PATH}/components/driver/include
+  $ENV{IDF_PATH}/components/efuse/include
+  $ENV{IDF_PATH}/components/efuse/esp32/include
   $ENV{IDF_PATH}/components/esp32/include
   $ENV{IDF_PATH}/components/esp_adc_cal/include
   $ENV{IDF_PATH}/components/esp_common/include

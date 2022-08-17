@@ -258,6 +258,7 @@ class OS {
   static Mutex* _scheduler_mutex;
   static Mutex* _resource_mutex;
   static HeapMemoryRange _single_range;
+  static int _cpu_revision;
 
   friend class ConditionVariable;
 };
