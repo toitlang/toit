@@ -63,7 +63,7 @@ doesnt_fail limit:
   print_ "limit $limit"
   a := []
   for l := limit; l > 2000; l -= 270:
-    print "  l=$l"
+    print_ "  l=$l"
     s := ("#" * 200) + "$(random 1000)"
     a.add s
     sleep --ms=1
