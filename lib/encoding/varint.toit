@@ -56,7 +56,7 @@ byte_size --offset/int=0 p/ByteArray -> int:
 
 /// Returns the number of bytes used to encode $i.
 size i/int -> int:
-  return NUMBER_OF_BYTES_LOOKUP_[count_leading_zeros i]
+  return NUMBER_OF_BYTES_LOOKUP_[i.count_leading_zeros]
 
 // This could perhaps be replaced by something like:
 //   number_of_bytes_ clz_result/int:

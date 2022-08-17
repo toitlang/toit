@@ -58,13 +58,13 @@ decode p/ByteArray offset/int -> int:
 /// Count the leading consecutive ones of i, treated as an 8 bit unsigned value.
 count_ones_ i/int -> int:
   i = (i & 0xFF) ^ 0xFF
-  return (count_leading_zeros i) - 56
+  return i.count_leading_zeros - 56
 
 /// Returns the number of bytes used to encode $i.
 size i/int -> int:
   if i & 0x7f == i: return 1
   if i < 0: return 9
-  return varint.NUMBER_OF_BYTES_LOOKUP_[count_leading_zeros i]
+  return varint.NUMBER_OF_BYTES_LOOKUP_[i.count_leading_zeros]
 
 /// Returns the number of bytes used to encode the integer at the $offset position in the $p ByteArray.
 byte_size --offset/int=0 p/ByteArray -> int:
