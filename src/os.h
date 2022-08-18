@@ -277,6 +277,10 @@ class HeapTagScope {
   uword old;
 };
 
+#ifdef TOIT_FREERTOS
+extern bool use_spiram_for_heap;
+#endif
+
 } // namespace toit
 
 #ifdef TOIT_LINUX

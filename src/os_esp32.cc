@@ -54,7 +54,18 @@ namespace toit {
 // Flags used to get memory for the Toit heap, which needs to be fast and 8-bit
 // capable.  We will set this to the most useful value when we have detected
 // which types of RAM are available.
-static int toit_heap_caps_flags = 0;
+bool use_spiram_for_heap = false;
+
+static int EXTERNAL_CAPS = MALLOC_CAP_8BIT | MALLOC_CAP_SPIRAM;
+static int INTERNAL_CAPS = MALLOC_CAP_8BIT | MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA;
+
+static int toit_heap_caps_flags() {
+  if (use_spiram_for_heap) {
+    return EXTERNAL_CAPS;
+  } else {
+    return INTERNAL_CAPS;
+  }
+}
 
 void panic_put_char(char c) {
   while (((READ_PERI_REG(UART_STATUS_REG(CONFIG_ESP_CONSOLE_UART_NUM)) >> UART_TXFIFO_CNT_S)&UART_TXFIFO_CNT) >= 126) ;
@@ -367,7 +378,7 @@ void OS::dispose(ConditionVariable* condition) { delete condition; }
 void* OS::allocate_pages(uword size) {
   size = Utils::round_up(size, TOIT_PAGE_SIZE);
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + TOIT_HEAP_MALLOC_TAG);
-  void* allocation = heap_caps_aligned_alloc(TOIT_PAGE_SIZE, size, toit_heap_caps_flags);
+  void* allocation = heap_caps_aligned_alloc(TOIT_PAGE_SIZE, size, toit_heap_caps_flags());
   return allocation;
 }
 
@@ -378,7 +389,7 @@ void OS::free_pages(void* address, uword size) {
 void* OS::grab_virtual_memory(void* address, uword size) {
   // On ESP32 this is only used for allocating the heap metadata.  We put this
   // in the same space as the heap itself.
-  return heap_caps_malloc(size, toit_heap_caps_flags);
+  return heap_caps_malloc(size, toit_heap_caps_flags());
 }
 
 void OS::ungrab_virtual_memory(void* address, uword size) {
@@ -394,8 +405,8 @@ void OS::unuse_virtual_memory(void* address, uword size) {}
 OS::HeapMemoryRange OS::get_heap_memory_range() {
   multi_heap_info_t info = { 0 };
 
-  toit_heap_caps_flags = MALLOC_CAP_8BIT | MALLOC_CAP_SPIRAM;
-  heap_caps_get_info(&info, toit_heap_caps_flags);
+  int caps = EXTERNAL_CAPS;
+  heap_caps_get_info(&info, caps);
 
   bool cpu_has_spiram_bug = _cpu_revision < 3;
   if (info.lowest_address == null || cpu_has_spiram_bug) {
@@ -403,9 +414,10 @@ OS::HeapMemoryRange OS::get_heap_memory_range() {
       printf("[toit] INFO: SPIRAM not supported on CPU revision %d, using only internal RAM\n", _cpu_revision);
     }
     // If there is no SPI RAM try again with flags for internal RAM.
-    toit_heap_caps_flags = MALLOC_CAP_8BIT | MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA;
-    heap_caps_get_info(&info, toit_heap_caps_flags);
+    caps = INTERNAL_CAPS;
+    heap_caps_get_info(&info, caps);
   } else {
+    use_spiram_for_heap = true;
     uword lo = reinterpret_cast<uword>(info.lowest_address);
     uword hi = reinterpret_cast<uword>(info.highest_address);
     // Round the reported SPIRAM to the nearest MB.
