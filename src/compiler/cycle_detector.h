@@ -33,10 +33,9 @@ class CycleDetector {
   }
 
   void start(const T& entry) {
-     ASSERT(_in_progress_map.find(entry) == _in_progress_map.end());
-     _in_progress_map[entry] = _in_progress.size();
-     _in_progress.push_back(entry);
-
+    ASSERT(_in_progress_map.find(entry) == _in_progress_map.end());
+    _in_progress_map[entry] = _in_progress.size();
+    _in_progress.push_back(entry);
   }
 
   void stop(const T& entry) {
