@@ -63,6 +63,11 @@ void GcMetadata::set_up_singleton() {
   // page boundaries.
   metadata_ = reinterpret_cast<uint8*>(OS::grab_virtual_memory(null, metadata_size_));
 
+  if (metadata_ == null) {
+    printf("[toit] ERROR: failed to allocate GC metadata\n");
+    abort();
+  }
+
   // Mark bits must be page aligned so that mark_all detects page boundary
   // crossings, so we do that first.
   mark_bits_ = reinterpret_cast<uint32*>(metadata_);
