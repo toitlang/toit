@@ -194,14 +194,28 @@ foreach(VESSEL_SIZE ${VESSEL_SIZES})
     vessel/vessel${VESSEL_SIZE}.cc
     ${BOOT_SNAPSHOT_CC}
     ${run_SRC}
-    )
-  set_target_properties(${VESSEL_TARGET}
-    PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/sdk/vessels"
-    )
+  )
+
   target_link_libraries(
     ${VESSEL_TARGET} ${TOIT_LINK_LIBS}
   )
+
+  set_target_properties(${VESSEL_TARGET}
+    PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/sdk/vessels"
+  )
+
+  # Unsign the vessel executables.
+  if ("${CMAKE_SYSTEM_NAME}" MATCHES "Darwin")
+    add_custom_command(
+      TARGET ${VESSEL_TARGET}
+      POST_BUILD
+      COMMAND "codesign" "--remove-signature" "${VESSEL_TARGET}"
+      WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/sdk/vessels"
+      COMMENT "Removing signature from vessel executable"
+    )
+  endif()
+
   add_dependencies(build_tools ${VESSEL_TARGET})
 endforeach()
 
