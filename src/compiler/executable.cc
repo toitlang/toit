@@ -141,7 +141,7 @@ int create_executable(const char* out_path, const SnapshotBundle& bundle) {
       *reinterpret_cast<uint32*>(&vessel_content[i]) = bundle.size();
       memcpy(&vessel_content[i + 4], bundle.buffer(), bundle.size());
       // Use 'open', so we can give executable permissions.
-      int fd = open(out_path, O_WRONLY | O_CREAT | O_BINARY, 0777);
+      int fd = open(out_path, O_WRONLY | O_CREAT | O_TRUNC | O_BINARY, 0777);
       FILE* file_out = fdopen(fd, "wb");
       if (file_out == NULL) {
         perror("create_executable");
