@@ -250,6 +250,11 @@ class OS {
 
   static const char* getenv(const char* variable);
 
+#ifdef TOIT_FREERTOS
+  static bool use_spiram_for_heap() { return _use_spiram_for_heap; }
+  static int toit_heap_caps_flags();
+#endif
+
  private:
   static bool monotonic_gettime(int64* timestamp);
   static void timespec_increment(timespec* ts, int64 ns);
@@ -259,6 +264,9 @@ class OS {
   static Mutex* _resource_mutex;
   static HeapMemoryRange _single_range;
   static int _cpu_revision;
+#ifdef TOIT_FREERTOS
+  static bool _use_spiram_for_heap;
+#endif
 
   friend class ConditionVariable;
 };
@@ -276,10 +284,6 @@ class HeapTagScope {
 
   uword old;
 };
-
-#ifdef TOIT_FREERTOS
-extern bool use_spiram_for_heap;
-#endif
 
 } // namespace toit
 

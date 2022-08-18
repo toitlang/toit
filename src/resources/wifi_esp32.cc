@@ -295,7 +295,7 @@ PRIMITIVE(init) {
   // Create a thread that takes care of logging into the Wifi AP.
   wifi_init_config_t init_config = WIFI_INIT_CONFIG_DEFAULT();
   init_config.nvs_enable = 0;
-  if (!use_spiram_for_heap) {
+  if (!OS::use_spiram_for_heap()) {
     // Configuring ESP-IDF for SPIRAM support dramatically increases the amount
     // of memory that the Wifi uses.  If the SPIRAM is not actually present on
     // the current board we need to set the values back to zero.
