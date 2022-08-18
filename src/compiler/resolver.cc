@@ -18,6 +18,7 @@
 #include <algorithm>
 #include <stdarg.h>
 
+#include "cycle_detector.h"
 #include "diagnostic.h"
 #include "lsp/lsp.h"
 #include "map.h"
@@ -736,10 +737,7 @@ void Resolver::resolve_shows_and_exports(std::vector<Module*>& modules) {
   // The set of show nodes for which we already reported an issue.
   UnorderedSet<ast::Identifier*> reported_show_nodes;
 
-  // The modules we are hunting an export in. All of the modules in this set export the
-  // same identifier and depend on each other.
-  UnorderedMap<Module*, int> hunted_modules_map;
-  std::vector<Module*> hunted_modules;
+  CycleDetector<Module*> cycle_detector;
 
   // When an export-cycle is encountered, this variable is set to the beginning of
   // the cycle, so that callers can avoid printing additional error messages for
@@ -764,12 +762,11 @@ void Resolver::resolve_shows_and_exports(std::vector<Module*>& modules) {
     if (!module->export_all() && !explicitly_exported) return ResolutionEntry();
 
     // If we have seen this module before, we are in a cycle of exports.
-    if (hunted_modules_map.find(module) != hunted_modules_map.end()) {
-      ASSERT(export_cycle_start_node == null);
+    bool has_cycle = cycle_detector.check_cycle(module, [&](const std::vector<Module*>& cycle) {
+      report_cyclic_export(cycle, name, &reported_cyclic_modules, diagnostics());
+    });
+    if (has_cycle) {
       export_cycle_start_node = module;
-      auto sub = std::vector<Module*>(hunted_modules.begin() + hunted_modules_map.at(module),
-                                      hunted_modules.end());
-      report_cyclic_export(sub, name, &reported_cyclic_modules, diagnostics());
       return ResolutionEntry();
     }
 
@@ -802,11 +799,9 @@ void Resolver::resolve_shows_and_exports(std::vector<Module*>& modules) {
       // See if there is an explicit show in this module which would take precedence.
       auto probe = show_map[module].find(name);
       if (probe != show_map[module].end()) {
-        hunted_modules_map[module] = hunted_modules.size();
-        hunted_modules.push_back(module);
+        cycle_detector.start(module);
         entry = resolve_identifier(probe->second.module, name);
-        hunted_modules_map.remove(module);
-        hunted_modules.pop_back();
+        cycle_detector.stop(module);
         if (export_cycle_start_node != null) {
           // We are in an export cycle. Don't continue looking for the identifier.
           if (export_cycle_start_node == module) {
@@ -822,8 +817,7 @@ void Resolver::resolve_shows_and_exports(std::vector<Module*>& modules) {
       // The search is at most one level deep unless the module exports the
       // identifier (in which case we recursively continue).
       auto non_prefixed = module->scope()->non_prefixed_imported();
-      hunted_modules_map[module] = hunted_modules.size();
-      hunted_modules.push_back(module);
+      cycle_detector.start(module);
       ResolutionEntry resolved_entry;
       bool should_return = false;
       for (auto module_scope : non_prefixed->imported_scopes()) {
@@ -842,8 +836,7 @@ void Resolver::resolve_shows_and_exports(std::vector<Module*>& modules) {
           break;
         }
       }
-      hunted_modules_map.remove(module);
-      hunted_modules.pop_back();
+      cycle_detector.stop(module);
       if (export_cycle_start_node != null) {
         // We are in an export cycle. Don't continue looking for the identifier.
         if (export_cycle_start_node == module) {
@@ -909,7 +902,7 @@ void Resolver::resolve_shows_and_exports(std::vector<Module*>& modules) {
         auto probe = exported_identifiers_map.find(exported);
         if (probe == exported_identifiers_map.end()) {
           // No explicit 'show' with that name, so we need to find it in all imports.
-          ASSERT(hunted_modules.size() == 0);
+          ASSERT(cycle_detector.in_progress_size() == 0);
           exported_identifiers_map[exported] = resolve_identifier(module, exported);
         }
       }
