@@ -830,10 +830,11 @@ void MethodResolver::resolve_fill_global() {
   auto range = Source::Range::invalid();
   auto ast_field = ast_node->as_Field();
   if (ast_field->type() != null) {
-    _method->set_return_type(resolve_type(ast_field->type(), false));
+    _method->as_Global()->set_explicit_return_type(resolve_type(ast_field->type(), false));
     ASSERT(_method->return_type().is_valid());
   } else {
-    _method->set_return_type(ir::Type::any());
+    // The type of the global will be infered later.
+    _method->set_return_type(ir::Type::invalid());
   }
   ir::Expression* initial_value;
   if (ast_field->initializer() == null) {

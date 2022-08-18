@@ -17,6 +17,7 @@
 
 #include <stdarg.h>
 
+#include "cycle_detector.h"
 #include "deprecation.h"
 #include "diagnostic.h"
 #include "ir.h"
@@ -81,9 +82,12 @@ class TypeChecker : public ReturningVisitor<Type> {
 
 
   Type visit_Program(Program* node) {
+    // Visit globals first.
+    // While traversing we are inferring their type which will then be used in the
+    // other visits.
+    for (auto global: node->globals()) visit(global);
     for (auto klass: node->classes()) visit(klass);
     for (auto method: node->methods()) visit(method);
-    for (auto global: node->globals()) visit(global);
     return Type::invalid();
   }
 
@@ -103,12 +107,61 @@ class TypeChecker : public ReturningVisitor<Type> {
     if (node->has_body()) visit(node->body());
     return Type::invalid();
   }
+  Type visit_Global(Global* node) {
+    if (_handled_globals.contains(node)) return Type::invalid();
+    if (node->has_explicit_type()) {
+      visit_Method(node);
+      _handled_globals.insert(node);
+      return Type::invalid();
+    }
+    if (_reported_cyclic_globals.contains(node)) {
+      return Type::invalid();
+    }
+    bool detected_cycle = _globals_cycle_detector.check_cycle(node, [&](const std::vector<ir::Global*>& cycle) {
+      report_cyclic_global_types(cycle);
+      _reported_cyclic_globals.insert(node);
+    });
+    if (detected_cycle) return Type::invalid();
+    _method = node;
+    // TODO(florian): this is a bit hacky, but we have already rewritten the expression of
+    // the global, so we need to extract it now again.
+    auto body = node->body();
+    if (!body->is_Sequence()) UNREACHABLE();
+    auto expressions = body->as_Sequence()->expressions();
+    if (expressions.length() != 1) UNREACHABLE();
+    auto last = expressions.last();
+    if (last->is_CallStatic()) {
+      // Call to "uninitialized_global_failure_".
+      if (last->as_CallStatic()->target()->as_ReferenceMethod()->target()->name() != Symbols::uninitialized_global_failure_) UNREACHABLE();
+      // The uninitialized_global_failure_ call references its own global recursively.
+      // Mark the node as handled already now and give it the 'any' type.
+      // Alternatively, we could also just not visit the body.
+      _handled_globals.insert(node);
+      node->set_return_type(Type::any());
+      visit(node->body());
+      return Type::invalid();
+    }
+    _globals_cycle_detector.start(node);
+    if (!last->is_Return()) UNREACHABLE();
+    auto ret = last->as_Return();
+    auto value_type = visit(ret->value());
+    if (value_type.is_none()) {
+      report_error(ret->value()->range(), "Globals can't be initialized with 'none'");
+      node->set_return_type(Type::any());
+    } else if (ret->value()->is_LiteralNull()) {
+      node->set_return_type(Type::any());
+    } else {
+      node->set_return_type(value_type);
+    }
+    _globals_cycle_detector.stop(node);
+    _handled_globals.insert(node);
+    return Type::invalid();
+  }
 
   Type visit_MethodInstance(MethodInstance* node) { return visit_Method(node); }
   Type visit_MonitorMethod(MonitorMethod* node) { return visit_Method(node); }
   Type visit_MethodStatic(MethodStatic* node) { return visit_Method(node); }
   Type visit_Constructor(Constructor* node) { return visit_Method(node); }
-  Type visit_Global(Global* node) { return visit_Method(node); }
   Type visit_AdapterStub(AdapterStub* node) { return visit_Method(node); }
   Type visit_IsInterfaceStub(IsInterfaceStub* node) { return visit_Method(node); }
   Type visit_FieldStub(FieldStub* node) { return visit_Method(node); }
@@ -226,7 +279,21 @@ class TypeChecker : public ReturningVisitor<Type> {
   Type visit_ReferenceBlock(ReferenceBlock* node) { return visit_ReferenceLocal(node); }
   Type visit_ReferenceGlobal(ReferenceGlobal* node) {
     check_deprecated(node->range(), node->target());
-    return node->target()->return_type();
+    auto target = node->target();
+    // The second test (whether the _method is a global) is just a shortcut, as a non-global '_method'
+    // mean that we already handled all of them.
+    if (target->has_explicit_type() || !_method->is_Global()) {
+      return target->return_type();
+    }
+    auto current_method = _method;
+    visit_Global(target);
+    _method = current_method;
+    auto type = target->return_type();
+    if (!type.is_valid()) {
+      ASSERT(diagnostics()->encountered_error());
+      return Type::any();
+    }
+    return type;
   }
 
   Type visit_Local(Local* node) { UNREACHABLE(); return Type::invalid(); }
@@ -431,9 +498,13 @@ class TypeChecker : public ReturningVisitor<Type> {
   }
 
   Type visit_Return(Return* node) {
-    auto return_type = visit(node->value());
+    auto value_type = visit(node->value());
+    return visit_Return(node, value_type);
+  }
+
+  Type visit_Return(Return* node, Type value_type) {
     if (node->depth() == -1) {
-      check(node->range(), _method->return_type(), return_type);
+      check(node->range(), _method->return_type(), value_type);
     }
     return Type::none();
   }
@@ -536,6 +607,12 @@ class TypeChecker : public ReturningVisitor<Type> {
   Lsp* _lsp;
   Diagnostics* _diagnostics;
 
+  // Since globals can be visited out of order (recursively), we need to
+  // keep track which globals are already fully done.
+  Set<ir::Global*> _handled_globals;
+  CycleDetector<ir::Global*> _globals_cycle_detector;
+  UnorderedSet<ir::Global*> _reported_cyclic_globals;
+
   // The current method.
   Method* _method;
 
@@ -559,6 +636,18 @@ class TypeChecker : public ReturningVisitor<Type> {
     va_start(arguments, format);
     diagnostics()->report_warning(range, format, arguments);
     va_end(arguments);
+  }
+
+  void report_cyclic_global_types(const std::vector<ir::Global*>& cycle) {
+    for (auto global : cycle) {
+      diagnostics()->start_group();
+      diagnostics()->report_error(global->range(), "Cyclic type dependency");
+      for (auto cyclic : cycle) {
+        if (cyclic == global) continue;
+        diagnostics()->report_note(cyclic->range(), "This global contributes to the type-dependency cycle");
+      }
+      diagnostics()->end_group();
+    }
   }
 
   void check_deprecated(Source::Range range, ir::Node* node) {

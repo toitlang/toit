@@ -296,7 +296,13 @@ void Writer::print_toplevel_ref(ir::Node* toplevel_element) {
 }
 
 void Writer::print_type(ir::Type type) {
-  if (type.is_any()) {
+  if (!type.is_valid()) {
+    // We would prefer not to have invalid types here, but globals are initially marked
+    // with invalid types until their types are inferred in the type-check phase.
+    // This 'if' clause is thus required as long as
+    // https://github.com/toitlang/toit/issues/964 isn't fixed.
+    this->printf("-1\n");
+  } else if (type.is_any()) {
     this->printf("-1\n");
   } else if (type.is_none()) {
     this->printf("-2\n");

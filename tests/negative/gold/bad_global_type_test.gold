@@ -1,0 +1,25 @@
+tests/negative/bad_global_type_test.toit:13:3: error: Unresolved identifier: 'unresolved'
+  unresolved
+  ^~~~~~~~~~
+tests/negative/bad_global_type_test.toit:9:12: error: Can't access global 'global5' while initializing it
+global5 := global5 + 1
+           ^~~~~~~
+tests/negative/bad_global_type_test.toit:7:1: error: Cyclic type dependency
+global3 := global4 + global4
+^~~~~~~
+tests/negative/bad_global_type_test.toit:8:1: note: This global contributes to the type-dependency cycle
+global4 := global3 + global3
+^~~~~~~
+tests/negative/bad_global_type_test.toit:8:1: error: Cyclic type dependency
+global4 := global3 + global3
+^~~~~~~
+tests/negative/bad_global_type_test.toit:7:1: note: This global contributes to the type-dependency cycle
+global3 := global4 + global4
+^~~~~~~
+tests/negative/bad_global_type_test.toit:9:1: error: Cyclic type dependency
+global5 := global5 + 1
+^~~~~~~
+tests/negative/bad_global_type_test.toit:12:11: error: Type mismatch. Expected 'int'. Got 'string'
+  global2 = "str"
+          ^
+Compilation failed.

@@ -3,7 +3,7 @@
 // be found in the tests/LICENSE file.
 
 class A:
-  foo x:
+  foo x: return 0
 
 A := (A).foo unresolved
 
