@@ -50,5 +50,11 @@ main:
   ]
   container_manager.register_system_image
       SystemImage container_manager
-  boot container_manager
-  // TODO(kasper): Should we reboot here after a little while?
+
+  error ::= boot container_manager
+  if error == 0: return
+
+  // We encountered an error, so in order to recover, we restart the
+  // device by going into deep sleep for the short amount of time as
+  // decided by the underlying platform.
+  __deep_sleep__ 0

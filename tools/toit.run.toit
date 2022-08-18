@@ -47,11 +47,6 @@ abstract class ContainerImageFromSnapshot extends ContainerImage:
     write_on_stderr_ mirror_string (not mirror_string.ends_with "\n")
     return true
 
-  on_container_error container/Container error/int -> none:
-    // If a container started from the entry container image gets an error,
-    // we exit eagerly.
-    manager.terminate error
-
   stop_all -> none:
     unreachable  // Not implemented yet.
 
