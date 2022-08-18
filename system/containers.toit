@@ -44,26 +44,24 @@ class Container:
     if pids_.is_empty: return
     pids_.do: container_kill_pid_ it
     pids_.clear
-    image.manager.on_container_stop_ this
+    image.manager.on_container_stop_ this 0
     resources.do: it.on_container_stop 0
 
   on_stop_ -> none:
-    pids_.do: on_process_stop_ it
+    pids_.do: on_process_stop_ it 0
 
   on_process_start_ pid/int -> none:
     assert: not pids_.is_empty
     pids_.add pid
 
-  on_process_stop_ pid/int -> none:
+  on_process_stop_ pid/int error/int -> none:
     pids_.remove pid
-    if not pids_.is_empty: return
-    image.manager.on_container_stop_ this
-    resources.do: it.on_container_stop 0
-
-  on_process_error_ pid/int error/int -> none:
-    on_process_stop_ pid
-    pids_.do: container_kill_pid_ it
-    image.on_container_error this error
+    if error != 0:
+      pids_.do: container_kill_pid_ it
+      pids_.clear
+    else if not pids_.is_empty:
+      return
+    image.manager.on_container_stop_ this error
     resources.do: it.on_container_stop error
 
 class ContainerResource extends ServiceResource:
@@ -98,11 +96,6 @@ abstract class ContainerImage:
 
   run_on_boot -> bool:
     return false
-
-  // TODO(kasper): This isn't super nice. It feels a bit odd that the
-  // image is told that one of its containers has an error.
-  on_container_error container/Container error/int -> none:
-    // Nothing so far.
 
   abstract start -> Container
   abstract stop_all -> none
@@ -276,17 +269,18 @@ class ContainerManager extends ContainerServiceDefinition implements SystemMessa
     if containers_by_id_.is_empty: return 0
     return done_.get
 
-  // TODO(kasper): Not the prettiest interface.
-  terminate error/int -> none:
-    done_.set error
-
   on_container_start_ container/Container -> none:
     containers/Map ::= containers_by_image_.get container.image.id --init=: {:}
     containers[container.id] = container
     containers_by_id_[container.id] = container
 
-  on_container_stop_ container/Container -> none:
+  on_container_stop_ container/Container error/int -> none:
     containers_by_id_.remove container.id
+    // If we've got an error in an automatically booted image, we treat that
+    // as a fatal error and terminate the system process.
+    if error != 0 and container.image.run_on_boot:
+      done_.set error
+      return
     // TODO(kasper): We are supposed to always have a running system process. Maybe
     // we can generalize this handling and support background processes that do not
     // restrict us from exiting?
@@ -306,8 +300,7 @@ class ContainerManager extends ContainerServiceDefinition implements SystemMessa
       service_manager_.on_process_stop pid
       if container:
         error/int := arguments
-        if error == 0: container.on_process_stop_ pid
-        else: container.on_process_error_ pid error
+        container.on_process_stop_ pid error
     else if type == SYSTEM_SPAWNED_:
       if container: container.on_process_start_ pid
     else if type == SYSTEM_MIRROR_MESSAGE_:
