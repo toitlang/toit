@@ -64,7 +64,7 @@ void GcMetadata::set_up_singleton() {
   metadata_ = reinterpret_cast<uint8*>(OS::grab_virtual_memory(null, metadata_size_));
 
   if (metadata_ == null) {
-    printf("[Toit] ERROR Failed to allocate GC metadata\n");
+    printf("[toit] ERROR: failed to allocate GC metadata\n");
     abort();
   }
 
