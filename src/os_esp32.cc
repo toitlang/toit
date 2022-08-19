@@ -56,8 +56,8 @@ namespace toit {
 // which types of RAM are available.
 bool OS::_use_spiram_for_heap = false;
 
-static int EXTERNAL_CAPS = MALLOC_CAP_8BIT | MALLOC_CAP_SPIRAM;
-static int INTERNAL_CAPS = MALLOC_CAP_8BIT | MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA;
+static const int EXTERNAL_CAPS = MALLOC_CAP_8BIT | MALLOC_CAP_SPIRAM;
+static const int INTERNAL_CAPS = MALLOC_CAP_8BIT | MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA;
 
 int OS::toit_heap_caps_flags() {
   if (use_spiram_for_heap()) {
