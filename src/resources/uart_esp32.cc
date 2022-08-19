@@ -122,12 +122,14 @@ PRIMITIVE(init) {
 PRIMITIVE(create) {
   ARGS(UARTResourceGroup, group, int, tx, int, rx, int, rts, int, cts,
        int, baud_rate, int, data_bits, int, stop_bits, int, parity,
-       int, options);
+       int, options, int, mode);
 
   if (data_bits < 5 || data_bits > 8) INVALID_ARGUMENT;
   if (stop_bits < 1 || stop_bits > 3) INVALID_ARGUMENT;
   if (parity < 1 || parity > 3) INVALID_ARGUMENT;
   if (options < 0 || options > 3) INVALID_ARGUMENT;
+  if (mode < UART_MODE_UART || mode > UART_MODE_IRDA) INVALID_ARGUMENT;
+  if (mode == UART_MODE_RS485_HALF_DUPLEX && cts != -1) INVALID_ARGUMENT;
 
   uart_port_t port = kInvalidUARTPort;
 
@@ -160,8 +162,10 @@ PRIMITIVE(create) {
   }
 
   int flow_ctrl = 0;
-  if (rts != -1) flow_ctrl += UART_HW_FLOWCTRL_RTS;
-  if (cts != -1) flow_ctrl += UART_HW_FLOWCTRL_CTS;
+  if (mode == UART_MODE_UART) {
+    if (rts != -1) flow_ctrl += UART_HW_FLOWCTRL_RTS;
+    if (cts != -1) flow_ctrl += UART_HW_FLOWCTRL_CTS;
+  }
 
   uart_config_t uart_config = {
     .baud_rate = baud_rate,
@@ -209,6 +213,10 @@ PRIMITIVE(create) {
       }
     });
     err = args.err;
+  }
+
+  if (err == ESP_OK) {
+    err = uart_set_mode(port, static_cast<uart_mode_t>(mode));
   }
 
   if (err != ESP_OK) {
