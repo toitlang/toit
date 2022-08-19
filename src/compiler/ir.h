@@ -748,6 +748,15 @@ class Global : public Method {
   bool is_effectively_final() const { return _mutation_count == 0; }
   void register_mutation() { _mutation_count++; }
 
+  void set_explicit_return_type(Type type) {
+    Method::set_return_type(type);
+    _has_explicit_type = true;
+  }
+
+  bool has_explicit_type() const {
+    return _has_explicit_type;
+  }
+
  public:
   // Reserved for ByteGen and Compiler.
   // The ids of globals must be continuous, and should therefore only be set
@@ -772,6 +781,7 @@ class Global : public Method {
   bool _is_final;
   bool _is_lazy;
   int _global_id;
+  bool _has_explicit_type = false;
 };
 
 class Field : public Node {

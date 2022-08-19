@@ -30,8 +30,8 @@ class Record:
   copy -> Record:
     return Record PtrComp Discr EnumComp IntComp StringComp
 
-TRUE ::= 1
-FALSE ::= 0
+TRUE ::= true
+FALSE ::= false
 
 main:
   log_execution_time "Pystone" --iterations=10:
