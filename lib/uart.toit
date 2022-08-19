@@ -156,9 +156,8 @@ class Port implements reader.Reader:
   */
   write data from=0 to=data.size --break_length=0 --wait=false -> int:
     while true:
-      if should_ensure_write_state_: ensure_state_ WRITE_STATE_
-      // $_ensure_state might return with an error state. In that case the 'uart_write_' will
-      // fail with a better error message.
+      if should_ensure_write_state_: state_.wait_for_state WRITE_STATE_ | ERROR_STATE_
+      if not uart_: throw "CLOSED"
       written := uart_write_ uart_ data from to break_length wait
       if should_ensure_write_state_ and written == 0 and from != to:
         // We shouldn't have tried to write.
@@ -174,10 +173,13 @@ class Port implements reader.Reader:
   Reads data from the port.
 
   This method blocks until data is available.
+
+  Returns null if closed.
   */
   read -> ByteArray?:
     while true:
-      state_bits := ensure_state_ READ_STATE_
+      state_bits := state_.wait_for_state READ_STATE_ | ERROR_STATE_
+      if not uart_: return null
       if state_bits & ERROR_STATE_ != 0:
         state_.clear_state ERROR_STATE_
         errors++
@@ -185,9 +187,6 @@ class Port implements reader.Reader:
         data := uart_read_ uart_
         if data and data.size > 0: return data
         state_.clear_state READ_STATE_
-      else:
-        // It was closed (disposed).
-        return null
 
   /**
   Flushes the output buffer, waiting until all written data has been transmitted.
@@ -199,16 +198,6 @@ class Port implements reader.Reader:
       flushed := uart_wait_tx_ uart_
       if flushed: return
       sleep --ms=1
-
-  ensure_state_ bits/int -> int:
-    if not uart_: throw "CLOSED"
-    state := state_
-    state_bits/int? := null
-    while state_bits == null:
-      state_bits = state.wait_for_state (bits | ERROR_STATE_)
-    if not state_.resource: return -1  // Closed from a different task.
-    assert: state_bits != 0
-    return state_bits
 
 resource_group_ ::= uart_init_
 
