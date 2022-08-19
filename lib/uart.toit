@@ -27,6 +27,13 @@ class Port implements reader.Reader:
   static PARITY_EVEN     ::= 2
   static PARITY_ODD      ::= 3
 
+  /** Normal UART mode. */
+  static MODE_UART ::= 0
+  /** Uses the RTS pin to reserve the RS485 line when sending. */
+  static MODE_RS485_HALF_DUPLEX ::= 1
+  /** IRDA UART mode. */
+  static MODE_IRDA ::= 2
+
   uart_ := ?
   state_/ResourceState_
   should_ensure_write_state_/bool
@@ -48,6 +55,12 @@ class Port implements reader.Reader:
   The $data_bits, $parity, and $stop_bits define the data framing of the UART
     messages.
 
+  The $mode parameter must be one of:
+  - $MODE_UART (default)
+  - $MODE_RS485_HALF_DUPLEX: uses the $rts pin to reserve the RS485 line when sending.
+    Disables flow control, and $cts must be null.
+  - $MODE_IRDA
+
   Some pins are preferred (more efficient) for use as UART pins on the ESP 32:
 
   tx = 17, rx = 16 rts = 7 and cts = 8
@@ -62,8 +75,12 @@ class Port implements reader.Reader:
       --tx/gpio.Pin? --rx/gpio.Pin? --rts/gpio.Pin?=null --cts/gpio.Pin?=null
       --baud_rate/int --data_bits/int=8 --stop_bits/int=STOP_BITS_1
       --invert_tx/bool=false --invert_rx/bool=false
-      --parity/int=PARITY_DISABLED:
+      --parity/int=PARITY_DISABLED
+      --mode/int=MODE_UART:
     if (not tx) and (not rx): throw "INVALID_ARGUMENT"
+    if mode == MODE_RS485_HALF_DUPLEX and cts: throw "INVALID_ARGUMENT"
+    if not MODE_UART <= mode <= MODE_IRDA: throw "INVALID_ARGUMENT"
+
     tx_flags := (invert_tx ? 1 : 0) + (invert_rx ? 2 : 0)
     uart_ = uart_create_
       resource_group_
@@ -76,6 +93,7 @@ class Port implements reader.Reader:
       stop_bits
       parity
       tx_flags
+      mode
     should_ensure_write_state_ = false
     state_ = ResourceState_ resource_group_ uart_
 
@@ -208,7 +226,7 @@ WRITE_STATE_ ::= 1 << 2
 uart_init_:
   #primitive.uart.init
 
-uart_create_ group tx rx rts cts baud_rate data_bits stop_bits parity tx_flags:
+uart_create_ group tx rx rts cts baud_rate data_bits stop_bits parity tx_flags mode:
   #primitive.uart.create
 
 uart_create_path_ resource_group device baud_rate data_bits stop_bits parity:
