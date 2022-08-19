@@ -44,10 +44,6 @@ extern "C" {
 #define mbedtls_aes_setkey_enc esp_aes_setkey
 #define mbedtls_aes_setkey_dec esp_aes_setkey
 #define mbedtls_aes_crypt_cbc esp_aes_crypt_cbc
-extern void esp_aes_init(mbedtls_aes_context* ctx);
-extern void esp_aes_setkey(mbedtls_aes_context* ctx, const unsigned char* key, unsigned int keybits);
-extern void esp_aes_crypt_cbc(mbedtls_aes_context* ctx, int mode, size_t length, unsigned char iv[16], const unsigned char* input, unsigned char* output);
-extern void esp_aes_free(mbedtls_aes_context* ctx);
 
 }
 #endif

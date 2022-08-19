@@ -120,7 +120,15 @@ endif()
 # sizes, but they just cause the other side to fragment packets more agressively.
 # At this end we still have to reassemble the packets in and unfragmented form
 # that fits in the buffer size below.
-set(MBEDTLS_C_FLAGS "-DMBEDTLS_SSL_IN_CONTENT_LEN=8100 -DMBEDTLS_SSL_OUT_CONTENT_LEN=3700 -DMBEDTLS_PLATFORM_MEMORY=1")
+if ("${TOIT_SYSTEM_NAME}" MATCHES "esp32")
+  # No need to set the flags, the same values are in the sdkconfig.
+  # However, we need to include the esp32 config file to make sure that Toit and the compiled
+  # MbedTLS sources agree on the defines.
+  set(MBEDTLS_C_FLAGS "-DMBEDTLS_CONFIG_FILE=\\\"mbedtls/esp_config.h\\\"")
+else()
+  # These constants should stay in sync with the ones in the sdkconfig file of the ESP32 toolchain.
+  set(MBEDTLS_C_FLAGS "-DMBEDTLS_SSL_IN_CONTENT_LEN=8100 -DMBEDTLS_SSL_OUT_CONTENT_LEN=3700 -DMBEDTLS_PLATFORM_MEMORY=1")
+endif()
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${TOIT_GENERIC_FLAGS} ${TOIT_LWIP_C_FLAGS} ${MBEDTLS_C_FLAGS}")
 set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -DTOIT_DEBUG")
