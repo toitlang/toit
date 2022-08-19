@@ -102,11 +102,17 @@ class TypeChecker : public ReturningVisitor<Type> {
 
   Type visit_Field(Field* node) { UNREACHABLE(); return Type::invalid(); }
 
+  // Methods are only visited for their side-effect.
+  // In theory there should be no user of these types, and they all return `Type::invalid`.
+  // The return-type is extracted when the methods are referenced.
   Type visit_Method(Method* node) {
     _method = node;
     if (node->has_body()) visit(node->body());
     return Type::invalid();
   }
+  // Globals are handled like methods. As such, they are only visited for the side-effect.
+  // Their return type should not be used and they all return `Type::invalid`.
+  // References to globals extract the return-type.
   Type visit_Global(Global* node) {
     if (_handled_globals.contains(node)) return Type::invalid();
     if (node->has_explicit_type()) {
@@ -126,13 +132,13 @@ class TypeChecker : public ReturningVisitor<Type> {
     // TODO(florian): this is a bit hacky, but we have already rewritten the expression of
     // the global, so we need to extract it now again.
     auto body = node->body();
-    if (!body->is_Sequence()) UNREACHABLE();
+    TOIT_CHECK(body->is_Sequence());
     auto expressions = body->as_Sequence()->expressions();
-    if (expressions.length() != 1) UNREACHABLE();
+    TOIT_CHECK(expressions.length() == 1);
     auto last = expressions.last();
     if (last->is_CallStatic()) {
       // Call to "uninitialized_global_failure_".
-      if (last->as_CallStatic()->target()->as_ReferenceMethod()->target()->name() != Symbols::uninitialized_global_failure_) UNREACHABLE();
+      TOIT_CHECK(last->as_CallStatic()->target()->as_ReferenceMethod()->target()->name() == Symbols::uninitialized_global_failure_);
       // The uninitialized_global_failure_ call references its own global recursively.
       // Mark the node as handled already now and give it the 'any' type.
       // Alternatively, we could also just not visit the body.
@@ -142,7 +148,7 @@ class TypeChecker : public ReturningVisitor<Type> {
       return Type::invalid();
     }
     _globals_cycle_detector.start(node);
-    if (!last->is_Return()) UNREACHABLE();
+    TOIT_CHECK(last->is_Return());
     auto ret = last->as_Return();
     auto value_type = visit(ret->value());
     if (value_type.is_none()) {
@@ -499,10 +505,6 @@ class TypeChecker : public ReturningVisitor<Type> {
 
   Type visit_Return(Return* node) {
     auto value_type = visit(node->value());
-    return visit_Return(node, value_type);
-  }
-
-  Type visit_Return(Return* node, Type value_type) {
     if (node->depth() == -1) {
       check(node->range(), _method->return_type(), value_type);
     }

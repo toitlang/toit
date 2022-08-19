@@ -282,6 +282,7 @@ void fail(const char* format, ...) __attribute__ ((__noreturn__));
 
 #define UNIMPLEMENTED() FATAL("unimplemented")
 #define UNREACHABLE() FATAL("unreachable")
+#define TOIT_CHECK(cond) if (!(cond)) { toit::fail(__FILE__, __LINE__, "check failure, %s.", #cond); }
 
 
 // Common forward declarations.
