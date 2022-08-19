@@ -270,6 +270,7 @@ PRIMITIVE(init) {
     esp_netif_config_t netif_sta_config = ESP_NETIF_DEFAULT_WIFI_STA();
     netif = esp_netif_new(&netif_sta_config);
   }
+
   if (!netif) {
     wifi_pool.put(id);
     MALLOC_FAILED;
@@ -293,6 +294,13 @@ PRIMITIVE(init) {
   // Create a thread that takes care of logging into the Wifi AP.
   wifi_init_config_t init_config = WIFI_INIT_CONFIG_DEFAULT();
   init_config.nvs_enable = 0;
+  if (!OS::use_spiram_for_heap()) {
+    // Configuring ESP-IDF for SPIRAM support dramatically increases the amount
+    // of memory that the Wifi uses.  If the SPIRAM is not actually present on
+    // the current board we need to set the values back to zero.
+    init_config.cache_tx_buf_num = 0;
+    init_config.feature_caps &= ~CONFIG_FEATURE_CACHE_TX_BUF_BIT;
+  }
   err = esp_wifi_init(&init_config);
   if (err != ESP_OK) {
     esp_netif_destroy_default_wifi(netif);

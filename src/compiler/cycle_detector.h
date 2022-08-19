@@ -27,7 +27,6 @@ namespace compiler {
 template<typename T>
 class CycleDetector {
  public:
-
   int in_progress_size() const {
     return static_cast<int>(_in_progress.size());
   }
