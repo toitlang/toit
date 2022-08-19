@@ -72,6 +72,7 @@ include_directories(
   $ENV{IDF_PATH}/components/lwip/port/esp32/include
   $ENV{IDF_PATH}/components/lwip/include/apps
   $ENV{IDF_PATH}/components/lwip/include/apps/sntp
+  $ENV{IDF_PATH}/components/mbedtls/port/include
   $ENV{IDF_PATH}/components/mbedtls/mbedtls/include
   $ENV{IDF_PATH}/components/lwip/include/lwip/port
   $ENV{IDF_PATH}/components/newlib/platform_include

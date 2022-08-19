@@ -17,6 +17,7 @@
 
 #ifdef TOIT_FREERTOS
 
+#include <esp_heap_caps.h>
 #include <esp_wifi.h>
 #include <nvs_flash.h>
 #include <lwip/sockets.h>
