@@ -123,7 +123,7 @@ endif()
 if ("${TOIT_SYSTEM_NAME}" MATCHES "esp32")
   # No need to set the flags, the same values are in the sdkconfig.
   # However, we need to include the esp32 config file to make sure that Toit and the compiled
-  # mbedtls sources agree on the defines.
+  # MbedTLS sources agree on the defines.
   set(MBEDTLS_C_FLAGS "-DMBEDTLS_CONFIG_FILE=\\\"mbedtls/esp_config.h\\\"")
 else()
   # These constants should stay in sync with the ones in the sdkconfig file of the ESP32 toolchain.
