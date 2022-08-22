@@ -252,7 +252,9 @@ class OS {
 
 #ifdef TOIT_FREERTOS
   static bool use_spiram_for_heap() { return _use_spiram_for_heap; }
-  static int toit_heap_caps_flags();
+  static bool use_spiram_for_metadata() { return _use_spiram_for_metadata; }
+  static int toit_heap_caps_flags_for_heap();
+  static int toit_heap_caps_flags_for_metadata();
 #endif
 
  private:
@@ -266,6 +268,7 @@ class OS {
   static int _cpu_revision;
 #ifdef TOIT_FREERTOS
   static bool _use_spiram_for_heap;
+  static bool _use_spiram_for_metadata;
 #endif
 
   friend class ConditionVariable;
