@@ -934,37 +934,37 @@ abstract class string implements Comparable:
 
   /**
   Returns a string where all ASCII lower case characters have
-    been replaced with their upper case equivalents
+    been replaced with their upper case equivalents.
   Non-ASCII characters are unchanged.
   */
   to_ascii_upper -> string:
-    if size == 0: return this
-    single_byte := #[0]
-    bitmap.blit this single_byte size
-        --lookup_table=TO_UPPER_TABLE_
-        --operation=bitmap.OR
-        --destination_pixel_stride=0
-    if single_byte[0] == 0: return this
-    ba := to_byte_array
-    bitmap.blit ba ba ba.size --lookup_table=TO_UPPER_TABLE_ --operation=bitmap.XOR
-    return ba.to_string
+    return case_helper_ TO_UPPER_TABLE_
 
   /**
   Returns a string where all ASCII upper case characters have
-    been replaced with their lower case equivalents
+    been replaced with their lower case equivalents.
   Non-ASCII characters are unchanged.
   */
   to_ascii_lower -> string:
+    return case_helper_ TO_LOWER_TABLE_
+
+  case_helper_ table/ByteArray -> string:
     if size == 0: return this
     single_byte := #[0]
+    // By using "OR" as an operation and a pixel stride of 0 we can condense
+    // the search for characters with the wrong case into a single byte,
+    // avoiding an allocation of a new byte array and string in the cases
+    // where it is not needed.
     bitmap.blit this single_byte size
-        --lookup_table=TO_LOWER_TABLE_
+        --lookup_table=table
         --operation=bitmap.OR
         --destination_pixel_stride=0
     if single_byte[0] == 0: return this
-    ba := to_byte_array
-    bitmap.blit ba ba ba.size --lookup_table=TO_LOWER_TABLE_ --operation=bitmap.XOR
-    return ba.to_string
+    // Since characters with the wrong case were found we create a new string
+    // using a temporary byte array.
+    bytes := to_byte_array
+    bitmap.blit bytes bytes bytes.size --lookup_table=table --operation=bitmap.XOR
+    return bytes.to_string
 
   /**
   Returns true iff the string has no non-ASCII characters in it.
