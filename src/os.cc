@@ -197,7 +197,7 @@ OS::HeapMemoryRange OS::get_heap_memory_range() {
     // be the last MAX_HEAP of the address space.
     _single_range.address = reinterpret_cast<void*>(-static_cast<word>(MAX_HEAP + TOIT_PAGE_SIZE));
   } else {
-#ifdef TOIT_DARWIN
+#if defined(TOIT_DARWIN) && defined(BUILD_64)
     // MacOS never returns addresses in the first 4Gbytes, in order to flush
     // out 32 bit uncleanness, so let's try to avoid having the range cover
     // anything in that range.
