@@ -25,6 +25,9 @@ import .flash.image_writer
 import .flash.registry
 import .services
 
+RUN_BOOT_     /int ::= 1 << 0
+RUN_CRITICAL_ /int ::= 1 << 1
+
 class Container:
   image/ContainerImage ::= ?
   gid_/int ::= ?
@@ -94,7 +97,10 @@ abstract class ContainerImage:
   trace encoded/ByteArray -> bool:
     return false
 
-  run_on_boot -> bool:
+  run_boot -> bool:
+    return false
+
+  run_critical -> bool:
     return false
 
   abstract start -> Container
@@ -110,10 +116,11 @@ class ContainerImageFlash extends ContainerImage:
   id -> uuid.Uuid:
     return allocation_.id
 
-  run_on_boot -> bool:
-    // TODO(kasper): Clean this up a bit by not hardcoding the
-    // metadata encoding quite so much.
-    return allocation_.metadata[0] == 1
+  run_boot -> bool:
+    return (allocation_.metadata[0] & RUN_BOOT_) != 0
+
+  run_critical -> bool:
+    return (allocation_.metadata[0] & RUN_CRITICAL_) != 0
 
   start -> Container:
     gid ::= container_next_gid_
@@ -165,8 +172,8 @@ abstract class ContainerServiceDefinition extends ServiceDefinition
       writer ::= (resource client arguments[0]) as ContainerImageWriter
       return image_writer_write writer arguments[1]
     if index == ContainerService.IMAGE_WRITER_COMMIT_INDEX:
-      writer ::= (resource client arguments) as ContainerImageWriter
-      return (image_writer_commit writer).to_byte_array
+      writer ::= (resource client arguments[0]) as ContainerImageWriter
+      return (image_writer_commit writer arguments[1] arguments[2]).to_byte_array
     unreachable
 
   abstract image_registry -> FlashRegistry
@@ -206,8 +213,12 @@ abstract class ContainerServiceDefinition extends ServiceDefinition
   image_writer_write writer/ContainerImageWriter bytes/ByteArray -> none:
     writer.write bytes
 
-  image_writer_commit writer/ContainerImageWriter -> uuid.Uuid:
-    image := add_flash_image writer.commit
+  image_writer_commit writer/ContainerImageWriter run_boot/bool run_critical/bool -> uuid.Uuid:
+    flags := 0
+    if run_boot: flags |= RUN_BOOT_
+    if run_critical: flags |= RUN_CRITICAL_
+    allocation := writer.commit --run_flags=flags
+    image := add_flash_image allocation
     return image.id
 
 class ContainerManager extends ContainerServiceDefinition implements SystemMessageHandler_:
@@ -276,9 +287,9 @@ class ContainerManager extends ContainerServiceDefinition implements SystemMessa
 
   on_container_stop_ container/Container error/int -> none:
     containers_by_id_.remove container.id
-    // If we've got an error in an automatically booted image, we treat that
-    // as a fatal error and terminate the system process.
-    if error != 0 and container.image.run_on_boot:
+    // If we've got an error in an image that run with the run.critical
+    // flag, we treat that as a fatal error and terminate the system process.
+    if error != 0 and container.image.run_critical:
       done_.set error
       return
     // TODO(kasper): We are supposed to always have a running system process. Maybe

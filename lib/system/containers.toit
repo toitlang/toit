@@ -68,8 +68,10 @@ class ContainerImageWriter extends ServiceResourceProxy:
   write bytes/ByteArray -> none:
     _client_.image_writer_write handle_ bytes
 
-  commit -> uuid.Uuid:
-    return _client_.image_writer_commit handle_
+  commit -> uuid.Uuid
+      --run_boot/bool=false
+      --run_critical/bool=false:
+    return _client_.image_writer_commit handle_ run_boot run_critical
 
 // ----------------------------------------------------------------------------
 

@@ -477,7 +477,8 @@ class ToitHeader extends ToitObjectType:
     anchored.put_uint32 "_marker" MARKER_
     anchored.put_uint32 "_me" at
     anchored.put_bytes "_id" program_id.to_byte_array
-    anchored.put_bytes "_metadata" #[1, 0, 0, 0, 0]
+    // TODO(kasper): Avoid hardcoding the metadata encoding here.
+    anchored.put_bytes "_metadata" #[3, 0, 0, 0, 0]
     anchored.put_uint16 "_pages_in_flash" (image.all_memory.size / 4096)
     anchored.put_uint8 "_type" PROGRAM_TYPE_
     anchored.put_bytes "_uuid" system_uuid.to_byte_array

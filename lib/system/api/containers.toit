@@ -8,7 +8,7 @@ import system.services show ServiceClient
 interface ContainerService:
   static UUID  /string ::= "358ee529-45a4-409e-8fab-7a28f71e5c51"
   static MAJOR /int    ::= 0
-  static MINOR /int    ::= 3
+  static MINOR /int    ::= 4
 
   static LIST_IMAGES_INDEX /int ::= 0
   list_images -> List
@@ -29,7 +29,7 @@ interface ContainerService:
   image_writer_write handle/int bytes/ByteArray -> none
 
   static IMAGE_WRITER_COMMIT_INDEX /int ::= 5
-  image_writer_commit handle/int -> uuid.Uuid
+  image_writer_commit handle/int run_boot/bool run_critical/bool -> uuid.Uuid
 
 class ContainerServiceClient extends ServiceClient implements ContainerService:
   constructor --open/bool=true:
@@ -57,5 +57,5 @@ class ContainerServiceClient extends ServiceClient implements ContainerService:
   image_writer_write handle/int bytes/ByteArray -> none:
     invoke_ ContainerService.IMAGE_WRITER_WRITE_INDEX [handle, bytes]
 
-  image_writer_commit handle/int -> uuid.Uuid:
-    return uuid.Uuid (invoke_ ContainerService.IMAGE_WRITER_COMMIT_INDEX handle)
+  image_writer_commit handle/int run_boot/bool run_critical/bool -> uuid.Uuid:
+    return uuid.Uuid (invoke_ ContainerService.IMAGE_WRITER_COMMIT_INDEX [handle, run_boot, run_critical])
