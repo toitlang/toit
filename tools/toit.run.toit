@@ -76,7 +76,10 @@ class ApplicationContainerImage extends ContainerImageFromSnapshot:
     // the archive.
     super reader
 
-  run_on_boot -> bool:
+  run_boot -> bool:
+    return true
+
+  run_critical -> bool:
     return true
 
   start -> Container:
