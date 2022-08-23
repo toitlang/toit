@@ -203,7 +203,7 @@ OS::HeapMemoryRange OS::get_heap_memory_range() {
     // anything in that range.
     const uword FOUR_GB = 4LL * GB;
     if (addr < FOUR_GB && addr + MAX_HEAP > FOUR_GB) {
-      _single_range.address = FOUR_GB;
+      _single_range.address = reinterpret_cast<void*>(FOUR_GB);
     } else {
 #else
     {
