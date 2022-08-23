@@ -267,6 +267,23 @@ test_channel:
   expect_equals 0 channel.size
   expect_equals 10 sent_count
 
+  block_call_count := 0
+  task::
+    10.repeat: | val |
+      channel.send:
+        block_call_count++
+        val
+
+  while block_call_count != 4: yield
+  10.repeat: yield
+  // There was still space for one number.
+  expect_equals 5 block_call_count
+  expect_equals 5 channel.size
+
+  10.repeat: channel.receive
+  expect_equals 0 channel.size
+  expect_equals 10 block_call_count
+
 channel_sender channel/Channel latch/Latch:
   channel.send "Foo"
   channel.send "Bar"
