@@ -163,9 +163,13 @@ static const int BYTE_BIT_SIZE = 8;  // Number of bits in a byte.
 // heap for now.  Can be fixed if we can resize the metadata on demand.
 // This constant is not used on embedded platforms.
 #ifdef BUILD_64
-static const uword MAX_HEAP = 1ull * GB;  // Metadata ca. 8.5Mbytes.
+#ifdef TOIT_DARWIN
+static const uword MAX_HEAP = 2ULL * GB;  // Metadata ca. 17Mbytes.
 #else
-static const uword MAX_HEAP = 512ull * MB;  // Metadata ca. 8.2Mbytes.
+static const uword MAX_HEAP = 1ULL * GB;  // Metadata ca. 8.5Mbytes.
+#endif
+#else
+static const uword MAX_HEAP = 512ULL * MB;  // Metadata ca. 8.2Mbytes.
 #endif
 
 // Perhaps some ARM CPUs and platforms allow unaligned operations, but to be
