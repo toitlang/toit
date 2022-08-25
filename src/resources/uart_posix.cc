@@ -28,6 +28,7 @@
 #elifdef TOIT_BSD
  #include "../event_sources/kqueue_bsd.h"
  #include <sys/event.h>
+ #include <IOKit/serial/ioss.h>
 #endif
 
 #include <sys/file.h>
@@ -330,7 +331,15 @@ PRIMITIVE(set_baud_rate) {
   if (cfsetospeed(&tty, speed) != 0) return Primitive::os_error(errno, process);
   if (cfsetispeed(&tty, speed) != 0) return Primitive::os_error(errno, process);
   // TCSADRAIN: let the change happen once all output written to the fd has been transmitted.
-  if (tcsetattr(fd, TCSADRAIN, &tty) != 0) return Primitive::os_error(errno, process);
+  if (tcsetattr(fd, TCSADRAIN, &tty) != 0) {
+#ifdef TOIT_DARWIN
+    // Try setting baud rate with ioctl
+    if (ioctl(fd, IOSSIOSPEED, &speed) != 0) return Primitive::os_error(errno, process);
+#else
+    return Primitive::os_error(errno, process);
+#endif
+  }
+  printf("EEE\n");
   return process->program()->null_object();
 }
 
