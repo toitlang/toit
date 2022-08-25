@@ -339,6 +339,7 @@ void Thread::join() {
   if (xSemaphoreTake(thread->terminated, portMAX_DELAY) != pdTRUE) {
     FATAL("Thread join failed");
   }
+  vSemaphoreDelete(thread->terminated);
   delete thread;
   _handle = null;
 }
