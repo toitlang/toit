@@ -32,6 +32,13 @@ static const char* const UUID_NAME = "uuid";
 static const char* const DEBUG_SNAPSHOT_NAME = "D-snapshot";
 static const char* const DEBUG_SOURCE_MAP_NAME = "D-source-map";
 
+static void update_sha256(mbedtls_sha256_context* context, const uint8* bytes, size_t length) {
+  uint8 length_bytes[sizeof(uint32)];
+  Utils::write_unaligned_uint32_le(length_bytes, length);
+  mbedtls_sha256_update_ret(context, length_bytes, sizeof(length_bytes));
+  mbedtls_sha256_update_ret(context, bytes, length);
+}
+
 SnapshotBundle::SnapshotBundle(List<uint8> snapshot,
                                List<uint8> source_map_data,
                                List<uint8> debug_snapshot,
@@ -58,27 +65,21 @@ SnapshotBundle::SnapshotBundle(List<uint8> snapshot,
 
   // Generate UUID using sha256 checksum of:
   //   version
-  //   4 bytes of snapshot length (little endian)
   //   snapshot
-  //   source_map
+  //   source map
   mbedtls_sha256_context sha_context;
   mbedtls_sha256_init(&sha_context);
   static const int SHA256 = 0;
   static const int SHA256_HASH_LENGTH = 32;
   mbedtls_sha256_starts_ret(&sha_context, SHA256);
 
-  // Version.
+  // Add hashed components.
   const char* version_string = vm_git_version();
   size_t version_length = strlen(version_string);
   const uint8* version = reinterpret_cast<const uint8*>(version_string);
-  mbedtls_sha256_update_ret(&sha_context, version, version_length);
-  // Length.
-  uint8 length_bytes[sizeof(uint32)];
-  Utils::write_unaligned_uint32_le(length_bytes, snapshot.length());
-  mbedtls_sha256_update_ret(&sha_context, length_bytes, sizeof(uint32));
-  // Snapshot and source map.
-  mbedtls_sha256_update_ret(&sha_context, snapshot.data(), snapshot.length());
-  mbedtls_sha256_update_ret(&sha_context, source_map_data.data(), source_map_data.length());
+  update_sha256(&sha_context, version, version_length);
+  update_sha256(&sha_context, snapshot.data(), snapshot.length());
+  update_sha256(&sha_context, source_map_data.data(), source_map_data.length());
 
   uint8 sum[SHA256_HASH_LENGTH];
   mbedtls_sha256_finish_ret(&sha_context, sum);
