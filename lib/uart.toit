@@ -226,7 +226,7 @@ and reading control lines.
 
 class ConfigurableDevicePort extends Port:
   /**
-  See super
+  See $super.
   */
   constructor device/string
       --baud_rate/int
