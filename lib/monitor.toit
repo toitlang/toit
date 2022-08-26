@@ -257,6 +257,20 @@ monitor Channel:
     size_++
 
   /**
+  Sends a message with the result of calling the given $block.
+  This operation may block if the buffer capacity has been reached. In that
+    case, this task waits until another task calls $receive. The block is
+    only called when the channel has the capacity to buffer a message.
+  If there are tasks blocked waiting for a value (with $receive), then one of
+    them is woken up and receives the sent value.
+  */
+  send [block] -> none:
+    await: size_ < buffer_.size
+    index := (start_ + size_) % buffer_.size
+    buffer_[index] = block.call
+    size_++
+
+  /**
   Tries to send a message with the $value on the channel. This operation never blocks.
   If there are tasks blocked waiting for a value (with $receive), then one of
     them is woken up and receives the $value.
