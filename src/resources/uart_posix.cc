@@ -83,8 +83,9 @@ static int baud_rate_to_int(speed_t speed) {
   }
 }
 
-static int int_to_baud_rate(int baud_rate, speed_t* speed) {
+static int int_to_baud_rate(int baud_rate, speed_t* speed, int *arbitrary_baud_rate) {
   // TODO: On linux using gcc, it should be possible to just set the bit rate as an integer
+  *arbitrary_baud_rate = 0;
   switch (baud_rate) {
     case 0: *speed = B0; return 0;
     case 50: *speed = B50; return 0;
@@ -118,7 +119,10 @@ static int int_to_baud_rate(int baud_rate, speed_t* speed) {
     case 4000000: *speed = B4000000; return 0;
     default: return -1;
 #elifdef TOIT_DARWIN
-    default: *speed = baud_rate; return 0;
+    default:
+      *speed = baud_rate;
+      *arbitrary_baud_rate = 1;
+      return 0;
 #endif
   }
 }
@@ -239,7 +243,7 @@ class UARTResourceGroup : public ResourceGroup {
     if (data & EPOLLERR) state |= kErrorState;
     if (data & EPOLLOUT) state |= kWriteState;
 #elifdef TOIT_BSD
-    auto *event = reinterpret_cast<struct kevent*>(data);
+    auto event = reinterpret_cast<struct kevent*>(data);
     if (event->filter == EVFILT_READ) state |= kReadState;
     if (event->filter == EVFILT_WRITE) state |= kWriteState;
     if (event->filter == EVFILT_EXCEPT) state |= kErrorState;
@@ -276,7 +280,8 @@ PRIMITIVE(create_path) {
   ARGS(UARTResourceGroup, resource_group, cstring, path, int, baud_rate, int, data_bits, int, stop_bits, int, parity);
 
   speed_t speed;
-  if (int_to_baud_rate(baud_rate, &speed) != 0) INVALID_ARGUMENT;
+  int arbitrary_baud_rate;
+  if (int_to_baud_rate(baud_rate, &speed, &arbitrary_baud_rate) < 0) INVALID_ARGUMENT;
 
   if (data_bits < 5 || data_bits > 8) INVALID_ARGUMENT;
   if (stop_bits < 1 || stop_bits > 3) INVALID_ARGUMENT;
@@ -325,19 +330,23 @@ PRIMITIVE(set_baud_rate) {
   int fd = resource->id();
 
   speed_t speed;
-  if (int_to_baud_rate(baud_rate, &speed) != 0) INVALID_ARGUMENT;
-  struct termios tty;
-  if (tcgetattr(fd, &tty) != 0) return Primitive::os_error(errno, process);
-  if (cfsetospeed(&tty, speed) != 0) return Primitive::os_error(errno, process);
-  if (cfsetispeed(&tty, speed) != 0) return Primitive::os_error(errno, process);
-  // TCSADRAIN: let the change happen once all output written to the fd has been transmitted.
-  if (tcsetattr(fd, TCSADRAIN, &tty) != 0) {
+  int arbitrary_rate;
+  int result = int_to_baud_rate(baud_rate, &speed, &arbitrary_rate);
+  if (result != 0) INVALID_ARGUMENT;
+  if (!arbitrary_rate) { // 0 means use standard posix/linux line speed setup
+    struct termios tty;
+    if (tcgetattr(fd, &tty) != 0) return Primitive::os_error(errno, process);
+    if (cfsetospeed(&tty, speed) != 0) return Primitive::os_error(errno, process);
+    if (cfsetispeed(&tty, speed) != 0) return Primitive::os_error(errno, process);
+    // TCSADRAIN: let the change happen once all output written to the fd has been transmitted.
+    if (tcsetattr(fd, TCSADRAIN, &tty) != 0) return Primitive::os_error(errno, process);
+  } else {
 #ifdef TOIT_DARWIN
-    // Try setting baud rate with ioctl
     if (ioctl(fd, IOSSIOSPEED, &speed) != 0) return Primitive::os_error(errno, process);
 #else
-    return Primitive::os_error(errno, process);
+    INVALID_ARGUMENT;
 #endif
+
   }
   return process->program()->null_object();
 }

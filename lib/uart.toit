@@ -102,7 +102,7 @@ class Port implements reader.Reader:
 
   This constructor does not work on embedded devices, such as the ESP32.
 
-  The $baud_rate must match one that is supported by the operating system. See $Port.baud_rate=.
+  On some platforms the $baud_rate must match one that is supported by the operating system. See $Port.baud_rate=.
   */
   constructor device/string
       --baud_rate/int
@@ -131,6 +131,8 @@ class Port implements reader.Reader:
     following baud rates are supported: 50, 75, 110, 134, 150, 200, 300, 600, 1200,
     1800, 2400, 4800, 9600, 19200, 38400, 57600, 115200, 230400, 460800, 576000, 921600,
     1152000, 1500000, 2000000, 2500000, 3000000, 3500000, 4000000.
+
+  On macos the baud rate can be arbitrary
   */
   baud_rate= new_rate/int:
     uart_set_baud_rate_ uart_ new_rate
@@ -217,6 +219,21 @@ class Port implements reader.Reader:
       if flushed: return
       sleep --ms=1
 
+/**
+Extends the functionality of the UART Port on platforms that support configuratble RS232 devices. It allows setting
+and reading control lines.
+*/
+
+class ConfigurableDevicePort extends Port:
+  /**
+  See super
+  */
+  constructor device/string
+      --baud_rate/int
+      --data_bits/int=8
+      --stop_bits/int=Port.STOP_BITS_1
+      --parity/int=Port.PARITY_DISABLED:
+    super device --baud_rate=baud_rate --data_bits=data_bits --stop_bits=stop_bits --parity=parity
 
   static CONTROL_FLAG_LE  ::= 1 << 0            /* line enable */
   static CONTROL_FLAG_DTR ::= 1 << 1            /* data terminal ready */
@@ -232,8 +249,6 @@ class Port implements reader.Reader:
   Read the value of the given control $flag. $flag must be one of the CONTROL_ constants.
 
   Returns the state of the $flag
-
-  Note: Works only on uarts constructed from a device, i.e. in host mode. It is not avaiable on the ESP32.
   */
   read_control_flag flag/int -> bool:
     return (uart_get_control_flags_ uart_) & flag != 0
@@ -241,16 +256,12 @@ class Port implements reader.Reader:
   /**
   Read the value of all the control flags. Each bit in the returned value corresponds to the bit position indicated
   by the CONTROL_ constants.
-
-  Note: Works only on uarts constructed from a device, i.e. in host mode. It is not avaiable on the ESP32.
   */
   read_control_flags -> int:
     return uart_get_control_flags_ uart_
 
   /**
   Sets the $state of a control $flag. $flag must be one of the CONTROL_ constants.
-
-  Note: Works only on uarts constructed from a device, i.e. in host mode. It is not avaiable on the ESP32.
   */
   set_control_flag flag/int state/bool:
     flags := uart_get_control_flags_ uart_
@@ -262,8 +273,6 @@ class Port implements reader.Reader:
 
   /**
   Sets all control $flags to the specified value. Each bit in the $flags corresponds to one of the CONTROL_ constants.
-
-  Note: Works only on uarts constructed from a device, i.e. in host mode. It is not avaiable on the ESP32.
   */
   set_control_flags flags/int:
     uart_set_control_flags_ uart_ flags
