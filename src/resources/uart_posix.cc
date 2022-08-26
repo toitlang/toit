@@ -339,7 +339,6 @@ PRIMITIVE(set_baud_rate) {
     return Primitive::os_error(errno, process);
 #endif
   }
-  printf("EEE\n");
   return process->program()->null_object();
 }
 
