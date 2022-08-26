@@ -121,7 +121,7 @@ PRIMITIVE(siphash_get) {
   return result;
 }
 
-AesCbcContext::AesCbcContext(
+AesContext::AesContext(
     SimpleResourceGroup* group,
     const uint8* key,
     const uint8* iv,
@@ -136,16 +136,16 @@ AesCbcContext::AesCbcContext(
   memcpy(iv_, iv, 16);
 }
 
-AesCbcContext::~AesCbcContext() {
+AesContext::~AesContext() {
   mbedtls_aes_free(&context_);
 }
 
-PRIMITIVE(aes_cbc_init) {
+PRIMITIVE(aes_init) {
   ARGS(SimpleResourceGroup, group, Blob, key, Blob, iv, bool, encrypt);
 
   if (key.length() != 32 || iv.length() != 16) INVALID_ARGUMENT;
 
-  AesCbcContext* aes = _new AesCbcContext(group, key.address(), iv.address(), encrypt);
+  AesContext* aes = _new AesContext(group, key.address(), iv.address(), encrypt);
   if (!aes) MALLOC_FAILED;
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
@@ -156,7 +156,7 @@ PRIMITIVE(aes_cbc_init) {
 }
 
 PRIMITIVE(aes_cbc_crypt) {
-  ARGS(AesCbcContext, context, Blob, input, int, from, int, to, bool, encrypt);
+  ARGS(AesContext, context, Blob, input, int, from, int, to, bool, encrypt);
   if (from < 0 || to > input.length() || from > to || ((to - from) & 0xf) != 0) INVALID_ARGUMENT;
 
   Error* error = null;
@@ -175,8 +175,26 @@ PRIMITIVE(aes_cbc_crypt) {
   return result;
 }
 
-PRIMITIVE(aes_cbc_close) {
-  ARGS(AesCbcContext, context);
+PRIMITIVE(aes_ecb_crypt) {
+  ARGS(AesContext, context, Blob, input, int, from, int, to, bool, encrypt);
+  if (from < 0 || to > input.length() || from > to || ((to - from) & 0xf) != 0) INVALID_ARGUMENT;
+
+  Error* error = null;
+  ByteArray* result = process->allocate_byte_array(to - from, &error);
+  if (result == null) return error;
+
+  ByteArray::Bytes output_bytes(result);
+  mbedtls_aes_crypt_ecb(
+      &context->context_,
+      encrypt ? MBEDTLS_AES_ENCRYPT : MBEDTLS_AES_DECRYPT,
+      input.address() + from,
+      output_bytes.address());
+
+  return result;
+}
+
+PRIMITIVE(aes_close) {
+  ARGS(AesContext, context);
   context->resource_group()->unregister_resource(context);
   context_proxy->clear_external_address();
   return process->program()->null_object();

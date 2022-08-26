@@ -30,7 +30,7 @@ namespace toit {
   fn(EthernetIpEvents)                  \
   fn(SPIDevice)                         \
   fn(X509Certificate)                   \
-  fn(AesCbcContext)                     \
+  fn(AesContext)                        \
   fn(SslSession)                        \
   fn(Sha1)                              \
   fn(Sha256)                            \

@@ -24,11 +24,11 @@
 
 namespace toit {
 
-class AesCbcContext : public SimpleResource {
+class AesContext : public SimpleResource {
  public:
-  TAG(AesCbcContext);
-  AesCbcContext(SimpleResourceGroup* group, const uint8* key, const uint8* iv, bool encrypt);
-  ~AesCbcContext();
+  TAG(AesContext);
+  AesContext(SimpleResourceGroup* group, const uint8* key, const uint8* iv, bool encrypt);
+  ~AesContext();
 
   mbedtls_aes_context context_;
   uint8 iv_[16];
@@ -44,6 +44,7 @@ extern "C" {
 #define mbedtls_aes_setkey_enc esp_aes_setkey
 #define mbedtls_aes_setkey_dec esp_aes_setkey
 #define mbedtls_aes_crypt_cbc esp_aes_crypt_cbc
+#define mbedtls_aes_crypt_ecb esp_aes_crypt_ecb
 
 }
 #endif
