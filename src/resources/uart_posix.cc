@@ -83,9 +83,9 @@ static int baud_rate_to_int(speed_t speed) {
   }
 }
 
-static int int_to_baud_rate(int baud_rate, speed_t* speed, int *arbitrary_baud_rate) {
-  // TODO: On linux using gcc, it should be possible to just set the bit rate as an integer
-  *arbitrary_baud_rate = 0;
+static int int_to_baud_rate(int baud_rate, speed_t* speed, bool *arbitrary_baud_rate) {
+  // TODO: On linux using gcc, it should be possible to just set the bit rate as an integer.
+  *arbitrary_baud_rate = false;
   switch (baud_rate) {
     case 0: *speed = B0; return 0;
     case 50: *speed = B50; return 0;
@@ -121,7 +121,7 @@ static int int_to_baud_rate(int baud_rate, speed_t* speed, int *arbitrary_baud_r
 #elifdef TOIT_DARWIN
     default:
       *speed = baud_rate;
-      *arbitrary_baud_rate = 1;
+      *arbitrary_baud_rate = true;
       return 0;
 #endif
   }
@@ -280,7 +280,7 @@ PRIMITIVE(create_path) {
   ARGS(UARTResourceGroup, resource_group, cstring, path, int, baud_rate, int, data_bits, int, stop_bits, int, parity);
 
   speed_t speed;
-  int arbitrary_baud_rate;
+  bool arbitrary_baud_rate;
   if (int_to_baud_rate(baud_rate, &speed, &arbitrary_baud_rate) < 0) INVALID_ARGUMENT;
 
   if (data_bits < 5 || data_bits > 8) INVALID_ARGUMENT;
@@ -330,10 +330,10 @@ PRIMITIVE(set_baud_rate) {
   int fd = resource->id();
 
   speed_t speed;
-  int arbitrary_rate;
+  bool arbitrary_rate;
   int result = int_to_baud_rate(baud_rate, &speed, &arbitrary_rate);
   if (result != 0) INVALID_ARGUMENT;
-  if (!arbitrary_rate) { // 0 means use standard posix/linux line speed setup
+  if (!arbitrary_rate) { // false means use standard Posix/Linux line speed setup
     struct termios tty;
     if (tcgetattr(fd, &tty) != 0) return Primitive::os_error(errno, process);
     if (cfsetospeed(&tty, speed) != 0) return Primitive::os_error(errno, process);
