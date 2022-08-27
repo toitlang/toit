@@ -28,7 +28,7 @@ class AesEcbContext : public SimpleResource {
  public:
   TAG(AesEcbContext);
   AesEcbContext(SimpleResourceGroup* group, const Blob* key, bool encrypt);
-  ~AesEcbContext();
+  virtual ~AesEcbContext();
 
   mbedtls_aes_context context_;
 };
