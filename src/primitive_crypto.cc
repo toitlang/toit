@@ -24,6 +24,45 @@
 
 namespace toit {
 
+enum class AesTypes {
+  Ecb,
+  Cbc
+};
+
+static Object* aes_crypt(Process* process, AesEcbContext* context, Blob* input, int from, int to, bool encrypt, AesTypes type) {
+  if (from < 0 || to > input->length() || from > to || ((to - from) % 16) != 0) INVALID_ARGUMENT;
+
+  Error* error = null;
+  ByteArray* result = process->allocate_byte_array(to - from, &error);
+  if (result == null) return error;
+
+  ByteArray::Bytes output_bytes(result);
+
+  switch (type)
+  {
+  case AesTypes::Ecb:
+    mbedtls_aes_crypt_ecb(
+      &context->context_,
+      encrypt ? MBEDTLS_AES_ENCRYPT : MBEDTLS_AES_DECRYPT,
+      input->address() + from,
+      output_bytes.address());
+    break;
+  case AesTypes::Cbc:
+    mbedtls_aes_crypt_cbc(
+      &context->context_,
+      encrypt ? MBEDTLS_AES_ENCRYPT : MBEDTLS_AES_DECRYPT,
+      to - from,
+      static_cast<AesCbcContext*>(context)->iv_,
+      input->address() + from,
+      output_bytes.address());
+      break;
+  default:
+    WRONG_TYPE;
+  }
+
+  return result;
+}
+
 MODULE_IMPLEMENTATION(crypto, MODULE_CRYPTO)
 
 PRIMITIVE(sha1_start) {
@@ -121,31 +160,53 @@ PRIMITIVE(siphash_get) {
   return result;
 }
 
-AesContext::AesContext(
+AesEcbContext::AesEcbContext(
     SimpleResourceGroup* group,
-    const uint8* key,
-    const uint8* iv,
+    const Blob* key,
     bool encrypt)
   : SimpleResource(group) {
   mbedtls_aes_init(&context_);
   if (encrypt) {
-    mbedtls_aes_setkey_enc(&context_, key, 256);  // 32 byte key.
+    mbedtls_aes_setkey_enc(&context_, key->address(), key->length() * 8); 
   } else {
-    mbedtls_aes_setkey_dec(&context_, key, 256);  // 32 byte key.
+    mbedtls_aes_setkey_dec(&context_, key->address(), key->length() * 8);
   }
-  memcpy(iv_, iv, 16);
 }
 
-AesContext::~AesContext() {
+AesEcbContext::~AesEcbContext() {
   mbedtls_aes_free(&context_);
+}
+
+AesCbcContext::AesCbcContext(
+    SimpleResourceGroup* group,
+    const Blob* key,
+    const uint8* iv,
+    bool encrypt)
+  : AesEcbContext(group, key, encrypt) {
+    memcpy(iv_, iv, 16);
 }
 
 PRIMITIVE(aes_init) {
   ARGS(SimpleResourceGroup, group, Blob, key, Blob, iv, bool, encrypt);
 
-  if (key.length() != 32 || iv.length() != 16) INVALID_ARGUMENT;
+  if ((key.length() != 32 &&
+      key.length() != 24 &&
+      key.length() != 16) ||
+      (iv.length()  != 16 &&
+      iv.length()  != 0)) 
+  {
+    INVALID_ARGUMENT;
+  }
 
-  AesContext* aes = _new AesContext(group, key.address(), iv.address(), encrypt);
+  AesEcbContext* aes;
+
+  if (iv.length() == 0) {
+    aes = _new AesEcbContext(group, &key, encrypt);
+  }
+  else {
+    aes = _new AesCbcContext(group, &key, iv.address(), encrypt);
+  }
+
   if (!aes) MALLOC_FAILED;
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
@@ -156,45 +217,17 @@ PRIMITIVE(aes_init) {
 }
 
 PRIMITIVE(aes_cbc_crypt) {
-  ARGS(AesContext, context, Blob, input, int, from, int, to, bool, encrypt);
-  if (from < 0 || to > input.length() || from > to || ((to - from) & 0xf) != 0) INVALID_ARGUMENT;
-
-  Error* error = null;
-  ByteArray* result = process->allocate_byte_array(to - from, &error);
-  if (result == null) return error;
-
-  ByteArray::Bytes output_bytes(result);
-  mbedtls_aes_crypt_cbc(
-      &context->context_,
-      encrypt ? MBEDTLS_AES_ENCRYPT : MBEDTLS_AES_DECRYPT,
-      to - from,
-      context->iv_,
-      input.address() + from,
-      output_bytes.address());
-
-  return result;
+  ARGS(AesEcbContext, context, Blob, input, int, from, int, to, bool, encrypt);
+  return aes_crypt(process, context, &input, from, to, encrypt, AesTypes::Cbc);
 }
 
 PRIMITIVE(aes_ecb_crypt) {
-  ARGS(AesContext, context, Blob, input, int, from, int, to, bool, encrypt);
-  if (from < 0 || to > input.length() || from > to || ((to - from) & 0xf) != 0) INVALID_ARGUMENT;
-
-  Error* error = null;
-  ByteArray* result = process->allocate_byte_array(to - from, &error);
-  if (result == null) return error;
-
-  ByteArray::Bytes output_bytes(result);
-  mbedtls_aes_crypt_ecb(
-      &context->context_,
-      encrypt ? MBEDTLS_AES_ENCRYPT : MBEDTLS_AES_DECRYPT,
-      input.address() + from,
-      output_bytes.address());
-
-  return result;
+  ARGS(AesEcbContext, context, Blob, input, int, from, int, to, bool, encrypt);
+  return aes_crypt(process, context, &input, from, to, encrypt, AesTypes::Ecb);
 }
 
 PRIMITIVE(aes_close) {
-  ARGS(AesContext, context);
+  ARGS(AesEcbContext, context);
   context->resource_group()->unregister_resource(context);
   context_proxy->clear_external_address();
   return process->program()->null_object();

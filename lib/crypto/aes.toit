@@ -3,28 +3,21 @@
 // found in the lib/LICENSE file.
 
 /**
-Advanced Encryption Standard Cipher Blocker Chaining (AES-CBC).
+Base class for the hardware accelerated Advanced encryption standard (AES) 
 
-This implementation uses hardware accelerated primitives.
+See https://en.wikipedia.org/wiki/Advanced_Encryption_Standard 
 
-See https://tls.mbed.org/kb/how-to/encrypt-with-aes-cbc
+AES has multiple different modes it can use.
+The ones implemented here are CBC and ECB.
 */
-
-/**
-AES-CBC state for encrypting and decrypting (https://tls.mbed.org/kb/how-to/encrypt-with-aes-cbc).
-
-To encrypt, construct an AES encryption state with $AesCbc.encrypt and
-  encrypt a block with $encrypt.
-
-To decrypt, construct and AES decryption state with $AesCbc.decrypt and
-  decrypt a block with $decrypt.
-
-Close the AES state with $close to release system resources.
-*/
-
 abstract class Aes:
   aes_ := ?
 
+  /**
+  Initialize an Aes class from a subclass. 
+  If the $initialization_vector is empty, then AES ECB mode is selected.
+  If the $initialization_vector has length 16, then AES CBC mode is selected.
+  */
   constructor.from_subclass key/ByteArray initialization_vector/ByteArray encrypt/bool:
     aes_ = aes_init_ resource_freeing_module_ key initialization_vector encrypt
     add_finalizer this:: this.close
@@ -44,9 +37,12 @@ abstract class Aes:
   Returns a byte array with the decrypted data.
   */
   decrypt ciphertext/ByteArray -> ByteArray:
+    if not aes_: throw "ALREADY_CLOSED"
     return crypt_ ciphertext false
 
-  
+  /**
+  Calls the assosiated primitive for the selected AES mode.
+  */
   abstract crypt_ input/ByteArray encrypt/bool -> ByteArray
 
 
@@ -56,16 +52,35 @@ abstract class Aes:
     aes_ = null
     remove_finalizer this
 
+
+
+/**
+Advanced Encryption Standard Cipher Blocker Chaining (AES-CBC).
+
+This implementation uses hardware accelerated primitives.
+
+See https://tls.mbed.org/kb/how-to/encrypt-with-aes-cbc
+
+AES-CBC state for encrypting and decrypting (https://tls.mbed.org/kb/how-to/encrypt-with-aes-cbc).
+
+To encrypt, construct an AES encryption state with $AesCbc.encryptor and
+  encrypt a block with $encrypt.
+
+To decrypt, construct and AES decryption state with $AesCbc.decryptor and
+  decrypt a block with $decrypt.
+
+Close the AES state with $close to release system resources.
+*/
 class AesCbc extends Aes:
   /** Deprecated. Use $AesCbc.encryptor instead. */
   constructor.encrypt key/ByteArray initialization_vector/ByteArray:
     return AesCbc.encryptor key initialization_vector
 
   /**
-  Creates an AES state for encryption.
+  Creates an AES Cbc state for encryption.
 
-  The $key must be 32 secret bytes and the $initialization_vector must be 16
-    random bytes. The initialization vector must not be reused.
+  The $key must be 16, 24 or 32 secret bytes and the 
+   $initialization_vector must be 16 random bytes.
   */
   constructor.encryptor key/ByteArray initialization_vector/ByteArray:
     super.from_subclass key initialization_vector true
@@ -75,49 +90,64 @@ class AesCbc extends Aes:
     return AesCbc.decryptor key initialization_vector
 
   /**
-  Creates an AES state for decryption.
+  Creates an AES Cbc state for decryption.
 
-  The $key must be 32 secret bytes and the $initialization_vector must be 16 bytes.
+  The $key must be 16, 24 or 32 secret bytes and the 
+  $initialization_vector must be 16 bytes.
   */
   constructor.decryptor key/ByteArray initialization_vector/ByteArray:
     super.from_subclass key initialization_vector false
 
 
+  /** See $super. */
   crypt_ input/ByteArray encrypt/bool -> ByteArray:
     from := 0
     to := input.size
-    if not aes_: throw "ALREADY_CLOSED"
-    result := aes_cbc_crypt_ aes_ input from to encrypt
-    return result
+    return aes_cbc_crypt_ aes_ input from to encrypt
 
+
+/**
+Advanced Encryption Standard Electronic codebook (AES-ECB).
+
+This implementation uses hardware accelerated primitives.
+
+AES-ECB state for encrypting and decrypting 
+
+To encrypt, construct an AES encryption state with $AesEcb.encryptor and
+  encrypt a block with $encrypt.
+
+To decrypt, construct and AES decryption state with $AesEcb.decryptor and
+  decrypt a block with $decrypt.
+
+Close the AES state with $close to release system resources.
+*/
 class AesEcb extends Aes:
 
   /**
-  Creates an AES state for encryption.
+  Creates an AES Ecb state for encryption.
 
-  The $key must be 32 secret bytes
-    random bytes. The initialization vector must not be reused.
+  The $key must be either 16, 24 or 32 secret bytes.
   */
   constructor.encryptor key/ByteArray:
-    super.from_subclass key (ByteArray 16) true
+    super.from_subclass key (ByteArray 0) true
 
   /**
-  Creates an AES state for decryption.
+  Creates an AES Ecb state for decryption.
 
-  The $key must be 32 secret bytes
+  The $key must be either 16, 24 or 32 secret bytes.
   */
   constructor.decryptor key/ByteArray:
-    super.from_subclass key (ByteArray 16) false
+    super.from_subclass key (ByteArray 0) false
 
+  /** See $super. */
   crypt_ input/ByteArray encrypt/bool -> ByteArray:
     from := 0
     to := input.size
-    if not aes_: throw "ALREADY_CLOSED"
-    result := aes_ecb_crypt_ aes_ input from to encrypt
-    return result
+    return aes_ecb_crypt_ aes_ input from to encrypt
 
 
-aes_init_ group key/ByteArray initialization_vector/ByteArray encrypt/bool:
+
+aes_init_ group key/ByteArray initialization_vector/ByteArray? encrypt/bool:
   #primitive.crypto.aes_init
 
 aes_cbc_crypt_ aes input/ByteArray from/int to/int encrypt/bool:

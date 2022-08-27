@@ -24,13 +24,20 @@
 
 namespace toit {
 
-class AesContext : public SimpleResource {
+class AesEcbContext : public SimpleResource {
  public:
-  TAG(AesContext);
-  AesContext(SimpleResourceGroup* group, const uint8* key, const uint8* iv, bool encrypt);
-  ~AesContext();
+  TAG(AesEcbContext);
+  AesEcbContext(SimpleResourceGroup* group, const Blob* key, bool encrypt);
+  ~AesEcbContext();
 
   mbedtls_aes_context context_;
+};
+
+class AesCbcContext : public AesEcbContext {
+ public:
+  TAG(AesCbcContext);
+  AesCbcContext(SimpleResourceGroup* group, const Blob* key, const uint8* iv, bool encrypt);
+
   uint8 iv_[16];
 };
 
