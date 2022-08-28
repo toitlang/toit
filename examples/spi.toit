@@ -17,8 +17,9 @@ main:
         dc = gpio.Pin 16
 
     else:
+        //Default spi.VirtualBus transfer method
         bus = spi.VirtualBus 
-        
+
         cs = gpio.VirtualPin :: | value | print "Cs set to: $value"
         dc = gpio.VirtualPin :: | value | print "Dc set to: $value"
 
