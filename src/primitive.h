@@ -404,6 +404,8 @@ namespace toit {
   PRIMITIVE(write, 6)                        \
   PRIMITIVE(read, 1)                         \
   PRIMITIVE(wait_tx, 1)                      \
+  PRIMITIVE(set_control_flags, 2)           \
+  PRIMITIVE(get_control_flags, 1)            \
 
 #define MODULE_RMT(PRIMITIVE)                \
   PRIMITIVE(init, 0)                         \

@@ -15,14 +15,22 @@
 
 #include "../top.h"
 
-#ifdef TOIT_LINUX
+#ifdef TOIT_POSIX
 
 #include <fcntl.h>
 #include <errno.h>
 #include <termios.h>
 #include <unistd.h>
-#include <linux/serial.h>
-#include <sys/epoll.h>
+#ifdef TOIT_LINUX
+ #include <linux/serial.h>
+ #include <sys/epoll.h>
+ #include "../event_sources/epoll_linux.h"
+#elifdef TOIT_BSD
+ #include "../event_sources/kqueue_bsd.h"
+ #include <sys/event.h>
+ #include <IOKit/serial/ioss.h>
+#endif
+
 #include <sys/file.h>
 #include <sys/ioctl.h>
 
@@ -31,11 +39,10 @@
 #include "../primitive.h"
 #include "../process.h"
 #include "../resource.h"
-#include "../event_sources/epoll_linux.h"
 
 namespace toit {
 
-static int linux_baud_rate_to_int(speed_t speed) {
+static int baud_rate_to_int(speed_t speed) {
   switch (speed) {
     // B0 instructs the modem to hang up. We should never see this.
     case B0: return 0;
@@ -57,6 +64,7 @@ static int linux_baud_rate_to_int(speed_t speed) {
     case B57600: return 57600;
     case B115200: return 115200;
     case B230400: return 230400;
+#ifdef TOIT_LINUX
     case B460800: return 460800;
     case B576000: return 576000;
     case B921600: return 921600;
@@ -68,10 +76,16 @@ static int linux_baud_rate_to_int(speed_t speed) {
     case B3500000: return 3500000;
     case B4000000: return 4000000;
     default: return -1;
+#elifdef TOIT_DARWIN
+    default:
+      return (int)speed;
+#endif
   }
 }
 
-static int int_to_linux_baud_rate(int baud_rate, speed_t* speed) {
+static int int_to_baud_rate(int baud_rate, speed_t* speed, bool *arbitrary_baud_rate) {
+  // TODO: On linux using gcc, it should be possible to just set the bit rate as an integer.
+  *arbitrary_baud_rate = false;
   switch (baud_rate) {
     case 0: *speed = B0; return 0;
     case 50: *speed = B50; return 0;
@@ -92,6 +106,7 @@ static int int_to_linux_baud_rate(int baud_rate, speed_t* speed) {
     case 57600: *speed = B57600; return 0;
     case 115200: *speed = B115200; return 0;
     case 230400: *speed = B230400; return 0;
+#ifdef TOIT_LINUX
     case 460800: *speed = B460800; return 0;
     case 576000: *speed = B576000; return 0;
     case 921600: *speed = B921600; return 0;
@@ -103,6 +118,12 @@ static int int_to_linux_baud_rate(int baud_rate, speed_t* speed) {
     case 3500000: *speed = B3500000; return 0;
     case 4000000: *speed = B4000000; return 0;
     default: return -1;
+#elifdef TOIT_DARWIN
+    default:
+      *speed = baud_rate;
+      *arbitrary_baud_rate = true;
+      return 0;
+#endif
   }
 }
 
@@ -119,7 +140,7 @@ class UARTResourceGroup : public ResourceGroup {
   int create_uart(const char* path, speed_t speed, int data_bits, int stop_bits, int parity) {
     // We always set the close-on-exec flag otherwise we leak descriptors when we fork.
     // File descriptors that are intended for subprocesses have the flags cleared.
-    int fd = open(path, O_CLOEXEC | O_RDWR | O_NONBLOCK);
+    int fd = open(path, O_CLOEXEC | O_RDWR | O_NONBLOCK | O_NOCTTY);
     if (fd < 0) return -1;
     if (!isatty(fd)) {
       // Doesn't seem to be a serial port.
@@ -217,9 +238,16 @@ class UARTResourceGroup : public ResourceGroup {
 
  private:
   uint32_t on_event(Resource* resource, word data, uint32_t state) {
+#ifdef TOIT_LINUX
     if (data & EPOLLIN) state |= kReadState;
     if (data & EPOLLERR) state |= kErrorState;
     if (data & EPOLLOUT) state |= kWriteState;
+#elifdef TOIT_BSD
+    auto event = reinterpret_cast<struct kevent*>(data);
+    if (event->filter == EVFILT_READ) state |= kReadState;
+    if (event->filter == EVFILT_WRITE) state |= kWriteState;
+    if (event->filter == EVFILT_EXCEPT) state |= kErrorState;
+#endif
     return state;
   }
 };
@@ -233,7 +261,11 @@ PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;
 
+#ifdef TOIT_LINUX
   UARTResourceGroup* resource_group = _new UARTResourceGroup(process, EpollEventSource::instance());
+#elifdef TOIT_BSD
+  UARTResourceGroup* resource_group = _new UARTResourceGroup(process, KQueueEventSource::instance());
+#endif
   if (!resource_group) MALLOC_FAILED;
 
   proxy->set_external_address(resource_group);
@@ -248,7 +280,8 @@ PRIMITIVE(create_path) {
   ARGS(UARTResourceGroup, resource_group, cstring, path, int, baud_rate, int, data_bits, int, stop_bits, int, parity);
 
   speed_t speed;
-  if (int_to_linux_baud_rate(baud_rate, &speed) != 0) INVALID_ARGUMENT;
+  bool arbitrary_baud_rate;
+  if (int_to_baud_rate(baud_rate, &speed, &arbitrary_baud_rate) < 0) INVALID_ARGUMENT;
 
   if (data_bits < 5 || data_bits > 8) INVALID_ARGUMENT;
   if (stop_bits < 1 || stop_bits > 3) INVALID_ARGUMENT;
@@ -287,7 +320,7 @@ PRIMITIVE(get_baud_rate) {
   }
   // We assume that the input and output speed are the same and only query the output speed.
   speed_t speed = cfgetospeed(&tty);
-  int int_speed = linux_baud_rate_to_int(speed);
+  int int_speed = baud_rate_to_int(speed);
   if (int_speed == -1) OTHER_ERROR;
   return Primitive::integer(int_speed, process);
 }
@@ -297,13 +330,24 @@ PRIMITIVE(set_baud_rate) {
   int fd = resource->id();
 
   speed_t speed;
-  if (int_to_linux_baud_rate(baud_rate, &speed) != 0) INVALID_ARGUMENT;
-  struct termios tty;
-  if (tcgetattr(fd, &tty) != 0) return Primitive::os_error(errno, process);
-  if (cfsetospeed(&tty, speed) != 0) return Primitive::os_error(errno, process);
-  if (cfsetispeed(&tty, speed) != 0) return Primitive::os_error(errno, process);
-  // TCSADRAIN: let the change happen once all output written to the fd has been transmitted.
-  if (tcsetattr(fd, TCSADRAIN, &tty) != 0) return Primitive::os_error(errno, process);
+  bool arbitrary_rate;
+  int result = int_to_baud_rate(baud_rate, &speed, &arbitrary_rate);
+  if (result != 0) INVALID_ARGUMENT;
+  if (!arbitrary_rate) { // false means use standard Posix/Linux line speed setup
+    struct termios tty;
+    if (tcgetattr(fd, &tty) != 0) return Primitive::os_error(errno, process);
+    if (cfsetospeed(&tty, speed) != 0) return Primitive::os_error(errno, process);
+    if (cfsetispeed(&tty, speed) != 0) return Primitive::os_error(errno, process);
+    // TCSADRAIN: let the change happen once all output written to the fd has been transmitted.
+    if (tcsetattr(fd, TCSADRAIN, &tty) != 0) return Primitive::os_error(errno, process);
+  } else {
+#ifdef TOIT_DARWIN
+    if (ioctl(fd, IOSSIOSPEED, &speed) != 0) return Primitive::os_error(errno, process);
+#else
+    INVALID_ARGUMENT;
+#endif
+
+  }
   return process->program()->null_object();
 }
 
@@ -333,7 +377,7 @@ PRIMITIVE(write) {
     if (tcgetattr(fd, &tty) != 0) return Primitive::os_error(errno, process);
     // We assume that the input and output speed are the same and only query the output speed.
     speed_t speed = cfgetospeed(&tty);
-    baud_rate = linux_baud_rate_to_int(speed);
+    baud_rate = baud_rate_to_int(speed);
   }
 
   if (break_length > 0) {
@@ -365,7 +409,7 @@ PRIMITIVE(wait_tx) {
   if (tcgetattr(fd, &tty) < 0) return Primitive::os_error(errno, process);
   // We assume that the input and output speed are the same and only query the output speed.
   speed_t speed = cfgetospeed(&tty);
-  int baud_rate = linux_baud_rate_to_int(speed);
+  int baud_rate = baud_rate_to_int(speed);
   if (baud_rate > 100000) {
     // TODO(florian): do we ever want to do a blocking wait on Linux?
 
@@ -407,6 +451,25 @@ PRIMITIVE(read) {
   }
 
   return data;
+}
+
+PRIMITIVE(set_control_flags) {
+  ARGS(IntResource, resource, int, flags);
+  int fd = resource->id();
+
+  if (ioctl(fd, TIOCMSET, &flags) != 0) return Primitive::os_error(errno, process);
+
+  return process->program()->null_object();
+}
+
+PRIMITIVE(get_control_flags) {
+  ARGS(IntResource, resource);
+  int fd = resource->id();
+
+  int flags;
+  if (ioctl(fd, TIOCMGET, &flags) != 0) return Primitive::os_error(errno, process);
+
+  return Smi::from(flags);
 }
 
 } // namespace toit
