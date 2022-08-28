@@ -138,6 +138,7 @@ interface Device extends serial.Device:
       --command/int=0
       --address/int=0
       --keep_cs_active/bool=false
+      -> none
 
   /**
   Reserves the bus for this device while executing the given $block.
@@ -151,7 +152,7 @@ interface Device extends serial.Device:
     after the bus has been reserved.
   2. When using the `--keep_cs_active` flag of the $transfer function, the bus must be reserved.
   */
-  with_reserved_bus [block]
+  with_reserved_bus [block] -> none
 
   /** Closes this SPI device and releases resources associated with it. */
   close
@@ -203,12 +204,13 @@ class Device_ implements Device:
       --dc/int=0
       --command/int=0
       --address/int=0
-      --keep_cs_active/bool=false:
+      --keep_cs_active/bool=false
+      -> none:
     if keep_cs_active and not owning_bus_: throw "INVALID_STATE"
-    return spi_transfer_ device_ data command address from to read dc keep_cs_active
+    spi_transfer_ device_ data command address from to read dc keep_cs_active
 
   /** See $Device.with_reserved_bus. */
-  with_reserved_bus [block]:
+  with_reserved_bus [block] -> none:
     spi_.reservation_mutex_.do:
       spi_acquire_bus_ device_
       owning_bus_ = true
@@ -302,14 +304,11 @@ class VirtualBus extends Bus:
   Default handler for virutal bus transfer.
   The transfer method calls this lambda  with the parameter 
   types specified here.
-  The lambda must local-return a ByteArray.
 
   This implemententation prints the command, address 
-  and data parameters that the Lambda was called with
-  it also returns the recieved data if the read flag
-  is true, otherwise it returns a ByteArray of the
-  same size as the parameterized data, but filled with
-  the value 0x00.
+  and data parameters that the Lambda was called with.
+  it also fills the $VirtualTransferData.data parameter
+  with 0x00 if the read flag is present.
   */
   static DEFAULT_TRANSFER_HANDLER_ /Lambda ::= :: |
             dev_info/VirtualDeviceInfo_
@@ -319,8 +318,7 @@ class VirtualBus extends Bus:
         
         print "Cmd: $(%x data.command), Address: $(%x data.address), Data: $data.data, Read: $read"
         
-        //Local return
-        read? data.data : ByteArray data.data.size
+        if read: data.data.fill 0
 
   /** 
   See $super. 
@@ -380,7 +378,7 @@ compressed as the $Lambda.call only takes a maximum of 4 arguments.
 class VirtualTransferData:
   command/int     ::= ?
   address/int     ::= ?
-  data/ByteArray  ::= ?
+  data/ByteArray   := ?
 
   constructor 
       device_settings_/VirtualDeviceInfo_
@@ -388,7 +386,7 @@ class VirtualTransferData:
       address/int
       .data/ByteArray:
 
-    //Mask off command and address
+    //Mask command and address
     this.command = command & device_settings_.command_bits_mask
     this.address = address & device_settings_.address_bits_mask
 
