@@ -5,6 +5,7 @@
 import gpio
 import serial
 import monitor
+import binary
 
 /**
 SPI is a serial communication bus able to address multiple devices along a main 3-wire bus with an additional 1 wire per device.
@@ -58,6 +59,8 @@ class Bus:
       mosi ? mosi.num : -1
       miso ? miso.num : -1
       clock.num
+
+  constructor.virtual_ .spi_:
 
   /** Closes this SPI bus and frees the associated resources. */
   close:
@@ -274,6 +277,224 @@ class Registers extends serial.Registers:
 
   mask_reg_ msb_high reg:
     return (msb_high ? reg | 0x80 : reg & 0x7f).to_int
+
+/**
+Virtual emulation of a $Bus.
+See $Bus.
+*/
+class VirtualBus extends Bus:
+
+  /**
+  Internal "transfer primitive" that will be called by devices
+  instead of the spi_transfer_ primitive
+  */
+  bus_transfer_handler_ ::=?
+  
+  /**
+  Construct a Virtual bus with a "primitive" transfer handler method
+  $bus_transfer_handler_. The $bus_transfer_handler_ will be called
+  by the virtual devices on the bus when they want to transfer data.
+  */
+  constructor .bus_transfer_handler_/Lambda=DEFAULT_TRANSFER_HANDLER_:
+    super.virtual_ -1
+
+  /**
+  Default handler for virutal bus transfer.
+  The transfer method calls this lambda  with the parameter 
+  types specified here.
+  The lambda must local-return a ByteArray.
+
+  This implemententation prints the command, address 
+  and data parameters that the Lambda was called with
+  it also returns the recieved data if the read flag
+  is true, otherwise it returns a ByteArray of the
+  same size as the parameterized data, but filled with
+  the value 0x00.
+  */
+  static DEFAULT_TRANSFER_HANDLER_ /Lambda ::= :: |
+            dev_info/VirtualDeviceInfo_
+            data/VirtualTransferData
+            read/bool
+          | 
+        
+        print "Cmd: $(%x data.command), Address: $(%x data.address), Data: $data.data, Read: $read"
+        
+        //Local return
+        read? data.data : ByteArray data.data.size
+
+  /** 
+  See $super. 
+  */
+  device
+      --cs/gpio.Pin?=null
+      --dc/gpio.Pin?=null
+      --frequency/int
+      --mode/int=0
+      --command_bits/int=0
+      --address_bits/int=0
+      -> Device:
+
+    return VirtualDevice_.init_ 
+      this 
+      VirtualDeviceInfo_
+        dc
+        cs
+        frequency
+        mode
+        command_bits
+        address_bits
+
+/**
+Class to hold information about the instanciated VirtualDevice.
+*/
+class VirtualDeviceInfo_:
+  dc/gpio.Pin?            ::= ?
+  cs/gpio.Pin?            ::= ?
+  frequency/int           ::= ?
+  mode/int                ::= ?
+  command_bits/int        ::= ?
+  command_bits_mask/int   ::= ?
+  address_bits/int        ::= ?
+  address_bits_mask/int   ::= ?
+
+  constructor .dc/gpio.Pin? .cs/gpio.Pin? .frequency/int .mode/int .command_bits/int .address_bits/int:
+    if mode < 0 or mode > 3: throw "Argument Error"
+    if command_bits < 0 or command_bits > 16: throw "Argument Error"
+    if address_bits < 0 or address_bits > 64: throw "Argument Error"
+    
+    mask := 0
+    command_bits.repeat:
+      mask |= (1 << it)
+    command_bits_mask = mask
+    
+    mask = 0
+    address_bits.repeat:
+      mask |= (1 << it)
+    address_bits_mask = mask
+    
+/**
+Compress the command, address and data from a $Device.transfer call
+to a single object for use in a $Lambda.call. The data has to be 
+compressed as the $Lambda.call only takes a maximum of 4 arguments.
+*/
+class VirtualTransferData:
+  command/int     ::= ?
+  address/int     ::= ?
+  data/ByteArray  ::= ?
+
+  constructor 
+      device_settings_/VirtualDeviceInfo_
+      command/int
+      address/int
+      .data/ByteArray:
+
+    //Mask off command and address
+    this.command = command & device_settings_.command_bits_mask
+    this.address = address & device_settings_.address_bits_mask
+
+/** Device connected to a Virtual SPI bus. */
+class VirtualDevice_ extends Device_:
+
+  /// Cs might be a $gpio.VirtualPin, so we keep the state here.
+  curr_cs_logic_level/int  := 0 
+
+  constructor.init_ spi_ device_:
+    super.init_ spi_ device_
+
+  /** See $super */
+  close:
+    device_ = null
+
+  /** See $super */
+  transfer
+      data/ByteArray
+      --from/int=0
+      --to/int=data.size
+      --read/bool=false
+      --dc/int=0
+      --command/int=0
+      --address/int=0
+      --keep_cs_active/bool=false:
+
+    /** 
+    Give the same user warning as $Device_.transfer for
+    invalid use of the transfer $keep_cs_active flag.
+    */
+    if keep_cs_active and not owning_bus_: throw "INVALID_STATE"
+
+    //Lock the bus to simulate that only one device may transfer at a time
+    if not owning_bus_: 
+      result := data
+      this.with_reserved_bus:
+        result = transfer 
+          data
+          --from=from
+          --to=to
+          --read=read
+          --dc=dc
+          --command=command
+          --address=address
+          --keep_cs_active=keep_cs_active
+      return result
+
+    
+
+    dev_settings /VirtualDeviceInfo_ := device_ as VirtualDeviceInfo_
+    
+    /*
+    Because a Lambdas can only be called with up to 4 arguments
+    we handle dc here and compress command, address and data to
+    one VirtualTransferData.
+    */
+    data_to_transmit := VirtualTransferData
+      dev_settings
+      command
+      address
+      data[from..to]
+
+    /**
+    Mirrors what the internal spi_pre_transer_callback does in
+    the VM with a virtual pin.
+
+    See line 183 in spi_esp32.cc (PRIMITIVE(device))
+    */
+    if dev_settings.dc: dev_settings.dc.set dc
+
+    /**
+    Cs is normally handled in the primitive for transfers, so
+    simulate the Cs pin operation here.
+    */
+    if curr_cs_logic_level != 1:
+      curr_cs_logic_level = 1
+      if dev_settings.cs:
+        dev_settings.cs.set 1
+
+    /**
+    Call the primitive of the $VirtualBus with the settings of this
+    device, the data to transmit and the read flag specified in this
+    transfer call.
+    */
+    result := (spi_ as VirtualBus).bus_transfer_handler_.call dev_settings data_to_transmit read
+
+    /**
+    Handle the keep_cs_active flag
+    */
+    if not keep_cs_active:
+      curr_cs_logic_level = 0
+      if dev_settings.cs:
+        dev_settings.cs.set 0
+
+    return result
+
+  /** See $super. */
+  with_reserved_bus [block]:
+    spi_.reservation_mutex_.do:
+      owning_bus_ = true
+      try:
+        block.call
+      finally:
+        owning_bus_ = false
+    
 
 spi_init_ mosi/int miso/int clock/int:
   #primitive.spi.init
