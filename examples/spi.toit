@@ -1,11 +1,16 @@
-
 import gpio
 import spi
 
 
 main:
-    bus/spi.Bus := spi.VirtualBus
-    
+    bus/spi.Bus := platform == PLATFORM_FREERTOS?
+        spi.Bus
+            --miso=gpio.Pin 12
+            --mosi=gpio.Pin 13
+            --clock=gpio.Pin 14 
+        :
+        spi.VirtualBus 
+
     device := bus.device
         --cs=gpio.VirtualPin :: | value | print "Cs set to: $value"
         --dc=gpio.VirtualPin :: | value | print "Dc set to: $value"
