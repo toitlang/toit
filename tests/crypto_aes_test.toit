@@ -150,7 +150,7 @@ test_aes_cbc:
   /*
   Test the encryption the plaintext with the encryptor
   and test that the result bytes are equal to the
-  precomupted result stored in CBC_CIPHERTEXT32.
+  precomputed result stored in CBC_CIPHERTEXT32.
   */
   expect.expect_bytes_equal 
     CBC_CIPHERTEXT32
