@@ -38,26 +38,25 @@ static Object* aes_crypt(Process* process, AesEcbContext* context, Blob* input, 
 
   ByteArray::Bytes output_bytes(result);
 
-  switch (type)
-  {
-  case AesTypes::Ecb:
-    mbedtls_aes_crypt_ecb(
-      &context->context_,
-      encrypt ? MBEDTLS_AES_ENCRYPT : MBEDTLS_AES_DECRYPT,
-      input->address() + from,
-      output_bytes.address());
-    break;
-  case AesTypes::Cbc:
-    mbedtls_aes_crypt_cbc(
-      &context->context_,
-      encrypt ? MBEDTLS_AES_ENCRYPT : MBEDTLS_AES_DECRYPT,
-      to - from,
-      static_cast<AesCbcContext*>(context)->iv_,
-      input->address() + from,
-      output_bytes.address());
+  switch (type) {
+    case AesTypes::Ecb:
+      mbedtls_aes_crypt_ecb(
+        &context->context_,
+        encrypt ? MBEDTLS_AES_ENCRYPT : MBEDTLS_AES_DECRYPT,
+        input->address() + from,
+        output_bytes.address());
       break;
-  default:
-    WRONG_TYPE;
+    case AesTypes::Cbc:
+      mbedtls_aes_crypt_cbc(
+        &context->context_,
+        encrypt ? MBEDTLS_AES_ENCRYPT : MBEDTLS_AES_DECRYPT,
+        to - from,
+        static_cast<AesCbcContext*>(context)->iv_,
+        input->address() + from,
+        output_bytes.address());
+      break;
+    default:
+      WRONG_TYPE;
   }
 
   return result;
@@ -163,8 +162,7 @@ PRIMITIVE(siphash_get) {
 AesEcbContext::AesEcbContext(
     SimpleResourceGroup* group,
     const Blob* key,
-    bool encrypt)
-  : SimpleResource(group) {
+    bool encrypt) : SimpleResource(group) {
   mbedtls_aes_init(&context_);
   if (encrypt) {
     mbedtls_aes_setkey_enc(&context_, key->address(), key->length() * 8); 
@@ -181,20 +179,21 @@ AesCbcContext::AesCbcContext(
     SimpleResourceGroup* group,
     const Blob* key,
     const uint8* iv,
-    bool encrypt)
-  : AesEcbContext(group, key, encrypt) {
-    memcpy(iv_, iv, 16);
+    bool encrypt) : AesEcbContext(group, key, encrypt) {
+  memcpy(iv_, iv, 16);
 }
 
 PRIMITIVE(aes_init) {
   ARGS(SimpleResourceGroup, group, Blob, key, Blob, iv, bool, encrypt);
 
-  if ((key.length() != 32 &&
+  if (key.length() != 32 &&
       key.length() != 24 &&
-      key.length() != 16) ||
-      (iv.length()  != 16 &&
-      iv.length()  != 0)) 
-  {
+      key.length() != 16) {
+    INVALID_ARGUMENT;
+  }
+  
+  if (iv.length() != 16 &&
+      iv.length() != 0) {
     INVALID_ARGUMENT;
   }
 
@@ -202,8 +201,7 @@ PRIMITIVE(aes_init) {
 
   if (iv.length() == 0) {
     aes = _new AesEcbContext(group, &key, encrypt);
-  }
-  else {
+  } else {
     aes = _new AesCbcContext(group, &key, iv.address(), encrypt);
   }
 

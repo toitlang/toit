@@ -3,9 +3,9 @@
 // found in the lib/LICENSE file.
 
 /**
-Base class for the hardware accelerated Advanced encryption standard (AES) 
+Base class for the hardware accelerated Advanced Encryption Standard (AES).
 
-See https://en.wikipedia.org/wiki/Advanced_Encryption_Standard 
+See https://en.wikipedia.org/wiki/Advanced_Encryption_Standard.
 
 AES has multiple different modes it can use.
 The ones implemented here are CBC and ECB.
@@ -45,14 +45,12 @@ abstract class Aes:
   */
   abstract crypt_ input/ByteArray encrypt/bool -> ByteArray
 
-
   /** Closes this encrypter and releases associated resources. */
   close -> none:
+    if not aes_: return
     aes_close_ aes_
     aes_ = null
     remove_finalizer this
-
-
 
 /**
 Advanced Encryption Standard Cipher Blocker Chaining (AES-CBC).
@@ -77,7 +75,7 @@ class AesCbc extends Aes:
     return AesCbc.encryptor key initialization_vector
 
   /**
-  Creates an AES Cbc state for encryption.
+  Creates an AES-CBC state for encryption.
 
   The $key must be 16, 24 or 32 secret bytes and the 
    $initialization_vector must be 16 random bytes.
@@ -90,7 +88,7 @@ class AesCbc extends Aes:
     return AesCbc.decryptor key initialization_vector
 
   /**
-  Creates an AES Cbc state for decryption.
+  Creates an AES-CBC state for decryption.
 
   The $key must be 16, 24 or 32 secret bytes and the 
   $initialization_vector must be 16 bytes.
@@ -98,13 +96,11 @@ class AesCbc extends Aes:
   constructor.decryptor key/ByteArray initialization_vector/ByteArray:
     super.from_subclass key initialization_vector false
 
-
   /** See $super. */
   crypt_ input/ByteArray encrypt/bool -> ByteArray:
     from := 0
     to := input.size
     return aes_cbc_crypt_ aes_ input from to encrypt
-
 
 /**
 Advanced Encryption Standard Electronic codebook (AES-ECB).
@@ -124,7 +120,7 @@ Close the AES state with $close to release system resources.
 class AesEcb extends Aes:
 
   /**
-  Creates an AES Ecb state for encryption.
+  Creates an AES-ECB state for encryption.
 
   The $key must be either 16, 24 or 32 secret bytes.
   */
@@ -132,7 +128,7 @@ class AesEcb extends Aes:
     super.from_subclass key (ByteArray 0) true
 
   /**
-  Creates an AES Ecb state for decryption.
+  Creates an AES-ECB state for decryption.
 
   The $key must be either 16, 24 or 32 secret bytes.
   */
