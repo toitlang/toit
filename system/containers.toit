@@ -98,10 +98,10 @@ abstract class ContainerImage:
     return 0
 
   run_boot -> bool:
-    return (flags & ContainerService.FLAG_RUN_BOOT) != 0
+    return flags & ContainerService.FLAG_RUN_BOOT != 0
 
   run_critical -> bool:
-    return (flags & ContainerService.FLAG_RUN_CRITICAL) != 0
+    return flags & ContainerService.FLAG_RUN_CRITICAL != 0
 
   abstract start -> Container
   abstract stop_all -> none
