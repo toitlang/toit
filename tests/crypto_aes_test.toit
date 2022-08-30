@@ -36,7 +36,7 @@ IV ::= #[
 PLAINTEXT ::= ByteArray 16: it
 
 /*
-Precomputed ECB and CBC ciphertext with the specified key lengths
+Precomputed ECB and CBC ciphertext with the specified key lengths.
 Results came from https://the-x.cn/en-us/cryptography/Aes.aspx.
 */
 ECB_CIPHERTEXT16 ::= #[
@@ -71,132 +71,119 @@ CBC_CIPHERTEXT32 ::= #[
 
 main:
   test_aes_cbc
-  print "Test of AesCbc successfull"
+  print "Test of AesCbc successful"
 
   test_aes_ecb
-  print "Test of AesEcb successfull"
-
-
-
+  print "Test of AesEcb successful"
 
 test_aes_ecb:
   // Create AesEcb encryptor with 256 bit key.
   encryptor /aes.AesEcb := aes.AesEcb.encryptor
-    SECRET32  
+      SECRET32  
 
   // Create AesEcb decryptor with 256 bit key.
   decryptor /aes.AesEcb := aes.AesEcb.decryptor
-    SECRET32  
+      SECRET32  
 
-  /*
-  Test the encryption the plaintext with the encryptor
-  and test that the result bytes are equal to the
-  precomputed result stored in ECB_CIPHERTEXT32.
-  */
+  // Test the encryption the plaintext with the encryptor
+  //   and test that the result bytes are equal to the
+  //   precomputed result stored in ECB_CIPHERTEXT32.
   expect.expect_bytes_equal 
-    ECB_CIPHERTEXT32
-    (encryptor.encrypt PLAINTEXT)  
+      ECB_CIPHERTEXT32
+      (encryptor.encrypt PLAINTEXT)  
 
-  /*
-  Test the decryption the ciphertext with the decryptor
-  and test that the result bytes are equal to the
-  original plaintext.
-  */
+  // Test the decryption the ciphertext with the decryptor
+  //   and test that the result bytes are equal to the
+  //   original plaintext.
   expect.expect_bytes_equal
-    PLAINTEXT
-    (decryptor.decrypt ECB_CIPHERTEXT32)
+      PLAINTEXT
+      (decryptor.decrypt ECB_CIPHERTEXT32)
   
-  //Repeat with 192 bit key
+  // Repeat with 192 bit key.
   encryptor = aes.AesEcb.encryptor
-    SECRET24
+      SECRET24
   
   decryptor = aes.AesEcb.decryptor
-    SECRET24
+      SECRET24
   
   expect.expect_bytes_equal 
-    ECB_CIPHERTEXT24
-    (encryptor.encrypt PLAINTEXT)  
+      ECB_CIPHERTEXT24
+      (encryptor.encrypt PLAINTEXT)  
   
   expect.expect_bytes_equal
-    PLAINTEXT
-    (decryptor.decrypt ECB_CIPHERTEXT24)  
+      PLAINTEXT
+      (decryptor.decrypt ECB_CIPHERTEXT24)  
   
   // Repeat with 128 bit key.
   encryptor = aes.AesEcb.encryptor
-    SECRET16
+      SECRET16
   
   decryptor = aes.AesEcb.decryptor
-    SECRET16  
+      SECRET16  
   
   expect.expect_bytes_equal 
-    ECB_CIPHERTEXT16
-    (encryptor.encrypt PLAINTEXT)  
+      ECB_CIPHERTEXT16
+      (encryptor.encrypt PLAINTEXT)  
   
   expect.expect_bytes_equal
-    PLAINTEXT
-    (decryptor.decrypt ECB_CIPHERTEXT16)
+      PLAINTEXT
+      (decryptor.decrypt ECB_CIPHERTEXT16)
 
 test_aes_cbc:
   // Create AesCbc encryptor with 256 bit key.
   encryptor /aes.AesCbc := aes.AesCbc.encryptor
-    SECRET32
-    IV
+      SECRET32
+      IV
   
   // Create AesCbc decryptor with 256 bit key.
   decryptor /aes.AesCbc := aes.AesCbc.decryptor
-    SECRET32
-    IV
+      SECRET32
+      IV
 
-  /*
-  Test the encryption the plaintext with the encryptor
-  and test that the result bytes are equal to the
-  precomputed result stored in CBC_CIPHERTEXT32.
-  */
+  // Test the encryption the plaintext with the encryptor
+  //   and test that the result bytes are equal to the
+  //   precomputed result stored in CBC_CIPHERTEXT32.
   expect.expect_bytes_equal 
-    CBC_CIPHERTEXT32
-    (encryptor.encrypt PLAINTEXT)
+      CBC_CIPHERTEXT32
+      (encryptor.encrypt PLAINTEXT)
  
-  /*
-  Test the decryption the ciphertext with the decryptor
-  and test that the result bytes are equal to the
-  original plaintext.
-  */
+  // Test the decryption the ciphertext with the decryptor
+  //   and test that the result bytes are equal to the
+  //   original plaintext.
   expect.expect_bytes_equal
-    PLAINTEXT
-    (decryptor.decrypt CBC_CIPHERTEXT32)
+      PLAINTEXT
+      (decryptor.decrypt CBC_CIPHERTEXT32)
     
-
   // Repeat with the 192 bit secret key.
   encryptor = aes.AesCbc.encryptor
-    SECRET24
-    IV
+      SECRET24
+      IV
     
   decryptor = aes.AesCbc.decryptor
-    SECRET24
-    IV
+      SECRET24
+      IV
     
   expect.expect_bytes_equal 
-    CBC_CIPHERTEXT24
-    (encryptor.encrypt PLAINTEXT)
+      CBC_CIPHERTEXT24
+      (encryptor.encrypt PLAINTEXT)
 
   expect.expect_bytes_equal
-    PLAINTEXT
-    (decryptor.decrypt CBC_CIPHERTEXT24)
-
+      PLAINTEXT
+      (decryptor.decrypt CBC_CIPHERTEXT24)
 
   // Repeat with the 128 bit secret key.
   encryptor = aes.AesCbc.encryptor
-    SECRET16
-    IV
+      SECRET16
+      IV
     
   decryptor = aes.AesCbc.decryptor
-    SECRET16
-    IV
+      SECRET16
+      IV
 
   expect.expect_bytes_equal 
-    CBC_CIPHERTEXT16
-    (encryptor.encrypt PLAINTEXT)
+      CBC_CIPHERTEXT16
+      (encryptor.encrypt PLAINTEXT)
 
   expect.expect_bytes_equal
-    PLAINTEXT
-    (decryptor.decrypt CBC_CIPHERTEXT16)
+      PLAINTEXT
+      (decryptor.decrypt CBC_CIPHERTEXT16)

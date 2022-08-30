@@ -443,8 +443,8 @@ namespace toit {
   PRIMITIVE(siphash_add, 4)                  \
   PRIMITIVE(siphash_get, 1)                  \
   PRIMITIVE(aes_init, 4)                     \
-  PRIMITIVE(aes_cbc_crypt, 5)                \
-  PRIMITIVE(aes_ecb_crypt, 5)                \
+  PRIMITIVE(aes_cbc_crypt, 3)                \
+  PRIMITIVE(aes_ecb_crypt, 3)                \
   PRIMITIVE(aes_close, 1)                    \
 
 #define MODULE_ENCODING(PRIMITIVE)           \
@@ -910,7 +910,7 @@ namespace toit {
 #define _A_T_BaseMbedTLSSocket(N, name)   MAKE_UNPACKING_MACRO(BaseMbedTLSSocket, N, name)
 #define _A_T_SslSession(N, name)          MAKE_UNPACKING_MACRO(SslSession, N, name)
 #define _A_T_X509Certificate(N, name)     MAKE_UNPACKING_MACRO(X509Certificate, N, name)
-#define _A_T_AesEcbContext(N, name)       MAKE_UNPACKING_MACRO(AesEcbContext, N, name)
+#define _A_T_AesContext(N, name)          MAKE_UNPACKING_MACRO(AesContext, N, name)
 #define _A_T_AesCbcContext(N, name)       MAKE_UNPACKING_MACRO(AesCbcContext, N, name)
 #define _A_T_Sha1(N, name)                MAKE_UNPACKING_MACRO(Sha1, N, name)
 #define _A_T_Siphash(N, name)             MAKE_UNPACKING_MACRO(Siphash, N, name)

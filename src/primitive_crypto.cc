@@ -29,11 +29,11 @@ enum class AesTypes {
   Cbc
 };
 
-static Object* aes_crypt(Process* process, AesEcbContext* context, Blob* input, int from, int to, bool encrypt, AesTypes type) {
-  if (from < 0 || to > input->length() || from > to || ((to - from) % 16) != 0) INVALID_ARGUMENT;
+static Object* aes_crypt(Process* process, AesContext* context, Blob* input, bool encrypt, AesTypes type) {
+  if ((input->length() % AesContext::AES_BLOCK_SIZE) != 0) INVALID_ARGUMENT;
 
   Error* error = null;
-  ByteArray* result = process->allocate_byte_array(to - from, &error);
+  ByteArray* result = process->allocate_byte_array(input->length(), &error);
   if (result == null) return error;
 
   ByteArray::Bytes output_bytes(result);
@@ -41,19 +41,19 @@ static Object* aes_crypt(Process* process, AesEcbContext* context, Blob* input, 
   switch (type) {
     case AesTypes::Ecb:
       mbedtls_aes_crypt_ecb(
-        &context->context_,
-        encrypt ? MBEDTLS_AES_ENCRYPT : MBEDTLS_AES_DECRYPT,
-        input->address() + from,
-        output_bytes.address());
+          &context->context_,
+          encrypt ? MBEDTLS_AES_ENCRYPT : MBEDTLS_AES_DECRYPT,
+          input->address(),
+          output_bytes.address());
       break;
     case AesTypes::Cbc:
       mbedtls_aes_crypt_cbc(
-        &context->context_,
-        encrypt ? MBEDTLS_AES_ENCRYPT : MBEDTLS_AES_DECRYPT,
-        to - from,
-        static_cast<AesCbcContext*>(context)->iv_,
-        input->address() + from,
-        output_bytes.address());
+          &context->context_,
+          encrypt ? MBEDTLS_AES_ENCRYPT : MBEDTLS_AES_DECRYPT,
+          input->length(),
+          static_cast<AesCbcContext*>(context)->iv_,
+          input->address(),
+          output_bytes.address());
       break;
     default:
       WRONG_TYPE;
@@ -159,7 +159,7 @@ PRIMITIVE(siphash_get) {
   return result;
 }
 
-AesEcbContext::AesEcbContext(
+AesContext::AesContext(
     SimpleResourceGroup* group,
     const Blob* key,
     bool encrypt) : SimpleResource(group) {
@@ -171,7 +171,7 @@ AesEcbContext::AesEcbContext(
   }
 }
 
-AesEcbContext::~AesEcbContext() {
+AesContext::~AesContext() {
   mbedtls_aes_free(&context_);
 }
 
@@ -179,28 +179,28 @@ AesCbcContext::AesCbcContext(
     SimpleResourceGroup* group,
     const Blob* key,
     const uint8* iv,
-    bool encrypt) : AesEcbContext(group, key, encrypt) {
-  memcpy(iv_, iv, 16);
+    bool encrypt) : AesContext(group, key, encrypt) {
+  memcpy(iv_, iv, sizeof(iv_));
 }
 
 PRIMITIVE(aes_init) {
   ARGS(SimpleResourceGroup, group, Blob, key, Blob, iv, bool, encrypt);
 
-  if (key.length() != 32 &&
-      key.length() != 24 &&
-      key.length() != 16) {
+  if (key.length() != AesContext::AES_BLOCK_SIZE * 2 &&
+      key.length() != AesContext::AES_BLOCK_SIZE + 8 &&
+      key.length() != AesContext::AES_BLOCK_SIZE) {
     INVALID_ARGUMENT;
   }
   
-  if (iv.length() != 16 &&
+  if (iv.length() != AesContext::AES_BLOCK_SIZE &&
       iv.length() != 0) {
     INVALID_ARGUMENT;
   }
 
-  AesEcbContext* aes;
+  AesContext* aes;
 
   if (iv.length() == 0) {
-    aes = _new AesEcbContext(group, &key, encrypt);
+    aes = _new AesContext(group, &key, encrypt);
   } else {
     aes = _new AesCbcContext(group, &key, iv.address(), encrypt);
   }
@@ -215,17 +215,17 @@ PRIMITIVE(aes_init) {
 }
 
 PRIMITIVE(aes_cbc_crypt) {
-  ARGS(AesEcbContext, context, Blob, input, int, from, int, to, bool, encrypt);
-  return aes_crypt(process, context, &input, from, to, encrypt, AesTypes::Cbc);
+  ARGS(AesContext, context, Blob, input, bool, encrypt);
+  return aes_crypt(process, context, &input, encrypt, AesTypes::Cbc);
 }
 
 PRIMITIVE(aes_ecb_crypt) {
-  ARGS(AesEcbContext, context, Blob, input, int, from, int, to, bool, encrypt);
-  return aes_crypt(process, context, &input, from, to, encrypt, AesTypes::Ecb);
+  ARGS(AesContext, context, Blob, input, bool, encrypt);
+  return aes_crypt(process, context, &input, encrypt, AesTypes::Ecb);
 }
 
 PRIMITIVE(aes_close) {
-  ARGS(AesEcbContext, context);
+  ARGS(AesContext, context);
   context->resource_group()->unregister_resource(context);
   context_proxy->clear_external_address();
   return process->program()->null_object();
