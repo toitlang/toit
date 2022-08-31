@@ -159,24 +159,19 @@ PRIMITIVE(aes_init) {
     INVALID_ARGUMENT;
   }
 
-  AesContext* aes;
-
-  if (iv.length() == 0) {
-    aes = _new AesContext(group, &key, encrypt);
-  } else {
-    aes = _new AesCbcContext(group, &key, iv.address(), encrypt);
-  }
-
-  if (!aes) MALLOC_FAILED;
-
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;
 
   if (iv.length() == 0) {
+    AesContext* aes = _new AesContext(group, &key, encrypt);
+    if (!aes) MALLOC_FAILED;
     proxy->set_external_address(aes);
   } else {
-    proxy->set_external_address(static_cast<AesCbcContext*>(aes));
+    AesCbcContext* aes = _new AesCbcContext(group, &key, iv.address(), encrypt);
+    if (!aes) MALLOC_FAILED;
+    proxy->set_external_address(aes);
   }
+
   return proxy;
 }
 
