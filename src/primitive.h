@@ -899,6 +899,7 @@ namespace toit {
 #define _A_T_ImageOutputStream(N, name)   MAKE_UNPACKING_MACRO(ImageOutputStream, N, name)
 #define _A_T_I2CCommand(N, name)          MAKE_UNPACKING_MACRO(I2CCommand, N, name)
 #define _A_T_IntResource(N, name)         MAKE_UNPACKING_MACRO(IntResource, N, name)
+#define _A_T_HandleResource(N, name)      MAKE_UNPACKING_MACRO(HandleResource, N, name)
 #define _A_T_LookupResult(N, name)        MAKE_UNPACKING_MACRO(LookupResult, N, name)
 #define _A_T_LwIPSocket(N, name)          MAKE_UNPACKING_MACRO(LwIPSocket, N, name)
 #define _A_T_Timer(N, name)               MAKE_UNPACKING_MACRO(Timer, N, name)

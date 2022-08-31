@@ -64,7 +64,7 @@ target_link_libraries(
   ${CMAKE_DL_LIBS}
   )
 
-if (APPLE)
+if (CMAKE_HOST_APPLE)
   set(LN_FORCE "F")
 else()
   set(LN_FORCE "Tf")
