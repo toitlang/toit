@@ -7,6 +7,8 @@ import system.api.cellular show CellularServiceClient
 
 import .impl
 
+CONFIG_LOG_LEVEL / string ::= "log.level"
+
 CONFIG_APN   /string ::= "apn"
 CONFIG_BANDS /string ::= "bands"
 CONFIG_RATS  /string ::= "rats"
