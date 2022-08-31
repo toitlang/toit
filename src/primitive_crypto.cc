@@ -153,7 +153,7 @@ PRIMITIVE(aes_init) {
       key.length() != AesContext::AES_BLOCK_SIZE) {
     INVALID_ARGUMENT;
   }
-  
+
   if (iv.length() != AesContext::AES_BLOCK_SIZE &&
       iv.length() != 0) {
     INVALID_ARGUMENT;
@@ -192,7 +192,7 @@ PRIMITIVE(aes_cbc_crypt) {
       static_cast<AesCbcContext*>(context)->iv_,
       input.address(),
       output_bytes.address());
-  
+
   return result;
 }
 
@@ -211,7 +211,7 @@ PRIMITIVE(aes_ecb_crypt) {
       encrypt ? MBEDTLS_AES_ENCRYPT : MBEDTLS_AES_DECRYPT,
       input.address(),
       output_bytes.address());
-      
+
   return result;
 }
 
