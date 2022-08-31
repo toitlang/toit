@@ -445,7 +445,8 @@ namespace toit {
   PRIMITIVE(aes_init, 4)                     \
   PRIMITIVE(aes_cbc_crypt, 3)                \
   PRIMITIVE(aes_ecb_crypt, 3)                \
-  PRIMITIVE(aes_close, 1)                    \
+  PRIMITIVE(aes_cbc_close, 1)                \
+  PRIMITIVE(aes_ecb_close, 1)                \
 
 #define MODULE_ENCODING(PRIMITIVE)           \
   PRIMITIVE(base64_encode, 2)                \

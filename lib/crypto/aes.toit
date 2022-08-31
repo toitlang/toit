@@ -42,16 +42,21 @@ abstract class Aes:
     return crypt_ ciphertext --no-encrypt
 
   /**
-  Calls the assosiated primitive for the selected AES mode.
+  Calls the associated primitive for the selected AES mode.
   */
   abstract crypt_ input/ByteArray --encrypt/bool -> ByteArray
 
   /** Closes this encrypter and releases associated resources. */
   close -> none:
     if not aes_: return
-    aes_close_ aes_
+    close_aes_
     aes_ = null
     remove_finalizer this
+
+  /**
+  Calls the associated primitive for the selected AES mode.
+  */
+  abstract close_aes_ -> none
 
 /**
 Advanced Encryption Standard Cipher Blocker Chaining (AES-CBC).
@@ -101,8 +106,19 @@ class AesCbc extends Aes:
   crypt_ input/ByteArray --encrypt/bool -> ByteArray:
     return aes_cbc_crypt_ aes_ input encrypt
 
+  /** See $super. */
+  close_aes_ -> none:
+    aes_cbc_close_ aes_
+
 /**
-Advanced Encryption Standard Electronic codebook (AES-ECB).
+AAdvanced Encryption Standard Electronic codebook (AES-ECB).
+#
+
+#Warning
+
+This encryption mode is no longer recommended, due to flaws 
+  in its security.  Use only for interfacing with legacy 
+  systems that require it.
 
 This implementation uses hardware accelerated primitives.
 
@@ -140,6 +156,10 @@ class AesEcb extends Aes:
     to := input.size
     return aes_ecb_crypt_ aes_ input encrypt
 
+  /** See $super. */
+  close_aes_ -> none:
+    aes_ecb_close_ aes_
+
 
 
 aes_init_ group key/ByteArray initialization_vector/ByteArray? encrypt/bool:
@@ -151,5 +171,8 @@ aes_cbc_crypt_ aes input/ByteArray encrypt/bool:
 aes_ecb_crypt_ aes input/ByteArray encrypt/bool:
   #primitive.crypto.aes_ecb_crypt
 
-aes_close_ aes:
-  #primitive.crypto.aes_close
+aes_cbc_close_ aes:
+  #primitive.crypto.aes_cbc_close
+
+aes_ecb_close_ aes:
+  #primitive.crypto.aes_ecb_close
