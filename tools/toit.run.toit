@@ -15,6 +15,7 @@
 
 import ar show *
 import uuid
+import system.api.containers show ContainerService
 
 import ..system.boot
 import ..system.containers
@@ -65,6 +66,7 @@ class SystemContainerImage extends ContainerImageFromSnapshot:
 
 class ApplicationContainerImage extends ContainerImageFromSnapshot:
   snapshot/ByteArray? := null
+  flags ::= ContainerService.FLAG_RUN_BOOT | ContainerService.FLAG_RUN_CRITICAL
 
   constructor manager/ContainerManager bundle/ByteArray:
     super manager bundle
@@ -75,12 +77,6 @@ class ApplicationContainerImage extends ContainerImageFromSnapshot:
     // We must read the $id last because it comes after the snapshot in
     // the archive.
     super reader
-
-  run_boot -> bool:
-    return true
-
-  run_critical -> bool:
-    return true
 
   start -> Container:
     gid ::= container_next_gid_
