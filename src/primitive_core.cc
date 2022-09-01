@@ -46,6 +46,9 @@
 #include "esp_system.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#elif defined(TOIT_WINDOWS)
+#include <windows.h>
+#include <fcntl.h>
 #elif defined(TOIT_POSIX)
 #include <sys/resource.h>
 #endif
@@ -77,7 +80,7 @@ PRIMITIVE(get_std_handle) {
   ARGS(int, unix_fd);
 #ifdef TOIT_FREERTOS
   // This is just for the host package.
-  UNIMPLEMENTED_PRIMITIVE();
+  UNIMPLEMENTED_PRIMITIVE;
 #elif defined(TOIT_WINDOWS)
   HANDLE handle;
   switch (unix_fd) {
