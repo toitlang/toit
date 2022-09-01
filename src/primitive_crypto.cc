@@ -121,55 +121,95 @@ PRIMITIVE(siphash_get) {
   return result;
 }
 
-AesCbcContext::AesCbcContext(
+AesContext::AesContext(
     SimpleResourceGroup* group,
-    const uint8* key,
-    const uint8* iv,
-    bool encrypt)
-  : SimpleResource(group) {
+    const Blob* key,
+    bool encrypt) : SimpleResource(group) {
   mbedtls_aes_init(&context_);
   if (encrypt) {
-    mbedtls_aes_setkey_enc(&context_, key, 256);  // 32 byte key.
+    mbedtls_aes_setkey_enc(&context_, key->address(), key->length() * BYTE_BIT_SIZE); 
   } else {
-    mbedtls_aes_setkey_dec(&context_, key, 256);  // 32 byte key.
+    mbedtls_aes_setkey_dec(&context_, key->address(), key->length() * BYTE_BIT_SIZE);
   }
-  memcpy(iv_, iv, 16);
 }
 
-AesCbcContext::~AesCbcContext() {
+AesContext::~AesContext() {
   mbedtls_aes_free(&context_);
 }
 
-PRIMITIVE(aes_cbc_init) {
+AesCbcContext::AesCbcContext(
+    SimpleResourceGroup* group,
+    const Blob* key,
+    const uint8* iv,
+    bool encrypt) : AesContext(group, key, encrypt) {
+  memcpy(iv_, iv, sizeof(iv_));
+}
+
+PRIMITIVE(aes_init) {
   ARGS(SimpleResourceGroup, group, Blob, key, Blob, iv, bool, encrypt);
 
-  if (key.length() != 32 || iv.length() != 16) INVALID_ARGUMENT;
+  if (key.length() != AesContext::AES_BLOCK_SIZE * 2 &&
+      key.length() != AesContext::AES_BLOCK_SIZE + 8 &&
+      key.length() != AesContext::AES_BLOCK_SIZE) {
+    INVALID_ARGUMENT;
+  }
 
-  AesCbcContext* aes = _new AesCbcContext(group, key.address(), iv.address(), encrypt);
-  if (!aes) MALLOC_FAILED;
+  if (iv.length() != AesContext::AES_BLOCK_SIZE &&
+      iv.length() != 0) {
+    INVALID_ARGUMENT;
+  }
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;
 
-  proxy->set_external_address(aes);
+  if (iv.length() == 0) {
+    AesContext* aes = _new AesContext(group, &key, encrypt);
+    if (!aes) MALLOC_FAILED;
+    proxy->set_external_address(aes);
+  } else {
+    AesCbcContext* aes = _new AesCbcContext(group, &key, iv.address(), encrypt);
+    if (!aes) MALLOC_FAILED;
+    proxy->set_external_address(aes);
+  }
+
   return proxy;
 }
 
 PRIMITIVE(aes_cbc_crypt) {
-  ARGS(AesCbcContext, context, Blob, input, int, from, int, to, bool, encrypt);
-  if (from < 0 || to > input.length() || from > to || ((to - from) & 0xf) != 0) INVALID_ARGUMENT;
+  ARGS(AesCbcContext, context, Blob, input, bool, encrypt);
+  if ((input.length() % AesContext::AES_BLOCK_SIZE) != 0) INVALID_ARGUMENT;
 
   Error* error = null;
-  ByteArray* result = process->allocate_byte_array(to - from, &error);
+  ByteArray* result = process->allocate_byte_array(input.length(), &error);
   if (result == null) return error;
 
   ByteArray::Bytes output_bytes(result);
+
   mbedtls_aes_crypt_cbc(
       &context->context_,
       encrypt ? MBEDTLS_AES_ENCRYPT : MBEDTLS_AES_DECRYPT,
-      to - from,
-      context->iv_,
-      input.address() + from,
+      input.length(),
+      static_cast<AesCbcContext*>(context)->iv_,
+      input.address(),
+      output_bytes.address());
+
+  return result;
+}
+
+PRIMITIVE(aes_ecb_crypt) {
+  ARGS(AesContext, context, Blob, input, bool, encrypt);
+  if ((input.length() % AesContext::AES_BLOCK_SIZE) != 0) INVALID_ARGUMENT;
+
+  Error* error = null;
+  ByteArray* result = process->allocate_byte_array(input.length(), &error);
+  if (result == null) return error;
+
+  ByteArray::Bytes output_bytes(result);
+
+  mbedtls_aes_crypt_ecb(
+      &context->context_,
+      encrypt ? MBEDTLS_AES_ENCRYPT : MBEDTLS_AES_DECRYPT,
+      input.address(),
       output_bytes.address());
 
   return result;
@@ -181,5 +221,13 @@ PRIMITIVE(aes_cbc_close) {
   context_proxy->clear_external_address();
   return process->program()->null_object();
 }
+
+PRIMITIVE(aes_ecb_close) {
+  ARGS(AesContext, context);
+  context->resource_group()->unregister_resource(context);
+  context_proxy->clear_external_address();
+  return process->program()->null_object();
+}
+
 
 }
