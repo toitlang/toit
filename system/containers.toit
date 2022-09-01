@@ -25,9 +25,6 @@ import .flash.image_writer
 import .flash.registry
 import .services
 
-RUN_BOOT_     /int ::= 1 << 0
-RUN_CRITICAL_ /int ::= 1 << 1
-
 class Container:
   image/ContainerImage ::= ?
   gid_/int ::= ?
@@ -97,11 +94,14 @@ abstract class ContainerImage:
   trace encoded/ByteArray -> bool:
     return false
 
+  flags -> int:
+    return 0
+
   run_boot -> bool:
-    return false
+    return flags & ContainerService.FLAG_RUN_BOOT != 0
 
   run_critical -> bool:
-    return false
+    return flags & ContainerService.FLAG_RUN_CRITICAL != 0
 
   abstract start -> Container
   abstract stop_all -> none
@@ -116,11 +116,8 @@ class ContainerImageFlash extends ContainerImage:
   id -> uuid.Uuid:
     return allocation_.id
 
-  run_boot -> bool:
-    return (allocation_.metadata[0] & RUN_BOOT_) != 0
-
-  run_critical -> bool:
-    return (allocation_.metadata[0] & RUN_CRITICAL_) != 0
+  flags -> int:
+    return allocation_.metadata[0]
 
   start -> Container:
     gid ::= container_next_gid_
@@ -173,7 +170,7 @@ abstract class ContainerServiceDefinition extends ServiceDefinition
       return image_writer_write writer arguments[1]
     if index == ContainerService.IMAGE_WRITER_COMMIT_INDEX:
       writer ::= (resource client arguments[0]) as ContainerImageWriter
-      return (image_writer_commit writer arguments[1] arguments[2]).to_byte_array
+      return (image_writer_commit writer arguments[1]).to_byte_array
     unreachable
 
   abstract image_registry -> FlashRegistry
@@ -182,8 +179,12 @@ abstract class ContainerServiceDefinition extends ServiceDefinition
   abstract lookup_image id/uuid.Uuid -> ContainerImage?
 
   list_images -> List:
-    return images.map --in_place: | image/ContainerImage |
-      image.id.to_byte_array
+    raw := images
+    result := []
+    raw.do: | image/ContainerImage |
+      result.add image.id.to_byte_array
+      result.add image.flags
+    return result
 
   start_image id/uuid.Uuid -> int:
     unreachable  // <-- TODO(kasper): Nasty.
@@ -213,10 +214,7 @@ abstract class ContainerServiceDefinition extends ServiceDefinition
   image_writer_write writer/ContainerImageWriter bytes/ByteArray -> none:
     writer.write bytes
 
-  image_writer_commit writer/ContainerImageWriter run_boot/bool run_critical/bool -> uuid.Uuid:
-    flags := 0
-    if run_boot: flags |= RUN_BOOT_
-    if run_critical: flags |= RUN_CRITICAL_
+  image_writer_commit writer/ContainerImageWriter flags/int -> uuid.Uuid:
     allocation := writer.commit --run_flags=flags
     image := add_flash_image allocation
     return image.id

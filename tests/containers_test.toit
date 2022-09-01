@@ -8,7 +8,12 @@ import expect show *
 main:
   images/List := containers.images
   expect_equals 1 images.size
-  expect (images.index_of containers.current) >= 0
+
+  // TODO(kasper): Let containers.current return a ContainerImage, so
+  // we can search for that in the list of images with an appropriate
+  // equality operator.
+  ids/List := images.map: it.id
+  expect (ids.index_of containers.current) >= 0
 
   writer := containers.ContainerImageWriter 4096
   writer.close

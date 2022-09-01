@@ -10,7 +10,7 @@ User-space side of the RPC API for installing container images in flash, and
 import uuid
 import monitor
 
-import system.api.containers show ContainerServiceClient
+import system.api.containers show ContainerService ContainerServiceClient
 import system.services show ServiceResourceProxy
 
 _client_ /ContainerServiceClient ::= ContainerServiceClient
@@ -28,6 +28,11 @@ start id/uuid.Uuid -> Container:
 
 uninstall id/uuid.Uuid -> none:
   _client_.uninstall_image id
+
+class ContainerImage:
+  id/uuid.Uuid
+  flags/int
+  constructor .id .flags:
 
 class Container extends ServiceResourceProxy:
   id/uuid.Uuid
@@ -71,7 +76,10 @@ class ContainerImageWriter extends ServiceResourceProxy:
   commit -> uuid.Uuid
       --run_boot/bool=false
       --run_critical/bool=false:
-    return _client_.image_writer_commit handle_ run_boot run_critical
+    flags := 0
+    if run_boot: flags |= ContainerService.FLAG_RUN_BOOT
+    if run_critical: flags |= ContainerService.FLAG_RUN_CRITICAL
+    return _client_.image_writer_commit handle_ flags
 
 // ----------------------------------------------------------------------------
 
