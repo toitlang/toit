@@ -30,7 +30,7 @@ import ..shared.network_base
 class WifiServiceDefinition extends NetworkServiceDefinitionBase:
   static WIFI_CONFIG_STORE_KEY ::= "system/wifi"
 
-  state_/NetworkState? := null
+  state_/NetworkState ::= NetworkState
   store_/device.FlashStore ::= device.FlashStore
 
   constructor:
@@ -62,7 +62,6 @@ class WifiServiceDefinition extends NetworkServiceDefinitionBase:
     if not ssid or ssid.is_empty: throw "wifi ssid not provided"
     password/string := effective.get wifi.CONFIG_PASSWORD --if_absent=: ""
 
-    if not state_: state_ = NetworkState
     module ::= (state_.up: WifiModule.sta this ssid password) as WifiModule
     if module.ap:
       throw "wifi already established in AP mode"
@@ -91,7 +90,6 @@ class WifiServiceDefinition extends NetworkServiceDefinitionBase:
       throw "wifi channel must be between 1 and 13"
     broadcast/bool := config.get wifi.CONFIG_BROADCAST --if_absent=: true
 
-    if not state_: state_ = NetworkState
     module ::= (state_.up: WifiModule.ap this ssid password broadcast channel) as WifiModule
     if not module.ap:
       throw "wifi already connected in STA mode"
@@ -114,7 +112,6 @@ class WifiServiceDefinition extends NetworkServiceDefinitionBase:
 
   on_module_closed module/WifiModule -> none:
     resources_do: it.notify_ NetworkService.NOTIFY_CLOSED
-    state_ = null
 
 class WifiModule implements NetworkModule:
   static WIFI_CONNECTED    ::= 1 << 0
