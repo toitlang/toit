@@ -70,6 +70,7 @@ namespace toit {
 #define MODULE_CORE(PRIMITIVE)               \
   PRIMITIVE(write_string_on_stdout, 2)       \
   PRIMITIVE(write_string_on_stderr, 2)       \
+  PRIMITIVE(get_std_handle, 1)               \
   PRIMITIVE(time, 0)                         \
   PRIMITIVE(time_info, 2)                    \
   PRIMITIVE(seconds_since_epoch_local, 7)    \

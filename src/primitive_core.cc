@@ -73,6 +73,33 @@ PRIMITIVE(write_string_on_stderr) {
   return _raw_message;
 }
 
+PRIMITIVE(get_std_handle) {
+  ARGS(int, unix_fd);
+#ifdef TOIT_FREERTOS
+  // This is just for the host package.
+  UNIMPLEMENTED_PRIMITIVE();
+#elif defined(TOIT_WINDOWS)
+  HANDLE handle;
+  switch (unix_fd) {
+    case 0:
+      handle = GetStdHandle (STD_INPUT_HANDLE);
+      return Smi::from(_open_osfhandle(handle, _O_RDONLY | _O_BINARY));
+      break;
+    case 1:
+      handle = GetStdHandle (STD_OUTPUT_HANDLE);
+      break;
+    case 2:
+      handle = GetStdHandle (STD_ERROR_HANDLE);
+      break;
+    default:
+      INVALID_ARGUMENT;
+  }
+  return Smi::from(_open_osfhandle(handle, _O_WRONLY | _O_BINARY));
+#else
+  return Smi::from(unix_fd);
+#endif
+}
+
 PRIMITIVE(hatch_method) {
   Method method = process->hatch_method();
   int id = method.is_valid()
