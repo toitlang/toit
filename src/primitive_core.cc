@@ -86,7 +86,7 @@ PRIMITIVE(get_std_handle) {
   switch (unix_fd) {
     case 0:
       handle = GetStdHandle (STD_INPUT_HANDLE);
-      return Smi::from(_open_osfhandle(handle, _O_RDONLY | _O_BINARY));
+      return Smi::from(_open_osfhandle(reinterpret_cast<intptr_t>(handle), _O_RDONLY | _O_BINARY));
       break;
     case 1:
       handle = GetStdHandle (STD_OUTPUT_HANDLE);
@@ -97,7 +97,7 @@ PRIMITIVE(get_std_handle) {
     default:
       INVALID_ARGUMENT;
   }
-  return Smi::from(_open_osfhandle(handle, _O_WRONLY | _O_BINARY));
+  return Smi::from(_open_osfhandle(reinterpret_cast<intptr_t>(handle), _O_WRONLY | _O_BINARY));
 #else
   return Smi::from(unix_fd);
 #endif
