@@ -749,7 +749,8 @@ void OS::heap_summary_report(int max_pages, const char* marker) {
     return;
   }
   int flags = ITERATE_ALL_ALLOCATIONS | ITERATE_UNALLOCATED;
-  heap_caps_iterate_tagged_memory_areas(&collector, null, &register_allocation, flags);
+  int caps = OS::toit_heap_caps_flags_for_heap();
+  heap_caps_iterate_tagged_memory_areas(&collector, null, &register_allocation, flags, caps);
   collector.print(marker);
 }
 
