@@ -719,7 +719,7 @@ class HeapSummaryCollector {
       pages_[i].print();
     }
     if (dropped_pages_ > 0) {
-      printf("\n  %d unreported pages, hit limit of %-4d \n", dropped_pages_, max_pages_);
+      printf("\n  %d unreported pages, hit limit of %d.\n", dropped_pages_, max_pages_);
     }
   }
 
