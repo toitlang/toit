@@ -21,11 +21,11 @@
 #include <errno.h>
 #include <termios.h>
 #include <unistd.h>
-#ifdef TOIT_LINUX
+#if defined(TOIT_LINUX)
  #include <linux/serial.h>
  #include <sys/epoll.h>
  #include "../event_sources/epoll_linux.h"
-#elifdef TOIT_BSD
+#elif defined(TOIT_BSD)
  #include "../event_sources/kqueue_bsd.h"
  #include <sys/event.h>
  #include <IOKit/serial/ioss.h>
@@ -64,7 +64,7 @@ static int baud_rate_to_int(speed_t speed) {
     case B57600: return 57600;
     case B115200: return 115200;
     case B230400: return 230400;
-#ifdef TOIT_LINUX
+#if defined(TOIT_LINUX)
     case B460800: return 460800;
     case B576000: return 576000;
     case B921600: return 921600;
@@ -76,7 +76,7 @@ static int baud_rate_to_int(speed_t speed) {
     case B3500000: return 3500000;
     case B4000000: return 4000000;
     default: return -1;
-#elifdef TOIT_DARWIN
+#elif defined(TOIT_DARWIN)
     default:
       return (int)speed;
 #endif
@@ -106,7 +106,7 @@ static int int_to_baud_rate(int baud_rate, speed_t* speed, bool *arbitrary_baud_
     case 57600: *speed = B57600; return 0;
     case 115200: *speed = B115200; return 0;
     case 230400: *speed = B230400; return 0;
-#ifdef TOIT_LINUX
+#if defined(TOIT_LINUX)
     case 460800: *speed = B460800; return 0;
     case 576000: *speed = B576000; return 0;
     case 921600: *speed = B921600; return 0;
@@ -118,7 +118,7 @@ static int int_to_baud_rate(int baud_rate, speed_t* speed, bool *arbitrary_baud_
     case 3500000: *speed = B3500000; return 0;
     case 4000000: *speed = B4000000; return 0;
     default: return -1;
-#elifdef TOIT_DARWIN
+#elif defined(TOIT_DARWIN)
     default:
       *speed = baud_rate;
       *arbitrary_baud_rate = true;
@@ -238,11 +238,11 @@ class UARTResourceGroup : public ResourceGroup {
 
  private:
   uint32_t on_event(Resource* resource, word data, uint32_t state) {
-#ifdef TOIT_LINUX
+#if defined(TOIT_LINUX)
     if (data & EPOLLIN) state |= kReadState;
     if (data & EPOLLERR) state |= kErrorState;
     if (data & EPOLLOUT) state |= kWriteState;
-#elifdef TOIT_BSD
+#elif defined(TOIT_BSD)
     auto event = reinterpret_cast<struct kevent*>(data);
     if (event->filter == EVFILT_READ) state |= kReadState;
     if (event->filter == EVFILT_WRITE) state |= kWriteState;
@@ -261,9 +261,9 @@ PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;
 
-#ifdef TOIT_LINUX
+#if defined(TOIT_LINUX)
   UARTResourceGroup* resource_group = _new UARTResourceGroup(process, EpollEventSource::instance());
-#elifdef TOIT_BSD
+#elif defined(TOIT_BSD)
   UARTResourceGroup* resource_group = _new UARTResourceGroup(process, KQueueEventSource::instance());
 #endif
   if (!resource_group) MALLOC_FAILED;
