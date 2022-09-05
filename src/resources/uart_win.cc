@@ -33,6 +33,8 @@ const int kReadState = 1 << 0;
 const int kErrorState = 1 << 1;
 const int kWriteState = 1 << 2;
 
+class UARTMonitor;
+
 class HandleResource : public Resource {
 public:
   TAG(IntResource);
@@ -60,8 +62,8 @@ private:
 class UARTResourceGroup : public ResourceGroup {
 public:
   TAG(UARTResourceGroup);
-  explicit UARTResourceGroup(Process* process)
-      : ResourceGroup(process, null) { }
+  explicit UARTResourceGroup(Process* process, EventSource *event_source)
+      : ResourceGroup(process, event_source) { }
 
   HandleResource* register_handle(HANDLE handle) {
     auto resource = _new HandleResource(this, handle);
@@ -71,9 +73,80 @@ public:
 
 private:
   uint32_t on_event(Resource* resource, word data, uint32_t state) {
+    if (data & EV_RXCHAR) state |= kReadState;
+    if (data & EV_ERR) state |= kErrorState;
     return state;
   }
 };
+
+class UARTHandleEventSource;
+
+class UARTMonitor: public Thread {
+public:
+  UARTMonitor(HandleResource *resource, UARTHandleEventSource *eventSource)
+      : Thread("UART"), _resource(resource), _event_source(eventSource) {
+    SecureZeroMemory(&_overlapped, sizeof(OVERLAPPED));
+    _overlapped.hEvent = CreateEvent(NULL,TRUE,FALSE,NULL);
+  }
+
+protected:
+  void entry() override;
+private:
+  HandleResource* _resource;
+  UARTHandleEventSource* _event_source;
+  OVERLAPPED _overlapped;
+};
+
+// On windows event sources are not global, but per resource.
+class UARTHandleEventSource :  public EventSource {
+public:
+  UARTHandleEventSource() : EventSource("UART") {}
+  void dispatch_event(word data, Resource* _resource) {
+    Locker locker(mutex());
+    dispatch(locker, _resource, data);
+  }
+protected:
+  void on_register_resource(Locker &locker, Resource *r) override {
+    // Start a thread to monitor the uart events
+    auto monitor = _new UARTMonitor(((HandleResource *) r), this);
+    monitor->spawn();
+  }
+
+  void on_unregister_resource(Locker &locker, Resource *r) override {
+    ((HandleResource *)r)->close();
+  }
+private:
+
+};
+
+void UARTMonitor::entry() {
+  while (true) {
+    DWORD evt_mask;
+    bool success = WaitCommEvent(_resource->handle(), &evt_mask, &_overlapped);
+    if (success) {
+      _event_source->dispatch_event(evt_mask, _resource);
+    } else {
+      DWORD err = GetLastError();
+      if( ERROR_IO_PENDING == err)
+      {
+        printf("I/O is pending...\n");
+
+        // To do.
+      }
+      else if (ERROR_INVALID_HANDLE == err) {
+        // TODO: Is this what is called when the resource is closed?
+        printf ("Invalid handle\n");
+      } else {
+        printf("Wait failed with error %d.\n", GetLastError());
+        break;
+      }
+    }
+
+  }
+  printf("UART DONE");
+  free(this);
+}
+
 
 MODULE_IMPLEMENTATION(uart, MODULE_UART);
 
@@ -81,7 +154,8 @@ PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;
 
-  auto resource_group = _new UARTResourceGroup(process);
+  auto uart_handle_event_source = _new UARTHandleEventSource();
+  auto resource_group = _new UARTResourceGroup(process, uart_handle_event_source);
 
   if (!resource_group) MALLOC_FAILED;
 
@@ -112,7 +186,7 @@ PRIMITIVE(create_path) {
                              0,      //  must be opened with exclusive-access
                              NULL,   //  default security attributes
                              OPEN_EXISTING, //  must use OPEN_EXISTING
-                             0,      //  not overlapped I/O
+                             FILE_FLAG_OVERLAPPED,      //   overlapped I/O
                              NULL ); //  hTemplate must be NULL for comm devices
 
   if (handle == INVALID_HANDLE_VALUE) {
@@ -161,6 +235,13 @@ PRIMITIVE(create_path) {
   SecureZeroMemory(&comm_timeouts, sizeof(COMMTIMEOUTS));
   comm_timeouts.ReadIntervalTimeout = MAXDWORD;
   success = SetCommTimeouts(handle, &comm_timeouts);
+  if (!success) {
+    CloseHandle(handle);
+    return Primitive::os_error(errno, process);
+  }
+
+  // Setup Mask
+  success = SetCommMask(handle, EV_ERR | EV_RXCHAR);
   if (!success) {
     CloseHandle(handle);
     return Primitive::os_error(errno, process);
