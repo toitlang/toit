@@ -362,6 +362,15 @@ PRIMITIVE(read) {
   return data;
 }
 
+PRIMITIVE(set_control_flags) {
+  UNIMPLEMENTED_PRIMITIVE;
+}
+
+PRIMITIVE(get_control_flags) {
+  UNIMPLEMENTED_PRIMITIVE;
+}
+
 } // namespace toit
 
 #endif // TOIT_FREERTOS
+
