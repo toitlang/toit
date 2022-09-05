@@ -166,10 +166,10 @@ namespace toit {
   PRIMITIVE(float_floor, 1)                  \
   PRIMITIVE(float_trunc, 1)                  \
   PRIMITIVE(command, 0)                      \
-  PRIMITIVE(args, 0)                         \
-  PRIMITIVE(hatch, 2)                        \
-  PRIMITIVE(hatch_method, 0)                 \
-  PRIMITIVE(hatch_args, 0)                   \
+  PRIMITIVE(main_arguments, 0)               \
+  PRIMITIVE(spawn, 2)                        \
+  PRIMITIVE(spawn_method, 0)                 \
+  PRIMITIVE(spawn_arguments, 0)              \
   PRIMITIVE(get_generic_resource_group, 0)   \
   PRIMITIVE(signal_kill, 1)                  \
   PRIMITIVE(current_process_id, 0)           \

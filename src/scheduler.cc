@@ -88,7 +88,7 @@ SystemMessage* Scheduler::new_process_message(SystemMessage::Type type, int gid)
   return result;
 }
 
-Scheduler::ExitState Scheduler::run_boot_program(Program* program, char** args, int group_id) {
+Scheduler::ExitState Scheduler::run_boot_program(Program* program, char** arguments, int group_id) {
   // Allocation takes the memory lock which must happen before taking the scheduler lock.
   InitialMemoryManager manager;
   bool ok = manager.allocate();
@@ -99,8 +99,9 @@ Scheduler::ExitState Scheduler::run_boot_program(Program* program, char** args, 
   Locker locker(_mutex);
   ProcessGroup* group = ProcessGroup::create(group_id, program);
   SystemMessage* termination = new_process_message(SystemMessage::TERMINATED, group_id);
-  Process* process = _new Process(program, group, termination, args, manager.initial_chunk);
+  Process* process = _new Process(program, group, termination, manager.initial_chunk);
   ASSERT(process);
+  process->set_main_arguments(arguments);
   manager.dont_auto_free();
   return launch_program(locker, process);
 }
@@ -110,7 +111,7 @@ Scheduler::ExitState Scheduler::run_boot_program(
     Program* boot_program,
     SnapshotBundle system,
     SnapshotBundle application,
-    char** args,
+    char** arguments,
     int group_id) {
   ProcessGroup* group = ProcessGroup::create(group_id, boot_program);
   // Allocation takes the memory lock which must happen before taking the scheduler lock.
@@ -122,8 +123,10 @@ Scheduler::ExitState Scheduler::run_boot_program(
   ASSERT(ok);
   Locker locker(_mutex);
   SystemMessage* termination = new_process_message(SystemMessage::TERMINATED, group_id);
-  Process* process = _new Process(boot_program, group, termination, system, application, args, manager.initial_chunk);
+  Process* process = _new Process(boot_program, group, termination, manager.initial_chunk);
   ASSERT(process);
+  process->set_main_arguments(arguments);
+  process->set_spawn_arguments(system, application);
   manager.dont_auto_free();
   return launch_program(locker, process);
 }
@@ -189,17 +192,18 @@ int Scheduler::next_group_id() {
   return _next_group_id++;
 }
 
-int Scheduler::run_program(Program* program, char** args, ProcessGroup* group, Chunk* initial_chunk) {
+int Scheduler::run_program(Program* program, char** arguments, ProcessGroup* group, Chunk* initial_chunk) {
   Locker locker(_mutex);
   SystemMessage* termination = new_process_message(SystemMessage::TERMINATED, group->id());
   if (termination == null) {
     return INVALID_PROCESS_ID;
   }
-  Process* process = _new Process(program, group, termination, args, initial_chunk);
+  Process* process = _new Process(program, group, termination, initial_chunk);
   if (process == null) {
     delete termination;
     return INVALID_PROCESS_ID;
   }
+  process->set_main_arguments(arguments);
 
   Interpreter interpreter;
   interpreter.activate(process);
@@ -303,16 +307,18 @@ bool Scheduler::signal_process(Process* sender, int target_id, Process::Signal s
   return true;
 }
 
-Process* Scheduler::hatch(Program* program, ProcessGroup* process_group, Method method, uint8* arguments, Chunk* initial_chunk) {
+Process* Scheduler::spawn(Program* program, ProcessGroup* process_group, Method method, uint8* arguments, Chunk* initial_chunk) {
   Locker locker(_mutex);
 
   SystemMessage* termination = new_process_message(SystemMessage::TERMINATED, process_group->id());
   if (!termination) return null;
-  Process* process = _new Process(program, process_group, termination, method, arguments, initial_chunk);
+
+  Process* process = _new Process(program, process_group, termination, method, initial_chunk);
   if (!process) {
     delete termination;
     return null;
   }
+  process->set_spawn_arguments(arguments);
 
   SystemMessage* spawned = new_process_message(SystemMessage::SPAWNED, process_group->id());
   if (!spawned) {

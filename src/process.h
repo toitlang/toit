@@ -51,15 +51,23 @@ class Process : public ProcessListFromProcessGroup::Element,
 
   static const char* StateName[];
 
-  Process(Program* program, ProcessGroup* group, SystemMessage* termination, char** args, Chunk* initial_chunk);
-#ifndef TOIT_FREERTOS
-  Process(Program* program, ProcessGroup* group, SystemMessage* termination, SnapshotBundle system, SnapshotBundle application, char** args, Chunk* initial_chunk);
-#endif
-  Process(Program* program, ProcessGroup* group, SystemMessage* termination, Method method, uint8* arguments, Chunk* initial_chunk);
-  ~Process();
+  // Constructor for an internal process based on Toit code.
+  Process(Program* program, ProcessGroup* group, SystemMessage* termination, Chunk* initial_chunk);
 
-  // Constructor for an external process (no Toit code).
+  // Constructor for an internal process spawned from Toit code.
+  Process(Program* program, ProcessGroup* group, SystemMessage* termination, Method method, Chunk* initial_chunk);
+
+  // Constructor for an external process with no Toit code.
   Process(ProcessRunner* runner, ProcessGroup* group, SystemMessage* termination);
+
+  // Construction support.
+  void set_main_arguments(char** arguments);
+  void set_spawn_arguments(uint8* arguments);
+#ifndef TOIT_FREERTOS
+  void set_spawn_arguments(SnapshotBundle system, SnapshotBundle application);
+#endif
+
+  ~Process();
 
   int id() const { return _id; }
   int next_task_id() { return _next_task_id++; }
@@ -104,10 +112,11 @@ class Process : public ProcessListFromProcessGroup::Element,
   ProcessRunner* runner() const { return _runner; }
 
   Method entry() const { return _entry; }
-  char** args() { return _args; }
-  Method hatch_method() const { return _hatch_method; }
-  uint8* hatch_arguments() const { return _hatch_arguments; }
-  void clear_hatch_arguments() { _hatch_arguments = null; }
+  char** main_arguments() { return _main_arguments; }
+
+  Method spawn_method() const { return _spawn_method; }
+  uint8* spawn_arguments() const { return _spawn_arguments; }
+  void clear_spawn_arguments() { _spawn_arguments = null; }
 
   // Handling of messages and completions.
   bool has_messages();
@@ -215,10 +224,10 @@ class Process : public ProcessListFromProcessGroup::Element,
   uword _program_heap_size;
 
   Method _entry;
-  char** _args;
+  Method _spawn_method;
 
-  Method _hatch_method;
-  uint8* _hatch_arguments;
+  char** _main_arguments = null;
+  uint8* _spawn_arguments = null;
 
   ObjectHeap _object_heap;
   int64 _last_bytes_allocated;

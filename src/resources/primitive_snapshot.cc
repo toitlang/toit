@@ -48,14 +48,13 @@ PRIMITIVE(launch) {
   // We don't use snapshots on devices so we assume malloc/new cannot fail.
   int pid = VM::current()->scheduler()->run_program(
       program,
-      process->args(),
+      process->main_arguments(),
       process_group,
       manager.initial_chunk);
   ASSERT(pid != Scheduler::INVALID_PROCESS_ID);
   manager.dont_auto_free();
   return Smi::from(pid);
 }
-
 
 } // namespace toit
 

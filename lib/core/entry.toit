@@ -34,7 +34,7 @@ __entry__task lambda -> none:
 // --------------------------------------------------------
 
 main_arguments_:
-  #primitive.core.args
+  #primitive.core.main_arguments
 
 /**
 Returns the name of the toit file, image, or snapshot that the
@@ -45,7 +45,7 @@ program_name -> string?:
   #primitive.core.command
 
 spawn_method_ -> int:
-  #primitive.core.hatch_method
+  #primitive.core.spawn_method
 
 spawn_arguments_ -> any:
-  #primitive.core.hatch_args
+  #primitive.core.spawn_arguments

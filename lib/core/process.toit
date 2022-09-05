@@ -9,17 +9,10 @@ The new process does not share any memory with the spawning process. If the lamb
 May throw if the captured variables can't be serialized.
 */
 spawn lambda/Lambda -> int:
-  return hatch_primitive_ lambda.method_ lambda.arguments_
+  return spawn_primitive_ lambda.method_ lambda.arguments_
 
-/**
-Deprecated. Use $spawn instead.
-*/
-hatch_ lambda/Lambda:
-  return spawn lambda
-
-hatch_primitive_ method arguments:
-  #primitive.core.hatch
-
+spawn_primitive_ method arguments:
+  #primitive.core.spawn
 
 current_process_ -> int:
   #primitive.core.current_process_id
