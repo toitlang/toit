@@ -1926,7 +1926,7 @@ PRIMITIVE(remove_finalizer) {
 }
 
 PRIMITIVE(gc_count) {
-  return Smi::from(process->object_heap()->gc_count());
+  return Smi::from(process->object_heap()->gc_count(NEW_SPACE_GC));
 }
 
 PRIMITIVE(create_off_heap_byte_array) {

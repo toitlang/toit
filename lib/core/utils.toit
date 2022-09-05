@@ -273,13 +273,17 @@ STATS_INDEX_PROCESS_ID                     ::= 6
 STATS_INDEX_SYSTEM_FREE_MEMORY             ::= 7
 /// Index for $process_stats.
 STATS_INDEX_SYSTEM_LARGEST_FREE            ::= 8
+/// Index for $process_stats.
+STATS_INDEX_FULL_GC_COUNT                  ::= 9
+/// Index for $process_stats.
+STATS_INDEX_FULL_COMPACTING_GC_COUNT       ::= 10
 // The size the list needs to have to contain all these stats.  Must be last.
-STATS_LIST_SIZE_                           ::= 9
+STATS_LIST_SIZE_                           ::= 11
 
 /**
 Returns an array with stats for the current process.
 The stats, listed by index in the array, are:
-0. GC count for the process
+0. New-space (small collection) GC count for the process
 1. Allocated memory on the Toit heap of the process
 2. Reserved memory on the Toit heap of the process
 3. Process message count
@@ -288,6 +292,8 @@ The stats, listed by index in the array, are:
 6. Process ID
 7. Free memory in the system
 8. Largest free area in the system
+9. Full GC count for the process (including compacting GCs)
+10. Full compacting GC count for the process
 
 The "bytes allocated in the heap" tracks the total number of allocations, but
   doesn't deduct the sizes of objects that die. It is a way to follow the

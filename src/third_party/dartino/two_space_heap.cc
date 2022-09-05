@@ -123,7 +123,7 @@ void SemiSpace::start_scavenge() {
   for (auto chunk : chunk_list_) chunk->set_scavenge_pointer(chunk->start());
 }
 
-bool TwoSpaceHeap::collect_new_space(bool try_hard) {
+GcType TwoSpaceHeap::collect_new_space(bool try_hard) {
   SemiSpace* from = new_space();
 
   uint64 start = OS::get_monotonic_time();
@@ -138,8 +138,7 @@ bool TwoSpaceHeap::collect_new_space(bool try_hard) {
     if (Flags::tracegc) {
       printf("Old-space-only GC:\n");
     }
-    collect_old_space_if_needed(try_hard, try_hard);
-    return true;
+    return collect_old_space_if_needed(try_hard, try_hard);
   }
 
   old_space()->flush();
@@ -263,7 +262,7 @@ uword TwoSpaceHeap::total_bytes_allocated() const {
   return result;
 }
 
-bool TwoSpaceHeap::collect_old_space_if_needed(bool force_compact, bool force) {
+GcType TwoSpaceHeap::collect_old_space_if_needed(bool force_compact, bool force) {
 #ifdef TOIT_DEBUG
   if (Flags::validate_heap) {
     validate();
@@ -272,13 +271,12 @@ bool TwoSpaceHeap::collect_old_space_if_needed(bool force_compact, bool force) {
   }
 #endif
   if (!force && !force_compact && !old_space()->needs_garbage_collection()) {
-    return false;
+    return NEW_SPACE_GC;
   }
 
   ASSERT(old_space()->is_flushed());
   ASSERT(new_space()->is_flushed());
-  collect_old_space(force_compact);
-  return true;
+  return collect_old_space(force_compact);
 }
 
 #ifdef TOIT_DEBUG
@@ -288,7 +286,7 @@ void TwoSpaceHeap::validate() {
 }
 #endif
 
-void TwoSpaceHeap::collect_old_space(bool force_compact) {
+GcType TwoSpaceHeap::collect_old_space(bool force_compact) {
 
   uint64 start = OS::get_monotonic_time();
   uword old_used = old_space()->used();
@@ -345,6 +343,8 @@ void TwoSpaceHeap::collect_old_space(bool force_compact) {
     validate();
   }
 #endif
+
+  return compacted ? COMPACTING_GC : FULL_GC;
 }
 
 bool TwoSpaceHeap::perform_garbage_collection(bool force_compact) {

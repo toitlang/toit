@@ -304,11 +304,15 @@ void ObjectHeap::iterate_roots(RootCallback* callback) {
 }
 
 void ObjectHeap::gc(bool try_hard) {
-  bool old_space_done = _two_space_heap.collect_new_space(try_hard);
+  GcType type = _two_space_heap.collect_new_space(try_hard);
   _gc_count++;
-  // Update the pending limit that will be installed after the current
-  // primitive (that caused the GC) completes.
-  if (old_space_done) update_pending_limit();
+  if (type != NEW_SPACE_GC) {
+    _full_gc_count++;
+    if (type == COMPACTING_GC) _full_compacting_gc_count++;
+    // Update the pending limit that will be installed after the current
+    // primitive (that caused the GC) completes.
+    update_pending_limit();
+  }
   // Use only the hard limit for the rest of this primitive.  We don't want to
   // trigger any heuristic GCs before the primitive is over or we might cause a
   // triple GC, which throws an exception.

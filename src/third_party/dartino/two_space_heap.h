@@ -90,9 +90,9 @@ class TwoSpaceHeap {
 
   void freed_foreign_memory(uword size);
 
-  bool collect_new_space(bool try_hard);
-  void collect_old_space(bool force_compact);
-  bool collect_old_space_if_needed(bool force_compact, bool force);
+  GcType collect_new_space(bool try_hard);
+  GcType collect_old_space(bool force_compact);
+  GcType collect_old_space_if_needed(bool force_compact, bool force);
   bool perform_garbage_collection(bool force_compact);
   bool cross_process_gc_needed() const { return malloc_failed_; }
   void report_malloc_failed() { malloc_failed_ = true; }

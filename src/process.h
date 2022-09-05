@@ -137,7 +137,7 @@ class Process : public ProcessListFromProcessGroup::Element,
 
   int current_directory() { return _current_directory; }
   void set_current_directory(int fd) { _current_directory = fd; }
-  int gc_count() { return _object_heap.gc_count(); }
+  int gc_count(GcType type) { return _object_heap.gc_count(type); }
 
   // Special allocation of byte arrays and strings due to multiple reasons for failure.
   // The error string is only set if null is returned.
