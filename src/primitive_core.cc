@@ -482,15 +482,9 @@ PRIMITIVE(command) {
 PRIMITIVE(args) {
   char** argv = process->args();
   if (argv == null || argv[0] == null) {
-    // No argument are passed so use snapshot arguments program.
-    Array* snapshot_arguments = process->program()->snapshot_arguments();
-    // Copy and return the array.
-    int length = snapshot_arguments->length();
-    Array* result = process->object_heap()->allocate_array(length, process->program()->null_object());
-    if (result == null) ALLOCATION_FAILED;
-    for (int index = 0; index < length; index++) result->at_put(index, snapshot_arguments->at(index));
-    return result;
+    return process->program()->empty_array();
   }
+
   int argc = 0;
   while (argv[argc] != null) argc++;
   Array* result = process->object_heap()->allocate_array(argc, process->program()->null_object());
@@ -2211,7 +2205,8 @@ class ByteArrayHeapFragmentationDumper : public HeapFragmentationDumper {
 static __attribute__((noinline)) uword get_heap_dump_size(const char* description) {
   SizeDiscoveryFragmentationDumper size_discovery(description);
   int flags = ITERATE_ALL_ALLOCATIONS | ITERATE_UNALLOCATED;
-  heap_caps_iterate_tagged_memory_areas(&size_discovery, null, HeapFragmentationDumper::log_allocation, flags);
+  int caps = OS::toit_heap_caps_flags_for_heap();
+  heap_caps_iterate_tagged_memory_areas(&size_discovery, null, HeapFragmentationDumper::log_allocation, flags, caps);
   size_discovery.write_end();
 
   return size_discovery.size();
@@ -2220,7 +2215,8 @@ static __attribute__((noinline)) uword get_heap_dump_size(const char* descriptio
 static __attribute__((noinline)) word heap_dump_to_byte_array(const char* reason, uint8* contents, uword size) {
   ByteArrayHeapFragmentationDumper dumper(reason, contents, size);
   int flags = ITERATE_ALL_ALLOCATIONS | ITERATE_UNALLOCATED;
-  heap_caps_iterate_tagged_memory_areas(&dumper, null, HeapFragmentationDumper::log_allocation, flags);
+  int caps = OS::toit_heap_caps_flags_for_heap();
+  heap_caps_iterate_tagged_memory_areas(&dumper, null, HeapFragmentationDumper::log_allocation, flags, caps);
   dumper.write_end();
   if (dumper.has_overflow()) return -1;
   return dumper.position();

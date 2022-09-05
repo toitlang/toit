@@ -31,7 +31,6 @@ namespace toit {
   ROOT(HeapObject, true_object)              \
   ROOT(HeapObject, false_object)             \
   ROOT(Array,      empty_array)              \
-  ROOT(Array,      snapshot_arguments)       \
   ROOT(Instance,   out_of_memory_error)      \
   ROOT(String,     app_sdk_version)          \
   ROOT(String,     app_sdk_info)             \

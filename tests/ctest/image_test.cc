@@ -27,13 +27,11 @@ namespace toit {
 
 static SnapshotBundle compile(const char* input_path) {
   Flags::no_fork = true;
-  char** args = null;
   const char* out_path = null;
 
   compiler::Compiler compiler;  // Make sure we destroy the compiler before we attempt to run anything.
   return compiler.compile(input_path,
                           null,
-                          args,
                           out_path, {
                             .dep_file = null,
                             .dep_format = compiler::Compiler::DepFormat::none,

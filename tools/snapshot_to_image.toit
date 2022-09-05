@@ -97,7 +97,12 @@ main args:
 
   parsed := parser.parse args
 
-  output_path/string := parsed[OUTPUT_OPTION]
+  output_path/string? := parsed[OUTPUT_OPTION]
+
+  if not output_path:
+    print_on_stderr_ "Error: -o flag is not optional"
+    print_usage parser
+    exit 1
 
   default_word_size := BYTES_PER_WORD
   binary_output := false

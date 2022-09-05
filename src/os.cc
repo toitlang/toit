@@ -197,9 +197,23 @@ OS::HeapMemoryRange OS::get_heap_memory_range() {
     // be the last MAX_HEAP of the address space.
     _single_range.address = reinterpret_cast<void*>(-static_cast<word>(MAX_HEAP + TOIT_PAGE_SIZE));
   } else {
-    // We will be allocating within a symmetric range either side of this
-    // single allocation.
-    _single_range.address = reinterpret_cast<void*>(addr - HALF_MAX);
+    uword from = addr - MAX_HEAP / 2;
+#if defined(TOIT_DARWIN) && defined(BUILD_64)
+    uword to = from + MAX_HEAP;
+    // On macOS, we never get addresses in the first 4Gbytes, in order to flush
+    // out 32 bit uncleanness, so let's try to avoid having the range cover
+    // both sides of the 4Gbytes boundary.
+    const uword FOUR_GB = 4LL * GB;
+    if (from < FOUR_GB && to > FOUR_GB) {
+      _single_range.address = reinterpret_cast<void*>(FOUR_GB);
+    } else {
+#else
+    {
+#endif
+      // We will be allocating within a symmetric range either side of this
+      // single allocation.
+      _single_range.address = reinterpret_cast<void*>(from);
+    }
   }
   _single_range.size = MAX_HEAP;
   return _single_range;

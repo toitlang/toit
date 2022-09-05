@@ -93,7 +93,6 @@ class Compiler {
   /// If one is given, the other one must be null.
   SnapshotBundle compile(const char* source_path,
                          const char* direct_script,
-                         char** snapshot_args,
                          const char* out_path,
                          const Configuration& config);
 

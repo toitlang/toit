@@ -4,11 +4,15 @@
 
 import uuid
 import system.services show ServiceClient
+import system.containers show ContainerImage
 
 interface ContainerService:
   static UUID  /string ::= "358ee529-45a4-409e-8fab-7a28f71e5c51"
   static MAJOR /int    ::= 0
   static MINOR /int    ::= 4
+
+  static FLAG_RUN_BOOT     /int ::= 1 << 0
+  static FLAG_RUN_CRITICAL /int ::= 1 << 1
 
   static LIST_IMAGES_INDEX /int ::= 0
   list_images -> List
@@ -29,7 +33,7 @@ interface ContainerService:
   image_writer_write handle/int bytes/ByteArray -> none
 
   static IMAGE_WRITER_COMMIT_INDEX /int ::= 5
-  image_writer_commit handle/int run_boot/bool run_critical/bool -> uuid.Uuid
+  image_writer_commit handle/int flags/int -> uuid.Uuid
 
 class ContainerServiceClient extends ServiceClient implements ContainerService:
   constructor --open/bool=true:
@@ -40,7 +44,9 @@ class ContainerServiceClient extends ServiceClient implements ContainerService:
 
   list_images -> List:
     array := invoke_ ContainerService.LIST_IMAGES_INDEX null
-    return List array.size: uuid.Uuid array[it]
+    return List array.size / 2:
+      cursor := it * 2
+      ContainerImage (uuid.Uuid array[cursor]) array[cursor + 1]
 
   start_image id/uuid.Uuid -> int?:
     return invoke_ ContainerService.START_IMAGE_INDEX id.to_byte_array
@@ -57,5 +63,5 @@ class ContainerServiceClient extends ServiceClient implements ContainerService:
   image_writer_write handle/int bytes/ByteArray -> none:
     invoke_ ContainerService.IMAGE_WRITER_WRITE_INDEX [handle, bytes]
 
-  image_writer_commit handle/int run_boot/bool run_critical/bool -> uuid.Uuid:
-    return uuid.Uuid (invoke_ ContainerService.IMAGE_WRITER_COMMIT_INDEX [handle, run_boot, run_critical])
+  image_writer_commit handle/int flags/int -> uuid.Uuid:
+    return uuid.Uuid (invoke_ ContainerService.IMAGE_WRITER_COMMIT_INDEX [handle, flags])

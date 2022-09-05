@@ -255,6 +255,8 @@ class OS {
   static bool use_spiram_for_metadata() { return _use_spiram_for_metadata; }
   static int toit_heap_caps_flags_for_heap();
   static int toit_heap_caps_flags_for_metadata();
+#elif defined(TOIT_LINUX)
+  static inline int toit_heap_caps_flags_for_heap() { return 0; }
 #endif
 
  private:
