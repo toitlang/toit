@@ -530,6 +530,10 @@ Object* Scheduler::process_stats(Array* array, int group_id, int process_id, Pro
   uword max = Smi::MAX_SMI_VALUE;
   switch (length) {
     default:
+    case 11:
+      array->at_put(10, Smi::from(subject_process->gc_count(COMPACTING_GC)));
+    case 10:
+      array->at_put(9, Smi::from(subject_process->gc_count(FULL_GC)));
     case 9:
       array->at_put(8, Smi::from(Utils::min(max, info.largest_free_block)));
     case 8:
@@ -550,7 +554,7 @@ Object* Scheduler::process_stats(Array* array, int group_id, int process_id, Pro
     case 2:
       array->at_put(1, Smi::from(subject_process->object_heap()->bytes_allocated()));
     case 1:
-      array->at_put(0, Smi::from(subject_process->gc_count()));
+      array->at_put(0, Smi::from(subject_process->gc_count(NEW_SPACE_GC)));
     case 0:
       (void)0;  // Do nothing.
   }
