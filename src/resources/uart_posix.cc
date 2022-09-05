@@ -78,7 +78,7 @@ static int baud_rate_to_int(speed_t speed) {
     default: return -1;
 #elif defined(TOIT_DARWIN)
     default:
-      return (int)speed;
+      return static_cast<int>(speed);
 #endif
   }
 }
@@ -333,7 +333,8 @@ PRIMITIVE(set_baud_rate) {
   bool arbitrary_rate;
   int result = int_to_baud_rate(baud_rate, &speed, &arbitrary_rate);
   if (result != 0) INVALID_ARGUMENT;
-  if (!arbitrary_rate) { // false means use standard Posix/Linux line speed setup
+  if (!arbitrary_rate) {
+    // Use standard Posix/Linux line speed setup
     struct termios tty;
     if (tcgetattr(fd, &tty) != 0) return Primitive::os_error(errno, process);
     if (cfsetospeed(&tty, speed) != 0) return Primitive::os_error(errno, process);
