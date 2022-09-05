@@ -482,15 +482,9 @@ PRIMITIVE(command) {
 PRIMITIVE(args) {
   char** argv = process->args();
   if (argv == null || argv[0] == null) {
-    // No argument are passed so use snapshot arguments program.
-    Array* snapshot_arguments = process->program()->snapshot_arguments();
-    // Copy and return the array.
-    int length = snapshot_arguments->length();
-    Array* result = process->object_heap()->allocate_array(length, process->program()->null_object());
-    if (result == null) ALLOCATION_FAILED;
-    for (int index = 0; index < length; index++) result->at_put(index, snapshot_arguments->at(index));
-    return result;
+    return process->program()->empty_array();
   }
+
   int argc = 0;
   while (argv[argc] != null) argc++;
   Array* result = process->object_heap()->allocate_array(argc, process->program()->null_object());
