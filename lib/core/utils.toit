@@ -481,21 +481,10 @@ Produces a histogram of object types and their memory
   the console.
 */
 print_objects marker/string="" gc/bool=true:
-  if gc:
-    before := gc_count
-    while gc_count == before: RecognizableFiller_
-  encoded_histogram := object_histogram_ marker
+  full_gcs := (process_stats)[STATS_INDEX_FULL_GC_COUNT]
+  encoded_histogram := object_histogram_ marker full_gcs
   system_send_ SYSTEM_MIRROR_MESSAGE_ encoded_histogram
   process_messages_
 
-class RecognizableFiller_:
-  a/int := 0
-  b/int := 0
-  c/int := 0
-  d/int := 0
-  e/int := 0
-  f/int := 0
-  g/int := 0
-
-object_histogram_ marker/string -> ByteArray:
+object_histogram_ marker/string full_gcs/int -> ByteArray:
   #primitive.debug.object_histogram
