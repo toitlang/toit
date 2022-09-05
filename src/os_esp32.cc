@@ -578,26 +578,27 @@ class HeapSummaryPage {
 
   void print() {
     if (address_ == 0) return;
-    printf("  ├────────────┼─────────────────────────────────────────────┤\n");
-    printf("  │ %p │   Largest free = %-5d                      │\n",
-        reinterpret_cast<void*>(address_), largest_free_);
-    printf("  │            ├───────────┬─────────┬───────────────────────┤\n");
+    printf("  ┌────────────┬─────────────────────────────────────────────┐\n");
+    printf("  │ Page:      │   Largest free = %-5d                      │\n",
+        largest_free_);
+    printf("  │ %p ├───────────┬─────────┬───────────────────────┤\n",
+        reinterpret_cast<void*>(address_));
     printf("  │            │   Bytes   │  Count  │  Type                 │\n");
     printf("  │            ├───────────┼─────────┼───────────────────────┤\n");
     for (int i = 0; i < NUMBER_OF_MALLOC_TAGS; i++) {
       if (users_ & (1 << i)) {
-        printf("  │            │ %7d   │ %6d  │  %-19s  │\n",
+        printf("  │            │ %7d   │ %6d  │  %-20s │\n",
              sizes_[i], counts_[i], HeapSummaryPage::name_of_type(i));
       }
     }
-    printf("  ├────────────┼───────────┴─────────┴───────────────────────┤\n");
+    printf("  └────────────┴───────────┴─────────┴───────────────────────┘\n");
   }
 
   static const char* name_of_type(int tag) {
     switch (tag) {
       case MISC_MALLOC_TAG: return "misc";
       case EXTERNAL_BYTE_ARRAY_MALLOC_TAG: return "external byte array";
-      case BIGNUM_MALLOC_TAG: return "bignum";
+      case BIGNUM_MALLOC_TAG: return "tls/bignum";
       case EXTERNAL_STRING_MALLOC_TAG: return "external string";
       case TOIT_HEAP_MALLOC_TAG: return "toit";
       case UNUSED_TOIT_HEAP_MALLOC_TAG: return "unused";
@@ -605,9 +606,9 @@ class HeapSummaryPage {
       case LWIP_MALLOC_TAG: return "lwip";
       case HEAP_OVERHEAD_MALLOC_TAG: return "heap overhead";
       case EVENT_SOURCE_MALLOC_TAG: return "event source";
-      case OTHER_THREADS_MALLOC_TAG: return "other threads";
-      case THREAD_SPAWN_MALLOC_TAG: return "thread spawn";
-      case NULL_MALLOC_TAG: return "null tag";
+      case OTHER_THREADS_MALLOC_TAG: return "thread/other";
+      case THREAD_SPAWN_MALLOC_TAG: return "thread/spawn";
+      case NULL_MALLOC_TAG: return "untagged";
       case WIFI_MALLOC_TAG: return "wifi";
     }
     return "unknown";
@@ -689,7 +690,7 @@ class HeapSummaryCollector {
     for (int i = 0; i < NUMBER_OF_MALLOC_TAGS; i++) {
       // Leave out free space and allocation types with no allocations.
       if (i == FREE_MALLOC_TAG || sizes_[i] == 0) continue;
-      printf("  | %7d   | %6d  |  %-19s  |\n",
+      printf("  │ %7d   │ %6d  │  %-20s │\n",
           sizes_[i], counts_[i], HeapSummaryPage::name_of_type(i));
       size += sizes_[i];
       // The reported overhead isn't really separate allocations, so
@@ -700,7 +701,8 @@ class HeapSummaryCollector {
     }
 
     multi_heap_info_t info;
-    heap_caps_get_info(&info, MALLOC_CAP_8BIT);
+    int caps = OS::toit_heap_caps_flags_for_heap();
+    heap_caps_get_info(&info, caps);
     int capacity_bytes = info.total_allocated_bytes + info.total_free_bytes;
     int used_bytes = size * 100 / capacity_bytes;
     printf("  └───────────┴─────────┴───────────────────────┘\n");
@@ -713,17 +715,12 @@ class HeapSummaryCollector {
     }
     if (page_count == 0) return;
 
-    printf("  ┌────────────┬─────────────────────────────────────────────┐\n");
     for (int i = 0; i < max_pages_; i++) {
       pages_[i].print();
     }
     if (dropped_pages_ > 0) {
-      printf("  ├────────────┼─────────────────────────────────────────────┤\n");
-      printf("  │   %8d │   Unreported pages, hit limit of %-4d       │\n",
-        dropped_pages_, max_pages_);
-      printf("  ├────────────┼─────────────────────────────────────────────┤\n");
+      printf("\n  %d unreported pages, hit limit of %d.\n", dropped_pages_, max_pages_);
     }
-    printf("  └────────────┴─────────────────────────────────────────────┘\n");
   }
 
  private:
