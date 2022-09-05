@@ -73,16 +73,16 @@ PRIMITIVE(write_string_on_stderr) {
   return _raw_message;
 }
 
-PRIMITIVE(hatch_method) {
-  Method method = process->hatch_method();
+PRIMITIVE(spawn_method) {
+  Method method = process->spawn_method();
   int id = method.is_valid()
       ? process->program()->absolute_bci_from_bcp(method.header_bcp())
       : -1;
   return Smi::from(id);
 }
 
-PRIMITIVE(hatch_args) {
-  uint8* arguments = process->hatch_arguments();
+PRIMITIVE(spawn_arguments) {
+  uint8* arguments = process->spawn_arguments();
   if (!arguments) return process->program()->empty_array();
 
   MessageDecoder decoder(process, arguments);
@@ -92,13 +92,13 @@ PRIMITIVE(hatch_args) {
     ALLOCATION_FAILED;
   }
 
-  process->clear_hatch_arguments();
+  process->clear_spawn_arguments();
   free(arguments);
   decoder.register_external_allocations();
   return decoded;
 }
 
-PRIMITIVE(hatch) {
+PRIMITIVE(spawn) {
   ARGS(Object, entry, Object, arguments)
   if (!is_smi(entry)) WRONG_TYPE;
 
@@ -127,7 +127,7 @@ PRIMITIVE(hatch) {
     OTHER_ERROR;
   }
 
-  Process* child = VM::current()->scheduler()->hatch(process->program(), process->group(), method, buffer, manager.initial_chunk);
+  Process* child = VM::current()->scheduler()->spawn(process->program(), process->group(), method, buffer, manager.initial_chunk);
   if (!child) MALLOC_FAILED;
 
   manager.dont_auto_free();
@@ -479,8 +479,8 @@ PRIMITIVE(command) {
   return arg;
 }
 
-PRIMITIVE(args) {
-  char** argv = process->args();
+PRIMITIVE(main_arguments) {
+  char** argv = process->main_arguments();
   if (argv == null || argv[0] == null) {
     return process->program()->empty_array();
   }

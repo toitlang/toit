@@ -99,7 +99,7 @@ run_debug_snapshot snapshot_bytes json_message:
     (Writer stream).write out_bytes.bytes
     stream.close
 
-    // TODO(florian): we should use `hatch_` or something similar to
+    // TODO(florian): we should use `spawn` or something similar to
     //   launch the debug snapshot.
     toit_run_path := "toit.run"
     pipes := pipe.fork
