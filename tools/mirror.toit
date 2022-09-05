@@ -350,9 +350,8 @@ class Histogram extends Mirror:
 
     for i := first_entry; i < json.size; i += 3:
       class_name := program.class_name_for json[i]
-      if class_name != "RecognizableFiller_":
-        entries.add
-          HistogramEntry class_name json[i + 1] json[i + 2]
+      entries.add
+        HistogramEntry class_name json[i + 1] json[i + 2]
     entries.sort --in_place: | a b | b.size - a.size
     super json program
 
