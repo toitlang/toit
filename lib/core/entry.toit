@@ -9,11 +9,7 @@ __entry__main -> none:
   current := Task_.current
   current.initialize_entry_task_
   current.evaluate_:
-    // TODO(kasper): Do we want to handle arrays in arrays here and
-    // can we get away from mapping to lists in general?
-    arguments := main_arguments_
-    if arguments is Array_: arguments = List.from arguments
-    #primitive.intrinsics.main arguments
+    #primitive.intrinsics.main main_arguments_
 
 // This is the entry point for processes just being spawned.
 // It calls the lambda passed in the spawn arguments.

@@ -228,6 +228,7 @@ class Process : public ProcessListFromProcessGroup::Element,
   Method _entry;
   Method _spawn_method;
 
+  // The arguments (if any) are encoded as messages using the MessageEncoder.
   uint8* _main_arguments = null;
   uint8* _spawn_arguments = null;
 
