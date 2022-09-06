@@ -1,0 +1,9 @@
+<pkg:toit-rs485>/rs485.toit:180:9: warning: Deprecated 'Pin.config'
+    rts.config --output
+        ^~~~~~
+<pkg:toit-rs485>/rs485.toit:206:17: warning: Deprecated 'Pin.config'
+    read_enable.config --output
+                ^~~~~~
+<pkg:toit-rs485>/rs485.toit:207:18: warning: Deprecated 'Pin.config'
+    write_enable.config --output
+                 ^~~~~~
