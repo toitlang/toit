@@ -173,8 +173,6 @@ function(find_toit_projects REPO)
       if (NOT "${LOCATION}" STREQUAL "")
         set(PROJECT_NAME "${PROJECT_NAME}-${LOCATION}")
       endif()
-      # Override the SDK version, so that package downloads find the newest packages.
-      set(TPKG_SDK_VERSION "v2.0.0-alpha.21")
       # Mark it as a toit-project so we download its dependencies.
       toit_project("${PROJECT_NAME}" "${LOCATION_PATH}")
     endif()
