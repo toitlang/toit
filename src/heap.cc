@@ -303,7 +303,7 @@ void ObjectHeap::iterate_roots(RootCallback* callback) {
   }
 }
 
-void ObjectHeap::gc(bool try_hard) {
+GcType ObjectHeap::gc(bool try_hard) {
   GcType type = _two_space_heap.collect_new_space(try_hard);
   _gc_count++;
   if (type != NEW_SPACE_GC) {
@@ -317,6 +317,7 @@ void ObjectHeap::gc(bool try_hard) {
   // trigger any heuristic GCs before the primitive is over or we might cause a
   // triple GC, which throws an exception.
   _limit = _max_heap_size;
+  return type;
 }
 
 // Install a new allocation limit at the end of a primitive that caused a GC.

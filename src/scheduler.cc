@@ -464,26 +464,24 @@ void Scheduler::gc(Process* process, bool malloc_failed, bool try_hard) {
     ProcessListFromScheduler targets;
     { Locker locker(_mutex);
       for (ProcessGroup* group : _groups) {
-        bool done = false;
         for (Process* target : group->processes()) {
+          if (target->program() == null) continue;  // External process.
           if (target->state() != Process::RUNNING && !target->idle_since_gc()) {
             if (target->state() != Process::SUSPENDED_AWAITING_GC) {
               gc_suspend_process(locker, target);
             }
-            target->set_idle_since_gc(true);  // Will be true in a little while.
             targets.append(target);
-            if (!try_hard) {
-              done = true;
-              break;
-            }
           }
         }
-        if (done) break;
       }
     }
 
     for (Process* target : targets) {
-      target->gc(try_hard);
+      GcType type = target->gc(try_hard);
+      if (type != NEW_SPACE_GC) {
+        Locker locker(_mutex);
+        target->set_idle_since_gc(true);
+      }
       gcs++;
     }
 

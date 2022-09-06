@@ -125,7 +125,7 @@ class ObjectHeap {
   void set_task(Task* task);
 
   // Garbage collection operation for runtime objects.
-  void gc(bool try_hard);
+  GcType gc(bool try_hard);
 
   bool add_finalizer(HeapObject* key, Object* lambda);
   bool has_finalizer(HeapObject* key, Object* lambda);
