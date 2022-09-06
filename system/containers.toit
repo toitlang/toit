@@ -13,6 +13,7 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+import binary
 import uuid
 import monitor
 import encoding.base64 as base64
@@ -97,6 +98,9 @@ abstract class ContainerImage:
   flags -> int:
     return 0
 
+  data -> int:
+    return 0
+
   run_boot -> bool:
     return flags & ContainerService.FLAG_RUN_BOOT != 0
 
@@ -118,6 +122,9 @@ class ContainerImageFlash extends ContainerImage:
 
   flags -> int:
     return allocation_.metadata[0]
+
+  data -> int:
+    return binary.LITTLE_ENDIAN.uint32 allocation_.metadata 1
 
   start -> Container:
     gid ::= container_next_gid_
@@ -170,7 +177,7 @@ abstract class ContainerServiceDefinition extends ServiceDefinition
       return image_writer_write writer arguments[1]
     if index == ContainerService.IMAGE_WRITER_COMMIT_INDEX:
       writer ::= (resource client arguments[0]) as ContainerImageWriter
-      return (image_writer_commit writer arguments[1]).to_byte_array
+      return (image_writer_commit writer arguments[1] arguments[2]).to_byte_array
     unreachable
 
   abstract image_registry -> FlashRegistry
@@ -184,6 +191,7 @@ abstract class ContainerServiceDefinition extends ServiceDefinition
     raw.do: | image/ContainerImage |
       result.add image.id.to_byte_array
       result.add image.flags
+      result.add image.data
     return result
 
   start_image id/uuid.Uuid -> int:
@@ -214,8 +222,8 @@ abstract class ContainerServiceDefinition extends ServiceDefinition
   image_writer_write writer/ContainerImageWriter bytes/ByteArray -> none:
     writer.write bytes
 
-  image_writer_commit writer/ContainerImageWriter flags/int -> uuid.Uuid:
-    allocation := writer.commit --run_flags=flags
+  image_writer_commit writer/ContainerImageWriter flags/int data/int -> uuid.Uuid:
+    allocation := writer.commit --flags=flags --data=data
     image := add_flash_image allocation
     return image.id
 

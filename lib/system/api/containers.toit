@@ -33,7 +33,7 @@ interface ContainerService:
   image_writer_write handle/int bytes/ByteArray -> none
 
   static IMAGE_WRITER_COMMIT_INDEX /int ::= 5
-  image_writer_commit handle/int flags/int -> uuid.Uuid
+  image_writer_commit handle/int flags/int data/int -> uuid.Uuid
 
 class ContainerServiceClient extends ServiceClient implements ContainerService:
   constructor --open/bool=true:
@@ -44,9 +44,9 @@ class ContainerServiceClient extends ServiceClient implements ContainerService:
 
   list_images -> List:
     array := invoke_ ContainerService.LIST_IMAGES_INDEX null
-    return List array.size / 2:
-      cursor := it * 2
-      ContainerImage (uuid.Uuid array[cursor]) array[cursor + 1]
+    return List array.size / 3:
+      cursor := it * 3
+      ContainerImage (uuid.Uuid array[cursor]) array[cursor + 1] array[cursor + 2]
 
   start_image id/uuid.Uuid -> int?:
     return invoke_ ContainerService.START_IMAGE_INDEX id.to_byte_array
@@ -63,5 +63,5 @@ class ContainerServiceClient extends ServiceClient implements ContainerService:
   image_writer_write handle/int bytes/ByteArray -> none:
     invoke_ ContainerService.IMAGE_WRITER_WRITE_INDEX [handle, bytes]
 
-  image_writer_commit handle/int flags/int -> uuid.Uuid:
-    return uuid.Uuid (invoke_ ContainerService.IMAGE_WRITER_COMMIT_INDEX [handle, flags])
+  image_writer_commit handle/int flags/int data/int -> uuid.Uuid:
+    return uuid.Uuid (invoke_ ContainerService.IMAGE_WRITER_COMMIT_INDEX [handle, flags, data])

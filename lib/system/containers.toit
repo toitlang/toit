@@ -32,7 +32,8 @@ uninstall id/uuid.Uuid -> none:
 class ContainerImage:
   id/uuid.Uuid
   flags/int
-  constructor .id .flags:
+  data/int
+  constructor .id .flags .data:
 
 class Container extends ServiceResourceProxy:
   id/uuid.Uuid
@@ -74,12 +75,13 @@ class ContainerImageWriter extends ServiceResourceProxy:
     _client_.image_writer_write handle_ bytes
 
   commit -> uuid.Uuid
+      --data/int=0
       --run_boot/bool=false
       --run_critical/bool=false:
     flags := 0
     if run_boot: flags |= ContainerService.FLAG_RUN_BOOT
     if run_critical: flags |= ContainerService.FLAG_RUN_CRITICAL
-    return _client_.image_writer_commit handle_ flags
+    return _client_.image_writer_commit handle_ flags data
 
 // ----------------------------------------------------------------------------
 
