@@ -706,8 +706,9 @@ class HeapSummaryCollector {
     int capacity_bytes = info.total_allocated_bytes + info.total_free_bytes;
     int used_bytes = size * 100 / capacity_bytes;
     printf("  └───────────┴─────────┴───────────────────────┘\n");
-    printf("  Total: %d bytes in %d allocations (%d%%)\n",
-        size, count, used_bytes);
+    printf("  Total: %d bytes in %d allocations (%d%%), largest free %dk\n",
+        size, count, used_bytes,
+        static_cast<int>(info.largest_free_block >> 10));
 
     int page_count = 0;
     for (int i = 0; i < max_pages_; i++) {
