@@ -907,9 +907,6 @@ class SmallArray_ extends Array_:
       // argument. We force this to throw by doing the same here.
       block.call null
 
-  stringify -> string:
-    return "Array of size $size"
-
   /// Creates a new array of size $new_length, copying up to $old_length elements from this array.
   resize_for_list_ old_length/int new_length/int -> Array_:
     #primitive.core.array_expand:

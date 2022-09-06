@@ -31,7 +31,7 @@ class SystemImage extends ContainerImage:
   constructor manager/ContainerManager:
     super manager
 
-  start -> Container:
+  start arguments/any -> Container:
     // This container is already running as the system process.
     container := Container this 0 (current_process_)
     manager.on_container_start_ container

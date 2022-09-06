@@ -43,9 +43,10 @@ test_resources --close/bool=false --separate_process/bool=false:
 test_uninstall:
   service := ResourceServiceDefinition
   service.install
-  test_open "resource-1" false --no-close_client
+  clients := []
+  clients.add (test_open "resource-1" false --no-close_client)
   expect.expect_equals 0 (service.close_count "resource-1")
-  client := ResourceServiceClient
+  clients.add ResourceServiceClient
   expect.expect_equals 0 (service.close_count "resource-1")
   service.uninstall
   expect.expect_equals 1 (service.close_count "resource-1")
