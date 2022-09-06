@@ -368,18 +368,13 @@ bool TwoSpaceHeap::perform_garbage_collection(bool force_compact) {
 
   stack.process(&marking_visitor, old_space(), semi_space);
 
-  bool compact = force_compact || !old_space()->compacting();
+  word regained_by_compacting = old_space()->compute_compaction_destinations();
 
-  if (!compact) {
-    // If the last GC was compacting we don't have fragmentation, so it
-    // is fair to evaluate if we are making progress or just doing
-    // pointless GCs.
-    old_space()->evaluate_pointlessness();
+  if (force_compact || regained_by_compacting <= 0) {
     // Do a non-compacting GC this time for speed.
     sweep_heap();
   } else {
-    // Last GC was sweeping, so we do a compaction this time to avoid
-    // fragmentation.
+    // We can reclaim some memory by compacting.
     compact_heap();
   }
 
@@ -387,7 +382,7 @@ bool TwoSpaceHeap::perform_garbage_collection(bool force_compact) {
   if (Flags::validate_heap) validate();
 #endif
 
-  return compact;
+  return regained_by_compacting > 0;
 }
 
 void TwoSpaceHeap::sweep_heap() {
@@ -433,8 +428,6 @@ void TwoSpaceHeap::compact_heap() {
   SemiSpace* semi_space = new_space();
 
   old_space()->set_compacting(true);
-
-  old_space()->compute_compaction_destinations();
 
   old_space()->clear_free_list();
 
