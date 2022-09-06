@@ -21,8 +21,8 @@ images -> List:
 current -> uuid.Uuid:
   return uuid.Uuid current_image_id_
 
-start id/uuid.Uuid -> Container:
-  handle/int? := _client_.start_image id
+start id/uuid.Uuid arguments/any=[] -> Container:
+  handle/int? := _client_.start_image id arguments
   if handle: return Container id handle
   throw "No such container: $id"
 

@@ -98,7 +98,7 @@ Process::~Process() {
   }
 }
 
-void Process::set_main_arguments(char** arguments) {
+void Process::set_main_arguments(uint8* arguments) {
   ASSERT(_main_arguments == null);
   _main_arguments = arguments;
 }
@@ -109,6 +109,26 @@ void Process::set_spawn_arguments(uint8* arguments) {
 }
 
 #ifndef TOIT_FREERTOS
+void Process::set_main_arguments(char** argv) {
+  ASSERT(_main_arguments == null);
+  int argc = 0;
+  if (argv) {
+    while (argv[argc] != null) argc++;
+  }
+
+  int size;
+  { MessageEncoder encoder(null);
+    encoder.encode_arguments(argv, argc);
+    size = encoder.size();
+  }
+
+  uint8* buffer = unvoid_cast<uint8*>(malloc(size));
+  ASSERT(buffer != null)
+  MessageEncoder encoder(buffer);
+  encoder.encode_arguments(argv, argc);
+  _main_arguments = buffer;
+}
+
 void Process::set_spawn_arguments(SnapshotBundle system, SnapshotBundle application) {
   ASSERT(_spawn_arguments == null);
   int size;

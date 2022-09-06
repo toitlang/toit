@@ -9,7 +9,7 @@ import system.containers show ContainerImage
 interface ContainerService:
   static UUID  /string ::= "358ee529-45a4-409e-8fab-7a28f71e5c51"
   static MAJOR /int    ::= 0
-  static MINOR /int    ::= 4
+  static MINOR /int    ::= 5
 
   static FLAG_RUN_BOOT     /int ::= 1 << 0
   static FLAG_RUN_CRITICAL /int ::= 1 << 1
@@ -18,7 +18,7 @@ interface ContainerService:
   list_images -> List
 
   static START_IMAGE_INDEX /int ::= 1
-  start_image id/uuid.Uuid -> int?
+  start_image id/uuid.Uuid arguments/any -> int?
 
   static STOP_CONTAINER_INDEX /int ::= 6
   stop_container handle/int -> none
@@ -48,8 +48,8 @@ class ContainerServiceClient extends ServiceClient implements ContainerService:
       cursor := it * 2
       ContainerImage (uuid.Uuid array[cursor]) array[cursor + 1]
 
-  start_image id/uuid.Uuid -> int?:
-    return invoke_ ContainerService.START_IMAGE_INDEX id.to_byte_array
+  start_image id/uuid.Uuid arguments/any -> int?:
+    return invoke_ ContainerService.START_IMAGE_INDEX [id.to_byte_array, arguments]
 
   stop_container handle/int -> none:
     invoke_ ContainerService.STOP_CONTAINER_INDEX handle

@@ -141,6 +141,7 @@ class MessageEncoder {
   bool encode_byte_array_external(void* data, int length);
 
 #ifndef TOIT_FREERTOS
+  bool encode_arguments(char** argv, int argc);
   bool encode_bundles(SnapshotBundle system, SnapshotBundle application);
 #endif
 

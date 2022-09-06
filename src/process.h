@@ -61,9 +61,10 @@ class Process : public ProcessListFromProcessGroup::Element,
   Process(ProcessRunner* runner, ProcessGroup* group, SystemMessage* termination);
 
   // Construction support.
-  void set_main_arguments(char** arguments);
+  void set_main_arguments(uint8* arguments);
   void set_spawn_arguments(uint8* arguments);
 #ifndef TOIT_FREERTOS
+  void set_main_arguments(char** argv);
   void set_spawn_arguments(SnapshotBundle system, SnapshotBundle application);
 #endif
 
@@ -112,7 +113,8 @@ class Process : public ProcessListFromProcessGroup::Element,
   ProcessRunner* runner() const { return _runner; }
 
   Method entry() const { return _entry; }
-  char** main_arguments() { return _main_arguments; }
+  uint8* main_arguments() { return _main_arguments; }
+  void clear_main_arguments() { _main_arguments = null; }
 
   Method spawn_method() const { return _spawn_method; }
   uint8* spawn_arguments() const { return _spawn_arguments; }
@@ -226,7 +228,7 @@ class Process : public ProcessListFromProcessGroup::Element,
   Method _entry;
   Method _spawn_method;
 
-  char** _main_arguments = null;
+  uint8* _main_arguments = null;
   uint8* _spawn_arguments = null;
 
   ObjectHeap _object_heap;

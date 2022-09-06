@@ -236,6 +236,21 @@ bool MessageEncoder::encode_byte_array(ByteArray* object) {
 }
 
 #ifndef TOIT_FREERTOS
+bool MessageEncoder::encode_arguments(char** argv, int argc) {
+  write_uint8(TAG_ARRAY);
+  write_cardinal(argc);
+  for (int i = 0; i < argc; i++) {
+    int length = strlen(argv[i]);
+    write_uint8(TAG_STRING_INLINE);
+    write_cardinal(length);
+    if (!encoding_for_size()) {
+      memcpy(&_buffer[_cursor], argv[i], length);
+    }
+    _cursor += length;
+  }
+  return true;
+}
+
 bool MessageEncoder::encode_bundles(SnapshotBundle system, SnapshotBundle application) {
   write_uint8(TAG_ARRAY);
   write_cardinal(2);

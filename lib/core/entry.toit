@@ -9,8 +9,11 @@ __entry__main -> none:
   current := Task_.current
   current.initialize_entry_task_
   current.evaluate_:
-    args := List_.from_array_ main_arguments_
-    #primitive.intrinsics.main args
+    // TODO(kasper): Do we want to handle arrays in arrays here and
+    // can we get away from mapping to lists in general?
+    arguments := main_arguments_
+    if arguments is Array_: arguments = List.from arguments
+    #primitive.intrinsics.main arguments
 
 // This is the entry point for processes just being spawned.
 // It calls the lambda passed in the spawn arguments.
@@ -33,9 +36,6 @@ __entry__task lambda -> none:
 
 // --------------------------------------------------------
 
-main_arguments_:
-  #primitive.core.main_arguments
-
 /**
 Returns the name of the toit file, image, or snapshot that the
   current program was run from.  May return null if this information
@@ -43,6 +43,9 @@ Returns the name of the toit file, image, or snapshot that the
 */
 program_name -> string?:
   #primitive.core.command
+
+main_arguments_ -> any:
+  #primitive.core.main_arguments
 
 spawn_method_ -> int:
   #primitive.core.spawn_method
