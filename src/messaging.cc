@@ -159,7 +159,7 @@ bool MessageEncoder::encode(Object* object) {
     return encode_array(array, array->length());
   } else if (is_large_integer(object)) {
     write_uint8(TAG_LARGE_INTEGER);
-    write_uint64(bit_cast<uint64>(Double::cast(object)->value()));
+    write_uint64(bit_cast<uint64>(LargeInteger::cast(object)->value()));
     return true;
   } else if (is_heap_object(object)) {
     printf("[message encoder: cannot encode object with class tag = %d]\n", HeapObject::cast(object)->class_tag());
@@ -577,8 +577,8 @@ Object* MessageDecoder::decode_large_integer() {
 
 uint8* MessageDecoder::read_pointer() {
   uint8* result;
-  memcpy(&result, &_buffer[_cursor], WORD_SIZE);
-  _cursor += WORD_SIZE;
+  memcpy(&result, &_buffer[_cursor], sizeof(result));
+  _cursor += sizeof(result);
   return result;
 }
 
@@ -597,8 +597,8 @@ uword MessageDecoder::read_cardinal() {
 
 uint64 MessageDecoder::read_uint64() {
   uint64 result;
-  memcpy(&result, &_buffer[_cursor], sizeof(uint64));
-  _cursor += WORD_SIZE;
+  memcpy(&result, &_buffer[_cursor], sizeof(result));
+  _cursor += sizeof(result);
   return result;
 }
 
