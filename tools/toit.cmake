@@ -28,11 +28,8 @@ if (DEFINED EXECUTING_SCRIPT)
     endif()
 
     if (EXISTS "${TOIT_PROJECT}/package.yaml" OR EXISTS "${TOIT_PROJECT}/package.lock")
-      if (NOT "${TPKG_SDK_VERSION}" STREQUAL "")
-        set(TPKG_SDK_VERSION_ARG "--sdk-version=${TPKG_SDK_VERSION}")
-      endif()
       execute_process(
-        COMMAND "${TOITPKG}" install --auto-sync=false ${TPKG_SDK_VERSION_ARG} "--project-root=${TOIT_PROJECT}"
+        COMMAND "${TOITPKG}" install --auto-sync=false "--project-root=${TOIT_PROJECT}"
         COMMAND_ERROR_IS_FATAL ANY
       )
     endif()
@@ -115,7 +112,6 @@ macro(toit_project NAME PATH)
         -DSCRIPT_COMMAND=install_packages
         "-DTOIT_PROJECT=${PATH}"
         "-DTOITPKG=${TOITPKG}"
-        "-DTPKG_SDK_VERSION=${TPKG_SDK_VERSION}"
         -P "${TOIT_DOWNLOAD_PACKAGE_SCRIPT}"
     DEPENDS "${TOITPKG}"
   )
