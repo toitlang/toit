@@ -140,18 +140,6 @@ void Space::clear_mark_bits() {
   for (auto chunk : chunk_list_) GcMetadata::clear_mark_bits_for_chunk(chunk);
 }
 
-void SemiSpace::prepare_metadata_for_mark_sweep() {
-  flush();
-  for (auto chunk : chunk_list_) {
-    GcMetadata::clear_mark_bits_for_chunk(chunk);
-    // Starts in new-space are only used for mark stack overflows,
-    // not for the remembered set.  The mark stack overflow sets the
-    // object start for the cards it needs.
-    GcMetadata::initialize_starts_for_chunk(chunk);
-    GcMetadata::initialize_overflow_bits_for_chunk(chunk);
-  }
-}
-
 bool Space::includes(uword address) {
   for (auto chunk : chunk_list_)
     if (chunk->includes(address)) return true;

@@ -194,19 +194,14 @@ restart:
     dest = dest.next_chunk();
     int overhang =
         end_of_last_source_object_moved - end_of_last_src_line_that_fits;
-    overhang >>= WORD_SHIFT;
+    // We are starting a new destination chunk, but the src is pointing at
+    // the start of a line that may start with the tail end of an object that
+    // was moved to a different destination chunk. In order for the destination
+    // calculation to work the dest address actually needs to point before the
+    // start of the chunk, to compensate for the count of live bits that apply
+    // to a different destination chunk.
     if (overhang > 0) {
-      // We are starting a new destination chunk, but the src is pointing at
-      // the start of a line that may start with the tail end of an object that
-      // was moved to a different destination chunk. This confuses the
-      // destination calculation, and it turns out that the easiest way to
-      // handle this is to zap the bits associated with the tail of the already
-      // moved object. This can have the effect of making a black object look
-      // grey, but we are done marking so that would only affect asserts.
-      uint32* overhang_bits =
-          mark_bits_for(end_of_last_source_object_moved - WORD_SIZE);
-      ASSERT((*overhang_bits & 1) != 0);
-      *overhang_bits &= ~((1U << overhang) - 1);
+      dest.address -= overhang;
     }
     src_start = src;
   }
