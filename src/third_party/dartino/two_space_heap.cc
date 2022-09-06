@@ -370,19 +370,21 @@ bool TwoSpaceHeap::perform_garbage_collection(bool force_compact) {
 
   word regained_by_compacting = old_space()->compute_compaction_destinations();
 
-  if (force_compact || regained_by_compacting <= 0) {
-    // Do a non-compacting GC this time for speed.
-    sweep_heap();
-  } else {
+  bool compact = force_compact || regained_by_compacting > 0;
+
+  if (compact) {
     // We can reclaim some memory by compacting.
     compact_heap();
+  } else {
+    // Do a non-compacting GC this time for speed.
+    sweep_heap();
   }
 
 #ifdef TOIT_DEBUG
   if (Flags::validate_heap) validate();
 #endif
 
-  return regained_by_compacting > 0;
+  return compact;
 }
 
 void TwoSpaceHeap::sweep_heap() {
