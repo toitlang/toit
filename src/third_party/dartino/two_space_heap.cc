@@ -194,7 +194,7 @@ GcType TwoSpaceHeap::collect_new_space(bool try_hard) {
     swap_semi_spaces(*from, *to);
   }
 
-  if (Flags::tracegc) {
+  if (false && Flags::tracegc) {
     uint64 end = OS::get_monotonic_time();
     int f = from_used;
     int t = to_used;

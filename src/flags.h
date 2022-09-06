@@ -36,7 +36,7 @@ namespace toit {
 #endif
 
 #ifdef TOIT_FREERTOS
-#define TRACE_GC false
+#define TRACE_GC true
 #else
 #define TRACE_GC false
 #endif
