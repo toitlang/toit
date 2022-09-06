@@ -271,7 +271,7 @@ create_query name/string query_id/int -> ByteArray:
   parts := name.split "."
   length := 1
   parts.do: | part |
-    if part.size > 63: throw (DnsException "LABEL_TOO_LARGE")
+    if part.size > 63: throw (DnsException "DNS name sections cannot exceed 63 bytes")
     if part.size < 1: throw (DnsException "LABEL_TOO_SHORT")
     part.do:
       if it == 0 or it == null: throw (DnsException "INVALID_DOMAIN_NAME")
