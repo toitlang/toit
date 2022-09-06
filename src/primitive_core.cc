@@ -73,12 +73,21 @@ PRIMITIVE(write_string_on_stderr) {
   return _raw_message;
 }
 
-PRIMITIVE(spawn_method) {
-  Method method = process->spawn_method();
-  int id = method.is_valid()
-      ? process->program()->absolute_bci_from_bcp(method.header_bcp())
-      : -1;
-  return Smi::from(id);
+PRIMITIVE(main_arguments) {
+  uint8* arguments = process->main_arguments();
+  if (!arguments) return process->program()->empty_array();
+
+  MessageDecoder decoder(process, arguments);
+  Object* decoded = decoder.decode();
+  if (decoder.allocation_failed()) {
+    decoder.remove_disposing_finalizers();
+    ALLOCATION_FAILED;
+  }
+
+  process->clear_main_arguments();
+  free(arguments);
+  decoder.register_external_allocations();
+  return decoded;
 }
 
 PRIMITIVE(spawn_arguments) {
@@ -96,6 +105,14 @@ PRIMITIVE(spawn_arguments) {
   free(arguments);
   decoder.register_external_allocations();
   return decoded;
+}
+
+PRIMITIVE(spawn_method) {
+  Method method = process->spawn_method();
+  int id = method.is_valid()
+      ? process->program()->absolute_bci_from_bcp(method.header_bcp())
+      : -1;
+  return Smi::from(id);
 }
 
 PRIMITIVE(spawn) {
@@ -477,25 +494,6 @@ PRIMITIVE(command) {
   String* arg = process->allocate_string(Flags::program_name, &error);
   if (arg == null) return error;
   return arg;
-}
-
-PRIMITIVE(main_arguments) {
-  char** argv = process->main_arguments();
-  if (argv == null || argv[0] == null) {
-    return process->program()->empty_array();
-  }
-
-  int argc = 0;
-  while (argv[argc] != null) argc++;
-  Array* result = process->object_heap()->allocate_array(argc, process->program()->null_object());
-  if (result == null) ALLOCATION_FAILED;
-  for (int index = 0; index < argc; index++) {
-    Error* error = null;
-    String* arg = process->allocate_string(argv[index], &error);
-    if (arg == null) return error;
-    Array::cast(result)->at_put(index, arg);
-  }
-  return result;
 }
 
 PRIMITIVE(smi_add) {

@@ -91,6 +91,9 @@ abstract class ContainerImage:
 
   abstract id -> uuid.Uuid
 
+  start -> Container:
+    return start default_arguments
+
   trace encoded/ByteArray -> bool:
     return false
 
@@ -103,7 +106,13 @@ abstract class ContainerImage:
   run_critical -> bool:
     return flags & ContainerService.FLAG_RUN_CRITICAL != 0
 
-  abstract start -> Container
+  default_arguments -> any:
+    // TODO(kasper): For now, the default arguments passed
+    // to a container on start is an empty list. We could
+    // consider making it null instead.
+    return []
+
+  abstract start arguments/any -> Container
   abstract stop_all -> none
   abstract delete -> none
 
@@ -119,9 +128,9 @@ class ContainerImageFlash extends ContainerImage:
   flags -> int:
     return allocation_.metadata[0]
 
-  start -> Container:
+  start arguments/any -> Container:
     gid ::= container_next_gid_
-    pid ::= container_spawn_ allocation_.offset allocation_.size gid
+    pid ::= container_spawn_ allocation_.offset allocation_.size gid arguments
     // TODO(kasper): Can the container stop before we even get it created?
     container := Container this gid pid
     manager.on_container_start_ container
@@ -157,7 +166,7 @@ abstract class ContainerServiceDefinition extends ServiceDefinition
     if index == ContainerService.LIST_IMAGES_INDEX:
       return list_images
     if index == ContainerService.START_IMAGE_INDEX:
-      return start_image client (uuid.Uuid arguments)
+      return start_image client (uuid.Uuid arguments[0]) arguments[1]
     if index == ContainerService.STOP_CONTAINER_INDEX:
       resource ::= (resource client arguments) as ContainerResource
       return stop_container resource
@@ -186,13 +195,13 @@ abstract class ContainerServiceDefinition extends ServiceDefinition
       result.add image.flags
     return result
 
-  start_image id/uuid.Uuid -> int:
+  start_image id/uuid.Uuid arguments/any -> int:
     unreachable  // <-- TODO(kasper): Nasty.
 
-  start_image client/int id/uuid.Uuid -> ContainerResource?:
+  start_image client/int id/uuid.Uuid arguments/any -> ContainerResource?:
     image/ContainerImage? := lookup_image id
     if not image: return null
-    return ContainerResource image.start this client
+    return ContainerResource (image.start arguments) this client
 
   stop_container resource/ContainerResource? -> none:
     resource.container.stop
@@ -357,7 +366,7 @@ find_trace_origin_id trace/ByteArray -> uuid.Uuid?:
 
 // ----------------------------------------------------------------------------
 
-container_spawn_ offset size gid -> int:
+container_spawn_ offset size gid arguments -> int:
   #primitive.programs_registry.spawn
 
 container_is_running_ offset size -> bool:

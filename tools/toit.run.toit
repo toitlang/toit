@@ -58,7 +58,7 @@ class SystemContainerImage extends ContainerImageFromSnapshot:
   constructor manager/ContainerManager bundle/ByteArray:
     super manager bundle
 
-  start -> Container:
+  start arguments/any -> Container:
     // This container is already running as the system process.
     container := Container this 0 (current_process_)
     manager.on_container_start_ container
@@ -68,7 +68,11 @@ class ApplicationContainerImage extends ContainerImageFromSnapshot:
   snapshot/ByteArray? := null
   flags ::= ContainerService.FLAG_RUN_BOOT | ContainerService.FLAG_RUN_CRITICAL
 
-  constructor manager/ContainerManager bundle/ByteArray:
+  // Arguments passed to main in the system process are automatically
+  // forwarded to the application process on boot.
+  default_arguments/any
+
+  constructor manager/ContainerManager bundle/ByteArray .default_arguments:
     super manager bundle
 
   initialize reader/ArReader -> none:
@@ -78,17 +82,17 @@ class ApplicationContainerImage extends ContainerImageFromSnapshot:
     // the archive.
     super reader
 
-  start -> Container:
+  start arguments/any -> Container:
     gid ::= container_next_gid_
-    pid ::= launch_snapshot_ snapshot gid id.to_byte_array
+    pid ::= launch_snapshot_ snapshot gid id.to_byte_array arguments
     container := Container this gid pid
     manager.on_container_start_ container
     return container
 
-  static launch_snapshot_ snapshot/ByteArray gid/int id/ByteArray -> int:
+  static launch_snapshot_ snapshot/ByteArray gid/int id/ByteArray arguments/any -> int:
     #primitive.snapshot.launch
 
-main:
+main arguments:
   // The snapshot bundles for the system and application programs are passed in the
   // spawn arguments.
   bundles/Array_ ::= spawn_arguments_
@@ -102,5 +106,5 @@ main:
   container_manager.register_system_image
       SystemContainerImage container_manager system_bundle
   container_manager.register_image
-      ApplicationContainerImage container_manager application_bundle
+      ApplicationContainerImage container_manager application_bundle arguments
   exit (boot container_manager)
