@@ -62,6 +62,7 @@ test_simple myself/int -> none:
   test myself true
   test myself false
   test myself "fisk"
+  test myself 0xb00ffeed
 
   // Test simple lists.
   test myself []
@@ -70,6 +71,7 @@ test_simple myself/int -> none:
   test myself [1, 2]
   test myself ["hest"]
   test myself [ByteArray 10: it]
+  test myself [0, 1, 2, 0xb00ffeed, 3, 4]
 
   // Test copy-on-write byte arrays.
   test myself #[1, 2, 3, 4]
