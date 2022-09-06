@@ -81,9 +81,11 @@ moved to the old GC.  This gives better locality, but the new space GCs
 scramble allocation order within a given cohort.
 
 The old generation is optionally moving - we can do both mark-sweep and
-mark-sweep-compact collections of the old space.  Currently we alternate
-between mark-sweep and mark-sweep-compact.  The marking part is identical,
-so we could postpone this decision.
+mark-sweep-compact collections of the old space.  Currently we evaluate
+every time whether it is worth doing a compaction.  After marking we
+calculate the new locations of the objects and at the same time we
+discover how many pages can be freed to the OS if we choose compaction
+instead of just sweeping.
 
 Object order does not change during compaction - all objects just slide down to
 squeeze out spaces.  This means that after a compacting GC all chunks are
