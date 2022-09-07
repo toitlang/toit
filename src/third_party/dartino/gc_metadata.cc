@@ -61,7 +61,13 @@ void GcMetadata::set_up_singleton() {
   // We create all the metadata with just one allocation.  Otherwise we will
   // lose memory when the malloc rounds a series of big allocations up to 4k
   // page boundaries.
+  printf("[toit] INFO: allocating %dk of Toit heap metadata\n", static_cast<int>(metadata_size_ >> 10));
   metadata_ = reinterpret_cast<uint8*>(OS::grab_virtual_memory(null, metadata_size_));
+  uint8* address = reinterpret_cast<uint8*>(range.address);
+  printf("[toit] INFO: end of metadata %p, max address %p, %dk\n",
+         metadata_ + metadata_size_,
+         address + range.size,
+         (int)((address + range.size - metadata_ + metadata_size_) >> 10));
 
   if (metadata_ == null) {
     printf("[toit] ERROR: failed to allocate GC metadata\n");

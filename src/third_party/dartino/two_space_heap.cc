@@ -334,6 +334,7 @@ GcType TwoSpaceHeap::collect_old_space(bool force_compact) {
         overhead_buffer,
         external_buffer,
         static_cast<int>(end - start));
+    OS::heap_page_report();
   }
 
   old_space()->set_promotion_failed(false);

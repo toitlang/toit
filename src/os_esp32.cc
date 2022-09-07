@@ -752,12 +752,131 @@ void OS::heap_summary_report(int max_pages, const char* marker) {
   collector.print(marker);
 }
 
+class PageReport {
+ public:
+  PageReport() {
+    OS::HeapMemoryRange range = OS::get_heap_memory_range();
+    uword start_unrounded = reinterpret_cast<uword>(range.address);
+    memory_base_ = Utils::round_down(start_unrounded, TOIT_PAGE_SIZE);
+    memset(pages_, 0, PAGES);
+  }
+
+  void page_register_allocation(uword raw_tag, uword address, uword size) {
+    const uword MASK = TOIT_PAGE_SIZE - 1;
+    if (size == 0) return;
+    if (address < memory_base_) {
+      more_below_ = true;
+      return;
+    }
+    if (address >= memory_base_ + PAGES * TOIT_PAGE_SIZE) {
+      more_above_ = true;
+      return;
+    }
+    int page = (address - memory_base_) >> TOIT_PAGE_SIZE_LOG2;
+    int end_page = (address + size - 1 - memory_base_) >> TOIT_PAGE_SIZE_LOG2;
+    int tag = HeapSummaryPage::compute_type(raw_tag);
+    for (int i = page; i < end_page; i++) {
+      pages_[i] |= MERGE_WITH_NEXT;
+    }
+    if (tag == TOIT_HEAP_MALLOC_TAG) {
+      for (int i = page; i <= end_page; i++) pages_[i] |= TOIT;
+    } else if (tag == FREE_MALLOC_TAG) {
+      //if (size > 3072) printf("Free iteration %p-%p (%dk)\n", (void*)address, (void*)(address + size), (int)(size >> 10));
+      if ((address & MASK) == 0 && (size & MASK) == 0) {
+        for (int i = page; i <= end_page; i++) pages_[i] |= ALL_FREE;
+      }
+      for (int i = page; i <= end_page; i++) pages_[i] |= FREE;
+    } else if (tag == WIFI_MALLOC_TAG || tag == LWIP_MALLOC_TAG) {
+      for (int i = page; i <= end_page; i++) pages_[i] |= BUFFERS;
+    } else if (tag == EXTERNAL_BYTE_ARRAY_MALLOC_TAG || tag == EXTERNAL_STRING_MALLOC_TAG) {
+      for (int i = page; i <= end_page; i++) pages_[i] |= EXTERNAL;
+    } else if (tag == BIGNUM_MALLOC_TAG) {
+      for (int i = page; i <= end_page; i++) pages_[i] |= TLS;
+    } else if (tag != HEAP_OVERHEAD_MALLOC_TAG) {
+      for (int i = page; i <= end_page; i++) pages_[i] |= MALLOC;
+    }
+  }
+
+  void print() {
+    print_line("  ┌",  "─┬",  "──",  "─┐");
+    print_line("  │", "%s│", "%s ", "%s│");
+    print_line("  └",  "─┴",  "──",  "─┘");
+  }
+
+ private:
+  static const int PAGES = 100;
+  uword memory_base_;
+  uint8 pages_[PAGES];
+  bool more_below_ = false;
+  bool more_above_ = false;
+
+  void print_line(const char* open, const char* allocation_end, const char* allocation_continues, const char* end) {
+    for (int i = 0; i < PAGES; i++) {
+      if (pages_[i] == 0) continue;
+      const char* symbol = " ";
+      int tag = pages_[i] & ~MERGE_WITH_NEXT;
+      if (tag == TOIT) {
+        symbol = "T";
+      } else if (tag & ALL_FREE) {
+        symbol = "-";
+      } else if (tag == BUFFERS) {
+        symbol = "B";
+      } else if (tag == EXTERNAL) {
+        symbol = "X";
+      } else if (tag == TLS) {
+        symbol = "W";  // For WWW.
+      } else if (tag & FREE) {
+        symbol = "░";  // Partially allocated with mixed things.
+      } else if (tag != 0) {
+        symbol = "█";  // Fully allocated with mixed things.
+      }
+      if (i == 0 || pages_[i - 1] == 0) {
+        printf(open);
+      }
+      if (i == PAGES - 1 || pages_[i + 1] == 0) {
+        printf(end, symbol);
+      } else if (pages_[i] & MERGE_WITH_NEXT) {
+        printf(allocation_continues, symbol);
+      } else {
+        printf(allocation_end, symbol);
+      }
+    }
+    printf("\n");
+  }
+
+  static const int TOIT            = 1 << 0;
+  static const int MALLOC          = 1 << 1;
+  static const int MERGE_WITH_NEXT = 1 << 2;
+  static const int EXTERNAL        = 1 << 3;
+  static const int TLS             = 1 << 4;
+  static const int BUFFERS         = 1 << 5;
+  static const int FREE            = 1 << 6;
+  static const int ALL_FREE        = 1 << 7;
+};
+
+bool page_register_allocation(void* self, void* tag, void* address, uword size) {
+  auto report = reinterpret_cast<PageReport*>(self);
+  report->page_register_allocation(
+      reinterpret_cast<uword>(tag),
+      reinterpret_cast<uword>(address),
+      size);
+  return false;
+}
+
+void OS::heap_page_report() {
+  PageReport report;
+  int flags = ITERATE_ALL_ALLOCATIONS | ITERATE_UNALLOCATED;
+  int caps = OS::toit_heap_caps_flags_for_heap();
+  heap_caps_iterate_tagged_memory_areas(&report, null, &page_register_allocation, flags, caps);
+  report.print();
+}
+
 #else // def TOIT_CMPCTMALLOC
 
 void OS::set_heap_tag(word tag) { }
 word OS::get_heap_tag() { return 0; }
 void OS::heap_summary_report(int max_pages, const char* marker) { }
-
+void OS::heap_page_report() { }
 
 #endif // def TOIT_CMPCTMALLOC
 

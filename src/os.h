@@ -241,6 +241,7 @@ class OS {
   static void set_heap_tag(word tag);
   static word get_heap_tag();
   static void heap_summary_report(int max_pages, const char* marker);
+  static void heap_page_report();
 
   // Unique 16-bytes uuid of the running image.
   static const uint8* image_uuid();
