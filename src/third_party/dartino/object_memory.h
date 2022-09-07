@@ -139,7 +139,11 @@ class LivenessOracle {
 class Space : public LivenessOracle {
  public:
   static const uword DEFAULT_MINIMUM_CHUNK_SIZE = TOIT_PAGE_SIZE;
+#ifdef TOIT_FREERTOS
+  static const uword DEFAULT_MAXIMUM_CHUNK_SIZE = TOIT_PAGE_SIZE;
+#else
   static const uword DEFAULT_MAXIMUM_CHUNK_SIZE = 256 * KB;
+#endif
 
   virtual ~Space();
 
