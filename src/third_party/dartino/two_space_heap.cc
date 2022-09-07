@@ -136,7 +136,7 @@ GcType TwoSpaceHeap::collect_new_space(bool try_hard) {
 
   if (has_empty_new_space()) {
     if (Flags::tracegc) {
-      printf("Old-space-only GC:\n");
+      printf("Old-space-only GC (try_hard = %s)\n", try_hard ? "true" : "false");
     }
     return collect_old_space_if_needed(try_hard, try_hard);
   }

@@ -806,7 +806,7 @@ class PageReport {
 
  private:
   static const int PAGES = 200;
-  static const int GRANULARITY_LOG2 = TOIT_PAGE_SIZE_LOG2 - 1;
+  static const int GRANULARITY_LOG2 = TOIT_PAGE_SIZE_LOG2;
   static const uword GRANULARITY = 1 << GRANULARITY_LOG2;
   static const uword MASK = GRANULARITY - 1;
   uword memory_base_;
