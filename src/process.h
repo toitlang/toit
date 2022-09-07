@@ -80,9 +80,9 @@ class Process : public ProcessListFromProcessGroup::Element,
   void mark_as_priviliged() { _is_privileged = true; }
 
   // Garbage collection operation for runtime objects.
-  void gc(bool try_hard) {
-    if (program() == null) return;
-    object_heap()->gc(try_hard);
+  GcType gc(bool try_hard) {
+    ASSERT(program() != null);  // Should not call GC on external processes.
+    return object_heap()->gc(try_hard);
   }
 
   bool idle_since_gc() const { return _idle_since_gc; }
