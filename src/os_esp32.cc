@@ -49,6 +49,8 @@
 
 #include "uuid.h"
 
+#include "third_party/dartino/gc_metadata.h"
+
 namespace toit {
 
 // Flags used to get memory for the Toit heap, which needs to be fast and 8-bit
@@ -668,6 +670,8 @@ class HeapSummaryCollector {
     int type = current_page_
         ? current_page_->register_user(tag, size)
         : HeapSummaryPage::compute_type(tag);
+    sizes_[type] += size;
+    counts_[type]++;
   }
 
   void print(const char* marker) {
@@ -701,9 +705,10 @@ class HeapSummaryCollector {
     int capacity_bytes = info.total_allocated_bytes + info.total_free_bytes;
     int used_bytes = size * 100 / capacity_bytes;
     printf("  └───────────┴─────────┴───────────────────────┘\n");
-    printf("  Total: %d bytes in %d allocations (%d%%), largest free %dk\n",
+    printf("  Total: %d bytes in %d allocations (%d%%), largest free %dk, total free %dk\n",
         size, count, used_bytes,
-        static_cast<int>(info.largest_free_block >> 10));
+        static_cast<int>(info.largest_free_block >> 10),
+        static_cast<int>(info.total_free_bytes >> 10));
 
     int page_count = 0;
     for (int i = 0; i < max_pages_; i++) {
@@ -815,7 +820,9 @@ class PageReport {
       const char* symbol = " ";
       int tag = pages_[i] & ~MERGE_WITH_NEXT;
       if (tag == TOIT) {
-        symbol = "T";
+        uword page = memory_base_ + GRANULARITY * i;
+        auto type = GcMetadata::get_page_type(reinterpret_cast<HeapObject*>(page + Object::HEAP_TAG));
+        symbol = (type == OLD_SPACE_PAGE ? "O" : "N");
       } else if (tag & ALL_FREE) {
         symbol = "-";
       } else if (tag == BUFFERS) {
