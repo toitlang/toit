@@ -757,23 +757,22 @@ class PageReport {
   PageReport() {
     OS::HeapMemoryRange range = OS::get_heap_memory_range();
     uword start_unrounded = reinterpret_cast<uword>(range.address);
-    memory_base_ = Utils::round_down(start_unrounded, TOIT_PAGE_SIZE);
+    memory_base_ = Utils::round_down(start_unrounded, GRANULARITY);
     memset(pages_, 0, PAGES);
   }
 
   void page_register_allocation(uword raw_tag, uword address, uword size) {
-    const uword MASK = TOIT_PAGE_SIZE - 1;
     if (size == 0) return;
     if (address < memory_base_) {
       more_below_ = true;
       return;
     }
-    if (address >= memory_base_ + PAGES * TOIT_PAGE_SIZE) {
+    if (address + size > memory_base_ + PAGES * GRANULARITY) {
       more_above_ = true;
       return;
     }
-    int page = (address - memory_base_) >> TOIT_PAGE_SIZE_LOG2;
-    int end_page = (address + size - 1 - memory_base_) >> TOIT_PAGE_SIZE_LOG2;
+    int page = (address - memory_base_) >> GRANULARITY_LOG2;
+    int end_page = (address + size - 1 - memory_base_) >> GRANULARITY_LOG2;
     int tag = HeapSummaryPage::compute_type(raw_tag);
     for (int i = page; i < end_page; i++) {
       pages_[i] |= MERGE_WITH_NEXT;
@@ -781,11 +780,12 @@ class PageReport {
     if (tag == TOIT_HEAP_MALLOC_TAG) {
       for (int i = page; i <= end_page; i++) pages_[i] |= TOIT;
     } else if (tag == FREE_MALLOC_TAG) {
-      //if (size > 3072) printf("Free iteration %p-%p (%dk)\n", (void*)address, (void*)(address + size), (int)(size >> 10));
-      if ((address & MASK) == 0 && (size & MASK) == 0) {
-        for (int i = page; i <= end_page; i++) pages_[i] |= ALL_FREE;
+      for (int i = page; i <= end_page; i++) {
+        uword page_start = memory_base_ + i * GRANULARITY;
+        uword page_end = page_start + GRANULARITY;
+        if (address <= page_start + 24 && address + size >= page_end - 8) pages_[i] |= ALL_FREE;
+        pages_[i] |= FREE;
       }
-      for (int i = page; i <= end_page; i++) pages_[i] |= FREE;
     } else if (tag == WIFI_MALLOC_TAG || tag == LWIP_MALLOC_TAG) {
       for (int i = page; i <= end_page; i++) pages_[i] |= BUFFERS;
     } else if (tag == EXTERNAL_BYTE_ARRAY_MALLOC_TAG || tag == EXTERNAL_STRING_MALLOC_TAG) {
@@ -798,13 +798,17 @@ class PageReport {
   }
 
   void print() {
+    printf("Heap report, granularity %d bytes.\n", static_cast<int>(GRANULARITY));
     print_line("  ┌",  "─┬",  "──",  "─┐");
     print_line("  │", "%s│", "%s ", "%s│");
     print_line("  └",  "─┴",  "──",  "─┘");
   }
 
  private:
-  static const int PAGES = 100;
+  static const int PAGES = 200;
+  static const int GRANULARITY_LOG2 = TOIT_PAGE_SIZE_LOG2 - 1;
+  static const uword GRANULARITY = 1 << GRANULARITY_LOG2;
+  static const uword MASK = GRANULARITY - 1;
   uword memory_base_;
   uint8 pages_[PAGES];
   bool more_below_ = false;
