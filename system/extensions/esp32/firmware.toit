@@ -16,6 +16,8 @@
 import system.api.firmware show FirmwareService
 import system.services show ServiceDefinition ServiceResource
 
+import esp32
+
 class FirmwareServiceDefinition extends ServiceDefinition implements FirmwareService:
   constructor:
     super "system/firmware/esp32" --major=0 --minor=1
@@ -28,6 +30,8 @@ class FirmwareServiceDefinition extends ServiceDefinition implements FirmwareSer
       return is_rollback_possible
     if index == FirmwareService.VALIDATE_INDEX:
       return validate
+    if index == FirmwareService.UPGRADE_INDEX:
+      return upgrade
     if index == FirmwareService.ROLLBACK_INDEX:
       return rollback
     if index == FirmwareService.FIRMWARE_WRITER_OPEN_INDEX:
@@ -51,6 +55,12 @@ class FirmwareServiceDefinition extends ServiceDefinition implements FirmwareSer
 
   rollback -> none:
     ota_rollback_
+
+  upgrade -> none:
+    // TODO(kasper): Verify that we have a new firmware installed?
+    // TODO(kasper): Don't just reboot from here. Shut down the
+    // system properly instead.
+    esp32.deep_sleep (Duration --ms=10)
 
   firmware_writer_open from/int to/int -> int:
     unreachable  // TODO(kasper): Nasty.
