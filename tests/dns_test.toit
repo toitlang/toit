@@ -12,6 +12,7 @@ main:
   ipv6_address_test
   cache_test
   fail_test
+  long_test
 
 localhost_test:
   expect_equals "127.0.0.1" (dns_lookup "localhost").stringify
@@ -44,3 +45,12 @@ fail_test:
   exception := error as DnsException
   expect
     exception.text.contains "NO_SUCH_DOMAIN"
+
+long_test:
+  // As of 2022 these names both resolve, and the longer one has the max length
+  // of a section, 63 characters.  If they start flaking we can remove this
+  // again.
+  print
+      dns_lookup "llanfairpwllgwyngyllgogerychwyrndrobwllllantysiliogogogoch.co.uk"
+  print
+      dns_lookup "llanfairpwllgwyngyllgogerychwyrndrobwllllantysiliogogogochuchaf.com"

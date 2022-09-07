@@ -495,7 +495,10 @@ void Scheduler::gc(Process* process, bool malloc_failed, bool try_hard) {
     }
   }
 
-  process->gc(try_hard);
+  if (process->program() != null) {
+    // Not external process.
+    process->gc(try_hard);
+  }
 
   if (doing_cross_process_gc) {
     Locker locker(_mutex);
