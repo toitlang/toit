@@ -102,17 +102,24 @@ class Port implements reader.Reader:
 
   This constructor does not work on embedded devices, such as the ESP32.
 
-  The $baud_rate must match one that is supported by the operating system. See $Port.baud_rate=.
+  On some platforms the $baud_rate must match one that is supported by the operating system. See $Port.baud_rate=.
   */
   constructor device/string
       --baud_rate/int
       --data_bits/int=8
       --stop_bits/int=STOP_BITS_1
       --parity/int=PARITY_DISABLED:
-    group := resource_group_
-    should_ensure_write_state_ = true
-    uart_ = uart_create_path_ group device baud_rate data_bits stop_bits parity
-    state_ = ResourceState_ group uart_
+      return HostPort device --baud_rate=baud_rate --data_bits=data_bits --stop_bits=stop_bits --parity=parity
+
+  constructor.host_port_ device/string
+       --baud_rate/int
+       --data_bits/int=8
+       --stop_bits/int=STOP_BITS_1
+       --parity/int=PARITY_DISABLED:
+     group := resource_group_
+     should_ensure_write_state_ = true
+     uart_ = uart_create_path_ group device baud_rate data_bits stop_bits parity
+     state_ = ResourceState_ group uart_
 
   /**
   Changes the baud rate.
@@ -131,6 +138,8 @@ class Port implements reader.Reader:
     following baud rates are supported: 50, 75, 110, 134, 150, 200, 300, 600, 1200,
     1800, 2400, 4800, 9600, 19200, 38400, 57600, 115200, 230400, 460800, 576000, 921600,
     1152000, 1500000, 2000000, 2500000, 3000000, 3500000, 4000000.
+
+  On macOS the baud rate can be arbitrary
   */
   baud_rate= new_rate/int:
     uart_set_baud_rate_ uart_ new_rate
@@ -217,6 +226,63 @@ class Port implements reader.Reader:
       if flushed: return
       sleep --ms=1
 
+/**
+Extends the functionality of the UART Port on platforms that support configurable RS232 devices. It allows setting
+  and reading control lines.
+*/
+class HostPort extends Port:
+  /**
+    See super class constructor.
+  */
+  constructor device/string
+      --baud_rate/int
+      --data_bits/int=8
+      --stop_bits/int=Port.STOP_BITS_1
+      --parity/int=Port.PARITY_DISABLED:
+    super.host_port_ device --baud_rate=baud_rate --data_bits=data_bits --stop_bits=stop_bits --parity=parity
+
+  static CONTROL_FLAG_LE  ::= 1 << 0            /* line enable */
+  static CONTROL_FLAG_DTR ::= 1 << 1            /* data terminal ready */
+  static CONTROL_FLAG_RTS ::= 1 << 2            /* request to send */
+  static CONTROL_FLAG_ST  ::= 1 << 3            /* secondary transmit */
+  static CONTROL_FLAG_SR  ::= 1 << 4            /* secondary receive */
+  static CONTROL_FLAG_CTS ::= 1 << 5            /* clear to send */
+  static CONTROL_FLAG_CAR ::= 1 << 6            /* carrier detect */
+  static CONTROL_FLAG_RNG ::= 1 << 7            /* ring */
+  static CONTROL_FLAG_DSR ::= 1 << 8            /* data set ready */
+
+  /**
+  Read the value of the given control $flag. $flag must be one of the CONTROL_ constants.
+
+  Returns the state of the $flag
+  */
+  read_control_flag flag/int -> bool:
+    return (uart_get_control_flags_ uart_) & flag != 0
+
+  /**
+  Read the value of all the control flags. Each bit in the returned value corresponds to the bit position indicated
+  by the CONTROL_ constants.
+  */
+  read_control_flags -> int:
+    return uart_get_control_flags_ uart_
+
+  /**
+  Sets the $state of a control $flag. $flag must be one of the CONTROL_ constants.
+  */
+  set_control_flag flag/int state/bool:
+    flags := uart_get_control_flags_ uart_
+    if state:
+      flags |= flag
+    else:
+      flags &= ~flag
+    uart_set_control_flags_ uart_ flags
+
+  /**
+  Sets all control $flags to the specified value. Each bit in the $flags corresponds to one of the CONTROL_ constants.
+  */
+  set_control_flags flags/int:
+    uart_set_control_flags_ uart_ flags
+
 resource_group_ ::= uart_init_
 
 READ_STATE_  ::= 1 << 0
@@ -256,3 +322,10 @@ uart_wait_tx_ uart:
 
 uart_read_ uart:
   #primitive.uart.read
+
+uart_set_control_flags_ uart flags:
+  #primitive.uart.set_control_flags
+
+uart_get_control_flags_ uart:
+  #primitive.uart.get_control_flags
+
