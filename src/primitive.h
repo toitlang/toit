@@ -404,6 +404,8 @@ namespace toit {
   PRIMITIVE(write, 6)                        \
   PRIMITIVE(read, 1)                         \
   PRIMITIVE(wait_tx, 1)                      \
+  PRIMITIVE(set_control_flags, 2)           \
+  PRIMITIVE(get_control_flags, 1)            \
 
 #define MODULE_RMT(PRIMITIVE)                \
   PRIMITIVE(init, 0)                         \
@@ -479,7 +481,7 @@ namespace toit {
   PRIMITIVE(unregister_monitor_notifier, 2)  \
 
 #define MODULE_SNAPSHOT(PRIMITIVE)           \
-  PRIMITIVE(launch, 3)                       \
+  PRIMITIVE(launch, 4)                       \
 
 #define MODULE_SERIALIZATION(PRIMITIVE)      \
   PRIMITIVE(serialize, 1)                    \
@@ -542,7 +544,7 @@ namespace toit {
 
 #define MODULE_PROGRAMS_REGISTRY(PRIMITIVE)  \
   PRIMITIVE(next_group_id, 0)                \
-  PRIMITIVE(spawn, 3)                        \
+  PRIMITIVE(spawn, 4)                        \
   PRIMITIVE(is_running, 2)                   \
   PRIMITIVE(kill, 2)                         \
   PRIMITIVE(bundled_images, 0)               \

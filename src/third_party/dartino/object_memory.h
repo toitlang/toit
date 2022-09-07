@@ -139,7 +139,11 @@ class LivenessOracle {
 class Space : public LivenessOracle {
  public:
   static const uword DEFAULT_MINIMUM_CHUNK_SIZE = TOIT_PAGE_SIZE;
+#ifdef TOIT_FREERTOS
+  static const uword DEFAULT_MAXIMUM_CHUNK_SIZE = TOIT_PAGE_SIZE;
+#else
   static const uword DEFAULT_MAXIMUM_CHUNK_SIZE = 256 * KB;
+#endif
 
   virtual ~Space();
 
@@ -274,8 +278,6 @@ class SemiSpace : public Space {
 
   // flush will make the current chunk consistent for iteration.
   virtual void flush();
-
-  void prepare_metadata_for_mark_sweep();
 
   virtual bool is_flushed();
 
@@ -453,12 +455,11 @@ class OldSpace : public Space {
 
   void use_whole_chunk(Chunk* chunk);
 
-  void compute_compaction_destinations();
+  word compute_compaction_destinations();
 
   void validate();
 
   void set_compacting(bool value) { compacting_ = value; }
-  bool compacting() { return compacting_; }
 
   void set_used_after_last_gc(uword used) { used_after_last_gc_ = used; }
 
@@ -471,8 +472,6 @@ class OldSpace : public Space {
     return used_ > 0 && promotion_failed_;
   }
 
-  // For detecting pointless GCs that are really an out-of-memory situation.
-  inline void evaluate_pointlessness() {};  // TODO: Implement.
   uword minimum_progress();
   void report_new_space_progress(uword bytes_collected);
   void set_used(uword used) { used_ = used; }

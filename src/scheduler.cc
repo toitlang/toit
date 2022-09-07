@@ -88,48 +88,56 @@ SystemMessage* Scheduler::new_process_message(SystemMessage::Type type, int gid)
   return result;
 }
 
-Scheduler::ExitState Scheduler::run_boot_program(Program* program, char** arguments, int group_id) {
-  // Allocation takes the memory lock which must happen before taking the scheduler lock.
+Process* Scheduler::new_boot_process(Locker& locker, Program* program, int group_id) {
   InitialMemoryManager manager;
-  bool ok = manager.allocate();
-  USE(ok);
-  // We assume that allocate_initial_block succeeds since we can't run out of
-  // memory while booting.
-  ASSERT(ok);
-  Locker locker(_mutex);
+  { // Allocation takes the memory lock which must happen without holding
+    // the scheduler lock.
+    Unlocker unlocker(locker);
+    bool ok = manager.allocate();
+    // We assume that the allocation succeeds since we can't run out of
+    // memory while booting.
+    ASSERT(ok);
+  }
+
   ProcessGroup* group = ProcessGroup::create(group_id, program);
   SystemMessage* termination = new_process_message(SystemMessage::TERMINATED, group_id);
   Process* process = _new Process(program, group, termination, manager.initial_chunk);
   ASSERT(process);
-  process->set_main_arguments(arguments);
   manager.dont_auto_free();
+  return process;
+}
+
+
+#ifdef TOIT_FREERTOS
+
+Scheduler::ExitState Scheduler::run_boot_program(Program* program, int group_id) {
+  Locker locker(_mutex);
+  Process* process = new_boot_process(locker, program, group_id);
   return launch_program(locker, process);
 }
 
-#ifndef TOIT_FREERTOS
-Scheduler::ExitState Scheduler::run_boot_program(
-    Program* boot_program,
-    SnapshotBundle system,
-    SnapshotBundle application,
-    char** arguments,
-    int group_id) {
-  ProcessGroup* group = ProcessGroup::create(group_id, boot_program);
-  // Allocation takes the memory lock which must happen before taking the scheduler lock.
-  InitialMemoryManager manager;
-  bool ok = manager.allocate();
-  USE(ok);
-  // We assume that allocate_initial_block succeeds since we can't run out of
-  // memory while booting.
-  ASSERT(ok);
+#else
+
+Scheduler::ExitState Scheduler::run_boot_program(Program* program, char** argv, int group_id) {
   Locker locker(_mutex);
-  SystemMessage* termination = new_process_message(SystemMessage::TERMINATED, group_id);
-  Process* process = _new Process(boot_program, group, termination, manager.initial_chunk);
-  ASSERT(process);
-  process->set_main_arguments(arguments);
-  process->set_spawn_arguments(system, application);
-  manager.dont_auto_free();
+  Process* process = new_boot_process(locker, program, group_id);
+  process->set_main_arguments(argv);
   return launch_program(locker, process);
 }
+
+Scheduler::ExitState Scheduler::run_boot_program(
+    Program* program,
+    SnapshotBundle system,
+    SnapshotBundle application,
+    char** argv,
+    int group_id) {
+  Locker locker(_mutex);
+  Process* process = new_boot_process(locker, program, group_id);
+  process->set_main_arguments(argv);
+  process->set_spawn_arguments(system, application);
+  return launch_program(locker, process);
+}
+
 #endif
 
 Scheduler::ExitState Scheduler::launch_program(Locker& locker, Process* process) {
@@ -192,7 +200,7 @@ int Scheduler::next_group_id() {
   return _next_group_id++;
 }
 
-int Scheduler::run_program(Program* program, char** arguments, ProcessGroup* group, Chunk* initial_chunk) {
+int Scheduler::run_program(Program* program, uint8* arguments, ProcessGroup* group, Chunk* initial_chunk) {
   Locker locker(_mutex);
   SystemMessage* termination = new_process_message(SystemMessage::TERMINATED, group->id());
   if (termination == null) {

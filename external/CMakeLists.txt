@@ -60,10 +60,13 @@ set(TOIT_REPOS
     https://github.com/toitware/toit-pixel-display
     https://github.com/toitware/toit-pixel-strip
     https://github.com/toitware/toit-png-display
+    https://github.com/toitware/toit-r46ca01
     https://github.com/toitware/toit-resistance-to-temperature
+    # https://github.com/toitware/toit-rs485
     https://github.com/toitware/toit-si7006
     https://github.com/toitware/toit-solar-position
     https://github.com/toitware/toit-ssd1306
+    https://github.com/toitware/toit-tl19a08
     https://github.com/toitware/toit-tm1640
     https://github.com/toitware/toit-vcnl4040
     # https://github.com/toitware/ublox-cellular

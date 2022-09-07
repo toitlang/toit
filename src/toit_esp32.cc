@@ -113,7 +113,7 @@ static void start() {
   { VM vm;
     vm.load_platform_event_sources();
     int group_id = vm.scheduler()->next_group_id();
-    exit_state = vm.scheduler()->run_boot_program(const_cast<Program*>(program), null, group_id);
+    exit_state = vm.scheduler()->run_boot_program(const_cast<Program*>(program), group_id);
   }
 
   GcMetadata::tear_down();
