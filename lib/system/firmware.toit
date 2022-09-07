@@ -45,7 +45,7 @@ validate -> bool:
   return _client_.validate
 
 /**
-Upgrades to the firmware installed through
+Reboots into the firmware installed through
   the latest committed firmware writing.
   See $FirmwareWriter.commit.
 
