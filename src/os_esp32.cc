@@ -668,11 +668,6 @@ class HeapSummaryCollector {
     int type = current_page_
         ? current_page_->register_user(tag, size)
         : HeapSummaryPage::compute_type(tag);
-    // Disregard IRAM allocations.
-    if (reinterpret_cast<uword>(address) < 0x40000000) {
-      sizes_[type] += size;
-      counts_[type]++;
-    }
   }
 
   void print(const char* marker) {
