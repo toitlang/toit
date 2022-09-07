@@ -25,8 +25,8 @@ is_validation_pending -> bool:
   return _client_.is_validation_pending
 
 /**
-Returns whether another firmware is installed and can be
-  rolled back to.
+Returns whether another firmware is installed and
+  can be rolled back to.
 */
 is_rollback_possible -> bool:
   if not _client_: return false
@@ -45,11 +45,23 @@ validate -> bool:
   return _client_.validate
 
 /**
+Reboots into the firmware installed through
+  the latest committed firmware writing.
+  See $FirmwareWriter.commit.
+
+Throws an exception if the upgraded firmware is
+  invalid or not present.
+*/
+upgrade -> none:
+  if not _client_: throw "UNSUPPORTED"
+  _client_.upgrade
+
+/**
 Rolls back the firmware to a previously installed
   firmware and reboots.
 
-Throws an exception if the previous firmware is invalid
-  or not present.
+Throws an exception if the previous firmware is
+  invalid or not present.
 */
 rollback -> none:
   if not _client_: throw "UNSUPPORTED"
@@ -60,7 +72,8 @@ The $FirmwareWriter supports incrementally building up a
   new firmware in a separate partition.
 
 Once the firmware has been built, the firmware must be
-  committed before a reboot will start running it.
+  committed before a call to $upgrade or a reboot will
+  start running it.
 
 It is common that newly installed firmware boots with
   pending validation; see $is_validation_pending.
