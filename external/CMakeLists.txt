@@ -75,6 +75,9 @@ set(TOIT_REPOS
 
 set(DOWNLOADS_DIR "${CMAKE_CURRENT_LIST_DIR}/downloads")
 
+set(DEFAULT_TIMEOUT 40)
+set(SLOW_TIMEOUT 400)
+
 # This file serves as CMakeLists.txt, as well as a cmake-script, run with `cmake -P`.
 # In the latter case the `EXECUTING_SCRIPT` variable is defined, and we only
 # process the command that we should execute.
@@ -204,6 +207,12 @@ function(add_repo_tests REPO)
     )
     if("${FILE}" IN_LIST FAILING_TESTS)
       set_tests_properties(${FILE} PROPERTIES WILL_FAIL TRUE)
+    endif()
+
+    if ("${FILE}" MATCHES "_slow\\.toit$")
+      set_tests_properties(${FILE} PROPERTIES TIMEOUT ${SLOW_TIMEOUT})
+    else()
+      set_tests_properties(${FILE} PROPERTIES TIMEOUT ${DEFAULT_TIMEOUT})
     endif()
   endforeach()
 endfunction()
