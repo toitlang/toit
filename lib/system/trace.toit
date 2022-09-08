@@ -8,14 +8,18 @@ import system.api.trace show TraceService TraceServiceClient
 service_/TraceService? := null
 
 /**
-Sends a trace message to
+Sends a trace message to a registered $TraceService if one exists.
+
+The trace message is forwarded to the system's trace message handler
+  if there is no registered $TraceService, or if the registered
+  one fails to handle the message.
 */
 send_trace_message message/ByteArray -> none:
   handled := false
   try:
     service := service_
     if not service: service = service_ = (TraceServiceClient --no-open).open
-    handled = service.trace message
+    handled = service.handle_trace message
   finally: | is_exception exception |
     // If the service handled the trace, we do not need to let the system
     // know about it. It is nice that others take care of our traces!

@@ -1,0 +1,10 @@
+EXCEPTION error. 
+1234
+  0: main.<block>              tests/negative/services_trace_uninstalled_test.toit:13:18
+  1: catch.<block>             <sdk>/core/exceptions.toit:124:10
+  2: catch                     <sdk>/core/exceptions.toit:122:1
+  3: catch                     <sdk>/core/exceptions.toit:73:10
+  4: main                      tests/negative/services_trace_uninstalled_test.toit:13:3
+EXCEPTION error. 
+3456
+  0: main                      tests/negative/services_trace_uninstalled_test.toit:14:3

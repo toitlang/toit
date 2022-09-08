@@ -16,8 +16,8 @@ interface TraceService:
   Returns whether the message was handled and needs no further
     processing from the system's built-in trace message handler.
   */
-  trace message/ByteArray -> bool
-  static TRACE_INDEX /int ::= 0
+  handle_trace message/ByteArray -> bool
+  static HANDLE_TRACE_INDEX /int ::= 0
   // TODO(kasper): It seems nice to always have the method index
   // after the method definition to allow for documentation comments.
   // This should be fixed across the code base.
@@ -29,5 +29,5 @@ class TraceServiceClient extends ServiceClient implements TraceService:
   open -> TraceServiceClient?:
     return (open_ TraceService.UUID TraceService.MAJOR TraceService.MINOR) and this
 
-  trace message/ByteArray -> bool:
-    return invoke_ TraceService.TRACE_INDEX message
+  handle_trace message/ByteArray -> bool:
+    return invoke_ TraceService.HANDLE_TRACE_INDEX message
