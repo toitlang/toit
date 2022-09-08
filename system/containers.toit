@@ -250,7 +250,7 @@ class ContainerManager extends ContainerServiceDefinition implements SystemMessa
   constructor .image_registry .service_manager_:
     set_system_message_handler_ SYSTEM_TERMINATED_ this
     set_system_message_handler_ SYSTEM_SPAWNED_ this
-    set_system_message_handler_ SYSTEM_MIRROR_MESSAGE_ this
+    set_system_message_handler_ SYSTEM_TRACE_ this
 
     image_registry.do: | allocation/FlashAllocation |
       if allocation.type != FLASH_ALLOCATION_PROGRAM_TYPE: continue.do
@@ -329,16 +329,16 @@ class ContainerManager extends ContainerServiceDefinition implements SystemMessa
         container.on_process_stop_ pid error
     else if type == SYSTEM_SPAWNED_:
       if container: container.on_process_start_ pid
-    else if type == SYSTEM_MIRROR_MESSAGE_:
-      origin_id/uuid.Uuid? ::= find_trace_origin_id arguments
+    else if type == SYSTEM_TRACE_:
+      origin_id/uuid.Uuid? ::= trace_find_origin_id arguments
       origin/ContainerImage? ::= origin_id and lookup_image origin_id
       if not (origin and origin.trace arguments):
-        print_for_manually_decoding_ arguments
+        trace_using_print arguments
     else:
       unreachable
 
-print_for_manually_decoding_ message/ByteArray --from=0 --to=message.size:
-  // Print a message on output so that that you can easily decode.
+trace_using_print message/ByteArray --from=0 --to=message.size:
+  // Print a trace message on output so that that you can easily decode.
   // The message is base64 encoded to limit the output size.
   print_ "----"
   print_ "Received a Toit system message. Executing the command below will"
@@ -354,7 +354,7 @@ print_for_manually_decoding_ message/ByteArray --from=0 --to=message.size:
     postfix := end ? "" : "\\"
     print_ "$prefix$base64_text$postfix"
 
-find_trace_origin_id trace/ByteArray -> uuid.Uuid?:
+trace_find_origin_id trace/ByteArray -> uuid.Uuid?:
   // Short strings are encoded with a single unsigned byte length ('U').
   skip_string ::= : | p |
     if trace[p] != 'S' or trace[p + 1] != 'U': return null
