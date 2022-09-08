@@ -75,8 +75,13 @@ set(TOIT_REPOS
 
 set(DOWNLOADS_DIR "${CMAKE_CURRENT_LIST_DIR}/downloads")
 
-set(DEFAULT_TIMEOUT 40)
-set(SLOW_TIMEOUT 400)
+IF(APPLE)
+  set(DEFAULT_TIMEOUT 80)
+  set(SLOW_TIMEOUT 800)
+else()
+  set(DEFAULT_TIMEOUT 40)
+  set(SLOW_TIMEOUT 400)
+endif()
 
 # This file serves as CMakeLists.txt, as well as a cmake-script, run with `cmake -P`.
 # In the latter case the `EXECUTING_SCRIPT` variable is defined, and we only
