@@ -1,3 +1,5 @@
+TraceService.handle_trace called
+TraceService.handle_trace called
 EXCEPTION error. 
 1234
   0: main.<block>              tests/negative/services_trace_fail_test.toit:11:18

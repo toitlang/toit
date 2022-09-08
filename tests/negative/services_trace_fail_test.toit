@@ -22,4 +22,5 @@ class TraceServiceDefinition extends ServiceDefinition implements TraceService:
     unreachable
 
   handle_trace message/ByteArray -> bool:
+    print "TraceService.handle_trace called"
     throw "Tracing failed"

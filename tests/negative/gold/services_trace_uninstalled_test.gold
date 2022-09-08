@@ -1,3 +1,4 @@
+TraceService.handle_trace called
 EXCEPTION error. 
 1234
   0: main.<block>              tests/negative/services_trace_uninstalled_test.toit:13:18
