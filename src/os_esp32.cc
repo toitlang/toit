@@ -800,9 +800,10 @@ class PageReport {
 
   void print() {
     printf("Heap report, granularity %d bytes.\n", static_cast<int>(GRANULARITY));
-    print_line("  ┌",  "─┬",  "──",  "─┐");
-    print_line("  │", "%s│", "%s ", "%s│");
-    print_line("  ├",  "─┼",  "─┬",  "─┤");
+    print_line("  ┌",  "─┬",  "──",  "─┐", false);
+    print_line("  │", "%s│", "%s ", "%s│", false);
+    print_line("  │", "%s│", "%s ", "%s│", true);
+    print_line("  └",  "─┴",  "──",  "─┘", false);
   }
 
  private:
@@ -815,28 +816,45 @@ class PageReport {
   bool more_below_ = false;
   bool more_above_ = false;
 
-  void print_line(const char* open, const char* allocation_end, const char* allocation_continues, const char* end) {
+  void print_line(const char* open, const char* allocation_end, const char* allocation_continues, const char* end, bool line_2) {
     for (int i = 0; i < PAGES; i++) {
       if (pages_[i] == 0) continue;
-      const char* symbol = " ";
+      char symbols[6];
+      char symbol_ptr = 0;
+      symbols[0] = ' ';
       int entry = pages_[i];
       int tag = entry & ~MERGE_WITH_NEXT;
       tag &= (1 << SIZE_SHIFT_LEFT) - 1;
       if (tag == TOIT) {
         uword page = memory_base_ + GRANULARITY * i;
         auto type = GcMetadata::get_page_type(reinterpret_cast<HeapObject*>(page + Object::HEAP_TAG));
-        symbol = (type == OLD_SPACE_PAGE ? "O" : "N");
-      } else if (tag == BUFFERS) {
-        symbol = "B";
-      } else if (tag == EXTERNAL) {
-        symbol = "X";
-      } else if (tag == TLS) {
-        symbol = "W";  // WWW.
-      } else if (tag != 0) {
-        symbol = "#";  // Mixed use.
+        symbols[symbol_ptr++] = 'T';
+        symbols[symbol_ptr++] = (type == OLD_SPACE_PAGE ? 'o' : (type == NEW_SPACE_PAGE ? 'n' : 'm'));
+      }
+      if (tag & BUFFERS) {
+        symbols[symbol_ptr++] = 'B';
+      }
+      if (tag & EXTERNAL) {
+        symbols[symbol_ptr++] = 'X';
+      }
+      if (tag & TLS) {
+        symbols[symbol_ptr++] = 'W';  // WWW.
+      }
+      if (tag & MALLOC) {
+        symbols[symbol_ptr++] = 'M';  // Misc.
       }
       if (i == 0 || pages_[i - 1] == 0) {
         printf(open);
+      }
+      char symbol = symbols[0];
+      if (line_2) {
+        if (symbol_ptr == 1) {
+          symbol = ' ';
+        } else if (symbol_ptr == 2) {
+          symbol = symbols[1];
+        } else {
+          symbol = '#';
+        }
       }
       int fullness = (pages_[i] >> SIZE_SHIFT_LEFT) << SIZE_SHIFT_RIGHT;
       bool white_text = fullness > TOIT_PAGE_SIZE / 2;
@@ -846,14 +864,17 @@ class PageReport {
       static const int WHITE = 231;
       static const int DARK_GREY = 232;
       static const int LIGHT_GREY = 255;
+      static const int TOIT_HEAP_COLOR = 174;  // Orangey.
       char symbol_buffer[30];
       int background_color = LIGHT_GREY - (24 * fullness) / TOIT_PAGE_SIZE;
       background_color = Utils::max(DARK_GREY, background_color);
       if (fullness == 0) {
         background_color = WHITE;
-        symbol = "-";
+        symbol = '-';
+      } else if (tag & TOIT) {
+        background_color = TOIT_HEAP_COLOR;  // Orangey.
       }
-      snprintf(symbol_buffer, 30, "%s%dm%s%dm%s%s",
+      snprintf(symbol_buffer, 30, "%s%dm%s%dm%c%s",
           SET_BACKGROUND, background_color,
           SET_FOREGROUND, white_text ? WHITE : DARK_GREY,
           symbol,

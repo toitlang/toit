@@ -22,6 +22,7 @@
 #include "../process.h"
 #include "../objects_inline.h"
 #include "../resource.h"
+#include "../scheduler.h"
 #include "../vm.h"
 
 #include "tls.h"
@@ -127,7 +128,14 @@ static void* tagging_mbedtls_calloc(size_t nelem, size_t size) {
   // Sanity check inputs for security.
   if (nelem > 0xffff || size > 0xffff) return null;
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + BIGNUM_MALLOC_TAG);
-  void* result = calloc(nelem, size);
+  size_t total_size = nelem * size;
+  void* result = calloc(1, total_size);
+  if (!result) {
+    printf("***MbedTLS failed to allocate %d bytes.\n", (int)(size * nelem));
+    VM::current()->scheduler()->gc(null, /* malloc_failed = */ true, /* try_hard = */ true);
+    result = calloc(1, total_size);
+    if (!result) printf("***MbedTLS *still* failed to allocate %d bytes.\n", (int)(size * nelem));
+  }
   return result;
 }
 
@@ -399,7 +407,7 @@ bool ensure_handshake_memory() {
   // network issues.
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + BIGNUM_MALLOC_TAG);
   const int BLOCK_SIZE = 1900;
-  const int BLOCK_COUNT = 8;
+  const int BLOCK_COUNT = 4;
   void* blocks[BLOCK_COUNT] = { 0 };
   bool success = true;
   for (int i = 0; i < BLOCK_COUNT; i++) {

@@ -106,6 +106,7 @@ Object** Interpreter::gc(Object** sp, bool malloc_failed, int attempts, bool for
   if (attempts == 3) {
     OS::heap_summary_report(0, "out of memory");
     OS::heap_page_report();
+    abort();
     if (VM::current()->scheduler()->is_boot_process(_process)) {
       OS::out_of_memory("Out of memory in system process");
     }

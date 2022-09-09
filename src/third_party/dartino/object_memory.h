@@ -44,7 +44,7 @@ static inline bool has_sentinel_at(uword address) {
 }
 
 enum PageType {
-  UNKNOWN_SPACE_PAGE,  // Probably a program space page.
+  UNKNOWN_SPACE_PAGE,  // Probably a metadata page.
   OLD_SPACE_PAGE,
   NEW_SPACE_PAGE
 };
