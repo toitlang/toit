@@ -758,7 +758,7 @@ class PageReport {
     OS::HeapMemoryRange range = OS::get_heap_memory_range();
     uword start_unrounded = reinterpret_cast<uword>(range.address);
     memory_base_ = Utils::round_down(start_unrounded, GRANULARITY);
-    memset(pages_, 0, PAGES);
+    memset(pages_, 0, sizeof(pages_));
   }
 
   void page_register_allocation(uword raw_tag, uword address, uword size) {
@@ -774,26 +774,27 @@ class PageReport {
     int page = (address - memory_base_) >> GRANULARITY_LOG2;
     int end_page = (address + size - 1 - memory_base_) >> GRANULARITY_LOG2;
     int tag = HeapSummaryPage::compute_type(raw_tag);
-    for (int i = page; i < end_page; i++) {
-      pages_[i] |= MERGE_WITH_NEXT;
-    }
-    if (tag == TOIT_HEAP_MALLOC_TAG) {
-      for (int i = page; i <= end_page; i++) pages_[i] |= TOIT;
-    } else if (tag == FREE_MALLOC_TAG) {
-      for (int i = page; i <= end_page; i++) {
+    for (int i = page; i <= end_page; i++) {
+      uint16 entry = pages_[i];
+      if (i != end_page) entry |= MERGE_WITH_NEXT;
+      if (tag == TOIT_HEAP_MALLOC_TAG) entry |= TOIT;
+      else if (tag == WIFI_MALLOC_TAG) entry |= BUFFERS;
+      else if (tag == LWIP_MALLOC_TAG) entry |= BUFFERS;
+      else if (tag == EXTERNAL_BYTE_ARRAY_MALLOC_TAG) entry |= EXTERNAL;
+      else if (tag == EXTERNAL_STRING_MALLOC_TAG) entry |= EXTERNAL;
+      else if (tag == BIGNUM_MALLOC_TAG) entry |= TLS;
+      else if (tag != HEAP_OVERHEAD_MALLOC_TAG) entry |= MALLOC;
+      if (tag != FREE_MALLOC_TAG) {
         uword page_start = memory_base_ + i * GRANULARITY;
         uword page_end = page_start + GRANULARITY;
-        if (address <= page_start + 24 && address + size >= page_end - 8) pages_[i] |= ALL_FREE;
-        pages_[i] |= FREE;
+        uword start = Utils::max(page_start, address);
+        uword end = Utils::min(page_end, address + size);
+        uword scaled_size = end - start;
+        scaled_size >>= SIZE_SHIFT_RIGHT;
+        scaled_size <<= SIZE_SHIFT_LEFT;
+        entry += scaled_size;
       }
-    } else if (tag == WIFI_MALLOC_TAG || tag == LWIP_MALLOC_TAG) {
-      for (int i = page; i <= end_page; i++) pages_[i] |= BUFFERS;
-    } else if (tag == EXTERNAL_BYTE_ARRAY_MALLOC_TAG || tag == EXTERNAL_STRING_MALLOC_TAG) {
-      for (int i = page; i <= end_page; i++) pages_[i] |= EXTERNAL;
-    } else if (tag == BIGNUM_MALLOC_TAG) {
-      for (int i = page; i <= end_page; i++) pages_[i] |= TLS;
-    } else if (tag != HEAP_OVERHEAD_MALLOC_TAG) {
-      for (int i = page; i <= end_page; i++) pages_[i] |= MALLOC;
+      pages_[i] = entry;
     }
   }
 
@@ -801,16 +802,16 @@ class PageReport {
     printf("Heap report, granularity %d bytes.\n", static_cast<int>(GRANULARITY));
     print_line("  ┌",  "─┬",  "──",  "─┐");
     print_line("  │", "%s│", "%s ", "%s│");
-    print_line("  └",  "─┴",  "──",  "─┘");
+    print_line("  ├",  "─┼",  "─┬",  "─┤");
   }
 
  private:
-  static const int PAGES = 200;
+  static const int PAGES = 100;
   static const int GRANULARITY_LOG2 = TOIT_PAGE_SIZE_LOG2;
   static const uword GRANULARITY = 1 << GRANULARITY_LOG2;
   static const uword MASK = GRANULARITY - 1;
   uword memory_base_;
-  uint8 pages_[PAGES];
+  uint16 pages_[PAGES];
   bool more_below_ = false;
   bool more_above_ = false;
 
@@ -818,33 +819,51 @@ class PageReport {
     for (int i = 0; i < PAGES; i++) {
       if (pages_[i] == 0) continue;
       const char* symbol = " ";
-      int tag = pages_[i] & ~MERGE_WITH_NEXT;
+      int entry = pages_[i];
+      int tag = entry & ~MERGE_WITH_NEXT;
+      tag &= (1 << SIZE_SHIFT_LEFT) - 1;
       if (tag == TOIT) {
         uword page = memory_base_ + GRANULARITY * i;
         auto type = GcMetadata::get_page_type(reinterpret_cast<HeapObject*>(page + Object::HEAP_TAG));
         symbol = (type == OLD_SPACE_PAGE ? "O" : "N");
-      } else if (tag & ALL_FREE) {
-        symbol = "-";
       } else if (tag == BUFFERS) {
         symbol = "B";
       } else if (tag == EXTERNAL) {
         symbol = "X";
       } else if (tag == TLS) {
-        symbol = "W";  // For WWW.
-      } else if (tag & FREE) {
-        symbol = "░";  // Partially allocated with mixed things.
+        symbol = "W";  // WWW.
       } else if (tag != 0) {
-        symbol = "█";  // Fully allocated with mixed things.
+        symbol = "#";  // Mixed use.
       }
       if (i == 0 || pages_[i - 1] == 0) {
         printf(open);
       }
+      int fullness = (pages_[i] >> SIZE_SHIFT_LEFT) << SIZE_SHIFT_RIGHT;
+      bool white_text = fullness > TOIT_PAGE_SIZE / 2;
+      static const char* SET_BACKGROUND = "\033[48;5;";
+      static const char* SET_FOREGROUND = "\033[38;5;";
+      static const char* RESET_COLORS = "\033[0m";
+      static const int WHITE = 231;
+      static const int DARK_GREY = 232;
+      static const int LIGHT_GREY = 255;
+      char symbol_buffer[30];
+      int background_color = LIGHT_GREY - (24 * fullness) / TOIT_PAGE_SIZE;
+      background_color = Utils::max(DARK_GREY, background_color);
+      if (fullness == 0) {
+        background_color = WHITE;
+        symbol = "-";
+      }
+      snprintf(symbol_buffer, 30, "%s%dm%s%dm%s%s",
+          SET_BACKGROUND, background_color,
+          SET_FOREGROUND, white_text ? WHITE : DARK_GREY,
+          symbol,
+          RESET_COLORS);
       if (i == PAGES - 1 || pages_[i + 1] == 0) {
-        printf(end, symbol);
+        printf(end, symbol_buffer);
       } else if (pages_[i] & MERGE_WITH_NEXT) {
-        printf(allocation_continues, symbol);
+        printf(allocation_continues, symbol_buffer);
       } else {
-        printf(allocation_end, symbol);
+        printf(allocation_end, symbol_buffer);
       }
     }
     printf("\n");
@@ -856,8 +875,8 @@ class PageReport {
   static const int EXTERNAL        = 1 << 3;
   static const int TLS             = 1 << 4;
   static const int BUFFERS         = 1 << 5;
-  static const int FREE            = 1 << 6;
-  static const int ALL_FREE        = 1 << 7;
+  static const int SIZE_SHIFT_RIGHT = 3;
+  static const int SIZE_SHIFT_LEFT = 6;
 };
 
 bool page_register_allocation(void* self, void* tag, void* address, uword size) {

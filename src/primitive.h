@@ -1100,6 +1100,8 @@ class Primitive {
 
   static void set_up();
 
+  static void get_primitive_name(const char** module_name, const char** primitive_name, int module_number, int primitive_number);
+
   // Use temporary tagging for marking an error.
   static bool is_error(Object* object) { return object->is_marked(); }
   static HeapObject* mark_as_error(String* string) { return string->mark(); }

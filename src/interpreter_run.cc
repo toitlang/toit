@@ -984,14 +984,20 @@ Interpreter::Result Interpreter::run() {
           goto THROW_IMPLEMENTATION;
         }
 
-#ifdef TOIT_GC_LOGGING
-        if (attempts == 3) {
-          printf("[gc @ %p%s | 3rd time primitive failure %d::%d%s]\n",
+        if (attempts >= 2) {
+          char module_numeric_name[4];
+          char primitive_numeric_name[5];
+          snprintf(module_numeric_name, 4, "%d", primitive_module);
+          snprintf(primitive_numeric_name, 5, "%d", primitive_index);
+          const char* module_name = module_numeric_name;
+          const char* primitive_name = primitive_numeric_name;
+          Primitive::get_primitive_name(&module_name, &primitive_name, primitive_module, primitive_index);
+          printf("[gc @ %p%s | %s time primitive failure %s::%s%s]\n",
               _process, VM::current()->scheduler()->is_boot_process(_process) ? "*" : " ",
-              primitive_module, primitive_index,
+              attempts == 2 ? "2nd" : "3rd",
+              module_name, primitive_name,
               malloc_failed ? " (malloc)" : "");
         }
-#endif
 
         sp = gc(sp, malloc_failed, attempts, force_cross_process);
         _sp = sp;

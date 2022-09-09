@@ -76,4 +76,36 @@ Object* Primitive::os_error(int error, Process* process) {
   return Error::from(result);
 }
 
+void Primitive::get_primitive_name(const char** module_return, const char** primitive_return, int module_number, int primitive_number) {
+  switch (module_number) {
+    case 0:
+      *module_return = "Core";
+      return;
+    case 1:
+      *module_return = "Timer";
+      return;
+    case 2:
+      *module_return = "TCP";
+      switch (primitive_number) {
+        case 7:
+          *primitive_return = "read";
+      }
+      return;
+    case 3:
+      *module_return = "UDP";
+      return;
+    case 4:
+      *module_return = "TLS";
+      switch (primitive_number) {
+        case 2:
+          *primitive_return = "init_socket";
+        case 8:
+          *primitive_return = "handshake";
+        case 15:
+          *primitive_return = "error";
+      }
+      return;
+  }
+}
+
 }  // namespace toit
