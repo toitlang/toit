@@ -546,27 +546,9 @@ class HeapSummaryPage {
     largest_free_ = 0;
   }
 
-  static int compute_type(uword tag) {
-    if (tag == 0) {
-      tag = NULL_MALLOC_TAG;
-    } else if (tag == 'W') {
-      tag = WIFI_MALLOC_TAG;
-    } else if (tag == ITERATE_TAG_FREE) {
-      tag = FREE_MALLOC_TAG;
-    } else if (tag == ITERATE_TAG_HEAP_OVERHEAD) {
-      tag = HEAP_OVERHEAD_MALLOC_TAG;
-    } else {
-      tag -= ITERATE_CUSTOM_TAGS;
-      if (tag < 0 || tag >= NUMBER_OF_MALLOC_TAGS) {
-        tag = UNKNOWN_MALLOC_TAG;
-      }
-    }
-    return tag;
-  }
-
   int register_user(uword tag, uword size) {
     uint16 saturated_size = Utils::min(size, 0xffffu);
-    int type = compute_type(tag);
+    int type = compute_allocation_type(tag);
     users_ |= 1 << type;
     sizes_[type] += saturated_size;
     counts_[type]++;
@@ -667,7 +649,7 @@ class HeapSummaryCollector {
     }
     int type = current_page_
         ? current_page_->register_user(tag, size)
-        : HeapSummaryPage::compute_type(tag);
+        : compute_allocation_type(tag);
     // Disregard IRAM allocations.
     if (reinterpret_cast<uword>(address) < 0x40000000) {
       sizes_[type] += size;
