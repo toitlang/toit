@@ -242,7 +242,7 @@ build/$(ESP32_CHIP)/include/sdkconfig.h:
 
 .PHONY: build/config.json  # Marked phony to force regeneration.
 build/config.json:
-	echo '{"wifi": {"ssid": "$(ESP32_WIFI_SSID)", "password": "$(ESP32_WIFI_PASSWORD)"}}' > $@
+	echo '{"wifi": {"wifi.ssid": "$(ESP32_WIFI_SSID)", "wifi.password": "$(ESP32_WIFI_PASSWORD)"}}' > $@
 
 
 # ESP32 VARIANTS FLASH

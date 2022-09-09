@@ -3,6 +3,7 @@
 // found in the lib/LICENSE file.
 
 import binary show LITTLE_ENDIAN
+import system.trace show send_trace_message
 
 /**
 Contains various utility functions.
@@ -402,8 +403,7 @@ class Profiler:
   */
   static report title/string --cutoff/int=10 -> none:
     encoded_profile := encode title cutoff
-    system_send_ SYSTEM_MIRROR_MESSAGE_ encoded_profile
-    process_messages_
+    send_trace_message encoded_profile
 
   /**
   Encodes the result of the profiler with the $title.
@@ -483,8 +483,7 @@ Produces a histogram of object types and their memory
 print_objects marker/string="" gc/bool=true:
   full_gcs := (process_stats)[STATS_INDEX_FULL_GC_COUNT]
   encoded_histogram := object_histogram_ marker full_gcs
-  system_send_ SYSTEM_MIRROR_MESSAGE_ encoded_histogram
-  process_messages_
+  send_trace_message encoded_histogram
 
 object_histogram_ marker/string full_gcs/int -> ByteArray:
   #primitive.debug.object_histogram
