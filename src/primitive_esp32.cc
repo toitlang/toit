@@ -507,19 +507,20 @@ PRIMITIVE(memory_page_report) {
   uword size = report.number_of_pages();
   // Allocate the result after compiling the data to avoid the new byte arrays
   // being included in the report.
-  Error* error = null;
-  ByteArray* tags = process->allocate_byte_array(size, &error);
-  if (tags == null) return error;
-  ByteArray::Bytes tags_bytes(tags);
-  report.get_tags(tags_bytes.address());
-  ByteArray* percents = process->allocate_byte_array(size, &error);
-  if (percents == null) return error;
-  ByteArray::Bytes percents_bytes(percents);
-  report.get_fullnesses(percents_bytes.address());
   Array* result = process->object_heap()->allocate_array(3, Smi::zero());
   if (result == null) ALLOCATION_FAILED;
-  result->at_put(0, tags);
-  result->at_put(1, percents);
+  for (int i = 0; i < 2; i++) {
+    Error* error = null;
+    ByteArray* byte_array = process->allocate_byte_array(size, &error);
+    if (byte_array == null) return error;
+    ByteArray::Bytes bytes(byte_array);
+    if (i == 0) {
+      report.get_tags(bytes.address());
+    } else {
+      report.get_fullnesses(bytes.address());
+    }
+    result->at_put(i, byte_array);
+  }
   uword base = report.memory_base();
   Object* memory_base = Primitive::integer(base, process);
   if (Primitive::is_error(memory_base)) return memory_base;
