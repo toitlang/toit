@@ -668,11 +668,8 @@ class HeapSummaryCollector {
     int type = current_page_
         ? current_page_->register_user(tag, size)
         : HeapSummaryPage::compute_type(tag);
-    // Disregard IRAM allocations.
-    if (reinterpret_cast<uword>(address) < 0x40000000) {
-      sizes_[type] += size;
-      counts_[type]++;
-    }
+    sizes_[type] += size;
+    counts_[type]++;
   }
 
   void print(const char* marker) {
@@ -706,8 +703,10 @@ class HeapSummaryCollector {
     int capacity_bytes = info.total_allocated_bytes + info.total_free_bytes;
     int used_bytes = size * 100 / capacity_bytes;
     printf("  └───────────┴─────────┴───────────────────────┘\n");
-    printf("  Total: %d bytes in %d allocations (%d%%)\n",
-        size, count, used_bytes);
+    printf("  Total: %d bytes in %d allocations (%d%%), largest free %dk, total free %dk\n",
+        size, count, used_bytes,
+        static_cast<int>(info.largest_free_block >> 10),
+        static_cast<int>(info.total_free_bytes >> 10));
 
     int page_count = 0;
     for (int i = 0; i < max_pages_; i++) {
