@@ -1,4 +1,4 @@
-EXCEPTION error.
+EXCEPTION error. 
 123456
   0: main.<lambda>.<block>.<block> tests/negative/latch_trace_test.toit:13:9
   1: main.<lambda>.<block>     tests/negative/latch_trace_test.toit:11:10
