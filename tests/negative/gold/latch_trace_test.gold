@@ -1,0 +1,8 @@
+EXCEPTION error.
+123456
+  0: main.<lambda>.<block>.<block> tests/negative/latch_trace_test.toit:13:9
+  1: main.<lambda>.<block>     tests/negative/latch_trace_test.toit:11:10
+  2: catch.<block>             <sdk>/core/exceptions.toit:124:10
+  3: catch                     <sdk>/core/exceptions.toit:122:1
+  4: catch                     <sdk>/core/exceptions.toit:73:10
+  5: main.<lambda>             tests/negative/latch_trace_test.toit:11:5
