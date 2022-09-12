@@ -35,18 +35,27 @@ A latch that allows one task to wait until a value (object) has been provided
 This class must not be extended.
 */
 monitor Latch:
-  has_value_ / bool := false
+  static STATE_UNSET_         ::= 0
+  static STATE_HAS_VALUE_     ::= 1
+  static STATE_HAS_EXCEPTION_ ::= 2
+
+  state_ / int := STATE_UNSET_
   value_ := null
 
   /**
   Receives the value.
 
-  This method blocks until the value is available.
+  This method blocks until the value is available. If the value
+    is an exception, it is thrown.
   May be called multiple times.
   */
   get -> any:
-    await: has_value_
-    return value_
+    await: state_ != STATE_UNSET_
+    value := value_
+    if state_ == STATE_HAS_EXCEPTION_:
+      if value is not Exception_: throw value
+      rethrow value.value value.trace
+    return value
 
   /**
   Sets the $value of the latch.
@@ -54,15 +63,16 @@ monitor Latch:
   Calling this method unblocks any task that is blocked in the $get method of
     the same instance, sending the $value to it.
   Future calls to $get return immediately and use this $value.
-  Must be called at most once for each instance of the monitor.
+  If $exception is true, the $value is thrown in the task that calls
+    the $get method.
   */
-  set value/any -> none:
+  set value/any --exception/bool=false -> none:
     value_ = value
-    has_value_ = true
+    state_ = exception ? STATE_HAS_EXCEPTION_ : STATE_HAS_VALUE_
 
-  /** Whether this latch has already a value set. */
+  /** Whether this latch has already a value or an exception set. */
   has_value -> bool:
-    return has_value_
+    return state_ != STATE_UNSET_
 
 /**
 A semaphore synchronization primitive.
