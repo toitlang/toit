@@ -461,6 +461,10 @@ class PageReport {
     }
   }
 
+  static const int GRANULARITY_LOG2 = TOIT_PAGE_SIZE_LOG2;
+  static const uword GRANULARITY = 1 << GRANULARITY_LOG2;
+  static const uword MASK = GRANULARITY - 1;
+
  private:
   uword fullness(int i) const {
     return (pages_[i] >> SIZE_SHIFT_LEFT) << SIZE_SHIFT_RIGHT;
@@ -471,14 +475,15 @@ class PageReport {
   }
 
   static const int PAGES = 100;
-  static const int GRANULARITY_LOG2 = TOIT_PAGE_SIZE_LOG2;
-  static const uword GRANULARITY = 1 << GRANULARITY_LOG2;
-  static const uword MASK = GRANULARITY - 1;
   uword memory_base_;
   // The first 7 bits are flags, then there are 9 bits that count the number of
   // bytes that are allocated in the page.  Since all allocations are a
   // multiple of 8 this gives us a range of up to 4088 allocated bytes.
+#if TOIT_PAGE_SIZE <= 4096
   uint16 pages_[PAGES];
+#else
+  uint32 pages_[PAGES];
+#endif
   bool more_above_ = false;
 
   static const int MALLOC_MANAGED  = 1 << 0;
@@ -516,8 +521,9 @@ PRIMITIVE(memory_page_report) {
     uword size = report.number_of_pages();
     // Allocate the result after compiling the data to avoid the new byte arrays
     // being included in the report.
-    Array* new_result = process->object_heap()->allocate_array(result_size + 3, Smi::zero());
+    Array* new_result = process->object_heap()->allocate_array(result_size + 4, Smi::zero());
     if (new_result == null) ALLOCATION_FAILED;
+    new_result->at_put(result_size + 3, Smi::from(PageReport::GRANULARITY));
     for (int i = 0; i < result_size; i++) {
       new_result->at_put(i, result->at(i));
     }
