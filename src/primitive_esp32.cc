@@ -389,6 +389,145 @@ PRIMITIVE(rtc_user_bytes) {
   return result;
 }
 
+class PageReport {
+ public:
+  PageReport() {
+    OS::HeapMemoryRange range = OS::get_heap_memory_range();
+    uword start_unrounded = reinterpret_cast<uword>(range.address);
+    memory_base_ = Utils::round_down(start_unrounded, GRANULARITY);
+    memset(pages_, 0, sizeof(pages_));
+  }
+
+  void page_register_allocation(uword raw_tag, uword address, uword size) {
+    if (size == 0) return;
+    if (address < memory_base_) {
+      more_below_ = true;
+      return;
+    }
+    if (address + size > memory_base_ + PAGES * GRANULARITY) {
+      more_above_ = true;
+      return;
+    }
+    int page = (address - memory_base_) >> GRANULARITY_LOG2;
+    int end_page = (address + size - 1 - memory_base_) >> GRANULARITY_LOG2;
+    int tag = compute_allocation_type(raw_tag);
+    for (int i = page; i <= end_page; i++) {
+      uword flags = pages_[i] & FLAG_MASK;
+      flags |= MALLOC_MANAGED;
+      if (i != end_page) flags |= MERGE_WITH_NEXT;
+      if (tag == TOIT_HEAP_MALLOC_TAG) flags |= TOIT;
+      else if (tag == WIFI_MALLOC_TAG) flags |= BUFFERS;
+      else if (tag == LWIP_MALLOC_TAG) flags |= BUFFERS;
+      else if (tag == EXTERNAL_BYTE_ARRAY_MALLOC_TAG) flags |= EXTERNAL;
+      else if (tag == EXTERNAL_STRING_MALLOC_TAG) flags |= EXTERNAL;
+      else if (tag == BIGNUM_MALLOC_TAG) flags |= TLS;
+      else if (tag != HEAP_OVERHEAD_MALLOC_TAG && tag != FREE_MALLOC_TAG) flags |= MISC;
+      uword allocated = fullness(i);
+      if (tag != FREE_MALLOC_TAG) {
+        uword page_start = memory_base_ + i * GRANULARITY;
+        uword page_end = page_start + GRANULARITY;
+        uword start = Utils::max(page_start, address);
+        uword end = Utils::min(page_end, address + size);
+        uword overlapping_size = end - start;
+        allocated = Utils::min(MAX_RECORDABLE_SIZE, allocated + overlapping_size);
+      }
+      pages_[i] = flags | shifted_fullness(allocated);
+    }
+  }
+
+  int number_of_pages() const { return PAGES; }
+
+  void get_tags(uint8* buffer) const {
+    for (int i = 0; i < PAGES; i++) {
+      buffer[i] = pages_[i] & ((1 << SIZE_SHIFT_LEFT) - 1);
+    }
+  }
+
+  void get_fullnesses(uint8* buffer) const {
+    for (int i = 0; i < PAGES; i++) {
+      uword f = fullness(i);
+      if (f == MAX_RECORDABLE_SIZE) {
+        buffer[i] = 100;
+      } else {
+        buffer[i] = (f * 100) / GRANULARITY;
+      }
+    }
+  }
+
+  uword memory_base() const { return memory_base_; }
+
+ private:
+  uword fullness(int i) const {
+    return (pages_[i] >> SIZE_SHIFT_LEFT) << SIZE_SHIFT_RIGHT;
+  }
+
+  static uword shifted_fullness(uword fullness) {
+    return (fullness >> SIZE_SHIFT_RIGHT) << SIZE_SHIFT_LEFT;
+  }
+
+  static const int PAGES = 100;
+  static const int GRANULARITY_LOG2 = TOIT_PAGE_SIZE_LOG2;
+  static const uword GRANULARITY = 1 << GRANULARITY_LOG2;
+  static const uword MASK = GRANULARITY - 1;
+  uword memory_base_;
+  // The first 7 bits are flags, then there are 9 bits that count the number of
+  // bytes that are allocated in the page.  Since all allocations are a
+  // multiple of 8 this gives us a range of up to 4088 allocated bytes.
+  uint16 pages_[PAGES];
+  bool more_below_ = false;
+  bool more_above_ = false;
+
+  static const int MALLOC_MANAGED  = 1 << 0;
+  static const int TOIT            = 1 << 1;
+  static const int EXTERNAL        = 1 << 2;
+  static const int TLS             = 1 << 3;
+  static const int BUFFERS         = 1 << 4;
+  static const int MISC            = 1 << 5;
+  static const int MERGE_WITH_NEXT = 1 << 6;
+  static const int SIZE_SHIFT_LEFT =      7;
+  static const uword FLAG_MASK     = (1 << SIZE_SHIFT_LEFT) - 1;
+  static const int SIZE_SHIFT_RIGHT = 3;  // All sizes are divisible by 8.
+  static const uword MAX_RECORDABLE_SIZE = ((1 << (sizeof(pages_[0]) * BYTE_BIT_SIZE - SIZE_SHIFT_LEFT)) - 1) << SIZE_SHIFT_RIGHT;
+};
+
+bool page_register_allocation(void* self, void* tag, void* address, uword size) {
+  auto report = reinterpret_cast<PageReport*>(self);
+  report->page_register_allocation(
+      reinterpret_cast<uword>(tag),
+      reinterpret_cast<uword>(address),
+      size);
+  return false;
+}
+
+PRIMITIVE(memory_page_report) {
+  PageReport report;
+  int flags = ITERATE_ALL_ALLOCATIONS | ITERATE_UNALLOCATED;
+  int caps = OS::toit_heap_caps_flags_for_heap();
+  heap_caps_iterate_tagged_memory_areas(&report, null, &page_register_allocation, flags, caps);
+  uword size = report.number_of_pages();
+  // Allocate the result after compiling the data to avoid the new byte arrays
+  // being included in the report.
+  Array* result = process->object_heap()->allocate_array(3, Smi::zero());
+  if (result == null) ALLOCATION_FAILED;
+  for (int i = 0; i < 2; i++) {
+    Error* error = null;
+    ByteArray* byte_array = process->allocate_byte_array(size, &error);
+    if (byte_array == null) return error;
+    ByteArray::Bytes bytes(byte_array);
+    if (i == 0) {
+      report.get_tags(bytes.address());
+    } else {
+      report.get_fullnesses(bytes.address());
+    }
+    result->at_put(i, byte_array);
+  }
+  uword base = report.memory_base();
+  Object* memory_base = Primitive::integer(base, process);
+  if (Primitive::is_error(memory_base)) return memory_base;
+  result->at_put(2, memory_base);
+  return result;
+}
+
 } // namespace toit
 
 #endif // TOIT_FREERTOS

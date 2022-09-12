@@ -362,6 +362,7 @@ namespace toit {
   PRIMITIVE(image_config, 0)                 \
   PRIMITIVE(get_mac_address, 0)              \
   PRIMITIVE(rtc_user_bytes, 0)               \
+  PRIMITIVE(memory_page_report, 0)           \
 
 #define MODULE_I2C(PRIMITIVE)                \
   PRIMITIVE(init, 3)                         \
