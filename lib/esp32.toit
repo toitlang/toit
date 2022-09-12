@@ -140,7 +140,7 @@ Returns a report over the usage of memory at the OS level.
 
 The returned list has at least three elements.  The first is a byte
   array describing the allocation types in each page.  The second is
-  a byte array giving the percantage fullness of each page.  Pages are
+  a byte array giving the percentage fullness of each page.  Pages are
   normally 4096 bytes large.  The third is the base address of the heap,
   corresponding to the address of the block described in the 0th element
   of each byte array.

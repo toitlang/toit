@@ -485,7 +485,7 @@ class PageReport {
   static const int MISC            = 1 << 5;
   static const int MERGE_WITH_NEXT = 1 << 6;
   static const int SIZE_SHIFT_LEFT =      7;
-  static const uword FLAG_MASK       = (1 << SIZE_SHIFT_LEFT) - 1;
+  static const uword FLAG_MASK     = (1 << SIZE_SHIFT_LEFT) - 1;
   static const int SIZE_SHIFT_RIGHT = 3;  // All sizes are divisible by 8.
   static const uword MAX_RECORDABLE_SIZE = ((1 << (sizeof(pages_[0]) * BYTE_BIT_SIZE - SIZE_SHIFT_LEFT)) - 1) << SIZE_SHIFT_RIGHT;
 };
