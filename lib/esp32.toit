@@ -138,14 +138,20 @@ rtc_user_bytes -> ByteArray:
 /**
 Returns a report over the usage of memory at the OS level.
 
-The returned list has at least three elements.  The first is a byte
+The returned list has at least four elements.  The first is a byte
   array describing the allocation types in each page.  The second is
   a byte array giving the percentage fullness of each page.  Pages are
   normally 4096 bytes large.  The third is the base address of the heap,
   corresponding to the address of the block described in the 0th element
   of each byte array.
 
-For the first byte array each byte is a bitmap.
+For very large heaps the returned list may contain more than four
+  elements.  Each group of three entries in the array consists of
+  two byte arrays and a base address as described above.
+
+The last entry in the returned list is the page size.
+
+For the first byte array in each triplet, each byte is a bitmap.
 
 * $MEMORY_PAGE_MALLOC_MANAGED: Indicates the page is part of the malloc-managed memory.
 * $MEMORY_PAGE_TOIT: Allocated for the Toit heap.
