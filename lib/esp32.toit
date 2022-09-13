@@ -168,6 +168,94 @@ Pages that are not part of the malloc heap, because the system is using them
 memory_page_report -> List:
   #primitive.esp32.memory_page_report
 
+print_memory_page_report -> none:
+  report := memory_page_report
+  granularity := report[report.size - 1]
+  k := granularity >> 10
+  scale := ""
+  for i := 232; i <= 255; i++: scale += "$TERMINAL_SET_BACKGROUND_$(i)m "
+  scale += TERMINAL_RESET_COLORS_
+  print "┌────────────────────────────────────────────────────────────────────────┐"
+  print "│$(%2d k)k pages.  All pages are $(%2d k)k, even the ones that are shown wider       │"
+  print "│ because they have many different allocations in them.                  │"
+  print "│   X  = External strings/bytearrays.        B  = Network buffers.       │"
+  print "│   W  = TLS/crypto.                         M  = Misc. allocations.     │"
+  print "│   🐱 = Toit managed heap.                  -- = Free page.             │"
+  print "│        Fully allocated $scale Completely free page.  │"
+  print "└────────────────────────────────────────────────────────────────────────┘"
+  for i := 0; i < report.size; i += 3:
+    uses := report[i]
+    if uses is int: continue
+    fullnesses := report[i + 1]
+    base := report[i + 2]
+    lowest := uses.size
+    highest := 0
+    for j := 0; j < uses.size; j++:
+      if uses[j] != 0 and fullnesses[j] != 0:
+        lowest = min lowest j
+        highest = max highest j
+    if lowest > highest: continue
+    print "0x$(%08x base + lowest * granularity)-0x$(%08x base + (highest + 1) * granularity)"
+    print_line_ uses fullnesses "┌"  "──┬"  "───"  "──┐" false
+    print_line_ uses fullnesses "│"    "│"    " "    "│" true
+    print_line_ uses fullnesses "└"  "──┴"  "───"  "──┘" false
+
+print_line_ uses/ByteArray fullnesses/ByteArray open/string allocation_end/string allocation_continue/string end/string is_data_line/bool -> none:
+  line := []
+  for i := 0; i < uses.size; i++:
+    use := uses[i]
+    if use == 0 and fullnesses[i] == 0: continue
+    symbols := ""
+    if use & MEMORY_PAGE_TOIT != 0: symbols = "🐱"
+    if use & MEMORY_PAGE_BUFFERS != 0: symbols = "B"
+    if use & MEMORY_PAGE_EXTERNAL != 0: symbols += "X"
+    if use & MEMORY_PAGE_TLS != 0: symbols += "W"  // For WWW.
+    if use & MEMORY_PAGE_MISC != 0: symbols += "M"  // For WWW.
+    previous_was_unmanaged := i == 0 or (uses[i - 1] == 0 and fullnesses[i - 1] == 0)
+    if previous_was_unmanaged:
+      line.add open
+    fullness := fullnesses[i]
+    if fullness == 0:
+      symbols = "--"
+    while symbols.size < 2:
+      symbols += " "
+    if is_data_line:
+      white_text := fullness > 50  // Percent.
+      background_color := TERMINAL_LIGHT_GREY_ - (24 * fullness) / 100
+      background_color = max background_color TERMINAL_DARK_GREY_
+      if fullness == 0:
+        background_color = TERMINAL_WHITE_
+      else if use & MEMORY_PAGE_TOIT != 0:
+        background_color = TERMINAL_TOIT_HEAP_COLOR_
+
+      line.add "$TERMINAL_SET_BACKGROUND_$(background_color)m"
+             + "$TERMINAL_SET_FOREGROUND_$(white_text ? TERMINAL_WHITE_ : TERMINAL_DARK_GREY_)m"
+             + symbols + TERMINAL_RESET_COLORS_
+    next_is_unmanaged := i == uses.size - 1 or (uses[i + 1] == 0 and fullnesses[i + 1] == 0)
+    line_drawing := ?
+    if next_is_unmanaged:
+      line_drawing = end
+    else if use & MEMORY_PAGE_MERGE_WITH_NEXT != 0:
+      line_drawing = allocation_continue
+    else:
+      line_drawing = allocation_end
+    if symbols.size > 2 and not is_data_line and symbols != "🐱":
+      // Pad the line drawings on non-data lines to match the width of the
+      // data.
+      first_character := line_drawing[0..utf_8_bytes line_drawing[0]]
+      line_drawing = (first_character * (symbols.size - 2)) + line_drawing
+    line.add line_drawing
+  print
+      "  " + (line.join "")
+
+TERMINAL_SET_BACKGROUND_ ::= "\x1b[48;5;"
+TERMINAL_SET_FOREGROUND_ ::= "\x1b[38;5;"
+TERMINAL_RESET_COLORS_   ::= "\x1b[0m"
+TERMINAL_WHITE_ ::= 231
+TERMINAL_DARK_GREY_ ::= 232
+TERMINAL_LIGHT_GREY_ ::= 255
+TERMINAL_TOIT_HEAP_COLOR_ ::= 174  // Orange-ish.
+
 /**
 Bitmap mask for $memory_page_report.
 Indicates at least part of the page is managed by malloc.
