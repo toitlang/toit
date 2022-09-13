@@ -391,7 +391,7 @@ PRIMITIVE(rtc_user_bytes) {
 
 class PageReport {
  public:
-  PageReport(uword base=0) {
+  PageReport(uword base = 0) {
     memory_base_ = Utils::round_down(base, GRANULARITY);
     memset(pages_, 0, sizeof(pages_));
   }
