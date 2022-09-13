@@ -96,7 +96,7 @@ abstract class ServiceClient:
     _id_ = _name_ = _version_ = _pid_ = null
     remove_finalizer this
     ServiceResourceProxyManager_.unregister_all id
-    rpc.invoke pid RPC_SERVICES_CLOSE_ id
+    critical_do: rpc.invoke pid RPC_SERVICES_CLOSE_ id
 
   stringify -> string:
     return "service:$_name_@$(_version_.join ".")"

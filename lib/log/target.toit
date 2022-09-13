@@ -49,5 +49,10 @@ class StandardLogService_ implements LogService:
         buffer.write values[it]
       buffer.write "}"
 
-    print buffer.to_string
+    // Printing the constructed message may block, so we have to
+    // be careful and clear the buffer before doing so. Otherwise,
+    // another task might start using the non-empty buffer and
+    // interleaving the output in strange ways.
+    constructed ::= buffer.to_string
     buffer.clear
+    print constructed
