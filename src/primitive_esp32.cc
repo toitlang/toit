@@ -391,17 +391,14 @@ PRIMITIVE(rtc_user_bytes) {
 
 class PageReport {
  public:
-  PageReport() {
-    OS::HeapMemoryRange range = OS::get_heap_memory_range();
-    uword start_unrounded = reinterpret_cast<uword>(range.address);
-    memory_base_ = Utils::round_down(start_unrounded, GRANULARITY);
+  PageReport(uword base = 0) {
+    memory_base_ = Utils::round_down(base, GRANULARITY);
     memset(pages_, 0, sizeof(pages_));
   }
 
   void page_register_allocation(uword raw_tag, uword address, uword size) {
     if (size == 0) return;
     if (address < memory_base_) {
-      more_below_ = true;
       return;
     }
     if (address + size > memory_base_ + PAGES * GRANULARITY) {
@@ -456,6 +453,18 @@ class PageReport {
 
   uword memory_base() const { return memory_base_; }
 
+  uword next_memory_base() const {
+    if (more_above_) {
+      return memory_base_ + GRANULARITY * PAGES;
+    } else {
+      return 0;
+    }
+  }
+
+  static const int GRANULARITY_LOG2 = TOIT_PAGE_SIZE_LOG2;
+  static const uword GRANULARITY = 1 << GRANULARITY_LOG2;
+  static const uword MASK = GRANULARITY - 1;
+
  private:
   uword fullness(int i) const {
     return (pages_[i] >> SIZE_SHIFT_LEFT) << SIZE_SHIFT_RIGHT;
@@ -466,15 +475,15 @@ class PageReport {
   }
 
   static const int PAGES = 100;
-  static const int GRANULARITY_LOG2 = TOIT_PAGE_SIZE_LOG2;
-  static const uword GRANULARITY = 1 << GRANULARITY_LOG2;
-  static const uword MASK = GRANULARITY - 1;
   uword memory_base_;
   // The first 7 bits are flags, then there are 9 bits that count the number of
   // bytes that are allocated in the page.  Since all allocations are a
   // multiple of 8 this gives us a range of up to 4088 allocated bytes.
+#if TOIT_PAGE_SIZE <= 4096
   uint16 pages_[PAGES];
-  bool more_below_ = false;
+#else
+  uint32 pages_[PAGES];
+#endif
   bool more_above_ = false;
 
   static const int MALLOC_MANAGED  = 1 << 0;
@@ -500,31 +509,44 @@ bool page_register_allocation(void* self, void* tag, void* address, uword size) 
 }
 
 PRIMITIVE(memory_page_report) {
-  PageReport report;
-  int flags = ITERATE_ALL_ALLOCATIONS | ITERATE_UNALLOCATED;
-  int caps = OS::toit_heap_caps_flags_for_heap();
-  heap_caps_iterate_tagged_memory_areas(&report, null, &page_register_allocation, flags, caps);
-  uword size = report.number_of_pages();
-  // Allocate the result after compiling the data to avoid the new byte arrays
-  // being included in the report.
-  Array* result = process->object_heap()->allocate_array(3, Smi::zero());
-  if (result == null) ALLOCATION_FAILED;
-  for (int i = 0; i < 2; i++) {
-    Error* error = null;
-    ByteArray* byte_array = process->allocate_byte_array(size, &error);
-    if (byte_array == null) return error;
-    ByteArray::Bytes bytes(byte_array);
-    if (i == 0) {
-      report.get_tags(bytes.address());
-    } else {
-      report.get_fullnesses(bytes.address());
+  OS::HeapMemoryRange range = OS::get_heap_memory_range();
+  uword memory_base = reinterpret_cast<uword>(range.address);
+  Array* result = null;
+  int result_size = 0;
+  do {
+    PageReport report(memory_base);
+    int flags = ITERATE_ALL_ALLOCATIONS | ITERATE_UNALLOCATED;
+    int caps = OS::toit_heap_caps_flags_for_heap();
+    heap_caps_iterate_tagged_memory_areas(&report, null, &page_register_allocation, flags, caps);
+    uword size = report.number_of_pages();
+    // Allocate the result after compiling the data to avoid the new byte arrays
+    // being included in the report.
+    Array* new_result = process->object_heap()->allocate_array(result_size + 4, Smi::zero());
+    if (new_result == null) ALLOCATION_FAILED;
+    new_result->at_put(result_size + 3, Smi::from(PageReport::GRANULARITY));
+    for (int i = 0; i < result_size; i++) {
+      new_result->at_put(i, result->at(i));
     }
-    result->at_put(i, byte_array);
-  }
-  uword base = report.memory_base();
-  Object* memory_base = Primitive::integer(base, process);
-  if (Primitive::is_error(memory_base)) return memory_base;
-  result->at_put(2, memory_base);
+    result = reinterpret_cast<Array*>(new_result);
+    for (int i = 0; i < 2; i++) {
+      Error* error = null;
+      ByteArray* byte_array = process->allocate_byte_array(size, &error);
+      if (byte_array == null) return error;
+      ByteArray::Bytes bytes(byte_array);
+      if (i == 0) {
+        report.get_tags(bytes.address());
+      } else {
+        report.get_fullnesses(bytes.address());
+      }
+      result->at_put(result_size + i, byte_array);
+    }
+    uword base = report.memory_base();
+    Object* memory_base_number = Primitive::integer(base, process);
+    if (Primitive::is_error(memory_base_number)) return memory_base_number;
+    result->at_put(result_size + 2, memory_base_number);
+    result_size += 3;
+    memory_base = report.next_memory_base();
+  } while (memory_base);
   return result;
 }
 
