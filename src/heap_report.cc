@@ -240,6 +240,24 @@ void dump_heap_fragmentation(output_char_t* output_char_fn) {
   }
 }
 
+int compute_allocation_type(uword tag) {
+  if (tag == 0) {
+    tag = NULL_MALLOC_TAG;
+  } else if (tag == 'W') {
+    tag = WIFI_MALLOC_TAG;
+  } else if (tag == ITERATE_TAG_FREE) {
+    tag = FREE_MALLOC_TAG;
+  } else if (tag == ITERATE_TAG_HEAP_OVERHEAD) {
+    tag = HEAP_OVERHEAD_MALLOC_TAG;
+  } else {
+    tag -= ITERATE_CUSTOM_TAGS;
+    if (tag < 0 || tag >= NUMBER_OF_MALLOC_TAGS) {
+      tag = UNKNOWN_MALLOC_TAG;
+    }
+  }
+  return tag;
+}
+
 #endif
 
 #endif // def TOIT_CMPCTMALLOC

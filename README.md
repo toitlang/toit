@@ -14,7 +14,15 @@ applications written in Toit over WiFi whenever your source files change. Once s
 jag watch examples/hello.toit
 ```
 
-Watch a short video that shows how you can experience Jaguar on your ESP32 in less two minutes:
+It is also straightforward to install extra drivers and services that can extend the core functionality 
+of your device. Add automatic [NTP](https://en.wikipedia.org/wiki/Network_Time_Protocol)-based time 
+synchronization without having to write a single line of code:
+
+``` sh
+jag container install ntp examples/ntp/ntp.toit
+```
+
+You can watch a short video that shows how you can experience Jaguar on your ESP32 in less two minutes:
 
 <a href="https://youtu.be/cU7zr6_YBbQ"><img width="543" alt="Jaguar demonstration" src="https://user-images.githubusercontent.com/133277/146210503-24811800-bb26-4244-817d-6422b20e6786.png"></a>
 

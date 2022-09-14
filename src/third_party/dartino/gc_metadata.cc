@@ -6,8 +6,9 @@
 
 #include <stdio.h>
 
-#include "../../utils.h"
+#include "../../heap_report.h"
 #include "../../objects.h"
+#include "../../utils.h"
 
 #include "gc_metadata.h"
 
@@ -61,7 +62,10 @@ void GcMetadata::set_up_singleton() {
   // We create all the metadata with just one allocation.  Otherwise we will
   // lose memory when the malloc rounds a series of big allocations up to 4k
   // page boundaries.
-  metadata_ = reinterpret_cast<uint8*>(OS::grab_virtual_memory(null, metadata_size_));
+  {
+    HeapTagScope scope(ITERATE_CUSTOM_TAGS + TOIT_HEAP_MALLOC_TAG);
+    metadata_ = reinterpret_cast<uint8*>(OS::grab_virtual_memory(null, metadata_size_));
+  }
 
   if (metadata_ == null) {
     printf("[toit] ERROR: failed to allocate GC metadata\n");

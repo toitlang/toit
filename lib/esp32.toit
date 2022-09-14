@@ -135,3 +135,80 @@ There is only one RTC memory on the device, so all tasks or processes have
 rtc_user_bytes -> ByteArray:
   #primitive.esp32.rtc_user_bytes
 
+/**
+Returns a report over the usage of memory at the OS level.
+
+The returned list has at least four elements.  The first is a byte
+  array describing the allocation types in each page.  The second is
+  a byte array giving the percentage fullness of each page.  Pages are
+  normally 4096 bytes large.  The third is the base address of the heap,
+  corresponding to the address of the block described in the 0th element
+  of each byte array.
+
+For very large heaps the returned list may contain more than four
+  elements.  Each group of three entries in the array consists of
+  two byte arrays and a base address as described above.
+
+The last entry in the returned list is the page size.
+
+For the first byte array in each triplet, each byte is a bitmap.
+
+* $MEMORY_PAGE_MALLOC_MANAGED: Indicates the page is part of the malloc-managed memory.
+* $MEMORY_PAGE_TOIT: Allocated for the Toit heap.
+* $MEMORY_PAGE_EXTERNAL: Contains at least one allocation for external (large) Toit strings and byte arrays.
+* $MEMORY_PAGE_TLS: Contains at least one allocation for TLS and other cryptographic uses.
+* $MEMORY_PAGE_BUFFERS: Contains at least one allocation for network buffers.
+* $MEMORY_PAGE_MISC: Contains at least one miscellaneous or unknown allocation.
+* $MEMORY_PAGE_MERGE_WITH_NEXT: Indicates that this page and the next page are part of a large multi-page allocation.
+
+Pages that are not part of the malloc heap, because the system is using them
+  for something else will have a zero in both byte arrays, indicating 0% fullness
+  and no registered allocations.
+*/
+memory_page_report -> List:
+  #primitive.esp32.memory_page_report
+
+/**
+Bitmap mask for $memory_page_report.
+Indicates at least part of the page is managed by malloc.
+*/
+MEMORY_PAGE_MALLOC_MANAGED  ::= 1 << 0
+
+/**
+Bitmap mask for $memory_page_report.
+Indicates the page was allocated for the Toit heap.
+*/
+MEMORY_PAGE_TOIT            ::= 1 << 1
+
+/**
+Bitmap mask for $memory_page_report.
+Indicates the page contains at least one allocation for external (large)
+  Toit strings and byte arrays.
+*/
+MEMORY_PAGE_EXTERNAL        ::= 1 << 2
+
+/**
+Bitmap mask for $memory_page_report.
+Indicates the page contains at least one allocation for TLS and other
+  cryptographic uses.
+*/
+MEMORY_PAGE_TLS             ::= 1 << 3
+
+/**
+Bitmap mask for $memory_page_report.
+Indicates the page contains at least one allocation for network buffers.
+*/
+MEMORY_PAGE_BUFFERS         ::= 1 << 4
+
+/**
+Bitmap mask for $memory_page_report.
+Indicates the page contains at least one miscellaneous or unknown allocation.
+*/
+MEMORY_PAGE_MISC            ::= 1 << 5
+
+/**
+Bitmap mask for $memory_page_report.
+Indicates that this page and the next page are part of a large multi-page
+  allocation.
+*/
+MEMORY_PAGE_MERGE_WITH_NEXT ::= 1 << 6

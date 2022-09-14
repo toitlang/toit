@@ -18,8 +18,13 @@ send_trace_message message/ByteArray -> none:
   handled := false
   try:
     service := service_
-    if not service: service = service_ = (TraceServiceClient --no-open).open
-    handled = service.handle_trace message
+    if service:
+      handled = service.handle_trace message
+    else:
+      service = (TraceServiceClient --no-open).open
+      if service:
+        handled = service.handle_trace message
+        service_ = service
   finally: | is_exception exception |
     // If the service handled the trace, we do not need to let the system
     // know about it. It is nice that others take care of our traces!
