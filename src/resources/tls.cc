@@ -134,6 +134,8 @@ static void* tagging_mbedtls_calloc(size_t nelem, size_t size) {
     printf("***MbedTLS failed to allocate %d bytes.\n", (int)(total_size));
     VM::current()->scheduler()->gc(null, /* malloc_failed = */ true, /* try_hard = */ true);
     result = calloc(1, total_size);
+    HeapTagScope scope(0);
+    if (!result) result = calloc(1, total_size);
     if (!result) printf("***MbedTLS *still* failed to allocate %d bytes.\n", (int)(total_size));
   }
   return result;
