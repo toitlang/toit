@@ -22,6 +22,7 @@
 #include "../process.h"
 #include "../objects_inline.h"
 #include "../resource.h"
+#include "../scheduler.h"
 #include "../vm.h"
 
 #include "tls.h"
@@ -127,7 +128,12 @@ static void* tagging_mbedtls_calloc(size_t nelem, size_t size) {
   // Sanity check inputs for security.
   if (nelem > 0xffff || size > 0xffff) return null;
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + BIGNUM_MALLOC_TAG);
-  void* result = calloc(nelem, size);
+  size_t total_size = nelem * size;
+  void *result = calloc(1, total_size);
+  if (!result) {
+    VM::current()->scheduler()->gc(null, /* malloc_failed = */ true, /* try_hard = */ true);
+    result = calloc(1, total_size);
+  }
   return result;
 }
 
