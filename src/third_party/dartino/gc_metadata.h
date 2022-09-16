@@ -383,9 +383,11 @@ class GcMetadata {
 
   static uword heap_extent() { return singleton_.heap_extent_; }
 
-  static bool in_metadata_range(uword address) {
+  template<typename T>
+  static bool in_metadata_range(T address_argument) {
+    uword address = reinterpret_cast<uword>(address_argument);
     uword lowest = singleton_.lowest_address_;
-    return address >= lowest && address - lowest <= singleton_.heap_extent_;
+    return lowest <= address && address < lowest + singleton_.heap_extent_;
   }
 
   static uword remembered_set_bias() { return singleton_.remembered_set_bias_; }

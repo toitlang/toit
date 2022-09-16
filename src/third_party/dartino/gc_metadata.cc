@@ -32,8 +32,11 @@ void GcMetadata::set_up_singleton() {
   // If we have very limited memory then we restrict the Toit heap
   // to the high half, which reduces the metadata allocation from
   // 24k to 12k.
-  if (false && !OS::use_spiram_for_metadata() && !OS::use_spiram_for_heap() && 148 * KB < size && size < 300 * KB) {
-    uword adjust = size - 148 * KB;
+  const uword TWELVE_K_METADATA_LIMIT = 148 * KB;
+  const uword PLENTY_OF_MEMORY = 308 * KB;
+  if (!OS::use_spiram_for_metadata() && !OS::use_spiram_for_heap() &&
+      TWELVE_K_METADATA_LIMIT < size && size < PLENTY_OF_MEMORY) {
+    uword adjust = size - TWELVE_K_METADATA_LIMIT;
     lowest_address_ += adjust;
     size -= adjust;
   }
