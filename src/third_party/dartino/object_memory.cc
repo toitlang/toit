@@ -212,16 +212,30 @@ void Chunk::find(uword word, const char* name) {
 #endif
 
 Chunk* ObjectMemory::allocate_chunk(Space* owner, uword size) {
+  static const int UNUSABLE_SIZE = 50;
+  void* unusable_pages[UNUSABLE_SIZE];
+  int unusable_pages_count = 0;
   size = Utils::round_up(size, TOIT_PAGE_SIZE);
   void* memory = OS::allocate_pages(size);
   uword lowest = GcMetadata::lowest_old_space_address();
   USE(lowest);
-  if (memory == null) return null;
-  if (reinterpret_cast<uword>(memory) < lowest ||
-      reinterpret_cast<uword>(memory) - lowest + size > GcMetadata::heap_extent()) {
-    printf("New allocation %p-%p\n", memory, unvoid_cast<char*>(memory) + size);
-    FATAL("Toit heap outside expected range");
+  while (memory != null &&
+         (reinterpret_cast<uword>(memory) < lowest ||
+          reinterpret_cast<uword>(memory) - lowest + size > GcMetadata::heap_extent())) {
+    if (unusable_pages_count == UNUSABLE_SIZE) {
+      printf("New allocation %p-%p\n", memory, unvoid_cast<char*>(memory) + size);
+      printf("Metadata range %p-%p\n", reinterpret_cast<void*>(lowest), reinterpret_cast<uint8*>(lowest) + GcMetadata::heap_extent());
+      FATAL("Toit heap outside expected range");
+    }
+    unusable_pages[unusable_pages_count++] = memory;
+    memory = OS::allocate_pages(size);
   }
+
+  for (int i = 0; i < unusable_pages_count; i++) {
+    OS::free_pages(unusable_pages[i], size);
+  }
+
+  if (memory == null) return null;
 
   uword base = reinterpret_cast<uword>(memory);
   Chunk* chunk = _new Chunk(owner, base, size);
