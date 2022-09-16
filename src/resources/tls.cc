@@ -129,7 +129,7 @@ static void* tagging_mbedtls_calloc(size_t nelem, size_t size) {
   if (nelem > 0xffff || size > 0xffff) return null;
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + BIGNUM_MALLOC_TAG);
   size_t total_size = nelem * size;
-  void *result = calloc(1, total_size);
+  void* result = calloc(1, total_size);
   if (!result) {
     VM::current()->scheduler()->gc(null, /* malloc_failed = */ true, /* try_hard = */ true);
     result = calloc(1, total_size);
