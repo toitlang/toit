@@ -60,7 +60,7 @@ class Adc:
     resource_ = adc_init_ resource_freeing_module_ pin.num allow_restricted (max_voltage ? max_voltage : 0.0)
 
   /**
-  Measures the voltage on the Pin.
+  Measures the voltage on the pin.
   */
   get --samples=64 -> float:
     if samples < 1: throw "OUT_OF_BOUNDS"
@@ -79,6 +79,19 @@ class Adc:
     return result
 
   /**
+  Measures the voltage on the pin and returns the obtained raw value.
+
+  On the ESP32 the ADC readings are 12 bits, so the value will be in the
+    range 0-4095.
+
+  The returned value is not scaled to the voltage range of the pin.
+  The value is not using the calibration data of the chip.
+  */
+  get --raw/bool -> int:
+    if not raw: throw "INVALID_ARGUMENT"
+    return adc_get_raw_ resource_
+
+  /**
   Closes the ADC unit and releases the associated resources.
   */
   close:
@@ -91,6 +104,9 @@ adc_init_ group num allow_restricted max:
 
 adc_get_ resource samples:
   #primitive.adc.get
+
+adc_get_raw_ resource:
+  #primitive.adc.get_raw
 
 adc_close_ resource:
   #primitive.adc.close
