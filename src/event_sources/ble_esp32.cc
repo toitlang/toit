@@ -96,7 +96,7 @@ void BLEEventSource::entry() {
 }
 
 void BLEEventSource::on_register_resource(Locker& locker, Resource* r) {
-  BLEResource* ble = reinterpret_cast<BLEResource*>(r);
+  auto ble = reinterpret_cast<BLEResource*>(r);
   switch (ble->kind()) {
     case BLEResource::GAP:
       _should_run = true;
@@ -112,7 +112,7 @@ void BLEEventSource::on_register_resource(Locker& locker, Resource* r) {
 }
 
 void BLEEventSource::on_unregister_resource(Locker& locker, Resource* r) {
-  BLEResource* ble = reinterpret_cast<BLEResource*>(r);
+  auto ble = reinterpret_cast<BLEResource*>(r);
   switch (ble->kind()) {
     case BLEResource::GAP:
       _should_run = false;
@@ -276,6 +276,24 @@ void BLEEventSource::on_started_event() {
 
 void BLEEventSource::on_started() {
   instance()->on_started_event();
+}
+
+// RAII helper class to just lock the mutex from a non-toit thread
+class LightLocker {
+ public:
+  explicit LightLocker(Mutex *mutex): _mutex(mutex) {
+    OS::lock(_mutex);
+  }
+  ~LightLocker() {
+    OS::unlock(_mutex);
+  }
+ private:
+  Mutex* _mutex;
+};
+
+void BLEEventSource::on_event(BLEResource* resource, word data) {
+  LightLocker locker(mutex());
+  if (resource) dispatch(resource,data);
 }
 
 void BLEServerCharacteristicResource::set_mbuf_received(os_mbuf* mbuf) {

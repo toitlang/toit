@@ -33,7 +33,7 @@ file(GLOB toit_core_SRC
   "*.h"
   "*.c"
   "*.cc"
-  )
+)
 
 # Sources that are only needed to run a program.
 file(GLOB run_SRC
@@ -52,9 +52,13 @@ file(GLOB toit_vm_runtime_SRC
   )
 
 file(GLOB toit_resources_SRC
-  "resources/*.h"
-  "resources/*.cc"
-  )
+        "resources/*.h"
+        "resources/*.cc"
+        )
+
+if ("${CMAKE_SYSTEM_NAME}" MATCHES "Darwin")
+  list(APPEND toit_resources_SRC "resources/ble_host.mm")
+endif()
 
 file(GLOB toit_event_sources_SRC
   "event_sources/*.h"
@@ -170,6 +174,10 @@ set(TOIT_LINK_LIBS
   CACHE INTERNAL ""
   )
 
+if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+  list(APPEND TOIT_LINK_LIBS "-framework Foundation" "-framework CoreBluetooth" ObjC)
+endif()
+
 target_link_libraries(
   toit_vm
   ${TOIT_WINDOWS_LIBS}
@@ -234,6 +242,8 @@ if (DEFINED USE_LWIP)
   target_compile_options(toit.run PRIVATE ${LWIP_COMPILER_FLAGS})
   target_compile_definitions(toit.run PRIVATE ${LWIP_DEFINITIONS} ${LWIP_MBEDTLS_DEFINITIONS})
 endif()
+
+
 
 #ifdef IMAGE
 enable_language(C ASM)

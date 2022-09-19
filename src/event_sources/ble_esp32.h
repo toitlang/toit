@@ -15,6 +15,9 @@
 
 #pragma once
 
+#include "../top.h"
+
+#ifdef TOIT_FREERTOS
 #include "../resource.h"
 
 #include <functional>
@@ -22,13 +25,17 @@
 
 namespace toit {
 
-const int kInvalidHandle = UINT16_MAX;
+
+class BLEResourceGroup;
 
 class BLEResource : public Resource {
  public:
   enum Kind {
-    GAP,
-    GATT,
+    CENTRAL_MANAGER,
+    PERIPHERAL_MANAGER,
+    REMOTE_DEVICE,
+    CHARACTERISTIC,
+    SERVICE
   };
   BLEResource(ResourceGroup* group, Kind kind)
       : Resource(group)
@@ -36,16 +43,13 @@ class BLEResource : public Resource {
 
   Kind kind() const { return _kind; }
 
+  BLEResourceGroup* group() { return reinterpret_cast<BLEResourceGroup*>(resource_group()); }
+
  private:
   const Kind _kind;
 };
 
-class GAPResource : public BLEResource {
- public:
-  TAG(GAPResource);
-  explicit GAPResource(ResourceGroup* group)
-      : BLEResource(group, GAP) {}
-};
+
 
 class GATTResource : public BLEResource {
  public:
@@ -200,6 +204,8 @@ class BLEEventSource : public LazyEventSource, public Thread {
 
   BLEEventSource();
 
+  void on_event(BLEResource* resource, word data);
+
   void on_register_resource(Locker& locker, Resource* r) override;
   void on_unregister_resource(Locker& locker, Resource* r) override;
 
@@ -259,3 +265,5 @@ class BLEEventSource : public LazyEventSource, public Thread {
 };
 
 } // namespace toit
+
+#endif
