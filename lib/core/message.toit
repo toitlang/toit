@@ -3,9 +3,9 @@
 // found in the lib/LICENSE file.
 
 // System message types.
-SYSTEM_TERMINATED_     ::= 0
-SYSTEM_SPAWNED_        ::= 1
-SYSTEM_MIRROR_MESSAGE_ ::= 2  // Used for sending stack traces and profile information.
+SYSTEM_TERMINATED_ ::= 0
+SYSTEM_SPAWNED_    ::= 1
+SYSTEM_TRACE_      ::= 2  // Stack traces, histograms, and profiling information.
 
 // System message types for service RPCs.
 SYSTEM_RPC_REQUEST_         ::= 3
@@ -13,18 +13,6 @@ SYSTEM_RPC_REPLY_           ::= 4
 SYSTEM_RPC_CANCEL_          ::= 5
 SYSTEM_RPC_NOTIFY_          ::= 6
 SYSTEM_RPC_NOTIFY_RESOURCE_ ::= 7
-
-/**
-Sends the $message to the system with the $type.
-It must be possible to encode the $message with the built-in
-primitive message encoder.
-
-Returns a status code:
-* 0: Message OK
-* 1: No such receiver
-*/
-system_send_ type/int message:
-  return process_send_ -1 type message
 
 /**
 Sends the $message with $type to the process identified by $pid.

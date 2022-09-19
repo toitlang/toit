@@ -51,15 +51,24 @@ class Process : public ProcessListFromProcessGroup::Element,
 
   static const char* StateName[];
 
-  Process(Program* program, ProcessGroup* group, SystemMessage* termination, char** args, Chunk* initial_chunk);
-#ifndef TOIT_FREERTOS
-  Process(Program* program, ProcessGroup* group, SystemMessage* termination, SnapshotBundle system, SnapshotBundle application, char** args, Chunk* initial_chunk);
-#endif
-  Process(Program* program, ProcessGroup* group, SystemMessage* termination, Method method, uint8* arguments, Chunk* initial_chunk);
-  ~Process();
+  // Constructor for an internal process based on Toit code.
+  Process(Program* program, ProcessGroup* group, SystemMessage* termination, Chunk* initial_chunk);
 
-  // Constructor for an external process (no Toit code).
+  // Constructor for an internal process spawned from Toit code.
+  Process(Program* program, ProcessGroup* group, SystemMessage* termination, Method method, Chunk* initial_chunk);
+
+  // Constructor for an external process with no Toit code.
   Process(ProcessRunner* runner, ProcessGroup* group, SystemMessage* termination);
+
+  // Construction support.
+  void set_main_arguments(uint8* arguments);
+  void set_spawn_arguments(uint8* arguments);
+#ifndef TOIT_FREERTOS
+  void set_main_arguments(char** argv);
+  void set_spawn_arguments(SnapshotBundle system, SnapshotBundle application);
+#endif
+
+  ~Process();
 
   int id() const { return _id; }
   int next_task_id() { return _next_task_id++; }
@@ -71,9 +80,9 @@ class Process : public ProcessListFromProcessGroup::Element,
   void mark_as_priviliged() { _is_privileged = true; }
 
   // Garbage collection operation for runtime objects.
-  void gc(bool try_hard) {
-    if (program() == null) return;
-    object_heap()->gc(try_hard);
+  GcType gc(bool try_hard) {
+    ASSERT(program() != null);  // Should not call GC on external processes.
+    return object_heap()->gc(try_hard);
   }
 
   bool idle_since_gc() const { return _idle_since_gc; }
@@ -104,10 +113,12 @@ class Process : public ProcessListFromProcessGroup::Element,
   ProcessRunner* runner() const { return _runner; }
 
   Method entry() const { return _entry; }
-  char** args() { return _args; }
-  Method hatch_method() const { return _hatch_method; }
-  uint8* hatch_arguments() const { return _hatch_arguments; }
-  void clear_hatch_arguments() { _hatch_arguments = null; }
+  uint8* main_arguments() { return _main_arguments; }
+  void clear_main_arguments() { _main_arguments = null; }
+
+  Method spawn_method() const { return _spawn_method; }
+  uint8* spawn_arguments() const { return _spawn_arguments; }
+  void clear_spawn_arguments() { _spawn_arguments = null; }
 
   // Handling of messages and completions.
   bool has_messages();
@@ -137,7 +148,7 @@ class Process : public ProcessListFromProcessGroup::Element,
 
   int current_directory() { return _current_directory; }
   void set_current_directory(int fd) { _current_directory = fd; }
-  int gc_count() { return _object_heap.gc_count(); }
+  int gc_count(GcType type) { return _object_heap.gc_count(type); }
 
   // Special allocation of byte arrays and strings due to multiple reasons for failure.
   // The error string is only set if null is returned.
@@ -215,10 +226,11 @@ class Process : public ProcessListFromProcessGroup::Element,
   uword _program_heap_size;
 
   Method _entry;
-  char** _args;
+  Method _spawn_method;
 
-  Method _hatch_method;
-  uint8* _hatch_arguments;
+  // The arguments (if any) are encoded as messages using the MessageEncoder.
+  uint8* _main_arguments = null;
+  uint8* _spawn_arguments = null;
 
   ObjectHeap _object_heap;
   int64 _last_bytes_allocated;

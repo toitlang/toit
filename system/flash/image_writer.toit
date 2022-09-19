@@ -49,10 +49,11 @@ class ContainerImageWriter extends ServiceResource:
           image_writer_write_ image_ partial_chunk_ 0 IMAGE_CHUNK_SIZE
           partial_chunk_fill_ = 0
 
-  commit --run_flags/int -> FlashAllocation:
+  commit --flags/int --data/int -> FlashAllocation:
     try:
       if partial_chunk_fill_ > 0: throw "Incomplete image"
-      metadata := #[run_flags, 0, 0, 0, 0]
+      metadata := #[flags, 0, 0, 0, 0]
+      binary.LITTLE_ENDIAN.put_uint32 metadata 1 data
       image_writer_commit_ image_ metadata
       return FlashAllocation reservation_.offset
     finally:

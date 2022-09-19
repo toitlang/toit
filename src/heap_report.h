@@ -38,6 +38,8 @@ static const uint8 NULL_MALLOC_TAG                = 13;
 static const uint8 WIFI_MALLOC_TAG                = 14;
 static const uint8 NUMBER_OF_MALLOC_TAGS          = 15;
 
+int compute_allocation_type(uword tag);
+
 #ifdef TOIT_CMPCTMALLOC
 
 class HeapFragmentationDumper : public Buffer {

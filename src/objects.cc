@@ -467,6 +467,7 @@ void String::read_content(SnapshotReader* st, int len) {
     auto external_bytes = st->read_external_list_uint8();
     ASSERT(external_bytes.length() == len + 1);  // TODO(florian): we shouldn't have a '\0'.
     _set_external_address(external_bytes.data());
+    _assign_hash_code();
   } else {
     _set_length(len);
     Bytes bytes(this);

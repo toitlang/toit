@@ -88,45 +88,56 @@ SystemMessage* Scheduler::new_process_message(SystemMessage::Type type, int gid)
   return result;
 }
 
-Scheduler::ExitState Scheduler::run_boot_program(Program* program, char** args, int group_id) {
-  // Allocation takes the memory lock which must happen before taking the scheduler lock.
+Process* Scheduler::new_boot_process(Locker& locker, Program* program, int group_id) {
   InitialMemoryManager manager;
-  bool ok = manager.allocate();
-  USE(ok);
-  // We assume that allocate_initial_block succeeds since we can't run out of
-  // memory while booting.
-  ASSERT(ok);
-  Locker locker(_mutex);
+  { // Allocation takes the memory lock which must happen without holding
+    // the scheduler lock.
+    Unlocker unlocker(locker);
+    bool ok = manager.allocate();
+    // We assume that the allocation succeeds since we can't run out of
+    // memory while booting.
+    ASSERT(ok);
+  }
+
   ProcessGroup* group = ProcessGroup::create(group_id, program);
   SystemMessage* termination = new_process_message(SystemMessage::TERMINATED, group_id);
-  Process* process = _new Process(program, group, termination, args, manager.initial_chunk);
+  Process* process = _new Process(program, group, termination, manager.initial_chunk);
   ASSERT(process);
   manager.dont_auto_free();
+  return process;
+}
+
+
+#ifdef TOIT_FREERTOS
+
+Scheduler::ExitState Scheduler::run_boot_program(Program* program, int group_id) {
+  Locker locker(_mutex);
+  Process* process = new_boot_process(locker, program, group_id);
   return launch_program(locker, process);
 }
 
-#ifndef TOIT_FREERTOS
-Scheduler::ExitState Scheduler::run_boot_program(
-    Program* boot_program,
-    SnapshotBundle system,
-    SnapshotBundle application,
-    char** args,
-    int group_id) {
-  ProcessGroup* group = ProcessGroup::create(group_id, boot_program);
-  // Allocation takes the memory lock which must happen before taking the scheduler lock.
-  InitialMemoryManager manager;
-  bool ok = manager.allocate();
-  USE(ok);
-  // We assume that allocate_initial_block succeeds since we can't run out of
-  // memory while booting.
-  ASSERT(ok);
+#else
+
+Scheduler::ExitState Scheduler::run_boot_program(Program* program, char** argv, int group_id) {
   Locker locker(_mutex);
-  SystemMessage* termination = new_process_message(SystemMessage::TERMINATED, group_id);
-  Process* process = _new Process(boot_program, group, termination, system, application, args, manager.initial_chunk);
-  ASSERT(process);
-  manager.dont_auto_free();
+  Process* process = new_boot_process(locker, program, group_id);
+  process->set_main_arguments(argv);
   return launch_program(locker, process);
 }
+
+Scheduler::ExitState Scheduler::run_boot_program(
+    Program* program,
+    SnapshotBundle system,
+    SnapshotBundle application,
+    char** argv,
+    int group_id) {
+  Locker locker(_mutex);
+  Process* process = new_boot_process(locker, program, group_id);
+  process->set_main_arguments(argv);
+  process->set_spawn_arguments(system, application);
+  return launch_program(locker, process);
+}
+
 #endif
 
 Scheduler::ExitState Scheduler::launch_program(Locker& locker, Process* process) {
@@ -189,17 +200,18 @@ int Scheduler::next_group_id() {
   return _next_group_id++;
 }
 
-int Scheduler::run_program(Program* program, char** args, ProcessGroup* group, Chunk* initial_chunk) {
+int Scheduler::run_program(Program* program, uint8* arguments, ProcessGroup* group, Chunk* initial_chunk) {
   Locker locker(_mutex);
   SystemMessage* termination = new_process_message(SystemMessage::TERMINATED, group->id());
   if (termination == null) {
     return INVALID_PROCESS_ID;
   }
-  Process* process = _new Process(program, group, termination, args, initial_chunk);
+  Process* process = _new Process(program, group, termination, initial_chunk);
   if (process == null) {
     delete termination;
     return INVALID_PROCESS_ID;
   }
+  process->set_main_arguments(arguments);
 
   Interpreter interpreter;
   interpreter.activate(process);
@@ -303,16 +315,18 @@ bool Scheduler::signal_process(Process* sender, int target_id, Process::Signal s
   return true;
 }
 
-Process* Scheduler::hatch(Program* program, ProcessGroup* process_group, Method method, uint8* arguments, Chunk* initial_chunk) {
+Process* Scheduler::spawn(Program* program, ProcessGroup* process_group, Method method, uint8* arguments, Chunk* initial_chunk) {
   Locker locker(_mutex);
 
   SystemMessage* termination = new_process_message(SystemMessage::TERMINATED, process_group->id());
   if (!termination) return null;
-  Process* process = _new Process(program, process_group, termination, method, arguments, initial_chunk);
+
+  Process* process = _new Process(program, process_group, termination, method, initial_chunk);
   if (!process) {
     delete termination;
     return null;
   }
+  process->set_spawn_arguments(arguments);
 
   SystemMessage* spawned = new_process_message(SystemMessage::SPAWNED, process_group->id());
   if (!spawned) {
@@ -406,9 +420,12 @@ bool Scheduler::kill(const Program* program) {
 }
 
 void Scheduler::gc(Process* process, bool malloc_failed, bool try_hard) {
-  bool doing_idle_process_gc = try_hard || malloc_failed || process->system_refused_memory();
+  bool doing_idle_process_gc = try_hard || malloc_failed || (process && process->system_refused_memory());
   bool doing_cross_process_gc = false;
   uint64 start = OS::get_monotonic_time();
+#ifdef TOIT_GC_LOGGING
+  bool is_boot_process = process && VM::current()->scheduler()->is_boot_process(process);
+#endif
 
   if (try_hard) {
     Locker locker(_mutex);
@@ -436,7 +453,7 @@ void Scheduler::gc(Process* process, bool malloc_failed, bool try_hard) {
         if (!OS::wait_us(_gc_condition, deadline - OS::get_monotonic_time())) {
 #ifdef TOIT_GC_LOGGING
           printf("[gc @ %p%s | timed out waiting for %d processes to stop]\n",
-              process, VM::current()->scheduler()->is_boot_process(process) ? "*" : " ",
+              process, is_boot_process ? "*" : " ",
               _gc_waiting_for_preemption);
 #endif
           _gc_waiting_for_preemption = 0;
@@ -450,26 +467,24 @@ void Scheduler::gc(Process* process, bool malloc_failed, bool try_hard) {
     ProcessListFromScheduler targets;
     { Locker locker(_mutex);
       for (ProcessGroup* group : _groups) {
-        bool done = false;
         for (Process* target : group->processes()) {
+          if (target->program() == null) continue;  // External process.
           if (target->state() != Process::RUNNING && !target->idle_since_gc()) {
             if (target->state() != Process::SUSPENDED_AWAITING_GC) {
               gc_suspend_process(locker, target);
             }
-            target->set_idle_since_gc(true);  // Will be true in a little while.
             targets.append(target);
-            if (!try_hard) {
-              done = true;
-              break;
-            }
           }
         }
-        if (done) break;
       }
     }
 
     for (Process* target : targets) {
-      target->gc(try_hard);
+      GcType type = target->gc(try_hard);
+      if (type != NEW_SPACE_GC) {
+        Locker locker(_mutex);
+        target->set_idle_since_gc(true);
+      }
       gcs++;
     }
 
@@ -483,7 +498,10 @@ void Scheduler::gc(Process* process, bool malloc_failed, bool try_hard) {
     }
   }
 
-  process->gc(try_hard);
+  if (process && process->program() != null) {
+    // Not external process.
+    process->gc(try_hard);
+  }
 
   if (doing_cross_process_gc) {
     Locker locker(_mutex);
@@ -530,6 +548,10 @@ Object* Scheduler::process_stats(Array* array, int group_id, int process_id, Pro
   uword max = Smi::MAX_SMI_VALUE;
   switch (length) {
     default:
+    case 11:
+      array->at_put(10, Smi::from(subject_process->gc_count(COMPACTING_GC)));
+    case 10:
+      array->at_put(9, Smi::from(subject_process->gc_count(FULL_GC)));
     case 9:
       array->at_put(8, Smi::from(Utils::min(max, info.largest_free_block)));
     case 8:
@@ -550,7 +572,7 @@ Object* Scheduler::process_stats(Array* array, int group_id, int process_id, Pro
     case 2:
       array->at_put(1, Smi::from(subject_process->object_heap()->bytes_allocated()));
     case 1:
-      array->at_put(0, Smi::from(subject_process->gc_count()));
+      array->at_put(0, Smi::from(subject_process->gc_count(NEW_SPACE_GC)));
     case 0:
       (void)0;  // Do nothing.
   }

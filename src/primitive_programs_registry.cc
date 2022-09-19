@@ -35,7 +35,7 @@ PRIMITIVE(next_group_id) {
 }
 
 PRIMITIVE(spawn) {
-  ARGS(int, offset, int, size, int, group_id);
+  ARGS(int, offset, int, size, int, group_id, Object, arguments);
 
   FlashAllocation* allocation = static_cast<FlashAllocation*>(FlashRegistry::memory(offset, size));
   if (allocation->type() != PROGRAM_TYPE) INVALID_ARGUMENT;
@@ -43,13 +43,33 @@ PRIMITIVE(spawn) {
   Program* program = static_cast<Program*>(allocation);
   if (!program->is_valid(offset, OS::image_uuid())) OUT_OF_BOUNDS;
 
+  int length = 0;
+  { MessageEncoder size_encoder(process, null);
+    if (!size_encoder.encode(arguments)) WRONG_TYPE;
+    length = size_encoder.size();
+  }
+
+  uint8* buffer = null;
+  { HeapTagScope scope(ITERATE_CUSTOM_TAGS + EXTERNAL_BYTE_ARRAY_MALLOC_TAG);
+    buffer = unvoid_cast<uint8*>(malloc(length));
+    if (buffer == null) MALLOC_FAILED;
+  }
+
+  MessageEncoder encoder(process, buffer);
+  if (!encoder.encode(arguments)) {
+    encoder.free_copied();
+    free(buffer);
+    if (encoder.malloc_failed()) MALLOC_FAILED;
+    OTHER_ERROR;
+  }
+
   InitialMemoryManager manager;
   if (!manager.allocate()) ALLOCATION_FAILED;
 
   ProcessGroup* process_group = ProcessGroup::create(group_id, program);
   if (!process_group) MALLOC_FAILED;
 
-  int pid = VM::current()->scheduler()->run_program(program, {}, process_group, manager.initial_chunk);
+  int pid = VM::current()->scheduler()->run_program(program, buffer, process_group, manager.initial_chunk);
   if (pid == Scheduler::INVALID_PROCESS_ID) {
     delete process_group;
     MALLOC_FAILED;

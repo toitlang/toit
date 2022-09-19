@@ -242,7 +242,7 @@ build/$(ESP32_CHIP)/include/sdkconfig.h:
 
 .PHONY: build/config.json  # Marked phony to force regeneration.
 build/config.json:
-	echo '{"wifi": {"ssid": "$(ESP32_WIFI_SSID)", "password": "$(ESP32_WIFI_PASSWORD)"}}' > $@
+	echo '{"wifi": {"wifi.ssid": "$(ESP32_WIFI_SSID)", "wifi.password": "$(ESP32_WIFI_PASSWORD)"}}' > $@
 
 
 # ESP32 VARIANTS FLASH
@@ -271,12 +271,10 @@ INSTALL_SRC_ARCH := $(HOST)
 .PHONY: install-sdk install
 install-sdk: all
 	install -D --target-directory="$(DESTDIR)$(prefix)"/bin "$(CURDIR)"/build/$(INSTALL_SRC_ARCH)/sdk/bin/*
+	install -D --target-directory="$(DESTDIR)$(prefix)"/tools "$(CURDIR)"/build/$(INSTALL_SRC_ARCH)/sdk/tools/*
 	mkdir -p "$(DESTDIR)$(prefix)"/lib
 	cp -R "$(CURDIR)"/lib/* "$(DESTDIR)$(prefix)"/lib
 	find "$(DESTDIR)$(prefix)"/lib -type f -exec chmod 644 {} \;
-	mkdir -p "$(DESTDIR)$(prefix)"/tools
-	cp "$(CURDIR)"/build/$(INSTALL_SRC_ARCH)/sdk/toit_tools/* "$(DESTDIR)$(prefix)"/tools
-	find "$(DESTDIR)$(prefix)"/tools -type f -exec chmod 755 {} \;
 
 install: install-sdk
 

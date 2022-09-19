@@ -42,8 +42,7 @@ Process::Process(Program* program, ProcessRunner* runner, ProcessGroup* group, S
     , _program_heap_address(program ? program->_program_heap_address : 0)
     , _program_heap_size(program ? program->_program_heap_size : 0)
     , _entry(Method::invalid())
-    , _hatch_method(Method::invalid())
-    , _hatch_arguments(null)
+    , _spawn_method(Method::invalid())
     , _object_heap(program, this, initial_chunk)
     , _last_bytes_allocated(0)
     , _termination_message(termination)
@@ -63,48 +62,24 @@ Process::Process(Program* program, ProcessRunner* runner, ProcessGroup* group, S
   ASSERT(_group->lookup(_id) == this);
 }
 
-Process::Process(Program* program, ProcessGroup* group, SystemMessage* termination, char** args, Chunk* initial_chunk)
-   : Process(program, null, group, termination, initial_chunk) {
+Process::Process(Program* program, ProcessGroup* group, SystemMessage* termination, Chunk* initial_chunk)
+    : Process(program, null, group, termination, initial_chunk) {
   _entry = program->entry_main();
-  _args = args;
 }
 
-#ifndef TOIT_FREERTOS
-Process::Process(Program* program, ProcessGroup* group, SystemMessage* termination, SnapshotBundle system, SnapshotBundle application, char** args, Chunk* initial_chunk)
-  : Process(program, null, group, termination, initial_chunk) {
-  _entry = program->entry_main();
-  _args = args;
-
-  int size;
-  { MessageEncoder encoder(null);
-    encoder.encode_bundles(system, application);
-    size = encoder.size();
-  }
-
-  uint8* buffer = unvoid_cast<uint8*>(malloc(size));
-  ASSERT(buffer != null)
-  MessageEncoder encoder(buffer);
-  encoder.encode_bundles(system, application);
-  _hatch_arguments = buffer;
-}
-#endif
-
-Process::Process(Program* program, ProcessGroup* group, SystemMessage* termination, Method method, uint8* arguments, Chunk* initial_chunk)
-   : Process(program, null, group, termination, initial_chunk) {
+Process::Process(Program* program, ProcessGroup* group, SystemMessage* termination, Method method, Chunk* initial_chunk)
+    : Process(program, null, group, termination, initial_chunk) {
   _entry = program->entry_spawn();
-  _args = null;
-  _hatch_method = method;
-  _hatch_arguments = arguments;
+  _spawn_method = method;
 }
 
-// Constructor for an external process (no Toit code).
 Process::Process(ProcessRunner* runner, ProcessGroup* group, SystemMessage* termination)
     : Process(null, runner, group, termination, null) {
 }
 
 Process::~Process() {
   _state = TERMINATING;
-  MessageDecoder::deallocate(_hatch_arguments);
+  MessageDecoder::deallocate(_spawn_arguments);
   delete _termination_message;
 
   // Clean up unclaimed resource groups.
@@ -122,6 +97,53 @@ Process::~Process() {
     remove_first_message();
   }
 }
+
+void Process::set_main_arguments(uint8* arguments) {
+  ASSERT(_main_arguments == null);
+  _main_arguments = arguments;
+}
+
+void Process::set_spawn_arguments(uint8* arguments) {
+  ASSERT(_spawn_arguments == null);
+  _spawn_arguments = arguments;
+}
+
+#ifndef TOIT_FREERTOS
+void Process::set_main_arguments(char** argv) {
+  ASSERT(_main_arguments == null);
+  int argc = 0;
+  if (argv) {
+    while (argv[argc] != null) argc++;
+  }
+
+  int size;
+  { MessageEncoder encoder(null);
+    encoder.encode_arguments(argv, argc);
+    size = encoder.size();
+  }
+
+  uint8* buffer = unvoid_cast<uint8*>(malloc(size));
+  ASSERT(buffer != null)
+  MessageEncoder encoder(buffer);
+  encoder.encode_arguments(argv, argc);
+  _main_arguments = buffer;
+}
+
+void Process::set_spawn_arguments(SnapshotBundle system, SnapshotBundle application) {
+  ASSERT(_spawn_arguments == null);
+  int size;
+  { MessageEncoder encoder(null);
+    encoder.encode_bundles(system, application);
+    size = encoder.size();
+  }
+
+  uint8* buffer = unvoid_cast<uint8*>(malloc(size));
+  ASSERT(buffer != null)
+  MessageEncoder encoder(buffer);
+  encoder.encode_bundles(system, application);
+  _spawn_arguments = buffer;
+}
+#endif
 
 SystemMessage* Process::take_termination_message(uint8 result) {
   SystemMessage* message = _termination_message;

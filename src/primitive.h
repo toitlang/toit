@@ -166,10 +166,10 @@ namespace toit {
   PRIMITIVE(float_floor, 1)                  \
   PRIMITIVE(float_trunc, 1)                  \
   PRIMITIVE(command, 0)                      \
-  PRIMITIVE(args, 0)                         \
-  PRIMITIVE(hatch, 2)                        \
-  PRIMITIVE(hatch_method, 0)                 \
-  PRIMITIVE(hatch_args, 0)                   \
+  PRIMITIVE(main_arguments, 0)               \
+  PRIMITIVE(spawn, 2)                        \
+  PRIMITIVE(spawn_method, 0)                 \
+  PRIMITIVE(spawn_arguments, 0)              \
   PRIMITIVE(get_generic_resource_group, 0)   \
   PRIMITIVE(signal_kill, 1)                  \
   PRIMITIVE(current_process_id, 0)           \
@@ -366,6 +366,7 @@ namespace toit {
   PRIMITIVE(image_config, 0)                 \
   PRIMITIVE(get_mac_address, 0)              \
   PRIMITIVE(rtc_user_bytes, 0)               \
+  PRIMITIVE(memory_page_report, 0)           \
 
 #define MODULE_I2C(PRIMITIVE)                \
   PRIMITIVE(init, 3)                         \
@@ -485,7 +486,7 @@ namespace toit {
   PRIMITIVE(unregister_monitor_notifier, 2)  \
 
 #define MODULE_SNAPSHOT(PRIMITIVE)           \
-  PRIMITIVE(launch, 3)                       \
+  PRIMITIVE(launch, 4)                       \
 
 #define MODULE_SERIALIZATION(PRIMITIVE)      \
   PRIMITIVE(serialize, 1)                    \
@@ -519,6 +520,7 @@ namespace toit {
 #define MODULE_ADC(PRIMITIVE)               \
   PRIMITIVE(init, 4)                        \
   PRIMITIVE(get, 2)                         \
+  PRIMITIVE(get_raw, 1)                     \
   PRIMITIVE(close, 1)                       \
 
 #define MODULE_DAC(PRIMITIVE)               \
@@ -548,7 +550,7 @@ namespace toit {
 
 #define MODULE_PROGRAMS_REGISTRY(PRIMITIVE)  \
   PRIMITIVE(next_group_id, 0)                \
-  PRIMITIVE(spawn, 3)                        \
+  PRIMITIVE(spawn, 4)                        \
   PRIMITIVE(is_running, 2)                   \
   PRIMITIVE(kill, 2)                         \
   PRIMITIVE(bundled_images, 0)               \
@@ -641,7 +643,7 @@ namespace toit {
   PRIMITIVE(erase, 1)                        \
 
 #define MODULE_DEBUG(PRIMITIVE)              \
-  PRIMITIVE(object_histogram, 1)             \
+  PRIMITIVE(object_histogram, 2)             \
 
 // ----------------------------------------------------------------------------
 

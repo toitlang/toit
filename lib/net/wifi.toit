@@ -7,11 +7,11 @@ import system.api.wifi show WifiServiceClient
 
 import .impl
 
-CONFIG_SSID      /string ::= "ssid"
-CONFIG_PASSWORD  /string ::= "password"
+CONFIG_SSID      /string ::= "wifi.ssid"
+CONFIG_PASSWORD  /string ::= "wifi.password"
 
-CONFIG_BROADCAST /string ::= "broadcast"
-CONFIG_CHANNEL   /string ::= "channel"
+CONFIG_BROADCAST /string ::= "wifi.broadcast"
+CONFIG_CHANNEL   /string ::= "wifi.channel"
 
 service_/WifiServiceClient? ::= (WifiServiceClient --no-open).open
 

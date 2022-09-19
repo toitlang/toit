@@ -2,11 +2,16 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the examples/LICENSE file.
 
-import ntp
 import esp32
+import log
+import ntp
 
 main:
-  print "Before: Time is $(Time.now)"
-  sync := ntp.synchronize
-  if sync: esp32.adjust_real_time_clock sync.adjustment
-  print "After: Time is $(Time.now)"
+  logger := log.default.with_name "ntp"
+  result := ntp.synchronize
+  if not result: return
+  esp32.adjust_real_time_clock result.adjustment
+  logger.info "synchronized" --tags={
+    "adjustment": result.adjustment,
+    "time": Time.now.local,
+  }

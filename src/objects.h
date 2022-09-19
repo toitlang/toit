@@ -34,6 +34,12 @@ enum BlobKind {
   STRINGS_ONLY
 };
 
+enum GcType {
+  NEW_SPACE_GC  = 0,
+  FULL_GC       = 1,
+  COMPACTING_GC = 2,
+};
+
 // Type testers.
 INLINE bool is_smi(Object* o);
 INLINE bool is_heap_object(Object* o);

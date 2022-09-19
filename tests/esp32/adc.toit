@@ -32,13 +32,17 @@ main:
   control_pin.set 0
   // The resistors create a voltage divider of ration 2/3.
   value := adc.get
-  print value
   expect 0.9 < value < 1.3
+
+  raw_value := adc.get --raw
+  expect 1115 < raw_value < 1500
 
   control_pin.set 1
   // The voltage is now 3.3V.
   value = adc.get
   expect value > 3.0
+  raw_value = adc.get --raw
+  expect_equals 4095 raw_value
 
   // Test that we correctly measure when the sample size is big.
   control_pin.set 0

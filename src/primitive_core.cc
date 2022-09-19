@@ -73,16 +73,8 @@ PRIMITIVE(write_string_on_stderr) {
   return _raw_message;
 }
 
-PRIMITIVE(hatch_method) {
-  Method method = process->hatch_method();
-  int id = method.is_valid()
-      ? process->program()->absolute_bci_from_bcp(method.header_bcp())
-      : -1;
-  return Smi::from(id);
-}
-
-PRIMITIVE(hatch_args) {
-  uint8* arguments = process->hatch_arguments();
+PRIMITIVE(main_arguments) {
+  uint8* arguments = process->main_arguments();
   if (!arguments) return process->program()->empty_array();
 
   MessageDecoder decoder(process, arguments);
@@ -92,13 +84,38 @@ PRIMITIVE(hatch_args) {
     ALLOCATION_FAILED;
   }
 
-  process->clear_hatch_arguments();
+  process->clear_main_arguments();
   free(arguments);
   decoder.register_external_allocations();
   return decoded;
 }
 
-PRIMITIVE(hatch) {
+PRIMITIVE(spawn_arguments) {
+  uint8* arguments = process->spawn_arguments();
+  if (!arguments) return process->program()->empty_array();
+
+  MessageDecoder decoder(process, arguments);
+  Object* decoded = decoder.decode();
+  if (decoder.allocation_failed()) {
+    decoder.remove_disposing_finalizers();
+    ALLOCATION_FAILED;
+  }
+
+  process->clear_spawn_arguments();
+  free(arguments);
+  decoder.register_external_allocations();
+  return decoded;
+}
+
+PRIMITIVE(spawn_method) {
+  Method method = process->spawn_method();
+  int id = method.is_valid()
+      ? process->program()->absolute_bci_from_bcp(method.header_bcp())
+      : -1;
+  return Smi::from(id);
+}
+
+PRIMITIVE(spawn) {
   ARGS(Object, entry, Object, arguments)
   if (!is_smi(entry)) WRONG_TYPE;
 
@@ -127,7 +144,7 @@ PRIMITIVE(hatch) {
     OTHER_ERROR;
   }
 
-  Process* child = VM::current()->scheduler()->hatch(process->program(), process->group(), method, buffer, manager.initial_chunk);
+  Process* child = VM::current()->scheduler()->spawn(process->program(), process->group(), method, buffer, manager.initial_chunk);
   if (!child) MALLOC_FAILED;
 
   manager.dont_auto_free();
@@ -477,25 +494,6 @@ PRIMITIVE(command) {
   String* arg = process->allocate_string(Flags::program_name, &error);
   if (arg == null) return error;
   return arg;
-}
-
-PRIMITIVE(args) {
-  char** argv = process->args();
-  if (argv == null || argv[0] == null) {
-    return process->program()->empty_array();
-  }
-
-  int argc = 0;
-  while (argv[argc] != null) argc++;
-  Array* result = process->object_heap()->allocate_array(argc, process->program()->null_object());
-  if (result == null) ALLOCATION_FAILED;
-  for (int index = 0; index < argc; index++) {
-    Error* error = null;
-    String* arg = process->allocate_string(argv[index], &error);
-    if (arg == null) return error;
-    Array::cast(result)->at_put(index, arg);
-  }
-  return result;
 }
 
 PRIMITIVE(smi_add) {
@@ -1920,7 +1918,7 @@ PRIMITIVE(remove_finalizer) {
 }
 
 PRIMITIVE(gc_count) {
-  return Smi::from(process->object_heap()->gc_count());
+  return Smi::from(process->object_heap()->gc_count(NEW_SPACE_GC));
 }
 
 PRIMITIVE(create_off_heap_byte_array) {
