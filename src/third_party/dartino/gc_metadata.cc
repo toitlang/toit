@@ -28,6 +28,19 @@ void GcMetadata::set_up_singleton() {
   uword range_address = reinterpret_cast<uword>(range.address);
   lowest_address_ = Utils::round_down(range_address, TOIT_PAGE_SIZE);
   uword size = Utils::round_up(range.size + range_address - lowest_address_, TOIT_PAGE_SIZE);
+#ifdef TOIT_FREERTOS
+  // If we have very limited memory then we restrict the Toit heap
+  // to the high half, which reduces the metadata allocation from
+  // 24k to 12k.
+  const uword TWELVE_K_METADATA_LIMIT = 148 * KB;
+  const uword PLENTY_OF_MEMORY = 308 * KB;
+  if (!OS::use_spiram_for_metadata() && !OS::use_spiram_for_heap() &&
+      TWELVE_K_METADATA_LIMIT < size && size < PLENTY_OF_MEMORY) {
+    uword adjust = size - TWELVE_K_METADATA_LIMIT;
+    lowest_address_ += adjust;
+    size -= adjust;
+  }
+#endif
   heap_extent_ = size;
   heap_start_munged_ = (lowest_address_ >> 1) |
                        (static_cast<uword>(1) << (8 * sizeof(uword) - 1));

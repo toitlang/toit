@@ -525,6 +525,8 @@ class ObjectMemory {
   static inline void set_spare_chunk(Locker& locker, Chunk* spare_chunk) { spare_chunk_ = spare_chunk; }
 
  private:
+  static Chunk* allocate_chunk_helper(Space* space, uword size, void* memory);
+
   static std::atomic<uword> allocated_;
 
   static Chunk* spare_chunk_;

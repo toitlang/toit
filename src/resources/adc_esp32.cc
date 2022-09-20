@@ -230,6 +230,20 @@ PRIMITIVE(get) {
   return Primitive::allocate_double(voltage / 1000.0, process);
 }
 
+PRIMITIVE(get_raw) {
+  ARGS(AdcResource, resource);
+
+  int adc_reading;
+  if (resource->unit == ADC_UNIT_1) {
+    adc_reading = adc1_get_raw(static_cast<adc1_channel_t>(resource->chan));
+  } else {
+    esp_err_t err = adc2_get_raw(static_cast<adc2_channel_t>(resource->chan), ADC_WIDTH_BIT_12, &adc_reading);
+    if (err != ESP_OK) return Primitive::os_error(err, process);
+  }
+
+  return Smi::from(adc_reading);
+}
+
 PRIMITIVE(close) {
   ARGS(AdcResource, resource);
 
