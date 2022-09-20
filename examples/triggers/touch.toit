@@ -33,7 +33,7 @@ main:
   calibrate touch
 
   // Calibrated. Let's report the threshold and read it!
-  print "Pin 32: $touch.threshold $(touch.read --raw)"
+  print "Pin $TOUCH_PIN: $touch.threshold $(touch.read --raw)"
   esp32.enable_touchpad_wakeup
 
   // Now, the touch pin is still open and we've enabled touch 'wakeup'.
