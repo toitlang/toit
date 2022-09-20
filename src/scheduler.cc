@@ -420,12 +420,9 @@ bool Scheduler::kill(const Program* program) {
 }
 
 void Scheduler::gc(Process* process, bool malloc_failed, bool try_hard) {
-  bool doing_idle_process_gc = try_hard || malloc_failed || (process && process->system_refused_memory());
+  bool doing_idle_process_gc = try_hard || malloc_failed || process->system_refused_memory();
   bool doing_cross_process_gc = false;
   uint64 start = OS::get_monotonic_time();
-#ifdef TOIT_GC_LOGGING
-  bool is_boot_process = process && VM::current()->scheduler()->is_boot_process(process);
-#endif
 
   if (try_hard) {
     Locker locker(_mutex);
@@ -453,7 +450,7 @@ void Scheduler::gc(Process* process, bool malloc_failed, bool try_hard) {
         if (!OS::wait_us(_gc_condition, deadline - OS::get_monotonic_time())) {
 #ifdef TOIT_GC_LOGGING
           printf("[gc @ %p%s | timed out waiting for %d processes to stop]\n",
-              process, is_boot_process ? "*" : " ",
+              process, VM::current()->scheduler()->is_boot_process(process) ? "*" : " ",
               _gc_waiting_for_preemption);
 #endif
           _gc_waiting_for_preemption = 0;
@@ -498,7 +495,7 @@ void Scheduler::gc(Process* process, bool malloc_failed, bool try_hard) {
     }
   }
 
-  if (process && process->program() != null) {
+  if (process->program() != null) {
     // Not external process.
     process->gc(try_hard);
   }

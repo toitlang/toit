@@ -18,6 +18,13 @@
 
 # General options.
 HOST=host
+# Use:
+#   rm -rf build
+#   LOCAL_CXXFLAGS="-O0" make BUILD_TYPE=Debug
+# to build a debuggable VM.  Use:
+#   rm -rf build
+#   LOCAL_CXXFLAGS="-O0" LOCAL_INTERPRETER_CXXFLAGS="-O0" make BUILD_TYPE=Debug
+# to build a debuggable VM where even the interpreter is debuggable.
 BUILD_TYPE=Release
 
 # Use 'make ESP32_ENTRY=examples/mandelbrot.toit esp32' to compile a different

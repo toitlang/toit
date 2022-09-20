@@ -24,17 +24,17 @@ namespace toit {
 static const uint8 MISC_MALLOC_TAG                = 0;
 static const uint8 EXTERNAL_BYTE_ARRAY_MALLOC_TAG = 1;
 static const uint8 BIGNUM_MALLOC_TAG              = 2;
-static const uint8 EXTERNAL_STRING_MALLOC_TAG     = EXTERNAL_BYTE_ARRAY_MALLOC_TAG;
+static const uint8 EXTERNAL_STRING_MALLOC_TAG     = 3;
 static const uint8 TOIT_HEAP_MALLOC_TAG           = 4;
 static const uint8 FREE_MALLOC_TAG                = 6;
 static const uint8 LWIP_MALLOC_TAG                = 7;
 static const uint8 HEAP_OVERHEAD_MALLOC_TAG       = 8;
 static const uint8 UNKNOWN_MALLOC_TAG             = 9;
+static const uint8 EVENT_SOURCE_MALLOC_TAG        = 10;
 static const uint8 OTHER_THREADS_MALLOC_TAG       = 11;
-static const uint8 EVENT_SOURCE_MALLOC_TAG        = OTHER_THREADS_MALLOC_TAG;
-static const uint8 THREAD_SPAWN_MALLOC_TAG        = OTHER_THREADS_MALLOC_TAG;
+static const uint8 THREAD_SPAWN_MALLOC_TAG        = 12;
 static const uint8 NULL_MALLOC_TAG                = 13;
-static const uint8 WIFI_MALLOC_TAG                = LWIP_MALLOC_TAG;
+static const uint8 WIFI_MALLOC_TAG                = 14;
 static const uint8 NUMBER_OF_MALLOC_TAGS          = 15;
 
 int compute_allocation_type(uword tag);

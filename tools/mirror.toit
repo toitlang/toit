@@ -487,8 +487,8 @@ class MallocReport extends Mirror:
     if use & MEMORY_PAGE_TOIT_ != 0: symbols += "🐱"
     if use & MEMORY_PAGE_BUFFERS_ != 0: symbols = "B"
     if use & MEMORY_PAGE_EXTERNAL_ != 0: symbols = "X"
-    if use & MEMORY_PAGE_TLS_ != 0: symbols = "W"  // For WWW.
-    if use & MEMORY_PAGE_MISC_ != 0: symbols = "M"  // For WWW.
+    if use & MEMORY_PAGE_TLS_ != 0: symbols = "W"
+    if use & MEMORY_PAGE_MISC_ != 0: symbols = "M"
     if fullness == 0:
       symbols = "--"
     while symbols.size < 2:

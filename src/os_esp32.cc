@@ -581,17 +581,16 @@ class HeapSummaryPage {
       case MISC_MALLOC_TAG: return "misc";
       case EXTERNAL_BYTE_ARRAY_MALLOC_TAG: return "external byte array";
       case BIGNUM_MALLOC_TAG: return "tls/bignum";
-      //case EXTERNAL_STRING_MALLOC_TAG: return "external string";
+      case EXTERNAL_STRING_MALLOC_TAG: return "external string";
       case TOIT_HEAP_MALLOC_TAG: return "toit";
-      //case UNUSED_TOIT_HEAP_MALLOC_TAG: return "unused";
       case FREE_MALLOC_TAG: return "free";
       case LWIP_MALLOC_TAG: return "lwip";
       case HEAP_OVERHEAD_MALLOC_TAG: return "heap overhead";
       case EVENT_SOURCE_MALLOC_TAG: return "event source";
-      //case OTHER_THREADS_MALLOC_TAG: return "thread/other";
-      //case THREAD_SPAWN_MALLOC_TAG: return "thread/spawn";
+      case OTHER_THREADS_MALLOC_TAG: return "thread/other";
+      case THREAD_SPAWN_MALLOC_TAG: return "thread/spawn";
       case NULL_MALLOC_TAG: return "untagged";
-      //case WIFI_MALLOC_TAG: return "wifi";
+      case WIFI_MALLOC_TAG: return "wifi";
     }
     return "unknown";
   }

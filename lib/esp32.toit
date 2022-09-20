@@ -138,5 +138,5 @@ rtc_user_bytes -> ByteArray:
 /**
 Produces (as a system message) a report over the usage of memory at the OS level.
 */
-memory_page_report -> none:
+memory_page_report -> ByteArray:
   #primitive.esp32.memory_page_report
