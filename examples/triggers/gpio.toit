@@ -21,7 +21,7 @@ WAKEUP_PIN ::= 32
 
 main:
   if esp32.wakeup_cause == esp32.WAKEUP_EXT1:
-    print "Woken up from external pin."
+    print "Woken up from external pin"
     // Chances are that when we just woke up because a pin went high.
     // Give the pin a chance to go low again.
     sleep --ms=1_000
