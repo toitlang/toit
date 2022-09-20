@@ -113,7 +113,7 @@ void GPIOResourceGroup::on_unregister_resource(Resource* r) {
     .intr_type = GPIO_INTR_DISABLE,
   };
   gpio_config(&cfg);
-  if (pin < 34) gpio_set_level(pin, 0);
+  if (GPIO_IS_VALID_OUTPUT_GPIO(pin)) gpio_set_level(pin, 0);
 
   gpio_pins.put(pin);
 }
