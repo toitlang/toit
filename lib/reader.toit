@@ -350,7 +350,7 @@ class BufferedReader implements Reader:
 
   // Indexed by the top nibble of a UTF-8 byte this tells you how many bytes
   // long the UTF-8 sequence is.
-  static UTF_FIRST_CHAR_TABLE_ ::= [
+  static UTF_FIRST_CHAR_TABLE_ ::= #[
     1, 1, 1, 1, 1, 1, 1, 1,
     1, 1, 1, 1, 2, 2, 3, 4,
   ]

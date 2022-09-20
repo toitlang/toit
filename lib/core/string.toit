@@ -33,20 +33,20 @@ write_utf_8_to_byte_array byte_array position char:
 
 is_unicode_whitespace_ c/int -> bool:
   // This list should be kept in sync with the comment in $string.trim.
-  return
-    0x0009 <= c <= 0x000D or
-      c == 0x0020 or
-      c == 0x0085 or
-      c == 0x00A0 or
-      c == 0x1680 or
-      0x2000 <= c <= 0x200A or
-      c == 0x2028 or
-      c == 0x2029 or
-      c == 0x202F or
-      c == 0x205F or
-      c == 0x205f or
-      c == 0x3000 or
-      c == 0xFEFF
+  // Whitespace ranges are: 0x0009-0x000D
+  //                        0x0020, 0x0085, 0x00A0 0x1680
+  //                        0x2000-0x200A, 0x2028, 0x2029, 0x202F, 0x205F
+  //                        0x3000, 0xFEFF.
+  if c < 0x85:
+    if 0x0009 <= c <= 0x000D: return true
+    if c == 0x0020: return true
+  else if c < 0x2000:
+    if c == 0x0085 or c == 0x00A0 or c == 0x1680: return true
+  else if c < 0x3000:
+    if c <= 0x200A or c == 0x2028 or c == 0x2029 or c == 0x202F or c == 0x205F: return true
+  else if c == 0x3000 or c == 0xFEFF:
+    return true
+  return false
 
 abstract class string implements Comparable:
   static MIN_SLICE_SIZE_ ::= 16
