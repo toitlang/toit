@@ -23,6 +23,11 @@ TOUCH_PIN ::= 32
 main:
   if esp32.wakeup_cause == esp32.WAKEUP_TOUCHPAD:
     print "Woken up from touchpad"
+    // Chances are that when we just woke up because of registered
+    // touch, it is the wrong time to re-calibrate because you might
+    // still be touching the pin. Sleep for a little while to increase
+    // the chance of getting the calibration right :)
+    sleep --ms=1_000
   else:
     print "Woken up for other reasons"
 
