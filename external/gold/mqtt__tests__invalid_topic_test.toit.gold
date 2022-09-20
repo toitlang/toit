@@ -1,7 +1,7 @@
-<pkg:..>/full_client.toit:663:17: warning: Deprecated 'task'
+<pkg:..>/full_client.toit:668:17: warning: Deprecated 'task'
       while not task.is_canceled:
                 ^~~~
-<pkg:..>/full_client.toit:950:15: warning: Deprecated 'task'
+<pkg:..>/full_client.toit:955:15: warning: Deprecated 'task'
     while not task.is_canceled:
               ^~~~
 <pkg:..>/full_client.toit:56:15: warning: Deprecated 'task'
