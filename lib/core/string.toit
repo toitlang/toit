@@ -11,11 +11,11 @@ utf_8_bytes char:
 // Writes 1-4 bytes to the byte array, corresponding to the UTF-8 encoding of
 // Unicode code point given as 'char'.  Returns the number of bytes written.
 write_utf_8_to_byte_array byte_array position char:
-  if 0 <= char <= 0x7f:
+  if char < 0: throw "INVALID_ARGUMENT"
+  if char <= 0x7f:
     if byte_array: byte_array[position] = char
     return 1
-  if not 0 <= char < 0xd800:
-    if not 0xe000 <= char <= 0x10ffff: throw "INVALID_ARGUMENT"
+  if char >= 0xd800 and not 0xe000 <= char <= 0x10ffff: throw "INVALID_ARGUMENT"
   bytes := 2
   mask := 0x1f
   shifted := 6
