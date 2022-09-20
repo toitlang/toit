@@ -1,7 +1,7 @@
 mqtt/src/packets.toit:65:12: warning: Deprecated 'BufferConsumer.put_byte'
     buffer.put_byte type << 4 | flags
            ^~~~~~~~
-mqtt/src/packets.toit:421:14: warning: Deprecated 'BufferConsumer.put_byte'
+mqtt/src/packets.toit:422:14: warning: Deprecated 'BufferConsumer.put_byte'
       buffer.put_byte topic_qos.max_qos
              ^~~~~~~~
 mqtt/src/full_client.toit:668:17: warning: Deprecated 'task'

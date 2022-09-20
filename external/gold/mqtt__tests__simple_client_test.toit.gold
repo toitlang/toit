@@ -1,7 +1,7 @@
 <pkg:..>/packets.toit:65:12: warning: Deprecated 'BufferConsumer.put_byte'
     buffer.put_byte type << 4 | flags
            ^~~~~~~~
-<pkg:..>/packets.toit:421:14: warning: Deprecated 'BufferConsumer.put_byte'
+<pkg:..>/packets.toit:422:14: warning: Deprecated 'BufferConsumer.put_byte'
       buffer.put_byte topic_qos.max_qos
              ^~~~~~~~
 <pkg:..>/full_client.toit:668:17: warning: Deprecated 'task'
