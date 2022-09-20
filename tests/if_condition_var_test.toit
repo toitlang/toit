@@ -9,13 +9,25 @@ bar x: return x + 1
 
 main:
   if var := fun499:
+    local := 42
+    bar local
     expect_equals 499 var
+    bar local
 
   map := {
     "a": [1, 2],
     "b": [3, 4],
   }
 
+  ["a", "b"].do: | entry |
+    if value := map.get entry:
+      local := 42
+      bar local
+      if entry == "a":
+        expect_equals [1, 2] value
+      else:
+        expect_equals [3, 4] value
+  
   ["a", "b"].do: | entry |
     if value := map.get entry:
       if entry == "a":
