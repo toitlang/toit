@@ -4,13 +4,14 @@
 
 /**
 Example to show how to trigger a device to resume from deep
-  sleep and execute application code based on the touchpad
+  sleep and execute application code based on the wake-on-pin
   functionality.
 
-Setup: Connect a jumper wire to pin 32.
+Setup: Use a pull-down resistor to pull pin 32 to ground.
 
 Start the program, and let the device go into deep sleep.
-Touch pin 32. The device should wake up again.
+
+Connect pin 32 to 3.3V. The device should wake up again.
 */
 
 import gpio
