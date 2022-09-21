@@ -57,6 +57,10 @@ prefix ?= /opt/toit-sdk
 .PHONY: all
 all: sdk
 
+.PHONY: debug
+debug:
+	LOCAL_CXXFLAGS="-O0" $(MAKE) BUILD_TYPE=Debug
+
 .PHONY: sdk
 sdk: tools toit-tools version-file
 

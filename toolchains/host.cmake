@@ -15,8 +15,8 @@
 
 set(TOIT_SYSTEM_NAME "${CMAKE_SYSTEM_NAME}")
 
-set(CMAKE_C_FLAGS_DEBUG "-Og -g" CACHE STRING "c Debug flags")
-set(CMAKE_CXX_FLAGS_DEBUG "-Og -ggdb3 -fdiagnostics-color $ENV{LOCAL_CXXFLAGS}" CACHE STRING "c++ Debug flags")
+set(CMAKE_C_FLAGS_DEBUG "-O1 -g" CACHE STRING "c Debug flags")
+set(CMAKE_CXX_FLAGS_DEBUG "-O1 -ggdb3 -fdiagnostics-color $ENV{LOCAL_CXXFLAGS}" CACHE STRING "c++ Debug flags")
 set(CMAKE_CXX_FLAGS_RELEASE "-Os $ENV{LOCAL_CXXFLAGS}" CACHE STRING "c++ Release flags")
 
 enable_testing()
