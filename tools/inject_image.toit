@@ -40,8 +40,12 @@ main args/List:
   bin_data := file.read_content bin_path
 
   binary := Binary bin_data
-  binary.add_irom_segment img_data
-  print "Segments = $binary.segments_.size"
+  print "Before"
+  binary.segments_.size.repeat: | segment/int |
+    print "Segment $(segment + 1): $binary.segments_[segment]"
+
+  binary.append_irom img_data
+  print "After"
   binary.segments_.size.repeat: | segment/int |
     print "Segment $(segment + 1): $binary.segments_[segment]"
 
@@ -81,6 +85,11 @@ class Binary:
   static HEADER_SIZE_          ::= 24
 
   static ESP_CHECKSUM_MAGIC_   ::= 0xef
+
+  static IROM_MAP_START ::= 0x400d0000
+  static IROM_MAP_END   ::= 0x40400000
+  static DROM_MAP_START ::= 0x3f400000
+  static DROM_MAP_END   ::= 0x3f800000
 
   header_/ByteArray
   segments_/List
@@ -125,6 +134,59 @@ class Binary:
   hash_appended -> bool:
     return header_[HASH_APPENDED_OFFSET_] == 1
 
+  append_irom bits/ByteArray -> none:
+    if bits.size & 0xf != 0:
+      bits += ByteArray (0x10 - (bits.size & 0xf))
+    irom := find_last_irom_segment
+    end := irom.address + irom.size
+    displacement := null
+    segments_.size.repeat:
+      segment/Segment := segments_[it]
+      if identical segment irom:
+        segments_[it] = Segment (segment.bits + bits)
+            --offset=segment.offset
+            --address=segment.address
+        displacement = bits.size
+      else if displacement:
+        segments_[it] = Segment segment.bits
+            --offset=segment.offset + displacement
+            --address=segment.address
+
+  find_last_irom_segment -> Segment?:
+    last := null
+    segments_.do: | segment/Segment |
+      address := segment.address
+      if not IROM_MAP_START <= address < IROM_MAP_END: continue.do
+      if not last or address > last.address: last = segment
+    return last
+
+  append_drom bits/ByteArray -> none:
+    if bits.size & 0xf != 0:
+      bits += ByteArray (0x10 - (bits.size & 0xf))
+    drom := find_last_drom_segment
+    end := drom.address + drom.size
+    displacement := null
+    segments_.size.repeat:
+      segment/Segment := segments_[it]
+      if identical segment drom:
+        segments_[it] = Segment (segment.bits + bits)
+            --offset=segment.offset
+            --address=segment.address
+        displacement = bits.size
+      else if displacement:
+        segments_[it] = Segment segment.bits
+            --offset=segment.offset + displacement
+            --address=segment.address
+
+  find_last_drom_segment -> Segment?:
+    last := null
+    segments_.do: | segment/Segment |
+      address := segment.address
+      if not DROM_MAP_START <= address < DROM_MAP_END: continue.do
+      if not last or address > last.address: last = segment
+    return last
+
+
   add_segment bits/ByteArray address/int -> Segment:
     offset := segments_.last.end
     segment := Segment bits --offset=offset --address=address
@@ -133,14 +195,19 @@ class Binary:
     return segment
 
   add_irom_segment bits/ByteArray -> Segment:
-    return add_segment bits find_free_irom_address
+    return add_segment bits
+        find_free_address IROM_MAP_START IROM_MAP_END
 
-  find_free_irom_address -> int:
-    address := Segment.IROM_MAP_START_
+  add_drom_segment bits/ByteArray -> Segment:
+    return add_segment bits
+        find_free_address DROM_MAP_START DROM_MAP_END
+
+  find_free_address start/int end/int -> int:
+    address := start
     segments_.do: | segment/Segment |
-      if not segment.is_irom: continue.do
-      end := segment.address + segment.size
-      address = max address (round_up end 4096)
+      if not start <= segment.address < end: continue.do
+      extent := segment.address + segment.size
+      address = max address (round_up extent 4096)
     return address
 
   static read_segment_ bits/ByteArray offset/int -> Segment:
@@ -162,9 +229,6 @@ class Segment:
   static DATA_LENGTH_OFFSET_  ::= 4
   static HEADER_SIZE_         ::= 8
 
-  static IROM_MAP_START_ ::= 0x400d0000
-  static IROM_MAP_END_   ::= 0x40400000
-
   bits/ByteArray
   offset/int
   address/int
@@ -177,13 +241,10 @@ class Segment:
   end -> int:
     return offset + HEADER_SIZE_ + size
 
-  is_irom -> bool:
-    return IROM_MAP_START_ <= address < IROM_MAP_END_
-
   xor_checksum -> int:
     result := 0
     bits.do: result ^= it
     return result
 
   stringify -> string:
-    return "len 0x$(%05x size) load 0x$(%08x address)"
+    return "len 0x$(%05x size) load 0x$(%08x address) file_offs 0x$(%08x offset)"

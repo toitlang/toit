@@ -56,6 +56,7 @@
 
 extern "C" uword toit_image_table;
 extern "C" uword _text_end;
+extern "C" uword _rodata_end;
 
 namespace toit {
 
@@ -92,11 +93,15 @@ const Program* setup_program(bool supports_ota) {
 }
 
 static void start() {
-  uword end = reinterpret_cast<uword>(&_text_end);
+  uword rodata = reinterpret_cast<uword>(&_rodata_end);
+  uword table = reinterpret_cast<uword>(&toit_image_table);
+  printf("[table = %x, rodata-end = %x]\n", table, rodata);
+
+  uword end = 0x400d0020 + 0xdf7a0;
   uword aligned = end & 0xfffffff0;
   printf("[end = %x, aligned = %x]\n", end, aligned);
   uword* word = reinterpret_cast<uword*>(aligned);
-  for (int i = 0; i < 1024; i++) {
+  for (int i = 0; i < 30; i++) {
     printf("[*%p = 0x%08x]\n", &word[i], word[i]);
   }
 
