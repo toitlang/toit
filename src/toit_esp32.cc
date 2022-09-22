@@ -55,6 +55,7 @@
 #include "third_party/dartino/gc_metadata.h"
 
 extern "C" uword toit_image_table;
+extern "C" uword _text_end;
 
 namespace toit {
 
@@ -91,6 +92,14 @@ const Program* setup_program(bool supports_ota) {
 }
 
 static void start() {
+  uword end = reinterpret_cast<uword>(&_text_end);
+  uword aligned = end & 0xfffffff0;
+  printf("[end = %x, aligned = %x]\n", end, aligned);
+  uword* word = reinterpret_cast<uword*>(aligned);
+  for (int i = 0; i < 1024; i++) {
+    printf("[*%p = 0x%08x]\n", &word[i], word[i]);
+  }
+
   RtcMemory::set_up();
   FlashRegistry::set_up();
   OS::set_up();

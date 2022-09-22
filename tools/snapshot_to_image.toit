@@ -32,6 +32,7 @@ BINARY_FLAG      ::= "binary"
 M32_FLAG         ::= "machine-32-bit"
 M64_FLAG         ::= "machine-64-bit"
 UNIQUE_ID_OPTION ::= "unique_id"
+RELOCATE_OPTION  ::= "relocate"
 OUTPUT_OPTION    ::= "output"
 
 abstract class RelocatedOutput:
@@ -59,6 +60,31 @@ abstract class RelocatedOutput:
           ENDIAN.uint32 chunk pos
           (mask & 1) != 0
       mask = mask >> 1
+
+class BinaryRelocatedOutput extends RelocatedOutput:
+  relocation_base/int ::= ?
+  buffer_/ByteArray := ByteArray 4
+
+  constructor out .relocation_base:
+    super out
+
+  write_start -> none:
+    // Nothing to add here.
+
+  write_end -> none:
+    // Nothing to add here.
+
+  write_word word/int is_relocatable/bool -> none:
+    if is_relocatable: word += relocation_base
+    write_uint32 word
+
+  write_uint16 halfword/int:
+    RelocatedOutput.ENDIAN.put_uint16 buffer_ 0 halfword
+    out.write buffer_[0..2]
+
+  write_uint32 word/int:
+    RelocatedOutput.ENDIAN.put_uint32 buffer_ 0 word
+    out.write buffer_
 
 class SourceRelocatedOutput extends RelocatedOutput:
   part/int
@@ -94,6 +120,7 @@ main args:
 
   parser.add_option UNIQUE_ID_OPTION --default="00000000-0000-0000-0000-000000000000"
   parser.add_option OUTPUT_OPTION --short="o"
+  parser.add_option RELOCATE_OPTION
 
   parsed := parser.parse args
 
@@ -114,6 +141,17 @@ main args:
   if binary_output and parsed.rest.size != 1:
     print_on_stderr_ "Error: Cannot convert multiple snapshots to binary images"
     exit 1
+
+  relocation_base/int? := null
+  relocate_option := parsed[RELOCATE_OPTION]
+  if relocate_option:
+    if not (relocate_option.starts_with "0x"):
+      print_on_stderr_ "Error: Relocation offset must start with 0x"
+      exit 1
+    if not binary_output:
+      print_on_stderr_ "Error: Can only relocate binary images"
+      exit 1
+    relocation_base = int.parse relocate_option[2..] --radix=16
 
   word_size := null
   if parsed[M32_FLAG]:
@@ -151,7 +189,11 @@ main args:
     image := build_image program word_size --system_uuid=system_uuid --program_id=program_id
     relocatable := image.build_relocatable
     if binary_output:
-      out.write relocatable
+      if relocation_base:
+        output := BinaryRelocatedOutput out relocation_base
+        output.write word_size relocatable
+      else:
+        out.write relocatable
     else:
       output := SourceRelocatedOutput out part++
       output.write word_size relocatable
