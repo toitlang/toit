@@ -149,6 +149,8 @@ container_list parsed/cli.Parsed -> none:
       bundle := SnapshotBundle name content
       output[name] = bundle.uuid.stringify
     else:
+      // TODO(kasper): It would be ideal if we could print
+      // the uuid of the image here.
       output[name] = "<relocatable image>"
   print (json.stringify output)
 
