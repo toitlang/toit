@@ -193,7 +193,7 @@ config_get parsed/cli.Parsed -> none:
   entry := entries.get AR_ENTRY_CONFIG
   if not entry: return
 
-  config := json.decode entry.content
+  config := json.decode entry
   if key:
     if config.contains key:
       print (json.stringify (config.get key))
