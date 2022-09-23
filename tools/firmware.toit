@@ -233,11 +233,20 @@ extract_cmd -> cli.Command:
       --options=[
         cli.OptionString OPTION_OUTPUT
             --short_name=OPTION_OUTPUT_SHORT
-            --short_help="Set the binary output (e.g. firmware.bin)."
+            --short_help="Set the output file."
             --type="file"
             --required,
+        cli.Flag "binary"
+            --short_help="Extract the binary part (e.g. firmware.bin)."
       ]
-      --run=:: extract_binary it
+      --run=:: extract it
+
+extract parsed/cli.Parsed -> none:
+  binary := parsed["binary"]
+  if binary:
+    extract_binary parsed
+  else:
+    throw "cannot extract: no part specified"
 
 extract_binary parsed/cli.Parsed -> none:
   input_path := parsed[OPTION_ENVELOPE]
