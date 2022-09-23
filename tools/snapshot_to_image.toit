@@ -117,7 +117,7 @@ main args:
   parser.add_flag M64_FLAG --short="m64"
   parser.add_flag BINARY_FLAG
 
-  parser.add_option UNIQUE_ID_OPTION --default="00000000-0000-0000-0000-000000000000"
+  parser.add_option UNIQUE_ID_OPTION
   parser.add_option OUTPUT_OPTION --short="o"
 
   parsed := parser.parse args
@@ -154,9 +154,12 @@ main args:
     print_on_stderr_ "Error: Cannot generate 64-bit non-binary output"
     exit 1
 
-  out := file.Stream.for_write output_path
-  system_uuid ::= uuid.parse parsed[UNIQUE_ID_OPTION]
+  unique_id := parsed[UNIQUE_ID_OPTION]
+  system_uuid ::= unique_id
+      ? uuid.parse unique_id
+      : uuid.uuid5 "$random" "$Time.now".to_byte_array
 
+  out := file.Stream.for_write output_path
   snapshot_path/string := parsed.rest[0]
   snapshot_bundle := SnapshotBundle.from_file snapshot_path
   program_id ::= snapshot_bundle.uuid

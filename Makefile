@@ -22,7 +22,7 @@ BUILD_TYPE=Release
 
 # Use 'make ESP32_ENTRY=examples/mandelbrot.toit esp32' to compile a different
 # example for the ESP32 firmware.
-ESP32_ENTRY=examples/hello.toit
+ESP32_ENTRY=
 ESP32_WIFI_SSID=
 ESP32_WIFI_PASSWORD=
 ESP32_PORT=
@@ -30,11 +30,6 @@ ESP32_CHIP=esp32
 
 # The system process is started from its own entry point.
 ESP32_SYSTEM_ENTRY=system/extensions/esp32/boot.toit
-
-# Extra entries stored in the flash must have the same uuid as the system image
-# to make sure they are produced by the same toolchain. On most platforms it
-# is possible to use 'make ... ESP32_SYSTEM_ID=$(uuidgen)' to ensure this.
-ESP32_SYSTEM_ID=00000000-0000-0000-0000-000000000000
 
 export IDF_TARGET=$(ESP32_CHIP)
 
@@ -205,17 +200,21 @@ esp32:
 .PHONY: esp32-no-env
 esp32-no-env: check-env check-esp32-env build/$(ESP32_CHIP)/firmware.bin
 
-build/$(ESP32_CHIP)/firmware.bin: build/$(ESP32_CHIP)/toit.bin
+ifdef ESP32_ENTRY
 build/$(ESP32_CHIP)/firmware.bin: build/$(ESP32_CHIP)/program.snapshot
+endif
+build/$(ESP32_CHIP)/firmware.bin: build/$(ESP32_CHIP)/toit.bin
 build/$(ESP32_CHIP)/firmware.bin: tools toit-tools
 	$(TOIT_TOOLS_DIR)/firmware$(EXE_SUFFIX) -e build/$(ESP32_CHIP)/firmware.envelope \
 	    create --binary=build/$(ESP32_CHIP)/toit.bin
-	$(TOIT_TOOLS_DIR)/firmware$(EXE_SUFFIX) -e build/$(ESP32_CHIP)/firmware.envelope \
-	    config set uuid $(ESP32_SYSTEM_ID)
+ifdef ESP32_WIFI_SSID
 	$(TOIT_TOOLS_DIR)/firmware$(EXE_SUFFIX) -e build/$(ESP32_CHIP)/firmware.envelope \
 	    config set wifi '{"wifi.ssid": "$(ESP32_WIFI_SSID)", "wifi.password": "$(ESP32_WIFI_PASSWORD)"}'
+endif
+ifdef ESP32_ENTRY
 	$(TOIT_TOOLS_DIR)/firmware$(EXE_SUFFIX) -e build/$(ESP32_CHIP)/firmware.envelope \
 	    container install program build/$(ESP32_CHIP)/program.snapshot
+endif
 	$(TOIT_TOOLS_DIR)/firmware$(EXE_SUFFIX) -e build/$(ESP32_CHIP)/firmware.envelope \
 	    extract -o build/$(ESP32_CHIP)/firmware.bin
 
@@ -232,8 +231,7 @@ build/$(ESP32_CHIP)/lib/libtoit_image.a: build/$(ESP32_CHIP)/$(ESP32_CHIP).image
 
 build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s: tools toit-tools
 build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s: build/$(ESP32_CHIP)/system.snapshot
-	$(TOIT_TOOLS_DIR)/snapshot_to_image$(EXE_SUFFIX) --unique_id=$(ESP32_SYSTEM_ID) -o $@ \
-	    build/$(ESP32_CHIP)/system.snapshot
+	$(TOIT_TOOLS_DIR)/snapshot_to_image$(EXE_SUFFIX) -o $@ build/$(ESP32_CHIP)/system.snapshot
 
 .PHONY: build/$(ESP32_CHIP)/system.snapshot  # Marked phony to force regeneration.
 build/$(ESP32_CHIP)/system.snapshot: $(ESP32_SYSTEM_ENTRY) tools
