@@ -20,6 +20,7 @@ import writer
 import uuid
 
 import encoding.json
+import encoding.ubjson
 
 import ar
 import cli
@@ -28,7 +29,8 @@ import host.file
 import .image
 import .snapshot
 import .snapshot_to_image
-import .inject_config show inject_config
+
+ENVELOPE_FORMAT_VERSION ::= 1
 
 WORD_SIZE ::= 4
 AR_ENTRY_BINARY ::= "\$binary"
@@ -71,17 +73,14 @@ create_envelope parsed/cli.Parsed -> none:
   output_path := parsed[OPTION_ENVELOPE]
   input_path := parsed["binary"]
 
-  binary_data := file.read_content input_path
-
   // TODO(kasper): Do some sanity checks on the
   // structure of this. Can we check that we don't
   // already have stuff appended to the DROM section?
+  binary_data := file.read_content input_path
   binary := Esp32Binary binary_data
 
-  output_stream := file.Stream.for_write output_path
-  writer := ar.ArWriter output_stream
-  writer.add AR_ENTRY_BINARY binary_data
-  output_stream.close
+  envelope := Envelope.create { AR_ENTRY_BINARY: binary_data }
+  envelope.store output_path
 
 container_cmd -> cli.Command:
   cmd := cli.Command "container"
@@ -141,9 +140,9 @@ container_uninstall parsed/cli.Parsed -> none:
 
 container_list parsed/cli.Parsed -> none:
   input_path := parsed[OPTION_ENVELOPE]
-  files := list_envelope input_path
+  entries := (Envelope.load input_path).entries
   output := {:}
-  files.do: | name/string content/ByteArray |
+  entries.do: | name/string content/ByteArray |
     if name.starts_with "\$": continue.do
     if is_snapshot_bundle content:
       bundle := SnapshotBundle name content
@@ -190,17 +189,16 @@ config_get parsed/cli.Parsed -> none:
   input_path := parsed[OPTION_ENVELOPE]
   key := parsed["key"]
 
-  input_stream := file.Stream.for_read input_path
-  reader := ar.ArReader input_stream
+  entries := (Envelope.load input_path).entries
+  entry := entries.get AR_ENTRY_CONFIG
+  if not entry: return
 
-  while ar_file := reader.next:
-    if ar_file.name == AR_ENTRY_CONFIG:
-      config := json.decode ar_file.content
-      if key:
-        if config.contains key:
-          print (json.stringify (config.get key))
-      else:
-        print (json.stringify config)
+  config := json.decode entry.content
+  if key:
+    if config.contains key:
+      print (json.stringify (config.get key))
+  else:
+    print (json.stringify config)
 
 config_remove parsed/cli.Parsed -> none:
   config_update parsed: | config/Map? key/string |
@@ -245,20 +243,18 @@ extract_binary parsed/cli.Parsed -> none:
   input_path := parsed[OPTION_ENVELOPE]
   output_path := parsed[OPTION_OUTPUT]
 
-  input_stream := file.Stream.for_read input_path
-  reader := ar.ArReader input_stream
-
   binary/ByteArray? := null
   config/Map := {:}
-  container_files ::= []
+  containers ::= {:}
 
-  while ar_file := reader.next:
-    if ar_file.name == AR_ENTRY_BINARY:
-      binary = ar_file.content
-    else if ar_file.name == AR_ENTRY_CONFIG:
-      config = json.decode ar_file.content
-    else if not ar_file.name.starts_with "\$":
-      container_files.add ar_file
+  entries := (Envelope.load input_path).entries
+  entries.do: | name/string content/ByteArray |
+    if name == AR_ENTRY_BINARY:
+      binary = content
+    else if name == AR_ENTRY_CONFIG:
+      config = json.decode content
+    else if not name.starts_with "\$":
+      containers[name] = content
 
   if not binary:
     throw "cannot find $AR_ENTRY_BINARY entry in envelope '$input_path'"
@@ -273,7 +269,7 @@ extract_binary parsed/cli.Parsed -> none:
   configured := inject_config config system_uuid binary
   binary_content := extract_binary_content
       --binary_input=configured
-      --container_files=container_files
+      --containers=containers
       --system_uuid=system_uuid
 
   out_stream := file.Stream.for_write output_path
@@ -281,52 +277,40 @@ extract_binary parsed/cli.Parsed -> none:
   out_writer.write binary_content
   out_stream.close
 
-list_envelope envelope_path/string -> Map:
-  files := {:}
-  input_stream := file.Stream.for_read envelope_path
-  reader := ar.ArReader input_stream
-  while ar_file := reader.next:
-    files[ar_file.name] = ar_file.content
-  input_stream.close
-  return files
-
 update_envelope parsed/cli.Parsed [block] -> none:
   input_path := parsed[OPTION_ENVELOPE]
   output_path := parsed[OPTION_OUTPUT]
   if not output_path: output_path = input_path
 
-  files := list_envelope input_path
-  block.call files
+  entries := (Envelope.load input_path).entries
+  block.call entries
 
-  output_stream := file.Stream.for_write output_path
-  writer := ar.ArWriter output_stream
-  files.do: | name/string content/ByteArray |
-    writer.add name content
-  output_stream.close
+  envelope := Envelope.create entries
+  envelope.store output_path
 
 extract_binary_content -> ByteArray
     --binary_input/ByteArray
-    --container_files/List
+    --containers/Map
     --system_uuid/uuid.Uuid:
   binary := Esp32Binary binary_input
 
-  image_count := container_files.size
+  image_count := containers.size
   image_table := ByteArray 4 + 8 * image_count
   LITTLE_ENDIAN.put_uint32 image_table 0 image_count
 
   relocation_base := binary.extend_drom_address + image_table.size
   images := []
-  image_count.repeat: | index/int |
-    container/ar.ArFile := container_files[index]
+  index := 0
+  containers.do: | name/string content/ByteArray |
     relocatable/ByteArray := ?
-    if is_snapshot_bundle container.content:
-      snapshot_bundle := SnapshotBundle container.name container.content
+    if is_snapshot_bundle content:
+      snapshot_bundle := SnapshotBundle name content
       program_id ::= snapshot_bundle.uuid
       program := snapshot_bundle.decode
       image := build_image program WORD_SIZE --system_uuid=system_uuid --program_id=program_id
       relocatable = image.build_relocatable
     else:
-      relocatable = container.content
+      relocatable = content
     out := bytes.Buffer
     output := BinaryRelocatedOutput out relocation_base
     output.write WORD_SIZE relocatable
@@ -342,11 +326,62 @@ extract_binary_content -> ByteArray
     image_bits += ByteArray (image_size_padded - image_size)
     images.add image_bits + (ByteArray image_size_padded - image_size)
     relocation_base += image_size_padded
+    index++
 
   extension := image_table
   images.do: extension += it
   binary.extend_drom extension
   return binary.bits
+
+class Envelope:
+  static MARKER ::= 0x0abeca70
+
+  static INFO_ENTRY_NAME           ::= "\$envelope"
+  static INFO_ENTRY_MARKER_OFFSET  ::= 0
+  static INFO_ENTRY_VERSION_OFFSET ::= 4
+  static INFO_ENTRY_SIZE           ::= 8
+
+  version_/int
+  entries/Map ::= {:}
+
+  constructor.load path/string:
+    input_stream := file.Stream.for_read path
+    reader := ar.ArReader input_stream
+    version/int? := null
+    while file := reader.next:
+      if file.name == INFO_ENTRY_NAME:
+        version = validate file.content
+      else:
+        entries[file.name] = file.content
+    input_stream.close
+    version_ = version
+
+  constructor.create .entries:
+    version_ = ENVELOPE_FORMAT_VERSION
+
+  store path/string -> none:
+    output_stream := file.Stream.for_write path
+    writer := ar.ArWriter output_stream
+    // Add the enveloper info entry.
+    info := ByteArray INFO_ENTRY_SIZE
+    LITTLE_ENDIAN.put_uint32 info INFO_ENTRY_MARKER_OFFSET MARKER
+    LITTLE_ENDIAN.put_uint32 info INFO_ENTRY_VERSION_OFFSET version_
+    writer.add INFO_ENTRY_NAME info
+    // Add all other entries.
+    entries.do: | name/string content/ByteArray |
+      writer.add name content
+    output_stream.close
+
+  static validate info/ByteArray -> int:
+    if info.size < INFO_ENTRY_SIZE:
+      throw "cannot open envelope - malformed"
+    marker := LITTLE_ENDIAN.uint32 info 0
+    version := LITTLE_ENDIAN.uint32 info 4
+    if marker != MARKER:
+      throw "cannot open envelope - malformed"
+    if version != ENVELOPE_FORMAT_VERSION:
+      throw "cannot open envelope - expected version $ENVELOPE_FORMAT_VERSION, was $version"
+    return version
 
 /*
 The image format is as follows:
@@ -518,3 +553,48 @@ class Esp32BinarySegment:
 
   stringify -> string:
     return "len 0x$(%05x size) load 0x$(%08x address) file_offs 0x$(%08x offset)"
+
+// These two are the current offsets of the config data in the system image.
+// We could auto-detect them from the bin file, but they are only used files
+// from the current SDK so there's no need.
+IMAGE_DATA_SIZE ::= 1024
+IMAGE_DATA_OFFSET ::= 296
+
+IMAGE_DATA_MAGIC_1 ::= 0x7017da7a
+IMAGE_DATA_MAGIC_2 ::= 0xc09f19
+
+// The factory image contains an "empty" section of 1024 bytes where we encoded
+// the config, so that the image can run completely independently.
+inject_config config/Map unique_id/uuid.Uuid bits/ByteArray -> ByteArray:
+  image_data_position := find_image_data_position bits
+  image_data_offset := image_data_position[0]
+  image_data_size := image_data_position[1]
+  image_config_size := image_data_size - uuid.SIZE
+
+  config_data := ubjson.encode config
+  if config_data.size > image_data_size:
+    throw "cannot inline config of $config_data.size bytes (too big)"
+
+  bits.replace image_data_offset (ByteArray image_data_size)  // Zero out area.
+  bits.replace image_data_offset config_data
+  bits.replace image_data_offset + image_config_size unique_id.to_byte_array
+  return bits
+
+// Searches for two magic numbers that surround the image data area.
+// This is the area in the image that is replaced with the config data.
+// The exact location of this area can depend on a future SDK version
+// so we don't know it exactly.
+find_image_data_position bits/ByteArray -> List:
+  for i := 0; i < bits.size; i += WORD_SIZE:
+    word_1 := LITTLE_ENDIAN.uint32 bits i
+    if word_1 == IMAGE_DATA_MAGIC_1:
+      // Search for the end at the (0.5k + word_size) position and at
+      // subsequent positions up to a data area of 4k.  We only search at these
+      // round numbers in order to reduce the chance of false positives.
+      for j := 0x200 + WORD_SIZE; j <= 0x1000 + WORD_SIZE and i + j < bits.size; j += 0x200:
+        word_2 := LITTLE_ENDIAN.uint32 bits i + j
+        if word_2 == IMAGE_DATA_MAGIC_2:
+          return [i + WORD_SIZE, j - WORD_SIZE]
+  // No magic numbers were found so the image is from a legacy SDK that has the
+  // image data at a fixed offset.
+  throw "cannot find magic marker in binary file"

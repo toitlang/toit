@@ -14,8 +14,8 @@ applications written in Toit over WiFi whenever your source files change. Once s
 jag watch examples/hello.toit
 ```
 
-It is also straightforward to install extra drivers and services that can extend the core functionality 
-of your device. Add automatic [NTP](https://en.wikipedia.org/wiki/Network_Time_Protocol)-based time 
+It is also straightforward to install extra drivers and services that can extend the core functionality
+of your device. Add automatic [NTP](https://en.wikipedia.org/wiki/Network_Time_Protocol)-based time
 synchronization without having to write a single line of code:
 
 ``` sh
@@ -247,11 +247,11 @@ Build an image for your ESP32 device that can be flashed using `esptool.py`.
 make esp32
 ```
 
-By default, the image boots up and runs `examples/hello.toit`. You can use your
-own entry point and specify it through the `ESP32_ENTRY` make variable:
+By default, the image boots up but does not run any application code. You can use
+your own entry point and specify it through the `ESP32_ENTRY` make variable:
 
 ``` sh
-make esp32 ESP32_ENTRY=examples/mandelbrot.toit
+make esp32 ESP32_ENTRY=examples/hello.toit
 ```
 
 Build an image and flash it to your ESP32 device. You must specify the device port

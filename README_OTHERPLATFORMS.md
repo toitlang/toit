@@ -94,10 +94,12 @@ build/win64/sdk/bin/toit.run.exe
 build/win64/sdk/bin/toit.compile.exe
 build/win64/sdk/bin/toit.run.snapshot
 build/win64/sdk/lib
-build/win64/sdk/snapshots
-build/win64/sdk/snapshots/inject_config.snapshot
-build/win64/sdk/snapshots/snapshot_to_image.snapshot
-build/win64/sdk/snapshots/system_message.snapshot
+build/win64/sdk/tools
+build/win64/sdk/tools/firmware.exe
+build/win64/sdk/tools/snapshot_to_image.exe
+build/win64/sdk/tools/stacktrace.exe
+build/win64/sdk/tools/system_message.exe
+build/win64/sdk/tools/toitp.exe
 ```
 
 >Note: The `sdk/lib` directory is, by default, only a symlink to the 'lib' directory.
