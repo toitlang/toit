@@ -269,6 +269,8 @@ own entry point by installing it into the firmware envelope before extracting th
 build/host/sdk/bin/toit.compile -w hello.snapshot examples/hello.toit
 build/host/sdk/tools/firmware -e build/esp32/firmware.envelope \
     container install hello hello.snapshot
+build/host/sdk/tools/firmware -e build/esp32/firmware.envelope \
+    extract --binary -o firmware.bin
 ```
 
 Alternatively, you can also specify the entry point through the `ESP32_ENTRY` make variable
