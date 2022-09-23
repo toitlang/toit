@@ -54,8 +54,7 @@
 #include "objects_inline.h"
 #include "third_party/dartino/gc_metadata.h"
 
-extern "C" uword toit_image_table;
-extern "C" uword _thread_local_end;
+extern "C" uword toit_system_image;
 
 namespace toit {
 
@@ -87,17 +86,11 @@ const Program* setup_program(bool supports_ota) {
 #endif
   }
 
-  uword* table = &toit_image_table;
-  return reinterpret_cast<const Program*>(table[1]);
+  uword* image = &toit_system_image;
+  return reinterpret_cast<const Program*>(image);
 }
 
 static void start() {
-  uword rodata = reinterpret_cast<uword>(&_thread_local_end);
-  uword* words = reinterpret_cast<uword*>(rodata);
-  for (int i = 0; i < 30; i++) {
-    printf("[*%p = 0x%08x]\n", &words[i], words[i]);
-  }
-
   RtcMemory::set_up();
   FlashRegistry::set_up();
   OS::set_up();

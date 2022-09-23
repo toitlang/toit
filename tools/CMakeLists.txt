@@ -15,7 +15,7 @@
 
 include(toit.cmake)
 
-set(TOOLS system_message snapshot_to_image inject_config toitp stacktrace)
+set(TOOLS firmware system_message snapshot_to_image inject_config toitp stacktrace)
 set(EXES)
 
 foreach (TOOL ${TOOLS})
