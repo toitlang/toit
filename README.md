@@ -309,12 +309,12 @@ You will have to log out and log back in for this to take effect.
 
 ### Configuring WiFi for the ESP32
 
-You can easily configure the ESP32's builtin WiFi adding the appropriate configurations
-to your firmware envelope:
+You can easily configure the ESP32's builtin WiFi by setting the appropriate properties
+on your firmware envelope:
 
 ``` sh
 build/host/sdk/tools/firmware -e build/esp32/firmware.envelope \
-  config set wifi '{ "wifi.ssid": "myssid", "wifi.password": "mypassword" }'
+  property set wifi '{ "wifi.ssid": "myssid", "wifi.password": "mypassword" }'
 ```
 
 The `Makefile` also has the `ESP32_WIFI_SSID` and `ESP32_WIFI_PASSWORD` make variables

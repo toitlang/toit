@@ -33,8 +33,8 @@ import .snapshot_to_image
 ENVELOPE_FORMAT_VERSION ::= 1
 
 WORD_SIZE ::= 4
-AR_ENTRY_BINARY ::= "\$binary"
-AR_ENTRY_CONFIG ::= "\$config"
+AR_ENTRY_BINARY     ::= "\$binary"
+AR_ENTRY_PROPERTIES ::= "\$properties"
 
 OPTION_ENVELOPE     ::= "envelope"
 OPTION_OUTPUT       ::= "output"
@@ -56,7 +56,7 @@ main arguments/List:
   root_cmd.add create_cmd
   root_cmd.add extract_cmd
   root_cmd.add container_cmd
-  root_cmd.add config_cmd
+  root_cmd.add property_cmd
   root_cmd.run arguments
 
 create_cmd -> cli.Command:
@@ -118,8 +118,8 @@ container_cmd -> cli.Command:
 container_install parsed/cli.Parsed -> none:
   name := parsed["name"]
   image_path := parsed["image"]
-  if (name.index_of "\$") >= 0:
-    throw "cannot install container with \$ in the name ('$name')"
+  if name.starts_with "\$":
+    throw "cannot install container with a name that starts with \$"
   image_data := file.read_content image_path
   if not is_snapshot_bundle image_data:
     // We're not dealing with a snapshot, so make sure
@@ -129,14 +129,20 @@ container_install parsed/cli.Parsed -> none:
     output.write WORD_SIZE image_data
     image_bits := out.bytes
     // TODO(kasper): Can we validate that the output
-    // appears to be correct?
-  update_envelope parsed: | files/Map |
-    files[name] = image_data
+    // appears to be correct and fits with the version
+    // of the SDK used to compile the embedded binary?
+  else:
+    // TODO(kasper): Can we check that the snapshot
+    // fits with the version of the SDK used to compile
+    // the embedded binary?
+    SnapshotBundle name image_data
+  update_envelope parsed: | envelope/Envelope |
+    envelope.entries[name] = image_data
 
 container_uninstall parsed/cli.Parsed -> none:
   name := parsed["name"]
-  update_envelope parsed: | files/Map |
-    files.remove name
+  update_envelope parsed: | envelope/Envelope |
+    envelope.entries.remove name
 
 container_list parsed/cli.Parsed -> none:
   input_path := parsed[OPTION_ENVELOPE]
@@ -153,8 +159,8 @@ container_list parsed/cli.Parsed -> none:
       output[name] = "<relocatable image>"
   print (json.stringify output)
 
-config_cmd -> cli.Command:
-  cmd := cli.Command "config"
+property_cmd -> cli.Command:
+  cmd := cli.Command "property"
 
   option_output := cli.OptionString OPTION_OUTPUT
       --short_name=OPTION_OUTPUT_SHORT
@@ -169,42 +175,43 @@ config_cmd -> cli.Command:
   cmd.add
       cli.Command "get"
           --rest=[ cli.OptionString "key" --type="string" ]
-          --run=:: config_get it
+          --run=:: property_get it
 
   cmd.add
       cli.Command "remove"
           --options=[ option_output ]
           --rest=[ option_key_required ]
-          --run=:: config_remove it
+          --run=:: property_remove it
 
   cmd.add
       cli.Command "set"
           --options=[ option_output ]
           --rest=[ option_key_required, cli.OptionString "value" --multi --required ]
-          --run=:: config_set it
+          --run=:: property_set it
 
   return cmd
 
-config_get parsed/cli.Parsed -> none:
+property_get parsed/cli.Parsed -> none:
   input_path := parsed[OPTION_ENVELOPE]
   key := parsed["key"]
 
   entries := (Envelope.load input_path).entries
-  entry := entries.get AR_ENTRY_CONFIG
+  entry := entries.get AR_ENTRY_PROPERTIES
   if not entry: return
 
-  config := json.decode entry
+  properties := json.decode entry
   if key:
-    if config.contains key:
-      print (json.stringify (config.get key))
+    if properties.contains key:
+      print (json.stringify (properties.get key))
   else:
-    print (json.stringify config)
+    print (json.stringify properties)
 
-config_remove parsed/cli.Parsed -> none:
-  config_update parsed: | config/Map? key/string |
-    if config: config.remove key
+property_remove parsed/cli.Parsed -> none:
+  properties_update parsed: | properties/Map? key/string |
+    if properties: properties.remove key
+    properties
 
-config_set parsed/cli.Parsed -> none:
+property_set parsed/cli.Parsed -> none:
   value := parsed["value"].map:
     // Try to parse this as a JSON value, but treat it
     // as a string if it fails.
@@ -212,21 +219,21 @@ config_set parsed/cli.Parsed -> none:
     catch: element = json.parse element
     element
   if value.size == 1: value = value.first
-  config_update parsed: | config/Map? key/string |
+  properties_update parsed: | properties/Map? key/string |
     if key == "uuid":
       exception := catch: uuid.parse value
       if exception: throw "cannot parse uuid: $value ($exception)"
-    config = config or {:}
-    config[key] = value
-    config
+    properties = properties or {:}
+    properties[key] = value
+    properties
 
-config_update parsed/cli.Parsed [block] -> none:
+properties_update parsed/cli.Parsed [block] -> none:
   key := parsed["key"]
-  update_envelope parsed: | files/Map |
-    config_data/ByteArray? := files.get AR_ENTRY_CONFIG
-    config/Map? := config_data ? (json.decode config_data) : null
-    config = block.call config key
-    if config: files[AR_ENTRY_CONFIG] = json.encode config
+  update_envelope parsed: | envelope/Envelope |
+    properties_data/ByteArray? := envelope.entries.get AR_ENTRY_PROPERTIES
+    properties/Map? := properties_data ? (json.decode properties_data) : null
+    properties = block.call properties key
+    if properties: envelope.entries[AR_ENTRY_PROPERTIES] = json.encode properties
 
 extract_cmd -> cli.Command:
   return cli.Command "extract"
@@ -253,15 +260,15 @@ extract_binary parsed/cli.Parsed -> none:
   output_path := parsed[OPTION_OUTPUT]
 
   binary/ByteArray? := null
-  config/Map := {:}
+  properties/Map := {:}
   containers ::= {:}
 
   entries := (Envelope.load input_path).entries
   entries.do: | name/string content/ByteArray |
     if name == AR_ENTRY_BINARY:
       binary = content
-    else if name == AR_ENTRY_CONFIG:
-      config = json.decode content
+    else if name == AR_ENTRY_PROPERTIES:
+      properties = json.decode content
     else if not name.starts_with "\$":
       containers[name] = content
 
@@ -269,13 +276,13 @@ extract_binary parsed/cli.Parsed -> none:
     throw "cannot find $AR_ENTRY_BINARY entry in envelope '$input_path'"
 
   system_uuid/uuid.Uuid? := null
-  if config.contains "uuid":
-    catch: system_uuid = uuid.parse (config.get "uuid")
-    config = config.filter: it != "uuid"
+  if properties.contains "uuid":
+    catch: system_uuid = uuid.parse properties["uuid"]
+    properties.remove "uuid"
   if not system_uuid:
     system_uuid = uuid.uuid5 "$random" "$Time.now".to_byte_array
 
-  configured := inject_config config system_uuid binary
+  configured := inject_config properties system_uuid binary
   binary_content := extract_binary_content
       --binary_input=configured
       --containers=containers
@@ -291,10 +298,10 @@ update_envelope parsed/cli.Parsed [block] -> none:
   output_path := parsed[OPTION_OUTPUT]
   if not output_path: output_path = input_path
 
-  entries := (Envelope.load input_path).entries
-  block.call entries
+  existing := Envelope.load input_path
+  block.call existing
 
-  envelope := Envelope.create entries
+  envelope := Envelope.create existing.entries
   envelope.store output_path
 
 extract_binary_content -> ByteArray
@@ -426,7 +433,8 @@ class Esp32Binary:
   static HASH_APPENDED_OFFSET_ ::= 23
   static HEADER_SIZE_          ::= 24
 
-  static ESP_CHECKSUM_MAGIC_   ::= 0xef
+  static ESP_IMAGE_HEADER_MAGIC_ ::= 0xe9
+  static ESP_CHECKSUM_MAGIC_     ::= 0xef
 
   static IROM_MAP_START ::= 0x400d0000
   static IROM_MAP_END   ::= 0x40400000
@@ -438,7 +446,8 @@ class Esp32Binary:
 
   constructor bits/ByteArray:
     header_ = bits[0..HEADER_SIZE_]
-    // TODO(kasper): Validate magic.
+    if bits[MAGIC_OFFSET_] != ESP_IMAGE_HEADER_MAGIC_:
+      throw "cannot handle binary file: magic is wrong"
     offset := HEADER_SIZE_
     segments_ = List header_[SEGMENT_COUNT_OFFSET_]:
       segment := read_segment_ bits offset
@@ -482,7 +491,7 @@ class Esp32Binary:
     return drom.address + drom.size
 
   extend_drom bits/ByteArray -> none:
-    // This is a pretty serious padding up. We do it guarantee
+    // This is a pretty serious padding up. We do it to guarantee
     // that segments that follow this one do not change their
     // alignment within the individual flash pages, which seems
     // to be a requirement. It might be possible to get away with
@@ -496,7 +505,7 @@ class Esp32Binary:
     if not drom: throw "Cannot append to non-existing DROM segment"
     // Run through all the segments and extend the
     // segment we just found. All segments following
-    // that one needs to be displaced in flash.
+    // that one need to be displaced in flash.
     displacement := null
     segments_.size.repeat:
       segment/Esp32BinarySegment := segments_[it]
@@ -562,12 +571,6 @@ class Esp32BinarySegment:
 
   stringify -> string:
     return "len 0x$(%05x size) load 0x$(%08x address) file_offs 0x$(%08x offset)"
-
-// These two are the current offsets of the config data in the system image.
-// We could auto-detect them from the bin file, but they are only used files
-// from the current SDK so there's no need.
-IMAGE_DATA_SIZE ::= 1024
-IMAGE_DATA_OFFSET ::= 296
 
 IMAGE_DATA_MAGIC_1 ::= 0x7017da7a
 IMAGE_DATA_MAGIC_2 ::= 0xc09f19

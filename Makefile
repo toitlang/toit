@@ -94,6 +94,7 @@ build/$(HOST)/CMakeCache.txt:
 BIN_DIR = $(CURDIR)/build/$(HOST)/sdk/bin
 TOITPKG_BIN = $(BIN_DIR)/toit.pkg$(EXE_SUFFIX)
 TOITC_BIN = $(BIN_DIR)/toit.compile$(EXE_SUFFIX)
+FIRMWARE_BIN = $(TOIT_TOOLS_DIR)/firmware$(EXE_SUFFIX)
 
 .PHONY: download-packages
 download-packages: check-env build/$(HOST)/CMakeCache.txt tools
@@ -202,7 +203,7 @@ esp32-no-env: check-env check-esp32-env build/$(ESP32_CHIP)/firmware.envelope
 
 build/$(ESP32_CHIP)/firmware.envelope: build/$(ESP32_CHIP)/toit.bin
 build/$(ESP32_CHIP)/firmware.envelope: tools toit-tools
-	$(TOIT_TOOLS_DIR)/firmware$(EXE_SUFFIX) -e build/$(ESP32_CHIP)/firmware.envelope \
+	$(FIRMWARE_BIN) -e build/$(ESP32_CHIP)/firmware.envelope \
 	    create --binary=build/$(ESP32_CHIP)/toit.bin
 
 build/$(ESP32_CHIP)/toit.bin build/$(ESP32_CHIP)/toit.elf: build/$(ESP32_CHIP)/lib/libtoit_vm.a
@@ -218,7 +219,7 @@ build/$(ESP32_CHIP)/lib/libtoit_image.a: build/$(ESP32_CHIP)/$(ESP32_CHIP).image
 
 build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s: tools toit-tools
 build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s: build/$(ESP32_CHIP)/system.snapshot
-	$(TOIT_TOOLS_DIR)/snapshot_to_image$(EXE_SUFFIX) -o $@ build/$(ESP32_CHIP)/system.snapshot
+	$(TOIT_TOOLS_DIR)/snapshot_to_image$(EXE_SUFFIX) -o $@ $<
 
 .PHONY: build/$(ESP32_CHIP)/system.snapshot  # Marked phony to force regeneration.
 build/$(ESP32_CHIP)/system.snapshot: $(ESP32_SYSTEM_ENTRY) tools
@@ -250,14 +251,14 @@ flash: check-env-flash sdk build/$(ESP32_CHIP)/firmware.envelope
 	mkdir -p build/$(ESP32_CHIP)/flash
 	cp build/$(ESP32_CHIP)/firmware.envelope build/$(ESP32_CHIP)/flash/firmware.envelope
 ifdef ESP32_ENTRY
-	$(TOIT_TOOLS_DIR)/firmware$(EXE_SUFFIX) -e build/$(ESP32_CHIP)/flash/firmware.envelope \
+	$(FIRMWARE_BIN) -e build/$(ESP32_CHIP)/flash/firmware.envelope \
 	    container install program build/$(ESP32_CHIP)/flash/program.snapshot
 endif
 ifdef ESP32_WIFI_SSID
-	$(TOIT_TOOLS_DIR)/firmware$(EXE_SUFFIX) -e build/$(ESP32_CHIP)/flash/firmware.envelope \
-	    config set wifi '{"wifi.ssid": "$(ESP32_WIFI_SSID)", "wifi.password": "$(ESP32_WIFI_PASSWORD)"}'
+	$(FIRMWARE_BIN) -e build/$(ESP32_CHIP)/flash/firmware.envelope \
+	    property set wifi '{"wifi.ssid": "$(ESP32_WIFI_SSID)", "wifi.password": "$(ESP32_WIFI_PASSWORD)"}'
 endif
-	$(TOIT_TOOLS_DIR)/firmware$(EXE_SUFFIX) -e build/$(ESP32_CHIP)/flash/firmware.envelope \
+	$(FIRMWARE_BIN) -e build/$(ESP32_CHIP)/flash/firmware.envelope \
 	    extract --binary -o build/$(ESP32_CHIP)/flash/firmware.bin
 	python $(IDF_PATH)/components/esptool_py/esptool/esptool.py --chip $(ESP32_CHIP) --port $(ESP32_PORT) --baud 921600 \
 	    --before default_reset --after hard_reset write_flash -z --flash_mode dio --flash_freq 40m --flash_size detect \
