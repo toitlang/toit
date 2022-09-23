@@ -16,8 +16,8 @@
 /**
 This program reads a snapshot, converts it into an image
   and dumps the content as a binary file or a source file to
-  be read by the GNU assembler. Binary image outputs can be
-  relocated to a specific address or left relocatable.
+  be read by the GNU assembler. Binary image outputs are left
+  relocatable.
 */
 
 import .image
@@ -32,7 +32,6 @@ BINARY_FLAG      ::= "binary"
 M32_FLAG         ::= "machine-32-bit"
 M64_FLAG         ::= "machine-64-bit"
 UNIQUE_ID_OPTION ::= "unique_id"
-RELOCATE_OPTION  ::= "relocate"
 OUTPUT_OPTION    ::= "output"
 
 abstract class RelocatedOutput:
@@ -120,7 +119,6 @@ main args:
 
   parser.add_option UNIQUE_ID_OPTION --default="00000000-0000-0000-0000-000000000000"
   parser.add_option OUTPUT_OPTION --short="o"
-  parser.add_option RELOCATE_OPTION
 
   parsed := parser.parse args
 
@@ -141,17 +139,6 @@ main args:
   if binary_output and parsed.rest.size != 1:
     print_on_stderr_ "Error: Cannot convert multiple snapshots to binary images"
     exit 1
-
-  relocation_base/int? := null
-  relocate_option := parsed[RELOCATE_OPTION]
-  if relocate_option:
-    if not (relocate_option.starts_with "0x"):
-      print_on_stderr_ "Error: Relocation offset must start with 0x"
-      exit 1
-    if not binary_output:
-      print_on_stderr_ "Error: Can only relocate binary images"
-      exit 1
-    relocation_base = int.parse relocate_option[2..] --radix=16
 
   word_size := null
   if parsed[M32_FLAG]:
@@ -177,13 +164,8 @@ main args:
   image := build_image program word_size --system_uuid=system_uuid --program_id=program_id
   relocatable := image.build_relocatable
   if binary_output:
-    if relocation_base:
-      output := BinaryRelocatedOutput out relocation_base
-      output.write word_size relocatable
-    else:
-      out.write relocatable
+    out.write relocatable
   else:
     output := SourceRelocatedOutput out
     output.write word_size relocatable
-
   out.close
