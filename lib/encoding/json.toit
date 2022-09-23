@@ -274,7 +274,10 @@ class Decoder:
     offset_ = 0
     seen_strings_ = {}
 
-    return decode_
+    result := decode_
+    offset_ = skip_whitespaces_ bytes_ offset_
+    if offset_ != bytes.size: throw "INVALID_JSON_CHARACTER"
+    return result
 
   decode_:
     offset_ = skip_whitespaces_ bytes_ offset_
