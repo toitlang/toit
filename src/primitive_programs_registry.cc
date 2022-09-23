@@ -22,7 +22,7 @@
 #include "vm.h"
 
 #ifdef TOIT_FREERTOS
-extern "C" uword toit_image_table;
+extern "C" uword _thread_local_end;
 #endif
 
 namespace toit {
@@ -96,7 +96,7 @@ PRIMITIVE(kill) {
 
 PRIMITIVE(bundled_images) {
 #ifdef TOIT_FREERTOS
-  const uword* table = &toit_image_table;
+  const uword* table = &_thread_local_end;
   int length = table[0];
 
   Array* result = process->object_heap()->allocate_array(length * 2, Smi::from(0));
