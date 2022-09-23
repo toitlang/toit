@@ -241,24 +241,41 @@ There are syntax highlighters for VIM and CodeMirror in the
 Make sure the environment variables for the ESP32 tools are set, as
 described in the [dependencies](#dependencies) section.
 
-Build an image for your ESP32 device that can be flashed using `esptool.py`.
+Build firmware that can be flashed onto your ESP32 device. The firmware is generated
+in `build/esp32/firmware.envelope`:
 
 ``` sh
 make esp32
 ```
 
-By default, the image boots up but does not run any application code. You can use
-your own entry point and specify it through the `ESP32_ENTRY` make variable:
+If you want to use `esptool.py` to flash the generated firmware on your device, you
+need to extract the `firmware.bin` file and pass it to `esptool.py`:
 
 ``` sh
-make esp32 ESP32_ENTRY=examples/hello.toit
+build/host/sdk/tools/firmware -e build/esp32/firmware.envelope \
+    extract --binary -o firmware.bin
+python $(IDF_PATH)/components/esptool_py/esptool/esptool.py --chip $(ESP32_CHIP) --port $(ESP32_PORT) --baud 921600 \
+    --before default_reset --after hard_reset write_flash -z --flash_mode dio --flash_freq 40m --flash_size detect \
+    0x001000 build/$(ESP32_CHIP)/bootloader/bootloader.bin \
+    0x008000 build/$(ESP32_CHIP)/partitions.bin \
+    0x010000 firmware.bin
 ```
 
-Build an image and flash it to your ESP32 device. You must specify the device port
-with the `ESP32_PORT` make variable. You can also use all the `make esp32` make variables.
+By default, the image boots up but does not run any application code. You can use your
+own entry point by installing it into the firmware envelope before extracting the
+`firmware.bin` file:
 
 ``` sh
-make flash ESP32_ENTRY=examples/mandelbrot.toit ESP32_PORT=/dev/ttyUSB0
+build/host/sdk/bin/toit.compile -w hello.snapshot examples/hello.toit
+build/host/sdk/tools/firmware -e build/esp32/firmware.envelope \
+    container install hello hello.snapshot
+```
+
+Alternatively, you can also specify the entry point through the `ESP32_ENTRY` make variable
+and let the `Makefile` handle the flashing:
+
+``` sh
+make flash ESP32_ENTRY=examples/hello.toit ESP32_PORT=/dev/ttyUSB0
 ```
 
 ---
@@ -287,11 +304,19 @@ You will have to log out and log back in for this to take effect.
 
 ### Configuring WiFi for the ESP32
 
-You can easily configure the ESP32's builtin WiFi by setting the `ESP32_WIFI_SSID` and
-`ESP32_WIFI_PASSWORD` make variables:
+You can easily configure the ESP32's builtin WiFi adding the appropriate configurations
+to your firmware envelope:
 
 ``` sh
-make esp32 ESP32_ENTRY=examples/http.toit ESP32_WIFI_SSID=myssid ESP32_WIFI_PASSWORD=mypassword
+build/host/sdk/tools/firmware -e build/esp32/firmware.envelope \
+  config set wifi '{ "wifi.ssid": "myssid", "wifi.password": "mypassword" }'
+```
+
+The `Makefile` also has the `ESP32_WIFI_SSID` and `ESP32_WIFI_PASSWORD` make variables
+to support this, if you prefer flashing through make:
+
+``` sh
+make flash ESP32_ENTRY=examples/http.toit ESP32_WIFI_SSID=myssid ESP32_WIFI_PASSWORD=mypassword
 ```
 
 This allows the WiFi to automatically start up when a network interface is opened.

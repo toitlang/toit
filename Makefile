@@ -20,13 +20,13 @@
 HOST=host
 BUILD_TYPE=Release
 
-# Use 'make ESP32_ENTRY=examples/mandelbrot.toit esp32' to compile a different
-# example for the ESP32 firmware.
+# Use 'make flash ESP32_ENTRY=examples/mandelbrot.toit' to flash
+# a firmware version with an embedded application.
+ESP32_CHIP=esp32
 ESP32_ENTRY=
 ESP32_WIFI_SSID=
 ESP32_WIFI_PASSWORD=
 ESP32_PORT=
-ESP32_CHIP=esp32
 
 # The system process is started from its own entry point.
 ESP32_SYSTEM_ENTRY=system/extensions/esp32/boot.toit
@@ -198,25 +198,12 @@ esp32:
 	    $(MAKE) esp32-no-env
 
 .PHONY: esp32-no-env
-esp32-no-env: check-env check-esp32-env build/$(ESP32_CHIP)/firmware.bin
+esp32-no-env: check-env check-esp32-env build/$(ESP32_CHIP)/firmware.envelope
 
-ifdef ESP32_ENTRY
-build/$(ESP32_CHIP)/firmware.bin: build/$(ESP32_CHIP)/program.snapshot
-endif
-build/$(ESP32_CHIP)/firmware.bin: build/$(ESP32_CHIP)/toit.bin
-build/$(ESP32_CHIP)/firmware.bin: tools toit-tools
+build/$(ESP32_CHIP)/firmware.envelope: build/$(ESP32_CHIP)/toit.bin
+build/$(ESP32_CHIP)/firmware.envelope: tools toit-tools
 	$(TOIT_TOOLS_DIR)/firmware$(EXE_SUFFIX) -e build/$(ESP32_CHIP)/firmware.envelope \
 	    create --binary=build/$(ESP32_CHIP)/toit.bin
-ifdef ESP32_WIFI_SSID
-	$(TOIT_TOOLS_DIR)/firmware$(EXE_SUFFIX) -e build/$(ESP32_CHIP)/firmware.envelope \
-	    config set wifi '{"wifi.ssid": "$(ESP32_WIFI_SSID)", "wifi.password": "$(ESP32_WIFI_PASSWORD)"}'
-endif
-ifdef ESP32_ENTRY
-	$(TOIT_TOOLS_DIR)/firmware$(EXE_SUFFIX) -e build/$(ESP32_CHIP)/firmware.envelope \
-	    container install program build/$(ESP32_CHIP)/program.snapshot
-endif
-	$(TOIT_TOOLS_DIR)/firmware$(EXE_SUFFIX) -e build/$(ESP32_CHIP)/firmware.envelope \
-	    extract -o build/$(ESP32_CHIP)/firmware.bin
 
 build/$(ESP32_CHIP)/toit.bin build/$(ESP32_CHIP)/toit.elf: build/$(ESP32_CHIP)/lib/libtoit_vm.a
 build/$(ESP32_CHIP)/toit.bin build/$(ESP32_CHIP)/toit.elf: build/$(ESP32_CHIP)/lib/libtoit_image.a
@@ -238,9 +225,9 @@ build/$(ESP32_CHIP)/system.snapshot: $(ESP32_SYSTEM_ENTRY) tools
 	mkdir -p build/$(ESP32_CHIP)
 	$(TOITC_BIN) -w $@ $<
 
-.PHONY: build/$(ESP32_CHIP)/program.snapshot  # Marked phony to force regeneration.
-build/$(ESP32_CHIP)/program.snapshot: $(ESP32_ENTRY) tools
-	mkdir -p build/$(ESP32_CHIP)
+.PHONY: build/$(ESP32_CHIP)/flash/program.snapshot  # Marked phony to force regeneration.
+build/$(ESP32_CHIP)/flash/program.snapshot: $(ESP32_ENTRY) tools
+	mkdir -p build/$(ESP32_CHIP)/flash
 	$(TOITC_BIN) -w $@ $<
 
 build/$(ESP32_CHIP)/CMakeCache.txt: check-esp32-env
@@ -254,13 +241,29 @@ build/$(ESP32_CHIP)/include/sdkconfig.h:
 
 
 # ESP32 VARIANTS FLASH
+ifdef ESP32_ENTRY
+flash: build/$(ESP32_CHIP)/flash/program.snapshot
+endif
+
 .PHONY: flash
-flash: check-env-flash sdk esp32
+flash: check-env-flash sdk build/$(ESP32_CHIP)/firmware.envelope
+	mkdir -p build/$(ESP32_CHIP)/flash
+	cp build/$(ESP32_CHIP)/firmware.envelope build/$(ESP32_CHIP)/flash/firmware.envelope
+ifdef ESP32_ENTRY
+	$(TOIT_TOOLS_DIR)/firmware$(EXE_SUFFIX) -e build/$(ESP32_CHIP)/flash/firmware.envelope \
+	    container install program build/$(ESP32_CHIP)/flash/program.snapshot
+endif
+ifdef ESP32_WIFI_SSID
+	$(TOIT_TOOLS_DIR)/firmware$(EXE_SUFFIX) -e build/$(ESP32_CHIP)/flash/firmware.envelope \
+	    config set wifi '{"wifi.ssid": "$(ESP32_WIFI_SSID)", "wifi.password": "$(ESP32_WIFI_PASSWORD)"}'
+endif
+	$(TOIT_TOOLS_DIR)/firmware$(EXE_SUFFIX) -e build/$(ESP32_CHIP)/flash/firmware.envelope \
+	    extract --binary -o build/$(ESP32_CHIP)/flash/firmware.bin
 	python $(IDF_PATH)/components/esptool_py/esptool/esptool.py --chip $(ESP32_CHIP) --port $(ESP32_PORT) --baud 921600 \
 	    --before default_reset --after hard_reset write_flash -z --flash_mode dio --flash_freq 40m --flash_size detect \
 		0x001000 build/$(ESP32_CHIP)/bootloader/bootloader.bin \
 		0x008000 build/$(ESP32_CHIP)/partitions.bin \
-		0x010000 build/$(ESP32_CHIP)/firmware.bin
+		0x010000 build/$(ESP32_CHIP)/flash/firmware.bin
 
 .PHONY: check-env-flash
 check-env-flash:
