@@ -38,6 +38,10 @@ OPTION_ENVELOPE     ::= "envelope"
 OPTION_OUTPUT       ::= "output"
 OPTION_OUTPUT_SHORT ::= "o"
 
+is_snapshot_bundle bits/ByteArray -> bool:
+  catch: return SnapshotBundle.is_bundle_content bits
+  return false
+
 main arguments/List:
   root_cmd := cli.Command "root"
       --options=[
@@ -72,7 +76,7 @@ create_envelope parsed/cli.Parsed -> none:
   // TODO(kasper): Do some sanity checks on the
   // structure of this. Can we check that we don't
   // already have stuff appended to the DROM section?
-  binary := Binary binary_data
+  binary := Esp32Binary binary_data
 
   output_stream := file.Stream.for_write output_path
   writer := ar.ArWriter output_stream
@@ -94,7 +98,7 @@ container_cmd -> cli.Command:
           --options=[ option_output ]
           --rest=[
             option_name,
-            cli.OptionString "snapshot"
+            cli.OptionString "image"
                 --type="file"
                 --required
           ]
@@ -114,13 +118,21 @@ container_cmd -> cli.Command:
 
 container_install parsed/cli.Parsed -> none:
   name := parsed["name"]
-  snapshot_path := parsed["snapshot"]
+  image_path := parsed["image"]
   if (name.index_of "\$") >= 0:
     throw "cannot install container with \$ in the name ('$name')"
-  snapshot_data := file.read_content snapshot_path
-  bundle := SnapshotBundle name snapshot_data
+  image_data := file.read_content image_path
+  if not is_snapshot_bundle image_data:
+    // We're not dealing with a snapshot, so make sure
+    // the provided image is a valid relocatable image.
+    out := bytes.Buffer
+    output := BinaryRelocatedOutput out 0x12345678
+    output.write WORD_SIZE image_data
+    image_bits := out.bytes
+    // TODO(kasper): Can we validate that the output
+    // appears to be correct?
   update_envelope parsed: | files/Map |
-    files[name] = snapshot_data
+    files[name] = image_data
 
 container_uninstall parsed/cli.Parsed -> none:
   name := parsed["name"]
@@ -133,8 +145,11 @@ container_list parsed/cli.Parsed -> none:
   output := {:}
   files.do: | name/string content/ByteArray |
     if name.starts_with "\$": continue.do
-    bundle := SnapshotBundle name content
-    output[name] = bundle.uuid.stringify
+    if is_snapshot_bundle content:
+      bundle := SnapshotBundle name content
+      output[name] = bundle.uuid.stringify
+    else:
+      output[name] = "<relocatable image>"
   print (json.stringify output)
 
 config_cmd -> cli.Command:
@@ -233,7 +248,7 @@ extract_binary parsed/cli.Parsed -> none:
 
   binary/ByteArray? := null
   config/Map := {:}
-  snapshot_bundles ::= []
+  container_files ::= []
 
   while ar_file := reader.next:
     if ar_file.name == AR_ENTRY_BINARY:
@@ -241,8 +256,7 @@ extract_binary parsed/cli.Parsed -> none:
     else if ar_file.name == AR_ENTRY_CONFIG:
       config = json.decode ar_file.content
     else if not ar_file.name.starts_with "\$":
-      bundle := SnapshotBundle ar_file.name ar_file.content
-      snapshot_bundles.add bundle
+      container_files.add ar_file
 
   if not binary:
     throw "cannot find $AR_ENTRY_BINARY entry in envelope '$input_path'"
@@ -257,7 +271,7 @@ extract_binary parsed/cli.Parsed -> none:
   configured := inject_config config system_uuid binary
   binary_content := extract_binary_content
       --binary_input=configured
-      --snapshot_bundles=snapshot_bundles
+      --container_files=container_files
       --system_uuid=system_uuid
 
   out_stream := file.Stream.for_write output_path
@@ -290,22 +304,27 @@ update_envelope parsed/cli.Parsed [block] -> none:
 
 extract_binary_content -> ByteArray
     --binary_input/ByteArray
-    --snapshot_bundles/List
+    --container_files/List
     --system_uuid/uuid.Uuid:
-  binary := Binary binary_input
+  binary := Esp32Binary binary_input
 
-  image_count := snapshot_bundles.size
+  image_count := container_files.size
   image_table := ByteArray 4 + 8 * image_count
   LITTLE_ENDIAN.put_uint32 image_table 0 image_count
 
   relocation_base := binary.extend_drom_address + image_table.size
   images := []
   image_count.repeat: | index/int |
-    snapshot_bundle := snapshot_bundles[index]
-    program_id ::= snapshot_bundle.uuid
-    program := snapshot_bundle.decode
-    image := build_image program WORD_SIZE --system_uuid=system_uuid --program_id=program_id
-    relocatable := image.build_relocatable
+    container/ar.ArFile := container_files[index]
+    relocatable/ByteArray := ?
+    if is_snapshot_bundle container.content:
+      snapshot_bundle := SnapshotBundle container.name container.content
+      program_id ::= snapshot_bundle.uuid
+      program := snapshot_bundle.decode
+      image := build_image program WORD_SIZE --system_uuid=system_uuid --program_id=program_id
+      relocatable = image.build_relocatable
+    else:
+      relocatable = container.content
     out := bytes.Buffer
     output := BinaryRelocatedOutput out relocation_base
     output.write WORD_SIZE relocatable
@@ -355,7 +374,7 @@ See https://docs.espressif.com/projects/esp-idf/en/latest/api-reference/system/a
 for more details on the format.
 */
 
-class Binary:
+class Esp32Binary:
   static MAGIC_OFFSET_         ::= 0
   static SEGMENT_COUNT_OFFSET_ ::= 1
   static HASH_APPENDED_OFFSET_ ::= 23
@@ -398,7 +417,7 @@ class Binary:
     result := ByteArray size
     result.replace 0 header_
     xor_checksum := ESP_CHECKSUM_MAGIC_
-    segments_.do: | segment/Segment |
+    segments_.do: | segment/Esp32BinarySegment |
       xor_checksum ^= segment.xor_checksum
       write_segment_ result segment
     result[xor_checksum_offset] = xor_checksum
@@ -434,40 +453,46 @@ class Binary:
     // that one needs to be displaced in flash.
     displacement := null
     segments_.size.repeat:
-      segment/Segment := segments_[it]
+      segment/Esp32BinarySegment := segments_[it]
       if segment == drom:
-        segments_[it] = Segment (segment.bits + bits)
+        segments_[it] = Esp32BinarySegment (segment.bits + bits)
             --offset=segment.offset
             --address=segment.address
         displacement = bits.size
       else if displacement:
-        segments_[it] = Segment segment.bits
+        segments_[it] = Esp32BinarySegment segment.bits
             --offset=segment.offset + displacement
             --address=segment.address
 
-  find_last_drom_segment_ -> Segment?:
+  find_last_drom_segment_ -> Esp32BinarySegment?:
     last := null
-    segments_.do: | segment/Segment |
+    segments_.do: | segment/Esp32BinarySegment |
       address := segment.address
       if not DROM_MAP_START <= address < DROM_MAP_END: continue.do
       if not last or address > last.address: last = segment
     return last
 
-  static read_segment_ bits/ByteArray offset/int -> Segment:
-    address := LITTLE_ENDIAN.uint32 bits offset + Segment.LOAD_ADDRESS_OFFSET_
-    size := LITTLE_ENDIAN.uint32 bits offset + Segment.DATA_LENGTH_OFFSET_
-    start := offset + Segment.HEADER_SIZE_
-    return Segment bits[start..start + size]
+  static read_segment_ bits/ByteArray offset/int -> Esp32BinarySegment:
+    address := LITTLE_ENDIAN.uint32 bits
+        offset + Esp32BinarySegment.LOAD_ADDRESS_OFFSET_
+    size := LITTLE_ENDIAN.uint32 bits
+        offset + Esp32BinarySegment.DATA_LENGTH_OFFSET_
+    start := offset + Esp32BinarySegment.HEADER_SIZE_
+    return Esp32BinarySegment bits[start..start + size]
         --offset=offset
         --address=address
 
-  static write_segment_ bits/ByteArray segment/Segment -> none:
+  static write_segment_ bits/ByteArray segment/Esp32BinarySegment -> none:
     offset := segment.offset
-    LITTLE_ENDIAN.put_uint32 bits (offset + Segment.LOAD_ADDRESS_OFFSET_) segment.address
-    LITTLE_ENDIAN.put_uint32 bits (offset + Segment.DATA_LENGTH_OFFSET_) segment.size
-    bits.replace (offset + Segment.HEADER_SIZE_) segment.bits
+    LITTLE_ENDIAN.put_uint32 bits
+        offset + Esp32BinarySegment.LOAD_ADDRESS_OFFSET_
+        segment.address
+    LITTLE_ENDIAN.put_uint32 bits
+        offset + Esp32BinarySegment.DATA_LENGTH_OFFSET_
+        segment.size
+    bits.replace (offset + Esp32BinarySegment.HEADER_SIZE_) segment.bits
 
-class Segment:
+class Esp32BinarySegment:
   static LOAD_ADDRESS_OFFSET_ ::= 0
   static DATA_LENGTH_OFFSET_  ::= 4
   static HEADER_SIZE_         ::= 8
