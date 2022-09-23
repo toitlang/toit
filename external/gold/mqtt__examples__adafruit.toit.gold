@@ -4,10 +4,10 @@
 <pkg:..>/packets.toit:422:14: warning: Deprecated 'BufferConsumer.put_byte'
       buffer.put_byte topic_qos.max_qos
              ^~~~~~~~
-<pkg:..>/full_client.toit:668:17: warning: Deprecated 'task'
+<pkg:..>/full_client.toit:673:17: warning: Deprecated 'task'
       while not task.is_canceled:
                 ^~~~
-<pkg:..>/full_client.toit:955:15: warning: Deprecated 'task'
+<pkg:..>/full_client.toit:960:15: warning: Deprecated 'task'
     while not task.is_canceled:
               ^~~~
 <pkg:..>/full_client.toit:56:15: warning: Deprecated 'task'
