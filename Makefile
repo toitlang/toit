@@ -203,8 +203,13 @@ esp32-no-env: check-env check-esp32-env build/$(ESP32_CHIP)/firmware.envelope
 
 build/$(ESP32_CHIP)/firmware.envelope: build/$(ESP32_CHIP)/toit.bin
 build/$(ESP32_CHIP)/firmware.envelope: tools toit-tools
-	$(FIRMWARE_BIN) -e build/$(ESP32_CHIP)/firmware.envelope \
-	    create --binary=build/$(ESP32_CHIP)/toit.bin
+	$(FIRMWARE_BIN) -e build/$(ESP32_CHIP)/firmware.envelope create \
+	    --bootloader.bin=build/$(ESP32_CHIP)/bootloader/bootloader.bin \
+	    --firmware.bin=build/$(ESP32_CHIP)/toit.bin \
+	    --firmware.elf=build/$(ESP32_CHIP)/toit.elf \
+	    --partitions.bin=build/$(ESP32_CHIP)/partitions.bin \
+	    --partitions.csv=toolchains/$(ESP32_CHIP)/partitions.csv \
+	    --system.snapshot=build/$(ESP32_CHIP)/system.snapshot
 
 build/$(ESP32_CHIP)/toit.bin build/$(ESP32_CHIP)/toit.elf: build/$(ESP32_CHIP)/lib/libtoit_vm.a
 build/$(ESP32_CHIP)/toit.bin build/$(ESP32_CHIP)/toit.elf: build/$(ESP32_CHIP)/lib/libtoit_image.a
@@ -247,7 +252,7 @@ flash: build/$(ESP32_CHIP)/flash/program.snapshot
 endif
 
 .PHONY: flash
-flash: check-env-flash sdk build/$(ESP32_CHIP)/firmware.envelope
+flash: check-env-flash sdk esp32
 	mkdir -p build/$(ESP32_CHIP)/flash
 	cp build/$(ESP32_CHIP)/firmware.envelope build/$(ESP32_CHIP)/flash/firmware.envelope
 ifdef ESP32_ENTRY
@@ -259,11 +264,15 @@ ifdef ESP32_WIFI_SSID
 	    property set wifi '{"wifi.ssid": "$(ESP32_WIFI_SSID)", "wifi.password": "$(ESP32_WIFI_PASSWORD)"}'
 endif
 	$(FIRMWARE_BIN) -e build/$(ESP32_CHIP)/flash/firmware.envelope \
-	    extract --binary -o build/$(ESP32_CHIP)/flash/firmware.bin
+	    extract --bootloader.bin -o build/$(ESP32_CHIP)/flash/bootloader.bin
+	$(FIRMWARE_BIN) -e build/$(ESP32_CHIP)/flash/firmware.envelope \
+	    extract --partitions.bin -o build/$(ESP32_CHIP)/flash/partitions.bin
+	$(FIRMWARE_BIN) -e build/$(ESP32_CHIP)/flash/firmware.envelope \
+	    extract --firmware.bin -o build/$(ESP32_CHIP)/flash/firmware.bin
 	python $(IDF_PATH)/components/esptool_py/esptool/esptool.py --chip $(ESP32_CHIP) --port $(ESP32_PORT) --baud 921600 \
 	    --before default_reset --after hard_reset write_flash -z --flash_mode dio --flash_freq 40m --flash_size detect \
-		0x001000 build/$(ESP32_CHIP)/bootloader/bootloader.bin \
-		0x008000 build/$(ESP32_CHIP)/partitions.bin \
+		0x001000 build/$(ESP32_CHIP)/flash/bootloader.bin \
+		0x008000 build/$(ESP32_CHIP)/flash/partitions.bin \
 		0x010000 build/$(ESP32_CHIP)/flash/firmware.bin
 
 .PHONY: check-env-flash
