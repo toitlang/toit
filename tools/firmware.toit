@@ -30,11 +30,25 @@ import .image
 import .snapshot
 import .snapshot_to_image
 
-ENVELOPE_FORMAT_VERSION ::= 1
+ENVELOPE_FORMAT_VERSION ::= 2
 
 WORD_SIZE ::= 4
-AR_ENTRY_BINARY     ::= "\$binary"
-AR_ENTRY_PROPERTIES ::= "\$properties"
+AR_ENTRY_FIRMWARE_BIN    ::= "\$firmware.bin"
+AR_ENTRY_FIRMWARE_ELF    ::= "\$firmware.elf"
+AR_ENTRY_BOOTLOADER_BIN  ::= "\$bootloader.bin"
+AR_ENTRY_PARTITIONS_BIN  ::= "\$partitions.bin"
+AR_ENTRY_PARTITIONS_CSV  ::= "\$partitions.csv"
+AR_ENTRY_SYSTEM_SNAPSHOT ::= "\$system.snapshot"
+AR_ENTRY_PROPERTIES      ::= "\$properties"
+
+AR_ENTRY_FILE_MAP ::= {
+  "firmware.bin"    : AR_ENTRY_FIRMWARE_BIN,
+  "firmware.elf"    : AR_ENTRY_FIRMWARE_ELF,
+  "bootloader.bin"  : AR_ENTRY_BOOTLOADER_BIN,
+  "partitions.bin"  : AR_ENTRY_PARTITIONS_BIN,
+  "partitions.csv"  : AR_ENTRY_PARTITIONS_CSV,
+  "system.snapshot" : AR_ENTRY_SYSTEM_SNAPSHOT,
+}
 
 OPTION_ENVELOPE     ::= "envelope"
 OPTION_OUTPUT       ::= "output"
@@ -60,26 +74,31 @@ main arguments/List:
   root_cmd.run arguments
 
 create_cmd -> cli.Command:
+  options := AR_ENTRY_FILE_MAP.map: | key/string value/string |
+    cli.OptionString key
+        --short_help="Set the $key part."
+        --type="file"
+        --required=(key == "firmware.bin")
   return cli.Command "create"
-      --options=[
-          cli.OptionString "binary"
-              --short_help="Set the binary input (e.g. firmware.bin)."
-              --type="file"
-              --required
-      ]
+      --options=options.values
       --run=:: create_envelope it
 
 create_envelope parsed/cli.Parsed -> none:
   output_path := parsed[OPTION_ENVELOPE]
-  input_path := parsed["binary"]
+  input_path := parsed["firmware.bin"]
 
   // TODO(kasper): Do some sanity checks on the
   // structure of this. Can we check that we don't
   // already have stuff appended to the DROM section?
-  binary_data := file.read_content input_path
-  binary := Esp32Binary binary_data
+  firmware_bin_data := file.read_content input_path
+  Esp32Binary firmware_bin_data
 
-  envelope := Envelope.create { AR_ENTRY_BINARY: binary_data }
+  entries := { AR_ENTRY_FIRMWARE_BIN: firmware_bin_data }
+  AR_ENTRY_FILE_MAP.do: | key/string value/string |
+    if key == "firmware.bin": continue.do
+    entries[value] = file.read_content parsed[key]
+
+  envelope := Envelope.create entries
   envelope.store output_path
 
 container_cmd -> cli.Command:
@@ -236,6 +255,9 @@ properties_update parsed/cli.Parsed [block] -> none:
     if properties: envelope.entries[AR_ENTRY_PROPERTIES] = json.encode properties
 
 extract_cmd -> cli.Command:
+  flags := AR_ENTRY_FILE_MAP.map: | key/string value/string |
+    cli.Flag key
+        --short_help="Extract the $key part."
   return cli.Command "extract"
       --options=[
         cli.OptionString OPTION_OUTPUT
@@ -243,37 +265,51 @@ extract_cmd -> cli.Command:
             --short_help="Set the output file."
             --type="file"
             --required,
-        cli.Flag "binary"
-            --short_help="Extract the binary part (e.g. firmware.bin)."
-      ]
+      ] + flags.values
       --run=:: extract it
 
 extract parsed/cli.Parsed -> none:
-  binary := parsed["binary"]
-  if binary:
-    extract_binary parsed
-  else:
+  parts := []
+  AR_ENTRY_FILE_MAP.do: | key/string |
+    if parsed[key]: parts.add key
+  if parts.size == 0:
     throw "cannot extract: no part specified"
+  else if parts.size > 1:
+    throw "cannot extract: multiple parts specified ($(parts.join ", "))"
+  part := parts.first
 
-extract_binary parsed/cli.Parsed -> none:
   input_path := parsed[OPTION_ENVELOPE]
   output_path := parsed[OPTION_OUTPUT]
+  envelope := Envelope.load input_path
 
-  binary/ByteArray? := null
+  content/ByteArray? := null
+  if part == "firmware.bin":
+    content = extract_binary envelope
+  else:
+    content = envelope.entries.get AR_ENTRY_FILE_MAP[part]
+  if not content:
+    throw "cannot extract: no such part ($part)"
+
+  out_stream := file.Stream.for_write output_path
+  out_writer := writer.Writer out_stream
+  out_writer.write content
+  out_stream.close
+
+extract_binary envelope/Envelope -> ByteArray:
+  firmware_bin/ByteArray? := null
   properties/Map := {:}
   containers ::= {:}
 
-  entries := (Envelope.load input_path).entries
-  entries.do: | name/string content/ByteArray |
-    if name == AR_ENTRY_BINARY:
-      binary = content
+  envelope.entries.do: | name/string content/ByteArray |
+    if name == AR_ENTRY_FIRMWARE_BIN:
+      firmware_bin = content
     else if name == AR_ENTRY_PROPERTIES:
       properties = json.decode content
     else if not name.starts_with "\$":
       containers[name] = content
 
-  if not binary:
-    throw "cannot find $AR_ENTRY_BINARY entry in envelope '$input_path'"
+  if not firmware_bin:
+    throw "cannot find $AR_ENTRY_FIRMWARE_BIN entry in envelope '$envelope.path'"
 
   system_uuid/uuid.Uuid? := null
   if properties.contains "uuid":
@@ -282,16 +318,11 @@ extract_binary parsed/cli.Parsed -> none:
   if not system_uuid:
     system_uuid = uuid.uuid5 "$random" "$Time.now".to_byte_array
 
-  configured := inject_config properties system_uuid binary
-  binary_content := extract_binary_content
+  configured := inject_config properties system_uuid firmware_bin
+  return extract_binary_content
       --binary_input=configured
       --containers=containers
       --system_uuid=system_uuid
-
-  out_stream := file.Stream.for_write output_path
-  out_writer := writer.Writer out_stream
-  out_writer.write binary_content
-  out_stream.close
 
 update_envelope parsed/cli.Parsed [block] -> none:
   input_path := parsed[OPTION_ENVELOPE]
@@ -357,10 +388,11 @@ class Envelope:
   static INFO_ENTRY_VERSION_OFFSET ::= 4
   static INFO_ENTRY_SIZE           ::= 8
 
+  path/string? ::= null
   version_/int
   entries/Map ::= {:}
 
-  constructor.load path/string:
+  constructor.load .path/string:
     input_stream := file.Stream.for_read path
     reader := ar.ArReader input_stream
     version/int? := null
