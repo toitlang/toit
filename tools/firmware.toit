@@ -30,7 +30,7 @@ import .image
 import .snapshot
 import .snapshot_to_image
 
-ENVELOPE_FORMAT_VERSION ::= 1
+ENVELOPE_FORMAT_VERSION ::= 2
 
 WORD_SIZE ::= 4
 AR_ENTRY_FIRMWARE_BIN    ::= "\$firmware.bin"
