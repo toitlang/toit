@@ -30,7 +30,7 @@ import .image
 import .snapshot
 import .snapshot_to_image
 
-ENVELOPE_FORMAT_VERSION ::= 2
+ENVELOPE_FORMAT_VERSION ::= 3
 
 WORD_SIZE ::= 4
 AR_ENTRY_FIRMWARE_BIN    ::= "\$firmware.bin"
@@ -57,6 +57,11 @@ OPTION_OUTPUT_SHORT ::= "o"
 is_snapshot_bundle bits/ByteArray -> bool:
   catch: return SnapshotBundle.is_bundle_content bits
   return false
+
+pad bits/ByteArray alignment/int -> ByteArray:
+  size := bits.size
+  padded_size := round_up size alignment
+  return bits + (ByteArray padded_size - size)
 
 main arguments/List:
   root_cmd := cli.Command "root"
@@ -113,7 +118,12 @@ container_cmd -> cli.Command:
 
   cmd.add
       cli.Command "install"
-          --options=[ option_output ]
+          --options=[
+            option_output,
+            cli.OptionString "assets"
+                --short_help="Add assets to the image."
+                --type="file"
+          ]
           --rest=[
             option_name,
             cli.OptionString "image"
@@ -137,9 +147,13 @@ container_cmd -> cli.Command:
 container_install parsed/cli.Parsed -> none:
   name := parsed["name"]
   image_path := parsed["image"]
+  assets_path := parsed["assets"]
   if name.starts_with "\$":
-    throw "cannot install container with a name that starts with \$"
+    throw "cannot install container with a name that starts with \$ or +"
   image_data := file.read_content image_path
+  assets_data := assets_path
+      ? file.read_content assets_path
+      : null
   if not is_snapshot_bundle image_data:
     // We're not dealing with a snapshot, so make sure
     // the provided image is a valid relocatable image.
@@ -157,6 +171,7 @@ container_install parsed/cli.Parsed -> none:
     SnapshotBundle name image_data
   update_envelope parsed: | envelope/Envelope |
     envelope.entries[name] = image_data
+    if assets_data: envelope.entries["+$name"] = assets_data
 
 container_uninstall parsed/cli.Parsed -> none:
   name := parsed["name"]
@@ -168,14 +183,19 @@ container_list parsed/cli.Parsed -> none:
   entries := (Envelope.load input_path).entries
   output := {:}
   entries.do: | name/string content/ByteArray |
-    if name.starts_with "\$": continue.do
+    if name.starts_with "\$" or name.starts_with "+": continue.do
+    entry := {:}
     if is_snapshot_bundle content:
       bundle := SnapshotBundle name content
-      output[name] = bundle.uuid.stringify
+      entry["kind"] = "snapshot"
+      entry["id"] = bundle.uuid.stringify
     else:
-      // TODO(kasper): It would be ideal if we could print
-      // the uuid of the image here.
-      output[name] = "<relocatable image>"
+      header := ImageHeader content
+      entry["kind"] = "image"
+      entry["id"] = header.id
+    assets := entries.get "+$name"
+    if assets: entry["assets"] = { "size": assets.size }
+    output[name] = entry
   print (json.stringify output)
 
 property_cmd -> cli.Command:
@@ -298,15 +318,17 @@ extract parsed/cli.Parsed -> none:
 extract_binary envelope/Envelope -> ByteArray:
   firmware_bin/ByteArray? := null
   properties/Map := {:}
-  containers ::= {:}
+  containers ::= []
 
-  envelope.entries.do: | name/string content/ByteArray |
+  entries := envelope.entries
+  entries.do: | name/string content/ByteArray |
     if name == AR_ENTRY_FIRMWARE_BIN:
       firmware_bin = content
     else if name == AR_ENTRY_PROPERTIES:
       properties = json.decode content
-    else if not name.starts_with "\$":
-      containers[name] = content
+    else if not (name.starts_with "\$" or name.starts_with "+"):
+      assets := entries.get "+$name"
+      containers.add (ContainerEntry name content --assets=assets)
 
   if not firmware_bin:
     throw "cannot find $AR_ENTRY_FIRMWARE_BIN entry in envelope '$envelope.path'"
@@ -337,7 +359,7 @@ update_envelope parsed/cli.Parsed [block] -> none:
 
 extract_binary_content -> ByteArray
     --binary_input/ByteArray
-    --containers/Map
+    --containers/List
     --system_uuid/uuid.Uuid:
   binary := Esp32Binary binary_input
 
@@ -348,16 +370,17 @@ extract_binary_content -> ByteArray
   relocation_base := binary.extend_drom_address + image_table.size
   images := []
   index := 0
-  containers.do: | name/string content/ByteArray |
+  containers.do: | container/ContainerEntry |
     relocatable/ByteArray := ?
-    if is_snapshot_bundle content:
-      snapshot_bundle := SnapshotBundle name content
+    if is_snapshot_bundle container.content:
+      snapshot_bundle := SnapshotBundle container.name container.content
       program_id ::= snapshot_bundle.uuid
       program := snapshot_bundle.decode
       image := build_image program WORD_SIZE --system_uuid=system_uuid --program_id=program_id
       relocatable = image.build_relocatable
     else:
-      relocatable = content
+      relocatable = container.content
+
     out := bytes.Buffer
     output := BinaryRelocatedOutput out relocation_base
     output.write WORD_SIZE relocatable
@@ -368,11 +391,19 @@ extract_binary_content -> ByteArray
         relocation_base
     LITTLE_ENDIAN.put_uint32 image_table 8 + index * 8
         image_size
+    image_bits = pad image_bits 4
 
-    image_size_padded := round_up image_size 4
-    image_bits += ByteArray (image_size_padded - image_size)
-    images.add image_bits + (ByteArray image_size_padded - image_size)
-    relocation_base += image_size_padded
+    if container.assets:
+      header ::= ImageHeader image_bits
+      header.flags |= (1 << 7)
+      assets_size := ByteArray 4
+      LITTLE_ENDIAN.put_uint32 assets_size 0 container.assets.size
+      image_bits += assets_size
+      image_bits += container.assets
+      image_bits = pad image_bits 4
+
+    images.add image_bits
+    relocation_base += image_bits.size
     index++
 
   extension := image_table
@@ -430,6 +461,39 @@ class Envelope:
     if version != ENVELOPE_FORMAT_VERSION:
       throw "cannot open envelope - expected version $ENVELOPE_FORMAT_VERSION, was $version"
     return version
+
+class ContainerEntry:
+  name/string
+  content/ByteArray
+  assets/ByteArray?
+  constructor .name .content --.assets:
+
+class ImageHeader:
+  static MARKER_OFFSET_   ::= 0
+  static ID_OFFSET_       ::= 8
+  static METADATA_OFFSET_ ::= 24
+  static HEADER_SIZE_     ::= 40
+
+  static MARKER_ ::= 0xdeadface
+
+  header_/ByteArray
+  constructor image/ByteArray:
+    header_ = validate image
+
+  flags -> int:
+    return header_[METADATA_OFFSET_]
+
+  flags= value/int -> none:
+    header_[METADATA_OFFSET_] = value
+
+  id -> uuid.Uuid:
+    return uuid.Uuid header_[ID_OFFSET_..ID_OFFSET_ + uuid.SIZE]
+
+  static validate image/ByteArray -> ByteArray:
+    if image.size < HEADER_SIZE_: throw "image too small"
+    marker := LITTLE_ENDIAN.uint32 image MARKER_OFFSET_
+    if marker != MARKER_: throw "image has wrong marker ($(%x marker) != $(%x MARKER_))"
+    return image[0..HEADER_SIZE_]
 
 /*
 The image format is as follows:
@@ -528,8 +592,7 @@ class Esp32Binary:
     // alignment within the individual flash pages, which seems
     // to be a requirement. It might be possible to get away with
     // less padding somehow.
-    padded := round_up bits.size 64 * 1024
-    bits = bits + (ByteArray padded - bits.size)
+    bits = pad bits 64 * 1024
     // We look for the last DROM segment, because it will grow into
     // unused virtual memory, so we can extend that without relocating
     // other segments (which we don't know how to).

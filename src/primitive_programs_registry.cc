@@ -118,4 +118,20 @@ PRIMITIVE(bundled_images) {
 #endif
 }
 
+PRIMITIVE(assets) {
+#ifdef TOIT_FREERTOS
+  Program* program = process->program();
+  int flags = program->metadata()[0];
+  if ((flags & (1 << 7)) == 0) return process->object_heap()->allocate_internal_byte_array(0);
+
+  uword program_address = reinterpret_cast<uword>(program);
+  uword assets_address = Utils::round_up(program_address + program->size(), 4);
+  int length = *reinterpret_cast<uint32*>(assets_address);
+  uint8* bytes = reinterpret_cast<uint8*>(assets_address + sizeof(uint32));
+  return process->object_heap()->allocate_external_byte_array(length, bytes, false, false);
+#else
+  return process->object_heap()->allocate_internal_byte_array(0);
+#endif
+}
+
 } // namespace toit
