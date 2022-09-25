@@ -20,21 +20,16 @@
 HOST=host
 BUILD_TYPE=Release
 
-# Use 'make ESP32_ENTRY=examples/mandelbrot.toit esp32' to compile a different
-# example for the ESP32 firmware.
-ESP32_ENTRY=examples/hello.toit
+# Use 'make flash ESP32_ENTRY=examples/mandelbrot.toit' to flash
+# a firmware version with an embedded application.
+ESP32_CHIP=esp32
+ESP32_ENTRY=
 ESP32_WIFI_SSID=
 ESP32_WIFI_PASSWORD=
 ESP32_PORT=
-ESP32_CHIP=esp32
 
 # The system process is started from its own entry point.
 ESP32_SYSTEM_ENTRY=system/extensions/esp32/boot.toit
-
-# Extra entries stored in the flash must have the same uuid as the system image
-# to make sure they are produced by the same toolchain. On most platforms it
-# is possible to use 'make ... ESP32_SYSTEM_ID=$(uuidgen)' to ensure this.
-ESP32_SYSTEM_ID=00000000-0000-0000-0000-000000000000
 
 export IDF_TARGET=$(ESP32_CHIP)
 
@@ -56,6 +51,10 @@ prefix ?= /opt/toit-sdk
 # HOST
 .PHONY: all
 all: sdk
+
+.PHONY: debug
+debug:
+	LOCAL_CXXFLAGS="-O0" $(MAKE) BUILD_TYPE=Debug
 
 .PHONY: sdk
 sdk: tools toit-tools version-file
@@ -95,6 +94,7 @@ build/$(HOST)/CMakeCache.txt:
 BIN_DIR = $(CURDIR)/build/$(HOST)/sdk/bin
 TOITPKG_BIN = $(BIN_DIR)/toit.pkg$(EXE_SUFFIX)
 TOITC_BIN = $(BIN_DIR)/toit.compile$(EXE_SUFFIX)
+FIRMWARE_BIN = $(TOIT_TOOLS_DIR)/firmware$(EXE_SUFFIX)
 
 .PHONY: download-packages
 download-packages: check-env build/$(HOST)/CMakeCache.txt tools
@@ -199,13 +199,21 @@ esp32:
 	    $(MAKE) esp32-no-env
 
 .PHONY: esp32-no-env
-esp32-no-env: check-env check-esp32-env build/$(ESP32_CHIP)/toit.bin
+esp32-no-env: check-env check-esp32-env build/$(ESP32_CHIP)/firmware.envelope
+
+build/$(ESP32_CHIP)/firmware.envelope: build/$(ESP32_CHIP)/toit.bin
+build/$(ESP32_CHIP)/firmware.envelope: tools toit-tools
+	$(FIRMWARE_BIN) -e build/$(ESP32_CHIP)/firmware.envelope create \
+	    --bootloader.bin=build/$(ESP32_CHIP)/bootloader/bootloader.bin \
+	    --firmware.bin=build/$(ESP32_CHIP)/toit.bin \
+	    --firmware.elf=build/$(ESP32_CHIP)/toit.elf \
+	    --partitions.bin=build/$(ESP32_CHIP)/partitions.bin \
+	    --partitions.csv=toolchains/$(ESP32_CHIP)/partitions.csv \
+	    --system.snapshot=build/$(ESP32_CHIP)/system.snapshot
 
 build/$(ESP32_CHIP)/toit.bin build/$(ESP32_CHIP)/toit.elf: build/$(ESP32_CHIP)/lib/libtoit_vm.a
 build/$(ESP32_CHIP)/toit.bin build/$(ESP32_CHIP)/toit.elf: build/$(ESP32_CHIP)/lib/libtoit_image.a
-build/$(ESP32_CHIP)/toit.bin build/$(ESP32_CHIP)/toit.elf: tools toit-tools build/config.json
 	$(MAKE) -j $(NUM_CPU) -C toolchains/$(ESP32_CHIP)/
-	$(TOIT_TOOLS_DIR)/inject_config$(EXE_SUFFIX) build/config.json --unique_id=$(ESP32_SYSTEM_ID) build/$(ESP32_CHIP)/toit.bin
 
 .PHONY: build/$(ESP32_CHIP)/lib/libtoit_vm.a  # Marked phony to force regeneration.
 build/$(ESP32_CHIP)/lib/libtoit_vm.a: build/$(ESP32_CHIP)/CMakeCache.txt build/$(ESP32_CHIP)/include/sdkconfig.h
@@ -216,19 +224,16 @@ build/$(ESP32_CHIP)/lib/libtoit_image.a: build/$(ESP32_CHIP)/$(ESP32_CHIP).image
 
 build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s: tools toit-tools
 build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s: build/$(ESP32_CHIP)/system.snapshot
-build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s: build/$(ESP32_CHIP)/program.snapshot
-	mkdir -p build/$(ESP32_CHIP)
-	$(TOIT_TOOLS_DIR)/snapshot_to_image$(EXE_SUFFIX) --unique_id=$(ESP32_SYSTEM_ID) -o $@ \
-	    build/$(ESP32_CHIP)/system.snapshot \
-	    build/$(ESP32_CHIP)/program.snapshot
+	$(TOIT_TOOLS_DIR)/snapshot_to_image$(EXE_SUFFIX) -o $@ $<
 
 .PHONY: build/$(ESP32_CHIP)/system.snapshot  # Marked phony to force regeneration.
 build/$(ESP32_CHIP)/system.snapshot: $(ESP32_SYSTEM_ENTRY) tools
+	mkdir -p build/$(ESP32_CHIP)
 	$(TOITC_BIN) -w $@ $<
 
-.PHONY: build/$(ESP32_CHIP)/program.snapshot  # Marked phony to force regeneration.
-build/$(ESP32_CHIP)/program.snapshot: $(ESP32_ENTRY) tools
-	mkdir -p build/$(ESP32_CHIP)
+.PHONY: build/$(ESP32_CHIP)/flash/program.snapshot  # Marked phony to force regeneration.
+build/$(ESP32_CHIP)/flash/program.snapshot: $(ESP32_ENTRY) tools
+	mkdir -p build/$(ESP32_CHIP)/flash
 	$(TOITC_BIN) -w $@ $<
 
 build/$(ESP32_CHIP)/CMakeCache.txt: check-esp32-env
@@ -240,19 +245,35 @@ build/$(ESP32_CHIP)/include/sdkconfig.h:
 	mkdir -p build/$(ESP32_CHIP)
 	$(MAKE) -C toolchains/$(ESP32_CHIP) -s "$(CURDIR)"/$@
 
-.PHONY: build/config.json  # Marked phony to force regeneration.
-build/config.json:
-	echo '{"wifi": {"wifi.ssid": "$(ESP32_WIFI_SSID)", "wifi.password": "$(ESP32_WIFI_PASSWORD)"}}' > $@
-
 
 # ESP32 VARIANTS FLASH
+ifdef ESP32_ENTRY
+flash: build/$(ESP32_CHIP)/flash/program.snapshot
+endif
+
 .PHONY: flash
 flash: check-env-flash sdk esp32
+	mkdir -p build/$(ESP32_CHIP)/flash
+	cp build/$(ESP32_CHIP)/firmware.envelope build/$(ESP32_CHIP)/flash/firmware.envelope
+ifdef ESP32_ENTRY
+	$(FIRMWARE_BIN) -e build/$(ESP32_CHIP)/flash/firmware.envelope \
+	    container install program build/$(ESP32_CHIP)/flash/program.snapshot
+endif
+ifdef ESP32_WIFI_SSID
+	$(FIRMWARE_BIN) -e build/$(ESP32_CHIP)/flash/firmware.envelope \
+	    property set wifi '{"wifi.ssid": "$(ESP32_WIFI_SSID)", "wifi.password": "$(ESP32_WIFI_PASSWORD)"}'
+endif
+	$(FIRMWARE_BIN) -e build/$(ESP32_CHIP)/flash/firmware.envelope \
+	    extract --bootloader.bin -o build/$(ESP32_CHIP)/flash/bootloader.bin
+	$(FIRMWARE_BIN) -e build/$(ESP32_CHIP)/flash/firmware.envelope \
+	    extract --partitions.bin -o build/$(ESP32_CHIP)/flash/partitions.bin
+	$(FIRMWARE_BIN) -e build/$(ESP32_CHIP)/flash/firmware.envelope \
+	    extract --firmware.bin -o build/$(ESP32_CHIP)/flash/firmware.bin
 	python $(IDF_PATH)/components/esptool_py/esptool/esptool.py --chip $(ESP32_CHIP) --port $(ESP32_PORT) --baud 921600 \
 	    --before default_reset --after hard_reset write_flash -z --flash_mode dio --flash_freq 40m --flash_size detect \
-		0x001000 build/$(ESP32_CHIP)/bootloader/bootloader.bin \
-		0x008000 build/$(ESP32_CHIP)/partitions.bin \
-		0x010000 build/$(ESP32_CHIP)/toit.bin
+		0x001000 build/$(ESP32_CHIP)/flash/bootloader.bin \
+		0x008000 build/$(ESP32_CHIP)/flash/partitions.bin \
+		0x010000 build/$(ESP32_CHIP)/flash/firmware.bin
 
 .PHONY: check-env-flash
 check-env-flash:

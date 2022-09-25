@@ -18,7 +18,7 @@
 #include "flash_registry.h"
 
 #ifdef TOIT_FREERTOS
-extern "C" uword toit_image_table;
+extern "C" uword _thread_local_end;
 #endif
 
 namespace toit {
@@ -77,7 +77,7 @@ void* FlashRegistry::memory(int offset, int size) {
   }
 
 #ifdef TOIT_FREERTOS
-  const uword* table = &toit_image_table;
+  const uword* table = &_thread_local_end;
   uword diff = static_cast<uword>(offset - 1);
   return reinterpret_cast<void*>(reinterpret_cast<uword>(table) + diff);
 #else

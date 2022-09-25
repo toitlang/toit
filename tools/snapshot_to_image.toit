@@ -16,8 +16,8 @@
 /**
 This program reads a snapshot, converts it into an image
   and dumps the content as a binary file or a source file to
-  be read by the GNU assembler. Binary image outputs can be
-  relocated to a specific address or left relocatable.
+  be read by the GNU assembler. Binary image outputs are left
+  relocatable.
 */
 
 import .image
@@ -60,22 +60,47 @@ abstract class RelocatedOutput:
           (mask & 1) != 0
       mask = mask >> 1
 
-class SourceRelocatedOutput extends RelocatedOutput:
-  part/int
+class BinaryRelocatedOutput extends RelocatedOutput:
+  relocation_base/int ::= ?
+  buffer_/ByteArray := ByteArray 4
 
-  constructor out .part:
+  constructor out .relocation_base:
     super out
 
   write_start -> none:
-    writeln "        .align 4"
-    writeln "toit_image_$part:"
+    // Nothing to add here.
+
+  write_end -> none:
+    // Nothing to add here.
+
+  write_word word/int is_relocatable/bool -> none:
+    if is_relocatable: word += relocation_base
+    write_uint32 word
+
+  write_uint16 halfword/int:
+    RelocatedOutput.ENDIAN.put_uint16 buffer_ 0 halfword
+    out.write buffer_[0..2]
+
+  write_uint32 word/int:
+    RelocatedOutput.ENDIAN.put_uint32 buffer_ 0 word
+    out.write buffer_
+
+class SourceRelocatedOutput extends RelocatedOutput:
+  constructor out:
+    super out
+
+  write_start -> none:
+    out.write "        .section .rodata\n"
+    out.write "        .globl toit_system_image\n"
+    out.write "        .align 4\n"
+    out.write "toit_system_image:\n"
 
   write_word word/int is_relocatable/bool:
-    if is_relocatable: writeln "        .long toit_image_$part + 0x$(%x word)"
+    if is_relocatable: writeln "        .long toit_system_image + 0x$(%x word)"
     else:              writeln "        .long 0x$(%x word)"
 
   write_end -> none:
-    writeln "toit_image_end_$part:"
+    // Nothing to add here.
 
   writeln text/string:
     out.write text
@@ -87,12 +112,12 @@ print_usage parser/arguments.ArgumentParser:
 
 main args:
   parser := arguments.ArgumentParser
-  parser.describe_rest ["snapshot-files", "..."]
+  parser.describe_rest ["snapshot-file"]
   parser.add_flag M32_FLAG --short="m32"
   parser.add_flag M64_FLAG --short="m64"
   parser.add_flag BINARY_FLAG
 
-  parser.add_option UNIQUE_ID_OPTION --default="00000000-0000-0000-0000-000000000000"
+  parser.add_option UNIQUE_ID_OPTION
   parser.add_option OUTPUT_OPTION --short="o"
 
   parsed := parser.parse args
@@ -129,31 +154,21 @@ main args:
     print_on_stderr_ "Error: Cannot generate 64-bit non-binary output"
     exit 1
 
+  unique_id := parsed[UNIQUE_ID_OPTION]
+  system_uuid ::= unique_id
+      ? uuid.parse unique_id
+      : uuid.uuid5 "$random" "$Time.now".to_byte_array
+
   out := file.Stream.for_write output_path
-  system_uuid ::= uuid.parse parsed[UNIQUE_ID_OPTION]
-
-  if not binary_output:
-    parts ::= parsed.rest.size
-    out.write "        .section .rodata\n"
-    out.write "        .globl toit_image_table\n"
-    out.write "        .align 4\n"
-    out.write "toit_image_table:\n"
-    out.write "        .long $parts\n"
-    parts.repeat:
-      out.write "        .long toit_image_$it\n"
-      out.write "        .long toit_image_end_$it - toit_image_$it\n"
-
-  part/int := 0
-  parsed.rest.do: | snapshot_path/string |
-    snapshot_bundle := SnapshotBundle.from_file snapshot_path
-    program_id ::= snapshot_bundle.uuid
-    program := snapshot_bundle.decode
-    image := build_image program word_size --system_uuid=system_uuid --program_id=program_id
-    relocatable := image.build_relocatable
-    if binary_output:
-      out.write relocatable
-    else:
-      output := SourceRelocatedOutput out part++
-      output.write word_size relocatable
-
+  snapshot_path/string := parsed.rest[0]
+  snapshot_bundle := SnapshotBundle.from_file snapshot_path
+  program_id ::= snapshot_bundle.uuid
+  program := snapshot_bundle.decode
+  image := build_image program word_size --system_uuid=system_uuid --program_id=program_id
+  relocatable := image.build_relocatable
+  if binary_output:
+    out.write relocatable
+  else:
+    output := SourceRelocatedOutput out
+    output.write word_size relocatable
   out.close

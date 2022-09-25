@@ -1701,7 +1701,7 @@ void MethodResolver::visit_If(ast::If* node) {
   _scope = &if_scope;
 
   auto ast_condition = node->expression();
-  bool needs_sequence = ast_condition->is_DeclarationLocal();
+  bool has_declaring_condition = ast_condition->is_DeclarationLocal();
   ir::Expression* ir_condition = resolve_expression(node->expression(),
                                                     "Condition can't be a block");
   auto ast_yes = node->yes();
@@ -1714,10 +1714,16 @@ void MethodResolver::visit_If(ast::If* node) {
   } else {
     ir_no = resolve_expression(ast_no, "If branches may not evaluate to blocks");
   }
-  ir::Expression* result = _new ir::If(ir_condition, ir_yes, ir_no, node->range());
-  if (needs_sequence) {
+  ir::Expression* result;
+  if (has_declaring_condition) {
+    auto declaration = ir_condition->as_AssignmentDefine();
+    auto local = declaration->local();
+    auto ref = _new ir::ReferenceLocal(local, 0, local->range());
     // To delimit the visibility of the definition.
-    result = _new ir::Sequence(list_of(result), node->range());
+    auto iff = _new ir::If(ref, ir_yes, ir_no, node->range());
+    result = _new ir::Sequence(list_of(declaration, iff), node->range());
+  } else {
+    result = _new ir::If(ir_condition, ir_yes, ir_no, node->range());
   }
   _scope = if_scope.outer();
   push(result);
