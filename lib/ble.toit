@@ -451,7 +451,7 @@ class LocalDescriptor extends LocalReadWriteElement_ implements Attribute:
   properties/int
 
   constructor .characteristic .uuid .properties .permissions value:
-    resource :=  ble_add_descriptor_ resource_ uuid properties permissions value
+    resource :=  ble_add_descriptor_ characteristic.resource_ uuid properties permissions value
     super characteristic.service resource
 
   value= value/ByteArray:
@@ -732,7 +732,7 @@ class RemoteReadWriteElement_ extends Resource_:
 
 class LocalReadWriteElement_ extends Resource_:
   constructor service/LocalService resource:
-    super service.peripheral_manager.adapter.resource_group_ resource_
+    super service.peripheral_manager.adapter.resource_group_ resource
 
   get_value_ -> ByteArray:
     resource_state_.clear_state DATA_RECEIVED_EVENT_
@@ -850,9 +850,9 @@ ble_get_subscribed_clients characteristic:
 
 ble_notify_characteristics_value_ characteristic client new_value:
   return ble_run_with_quota_backoff_:
-    ble_notify_characteristics_value__ characteristic new_value
+    ble_notify_characteristics_value__ characteristic client new_value
 
-ble_notify_characteristics_value__ characteristic new_value:
+ble_notify_characteristics_value__ characteristic client new_value:
   #primitive.ble.notify_characteristics_value
 
 ble_get_att_mtu_ resource:
