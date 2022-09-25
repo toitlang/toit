@@ -17,7 +17,6 @@
 
 #include "../top.h"
 
-#include "ble.h"
 #include "../objects.h"
 #include "../objects_inline.h"
 #include "../event_sources/ble_host.h"
@@ -155,10 +154,11 @@ class BLECharacteristicResource : public BLEResource {
       , _characteristic([characteristic retain])
       , _characteristic_data_list()
       , _service(service)
-      , _mtu(-1) {}
+      , _subscriptions([[NSMutableArray new] retain]) {}
 
   ~BLECharacteristicResource() override {
     [_characteristic release];
+    [_subscriptions release];
   }
 
   CBCharacteristic* characteristic() { return _characteristic; }
@@ -187,14 +187,28 @@ class BLECharacteristicResource : public BLEResource {
 
   BLEServiceResource* service() { return _service; }
 
-  int mtu() const { return _mtu; }
-  void set_mtu(int mtu) { _mtu = mtu; }
+  void add_central(CBCentral *central) {
+    [_subscriptions addObject:[central retain]];
+  }
+
+  void remove_central(CBCentral *central) {
+    [_subscriptions removeObjectIdenticalTo:central];
+  }
+
+  int mtu() {
+    int min_mtu = 1 << 16; // MTU should maximum be 16 bit
+    for (int i=0; i < [_subscriptions count]; i++) {
+      min_mtu = MIN(min_mtu, _subscriptions[i].maximumUpdateValueLength);
+    }
+    return min_mtu==1<<16?23:min_mtu; // 23 is the default mtu value in BLE.
+  }
+
  private:
   CBCharacteristic* _characteristic;
   NSError* _error = nil;
   CharacteristicDataList _characteristic_data_list;
   BLEServiceResource* _service;
-  int _mtu;
+  NSMutableArray<CBCentral*>* _subscriptions;
 };
 
 
@@ -343,7 +357,12 @@ BLECharacteristicResource* lookup_local_characteristic_resource(CBPeripheralMana
 - (void)peripheral:(CBPeripheral*)peripheral didDiscoverServices:(NSError*)error {
   if (peripheral.delegate != nil) {
     toit::BLERemoteDeviceResource* device = ((TOITPeripheralDelegate*) peripheral.delegate).device;
-    toit::HostBLEEventSource::instance()->on_event(device, toit::kBLEServicesDiscovered);
+    if (error) {
+      //device->set_error(error);
+      toit::HostBLEEventSource::instance()->on_event(device, toit::kBLEDiscoverOperationFailed);
+    } else {
+      toit::HostBLEEventSource::instance()->on_event(device, toit::kBLEServicesDiscovered);
+    }
   }
 }
 
@@ -354,7 +373,12 @@ didDiscoverCharacteristicsForService:(CBService*)service
     toit::BLERemoteDeviceResource* device = ((TOITPeripheralDelegate*) peripheral.delegate).device;
     toit::BLEServiceResource* service_resource = device->get_or_create_service_resource(service);
     if (service_resource == null) return;
-    toit::HostBLEEventSource::instance()->on_event(service_resource, toit::kBLECharacteristicsDiscovered);
+    if (error) {
+      //service_resource->set_error(error);
+      toit::HostBLEEventSource::instance()->on_event(device, toit::kBLEDiscoverOperationFailed);
+    } else {
+      toit::HostBLEEventSource::instance()->on_event(service_resource, toit::kBLECharacteristicsDiscovered);
+    }
   }
 }
 
@@ -526,6 +550,7 @@ didUpdateNotificationStateForCharacteristic:(CBCharacteristic*)characteristic
     NSLog(@"%@",error);
     toit::HostBLEEventSource::instance()->on_event(service_resource, toit::kBLEServiceAddFailed);
   } else {
+    service_resource->set_deployed(true);
     toit::HostBLEEventSource::instance()->on_event(service_resource, toit::kBLEServiceAddSucceeded);
   }
 }
@@ -547,7 +572,15 @@ didUpdateNotificationStateForCharacteristic:(CBCharacteristic*)characteristic
   didSubscribeToCharacteristic:(CBCharacteristic*)characteristic {
   toit::BLECharacteristicResource* characteristic_resource =
       toit::lookup_local_characteristic_resource(peripheral, characteristic);
-  characteristic_resource->set_mtu(static_cast<int>(central.maximumUpdateValueLength));
+  characteristic_resource->add_central(central);
+}
+
+- (void)       peripheralManager:(CBPeripheralManager*)peripheral
+                         central:(CBCentral*)central
+didUnsubscribeFromCharacteristic:(CBCharacteristic*)characteristic {
+  toit::BLECharacteristicResource* characteristic_resource =
+      toit::lookup_local_characteristic_resource(peripheral, characteristic);
+  characteristic_resource->remove_central(central);
 }
 
 @end
@@ -987,7 +1020,7 @@ PRIMITIVE(discover_descriptors_result) {
   UNIMPLEMENTED_PRIMITIVE;
 }
 
-PRIMITIVE(request_characteristic_read) {
+PRIMITIVE(request_read) {
   ARGS(BLECharacteristicResource, characteristic);
 
   [characteristic->characteristic().service.peripheral readValueForCharacteristic:characteristic->characteristic()];
@@ -995,7 +1028,7 @@ PRIMITIVE(request_characteristic_read) {
   return process->program()->null_object();
 }
 
-PRIMITIVE(get_characteristic_value) {
+PRIMITIVE(get_value) {
   ARGS(BLECharacteristicResource, characteristic);
 
   CharacteristicData* data = characteristic->remove_first();
@@ -1016,20 +1049,7 @@ PRIMITIVE(get_characteristic_value) {
   return byte_array;
 }
 
-PRIMITIVE(get_characteristic_error) {
-  ARGS(BLECharacteristicResource, characteristic);
-  if (characteristic->error() == nil) OTHER_ERROR;
-  Error* err = null;
-  String* message = process->allocate_string(
-      [characteristic->error().localizedDescription UTF8String], &err);
-  if (err) return err;
-
-  characteristic->set_error(nil);
-
-  return message;
-}
-
-PRIMITIVE(write_characteristic_value) {
+PRIMITIVE(write_value) {
   ARGS(BLECharacteristicResource, characteristic, Object, value, bool, with_response);
 
   Blob bytes;
@@ -1112,7 +1132,7 @@ PRIMITIVE(add_service) {
   return proxy;
 }
 
-PRIMITIVE(add_service_characteristic) {
+PRIMITIVE(add_characteristic) {
   ARGS(BLEServiceResource, service_resource, Blob, raw_uuid, int, properties, int, permissions, Object, value);
 
   if (!service_resource->peripheral_manager()) INVALID_ARGUMENT;
@@ -1147,6 +1167,10 @@ PRIMITIVE(add_service_characteristic) {
   return proxy;
 }
 
+PRIMITIVE(add_descriptor) {
+  UNIMPLEMENTED();
+}
+
 PRIMITIVE(deploy_service) {
   ARGS(BLEServiceResource, service_resource);
 
@@ -1159,7 +1183,7 @@ PRIMITIVE(deploy_service) {
   return process->program()->null_object();
 }
 
-PRIMITIVE(set_characteristics_value) {
+PRIMITIVE(set_value) {
   ARGS(BLECharacteristicResource, characteristic_resource, Object, value);
   Blob bytes;
   if (!value->byte_content(process->program(), &bytes, STRINGS_OR_BYTE_ARRAYS)) WRONG_TYPE;
@@ -1170,8 +1194,18 @@ PRIMITIVE(set_characteristics_value) {
   return process->program()->null_object();
 }
 
+// Just return an array with 1 null object. This will cause the toit code to call notify_characteristics_value with
+// a conn_handle of null that we will not use.
+PRIMITIVE(get_subscribed_clients) {
+  Array* array = process->object_heap()->allocate_array(1, process->program()->null_object());
+  if (!array) ALLOCATION_FAILED;
+  return array;
+}
+
 PRIMITIVE(notify_characteristics_value) {
-  ARGS(BLECharacteristicResource, characteristic_resource, Object, value);
+  ARGS(BLECharacteristicResource, characteristic_resource, Object, conn_handle, Object, value);
+  USE(conn_handle);
+
   BLEPeripheralManagerResource *peripheral_manager = characteristic_resource->service()->peripheral_manager();
   if (!peripheral_manager) WRONG_TYPE;
 
@@ -1187,17 +1221,25 @@ PRIMITIVE(notify_characteristics_value) {
 }
 
 PRIMITIVE(get_att_mtu) {
-  ARGS(BLECharacteristicResource, characteristic_resource);
-
-  BLEPeripheralManagerResource *peripheral_manager = characteristic_resource->service()->peripheral_manager();
-  if (peripheral_manager) {
-    return Smi::from(characteristic_resource->mtu());
-  } else {
-    NSUInteger mtu = [characteristic_resource->service()->device()->peripheral()
-                      maximumWriteValueLengthForType:CBCharacteristicWriteWithResponse];
-
-    return Smi::from(static_cast<int>(mtu));
+  ARGS(Resource, resource);
+  NSUInteger mtu = 23;
+  auto ble_resource = reinterpret_cast<BLEResource*>(resource);
+  switch (ble_resource->kind()) {
+    case BLEResource::REMOTE_DEVICE: {
+      auto device = reinterpret_cast<BLERemoteDeviceResource*>(ble_resource);
+      mtu = [device->peripheral() maximumWriteValueLengthForType:CBCharacteristicWriteWithResponse];
+      break;
+    }
+    case BLEResource::CHARACTERISTIC: {
+      auto characteristic = reinterpret_cast<BLECharacteristicResource*>(ble_resource);
+      mtu = characteristic->mtu();
+      break;
+    }
+    default:
+      break;
   }
+
+  return Smi::from(static_cast<int>(mtu));
 }
 
 PRIMITIVE(set_preferred_mtu) {
@@ -1205,4 +1247,20 @@ PRIMITIVE(set_preferred_mtu) {
   return process->program()->null_object();
 }
 
+PRIMITIVE(get_error) {
+  ARGS(BLECharacteristicResource, characteristic);
+  if (characteristic->error() == nil) OTHER_ERROR;
+  Error* err = null;
+  String* message = process->allocate_string(
+      [characteristic->error().localizedDescription UTF8String], &err);
+  if (err) return err;
+
+  characteristic->set_error(nil);
+
+  return message;
+}
+
+PRIMITIVE(gc) {
+  UNIMPLEMENTED();
+}
 }

@@ -9,7 +9,7 @@
 #pragma once
 
 #include "../resource.h"
-#include "ble_esp32.h"
+#include "ble.h"
 
 namespace toit {
 
@@ -27,27 +27,6 @@ class LightLocker {
 };
 
 class BLEResourceGroup;
-
-class BLEResource : public Resource {
- public:
-  enum Kind {
-    CENTRAL_MANAGER,
-    PERIPHERAL_MANAGER,
-    REMOTE_DEVICE,
-    CHARACTERISTIC,
-    SERVICE
-  };
-  BLEResource(ResourceGroup* group, Kind kind)
-      : Resource(group)
-      , _kind(kind) {}
-
-  Kind kind() const { return _kind; }
-
-  BLEResourceGroup* group() { return reinterpret_cast<BLEResourceGroup*>(resource_group()); }
-
- private:
-  const Kind _kind;
-};
 
 class BLEEvent;
 

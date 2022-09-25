@@ -14,7 +14,7 @@
 // directory of this repository.
 
 #include "../top.h"
-
+#include "../resource.h"
 namespace toit {
 
 enum {
@@ -39,7 +39,32 @@ enum {
   kBLEServiceAddSucceeded = 1 << 18,
   kBLEServiceAddFailed = 1 << 19,
   kBLEDataReceived = 1 << 20,
+  kBLEDiscoverOperationFailed = 1 << 21,
+  kBLEMallocFailed = 1 << 22
+};
 
+class BLEResourceGroup;
+
+class BLEResource : public Resource {
+ public:
+  enum Kind {
+    CENTRAL_MANAGER,
+    PERIPHERAL_MANAGER,
+    REMOTE_DEVICE,
+    SERVICE,
+    CHARACTERISTIC,
+    DESCRIPTOR
+  };
+  BLEResource(ResourceGroup* group, Kind kind)
+      : Resource(group)
+      , _kind(kind) {}
+
+  Kind kind() const { return _kind; }
+
+  BLEResourceGroup* group() { return reinterpret_cast<BLEResourceGroup*>(resource_group()); }
+
+ private:
+  const Kind _kind;
 };
 
 }

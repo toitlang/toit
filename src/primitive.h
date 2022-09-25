@@ -330,20 +330,23 @@ namespace toit {
   PRIMITIVE(discover_characteristics_result, 1) \
   PRIMITIVE(discover_descriptors, 1)         \
   PRIMITIVE(discover_descriptors_result, 1)  \
-  PRIMITIVE(request_characteristic_read, 1)  \
-  PRIMITIVE(get_characteristic_value, 1)     \
-  PRIMITIVE(get_characteristic_error, 1)     \
-  PRIMITIVE(write_characteristic_value, 3)   \
+  PRIMITIVE(request_read, 1)                 \
+  PRIMITIVE(get_value, 1)                    \
+  PRIMITIVE(write_value, 3)                  \
   PRIMITIVE(set_characteristic_notify, 2)    \
   PRIMITIVE(advertise_start, 6)              \
   PRIMITIVE(advertise_stop, 1)               \
   PRIMITIVE(add_service, 2)                  \
-  PRIMITIVE(add_service_characteristic, 5)   \
+  PRIMITIVE(add_characteristic, 5)           \
+  PRIMITIVE(add_descriptor, 5)               \
   PRIMITIVE(deploy_service, 1)               \
-  PRIMITIVE(set_characteristics_value, 2)    \
-  PRIMITIVE(notify_characteristics_value, 2) \
+  PRIMITIVE(set_value, 2)                    \
+  PRIMITIVE(get_subscribed_clients, 1)       \
+  PRIMITIVE(notify_characteristics_value, 3) \
   PRIMITIVE(get_att_mtu, 1)                  \
   PRIMITIVE(set_preferred_mtu, 1)            \
+  PRIMITIVE(get_error, 1)                    \
+  PRIMITIVE(gc, 1)                           \
 
 #define MODULE_DHCP(PRIMITIVE)               \
   PRIMITIVE(wait_for_lwip_dhcp_on_linux, 0)  \

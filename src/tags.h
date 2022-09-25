@@ -51,8 +51,7 @@ namespace toit {
   fn(BLERemoteDeviceResource)           \
   fn(BLEServiceResource)                \
   fn(BLECharacteristicResource)         \
-  fn(BLEServerServiceResource)          \
-  fn(BLEServerCharacteristicResource)   \
+  fn(BLEDescriptorResource)             \
   fn(Directory)                         \
 
 #define TLS_CLASSES_DO(fn)              \
