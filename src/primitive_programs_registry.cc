@@ -118,4 +118,14 @@ PRIMITIVE(bundled_images) {
 #endif
 }
 
+PRIMITIVE(assets) {
+  Program* program = process->program();
+  int length;
+  uint8* bytes;
+  if (program->assets_size(&bytes, &length) == 0) {
+    return process->object_heap()->allocate_internal_byte_array(0);
+  }
+  return process->object_heap()->allocate_external_byte_array(length, bytes, false, false);
+}
+
 } // namespace toit

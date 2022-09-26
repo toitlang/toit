@@ -22,6 +22,7 @@ This program reads a snapshot, converts it into an image
 
 import .image
 import .snapshot
+import .firmware show pad
 
 import binary show LITTLE_ENDIAN ByteOrder
 import uuid
@@ -33,6 +34,7 @@ M32_FLAG         ::= "machine-32-bit"
 M64_FLAG         ::= "machine-64-bit"
 UNIQUE_ID_OPTION ::= "unique_id"
 OUTPUT_OPTION    ::= "output"
+ASSETS_OPTION    ::= "assets"
 
 abstract class RelocatedOutput:
   static ENDIAN/ByteOrder ::= LITTLE_ENDIAN
@@ -119,6 +121,7 @@ main args:
 
   parser.add_option UNIQUE_ID_OPTION
   parser.add_option OUTPUT_OPTION --short="o"
+  parser.add_option ASSETS_OPTION
 
   parsed := parser.parse args
 
@@ -159,6 +162,9 @@ main args:
       ? uuid.parse unique_id
       : uuid.uuid5 "$random" "$Time.now".to_byte_array
 
+  assets_path := parsed[ASSETS_OPTION]
+  assets := assets_path ? file.read_content assets_path : null
+
   out := file.Stream.for_write output_path
   snapshot_path/string := parsed.rest[0]
   snapshot_bundle := SnapshotBundle.from_file snapshot_path
@@ -168,7 +174,23 @@ main args:
   relocatable := image.build_relocatable
   if binary_output:
     out.write relocatable
+    if assets:
+      // Send the assets prefixed with the size and make sure
+      // to round up to full "flash" pages.
+      assets_size := ByteArray 4
+      LITTLE_ENDIAN.put_uint32 assets_size 0 assets.size
+      assets = pad (assets_size + assets) 4096
+      // Encode the assets with dummy relocation information for
+      // every chunk. The assets do not need relocation, but it
+      // is simpler to just use the same image format for the
+      // asset pages.
+      chunk_size := word_size * 8 * word_size
+      no_relocation := ByteArray word_size
+      List.chunk_up 0 assets.size chunk_size: | from to |
+        out.write no_relocation
+        out.write assets[from..to]
   else:
+    if assets_path: throw "assets are not supported yet!"
     output := SourceRelocatedOutput out
     output.write word_size relocatable
   out.close
