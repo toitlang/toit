@@ -583,7 +583,6 @@ class HeapSummaryPage {
       case BIGNUM_MALLOC_TAG: return "tls/bignum";
       case EXTERNAL_STRING_MALLOC_TAG: return "external string";
       case TOIT_HEAP_MALLOC_TAG: return "toit";
-      case UNUSED_TOIT_HEAP_MALLOC_TAG: return "unused";
       case FREE_MALLOC_TAG: return "free";
       case LWIP_MALLOC_TAG: return "lwip";
       case HEAP_OVERHEAD_MALLOC_TAG: return "heap overhead";
