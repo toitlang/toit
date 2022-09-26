@@ -214,11 +214,13 @@ container_install parsed/cli.Parsed -> none:
   update_envelope parsed: | envelope/Envelope |
     envelope.entries[name] = image_data
     if assets_data: envelope.entries["+$name"] = assets_data
+    else: envelope.entries.remove "+$name"
 
 container_uninstall parsed/cli.Parsed -> none:
   name := parsed["name"]
   update_envelope parsed: | envelope/Envelope |
     envelope.entries.remove name
+    envelope.entries.remove "+$name"
 
 container_list parsed/cli.Parsed -> none:
   input_path := parsed[OPTION_ENVELOPE]
