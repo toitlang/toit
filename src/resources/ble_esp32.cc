@@ -67,25 +67,28 @@ typedef DoubleLinkedList<DiscoveredPeripheral> DiscoveredPeripheralList;
 
 class DiscoveredPeripheral : public DiscoveredPeripheralList::Element {
  public:
-  DiscoveredPeripheral(ble_addr_t addr, int8_t rssi, uint8_t* data, uint8_t data_length)
+  DiscoveredPeripheral(ble_addr_t addr, int8 rssi, uint8* data, uint8 data_length, uint8 event_type)
       : _addr(addr)
       , _rssi(rssi)
       , _data(data)
-      , _data_length(data_length) {}
+      , _data_length(data_length)
+      , _event_type(event_type) {}
+
   ~DiscoveredPeripheral() {
     free(_data);
   }
 
   ble_addr_t addr() { return _addr; }
-  int8_t rssi() const { return _rssi; }
+  int8 rssi() const { return _rssi; }
   uint8* data() { return _data; }
-  uint8_t data_length() const { return _data_length; }
-
+  uint8 data_length() const { return _data_length; }
+  uint8 event_type() const { return _event_type; }
  private:
-  ble_addr_t _addr{};
-  int8_t _rssi = 0;
-  uint8* _data = null;
-  uint8_t _data_length = 0;
+  ble_addr_t _addr;
+  int8 _rssi;
+  uint8* _data;
+  uint8 _data_length;
+  uint8 _event_type;
 };
 
 
@@ -97,10 +100,11 @@ class BLEResourceGroup : public ResourceGroup, public Thread{
       , Thread("BLE")
       , _id(id)
       , _sync(false) {
-    if (_instance_access_mutex) { // Allocation of the mutex could fail, the init primitive reports this
+    if (instance_access_mutex()) { // Allocation of the mutex could fail, the init primitive reports this
       Locker locker(_instance_access_mutex);
       ASSERT(!_instance);
       _instance = this;
+      spawn();
     }
   }
 
@@ -120,7 +124,7 @@ class BLEResourceGroup : public ResourceGroup, public Thread{
   static BLEResourceGroup* instance() { return _instance; };
   static Mutex* instance_access_mutex(bool allow_alloc=true) {
     if (!_instance_access_mutex && allow_alloc)
-      _instance_access_mutex = OS::allocate_mutex(3,"BLE");
+      _instance_access_mutex = OS::allocate_mutex(0,"BLE");
     return _instance_access_mutex;
   };
 
@@ -850,36 +854,42 @@ BLECharacteristicResource* BLEServiceResource::get_or_create_characteristics_res
 }
 
 void BLECentralManagerResource::_on_discovery(ble_gap_event* event) {
-  uint8* data = null;
-  uint8 data_length = 0;
+  switch (event->type) {
+    case BLE_GAP_EVENT_DISC_COMPLETE:
+      BLEEventSource::instance()->on_event(this, kBLECompleted);
+      break;
+    case BLE_GAP_EVENT_DISC: {
+      uint8* data = null;
+      uint8 data_length = 0;
+      if (event->disc.length_data > 0) {
+        data = unvoid_cast<uint8*>(malloc(event->disc.length_data));
+        if (!data) {
+          set_malloc_error(true);
+          BLEEventSource::instance()->on_event(this, kBLEMallocFailed);
+          return;
+        }
+        memmove(data, event->disc.data, event->disc.length_data);
+        data_length = event->disc.length_data;
+      }
 
-  if (event->disc.length_data > 0) {
-    data = unvoid_cast<uint8*>(malloc(event->disc.length_data));
-    if (!data) {
-      set_malloc_error(true);
-      BLEEventSource::instance()->on_event(this, kBLEMallocFailed);
-      return;
+      auto discovered_peripheral
+          = _new DiscoveredPeripheral(event->disc.addr, event->disc.rssi, data, data_length, event->disc.event_type);
+
+      if (!discovered_peripheral) {
+        if (data) free(data);
+        set_malloc_error(true);
+        BLEEventSource::instance()->on_event(this, kBLEMallocFailed);
+        return;
+      }
+
+      {
+        Locker locker(_mutex);
+        _newly_discovered_peripherals.append(discovered_peripheral);
+      }
+
+      BLEEventSource::instance()->on_event(this, kBLEDiscovery);
     }
-    memmove(data, event->disc.data, event->disc.length_data);
-    data_length = event->disc.length_data;
   }
-
-  auto discovered_peripheral
-      = _new DiscoveredPeripheral(event->disc.addr, event->disc.rssi, data, data_length);
-
-  if (!discovered_peripheral) {
-    if (data) free(data);
-    set_malloc_error(true);
-    BLEEventSource::instance()->on_event(this, kBLEMallocFailed);
-    return;
-  }
-
-  {
-    Locker locker(_mutex);
-    _newly_discovered_peripherals.append(discovered_peripheral);
-  }
-
-  BLEEventSource::instance()->on_event(this, kBLEDiscovery);
 }
 
 void BLERemoteDeviceResource::_on_event(ble_gap_event* event) {
@@ -1121,7 +1131,7 @@ bool BLECharacteristicResource::update_subscription_status(uint8_t indicate, uin
 int BLEPeripheralManagerResource::_on_gap(struct ble_gap_event* event) {
   switch (event->type) {
     case BLE_GAP_EVENT_ADV_COMPLETE:
-      // TDOD Add stopped event
+      // TODO Add stopped event
       //BLEEventSource::instance()->on_event(this, kBLEAdvertiseStopped);
       break;
     case BLE_GAP_EVENT_SUBSCRIBE: {
@@ -1289,7 +1299,7 @@ PRIMITIVE(scan_start) {
   /* Figure out address to use while advertising (no privacy for now) */
   int err = ble_hs_id_infer_auto(0, &own_addr_type);
   if (err != BLE_ERR_SUCCESS) {
-    nimle_stack_error(process,err);
+    return nimle_stack_error(process,err);
   }
 
   struct ble_gap_disc_params disc_params = { 0 };
@@ -1311,8 +1321,9 @@ PRIMITIVE(scan_start) {
 
   err = ble_gap_disc(BLE_ADDR_PUBLIC, duration_ms, &disc_params,
                      BLECentralManagerResource::on_discovery, central_manager);
+
   if (err != BLE_ERR_SUCCESS) {
-    nimle_stack_error(process,err);
+    return nimle_stack_error(process,err);
   }
 
   return process->program()->null_object();
@@ -1325,18 +1336,18 @@ PRIMITIVE(scan_next) {
   DiscoveredPeripheral* next = central_manager->get_discovered_peripheral();
   if (!next) return process->program()->null_object();
 
-  Array* array = process->object_heap()->allocate_array(5, process->program()->null_object());
+  Array* array = process->object_heap()->allocate_array(6, process->program()->null_object());
   if (!array) ALLOCATION_FAILED;
 
   ByteArray* id = process->object_heap()->allocate_internal_byte_array(7);
   if (!id) ALLOCATION_FAILED;
+
   ByteArray::Bytes id_bytes(id);
   id_bytes.address()[0] = next->addr().type;
   memcpy_reverse(id_bytes.address() + 1, next->addr().val, 6);
   array->at_put(0, id);
 
   array->at_put(1, Smi::from(next->rssi()));
-
   if (next->data_length() > 0) {
     ble_hs_adv_fields fields{};
     int rc = ble_hs_adv_parse_fields(&fields, next->data(), next->data_length());
@@ -1378,7 +1389,7 @@ PRIMITIVE(scan_next) {
       }
       array->at_put(3, service_classes);
 
-      if (fields.mfg_data_len > 0) {
+      if (fields.mfg_data_len > 0 && fields.mfg_data) {
         ByteArray* custom_data = process->object_heap()->allocate_internal_byte_array(fields.mfg_data_len);
         if (!custom_data) ALLOCATION_FAILED;
         ByteArray::Bytes custom_data_bytes(custom_data);
@@ -1386,23 +1397,29 @@ PRIMITIVE(scan_next) {
         array->at_put(4, custom_data);
       }
     }
+
+    array->at_put(5, BOOL(next->event_type() == BLE_HCI_ADV_RPT_EVTYPE_ADV_IND ||
+                          next->event_type() == BLE_HCI_ADV_RPT_EVTYPE_DIR_IND));
   }
 
-  free(next);
-
   central_manager->remove_discovered_peripheral();
+
+  free(next);
 
   return array;
 }
 
 PRIMITIVE(scan_stop) {
-  ARGS(BLEResourceGroup, group);
+  ARGS(Resource, resource);
 
   if (BLECentralManagerResource::is_scanning()) {
     int err = ble_gap_disc_cancel();
     if (err != BLE_ERR_SUCCESS) {
-      nimle_stack_error(process,err);
+      return nimle_stack_error(process,err);
     }
+    // If ble_gap_disc_cancel returns without error, the discovery has stoppen and NimBLE will not provide an
+    // event. So we fire the event directly.
+    BLEEventSource::instance()->on_event(reinterpret_cast<BLEResource*>(resource), kBLECompleted);
   }
 
   return process->program()->null_object();
@@ -1415,7 +1432,7 @@ PRIMITIVE(connect) {
 
   int err = ble_hs_id_infer_auto(0, &own_addr_type);
   if (err != BLE_ERR_SUCCESS) {
-    nimle_stack_error(process,err);
+    return nimle_stack_error(process,err);
   }
 
   ble_addr_t addr = { 0 };
@@ -1432,7 +1449,7 @@ PRIMITIVE(connect) {
                         BLERemoteDeviceResource::on_event, device);
   if (err != BLE_ERR_SUCCESS) {
     delete device;
-    nimle_stack_error(process,err);
+    return nimle_stack_error(process,err);
   }
 
   proxy->set_external_address(device);
@@ -1463,7 +1480,7 @@ PRIMITIVE(discover_services) {
         BLERemoteDeviceResource::on_service_discovered,
         device);
     if (err != BLE_ERR_SUCCESS) {
-      nimle_stack_error(process,err);
+      return nimle_stack_error(process,err);
     }
   } else if (raw_service_uuids->length() == 1) {
     Blob blob;
@@ -1477,7 +1494,7 @@ PRIMITIVE(discover_services) {
         BLERemoteDeviceResource::on_service_discovered,
         device);
     if (err != BLE_ERR_SUCCESS) {
-      nimle_stack_error(process,err);
+      return nimle_stack_error(process,err);
     }
   } else INVALID_ARGUMENT;
 
@@ -1527,7 +1544,7 @@ PRIMITIVE(discover_characteristics) {
                                       BLEServiceResource::on_characteristic_discovered,
                                       service);
     if (err != BLE_ERR_SUCCESS) {
-      nimle_stack_error(process,err);
+      return nimle_stack_error(process,err);
     }
   } else if (raw_characteristics_uuids->length() == 1) {
     Blob blob;
@@ -1542,7 +1559,7 @@ PRIMITIVE(discover_characteristics) {
                                           BLEServiceResource::on_characteristic_discovered,
                                           service);
     if (err != BLE_ERR_SUCCESS) {
-      nimle_stack_error(process,err);
+      return nimle_stack_error(process,err);
     }
   } else INVALID_ARGUMENT;
   return process->program()->null_object();
@@ -1593,7 +1610,7 @@ PRIMITIVE(discover_descriptors) {
       characteristic);
 
   if (err != BLE_ERR_SUCCESS) {
-    nimle_stack_error(process,err);
+    return nimle_stack_error(process,err);
   }
 
   return process->program()->null_object();
@@ -1692,7 +1709,7 @@ PRIMITIVE(write_value) {
   }
 
   if (err != BLE_ERR_SUCCESS) {
-    nimle_stack_error(process,err);
+    return nimle_stack_error(process,err);
   }
 
   return Smi::from(with_response ? 1 : 0);
@@ -1733,7 +1750,7 @@ PRIMITIVE(set_characteristic_notify) {
         characteristic);
 
     if (err != BLE_ERR_SUCCESS) {
-      nimle_stack_error(process,err);
+      return nimle_stack_error(process,err);
     }
   }
 
@@ -1786,7 +1803,7 @@ PRIMITIVE(advertise_start) {
   int err = ble_gap_adv_set_fields(&fields);
   if (err != 0) {
     if (err == BLE_HS_EMSGSIZE) OUT_OF_RANGE;
-    nimle_stack_error(process,err);
+    return nimle_stack_error(process,err);
   }
 
   struct ble_gap_adv_params adv_params = { 0 };
@@ -1803,7 +1820,7 @@ PRIMITIVE(advertise_start) {
       BLEPeripheralManagerResource::on_gap,
       peripheral_manager);
   if (err != BLE_ERR_SUCCESS) {
-    nimle_stack_error(process,err);
+    return nimle_stack_error(process,err);
   }
   // nimnle does not provide a advertise started gap event, so we just simulate the event
   // from the primitive
@@ -1815,7 +1832,7 @@ PRIMITIVE(advertise_stop) {
   if (BLEPeripheralManagerResource::is_advertising()) {
     int err = ble_gap_adv_stop();
     if (err != BLE_ERR_SUCCESS) {
-      nimle_stack_error(process,err);
+      return nimle_stack_error(process,err);
     }
   }
 
@@ -2110,7 +2127,7 @@ PRIMITIVE(set_preferred_mtu) {
 PRIMITIVE(get_error) {
   ARGS(Resource, resource);
   auto err_resource = reinterpret_cast<BLEErrorCapableResource*>(resource);
-
+  printf("get err: %i\n",err_resource->error() );
   if (err_resource->error() == 0) OTHER_ERROR;
 
   Error* error = null;

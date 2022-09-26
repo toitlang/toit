@@ -33,7 +33,7 @@ BLEEventSource::~BLEEventSource() {
 
 void BLEEventSource::on_event(BLEResource* resource, word data) {
   Locker locker(mutex());
-  if (resource) dispatch(resource,data);
+  if (resource) dispatch(locker, resource, data);
 }
 
 bool BLEEventSource::start() {

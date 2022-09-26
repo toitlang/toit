@@ -246,6 +246,7 @@ class RemoteService extends Resource_ implements Attribute:
   Constructs a remote service from the given $client_, $service_id, and $handle_range_.
   */
   constructor .device .uuid .service_:
+    print 5
     super device.manager.adapter.resource_group_ service_
 
   /**
@@ -309,6 +310,7 @@ class RemoteConnectedDevice extends Resource_:
     state := wait_for_state_with_gc_ SERVICES_DISCOVERED_EVENT_
                                    | DISCONNECTED_EVENT_
                                    | DISCOVERY_OPERATION_FAILED_
+    print 4
     if state & DISCONNECTED_EVENT_ != 0:
       throw "BLE disconnected"
     else if state & DISCOVERY_OPERATION_FAILED_:
@@ -506,6 +508,7 @@ class CentralManager extends Resource_:
           resource_state_.clear_state DISCOVERY_EVENT_
           if state & COMPLETED_EVENT_ != 0: return
           continue
+
         service_classes := []
         raw_service_classes := next[3]
         if raw_service_classes:
@@ -519,7 +522,7 @@ class CentralManager extends Resource_:
           AdvertisementData
             --name=next[2]
             --service_classes=service_classes
-            --manufacturer_data=next[4]
+            --manufacturer_data=(next[4]?next[4]:#[])
             --connectable=next[5]
         block.call discovery
     finally:
@@ -609,6 +612,7 @@ class Adapter:
   constructor .adapter_information=null:
     if not adapter_information:
       adapter_information = Adapter.adapters[0]
+    print "Creating resource group"
     resource_group_ = ble_init_ adapter_information.handle_
 
   central_manager -> CentralManager:
@@ -689,13 +693,14 @@ class Resource_:
         remove_finalizer this
 
   throw_error_:
-    throw
-      ble_get_error_ resource_
+    err := ble_get_error_ resource_
+    print err
+    throw err
 
   wait_for_state_with_gc_ bits:
     while true:
       state := resource_state_.wait_for_state bits | MALLOC_FAILED_
-      if state & MALLOC_FAILED_:
+      if state & MALLOC_FAILED_ != 0:
         ble_gc_ resource_
       else:
         return state
