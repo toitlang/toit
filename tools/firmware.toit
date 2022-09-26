@@ -32,7 +32,7 @@ import .image
 import .snapshot
 import .snapshot_to_image
 
-ENVELOPE_FORMAT_VERSION ::= 3
+ENVELOPE_FORMAT_VERSION ::= 4
 
 WORD_SIZE ::= 4
 AR_ENTRY_FIRMWARE_BIN    ::= "\$firmware.bin"
@@ -40,7 +40,7 @@ AR_ENTRY_FIRMWARE_ELF    ::= "\$firmware.elf"
 AR_ENTRY_BOOTLOADER_BIN  ::= "\$bootloader.bin"
 AR_ENTRY_PARTITIONS_BIN  ::= "\$partitions.bin"
 AR_ENTRY_PARTITIONS_CSV  ::= "\$partitions.csv"
-AR_ENTRY_SYSTEM_SNAPSHOT ::= "\$system.snapshot"
+AR_ENTRY_SYSTEM_SNAPSHOT ::= "\$system.snap"
 AR_ENTRY_PROPERTIES      ::= "\$properties"
 
 AR_ENTRY_FILE_MAP ::= {
@@ -200,7 +200,11 @@ container_install parsed/cli.Parsed -> none:
   image_path := parsed["image"]
   assets_path := parsed["assets"]
   if name.starts_with "\$":
-    throw "cannot install container with a name that starts with \$ or +"
+    print "cannot install container with a name that starts with \$ or +"
+    exit 1
+  if name.size > 14:
+    print "cannot install container with a name longer than 14 characters"
+    exit 1
   image_data := read_file image_path
   assets_data := read_assets assets_path
   if not is_snapshot_bundle image_data:
