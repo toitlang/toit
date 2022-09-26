@@ -190,6 +190,9 @@ class Pin:
     if get == value: return
     gpio_config_interrupt_ num true
     try:
+      // Make sure the pin didn't change to the expected value while we
+      // were setting up the interrupt.
+      if get == value: return
       expected_state := value == 1 ? GPIO_STATE_UP_ : GPIO_STATE_DOWN_
       state := state_.wait_for_state expected_state
       state_.clear_state expected_state
