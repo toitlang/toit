@@ -398,6 +398,26 @@ jobs:
           export PATH="$PWD/ccache_interceptors":$PATH
           make esp32
 
+      - name: Pack firmware artifacts
+        shell: bash
+        run: |
+          gzip --to-stdout build/esp32/firmware.envelope > build/firmware-esp32.gz
+
+      - name: Upload firmware artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: firmware-esp32.gz
+          path: build/firmware-esp32.gz
+
+      - name: Upload release firmware artifacts
+        if: (github.event_name) == 'release'
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: build/firmware-esp32.gz
+          tag: ${{ github.ref }}
+          overwrite: true
+
   # Really annoying that we need to duplicate so much.
   cross_windows:
     runs-on: ubuntu-latest
