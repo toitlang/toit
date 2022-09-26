@@ -137,7 +137,7 @@ rtc_user_bytes -> ByteArray:
   #primitive.esp32.rtc_user_bytes
 
 /**
-Produces (as a system message) a report over the usage of memory at the OS level.
+Sends (as a system message) a report over the usage of memory at the OS level.
 */
 memory_page_report -> none:
   report := memory_page_report_
@@ -145,3 +145,13 @@ memory_page_report -> none:
 
 memory_page_report_ -> ByteArray:
   #primitive.esp32.memory_page_report
+
+/**
+Sends (as a system message) a detailed report over the usage of memory at the OS level.
+*/
+dump_heap -> none:
+  report := dump_heap_ 300
+  send_trace_message report
+
+dump_heap_ slack/int -> ByteArray:
+  #primitive.core.dump_heap
