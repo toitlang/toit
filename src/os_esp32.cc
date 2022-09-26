@@ -741,19 +741,20 @@ void OS::heap_summary_report(int max_pages, const char* marker) { }
 #endif // def TOIT_CMPCTMALLOC
 
 static const int TOIT_IMAGE_DATA_SIZE = 1024;
-static const int TOIT_CONFIG_IMAGE_SIZE = TOIT_IMAGE_DATA_SIZE - UUID_SIZE;
+static const int TOIT_CONFIG_IMAGE_SIZE = TOIT_IMAGE_DATA_SIZE - UUID_SIZE - sizeof(uint32);
 
 class ImageData {
  public:
-  uint32_t image_pad = 0;
-  uint32_t image_magic1 = 0x7017da7a;  // "Toitdata"
+  uint32 image_pad = 0;
+  uint32 image_magic1 = 0x7017da7a;  // "Toitdata"
   // The data between image_magic1 and image_magic2 must be a multiple of 512
   // bytes, otherwise the patching utility will not detect it. Search for
   // 0x7017da7a. Note when updating this restriction is baked into the SDK that
   // you are updating *from* so it can't be fixed without multiple SDK updates.
-  uint8_t image_config[TOIT_CONFIG_IMAGE_SIZE] = {0};
-  uint8_t image_uuid[UUID_SIZE] = {0};
-  uint32_t image_magic2 = 0xc09f19;    // "config"
+  uint8 image_config[TOIT_CONFIG_IMAGE_SIZE] = {0};
+  uint8 image_uuid[UUID_SIZE] = {0};
+  uint32 image_bundled_programs_table = 0;
+  uint32 image_magic2 = 0xc09f19;    // "config"
 } __attribute__((packed));
 
 // Note, you can't declare this const because then the compiler thinks it can
@@ -763,6 +764,10 @@ __attribute__((section(".rodata_custom_desc"))) ImageData toit_image_data;
 
 const uint8* OS::image_uuid() {
   return toit_image_data.image_uuid;
+}
+
+const uword* OS::image_bundled_programs_table() {
+  return reinterpret_cast<const uword*>(toit_image_data.image_bundled_programs_table);
 }
 
 uint8* OS::image_config(size_t *length) {

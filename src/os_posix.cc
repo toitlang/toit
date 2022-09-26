@@ -291,6 +291,11 @@ const uint8* OS::image_uuid() {
   return uuid;
 }
 
+const uword* OS::image_bundled_programs_table() {
+  FATAL("should not be used on posix")
+  return null;
+}
+
 uint8* OS::image_config(size_t *length) {
   FATAL("should not be used on posix")
   return null;

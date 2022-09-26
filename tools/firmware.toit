@@ -392,11 +392,11 @@ extract_binary envelope/Envelope -> ByteArray:
   if not system_uuid:
     system_uuid = uuid.uuid5 "$random" "$Time.now".to_byte_array
 
-  configured := inject_config properties system_uuid firmware_bin
   return extract_binary_content
-      --binary_input=configured
+      --binary_input=firmware_bin
       --containers=containers
       --system_uuid=system_uuid
+      --properties=properties
 
 update_envelope parsed/cli.Parsed [block] -> none:
   input_path := parsed[OPTION_ENVELOPE]
@@ -412,9 +412,10 @@ update_envelope parsed/cli.Parsed [block] -> none:
 extract_binary_content -> ByteArray
     --binary_input/ByteArray
     --containers/List
-    --system_uuid/uuid.Uuid:
-  binary := Esp32Binary binary_input
-
+    --system_uuid/uuid.Uuid
+    --properties/Map:
+  binary := Esp32Binary
+      inject_config properties system_uuid binary_input
   image_count := containers.size
   image_table := ByteArray 4 + 8 * image_count
   LITTLE_ENDIAN.put_uint32 image_table 0 image_count
@@ -726,15 +727,22 @@ inject_config config/Map unique_id/uuid.Uuid bits/ByteArray -> ByteArray:
   image_data_position := find_image_data_position bits
   image_data_offset := image_data_position[0]
   image_data_size := image_data_position[1]
-  image_config_size := image_data_size - uuid.SIZE
+  image_config_size := image_data_size - uuid.SIZE - 4
 
   config_data := ubjson.encode config
   if config_data.size > image_data_size:
     throw "cannot inline config of $config_data.size bytes (too big)"
 
+  // Determine the address of the bundled programs table by decoding
+  // the segments of the binary.
+  binary := Esp32Binary bits
+  bundled_programs_table_address := ByteArray 4
+  LITTLE_ENDIAN.put_uint32 bundled_programs_table_address 0 binary.extend_drom_address
+
   bits.replace image_data_offset (ByteArray image_data_size)  // Zero out area.
   bits.replace image_data_offset config_data
   bits.replace image_data_offset + image_config_size unique_id.to_byte_array
+  bits.replace image_data_offset + image_data_size - 4 bundled_programs_table_address
   return bits
 
 // Searches for two magic numbers that surround the image data area.
