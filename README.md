@@ -254,7 +254,7 @@ your device is connected through `/dev/ttyUSB0` you can do this:
 
 ``` sh
 build/host/sdk/tools/firmware -e build/esp32/firmware.envelope \
-    extract --binary -o firmware.bin
+    extract --firmware.bin -o firmware.bin
 python third_party/esp-idf/components/esptool_py/esptool/esptool.py \
     --chip esp32 --port /dev/ttyUSB0 --baud 921600 \
     --before default_reset --after hard_reset write_flash -z \
@@ -273,7 +273,7 @@ build/host/sdk/bin/toit.compile -w hello.snapshot examples/hello.toit
 build/host/sdk/tools/firmware -e build/esp32/firmware.envelope \
     container install hello hello.snapshot
 build/host/sdk/tools/firmware -e build/esp32/firmware.envelope \
-    extract --binary -o firmware.bin
+    extract --firmware.bin -o firmware.bin
 ```
 
 Alternatively, you can also specify the entry point through the `ESP32_ENTRY` make variable
