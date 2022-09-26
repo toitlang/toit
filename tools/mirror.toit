@@ -385,6 +385,184 @@ class CoreDump extends Mirror:
     output += "./third_party/esp-idf/components/espcoredump/espcoredump.py info_corefile -t raw -c /tmp/core.dump ./esp/toit/build/toit.elf"
     return output
 
+class MallocReport extends Mirror:
+  static tag ::= 'M'
+
+  uses_list /List := []        // List of byte arrays, each entry is a bitmap.
+  fullnesses_list /List := []  // List of byte arrays, each entry is a percentage fullness.
+  base_addresses /List := []   // List of base adddresses.
+  granularity /int
+
+  static TERMINAL_SET_BACKGROUND_ ::= "\x1b[48;5;"
+  static TERMINAL_SET_FOREGROUND_ ::= "\x1b[38;5;"
+  static TERMINAL_RESET_COLORS_   ::= "\x1b[0m"
+  static TERMINAL_WHITE_ ::= 231
+  static TERMINAL_DARK_GREY_ ::= 232
+  static TERMINAL_LIGHT_GREY_ ::= 255
+  static TERMINAL_TOIT_HEAP_COLOR_ ::= 174  // Orange-ish.
+
+  static MEMORY_PAGE_MALLOC_MANAGED_ ::= 1 << 0
+
+  /**
+  Bitmap mask for $uses_list.
+  Indicates the page was allocated for the Toit heap.
+  */
+  static MEMORY_PAGE_TOIT_            ::= 1 << 1
+
+  /**
+  Bitmap mask for $uses_list.
+  Indicates the page contains at least one allocation for external (large)
+  Toit strings and byte arrays.
+  */
+  static MEMORY_PAGE_EXTERNAL_        ::= 1 << 2
+
+  /**
+  Bitmap mask for $uses_list.
+  Indicates the page contains at least one allocation for TLS and other
+  cryptographic uses.
+  */
+  static MEMORY_PAGE_TLS_             ::= 1 << 3
+
+  /**
+  Bitmap mask for $uses_list.
+  Indicates the page contains at least one allocation for network buffers.
+  */
+  static MEMORY_PAGE_BUFFERS_         ::= 1 << 4
+
+  /**
+  Bitmap mask for $uses_list.
+  Indicates the page contains at least one miscellaneous or unknown allocation.
+  */
+  static MEMORY_PAGE_MISC_            ::= 1 << 5
+
+  /**
+  Bitmap mask for $uses_list.
+  Indicates that this page and the next page are part of a large multi-page
+  allocation.
+  */
+  static MEMORY_PAGE_MERGE_WITH_NEXT_ ::= 1 << 6
+
+  constructor json program [on_error]:
+    for i := 1; i + 2 < json.size; i += 3:
+      uses_list.add       json[i + 0]
+      fullnesses_list.add json[i + 1]
+      base_addresses.add  json[i + 2]
+    granularity = json[json.size - 1]
+    super json program
+
+  stringify -> string:
+    result := []
+    key_ result --terminal=false
+    for i := 0; i < uses_list.size; i++:
+      uses := uses_list[i]
+      fullnesses := fullnesses_list[i]
+      base := base_addresses[i]
+      for j := 0; j < uses.size; j++:
+        if uses[j] != 0 or fullnesses[j] != 0:
+          result.add "0x$(%08x base + j * granularity): $(%3d fullnesses[j])% $(usage_letters_ uses[j] fullnesses[j])"
+        if uses[j] & MEMORY_PAGE_MERGE_WITH_NEXT_ == 0:
+          result.add "--------------------------------------------------------"
+    return result.join "\n"
+
+  key_ result/List --terminal/bool -> none:
+    k := granularity >> 10
+    scale := ""
+    for i := 232; i <= 255; i++: scale += "$TERMINAL_SET_BACKGROUND_$(i)m "
+    scale += TERMINAL_RESET_COLORS_
+    result.add   "┌────────────────────────────────────────────────────────────────────────┐"
+    if terminal:
+      result.add "│$(%2d k)k pages.  All pages are $(%2d k)k, even the ones that are shown wider       │"
+      result.add "│ because they have many different allocations in them.                  │"
+    else:
+      result.add "│Each line is a $(%2d k)k page.                                                      │"
+    result.add   "│   X  = External strings/bytearrays.        B  = Network buffers.       │"
+    result.add   "│   W  = TLS/crypto.                         M  = Misc. allocations.     │"
+    result.add   "│   🐱 = Toit managed heap.                  -- = Free page.             │"
+    if terminal:
+      result.add "│        Fully allocated $scale Completely free page.  │"
+    result.add   "└────────────────────────────────────────────────────────────────────────┘"
+
+  usage_letters_ use/int fullness/int -> string:
+    symbols := ""
+    if use & MEMORY_PAGE_TOIT_ != 0: symbols += "🐱"
+    if use & MEMORY_PAGE_BUFFERS_ != 0: symbols = "B"
+    if use & MEMORY_PAGE_EXTERNAL_ != 0: symbols = "X"
+    if use & MEMORY_PAGE_TLS_ != 0: symbols = "W"
+    if use & MEMORY_PAGE_MISC_ != 0: symbols = "M"
+    if fullness == 0:
+      symbols = "--"
+    while symbols.size < 2:
+      symbols += " "
+    return symbols
+
+  terminal_stringify -> string:
+    result := []
+    key_ result --terminal=true
+    for i := 0; i < uses_list.size; i++:
+      uses := uses_list[i]
+      fullnesses := fullnesses_list[i]
+      base := base_addresses[i]
+      lowest := uses.size
+      highest := 0
+      for j := 0; j < uses.size; j++:
+        if uses[j] != 0 or fullnesses[j] != 0:
+          lowest = min lowest j
+          highest = max highest j
+      if lowest > highest: continue
+      result.add "0x$(%08x base + lowest * granularity)-0x$(%08x base + (highest + 1) * granularity)"
+      generate_line result uses fullnesses "┌"  "──┬"  "───"  "──┐" false
+      generate_line result uses fullnesses "│"    "│"    " "    "│" true
+      generate_line result uses fullnesses "└"  "──┴"  "───"  "──┘" false
+    return result.join "\n"
+
+  generate_line result/List uses/ByteArray fullnesses/ByteArray open/string allocation_end/string allocation_continue/string end/string is_data_line/bool -> none:
+    line := []
+    for i := 0; i < uses.size; i++:
+      use := uses[i]
+      if use == 0 and fullnesses[i] == 0: continue
+      symbols := ""
+      if use & MEMORY_PAGE_TOIT_ != 0: symbols = "🐱"
+      if use & MEMORY_PAGE_BUFFERS_ != 0: symbols = "B"
+      if use & MEMORY_PAGE_EXTERNAL_ != 0: symbols += "X"
+      if use & MEMORY_PAGE_TLS_ != 0: symbols += "W"  // For WWW.
+      if use & MEMORY_PAGE_MISC_ != 0: symbols += "M"  // For WWW.
+      previous_was_unmanaged := i == 0 or (uses[i - 1] == 0 and fullnesses[i - 1] == 0)
+      if previous_was_unmanaged:
+        line.add open
+      fullness := fullnesses[i]
+      if fullness == 0:
+        symbols = "--"
+      while symbols.size < 2:
+        symbols += " "
+      if is_data_line:
+        white_text := fullness > 50  // Percent.
+        background_color := TERMINAL_LIGHT_GREY_ - (24 * fullness) / 100
+        background_color = max background_color TERMINAL_DARK_GREY_
+        if fullness == 0:
+          background_color = TERMINAL_WHITE_
+        else if use & MEMORY_PAGE_TOIT_ != 0:
+          background_color = TERMINAL_TOIT_HEAP_COLOR_
+
+        line.add "$TERMINAL_SET_BACKGROUND_$(background_color)m"
+               + "$TERMINAL_SET_FOREGROUND_$(white_text ? TERMINAL_WHITE_ : TERMINAL_DARK_GREY_)m"
+               + symbols + TERMINAL_RESET_COLORS_
+      next_is_unmanaged := i == uses.size - 1 or (uses[i + 1] == 0 and fullnesses[i + 1] == 0)
+      line_drawing := ?
+      if next_is_unmanaged:
+        line_drawing = end
+      else if use & MEMORY_PAGE_MERGE_WITH_NEXT_ != 0:
+        line_drawing = allocation_continue
+      else:
+        line_drawing = allocation_end
+      if symbols.size > 2 and not is_data_line and symbols != "🐱":
+        // Pad the line drawings on non-data lines to match the width of the
+        // data.
+        first_character := line_drawing[0..utf_8_bytes line_drawing[0]]
+        line_drawing = (first_character * (symbols.size - 2)) + line_drawing
+      line.add line_drawing
+    result.add
+        "  " + (line.join "")
+
 class HeapReport extends Mirror:
   static tag ::= 'H'
   reason := ""
@@ -646,15 +824,16 @@ decode_json_ json program/Program [on_error]:
   assert: json is List
   if json.size == 0: return on_error.call "Expecting a non empty list"
   tag := json.first
-  if      tag == Array.tag:       return Array      json program on_error
-  else if tag == MList.tag:       return MList      json program on_error
-  else if tag == Stack.tag:       return Stack      json program on_error
-  else if tag == Frame.tag:       return Frame      json program on_error
-  else if tag == Error.tag:       return Error      json program on_error
-  else if tag == Instance.tag:    return Instance   json program on_error
-  else if tag == Profile.tag:     return Profile    json program on_error
-  else if tag == Histogram.tag:   return Histogram  json program on_error
-  else if tag == HeapReport.tag:  return HeapReport json program on_error
-  else if tag == HeapPage.tag:    return HeapPage   json program on_error
-  else if tag == CoreDump.tag:    return CoreDump   json program on_error
+  if      tag == Array.tag:        return Array        json program on_error
+  else if tag == MList.tag:        return MList        json program on_error
+  else if tag == Stack.tag:        return Stack        json program on_error
+  else if tag == Frame.tag:        return Frame        json program on_error
+  else if tag == Error.tag:        return Error        json program on_error
+  else if tag == Instance.tag:     return Instance     json program on_error
+  else if tag == Profile.tag:      return Profile      json program on_error
+  else if tag == Histogram.tag:    return Histogram    json program on_error
+  else if tag == HeapReport.tag:   return HeapReport   json program on_error
+  else if tag == HeapPage.tag:     return HeapPage     json program on_error
+  else if tag == CoreDump.tag:     return CoreDump     json program on_error
+  else if tag == MallocReport.tag: return MallocReport json program on_error
   return on_error.call "Unknown tag: $tag"
