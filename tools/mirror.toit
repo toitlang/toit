@@ -23,9 +23,9 @@ import encoding.base64 as base64
 
 abstract class Mirror:
   json ::= ?
-  program/Program ::= ?
+  program/Program? ::= ?
 
-  constructor .json .program/Program:
+  constructor .json .program:
 
   abstract stringify -> string
 
@@ -568,7 +568,7 @@ class HeapReport extends Mirror:
   reason := ""
   pages ::= []
 
-  constructor json program [on_error]:
+  constructor json program/Program? [on_error]:
     reason = json[1]
     pages = json[2].map: decode_json_ it program on_error
     pages.sort --in_place: | a b | a.address.compare_to b.address
@@ -794,7 +794,7 @@ class ColorBlockOutputter_ extends UnicodeBlockOutputter_:
       foreground = -1
       background = -1
 
-decode byte_array program [on_error]:
+decode byte_array program/Program? [on_error]:
   assert: byte_array is ByteArray and byte_array[0] == '['
   json := null
   error ::= catch: json = ubjson.decode byte_array
@@ -812,7 +812,7 @@ decode byte_array program [on_error]:
   // Then decode the payload.
   return decode_json_ json[4] program on_error
 
-decode_json_ json program/Program [on_error]:
+decode_json_ json program/Program? [on_error]:
   // First recognize basic types.
   if json is num: return json
   if json is string: return json
