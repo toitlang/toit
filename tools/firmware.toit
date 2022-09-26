@@ -741,8 +741,8 @@ inject_config config/Map unique_id/uuid.Uuid bits/ByteArray -> ByteArray:
 
   bits.replace image_data_offset (ByteArray image_data_size)  // Zero out area.
   bits.replace image_data_offset config_data
-  bits.replace image_data_offset + image_config_size unique_id.to_byte_array
-  bits.replace image_data_offset + image_data_size - 4 bundled_programs_table_address
+  bits.replace (image_data_offset + image_config_size) unique_id.to_byte_array
+  bits.replace (image_data_offset + image_data_size - 4) bundled_programs_table_address
   return bits
 
 // Searches for two magic numbers that surround the image data area.
