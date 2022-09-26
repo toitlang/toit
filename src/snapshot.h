@@ -282,11 +282,15 @@ class ImageOutputStream {
   const uint8* program_id() const { return &_program_id[0]; }
   void set_program_id(const uint8* id);
 
+  int program_size() const { return _program_size; }
+  void set_program_size(int size) { _program_size = size; }
+
  private:
   ProgramImage _image;
   word* _current;
 
   uint8 _program_id[UUID_SIZE];
+  int _program_size = 0;
 };
 
 } // namespace toit

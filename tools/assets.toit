@@ -14,11 +14,14 @@
 // directory of this repository.
 
 import encoding.json
+import encoding.ubjson
 import writer
 import system.assets
 
 import cli
 import host.file
+
+import .firmware show read_file write_file
 
 OPTION_ASSETS       ::= "assets"
 OPTION_OUTPUT       ::= "output"
@@ -33,8 +36,8 @@ main arguments/List:
   root_cmd := cli.Command "root"
       --options=[
         cli.OptionString OPTION_ASSETS
-            --short_name="a"
-            --short_help="Set the envelope to work on."
+            --short_name="e"
+            --short_help="Set the assets to work on."
             --type="file"
             --required
       ]
@@ -54,7 +57,11 @@ create_assets parsed/cli.Parsed -> none:
 
 add_cmd -> cli.Command:
   return cli.Command "add"
-      --options=[ option_output ]
+      --options=[
+        option_output,
+        cli.Flag "ubjson"
+            --short_help="Encode the asset as UBJSON."
+      ]
       --rest=[
         cli.OptionString "name"
             --required,
@@ -62,13 +69,22 @@ add_cmd -> cli.Command:
             --type="file"
             --required
       ]
+      --short_help="Add or update asset with the given name."
       --run=:: add_asset it
 
 add_asset parsed/cli.Parsed -> none:
   name := parsed["name"]
   path := parsed["path"]
-  asset := file.read_content path
+  encode_as_ubjson := parsed["ubjson"]
+  asset := read_file path
   update_assets parsed: | entries/Map |
+    if encode_as_ubjson:
+      decoded := null
+      exception := catch: decoded = json.decode asset
+      if not decoded:
+        print "Unable to decode '$path' as JSON. ($exception)"
+        exit 1
+      asset = ubjson.encode decoded
     entries[name] = asset
 
 remove_cmd -> cli.Command:
@@ -78,6 +94,7 @@ remove_cmd -> cli.Command:
         cli.OptionString "name"
             --required,
       ]
+      --short_help="Remove asset with the given name."
       --run=:: remove_asset it
 
 remove_asset parsed/cli.Parsed -> none:
@@ -87,12 +104,25 @@ remove_asset parsed/cli.Parsed -> none:
 
 list_cmd -> cli.Command:
   return cli.Command "list"
+      --short_help="Print all assets in JSON."
       --run=:: list_assets it
+
+decode entry/Map content/ByteArray -> string:
+  catch:
+    entry["data"] = ubjson.decode content
+    return "ubjson"
+  catch:
+    entry["data"] = json.decode content
+    return "json"
+  return "binary"
 
 list_assets parsed/cli.Parsed -> none:
   input_path := parsed[OPTION_ASSETS]
   entries := load_assets input_path
-  mapped := entries.map: | _ content/ByteArray | { "size": content.size }
+  mapped := entries.map: | _ content/ByteArray |
+    entry := { "size": content.size }
+    entry["kind"] = decode entry content
+    entry
   print (json.stringify mapped)
 
 update_assets parsed/cli.Parsed [block] -> none:
@@ -105,11 +135,9 @@ update_assets parsed/cli.Parsed [block] -> none:
   store_assets output_path existing
 
 load_assets path/string -> Map:
-  bytes := file.read_content path
+  bytes := read_file path
   return assets.decode bytes
 
 store_assets path/string entries/Map -> none:
-  output_stream := file.Stream.for_write path
   bytes := assets.encode entries
-  output_stream.write bytes
-  output_stream.close
+  write_file path: it.write bytes

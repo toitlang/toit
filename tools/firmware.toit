@@ -17,10 +17,12 @@ import binary show LITTLE_ENDIAN
 import bytes
 import crypto.sha256 as crypto
 import writer
+import reader
 import uuid
 
 import encoding.json
 import encoding.ubjson
+import system.assets
 
 import ar
 import cli
@@ -63,6 +65,36 @@ pad bits/ByteArray alignment/int -> ByteArray:
   padded_size := round_up size alignment
   return bits + (ByteArray padded_size - size)
 
+read_file path/string -> ByteArray:
+  exception := catch:
+    return file.read_content path
+  print "Failed to open '$path' for reading ($exception)."
+  exit 1
+  unreachable
+
+read_file path/string [block]:
+  stream/file.Stream? := null
+  exception := catch: stream = file.Stream.for_read path
+  if not stream:
+    print "Failed to open '$path' for reading ($exception)."
+    exit 1
+  try:
+    block.call stream
+  finally:
+    stream.close
+
+write_file path/string [block] -> none:
+  stream/file.Stream? := null
+  exception := catch: stream = file.Stream.for_write path
+  if not stream:
+    print "Failed to open '$path' for writing ($exception)."
+    exit 1
+  try:
+    writer := writer.Writer stream
+    block.call writer
+  finally:
+    stream.close
+
 main arguments/List:
   root_cmd := cli.Command "root"
       --options=[
@@ -95,13 +127,13 @@ create_envelope parsed/cli.Parsed -> none:
   // TODO(kasper): Do some sanity checks on the
   // structure of this. Can we check that we don't
   // already have stuff appended to the DROM section?
-  firmware_bin_data := file.read_content input_path
+  firmware_bin_data := read_file input_path
   Esp32Binary firmware_bin_data
 
   entries := { AR_ENTRY_FIRMWARE_BIN: firmware_bin_data }
   AR_ENTRY_FILE_MAP.do: | key/string value/string |
     if key == "firmware.bin": continue.do
-    entries[value] = file.read_content parsed[key]
+    entries[value] = read_file parsed[key]
 
   envelope := Envelope.create entries
   envelope.store output_path
@@ -144,16 +176,26 @@ container_cmd -> cli.Command:
 
   return cmd
 
+read_assets path/string? -> ByteArray?:
+  if not path: return null
+  data := read_file path
+  // Try decoding the assets to verify that they
+  // have the right structure.
+  exception := catch:
+    assets.decode data
+    return data
+  print "Failed to decode the assets in '$path'."
+  exit 1
+  unreachable
+
 container_install parsed/cli.Parsed -> none:
   name := parsed["name"]
   image_path := parsed["image"]
   assets_path := parsed["assets"]
   if name.starts_with "\$":
     throw "cannot install container with a name that starts with \$ or +"
-  image_data := file.read_content image_path
-  assets_data := assets_path
-      ? file.read_content assets_path
-      : null
+  image_data := read_file image_path
+  assets_data := read_assets assets_path
   if not is_snapshot_bundle image_data:
     // We're not dealing with a snapshot, so make sure
     // the provided image is a valid relocatable image.
@@ -309,11 +351,7 @@ extract parsed/cli.Parsed -> none:
     content = envelope.entries.get AR_ENTRY_FILE_MAP[part]
   if not content:
     throw "cannot extract: no such part ($part)"
-
-  out_stream := file.Stream.for_write output_path
-  out_writer := writer.Writer out_stream
-  out_writer.write content
-  out_stream.close
+  write_file output_path: it.write content
 
 extract_binary envelope/Envelope -> ByteArray:
   firmware_bin/ByteArray? := null
@@ -424,32 +462,30 @@ class Envelope:
   entries/Map ::= {:}
 
   constructor.load .path/string:
-    input_stream := file.Stream.for_read path
-    reader := ar.ArReader input_stream
     version/int? := null
-    while file := reader.next:
-      if file.name == INFO_ENTRY_NAME:
-        version = validate file.content
-      else:
-        entries[file.name] = file.content
-    input_stream.close
+    read_file path: | reader/reader.Reader |
+      ar := ar.ArReader reader
+      while file := ar.next:
+        if file.name == INFO_ENTRY_NAME:
+          version = validate file.content
+        else:
+          entries[file.name] = file.content
     version_ = version
 
   constructor.create .entries:
     version_ = ENVELOPE_FORMAT_VERSION
 
   store path/string -> none:
-    output_stream := file.Stream.for_write path
-    writer := ar.ArWriter output_stream
-    // Add the enveloper info entry.
-    info := ByteArray INFO_ENTRY_SIZE
-    LITTLE_ENDIAN.put_uint32 info INFO_ENTRY_MARKER_OFFSET MARKER
-    LITTLE_ENDIAN.put_uint32 info INFO_ENTRY_VERSION_OFFSET version_
-    writer.add INFO_ENTRY_NAME info
-    // Add all other entries.
-    entries.do: | name/string content/ByteArray |
-      writer.add name content
-    output_stream.close
+    write_file path: | writer/writer.Writer |
+      ar := ar.ArWriter writer
+      // Add the enveloper info entry.
+      info := ByteArray INFO_ENTRY_SIZE
+      LITTLE_ENDIAN.put_uint32 info INFO_ENTRY_MARKER_OFFSET MARKER
+      LITTLE_ENDIAN.put_uint32 info INFO_ENTRY_VERSION_OFFSET version_
+      ar.add INFO_ENTRY_NAME info
+      // Add all other entries.
+      entries.do: | name/string content/ByteArray |
+        ar.add name content
 
   static validate info/ByteArray -> int:
     if info.size < INFO_ENTRY_SIZE:
