@@ -980,6 +980,9 @@ Interpreter::Result Interpreter::run() {
         }
 
         if (attempts > 3) {
+          if (VM::current()->scheduler()->is_boot_process(_process)) {
+            printf("Allocation failure in primitive %d:%d.\n", primitive_module, primitive_index);
+          }
           sp = push_error(sp, result, "");
           goto THROW_IMPLEMENTATION;
         }
