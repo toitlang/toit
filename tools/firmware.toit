@@ -188,6 +188,13 @@ read_assets path/string? -> ByteArray?:
   exit 1
   unreachable
 
+decode_image data/ByteArray -> ImageHeader:
+  out := bytes.Buffer
+  output := BinaryRelocatedOutput out 0x12345678
+  output.write WORD_SIZE data
+  decoded := out.bytes
+  return ImageHeader decoded
+
 container_install parsed/cli.Parsed -> none:
   name := parsed["name"]
   image_path := parsed["image"]
@@ -199,13 +206,14 @@ container_install parsed/cli.Parsed -> none:
   if not is_snapshot_bundle image_data:
     // We're not dealing with a snapshot, so make sure
     // the provided image is a valid relocatable image.
-    out := bytes.Buffer
-    output := BinaryRelocatedOutput out 0x12345678
-    output.write WORD_SIZE image_data
-    image_bits := out.bytes
+    header := null
+    catch: header = decode_image image_data
     // TODO(kasper): Can we validate that the output
-    // appears to be correct and fits with the version
-    // of the SDK used to compile the embedded binary?
+    // fits with the version of the SDK used to compile
+    // the embedded binary?
+    if not header:
+      print "Input is not a valid snapshot or image ('$image_path')."
+      exit 1
   else:
     // TODO(kasper): Can we check that the snapshot
     // fits with the version of the SDK used to compile
@@ -234,9 +242,9 @@ container_list parsed/cli.Parsed -> none:
       entry["kind"] = "snapshot"
       entry["id"] = bundle.uuid.stringify
     else:
-      header := ImageHeader content
+      header := decode_image content
       entry["kind"] = "image"
-      entry["id"] = header.id
+      entry["id"] = header.id.stringify
     assets := entries.get "+$name"
     if assets: entry["assets"] = { "size": assets.size }
     output[name] = entry
