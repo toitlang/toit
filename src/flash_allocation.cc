@@ -75,7 +75,7 @@ int FlashAllocation::assets_size(uint8** bytes, int* length) const {
   int assets_length = *reinterpret_cast<uint32*>(assets_address);
   if (bytes) *bytes = reinterpret_cast<uint8*>(assets_address + sizeof(uint32));
   if (length) *length = assets_length;
-  return assets_length + sizeof(uint32);
+  return Utils::round_up(assets_length + sizeof(uint32), FLASH_PAGE_SIZE);
 }
 
 }  // namespace toit
