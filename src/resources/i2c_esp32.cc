@@ -34,8 +34,10 @@ const int kI2CTransactionTimeout = 10;
 const i2c_port_t kInvalidPort = i2c_port_t(-1);
 
 ResourcePool<i2c_port_t, kInvalidPort> i2c_ports(
-  I2C_NUM_0,
-  I2C_NUM_1
+   I2C_NUM_0
+#if SOC_I2C_NUM >= 2
+ , I2C_NUM_1
+#endif
 );
 
 class I2CResourceGroup : public ResourceGroup {

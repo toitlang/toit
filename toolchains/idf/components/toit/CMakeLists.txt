@@ -4,7 +4,7 @@ set(TOIT_BASE_DIR ${COMPONENT_PATH}/../../../..)
 
 # Register without sources, this will create an INTERFACE lib and we can then specify link options later
 idf_component_register(INCLUDE_DIRS "${TOIT_BASE_DIR}/src"
-        REQUIRES "esp_adc_cal" "mbedtls" "bt" "app_update" "ulp" )
+        REQUIRES "esp_adc_cal" "mbedtls" "bt" "app_update" "ulp")
 
 cmake_policy(SET CMP0079 NEW)
 
@@ -34,15 +34,21 @@ target_compile_definitions(toit_vm PRIVATE
         -D__FREERTOS__
         -DRAW)
 
+if (CONFIG_IDF_TARGET_ARCH_XTENSA)
+    set(TOIT_ARCH_COMPILE_OPTIONS -mlongcalls)
+else()
+    set(TOIT_ARCH_COMPILE_OPTIONS -fpermissive -Wno-error=all)
+endif()
+
 target_compile_options(toit_vm PRIVATE
         -Wno-missing-field-initializers
         -Wno-ignored-qualifiers
         -Wno-sign-compare
         -Wno-extra
         -Wno-error=format
-        -mlongcalls
         -fjump-tables                   # idf (cmake) sets no-jump-tables which was not set by make
         -ftree-switch-conversion        # idf (cmake) sets no-jump-tables which was not set by make
+        ${TOIT_ARCH_COMPILE_OPTIONS}
         )
 
 add_custom_command(
