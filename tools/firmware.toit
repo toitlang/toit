@@ -546,7 +546,7 @@ class ImageHeader:
     if marker != MARKER_: throw "image has wrong marker ($(%x marker) != $(%x MARKER_))"
     return image[0..HEADER_SIZE_]
 
-/*
+/**
 The image format is as follows:
 
   typedef struct {
@@ -574,27 +574,66 @@ See https://docs.espressif.com/projects/esp-idf/en/latest/api-reference/system/a
 for more details on the format.
 */
 
+interface AddressMap:
+  IROM_MAP_START -> int
+  IROM_MAP_END -> int
+  DROM_MAP_START -> int
+  DROM_MAP_END -> int
+
+// See <<chiptype>/include/soc/soc.h for these constants
+class Esp32AddressMap implements AddressMap:
+  IROM_MAP_START := 0x400d0000
+  IROM_MAP_END   := 0x40400000
+  DROM_MAP_START := 0x3f400000
+  DROM_MAP_END   := 0x3f800000
+
+class Esp32C3AddressMap implements AddressMap:
+  IROM_MAP_START := 0x42000000
+  IROM_MAP_END   := 0x42800000
+  DROM_MAP_START := 0x3c000000
+  DROM_MAP_END   := 0x3c800000
+
+class Esp32S3AddressMap implements AddressMap:
+  IROM_MAP_START := 0x42000000
+  IROM_MAP_END   := 0x44000000
+  DROM_MAP_START := 0x3c000000
+  DROM_MAP_END   := 0x3d000000
+
+
 class Esp32Binary:
   static MAGIC_OFFSET_         ::= 0
   static SEGMENT_COUNT_OFFSET_ ::= 1
+  static CHIP_ID_OFFSET_       ::= 12
   static HASH_APPENDED_OFFSET_ ::= 23
   static HEADER_SIZE_          ::= 24
 
   static ESP_IMAGE_HEADER_MAGIC_ ::= 0xe9
   static ESP_CHECKSUM_MAGIC_     ::= 0xef
 
-  static IROM_MAP_START ::= 0x400d0000
-  static IROM_MAP_END   ::= 0x40400000
-  static DROM_MAP_START ::= 0x3f400000
-  static DROM_MAP_END   ::= 0x3f800000
+  static ESP_CHIP_ID_ESP32   ::= 0x0000  /*!< chip ID: ESP32 */
+  static ESP_CHIP_ID_ESP32S2 ::= 0x0002  /*!< chip ID: ESP32-S2 */
+  static ESP_CHIP_ID_ESP32C3 ::= 0x0005 /*!< chip ID: ESP32-C3 */
+  static ESP_CHIP_ID_ESP32S3 ::= 0x0009 /*!< chip ID: ESP32-S3 */
+  static ESP_CHIP_ID_ESP32H2 ::= 0x000A /*!< chip ID: ESP32-H2 */  // ESP32H2-TODO: IDF-3475
 
+  static CHIP_ADDRESS_MAPS_ := {
+      ESP_CHIP_ID_ESP32 : Esp32AddressMap,
+      ESP_CHIP_ID_ESP32C3 : Esp32C3AddressMap,
+      ESP_CHIP_ID_ESP32S3 : Esp32S3AddressMap
+  }
   header_/ByteArray
   segments_/List
+  chip_id_/int
+  address_map_/AddressMap
 
   constructor bits/ByteArray:
     header_ = bits[0..HEADER_SIZE_]
     if bits[MAGIC_OFFSET_] != ESP_IMAGE_HEADER_MAGIC_:
       throw "cannot handle binary file: magic is wrong"
+    chip_id_ = bits[CHIP_ID_OFFSET_]
+    if not CHIP_ADDRESS_MAPS_.contains chip_id_:
+      throw "unsupported chip id: $chip_id_"
+    address_map_ = CHIP_ADDRESS_MAPS_[chip_id_]
     offset := HEADER_SIZE_
     segments_ = List header_[SEGMENT_COUNT_OFFSET_]:
       segment := read_segment_ bits offset
@@ -667,9 +706,11 @@ class Esp32Binary:
 
   find_last_drom_segment_ -> Esp32BinarySegment?:
     last := null
+    address_map/AddressMap? := CHIP_ADDRESS_MAPS_.get chip_id_
+
     segments_.do: | segment/Esp32BinarySegment |
       address := segment.address
-      if not DROM_MAP_START <= address < DROM_MAP_END: continue.do
+      if not address_map_.DROM_MAP_START <= address < address_map_.DROM_MAP_END: continue.do
       if not last or address > last.address: last = segment
     return last
 
