@@ -35,7 +35,8 @@ class Stack extends Mirror:
   static tag ::= 'S'
   frames ::= []
 
-  constructor json program/Program [on_error]:
+  constructor json program/Program? [on_error]:
+    if not program: throw "Stack trace can't be decoded without a snapshot"
     frames = json[1].map: decode_json_ it program on_error
     super json program
 
@@ -139,7 +140,8 @@ class Error extends Mirror:
   message ::= ?
   trace := ?
 
-  constructor json program/Program [on_error]:
+  constructor json program/Program? [on_error]:
+    if not program: throw "Error can't be decoded without a snapshot"
     type = decode_json_ json[1] program on_error
     message = decode_json_ json[2] program on_error
     trace = decode_json_ json[3] program on_error
@@ -305,7 +307,8 @@ class Profile extends Mirror:
   cutoff ::= 0
   total ::= 0
 
-  constructor json program/Program [on_error]:
+  constructor json program/Program? [on_error]:
+    if not program: throw "Profile can't be decoded without a snapshot"
     pos := 4
     title = decode_json_ json[1] program on_error
     cutoff = decode_json_ json[2] program on_error
@@ -343,7 +346,8 @@ class Histogram extends Mirror:
   marker_ /string
   entries /List ::= []
 
-  constructor json program/Program [on_error]:
+  constructor json program/Program? [on_error]:
+    if not program: throw "Histogram can't be decoded without a snapshot"
     assert:   json[0] == tag
     marker_ = json[1]
     first_entry := 2
