@@ -57,10 +57,9 @@ class WifiServiceDefinition extends NetworkServiceDefinitionBase:
     if not effective:
       catch --trace: effective = store_.get WIFI_CONFIG_STORE_KEY
       if not effective:
-        properties := {:}
-        assets.decode.get "properties" --if_present=: | encoded |
-          catch: properties = ubjson.decode encoded
-        effective = properties.get "wifi" --if_absent=: {:}
+        effective = {:}
+        assets.decode.get "wifi" --if_present=: | encoded |
+          catch: effective = ubjson.decode encoded
 
     ssid/string? := effective.get wifi.CONFIG_SSID
     if not ssid or ssid.is_empty: throw "wifi ssid not provided"
