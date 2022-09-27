@@ -26,8 +26,8 @@ ITERATIONS ::= 10_000
 main:
   pin_in := gpio.Pin PIN_IN --input --pull_down
   pin_out := gpio.Pin PIN_OUT --output
-  sleep --ms=100
 
+  pin_in.configure --input --pull_down
   ITERATIONS.repeat: | counter |
     if counter % 1000 == 0: print "Iteration: $counter"
     for i := 0; i < (counter % 200); i++:

@@ -17,10 +17,12 @@ main:
   pin_in := gpio.Pin PIN_IN --input
   pin_out := gpio.Pin PIN_OUT --output
 
-  ITERATIONS.repeat:
+  ITERATIONS.repeat: | iteration |
+    if iteration % 1000 == 0: print "Iteration: $iteration"
     before := pin_in.get
     with_timeout --ms=2_000:
       pin_in.wait_for 1
+    if pin_in.get != 1: throw "Expected pin to be 1 - $iteration $before"
     pin_out.set 1
     while pin_in.get != 0: null
     pin_out.set 0
