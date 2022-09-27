@@ -13,9 +13,10 @@
 # The license can be found in the file `LICENSE` in the top level
 # directory of this repository.
 
-add_custom_target(build_tools)
-
-add_subdirectory(compiler)
+if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
+  add_custom_target(build_tools)
+  add_subdirectory(compiler)
+endif()
 
 # Use D flags to switch tools to deterministic mode (no timestamps etc.)
 # This is part of getting a reproducible build.  This flag is not available
@@ -90,8 +91,8 @@ add_library(
   ${toit_core_SRC}
   )
 
-set_source_files_properties(interpreter_core.cc PROPERTIES COMPILE_FLAGS "-O3")
-set_source_files_properties(interpreter_run.cc PROPERTIES COMPILE_FLAGS "-O3 ${TOIT_INTERPRETER_FLAGS} $ENV{LOCAL_INTERPRETER_CXXFLAGS}")
+set_source_files_properties(interpreter_core.cc PROPERTIES COMPILE_OPTIONS -O3)
+set_source_files_properties(interpreter_run.cc PROPERTIES COMPILE_OPTIONS "-O3;${TOIT_INTERPRETER_FLAGS};$ENV{LOCAL_INTERPRETER_CXXFLAGS}")
 set_source_files_properties(utils.cc PROPERTIES COMPILE_FLAGS "-DTOIT_MODEL=\"\\\"${TOIT_MODEL}\\\"\" -DVM_GIT_INFO=\"\\\"${VM_GIT_INFO}\\\"\" -DVM_GIT_VERSION=\"\\\"${TOIT_GIT_VERSION}\\\"\"")
 
 set(GEN_DIR "${PROJECT_BINARY_DIR}/generated")
@@ -108,26 +109,28 @@ add_custom_command(
   WORKING_DIRECTORY "${GEN_DIR}"
 )
 
-add_executable(
-  toit.run
-  toit.cc
-  ${BOOT_SNAPSHOT_CC}
-  ${run_SRC}
-  )
+if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
+  add_executable(
+    toit.run
+    toit.cc
+    ${BOOT_SNAPSHOT_CC}
+    ${run_SRC}
+    )
 
-add_dependencies(build_tools toit.run)
+  add_dependencies(build_tools toit.run)
 
-add_executable(
-  toit_run_image
-  toit_run_image.cc
-  ${BOOT_SNAPSHOT_CC}
-  run.cc
-  )
+  add_executable(
+    toit_run_image
+    toit_run_image.cc
+    ${BOOT_SNAPSHOT_CC}
+    run.cc
+    )
 
-set_target_properties(toit_run_image
-  PROPERTIES
-  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/toit_run_image_test/bin"
-  )
+  set_target_properties(toit_run_image
+    PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/toit_run_image_test/bin"
+    )
+endif()
 
 # On linux, we need to link statically against libgcc as well.
 if ("${CMAKE_SYSTEM_NAME}" MATCHES "Linux")
@@ -175,65 +178,66 @@ target_link_libraries(
   ${TOIT_WINDOWS_LIBS}
 )
 
-target_link_libraries(
-  toit.run
-  ${TOIT_LINK_LIBS}
-  )
-
-target_link_libraries(
-  toit_run_image
-  ${TOIT_LINK_LIBS}
-  )
-
-set(VESSEL_SIZES 128 256 512 1024 8192)
-foreach(VESSEL_SIZE ${VESSEL_SIZES})
-  set(VESSEL_TARGET vessel${VESSEL_SIZE})
-  add_executable(
-    ${VESSEL_TARGET}
-    vessel.cc
-    vessel/vessel${VESSEL_SIZE}.cc
-    ${BOOT_SNAPSHOT_CC}
-    ${run_SRC}
-  )
+if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
+  target_link_libraries(
+    toit.run
+    ${TOIT_LINK_LIBS}
+    )
 
   target_link_libraries(
-    ${VESSEL_TARGET} ${TOIT_LINK_LIBS}
-  )
-
-  set_target_properties(${VESSEL_TARGET}
-    PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/sdk/vessels"
-  )
-
-  # Unsign the vessel executables.
-  if ("${CMAKE_SYSTEM_NAME}" MATCHES "Darwin")
-    add_custom_command(
-      TARGET ${VESSEL_TARGET}
-      POST_BUILD
-      COMMAND "codesign" "--remove-signature" "${VESSEL_TARGET}"
-      WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/sdk/vessels"
-      COMMENT "Removing signature from vessel executable"
+    toit_run_image
+    ${TOIT_LINK_LIBS}
     )
+
+  set(VESSEL_SIZES 128 256 512 1024 8192)
+  foreach(VESSEL_SIZE ${VESSEL_SIZES})
+    set(VESSEL_TARGET vessel${VESSEL_SIZE})
+    add_executable(
+      ${VESSEL_TARGET}
+      vessel.cc
+      vessel/vessel${VESSEL_SIZE}.cc
+      ${BOOT_SNAPSHOT_CC}
+      ${run_SRC}
+    )
+
+    target_link_libraries(
+      ${VESSEL_TARGET} ${TOIT_LINK_LIBS}
+    )
+
+    set_target_properties(${VESSEL_TARGET}
+      PROPERTIES
+      RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/sdk/vessels"
+    )
+
+    # Unsign the vessel executables.
+    if ("${CMAKE_SYSTEM_NAME}" MATCHES "Darwin")
+      add_custom_command(
+        TARGET ${VESSEL_TARGET}
+        POST_BUILD
+        COMMAND "codesign" "--remove-signature" "${VESSEL_TARGET}"
+        WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/sdk/vessels"
+        COMMENT "Removing signature from vessel executable"
+      )
+    endif()
+
+    add_dependencies(build_tools ${VESSEL_TARGET})
+  endforeach()
+  include(${TOIT_SDK_SOURCE_DIR}/tools/toit.cmake)
+
+  set(BOOT_SNAPSHOT_SOURCE ${TOIT_SDK_SOURCE_DIR}/tools/toit.run.toit)
+  ADD_TOIT_SNAPSHOT(
+    ${BOOT_SNAPSHOT_SOURCE}
+    ${BOOT_SNAPSHOT}
+    ${CMAKE_CURRENT_BINARY_DIR}/boot.dep
+    "ASAN_OPTIONS=detect_leaks=false"
+  )
+
+  if (DEFINED USE_LWIP)
+    include_directories(toit.run PRIVATE ${LWIP_INCLUDE_DIRS})
+    target_compile_options(toit.run PRIVATE ${LWIP_COMPILER_FLAGS})
+    target_compile_definitions(toit.run PRIVATE ${LWIP_DEFINITIONS} ${LWIP_MBEDTLS_DEFINITIONS})
   endif()
-
-  add_dependencies(build_tools ${VESSEL_TARGET})
-endforeach()
-
-include(${TOIT_SDK_SOURCE_DIR}/tools/toit.cmake)
-
-set(BOOT_SNAPSHOT_SOURCE ${TOIT_SDK_SOURCE_DIR}/tools/toit.run.toit)
-ADD_TOIT_SNAPSHOT(
-  ${BOOT_SNAPSHOT_SOURCE}
-  ${BOOT_SNAPSHOT}
-  ${CMAKE_CURRENT_BINARY_DIR}/boot.dep
-  "ASAN_OPTIONS=detect_leaks=false"
-)
-
-if (DEFINED USE_LWIP)
-  include_directories(toit.run PRIVATE ${LWIP_INCLUDE_DIRS})
-  target_compile_options(toit.run PRIVATE ${LWIP_COMPILER_FLAGS})
-  target_compile_definitions(toit.run PRIVATE ${LWIP_DEFINITIONS} ${LWIP_MBEDTLS_DEFINITIONS})
-endif()
+endif() # TOIT_SYSTEM_NAME != esp32
 
 #ifdef IMAGE
 enable_language(C ASM)

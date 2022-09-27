@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#ifdef TOIT_FREERTOS
+#if defined(TOIT_FREERTOS) && defined(CONFIG_TOIT_ENABLE_ETHERNET)
 
 #include <esp_eth.h>
 
@@ -395,4 +395,4 @@ PRIMITIVE(get_ip) {
 
 } // namespace toit
 
-#endif // TOIT_FREERTOS
+#endif // defined(TOIT_FREERTOS) && defined(CONFIG_TOIT_ENABLE_ETHERNET)
