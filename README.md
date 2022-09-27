@@ -164,6 +164,8 @@ On Linux:
 $IDF_PATH/install.sh
 ```
 
+The default location of $IDF_PATH is under ```./third_party/esp-idf```
+
 For other platforms, see [Espressif's documentation](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/get-started/index.html#step-3-set-up-the-tools).
 
 Remember to update your environment variables:
