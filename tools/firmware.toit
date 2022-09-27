@@ -373,6 +373,9 @@ extract_binary envelope/Envelope -> ByteArray:
   containers ::= []
 
   entries := envelope.entries
+  system := entries.get AR_ENTRY_SYSTEM_SNAPSHOT
+  if system: containers.add (ContainerEntry "system" system --assets=null)
+
   entries.do: | name/string content/ByteArray |
     if name == AR_ENTRY_FIRMWARE_BIN:
       firmware_bin = content
