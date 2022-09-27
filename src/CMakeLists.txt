@@ -234,18 +234,3 @@ if (DEFINED USE_LWIP)
   target_compile_options(toit.run PRIVATE ${LWIP_COMPILER_FLAGS})
   target_compile_definitions(toit.run PRIVATE ${LWIP_DEFINITIONS} ${LWIP_MBEDTLS_DEFINITIONS})
 endif()
-
-#ifdef IMAGE
-enable_language(C ASM)
-
-get_filename_component(ABS_TOIT_IMAGE "${TOIT_IMAGE}" REALPATH BASE_DIR "${CMAKE_SOURCE_DIR}")
-
-add_library(
-  toit_image
-  STATIC
-  EXCLUDE_FROM_ALL
-  ${ABS_TOIT_IMAGE}
-)
-
-set_target_properties(toit_image PROPERTIES LINKER_LANGUAGE ASM)
-#endif

@@ -202,6 +202,7 @@ esp32:
 esp32-no-env: check-env check-esp32-env build/$(ESP32_CHIP)/firmware.envelope
 
 build/$(ESP32_CHIP)/firmware.envelope: build/$(ESP32_CHIP)/toit.bin
+build/$(ESP32_CHIP)/firmware.envelope: build/$(ESP32_CHIP)/system.snapshot
 build/$(ESP32_CHIP)/firmware.envelope: tools toit-tools
 	$(FIRMWARE_BIN) -e build/$(ESP32_CHIP)/firmware.envelope create \
 	    --bootloader.bin=build/$(ESP32_CHIP)/bootloader/bootloader.bin \
@@ -212,19 +213,11 @@ build/$(ESP32_CHIP)/firmware.envelope: tools toit-tools
 	    --system.snapshot=build/$(ESP32_CHIP)/system.snapshot
 
 build/$(ESP32_CHIP)/toit.bin build/$(ESP32_CHIP)/toit.elf: build/$(ESP32_CHIP)/lib/libtoit_vm.a
-build/$(ESP32_CHIP)/toit.bin build/$(ESP32_CHIP)/toit.elf: build/$(ESP32_CHIP)/lib/libtoit_image.a
 	$(MAKE) -j $(NUM_CPU) -C toolchains/$(ESP32_CHIP)/
 
 .PHONY: build/$(ESP32_CHIP)/lib/libtoit_vm.a  # Marked phony to force regeneration.
 build/$(ESP32_CHIP)/lib/libtoit_vm.a: build/$(ESP32_CHIP)/CMakeCache.txt build/$(ESP32_CHIP)/include/sdkconfig.h
 	(cd build/$(ESP32_CHIP) && ninja toit_vm)
-
-build/$(ESP32_CHIP)/lib/libtoit_image.a: build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s build/$(ESP32_CHIP)/CMakeCache.txt build/$(ESP32_CHIP)/include/sdkconfig.h
-	(cd build/$(ESP32_CHIP) && ninja toit_image)
-
-build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s: tools toit-tools
-build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s: build/$(ESP32_CHIP)/system.snapshot
-	$(TOIT_TOOLS_DIR)/snapshot_to_image$(EXE_SUFFIX) -o $@ $<
 
 .PHONY: build/$(ESP32_CHIP)/system.snapshot  # Marked phony to force regeneration.
 build/$(ESP32_CHIP)/system.snapshot: $(ESP32_SYSTEM_ENTRY) tools
@@ -238,8 +231,7 @@ build/$(ESP32_CHIP)/flash/program.snapshot: $(ESP32_ENTRY) tools
 
 build/$(ESP32_CHIP)/CMakeCache.txt: check-esp32-env
 	mkdir -p build/$(ESP32_CHIP)
-	touch build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s
-	(cd build/$(ESP32_CHIP) && cmake ../../ -G Ninja -DTOIT_IMAGE=build/$(ESP32_CHIP)/$(ESP32_CHIP).image.s -DTOITC=$(TOITC_BIN) -DTOITPKG=$(TOITPKG_BIN) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DCMAKE_TOOLCHAIN_FILE=../../toolchains/$(ESP32_CHIP)/$(ESP32_CHIP).cmake --no-warn-unused-cli)
+	(cd build/$(ESP32_CHIP) && cmake ../../ -G Ninja -DTOITC=$(TOITC_BIN) -DTOITPKG=$(TOITPKG_BIN) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DCMAKE_TOOLCHAIN_FILE=../../toolchains/$(ESP32_CHIP)/$(ESP32_CHIP).cmake --no-warn-unused-cli)
 
 build/$(ESP32_CHIP)/include/sdkconfig.h:
 	mkdir -p build/$(ESP32_CHIP)
