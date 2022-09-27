@@ -164,6 +164,8 @@ On Linux:
 $IDF_PATH/install.sh
 ```
 
+The default location of $IDF_PATH is under ```./third_party/esp-idf```
+
 For other platforms, see [Espressif's documentation](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/get-started/index.html#step-3-set-up-the-tools).
 
 Remember to update your environment variables:
@@ -321,7 +323,7 @@ The `Makefile` also has the `ESP32_WIFI_SSID` and `ESP32_WIFI_PASSWORD` make var
 to support this, if you prefer flashing through make:
 
 ``` sh
-make flash ESP32_ENTRY=examples/http.toit ESP32_WIFI_SSID=myssid ESP32_WIFI_PASSWORD=mypassword
+make flash ESP32_ENTRY=examples/http/http.toit ESP32_WIFI_SSID=myssid ESP32_WIFI_PASSWORD=mypassword
 ```
 
 This allows the WiFi to automatically start up when a network interface is opened.
