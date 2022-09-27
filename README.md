@@ -323,7 +323,7 @@ The `Makefile` also has the `ESP32_WIFI_SSID` and `ESP32_WIFI_PASSWORD` make var
 to support this, if you prefer flashing through make:
 
 ``` sh
-make flash ESP32_ENTRY=examples/http.toit ESP32_WIFI_SSID=myssid ESP32_WIFI_PASSWORD=mypassword
+make flash ESP32_ENTRY=examples/http/http.toit ESP32_WIFI_SSID=myssid ESP32_WIFI_PASSWORD=mypassword
 ```
 
 This allows the WiFi to automatically start up when a network interface is opened.
