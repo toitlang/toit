@@ -41,8 +41,10 @@
 #include <soc/soc.h>
 #include <soc/uart_reg.h>
 
-#ifdef CONFIG_IDF_TARGET_ESP32C3
+#if CONFIG_IDF_TARGET_ESP32C3
   #include <esp32c3/rtc.h>
+#elif CONFIG_IDF_TARGET_ESP32S3
+  #include <esp32s3/rtc.h>
 #else
   #include <esp32/rtc.h>
 #endif
