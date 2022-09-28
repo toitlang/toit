@@ -420,7 +420,7 @@ OS::HeapMemoryRange OS::get_heap_memory_range() {
 
   bool has_spiram = info.lowest_address != null;
 
-  caps = INTERNAL_CAPS;
+  caps = toit_heap_caps_flags_for_heap();
   heap_caps_get_info(&info, caps);
 
   if (has_spiram) {
