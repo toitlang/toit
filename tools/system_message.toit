@@ -35,11 +35,8 @@ handle_system_message encoded_system_message snapshot_content:
     pipe.print_to_stdout m.stringify
 
 main args:
-  prog_name := "system_message"
-
-  // Use arguments library.
-  parsed := null
-  command := cli.Command prog_name
+  command := null
+  command = cli.Command "root"
       --short_help="Decodes system messages from devices"
       --long_help="""
         Decodes system messages like stack traces, profile runs, etc.
@@ -53,8 +50,10 @@ main args:
         cli.OptionString "message" --short_name="m" --required
             --short_help="The base64-encoded message from the device",
       ]
-      --run=:: parsed = it
+      --run=:: decode_system_message it command
   command.run args
+
+decode_system_message parsed command -> none:
   if not parsed: exit 1
   encoded_system_message := base64.decode parsed["message"]
   snapshot_content := null
