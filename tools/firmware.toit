@@ -547,7 +547,7 @@ class ImageHeader:
     if marker != MARKER_: throw "image has wrong marker ($(%x marker) != $(%x MARKER_))"
     return image[0..HEADER_SIZE_]
 
-/**
+/*
 The image format is as follows:
 
   typedef struct {

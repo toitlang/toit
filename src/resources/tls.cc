@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#if !defined(TOIT_FREERTOS) || defined(CONFIG_TOIT_CRYPTO)
+#if !defined(TOIT_FREERTOS) || CONFIG_TOIT_CRYPTO
 #include <mbedtls/error.h>
 #include <mbedtls/pem.h>
 #include <mbedtls/platform.h>
@@ -706,4 +706,4 @@ PRIMITIVE(set_session) {
 }
 
 } // namespace toit
-#endif // !defined(TOIT_FREERTOS) || defined(CONFIG_TOIT_CRYPTO)
+#endif // !defined(TOIT_FREERTOS) || CONFIG_TOIT_CRYPTO

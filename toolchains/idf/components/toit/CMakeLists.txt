@@ -22,12 +22,12 @@ set(CMAKE_BUILD_TYPE Release)
 
 add_subdirectory(${TOIT_BASE_DIR} toit EXCLUDE_FROM_ALL)
 
-# Add the include directories from the requires components to the imported toit_vm target
+# Add the include directories from the required components to the imported toit_vm target.
 target_include_directories(toit_vm PRIVATE "$<TARGET_PROPERTY:${COMPONENT_LIB},INTERFACE_INCLUDE_DIRECTORIES>")
 
 # idf cmake does not honor the CMAKE_BUILD_TARGET, so we can not use the CMAKE_C(XX)?_FLAGS.
-# Add the required flags and defines with target_compile_* commands
-target_compile_definitions(toit_vm PRIVATE
+# Add the required flags and defines with target_compile_* commands.
+target_compile_definitions(toit_vm PUBLIC
         -DDEPLOY=1
         -DTOIT_DEPLOY
         -DESP32
@@ -40,14 +40,16 @@ else()
     set(TOIT_ARCH_COMPILE_OPTIONS -fpermissive -Wno-error=all)
 endif()
 
+# The idf cmake system adds some compile flags that if not undone causes the toit compile to fail.
+# -Wextra combined with -Werror=all causes the Toit code to not compile.
 target_compile_options(toit_vm PRIVATE
         -Wno-missing-field-initializers
         -Wno-ignored-qualifiers
         -Wno-sign-compare
         -Wno-extra
         -Wno-error=format
-        -fjump-tables                   # idf (cmake) sets no-jump-tables which was not set by make
-        -ftree-switch-conversion        # idf (cmake) sets no-jump-tables which was not set by make
+        -fjump-tables                   # idf (cmake) sets no-jump-tables which was not set by make.
+        -ftree-switch-conversion        # idf (cmake) sets no-tree-switch-conversion which was not set by make.
         ${TOIT_ARCH_COMPILE_OPTIONS}
         )
 
@@ -59,6 +61,27 @@ idf_component_set_property(${COMPONENT_NAME} SYSTEM_SNAPSHOT ${CMAKE_BINARY_DIR}
 idf_component_set_property(${COMPONENT_NAME} TOITC ${TOITC})
 idf_component_set_property(${COMPONENT_NAME} TOIT_BASE_DIR ${TOIT_BASE_DIR})
 idf_build_set_property(TOIT_COMPONENT_NAME "${COMPONENT_NAME}")
+
+# Try to resolve a file or path given in the sdkconfig.
+# The order of resolution is:
+#   1. Absolute path (or relative to this CMakeFile (unlikely))
+#   2. Path relative to main projects directory
+#   3. Path relative to the base dir of toit
+function(resolve_file out in toit_base_dir warning_text)
+    set(result ${in})
+    if (NOT EXISTS ${result})
+        set(result ${CMAKE_HOME_DIRECTORY}/${in})
+        if (NOT EXISTS ${result})
+            set(result ${toit_base_dir}/${in})
+            if (NOT EXISTS ${result})
+                if(warning_text)
+                    message(WARNING "Missing ${warning_text} file ${in}. Build will fail")
+                endif()
+            endif()
+        endif()
+    endif()
+    set(${out} ${result} PARENT_SCOPE)
+endfunction()
 
 function(toit_postprocess)
     idf_build_get_property(TOIT_COMPONENT_NAME TOIT_COMPONENT_NAME)
@@ -72,24 +95,15 @@ function(toit_postprocess)
 
     add_custom_target(firmware ALL DEPENDS bootloader partition_table_bin gen_project_binary)
     add_dependencies(flash firmware)
+    resolve_file(BOOT ${CONFIG_TOIT_SYSTEM_SOURCE} ${TOIT_BASE_DIR} "system toit")
+    resolve_file(BOOT_PROJECT_ROOT ${CONFIG_TOIT_SYSTEM_SOURCE_PROJECT_ROOT} ${TOIT_BASE_DIR} "")
 
-    set(BOOT ${CONFIG_TOIT_SYSTEM_SOURCE})
-    if (NOT EXISTS ${BOOT})
-        set(BOOT ${TOIT_BASE_DIR}/${BOOT})
-        if (NOT EXISTS ${BOOT})
-            message(WARNING "Missing system toit file: ${CONFIG_TOIT_SYSTEM_SOURCE}. Build will fail")
-        endif()
+    if (EXISTS ${BOOT_PROJECT_ROOT})
+        set(BOOT_PROJECT_ROOT_ARGS "--project-root" "${BOOT_PROJECT_ROOT}")
+    else()
+        message(WARNING "Missing project root for system toit file: ${CONFIG_TOIT_SYSTEM_SOURCE_PROJECT_ROOT}. Build might fail")
     endif()
 
-    set(BOOT_PROJECT_ROOT ${CONFIG_TOIT_SYSTEM_SOURCE_PROJECT_ROOT})
-    if (NOT EXISTS ${BOOT_PROJECT_ROOT})
-        set(BOOT_PROJECT_ROOT ${TOIT_BASE_DIR}/${BOOT_PROJECT_ROOT})
-        if (EXISTS ${BOOT_PROJECT_ROOT})
-            set(BOOT_PROJECT_ROOT_ARGS "--project-root" "${BOOT_PROJECT_ROOT}")
-        else()
-            message(WARNING "Missing project root for system toit file: ${CONFIG_TOIT_SYSTEM_SOURCE_PROJECT_ROOT}. Build might fail")
-        endif()
-    endif()
 
     add_custom_command(
             TARGET firmware
@@ -100,14 +114,14 @@ function(toit_postprocess)
             TARGET firmware
             COMMAND rm -f firmware.envelope
             COMMAND "${FIRMWARE_BIN}"
-            "--envelope=firmware.envelope"
-            "create"
-            "--bootloader.bin=bootloader/bootloader.bin"
-            "--firmware.bin=${EXECUTABLE_NAME}.bin"
-            "--firmware.elf=${EXECUTABLE_NAME}.elf"
-            "--partitions.bin=partition_table/partition-table.bin"
-            "--partitions.csv=${CMAKE_HOME_DIRECTORY}/partitions.csv"
-            "--system.snapshot=${SYSTEM_SNAPSHOT}"
+                    "--envelope=firmware.envelope"
+                    "create"
+                    "--bootloader.bin=bootloader/bootloader.bin"
+                    "--firmware.bin=${EXECUTABLE_NAME}.bin"
+                    "--firmware.elf=${EXECUTABLE_NAME}.elf"
+                    "--partitions.bin=partition_table/partition-table.bin"
+                    "--partitions.csv=${CMAKE_HOME_DIRECTORY}/partitions.csv"
+                    "--system.snapshot=${SYSTEM_SNAPSHOT}"
             COMMAND echo envelope: created
     )
 
@@ -115,59 +129,45 @@ function(toit_postprocess)
         add_custom_command(
                 TARGET firmware
                 COMMAND "${FIRMWARE_BIN}"
-                "--envelope=firmware.envelope"
-                "property" "set" "wifi" "'{\"wifi.ssid\":\"${CONFIG_TOIT_WIFI_SSID}\",\"wifi.password\":\"${CONFIG_TOIT_WIFI_PASSWORD}\"}'"
+                        "--envelope=firmware.envelope"
+                        "property" "set" "wifi" "'{\"wifi.ssid\":\"${CONFIG_TOIT_WIFI_SSID}\",\"wifi.password\":\"${CONFIG_TOIT_WIFI_PASSWORD}\"}'"
                 COMMAND echo envelope: set wifi
         )
     endif()
 
     if (CONFIG_TOIT_ENTRY_POINT)
-        set(RUN_PROGRAM true)
-        if (NOT EXISTS "${CONFIG_TOIT_ENTRY_POINT}")
-            message(WARNING "Could not find entry point: ${CONFIG_TOIT_ENTRY_POINT}")
-            set(RUN_PROGRAM false)
+        resolve_file(RUN_PROGRAM ${CONFIG_TOIT_ENTRY_POINT} ${TOIT_BASE_DIR} "program toit")
+        resolve_file(RUN_PROGRAM_PROJECT_ROOT ${CONFIG_TOIT_ENTRY_POINT_PROJECT_ROOT} ${TOIT_BASE_DIR} "")
+
+        if(EXISTS ${RUN_PROGRAM_PROJECT_ROOT})
+            set(ENTRY_PROJECT_ROOT_ARGS "--project-root" "${RUN_PROGRAM_PROJECT_ROOT}")
         endif()
 
-        if (CONFIG_TOIT_ENTRY_POINT_PROJECT_ROOT)
-            if (NOT EXISTS "${CONFIG_TOIT_ENTRY_POINT_PROJECT_ROOT}")
-                message(WARNING "Could not find project root of entry point: ${CONFIG_TOIT_ENTRY_POINT_PROJECT_ROOT}")
-                set(RUN_PROGRAM false)
-            endif()
-            set(ENTRY_PROJECT_ROOT_ARGS "--project-root" "${CONFIG_TOIT_ENTRY_POINT_PROJECT_ROOT}")
-        endif()
-
-        if (RUN_PROGRAM)
-            add_custom_command(OUTPUT ${CMAKE_BINARY_DIR}/program.snapshot
-                    COMMAND "${TOITC}" "-w" "${CMAKE_BINARY_DIR}/program.snapshot" ${ENTRY_PROJECT_ROOT_ARGS} ${CONFIG_TOIT_ENTRY_POINT}
-                    VERBATIM)
-
-            add_custom_target(program_snapshot DEPENDS ${CMAKE_BINARY_DIR}/program.snapshot)
-            add_dependencies(firmware program_snapshot)
-
-            add_custom_command(
-                    TARGET firmware
-                    COMMAND "${FIRMWARE_BIN}"
-                    "--envelope=firmware.envelope"
-                    "container" "install" "program" ${CMAKE_BINARY_DIR}/program.snapshot
-                    COMMAND echo envelope: program added
-            )
-        endif()
+        add_custom_command(
+                TARGET firmware
+                COMMAND "${TOITC}" "-w" "${CMAKE_BINARY_DIR}/program.snapshot" ${ENTRY_PROJECT_ROOT_ARGS} ${CONFIG_TOIT_ENTRY_POINT}
+                COMMAND "${FIRMWARE_BIN}"
+                        "--envelope=firmware.envelope"
+                        "container" "install" "program" ${CMAKE_BINARY_DIR}/program.snapshot
+                COMMAND echo envelope: program added
+        )
     endif()
 
     add_custom_command(
             TARGET firmware
             COMMAND "${FIRMWARE_BIN}"
-            "--envelope=firmware.envelope"
-            "extract" "--firmware.bin" "-o" "${EXECUTABLE_NAME}-firmware.bin"
+                    "--envelope=firmware.envelope"
+                    "extract" "--firmware.bin" "-o" "${EXECUTABLE_NAME}-firmware.bin"
             COMMAND echo envelope: firmware extracted
     )
 
     add_custom_target(mod_flash_args DEPENDS firmware)
     add_dependencies(flash mod_flash_args)
+    # To convince idf.py that it should flash the generated binary from the firmware tool, the flash_args file
+    # is updated with an alternative name for the application binary
     add_custom_command(
             TARGET mod_flash_args
             COMMAND sed -i s/${EXECUTABLE_NAME}\\.bin/${EXECUTABLE_NAME}-firmware\\.bin/g ${CMAKE_BINARY_DIR}/flash_args
-            COMMAND echo MID: MOD FLASH ARGS
             COMMAND cat ${CMAKE_BINARY_DIR}/flash_args
     )
 
