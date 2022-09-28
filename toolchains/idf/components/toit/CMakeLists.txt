@@ -51,23 +51,20 @@ target_compile_options(toit_vm PRIVATE
         ${TOIT_ARCH_COMPILE_OPTIONS}
         )
 
-add_custom_command(
-        OUTPUT ${CMAKE_BINARY_DIR}/system.snapshot
-        COMMAND ${TOITC} -w ${CMAKE_BINARY_DIR}/system.snapshot --project-root ${TOIT_BASE_DIR}/system ${TOIT_BASE_DIR}/system/extensions/esp32/boot.toit
-        VERBATIM)
-
 target_link_libraries(${COMPONENT_LIB} INTERFACE toit_vm)
 target_link_options(${COMPONENT_LIB} INTERFACE "SHELL: -Wl,--whole-archive $<TARGET_FILE:toit_vm> -Wl,--no-whole-archive")
 
 idf_component_set_property(${COMPONENT_NAME} TOIT_SDK_DIR ${TOIT_SDK_DIR})
 idf_component_set_property(${COMPONENT_NAME} SYSTEM_SNAPSHOT ${CMAKE_BINARY_DIR}/system.snapshot)
 idf_component_set_property(${COMPONENT_NAME} TOITC ${TOITC})
+idf_component_set_property(${COMPONENT_NAME} TOIT_BASE_DIR ${TOIT_BASE_DIR})
 idf_build_set_property(TOIT_COMPONENT_NAME "${COMPONENT_NAME}")
 
 function(toit_postprocess)
     idf_build_get_property(TOIT_COMPONENT_NAME TOIT_COMPONENT_NAME)
     idf_component_get_property(TOIT_SDK_DIR ${TOIT_COMPONENT_NAME} TOIT_SDK_DIR)
     idf_component_get_property(TOITC ${TOIT_COMPONENT_NAME} TOITC)
+    idf_component_get_property(TOIT_BASE_DIR ${TOIT_COMPONENT_NAME} TOIT_BASE_DIR)
     idf_component_get_property(SYSTEM_SNAPSHOT ${TOIT_COMPONENT_NAME} SYSTEM_SNAPSHOT)
     set(FIRMWARE_BIN ${TOIT_SDK_DIR}/tools/firmware)
 
@@ -75,6 +72,11 @@ function(toit_postprocess)
 
     add_custom_target(firmware ALL DEPENDS bootloader partition_table_bin gen_project_binary)
     add_dependencies(flash firmware)
+
+    add_custom_command(
+            TARGET firmware
+            COMMAND ${TOITC} -w ${CMAKE_BINARY_DIR}/system.snapshot --project-root ${TOIT_BASE_DIR}/system ${TOIT_BASE_DIR}/system/extensions/esp32/boot.toit
+            VERBATIM)
 
     add_custom_command(
             TARGET firmware
@@ -90,6 +92,7 @@ function(toit_postprocess)
             "--system.snapshot=${SYSTEM_SNAPSHOT}"
             COMMAND echo envelope: created
     )
+
     if (CONFIG_TOIT_WIFI_SSID AND CONFIG_TOIT_WIFI_PASSWORD)
         add_custom_command(
                 TARGET firmware
@@ -99,6 +102,7 @@ function(toit_postprocess)
                 COMMAND echo envelope: set wifi
         )
     endif()
+
     if (CONFIG_TOIT_ENTRY_POINT)
         set(RUN_PROGRAM true)
         if (NOT EXISTS "${CONFIG_TOIT_ENTRY_POINT}")
