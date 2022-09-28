@@ -195,16 +195,15 @@ class Pin:
   */
   wait_for value -> none:
     if get == value: return
-    gpio_config_interrupt_ num true
     expected_state := value == 1 ? GPIO_STATE_UP_ : GPIO_STATE_DOWN_
+    state_.clear_state expected_state
+    gpio_config_interrupt_ num true
     try:
       // Make sure the pin didn't change to the expected value while we
       // were setting up the interrupt.
-      // The loop is to prevent accidental wakeups.
-      while get != value:
-        state_.wait_for_state expected_state
-        state_.clear_state expected_state
-      return
+      if get == value: return
+
+      state_.wait_for_state expected_state
     finally:
       gpio_config_interrupt_ num false
       state_.clear_state expected_state

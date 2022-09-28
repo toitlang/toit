@@ -2,9 +2,10 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
+import expect show *
 import gpio
 import monitor
-import .wait_for1 show ITERATIONS
+import .wait_for1 show ITERATIONS SHORT_PING_ITERATIONS
 
 /**
 See 'wait_for1.toit'.
@@ -22,10 +23,20 @@ main:
     before := pin_in.get
     with_timeout --ms=2_000:
       pin_in.wait_for 1
-    if pin_in.get != 1: throw "Expected pin to be 1 - $iteration $before"
+    expect_equals 1 pin_in.get
+
     pin_out.set 1
     while pin_in.get != 0: null
     pin_out.set 0
+
+  print "Looking for short pings"
+
+  with_timeout --ms=(300 * SHORT_PING_ITERATIONS):
+    SHORT_PING_ITERATIONS.repeat:
+      pin_in.wait_for 1
+      while pin_in.get == 1: null
+
+  pin_out.set 1
 
   sleep --ms=100  // Give wait_for1 time to see the last 0.
   print "done"
