@@ -5,7 +5,7 @@
 import expect show *
 import gpio
 import monitor
-import .wait_for1 show ITERATIONS SHORT_PING_ITERATIONS
+import .wait_for1 show ITERATIONS SHORT_PULSE_ITERATIONS
 
 /**
 See 'wait_for1.toit'.
@@ -31,8 +31,8 @@ main:
 
   print "Looking for short pings"
 
-  with_timeout --ms=(300 * SHORT_PING_ITERATIONS):
-    SHORT_PING_ITERATIONS.repeat:
+  with_timeout --ms=(300 * SHORT_PULSE_ITERATIONS):
+    SHORT_PULSE_ITERATIONS.repeat:
       pin_in.wait_for 1
       while pin_in.get == 1: null
 

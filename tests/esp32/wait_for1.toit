@@ -22,7 +22,7 @@ PIN_IN ::= 18
 PIN_OUT ::= 19
 
 ITERATIONS ::= 10_000
-SHORT_PING_ITERATIONS ::= 10
+SHORT_PULSE_ITERATIONS ::= 10
 
 main:
   pin_in := gpio.Pin PIN_IN --input --pull_down
@@ -39,7 +39,7 @@ main:
 
   sleep --ms=500
   print "sending short pings"
-  SHORT_PING_ITERATIONS.repeat:
+  SHORT_PULSE_ITERATIONS.repeat:
     sleep --ms=150
     pin_out.set 1
     // TODO(florian): we seem to miss very short pulses.
