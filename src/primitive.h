@@ -359,7 +359,6 @@ namespace toit {
   PRIMITIVE(touchpad_wakeup_status, 0)       \
   PRIMITIVE(total_deep_sleep_time, 0)        \
   PRIMITIVE(total_run_time, 0)               \
-  PRIMITIVE(image_config, 0)                 \
   PRIMITIVE(get_mac_address, 0)              \
   PRIMITIVE(rtc_user_bytes, 0)               \
   PRIMITIVE(memory_page_report, 0)           \

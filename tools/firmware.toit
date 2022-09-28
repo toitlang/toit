@@ -368,20 +368,23 @@ extract parsed/cli.Parsed -> none:
   write_file output_path: it.write content
 
 extract_binary envelope/Envelope -> ByteArray:
-  firmware_bin/ByteArray? := null
-  properties/Map := {:}
   containers ::= []
-
   entries := envelope.entries
-  entries.do: | name/string content/ByteArray |
-    if name == AR_ENTRY_FIRMWARE_BIN:
-      firmware_bin = content
-    else if name == AR_ENTRY_PROPERTIES:
-      properties = json.decode content
-    else if not (name.starts_with "\$" or name.starts_with "+"):
-      assets := entries.get "+$name"
-      containers.add (ContainerEntry name content --assets=assets)
 
+  properties_entry := entries.get AR_ENTRY_PROPERTIES
+  properties := properties_entry ? (json.decode properties_entry) : null
+  system := entries.get AR_ENTRY_SYSTEM_SNAPSHOT
+  if system:
+    wifi := properties.get "wifi"
+    assets_encoded := wifi ? (assets.encode { "wifi": ubjson.encode wifi }) : null
+    containers.add (ContainerEntry "system" system --assets=assets_encoded)
+
+  entries.do: | name/string content/ByteArray |
+    if not (name.starts_with "\$" or name.starts_with "+"):
+      assets_encoded := entries.get "+$name"
+      containers.add (ContainerEntry name content --assets=assets_encoded)
+
+  firmware_bin := entries.get AR_ENTRY_FIRMWARE_BIN
   if not firmware_bin:
     throw "cannot find $AR_ENTRY_FIRMWARE_BIN entry in envelope '$envelope.path'"
 
@@ -396,7 +399,6 @@ extract_binary envelope/Envelope -> ByteArray:
       --binary_input=firmware_bin
       --containers=containers
       --system_uuid=system_uuid
-      --properties=properties
 
 update_envelope parsed/cli.Parsed [block] -> none:
   input_path := parsed[OPTION_ENVELOPE]
@@ -412,15 +414,14 @@ update_envelope parsed/cli.Parsed [block] -> none:
 extract_binary_content -> ByteArray
     --binary_input/ByteArray
     --containers/List
-    --system_uuid/uuid.Uuid
-    --properties/Map:
-  binary := Esp32Binary
-      inject_config properties system_uuid binary_input
+    --system_uuid/uuid.Uuid:
+  binary := Esp32Binary binary_input
   image_count := containers.size
   image_table := ByteArray 4 + 8 * image_count
   LITTLE_ENDIAN.put_uint32 image_table 0 image_count
 
-  relocation_base := binary.extend_drom_address + image_table.size
+  table_address := binary.extend_drom_address
+  relocation_base := table_address + image_table.size
   images := []
   index := 0
   containers.do: | container/ContainerEntry |
@@ -461,7 +462,7 @@ extract_binary_content -> ByteArray
 
   extension := image_table
   images.do: extension += it
-  binary.extend_drom extension
+  binary.patch_extend_drom system_uuid table_address extension
   return binary.bits
 
 class Envelope:
@@ -637,7 +638,7 @@ class Esp32Binary:
     if not drom: throw "Cannot append to non-existing DROM segment"
     return drom.address + drom.size
 
-  extend_drom bits/ByteArray -> none:
+  patch_extend_drom system_uuid/uuid.Uuid table_address/int bits/ByteArray -> none:
     // This is a pretty serious padding up. We do it to guarantee
     // that segments that follow this one do not change their
     // alignment within the individual flash pages, which seems
@@ -656,7 +657,9 @@ class Esp32Binary:
     segments_.size.repeat:
       segment/Esp32BinarySegment := segments_[it]
       if segment == drom:
-        segments_[it] = Esp32BinarySegment (segment.bits + bits)
+        segment_bits := segment.bits
+        patch_details segment_bits system_uuid table_address
+        segments_[it] = Esp32BinarySegment segment_bits + bits
             --offset=segment.offset
             --address=segment.address
         displacement = bits.size
@@ -719,47 +722,32 @@ class Esp32BinarySegment:
     return "len 0x$(%05x size) load 0x$(%08x address) file_offs 0x$(%08x offset)"
 
 IMAGE_DATA_MAGIC_1 ::= 0x7017da7a
-IMAGE_DATA_MAGIC_2 ::= 0xc09f19
+IMAGE_DETAILS_SIZE ::= 4 + uuid.SIZE
+IMAGE_DATA_MAGIC_2 ::= 0x00c09f19
 
-// The factory image contains an "empty" section of 1024 bytes where we encoded
-// the config, so that the image can run completely independently.
-inject_config config/Map unique_id/uuid.Uuid bits/ByteArray -> ByteArray:
-  image_data_position := find_image_data_position bits
-  image_data_offset := image_data_position[0]
-  image_data_size := image_data_position[1]
-  image_config_size := image_data_size - uuid.SIZE - 4
-
-  config_data := ubjson.encode config
-  if config_data.size > image_data_size:
-    throw "cannot inline config of $config_data.size bytes (too big)"
-
-  // Determine the address of the bundled programs table by decoding
-  // the segments of the binary.
-  binary := Esp32Binary bits
+// The DROM segment contains a section where we patch in the image details.
+patch_details bits/ByteArray unique_id/uuid.Uuid table_address/int -> none:
+  // Patch the binary at the offset we compute by searching for
+  // the magic markers. We store the programs table address and
+  // the uuid.
   bundled_programs_table_address := ByteArray 4
-  LITTLE_ENDIAN.put_uint32 bundled_programs_table_address 0 binary.extend_drom_address
+  LITTLE_ENDIAN.put_uint32 bundled_programs_table_address 0 table_address
+  offset := find_details_offset bits
+  bits.replace (offset + 0) bundled_programs_table_address
+  bits.replace (offset + 4) unique_id.to_byte_array
 
-  bits.replace image_data_offset (ByteArray image_data_size)  // Zero out area.
-  bits.replace image_data_offset config_data
-  bits.replace (image_data_offset + image_config_size) unique_id.to_byte_array
-  bits.replace (image_data_offset + image_data_size - 4) bundled_programs_table_address
-  return bits
-
-// Searches for two magic numbers that surround the image data area.
-// This is the area in the image that is replaced with the config data.
+// Searches for two magic numbers that surround the image details area.
+// This is the area in the image that is patched with the details.
 // The exact location of this area can depend on a future SDK version
 // so we don't know it exactly.
-find_image_data_position bits/ByteArray -> List:
-  for i := 0; i < bits.size; i += WORD_SIZE:
-    word_1 := LITTLE_ENDIAN.uint32 bits i
-    if word_1 == IMAGE_DATA_MAGIC_1:
-      // Search for the end at the (0.5k + word_size) position and at
-      // subsequent positions up to a data area of 4k.  We only search at these
-      // round numbers in order to reduce the chance of false positives.
-      for j := 0x200 + WORD_SIZE; j <= 0x1000 + WORD_SIZE and i + j < bits.size; j += 0x200:
-        word_2 := LITTLE_ENDIAN.uint32 bits i + j
-        if word_2 == IMAGE_DATA_MAGIC_2:
-          return [i + WORD_SIZE, j - WORD_SIZE]
+find_details_offset bits/ByteArray -> int:
+  limit := bits.size - IMAGE_DETAILS_SIZE
+  for offset := 0; offset < limit; offset += WORD_SIZE:
+    word_1 := LITTLE_ENDIAN.uint32 bits offset
+    if word_1 != IMAGE_DATA_MAGIC_1: continue
+    candidate := offset + WORD_SIZE
+    word_2 := LITTLE_ENDIAN.uint32 bits candidate + IMAGE_DETAILS_SIZE
+    if word_2 == IMAGE_DATA_MAGIC_2: return candidate
   // No magic numbers were found so the image is from a legacy SDK that has the
-  // image data at a fixed offset.
+  // image details at a fixed offset.
   throw "cannot find magic marker in binary file"

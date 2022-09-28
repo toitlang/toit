@@ -3,10 +3,6 @@ idf_component_register(SRCS "main.c"
   "."
 )
 
-add_prebuilt_library(image "libtoit_image.a"
-
-)
-
 add_prebuilt_library(vm "libtoit_vm.a"
     PRIV_REQUIRES
 	app_update
@@ -31,5 +27,4 @@ add_prebuilt_library(vm "libtoit_vm.a"
 	vfs
 )
 
-target_link_libraries(${COMPONENT_LIB} INTERFACE -Wl,--whole-archive image -Wl,--no-whole-archive)
 target_link_libraries(${COMPONENT_LIB} INTERFACE -Wl,--whole-archive vm -Wl,--no-whole-archive)
