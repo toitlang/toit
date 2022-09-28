@@ -91,7 +91,7 @@ add_library(
   ${toit_core_SRC}
   )
 
-set_source_files_properties(interpreter_core.cc PROPERTIES COMPILE_OPTIONS -O3)
+set_source_files_properties(interpreter_core.cc PROPERTIES COMPILE_OPTIONS "-O3")
 set_source_files_properties(interpreter_run.cc PROPERTIES COMPILE_OPTIONS "-O3;${TOIT_INTERPRETER_FLAGS};$ENV{LOCAL_INTERPRETER_CXXFLAGS}")
 set_source_files_properties(utils.cc PROPERTIES COMPILE_FLAGS "-DTOIT_MODEL=\"\\\"${TOIT_MODEL}\\\"\" -DVM_GIT_INFO=\"\\\"${VM_GIT_INFO}\\\"\" -DVM_GIT_VERSION=\"\\\"${TOIT_GIT_VERSION}\\\"\"")
 
@@ -238,18 +238,3 @@ if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
     target_compile_definitions(toit.run PRIVATE ${LWIP_DEFINITIONS} ${LWIP_MBEDTLS_DEFINITIONS})
   endif()
 endif() # TOIT_SYSTEM_NAME != esp32
-
-#ifdef IMAGE
-enable_language(C ASM)
-
-get_filename_component(ABS_TOIT_IMAGE "${TOIT_IMAGE}" REALPATH BASE_DIR "${CMAKE_SOURCE_DIR}")
-
-add_library(
-  toit_image
-  STATIC
-  EXCLUDE_FROM_ALL
-  ${ABS_TOIT_IMAGE}
-)
-
-set_target_properties(toit_image PROPERTIES LINKER_LANGUAGE ASM)
-#endif

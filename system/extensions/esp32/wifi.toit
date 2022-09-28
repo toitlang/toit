@@ -16,9 +16,11 @@
 import net
 import monitor
 import log
-import esp32
 import device
 import net.wifi
+
+import encoding.ubjson
+import system.assets
 
 import system.api.wifi show WifiService
 import system.api.network show NetworkService
@@ -55,8 +57,12 @@ class WifiServiceDefinition extends NetworkServiceDefinitionBase:
     if not effective:
       catch --trace: effective = store_.get WIFI_CONFIG_STORE_KEY
       if not effective:
-        image := esp32.image_config or {:}
-        effective = image.get "wifi" --if_absent=: {:}
+        effective = {:}
+        // If we move the WiFi service out of the system process,
+        // the asset might simply be known as "config". For now,
+        // it co-exists with other system assets.
+        assets.decode.get "wifi" --if_present=: | encoded |
+          catch --trace: effective = ubjson.decode encoded
 
     ssid/string? := effective.get wifi.CONFIG_SSID
     if not ssid or ssid.is_empty: throw "wifi ssid not provided"

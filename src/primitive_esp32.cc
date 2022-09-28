@@ -364,15 +364,6 @@ PRIMITIVE(total_run_time) {
   return Primitive::integer(RtcMemory::total_run_time(), process);
 }
 
-PRIMITIVE(image_config) {
-  size_t length;
-  // TODO(anders): We would prefer to do a read-only view.
-  uint8* config = OS::image_config(&length);
-  ByteArray* result = process->object_heap()->allocate_proxy(length, config);
-  if (result == null) ALLOCATION_FAILED;
-  return result;
-}
-
 PRIMITIVE(get_mac_address) {
   Error* error = null;
   ByteArray* result = process->allocate_byte_array(6, &error);

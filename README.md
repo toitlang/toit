@@ -164,6 +164,8 @@ On Linux:
 $IDF_PATH/install.sh
 ```
 
+The default location of $IDF_PATH is under ```./third_party/esp-idf```
+
 For other platforms, see [Espressif's documentation](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/get-started/index.html#step-3-set-up-the-tools).
 
 Remember to update your environment variables:
@@ -283,6 +285,74 @@ and let the `Makefile` handle the flashing:
 make flash ESP32_ENTRY=examples/hello.toit ESP32_PORT=/dev/ttyUSB0
 ```
 
+### Adding multiple containers
+
+You can add more containers before you extract `firmware.bin`, so you firmware
+envelope can have any number of containers.
+
+``` sh
+build/host/sdk/bin/toit.compile -w hello.snapshot examples/hello.toit
+build/host/sdk/bin/toit.compile -w ntp.snapshot examples/ntp/ntp.toit
+
+build/host/sdk/tools/firmware -e build/esp32/firmware.envelope \
+    container install hello hello.snapshot
+build/host/sdk/tools/firmware -e build/esp32/firmware.envelope \
+    container install ntp ntp.snapshot
+```
+
+You can list the containers in a given firmware envelope:
+
+``` sh
+build/host/sdk/tools/firmware -e build/esp32/firmware.envelope \
+    container list
+```
+
+The listing produces JSON output that can be processed by other tools:
+
+```
+{ "hello": {
+    "kind" : "snapshot",
+    "id"   : "f0b7e859-9188-52d9-8be3-856bd0e75919"
+  },
+  "ntp": {
+    "kind" : "snapshot",
+    "id"   : "6efefb4b-aa91-5600-ba7d-f76a8dc0ac01"
+  }
+}
+```
+
+### Adding container assets
+
+Containers have associated assets that they can access at runtime. Add the
+following code to a file named `assets.toit`:
+
+```
+import system.assets
+
+main:
+  print assets.decode
+```
+
+If you run this on an ESP32, you'll get an empty map printed becase you
+haven't associated any assets with the container that holds the code.
+
+To associate assets with the container, we first construct an encoded
+assets file and add this `README.md` file to it.
+
+``` sh
+build/host/sdk/tools/assets -e encoded.assets create
+build/host/sdk/tools/assets -e encoded.assets add readme README.md
+```
+
+Now we can add the `encoded.assets` to the `assets` container at
+install time:
+
+``` sh
+build/host/sdk/bin/toit.compile -w assets.snapshot assets.toit
+build/host/sdk/tools/firmware -e build/esp32/firmware.envelope \
+    container install --assets=encoded.assets assets assets.snapshot
+```
+
 ---
 *NOTE*
 
@@ -321,7 +391,7 @@ The `Makefile` also has the `ESP32_WIFI_SSID` and `ESP32_WIFI_PASSWORD` make var
 to support this, if you prefer flashing through make:
 
 ``` sh
-make flash ESP32_ENTRY=examples/http.toit ESP32_WIFI_SSID=myssid ESP32_WIFI_PASSWORD=mypassword
+make flash ESP32_ENTRY=examples/http/http.toit ESP32_WIFI_SSID=myssid ESP32_WIFI_PASSWORD=mypassword
 ```
 
 This allows the WiFi to automatically start up when a network interface is opened.
