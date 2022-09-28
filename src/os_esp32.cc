@@ -740,21 +740,16 @@ void OS::heap_summary_report(int max_pages, const char* marker) { }
 
 #endif // def TOIT_CMPCTMALLOC
 
-static const int TOIT_IMAGE_DATA_SIZE = 1024;
-static const int TOIT_CONFIG_IMAGE_SIZE = TOIT_IMAGE_DATA_SIZE - UUID_SIZE - sizeof(uint32);
-
 class ImageData {
  public:
-  uint32 image_pad = 0;
-  uint32 image_magic1 = 0x7017da7a;  // "Toitdata"
-  // The data between image_magic1 and image_magic2 must be a multiple of 512
+  // The data between image_magic1 and image_magic2 must be less than 256
   // bytes, otherwise the patching utility will not detect it. Search for
-  // 0x7017da7a. Note when updating this restriction is baked into the SDK that
-  // you are updating *from* so it can't be fixed without multiple SDK updates.
-  uint8 image_config[TOIT_CONFIG_IMAGE_SIZE] = {0};
-  uint8 image_uuid[UUID_SIZE] = {0};
+  // 0x7017da7a. If the format is changed, the code in tools/firmware.toit
+  // must be adapted and the ENVELOPE_FORMAT_VERSION bumped.
+  uint32 image_magic1 = 0x7017da7a;  // "toitdata"
   uint32 image_bundled_programs_table = 0;
-  uint32 image_magic2 = 0xc09f19;    // "config"
+  uint8 image_uuid[UUID_SIZE] = { 0, };
+  uint32 image_magic2 = 0x00c09f19;  // "config"
 } __attribute__((packed));
 
 // Note, you can't declare this const because then the compiler thinks it can
@@ -768,20 +763,6 @@ const uint8* OS::image_uuid() {
 
 const uword* OS::image_bundled_programs_table() {
   return reinterpret_cast<const uword*>(toit_image_data.image_bundled_programs_table);
-}
-
-uint8* OS::image_config(size_t *length) {
-  if (length) *length = TOIT_CONFIG_IMAGE_SIZE;
-  // See 512-byte restriction above.
-  ASSERT(((TOIT_CONFIG_IMAGE_SIZE + UUID_SIZE) & 0x1ff) == 0);
-  uint8* result = (uint8*)toit_image_data.image_config;
-  if (result[0] == 0) {
-    // A null byte is not a valid start of a UBJSON stream.  This indicates
-    // that the config data was not patched in, or was patched in at the wrong
-    // address.
-    FATAL("No config data in image at %x: %02x %02x", &(result[0]), result[0], result[1]);
-  }
-  return result;
 }
 
 const char* OS::getenv(const char* variable) {

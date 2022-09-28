@@ -248,9 +248,6 @@ class OS {
   // Bundled programs table.
   static const uword* image_bundled_programs_table();
 
-  // ubjson-encoded configuration of the running image. Return NULL if not found.
-  static uint8* image_config(size_t *length);
-
   static const char* getenv(const char* variable);
 
 #ifdef TOIT_FREERTOS
