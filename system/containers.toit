@@ -354,7 +354,7 @@ trace_using_print message/ByteArray --from=0 --to=message.size:
     prefix := i == from ? "jag decode " : ""
     base64_text := base64.encode message[i..(end ? to : i + BLOCK_SIZE)]
     postfix := end ? "\n" : ""
-    write_on_stderr_ "$prefix$base64_text$postfix" false
+    write_on_stdout_ "$prefix$base64_text$postfix" false
 
 trace_find_origin_id trace/ByteArray -> uuid.Uuid?:
   // Short strings are encoded with a single unsigned byte length ('U').
