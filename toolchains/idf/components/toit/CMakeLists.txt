@@ -73,9 +73,27 @@ function(toit_postprocess)
     add_custom_target(firmware ALL DEPENDS bootloader partition_table_bin gen_project_binary)
     add_dependencies(flash firmware)
 
+    set(BOOT ${CONFIG_TOIT_SYSTEM_SOURCE})
+    if (NOT EXISTS ${BOOT})
+        set(BOOT ${TOIT_BASE_DIR}/${BOOT})
+        if (NOT EXISTS ${BOOT})
+            message(WARNING "Missing system toit file: ${CONFIG_TOIT_SYSTEM_SOURCE}. Build will fail")
+        endif()
+    endif()
+
+    set(BOOT_PROJECT_ROOT ${CONFIG_TOIT_SYSTEM_SOURCE_PROJECT_ROOT})
+    if (NOT EXISTS ${BOOT_PROJECT_ROOT})
+        set(BOOT_PROJECT_ROOT ${TOIT_BASE_DIR}/${BOOT_PROJECT_ROOT})
+        if (EXISTS ${BOOT_PROJECT_ROOT})
+            set(BOOT_PROJECT_ROOT_ARGS "--project-root" "${BOOT_PROJECT_ROOT}")
+        else()
+            message(WARNING "Missing project root for system toit file: ${CONFIG_TOIT_SYSTEM_SOURCE_PROJECT_ROOT}. Build might fail")
+        endif()
+    endif()
+
     add_custom_command(
             TARGET firmware
-            COMMAND ${TOITC} -w ${CMAKE_BINARY_DIR}/system.snapshot --project-root ${TOIT_BASE_DIR}/system ${TOIT_BASE_DIR}/system/extensions/esp32/boot.toit
+            COMMAND ${TOITC} -w ${CMAKE_BINARY_DIR}/system.snapshot ${BOOT_PROJECT_ROOT_ARGS} ${BOOT}
             VERBATIM)
 
     add_custom_command(

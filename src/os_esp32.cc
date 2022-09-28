@@ -54,10 +54,18 @@ namespace toit {
 // Flags used to get memory for the Toit heap, which needs to be fast and 8-bit
 // capable.  We will set this to the most useful value when we have detected
 // which types of RAM are available.
+#if CONFIG_TOIT_SPIRAM_HEAP
+bool OS::_use_spiram_for_heap = true;
+#else
 bool OS::_use_spiram_for_heap = false;
+#endif
 bool OS::_use_spiram_for_metadata = false;
 
+#if CONFIG_TOIT_SPIRAM_HEAP_ONLY
+static const int EXTERNAL_CAPS = MALLOC_CAP_SPIRAM;
+#else
 static const int EXTERNAL_CAPS = MALLOC_CAP_8BIT | MALLOC_CAP_SPIRAM;
+#endif
 static const int INTERNAL_CAPS = MALLOC_CAP_8BIT | MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA;
 
 int OS::toit_heap_caps_flags_for_heap() {
