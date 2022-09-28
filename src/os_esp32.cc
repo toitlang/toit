@@ -742,12 +742,11 @@ void OS::heap_summary_report(int max_pages, const char* marker) { }
 
 class ImageData {
  public:
-  uint32 image_pad = 0;
-  uint32 image_magic1 = 0x7017da7a;  // "toitdata"
   // The data between image_magic1 and image_magic2 must be less than 256
   // bytes, otherwise the patching utility will not detect it. Search for
-  // 0x7017da7a. Note when updating this restriction is baked into the SDK that
-  // you are updating *from* so it can't be fixed without multiple SDK updates.
+  // 0x7017da7a. If the format is changed, the code in tools/firmware.toit
+  // must be adapted and the ENVELOPE_FORMAT_VERSION bumped.
+  uint32 image_magic1 = 0x7017da7a;  // "toitdata"
   uint32 image_bundled_programs_table = 0;
   uint8 image_uuid[UUID_SIZE] = { 0, };
   uint32 image_magic2 = 0x00c09f19;  // "config"
