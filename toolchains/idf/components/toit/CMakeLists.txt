@@ -56,16 +56,8 @@ add_custom_command(
         COMMAND ${TOITC} -w ${CMAKE_BINARY_DIR}/system.snapshot --project-root ${TOIT_BASE_DIR}/system ${TOIT_BASE_DIR}/system/extensions/esp32/boot.toit
         VERBATIM)
 
-add_custom_command(
-        OUTPUT ${CMAKE_BINARY_DIR}/toit_image.S
-        COMMAND ${TOIT_TOOLS_DIR}/snapshot_to_image -o ${CMAKE_BINARY_DIR}/toit_image.S ${CMAKE_BINARY_DIR}/system.snapshot
-        DEPENDS ${CMAKE_BINARY_DIR}/system.snapshot
-        VERBATIM)
-
-add_library(toit_image_obj OBJECT ${CMAKE_BINARY_DIR}/toit_image.S)
-add_dependencies(${COMPONENT_LIB} toit_image_obj)
 target_link_libraries(${COMPONENT_LIB} INTERFACE toit_vm)
-target_link_options(${COMPONENT_LIB} INTERFACE "SHELL: -Wl,--whole-archive $<TARGET_OBJECTS:toit_image_obj> $<TARGET_FILE:toit_vm> -Wl,--no-whole-archive")
+target_link_options(${COMPONENT_LIB} INTERFACE "SHELL: -Wl,--whole-archive $<TARGET_FILE:toit_vm> -Wl,--no-whole-archive")
 
 idf_component_set_property(${COMPONENT_NAME} TOIT_SDK_DIR ${TOIT_SDK_DIR})
 idf_component_set_property(${COMPONENT_NAME} SYSTEM_SNAPSHOT ${CMAKE_BINARY_DIR}/system.snapshot)
