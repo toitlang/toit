@@ -353,6 +353,29 @@ build/host/sdk/tools/firmware -e build/esp32/firmware.envelope \
     container install --assets=encoded.assets assets assets.snapshot
 ```
 
+If you update the source code in `assets.toit` slightly, the 
+printed information will be more digestible:
+
+```
+import system.assets
+
+main:
+  readme := assets.decode["readme"]
+  // Guard against splitting a unicode character by 
+  // making this non-throwing.
+  print readme[0..80].to_string_non_throwing
+```
+
+You'll need to reinstall the container after this by recompiling
+the `assets.toit` file to `assets.snapshot` and running:
+
+``` sh
+build/host/sdk/tools/firmware -e build/esp32/firmware.envelope \
+    container install --assets=encoded.assets assets assets.snapshot
+```
+
+again.
+
 ---
 *NOTE*
 
