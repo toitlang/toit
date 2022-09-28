@@ -23,9 +23,9 @@ import encoding.base64 as base64
 
 abstract class Mirror:
   json ::= ?
-  program/Program ::= ?
+  program/Program? ::= ?
 
-  constructor .json .program/Program:
+  constructor .json .program:
 
   abstract stringify -> string
 
@@ -35,7 +35,8 @@ class Stack extends Mirror:
   static tag ::= 'S'
   frames ::= []
 
-  constructor json program/Program [on_error]:
+  constructor json program/Program? [on_error]:
+    if not program: throw "Stack trace can't be decoded without a snapshot"
     frames = json[1].map: decode_json_ it program on_error
     super json program
 
@@ -139,7 +140,8 @@ class Error extends Mirror:
   message ::= ?
   trace := ?
 
-  constructor json program/Program [on_error]:
+  constructor json program/Program? [on_error]:
+    if not program: throw "Error can't be decoded without a snapshot"
     type = decode_json_ json[1] program on_error
     message = decode_json_ json[2] program on_error
     trace = decode_json_ json[3] program on_error
@@ -305,7 +307,8 @@ class Profile extends Mirror:
   cutoff ::= 0
   total ::= 0
 
-  constructor json program/Program [on_error]:
+  constructor json program/Program? [on_error]:
+    if not program: throw "Profile can't be decoded without a snapshot"
     pos := 4
     title = decode_json_ json[1] program on_error
     cutoff = decode_json_ json[2] program on_error
@@ -343,7 +346,8 @@ class Histogram extends Mirror:
   marker_ /string
   entries /List ::= []
 
-  constructor json program/Program [on_error]:
+  constructor json program/Program? [on_error]:
+    if not program: throw "Histogram can't be decoded without a snapshot"
     assert:   json[0] == tag
     marker_ = json[1]
     first_entry := 2
@@ -568,7 +572,7 @@ class HeapReport extends Mirror:
   reason := ""
   pages ::= []
 
-  constructor json program [on_error]:
+  constructor json program/Program? [on_error]:
     reason = json[1]
     pages = json[2].map: decode_json_ it program on_error
     pages.sort --in_place: | a b | a.address.compare_to b.address
@@ -794,7 +798,7 @@ class ColorBlockOutputter_ extends UnicodeBlockOutputter_:
       foreground = -1
       background = -1
 
-decode byte_array program [on_error]:
+decode byte_array program/Program? [on_error]:
   assert: byte_array is ByteArray and byte_array[0] == '['
   json := null
   error ::= catch: json = ubjson.decode byte_array
@@ -812,7 +816,7 @@ decode byte_array program [on_error]:
   // Then decode the payload.
   return decode_json_ json[4] program on_error
 
-decode_json_ json program/Program [on_error]:
+decode_json_ json program/Program? [on_error]:
   // First recognize basic types.
   if json is num: return json
   if json is string: return json

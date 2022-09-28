@@ -22,7 +22,9 @@ class Device_ implements device.Device_:
   constructor.init_:
 
   name -> string?:
-    return esp32.image_config.get "name" --if_absent=: hardware_id.stringify
+    // TODO(kasper): Should this be Jaguar specific? Maybe.
+    // return esp32.image_config.get "name" --if_absent=: hardware_id.stringify
+    return hardware_id.stringify
 
   hardware_id -> uuid.Uuid:
     if not hardware_id_: hardware_id_ = uuid.uuid5 "hw_id" get_mac_address_
