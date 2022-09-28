@@ -588,8 +588,10 @@ class Esp32Binary:
 
   static IROM_MAP_START ::= 0x400d0000
   static IROM_MAP_END   ::= 0x40400000
-  static DROM_MAP_START ::= 0x3f400000
-  static DROM_MAP_END   ::= 0x3f800000
+  static DROM_MAP_START0 ::= 0x3f400000
+  static DROM_MAP_END0   ::= 0x3f800000
+  static DROM_MAP_START1 ::= 0x3c000000
+  static DROM_MAP_END1   ::= 0x3c800000
 
   header_/ByteArray
   segments_/List
@@ -672,7 +674,7 @@ class Esp32Binary:
     last := null
     segments_.do: | segment/Esp32BinarySegment |
       address := segment.address
-      if not DROM_MAP_START <= address < DROM_MAP_END: continue.do
+      if not DROM_MAP_START0 <= address < DROM_MAP_END0 and not DROM_MAP_START1 <= address < DROM_MAP_END1 : continue.do
       if not last or address > last.address: last = segment
     return last
 

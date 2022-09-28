@@ -299,7 +299,7 @@ PRIMITIVE(write) {
 
 
   if (wait) {
-    uint32 baud_rate;
+    uint32_t baud_rate;
     esp_err_t err = uart_get_baudrate(uart->port(), &baud_rate);
     if (err != ESP_OK) {
       return Primitive::os_error(err, process);

@@ -26,3 +26,6 @@ tedi_test.go
 *.swp
 *.swo
 *.swn
+
+toolchains/*/sdkconfig
+toolchains/*/sdkconfig.old

@@ -17,6 +17,10 @@
 
 #ifdef TOIT_FREERTOS
 
+#include "sdkconfig.h"
+
+#if defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32S2) || defined(CONFIG_IDF_TARGET_ESP32S3)
+
 #include <driver/pcnt.h>
 
 #include "../objects_inline.h"
@@ -329,5 +333,7 @@ PRIMITIVE(get_count) {
 }
 
 } // namespace toit
+
+#endif // CONFIG_IDF_TARGET_ESP32 || CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32S3
 
 #endif // TOIT_FREERTOS

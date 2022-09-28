@@ -17,6 +17,10 @@
 
 #ifdef TOIT_FREERTOS
 
+#include "sdkconfig.h"
+
+#if defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32S2) || defined(CONFIG_IDF_TARGET_ESP32S3)
+
 #include <driver/touch_sensor.h>
 
 namespace toit {
@@ -28,5 +32,7 @@ int touch_pad_to_pin_num(touch_pad_t pad);
 void keep_touch_active();
 
 } // namespace toit
+
+#endif // CONFIG_IDF_TARGET_ESP32 || CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32S3
 
 #endif // TOIT_FREERTOS

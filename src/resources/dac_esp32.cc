@@ -17,6 +17,10 @@
 
 #ifdef TOIT_FREERTOS
 
+#include "sdkconfig.h"
+
+#if defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32S2)
+
 #include <driver/gpio.h>
 #include <driver/dac.h>
 
@@ -232,5 +236,7 @@ PRIMITIVE(cosine_wave) {
 }
 
 } // namespace toit
+
+#endif // CONFIG_IDF_TARGET_ESP32 || CONFIG_IDF_TARGET_ESP32S2
 
 #endif // TOIT_FREERTOS

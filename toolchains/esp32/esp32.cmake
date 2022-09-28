@@ -38,7 +38,7 @@ set(TOIT_INTERPRETER_FLAGS "-fno-crossjumping -fno-tree-tail-merge" CACHE STRING
 
 SET(CMAKE_ASM_FLAGS "${CFLAGS} -x assembler-with-cpp")
 
-set(SKDCONFIG_INCLUDE_DIR "build/esp32/include" CACHE FILEPATH "Path to the sdkconfig.h include")
+set(SKDCONFIG_INCLUDE_DIR "build/esp32/esp-idf/config" CACHE FILEPATH "Path to the sdkconfig.h include")
 
 include_directories(
   $ENV{IDF_PATH}/components/app_update/include

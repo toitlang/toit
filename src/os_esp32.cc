@@ -43,6 +43,8 @@
 
 #ifdef CONFIG_IDF_TARGET_ESP32C3
   #include <esp32c3/rtc.h>
+#elif defined(CONFIG_IDF_TARGET_ESP32S3)
+  #include <esp32s3/rtc.h>
 #else
   #include <esp32/rtc.h>
 #endif
@@ -191,7 +193,7 @@ class ConditionVariable {
 
     _mutex->unlock();
 
-#ifdef CONFIG_IDF_TARGET_ESP32C3
+#ifndef CONFIG_IDF_TARGET_ESP32
     uint32_t value = 0;
 #else
     uint32 value = 0;

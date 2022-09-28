@@ -18,6 +18,9 @@
 #ifdef TOIT_FREERTOS
 
 #include <driver/i2s.h>
+#ifndef CONFIG_IDF_TARGET_ESP32
+  #include <driver/gpio.h>
+#endif
 
 #include "../objects_inline.h"
 #include "../process.h"
@@ -105,6 +108,7 @@ static bool set_mclk_pin(i2s_port_t i2s_num, int io_num) {
   bool is_0 = i2s_num == I2S_NUM_0;
 
   switch (io_num) {
+#if CONFIG_IDF_TARGET_ESP32
     case GPIO_NUM_0:
       PIN_FUNC_SELECT(PERIPHS_IO_MUX_GPIO0_U, FUNC_GPIO0_CLK_OUT1);
       WRITE_PERI_REG(PIN_CTRL, is_0 ? 0xFFF0 : 0xFFFF);
@@ -113,10 +117,13 @@ static bool set_mclk_pin(i2s_port_t i2s_num, int io_num) {
       PIN_FUNC_SELECT(PERIPHS_IO_MUX_U0TXD_U, FUNC_U0TXD_CLK_OUT3);
       WRITE_PERI_REG(PIN_CTRL, is_0 ? 0xF0F0 : 0xF0FF);
       break;
+#endif
+#if CONFIG_IDF_TARGET_ESP32 || CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32S3
     case GPIO_NUM_3:
       PIN_FUNC_SELECT(PERIPHS_IO_MUX_U0RXD_U, FUNC_U0RXD_CLK_OUT2);
       WRITE_PERI_REG(PIN_CTRL, is_0 ? 0xFF00 : 0xFF0F);
       break;
+#endif
     default:
       return false;
   }

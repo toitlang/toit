@@ -48,6 +48,23 @@ CROSS_ARCH=
 
 prefix ?= /opt/toit-sdk
 
+# esp-idf configuration
+
+ifeq ($(ESP32_CHIP),esp32)
+BOOT_OFFSET := 0x1000
+else
+BOOT_OFFSET := 0x0
+endif
+
+ESP_IDF_BUILD_DIR  := build/$(ESP32_CHIP)/esp-idf
+
+SDKCONFIG_H_FILE   := $(ESP_IDF_BUILD_DIR)/config/sdkconfig.h
+
+TOIT_ELF := $(ESP_IDF_BUILD_DIR)/toit.elf
+TOIT_BIN := $(ESP_IDF_BUILD_DIR)/toit.bin
+BOOT_BIN := $(ESP_IDF_BUILD_DIR)/bootloader/bootloader.bin
+PART_BIN := $(ESP_IDF_BUILD_DIR)/partition_table/partition-table.bin
+
 # HOST
 .PHONY: all
 all: sdk
@@ -201,22 +218,22 @@ esp32:
 .PHONY: esp32-no-env
 esp32-no-env: check-env check-esp32-env build/$(ESP32_CHIP)/firmware.envelope
 
-build/$(ESP32_CHIP)/firmware.envelope: build/$(ESP32_CHIP)/toit.bin
+build/$(ESP32_CHIP)/firmware.envelope: $(TOIT_BIN)
 build/$(ESP32_CHIP)/firmware.envelope: build/$(ESP32_CHIP)/system.snapshot
 build/$(ESP32_CHIP)/firmware.envelope: tools toit-tools
 	$(FIRMWARE_BIN) -e build/$(ESP32_CHIP)/firmware.envelope create \
-	    --bootloader.bin=build/$(ESP32_CHIP)/bootloader/bootloader.bin \
-	    --firmware.bin=build/$(ESP32_CHIP)/toit.bin \
-	    --firmware.elf=build/$(ESP32_CHIP)/toit.elf \
-	    --partitions.bin=build/$(ESP32_CHIP)/partitions.bin \
+	    --bootloader.bin=$(BOOT_BIN) \
+	    --firmware.bin=$(TOIT_BIN) \
+	    --firmware.elf=$(TOIT_ELF) \
+	    --partitions.bin=$(PART_BIN) \
 	    --partitions.csv=toolchains/$(ESP32_CHIP)/partitions.csv \
 	    --system.snapshot=build/$(ESP32_CHIP)/system.snapshot
 
-build/$(ESP32_CHIP)/toit.bin build/$(ESP32_CHIP)/toit.elf: build/$(ESP32_CHIP)/lib/libtoit_vm.a
-	$(MAKE) -j $(NUM_CPU) -C toolchains/$(ESP32_CHIP)/
+$(TOIT_BIN) $(TOIT_ELF): build/$(ESP32_CHIP)/lib/libtoit_vm.a
+	idf.py -B $(ESP_IDF_BUILD_DIR) -C toolchains/$(ESP32_CHIP) build
 
 .PHONY: build/$(ESP32_CHIP)/lib/libtoit_vm.a  # Marked phony to force regeneration.
-build/$(ESP32_CHIP)/lib/libtoit_vm.a: build/$(ESP32_CHIP)/CMakeCache.txt build/$(ESP32_CHIP)/include/sdkconfig.h
+build/$(ESP32_CHIP)/lib/libtoit_vm.a: build/$(ESP32_CHIP)/CMakeCache.txt $(SDKCONFIG_H_FILE)
 	(cd build/$(ESP32_CHIP) && ninja toit_vm)
 
 .PHONY: build/$(ESP32_CHIP)/system.snapshot  # Marked phony to force regeneration.
@@ -233,9 +250,9 @@ build/$(ESP32_CHIP)/CMakeCache.txt: check-esp32-env
 	mkdir -p build/$(ESP32_CHIP)
 	(cd build/$(ESP32_CHIP) && cmake ../../ -G Ninja -DTOITC=$(TOITC_BIN) -DTOITPKG=$(TOITPKG_BIN) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DCMAKE_TOOLCHAIN_FILE=../../toolchains/$(ESP32_CHIP)/$(ESP32_CHIP).cmake --no-warn-unused-cli)
 
-build/$(ESP32_CHIP)/include/sdkconfig.h:
+$(SDKCONFIG_H_FILE):
 	mkdir -p build/$(ESP32_CHIP)
-	$(MAKE) -C toolchains/$(ESP32_CHIP) -s "$(CURDIR)"/$@
+	idf.py -B $(ESP_IDF_BUILD_DIR) -C toolchains/$(ESP32_CHIP) set-target $(ESP32_CHIP)
 
 
 # ESP32 VARIANTS FLASH
@@ -263,7 +280,7 @@ endif
 	    extract --firmware.bin -o build/$(ESP32_CHIP)/flash/firmware.bin
 	python $(IDF_PATH)/components/esptool_py/esptool/esptool.py --chip $(ESP32_CHIP) --port $(ESP32_PORT) --baud 921600 \
 	    --before default_reset --after hard_reset write_flash -z --flash_mode dio --flash_freq 40m --flash_size detect \
-		0x001000 build/$(ESP32_CHIP)/flash/bootloader.bin \
+		$(BOOT_OFFSET) build/$(ESP32_CHIP)/flash/bootloader.bin \
 		0x008000 build/$(ESP32_CHIP)/flash/partitions.bin \
 		0x010000 build/$(ESP32_CHIP)/flash/firmware.bin
 

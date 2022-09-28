@@ -13,6 +13,15 @@
 # The license can be found in the file `LICENSE` in the top level
 # directory of this repository.
 
-PROJECT_NAME := toit
-BUILD_DIR_BASE := $(abspath ../../build/esp32c3)
-include $(IDF_PATH)/make/project.mk
+# Partition Table for Toit.
+
+# Name,   Type, SubType,  Offset,    Size
+# bootloader,,  ,         0x001000,  0x007000
+# partitions,,  ,         0x008000,  0x000c00
+secure,   0x42, 0x00,     0x009000,  0x004000,
+otadata,  data, ota,      0x00d000,  0x002000,
+phy_init, data, phy,      0x00f000,  0x001000,
+ota_0,    app,  ota_0,    0x010000,  0x300000,
+ota_1,    app,  ota_1,    0x310000,  0x300000,
+nvs,      data, nvs,      0x610000,  0x010000,
+programs, 0x40, 0x00,     0x620000,  0x1e0000, encrypted
