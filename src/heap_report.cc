@@ -227,12 +227,12 @@ class SerialFragmentationDumper : public HeapFragmentationDumper {
 };
 
 void dump_heap_fragmentation(output_char_t* output_char_fn) {
-  const char* p = "toit serial decode ";
+  const char* p = "jag decode ";
   while (*p) output_char_fn(*p++);
 
   SerialFragmentationDumper dumper(output_char_fn);
 
-  int flags = MALLOC_ITERATE_ALL_ALLOCATIONS | MALLOC_ITERATE_UNALLOCATED | MALLOC_ITERATE_UNLOCKED;
+  int flags = MALLOC_ITERATE_ALL_ALLOCATIONS | MALLOC_ITERATE_UNALLOCATED;
   int caps = OS::toit_heap_caps_flags_for_heap();
   heap_caps_iterate_tagged_memory_areas(&dumper, null, HeapFragmentationDumper::log_allocation, flags, caps);
   if (!dumper.has_overflow()) {
