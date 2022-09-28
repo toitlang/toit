@@ -758,9 +758,9 @@ class ColorBlockOutputter_ extends UnicodeBlockOutputter_:
     'U': 112,  // Unused (spare) Toit heap.
     'F': 44,   // Cyan, free memory.
     'W': 170,  // Purple, LwIP/Wifi.
-    'E': 88,   // Dark red, event sources.
+    'E': 89,   // Dark red, event sources.
     'O': 160,  // Bright red, other threads.
-    'P': 19,   // Aquamarine, thread spawn.
+    'P': 20,   // Aquamarine, thread spawn.
     'H': 248,  // Heap overhead/headers.
     ' ': 15    // White, outside the heap.
   }
