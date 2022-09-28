@@ -88,11 +88,6 @@ Returns -1 if the wakeup wasn't caused by a touchpad.
 touchpad_wakeup_status -> int:
   #primitive.esp32.touchpad_wakeup_status
 
-image_config -> Map?:
-  config_data := image_config_
-  if config_data[0] == 0: return null
-  return (ubjson.Decoder config_data).decode
-
 /**
 Adjusts the real-time clock with the specified $adjustment.
 
@@ -111,9 +106,6 @@ The new time is visible immediately through calls to $Time.now.
 */
 set_real_time_clock time/Time -> none:
   set_real_time_clock_ time.s_since_epoch time.ns_part
-
-image_config_ -> ByteArray:
-  #primitive.esp32.image_config
 
 set_real_time_clock_ seconds/int ns/int -> none:
   #primitive.core.set_real_time_clock

@@ -99,11 +99,11 @@ PRIMITIVE(writer_commit) {
   // If there are extra bytes after the program, they represent assets associated
   // with the program image. Check that the size of the encoded assets is within
   // bounds and mark the metadata to indicate the presence of the assets.
-  int program_size = output->program_size();
-  int assets_extra = image.byte_size() - program_size;
+  uword program_size = output->program_size();
+  uword assets_extra = image.byte_size() - program_size;
   if (assets_extra > 0) {
     uword assets_address = reinterpret_cast<uword>(image.begin()) + program_size;
-    int assets_length = *reinterpret_cast<uint32*>(assets_address);
+    uword assets_length = *reinterpret_cast<uint32*>(assets_address);
     if (assets_length + sizeof(uint32) > assets_extra) OUT_OF_BOUNDS;
     // TODO(kasper): Can we get the metadata to already contain the right bits
     // from the get go? Right now, we ignore the bits put in there when

@@ -80,7 +80,12 @@ class Pin:
     resource_ = gpio_use_ resource_group_ num
     // TODO(anders): Ideally we would create this resource ad-hoc, in input-mode.
     state_ = monitor.ResourceState_ resource_group_ resource_
-    if input or output: configure --input=input --output=output
+    if input or output:
+      try:
+        configure --input=input --output=output --pull_down=pull_down --pull_up=pull_up
+      finally: | is_exception _ |
+        if is_exception: close
+
 
   constructor.virtual_:
     num = -1
@@ -149,6 +154,8 @@ class Pin:
     if open_drain and not output: throw "INVALID_ARGUMENT"
     if pull_up and not input: throw "INVALID_ARGUMENT"
     if pull_down and not input: throw "INVALID_ARGUMENT"
+    if pull_up and output and not open_drain: throw "INVALID_ARGUMENT"
+    if pull_down and output: throw "INVALID_ARGUMENT"
     if pull_down and pull_up: throw "INVALID_ARGUMENT"
     pull_down_ = pull_down
     pull_up_ = pull_up
@@ -190,6 +197,9 @@ class Pin:
     if get == value: return
     gpio_config_interrupt_ num true
     try:
+      // Make sure the pin didn't change to the expected value while we
+      // were setting up the interrupt.
+      if get == value: return
       expected_state := value == 1 ? GPIO_STATE_UP_ : GPIO_STATE_DOWN_
       state := state_.wait_for_state expected_state
       state_.clear_state expected_state

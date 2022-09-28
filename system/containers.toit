@@ -256,9 +256,12 @@ class ContainerManager extends ContainerServiceDefinition implements SystemMessa
       if allocation.type != FLASH_ALLOCATION_PROGRAM_TYPE: continue.do
       add_flash_image allocation
 
-    // Run through the bundled images in the VM.
+    // Run through the bundled images in the VM, but skip the
+    // first one which is always the system image. Every image
+    // takes up two entries in the $bundled array: The first
+    // entry is the address and the second is the size.
     bundled := container_bundled_images_
-    for i := 0; i < bundled.size; i += 2:
+    for i := 2; i < bundled.size; i += 2:
       allocation := FlashAllocation bundled[i]
       if not images_.contains allocation.id: add_flash_image allocation
 
