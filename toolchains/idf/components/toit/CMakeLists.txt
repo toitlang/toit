@@ -145,7 +145,7 @@ function(toit_postprocess)
 
         add_custom_command(
                 TARGET firmware
-                COMMAND "${TOITC}" "-w" "${CMAKE_BINARY_DIR}/program.snapshot" ${ENTRY_PROJECT_ROOT_ARGS} ${CONFIG_TOIT_ENTRY_POINT}
+                COMMAND "${TOITC}" "-w" "${CMAKE_BINARY_DIR}/program.snapshot" ${ENTRY_PROJECT_ROOT_ARGS} ${RUN_PROGRAM}
                 COMMAND "${FIRMWARE_BIN}"
                         "--envelope=firmware.envelope"
                         "container" "install" "program" ${CMAKE_BINARY_DIR}/program.snapshot

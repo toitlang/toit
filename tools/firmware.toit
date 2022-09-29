@@ -372,7 +372,7 @@ extract_binary envelope/Envelope -> ByteArray:
   entries := envelope.entries
 
   properties_entry := entries.get AR_ENTRY_PROPERTIES
-  properties := properties_entry ? (json.decode properties_entry) : null
+  properties := properties_entry ? (json.decode properties_entry) : {:}
   system := entries.get AR_ENTRY_SYSTEM_SNAPSHOT
   if system:
     wifi := properties.get "wifi"
