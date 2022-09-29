@@ -125,9 +125,9 @@ The Toit VM has a requirement for the [Espressif IoT Development Framework](http
 
 We recommend you use Toitware's [ESP-IDF fork](https://github.com/toitware/esp-idf) that comes with a few changes:
 
-* Custom malloc implementation.
+* Custom malloc implementation
 * Allocation-fixes for UART, etc.
-* LWIP fixes.
+* LWIP fixes
 
 The fork's repository has been added as a submodule reference to this repository, so doing a recursive submodule init & update will establish everything nedded:
 
