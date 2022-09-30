@@ -181,7 +181,7 @@ PRIMITIVE(receive) {
   // TODO: Support IPv6.
   ByteArray* address = null;
   if (is_array(output)) {
-    address = process->allocate_byte_array(4;
+    address = process->allocate_byte_array(4);
     if (address == null) ALLOCATION_FAILED;
   }
 
