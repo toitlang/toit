@@ -187,7 +187,8 @@ class Duration implements Comparable:
     value := ns_.abs
 
     print_char := : | c |
-      buffer[--index] = c
+      index--
+      buffer[index] = c
 
     print_int := : | i |
       fraction := i.stringify

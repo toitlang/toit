@@ -1887,8 +1887,13 @@ Expression* Parser::parse_unary(bool allow_colon) {
       auto range = current_range();
       consume();
       if (!is_current_token_attached()) {
-        report_error("Can't have space between '%s' and the operand",
+        report_error(range.extend(current_range()),
+                     "Can't have space between '%s' and the operand",
                      Token::symbol(kind).c_str());
+      }
+      if (kind == Token::DECREMENT) {
+        diagnostics()->report_warning(range.extend(current_range()),
+                                      "Prefixed decrement is deprecated.");
       }
       if (kind == Token::SUB &&
           (current_token() == Token::INTEGER || current_token() == Token::DOUBLE)) {

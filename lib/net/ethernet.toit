@@ -172,7 +172,8 @@ class EthernetInterface_ implements net.Interface:
   close -> none:
     if not open_: return
     open_ = false
-    if --open_count_ > 0: return
+    open_count_--
+    if open_count_ > 0: return
     ethernet := ethernet_
     ethernet_ = null
     ethernet.close
