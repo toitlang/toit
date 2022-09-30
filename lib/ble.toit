@@ -25,8 +25,6 @@ uuid value/int -> uuid_pkg.Uuid:
 A 48-bit BLE advertise address.
 */
 class Address:
-  static HEX_TABLE_ ::= "0123456789abcdef"
-
   raw_/ByteArray
 
   constructor .raw_:
@@ -36,8 +34,8 @@ class Address:
     6.repeat:
       if it > 0: buffer.write_byte ':'
       byte := raw_[1 + it]
-      buffer.write_byte HEX_TABLE_[byte >> 4]
-      buffer.write_byte HEX_TABLE_[byte & 0xf]
+      buffer.write_byte (to_lower_case_hex byte >> 4)
+      buffer.write_byte (to_lower_case_hex byte & 0xf)
     return buffer.to_string
 
   /**

@@ -169,9 +169,9 @@ Returns a string or a byte array that has been escaped for use in JSON.
 This means that control characters, double quotes and backslashes have
   been replaced by backslash sequences.
 */
-escape_string str -> any:
+escape_string str/string -> any:
   if str == "" or str.size == 1 and ESCAPED_CHAR_MAP_[str[0]] == 0: return str
-  counter := #[0, 0]
+  counter := ByteArray 2
   bitmap.blit str counter str.size
       --destination_pixel_stride=0
       --lookup_table=ESCAPED_CHAR_MAP_
@@ -183,28 +183,25 @@ escape_string str -> any:
     extra_chars = 0
     str.size.repeat: extra_chars += ESCAPED_CHAR_MAP_[str.at --raw it]
   result := ByteArray str.size + extra_chars
-  // Index of the output in the byte array:
-  i := 0
-  // String position of the first character that has not yet been copied to the
-  // byte array:
-  offset := 0
-  str.size.repeat:
-    byte := str.at --raw it
+  output_posn := 0
+  not_yet_copied := 0
+  str.size.repeat: | i |
+    byte := str.at --raw i
     if ESCAPED_CHAR_MAP_[byte] != 0:
-      result.replace i str offset it
-      i += it - offset
-      offset = it + 1
-      result[i++] = '\\'
+      result.replace output_posn str not_yet_copied i
+      output_posn += i - not_yet_copied
+      not_yet_copied = i + 1
+      result[output_posn++] = '\\'
       if ONE_CHAR_ESCAPES_.contains byte:
-        result[i++] = ONE_CHAR_ESCAPES_[byte]
+        result[output_posn++] = ONE_CHAR_ESCAPES_[byte]
       else:
-        result[i    ] = 'u'
-        result[i + 1] = '0'
-        result[i + 2] = '0'
-        result[i + 3] = hex_digit_ byte >> 4
-        result[i + 4] = hex_digit_ byte & 0xf
-        i += 5
-  result.replace i str offset str.size
+        result[output_posn    ] = 'u'
+        result[output_posn + 1] = '0'
+        result[output_posn + 2] = '0'
+        result[output_posn + 3] = to_lower_case_hex byte >> 4
+        result[output_posn + 4] = to_lower_case_hex byte & 0xf
+        output_posn += 5
+  result.replace output_posn str not_yet_copied str.size
   return result
 
 class Encoder extends Buffer_:
@@ -282,15 +279,13 @@ class Encoder extends Buffer_:
   put_unicode_escape_ code_point/int:
     put_byte_ 'u'
     put_byte_
-      hex_digit_ (code_point >> 12) & 0xf
+      to_lower_case_hex (code_point >> 12) & 0xf
     put_byte_
-      hex_digit_ (code_point >> 8) & 0xf
+      to_lower_case_hex (code_point >> 8) & 0xf
     put_byte_
-      hex_digit_ (code_point >> 4) & 0xf
+      to_lower_case_hex (code_point >> 4) & 0xf
     put_byte_
-      hex_digit_ code_point & 0xf
-
-hex_digit_ x: return x < 10 ? '0' + x : 'a' + x - 10
+      to_lower_case_hex code_point & 0xf
 
 class Decoder:
   bytes_ := null
