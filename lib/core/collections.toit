@@ -1022,9 +1022,9 @@ interface ByteArray:
   /**
   Creates a new byte array of the given $size.
 
-  All elements are initialized to the $filler, which default to 0.
+  All elements are initialized to the $filler, which defaults to 0.
   */
-  constructor size/int filler/int=0:
+  constructor size/int --filler/int=0:
     #primitive.core.byte_array_new
 
   /**
@@ -1466,7 +1466,7 @@ class ByteArray_ extends ByteArrayBase_:
 
   All elements are initialized to 0.
   */
-  constructor size/int filler/int=0:
+  constructor size/int --filler/int=0:
     #primitive.core.byte_array_new
 
   constructor.external_ size/int:

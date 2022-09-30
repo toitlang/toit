@@ -105,7 +105,7 @@ class Uuid:
   Deprecated. Use $NIL instead.
   */
   constructor.all_zeros:
-    zeros := ByteArray SIZE: 0
+    zeros := ByteArray SIZE
     return Uuid zeros
 
   /**
