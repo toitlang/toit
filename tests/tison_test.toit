@@ -4,14 +4,14 @@
 
 import expect show *
 import encoding.tison
-import encoding.json
+import encoding.ubjson
 
 main:
   test_simple_types
   test_strings
   test_maps
   test_lists
-  test_externals
+  test_byte_arrays
   test_complex
 
 test_simple_types -> none:
@@ -35,16 +35,51 @@ test_simple_types -> none:
   test_round_trip false
 
 test_strings -> none:
-  // size
-  // slices
+  test_round_trip "fisk"
+  test_round_trip "hest"
+  test_round_trip "hest"[0..1]
+  test_round_trip "hest"[2..4]
+  x := "fiskhest"
+  15.repeat:
+    x += "$x$x.size"
+    test_round_trip x
+    test_round_trip x[0..x.size / 2]
 
 test_maps -> none:
+  test_round_trip {:}
+  test_round_trip {"foo": 42}
+  test_round_trip {"bar": {"baz": null}}
 
 test_lists -> none:
-  // size
-  // slices
+  test_round_trip [0, 1, 2, 3]
+  test_round_trip [1, 2, 3, 4]
+  // TODO(kasper): enconding.tison deals incorrectly with large
+  // lists and list slices.
+  expect_throw "WRONG_OBJECT_TYPE": test_round_trip [1, 2, 3, 4][0..1]
+  expect_throw "WRONG_OBJECT_TYPE": test_round_trip [1, 2, 3, 4][2..4]
+  x := [0, 1, 2, 3, 4, 5, 6, 7, 8]
+  10.repeat:
+    x += x + [x.size]
+    if x is List_ and (x as List_).array_ is LargeArray_:
+      expect_throw "WRONG_OBJECT_TYPE": test_round_trip x
+    else:
+      test_round_trip x
+    expect_throw "WRONG_OBJECT_TYPE": test_round_trip x[0..x.size / 2]
 
-test_externals -> none:
+test_byte_arrays -> none:
+  test_round_trip (ByteArray 0)
+  test_round_trip (ByteArray 4: it)
+  test_round_trip (ByteArray 9: it * 793)
+  test_round_trip #[1, 2, 3, 4]
+  test_round_trip #[0, 1, 2, 3]
+  test_round_trip #[1, 2, 3, 4]
+  test_round_trip #[1, 2, 3, 4][0..1]
+  test_round_trip #[1, 2, 3, 4][2..4]
+  x := #[1, 2, 3, 4, 5, 6, 7, 8]
+  15.repeat:
+    x += x + #[x.size & 0xff]
+    test_round_trip x
+    test_round_trip x[0..x.size / 2]
 
 test_complex -> none:
   test_round_trip {
@@ -59,6 +94,6 @@ test_complex -> none:
 test_round_trip x/any -> none:
   encoded := tison.encode x
   decoded := tison.decode encoded
-  expect_equals
-      json.stringify x
-      json.stringify decoded
+  expect_bytes_equal
+      ubjson.encode x
+      ubjson.encode decoded
