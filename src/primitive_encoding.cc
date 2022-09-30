@@ -207,7 +207,11 @@ PRIMITIVE(tison_encode) {
     uint8* buffer = unvoid_cast<uint8*>(malloc(length));
     if (buffer == null) MALLOC_FAILED;
     result = process->object_heap()->allocate_external_byte_array(length, buffer, true, false);
-    if (!result) free(buffer);
+    if (result) {
+      process->object_heap()->register_external_allocation(length);
+    } else {
+      free(buffer);
+    }
   }
 
   if (!result) ALLOCATION_FAILED;

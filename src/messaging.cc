@@ -472,7 +472,7 @@ Object* MessageDecoder::decode_string(bool inlined) {
   } else {
     uint8* data = read_pointer();
     result = _process->object_heap()->allocate_external_string(length, data, true);
-    if (result != null) register_external(result, length + 1);  // Account for '\0'-termination.
+    if (result) register_external(result, length + 1);  // Account for '\0'-termination.
   }
   if (result == null) {
     _allocation_failed = true;
@@ -539,7 +539,7 @@ Object* MessageDecoder::decode_byte_array(bool inlined) {
   } else {
     uint8* data = read_pointer();
     result = _process->object_heap()->allocate_external_byte_array(length, data, true, false);
-    if (result != null) register_external(result, length);
+    if (result) register_external(result, length);
   }
   if (result == null) {
     _allocation_failed = true;
