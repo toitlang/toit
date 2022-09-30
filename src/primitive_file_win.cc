@@ -185,11 +185,8 @@ PRIMITIVE(closedir) {
 PRIMITIVE(read) {
   ARGS(int, fd);
 
-  Error* error = null;
-  ByteArray* byte_array = process->allocate_byte_array(4000, &error, /*force_external*/ true);
-  if (byte_array == null) {
-    return error;
-  }
+  ByteArray* byte_array = process->allocate_byte_array(4000, /*force_external*/ true);
+  if (byte_array == null) ALLOCATION_FAILED;
 
   ByteArray::Bytes bytes(ByteArray::cast(byte_array));
   ssize_t buffer_fullness = 0;
@@ -364,8 +361,8 @@ PRIMITIVE(mkdtemp) {
   UUID uuid;
   ret = UuidCreate(&uuid);
   if (ret != RPC_S_OK && ret != RPC_S_UUID_LOCAL_ONLY) OTHER_ERROR;
- 
-  unsigned char* uuid_string; 
+
+  unsigned char* uuid_string;
   ret = UuidToString(&uuid, &uuid_string);
   strncat(temp_dir_name, prefix, MAX_PATH - strlen(temp_dir_name) - 1);
   strncat(temp_dir_name, char_cast(uuid_string), MAX_PATH - strlen(temp_dir_name) - 1);
@@ -373,9 +370,8 @@ PRIMITIVE(mkdtemp) {
 
   uword total_len = strlen(temp_dir_name);
 
-  Error* error = null;
-  Object* result = process->allocate_byte_array(total_len, &error);
-  if (result == null) return error;
+  Object* result = process->allocate_byte_array(total_len);
+  if (result == null) ALLOCATION_FAILED;
 
   int posix_result = mkdir(temp_dir_name);
   if (posix_result < 0) return return_open_error(process, errno);
@@ -404,11 +400,10 @@ PRIMITIVE(realpath) {
     if (errno == ENOENT or errno == ENOTDIR) return process->program()->null_object();
     OTHER_ERROR;
   }
-  Error* error = null;
-  String* result = process->allocate_string(c_result, &error);
+  String* result = process->allocate_string(c_result);
   if (result == null) {
     free(c_result);
-    return error;
+    ALLOCATION_FAILED;
   }
   return result;
 }

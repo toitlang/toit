@@ -467,12 +467,7 @@ Object* MessageDecoder::decode_string(bool inlined) {
   int length = read_cardinal();
   String* result = null;
   if (inlined) {
-    ASSERT(length <= String::max_internal_size_in_process());
-    // We ignore the specific error because we are below the maximum internal string
-    // size, so we know it's an internal allocation error.
-    Error* error = null;
-    result = _process->allocate_string(reinterpret_cast<const char*>(&_buffer[_cursor]), length, &error);
-    ASSERT(result == null || result->content_on_heap());
+    result = _process->allocate_string(reinterpret_cast<const char*>(&_buffer[_cursor]), length);
     _cursor += length;
   } else {
     uint8* data = read_pointer();
@@ -535,11 +530,8 @@ Object* MessageDecoder::decode_byte_array(bool inlined) {
   int length = read_cardinal();
   ByteArray* result = null;
   if (inlined) {
-    ASSERT(length <= ByteArray::max_internal_size_in_process());
-    Error* error = null;
-    result = _process->allocate_byte_array(length, &error, false);
+    result = _process->allocate_byte_array(length, false);
     if (result != null) {
-      ASSERT(!result->has_external_address());
       ByteArray::Bytes bytes(result);
       memcpy(bytes.address(), &_buffer[_cursor], length);
     }

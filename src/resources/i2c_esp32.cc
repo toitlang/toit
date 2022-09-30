@@ -170,10 +170,8 @@ static Object* write_i2c(Process* process, I2CResourceGroup* i2c, int i2c_addres
 }
 
 static Object* read_i2c(Process* process, I2CResourceGroup* i2c, int i2c_address, const uint8* address, int address_length, int length) {
-
-  Error* error = null;
-  ByteArray* array = process->allocate_byte_array(length, &error);
-  if (array == null) return error;
+  ByteArray* array = process->allocate_byte_array(length);
+  if (array == null) ALLOCATION_FAILED;
   uint8* data = ByteArray::Bytes(array).address();
 
   i2c_cmd_handle_t cmd = i2c_cmd_link_create();

@@ -181,9 +181,8 @@ PRIMITIVE(receive) {
   // TODO: Support IPv6.
   ByteArray* address = null;
   if (is_array(output)) {
-    Error* error = null;
-    address = process->allocate_byte_array(4, &error);
-    if (address == null) return error;
+    address = process->allocate_byte_array(4;
+    if (address == null) ALLOCATION_FAILED;
   }
 
   uint8_t peek[64 * 1024];
@@ -193,9 +192,8 @@ PRIMITIVE(receive) {
     return Primitive::os_error(errno, process);
   }
 
-  Error* error = null;
-  ByteArray* array = process->allocate_byte_array(available, &error);
-  if (array == null) return error;
+  ByteArray* array = process->allocate_byte_array(available);
+  if (array == null) ALLOCATION_FAILED;
 
   char buffer[available];
 

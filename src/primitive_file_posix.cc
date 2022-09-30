@@ -292,11 +292,10 @@ PRIMITIVE(read) {
   if (buffer_fullness == 0) {
     return process->program()->null_object();
   }
-  Error* error = null;
-  Object* byte_array = process->allocate_byte_array(buffer_fullness, &error);
+  Object* byte_array = process->allocate_byte_array(buffer_fullness);
   if (byte_array == null) {
     lseek(fd, -buffer_fullness, SEEK_CUR);
-    return error;
+    ALLOCATION_FAILED;
   }
   auto buf = ByteArray::Bytes(ByteArray::cast(byte_array)).address();
   memcpy(buf, buffer, buffer_fullness);
@@ -453,9 +452,8 @@ PRIMITIVE(mkdtemp) {
 
   word prefix_len = strlen(prefix);
   word total_len = prefix_len + X_COUNT;
-  Error* error = null;
-  Object* result = process->allocate_byte_array(total_len, &error);
-  if (result == null) return error;
+  Object* result = process->allocate_byte_array(total_len);
+  if (result == null) ALLOCATION_FAILED;
 
   if (!process->should_allow_external_allocation(total_len + 1)) ALLOCATION_FAILED;
   char* mutable_buffer = unvoid_cast<char*>(malloc(total_len + 1));
@@ -494,11 +492,10 @@ PRIMITIVE(realpath) {
     if (errno == ENOENT or errno == ENOTDIR) return process->program()->null_object();
     OTHER_ERROR;
   }
-  Error* error = null;
-  String* result = process->allocate_string(c_result, &error);
+  String* result = process->allocate_string(c_result);
   if (result == null) {
     free(c_result);
-    return error;
+    ALLOCATION_FAILED;
   }
   return result;
 }
@@ -512,9 +509,8 @@ PRIMITIVE(cwd) {
     if (errno == ENOMEM) MALLOC_FAILED;
     OTHER_ERROR;
   }
-  Error* error = null;
-  String* result = process->allocate_string(cwd_path, &error);
-  if (result == null) return error;
+  String* result = process->allocate_string(cwd_path);
+  if (result == null) ALLOCATION_FAILED;
   return result;
 #else
   OTHER_ERROR;

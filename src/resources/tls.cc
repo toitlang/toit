@@ -249,9 +249,8 @@ Object* tls_error(MbedTLSResourceGroup* group, Process* process, int err) {
       if (!Utils::is_valid_utf_8(unsigned_cast(buffer), len)) {
         for (unsigned i = 0; i < len; i++) if (buffer[i] & 0x80) buffer[i] = '.';
       }
-      Error* error = null;
-      String* str = process->allocate_string(buffer, &error);
-      if (str == null) return error;
+      String* str = process->allocate_string(buffer);
+      if (str == null) ALLOCATION_FAILED;
       group->clear_error_flags();
       return Primitive::mark_as_error(str);
     }
@@ -296,9 +295,8 @@ Object* tls_error(MbedTLSResourceGroup* group, Process* process, int err) {
     }
   }
   buffer[BUFFER_LEN - 1] = '\0';
-  Error* error = null;
-  String* str = process->allocate_string(buffer, &error);
-  if (str == null) return error;
+  String* str = process->allocate_string(buffer);
+  if (str == null) ALLOCATION_FAILED;
   if (group) group->clear_error_flags();
   return Primitive::mark_as_error(str);
 }
@@ -435,9 +433,8 @@ PRIMITIVE(read)  {
   int size = mbedtls_ssl_get_bytes_avail(&socket->ssl);
   if (size < 0 || size > ByteArray::PREFERRED_IO_BUFFER_SIZE) size = ByteArray::PREFERRED_IO_BUFFER_SIZE;
 
-  Error* error = null;
-  ByteArray* array = process->allocate_byte_array(size, &error, /*force_external*/ true);
-  if (array == null) return error;
+  ByteArray* array = process->allocate_byte_array(size, /*force_external*/ true);
+  if (array == null) ALLOCATION_FAILED;
   int read = mbedtls_ssl_read(&socket->ssl, ByteArray::Bytes(array).address(), size);
   if (read == 0 || read == MBEDTLS_ERR_SSL_CONN_EOF || read == MBEDTLS_ERR_SSL_PEER_CLOSE_NOTIFY) {
     return process->program()->null_object();

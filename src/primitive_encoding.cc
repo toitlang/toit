@@ -26,9 +26,8 @@ PRIMITIVE(base64_encode)  {
   ARGS(Blob, data, bool, url_mode);
   int out_len = Base64Encoder::output_size(data.length(), url_mode);
 
-  Error* error = null;
-  ByteArray* buffer = process->allocate_byte_array(out_len, &error);
-  if (buffer == null) return error;
+  ByteArray* buffer = process->allocate_byte_array(out_len);
+  if (buffer == null) ALLOCATION_FAILED;
   ByteArray::Bytes buffer_bytes(buffer);
 
   word i = 0;
@@ -89,9 +88,8 @@ PRIMITIVE(base64_decode)  {
   }
 
 
-  Error* error = null;
-  ByteArray* result = process->allocate_byte_array(out_len, &error);
-  if (result == null) return error;
+  ByteArray* result = process->allocate_byte_array(out_len);
+  if (result == null) ALLOCATION_FAILED;
 
   uint8* buffer = ByteArray::Bytes(result).address();
   // Iterate over the groups of 3 output characters that have 4 regular input characters.
@@ -148,9 +146,8 @@ static const uint8_t hex_map[16] = {
 PRIMITIVE(hex_encode)  {
   ARGS(Blob, data);
 
-  Error* error = null;
-  String* result = process->allocate_string(data.length() * 2, &error);
-  if (result == null) return error;
+  String* result = process->allocate_string(data.length() * 2);
+  if (result == null) ALLOCATION_FAILED;
   // Initialize object.
   String::Bytes bytes(result);
   for (int i = 0; i < data.length(); i++) {
@@ -178,9 +175,8 @@ PRIMITIVE(hex_decode)  {
   if (str.length() % 2 == 1) INVALID_ARGUMENT;
   int out_len = str.length() / 2;
 
-  Error* error = null;
-  ByteArray* out = process->allocate_byte_array(out_len, &error);
-  if (out == null) return error;
+  ByteArray* out = process->allocate_byte_array(out_len);
+  if (out == null) ALLOCATION_FAILED;
   ByteArray::Bytes out_bytes(out);
 
   for (int i = 0; i < out_len; i++) {
