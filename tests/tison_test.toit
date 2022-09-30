@@ -53,7 +53,7 @@ test_maps -> none:
 test_lists -> none:
   test_round_trip [0, 1, 2, 3]
   test_round_trip [1, 2, 3, 4]
-  // TODO(kasper): enconding.tison deals incorrectly with large
+  // TODO(kasper): encoding.tison deals incorrectly with large
   // lists and list slices.
   expect_throw "WRONG_OBJECT_TYPE": test_round_trip [1, 2, 3, 4][0..1]
   expect_throw "WRONG_OBJECT_TYPE": test_round_trip [1, 2, 3, 4][2..4]

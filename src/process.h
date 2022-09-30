@@ -150,7 +150,6 @@ class Process : public ProcessListFromProcessGroup::Element,
   void set_current_directory(int fd) { _current_directory = fd; }
   int gc_count(GcType type) { return _object_heap.gc_count(type); }
 
-  // Special allocation of byte arrays and strings.
   String* allocate_string(const char* content);
   String* allocate_string(int length);
   String* allocate_string(const char* content, int length);
