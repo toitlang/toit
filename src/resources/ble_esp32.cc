@@ -646,7 +646,7 @@ PRIMITIVE(scan_next) {
     if (rc == 0) {
       if (fields.name_len > 0) {
         String* name = process->allocate_string((const char*)fields.name, fields.name_len);
-        if (error) ALLOCATION_FAILED;
+        if (!name) ALLOCATION_FAILED;
         array->at_put(2, name);
       }
 
