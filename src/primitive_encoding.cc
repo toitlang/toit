@@ -199,21 +199,7 @@ PRIMITIVE(tison_encode) {
     length = size_encoder.size();
   }
 
-  ByteArray* result = null;
-  if (length <= ByteArray::max_internal_size_in_process()) {
-    result = process->object_heap()->allocate_internal_byte_array(length);
-  } else {
-    HeapTagScope scope(ITERATE_CUSTOM_TAGS + EXTERNAL_BYTE_ARRAY_MALLOC_TAG);
-    uint8* buffer = unvoid_cast<uint8*>(malloc(length));
-    if (buffer == null) MALLOC_FAILED;
-    result = process->object_heap()->allocate_external_byte_array(length, buffer, true, false);
-    if (result) {
-      process->object_heap()->register_external_allocation(length);
-    } else {
-      free(buffer);
-    }
-  }
-
+  ByteArray* result = process->allocate_byte_array(length);
   if (!result) ALLOCATION_FAILED;
   ByteArray::Bytes bytes(result);
   MessageEncoder encoder(process, bytes.address(), true);
