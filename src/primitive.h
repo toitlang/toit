@@ -236,8 +236,6 @@ namespace toit {
   PRIMITIVE(dump_heap, 1)                    \
   PRIMITIVE(serial_print_heap_report, 2)     \
   PRIMITIVE(get_env, 1)                      \
-  PRIMITIVE(varint_encode, 3)                \
-  PRIMITIVE(varint_decode, 2)                \
   PRIMITIVE(literal_index, 1)                \
   PRIMITIVE(word_size, 0)                    \
 
@@ -455,6 +453,8 @@ namespace toit {
   PRIMITIVE(base64_decode, 2)                \
   PRIMITIVE(hex_encode, 1)                   \
   PRIMITIVE(hex_decode, 1)                   \
+  PRIMITIVE(tison_encode, 1)                 \
+  PRIMITIVE(tison_decode, 1)                 \
 
 #define MODULE_FONT(PRIMITIVE)               \
   PRIMITIVE(get_font, 2)                     \

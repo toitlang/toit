@@ -299,24 +299,23 @@ PRIMITIVE(string_from_rune) {
   if (rune < 0 || rune > Utils::MAX_UNICODE) INVALID_ARGUMENT;
   // Don't allow surrogates.
   if (0xD800 <= rune && rune <= 0xDFFF) INVALID_ARGUMENT;
-  Error* error = null;
   String* result;
   if (rune <= 0x7F) {
     char buffer[] = { static_cast<char>(rune) };
-    result = process->allocate_string(buffer, 1, &error);
+    result = process->allocate_string(buffer, 1);
   } else if (rune <= 0x7FF) {
     char buffer[] = {
       static_cast<char>(0xC0 | (rune >> 6)),
       static_cast<char>(0x80 | (rune & 0x3F)),
     };
-    result = process->allocate_string(buffer, 2, &error);
+    result = process->allocate_string(buffer, 2);
   } else if (rune <= 0xFFFF) {
     char buffer[] = {
       static_cast<char>(0xE0 | (rune >> 12)),
       static_cast<char>(0x80 | ((rune >> 6)  & 0x3F)),
       static_cast<char>(0x80 | (rune & 0x3F)),
     };
-    result = process->allocate_string(buffer, 3, &error);
+    result = process->allocate_string(buffer, 3);
   } else {
     char buffer[] = {
       static_cast<char>(0xF0 | (rune >> 18)),
@@ -324,9 +323,9 @@ PRIMITIVE(string_from_rune) {
       static_cast<char>(0x80 | ((rune >> 6)  & 0x3F)),
       static_cast<char>(0x80 | (rune & 0x3F)),
     };
-    result = process->allocate_string(buffer, 4, &error);
+    result = process->allocate_string(buffer, 4);
   }
-  if (result == null) return error;
+  if (result == null) ALLOCATION_FAILED;
   return result;
 }
 
@@ -490,10 +489,7 @@ PRIMITIVE(read_int_little_endian) {
 
 PRIMITIVE(command) {
   if (Flags::program_name == null) return process->program()->null_object();
-  Error* error = null;
-  String* arg = process->allocate_string(Flags::program_name, &error);
-  if (arg == null) return error;
-  return arg;
+  return process->allocate_string_or_error(Flags::program_name);
 }
 
 PRIMITIVE(smi_add) {
@@ -1317,10 +1313,9 @@ PRIMITIVE(float_to_string) {
   }
   char* buffer = safe_double_print(format, prec, receiver);
   if (buffer == null) MALLOC_FAILED;
-  Error* error = null;
-  Object* result = process->allocate_string(buffer, &error);
+  Object* result = process->allocate_string(buffer);
   free(buffer);
-  if (result == null) return error;
+  if (result == null) ALLOCATION_FAILED;
   return result;
 }
 
@@ -1392,9 +1387,8 @@ static bool is_validated_string(Program* program, Object* object) {
 
 static String* concat_strings(Process* process,
                               const uint8* bytes_a, int len_a,
-                              const uint8* bytes_b, int len_b,
-                              Error** error) {
-  String* result = process->allocate_string(len_a + len_b, error);
+                              const uint8* bytes_b, int len_b) {
+  String* result = process->allocate_string(len_a + len_b);
   if (result == null) return null;
   // Initialize object.
   String::Bytes bytes(result);
@@ -1408,7 +1402,6 @@ PRIMITIVE(string_add) {
   // The operator already checks that the objects are strings, but we want to
   // be really sure the primitive wasn't called in a different way. Otherwise
   // we can't be sure that the content only has valid strings.
-  Error* error = null;
   String* result;
   if (!is_validated_string(process->program(), receiver)) WRONG_TYPE;
   if (!is_validated_string(process->program(), other)) WRONG_TYPE;
@@ -1419,9 +1412,8 @@ PRIMITIVE(string_add) {
   if (!other->byte_content(process->program(), &other_blob, STRINGS_ONLY)) WRONG_TYPE;
   result = concat_strings(process,
                           receiver_blob.address(), receiver_blob.length(),
-                          other_blob.address(), other_blob.length(),
-                          &error);
-  if (result == null) return error;
+                          other_blob.address(), other_blob.length());
+  if (result == null) ALLOCATION_FAILED;
   return result;
 }
 
@@ -1451,13 +1443,12 @@ PRIMITIVE(string_slice) {
     int first_after = bytes.at(to);
     if (utf_8_continuation_byte(first_after)) ILLEGAL_UTF_8;
   }
-  Error* error = null;
   ASSERT(from >= 0);
   ASSERT(to <= receiver->length());
   ASSERT(from < to);
   int result_len = to - from;
-  String* result = process->allocate_string(result_len, &error);
-  if (result == null) return error;  // Allocation failure.
+  String* result = process->allocate_string(result_len);
+  if (result == null) ALLOCATION_FAILED;
   // Initialize object.
   String::Bytes result_bytes(result);
   result_bytes._initialize(0, receiver, from, to - from);
@@ -1471,15 +1462,14 @@ PRIMITIVE(concat_strings) {
   for (int index = 0; index < array->length(); index++) {
     if (!is_validated_string(process->program(), array->at(index))) WRONG_TYPE;
   }
-  Error* error = null;
   int length = 0;
   for (int index = 0; index < array->length(); index++) {
     Blob blob;
     HeapObject::cast(array->at(index))->byte_content(program, &blob, STRINGS_ONLY);
     length += blob.length();
   }
-  String* result = process->allocate_string(length, &error);
-  if (result == null) return error;
+  String* result = process->allocate_string(length);
+  if (result == null) ALLOCATION_FAILED;
   String::Bytes bytes(result);
   int pos = 0;
   for (int index = 0; index < array->length(); index++) {
@@ -1649,9 +1639,8 @@ PRIMITIVE(byte_array_at_put) {
 PRIMITIVE(byte_array_new) {
   ARGS(int, length, int, filler);
   if (length < 0) OUT_OF_BOUNDS;
-  Error* error = null;
-  ByteArray* result = process->allocate_byte_array(length, &error);
-  if (result == null) return error;
+  ByteArray* result = process->allocate_byte_array(length);
+  if (result == null) ALLOCATION_FAILED;
   if (filler != 0) {
     ByteArray::Bytes bytes(result);
     memset(bytes.address(), filler, length);
@@ -1662,10 +1651,9 @@ PRIMITIVE(byte_array_new) {
 PRIMITIVE(byte_array_new_external) {
   ARGS(int, length);
   if (length < 0) OUT_OF_BOUNDS;
-  Error* error = null;
   bool force_external = true;
-  ByteArray* result = process->allocate_byte_array(length, &error, force_external);
-  if (result == null) return error;
+  ByteArray* result = process->allocate_byte_array(length, force_external);
+  if (result == null) ALLOCATION_FAILED;
   return result;
 }
 
@@ -1965,44 +1953,11 @@ PRIMITIVE(encode_object) {
   ProgramOrientedEncoder encoder(process->program(), &buffer);
   bool success = encoder.encode(target);
   if (!success) OUT_OF_BOUNDS;
-  Error* error = null;
-  ByteArray* result = process->allocate_byte_array(buffer.size(), &error);
-  if (result == null) return error;
+  ByteArray* result = process->allocate_byte_array(buffer.size());
+  if (result == null) ALLOCATION_FAILED;
   ByteArray::Bytes bytes(result);
   memcpy(bytes.address(), buffer.content(), buffer.size());
   return result;
-}
-
-PRIMITIVE(varint_encode) {
-  ARGS(MutableBlob, bytes, int, offset, int64, signed_value);
-  if (offset < 0) OUT_OF_BOUNDS;
-  // Worst case is 10 byte encoding.
-  if (offset + 10 > bytes.length()) OUT_OF_BOUNDS;
-  uint64_t value = signed_value;
-  uint8* address = bytes.address() + offset;
-  while (value > 0x7f) {
-    *address++ = value | 0x80;
-    value >>= 7;
-  }
-  *address++ = value;
-  return Smi::from(address - (bytes.address() + offset));
-}
-
-PRIMITIVE(varint_decode) {
-  ARGS(MutableBlob, bytes, int, offset);
-  if (offset < 0) OUT_OF_BOUNDS;
-  uint64_t result = 0;
-  uint8* address = bytes.address();
-  int shift = 0;
-  uint64_t MASK = 0x7f;
-  for (word length = bytes.length(); offset < length; offset++, shift += 7) {
-    uint8 b = address[offset];
-    result = result | ((b & MASK) << (shift & 0x3f));
-    if ((b & 0x80) == 0) {
-      return Primitive::integer(result, process);
-    }
-  }
-  OUT_OF_BOUNDS;
 }
 
 #ifdef IOT_DEVICE
@@ -2020,9 +1975,8 @@ PRIMITIVE(encode_error) {
   bool success = encoder.encode_error(type, message, process->task()->stack());
   process->scheduler_thread()->interpreter()->load_stack();
   if (!success) OUT_OF_BOUNDS;
-  Error* error = null;
-  ByteArray* result = process->allocate_byte_array(buffer.size(), &error);
-  if (result == null) return error;
+  ByteArray* result = process->allocate_byte_array(buffer.size());
+  if (result == null) ALLOCATION_FAILED;
   ByteArray::Bytes bytes(result);
   memcpy(bytes.address(), buffer.content(), buffer.size());
   return result;
@@ -2095,9 +2049,8 @@ PRIMITIVE(profiler_encode) {
   ProgramOrientedEncoder encoder(process->program(), &buffer);
   bool success = encoder.encode_profile(profiler, title, cutoff);
   if (!success) OUT_OF_BOUNDS;
-  Error* error = null;
-  ByteArray* result = process->allocate_byte_array(buffer.size(), &error);
-  if (result == null) return error;
+  ByteArray* result = process->allocate_byte_array(buffer.size());
+  if (result == null) ALLOCATION_FAILED;
   ByteArray::Bytes bytes(result);
   memcpy(bytes.address(), buffer.content(), buffer.size());
   return result;
@@ -2247,9 +2200,8 @@ PRIMITIVE(dump_heap) {
 
   uword size = get_heap_dump_size(description);
 
-  Error* error = null;
-  ByteArray* result = process->allocate_byte_array(size + padding, &error);
-  if (result == null) return error;
+  ByteArray* result = process->allocate_byte_array(size + padding);
+  if (result == null) ALLOCATION_FAILED;
   ByteArray::Bytes bytes(result);
   uint8* contents = bytes.address();
 

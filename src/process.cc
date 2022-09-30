@@ -157,8 +157,8 @@ SystemMessage* Process::take_termination_message(uint8 result) {
 }
 
 
-String* Process::allocate_string(const char* content, int length, Error** error) {
-  String* result = allocate_string(length, error);
+String* Process::allocate_string(const char* content, int length) {
+  String* result = allocate_string(length);
   if (result == null) return result;  // Allocation failure.
   // Initialize object.
   String::Bytes bytes(result);
@@ -166,7 +166,7 @@ String* Process::allocate_string(const char* content, int length, Error** error)
   return result;
 }
 
-String* Process::allocate_string(int length, Error** error) {
+String* Process::allocate_string(int length) {
   ASSERT(length >= 0);
   bool can_fit_in_heap_block = length <= String::max_internal_size_in_process();
   if (can_fit_in_heap_block) {
@@ -177,7 +177,6 @@ String* Process::allocate_string(int length, Error** error) {
         this, VM::current()->scheduler()->is_boot_process(this) ? "*" : " ",
         length);
 #endif
-    *error = Error::from(program()->allocation_failed());
     return null;
   }
 
@@ -193,7 +192,6 @@ String* Process::allocate_string(int length, Error** error) {
           this, VM::current()->scheduler()->is_boot_process(this) ? "*" : " ",
           length);
 #endif
-    *error = Error::from(program()->allocation_failed());
     return null;
   }
   memory[length] = '\0';  // External strings should be zero-terminated.
@@ -207,26 +205,24 @@ String* Process::allocate_string(int length, Error** error) {
         this, VM::current()->scheduler()->is_boot_process(this) ? "*" : " ",
         length);
 #endif
-    *error = Error::from(program()->allocation_failed());
     return null;
-}
-
-Object* Process::allocate_string_or_error(const char* content, int length) {
-  Error* error = null;
-  String* result = allocate_string(content, length, &error);
-  if (result == null) return error;
-  return result;
-}
-
-String* Process::allocate_string(const char* content, Error** error) {
-  return allocate_string(content, strlen(content), error);
 }
 
 Object* Process::allocate_string_or_error(const char* content) {
   return allocate_string_or_error(content, strlen(content));
 }
 
-ByteArray* Process::allocate_byte_array(int length, Error** error, bool force_external) {
+Object* Process::allocate_string_or_error(const char* content, int length) {
+  String* result = allocate_string(content, length);
+  if (result == null) return Error::from(program()->allocation_failed());
+  return result;
+}
+
+String* Process::allocate_string(const char* content) {
+  return allocate_string(content, strlen(content));
+}
+
+ByteArray* Process::allocate_byte_array(int length, bool force_external) {
   ASSERT(length >= 0);
   if (force_external || length > ByteArray::max_internal_size_in_process()) {
     // Byte array cannot fit within a heap block so place content in malloced space.
@@ -243,7 +239,6 @@ ByteArray* Process::allocate_byte_array(int length, Error** error, bool force_ex
           this, VM::current()->scheduler()->is_boot_process(this) ? "*" : " ",
           length);
 #endif
-      *error = Error::from(program()->allocation_failed());
       return null;
     }
     if (ByteArray* result = object_heap()->allocate_external_byte_array(length, memory, true)) {
@@ -255,7 +250,6 @@ ByteArray* Process::allocate_byte_array(int length, Error** error, bool force_ex
         this, VM::current()->scheduler()->is_boot_process(this) ? "*" : " ",
         length);
 #endif
-    *error = Error::from(program()->allocation_failed());
     return null;
   }
   if (ByteArray* result = object_heap()->allocate_internal_byte_array(length)) return result;
@@ -264,7 +258,6 @@ ByteArray* Process::allocate_byte_array(int length, Error** error, bool force_ex
       this, VM::current()->scheduler()->is_boot_process(this) ? "*" : " ",
       length);
 #endif
-  *error = Error::from(program()->allocation_failed());
   return null;
 }
 
