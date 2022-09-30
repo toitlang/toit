@@ -26,9 +26,8 @@ PRIMITIVE(base64_encode)  {
   ARGS(Blob, data, bool, url_mode);
   int out_len = Base64Encoder::output_size(data.length(), url_mode);
 
-  Error* error = null;
-  ByteArray* buffer = process->allocate_byte_array(out_len, &error);
-  if (buffer == null) return error;
+  ByteArray* buffer = process->allocate_byte_array(out_len);
+  if (buffer == null) ALLOCATION_FAILED;
   ByteArray::Bytes buffer_bytes(buffer);
 
   word i = 0;
@@ -89,9 +88,8 @@ PRIMITIVE(base64_decode)  {
   }
 
 
-  Error* error = null;
-  ByteArray* result = process->allocate_byte_array(out_len, &error);
-  if (result == null) return error;
+  ByteArray* result = process->allocate_byte_array(out_len);
+  if (result == null) ALLOCATION_FAILED;
 
   uint8* buffer = ByteArray::Bytes(result).address();
   // Iterate over the groups of 3 output characters that have 4 regular input characters.
@@ -138,6 +136,35 @@ PRIMITIVE(base64_decode)  {
     }
   }
   return result;
+}
+
+PRIMITIVE(tison_encode) {
+  ARGS(Object, object);
+
+  int length = 0;
+  { MessageEncoder size_encoder(process, null, true);
+    if (!size_encoder.encode(object)) WRONG_TYPE;
+    length = size_encoder.size();
+  }
+
+  ByteArray* result = process->allocate_byte_array(length);
+  if (!result) ALLOCATION_FAILED;
+  ByteArray::Bytes bytes(result);
+  MessageEncoder encoder(process, bytes.address(), true);
+  if (!encoder.encode(object)) OTHER_ERROR;
+  return result;
+}
+
+PRIMITIVE(tison_decode) {
+  ARGS(Blob, bytes);
+  MessageDecoder decoder(process, bytes.address());
+  Object* decoded = decoder.decode();
+  if (decoder.allocation_failed()) {
+    decoder.remove_disposing_finalizers();
+    ALLOCATION_FAILED;
+  }
+  decoder.register_external_allocations();
+  return decoded;
 }
 
 }
