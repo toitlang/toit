@@ -170,6 +170,7 @@ This means that control characters, double quotes and backslashes have
   been replaced by backslash sequences.
 */
 escape_string str -> any:
+  if str == "" or str.size == 1 and ESCAPED_CHAR_MAP_[str[0]] == 0: return str
   counter := #[0, 0]
   bitmap.blit str counter str.size
       --destination_pixel_stride=0
