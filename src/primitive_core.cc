@@ -1969,38 +1969,6 @@ PRIMITIVE(encode_object) {
   return result;
 }
 
-PRIMITIVE(varint_encode) {
-  ARGS(MutableBlob, bytes, int, offset, int64, signed_value);
-  if (offset < 0) OUT_OF_BOUNDS;
-  // Worst case is 10 byte encoding.
-  if (offset + 10 > bytes.length()) OUT_OF_BOUNDS;
-  uint64_t value = signed_value;
-  uint8* address = bytes.address() + offset;
-  while (value > 0x7f) {
-    *address++ = value | 0x80;
-    value >>= 7;
-  }
-  *address++ = value;
-  return Smi::from(address - (bytes.address() + offset));
-}
-
-PRIMITIVE(varint_decode) {
-  ARGS(MutableBlob, bytes, int, offset);
-  if (offset < 0) OUT_OF_BOUNDS;
-  uint64_t result = 0;
-  uint8* address = bytes.address();
-  int shift = 0;
-  uint64_t MASK = 0x7f;
-  for (word length = bytes.length(); offset < length; offset++, shift += 7) {
-    uint8 b = address[offset];
-    result = result | ((b & MASK) << (shift & 0x3f));
-    if ((b & 0x80) == 0) {
-      return Primitive::integer(result, process);
-    }
-  }
-  OUT_OF_BOUNDS;
-}
-
 #ifdef IOT_DEVICE
 #define STACK_ENCODING_BUFFER_SIZE (2*1024)
 #else

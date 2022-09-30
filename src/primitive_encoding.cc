@@ -194,4 +194,43 @@ PRIMITIVE(hex_decode)  {
   return out;
 }
 
+PRIMITIVE(tison_encode) {
+  ARGS(Object, object);
+
+  int length = 0;
+  { MessageEncoder size_encoder(process, null, true);
+    if (!size_encoder.encode(object)) WRONG_TYPE;
+    length = size_encoder.size();
+  }
+
+  ByteArray* result = null;
+  if (length <= ByteArray::max_internal_size_in_process()) {
+    result = process->object_heap()->allocate_internal_byte_array(length);
+  } else {
+    HeapTagScope scope(ITERATE_CUSTOM_TAGS + EXTERNAL_BYTE_ARRAY_MALLOC_TAG);
+    uint8* buffer = unvoid_cast<uint8*>(malloc(length));
+    if (buffer == null) MALLOC_FAILED;
+    result = process->object_heap()->allocate_external_byte_array(length, buffer, true, false);
+    if (!result) free(buffer);
+  }
+
+  if (!result) ALLOCATION_FAILED;
+  ByteArray::Bytes bytes(result);
+  MessageEncoder encoder(process, bytes.address(), true);
+  if (!encoder.encode(object)) OTHER_ERROR;
+  return result;
+}
+
+PRIMITIVE(tison_decode) {
+  ARGS(Blob, bytes);
+  MessageDecoder decoder(process, bytes.address());
+  Object* decoded = decoder.decode();
+  if (decoder.allocation_failed()) {
+    decoder.remove_disposing_finalizers();
+    ALLOCATION_FAILED;
+  }
+  decoder.register_external_allocations();
+  return decoded;
+}
+
 }

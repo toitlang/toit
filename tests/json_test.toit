@@ -4,7 +4,7 @@
 
 import expect show *
 
-import encoding.json as json
+import encoding.json
 import fixed_point show FixedPoint
 import math
 import reader show Reader
