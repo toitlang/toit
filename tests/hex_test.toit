@@ -19,7 +19,7 @@ main:
       ByteArray 1: 0xff
 
   expect_equals
-    "INVALID_ARGUMENT"
+    "INTEGER_PARSING_ERROR"
     catch: hex.decode "hh"
 
   expect_equals
