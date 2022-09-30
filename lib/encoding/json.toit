@@ -2,6 +2,8 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+import binary show LITTLE_ENDIAN
+import bitmap
 import reader show Reader
 
 INITIAL_BUFFER_SIZE_ ::= 64
@@ -118,14 +120,14 @@ class Buffer_:
     buffer_ = new
 
   /**
-  Outputs a string directly to the JSON stream.
+  Outputs a string or ByteArray directly to the JSON stream.
   No quoting, no escaping.  This is mainly used for things
-    that will be parsed as numbers by the receiver.
+    that will be parsed as numbers or strings by the receiver.
   */
-  put_unquoted str/string:
-    len := str.size
+  put_unquoted data -> none:
+    len := data.size
     ensure_ len
-    buffer_.replace offset_ str
+    buffer_.replace offset_ data
     offset_ += len
 
   put_string_ str from to:
@@ -140,6 +142,67 @@ class Buffer_:
 
   clear_:
     offset_ = 0
+
+ESCAPED_CHAR_MAP_ ::= create_escaped_char_map_
+ONE_CHAR_ESCAPES_ ::= {
+    '\b': 'b',
+    '\f': 'f',
+    '\n': 'n',
+    '\r': 'r',
+    '\t': 't',
+    '"':  '"',
+    '\\': '\\'
+}
+
+// A non-zero for every UTF-8 code unit that needs escaping, and a '0' for
+// every code unit that doesn't need escaping.  The number indicates how
+// many extra bytes the escaped version has.
+create_escaped_char_map_ -> ByteArray:
+  // Most control characters (0-31) are output in the form \u00.. which takes 6
+  // characters (5 extra).
+  result := ByteArray 0x100: it < ' ' ? 5 : 0
+  ONE_CHAR_ESCAPES_.do: | code escape | result[code] = 1
+  return result
+
+/**
+Returns a string or a byte array that has been escaped for use in JSON.
+This means that control characters, double quotes and backslashes have
+  been replaced by backslash sequences.
+*/
+escape_string str/string -> any:
+  if str == "" or str.size == 1 and ESCAPED_CHAR_MAP_[str[0]] == 0: return str
+  counter := ByteArray 2
+  bitmap.blit str counter str.size
+      --destination_pixel_stride=0
+      --lookup_table=ESCAPED_CHAR_MAP_
+      --operation=bitmap.ADD_16_LE
+  extra_chars := LITTLE_ENDIAN.uint16 counter 0
+  if extra_chars == 0: return str  // Nothing to escape.
+  if extra_chars == 0xffff:
+    // Overflow of the saturating counter :-(.  We must count manually.
+    extra_chars = 0
+    str.size.repeat: extra_chars += ESCAPED_CHAR_MAP_[str.at --raw it]
+  result := ByteArray str.size + extra_chars
+  output_posn := 0
+  not_yet_copied := 0
+  str.size.repeat: | i |
+    byte := str.at --raw i
+    if ESCAPED_CHAR_MAP_[byte] != 0:
+      result.replace output_posn str not_yet_copied i
+      output_posn += i - not_yet_copied
+      not_yet_copied = i + 1
+      result[output_posn++] = '\\'
+      if ONE_CHAR_ESCAPES_.contains byte:
+        result[output_posn++] = ONE_CHAR_ESCAPES_[byte]
+      else:
+        result[output_posn    ] = 'u'
+        result[output_posn + 1] = '0'
+        result[output_posn + 2] = '0'
+        result[output_posn + 3] = to_lower_case_hex byte >> 4
+        result[output_posn + 4] = to_lower_case_hex byte & 0xf
+        output_posn += 5
+  result.replace output_posn str not_yet_copied str.size
+  return result
 
 class Encoder extends Buffer_:
   encode obj/any [converter]:
@@ -161,43 +224,11 @@ class Encoder extends Buffer_:
     encode obj: throw "INVALID_JSON_OBJECT"
 
   encode_string_ str:
-    size := str.size
+    escaped := escape_string str
+    size := escaped.size
     ensure_ str.size + 2
-
     put_byte_ '"'
-
-    offset := 0
-    for i := 0; i < size; i++:
-      c := str.at --raw i
-      // Backlash is the largest special character we need to consider,
-      // so start by checking for that.
-      if '\\' < c: continue
-      if c < 32:
-        // Handle control characters.
-        if i > offset: put_string_ str offset i
-        offset = i + 1
-        put_byte_ '\\'
-        if c == '\b':
-          put_byte_ 'b'
-        else if c == '\f':
-          put_byte_ 'f'
-        else if c == '\n':
-          put_byte_ 'n'
-        else if c == '\r':
-          put_byte_ 'r'
-        else if c == '\t':
-          put_byte_ 't'
-        else:
-          put_unicode_escape_ c
-      else if c == '"' or c == '\\':
-        // And finally handle double-quotes and backslash.
-        if i > offset: put_string_ str offset i
-        offset = i + 1
-        put_byte_ '\\'
-        put_byte_ c
-
-    if offset < size: put_string_ str offset size
-
+    put_unquoted escaped
     put_byte_ '"'
 
   encode_number_ number:
@@ -248,16 +279,13 @@ class Encoder extends Buffer_:
   put_unicode_escape_ code_point/int:
     put_byte_ 'u'
     put_byte_
-      _hex_digit (code_point >> 12) & 0xf
+      to_lower_case_hex (code_point >> 12) & 0xf
     put_byte_
-      _hex_digit (code_point >> 8) & 0xf
+      to_lower_case_hex (code_point >> 8) & 0xf
     put_byte_
-      _hex_digit (code_point >> 4) & 0xf
+      to_lower_case_hex (code_point >> 4) & 0xf
     put_byte_
-      _hex_digit code_point & 0xf
-
-
-_hex_digit x: return x < 10 ? '0' + x : 'a' + x - 10
+      to_lower_case_hex code_point & 0xf
 
 class Decoder:
   bytes_ := null
