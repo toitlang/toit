@@ -215,6 +215,30 @@ PRIMITIVE(config_interrupt) {
   return process->program()->null_object();
 }
 
+PRIMITIVE(hold_enable) {
+  ARGS(int, num);
+  esp_err_t err = gpio_hold_en(static_cast<gpio_num_t>(num));
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+  return process->program()->null_object();
+}
+
+PRIMITIVE(hold_disable) {
+  ARGS(int, num);
+  esp_err_t err = gpio_hold_dis(static_cast<gpio_num_t>(num));
+  if (err != ESP_OK) return Primitive::os_error(err, process);
+  return process->program()->null_object();
+}
+
+PRIMITIVE(deep_sleep_hold_enable) {
+  gpio_deep_sleep_hold_en();
+  return process->program()->null_object();
+}
+
+PRIMITIVE(deep_sleep_hold_disable) {
+  gpio_deep_sleep_hold_dis();
+  return process->program()->null_object();
+}
+
 PRIMITIVE(get) {
   ARGS(int, num);
 

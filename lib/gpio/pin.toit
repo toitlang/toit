@@ -30,6 +30,12 @@ class Pin:
 
   static resource_group_ ::= gpio_init_
 
+  static deep_sleep_hold_enable -> none:
+    #primitive.gpio.deep_sleep_hold_enable
+
+  static deep_sleep_hold_disable -> none:
+    #primitive.gpio.deep_sleep_hold_disable
+
   /**
   The numeric $Pin number.
   */
@@ -175,6 +181,12 @@ class Pin:
     last_set_ = value
     gpio_set_ num value
 
+  hold:
+    gpio_hold_ num
+
+  release:
+    gpio_release_ num
+
   /**
   Calls the given $block on each edge on the Pin.
 
@@ -316,3 +328,9 @@ gpio_set_ num value:
 
 gpio_config_interrupt_ num enabled/bool:
   #primitive.gpio.config_interrupt
+
+gpio_hold_ num:
+  #primitive.gpio.hold_enable
+
+gpio_release_ num:
+  #primitive.gpio.hold_disable

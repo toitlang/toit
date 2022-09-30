@@ -510,6 +510,10 @@ namespace toit {
   PRIMITIVE(config, 6)                       \
   PRIMITIVE(get, 1)                          \
   PRIMITIVE(set, 2)                          \
+  PRIMITIVE(hold_enable, 1)                  \
+  PRIMITIVE(hold_disable, 1)                 \
+  PRIMITIVE(deep_sleep_hold_enable, 0)       \
+  PRIMITIVE(deep_sleep_hold_disable, 0)      \
   PRIMITIVE(config_interrupt, 2)             \
 
 #define MODULE_ADC(PRIMITIVE)               \
