@@ -29,7 +29,7 @@ encode data -> string:
 DECODING_MAP_ ::= create_decoding_map_
 
 create_decoding_map_ -> ByteArray:
-  result := ByteArray 0x100: 0x10
+  result := ByteArray 0x100 --filler=0x10
   10.repeat:
     result['0' + it] = it
   6.repeat:
