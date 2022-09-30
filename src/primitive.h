@@ -451,8 +451,6 @@ namespace toit {
 #define MODULE_ENCODING(PRIMITIVE)           \
   PRIMITIVE(base64_encode, 2)                \
   PRIMITIVE(base64_decode, 2)                \
-  PRIMITIVE(hex_encode, 1)                   \
-  PRIMITIVE(hex_decode, 1)                   \
   PRIMITIVE(tison_encode, 1)                 \
   PRIMITIVE(tison_decode, 1)                 \
 

@@ -138,58 +138,6 @@ PRIMITIVE(base64_decode)  {
   return result;
 }
 
-static const uint8_t hex_map[16] = {
-  '0', '1', '2', '3', '4', '5', '6', '7',
-  '8', '9', 'a', 'b', 'c', 'd', 'e', 'f',
-};
-
-PRIMITIVE(hex_encode)  {
-  ARGS(Blob, data);
-
-  String* result = process->allocate_string(data.length() * 2);
-  if (result == null) ALLOCATION_FAILED;
-  // Initialize object.
-  String::Bytes bytes(result);
-  for (int i = 0; i < data.length(); i++) {
-    uint8 byte = data.address()[i];
-    bytes._at_put(i * 2 + 0, hex_map[byte >> 4]);
-    bytes._at_put(i * 2 + 1, hex_map[byte & 0xf]);
-  }
-  return result;
-}
-
-static int from_hex(uint8 c) {
-  if (c >= '0' && c <= '9') {
-    return c - '0';
-  } else if (c >= 'A' && c <= 'F') {
-    return c - 'A' + 10;
-  } else if (c >= 'a' && c <= 'f') {
-    return c - 'a' + 10;
-  }
-  return -1;
-}
-
-PRIMITIVE(hex_decode)  {
-  ARGS(Blob, str);  // Normally we expect a string, but any byte-object works.
-
-  if (str.length() % 2 == 1) INVALID_ARGUMENT;
-  int out_len = str.length() / 2;
-
-  ByteArray* out = process->allocate_byte_array(out_len);
-  if (out == null) ALLOCATION_FAILED;
-  ByteArray::Bytes out_bytes(out);
-
-  for (int i = 0; i < out_len; i++) {
-    int h1 = from_hex(str.address()[i * 2 + 0]);
-    if (h1 == -1) INVALID_ARGUMENT;
-    int h2 = from_hex(str.address()[i * 2 + 1]);
-    if (h2 == -1) INVALID_ARGUMENT;
-    out_bytes.at_put(i, h1 << 4 | h2);
-  }
-
-  return out;
-}
-
 PRIMITIVE(tison_encode) {
   ARGS(Object, object);
 
