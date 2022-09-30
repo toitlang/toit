@@ -2,7 +2,7 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import serialization show *
+import encoding.tison
 
 /**
 Pi.
@@ -132,7 +132,7 @@ class Point3f:
     $to_byte_array can be deserialized.
   */
   constructor.deserialize bytes:
-    values ::= deserialize bytes
+    values ::= tison.decode bytes
     return Point3f values[0] values[1] values[2]
 
   /**
@@ -141,7 +141,7 @@ class Point3f:
   The serialization format is not stable.
   */
   to_byte_array -> ByteArray:
-    return serialize [x, y ,z]
+    return tison.encode [x, y ,z]
 
   /** See $super. */
   stringify -> string:

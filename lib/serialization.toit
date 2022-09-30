@@ -2,7 +2,7 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import encoding.ubjson as ubjson
+import encoding.tison
 import bytes
 
 /**
@@ -30,9 +30,11 @@ The $object must be one of the following:
 - [] ($List)
 - $bytes.Producer
 For $Map and $List, the contents must be serializable.
+
+Deprecated. Use encoding.tison.encode instead.
 */
 serialize object/any -> ByteArray:
-  return ubjson.encode object
+  return tison.encode object
 
 /**
 Deserializes the $bytes into an object.
@@ -40,6 +42,8 @@ Deserializes the $bytes into an object.
 The $bytes must be produced by $serialize or use the same encoding.
 
 The inverse of $serialize.
+
+Deprecated. Use encoding.tison.decode instead.
 */
 deserialize bytes/ByteArray -> any:
-  return ubjson.decode bytes
+  return tison.decode bytes

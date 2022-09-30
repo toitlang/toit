@@ -21,7 +21,8 @@ import reader
 import uuid
 
 import encoding.json
-import encoding.ubjson
+import encoding.tison
+
 import system.assets
 
 import ar
@@ -377,7 +378,7 @@ extract_binary envelope/Envelope -> ByteArray:
   system := entries.get AR_ENTRY_SYSTEM_SNAPSHOT
   if system:
     assets_encoded := properties.get "wifi"
-        --if_present=: assets.encode { "wifi": ubjson.encode it }
+        --if_present=: assets.encode { "wifi": tison.encode it }
         --if_absent=: null
     containers.add (ContainerEntry "system" system --assets=assets_encoded)
 
