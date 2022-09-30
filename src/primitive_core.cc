@@ -1647,11 +1647,15 @@ PRIMITIVE(byte_array_at_put) {
 }
 
 PRIMITIVE(byte_array_new) {
-  ARGS(int, length);
+  ARGS(int, length, int, filler);
   if (length < 0) OUT_OF_BOUNDS;
   Error* error = null;
   ByteArray* result = process->allocate_byte_array(length, &error);
   if (result == null) return error;
+  if (filler != 0) {
+    ByteArray::Bytes bytes(result);
+    memset(bytes.address(), filler, length);
+  }
   return result;
 }
 
