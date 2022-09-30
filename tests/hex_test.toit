@@ -16,7 +16,7 @@ main:
   expect_equals
     "ff"
     hex.encode
-      ByteArray 1: 0xff
+      ByteArray 1 --filler=0xff
 
   expect_equals
     "INTEGER_PARSING_ERROR"

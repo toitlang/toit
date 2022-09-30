@@ -186,7 +186,7 @@ namespace toit {
   PRIMITIVE(byte_array_length, 1)            \
   PRIMITIVE(byte_array_at, 2)                \
   PRIMITIVE(byte_array_at_put, 3)            \
-  PRIMITIVE(byte_array_new, 1)               \
+  PRIMITIVE(byte_array_new, 2)               \
   PRIMITIVE(byte_array_new_external, 1)      \
   PRIMITIVE(byte_array_replace, 5)           \
   PRIMITIVE(byte_array_is_valid_string_content, 3) \

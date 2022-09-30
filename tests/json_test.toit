@@ -52,6 +52,16 @@ test_stringify:
     "\"" + "hej" * 1024 + "\""
     json.stringify "hej" * 1024
 
+  HUGE := 14000
+  very_large_string := "\x1b" * HUGE
+  expect_equals HUGE very_large_string.size
+  escaped := json.stringify very_large_string
+  expect_equals (HUGE * 6 + 2) escaped.size
+  expect
+    escaped.starts_with "\"\\u001b\\u001b"
+  expect
+    escaped.ends_with     "\\u001b\\u001b\""
+
 test_converter -> none:
   fixed_converter := : | obj encoder |
     if obj is FixedPoint:
