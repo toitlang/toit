@@ -380,7 +380,7 @@ PRIMITIVE(accept) {
   });
 }
 
-static ByteArray* allocate_read_buffer(Process* process, pbuf* p, Error** error) {
+static ByteArray* allocate_read_buffer(Process* process, pbuf* p) {
   const int MAX_SIZE = 1500;
 
   int size = 0;
@@ -393,14 +393,15 @@ static ByteArray* allocate_read_buffer(Process* process, pbuf* p, Error** error)
     c = c->next;
   }
 
-  ByteArray* array = process->allocate_byte_array(size, error, true);
+  ByteArray* array = process->allocate_byte_array(size, true);
   if (array != null) return array;
 
   // We failed to allocate the buffer, check if we can do a smaller allocation.
-  if (size == p->len) return null;
-
-  *error = null;
-  return process->allocate_byte_array(p->len, error, true);
+  if (size == p->len) {
+    return null;
+  } else {
+    return process->allocate_byte_array(p->len, true);
+  }
 }
 
 PRIMITIVE(read)  {
@@ -415,9 +416,8 @@ PRIMITIVE(read)  {
       return Smi::from(-1);
     }
 
-    Error* error = null;
-    ByteArray* array = allocate_read_buffer(process, p, &error);
-    if (array == null) return error;
+    ByteArray* array = allocate_read_buffer(process, p);
+    if (array == null) ALLOCATION_FAILED;
 
     ByteArray::Bytes bytes(array);
 

@@ -343,9 +343,8 @@ PRIMITIVE(read) {
     return Primitive::os_error(err, process);
   }
 
-  Error* error = null;
-  ByteArray* data = process->allocate_byte_array(available, &error, /*force_external*/ available != 0);
-  if (data == null) return error;
+  ByteArray* data = process->allocate_byte_array(available, /*force_external*/ available != 0);
+  if (data == null) ALLOCATION_FAILED;
 
   if (available == 0) return data;
 

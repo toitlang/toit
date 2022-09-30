@@ -70,9 +70,8 @@ Object* Primitive::os_error(int error, Process* process) {
 #ifdef TOIT_FREERTOS
   if (error == ESP_ERR_NO_MEM) MALLOC_FAILED;
 #endif
-  Error* err = null;
-  String* result = process->allocate_string(strerror(error), &err);
-  if (result == null) return err;
+  String* result = process->allocate_string(strerror(error));
+  if (result == null) ALLOCATION_FAILED;
   return Error::from(result);
 }
 
