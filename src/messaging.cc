@@ -25,7 +25,7 @@
 namespace toit {
 
 enum MessageTag {
-  TAG_MALFORMED = 0,
+  TAG_OVERFLOWN = 0,
   TAG_POSITIVE_SMI,
   TAG_NEGATIVE_SMI,
   TAG_NULL,
@@ -44,12 +44,14 @@ enum MessageTag {
   TAG_BYTE_ARRAY_INLINE,
 };
 
-static int TISON_FORMAT_VERSION = 1;
+static int TISON_VERSION = 1;
 
-// .. something about starting with a non-ascii character
-static const uint32 TISON_MARKER       = 0xa63900f7;
-static const uint32 TISON_FORMAT_MASK  = 0x0000ff00;
-static const uint32 TISON_FORMAT_SHIFT = 8;
+// The first 4 bytes of a TISON message is a marker that starts with
+// a non-ASCII character. This makes it trivial to distinguish a TISON
+// message from a similar message encoded to JSON or UBJSON.
+static const uint32 TISON_MARKER        = 0xa68900f7;
+static const uint32 TISON_VERSION_MASK  = 0x0000ff00;
+static const uint32 TISON_VERSION_SHIFT = 8;
 
 class NestingTracker {
  public:
@@ -106,13 +108,16 @@ void MessageEncoder::neuter_externals() {
 
 bool TisonEncoder::encode(Object* object) {
   ASSERT(encoding_tison());
-  uint32 marker = TISON_MARKER | (TISON_FORMAT_VERSION << TISON_FORMAT_SHIFT);
+  uint32 marker = TISON_MARKER | (TISON_VERSION << TISON_VERSION_SHIFT);
   write_uint32(marker);
   if (!encoding_for_size()) {
     write_cardinal(payload_size());
   }
   bool result = encode_any(object);
   if (!result) return false;
+  // Compute the number of bytes we need to encode the payload size.
+  // Later, when we're not encoding for size, we know the payload size
+  // and will encode this before the payload.
   if (encoding_for_size()) {
     _payload_size = size() - sizeof(uint32);
    write_cardinal(payload_size());
@@ -424,13 +429,13 @@ void MessageDecoder::register_external(HeapObject* object, int length) {
 
 Object* TisonDecoder::decode() {
   ASSERT(decoding_tison());
-  uint32 expected = TISON_MARKER | (TISON_FORMAT_VERSION << TISON_FORMAT_SHIFT);
+  uint32 expected = TISON_MARKER | (TISON_VERSION << TISON_VERSION_SHIFT);
   uint32 marker = read_uint32();
   if (marker != expected) {
-    if ((marker & ~TISON_FORMAT_MASK) == (expected & ~TISON_FORMAT_MASK)) {
-      int version = (marker & TISON_FORMAT_MASK) >> TISON_FORMAT_SHIFT;
+    if ((marker & ~TISON_VERSION_MASK) == (expected & ~TISON_VERSION_MASK)) {
+      int version = (marker & TISON_VERSION_MASK) >> TISON_VERSION_SHIFT;
       printf("[message decoder: wrong tison version %d - expected %d]\n",
-          version, TISON_FORMAT_VERSION);
+          version, TISON_VERSION);
     } else {
       printf("[message decoder: wrong tison marker 0x%x - expected 0x%x]\n",
           marker, expected);
@@ -448,7 +453,7 @@ Object* TisonDecoder::decode() {
 Object* MessageDecoder::decode_any() {
   int tag = read_uint8();
   switch (tag) {
-    case TAG_MALFORMED:
+    case TAG_OVERFLOWN:
       return mark_malformed();
     case TAG_POSITIVE_SMI:
       return Smi::from(read_cardinal());
