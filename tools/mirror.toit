@@ -463,7 +463,7 @@ class MallocReport extends Mirror:
       base := base_addresses[i]
       for j := 0; j < uses.size; j++:
         if uses[j] != 0 or fullnesses[j] != 0:
-          result.add "0x$(%08x base + j * granularity): $(%3d fullnesses[j])% $(usage_letters_ uses[j] fullnesses[j])"
+          result.add "0x$(%08x base + j * granularity): $(%3d fullnesses[j])% $(plain_usage_description_ uses[j] fullnesses[j])"
         if uses[j] & MEMORY_PAGE_MERGE_WITH_NEXT_ == 0:
           separator := "--------------------------------------------------------"
           if result[result.size - 1] != separator: result.add separator
@@ -487,15 +487,15 @@ class MallocReport extends Mirror:
       result.add "│        Fully allocated $scale Completely free page.  │"
     result.add   "└────────────────────────────────────────────────────────────────────────┘"
 
-  usage_letters_ use/int fullness/int -> string:
+  // Only used for plain ASCII mode, not for terminal graphics mode.
+  plain_usage_description_ use/int fullness/int -> string:
+    if fullness == 0: return "(Free)"
     symbols := []
     if use & MEMORY_PAGE_TOIT_ != 0: symbols.add "Toit"
     if use & MEMORY_PAGE_BUFFERS_ != 0: symbols.add "Network Buffers"
     if use & MEMORY_PAGE_EXTERNAL_ != 0: symbols.add "External strings/bytearrays"
     if use & MEMORY_PAGE_TLS_ != 0: symbols.add "TLS/Crypto"
     if use & MEMORY_PAGE_MISC_ != 0: symbols.add "Misc"
-    if fullness == 0:
-      symbols = ["(Free)"]
     return symbols.join ", "
 
   terminal_stringify -> string:

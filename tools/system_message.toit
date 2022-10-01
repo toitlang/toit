@@ -23,7 +23,8 @@ import host.pipe
 import .snapshot
 import .mirror as mirror
 
-handle_system_message encoded_system_message snapshot_content --force_pretty=false --force_plain=false:
+handle_system_message encoded_system_message snapshot_content --force_pretty/bool=false --force_plain/bool=false:
+  if force_pretty and force_plain: throw "Can't force both pretty and plain formats at once"
   program := null
   if snapshot_content: program = (SnapshotBundle snapshot_content).decode
   m := mirror.decode encoded_system_message program:
