@@ -248,17 +248,17 @@ PRIMITIVE(config_bidirectional_pin) {
   ARGS(int, pin, RMTResource, resource);
 
 #if defined(CONFIG_IDF_TARGET_ESP32C3)
-  if (pin >= 26) INVALID_ARGUMENT;
+  if (pin >= MAX_GPIO_NUM) INVALID_ARGUMENT;
   GPIO.enable_w1ts.enable_w1ts = (0x1 << pin);
 #else
   // Set open collector?
-if (pin < 32) {
+  if (pin < 32) {
     GPIO.enable_w1ts = (0x1 << pin);
   } else {
     GPIO.enable1_w1ts.data = (0x1 << (pin - 32));
   }
 #endif
-rmt_set_gpio(resource->channel(), RMT_MODE_TX, static_cast<gpio_num_t>(pin), false);
+  rmt_set_gpio(resource->channel(), RMT_MODE_TX, static_cast<gpio_num_t>(pin), false);
   PIN_INPUT_ENABLE(GPIO_PIN_MUX_REG[pin]);
   GPIO.pin[pin].pad_driver = 1;
 

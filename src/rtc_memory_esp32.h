@@ -15,9 +15,9 @@
 
 #pragma once
 
-#ifdef TOIT_FREERTOS
-
 #include "top.h"
+
+#ifdef TOIT_FREERTOS
 
 namespace toit {
 

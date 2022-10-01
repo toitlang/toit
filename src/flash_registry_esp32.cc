@@ -24,11 +24,7 @@
 #include "esp_partition.h"
 #include "esp_spi_flash.h"
 
-#ifdef CONFIG_IDF_TARGET_ESP32C3
-  #include <esp32c3/rom/cache.h>
-#elif CONFIG_IDF_TARGET_ESP32S3
-//#include <esp32s3/rom/cache.h>
-#else
+#ifdef CONFIG_IDF_TARGET_ESP32
   #include <esp32/rom/cache.h>
 #endif
 

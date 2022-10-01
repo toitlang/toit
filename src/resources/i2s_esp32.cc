@@ -190,7 +190,7 @@ PRIMITIVE(create) {
   }
 
   i2s_pin_config_t pin_config = {
-      .mck_io_num = mclk_pin >=0 ? mclk_pin: I2S_PIN_NO_CHANGE,
+    .mck_io_num = mclk_pin >=0 ? mclk_pin: I2S_PIN_NO_CHANGE,
     .bck_io_num = sck_pin >= 0 ? sck_pin : I2S_PIN_NO_CHANGE,
     .ws_io_num = ws_pin >= 0 ? ws_pin : I2S_PIN_NO_CHANGE,
     .data_out_num = tx_pin >= 0 ? tx_pin : I2S_PIN_NO_CHANGE,

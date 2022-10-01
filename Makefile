@@ -178,33 +178,23 @@ ifeq ("", "$(shell command -v xtensa-esp32-elf-g++)")
 	$(error xtensa-esp32-elf-g++ not in path. Did you `source third_party/esp-idf/export.sh`?)
 endif
 
-
 .PHONY: esp32
 esp32:
 	if [ "$(shell command -v xtensa-esp32-elf-g++)" = "" ]; then source $(IDF_PATH)/export.sh; fi; \
 	    $(MAKE) esp32-no-env
 
 .PHONY: esp32-no-env
-esp32-no-env: check-env check-esp32-env sdk toolchains/$(ESP32_CHIP)/sdkconfig
-	(cd toolchains/$(ESP32_CHIP) && idf.py -B ../../build/$(ESP32_CHIP) build)
-
-toolchains/$(ESP32_CHIP)/sdkconfig:
-	cp toolchains/$(ESP32_CHIP)/sdkconfig.default toolchains/$(ESP32_CHIP)/sdkconfig
+esp32-no-env: check-env check-esp32-env sdk
+	IDF_TARGET=$(ESP32_CHIP) idf.py -C toolchains/$(ESP32_CHIP) -B build/$(ESP32_CHIP) -p "$(ESP32_PORT)" build
 
 # ESP32 MENU CONFIG
 .PHONY: menuconfig
 menuconfig: check-esp32-env
-	(cd toolchains/$(ESP32_CHIP) && idf.py -B ../../build/$(ESP32_CHIP) menuconfig)
-
-
-# ESP32 VARIANTS FLASH
-ifdef ESP32_ENTRY
-flash: build/$(ESP32_CHIP)/flash/program.snapshot
-endif
+	IDF_TARGET=$(ESP32_CHIP) idf.py -C toolchains/$(ESP32_CHIP) -B build/$(ESP32_CHIP) -p "$(ESP32_PORT)" menuconfig
 
 .PHONY: flash
-flash: check-env check-esp32-env sdk toolchains/$(ESP32_CHIP)/sdkconfig
-	(cd toolchains/$(ESP32_CHIP) && idf.py -B ../../build/$(ESP32_CHIP) -p $(ESP32_PORT) flash monitor)
+flash: check-env check-esp32-env sdk
+	IDF_TARGET=$(ESP32_CHIP) idf.py -C toolchains/$(ESP32_CHIP) -B build/$(ESP32_CHIP) -p "$(ESP32_PORT)" flash monitor
 
 # UTILITY
 .PHONY:	clean

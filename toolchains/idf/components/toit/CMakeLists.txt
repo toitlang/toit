@@ -107,11 +107,13 @@ function(toit_postprocess)
 
     add_custom_command(
             TARGET firmware
+            POST_BUILD
             COMMAND ${TOITC} -w ${CMAKE_BINARY_DIR}/system.snapshot ${BOOT_PROJECT_ROOT_ARGS} ${BOOT}
             VERBATIM)
 
     add_custom_command(
             TARGET firmware
+            POST_BUILD
             COMMAND rm -f firmware.envelope
             COMMAND "${FIRMWARE_BIN}"
                     "--envelope=firmware.envelope"
@@ -128,6 +130,7 @@ function(toit_postprocess)
     if (CONFIG_TOIT_WIFI_SSID AND CONFIG_TOIT_WIFI_PASSWORD)
         add_custom_command(
                 TARGET firmware
+                POST_BUILD
                 COMMAND "${FIRMWARE_BIN}"
                         "--envelope=firmware.envelope"
                         "property" "set" "wifi" "'{\"wifi.ssid\":\"${CONFIG_TOIT_WIFI_SSID}\",\"wifi.password\":\"${CONFIG_TOIT_WIFI_PASSWORD}\"}'"
@@ -145,6 +148,7 @@ function(toit_postprocess)
 
         add_custom_command(
                 TARGET firmware
+                POST_BUILD
                 COMMAND "${TOITC}" "-w" "${CMAKE_BINARY_DIR}/program.snapshot" ${ENTRY_PROJECT_ROOT_ARGS} ${RUN_PROGRAM}
                 COMMAND "${FIRMWARE_BIN}"
                         "--envelope=firmware.envelope"
@@ -155,6 +159,7 @@ function(toit_postprocess)
 
     add_custom_command(
             TARGET firmware
+            POST_BUILD
             COMMAND "${FIRMWARE_BIN}"
                     "--envelope=firmware.envelope"
                     "extract" "--firmware.bin" "-o" "${EXECUTABLE_NAME}-firmware.bin"
@@ -163,12 +168,14 @@ function(toit_postprocess)
 
     add_custom_target(mod_flash_args DEPENDS firmware)
     add_dependencies(flash mod_flash_args)
+    add_dependencies(app mod_flash_args)
     # To convince idf.py that it should flash the generated binary from the firmware tool, the flash_args file
     # is updated with an alternative name for the application binary
     add_custom_command(
             TARGET mod_flash_args
+            POST_BUILD
             COMMAND sed -i s/${EXECUTABLE_NAME}\\.bin/${EXECUTABLE_NAME}-firmware\\.bin/g ${CMAKE_BINARY_DIR}/flash_args
-            COMMAND cat ${CMAKE_BINARY_DIR}/flash_args
+            COMMAND sed -i s/${EXECUTABLE_NAME}\\.bin/${EXECUTABLE_NAME}-firmware\\.bin/g ${CMAKE_BINARY_DIR}/flasher_args.json
     )
 
 endfunction()
