@@ -13,13 +13,15 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-import encoding.json
-import encoding.ubjson
 import writer
 import system.assets
 
 import cli
 import host.file
+
+import encoding.json
+import encoding.ubjson
+import encoding.tison
 
 import .firmware show read_file write_file
 
@@ -59,8 +61,10 @@ add_cmd -> cli.Command:
   return cli.Command "add"
       --options=[
         option_output,
-        cli.Flag "ubjson"
-            --short_help="Encode the asset as UBJSON."
+        cli.OptionEnum "format" ["binary", "ubjson", "tison"]
+            --default="binary"
+            --short_help="Pick the encoding format."
+
       ]
       --rest=[
         cli.OptionString "name"
@@ -75,16 +79,20 @@ add_cmd -> cli.Command:
 add_asset parsed/cli.Parsed -> none:
   name := parsed["name"]
   path := parsed["path"]
-  encode_as_ubjson := parsed["ubjson"]
   asset := read_file path
   update_assets parsed: | entries/Map |
-    if encode_as_ubjson:
+    if parsed["format"] != "binary":
       decoded := null
       exception := catch: decoded = json.decode asset
       if not decoded:
         print "Unable to decode '$path' as JSON. ($exception)"
         exit 1
-      asset = ubjson.encode decoded
+      if parsed["format"] == "ubjson":
+        asset = ubjson.encode decoded
+      else if parsed["format"] == "tison":
+        asset = tison.encode decoded
+      else:
+        unreachable
     entries[name] = asset
 
 remove_cmd -> cli.Command:

@@ -21,7 +21,8 @@ import reader
 import uuid
 
 import encoding.json
-import encoding.ubjson
+import encoding.tison
+
 import system.assets
 
 import ar
@@ -370,13 +371,15 @@ extract parsed/cli.Parsed -> none:
 extract_binary envelope/Envelope -> ByteArray:
   containers ::= []
   entries := envelope.entries
+  properties := entries.get AR_ENTRY_PROPERTIES
+      --if_present=: json.decode it
+      --if_absent=: {:}
 
-  properties_entry := entries.get AR_ENTRY_PROPERTIES
-  properties := properties_entry ? (json.decode properties_entry) : {:}
   system := entries.get AR_ENTRY_SYSTEM_SNAPSHOT
   if system:
-    wifi := properties.get "wifi"
-    assets_encoded := wifi ? (assets.encode { "wifi": ubjson.encode wifi }) : null
+    assets_encoded := properties.get "wifi"
+        --if_present=: assets.encode { "wifi": tison.encode it }
+        --if_absent=: null
     containers.add (ContainerEntry "system" system --assets=assets_encoded)
 
   entries.do: | name/string content/ByteArray |
@@ -391,7 +394,6 @@ extract_binary envelope/Envelope -> ByteArray:
   system_uuid/uuid.Uuid? := null
   if properties.contains "uuid":
     catch: system_uuid = uuid.parse properties["uuid"]
-    properties.remove "uuid"
   if not system_uuid:
     system_uuid = uuid.uuid5 "$random" "$Time.now".to_byte_array
 

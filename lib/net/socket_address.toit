@@ -2,8 +2,7 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import serialization show serialize deserialize
-
+import encoding.tison
 import .ip_address
 
 class SocketAddress:
@@ -13,7 +12,7 @@ class SocketAddress:
   constructor .ip .port:
 
   constructor.deserialize bytes/ByteArray:
-    values := deserialize bytes
+    values := tison.decode bytes
     return SocketAddress
       IpAddress.deserialize values[0]
       values[1]
@@ -29,4 +28,4 @@ class SocketAddress:
     return "$ip:$port"
 
   to_byte_array:
-    return serialize [ip.to_byte_array, port]
+    return tison.encode [ip.to_byte_array, port]

@@ -365,9 +365,8 @@ PRIMITIVE(total_run_time) {
 }
 
 PRIMITIVE(get_mac_address) {
-  Error* error = null;
-  ByteArray* result = process->allocate_byte_array(6, &error);
-  if (result == null) return error;
+  ByteArray* result = process->allocate_byte_array(6);
+  if (result == null) ALLOCATION_FAILED;
 
   ByteArray::Bytes bytes = ByteArray::Bytes(result);
   esp_err_t err = esp_efuse_mac_get_default(bytes.address());
@@ -378,10 +377,8 @@ PRIMITIVE(get_mac_address) {
 
 PRIMITIVE(rtc_user_bytes) {
   uint8* rtc_memory = RtcMemory::user_data_address();
-  Error* error = null;
   ByteArray* result = process->object_heap()->allocate_external_byte_array(RtcMemory::RTC_USER_DATA_SIZE, rtc_memory, false, false);
-  if (result == null) return error;
-
+  if (result == null) ALLOCATION_FAILED;
   return result;
 }
 
@@ -522,9 +519,8 @@ PRIMITIVE(memory_page_report) {
   }
   encoder.write_int(report.GRANULARITY);
   if (buffer.has_overflow()) OUT_OF_BOUNDS;
-  Error* error = null;
-  ByteArray* result = process->allocate_byte_array(buffer.size(), &error);
-  if (result == null) return error;
+  ByteArray* result = process->allocate_byte_array(buffer.size());
+  if (result == null) ALLOCATION_FAILED;
   ByteArray::Bytes bytes(result);
   memcpy(bytes.address(), buffer.content(), buffer.size());
   return result;

@@ -47,9 +47,8 @@ PRIMITIVE(adler32_add) {
 
 PRIMITIVE(adler32_get) {
   ARGS(Adler32, adler32, bool, destructive);
-  Error* error = null;
-  ByteArray* result = process->allocate_byte_array(4, &error);
-  if (result == null) return error;
+  ByteArray* result = process->allocate_byte_array(4);
+  if (result == null) ALLOCATION_FAILED;
   ByteArray::Bytes bytes(result);
   adler32->get(bytes.address());
   if (destructive) {

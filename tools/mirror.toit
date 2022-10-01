@@ -646,7 +646,7 @@ class HeapPage extends Mirror:
         offset += HEADER_
       repetitions := extra + (((byte >> 4) & 0b11) + 1) * GRANULARITY_
       use := byte & 0b1111
-      usage_char := "?ABSTUFWH       "[use]
+      usage_char := "?ABSTUFWH?EOP?W "[use]
       block.call offset repetitions usage_char (offset + repetitions == PAGE_)
       offset += repetitions
     if offset < PAGE_:
@@ -680,10 +680,12 @@ DESCRIPTIONS_ ::= {
   'B': "Bignum (crypto)",
   'S': "External string",
   'T': "Toit GCed heap",
-  //'U': "Unused (spare) Toit GCed heap",  // Not currently in use.
   'F': "Free",
-  'W': "LwIP",
+  'W': "LwIP/WiFi",
   'H': "Malloc heap bookkeeping",
+  'E': "Event sources",
+  'O': "Other threads",
+  'P': "Thread spawn",
   ' ': "Not part of the heap",
 }
 
@@ -750,12 +752,15 @@ class ColorBlockOutputter_ extends UnicodeBlockOutputter_:
   colors ::= {
     '?': 240,  // Dark grey, misc allocated.
     'A': 48,   // External byte array.
-    'B': 111,   // Bignum.
+    'B': 111,  // Bignum.
     'S': 190,  // External string.
-    'T': 214,   // Toit heap.
+    'T': 214,  // Toit heap.
     'U': 112,  // Unused (spare) Toit heap.
     'F': 44,   // Cyan, free memory.
-    'W': 170,  // Purple, LwIP
+    'W': 170,  // Purple, LwIP/Wifi.
+    'E': 89,   // Dark red, event sources.
+    'O': 160,  // Bright red, other threads.
+    'P': 20,   // Aquamarine, thread spawn.
     'H': 248,  // Heap overhead/headers.
     ' ': 15    // White, outside the heap.
   }

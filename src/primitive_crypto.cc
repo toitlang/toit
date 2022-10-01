@@ -47,9 +47,8 @@ PRIMITIVE(sha1_add) {
 
 PRIMITIVE(sha1_get) {
   ARGS(Sha1, sha1);
-  Error* error = null;
-  ByteArray* result = process->allocate_byte_array(20, &error);
-  if (result == null) return error;
+  ByteArray* result = process->allocate_byte_array(20);
+  if (result == null) ALLOCATION_FAILED;
   uint8 hash[20];
   sha1->get_hash(hash);
   memcpy(ByteArray::Bytes(result).address(), hash, 20);
@@ -79,9 +78,8 @@ PRIMITIVE(sha256_add) {
 
 PRIMITIVE(sha256_get) {
   ARGS(Sha256, sha256);
-  Error* error = null;
-  ByteArray* result = process->allocate_byte_array(Sha256::HASH_LENGTH, &error);
-  if (result == null) return error;
+  ByteArray* result = process->allocate_byte_array(Sha256::HASH_LENGTH);
+  if (result == null) ALLOCATION_FAILED;
   ByteArray::Bytes bytes(result);
   sha256->get(bytes.address());
   sha256->resource_group()->unregister_resource(sha256);
@@ -112,9 +110,8 @@ PRIMITIVE(siphash_add) {
 
 PRIMITIVE(siphash_get) {
   ARGS(Siphash, siphash);
-  Error* error = null;
-  ByteArray* result = process->allocate_byte_array(siphash->output_length(), &error);
-  if (result == null) return error;
+  ByteArray* result = process->allocate_byte_array(siphash->output_length());
+  if (result == null) ALLOCATION_FAILED;
   siphash->get_hash(ByteArray::Bytes(result).address());
   siphash->resource_group()->unregister_resource(siphash);
   siphash_proxy->clear_external_address();
@@ -127,7 +124,7 @@ AesContext::AesContext(
     bool encrypt) : SimpleResource(group) {
   mbedtls_aes_init(&context_);
   if (encrypt) {
-    mbedtls_aes_setkey_enc(&context_, key->address(), key->length() * BYTE_BIT_SIZE); 
+    mbedtls_aes_setkey_enc(&context_, key->address(), key->length() * BYTE_BIT_SIZE);
   } else {
     mbedtls_aes_setkey_dec(&context_, key->address(), key->length() * BYTE_BIT_SIZE);
   }
@@ -179,9 +176,8 @@ PRIMITIVE(aes_cbc_crypt) {
   ARGS(AesCbcContext, context, Blob, input, bool, encrypt);
   if ((input.length() % AesContext::AES_BLOCK_SIZE) != 0) INVALID_ARGUMENT;
 
-  Error* error = null;
-  ByteArray* result = process->allocate_byte_array(input.length(), &error);
-  if (result == null) return error;
+  ByteArray* result = process->allocate_byte_array(input.length());
+  if (result == null) ALLOCATION_FAILED;
 
   ByteArray::Bytes output_bytes(result);
 
@@ -200,9 +196,8 @@ PRIMITIVE(aes_ecb_crypt) {
   ARGS(AesContext, context, Blob, input, bool, encrypt);
   if ((input.length() % AesContext::AES_BLOCK_SIZE) != 0) INVALID_ARGUMENT;
 
-  Error* error = null;
-  ByteArray* result = process->allocate_byte_array(input.length(), &error);
-  if (result == null) return error;
+  ByteArray* result = process->allocate_byte_array(input.length());
+  if (result == null) ALLOCATION_FAILED;
 
   ByteArray::Bytes output_bytes(result);
 

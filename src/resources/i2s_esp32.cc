@@ -244,9 +244,8 @@ PRIMITIVE(write) {
 PRIMITIVE(read) {
   ARGS(I2SResource, i2s);
 
-  Error* error = null;
-  ByteArray* data = process->allocate_byte_array(i2s->alignment(), &error, /*force_external*/ true);
-  if (data == null) return error;
+  ByteArray* data = process->allocate_byte_array(i2s->alignment(), /*force_external*/ true);
+  if (data == null) ALLOCATION_FAILED;
 
   ByteArray::Bytes rx(data);
   size_t read = 0;

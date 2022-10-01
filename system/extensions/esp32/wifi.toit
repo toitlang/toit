@@ -19,7 +19,7 @@ import log
 import device
 import net.wifi
 
-import encoding.ubjson
+import encoding.tison
 import system.assets
 
 import system.api.wifi show WifiService
@@ -62,7 +62,7 @@ class WifiServiceDefinition extends NetworkServiceDefinitionBase:
         // the asset might simply be known as "config". For now,
         // it co-exists with other system assets.
         assets.decode.get "wifi" --if_present=: | encoded |
-          catch --trace: effective = ubjson.decode encoded
+          catch --trace: effective = tison.decode encoded
 
     ssid/string? := effective.get wifi.CONFIG_SSID
     if not ssid or ssid.is_empty: throw "wifi ssid not provided"

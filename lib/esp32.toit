@@ -2,7 +2,6 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import encoding.ubjson
 import system.trace show send_trace_message
 
 ESP_RST_UNKNOWN   ::= 0 // Reset reason can not be determined.

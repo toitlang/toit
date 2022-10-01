@@ -186,7 +186,7 @@ namespace toit {
   PRIMITIVE(byte_array_length, 1)            \
   PRIMITIVE(byte_array_at, 2)                \
   PRIMITIVE(byte_array_at_put, 3)            \
-  PRIMITIVE(byte_array_new, 1)               \
+  PRIMITIVE(byte_array_new, 2)               \
   PRIMITIVE(byte_array_new_external, 1)      \
   PRIMITIVE(byte_array_replace, 5)           \
   PRIMITIVE(byte_array_is_valid_string_content, 3) \
@@ -236,8 +236,6 @@ namespace toit {
   PRIMITIVE(dump_heap, 1)                    \
   PRIMITIVE(serial_print_heap_report, 2)     \
   PRIMITIVE(get_env, 1)                      \
-  PRIMITIVE(varint_encode, 3)                \
-  PRIMITIVE(varint_decode, 2)                \
   PRIMITIVE(literal_index, 1)                \
   PRIMITIVE(word_size, 0)                    \
 
@@ -453,8 +451,8 @@ namespace toit {
 #define MODULE_ENCODING(PRIMITIVE)           \
   PRIMITIVE(base64_encode, 2)                \
   PRIMITIVE(base64_decode, 2)                \
-  PRIMITIVE(hex_encode, 1)                   \
-  PRIMITIVE(hex_decode, 1)                   \
+  PRIMITIVE(tison_encode, 1)                 \
+  PRIMITIVE(tison_decode, 1)                 \
 
 #define MODULE_FONT(PRIMITIVE)               \
   PRIMITIVE(get_font, 2)                     \

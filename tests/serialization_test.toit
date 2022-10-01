@@ -2,38 +2,27 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import serialization show serialize deserialize
+import encoding.tison
 import expect show *
 
 test_atom object:
   expect_equals
-    object
-    deserialize
-      serialize object
+      object
+      tison.decode
+          tison.encode object
 
 test_array array:
-  result := deserialize
-    serialize array
+  result := tison.decode
+      tison.encode array
   expect_equals array.size result.size
   for i := 0; i < array.size; i++:
     expect_equals array[i] result[i]
-
-test_array_cycle:
-/*
-  TODO(anders): Re-enable when fixed
-  array := Array_ 1
-  array[0] = array
-  result := deserialize
-    serialize array
-  expect_equals array.size result.size
-  expect (identical result[0] result)
-  */
 
 test_map:
   map := Map
   map["1"] = "1"
   map["45"] = "45"
-  result := deserialize (serialize map)
+  result := tison.decode (tison.encode map)
   expect_equals result["1"] "1"
   expect_equals result["45"] "45"
   expect (not result.contains 2)
@@ -63,6 +52,5 @@ main:
   a = Array_ 1
   a[0] = "Fisk"
   test_array a
-  test_array_cycle
   c := 75
   test_map

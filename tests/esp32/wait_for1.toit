@@ -22,11 +22,11 @@ PIN_IN ::= 18
 PIN_OUT ::= 19
 
 ITERATIONS ::= 10_000
+SHORT_PULSE_ITERATIONS ::= 10
 
 main:
   pin_in := gpio.Pin PIN_IN --input --pull_down
   pin_out := gpio.Pin PIN_OUT --output
-  sleep --ms=100
 
   ITERATIONS.repeat: | counter |
     if counter % 1000 == 0: print "Iteration: $counter"
@@ -36,5 +36,17 @@ main:
     while pin_in.get != 1: null
     pin_out.set 0
     while pin_in.get != 0: null
+
+  sleep --ms=500
+  print "sending short pings"
+  SHORT_PULSE_ITERATIONS.repeat:
+    sleep --ms=150
+    pin_out.set 1
+    // TODO(florian): we seem to miss very short pulses.
+    sleep --ms=1
+    pin_out.set 0
+
+  print "short pings done"
+  pin_in.wait_for 1
 
   print "done"

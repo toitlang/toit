@@ -127,7 +127,12 @@ class ObjectNotifyMessage : public Message {
 class MessageEncoder {
  public:
   explicit MessageEncoder(uint8* buffer) : _buffer(buffer) { }
-  MessageEncoder(Process* process, uint8* buffer);
+  MessageEncoder(Process* process, uint8* buffer, bool flatten = false);
+
+  ~MessageEncoder() {
+    ASSERT(!_flatten || _copied_count == 0);
+    ASSERT(!_flatten || _externals_count == 0);
+  }
 
   static void encode_process_message(uint8* buffer, uint8 value);
 
@@ -148,6 +153,8 @@ class MessageEncoder {
  private:
   Process* _process = null;
   Program* _program = null;
+  bool _flatten = false;
+
   uint8* _buffer;  // The buffer is null when we're encoding for size.
   int _cursor = 0;
   int _nesting = 0;
@@ -179,10 +186,10 @@ class MessageEncoder {
 
 class MessageDecoder {
  public:
-  explicit MessageDecoder(uint8* buffer) : _buffer(buffer) { }
-  MessageDecoder(Process* process, uint8* buffer);
+  explicit MessageDecoder(const uint8* buffer) : _buffer(buffer) { }
+  MessageDecoder(Process* process, const uint8* buffer);
 
-  static bool decode_process_message(uint8* buffer, int* value);
+  static bool decode_process_message(const uint8* buffer, int* value);
 
   bool allocation_failed() const { return _allocation_failed; }
 
@@ -200,7 +207,7 @@ class MessageDecoder {
  private:
   Process* _process = null;
   Program* _program = null;
-  uint8* _buffer;
+  const uint8* _buffer;
   int _cursor = 0;
 
   bool _allocation_failed = false;

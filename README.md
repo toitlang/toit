@@ -125,9 +125,9 @@ The Toit VM has a requirement for the [Espressif IoT Development Framework](http
 
 We recommend you use Toitware's [ESP-IDF fork](https://github.com/toitware/esp-idf) that comes with a few changes:
 
-* Custom malloc implementation.
+* Custom malloc implementation
 * Allocation-fixes for UART, etc.
-* LWIP fixes.
+* LWIP fixes
 
 The fork's repository has been added as a submodule reference to this repository, so doing a recursive submodule init & update will establish everything nedded:
 
@@ -352,6 +352,29 @@ build/host/sdk/bin/toit.compile -w assets.snapshot assets.toit
 build/host/sdk/tools/firmware -e build/esp32/firmware.envelope \
     container install --assets=encoded.assets assets assets.snapshot
 ```
+
+If you update the source code in `assets.toit` slightly, the 
+printed information will be more digestible:
+
+```
+import system.assets
+
+main:
+  readme := assets.decode["readme"]
+  // Guard against splitting a unicode character by 
+  // making this non-throwing.
+  print readme[0..80].to_string_non_throwing
+```
+
+You'll need to reinstall the container after this by recompiling
+the `assets.toit` file to `assets.snapshot` and running:
+
+``` sh
+build/host/sdk/tools/firmware -e build/esp32/firmware.envelope \
+    container install --assets=encoded.assets assets assets.snapshot
+```
+
+again.
 
 ---
 *NOTE*

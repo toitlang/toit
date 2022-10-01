@@ -3,7 +3,7 @@
 // found in the lib/LICENSE file.
 
 import device
-import encoding.ubjson
+import encoding.tison
 import uuid
 import esp32
 
@@ -51,13 +51,13 @@ class FlashStore_ implements device.Store:
     bytes := kv_store_.bytes key
     if not bytes: return null
 
-    return ubjson.decode bytes
+    return tison.decode bytes
 
   delete key/string:
     kv_store_.delete key
 
   set key/string value/any:
-    bytes := ubjson.encode value
+    bytes := tison.encode value
     return kv_store_.set_bytes key bytes
 
 class ConsoleConnection_:
