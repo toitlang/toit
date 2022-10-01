@@ -465,7 +465,8 @@ class MallocReport extends Mirror:
         if uses[j] != 0 or fullnesses[j] != 0:
           result.add "0x$(%08x base + j * granularity): $(%3d fullnesses[j])% $(usage_letters_ uses[j] fullnesses[j])"
         if uses[j] & MEMORY_PAGE_MERGE_WITH_NEXT_ == 0:
-          result.add "--------------------------------------------------------"
+          separator := "--------------------------------------------------------"
+          if result[result.size - 1] != separator: result.add separator
     return result.join "\n"
 
   key_ result/List --terminal/bool -> none:
@@ -478,26 +479,24 @@ class MallocReport extends Mirror:
       result.add "│$(%2d k)k pages.  All pages are $(%2d k)k, even the ones that are shown wider       │"
       result.add "│ because they have many different allocations in them.                  │"
     else:
-      result.add "│Each line is a $(%2d k)k page.                                                      │"
-    result.add   "│   X  = External strings/bytearrays.        B  = Network buffers.       │"
-    result.add   "│   W  = TLS/crypto.                         M  = Misc. allocations.     │"
-    result.add   "│   🐱 = Toit managed heap.                  -- = Free page.             │"
+      result.add "│Each line is a $(%2d k)k page.                                                │"
     if terminal:
+      result.add "│   X  = External strings/bytearrays.        B  = Network buffers.       │"
+      result.add "│   W  = TLS/crypto.                         M  = Misc. allocations.     │"
+      result.add "│   🐱 = Toit managed heap.                  -- = Free page.             │"
       result.add "│        Fully allocated $scale Completely free page.  │"
     result.add   "└────────────────────────────────────────────────────────────────────────┘"
 
   usage_letters_ use/int fullness/int -> string:
-    symbols := ""
-    if use & MEMORY_PAGE_TOIT_ != 0: symbols += "🐱"
-    if use & MEMORY_PAGE_BUFFERS_ != 0: symbols = "B"
-    if use & MEMORY_PAGE_EXTERNAL_ != 0: symbols = "X"
-    if use & MEMORY_PAGE_TLS_ != 0: symbols = "W"
-    if use & MEMORY_PAGE_MISC_ != 0: symbols = "M"
+    symbols := []
+    if use & MEMORY_PAGE_TOIT_ != 0: symbols.add "Toit"
+    if use & MEMORY_PAGE_BUFFERS_ != 0: symbols.add "Network Buffers"
+    if use & MEMORY_PAGE_EXTERNAL_ != 0: symbols.add "External strings/bytearrays"
+    if use & MEMORY_PAGE_TLS_ != 0: symbols.add "TLS/Crypto"
+    if use & MEMORY_PAGE_MISC_ != 0: symbols.add "Misc"
     if fullness == 0:
-      symbols = "--"
-    while symbols.size < 2:
-      symbols += " "
-    return symbols
+      symbols = ["(Free)"]
+    return symbols.join ", "
 
   terminal_stringify -> string:
     result := []
