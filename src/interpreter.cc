@@ -181,11 +181,10 @@ Object** Interpreter::push_error(Object** sp, Object* type, const char* message)
   sp = load_stack();
 
   if (success) {
-    Error* error = null;
-    ByteArray* trace = process->allocate_byte_array(buffer.size(), &error);
+    ByteArray* trace = process->allocate_byte_array(buffer.size());
     for (int attempts = 1; trace == null && attempts < 4; attempts++) {
       sp = gc(sp, false, attempts, false);
-      trace = process->allocate_byte_array(buffer.size(), &error);
+      trace = process->allocate_byte_array(buffer.size());
     }
     if (trace == null) {
       DROP(2);

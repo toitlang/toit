@@ -1,0 +1,6 @@
+toit-location/src/location.toit:44:25: warning: Deprecated 'serialize'
+    return serialization.serialize [latitude, longitude]
+                        ^
+toit-location/src/location.toit:30:28: warning: Deprecated 'deserialize'
+    values := serialization.deserialize bytes
+                           ^

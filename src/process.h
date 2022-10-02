@@ -150,14 +150,12 @@ class Process : public ProcessListFromProcessGroup::Element,
   void set_current_directory(int fd) { _current_directory = fd; }
   int gc_count(GcType type) { return _object_heap.gc_count(type); }
 
-  // Special allocation of byte arrays and strings due to multiple reasons for failure.
-  // The error string is only set if null is returned.
-  String* allocate_string(const char* content, Error** error);
-  String* allocate_string(int length, Error** error);
-  String* allocate_string(const char* content, int length, Error** error);
+  String* allocate_string(const char* content);
+  String* allocate_string(int length);
+  String* allocate_string(const char* content, int length);
   Object* allocate_string_or_error(const char* content);
   Object* allocate_string_or_error(const char* content, int length);
-  ByteArray* allocate_byte_array(int length, Error** error, bool force_external=false);
+  ByteArray* allocate_byte_array(int length, bool force_external=false);
 
   void set_max_heap_size(word bytes) {
     _object_heap.set_max_heap_size(bytes);

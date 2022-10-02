@@ -287,9 +287,8 @@ PRIMITIVE(read)  {
   available = Utils::max(available, ByteArray::MIN_IO_BUFFER_SIZE);
   available = Utils::min(available, ByteArray::PREFERRED_IO_BUFFER_SIZE);
 
-  Error* error = null;
-  ByteArray* array = process->allocate_byte_array(available, &error, /*force_external*/ true);
-  if (array == null) return error;
+  ByteArray* array = process->allocate_byte_array(available, /*force_external*/ true);
+  if (array == null) ALLOCATION_FAILED;
 
   int read = recv(fd, ByteArray::Bytes(array).address(), available, 0);
   if (read == -1) {

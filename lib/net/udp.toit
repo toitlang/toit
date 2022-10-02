@@ -2,8 +2,7 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import serialization show serialize deserialize
-
+import encoding.tison
 import .socket_address
 
 interface Interface:
@@ -18,13 +17,13 @@ class Datagram:
   constructor .data .address:
 
   constructor.deserialize bytes/ByteArray:
-    values := deserialize bytes
+    values := tison.decode bytes
     return Datagram
       values[0]
       SocketAddress.deserialize values[1]
 
   to_byte_array:
-    return serialize [data, address.to_byte_array]
+    return tison.encode [data, address.to_byte_array]
 
 interface Socket:
   local_address -> SocketAddress

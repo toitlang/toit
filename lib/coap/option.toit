@@ -22,7 +22,7 @@ class Option:
     if u == 0:
       value = ByteArray 0
     else if u < 256:
-      value = ByteArray 1: u
+      value = ByteArray 1 --filler=u
     else if u < 256 * 256:
       value = ByteArray 2
       binary.BIG_ENDIAN.put_uint16 value 0 u
