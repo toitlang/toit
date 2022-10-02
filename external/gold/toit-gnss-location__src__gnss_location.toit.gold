@@ -1,0 +1,12 @@
+<pkg:toit-location>/location.toit:44:25: warning: Deprecated 'serialize'
+    return serialization.serialize [latitude, longitude]
+                        ^
+toit-gnss-location/src/gnss_location.toit:53:25: warning: Deprecated 'serialize'
+    return serialization.serialize [
+                        ^
+toit-gnss-location/src/gnss_location.toit:39:28: warning: Deprecated 'deserialize'
+    values := serialization.deserialize bytes
+                           ^
+<pkg:toit-location>/location.toit:30:28: warning: Deprecated 'deserialize'
+    values := serialization.deserialize bytes
+                           ^
