@@ -36,6 +36,11 @@ enum MessageType {
   MESSAGE_SYSTEM = 3,
 };
 
+enum MessageFormat {
+  MESSAGE_FORMAT_IPC,
+  MESSAGE_FORMAT_TISON,
+};
+
 enum {
   MESSAGING_PROCESS_MESSAGE_SIZE = 3,
 
@@ -127,22 +132,18 @@ class ObjectNotifyMessage : public Message {
 class MessageEncoder {
  public:
   explicit MessageEncoder(uint8* buffer) : _buffer(buffer) { }
-  MessageEncoder(Process* process, uint8* buffer, bool flatten = false);
-
-  ~MessageEncoder() {
-    ASSERT(!_flatten || _copied_count == 0);
-    ASSERT(!_flatten || _externals_count == 0);
-  }
+  MessageEncoder(Process* process, uint8* buffer)
+      : MessageEncoder(process, buffer, MESSAGE_FORMAT_IPC) { }
 
   static void encode_process_message(uint8* buffer, uint8 value);
 
-  int size() const { return _cursor; }
+  unsigned size() const { return _cursor; }
   bool malloc_failed() const { return _malloc_failed; }
 
   void free_copied();
   void neuter_externals();
 
-  bool encode(Object* object);
+  bool encode(Object* object) { ASSERT(!encoding_tison()); return encode_any(object); }
   bool encode_byte_array_external(void* data, int length);
 
 #ifndef TOIT_FREERTOS
@@ -150,12 +151,25 @@ class MessageEncoder {
   bool encode_bundles(SnapshotBundle system, SnapshotBundle application);
 #endif
 
- private:
-  Process* _process = null;
-  Program* _program = null;
-  bool _flatten = false;
+ protected:
+  MessageEncoder(Process* process, uint8* buffer, MessageFormat format);
 
-  uint8* _buffer;  // The buffer is null when we're encoding for size.
+  bool encoding_for_size() const { return _buffer == null; }
+  bool encoding_tison() const { return _format == MESSAGE_FORMAT_TISON; }
+  unsigned copied_count() const { return _copied_count; }
+  unsigned externals_count() const { return _externals_count; }
+
+  bool encode_any(Object* object);
+
+  void write_uint32(uint32 value);
+  void write_cardinal(uword value);
+
+ private:
+  Process* const _process = null;
+  Program* const _program = null;
+  const MessageFormat _format = MESSAGE_FORMAT_IPC;
+
+  uint8* const _buffer;  // The buffer is null when we're encoding for size.
   int _cursor = 0;
   int _nesting = 0;
 
@@ -166,8 +180,6 @@ class MessageEncoder {
 
   unsigned _externals_count = 0;
   ByteArray* _externals[MESSAGING_ENCODING_MAX_EXTERNALS];
-
-  bool encoding_for_size() const { return _buffer == null; }
 
   bool encode_array(Array* object, int size);
   bool encode_byte_array(ByteArray* object);
@@ -181,22 +193,47 @@ class MessageEncoder {
 
   void write_uint64(uint64 value);
   void write_pointer(void* value);
-  void write_cardinal(uword value);
+};
+
+class TisonEncoder : public MessageEncoder {
+ public:
+  TisonEncoder(Process* process)
+      : MessageEncoder(process, null, MESSAGE_FORMAT_TISON) { }
+  TisonEncoder(Process* process, uint8* buffer, unsigned payload_size)
+      : MessageEncoder(process, buffer, MESSAGE_FORMAT_TISON)
+      , _payload_size(payload_size) {
+    ASSERT(payload_size > 0);
+  }
+
+  ~TisonEncoder() {
+    ASSERT(copied_count() == 0);
+    ASSERT(externals_count() == 0);
+  }
+
+  unsigned payload_size() const { return _payload_size; }
+
+  bool encode(Object* object);
+
+ private:
+   unsigned _payload_size = 0;
 };
 
 class MessageDecoder {
  public:
   explicit MessageDecoder(const uint8* buffer) : _buffer(buffer) { }
-  MessageDecoder(Process* process, const uint8* buffer);
+  MessageDecoder(Process* process, const uint8* buffer)
+      : MessageDecoder(process, buffer, INT_MAX, MESSAGE_FORMAT_IPC) { }
 
   static bool decode_process_message(const uint8* buffer, int* value);
 
-  bool allocation_failed() const { return _allocation_failed; }
+  bool success() const { return _status == DECODE_SUCCESS; }
+  bool allocation_failed() const { return _status == DECODE_ALLOCATION_FAILED; }
+  bool malformed_input() const { return _status == DECODE_MALFORMED_INPUT; }
 
   void register_external_allocations();
   void remove_disposing_finalizers();
 
-  Object* decode();
+  Object* decode() { ASSERT(!decoding_tison()); return decode_any(); }
   bool decode_byte_array_external(void** data, int* length);
 
   // Encoded messages may contain pointers to external areas allocated using
@@ -204,13 +241,37 @@ class MessageDecoder {
   // all external areas before freeing the buffer itself.
   static void deallocate(uint8* buffer);
 
- private:
-  Process* _process = null;
-  Program* _program = null;
-  const uint8* _buffer;
-  int _cursor = 0;
+ protected:
+  MessageDecoder(Process* process, const uint8* buffer, int size, MessageFormat format);
 
-  bool _allocation_failed = false;
+  bool decoding_tison() const { return _format == MESSAGE_FORMAT_TISON; }
+  bool overflown() const { return _cursor > _size; }
+  int remaining() const { return _size - _cursor; }
+  unsigned externals_count() const { return _externals_count; }
+
+  Object* decode_any();
+
+  Object* mark_malformed() { _status = DECODE_MALFORMED_INPUT; return null; }
+  Object* mark_allocation_failed() { _status = DECODE_ALLOCATION_FAILED; return null; }
+
+  uword read_cardinal();
+  uint32 read_uint32();
+
+ private:
+  enum Status {
+    DECODE_SUCCESS,
+    DECODE_ALLOCATION_FAILED,
+    DECODE_MALFORMED_INPUT,
+  };
+
+  Process* const _process = null;
+  Program* const _program = null;
+  const uint8* const _buffer;
+  const int _size = INT_MAX;
+  const MessageFormat _format = MESSAGE_FORMAT_IPC;
+
+  int _cursor = 0;
+  Status _status = DECODE_SUCCESS;
 
   unsigned _externals_count = 0;
   HeapObject* _externals[MESSAGING_ENCODING_MAX_EXTERNALS];
@@ -227,10 +288,25 @@ class MessageDecoder {
 
   void deallocate();
 
-  uint8 read_uint8() { return _buffer[_cursor++]; }
+  uint8 read_uint8() {
+    int cursor = _cursor++;
+    return (cursor < _size) ? _buffer[cursor] : 0;
+  }
+
   uint64 read_uint64();
   uint8* read_pointer();
-  uword read_cardinal();
+};
+
+class TisonDecoder : public MessageDecoder {
+ public:
+  TisonDecoder(Process* process, const uint8* buffer, int length)
+      : MessageDecoder(process, buffer, length, MESSAGE_FORMAT_TISON) { }
+
+  ~TisonDecoder() {
+    ASSERT(externals_count() == 0);
+  }
+
+  Object* decode();
 };
 
 class ExternalSystemMessageHandler : private ProcessRunner {

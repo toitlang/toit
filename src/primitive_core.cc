@@ -126,14 +126,14 @@ PRIMITIVE(spawn) {
   InitialMemoryManager manager;
   if (!manager.allocate()) ALLOCATION_FAILED;
 
-  int length = 0;
+  unsigned size = 0;
   { MessageEncoder size_encoder(process, null);
     if (!size_encoder.encode(arguments)) WRONG_TYPE;
-    length = size_encoder.size();
+    size = size_encoder.size();
   }
 
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + EXTERNAL_BYTE_ARRAY_MALLOC_TAG);
-  uint8* buffer = unvoid_cast<uint8*>(malloc(length));
+  uint8* buffer = unvoid_cast<uint8*>(malloc(size));
   if (buffer == null) MALLOC_FAILED;
 
   MessageEncoder encoder(process, buffer);
@@ -1802,14 +1802,14 @@ PRIMITIVE(task_transfer) {
 PRIMITIVE(process_send) {
   ARGS(int, process_id, int, type, Object, array);
 
-  int length = 0;
+  unsigned size = 0;
   { MessageEncoder size_encoder(process, null);
     if (!size_encoder.encode(array)) WRONG_TYPE;
-    length = size_encoder.size();
+    size = size_encoder.size();
   }
 
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + EXTERNAL_BYTE_ARRAY_MALLOC_TAG);
-  uint8* buffer = unvoid_cast<uint8*>(malloc(length));
+  uint8* buffer = unvoid_cast<uint8*>(malloc(size));
   if (buffer == null) MALLOC_FAILED;
 
   SystemMessage* message = null;
