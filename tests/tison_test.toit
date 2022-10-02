@@ -14,6 +14,11 @@ main:
   test_byte_arrays
   test_complex
 
+  test_wrong_marker
+  test_wrong_version
+  test_wrong_size
+  test_random_corruption
+
 test_simple_types -> none:
   // null
   test_round_trip null
@@ -97,3 +102,30 @@ test_round_trip x/any -> none:
   expect_bytes_equal
       ubjson.encode x
       ubjson.encode decoded
+
+test_wrong_marker:
+  x := tison.encode {:}
+  x[0] ^= 99
+  expect_throw "WRONG_OBJECT_TYPE": tison.decode x
+
+test_wrong_version:
+  x := tison.encode {:}
+  x[1] ^= 99
+  expect_throw "WRONG_OBJECT_TYPE": tison.decode x
+
+test_wrong_size:
+  x := tison.encode {:}
+  expect_throw "WRONG_OBJECT_TYPE": tison.decode x[0..x.size - 1]
+  expect_throw "WRONG_OBJECT_TYPE": tison.decode (x + #[42])
+
+test_random_corruption:
+  variants := [ null, 1, -2, {:}, [7, 9, 13], ByteArray 19: it ]
+  variants.do: | input |
+    encoded := tison.encode input
+    100_000.repeat:
+      copy := encoded.copy
+      copy[random copy.size] ^= 1 << (random 8)
+      decoded := null
+      exception := catch: decoded = tison.decode copy
+      if exception:
+        expect_equals "WRONG_OBJECT_TYPE" exception
