@@ -41,8 +41,10 @@
 #include <soc/soc.h>
 #include <soc/uart_reg.h>
 
-#ifdef CONFIG_IDF_TARGET_ESP32C3
+#if CONFIG_IDF_TARGET_ESP32C3
   #include <esp32c3/rtc.h>
+#elif CONFIG_IDF_TARGET_ESP32S3
+  #include <esp32s3/rtc.h>
 #else
   #include <esp32/rtc.h>
 #endif
@@ -54,10 +56,18 @@ namespace toit {
 // Flags used to get memory for the Toit heap, which needs to be fast and 8-bit
 // capable.  We will set this to the most useful value when we have detected
 // which types of RAM are available.
+#if CONFIG_TOIT_SPIRAM_HEAP
+bool OS::_use_spiram_for_heap = true;
+#else
 bool OS::_use_spiram_for_heap = false;
+#endif
 bool OS::_use_spiram_for_metadata = false;
 
+#if CONFIG_TOIT_SPIRAM_HEAP_ONLY
+static const int EXTERNAL_CAPS = MALLOC_CAP_SPIRAM;
+#else
 static const int EXTERNAL_CAPS = MALLOC_CAP_8BIT | MALLOC_CAP_SPIRAM;
+#endif
 static const int INTERNAL_CAPS = MALLOC_CAP_8BIT | MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA;
 
 int OS::toit_heap_caps_flags_for_heap() {
@@ -420,7 +430,7 @@ OS::HeapMemoryRange OS::get_heap_memory_range() {
 
   bool has_spiram = info.lowest_address != null;
 
-  caps = INTERNAL_CAPS;
+  caps = toit_heap_caps_flags_for_heap();
   heap_caps_get_info(&info, caps);
 
   if (has_spiram) {
@@ -583,7 +593,6 @@ class HeapSummaryPage {
       case BIGNUM_MALLOC_TAG: return "tls/bignum";
       case EXTERNAL_STRING_MALLOC_TAG: return "external string";
       case TOIT_HEAP_MALLOC_TAG: return "toit";
-      case UNUSED_TOIT_HEAP_MALLOC_TAG: return "unused";
       case FREE_MALLOC_TAG: return "free";
       case LWIP_MALLOC_TAG: return "lwip";
       case HEAP_OVERHEAD_MALLOC_TAG: return "heap overhead";
@@ -741,20 +750,16 @@ void OS::heap_summary_report(int max_pages, const char* marker) { }
 
 #endif // def TOIT_CMPCTMALLOC
 
-static const int TOIT_IMAGE_DATA_SIZE = 1024;
-static const int TOIT_CONFIG_IMAGE_SIZE = TOIT_IMAGE_DATA_SIZE - UUID_SIZE;
-
 class ImageData {
  public:
-  uint32_t image_pad = 0;
-  uint32_t image_magic1 = 0x7017da7a;  // "Toitdata"
-  // The data between image_magic1 and image_magic2 must be a multiple of 512
+  // The data between image_magic1 and image_magic2 must be less than 256
   // bytes, otherwise the patching utility will not detect it. Search for
-  // 0x7017da7a. Note when updating this restriction is baked into the SDK that
-  // you are updating *from* so it can't be fixed without multiple SDK updates.
-  uint8_t image_config[TOIT_CONFIG_IMAGE_SIZE] = {0};
-  uint8_t image_uuid[UUID_SIZE] = {0};
-  uint32_t image_magic2 = 0xc09f19;    // "config"
+  // 0x7017da7a. If the format is changed, the code in tools/firmware.toit
+  // must be adapted and the ENVELOPE_FORMAT_VERSION bumped.
+  uint32 image_magic1 = 0x7017da7a;  // "toitdata"
+  uint32 image_bundled_programs_table = 0;
+  uint8 image_uuid[UUID_SIZE] = { 0, };
+  uint32 image_magic2 = 0x00c09f19;  // "config"
 } __attribute__((packed));
 
 // Note, you can't declare this const because then the compiler thinks it can
@@ -766,18 +771,8 @@ const uint8* OS::image_uuid() {
   return toit_image_data.image_uuid;
 }
 
-uint8* OS::image_config(size_t *length) {
-  if (length) *length = TOIT_CONFIG_IMAGE_SIZE;
-  // See 512-byte restriction above.
-  ASSERT(((TOIT_CONFIG_IMAGE_SIZE + UUID_SIZE) & 0x1ff) == 0);
-  uint8* result = (uint8*)toit_image_data.image_config;
-  if (result[0] == 0) {
-    // A null byte is not a valid start of a UBJSON stream.  This indicates
-    // that the config data was not patched in, or was patched in at the wrong
-    // address.
-    FATAL("No config data in image at %x: %02x %02x", &(result[0]), result[0], result[1]);
-  }
-  return result;
+const uword* OS::image_bundled_programs_table() {
+  return reinterpret_cast<const uword*>(toit_image_data.image_bundled_programs_table);
 }
 
 const char* OS::getenv(const char* variable) {

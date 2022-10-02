@@ -22,7 +22,7 @@
 
 #include "../top.h"
 
-#ifdef TOIT_FREERTOS
+#if defined(TOIT_FREERTOS) && CONFIG_BT_ENABLED
 
 #include "../resource.h"
 #include "../objects.h"
@@ -1353,9 +1353,8 @@ PRIMITIVE(scan_next) {
     int rc = ble_hs_adv_parse_fields(&fields, next->data(), next->data_length());
     if (rc == 0) {
       if (fields.name_len > 0) {
-        Error* error = null;
-        String* name = process->allocate_string((const char*)fields.name, fields.name_len, &error);
-        if (error) return error;
+        String* name = process->allocate_string((const char*)fields.name, fields.name_len);
+        if (!name) ALLOCATION_FAILED;
         array->at_put(2, name);
       }
 
@@ -2152,4 +2151,4 @@ PRIMITIVE(gc) {
 
 } // namespace toit
 
-#endif // TOIT_FREERTOS
+#endif // defined(TOIT_FREERTOS) && defined(CONFIG_BT_ENABLED)

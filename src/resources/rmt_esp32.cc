@@ -247,12 +247,17 @@ PRIMITIVE(set_idle_threshold) {
 PRIMITIVE(config_bidirectional_pin) {
   ARGS(int, pin, RMTResource, resource);
 
+#if defined(CONFIG_IDF_TARGET_ESP32C3)
+  if (pin >= MAX_GPIO_NUM) INVALID_ARGUMENT;
+  GPIO.enable_w1ts.enable_w1ts = (0x1 << pin);
+#else
   // Set open collector?
   if (pin < 32) {
     GPIO.enable_w1ts = (0x1 << pin);
   } else {
     GPIO.enable1_w1ts.data = (0x1 << (pin - 32));
   }
+#endif
   rmt_set_gpio(resource->channel(), RMT_MODE_TX, static_cast<gpio_num_t>(pin), false);
   PIN_INPUT_ENABLE(GPIO_PIN_MUX_REG[pin]);
   GPIO.pin[pin].pad_driver = 1;
@@ -274,10 +279,9 @@ PRIMITIVE(transmit) {
   } else {
     // Create an external byte array with the same size.
     // We will return it to the caller, so they can keep it alive.
-    Error* error = null;
     // Force external.
-    ByteArray* external_copy = process->allocate_byte_array(items_bytes.length(), &error, true);
-    if (external_copy == null) return error;
+    ByteArray* external_copy = process->allocate_byte_array(items_bytes.length(), true);
+    if (external_copy == null) ALLOCATION_FAILED;
     ByteArray::Bytes bytes(external_copy);
     memcpy(bytes.address(), address, items_bytes.length());
     address = bytes.address();
@@ -334,10 +338,9 @@ PRIMITIVE(prepare_receive) {
   if (err != ESP_OK) return Primitive::os_error(err, process);
   size_t max_size = xRingbufferGetMaxItemSize(rb);
 
-  Error* error = null;
   // Force external, so we can adjust the length after the read.
-  ByteArray* data = process->allocate_byte_array(static_cast<int>(max_size), &error, true);
-  if (data == null) return error;
+  ByteArray* data = process->allocate_byte_array(static_cast<int>(max_size), true);
+  if (data == null) ALLOCATION_FAILED;
   return data;
 }
 

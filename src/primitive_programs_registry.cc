@@ -21,10 +21,6 @@
 #include "scheduler.h"
 #include "vm.h"
 
-#ifdef TOIT_FREERTOS
-extern "C" uword _thread_local_end;
-#endif
-
 namespace toit {
 
 MODULE_IMPLEMENTATION(programs_registry, MODULE_PROGRAMS_REGISTRY)
@@ -96,7 +92,7 @@ PRIMITIVE(kill) {
 
 PRIMITIVE(bundled_images) {
 #ifdef TOIT_FREERTOS
-  const uword* table = &_thread_local_end;
+  const uword* table = OS::image_bundled_programs_table();
   int length = table[0];
 
   Array* result = process->object_heap()->allocate_array(length * 2, Smi::from(0));
@@ -116,6 +112,16 @@ PRIMITIVE(bundled_images) {
 #else
   return process->program()->empty_array();
 #endif
+}
+
+PRIMITIVE(assets) {
+  Program* program = process->program();
+  int length;
+  uint8* bytes;
+  if (program->assets_size(&bytes, &length) == 0) {
+    return process->object_heap()->allocate_internal_byte_array(0);
+  }
+  return process->object_heap()->allocate_external_byte_array(length, bytes, false, false);
 }
 
 } // namespace toit

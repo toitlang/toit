@@ -2,7 +2,7 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import encoding.ubjson
+import system.trace show send_trace_message
 
 ESP_RST_UNKNOWN   ::= 0 // Reset reason can not be determined.
 ESP_RST_POWERON   ::= 1 // Reset due to power-on event.
@@ -87,11 +87,6 @@ Returns -1 if the wakeup wasn't caused by a touchpad.
 touchpad_wakeup_status -> int:
   #primitive.esp32.touchpad_wakeup_status
 
-image_config -> Map?:
-  config_data := image_config_
-  if config_data[0] == 0: return null
-  return (ubjson.Decoder config_data).decode
-
 /**
 Adjusts the real-time clock with the specified $adjustment.
 
@@ -110,9 +105,6 @@ The new time is visible immediately through calls to $Time.now.
 */
 set_real_time_clock time/Time -> none:
   set_real_time_clock_ time.s_since_epoch time.ns_part
-
-image_config_ -> ByteArray:
-  #primitive.esp32.image_config
 
 set_real_time_clock_ seconds/int ns/int -> none:
   #primitive.core.set_real_time_clock
@@ -136,79 +128,21 @@ rtc_user_bytes -> ByteArray:
   #primitive.esp32.rtc_user_bytes
 
 /**
-Returns a report over the usage of memory at the OS level.
-
-The returned list has at least four elements.  The first is a byte
-  array describing the allocation types in each page.  The second is
-  a byte array giving the percentage fullness of each page.  Pages are
-  normally 4096 bytes large.  The third is the base address of the heap,
-  corresponding to the address of the block described in the 0th element
-  of each byte array.
-
-For very large heaps the returned list may contain more than four
-  elements.  Each group of three entries in the array consists of
-  two byte arrays and a base address as described above.
-
-The last entry in the returned list is the page size.
-
-For the first byte array in each triplet, each byte is a bitmap.
-
-* $MEMORY_PAGE_MALLOC_MANAGED: Indicates the page is part of the malloc-managed memory.
-* $MEMORY_PAGE_TOIT: Allocated for the Toit heap.
-* $MEMORY_PAGE_EXTERNAL: Contains at least one allocation for external (large) Toit strings and byte arrays.
-* $MEMORY_PAGE_TLS: Contains at least one allocation for TLS and other cryptographic uses.
-* $MEMORY_PAGE_BUFFERS: Contains at least one allocation for network buffers.
-* $MEMORY_PAGE_MISC: Contains at least one miscellaneous or unknown allocation.
-* $MEMORY_PAGE_MERGE_WITH_NEXT: Indicates that this page and the next page are part of a large multi-page allocation.
-
-Pages that are not part of the malloc heap, because the system is using them
-  for something else will have a zero in both byte arrays, indicating 0% fullness
-  and no registered allocations.
+Sends (as a system message) a report over the usage of memory at the OS level.
 */
-memory_page_report -> List:
+memory_page_report -> none:
+  report := memory_page_report_
+  send_trace_message report
+
+memory_page_report_ -> ByteArray:
   #primitive.esp32.memory_page_report
 
 /**
-Bitmap mask for $memory_page_report.
-Indicates at least part of the page is managed by malloc.
+Sends (as a system message) a detailed report over the usage of memory at the OS level.
 */
-MEMORY_PAGE_MALLOC_MANAGED  ::= 1 << 0
+dump_heap -> none:
+  report := dump_heap_ 300
+  send_trace_message report
 
-/**
-Bitmap mask for $memory_page_report.
-Indicates the page was allocated for the Toit heap.
-*/
-MEMORY_PAGE_TOIT            ::= 1 << 1
-
-/**
-Bitmap mask for $memory_page_report.
-Indicates the page contains at least one allocation for external (large)
-  Toit strings and byte arrays.
-*/
-MEMORY_PAGE_EXTERNAL        ::= 1 << 2
-
-/**
-Bitmap mask for $memory_page_report.
-Indicates the page contains at least one allocation for TLS and other
-  cryptographic uses.
-*/
-MEMORY_PAGE_TLS             ::= 1 << 3
-
-/**
-Bitmap mask for $memory_page_report.
-Indicates the page contains at least one allocation for network buffers.
-*/
-MEMORY_PAGE_BUFFERS         ::= 1 << 4
-
-/**
-Bitmap mask for $memory_page_report.
-Indicates the page contains at least one miscellaneous or unknown allocation.
-*/
-MEMORY_PAGE_MISC            ::= 1 << 5
-
-/**
-Bitmap mask for $memory_page_report.
-Indicates that this page and the next page are part of a large multi-page
-  allocation.
-*/
-MEMORY_PAGE_MERGE_WITH_NEXT ::= 1 << 6
+dump_heap_ slack/int -> ByteArray:
+  #primitive.core.dump_heap

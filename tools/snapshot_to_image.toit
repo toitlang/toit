@@ -22,6 +22,7 @@ This program reads a snapshot, converts it into an image
 
 import .image
 import .snapshot
+import .firmware show pad
 
 import binary show LITTLE_ENDIAN ByteOrder
 import uuid
@@ -33,6 +34,7 @@ M32_FLAG         ::= "machine-32-bit"
 M64_FLAG         ::= "machine-64-bit"
 UNIQUE_ID_OPTION ::= "unique_id"
 OUTPUT_OPTION    ::= "output"
+ASSETS_OPTION    ::= "assets"
 
 abstract class RelocatedOutput:
   static ENDIAN/ByteOrder ::= LITTLE_ENDIAN
@@ -85,27 +87,6 @@ class BinaryRelocatedOutput extends RelocatedOutput:
     RelocatedOutput.ENDIAN.put_uint32 buffer_ 0 word
     out.write buffer_
 
-class SourceRelocatedOutput extends RelocatedOutput:
-  constructor out:
-    super out
-
-  write_start -> none:
-    out.write "        .section .rodata\n"
-    out.write "        .globl toit_system_image\n"
-    out.write "        .align 4\n"
-    out.write "toit_system_image:\n"
-
-  write_word word/int is_relocatable/bool:
-    if is_relocatable: writeln "        .long toit_system_image + 0x$(%x word)"
-    else:              writeln "        .long 0x$(%x word)"
-
-  write_end -> none:
-    // Nothing to add here.
-
-  writeln text/string:
-    out.write text
-    out.write "\n"
-
 print_usage parser/arguments.ArgumentParser:
   print_on_stderr_ parser.usage
   exit 1
@@ -119,6 +100,7 @@ main args:
 
   parser.add_option UNIQUE_ID_OPTION
   parser.add_option OUTPUT_OPTION --short="o"
+  parser.add_option ASSETS_OPTION
 
   parsed := parser.parse args
 
@@ -129,18 +111,15 @@ main args:
     print_usage parser
     exit 1
 
-  default_word_size := BYTES_PER_WORD
   binary_output := false
   if parsed[BINARY_FLAG]:
     binary_output = true
-  else:
-    default_word_size = 4  // Use 32-bit non-binary output.
 
-  if binary_output and parsed.rest.size != 1:
-    print_on_stderr_ "Error: Cannot convert multiple snapshots to binary images"
+  if not binary_output:
+    print_on_stderr_ "Error: --binary is no longer optional"
     exit 1
 
-  word_size := null
+  word_size/int? := null
   if parsed[M32_FLAG]:
     word_size = 4
   if parsed[M64_FLAG]:
@@ -148,16 +127,15 @@ main args:
       print_usage parser  // Already set to -m32.
     word_size = 8
   if not word_size:
-    word_size = default_word_size
-
-  if not binary_output and word_size != 4:
-    print_on_stderr_ "Error: Cannot generate 64-bit non-binary output"
-    exit 1
+    word_size = BYTES_PER_WORD
 
   unique_id := parsed[UNIQUE_ID_OPTION]
   system_uuid ::= unique_id
       ? uuid.parse unique_id
       : uuid.uuid5 "$random" "$Time.now".to_byte_array
+
+  assets_path := parsed[ASSETS_OPTION]
+  assets := assets_path ? file.read_content assets_path : null
 
   out := file.Stream.for_write output_path
   snapshot_path/string := parsed.rest[0]
@@ -166,9 +144,20 @@ main args:
   program := snapshot_bundle.decode
   image := build_image program word_size --system_uuid=system_uuid --program_id=program_id
   relocatable := image.build_relocatable
-  if binary_output:
-    out.write relocatable
-  else:
-    output := SourceRelocatedOutput out
-    output.write word_size relocatable
+  out.write relocatable
+  if assets:
+    // Send the assets prefixed with the size and make sure
+    // to round up to full "flash" pages.
+    assets_size := ByteArray 4
+    LITTLE_ENDIAN.put_uint32 assets_size 0 assets.size
+    assets = pad (assets_size + assets) 4096
+    // Encode the assets with dummy relocation information for
+    // every chunk. The assets do not need relocation, but it
+    // is simpler to just use the same image format for the
+    // asset pages.
+    chunk_size := word_size * 8 * word_size
+    no_relocation := ByteArray word_size
+    List.chunk_up 0 assets.size chunk_size: | from to |
+      out.write no_relocation
+      out.write assets[from..to]
   out.close

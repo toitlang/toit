@@ -245,8 +245,8 @@ class OS {
   // Unique 16-bytes uuid of the running image.
   static const uint8* image_uuid();
 
-  // ubjson-encoded configuration of the running image. Return NULL if not found.
-  static uint8* image_config(size_t *length);
+  // Bundled programs table.
+  static const uword* image_bundled_programs_table();
 
   static const char* getenv(const char* variable);
 

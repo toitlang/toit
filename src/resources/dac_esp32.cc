@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#ifdef TOIT_FREERTOS
+#if defined(TOIT_FREERTOS) && (CONFIG_IDF_TARGET_ESP32 || CONFIG_IDF_TARGET_ESP32S2)
 
 #include <driver/gpio.h>
 #include <driver/dac.h>
@@ -233,4 +233,4 @@ PRIMITIVE(cosine_wave) {
 
 } // namespace toit
 
-#endif // TOIT_FREERTOS
+#endif // TOIT_FREERTOS && (CONFIG_IDF_TARGET_ESP32 || CONFIG_IDF_TARGET_ESP32S2)

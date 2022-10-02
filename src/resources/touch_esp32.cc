@@ -15,7 +15,9 @@
 
 #include "../top.h"
 
-#ifdef TOIT_FREERTOS
+#if defined(TOIT_FREERTOS) && (defined(CONFIG_IDF_TARGET_ESP32) || \
+                               defined(CONFIG_IDF_TARGET_ESP32S2) || \
+                               defined(CONFIG_IDF_TARGET_ESP32S3))
 
 #include <driver/gpio.h>
 #include <driver/touch_sensor.h>
@@ -68,7 +70,7 @@ int touch_pad_to_pin_num(touch_pad_t pad) {
   }
 }
 
-#elif CONFIG_IDF_TARGET_ESP32S2
+#elif CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32S3
 
 static touch_pad_t get_touch_pad(int pin) {
   switch (pin) {
@@ -238,7 +240,14 @@ PRIMITIVE(use) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;
 
+#if CONFIG_IDF_TARGET_ESP32S3
+  esp_err_t err = touch_pad_config(pad);
+  if (err == ESP_OK) {
+    err = touch_pad_set_thresh(pad, threshold);
+  }
+#else
   esp_err_t err = touch_pad_config(pad, threshold);
+#endif
   if (err != ESP_OK) return Primitive::os_error(err, process);
 
   resource_group->register_resource(resource);
@@ -265,8 +274,13 @@ PRIMITIVE(read) {
   ARGS(IntResource, resource);
   touch_pad_t pad = static_cast<touch_pad_t>(resource->id());
 
+#if CONFIG_IDF_TARGET_ESP32S3
+  uint32_t val;
+  esp_err_t err = touch_pad_read_raw_data(pad, &val);
+#else
   uint16_t val;
   esp_err_t err = touch_pad_read(pad, &val);
+#endif
   if (err != ESP_OK) return Primitive::os_error(err, process);
   return Smi::from(static_cast<int>(val));
 }
@@ -275,7 +289,11 @@ PRIMITIVE(get_threshold) {
   ARGS(IntResource, resource);
   touch_pad_t pad = static_cast<touch_pad_t>(resource->id());
 
+#if CONFIG_IDF_TARGET_ESP32S3
+  uint32_t val;
+#else
   uint16_t val;
+#endif
   esp_err_t err = touch_pad_get_thresh(pad, &val);
   if (err != ESP_OK) return Primitive::os_error(err, process);
   return Smi::from(static_cast<int>(val));

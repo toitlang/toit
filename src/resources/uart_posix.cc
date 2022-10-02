@@ -432,9 +432,8 @@ PRIMITIVE(read) {
   if (ioctl(fd, FIONREAD, &available) != 0) return Primitive::os_error(errno, process);
   if (available == 0) return process->program()->null_object();
 
-  Error* error = null;
-  ByteArray* data = process->allocate_byte_array(available, &error, /*force_external*/ true);
-  if (data == null) return error;
+  ByteArray* data = process->allocate_byte_array(available, /*force_external*/ true);
+  if (data == null) ALLOCATION_FAILED;
 
   ByteArray::Bytes rx(data);
   int received = read(fd, rx.address(), rx.length());

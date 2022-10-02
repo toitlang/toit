@@ -17,10 +17,13 @@ import binary show LITTLE_ENDIAN
 import bytes
 import crypto.sha256 as crypto
 import writer
+import reader
 import uuid
 
 import encoding.json
-import encoding.ubjson
+import encoding.tison
+
+import system.assets
 
 import ar
 import cli
@@ -30,7 +33,7 @@ import .image
 import .snapshot
 import .snapshot_to_image
 
-ENVELOPE_FORMAT_VERSION ::= 2
+ENVELOPE_FORMAT_VERSION ::= 4
 
 WORD_SIZE ::= 4
 AR_ENTRY_FIRMWARE_BIN    ::= "\$firmware.bin"
@@ -38,7 +41,7 @@ AR_ENTRY_FIRMWARE_ELF    ::= "\$firmware.elf"
 AR_ENTRY_BOOTLOADER_BIN  ::= "\$bootloader.bin"
 AR_ENTRY_PARTITIONS_BIN  ::= "\$partitions.bin"
 AR_ENTRY_PARTITIONS_CSV  ::= "\$partitions.csv"
-AR_ENTRY_SYSTEM_SNAPSHOT ::= "\$system.snapshot"
+AR_ENTRY_SYSTEM_SNAPSHOT ::= "\$system.snap"
 AR_ENTRY_PROPERTIES      ::= "\$properties"
 
 AR_ENTRY_FILE_MAP ::= {
@@ -57,6 +60,41 @@ OPTION_OUTPUT_SHORT ::= "o"
 is_snapshot_bundle bits/ByteArray -> bool:
   catch: return SnapshotBundle.is_bundle_content bits
   return false
+
+pad bits/ByteArray alignment/int -> ByteArray:
+  size := bits.size
+  padded_size := round_up size alignment
+  return bits + (ByteArray padded_size - size)
+
+read_file path/string -> ByteArray:
+  exception := catch:
+    return file.read_content path
+  print "Failed to open '$path' for reading ($exception)."
+  exit 1
+  unreachable
+
+read_file path/string [block]:
+  stream/file.Stream? := null
+  exception := catch: stream = file.Stream.for_read path
+  if not stream:
+    print "Failed to open '$path' for reading ($exception)."
+    exit 1
+  try:
+    block.call stream
+  finally:
+    stream.close
+
+write_file path/string [block] -> none:
+  stream/file.Stream? := null
+  exception := catch: stream = file.Stream.for_write path
+  if not stream:
+    print "Failed to open '$path' for writing ($exception)."
+    exit 1
+  try:
+    writer := writer.Writer stream
+    block.call writer
+  finally:
+    stream.close
 
 main arguments/List:
   root_cmd := cli.Command "root"
@@ -90,13 +128,13 @@ create_envelope parsed/cli.Parsed -> none:
   // TODO(kasper): Do some sanity checks on the
   // structure of this. Can we check that we don't
   // already have stuff appended to the DROM section?
-  firmware_bin_data := file.read_content input_path
+  firmware_bin_data := read_file input_path
   Esp32Binary firmware_bin_data
 
   entries := { AR_ENTRY_FIRMWARE_BIN: firmware_bin_data }
   AR_ENTRY_FILE_MAP.do: | key/string value/string |
     if key == "firmware.bin": continue.do
-    entries[value] = file.read_content parsed[key]
+    entries[value] = read_file parsed[key]
 
   envelope := Envelope.create entries
   envelope.store output_path
@@ -113,7 +151,12 @@ container_cmd -> cli.Command:
 
   cmd.add
       cli.Command "install"
-          --options=[ option_output ]
+          --options=[
+            option_output,
+            cli.OptionString "assets"
+                --short_help="Add assets to the image."
+                --type="file"
+          ]
           --rest=[
             option_name,
             cli.OptionString "image"
@@ -134,22 +177,48 @@ container_cmd -> cli.Command:
 
   return cmd
 
+read_assets path/string? -> ByteArray?:
+  if not path: return null
+  data := read_file path
+  // Try decoding the assets to verify that they
+  // have the right structure.
+  exception := catch:
+    assets.decode data
+    return data
+  print "Failed to decode the assets in '$path'."
+  exit 1
+  unreachable
+
+decode_image data/ByteArray -> ImageHeader:
+  out := bytes.Buffer
+  output := BinaryRelocatedOutput out 0x12345678
+  output.write WORD_SIZE data
+  decoded := out.bytes
+  return ImageHeader decoded
+
 container_install parsed/cli.Parsed -> none:
   name := parsed["name"]
   image_path := parsed["image"]
+  assets_path := parsed["assets"]
   if name.starts_with "\$":
-    throw "cannot install container with a name that starts with \$"
-  image_data := file.read_content image_path
+    print "cannot install container with a name that starts with \$ or +"
+    exit 1
+  if name.size > 14:
+    print "cannot install container with a name longer than 14 characters"
+    exit 1
+  image_data := read_file image_path
+  assets_data := read_assets assets_path
   if not is_snapshot_bundle image_data:
     // We're not dealing with a snapshot, so make sure
     // the provided image is a valid relocatable image.
-    out := bytes.Buffer
-    output := BinaryRelocatedOutput out 0x12345678
-    output.write WORD_SIZE image_data
-    image_bits := out.bytes
+    header := null
+    catch: header = decode_image image_data
     // TODO(kasper): Can we validate that the output
-    // appears to be correct and fits with the version
-    // of the SDK used to compile the embedded binary?
+    // fits with the version of the SDK used to compile
+    // the embedded binary?
+    if not header:
+      print "Input is not a valid snapshot or image ('$image_path')."
+      exit 1
   else:
     // TODO(kasper): Can we check that the snapshot
     // fits with the version of the SDK used to compile
@@ -157,25 +226,33 @@ container_install parsed/cli.Parsed -> none:
     SnapshotBundle name image_data
   update_envelope parsed: | envelope/Envelope |
     envelope.entries[name] = image_data
+    if assets_data: envelope.entries["+$name"] = assets_data
+    else: envelope.entries.remove "+$name"
 
 container_uninstall parsed/cli.Parsed -> none:
   name := parsed["name"]
   update_envelope parsed: | envelope/Envelope |
     envelope.entries.remove name
+    envelope.entries.remove "+$name"
 
 container_list parsed/cli.Parsed -> none:
   input_path := parsed[OPTION_ENVELOPE]
   entries := (Envelope.load input_path).entries
   output := {:}
   entries.do: | name/string content/ByteArray |
-    if name.starts_with "\$": continue.do
+    if name.starts_with "\$" or name.starts_with "+": continue.do
+    entry := {:}
     if is_snapshot_bundle content:
       bundle := SnapshotBundle name content
-      output[name] = bundle.uuid.stringify
+      entry["kind"] = "snapshot"
+      entry["id"] = bundle.uuid.stringify
     else:
-      // TODO(kasper): It would be ideal if we could print
-      // the uuid of the image here.
-      output[name] = "<relocatable image>"
+      header := decode_image content
+      entry["kind"] = "image"
+      entry["id"] = header.id.stringify
+    assets := entries.get "+$name"
+    if assets: entry["assets"] = { "size": assets.size }
+    output[name] = entry
   print (json.stringify output)
 
 property_cmd -> cli.Command:
@@ -289,38 +366,39 @@ extract parsed/cli.Parsed -> none:
     content = envelope.entries.get AR_ENTRY_FILE_MAP[part]
   if not content:
     throw "cannot extract: no such part ($part)"
-
-  out_stream := file.Stream.for_write output_path
-  out_writer := writer.Writer out_stream
-  out_writer.write content
-  out_stream.close
+  write_file output_path: it.write content
 
 extract_binary envelope/Envelope -> ByteArray:
-  firmware_bin/ByteArray? := null
-  properties/Map := {:}
-  containers ::= {:}
+  containers ::= []
+  entries := envelope.entries
+  properties := entries.get AR_ENTRY_PROPERTIES
+      --if_present=: json.decode it
+      --if_absent=: {:}
 
-  envelope.entries.do: | name/string content/ByteArray |
-    if name == AR_ENTRY_FIRMWARE_BIN:
-      firmware_bin = content
-    else if name == AR_ENTRY_PROPERTIES:
-      properties = json.decode content
-    else if not name.starts_with "\$":
-      containers[name] = content
+  system := entries.get AR_ENTRY_SYSTEM_SNAPSHOT
+  if system:
+    assets_encoded := properties.get "wifi"
+        --if_present=: assets.encode { "wifi": tison.encode it }
+        --if_absent=: null
+    containers.add (ContainerEntry "system" system --assets=assets_encoded)
 
+  entries.do: | name/string content/ByteArray |
+    if not (name.starts_with "\$" or name.starts_with "+"):
+      assets_encoded := entries.get "+$name"
+      containers.add (ContainerEntry name content --assets=assets_encoded)
+
+  firmware_bin := entries.get AR_ENTRY_FIRMWARE_BIN
   if not firmware_bin:
     throw "cannot find $AR_ENTRY_FIRMWARE_BIN entry in envelope '$envelope.path'"
 
   system_uuid/uuid.Uuid? := null
   if properties.contains "uuid":
     catch: system_uuid = uuid.parse properties["uuid"]
-    properties.remove "uuid"
   if not system_uuid:
     system_uuid = uuid.uuid5 "$random" "$Time.now".to_byte_array
 
-  configured := inject_config properties system_uuid firmware_bin
   return extract_binary_content
-      --binary_input=configured
+      --binary_input=firmware_bin
       --containers=containers
       --system_uuid=system_uuid
 
@@ -337,27 +415,28 @@ update_envelope parsed/cli.Parsed [block] -> none:
 
 extract_binary_content -> ByteArray
     --binary_input/ByteArray
-    --containers/Map
+    --containers/List
     --system_uuid/uuid.Uuid:
   binary := Esp32Binary binary_input
-
   image_count := containers.size
   image_table := ByteArray 4 + 8 * image_count
   LITTLE_ENDIAN.put_uint32 image_table 0 image_count
 
-  relocation_base := binary.extend_drom_address + image_table.size
+  table_address := binary.extend_drom_address
+  relocation_base := table_address + image_table.size
   images := []
   index := 0
-  containers.do: | name/string content/ByteArray |
+  containers.do: | container/ContainerEntry |
     relocatable/ByteArray := ?
-    if is_snapshot_bundle content:
-      snapshot_bundle := SnapshotBundle name content
+    if is_snapshot_bundle container.content:
+      snapshot_bundle := SnapshotBundle container.name container.content
       program_id ::= snapshot_bundle.uuid
       program := snapshot_bundle.decode
       image := build_image program WORD_SIZE --system_uuid=system_uuid --program_id=program_id
       relocatable = image.build_relocatable
     else:
-      relocatable = content
+      relocatable = container.content
+
     out := bytes.Buffer
     output := BinaryRelocatedOutput out relocation_base
     output.write WORD_SIZE relocatable
@@ -368,16 +447,24 @@ extract_binary_content -> ByteArray
         relocation_base
     LITTLE_ENDIAN.put_uint32 image_table 8 + index * 8
         image_size
+    image_bits = pad image_bits 4
 
-    image_size_padded := round_up image_size 4
-    image_bits += ByteArray (image_size_padded - image_size)
-    images.add image_bits + (ByteArray image_size_padded - image_size)
-    relocation_base += image_size_padded
+    if container.assets:
+      header ::= ImageHeader image_bits
+      header.flags |= (1 << 7)
+      assets_size := ByteArray 4
+      LITTLE_ENDIAN.put_uint32 assets_size 0 container.assets.size
+      image_bits += assets_size
+      image_bits += container.assets
+      image_bits = pad image_bits 4
+
+    images.add image_bits
+    relocation_base += image_bits.size
     index++
 
   extension := image_table
   images.do: extension += it
-  binary.extend_drom extension
+  binary.patch_extend_drom system_uuid table_address extension
   return binary.bits
 
 class Envelope:
@@ -393,32 +480,30 @@ class Envelope:
   entries/Map ::= {:}
 
   constructor.load .path/string:
-    input_stream := file.Stream.for_read path
-    reader := ar.ArReader input_stream
     version/int? := null
-    while file := reader.next:
-      if file.name == INFO_ENTRY_NAME:
-        version = validate file.content
-      else:
-        entries[file.name] = file.content
-    input_stream.close
+    read_file path: | reader/reader.Reader |
+      ar := ar.ArReader reader
+      while file := ar.next:
+        if file.name == INFO_ENTRY_NAME:
+          version = validate file.content
+        else:
+          entries[file.name] = file.content
     version_ = version
 
   constructor.create .entries:
     version_ = ENVELOPE_FORMAT_VERSION
 
   store path/string -> none:
-    output_stream := file.Stream.for_write path
-    writer := ar.ArWriter output_stream
-    // Add the enveloper info entry.
-    info := ByteArray INFO_ENTRY_SIZE
-    LITTLE_ENDIAN.put_uint32 info INFO_ENTRY_MARKER_OFFSET MARKER
-    LITTLE_ENDIAN.put_uint32 info INFO_ENTRY_VERSION_OFFSET version_
-    writer.add INFO_ENTRY_NAME info
-    // Add all other entries.
-    entries.do: | name/string content/ByteArray |
-      writer.add name content
-    output_stream.close
+    write_file path: | writer/writer.Writer |
+      ar := ar.ArWriter writer
+      // Add the enveloper info entry.
+      info := ByteArray INFO_ENTRY_SIZE
+      LITTLE_ENDIAN.put_uint32 info INFO_ENTRY_MARKER_OFFSET MARKER
+      LITTLE_ENDIAN.put_uint32 info INFO_ENTRY_VERSION_OFFSET version_
+      ar.add INFO_ENTRY_NAME info
+      // Add all other entries.
+      entries.do: | name/string content/ByteArray |
+        ar.add name content
 
   static validate info/ByteArray -> int:
     if info.size < INFO_ENTRY_SIZE:
@@ -430,6 +515,39 @@ class Envelope:
     if version != ENVELOPE_FORMAT_VERSION:
       throw "cannot open envelope - expected version $ENVELOPE_FORMAT_VERSION, was $version"
     return version
+
+class ContainerEntry:
+  name/string
+  content/ByteArray
+  assets/ByteArray?
+  constructor .name .content --.assets:
+
+class ImageHeader:
+  static MARKER_OFFSET_   ::= 0
+  static ID_OFFSET_       ::= 8
+  static METADATA_OFFSET_ ::= 24
+  static HEADER_SIZE_     ::= 40
+
+  static MARKER_ ::= 0xdeadface
+
+  header_/ByteArray
+  constructor image/ByteArray:
+    header_ = validate image
+
+  flags -> int:
+    return header_[METADATA_OFFSET_]
+
+  flags= value/int -> none:
+    header_[METADATA_OFFSET_] = value
+
+  id -> uuid.Uuid:
+    return uuid.Uuid header_[ID_OFFSET_..ID_OFFSET_ + uuid.SIZE]
+
+  static validate image/ByteArray -> ByteArray:
+    if image.size < HEADER_SIZE_: throw "image too small"
+    marker := LITTLE_ENDIAN.uint32 image MARKER_OFFSET_
+    if marker != MARKER_: throw "image has wrong marker ($(%x marker) != $(%x MARKER_))"
+    return image[0..HEADER_SIZE_]
 
 /*
 The image format is as follows:
@@ -459,27 +577,66 @@ See https://docs.espressif.com/projects/esp-idf/en/latest/api-reference/system/a
 for more details on the format.
 */
 
+interface AddressMap:
+  IROM_MAP_START -> int
+  IROM_MAP_END -> int
+  DROM_MAP_START -> int
+  DROM_MAP_END -> int
+
+// See <<chiptype>/include/soc/soc.h for these constants
+class Esp32AddressMap implements AddressMap:
+  IROM_MAP_START := 0x400d0000
+  IROM_MAP_END   := 0x40400000
+  DROM_MAP_START := 0x3f400000
+  DROM_MAP_END   := 0x3f800000
+
+class Esp32C3AddressMap implements AddressMap:
+  IROM_MAP_START := 0x42000000
+  IROM_MAP_END   := 0x42800000
+  DROM_MAP_START := 0x3c000000
+  DROM_MAP_END   := 0x3c800000
+
+class Esp32S3AddressMap implements AddressMap:
+  IROM_MAP_START := 0x42000000
+  IROM_MAP_END   := 0x44000000
+  DROM_MAP_START := 0x3c000000
+  DROM_MAP_END   := 0x3d000000
+
+
 class Esp32Binary:
   static MAGIC_OFFSET_         ::= 0
   static SEGMENT_COUNT_OFFSET_ ::= 1
+  static CHIP_ID_OFFSET_       ::= 12
   static HASH_APPENDED_OFFSET_ ::= 23
   static HEADER_SIZE_          ::= 24
 
   static ESP_IMAGE_HEADER_MAGIC_ ::= 0xe9
   static ESP_CHECKSUM_MAGIC_     ::= 0xef
 
-  static IROM_MAP_START ::= 0x400d0000
-  static IROM_MAP_END   ::= 0x40400000
-  static DROM_MAP_START ::= 0x3f400000
-  static DROM_MAP_END   ::= 0x3f800000
+  static ESP_CHIP_ID_ESP32   ::= 0x0000  /*!< chip ID: ESP32 */
+  static ESP_CHIP_ID_ESP32S2 ::= 0x0002  /*!< chip ID: ESP32-S2 */
+  static ESP_CHIP_ID_ESP32C3 ::= 0x0005 /*!< chip ID: ESP32-C3 */
+  static ESP_CHIP_ID_ESP32S3 ::= 0x0009 /*!< chip ID: ESP32-S3 */
+  static ESP_CHIP_ID_ESP32H2 ::= 0x000A /*!< chip ID: ESP32-H2 */  // ESP32H2-TODO: IDF-3475
 
+  static CHIP_ADDRESS_MAPS_ := {
+      ESP_CHIP_ID_ESP32 : Esp32AddressMap,
+      ESP_CHIP_ID_ESP32C3 : Esp32C3AddressMap,
+      ESP_CHIP_ID_ESP32S3 : Esp32S3AddressMap
+  }
   header_/ByteArray
   segments_/List
+  chip_id_/int
+  address_map_/AddressMap
 
   constructor bits/ByteArray:
     header_ = bits[0..HEADER_SIZE_]
     if bits[MAGIC_OFFSET_] != ESP_IMAGE_HEADER_MAGIC_:
       throw "cannot handle binary file: magic is wrong"
+    chip_id_ = bits[CHIP_ID_OFFSET_]
+    if not CHIP_ADDRESS_MAPS_.contains chip_id_:
+      throw "unsupported chip id: $chip_id_"
+    address_map_ = CHIP_ADDRESS_MAPS_[chip_id_]
     offset := HEADER_SIZE_
     segments_ = List header_[SEGMENT_COUNT_OFFSET_]:
       segment := read_segment_ bits offset
@@ -522,14 +679,13 @@ class Esp32Binary:
     if not drom: throw "Cannot append to non-existing DROM segment"
     return drom.address + drom.size
 
-  extend_drom bits/ByteArray -> none:
+  patch_extend_drom system_uuid/uuid.Uuid table_address/int bits/ByteArray -> none:
     // This is a pretty serious padding up. We do it to guarantee
     // that segments that follow this one do not change their
     // alignment within the individual flash pages, which seems
     // to be a requirement. It might be possible to get away with
     // less padding somehow.
-    padded := round_up bits.size 64 * 1024
-    bits = bits + (ByteArray padded - bits.size)
+    bits = pad bits 64 * 1024
     // We look for the last DROM segment, because it will grow into
     // unused virtual memory, so we can extend that without relocating
     // other segments (which we don't know how to).
@@ -542,7 +698,9 @@ class Esp32Binary:
     segments_.size.repeat:
       segment/Esp32BinarySegment := segments_[it]
       if segment == drom:
-        segments_[it] = Esp32BinarySegment (segment.bits + bits)
+        segment_bits := segment.bits
+        patch_details segment_bits system_uuid table_address
+        segments_[it] = Esp32BinarySegment segment_bits + bits
             --offset=segment.offset
             --address=segment.address
         displacement = bits.size
@@ -553,9 +711,11 @@ class Esp32Binary:
 
   find_last_drom_segment_ -> Esp32BinarySegment?:
     last := null
+    address_map/AddressMap? := CHIP_ADDRESS_MAPS_.get chip_id_
+
     segments_.do: | segment/Esp32BinarySegment |
       address := segment.address
-      if not DROM_MAP_START <= address < DROM_MAP_END: continue.do
+      if not address_map_.DROM_MAP_START <= address < address_map_.DROM_MAP_END: continue.do
       if not last or address > last.address: last = segment
     return last
 
@@ -605,40 +765,32 @@ class Esp32BinarySegment:
     return "len 0x$(%05x size) load 0x$(%08x address) file_offs 0x$(%08x offset)"
 
 IMAGE_DATA_MAGIC_1 ::= 0x7017da7a
-IMAGE_DATA_MAGIC_2 ::= 0xc09f19
+IMAGE_DETAILS_SIZE ::= 4 + uuid.SIZE
+IMAGE_DATA_MAGIC_2 ::= 0x00c09f19
 
-// The factory image contains an "empty" section of 1024 bytes where we encoded
-// the config, so that the image can run completely independently.
-inject_config config/Map unique_id/uuid.Uuid bits/ByteArray -> ByteArray:
-  image_data_position := find_image_data_position bits
-  image_data_offset := image_data_position[0]
-  image_data_size := image_data_position[1]
-  image_config_size := image_data_size - uuid.SIZE
+// The DROM segment contains a section where we patch in the image details.
+patch_details bits/ByteArray unique_id/uuid.Uuid table_address/int -> none:
+  // Patch the binary at the offset we compute by searching for
+  // the magic markers. We store the programs table address and
+  // the uuid.
+  bundled_programs_table_address := ByteArray 4
+  LITTLE_ENDIAN.put_uint32 bundled_programs_table_address 0 table_address
+  offset := find_details_offset bits
+  bits.replace (offset + 0) bundled_programs_table_address
+  bits.replace (offset + 4) unique_id.to_byte_array
 
-  config_data := ubjson.encode config
-  if config_data.size > image_data_size:
-    throw "cannot inline config of $config_data.size bytes (too big)"
-
-  bits.replace image_data_offset (ByteArray image_data_size)  // Zero out area.
-  bits.replace image_data_offset config_data
-  bits.replace image_data_offset + image_config_size unique_id.to_byte_array
-  return bits
-
-// Searches for two magic numbers that surround the image data area.
-// This is the area in the image that is replaced with the config data.
+// Searches for two magic numbers that surround the image details area.
+// This is the area in the image that is patched with the details.
 // The exact location of this area can depend on a future SDK version
 // so we don't know it exactly.
-find_image_data_position bits/ByteArray -> List:
-  for i := 0; i < bits.size; i += WORD_SIZE:
-    word_1 := LITTLE_ENDIAN.uint32 bits i
-    if word_1 == IMAGE_DATA_MAGIC_1:
-      // Search for the end at the (0.5k + word_size) position and at
-      // subsequent positions up to a data area of 4k.  We only search at these
-      // round numbers in order to reduce the chance of false positives.
-      for j := 0x200 + WORD_SIZE; j <= 0x1000 + WORD_SIZE and i + j < bits.size; j += 0x200:
-        word_2 := LITTLE_ENDIAN.uint32 bits i + j
-        if word_2 == IMAGE_DATA_MAGIC_2:
-          return [i + WORD_SIZE, j - WORD_SIZE]
+find_details_offset bits/ByteArray -> int:
+  limit := bits.size - IMAGE_DETAILS_SIZE
+  for offset := 0; offset < limit; offset += WORD_SIZE:
+    word_1 := LITTLE_ENDIAN.uint32 bits offset
+    if word_1 != IMAGE_DATA_MAGIC_1: continue
+    candidate := offset + WORD_SIZE
+    word_2 := LITTLE_ENDIAN.uint32 bits candidate + IMAGE_DETAILS_SIZE
+    if word_2 == IMAGE_DATA_MAGIC_2: return candidate
   // No magic numbers were found so the image is from a legacy SDK that has the
-  // image data at a fixed offset.
+  // image details at a fixed offset.
   throw "cannot find magic marker in binary file"

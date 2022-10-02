@@ -23,6 +23,12 @@ expect name [code]:
 expect_out_of_range [code]:
   expect "OUT_OF_RANGE" code
 
+expect_invalid_argument [code]:
+  expect "INVALID_ARGUMENT" code
+
+expect_integer_parsing_error [code]:
+  expect "INTEGER_PARSING_ERROR" code
+
 expect_wrong_type [code]:
   caught_exception := catch code
   expect_equals true (caught_exception == "WRONG_OBJECT_TYPE" or caught_exception == "AS_CHECK_FAILED")
@@ -38,11 +44,38 @@ expect_equal_arrays a b:
 confuse x -> any: return x
 
 main:
+  hex_test
   hamming_test
   hash_test
   sip_test
 
-hash_test:
+hex_test -> none:
+  expect_equals "" (hex.encode #[])
+  expect_equals "" (hex.encode "")
+  expect_equals "a5" (hex.encode #[0xa5])
+  expect_equals "41" (hex.encode "A")
+
+  expect_equals "a552" (hex.encode #[0xa5, 0x52])
+  expect_equals "4134" (hex.encode "A4")
+  expect_equals "c3b8" (hex.encode "ø")
+
+  expect_equals #[] (hex.decode "")
+  expect_equals #[0xa5] (hex.decode "a5")
+  expect_equals #[0xa5] (hex.decode "A5")
+  expect_equals #[0x41] (hex.decode "41")
+
+  expect_equals #[0xf5, 0x52] (hex.decode "f552")
+  expect_equals #[0xf5, 0x52] (hex.decode "F552")
+  expect_equals #[0x41, 0x34] (hex.decode "4134")
+
+  expect_invalid_argument: hex.decode "a"
+  expect_invalid_argument: hex.decode "s"
+  expect_integer_parsing_error: hex.decode "sa"
+  expect_integer_parsing_error: hex.decode "as"
+  expect_invalid_argument: hex.decode "0348af8g1921"
+  expect_invalid_argument: hex.decode "-348af8a1921"
+
+hash_test -> none:
   EMPTY_HEX ::= "da39a3ee5e6b4b0d3255bfef95601890afd80709"
   EMPTY_SHA2 ::= "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
   EMPTY_CRC32 ::=  "00000000"

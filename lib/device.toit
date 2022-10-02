@@ -4,8 +4,7 @@
 
 import device_impl as impl
 import uuid
-import serialization
-
+import encoding.tison
 
 /**
 Functionality available on devices (ESP32).
@@ -136,7 +135,7 @@ class GnssLocation:
   The bytes must be constructed with $to_byte_array.
   */
   constructor.deserialize bytes/ByteArray?:
-    values := serialization.deserialize bytes
+    values := tison.decode bytes
     return GnssLocation
       values[0]
       values[1]
@@ -151,7 +150,7 @@ class GnssLocation:
   The bytes can be deserialized into a location with $GnssLocation.deserialize.
   */
   to_byte_array:
-    return serialization.serialize [
+    return tison.encode [
       latitude,
       longitude,
       altitude_msl,

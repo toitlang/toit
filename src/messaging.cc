@@ -62,9 +62,10 @@ void SystemMessage::free_data_and_externals() {
   _data = null;
 }
 
-MessageEncoder::MessageEncoder(Process* process, uint8* buffer)
+MessageEncoder::MessageEncoder(Process* process, uint8* buffer, bool flatten)
     : _process(process)
     , _program(process ? process->program() : null)
+    , _flatten(flatten)
     , _buffer(buffer) {
 }
 
@@ -125,7 +126,7 @@ bool MessageEncoder::encode(Object* object) {
         if (!is_smi(size)) return false;
         return encode_array(array, Smi::cast(size)->value());
       } else if (class_id == _program->large_array_class_id()) {
-        printf("Can't serialize large array\n");
+        printf("[message encoder: cannot encode large array]\n");
       }
     } else if (class_id == _program->map_class_id()) {
       return encode_map(instance);
@@ -135,8 +136,9 @@ bool MessageEncoder::encode(Object* object) {
       return encode_copy(object, TAG_BYTE_ARRAY);
     } else if (class_id == _program->string_slice_class_id()) {
       return encode_copy(object, TAG_STRING);
+    } else {
+      printf("[message encoder: cannot encode instance with class id = %zd]\n", class_id->value());
     }
-    printf("[message encoder: cannot encode instance with class id = %zd]\n", class_id->value());
   } else if (object == _program->null_object()) {
     write_uint8(TAG_NULL);
     return true;
@@ -198,7 +200,7 @@ bool MessageEncoder::encode_map(Instance* instance) {
   class_id = backing->class_id();
   if (class_id != _program->array_class_id()) {
     if (class_id == _program->large_array_class_id()) {
-      printf("Can't serialize large map\n");
+      printf("[message encoder: cannot encode large map]\n");
     }
     return false;
   }
@@ -217,10 +219,11 @@ bool MessageEncoder::encode_map(Instance* instance) {
 }
 
 bool MessageEncoder::encode_byte_array(ByteArray* object) {
-  if (!object->has_external_address()) {
+  if (_flatten || !object->has_external_address()) {
     return encode_copy(object, TAG_BYTE_ARRAY);
   }
 
+  ASSERT(!_flatten);
   ByteArray::Bytes bytes(object);
   write_uint8(TAG_BYTE_ARRAY);
   write_cardinal(bytes.length());
@@ -260,6 +263,7 @@ bool MessageEncoder::encode_bundles(SnapshotBundle system, SnapshotBundle applic
 #endif
 
 bool MessageEncoder::encode_byte_array_external(void* data, int length) {
+  if (_flatten) return false;
   write_uint8(TAG_BYTE_ARRAY);
   write_cardinal(length);
   write_pointer(data);
@@ -286,7 +290,7 @@ bool MessageEncoder::encode_copy(Object* object, int tag) {
   }
 
   // To avoid too many small allocations, we inline the content of the small strings or byte arrays.
-  if (length <= MESSAGING_ENCODING_MAX_INLINED_SIZE) {
+  if (_flatten || length <= MESSAGING_ENCODING_MAX_INLINED_SIZE) {
     write_uint8(tag + 1);
     write_cardinal(length);
     if (!encoding_for_size()) {
@@ -296,6 +300,7 @@ bool MessageEncoder::encode_copy(Object* object, int tag) {
     return true;
   }
 
+  ASSERT(!_flatten);
   void* data = null;
   if (!encoding_for_size()) {
     // Strings are '\0'-terminated, so we need to make sure the allocated
@@ -339,13 +344,13 @@ void MessageEncoder::write_uint64(uint64 value) {
   _cursor += sizeof(uint64);
 }
 
-MessageDecoder::MessageDecoder(Process* process, uint8* buffer)
+MessageDecoder::MessageDecoder(Process* process, const uint8* buffer)
     : _process(process)
     , _program(process ? process->program() : null)
     , _buffer(buffer) {
 }
 
-bool MessageDecoder::decode_process_message(uint8* buffer, int* value) {
+bool MessageDecoder::decode_process_message(const uint8* buffer, int* value) {
   MessageDecoder decoder(null, buffer);
   // TODO(kasper): Make this more robust. We don't know the content.
   Object* object = decoder.decode();
@@ -462,17 +467,12 @@ Object* MessageDecoder::decode_string(bool inlined) {
   int length = read_cardinal();
   String* result = null;
   if (inlined) {
-    ASSERT(length <= String::max_internal_size_in_process());
-    // We ignore the specific error because we are below the maximum internal string
-    // size, so we know it's an internal allocation error.
-    Error* error = null;
-    result = _process->allocate_string(reinterpret_cast<char*>(&_buffer[_cursor]), length, &error);
-    ASSERT(result == null || result->content_on_heap());
+    result = _process->allocate_string(reinterpret_cast<const char*>(&_buffer[_cursor]), length);
     _cursor += length;
   } else {
     uint8* data = read_pointer();
     result = _process->object_heap()->allocate_external_string(length, data, true);
-    if (result != null) register_external(result, length + 1);  // Account for '\0'-termination.
+    if (result) register_external(result, length + 1);  // Account for '\0'-termination.
   }
   if (result == null) {
     _allocation_failed = true;
@@ -530,11 +530,8 @@ Object* MessageDecoder::decode_byte_array(bool inlined) {
   int length = read_cardinal();
   ByteArray* result = null;
   if (inlined) {
-    ASSERT(length <= ByteArray::max_internal_size_in_process());
-    Error* error = null;
-    result = _process->allocate_byte_array(length, &error, false);
+    result = _process->allocate_byte_array(length, false);
     if (result != null) {
-      ASSERT(!result->has_external_address());
       ByteArray::Bytes bytes(result);
       memcpy(bytes.address(), &_buffer[_cursor], length);
     }
@@ -542,7 +539,7 @@ Object* MessageDecoder::decode_byte_array(bool inlined) {
   } else {
     uint8* data = read_pointer();
     result = _process->object_heap()->allocate_external_byte_array(length, data, true, false);
-    if (result != null) register_external(result, length);
+    if (result) register_external(result, length);
   }
   if (result == null) {
     _allocation_failed = true;

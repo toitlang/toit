@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#ifdef TOIT_FREERTOS
+#if defined(TOIT_FREERTOS) && !defined(CONFIG_IDF_TARGET_ESP32C3)
 
 #include <driver/pcnt.h>
 
@@ -330,4 +330,4 @@ PRIMITIVE(get_count) {
 
 } // namespace toit
 
-#endif // TOIT_FREERTOS
+#endif // defined(TOIT_FREERTOS) && !defined(CONFIG_IDF_TARGET_ESP32C3)

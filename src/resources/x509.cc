@@ -24,6 +24,7 @@
 #include "tls.h"
 #include "x509.h"
 
+#if !defined(TOIT_FREERTOS) || CONFIG_TOIT_CRYPTO
 namespace toit {
 
 Object* X509ResourceGroup::parse(Process* process, const uint8_t* encoded, size_t encoded_size) {
@@ -125,3 +126,4 @@ PRIMITIVE(close) {
 
 
 } // namespace toit
+#endif // !defined(TOIT_FREERTOS) || CONFIG_TOIT_CRYPTO

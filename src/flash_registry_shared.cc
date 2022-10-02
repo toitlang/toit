@@ -17,10 +17,6 @@
 #include "os.h"
 #include "flash_registry.h"
 
-#ifdef TOIT_FREERTOS
-extern "C" uword _thread_local_end;
-#endif
-
 namespace toit {
 
 int FlashRegistry::find_next(int offset, ReservationList::Iterator* it) {
@@ -77,7 +73,7 @@ void* FlashRegistry::memory(int offset, int size) {
   }
 
 #ifdef TOIT_FREERTOS
-  const uword* table = &_thread_local_end;
+  const uword* table = OS::image_bundled_programs_table();
   uword diff = static_cast<uword>(offset - 1);
   return reinterpret_cast<void*>(reinterpret_cast<uword>(table) + diff);
 #else

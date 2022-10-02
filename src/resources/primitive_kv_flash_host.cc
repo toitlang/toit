@@ -78,9 +78,8 @@ PRIMITIVE(read_bytes) {
     return process->program()->null_object();
   }
 
-  Error* error = null;
-  ByteArray* array = process->allocate_byte_array(it->second.size(), &error);
-  if (array == null) return error;
+  ByteArray* array = process->allocate_byte_array(it->second.size());
+  if (array == null) ALLOCATION_FAILED;
 
   ByteArray::Bytes bytes(array);
   memmove(bytes.address(), it->second.data(), bytes.length());

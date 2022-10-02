@@ -17,7 +17,8 @@
 
 #include "../top.h"
 
-#ifdef TOIT_FREERTOS
+#if defined(TOIT_FREERTOS) && CONFIG_BT_ENABLED
+
 #include "../resource.h"
 #include "ble.h"
 namespace toit {
@@ -43,4 +44,4 @@ class BLEEventSource : public LazyEventSource {
 
 } // namespace toit
 
-#endif
+#endif // defined(TOIT_FREERTOS) && CONFIG_BT_ENABLED

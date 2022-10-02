@@ -86,9 +86,8 @@ PRIMITIVE(read_bytes) {
     return Primitive::os_error(err, process);
   }
 
-  Error* error = null;
-  ByteArray* array = process->allocate_byte_array(length, &error);
-  if (array == null) return error;
+  ByteArray* array = process->allocate_byte_array(length);
+  if (array == null) ALLOCATION_FAILED;
 
   ByteArray::Bytes bytes(array);
   err = nvs_get_blob(resource_group->handle(), key, bytes.address(), &length);

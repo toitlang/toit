@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#ifdef TOIT_FREERTOS
+#if defined(TOIT_FREERTOS) && CONFIG_BT_ENABLED
 
 #include "ble_esp32.h"
 namespace toit {
@@ -45,4 +45,4 @@ void BLEEventSource::stop() {
 
 } // namespace toit
 
-#endif // TOIT_FREERTOS
+#endif // TOIT_FREERTOS && CONFIG_BT_ENABLED

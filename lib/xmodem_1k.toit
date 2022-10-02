@@ -83,4 +83,4 @@ class Buffer:
 
   to_byte_array: return buffer_
 
-  eot: return ByteArray 1: EOT_
+  eot: return ByteArray 1 --filler=EOT_

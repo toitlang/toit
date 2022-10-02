@@ -55,6 +55,11 @@
 //  #include <soc/esp32/include/soc/sens_reg.h>
   #include <esp32c3/rom/rtc.h>
   #include <esp32c3/rom/ets_sys.h>
+#elif CONFIG_IDF_TARGET_ESP32S3
+  #include <esp32s3/rom/rtc.h>
+  #include <esp32s3/rom/ets_sys.h>
+  #include <driver/touch_sensor.h>
+  #include <esp32s3/ulp.h>
 #else
   #include <soc/sens_reg.h>
   #include <esp32/rom/rtc.h>
@@ -359,19 +364,9 @@ PRIMITIVE(total_run_time) {
   return Primitive::integer(RtcMemory::total_run_time(), process);
 }
 
-PRIMITIVE(image_config) {
-  size_t length;
-  // TODO(anders): We would prefer to do a read-only view.
-  uint8* config = OS::image_config(&length);
-  ByteArray* result = process->object_heap()->allocate_proxy(length, config);
-  if (result == null) ALLOCATION_FAILED;
-  return result;
-}
-
 PRIMITIVE(get_mac_address) {
-  Error* error = null;
-  ByteArray* result = process->allocate_byte_array(6, &error);
-  if (result == null) return error;
+  ByteArray* result = process->allocate_byte_array(6);
+  if (result == null) ALLOCATION_FAILED;
 
   ByteArray::Bytes bytes = ByteArray::Bytes(result);
   esp_err_t err = esp_efuse_mac_get_default(bytes.address());
@@ -382,17 +377,16 @@ PRIMITIVE(get_mac_address) {
 
 PRIMITIVE(rtc_user_bytes) {
   uint8* rtc_memory = RtcMemory::user_data_address();
-  Error* error = null;
   ByteArray* result = process->object_heap()->allocate_external_byte_array(RtcMemory::RTC_USER_DATA_SIZE, rtc_memory, false, false);
-  if (result == null) return error;
-
+  if (result == null) ALLOCATION_FAILED;
   return result;
 }
 
 class PageReport {
  public:
-  PageReport(uword base = 0) {
+  PageReport(uword base, uword size) {
     memory_base_ = Utils::round_down(base, GRANULARITY);
+    memory_size_ = Utils::round_up(size + base - memory_base_, GRANULARITY);
     memset(pages_, 0, sizeof(pages_));
   }
 
@@ -402,7 +396,6 @@ class PageReport {
       return;
     }
     if (address + size > memory_base_ + PAGES * GRANULARITY) {
-      more_above_ = true;
       return;
     }
     int page = (address - memory_base_) >> GRANULARITY_LOG2;
@@ -434,31 +427,28 @@ class PageReport {
 
   int number_of_pages() const { return PAGES; }
 
-  void get_tags(uint8* buffer) const {
-    for (int i = 0; i < PAGES; i++) {
-      buffer[i] = pages_[i] & ((1 << SIZE_SHIFT_LEFT) - 1);
-    }
+  uint8 get_tag(int i) const {
+    return pages_[i] & ((1 << SIZE_SHIFT_LEFT) - 1);
   }
 
-  void get_fullnesses(uint8* buffer) const {
-    for (int i = 0; i < PAGES; i++) {
-      uword f = fullness(i);
-      if (f == MAX_RECORDABLE_SIZE) {
-        buffer[i] = 100;
-      } else {
-        buffer[i] = (f * 100) / GRANULARITY;
-      }
+  uint8 get_fullness(int i) const {
+    uword f = fullness(i);
+    if (f == MAX_RECORDABLE_SIZE) {
+      return 100;
+    } else {
+      return (f * 100) / GRANULARITY;
     }
   }
 
   uword memory_base() const { return memory_base_; }
 
-  uword next_memory_base() const {
-    if (more_above_) {
-      return memory_base_ + GRANULARITY * PAGES;
-    } else {
-      return 0;
-    }
+  void next_memory_base() {
+    memory_base_ += GRANULARITY * PAGES;
+    memset(pages_, 0, sizeof(pages_));
+  }
+
+  uword iterations_needed() const {
+    return (memory_size_ + GRANULARITY * PAGES - 1) / (GRANULARITY * PAGES);
   }
 
   static const int GRANULARITY_LOG2 = TOIT_PAGE_SIZE_LOG2;
@@ -476,6 +466,7 @@ class PageReport {
 
   static const int PAGES = 100;
   uword memory_base_;
+  uword memory_size_;
   // The first 7 bits are flags, then there are 9 bits that count the number of
   // bytes that are allocated in the page.  Since all allocations are a
   // multiple of 8 this gives us a range of up to 4088 allocated bytes.
@@ -510,43 +501,28 @@ bool page_register_allocation(void* self, void* tag, void* address, uword size) 
 
 PRIMITIVE(memory_page_report) {
   OS::HeapMemoryRange range = OS::get_heap_memory_range();
-  uword memory_base = reinterpret_cast<uword>(range.address);
-  Array* result = null;
-  int result_size = 0;
-  do {
-    PageReport report(memory_base);
-    int flags = ITERATE_ALL_ALLOCATIONS | ITERATE_UNALLOCATED;
-    int caps = OS::toit_heap_caps_flags_for_heap();
+  PageReport report(reinterpret_cast<uword>(range.address), range.size);
+  MallocedBuffer buffer(4096);
+  ProgramOrientedEncoder encoder(process->program(), &buffer);
+  encoder.write_header(report.iterations_needed() * 3 + 1, 'M');
+  int flags = ITERATE_ALL_ALLOCATIONS | ITERATE_UNALLOCATED;
+  int caps = OS::toit_heap_caps_flags_for_heap();
+  for (uword iteration = 0; iteration < report.iterations_needed(); iteration++) {
     heap_caps_iterate_tagged_memory_areas(&report, null, &page_register_allocation, flags, caps);
     uword size = report.number_of_pages();
-    // Allocate the result after compiling the data to avoid the new byte arrays
-    // being included in the report.
-    Array* new_result = process->object_heap()->allocate_array(result_size + 4, Smi::zero());
-    if (new_result == null) ALLOCATION_FAILED;
-    new_result->at_put(result_size + 3, Smi::from(PageReport::GRANULARITY));
-    for (int i = 0; i < result_size; i++) {
-      new_result->at_put(i, result->at(i));
-    }
-    result = reinterpret_cast<Array*>(new_result);
-    for (int i = 0; i < 2; i++) {
-      Error* error = null;
-      ByteArray* byte_array = process->allocate_byte_array(size, &error);
-      if (byte_array == null) return error;
-      ByteArray::Bytes bytes(byte_array);
-      if (i == 0) {
-        report.get_tags(bytes.address());
-      } else {
-        report.get_fullnesses(bytes.address());
-      }
-      result->at_put(result_size + i, byte_array);
-    }
-    uword base = report.memory_base();
-    Object* memory_base_number = Primitive::integer(base, process);
-    if (Primitive::is_error(memory_base_number)) return memory_base_number;
-    result->at_put(result_size + 2, memory_base_number);
-    result_size += 3;
-    memory_base = report.next_memory_base();
-  } while (memory_base);
+    encoder.write_byte_array_header(size);
+    for (int i = 0; i < size; i++) encoder.write_byte(report.get_tag(i));
+    encoder.write_byte_array_header(size);
+    for (int i = 0; i < size; i++) encoder.write_byte(report.get_fullness(i));
+    encoder.write_int(report.memory_base());
+    report.next_memory_base();
+  }
+  encoder.write_int(report.GRANULARITY);
+  if (buffer.has_overflow()) OUT_OF_BOUNDS;
+  ByteArray* result = process->allocate_byte_array(buffer.size());
+  if (result == null) ALLOCATION_FAILED;
+  ByteArray::Bytes bytes(result);
+  memcpy(bytes.address(), buffer.content(), buffer.size());
   return result;
 }
 
