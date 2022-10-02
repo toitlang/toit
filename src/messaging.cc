@@ -112,7 +112,6 @@ bool TisonEncoder::encode(Object* object) {
   write_uint32(marker);
   if (!encoding_for_size()) {
     ASSERT(payload_size() > 0);
-    printf("[payload = %u]", payload_size());
     write_cardinal(payload_size());
   }
   bool result = encode_any(object);
