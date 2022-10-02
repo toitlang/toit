@@ -79,10 +79,13 @@ static int sign_if_necessary(const char* out_path) {
 #endif
 }
 
-int create_executable(const char* out_path, const SnapshotBundle& bundle) {
+int create_executable(const char* out_path, const SnapshotBundle& bundle, const char* vessel_root) {
   FilesystemLocal fs;
   PathBuilder builder(&fs);
-  builder.add(fs.vessel_root());
+  if (vessel_root == null) {
+    vessel_root = fs.vessel_root();
+  }
+  builder.add(vessel_root);
   bool found_vessel = false;
   for (int i = 0; ARRAY_SIZE(VESSEL_SIZES); i++) {
     if (bundle.size() < VESSEL_SIZES[i] * 1024) {
