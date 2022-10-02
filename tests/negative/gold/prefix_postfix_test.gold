@@ -4,13 +4,13 @@ tests/negative/prefix_postfix_test.toit:7:3: error: Can't have space between '++
 tests/negative/prefix_postfix_test.toit:8:3: error: Can't have space between '--' and the operand
   -- foo
   ^~~~~~
-tests/negative/prefix_postfix_test.toit:8:3: warning: Prefixed decrement is deprecated.
+tests/negative/prefix_postfix_test.toit:8:3: warning: Prefix decrement is deprecated
   -- foo
   ^~~~~~
 tests/negative/prefix_postfix_test.toit:9:7: error: Can't have space between '--' and the operand
   foo --
       ^
-tests/negative/prefix_postfix_test.toit:9:7: warning: Prefixed decrement is deprecated.
+tests/negative/prefix_postfix_test.toit:9:7: warning: Prefix decrement is deprecated
   foo --
       ^
 tests/negative/prefix_postfix_test.toit:9:9: error: Incomplete expression
@@ -22,7 +22,7 @@ tests/negative/prefix_postfix_test.toit:10:7: error: Can't have space between '+
 tests/negative/prefix_postfix_test.toit:10:9: error: Incomplete expression
   foo ++
         ^
-tests/negative/prefix_postfix_test.toit:11:3: warning: Prefixed decrement is deprecated.
+tests/negative/prefix_postfix_test.toit:11:3: warning: Prefix decrement is deprecated
   --foo
   ^~~~~
 tests/negative/prefix_postfix_test.toit:9:9: error: Can't assign to expression

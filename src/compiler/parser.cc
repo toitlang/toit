@@ -1893,7 +1893,7 @@ Expression* Parser::parse_unary(bool allow_colon) {
       }
       if (kind == Token::DECREMENT) {
         diagnostics()->report_warning(range.extend(current_range()),
-                                      "Prefixed decrement is deprecated.");
+                                      "Prefix decrement is deprecated");
       }
       if (kind == Token::SUB &&
           (current_token() == Token::INTEGER || current_token() == Token::DOUBLE)) {
