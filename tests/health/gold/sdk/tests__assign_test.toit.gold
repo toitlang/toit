@@ -1,24 +1,24 @@
-tests/assign_test.toit:89:20: warning: Prefixed decrement is deprecated.
+tests/assign_test.toit:89:20: warning: Prefix decrement is deprecated
   expect_equals 0 (--GLOBAL)
                    ^~~~~~~~
-tests/assign_test.toit:100:20: warning: Prefixed decrement is deprecated.
+tests/assign_test.toit:100:20: warning: Prefix decrement is deprecated
   expect_equals 0 (--x)
                    ^~~
-tests/assign_test.toit:111:26: warning: Prefixed decrement is deprecated.
+tests/assign_test.toit:111:26: warning: Prefix decrement is deprecated
   expect_equals 0 (exec: --x)
                          ^~~
-tests/assign_test.toit:122:20: warning: Prefixed decrement is deprecated.
+tests/assign_test.toit:122:20: warning: Prefix decrement is deprecated
   expect_equals 0 (--z)
                    ^~~
-tests/assign_test.toit:133:26: warning: Prefixed decrement is deprecated.
+tests/assign_test.toit:133:26: warning: Prefix decrement is deprecated
   expect_equals 0 (exec: --z)
                          ^~~
-tests/assign_test.toit:144:20: warning: Prefixed decrement is deprecated.
+tests/assign_test.toit:144:20: warning: Prefix decrement is deprecated
   expect_equals 0 (--box.value)
                    ^~~~~
-tests/assign_test.toit:155:20: warning: Prefixed decrement is deprecated.
+tests/assign_test.toit:155:20: warning: Prefix decrement is deprecated
   expect_equals 0 (--box[0])
                    ^~~~~
-tests/assign_test.toit:180:22: warning: Prefixed decrement is deprecated.
+tests/assign_test.toit:180:22: warning: Prefix decrement is deprecated
     expect_equals 0 (--value)
                      ^~~~~~~
