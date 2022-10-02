@@ -137,7 +137,7 @@ class MessageEncoder {
 
   static void encode_process_message(uint8* buffer, uint8 value);
 
-  int size() const { return _cursor; }
+  unsigned size() const { return _cursor; }
   bool malloc_failed() const { return _malloc_failed; }
 
   void free_copied();
@@ -197,21 +197,25 @@ class MessageEncoder {
 
 class TisonEncoder : public MessageEncoder {
  public:
-  TisonEncoder(Process* process, uint8* buffer, int payload_size = -1)
+  TisonEncoder(Process* process)
+      : MessageEncoder(process, null, MESSAGE_FORMAT_TISON) { }
+  TisonEncoder(Process* process, uint8* buffer, unsigned payload_size)
       : MessageEncoder(process, buffer, MESSAGE_FORMAT_TISON)
-      , _payload_size(payload_size) { }
+      , _payload_size(payload_size) {
+    ASSERT(payload_size > 0);
+  }
 
   ~TisonEncoder() {
     ASSERT(copied_count() == 0);
     ASSERT(externals_count() == 0);
   }
 
-  int payload_size() const { return _payload_size; }
+  unsigned payload_size() const { return _payload_size; }
 
   bool encode(Object* object);
 
  private:
-   int _payload_size = 0;
+   unsigned _payload_size = 0;
 };
 
 class MessageDecoder {

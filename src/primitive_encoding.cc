@@ -141,9 +141,9 @@ PRIMITIVE(base64_decode)  {
 PRIMITIVE(tison_encode) {
   ARGS(Object, object);
 
-  int size = 0;
-  int payload_size = 0;
-  { TisonEncoder size_encoder(process, null);
+  unsigned size = 0;
+  unsigned payload_size = 0;
+  { TisonEncoder size_encoder(process);
     if (!size_encoder.encode(object)) WRONG_TYPE;
     size = size_encoder.size();
     payload_size = size_encoder.payload_size();

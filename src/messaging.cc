@@ -111,6 +111,7 @@ bool TisonEncoder::encode(Object* object) {
   uint32 marker = TISON_MARKER | (TISON_VERSION << TISON_VERSION_SHIFT);
   write_uint32(marker);
   if (!encoding_for_size()) {
+    ASSERT(payload_size() > 0);
     write_cardinal(payload_size());
   }
   bool result = encode_any(object);
@@ -119,8 +120,12 @@ bool TisonEncoder::encode(Object* object) {
   // Later, when we're not encoding for size, we know the payload size
   // and will encode this before the payload.
   if (encoding_for_size()) {
-    _payload_size = size() - sizeof(uint32);
-   write_cardinal(payload_size());
+    unsigned payload_size = size() - sizeof(uint32);
+    ASSERT(payload_size > 0 && _payload_size == 0);
+    // Make the payload size available to the outside.
+    _payload_size = payload_size;
+    // Encode the payload size, so the full size is correct.
+    write_cardinal(payload_size);
   }
   return true;
 }
