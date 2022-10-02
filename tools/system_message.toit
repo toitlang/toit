@@ -50,9 +50,9 @@ main args:
             --short_help="The snapshot file of the program that produced the message",
         cli.OptionString "message" --short_name="m" --required
             --short_help="The base64-encoded message from the device",
-        cli.Flag "force_pretty"
+        cli.Flag "force-pretty"
             --short_help="Force the report to use terminal graphics",
-        cli.Flag "force_plain"
+        cli.Flag "force-plain"
             --short_help="Force the report to be pure ASCII even on a terminal",
       ]
       --run=:: decode_system_message it command
@@ -70,5 +70,5 @@ decode_system_message parsed command -> none:
     command.run ["--help"]
     exit 1
   handle_system_message encoded_system_message snapshot_content
-      --force_pretty=parsed["force_pretty"]
-      --force_plain=parsed["force_plain"]
+      --force_pretty=parsed["force-pretty"]
+      --force_plain=parsed["force-plain"]
