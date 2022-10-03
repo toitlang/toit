@@ -147,39 +147,43 @@ bool MessageEncoder::encode_any(Object* object) {
       write_cardinal(-value);
     }
     return true;
-  } else if (is_instance(object)) {
+  }
+
+  Program* program = _program;
+  if (is_instance(object)) {
     Instance* instance = Instance::cast(object);
     Smi* class_id = instance->class_id();
-    if (class_id == _program->list_class_id()) {
-      Object* backing = instance->at(Instance::LIST_ARRAY_INDEX);
-      if (is_smi(backing)) return false;
-      class_id = HeapObject::cast(backing)->class_id();
-      if (class_id == _program->array_class_id()) {
-        Array* array = Array::cast(backing);
-        Object* size = instance->at(Instance::LIST_SIZE_INDEX);
-        if (!is_smi(size)) return false;
-        return encode_array(array, Smi::cast(size)->value());
-      } else if (class_id == _program->large_array_class_id()) {
-        printf("[message encoder: cannot encode large array]\n");
-      }
-    } else if (class_id == _program->map_class_id()) {
+    if (class_id == program->list_class_id()) {
+      Object* size = instance->at(Instance::LIST_SIZE_INDEX);
+      if (!is_smi(size)) return false;
+      return encode_list(instance, 0, Smi::cast(size)->value());
+    } else if (class_id == program->list_slice_class_id()) {
+      Object* list = instance->at(Instance::LIST_SLICE_LIST_INDEX);
+      Object* from_object = instance->at(Instance::LIST_SLICE_FROM_INDEX);
+      Object* to_object = instance->at(Instance::LIST_SLICE_TO_INDEX);
+      if (!is_smi(from_object) || !is_smi(to_object)) return false;
+      int from = Smi::cast(from_object)->value();
+      int to = Smi::cast(to_object)->value();
+      if (is_array(list)) return encode_array(Array::cast(list), from, to);
+      return encode_list(Instance::cast(list), from, to);
+    } else if (class_id == program->map_class_id()) {
       return encode_map(instance);
-    } else if (class_id == _program->byte_array_cow_class_id()) {
+    } else if (class_id == program->byte_array_cow_class_id()) {
       return encode_copy(object, TAG_BYTE_ARRAY);
-    } else if (class_id == _program->byte_array_slice_class_id()) {
+    } else if (class_id == program->byte_array_slice_class_id()) {
       return encode_copy(object, TAG_BYTE_ARRAY);
-    } else if (class_id == _program->string_slice_class_id()) {
+    } else if (class_id == program->string_slice_class_id()) {
       return encode_copy(object, TAG_STRING);
     } else {
       printf("[message encoder: cannot encode instance with class id = %zd]\n", class_id->value());
     }
-  } else if (object == _program->null_object()) {
+  } else if (object == program->null_object()) {
     write_uint8(TAG_NULL);
     return true;
-  } else if (object == _program->true_object()) {
+  } else if (object == program->true_object()) {
     write_uint8(TAG_TRUE);
     return true;
-  } else if (object == _program->false_object()) {
+  } else if (object == program->false_object()) {
     write_uint8(TAG_FALSE);
     return true;
   } else if (is_byte_array(object)) {
@@ -192,7 +196,7 @@ bool MessageEncoder::encode_any(Object* object) {
     return encode_copy(object, TAG_STRING);
   } else if (is_array(object)) {
     Array* array = Array::cast(object);
-    return encode_array(array, array->length());
+    return encode_array(array, 0, array->length());
   } else if (is_large_integer(object)) {
     write_uint8(TAG_LARGE_INTEGER);
     write_uint64(bit_cast<uint64>(LargeInteger::cast(object)->value()));
@@ -203,13 +207,27 @@ bool MessageEncoder::encode_any(Object* object) {
   return false;
 }
 
-bool MessageEncoder::encode_array(Array* object, int size) {
+bool MessageEncoder::encode_array(Array* object, int from, int to) {
+  ASSERT(from <= to);
   write_uint8(TAG_ARRAY);
-  write_cardinal(size);
-  for (int i = 0; i < size; i++) {
+  write_cardinal(to - from);
+  for (int i = from; i < to; i++) {
     if (!encode_any(object->at(i))) return false;
   }
   return true;
+}
+
+bool MessageEncoder::encode_list(Instance* instance, int from, int to) {
+  Object* backing = instance->at(Instance::LIST_ARRAY_INDEX);
+  if (is_smi(backing)) return false;
+  Smi* class_id = HeapObject::cast(backing)->class_id();
+  if (class_id == _program->array_class_id()) {
+    Array* array = Array::cast(backing);
+    return encode_array(array, from, to);
+  } else if (class_id == _program->large_array_class_id()) {
+    printf("[message encoder: cannot encode large array]\n");
+  }
+  return false;
 }
 
 bool MessageEncoder::encode_map(Instance* instance) {
