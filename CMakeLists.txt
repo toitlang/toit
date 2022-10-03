@@ -27,6 +27,9 @@ if ((NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "${CMAKE_HOST_SYSTEM_NAME}") OR
   # This turns out to work out fine, as we can run the 32-bit executables anyway and don't
   # need a different host build to compile the snapshots.
   set(TOIT_IS_CROSS TRUE)
+  # We are using the compiler from the host system, but we want to use the vessels
+  # from the target system.
+  set(TOIT_VESSELS_ROOT ${CMAKE_BINARY_DIR}/sdk/vessels)
 endif()
 
 set(TOITLSP_BIN "${CMAKE_BINARY_DIR}/sdk/bin/toit.lsp${CMAKE_EXECUTABLE_SUFFIX}")
