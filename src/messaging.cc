@@ -175,7 +175,7 @@ bool MessageEncoder::encode_any(Object* object) {
     } else if (class_id == program->string_slice_class_id()) {
       return encode_copy(object, TAG_STRING);
     } else {
-      printf("[message encoder: cannot encode instance with class id = %zd]\n", class_id->value());
+      problematic_class_id_ = class_id->value();
     }
   } else if (object == program->null_object()) {
     write_uint8(TAG_NULL);
