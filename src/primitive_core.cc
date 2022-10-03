@@ -1804,7 +1804,14 @@ PRIMITIVE(process_send) {
 
   unsigned size = 0;
   { MessageEncoder size_encoder(process, null);
-    if (!size_encoder.encode(array)) WRONG_TYPE;
+    if (!size_encoder.encode(array)) {
+      if (size_encoder.nesting_too_deep()) NESTING_TOO_DEEP;
+      int class_id = size_encoder.problematic_class_id();
+      if (class_id >= 0) {
+        return Smi::from(-1 - class_id);
+      }
+      WRONG_TYPE;
+    }
     size = size_encoder.size();
   }
 

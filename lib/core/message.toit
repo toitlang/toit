@@ -22,8 +22,21 @@ primitive message encoder.
 Returns a status code:
 - 0: Message OK
 - 1: No such receiver
+- <0: -1 - (Class ID of class that can't be serialized),
 */
-process_send_ pid/int type/int message:
+process_send_ pid/int type/int message -> int:
+  result := process_send_primitive_ pid type message
+  if result < 0:
+    serialization_failure_ (1 - result)
+  return result
+
+/*
+Returns a status code:
+- 0: Message OK
+- 1: No such receiver
+- <0: Class ID of class that can't be serialized
+*/
+process_send_primitive_ pid/int type/int message:
   #primitive.core.process_send
 
 /** Registered system message handlers for this process. */

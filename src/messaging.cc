@@ -133,7 +133,7 @@ bool TisonEncoder::encode(Object* object) {
 bool MessageEncoder::encode_any(Object* object) {
   NestingTracker tracking(&_nesting);
   if (_nesting > MESSAGING_ENCODING_MAX_NESTING) {
-    printf("[message encoder: too much nesting %d]\n", _nesting);
+    _nesting_too_deep = true;
     return false;
   }
 
@@ -175,7 +175,7 @@ bool MessageEncoder::encode_any(Object* object) {
     } else if (class_id == program->string_slice_class_id()) {
       return encode_copy(object, TAG_STRING);
     } else {
-      problematic_class_id_ = class_id->value();
+      _problematic_class_id = class_id->value();
     }
   } else if (object == program->null_object()) {
     write_uint8(TAG_NULL);
