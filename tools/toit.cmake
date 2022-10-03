@@ -75,11 +75,15 @@ function(ADD_TOIT_EXE SOURCE TARGET DEP_FILE ENV)
   if(POLICY CMP0116)
     cmake_policy(SET CMP0116 NEW)
   endif()
+  set(VESSELS_FLAG)
+  if (TOIT_VESSELS_ROOT)
+    set(VESSELS_FLAG --vessels-root "${TOIT_VESSELS_ROOT}")
+  endif()
   add_custom_command(
     OUTPUT "${TARGET}"
     DEPFILE ${DEP_FILE}
     DEPENDS "${TOITC}" download_packages "${SOURCE}"
-    COMMAND ${CMAKE_COMMAND} -E env ${ENV} ASAN_OPTIONS=detect_leaks=false "${TOITC}" --dependency-file "${DEP_FILE}" --dependency-format ninja -o "${TARGET}" "${SOURCE}"
+    COMMAND ${CMAKE_COMMAND} -E env ${ENV} ASAN_OPTIONS=detect_leaks=false "${TOITC}" --dependency-file "${DEP_FILE}" --dependency-format ninja ${VESSELS_FLAG} -o "${TARGET}" "${SOURCE}"
   )
 endfunction(ADD_TOIT_EXE)
 
