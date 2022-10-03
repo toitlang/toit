@@ -58,18 +58,23 @@ test_maps -> none:
 test_lists -> none:
   test_round_trip [0, 1, 2, 3]
   test_round_trip [1, 2, 3, 4]
-  // TODO(kasper): encoding.tison deals incorrectly with large
-  // lists and list slices.
-  expect_throw "WRONG_OBJECT_TYPE": test_round_trip [1, 2, 3, 4][0..1]
-  expect_throw "WRONG_OBJECT_TYPE": test_round_trip [1, 2, 3, 4][2..4]
+  test_round_trip [1, 2, 3, 4][0..1]
+  test_round_trip [1, 2, 3, 4][2..4]
   x := [0, 1, 2, 3, 4, 5, 6, 7, 8]
   10.repeat:
     x += x + [x.size]
+    // TODO(kasper): encoding.tison deals incorrectly with large lists.
     if x is List_ and (x as List_).array_ is LargeArray_:
       expect_throw "WRONG_OBJECT_TYPE": test_round_trip x
+      expect_throw "WRONG_OBJECT_TYPE": test_round_trip x[0..x.size / 2]
     else:
       test_round_trip x
-    expect_throw "WRONG_OBJECT_TYPE": test_round_trip x[0..x.size / 2]
+      test_round_trip x[0..x.size / 2]
+  // TISON decodes lists to simpler arrays. Make sure
+  // we deal correctly with slices of those too.
+  array := tison.decode (tison.encode [0, 1, 2, 3])
+  test_round_trip array
+  test_round_trip array[0..1]
 
 test_byte_arrays -> none:
   test_round_trip (ByteArray 0)

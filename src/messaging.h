@@ -181,10 +181,11 @@ class MessageEncoder {
   unsigned _externals_count = 0;
   ByteArray* _externals[MESSAGING_ENCODING_MAX_EXTERNALS];
 
-  bool encode_array(Array* object, int size);
+  bool encode_array(Array* object, int from, int to);
   bool encode_byte_array(ByteArray* object);
   bool encode_copy(Object* object, int tag);
-  bool encode_map(Instance* object);
+  bool encode_list(Instance* instance, int from, int to);
+  bool encode_map(Instance* instance);
 
   void write_uint8(uint8 value) {
     if (!encoding_for_size()) _buffer[_cursor] = value;
