@@ -199,6 +199,13 @@ class Error extends Mirror:
       class_name = method_info.as_class_name relative_bci
     return "As check failed: $(typed_expression_string_ expression) is not a $class_name.\n$trace"
 
+  serialization_failed_stringify -> string:
+    // message is an array [expression, id]
+    if message is not int: return "Serialization failed: Cannot encode instance.\n$trace"
+    class_id := message
+    class_name := program.class_name_for class_id
+    return "Serialization failed: Cannot encode instance of $class_name.\n$trace"
+
   allocation_failed_stringify -> string:
     if message is not int:
       return "Allocation failed:$message.\n$trace"
@@ -263,6 +270,7 @@ class Error extends Mirror:
   stringify -> string:
     if type == "LOOKUP_FAILED": return lookup_failure_stringify
     if type == "AS_CHECK_FAILED": return as_check_failure_stringify
+    if type == "SERIALIZATION_FAILED": return serialization_failed_stringify
     if type == "ALLOCATION_FAILED": return allocation_failed_stringify
     if type == "INITIALIZATION_IN_PROGRESS": return initialization_in_progress_stringify
     if type == "UNINITIALIZED_GLOBAL": return uninitialized_global_stringify

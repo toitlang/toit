@@ -144,7 +144,13 @@ PRIMITIVE(tison_encode) {
   unsigned size = 0;
   unsigned payload_size = 0;
   { TisonEncoder size_encoder(process);
-    if (!size_encoder.encode(object)) WRONG_TYPE;
+    if (!size_encoder.encode(object)) {
+      int id = size_encoder.problematic_class_id();
+      if (id >= 0) {
+        return Smi::from(id);
+      }
+      WRONG_TYPE;
+    }
     size = size_encoder.size();
     payload_size = size_encoder.payload_size();
   }

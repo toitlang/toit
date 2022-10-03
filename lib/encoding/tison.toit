@@ -22,6 +22,12 @@ For compatibility with JSON and UBJSON encodings, you should avoid passing
   maps with non-string keys directly or indirectly to $encode.
 */
 encode object/any -> ByteArray:
+  result := tison_encode_ object
+  if result is int:
+    serialization_failure_ result
+  return result
+
+tison_encode_ object/any -> any:
   #primitive.encoding.tison_encode
 
 /**

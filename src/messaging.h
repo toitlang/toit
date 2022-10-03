@@ -151,6 +151,8 @@ class MessageEncoder {
   bool encode_bundles(SnapshotBundle system, SnapshotBundle application);
 #endif
 
+  int problematic_class_id() const { return problematic_class_id_; }
+
  protected:
   MessageEncoder(Process* process, uint8* buffer, MessageFormat format);
 
@@ -172,6 +174,7 @@ class MessageEncoder {
   uint8* const _buffer;  // The buffer is null when we're encoding for size.
   int _cursor = 0;
   int _nesting = 0;
+  int problematic_class_id_ = -1;
 
   bool _malloc_failed = false;
 
