@@ -200,7 +200,7 @@ class Error extends Mirror:
     return "As check failed: $(typed_expression_string_ expression) is not a $class_name.\n$trace"
 
   serialization_failed_stringify -> string:
-    // message is an array [expression, id]
+    // message is an integer, the failing class-id.
     if message is not int: return "Serialization failed: Cannot encode instance.\n$trace"
     class_id := message
     class_name := program.class_name_for class_id
