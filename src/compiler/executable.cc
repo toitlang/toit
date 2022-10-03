@@ -17,6 +17,7 @@
 
 #include <stdio.h>
 #include <fcntl.h>
+#include <sys/stat.h>
 
 #ifdef TOIT_DARWIN
 // For spawning codesign.
@@ -35,11 +36,7 @@ extern "C" char** environ;
 namespace toit {
 namespace compiler {
 
-#ifdef TOIT_WINDOWS
-static const char* EXECUTABLE_SUFFIX = ".exe";
-#else
-static const char* EXECUTABLE_SUFFIX = "";
-#endif
+static const char* EXECUTABLE_SUFFIXES[] = { "", ".exe" };
 
 #ifndef O_BINARY
 // On Windows `O_BINARY` is necessary to avoid newline conversions.
@@ -79,14 +76,17 @@ static int sign_if_necessary(const char* out_path) {
 #endif
 }
 
-int create_executable(const char* out_path, const SnapshotBundle& bundle) {
+int create_executable(const char* out_path, const SnapshotBundle& bundle, const char* vessel_root) {
   FilesystemLocal fs;
   PathBuilder builder(&fs);
-  builder.add(fs.vessel_root());
+  if (vessel_root == null) {
+    vessel_root = fs.vessel_root();
+  }
+  builder.add(vessel_root);
   bool found_vessel = false;
-  for (int i = 0; ARRAY_SIZE(VESSEL_SIZES); i++) {
+  for (int i = 0; i < ARRAY_SIZE(VESSEL_SIZES); i++) {
     if (bundle.size() < VESSEL_SIZES[i] * 1024) {
-      builder.join(std::string("vessel") + std::to_string(VESSEL_SIZES[i]) + std::string(EXECUTABLE_SUFFIX));
+      builder.join(std::string("vessel") + std::to_string(VESSEL_SIZES[i]));
       found_vessel = true;
       break;
     }
@@ -96,10 +96,26 @@ int create_executable(const char* out_path, const SnapshotBundle& bundle) {
     return -1;
   }
   builder.canonicalize();
+  int length_without_extension = builder.length();
+  FILE* file;
   const char* vessel_path = strdup(builder.c_str());
-  FILE* file = fopen(vessel_path, "rb");
+  for (int i = 0; i < ARRAY_SIZE(EXECUTABLE_SUFFIXES); i++) {
+    builder.reset_to(length_without_extension);
+    builder.add(EXECUTABLE_SUFFIXES[i]);
+    vessel_path = strdup(builder.c_str());
+    struct stat buffer;
+    if (stat(vessel_path, &buffer) != 0) {
+      continue;
+    }
+    file = fopen(vessel_path, "rb");
+    if (!file) {
+      fprintf(stderr, "Unable to open vessel file %s\n", vessel_path);
+      return -1;
+    }
+    break;
+  }
   if (!file) {
-    fprintf(stderr, "Unable to open vessel file %s\n", vessel_path);
+    fprintf(stderr, "Unable to find vessel file in %s\n", vessel_root);
     return -1;
   }
   // Find content size of file.

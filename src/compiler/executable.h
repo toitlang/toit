@@ -21,7 +21,7 @@ class SnapshotBundle;
 
 namespace compiler {
 
-int create_executable(const char* out_path, const SnapshotBundle& bundle);
+int create_executable(const char* out_path, const SnapshotBundle& bundle, const char* vessel_root);
 
 } // namespace toit::compiler
 } // namespace toit
