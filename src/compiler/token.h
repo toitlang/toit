@@ -193,6 +193,7 @@ enum Precedence {
   I(CowByteArray_)                                             \
   I(ByteArraySlice_)                                           \
   I(List_)                                                     \
+  I(ListSlice_)                                                \
   I(Tombstone_)                                                \
   I(create_array_)                                             \
   I(create_byte_array_)                                        \

@@ -249,6 +249,7 @@ void ProgramBuilder::set_built_in_class_tags_and_sizes() {
   set_built_in_class_tag_and_size(Symbols::ByteArraySlice_);
   set_built_in_class_tag_and_size(Symbols::StringSlice_);
   set_built_in_class_tag_and_size(Symbols::List_);
+  set_built_in_class_tag_and_size(Symbols::ListSlice_);
   set_built_in_class_tag_and_size(Symbols::Tombstone_);
   set_built_in_class_tag_and_size(Symbols::Map);
   set_built_in_class_tag_and_size(Symbols::Stack_, TypeTag::STACK_TAG, 0);
@@ -340,7 +341,7 @@ Program* ProgramBuilder::cook() {
 
 void ProgramBuilder::set_builtin_class_id(const char* name, int id) {
   // TODO(florian): This is a really ugly implementation.
-#define T(p, n) if (strcmp((Symbols:: n).c_str(), name) == 0) _program-> set_##p##_class_id(Smi::from(id));
+#define T(p, n) if (strcmp((Symbols:: n).c_str(), name) == 0) _program->set_##p##_class_id(Smi::from(id));
 TREE_ROOT_CLASSES(T)
 #undef T
   return;
