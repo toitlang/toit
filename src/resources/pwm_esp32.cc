@@ -187,6 +187,7 @@ PRIMITIVE(start) {
     .gpio_num = pin,
     .speed_mode = SPEED_MODE,
     .channel = channel,
+    .intr_type = LEDC_INTR_DISABLE,
     .timer_sel = resource_group->timer(),
     .duty = compute_duty_factor(resource_group, factor),
     .hpoint = 0,

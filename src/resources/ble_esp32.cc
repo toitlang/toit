@@ -596,22 +596,19 @@ PRIMITIVE(scan_start) {
     return Primitive::os_error(err, process);
   }
 
-  struct ble_gap_disc_params disc_params = { 0 };
-  // Tell the controller to filter duplicates; we don't want to process
-  // repeated advertisements from the same device.
-  // disc_params.filter_duplicates = 1;
-
-  /**
-   * Perform a passive scan.  I.e., don't send follow-up scan requests to
-   * each advertiser.
-   */
-  disc_params.passive = 1;
-
-  /* Use defaults for the rest of the parameters. */
-  disc_params.itvl = 0;
-  disc_params.window = 0;
-  disc_params.filter_policy = 0;
-  disc_params.limited = 0;
+  struct ble_gap_disc_params disc_params = {
+    .itvl = 0,
+    .window = 0,
+    .filter_policy = 0,
+    .limited = 0,
+    // Perform a passive scan.  I.e., don't send follow-up scan requests to
+    // each advertiser.
+    .passive = 1,
+    // Tell the controller to filter duplicates; we don't want to process
+    // repeated advertisements from the same device.
+    // .filter_duplicates = 1;
+    .filter_duplicates = 0,
+  };
 
   err = ble_gap_disc(BLE_ADDR_PUBLIC, duration_ms, &disc_params,
                      BLEEventSource::on_gap, group->gap());
@@ -717,12 +714,17 @@ PRIMITIVE(advertise_start) {
 
   int32 duration_ms = duration_us < 0 ? BLE_HS_FOREVER : duration_us / 1000;
 
-  struct ble_gap_adv_params adv_params = { 0 };
-  adv_params.conn_mode = conn_mode;
+  struct ble_gap_adv_params adv_params = {
+    .conn_mode = conn_mode,
+    // TODO(anders): Be able to tune this.
+    .disc_mode = BLE_GAP_DISC_MODE_GEN,
+    .itvl_min = adv_params.itvl_max = interval_us / 625,
+    .itvl_max = 0,
+    .channel_map = 0,
+    .filter_policy = 0,
+    .high_duty_cycle = 0,
+  };
 
-  // TODO(anders): Be able to tune this.
-  adv_params.disc_mode = BLE_GAP_DISC_MODE_GEN;
-  adv_params.itvl_min = adv_params.itvl_max = interval_us / 625;
   int err = ble_gap_adv_start(BLE_OWN_ADDR_PUBLIC, null, duration_ms, &adv_params, BLEEventSource::on_gap, group->gap());
   if (err != ESP_OK) {
     return Primitive::os_error(err, process);

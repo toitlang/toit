@@ -2074,7 +2074,10 @@ PRIMITIVE(get_real_time_clock) {
   Array* result = process->object_heap()->allocate_array(2, Smi::zero());
   if (result == null) ALLOCATION_FAILED;
 
-  struct timespec time = { 0, };
+  struct timespec time = {
+    .tv_sec = 0,
+    .tv_nsec = 0,
+  };
   if (!OS::get_real_time(&time)) OTHER_ERROR;
 
   Object* tv_sec = Primitive::integer(time.tv_sec, process);

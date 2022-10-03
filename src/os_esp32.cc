@@ -183,9 +183,8 @@ class ConditionVariable {
       FATAL("wait on unlocked mutex");
     }
 
-    ConditionVariableWaiter w = {
-      .task = xTaskGetCurrentTaskHandle()
-    };
+    ConditionVariableWaiter w;
+    w.task = xTaskGetCurrentTaskHandle();
 
     TAILQ_INSERT_TAIL(&_waiter_list, &w, link);
 
@@ -287,6 +286,10 @@ void* thread_start(void* arg) {
   return null;
 }
 
+static void esp_thread_start(void* arg) {
+  thread_start(arg);
+}
+
 void Thread::_boot() {
   auto thread = reinterpret_cast<ThreadData*>(_handle);
   current_thread_ = this;
@@ -312,7 +315,7 @@ bool Thread::spawn(int stack_size, int core) {
   if (core == -1) core = tskNO_AFFINITY;
 
   BaseType_t res = xTaskCreatePinnedToCore(
-    reinterpret_cast<TaskFunction_t>(thread_start),
+    esp_thread_start,
     _name,
     stack_size,
     this,
@@ -413,7 +416,15 @@ bool OS::use_virtual_memory(void* address, uword size) {
 void OS::unuse_virtual_memory(void* address, uword size) {}
 
 OS::HeapMemoryRange OS::get_heap_memory_range() {
-  multi_heap_info_t info = { 0 };
+  multi_heap_info_t info = {
+    .largest_free_block = 0,
+    .minimum_free_bytes = 0,
+    .allocated_blocks = 0,
+    .free_blocks = 0,
+    .total_blocks = 0,
+    .lowest_address = 0,
+    .highest_address = 0,
+  };
 
   int caps = EXTERNAL_CAPS;
   heap_caps_get_info(&info, caps);
@@ -775,7 +786,10 @@ const char* OS::getenv(const char* variable) {
 
 bool OS::set_real_time(struct timespec* time) {
   if (clock_settime(CLOCK_REALTIME, time) == 0) return true;
-  struct timeval timeofday = { 0, };
+  struct timeval timeofday = {
+    .tv_sec = 0,
+    .tv_usec = 0,
+  };
   TIMESPEC_TO_TIMEVAL(&timeofday, time);
   return settimeofday(&timeofday, NULL) == 0;
 }
