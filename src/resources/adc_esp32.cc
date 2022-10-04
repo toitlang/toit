@@ -117,7 +117,9 @@ static int get_adc2_channel(int pin) {
     default: return adc2_channel_t(-1);
   }
 }
+
 #elif CONFIG_IDF_TARGET_ESP32S3
+
 static int get_adc1_channel(int pin) {
   switch (pin) {
     case 1: return  ADC1_CHANNEL_0;

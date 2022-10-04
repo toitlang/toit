@@ -140,7 +140,7 @@ function(toit_postprocess)
 
     if (CONFIG_TOIT_ENTRY_POINT)
         resolve_file(RUN_PROGRAM ${CONFIG_TOIT_ENTRY_POINT} ${TOIT_BASE_DIR} "program toit")
-        resolve_file(RUN_PROGRAM_PROJECT_ROOT ${CONFIG_TOIT_ENTRY_POINT_PROJECT_ROOT} ${TOIT_BASE_DIR} "")
+        resolve_file(RUN_PROGRAM_PROJECT_ROOT "${CONFIG_TOIT_ENTRY_POINT_PROJECT_ROOT}" ${TOIT_BASE_DIR} "")
 
         if(EXISTS ${RUN_PROGRAM_PROJECT_ROOT})
             set(ENTRY_PROJECT_ROOT_ARGS "--project-root" "${RUN_PROGRAM_PROJECT_ROOT}")
