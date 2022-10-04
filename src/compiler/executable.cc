@@ -84,7 +84,7 @@ int create_executable(const char* out_path, const SnapshotBundle& bundle, const 
   }
   builder.add(vessel_root);
   bool found_vessel = false;
-  for (int i = 0; i < ARRAY_SIZE(VESSEL_SIZES); i++) {
+  for (unsigned int i = 0; i < ARRAY_SIZE(VESSEL_SIZES); i++) {
     if (bundle.size() < VESSEL_SIZES[i] * 1024) {
       builder.join(std::string("vessel") + std::to_string(VESSEL_SIZES[i]));
       found_vessel = true;
@@ -97,9 +97,9 @@ int create_executable(const char* out_path, const SnapshotBundle& bundle, const 
   }
   builder.canonicalize();
   int length_without_extension = builder.length();
-  FILE* file;
+  FILE* file = null;
   const char* vessel_path = strdup(builder.c_str());
-  for (int i = 0; i < ARRAY_SIZE(EXECUTABLE_SUFFIXES); i++) {
+  for (unsigned int i = 0; i < ARRAY_SIZE(EXECUTABLE_SUFFIXES); i++) {
     builder.reset_to(length_without_extension);
     builder.add(EXECUTABLE_SUFFIXES[i]);
     vessel_path = strdup(builder.c_str());
@@ -108,13 +108,13 @@ int create_executable(const char* out_path, const SnapshotBundle& bundle, const 
       continue;
     }
     file = fopen(vessel_path, "rb");
-    if (!file) {
+    if (file == null) {
       fprintf(stderr, "Unable to open vessel file %s\n", vessel_path);
       return -1;
     }
     break;
   }
-  if (!file) {
+  if (file == null) {
     fprintf(stderr, "Unable to find vessel file in %s\n", vessel_root);
     return -1;
   }
