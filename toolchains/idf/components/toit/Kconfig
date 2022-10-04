@@ -17,13 +17,21 @@ menu "Toit"
         string "Entry point"
         default ""
         help
-            The toit entry point of custom toit program, for example examples/hello.toit
+            The toit entry point of custom toit program, for example examples/hello.toit.
 
     config TOIT_ENTRY_POINT_PROJECT_ROOT
-        string "Project root of the entry point toit program, if it includes external packages this is needed"
+        string "Entry point project root"
         default ""
         help
-            The toit entry point of custom program
+            Project root of the entry point toit program, if it includes external packages this is needed.
+
+    config TOIT_ENTRY_POINT_ASSETS_FILE
+        string "Entry point assets"
+        default ""
+        help
+            An optional assets file to add to the entry point. The file is assumed to be named with an extension of json
+            and the base name of the file becomes the name of the assets. The asset will be encoded as ubjson.
+            As an example 'config.json' would become the config asset.
 
     config TOIT_BYTE_DISPLAY
         bool "Include primitives for byte-oriented (true-color or 256-shade gray) displays"
@@ -65,14 +73,14 @@ menu "Toit"
             default "n"
             depends on SPIRAM_USE_CAPS_ALLOC || SPIRAM_USE_MALLOC
             help
-                Enables the possibility of allocating Toit heap in the SPIRAM
+                Enables the possibility of allocating Toit heap in the SPIRAM.
 
         config TOIT_SPIRAM_HEAP_ONLY
             boolean "Keep toit heap exclusively in SPIRAM"
             default "n"
             depends on TOIT_SPIRAM_HEAP
             help
-                If selected, the Toit heap will exclusively be placed in SPIRAM
+                If selected, the Toit heap will exclusively be placed in SPIRAM.
 
         config TOIT_SYSTEM_SOURCE
             string "Toit source file for system"

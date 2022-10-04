@@ -90,6 +90,7 @@ function(toit_postprocess)
     idf_component_get_property(TOIT_BASE_DIR ${TOIT_COMPONENT_NAME} TOIT_BASE_DIR)
     idf_component_get_property(SYSTEM_SNAPSHOT ${TOIT_COMPONENT_NAME} SYSTEM_SNAPSHOT)
     set(FIRMWARE_BIN ${TOIT_SDK_DIR}/tools/firmware)
+    set(ASSETS_BIN ${TOIT_SDK_DIR}/tools/assets)
 
     idf_build_get_property(EXECUTABLE_NAME EXECUTABLE_NAME)
 
@@ -138,23 +139,41 @@ function(toit_postprocess)
         )
     endif()
 
+
+
     if (CONFIG_TOIT_ENTRY_POINT)
         resolve_file(RUN_PROGRAM ${CONFIG_TOIT_ENTRY_POINT} ${TOIT_BASE_DIR} "program toit")
         resolve_file(RUN_PROGRAM_PROJECT_ROOT "${CONFIG_TOIT_ENTRY_POINT_PROJECT_ROOT}" ${TOIT_BASE_DIR} "")
+        resolve_file(RUN_PROGRAM_ASSETS_FILE "${CONFIG_TOIT_ENTRY_POINT_ASSETS_FILE}" ${TOIT_BASE_DIR} "")
 
-        if(EXISTS ${RUN_PROGRAM_PROJECT_ROOT})
+        if(CONFIG_TOIT_ENTRY_POINT_PROJECT_ROOT AND EXISTS ${RUN_PROGRAM_PROJECT_ROOT})
             set(ENTRY_PROJECT_ROOT_ARGS "--project-root" "${RUN_PROGRAM_PROJECT_ROOT}")
+        endif()
+
+        IF(CONFIG_TOIT_ENTRY_POINT_ASSETS_FILE AND EXISTS ${RUN_PROGRAM_ASSETS_FILE})
+            get_filename_component(ASSET_NAME ${RUN_PROGRAM_ASSETS_FILE} NAME_WLE)
+            message("${ASSET_NAME}")
+            add_custom_command(
+                    TARGET firmware
+                    POST_BUILD
+                    COMMAND "${ASSETS_BIN}" "--assets=entry_assets.bin" create
+                    COMMAND "${ASSETS_BIN}" "--assets=entry_assets.bin" "add" "--format" "ubjson"
+                            ${ASSET_NAME} ${RUN_PROGRAM_ASSETS_FILE}
+                    COMMAND echo envelope: asset for program created
+            )
+            set(ENTRY_ASSETS_ARGS "--assets" "entry_assets.bin")
         endif()
 
         add_custom_command(
                 TARGET firmware
                 POST_BUILD
                 COMMAND "${TOITC}" "-w" "${CMAKE_BINARY_DIR}/program.snapshot" ${ENTRY_PROJECT_ROOT_ARGS} ${RUN_PROGRAM}
-                COMMAND "${FIRMWARE_BIN}"
-                        "--envelope=firmware.envelope"
-                        "container" "install" "program" ${CMAKE_BINARY_DIR}/program.snapshot
+                COMMAND "${FIRMWARE_BIN}" "--envelope=firmware.envelope"
+                        "container" "install" ${ENTRY_ASSETS_ARGS} "program" ${CMAKE_BINARY_DIR}/program.snapshot
                 COMMAND echo envelope: program added
         )
+
+
     endif()
 
     add_custom_command(
