@@ -16,7 +16,7 @@
 # Partition Table for Toit.
 
 # Name,   Type, SubType,  Offset,    Size
-# bootloader,,  ,         0x001000,  0x007000
+# bootloader,,  ,         0x000000,  0x008000
 # partitions,,  ,         0x008000,  0x000c00
 secure,   0x42, 0x00,     0x009000,  0x004000,
 otadata,  data, ota,      0x00d000,  0x002000,
