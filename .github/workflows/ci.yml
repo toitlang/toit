@@ -38,7 +38,6 @@ jobs:
           echo ::set-output name=debug_dir::debug-ci/$RUNNER_OS-${{ matrix.shard }}
           if [ "$RUNNER_OS" == "Linux" ]; then
             echo ::set-output name=artifact::toit-linux.tar.gz
-            echo ::set-output name=raspberry_pi_artifact::toit-rpi.tar.gz
             echo ::set-output name=total_shards::10
           elif [ "$RUNNER_OS" == "macOS" ]; then
             echo ::set-output name=artifact::toit-macos.tar.gz
@@ -181,11 +180,6 @@ jobs:
             make CROSS_ARCH=host32 BUILD_TYPE=Debug all-cross
           fi
 
-      - name: Build Raspberry Pi
-        if: runner.os == 'Linux' && matrix.shard == 1
-        run: |
-          make pi
-
       # Test.
       - name: Test
         shell: bash  # This is crucial, as the powershell doesn't abort when there is an error.
@@ -245,14 +239,6 @@ jobs:
           cp -R ./build/host/sdk ./build/host/toit
           tar -czf build/${{ steps.constants.outputs.artifact }} -C ./build/host -h --exclude toit/bin/mbedtls toit
 
-      - name: Pack Raspberry Pi artifacts
-        if: matrix.shard == 1 && runner.os == 'Linux'
-        shell: bash
-        # Note that we use `cp -R` first, since that works on every platform.
-        run: |
-          cp -R ./build/raspberry_pi/sdk ./build/raspberry_pi/toit
-          tar -czf build/${{ steps.constants.outputs.raspberry_pi_artifact }} -C ./build/raspberry_pi -h --exclude toit/bin/mbedtls toit
-
       - name: Prepare debug repros
         if: always()
         continue-on-error: true
@@ -278,13 +264,6 @@ jobs:
           name: ${{ runner.os }}-build
           path: build/${{ steps.constants.outputs.artifact }}
 
-      - name: Upload Raspberry Pi artifacts
-        if: matrix.shard == 1 && runner.os == 'Linux'
-        uses: actions/upload-artifact@v2
-        with:
-          name: ${{ runner.os }}-build
-          path: build/${{ steps.constants.outputs.raspberry_pi_artifact }}
-
       - name: Upload release artifacts
         if: |
           (github.event_name) == 'release' &&
@@ -293,18 +272,6 @@ jobs:
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: build/${{ steps.constants.outputs.artifact }}
-          tag: ${{ github.ref }}
-          overwrite: true
-
-      - name: Upload release Raspberry Pi artifacts
-        if: |
-          (github.event_name) == 'release' &&
-          (matrix.shard == 1) &&
-          (runner.os == 'Linux')
-        uses: svenstaro/upload-release-action@v2
-        with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: build/${{ steps.constants.outputs.raspberry_pi_artifact }}
           tag: ${{ github.ref }}
           overwrite: true
 
@@ -419,10 +386,16 @@ jobs:
           overwrite: true
 
   # Really annoying that we need to duplicate so much.
-  cross_windows:
+  cross:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Set up constants
+        id: constants
+        run: |
+          echo ::set-output name=raspberry_pi_artifact::toit-rpi.tar.gz
+        shell: bash
+
       - uses: actions/checkout@v2
 
       - name: Fetch tags
@@ -483,8 +456,7 @@ jobs:
           cmake --version
           gcc --version
 
-      # Build using make.
-      - name: make
+      - name: Make
         env:
           IDF_PATH: ${{ github.workspace }}/third_party/esp-idf
           CCACHE_DIR: ${{ github.workspace }}/.ccache
@@ -494,6 +466,29 @@ jobs:
           CCACHE_MAXSIZE: 400M
         run: |
           make CROSS_ARCH=win64 all-cross
+          make pi
+
+      - name: Pack Raspberry Pi artifacts
+        shell: bash
+        # Note that we use `cp -R` first, since that works on every platform.
+        run: |
+          cp -R ./build/raspberry_pi/sdk ./build/raspberry_pi/toit
+          tar -czf build/${{ steps.constants.outputs.raspberry_pi_artifact }} -C ./build/raspberry_pi -h --exclude toit/bin/mbedtls toit
+
+      - name: Upload Raspberry Pi artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: ${{ runner.os }}-build
+          path: build/${{ steps.constants.outputs.raspberry_pi_artifact }}
+
+      - name: Upload release Raspberry Pi artifacts
+        if: github.event_name == 'release'
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: build/${{ steps.constants.outputs.raspberry_pi_artifact }}
+          tag: ${{ github.ref }}
+          overwrite: true
 
   external:
     needs: build
