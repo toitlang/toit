@@ -15,7 +15,7 @@
 
 set(ARM_TARGET "arm-linux-gnueabihf")
 
-set(ARM_CPU_FLAGS "-mcpu=cortex-a53 -mfloat-abi=hard -mfpu=neon-fp-armv8 -mneon-for-64bits")
+set(ARM_CPU_FLAGS "-mcpu=cortex-a53 -mfloat-abi=hard -mfpu=neon-fp-armv8")
 
 # The Raspberry Pi doesn't seem to use position independent executables.
 set(CMAKE_C_LINK_FLAGS "${CMAKE_CXX_LINK_FLAGS} -no-pie")
