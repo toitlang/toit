@@ -340,6 +340,7 @@ class BLEPeripheralManagerResource : public ServiceContainer<BLEPeripheralManage
 
 BLECharacteristicResource* lookup_remote_characteristic_resource(CBPeripheral* peripheral, CBCharacteristic* characteristic);
 BLECharacteristicResource* lookup_local_characteristic_resource(CBPeripheralManager* peripheral_manager, CBCharacteristic* characteristic);
+
 }
 
 @interface TOITPeripheralDelegate : NSObject <CBPeripheralDelegate>
@@ -535,7 +536,6 @@ didUpdateNotificationStateForCharacteristic:(CBCharacteristic*)characteristic
 }
 
 - (void)peripheralManagerDidStartAdvertising:(CBPeripheralManager*)peripheral error:(NSError*)error {
-  NSLog(@"Started adv");
   if (error) {
     NSLog(@"%@",error);
     toit::HostBLEEventSource::instance()->on_event(self.peripheral_manager, toit::kBLEAdvertiseStartFailed);
@@ -798,11 +798,10 @@ PRIMITIVE(scan_next) {
   if (!array) ALLOCATION_FAILED;
 
   const char* address = [[[peripheral->peripheral() identifier] UUIDString] UTF8String];
-  Error* err = null;
-  String* address_str = process->allocate_string(address, &err);
+  String* address_str = process->allocate_string(address);
   if (address_str == null) {
     delete peripheral;
-    return err;
+    ALLOCATION_FAILED;
   }
   array->at_put(0, address_str);
 
@@ -810,10 +809,10 @@ PRIMITIVE(scan_next) {
 
   NSString* identifier = [peripheral->peripheral() name];
   if (identifier != nil) {
-    String* identifier_str = process->allocate_string([identifier UTF8String], &err);
+    String* identifier_str = process->allocate_string([identifier UTF8String]);
     if (identifier_str == null) {
       free(peripheral);
-      return err;
+      ALLOCATION_FAILED;
     }
     array->at_put(2, identifier_str);
   }
@@ -825,10 +824,10 @@ PRIMITIVE(scan_next) {
         process->program()->null_object());
 
     for (int i = 0; i < [discovered_services count]; i++) {
-      String* uuid = process->allocate_string([[discovered_services[i] UUIDString] UTF8String], &err);
+      String* uuid = process->allocate_string([[discovered_services[i] UUIDString] UTF8String]);
       if (uuid == null) {
         free(peripheral);
-        return err;
+        ALLOCATION_FAILED;
       }
       service_classes->at_put(i, uuid);
     }
@@ -931,9 +930,8 @@ PRIMITIVE(discover_services_result) {
   if (array == null) ALLOCATION_FAILED;
 
   for (int i = 0; i < [services count]; i++) {
-    Error* err = null;
-    String* uuid_str = process->allocate_string([[services[i].UUID UUIDString] UTF8String], &err);
-    if (uuid_str == null) return err;
+    String* uuid_str = process->allocate_string([[services[i].UUID UUIDString] UTF8String]);
+    if (uuid_str == null) ALLOCATION_FAILED;
     
     Array* service_info = process->object_heap()->allocate_array(2, process->program()->null_object());
     if (service_info == null) ALLOCATION_FAILED;
@@ -982,9 +980,8 @@ PRIMITIVE(discover_characteristics_result) {
   if (!array) ALLOCATION_FAILED;
 
   for (int i = 0; i < [characteristics count]; i++) {
-    Error* err = null;
-    String* uuid_str = process->allocate_string([[characteristics[i].UUID UUIDString] UTF8String], &err);
-    if (uuid_str == null) return err;
+    String* uuid_str = process->allocate_string([[characteristics[i].UUID UUIDString] UTF8String]);
+    if (uuid_str == null) ALLOCATION_FAILED;
 
     uint16_t flags = characteristics[i].properties;
 
@@ -1157,9 +1154,11 @@ PRIMITIVE(add_characteristic) {
             properties:static_cast<CBCharacteristicProperties>(properties)
                  value:data
            permissions:static_cast<CBAttributePermissions>(permissions)];
-
   auto service = (CBMutableService*)service_resource->service();
-  service.characteristics = [service.characteristics arrayByAddingObject:characteristic];
+  if (service.characteristics)
+    service.characteristics = [service.characteristics arrayByAddingObject:characteristic];
+  else
+    service.characteristics = [NSArray arrayWithObject:characteristic];
 
   BLECharacteristicResource* characteristic_resource
       = service_resource->get_or_create_characteristics_resource(characteristic, true);
@@ -1250,14 +1249,12 @@ PRIMITIVE(set_preferred_mtu) {
 PRIMITIVE(get_error) {
   ARGS(BLECharacteristicResource, characteristic);
   if (characteristic->error() == nil) OTHER_ERROR;
-  Error* err = null;
-  String* message = process->allocate_string(
-      [characteristic->error().localizedDescription UTF8String], &err);
-  if (err) return err;
+  String* message = process->allocate_string([characteristic->error().localizedDescription UTF8String]);
+  if (!message) ALLOCATION_FAILED;
 
   characteristic->set_error(nil);
 
-  return message;
+  return Primitive::mark_as_error(message);
 }
 
 PRIMITIVE(gc) {

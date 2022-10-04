@@ -34,7 +34,7 @@ file(GLOB toit_core_SRC
   "*.h"
   "*.c"
   "*.cc"
-)
+  )
 
 # Sources that are only needed to run a program.
 file(GLOB run_SRC
@@ -53,9 +53,9 @@ file(GLOB toit_vm_runtime_SRC
   )
 
 file(GLOB toit_resources_SRC
-        "resources/*.h"
-        "resources/*.cc"
-        )
+  "resources/*.h"
+  "resources/*.cc"
+  )
 
 if ("${CMAKE_SYSTEM_NAME}" MATCHES "Darwin")
   list(APPEND toit_resources_SRC "resources/ble_host.mm")

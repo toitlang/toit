@@ -25,29 +25,21 @@
 #if defined(TOIT_FREERTOS) && CONFIG_BT_ENABLED
 
 #include "../resource.h"
-#include "../objects.h"
 #include "../objects_inline.h"
-#include "../process.h"
-#include "../primitive.h"
 #include "../resource_pool.h"
 #include "../scheduler.h"
 #include "../vm.h"
 
 #include "../event_sources/ble_esp32.h"
-#include "../event_sources/system_esp32.h"
 
 #include <esp_bt.h>
-#include <esp_wifi.h>
 #include <esp_coexist.h>
 #include <esp_nimble_hci.h>
 #include <nimble/nimble_port.h>
-#include <nimble/nimble_port_freertos.h>
 #include <host/ble_hs.h>
 #include <host/util/util.h>
-#include <nvs_flash.h>
 #include <host/ble_gap.h>
 #include <services/gap/ble_svc_gap.h>
-#include <host/ble_gap.h>
 #include <services/gatt/ble_svc_gatt.h>
 
 
@@ -102,7 +94,7 @@ class BLEResourceGroup : public ResourceGroup, public Thread{
       , _sync(false) {
     if (instance_access_mutex()) { // Allocation of the mutex could fail, the init primitive reports this
       Locker locker(_instance_access_mutex);
-      ASSERT(!_instance);
+      ASSERT(!_instance)
       _instance = this;
       spawn();
     }
@@ -135,7 +127,7 @@ class BLEResourceGroup : public ResourceGroup, public Thread{
     }
   }
 
-  bool sync() { return _sync; }
+  bool sync() const { return _sync; }
 
  public:
   uint32_t on_event(Resource* resource, word data, uint32_t state) override;
@@ -587,11 +579,10 @@ class BLERemoteDeviceResource : public ServiceContainer<BLERemoteDeviceResource>
   uint16 _handle;
 };
 
-String* nimble_errror_code_to_string(Process* process, int error_code, Error** error) {
+Object* nimble_errror_code_to_string(Process* process, int error_code) {
   static const size_t BUFFER_LEN = 400;
   char buffer[BUFFER_LEN];
-
-  switch (error_code) {
+  switch (error_code) { // NOLINT(hicpp-multiway-paths-covered)
     case NO_CCCD_FOUND_FOR_CHARACTERISTIC:
       snprintf(buffer, BUFFER_LEN,"No CCCD found for characteristic");
       break;
@@ -600,19 +591,18 @@ String* nimble_errror_code_to_string(Process* process, int error_code, Error** e
       snprintf(buffer, BUFFER_LEN, "NimBLE error: 0x%04x. See %s", error_code, gist);
       break;
   }
-  return process->allocate_string(buffer, error);
+  String* str = process->allocate_string(buffer, static_cast<int>(strlen(buffer)));
+  if (!str) ALLOCATION_FAILED;
+  return Primitive::mark_as_error(str);
 }
 
 Object* nimle_stack_error(Process* process, int error_code) {
-  Error* error = null;
-  String* str = nimble_errror_code_to_string(process, error_code, &error);
-  if (error) return error;
-  return Primitive::mark_as_error(str);
+  return nimble_errror_code_to_string(process, error_code);
 }
 
 
 static ble_uuid_any_t uuid_from_blob(Blob& blob) {
-  ble_uuid_any_t uuid = {0};
+  ble_uuid_any_t uuid = {};
   switch (blob.length()) {
     case 2: {
       uuid.u.type = BLE_UUID_TYPE_16;
@@ -896,7 +886,7 @@ void BLERemoteDeviceResource::_on_event(ble_gap_event* event) {
   switch (event->type) {
     case BLE_GAP_EVENT_CONNECT:
       if (event->connect.status == 0) {
-        ASSERT(handle() == kInvalidHandle);
+        ASSERT(handle() == kInvalidHandle)
         set_handle(event->connect.conn_handle);
         BLEEventSource::instance()->on_event(this, kBLEConnected);
       } else {
@@ -1176,7 +1166,7 @@ static void ble_on_sync() {
   // Make sure we have proper identity address set (public preferred).
   int rc = ble_hs_util_ensure_addr(0);
   if (rc != 0) {
-    FATAL("error setting address; rc=%d", rc);
+    FATAL("error setting address; rc=%d", rc)
   }
   {
     Locker locker(BLEResourceGroup::instance_access_mutex());
@@ -1238,7 +1228,7 @@ PRIMITIVE(init) {
 }
 
 PRIMITIVE(create_central_manager) {
-  ARGS(BLEResourceGroup, group);
+  ARGS(BLEResourceGroup, group)
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;
@@ -1258,7 +1248,7 @@ PRIMITIVE(create_central_manager) {
 }
 
 PRIMITIVE(create_peripheral_manager) {
-  ARGS(BLEResourceGroup, group);
+  ARGS(BLEResourceGroup, group)
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;
@@ -1281,14 +1271,14 @@ PRIMITIVE(create_peripheral_manager) {
 }
 
 PRIMITIVE(close) {
-  ARGS(BLEResourceGroup, group);
+  ARGS(BLEResourceGroup, group)
   group->tear_down();
   group_proxy->clear_external_address();
   return process->program()->null_object();
 }
 
 PRIMITIVE(scan_start) {
-  ARGS(BLECentralManagerResource, central_manager, int64, duration_us);
+  ARGS(BLECentralManagerResource, central_manager, int64, duration_us)
 
   if (BLECentralManagerResource::is_scanning()) ALREADY_EXISTS;
 
@@ -1330,7 +1320,7 @@ PRIMITIVE(scan_start) {
 }
 
 PRIMITIVE(scan_next) {
-  ARGS(BLECentralManagerResource, central_manager);
+  ARGS(BLECentralManagerResource, central_manager)
   Locker locker(central_manager->mutex());
 
   DiscoveredPeripheral* next = central_manager->get_discovered_peripheral();
@@ -1409,7 +1399,7 @@ PRIMITIVE(scan_next) {
 }
 
 PRIMITIVE(scan_stop) {
-  ARGS(Resource, resource);
+  ARGS(Resource, resource)
 
   if (BLECentralManagerResource::is_scanning()) {
     int err = ble_gap_disc_cancel();
@@ -1425,7 +1415,7 @@ PRIMITIVE(scan_stop) {
 }
 
 PRIMITIVE(connect) {
-  ARGS(BLECentralManagerResource, central_manager, Blob, address);
+  ARGS(BLECentralManagerResource, central_manager, Blob, address)
 
   uint8_t own_addr_type;
 
@@ -1444,7 +1434,7 @@ PRIMITIVE(connect) {
   auto device = _new BLERemoteDeviceResource(central_manager->group());
   if (!device) MALLOC_FAILED;
 
-  err = ble_gap_connect(own_addr_type, &addr, 3000, NULL,
+  err = ble_gap_connect(own_addr_type, &addr, 3000, null,
                         BLERemoteDeviceResource::on_event, device);
   if (err != BLE_ERR_SUCCESS) {
     delete device;
@@ -1457,13 +1447,13 @@ PRIMITIVE(connect) {
 }
 
 PRIMITIVE(disconnect) {
-  ARGS(BLERemoteDeviceResource, device);
+  ARGS(BLERemoteDeviceResource, device)
   ble_gap_terminate(device->handle(),BLE_ERR_REM_USER_CONN_TERM);
   return process->program()->null_object();
 }
 
 PRIMITIVE(release_resource) {
-  ARGS(Resource, resource);
+  ARGS(Resource, resource)
 
   resource->resource_group()->unregister_resource(resource);
 
@@ -1471,7 +1461,7 @@ PRIMITIVE(release_resource) {
 }
 
 PRIMITIVE(discover_services) {
-  ARGS(BLERemoteDeviceResource, device, Array, raw_service_uuids);
+  ARGS(BLERemoteDeviceResource, device, Array, raw_service_uuids)
 
   if (raw_service_uuids->length() == 0) {
     int err = ble_gattc_disc_all_svcs(
@@ -1501,7 +1491,7 @@ PRIMITIVE(discover_services) {
 }
 
 PRIMITIVE(discover_services_result) {
-  ARGS(BLERemoteDeviceResource, device);
+  ARGS(BLERemoteDeviceResource, device)
 
   int count = 0;
   for (const auto &item: device->services()) {
@@ -1534,7 +1524,7 @@ PRIMITIVE(discover_services_result) {
 }
 
 PRIMITIVE(discover_characteristics) {
-  ARGS(BLEServiceResource, service, Array, raw_characteristics_uuids);
+  ARGS(BLEServiceResource, service, Array, raw_characteristics_uuids)
 
   if (raw_characteristics_uuids->length() == 0) {
     int err = ble_gattc_disc_all_chrs(service->device()->handle(),
@@ -1565,7 +1555,7 @@ PRIMITIVE(discover_characteristics) {
 }
 
 PRIMITIVE(discover_characteristics_result) {
-  ARGS(BLEServiceResource, service);
+  ARGS(BLEServiceResource, service)
 
   int count = 0;
   for (const auto &item: service->characteristics()) {
@@ -1599,7 +1589,7 @@ PRIMITIVE(discover_characteristics_result) {
 }
 
 PRIMITIVE(discover_descriptors) {
-  ARGS(BLECharacteristicResource, characteristic);
+  ARGS(BLECharacteristicResource, characteristic)
 
   int err = ble_gattc_disc_all_dscs(
       characteristic->service()->device()->handle(),
@@ -1616,7 +1606,7 @@ PRIMITIVE(discover_descriptors) {
 }
 
 PRIMITIVE(discover_descriptors_result) {
-  ARGS(BLECharacteristicResource, characteristic);
+  ARGS(BLECharacteristicResource, characteristic)
 
   int count = 0;
   for (const auto &item: characteristic->descriptors()) {
@@ -1649,7 +1639,7 @@ PRIMITIVE(discover_descriptors_result) {
 }
 
 PRIMITIVE(request_read) {
-  ARGS(Resource, resource);
+  ARGS(Resource, resource)
 
   auto element = reinterpret_cast<BLEReadWriteElement*>(resource);
 
@@ -1664,7 +1654,7 @@ PRIMITIVE(request_read) {
 }
 
 PRIMITIVE(get_value) {
-  ARGS(Resource, resource);
+  ARGS(Resource, resource)
 
   auto element = reinterpret_cast<BLEReadWriteElement*>(resource);
 
@@ -1681,7 +1671,7 @@ PRIMITIVE(get_value) {
 }
 
 PRIMITIVE(write_value) {
-  ARGS(Resource, resource, Object, value, bool, with_response);
+  ARGS(Resource, resource, Object, value, bool, with_response)
 
   auto element = reinterpret_cast<BLEReadWriteElement*>(resource);
 
@@ -1719,7 +1709,7 @@ PRIMITIVE(write_value) {
 * allows both, notifications will be used.
 */
 PRIMITIVE(set_characteristic_notify) {
-  ARGS(BLECharacteristicResource, characteristic, bool, enable);
+  ARGS(BLECharacteristicResource, characteristic, bool, enable)
   uint16 value = 0;
 
   if (enable) {
@@ -1758,7 +1748,7 @@ PRIMITIVE(set_characteristic_notify) {
 
 PRIMITIVE(advertise_start) {
   ARGS(BLEPeripheralManagerResource, peripheral_manager, Blob, name, Array, service_classes,
-       Blob, manufacturing_data, int, interval_us, int, conn_mode);
+       Blob, manufacturing_data, int, interval_us, int, conn_mode)
 
 
   if (BLEPeripheralManagerResource::is_advertising()) ALREADY_EXISTS;
@@ -1839,7 +1829,7 @@ PRIMITIVE(advertise_stop) {
 }
 
 PRIMITIVE(add_service) {
-  ARGS(BLEPeripheralManagerResource, peripheral_manager, Blob, uuid);
+  ARGS(BLEPeripheralManagerResource, peripheral_manager, Blob, uuid)
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;
@@ -1855,7 +1845,7 @@ PRIMITIVE(add_service) {
 }
 
 PRIMITIVE(add_characteristic) {
-  ARGS(BLEServiceResource, service_resource, Blob, raw_uuid, int, properties, int, permissions, Object, value);
+  ARGS(BLEServiceResource, service_resource, Blob, raw_uuid, int, properties, int, permissions, Object, value)
 
   if (!service_resource->peripheral_manager()) INVALID_ARGUMENT;
 
@@ -1894,7 +1884,7 @@ PRIMITIVE(add_characteristic) {
 }
 
 PRIMITIVE(add_descriptor) {
-  ARGS(BLECharacteristicResource, characteristic, Blob, raw_uuid, Object, value, int, properties, int, permissions);
+  ARGS(BLECharacteristicResource, characteristic, Blob, raw_uuid, Object, value, int, properties, int, permissions)
 
   if (!characteristic->service()->peripheral_manager()) INVALID_ARGUMENT;
 
@@ -1935,7 +1925,7 @@ void clean_up_gatt_svr_chars(ble_gatt_chr_def* gatt_svr_chars, int count) {
 }
 
 PRIMITIVE(deploy_service) {
-  ARGS(BLEServiceResource, service_resource);
+  ARGS(BLEServiceResource, service_resource)
 
   if (!service_resource->peripheral_manager()) INVALID_ARGUMENT;
   if (service_resource->deployed()) INVALID_ARGUMENT;
@@ -2016,7 +2006,7 @@ PRIMITIVE(deploy_service) {
 }
 
 PRIMITIVE(set_value) {
-  ARGS(Resource, resource, Object, value);
+  ARGS(Resource, resource, Object, value)
 
   auto element = reinterpret_cast<BLEReadWriteElement*>(resource);
 
@@ -2032,7 +2022,7 @@ PRIMITIVE(set_value) {
 }
 
 PRIMITIVE(get_subscribed_clients) {
-  ARGS(BLECharacteristicResource, characteristic);
+  ARGS(BLECharacteristicResource, characteristic)
   int cnt = 0;
   for (const auto &item: characteristic->subscriptions()) {
     USE(item);
@@ -2051,7 +2041,7 @@ PRIMITIVE(get_subscribed_clients) {
 }
 
 PRIMITIVE(notify_characteristics_value) {
-  ARGS(BLECharacteristicResource, characteristic, uint16, conn_handle, Object, value);
+  ARGS(BLECharacteristicResource, characteristic, uint16, conn_handle, Object, value)
 
   Subscription* subscription = null;
   for (const auto &sub: characteristic->subscriptions()) {
@@ -2082,7 +2072,7 @@ PRIMITIVE(notify_characteristics_value) {
 
 
 PRIMITIVE(get_att_mtu) {
-  ARGS(Resource, resource);
+  ARGS(Resource, resource)
 
   auto ble_resource = reinterpret_cast<BLEResource*>(resource);
 
@@ -2112,7 +2102,7 @@ PRIMITIVE(get_att_mtu) {
 }
 
 PRIMITIVE(set_preferred_mtu) {
-  ARGS(int, mtu);
+  ARGS(int, mtu)
 
   int result = ble_att_set_preferred_mtu(mtu);
 
@@ -2124,22 +2114,16 @@ PRIMITIVE(set_preferred_mtu) {
 }
 
 PRIMITIVE(get_error) {
-  ARGS(Resource, resource);
+  ARGS(Resource, resource)
   auto err_resource = reinterpret_cast<BLEErrorCapableResource*>(resource);
   printf("get err: %i\n",err_resource->error() );
   if (err_resource->error() == 0) OTHER_ERROR;
 
-  Error* error = null;
-  String* str = nimble_errror_code_to_string(process, err_resource->error(), &error);
-  if (error) return error;
-
-  err_resource->set_error(0);
-
-  return str;
+  return nimble_errror_code_to_string(process, err_resource->error());
 }
 
 PRIMITIVE(gc) {
-  ARGS(Resource, resource);
+  ARGS(Resource, resource)
   auto err_resource = reinterpret_cast<BLEErrorCapableResource*>(resource);
   if (err_resource->has_malloc_error()) {
     err_resource->set_malloc_error(false);

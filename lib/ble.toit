@@ -358,7 +358,7 @@ class LocalService extends Resource_ implements Attribute:
       uuid/BleUUID
       --properties/int
       --permissions/int
-      --value/ByteArray=null -> LocalCharacteristic:
+      --value/ByteArray=#[] -> LocalCharacteristic:
     return LocalCharacteristic this uuid properties permissions value
 
   /**
@@ -385,7 +385,7 @@ class LocalService extends Resource_ implements Attribute:
   Adds a notification characteristic with the given $uuid that can be an indication if $indication is true,
   otherwise it will be a notification. See $add_characteristic.
   */
-  add_notification_characteristuc uuid/BleUUID indication/bool=false -> LocalCharacteristic:
+  add_notification_characteristic uuid/BleUUID indication/bool=false -> LocalCharacteristic:
     return add_characteristic
         uuid
         --properties=indication?CHARACTERISTIC_PROPERTY_INDICATE:CHARACTERISTIC_PROPERTY_NOTIFY
@@ -693,9 +693,7 @@ class Resource_:
         remove_finalizer this
 
   throw_error_:
-    err := ble_get_error_ resource_
-    print err
-    throw err
+    ble_get_error_ resource_
 
   wait_for_state_with_gc_ bits:
     while true:

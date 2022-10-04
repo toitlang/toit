@@ -22,14 +22,12 @@
 
 #include "event_sources/timer.h"
 #include "event_sources/tls.h"
-#include "event_sources/ble_host.h"
 
 namespace toit {
 
 void VM::load_platform_event_sources() {
   event_manager()->add_event_source(_new TimerEventSource());
   event_manager()->add_event_source(_new TLSEventSource());
-  event_manager()->add_event_source(_new HostBLEEventSource());
 }
 
 } // namespace toit

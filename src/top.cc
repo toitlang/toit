@@ -120,6 +120,7 @@ void fail(const char* format, ...) {
 // However the compiler does a lot of 'new'-ing and does not run on the device
 // so it gets to switch off this.
 bool throwing_new_allowed = false;
+
 }
 
 #ifndef __SANITIZE_THREAD__
@@ -130,9 +131,7 @@ void* operator new(size_t size) {
   // pointer exception when allocation fails.  Use _new which will call the
   // nothrow version instead, which skips the constructor when allocation
   // fails.
-#ifdef TOIT_FREERTOS
   if (!toit::throwing_new_allowed) UNREACHABLE();
-#endif
   void* result = malloc(size);
 #ifdef TOIT_DEBUG
   if (toit::Flags::cheap) {
@@ -143,7 +142,7 @@ void* operator new(size_t size) {
 }
 
 // Override new operator (no-expections version) so we can log allocations.
-void* operator new(size_t size, const std::nothrow_t& tag) noexcept {
+void* operator new(size_t size, const std::nothrow_t& tag) {
   void* result = malloc(size);
 #ifdef TOIT_DEBUG
   if (toit::Flags::cheap) {
@@ -179,9 +178,7 @@ void* operator new[](size_t size) {
   // pointer exception when allocation fails.  Use _new which will call the
   // nothrow version instead, which skips the constructor when allocation
   // fails.
-#ifdef TOIT_FREERTOS
   if (!toit::throwing_new_allowed) UNREACHABLE();
-#endif
   void* result = malloc(size);
 #ifdef TOIT_DEBUG
   if (toit::Flags::cheap) {
@@ -192,7 +189,7 @@ void* operator new[](size_t size) {
 }
 
 // Override new[] operator (no-exceptions version) so we can log allocations.
-void* operator new[](size_t size, const std::nothrow_t& tag) noexcept {
+void* operator new[](size_t size, const std::nothrow_t& tag) {
   void* result = malloc(size);
 #ifdef TOIT_DEBUG
   if (toit::Flags::cheap) {
