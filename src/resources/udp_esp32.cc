@@ -435,9 +435,8 @@ PRIMITIVE(set_option) {
           capture.socket->upcb()->so_options |= SOF_BROADCAST;
         } else if (capture.raw == capture.process->program()->false_object()) {
           capture.socket->upcb()->so_options &= ~SOF_BROADCAST;
-        } else {
-          return capture.process->program()->wrong_object_type();
         }
+        return capture.process->program()->wrong_object_type();
 
       default:
         return capture.process->program()->unimplemented();
