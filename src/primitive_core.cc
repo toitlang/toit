@@ -2074,10 +2074,7 @@ PRIMITIVE(get_real_time_clock) {
   Array* result = process->object_heap()->allocate_array(2, Smi::zero());
   if (result == null) ALLOCATION_FAILED;
 
-  struct timespec time = {
-    .tv_sec = 0,
-    .tv_nsec = 0,
-  };
+  struct timespec time{};
   if (!OS::get_real_time(&time)) OTHER_ERROR;
 
   Object* tv_sec = Primitive::integer(time.tv_sec, process);
@@ -2092,9 +2089,14 @@ PRIMITIVE(get_real_time_clock) {
 PRIMITIVE(set_real_time_clock) {
 #ifdef TOIT_FREERTOS
   ARGS(int64, tv_sec, int64, tv_nsec);
-  struct timespec time;
-  time.tv_sec = tv_sec;
-  time.tv_nsec = tv_nsec;
+  if (tv_sec < LONG_MIN || tv_sec > LONG_MAX) INVALID_ARGUMENT;
+  if (tv_nsec < LONG_MIN || tv_nsec > LONG_MAX) INVALID_ARGUMENT;
+  struct timespec time = {
+    .tv_sec = static_cast<long>(tv_sec),
+    .tv_nsec = static_cast<long>(tv_nsec),
+  };
+  static_assert(sizeof(time.tv_sec) == sizeof(long), "Unexpected size of timespec field");
+  static_assert(sizeof(time.tv_nsec) == sizeof(long), "Unexpected size of timespec field");
   if (!OS::set_real_time(&time)) OTHER_ERROR;
 #endif
   return Smi::zero();

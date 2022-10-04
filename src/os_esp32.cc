@@ -183,7 +183,7 @@ class ConditionVariable {
       FATAL("wait on unlocked mutex");
     }
 
-    ConditionVariableWaiter w;
+    ConditionVariableWaiter w{};
     w.task = xTaskGetCurrentTaskHandle();
 
     TAILQ_INSERT_TAIL(&_waiter_list, &w, link);
@@ -416,15 +416,7 @@ bool OS::use_virtual_memory(void* address, uword size) {
 void OS::unuse_virtual_memory(void* address, uword size) {}
 
 OS::HeapMemoryRange OS::get_heap_memory_range() {
-  multi_heap_info_t info = {
-    .largest_free_block = 0,
-    .minimum_free_bytes = 0,
-    .allocated_blocks = 0,
-    .free_blocks = 0,
-    .total_blocks = 0,
-    .lowest_address = 0,
-    .highest_address = 0,
-  };
+  multi_heap_info_t info{};
 
   int caps = EXTERNAL_CAPS;
   heap_caps_get_info(&info, caps);
@@ -786,10 +778,7 @@ const char* OS::getenv(const char* variable) {
 
 bool OS::set_real_time(struct timespec* time) {
   if (clock_settime(CLOCK_REALTIME, time) == 0) return true;
-  struct timeval timeofday = {
-    .tv_sec = 0,
-    .tv_usec = 0,
-  };
+  struct timeval timeofday{};
   TIMESPEC_TO_TIMEVAL(&timeofday, time);
   return settimeofday(&timeofday, NULL) == 0;
 }
