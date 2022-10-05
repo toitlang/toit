@@ -174,6 +174,7 @@ PRIMITIVE(create) {
     .stop_bits = UART_STOP_BITS_1,
     .flow_ctrl = (uart_hw_flowcontrol_t)flow_ctrl,
     .rx_flow_ctrl_thresh = 122,
+    .source_clk = UART_SCLK_APB,
   };
 
 

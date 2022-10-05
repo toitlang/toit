@@ -550,29 +550,40 @@ Object* Scheduler::process_stats(Array* array, int group_id, int process_id, Pro
     default:
     case 11:
       array->at_put(10, Smi::from(subject_process->gc_count(COMPACTING_GC)));
+      [[fallthrough]];
     case 10:
       array->at_put(9, Smi::from(subject_process->gc_count(FULL_GC)));
+      [[fallthrough]];
     case 9:
       array->at_put(8, Smi::from(Utils::min(max, info.largest_free_block)));
+      [[fallthrough]];
     case 8:
       array->at_put(7, Smi::from(Utils::min(max, info.total_free_bytes)));
+      [[fallthrough]];
     case 7:
       array->at_put(6, Smi::from(process_id));
+      [[fallthrough]];
     case 6:
       array->at_put(5, Smi::from(group_id));
+      [[fallthrough]];
     case 5: {
       Object* total = Primitive::integer(subject_process->object_heap()->total_bytes_allocated(), calling_process);
       if (Primitive::is_error(total)) return total;
       array->at_put(4, total);
     }
+      [[fallthrough]];
     case 4:
       array->at_put(3, Smi::from(subject_process->message_count()));
+      [[fallthrough]];
     case 3:
       array->at_put(2, Smi::from(subject_process->object_heap()->bytes_reserved()));
+      [[fallthrough]];
     case 2:
       array->at_put(1, Smi::from(subject_process->object_heap()->bytes_allocated()));
+      [[fallthrough]];
     case 1:
       array->at_put(0, Smi::from(subject_process->gc_count(NEW_SPACE_GC)));
+      [[fallthrough]];
     case 0:
       (void)0;  // Do nothing.
   }
