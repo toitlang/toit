@@ -251,7 +251,7 @@ int compute_allocation_type(uword tag) {
     tag = HEAP_OVERHEAD_MALLOC_TAG;
   } else {
     tag -= ITERATE_CUSTOM_TAGS;
-    if (tag < 0 || tag >= NUMBER_OF_MALLOC_TAGS) {
+    if (tag >= NUMBER_OF_MALLOC_TAGS) {
       tag = UNKNOWN_MALLOC_TAG;
     }
   }

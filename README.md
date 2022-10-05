@@ -367,14 +367,12 @@ main:
 ```
 
 You'll need to reinstall the container after this by recompiling
-the `assets.toit` file to `assets.snapshot` and running:
+the `assets.toit` file to `assets.snapshot` and re-running:
 
 ``` sh
 build/host/sdk/tools/firmware -e build/esp32/firmware.envelope \
     container install --assets=encoded.assets assets assets.snapshot
 ```
-
-again.
 
 ---
 *NOTE*

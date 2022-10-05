@@ -129,7 +129,7 @@ class FontBlock {
   const FontCharacter* data() const { return reinterpret_cast<const FontCharacter*>(bitmaps_); }
 
  private:
-  static const uint32 int_24(const uint8* p) {
+  static uint32 int_24(const uint8* p) {
     return
       static_cast<uint32>(p[0]) +
       (static_cast<uint32>(p[1]) << 8) +
