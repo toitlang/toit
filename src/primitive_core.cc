@@ -126,14 +126,14 @@ PRIMITIVE(spawn) {
   InitialMemoryManager manager;
   if (!manager.allocate()) ALLOCATION_FAILED;
 
-  int length = 0;
+  unsigned size = 0;
   { MessageEncoder size_encoder(process, null);
     if (!size_encoder.encode(arguments)) WRONG_TYPE;
-    length = size_encoder.size();
+    size = size_encoder.size();
   }
 
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + EXTERNAL_BYTE_ARRAY_MALLOC_TAG);
-  uint8* buffer = unvoid_cast<uint8*>(malloc(length));
+  uint8* buffer = unvoid_cast<uint8*>(malloc(size));
   if (buffer == null) MALLOC_FAILED;
 
   MessageEncoder encoder(process, buffer);
@@ -1802,19 +1802,21 @@ PRIMITIVE(task_transfer) {
 PRIMITIVE(process_send) {
   ARGS(int, process_id, int, type, Object, array);
 
-  int length = 0;
+  unsigned size = 0;
   { MessageEncoder size_encoder(process, null);
     if (!size_encoder.encode(array)) WRONG_TYPE;
-    length = size_encoder.size();
+    size = size_encoder.size();
   }
 
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + EXTERNAL_BYTE_ARRAY_MALLOC_TAG);
-  uint8* buffer = unvoid_cast<uint8*>(malloc(length));
+  uint8* buffer = unvoid_cast<uint8*>(malloc(size));
   if (buffer == null) MALLOC_FAILED;
 
   SystemMessage* message = null;
   MessageEncoder encoder(process, buffer);
+  bool encoding_succeeded = false;
   if (encoder.encode(array)) {
+    encoding_succeeded = true;
     message = _new SystemMessage(type, process->group()->id(), process->id(), buffer);
   }
 
@@ -1822,6 +1824,7 @@ PRIMITIVE(process_send) {
     encoder.free_copied();
     free(buffer);
     if (encoder.malloc_failed()) MALLOC_FAILED;
+    if (encoding_succeeded) MALLOC_FAILED;
     OTHER_ERROR;
   }
 
@@ -2074,7 +2077,7 @@ PRIMITIVE(get_real_time_clock) {
   Array* result = process->object_heap()->allocate_array(2, Smi::zero());
   if (result == null) ALLOCATION_FAILED;
 
-  struct timespec time = { 0, };
+  struct timespec time{};
   if (!OS::get_real_time(&time)) OTHER_ERROR;
 
   Object* tv_sec = Primitive::integer(time.tv_sec, process);
@@ -2089,9 +2092,14 @@ PRIMITIVE(get_real_time_clock) {
 PRIMITIVE(set_real_time_clock) {
 #ifdef TOIT_FREERTOS
   ARGS(int64, tv_sec, int64, tv_nsec);
-  struct timespec time;
-  time.tv_sec = tv_sec;
-  time.tv_nsec = tv_nsec;
+  if (tv_sec < LONG_MIN || tv_sec > LONG_MAX) INVALID_ARGUMENT;
+  if (tv_nsec < LONG_MIN || tv_nsec > LONG_MAX) INVALID_ARGUMENT;
+  struct timespec time = {
+    .tv_sec = static_cast<long>(tv_sec),
+    .tv_nsec = static_cast<long>(tv_nsec),
+  };
+  static_assert(sizeof(time.tv_sec) == sizeof(long), "Unexpected size of timespec field");
+  static_assert(sizeof(time.tv_nsec) == sizeof(long), "Unexpected size of timespec field");
   if (!OS::set_real_time(&time)) OTHER_ERROR;
 #endif
   return Smi::zero();

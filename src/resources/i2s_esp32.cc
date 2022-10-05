@@ -169,7 +169,10 @@ PRIMITIVE(create) {
     // TODO(anders): Divide buf_len (and grow buf-count) if buffer_size is > 1024.
     .dma_buf_len = buffer_size / (bits_per_sample / 8),
     .use_apll = use_apll,
-    .fixed_mclk = fixed_mclk
+    .tx_desc_auto_clear = false,
+    .fixed_mclk = fixed_mclk,
+    .mclk_multiple = I2S_MCLK_MULTIPLE_DEFAULT,
+    .bits_per_chan = I2S_BITS_PER_CHAN_DEFAULT,
   };
 
   struct {
@@ -179,7 +182,9 @@ PRIMITIVE(create) {
     esp_err_t err;
   } args {
     .port = port,
-    .config = config
+    .config = config,
+    .queue = QueueHandle_t{},
+    .err = esp_err_t{},
   };
   SystemEventSource::instance()->run([&]() -> void {
     args.err = i2s_driver_install(args.port, &args.config, 32, &args.queue);
