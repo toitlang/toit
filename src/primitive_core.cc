@@ -1814,7 +1814,9 @@ PRIMITIVE(process_send) {
 
   SystemMessage* message = null;
   MessageEncoder encoder(process, buffer);
+  bool encoding_succeeded = false;
   if (encoder.encode(array)) {
+    encoding_succeeded = true;
     message = _new SystemMessage(type, process->group()->id(), process->id(), buffer);
   }
 
@@ -1822,6 +1824,7 @@ PRIMITIVE(process_send) {
     encoder.free_copied();
     free(buffer);
     if (encoder.malloc_failed()) MALLOC_FAILED;
+    if (encoding_succeeded) MALLOC_FAILED;
     OTHER_ERROR;
   }
 
