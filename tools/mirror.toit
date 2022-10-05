@@ -491,7 +491,7 @@ class MallocReport extends Mirror:
     if terminal:
       result.add "│   X  = External strings/bytearrays.        B  = Network buffers.       │"
       result.add "│   W  = TLS/crypto.                         M  = Misc. allocations.     │"
-      result.add "│   🐱 = Toit managed heap.                  -- = Free page.             │"
+      result.add "│   To = Toit managed heap.                  -- = Free page.             │"
       result.add "│        Fully allocated $scale Completely free page.  │"
     result.add   "└────────────────────────────────────────────────────────────────────────┘"
 
@@ -532,7 +532,7 @@ class MallocReport extends Mirror:
       use := uses[i]
       if use == 0 and fullnesses[i] == 0: continue
       symbols := ""
-      if use & MEMORY_PAGE_TOIT_ != 0: symbols = "🐱"
+      if use & MEMORY_PAGE_TOIT_ != 0: symbols = "To"
       if use & MEMORY_PAGE_BUFFERS_ != 0: symbols = "B"
       if use & MEMORY_PAGE_EXTERNAL_ != 0: symbols += "X"
       if use & MEMORY_PAGE_TLS_ != 0: symbols += "W"  // For WWW.
@@ -565,7 +565,7 @@ class MallocReport extends Mirror:
         line_drawing = allocation_continue
       else:
         line_drawing = allocation_end
-      if symbols.size > 2 and not is_data_line and symbols != "🐱":
+      if symbols.size > 2 and not is_data_line:
         // Pad the line drawings on non-data lines to match the width of the
         // data.
         first_character := line_drawing[0..utf_8_bytes line_drawing[0]]
