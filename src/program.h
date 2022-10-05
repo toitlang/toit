@@ -59,7 +59,6 @@ namespace toit {
   ROOT(String,     stack_overflow)           \
   ROOT(String,     unimplemented)            \
   ROOT(String,     wrong_object_type)        \
-  ROOT(String,     nesting_too_deep)         \
 
 
 #define BUILTIN_CLASS_IDS(ID)    \

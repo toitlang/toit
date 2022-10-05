@@ -140,8 +140,9 @@ PRIMITIVE(spawn) {
   if (!encoder.encode(arguments)) {
     encoder.free_copied();
     free(buffer);
-    if (encoder.malloc_failed()) MALLOC_FAILED;
-    OTHER_ERROR;
+    // We already encoded once to get the size, so the only issue can be
+    // external objects failing to to allocate.
+    MALLOC_FAILED;
   }
 
   Process* child = VM::current()->scheduler()->spawn(process->program(), process->group(), method, buffer, manager.initial_chunk);
@@ -1805,10 +1806,16 @@ PRIMITIVE(process_send) {
   unsigned size = 0;
   { MessageEncoder size_encoder(process, null);
     if (!size_encoder.encode(array)) {
-      if (size_encoder.nesting_too_deep()) NESTING_TOO_DEEP;
+      Object* result = null;
       int class_id = size_encoder.problematic_class_id();
-      if (class_id >= 0) {
-        return Smi::from(-1 - class_id);
+      if (size_encoder.nesting_too_deep()) {
+        result = process->allocate_string_or_error("NESTING_TOO_DEEP");
+      } else if (class_id >= 0) {
+        result = Primitive::allocate_large_integer(class_id, process);
+      }
+      if (result) {
+        if (Primitive::is_error(result)) return result;
+        return Primitive::mark_as_error(HeapObject::cast(result));
       }
       WRONG_TYPE;
     }
@@ -1828,8 +1835,9 @@ PRIMITIVE(process_send) {
   if (message == null) {
     encoder.free_copied();
     free(buffer);
-    if (encoder.malloc_failed()) MALLOC_FAILED;
-    OTHER_ERROR;
+    // We already encoded once to get the size, so the only issue can be
+    // external objects failing to to allocate.
+    MALLOC_FAILED;
   }
 
   // From here on, the destructor of SystemMessage will free the buffer and
@@ -1845,14 +1853,15 @@ PRIMITIVE(process_send) {
     encoder.neuter_externals();
     // TODO(kasper): Consider doing in-place shrinking of internal, non-constant
     // byte arrays and strings.
+    return process->program()->null_object();
   } else {
     // Sending failed. Free any copied bits, but make sure to not free the externals
     // that have not been neutered on this path.
     encoder.free_copied();
     message->free_data_but_keep_externals();
     delete message;
+    return process->allocate_string_or_error("NO_SUCH_PROCESS");
   }
-  return Smi::from(result);
 }
 
 PRIMITIVE(task_has_messages) {

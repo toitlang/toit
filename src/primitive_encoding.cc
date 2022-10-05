@@ -146,7 +146,8 @@ PRIMITIVE(tison_encode) {
   { TisonEncoder size_encoder(process);
     if (!size_encoder.encode(object)) {
       int id = size_encoder.problematic_class_id();
-      if (size_encoder.nesting_too_deep()) NESTING_TOO_DEEP;
+      if (size_encoder.nesting_too_deep())
+        return process->allocate_string_or_error("NESTING_TOO_DEEP");
       if (id >= 0) {
         return Smi::from(id);
       }

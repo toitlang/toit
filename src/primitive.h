@@ -1080,7 +1080,6 @@ namespace toit {
 #define UNIMPLEMENTED_PRIMITIVE return Primitive::mark_as_error(process->program()->unimplemented())
 #define WRONG_TYPE return Primitive::mark_as_error(process->program()->wrong_object_type())
 #define ALREADY_CLOSED return Primitive::mark_as_error(process->program()->already_closed())
-#define NESTING_TOO_DEEP return Primitive::mark_as_error(process->program()->nesting_too_deep())
 
 #define OTHER_ERROR return Primitive::mark_as_error(process->program()->error())
 
@@ -1103,8 +1102,8 @@ class Primitive {
 
   // Use temporary tagging for marking an error.
   static bool is_error(Object* object) { return object->is_marked(); }
-  static HeapObject* mark_as_error(String* string) { return string->mark(); }
-  static String* unmark_from_error(Object* object) { return String::cast(object->unmark()); }
+  static HeapObject* mark_as_error(HeapObject* object) { return object->mark(); }
+  static HeapObject* unmark_from_error(Object* object) { return object->unmark(); }
   static Object* os_error(int error, Process* process);
 
   // Module-specific primitive lookup. May return null if the primitive isn't linked in.

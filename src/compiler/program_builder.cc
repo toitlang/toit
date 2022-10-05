@@ -311,7 +311,6 @@ void ProgramBuilder::set_up_skeleton_program() {
   _program->set_stack_overflow(lookup_symbol("STACK_OVERFLOW"));
   _program->set_unimplemented(lookup_symbol("UNIMPLEMENTED"));
   _program->set_wrong_object_type(lookup_symbol("WRONG_OBJECT_TYPE"));
-  _program->set_nesting_too_deep(lookup_symbol("NESTING_TOO_DEEP"));
   _program->set_app_sdk_version(lookup_symbol(vm_git_version()));
   _program->set_app_sdk_info(lookup_symbol(vm_git_info()));
 }
