@@ -1250,6 +1250,9 @@ void MethodResolver::_resolve_parameters(
     } else if (is_reserved_identifier(name)) {
       report_error(parameter, "Can't use '%s' as name for a parameter", name.c_str());
     } else if (name.is_valid()) {
+      if (is_future_reserved_identifier(name)) {
+        diagnostics()->report_warning(parameter, "Name '%s' will be reserved in future releases", name.c_str());
+      }
       if (existing.contains(name)) {
         diagnostics()->start_group();
         report_error(parameter, "Duplicate parameter '%s'", name.c_str());
@@ -1612,6 +1615,9 @@ void MethodResolver::visit_TryFinally(ast::TryFinally* node) {
       if (name == first_name) {
         report_error(ast_parameter, "Duplicate parameter '%s'", name.c_str());
       }
+    }
+    if (is_future_reserved_identifier(name)) {
+      diagnostics()->report_warning(ast_parameter, "Name '%s' will be reserved in future releases", name.c_str());
     }
 
     bool has_explicit_type = ast_parameter->type() != null;
@@ -3297,6 +3303,9 @@ ir::Expression* MethodResolver::_define(ast::Expression* node,
   if (is_reserved_identifier(ast_name)) {
     report_error(ast_name, "Can't use '%s' as name for a local variable", name.c_str());
   } else {
+    if (is_future_reserved_identifier(name)) {
+      diagnostics()->report_warning(ast_name, "Name '%s' will be reserved in future releases", name.c_str());
+    }
     auto lookup_result = lookup(ast_name);
     auto entry = lookup_result.entry;
     switch (entry.kind()) {
