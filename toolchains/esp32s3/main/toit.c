@@ -1,4 +1,4 @@
-// Copyright (C) 2021 Toitware ApS.
+// Copyright (C) 2018 Toitware ApS.
 //
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -13,22 +13,10 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-#include "../top.h"
+// Toit ESP32 top level, derived from ESP-IDF Hello World example.
 
-#if defined(TOIT_FREERTOS) && (defined(CONFIG_IDF_TARGET_ESP32) || \
-                               defined(CONFIG_IDF_TARGET_ESP32S2) || \
-                               defined(CONFIG_IDF_TARGET_ESP32S3))
+extern void toit_start();
 
-#include <driver/touch_sensor.h>
-
-namespace toit {
-
-int touch_pad_to_pin_num(touch_pad_t pad);
-
-// Signals the touch-pad peripheral that it should not deinit when not used anymore.
-// This is primarily used to allow wakeup from deep-sleep.
-void keep_touch_active();
-
-} // namespace toit
-
-#endif
+void app_main() {
+  toit_start();
+}

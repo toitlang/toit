@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#ifdef TOIT_FREERTOS
+#if defined(TOIT_FREERTOS) && CONFIG_BT_ENABLED
 
 #include "../resource.h"
 #include "../objects.h"
@@ -1084,4 +1084,4 @@ PRIMITIVE(get_att_mtu) {
 
 } // namespace toit
 
-#endif // TOIT_FREERTOS
+#endif // defined(TOIT_FREERTOS) && defined(CONFIG_BT_ENABLED)

@@ -13,6 +13,9 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+#include "../top.h"
+
+#if !defined(TOIT_FREERTOS) || CONFIG_TOIT_CRYPTO
 #include <mbedtls/error.h>
 #include <mbedtls/pem.h>
 #include <mbedtls/platform.h>
@@ -700,3 +703,4 @@ PRIMITIVE(set_session) {
 }
 
 } // namespace toit
+#endif // !defined(TOIT_FREERTOS) || CONFIG_TOIT_CRYPTO
