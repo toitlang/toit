@@ -86,6 +86,8 @@ decode_system_message parsed command -> none:
     pipe.print_to_stderr "\nNot a ubjson message: '$parsed["message"]'\n"
     command.run ["--help"]
     exit 1
-  handle_system_message encoded_system_message snapshot_content --filename=parsed["snapshot"] --uuid=parsed["uuid"]
+  handle_system_message encoded_system_message snapshot_content
+      --filename=parsed["snapshot"]
+      --uuid=parsed["uuid"]
       --force_pretty=parsed["force-pretty"]
       --force_plain=parsed["force-plain"]
