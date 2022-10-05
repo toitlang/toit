@@ -22,6 +22,7 @@ function(backtick out_name)
     OUTPUT_VARIABLE result
     OUTPUT_STRIP_TRAILING_WHITESPACE
     COMMAND_ERROR_IS_FATAL ANY
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
   )
   set(${out_name} ${result} PARENT_SCOPE)
 endfunction()
@@ -66,6 +67,8 @@ function(compute_git_version VERSION)
     OUTPUT_VARIABLE LATEST_VERSION_TAG
     ERROR_QUIET
     OUTPUT_STRIP_TRAILING_WHITESPACE
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+
   )
   if ("${result}" EQUAL 0 AND NOT "${LATEST_VERSION_TAG}" STREQUAL "")
     backtick(VERSION_TAG_COMMIT ${GIT_EXECUTABLE} rev-parse "${LATEST_VERSION_TAG}^{}")
@@ -109,6 +112,7 @@ function(compute_git_version VERSION)
         OUTPUT_VARIABLE ANCESTOR
         ERROR_QUIET
         OUTPUT_STRIP_TRAILING_WHITESPACE
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
       )
       if ("${result}" EQUAL 0)
         break()
@@ -143,6 +147,8 @@ function(compute_git_version VERSION)
       RESULT_VARIABLE RESULT
       ERROR_QUIET
       OUTPUT_QUIET
+      WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+
     )
     if (NOT "${RESULT}" EQUAL 0)
       continue()
@@ -152,6 +158,7 @@ function(compute_git_version VERSION)
       RESULT_VARIABLE RESULT
       ERROR_QUIET
       OUTPUT_QUIET
+      WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     )
     if (NOT "${RESULT}" EQUAL 0)
       continue()
@@ -173,6 +180,7 @@ function(compute_git_version VERSION)
       ERROR_QUIET
       OUTPUT_VARIABLE LATEST_VERSION_TAG
       OUTPUT_STRIP_TRAILING_WHITESPACE
+      WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     )
     if ("${result}" EQUAL 0 AND NOT "${LATEST_VERSION_TAG}" STREQUAL "")
       set(SEMVER_REGEX "^v([0-9]+)\\.([0-9]+)\\.([0-9]+)")

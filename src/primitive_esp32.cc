@@ -55,6 +55,11 @@
 //  #include <soc/esp32/include/soc/sens_reg.h>
   #include <esp32c3/rom/rtc.h>
   #include <esp32c3/rom/ets_sys.h>
+#elif CONFIG_IDF_TARGET_ESP32S3
+  #include <esp32s3/rom/rtc.h>
+  #include <esp32s3/rom/ets_sys.h>
+  #include <driver/touch_sensor.h>
+  #include <esp32s3/ulp.h>
 #else
   #include <soc/sens_reg.h>
   #include <esp32/rom/rtc.h>

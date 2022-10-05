@@ -18,6 +18,7 @@
 #ifdef TOIT_FREERTOS
 
 #include <driver/i2c.h>
+#include <cmath>
 
 #include "../objects_inline.h"
 #include "../process.h"
@@ -34,8 +35,10 @@ const int kI2CTransactionTimeout = 10;
 const i2c_port_t kInvalidPort = i2c_port_t(-1);
 
 ResourcePool<i2c_port_t, kInvalidPort> i2c_ports(
-  I2C_NUM_0,
-  I2C_NUM_1
+   I2C_NUM_0
+#if SOC_I2C_NUM >= 2
+ , I2C_NUM_1
+#endif
 );
 
 class I2CResourceGroup : public ResourceGroup {
@@ -85,7 +88,11 @@ PRIMITIVE(init) {
   result = ESP_FAIL;
   SystemEventSource::instance()->run([&]() -> void {
     result = i2c_driver_install(port, I2C_MODE_MASTER, 0, 0, 0);
+#ifdef CONFIG_IDF_TARGET_ESP32S3
+    i2c_set_timeout(port, (int)(log2(I2C_APB_CLK_FREQ / 1000.0 * kI2CTransactionTimeout)));
+#else
     i2c_set_timeout(port, I2C_APB_CLK_FREQ / 1000 * kI2CTransactionTimeout);
+#endif
   });
   if (result != ESP_OK) {
     i2c_ports.put(port);

@@ -101,29 +101,6 @@ bool I2SResource::receive_event(word* data) {
   return more;
 }
 
-static bool set_mclk_pin(i2s_port_t i2s_num, int io_num) {
-  bool is_0 = i2s_num == I2S_NUM_0;
-
-  switch (io_num) {
-    case GPIO_NUM_0:
-      PIN_FUNC_SELECT(PERIPHS_IO_MUX_GPIO0_U, FUNC_GPIO0_CLK_OUT1);
-      WRITE_PERI_REG(PIN_CTRL, is_0 ? 0xFFF0 : 0xFFFF);
-      break;
-    case GPIO_NUM_1:
-      PIN_FUNC_SELECT(PERIPHS_IO_MUX_U0TXD_U, FUNC_U0TXD_CLK_OUT3);
-      WRITE_PERI_REG(PIN_CTRL, is_0 ? 0xF0F0 : 0xF0FF);
-      break;
-    case GPIO_NUM_3:
-      PIN_FUNC_SELECT(PERIPHS_IO_MUX_U0RXD_U, FUNC_U0RXD_CLK_OUT2);
-      WRITE_PERI_REG(PIN_CTRL, is_0 ? 0xFF00 : 0xFF0F);
-      break;
-    default:
-      return false;
-  }
-
-  return true;
-}
-
 MODULE_IMPLEMENTATION(i2s, MODULE_I2S);
 
 PRIMITIVE(init) {
@@ -218,6 +195,7 @@ PRIMITIVE(create) {
   }
 
   i2s_pin_config_t pin_config = {
+    .mck_io_num = mclk_pin >=0 ? mclk_pin: I2S_PIN_NO_CHANGE,
     .bck_io_num = sck_pin >= 0 ? sck_pin : I2S_PIN_NO_CHANGE,
     .ws_io_num = ws_pin >= 0 ? ws_pin : I2S_PIN_NO_CHANGE,
     .data_out_num = tx_pin >= 0 ? tx_pin : I2S_PIN_NO_CHANGE,
@@ -230,16 +208,6 @@ PRIMITIVE(create) {
     });
     i2s_ports.put(port);
     return Primitive::os_error(err, process);
-  }
-
-  if (mclk_pin != -1) {
-    if (!set_mclk_pin(port, mclk_pin)) {
-      SystemEventSource::instance()->run([&]() -> void {
-        i2s_driver_uninstall(port);
-      });
-      i2s_ports.put(port);
-      return Primitive::os_error(err, process);
-    }
   }
 
   I2SResource* i2s = _new I2SResource(group, port, buffer_size, args.queue);

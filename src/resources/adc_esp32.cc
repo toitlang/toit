@@ -32,7 +32,7 @@
 
 namespace toit {
 
-#ifdef CONFIG_IDF_TARGET_ESP32
+#if CONFIG_IDF_TARGET_ESP32
 
 static int get_adc1_channel(int pin) {
   switch (pin) {
@@ -118,9 +118,39 @@ static int get_adc2_channel(int pin) {
   }
 }
 
-#elif CONFIG_IDF_TARGET_ESP32
+#elif CONFIG_IDF_TARGET_ESP32S3
 
-#error "Unsupported ESP32 target"
+static int get_adc1_channel(int pin) {
+  switch (pin) {
+    case 1: return  ADC1_CHANNEL_0;
+    case 2: return  ADC1_CHANNEL_1;
+    case 3: return  ADC1_CHANNEL_2;
+    case 4: return  ADC1_CHANNEL_3;
+    case 5: return  ADC1_CHANNEL_4;
+    case 6: return  ADC1_CHANNEL_5;
+    case 7: return  ADC1_CHANNEL_6;
+    case 8: return  ADC1_CHANNEL_7;
+    case 9: return  ADC1_CHANNEL_8;
+    case 10: return  ADC1_CHANNEL_9;
+    default: return adc1_channel_t(-1);
+  }
+}
+
+static int get_adc2_channel(int pin) {
+  switch (pin) {
+    case 11: return  ADC2_CHANNEL_0;
+    case 12: return  ADC2_CHANNEL_1;
+    case 13: return  ADC2_CHANNEL_2;
+    case 14: return  ADC2_CHANNEL_3;
+    case 15: return  ADC2_CHANNEL_4;
+    case 16: return  ADC2_CHANNEL_5;
+    case 17: return  ADC2_CHANNEL_6;
+    case 18: return  ADC2_CHANNEL_7;
+    case 19: return  ADC2_CHANNEL_8;
+    case 20: return  ADC2_CHANNEL_9;
+    default: return adc2_channel_t(-1);
+  }
+}
 
 #else
 
