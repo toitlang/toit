@@ -1860,7 +1860,10 @@ PRIMITIVE(process_send) {
     encoder.free_copied();
     message->free_data_but_keep_externals();
     delete message;
-    return process->allocate_string_or_error("NO_SUCH_PROCESS");
+    // TODO: We should activate this immediately after the release to see how
+    // it works.
+    // return process->allocate_string_or_error("NO_SUCH_PROCESS");
+    return process->program()->null_object();
   }
 }
 

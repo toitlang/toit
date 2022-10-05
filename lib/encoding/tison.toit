@@ -25,13 +25,10 @@ Cannot encode data structures with cycles in them.  In this case it will
   throw "NESTING_TOO_DEEP".
 */
 encode object/any -> ByteArray:
-  result := tison_encode_ object
-  if result is int:
-    serialization_failure_ result
-  return result
-
-tison_encode_ object/any -> any:
-  #primitive.encoding.tison_encode
+  #primitive.encoding.tison_encode:
+    if it is int:
+      serialization_failure_ it
+    throw it
 
 /**
 Decodes $bytes, which is a $ByteArray in TISON format.

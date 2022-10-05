@@ -149,7 +149,9 @@ PRIMITIVE(tison_encode) {
       if (size_encoder.nesting_too_deep())
         return process->allocate_string_or_error("NESTING_TOO_DEEP");
       if (id >= 0) {
-        return Smi::from(id);
+        Object* result = Primitive::allocate_large_integer(id, process);
+        if (Primitive::is_error(result)) return result;
+        return Primitive::mark_as_error(HeapObject::cast(result));
       }
       WRONG_TYPE;
     }
