@@ -20,6 +20,7 @@ It must be possible to encode the $message with the built-in
   primitive message encoder.
 May throw "NESTING_TOO_DEEP" for deep or cyclic data structures.
 May throw a serialization failure.
+May throw "MESSAGE_NO_SUCH_RECEIVER" if the pid is invalid.
 */
 process_send_ pid/int type/int message:
   #primitive.core.process_send:
