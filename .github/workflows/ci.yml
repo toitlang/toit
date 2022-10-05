@@ -468,6 +468,28 @@ jobs:
           make CROSS_ARCH=win64 all-cross
           make pi
 
+      - uses: pguyot/arm-runner-action@v2
+        with:
+          cpu: cortex-a7
+          base_image: "raspios_lite:2022-01-28"
+          bind_mount_repository: true
+          commands: |
+              uname -m > pi_uname
+              build/raspberry_pi/sdk/bin/toit.pkg version
+              build/raspberry_pi/sdk/bin/toit.run --version
+              build/raspberry_pi/sdk/tools/firmware --help
+
+      - uses: pguyot/arm-runner-action@v2
+        with:
+          cpu: cortex-a7
+          base_image: "raspios_lite_arm64:2022-01-28"
+          bind_mount_repository: true
+          commands: |
+              uname -m > pi_uname
+              build/raspberry_pi/sdk/bin/toit.pkg version
+              build/raspberry_pi/sdk/bin/toit.run --version
+              build/raspberry_pi/sdk/tools/firmware --help
+
       - name: Pack Raspberry Pi artifacts
         shell: bash
         # Note that we use `cp -R` first, since that works on every platform.

@@ -1,4 +1,4 @@
-# Copyright (C) 2019 Toitware ApS.
+# Copyright (C) 2022 Toitware ApS.
 #
 # This library is free software; you can redistribute it and/or
 # modify it under the terms of the GNU Lesser General Public
@@ -14,11 +14,11 @@
 # directory of this repository.
 
 set(ARM_TARGET "arm-linux-gnueabihf")
-# Compile for Raspberry Pi 3 and up.
-set(ARM_CPU_FLAGS "-mcpu=cortex-a7 -mfpu=neon-vfpv4 -mfloat-abi=hard")
+
+set(ARM_CPU_FLAGS "-mcpu=cortex-a53 -mfloat-abi=hard -mfpu=neon-fp-armv8")
 
 # The Raspberry Pi doesn't seem to use position independent executables.
 set(CMAKE_C_LINK_FLAGS "${CMAKE_CXX_LINK_FLAGS} -no-pie")
 set(CMAKE_CXX_LINK_FLAGS "${CMAKE_CXX_LINK_FLAGS} -no-pie")
 
-include("${CMAKE_CURRENT_LIST_DIR}/arm32.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/arm64.cmake")
