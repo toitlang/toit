@@ -286,6 +286,12 @@ bool MessageEncoder::encode_byte_array(ByteArray* object) {
       return false;
     }
     _externals[_externals_count++] = object;
+  } else {
+    _externals_count++;
+    if (_externals_count > MESSAGING_ENCODING_MAX_EXTERNALS) {
+      _too_many_externals = true;
+      return false;
+    }
   }
   return true;
 }

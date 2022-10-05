@@ -151,9 +151,7 @@ class MessageEncoder {
   bool encode_bundles(SnapshotBundle system, SnapshotBundle application);
 #endif
 
-  int problematic_class_id() const { return _problematic_class_id; }
-
-  bool nesting_too_deep() const { return _nesting_too_deep; }
+  Object* create_error_object(Process* process);
 
  protected:
   MessageEncoder(Process* process, uint8* buffer, MessageFormat format);
@@ -178,6 +176,7 @@ class MessageEncoder {
   int _nesting = 0;
   int _problematic_class_id = -1;
   bool _nesting_too_deep = false;
+  bool _too_many_externals = false;
 
   bool _malloc_failed = false;
 

@@ -128,7 +128,9 @@ PRIMITIVE(spawn) {
 
   unsigned size = 0;
   { MessageEncoder size_encoder(process, null);
-    if (!size_encoder.encode(arguments)) WRONG_TYPE;
+    if (!size_encoder.encode(arguments)) {
+      return size_encoder.create_error_object(process);
+    }
     size = size_encoder.size();
   }
 
@@ -140,12 +142,12 @@ PRIMITIVE(spawn) {
   if (!encoder.encode(arguments)) {
     encoder.free_copied();
     free(buffer);
-    // We already encoded once to get the size, so the only issue can be
-    // external objects failing to to allocate.
-    MALLOC_FAILED;
+    // Should not happen, but just in case, throw "ERROR".
+    OTHER_ERROR;
   }
 
   Process* child = VM::current()->scheduler()->spawn(process->program(), process->group(), method, buffer, manager.initial_chunk);
+  // TODO: Leaks here.
   if (!child) MALLOC_FAILED;
 
   manager.dont_auto_free();
@@ -1806,18 +1808,7 @@ PRIMITIVE(process_send) {
   unsigned size = 0;
   { MessageEncoder size_encoder(process, null);
     if (!size_encoder.encode(array)) {
-      Object* result = null;
-      int class_id = size_encoder.problematic_class_id();
-      if (size_encoder.nesting_too_deep()) {
-        result = process->allocate_string_or_error("NESTING_TOO_DEEP");
-      } else if (class_id >= 0) {
-        result = Primitive::allocate_large_integer(class_id, process);
-      }
-      if (result) {
-        if (Primitive::is_error(result)) return result;
-        return Primitive::mark_as_error(HeapObject::cast(result));
-      }
-      WRONG_TYPE;
+      return size_encoder.create_error_object(process);
     }
     size = size_encoder.size();
   }
@@ -1828,15 +1819,19 @@ PRIMITIVE(process_send) {
 
   SystemMessage* message = null;
   MessageEncoder encoder(process, buffer);
-  if (encoder.encode(array)) {
-    message = _new SystemMessage(type, process->group()->id(), process->id(), buffer);
+  if (!encoder.encode(array)) {
+    encoder.free_copied();
+    free(buffer);
+    if (encoder.malloc_failed()) MALLOC_FAILED;
+    // Should not happen, but just in case, throw "ERROR".
+    OTHER_ERROR;
   }
+
+  message = _new SystemMessage(type, process->group()->id(), process->id(), buffer);
 
   if (message == null) {
     encoder.free_copied();
     free(buffer);
-    // We already encoded once to get the size, so the only issue can be
-    // external objects failing to to allocate.
     MALLOC_FAILED;
   }
 
@@ -1862,9 +1857,28 @@ PRIMITIVE(process_send) {
     delete message;
     // TODO: We should activate this immediately after the release to see how
     // it works.
-    // return process->allocate_string_or_error("NO_SUCH_PROCESS");
-    return process->program()->null_object();
+    Object* result = process->allocate_string_or_error("MESSAGE_NO_SUCH_RECEIVER");
+    if (Primitive::is_error(result)) return result;
+    return Primitive::mark_as_error(HeapObject::cast(result));
   }
+}
+
+Object* MessageEncoder::create_error_object(Process* process) {
+  Object* result = null;
+  if (_nesting_too_deep) {
+    result = process->allocate_string_or_error("NESTING_TOO_DEEP");
+  } else if (_problematic_class_id >= 0) {
+    result = Primitive::allocate_large_integer(_problematic_class_id, process);
+  } else if (_too_many_externals) {
+    result = process->allocate_string_or_error("TOO_MANY_EXTERNALS");
+  }
+  if (result) {
+    if (Primitive::is_error(result)) return result;
+    return Primitive::mark_as_error(HeapObject::cast(result));
+  }
+  // The remaining errors are things like unserializable non-instances, non-smi
+  // lengths, large lists.  TODO: Be more specific and/or remove some limitations.
+  WRONG_TYPE;
 }
 
 PRIMITIVE(task_has_messages) {
