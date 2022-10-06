@@ -56,11 +56,11 @@ Deprecated. Find something else.
 global := 42
 
 /**
-Some global fun.
+Some global func.
 
 Deprecated. Use $bar instead.
 */
-fun:
+func:
 
 /**
 This one isn't deprecated.
@@ -85,7 +85,7 @@ main:
 
   global
 
-  fun
+  func
   bar
 
   unresolved

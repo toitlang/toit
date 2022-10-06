@@ -22,7 +22,7 @@ tests/negative/deprecation_test.toit:84:4: warning: Deprecated 'A.some_static_fi
 tests/negative/deprecation_test.toit:86:3: warning: Deprecated 'global'
   global
   ^~~~~~
-tests/negative/deprecation_test.toit:88:3: warning: Deprecated 'fun'
-  fun
-  ^~~
+tests/negative/deprecation_test.toit:88:3: warning: Deprecated 'func'
+  func
+  ^~~~
 Compilation failed.

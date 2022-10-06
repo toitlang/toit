@@ -7,4 +7,4 @@ class A:
 main:
   compiler := null
     local := unresolved + (A).foo
-  fun := :: local
+  func := :: local

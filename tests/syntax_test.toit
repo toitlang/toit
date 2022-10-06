@@ -257,13 +257,13 @@ g_iii2 / int  ::= 499
 g_boo2 / bool ::= true
 g_flo2 / float ::= 3.14
 
-fun1 str/string? iii/int? boo/bool? flo/float?:
-fun2 str/string iii/int boo/bool flo/float:
+func1 str/string? iii/int? boo/bool? flo/float?:
+func2 str/string iii/int boo/bool flo/float:
 
 class Cll:
-  fun1 str/string? iii/int? boo/bool? flo/float?:
-  fun2 str/string iii/int boo/bool flo/float:
-  fun3 x / Cll:
+  func1 str/string? iii/int? boo/bool? flo/float?:
+  func2 str/string iii/int boo/bool flo/float:
+  func3 x / Cll:
 
   field := ?
   constructor:
@@ -272,10 +272,10 @@ class Cll:
   static SOME_STATIC_CONSTANT ::= 42
   static STATIC_CONSTANT499 ::= 3
 
-fun:
+func:
   unreachable
 
-fun2 unreachable:
+func2 unreachable:
 
 run [block]: block.call
 

@@ -13,7 +13,7 @@ class SomeClass:
 /*  ^~~~~~~~~~~~
   + member#Method, param#Variable
 */
-  static fun:
+  static func:
   static static_field := 499
   static CONSTANT ::= 42
 
@@ -52,9 +52,9 @@ main:
   + __#Variable
 */
 
-  SomeClass.fun
+  SomeClass.func
 /*          ^~~
-  + fun#Function, static_field#Variable, CONSTANT#Constant
+  + func#Function, static_field#Variable, CONSTANT#Constant
 */
 
   SomeClass2.factory

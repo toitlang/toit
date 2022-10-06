@@ -8,7 +8,7 @@ foo x:
       x += "1"
       x
 
-bar fun -> any: return fun.call
+bar func -> any: return func.call
 
 class A:
   constructor:

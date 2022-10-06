@@ -7,9 +7,9 @@ tests/negative/declaration_as_bad_argument_test.toit:9:14: error: Unresolved ide
 tests/negative/declaration_as_bad_argument_test.toit:8:15: error: Can't call result of evaluating expression
   compiler := null
               ^~~~
-tests/negative/declaration_as_bad_argument_test.toit:10:13: error: Unresolved identifier: 'local'
-  fun := :: local
-            ^~~~~
+tests/negative/declaration_as_bad_argument_test.toit:10:14: error: Unresolved identifier: 'local'
+  func := :: local
+             ^~~~~
 tests/negative/declaration_as_bad_argument_test.toit:9:31: error: Class 'A' does not have any method 'foo'
     local := unresolved + (A).foo
                               ^~~

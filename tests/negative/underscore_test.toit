@@ -7,7 +7,7 @@ foo _ _:
   return _
 
 run [block]:
-run fun:
+run func:
 
 bar:
   run: |_|

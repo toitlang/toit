@@ -4,7 +4,7 @@
 
 import expect show *
 
-call_fun fun: fun.call
+call_fun func: func.call
 
 test1 arg:
   if arg:

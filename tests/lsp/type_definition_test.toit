@@ -8,14 +8,14 @@ import .definition_imported as prefix
 import .definition_imported as ambiguous
 import .definition_imported2 as ambiguous
 
-fun:
+func:
 /*
-@ fun
+@ func
 */
 
-fun x:
+func x:
 /*
-@ fun2
+@ func2
 */
 
 class SomeClass:
@@ -92,15 +92,15 @@ class A:
 
 
 
-bad -> fun:
+bad -> func:
 /*      ^
-  [fun, fun2]
+  [func, func2]
 */
   unreachable
 
-bad x / fun:
+bad x / func:
 /*      ^
-  [fun, fun2]
+  [func, func2]
 */
 
 // TODO(florian): we could improve the following resolution to

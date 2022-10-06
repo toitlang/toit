@@ -3,7 +3,7 @@
 // be found in the tests/LICENSE file.
 
 run [block]:
-run fun/Lambda:
+run func/Lambda:
 
 foo _ _:
   // Underscores don't report duplicate parameter warnings.

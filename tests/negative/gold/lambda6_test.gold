@@ -1,7 +1,7 @@
-tests/negative/lambda6_test.toit:6:23: error: Lambdas can have at most 4 parameters
-  fun := :: | a b c d e0 | null
-                      ^~
-tests/negative/lambda6_test.toit:7:24: error: Lambdas can have at most 4 parameters
-  fun2 := :: | a b c d e0 f0 | null
-                       ^~~~~
+tests/negative/lambda6_test.toit:6:24: error: Lambdas can have at most 4 parameters
+  func := :: | a b c d e0 | null
+                       ^~
+tests/negative/lambda6_test.toit:7:25: error: Lambdas can have at most 4 parameters
+  func2 := :: | a b c d e0 f0 | null
+                        ^~~~~
 Compilation failed.

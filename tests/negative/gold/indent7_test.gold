@@ -1,6 +1,6 @@
-tests/negative/indent7_test.toit:7:6: error: Empty blocks are not allowed
-  fun:
-     ^
+tests/negative/indent7_test.toit:7:7: error: Empty blocks are not allowed
+  func:
+      ^
 tests/negative/indent7_test.toit:8:12: error: Unresolved identifier: 'unresolved'
   local := unresolved
            ^~~~~~~~~~

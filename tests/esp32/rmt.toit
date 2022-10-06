@@ -86,15 +86,15 @@ test_resource pin/gpio.Pin:
   channel = rmt.Channel pin --memory_block_count=7
   channel.close
 
-in_parallel fun1/Lambda fun2/Lambda:
+in_parallel func1/Lambda func2/Lambda:
   ready_semaphore := monitor.Semaphore
   done_semaphore := monitor.Semaphore
   task::
-    fun1.call
+    func1.call
         :: ready_semaphore.down
         :: done_semaphore.up
 
-  fun2.call:: ready_semaphore.up
+  func2.call:: ready_semaphore.up
   done_semaphore.down
 
 test_simple_pulse pin_in/gpio.Pin pin_out/gpio.Pin:

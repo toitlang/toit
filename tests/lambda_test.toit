@@ -8,16 +8,16 @@ class A:
   x ::= 99
 
   foo:
-    fun := (:: bar it)
-    return fun.call 400
+    func := (:: bar it)
+    return func.call 400
 
   bar b:
     return x + b
 
 foo:
   y := 99
-  fun := (:: it + y)
-  return fun.call 400
+  func := (:: it + y)
+  return func.call 400
 
 main:
   expect_equals 499 (A).foo

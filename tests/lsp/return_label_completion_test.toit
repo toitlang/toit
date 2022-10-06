@@ -5,7 +5,7 @@
 foo [block]:
 bar [block]:
 
-gee fun/Lambda:
+gee func/Lambda:
 
 named [--name1] [--name2]:
 

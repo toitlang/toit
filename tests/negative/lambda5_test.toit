@@ -3,6 +3,6 @@
 // be found in the tests/LICENSE file.
 
 main:
-  fun := :: 499
-  fun.foo
+  func := :: 499
+  func.foo
   unresolved

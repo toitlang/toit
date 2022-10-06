@@ -6,10 +6,10 @@ import expect show *
 
 main:
   executed := false
-  fun := (:
+  func := (:
     executed = true
   )  // Closing parenthesis at dedent-level.
-  fun.call
+  func.call
   expect executed
 
   map := {

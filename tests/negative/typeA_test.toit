@@ -2,7 +2,7 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-run x fun/Lambda: fun.call x
+run x func/Lambda: func.call x
 
 main:
   run "str":: |x/int| null

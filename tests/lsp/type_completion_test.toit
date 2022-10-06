@@ -8,8 +8,8 @@ import .definition_imported as prefix
 import .definition_imported as ambiguous
 import .definition_imported2 as ambiguous
 
-fun:
-fun x:
+func:
+func x:
 
 class SomeClass:
   static static_fun:

@@ -10,10 +10,10 @@ foo x=499 [block] :
 bar x=1 y=2 [block1] [block2]:
   return x + y + block1.call + block2.call
 
-fun [b]:
+func [b]:
   return b.call 489
 
-gee x y=(fun: it + 1) [block]:
+gee x y=(func: it + 1) [block]:
   return x + y + block.call
 
 class A:

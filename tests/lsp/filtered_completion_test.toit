@@ -41,7 +41,7 @@ class SomeClass:
   static static_field := 499
   static static_xfield := 499
 
-  static fun:
+  static func:
     static_xfield
 /*           ^
   + static_xfield

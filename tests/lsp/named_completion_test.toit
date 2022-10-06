@@ -2,21 +2,21 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-fun --named --named2: return named + named2
+func --named --named2: return named + named2
 
 class SomeClass:
   member --foo --bar: return foo + bar
 
 main:
-  fun --named=499
-/*      ^~~~~~~~~
+  func --named=499
+/*       ^~~~~~~~~
   + named=, named2=
   - *
 */
     --named2=42
 /*    ^~~~~~~~~
   + named2=
-  - foo, bar, foo=, bar=, fun
+  - foo, bar, foo=, bar=, func
 */
 
   some := SomeClass

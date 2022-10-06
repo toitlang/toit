@@ -4,7 +4,7 @@
 
 run x [block]: block.call x
 
-run x fun/Lambda: fun.call x
+run x func/Lambda: func.call x
 
 main:
   run 499: |it/string|

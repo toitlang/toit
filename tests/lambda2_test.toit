@@ -4,8 +4,8 @@
 
 import expect show *
 
-run fun/Lambda:
-  fun.call
+run func/Lambda:
+  func.call
 
 bar y/int z/int:
   expect_equals 42 y

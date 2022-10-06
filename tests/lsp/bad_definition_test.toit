@@ -2,14 +2,14 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-fun x:
+func x:
 /*
-@ fun
+@ func
 */
 
-fun x y:
+func x y:
 /*
-@ fun2
+@ func2
 */
 
 class A:
@@ -45,9 +45,9 @@ class C extends B:
 /*@ C.foo3 */
 
 main:
-  fun
+  func
 /*^
-  [fun, fun2]
+  [func, func2]
 */
 
   A 499

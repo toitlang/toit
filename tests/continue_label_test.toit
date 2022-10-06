@@ -8,7 +8,7 @@ foo [block]: return block.call + 1
 bar [block]: return block.call + 10
 gee [block]: return block.call + 100
 
-toto fun/Lambda: return fun.call + 1000
+toto func/Lambda: return func.call + 1000
 
 test1:
   expect_equals 119

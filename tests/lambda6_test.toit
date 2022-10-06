@@ -54,8 +54,8 @@ test_2:
   x := confuse 400
   y := confuse 99
 
-  fun := create_lambda2 x y
-  expect_equals 499 fun.call
+  func := create_lambda2 x y
+  expect_equals 499 func.call
 
 main:
   test_0

@@ -9,8 +9,8 @@ use x:
 call_block should_call/bool [block]:
   if should_call: block.call
 
-call_lambda should_call/bool fun/Lambda:
-  if should_call: fun.call
+call_lambda should_call/bool func/Lambda:
+  if should_call: func.call
 
 main:
   local ::= ?

@@ -5,9 +5,9 @@
 import .definition_imported
 import .definition_imported as prefix
 
-fun:
+func:
 /*
-@ fun
+@ func
 */
 
 class SomeClass:
@@ -27,9 +27,9 @@ class SomeClass2:
 /*@ named-constructor */
 
 main:
-  fun
+  func
 /*^
-  [fun]
+  [func]
 */
 
   some := SomeClass

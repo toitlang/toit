@@ -3,5 +3,5 @@
 // be found in the tests/LICENSE file.
 
 main:
-  fun := :: | a b c d e0 | null
-  fun2 := :: | a b c d e0 f0 | null
+  func := :: | a b c d e0 | null
+  func2 := :: | a b c d e0 f0 | null

@@ -6,7 +6,7 @@ some_global /int := some_global + 1
 some_global2 /int := store_lambda:: some_global2  // A lambda is allowed.
 some_global3 /int := just_block: some_global3
 
-store_lambda fun/Lambda: return 499
+store_lambda func/Lambda: return 499
 just_block [block]: return 42
 
 main:

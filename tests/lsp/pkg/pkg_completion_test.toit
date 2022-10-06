@@ -36,13 +36,13 @@ class Private_:
 main:
   private_++
 /*^~~~~~~~~~
-  + identify, private_, fun, target_global
+  + identify, private_, func, target_global
   - target_global_, TargetClass_, fun_
 */
 
   target.identify
 /*       ^~~~~~~~
-  + identify, fun, target_global
+  + identify, func, target_global
   - private_, target_global_, TargetClass_, fun_
 */
 

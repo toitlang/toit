@@ -10,10 +10,10 @@ main:
   for x := block; x.call; y++:
     print x
 
-  fun := null
+  func := null
   while x := block:
-    fun = :: x
+    func = :: x
 
   y = 0
   for x := block; x.call; y++:
-    fun = :: x
+    func = :: x

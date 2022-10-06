@@ -2,7 +2,7 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-foo fun: return fun.call
+foo func: return func.call
 
 bar [block]: block.call
 
@@ -34,7 +34,7 @@ class B extends A:
   constructor.named:
     super
 
-  static fun x/int -> none:
+  static func x/int -> none:
     gee 1 2
 
   static static_field := 499

@@ -27,7 +27,7 @@ class TargetClass_:
   member:
   member_:
 
-fun:
-fun_:
+func:
+func_:
 
 interface TargetInterface_:

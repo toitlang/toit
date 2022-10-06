@@ -6,17 +6,17 @@ import expect show *
 
 class A:
   field / any := 42
-  fun / Lambda
-  fun2 / Lambda
-  fun3 / Lambda? := null
-  fun4 / Lambda? := null
+  func / Lambda
+  func2 / Lambda
+  func3 / Lambda? := null
+  func4 / Lambda? := null
 
   constructor:
-    fun  = :: field
-    fun2 = :: this.field
+    func  = :: field
+    func2 = :: this.field
     super
-    fun3 = :: this.field
-    fun4 = :: (this).field  // This is the only lambda that does a dynamic lookup.
+    func3 = :: this.field
+    func4 = :: (this).field  // This is the only lambda that does a dynamic lookup.
 
 class B extends A:
   constructor:
@@ -27,7 +27,7 @@ class B extends A:
 
 main:
   b := B
-  expect_equals 42 b.fun.call
-  expect_equals 42 b.fun2.call
-  expect_equals 42 b.fun3.call
-  expect_equals 499 b.fun4.call
+  expect_equals 42 b.func.call
+  expect_equals 42 b.func2.call
+  expect_equals 42 b.func3.call
+  expect_equals 499 b.func4.call

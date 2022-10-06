@@ -5,7 +5,7 @@
 import expect show *
 
 run [block]: return block.call "str"
-run fun/Lambda: return fun.call "str"
+run func/Lambda: return func.call "str"
 
 main:
   expect_equals "tr"

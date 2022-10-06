@@ -3,7 +3,7 @@
 // be found in the tests/LICENSE file.
 
 foo [block]:
-bar fun/Lambda:
+bar func/Lambda:
 main:
   foo:
     continue.bar

@@ -6,8 +6,8 @@ import expect show *
 
 ITERATIONS ::= 1000
 
-run fun/Lambda:
-  return fun.call
+run func/Lambda:
+  return func.call
 
 bar:
   run::

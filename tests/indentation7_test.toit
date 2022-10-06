@@ -8,8 +8,8 @@ import expect show *
 foo x [block]:
   expect_equals 499 (block.call 1 null null)
 
-foo x fun:
-  expect_equals 499 (fun.call 1 null null)
+foo x func:
+  expect_equals 499 (func.call 1 null null)
 
 bar: return 42
 

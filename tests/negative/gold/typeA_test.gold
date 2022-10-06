@@ -1,4 +1,4 @@
 As check failed: a string ("str") is not a int.
   0: main.<lambda>             tests/negative/typeA_test.toit:8:16
-  1: run                       tests/negative/typeA_test.toit:5:23
+  1: run                       tests/negative/typeA_test.toit:5:25
   2: main                      tests/negative/typeA_test.toit:8:3

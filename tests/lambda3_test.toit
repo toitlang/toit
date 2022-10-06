@@ -5,12 +5,12 @@
 import expect show *
 
 class A:
-  fun := null
+  func := null
 
   constructor:
-  constructor .fun:
+  constructor .func:
 
-  foo: return fun.call
+  foo: return func.call
   bar: return 499
 
   test:
