@@ -1,9 +1,9 @@
 tests/lsp/type_definition_test.toit:95:8: error: Invalid type
 bad -> func:
-       ^~~
+       ^~~~
 tests/lsp/type_definition_test.toit:101:9: error: Invalid type
 bad x / func:
-        ^~~
+        ^~~~
 tests/lsp/type_definition_test.toit:108:30: error: Invalid type
 bad2 -> prefix.ImportedClass.named:
                              ^~~~~
