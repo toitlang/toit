@@ -26,8 +26,8 @@ Cannot encode data structures with cycles in them.  In this case it will
 */
 encode object/any -> ByteArray:
   #primitive.encoding.tison_encode:
-    if it is int:
-      serialization_failure_ it
+    if it is List and it.size != 0 and it[0] is int:
+      serialization_failure_ it[0]
     throw it
 
 /**

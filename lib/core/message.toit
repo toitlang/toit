@@ -24,8 +24,8 @@ May throw "MESSAGE_NO_SUCH_RECEIVER" if the pid is invalid.
 */
 process_send_ pid/int type/int message:
   #primitive.core.process_send:
-    if it is int:
-      serialization_failure_ it
+    if it is List and it.size != 0 and it[0] is int:
+      serialization_failure_ it[0]
     throw it
 
 /** Registered system message handlers for this process. */

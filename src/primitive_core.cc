@@ -1863,7 +1863,7 @@ Object* MessageEncoder::create_error_object(Process* process) {
   if (_nesting_too_deep) {
     result = process->allocate_string_or_error("NESTING_TOO_DEEP");
   } else if (_problematic_class_id >= 0) {
-    result = Primitive::allocate_large_integer(_problematic_class_id, process);
+    result = Primitive::allocate_array(1, Smi::from(_problematic_class_id), process);
   } else if (_too_many_externals) {
     result = process->allocate_string_or_error("TOO_MANY_EXTERNALS");
   }
