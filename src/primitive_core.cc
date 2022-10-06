@@ -1817,17 +1817,14 @@ PRIMITIVE(process_send) {
   uint8* buffer = unvoid_cast<uint8*>(malloc(size));
   if (buffer == null) MALLOC_FAILED;
 
-  SystemMessage* message = null;
   MessageEncoder encoder(process, buffer);
   if (!encoder.encode(array)) {
     encoder.free_copied();
     free(buffer);
-    if (encoder.malloc_failed()) MALLOC_FAILED;
-    // Should not happen, but just in case, throw "ERROR".
-    OTHER_ERROR;
+    return encoder.create_error_object(process);
   }
 
-  message = _new SystemMessage(type, process->group()->id(), process->id(), buffer);
+  SystemMessage* message = _new SystemMessage(type, process->group()->id(), process->id(), buffer);
 
   if (message == null) {
     encoder.free_copied();
@@ -1855,8 +1852,6 @@ PRIMITIVE(process_send) {
     encoder.free_copied();
     message->free_data_but_keep_externals();
     delete message;
-    // TODO: We should activate this immediately after the release to see how
-    // it works.
     Object* result = process->allocate_string_or_error("MESSAGE_NO_SUCH_RECEIVER");
     if (Primitive::is_error(result)) return result;
     return Primitive::mark_as_error(HeapObject::cast(result));

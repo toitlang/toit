@@ -41,7 +41,7 @@ PRIMITIVE(spawn) {
 
   unsigned message_size = 0;
   { MessageEncoder size_encoder(process, null);
-    if (!size_encoder.encode(arguments)) WRONG_TYPE;
+    if (!size_encoder.encode(arguments)) return size_encoder.create_error_object(process);
     message_size = size_encoder.size();
   }
 
@@ -55,8 +55,7 @@ PRIMITIVE(spawn) {
   if (!encoder.encode(arguments)) {
     encoder.free_copied();
     free(buffer);
-    if (encoder.malloc_failed()) MALLOC_FAILED;
-    OTHER_ERROR;
+    return encoder.create_error_object(process);
   }
 
   InitialMemoryManager manager;

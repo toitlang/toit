@@ -280,19 +280,14 @@ bool MessageEncoder::encode_byte_array(ByteArray* object) {
   write_uint8(TAG_BYTE_ARRAY);
   write_cardinal(bytes.length());
   write_pointer(bytes.address());
-  if (!encoding_for_size()) {
-    if (_externals_count >= ARRAY_SIZE(_externals)) {
-      // TODO(kasper): Report meaningful error.
-      return false;
-    }
-    _externals[_externals_count++] = object;
-  } else {
-    _externals_count++;
-    if (_externals_count > MESSAGING_ENCODING_MAX_EXTERNALS) {
-      _too_many_externals = true;
-      return false;
-    }
+  if (_externals_count >= MESSAGING_ENCODING_MAX_EXTERNALS) {
+    _too_many_externals = true;
+    return false;
   }
+  if (encoding_for_size()) {
+    _externals[_externals_count] = object;
+  }
+  _externals_count++;
   return true;
 }
 

@@ -156,9 +156,7 @@ PRIMITIVE(tison_encode) {
   ByteArray::Bytes bytes(result);
   TisonEncoder encoder(process, bytes.address(), payload_size);
   if (!encoder.encode(object)) {
-    if (encoder.malloc_failed()) MALLOC_FAILED;
-    // This should not happen, but just in case, throw "ERROR".
-    OTHER_ERROR;
+    return encoder.create_error_object(process);
   }
   return result;
 }
