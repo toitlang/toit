@@ -353,6 +353,7 @@ jobs:
           CCACHE_COMPRESSLEVEL: '6'
           CCACHE_MAXSIZE: 400M
         run: |
+          source third_party/esp-idf/export.sh
           make esp32
           make ESP32_CHIP=esp32s3 esp32
 
