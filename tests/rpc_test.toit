@@ -161,13 +161,13 @@ test_small_byte_arrays myself/int -> none:
 
 test_problematic myself/int -> none:
   // Check for unhandled types of data.
-  test_illegal myself [MyClass]
-  test_illegal myself [MySerializable 4]
+  test_serialization_failed myself [MyClass]
+  test_serialization_failed myself [MySerializable 4]
 
   // Check for cyclic data structure.
   cyclic := []
   cyclic.add cyclic
-  test_illegal myself cyclic
+  test_cyclic myself cyclic
 
 test_performance myself/int -> none:
   iterations := 100_000
@@ -556,8 +556,11 @@ test myself/int arguments/any:
   else:
     expect.expect_equals expected actual
 
-test_illegal myself/int arguments/any:
-  expect.expect_throw "WRONG_OBJECT_TYPE": rpc.invoke myself PROCEDURE_ECHO arguments
+test_cyclic myself/int arguments/any:
+  expect.expect_throw "NESTING_TOO_DEEP": rpc.invoke myself PROCEDURE_ECHO arguments
+
+test_serialization_failed myself/int arguments/any:
+  expect.expect_throw "SERIALIZATION_FAILED": rpc.invoke myself PROCEDURE_ECHO arguments
 
 test_chain myself/int arguments/any -> List:
   1024.repeat: arguments = rpc.invoke myself PROCEDURE_ECHO arguments

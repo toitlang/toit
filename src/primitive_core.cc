@@ -128,7 +128,9 @@ PRIMITIVE(spawn) {
 
   unsigned size = 0;
   { MessageEncoder size_encoder(process, null);
-    if (!size_encoder.encode(arguments)) WRONG_TYPE;
+    if (!size_encoder.encode(arguments)) {
+      return size_encoder.create_error_object(process);
+    }
     size = size_encoder.size();
   }
 
@@ -140,11 +142,12 @@ PRIMITIVE(spawn) {
   if (!encoder.encode(arguments)) {
     encoder.free_copied();
     free(buffer);
-    if (encoder.malloc_failed()) MALLOC_FAILED;
+    // Should not happen, but just in case, throw "ERROR".
     OTHER_ERROR;
   }
 
   Process* child = VM::current()->scheduler()->spawn(process->program(), process->group(), method, buffer, manager.initial_chunk);
+  // TODO: Leaks here.
   if (!child) MALLOC_FAILED;
 
   manager.dont_auto_free();
@@ -1804,7 +1807,9 @@ PRIMITIVE(process_send) {
 
   unsigned size = 0;
   { MessageEncoder size_encoder(process, null);
-    if (!size_encoder.encode(array)) WRONG_TYPE;
+    if (!size_encoder.encode(array)) {
+      return size_encoder.create_error_object(process);
+    }
     size = size_encoder.size();
   }
 
@@ -1812,20 +1817,19 @@ PRIMITIVE(process_send) {
   uint8* buffer = unvoid_cast<uint8*>(malloc(size));
   if (buffer == null) MALLOC_FAILED;
 
-  SystemMessage* message = null;
   MessageEncoder encoder(process, buffer);
-  bool encoding_succeeded = false;
-  if (encoder.encode(array)) {
-    encoding_succeeded = true;
-    message = _new SystemMessage(type, process->group()->id(), process->id(), buffer);
+  if (!encoder.encode(array)) {
+    encoder.free_copied();
+    free(buffer);
+    return encoder.create_error_object(process);
   }
+
+  SystemMessage* message = _new SystemMessage(type, process->group()->id(), process->id(), buffer);
 
   if (message == null) {
     encoder.free_copied();
     free(buffer);
-    if (encoder.malloc_failed()) MALLOC_FAILED;
-    if (encoding_succeeded) MALLOC_FAILED;
-    OTHER_ERROR;
+    MALLOC_FAILED;
   }
 
   // From here on, the destructor of SystemMessage will free the buffer and
@@ -1841,14 +1845,35 @@ PRIMITIVE(process_send) {
     encoder.neuter_externals();
     // TODO(kasper): Consider doing in-place shrinking of internal, non-constant
     // byte arrays and strings.
+    return process->program()->null_object();
   } else {
     // Sending failed. Free any copied bits, but make sure to not free the externals
     // that have not been neutered on this path.
     encoder.free_copied();
     message->free_data_but_keep_externals();
     delete message;
+    Object* result = process->allocate_string_or_error("MESSAGE_NO_SUCH_RECEIVER");
+    if (Primitive::is_error(result)) return result;
+    return Primitive::mark_as_error(HeapObject::cast(result));
   }
-  return Smi::from(result);
+}
+
+Object* MessageEncoder::create_error_object(Process* process) {
+  Object* result = null;
+  if (_nesting_too_deep) {
+    result = process->allocate_string_or_error("NESTING_TOO_DEEP");
+  } else if (_problematic_class_id >= 0) {
+    result = Primitive::allocate_array(1, Smi::from(_problematic_class_id), process);
+  } else if (_too_many_externals) {
+    result = process->allocate_string_or_error("TOO_MANY_EXTERNALS");
+  }
+  if (result) {
+    if (Primitive::is_error(result)) return result;
+    return Primitive::mark_as_error(HeapObject::cast(result));
+  }
+  // The remaining errors are things like unserializable non-instances, non-smi
+  // lengths, large lists.  TODO: Be more specific and/or remove some limitations.
+  WRONG_TYPE;
 }
 
 PRIMITIVE(task_has_messages) {

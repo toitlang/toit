@@ -133,7 +133,7 @@ bool TisonEncoder::encode(Object* object) {
 bool MessageEncoder::encode_any(Object* object) {
   NestingTracker tracking(&_nesting);
   if (_nesting > MESSAGING_ENCODING_MAX_NESTING) {
-    printf("[message encoder: too much nesting %d]\n", _nesting);
+    _nesting_too_deep = true;
     return false;
   }
 
@@ -175,7 +175,7 @@ bool MessageEncoder::encode_any(Object* object) {
     } else if (class_id == program->string_slice_class_id()) {
       return encode_copy(object, TAG_STRING);
     } else {
-      problematic_class_id_ = class_id->value();
+      _problematic_class_id = class_id->value();
     }
   } else if (object == program->null_object()) {
     write_uint8(TAG_NULL);
@@ -280,13 +280,14 @@ bool MessageEncoder::encode_byte_array(ByteArray* object) {
   write_uint8(TAG_BYTE_ARRAY);
   write_cardinal(bytes.length());
   write_pointer(bytes.address());
-  if (!encoding_for_size()) {
-    if (_externals_count >= ARRAY_SIZE(_externals)) {
-      // TODO(kasper): Report meaningful error.
-      return false;
-    }
-    _externals[_externals_count++] = object;
+  if (_externals_count >= MESSAGING_ENCODING_MAX_EXTERNALS) {
+    _too_many_externals = true;
+    return false;
   }
+  if (encoding_for_size()) {
+    _externals[_externals_count] = object;
+  }
+  _externals_count++;
   return true;
 }
 

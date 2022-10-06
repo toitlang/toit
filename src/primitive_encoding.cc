@@ -145,11 +145,7 @@ PRIMITIVE(tison_encode) {
   unsigned payload_size = 0;
   { TisonEncoder size_encoder(process);
     if (!size_encoder.encode(object)) {
-      int id = size_encoder.problematic_class_id();
-      if (id >= 0) {
-        return Smi::from(id);
-      }
-      WRONG_TYPE;
+      return size_encoder.create_error_object(process);
     }
     size = size_encoder.size();
     payload_size = size_encoder.payload_size();
@@ -159,7 +155,9 @@ PRIMITIVE(tison_encode) {
   if (!result) ALLOCATION_FAILED;
   ByteArray::Bytes bytes(result);
   TisonEncoder encoder(process, bytes.address(), payload_size);
-  if (!encoder.encode(object)) OTHER_ERROR;
+  if (!encoder.encode(object)) {
+    return encoder.create_error_object(process);
+  }
   return result;
 }
 

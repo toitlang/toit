@@ -17,14 +17,16 @@ SYSTEM_RPC_NOTIFY_RESOURCE_ ::= 7
 /**
 Sends the $message with $type to the process identified by $pid.
 It must be possible to encode the $message with the built-in
-primitive message encoder.
-
-Returns a status code:
-- 0: Message OK
-- 1: No such receiver
+  primitive message encoder.
+May throw "NESTING_TOO_DEEP" for deep or cyclic data structures.
+May throw a serialization failure.
+May throw "MESSAGE_NO_SUCH_RECEIVER" if the pid is invalid.
 */
 process_send_ pid/int type/int message:
-  #primitive.core.process_send
+  #primitive.core.process_send:
+    if it is List and it.size != 0 and it[0] is int:
+      serialization_failure_ it[0]
+    throw it
 
 /** Registered system message handlers for this process. */
 system_message_handlers_ ::= {:}
