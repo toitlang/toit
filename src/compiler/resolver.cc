@@ -94,7 +94,7 @@ ir::Program* Resolver::resolve(const std::vector<ast::Unit*>& units,
   auto modules = build_modules(units, entry_index, core_index);
   build_module_scopes(modules);
 
-  mark_runtime_classes(modules[core_index]);
+  mark_runtime(modules[core_index]);
   mark_non_returning(modules[core_index]);
 
   setup_inheritance(modules, core_index);
@@ -102,6 +102,8 @@ ir::Program* Resolver::resolve(const std::vector<ast::Unit*>& units,
   fill_classes_with_skeletons(modules);
 
   check_clashing_or_conflicting(modules);
+
+  check_future_reserved_globals(modules);
 
   report_abstract_classes(modules);
   check_interface_implementations_and_flatten(modules);
@@ -201,7 +203,12 @@ std::vector<Module*> Resolver::build_modules(const std::vector<ast::Unit*>& unit
       if (auto method = declaration->as_Method()) {
         Symbol name = Symbol::invalid();
         ir::Method::MethodKind kind;
-        check_method(method, null, &name, &kind);
+        // For top-level methods we don't weed out future-reserved identifiers
+        // at this stage. We are not allowed to give warnings for identifiers that
+        // come from the core libraries, and we don't (easily) know yet whether the
+        // current method is part of the core libraries.
+        bool allow_future_reserved = true;
+        check_method(method, null, &name, &kind, allow_future_reserved);
         ASSERT(kind == ir::Method::GLOBAL_FUN);
         auto shape = ResolutionShape::for_static_method(method);
         ir::Method* ir = _new ir::MethodStatic(name,
@@ -577,6 +584,24 @@ void Resolver::check_clashing_or_conflicting(std::vector<Module*> modules) {
         auto& vector = member_declarations[name];
         auto list = ListBuilder<ir::Node*>::build_from_vector(vector);
         check_clashing_or_conflicting(name, list);
+      }
+    }
+  }
+}
+
+void Resolver::check_future_reserved_globals(std::vector<Module*> modules) {
+  // We have checked already all identifiers except for globals. This is,
+  // because we didn't know yet which methods were from the core libraries.
+  // This information is present now.
+  for (auto module : modules) {
+    for (auto method : module->methods()) {
+      if (method->is_runtime_method()) continue;
+      auto name = method->name();
+      if (Symbols::is_future_reserved(name)) {
+        auto ast_name = _ir_to_ast_map.at(method)->as_Method()->name_or_dot();
+        report_warning(ast_name,
+                       "Name '%s' will be reserved in future releases",
+                       name.c_str());
       }
     }
   }
@@ -1018,16 +1043,19 @@ void Resolver::build_module_scopes(std::vector<Module*>& modules) {
   resolve_shows_and_exports(modules);
 }
 
-void Resolver::mark_runtime_classes(Module* core_module) {
+void Resolver::mark_runtime(Module* core_module) {
   UnorderedSet<Module*> finished_modules;
 
   std::function<void (Module*)> mark;
   mark = [&](Module* module) {
     if (finished_modules.contains(module)) return;
     finished_modules.insert(module);
+
     for (auto klass : module->classes()) {
-      if (klass->is_runtime_class()) return;
       klass->mark_runtime_class();
+    }
+    for (auto method : module->methods()) {
+      method->mark_runtime_method();
     }
 
     for (auto imported : module->imported_modules()) {
@@ -1387,7 +1415,8 @@ class HasExplicitReturnVisitor : public ast::TraversingVisitor {
 };
 
 void Resolver::check_method(ast::Method* method, ir::Class* holder,
-                            Symbol* name, ir::Method::MethodKind* kind) {
+                            Symbol* name, ir::Method::MethodKind* kind,
+                            bool allow_future_reserved) {
   bool is_toplevel = holder == null;
   bool class_is_interface = is_toplevel ? false : holder->is_interface();
   auto class_name = is_toplevel ? Symbol::invalid() : holder->name();
@@ -1416,6 +1445,14 @@ void Resolver::check_method(ast::Method* method, ir::Class* holder,
                  "Can't use '%s' as name for a %s",
                  name->c_str(),
                  is_named_constructor_or_factory ? "constructor" : "method");
+  }
+  if (Symbols::is_future_reserved(*name)) {
+    // Some core methods are allowed to have the reserved identifier for now.
+    if (!is_toplevel || !allow_future_reserved) {
+      diagnostics()->report_warning(ast_name_node,
+                                    "Name '%s' will be reserved in future releases",
+                                    name->c_str());
+    }
   }
   auto method_is_abstract = method->is_abstract();
   auto is_static = method->is_static();
@@ -1532,6 +1569,11 @@ void Resolver::check_field(ast::Field* field, ir::Class* holder) {
   if (Symbols::is_reserved(name)) {
     report_error(field->name(), "Can't use '%s' as name for a field", name.c_str());
   }
+  if (Symbols::is_future_reserved(name)) {
+    diagnostics()->report_warning(field->name(),
+                                  "Name '%s' will be reserved in future releases",
+                                  name.c_str());
+  }
   if (field->is_abstract()) {
     report_error(field, "Fields can't be abstract");
   }
@@ -1549,6 +1591,11 @@ void Resolver::check_class(ast::Class* klass) {
     report_error(klass->name(), "Can't use '%s' as name for a %s",
                  name.c_str(),
                  klass->is_interface() ? "interface" : "class");
+  }
+  if (Symbols::is_future_reserved(name)) {
+    diagnostics()->report_warning(klass->name(),
+                                  "Name '%s' will be reserved in future releases",
+                                  name.c_str());
   }
 }
 
@@ -1594,7 +1641,8 @@ void Resolver::fill_classes_with_skeletons(std::vector<Module*> modules) {
           auto method = member->as_Method();
           auto method_is_abstract = method->is_abstract();
 
-          check_method(method, ir_class, &member_name, &kind);
+          bool allow_future_reserved;
+          check_method(method, ir_class, &member_name, &kind, allow_future_reserved = false);
 
           auto position = method->range();
           ir::Method* ir_method = null;

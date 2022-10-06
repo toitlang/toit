@@ -1,0 +1,79 @@
+tests/negative/future_reserved_test.toit:5:7: warning: Name 'throw' will be reserved in future releases
+class throw:
+      ^~~~~
+tests/negative/future_reserved_test.toit:11:7: warning: Name 'catch' will be reserved in future releases
+class catch:
+      ^~~~~
+tests/negative/future_reserved_test.toit:12:7: warning: Name 'switch' will be reserved in future releases
+class switch:
+      ^~~~~~
+tests/negative/future_reserved_test.toit:13:7: warning: Name 'rethrow' will be reserved in future releases
+class rethrow:
+      ^~~~~~~
+tests/negative/future_reserved_test.toit:6:3: warning: Name 'catch' will be reserved in future releases
+  catch := 22
+  ^~~~~
+tests/negative/future_reserved_test.toit:7:3: warning: Name 'throw' will be reserved in future releases
+  throw := 22
+  ^~~~~
+tests/negative/future_reserved_test.toit:8:3: warning: Name 'switch' will be reserved in future releases
+  switch := 22
+  ^~~~~~
+tests/negative/future_reserved_test.toit:9:3: warning: Name 'rethrow' will be reserved in future releases
+  rethrow := 99
+  ^~~~~~~
+tests/negative/future_reserved_test.toit:15:1: error: Redefinition of 'throw' as method
+throw catch switch:
+^~~~~
+tests/negative/future_reserved_test.toit:5:7: note: First definition of 'throw'
+class throw:
+      ^~~~~
+tests/negative/future_reserved_test.toit:16:1: error: Redefinition of 'catch' as method
+catch x y z:
+^~~~~
+tests/negative/future_reserved_test.toit:11:7: note: First definition of 'catch'
+class catch:
+      ^~~~~
+tests/negative/future_reserved_test.toit:17:1: error: Redefinition of 'switch' as method
+switch x y z:
+^~~~~~
+tests/negative/future_reserved_test.toit:12:7: note: First definition of 'switch'
+class switch:
+      ^~~~~~
+tests/negative/future_reserved_test.toit:18:1: error: Redefinition of 'rethrow' as method
+rethrow x y z:
+^~~~~~~
+tests/negative/future_reserved_test.toit:13:7: note: First definition of 'rethrow'
+class rethrow:
+      ^~~~~~~
+tests/negative/future_reserved_test.toit:15:1: warning: Name 'throw' will be reserved in future releases
+throw catch switch:
+^~~~~
+tests/negative/future_reserved_test.toit:16:1: warning: Name 'catch' will be reserved in future releases
+catch x y z:
+^~~~~
+tests/negative/future_reserved_test.toit:17:1: warning: Name 'switch' will be reserved in future releases
+switch x y z:
+^~~~~~
+tests/negative/future_reserved_test.toit:18:1: warning: Name 'rethrow' will be reserved in future releases
+rethrow x y z:
+^~~~~~~
+tests/negative/future_reserved_test.toit:15:7: warning: Name 'catch' will be reserved in future releases
+throw catch switch:
+      ^~~~~
+tests/negative/future_reserved_test.toit:15:13: warning: Name 'switch' will be reserved in future releases
+throw catch switch:
+            ^~~~~~
+tests/negative/future_reserved_test.toit:21:3: warning: Name 'throw' will be reserved in future releases
+  throw := 499
+  ^~~~~
+tests/negative/future_reserved_test.toit:22:3: warning: Name 'catch' will be reserved in future releases
+  catch := 42
+  ^~~~~
+tests/negative/future_reserved_test.toit:23:3: warning: Name 'switch' will be reserved in future releases
+  switch := 0
+  ^~~~~~
+tests/negative/future_reserved_test.toit:24:3: warning: Name 'rethrow' will be reserved in future releases
+  rethrow := 22
+  ^~~~~~~
+Compilation failed.
