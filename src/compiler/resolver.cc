@@ -97,7 +97,6 @@ ir::Program* Resolver::resolve(const std::vector<ast::Unit*>& units,
   mark_runtime(modules[core_index]);
   mark_non_returning(modules[core_index]);
 
-
   setup_inheritance(modules, core_index);
 
   fill_classes_with_skeletons(modules);
