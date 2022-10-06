@@ -500,6 +500,7 @@ class Method : public Node {
       , _plain_shape(PlainShape::invalid())
       , _is_abstract(is_abstract)
       , _does_not_return(false)
+      , _is_runtime_method(false)
       , _kind(kind)
       , _range(range)
       , _body(null)
