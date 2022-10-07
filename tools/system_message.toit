@@ -23,10 +23,25 @@ import host.pipe
 import .snapshot
 import .mirror as mirror
 
-handle_system_message encoded_system_message snapshot_content --force_pretty/bool=false --force_plain/bool=false:
+handle_system_message encoded_system_message snapshot_content -> none
+    --force_pretty/bool=false
+    --force_plain/bool=false
+    --filename/string?=null
+    --uuid/string?=null:
   if force_pretty and force_plain: throw "Can't force both pretty and plain formats at once"
   program := null
-  if snapshot_content: program = (SnapshotBundle snapshot_content).decode
+  if snapshot_content:
+    bundle := SnapshotBundle snapshot_content
+    if bundle.uuid and uuid and uuid != bundle.uuid.stringify:
+      pipe.print_to_stdout "***********************************************************"
+      source := ?
+      if filename:
+        source = "file '$filename'"
+      else:
+        source = "snapshot bundle"
+      pipe.print_to_stdout "** WARNING: the $source contains an unexpected snapshot, $bundle.uuid!"
+      pipe.print_to_stdout "***********************************************************"
+    program = bundle.decode
   m := mirror.decode encoded_system_message program:
     pipe.print_to_stdout it
     return
@@ -50,6 +65,8 @@ main args:
             --short_help="The snapshot file of the program that produced the message",
         cli.OptionString "message" --short_name="m" --required
             --short_help="The base64-encoded message from the device",
+        cli.OptionString "uuid" --short_name="u"
+            --short_help="UUID of the snapshot that produced the message",
         cli.Flag "force-pretty"
             --short_help="Force the report to use terminal graphics",
         cli.Flag "force-plain"
@@ -70,5 +87,7 @@ decode_system_message parsed command -> none:
     command.run ["--help"]
     exit 1
   handle_system_message encoded_system_message snapshot_content
+      --filename=parsed["snapshot"]
+      --uuid=parsed["uuid"]
       --force_pretty=parsed["force-pretty"]
       --force_plain=parsed["force-plain"]
