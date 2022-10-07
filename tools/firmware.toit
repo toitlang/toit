@@ -172,7 +172,7 @@ container_cmd -> cli.Command:
                 --short_help="Set the output file name."
                 --short_name="o"
                 --required,
-            cli.OptionEnum "part" ["image", "snapshot", "assets"]
+            cli.OptionEnum "part" ["image", "assets"]
                 --short_help="Pick the part of the container to extract."
                 --required
           ]
@@ -257,14 +257,6 @@ container_extract parsed/cli.Parsed -> none:
     print "container '$name' has no $part"
     exit 1
   entry := entries[key]
-  if part != "assets":
-    is_snapshot := is_snapshot_bundle entry
-    if part == "snapshot" and not is_snapshot:
-      print "container '$name' has no snapshot, only an image"
-      exit 1
-    else if part == "image" and is_snapshot:
-      print "container '$name' has no image, only a snapshot"
-      exit 1
   write_file parsed["output"]: it.write entry
 
 container_uninstall parsed/cli.Parsed -> none:
