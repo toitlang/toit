@@ -353,15 +353,17 @@ void Process::clear_signal(Signal signal) {
   _signals &= ~signal;
 }
 
-void Process::set_target_priority(uint8 priority) {
-  uint8 current = this->priority();
-  if (priority < current) signal(PREEMPT);
-  _priority = (priority << 8) | (current);
+void Process::set_target_priority(uint8 value) {
+  if (value < priority()) signal(PREEMPT);
+  // TODO(kasper): If a process is not running while we change
+  // this, we probably need to move it into another ready
+  // queue.
+  _target_priority = value;
 }
 
 uint8 Process::update_priority() {
-  uint8 priority = (_priority >> 8) & 0xff;
-  _priority = (priority << 8) | priority;
+  uint8 priority = _target_priority;
+  _priority = priority;
   return priority;
 }
 

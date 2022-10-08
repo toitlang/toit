@@ -149,7 +149,7 @@ class Process : public ProcessListFromProcessGroup::Element,
   // Processes have a priority in the range [0..255]. The scheduler
   // priorities running processes with higher priorities, so processes
   // with lower priorities might get starved by more important things.
-  uint8 priority() const { return _priority & 0xff; }
+  uint8 priority() const { return _priority; }
 
   // The scheduler needs to be in charge of updating priorities,
   // because it might have a process in queue determined by the
@@ -157,7 +157,7 @@ class Process : public ProcessListFromProcessGroup::Element,
   // again. Once a process is ready to run, the scheduler will
   // update the priority and make the target priority the current
   // priority.
-  void set_target_priority(uint8 priority);
+  void set_target_priority(uint8 value);
   uint8 update_priority();
 
   int current_directory() { return _current_directory; }
@@ -233,7 +233,9 @@ class Process : public ProcessListFromProcessGroup::Element,
   Program* _program;
   ProcessRunner* _runner;
   ProcessGroup* _group;
-  uint32 _priority = 0;
+
+  uint8 _priority = 0;
+  uint8 _target_priority = 0;
 
   uword _program_heap_address;
   uword _program_heap_size;
