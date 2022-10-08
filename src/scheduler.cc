@@ -534,6 +534,7 @@ void Scheduler::gc(Process* process, bool malloc_failed, bool try_hard) {
 void Scheduler::add_process(Locker& locker, Process* process) {
   _num_processes++;
   process_ready(locker, process);
+  // TODO(kasper): This is a weird place to do this.
   start_thread(locker, ONLY_IF_PROCESSES_ARE_READY);
 }
 
@@ -725,11 +726,13 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
 }
 
 void Scheduler::update_priority(Locker& locker, Process* process, uint8 priority) {
-  if (priority < process->priority()) process->signal(Process::PREEMPT);
-  // TODO(kasper): If a process is not running while we change
-  // this, we probably need to move it into another ready
-  // queue.
   process->set_target_priority(priority);
+  if (process->state() == Process::RUNNING) {
+    process->signal(Process::PREEMPT);
+  } else if (process->state() == Process::SCHEDULED) {
+    ready_queue(process->priority()).remove(process);
+    process_ready(locker, process);
+  }
 }
 
 void Scheduler::gc_suspend_process(Locker& locker, Process* process) {
@@ -826,15 +829,18 @@ void Scheduler::process_ready(Locker& locker, Process* process) {
       // so we need some extra counter for this.
       continue;
     }
-    uint8 priority = process->priority();
-    if (lowest && priority >= lowest_priority) continue;
+    // If a process is already signalled for preemption, we can't
+    // rely on that one to be ready to run the process we're
+    // enqueuing right now. Also, if the process is external
+    // we cannot preempt it.
+    uint32 state = process->state();
+    if ((state & Process::PREEMPT) != 0 || process->program() == null) continue;
+    // If we already have a better candidate, we skip this one.
+    if (lowest && process->priority() >= lowest_priority) continue;
     lowest = process;
-    lowest_priority = priority;
+    lowest_priority = process->priority();
   }
-  if (lowest && lowest_priority < priority) {
-    uint32 state = lowest->state();
-    if ((state & Process::PREEMPT) == 0) lowest->signal(Process::PREEMPT);
-  }
+  if (lowest && lowest_priority < priority) lowest->signal(Process::PREEMPT);
 }
 
 void Scheduler::terminate_execution(Locker& locker, ExitState exit) {
