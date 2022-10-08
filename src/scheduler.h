@@ -174,12 +174,7 @@ class Scheduler {
   // waiting transition to the new state.
   void wait_for_any_gc_to_complete(Locker& locker, Process* process, Process::State new_state);
 
-  typedef enum {
-    ONLY_IF_PROCESSES_ARE_READY,
-    EVEN_IF_PROCESSES_NOT_READY
-  } StartThreadRule;
-
-  void start_thread(Locker& locker, StartThreadRule force);
+  SchedulerThread* start_thread(Locker& locker);
 
   void process_ready(Process* process);
   void process_ready(Locker& locker, Process* process);

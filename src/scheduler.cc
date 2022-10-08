@@ -57,7 +57,7 @@ Scheduler::Scheduler()
   // one for the second core) because we don't want to handle allocation
   // failures when trying to start them later.
   while (_num_threads < _max_threads) {
-    start_thread(locker, EVEN_IF_PROCESSES_NOT_READY);
+    start_thread(locker);
   }
 #endif
 }
@@ -534,8 +534,6 @@ void Scheduler::gc(Process* process, bool malloc_failed, bool try_hard) {
 void Scheduler::add_process(Locker& locker, Process* process) {
   _num_processes++;
   process_ready(locker, process);
-  // TODO(kasper): This is a weird place to do this.
-  start_thread(locker, ONLY_IF_PROCESSES_ARE_READY);
 }
 
 Object* Scheduler::process_stats(Array* array, int group_id, int process_id, Process* calling_process) {
@@ -770,23 +768,18 @@ void Scheduler::wait_for_any_gc_to_complete(Locker& locker, Process* process, Pr
   process->set_state(new_state);
 }
 
-void Scheduler::start_thread(Locker& locker, StartThreadRule force) {
-  if (force == ONLY_IF_PROCESSES_ARE_READY && !has_ready_processes(locker)) return;
-  if (_num_threads == _max_threads) return;
-
-  SchedulerThread* new_thread = _new SchedulerThread(this);
-  // On FreeRTOS we start both threads at boot time with the
-  // EVEN_IF_PROCESSES_NOT_READY flag and then don't start other
-  // threads. This should be enough, and should ensure that allocation
+SchedulerThread* Scheduler::start_thread(Locker& locker) {
+  if (_num_threads == _max_threads) return null;
+  // On FreeRTOS we start both threads at boot time and then don't start
+  // other threads. This should be enough, and should ensure that allocation
   // does not fail. On other platforms we assume that allocation will
   // not fail.
-#ifdef TOIT_FREERTOS
-  ASSERT(force == EVEN_IF_PROCESSES_NOT_READY);
-#endif
+  SchedulerThread* new_thread = _new SchedulerThread(this);
   if (new_thread == null) FATAL("OS thread spawn failed");
   int core = _num_threads++;
   _threads.prepend(new_thread);
   if (!new_thread->spawn(4 * KB, core)) FATAL("OS thread spawn failed");
+  return new_thread;
 }
 
 void Scheduler::process_ready(Process* process) {
@@ -840,7 +833,12 @@ void Scheduler::process_ready(Locker& locker, Process* process) {
     lowest = process;
     lowest_priority = process->priority();
   }
-  if (lowest && lowest_priority < priority) lowest->signal(Process::PREEMPT);
+  SchedulerThread* new_thread = start_thread(locker);
+  if (new_thread) {
+    // TODO(kasper): Do something smart here.
+  } else if (lowest && lowest_priority < priority) {
+    lowest->signal(Process::PREEMPT);
+  }
 }
 
 void Scheduler::terminate_execution(Locker& locker, ExitState exit) {
