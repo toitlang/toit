@@ -60,19 +60,17 @@ class DnsQuery_:
     id = random 0x10000
 
   /**
-  Look up a domain name.
+  Look up a domain name and return A or AAAA record.
 
   If given a numeric address like "127.0.0.1" it merely parses
     the numbers without a network round trip.
 
   By default the server is "8.8.8.8" which is the Google DNS
     service.
-
-  Currently only works for IPv4, not IPv6.
   */
   get -> net.IpAddress
       --server/string="8.8.8.8"
-      --accept_aaaa/bool=false
+      --accept_ipv6/bool=false
       --timeout/Duration=DNS_DEFAULT_TIMEOUT:
     if ip_string_:
       return net.IpAddress.parse name
@@ -83,7 +81,7 @@ class DnsQuery_:
     if hit: return hit
 
     query := create_query name id RECORD_A
-    if accept_aaaa:
+    if accept_ipv6:
       query = create_query name id RECORD_AAAA
 
     socket := udp.Socket

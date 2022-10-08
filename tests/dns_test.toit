@@ -32,9 +32,9 @@ ipv6_address_test:
   expect_equals "102:304:506:708:90a:b0c:d0e:f10" addr.stringify
 
 ipv6_dns_test:
-  dns_query := DnsQuery_ "ipv6.google.com"
-  ipv6 := dns_query.get --server="8.8.8.8" --accept_aaaa=true
-  expect ipv6.stringify == "2a00:1450:4005:802:0:0:0:200e"
+  dns_query := DnsQuery_ "google.com"
+  ipv6 := dns_query.get --server="8.8.8.8" --accept_ipv6=true
+  expect ipv6.stringify == "2a00:1450:4005:80b:0:0:0:200e"
 
 cache_test:
   // Prime cache.
