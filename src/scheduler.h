@@ -149,11 +149,15 @@ class Scheduler {
   bool is_boot_process(Process* process) const { return _boot_process == process; }
 
  private:
-  // Introduce a new process to the Scheduler. The Scheduler will not terminate until
+  // Introduce a new process to the scheduler. The scheduler will not terminate until
   // all processes has completed.
   void new_process(Locker& locker, Process* process);
   void add_process(Locker& locker, Process* process);
   void run_process(Locker& locker, Process* process, SchedulerThread* scheduler_thread);
+
+  // Update the priority of a process. This may cause preemption of the process
+  // or it may move the process to another ready queue.
+  void update_priority(Locker& locker, Process* process, uint8 value);
 
   // Profiler support.
   void notify_profiler(int change);

@@ -157,7 +157,7 @@ class Process : public ProcessListFromProcessGroup::Element,
   // again. Once a process is ready to run, the scheduler will
   // update the priority and make the target priority the current
   // priority.
-  void set_target_priority(uint8 value);
+  void set_target_priority(uint8 value) { _target_priority = value; }
   uint8 update_priority();
 
   int current_directory() { return _current_directory; }

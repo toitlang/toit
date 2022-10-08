@@ -105,7 +105,7 @@ Process* Scheduler::new_boot_process(Locker& locker, Program* program, int group
   SystemMessage* termination = new_process_message(SystemMessage::TERMINATED, group_id);
   Process* process = _new Process(program, group, termination, manager.initial_chunk);
   // TODO(kasper): This is not necessarily a good idea, but let's try it out.
-  process->set_target_priority(200);
+  update_priority(locker, process, 200);
   ASSERT(process);
   manager.dont_auto_free();
   return process;
@@ -722,6 +722,14 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
       break;
     }
   }
+}
+
+void Scheduler::update_priority(Locker& locker, Process* process, uint8 priority) {
+  if (priority < process->priority()) process->signal(Process::PREEMPT);
+  // TODO(kasper): If a process is not running while we change
+  // this, we probably need to move it into another ready
+  // queue.
+  process->set_target_priority(priority);
 }
 
 void Scheduler::gc_suspend_process(Locker& locker, Process* process) {
