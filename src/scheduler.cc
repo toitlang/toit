@@ -802,11 +802,22 @@ void Scheduler::process_ready(Locker& locker, Process* process) {
   uint8 priority = process->update_priority();
   ready_queue(priority).append(process);
 
+  // If all scheduler threads are busy running code, we preempt
+  // the lowest priority process unless it is more important
+  // than the process we're enqueuing.
   Process* lowest = null;
   uint8 lowest_priority = 0;
   for (SchedulerThread* thread : _threads) {
     Process* process = thread->interpreter()->process();
-    if (process == null) continue;
+    if (process == null) {
+      // TODO(kasper): We found a scheduler thread that isn't busy.
+      // If we're sure that it will be able to pick this up, we could
+      // return here instead of continuing. We have to be careful
+      // though and not believe that one scheduler thread will be
+      // able to pick up the work for multiple new ready processes,
+      // so we need some extra counter for this.
+      continue;
+    }
     uint8 priority = process->priority();
     if (lowest && priority >= lowest_priority) continue;
     lowest = process;

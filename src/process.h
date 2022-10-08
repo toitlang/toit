@@ -146,7 +146,17 @@ class Process : public ProcessListFromProcessGroup::Element,
   void clear_signal(Signal signal);
   uint32 signals() const { return _signals; }
 
+  // Processes have a priority in the range [0..255]. The scheduler
+  // priorities running processes with higher priorities, so processes
+  // with lower priorities might get starved by more important things.
   uint8 priority() const { return _priority & 0xff; }
+
+  // The scheduler needs to be in charge of updating priorities,
+  // because it might have a process in queue determined by the
+  // current priority and it needs to be able to find it there
+  // again. Once a process is ready to run, the scheduler will
+  // update the priority and make the target priority the current
+  // priority.
   void set_target_priority(uint8 priority);
   uint8 update_priority();
 
