@@ -144,7 +144,11 @@ class Process : public ProcessListFromProcessGroup::Element,
 
   void signal(Signal signal);
   void clear_signal(Signal signal);
-  uint32_t signals() const { return _signals; }
+  uint32 signals() const { return _signals; }
+
+  uint8 priority() const { return _priority & 0xff; }
+  void set_target_priority(uint8 priority);
+  uint8 update_priority();
 
   int current_directory() { return _current_directory; }
   void set_current_directory(int fd) { _current_directory = fd; }
@@ -219,6 +223,7 @@ class Process : public ProcessListFromProcessGroup::Element,
   Program* _program;
   ProcessRunner* _runner;
   ProcessGroup* _group;
+  uint32 _priority = 0;
 
   uword _program_heap_address;
   uword _program_heap_size;

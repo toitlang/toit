@@ -353,4 +353,16 @@ void Process::clear_signal(Signal signal) {
   _signals &= ~signal;
 }
 
+void Process::set_target_priority(uint8 priority) {
+  uint8 current = this->priority();
+  if (priority < current) signal(PREEMPT);
+  _priority = (priority << 8) | (current);
+}
+
+uint8 Process::update_priority() {
+  uint8 priority = (_priority >> 8) & 0xff;
+  _priority = (priority << 8) | priority;
+  return priority;
+}
+
 }

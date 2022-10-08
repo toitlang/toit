@@ -63,8 +63,10 @@ Scheduler::Scheduler()
 }
 
 Scheduler::~Scheduler() {
+  for (int i = 0; i < NUMBER_OF_READY_QUEUES; i++) {
+    ASSERT(_ready_queue[i].is_empty());
+  }
   ASSERT(_groups.is_empty());
-  ASSERT(_ready_processes.is_empty());
   ASSERT(_threads.is_empty());
   OS::dispose(_gc_condition);
   OS::dispose(_has_threads);
@@ -102,6 +104,8 @@ Process* Scheduler::new_boot_process(Locker& locker, Program* program, int group
   ProcessGroup* group = ProcessGroup::create(group_id, program);
   SystemMessage* termination = new_process_message(SystemMessage::TERMINATED, group_id);
   Process* process = _new Process(program, group, termination, manager.initial_chunk);
+  // TODO(kasper): This is not necessarily a good idea, but let's try it out.
+  process->set_target_priority(200);
   ASSERT(process);
   manager.dont_auto_free();
   return process;
@@ -177,9 +181,12 @@ Scheduler::ExitState Scheduler::launch_program(Locker& locker, Process* process)
     delete thread;
   }
 
-  while (_ready_processes.remove_first()) {
-    // Clear out the list of ready processes, so we don't have any dangling
-    // pointers to processes that we delete in a moment.
+  for (int i = 0; i < NUMBER_OF_READY_QUEUES; i++) {
+    ProcessListFromScheduler& ready_queue = _ready_queue[i];
+    while (ready_queue.remove_first()) {
+      // Clear out the list of ready processes, so we don't have any dangling
+      // pointers to processes that we delete in a moment.
+    }
   }
 
   while (ProcessGroup* group = _groups.remove_first()) {
@@ -372,15 +379,21 @@ void Scheduler::run(SchedulerThread* scheduler_thread) {
   // all OS threads at startup on platforms that may have a hard time starting
   // such threads later due to memory pressure.
   while (!has_exit_reason()) {
-    if (_ready_processes.is_empty()) {
+    if (!has_ready_processes(locker)) {
       OS::wait(_has_processes);
       continue;
     }
 
-    Process* process = _ready_processes.remove_first();
+    Process* process = null;
+    for (int i = 0; i < NUMBER_OF_READY_QUEUES; i++) {
+      ProcessListFromScheduler& ready_queue = _ready_queue[i];
+      if (ready_queue.is_empty()) continue;
+      process = ready_queue.remove_first();
+      break;
+    }
     ASSERT(process->state() == Process::SCHEDULED);
 
-    if (!_ready_processes.is_empty()) {
+    if (has_ready_processes(locker)) {
       // Notify potential other thread that there are more processes ready.
       OS::signal(_has_processes);
     }
@@ -719,7 +732,7 @@ void Scheduler::gc_suspend_process(Locker& locker, Process* process) {
     process->set_state(Process::SUSPENDED_IDLE);
   } else if (process->state() == Process::SCHEDULED) {
     process->set_state(Process::SUSPENDED_SCHEDULED);
-    _ready_processes.remove(process);
+    ready_queue(process->priority()).remove(process);
   }
   ASSERT(process->is_suspended());
 }
@@ -747,7 +760,7 @@ void Scheduler::wait_for_any_gc_to_complete(Locker& locker, Process* process, Pr
 }
 
 void Scheduler::start_thread(Locker& locker, StartThreadRule force) {
-  if (force == ONLY_IF_PROCESSES_ARE_READY && _ready_processes.is_empty()) return;
+  if (force == ONLY_IF_PROCESSES_ARE_READY && !has_ready_processes(locker)) return;
   if (_num_threads == _max_threads) return;
 
   SchedulerThread* new_thread = _new SchedulerThread(this);
@@ -782,10 +795,27 @@ void Scheduler::process_ready(Locker& locker, Process* process) {
   }
   process->set_state(Process::SCHEDULED);
 
-  if (_ready_processes.is_empty()) {
+  if (!has_ready_processes(locker)) {
     OS::signal(_has_processes);
   }
-  _ready_processes.append(process);
+
+  uint8 priority = process->update_priority();
+  ready_queue(priority).append(process);
+
+  Process* lowest = null;
+  uint8 lowest_priority = 0;
+  for (SchedulerThread* thread : _threads) {
+    Process* process = thread->interpreter()->process();
+    if (process == null) continue;
+    uint8 priority = process->priority();
+    if (lowest && priority >= lowest_priority) continue;
+    lowest = process;
+    lowest_priority = priority;
+  }
+  if (lowest && lowest_priority < priority) {
+    uint32 state = lowest->state();
+    if ((state & Process::PREEMPT) == 0) lowest->signal(Process::PREEMPT);
+  }
 }
 
 void Scheduler::terminate_execution(Locker& locker, ExitState exit) {
@@ -806,7 +836,7 @@ void Scheduler::terminate_execution(Locker& locker, ExitState exit) {
 void Scheduler::tick(Locker& locker, int64 now) {
   tick_schedule(locker, now, true);
 
-  if (_num_profiled_processes == 0 && _ready_processes.is_empty()) {
+  if (_num_profiled_processes == 0 && !has_ready_processes(locker)) {
     // No need to do preemption when there are no active profilers
     // and no other processes ready to run.
     return;
@@ -847,6 +877,13 @@ Process* Scheduler::find_process(Locker& locker, int process_id) {
   }
 
   return null;
+}
+
+bool Scheduler::has_ready_processes(Locker& locker) {
+  for (int i = 0; i < NUMBER_OF_READY_QUEUES; i++) {
+    if (!_ready_queue[i].is_empty()) return true;
+  }
+  return false;
 }
 
 } // namespace toit

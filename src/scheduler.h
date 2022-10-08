@@ -226,7 +226,17 @@ class Scheduler {
   int _next_group_id;
   int _next_process_id;
   int64 _next_tick = 0;
-  ProcessListFromScheduler _ready_processes;
+
+  static const int NUMBER_OF_READY_QUEUES = 2;
+  ProcessListFromScheduler _ready_queue[NUMBER_OF_READY_QUEUES];
+
+  ProcessListFromScheduler& ready_queue(uint8 priority) {
+    uint32 priorites_per_slot = (0xff + NUMBER_OF_READY_QUEUES) / NUMBER_OF_READY_QUEUES;
+    uint32 slot = (0xff - priority) / priorites_per_slot;
+    return _ready_queue[slot];
+  }
+
+  bool has_ready_processes(Locker& locker);
 
   int _num_threads;
   int _max_threads;
