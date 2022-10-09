@@ -62,7 +62,8 @@ class Unserializable:
 test_throwing_process_send:
   l := List 10: ByteArray_.external_ 100
   expect_throw "TOO_MANY_EXTERNALS": process_send_ 0 0 l
-  expect_throw "MESSAGE_NO_SUCH_RECEIVER": process_send_ 100000000 -10 #[]
+  // expect_throw "MESSAGE_NO_SUCH_RECEIVER": process_send_ 100000000 -10 #[]
+  expect_null (process_send_ 100000000 -10 #[])
   l = []
   l.add l
   expect_throw "NESTING_TOO_DEEP": process_send_ 0 0 l
