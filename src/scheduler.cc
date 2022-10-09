@@ -829,7 +829,8 @@ void Scheduler::process_ready(Locker& locker, Process* process) {
   uint8 lowest_priority = 0;
   SchedulerThread* lowest_thread = null;
   for (SchedulerThread* thread : _threads) {
-    // ...
+    // If the thread has already been picked to be preempted,
+    // we choose another one.
     if (thread->is_pinned()) continue;
     Process* process = thread->interpreter()->process();
     if (process == null) {
@@ -847,6 +848,8 @@ void Scheduler::process_ready(Locker& locker, Process* process) {
     lowest_priority = process->priority();
     lowest_thread = thread;
   }
+  // On some platforms, we can dynamically spin up another thread
+  // to take care of the extra work.
   SchedulerThread* extra_thread = start_thread(locker);
   if (extra_thread) {
     extra_thread->pin();
