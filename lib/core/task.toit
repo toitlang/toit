@@ -107,7 +107,7 @@ class Task_ implements Task:
     return other is Task_ and other.id_ == id_
 
   stringify:
-    return "$name_<$(id_)@$(Process.id)>"
+    return "$name_<$(id_)@$(Process.current.id)>"
 
   with_deadline_ deadline [block]:
     assert: Task_.current == this

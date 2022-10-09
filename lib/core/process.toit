@@ -8,41 +8,59 @@ The new process does not share any memory with the spawning process. If the lamb
   captures variables, those are copied to the new process.
 May throw if the captured variables can't be serialized.
 */
-spawn lambda/Lambda -> int:
-  return spawn_ lambda.method_ lambda.arguments_
+spawn lambda/Lambda --priority/int?=null -> Process:
+  pid := process_spawn_ lambda.method_ lambda.arguments_
+  process := Process_ pid
+  if priority: process.priority = priority
+  return process
 
 /**
 ...
 */
-class Process:
-  /**
-  ...
-  */
-  static id -> int:
-    #primitive.core.process_current_id
+interface Process:
+  static current ::= Process_ process_current_id_
 
   /**
   ...
   */
-  static priority -> int:
-    return get_priority_ id
+  id -> int
 
   /**
   ...
   */
-  priority= priority/int -> none:
-    set_priority_ id priority
+  priority -> int
+
+  /**
+  ...
+  */
+  priority= priority/int -> none
+
 
 // --------------------------------------------------------------------------
 
-spawn_ method arguments:
+class Process_ implements Process:
+  id/int
+  constructor .id:
+
+  priority -> int:
+    return process_get_priority_ id
+  priority= priority/int -> none:
+    process_set_priority_ id priority
+
+process_spawn_ method arguments -> int:
   #primitive.core.spawn
 
-get_priority_ pid/int -> int:
+process_current_id_ -> int:
+  #primitive.core.process_current_id
+
+process_get_priority_ pid/int -> int:
   #primitive.core.process_get_priority
 
-set_priority_ pid/int priority/int -> none:
+process_set_priority_ pid/int priority/int -> none:
   #primitive.core.process_set_priority
+
+// --------------------------------------------------------------------------
+
 
 resource_freeing_module_ ::= get_generic_resource_group_
 

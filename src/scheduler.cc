@@ -112,7 +112,6 @@ Process* Scheduler::new_boot_process(Locker& locker, Program* program, int group
   return process;
 }
 
-
 #ifdef TOIT_FREERTOS
 
 Scheduler::ExitState Scheduler::run_boot_program(Program* program, int group_id) {
@@ -745,6 +744,7 @@ void Scheduler::update_priority(Locker& locker, Process* process, uint8 priority
     process->signal(Process::PREEMPT);
   } else if (process->state() == Process::SCHEDULED) {
     ready_queue(process->priority()).remove(process);
+    process->set_state(Process::IDLE);
     process_ready(locker, process);
   }
 }

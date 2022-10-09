@@ -54,7 +54,7 @@ abstract class ServiceClient:
       --timeout/int?=_default_timeout_:
     if _id_: throw "Already opened"
     if pid:
-      process_send_ pid SYSTEM_RPC_NOTIFY_ [SERVICES_MANAGER_NOTIFY_ADD_PROCESS, Process.id]
+      process_send_ pid SYSTEM_RPC_NOTIFY_ [SERVICES_MANAGER_NOTIFY_ADD_PROCESS, Process.current.id]
     else:
       if timeout:
         catch --unwind=(: it != DEADLINE_EXCEEDED_ERROR):
