@@ -26,9 +26,7 @@ process_send_ pid/int type/int message -> none:
   #primitive.core.process_send:
     if it is List and it.size != 0 and it[0] is int:
       serialization_failure_ it[0]
-    // We cannot deal with this throwing exceptions just
-    // yet. For now, we just return.
-    return
+    throw it
 
 /** Registered system message handlers for this process. */
 system_message_handlers_ ::= {:}
