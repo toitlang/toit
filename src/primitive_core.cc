@@ -147,7 +147,6 @@ PRIMITIVE(spawn) {
     OTHER_ERROR;
   }
 
-  // TODO(kasper): Pass the priority to the constructor here.
   int pid = VM::current()->scheduler()->spawn(
       process->program(),
       process->group(),
