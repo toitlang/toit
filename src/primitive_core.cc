@@ -1877,9 +1877,10 @@ PRIMITIVE(process_send) {
     encoder.free_copied();
     message->free_data_but_keep_externals();
     delete message;
-    Object* result = process->allocate_string_or_error("MESSAGE_NO_SUCH_RECEIVER");
-    if (Primitive::is_error(result)) return result;
-    return Primitive::mark_as_error(HeapObject::cast(result));
+    // Object* result = process->allocate_string_or_error("MESSAGE_NO_SUCH_RECEIVER");
+    // if (Primitive::is_error(result)) return result;
+    // return Primitive::mark_as_error(HeapObject::cast(result));
+    return process->program()->null_object();
   }
 }
 
