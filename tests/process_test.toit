@@ -5,6 +5,6 @@
 import expect show *
 
 main:
-  spawn:: expect_equals 0 Process.current.priority
+  spawn:: expect_equals Process.PRIORITY_NORMAL Process.current.priority
   spawn --priority=100:: expect_equals 100 Process.current.priority
   spawn --priority=255:: expect_equals 255 Process.current.priority

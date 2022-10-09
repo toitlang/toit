@@ -14,6 +14,12 @@ spawn lambda/Lambda --priority/int?=null -> Process:
   return Process_ pid
 
 interface Process:
+  static PRIORITY_IDLE     /int ::= 0
+  static PRIORITY_LOW      /int ::= 43
+  static PRIORITY_NORMAL   /int ::= 128
+  static PRIORITY_HIGH     /int ::= 213
+  static PRIORITY_CRITICAL /int ::= 255
+
   /**
   The current process.
   */

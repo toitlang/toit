@@ -106,9 +106,9 @@ Process* Scheduler::new_boot_process(Locker& locker, Program* program, int group
   Process* process = _new Process(program, group, termination, manager.initial_chunk);
   ASSERT(process);
   manager.dont_auto_free();
-  // Start the boot process with the highest possible priority. It can
-  // always lower its priority later.
-  update_priority(locker, process, 0xff);
+  // Start the boot process with a high priority. It can always
+  // be adjusted later if necessary.
+  update_priority(locker, process, Process::PRIORITY_HIGH);
   return process;
 }
 
@@ -887,8 +887,8 @@ void Scheduler::tick(Locker& locker, int64 now) {
     break;
   }
 
-  bool is_profiling = _num_profiled_processes > 0;
-  if (!is_profiling && first_non_empty_ready_queue < 0) {
+  bool any_profiling = _num_profiled_processes > 0;
+  if (!any_profiling && first_non_empty_ready_queue < 0) {
     // No need to do preemption when there are no active profilers
     // and no other processes ready to run.
     return;
@@ -898,6 +898,7 @@ void Scheduler::tick(Locker& locker, int64 now) {
     Process* process = thread->interpreter()->process();
     if (process == null) continue;
     int ready_queue_index = compute_ready_queue_index(process->priority());
+    bool is_profiling = any_profiling && process->profiler() != null;
     if (is_profiling || ready_queue_index >= first_non_empty_ready_queue) {
       process->signal(Process::PREEMPT);
     }

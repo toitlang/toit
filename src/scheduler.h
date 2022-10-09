@@ -236,7 +236,7 @@ class Scheduler {
   int _next_process_id;
   int64 _next_tick = 0;
 
-  static const int NUMBER_OF_READY_QUEUES = 3;
+  static const int NUMBER_OF_READY_QUEUES = 5;
   ProcessListFromScheduler _ready_queue[NUMBER_OF_READY_QUEUES];
 
   ProcessListFromScheduler& ready_queue(uint8 priority) {
@@ -244,8 +244,11 @@ class Scheduler {
   }
 
   static int compute_ready_queue_index(uint8 priority) {
-    uint32 priorites_per_slot = (0xff + NUMBER_OF_READY_QUEUES) / NUMBER_OF_READY_QUEUES;
-    return (0xff - priority) / priorites_per_slot;
+    if (priority == Process::PRIORITY_CRITICAL) return 0;
+    if (priority >= 171) return 1;
+    if (priority >= 85) return 2;
+    if (priority != Process::PRIORITY_IDLE) return 3;
+    return 4;
   }
 
   bool has_ready_processes(Locker& locker);

@@ -49,6 +49,13 @@ class Process : public ProcessListFromProcessGroup::Element,
     SUSPENDED_AWAITING_GC
   };
 
+  // Should match the constants in lib/core/process.toit.
+  static const uint8 PRIORITY_IDLE     = 0;
+  static const uint8 PRIORITY_LOW      = 43;
+  static const uint8 PRIORITY_NORMAL   = 128;
+  static const uint8 PRIORITY_HIGH     = 213;
+  static const uint8 PRIORITY_CRITICAL = 255;
+
   static const char* StateName[];
 
   // Constructor for an internal process based on Toit code.
@@ -234,8 +241,8 @@ class Process : public ProcessListFromProcessGroup::Element,
   ProcessRunner* _runner;
   ProcessGroup* _group;
 
-  uint8 _priority = 0;
-  uint8 _target_priority = 0;
+  uint8 _priority = PRIORITY_NORMAL;
+  uint8 _target_priority = PRIORITY_NORMAL;
 
   uword _program_heap_address;
   uword _program_heap_size;
