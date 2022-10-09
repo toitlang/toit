@@ -9,13 +9,40 @@ The new process does not share any memory with the spawning process. If the lamb
 May throw if the captured variables can't be serialized.
 */
 spawn lambda/Lambda -> int:
-  return spawn_primitive_ lambda.method_ lambda.arguments_
+  return spawn_ lambda.method_ lambda.arguments_
 
-spawn_primitive_ method arguments:
+/**
+...
+*/
+class Process:
+  /**
+  ...
+  */
+  static id -> int:
+    #primitive.core.process_current_id
+
+  /**
+  ...
+  */
+  static priority -> int:
+    return get_priority_ id
+
+  /**
+  ...
+  */
+  priority= priority/int -> none:
+    set_priority_ id priority
+
+// --------------------------------------------------------------------------
+
+spawn_ method arguments:
   #primitive.core.spawn
 
-current_process_ -> int:
-  #primitive.core.current_process_id
+get_priority_ pid/int -> int:
+  #primitive.core.process_get_priority
+
+set_priority_ pid/int priority/int -> none:
+  #primitive.core.process_set_priority
 
 resource_freeing_module_ ::= get_generic_resource_group_
 

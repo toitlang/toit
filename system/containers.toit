@@ -389,7 +389,7 @@ container_next_gid_ -> int:
   #primitive.programs_registry.next_group_id
 
 container_kill_pid_ pid/int -> bool:
-  #primitive.core.signal_kill
+  #primitive.core.process_signal_kill
 
 container_bundled_images_ -> Array_:
   #primitive.programs_registry.bundled_images

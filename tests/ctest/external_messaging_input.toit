@@ -11,7 +11,7 @@ EXTERNAL_PID ::= 0
 main:
   handler := MessageHandler
   set_system_message_handler_ (TYPE + 1) handler
-  expect.expect (current_process_ != EXTERNAL_PID)
+  expect.expect (Process.id != EXTERNAL_PID)
 
   test handler #[]
   test handler #[1, 2, 3, 4]

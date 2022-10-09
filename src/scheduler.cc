@@ -104,10 +104,11 @@ Process* Scheduler::new_boot_process(Locker& locker, Program* program, int group
   ProcessGroup* group = ProcessGroup::create(group_id, program);
   SystemMessage* termination = new_process_message(SystemMessage::TERMINATED, group_id);
   Process* process = _new Process(program, group, termination, manager.initial_chunk);
-  // TODO(kasper): This is not necessarily a good idea, but let's try it out.
-  update_priority(locker, process, 200);
   ASSERT(process);
   manager.dont_auto_free();
+  // Start the boot process with the highest possible priority. It can
+  // always lower its priority later.
+  update_priority(locker, process, 0xff);
   return process;
 }
 
@@ -605,6 +606,7 @@ Object* Scheduler::process_stats(Array* array, int group_id, int process_id, Pro
 void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* scheduler_thread) {
   wait_for_any_gc_to_complete(locker, process, Process::RUNNING);
   process->set_scheduler_thread(scheduler_thread);
+  scheduler_thread->unpin();
 
   ProcessRunner* runner = process->runner();
   bool interpreted = (runner == null);
@@ -723,6 +725,20 @@ void Scheduler::run_process(Locker& locker, Process* process, SchedulerThread* s
   }
 }
 
+int Scheduler::get_priority(int pid) {
+  Locker locker(_mutex);
+  Process* process = find_process(locker, pid);
+  return process ? process->priority() : -1;
+}
+
+bool Scheduler::set_priority(int pid, uint8 priority) {
+  Locker locker(_mutex);
+  Process* process = find_process(locker, pid);
+  if (!process) return false;
+  update_priority(locker, process, priority);
+  return true;
+}
+
 void Scheduler::update_priority(Locker& locker, Process* process, uint8 priority) {
   process->set_target_priority(priority);
   if (process->state() == Process::RUNNING) {
@@ -811,32 +827,31 @@ void Scheduler::process_ready(Locker& locker, Process* process) {
   // than the process we're enqueuing.
   Process* lowest = null;
   uint8 lowest_priority = 0;
+  SchedulerThread* lowest_thread = null;
   for (SchedulerThread* thread : _threads) {
+    // ...
+    if (thread->is_pinned()) continue;
     Process* process = thread->interpreter()->process();
     if (process == null) {
-      // TODO(kasper): We found a scheduler thread that isn't busy.
-      // If we're sure that it will be able to pick this up, we could
-      // return here instead of continuing. We have to be careful
-      // though and not believe that one scheduler thread will be
-      // able to pick up the work for multiple new ready processes,
-      // so we need some extra counter for this.
-      continue;
+      // We have found a thread that is ready to pick up
+      // work. We pin it, so we don't pick this again before
+      // it has had the chance to work.
+      thread->pin();
+      return;
     }
-    // If a process is already signalled for preemption, we can't
-    // rely on that one to be ready to run the process we're
-    // enqueuing right now. Also, if the process is external
-    // we cannot preempt it.
-    uint32 state = process->state();
-    if ((state & Process::PREEMPT) != 0 || process->program() == null) continue;
+    // If a process is external we cannot preempt it.
+    if (process->program() == null) continue;
     // If we already have a better candidate, we skip this one.
     if (lowest && process->priority() >= lowest_priority) continue;
     lowest = process;
     lowest_priority = process->priority();
+    lowest_thread = thread;
   }
-  SchedulerThread* new_thread = start_thread(locker);
-  if (new_thread) {
-    // TODO(kasper): Do something smart here.
+  SchedulerThread* extra_thread = start_thread(locker);
+  if (extra_thread) {
+    extra_thread->pin();
   } else if (lowest && lowest_priority < priority) {
+    lowest_thread->pin();
     lowest->signal(Process::PREEMPT);
   }
 }
@@ -859,7 +874,15 @@ void Scheduler::terminate_execution(Locker& locker, ExitState exit) {
 void Scheduler::tick(Locker& locker, int64 now) {
   tick_schedule(locker, now, true);
 
-  if (_num_profiled_processes == 0 && !has_ready_processes(locker)) {
+  int first_non_empty_ready_queue = -1;
+  for (int i = 0; i < NUMBER_OF_READY_QUEUES; i++) {
+    if (_ready_queue[i].is_empty()) continue;
+    first_non_empty_ready_queue = i;
+    break;
+  }
+
+  bool is_profiling = _num_profiled_processes > 0;
+  if (!is_profiling && first_non_empty_ready_queue < 0) {
     // No need to do preemption when there are no active profilers
     // and no other processes ready to run.
     return;
@@ -867,7 +890,9 @@ void Scheduler::tick(Locker& locker, int64 now) {
 
   for (SchedulerThread* thread : _threads) {
     Process* process = thread->interpreter()->process();
-    if (process != null) {
+    if (process == null) continue;
+    int ready_queue_index = compute_ready_queue_index(process->priority());
+    if (is_profiling || ready_queue_index >= first_non_empty_ready_queue) {
       process->signal(Process::PREEMPT);
     }
   }
@@ -893,12 +918,11 @@ void Scheduler::notify_profiler(Locker& locker, int change) {
   tick_schedule(locker, OS::get_monotonic_time(), false);
 }
 
-Process* Scheduler::find_process(Locker& locker, int process_id) {
+Process* Scheduler::find_process(Locker& locker, int pid) {
   for (ProcessGroup* group : _groups) {
-    Process* p = group->lookup(process_id);
+    Process* p = group->lookup(pid);
     if (p != null) return p;
   }
-
   return null;
 }
 

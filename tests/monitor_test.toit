@@ -387,7 +387,7 @@ test_process_messages_in_locked kind/int:
 
   // Enqueue a message for ourselves. Will be processed on
   // the current task after blocking on the call to outer.block.
-  process_send_ current_process_ MessageHandler.TYPE [kind]
+  process_send_ Process.id MessageHandler.TYPE [kind]
   expect_equals 0 handler.calls
 
   expect_throw DEADLINE_EXCEEDED_ERROR:

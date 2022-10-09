@@ -45,9 +45,14 @@ class SchedulerThread : public Thread, public SchedulerThreadList::Element {
 
   void entry();
 
+  bool is_pinned() const { return _is_pinned; }
+  void pin() { _is_pinned = true; }
+  void unpin() { _is_pinned = false; }
+
  private:
   Scheduler* const _scheduler;
   Interpreter _interpreter;
+  bool _is_pinned = false;
 };
 
 class Scheduler {
@@ -137,6 +142,10 @@ class Scheduler {
   void activate_profiler(Process* process) { notify_profiler(1); }
   void deactivate_profiler(Process* process) { notify_profiler(-1); }
 
+  // Process priority support.
+  int get_priority(int pid);
+  bool set_priority(int pid, uint8 priority);
+
   // Primitive support.
 
   // Fills in an array with stats for the process with the given ids.
@@ -187,7 +196,7 @@ class Scheduler {
 
   Scheduler::ExitState launch_program(Locker& locker, Process* process);
 
-  Process* find_process(Locker& locker, int process_id);
+  Process* find_process(Locker& locker, int pid);
 
   Process* new_boot_process(Locker& locker, Program* program, int group_id);
   SystemMessage* new_process_message(SystemMessage::Type type, int gid);
@@ -230,9 +239,12 @@ class Scheduler {
   ProcessListFromScheduler _ready_queue[NUMBER_OF_READY_QUEUES];
 
   ProcessListFromScheduler& ready_queue(uint8 priority) {
+    return _ready_queue[compute_ready_queue_index(priority)];
+  }
+
+  static int compute_ready_queue_index(uint8 priority) {
     uint32 priorites_per_slot = (0xff + NUMBER_OF_READY_QUEUES) / NUMBER_OF_READY_QUEUES;
-    uint32 slot = (0xff - priority) / priorites_per_slot;
-    return _ready_queue[slot];
+    return (0xff - priority) / priorites_per_slot;
   }
 
   bool has_ready_processes(Locker& locker);
