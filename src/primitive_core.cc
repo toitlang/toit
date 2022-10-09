@@ -116,7 +116,8 @@ PRIMITIVE(spawn_method) {
 }
 
 PRIMITIVE(spawn) {
-  ARGS(Object, entry, Object, arguments)
+  ARGS(int, priority, Object, entry, Object, arguments)
+  if (priority != -1 && (priority < 0 || priority > 0xff)) OUT_OF_RANGE;
   if (!is_smi(entry)) WRONG_TYPE;
 
   int method_id = Smi::cast(entry)->value();
@@ -146,12 +147,22 @@ PRIMITIVE(spawn) {
     OTHER_ERROR;
   }
 
-  Process* child = VM::current()->scheduler()->spawn(process->program(), process->group(), method, buffer, manager.initial_chunk);
-  // TODO: Leaks here.
-  if (!child) MALLOC_FAILED;
+  // TODO(kasper): Pass the priority to the constructor here.
+  int pid = VM::current()->scheduler()->spawn(
+      process->program(),
+      process->group(),
+      priority,
+      method,
+      buffer,
+      manager.initial_chunk);
+  if (pid == Scheduler::INVALID_PROCESS_ID) {
+    encoder.free_copied();
+    free(buffer);
+    MALLOC_FAILED;
+  }
 
   manager.dont_auto_free();
-  return Smi::from(child->id());
+  return Smi::from(pid);
 }
 
 PRIMITIVE(get_generic_resource_group) {

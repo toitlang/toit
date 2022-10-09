@@ -35,7 +35,7 @@ send_trace_message message/ByteArray -> none:
     // Send the trace to the system process using the more primitive messaging
     // infrastructure. This allows the system to produce a meaningful trace
     // or print it for manual processing.
-    process_send_ -1 SYSTEM_TRACE_ message
+    catch: process_send_ -1 SYSTEM_TRACE_ message
     // We check for messages here in case there is no system process. This allows
     // the traces to be discovered in the message queue and handled right here.
     process_messages_

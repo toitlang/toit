@@ -9,10 +9,9 @@ The new process does not share any memory with the spawning process. If the lamb
 May throw if the captured variables can't be serialized.
 */
 spawn lambda/Lambda --priority/int?=null -> Process:
-  pid := process_spawn_ lambda.method_ lambda.arguments_
-  process := Process_ pid
-  if priority: process.priority = priority
-  return process
+  priority = priority or -1
+  pid := process_spawn_ priority lambda.method_ lambda.arguments_
+  return Process_ pid
 
 interface Process:
   /**
@@ -58,7 +57,7 @@ class Process_ implements Process:
   priority= priority/int -> none:
     process_set_priority_ id priority
 
-process_spawn_ method arguments -> int:
+process_spawn_ priority method arguments -> int:
   #primitive.core.spawn
 
 process_current_id_ -> int:

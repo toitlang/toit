@@ -322,16 +322,17 @@ bool Scheduler::signal_process(Process* sender, int target_id, Process::Signal s
   return true;
 }
 
-Process* Scheduler::spawn(Program* program, ProcessGroup* process_group, Method method, uint8* arguments, Chunk* initial_chunk) {
+int Scheduler::spawn(Program* program, ProcessGroup* process_group, int priority,
+                     Method method, uint8* arguments, Chunk* initial_chunk) {
   Locker locker(_mutex);
 
   SystemMessage* termination = new_process_message(SystemMessage::TERMINATED, process_group->id());
-  if (!termination) return null;
+  if (!termination) return INVALID_PROCESS_ID;
 
   Process* process = _new Process(program, process_group, termination, method, initial_chunk);
   if (!process) {
     delete termination;
-    return null;
+    return INVALID_PROCESS_ID;
   }
   process->set_spawn_arguments(arguments);
 
@@ -339,15 +340,17 @@ Process* Scheduler::spawn(Program* program, ProcessGroup* process_group, Method 
   if (!spawned) {
     delete termination;
     delete process;
-    return null;
+    return INVALID_PROCESS_ID;
   }
-  spawned->set_pid(process->id());
+  int pid = process->id();
+  spawned->set_pid(pid);
   // Send the SPAWNED message before returning from the call to spawn. This is necessary
   // to make sure the system doesn't conclude that there are no processes left just after
   // spawning, but before the spawned process starts up.
   send_system_message(locker, spawned);
+  if (priority != -1) process->set_target_priority(priority);
   new_process(locker, process);
-  return process;
+  return pid;
 }
 
 void Scheduler::new_process(Locker& locker, Process* process) {

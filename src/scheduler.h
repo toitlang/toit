@@ -115,7 +115,8 @@ class Scheduler {
   // deliver the signal.
   bool signal_process(Process* sender, int target_id, Process::Signal signal);
 
-  Process* spawn(Program* program, ProcessGroup* process_group, Method method, uint8* arguments, Chunk* initial_chunk);
+  int spawn(Program* program, ProcessGroup* process_group, int priority,
+            Method method, uint8* arguments, Chunk* initial_chunk);
 
   // Returns a new process id (only called from Process constructor).
   int next_process_id();
@@ -235,7 +236,7 @@ class Scheduler {
   int _next_process_id;
   int64 _next_tick = 0;
 
-  static const int NUMBER_OF_READY_QUEUES = 2;
+  static const int NUMBER_OF_READY_QUEUES = 3;
   ProcessListFromScheduler _ready_queue[NUMBER_OF_READY_QUEUES];
 
   ProcessListFromScheduler& ready_queue(uint8 priority) {
