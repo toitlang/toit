@@ -715,16 +715,27 @@ uint64 MessageDecoder::read_uint64() {
   return result;
 }
 
-bool ExternalSystemMessageHandler::start() {
+bool ExternalSystemMessageHandler::start(int priority) {
   ASSERT(_process == null);
   Process* process = _vm->scheduler()->run_external(this);
   if (process == null) return false;
   _process = process;
+  if (priority >= 0) set_priority(Utils::min(priority, 0xff));
   return true;
 }
 
 int ExternalSystemMessageHandler::pid() const {
   return _process ? _process->id() : -1;
+}
+
+int ExternalSystemMessageHandler::priority() const {
+  int pid = this->pid();
+  return (pid < 0) ? -1 : _vm->scheduler()->get_priority(pid);
+}
+
+bool ExternalSystemMessageHandler::set_priority(uint8 priority) {
+  int pid = this->pid();
+  return (pid < 0) ? false : _vm->scheduler()->set_priority(pid, priority);
 }
 
 bool ExternalSystemMessageHandler::send(int pid, int type, void* data, int length, bool discard) {

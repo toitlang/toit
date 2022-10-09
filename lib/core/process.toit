@@ -14,27 +14,38 @@ spawn lambda/Lambda --priority/int?=null -> Process:
   if priority: process.priority = priority
   return process
 
-/**
-...
-*/
 interface Process:
+  /**
+  The current process.
+  */
   static current ::= Process_ process_current_id_
 
   /**
-  ...
+  Returns the unique id of the process.
   */
   id -> int
 
   /**
-  ...
+  Returns the priority of the process.
+
+  The priority is between 0 and 255 and a high priority means
+    that the process is more likely to be scheduled and less
+    likely to be interrupted.
+
+  Throws an exception if the process no longer lives.
   */
   priority -> int
 
   /**
-  ...
+  Updates the priority of the process.
+
+  The $priority must be between 0 and 255 and a high priority
+    means that the process is more likely to be scheduled and
+    less likely to be interrupted.
+
+  Throws an exception if the process no longer lives.
   */
   priority= priority/int -> none
-
 
 // --------------------------------------------------------------------------
 
@@ -60,7 +71,6 @@ process_set_priority_ pid/int priority/int -> none:
   #primitive.core.process_set_priority
 
 // --------------------------------------------------------------------------
-
 
 resource_freeing_module_ ::= get_generic_resource_group_
 
