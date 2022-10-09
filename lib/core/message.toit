@@ -22,11 +22,13 @@ May throw "NESTING_TOO_DEEP" for deep or cyclic data structures.
 May throw a serialization failure.
 May throw "MESSAGE_NO_SUCH_RECEIVER" if the pid is invalid.
 */
-process_send_ pid/int type/int message:
+process_send_ pid/int type/int message -> none:
   #primitive.core.process_send:
     if it is List and it.size != 0 and it[0] is int:
       serialization_failure_ it[0]
-    throw it
+    // We cannot deal with this throwing exceptions just
+    // yet. For now, we just return.
+    return
 
 /** Registered system message handlers for this process. */
 system_message_handlers_ ::= {:}
