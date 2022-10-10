@@ -57,7 +57,7 @@ test_priority n/int --low/int --high/int:
     priority := priorities[index]
     count := counts[pids[index]]
     if priority == high:
-      expect (count * 1.4 >= baseline) --message="high priority too low"
+      expect (count * 1.5 >= baseline) --message="high priority too low"
     else:
       expect (count <= baseline * 1.2) --message="low priority too high"
 
