@@ -17,7 +17,7 @@ import rpc show RpcSerializable
 
 class RpcBroker implements SystemMessageHandler_:
   static MAX_TASKS/int     ::= (platform == PLATFORM_FREERTOS) ?  4 : 16
-  static MAX_REQUESTS/int? ::= (platform == PLATFORM_FREERTOS) ? 16 : null
+  static MAX_REQUESTS/int? ::= (platform == PLATFORM_FREERTOS) ? 16 : 64
 
   procedures_/Map ::= {:}
   queue_/RpcRequestQueue_ ::= RpcRequestQueue_ MAX_TASKS
@@ -127,8 +127,7 @@ monitor RpcRequestQueue_:
     processing_tasks_ = List max_tasks
 
   add request/RpcRequest_ -> bool:
-    max := RpcBroker.MAX_REQUESTS
-    if max and unprocessed_ >= max:
+    if unprocessed_ >= RpcBroker.MAX_REQUESTS:
       // It should not be necessary to ask for more processing tasks here,
       // but we do it (defensively) anyway to guard against issues in the
       // bookkeeping of unprocessed requests and processing tasks.
