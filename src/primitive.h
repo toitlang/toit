@@ -167,13 +167,15 @@ namespace toit {
   PRIMITIVE(float_trunc, 1)                  \
   PRIMITIVE(command, 0)                      \
   PRIMITIVE(main_arguments, 0)               \
-  PRIMITIVE(spawn, 2)                        \
+  PRIMITIVE(spawn, 3)                        \
   PRIMITIVE(spawn_method, 0)                 \
   PRIMITIVE(spawn_arguments, 0)              \
   PRIMITIVE(get_generic_resource_group, 0)   \
-  PRIMITIVE(signal_kill, 1)                  \
-  PRIMITIVE(current_process_id, 0)           \
+  PRIMITIVE(process_signal_kill, 1)          \
+  PRIMITIVE(process_current_id, 0)           \
   PRIMITIVE(process_send, 3)                 \
+  PRIMITIVE(process_get_priority, 1)         \
+  PRIMITIVE(process_set_priority, 2)         \
   PRIMITIVE(task_has_messages, 0)            \
   PRIMITIVE(task_receive_message, 0)         \
   PRIMITIVE(concat_strings, 1)               \

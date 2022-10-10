@@ -30,6 +30,7 @@
   (ts)->tv_nsec = (tv)->tv_usec * 1000;                 \
 }
 #endif
+
 namespace toit {
 
 Mutex* OS::_global_mutex = null;

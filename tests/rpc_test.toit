@@ -25,7 +25,7 @@ class TestBroker extends RpcBroker:
     cancel_requests pid
 
 main:
-  myself := current_process_
+  myself := Process.current.id
   broker := TestBroker
   broker.install
 

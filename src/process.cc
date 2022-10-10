@@ -353,4 +353,10 @@ void Process::clear_signal(Signal signal) {
   _signals &= ~signal;
 }
 
+uint8 Process::update_priority() {
+  uint8 priority = _target_priority;
+  _priority = priority;
+  return priority;
+}
+
 }

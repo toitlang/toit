@@ -116,7 +116,8 @@ PRIMITIVE(spawn_method) {
 }
 
 PRIMITIVE(spawn) {
-  ARGS(Object, entry, Object, arguments)
+  ARGS(int, priority, Object, entry, Object, arguments)
+  if (priority != -1 && (priority < 0 || priority > 0xff)) OUT_OF_RANGE;
   if (!is_smi(entry)) WRONG_TYPE;
 
   int method_id = Smi::cast(entry)->value();
@@ -146,12 +147,21 @@ PRIMITIVE(spawn) {
     OTHER_ERROR;
   }
 
-  Process* child = VM::current()->scheduler()->spawn(process->program(), process->group(), method, buffer, manager.initial_chunk);
-  // TODO: Leaks here.
-  if (!child) MALLOC_FAILED;
+  int pid = VM::current()->scheduler()->spawn(
+      process->program(),
+      process->group(),
+      priority,
+      method,
+      buffer,
+      manager.initial_chunk);
+  if (pid == Scheduler::INVALID_PROCESS_ID) {
+    encoder.free_copied();
+    free(buffer);
+    MALLOC_FAILED;
+  }
 
   manager.dont_auto_free();
-  return Smi::from(child->id());
+  return Smi::from(pid);
 }
 
 PRIMITIVE(get_generic_resource_group) {
@@ -165,14 +175,29 @@ PRIMITIVE(get_generic_resource_group) {
   return proxy;
 }
 
-PRIMITIVE(signal_kill) {
+PRIMITIVE(process_signal_kill) {
   ARGS(int, target_id);
 
   return BOOL(VM::current()->scheduler()->signal_process(process, target_id, Process::KILL));
 }
 
-PRIMITIVE(current_process_id) {
+PRIMITIVE(process_current_id) {
   return Smi::from(process->id());
+}
+
+PRIMITIVE(process_get_priority) {
+  ARGS(int, pid);
+  int priority = VM::current()->scheduler()->get_priority(pid);
+  if (priority < 0) INVALID_ARGUMENT;
+  return Smi::from(priority);
+}
+
+PRIMITIVE(process_set_priority) {
+  ARGS(int, pid, int, priority);
+  if (priority < 0 || priority > 0xff) OUT_OF_RANGE;
+  bool success = VM::current()->scheduler()->set_priority(pid, priority);
+  if (!success) INVALID_ARGUMENT;
+  return process->program()->null_object();
 }
 
 PRIMITIVE(object_class_id) {

@@ -45,9 +45,14 @@ class SchedulerThread : public Thread, public SchedulerThreadList::Element {
 
   void entry();
 
+  bool is_pinned() const { return _is_pinned; }
+  void pin() { _is_pinned = true; }
+  void unpin() { _is_pinned = false; }
+
  private:
   Scheduler* const _scheduler;
   Interpreter _interpreter;
+  bool _is_pinned = false;
 };
 
 class Scheduler {
@@ -110,7 +115,8 @@ class Scheduler {
   // deliver the signal.
   bool signal_process(Process* sender, int target_id, Process::Signal signal);
 
-  Process* spawn(Program* program, ProcessGroup* process_group, Method method, uint8* arguments, Chunk* initial_chunk);
+  int spawn(Program* program, ProcessGroup* process_group, int priority,
+            Method method, uint8* arguments, Chunk* initial_chunk);
 
   // Returns a new process id (only called from Process constructor).
   int next_process_id();
@@ -137,6 +143,10 @@ class Scheduler {
   void activate_profiler(Process* process) { notify_profiler(1); }
   void deactivate_profiler(Process* process) { notify_profiler(-1); }
 
+  // Process priority support.
+  int get_priority(int pid);
+  bool set_priority(int pid, uint8 priority);
+
   // Primitive support.
 
   // Fills in an array with stats for the process with the given ids.
@@ -149,11 +159,15 @@ class Scheduler {
   bool is_boot_process(Process* process) const { return _boot_process == process; }
 
  private:
-  // Introduce a new process to the Scheduler. The Scheduler will not terminate until
+  // Introduce a new process to the scheduler. The scheduler will not terminate until
   // all processes has completed.
   void new_process(Locker& locker, Process* process);
   void add_process(Locker& locker, Process* process);
   void run_process(Locker& locker, Process* process, SchedulerThread* scheduler_thread);
+
+  // Update the priority of a process. This may cause preemption of the process
+  // or it may move the process to another ready queue.
+  void update_priority(Locker& locker, Process* process, uint8 value);
 
   // Profiler support.
   void notify_profiler(int change);
@@ -170,12 +184,7 @@ class Scheduler {
   // waiting transition to the new state.
   void wait_for_any_gc_to_complete(Locker& locker, Process* process, Process::State new_state);
 
-  typedef enum {
-    ONLY_IF_PROCESSES_ARE_READY,
-    EVEN_IF_PROCESSES_NOT_READY
-  } StartThreadRule;
-
-  void start_thread(Locker& locker, StartThreadRule force);
+  SchedulerThread* start_thread(Locker& locker);
 
   void process_ready(Process* process);
   void process_ready(Locker& locker, Process* process);
@@ -188,7 +197,7 @@ class Scheduler {
 
   Scheduler::ExitState launch_program(Locker& locker, Process* process);
 
-  Process* find_process(Locker& locker, int process_id);
+  Process* find_process(Locker& locker, int pid);
 
   Process* new_boot_process(Locker& locker, Program* program, int group_id);
   SystemMessage* new_process_message(SystemMessage::Type type, int gid);
@@ -226,7 +235,23 @@ class Scheduler {
   int _next_group_id;
   int _next_process_id;
   int64 _next_tick = 0;
-  ProcessListFromScheduler _ready_processes;
+
+  static const int NUMBER_OF_READY_QUEUES = 5;
+  ProcessListFromScheduler _ready_queue[NUMBER_OF_READY_QUEUES];
+
+  ProcessListFromScheduler& ready_queue(uint8 priority) {
+    return _ready_queue[compute_ready_queue_index(priority)];
+  }
+
+  static int compute_ready_queue_index(uint8 priority) {
+    if (priority == Process::PRIORITY_CRITICAL) return 0;
+    if (priority >= 171) return 1;
+    if (priority >= 85) return 2;
+    if (priority != Process::PRIORITY_IDLE) return 3;
+    return 4;
+  }
+
+  bool has_ready_processes(Locker& locker);
 
   int _num_threads;
   int _max_threads;

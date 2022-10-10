@@ -321,11 +321,19 @@ class ExternalSystemMessageHandler : private ProcessRunner {
 
   // Try to start the messaging handler. Returns true if successful and false
   // if starting it failed due to lack of memory.
-  bool start();
+  bool start(int priority = -1);
 
   // Get the process id for this message handler. Returns -1 if the process
   // hasn't been started.
   int pid() const;
+
+  // Get the priority for this message handler. Returns -1 if the process
+  // hasn't been started.
+  int priority() const;
+
+  // Set the priority of this message handler. Returns true if successful and
+  // false if the process hasn't been started yet.
+  bool set_priority(uint8 priority);
 
   // Callback for received messages.
   virtual void on_message(int sender, int type, void* data, int length) = 0;
