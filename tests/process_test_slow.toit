@@ -8,7 +8,10 @@ import monitor
 
 main:
   test_simple
-  test_priorities
+  // TODO(kasper): The complex test is disabled for now. It is
+  // hard to make non-flaky because it is inherently dependant
+  // on timing.
+  if false: test_priorities
 
 test_simple:
   spawn:: expect_equals Process.PRIORITY_NORMAL Process.current.priority
