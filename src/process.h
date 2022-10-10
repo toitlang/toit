@@ -154,7 +154,7 @@ class Process : public ProcessListFromProcessGroup::Element,
   uint32 signals() const { return _signals; }
 
   // Processes have a priority in the range [0..255]. The scheduler
-  // priorities running processes with higher priorities, so processes
+  // prioritizes running processes with higher priorities, so processes
   // with lower priorities might get starved by more important things.
   uint8 priority() const { return _priority; }
 
