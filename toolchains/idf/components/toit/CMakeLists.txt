@@ -189,6 +189,7 @@ function(toit_postprocess)
             TARGET mod_flash_args
             POST_BUILD
             COMMAND sed -i.orig s/${EXECUTABLE_NAME}\\.bin/${EXECUTABLE_NAME}-firmware\\.bin/g ${CMAKE_BINARY_DIR}/flash_args
+            COMMAND sed -i.orig s/${EXECUTABLE_NAME}\\.bin/${EXECUTABLE_NAME}-firmware\\.bin/g ${CMAKE_BINARY_DIR}/flasher_args.json
     )
 
 endfunction()
