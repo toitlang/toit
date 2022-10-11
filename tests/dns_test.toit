@@ -67,7 +67,7 @@ cache_test:
   // Make sure we use the IPV6 cache when both answers are OK.
   duration = Duration.of:
     address := dns_lookup "www.yahoo.com" --accept_ipv4 --accept_ipv6
-    expect address.stringify.size == 29
+    expect (address.stringify.index_of ":") != -1
   expect duration < (Duration --ms=5)
 
 fail_test:
