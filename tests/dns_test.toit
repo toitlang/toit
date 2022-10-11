@@ -10,6 +10,7 @@ import net
 main:
   localhost_test
   ipv6_address_test
+  ipv6_dns_test
   cache_test
   fail_test
   long_test
@@ -29,6 +30,11 @@ ipv6_address_test:
     9, 10, 11, 12, 13, 14, 15, 16
   ]
   expect_equals "102:304:506:708:90a:b0c:d0e:f10" addr.stringify
+
+ipv6_dns_test:
+  dns_query := DnsQuery_ "www.rwth-aachen.de"
+  ipv6 := dns_query.get --server="8.8.8.8" --accept_ipv6=true
+  expect ipv6.stringify == "2a00:8a60:450:0:0:0:107:63"
 
 cache_test:
   // Prime cache.

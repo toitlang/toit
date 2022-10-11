@@ -60,18 +60,17 @@ class DnsQuery_:
     id = random 0x10000
 
   /**
-  Look up a domain name.
+  Look up a domain name and return A or AAAA record.
 
   If given a numeric address like "127.0.0.1" it merely parses
     the numbers without a network round trip.
 
   By default the server is "8.8.8.8" which is the Google DNS
     service.
-
-  Currently only works for IPv4, not IPv6.
   */
   get -> net.IpAddress
       --server/string="8.8.8.8"
+      --accept_ipv6/bool=false
       --timeout/Duration=DNS_DEFAULT_TIMEOUT:
     if ip_string_:
       return net.IpAddress.parse name
@@ -81,7 +80,10 @@ class DnsQuery_:
     hit := find_in_cache_ server
     if hit: return hit
 
-    query := create_query name id
+    query := create_query name id RECORD_A
+    if accept_ipv6:
+      query = create_query name id RECORD_AAAA
+
     socket := udp.Socket
     with_timeout timeout:
       try:
@@ -199,6 +201,15 @@ class DnsQuery_:
             CACHE_[name] = CacheEntry_ result ttl name_server
           return result
         // Skip name that does not match.
+      else if type == RECORD_AAAA:
+        if rd_length != 16: throw (DnsException "Unexpected IP address length $rd_length")
+        if case_compare_ r_name q_name:
+          result := net.IpAddress
+              response.copy position position + 16
+          if ttl > 0:
+            trim_cache_
+            CACHE_[name] = CacheEntry_ result ttl name_server
+          return result
       else if type == RECORD_CNAME:
         q_name = decode_name response position: null
       position += rd_length
@@ -267,7 +278,7 @@ Regular DNS lookup is used, namely the A record for the domain.
 The $query_id should be a 16 bit unsigned number which will be included in
   the reply.
 */
-create_query name/string query_id/int -> ByteArray:
+create_query name/string query_id/int record_type/int -> ByteArray:
   parts := name.split "."
   length := 1
   parts.do: | part |
@@ -287,7 +298,7 @@ create_query name/string query_id/int -> ByteArray:
     query.replace position part
     position += part.size
   query[position++] = 0
-  BIG_ENDIAN.put_uint16 query position     RECORD_A
+  BIG_ENDIAN.put_uint16 query position     record_type
   BIG_ENDIAN.put_uint16 query position + 2 CLASS_INTERNET
   assert: position + 4 == query.size
   return query
