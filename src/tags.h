@@ -83,6 +83,7 @@ namespace toit {
   fn(PcntUnitResourceGroup)             \
   fn(PWMResourceGroup)                  \
   fn(TouchResourceGroup)                \
+  fn(ProvisioningResourceGroup)         \
 
 #define MAKE_ENUM(name)                 \
   name##Tag,                            \

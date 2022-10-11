@@ -66,6 +66,7 @@ namespace toit {
   M(x509,    MODULE_X509)                    \
   M(flash_kv, MODULE_FLASH_KV)               \
   M(debug,   MODULE_DEBUG)                   \
+  M(provisioning, MODULE_PROVISIONING)       \
 
 #define MODULE_CORE(PRIMITIVE)               \
   PRIMITIVE(write_string_on_stdout, 2)       \
@@ -641,6 +642,17 @@ namespace toit {
 #define MODULE_DEBUG(PRIMITIVE)              \
   PRIMITIVE(object_histogram, 2)             \
 
+#define MODULE_PROVISIONING(PRIMITIVE)       \
+  PRIMITIVE(init, 0)                         \
+  PRIMITIVE(is_provisioned, 1)               \
+  PRIMITIVE(get_mac_addr, 1)                 \
+  PRIMITIVE(start, 5)                        \
+  PRIMITIVE(qrcode_print_string, 2)          \
+  PRIMITIVE(connect_to_ap, 1)                \
+  PRIMITIVE(wait_for_done, 2)                \
+  PRIMITIVE(get_ip_addr, 1)                  \
+  PRIMITIVE(deinit, 1)                       \
+
 // ----------------------------------------------------------------------------
 
 #define MODULE_IMPLEMENTATION_PRIMITIVE(name, arity)                \
@@ -896,6 +908,7 @@ namespace toit {
 #define _A_T_RpcResourceGroup(N, name)    MAKE_UNPACKING_MACRO(RpcResourceGroup, N, name)
 #define _A_T_RMTResourceGroup(N, name)    MAKE_UNPACKING_MACRO(RMTResourceGroup, N, name)
 #define _A_T_PcntUnitResourceGroup(N, name) MAKE_UNPACKING_MACRO(PcntUnitResourceGroup, N, name)
+#define _A_T_ProvisioningResourceGroup(N, name) MAKE_UNPACKING_MACRO(ProvisioningResourceGroup, N, name)
 
 #define _A_T_Resource(N, name)            MAKE_UNPACKING_MACRO(Resource, N, name)
 #define _A_T_Directory(N, name)           MAKE_UNPACKING_MACRO(Directory, N, name)

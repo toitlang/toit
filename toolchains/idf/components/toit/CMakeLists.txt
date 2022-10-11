@@ -4,7 +4,7 @@ set(TOIT_BASE_DIR ${COMPONENT_PATH}/../../../..)
 
 # Register without sources, this will create an INTERFACE lib and we can then specify link options later
 idf_component_register(INCLUDE_DIRS "${TOIT_BASE_DIR}/src"
-        REQUIRES "esp_adc_cal" "mbedtls" "bt" "app_update" "ulp")
+        REQUIRES "esp_adc_cal" "mbedtls" "bt" "app_update" "ulp" "wifi_provisioning" "qrcode")
 
 cmake_policy(SET CMP0079 NEW)
 

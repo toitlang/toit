@@ -96,5 +96,9 @@ menu "Toit"
             help
                 The project root for the system source file.
 
+        config TOIT_ENABLE_PROVISIONING
+            bool "Enable provisioning on ESP32"
+            default "y"
+            depends on BT_ENABLED
     endmenu
 endmenu
