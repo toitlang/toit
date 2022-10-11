@@ -39,19 +39,18 @@ ipv6_dns_test:
 
   ipv6 = dns_lookup "ipv6.google.com" --no-accept_ipv4 --accept_ipv6
   print ipv6
-  expect ipv6.stringify.size == 29
+  expect (ipv6.stringify.index_of ":") != -1
 
   ipv6 = dns_lookup "ipv6.google.com" --accept_ipv4 --accept_ipv6
   print ipv6
-  expect ipv6.stringify.size == 29
+  expect (ipv6.stringify.index_of ":") != -1
 
   ipv6 = dns_lookup "www.google.com" --no-accept_ipv4 --accept_ipv6
   print ipv6
-  expect ipv6.stringify.size == 29
+  expect (ipv6.stringify.index_of ":") != -1
 
   either := dns_lookup "www.google.com" --accept_ipv6
   print either
-  expect ipv6.stringify.size == 29
 
 cache_test:
   // Prime cache.
