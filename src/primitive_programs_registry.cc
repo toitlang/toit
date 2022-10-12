@@ -91,25 +91,27 @@ PRIMITIVE(kill) {
 
 PRIMITIVE(bundled_images) {
 #ifdef TOIT_FREERTOS
-  const uword* table = OS::image_bundled_programs_table();
-  if (table[0] != 0x98dfc301) return process->program()->empty_array();
+  const uword* header = OS::image_bundled_programs_table();
+  if (header[0] != 0x98dfc301) return process->program()->empty_array();
   uword checksum = 0;
-  for (int i = 0; i < 5; i++) checksum ^= table[i];
+  for (int i = 0; i < 5; i++) checksum ^= header[i];
   if (checksum != 0xb3147ee9) return process->program()->empty_array();
 
-  int length = table[3];
+  const uword* table = &header[5];
+  int length = header[3];
+
   Array* result = process->object_heap()->allocate_array(length * 2, Smi::from(0));
   if (!result) ALLOCATION_FAILED;
   for (int i = 0; i < length; i++) {
-    // We store the distance from the start of the table to the image
+    // We store the distance from the start of the header to the image
     // because it naturally fits as a smi even if the virtual addresses
     // involved are large. We tag the entry so we can tell the difference
     // between flash offsets in the data/programs partition and offsets
     // of images bundled with the VM.
-    uword diff = table[1 + i * 2] - reinterpret_cast<uword>(table);
+    uword diff = table[i * 2] - reinterpret_cast<uword>(header);
     ASSERT(Utils::is_aligned(diff, 4));
     result->at_put(i * 2, Smi::from(diff + 1));
-    result->at_put(i * 2 + 1, Smi::from(table[1 + i * 2 + 1]));
+    result->at_put(i * 2 + 1, Smi::from(table[i * 2 + 1]));
   }
   return result;
 #else
@@ -119,12 +121,32 @@ PRIMITIVE(bundled_images) {
 
 PRIMITIVE(assets) {
   Program* program = process->program();
-  int length;
+  int size;
   uint8* bytes;
-  if (program->assets_size(&bytes, &length) == 0) {
+  if (program->assets_size(&bytes, &size) == 0) {
     return process->object_heap()->allocate_internal_byte_array(0);
   }
-  return process->object_heap()->allocate_external_byte_array(length, bytes, false, false);
+  return process->object_heap()->allocate_external_byte_array(size, bytes, false, false);
+}
+
+PRIMITIVE(configuration) {
+#ifdef TOIT_FREERTOS
+  const uint32* header = OS::image_bundled_programs_table();
+  if (header[0] != 0x98dfc301) return process->object_heap()->allocate_internal_byte_array(0);
+  uint32 checksum = 0;
+  for (int i = 0; i < 5; i++) checksum ^= header[i];
+  if (checksum != 0xb3147ee9) return process->object_heap()->allocate_internal_byte_array(0);
+
+  uint32 offset = header[1];
+  uint32 max_size = header[2];
+  if (max_size < sizeof(uint32)) return process->object_heap()->allocate_internal_byte_array(0);
+  uword address = reinterpret_cast<uword>(header) + offset;
+  uint32 size = *reinterpret_cast<uint32*>(address);
+  uint8* bytes = reinterpret_cast<uint8*>(address) + sizeof(uint32);
+  return process->object_heap()->allocate_external_byte_array(Utils::min(size, max_size), bytes, false, false);
+#else
+  return process->object_heap()->allocate_internal_byte_array(0);
+#endif
 }
 
 } // namespace toit

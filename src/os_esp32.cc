@@ -774,7 +774,7 @@ const uint8* OS::image_uuid() {
   return toit_image_data.image_uuid;
 }
 
-const uword* OS::image_bundled_programs_table() {
+const uint32* OS::image_bundled_programs_table() {
   return reinterpret_cast<const uword*>(toit_image_data.image_bundled_programs_table);
 }
 

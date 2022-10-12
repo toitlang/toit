@@ -246,7 +246,7 @@ class OS {
   static const uint8* image_uuid();
 
   // Bundled programs table.
-  static const uword* image_bundled_programs_table();
+  static const uint32* image_bundled_programs_table();
 
   static const char* getenv(const char* variable);
 

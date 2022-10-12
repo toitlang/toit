@@ -83,8 +83,13 @@ const Program* setup_program(bool supports_ota) {
 #endif
   }
 
-  const uword* table = OS::image_bundled_programs_table();
-  return reinterpret_cast<const Program*>(table[1]);
+  const uword* header = OS::image_bundled_programs_table();
+  if (header[0] != 0x98dfc301) printf("[weird marker = %x]\n", header[0]);
+  uword checksum = 0;
+  for (int i = 0; i < 5; i++) checksum ^= header[i];
+  if (checksum != 0xb3147ee9) printf("[weird checksum = %x]\n", checksum);
+  const uword* table = &header[5];
+  return reinterpret_cast<const Program*>(table[0]);
 }
 
 static void start() {

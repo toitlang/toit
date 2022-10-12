@@ -21,6 +21,7 @@ import reader
 import uuid
 
 import encoding.json
+import encoding.ubjson
 import encoding.tison
 
 import system.assets
@@ -107,6 +108,7 @@ main arguments/List:
       ]
   root_cmd.add create_cmd
   root_cmd.add extract_cmd
+  root_cmd.add flash_cmd
   root_cmd.add container_cmd
   root_cmd.add property_cmd
   root_cmd.run arguments
@@ -125,9 +127,6 @@ create_envelope parsed/cli.Parsed -> none:
   output_path := parsed[OPTION_ENVELOPE]
   input_path := parsed["firmware.bin"]
 
-  // TODO(kasper): Do some sanity checks on the
-  // structure of this. Can we check that we don't
-  // already have stuff appended to the DROM section?
   firmware_bin_data := read_file input_path
   binary := Esp32Binary firmware_bin_data
   binary.remove_drom_extension firmware_bin_data
@@ -400,7 +399,28 @@ extract parsed/cli.Parsed -> none:
     throw "cannot extract: no such part ($part)"
   write_file output_path: it.write content
 
-extract_binary envelope/Envelope -> ByteArray:
+flash_cmd -> cli.Command:
+  return cli.Command "flash"
+      --options=[
+        cli.OptionString "config"
+            --type="file"
+      ]
+      --run=:: flash it
+
+flash parsed/cli.Parsed -> none:
+  input_path := parsed[OPTION_ENVELOPE]
+  envelope := Envelope.load input_path
+
+  config := null
+  config_path := parsed["config"]
+  if config_path: config = json.decode (read_file config_path)
+
+  content := extract_binary envelope --config=config
+  binary := Esp32Binary content
+
+  print (binary.segments content)
+
+extract_binary envelope/Envelope --config/any=null -> ByteArray:
   containers ::= []
   entries := envelope.entries
   properties := entries.get AR_ENTRY_PROPERTIES
@@ -433,6 +453,7 @@ extract_binary envelope/Envelope -> ByteArray:
       --binary_input=firmware_bin
       --containers=containers
       --system_uuid=system_uuid
+      --config=config
 
 update_envelope parsed/cli.Parsed [block] -> none:
   input_path := parsed[OPTION_ENVELOPE]
@@ -448,13 +469,14 @@ update_envelope parsed/cli.Parsed [block] -> none:
 extract_binary_content -> ByteArray
     --binary_input/ByteArray
     --containers/List
-    --system_uuid/uuid.Uuid:
+    --system_uuid/uuid.Uuid
+    --config/any:
   binary := Esp32Binary binary_input
   image_count := containers.size
   image_table := ByteArray 8 * image_count
 
   table_address := binary.extend_drom_address
-  relocation_base := table_address + image_table.size
+  relocation_base := table_address + 5 * 4 + image_table.size
   images := []
   index := 0
   containers.do: | container/ContainerEntry |
@@ -476,7 +498,7 @@ extract_binary_content -> ByteArray
 
     LITTLE_ENDIAN.put_uint32 image_table index * 8
         relocation_base
-    LITTLE_ENDIAN.put_uint32 image_table index * 8
+    LITTLE_ENDIAN.put_uint32 image_table index * 8 + 4
         image_size
     image_bits = pad image_bits 4
 
@@ -502,13 +524,19 @@ extract_binary_content -> ByteArray
   extension := extension_header + image_table
   images.do: extension += it
 
+  // Now add the device-specific configurations at the end.
+  used_size := extension.size
+  encoded_configuration := ubjson.encode config
+  configuration_size := ByteArray 4
+  LITTLE_ENDIAN.put_uint32 configuration_size 0 encoded_configuration.size
+  extension += configuration_size
+  extension += encoded_configuration
+
   // This is a pretty serious padding up. We do it to guarantee
   // that segments that follow this one do not change their
   // alignment within the individual flash pages, which seems
   // to be a requirement. It might be possible to get away with
   // less padding somehow.
-  used_size := extension.size
-  extension += ByteArray 1024  // Reserve space.
   extension = pad extension 64 * 1024
   free_size := extension.size - used_size
 
@@ -726,6 +754,22 @@ class Esp32Binary:
       result.replace sha_checksum_offset sha_checksum
     return result
 
+  segments bits/ByteArray -> List:
+    result := []
+    drom := find_last_drom_segment_
+    segments_.do: | segment/Esp32BinarySegment |
+      if segment == drom:
+        extension_size := compute_drom_extension_size_ bits drom
+        if extension_size:
+          unextended_size := segment.size - extension_size
+          result.add { "offset": segment.offset, "size": unextended_size }
+          result.add { "kind": "non-patchable", "offset": segment.offset + unextended_size, "size": extension_size }
+        else:
+          result.add { "offset": segment.offset, "size": segment.size }
+      else:
+        result.add { "offset": segment.offset, "size": segment.size }
+    return result
+
   hash_appended -> bool:
     return header_[HASH_APPENDED_OFFSET_] == 1
 
@@ -760,11 +804,16 @@ class Esp32Binary:
             --address=segment.address
 
   remove_drom_extension bits/ByteArray -> none:
-    details_offset := find_details_offset bits
-    unextended_end_address := LITTLE_ENDIAN.uint32 bits details_offset
-    if unextended_end_address == 0: return
     drom := find_last_drom_segment_
     if not drom: return
+    extension_size := compute_drom_extension_size_ bits drom
+    if not extension_size: return
+    shrink_drom_segment_ drom extension_size
+
+  compute_drom_extension_size_ bits/ByteArray drom/Esp32BinarySegment -> int?:
+    details_offset := find_details_offset bits
+    unextended_end_address := LITTLE_ENDIAN.uint32 bits details_offset
+    if unextended_end_address == 0: return null
     unextended_size := unextended_end_address - drom.address
     extension_size := drom.size - unextended_size
     if extension_size < 5 * 4: throw "malformed drom extension (size)"
@@ -774,16 +823,19 @@ class Esp32Binary:
     checksum := 0
     5.repeat: checksum ^= LITTLE_ENDIAN.uint32 bits drom_extension_offset + 4 * it
     if checksum != 0xb3147ee9: throw "malformed drom extension (checksum)"
+    return extension_size
+
+  shrink_drom_segment_ drom/Esp32BinarySegment shrinkage/int -> none:
     // Run through all the segments and shrink the DROM one.
     // All segments following that must be displaced in flash.
     displacement := null
     segments_.size.repeat:
       segment/Esp32BinarySegment := segments_[it]
       if segment == drom:
-        segments_[it] = Esp32BinarySegment segment.bits[0..unextended_size]
+        segments_[it] = Esp32BinarySegment segment.bits[0..segment.size - shrinkage]
             --offset=segment.offset
             --address=segment.address
-        displacement = -extension_size
+        displacement = -shrinkage
       else if displacement:
         segments_[it] = Esp32BinarySegment segment.bits
             --offset=segment.offset + displacement

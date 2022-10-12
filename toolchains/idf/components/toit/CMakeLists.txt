@@ -100,7 +100,6 @@ function(toit_postprocess)
         message(WARNING "Missing project root for system toit file: ${CONFIG_TOIT_SYSTEM_SOURCE_PROJECT_ROOT}. Build might fail")
     endif()
 
-
     add_custom_command(
             TARGET firmware
             POST_BUILD
@@ -134,8 +133,6 @@ function(toit_postprocess)
         )
     endif()
 
-
-
     if (CONFIG_TOIT_ENTRY_POINT)
         resolve_file(RUN_PROGRAM ${CONFIG_TOIT_ENTRY_POINT} ${TOIT_BASE_DIR} "program toit")
         resolve_file(RUN_PROGRAM_PROJECT_ROOT "${CONFIG_TOIT_ENTRY_POINT_PROJECT_ROOT}" ${TOIT_BASE_DIR} "")
@@ -167,8 +164,6 @@ function(toit_postprocess)
                         "container" "install" ${ENTRY_ASSETS_ARGS} "program" ${CMAKE_BINARY_DIR}/program.snapshot
                 COMMAND echo envelope: program added
         )
-
-
     endif()
 
     add_custom_command(
