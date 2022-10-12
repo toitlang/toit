@@ -417,8 +417,10 @@ flash parsed/cli.Parsed -> none:
 
   content := extract_binary envelope --config=config
   binary := Esp32Binary content
-
-  print (binary.segments content)
+  (binary.segments content).do:
+    begin := it["offset"]
+    end := begin + it["size"]
+    print "$begin -> $end"
 
 extract_binary envelope/Envelope --config/any=null -> ByteArray:
   containers ::= []
@@ -757,18 +759,39 @@ class Esp32Binary:
   segments bits/ByteArray -> List:
     result := []
     drom := find_last_drom_segment_
-    segments_.do: | segment/Esp32BinarySegment |
-      if segment == drom:
-        extension_size := compute_drom_extension_size_ bits drom
-        if extension_size:
-          unextended_size := segment.size - extension_size
-          result.add { "offset": segment.offset, "size": unextended_size }
-          result.add { "kind": "non-patchable", "offset": segment.offset + unextended_size, "size": extension_size }
-        else:
-          result.add { "offset": segment.offset, "size": segment.size }
+    drom_index := segments_.index_of drom
+    prefix := HEADER_SIZE_
+    if drom_index > 0:
+      result.add (collect_segments_ segments_[..drom_index] --prefix=prefix)
+      prefix = 0
+    if drom:
+      extension_size := compute_drom_extension_size_ bits drom
+      if extension_size:
+        offset := drom.offset - prefix
+        // ...
+        unextended_size := extension_size[0]
+        result.add { "offset": offset, "size": unextended_size + prefix }
+        offset += unextended_size + prefix
+        prefix = 0
+        // ...
+        extension_used := extension_size[1]
+        result.add { "offset": offset, "size": extension_used }
+        offset += extension_used
+        // Add the non-patchable marker.
+        extension_free := extension_size[2]
+        result.add { "offset": offset, "size": extension_free  }
+        print "extension size = $(extension_used + extension_free)"
       else:
-        result.add { "offset": segment.offset, "size": segment.size }
+        result.add (collect_segments_ segments_[drom_index..drom_index + 1] --prefix=prefix)
+        prefix = 0
+    result.add (collect_segments_ segments_[drom_index + 1..] --prefix=prefix)
+    // TODO(kasper): Deal with the checksums bits.
     return result
+
+  collect_segments_ segments/List --prefix/int:
+    offset := segments.first.offset - prefix
+    end := segments.last.end
+    return { "offset": offset, "size": end - offset }
 
   hash_appended -> bool:
     return header_[HASH_APPENDED_OFFSET_] == 1
@@ -785,58 +808,53 @@ class Esp32Binary:
     // other segments (which we don't know how to).
     drom := find_last_drom_segment_
     if not drom: throw "cannot append to non-existing DROM segment"
-    // Run through all the segments and extend the
-    // segment we just found. All segments following
-    // that one need to be displaced in flash.
-    displacement := null
-    segments_.size.repeat:
-      segment/Esp32BinarySegment := segments_[it]
-      if segment == drom:
-        segment_bits := segment.bits
-        patch_details segment_bits system_uuid table_address
-        segments_[it] = Esp32BinarySegment segment_bits + bits
-            --offset=segment.offset
-            --address=segment.address
-        displacement = bits.size
-      else if displacement:
-        segments_[it] = Esp32BinarySegment segment.bits
-            --offset=segment.offset + displacement
-            --address=segment.address
+    transform_drom_segment_ drom: | segment/ByteArray |
+      patch_details segment system_uuid table_address
+      segment + bits
 
   remove_drom_extension bits/ByteArray -> none:
     drom := find_last_drom_segment_
     if not drom: return
     extension_size := compute_drom_extension_size_ bits drom
     if not extension_size: return
-    shrink_drom_segment_ drom extension_size
+    transform_drom_segment_ drom: it[..extension_size[0]]
 
-  compute_drom_extension_size_ bits/ByteArray drom/Esp32BinarySegment -> int?:
+  compute_drom_extension_size_ bits/ByteArray drom/Esp32BinarySegment -> List?:
     details_offset := find_details_offset bits
     unextended_end_address := LITTLE_ENDIAN.uint32 bits details_offset
     if unextended_end_address == 0: return null
-    unextended_size := unextended_end_address - drom.address
-    extension_size := drom.size - unextended_size
+    // TODO(kasper): Verify these computations. It feels about right, because
+    // we do not map the header into virtual memory.
+    unextended_size := unextended_end_address - drom.address + Esp32BinarySegment.HEADER_SIZE_
+    extension_size := (drom.end - drom.offset) - unextended_size
     if extension_size < 5 * 4: throw "malformed drom extension (size)"
-    drom_extension_offset := drom.offset + unextended_size + Esp32BinarySegment.HEADER_SIZE_
+    drom_extension_offset := drom.offset + unextended_size
     marker := LITTLE_ENDIAN.uint32 bits drom_extension_offset
     if marker != 0x98dfc301: throw "malformed drom extension (marker)"
     checksum := 0
     5.repeat: checksum ^= LITTLE_ENDIAN.uint32 bits drom_extension_offset + 4 * it
     if checksum != 0xb3147ee9: throw "malformed drom extension (checksum)"
-    return extension_size
+    used := LITTLE_ENDIAN.uint32 bits drom_extension_offset + 4
+    free := LITTLE_ENDIAN.uint32 bits drom_extension_offset + 8
+    return [unextended_size, used, free]
 
-  shrink_drom_segment_ drom/Esp32BinarySegment shrinkage/int -> none:
-    // Run through all the segments and shrink the DROM one.
-    // All segments following that must be displaced in flash.
-    displacement := null
+  transform_drom_segment_ drom/Esp32BinarySegment [block] -> none:
+    // Run through all the segments and transform the DROM one.
+    // All segments following that must be displaced in flash if
+    // the DROM segment changed size.
+    displacement := 0
     segments_.size.repeat:
       segment/Esp32BinarySegment := segments_[it]
       if segment == drom:
-        segments_[it] = Esp32BinarySegment segment.bits[0..segment.size - shrinkage]
+        bits := segment.bits
+        size_before := bits.size
+        transformed := block.call bits
+        size_after := transformed.size
+        segments_[it] = Esp32BinarySegment transformed
             --offset=segment.offset
             --address=segment.address
-        displacement = -shrinkage
-      else if displacement:
+        displacement = size_after - size_before
+      else if displacement != 0:
         segments_[it] = Esp32BinarySegment segment.bits
             --offset=segment.offset + displacement
             --address=segment.address
@@ -844,7 +862,6 @@ class Esp32Binary:
   find_last_drom_segment_ -> Esp32BinarySegment?:
     last := null
     address_map/AddressMap? := CHIP_ADDRESS_MAPS_.get chip_id_
-
     segments_.do: | segment/Esp32BinarySegment |
       address := segment.address
       if not address_map_.drom_map_start <= address < address_map_.drom_map_end: continue.do
