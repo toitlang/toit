@@ -76,7 +76,7 @@ class IpAddress:
         part := str[last_dot + 1..i]
         if not 1 <= part.size <= 3: return false
         if part.size != 1 and part[0] == '0': return false  // Leading zeros.
-        if part.size == 3 and (int.parse part) > 256: return false  // Parts must be in byte range.
+        if part.size == 3 and (int.parse part) > 255: return false  // Parts must be in byte range.
         last_dot = i
         dots++
       else:
@@ -98,7 +98,7 @@ class IpAddress:
           found_double_colon = true
         digits_since_last_colon = 0
       else:
-        hex_digit it: return false
+        hex_char_to_value it --on_error=(: return false)
         if digits_since_last_colon < 0:
           digits_since_last_colon = 1
         else:

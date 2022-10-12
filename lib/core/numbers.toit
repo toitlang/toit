@@ -708,7 +708,7 @@ abstract class int extends num:
             return int.MIN
         return on_error.call RANGE_ERR_
 
-      value := hex_digit char: on_error.call PARSE_ERR_
+      value := hex_char_to_value char --on_error=(: on_error.call PARSE_ERR_)
       result <<= 4
       result |= value
       continue.generic_parser_ result

@@ -83,8 +83,8 @@ decode data -> any:
   for i := 0; i < data.size; i++:
     c := data[i]
     if c == '%':
-      c = (hex_digit data[i + 1]) << 4
-      c += hex_digit data[i + 2]
+      c = (hex_char_to_value data[i + 1]) << 4
+      c += hex_char_to_value data[i + 2]
       i += 2
     result[j++] = c
   return result

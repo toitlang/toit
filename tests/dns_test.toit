@@ -95,7 +95,8 @@ parse_numeric_test:
   invalid_ipv4 "192.168.0.1.3"       // Too long.
   invalid_ipv4 "192.168.0."          // Too short.
   invalid_ipv4 "192.168.0"           // Too short.
-  invalid_ipv4 "356.168.0.1"         // Too Hollywood.
+  invalid_ipv4 "256.168.0.1"         // Off by one.
+  invalid_ipv4 "312.168.0.1"         // Too Hollywood.
   invalid_ipv4 ".168.0.1"            // Starts with dot.
   invalid_ipv4 "5000000000.168.0.1"  // Byte range.
   invalid_ipv4 "1_2.168.0.1"         // Toit number format not allowed.
