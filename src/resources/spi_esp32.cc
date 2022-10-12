@@ -98,7 +98,9 @@ PRIMITIVE(init) {
       (clock == -1 || clock == 18)) {
 #ifdef CONFIG_IDF_TARGET_ESP32C3
     host_device = SPI3_HOST;
-#elif CONFIG_IDF_TARGET_ESP32S3 || CONFIG_IDF_TARGET_ESP32S2
+#elif CONFIG_IDF_TARGET_ESP32S3
+    host_device = SPI3_HOST;
+#elif CONFIG_IDF_TARGET_ESP32S2
     host_device = SPI3_HOST;
 #else
     host_device = VSPI_HOST;

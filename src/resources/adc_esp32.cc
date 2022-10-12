@@ -248,7 +248,7 @@ PRIMITIVE(get) {
     } else {
       int value = 0;
       esp_err_t err = adc2_get_raw(static_cast<adc2_channel_t>(resource->chan),
-                          static_cast<adc_bits_width_t>(ADC_WIDTH_BIT_DEFAULT), &value);
+                                   static_cast<adc_bits_width_t>(ADC_WIDTH_BIT_DEFAULT), &value);
       if (err != ESP_OK) return Primitive::os_error(err, process);
       adc_reading += value;
     }
@@ -270,7 +270,7 @@ PRIMITIVE(get_raw) {
     adc_reading = adc1_get_raw(static_cast<adc1_channel_t>(resource->chan));
   } else {
     esp_err_t err = adc2_get_raw(static_cast<adc2_channel_t>(resource->chan),
-                        static_cast<adc_bits_width_t>(ADC_WIDTH_BIT_DEFAULT), &adc_reading);
+                                 static_cast<adc_bits_width_t>(ADC_WIDTH_BIT_DEFAULT), &adc_reading);
     if (err != ESP_OK) return Primitive::os_error(err, process);
   }
 
