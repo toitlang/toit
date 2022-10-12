@@ -129,12 +129,14 @@ create_envelope parsed/cli.Parsed -> none:
   // structure of this. Can we check that we don't
   // already have stuff appended to the DROM section?
   firmware_bin_data := read_file input_path
-  Esp32Binary firmware_bin_data
+  binary := Esp32Binary firmware_bin_data
+  binary.remove_drom_extension firmware_bin_data
 
-  entries := { AR_ENTRY_FIRMWARE_BIN: firmware_bin_data }
+  entries := { AR_ENTRY_FIRMWARE_BIN: binary.bits }
   AR_ENTRY_FILE_MAP.do: | key/string value/string |
     if key == "firmware.bin": continue.do
-    entries[value] = read_file parsed[key]
+    filename := parsed[key]
+    if filename: entries[value] = read_file filename
 
   envelope := Envelope.create entries
   envelope.store output_path
@@ -449,8 +451,7 @@ extract_binary_content -> ByteArray
     --system_uuid/uuid.Uuid:
   binary := Esp32Binary binary_input
   image_count := containers.size
-  image_table := ByteArray 4 + 8 * image_count
-  LITTLE_ENDIAN.put_uint32 image_table 0 image_count
+  image_table := ByteArray 8 * image_count
 
   table_address := binary.extend_drom_address
   relocation_base := table_address + image_table.size
@@ -473,15 +474,15 @@ extract_binary_content -> ByteArray
     image_bits := out.bytes
     image_size := image_bits.size
 
-    LITTLE_ENDIAN.put_uint32 image_table 4 + index * 8
+    LITTLE_ENDIAN.put_uint32 image_table index * 8
         relocation_base
-    LITTLE_ENDIAN.put_uint32 image_table 8 + index * 8
+    LITTLE_ENDIAN.put_uint32 image_table index * 8
         image_size
     image_bits = pad image_bits 4
 
     if container.assets:
-      header ::= ImageHeader image_bits
-      header.flags |= (1 << 7)
+      image_header ::= ImageHeader image_bits
+      image_header.flags |= (1 << 7)
       assets_size := ByteArray 4
       LITTLE_ENDIAN.put_uint32 assets_size 0 container.assets.size
       image_bits += assets_size
@@ -492,8 +493,32 @@ extract_binary_content -> ByteArray
     relocation_base += image_bits.size
     index++
 
-  extension := image_table
+  // Build the DROM extension by adding a header in front of the
+  // table entries. The header will be patched later when we know
+  // the total sizes.
+  extension_header := ByteArray 5 * 4
+  LITTLE_ENDIAN.put_uint32 extension_header (0 * 4) 0x98dfc301
+  LITTLE_ENDIAN.put_uint32 extension_header (3 * 4) image_count
+  extension := extension_header + image_table
   images.do: extension += it
+
+  // This is a pretty serious padding up. We do it to guarantee
+  // that segments that follow this one do not change their
+  // alignment within the individual flash pages, which seems
+  // to be a requirement. It might be possible to get away with
+  // less padding somehow.
+  used_size := extension.size
+  extension += ByteArray 1024  // Reserve space.
+  extension = pad extension 64 * 1024
+  free_size := extension.size - used_size
+
+  // Update the extension header.
+  checksum := 0xb3147ee9
+  LITTLE_ENDIAN.put_uint32 extension (1 * 4) used_size
+  LITTLE_ENDIAN.put_uint32 extension (2 * 4) free_size
+  4.repeat: checksum ^= LITTLE_ENDIAN.uint32 extension (it * 4)
+  LITTLE_ENDIAN.put_uint32 extension (4 * 4) checksum
+
   binary.patch_extend_drom system_uuid table_address extension
   return binary.bits
 
@@ -526,7 +551,7 @@ class Envelope:
   store path/string -> none:
     write_file path: | writer/writer.Writer |
       ar := ar.ArWriter writer
-      // Add the enveloper info entry.
+      // Add the envelope info entry.
       info := ByteArray INFO_ENTRY_SIZE
       LITTLE_ENDIAN.put_uint32 info INFO_ENTRY_MARKER_OFFSET MARKER
       LITTLE_ENDIAN.put_uint32 info INFO_ENTRY_VERSION_OFFSET version_
@@ -608,29 +633,29 @@ for more details on the format.
 */
 
 interface AddressMap:
-  IROM_MAP_START -> int
-  IROM_MAP_END -> int
-  DROM_MAP_START -> int
-  DROM_MAP_END -> int
+  irom_map_start -> int
+  irom_map_end -> int
+  drom_map_start -> int
+  drom_map_end -> int
 
 // See <<chiptype>/include/soc/soc.h for these constants
 class Esp32AddressMap implements AddressMap:
-  IROM_MAP_START := 0x400d0000
-  IROM_MAP_END   := 0x40400000
-  DROM_MAP_START := 0x3f400000
-  DROM_MAP_END   := 0x3f800000
+  irom_map_start ::= 0x400d0000
+  irom_map_end   ::= 0x40400000
+  drom_map_start ::= 0x3f400000
+  drom_map_end   ::= 0x3f800000
 
 class Esp32C3AddressMap implements AddressMap:
-  IROM_MAP_START := 0x42000000
-  IROM_MAP_END   := 0x42800000
-  DROM_MAP_START := 0x3c000000
-  DROM_MAP_END   := 0x3c800000
+  irom_map_start ::= 0x42000000
+  irom_map_end   ::= 0x42800000
+  drom_map_start ::= 0x3c000000
+  drom_map_end   ::= 0x3c800000
 
 class Esp32S3AddressMap implements AddressMap:
-  IROM_MAP_START := 0x42000000
-  IROM_MAP_END   := 0x44000000
-  DROM_MAP_START := 0x3c000000
-  DROM_MAP_END   := 0x3d000000
+  irom_map_start ::= 0x42000000
+  irom_map_end   ::= 0x44000000
+  drom_map_start ::= 0x3c000000
+  drom_map_end   ::= 0x3d000000
 
 
 class Esp32Binary:
@@ -643,16 +668,16 @@ class Esp32Binary:
   static ESP_IMAGE_HEADER_MAGIC_ ::= 0xe9
   static ESP_CHECKSUM_MAGIC_     ::= 0xef
 
-  static ESP_CHIP_ID_ESP32   ::= 0x0000  /*!< chip ID: ESP32 */
-  static ESP_CHIP_ID_ESP32S2 ::= 0x0002  /*!< chip ID: ESP32-S2 */
-  static ESP_CHIP_ID_ESP32C3 ::= 0x0005 /*!< chip ID: ESP32-C3 */
-  static ESP_CHIP_ID_ESP32S3 ::= 0x0009 /*!< chip ID: ESP32-S3 */
-  static ESP_CHIP_ID_ESP32H2 ::= 0x000A /*!< chip ID: ESP32-H2 */  // ESP32H2-TODO: IDF-3475
+  static ESP_CHIP_ID_ESP32    ::= 0x0000  // Chip ID: ESP32.
+  static ESP_CHIP_ID_ESP32_S2 ::= 0x0002  // Chip ID: ESP32-S2.
+  static ESP_CHIP_ID_ESP32_C3 ::= 0x0005  // Chip ID: ESP32-C3.
+  static ESP_CHIP_ID_ESP32_S3 ::= 0x0009  // Chip ID: ESP32-S3.
+  static ESP_CHIP_ID_ESP32_H2 ::= 0x000a  // Chip ID: ESP32-H2.
 
   static CHIP_ADDRESS_MAPS_ := {
-      ESP_CHIP_ID_ESP32 : Esp32AddressMap,
-      ESP_CHIP_ID_ESP32C3 : Esp32C3AddressMap,
-      ESP_CHIP_ID_ESP32S3 : Esp32S3AddressMap
+      ESP_CHIP_ID_ESP32    : Esp32AddressMap,
+      ESP_CHIP_ID_ESP32_C3 : Esp32C3AddressMap,
+      ESP_CHIP_ID_ESP32_S3 : Esp32S3AddressMap
   }
   header_/ByteArray
   segments_/List
@@ -706,21 +731,16 @@ class Esp32Binary:
 
   extend_drom_address -> int:
     drom := find_last_drom_segment_
-    if not drom: throw "Cannot append to non-existing DROM segment"
+    if not drom: throw "cannot append to non-existing DROM segment"
     return drom.address + drom.size
 
   patch_extend_drom system_uuid/uuid.Uuid table_address/int bits/ByteArray -> none:
-    // This is a pretty serious padding up. We do it to guarantee
-    // that segments that follow this one do not change their
-    // alignment within the individual flash pages, which seems
-    // to be a requirement. It might be possible to get away with
-    // less padding somehow.
-    bits = pad bits 64 * 1024
+    if (bits.size & 0xffff) != 0: throw "cannot extend with partial flash pages (64KB)"
     // We look for the last DROM segment, because it will grow into
     // unused virtual memory, so we can extend that without relocating
     // other segments (which we don't know how to).
     drom := find_last_drom_segment_
-    if not drom: throw "Cannot append to non-existing DROM segment"
+    if not drom: throw "cannot append to non-existing DROM segment"
     // Run through all the segments and extend the
     // segment we just found. All segments following
     // that one need to be displaced in flash.
@@ -739,13 +759,43 @@ class Esp32Binary:
             --offset=segment.offset + displacement
             --address=segment.address
 
+  remove_drom_extension bits/ByteArray -> none:
+    details_offset := find_details_offset bits
+    unextended_end_address := LITTLE_ENDIAN.uint32 bits details_offset
+    if unextended_end_address == 0: return
+    drom := find_last_drom_segment_
+    if not drom: return
+    unextended_size := unextended_end_address - drom.address
+    extension_size := drom.size - unextended_size
+    if extension_size < 5 * 4: throw "malformed drom extension (size)"
+    drom_extension_offset := drom.offset + unextended_size + Esp32BinarySegment.HEADER_SIZE_
+    marker := LITTLE_ENDIAN.uint32 bits drom_extension_offset
+    if marker != 0x98dfc301: throw "malformed drom extension (marker)"
+    checksum := 0
+    5.repeat: checksum ^= LITTLE_ENDIAN.uint32 bits drom_extension_offset + 4 * it
+    if checksum != 0xb3147ee9: throw "malformed drom extension (checksum)"
+    // Run through all the segments and shrink the DROM one.
+    // All segments following that must be displaced in flash.
+    displacement := null
+    segments_.size.repeat:
+      segment/Esp32BinarySegment := segments_[it]
+      if segment == drom:
+        segments_[it] = Esp32BinarySegment segment.bits[0..unextended_size]
+            --offset=segment.offset
+            --address=segment.address
+        displacement = -extension_size
+      else if displacement:
+        segments_[it] = Esp32BinarySegment segment.bits
+            --offset=segment.offset + displacement
+            --address=segment.address
+
   find_last_drom_segment_ -> Esp32BinarySegment?:
     last := null
     address_map/AddressMap? := CHIP_ADDRESS_MAPS_.get chip_id_
 
     segments_.do: | segment/Esp32BinarySegment |
       address := segment.address
-      if not address_map_.DROM_MAP_START <= address < address_map_.DROM_MAP_END: continue.do
+      if not address_map_.drom_map_start <= address < address_map_.drom_map_end: continue.do
       if not last or address > last.address: last = segment
     return last
 

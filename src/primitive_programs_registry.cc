@@ -92,8 +92,12 @@ PRIMITIVE(kill) {
 PRIMITIVE(bundled_images) {
 #ifdef TOIT_FREERTOS
   const uword* table = OS::image_bundled_programs_table();
-  int length = table[0];
+  if (table[0] != 0x98dfc301) return process->program()->empty_array();
+  uword checksum = 0;
+  for (int i = 0; i < 5; i++) checksum ^= table[i];
+  if (checksum != 0xb3147ee9) return process->program()->empty_array();
 
+  int length = table[3];
   Array* result = process->object_heap()->allocate_array(length * 2, Smi::from(0));
   if (!result) ALLOCATION_FAILED;
   for (int i = 0; i < length; i++) {
