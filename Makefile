@@ -123,7 +123,10 @@ esptool:
 .PHONY: esptool-no-env
 esptool-no-env: check-env
 	pip install -U 'pyinstaller>=4.8'
-	pyinstaller --onefile --distpath build/$(HOST)/sdk/tools --workpath build/$(HOST)/esptool '$(IDF_PATH)/components/esptool_py/esptool/esptool.py'
+	pyinstaller --onefile --distpath build/$(HOST)/sdk/tools \
+			--workpath build/$(HOST)/esptool \
+			--specpath build/$(HOST)/esptool \
+			'$(IDF_PATH)/components/esptool_py/esptool/esptool.py'
 
 # CROSS-COMPILE
 .PHONY: all-cross
