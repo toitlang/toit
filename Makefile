@@ -15,6 +15,7 @@
 
 .ONESHELL: # Run all lines of targets in one shell
 .SHELLFLAGS += -e
+SHELL=bash
 
 # General options.
 HOST=host
@@ -69,14 +70,14 @@ ifndef IGNORE_GIT_TAGS
 		exit 1; \
 	fi
 endif
-ifeq ("$(wildcard $(IDF_PATH)/components/mbedtls/mbedtls/LICENSE)","")
-ifeq ("$(IDF_PATH)", "$(CURDIR)/third_party/esp-idf")
+ifeq ('$(wildcard $(IDF_PATH)/components/mbedtls/mbedtls/LICENSE)',"")
+ifeq ('$(IDF_PATH)', '$(CURDIR)/third_party/esp-idf')
 	$(error mbedtls sources are missing. Did you `git submodule update --init --recursive`?)
 else
 	$(error Invalid IDF_PATH. Missing mbedtls sources.)
 endif
 endif
-ifneq ("$(IDF_PATH)", "$(CURDIR)/third_party/esp-idf")
+ifneq ('$(IDF_PATH)', '$(CURDIR)/third_party/esp-idf')
 	$(info -- Not using Toitware ESP-IDF fork.)
 endif
 
@@ -113,6 +114,16 @@ toit-tools: tools download-packages
 .PHONY: version-file
 version-file: build/$(HOST)/CMakeCache.txt
 	(cd build/$(HOST) && ninja build_version_file)
+
+.PHONY: esptool
+esptool:
+	if [ "$(shell command -v xtensa-esp32-elf-g++)" = "" ]; then source '$(IDF_PATH)/export.sh'; fi; \
+	    $(MAKE) esptool-no-env
+
+.PHONY: esptool-no-env
+esptool-no-env: check-env
+	pip install -U 'pyinstaller>=4.8'
+	pyinstaller --onefile --distpath build/$(HOST)/sdk/tools --workpath build/$(HOST)/esptool '$(IDF_PATH)/components/esptool_py/esptool/esptool.py'
 
 # CROSS-COMPILE
 .PHONY: all-cross
@@ -180,7 +191,7 @@ endif
 
 .PHONY: esp32
 esp32:
-	if [ "$(shell command -v xtensa-esp32-elf-g++)" = "" ]; then source $(IDF_PATH)/export.sh; fi; \
+	if [ "$(shell command -v xtensa-esp32-elf-g++)" = "" ]; then source '$(IDF_PATH)/export.sh'; fi; \
 	    $(MAKE) esp32-no-env
 
 .PHONY: esp32-no-env
@@ -190,7 +201,7 @@ esp32-no-env: check-env check-esp32-env sdk
 # ESP32 MENU CONFIG
 .PHONY: menuconfig
 menuconfig:
-	if [ "$(shell command -v xtensa-esp32-elf-g++)" = "" ]; then source $(IDF_PATH)/export.sh; fi; \
+	if [ "$(shell command -v xtensa-esp32-elf-g++)" = "" ]; then source '$(IDF_PATH)/export.sh'; fi; \
 	    $(MAKE) menuconfig-no-env
 
 .PHONY: menuconfig-no-env
@@ -199,7 +210,7 @@ menuconfig-no-env: check-env check-esp32-env
 
 .PHONY: flash
 flash:
-	if [ "$(shell command -v xtensa-esp32-elf-g++)" = "" ]; then source $(IDF_PATH)/export.sh; fi; \
+	if [ "$(shell command -v xtensa-esp32-elf-g++)" = "" ]; then 'source $(IDF_PATH)/export.sh'; fi; \
 	    $(MAKE) flash-no-env
 
 .PHONY: flash-no-env
