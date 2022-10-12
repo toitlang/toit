@@ -58,7 +58,7 @@ file(GLOB toit_resources_SRC
   )
 
 if ("${CMAKE_SYSTEM_NAME}" MATCHES "Darwin")
-  list(APPEND toit_resources_SRC "resources/ble_host.mm")
+  list(APPEND toit_resources_SRC "resources/ble_darwin.mm")
 endif()
 
 file(GLOB toit_event_sources_SRC

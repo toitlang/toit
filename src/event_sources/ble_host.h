@@ -39,7 +39,6 @@ class HostBLEEventSource: public LazyEventSource, public Thread {
 
   static HostBLEEventSource* instance() { return _instance; }
 
-  void on_connection(BLEResource* resource, bool success);
   void on_event(BLEResource* resource, word data);
 
  protected:
@@ -47,8 +46,6 @@ class HostBLEEventSource: public LazyEventSource, public Thread {
   void stop() override;
 
   [[noreturn]] void entry() override;
-
-  void on_register_resource(Locker &locker, Resource* r) override;
 
  private:
   static HostBLEEventSource* _instance;
