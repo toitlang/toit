@@ -199,6 +199,13 @@ class Error extends Mirror:
       class_name = method_info.as_class_name relative_bci
     return "As check failed: $(typed_expression_string_ expression) is not a $class_name.\n$trace"
 
+  serialization_failed_stringify -> string:
+    // message is an integer, the failing class-id.
+    if message is not int: return "Serialization failed: Cannot encode instance.\n$trace"
+    class_id := message
+    class_name := program.class_name_for class_id
+    return "Serialization failed: Cannot encode instance of $class_name.\n$trace"
+
   allocation_failed_stringify -> string:
     if message is not int:
       return "Allocation failed:$message.\n$trace"
@@ -263,6 +270,7 @@ class Error extends Mirror:
   stringify -> string:
     if type == "LOOKUP_FAILED": return lookup_failure_stringify
     if type == "AS_CHECK_FAILED": return as_check_failure_stringify
+    if type == "SERIALIZATION_FAILED": return serialization_failed_stringify
     if type == "ALLOCATION_FAILED": return allocation_failed_stringify
     if type == "INITIALIZATION_IN_PROGRESS": return initialization_in_progress_stringify
     if type == "UNINITIALIZED_GLOBAL": return uninitialized_global_stringify
@@ -463,9 +471,10 @@ class MallocReport extends Mirror:
       base := base_addresses[i]
       for j := 0; j < uses.size; j++:
         if uses[j] != 0 or fullnesses[j] != 0:
-          result.add "0x$(%08x base + j * granularity): $(%3d fullnesses[j])% $(usage_letters_ uses[j] fullnesses[j])"
+          result.add "0x$(%08x base + j * granularity): $(%3d fullnesses[j])% $(plain_usage_description_ uses[j] fullnesses[j])"
         if uses[j] & MEMORY_PAGE_MERGE_WITH_NEXT_ == 0:
-          result.add "--------------------------------------------------------"
+          separator := "--------------------------------------------------------"
+          if result[result.size - 1] != separator: result.add separator
     return result.join "\n"
 
   key_ result/List --terminal/bool -> none:
@@ -478,26 +487,24 @@ class MallocReport extends Mirror:
       result.add "│$(%2d k)k pages.  All pages are $(%2d k)k, even the ones that are shown wider       │"
       result.add "│ because they have many different allocations in them.                  │"
     else:
-      result.add "│Each line is a $(%2d k)k page.                                                      │"
-    result.add   "│   X  = External strings/bytearrays.        B  = Network buffers.       │"
-    result.add   "│   W  = TLS/crypto.                         M  = Misc. allocations.     │"
-    result.add   "│   🐱 = Toit managed heap.                  -- = Free page.             │"
+      result.add "│Each line is a $(%2d k)k page.                                                │"
     if terminal:
+      result.add "│   X  = External strings/bytearrays.        B  = Network buffers.       │"
+      result.add "│   W  = TLS/crypto.                         M  = Misc. allocations.     │"
+      result.add "│   To = Toit managed heap.                  -- = Free page.             │"
       result.add "│        Fully allocated $scale Completely free page.  │"
     result.add   "└────────────────────────────────────────────────────────────────────────┘"
 
-  usage_letters_ use/int fullness/int -> string:
-    symbols := ""
-    if use & MEMORY_PAGE_TOIT_ != 0: symbols += "🐱"
-    if use & MEMORY_PAGE_BUFFERS_ != 0: symbols = "B"
-    if use & MEMORY_PAGE_EXTERNAL_ != 0: symbols = "X"
-    if use & MEMORY_PAGE_TLS_ != 0: symbols = "W"
-    if use & MEMORY_PAGE_MISC_ != 0: symbols = "M"
-    if fullness == 0:
-      symbols = "--"
-    while symbols.size < 2:
-      symbols += " "
-    return symbols
+  // Only used for plain ASCII mode, not for terminal graphics mode.
+  plain_usage_description_ use/int fullness/int -> string:
+    if fullness == 0: return "(Free)"
+    symbols := []
+    if use & MEMORY_PAGE_TOIT_ != 0: symbols.add "Toit"
+    if use & MEMORY_PAGE_BUFFERS_ != 0: symbols.add "Network Buffers"
+    if use & MEMORY_PAGE_EXTERNAL_ != 0: symbols.add "External strings/bytearrays"
+    if use & MEMORY_PAGE_TLS_ != 0: symbols.add "TLS/Crypto"
+    if use & MEMORY_PAGE_MISC_ != 0: symbols.add "Misc"
+    return symbols.join ", "
 
   terminal_stringify -> string:
     result := []
@@ -525,7 +532,7 @@ class MallocReport extends Mirror:
       use := uses[i]
       if use == 0 and fullnesses[i] == 0: continue
       symbols := ""
-      if use & MEMORY_PAGE_TOIT_ != 0: symbols = "🐱"
+      if use & MEMORY_PAGE_TOIT_ != 0: symbols = "To"
       if use & MEMORY_PAGE_BUFFERS_ != 0: symbols = "B"
       if use & MEMORY_PAGE_EXTERNAL_ != 0: symbols += "X"
       if use & MEMORY_PAGE_TLS_ != 0: symbols += "W"  // For WWW.
@@ -558,7 +565,7 @@ class MallocReport extends Mirror:
         line_drawing = allocation_continue
       else:
         line_drawing = allocation_end
-      if symbols.size > 2 and not is_data_line and symbols != "🐱":
+      if symbols.size > 2 and not is_data_line:
         // Pad the line drawings on non-data lines to match the width of the
         // data.
         first_character := line_drawing[0..utf_8_bytes line_drawing[0]]

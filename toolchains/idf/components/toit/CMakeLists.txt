@@ -43,11 +43,6 @@ endif()
 # The idf cmake system adds some compile flags that if not undone causes the toit compile to fail.
 # -Wextra combined with -Werror=all causes the Toit code to not compile.
 target_compile_options(toit_vm PRIVATE
-        -Wno-missing-field-initializers
-        -Wno-ignored-qualifiers
-        -Wno-sign-compare
-        -Wno-extra
-        -Wno-error=format
         -fjump-tables                   # idf (cmake) sets no-jump-tables which was not set by make.
         -ftree-switch-conversion        # idf (cmake) sets no-tree-switch-conversion which was not set by make.
         ${TOIT_ARCH_COMPILE_OPTIONS}
@@ -193,8 +188,8 @@ function(toit_postprocess)
     add_custom_command(
             TARGET mod_flash_args
             POST_BUILD
-            COMMAND sed -i s/${EXECUTABLE_NAME}\\.bin/${EXECUTABLE_NAME}-firmware\\.bin/g ${CMAKE_BINARY_DIR}/flash_args
-            COMMAND sed -i s/${EXECUTABLE_NAME}\\.bin/${EXECUTABLE_NAME}-firmware\\.bin/g ${CMAKE_BINARY_DIR}/flasher_args.json
+            COMMAND sed -i.orig s/${EXECUTABLE_NAME}\\.bin/${EXECUTABLE_NAME}-firmware\\.bin/g ${CMAKE_BINARY_DIR}/flash_args
+            COMMAND sed -i.orig s/${EXECUTABLE_NAME}\\.bin/${EXECUTABLE_NAME}-firmware\\.bin/g ${CMAKE_BINARY_DIR}/flasher_args.json
     )
 
 endfunction()

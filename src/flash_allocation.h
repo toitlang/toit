@@ -134,9 +134,9 @@ class Reservation : public ReservationList::Element {
  public:
   Reservation(int offset, int size) : _offset(offset), _size(size) {}
 
-  const int left() const { return _offset; }
-  const int right() const { return _offset + _size; }
-  const int size() const { return _size; }
+  int left() const { return _offset; }
+  int right() const { return _offset + _size; }
+  int size() const { return _size; }
 
  private:
   int _offset;

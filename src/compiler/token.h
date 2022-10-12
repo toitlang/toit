@@ -181,7 +181,9 @@ enum Precedence {
   I(program_failure_)                                          \
   I(locked_)                                                   \
   IN(throw_, "throw")                                          \
-  IN(rethrow, "rethrow")                                       \
+  IN(catch_, "catch")                                          \
+  I(rethrow)                                                   \
+  IN(switch_, "switch")                                        \
   IN(stack_, "<stack>")                                        \
   I(Array_)                                                    \
   I(Box_)                                                      \
@@ -193,6 +195,7 @@ enum Precedence {
   I(CowByteArray_)                                             \
   I(ByteArraySlice_)                                           \
   I(List_)                                                     \
+  I(ListSlice_)                                                \
   I(Tombstone_)                                                \
   I(create_array_)                                             \
   I(create_byte_array_)                                        \
@@ -285,6 +288,12 @@ ENTRY_POINTS(E)
         name == Symbols::super ||
         name == Symbols::constructor ||
         name == Symbols::_;
+  }
+  static bool is_future_reserved(Symbol name) {
+    return name == Symbols::throw_ ||
+        name == Symbols::rethrow ||
+        name == Symbols::catch_ ||
+        name == Symbols::switch_;
   }
 };
 

@@ -116,7 +116,8 @@ PRIMITIVE(spawn_method) {
 }
 
 PRIMITIVE(spawn) {
-  ARGS(Object, entry, Object, arguments)
+  ARGS(int, priority, Object, entry, Object, arguments)
+  if (priority != -1 && (priority < 0 || priority > 0xff)) OUT_OF_RANGE;
   if (!is_smi(entry)) WRONG_TYPE;
 
   int method_id = Smi::cast(entry)->value();
@@ -126,29 +127,41 @@ PRIMITIVE(spawn) {
   InitialMemoryManager manager;
   if (!manager.allocate()) ALLOCATION_FAILED;
 
-  int length = 0;
+  unsigned size = 0;
   { MessageEncoder size_encoder(process, null);
-    if (!size_encoder.encode(arguments)) WRONG_TYPE;
-    length = size_encoder.size();
+    if (!size_encoder.encode(arguments)) {
+      return size_encoder.create_error_object(process);
+    }
+    size = size_encoder.size();
   }
 
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + EXTERNAL_BYTE_ARRAY_MALLOC_TAG);
-  uint8* buffer = unvoid_cast<uint8*>(malloc(length));
+  uint8* buffer = unvoid_cast<uint8*>(malloc(size));
   if (buffer == null) MALLOC_FAILED;
 
   MessageEncoder encoder(process, buffer);
   if (!encoder.encode(arguments)) {
     encoder.free_copied();
     free(buffer);
-    if (encoder.malloc_failed()) MALLOC_FAILED;
+    // Should not happen, but just in case, throw "ERROR".
     OTHER_ERROR;
   }
 
-  Process* child = VM::current()->scheduler()->spawn(process->program(), process->group(), method, buffer, manager.initial_chunk);
-  if (!child) MALLOC_FAILED;
+  int pid = VM::current()->scheduler()->spawn(
+      process->program(),
+      process->group(),
+      priority,
+      method,
+      buffer,
+      manager.initial_chunk);
+  if (pid == Scheduler::INVALID_PROCESS_ID) {
+    encoder.free_copied();
+    free(buffer);
+    MALLOC_FAILED;
+  }
 
   manager.dont_auto_free();
-  return Smi::from(child->id());
+  return Smi::from(pid);
 }
 
 PRIMITIVE(get_generic_resource_group) {
@@ -162,14 +175,29 @@ PRIMITIVE(get_generic_resource_group) {
   return proxy;
 }
 
-PRIMITIVE(signal_kill) {
+PRIMITIVE(process_signal_kill) {
   ARGS(int, target_id);
 
   return BOOL(VM::current()->scheduler()->signal_process(process, target_id, Process::KILL));
 }
 
-PRIMITIVE(current_process_id) {
+PRIMITIVE(process_current_id) {
   return Smi::from(process->id());
+}
+
+PRIMITIVE(process_get_priority) {
+  ARGS(int, pid);
+  int priority = VM::current()->scheduler()->get_priority(pid);
+  if (priority < 0) INVALID_ARGUMENT;
+  return Smi::from(priority);
+}
+
+PRIMITIVE(process_set_priority) {
+  ARGS(int, pid, int, priority);
+  if (priority < 0 || priority > 0xff) OUT_OF_RANGE;
+  bool success = VM::current()->scheduler()->set_priority(pid, priority);
+  if (!success) INVALID_ARGUMENT;
+  return process->program()->null_object();
 }
 
 PRIMITIVE(object_class_id) {
@@ -1802,27 +1830,31 @@ PRIMITIVE(task_transfer) {
 PRIMITIVE(process_send) {
   ARGS(int, process_id, int, type, Object, array);
 
-  int length = 0;
+  unsigned size = 0;
   { MessageEncoder size_encoder(process, null);
-    if (!size_encoder.encode(array)) WRONG_TYPE;
-    length = size_encoder.size();
+    if (!size_encoder.encode(array)) {
+      return size_encoder.create_error_object(process);
+    }
+    size = size_encoder.size();
   }
 
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + EXTERNAL_BYTE_ARRAY_MALLOC_TAG);
-  uint8* buffer = unvoid_cast<uint8*>(malloc(length));
+  uint8* buffer = unvoid_cast<uint8*>(malloc(size));
   if (buffer == null) MALLOC_FAILED;
 
-  SystemMessage* message = null;
   MessageEncoder encoder(process, buffer);
-  if (encoder.encode(array)) {
-    message = _new SystemMessage(type, process->group()->id(), process->id(), buffer);
+  if (!encoder.encode(array)) {
+    encoder.free_copied();
+    free(buffer);
+    return encoder.create_error_object(process);
   }
+
+  SystemMessage* message = _new SystemMessage(type, process->group()->id(), process->id(), buffer);
 
   if (message == null) {
     encoder.free_copied();
     free(buffer);
-    if (encoder.malloc_failed()) MALLOC_FAILED;
-    OTHER_ERROR;
+    MALLOC_FAILED;
   }
 
   // From here on, the destructor of SystemMessage will free the buffer and
@@ -1838,14 +1870,36 @@ PRIMITIVE(process_send) {
     encoder.neuter_externals();
     // TODO(kasper): Consider doing in-place shrinking of internal, non-constant
     // byte arrays and strings.
+    return process->program()->null_object();
   } else {
     // Sending failed. Free any copied bits, but make sure to not free the externals
     // that have not been neutered on this path.
     encoder.free_copied();
     message->free_data_but_keep_externals();
     delete message;
+    // Object* result = process->allocate_string_or_error("MESSAGE_NO_SUCH_RECEIVER");
+    // if (Primitive::is_error(result)) return result;
+    // return Primitive::mark_as_error(HeapObject::cast(result));
+    return process->program()->null_object();
   }
-  return Smi::from(result);
+}
+
+Object* MessageEncoder::create_error_object(Process* process) {
+  Object* result = null;
+  if (_nesting_too_deep) {
+    result = process->allocate_string_or_error("NESTING_TOO_DEEP");
+  } else if (_problematic_class_id >= 0) {
+    result = Primitive::allocate_array(1, Smi::from(_problematic_class_id), process);
+  } else if (_too_many_externals) {
+    result = process->allocate_string_or_error("TOO_MANY_EXTERNALS");
+  }
+  if (result) {
+    if (Primitive::is_error(result)) return result;
+    return Primitive::mark_as_error(HeapObject::cast(result));
+  }
+  // The remaining errors are things like unserializable non-instances, non-smi
+  // lengths, large lists.  TODO: Be more specific and/or remove some limitations.
+  WRONG_TYPE;
 }
 
 PRIMITIVE(task_has_messages) {
@@ -2074,7 +2128,7 @@ PRIMITIVE(get_real_time_clock) {
   Array* result = process->object_heap()->allocate_array(2, Smi::zero());
   if (result == null) ALLOCATION_FAILED;
 
-  struct timespec time = { 0, };
+  struct timespec time{};
   if (!OS::get_real_time(&time)) OTHER_ERROR;
 
   Object* tv_sec = Primitive::integer(time.tv_sec, process);
@@ -2089,9 +2143,14 @@ PRIMITIVE(get_real_time_clock) {
 PRIMITIVE(set_real_time_clock) {
 #ifdef TOIT_FREERTOS
   ARGS(int64, tv_sec, int64, tv_nsec);
-  struct timespec time;
-  time.tv_sec = tv_sec;
-  time.tv_nsec = tv_nsec;
+  if (tv_sec < LONG_MIN || tv_sec > LONG_MAX) INVALID_ARGUMENT;
+  if (tv_nsec < LONG_MIN || tv_nsec > LONG_MAX) INVALID_ARGUMENT;
+  struct timespec time = {
+    .tv_sec = static_cast<long>(tv_sec),
+    .tv_nsec = static_cast<long>(tv_nsec),
+  };
+  static_assert(sizeof(time.tv_sec) == sizeof(long), "Unexpected size of timespec field");
+  static_assert(sizeof(time.tv_nsec) == sizeof(long), "Unexpected size of timespec field");
   if (!OS::set_real_time(&time)) OTHER_ERROR;
 #endif
   return Smi::zero();

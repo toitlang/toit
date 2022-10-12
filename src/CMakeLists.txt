@@ -140,10 +140,16 @@ endif()
 if ("${CMAKE_SYSTEM_NAME}" MATCHES "Linux")
   set(TOIT_LINK_LIBS_LIBGCC -static-libgcc)
 
-  find_library(SEGFAULT_LIB SegFault)
-  if (SEGFAULT_LIB)
-    set(TOIT_LINK_SEGFAULT SegFault)
+  if (NOT ${TOIT_IS_CROSS})
+    find_library(SEGFAULT_LIB SegFault)
+    if (SEGFAULT_LIB)
+      set(TOIT_LINK_SEGFAULT SegFault)
+    endif()
   endif()
+endif()
+
+if (${TOIT_IS_CROSS})
+  set(TOIT_ALL_STATIC -static)
 endif()
 
 if (DEFINED USE_LWIP)
@@ -163,6 +169,7 @@ endif()
 # Because of the `CACHE INTERNAL ""` at the end of the `set` we can
 #   use this variable outside of the directory.
 set(TOIT_LINK_LIBS
+  ${TOIT_ALL_STATIC}
   -static-libstdc++
   ${TOIT_LINK_GC_FLAGS}
   ${TOIT_LINK_GROUP_BEGIN_FLAGS}

@@ -93,20 +93,24 @@ PRIMITIVE(parse) {
 
   const uint8_t* data = null;
   size_t length = 0;
-  if (is_byte_array(input)) {
-    ByteArray::Bytes bytes(ByteArray::cast(input));
-    data = bytes.address();
-    length = bytes.length();
-  } else if (is_string(input)) {
-    // For PEM format, give a null terminated byte array (and the size of the
-    // full array), otherwise parsing will fail.
+  Blob blob;
+  if (is_string(input)) {
+    // For the PEM format, we must provide a zero-terminated string and
+    // the size of the string including the termination character,
+    // otherwise the parsing will fail.
     String* str = String::cast(input);
     data = reinterpret_cast<const uint8_t*>(str->as_cstr());
     length = str->length() + 1;
+    ASSERT(data[length - 1] == '\0');
+  } else if (input->byte_content(process->program(), &blob, STRINGS_OR_BYTE_ARRAYS)) {
+    // If we're passed a byte array or a string slice, we hope that
+    // it ends with a zero character. Otherwise parsing will fail.
+    data = blob.address();
+    length = blob.length();
+    if (length < 1 || data[length - 1] != '\0') INVALID_ARGUMENT;
   } else {
     WRONG_TYPE;
   }
-
   return resource_group->parse(process, data, length);
 }
 

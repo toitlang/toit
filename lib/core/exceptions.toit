@@ -178,6 +178,10 @@ as_check_failure_ receiver id:
     encode_error_ "AS_CHECK_FAILED"
       create_array_ receiver id
 
+serialization_failure_ id:
+  rethrow "SERIALIZATION_FAILED"
+    encode_error_ "SERIALIZATION_FAILED" id
+
 primitive_lookup_failure_ module index:
   rethrow "PRIMITIVE_LOOKUP_FAILED"
     encode_error_ "PRIMITIVE_LOOKUP_FAILED" "Failed to find primitive $module:$index"

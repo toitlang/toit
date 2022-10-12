@@ -39,15 +39,15 @@ PRIMITIVE(spawn) {
   Program* program = static_cast<Program*>(allocation);
   if (!program->is_valid(offset, OS::image_uuid())) OUT_OF_BOUNDS;
 
-  int length = 0;
+  unsigned message_size = 0;
   { MessageEncoder size_encoder(process, null);
-    if (!size_encoder.encode(arguments)) WRONG_TYPE;
-    length = size_encoder.size();
+    if (!size_encoder.encode(arguments)) return size_encoder.create_error_object(process);
+    message_size = size_encoder.size();
   }
 
   uint8* buffer = null;
   { HeapTagScope scope(ITERATE_CUSTOM_TAGS + EXTERNAL_BYTE_ARRAY_MALLOC_TAG);
-    buffer = unvoid_cast<uint8*>(malloc(length));
+    buffer = unvoid_cast<uint8*>(malloc(message_size));
     if (buffer == null) MALLOC_FAILED;
   }
 
@@ -55,8 +55,7 @@ PRIMITIVE(spawn) {
   if (!encoder.encode(arguments)) {
     encoder.free_copied();
     free(buffer);
-    if (encoder.malloc_failed()) MALLOC_FAILED;
-    OTHER_ERROR;
+    return encoder.create_error_object(process);
   }
 
   InitialMemoryManager manager;

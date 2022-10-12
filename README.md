@@ -211,6 +211,9 @@ build/host/sdk/bin/toit.pkg init --project-root=<some-directory>
 build/host/sdk/bin/toit.pkg install --project-root=<some-directory> <package-id>
 ```
 
+### Debugging
+See https://github.com/toitlang/toit/wiki/Debugging.
+
 ## IDE integration
 
 Toit has a [VS Code](https://code.visualstudio.com/) extension. You can either use the
@@ -353,7 +356,7 @@ build/host/sdk/tools/firmware -e build/esp32/firmware.envelope \
     container install --assets=encoded.assets assets assets.snapshot
 ```
 
-If you update the source code in `assets.toit` slightly, the 
+If you update the source code in `assets.toit` slightly, the
 printed information will be more digestible:
 
 ```
@@ -361,20 +364,18 @@ import system.assets
 
 main:
   readme := assets.decode["readme"]
-  // Guard against splitting a unicode character by 
+  // Guard against splitting a unicode character by
   // making this non-throwing.
   print readme[0..80].to_string_non_throwing
 ```
 
 You'll need to reinstall the container after this by recompiling
-the `assets.toit` file to `assets.snapshot` and running:
+the `assets.toit` file to `assets.snapshot` and re-running:
 
 ``` sh
 build/host/sdk/tools/firmware -e build/esp32/firmware.envelope \
     container install --assets=encoded.assets assets assets.snapshot
 ```
-
-again.
 
 ---
 *NOTE*

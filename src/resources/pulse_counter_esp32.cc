@@ -136,6 +136,12 @@ class PcntUnitResource : public Resource {
     pcnt_config_t config {
       .pulse_gpio_num = PCNT_PIN_NOT_USED,
       .ctrl_gpio_num = PCNT_PIN_NOT_USED,
+      .lctrl_mode = PCNT_CHANNEL_LEVEL_ACTION_KEEP,
+      .hctrl_mode = PCNT_CHANNEL_LEVEL_ACTION_KEEP,
+      .pos_mode = PCNT_CHANNEL_EDGE_ACTION_HOLD,
+      .neg_mode = PCNT_CHANNEL_EDGE_ACTION_HOLD,
+      .counter_h_lim = 0,
+      .counter_l_lim = 0,
       .unit = _unit_id,
       .channel = channel,
     };

@@ -30,6 +30,7 @@
   (ts)->tv_nsec = (tv)->tv_usec * 1000;                 \
 }
 #endif
+
 namespace toit {
 
 Mutex* OS::_global_mutex = null;
@@ -53,7 +54,7 @@ void OS::timespec_increment(timespec* ts, int64 ns) {
 }
 
 bool OS::monotonic_gettime(int64* timestamp) {
-  struct timespec time = { 0, };
+  struct timespec time{};
   if (clock_gettime(CLOCK_MONOTONIC, &time) != 0) return false;
   *timestamp = (time.tv_sec * 1000000LL) + (time.tv_nsec / 1000LL);
   return true;
@@ -86,7 +87,7 @@ bool OS::get_real_time(struct timespec* time) {
   // make progress by using a less precise alternative: gettimeofday.
   // One day, we should try to get rid of this workaround again.
   int gettime_errno = errno;
-  struct timeval timeofday = { 0, };
+  struct timeval timeofday{};
   if (gettimeofday(&timeofday, NULL) != 0) {
     int gettimeofday_errno = errno;
     printf("WARNING: cannot get time: clock_gettime -> %s, gettimeofday -> %s\n",

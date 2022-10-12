@@ -174,6 +174,7 @@ PRIMITIVE(create) {
     .stop_bits = UART_STOP_BITS_1,
     .flow_ctrl = (uart_hw_flowcontrol_t)flow_ctrl,
     .rx_flow_ctrl_thresh = 122,
+    .source_clk = UART_SCLK_APB,
   };
 
 
@@ -289,9 +290,9 @@ PRIMITIVE(write) {
 
   int wrote;
   if (break_length > 0) {
-    wrote = uart_write_bytes_with_break_non_blocking(uart->port(), reinterpret_cast<const char*>(tx), to - from, break_length);
+    wrote = uart_write_bytes_with_break(uart->port(), reinterpret_cast<const char*>(tx), to - from, break_length);
   } else {
-    wrote = uart_write_bytes_non_blocking(uart->port(), reinterpret_cast<const char*>(tx), to - from);
+    wrote = uart_write_bytes(uart->port(), reinterpret_cast<const char*>(tx), to - from);
   }
   if (wrote == -1) {
     OUT_OF_RANGE;

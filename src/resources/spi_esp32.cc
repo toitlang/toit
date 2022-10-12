@@ -133,10 +133,11 @@ PRIMITIVE(init) {
   } args {
     .host_device = host_device,
 #ifdef CONFIG_IDF_TARGET_ESP32S3
-    .dma_chan = SPI_DMA_CH_AUTO
+    .dma_chan = SPI_DMA_CH_AUTO,
 #else
-    .dma_chan = dma_chan
+    .dma_chan = dma_chan,
 #endif
+    .err = ESP_OK,
   };
   SystemEventSource::instance()->run([&]() -> void {
     args.err = spi_bus_initialize(args.host_device, &conf, args.dma_chan);
@@ -183,12 +184,20 @@ PRIMITIVE(device) {
   }
 
   spi_device_interface_config_t conf = {
-    .command_bits   = uint8(command_bits),
-    .address_bits   = uint8(address_bits),
-    .mode           = uint8(mode),
-    .clock_speed_hz = frequency,
-    .spics_io_num   = cs,
-    .queue_size     = 1,
+    .command_bits     = uint8(command_bits),
+    .address_bits     = uint8(address_bits),
+    .dummy_bits       = 0,
+    .mode             = uint8(mode),
+    .duty_cycle_pos   = 0,
+    .cs_ena_pretrans  = 0,
+    .cs_ena_posttrans = 0,
+    .clock_speed_hz   = frequency,
+    .input_delay_ns   = 0,
+    .spics_io_num     = cs,
+    .flags            = 0,
+    .queue_size       = 1,
+    .pre_cb           = null,
+    .post_cb          = null,
   };
   if (dc != -1) {
     conf.pre_cb = spi_pre_transfer_callback;
@@ -232,7 +241,10 @@ PRIMITIVE(transfer) {
     .cmd = uint16(command),
     .addr = uint64(address),
     .length = length * 8,
+    .rxlength = 0,
+    .user = null,
     .tx_buffer = tx.address() + from,
+    .rx_buffer = null,
   };
 
   bool using_buffer = false;

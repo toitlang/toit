@@ -45,6 +45,7 @@ main arguments/List:
       ]
   root_cmd.add create_cmd
   root_cmd.add add_cmd
+  root_cmd.add get_cmd
   root_cmd.add remove_cmd
   root_cmd.add list_cmd
   root_cmd.run arguments
@@ -95,6 +96,52 @@ add_asset parsed/cli.Parsed -> none:
         unreachable
     entries[name] = asset
 
+get_cmd -> cli.Command:
+  return cli.Command "get"
+      --options=[
+        cli.OptionEnum "format" ["auto", "binary", "ubjson", "tison"]
+            --default="auto"
+            --short_help="Pick the encoding format.",
+        cli.OptionString "output"
+            --short_name="o"
+            --short_help="Set the name of the output file."
+            --type="file"
+            --required,
+      ]
+      --rest=[
+        cli.OptionString "name"
+            --required,
+      ]
+      --short_help="Get the asset with the given name."
+      --run=:: get_asset it
+
+get_asset parsed/cli.Parsed -> none:
+  input_path := parsed[OPTION_ASSETS]
+  output_path := parsed["output"]
+  name := parsed["name"]
+  format := parsed["format"]
+  entries := load_assets input_path
+  entry := entries.get name
+  if not entry:
+    print "No such asset: $name"
+    exit 1
+  content := entry
+  exception := null
+  if format == "auto":
+    decoded := null
+    catch: decoded = decoded or "$(json.stringify (tison.decode content))\n"
+    catch: decoded = decoded or "$(json.stringify (ubjson.decode content))\n"
+    catch: decoded = decoded or "$(json.stringify (json.decode content))\n"
+    content = decoded or content
+  else if format == "tison":
+    exception = catch: content = "$(json.stringify (tison.decode content))\n"
+  else if format == "ubjson":
+    exception = catch: content = "$(json.stringify (ubjson.decode content))\n"
+  if exception:
+    print "Failed to decode asset '$name' as $format.to_ascii_upper"
+    exit 1
+  write_file output_path: it.write content
+
 remove_cmd -> cli.Command:
   return cli.Command "remove"
       --options=[ option_output ]
@@ -116,6 +163,9 @@ list_cmd -> cli.Command:
       --run=:: list_assets it
 
 decode entry/Map content/ByteArray -> string:
+  catch:
+    entry["data"] = tison.decode content
+    return "tison"
   catch:
     entry["data"] = ubjson.decode content
     return "ubjson"

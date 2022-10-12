@@ -38,6 +38,7 @@ static void print_usage(int exit_code) {
   printf("  [--force]                            // Finish compilation even with errors (if possible).\n");
   printf("  [-Werror]                            // Treat warnings like errors.\n");
   printf("  [--show-package-warnings]            // Show warnings from packages.\n");
+  printf("  [--vessels-root <dir>]               // Path to vessels when compiling executables.\n");
   printf("  { -o <executable> <toitfile> |       // Write executable.\n");
   printf("    -w <snapshot> <toitfile> |         // Write snapshot file.\n");
   printf("    --analyze <toitfiles>...           // Analyze Toit files.\n");
@@ -98,6 +99,7 @@ int main(int argc, char **argv) {
   auto dep_format = compiler::Compiler::DepFormat::none;
   bool for_language_server = false;
   bool for_analysis = false;
+  const char* vessels_root = null;
 
   int processed_args = 1;  // The executable name has already been processed.
 
@@ -185,6 +187,17 @@ int main(int argc, char **argv) {
         print_usage(1);
       }
       project_root = argv[processed_args++];
+    } else if (strcmp(argv[processed_args], "--vessels-root") == 0) {
+      processed_args++;
+      if (processed_args == argc) {
+        fprintf(stderr, "Missing argument to '--vessels-root'\n");
+        print_usage(1);
+      }
+      if (vessels_root != null) {
+        fprintf(stderr, "Only one '--vessels-root' flag is allowed.\n");
+        print_usage(1);
+      }
+      vessels_root = argv[processed_args++];
     } else if (strcmp(argv[processed_args], "--lsp") == 0 ||
                 strcmp(argv[processed_args], "--analyze") == 0) {
       for_language_server = strcmp(argv[processed_args], "--lsp") == 0;
@@ -221,6 +234,11 @@ int main(int argc, char **argv) {
     } else {
       fprintf(stderr, "Toit-file, snapshot, or string-expressions are exclusive\n");
     }
+    print_usage(1);
+  }
+
+  if (vessels_root != null && exe_filename == null) {
+    fprintf(stderr, "The --vessels-root flag can only be used when compiling executables\n");
     print_usage(1);
   }
 
@@ -293,7 +311,7 @@ int main(int argc, char **argv) {
         print_usage(1);
       }
     } else {
-      exit_state = create_executable(exe_filename, compiled);
+      exit_state = create_executable(exe_filename, compiled, vessels_root);
     }
     free(compiled.buffer());
   } else {

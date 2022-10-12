@@ -38,7 +38,6 @@ jobs:
           echo ::set-output name=debug_dir::debug-ci/$RUNNER_OS-${{ matrix.shard }}
           if [ "$RUNNER_OS" == "Linux" ]; then
             echo ::set-output name=artifact::toit-linux.tar.gz
-            echo ::set-output name=raspberry_pi_artifact::toit-rpi.tar.gz
             echo ::set-output name=total_shards::10
           elif [ "$RUNNER_OS" == "macOS" ]; then
             echo ::set-output name=artifact::toit-macos.tar.gz
@@ -52,7 +51,7 @@ jobs:
           fi
         shell: bash
 
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       # Anything in the debug dir will be uploaded as artifact.
       - name: Setup debug dir
@@ -71,6 +70,7 @@ jobs:
           cd third_party/esp-idf
           git submodule update --init .
           git submodule update --init components/mbedtls
+          git submodule update --init components/esptool_py
 
       # Use Go 1.17
       - name: Switch to Go 1.17
@@ -84,24 +84,17 @@ jobs:
           echo "::set-output name=go-build::$(go env GOCACHE)"
           echo "::set-output name=go-mod::$(go env GOMODCACHE)"
 
-      # Cache go build cache, used to speedup go test
-      - name: Go Build Cache
-        uses: actions/cache@v2
+      - name: Go cache
+        uses: actions/cache@v3
         with:
-          path: ${{ steps.go-cache-paths.outputs.go-build }}
+          path: |
+            ${{ steps.go-cache-paths.outputs.go-build }}
+            ${{ steps.go-cache-paths.outputs.go-mod }}
           key: ${{ runner.os }}-go-build-${{ hashFiles('**/go.sum') }}
-          restore-keys: ${{ runner.os }}-go-build-
-
-      # Cache go mod cache, used to speedup builds
-      - name: Go Mod Cache
-        uses: actions/cache@v2
-        with:
-          path: ${{ steps.go-cache-paths.outputs.go-mod }}
-          key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum') }}
-          restore-keys: ${{ runner.os }}-go-mod-
+          restore-keys: ${{ runner.os }}-go-
 
       - name: Ccache cache
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: ${{ github.workspace }}/.ccache
           key: ${{ runner.os }}-ccache-${{ github.sha }}
@@ -110,7 +103,7 @@ jobs:
       # Cache deb files.
       - name: Apt cache - Linux
         if: runner.os == 'Linux'
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: ${{ github.workspace }}/apt-cacher-ng
           key: ${{ runner.os }}-apt-${{ github.sha }}
@@ -160,12 +153,18 @@ jobs:
           sudo tar -czf apt-cacher-ng/cache.tar.gz -C /var/cache/apt-cacher-ng .
           sudo chown $(whoami) apt-cacher-ng/cache.tar.gz
 
+      - uses: actions/setup-python@v4
+        if: matrix.shard == 1
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
       - name: Setup compilation env
         shell: bash
         run: |
-          echo "IDF_PATH=${{ github.workspace }}/third_party/esp-idf" >> $GITHUB_ENV
-          echo "CCACHE_DIR=${{ github.workspace }}/.ccache" >> $GITHUB_ENV
-          echo "CCACHE_BASEDIR=${{ github.workspace }}" >> $GITHUB_ENV
+          echo 'IDF_PATH=${{ github.workspace }}/third_party/esp-idf' >> $GITHUB_ENV
+          echo 'CCACHE_DIR=${{ github.workspace }}/.ccache' >> $GITHUB_ENV
+          echo 'CCACHE_BASEDIR=${{ github.workspace }}' >> $GITHUB_ENV
           echo "CCACHE_COMPRESS=true" >> $GITHUB_ENV
           echo "CCACHE_COMPRESSLEVEL=6" >> $GITHUB_ENV
           echo "CCACHE_MAXSIZE=400M" >> $GITHUB_ENV
@@ -181,10 +180,12 @@ jobs:
             make CROSS_ARCH=host32 BUILD_TYPE=Debug all-cross
           fi
 
-      - name: Build Raspberry Pi
-        if: runner.os == 'Linux' && matrix.shard == 1
+      - name: Build esptool
+        shell: bash
+        if: matrix.shard == 1
         run: |
-          make pi
+          pip install -r $IDF_PATH/requirements.txt
+          make esptool-no-env
 
       # Test.
       - name: Test
@@ -232,7 +233,7 @@ jobs:
           echo success > ${{ steps.constants.outputs.external_result }}
 
       - name: Store external test result
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: ${{ steps.constants.outputs.external_result_name }}
           path: ${{ steps.constants.outputs.external_result }}
@@ -244,14 +245,6 @@ jobs:
         run: |
           cp -R ./build/host/sdk ./build/host/toit
           tar -czf build/${{ steps.constants.outputs.artifact }} -C ./build/host -h --exclude toit/bin/mbedtls toit
-
-      - name: Pack Raspberry Pi artifacts
-        if: matrix.shard == 1 && runner.os == 'Linux'
-        shell: bash
-        # Note that we use `cp -R` first, since that works on every platform.
-        run: |
-          cp -R ./build/raspberry_pi/sdk ./build/raspberry_pi/toit
-          tar -czf build/${{ steps.constants.outputs.raspberry_pi_artifact }} -C ./build/raspberry_pi -h --exclude toit/bin/mbedtls toit
 
       - name: Prepare debug repros
         if: always()
@@ -265,7 +258,7 @@ jobs:
       - name: Upload debug artifacts
         if: always()
         continue-on-error: true
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: debug
           path: ${{ steps.constants.outputs.debug_root_dir }}
@@ -273,17 +266,10 @@ jobs:
 
       - name: Upload artifacts
         if: matrix.shard == 1
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: ${{ runner.os }}-build
           path: build/${{ steps.constants.outputs.artifact }}
-
-      - name: Upload Raspberry Pi artifacts
-        if: matrix.shard == 1 && runner.os == 'Linux'
-        uses: actions/upload-artifact@v2
-        with:
-          name: ${{ runner.os }}-build
-          path: build/${{ steps.constants.outputs.raspberry_pi_artifact }}
 
       - name: Upload release artifacts
         if: |
@@ -296,24 +282,12 @@ jobs:
           tag: ${{ github.ref }}
           overwrite: true
 
-      - name: Upload release Raspberry Pi artifacts
-        if: |
-          (github.event_name) == 'release' &&
-          (matrix.shard == 1) &&
-          (runner.os == 'Linux')
-        uses: svenstaro/upload-release-action@v2
-        with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: build/${{ steps.constants.outputs.raspberry_pi_artifact }}
-          tag: ${{ github.ref }}
-          overwrite: true
-
   # Really annoying that we need to duplicate so much.
   esp32:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - name: Fetch tags
         # The github checkout is shallow and doesn't have tags.
@@ -339,7 +313,7 @@ jobs:
 
       # Cache go build cache, used to speedup go test
       - name: Go Build Cache
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: ${{ steps.go-cache-paths.outputs.go-build }}
           key: ${{ runner.os }}-go-build-${{ hashFiles('**/go.sum') }}
@@ -347,14 +321,14 @@ jobs:
 
       # Cache go mod cache, used to speedup builds
       - name: Go Mod Cache
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: ${{ steps.go-cache-paths.outputs.go-mod }}
           key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum') }}
           restore-keys: ${{ runner.os }}-go-mod-
 
       - name: Ccache cache
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         # Store and retrieve the cache with the given sha.
         # The 'restore-keys' prefix finds the most recent cache in case there
         # is no match (which should almost always be the case).
@@ -370,13 +344,6 @@ jobs:
           ninja --version
           cmake --version
           gcc --version
-
-      - name: Ccache symlinks
-        run: |
-          mkdir ccache_interceptors
-          cd ccache_interceptors
-          ln -s $(command -v ccache) xtensa-esp32-elf-gcc
-          ln -s $(command -v ccache) xtensa-esp32-elf-g++
 
       - name: Install ESP32 tools
         run: |
@@ -394,22 +361,27 @@ jobs:
           CCACHE_MAXSIZE: 400M
         run: |
           source third_party/esp-idf/export.sh
-          # Make sure the ccache interceptors are before any other path.
-          export PATH="$PWD/ccache_interceptors":$PATH
           make esp32
+          make ESP32_CHIP=esp32s3 esp32
+          make ESP32_CHIP=esp32c3 esp32
 
       - name: Pack firmware artifacts
         shell: bash
         run: |
           gzip --to-stdout build/esp32/firmware.envelope > build/firmware-esp32.gz
+          gzip --to-stdout build/esp32c3/firmware.envelope > build/firmware-esp32c3.gz
+          gzip --to-stdout build/esp32s3/firmware.envelope > build/firmware-esp32s3.gz
 
       - name: Upload firmware artifacts
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
-          name: firmware-esp32.gz
-          path: build/firmware-esp32.gz
+          name: firmwares
+          path: |
+            build/firmware-esp32.gz
+            build/firmware-esp32c3.gz
+            build/firmware-esp32s3.gz
 
-      - name: Upload release firmware artifacts
+      - name: Upload ESP32 release firmware artifacts
         if: (github.event_name) == 'release'
         uses: svenstaro/upload-release-action@v2
         with:
@@ -418,12 +390,36 @@ jobs:
           tag: ${{ github.ref }}
           overwrite: true
 
+      - name: Upload ESP32-C3 release firmware artifacts
+        if: (github.event_name) == 'release'
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: build/firmware-esp32c3.gz
+          tag: ${{ github.ref }}
+          overwrite: true
+
+      - name: Upload ESP32-S3 release firmware artifacts
+        if: (github.event_name) == 'release'
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: build/firmware-esp32s3.gz
+          tag: ${{ github.ref }}
+          overwrite: true
+
   # Really annoying that we need to duplicate so much.
-  cross_windows:
+  cross:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v2
+      - name: Set up constants
+        id: constants
+        run: |
+          echo ::set-output name=raspberry_pi_artifact::toit-rpi.tar.gz
+        shell: bash
+
+      - uses: actions/checkout@v3
 
       - name: Fetch tags
         # The github checkout is shallow and doesn't have tags.
@@ -451,7 +447,7 @@ jobs:
 
       # Cache go build cache, used to speedup go test
       - name: Go Build Cache
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: ${{ steps.go-cache-paths.outputs.go-build }}
           key: ${{ runner.os }}-go-build-${{ hashFiles('**/go.sum') }}
@@ -459,14 +455,14 @@ jobs:
 
       # Cache go mod cache, used to speedup builds
       - name: Go Mod Cache
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: ${{ steps.go-cache-paths.outputs.go-mod }}
           key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum') }}
           restore-keys: ${{ runner.os }}-go-mod-
 
       - name: Ccache cache
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         # Store and retrieve the cache with the given sha.
         # The 'restore-keys' prefix finds the most recent cache in case there
         # is no match (which should almost always be the case).
@@ -483,8 +479,7 @@ jobs:
           cmake --version
           gcc --version
 
-      # Build using make.
-      - name: make
+      - name: Make
         env:
           IDF_PATH: ${{ github.workspace }}/third_party/esp-idf
           CCACHE_DIR: ${{ github.workspace }}/.ccache
@@ -494,6 +489,51 @@ jobs:
           CCACHE_MAXSIZE: 400M
         run: |
           make CROSS_ARCH=win64 all-cross
+          make pi
+
+      - uses: pguyot/arm-runner-action@v2
+        with:
+          cpu: cortex-a7
+          base_image: "raspios_lite:2022-01-28"
+          bind_mount_repository: true
+          commands: |
+              uname -m > pi_uname
+              build/raspberry_pi/sdk/bin/toit.pkg version
+              build/raspberry_pi/sdk/bin/toit.run --version
+              build/raspberry_pi/sdk/tools/firmware --help
+
+      - uses: pguyot/arm-runner-action@v2
+        with:
+          cpu: cortex-a7
+          base_image: "raspios_lite_arm64:2022-01-28"
+          bind_mount_repository: true
+          commands: |
+              uname -m > pi_uname
+              build/raspberry_pi/sdk/bin/toit.pkg version
+              build/raspberry_pi/sdk/bin/toit.run --version
+              build/raspberry_pi/sdk/tools/firmware --help
+
+      - name: Pack Raspberry Pi artifacts
+        shell: bash
+        # Note that we use `cp -R` first, since that works on every platform.
+        run: |
+          cp -R ./build/raspberry_pi/sdk ./build/raspberry_pi/toit
+          tar -czf build/${{ steps.constants.outputs.raspberry_pi_artifact }} -C ./build/raspberry_pi -h --exclude toit/bin/mbedtls toit
+
+      - name: Upload Raspberry Pi artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ runner.os }}-build
+          path: build/${{ steps.constants.outputs.raspberry_pi_artifact }}
+
+      - name: Upload release Raspberry Pi artifacts
+        if: github.event_name == 'release'
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: build/${{ steps.constants.outputs.raspberry_pi_artifact }}
+          tag: ${{ github.ref }}
+          overwrite: true
 
   external:
     needs: build

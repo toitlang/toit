@@ -49,6 +49,13 @@ class Process : public ProcessListFromProcessGroup::Element,
     SUSPENDED_AWAITING_GC
   };
 
+  // Should match the constants in lib/core/process.toit.
+  static const uint8 PRIORITY_IDLE     = 0;
+  static const uint8 PRIORITY_LOW      = 43;
+  static const uint8 PRIORITY_NORMAL   = 128;
+  static const uint8 PRIORITY_HIGH     = 213;
+  static const uint8 PRIORITY_CRITICAL = 255;
+
   static const char* StateName[];
 
   // Constructor for an internal process based on Toit code.
@@ -144,7 +151,21 @@ class Process : public ProcessListFromProcessGroup::Element,
 
   void signal(Signal signal);
   void clear_signal(Signal signal);
-  uint32_t signals() const { return _signals; }
+  uint32 signals() const { return _signals; }
+
+  // Processes have a priority in the range [0..255]. The scheduler
+  // prioritizes running processes with higher priorities, so processes
+  // with lower priorities might get starved by more important things.
+  uint8 priority() const { return _priority; }
+
+  // The scheduler needs to be in charge of updating priorities,
+  // because it might have a process in queue determined by the
+  // current priority and it needs to be able to find it there
+  // again. Once a process is ready to run, the scheduler will
+  // update the priority and make the target priority the current
+  // priority.
+  void set_target_priority(uint8 value) { _target_priority = value; }
+  uint8 update_priority();
 
   int current_directory() { return _current_directory; }
   void set_current_directory(int fd) { _current_directory = fd; }
@@ -219,6 +240,9 @@ class Process : public ProcessListFromProcessGroup::Element,
   Program* _program;
   ProcessRunner* _runner;
   ProcessGroup* _group;
+
+  uint8 _priority = PRIORITY_NORMAL;
+  uint8 _target_priority = PRIORITY_NORMAL;
 
   uword _program_heap_address;
   uword _program_heap_size;

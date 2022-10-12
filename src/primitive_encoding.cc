@@ -141,29 +141,32 @@ PRIMITIVE(base64_decode)  {
 PRIMITIVE(tison_encode) {
   ARGS(Object, object);
 
-  int length = 0;
-  { MessageEncoder size_encoder(process, null, true);
-    if (!size_encoder.encode(object)) WRONG_TYPE;
-    length = size_encoder.size();
+  unsigned size = 0;
+  unsigned payload_size = 0;
+  { TisonEncoder size_encoder(process);
+    if (!size_encoder.encode(object)) {
+      return size_encoder.create_error_object(process);
+    }
+    size = size_encoder.size();
+    payload_size = size_encoder.payload_size();
   }
 
-  ByteArray* result = process->allocate_byte_array(length);
+  ByteArray* result = process->allocate_byte_array(size);
   if (!result) ALLOCATION_FAILED;
   ByteArray::Bytes bytes(result);
-  MessageEncoder encoder(process, bytes.address(), true);
-  if (!encoder.encode(object)) OTHER_ERROR;
+  TisonEncoder encoder(process, bytes.address(), payload_size);
+  if (!encoder.encode(object)) {
+    return encoder.create_error_object(process);
+  }
   return result;
 }
 
 PRIMITIVE(tison_decode) {
   ARGS(Blob, bytes);
-  MessageDecoder decoder(process, bytes.address());
+  TisonDecoder decoder(process, bytes.address(), bytes.length());
   Object* decoded = decoder.decode();
-  if (decoder.allocation_failed()) {
-    decoder.remove_disposing_finalizers();
-    ALLOCATION_FAILED;
-  }
-  decoder.register_external_allocations();
+  if (decoder.allocation_failed()) ALLOCATION_FAILED;
+  if (decoder.malformed_input()) WRONG_TYPE;
   return decoded;
 }
 
