@@ -84,7 +84,8 @@ class BLEResourceGroup : public ResourceGroup, public Thread{
       : ResourceGroup(process, event_source)
       , Thread("BLE")
       , _id(id)
-      , _sync(false) {
+      , _sync(false)
+      , _tearing_down(false) {
     if (instance_access_mutex()) { // Allocation of the mutex could fail, the init primitive reports this
       Locker locker(_instance_access_mutex);
       ASSERT(!_instance)
@@ -96,6 +97,7 @@ class BLEResourceGroup : public ResourceGroup, public Thread{
   void tear_down() override {
     FATAL_IF_NOT_ESP_OK(nimble_port_stop());
     join();
+    _tearing_down = true;
 
     nimble_port_deinit();
 
@@ -121,8 +123,7 @@ class BLEResourceGroup : public ResourceGroup, public Thread{
   }
 
   bool sync() const { return _sync; }
-
- public:
+  bool tearing_down() const { return _tearing_down; }
   uint32_t on_event(Resource* resource, word data, uint32_t state) override;
 
  protected:
@@ -137,6 +138,7 @@ class BLEResourceGroup : public ResourceGroup, public Thread{
  private:
   int _id;
   bool _sync;
+  bool _tearing_down;
   static BLEResourceGroup* _instance;
   static Mutex* _instance_access_mutex;
 };
@@ -329,8 +331,9 @@ class BLECharacteristicResource :
   SubscriptionList& subscriptions() { return _subscriptions; }
 
   void make_deletable() override {
-    while (!_descriptors.is_empty()) {
-      group()->unregister_resource(_descriptors.remove_first());
+    while (BLEDescriptorResource* descriptor = _descriptors.remove_first()) {
+      if (!group()->tearing_down())
+        group()->unregister_resource(descriptor);
     }
     BLEResource::make_deletable();
   }
@@ -404,8 +407,9 @@ class BLEServiceResource:
       uint16 value_handle, bool can_create=false);
 
   void make_deletable() override {
-    while (!_characteristics.is_empty()) {
-      group()->unregister_resource(_characteristics.remove_first());
+    while (auto characteristic = _characteristics.remove_first()) {
+      if (!group()->tearing_down())
+        group()->unregister_resource(characteristic);
     }
     BLEResource::make_deletable();
   }
@@ -523,8 +527,11 @@ class ServiceContainer : public BLEErrorCapableResource {
   BLEServiceResource* get_or_create_service_resource(ble_uuid_any_t uuid, uint16 start, uint16 end, bool can_create=false);
   ServiceResourceList& services() { return _services; }
   void clear_services() {
-    while (!_services.is_empty())
-      group()->unregister_resource(_services.remove_first());
+    while (auto service = _services.remove_first()) {
+      if (!group()->tearing_down()) {
+        group()->unregister_resource(service);
+      }
+    }
   }
  private:
   ServiceResourceList _services;
@@ -1240,7 +1247,7 @@ PRIMITIVE(scan_start) {
     return nimle_stack_error(process,err);
   }
 
-  struct ble_gap_disc_params disc_params = { 0 };
+  ble_gap_disc_params disc_params = { };
   // Tell the controller to filter duplicates; we don't want to process
   // repeated advertisements from the same device.
   // disc_params.filter_duplicates = 1;
@@ -1372,7 +1379,7 @@ PRIMITIVE(connect) {
     return nimle_stack_error(process,err);
   }
 
-  ble_addr_t addr = { 0 };
+  ble_addr_t addr = { };
   addr.type = address.address()[0];
   memcpy_reverse(addr.val, address.address() + 1, 6);
 
@@ -1686,7 +1693,7 @@ PRIMITIVE(advertise_start) {
 
   if (BLEPeripheralManagerResource::is_advertising()) ALREADY_EXISTS;
 
-  struct ble_hs_adv_fields fields = { 0 };
+  ble_hs_adv_fields fields = { };
   if (name.length() > 0) {
     fields.name = name.address();
     fields.name_len = name.length();
