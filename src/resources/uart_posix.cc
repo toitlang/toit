@@ -171,6 +171,9 @@ class UARTResourceGroup : public ResourceGroup {
     // Disable special handling of bytes on receive. Just give the raw data.
     tty.c_iflag &= ~(IGNBRK|BRKINT|PARMRK|ISTRIP|INLCR|IGNCR|ICRNL);
 
+    // Disable software flow control.
+    tty.c_iflag &= ~(IXON|IXOFF|IXANY);
+
     // Disable any special handling for the output.
     tty.c_oflag &= ~OPOST;
     tty.c_oflag &= ~ONLCR;
