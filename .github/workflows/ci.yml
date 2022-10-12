@@ -383,7 +383,7 @@ jobs:
           tag: ${{ github.ref }}
           overwrite: true
 
-      - name: Upload ESP32C3 release firmware artifacts
+      - name: Upload ESP32-C3 release firmware artifacts
         if: (github.event_name) == 'release'
         uses: svenstaro/upload-release-action@v2
         with:
@@ -392,7 +392,7 @@ jobs:
           tag: ${{ github.ref }}
           overwrite: true
 
-      - name: Upload ESP32S3 release firmware artifacts
+      - name: Upload ESP32-S3 release firmware artifacts
         if: (github.event_name) == 'release'
         uses: svenstaro/upload-release-action@v2
         with:
