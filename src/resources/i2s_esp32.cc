@@ -173,6 +173,14 @@ PRIMITIVE(create) {
     .fixed_mclk = fixed_mclk,
     .mclk_multiple = I2S_MCLK_MULTIPLE_DEFAULT,
     .bits_per_chan = I2S_BITS_PER_CHAN_DEFAULT,
+#if SOC_I2S_SUPPORTS_TDM
+    .chan_mask = static_cast<i2s_channel_t>(0),
+    .total_chan = 0,
+    .left_align = false,
+    .big_edin = false,
+    .bit_order_msb = false,
+    .skip_msk = false,
+#endif // SOC_I2S_SUPPORTS_TDM
   };
 
   struct {

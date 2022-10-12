@@ -505,7 +505,7 @@ namespace toit {
 
 #define MODULE_GPIO(PRIMITIVE)               \
   PRIMITIVE(init, 0)                         \
-  PRIMITIVE(use, 2)                          \
+  PRIMITIVE(use, 3)                          \
   PRIMITIVE(unuse, 2)                        \
   PRIMITIVE(config, 6)                       \
   PRIMITIVE(get, 1)                          \
