@@ -24,6 +24,7 @@
 #undef BOOL
 
 #import <CoreBluetooth/CoreBluetooth.h>
+#import <cstdint>
 
 @class BLEResourceHolder;
 
@@ -90,11 +91,21 @@ class BLERemoteDeviceResource : public ServiceContainer<BLERemoteDeviceResource>
   CBPeripheral* _peripheral;
 };
 
+class DiscoverableResource {
+ public:
+  DiscoverableResource() : _returned(false) {}
+  bool is_returned() const { return _returned; }
+  void set_returned(bool returned) { _returned = returned; }
+ private:
+  bool _returned;
+};
+
+
 // Supports two use cases:
 //    - as a service on a remote device (_device is not null)
 //    - as a local exposed service (_peripheral_manager is not null)
 //      and service can be safely cast to CBMutableService
-class BLEServiceResource: public BLEResource {
+class BLEServiceResource: public BLEResource, public DiscoverableResource {
  public:
   TAG(BLEServiceResource);
 
@@ -122,7 +133,7 @@ class BLEServiceResource: public BLEResource {
   CBService* service() { return _service; }
   BLERemoteDeviceResource* device() { return _device; }
   BLEPeripheralManagerResource* peripheral_manager() { return _peripheral_manager; }
-  BLECharacteristicResource* get_or_create_characteristics_resource(CBCharacteristic* characteristic, bool can_create=false);
+  BLECharacteristicResource* get_or_create_characteristic_resource(CBCharacteristic* characteristic, bool can_create= false);
   bool deployed() const { return _deployed; }
   void set_deployed(bool deployed) { _deployed = deployed; }
  private:
@@ -145,7 +156,7 @@ class CharacteristicData: public CharacteristicDataList::Element {
   NSData* _data;
 };
 
-class BLECharacteristicResource : public BLEResource {
+class BLECharacteristicResource : public BLEResource, public DiscoverableResource {
  public:
   TAG(BLECharacteristicResource);
 
@@ -475,7 +486,7 @@ didUpdateNotificationStateForCharacteristic:(CBCharacteristic*)characteristic
  didDiscoverPeripheral:(CBPeripheral*)peripheral
      advertisementData:(NSDictionary<NSString*, id>*)advertisementData
                   RSSI:(NSNumber*)rssi {
-  auto discovered_peripheral = new toit::DiscoveredPeripheral(
+  auto discovered_peripheral = _new toit::DiscoveredPeripheral(
       peripheral,
       rssi,
       advertisementData[CBAdvertisementDataServiceUUIDsKey],
@@ -564,6 +575,7 @@ didUpdateNotificationStateForCharacteristic:(CBCharacteristic*)characteristic
     
     characteristic_resource->append_data(request.value);
     toit::HostBLEEventSource::instance()->on_event(characteristic_resource, toit::kBLEDataReceived);
+    [peripheral respondToRequest:request withResult:CBATTErrorSuccess];
   }
 }
 
@@ -606,7 +618,7 @@ BLECharacteristicResource* lookup_remote_characteristic_resource(CBPeripheral* p
   if (service == null) return null;
 
   toit::BLECharacteristicResource* characteristic_resource
-      = service->get_or_create_characteristics_resource(characteristic);
+      = service->get_or_create_characteristic_resource(characteristic);
   return characteristic_resource;
 }
 
@@ -618,7 +630,7 @@ BLECharacteristicResource* lookup_local_characteristic_resource(CBPeripheralMana
   if (service == null) return null;
 
   toit::BLECharacteristicResource* characteristic_resource
-      = service->get_or_create_characteristics_resource(characteristic);
+      = service->get_or_create_characteristic_resource(characteristic);
   return characteristic_resource;
 }
 
@@ -634,7 +646,7 @@ BLEServiceResource* ServiceContainer<T>::get_or_create_service_resource(CBServic
   return resource;
 }
 
-BLECharacteristicResource* BLEServiceResource::get_or_create_characteristics_resource(
+BLECharacteristicResource* BLEServiceResource::get_or_create_characteristic_resource(
     CBCharacteristic* characteristic,
     bool can_create) {
   BLEResourceHolder* holder = _characteristics_resource_index[[characteristic UUID]];
@@ -923,13 +935,20 @@ PRIMITIVE(discover_services_result) {
   ARGS(BLERemoteDeviceResource, device);
 
   NSArray<CBService*>* services = [device->peripheral() services];
+  int count = 0;
+  BLEServiceResource* service_resources[([services count])];
+  for (int i = 0; i < [services count]; i++) {
+    BLEServiceResource* service_resource = device->get_or_create_service_resource(services[i], true);
+    if (service_resource->is_returned()) continue;
+    service_resources[count++] = service_resource;
+  }
 
-  Array* array = process->object_heap()->allocate_array(
-      static_cast<int>([services count]),
-      process->program()->null_object());
+  Array* array = process->object_heap()->allocate_array(count, process->program()->null_object());
   if (array == null) ALLOCATION_FAILED;
 
-  for (int i = 0; i < [services count]; i++) {
+  for (int i = 0; i < count; i++) {
+    BLEServiceResource* service_resource = service_resources[i];
+
     String* uuid_str = process->allocate_string([[services[i].UUID UUIDString] UTF8String]);
     if (uuid_str == null) ALLOCATION_FAILED;
     
@@ -938,18 +957,15 @@ PRIMITIVE(discover_services_result) {
 
     ByteArray* proxy = process->object_heap()->allocate_proxy();
     if (proxy == null) ALLOCATION_FAILED;
+    proxy->set_external_address(service_resource);
 
     service_info->at_put(0, uuid_str);
     service_info->at_put(1, proxy);
     array->at_put(i, service_info);
   }
 
-  // Second loop to do heap allocations, this way there is no need to do clean up on ALLOCATION_FAILED
-  for (int i = 0; i < [services count]; i++) {
-    BLEServiceResource* service_resource = device->get_or_create_service_resource(services[i], true);
-    auto proxy = reinterpret_cast<ByteArray*>(reinterpret_cast<Array*>(array->at(i))->at(1));
-    proxy->set_external_address(service_resource);
-  }
+  // Second loop to mark resources as returned, this way there is no need to do clean up on ALLOCATION_FAILED
+  for (int i = 0; i < count; i++) service_resources[i]->set_returned(true);
 
   return array;
 }
@@ -974,16 +990,23 @@ PRIMITIVE(discover_characteristics_result) {
 
   NSArray<CBCharacteristic*>* characteristics = [service->service() characteristics];
 
-  Array* array = process->object_heap()->allocate_array(
-      static_cast<int>([characteristics count]),
-      process->program()->null_object());
+  int count = 0;
+  BLECharacteristicResource* characteristic_resources[([characteristics count])];
+  for (int i = 0; i < [characteristics count]; i++) {
+    BLECharacteristicResource* characteristic_resource
+        = service->get_or_create_characteristic_resource(characteristics[i],true);
+    if (characteristic_resource->is_returned()) continue;
+    characteristic_resources[count++] = characteristic_resource;
+  }
+
+  Array* array = process->object_heap()->allocate_array(count,process->program()->null_object());
   if (!array) ALLOCATION_FAILED;
 
-  for (int i = 0; i < [characteristics count]; i++) {
+  for (int i = 0; i < count; i++) {
     String* uuid_str = process->allocate_string([[characteristics[i].UUID UUIDString] UTF8String]);
     if (uuid_str == null) ALLOCATION_FAILED;
 
-    uint16_t flags = characteristics[i].properties;
+    uint16 flags = characteristics[i].properties;
 
     Array* characteristic_data = process->object_heap()->allocate_array(
         3, process->program()->null_object());
@@ -993,18 +1016,15 @@ PRIMITIVE(discover_characteristics_result) {
 
     ByteArray* proxy = process->object_heap()->allocate_proxy();
     if (proxy == null) ALLOCATION_FAILED;
+    proxy->set_external_address(characteristic_resources[i]);
 
     characteristic_data->at_put(0, uuid_str);
     characteristic_data->at_put(1, Smi::from(flags));
     characteristic_data->at_put(2, proxy);
   }
 
-  for (int i = 0; i < [characteristics count]; i++) {
-    BLECharacteristicResource* characteristic_resource
-        = service->get_or_create_characteristics_resource(characteristics[i], true);
-    auto proxy = reinterpret_cast<ByteArray*>(reinterpret_cast<Array*>(array->at(i))->at(2));
-    proxy->set_external_address(characteristic_resource);
-  }
+  // Second loop to mark resources as returned, this way there is no need to do clean up on ALLOCATION_FAILED
+  for (int i = 0; i < count; i++) characteristic_resources[i]->set_returned(true);
 
   return array;
 }
@@ -1161,7 +1181,7 @@ PRIMITIVE(add_characteristic) {
     service.characteristics = [NSArray arrayWithObject:characteristic];
 
   BLECharacteristicResource* characteristic_resource
-      = service_resource->get_or_create_characteristics_resource(characteristic, true);
+      = service_resource->get_or_create_characteristic_resource(characteristic, true);
   proxy->set_external_address(characteristic_resource);
   return proxy;
 }

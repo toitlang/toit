@@ -158,7 +158,7 @@ class RemoteCharacteristic extends RemoteReadWriteElement_ implements Attribute:
   service/RemoteService
   uuid/BleUUID
   properties/int
-
+  discovered_descriptors/List := []
   /**
   Constructs remote characteristic from the given $service, $handle, and $definition_handle.
   */
@@ -232,11 +232,17 @@ class RemoteCharacteristic extends RemoteReadWriteElement_ implements Attribute:
       throw "BLE disconnected"
     else if state & DISCOVERY_OPERATION_FAILED_ != 0:
       throw_error_
-    return
+
+    discovered_descriptors.add_all
         List.from
             (ble_discover_descriptors_result_ resource_).map:
-              RemoteDescriptor this (BleUUID it[0]) it[1]
+                RemoteDescriptor this (BleUUID it[0]) it[1]
 
+    return discovered_descriptors
+
+
+  get_att_mtu -> int:
+    return ble_get_att_mtu_ resource_
 
 /**
 A remote service connected to a remote device through a client.
@@ -247,11 +253,12 @@ class RemoteService extends Resource_ implements Attribute:
 
   device/RemoteConnectedDevice
 
-  service_/any
+  discovered_characteristics/List := []
+
   /**
   Constructs a remote service from the given $client_, $service_id, and $handle_range_.
   */
-  constructor .device .uuid .service_:
+  constructor .device .uuid service_:
     super device.manager.adapter.resource_group_ service_
 
   /**
@@ -264,8 +271,8 @@ class RemoteService extends Resource_ implements Attribute:
   */
   discover_characteristics characteristic_uuids/List=[] -> List:
     resource_state_.clear_state CHARACTERISTIS_DISCOVERED_EVENT_
-    raw_service_uuids := characteristic_uuids.map: | uuid/BleUUID | uuid.encode_for_platform_
-    ble_discover_characteristics_ service_ (Array_.ensure raw_service_uuids)
+    raw_characteristics_uuids := characteristic_uuids.map: | uuid/BleUUID | uuid.encode_for_platform_
+    ble_discover_characteristics_ resource_ (Array_.ensure raw_characteristics_uuids)
     state := wait_for_state_with_gc_ CHARACTERISTIS_DISCOVERED_EVENT_
                                    | DISCONNECTED_EVENT_
                                    | DISCOVERY_OPERATION_FAILED_
@@ -273,12 +280,13 @@ class RemoteService extends Resource_ implements Attribute:
       throw "BLE disconnected"
     else if state & DISCOVERY_OPERATION_FAILED_ != 0:
       throw_error_
-    return
-      order_attributes_
-          characteristic_uuids
-          List.from
-              (ble_discover_characteristics_result_ service_).map:
-                RemoteCharacteristic this (BleUUID it[0]) it[1] it[2]
+
+    discovered_characteristics.add_all
+        List.from
+            (ble_discover_characteristics_result_ resource_).map:
+              RemoteCharacteristic this (BleUUID it[0]) it[1] it[2]
+
+    return order_attributes_ characteristic_uuids discovered_characteristics
 
 
 /**
@@ -290,6 +298,8 @@ class RemoteConnectedDevice extends Resource_:
   The address of the remote device the client is connected to.
   */
   address/any
+
+  discovered_services/List := []
 
   constructor .manager .address:
     device := ble_connect_ manager.resource_ address
@@ -319,12 +329,13 @@ class RemoteConnectedDevice extends Resource_:
       throw "BLE disconnected"
     else if state & DISCOVERY_OPERATION_FAILED_ != 0:
       throw_error_
-    return
-      order_attributes_
-          service_uuids
-          List.from
-              (ble_discover_services_result_ resource_).map:
-                RemoteService this (BleUUID it[0]) it[1]
+
+    discovered_services.add_all
+        List.from
+            (ble_discover_services_result_ resource_).map:
+              RemoteService this (BleUUID it[0]) it[1]
+
+    return order_attributes_ service_uuids discovered_services
 
   /**
   Disconnects from the remote device.
@@ -334,6 +345,8 @@ class RemoteConnectedDevice extends Resource_:
     resource_state_.wait_for_state DISCONNECTED_EVENT_
     close_
 
+  get_mtu -> int:
+    return ble_get_att_mtu_ resource_
 
 /**
 Defines a BLE service with characteristics.
@@ -382,7 +395,7 @@ class LocalService extends Resource_ implements Attribute:
   add_write_only_characteristic uuid/BleUUID requires_response/bool=false -> LocalCharacteristic:
     return add_characteristic
         uuid
-        --properties=requires_response?CHARACTERISTIC_PROPERTY_WRITE:CHARACTERISTIC_PROPERTY_WRITE
+        --properties=requires_response?CHARACTERISTIC_PROPERTY_WRITE:CHARACTERISTIC_PROPERTY_WRITE_WITHOUT_RESPONSE
         --permissions=CHARACTERISTIC_PERMISSION_WRITE
 
   /**
@@ -430,7 +443,7 @@ class LocalCharacteristic extends LocalReadWriteElement_ implements Attribute:
       ble_set_value_ resource_ value
 
   /**
-  Waits until a client writes a value to the characteristic. The returns the written value.
+  Waits until a client writes a value to the characteristic. The getter returns the written value.
   */
   value -> ByteArray:
     if (permissions & CHARACTERISTIC_PERMISSION_WRITE) == 0:
@@ -628,6 +641,9 @@ class Adapter:
     if not peripheral_manager_: peripheral_manager_ = PeripheralManager this
     return peripheral_manager_;
 
+  set_preferred_mtu mtu/int:
+    ble_set_preferred_mtu_ mtu
+
 // General synchronisation events
 // READY_EVENT_                     ::= 1 << 31
 
@@ -711,14 +727,16 @@ class Resource_:
         return state
 
 class RemoteReadWriteElement_ extends Resource_:
-  service_/RemoteService
+  remote_service_/RemoteService
 
-  constructor .service_ resource:
-    super service_.device.manager.adapter.resource_group_ resource
+  constructor .remote_service_ resource:
+    super remote_service_.device.manager.adapter.resource_group_ resource
 
   write_ value/ByteArray with_response/bool:
+    print "[ble] with_response=$with_response"
     while true:
-      service_.device.resource_state_.clear_state READY_TO_SEND_WITHOUT_RESPONSE_EVENT_
+      remote_service_.device.resource_state_.clear_state READY_TO_SEND_WITHOUT_RESPONSE_EVENT_
+      resource_state_.clear_state VALUE_WRITE_FAILED_EVENT_ | VALUE_WRITE_SUCCEEDED_EVENT_
       result :=
         ble_write_value_
             resource_
@@ -730,7 +748,7 @@ class RemoteReadWriteElement_ extends Resource_:
         if state & VALUE_WRITE_FAILED_EVENT_ != 0: throw_error_
         return
       if result == 2: // Write without response, needs to wait for device ready
-        service_.device.resource_state_.wait_for_state READY_TO_SEND_WITHOUT_RESPONSE_EVENT_
+        remote_service_.device.resource_state_.wait_for_state READY_TO_SEND_WITHOUT_RESPONSE_EVENT_
 
   request_read_:
     resource_state_.clear_state VALUE_DATA_READY_EVENT_

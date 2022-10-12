@@ -31,6 +31,7 @@ main:
   peripheral_manager.start_advertise
     AdvertisementData
         --name="Toit heart rate demo"
+    --connection_mode=platform==PLATFORM_MACOS?BLE_CONNECT_MODE_NONE:BLE_CONNECT_MODE_UNDIRECTIONAL
 
   task::
     simulated_heart_rate := 60
