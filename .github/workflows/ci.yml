@@ -51,7 +51,7 @@ jobs:
           fi
         shell: bash
 
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       # Anything in the debug dir will be uploaded as artifact.
       - name: Setup debug dir
@@ -233,7 +233,7 @@ jobs:
           echo success > ${{ steps.constants.outputs.external_result }}
 
       - name: Store external test result
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: ${{ steps.constants.outputs.external_result_name }}
           path: ${{ steps.constants.outputs.external_result }}
@@ -258,7 +258,7 @@ jobs:
       - name: Upload debug artifacts
         if: always()
         continue-on-error: true
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: debug
           path: ${{ steps.constants.outputs.debug_root_dir }}
@@ -266,7 +266,7 @@ jobs:
 
       - name: Upload artifacts
         if: matrix.shard == 1
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: ${{ runner.os }}-build
           path: build/${{ steps.constants.outputs.artifact }}
@@ -287,7 +287,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - name: Fetch tags
         # The github checkout is shallow and doesn't have tags.
@@ -373,7 +373,7 @@ jobs:
           gzip --to-stdout build/esp32s3/firmware.envelope > build/firmware-esp32s3.gz
 
       - name: Upload firmware artifacts
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: firmwares
           path: |
@@ -419,7 +419,7 @@ jobs:
           echo ::set-output name=raspberry_pi_artifact::toit-rpi.tar.gz
         shell: bash
 
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - name: Fetch tags
         # The github checkout is shallow and doesn't have tags.
@@ -521,7 +521,7 @@ jobs:
           tar -czf build/${{ steps.constants.outputs.raspberry_pi_artifact }} -C ./build/raspberry_pi -h --exclude toit/bin/mbedtls toit
 
       - name: Upload Raspberry Pi artifacts
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: ${{ runner.os }}-build
           path: build/${{ steps.constants.outputs.raspberry_pi_artifact }}
