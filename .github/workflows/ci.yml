@@ -70,6 +70,7 @@ jobs:
           cd third_party/esp-idf
           git submodule update --init .
           git submodule update --init components/mbedtls
+          git submodule update --init components/esptool_py
 
       # Use Go 1.17
       - name: Switch to Go 1.17
@@ -152,12 +153,18 @@ jobs:
           sudo tar -czf apt-cacher-ng/cache.tar.gz -C /var/cache/apt-cacher-ng .
           sudo chown $(whoami) apt-cacher-ng/cache.tar.gz
 
+      - uses: actions/setup-python@v4
+        if: matrix.shard == 1
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
       - name: Setup compilation env
         shell: bash
         run: |
-          echo "IDF_PATH=${{ github.workspace }}/third_party/esp-idf" >> $GITHUB_ENV
-          echo "CCACHE_DIR=${{ github.workspace }}/.ccache" >> $GITHUB_ENV
-          echo "CCACHE_BASEDIR=${{ github.workspace }}" >> $GITHUB_ENV
+          echo 'IDF_PATH=${{ github.workspace }}/third_party/esp-idf' >> $GITHUB_ENV
+          echo 'CCACHE_DIR=${{ github.workspace }}/.ccache' >> $GITHUB_ENV
+          echo 'CCACHE_BASEDIR=${{ github.workspace }}' >> $GITHUB_ENV
           echo "CCACHE_COMPRESS=true" >> $GITHUB_ENV
           echo "CCACHE_COMPRESSLEVEL=6" >> $GITHUB_ENV
           echo "CCACHE_MAXSIZE=400M" >> $GITHUB_ENV
@@ -172,6 +179,13 @@ jobs:
           if [ "$RUNNER_OS" == "Linux" ]; then
             make CROSS_ARCH=host32 BUILD_TYPE=Debug all-cross
           fi
+
+      - name: Build esptool
+        shell: bash
+        if: matrix.shard == 1
+        run: |
+          pip install -r $IDF_PATH/requirements.txt
+          make esptool-no-env
 
       # Test.
       - name: Test
