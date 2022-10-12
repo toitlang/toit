@@ -28,7 +28,7 @@
 #include "../event_sources/system_esp32.h"
 
 
-#ifdef CONFIG_IDF_TARGET_ESP32C3
+#if CONFIG_IDF_TARGET_ESP32C3 || CONFIG_IDF_TARGET_ESP32S2
     #define UART_PORT UART_NUM_1
 #else
     #define UART_PORT UART_NUM_2
@@ -43,7 +43,7 @@ const int kErrorState = 1 << 1;
 
 ResourcePool<uart_port_t, kInvalidUARTPort> uart_ports(
   // UART_NUM_0 is reserved serial communication (stdout).
-#ifndef CONFIG_IDF_TARGET_ESP32C3
+#if !defined(CONFIG_IDF_TARGET_ESP32C3) && !defined(CONFIG_IDF_TARGET_ESP32S2)
   UART_NUM_2,
 #endif
   UART_NUM_1

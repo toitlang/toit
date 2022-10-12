@@ -38,7 +38,7 @@ const int kErrorState = 1 << 2;
 
 ResourcePool<i2s_port_t, kInvalidPort> i2s_ports(
     I2S_NUM_0
-#ifndef CONFIG_IDF_TARGET_ESP32C3
+#if !defined(CONFIG_IDF_TARGET_ESP32C3) && !defined(CONFIG_IDF_TARGET_ESP32S2)
     , I2S_NUM_1
 #endif
 );
