@@ -13,13 +13,6 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
-
-// TODO:
-//   malloc failures in callbacks
-//      fail code ble_malloc_error
-//      toit code calls primitive ble_gc
-//      toit code retries operation
-
 #include "../top.h"
 
 #if defined(TOIT_FREERTOS) && CONFIG_BT_ENABLED
@@ -194,7 +187,6 @@ class BLEReadWriteElement : public BLEErrorCapableResource {
   uint16* ptr_handle() { return &_handle; }
   virtual BLEServiceResource* service() = 0;
   void set_mbuf_received(os_mbuf* mbuf)  {
-    Locker locker(BLEResourceGroup::instance_access_mutex());
     if (_mbuf_received == null)  {
       _mbuf_received = mbuf;
     } else if (mbuf == null) {
@@ -206,7 +198,6 @@ class BLEReadWriteElement : public BLEErrorCapableResource {
   };
 
   os_mbuf* mbuf_received() {
-    Locker locker(BLEResourceGroup::instance_access_mutex());
     return _mbuf_received;
   }
 
@@ -337,6 +328,13 @@ class BLECharacteristicResource :
   bool update_subscription_status(uint8_t indicate, uint8_t notify, uint16_t conn_handle);
   SubscriptionList& subscriptions() { return _subscriptions; }
 
+  void make_deletable() override {
+    while (!_descriptors.is_empty()) {
+      group()->unregister_resource(_descriptors.remove_first());
+    }
+    BLEResource::make_deletable();
+  }
+
   static int on_write_response(uint16_t conn_handle,
                                const ble_gatt_error* error,
                                ble_gatt_attr* attr,
@@ -366,6 +364,7 @@ class BLECharacteristicResource :
   SubscriptionList _subscriptions;
 };
 
+// Resources are already in two lists, so we add the arbitrary N template argument to distinguish from those two
 typedef DoubleLinkedList<BLEServiceResource> ServiceResourceList;
 class BLERemoteDeviceResource;
 class BLEPeripheralManagerResource;
@@ -403,12 +402,13 @@ class BLEServiceResource:
   BLECharacteristicResource* get_or_create_characteristics_resource(
       ble_uuid_any_t uuid, uint8 properties, uint16 def_handle,
       uint16 value_handle, bool can_create=false);
-//
-//  BLEServerCharacteristicResource* add_characteristic(ble_uuid_any_t uuid, int type, os_mbuf* value, Mutex* mutex) {
-//    BLEServerCharacteristicResource* characteristic = _new BLEServerCharacteristicResource(resource_group(), this, uuid, type, value, mutex);
-//    if (characteristic != null) _characteristics.prepend(characteristic);
-//    return characteristic;
-//  }
+
+  void make_deletable() override {
+    while (!_characteristics.is_empty()) {
+      group()->unregister_resource(_characteristics.remove_first());
+    }
+    BLEResource::make_deletable();
+  }
 
   ble_uuid_any_t& uuid() { return _uuid; }
   ble_uuid_t* ptr_uuid() { return &_uuid.u; }
@@ -513,6 +513,12 @@ class ServiceContainer : public BLEErrorCapableResource {
   ServiceContainer(BLEResourceGroup* group, Kind kind)
       : BLEErrorCapableResource(group, kind) {}
 
+  void make_deletable() override {
+    clear_services();
+    BLEResource::make_deletable();
+  }
+
+
   virtual T* type() = 0;
   BLEServiceResource* get_or_create_service_resource(ble_uuid_any_t uuid, uint16 start, uint16 end, bool can_create=false);
   ServiceResourceList& services() { return _services; }
@@ -529,7 +535,9 @@ class BLEPeripheralManagerResource : public ServiceContainer<BLEPeripheralManage
  public:
   TAG(BLEPeripheralManagerResource);
   explicit BLEPeripheralManagerResource(BLEResourceGroup* group)
-  : ServiceContainer(group, PERIPHERAL_MANAGER) {}
+  : ServiceContainer(group, PERIPHERAL_MANAGER)
+  , _advertising_params({})
+  , _advertising_started(false) {}
 
   ~BLEPeripheralManagerResource() override {
     if (is_advertising()) {
@@ -539,12 +547,21 @@ class BLEPeripheralManagerResource : public ServiceContainer<BLEPeripheralManage
 
   BLEPeripheralManagerResource* type() override { return this; }
 
+  bool advertising_started() const { return _advertising_started; }
+  void set_advertising_started(bool advertising_started)  { _advertising_started = advertising_started; }
+
+  ble_gap_adv_params& advertising_params() { return _advertising_params; }
+
   static int on_gap(struct ble_gap_event *event, void *arg) {
     return unvoid_cast<BLEPeripheralManagerResource*>(arg)->_on_gap(event);
   }
   static bool is_advertising() { return ble_gap_adv_active(); }
+
+
  private:
   int _on_gap(struct ble_gap_event *event);
+  ble_gap_adv_params _advertising_params;
+  bool _advertising_started;
 };
 
 class BLERemoteDeviceResource : public ServiceContainer<BLERemoteDeviceResource> {
@@ -578,16 +595,15 @@ class BLERemoteDeviceResource : public ServiceContainer<BLERemoteDeviceResource>
   uint16 _handle;
 };
 
-Object* nimble_errror_code_to_string(Process* process, int error_code) {
+Object* nimble_error_code_to_string(Process* process, int error_code, bool host) {
   static const size_t BUFFER_LEN = 400;
   char buffer[BUFFER_LEN];
   switch (error_code) { // NOLINT(hicpp-multiway-paths-covered)
     case NO_CCCD_FOUND_FOR_CHARACTERISTIC:
-      snprintf(buffer, BUFFER_LEN,"No CCCD found for characteristic");
       break;
     default:
-      const char* gist = "https://gist.github.com/mikkeldamsgaard/";
-      snprintf(buffer, BUFFER_LEN, "NimBLE error: 0x%04x. See %s", error_code, gist);
+      const char* gist = "https://gist.github.com/mikkeldamsgaard/0857ce6a8b073a52d6f07973a441ad54";
+      snprintf(buffer, BUFFER_LEN, "NimBLE error, Type: %s, error code: 0z%02x. See %s", host?"host":"client", error_code%0x100, gist);
       break;
   }
   String* str = process->allocate_string(buffer, static_cast<int>(strlen(buffer)));
@@ -596,7 +612,7 @@ Object* nimble_errror_code_to_string(Process* process, int error_code) {
 }
 
 Object* nimle_stack_error(Process* process, int error_code) {
-  return nimble_errror_code_to_string(process, error_code);
+  return nimble_error_code_to_string(process, error_code, false);
 }
 
 
@@ -619,21 +635,6 @@ static ble_uuid_any_t uuid_from_blob(Blob& blob) {
       uuid.u.type = BLE_UUID_TYPE_128;
       memcpy_reverse(uuid.u128.value, blob.address(), 16);
   }
-//  if (memcmp(kBluetoothBaseUUID+4, blob.address()+4, 12) == 0) {
-//    // Check if it's 16 or 32 bytes.
-//    if (memcmp(kBluetoothBaseUUID, blob.address(), 2) == 0) {
-//      uuid.u.type = BLE_UUID_TYPE_16;
-//      uint16 value = *reinterpret_cast<const uint16*>(blob.address() + 2);
-//      uuid.u16.value = __builtin_bswap16(value);
-//    } else {
-//      uuid.u.type = BLE_UUID_TYPE_32;
-//      uint32 value = *reinterpret_cast<const uint32*>(blob.address());
-//      uuid.u32.value = __builtin_bswap32(value);
-//    }
-//  } else {
-//    uuid.u.type = BLE_UUID_TYPE_128;
-//    memcpy_reverse(uuid.u128.value, blob.address(), 16);
-//  }
   return uuid;
 }
 
@@ -693,83 +694,6 @@ static Object* convert_mbuf_to_heap_object(Process* process, const os_mbuf* mbuf
 
 
 uint32_t BLEResourceGroup::on_event(Resource* resource, word data, uint32_t state) {
-//  struct ble_gap_event* event = reinterpret_cast<struct ble_gap_event*>(data);
-//
-//  if (event == null) {
-//    return state | kBLEStarted;
-//  }
-//
-//  switch (event->type) {
-//    case BLE_GAP_EVENT_ADV_COMPLETE:
-//      state |= kBLECompleted;
-//      break;
-//
-//    case BLE_GAP_EVENT_DISC: {
-//      DiscoveredPeripheral* discovery = _new DiscoveredPeripheral();
-//      if (!discovery) {
-//        break;
-//      }
-//
-//      if (!discovery->init(event->disc)) {
-//        delete discovery;
-//        break;
-//      }
-//
-//      {
-//        Locker locker(_mutex);
-//        _discoveries.append(discovery);
-//      }
-//
-//      state |= kBLEDiscovery;
-//      break;
-//    }
-//
-//    case BLE_GAP_EVENT_DISC_COMPLETE:
-//      state |= kBLECompleted;
-//      break;
-//
-//    case BLE_GAP_EVENT_CONNECT: {
-//      if (event->connect.status == 0) {
-//        auto ble_resource = resource->as<BLEResource*>();
-//
-//        // Success.
-//        if (ble_resource->kind() == BLEResource::GATT) {
-//          Locker locker(_mutex);
-//          GATTResource* gatt = ble_resource->as<GATTResource*>();
-//          ASSERT(gatt->handle() == kInvalidHandle);
-//          gatt->set_handle(event->connect.conn_handle);
-//        }
-//        state &= ~kBLEDisconnected;
-//        state |= kBLEConnected;
-//      } else {
-//        state |= kBLEConnectFailed;
-//      }
-//      break;
-//    }
-//
-//    case BLE_GAP_EVENT_SUBSCRIBE:
-//      if (_server_config != null) {
-//        _server_config->set_subscription_status(event->subscribe.attr_handle, event->subscribe.conn_handle,
-//                                                event->subscribe.cur_indicate, event->subscribe.cur_notify);
-//      }
-//      break;
-//    case BLE_GAP_EVENT_DISCONNECT:
-//      auto ble_resource = resource->as<BLEResource*>();
-//      if (ble_resource->kind() == BLEResource::GATT) {
-//        Locker locker(_mutex);
-//        GATTResource* gatt = ble_resource->as<GATTResource*>();
-//        ASSERT(gatt->handle() != kInvalidHandle);
-//        gatt->set_handle(kInvalidHandle);
-//        if (static_cast<ResourceList::Element*>(gatt)->is_not_linked()) {
-//          delete gatt;
-//        }
-//      }
-//      if (_server_config != null) {
-//        state &= ~kBLEConnected;
-//        state |= kBLEDisconnected;
-//      }
-//      break;
-//  }
   USE(resource);
   state |= data;
   return state;
@@ -786,7 +710,6 @@ ServiceContainer<T>::get_or_create_service_resource(ble_uuid_any_t uuid, uint16 
     if (uuid_equals(uuid, service->uuid())) return service;
   }
   if (!can_create) return null;
-//  printf("Service add: %d - %d\n", start, end);
   auto service = _new BLEServiceResource(group(),type(), uuid, start,end);
   if (!service) return null;
   group()->register_resource(service);
@@ -835,7 +758,6 @@ BLEServiceResource::_on_characteristic_discovered(const struct ble_gatt_error* e
 BLECharacteristicResource* BLEServiceResource::get_or_create_characteristics_resource(
     ble_uuid_any_t uuid, uint8 properties, uint16 def_handle,
     uint16 value_handle, bool can_create) {
-//  printf("Char add: %d - %d\n", def_handle, value_handle);
   for (const auto &item: _characteristics) {
     if (uuid_equals(uuid, item->uuid())) return item;
   }
@@ -888,13 +810,14 @@ void BLECentralManagerResource::_on_discovery(ble_gap_event* event) {
 }
 
 void BLERemoteDeviceResource::_on_event(ble_gap_event* event) {
-  printf("GAP event: %x\n",event->type);
   switch (event->type) {
     case BLE_GAP_EVENT_CONNECT:
       if (event->connect.status == 0) {
         ASSERT(handle() == kInvalidHandle)
         set_handle(event->connect.conn_handle);
         BLEEventSource::instance()->on_event(this, kBLEConnected);
+        // TODO(mikkel): Expose this as a primitive
+        ble_gattc_exchange_mtu(event->connect.conn_handle, null, null);
       } else {
         BLEEventSource::instance()->on_event(this, kBLEConnectFailed);
       }
@@ -909,9 +832,11 @@ void BLERemoteDeviceResource::_on_event(ble_gap_event* event) {
       for (const auto &service: services()) {
         for (const auto &characteristic: service->characteristics()) {
           if (characteristic->handle() == event->notify_rx.attr_handle) {
-            characteristic->set_mbuf_received(event->notify_rx.om);
+            {
+              Locker locker(BLEResourceGroup::instance_access_mutex());
+              characteristic->set_mbuf_received(event->notify_rx.om);
+            }
             event->notify_rx.om = null;
-            printf("event: kBLEValueDataReady\n");
             BLEEventSource::instance()->on_event(characteristic, kBLEValueDataReady);
             return;
           }
@@ -964,20 +889,20 @@ BLEDescriptorResource* BLECharacteristicResource::get_or_create_descriptor(
   return descriptor;
 }
 
-
-
-
 void BLEReadWriteElement::_on_attribute_read(
     const struct ble_gatt_error* error,
     struct ble_gatt_attr* attr) {
   switch (error->status) {
-    case 0:
-      set_mbuf_received(attr->om);
+    case 0: {
+      {
+        Locker locker(BLEResourceGroup::instance_access_mutex());
+        set_mbuf_received(attr->om);
+      }
       // Take ownership of the buffer.
       attr->om = null;
       BLEEventSource::instance()->on_event(this, kBLEValueDataReady);
       break;
-
+    }
     case BLE_HS_EDONE:
       break;
 
@@ -998,7 +923,10 @@ int BLEReadWriteElement::_on_access(ble_gatt_access_ctxt* ctxt) {
       break;
     case BLE_GATT_ACCESS_OP_WRITE_CHR:
     case BLE_GATT_ACCESS_OP_WRITE_DSC:
-      set_mbuf_received(ctxt->om);
+      {
+        Locker locker(BLEResourceGroup::instance_access_mutex());
+        set_mbuf_received(ctxt->om);
+      }
       ctxt->om = null;
       BLEEventSource::instance()->on_event(this, kBLEDataReceived);
       break;
@@ -1013,7 +941,6 @@ void BLECharacteristicResource::_on_write_response(
     const struct ble_gatt_error* error,
     struct ble_gatt_attr* attr) {
   USE(attr);
-  printf("write_response: status: %d\n",error->status & 0xFF);
   switch (error->status & 0xFF) {
     case 0:
     case BLE_HS_EDONE:
@@ -1047,7 +974,6 @@ BLEServiceResource::_on_descriptor_discovered(const struct ble_gatt_error* error
                                                      uint16_t chr_val_handle, bool called_from_notify) {
   switch (error->status) {
     case 0: {
-      //printf("[dsc] dsc->handle=%d\n", dsc->handle);
       // Find the characteristic
       BLECharacteristicResource* characteristic = null;
 
@@ -1055,14 +981,12 @@ BLEServiceResource::_on_descriptor_discovered(const struct ble_gatt_error* error
         if (!characteristic) {
           if (dsc->handle <= start_handle()) return;
         } else {
-          //printf("dsc: %d, c_handle: %d, cur:def_handle: %d, cur:val_handle: %d\n", dsc->handle, characteristic->handle(), current->definition_handle(), current->handle());
           if (characteristic->definition_handle() <= dsc->handle && dsc->handle <= characteristic->handle()) return;
           if (characteristic->handle() < dsc->handle && dsc->handle < current->definition_handle()) break;
         }
         characteristic = current;
       }
       if (dsc->handle <= characteristic->handle()) return;
-      //printf("Adding description %d to char.handle %d\n", dsc->handle, characteristic->handle());
       auto descriptor = characteristic->get_or_create_descriptor(dsc->uuid, dsc->handle,0, true);
       if (!descriptor) {
         set_malloc_error(true);
@@ -1072,7 +996,6 @@ BLEServiceResource::_on_descriptor_discovered(const struct ble_gatt_error* error
 
     case BLE_HS_EDONE:
       if (has_malloc_error()) {
-        printf("[dsc] [ble] has_malloc_error in done\n");
         BLEEventSource::instance()->on_event(this, kBLEMallocFailed);
       } else {
         set_characteristics_discovered(true);
@@ -1125,12 +1048,26 @@ bool BLECharacteristicResource::update_subscription_status(uint8_t indicate, uin
 }
 
 int BLEPeripheralManagerResource::_on_gap(struct ble_gap_event* event) {
-  printf("GAP EVENT: %d\n", event->type);
   switch (event->type) {
+    case BLE_GAP_EVENT_CONNECT:
+      if (advertising_started()) {
+        // NimBLE stops advertising on connection event. To keep the library consistent
+        // with other platforms the advertising is restarted
+        int err = ble_gap_adv_start(
+            BLE_OWN_ADDR_PUBLIC,
+            null,
+            BLE_HS_FOREVER,
+            &advertising_params(),
+            BLEPeripheralManagerResource::on_gap,
+            this);
+        if (err != BLE_ERR_SUCCESS) {
+          ESP_LOGW("BLE", "Could not restart advertising: err=%d",err);
+        }
+      }
+      break;
     case BLE_GAP_EVENT_ADV_COMPLETE:
-      // TODO Add stopped event
+      // TODO(mikkel) Add stopped event
       //BLEEventSource::instance()->on_event(this, kBLEAdvertiseStopped);
-      printf("Advertise stopped !!\n");
       break;
     case BLE_GAP_EVENT_SUBSCRIBE: {
       for (auto service: services()) {
@@ -1465,7 +1402,6 @@ PRIMITIVE(disconnect) {
 
 PRIMITIVE(release_resource) {
   ARGS(Resource, resource)
-  //printf("Resource %x, resource group: %x\n", resource, resource->resource_group());
   resource->resource_group()->unregister_resource(resource);
 
   return process->program()->null_object();
@@ -1661,6 +1597,7 @@ PRIMITIVE(request_read) {
 
 PRIMITIVE(get_value) {
   ARGS(Resource, resource)
+  Locker locker(BLEResourceGroup::instance_access_mutex());
 
   auto element = reinterpret_cast<BLEReadWriteElement*>(resource);
 
@@ -1687,7 +1624,6 @@ PRIMITIVE(write_value) {
 
   int err;
   if (with_response) {
-    printf("With response!!\n");
     err = ble_gattc_write_long(
         element->service()->device()->handle(),
         element->handle(),
@@ -1696,7 +1632,6 @@ PRIMITIVE(write_value) {
         BLECharacteristicResource::on_write_response,
         element);
   } else {
-    printf("Without response!!\n");
     err = ble_gattc_write_no_rsp(
         element->service()->device()->handle(),
         element->handle(),
@@ -1711,10 +1646,8 @@ PRIMITIVE(write_value) {
   return Smi::from(with_response ? 1 : 0);
 }
 
-
 /* Enables or disables notifications/indications for the characteristic value
- * of <i>characteristic</i>. If <i>characteristic</i>
-* allows both, notifications will be used.
+ * of $characteristic. If $characteristic allows both, notifications will be used.
 */
 PRIMITIVE(set_characteristic_notify) {
   ARGS(BLECharacteristicResource, characteristic, bool, enable)
@@ -1750,7 +1683,6 @@ PRIMITIVE(set_characteristic_notify) {
 PRIMITIVE(advertise_start) {
   ARGS(BLEPeripheralManagerResource, peripheral_manager, Blob, name, Array, service_classes,
        Blob, manufacturing_data, int, interval_us, int, conn_mode)
-
 
   if (BLEPeripheralManagerResource::is_advertising()) ALREADY_EXISTS;
 
@@ -1796,22 +1728,24 @@ PRIMITIVE(advertise_start) {
     return nimle_stack_error(process,err);
   }
 
-  struct ble_gap_adv_params adv_params = { };
-  adv_params.conn_mode = conn_mode;
+  peripheral_manager->advertising_params().conn_mode = conn_mode;
 
   // TODO(anders): Be able to tune this.
-  adv_params.disc_mode = BLE_GAP_DISC_MODE_GEN;
-  adv_params.itvl_min = adv_params.itvl_max = interval_us / 625;
+  peripheral_manager->advertising_params().disc_mode = BLE_GAP_DISC_MODE_GEN;
+  peripheral_manager->advertising_params().itvl_min =
+      peripheral_manager->advertising_params().itvl_max =
+          interval_us / 625;
   err = ble_gap_adv_start(
       BLE_OWN_ADDR_PUBLIC,
       null,
       BLE_HS_FOREVER,
-      &adv_params,
+      &peripheral_manager->advertising_params(),
       BLEPeripheralManagerResource::on_gap,
       peripheral_manager);
   if (err != BLE_ERR_SUCCESS) {
     return nimle_stack_error(process,err);
   }
+  peripheral_manager->set_advertising_started(true);
   // nimnle does not provide a advertise started gap event, so we just simulate the event
   // from the primitive
   BLEEventSource::instance()->on_event(peripheral_manager, kBLEAdvertiseStartSucceeded);
@@ -1819,12 +1753,14 @@ PRIMITIVE(advertise_start) {
 }
 
 PRIMITIVE(advertise_stop) {
+  ARGS(BLEPeripheralManagerResource, peripheral_manager);
   if (BLEPeripheralManagerResource::is_advertising()) {
     int err = ble_gap_adv_stop();
     if (err != BLE_ERR_SUCCESS) {
       return nimle_stack_error(process,err);
     }
   }
+  peripheral_manager->set_advertising_started(false);
 
   return process->program()->null_object();
 }
@@ -1976,7 +1912,6 @@ PRIMITIVE(deploy_service) {
     characteristic_idx++;
   }
 
-
   auto gatt_services = static_cast<ble_gatt_svc_def*>(calloc(2, sizeof(ble_gatt_svc_def)));
   if (!gatt_services) {
     clean_up_gatt_svr_chars(gatt_svr_chars,characteristic_cnt);
@@ -2070,7 +2005,6 @@ PRIMITIVE(notify_characteristics_value) {
   return process->program()->null_object();
 }
 
-
 PRIMITIVE(get_att_mtu) {
   ARGS(Resource, resource)
 
@@ -2098,7 +2032,6 @@ PRIMITIVE(get_att_mtu) {
       INVALID_ARGUMENT;
   }
   return Smi::from(mtu);
-
 }
 
 PRIMITIVE(set_preferred_mtu) {
@@ -2117,10 +2050,9 @@ PRIMITIVE(set_preferred_mtu) {
 PRIMITIVE(get_error) {
   ARGS(Resource, resource)
   auto err_resource = reinterpret_cast<BLEErrorCapableResource*>(resource);
-  printf("get err: %i\n",err_resource->error() );
   if (err_resource->error() == 0) OTHER_ERROR;
 
-  return nimble_errror_code_to_string(process, err_resource->error());
+  return nimble_error_code_to_string(process, err_resource->error(), true);
 }
 
 PRIMITIVE(gc) {

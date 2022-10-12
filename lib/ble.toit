@@ -172,7 +172,6 @@ class RemoteCharacteristic extends RemoteReadWriteElement_ implements Attribute:
     if properties & CHARACTERISTIC_PROPERTY_READ == 0:
       throw "Characteristic does not support reads"
 
-    print_ "read value: props: $(%04x properties)"
     return request_read_
 
   notification -> ByteArray?:
@@ -182,12 +181,10 @@ class RemoteCharacteristic extends RemoteReadWriteElement_ implements Attribute:
     while true:
       resource_state_.clear_state VALUE_DATA_READY_EVENT_
       buf := ble_get_value_ resource_
-      print "notification: buf=$buf"
       if buf: return buf
       state := resource_state_.wait_for_state VALUE_DATA_READY_EVENT_ | VALUE_DATA_READ_FAILED_EVENT_ | DISCONNECTED_EVENT_
       if state & VALUE_DATA_READ_FAILED_EVENT_ != 0: throw_error_
       if state & DISCONNECTED_EVENT_ != 0: throw "Disconnected"
-      print "VALUE_DATA_READY_EVENT_"
 
   /**
   Writes the value of the characteristic on the remote device.
@@ -644,49 +641,43 @@ class Adapter:
   set_preferred_mtu mtu/int:
     ble_set_preferred_mtu_ mtu
 
-// General synchronisation events
-// READY_EVENT_                     ::= 1 << 31
-
 // General events
-MALLOC_FAILED_                   ::= 1 << 22
+MALLOC_FAILED_                        ::= 1 << 22
 
 // Manager lifecycle events
-STARTED_EVENT_                   ::= 1 << 0
+STARTED_EVENT_                        ::= 1 << 0
 
 // Central Manager Events
-COMPLETED_EVENT_                 ::= 1 << 1
-DISCOVERY_EVENT_                 ::= 1 << 2
-DISCOVERY_OPERATION_FAILED_      ::= 1 << 21
+COMPLETED_EVENT_                      ::= 1 << 1
+DISCOVERY_EVENT_                      ::= 1 << 2
+DISCOVERY_OPERATION_FAILED_           ::= 1 << 21
 
 // Remote Device Events
-CONNECTED_EVENT_                 ::= 1 << 3
-CONNECT_FAILED_EVENT_            ::= 1 << 4
-DISCONNECTED_EVENT_              ::= 1 << 5
-SERVICES_DISCOVERED_EVENT_       ::= 1 << 6
-READY_TO_SEND_WITHOUT_RESPONSE_EVENT_ ::= 1<<13
+CONNECTED_EVENT_                      ::= 1 << 3
+CONNECT_FAILED_EVENT_                 ::= 1 << 4
+DISCONNECTED_EVENT_                   ::= 1 << 5
+SERVICES_DISCOVERED_EVENT_            ::= 1 << 6
+READY_TO_SEND_WITHOUT_RESPONSE_EVENT_ ::= 1 << 13
 
 // Remote Service events
-CHARACTERISTIS_DISCOVERED_EVENT_ ::= 1 << 7
+CHARACTERISTIS_DISCOVERED_EVENT_      ::= 1 << 7
 
 // Remote Characteristics events
-VALUE_DATA_READY_EVENT_          ::= 1 << 9
-VALUE_DATA_READ_FAILED_EVENT_    ::= 1 << 10
-DESCRIPTORS_DISCOVERED_EVENT_    ::= 1 << 8
-VALUE_WRITE_SUCCEEDED_EVENT_     ::= 1 << 11
-VALUE_WRITE_FAILED_EVENT_        ::= 1 << 12
-SUBSCRIPTION_OPERATION_SUCCEEDED_::= 1 << 14
-SUBSCRIPTION_OPERATION_FAILED_   ::= 1 << 15
+VALUE_DATA_READY_EVENT_               ::= 1 << 9
+VALUE_DATA_READ_FAILED_EVENT_         ::= 1 << 10
+DESCRIPTORS_DISCOVERED_EVENT_         ::= 1 << 8
+VALUE_WRITE_SUCCEEDED_EVENT_          ::= 1 << 11
+VALUE_WRITE_FAILED_EVENT_             ::= 1 << 12
+SUBSCRIPTION_OPERATION_SUCCEEDED_     ::= 1 << 14
+SUBSCRIPTION_OPERATION_FAILED_        ::= 1 << 15
 
-// PERIPHERAL_MANAGER_EVENT
-ADVERTISE_START_SUCEEDED_EVENT_         ::= 1 << 16
-ADVERTISE_START_FAILED_EVENT_    ::= 1 << 17
-SERVICE_ADD_SUCCEEDED_EVENT_     ::= 1 << 18
-SERVICE_ADD_FAILED_EVENT_        ::= 1 << 19
-DATA_RECEIVED_EVENT_             ::= 1 << 20
+// Peripheral Manager events
+ADVERTISE_START_SUCEEDED_EVENT_       ::= 1 << 16
+ADVERTISE_START_FAILED_EVENT_         ::= 1 << 17
+SERVICE_ADD_SUCCEEDED_EVENT_          ::= 1 << 18
+SERVICE_ADD_FAILED_EVENT_             ::= 1 << 19
+DATA_RECEIVED_EVENT_                  ::= 1 << 20
 
-//wait_for_ready_ resource_state/ResourceState_:
-//  resource_state.wait_for_state READY_EVENT_
-//  resource_state.clear_state READY_EVENT_
 
 
 order_attributes_ input/List/*<BleUUID>*/ output/List/*<Attribute>*/ -> List:
@@ -703,7 +694,6 @@ class Resource_:
     resource_state_ = ResourceState_ resource_group_ resource_
     if auto_release:
       add_finalizer this ::
-        print_ "finalizer"
         this.close_
 
   close_:
@@ -733,7 +723,6 @@ class RemoteReadWriteElement_ extends Resource_:
     super remote_service_.device.manager.adapter.resource_group_ resource
 
   write_ value/ByteArray with_response/bool:
-    print "[ble] with_response=$with_response"
     while true:
       remote_service_.device.resource_state_.clear_state READY_TO_SEND_WITHOUT_RESPONSE_EVENT_
       resource_state_.clear_state VALUE_WRITE_FAILED_EVENT_ | VALUE_WRITE_SUCCEEDED_EVENT_

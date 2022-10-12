@@ -24,7 +24,6 @@
 #undef BOOL
 
 #import <CoreBluetooth/CoreBluetooth.h>
-#import <cstdint>
 
 @class BLEResourceHolder;
 
@@ -60,6 +59,9 @@ class ServiceContainer : public BLEResource {
   ~ServiceContainer() override {
     [_service_resource_index release];
   }
+
+  void make_deletable() override;
+
 
   virtual T* type() = 0;
   BLEServiceResource* get_or_create_service_resource(CBService* service, bool can_create=false);
@@ -100,7 +102,6 @@ class DiscoverableResource {
   bool _returned;
 };
 
-
 // Supports two use cases:
 //    - as a service on a remote device (_device is not null)
 //    - as a local exposed service (_peripheral_manager is not null)
@@ -129,7 +130,9 @@ class BLEServiceResource: public BLEResource, public DiscoverableResource {
     [_service release];
     [_characteristics_resource_index release];
   }
-  
+
+  void make_deletable() override;
+
   CBService* service() { return _service; }
   BLERemoteDeviceResource* device() { return _device; }
   BLEPeripheralManagerResource* peripheral_manager() { return _peripheral_manager; }
@@ -143,7 +146,6 @@ class BLEServiceResource: public BLEResource, public DiscoverableResource {
   NSMutableDictionary<CBUUID*, BLEResourceHolder*>* _characteristics_resource_index;
   bool _deployed;
 };
-
 
 class CharacteristicData;
 typedef DoubleLinkedList<CharacteristicData> CharacteristicDataList;
@@ -221,7 +223,6 @@ class BLECharacteristicResource : public BLEResource, public DiscoverableResourc
   BLEServiceResource* _service;
   NSMutableArray<CBCentral*>* _subscriptions;
 };
-
 
 class DiscoveredPeripheral;
 typedef DoubleLinkedList<DiscoveredPeripheral> DiscoveredPeripheralList;
@@ -351,7 +352,6 @@ class BLEPeripheralManagerResource : public ServiceContainer<BLEPeripheralManage
 
 BLECharacteristicResource* lookup_remote_characteristic_resource(CBPeripheral* peripheral, CBCharacteristic* characteristic);
 BLECharacteristicResource* lookup_local_characteristic_resource(CBPeripheralManager* peripheral_manager, CBCharacteristic* characteristic);
-
 }
 
 @interface TOITPeripheralDelegate : NSObject <CBPeripheralDelegate>
@@ -646,6 +646,15 @@ BLEServiceResource* ServiceContainer<T>::get_or_create_service_resource(CBServic
   return resource;
 }
 
+template<typename T>
+void ServiceContainer<T>::make_deletable() {
+  NSArray<BLEResourceHolder*>* services = [_service_resource_index allValues];
+  for (int i = 0; i < [services count]; i++) {
+    group()->unregister_resource(services[i].resource);
+  }
+  BLEResource::make_deletable();
+}
+
 BLECharacteristicResource* BLEServiceResource::get_or_create_characteristic_resource(
     CBCharacteristic* characteristic,
     bool can_create) {
@@ -659,6 +668,13 @@ BLECharacteristicResource* BLEServiceResource::get_or_create_characteristic_reso
   return resource;
 }
 
+void BLEServiceResource::make_deletable() {
+  NSArray<BLEResourceHolder*>* characteristics = [_characteristics_resource_index allValues];
+  for (int i = 0; i < [characteristics count]; i++) {
+    group()->unregister_resource(characteristics[i].resource);
+  }
+  BLEResource::make_deletable();
+}
 
 NSString* ns_string_from_blob(Blob &blob) {
   return [[NSString alloc]
@@ -721,7 +737,6 @@ PRIMITIVE(init) {
 
   return proxy;
 }
-
 
 PRIMITIVE(create_central_manager) {
   ARGS(BLEResourceGroup, group);
@@ -1111,7 +1126,6 @@ PRIMITIVE(advertise_start) {
   if (name.length() > 0) {
     data[CBAdvertisementDataLocalNameKey] = ns_string_from_blob(name);
   }
-
 
   if (service_classes->length() > 0) {
     Error* err;
