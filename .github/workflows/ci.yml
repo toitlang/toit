@@ -426,12 +426,13 @@ jobs:
         run: |
           git fetch --tags
 
-      # We only need the tpkg and mbedtls submodule for building.
-      - name: Initialize mbedtls submodule
+      # We only need a subset of all submodules for building.
+      - name: Initialize submodules
         run: |
           cd third_party/esp-idf
           git submodule update --init .
           git submodule update --init components/mbedtls
+          git submodule update --init components/esptool_py
 
       # Use Go 1.17
       - name: Switch to Go 1.17
@@ -491,6 +492,19 @@ jobs:
           make CROSS_ARCH=win64 all-cross
           make pi
 
+      - name: Build esptool
+        uses: pguyot/arm-runner-action@v2
+        with:
+          cpu: cortex-a7
+          base_image: "raspios_lite:2022-01-28"
+          bind_mount_repository: true
+          commands: |
+              apt-get update
+              apt-get install -y python3-pip git
+              python --version
+              pip install --user -e third_party/esp-idf/components/esptool_py/esptool
+              make HOST=raspberry_pi esptool-no-env
+
       - uses: pguyot/arm-runner-action@v2
         with:
           cpu: cortex-a7
@@ -501,6 +515,7 @@ jobs:
               build/raspberry_pi/sdk/bin/toit.pkg version
               build/raspberry_pi/sdk/bin/toit.run --version
               build/raspberry_pi/sdk/tools/firmware --help
+              build/raspberry_pi/sdk/tools/esptool -h
 
       - uses: pguyot/arm-runner-action@v2
         with:
@@ -512,6 +527,7 @@ jobs:
               build/raspberry_pi/sdk/bin/toit.pkg version
               build/raspberry_pi/sdk/bin/toit.run --version
               build/raspberry_pi/sdk/tools/firmware --help
+              build/raspberry_pi/sdk/tools/esptool -h
 
       - name: Pack Raspberry Pi artifacts
         shell: bash
