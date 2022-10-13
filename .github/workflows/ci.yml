@@ -527,7 +527,6 @@ jobs:
               build/raspberry_pi/sdk/bin/toit.pkg version
               build/raspberry_pi/sdk/bin/toit.run --version
               build/raspberry_pi/sdk/tools/firmware --help
-              build/raspberry_pi/sdk/tools/esptool -h
 
       - name: Pack Raspberry Pi artifacts
         shell: bash
