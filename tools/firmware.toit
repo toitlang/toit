@@ -424,7 +424,7 @@ extract parsed/cli.Parsed -> none:
 
   content/ByteArray? := null
   if part == "firmware.bin":
-    content = extract_binary envelope
+    content = extract_binary envelope --config_encoded=(ByteArray 0)
   else:
     content = envelope.entries.get AR_ENTRY_FILE_MAP[part]
   if not content:
@@ -443,9 +443,12 @@ extract_new parsed/cli.Parsed -> none:
     write_file output_path: it.write (envelope.entries.get AR_ENTRY_FIRMWARE_ELF)
     return
 
-  config := null
-  if config_path: config = json.decode (read_file config_path)
-  firmware_bin := extract_binary envelope --config=config
+  config_encoded := ByteArray 0
+  if config_path:
+    config_encoded = read_file config_path
+    exception := catch: ubjson.decode config_encoded
+    if exception: config_encoded = ubjson.encode (json.decode config_encoded)
+  firmware_bin := extract_binary envelope --config_encoded=config_encoded
 
   if parsed["format"] == "binary":
     write_file output_path: it.write firmware_bin
@@ -477,6 +480,7 @@ flash_cmd -> cli.Command:
 
 flash parsed/cli.Parsed -> none:
   input_path := parsed[OPTION_ENVELOPE]
+  config_path := parsed["config"]
   port := parsed["port"]
   baud := parsed["baud"]
   envelope := Envelope.load input_path
@@ -485,11 +489,13 @@ flash parsed/cli.Parsed -> none:
   if stat[file.ST_TYPE] != file.CHARACTER_DEVICE:
     throw "cannot open port '$port'"
 
-  config := null
-  config_path := parsed["config"]
-  if config_path: config = json.decode (read_file config_path)
+  config_encoded := ByteArray 0
+  if config_path:
+    config_encoded = read_file config_path
+    exception := catch: ubjson.decode config_encoded
+    if exception: config_encoded = ubjson.encode (json.decode config_encoded)
 
-  firmware_bin := extract_binary envelope --config=config
+  firmware_bin := extract_binary envelope --config_encoded=config_encoded
   binary := Esp32Binary firmware_bin
 
   list := program_name.split "/"
@@ -532,7 +538,7 @@ flash parsed/cli.Parsed -> none:
   finally:
     directory.rmdir --recursive tmp
 
-extract_binary envelope/Envelope --config/any=null -> ByteArray:
+extract_binary envelope/Envelope --config_encoded/ByteArray -> ByteArray:
   containers ::= []
   entries := envelope.entries
   properties := entries.get AR_ENTRY_PROPERTIES
@@ -568,7 +574,7 @@ extract_binary envelope/Envelope --config/any=null -> ByteArray:
       --binary_input=firmware_bin
       --containers=containers
       --system_uuid=system_uuid
-      --config=config
+      --config_encoded=config_encoded
 
 update_envelope parsed/cli.Parsed [block] -> none:
   input_path := parsed[OPTION_ENVELOPE]
@@ -585,7 +591,7 @@ extract_binary_content -> ByteArray
     --binary_input/ByteArray
     --containers/List
     --system_uuid/uuid.Uuid
-    --config/any:
+    --config_encoded/ByteArray:
   binary := Esp32Binary binary_input
   image_count := containers.size
   image_table := ByteArray 8 * image_count
@@ -641,11 +647,10 @@ extract_binary_content -> ByteArray
 
   // Now add the device-specific configurations at the end.
   used_size := extension.size
-  encoded_configuration := ubjson.encode config
-  configuration_size := ByteArray 4
-  LITTLE_ENDIAN.put_uint32 configuration_size 0 encoded_configuration.size
-  extension += configuration_size
-  extension += encoded_configuration
+  config_size := ByteArray 4
+  LITTLE_ENDIAN.put_uint32 config_size 0 config_encoded.size
+  extension += config_size
+  extension += config_encoded
 
   // This is a pretty serious padding up. We do it to guarantee
   // that segments that follow this one do not change their
