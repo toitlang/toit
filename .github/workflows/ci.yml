@@ -516,7 +516,7 @@ jobs:
         uses: pguyot/arm-runner-action@v2
         with:
           cpu: cortex-a7
-          base_image: "raspios_lite:2022-01-28"
+          base_image: "raspios_lite_arm64:2022-01-28"
           bind_mount_repository: true
           commands: |
               apt-get update
@@ -538,7 +538,7 @@ jobs:
               build/raspberry_pi/sdk/tools/firmware --help
               build/raspberry_pi/sdk/tools/esptool -h
 
-      - name: Test executables 32-bit
+      - name: Test executables 64-bit
         uses: pguyot/arm-runner-action@v2
         with:
           cpu: cortex-a7
