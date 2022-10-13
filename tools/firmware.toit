@@ -36,18 +36,17 @@ import .image
 import .snapshot
 import .snapshot_to_image
 
-ENVELOPE_FORMAT_VERSION ::= 4
+ENVELOPE_FORMAT_VERSION ::= 5
 
 WORD_SIZE ::= 4
-AR_ENTRY_FIRMWARE_BIN    ::= "\$firmware.bin"
-AR_ENTRY_FIRMWARE_ELF    ::= "\$firmware.elf"
-AR_ENTRY_BOOTLOADER_BIN  ::= "\$bootloader.bin"
-AR_ENTRY_PARTITIONS_BIN  ::= "\$partitions.bin"
-AR_ENTRY_PARTITIONS_CSV  ::= "\$partitions.csv"
-AR_ENTRY_OTADATA_BIN     ::= "\$otadata.bin"
-AR_ENTRY_FLASHING_JSON   ::= "\$flashing.json"
-AR_ENTRY_SYSTEM_SNAPSHOT ::= "\$system.snap"
-AR_ENTRY_PROPERTIES      ::= "\$properties"
+AR_ENTRY_FIRMWARE_BIN   ::= "\$firmware.bin"
+AR_ENTRY_FIRMWARE_ELF   ::= "\$firmware.elf"
+AR_ENTRY_BOOTLOADER_BIN ::= "\$bootloader.bin"
+AR_ENTRY_PARTITIONS_BIN ::= "\$partitions.bin"
+AR_ENTRY_PARTITIONS_CSV ::= "\$partitions.csv"
+AR_ENTRY_OTADATA_BIN    ::= "\$otadata.bin"
+AR_ENTRY_FLASHING_JSON  ::= "\$flashing.json"
+AR_ENTRY_PROPERTIES     ::= "\$properties"
 
 AR_ENTRY_FILE_MAP ::= {
   "firmware.bin"    : AR_ENTRY_FIRMWARE_BIN,
@@ -57,8 +56,9 @@ AR_ENTRY_FILE_MAP ::= {
   "partitions.csv"  : AR_ENTRY_PARTITIONS_CSV,
   "otadata.bin"     : AR_ENTRY_OTADATA_BIN,
   "flashing.json"   : AR_ENTRY_FLASHING_JSON,
-  "system.snapshot" : AR_ENTRY_SYSTEM_SNAPSHOT,
 }
+
+SYSTEM_CONTAINER_NAME ::= "system"
 
 OPTION_ENVELOPE     ::= "envelope"
 OPTION_OUTPUT       ::= "output"
@@ -126,7 +126,11 @@ create_cmd -> cli.Command:
         --type="file"
         --required=(key == "firmware.bin")
   return cli.Command "create"
-      --options=options.values
+      --options=options.values + [
+        cli.OptionString "system.snapshot"
+            --type="file"
+            --required,
+      ]
       --run=:: create_envelope it
 
 create_envelope parsed/cli.Parsed -> none:
@@ -137,7 +141,11 @@ create_envelope parsed/cli.Parsed -> none:
   binary := Esp32Binary firmware_bin_data
   binary.remove_drom_extension firmware_bin_data
 
-  entries := { AR_ENTRY_FIRMWARE_BIN: binary.bits }
+  entries := {
+    AR_ENTRY_FIRMWARE_BIN: binary.bits,
+    SYSTEM_CONTAINER_NAME: read_file parsed["system.snapshot"]
+  }
+
   AR_ENTRY_FILE_MAP.do: | key/string value/string |
     if key == "firmware.bin": continue.do
     filename := parsed[key]
@@ -194,6 +202,7 @@ container_cmd -> cli.Command:
 
   cmd.add
       cli.Command "list"
+          --options=[ option_output ]
           --run=:: container_list it
 
   return cmd
@@ -273,6 +282,7 @@ container_uninstall parsed/cli.Parsed -> none:
     envelope.entries.remove "+$name"
 
 container_list parsed/cli.Parsed -> none:
+  output_path := parsed[OPTION_OUTPUT]
   input_path := parsed[OPTION_ENVELOPE]
   entries := (Envelope.load input_path).entries
   output := {:}
@@ -290,7 +300,13 @@ container_list parsed/cli.Parsed -> none:
     assets := entries.get "+$name"
     if assets: entry["assets"] = { "size": assets.size }
     output[name] = entry
-  print (json.stringify output)
+  output_string := json.stringify output
+  if output_path:
+    write_file output_path:
+      it.write output_string
+      it.write "\n"
+  else:
+    print output_string
 
 property_cmd -> cli.Command:
   cmd := cli.Command "property"
@@ -524,15 +540,18 @@ extract_binary envelope/Envelope --config/any=null -> ByteArray:
       --if_present=: json.decode it
       --if_absent=: {:}
 
-  system := entries.get AR_ENTRY_SYSTEM_SNAPSHOT
+  // Handle the system container first. It needs to be the
+  // first container we encode.
+  system := entries.get SYSTEM_CONTAINER_NAME
   if system:
+    // TODO(kasper): Take any other system assets into account.
     assets_encoded := properties.get "wifi"
         --if_present=: assets.encode { "wifi": tison.encode it }
         --if_absent=: null
-    containers.add (ContainerEntry "system" system --assets=assets_encoded)
+    containers.add (ContainerEntry SYSTEM_CONTAINER_NAME system --assets=assets_encoded)
 
   entries.do: | name/string content/ByteArray |
-    if not (name.starts_with "\$" or name.starts_with "+"):
+    if not (name == SYSTEM_CONTAINER_NAME or name.starts_with "\$" or name.starts_with "+"):
       assets_encoded := entries.get "+$name"
       containers.add (ContainerEntry name content --assets=assets_encoded)
 
