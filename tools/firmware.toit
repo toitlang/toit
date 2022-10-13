@@ -626,6 +626,12 @@ class Esp32C3AddressMap implements AddressMap:
   DROM_MAP_START := 0x3c000000
   DROM_MAP_END   := 0x3c800000
 
+class Esp32S2AddressMap implements AddressMap:
+  IROM_MAP_START := 0x40080000
+  IROM_MAP_END   := 0x40800000
+  DROM_MAP_START := 0x3f000000
+  DROM_MAP_END   := 0x3ff80000
+
 class Esp32S3AddressMap implements AddressMap:
   IROM_MAP_START := 0x42000000
   IROM_MAP_END   := 0x44000000
@@ -652,6 +658,7 @@ class Esp32Binary:
   static CHIP_ADDRESS_MAPS_ := {
       ESP_CHIP_ID_ESP32 : Esp32AddressMap,
       ESP_CHIP_ID_ESP32C3 : Esp32C3AddressMap,
+      ESP_CHIP_ID_ESP32S2 : Esp32S2AddressMap,
       ESP_CHIP_ID_ESP32S3 : Esp32S3AddressMap
   }
   header_/ByteArray

@@ -40,6 +40,9 @@ ResourcePool<spi_host_device_t, kInvalidHostDevice> spi_host_devices(
 #ifdef CONFIG_IDF_TARGET_ESP32S3
   SPI2_HOST,
   SPI3_HOST
+#elif CONFIG_IDF_TARGET_ESP32S2
+  SPI2_HOST,
+  SPI3_HOST
 #elif CONFIG_IDF_TARGET_ESP32C3
   SPI3_HOST
 #else
@@ -96,6 +99,8 @@ PRIMITIVE(init) {
 #ifdef CONFIG_IDF_TARGET_ESP32C3
     host_device = SPI3_HOST;
 #elif CONFIG_IDF_TARGET_ESP32S3
+    host_device = SPI3_HOST;
+#elif CONFIG_IDF_TARGET_ESP32S2
     host_device = SPI3_HOST;
 #else
     host_device = VSPI_HOST;
