@@ -67,7 +67,6 @@ class Unlocker {
   Locker& _locker;
 };
 
-
 // Abstraction for running stuff in parallel.
 class Thread {
  public:
@@ -242,12 +241,6 @@ class OS {
   static word get_heap_tag();
   static void heap_summary_report(int max_pages, const char* marker);
 
-  // Unique 16-bytes uuid of the running image.
-  static const uint8* image_uuid();
-
-  // Bundled programs table.
-  static const uint32* image_bundled_programs_table();
-
   static const char* getenv(const char* variable);
 
 #ifdef TOIT_FREERTOS
@@ -296,8 +289,8 @@ class HeapTagScope {
 // Weak symbols for the custom heap.  These are only present on non-embedded
 // platforms if we are using LD_PRELOAD to replace the malloc implementation.
 extern "C" {
-typedef bool heap_caps_iterate_callback(void*, void*, void*, size_t);
-__attribute__ ((weak)) extern void heap_caps_iterate_tagged_memory_areas(void*, void*, heap_caps_iterate_callback, int);
-__attribute__ ((weak)) extern void heap_caps_set_option(int, void*);
+  typedef bool heap_caps_iterate_callback(void*, void*, void*, size_t);
+  void heap_caps_iterate_tagged_memory_areas(void*, void*, heap_caps_iterate_callback, int) __attribute__ ((weak));
+  void heap_caps_set_option(int, void*) __attribute__ ((weak));
 }
 #endif

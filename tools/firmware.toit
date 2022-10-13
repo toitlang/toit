@@ -763,7 +763,7 @@ interface AddressMap:
   drom_map_start -> int
   drom_map_end -> int
 
-// See <<chiptype>/include/soc/soc.h for these constants
+// See <<chiptype>/include/soc/soc.h for these constants.
 class Esp32AddressMap implements AddressMap:
   irom_map_start ::= 0x400d0000
   irom_map_end   ::= 0x40400000

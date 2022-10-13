@@ -18,6 +18,7 @@
 #include "primitive.h"
 #include "process.h"
 #include "flash_registry.h"
+#include "embedded_data.h"
 #include "scheduler.h"
 #include "vm.h"
 
@@ -37,7 +38,7 @@ PRIMITIVE(spawn) {
   if (allocation->type() != PROGRAM_TYPE) INVALID_ARGUMENT;
 
   Program* program = static_cast<Program*>(allocation);
-  if (!program->is_valid(offset, OS::image_uuid())) OUT_OF_BOUNDS;
+  if (!program->is_valid(offset, EmbeddedData::uuid())) OUT_OF_BOUNDS;
 
   unsigned message_size = 0;
   { MessageEncoder size_encoder(process, null);
@@ -91,15 +92,8 @@ PRIMITIVE(kill) {
 
 PRIMITIVE(bundled_images) {
 #ifdef TOIT_FREERTOS
-  const uword* header = OS::image_bundled_programs_table();
-  if (header[0] != 0x98dfc301) return process->program()->empty_array();
-  uword checksum = 0;
-  for (int i = 0; i < 5; i++) checksum ^= header[i];
-  if (checksum != 0xb3147ee9) return process->program()->empty_array();
-
-  const uword* table = &header[5];
-  int length = header[3];
-
+  const EmbeddedDataExtension* extension = EmbeddedData::extension();
+  int length = extension->images();
   Array* result = process->object_heap()->allocate_array(length * 2, Smi::from(0));
   if (!result) ALLOCATION_FAILED;
   for (int i = 0; i < length; i++) {
@@ -108,10 +102,11 @@ PRIMITIVE(bundled_images) {
     // involved are large. We tag the entry so we can tell the difference
     // between flash offsets in the data/programs partition and offsets
     // of images bundled with the VM.
-    uword diff = table[i * 2] - reinterpret_cast<uword>(header);
-    ASSERT(Utils::is_aligned(diff, 4));
-    result->at_put(i * 2, Smi::from(diff + 1));
-    result->at_put(i * 2 + 1, Smi::from(table[i * 2 + 1]));
+    EmbeddedImage image = extension->image(i);
+    uword offset = extension->offset(image.program);
+    ASSERT(Utils::is_aligned(offset, 4));
+    result->at_put(i * 2, Smi::from(offset + 1));
+    result->at_put(i * 2 + 1, Smi::from(image.size));
   }
   return result;
 #else
@@ -129,21 +124,14 @@ PRIMITIVE(assets) {
   return process->object_heap()->allocate_external_byte_array(size, bytes, false, false);
 }
 
+// TODO(kasper): Rename this.
 PRIMITIVE(configuration) {
 #ifdef TOIT_FREERTOS
-  const uint32* header = OS::image_bundled_programs_table();
-  if (header[0] != 0x98dfc301) return process->object_heap()->allocate_internal_byte_array(0);
-  uint32 checksum = 0;
-  for (int i = 0; i < 5; i++) checksum ^= header[i];
-  if (checksum != 0xb3147ee9) return process->object_heap()->allocate_internal_byte_array(0);
-
-  uint32 offset = header[1];
-  uint32 max_size = header[2];
-  if (max_size < sizeof(uint32)) return process->object_heap()->allocate_internal_byte_array(0);
-  uword address = reinterpret_cast<uword>(header) + offset;
-  uint32 size = *reinterpret_cast<uint32*>(address);
-  uint8* bytes = reinterpret_cast<uint8*>(address) + sizeof(uint32);
-  return process->object_heap()->allocate_external_byte_array(Utils::min(size, max_size), bytes, false, false);
+  const EmbeddedDataExtension* extension = EmbeddedData::extension();
+  List<uint8> config = extension->config();
+  return config.is_empty()
+      ? process->object_heap()->allocate_internal_byte_array(0)
+      : process->object_heap()->allocate_external_byte_array(config.length(), config.data(), false, false);
 #else
   return process->object_heap()->allocate_internal_byte_array(0);
 #endif

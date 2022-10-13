@@ -750,33 +750,7 @@ void OS::set_heap_tag(word tag) { }
 word OS::get_heap_tag() { return 0; }
 void OS::heap_summary_report(int max_pages, const char* marker) { }
 
-
 #endif // def TOIT_CMPCTMALLOC
-
-class ImageData {
- public:
-  // The data between image_magic1 and image_magic2 must be less than 256
-  // bytes, otherwise the patching utility will not detect it. Search for
-  // 0x7017da7a. If the format is changed, the code in tools/firmware.toit
-  // must be adapted and the ENVELOPE_FORMAT_VERSION bumped.
-  uint32 image_magic1 = 0x7017da7a;  // "toitdata"
-  uint32 image_bundled_programs_table = 0;
-  uint8 image_uuid[UUID_SIZE] = { 0, };
-  uint32 image_magic2 = 0x00c09f19;  // "config"
-} __attribute__((packed));
-
-// Note, you can't declare this const because then the compiler thinks it can
-// just const propagate, but we are going to patch this before we flash it, so
-// we don't want that.  But it's still const because it goes in a flash section.
-__attribute__((section(".rodata_custom_desc"))) ImageData toit_image_data;
-
-const uint8* OS::image_uuid() {
-  return toit_image_data.image_uuid;
-}
-
-const uint32* OS::image_bundled_programs_table() {
-  return reinterpret_cast<const uword*>(toit_image_data.image_bundled_programs_table);
-}
 
 const char* OS::getenv(const char* variable) {
   // Unimplemented on purpose.
