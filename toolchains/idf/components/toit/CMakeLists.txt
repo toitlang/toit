@@ -118,6 +118,8 @@ function(toit_postprocess)
                     "--firmware.elf=${EXECUTABLE_NAME}.elf"
                     "--partitions.bin=partition_table/partition-table.bin"
                     "--partitions.csv=${CMAKE_HOME_DIRECTORY}/partitions.csv"
+                    "--otadata.bin=ota_data_initial.bin"
+                    "--flashing.json=flasher_args.json"
                     "--system.snapshot=${SYSTEM_SNAPSHOT}"
             COMMAND echo envelope: created
     )
@@ -171,7 +173,7 @@ function(toit_postprocess)
             POST_BUILD
             COMMAND "${FIRMWARE_BIN}"
                     "--envelope=firmware.envelope"
-                    "extract" "--firmware.bin" "-o" "${EXECUTABLE_NAME}-firmware.bin"
+                    "extract" "--format=binary" "-o" "${EXECUTABLE_NAME}-firmware.bin"
             COMMAND echo envelope: firmware extracted
     )
 

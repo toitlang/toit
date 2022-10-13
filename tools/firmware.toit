@@ -29,6 +29,8 @@ import system.assets
 import ar
 import cli
 import host.file
+import host.pipe
+import host.directory
 
 import .image
 import .snapshot
@@ -42,6 +44,8 @@ AR_ENTRY_FIRMWARE_ELF    ::= "\$firmware.elf"
 AR_ENTRY_BOOTLOADER_BIN  ::= "\$bootloader.bin"
 AR_ENTRY_PARTITIONS_BIN  ::= "\$partitions.bin"
 AR_ENTRY_PARTITIONS_CSV  ::= "\$partitions.csv"
+AR_ENTRY_OTADATA_BIN     ::= "\$otadata.bin"
+AR_ENTRY_FLASHING_JSON   ::= "\$flashing.json"
 AR_ENTRY_SYSTEM_SNAPSHOT ::= "\$system.snap"
 AR_ENTRY_PROPERTIES      ::= "\$properties"
 
@@ -51,6 +55,8 @@ AR_ENTRY_FILE_MAP ::= {
   "bootloader.bin"  : AR_ENTRY_BOOTLOADER_BIN,
   "partitions.bin"  : AR_ENTRY_PARTITIONS_BIN,
   "partitions.csv"  : AR_ENTRY_PARTITIONS_CSV,
+  "otadata.bin"     : AR_ENTRY_OTADATA_BIN,
+  "flashing.json"   : AR_ENTRY_FLASHING_JSON,
   "system.snapshot" : AR_ENTRY_SYSTEM_SNAPSHOT,
 }
 
@@ -373,6 +379,11 @@ extract_cmd -> cli.Command:
             --short_help="Set the output file."
             --type="file"
             --required,
+        cli.OptionString "config"
+            --type="file",
+        cli.OptionEnum "format" ["binary", "elf", "ubjson"]
+            --short_help="Set the output format."
+            --default="binary",
       ] + flags.values
       --run=:: extract it
 
@@ -381,10 +392,15 @@ extract parsed/cli.Parsed -> none:
   AR_ENTRY_FILE_MAP.do: | key/string |
     if parsed[key]: parts.add key
   if parts.size == 0:
-    throw "cannot extract: no part specified"
+    extract_new parsed
+    return
   else if parts.size > 1:
     throw "cannot extract: multiple parts specified ($(parts.join ", "))"
   part := parts.first
+
+  print "WARNING: extracting a specific part is deprecated"
+  if part == "firmware.bin":
+    print "WARNING: use 'tools/firmware -e ... extract --format=binary -o firmware.bin"
 
   input_path := parsed[OPTION_ENVELOPE]
   output_path := parsed[OPTION_OUTPUT]
@@ -399,28 +415,107 @@ extract parsed/cli.Parsed -> none:
     throw "cannot extract: no such part ($part)"
   write_file output_path: it.write content
 
+extract_new parsed/cli.Parsed -> none:
+  input_path := parsed[OPTION_ENVELOPE]
+  output_path := parsed[OPTION_OUTPUT]
+  envelope := Envelope.load input_path
+  config_path := parsed["config"]
+
+  if parsed["format"] == "elf":
+    if config_path:
+      print "WARNING: config is ignored when extracting elf file"
+    write_file output_path: it.write (envelope.entries.get AR_ENTRY_FIRMWARE_ELF)
+    return
+
+  config := null
+  if config_path: config = json.decode (read_file config_path)
+  firmware_bin := extract_binary envelope --config=config
+
+  if parsed["format"] == "binary":
+    write_file output_path: it.write firmware_bin
+    return
+
+  binary := Esp32Binary firmware_bin
+  parts := binary.parts firmware_bin
+  print parts
+  output := {
+    "parts"   : parts,
+    "binary"  : firmware_bin,
+  }
+  write_file output_path: it.write (ubjson.encode output)
+
 flash_cmd -> cli.Command:
   return cli.Command "flash"
       --options=[
         cli.OptionString "config"
+            --type="file",
+        cli.OptionString "port"
             --type="file"
+            --short_name="p"
+            --required,
+        cli.OptionInt "baud"
+            --default=921600,
+        cli.OptionEnum "chip" ["esp32"]
+            --default="esp32"
       ]
       --run=:: flash it
 
 flash parsed/cli.Parsed -> none:
   input_path := parsed[OPTION_ENVELOPE]
+  port := parsed["port"]
+  baud := parsed["baud"]
   envelope := Envelope.load input_path
+
+  stat := file.stat port
+  if stat[file.ST_TYPE] != file.CHARACTER_DEVICE:
+    throw "cannot open port '$port'"
 
   config := null
   config_path := parsed["config"]
   if config_path: config = json.decode (read_file config_path)
 
-  content := extract_binary envelope --config=config
-  binary := Esp32Binary content
-  (binary.segments content).do:
-    begin := it["offset"]
-    end := begin + it["size"]
-    print "$begin -> $end"
+  firmware_bin := extract_binary envelope --config=config
+  binary := Esp32Binary firmware_bin
+
+  list := program_name.split "/"
+  dir := list[..list.size - 1].join "/"
+  esptool/List? := null
+  if program_name.ends_with ".toit":
+    esptool_py := "$dir/../third_party/esp-idf/components/esptool_py/esptool/esptool.py"
+    if not file.is_file esptool_py:
+      throw "cannot find esptool in '$esptool_py'"
+    esptool = ["python", esptool_py ]
+  else:
+    esptool = ["$dir/esptool"]
+    if not file.is_file esptool[0]:
+      throw "cannot find esptool in '$esptool[0]'"
+
+  flashing := envelope.entries.get AR_ENTRY_FLASHING_JSON
+      --if_present=: json.decode it
+      --if_absent=: throw "cannot flash without 'flashing.json'"
+
+  tmp := directory.mkdtemp "/tmp/toit-flash-"
+  try:
+    write_file "$tmp/firmware.bin": it.write firmware_bin
+    write_file "$tmp/bootloader.bin": it.write (envelope.entries.get AR_ENTRY_BOOTLOADER_BIN)
+    write_file "$tmp/partitions.bin": it.write (envelope.entries.get AR_ENTRY_PARTITIONS_BIN)
+    write_file "$tmp/otadata.bin": it.write (envelope.entries.get AR_ENTRY_OTADATA_BIN)
+
+    code := pipe.run_program esptool + [
+      "--port", port,
+      "--baud", "$baud",
+      "--chip", parsed["chip"],
+      "--before", flashing["extra_esptool_args"]["before"],
+      "--after",  flashing["extra_esptool_args"]["after"]
+    ] + [ "write_flash" ] + flashing["write_flash_args"] + [
+      flashing["bootloader"]["offset"],      "$tmp/bootloader.bin",
+      flashing["partition-table"]["offset"], "$tmp/partitions.bin",
+      flashing["otadata"]["offset"],         "$tmp/otadata.bin",
+      flashing["app"]["offset"],             "$tmp/firmware.bin"
+    ]
+    if code != 0: exit 1
+  finally:
+    directory.rmdir --recursive tmp
 
 extract_binary envelope/Envelope --config/any=null -> ByteArray:
   containers ::= []
@@ -756,42 +851,36 @@ class Esp32Binary:
       result.replace sha_checksum_offset sha_checksum
     return result
 
-  segments bits/ByteArray -> List:
-    result := []
+  parts bits/ByteArray -> List:
     drom := find_last_drom_segment_
-    drom_index := segments_.index_of drom
-    prefix := HEADER_SIZE_
-    if drom_index > 0:
-      result.add (collect_segments_ segments_[..drom_index] --prefix=prefix)
-      prefix = 0
-    if drom:
-      extension_size := compute_drom_extension_size_ bits drom
-      if extension_size:
-        offset := drom.offset - prefix
-        // ...
-        unextended_size := extension_size[0]
-        result.add { "offset": offset, "size": unextended_size + prefix }
-        offset += unextended_size + prefix
-        prefix = 0
-        // ...
-        extension_used := extension_size[1]
-        result.add { "offset": offset, "size": extension_used }
-        offset += extension_used
-        // Add the non-patchable marker.
-        extension_free := extension_size[2]
-        result.add { "offset": offset, "size": extension_free  }
-        print "extension size = $(extension_used + extension_free)"
-      else:
-        result.add (collect_segments_ segments_[drom_index..drom_index + 1] --prefix=prefix)
-        prefix = 0
-    result.add (collect_segments_ segments_[drom_index + 1..] --prefix=prefix)
-    // TODO(kasper): Deal with the checksums bits.
+    if not drom: throw "cannot find drom segment"
+    result := []
+    extension_size := compute_drom_extension_size_ drom
+    // The segments before the last DROM segment is part of the
+    // original binary, so we combine them into one part.
+    unextended_size := extension_size[0] + Esp32BinarySegment.HEADER_SIZE_
+    offset := collect_part_ result "binary" --from=0 --to=(drom.offset + unextended_size)
+    // The container images are stored in the beginning of the DROM segment extension.
+    extension_used := extension_size[1]
+    offset =  collect_part_ result "images" --from=offset --size=extension_used
+    // The config part is the free space in the DROM segment extension.
+    extension_free := extension_size[2]
+    offset = collect_part_ result "config" --from=offset --size=extension_free
+    // The segments that follow the last DROM segment are part of the
+    // original binary, so we combine them into one part.
+    size_no_checksum := bits.size - 1
+    if hash_appended: size_no_checksum -= 32
+    offset = collect_part_ result "binary" --from=drom.end --to=size_no_checksum
+    // Always add the checksum as a separate part.
+    collect_part_ result "checksum" --from=offset --to=bits.size
     return result
 
-  collect_segments_ segments/List --prefix/int:
-    offset := segments.first.offset - prefix
-    end := segments.last.end
-    return { "offset": offset, "size": end - offset }
+  static collect_part_ parts/List type/string --from/int --size/int -> int:
+    return collect_part_ parts type --from=from --to=(from + size)
+
+  static collect_part_ parts/List type/string --from/int --to/int -> int:
+    parts.add { "type": type, "from": from, "to": to }
+    return to
 
   hash_appended -> bool:
     return header_[HASH_APPENDED_OFFSET_] == 1
@@ -815,27 +904,24 @@ class Esp32Binary:
   remove_drom_extension bits/ByteArray -> none:
     drom := find_last_drom_segment_
     if not drom: return
-    extension_size := compute_drom_extension_size_ bits drom
+    extension_size := compute_drom_extension_size_ drom
     if not extension_size: return
     transform_drom_segment_ drom: it[..extension_size[0]]
 
-  compute_drom_extension_size_ bits/ByteArray drom/Esp32BinarySegment -> List?:
-    details_offset := find_details_offset bits
-    unextended_end_address := LITTLE_ENDIAN.uint32 bits details_offset
-    if unextended_end_address == 0: return null
-    // TODO(kasper): Verify these computations. It feels about right, because
-    // we do not map the header into virtual memory.
-    unextended_size := unextended_end_address - drom.address + Esp32BinarySegment.HEADER_SIZE_
-    extension_size := (drom.end - drom.offset) - unextended_size
+  static compute_drom_extension_size_ drom/Esp32BinarySegment -> List:
+    details_offset := find_details_offset drom.bits
+    unextended_end_address := LITTLE_ENDIAN.uint32 drom.bits details_offset
+    if unextended_end_address == 0: return [drom.size, 0, 0]
+    unextended_size := unextended_end_address - drom.address
+    extension_size := drom.size - unextended_size
     if extension_size < 5 * 4: throw "malformed drom extension (size)"
-    drom_extension_offset := drom.offset + unextended_size
-    marker := LITTLE_ENDIAN.uint32 bits drom_extension_offset
+    marker := LITTLE_ENDIAN.uint32 drom.bits unextended_size
     if marker != 0x98dfc301: throw "malformed drom extension (marker)"
     checksum := 0
-    5.repeat: checksum ^= LITTLE_ENDIAN.uint32 bits drom_extension_offset + 4 * it
+    5.repeat: checksum ^= LITTLE_ENDIAN.uint32 drom.bits unextended_size + 4 * it
     if checksum != 0xb3147ee9: throw "malformed drom extension (checksum)"
-    used := LITTLE_ENDIAN.uint32 bits drom_extension_offset + 4
-    free := LITTLE_ENDIAN.uint32 bits drom_extension_offset + 8
+    used := LITTLE_ENDIAN.uint32 drom.bits unextended_size + 4
+    free := LITTLE_ENDIAN.uint32 drom.bits unextended_size + 8
     return [unextended_size, used, free]
 
   transform_drom_segment_ drom/Esp32BinarySegment [block] -> none:
