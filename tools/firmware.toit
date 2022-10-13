@@ -453,7 +453,6 @@ extract_new parsed/cli.Parsed -> none:
 
   binary := Esp32Binary firmware_bin
   parts := binary.parts firmware_bin
-  print parts
   output := {
     "parts"   : parts,
     "binary"  : firmware_bin,

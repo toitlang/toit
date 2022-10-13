@@ -124,8 +124,8 @@ PRIMITIVE(assets) {
   return process->object_heap()->allocate_external_byte_array(size, bytes, false, false);
 }
 
-// TODO(kasper): Rename this.
-PRIMITIVE(configuration) {
+PRIMITIVE(config) {
+  PRIVILEGED;
 #ifdef TOIT_FREERTOS
   const EmbeddedDataExtension* extension = EmbeddedData::extension();
   List<uint8> config = extension->config();
