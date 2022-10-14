@@ -400,6 +400,7 @@ extract_cmd -> cli.Command:
         cli.OptionEnum "format" ["binary", "elf", "ubjson"]
             --short_help="Set the output format."
             --default="binary",
+        cli.Flag "system.snapshot"
       ] + flags.values
       --run=:: extract it
 
@@ -435,6 +436,12 @@ extract_new parsed/cli.Parsed -> none:
   input_path := parsed[OPTION_ENVELOPE]
   output_path := parsed[OPTION_OUTPUT]
   envelope := Envelope.load input_path
+
+  // TODO(kasper): Remove this legacy support.
+  if parsed["system.snapshot"]:
+    write_file output_path: it.write envelope.entries[SYSTEM_CONTAINER_NAME]
+    return
+
   config_path := parsed["config"]
 
   if parsed["format"] == "elf":

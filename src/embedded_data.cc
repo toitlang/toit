@@ -45,14 +45,19 @@ EmbeddedImage EmbeddedDataExtension::image(int n) const {
 }
 
 List<uint8> EmbeddedDataExtension::config() const {
+  // The config section is in the free area of the extension. We
+  // decode the header to find the start and size of the free area.
   const uint32* header = reinterpret_cast<const uint32*>(this);
   uint32 used = header[HEADER_INDEX_USED];
   uint32 free = header[HEADER_INDEX_FREE];
+  // The config section is supposed to start with an encoding
+  // of the size of the config. Make sure the free area is big
+  // enough for that before looking at it.
   if (free < sizeof(uint32)) return List<uint8>();
   uword address = reinterpret_cast<uword>(header) + used;
-  uint32 size = *reinterpret_cast<uint32*>(address);
+  uword size = *reinterpret_cast<uint32*>(address);
   uint8* data = reinterpret_cast<uint8*>(address + sizeof(uint32));
-  return List<uint8>(data, Utils::min(size, free));
+  return List<uint8>(data, Utils::min(size, free - sizeof(uint32)));
 }
 
 uword EmbeddedDataExtension::offset(const Program* program) const {
