@@ -240,7 +240,7 @@ PRIMITIVE(use) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;
 
-#if CONFIG_IDF_TARGET_ESP32S3
+#if CONFIG_IDF_TARGET_ESP32S3 || CONFIG_IDF_TARGET_ESP32S2
   esp_err_t err = touch_pad_config(pad);
   if (err == ESP_OK) {
     err = touch_pad_set_thresh(pad, threshold);
@@ -274,7 +274,7 @@ PRIMITIVE(read) {
   ARGS(IntResource, resource);
   touch_pad_t pad = static_cast<touch_pad_t>(resource->id());
 
-#if CONFIG_IDF_TARGET_ESP32S3
+#if CONFIG_IDF_TARGET_ESP32S3 || CONFIG_IDF_TARGET_ESP32S2
   uint32_t val;
   esp_err_t err = touch_pad_read_raw_data(pad, &val);
 #else
@@ -289,7 +289,7 @@ PRIMITIVE(get_threshold) {
   ARGS(IntResource, resource);
   touch_pad_t pad = static_cast<touch_pad_t>(resource->id());
 
-#if CONFIG_IDF_TARGET_ESP32S3
+#if CONFIG_IDF_TARGET_ESP32S3 || CONFIG_IDF_TARGET_ESP32S2
   uint32_t val;
 #else
   uint16_t val;

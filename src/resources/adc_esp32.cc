@@ -196,7 +196,7 @@ PRIMITIVE(init) {
   int chan = get_adc1_channel(pin);
   if (chan >= 0) {
     unit = ADC_UNIT_1;
-    esp_err_t err = adc1_config_width(ADC_WIDTH_BIT_12);
+    esp_err_t err = adc1_config_width(static_cast<adc_bits_width_t>(ADC_WIDTH_BIT_DEFAULT));
     if (err != ESP_OK) return Primitive::os_error(err, process);
 
     err = adc1_config_channel_atten(static_cast<adc1_channel_t>(chan), atten);
@@ -226,7 +226,8 @@ PRIMITIVE(init) {
   }
 
   const int DEFAULT_VREF = 1100;
-  esp_adc_cal_characterize(unit, atten, ADC_WIDTH_BIT_12, DEFAULT_VREF, &resource->calibration);
+  esp_adc_cal_characterize(unit, atten, static_cast<adc_bits_width_t>(ADC_WIDTH_BIT_DEFAULT),
+                           DEFAULT_VREF, &resource->calibration);
 
   proxy->set_external_address(resource);
 
@@ -246,7 +247,8 @@ PRIMITIVE(get) {
       adc_reading += adc1_get_raw(static_cast<adc1_channel_t>(resource->chan));
     } else {
       int value = 0;
-      esp_err_t err = adc2_get_raw(static_cast<adc2_channel_t>(resource->chan), ADC_WIDTH_BIT_12, &value);
+      esp_err_t err = adc2_get_raw(static_cast<adc2_channel_t>(resource->chan),
+                                   static_cast<adc_bits_width_t>(ADC_WIDTH_BIT_DEFAULT), &value);
       if (err != ESP_OK) return Primitive::os_error(err, process);
       adc_reading += value;
     }
@@ -267,7 +269,8 @@ PRIMITIVE(get_raw) {
   if (resource->unit == ADC_UNIT_1) {
     adc_reading = adc1_get_raw(static_cast<adc1_channel_t>(resource->chan));
   } else {
-    esp_err_t err = adc2_get_raw(static_cast<adc2_channel_t>(resource->chan), ADC_WIDTH_BIT_12, &adc_reading);
+    esp_err_t err = adc2_get_raw(static_cast<adc2_channel_t>(resource->chan),
+                                 static_cast<adc_bits_width_t>(ADC_WIDTH_BIT_DEFAULT), &adc_reading);
     if (err != ESP_OK) return Primitive::os_error(err, process);
   }
 

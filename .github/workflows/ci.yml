@@ -51,7 +51,7 @@ jobs:
           fi
         shell: bash
 
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       # Anything in the debug dir will be uploaded as artifact.
       - name: Setup debug dir
@@ -184,7 +184,8 @@ jobs:
         shell: bash
         if: matrix.shard == 1
         run: |
-          pip install -r $IDF_PATH/requirements.txt
+          python -m pip install --upgrade pip
+          pip install --user -e "$IDF_PATH/components/esptool_py/esptool"
           make esptool-no-env
 
       # Test.
@@ -233,7 +234,7 @@ jobs:
           echo success > ${{ steps.constants.outputs.external_result }}
 
       - name: Store external test result
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: ${{ steps.constants.outputs.external_result_name }}
           path: ${{ steps.constants.outputs.external_result }}
@@ -258,7 +259,7 @@ jobs:
       - name: Upload debug artifacts
         if: always()
         continue-on-error: true
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: debug
           path: ${{ steps.constants.outputs.debug_root_dir }}
@@ -266,7 +267,7 @@ jobs:
 
       - name: Upload artifacts
         if: matrix.shard == 1
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: ${{ runner.os }}-build
           path: build/${{ steps.constants.outputs.artifact }}
@@ -287,7 +288,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - name: Fetch tags
         # The github checkout is shallow and doesn't have tags.
@@ -363,24 +364,48 @@ jobs:
           source third_party/esp-idf/export.sh
           make esp32
           make ESP32_CHIP=esp32s3 esp32
+          make ESP32_CHIP=esp32c3 esp32
 
       - name: Pack firmware artifacts
         shell: bash
         run: |
           gzip --to-stdout build/esp32/firmware.envelope > build/firmware-esp32.gz
+          gzip --to-stdout build/esp32c3/firmware.envelope > build/firmware-esp32c3.gz
+          gzip --to-stdout build/esp32s3/firmware.envelope > build/firmware-esp32s3.gz
 
       - name: Upload firmware artifacts
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
-          name: firmware-esp32.gz
-          path: build/firmware-esp32.gz
+          name: firmwares
+          path: |
+            build/firmware-esp32.gz
+            build/firmware-esp32c3.gz
+            build/firmware-esp32s3.gz
 
-      - name: Upload release firmware artifacts
+      - name: Upload ESP32 release firmware artifacts
         if: (github.event_name) == 'release'
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: build/firmware-esp32.gz
+          tag: ${{ github.ref }}
+          overwrite: true
+
+      - name: Upload ESP32-C3 release firmware artifacts
+        if: (github.event_name) == 'release'
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: build/firmware-esp32c3.gz
+          tag: ${{ github.ref }}
+          overwrite: true
+
+      - name: Upload ESP32-S3 release firmware artifacts
+        if: (github.event_name) == 'release'
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: build/firmware-esp32s3.gz
           tag: ${{ github.ref }}
           overwrite: true
 
@@ -395,19 +420,20 @@ jobs:
           echo ::set-output name=raspberry_pi_artifact::toit-rpi.tar.gz
         shell: bash
 
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - name: Fetch tags
         # The github checkout is shallow and doesn't have tags.
         run: |
           git fetch --tags
 
-      # We only need the tpkg and mbedtls submodule for building.
-      - name: Initialize mbedtls submodule
+      # We only need a subset of all submodules for building.
+      - name: Initialize submodules
         run: |
           cd third_party/esp-idf
           git submodule update --init .
           git submodule update --init components/mbedtls
+          git submodule update --init components/esptool_py
 
       # Use Go 1.17
       - name: Switch to Go 1.17
@@ -467,6 +493,19 @@ jobs:
           make CROSS_ARCH=win64 all-cross
           make pi
 
+      - name: Build esptool
+        uses: pguyot/arm-runner-action@v2
+        with:
+          cpu: cortex-a7
+          base_image: "raspios_lite:2022-01-28"
+          bind_mount_repository: true
+          commands: |
+              apt-get update
+              apt-get install -y python3-pip git
+              python --version
+              pip install --user -e third_party/esp-idf/components/esptool_py/esptool
+              make HOST=raspberry_pi esptool-no-env
+
       - uses: pguyot/arm-runner-action@v2
         with:
           cpu: cortex-a7
@@ -477,6 +516,7 @@ jobs:
               build/raspberry_pi/sdk/bin/toit.pkg version
               build/raspberry_pi/sdk/bin/toit.run --version
               build/raspberry_pi/sdk/tools/firmware --help
+              build/raspberry_pi/sdk/tools/esptool -h
 
       - uses: pguyot/arm-runner-action@v2
         with:
@@ -497,7 +537,7 @@ jobs:
           tar -czf build/${{ steps.constants.outputs.raspberry_pi_artifact }} -C ./build/raspberry_pi -h --exclude toit/bin/mbedtls toit
 
       - name: Upload Raspberry Pi artifacts
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: ${{ runner.os }}-build
           path: build/${{ steps.constants.outputs.raspberry_pi_artifact }}

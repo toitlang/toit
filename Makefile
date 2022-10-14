@@ -116,14 +116,17 @@ version-file: build/$(HOST)/CMakeCache.txt
 	(cd build/$(HOST) && ninja build_version_file)
 
 .PHONY: esptool
-esptool:
+esptool: check-env
 	if [ "$(shell command -v xtensa-esp32-elf-g++)" = "" ]; then source '$(IDF_PATH)/export.sh'; fi; \
 	    $(MAKE) esptool-no-env
 
 .PHONY: esptool-no-env
-esptool-no-env: check-env
+esptool-no-env:
 	pip install -U 'pyinstaller>=4.8'
-	pyinstaller --onefile --distpath build/$(HOST)/sdk/tools --workpath build/$(HOST)/esptool '$(IDF_PATH)/components/esptool_py/esptool/esptool.py'
+	pyinstaller --onefile --distpath build/$(HOST)/sdk/tools \
+			--workpath build/$(HOST)/esptool \
+			--specpath build/$(HOST)/esptool \
+			'$(IDF_PATH)/components/esptool_py/esptool/esptool.py'
 
 # CROSS-COMPILE
 .PHONY: all-cross
