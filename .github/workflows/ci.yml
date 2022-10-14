@@ -418,6 +418,7 @@ jobs:
         id: constants
         run: |
           echo ::set-output name=raspberry_pi_artifact::toit-rpi.tar.gz
+          echo ::set-output name=raspberry_pi64_artifact::toit-rpi64.tar.gz
         shell: bash
 
       - uses: actions/checkout@v3
@@ -493,7 +494,12 @@ jobs:
           make CROSS_ARCH=win64 all-cross
           make pi
 
-      - name: Build esptool
+      - name: Copy 32-bit sdk to 64-bit directory
+        run: |
+          mkdir -p build/raspberry_pi64
+          cp -Ra build/raspberry_pi/sdk build/raspberry_pi64
+
+      - name: Build esptool 32-bit
         uses: pguyot/arm-runner-action@v2
         with:
           cpu: cortex-a7
@@ -506,7 +512,21 @@ jobs:
               pip install --user -e third_party/esp-idf/components/esptool_py/esptool
               make HOST=raspberry_pi esptool-no-env
 
-      - uses: pguyot/arm-runner-action@v2
+      - name: Build esptool 64-bit
+        uses: pguyot/arm-runner-action@v2
+        with:
+          cpu: cortex-a7
+          base_image: "raspios_lite_arm64:2022-01-28"
+          bind_mount_repository: true
+          commands: |
+              apt-get update
+              apt-get install -y python3-pip git
+              python --version
+              pip install --user -e third_party/esp-idf/components/esptool_py/esptool
+              make HOST=raspberry_pi64 esptool-no-env
+
+      - name: Test executables 32-bit
+        uses: pguyot/arm-runner-action@v2
         with:
           cpu: cortex-a7
           base_image: "raspios_lite:2022-01-28"
@@ -518,36 +538,51 @@ jobs:
               build/raspberry_pi/sdk/tools/firmware --help
               build/raspberry_pi/sdk/tools/esptool -h
 
-      - uses: pguyot/arm-runner-action@v2
+      - name: Test executables 64-bit
+        uses: pguyot/arm-runner-action@v2
         with:
           cpu: cortex-a7
           base_image: "raspios_lite_arm64:2022-01-28"
           bind_mount_repository: true
           commands: |
               uname -m > pi_uname
-              build/raspberry_pi/sdk/bin/toit.pkg version
-              build/raspberry_pi/sdk/bin/toit.run --version
-              build/raspberry_pi/sdk/tools/firmware --help
+              build/raspberry_pi64/sdk/bin/toit.pkg version
+              build/raspberry_pi64/sdk/bin/toit.run --version
+              build/raspberry_pi64/sdk/tools/firmware --help
+              build/raspberry_pi64/sdk/tools/esptool -h
 
       - name: Pack Raspberry Pi artifacts
         shell: bash
         # Note that we use `cp -R` first, since that works on every platform.
         run: |
           cp -R ./build/raspberry_pi/sdk ./build/raspberry_pi/toit
-          tar -czf build/${{ steps.constants.outputs.raspberry_pi_artifact }} -C ./build/raspberry_pi -h --exclude toit/bin/mbedtls toit
+          tar -czf build/${{ steps.constants.outputs.raspberry_pi_artifact }} -C ./build/raspberry_pi --dereference toit
+          cp -R ./build/raspberry_pi64/sdk ./build/raspberry_pi64/toit
+          tar -czf build/${{ steps.constants.outputs.raspberry_pi64_artifact }} -C ./build/raspberry_pi64 --dereference toit
 
       - name: Upload Raspberry Pi artifacts
         uses: actions/upload-artifact@v3
         with:
           name: ${{ runner.os }}-build
-          path: build/${{ steps.constants.outputs.raspberry_pi_artifact }}
+          path: |
+            build/${{ steps.constants.outputs.raspberry_pi_artifact }}
+            build/${{ steps.constants.outputs.raspberry_pi64_artifact }}
 
-      - name: Upload release Raspberry Pi artifacts
+      - name: Upload release Raspberry Pi artifacts 32-bit
         if: github.event_name == 'release'
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: build/${{ steps.constants.outputs.raspberry_pi_artifact }}
+          tag: ${{ github.ref }}
+          overwrite: true
+
+      - name: Upload release Raspberry Pi artifacts 64-bit
+        if: github.event_name == 'release'
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: build/${{ steps.constants.outputs.raspberry_pi64_artifact }}
           tag: ${{ github.ref }}
           overwrite: true
 
