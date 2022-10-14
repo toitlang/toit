@@ -807,10 +807,10 @@ class Esp32C3AddressMap implements AddressMap:
   drom_map_end   ::= 0x3c800000
 
 class Esp32S2AddressMap implements AddressMap:
-  irom_map_start := 0x40080000
-  irom_map_end   := 0x40800000
-  drom_map_start := 0x3f000000
-  drom_map_end   := 0x3ff80000
+  irom_map_start ::= 0x40080000
+  irom_map_end   ::= 0x40800000
+  drom_map_start ::= 0x3f000000
+  drom_map_end   ::= 0x3ff80000
 
 class Esp32S3AddressMap implements AddressMap:
   irom_map_start ::= 0x42000000
