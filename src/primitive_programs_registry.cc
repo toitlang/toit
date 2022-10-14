@@ -18,6 +18,7 @@
 #include "primitive.h"
 #include "process.h"
 #include "flash_registry.h"
+#include "embedded_data.h"
 #include "scheduler.h"
 #include "vm.h"
 
@@ -37,7 +38,7 @@ PRIMITIVE(spawn) {
   if (allocation->type() != PROGRAM_TYPE) INVALID_ARGUMENT;
 
   Program* program = static_cast<Program*>(allocation);
-  if (!program->is_valid(offset, OS::image_uuid())) OUT_OF_BOUNDS;
+  if (!program->is_valid(offset, EmbeddedData::uuid())) OUT_OF_BOUNDS;
 
   unsigned message_size = 0;
   { MessageEncoder size_encoder(process, null);
@@ -91,21 +92,21 @@ PRIMITIVE(kill) {
 
 PRIMITIVE(bundled_images) {
 #ifdef TOIT_FREERTOS
-  const uword* table = OS::image_bundled_programs_table();
-  int length = table[0];
-
+  const EmbeddedDataExtension* extension = EmbeddedData::extension();
+  int length = extension->images();
   Array* result = process->object_heap()->allocate_array(length * 2, Smi::from(0));
   if (!result) ALLOCATION_FAILED;
   for (int i = 0; i < length; i++) {
-    // We store the distance from the start of the table to the image
+    // We store the distance from the start of the header to the image
     // because it naturally fits as a smi even if the virtual addresses
     // involved are large. We tag the entry so we can tell the difference
     // between flash offsets in the data/programs partition and offsets
     // of images bundled with the VM.
-    uword diff = table[1 + i * 2] - reinterpret_cast<uword>(table);
-    ASSERT(Utils::is_aligned(diff, 4));
-    result->at_put(i * 2, Smi::from(diff + 1));
-    result->at_put(i * 2 + 1, Smi::from(table[1 + i * 2 + 1]));
+    EmbeddedImage image = extension->image(i);
+    uword offset = extension->offset(image.program);
+    ASSERT(Utils::is_aligned(offset, 4));
+    result->at_put(i * 2, Smi::from(offset + 1));
+    result->at_put(i * 2 + 1, Smi::from(image.size));
   }
   return result;
 #else
@@ -115,12 +116,25 @@ PRIMITIVE(bundled_images) {
 
 PRIMITIVE(assets) {
   Program* program = process->program();
-  int length;
+  int size;
   uint8* bytes;
-  if (program->assets_size(&bytes, &length) == 0) {
+  if (program->assets_size(&bytes, &size) == 0) {
     return process->object_heap()->allocate_internal_byte_array(0);
   }
-  return process->object_heap()->allocate_external_byte_array(length, bytes, false, false);
+  return process->object_heap()->allocate_external_byte_array(size, bytes, false, false);
+}
+
+PRIMITIVE(config) {
+  PRIVILEGED;
+#ifdef TOIT_FREERTOS
+  const EmbeddedDataExtension* extension = EmbeddedData::extension();
+  List<uint8> config = extension->config();
+  return config.is_empty()
+      ? process->object_heap()->allocate_internal_byte_array(0)
+      : process->object_heap()->allocate_external_byte_array(config.length(), config.data(), false, false);
+#else
+  return process->object_heap()->allocate_internal_byte_array(0);
+#endif
 }
 
 } // namespace toit

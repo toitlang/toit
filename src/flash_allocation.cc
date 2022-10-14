@@ -15,7 +15,7 @@
 
 #include "flash_registry.h"
 #include "flash_allocation.h"
-#include "os.h"
+#include "embedded_data.h"
 #include "uuid.h"
 
 namespace toit {
@@ -60,7 +60,7 @@ bool FlashAllocation::Header::is_valid_allocation(const uint32 allocation_offset
 
 bool FlashAllocation::initialize(uint32 offset, uint8 type, const uint8* id, int size, const uint8* metadata) {
   if (static_cast<unsigned>(size) < sizeof(Header)) return false;
-  const uint8* uuid = OS::image_uuid();
+  const uint8* uuid = EmbeddedData::uuid();
   void* result = FlashRegistry::memory(offset, size);
   Header header(offset, type, id, uuid, size, metadata);
   bool success = FlashRegistry::write_chunk(&header, offset, sizeof(header));
