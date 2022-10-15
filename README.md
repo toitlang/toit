@@ -259,7 +259,7 @@ your device is connected through `/dev/ttyUSB0` you can do this:
 
 ``` sh
 build/host/sdk/tools/firmware -e build/esp32/firmware.envelope \
-    extract --firmware.bin -o firmware.bin
+    extract --format=binary -o firmware.bin
 python third_party/esp-idf/components/esptool_py/esptool/esptool.py \
     --chip esp32 --port /dev/ttyUSB0 --baud 921600 \
     --before default_reset --after hard_reset write_flash -z \
@@ -278,7 +278,7 @@ build/host/sdk/bin/toit.compile -w hello.snapshot examples/hello.toit
 build/host/sdk/tools/firmware -e build/esp32/firmware.envelope \
     container install hello hello.snapshot
 build/host/sdk/tools/firmware -e build/esp32/firmware.envelope \
-    extract --firmware.bin -o firmware.bin
+    extract --format=binary -o firmware.bin
 ```
 
 Alternatively, you can also specify the entry point through the `ESP32_ENTRY` make variable
@@ -403,12 +403,13 @@ You will have to log out and log back in for this to take effect.
 
 ### Configuring WiFi for the ESP32
 
-You can easily configure the ESP32's builtin WiFi by setting the appropriate properties
-on your firmware envelope:
+You can easily configure the ESP32's builtin WiFi passing it as configuration
+when you extract the `firmware.bin` file:
 
 ``` sh
+echo '{ "wifi.ssid": "myssid", "wifi.password": "mypassword" }' > config.json
 build/host/sdk/tools/firmware -e build/esp32/firmware.envelope \
-  property set wifi '{ "wifi.ssid": "myssid", "wifi.password": "mypassword" }'
+    extract --format=binary -o firmware.bin --config config.json
 ```
 
 The `Makefile` also has the `ESP32_WIFI_SSID` and `ESP32_WIFI_PASSWORD` make variables
