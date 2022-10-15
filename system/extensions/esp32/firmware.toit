@@ -17,9 +17,13 @@ import system.api.firmware show FirmwareService
 import system.services show ServiceDefinition ServiceResource
 
 import esp32
+import encoding.ubjson
 
 class FirmwareServiceDefinition extends ServiceDefinition implements FirmwareService:
+  config_/Map ::= {:}
+
   constructor:
+    catch: config_ = ubjson.decode firmware_embedded_config_
     super "system/firmware/esp32" --major=0 --minor=1
     provides FirmwareService.UUID FirmwareService.MAJOR FirmwareService.MINOR
 
@@ -34,6 +38,8 @@ class FirmwareServiceDefinition extends ServiceDefinition implements FirmwareSer
       return upgrade
     if index == FirmwareService.ROLLBACK_INDEX:
       return rollback
+    if index == FirmwareService.CONFIG_INDEX:
+      return config arguments
     if index == FirmwareService.FIRMWARE_WRITER_OPEN_INDEX:
       return firmware_writer_open client arguments[0] arguments[1]
     if index == FirmwareService.FIRMWARE_WRITER_WRITE_INDEX:
@@ -61,6 +67,9 @@ class FirmwareServiceDefinition extends ServiceDefinition implements FirmwareSer
     // TODO(kasper): Don't just reboot from here. Shut down the
     // system properly instead.
     esp32.deep_sleep (Duration --ms=10)
+
+  config key/string -> any:
+    return config_.get key
 
   firmware_writer_open from/int to/int -> int:
     unreachable  // TODO(kasper): Nasty.
@@ -135,3 +144,6 @@ ota_validate_ -> bool:
 
 ota_rollback_ -> none:
   #primitive.esp32.ota_rollback
+
+firmware_embedded_config_ -> any:
+  #primitive.programs_registry.config

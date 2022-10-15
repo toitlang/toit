@@ -12,6 +12,14 @@ import system.services show ServiceResourceProxy
 _client_ /FirmwareServiceClient? ::= (FirmwareServiceClient --no-open).open
 
 /**
+Returns the configuration entry for the given $key, or
+  null if the $key isn't present in the configuration.
+*/
+config key/string -> any:
+  if not _client_: return null
+  return _client_.config key
+
+/**
 Returns whether the currently executing firmware is
   pending validation.
 

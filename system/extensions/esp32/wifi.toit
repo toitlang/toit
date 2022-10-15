@@ -21,6 +21,7 @@ import net.wifi
 
 import encoding.tison
 import system.assets
+import system.firmware
 
 import system.api.wifi show WifiService
 import system.api.network show NetworkService
@@ -56,6 +57,8 @@ class WifiServiceDefinition extends NetworkServiceDefinitionBase:
     effective := config
     if not effective:
       catch --trace: effective = store_.get WIFI_CONFIG_STORE_KEY
+      if not effective:
+        effective = firmware.config "wifi"
       if not effective:
         effective = {:}
         // If we move the WiFi service out of the system process,
