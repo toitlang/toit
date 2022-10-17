@@ -12,12 +12,9 @@ import system.services show ServiceResourceProxy
 _client_ /FirmwareServiceClient? ::= (FirmwareServiceClient --no-open).open
 
 /**
-Returns the configuration entry for the given $key, or
-  null if the $key isn't present in the configuration.
+The configuration of the current firmware.
 */
-config key/string -> any:
-  if not _client_: return null
-  return _client_.config key
+config ::= FirmwareConfig_
 
 /**
 Returns whether the currently executing firmware is
@@ -94,5 +91,22 @@ class FirmwareWriter extends ServiceResourceProxy:
   write bytes/ByteArray -> none:
     _client_.firmware_writer_write handle_ bytes
 
+  pad size/int --value/int=0 -> none:
+    _client_.firmware_writer_pad handle_ size value
+
   commit --checksum/ByteArray?=null -> none:
     _client_.firmware_writer_commit handle_ checksum
+
+class FirmwareConfig_:
+  /**
+  Returns the configuration entry for the given $key, or
+    null if the $key isn't present in the configuration.
+  */
+  operator [] key/string -> any:
+    return _client_.config_entry key
+
+  /**
+  Returns the UBJSON encoded configuration.
+  */
+  ubjson -> ByteArray:
+    return _client_.config_ubjson
