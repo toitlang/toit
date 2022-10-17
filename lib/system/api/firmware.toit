@@ -30,6 +30,9 @@ interface FirmwareService:
   config_entry key/string -> any
   static CONFIG_ENTRY_INDEX /int ::= 9
 
+  content -> ByteArray?
+  static CONTENT_INDEX /int ::= 11
+
   firmware_writer_open from/int to/int -> int
   static FIRMWARE_WRITER_OPEN_INDEX /int ::= 5
 
@@ -69,6 +72,9 @@ class FirmwareServiceClient extends ServiceClient implements FirmwareService:
 
   config_entry key/string -> any:
     return invoke_ FirmwareService.CONFIG_ENTRY_INDEX key
+
+  content -> ByteArray?:
+    return invoke_ FirmwareService.CONTENT_INDEX null
 
   firmware_writer_open from/int to/int -> int:
     return invoke_ FirmwareService.FIRMWARE_WRITER_OPEN_INDEX [from, to]

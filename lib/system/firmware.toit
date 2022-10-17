@@ -17,6 +17,13 @@ The configuration of the current firmware.
 config ::= FirmwareConfig_
 
 /**
+The content bytes of the current firmware.
+*/
+content -> ByteArray?:
+  if not _client_: return null
+  return _client_.content
+
+/**
 Returns whether the currently executing firmware is
   pending validation.
 

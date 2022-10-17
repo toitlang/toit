@@ -42,6 +42,8 @@ class FirmwareServiceDefinition extends ServiceDefinition implements FirmwareSer
       return config_ubjson
     if index == FirmwareService.CONFIG_ENTRY_INDEX:
       return config_entry arguments
+    if index == FirmwareService.CONTENT_INDEX:
+      return content
     if index == FirmwareService.FIRMWARE_WRITER_OPEN_INDEX:
       return firmware_writer_open client arguments[0] arguments[1]
     if index == FirmwareService.FIRMWARE_WRITER_WRITE_INDEX:
@@ -81,6 +83,10 @@ class FirmwareServiceDefinition extends ServiceDefinition implements FirmwareSer
 
   config_entry key/string -> any:
     return config_.get key
+
+  content -> ByteArray?:
+    // TODO(kasper): Implement this.
+    return null
 
   firmware_writer_open from/int to/int -> int:
     unreachable  // TODO(kasper): Nasty.
