@@ -350,6 +350,21 @@ main:
   mstr := """x"""
   istr := """$("""
   """)"""
+  """c"""
+  // Empty triple-quoted string.
+  """"""
+  // Some examples with quotes at the start or end of a triple-quoted string.
+  """""""
+  """"""""
+  """c"""
+  """"c""""
+  """""c"""""
+  """$c"""
+  """"$c""""
+  """""$c"""""
+  """$c """
+  """"$c """"
+  """""$c """""
 
   local2 := ?
   local3 := true ? false : null
