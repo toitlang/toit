@@ -577,7 +577,7 @@ class PeripheralManager extends Resource_:
   The data is advertised once every $interval.
 
   The advertise will include the given $connection_mode, use one
-    of the BLE_CONNECTION_MODE_* constants.
+    of the BLE_CONNECT_MODE_* constants (see $BLE_CONNECT_MODE_NONE and similar).
 
   If the adapter does not support parts of the advertise content, INVALID_ARGUMENT is thrown.
   For example, on MacOS manufacturing data can not be specified.
