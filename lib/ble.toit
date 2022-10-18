@@ -10,6 +10,21 @@ import monitor show ResourceState_
 import encoding.hex
 import device
 
+/**
+A BLE Universally Unique ID.
+
+UUIDs are used to identify services, characteristics and descriptions.
+
+UUIDs can have different sizes, with 16-bit and 128-bit the most common ones.
+The 128-bit UUID is referred to as the vendor specific UUID. These must be used when
+  making custom services or characteristics.
+
+16-bit UUIDs of the form "XXXX" are short-hands for "0000XXXX-0000-1000-8000-00805F9B34FB",
+  where "00000000-0000-1000-8000-00805F9B34FB" comes from the BLE standard and is called
+  the "base UUID"
+
+See https://btprodspecificationrefs.blob.core.windows.net/assigned-values/16-bit%20UUID%20Numbers%20Document.pdf for a list of the available 16-bit UUIDs.
+*/
 class BleUUID:
   data_/any
   constructor .data_:
