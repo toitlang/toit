@@ -1,4 +1,4 @@
-// Copyright (C) 2018 Toitware ApS.
+// Copyright (C) 2022 Toitware ApS.
 //
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -88,6 +88,7 @@ class BLERemoteDeviceResource : public ServiceContainer<BLERemoteDeviceResource>
 
   CBPeripheral* peripheral() const { return _peripheral; }
   CBCentralManager* central_manager() const { return _central_manager; }
+
  private:
   CBCentralManager* _central_manager;
   CBPeripheral* _peripheral;
@@ -209,11 +210,11 @@ class BLECharacteristicResource : public BLEResource, public DiscoverableResourc
   }
 
   int mtu() {
-    int min_mtu = 1 << 16; // MTU should maximum be 16 bit
-    for (int i=0; i < [_subscriptions count]; i++) {
+    int min_mtu = 1 << 16; // MTU should maximum be 16 bit.
+    for (int i = 0; i < [_subscriptions count]; i++) {
       min_mtu = MIN(min_mtu, _subscriptions[i].maximumUpdateValueLength);
     }
-    return min_mtu==1<<16?23:min_mtu; // 23 is the default mtu value in BLE.
+    return min_mtu==1 <<16 ? 23 : min_mtu; // 23 is the default mtu value in BLE.
   }
 
  private:
@@ -354,13 +355,13 @@ BLECharacteristicResource* lookup_remote_characteristic_resource(CBPeripheral* p
 BLECharacteristicResource* lookup_local_characteristic_resource(CBPeripheralManager* peripheral_manager, CBCharacteristic* characteristic);
 }
 
-@interface TOITPeripheralDelegate : NSObject <CBPeripheralDelegate>
+@interface ToitPeripheralDelegate : NSObject <CBPeripheralDelegate>
 @property toit::BLERemoteDeviceResource* device;
 
 - (id)initWithDevice:(toit::BLERemoteDeviceResource*)gatt;
 @end
 
-@implementation TOITPeripheralDelegate
+@implementation ToitPeripheralDelegate
 - (id)initWithDevice:(toit::BLERemoteDeviceResource*)gatt {
   self.device = gatt;
   return self;
@@ -368,9 +369,9 @@ BLECharacteristicResource* lookup_local_characteristic_resource(CBPeripheralMana
 
 - (void)peripheral:(CBPeripheral*)peripheral didDiscoverServices:(NSError*)error {
   if (peripheral.delegate != nil) {
-    toit::BLERemoteDeviceResource* device = ((TOITPeripheralDelegate*) peripheral.delegate).device;
+    toit::BLERemoteDeviceResource* device = ((ToitPeripheralDelegate*) peripheral.delegate).device;
     if (error) {
-      //device->set_error(error);
+      // Todo: Record error and return to user code
       toit::HostBLEEventSource::instance()->on_event(device, toit::kBLEDiscoverOperationFailed);
     } else {
       toit::HostBLEEventSource::instance()->on_event(device, toit::kBLEServicesDiscovered);
@@ -382,11 +383,11 @@ BLECharacteristicResource* lookup_local_characteristic_resource(CBPeripheralMana
 didDiscoverCharacteristicsForService:(CBService*)service
                                error:(NSError*)error {
   if (peripheral.delegate != nil) {
-    toit::BLERemoteDeviceResource* device = ((TOITPeripheralDelegate*) peripheral.delegate).device;
+    toit::BLERemoteDeviceResource* device = ((ToitPeripheralDelegate*) peripheral.delegate).device;
     toit::BLEServiceResource* service_resource = device->get_or_create_service_resource(service);
     if (service_resource == null) return;
     if (error) {
-      //service_resource->set_error(error);
+      // Todo: Record error and return to user code
       toit::HostBLEEventSource::instance()->on_event(device, toit::kBLEDiscoverOperationFailed);
     } else {
       toit::HostBLEEventSource::instance()->on_event(service_resource, toit::kBLECharacteristicsDiscovered);
@@ -431,7 +432,7 @@ didWriteValueForCharacteristic:(CBCharacteristic*)characteristic
 
 - (void)peripheralIsReadyToSendWriteWithoutResponse:(CBPeripheral*)peripheral {
   if (peripheral.delegate != nil) {
-    toit::BLERemoteDeviceResource* device = ((TOITPeripheralDelegate*) peripheral.delegate).device;
+    toit::BLERemoteDeviceResource* device = ((ToitPeripheralDelegate*) peripheral.delegate).device;
     toit::HostBLEEventSource::instance()->on_event(device, toit::kBLEReadyToSendWithoutResponse);
   }
 }
@@ -497,14 +498,14 @@ didUpdateNotificationStateForCharacteristic:(CBCharacteristic*)characteristic
 
 - (void)centralManager:(CBCentralManager*)central didConnectPeripheral:(CBPeripheral*)peripheral {
   if (peripheral.delegate != nil) {
-    toit::HostBLEEventSource::instance()->on_event(((TOITPeripheralDelegate*) peripheral.delegate).device,
+    toit::HostBLEEventSource::instance()->on_event(((ToitPeripheralDelegate*) peripheral.delegate).device,
                                                    toit::kBLEConnected);
   }
 }
 
 - (void)centralManager:(CBCentralManager*)central didFailToConnectPeripheral:(CBPeripheral*)peripheral error:(NSError*)error {
   if (peripheral.delegate != nil) {
-    toit::HostBLEEventSource::instance()->on_event(((TOITPeripheralDelegate*) peripheral.delegate).device,
+    toit::HostBLEEventSource::instance()->on_event(((ToitPeripheralDelegate*) peripheral.delegate).device,
                                                    toit::kBLEConnectFailed);
     [peripheral.delegate release];
     peripheral.delegate = nil;
@@ -513,7 +514,7 @@ didUpdateNotificationStateForCharacteristic:(CBCharacteristic*)characteristic
 
 - (void)centralManager:(CBCentralManager*)central didDisconnectPeripheral:(CBPeripheral*)peripheral error:(NSError*)error {
   if (peripheral.delegate != nil) {
-    toit::HostBLEEventSource::instance()->on_event(((TOITPeripheralDelegate*) peripheral.delegate).device,
+    toit::HostBLEEventSource::instance()->on_event(((ToitPeripheralDelegate*) peripheral.delegate).device,
                                                    toit::kBLEDisconnected);
     [peripheral.delegate release];
     peripheral.delegate = nil;
@@ -613,7 +614,7 @@ namespace toit {
 BLECharacteristicResource* lookup_remote_characteristic_resource(CBPeripheral* peripheral, CBCharacteristic* characteristic) {
   if (peripheral.delegate == nil) return null;
 
-  toit::BLERemoteDeviceResource* device = ((TOITPeripheralDelegate*) peripheral.delegate).device;
+  toit::BLERemoteDeviceResource* device = ((ToitPeripheralDelegate*) peripheral.delegate).device;
   toit::BLEServiceResource* service = device->get_or_create_service_resource(characteristic.service);
   if (service == null) return null;
 
@@ -913,7 +914,7 @@ PRIMITIVE(connect) {
   central_manager->group()->register_resource(device);
   proxy->set_external_address(device);
 
-  peripheral.delegate = [[[TOITPeripheralDelegate alloc] initWithDevice:device] retain];
+  peripheral.delegate = [[[ToitPeripheralDelegate alloc] initWithDevice:device] retain];
   [central_manager->central_manager() connectPeripheral:peripheral options:nil];
 
   return proxy;
@@ -938,7 +939,7 @@ PRIMITIVE(release_resource) {
 PRIMITIVE(discover_services) {
   ARGS(BLERemoteDeviceResource, device, Array, raw_service_uuids);
 
-  Error* err;
+  Error* err = null;
   NSArray<CBUUID*>* service_uuids = ns_uuid_array_from_array_of_strings(process, raw_service_uuids, &err);
   if (err) return err;
   [device->peripheral() discoverServices:service_uuids];
@@ -990,9 +991,9 @@ PRIMITIVE(discover_characteristics) {
 
   if (!service->device()) INVALID_ARGUMENT;
 
-  Error* err;
-  NSArray<CBUUID*>* characteristics_uuids = ns_uuid_array_from_array_of_strings(process, raw_characteristics_uuids,
-                                                                                &err);
+  Error* err = null;
+  NSArray<CBUUID*>* characteristics_uuids =
+      ns_uuid_array_from_array_of_strings(process, raw_characteristics_uuids,&err);
   if (err) return err;
 
   [service->device()->peripheral() discoverCharacteristics:characteristics_uuids forService:service->service()];
@@ -1009,7 +1010,7 @@ PRIMITIVE(discover_characteristics_result) {
   BLECharacteristicResource* characteristic_resources[([characteristics count])];
   for (int i = 0; i < [characteristics count]; i++) {
     BLECharacteristicResource* characteristic_resource
-        = service->get_or_create_characteristic_resource(characteristics[i],true);
+        = service->get_or_create_characteristic_resource(characteristics[i], true);
     if (characteristic_resource->is_returned()) continue;
     characteristic_resources[count++] = characteristic_resource;
   }
@@ -1121,7 +1122,7 @@ PRIMITIVE(advertise_start) {
 
   NSMutableDictionary* data = [NSMutableDictionary new];
 
-  if (manufacturing_data.length()>0) INVALID_ARGUMENT;
+  if (manufacturing_data.length() > 0) INVALID_ARGUMENT;
 
   if (name.length() > 0) {
     data[CBAdvertisementDataLocalNameKey] = ns_string_from_blob(name);

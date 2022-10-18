@@ -50,5 +50,5 @@ void HostBLEEventSource::on_event(BLEResource* resource, word data) {
   }
 }
 
-}
+} // Namespace toit.
 #endif

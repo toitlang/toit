@@ -62,4 +62,4 @@ class BLEEvent: public BLEEventList::Element {
   BLEResource* _resource;
   word _event;
 };
-}
+} // Namespace toit.

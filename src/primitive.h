@@ -938,7 +938,7 @@ namespace toit {
 #define _A_T_PcntUnitResource(N, name)    MAKE_UNPACKING_MACRO(PcntUnitResource, N, name)
 #define _A_T_RMTResource(N, name)         MAKE_UNPACKING_MACRO(RMTResource, N, name)
 #define _A_T_BLECentralManagerResource(N, name) MAKE_UNPACKING_MACRO(BLECentralManagerResource, N, name)
-#define _A_T_BLERemoteDeviceResource(N, name)              MAKE_UNPACKING_MACRO(BLERemoteDeviceResource, N, name)
+#define _A_T_BLERemoteDeviceResource(N, name)   MAKE_UNPACKING_MACRO(BLERemoteDeviceResource, N, name)
 
 #define _A_T_BLEPeripheralManagerResource(N, name) MAKE_UNPACKING_MACRO(BLEPeripheralManagerResource, N, name)
 #define _A_T_BLECharacteristicResource(N, name) MAKE_UNPACKING_MACRO(BLECharacteristicResource, N, name)

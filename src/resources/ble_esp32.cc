@@ -77,7 +77,7 @@ class DiscoveredPeripheral : public DiscoveredPeripheralList::Element {
 };
 
 
-class BLEResourceGroup : public ResourceGroup, public Thread{
+class BLEResourceGroup : public ResourceGroup, public Thread {
  public:
   TAG(BLEResourceGroup);
   BLEResourceGroup(Process* process, BLEEventSource* event_source, int id)
@@ -86,7 +86,7 @@ class BLEResourceGroup : public ResourceGroup, public Thread{
       , _id(id)
       , _sync(false)
       , _tearing_down(false) {
-    if (instance_access_mutex()) { // Allocation of the mutex could fail, the init primitive reports this
+    if (instance_access_mutex()) { // Allocation of the mutex could fail, the init primitive reports this.
       Locker locker(_instance_access_mutex);
       ASSERT(!_instance)
       _instance = this;
@@ -251,9 +251,9 @@ class BLEDescriptorResource: public BLEReadWriteElement, public DescriptorList::
   TAG(BLEDescriptorResource);
   BLEDescriptorResource(ResourceGroup* group, BLECharacteristicResource *characteristic,
                         ble_uuid_any_t uuid, uint16 handle, int properties)
-  : BLEReadWriteElement(group, DESCRIPTOR, uuid, handle)
-  , _characteristic(characteristic)
-  , _properties(properties) {}
+    : BLEReadWriteElement(group, DESCRIPTOR, uuid, handle)
+    , _characteristic(characteristic)
+    , _properties(properties) {}
 
   BLEServiceResource* service() override;
   uint8 properties() const { return _properties; }
