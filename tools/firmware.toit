@@ -493,7 +493,7 @@ flash parsed/cli.Parsed -> none:
   envelope := Envelope.load input_path
 
   stat := file.stat port
-  if stat[file.ST_TYPE] != file.CHARACTER_DEVICE:
+  if not stat or stat[file.ST_TYPE] != file.CHARACTER_DEVICE:
     throw "cannot open port '$port'"
 
   config_encoded := ByteArray 0
