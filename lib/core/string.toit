@@ -296,7 +296,8 @@ abstract class string implements Comparable:
   Missing relative to printf: No support for `%g` or `%p`.
 
   Like in printf the hexadecimal and octal format specifiers,
-    %x, %o, and %b will treat all values as unsigned.  See also
+    %x and %o will treat all values as unsigned.  This also
+    applies to the binary format specifier, %b.  See also
     $int.stringify.
 
   Format Description:
