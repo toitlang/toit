@@ -78,6 +78,9 @@ BLE_DEFAULT_PREFERRED_MTU_     ::= 23
 
 /**
 Advertisement data as either sent by advertising or received through scanning.
+
+The size of an advertisement packet is limited to 31 bytes. This includes the name
+  and bytes that are required to structure the packet.
 */
 class AdvertisementData:
   /**
