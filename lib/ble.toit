@@ -189,7 +189,10 @@ class RemoteCharacteristic extends RemoteReadWriteElement_ implements Attribute:
   properties/int
   discovered_descriptors/List := []
   /**
-  Constructs remote characteristic from the given $service, $handle, and $definition_handle.
+  Constructs a remote characteristic of the $service.
+  It's handle is $uuid.
+  The $properties are a combination of CHARACTERISTIC_PROPERTY flags (see
+    $CHARACTERISTIC_PROPERTY_BROADCAST and similar).
   */
   constructor .service .uuid .properties characteristic:
     super service characteristic
