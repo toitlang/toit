@@ -408,9 +408,12 @@ class LocalService extends Resource_ implements Attribute:
     return LocalCharacteristic this uuid properties permissions value
 
   /**
-  Adds a read only characteristic with the given $uuid and $value. See $add_characteristic.
+  Variant of $(add_characteristic uuid --properties --permissions).
+
+  Adds a read-only characteristic with the given $uuid and $value.
   */
-  add_read_only_characteristic uuid/BleUUID --value/ByteArray -> LocalCharacteristic:
+  add_characteristic --read_only/bool uuid/BleUUID --value/ByteArray -> LocalCharacteristic:
+    if not read_only: throw "INVALID_ARGUMENT"
     return add_characteristic
         uuid
         --properties=CHARACTERISTIC_PROPERTY_READ
