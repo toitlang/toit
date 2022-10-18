@@ -67,6 +67,17 @@ class BleUUID:
   operator== other/BleUUID:
     return to_byte_array == other.to_byte_array
 
+/**
+An attribute is the smallest data entity of GATT (Generic Attribute Profile).
+
+Each attribute is addressable (just like registers of some i2c devices) by its handle, the $uuid.
+The UUID 0x0000 denotes an invalid handle.
+
+Services ($RemoteService, $LocalService), characteristics ($RemoteCharacteristic, $LocalCharacteristic),
+  and descriptors ($RemoteDescriptor, $LocalDescriptor) are all different types of attributes.
+
+Conceptually, attributes are on the server, and can be accessed (read and/or written) by the client.
+*/
 interface Attribute:
   uuid -> BleUUID
 
