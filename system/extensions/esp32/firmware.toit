@@ -17,9 +17,13 @@ import system.api.firmware show FirmwareService
 import system.services show ServiceDefinition ServiceResource
 
 import esp32
+import encoding.ubjson
 
 class FirmwareServiceDefinition extends ServiceDefinition implements FirmwareService:
+  config_/Map ::= {:}
+
   constructor:
+    catch: config_ = ubjson.decode firmware_embedded_config_
     super "system/firmware/esp32" --major=0 --minor=1
     provides FirmwareService.UUID FirmwareService.MAJOR FirmwareService.MINOR
 
@@ -34,11 +38,20 @@ class FirmwareServiceDefinition extends ServiceDefinition implements FirmwareSer
       return upgrade
     if index == FirmwareService.ROLLBACK_INDEX:
       return rollback
+    if index == FirmwareService.CONFIG_UBJSON_INDEX:
+      return config_ubjson
+    if index == FirmwareService.CONFIG_ENTRY_INDEX:
+      return config_entry arguments
+    if index == FirmwareService.CONTENT_INDEX:
+      return content
     if index == FirmwareService.FIRMWARE_WRITER_OPEN_INDEX:
       return firmware_writer_open client arguments[0] arguments[1]
     if index == FirmwareService.FIRMWARE_WRITER_WRITE_INDEX:
       writer ::= (resource client arguments[0]) as FirmwareWriter
       return firmware_writer_write writer arguments[1]
+    if index == FirmwareService.FIRMWARE_WRITER_PAD_INDEX:
+      writer ::= (resource client arguments[0]) as FirmwareWriter
+      return firmware_writer_pad writer arguments[1] arguments[2]
     if index == FirmwareService.FIRMWARE_WRITER_COMMIT_INDEX:
       writer ::= (resource client arguments[0]) as FirmwareWriter
       return firmware_writer_commit writer arguments[1]
@@ -62,6 +75,19 @@ class FirmwareServiceDefinition extends ServiceDefinition implements FirmwareSer
     // system properly instead.
     esp32.deep_sleep (Duration --ms=10)
 
+  config_ubjson -> ByteArray:
+    // TODO(kasper): We have to copy this for now, because we
+    // cannot transfer a non-disposable byte array across the
+    // RPC boundary just yet.
+    return firmware_embedded_config_.copy
+
+  config_entry key/string -> any:
+    return config_.get key
+
+  content -> ByteArray?:
+    // TODO(kasper): Implement this.
+    return null
+
   firmware_writer_open from/int to/int -> int:
     unreachable  // TODO(kasper): Nasty.
 
@@ -70,6 +96,9 @@ class FirmwareServiceDefinition extends ServiceDefinition implements FirmwareSer
 
   firmware_writer_write writer/FirmwareWriter bytes/ByteArray -> none:
     writer.write bytes
+
+  firmware_writer_pad writer/FirmwareWriter size/int value/int -> none:
+    writer.pad size value
 
   firmware_writer_commit writer/FirmwareWriter checksum/ByteArray? -> none:
     writer.commit checksum
@@ -93,6 +122,15 @@ class FirmwareWriter extends ServiceResource:
     return List.chunk_up from to (buffer_.size - fullness_) buffer_.size: | from to chunk |
       buffer_.replace fullness_ bytes from to
       fullness_ += chunk
+      if fullness_ == buffer_.size:
+        written_ = ota_write_ buffer_
+        fullness_ = 0
+
+  pad size/int value/int -> int:
+    return List.chunk_up 0 size (buffer_.size - fullness_) buffer_.size: | from to chunk |
+      end := fullness_ + chunk
+      buffer_.fill --from=fullness_ --to=end value
+      fullness_ = end
       if fullness_ == buffer_.size:
         written_ = ota_write_ buffer_
         fullness_ = 0
@@ -135,3 +173,6 @@ ota_validate_ -> bool:
 
 ota_rollback_ -> none:
   #primitive.esp32.ota_rollback
+
+firmware_embedded_config_ -> any:
+  #primitive.programs_registry.config
