@@ -474,6 +474,12 @@ Scanner::State Scanner::next_string_part(bool is_multiline_string) {
         advance();
         if (look_ahead() != '"') continue;
         advance();
+        // Allow up to 5 double quotes, for triple quoted strings that end with
+        // two double quotes.
+        while (_index - index < 4 && look_ahead() == '"') {
+          advance();
+        }
+        index = _index - 2;
         _data = preserve_syntax(begin, index);
         advance();
         return create_state(Token::STRING_END_MULTI_LINE);
@@ -599,6 +605,12 @@ Token::Kind Scanner::scan_string(int peek) {
         advance();
         if (look_ahead() != '"') continue;
         advance();
+        // Allow up to 5 double quotes, for triple quoted strings that end with
+        // two double quotes.
+        while (_index - index < 4 && look_ahead() == '"') {
+          advance();
+        }
+        index = _index - 2;
         _data = preserve_syntax(begin, index);
         advance();
         return Token::STRING_MULTI_LINE;
