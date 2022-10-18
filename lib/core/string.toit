@@ -291,11 +291,12 @@ abstract class string implements Comparable:
 
   Extensions relative to printf:
   - `^` for centering.
+  - 'b' for binary.
 
   Missing relative to printf: No support for `%g` or `%p`.
 
   Like in printf the hexadecimal and octal format specifiers,
-    %x and %o will treat all values as unsigned.  See also
+    %x, %o, and %b will treat all values as unsigned.  See also
     $int.stringify.
 
   Format Description:
@@ -304,7 +305,7 @@ abstract class string implements Comparable:
   alignment = flags<digits>
   flags = '-' | '^' | '>'   (> is default, can't be used in the syntax)
   precision = .<digits>
-  type 'd' | 'f' | 's' | 'o' | 'x' | 'c'
+  type 'd' | 'f' | 's' | 'o' | 'x' | 'c' | 'b'
   ```
   */
   static format format/string object -> string:
@@ -344,6 +345,7 @@ abstract class string implements Comparable:
       d := object.to_float
       meat = precision ? (d.stringify precision) : d.stringify
     else if type == 'd': meat = object.to_int.stringify
+    else if type == 'b': meat = printf_style_int_stringify_ object.to_int 2
     else if type == 'o': meat = printf_style_int_stringify_ object.to_int 8
     else if type == 'x': meat = printf_style_int_stringify_ object.to_int 16
     else if type == 'X':
@@ -1290,6 +1292,6 @@ class StringSlice_ extends string:
   compute_hash_ -> int:
     #primitive.core.blob_hash_code
 
-// Unsigned base 8 and base 16 stringification.
+// Unsigned base 2, 8, and 16 stringification.
 printf_style_int_stringify_ value/int base/int -> string:
   #primitive.core.printf_style_int64_to_string

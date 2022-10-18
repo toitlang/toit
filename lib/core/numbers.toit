@@ -841,7 +841,7 @@ abstract class int extends num:
 
   /**
   Variant of $stringify.
-  Unlike string interpolation with base 8 or 16, negative
+  Unlike string interpolation with base 2, 8, or 16, negative
     numbers are rendered in a straight-forward way with a
     '-' character at the start.
 

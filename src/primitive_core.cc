@@ -589,11 +589,20 @@ PRIMITIVE(smi_mod) {
   return Primitive::integer((int64) receiver % other, process);
 }
 
-// Signed for base 10, unsigned for bases 8 or 16.
+// Signed for base 10, unsigned for bases 2, 8 or 16.
 static Object* printf_style_integer_to_string(Process* process, int64 value, int base) {
-  ASSERT(base == 8 || base == 10 || base == 16);
-  char buffer[32];
+  ASSERT(base == 2 || base == 8 || base == 10 || base == 16);
+  char buffer[70];
   switch (base) {
+    case 2: {
+      char* p = buffer;
+      int first_bit = value == 0 ? 0 : 63 - Utils::clz(value);
+      for (int i = first_bit; i >= 0; i--) {
+        *p++ = '0' + ((value >> i) & 1);
+      }
+      *p++ = '\0';
+      break;
+    }
     case 8:
       snprintf(buffer, sizeof(buffer), "%llo", value);
       break;
@@ -603,6 +612,8 @@ static Object* printf_style_integer_to_string(Process* process, int64 value, int
     case 16:
       snprintf(buffer, sizeof(buffer), "%llx", value);
       break;
+    default:
+      buffer[0] = '\0';
   }
   return process->allocate_string_or_error(buffer);
 }
@@ -610,7 +621,7 @@ static Object* printf_style_integer_to_string(Process* process, int64 value, int
 PRIMITIVE(int64_to_string) {
   ARGS(int64, value, int, base);
   if (!(2 <= base && base <= 36)) OUT_OF_RANGE;
-  if (base == 10 || (value >= 0 && (base == 8 || base == 16))) {
+  if (base == 10 || (value >= 0 && (base == 2 || base == 8 || base == 16))) {
     return printf_style_integer_to_string(process, value, base);
   }
   const int BUFFER_SIZE = 70;
@@ -1286,7 +1297,7 @@ PRIMITIVE(smi_to_string_base_10) {
 // bases.
 PRIMITIVE(printf_style_int64_to_string) {
   ARGS(int64, receiver, int, base);
-  if (base != 8 && base != 16) INVALID_ARGUMENT;
+  if (base != 2 && base != 8 && base != 16) INVALID_ARGUMENT;
   return printf_style_integer_to_string(process, receiver, base);
 }
 
