@@ -382,7 +382,7 @@ class RemoteDevice extends Resource_:
   /**
   Disconnects from the remote device.
   */
-  disconnect:
+  close:
     ble_disconnect_ resource_
     resource_state_.wait_for_state DISCONNECTED_EVENT_
     close_
@@ -523,7 +523,7 @@ class LocalCharacteristic extends LocalReadWriteElement_ implements Attribute:
   read -> ByteArray:
     if (permissions & CHARACTERISTIC_PERMISSION_WRITE) == 0:
       throw "Invalid permission"
-    return get_value_
+    return read_
 
   /**
   Adds a descriptor to this characteristic.
@@ -558,7 +558,7 @@ class LocalDescriptor extends LocalReadWriteElement_ implements Attribute:
   read -> ByteArray:
     if (permissions & CHARACTERISTIC_PERMISSION_WRITE) == 0:
       throw "Invalid permission"
-    return get_value_
+    return read_
 
 
 /**
@@ -780,6 +780,8 @@ order_attributes_ input/List/*<BleUUID>*/ output/List/*<Attribute>*/ -> List:
   map := {:}
   if input.is_empty: return output
   output.do: | attribute/Attribute | map[attribute.uuid] = attribute
+  // Input might contain Uuids that where never discovered, so make sure to use
+  // the non-throwing version of map.get
   return input.map: | uuid/BleUuid | map.get uuid
 
 class Resource_:
@@ -844,7 +846,7 @@ class LocalReadWriteElement_ extends Resource_:
   constructor service/LocalService resource:
     super service.peripheral_manager.adapter.resource_group_ resource
 
-  get_value_ -> ByteArray:
+  read_ -> ByteArray:
     resource_state_.clear_state DATA_RECEIVED_EVENT_
     while true:
       buf := ble_get_value_ resource_
