@@ -11,20 +11,18 @@ GATT_IO_UUID ::= #[0x18, 0x25]
 
 main:
   adapter := Adapter
-  peripheral_manager := adapter.peripheral_manager
+  peripheral := adapter.peripheral
 
-  service := peripheral_manager.add_service
+  service := peripheral.add_service
       BleUuid GATT_IO_UUID
 
   /* Characteristic: SEND DATA */
-  heart_rate_send := service.add_characteristic
-      --notification
+  heart_rate_send := service.add_notification_characteristic
       BleUuid #[0x63, 0x4b, 0x3c, 0x6e, 0xac, 0x41, 0x40, 0x85,
                 0xa9, 0x7c, 0xdd, 0x68, 0x7f, 0xa1, 0xe5, 0x0d]
 
   /* Characteristic: RECEIVE DATA */
-  heart_rate_receive := service.add_characteristic
-      --write_only
+  heart_rate_receive := service.add_write_only_characteristic
       BleUuid #[0x63, 0x4b, 0x3c, 0x6e, 0x1c, 0x41, 0x40, 0x85,
                 0xa9, 0x7c, 0xdd, 0x68, 0x7f, 0xa1, 0xe5, 0x0d]
 
@@ -33,7 +31,7 @@ main:
   connection_mode := platform == PLATFORM_MACOS
     ? BLE_CONNECT_MODE_NONE
     : BLE_CONNECT_MODE_UNDIRECTIONAL
-  peripheral_manager.start_advertise
+  peripheral.start_advertise
     AdvertisementData --name="Toit heart rate demo"
     --connection_mode=connection_mode
 

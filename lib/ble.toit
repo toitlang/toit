@@ -209,9 +209,9 @@ class RemoteCharacteristic extends RemoteReadWriteElement_ implements Attribute:
     return request_read_
 
   /**
-    Waits until the remote device sends a notification or indication on the characteristics. Returns the
-      notified/indicated value.
-    See $subscribe
+  Waits until the remote device sends a notification or indication on the characteristics. Returns the
+    notified/indicated value.
+  See $subscribe.
   */
   wait_for_notification -> ByteArray?:
     if properties & (CHARACTERISTIC_PROPERTY_INDICATE | CHARACTERISTIC_PROPERTY_NOTIFY) == 0:
@@ -239,13 +239,13 @@ class RemoteCharacteristic extends RemoteReadWriteElement_ implements Attribute:
   Requests to subscribe on this characteristic.
 
   This will either enable notifications or indications depending on $properties. If both, indications
-    and notification,s are enabled, subscribes to notifications.
+    and notifications, are enabled, subscribes to notifications.
   */
   subscribe -> none:
     set_notify_subscription_ --subscribe=true
 
   /**
-  Unsubscribe from a notification or indications on the characteristics.
+  Unsubscribes from a notification or indications on the characteristics.
     See $subscribe.
   */
   unsubscribe -> none:
@@ -283,9 +283,10 @@ class RemoteCharacteristic extends RemoteReadWriteElement_ implements Attribute:
     return discovered_descriptors
 
   /**
-  The negotiated mtu on the characteristics. On MacOS this will be the maximum payload and on
-    ESP32 this will be the raw mtu value that also needs a few bytes for status, so the maximum payload
-    on ESP32 would be 2 bytes smaller than this value.
+  The negotiated mtu on the characteristics.
+  On MacOS this is the maximum payload.
+  On ESP32 this is the raw mtu value. Two of these bytes are needed for status information, and the
+    maximum payload on ESP32 is two bytes smaller than this value.
   */
   mtu -> int:
     return ble_get_att_mtu_ resource_
@@ -336,7 +337,7 @@ class RemoteService extends Resource_ implements Attribute:
 A remote connected device.
 */
 class RemoteDevice extends Resource_:
-  manager/CentralManager
+  manager/Central
   /**
   The address of the remote device the client is connected to. The type of the address is platform dependent.
   */
@@ -399,7 +400,7 @@ class LocalService extends Resource_ implements Attribute:
   */
   uuid/BleUuid
 
-  peripheral_manager/PeripheralManager
+  peripheral_manager/Peripheral
 
   deployed_/bool := false
 
@@ -426,12 +427,9 @@ class LocalService extends Resource_ implements Attribute:
     return LocalCharacteristic this uuid properties permissions value
 
   /**
-  Variant of $(add_characteristic uuid --properties --permissions).
-
-  Adds a read-only characteristic with the given $uuid and $value.
+  Convenience method to add a read-only characteristic with the given $uuid and $value.
   */
-  add_characteristic --read_only/bool --value/ByteArray -> LocalCharacteristic:
-    if not read_only: throw "INVALID_ARGUMENT"
+  add_read_only_characteristic --value/ByteArray -> LocalCharacteristic:
     return add_characteristic
         uuid
         --properties=CHARACTERISTIC_PROPERTY_READ
@@ -439,12 +437,9 @@ class LocalService extends Resource_ implements Attribute:
         --value=value
 
   /**
-  Variant of $(add_characteristic uuid --properties --permissions).
-
-  Adds a write-only characteristic with the given $uuid that can $require_response for each write.
+  Convenience method to add a write-only characteristic with the given $uuid that can $require_response for each write.
   */
-  add_characteristic --write_only/bool uuid/BleUuid requires_response/bool=false -> LocalCharacteristic:
-    if not write_only: throw "INVALID_ARGUMENT"
+  add_write_only_characteristic uuid/BleUuid requires_response/bool=false -> LocalCharacteristic:
     properties := requires_response
       ? CHARACTERISTIC_PROPERTY_WRITE
       : CHARACTERISTIC_PROPERTY_WRITE_WITHOUT_RESPONSE
@@ -454,24 +449,18 @@ class LocalService extends Resource_ implements Attribute:
         --permissions=CHARACTERISTIC_PERMISSION_WRITE
 
   /**
-  Variant of $(add_characteristic uuid --properties --permissions).
-
-  Adds a notification characteristic with the given $uuid. See $add_characteristic.
+  Convenience method to add a notification characteristic with the given $uuid. See $add_characteristic.
   */
-  add_characteristic --notification/bool uuid/BleUuid -> LocalCharacteristic:
-    if not notification: throw "INVALID_ARGUMENT"
+  add_notification_characteristic uuid/BleUuid -> LocalCharacteristic:
     return add_characteristic
         uuid
         --properties=CHARACTERISTIC_PROPERTY_NOTIFY
         --permissions=CHARACTERISTIC_PERMISSION_READ
 
   /**
-  Variant of $(add_characteristic uuid --properties --permissions).
-
-  Adds a indication characteristic with the given $uuid. See $add_characteristic.
+  Convenience method to add an indication characteristic with the given $uuid. See $add_characteristic.
   */
-  add_characteristic --indication/bool uuid/BleUuid  -> LocalCharacteristic:
-    if not indication: throw "INVALID_ARGUMENT"
+  add_indication_characteristic  uuid/BleUuid  -> LocalCharacteristic:
     return add_characteristic
         uuid
         --properties=CHARACTERISTIC_PROPERTY_INDICATE
@@ -564,7 +553,7 @@ class LocalDescriptor extends LocalReadWriteElement_ implements Attribute:
 /**
 The manager for creating client connections.
 */
-class CentralManager extends Resource_:
+class Central extends Resource_:
   adapter/Adapter
 
   constructor .adapter:
@@ -626,7 +615,7 @@ class CentralManager extends Resource_:
 /**
 The manager for advertising and managing local services.
 */
-class PeripheralManager extends Resource_:
+class Peripheral extends Resource_:
   static DEFAULT_INTERVAL ::= Duration --us=46875
   adapter/Adapter
 
@@ -640,7 +629,7 @@ class PeripheralManager extends Resource_:
 
   The data is advertised once every $interval.
 
-  The advertise includse the given $connection_mode, use one
+  The advertise includes the given $connection_mode, which must be one
     of the BLE_CONNECT_MODE_* constants (see $BLE_CONNECT_MODE_NONE and similar).
 
   Throws, If the adapter does not support parts of the advertise content.
@@ -709,8 +698,8 @@ class Adapter:
 
   adapter_metadata/AdapterMetadata?
   resource_group_/any
-  central_manager_/CentralManager? := null
-  peripheral_manager_/PeripheralManager? := null
+  central_/Central? := null
+  peripheral_/Peripheral? := null
 
   constructor: return discover_adapter_metadata[0].adapter
 
@@ -721,18 +710,18 @@ class Adapter:
   The central manager handles connections to remote peripherals.
   It is responsible for scanning, discovering and connecting to other devices.
   */
-  central_manager -> CentralManager:
+  central -> Central:
     if not adapter_metadata.supports_central_role: throw "NOT_SUPPORTED"
-    if not central_manager_: central_manager_ = CentralManager this
-    return central_manager_
+    if not central_: central_ = Central this
+    return central_
 
   /**
   The peripheral manager is used to advertise and publish local services.
   */
-  peripheral_manager -> PeripheralManager:
+  peripheral -> Peripheral:
     if not adapter_metadata.supports_peripheral_role: throw "NOT_SUPPORTED"
-    if not peripheral_manager_: peripheral_manager_ = PeripheralManager this
-    return peripheral_manager_;
+    if not peripheral_: peripheral_ = Peripheral this
+    return peripheral_;
 
   set_preferred_mtu mtu/int:
     ble_set_preferred_mtu_ mtu
@@ -781,7 +770,7 @@ order_attributes_ input/List/*<BleUUID>*/ output/List/*<Attribute>*/ -> List:
   if input.is_empty: return output
   output.do: | attribute/Attribute | map[attribute.uuid] = attribute
   // Input might contain Uuids that where never discovered, so make sure to use
-  // the non-throwing version of map.get
+  // the non-throwing version of map.get.
   return input.map: | uuid/BleUuid | map.get uuid
 
 class Resource_:
@@ -856,7 +845,7 @@ class LocalReadWriteElement_ extends Resource_:
 
 ble_retrieve_adpaters_:
   if platform == PLATFORM_FREERTOS or platform == PLATFORM_MACOS:
-    return [["default",#[], true, true, null]]
+    return [["default", #[], true, true, null]]
   throw "Unsupported platform"
 
 ble_init_ adapter:

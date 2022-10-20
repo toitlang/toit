@@ -214,7 +214,7 @@ class BLECharacteristicResource : public BLEResource, public DiscoverableResourc
     for (int i = 0; i < [_subscriptions count]; i++) {
       min_mtu = MIN(min_mtu, _subscriptions[i].maximumUpdateValueLength);
     }
-    return min_mtu==1 <<16 ? 23 : min_mtu; // 23 is the default mtu value in BLE.
+    return min_mtu == 1 << 16 ? 23 : min_mtu; // 23 is the default mtu value in BLE.
   }
 
  private:
@@ -371,7 +371,7 @@ BLECharacteristicResource* lookup_local_characteristic_resource(CBPeripheralMana
   if (peripheral.delegate != nil) {
     toit::BLERemoteDeviceResource* device = ((ToitPeripheralDelegate*) peripheral.delegate).device;
     if (error) {
-      // Todo: Record error and return to user code
+      // TODO: Record error and return to user code
       toit::HostBLEEventSource::instance()->on_event(device, toit::kBLEDiscoverOperationFailed);
     } else {
       toit::HostBLEEventSource::instance()->on_event(device, toit::kBLEServicesDiscovered);
@@ -387,7 +387,7 @@ didDiscoverCharacteristicsForService:(CBService*)service
     toit::BLEServiceResource* service_resource = device->get_or_create_service_resource(service);
     if (service_resource == null) return;
     if (error) {
-      // Todo: Record error and return to user code
+      // TODO: Record error and return to user code
       toit::HostBLEEventSource::instance()->on_event(device, toit::kBLEDiscoverOperationFailed);
     } else {
       toit::HostBLEEventSource::instance()->on_event(service_resource, toit::kBLECharacteristicsDiscovered);
