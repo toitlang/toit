@@ -38,6 +38,7 @@ jobs:
 
       - name: Set up constants
         id: constants
+        shell: bash
         run: |
           echo "external_result=external-result/$RUNNER_OS-${{ matrix.shard }}.txt" >> $GITHUB_OUTPUT
           echo "external_result_name=external-result-${{ github.run_id }}-${{ github.run_attempt }}" >> $GITHUB_OUTPUT
@@ -58,7 +59,6 @@ jobs:
             echo "UNSUPPORTED RUNNER: $RUNNER_OS"
             exit 1
           fi
-        shell: bash
 
       # Anything in the debug dir will be uploaded as artifact.
       - name: Setup debug dir
@@ -76,12 +76,14 @@ jobs:
 
       # Use Go 1.17
       - name: Switch to Go 1.17
+        shell: bash
         run:
           echo "$GOROOT_1_17_X64"/bin >> $GITHUB_PATH
 
       # Get values for cache paths to be used in later steps
       - name: Get Go paths
         id: go-cache-paths
+        shell: bash
         run: |
           echo "go-build=$(go env GOCACHE)" >> $GITHUB_OUTPUT
           echo "go-mod=$(go env GOMODCACHE)" >> $GITHUB_OUTPUT
@@ -325,12 +327,14 @@ jobs:
 
       # Use Go 1.17
       - name: Switch to Go 1.17
+        shell: bash
         run:
           echo "$GOROOT_1_17_X64"/bin >> $GITHUB_PATH
 
       # Get values for cache paths to be used in later steps
       - name: Get Go paths
         id: go-cache-paths
+        shell: bash
         run: |
           echo "go-build=$(go env GOCACHE)" >> $GITHUB_OUTPUT
           echo "go-mod=$(go env GOMODCACHE)" >> $GITHUB_OUTPUT
@@ -439,6 +443,7 @@ jobs:
     steps:
       - name: Set up constants
         id: constants
+        shell: bash
         run: |
           echo raspberry_pi_artifact=toit-rpi.tar.gz >> $GITHUB_OUTPUT
           echo raspberry_pi64_artifact=toit-rpi64.tar.gz >> $GITHUB_OUTPUT
@@ -461,12 +466,14 @@ jobs:
 
       # Use Go 1.17
       - name: Switch to Go 1.17
+        shell: bash
         run:
           echo "$GOROOT_1_17_X64"/bin >> $GITHUB_PATH
 
       # Get values for cache paths to be used in later steps
       - name: Get Go paths
         id: go-cache-paths
+        shell: bash
         run: |
           echo "go-build=$(go env GOCACHE)" >> $GITHUB_OUTPUT
           echo "go-mod=$(go env GOMODCACHE)" >> $GITHUB_OUTPUT
