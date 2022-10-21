@@ -39,21 +39,21 @@ jobs:
       - name: Set up constants
         id: constants
         run: |
-          echo ::set-output name=external_result::external-result/$RUNNER_OS-${{ matrix.shard }}.txt
-          echo ::set-output name=external_result_name::external-result-${{ github.run_id }}-${{ github.run_attempt }}
-          echo ::set-output name=debug_root_dir::debug-ci
-          echo ::set-output name=debug_dir::debug-ci/$RUNNER_OS-${{ matrix.shard }}
+          echo "external_result=external-result/$RUNNER_OS-${{ matrix.shard }}.txt" >> $GITHUB_OUTPUT
+          echo "external_result_name=external-result-${{ github.run_id }}-${{ github.run_attempt }}" >> $GITHUB_OUTPUT
+          echo "debug_root_dir=debug-ci" >> $GITHUB_OUTPUT
+          echo "debug_dir=debug-ci/$RUNNER_OS-${{ matrix.shard }}" >> $GITHUB_OUTPUT
           TOIT_VERSION=$(cmake -DPRINT_VERSION=1 -P tools/gitversion.cmake)
-          echo ::set-output name=toit_version::$TOIT_VERSION
+          echo "toit_version=$TOIT_VERSION" >> $GITHUB_OUTPUT
           if [ "$RUNNER_OS" == "Linux" ]; then
-            echo ::set-output name=artifact::toit-linux.tar.gz
-            echo ::set-output name=total_shards::10
+            echo "artifact=toit-linux.tar.gz" >> $GITHUB_OUTPUT
+            echo "total_shards=10" >> $GITHUB_OUTPUT
           elif [ "$RUNNER_OS" == "macOS" ]; then
-            echo ::set-output name=artifact::toit-macos.tar.gz
-            echo ::set-output name=total_shards::5
+            echo "artifact=toit-macos.tar.gz" >> $GITHUB_OUTPUT
+            echo "total_shards=5" >> $GITHUB_OUTPUT
           elif [ "$RUNNER_OS" == "Windows" ]; then
-            echo ::set-output name=artifact::toit-windows.tar.gz
-            echo ::set-output name=total_shards::5
+            echo "artifact=toit-windows.tar.gz" >> $GITHUB_OUTPUT
+            echo "total_shards=5" >> $GITHUB_OUTPUT
           else
             echo "UNSUPPORTED RUNNER: $RUNNER_OS"
             exit 1
@@ -83,8 +83,8 @@ jobs:
       - name: Get Go paths
         id: go-cache-paths
         run: |
-          echo "::set-output name=go-build::$(go env GOCACHE)"
-          echo "::set-output name=go-mod::$(go env GOMODCACHE)"
+          echo "go-build=$(go env GOCACHE)" >> $GITHUB_OUTPUT
+          echo "go-mod=$(go env GOMODCACHE)" >> $GITHUB_OUTPUT
 
       - name: Go cache
         uses: actions/cache@v3
@@ -332,8 +332,8 @@ jobs:
       - name: Get Go paths
         id: go-cache-paths
         run: |
-          echo "::set-output name=go-build::$(go env GOCACHE)"
-          echo "::set-output name=go-mod::$(go env GOMODCACHE)"
+          echo "go-build=$(go env GOCACHE)" >> $GITHUB_OUTPUT
+          echo "go-mod=$(go env GOMODCACHE)" >> $GITHUB_OUTPUT
 
       # Cache go build cache, used to speedup go test
       - name: Go Build Cache
@@ -440,8 +440,8 @@ jobs:
       - name: Set up constants
         id: constants
         run: |
-          echo ::set-output name=raspberry_pi_artifact::toit-rpi.tar.gz
-          echo ::set-output name=raspberry_pi64_artifact::toit-rpi64.tar.gz
+          echo raspberry_pi_artifact=toit-rpi.tar.gz >> $GITHUB_OUTPUT
+          echo raspberry_pi64_artifact=toit-rpi64.tar.gz >> $GITHUB_OUTPUT
         shell: bash
 
       - uses: actions/checkout@v3
@@ -468,8 +468,8 @@ jobs:
       - name: Get Go paths
         id: go-cache-paths
         run: |
-          echo "::set-output name=go-build::$(go env GOCACHE)"
-          echo "::set-output name=go-mod::$(go env GOMODCACHE)"
+          echo "go-build=$(go env GOCACHE)" >> $GITHUB_OUTPUT
+          echo "go-mod=$(go env GOMODCACHE)" >> $GITHUB_OUTPUT
 
       # Cache go build cache, used to speedup go test
       - name: Go Build Cache
@@ -619,8 +619,8 @@ jobs:
         id: constants
         shell: bash
         run: |
-          echo ::set-output name=external_result_dir::external-result
-          echo ::set-output name=external_result_name::external-result-${{ github.run_id }}-${{ github.run_attempt }}
+          echo external_result_dir=external-result >> $GITHUB_OUTPUT
+          echo external_result_name=external-result-${{ github.run_id }}-${{ github.run_attempt }} >> $GITHUB_OUTPUT
 
       - name: Retrieve
         uses: actions/download-artifact@v3
