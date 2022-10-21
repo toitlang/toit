@@ -437,7 +437,7 @@ class LocalService extends Resource_ implements Attribute:
         --value=value
 
   /**
-  Convenience method to add a write-only characteristic with the given $uuid that can $require_response for each write.
+  Convenience method to add a write-only characteristic with the given $uuid that can $requires_response for each write.
   */
   add_write_only_characteristic uuid/BleUuid requires_response/bool=false -> LocalCharacteristic:
     properties := requires_response
