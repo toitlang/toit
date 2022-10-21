@@ -29,6 +29,13 @@ jobs:
     runs-on: ${{ matrix.container }}
 
     steps:
+      - uses: actions/checkout@v3
+
+      - name: Fetch tags
+        # The github checkout is shallow and doesn't have tags.
+        run: |
+          git fetch --tags
+
       - name: Set up constants
         id: constants
         run: |
@@ -36,6 +43,8 @@ jobs:
           echo ::set-output name=external_result_name::external-result-${{ github.run_id }}-${{ github.run_attempt }}
           echo ::set-output name=debug_root_dir::debug-ci
           echo ::set-output name=debug_dir::debug-ci/$RUNNER_OS-${{ matrix.shard }}
+          TOIT_VERSION=$(cmake -DPRINT_VERSION=1 -P tools/gitversion.cmake)
+          echo ::set-output name=toit_version::$TOIT_VERSION
           if [ "$RUNNER_OS" == "Linux" ]; then
             echo ::set-output name=artifact::toit-linux.tar.gz
             echo ::set-output name=total_shards::10
@@ -51,18 +60,11 @@ jobs:
           fi
         shell: bash
 
-      - uses: actions/checkout@v3
-
       # Anything in the debug dir will be uploaded as artifact.
       - name: Setup debug dir
         shell: sh
         run: |
           mkdir -p ${{ steps.constants.outputs.debug_dir }}
-
-      - name: Fetch tags
-        # The github checkout is shallow and doesn't have tags.
-        run: |
-          git fetch --tags
 
       # We only need the mbedtls submodule for building.
       - name: Initialize mbedtls submodule
@@ -239,6 +241,20 @@ jobs:
           name: ${{ steps.constants.outputs.external_result_name }}
           path: ${{ steps.constants.outputs.external_result }}
 
+      - name: Toitdoc - Linux
+        if: runner.os == 'Linux' && matrix.shard == 1
+        env:
+          TOIT_VERSION: ${{ steps.constants.outputs.toit_version }}
+          TOITLSP: ${{ github.workspace }}/build/host/sdk/bin/toit.lsp
+          TOITC: ${{ github.workspace }}/build/host/sdk/bin/toit.compile
+          SDKDIR: ${{ github.workspace }}/
+        run: |
+          CPU_CORES=$(nproc)
+          JSON_OUT_PATH=${{ github.workspace }}/toitdoc_$TOIT_VERSION.json
+          cd "$SDKDIR"
+          echo "$TOITLSP" toitdoc -p $CPU_CORES --toitc=$TOITC "--sdk=$SDKDIR" "--out=$JSON_OUT_PATH" --version=$TOIT_VERSION lib
+          "$TOITLSP" toitdoc -p $CPU_CORES --toitc=$TOITC "--sdk=$SDKDIR" "--out=$JSON_OUT_PATH" --version=$TOIT_VERSION lib
+
       - name: Pack artifacts
         if: matrix.shard == 1
         shell: bash
@@ -264,6 +280,13 @@ jobs:
           name: debug
           path: ${{ steps.constants.outputs.debug_root_dir }}
           retention-days: 5
+
+      - name: Upload toitdoc - Linux
+        if: runner.os == 'Linux' && matrix.shard == 1
+        uses: actions/upload-artifact@v3
+        with:
+          name: toitdoc
+          path: toitdoc_${{ steps.constants.outputs.toit_version }}.json
 
       - name: Upload artifacts
         if: matrix.shard == 1
