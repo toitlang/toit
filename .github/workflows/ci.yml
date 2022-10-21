@@ -248,6 +248,7 @@ jobs:
           TOITLSP: ${{ github.workspace }}/build/host/sdk/bin/toit.lsp
           TOITC: ${{ github.workspace }}/build/host/sdk/bin/toit.compile
           SDKDIR: ${{ github.workspace }}/
+        shell: bash
         run: |
           CPU_CORES=$(nproc)
           JSON_OUT_PATH=${{ github.workspace }}/toitdoc_$TOIT_VERSION.json
@@ -288,6 +289,41 @@ jobs:
           name: toitdoc
           path: toitdoc_${{ steps.constants.outputs.toit_version }}.json
 
+      - name: Authenticate to Google cloud - Linux
+        if: runner.os == 'Linux' && matrix.shard == 1
+        uses: google-github-actions/auth@v0
+        with:
+          credentials_json: ${{ secrets.INFRASTRUCTURE_SERVICE_ACCOUNT_JSON_KEY }}
+          service_account: github-action@infrastructure-220307.iam.gserviceaccount.com
+
+      - name: Set up Cloud SDK
+        if: runner.os == 'Linux' && matrix.shard == 1
+        uses: google-github-actions/setup-gcloud@v0
+        with:
+          project_id: infrastructure-220307
+
+      - name: Upload toitdoc to gcloud - Linux
+        if: runner.os == 'Linux' && matrix.shard == 1
+        env:
+          TOIT_VERSION: ${{ steps.constants.outputs.toit_version }}
+        run: |
+          JSON_PATH=${{ github.workspace }}/toitdoc_$TOIT_VERSION.json
+          echo -n $TOIT_VERSION > LATEST.tmp
+          gsutil cp $JSON_PATH gs://toit-web/toitdoc-sdk/$TOIT_VERSION.json
+          gsutil cp LATEST.tmp gs://toit-web/toitdoc-sdk/LATEST
+
+      - name: Update RELEASE in gcloud - Linux
+        if: |
+          runner.os == 'Linux' && matrix.shard == 1 &&
+          github.event_name == 'release' && !github.event.release.prerelease
+        env:
+          TOIT_VERSION: ${{ steps.constants.outputs.toit_version }}
+        run: |
+          echo -n $TOIT_VERSION > LATEST.tmp
+
+          gsutil cp LATEST.tmp gs://toit-web/toitdoc-sdk/RELEASED
+          gsutil cp LATEST.tmp gs://toit-web/toitdoc-sdk/RELEASED.$TOIT_VERSION
+
       - name: Upload artifacts
         if: matrix.shard == 1
         uses: actions/upload-artifact@v3
@@ -305,6 +341,7 @@ jobs:
           file: build/${{ steps.constants.outputs.artifact }}
           tag: ${{ github.ref }}
           overwrite: true
+
 
   # Really annoying that we need to duplicate so much.
   esp32:
