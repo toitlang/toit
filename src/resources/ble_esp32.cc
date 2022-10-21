@@ -76,7 +76,7 @@ class DiscoveredPeripheral : public DiscoveredPeripheralList::Element {
 };
 
 // The thread on the BLEResourceGroup is responsible for running the nimble background thread. All events from the
-// nimble background thread is delivered through call backs to registered callback methods. The callback methods
+// nimble background thread are delivered through call backs to registered callback methods. The callback methods
 // will then send the events to the EventSource to enable the normal resource state notification mechanism. This is
 // done with the call BLEEventSource::instance()->on_event(<resource>, <kBLE* event id>).
 class BLEResourceGroup : public ResourceGroup, public Thread {
