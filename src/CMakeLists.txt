@@ -166,6 +166,10 @@ else()
   set(TOIT_WINDOWS_LIBS )
 endif()
 
+if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+  set(TOIT_BLUETOOTH_LIBS "-framework Foundation" "-framework CoreBluetooth" ObjC)
+endif()
+
 # Because of the `CACHE INTERNAL ""` at the end of the `set` we can
 #   use this variable outside of the directory.
 set(TOIT_LINK_LIBS
@@ -181,12 +185,9 @@ set(TOIT_LINK_LIBS
   ${CMAKE_DL_LIBS}
   ${TOIT_LINK_LIBS_LIBGCC}
   ${TOIT_LINK_SEGFAULT}
+  ${TOIT_BLUETOOTH_LIBS}
   CACHE INTERNAL ""
   )
-
-if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-  list(APPEND TOIT_LINK_LIBS "-framework Foundation" "-framework CoreBluetooth" ObjC)
-endif()
 
 target_link_libraries(
   toit_vm
