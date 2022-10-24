@@ -788,7 +788,7 @@ void Scheduler::wait_for_any_gc_to_complete(Locker& locker, Process* process, Pr
 }
 
 SchedulerThread* Scheduler::start_thread(Locker& locker) {
-  if (_num_threads >= _num_processes || _num_threads == _max_threads) return null;
+  if (_num_threads == _max_threads) return null;
   // On FreeRTOS we start both threads at boot time and then don't start
   // other threads. This should be enough, and should ensure that allocation
   // does not fail. On other platforms we assume that allocation will
