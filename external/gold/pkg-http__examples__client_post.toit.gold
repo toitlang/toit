@@ -1,0 +1,3 @@
+pkg-http/examples/client_post.toit:20:10: error: Class 'Client' does not have any method 'close'
+  client.close
+         ^~~~~
