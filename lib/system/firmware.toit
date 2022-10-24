@@ -129,9 +129,20 @@ interface FirmwareContent:
   operator [] index/int -> int
 
   /**
+
+  */
+  operator [..] --from/int=0 --to/int=size -> FirmwareContent
+
+  /**
   ...
   */
-  read from/int to/int --out/ByteArray --index/int -> none
+  read from/int to/int --out/ByteArray --index/int=0 -> none
+
+  /**
+  Closes
+  */
+  close -> none
+
 
 class FirmwareConfig_ implements FirmwareConfig:
   operator [] key/string -> any:
@@ -141,7 +152,7 @@ class FirmwareConfig_ implements FirmwareConfig:
     return _client_.config_ubjson
 
 class FirmwareContent_ implements FirmwareContent:
-  backing_/ByteArray
+  backing_/ByteArray? := null
   constructor .backing_:
 
   size -> int:
@@ -150,5 +161,11 @@ class FirmwareContent_ implements FirmwareContent:
   operator [] index/int -> int:
     return backing_[index]
 
-  read from/int to/int --out/ByteArray --index/int -> none:
+  operator [..] --from/int=0 --to/int=size -> FirmwareContent:
+    return FirmwareContent_ backing_[from..to]
+
+  read from/int to/int --out/ByteArray --index/int=0 -> none:
     out.replace index backing_ from to
+
+  close:
+    backing_ = null
