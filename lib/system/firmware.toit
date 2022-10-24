@@ -14,14 +14,15 @@ _client_ /FirmwareServiceClient? ::= (FirmwareServiceClient --no-open).open
 /**
 The configuration of the current firmware.
 */
-config ::= FirmwareConfig_
+config /FirmwareConfig ::= FirmwareConfig_
 
 /**
 The content bytes of the current firmware.
 */
-content -> ByteArray?:
+content -> FirmwareContent?:
   if not _client_: return null
-  return _client_.content
+  backing := _client_.content
+  return backing ? FirmwareContent_ backing : null
 
 /**
 Returns whether the currently executing firmware is
@@ -104,16 +105,50 @@ class FirmwareWriter extends ServiceResourceProxy:
   commit --checksum/ByteArray?=null -> none:
     _client_.firmware_writer_commit handle_ checksum
 
-class FirmwareConfig_:
+interface FirmwareConfig:
   /**
   Returns the configuration entry for the given $key, or
     null if the $key isn't present in the configuration.
   */
-  operator [] key/string -> any:
-    return _client_.config_entry key
+  operator [] key/string -> any
 
   /**
   Returns the UBJSON encoded configuration.
   */
+  ubjson -> ByteArray
+
+interface FirmwareContent:
+  /**
+  Returns the size of the firmware content in bytes.
+  */
+  size -> int
+
+  /**
+  Returns the byte at the given $index.
+  */
+  operator [] index/int -> int
+
+  /**
+  ...
+  */
+  read from/int to/int --out/ByteArray --index/int -> none
+
+class FirmwareConfig_ implements FirmwareConfig:
+  operator [] key/string -> any:
+    return _client_.config_entry key
+
   ubjson -> ByteArray:
     return _client_.config_ubjson
+
+class FirmwareContent_ implements FirmwareContent:
+  backing_/ByteArray
+  constructor .backing_:
+
+  size -> int:
+    return backing_.size
+
+  operator [] index/int -> int:
+    return backing_[index]
+
+  read from/int to/int --out/ByteArray --index/int -> none:
+    out.replace index backing_ from to
