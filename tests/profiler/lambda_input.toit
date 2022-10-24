@@ -18,14 +18,20 @@ bar:
 foo:
   run::
     sum := 0
-    for i := 0; i < ITERATIONS * 2; i++:
+    for i := 0; i < ITERATIONS * 4; i++:
       sum += i
-    expect_equals 1999000 sum
+    expect_equals 7998000 sum
 
+compute:
+  // Repeat the two computations to even
+  // out performance interferences from
+  // other things that run in parallel.
+  10.repeat:
+    foo
     bar
 
 main:
   Profiler.install false
-  Profiler.do: 10_000.repeat: foo
+  Profiler.do: 1_000.repeat: compute
   Profiler.report "Lambda Profiler Test"
   Profiler.uninstall
