@@ -150,6 +150,8 @@ PRIMITIVE(init_nor_flash) {
       .cs_io_num = gpio_cs,
       .io_mode = SPI_FLASH_FASTRD,
       .speed = static_cast<esp_flash_speed_t>(frequency),
+      .input_delay_ns = 0,
+      .cs_id = 0
   };
 
   esp_flash_t *chip;

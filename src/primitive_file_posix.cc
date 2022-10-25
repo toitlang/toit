@@ -520,10 +520,9 @@ PRIMITIVE(is_open_file) {
 PRIMITIVE(realpath) {
   ARGS(cstring, filename);
 #ifdef TOIT_FREERTOS
-  Error* error = null;
-  String* result = process->allocate_string(filename, &error);
+  String* result = process->allocate_string(filename);
   if (result == null) {
-    return error;
+    ALLOCATION_FAILED;
   }
   return result;
 #else
