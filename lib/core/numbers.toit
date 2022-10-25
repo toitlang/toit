@@ -928,7 +928,7 @@ abstract class int extends num:
   /**
   Whether this number is aligned with $n.
 
-  This number and the given $n must be a power of 2 or 0.
+  The given $n must be a power of 2.
 
   # Examples
   ```
