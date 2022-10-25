@@ -905,7 +905,7 @@ abstract class int extends num:
   /**
   Whether this integer is a power of two.
 
-  An integer is a power of two if there exists a number `n` such that the int
+  An integer is a power of two if there exists a number `n` such that the integer
     is equal to 2**n.
   (** is "to the power of".)
 
