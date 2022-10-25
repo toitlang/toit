@@ -717,7 +717,7 @@ abstract class int extends num:
   abstract operator - -> int
 
   /**
-  Negates this number bitwise.
+  Negates this integer bitwise.
 
   # Examples
   ```
@@ -728,7 +728,7 @@ abstract class int extends num:
   abstract operator ~ -> int
 
   /**
-  Bitwise-ANDs this number with the $other.
+  Bitwise-ANDs this integer with the $other.
 
   # Examples
   ```
@@ -746,7 +746,7 @@ abstract class int extends num:
   abstract operator & other/int -> int
 
   /**
-  Bitwise-ORs this number with the $other.
+  Bitwise-ORs this integer with the $other.
 
   # Examples
   ```
@@ -763,7 +763,7 @@ abstract class int extends num:
   abstract operator | other/int -> int
 
   /**
-  Bitwise-XORs this number with the $other.
+  Bitwise-XORs this integer with the $other.
 
   # Examples
   ```
@@ -781,9 +781,9 @@ abstract class int extends num:
   abstract operator ^ other/int -> int
 
   /**
-  Right shifts this number with $number_of_bits.
+  Right shifts this integer with $number_of_bits.
 
-  The left most bit of this number is inserted to the left of the shifted
+  The left-most bit of this integer is inserted to the left of the shifted
     bits preserving the sign.
 
   # Examples
@@ -801,7 +801,7 @@ abstract class int extends num:
   abstract operator >> number_of_bits/int -> int
 
   /**
-  Right shifts this number with $number_of_bits erasing the sign bit.
+  Right shifts this integer with $number_of_bits, erasing the sign bit.
 
   # Examples
   ```
@@ -820,7 +820,7 @@ abstract class int extends num:
   abstract operator >>> number_of_bits/int -> int
 
   /**
-  Left shifts this number with $number_of_bits.
+  Left shifts this integer with $number_of_bits.
 
   # Examples
   ```
@@ -903,9 +903,9 @@ abstract class int extends num:
     return to_float.sqrt
 
   /**
-  Whether this number is a power of two.
+  Whether this integer is a power of two.
 
-  A number is a power of two if here exists a number `n` such that the number
+  An integer is a power of two if there exists a number `n` such that the int
     is equal to 2**n.
   (** is "to the power of".)
 
@@ -926,7 +926,7 @@ abstract class int extends num:
     return (this & this - 1) == 0 and this != 0
 
   /**
-  Whether this number is aligned with $n.
+  Whether this integer is aligned with $n.
 
   This number and the given $n must be a power of 2 or 0.
 
@@ -949,7 +949,7 @@ abstract class int extends num:
 
   /**
   Calls the given $block a number of times corresponding to the value of
-    this number.
+    this integer.
 
   If the number is negative, then the given block is not called.
 
