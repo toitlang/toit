@@ -8,6 +8,7 @@ main:
   test_clz
   test_ctz
   test_popcount
+  test_parity
 
 test_clz:
   expect_equals 0
@@ -70,3 +71,14 @@ test_popcount:
       int.MIN.population_count
   expect_equals 63
       int.MAX.population_count
+
+test_parity:
+  expect
+    0x34.has_odd_parity
+  expect
+    0x3c.has_even_parity
+
+  expect_equals 1
+    0x23.parity
+  expect_equals 0
+    0xff.parity
