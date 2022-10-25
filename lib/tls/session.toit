@@ -345,7 +345,8 @@ class TlsGroup_:
     return handle_ = tls_init_ is_server_
 
   unuse -> none:
-    if --users_ == 0:
+    users_--
+    if users_ == 0:
       handle := handle_
       handle_ = null
       tls_deinit_ handle

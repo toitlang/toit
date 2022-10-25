@@ -15,26 +15,26 @@
 
 include(toit.cmake)
 
-set(TOOLS system_message snapshot_to_image inject_config toitp stacktrace)
+set(TOOLS assets firmware system_message snapshot_to_image toitp stacktrace)
+set(EXES)
 
 foreach (TOOL ${TOOLS})
-  set(TOOL_SNAPSHOT ${CMAKE_BINARY_DIR}/sdk/snapshots/${TOOL}.snapshot)
+  set(TOOL_EXE ${CMAKE_BINARY_DIR}/sdk/tools/${TOOL}${CMAKE_EXECUTABLE_SUFFIX})
 
-  ADD_TOIT_TARGET(
+  ADD_TOIT_EXE(
     ${CMAKE_CURRENT_SOURCE_DIR}/${TOOL}.toit
-    ${TOOL_SNAPSHOT}
-    ${CMAKE_CURRENT_BINARY_DIR}/${TOOL}.dep
+    ${TOOL_EXE}
+    ${CMAKE_CURRENT_BINARY_DIR}/${TOOL}.exe.dep
     ""
   )
 
-  set(SNAPSHOTS ${TOOL_SNAPSHOT} ${SNAPSHOTS})
+  list(APPEND EXES "${TOOL_EXE}")
 endforeach ()
 
 add_custom_target(
-  build_tool_snapshots
-  DEPENDS ${SNAPSHOTS}
+  build_toit_tools
+  DEPENDS ${EXES}
 )
-add_dependencies(build_snapshots build_tool_snapshots)
 
 toit_project(lsp "${CMAKE_CURRENT_LIST_DIR}/lsp/server")
 toit_project(tools "${CMAKE_CURRENT_LIST_DIR}")

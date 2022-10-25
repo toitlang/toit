@@ -35,18 +35,27 @@ A latch that allows one task to wait until a value (object) has been provided
 This class must not be extended.
 */
 monitor Latch:
-  has_value_ / bool := false
+  static STATE_UNSET_         ::= 0
+  static STATE_HAS_VALUE_     ::= 1
+  static STATE_HAS_EXCEPTION_ ::= 2
+
+  state_ / int := STATE_UNSET_
   value_ := null
 
   /**
   Receives the value.
 
-  This method blocks until the value is available.
+  This method blocks until the value is available. If the value
+    is an exception, it is thrown.
   May be called multiple times.
   */
   get -> any:
-    await: has_value_
-    return value_
+    await: state_ != STATE_UNSET_
+    value := value_
+    if state_ == STATE_HAS_EXCEPTION_:
+      if value is not Exception_: throw value
+      rethrow value.value value.trace
+    return value
 
   /**
   Sets the $value of the latch.
@@ -54,15 +63,16 @@ monitor Latch:
   Calling this method unblocks any task that is blocked in the $get method of
     the same instance, sending the $value to it.
   Future calls to $get return immediately and use this $value.
-  Must be called at most once for each instance of the monitor.
+  If $exception is true, the $value is thrown in the task that calls
+    the $get method.
   */
-  set value/any -> none:
+  set value/any --exception/bool=false -> none:
     value_ = value
-    has_value_ = true
+    state_ = exception ? STATE_HAS_EXCEPTION_ : STATE_HAS_VALUE_
 
-  /** Whether this latch has already a value set. */
+  /** Whether this latch has already a value or an exception set. */
   has_value -> bool:
-    return has_value_
+    return state_ != STATE_UNSET_
 
 /**
 A semaphore synchronization primitive.
@@ -71,7 +81,7 @@ A semaphore synchronization primitive.
 This class must not be extended.
 */
 monitor Semaphore:
-  count_ /int := 0
+  count_ /int := ?
   limit_ /int?
 
   /**
@@ -81,8 +91,10 @@ monitor Semaphore:
     counter using $up are ignored and leaves the counter unchanged.
   */
   constructor --count/int=0 --limit/int?=null:
+    if count < 0: throw "INVALID_ARGUMENT"
     if limit and (limit < 1 or count > limit): throw "INVALID_ARGUMENT"
     limit_ = limit
+    count_ = count
 
   /**
   Increments an internal counter.
@@ -104,6 +116,10 @@ monitor Semaphore:
   down -> none:
     await: count_ > 0
     count_--
+
+  /** The current count of the semaphore. */
+  count -> int:
+    return count_
 
 /**
 A signal synchronization primitive.
@@ -166,6 +182,60 @@ monitor Signal:
       if condition.call: return
 
 /**
+A synchronization gate.
+
+The gate can be open or closed. When a task tries to $enter, it waits
+  until the gate is open.
+*/
+class Gate:
+  signal_ /Signal ::= Signal
+  locked_ /bool := ?
+
+  /**
+  Constructs a new gate.
+
+  If $unlocked is true, starts with the gate open.
+  */
+  constructor --unlocked/bool=false:
+    locked_ = not unlocked
+
+  /**
+  Unlocks the gate, allowing tasks to enter.
+
+  Does nothing if the gate is already unlocked.
+  */
+  unlock -> none:
+    if not is_locked: return
+    locked_ = false
+    signal_.raise
+
+  /**
+  Lockes the gate.
+
+  Any task that is trying to $enter will block until the gate is opened again.
+  */
+  lock:
+    locked_ = true
+
+  /**
+  Enters the gate.
+
+  This method blocks until the gate is open.
+  */
+  enter -> none:
+    signal_.wait: is_unlocked
+
+  /**
+  Whether the gate is unlocked.
+  */
+  is_unlocked -> bool: return not locked_
+
+  /**
+  Whether the gate is locked.
+  */
+  is_locked -> bool: return locked_
+
+/**
 A one-way communication channel between tasks.
 Multiple messages (objects) can be sent, and the capacity indicates how many
   unreceived message it can buffer.
@@ -175,12 +245,13 @@ This class must not be extended.
 */
 monitor Channel:
   buffer_ ::= ?
-  c_ := 0
-  p_ := 0
+  start_ := 0
+  size_ := 0
 
   /** Constructs a channel with a buffer of the given $capacity. */
   constructor capacity:
-    buffer_ = List capacity + 1
+    if capacity <= 0: throw "INVALID_ARGUMENT"
+    buffer_ = List capacity
 
   /**
   Sends a message with the $value on the channel.
@@ -190,12 +261,24 @@ monitor Channel:
     them is woken up and receives the $value.
   */
   send value/any -> none:
-    n := 0
-    await:
-      n = (p_ + 1) % buffer_.size
-      n != c_
-    buffer_[p_] = value
-    p_ = n
+    await: size_ < buffer_.size
+    index := (start_ + size_) % buffer_.size
+    buffer_[index] = value
+    size_++
+
+  /**
+  Sends a message with the result of calling the given $block.
+  This operation may block if the buffer capacity has been reached. In that
+    case, this task waits until another task calls $receive. The block is
+    only called when the channel has the capacity to buffer a message.
+  If there are tasks blocked waiting for a value (with $receive), then one of
+    them is woken up and receives the sent value.
+  */
+  send [block] -> none:
+    await: size_ < buffer_.size
+    index := (start_ + size_) % buffer_.size
+    buffer_[index] = block.call
+    size_++
 
   /**
   Tries to send a message with the $value on the channel. This operation never blocks.
@@ -206,10 +289,10 @@ monitor Channel:
     if the channel is full and the message was not delivered
   */
   try_send value/any -> bool:
-    n := (p_ + 1) % buffer_.size
-    if c_ == n: return false
-    buffer_[p_] = value
-    p_ = n
+    if size_ >= buffer_.size: return false
+    index := (start_ + size_) % buffer_.size
+    buffer_[index] = value
+    size_++
     return true
 
   /**
@@ -222,11 +305,22 @@ monitor Channel:
   The order in which waiting tasks are unblocked is unspecified.
   */
   receive --blocking/bool=true -> any:
-    if not blocking and c_ == p_: return null
-    await: c_ != p_
-    value := buffer_[c_]
-    c_ = (c_ + 1) % buffer_.size
+    if not blocking and size_ == 0: return null
+    await: size_ > 0
+    value := buffer_[start_]
+    start_ = (start_ + 1) % buffer_.size
+    size_--
     return value
+
+  /**
+  The capacity of the channel.
+  */
+  capacity -> int: return buffer_.size
+
+  /**
+  The amount of messages that are currently queued in the channel.
+  */
+  size -> int: return size_
 
 /**
 A two-way communication channel between tasks with replies to each message.

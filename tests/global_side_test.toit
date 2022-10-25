@@ -7,7 +7,7 @@ import expect show *
 side_counter := 0
 
 side:
-  side_counter++
+  return side_counter++
 
 global := side
 

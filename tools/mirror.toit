@@ -23,9 +23,9 @@ import encoding.base64 as base64
 
 abstract class Mirror:
   json ::= ?
-  program/Program ::= ?
+  program/Program? ::= ?
 
-  constructor .json .program/Program:
+  constructor .json .program:
 
   abstract stringify -> string
 
@@ -35,7 +35,8 @@ class Stack extends Mirror:
   static tag ::= 'S'
   frames ::= []
 
-  constructor json program/Program [on_error]:
+  constructor json program/Program? [on_error]:
+    if not program: throw "Stack trace can't be decoded without a snapshot"
     frames = json[1].map: decode_json_ it program on_error
     super json program
 
@@ -139,7 +140,8 @@ class Error extends Mirror:
   message ::= ?
   trace := ?
 
-  constructor json program/Program [on_error]:
+  constructor json program/Program? [on_error]:
+    if not program: throw "Error can't be decoded without a snapshot"
     type = decode_json_ json[1] program on_error
     message = decode_json_ json[2] program on_error
     trace = decode_json_ json[3] program on_error
@@ -196,6 +198,13 @@ class Error extends Mirror:
       method_info := program.method_info_for method.id
       class_name = method_info.as_class_name relative_bci
     return "As check failed: $(typed_expression_string_ expression) is not a $class_name.\n$trace"
+
+  serialization_failed_stringify -> string:
+    // message is an integer, the failing class-id.
+    if message is not int: return "Serialization failed: Cannot encode instance.\n$trace"
+    class_id := message
+    class_name := program.class_name_for class_id
+    return "Serialization failed: Cannot encode instance of $class_name.\n$trace"
 
   allocation_failed_stringify -> string:
     if message is not int:
@@ -261,6 +270,7 @@ class Error extends Mirror:
   stringify -> string:
     if type == "LOOKUP_FAILED": return lookup_failure_stringify
     if type == "AS_CHECK_FAILED": return as_check_failure_stringify
+    if type == "SERIALIZATION_FAILED": return serialization_failed_stringify
     if type == "ALLOCATION_FAILED": return allocation_failed_stringify
     if type == "INITIALIZATION_IN_PROGRESS": return initialization_in_progress_stringify
     if type == "UNINITIALIZED_GLOBAL": return uninitialized_global_stringify
@@ -305,7 +315,8 @@ class Profile extends Mirror:
   cutoff ::= 0
   total ::= 0
 
-  constructor json program/Program [on_error]:
+  constructor json program/Program? [on_error]:
+    if not program: throw "Profile can't be decoded without a snapshot"
     pos := 4
     title = decode_json_ json[1] program on_error
     cutoff = decode_json_ json[2] program on_error
@@ -343,15 +354,15 @@ class Histogram extends Mirror:
   marker_ /string
   entries /List ::= []
 
-  constructor json program/Program [on_error]:
+  constructor json program/Program? [on_error]:
+    if not program: throw "Histogram can't be decoded without a snapshot"
     assert:   json[0] == tag
     marker_ = json[1]
     first_entry := 2
 
     for i := first_entry; i < json.size; i += 3:
       class_name := program.class_name_for json[i]
-      if class_name != "RecognizableFiller_":
-        entries.add
+      entries.add
           HistogramEntry class_name json[i + 1] json[i + 2]
     entries.sort --in_place: | a b | b.size - a.size
     super json program
@@ -386,12 +397,189 @@ class CoreDump extends Mirror:
     output += "./third_party/esp-idf/components/espcoredump/espcoredump.py info_corefile -t raw -c /tmp/core.dump ./esp/toit/build/toit.elf"
     return output
 
+class MallocReport extends Mirror:
+  static tag ::= 'M'
+
+  uses_list /List := []        // List of byte arrays, each entry is a bitmap.
+  fullnesses_list /List := []  // List of byte arrays, each entry is a percentage fullness.
+  base_addresses /List := []   // List of base adddresses.
+  granularity /int
+
+  static TERMINAL_SET_BACKGROUND_ ::= "\x1b[48;5;"
+  static TERMINAL_SET_FOREGROUND_ ::= "\x1b[38;5;"
+  static TERMINAL_RESET_COLORS_   ::= "\x1b[0m"
+  static TERMINAL_WHITE_ ::= 231
+  static TERMINAL_DARK_GREY_ ::= 232
+  static TERMINAL_LIGHT_GREY_ ::= 255
+  static TERMINAL_TOIT_HEAP_COLOR_ ::= 174  // Orange-ish.
+
+  static MEMORY_PAGE_MALLOC_MANAGED_ ::= 1 << 0
+
+  /**
+  Bitmap mask for $uses_list.
+  Indicates the page was allocated for the Toit heap.
+  */
+  static MEMORY_PAGE_TOIT_            ::= 1 << 1
+
+  /**
+  Bitmap mask for $uses_list.
+  Indicates the page contains at least one allocation for external (large)
+  Toit strings and byte arrays.
+  */
+  static MEMORY_PAGE_EXTERNAL_        ::= 1 << 2
+
+  /**
+  Bitmap mask for $uses_list.
+  Indicates the page contains at least one allocation for TLS and other
+  cryptographic uses.
+  */
+  static MEMORY_PAGE_TLS_             ::= 1 << 3
+
+  /**
+  Bitmap mask for $uses_list.
+  Indicates the page contains at least one allocation for network buffers.
+  */
+  static MEMORY_PAGE_BUFFERS_         ::= 1 << 4
+
+  /**
+  Bitmap mask for $uses_list.
+  Indicates the page contains at least one miscellaneous or unknown allocation.
+  */
+  static MEMORY_PAGE_MISC_            ::= 1 << 5
+
+  /**
+  Bitmap mask for $uses_list.
+  Indicates that this page and the next page are part of a large multi-page
+  allocation.
+  */
+  static MEMORY_PAGE_MERGE_WITH_NEXT_ ::= 1 << 6
+
+  constructor json program [on_error]:
+    for i := 1; i + 2 < json.size; i += 3:
+      uses_list.add       json[i + 0]
+      fullnesses_list.add json[i + 1]
+      base_addresses.add  json[i + 2]
+    granularity = json[json.size - 1]
+    super json program
+
+  stringify -> string:
+    result := []
+    key_ result --terminal=false
+    for i := 0; i < uses_list.size; i++:
+      uses := uses_list[i]
+      fullnesses := fullnesses_list[i]
+      base := base_addresses[i]
+      for j := 0; j < uses.size; j++:
+        if uses[j] != 0 or fullnesses[j] != 0:
+          result.add "0x$(%08x base + j * granularity): $(%3d fullnesses[j])% $(plain_usage_description_ uses[j] fullnesses[j])"
+        if uses[j] & MEMORY_PAGE_MERGE_WITH_NEXT_ == 0:
+          separator := "--------------------------------------------------------"
+          if result[result.size - 1] != separator: result.add separator
+    return result.join "\n"
+
+  key_ result/List --terminal/bool -> none:
+    k := granularity >> 10
+    scale := ""
+    for i := 232; i <= 255; i++: scale += "$TERMINAL_SET_BACKGROUND_$(i)m "
+    scale += TERMINAL_RESET_COLORS_
+    result.add   "┌────────────────────────────────────────────────────────────────────────┐"
+    if terminal:
+      result.add "│$(%2d k)k pages.  All pages are $(%2d k)k, even the ones that are shown wider       │"
+      result.add "│ because they have many different allocations in them.                  │"
+    else:
+      result.add "│Each line is a $(%2d k)k page.                                                │"
+    if terminal:
+      result.add "│   X  = External strings/bytearrays.        B  = Network buffers.       │"
+      result.add "│   W  = TLS/crypto.                         M  = Misc. allocations.     │"
+      result.add "│   To = Toit managed heap.                  -- = Free page.             │"
+      result.add "│        Fully allocated $scale Completely free page.  │"
+    result.add   "└────────────────────────────────────────────────────────────────────────┘"
+
+  // Only used for plain ASCII mode, not for terminal graphics mode.
+  plain_usage_description_ use/int fullness/int -> string:
+    if fullness == 0: return "(Free)"
+    symbols := []
+    if use & MEMORY_PAGE_TOIT_ != 0: symbols.add "Toit"
+    if use & MEMORY_PAGE_BUFFERS_ != 0: symbols.add "Network Buffers"
+    if use & MEMORY_PAGE_EXTERNAL_ != 0: symbols.add "External strings/bytearrays"
+    if use & MEMORY_PAGE_TLS_ != 0: symbols.add "TLS/Crypto"
+    if use & MEMORY_PAGE_MISC_ != 0: symbols.add "Misc"
+    return symbols.join ", "
+
+  terminal_stringify -> string:
+    result := []
+    key_ result --terminal=true
+    for i := 0; i < uses_list.size; i++:
+      uses := uses_list[i]
+      fullnesses := fullnesses_list[i]
+      base := base_addresses[i]
+      lowest := uses.size
+      highest := 0
+      for j := 0; j < uses.size; j++:
+        if uses[j] != 0 or fullnesses[j] != 0:
+          lowest = min lowest j
+          highest = max highest j
+      if lowest > highest: continue
+      result.add "0x$(%08x base + lowest * granularity)-0x$(%08x base + (highest + 1) * granularity)"
+      generate_line result uses fullnesses "┌"  "──┬"  "───"  "──┐" false
+      generate_line result uses fullnesses "│"    "│"    " "    "│" true
+      generate_line result uses fullnesses "└"  "──┴"  "───"  "──┘" false
+    return result.join "\n"
+
+  generate_line result/List uses/ByteArray fullnesses/ByteArray open/string allocation_end/string allocation_continue/string end/string is_data_line/bool -> none:
+    line := []
+    for i := 0; i < uses.size; i++:
+      use := uses[i]
+      if use == 0 and fullnesses[i] == 0: continue
+      symbols := ""
+      if use & MEMORY_PAGE_TOIT_ != 0: symbols = "To"
+      if use & MEMORY_PAGE_BUFFERS_ != 0: symbols = "B"
+      if use & MEMORY_PAGE_EXTERNAL_ != 0: symbols += "X"
+      if use & MEMORY_PAGE_TLS_ != 0: symbols += "W"  // For WWW.
+      if use & MEMORY_PAGE_MISC_ != 0: symbols += "M"  // For WWW.
+      previous_was_unmanaged := i == 0 or (uses[i - 1] == 0 and fullnesses[i - 1] == 0)
+      if previous_was_unmanaged:
+        line.add open
+      fullness := fullnesses[i]
+      if fullness == 0:
+        symbols = "--"
+      while symbols.size < 2:
+        symbols += " "
+      if is_data_line:
+        white_text := fullness > 50  // Percent.
+        background_color := TERMINAL_LIGHT_GREY_ - (24 * fullness) / 100
+        background_color = max background_color TERMINAL_DARK_GREY_
+        if fullness == 0:
+          background_color = TERMINAL_WHITE_
+        else if use & MEMORY_PAGE_TOIT_ != 0:
+          background_color = TERMINAL_TOIT_HEAP_COLOR_
+
+        line.add "$TERMINAL_SET_BACKGROUND_$(background_color)m"
+               + "$TERMINAL_SET_FOREGROUND_$(white_text ? TERMINAL_WHITE_ : TERMINAL_DARK_GREY_)m"
+               + symbols + TERMINAL_RESET_COLORS_
+      next_is_unmanaged := i == uses.size - 1 or (uses[i + 1] == 0 and fullnesses[i + 1] == 0)
+      line_drawing := ?
+      if next_is_unmanaged:
+        line_drawing = end
+      else if use & MEMORY_PAGE_MERGE_WITH_NEXT_ != 0:
+        line_drawing = allocation_continue
+      else:
+        line_drawing = allocation_end
+      if symbols.size > 2 and not is_data_line:
+        // Pad the line drawings on non-data lines to match the width of the
+        // data.
+        first_character := line_drawing[0..utf_8_bytes line_drawing[0]]
+        line_drawing = (first_character * (symbols.size - 2)) + line_drawing
+      line.add line_drawing
+    result.add
+        "  " + (line.join "")
+
 class HeapReport extends Mirror:
   static tag ::= 'H'
   reason := ""
   pages ::= []
 
-  constructor json program [on_error]:
+  constructor json program/Program? [on_error]:
     reason = json[1]
     pages = json[2].map: decode_json_ it program on_error
     pages.sort --in_place: | a b | a.address.compare_to b.address
@@ -465,7 +653,7 @@ class HeapPage extends Mirror:
         offset += HEADER_
       repetitions := extra + (((byte >> 4) & 0b11) + 1) * GRANULARITY_
       use := byte & 0b1111
-      usage_char := "?ABSTUFWH       "[use]
+      usage_char := "?ABSTUFWH?EOP?W "[use]
       block.call offset repetitions usage_char (offset + repetitions == PAGE_)
       offset += repetitions
     if offset < PAGE_:
@@ -499,10 +687,12 @@ DESCRIPTIONS_ ::= {
   'B': "Bignum (crypto)",
   'S': "External string",
   'T': "Toit GCed heap",
-  //'U': "Unused (spare) Toit GCed heap",  // Not currently in use.
   'F': "Free",
-  'W': "LwIP",
+  'W': "LwIP/WiFi",
   'H': "Malloc heap bookkeeping",
+  'E': "Event sources",
+  'O': "Other threads",
+  'P': "Thread spawn",
   ' ': "Not part of the heap",
 }
 
@@ -569,12 +759,15 @@ class ColorBlockOutputter_ extends UnicodeBlockOutputter_:
   colors ::= {
     '?': 240,  // Dark grey, misc allocated.
     'A': 48,   // External byte array.
-    'B': 111,   // Bignum.
+    'B': 111,  // Bignum.
     'S': 190,  // External string.
-    'T': 214,   // Toit heap.
+    'T': 214,  // Toit heap.
     'U': 112,  // Unused (spare) Toit heap.
     'F': 44,   // Cyan, free memory.
-    'W': 170,  // Purple, LwIP
+    'W': 170,  // Purple, LwIP/Wifi.
+    'E': 89,   // Dark red, event sources.
+    'O': 160,  // Bright red, other threads.
+    'P': 20,   // Aquamarine, thread spawn.
     'H': 248,  // Heap overhead/headers.
     ' ': 15    // White, outside the heap.
   }
@@ -617,7 +810,7 @@ class ColorBlockOutputter_ extends UnicodeBlockOutputter_:
       foreground = -1
       background = -1
 
-decode byte_array program [on_error]:
+decode byte_array program/Program? [on_error]:
   assert: byte_array is ByteArray and byte_array[0] == '['
   json := null
   error ::= catch: json = ubjson.decode byte_array
@@ -635,7 +828,7 @@ decode byte_array program [on_error]:
   // Then decode the payload.
   return decode_json_ json[4] program on_error
 
-decode_json_ json program/Program [on_error]:
+decode_json_ json program/Program? [on_error]:
   // First recognize basic types.
   if json is num: return json
   if json is string: return json
@@ -647,15 +840,16 @@ decode_json_ json program/Program [on_error]:
   assert: json is List
   if json.size == 0: return on_error.call "Expecting a non empty list"
   tag := json.first
-  if      tag == Array.tag:       return Array      json program on_error
-  else if tag == MList.tag:       return MList      json program on_error
-  else if tag == Stack.tag:       return Stack      json program on_error
-  else if tag == Frame.tag:       return Frame      json program on_error
-  else if tag == Error.tag:       return Error      json program on_error
-  else if tag == Instance.tag:    return Instance   json program on_error
-  else if tag == Profile.tag:     return Profile    json program on_error
-  else if tag == Histogram.tag:   return Histogram  json program on_error
-  else if tag == HeapReport.tag:  return HeapReport json program on_error
-  else if tag == HeapPage.tag:    return HeapPage   json program on_error
-  else if tag == CoreDump.tag:    return CoreDump   json program on_error
+  if      tag == Array.tag:        return Array        json program on_error
+  else if tag == MList.tag:        return MList        json program on_error
+  else if tag == Stack.tag:        return Stack        json program on_error
+  else if tag == Frame.tag:        return Frame        json program on_error
+  else if tag == Error.tag:        return Error        json program on_error
+  else if tag == Instance.tag:     return Instance     json program on_error
+  else if tag == Profile.tag:      return Profile      json program on_error
+  else if tag == Histogram.tag:    return Histogram    json program on_error
+  else if tag == HeapReport.tag:   return HeapReport   json program on_error
+  else if tag == HeapPage.tag:     return HeapPage     json program on_error
+  else if tag == CoreDump.tag:     return CoreDump     json program on_error
+  else if tag == MallocReport.tag: return MallocReport json program on_error
   return on_error.call "Unknown tag: $tag"

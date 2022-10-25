@@ -198,19 +198,29 @@ void OldSpace::end_tracking_allocations() {
   tracking_allocations_ = false;
 }
 
-void OldSpace::compute_compaction_destinations() {
-  if (is_empty()) return;
+word OldSpace::compute_compaction_destinations() {
+  if (is_empty()) return 0;
+  word memory_that_can_only_be_reclaimed_by_compacting = 0;
   auto it = chunk_list_.begin();
   GcMetadata::Destination dest(it, it->start(), it->usable_end());
   for (auto chunk : chunk_list_) {
-    dest = GcMetadata::calculate_object_destinations(program_, chunk, dest);
+    GcMetadata::Destination new_dest = GcMetadata::calculate_object_destinations(program_, chunk, dest);
+    if (new_dest.address == dest.address) {
+      // The chunk was completely empty, so we can free it even without
+      // compacting.
+      memory_that_can_only_be_reclaimed_by_compacting -= chunk->size();
+    }
+    dest = new_dest;
   }
   dest.chunk()->set_compaction_top(dest.address);
   while (dest.has_next_chunk()) {
     dest = dest.next_chunk();
     Chunk* unused = dest.chunk();
+    // Completely empty destination chunks can be freed if we compact.
+    memory_that_can_only_be_reclaimed_by_compacting += unused->size();
     unused->set_compaction_top(unused->start());
   }
+  return memory_that_can_only_be_reclaimed_by_compacting;
 }
 
 void OldSpace::zap_object_starts() {
@@ -505,7 +515,7 @@ uword OldSpace::sweep() {
   uword used = 0;
   const word SINGLE_FREE_WORD = -44;
   ASSERT(reinterpret_cast<Object*>(SINGLE_FREE_WORD) == FreeListRegion::single_free_word_header());
-  for (auto chunk : chunk_list_) {
+  chunk_list_.remove_wherever([&](Chunk* chunk) -> bool {
     uword line = chunk->start();
     uword end = line + chunk->size();
     uint32* mark_bits = GcMetadata::mark_bits_for(chunk->start());
@@ -562,6 +572,10 @@ uword OldSpace::sweep() {
         ASSERT(object_start_location == GcMetadata::starts_for(line));
         ASSERT(mark_bits == GcMetadata::mark_bits_for(line));
         if (line == end) {
+          if (start_of_free == chunk->start()) {
+            ObjectMemory::free_chunk(chunk);
+            return true;  // Remove empty chunks from list.
+          }
           // The last free space must end one word earlier to make space for
           // the end-of-chunk sentinel.
           free_list_.add_region(start_of_free, end - start_of_free - WORD_SIZE);
@@ -597,15 +611,16 @@ uword OldSpace::sweep() {
   end_of_chunk:
     // Repair sentinel in case it was zapped by a marking bitmap.
     *reinterpret_cast<Object**>(end - WORD_SIZE) = chunk_end_sentinel();
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
     validate_sweep(chunk);
 #endif
     GcMetadata::clear_mark_bits_for_chunk(chunk);
-  }
+    return false;  // Keep chunk in space.
+  });
   return used << WORD_SIZE_LOG_2;
 }
 
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
 // Check that all dead objects are replaced with freelist objects and
 // that starts point at valid iteration points.
 void OldSpace::validate_sweep(Chunk* chunk) {

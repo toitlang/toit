@@ -13,6 +13,7 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+import binary
 import uuid
 import monitor
 import encoding.base64 as base64
@@ -29,6 +30,7 @@ class Container:
   image/ContainerImage ::= ?
   gid_/int ::= ?
   pids_/Set ::= ?  // Set<int>
+  resources/Set ::= {}
 
   constructor .image .gid_ pid/int:
     pids_ = { pid }
@@ -39,21 +41,50 @@ class Container:
   is_process_running pid/int -> bool:
     return pids_.contains pid
 
+  stop -> none:
+    if pids_.is_empty: return
+    pids_.do: container_kill_pid_ it
+    pids_.clear
+    image.manager.on_container_stop_ this 0
+    resources.do: it.on_container_stop 0
+
   on_stop_ -> none:
-    pids_.do: on_process_stop_ it
+    pids_.do: on_process_stop_ it 0
 
   on_process_start_ pid/int -> none:
     assert: not pids_.is_empty
     pids_.add pid
 
-  on_process_stop_ pid/int -> none:
+  on_process_stop_ pid/int error/int -> none:
     pids_.remove pid
-    if pids_.is_empty: image.manager.on_container_stop_ this
+    if error != 0:
+      pids_.do: container_kill_pid_ it
+      pids_.clear
+    else if not pids_.is_empty:
+      return
+    image.manager.on_container_stop_ this error
+    resources.do: it.on_container_stop error
 
-  on_process_error_ pid/int error/int -> none:
-    on_process_stop_ pid
-    pids_.do: container_kill_pid_ it
-    image.on_container_error this error
+class ContainerResource extends ServiceResource:
+  container/Container
+  hash_code/int ::= hash_code_next
+
+  constructor .container service/ServiceDefinition client/int:
+    super service client --notifiable
+    container.resources.add this
+
+  static hash_code_next_/int := 0
+  static hash_code_next -> int:
+    next := hash_code_next_
+    hash_code_next_ = (next + 1) & 0x1fff_ffff
+    return next
+
+  on_container_stop code/int -> none:
+    if is_closed: return
+    notify_ code
+
+  on_closed -> none:
+    container.resources.remove this
 
 abstract class ContainerImage:
   manager/ContainerManager ::= ?
@@ -61,15 +92,31 @@ abstract class ContainerImage:
 
   abstract id -> uuid.Uuid
 
+  start -> Container:
+    return start default_arguments
+
   trace encoded/ByteArray -> bool:
     return false
 
-  // TODO(kasper): This isn't super nice. It feels a bit odd that the
-  // image is told that one of its containers has an error.
-  on_container_error container/Container error/int -> none:
-    // Nothing so far.
+  flags -> int:
+    return 0
 
-  abstract start -> Container
+  data -> int:
+    return 0
+
+  run_boot -> bool:
+    return flags & ContainerService.FLAG_RUN_BOOT != 0
+
+  run_critical -> bool:
+    return flags & ContainerService.FLAG_RUN_CRITICAL != 0
+
+  default_arguments -> any:
+    // TODO(kasper): For now, the default arguments passed
+    // to a container on start is an empty list. We could
+    // consider making it null instead.
+    return []
+
+  abstract start arguments/any -> Container
   abstract stop_all -> none
   abstract delete -> none
 
@@ -82,9 +129,15 @@ class ContainerImageFlash extends ContainerImage:
   id -> uuid.Uuid:
     return allocation_.id
 
-  start -> Container:
+  flags -> int:
+    return allocation_.metadata[0]
+
+  data -> int:
+    return binary.LITTLE_ENDIAN.uint32 allocation_.metadata 1
+
+  start arguments/any -> Container:
     gid ::= container_next_gid_
-    pid ::= container_spawn_ allocation_.offset allocation_.size gid
+    pid ::= container_spawn_ allocation_.offset allocation_.size gid arguments
     // TODO(kasper): Can the container stop before we even get it created?
     container := Container this gid pid
     manager.on_container_start_ container
@@ -120,7 +173,10 @@ abstract class ContainerServiceDefinition extends ServiceDefinition
     if index == ContainerService.LIST_IMAGES_INDEX:
       return list_images
     if index == ContainerService.START_IMAGE_INDEX:
-      return start_image (uuid.Uuid arguments)
+      return start_image client (uuid.Uuid arguments[0]) arguments[1]
+    if index == ContainerService.STOP_CONTAINER_INDEX:
+      resource ::= (resource client arguments) as ContainerResource
+      return stop_container resource
     if index == ContainerService.UNINSTALL_IMAGE_INDEX:
       return uninstall_image (uuid.Uuid arguments)
     if index == ContainerService.IMAGE_WRITER_OPEN_INDEX:
@@ -129,8 +185,8 @@ abstract class ContainerServiceDefinition extends ServiceDefinition
       writer ::= (resource client arguments[0]) as ContainerImageWriter
       return image_writer_write writer arguments[1]
     if index == ContainerService.IMAGE_WRITER_COMMIT_INDEX:
-      writer ::= (resource client arguments) as ContainerImageWriter
-      return (image_writer_commit writer).to_byte_array
+      writer ::= (resource client arguments[0]) as ContainerImageWriter
+      return (image_writer_commit writer arguments[1] arguments[2]).to_byte_array
     unreachable
 
   abstract image_registry -> FlashRegistry
@@ -139,13 +195,24 @@ abstract class ContainerServiceDefinition extends ServiceDefinition
   abstract lookup_image id/uuid.Uuid -> ContainerImage?
 
   list_images -> List:
-    return images.map --in_place: | image/ContainerImage |
-      image.id.to_byte_array
+    raw := images
+    result := []
+    raw.do: | image/ContainerImage |
+      result.add image.id.to_byte_array
+      result.add image.flags
+      result.add image.data
+    return result
 
-  start_image id/uuid.Uuid -> int?:
+  start_image id/uuid.Uuid arguments/any -> int:
+    unreachable  // <-- TODO(kasper): Nasty.
+
+  start_image client/int id/uuid.Uuid arguments/any -> ContainerResource?:
     image/ContainerImage? := lookup_image id
     if not image: return null
-    return image.start.id
+    return ContainerResource (image.start arguments) this client
+
+  stop_container resource/ContainerResource? -> none:
+    resource.container.stop
 
   uninstall_image id/uuid.Uuid -> none:
     image/ContainerImage? := lookup_image id
@@ -164,8 +231,9 @@ abstract class ContainerServiceDefinition extends ServiceDefinition
   image_writer_write writer/ContainerImageWriter bytes/ByteArray -> none:
     writer.write bytes
 
-  image_writer_commit writer/ContainerImageWriter -> uuid.Uuid:
-    image := add_flash_image writer.commit
+  image_writer_commit writer/ContainerImageWriter flags/int data/int -> uuid.Uuid:
+    allocation := writer.commit --flags=flags --data=data
+    image := add_flash_image allocation
     return image.id
 
 class ContainerManager extends ContainerServiceDefinition implements SystemMessageHandler_:
@@ -182,14 +250,16 @@ class ContainerManager extends ContainerServiceDefinition implements SystemMessa
   constructor .image_registry .service_manager_:
     set_system_message_handler_ SYSTEM_TERMINATED_ this
     set_system_message_handler_ SYSTEM_SPAWNED_ this
-    set_system_message_handler_ SYSTEM_MIRROR_MESSAGE_ this
+    set_system_message_handler_ SYSTEM_TRACE_ this
 
     image_registry.do: | allocation/FlashAllocation |
       if allocation.type != FLASH_ALLOCATION_PROGRAM_TYPE: continue.do
       add_flash_image allocation
 
     // Run through the bundled images in the VM, but skip the
-    // first one which is always the system image.
+    // first one which is always the system image. Every image
+    // takes up two entries in the $bundled array: The first
+    // entry is the address and the second is the size.
     bundled := container_bundled_images_
     for i := 2; i < bundled.size; i += 2:
       allocation := FlashAllocation bundled[i]
@@ -227,22 +297,23 @@ class ContainerManager extends ContainerServiceDefinition implements SystemMessa
     if containers_by_id_.is_empty: return 0
     return done_.get
 
-  // TODO(kasper): Not the prettiest interface.
-  terminate error/int -> none:
-    done_.set error
-
   on_container_start_ container/Container -> none:
     containers/Map ::= containers_by_image_.get container.image.id --init=: {:}
     containers[container.id] = container
     containers_by_id_[container.id] = container
 
-  on_container_stop_ container/Container -> none:
+  on_container_stop_ container/Container error/int -> none:
     containers_by_id_.remove container.id
+    // If we've got an error in an image that run with the run.critical
+    // flag, we treat that as a fatal error and terminate the system process.
+    if error != 0 and container.image.run_critical:
+      done_.set error
+      return
     // TODO(kasper): We are supposed to always have a running system process. Maybe
     // we can generalize this handling and support background processes that do not
     // restrict us from exiting?
     remaining ::= containers_by_id_.size
-    if remaining <= 1: done_.set 0
+    if remaining <= 1 and not done_.has_value: done_.set 0
 
   on_image_stop_all_ image/ContainerImage -> none:
     containers/Map? ::= containers_by_image_.get image.id
@@ -257,23 +328,22 @@ class ContainerManager extends ContainerServiceDefinition implements SystemMessa
       service_manager_.on_process_stop pid
       if container:
         error/int := arguments
-        if error == 0: container.on_process_stop_ pid
-        else: container.on_process_error_ pid error
+        container.on_process_stop_ pid error
     else if type == SYSTEM_SPAWNED_:
       if container: container.on_process_start_ pid
-    else if type == SYSTEM_MIRROR_MESSAGE_:
-      origin_id/uuid.Uuid? ::= find_trace_origin_id arguments
+    else if type == SYSTEM_TRACE_:
+      origin_id/uuid.Uuid? ::= trace_find_origin_id arguments
       origin/ContainerImage? ::= origin_id and lookup_image origin_id
       if not (origin and origin.trace arguments):
-        print_for_manually_decoding_ arguments
+        trace_using_print arguments
     else:
       unreachable
 
-print_for_manually_decoding_ message/ByteArray --from=0 --to=message.size:
-  // Print a message on output so that that you can easily decode.
+trace_using_print message/ByteArray --from=0 --to=message.size:
+  // Print a trace message on output so that that you can easily decode.
   // The message is base64 encoded to limit the output size.
   print_ "----"
-  print_ "Received a Toit stack trace. Executing the command below will"
+  print_ "Received a Toit system message. Executing the command below will"
   print_ "make it human readable:"
   print_ "----"
   // Block size must be a multiple of 3 for this to work, due to the 3/4 nature
@@ -283,10 +353,10 @@ print_for_manually_decoding_ message/ByteArray --from=0 --to=message.size:
     end := i >= to - BLOCK_SIZE
     prefix := i == from ? "jag decode " : ""
     base64_text := base64.encode message[i..(end ? to : i + BLOCK_SIZE)]
-    postfix := end ? "" : "\\"
-    print_ "$prefix$base64_text$postfix"
+    postfix := end ? "\n" : ""
+    write_on_stdout_ "$prefix$base64_text$postfix" false
 
-find_trace_origin_id trace/ByteArray -> uuid.Uuid?:
+trace_find_origin_id trace/ByteArray -> uuid.Uuid?:
   // Short strings are encoded with a single unsigned byte length ('U').
   skip_string ::= : | p |
     if trace[p] != 'S' or trace[p + 1] != 'U': return null
@@ -306,7 +376,7 @@ find_trace_origin_id trace/ByteArray -> uuid.Uuid?:
 
 // ----------------------------------------------------------------------------
 
-container_spawn_ offset size gid -> int:
+container_spawn_ offset size gid arguments -> int:
   #primitive.programs_registry.spawn
 
 container_is_running_ offset size -> bool:
@@ -319,7 +389,7 @@ container_next_gid_ -> int:
   #primitive.programs_registry.next_group_id
 
 container_kill_pid_ pid/int -> bool:
-  #primitive.core.signal_kill
+  #primitive.core.process_signal_kill
 
 container_bundled_images_ -> Array_:
   #primitive.programs_registry.bundled_images

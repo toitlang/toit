@@ -30,10 +30,15 @@
   (ts)->tv_nsec = (tv)->tv_usec * 1000;                 \
 }
 #endif
+
 namespace toit {
 
 Mutex* OS::_global_mutex = null;
 Mutex* OS::_scheduler_mutex = null;
+Mutex* OS::_resource_mutex = null;
+// Unless we explicily detect an old CPU revision we assume we have a high
+// (recent) CPU with no problems.
+int    OS::_cpu_revision = 1000000;
 
 void OS::timespec_increment(timespec* ts, int64 ns) {
   const int64 ns_per_second = 1000000000LL;
@@ -49,7 +54,7 @@ void OS::timespec_increment(timespec* ts, int64 ns) {
 }
 
 bool OS::monotonic_gettime(int64* timestamp) {
-  struct timespec time = { 0, };
+  struct timespec time{};
   if (clock_gettime(CLOCK_MONOTONIC, &time) != 0) return false;
   *timestamp = (time.tv_sec * 1000000LL) + (time.tv_nsec / 1000LL);
   return true;
@@ -82,7 +87,7 @@ bool OS::get_real_time(struct timespec* time) {
   // make progress by using a less precise alternative: gettimeofday.
   // One day, we should try to get rid of this workaround again.
   int gettime_errno = errno;
-  struct timeval timeofday = { 0, };
+  struct timeval timeofday{};
   if (gettimeofday(&timeofday, NULL) != 0) {
     int gettimeofday_errno = errno;
     printf("WARNING: cannot get time: clock_gettime -> %s, gettimeofday -> %s\n",
@@ -98,7 +103,7 @@ AlignedMemoryBase::~AlignedMemoryBase() {}
 
 AlignedMemory::AlignedMemory(size_t size_in_bytes, size_t alignment) : size_in_bytes(size_in_bytes) {
   raw = malloc(alignment + size_in_bytes);
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
   memset(raw, 0xcd, alignment + size_in_bytes);
 #endif
   aligned = void_cast(Utils::round_up(unvoid_cast<char*>(raw), alignment));
@@ -106,7 +111,7 @@ AlignedMemory::AlignedMemory(size_t size_in_bytes, size_t alignment) : size_in_b
 
 AlignedMemory::~AlignedMemory() {
   if (raw != null) {
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
     memset(address(), 0xde, size_in_bytes);
 #endif
     free(raw);
@@ -193,9 +198,23 @@ OS::HeapMemoryRange OS::get_heap_memory_range() {
     // be the last MAX_HEAP of the address space.
     _single_range.address = reinterpret_cast<void*>(-static_cast<word>(MAX_HEAP + TOIT_PAGE_SIZE));
   } else {
-    // We will be allocating within a symmetric range either side of this
-    // single allocation.
-    _single_range.address = reinterpret_cast<void*>(addr - HALF_MAX);
+    uword from = addr - MAX_HEAP / 2;
+#if defined(TOIT_DARWIN) && defined(BUILD_64)
+    uword to = from + MAX_HEAP;
+    // On macOS, we never get addresses in the first 4Gbytes, in order to flush
+    // out 32 bit uncleanness, so let's try to avoid having the range cover
+    // both sides of the 4Gbytes boundary.
+    const uword FOUR_GB = 4LL * GB;
+    if (from < FOUR_GB && to > FOUR_GB) {
+      _single_range.address = reinterpret_cast<void*>(FOUR_GB);
+    } else {
+#else
+    {
+#endif
+      // We will be allocating within a symmetric range either side of this
+      // single allocation.
+      _single_range.address = reinterpret_cast<void*>(from);
+    }
   }
   _single_range.size = MAX_HEAP;
   return _single_range;

@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#ifdef TOIT_FREERTOS
+#if defined(TOIT_FREERTOS) && CONFIG_BT_ENABLED
 
 #include "../resource.h"
 #include "../objects.h"
@@ -73,6 +73,7 @@ enum {
   kBLECharTypeWriteOnly = 2,
   kBLECharTypeReadWrite = 3,
   kBLECharTypeNotification = 4,
+  kBLECharTypeWriteOnlyNoRsp = 5,
 };
 
 const uint8 kBluetoothBaseUUID[16] = {
@@ -376,6 +377,9 @@ int BLEResourceGroup::init_server() {
           case kBLECharTypeWriteOnly:
             gatt_svr_chars[characteristic_idx].flags = BLE_GATT_CHR_F_WRITE;
             break;
+          case kBLECharTypeWriteOnlyNoRsp:
+            gatt_svr_chars[characteristic_idx].flags = BLE_GATT_CHR_F_WRITE_NO_RSP;
+            break;
           case kBLECharTypeReadWrite:
             gatt_svr_chars[characteristic_idx].flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_READ;
             break;
@@ -477,7 +481,11 @@ static Object* object_to_mbuf(Process* process, Object* object, os_mbuf** result
     if (!object->byte_content(process->program(), &bytes, STRINGS_OR_BYTE_ARRAYS)) WRONG_TYPE;
     if (bytes.length() > 0) {
       os_mbuf* mbuf = ble_hs_mbuf_from_flat(bytes.address(), bytes.length());
-      if (!mbuf) MALLOC_FAILED;
+      // A null response is not an allocation error, as the mbufs are allocated on boot based on configuration settings.
+      // Therefore, a GC will do little to help the situation and will eventually result in the VM thinking it is out of memory.
+      // The mbuf will be freed eventually by the NimBLE stack. The client code will
+      // have to wait and then try again.
+      if (!mbuf) QUOTA_EXCEEDED;
       *result = mbuf;
     }
   }
@@ -588,7 +596,9 @@ PRIMITIVE(scan_start) {
     return Primitive::os_error(err, process);
   }
 
-  struct ble_gap_disc_params disc_params = { 0 };
+  struct ble_gap_disc_params disc_params{};
+  /* Use defaults for most parameters. */
+
   // Tell the controller to filter duplicates; we don't want to process
   // repeated advertisements from the same device.
   // disc_params.filter_duplicates = 1;
@@ -597,13 +607,7 @@ PRIMITIVE(scan_start) {
    * Perform a passive scan.  I.e., don't send follow-up scan requests to
    * each advertiser.
    */
-  disc_params.passive = 1;
-
-  /* Use defaults for the rest of the parameters. */
-  disc_params.itvl = 0;
-  disc_params.window = 0;
-  disc_params.filter_policy = 0;
-  disc_params.limited = 0;
+  disc_params.passive = 1,
 
   err = ble_gap_disc(BLE_ADDR_PUBLIC, duration_ms, &disc_params,
                      BLEEventSource::on_gap, group->gap());
@@ -637,9 +641,8 @@ PRIMITIVE(scan_next) {
     int rc = ble_hs_adv_parse_fields(&fields, next->data(), next->data_length());
     if (rc == 0) {
       if (fields.name_len > 0) {
-        Error* error = null;
-        String* name = process->allocate_string((const char*)fields.name, fields.name_len, &error);
-        if (error) return error;
+        String* name = process->allocate_string((const char*)fields.name, fields.name_len);
+        if (!name) ALLOCATION_FAILED;
         array->at_put(2, name);
       }
 
@@ -710,7 +713,7 @@ PRIMITIVE(advertise_start) {
 
   int32 duration_ms = duration_us < 0 ? BLE_HS_FOREVER : duration_us / 1000;
 
-  struct ble_gap_adv_params adv_params = { 0 };
+  struct ble_gap_adv_params adv_params{};
   adv_params.conn_mode = conn_mode;
 
   // TODO(anders): Be able to tune this.
@@ -729,7 +732,7 @@ PRIMITIVE(advertise_config) {
 
   USE(service_classes);
 
-  struct ble_hs_adv_fields fields = { 0 };
+  struct ble_hs_adv_fields fields{};
   if (name.length() > 0) {
     fields.name = name.address();
     fields.name_len = name.length();
@@ -797,7 +800,7 @@ PRIMITIVE(connect) {
     return Primitive::os_error(err, process);
   }
 
-  ble_addr_t addr = { 0 };
+  ble_addr_t addr{};
   addr.type = address.address()[0];
   memcpy_reverse(addr.val, address.address() + 1, 6);
 
@@ -1057,10 +1060,28 @@ PRIMITIVE(get_characteristics_value) {
   } else {
     ALLOCATION_FAILED;
   }
+}
 
-  return ret_val;
+PRIMITIVE(set_preferred_mtu) {
+  ARGS(int, mtu);
+
+  int result = ble_att_set_preferred_mtu(mtu);
+
+  if (result) {
+    INVALID_ARGUMENT;
+  } else {
+    return process->program()->null_object();
+  }
+}
+
+PRIMITIVE(get_att_mtu) {
+  ARGS(BLEServerCharacteristicResource, resource);
+
+  uint16 mtu = ble_att_mtu(resource->conn_handle());
+
+  return Smi::from(mtu);
 }
 
 } // namespace toit
 
-#endif // TOIT_FREERTOS
+#endif // defined(TOIT_FREERTOS) && defined(CONFIG_BT_ENABLED)

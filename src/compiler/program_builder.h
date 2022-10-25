@@ -77,7 +77,6 @@ class ProgramBuilder {
 
   void set_dispatch_table_entry(int index, int id);
   void set_source_mapping(const char* data);
-  void set_snapshot_arguments(char **argv);
   void set_class_check_ids(const List<uint16>& class_check_ids);
   void set_interface_check_offsets(const List<uint16>& interface_check_offsets);
 
@@ -86,7 +85,7 @@ class ProgramBuilder {
   // Prepare this program heap for execution.
   Program* cook();
 
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
   void print();
   void print_tos();
 #endif

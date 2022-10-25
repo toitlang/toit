@@ -57,27 +57,6 @@ function (run_and_check IMAGE)
 endfunction()
 
 set(IMAGE_S2I "${OUTPUT_PREFIX}-s2i.image")
-set(IMAGE_S "${OUTPUT_PREFIX}-s2i.s")
-set(IMAGE_O "${OUTPUT_PREFIX}-s2i.o")
-
-# Compile the snapshot to an image using the toit tool.
-execute_process(
-  COMMAND "${TOITVM}" "${SNAPSHOT_TO_IMAGE}" -o "${IMAGE_S}" "${SNAP}"
-  WORKING_DIRECTORY "${WORKING_DIR}"
-  COMMAND_ERROR_IS_FATAL ANY
-  )
-
-# Only try to assemble on Linux.
-# We are going to use the esp32-assembler anyways, so no need to
-# check on all platforms.
-if (DEFINED UNIX AND NOT DEFINED APPLE)
-  # Check that the s file can be compiled with the assembler.
-  execute_process(
-    COMMAND "${ASM}" -c -o "${IMAGE_O}" "${IMAGE_S}"
-    WORKING_DIRECTORY "${WORKING_DIR}"
-    COMMAND_ERROR_IS_FATAL ANY
-    )
-endif()
 
 # Compile to binary image.
 execute_process(

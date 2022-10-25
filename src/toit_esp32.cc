@@ -25,7 +25,6 @@
 #include "esp_ota_ops.h"
 #include "esp_partition.h"
 #include "esp_system.h"
-#include "esp_wifi.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "lwip/tcpip.h"
@@ -45,6 +44,7 @@
 #include "heap.h"
 #include "process.h"
 #include "memory.h"
+#include "embedded_data.h"
 #include "os.h"
 #include "program.h"
 #include "flash_registry.h"
@@ -53,8 +53,6 @@
 #include "vm.h"
 #include "objects_inline.h"
 #include "third_party/dartino/gc_metadata.h"
-
-extern "C" uword toit_image_table;
 
 namespace toit {
 
@@ -86,8 +84,9 @@ const Program* setup_program(bool supports_ota) {
 #endif
   }
 
-  uword* table = &toit_image_table;
-  return reinterpret_cast<const Program*>(table[1]);
+  const EmbeddedDataExtension* extension = EmbeddedData::extension();
+  EmbeddedImage boot = extension->image(0);
+  return boot.program;
 }
 
 static void start() {
@@ -113,7 +112,7 @@ static void start() {
   { VM vm;
     vm.load_platform_event_sources();
     int group_id = vm.scheduler()->next_group_id();
-    exit_state = vm.scheduler()->run_boot_program(const_cast<Program*>(program), null, group_id);
+    exit_state = vm.scheduler()->run_boot_program(const_cast<Program*>(program), group_id);
   }
 
   GcMetadata::tear_down();

@@ -872,6 +872,7 @@ main:
   test_hash_code
 
   test_substitute
+  test_upper_lower
 
   expect "fisk".size == 4 --message="string size test"
   expect ("A"[0]) == 'A' --message="string at test"
@@ -910,9 +911,25 @@ test_interpolation:
   expect_equals "42\""  "$x\""
   expect_equals "\"42\""  "\"$x\""
   expect_equals "\"\\" """"\\"""
+  expect_equals " \"" """ """"
+  expect_equals " \"\"" """ """""
   expect_equals " \"\"" """ "\""""
+  expect_equals "" """"""
+  expect_equals "\" \"" """" """"
+  expect_equals "\" \"\"" """" """""
+  expect_equals "\"" """""""
+  expect_equals "\"\"" """"""""
   expect_equals "42\"\\" """$x"\\"""
   expect_equals "42 \"\"" """$x "\""""
+  expect_equals "42 \"\"" """$x """""
+  expect_equals "42" """$x"""
+  expect_equals "\"42" """"$x"""
+  expect_equals "\"\"42" """""$x"""
+  expect_equals "42 " """$x """
+  expect_equals "42\"" """$x""""
+  expect_equals "42 \"" """$x """"
+  expect_equals "42\"\"" """$x"""""
+  expect_equals "42 \"\"" """$x """""
   expect_equals "\"42\"\\" """\"$x"\\"""
   expect_equals "\"42 \"\"" """\"$x "\""""
 
@@ -1681,3 +1698,32 @@ test_substitute:
   // the middle.
   result = " - {{{{}}}} - ".substitute: it == "{{"
   expect_equals " - true}} - " result
+
+test_upper_lower:
+  expect_equals "foo" "foo".to_ascii_lower
+  expect_equals "foo" "Foo".to_ascii_lower
+  expect_equals "foo" "FOO".to_ascii_lower
+  expect_equals "FOO" "foo".to_ascii_upper
+  expect_equals "FOO" "Foo".to_ascii_upper
+  expect_equals "FOO" "FOO".to_ascii_upper
+  expect_equals "" "".to_ascii_upper
+  expect_equals "" "".to_ascii_lower
+
+  // Unicode chars are not changed.
+  expect_equals "søen" "søen".to_ascii_lower
+  expect_equals "SøEN" "søen".to_ascii_upper
+
+  // Borderline cases.
+  expect_equals "@az[" "@AZ[".to_ascii_lower
+  expect_equals "@AZ[" "@AZ[".to_ascii_upper
+  expect_equals "`az{" "`az{".to_ascii_lower
+  expect_equals "`AZ{" "`az{".to_ascii_upper
+
+  // Contains only ASCII.
+  expect "".contains_only_ascii
+  expect "foo".contains_only_ascii
+  expect "FOO".contains_only_ascii
+  expect "\x7f".contains_only_ascii
+  expect "\x00".contains_only_ascii
+  expect_equals false ("søen".contains_only_ascii)
+  expect_equals false ("\x80".contains_only_ascii)

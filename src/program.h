@@ -31,7 +31,6 @@ namespace toit {
   ROOT(HeapObject, true_object)              \
   ROOT(HeapObject, false_object)             \
   ROOT(Array,      empty_array)              \
-  ROOT(Array,      snapshot_arguments)       \
   ROOT(Instance,   out_of_memory_error)      \
   ROOT(String,     app_sdk_version)          \
   ROOT(String,     app_sdk_info)             \
@@ -70,6 +69,8 @@ namespace toit {
   ID(byte_array_slice_class_id)  \
   ID(string_slice_class_id)      \
   ID(list_class_id)              \
+  ID(list_slice_class_id)        \
+  ID(map_class_id)               \
   ID(tombstone_class_id)         \
   ID(stack_class_id)             \
   ID(null_class_id)              \

@@ -10,6 +10,7 @@ DNS_DEFAULT_TIMEOUT ::= Duration --s=20
 DNS_RETRY_TIMEOUT ::= Duration --s=1
 HOSTS_ ::= {"localhost": "127.0.0.1"}
 CACHE_ ::= Map  // From name to CacheEntry_.
+CACHE_IPV6_ ::= Map  // From name to CacheEntry_.
 MAX_CACHE_SIZE_ ::= platform == "FreeRTOS" ? 30 : 1000
 MAX_TRIMMED_CACHE_SIZE_ ::= MAX_CACHE_SIZE_ / 3 * 2
 
@@ -22,21 +23,21 @@ class DnsException:
     return "DNS lookup exception $text"
 
 /**
-Look up a domain name.
+Look up a domain name and return an A or AAAA record.
 
 If given a numeric address like 127.0.0.1 it merely parses
   the numbers without a network round trip.
 
 By default the server is "8.8.8.8" which is the Google DNS
   service.
-
-Currently only works for IPv4, not IPv6.
 */
 dns_lookup -> net.IpAddress
     host/string
     --server/string="8.8.8.8"
-    --timeout/Duration=DNS_DEFAULT_TIMEOUT:
-  q := DnsQuery_ host
+    --timeout/Duration=DNS_DEFAULT_TIMEOUT
+    --accept_ipv4/bool=true
+    --accept_ipv6/bool=false:
+  q := DnsQuery_ host --accept_ipv4=accept_ipv4 --accept_ipv6=accept_ipv6
   return q.get --server=server --timeout=timeout
 
 CLASS_INTERNET ::= 1
@@ -55,33 +56,34 @@ ERROR_REFUSED         ::= 5
 class DnsQuery_:
   id/int
   name/string
+  accept_ipv4/bool
+  accept_ipv6/bool
 
-  constructor .name:
+  constructor .name --.accept_ipv4 --.accept_ipv6:
     id = random 0x10000
 
   /**
-  Look up a domain name.
+  Look up a domain name and return an A or AAAA record.
 
   If given a numeric address like "127.0.0.1" it merely parses
     the numbers without a network round trip.
 
   By default the server is "8.8.8.8" which is the Google DNS
     service.
-
-  Currently only works for IPv4, not IPv6.
   */
   get -> net.IpAddress
       --server/string="8.8.8.8"
       --timeout/Duration=DNS_DEFAULT_TIMEOUT:
-    if ip_string_:
+    if net.IpAddress.is_valid name --accept_ipv4=accept_ipv4 --accept_ipv6=accept_ipv6:
       return net.IpAddress.parse name
     if HOSTS_.contains name:
       return net.IpAddress.parse HOSTS_[name]
 
-    hit := find_in_cache_ server
+    hit := find_in_cache_ server --accept_ipv4=accept_ipv4 --accept_ipv6=accept_ipv6
     if hit: return hit
 
-    query := create_query name id
+    query := create_query name id --accept_ipv4=accept_ipv4 --accept_ipv6=accept_ipv6
+
     socket := udp.Socket
     with_timeout timeout:
       try:
@@ -127,24 +129,20 @@ class DnsQuery_:
   static is_letter_ c/int -> bool:
     return 'a' <= c <= 'z' or 'A' <= c <= 'Z'
 
-  ip_string_ -> bool:
-    dots := 0
-    name.do:
-      if it == '.':
-        dots++
-      else:
-        if not '0' <= it <= '9': return false
-    return dots == 3
-
   // We pass the name_server because we don't use the cache entry if the user
   // is trying a different name server.
-  find_in_cache_ name_server/string -> net.IpAddress?:
-    if not CACHE_.contains name: return null
-    entry := CACHE_[name]
-    if not entry.valid name_server:
-      CACHE_.remove name
-      return null
-    return entry.address
+  find_in_cache_ name_server/string --accept_ipv4/bool --accept_ipv6/bool -> net.IpAddress?:
+    if accept_ipv4:
+      if CACHE_.contains name:
+        entry := CACHE_[name]
+        if entry.valid name_server: return entry.address
+        CACHE_.remove name
+    if accept_ipv6:
+      if CACHE_IPV6_.contains name:
+        entry := CACHE_IPV6_[name]
+        if entry.valid name_server: return entry.address
+        CACHE_IPV6_.remove name
+    return null
 
   static ERROR_MESSAGES_ ::= ["", "FORMAT_ERROR", "SERVER_FAILURE", "NO_SUCH_DOMAIN", "NOT_IMPLEMENTED", "REFUSED"]
 
@@ -189,16 +187,25 @@ class DnsQuery_:
 
       rd_length := BIG_ENDIAN.uint16 response position
       position += 2
-      if type == RECORD_A:
+      if type == RECORD_A and accept_ipv4:
         if rd_length != 4: throw (DnsException "Unexpected IP address length $rd_length")
         if case_compare_ r_name q_name:
           result := net.IpAddress
               response.copy position position + 4
           if ttl > 0:
-            trim_cache_
+            trim_cache_ CACHE_
             CACHE_[name] = CacheEntry_ result ttl name_server
           return result
         // Skip name that does not match.
+      else if type == RECORD_AAAA and accept_ipv6:
+        if rd_length != 16: throw (DnsException "Unexpected IP address length $rd_length")
+        if case_compare_ r_name q_name:
+          result := net.IpAddress
+              response.copy position position + 16
+          if ttl > 0:
+            trim_cache_ CACHE_IPV6_
+            CACHE_IPV6_[name] = CacheEntry_ result ttl name_server
+          return result
       else if type == RECORD_CNAME:
         q_name = decode_name response position: null
       position += rd_length
@@ -230,22 +237,22 @@ parts_ packet/ByteArray position/int parts/List [position_block] -> none:
   position_block.call position + 1
 
 /// Limits the size of the cache to avoid using too much memory.
-trim_cache_ -> none:
-  if CACHE_.size < MAX_CACHE_SIZE_: return
+trim_cache_ cache/Map -> none:
+  if cache.size < MAX_CACHE_SIZE_: return
 
   // Cache too big.  Start by removing entries where the TTL has
   // expired.
   now := Time.monotonic_us
-  CACHE_.filter --in_place: | key value |
+  cache.filter --in_place: | key value |
     value.end > now
 
   // Set the limit a bit lower now - we want to remove at least one third of
   // the entries when we trim the cache since it's an expensive operation.
-  if CACHE_.size < MAX_TRIMMED_CACHE_SIZE_: return
+  if cache.size < MAX_TRIMMED_CACHE_SIZE_: return
 
   // Remove every second entry.
   toggle := true
-  CACHE_.filter --in_place: | key value |
+  cache.filter --in_place: | key value |
     toggle = not toggle
     toggle
 
@@ -267,27 +274,36 @@ Regular DNS lookup is used, namely the A record for the domain.
 The $query_id should be a 16 bit unsigned number which will be included in
   the reply.
 */
-create_query name/string query_id/int -> ByteArray:
+create_query name/string query_id/int --accept_ipv4/bool=true --accept_ipv6/bool=false -> ByteArray:
+  if not (accept_ipv4 or accept_ipv6): throw "INVALID_ARGUMENT"
+  query_count := (accept_ipv4 and accept_ipv6) ? 2 : 1
   parts := name.split "."
   length := 1
   parts.do: | part |
-    if part.size > 63: throw (DnsException "LABEL_TOO_LARGE")
-    if part.size < 1: throw (DnsException "LABEL_TOO_SHORT")
+    if part.size > 63: throw (DnsException "DNS name parts cannot exceed 63 bytes")
+    if part.size < 1: throw (DnsException "DNS name parts cannot be empty")
     part.do:
       if it == 0 or it == null: throw (DnsException "INVALID_DOMAIN_NAME")
     length += part.size + 1
-  query := ByteArray 12 + length + 4
+  query := ByteArray 10 + length + query_count * 6
   BIG_ENDIAN.put_uint16 query 0 query_id
   query[2] = 0x01  // Set RD bit.
-  query_count := 1
   BIG_ENDIAN.put_uint16 query 4 query_count
   position := 12
+  name_offset := position
   parts.do: | part |
     query[position++] = part.size
     query.replace position part
     position += part.size
   query[position++] = 0
-  BIG_ENDIAN.put_uint16 query position     RECORD_A
+  BIG_ENDIAN.put_uint16 query position     (accept_ipv4 ? RECORD_A : RECORD_AAAA)
   BIG_ENDIAN.put_uint16 query position + 2 CLASS_INTERNET
-  assert: position + 4 == query.size
+  position += 4
+  if query_count == 2:
+    // Point to the name from the first quety.
+    BIG_ENDIAN.put_uint16 query position     0b1100_0000_0000_0000 + name_offset
+    BIG_ENDIAN.put_uint16 query position + 2 RECORD_AAAA
+    BIG_ENDIAN.put_uint16 query position + 4 CLASS_INTERNET
+    position += 6
+  assert: position == query.size
   return query

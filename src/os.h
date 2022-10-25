@@ -67,7 +67,6 @@ class Unlocker {
   Locker& _locker;
 };
 
-
 // Abstraction for running stuff in parallel.
 class Thread {
  public:
@@ -174,6 +173,7 @@ class OS {
 
   static Mutex* global_mutex() { return _global_mutex; }
   static Mutex* scheduler_mutex() { return _scheduler_mutex; }
+  static Mutex* resource_mutex() { return _resource_mutex; }
 
   // Mutex (used with Locker).
   static Mutex* allocate_mutex(int level, const char* title);
@@ -241,13 +241,16 @@ class OS {
   static word get_heap_tag();
   static void heap_summary_report(int max_pages, const char* marker);
 
-  // Unique 16-bytes uuid of the running image.
-  static const uint8* image_uuid();
-
-  // ubjson-encoded configuration of the running image. Return NULL if not found.
-  static uint8* image_config(size_t *length);
-
   static const char* getenv(const char* variable);
+
+#ifdef TOIT_FREERTOS
+  static bool use_spiram_for_heap() { return _use_spiram_for_heap; }
+  static bool use_spiram_for_metadata() { return _use_spiram_for_metadata; }
+  static int toit_heap_caps_flags_for_heap();
+  static int toit_heap_caps_flags_for_metadata();
+#elif defined(TOIT_LINUX)
+  static inline int toit_heap_caps_flags_for_heap() { return 0; }
+#endif
 
  private:
   static bool monotonic_gettime(int64* timestamp);
@@ -255,7 +258,13 @@ class OS {
 
   static Mutex* _global_mutex;
   static Mutex* _scheduler_mutex;
+  static Mutex* _resource_mutex;
   static HeapMemoryRange _single_range;
+  static int _cpu_revision;
+#ifdef TOIT_FREERTOS
+  static bool _use_spiram_for_heap;
+  static bool _use_spiram_for_metadata;
+#endif
 
   friend class ConditionVariable;
 };
@@ -280,8 +289,8 @@ class HeapTagScope {
 // Weak symbols for the custom heap.  These are only present on non-embedded
 // platforms if we are using LD_PRELOAD to replace the malloc implementation.
 extern "C" {
-typedef bool heap_caps_iterate_callback(void*, void*, void*, size_t);
-__attribute__ ((weak)) extern void heap_caps_iterate_tagged_memory_areas(void*, void*, heap_caps_iterate_callback, int);
-__attribute__ ((weak)) extern void heap_caps_set_option(int, void*);
+  typedef bool heap_caps_iterate_callback(void*, void*, void*, size_t);
+  void heap_caps_iterate_tagged_memory_areas(void*, void*, heap_caps_iterate_callback, int) __attribute__ ((weak));
+  void heap_caps_set_option(int, void*) __attribute__ ((weak));
 }
 #endif

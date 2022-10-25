@@ -30,8 +30,8 @@ class Record:
   copy -> Record:
     return Record PtrComp Discr EnumComp IntComp StringComp
 
-TRUE ::= 1
-FALSE ::= 0
+TRUE ::= true
+FALSE ::= false
 
 main:
   log_execution_time "Pystone" --iterations=10:
@@ -133,7 +133,7 @@ Proc5:
 
 Proc6 EnumParIn:
   EnumParOut := EnumParIn
-  if not Func3(EnumParIn):
+  if not Func3 EnumParIn:
     EnumParOut = Ident4
   if EnumParIn == Ident1:
     EnumParOut = Ident1

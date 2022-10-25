@@ -16,7 +16,12 @@
 import net
 import monitor
 import log
-import esp32
+import device
+import net.wifi
+
+import encoding.tison
+import system.assets
+import system.firmware
 
 import system.api.wifi show WifiService
 import system.api.network show NetworkService
@@ -26,47 +31,74 @@ import system.base.network show NetworkModule NetworkResource NetworkState
 import ..shared.network_base
 
 class WifiServiceDefinition extends NetworkServiceDefinitionBase:
-  state_/NetworkState? := null
+  static WIFI_CONFIG_STORE_KEY ::= "system/wifi"
+
+  state_/NetworkState ::= NetworkState
+  store_/device.FlashStore ::= device.FlashStore
 
   constructor:
     super "system/wifi/esp32" --major=0 --minor=1
     provides WifiService.UUID WifiService.MAJOR WifiService.MINOR
 
   handle pid/int client/int index/int arguments/any -> any:
-    if index == WifiService.CONNECT_SSID_PASSWORD_INDEX:
+    if index == WifiService.CONNECT_INDEX:
       return connect client arguments[0] arguments[1]
     if index == WifiService.ESTABLISH_INDEX:
-      return establish client arguments[0] arguments[1] arguments[2] arguments[3]
+      return establish client arguments
+    if index == WifiService.RSSI_INDEX:
+      network := (resource client arguments) as NetworkResource
+      return rssi network
     return super pid client index arguments
 
   connect client/int -> List:
-    return connect client null null
+    return connect client null false
 
-  connect client/int ssid/string? password/string? -> List:
-    if not ssid:
-      config := esp32.image_config or {:}
-      wifi_config := config.get "wifi" --if_absent=: {:}
-      ssid = wifi_config["ssid"]
-      password = wifi_config.get "password" --if_absent=: ""
-    if ssid.size == 0: throw "wifi ssid not provided"
+  connect client/int config/Map? save/bool -> List:
+    effective := config
+    if not effective:
+      catch --trace: effective = store_.get WIFI_CONFIG_STORE_KEY
+      if not effective:
+        effective = firmware.config["wifi"]
+      if not effective:
+        effective = {:}
+        // If we move the WiFi service out of the system process,
+        // the asset might simply be known as "config". For now,
+        // it co-exists with other system assets.
+        assets.decode.get "wifi" --if_present=: | encoded |
+          catch --trace: effective = tison.decode encoded
 
-    if not state_: state_ = NetworkState
+    ssid/string? := effective.get wifi.CONFIG_SSID
+    if not ssid or ssid.is_empty: throw "wifi ssid not provided"
+    password/string := effective.get wifi.CONFIG_PASSWORD --if_absent=: ""
+
     module ::= (state_.up: WifiModule.sta this ssid password) as WifiModule
     if module.ap:
       throw "wifi already established in AP mode"
     if module.ssid != ssid or module.password != password:
       throw "wifi already connected with different credentials"
 
+    if save:
+      if config:
+        store_.set WIFI_CONFIG_STORE_KEY config
+      else:
+        store_.delete WIFI_CONFIG_STORE_KEY
+
     resource := NetworkResource this client state_ --notifiable
     return [resource.serialize_for_rpc, NetworkService.PROXY_ADDRESS]
 
-  establish client/int ssid/string password/string broadcast/bool channel/int -> List:
+  establish client/int config/Map? -> List:
+    if not config: config = {:}
+
+    ssid/string? := config.get wifi.CONFIG_SSID
+    if not ssid or ssid.is_empty: throw "wifi ssid not provided"
+    password/string := config.get wifi.CONFIG_PASSWORD --if_absent=: ""
     if password.size != 0 and password.size < 8:
       throw "wifi password must be at least 8 characters"
+    channel/int := config.get wifi.CONFIG_CHANNEL --if_absent=: 1
     if channel < 1 or channel > 13:
       throw "wifi channel must be between 1 and 13"
+    broadcast/bool := config.get wifi.CONFIG_BROADCAST --if_absent=: true
 
-    if not state_: state_ = NetworkState
     module ::= (state_.up: WifiModule.ap this ssid password broadcast channel) as WifiModule
     if not module.ap:
       throw "wifi already connected in STA mode"
@@ -84,9 +116,11 @@ class WifiServiceDefinition extends NetworkServiceDefinitionBase:
   address resource/NetworkResource -> ByteArray:
     return (state_.module as WifiModule).address.to_byte_array
 
+  rssi resource/NetworkResource -> int?:
+    return (state_.module as WifiModule).rssi
+
   on_module_closed module/WifiModule -> none:
     resources_do: it.notify_ NetworkService.NOTIFY_CLOSED
-    state_ = null
 
 class WifiModule implements NetworkModule:
   static WIFI_CONNECTED    ::= 1 << 0
@@ -206,8 +240,7 @@ class WifiModule implements NetworkModule:
     // $monitor.ResourceState_ object, but since we're only
     // closing here it doesn't really matter. Room for
     // improvement though.
-    if (state & (WIFI_DISCONNECTED | WIFI_IP_LOST)) != 0:
-      task:: disconnect
+    if (state & (WIFI_DISCONNECTED | WIFI_IP_LOST)) != 0: disconnect
 
 // ----------------------------------------------------------------------------
 
@@ -235,5 +268,5 @@ wifi_disconnect_reason_ resource:
 wifi_get_ip_ resource_group -> ByteArray?:
   #primitive.wifi.get_ip
 
-wifi_get_rssi_ resource_group:
+wifi_get_rssi_ resource_group -> int?:
   #primitive.wifi.get_rssi

@@ -27,6 +27,9 @@ if ((NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "${CMAKE_HOST_SYSTEM_NAME}") OR
   # This turns out to work out fine, as we can run the 32-bit executables anyway and don't
   # need a different host build to compile the snapshots.
   set(TOIT_IS_CROSS TRUE)
+  # We are using the compiler from the host system, but we want to use the vessels
+  # from the target system.
+  set(TOIT_VESSELS_ROOT ${CMAKE_BINARY_DIR}/sdk/vessels)
 endif()
 
 set(TOITLSP_BIN "${CMAKE_BINARY_DIR}/sdk/bin/toit.lsp${CMAKE_EXECUTABLE_SUFFIX}")
@@ -120,16 +123,24 @@ endif()
 # sizes, but they just cause the other side to fragment packets more agressively.
 # At this end we still have to reassemble the packets in and unfragmented form
 # that fits in the buffer size below.
-set(MBEDTLS_C_FLAGS "-DMBEDTLS_SSL_IN_CONTENT_LEN=8100 -DMBEDTLS_SSL_OUT_CONTENT_LEN=3700 -DMBEDTLS_PLATFORM_MEMORY=1")
+if ("${TOIT_SYSTEM_NAME}" MATCHES "esp32")
+  # No need to set the flags, the same values are in the sdkconfig.
+  # However, we need to include the esp32 config file to make sure that Toit and the compiled
+  # MbedTLS sources agree on the defines.
+  set(MBEDTLS_C_FLAGS "-DMBEDTLS_CONFIG_FILE=\\\"mbedtls/esp_config.h\\\"")
+else()
+  # These constants should stay in sync with the ones in the sdkconfig file of the ESP32 toolchain.
+  set(MBEDTLS_C_FLAGS "-DMBEDTLS_SSL_IN_CONTENT_LEN=8100 -DMBEDTLS_SSL_OUT_CONTENT_LEN=3700 -DMBEDTLS_PLATFORM_MEMORY=1")
+endif()
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${TOIT_GENERIC_FLAGS} ${TOIT_LWIP_C_FLAGS} ${MBEDTLS_C_FLAGS}")
-set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -DDEBUG")
-set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -DDEPLOY")
-set(CMAKE_C_FLAGS_ASAN "${CMAKE_C_FLAGS_ASAN} -DDEBUG -DTOIT_ASAN")
+set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -DTOIT_DEBUG")
+set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -DTOIT_DEPLOY")
+set(CMAKE_C_FLAGS_ASAN "${CMAKE_C_FLAGS_ASAN} -DTOIT_DEBUG -DTOIT_ASAN")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TOIT_GENERIC_FLAGS} -fno-exceptions ${TOIT_LWIP_CXX_FLAGS} ${MBEDTLS_C_FLAGS}")
-set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DDEBUG")
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -fno-rtti -DDEPLOY")
-set(CMAKE_CXX_FLAGS_ASAN "${CMAKE_CXX_FLAGS_ASAN} -DDEBUG -DTOIT_ASAN")
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DTOIT_DEBUG")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -fno-rtti -DTOIT_DEPLOY")
+set(CMAKE_CXX_FLAGS_ASAN "${CMAKE_CXX_FLAGS_ASAN} -DTOIT_DEBUG -DTOIT_ASAN")
 
 if ("${CMAKE_SYSTEM_NAME}" MATCHES "Darwin")
     set(TOIT_LINK_GC_FLAGS "-Wl,-dead_strip")
@@ -145,54 +156,53 @@ add_custom_target(
   COMMAND echo ${TOIT_GIT_VERSION} > "${CMAKE_BINARY_DIR}/sdk/VERSION"
 )
 
-add_custom_target(
-  build_snapshots
-)
-
 add_subdirectory(src)
-add_subdirectory(tools)
 
-set(GO_ENV "$ENV{GO_BUILD_FLAGS}")
-separate_arguments(GO_ENV)
-list(APPEND GO_ENV CGO_ENABLED=1 GODEBUG=netdns=go "GOOS=${GOOS}" "GOARCH=${GOARCH}")
+if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
+  add_subdirectory(tools)
 
-set(GO_LINK_FLAGS "$ENV{GO_LINK_FLAGS} -X main.date=${BUILD_DATE} -X main.sdkVersion=${TOIT_GIT_VERSION}")
+  set(GO_ENV "$ENV{GO_BUILD_FLAGS}")
+  separate_arguments(GO_ENV)
+  list(APPEND GO_ENV CGO_ENABLED=1 GODEBUG=netdns=go "GOOS=${GOOS}" "GOARCH=${GOARCH}")
 
-add_custom_command(
-  OUTPUT "${TOITLSP_BIN}"
-  COMMAND "${CMAKE_COMMAND}" -E env ${GO_ENV} go build -ldflags "${GO_LINK_FLAGS}" -tags "netgo osusergo" -o "${TOITLSP_BIN}"
-  WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}/tools/toitlsp
-)
+  set(GO_LINK_FLAGS "$ENV{GO_LINK_FLAGS} -X main.date=${BUILD_DATE} -X main.sdkVersion=${TOIT_GIT_VERSION}")
 
-add_custom_command(
-  OUTPUT "${TOITPKG_BIN}"
-  COMMAND "${CMAKE_COMMAND}" -E env ${GO_ENV} go build -ldflags "${GO_LINK_FLAGS}" -tags "netgo osusergo" -o "${TOITPKG_BIN}"
-  WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}/tools/tpkg
-)
-
-add_custom_target(
-  build_go_tools
-  DEPENDS "${TOITLSP_BIN}" "${TOITPKG_BIN}"
-)
-add_dependencies(build_tools build_go_tools)
-
-enable_testing()
-add_subdirectory(tests)
-
-add_subdirectory(examples)
-# External Toit packages and projects.
-add_subdirectory(external)
-
-set(CMAKE_POLICY_DEFAULT_CMP0076 OLD)
-# The 'ENABLE_TESTING' and 'ENABLE_PROGRAMS' variables (used by mbedtls) have no prefix. As
-# such they might interfere with other libraries.
-# Eventually, we need to import mbedtls differently.
-set(ENABLE_TESTING CACHE BOOL OFF)
-set(ENABLE_PROGRAMS CACHE BOOL OFF)
-add_subdirectory(
-  "${IDF_PATH}/components/mbedtls/mbedtls"
-  "${CMAKE_BINARY_DIR}/mbedtls"
-  EXCLUDE_FROM_ALL
+  add_custom_command(
+    OUTPUT "${TOITLSP_BIN}"
+    COMMAND "${CMAKE_COMMAND}" -E env ${GO_ENV} go build -ldflags "${GO_LINK_FLAGS}" -tags "netgo osusergo" -o "${TOITLSP_BIN}"
+    WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}/tools/toitlsp
   )
 
-set(CMAKE_POLICY_DEFAULT_CMP0076 NEW)
+  add_custom_command(
+    OUTPUT "${TOITPKG_BIN}"
+    COMMAND "${CMAKE_COMMAND}" -E env ${GO_ENV} go build -ldflags "${GO_LINK_FLAGS}" -tags "netgo osusergo" -o "${TOITPKG_BIN}"
+    WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}/tools/tpkg
+  )
+
+  add_custom_target(
+    build_go_tools
+    DEPENDS "${TOITLSP_BIN}" "${TOITPKG_BIN}"
+  )
+  add_dependencies(build_tools build_go_tools)
+
+  enable_testing()
+  add_subdirectory(tests)
+
+  add_subdirectory(examples)
+  # External Toit packages and projects.
+  add_subdirectory(external)
+
+  set(CMAKE_POLICY_DEFAULT_CMP0076 OLD)
+  # The 'ENABLE_TESTING' and 'ENABLE_PROGRAMS' variables (used by mbedtls) have no prefix. As
+  # such they might interfere with other libraries.
+  # Eventually, we need to import mbedtls differently.
+  set(ENABLE_TESTING CACHE BOOL OFF)
+  set(ENABLE_PROGRAMS CACHE BOOL OFF)
+  add_subdirectory(
+    "${IDF_PATH}/components/mbedtls/mbedtls"
+    "${CMAKE_BINARY_DIR}/mbedtls"
+    EXCLUDE_FROM_ALL
+    )
+
+  set(CMAKE_POLICY_DEFAULT_CMP0076 NEW)
+endif() # TOIT_SYSTEM_NAME != esp32

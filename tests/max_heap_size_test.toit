@@ -44,7 +44,7 @@ main:
   sleep --ms=1000
 
 eventually_fails limit --external/bool:
-  print "$limit eventually fails"
+  print_ "$limit eventually fails"
   set_max_heap_size_ limit
   expect_allocation_failed:
     a := []
@@ -55,29 +55,30 @@ eventually_fails limit --external/bool:
       else:
         256.repeat: s + s  // Make internal garbage strings.
       a.add (ByteArray (256 + (a.size % 16)))
-      if a.size % 10 == 0: print a.size
+      if a.size % 10 == 0: print_ "  a.size=$a.size"
       sleep --ms=1
 
 doesnt_fail limit:
   set_max_heap_size_ limit
-  print "limit $limit"
+  print_ "limit $limit"
   a := []
   for l := limit; l > 2000; l -= 270:
+    print_ "  l=$l"
     s := ("#" * 200) + "$(random 1000)"
     a.add s
     sleep --ms=1
-  print "end $limit"
+  print_ "end $limit"
 
 doesnt_fail_external limit:
   set_max_heap_size_ limit
-  print "limit $limit"
+  print_ "limit $limit"
   a := []
   // On 32 bit we have a 4k chunk in old-space that we can't get
   // rid of at this point.  With the 4k chunk in new-space that's 8k that
   // can't be used for external allocations.
   for l := limit; l > 9000; l -= 5000:
-    print "  l=$l a.size=$a.size"
+    print_ "  l=$l a.size=$a.size"
     s := ByteArray 4096 // Goes to an external byte array on 32 bit.
     a.add s
     sleep --ms=1
-  print "end $limit"
+  print_ "end $limit"

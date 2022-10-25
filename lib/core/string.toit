@@ -2,7 +2,7 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import bitmap show blit
+import bitmap
 
 // Returns the number of bytes needed to code the char in UTF-8.
 utf_8_bytes char:
@@ -291,11 +291,13 @@ abstract class string implements Comparable:
 
   Extensions relative to printf:
   - `^` for centering.
+  - 'b' for binary.
 
   Missing relative to printf: No support for `%g` or `%p`.
 
   Like in printf the hexadecimal and octal format specifiers,
-    %x and %o will treat all values as unsigned.  See also
+    %x and %o will treat all values as unsigned.  This also
+    applies to the binary format specifier, %b.  See also
     $int.stringify.
 
   Format Description:
@@ -304,7 +306,7 @@ abstract class string implements Comparable:
   alignment = flags<digits>
   flags = '-' | '^' | '>'   (> is default, can't be used in the syntax)
   precision = .<digits>
-  type 'd' | 'f' | 's' | 'o' | 'x' | 'c'
+  type 'd' | 'f' | 's' | 'o' | 'x' | 'c' | 'b'
   ```
   */
   static format format/string object -> string:
@@ -344,6 +346,7 @@ abstract class string implements Comparable:
       d := object.to_float
       meat = precision ? (d.stringify precision) : d.stringify
     else if type == 'd': meat = object.to_int.stringify
+    else if type == 'b': meat = printf_style_int_stringify_ object.to_int 2
     else if type == 'o': meat = printf_style_int_stringify_ object.to_int 8
     else if type == 'x': meat = printf_style_int_stringify_ object.to_int 16
     else if type == 'X':
@@ -391,7 +394,7 @@ abstract class string implements Comparable:
     if amount == 1: return this
     new_size := size * amount
     array := ByteArray new_size
-    blit this array size --source_line_stride=0
+    bitmap.blit this array size --source_line_stride=0
     return array.to_string
 
   /** See $super. */
@@ -896,6 +899,71 @@ abstract class string implements Comparable:
     if not ends_with suffix: return if_absent.call this
     return copy 0 (size - suffix.size)
 
+  static TO_UPPER_TABLE_ ::= #[
+      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+      0, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20,
+      0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0, 0, 0, 0, 0,
+      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+      // Add two extra lines so it can be used for to_lower too.
+      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+  static TO_LOWER_TABLE_ ::= TO_UPPER_TABLE_[32..]
+
+  /**
+  Returns a string where all ASCII lower case characters have
+    been replaced with their upper case equivalents.
+  Non-ASCII characters are unchanged.
+  */
+  to_ascii_upper -> string:
+    return case_helper_ TO_UPPER_TABLE_
+
+  /**
+  Returns a string where all ASCII upper case characters have
+    been replaced with their lower case equivalents.
+  Non-ASCII characters are unchanged.
+  */
+  to_ascii_lower -> string:
+    return case_helper_ TO_LOWER_TABLE_
+
+  case_helper_ table/ByteArray -> string:
+    if size == 0: return this
+    single_byte := #[0]
+    // By using "OR" as an operation and a pixel stride of 0 we can condense
+    // the search for characters with the wrong case into a single byte,
+    // avoiding an allocation of a new byte array and string in the cases
+    // where it is not needed.
+    bitmap.blit this single_byte size
+        --lookup_table=table
+        --operation=bitmap.OR
+        --destination_pixel_stride=0
+    if single_byte[0] == 0: return this
+    // Since characters with the wrong case were found we create a new string
+    // using a temporary byte array.
+    bytes := to_byte_array
+    bitmap.blit bytes bytes bytes.size --lookup_table=table --operation=bitmap.XOR
+    return bytes.to_string
+
+  /**
+  Returns true iff the string has no non-ASCII characters in it.
+  The implementation is optimized, but it takes linear time in the size of the
+    string.
+  */
+  contains_only_ascii -> bool:
+    return size == (size --runes)
+
   /**
   Splits this instance at $separator.
 
@@ -1225,6 +1293,6 @@ class StringSlice_ extends string:
   compute_hash_ -> int:
     #primitive.core.blob_hash_code
 
-// Unsigned base 8 and base 16 stringification.
+// Unsigned base 2, 8, and 16 stringification.
 printf_style_int_stringify_ value/int base/int -> string:
   #primitive.core.printf_style_int64_to_string

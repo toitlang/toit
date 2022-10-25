@@ -44,11 +44,6 @@ set(TOIT_REPOS
     https://github.com/toitware/toit-e-paper
     https://github.com/toitware/toit-font-clock
     https://github.com/toitware/toit-font-google-100dpi-roboto
-    https://github.com/toitware/toit-font-welch-tiny
-    https://github.com/toitware/toit-font-x11-adobe-100
-    https://github.com/toitware/toit-font-x11-adobe-75
-    https://github.com/toitware/toit-font-x11-b-and-h
-    https://github.com/toitware/toit-font-x11-mutt
     https://github.com/toitware/toit-gnss-location
     https://github.com/toitware/toit-heading
     https://github.com/toitware/toit-hx711
@@ -63,11 +58,15 @@ set(TOIT_REPOS
     https://github.com/toitware/toit-msa311
     https://github.com/toitware/toit-newton-raphson
     https://github.com/toitware/toit-pixel-display
+    https://github.com/toitware/toit-pixel-strip
     https://github.com/toitware/toit-png-display
+    https://github.com/toitware/toit-r46ca01
     https://github.com/toitware/toit-resistance-to-temperature
+    # https://github.com/toitware/toit-rs485
     https://github.com/toitware/toit-si7006
     https://github.com/toitware/toit-solar-position
     https://github.com/toitware/toit-ssd1306
+    https://github.com/toitware/toit-tl19a08
     https://github.com/toitware/toit-tm1640
     https://github.com/toitware/toit-vcnl4040
     # https://github.com/toitware/ublox-cellular
@@ -75,6 +74,14 @@ set(TOIT_REPOS
 )
 
 set(DOWNLOADS_DIR "${CMAKE_CURRENT_LIST_DIR}/downloads")
+
+IF(APPLE)
+  set(DEFAULT_TIMEOUT 80)
+  set(SLOW_TIMEOUT 800)
+else()
+  set(DEFAULT_TIMEOUT 40)
+  set(SLOW_TIMEOUT 400)
+endif()
 
 # This file serves as CMakeLists.txt, as well as a cmake-script, run with `cmake -P`.
 # In the latter case the `EXECUTING_SCRIPT` variable is defined, and we only
@@ -203,10 +210,15 @@ function(add_repo_tests REPO)
       WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
       CONFIGURATIONS external
     )
-  endforeach()
+    if("${FILE}" IN_LIST FAILING_TESTS)
+      set_tests_properties(${FILE} PROPERTIES WILL_FAIL TRUE)
+    endif()
 
-  foreach(test ${FAILING_TESTS})
-    set_tests_properties(${test} PROPERTIES WILL_FAIL TRUE)
+    if ("${FILE}" MATCHES "_slow\\.toit$")
+      set_tests_properties(${FILE} PROPERTIES TIMEOUT ${SLOW_TIMEOUT})
+    else()
+      set_tests_properties(${FILE} PROPERTIES TIMEOUT ${DEFAULT_TIMEOUT})
+    endif()
   endforeach()
 endfunction()
 

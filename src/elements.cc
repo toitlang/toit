@@ -51,7 +51,7 @@ bool ElementsMetaData::mark_insert(int segment_offset, int size, List<uint8_t> c
   ASSERT(continues_buffer.length() == number_of_continues(size));
   // Add the continues to the buffer.
   memset(continues_buffer.begin(), ELEMENT_CONTINUE, continues_buffer.length());
-  int flash_segment_address = _meta_data_address + segment_offset;
+  int flash_segment_address = _metadata_address + segment_offset;
   bool success = FlashRegistry::write_raw_chunk(continues_buffer.begin(), flash_segment_address, continues_buffer.length());
   if (!success) return false;
 

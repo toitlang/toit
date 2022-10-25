@@ -3,8 +3,9 @@
 // found in the lib/LICENSE file.
 
 import device
-import encoding.ubjson
+import encoding.tison
 import uuid
+import esp32
 
 /**
 Implementation of ESP32 device library. Use the APIs in the device library.
@@ -21,7 +22,9 @@ class Device_ implements device.Device_:
   constructor.init_:
 
   name -> string?:
-    return get_mac_address_.stringify
+    // TODO(kasper): Should this be Jaguar specific? Maybe.
+    // return esp32.image_config.get "name" --if_absent=: hardware_id.stringify
+    return hardware_id.stringify
 
   hardware_id -> uuid.Uuid:
     if not hardware_id_: hardware_id_ = uuid.uuid5 "hw_id" get_mac_address_
@@ -48,13 +51,13 @@ class FlashStore_ implements device.Store:
     bytes := kv_store_.bytes key
     if not bytes: return null
 
-    return ubjson.decode bytes
+    return tison.decode bytes
 
   delete key/string:
     kv_store_.delete key
 
   set key/string value/any:
-    bytes := ubjson.encode value
+    bytes := tison.encode value
     return kv_store_.set_bytes key bytes
 
 class ConsoleConnection_:

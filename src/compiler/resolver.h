@@ -82,8 +82,9 @@ class Resolver {
 
   void check_clashing_or_conflicting(Symbol name, List<ir::Node*> declarations);
   void check_clashing_or_conflicting(std::vector<Module*> modules);
+  void check_future_reserved_globals(std::vector<Module*> modules);
 
-  void mark_runtime_classes(Module* core_module);
+  void mark_runtime(Module* core_module);
   void mark_non_returning(Module* core_module);
 
   void setup_inheritance(std::vector<Module*> modules, int core_module_index);
@@ -95,7 +96,8 @@ class Resolver {
   List<ir::Type> find_literal_types(Module* core_module);
   ir::Constructor* build_default_constructor(ir::Class* klass, bool* detected_error);
   void check_method(ast::Method* method, ir::Class* holder,
-                    Symbol* name, ir::Method::MethodKind* kind);
+                    Symbol* name, ir::Method::MethodKind* kind,
+                    bool allow_future_reserved);
   void check_field(ast::Field* method, ir::Class* holder);
   void check_class(ast::Class* klass);
   void fill_classes_with_skeletons(std::vector<Module*> modules);

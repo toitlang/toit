@@ -34,6 +34,12 @@ enum BlobKind {
   STRINGS_ONLY
 };
 
+enum GcType {
+  NEW_SPACE_GC  = 0,
+  FULL_GC       = 1,
+  COMPACTING_GC = 2,
+};
+
 // Type testers.
 INLINE bool is_smi(Object* o);
 INLINE bool is_heap_object(Object* o);
@@ -1213,6 +1219,37 @@ class Instance : public HeapObject {
     *word_count = HEADER_SIZE / WORD_SIZE + length;
     *extra_bytes = 0;
   }
+
+  // Some of the instance types have field offsets that are known both
+  // on the native and the Toit side.
+  // These numbers must stay synced with the fields in collections.toit.
+  static const int MAP_SIZE_INDEX        = 0;
+  static const int MAP_SPACES_LEFT_INDEX = 1;
+  static const int MAP_INDEX_INDEX       = 2;
+  static const int MAP_BACKING_INDEX     = 3;
+
+  static const int LIST_ARRAY_INDEX = 0;
+  static const int LIST_SIZE_INDEX  = 1;
+
+  static const int LIST_SLICE_LIST_INDEX = 0;
+  static const int LIST_SLICE_FROM_INDEX = 1;
+  static const int LIST_SLICE_TO_INDEX   = 2;
+
+  static const int BYTE_ARRAY_COW_BACKING_INDEX    = 0;
+  static const int BYTE_ARRAY_COW_IS_MUTABLE_INDEX = 1;
+
+  static const int BYTE_ARRAY_SLICE_BYTE_ARRAY_INDEX = 0;
+  static const int BYTE_ARRAY_SLICE_FROM_INDEX       = 1;
+  static const int BYTE_ARRAY_SLICE_TO_INDEX         = 2;
+
+  static const int LARGE_ARRAY_SIZE_INDEX   = 0;
+  static const int LARGE_ARRAY_VECTOR_INDEX = 1;
+
+  static const int STRING_SLICE_STRING_INDEX = 0;
+  static const int STRING_SLICE_FROM_INDEX   = 1;
+  static const int STRING_SLICE_TO_INDEX     = 2;
+
+  static const int TOMBSTONE_DISTANCE_INDEX = 0;
 
  private:
   static const int HEADER_SIZE = HeapObject::SIZE;

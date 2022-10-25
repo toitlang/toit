@@ -11,6 +11,7 @@ main:
   with_timeout --ms=10_000: run
   run
   test_channel
+  test_semaphore
 
 run:
   test_simple_monitor
@@ -26,6 +27,8 @@ run:
   test_sleep_in_await
   test_block_in_await
   test_process_messages_in_locked
+  test_gate
+  test_latch
 
 monitor A:
   foo_ready := false
@@ -176,10 +179,10 @@ yield_a_lot:
   10.repeat: yield
 
 task_with_deadline lambda:
-  deadline := task.deadline
+  deadline := Task_.current.deadline
   if deadline:
     task::
-      task.with_deadline_ deadline:
+      Task_.current.with_deadline_ deadline:
         lambda.call
   else:
     task::
@@ -238,23 +241,66 @@ test_entry_timeouts:
 
 test_channel:
   channel := Channel 5
-  task:: channel_sender channel
-  task:: channel_receiver channel
+  sent := Latch
+  done := Latch
+  task:: channel_sender channel sent
+  task:: channel_receiver channel sent done
+  done.get
 
-channel_sender channel/Channel:
+  // Test that the channel blocks at 5 entries.
+
+  expect_equals 5 channel.capacity
+  expect_equals 0 channel.size
+
+  sent_count := 0
+  task::
+    10.repeat:
+      channel.send it
+      sent_count++
+
+  while sent_count != 4: yield
+  10.repeat: yield
+  // There was still space for one number.
+  expect_equals 5 sent_count
+  expect_equals 5 channel.size
+
+  10.repeat: channel.receive
+  expect_equals 0 channel.size
+  expect_equals 10 sent_count
+
+  block_call_count := 0
+  task::
+    10.repeat: | val |
+      channel.send:
+        block_call_count++
+        val
+
+  while block_call_count != 4: yield
+  10.repeat: yield
+  // There was still space for one number.
+  expect_equals 5 block_call_count
+  expect_equals 5 channel.size
+
+  10.repeat: channel.receive
+  expect_equals 0 channel.size
+  expect_equals 10 block_call_count
+
+channel_sender channel/Channel latch/Latch:
   channel.send "Foo"
   channel.send "Bar"
   channel.send "Baz"
   channel.send "Boo"
+  latch.set true
 
-channel_receiver channel/Channel:
+channel_receiver channel/Channel sent/Latch done/Latch:
   expect_equals "Foo"
     channel.receive
-  sleep --ms=200
+  sent.get
   str := channel.receive
   while next := channel.receive --blocking=false:
     str += next
   expect_equals "BarBazBoo" str
+  done.set true
 
 monitor Outer:
   block -> none:
@@ -322,7 +368,7 @@ class MessageHandler implements SystemMessageHandler_:
     else if kind == KIND_NON_BLOCKING_AWAIT:
       inner.non_blocking_await
     else if kind == KIND_NO_DEADLINE:
-      expect_null task.deadline
+      expect_null Task_.current.deadline
     calls++
 
 test_process_messages_in_locked:
@@ -341,7 +387,7 @@ test_process_messages_in_locked kind/int:
 
   // Enqueue a message for ourselves. Will be processed on
   // the current task after blocking on the call to outer.block.
-  process_send_ current_process_ MessageHandler.TYPE [kind]
+  process_send_ Process.current.id MessageHandler.TYPE [kind]
   expect_equals 0 handler.calls
 
   expect_throw DEADLINE_EXCEEDED_ERROR:
@@ -350,3 +396,97 @@ test_process_messages_in_locked kind/int:
       outer.block
       expect_equals 1 handler.calls
   done.set 0
+
+test_gate:
+  gate := Gate
+
+  2.repeat:
+    task_is_running := Latch
+    task_finished := false
+    task::
+      task_is_running.set true
+      gate.enter
+      task_finished = true
+
+    expect gate.is_locked
+    expect_not gate.is_unlocked
+
+    task_is_running.get
+    10.repeat: yield
+    expect_not task_finished
+
+    gate.unlock
+    10.repeat: yield
+    expect task_finished
+
+    expect gate.is_unlocked
+
+    gate.enter
+    gate.lock
+    expect gate.is_locked
+
+test_latch:
+  l1 := Latch
+  task:: l1.set 42
+  expect_equals 42 l1.get
+
+  l2 := Latch
+  task:: l2.set --exception 87
+  expect_throw 87: l2.get
+
+  l3 := Latch
+  task::
+    catch:
+      try:
+        throw 99
+      finally: | is_exception exception |
+        l3.set --exception exception
+  expect_throw 99: l3.get
+
+test_semaphore:
+  semaphore := Semaphore
+  expect_equals 0 semaphore.count
+
+  started := Latch
+  done := false
+  task::
+    started.set true
+    semaphore.down
+    expect_equals 0 semaphore.count
+    done = true
+
+  started.get
+  10.repeat: yield
+  expect_not done
+  semaphore.up
+  10.repeat: yield
+  expect done
+
+  // Test limit, initial value and multiple ups/downs.
+  semaphore = Semaphore --limit=3 --count=2
+  started = Latch
+  consume := Latch
+  done = false
+  task::
+    started.set true
+    consume.get
+    5.repeat:
+      // We wait for more than the limit.
+      semaphore.down
+    expect_equals 0 semaphore.count
+    done = true
+
+  started.get
+  expect_equals 2 semaphore.count
+  10.repeat:
+    semaphore.up
+  // Stops at the limit.
+  expect_equals 3 semaphore.count
+  consume.set true
+  10.repeat: yield
+  expect_equals 0 semaphore.count
+  expect_not done
+  semaphore.up
+  semaphore.up
+  10.repeat: yield
+  expect done

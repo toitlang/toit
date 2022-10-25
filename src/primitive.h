@@ -53,7 +53,9 @@ namespace toit {
   M(blob,    MODULE_BLOB)                    \
   M(gpio,    MODULE_GPIO)                    \
   M(adc,     MODULE_ADC)                     \
+  M(dac,     MODULE_DAC)                     \
   M(pwm,     MODULE_PWM)                     \
+  M(touch,   MODULE_TOUCH)                   \
   M(programs_registry, MODULE_PROGRAMS_REGISTRY) \
   M(flash,   MODULE_FLASH_REGISTRY)          \
   M(spi_flash, MODULE_SPI_FLASH)             \
@@ -107,6 +109,7 @@ namespace toit {
   PRIMITIVE(random_seed, 1)                  \
   PRIMITIVE(add_entropy, 1)                  \
   PRIMITIVE(count_leading_zeros, 1)          \
+  PRIMITIVE(popcount, 1)                     \
   PRIMITIVE(number_to_float, 1)              \
   PRIMITIVE(put_uint_big_endian, 5)          \
   PRIMITIVE(read_int_big_endian, 4)          \
@@ -160,15 +163,20 @@ namespace toit {
   PRIMITIVE(object_class_id, 1)              \
   PRIMITIVE(number_to_integer, 1)            \
   PRIMITIVE(float_sqrt, 1)                   \
+  PRIMITIVE(float_ceil, 1)                   \
+  PRIMITIVE(float_floor, 1)                  \
+  PRIMITIVE(float_trunc, 1)                  \
   PRIMITIVE(command, 0)                      \
-  PRIMITIVE(args, 0)                         \
-  PRIMITIVE(hatch, 2)                        \
-  PRIMITIVE(hatch_method, 0)                 \
-  PRIMITIVE(hatch_args, 0)                   \
+  PRIMITIVE(main_arguments, 0)               \
+  PRIMITIVE(spawn, 3)                        \
+  PRIMITIVE(spawn_method, 0)                 \
+  PRIMITIVE(spawn_arguments, 0)              \
   PRIMITIVE(get_generic_resource_group, 0)   \
-  PRIMITIVE(signal_kill, 1)                  \
-  PRIMITIVE(current_process_id, 0)           \
+  PRIMITIVE(process_signal_kill, 1)          \
+  PRIMITIVE(process_current_id, 0)           \
   PRIMITIVE(process_send, 3)                 \
+  PRIMITIVE(process_get_priority, 1)         \
+  PRIMITIVE(process_set_priority, 2)         \
   PRIMITIVE(task_has_messages, 0)            \
   PRIMITIVE(task_receive_message, 0)         \
   PRIMITIVE(concat_strings, 1)               \
@@ -181,7 +189,7 @@ namespace toit {
   PRIMITIVE(byte_array_length, 1)            \
   PRIMITIVE(byte_array_at, 2)                \
   PRIMITIVE(byte_array_at_put, 3)            \
-  PRIMITIVE(byte_array_new, 1)               \
+  PRIMITIVE(byte_array_new, 2)               \
   PRIMITIVE(byte_array_new_external, 1)      \
   PRIMITIVE(byte_array_replace, 5)           \
   PRIMITIVE(byte_array_is_valid_string_content, 3) \
@@ -231,8 +239,6 @@ namespace toit {
   PRIMITIVE(dump_heap, 1)                    \
   PRIMITIVE(serial_print_heap_report, 2)     \
   PRIMITIVE(get_env, 1)                      \
-  PRIMITIVE(varint_encode, 3)                \
-  PRIMITIVE(varint_decode, 2)                \
   PRIMITIVE(literal_index, 1)                \
   PRIMITIVE(word_size, 0)                    \
 
@@ -333,6 +339,8 @@ namespace toit {
   PRIMITIVE(set_characteristics_value, 2)    \
   PRIMITIVE(notify_characteristics_value, 2) \
   PRIMITIVE(get_characteristics_value, 1)    \
+  PRIMITIVE(get_att_mtu, 1)                  \
+  PRIMITIVE(set_preferred_mtu, 1)            \
 
 #define MODULE_DHCP(PRIMITIVE)               \
   PRIMITIVE(wait_for_lwip_dhcp_on_linux, 0)  \
@@ -346,13 +354,15 @@ namespace toit {
   PRIMITIVE(ota_rollback, 0)                 \
   PRIMITIVE(reset_reason, 0)                 \
   PRIMITIVE(enable_external_wakeup, 2)       \
+  PRIMITIVE(enable_touchpad_wakeup, 0)       \
   PRIMITIVE(wakeup_cause, 0)                 \
   PRIMITIVE(ext1_wakeup_status, 1)           \
+  PRIMITIVE(touchpad_wakeup_status, 0)       \
   PRIMITIVE(total_deep_sleep_time, 0)        \
   PRIMITIVE(total_run_time, 0)               \
-  PRIMITIVE(image_config, 0)                 \
   PRIMITIVE(get_mac_address, 0)              \
   PRIMITIVE(rtc_user_bytes, 0)               \
+  PRIMITIVE(memory_page_report, 0)           \
 
 #define MODULE_I2C(PRIMITIVE)                \
   PRIMITIVE(init, 3)                         \
@@ -377,7 +387,9 @@ namespace toit {
   PRIMITIVE(close, 1)                        \
   PRIMITIVE(device, 7)                       \
   PRIMITIVE(device_close, 2)                 \
-  PRIMITIVE(transfer, 8)                     \
+  PRIMITIVE(transfer, 9)                     \
+  PRIMITIVE(acquire_bus, 1)                  \
+  PRIMITIVE(release_bus, 1)                  \
 
 #define MODULE_SPI_LINUX(PRIMITIVE)          \
   PRIMITIVE(open, 1)                         \
@@ -385,11 +397,16 @@ namespace toit {
 
 #define MODULE_UART(PRIMITIVE)               \
   PRIMITIVE(init, 0)                         \
-  PRIMITIVE(create, 10)                      \
+  PRIMITIVE(create, 11)                      \
+  PRIMITIVE(create_path, 6)                  \
   PRIMITIVE(close, 2)                        \
+  PRIMITIVE(get_baud_rate, 1)                \
   PRIMITIVE(set_baud_rate, 2)                \
   PRIMITIVE(write, 6)                        \
   PRIMITIVE(read, 1)                         \
+  PRIMITIVE(wait_tx, 1)                      \
+  PRIMITIVE(set_control_flags, 2)           \
+  PRIMITIVE(get_control_flags, 1)            \
 
 #define MODULE_RMT(PRIMITIVE)                \
   PRIMITIVE(init, 0)                         \
@@ -428,15 +445,17 @@ namespace toit {
   PRIMITIVE(siphash_start, 5)                \
   PRIMITIVE(siphash_add, 4)                  \
   PRIMITIVE(siphash_get, 1)                  \
-  PRIMITIVE(aes_cbc_init, 4)                 \
-  PRIMITIVE(aes_cbc_crypt, 5)                \
+  PRIMITIVE(aes_init, 4)                     \
+  PRIMITIVE(aes_cbc_crypt, 3)                \
+  PRIMITIVE(aes_ecb_crypt, 3)                \
   PRIMITIVE(aes_cbc_close, 1)                \
+  PRIMITIVE(aes_ecb_close, 1)                \
 
 #define MODULE_ENCODING(PRIMITIVE)           \
   PRIMITIVE(base64_encode, 2)                \
   PRIMITIVE(base64_decode, 2)                \
-  PRIMITIVE(hex_encode, 1)                   \
-  PRIMITIVE(hex_decode, 1)                   \
+  PRIMITIVE(tison_encode, 1)                 \
+  PRIMITIVE(tison_decode, 1)                 \
 
 #define MODULE_FONT(PRIMITIVE)               \
   PRIMITIVE(get_font, 2)                     \
@@ -463,7 +482,7 @@ namespace toit {
   PRIMITIVE(unregister_monitor_notifier, 2)  \
 
 #define MODULE_SNAPSHOT(PRIMITIVE)           \
-  PRIMITIVE(launch, 3)                       \
+  PRIMITIVE(launch, 4)                       \
 
 #define MODULE_SERIALIZATION(PRIMITIVE)      \
   PRIMITIVE(serialize, 1)                    \
@@ -473,7 +492,7 @@ namespace toit {
   PRIMITIVE(current_id, 0)                   \
   PRIMITIVE(writer_create, 2)                \
   PRIMITIVE(writer_write, 4)                 \
-  PRIMITIVE(writer_commit, 1)                \
+  PRIMITIVE(writer_commit, 2)                \
   PRIMITIVE(writer_close, 1)                 \
 
 #define MODULE_BLOB(PRIMITIVE)               \
@@ -487,7 +506,7 @@ namespace toit {
 
 #define MODULE_GPIO(PRIMITIVE)               \
   PRIMITIVE(init, 0)                         \
-  PRIMITIVE(use, 2)                          \
+  PRIMITIVE(use, 3)                          \
   PRIMITIVE(unuse, 2)                        \
   PRIMITIVE(config, 6)                       \
   PRIMITIVE(get, 1)                          \
@@ -497,7 +516,15 @@ namespace toit {
 #define MODULE_ADC(PRIMITIVE)               \
   PRIMITIVE(init, 4)                        \
   PRIMITIVE(get, 2)                         \
+  PRIMITIVE(get_raw, 1)                     \
   PRIMITIVE(close, 1)                       \
+
+#define MODULE_DAC(PRIMITIVE)               \
+  PRIMITIVE(init, 0)                        \
+  PRIMITIVE(use, 3)                         \
+  PRIMITIVE(unuse, 2)                       \
+  PRIMITIVE(set, 2)                         \
+  PRIMITIVE(cosine_wave, 5)                 \
 
 #define MODULE_PWM(PRIMITIVE)                \
   PRIMITIVE(init, 2)                         \
@@ -509,12 +536,22 @@ namespace toit {
   PRIMITIVE(set_frequency, 2)                \
   PRIMITIVE(close_channel, 2)                \
 
+#define MODULE_TOUCH(PRIMITIVE)              \
+  PRIMITIVE(init, 0)                         \
+  PRIMITIVE(use, 3)                          \
+  PRIMITIVE(unuse, 2)                        \
+  PRIMITIVE(read, 1)                         \
+  PRIMITIVE(get_threshold, 1)                \
+  PRIMITIVE(set_threshold, 2)                \
+
 #define MODULE_PROGRAMS_REGISTRY(PRIMITIVE)  \
   PRIMITIVE(next_group_id, 0)                \
-  PRIMITIVE(spawn, 3)                        \
+  PRIMITIVE(spawn, 4)                        \
   PRIMITIVE(is_running, 2)                   \
   PRIMITIVE(kill, 2)                         \
   PRIMITIVE(bundled_images, 0)               \
+  PRIMITIVE(assets, 0)                       \
+  PRIMITIVE(config, 0)                       \
 
 #define MODULE_FLASH_REGISTRY(PRIMITIVE)     \
   PRIMITIVE(next, 1)                         \
@@ -523,7 +560,7 @@ namespace toit {
   PRIMITIVE(get_id, 1)                       \
   PRIMITIVE(get_size, 1)                     \
   PRIMITIVE(get_type, 1)                     \
-  PRIMITIVE(get_meta_data, 1)                \
+  PRIMITIVE(get_metadata, 1)                 \
   PRIMITIVE(reserve_hole, 2)                 \
   PRIMITIVE(cancel_reservation, 1)           \
   PRIMITIVE(erase_flash_registry, 0)         \
@@ -610,7 +647,7 @@ namespace toit {
   PRIMITIVE(erase, 1)                        \
 
 #define MODULE_DEBUG(PRIMITIVE)              \
-  PRIMITIVE(object_histogram, 1)             \
+  PRIMITIVE(object_histogram, 2)             \
 
 // ----------------------------------------------------------------------------
 
@@ -660,6 +697,16 @@ namespace toit {
   word _word_##name = Smi::cast(_raw_##name)->value();  \
   int name = _word_##name;                              \
   if (name != _word_##name) OUT_OF_RANGE;               \
+
+#define _A_T_int8(N, name)                                                \
+  Object* _raw_##name = __args[-(N)];                                     \
+  if (!is_smi(_raw_##name)) {                                             \
+    if (is_large_integer(_raw_##name)) OUT_OF_RANGE;                      \
+    else WRONG_TYPE;                                                      \
+  }                                                                       \
+  word _value_##name = Smi::cast(_raw_##name)->value();                   \
+  if (INT8_MIN > _value_##name || _value_##name > INT8_MAX) OUT_OF_RANGE; \
+  int8 name = (int8) _value_##name;
 
 #define _A_T_uint8(N, name)                                           \
   Object* _raw_##name = __args[-(N)];                                 \
@@ -831,7 +878,9 @@ namespace toit {
   if (!name) ALREADY_CLOSED;                                     \
 
 #define _A_T_SimpleResourceGroup(N, name) MAKE_UNPACKING_MACRO(SimpleResourceGroup, N, name)
+#define _A_T_DacResourceGroup(N, name)    MAKE_UNPACKING_MACRO(DacResourceGroup, N, name)
 #define _A_T_GPIOResourceGroup(N, name)   MAKE_UNPACKING_MACRO(GPIOResourceGroup, N, name)
+#define _A_T_TouchResourceGroup(N, name)  MAKE_UNPACKING_MACRO(TouchResourceGroup, N, name)
 #define _A_T_I2CResourceGroup(N, name)    MAKE_UNPACKING_MACRO(I2CResourceGroup, N, name)
 #define _A_T_I2SResourceGroup(N, name)    MAKE_UNPACKING_MACRO(I2SResourceGroup, N, name)
 #define _A_T_PersistentResourceGroup(N, name) MAKE_UNPACKING_MACRO(PersistentResourceGroup, N, name)
@@ -875,15 +924,18 @@ namespace toit {
 #define _A_T_BaseMbedTLSSocket(N, name)   MAKE_UNPACKING_MACRO(BaseMbedTLSSocket, N, name)
 #define _A_T_SslSession(N, name)          MAKE_UNPACKING_MACRO(SslSession, N, name)
 #define _A_T_X509Certificate(N, name)     MAKE_UNPACKING_MACRO(X509Certificate, N, name)
+#define _A_T_AesContext(N, name)          MAKE_UNPACKING_MACRO(AesContext, N, name)
 #define _A_T_AesCbcContext(N, name)       MAKE_UNPACKING_MACRO(AesCbcContext, N, name)
 #define _A_T_Sha1(N, name)                MAKE_UNPACKING_MACRO(Sha1, N, name)
 #define _A_T_Siphash(N, name)             MAKE_UNPACKING_MACRO(Siphash, N, name)
 #define _A_T_Sha256(N, name)              MAKE_UNPACKING_MACRO(Sha256, N, name)
 #define _A_T_Adler32(N, name)             MAKE_UNPACKING_MACRO(Adler32, N, name)
 #define _A_T_ZlibRle(N, name)             MAKE_UNPACKING_MACRO(ZlibRle, N, name)
+#define _A_T_GPIOResource(N, name)        MAKE_UNPACKING_MACRO(GPIOResource, N, name)
 #define _A_T_UARTResource(N, name)        MAKE_UNPACKING_MACRO(UARTResource, N, name)
 #define _A_T_I2SResource(N, name)         MAKE_UNPACKING_MACRO(I2SResource, N, name)
-#define _A_T_AdcState(N, name)            MAKE_UNPACKING_MACRO(AdcState, N, name)
+#define _A_T_AdcResource(N, name)         MAKE_UNPACKING_MACRO(AdcResource, N, name)
+#define _A_T_DacResource(N, name)         MAKE_UNPACKING_MACRO(DacResource, N, name)
 #define _A_T_PWMResource(N, name)         MAKE_UNPACKING_MACRO(PWMResource, N, name)
 #define _A_T_PcntUnitResource(N, name)    MAKE_UNPACKING_MACRO(PcntUnitResource, N, name)
 #define _A_T_RMTResource(N, name)         MAKE_UNPACKING_MACRO(RMTResource, N, name)
@@ -1061,8 +1113,8 @@ class Primitive {
 
   // Use temporary tagging for marking an error.
   static bool is_error(Object* object) { return object->is_marked(); }
-  static HeapObject* mark_as_error(String* string) { return string->mark(); }
-  static String* unmark_from_error(Object* object) { return String::cast(object->unmark()); }
+  static HeapObject* mark_as_error(HeapObject* object) { return object->mark(); }
+  static HeapObject* unmark_from_error(Object* object) { return object->unmark(); }
   static Object* os_error(int error, Process* process);
 
   // Module-specific primitive lookup. May return null if the primitive isn't linked in.

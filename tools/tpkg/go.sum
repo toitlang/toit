@@ -443,6 +443,10 @@ github.com/subosito/gotenv v1.2.0/go.mod h1:N0PQaV/YGNqwC0u51sEeR/aUtSLEXKX9iv69
 github.com/tmc/grpc-websocket-proxy v0.0.0-20190109142713-0ad062ec5ee5/go.mod h1:ncp9v5uamzpCO7NfCPTXjqaC+bZgJeR0sMTm6dMHP7U=
 github.com/toitlang/tpkg v0.0.0-20220208100452-339a2ab582da h1:0ceMqGm+rpgikrfjcY4pKIFnsWB5K4OBuA61OWPggTY=
 github.com/toitlang/tpkg v0.0.0-20220208100452-339a2ab582da/go.mod h1:8+mRIFIKJxHMEAu8H5MxkaY/fLALKSEguBBIm8D0lG8=
+github.com/toitlang/tpkg v0.0.0-20220727131228-5d149728b2ba h1:NE5uwnOlv1Ib9pqJTQEksLwp91j8PwqySyG/zG9Gs0A=
+github.com/toitlang/tpkg v0.0.0-20220727131228-5d149728b2ba/go.mod h1:8+mRIFIKJxHMEAu8H5MxkaY/fLALKSEguBBIm8D0lG8=
+github.com/toitlang/tpkg v0.0.0-20220817100231-9b6e93cbd21d h1:1jwW+qPQAjBAqcycXITrM6apcex//i/Zcz7s+wF1z0g=
+github.com/toitlang/tpkg v0.0.0-20220817100231-9b6e93cbd21d/go.mod h1:8+mRIFIKJxHMEAu8H5MxkaY/fLALKSEguBBIm8D0lG8=
 github.com/tv42/httpunix v0.0.0-20150427012821-b75d8614f926/go.mod h1:9ESjWnEqriFuLhtthL60Sar/7RFoluCcXsuvEwTV5KM=
 github.com/xanzy/ssh-agent v0.3.0 h1:wUMzuKtKilRgBAD1sUb8gOwwRr2FGoBVumcjoOACClI=
 github.com/xanzy/ssh-agent v0.3.0/go.mod h1:3s9xbODqPuuhK9JV1R321M/FlMZSBvE5aY6eAcqrDh0=

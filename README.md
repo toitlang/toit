@@ -14,7 +14,15 @@ applications written in Toit over WiFi whenever your source files change. Once s
 jag watch examples/hello.toit
 ```
 
-Watch a short video that shows how you can experience Jaguar on your ESP32 in less two minutes:
+It is also straightforward to install extra drivers and services that can extend the core functionality
+of your device. Add automatic [NTP](https://en.wikipedia.org/wiki/Network_Time_Protocol)-based time
+synchronization without having to write a single line of code:
+
+``` sh
+jag container install ntp examples/ntp/ntp.toit
+```
+
+You can watch a short video that shows how you can experience Jaguar on your ESP32 in less two minutes:
 
 <a href="https://youtu.be/cU7zr6_YBbQ"><img width="543" alt="Jaguar demonstration" src="https://user-images.githubusercontent.com/133277/146210503-24811800-bb26-4244-817d-6422b20e6786.png"></a>
 
@@ -117,9 +125,9 @@ The Toit VM has a requirement for the [Espressif IoT Development Framework](http
 
 We recommend you use Toitware's [ESP-IDF fork](https://github.com/toitware/esp-idf) that comes with a few changes:
 
-* Custom malloc implementation.
+* Custom malloc implementation
 * Allocation-fixes for UART, etc.
-* LWIP fixes.
+* LWIP fixes
 
 The fork's repository has been added as a submodule reference to this repository, so doing a recursive submodule init & update will establish everything nedded:
 
@@ -155,6 +163,8 @@ On Linux:
 ``` sh
 $IDF_PATH/install.sh
 ```
+
+The default location of $IDF_PATH is under ```./third_party/esp-idf```
 
 For other platforms, see [Espressif's documentation](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/get-started/index.html#step-3-set-up-the-tools).
 
@@ -201,6 +211,9 @@ build/host/sdk/bin/toit.pkg init --project-root=<some-directory>
 build/host/sdk/bin/toit.pkg install --project-root=<some-directory> <package-id>
 ```
 
+### Debugging
+See https://github.com/toitlang/toit/wiki/Debugging.
+
 ## IDE integration
 
 Toit has a [VS Code](https://code.visualstudio.com/) extension. You can either use the
@@ -233,24 +246,135 @@ There are syntax highlighters for VIM and CodeMirror in the
 Make sure the environment variables for the ESP32 tools are set, as
 described in the [dependencies](#dependencies) section.
 
-Build an image for your ESP32 device that can be flashed using `esptool.py`.
+Build firmware that can be flashed onto your ESP32 device. The firmware is generated
+in `build/esp32/firmware.envelope`:
 
 ``` sh
 make esp32
 ```
 
-By default, the image boots up and runs `examples/hello.toit`. You can use your
-own entry point and specify it through the `ESP32_ENTRY` make variable:
+If you want to use `esptool.py` to flash the generated firmware on your device, you
+need to extract the `firmware.bin` file and pass it to `esptool.py`. Assuming
+your device is connected through `/dev/ttyUSB0` you can do this:
 
 ``` sh
-make esp32 ESP32_ENTRY=examples/mandelbrot.toit
+build/host/sdk/tools/firmware -e build/esp32/firmware.envelope \
+    extract --format=binary -o firmware.bin
+python third_party/esp-idf/components/esptool_py/esptool/esptool.py \
+    --chip esp32 --port /dev/ttyUSB0 --baud 921600 \
+    --before default_reset --after hard_reset write_flash -z \
+    --flash_mode dio --flash_freq 40m --flash_size detect \
+    0x001000 build/esp32/bootloader/bootloader.bin \
+    0x008000 build/esp32/partitions.bin \
+    0x010000 firmware.bin
 ```
 
-Build an image and flash it to your ESP32 device. You must specify the device port
-with the `ESP32_PORT` make variable. You can also use all the `make esp32` make variables.
+By default, the image boots up but does not run any application code. You can use your
+own entry point by installing it into the firmware envelope before extracting the
+`firmware.bin` file:
 
 ``` sh
-make flash ESP32_ENTRY=examples/mandelbrot.toit ESP32_PORT=/dev/ttyUSB0
+build/host/sdk/bin/toit.compile -w hello.snapshot examples/hello.toit
+build/host/sdk/tools/firmware -e build/esp32/firmware.envelope \
+    container install hello hello.snapshot
+build/host/sdk/tools/firmware -e build/esp32/firmware.envelope \
+    extract --format=binary -o firmware.bin
+```
+
+Alternatively, you can also specify the entry point through the `ESP32_ENTRY` make variable
+and let the `Makefile` handle the flashing:
+
+``` sh
+make flash ESP32_ENTRY=examples/hello.toit ESP32_PORT=/dev/ttyUSB0
+```
+
+### Adding multiple containers
+
+You can add more containers before you extract `firmware.bin`, so you firmware
+envelope can have any number of containers.
+
+``` sh
+build/host/sdk/bin/toit.compile -w hello.snapshot examples/hello.toit
+build/host/sdk/bin/toit.compile -w ntp.snapshot examples/ntp/ntp.toit
+
+build/host/sdk/tools/firmware -e build/esp32/firmware.envelope \
+    container install hello hello.snapshot
+build/host/sdk/tools/firmware -e build/esp32/firmware.envelope \
+    container install ntp ntp.snapshot
+```
+
+You can list the containers in a given firmware envelope:
+
+``` sh
+build/host/sdk/tools/firmware -e build/esp32/firmware.envelope \
+    container list
+```
+
+The listing produces JSON output that can be processed by other tools:
+
+```
+{ "hello": {
+    "kind" : "snapshot",
+    "id"   : "f0b7e859-9188-52d9-8be3-856bd0e75919"
+  },
+  "ntp": {
+    "kind" : "snapshot",
+    "id"   : "6efefb4b-aa91-5600-ba7d-f76a8dc0ac01"
+  }
+}
+```
+
+### Adding container assets
+
+Containers have associated assets that they can access at runtime. Add the
+following code to a file named `assets.toit`:
+
+```
+import system.assets
+
+main:
+  print assets.decode
+```
+
+If you run this on an ESP32, you'll get an empty map printed becase you
+haven't associated any assets with the container that holds the code.
+
+To associate assets with the container, we first construct an encoded
+assets file and add this `README.md` file to it.
+
+``` sh
+build/host/sdk/tools/assets -e encoded.assets create
+build/host/sdk/tools/assets -e encoded.assets add readme README.md
+```
+
+Now we can add the `encoded.assets` to the `assets` container at
+install time:
+
+``` sh
+build/host/sdk/bin/toit.compile -w assets.snapshot assets.toit
+build/host/sdk/tools/firmware -e build/esp32/firmware.envelope \
+    container install --assets=encoded.assets assets assets.snapshot
+```
+
+If you update the source code in `assets.toit` slightly, the
+printed information will be more digestible:
+
+```
+import system.assets
+
+main:
+  readme := assets.decode["readme"]
+  // Guard against splitting a unicode character by
+  // making this non-throwing.
+  print readme[0..80].to_string_non_throwing
+```
+
+You'll need to reinstall the container after this by recompiling
+the `assets.toit` file to `assets.snapshot` and re-running:
+
+``` sh
+build/host/sdk/tools/firmware -e build/esp32/firmware.envelope \
+    container install --assets=encoded.assets assets assets.snapshot
 ```
 
 ---
@@ -279,11 +403,20 @@ You will have to log out and log back in for this to take effect.
 
 ### Configuring WiFi for the ESP32
 
-You can easily configure the ESP32's builtin WiFi by setting the `ESP32_WIFI_SSID` and
-`ESP32_WIFI_PASSWORD` make variables:
+You can easily configure the ESP32's builtin WiFi passing it as configuration
+when you extract the `firmware.bin` file:
 
 ``` sh
-make esp32 ESP32_ENTRY=examples/http.toit ESP32_WIFI_SSID=myssid ESP32_WIFI_PASSWORD=mypassword
+echo '{ "wifi.ssid": "myssid", "wifi.password": "mypassword" }' > config.json
+build/host/sdk/tools/firmware -e build/esp32/firmware.envelope \
+    extract --format=binary -o firmware.bin --config config.json
+```
+
+The `Makefile` also has the `ESP32_WIFI_SSID` and `ESP32_WIFI_PASSWORD` make variables
+to support this, if you prefer flashing through make:
+
+``` sh
+make flash ESP32_ENTRY=examples/http/http.toit ESP32_WIFI_SSID=myssid ESP32_WIFI_PASSWORD=mypassword
 ```
 
 This allows the WiFi to automatically start up when a network interface is opened.

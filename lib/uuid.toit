@@ -44,9 +44,9 @@ parse str/string:
   thrower := (: throw "INVALID_UUID")
   while i < str.size and index < uuid.size:
     if (str.at --raw i) == '-': i++
-    v := hex_digit str[i++] thrower
+    v := hex_char_to_value str[i++] --on_error=thrower
     v <<= 4
-    v |= hex_digit str[i++] thrower
+    v |= hex_char_to_value str[i++] --on_error=thrower
     uuid[index++] = v
   if i < str.size or index != uuid.size: throw "INVALID_UUID"
   return Uuid uuid
@@ -105,7 +105,7 @@ class Uuid:
   Deprecated. Use $NIL instead.
   */
   constructor.all_zeros:
-    zeros := ByteArray SIZE: 0
+    zeros := ByteArray SIZE
     return Uuid zeros
 
   /**

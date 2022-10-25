@@ -8,7 +8,9 @@ User-space side of the RPC API for installing container images in flash, and
 */
 
 import uuid
-import system.api.containers show ContainerServiceClient
+import monitor
+
+import system.api.containers show ContainerService ContainerServiceClient
 import system.services show ServiceResourceProxy
 
 _client_ /ContainerServiceClient ::= ContainerServiceClient
@@ -19,13 +21,49 @@ images -> List:
 current -> uuid.Uuid:
   return uuid.Uuid current_image_id_
 
-start id/uuid.Uuid -> int:
-  result/int? := _client_.start_image id
-  if result: return result
+start id/uuid.Uuid arguments/any=[] -> Container:
+  handle/int? := _client_.start_image id arguments
+  if handle: return Container id handle
   throw "No such container: $id"
 
 uninstall id/uuid.Uuid -> none:
   _client_.uninstall_image id
+
+class ContainerImage:
+  id/uuid.Uuid
+  flags/int
+  data/int
+  constructor .id .flags .data:
+
+class Container extends ServiceResourceProxy:
+  id/uuid.Uuid
+  result_/monitor.Latch ::= monitor.Latch
+
+  constructor .id handle/int:
+    super _client_ handle
+
+  close -> none:
+    // Make sure anyone waiting for the result now or in the future
+    // knows that we got closed before getting an exit code.
+    if not result_.has_value: result_.set null
+    super
+
+  stop -> int:
+    _client_.stop_container handle_
+    return wait
+
+  wait -> int:
+    code/int? := result_.get
+    if not code: throw "CLOSED"
+    return code
+
+  on_notified_ code/int -> none:
+    result_.set code
+    // We close the resource, because we no longer care about or expect
+    // notifications. Closing involves RPCs and thus waiting for replies
+    // which isn't allowed in the message processing context that runs
+    // the $on_notified_ method. For that reason, we create a new task.
+    close
 
 class ContainerImageWriter extends ServiceResourceProxy:
   size/int ::= ?
@@ -36,8 +74,14 @@ class ContainerImageWriter extends ServiceResourceProxy:
   write bytes/ByteArray -> none:
     _client_.image_writer_write handle_ bytes
 
-  commit -> uuid.Uuid:
-    return _client_.image_writer_commit handle_
+  commit -> uuid.Uuid
+      --data/int=0
+      --run_boot/bool=false
+      --run_critical/bool=false:
+    flags := 0
+    if run_boot: flags |= ContainerService.FLAG_RUN_BOOT
+    if run_critical: flags |= ContainerService.FLAG_RUN_CRITICAL
+    return _client_.image_writer_commit handle_ flags data
 
 // ----------------------------------------------------------------------------
 

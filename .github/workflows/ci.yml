@@ -10,50 +10,55 @@ jobs:
     strategy:
       # The matrix will run all possible combinations in parallel.
       matrix:
-        # macos-10.15, as we currently need Clang 12 (https://github.com/toitlang/toit/issues/130)
-        # windows-2022, as it's currently later than windows-latest.
-        # ubuntu-18.04 so that we don't depend on a recent glibc.
-        container: [ ubuntu-18.04, macos-10.15, windows-2022 ]
+        # ubuntu-20.04 so that we don't depend on a recent glibc.
+        container: [ ubuntu-20.04, macos-latest, windows-latest ]
         shard: [1, 2, 3, 4, 5]
 
         include:
-          - container: ubuntu-18.04
+          - container: ubuntu-20.04
             shard: 6
-          - container: ubuntu-18.04
+          - container: ubuntu-20.04
             shard: 7
-          - container: ubuntu-18.04
+          - container: ubuntu-20.04
             shard: 8
-          - container: ubuntu-18.04
+          - container: ubuntu-20.04
             shard: 9
-          - container: ubuntu-18.04
+          - container: ubuntu-20.04
             shard: 10
 
     runs-on: ${{ matrix.container }}
 
     steps:
+      - uses: actions/checkout@v3
+
+      - name: Fetch tags
+        # The github checkout is shallow and doesn't have tags.
+        run: |
+          git fetch --tags
+
       - name: Set up constants
         id: constants
+        shell: bash
         run: |
-          echo ::set-output name=external_result::external-result/$RUNNER_OS-${{ matrix.shard }}.txt
-          echo ::set-output name=external_result_name::external-result-${{ github.run_id }}-${{ github.run_attempt }}
-          echo ::set-output name=debug_root_dir::debug-ci
-          echo ::set-output name=debug_dir::debug-ci/$RUNNER_OS-${{ matrix.shard }}
+          echo "external_result=external-result/$RUNNER_OS-${{ matrix.shard }}.txt" >> $GITHUB_OUTPUT
+          echo "external_result_name=external-result-${{ github.run_id }}-${{ github.run_attempt }}" >> $GITHUB_OUTPUT
+          echo "debug_root_dir=debug-ci" >> $GITHUB_OUTPUT
+          echo "debug_dir=debug-ci/$RUNNER_OS-${{ matrix.shard }}" >> $GITHUB_OUTPUT
+          TOIT_VERSION=$(cmake -DPRINT_VERSION=1 -P tools/gitversion.cmake)
+          echo "toit_version=$TOIT_VERSION" >> $GITHUB_OUTPUT
           if [ "$RUNNER_OS" == "Linux" ]; then
-            echo ::set-output name=artifact::toit-linux.tar.gz
-            echo ::set-output name=total_shards::10
+            echo "artifact=toit-linux.tar.gz" >> $GITHUB_OUTPUT
+            echo "total_shards=10" >> $GITHUB_OUTPUT
           elif [ "$RUNNER_OS" == "macOS" ]; then
-            echo ::set-output name=artifact::toit-macos.tar.gz
-            echo ::set-output name=total_shards::5
+            echo "artifact=toit-macos.tar.gz" >> $GITHUB_OUTPUT
+            echo "total_shards=5" >> $GITHUB_OUTPUT
           elif [ "$RUNNER_OS" == "Windows" ]; then
-            echo ::set-output name=artifact::toit-windows.tar.gz
-            echo ::set-output name=total_shards::5
+            echo "artifact=toit-windows.tar.gz" >> $GITHUB_OUTPUT
+            echo "total_shards=5" >> $GITHUB_OUTPUT
           else
             echo "UNSUPPORTED RUNNER: $RUNNER_OS"
             exit 1
           fi
-        shell: bash
-
-      - uses: actions/checkout@v2
 
       # Anything in the debug dir will be uploaded as artifact.
       - name: Setup debug dir
@@ -61,78 +66,76 @@ jobs:
         run: |
           mkdir -p ${{ steps.constants.outputs.debug_dir }}
 
-      - name: Fetch tags
-        # The github checkout is shallow and doesn't have tags.
-        run: |
-          git fetch --tags
-
       # We only need the mbedtls submodule for building.
       - name: Initialize mbedtls submodule
         run: |
           cd third_party/esp-idf
           git submodule update --init .
           git submodule update --init components/mbedtls
+          git submodule update --init components/esptool_py
 
       # Use Go 1.17
       - name: Switch to Go 1.17
+        shell: bash
         run:
           echo "$GOROOT_1_17_X64"/bin >> $GITHUB_PATH
 
       # Get values for cache paths to be used in later steps
       - name: Get Go paths
         id: go-cache-paths
+        shell: bash
         run: |
-          echo "::set-output name=go-build::$(go env GOCACHE)"
-          echo "::set-output name=go-mod::$(go env GOMODCACHE)"
+          echo "go-build=$(go env GOCACHE)" >> $GITHUB_OUTPUT
+          echo "go-mod=$(go env GOMODCACHE)" >> $GITHUB_OUTPUT
 
-      # Cache go build cache, used to speedup go test
-      - name: Go Build Cache
-        uses: actions/cache@v2
+      - name: Go cache
+        uses: actions/cache@v3
         with:
-          path: ${{ steps.go-cache-paths.outputs.go-build }}
+          path: |
+            ${{ steps.go-cache-paths.outputs.go-build }}
+            ${{ steps.go-cache-paths.outputs.go-mod }}
           key: ${{ runner.os }}-go-build-${{ hashFiles('**/go.sum') }}
-          restore-keys: ${{ runner.os }}-go-build-
-
-      # Cache go mod cache, used to speedup builds
-      - name: Go Mod Cache
-        uses: actions/cache@v2
-        with:
-          path: ${{ steps.go-cache-paths.outputs.go-mod }}
-          key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum') }}
-          restore-keys: ${{ runner.os }}-go-mod-
+          restore-keys: ${{ runner.os }}-go-
 
       - name: Ccache cache
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: ${{ github.workspace }}/.ccache
           key: ${{ runner.os }}-ccache-${{ github.sha }}
           restore-keys: ${{ runner.os }}-ccache-
 
       # Cache deb files.
-      - name: Apt Cache
+      - name: Apt cache - Linux
         if: runner.os == 'Linux'
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
-          path: /var/cache/apt-cacher-ng
+          path: ${{ github.workspace }}/apt-cacher-ng
           key: ${{ runner.os }}-apt-${{ github.sha }}
           restore-keys: ${{ runner.os }}-apt
 
-      - name: Install apt-cacher-ng
+      - name: Install and configure apt-cacher-ng - Linux
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update -q
           sudo apt-get install -q apt-cacher-ng
+          sudo systemctl stop apt-cacher-ng
+          if [[ -f apt-cacher-ng/cache.tar.gz ]]; then
+            sudo tar -xzf apt-cacher-ng/cache.tar.gz -C /var/cache/apt-cacher-ng
+          fi
           echo "Acquire::http::Proxy \"http://localhost:3142\";" | sudo tee /etc/apt/apt.conf.d/00proxy
+          echo "PassThroughPattern: .*" | sudo tee -a /etc/apt-cacher-ng/acng.conf
+          sudo systemctl restart apt-cacher-ng
 
       # Fetch the dependencies. Different for each platform.
       - name: Install dependencies - Linux
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update -q
-          sudo apt-get install -q ninja-build ccache gcc-multilib g++-multilib
+          sudo apt-get install -q ninja-build ccache gcc-multilib g++-multilib socat
           ninja --version
           cmake --version
           gcc --version
+          socat -V
       - name: Install dependencies - macOS
         if: runner.os == 'macOS'
         run: |
@@ -147,12 +150,25 @@ jobs:
           ccache --version
           cmake --version
 
+      - name: Copy apt cache back - Linux
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p apt-cacher-ng
+          sudo tar -czf apt-cacher-ng/cache.tar.gz -C /var/cache/apt-cacher-ng .
+          sudo chown $(whoami) apt-cacher-ng/cache.tar.gz
+
+      - uses: actions/setup-python@v4
+        if: matrix.shard == 1
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
       - name: Setup compilation env
         shell: bash
         run: |
-          echo "IDF_PATH=${{ github.workspace }}/third_party/esp-idf" >> $GITHUB_ENV
-          echo "CCACHE_DIR=${{ github.workspace }}/.ccache" >> $GITHUB_ENV
-          echo "CCACHE_BASEDIR=${{ github.workspace }}" >> $GITHUB_ENV
+          echo 'IDF_PATH=${{ github.workspace }}/third_party/esp-idf' >> $GITHUB_ENV
+          echo 'CCACHE_DIR=${{ github.workspace }}/.ccache' >> $GITHUB_ENV
+          echo 'CCACHE_BASEDIR=${{ github.workspace }}' >> $GITHUB_ENV
           echo "CCACHE_COMPRESS=true" >> $GITHUB_ENV
           echo "CCACHE_COMPRESSLEVEL=6" >> $GITHUB_ENV
           echo "CCACHE_MAXSIZE=400M" >> $GITHUB_ENV
@@ -168,8 +184,17 @@ jobs:
             make CROSS_ARCH=host32 BUILD_TYPE=Debug all-cross
           fi
 
+      - name: Build esptool
+        shell: bash
+        if: matrix.shard == 1
+        run: |
+          python -m pip install --upgrade pip
+          pip install --user -e "$IDF_PATH/components/esptool_py/esptool"
+          make esptool-no-env
+
       # Test.
       - name: Test
+        shell: bash  # This is crucial, as the powershell doesn't abort when there is an error.
         run: |
           make test
           make test-health
@@ -213,10 +238,25 @@ jobs:
           echo success > ${{ steps.constants.outputs.external_result }}
 
       - name: Store external test result
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: ${{ steps.constants.outputs.external_result_name }}
           path: ${{ steps.constants.outputs.external_result }}
+
+      - name: Toitdoc - Linux
+        if: runner.os == 'Linux' && matrix.shard == 1
+        env:
+          TOIT_VERSION: ${{ steps.constants.outputs.toit_version }}
+          TOITLSP: ${{ github.workspace }}/build/host/sdk/bin/toit.lsp
+          TOITC: ${{ github.workspace }}/build/host/sdk/bin/toit.compile
+          SDKDIR: ${{ github.workspace }}/
+        shell: bash
+        run: |
+          CPU_CORES=$(nproc)
+          JSON_OUT_PATH=${{ github.workspace }}/toitdoc_$TOIT_VERSION.json
+          cd "$SDKDIR"
+          echo "$TOITLSP" toitdoc -p $CPU_CORES --toitc=$TOITC "--sdk=$SDKDIR" "--out=$JSON_OUT_PATH" --version=$TOIT_VERSION lib
+          "$TOITLSP" toitdoc -p $CPU_CORES --toitc=$TOITC "--sdk=$SDKDIR" "--out=$JSON_OUT_PATH" --version=$TOIT_VERSION lib
 
       - name: Pack artifacts
         if: matrix.shard == 1
@@ -231,22 +271,64 @@ jobs:
         continue-on-error: true
         shell: bash
         run: |
-          REPRO_DIR=${{ steps.constants.outputs.debug_root_dir }}/repros
+          REPRO_DIR=${{ steps.constants.outputs.debug_dir }}/repros
           mkdir -p $REPRO_DIR
           find /tmp -maxdepth 1 -name 'lsp_repro-*' -exec cp -r {} $REPRO_DIR \;
 
       - name: Upload debug artifacts
         if: always()
         continue-on-error: true
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: debug
           path: ${{ steps.constants.outputs.debug_root_dir }}
           retention-days: 5
 
+      - name: Upload toitdoc - Linux
+        if: runner.os == 'Linux' && matrix.shard == 1
+        uses: actions/upload-artifact@v3
+        with:
+          name: toitdoc
+          path: toitdoc_${{ steps.constants.outputs.toit_version }}.json
+
+      - name: Authenticate to Google cloud - Linux
+        if: runner.os == 'Linux' && matrix.shard == 1
+        uses: google-github-actions/auth@v0
+        with:
+          credentials_json: ${{ secrets.INFRASTRUCTURE_SERVICE_ACCOUNT_JSON_KEY }}
+          service_account: github-action@infrastructure-220307.iam.gserviceaccount.com
+
+      - name: Set up Cloud SDK
+        if: runner.os == 'Linux' && matrix.shard == 1
+        uses: google-github-actions/setup-gcloud@v0
+        with:
+          project_id: infrastructure-220307
+
+      - name: Upload toitdoc to gcloud - Linux
+        if: runner.os == 'Linux' && matrix.shard == 1
+        env:
+          TOIT_VERSION: ${{ steps.constants.outputs.toit_version }}
+        run: |
+          JSON_PATH=${{ github.workspace }}/toitdoc_$TOIT_VERSION.json
+          echo -n $TOIT_VERSION > LATEST.tmp
+          gsutil cp $JSON_PATH gs://toit-web/toitdoc-sdk/$TOIT_VERSION.json
+          gsutil cp LATEST.tmp gs://toit-web/toitdoc-sdk/LATEST
+
+      - name: Update RELEASE in gcloud - Linux
+        if: |
+          runner.os == 'Linux' && matrix.shard == 1 &&
+          github.event_name == 'release' && !github.event.release.prerelease
+        env:
+          TOIT_VERSION: ${{ steps.constants.outputs.toit_version }}
+        run: |
+          echo -n $TOIT_VERSION > LATEST.tmp
+
+          gsutil cp LATEST.tmp gs://toit-web/toitdoc-sdk/RELEASED
+          gsutil cp LATEST.tmp gs://toit-web/toitdoc-sdk/RELEASED.$TOIT_VERSION
+
       - name: Upload artifacts
         if: matrix.shard == 1
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: ${{ runner.os }}-build
           path: build/${{ steps.constants.outputs.artifact }}
@@ -262,12 +344,13 @@ jobs:
           tag: ${{ github.ref }}
           overwrite: true
 
+
   # Really annoying that we need to duplicate so much.
   esp32:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - name: Fetch tags
         # The github checkout is shallow and doesn't have tags.
@@ -281,19 +364,21 @@ jobs:
 
       # Use Go 1.17
       - name: Switch to Go 1.17
+        shell: bash
         run:
           echo "$GOROOT_1_17_X64"/bin >> $GITHUB_PATH
 
       # Get values for cache paths to be used in later steps
       - name: Get Go paths
         id: go-cache-paths
+        shell: bash
         run: |
-          echo "::set-output name=go-build::$(go env GOCACHE)"
-          echo "::set-output name=go-mod::$(go env GOMODCACHE)"
+          echo "go-build=$(go env GOCACHE)" >> $GITHUB_OUTPUT
+          echo "go-mod=$(go env GOMODCACHE)" >> $GITHUB_OUTPUT
 
       # Cache go build cache, used to speedup go test
       - name: Go Build Cache
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: ${{ steps.go-cache-paths.outputs.go-build }}
           key: ${{ runner.os }}-go-build-${{ hashFiles('**/go.sum') }}
@@ -301,14 +386,14 @@ jobs:
 
       # Cache go mod cache, used to speedup builds
       - name: Go Mod Cache
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: ${{ steps.go-cache-paths.outputs.go-mod }}
           key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum') }}
           restore-keys: ${{ runner.os }}-go-mod-
 
       - name: Ccache cache
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         # Store and retrieve the cache with the given sha.
         # The 'restore-keys' prefix finds the most recent cache in case there
         # is no match (which should almost always be the case).
@@ -324,13 +409,6 @@ jobs:
           ninja --version
           cmake --version
           gcc --version
-
-      - name: Ccache symlinks
-        run: |
-          mkdir ccache_interceptors
-          cd ccache_interceptors
-          ln -s $(command -v ccache) xtensa-esp32-elf-gcc
-          ln -s $(command -v ccache) xtensa-esp32-elf-g++
 
       - name: Install ESP32 tools
         run: |
@@ -348,44 +426,97 @@ jobs:
           CCACHE_MAXSIZE: 400M
         run: |
           source third_party/esp-idf/export.sh
-          # Make sure the ccache interceptors are before any other path.
-          export PATH="$PWD/ccache_interceptors":$PATH
           make esp32
+          make ESP32_CHIP=esp32s3 esp32
+          make ESP32_CHIP=esp32c3 esp32
+
+      - name: Pack firmware artifacts
+        shell: bash
+        run: |
+          gzip --to-stdout build/esp32/firmware.envelope > build/firmware-esp32.gz
+          gzip --to-stdout build/esp32c3/firmware.envelope > build/firmware-esp32c3.gz
+          gzip --to-stdout build/esp32s3/firmware.envelope > build/firmware-esp32s3.gz
+
+      - name: Upload firmware artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: firmwares
+          path: |
+            build/firmware-esp32.gz
+            build/firmware-esp32c3.gz
+            build/firmware-esp32s3.gz
+
+      - name: Upload ESP32 release firmware artifacts
+        if: (github.event_name) == 'release'
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: build/firmware-esp32.gz
+          tag: ${{ github.ref }}
+          overwrite: true
+
+      - name: Upload ESP32-C3 release firmware artifacts
+        if: (github.event_name) == 'release'
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: build/firmware-esp32c3.gz
+          tag: ${{ github.ref }}
+          overwrite: true
+
+      - name: Upload ESP32-S3 release firmware artifacts
+        if: (github.event_name) == 'release'
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: build/firmware-esp32s3.gz
+          tag: ${{ github.ref }}
+          overwrite: true
 
   # Really annoying that we need to duplicate so much.
-  cross_windows:
+  cross:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v2
+      - name: Set up constants
+        id: constants
+        shell: bash
+        run: |
+          echo raspberry_pi_artifact=toit-rpi.tar.gz >> $GITHUB_OUTPUT
+          echo raspberry_pi64_artifact=toit-rpi64.tar.gz >> $GITHUB_OUTPUT
+
+      - uses: actions/checkout@v3
 
       - name: Fetch tags
         # The github checkout is shallow and doesn't have tags.
         run: |
           git fetch --tags
 
-      # We only need the tpkg and mbedtls submodule for building.
-      - name: Initialize mbedtls submodule
+      # We only need a subset of all submodules for building.
+      - name: Initialize submodules
         run: |
           cd third_party/esp-idf
           git submodule update --init .
           git submodule update --init components/mbedtls
+          git submodule update --init components/esptool_py
 
       # Use Go 1.17
       - name: Switch to Go 1.17
+        shell: bash
         run:
           echo "$GOROOT_1_17_X64"/bin >> $GITHUB_PATH
 
       # Get values for cache paths to be used in later steps
       - name: Get Go paths
         id: go-cache-paths
+        shell: bash
         run: |
-          echo "::set-output name=go-build::$(go env GOCACHE)"
-          echo "::set-output name=go-mod::$(go env GOMODCACHE)"
+          echo "go-build=$(go env GOCACHE)" >> $GITHUB_OUTPUT
+          echo "go-mod=$(go env GOMODCACHE)" >> $GITHUB_OUTPUT
 
       # Cache go build cache, used to speedup go test
       - name: Go Build Cache
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: ${{ steps.go-cache-paths.outputs.go-build }}
           key: ${{ runner.os }}-go-build-${{ hashFiles('**/go.sum') }}
@@ -393,14 +524,14 @@ jobs:
 
       # Cache go mod cache, used to speedup builds
       - name: Go Mod Cache
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: ${{ steps.go-cache-paths.outputs.go-mod }}
           key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum') }}
           restore-keys: ${{ runner.os }}-go-mod-
 
       - name: Ccache cache
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         # Store and retrieve the cache with the given sha.
         # The 'restore-keys' prefix finds the most recent cache in case there
         # is no match (which should almost always be the case).
@@ -417,8 +548,7 @@ jobs:
           cmake --version
           gcc --version
 
-      # Build using make.
-      - name: make
+      - name: Make
         env:
           IDF_PATH: ${{ github.workspace }}/third_party/esp-idf
           CCACHE_DIR: ${{ github.workspace }}/.ccache
@@ -428,6 +558,99 @@ jobs:
           CCACHE_MAXSIZE: 400M
         run: |
           make CROSS_ARCH=win64 all-cross
+          make pi
+
+      - name: Copy 32-bit sdk to 64-bit directory
+        run: |
+          mkdir -p build/raspberry_pi64
+          cp -Ra build/raspberry_pi/sdk build/raspberry_pi64
+
+      - name: Build esptool 32-bit
+        uses: pguyot/arm-runner-action@v2
+        with:
+          cpu: cortex-a7
+          base_image: "raspios_lite:2022-01-28"
+          bind_mount_repository: true
+          commands: |
+              apt-get update
+              apt-get install -y python3-pip git
+              python --version
+              pip install --user -e third_party/esp-idf/components/esptool_py/esptool
+              make HOST=raspberry_pi esptool-no-env
+
+      - name: Build esptool 64-bit
+        uses: pguyot/arm-runner-action@v2
+        with:
+          cpu: cortex-a7
+          base_image: "raspios_lite_arm64:2022-01-28"
+          bind_mount_repository: true
+          commands: |
+              apt-get update
+              apt-get install -y python3-pip git
+              python --version
+              pip install --user -e third_party/esp-idf/components/esptool_py/esptool
+              make HOST=raspberry_pi64 esptool-no-env
+
+      - name: Test executables 32-bit
+        uses: pguyot/arm-runner-action@v2
+        with:
+          cpu: cortex-a7
+          base_image: "raspios_lite:2022-01-28"
+          bind_mount_repository: true
+          commands: |
+              uname -m > pi_uname
+              build/raspberry_pi/sdk/bin/toit.pkg version
+              build/raspberry_pi/sdk/bin/toit.run --version
+              build/raspberry_pi/sdk/tools/firmware --help
+              build/raspberry_pi/sdk/tools/esptool -h
+
+      - name: Test executables 64-bit
+        uses: pguyot/arm-runner-action@v2
+        with:
+          cpu: cortex-a7
+          base_image: "raspios_lite_arm64:2022-01-28"
+          bind_mount_repository: true
+          commands: |
+              uname -m > pi_uname
+              build/raspberry_pi64/sdk/bin/toit.pkg version
+              build/raspberry_pi64/sdk/bin/toit.run --version
+              build/raspberry_pi64/sdk/tools/firmware --help
+              build/raspberry_pi64/sdk/tools/esptool -h
+
+      - name: Pack Raspberry Pi artifacts
+        shell: bash
+        # Note that we use `cp -R` first, since that works on every platform.
+        run: |
+          cp -R ./build/raspberry_pi/sdk ./build/raspberry_pi/toit
+          tar -czf build/${{ steps.constants.outputs.raspberry_pi_artifact }} -C ./build/raspberry_pi --dereference toit
+          cp -R ./build/raspberry_pi64/sdk ./build/raspberry_pi64/toit
+          tar -czf build/${{ steps.constants.outputs.raspberry_pi64_artifact }} -C ./build/raspberry_pi64 --dereference toit
+
+      - name: Upload Raspberry Pi artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ runner.os }}-build
+          path: |
+            build/${{ steps.constants.outputs.raspberry_pi_artifact }}
+            build/${{ steps.constants.outputs.raspberry_pi64_artifact }}
+
+      - name: Upload release Raspberry Pi artifacts 32-bit
+        if: github.event_name == 'release'
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: build/${{ steps.constants.outputs.raspberry_pi_artifact }}
+          tag: ${{ github.ref }}
+          overwrite: true
+
+      - name: Upload release Raspberry Pi artifacts 64-bit
+        if: github.event_name == 'release'
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: build/${{ steps.constants.outputs.raspberry_pi64_artifact }}
+          tag: ${{ github.ref }}
+          overwrite: true
 
   external:
     needs: build
@@ -439,8 +662,8 @@ jobs:
         id: constants
         shell: bash
         run: |
-          echo ::set-output name=external_result_dir::external-result
-          echo ::set-output name=external_result_name::external-result-${{ github.run_id }}-${{ github.run_attempt }}
+          echo external_result_dir=external-result >> $GITHUB_OUTPUT
+          echo external_result_name=external-result-${{ github.run_id }}-${{ github.run_attempt }} >> $GITHUB_OUTPUT
 
       - name: Retrieve
         uses: actions/download-artifact@v3

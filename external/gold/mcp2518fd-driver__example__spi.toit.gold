@@ -1,0 +1,6 @@
+<pkg:..>/driver.toit:340:15: warning: Deprecated 'Pin.config'
+    interrupt.config --input
+              ^~~~~~
+mcp2518fd-driver/example/spi.toit:27:9: warning: Deprecated 'Pin.config'
+    INT.config --input
+        ^~~~~~

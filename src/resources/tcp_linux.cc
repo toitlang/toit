@@ -205,7 +205,7 @@ PRIMITIVE(accept) {
 
   int fd = resource_group->accept(listen_fd);
   if (fd == -1) {
-    if (errno == EWOULDBLOCK) {
+    if (errno == EWOULDBLOCK || errno == EAGAIN) {
       return process->program()->null_object();
     }
     return Primitive::os_error(errno, process);
@@ -267,7 +267,7 @@ PRIMITIVE(write) {
 
   int wrote = send(fd, data.address() + from, to - from, MSG_NOSIGNAL);
   if (wrote == -1) {
-    if (errno == EWOULDBLOCK) return Smi::from(-1);
+    if (errno == EWOULDBLOCK || errno == EAGAIN) return Smi::from(-1);
     return Primitive::os_error(errno, process);
   }
 
@@ -287,13 +287,12 @@ PRIMITIVE(read)  {
   available = Utils::max(available, ByteArray::MIN_IO_BUFFER_SIZE);
   available = Utils::min(available, ByteArray::PREFERRED_IO_BUFFER_SIZE);
 
-  Error* error = null;
-  ByteArray* array = process->allocate_byte_array(available, &error, /*force_external*/ true);
-  if (array == null) return error;
+  ByteArray* array = process->allocate_byte_array(available, /*force_external*/ true);
+  if (array == null) ALLOCATION_FAILED;
 
   int read = recv(fd, ByteArray::Bytes(array).address(), available, 0);
   if (read == -1) {
-    if (errno == EWOULDBLOCK) return Smi::from(-1);
+    if (errno == EWOULDBLOCK || errno == EAGAIN) return Smi::from(-1);
     return Primitive::os_error(errno, process);
   }
   if (read == 0) return process->program()->null_object();

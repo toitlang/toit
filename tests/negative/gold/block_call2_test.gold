@@ -3,4 +3,4 @@ Got: 1 Expected: 2.
 Target:
      main.<block>              tests/negative/block_call2_test.toit:6:12
 
-  0: main                      tests/negative/block_call2_test.toit:7:8
+  0: main                      tests/negative/block_call2_test.toit:7:3

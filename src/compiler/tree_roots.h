@@ -29,7 +29,9 @@ namespace compiler {
   T(byte_array_cow, CowByteArray_)      \
   T(byte_array_slice, ByteArraySlice_)  \
   T(list, List_)                        \
+  T(list_slice, ListSlice_)             \
   T(tombstone, Tombstone_)              \
+  T(map, Map)                           \
   T(string, String_)                    \
   T(string_slice, StringSlice_)         \
   T(double, float_)                     \

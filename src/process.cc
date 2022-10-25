@@ -42,8 +42,7 @@ Process::Process(Program* program, ProcessRunner* runner, ProcessGroup* group, S
     , _program_heap_address(program ? program->_program_heap_address : 0)
     , _program_heap_size(program ? program->_program_heap_size : 0)
     , _entry(Method::invalid())
-    , _hatch_method(Method::invalid())
-    , _hatch_arguments(null)
+    , _spawn_method(Method::invalid())
     , _object_heap(program, this, initial_chunk)
     , _last_bytes_allocated(0)
     , _termination_message(termination)
@@ -63,48 +62,24 @@ Process::Process(Program* program, ProcessRunner* runner, ProcessGroup* group, S
   ASSERT(_group->lookup(_id) == this);
 }
 
-Process::Process(Program* program, ProcessGroup* group, SystemMessage* termination, char** args, Chunk* initial_chunk)
-   : Process(program, null, group, termination, initial_chunk) {
+Process::Process(Program* program, ProcessGroup* group, SystemMessage* termination, Chunk* initial_chunk)
+    : Process(program, null, group, termination, initial_chunk) {
   _entry = program->entry_main();
-  _args = args;
 }
 
-#ifndef TOIT_FREERTOS
-Process::Process(Program* program, ProcessGroup* group, SystemMessage* termination, SnapshotBundle system, SnapshotBundle application, char** args, Chunk* initial_chunk)
-  : Process(program, null, group, termination, initial_chunk) {
-  _entry = program->entry_main();
-  _args = args;
-
-  int size;
-  { MessageEncoder encoder(null);
-    encoder.encode_bundles(system, application);
-    size = encoder.size();
-  }
-
-  uint8* buffer = unvoid_cast<uint8*>(malloc(size));
-  ASSERT(buffer != null)
-  MessageEncoder encoder(buffer);
-  encoder.encode_bundles(system, application);
-  _hatch_arguments = buffer;
-}
-#endif
-
-Process::Process(Program* program, ProcessGroup* group, SystemMessage* termination, Method method, uint8* arguments, Chunk* initial_chunk)
-   : Process(program, null, group, termination, initial_chunk) {
+Process::Process(Program* program, ProcessGroup* group, SystemMessage* termination, Method method, Chunk* initial_chunk)
+    : Process(program, null, group, termination, initial_chunk) {
   _entry = program->entry_spawn();
-  _args = null;
-  _hatch_method = method;
-  _hatch_arguments = arguments;
+  _spawn_method = method;
 }
 
-// Constructor for an external process (no Toit code).
 Process::Process(ProcessRunner* runner, ProcessGroup* group, SystemMessage* termination)
     : Process(null, runner, group, termination, null) {
 }
 
 Process::~Process() {
   _state = TERMINATING;
-  MessageDecoder::deallocate(_hatch_arguments);
+  MessageDecoder::deallocate(_spawn_arguments);
   delete _termination_message;
 
   // Clean up unclaimed resource groups.
@@ -123,6 +98,53 @@ Process::~Process() {
   }
 }
 
+void Process::set_main_arguments(uint8* arguments) {
+  ASSERT(_main_arguments == null);
+  _main_arguments = arguments;
+}
+
+void Process::set_spawn_arguments(uint8* arguments) {
+  ASSERT(_spawn_arguments == null);
+  _spawn_arguments = arguments;
+}
+
+#ifndef TOIT_FREERTOS
+void Process::set_main_arguments(char** argv) {
+  ASSERT(_main_arguments == null);
+  int argc = 0;
+  if (argv) {
+    while (argv[argc] != null) argc++;
+  }
+
+  int size;
+  { MessageEncoder encoder(null);
+    encoder.encode_arguments(argv, argc);
+    size = encoder.size();
+  }
+
+  uint8* buffer = unvoid_cast<uint8*>(malloc(size));
+  ASSERT(buffer != null)
+  MessageEncoder encoder(buffer);
+  encoder.encode_arguments(argv, argc);
+  _main_arguments = buffer;
+}
+
+void Process::set_spawn_arguments(SnapshotBundle system, SnapshotBundle application) {
+  ASSERT(_spawn_arguments == null);
+  int size;
+  { MessageEncoder encoder(null);
+    encoder.encode_bundles(system, application);
+    size = encoder.size();
+  }
+
+  uint8* buffer = unvoid_cast<uint8*>(malloc(size));
+  ASSERT(buffer != null)
+  MessageEncoder encoder(buffer);
+  encoder.encode_bundles(system, application);
+  _spawn_arguments = buffer;
+}
+#endif
+
 SystemMessage* Process::take_termination_message(uint8 result) {
   SystemMessage* message = _termination_message;
   _termination_message = null;
@@ -135,8 +157,8 @@ SystemMessage* Process::take_termination_message(uint8 result) {
 }
 
 
-String* Process::allocate_string(const char* content, int length, Error** error) {
-  String* result = allocate_string(length, error);
+String* Process::allocate_string(const char* content, int length) {
+  String* result = allocate_string(length);
   if (result == null) return result;  // Allocation failure.
   // Initialize object.
   String::Bytes bytes(result);
@@ -144,7 +166,7 @@ String* Process::allocate_string(const char* content, int length, Error** error)
   return result;
 }
 
-String* Process::allocate_string(int length, Error** error) {
+String* Process::allocate_string(int length) {
   ASSERT(length >= 0);
   bool can_fit_in_heap_block = length <= String::max_internal_size_in_process();
   if (can_fit_in_heap_block) {
@@ -155,7 +177,6 @@ String* Process::allocate_string(int length, Error** error) {
         this, VM::current()->scheduler()->is_boot_process(this) ? "*" : " ",
         length);
 #endif
-    *error = Error::from(program()->allocation_failed());
     return null;
   }
 
@@ -171,7 +192,6 @@ String* Process::allocate_string(int length, Error** error) {
           this, VM::current()->scheduler()->is_boot_process(this) ? "*" : " ",
           length);
 #endif
-    *error = Error::from(program()->allocation_failed());
     return null;
   }
   memory[length] = '\0';  // External strings should be zero-terminated.
@@ -185,26 +205,24 @@ String* Process::allocate_string(int length, Error** error) {
         this, VM::current()->scheduler()->is_boot_process(this) ? "*" : " ",
         length);
 #endif
-    *error = Error::from(program()->allocation_failed());
     return null;
-}
-
-Object* Process::allocate_string_or_error(const char* content, int length) {
-  Error* error = null;
-  String* result = allocate_string(content, length, &error);
-  if (result == null) return error;
-  return result;
-}
-
-String* Process::allocate_string(const char* content, Error** error) {
-  return allocate_string(content, strlen(content), error);
 }
 
 Object* Process::allocate_string_or_error(const char* content) {
   return allocate_string_or_error(content, strlen(content));
 }
 
-ByteArray* Process::allocate_byte_array(int length, Error** error, bool force_external) {
+Object* Process::allocate_string_or_error(const char* content, int length) {
+  String* result = allocate_string(content, length);
+  if (result == null) return Error::from(program()->allocation_failed());
+  return result;
+}
+
+String* Process::allocate_string(const char* content) {
+  return allocate_string(content, strlen(content));
+}
+
+ByteArray* Process::allocate_byte_array(int length, bool force_external) {
   ASSERT(length >= 0);
   if (force_external || length > ByteArray::max_internal_size_in_process()) {
     // Byte array cannot fit within a heap block so place content in malloced space.
@@ -221,7 +239,6 @@ ByteArray* Process::allocate_byte_array(int length, Error** error, bool force_ex
           this, VM::current()->scheduler()->is_boot_process(this) ? "*" : " ",
           length);
 #endif
-      *error = Error::from(program()->allocation_failed());
       return null;
     }
     if (ByteArray* result = object_heap()->allocate_external_byte_array(length, memory, true)) {
@@ -233,7 +250,6 @@ ByteArray* Process::allocate_byte_array(int length, Error** error, bool force_ex
         this, VM::current()->scheduler()->is_boot_process(this) ? "*" : " ",
         length);
 #endif
-    *error = Error::from(program()->allocation_failed());
     return null;
   }
   if (ByteArray* result = object_heap()->allocate_internal_byte_array(length)) return result;
@@ -242,7 +258,6 @@ ByteArray* Process::allocate_byte_array(int length, Error** error, bool force_ex
       this, VM::current()->scheduler()->is_boot_process(this) ? "*" : " ",
       length);
 #endif
-  *error = Error::from(program()->allocation_failed());
   return null;
 }
 
@@ -336,6 +351,12 @@ void Process::signal(Signal signal) {
 
 void Process::clear_signal(Signal signal) {
   _signals &= ~signal;
+}
+
+uint8 Process::update_priority() {
+  uint8 priority = _target_priority;
+  _priority = priority;
+  return priority;
 }
 
 }

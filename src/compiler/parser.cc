@@ -1887,8 +1887,13 @@ Expression* Parser::parse_unary(bool allow_colon) {
       auto range = current_range();
       consume();
       if (!is_current_token_attached()) {
-        report_error("Can't have space between '%s' and the operand",
+        report_error(range.extend(current_range()),
+                     "Can't have space between '%s' and the operand",
                      Token::symbol(kind).c_str());
+      }
+      if (kind == Token::DECREMENT) {
+        diagnostics()->report_warning(range.extend(current_range()),
+                                      "Prefix decrement is deprecated");
       }
       if (kind == Token::SUB &&
           (current_token() == Token::INTEGER || current_token() == Token::DOUBLE)) {
@@ -1927,6 +1932,10 @@ Expression* Parser::parse_primary(bool allow_colon) {
   } else if (current_token() == Token::DOUBLE_COLON) {
     return parse_block_or_lambda(current_indentation());
   } else if (current_token() == Token::LPAREN) {
+    if (is_current_token_attached() && previous_token() == Token::IDENTIFIER) {
+      diagnostics()->report_warning(current_range(),
+                                    "Parenthesis should not be attached. Attempted call?");
+    }
     start_delimited(IndentationStack::DELIMITED, Token::LPAREN, Token::RPAREN);
     Expression* expression = parse_expression(true);
     end_delimited(IndentationStack::DELIMITED, Token::RPAREN);
@@ -2666,6 +2675,11 @@ Source::Range Parser::current_range_safe() {
 Source::Range Parser::previous_range() {
   auto& previous_state = _scanner_state_queue.get(-1);
   return _source->range(previous_state.from, previous_state.to);
+}
+
+Token::Kind Parser::previous_token() {
+  auto& previous_state = _scanner_state_queue.get(-1);
+  return previous_state.token();
 }
 
 bool Parser::optional(Token::Kind kind) {

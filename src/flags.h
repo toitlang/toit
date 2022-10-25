@@ -23,7 +23,7 @@ namespace toit {
 #define FLAG_INT(macro, name, value, doc)  macro(int, int, name, value, doc)
 #define FLAG_STRING(macro, name, value, doc) macro(const char*, string, name, value, doc)
 
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
 #define _ASSERT_DEFAULT true
 #else
 #define _ASSERT_DEFAULT false
@@ -33,6 +33,12 @@ namespace toit {
 #define _NO_FORK true
 #else
 #define _NO_FORK false
+#endif
+
+#ifdef TOIT_FREERTOS
+#define TRACE_GC false
+#else
+#define TRACE_GC false
 #endif
 
 #define FLAGS_DO(debug, deploy)                                                     \
@@ -45,7 +51,7 @@ namespace toit {
   FLAG_BOOL(deploy,  no_fork,               _NO_FORK, "Don't fork the compiler")    \
   FLAG_BOOL(debug,   trace,                 false, "Trace interpreter")             \
   FLAG_BOOL(debug,   primitives,            false, "Trace primitives")              \
-  FLAG_BOOL(deploy,  tracegc,               false, "Trace garbage collector")       \
+  FLAG_BOOL(deploy,  tracegc,               TRACE_GC, "Trace garbage collector")    \
   FLAG_BOOL(debug,   validate_heap,         false, "Check garbage collector")       \
   FLAG_BOOL(debug,   gcalot,                false, "Garbage collect after each allocation in the interpreter") \
   FLAG_BOOL(debug,   preemptalot,           false, "Preempt process after each pop bytecode") \
@@ -68,7 +74,7 @@ namespace toit {
   FLAG_STRING(deploy, sandbox,              null,  "syscall-sandbox: compiler or sandbox")  \
   FLAG_STRING(deploy, compiler_sandbox,     null,  "syscall-sandbox for the forked compiler: compiler or sandbox")  \
 
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
 #define DECLARE_DEBUG_FLAG(type, prefix, name, value, doc) static type name;
 #else
 #define DECLARE_DEBUG_FLAG(type, prefix, name, value, doc) static const type name = value;

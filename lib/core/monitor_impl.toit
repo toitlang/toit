@@ -3,7 +3,7 @@
 // found in the lib/LICENSE file.
 
 // Implementation of Monitor, see
-// https://en.wikipedia.org/wiki/Monitor_(synchronization) This class is
+// https://en.wikipedia.org/wiki/Monitor_(synchronization). This class is
 // special, in that if you use the 'monitor' keyword instead of the 'class'
 // method, then your class inherits from this class, and all public methods are
 // wrapped in a locked: call. Since the lock is not reentrant this means
@@ -24,7 +24,7 @@ class __Monitor__:
   // locked method.  The condition is not allowed to change the state, only
   // query it.
   await [condition]:
-    result := try_await_ task.deadline condition
+    result := try_await_ Task_.current.deadline condition
     if not result: throw DEADLINE_EXCEEDED_ERROR
 
   // Yield until a condition block returns true or until a specified deadline
@@ -34,7 +34,7 @@ class __Monitor__:
   // This should be called from a locked method.  The condition is not allowed
   // to change the state, only query it.
   try_await --deadline/int? [condition]:
-    task_deadline := task.deadline
+    task_deadline := Task_.current.deadline
     if task_deadline:
       if deadline:
         deadline = min deadline task_deadline
@@ -44,7 +44,7 @@ class __Monitor__:
     return try_await_ deadline condition
 
   try_await_ deadline/int? [condition]:
-    self := task
+    self := Task_.current
     timer/Timer_? := null
     if deadline:
       // Arrange for the notify_ method to be called if the timeout expires.
@@ -93,7 +93,7 @@ class __Monitor__:
       if timer: self.release_timer_ timer
 
   locked_ [block]:
-    self := task
+    self := Task_.current
     deadline/int? := null
     timer/Timer_? := null
     if owner_:
@@ -174,14 +174,11 @@ class __Monitor__:
       waiter = next
 
   suspend_ self:
-    task_blocked_++
-    // Ensure decrement is in finally clause in case of task termination.
     try:
       self.monitor_ = this
       next := self.suspend_
-      task_yield_to_ next
+      task_transfer_to_ next false
     finally:
-      task_blocked_--
       self.monitor_ = null
 
   // The monitor object may have been registered as the 'object notifier'

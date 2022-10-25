@@ -4,6 +4,8 @@
 
 /** Exception throwing and handling. */
 
+import system.trace show send_trace_message
+
 /**
 Assertion failed error.
 
@@ -127,15 +129,11 @@ catch [--trace] [--unwind] [block]:
       value ::= exception.value
       // If the task is unwinding due to cancelation, don't catch the exception and
       // don't print a stack trace; just unwind.
-      is_canceled_unwind := value == CANCELED_ERROR and task.is_canceled
+      is_canceled_unwind := value == CANCELED_ERROR and Task.current.is_canceled
       if not is_canceled_unwind:
         if stack and trace.call value stack:
           exception.trace = null  // Avoid reporting the same stack trace multiple times.
-          system_send_ SYSTEM_MIRROR_MESSAGE_ stack
-          // We check messages here in case there is no system process.  This allows
-          // the stack trace to be discovered in the message queue and printed out,
-          // since no system process is going to handle it.
-          process_messages_
+          send_trace_message stack
         if not unwind.call value stack: return value
 
 // ----------------------------------------------------------------------------
@@ -179,6 +177,10 @@ as_check_failure_ receiver id:
   rethrow "AS_CHECK_FAILED"
     encode_error_ "AS_CHECK_FAILED"
       create_array_ receiver id
+
+serialization_failure_ id:
+  rethrow "SERIALIZATION_FAILED"
+    encode_error_ "SERIALIZATION_FAILED" id
 
 primitive_lookup_failure_ module index:
   rethrow "PRIMITIVE_LOOKUP_FAILED"

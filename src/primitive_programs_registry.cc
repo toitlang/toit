@@ -18,12 +18,9 @@
 #include "primitive.h"
 #include "process.h"
 #include "flash_registry.h"
+#include "embedded_data.h"
 #include "scheduler.h"
 #include "vm.h"
-
-#ifdef TOIT_FREERTOS
-extern "C" uword toit_image_table;
-#endif
 
 namespace toit {
 
@@ -35,13 +32,32 @@ PRIMITIVE(next_group_id) {
 }
 
 PRIMITIVE(spawn) {
-  ARGS(int, offset, int, size, int, group_id);
+  ARGS(int, offset, int, size, int, group_id, Object, arguments);
 
   FlashAllocation* allocation = static_cast<FlashAllocation*>(FlashRegistry::memory(offset, size));
   if (allocation->type() != PROGRAM_TYPE) INVALID_ARGUMENT;
 
   Program* program = static_cast<Program*>(allocation);
-  if (!program->is_valid(offset, OS::image_uuid())) OUT_OF_BOUNDS;
+  if (!program->is_valid(offset, EmbeddedData::uuid())) OUT_OF_BOUNDS;
+
+  unsigned message_size = 0;
+  { MessageEncoder size_encoder(process, null);
+    if (!size_encoder.encode(arguments)) return size_encoder.create_error_object(process);
+    message_size = size_encoder.size();
+  }
+
+  uint8* buffer = null;
+  { HeapTagScope scope(ITERATE_CUSTOM_TAGS + EXTERNAL_BYTE_ARRAY_MALLOC_TAG);
+    buffer = unvoid_cast<uint8*>(malloc(message_size));
+    if (buffer == null) MALLOC_FAILED;
+  }
+
+  MessageEncoder encoder(process, buffer);
+  if (!encoder.encode(arguments)) {
+    encoder.free_copied();
+    free(buffer);
+    return encoder.create_error_object(process);
+  }
 
   InitialMemoryManager manager;
   if (!manager.allocate()) ALLOCATION_FAILED;
@@ -49,7 +65,7 @@ PRIMITIVE(spawn) {
   ProcessGroup* process_group = ProcessGroup::create(group_id, program);
   if (!process_group) MALLOC_FAILED;
 
-  int pid = VM::current()->scheduler()->run_program(program, {}, process_group, manager.initial_chunk);
+  int pid = VM::current()->scheduler()->run_program(program, buffer, process_group, manager.initial_chunk);
   if (pid == Scheduler::INVALID_PROCESS_ID) {
     delete process_group;
     MALLOC_FAILED;
@@ -76,25 +92,48 @@ PRIMITIVE(kill) {
 
 PRIMITIVE(bundled_images) {
 #ifdef TOIT_FREERTOS
-  const uword* table = &toit_image_table;
-  int length = table[0];
-
+  const EmbeddedDataExtension* extension = EmbeddedData::extension();
+  int length = extension->images();
   Array* result = process->object_heap()->allocate_array(length * 2, Smi::from(0));
   if (!result) ALLOCATION_FAILED;
   for (int i = 0; i < length; i++) {
-    // We store the distance from the start of the table to the image
+    // We store the distance from the start of the header to the image
     // because it naturally fits as a smi even if the virtual addresses
     // involved are large. We tag the entry so we can tell the difference
     // between flash offsets in the data/programs partition and offsets
     // of images bundled with the VM.
-    uword diff = table[1 + i * 2] - reinterpret_cast<uword>(table);
-    ASSERT(Utils::is_aligned(diff, 4));
-    result->at_put(i * 2, Smi::from(diff + 1));
-    result->at_put(i * 2 + 1, Smi::from(table[1 + i * 2 + 1]));
+    EmbeddedImage image = extension->image(i);
+    uword offset = extension->offset(image.program);
+    ASSERT(Utils::is_aligned(offset, 4));
+    result->at_put(i * 2, Smi::from(offset + 1));
+    result->at_put(i * 2 + 1, Smi::from(image.size));
   }
   return result;
 #else
   return process->program()->empty_array();
+#endif
+}
+
+PRIMITIVE(assets) {
+  Program* program = process->program();
+  int size;
+  uint8* bytes;
+  if (program->assets_size(&bytes, &size) == 0) {
+    return process->object_heap()->allocate_internal_byte_array(0);
+  }
+  return process->object_heap()->allocate_external_byte_array(size, bytes, false, false);
+}
+
+PRIMITIVE(config) {
+  PRIVILEGED;
+#ifdef TOIT_FREERTOS
+  const EmbeddedDataExtension* extension = EmbeddedData::extension();
+  List<uint8> config = extension->config();
+  return config.is_empty()
+      ? process->object_heap()->allocate_internal_byte_array(0)
+      : process->object_heap()->allocate_external_byte_array(config.length(), config.data(), false, false);
+#else
+  return process->object_heap()->allocate_internal_byte_array(0);
 #endif
 }
 

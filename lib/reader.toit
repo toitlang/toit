@@ -270,7 +270,7 @@ class BufferedReader implements Reader:
 
   If $max_size is specified the returned byte array will never be larger than
     that size, but it may be smaller, even if there is more data available from
-    the underlying reader.
+    the underlying reader. Use $read_bytes to read exactly n bytes.
 
   Returns null if the reader is at the end.
   */
@@ -446,8 +446,18 @@ class BufferedReader implements Reader:
 
   The read bytes are consumed.
 
-  # Errors
-  At least $n bytes must be available.
+  At least $n bytes must be available. That is, a call to $(can_ensure n) must return true.
+
+  If you want to read either $n bytes, if they are available, or the maximum number of
+    available bytes otherwise, use the following code:
+
+  ```
+  read_exactly_or_drain reader/BufferedReader n/int -> ByteArray?:
+    if can_ensure n: return reader.read_bytes n
+    reader.buffer_all
+    if reader.buffered == 0: return null
+    return reader.read_bytes reader.buffered
+  ```
   */
   read_bytes n -> ByteArray:
     byte_array := bytes n

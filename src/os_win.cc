@@ -223,6 +223,7 @@ void OS::set_up() {
   Thread::ensure_system_thread();
   _global_mutex = allocate_mutex(0, "Global mutex");
   _scheduler_mutex = allocate_mutex(4, "Scheduler mutex");
+  _resource_mutex = allocate_mutex(99, "Resource mutex");
 }
 
 Thread* Thread::current() {
@@ -251,18 +252,6 @@ void OS::close(int fd) {}
 void OS::out_of_memory(const char* reason) {
   fprintf(stderr, "%s; aborting.\n", reason);
   abort();
-}
-
-const uint8* OS::image_uuid() {
-  // Windows "devices" does not support images (ota, factory promote, factory reset) so the uuid
-  // doesn't need to be unique.
-  static uint8_t uuid[UUID_SIZE] = {0xe3, 0xbb, 0xa6, 0xa1, 0x23, 0x0c, 0x44, 0xa5, 0x9f, 0x5d, 0x09, 0x0c, 0xf7, 0xfd, 0x15, 0x2a};
-  return uuid;
-}
-
-uint8* OS::image_config(size_t *length) {
-  FATAL("should not be used on windows")
-  return null;
 }
 
 const char* OS::getenv(const char* variable) {
@@ -336,6 +325,7 @@ void OS::set_writable(ProgramBlock* block, bool value) {
 void OS::tear_down() {
   dispose(_global_mutex);
   dispose(_scheduler_mutex);
+  dispose(_resource_mutex);
 }
 
 const char* OS::get_platform() {

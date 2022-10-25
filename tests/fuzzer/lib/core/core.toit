@@ -18,6 +18,7 @@ interface ByteArray:
 class ByteArray_:
   constructor len:
 class List_:
+class ListSlice_:
 class string:
 class String_:
 class StringSlice_:

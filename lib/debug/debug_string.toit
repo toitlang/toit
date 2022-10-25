@@ -2,7 +2,6 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import ..encoding.ubjson as ubjson
 // import pipe
 import reader show BufferedReader
 

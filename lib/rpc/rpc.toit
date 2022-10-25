@@ -65,12 +65,12 @@ monitor RpcSynchronizer_:
     finally: | is_exception exception |
       map.remove id
       if is_exception:
-        if exception.value == DEADLINE_EXCEEDED_ERROR or task.is_canceled:
+        if exception.value == DEADLINE_EXCEEDED_ERROR or Task.current.is_canceled:
           process_send_ pid SYSTEM_RPC_CANCEL_ [ id ]
 
     if result is not RpcException_: return result
     exception := result.exception
-    if exception == CANCELED_ERROR: task.cancel
+    if exception == CANCELED_ERROR: Task.current.cancel
     trace := result.trace
     if trace: rethrow exception trace
     throw exception

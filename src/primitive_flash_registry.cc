@@ -62,7 +62,7 @@ PRIMITIVE(info) {
   const FlashAllocation* allocation = FlashRegistry::at(current);
   int page_size = (flash_registry_offset_next - current) >> 12;
   if (allocation == null) {
-    if (reservation_scan != reservations.end() && current == reservation_scan->left()){
+    if (reservation_scan != reservations.end() && current == reservation_scan->left()) {
       ++reservation_scan;
       return Smi::from(SCAN_RESERVED);
     } else {
@@ -97,7 +97,8 @@ PRIMITIVE(get_size) {
   ARGS(int, offset);
   const FlashAllocation* allocation = FlashRegistry::at(offset);
   if (allocation == null) INVALID_ARGUMENT;
-  return Smi::from(allocation->size());
+  int size = allocation->size() + allocation->assets_size(null, null);
+  return Smi::from(size);
 }
 
 PRIMITIVE(get_type) {
@@ -107,14 +108,14 @@ PRIMITIVE(get_type) {
   return Smi::from(allocation->type());
 }
 
-PRIMITIVE(get_meta_data) {
+PRIMITIVE(get_metadata) {
   ARGS(int, offset);
-  ByteArray* meta_data = process->object_heap()->allocate_proxy();
-  if (meta_data == null) ALLOCATION_FAILED;
+  ByteArray* metadata = process->object_heap()->allocate_proxy();
+  if (metadata == null) ALLOCATION_FAILED;
   const FlashAllocation* allocation = FlashRegistry::at(offset);
-  // Add support invalidation of proxy. TODO(Lau) The proxy is read-only and backed by flash.
-  meta_data->set_external_address(FlashAllocation::Header::meta_data_size(), const_cast<uint8*>(allocation->meta_data()));
-  return meta_data;
+  // TODO(lau): Add support invalidation of proxy. The proxy is read-only and backed by flash.
+  metadata->set_external_address(FlashAllocation::Header::METADATA_SIZE, const_cast<uint8*>(allocation->metadata()));
+  return metadata;
 }
 
 PRIMITIVE(reserve_hole) {

@@ -61,9 +61,11 @@ static Object* write_image_chunk(Process* process, ImageOutputStream* output, co
 
   bool success = false;
   if (first) {
-    // Do not write the program header just yet, but capture the program id from there.
+    // Do not write the program header just yet, but capture the program id
+    // and size from there, so we can fill in the header later.
     Program::Header* header = reinterpret_cast<Program::Header*>(&buffer[0]);
     output->set_program_id(header->id());
+    output->set_program_size(header->size());
     const int header_size = sizeof(Program::Header);
     ASSERT(Utils::is_aligned(header_size, WORD_SIZE));
     const int header_words = header_size / WORD_SIZE;
@@ -86,17 +88,33 @@ PRIMITIVE(writer_write) {
 }
 
 PRIMITIVE(writer_commit) {
-  ARGS(ImageOutputStream, output);
+  ARGS(ImageOutputStream, output, Blob, metadata_blob);
+  uint8 metadata[FlashAllocation::Header::METADATA_SIZE];
+  if (metadata_blob.length() != sizeof(metadata)) INVALID_ARGUMENT;
+  memcpy(metadata, metadata_blob.address(), sizeof(metadata));
 
   ProgramImage image = output->image();
   if (!image.is_valid() || output->cursor() != image.end()) OUT_OF_BOUNDS;
 
+  // If there are extra bytes after the program, they represent assets associated
+  // with the program image. Check that the size of the encoded assets is within
+  // bounds and mark the metadata to indicate the presence of the assets.
+  uword program_size = output->program_size();
+  uword assets_extra = image.byte_size() - program_size;
+  if (assets_extra > 0) {
+    uword assets_address = reinterpret_cast<uword>(image.begin()) + program_size;
+    uword assets_length = *reinterpret_cast<uint32*>(assets_address);
+    if (assets_length + sizeof(uint32) > assets_extra) OUT_OF_BOUNDS;
+    // TODO(kasper): Can we get the metadata to already contain the right bits
+    // from the get go? Right now, we ignore the bits put in there when
+    // converting from snapshot to image, but that seems fishy.
+    metadata[0] |= FlashAllocation::Header::FLAGS_HAS_ASSETS_MASK;
+  }
+
   // Write program header as the last thing. Only a complete flash write
   // will mark the program as valid.
   int header_offset = FlashRegistry::offset(image.begin());
-  uint8 meta_data[FlashAllocation::Header::meta_data_size()];
-  memset(meta_data, 0, FlashAllocation::Header::meta_data_size());
-  if (FlashAllocation::initialize(header_offset, PROGRAM_TYPE, output->program_id(), image.byte_size(), meta_data)) {
+  if (FlashAllocation::initialize(header_offset, PROGRAM_TYPE, output->program_id(), program_size, metadata)) {
     return process->program()->null_object();
   }
   HARDWARE_ERROR;

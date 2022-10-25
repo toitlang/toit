@@ -708,7 +708,7 @@ abstract class int extends num:
             return int.MIN
         return on_error.call RANGE_ERR_
 
-      value := hex_digit char: on_error.call PARSE_ERR_
+      value := hex_char_to_value char --on_error=(: on_error.call PARSE_ERR_)
       result <<= 4
       result |= value
       continue.generic_parser_ result
@@ -841,7 +841,7 @@ abstract class int extends num:
 
   /**
   Variant of $stringify.
-  Unlike string interpolation with base 8 or 16, negative
+  Unlike string interpolation with base 2, 8, or 16, negative
     numbers are rendered in a straight-forward way with a
     '-' character at the start.
 
@@ -970,6 +970,63 @@ abstract class int extends num:
   */
   repeat [block] -> none:
     for index := 0; index < this; index++: block.call index
+
+  /**
+  Returns the number of initial zeros in the binary representation of the
+    integer.
+  The integer is treated as an unsigned 64 bit number.  Thus
+    it returns 0 if called on a negative integer.
+  # Examples
+  ```
+  (0x00FF).count_leading_zeros  // => 56
+  (0x0025).count_leading_zeros  // => 58
+  (0).count_leading_zeros       // => 64
+  int.MIN.count_leading_zeros   // => 0
+  int.MAX.count_leading_zeros   // => 1
+  ```
+  */
+  count_leading_zeros -> int:
+    #primitive.core.count_leading_zeros
+
+  /**
+  Returns the number of trailing zeros in the binary representation of the
+    integer.
+  The integer is treated as an unsigned 64 bit number.
+    Thus it returns 1 if called on -2.
+  # Examples
+  ```
+  (0b101000).count_trailing_zeros   // => 3
+  (0b101100).count_trailing_zeros   // => 2
+  (0b101010).count_trailing_zeros   // => 1
+  (0b101101).count_trailing_zeros   // => 0
+  (0).count_trailing_zeros          // => 64
+  int.MIN.count_trailing_zeros      // => 63
+  int.MAX.count_trailing_zeros      // => 0
+  ```
+  */
+  count_trailing_zeros -> int:
+    if this == 0: return 64
+    value := this ^ (this - 1)
+    return 63 - value.count_leading_zeros
+
+  /**
+  Returns the number of ones in the binary representation of the integer.
+  The integer is treated as a 64 bit number.
+    Thus it returns 64 if called on -1.
+  # Examples
+  ```
+  (0b101101).population_count  // => 2
+  (0b101100).population_count  // => 3
+  (0b101110).population_count  // => 4
+  (0b101111).population_count  // => 5
+  (0).population_count         // => 0
+  (-1).population_count        // => 64
+  int.MIN.population_count     // => 1
+  int.MAX.population_count     // => 63
+  ```
+  */
+  population_count -> int:
+    #primitive.core.popcount
 
 class SmallInteger_ extends int:
   /** See $super. */
@@ -1401,6 +1458,30 @@ class float extends num:
   /** Deprecated. */
   round --precision -> float:
     return round_ --precision=precision
+
+  /**
+  Returns the smallest integral value not less than this number.
+
+  If this value is not finite (NaN, infinity, or negative infinity), then returns this number.
+  */
+  ceil -> float:
+    #primitive.core.float_ceil
+
+  /**
+  Returns the largest integer not greater than this number.
+
+  If this value is not finite (NaN, infinity, or negative infinity), then returns this number.
+  */
+  floor -> float:
+    #primitive.core.float_floor
+
+  /**
+  Rounds this to the nearest value that is not larger in magnitude than this number.
+
+  If this value is not finite (NaN, infinity, or negative infinity), then returns this number.
+  */
+  truncate -> float:
+    #primitive.core.float_trunc
 
   /**
   See $super.

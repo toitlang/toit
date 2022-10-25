@@ -500,6 +500,7 @@ class Method : public Node {
       , _plain_shape(PlainShape::invalid())
       , _is_abstract(is_abstract)
       , _does_not_return(false)
+      , _is_runtime_method(false)
       , _kind(kind)
       , _range(range)
       , _body(null)
@@ -519,6 +520,7 @@ class Method : public Node {
       , _plain_shape(shape)
       , _is_abstract(is_abstract)
       , _does_not_return(false)
+      , _is_runtime_method(false)
       , _kind(kind)
       , _range(range)
       , _body(null)
@@ -586,6 +588,9 @@ class Method : public Node {
   bool does_not_return() const { return _does_not_return; }
   void mark_does_not_return() { _does_not_return = true; }
 
+  bool is_runtime_method() const { return _is_runtime_method; }
+  void mark_runtime_method() { _is_runtime_method = true; }
+
   Type return_type() const { return _return_type; }
   void set_return_type(Type type) {
     ASSERT(!_return_type.is_valid());
@@ -636,6 +641,7 @@ class Method : public Node {
 
   const bool _is_abstract;
   bool _does_not_return;
+  bool _is_runtime_method;
   const MethodKind _kind;
   const Source::Range _range;
 
@@ -748,6 +754,15 @@ class Global : public Method {
   bool is_effectively_final() const { return _mutation_count == 0; }
   void register_mutation() { _mutation_count++; }
 
+  void set_explicit_return_type(Type type) {
+    Method::set_return_type(type);
+    _has_explicit_type = true;
+  }
+
+  bool has_explicit_type() const {
+    return _has_explicit_type;
+  }
+
  public:
   // Reserved for ByteGen and Compiler.
   // The ids of globals must be continuous, and should therefore only be set
@@ -772,6 +787,7 @@ class Global : public Method {
   bool _is_final;
   bool _is_lazy;
   int _global_id;
+  bool _has_explicit_type = false;
 };
 
 class Field : public Node {

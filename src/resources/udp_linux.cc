@@ -168,9 +168,8 @@ PRIMITIVE(receive)  {
   // TODO: Support IPv6.
   ByteArray* address = null;
   if (is_array(output)) {
-    Error* error = null;
-    address = process->allocate_byte_array(4, &error);
-    if (address == null) return error;
+    address = process->allocate_byte_array(4);
+    if (address == null) ALLOCATION_FAILED;
   }
 
   int available = 0;
@@ -178,16 +177,15 @@ PRIMITIVE(receive)  {
     return Primitive::os_error(errno, process);
   }
 
-  Error* error = null;
-  ByteArray* array = process->allocate_byte_array(available, &error, /*force_external*/ true);
-  if (array == null) return error;
+  ByteArray* array = process->allocate_byte_array(available, /*force_external*/ true);
+  if (array == null) ALLOCATION_FAILED;
 
   struct sockaddr_in addr;
   bzero(&addr, sizeof(addr));
   socklen_t addr_len = sizeof(addr);
   int read = recvfrom(fd, ByteArray::Bytes(array).address(), available, 0, reinterpret_cast<sockaddr*>(&addr), &addr_len);
   if (read == -1) {
-    if (errno == EWOULDBLOCK) {
+    if (errno == EWOULDBLOCK || errno == EAGAIN) {
       return Smi::from(-1);
     }
     return Primitive::os_error(errno, process);
@@ -234,7 +232,7 @@ PRIMITIVE(send) {
 
   int wrote = sendto(fd, data.address() + from, to - from, 0, addr, size);
   if (wrote == -1) {
-    if (errno == EWOULDBLOCK) return Smi::from(0);
+    if (errno == EWOULDBLOCK || errno == EAGAIN) return Smi::from(0);
     return Primitive::os_error(errno, process);
   }
 

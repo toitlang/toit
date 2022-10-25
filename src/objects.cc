@@ -46,12 +46,15 @@ bool Object::byte_content(Program* program, const uint8** content, int* length, 
     auto instance = Instance::cast(this);
     auto class_id = instance->class_id();
     if (strings_only == STRINGS_OR_BYTE_ARRAYS && class_id == program->byte_array_cow_class_id()) {
-      auto backing = instance->at(0);
+      auto backing = instance->at(Instance::BYTE_ARRAY_COW_BACKING_INDEX);
       return backing->byte_content(program, content, length, strings_only);
     } else if ((strings_only == STRINGS_OR_BYTE_ARRAYS && class_id == program->byte_array_slice_class_id()) || class_id == program->string_slice_class_id()) {
-      auto wrapped = instance->at(0);
-      auto from = instance->at(1);
-      auto to = instance->at(2);
+      ASSERT(Instance::STRING_SLICE_STRING_INDEX == Instance::BYTE_ARRAY_SLICE_BYTE_ARRAY_INDEX);
+      ASSERT(Instance::STRING_SLICE_FROM_INDEX == Instance::BYTE_ARRAY_SLICE_FROM_INDEX);
+      ASSERT(Instance::STRING_SLICE_TO_INDEX == Instance::BYTE_ARRAY_SLICE_TO_INDEX);
+      auto wrapped = instance->at(Instance::STRING_SLICE_STRING_INDEX);
+      auto from = instance->at(Instance::STRING_SLICE_FROM_INDEX);
+      auto to = instance->at(Instance::STRING_SLICE_TO_INDEX);
       if (!is_heap_object(wrapped)) return false;
       // TODO(florian): we could eventually accept larger integers here.
       if (!is_smi(from)) return false;
@@ -464,6 +467,7 @@ void String::read_content(SnapshotReader* st, int len) {
     auto external_bytes = st->read_external_list_uint8();
     ASSERT(external_bytes.length() == len + 1);  // TODO(florian): we shouldn't have a '\0'.
     _set_external_address(external_bytes.data());
+    _assign_hash_code();
   } else {
     _set_length(len);
     Bytes bytes(this);

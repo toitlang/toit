@@ -2,7 +2,7 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import serialization show serialize deserialize
+import encoding.tison
 import .time_impl
 
 /**
@@ -187,7 +187,8 @@ class Duration implements Comparable:
     value := ns_.abs
 
     print_char := : | c |
-      buffer[--index] = c
+      index--
+      buffer[index] = c
 
     print_int := : | i |
       fraction := i.stringify
@@ -704,7 +705,7 @@ class Time implements Comparable:
   This operation is the inverse of $to_byte_array.
   */
   constructor.deserialize bytes/ByteArray:
-    values := deserialize bytes
+    values := tison.decode bytes
     return Time.epoch --s=values[0] --ns=values[1]
 
   /**
@@ -895,4 +896,4 @@ class Time implements Comparable:
     $Time.deserialize.
   */
   to_byte_array:
-    return serialize [seconds_, ns_]
+    return tison.encode [seconds_, ns_]

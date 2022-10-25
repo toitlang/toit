@@ -46,7 +46,7 @@ void print_stacktrace() {
 #endif
 }
 
-#ifndef DEPLOY
+#ifndef TOIT_DEPLOY
 
 void fail(const char* file, int line, const char* format, ...) {
   va_list arguments;
@@ -59,7 +59,7 @@ void fail(const char* file, int line, const char* format, ...) {
   abort();
 }
 
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
 #undef malloc
 void* tracing_malloc(size_t size, const char* file, int line) {
   void* result = malloc(size);
@@ -133,7 +133,7 @@ void* operator new(size_t size) {
   // fails.
   if (!toit::throwing_new_allowed) UNREACHABLE();
   void* result = malloc(size);
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
   if (toit::Flags::cheap) {
     printf("new %zd [%p]\n", size, result);
   }
@@ -144,7 +144,7 @@ void* operator new(size_t size) {
 // Override new operator (no-expections version) so we can log allocations.
 void* operator new(size_t size, const std::nothrow_t& tag) {
   void* result = malloc(size);
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
   if (toit::Flags::cheap) {
     printf("new %zd [%p]\n", size, result);
   }
@@ -154,7 +154,7 @@ void* operator new(size_t size, const std::nothrow_t& tag) {
 
 // Override delete operator (normal version) so we can log allocations.
 void operator delete(void* ptr) {
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
   if (toit::Flags::cheap) {
     printf("delete [%p]\n", ptr);
   }
@@ -164,7 +164,7 @@ void operator delete(void* ptr) {
 
 // Override delete operator (no-exceptions version) so we can log allocations.
 void operator delete(void* ptr, const std::nothrow_t& tag) {
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
   if (toit::Flags::cheap) {
     printf("delete [%p]\n", ptr);
   }
@@ -180,7 +180,7 @@ void* operator new[](size_t size) {
   // fails.
   if (!toit::throwing_new_allowed) UNREACHABLE();
   void* result = malloc(size);
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
   if (toit::Flags::cheap) {
     printf("new[] %zd [%p]\n", size, result);
   }
@@ -191,7 +191,7 @@ void* operator new[](size_t size) {
 // Override new[] operator (no-exceptions version) so we can log allocations.
 void* operator new[](size_t size, const std::nothrow_t& tag) {
   void* result = malloc(size);
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
   if (toit::Flags::cheap) {
     printf("new[] %zd [%p]\n", size, result);
   }
@@ -201,7 +201,7 @@ void* operator new[](size_t size, const std::nothrow_t& tag) {
 
 // Override delete[] operator (normal version) so we can log allocations.
 void operator delete[](void* ptr) {
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
   if (toit::Flags::cheap) {
     printf("delete[] [%p]\n", ptr);
   }
@@ -211,7 +211,7 @@ void operator delete[](void* ptr) {
 
 // Override delete[] operator (no-exceptions version) so we can log allocations.
 void operator delete[](void* ptr, const std::nothrow_t& tag) {
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
   if (toit::Flags::cheap) {
     printf("delete[] [%p]\n", ptr);
   }

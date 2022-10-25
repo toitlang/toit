@@ -13,6 +13,9 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+#include "../top.h"
+
+#if !defined(TOIT_FREERTOS) || CONFIG_TOIT_CRYPTO
 #include <mbedtls/error.h>
 #include <mbedtls/pem.h>
 #include <mbedtls/platform.h>
@@ -22,6 +25,7 @@
 #include "../process.h"
 #include "../objects_inline.h"
 #include "../resource.h"
+#include "../scheduler.h"
 #include "../vm.h"
 
 #include "tls.h"
@@ -127,7 +131,12 @@ static void* tagging_mbedtls_calloc(size_t nelem, size_t size) {
   // Sanity check inputs for security.
   if (nelem > 0xffff || size > 0xffff) return null;
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + BIGNUM_MALLOC_TAG);
-  void* result = calloc(nelem, size);
+  size_t total_size = nelem * size;
+  void* result = calloc(1, total_size);
+  if (!result) {
+    VM::current()->scheduler()->gc(null, /* malloc_failed = */ true, /* try_hard = */ true);
+    result = calloc(1, total_size);
+  }
   return result;
 }
 
@@ -243,9 +252,8 @@ Object* tls_error(MbedTLSResourceGroup* group, Process* process, int err) {
       if (!Utils::is_valid_utf_8(unsigned_cast(buffer), len)) {
         for (unsigned i = 0; i < len; i++) if (buffer[i] & 0x80) buffer[i] = '.';
       }
-      Error* error = null;
-      String* str = process->allocate_string(buffer, &error);
-      if (str == null) return error;
+      String* str = process->allocate_string(buffer);
+      if (str == null) ALLOCATION_FAILED;
       group->clear_error_flags();
       return Primitive::mark_as_error(str);
     }
@@ -290,9 +298,8 @@ Object* tls_error(MbedTLSResourceGroup* group, Process* process, int err) {
     }
   }
   buffer[BUFFER_LEN - 1] = '\0';
-  Error* error = null;
-  String* str = process->allocate_string(buffer, &error);
-  if (str == null) return error;
+  String* str = process->allocate_string(buffer);
+  if (str == null) ALLOCATION_FAILED;
   if (group) group->clear_error_flags();
   return Primitive::mark_as_error(str);
 }
@@ -429,9 +436,8 @@ PRIMITIVE(read)  {
   int size = mbedtls_ssl_get_bytes_avail(&socket->ssl);
   if (size < 0 || size > ByteArray::PREFERRED_IO_BUFFER_SIZE) size = ByteArray::PREFERRED_IO_BUFFER_SIZE;
 
-  Error* error = null;
-  ByteArray* array = process->allocate_byte_array(size, &error, /*force_external*/ true);
-  if (array == null) return error;
+  ByteArray* array = process->allocate_byte_array(size, /*force_external*/ true);
+  if (array == null) ALLOCATION_FAILED;
   int read = mbedtls_ssl_read(&socket->ssl, ByteArray::Bytes(array).address(), size);
   if (read == 0 || read == MBEDTLS_ERR_SSL_CONN_EOF || read == MBEDTLS_ERR_SSL_PEER_CLOSE_NOTIFY) {
     return process->program()->null_object();
@@ -697,3 +703,4 @@ PRIMITIVE(set_session) {
 }
 
 } // namespace toit
+#endif // !defined(TOIT_FREERTOS) || CONFIG_TOIT_CRYPTO

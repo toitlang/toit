@@ -16,8 +16,8 @@
 import rpc show RpcSerializable
 
 class RpcBroker implements SystemMessageHandler_:
-  static MAX_TASKS/int    ::= 4
-  static MAX_REQUESTS/int ::= 16
+  static MAX_TASKS/int     ::= (platform == PLATFORM_FREERTOS) ?  4 : 16
+  static MAX_REQUESTS/int? ::= (platform == PLATFORM_FREERTOS) ? 16 : 64
 
   procedures_/Map ::= {:}
   queue_/RpcRequestQueue_ ::= RpcRequestQueue_ MAX_TASKS
@@ -201,13 +201,13 @@ monitor RpcRequestQueue_:
     while unprocessed_ > tasks_ and tasks_ < processing_tasks_.size:
       tasks_++
       task_index := processing_tasks_.index_of null
-      processing_tasks_[task_index] = task --name="Processing task" --background::
+      processing_tasks_[task_index] = task --name="RPC processing task" --background::
         // The task code runs outside the monitor, so the monitor
         // is unlocked when the requests are being processed but
         // locked when the requests are being dequeued.
-        assert: identical processing_tasks_[task_index] task
+        assert: identical processing_tasks_[task_index] Task.current
         try:
-          while not task.is_canceled:
+          while not Task.current.is_canceled:
             next := remove_first task_index
             if not next: break
             try:

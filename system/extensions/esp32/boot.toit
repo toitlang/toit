@@ -31,9 +31,9 @@ class SystemImage extends ContainerImage:
   constructor manager/ContainerManager:
     super manager
 
-  start -> Container:
+  start arguments/any -> Container:
     // This container is already running as the system process.
-    container := Container this 0 (current_process_)
+    container := Container this 0 Process.current.id
     manager.on_container_start_ container
     return container
 
@@ -50,5 +50,11 @@ main:
   ]
   container_manager.register_system_image
       SystemImage container_manager
-  boot container_manager
-  // TODO(kasper): Should we reboot here after a little while?
+
+  error ::= boot container_manager
+  if error == 0: return
+
+  // We encountered an error, so in order to recover, we restart the
+  // device by going into deep sleep for the short amount of time as
+  // decided by the underlying platform.
+  __deep_sleep__ 0

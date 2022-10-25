@@ -32,7 +32,7 @@ const rmt_channel_t kInvalidChannel = static_cast<rmt_channel_t>(-1);
 
 ResourcePool<rmt_channel_t, kInvalidChannel> rmt_channels(
     RMT_CHANNEL_0, RMT_CHANNEL_1, RMT_CHANNEL_2, RMT_CHANNEL_3
-#if SOC_RMT_CHANNELS_NUM > 4
+#if SOC_RMT_CHANNELS_PER_GROUP > 4
     , RMT_CHANNEL_4, RMT_CHANNEL_5, RMT_CHANNEL_6, RMT_CHANNEL_7
 #endif
 );
@@ -100,7 +100,7 @@ PRIMITIVE(channel_new) {
   } else {
     // Try to find adjacent channels that are still free.
     int current_start_id = (channel_num == -1) ? 0 : channel_num;
-    while (current_start_id + memory_block_count <= SOC_RMT_CHANNELS_NUM) {
+    while (current_start_id + memory_block_count <= SOC_RMT_CHANNELS_PER_GROUP) {
       int taken = 0;
       for (int i = 0; i < memory_block_count; i++) {
         bool succeeded = rmt_channels.take(static_cast<rmt_channel_t>(current_start_id + i));
@@ -247,13 +247,18 @@ PRIMITIVE(set_idle_threshold) {
 PRIMITIVE(config_bidirectional_pin) {
   ARGS(int, pin, RMTResource, resource);
 
+#if defined(CONFIG_IDF_TARGET_ESP32C3)
+  if (pin >= MAX_GPIO_NUM) INVALID_ARGUMENT;
+  GPIO.enable_w1ts.enable_w1ts = (0x1 << pin);
+#else
   // Set open collector?
   if (pin < 32) {
     GPIO.enable_w1ts = (0x1 << pin);
   } else {
     GPIO.enable1_w1ts.data = (0x1 << (pin - 32));
   }
-  rmt_set_pin(resource->channel(), RMT_MODE_TX, static_cast<gpio_num_t>(pin));
+#endif
+  rmt_set_gpio(resource->channel(), RMT_MODE_TX, static_cast<gpio_num_t>(pin), false);
   PIN_INPUT_ENABLE(GPIO_PIN_MUX_REG[pin]);
   GPIO.pin[pin].pad_driver = 1;
 
@@ -274,10 +279,9 @@ PRIMITIVE(transmit) {
   } else {
     // Create an external byte array with the same size.
     // We will return it to the caller, so they can keep it alive.
-    Error* error = null;
     // Force external.
-    ByteArray* external_copy = process->allocate_byte_array(items_bytes.length(), &error, true);
-    if (external_copy == null) return error;
+    ByteArray* external_copy = process->allocate_byte_array(items_bytes.length(), true);
+    if (external_copy == null) ALLOCATION_FAILED;
     ByteArray::Bytes bytes(external_copy);
     memcpy(bytes.address(), address, items_bytes.length());
     address = bytes.address();
@@ -334,10 +338,9 @@ PRIMITIVE(prepare_receive) {
   if (err != ESP_OK) return Primitive::os_error(err, process);
   size_t max_size = xRingbufferGetMaxItemSize(rb);
 
-  Error* error = null;
   // Force external, so we can adjust the length after the read.
-  ByteArray* data = process->allocate_byte_array(static_cast<int>(max_size), &error, true);
-  if (data == null) return error;
+  ByteArray* data = process->allocate_byte_array(static_cast<int>(max_size), true);
+  if (data == null) ALLOCATION_FAILED;
   return data;
 }
 

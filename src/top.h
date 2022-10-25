@@ -22,42 +22,36 @@
 #include <cstring>
 #include <new>
 
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
 #include <typeinfo>
 #endif
 
 // Support for profiling configuration
 #if defined(PROF)
-#define DEPLOY
+#define TOIT_DEPLOY
 #endif
 
 // -----------------------------------------------------------------------------
 // Build configuration:
-//  DEBUG  : Debug build with plenty of debug information and verification.
-//           All test code is included.
-//  FAST   : Optimized build but this includes printing and validation code.
-//           All test code is included.
-//  DEPLOY : Optimized and minimal build for deployment.
+//  TOIT_DEBUG  : Debug build with plenty of debug information and verification.
+//                All test code is included.
+//  TOIT_DEPLOY : Optimized and minimal build for deployment.
 //
-//  BUILD set to either "DEBUG", "FAST", or "DEPLOY".
-#if defined(DEBUG)
-#if defined(FAST) || defined(DEPLOY)
+//  BUILD set to either "TOIT_DEBUG" or "TOIT_DEPLOY".
+#if defined(TOIT_DEBUG)
+#if defined(TOIT_DEPLOY)
 #define MULTIPLE_CONFIGURATION_ERROR
 #endif
-#elif defined(FAST)
-#if defined(DEBUG) ||defined(DEPLOY)
-#define MULTIPLE_CONFIGURATION_ERROR
-#endif
-#elif defined(DEPLOY)
-#if defined(DEBUG) || defined(FAST)
+#elif defined(TOIT_DEPLOY)
+#if defined(TOIT_DEBUG)
 #define MULTIPLE_CONFIGURATION_ERROR
 #endif
 #else
-#error "No build configuration specified: use only one of -DDEBUG -DFAST -DDEPLOY"
+#error "No build configuration specified: use one of -DTOIT_DEBUG -DTOIT_DEPLOY"
 #endif
 
 #if defined(MULTIPLE_CONFIGURATION_ERROR)
-#error "More than one build configuration specified: use only one of -DDEBUG -DFAST -DDEPLOY"
+#error "More than one build configuration specified: use only one of -DTOIT_DEBUG -DTOIT_DEPLOY"
 #endif
 
 // -----------------------------------------------------------------------------
@@ -203,7 +197,7 @@ static_assert(sizeof(word) == 4, "invalid type size");
 // Please use _new at allocation point to ensure proper tracking of memory usage.
 // This also ensures that we call the nothrow version of new, which can handle an
 // allocation failure (returns null instead of calling the constructor).
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
 #define malloc(size) toit::tracing_malloc(size, __FILE__, __LINE__)
 #define realloc(ptr, size) toit::tracing_realloc(ptr, size, __FILE__, __LINE__)
 #define free(p) toit::tracing_free(p, __FILE__, __LINE__)
@@ -223,7 +217,7 @@ extern bool throwing_new_allowed;
 #undef ASSERT
 #endif
 
-#ifdef DEBUG
+#ifdef TOIT_DEBUG
 void* tracing_malloc(size_t size, const char* file, int line);
 
 void* tracing_realloc(void* ptr, size_t size, const char* file, int line);
@@ -270,24 +264,25 @@ class AllowThrowingNew {
   bool old_throwing_new_allowed;
 };
 
-#ifndef DEPLOY
+#ifndef TOIT_DEPLOY
 void fail(const char* file, int line, const char* format, ...) __attribute__ ((__noreturn__));
 #define ASSERT(cond) if (!(cond)) { toit::fail(__FILE__, __LINE__, "assertion failure, %s.", #cond); }
 #define FATAL(message, ...) toit::fail(__FILE__, __LINE__, #message, ##__VA_ARGS__);
 #ifdef TOIT_FREERTOS
 #define FATAL_IF_NOT_ESP_OK(cond) do { if ((cond) != ESP_OK) toit::fail(__FILE__, __LINE__, "%s", #cond); } while (0)
 #endif
-#else  // DEPLOY
+#else  // TOIT_DEPLOY
 void fail(const char* format, ...) __attribute__ ((__noreturn__));
 #define ASSERT(cond) while (false && (cond)) { }
 #define FATAL(message, ...) toit::fail(#message, ##__VA_ARGS__);
 #ifdef TOIT_FREERTOS
 #define FATAL_IF_NOT_ESP_OK(cond) do { if ((cond) != ESP_OK) toit::fail("%s", #cond); } while (0)
 #endif
-#endif  // DEPLOY
+#endif  // TOIT_DEPLOY
 
 #define UNIMPLEMENTED() FATAL("unimplemented")
 #define UNREACHABLE() FATAL("unreachable")
+#define TOIT_CHECK(cond) if (!(cond)) { toit::fail(__FILE__, __LINE__, "check failure, %s.", #cond); }
 
 
 // Common forward declarations.

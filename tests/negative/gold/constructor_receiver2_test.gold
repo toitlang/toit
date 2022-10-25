@@ -1,0 +1,25 @@
+tests/negative/constructor_receiver2_test.toit:24:10: error: Class 'A' does not have any static member or constructor with name 'FOOO'
+  print A.FOOO
+         ^
+tests/negative/constructor_receiver2_test.toit:25:10: error: Class 'B' does not have any static member or constructor with name 'FOOO'
+  print B.FOOO
+         ^
+tests/negative/constructor_receiver2_test.toit:26:10: error: Class 'C' does not have any static member or constructor with name 'foo'
+  print C.foo
+         ^
+tests/negative/constructor_receiver2_test.toit:27:10: error: Class 'D' does not have any static member or constructor with name 'FOOO'
+  print D.FOOO
+         ^
+tests/negative/constructor_receiver2_test.toit:29:17: error: Class 'A' does not have any static member or constructor with name 'FOOO'
+  print prefix.A.FOOO
+                ^
+tests/negative/constructor_receiver2_test.toit:30:17: error: Class 'B' does not have any static member or constructor with name 'FOOO'
+  print prefix.B.FOOO
+                ^
+tests/negative/constructor_receiver2_test.toit:31:17: error: Class 'C' does not have any static member or constructor with name 'foo'
+  print prefix.C.foo
+                ^
+tests/negative/constructor_receiver2_test.toit:32:17: error: Class 'D' does not have any static member or constructor with name 'FOOO'
+  print prefix.D.FOOO
+                ^
+Compilation failed.

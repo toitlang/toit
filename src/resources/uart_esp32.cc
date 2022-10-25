@@ -18,7 +18,6 @@
 #ifdef TOIT_FREERTOS
 
 #include <driver/uart.h>
-#include <hal/uart_types.h>
 
 #include "../objects_inline.h"
 #include "../process.h"
@@ -29,7 +28,7 @@
 #include "../event_sources/system_esp32.h"
 
 
-#ifdef CONFIG_IDF_TARGET_ESP32C3
+#if CONFIG_IDF_TARGET_ESP32C3 || CONFIG_IDF_TARGET_ESP32S2
     #define UART_PORT UART_NUM_1
 #else
     #define UART_PORT UART_NUM_2
@@ -44,7 +43,7 @@ const int kErrorState = 1 << 1;
 
 ResourcePool<uart_port_t, kInvalidUARTPort> uart_ports(
   // UART_NUM_0 is reserved serial communication (stdout).
-#ifndef CONFIG_IDF_TARGET_ESP32C3
+#if !defined(CONFIG_IDF_TARGET_ESP32C3) && !defined(CONFIG_IDF_TARGET_ESP32S2)
   UART_NUM_2,
 #endif
   UART_NUM_1
@@ -123,12 +122,14 @@ PRIMITIVE(init) {
 PRIMITIVE(create) {
   ARGS(UARTResourceGroup, group, int, tx, int, rx, int, rts, int, cts,
        int, baud_rate, int, data_bits, int, stop_bits, int, parity,
-       int, options);
+       int, options, int, mode);
 
   if (data_bits < 5 || data_bits > 8) INVALID_ARGUMENT;
   if (stop_bits < 1 || stop_bits > 3) INVALID_ARGUMENT;
   if (parity < 1 || parity > 3) INVALID_ARGUMENT;
   if (options < 0 || options > 3) INVALID_ARGUMENT;
+  if (mode < UART_MODE_UART || mode > UART_MODE_IRDA) INVALID_ARGUMENT;
+  if (mode == UART_MODE_RS485_HALF_DUPLEX && cts != -1) INVALID_ARGUMENT;
 
   uart_port_t port = kInvalidUARTPort;
 
@@ -161,8 +162,10 @@ PRIMITIVE(create) {
   }
 
   int flow_ctrl = 0;
-  if (rts != -1) flow_ctrl += UART_HW_FLOWCTRL_RTS;
-  if (cts != -1) flow_ctrl += UART_HW_FLOWCTRL_CTS;
+  if (mode == UART_MODE_UART) {
+    if (rts != -1) flow_ctrl += UART_HW_FLOWCTRL_RTS;
+    if (cts != -1) flow_ctrl += UART_HW_FLOWCTRL_CTS;
+  }
 
   uart_config_t uart_config = {
     .baud_rate = baud_rate,
@@ -171,6 +174,7 @@ PRIMITIVE(create) {
     .stop_bits = UART_STOP_BITS_1,
     .flow_ctrl = (uart_hw_flowcontrol_t)flow_ctrl,
     .rx_flow_ctrl_thresh = 122,
+    .source_clk = UART_SCLK_APB,
   };
 
 
@@ -212,6 +216,10 @@ PRIMITIVE(create) {
     err = args.err;
   }
 
+  if (err == ESP_OK) {
+    err = uart_set_mode(port, static_cast<uart_mode_t>(mode));
+  }
+
   if (err != ESP_OK) {
     uart_ports.put(port);
     return Primitive::os_error(err, process);
@@ -234,11 +242,27 @@ PRIMITIVE(create) {
   return proxy;
 }
 
+PRIMITIVE(create_path) {
+  UNIMPLEMENTED_PRIMITIVE;
+}
+
 PRIMITIVE(close) {
   ARGS(UARTResourceGroup, uart, UARTResource, res);
   uart->unregister_resource(res);
   res_proxy->clear_external_address();
   return process->program()->null_object();
+}
+
+PRIMITIVE(get_baud_rate) {
+  ARGS(UARTResource, uart);
+
+  uint32_t baud_rate;
+  esp_err_t err = uart_get_baudrate(uart->port(), &baud_rate);
+  if (err != ESP_OK) {
+    return Primitive::os_error(err, process);
+  }
+
+  return Primitive::integer(baud_rate, process);
 }
 
 PRIMITIVE(set_baud_rate) {
@@ -252,6 +276,9 @@ PRIMITIVE(set_baud_rate) {
   return process->program()->null_object();
 }
 
+// Writes the data to the UART.
+// If wait is true, waits, unless the baud-rate is too low. If the function did
+// not wait, returns the negative value of the written bytes.
 PRIMITIVE(write) {
   ARGS(UARTResource, uart, Blob, data, int, from, int, to, int, break_length, bool, wait);
 
@@ -263,22 +290,49 @@ PRIMITIVE(write) {
 
   int wrote;
   if (break_length > 0) {
-    wrote = uart_write_bytes_with_break_non_blocking(uart->port(), reinterpret_cast<const char*>(tx), to - from, break_length);
+    wrote = uart_write_bytes_with_break(uart->port(), reinterpret_cast<const char*>(tx), to - from, break_length);
   } else {
-    wrote = uart_write_bytes_non_blocking(uart->port(), reinterpret_cast<const char*>(tx), to - from);
+    wrote = uart_write_bytes(uart->port(), reinterpret_cast<const char*>(tx), to - from);
   }
   if (wrote == -1) {
     OUT_OF_RANGE;
   }
 
+
   if (wait) {
-    esp_err_t err = uart_wait_tx_done(uart->port(), portMAX_DELAY);
+    uint32 baud_rate;
+    esp_err_t err = uart_get_baudrate(uart->port(), &baud_rate);
     if (err != ESP_OK) {
+      return Primitive::os_error(err, process);
+    }
+    if (baud_rate < 100000) {
+      return Smi::from(-wrote);
+    }
+    // One tick takes ~10ms. We don't expect to ever hit the timeout with
+    // a baud rate that high.
+    err = uart_wait_tx_done(uart->port(), 1);
+    if (err == ESP_ERR_TIMEOUT) {
+      return Smi::from(-wrote);
+    } else if (err != ESP_OK) {
       return Primitive::os_error(err, process);
     }
   }
 
   return Smi::from(wrote);
+}
+
+PRIMITIVE(wait_tx) {
+  ARGS(UARTResource, uart);
+
+  esp_err_t err = uart_wait_tx_done(uart->port(), 0);
+  if (err == ESP_ERR_TIMEOUT) {
+    return BOOL(false);
+  }
+  if (err != ESP_OK) {
+    return Primitive::os_error(err, process);
+  }
+
+  return BOOL(true);
 }
 
 PRIMITIVE(read) {
@@ -290,16 +344,10 @@ PRIMITIVE(read) {
     return Primitive::os_error(err, process);
   }
 
-  // The uart_get_buffered_data_len is not thread safe, so it's not guaranteed that
-  // we get an updated value. As false negatives can lead to deadlock, we don't trust
-  // when it returns 0. To work around this, we instead try to read 8 bytes, whenever
-  // we are suggested 0; it is always safe to try to read too much, so this is only a
-  // performance issue.
-  size_t capacity = Utils::max(available, (size_t)8);
+  ByteArray* data = process->allocate_byte_array(available, /*force_external*/ available != 0);
+  if (data == null) ALLOCATION_FAILED;
 
-  Error* error = null;
-  ByteArray* data = process->allocate_byte_array(capacity, &error, /*force_external*/ true);
-  if (data == null) return error;
+  if (available == 0) return data;
 
   ByteArray::Bytes rx(data);
   int read = uart_read_bytes(uart->port(), rx.address(), rx.length(), 0);
@@ -311,11 +359,18 @@ PRIMITIVE(read) {
     return process->allocate_string_or_error("broken UART read");
   }
 
-  data->resize_external(process, read);
-
   return data;
+}
+
+PRIMITIVE(set_control_flags) {
+  UNIMPLEMENTED_PRIMITIVE;
+}
+
+PRIMITIVE(get_control_flags) {
+  UNIMPLEMENTED_PRIMITIVE;
 }
 
 } // namespace toit
 
 #endif // TOIT_FREERTOS
+

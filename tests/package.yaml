@@ -2,9 +2,12 @@ dependencies:
   ar:
     url: github.com/toitlang/pkg-ar
     version: ^1.0.0
+  font_x11_adobe:
+    url: github.com/toitlang/pkg-font-x11-adobe
+    version: ^0.1.0
   host:
     url: github.com/toitlang/pkg-host
-    version: ^1.4.1
+    version: ^1.6.0
   tar:
     url: github.com/toitlang/pkg-tar
     version: ^1.0.0

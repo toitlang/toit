@@ -830,10 +830,11 @@ void MethodResolver::resolve_fill_global() {
   auto range = Source::Range::invalid();
   auto ast_field = ast_node->as_Field();
   if (ast_field->type() != null) {
-    _method->set_return_type(resolve_type(ast_field->type(), false));
+    _method->as_Global()->set_explicit_return_type(resolve_type(ast_field->type(), false));
     ASSERT(_method->return_type().is_valid());
   } else {
-    _method->set_return_type(ir::Type::any());
+    // The type of the global will be infered later.
+    _method->set_return_type(ir::Type::invalid());
   }
   ir::Expression* initial_value;
   if (ast_field->initializer() == null) {
@@ -1031,6 +1032,7 @@ static bool has_constant_name(Symbol name) {
       seen_capital = true;
       continue;
     }
+    if ('0' <= c && c <= '9') continue;
     if (c == '_') continue;
     return false;
   }
@@ -1248,6 +1250,9 @@ void MethodResolver::_resolve_parameters(
     } else if (is_reserved_identifier(name)) {
       report_error(parameter, "Can't use '%s' as name for a parameter", name.c_str());
     } else if (name.is_valid()) {
+      if (is_future_reserved_identifier(name)) {
+        diagnostics()->report_warning(parameter, "Name '%s' will be reserved in future releases", name.c_str());
+      }
       if (existing.contains(name)) {
         diagnostics()->start_group();
         report_error(parameter, "Duplicate parameter '%s'", name.c_str());
@@ -1611,6 +1616,9 @@ void MethodResolver::visit_TryFinally(ast::TryFinally* node) {
         report_error(ast_parameter, "Duplicate parameter '%s'", name.c_str());
       }
     }
+    if (is_future_reserved_identifier(name)) {
+      diagnostics()->report_warning(ast_parameter, "Name '%s' will be reserved in future releases", name.c_str());
+    }
 
     bool has_explicit_type = ast_parameter->type() != null;
     ir::Type type = ir::Type::invalid();
@@ -1699,7 +1707,7 @@ void MethodResolver::visit_If(ast::If* node) {
   _scope = &if_scope;
 
   auto ast_condition = node->expression();
-  bool needs_sequence = ast_condition->is_DeclarationLocal();
+  bool has_declaring_condition = ast_condition->is_DeclarationLocal();
   ir::Expression* ir_condition = resolve_expression(node->expression(),
                                                     "Condition can't be a block");
   auto ast_yes = node->yes();
@@ -1712,10 +1720,16 @@ void MethodResolver::visit_If(ast::If* node) {
   } else {
     ir_no = resolve_expression(ast_no, "If branches may not evaluate to blocks");
   }
-  ir::Expression* result = _new ir::If(ir_condition, ir_yes, ir_no, node->range());
-  if (needs_sequence) {
+  ir::Expression* result;
+  if (has_declaring_condition) {
+    auto declaration = ir_condition->as_AssignmentDefine();
+    auto local = declaration->local();
+    auto ref = _new ir::ReferenceLocal(local, 0, local->range());
     // To delimit the visibility of the definition.
-    result = _new ir::Sequence(list_of(result), node->range());
+    auto iff = _new ir::If(ref, ir_yes, ir_no, node->range());
+    result = _new ir::Sequence(list_of(declaration, iff), node->range());
+  } else {
+    result = _new ir::If(ir_condition, ir_yes, ir_no, node->range());
   }
   _scope = if_scope.outer();
   push(result);
@@ -2579,6 +2593,13 @@ void MethodResolver::_visit_potential_call_identifier(ast::Node* ast_target,
     push(ir_target);
   } else if (ir_target->is_ReferenceLocal() || ir_target->is_ReferenceGlobal()) {
     if (shape_without_implicit_this == CallShape(0)) {
+      if (ir_target->is_ReferenceGlobal() &&
+          ir_target->as_ReferenceGlobal()->target() == _method &&
+          _current_lambda == null) {
+        report_error(ast_target,
+                     "Can't access global '%s' while initializing it",
+                     _method->name().c_str());
+      }
       push(ir_target);  // Not a call.
     } else {
       const char* kind = null;
@@ -2633,21 +2654,26 @@ void MethodResolver::_visit_potential_call_dot(ast::Dot* ast_dot,
   // Look for `A.foo` first. If the class 'A' only has named constructors, a lookup with
   // `resolve_expression` would report an error (complaining that you need to use the
   // named constructor).
-  // We know that this isn't a constructor call, as the `visit_potential_call` would have
+  // We know that this isn't a super-constructor call, as the `visit_potential_call` would have
   // caught that one.
+  // We also know that this isn't resolved to a static entry, as `visit_potential_call` would have
+  // caught that one as well.
   auto ast_receiver = ast_dot->receiver();
   // If this is for the LSP just follow the normal path.
   // We are only interested in `A.foo`/`prefix.A.foo` not `(A).foo`.
   if (!ast_dot->name()->is_LspSelection() &&
       (ast_receiver->is_Identifier() || scope()->is_prefixed_identifier(ast_receiver))) {
     auto candidates = _compute_target_candidates(ast_receiver, scope());
-    if (!candidates.encountered_error &&
-        (candidates.klass != null && candidates.nodes.is_empty())) {
+    if (!candidates.encountered_error && candidates.klass != null) {
+      // This is of the form `prefix.Klass.xxx` or `Klass.xxx`, where `xxx` could not be
+      // resolved to a static member/constructor.
       if (!ast_dot->name()->data().is_valid()) {
         ASSERT(diagnostics()->encountered_error());
       } else {
         auto klass = candidates.klass;
         auto class_interface = klass->is_interface() ? "Interface" : "Class";
+        // TODO(florian): it would be nice to give a better error message if the class had a member of
+        // that name. However, we don't have a good way to query that information here.
         report_error(ast_dot, "%s '%s' does not have any static member or constructor with name '%s'",
                     class_interface,
                     candidates.name.c_str(),
@@ -2688,24 +2714,6 @@ void MethodResolver::_visit_potential_call_dot(ast::Dot* ast_dot,
     report_error(ast_dot->name(), "Invalid member name '%s'", selector.c_str());
     push(_new ir::Error(ast_dot->range(), call_builder.arguments()));
   } else {
-    bool is_construction = receiver->is_CallConstructor() ||
-        (receiver->is_CallStatic() && receiver->as_CallStatic()->target()->target()->is_factory());
-    if (is_construction) {
-      // We don't want to allow `<X>.foo` where `foo` could be either a static or member function.
-      // If `<X>` is already a named constructor, then `foo` is guaranteed to be a member. So we only
-      // need to catch cases where `<X>` is of the form `ClassName` or `prefix.ClassName`.
-      auto ast_receiver = ast_dot->receiver();
-      bool is_prefixed = _scope->is_prefixed_identifier(ast_receiver);
-      if (ast_receiver->is_Identifier()  || // Of the form `ClassName`.
-          (is_prefixed && ast_receiver->is_Dot() && ast_receiver->as_Dot()->receiver()->is_Identifier())) { // Of the form `prefix.ClassName`.
-        // TODO(florian): Once this isn't a warning anymore, we should change the error
-        // message for LHS identifiers, complaining that no static 'xyz' was found.
-        // At that point we also need to handle LSP completion here.
-        diagnostics()->report_warning(ast_dot->range(),
-                                      "Deprecated use of static method syntax to call an unnamed constructor. Use (<Class>).<member> instead.");
-      }
-    }
-
     ir::Dot* ir_dot;
     if (ast_dot->name()->is_LspSelection() || named_lsp_selection != null) {
       Symbol lsp_name = named_lsp_selection == null ? Symbol::invalid() : named_lsp_selection->data();
@@ -2717,16 +2725,16 @@ void MethodResolver::_visit_potential_call_dot(ast::Dot* ast_dot,
   }
 }
 
-void MethodResolver::_visit_potential_call_index(ast::Index* ast_index,
+void MethodResolver::_visit_potential_call_index(ast::Node* ast_target,
                                                  CallBuilder& call_builder) {
-  auto receiver = resolve_expression(ast_index->receiver(),
+  auto receiver = resolve_expression(ast_target,
                                      "Can't use the index operator on a block");
   push(call_builder.call_instance(_new ir::Dot(receiver, Symbols::index)));
 }
 
-void MethodResolver::_visit_potential_call_index_slice(ast::IndexSlice* ast_index_slice,
+void MethodResolver::_visit_potential_call_index_slice(ast::Node* ast_target,
                                                        CallBuilder& call_builder) {
-  auto receiver = resolve_expression(ast_index_slice->receiver(),
+  auto receiver = resolve_expression(ast_target,
                                      "Can't use the slice operator on a block");
   push(call_builder.call_instance(_new ir::Dot(receiver, Symbols::index_slice)));
 }
@@ -2851,9 +2859,10 @@ void MethodResolver::_visit_potential_call_super(ast::Node* ast_target,
   }
 }
 
-void MethodResolver::_visit_potential_call(ast::Node* ast_target,
+void MethodResolver::_visit_potential_call(ast::Expression* potential_call,
+                                           ast::Node* ast_target,
                                            List<ast::Expression*> ast_arguments) {
-  auto range = ast_target->range();
+  auto range = potential_call->range();
 
   bool is_constructor_super_call = false;
 
@@ -2968,31 +2977,44 @@ void MethodResolver::_visit_potential_call(ast::Node* ast_target,
     }
   }
 
-  if ((ast_target->is_Identifier() && !is_literal_super(ast_target)) ||
-      _scope->is_prefixed_identifier(ast_target) ||
-      _scope->is_static_identifier(ast_target)) {
-    _visit_potential_call_identifier(ast_target,
-                                     call_builder,
-                                     named_lsp_selection,
-                                     target_name_node,
-                                     target_name);
-  } else if (ast_target->is_Dot() && !is_constructor_super_call) {
-    _visit_potential_call_dot(ast_target->as_Dot(),
-                              call_builder,
-                              named_lsp_selection);
-  } else if (ast_target->is_Index()) {
-    _visit_potential_call_index(ast_target->as_Index(), call_builder);
-  } else if (ast_target->is_IndexSlice()) {
-    _visit_potential_call_index_slice(ast_target->as_IndexSlice(), call_builder);
-  } else if (is_literal_super(ast_target) ||
-             (ast_target->is_Dot() && is_constructor_super_call)) {
-    _visit_potential_call_super(ast_target, call_builder, is_constructor_super_call);
+  if (potential_call->is_Index()) {
+    // The target is the receiver, and the arguments are the parameters that were
+    // inside the brackets.
+    _visit_potential_call_index(ast_target, call_builder);
+  } else if (potential_call->is_IndexSlice()) {
+    // The target is the receiver, and the arguments are the parameters that were
+    // inside the brackets.
+    _visit_potential_call_index_slice(ast_target, call_builder);
   } else {
-    report_error(ast_target, "Can't call result of evaluating expression");
-    ListBuilder<ir::Expression*> all_ir_nodes;
-    all_ir_nodes.add(resolve_error(ast_target));
-    all_ir_nodes.add(call_builder.arguments());
-    push(_new ir::Error(ast_target->range(), all_ir_nodes.build()));
+    ASSERT(potential_call->is_Call() || potential_call->is_Dot() || potential_call->is_Identifier());
+
+    if ((ast_target->is_Identifier() && !is_literal_super(ast_target)) ||
+        _scope->is_prefixed_identifier(ast_target) ||
+        _scope->is_static_identifier(ast_target)) {
+      // 'foo 1 2', or 'prefix.foo 1 2' or 'Klass.resolved 1 2'.
+      _visit_potential_call_identifier(ast_target,
+                                      call_builder,
+                                      named_lsp_selection,
+                                      target_name_node,
+                                      target_name);
+    } else if (ast_target->is_Dot() && !is_constructor_super_call) {
+      // 'x.foo 1 2'.
+      // However, 'x.foo' is not statically resolved.
+      // 'x' could be still be a class.
+      _visit_potential_call_dot(ast_target->as_Dot(),
+                                call_builder,
+                                named_lsp_selection);
+    } else if (is_literal_super(ast_target) ||
+              (ast_target->is_Dot() && is_constructor_super_call)) {
+      // 'super' or 'super.constructor_name'.
+      _visit_potential_call_super(ast_target, call_builder, is_constructor_super_call);
+    } else {
+      report_error(ast_target, "Can't call result of evaluating expression");
+      ListBuilder<ir::Expression*> all_ir_nodes;
+      all_ir_nodes.add(resolve_error(ast_target));
+      all_ir_nodes.add(call_builder.arguments());
+      push(_new ir::Error(ast_target->range(), all_ir_nodes.build()));
+    }
   }
 }
 
@@ -3004,16 +3026,16 @@ void MethodResolver::visit_Call(ast::Call* node) {
   if (node->is_call_primitive()) {
     visit_call_primitive(node);
   } else {
-    _visit_potential_call(node->target(), node->arguments());
+    _visit_potential_call(node, node->target(), node->arguments());
   }
 }
 
 void MethodResolver::visit_Dot(ast::Dot* node) {
-  _visit_potential_call(node);
+  _visit_potential_call(node, node);
 }
 
 void MethodResolver::visit_Index(ast::Index* node) {
-  _visit_potential_call(node, node->arguments());
+  _visit_potential_call(node, node->receiver(), node->arguments());
 }
 
 void MethodResolver::visit_IndexSlice(ast::IndexSlice* node) {
@@ -3036,7 +3058,7 @@ void MethodResolver::visit_IndexSlice(ast::IndexSlice* node) {
     // Change it to a named argument.
     arguments.add(create_named_argument(Symbols::to, node->to()));
   }
-  _visit_potential_call(node, arguments.build());
+  _visit_potential_call(node, node->receiver(), arguments.build());
 }
 
 void MethodResolver::visit_labeled_break_continue(ast::BreakContinue* node) {
@@ -3134,7 +3156,7 @@ void MethodResolver::visit_Identifier(ast::Identifier* node) {
   if (is_literal_this(node)) {
     visit_literal_this(node);
   } else {
-    _visit_potential_call(node);
+    _visit_potential_call(node, node);
   }
 }
 
@@ -3281,6 +3303,9 @@ ir::Expression* MethodResolver::_define(ast::Expression* node,
   if (is_reserved_identifier(ast_name)) {
     report_error(ast_name, "Can't use '%s' as name for a local variable", name.c_str());
   } else {
+    if (is_future_reserved_identifier(name)) {
+      diagnostics()->report_warning(ast_name, "Name '%s' will be reserved in future releases", name.c_str());
+    }
     auto lookup_result = lookup(ast_name);
     auto entry = lookup_result.entry;
     switch (entry.kind()) {
@@ -4022,7 +4047,30 @@ ir::Expression* MethodResolver::_assign_identifier(ast::Binary* node,
   } else {
     ir_value = resolve_expression(ast_right, "Can't use block value in assignment", true);
   }
-  return create_set(ir_value);
+  auto result = create_set(ir_value);
+  if (result->is_AssignmentLocal()) {
+    bool reported_warning = false;
+    auto assig = result->as_AssignmentLocal();
+    auto local = assig->local();
+    auto right = assig->right();
+    if (right->is_ReferenceLocal() && right->as_ReferenceLocal()->target() == local) {
+      if (_method->is_constructor() || _method->is_instance()) {
+        auto fields = _method->holder()->fields();
+        for (int i = 0; i < fields.length(); i++) {
+          auto field_name = fields[i]->name();
+          if (field_name.is_valid() && field_name == local->name()) {
+            diagnostics()->report_warning(node, "Assigning local to itself has no effect. Did you forget 'this.'?");
+            reported_warning = true;
+            break;
+          }
+        }
+      }
+      if (!reported_warning) {
+        diagnostics()->report_warning(node, "Assigning local to itself");
+      }
+    }
+  }
+  return result;
 }
 
 

@@ -19,7 +19,7 @@
 
 #include "../top.h"
 
-#if defined(TOIT_FREERTOS) || defined(TOIT_USE_LWIP)
+#if defined(TOIT_FREERTOS) || defined(TOIT_USE_LWIP) && CONFIG_TOIT_ENABLE_IP
 
 #include <lwip/udp.h>
 #include "lwip/ip_addr.h"
@@ -279,15 +279,13 @@ PRIMITIVE(receive)  {
     ByteArray* address = null;
     if (is_array(capture.output)) {
       // TODO: Support IPv6.
-      Error* error = null;
-      address = capture.process->allocate_byte_array(4, &error);
-      if (address == null) return error;
+      address = capture.process->allocate_byte_array(4);
+      if (address == null) ALLOCATION_FAILED;
     }
 
     pbuf* p = packet->pbuf();
-    Error* error = null;
-    ByteArray* array = capture.process->allocate_byte_array(p->len, &error);
-    if (array == null) return error;
+    ByteArray* array = capture.process->allocate_byte_array(p->len);
+    if (array == null) ALLOCATION_FAILED;
 
     memcpy(ByteArray::Bytes(array).address(), p->payload, p->len);
 
@@ -385,7 +383,7 @@ static Object* get_address_or_error(UDPSocket* socket, Process* process, bool pe
     ip_addr_get_ip4_u32(&socket->upcb()->remote_ip) :
     ip_addr_get_ip4_u32(&socket->upcb()->local_ip);
   char buffer[16];
-  int length = sprintf(buffer, 
+  int length = sprintf(buffer,
 #ifdef CONFIG_IDF_TARGET_ESP32C3
 		       "%lu.%lu.%lu.%lu",
 #else
@@ -437,9 +435,8 @@ PRIMITIVE(set_option) {
           capture.socket->upcb()->so_options |= SOF_BROADCAST;
         } else if (capture.raw == capture.process->program()->false_object()) {
           capture.socket->upcb()->so_options &= ~SOF_BROADCAST;
-        } else {
-          return capture.process->program()->wrong_object_type();
         }
+        return capture.process->program()->wrong_object_type();
 
       default:
         return capture.process->program()->unimplemented();

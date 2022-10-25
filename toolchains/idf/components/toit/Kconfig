@@ -1,0 +1,100 @@
+menu "Toit"
+    config TOIT_WIFI_SSID
+        string "WiFi SSID"
+        default ""
+        depends on TOIT_ENABLE_WIFI
+        help
+            SSID (network name) for the example to connect to.
+
+    config TOIT_WIFI_PASSWORD
+        string "WiFi Password"
+        default ""
+        depends on TOIT_ENABLE_WIFI
+        help
+            WiFi password (WPA or WPA2) for the example to use.
+
+    config TOIT_ENTRY_POINT
+        string "Entry point"
+        default ""
+        help
+            The toit entry point of custom toit program, for example examples/hello.toit.
+
+    config TOIT_ENTRY_POINT_PROJECT_ROOT
+        string "Entry point project root"
+        default ""
+        help
+            Project root of the entry point toit program, if it includes external packages this is needed.
+
+    config TOIT_ENTRY_POINT_ASSETS_FILE
+        string "Entry point assets"
+        default ""
+        help
+            An optional assets file to add to the entry point. The file is assumed to be named with an extension of json
+            and the base name of the file becomes the name of the assets. The asset will be encoded as ubjson.
+            As an example 'config.json' would become the config asset.
+
+    config TOIT_BYTE_DISPLAY
+        bool "Include primitives for byte-oriented (true-color or 256-shade gray) displays"
+        default "y"
+
+    config TOIT_BIT_DISPLAY
+        bool "Include primitives for bit-oriented (2-color, 3-color, 4-shades) displays"
+        default "y"
+
+    menu "Advanced setup"
+        config TOIT_CRYPTO
+            boolean "Enable crypto functions on ESP32"
+            default "y"
+            help
+                This includes certificate and TLS support.
+
+        config TOIT_ENABLE_IP
+            boolean "Enable IP stack on ESP32"
+            default "y"
+            help
+                IP support from the toit binary.
+
+        config TOIT_ENABLE_ETHERNET
+            boolean "Enable Ethernet drivers on ESP32"
+            default "y"
+            depends on TOIT_ENABLE_IP
+            help
+                Ethernet support in the toit binary.
+
+        config TOIT_ENABLE_WIFI
+            boolean "Enable WIFI on ESP32"
+            default "y"
+            depends on TOIT_ENABLE_IP
+            help
+                WIFI support in the Toit binary.
+
+        config TOIT_SPIRAM_HEAP
+            boolean "Enable toit heap in SPIRAM"
+            default "n"
+            depends on SPIRAM_USE_CAPS_ALLOC || SPIRAM_USE_MALLOC
+            help
+                Enables the possibility of allocating Toit heap in the SPIRAM.
+
+        config TOIT_SPIRAM_HEAP_ONLY
+            boolean "Keep toit heap exclusively in SPIRAM"
+            default "n"
+            depends on TOIT_SPIRAM_HEAP
+            help
+                If selected, the Toit heap will exclusively be placed in SPIRAM.
+
+        config TOIT_SYSTEM_SOURCE
+            string "Toit source file for system"
+            default "system/extensions/esp32/boot.toit"
+            help
+                The Toit source file used to compile the system snapshot. The system is responsible for bringing up
+                basic Toit services. The file should be absolute, relative to the project dir or relative to
+                the Toit root dir (resolved in that order).
+
+        config TOIT_SYSTEM_SOURCE_PROJECT_ROOT
+            string "Project root for system source"
+            default "system"
+            help
+                The project root for the system source file.
+
+    endmenu
+endmenu
