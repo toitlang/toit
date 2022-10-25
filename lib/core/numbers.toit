@@ -938,9 +938,9 @@ abstract class int extends num:
   0.is_aligned 4096      // => true
 
   2.is_aligned 1024  // => false
+  3.is_aligned 2     // => false.
 
   2.is_aligned 3     // Error.
-  3.is_aligned 2     // Error.
     ```
   */
   is_aligned n/int -> bool:
