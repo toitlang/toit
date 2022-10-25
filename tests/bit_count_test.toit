@@ -82,3 +82,5 @@ test_parity:
     0x23.parity
   expect_equals 0
     0xff.parity
+  expect_equals 0
+    (-1).parity
