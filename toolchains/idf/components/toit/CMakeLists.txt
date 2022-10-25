@@ -100,7 +100,6 @@ function(toit_postprocess)
         message(WARNING "Missing project root for system toit file: ${CONFIG_TOIT_SYSTEM_SOURCE_PROJECT_ROOT}. Build might fail")
     endif()
 
-
     add_custom_command(
             TARGET firmware
             POST_BUILD
@@ -119,6 +118,8 @@ function(toit_postprocess)
                     "--firmware.elf=${EXECUTABLE_NAME}.elf"
                     "--partitions.bin=partition_table/partition-table.bin"
                     "--partitions.csv=${CMAKE_HOME_DIRECTORY}/partitions.csv"
+                    "--otadata.bin=ota_data_initial.bin"
+                    "--flashing.json=flasher_args.json"
                     "--system.snapshot=${SYSTEM_SNAPSHOT}"
             COMMAND echo envelope: created
     )
@@ -133,8 +134,6 @@ function(toit_postprocess)
                 COMMAND echo envelope: set wifi
         )
     endif()
-
-
 
     if (CONFIG_TOIT_ENTRY_POINT)
         resolve_file(RUN_PROGRAM ${CONFIG_TOIT_ENTRY_POINT} ${TOIT_BASE_DIR} "program toit")
@@ -167,8 +166,6 @@ function(toit_postprocess)
                         "container" "install" ${ENTRY_ASSETS_ARGS} "program" ${CMAKE_BINARY_DIR}/program.snapshot
                 COMMAND echo envelope: program added
         )
-
-
     endif()
 
     add_custom_command(
@@ -176,7 +173,7 @@ function(toit_postprocess)
             POST_BUILD
             COMMAND "${FIRMWARE_BIN}"
                     "--envelope=firmware.envelope"
-                    "extract" "--firmware.bin" "-o" "${EXECUTABLE_NAME}-firmware.bin"
+                    "extract" "--format=binary" "-o" "${EXECUTABLE_NAME}-firmware.bin"
             COMMAND echo envelope: firmware extracted
     )
 

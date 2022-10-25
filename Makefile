@@ -116,12 +116,12 @@ version-file: build/$(HOST)/CMakeCache.txt
 	(cd build/$(HOST) && ninja build_version_file)
 
 .PHONY: esptool
-esptool:
+esptool: check-env
 	if [ "$(shell command -v xtensa-esp32-elf-g++)" = "" ]; then source '$(IDF_PATH)/export.sh'; fi; \
 	    $(MAKE) esptool-no-env
 
 .PHONY: esptool-no-env
-esptool-no-env: check-env
+esptool-no-env:
 	pip install -U 'pyinstaller>=4.8'
 	pyinstaller --onefile --distpath build/$(HOST)/sdk/tools \
 			--workpath build/$(HOST)/esptool \
@@ -199,7 +199,7 @@ esp32:
 
 .PHONY: esp32-no-env
 esp32-no-env: check-env check-esp32-env sdk
-	IDF_TARGET=$(ESP32_CHIP) idf.py -C toolchains/$(ESP32_CHIP) -B build/$(ESP32_CHIP) -p "$(ESP32_PORT)" build
+	cmake -E env IDF_TARGET=$(ESP32_CHIP) IDF_CCACHE_ENABLE=1 idf.py -C toolchains/$(ESP32_CHIP) -B build/$(ESP32_CHIP) -p "$(ESP32_PORT)" build
 
 # ESP32 MENU CONFIG
 .PHONY: menuconfig
@@ -209,7 +209,7 @@ menuconfig:
 
 .PHONY: menuconfig-no-env
 menuconfig-no-env: check-env check-esp32-env
-	IDF_TARGET=$(ESP32_CHIP) idf.py -C toolchains/$(ESP32_CHIP) -B build/$(ESP32_CHIP) -p "$(ESP32_PORT)" menuconfig
+	cmake -E env IDF_TARGET=$(ESP32_CHIP) idf.py -C toolchains/$(ESP32_CHIP) -B build/$(ESP32_CHIP) -p "$(ESP32_PORT)" menuconfig
 
 .PHONY: flash
 flash:
@@ -218,7 +218,7 @@ flash:
 
 .PHONY: flash-no-env
 flash-no-env: esp32-no-env
-	IDF_TARGET=$(ESP32_CHIP) idf.py -C toolchains/$(ESP32_CHIP) -B build/$(ESP32_CHIP) -p "$(ESP32_PORT)" flash monitor
+	cmake -E env IDF_TARGET=$(ESP32_CHIP) idf.py -C toolchains/$(ESP32_CHIP) -B build/$(ESP32_CHIP) -p "$(ESP32_PORT)" flash monitor
 
 # UTILITY
 .PHONY:	clean

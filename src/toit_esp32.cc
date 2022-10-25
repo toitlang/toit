@@ -44,6 +44,7 @@
 #include "heap.h"
 #include "process.h"
 #include "memory.h"
+#include "embedded_data.h"
 #include "os.h"
 #include "program.h"
 #include "flash_registry.h"
@@ -83,8 +84,9 @@ const Program* setup_program(bool supports_ota) {
 #endif
   }
 
-  const uword* table = OS::image_bundled_programs_table();
-  return reinterpret_cast<const Program*>(table[1]);
+  const EmbeddedDataExtension* extension = EmbeddedData::extension();
+  EmbeddedImage boot = extension->image(0);
+  return boot.program;
 }
 
 static void start() {

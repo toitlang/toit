@@ -417,14 +417,8 @@ class Decoder:
   read_four_hex_digits_ -> int:
     hex_value := 0
     4.repeat:
-      hex_digit := bytes_[offset_++]
-      // Lower case the character.
-      if 'A' <= hex_digit <= 'Z': hex_digit -= 'A' - 'a'
-      // Add the digit to the value.
       hex_value <<= 4
-      if '0' <= hex_digit <= '9':      hex_value += hex_digit - '0'
-      else if 'a' <= hex_digit <= 'f': hex_value += hex_digit - 'a' + 10
-      else: throw "BAD \\u ESCAPE IN JSON STRING"
+      hex_value += hex_char_to_value bytes_[offset_++] --on_error=(: throw "BAD \\u ESCAPE IN JSON STRING")
     return hex_value
 
   decode_map_:

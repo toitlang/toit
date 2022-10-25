@@ -71,6 +71,11 @@ static bool is_restricted_pin(int num) {
   // octal flash or octal PSRAM.
   return 26 <= num && num <= 37;
 }
+#elif CONFIG_IDF_TARGET_ESP32S2
+static bool is_restricted_pin(int num) {
+  // Pins 26-32 are used for flash and PSRAM.
+  return 26 <= num && num <= 32;
+}
 #else
 #error Unknown ESP32 target architecture
 

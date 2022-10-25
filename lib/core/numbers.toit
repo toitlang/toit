@@ -708,7 +708,7 @@ abstract class int extends num:
             return int.MIN
         return on_error.call RANGE_ERR_
 
-      value := hex_digit char: on_error.call PARSE_ERR_
+      value := hex_char_to_value char --on_error=(: on_error.call PARSE_ERR_)
       result <<= 4
       result |= value
       continue.generic_parser_ result
@@ -841,7 +841,7 @@ abstract class int extends num:
 
   /**
   Variant of $stringify.
-  Unlike string interpolation with base 8 or 16, negative
+  Unlike string interpolation with base 2, 8, or 16, negative
     numbers are rendered in a straight-forward way with a
     '-' character at the start.
 
