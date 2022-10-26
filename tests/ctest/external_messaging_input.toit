@@ -21,6 +21,17 @@ main:
   test handler (ByteArray 3197: it)
   test handler (ByteArray 31971: it)
 
+  // send 2k buffer to the external process, and receive 100 bytes.
+  benchmark_handler := BenchmarkHandler
+  set_system_message_handler_ TYPE_ALLOC benchmark_handler
+  print "benchmark"
+  for i:=0; i < BENCHMARK_ITERATIONS; i++:
+    process_send_ EXTERNAL_PID TYPE_ALLOC (ByteArray 2000)
+    result := benchmark_handler.receive
+    expect.expect_equals 100 result.size
+
+  expect.expect_equals BENCHMARK_ITERATIONS benchmark_handler.count_
+
 test handler/MessageHandler data/ByteArray:
   copy := data.copy  // Data can be neutered as part of the transfer.
   process_send_ EXTERNAL_PID TYPE data

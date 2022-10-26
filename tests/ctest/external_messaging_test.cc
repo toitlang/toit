@@ -37,6 +37,7 @@ class MessageHandler : public ExternalSystemMessageHandler {
   explicit MessageHandler(VM* vm) : ExternalSystemMessageHandler(vm) { }
   virtual void on_message(int sender, int type, void* data, int length) override;
 
+
  private:
   bool _try_hard = false;
 };
@@ -49,6 +50,7 @@ void MessageHandler::on_message(int sender, int type, void* data, int length) {
     FATAL("unable to send");
   }
 }
+
 
 int run_program(Snapshot snapshot) {
   VM vm;
@@ -64,6 +66,7 @@ int run_program(Snapshot snapshot) {
   Scheduler::ExitState exit = vm.scheduler()->run_boot_program(image.program(), NULL, group_id);
   image.release();
 
+
   switch (exit.reason) {
     case Scheduler::EXIT_DONE:
       return 0;
@@ -77,7 +80,6 @@ int run_program(Snapshot snapshot) {
 int main(int argc, char **argv) {
   Flags::process_args(&argc, argv);
   if (argc != 2) FATAL("wrong number of arguments");
-
   FlashRegistry::set_up();
   OS::set_up();
   ObjectMemory::set_up();
