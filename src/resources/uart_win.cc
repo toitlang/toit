@@ -41,12 +41,12 @@ public:
   HandleResource(ResourceGroup* group, HANDLE handle)
       : Resource(group)
       , _handle(handle) {
-    SecureZeroMemory(&_read, sizeof(OVERLAPPED));
-    _read.hEvent = CreateEvent(NULL,TRUE,FALSE,NULL);
+    SecureZeroMemory(&_overlapped, sizeof(OVERLAPPED));
+    _overlapped.hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
   }
 
   HANDLE handle() { return _handle; }
-  LPOVERLAPPED read() { return &_read; }
+  LPOVERLAPPED overlapped() { return &_overlapped; }
   void close() {
     CloseHandle(_handle);
   }
@@ -60,7 +60,7 @@ private:
   HANDLE _handle;
   bool rts_ = false;
   bool dtr_ = false;
-  OVERLAPPED _read{};
+  OVERLAPPED _overlapped{};
 };
 
 class UARTResourceGroup : public ResourceGroup {
@@ -154,7 +154,6 @@ void UARTMonitor::entry() {
         // There is nothing we can do about it
       }
     }
-
   }
   free(this);
 }
@@ -329,7 +328,9 @@ PRIMITIVE(write) {
 
   if (break_length < 0) OUT_OF_RANGE;
   DWORD written;
-  bool success = WriteFile(handle, tx, to - from, &written, resource->read());
+  // NOTE: We need to provide an overlapped pointer for this call not to fail. We know that we will never
+  // need to use the event, as the entry here is controlled by the write state
+  bool success = WriteFile(handle, tx, to - from, &written, resource->overlapped());
   if (!success && GetLastError() != ERROR_IO_PENDING)
       WINDOWS_ERROR;
 
@@ -352,12 +353,15 @@ PRIMITIVE(read) {
 
   if (comm_stats.cbInQue == 0) return process->program()->null_object();
 
+  // NOTE: We need to provide an overlapped pointer for this call not to fail. We know that we will never
+  // need to use the event, as the entry here is controlled by the write state
   ByteArray* data = process->allocate_byte_array(static_cast<int>(comm_stats.cbInQue), /*force_external*/ true);
   if (data == null) ALLOCATION_FAILED;
 
   DWORD bytes_read;
   ByteArray::Bytes rx(data);
-  bool success = ReadFile(handle, rx.address(), rx.length(), &bytes_read, resource->read());
+
+  bool success = ReadFile(handle, rx.address(), rx.length(), &bytes_read, resource->overlapped());
   if (!success) {
     if (GetLastError() == ERROR_IO_PENDING) return process->program()->null_object();
     WINDOWS_ERROR;
@@ -381,14 +385,14 @@ PRIMITIVE(set_control_flags) {
   } else if (!(flags & CONTROL_FLAG_DTR) && resource->dtr()) {
     if (!EscapeCommFunction(handle, CLRDTR)) return Primitive::os_error(errno, process);
   }
-  resource->set_dtr(flags & CONTROL_FLAG_DTR);
+  resource->set_dtr((flags & CONTROL_FLAG_DTR) != 0);
 
   if ((flags & CONTROL_FLAG_RTS) && !resource->rts()) {
     if (!EscapeCommFunction(handle, SETRTS)) return Primitive::os_error(errno, process);
   } else if (!(flags & CONTROL_FLAG_RTS) && resource->rts()){
     if (!EscapeCommFunction(handle, CLRRTS)) return Primitive::os_error(errno, process);
   }
-  resource->set_rts(flags & CONTROL_FLAG_DTR);
+  resource->set_rts((flags & CONTROL_FLAG_RTS) != 0);
 
   return process->program()->null_object();
 }
