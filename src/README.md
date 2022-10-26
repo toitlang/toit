@@ -17,7 +17,8 @@ handling is not available.
 We also compile with `-fno-rtti`, though this might change at some point.
 
 We do not allow use of the C++ standard library on the device, for reasons of
-code size.  In particular this means no use of `std::string`.
+code size and because out-of-memory is generally not handled.
+In particular this means no use of `std::string`.
 
 We make very sparing use of C++ references.  If used for function arguments
 they should be const references.  Use pointers for passing an object that
@@ -25,13 +26,13 @@ can be modified.
 
 ## Casts
 
-We don't use old-style C casts because they are hard to grep for and have no checking
-or warnings from the compiler.  `utils.h` has some useful casts:
+We don't use old-style C casts because they are hard to search for and have no
+checking or warnings from the compiler.  `utils.h` has some useful casts:
 
-- `unsigned_cast(foo)` will cast an integer type to the unsigned type of the same size.
-- `signed_cast(foo)` will cast an integer type to the signed type of the same size.
+- `unsigned_cast(foo)` will cast a type to the equivalent unsigned type.
+- `signed_cast(foo)` will cast a type to the equivalent signed type.
 - `char_cast(foo)` will cast a pointer to anything char-sized to a `char` pointer.
-- `unvoid_cast<char*>(foo)` will only cast from `void*` to another pointer type.
+- `unvoid_cast<my_type*>(foo)` will only cast from `void*` to another pointer type.
 - `void_cast(foo)` will only cast to `void*` from another pointer type.
 
 If none of these are applicable then replace the C-style cast with `const_cast`,
@@ -113,7 +114,7 @@ int my_function();   // Yes, not indented.
 
 We are not strict about long lines, but consider breaking if you exceed 120
 characters.  Block comments are easy to reformat and are easier to read when
-kept under 80 characters.
+kept under 80 characters in width.
 
 ### Comments.
 
@@ -162,22 +163,27 @@ class Foo {
 };
 ```
 
-Local variables and arguments can be short, but not too short.  Avoid needless abbreviations.
-For example, `address` is usually better than `addr`.  Single-letter loop variables like `i`
-and `j` are OK for very small loops, but it probably makes sense to give a better name for
-loops of 10 lines or more.
+Local variables and arguments can be short, but not too short.  Avoid needless
+abbreviations.  For example, `address` is usually better than `addr`.
+Single-letter loop variables like `i` and `j` are OK if all uses are within 2-3
+lines of each other.  Otherwise it probably makes sense to give a better name
+to the loop variable.
 
 Top-level constants are named with `ALL_CAPS_AND_UNDERSCORES`.
 
 ## Readability
 
-Try to avoid unnamed bool arguments.
+Try to avoid unnamed bool arguments if it's not clear at the call site what
+their meaning is.
 
 ```
-  my_function(42, true);    // What does this mean?
+  my_function(42, true);                 // What does this mean?
 
   bool force = true;
-  my_function(42, force);  // More readable.
+  my_function(42, force);                // More readable.
+
+  bool override;
+  my_other_function(42, override=true);  // Also readable.
 ```
 
 ## Toit-specific
@@ -191,6 +197,9 @@ use standard C++ library features, like std::string.  But don't go mad
 The Toit compiler is designed to run for a short time and restart frequently.
 Therefore it does not normally free memory.  This simplifies C++ a lot.
 Thus there is no need for 'smart pointers'.
+
+It is not neccessary to check the return value of `malloc` and `new` in
+the compiler code.
 
 ### VM/OS
 
@@ -208,7 +217,9 @@ calls to `new` that will crash on memory shortage.  Avoid capturing
 too many variables to avoid this.  Otherwise you will hit an assert.
 
 Always check the return value of `_new` for a null pointer.  In this
-case the constructor has not been called.
+case the constructor has not been called.  If the code only runs on
+non-embedded ports of the VM (Posix, Windows) then you can assume
+that `malloc` and `_new` always succeed.
 
 Within primitives and any code called by primtives you need to be
 able to restart the entire primitive if you encounter an allocation
