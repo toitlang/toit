@@ -75,7 +75,7 @@ parentheses.
   }
   while (true) {        // Good.
   }
-  for (int i = 0; i < size; i++) {  // Correct spacing for `for`.
+  for (int i = 0; i < size; i++) {  // Correct spacing for 'for'.
     foo(i);
   }
   if (x < 0) return;    // Single-line if's are allowed.
