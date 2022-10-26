@@ -26,9 +26,8 @@ PRIMITIVE(base64_encode)  {
   ARGS(Blob, data, bool, url_mode);
   int out_len = Base64Encoder::output_size(data.length(), url_mode);
 
-  Error* error = null;
-  ByteArray* buffer = process->allocate_byte_array(out_len, &error);
-  if (buffer == null) return error;
+  ByteArray* buffer = process->allocate_byte_array(out_len);
+  if (buffer == null) ALLOCATION_FAILED;
   ByteArray::Bytes buffer_bytes(buffer);
 
   word i = 0;
@@ -89,9 +88,8 @@ PRIMITIVE(base64_decode)  {
   }
 
 
-  Error* error = null;
-  ByteArray* result = process->allocate_byte_array(out_len, &error);
-  if (result == null) return error;
+  ByteArray* result = process->allocate_byte_array(out_len);
+  if (result == null) ALLOCATION_FAILED;
 
   uint8* buffer = ByteArray::Bytes(result).address();
   // Iterate over the groups of 3 output characters that have 4 regular input characters.
@@ -140,58 +138,36 @@ PRIMITIVE(base64_decode)  {
   return result;
 }
 
-static const uint8_t hex_map[16] = {
-  '0', '1', '2', '3', '4', '5', '6', '7',
-  '8', '9', 'a', 'b', 'c', 'd', 'e', 'f',
-};
+PRIMITIVE(tison_encode) {
+  ARGS(Object, object);
 
-PRIMITIVE(hex_encode)  {
-  ARGS(Blob, data);
+  unsigned size = 0;
+  unsigned payload_size = 0;
+  { TisonEncoder size_encoder(process);
+    if (!size_encoder.encode(object)) {
+      return size_encoder.create_error_object(process);
+    }
+    size = size_encoder.size();
+    payload_size = size_encoder.payload_size();
+  }
 
-  Error* error = null;
-  String* result = process->allocate_string(data.length() * 2, &error);
-  if (result == null) return error;
-  // Initialize object.
-  String::Bytes bytes(result);
-  for (int i = 0; i < data.length(); i++) {
-    uint8 byte = data.address()[i];
-    bytes._at_put(i * 2 + 0, hex_map[byte >> 4]);
-    bytes._at_put(i * 2 + 1, hex_map[byte & 0xf]);
+  ByteArray* result = process->allocate_byte_array(size);
+  if (!result) ALLOCATION_FAILED;
+  ByteArray::Bytes bytes(result);
+  TisonEncoder encoder(process, bytes.address(), payload_size);
+  if (!encoder.encode(object)) {
+    return encoder.create_error_object(process);
   }
   return result;
 }
 
-static int from_hex(uint8 c) {
-  if (c >= '0' && c <= '9') {
-    return c - '0';
-  } else if (c >= 'A' && c <= 'F') {
-    return c - 'A' + 10;
-  } else if (c >= 'a' && c <= 'f') {
-    return c - 'a' + 10;
-  }
-  return -1;
-}
-
-PRIMITIVE(hex_decode)  {
-  ARGS(Blob, str);  // Normally we expect a string, but any byte-object works.
-
-  if (str.length() % 2 == 1) INVALID_ARGUMENT;
-  int out_len = str.length() / 2;
-
-  Error* error = null;
-  ByteArray* out = process->allocate_byte_array(out_len, &error);
-  if (out == null) return error;
-  ByteArray::Bytes out_bytes(out);
-
-  for (int i = 0; i < out_len; i++) {
-    int h1 = from_hex(str.address()[i * 2 + 0]);
-    if (h1 == -1) INVALID_ARGUMENT;
-    int h2 = from_hex(str.address()[i * 2 + 1]);
-    if (h2 == -1) INVALID_ARGUMENT;
-    out_bytes.at_put(i, h1 << 4 | h2);
-  }
-
-  return out;
+PRIMITIVE(tison_decode) {
+  ARGS(Blob, bytes);
+  TisonDecoder decoder(process, bytes.address(), bytes.length());
+  Object* decoded = decoder.decode();
+  if (decoder.allocation_failed()) ALLOCATION_FAILED;
+  if (decoder.malformed_input()) WRONG_TYPE;
+  return decoded;
 }
 
 }

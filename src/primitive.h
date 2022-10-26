@@ -166,14 +166,16 @@ namespace toit {
   PRIMITIVE(float_floor, 1)                  \
   PRIMITIVE(float_trunc, 1)                  \
   PRIMITIVE(command, 0)                      \
-  PRIMITIVE(args, 0)                         \
-  PRIMITIVE(hatch, 2)                        \
-  PRIMITIVE(hatch_method, 0)                 \
-  PRIMITIVE(hatch_args, 0)                   \
+  PRIMITIVE(main_arguments, 0)               \
+  PRIMITIVE(spawn, 3)                        \
+  PRIMITIVE(spawn_method, 0)                 \
+  PRIMITIVE(spawn_arguments, 0)              \
   PRIMITIVE(get_generic_resource_group, 0)   \
-  PRIMITIVE(signal_kill, 1)                  \
-  PRIMITIVE(current_process_id, 0)           \
+  PRIMITIVE(process_signal_kill, 1)          \
+  PRIMITIVE(process_current_id, 0)           \
   PRIMITIVE(process_send, 3)                 \
+  PRIMITIVE(process_get_priority, 1)         \
+  PRIMITIVE(process_set_priority, 2)         \
   PRIMITIVE(task_has_messages, 0)            \
   PRIMITIVE(task_receive_message, 0)         \
   PRIMITIVE(concat_strings, 1)               \
@@ -186,7 +188,7 @@ namespace toit {
   PRIMITIVE(byte_array_length, 1)            \
   PRIMITIVE(byte_array_at, 2)                \
   PRIMITIVE(byte_array_at_put, 3)            \
-  PRIMITIVE(byte_array_new, 1)               \
+  PRIMITIVE(byte_array_new, 2)               \
   PRIMITIVE(byte_array_new_external, 1)      \
   PRIMITIVE(byte_array_replace, 5)           \
   PRIMITIVE(byte_array_is_valid_string_content, 3) \
@@ -236,8 +238,6 @@ namespace toit {
   PRIMITIVE(dump_heap, 1)                    \
   PRIMITIVE(serial_print_heap_report, 2)     \
   PRIMITIVE(get_env, 1)                      \
-  PRIMITIVE(varint_encode, 3)                \
-  PRIMITIVE(varint_decode, 2)                \
   PRIMITIVE(literal_index, 1)                \
   PRIMITIVE(word_size, 0)                    \
 
@@ -359,9 +359,9 @@ namespace toit {
   PRIMITIVE(touchpad_wakeup_status, 0)       \
   PRIMITIVE(total_deep_sleep_time, 0)        \
   PRIMITIVE(total_run_time, 0)               \
-  PRIMITIVE(image_config, 0)                 \
   PRIMITIVE(get_mac_address, 0)              \
   PRIMITIVE(rtc_user_bytes, 0)               \
+  PRIMITIVE(memory_page_report, 0)           \
 
 #define MODULE_I2C(PRIMITIVE)                \
   PRIMITIVE(init, 3)                         \
@@ -444,15 +444,17 @@ namespace toit {
   PRIMITIVE(siphash_start, 5)                \
   PRIMITIVE(siphash_add, 4)                  \
   PRIMITIVE(siphash_get, 1)                  \
-  PRIMITIVE(aes_cbc_init, 4)                 \
-  PRIMITIVE(aes_cbc_crypt, 5)                \
+  PRIMITIVE(aes_init, 4)                     \
+  PRIMITIVE(aes_cbc_crypt, 3)                \
+  PRIMITIVE(aes_ecb_crypt, 3)                \
   PRIMITIVE(aes_cbc_close, 1)                \
+  PRIMITIVE(aes_ecb_close, 1)                \
 
 #define MODULE_ENCODING(PRIMITIVE)           \
   PRIMITIVE(base64_encode, 2)                \
   PRIMITIVE(base64_decode, 2)                \
-  PRIMITIVE(hex_encode, 1)                   \
-  PRIMITIVE(hex_decode, 1)                   \
+  PRIMITIVE(tison_encode, 1)                 \
+  PRIMITIVE(tison_decode, 1)                 \
 
 #define MODULE_FONT(PRIMITIVE)               \
   PRIMITIVE(get_font, 2)                     \
@@ -479,7 +481,7 @@ namespace toit {
   PRIMITIVE(unregister_monitor_notifier, 2)  \
 
 #define MODULE_SNAPSHOT(PRIMITIVE)           \
-  PRIMITIVE(launch, 3)                       \
+  PRIMITIVE(launch, 4)                       \
 
 #define MODULE_SERIALIZATION(PRIMITIVE)      \
   PRIMITIVE(serialize, 1)                    \
@@ -503,7 +505,7 @@ namespace toit {
 
 #define MODULE_GPIO(PRIMITIVE)               \
   PRIMITIVE(init, 0)                         \
-  PRIMITIVE(use, 2)                          \
+  PRIMITIVE(use, 3)                          \
   PRIMITIVE(unuse, 2)                        \
   PRIMITIVE(config, 6)                       \
   PRIMITIVE(get, 1)                          \
@@ -513,6 +515,7 @@ namespace toit {
 #define MODULE_ADC(PRIMITIVE)               \
   PRIMITIVE(init, 4)                        \
   PRIMITIVE(get, 2)                         \
+  PRIMITIVE(get_raw, 1)                     \
   PRIMITIVE(close, 1)                       \
 
 #define MODULE_DAC(PRIMITIVE)               \
@@ -542,10 +545,12 @@ namespace toit {
 
 #define MODULE_PROGRAMS_REGISTRY(PRIMITIVE)  \
   PRIMITIVE(next_group_id, 0)                \
-  PRIMITIVE(spawn, 3)                        \
+  PRIMITIVE(spawn, 4)                        \
   PRIMITIVE(is_running, 2)                   \
   PRIMITIVE(kill, 2)                         \
   PRIMITIVE(bundled_images, 0)               \
+  PRIMITIVE(assets, 0)                       \
+  PRIMITIVE(config, 0)                       \
 
 #define MODULE_FLASH_REGISTRY(PRIMITIVE)     \
   PRIMITIVE(next, 1)                         \
@@ -635,7 +640,7 @@ namespace toit {
   PRIMITIVE(erase, 1)                        \
 
 #define MODULE_DEBUG(PRIMITIVE)              \
-  PRIMITIVE(object_histogram, 1)             \
+  PRIMITIVE(object_histogram, 2)             \
 
 // ----------------------------------------------------------------------------
 
@@ -912,6 +917,7 @@ namespace toit {
 #define _A_T_BaseMbedTLSSocket(N, name)   MAKE_UNPACKING_MACRO(BaseMbedTLSSocket, N, name)
 #define _A_T_SslSession(N, name)          MAKE_UNPACKING_MACRO(SslSession, N, name)
 #define _A_T_X509Certificate(N, name)     MAKE_UNPACKING_MACRO(X509Certificate, N, name)
+#define _A_T_AesContext(N, name)          MAKE_UNPACKING_MACRO(AesContext, N, name)
 #define _A_T_AesCbcContext(N, name)       MAKE_UNPACKING_MACRO(AesCbcContext, N, name)
 #define _A_T_Sha1(N, name)                MAKE_UNPACKING_MACRO(Sha1, N, name)
 #define _A_T_Siphash(N, name)             MAKE_UNPACKING_MACRO(Siphash, N, name)
@@ -1100,8 +1106,8 @@ class Primitive {
 
   // Use temporary tagging for marking an error.
   static bool is_error(Object* object) { return object->is_marked(); }
-  static HeapObject* mark_as_error(String* string) { return string->mark(); }
-  static String* unmark_from_error(Object* object) { return String::cast(object->unmark()); }
+  static HeapObject* mark_as_error(HeapObject* object) { return object->mark(); }
+  static HeapObject* unmark_from_error(Object* object) { return object->unmark(); }
   static Object* os_error(int error, Process* process);
 
   // Module-specific primitive lookup. May return null if the primitive isn't linked in.

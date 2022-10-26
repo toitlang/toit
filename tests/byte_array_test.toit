@@ -24,6 +24,7 @@ main:
   test_cow_mutable_byte_content
   test_to_string
   test_hash_code
+  test_construction
 
 test_basic:
   2.repeat:
@@ -294,3 +295,10 @@ test_hash_code:
   expect_equals
     ba[1..ba.size - 1].hash_code
     (ba.copy 1 (ba.size - 1)).hash_code
+
+test_construction -> none:
+  ba := ByteArray 5 --filler=42
+  expect_equals #[42, 42, 42, 42, 42] ba
+
+  ba = ByteArray 5
+  expect_equals #[0, 0, 0, 0, 0] ba

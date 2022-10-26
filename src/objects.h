@@ -34,6 +34,12 @@ enum BlobKind {
   STRINGS_ONLY
 };
 
+enum GcType {
+  NEW_SPACE_GC  = 0,
+  FULL_GC       = 1,
+  COMPACTING_GC = 2,
+};
+
 // Type testers.
 INLINE bool is_smi(Object* o);
 INLINE bool is_heap_object(Object* o);
@@ -1224,6 +1230,10 @@ class Instance : public HeapObject {
 
   static const int LIST_ARRAY_INDEX = 0;
   static const int LIST_SIZE_INDEX  = 1;
+
+  static const int LIST_SLICE_LIST_INDEX = 0;
+  static const int LIST_SLICE_FROM_INDEX = 1;
+  static const int LIST_SLICE_TO_INDEX   = 2;
 
   static const int BYTE_ARRAY_COW_BACKING_INDEX    = 0;
   static const int BYTE_ARRAY_COW_IS_MUTABLE_INDEX = 1;

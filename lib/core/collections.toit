@@ -907,9 +907,6 @@ class SmallArray_ extends Array_:
       // argument. We force this to throw by doing the same here.
       block.call null
 
-  stringify -> string:
-    return "Array of size $size"
-
   /// Creates a new array of size $new_length, copying up to $old_length elements from this array.
   resize_for_list_ old_length/int new_length/int -> Array_:
     #primitive.core.array_expand:
@@ -1025,9 +1022,9 @@ interface ByteArray:
   /**
   Creates a new byte array of the given $size.
 
-  All elements are initialized to 0.
+  All elements are initialized to the $filler, which defaults to 0.
   */
-  constructor size/int:
+  constructor size/int --filler/int=0:
     #primitive.core.byte_array_new
 
   /**
@@ -1469,7 +1466,7 @@ class ByteArray_ extends ByteArrayBase_:
 
   All elements are initialized to 0.
   */
-  constructor size/int:
+  constructor size/int --filler/int=0:
     #primitive.core.byte_array_new
 
   constructor.external_ size/int:

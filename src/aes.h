@@ -24,14 +24,38 @@
 
 namespace toit {
 
-class AesCbcContext : public SimpleResource {
+/**
+  Super context class of the AES ciphers.
+  This superclass is used for ECB ciphers, as
+  it uses nothing but the context_ supplied here.
+  Other ciphers in the AES family also uses the
+  context, but may need additional data to
+  function. The other AES cipher context
+  classes should therefore inherit from this one.
+*/
+class AesContext : public SimpleResource {
  public:
-  TAG(AesCbcContext);
-  AesCbcContext(SimpleResourceGroup* group, const uint8* key, const uint8* iv, bool encrypt);
-  ~AesCbcContext();
+  TAG(AesContext);
+  AesContext(SimpleResourceGroup* group, const Blob* key, bool encrypt);
+  virtual ~AesContext();
+
+  static constexpr uint8 AES_BLOCK_SIZE = 16;
 
   mbedtls_aes_context context_;
-  uint8 iv_[16];
+};
+
+/*
+  AES-CBC context class. 
+  In addition to the base AES context,
+  this cipher type also needs an initialization 
+  vector.
+*/
+class AesCbcContext : public AesContext {
+ public:
+  TAG(AesCbcContext);
+  AesCbcContext(SimpleResourceGroup* group, const Blob* key, const uint8* iv, bool encrypt);
+  
+  uint8 iv_[AES_BLOCK_SIZE];
 };
 
 }
@@ -44,6 +68,7 @@ extern "C" {
 #define mbedtls_aes_setkey_enc esp_aes_setkey
 #define mbedtls_aes_setkey_dec esp_aes_setkey
 #define mbedtls_aes_crypt_cbc esp_aes_crypt_cbc
+#define mbedtls_aes_crypt_ecb esp_aes_crypt_ecb
 
 }
 #endif

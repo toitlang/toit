@@ -109,10 +109,17 @@ class Port implements reader.Reader:
       --data_bits/int=8
       --stop_bits/int=STOP_BITS_1
       --parity/int=PARITY_DISABLED:
-    group := resource_group_
-    should_ensure_write_state_ = true
-    uart_ = uart_create_path_ group device baud_rate data_bits stop_bits parity
-    state_ = ResourceState_ group uart_
+      return HostPort device --baud_rate=baud_rate --data_bits=data_bits --stop_bits=stop_bits --parity=parity
+
+  constructor.host_port_ device/string
+       --baud_rate/int
+       --data_bits/int=8
+       --stop_bits/int=STOP_BITS_1
+       --parity/int=PARITY_DISABLED:
+     group := resource_group_
+     should_ensure_write_state_ = true
+     uart_ = uart_create_path_ group device baud_rate data_bits stop_bits parity
+     state_ = ResourceState_ group uart_
 
   /**
   Changes the baud rate.
@@ -220,20 +227,19 @@ class Port implements reader.Reader:
       sleep --ms=1
 
 /**
-Extends the functionality of the UART Port on platforms that support configuratble RS232 devices. It allows setting
-and reading control lines.
+Extends the functionality of the UART Port on platforms that support configurable RS232 devices. It allows setting
+  and reading control lines.
 */
-
-class ConfigurableDevicePort extends Port:
+class HostPort extends Port:
   /**
-  See $super.
+    See super class constructor.
   */
   constructor device/string
       --baud_rate/int
       --data_bits/int=8
       --stop_bits/int=Port.STOP_BITS_1
       --parity/int=Port.PARITY_DISABLED:
-    super device --baud_rate=baud_rate --data_bits=data_bits --stop_bits=stop_bits --parity=parity
+    super.host_port_ device --baud_rate=baud_rate --data_bits=data_bits --stop_bits=stop_bits --parity=parity
 
   static CONTROL_FLAG_LE  ::= 1 << 0            /* line enable */
   static CONTROL_FLAG_DTR ::= 1 << 1            /* data terminal ready */

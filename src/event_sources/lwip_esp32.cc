@@ -62,7 +62,11 @@ bool needs_gc = false;
 
 #if defined(TOIT_FREERTOS) || defined(TOIT_USE_LWIP)
 
-String* lwip_strerror(Process* process, err_t err, Error** error) {
+static bool is_toit_error(int err) {
+  return FIRST_TOIT_ERROR >= err && err >= LAST_TOIT_ERROR;
+}
+
+String* lwip_strerror(Process* process, err_t err) {
   // Normal codes returned by LWIP, but LWIP does not have string versions
   // unless it is compiled with debug options.
   static const char* error_names[] = {
@@ -94,17 +98,16 @@ String* lwip_strerror(Process* process, err_t err, Error** error) {
 
   if (err <= 0 && static_cast<unsigned>(-err) < sizeof(error_names) / sizeof(error_names[0])) {
     str = error_names[-err];
-  } else if (FIRST_TOIT_ERROR >= err && err >= LAST_TOIT_ERROR) {
+  } else if (is_toit_error(err)) {
     str = custom_strerr[err - FIRST_TOIT_ERROR];
   }
-  return process->allocate_string(str, error);
+  return process->allocate_string(str);
 }
 
 Object* lwip_error(Process* process, err_t err) {
   if (err == ERR_MEM) MALLOC_FAILED;
-  Error* error = null;
-  String* str = lwip_strerror(process, err, &error);
-  if (str == null) return error;
+  String* str = lwip_strerror(process, err);
+  if (str == null) ALLOCATION_FAILED;
   return Primitive::mark_as_error(str);
 }
 

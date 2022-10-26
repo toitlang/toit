@@ -3,9 +3,9 @@
 // found in the lib/LICENSE file.
 
 // System message types.
-SYSTEM_TERMINATED_     ::= 0
-SYSTEM_SPAWNED_        ::= 1
-SYSTEM_MIRROR_MESSAGE_ ::= 2  // Used for sending stack traces and profile information.
+SYSTEM_TERMINATED_ ::= 0
+SYSTEM_SPAWNED_    ::= 1
+SYSTEM_TRACE_      ::= 2  // Stack traces, histograms, and profiling information.
 
 // System message types for service RPCs.
 SYSTEM_RPC_REQUEST_         ::= 3
@@ -15,28 +15,18 @@ SYSTEM_RPC_NOTIFY_          ::= 6
 SYSTEM_RPC_NOTIFY_RESOURCE_ ::= 7
 
 /**
-Sends the $message to the system with the $type.
-It must be possible to encode the $message with the built-in
-primitive message encoder.
-
-Returns a status code:
-* 0: Message OK
-* 1: No such receiver
-*/
-system_send_ type/int message:
-  return process_send_ -1 type message
-
-/**
 Sends the $message with $type to the process identified by $pid.
 It must be possible to encode the $message with the built-in
-primitive message encoder.
-
-Returns a status code:
-- 0: Message OK
-- 1: No such receiver
+  primitive message encoder.
+May throw "NESTING_TOO_DEEP" for deep or cyclic data structures.
+May throw a serialization failure.
+May throw "MESSAGE_NO_SUCH_RECEIVER" if the pid is invalid.
 */
-process_send_ pid/int type/int message:
-  #primitive.core.process_send
+process_send_ pid/int type/int message -> none:
+  #primitive.core.process_send:
+    if it is List and it.size != 0 and it[0] is int:
+      serialization_failure_ it[0]
+    throw it
 
 /** Registered system message handlers for this process. */
 system_message_handlers_ ::= {:}

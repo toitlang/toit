@@ -16,9 +16,12 @@
 import net
 import monitor
 import log
-import esp32
 import device
 import net.wifi
+
+import encoding.tison
+import system.assets
+import system.firmware
 
 import system.api.wifi show WifiService
 import system.api.network show NetworkService
@@ -30,7 +33,7 @@ import ..shared.network_base
 class WifiServiceDefinition extends NetworkServiceDefinitionBase:
   static WIFI_CONFIG_STORE_KEY ::= "system/wifi"
 
-  state_/NetworkState? := null
+  state_/NetworkState ::= NetworkState
   store_/device.FlashStore ::= device.FlashStore
 
   constructor:
@@ -55,14 +58,19 @@ class WifiServiceDefinition extends NetworkServiceDefinitionBase:
     if not effective:
       catch --trace: effective = store_.get WIFI_CONFIG_STORE_KEY
       if not effective:
-        image := esp32.image_config or {:}
-        effective = image.get "wifi" --if_absent=: {:}
+        effective = firmware.config["wifi"]
+      if not effective:
+        effective = {:}
+        // If we move the WiFi service out of the system process,
+        // the asset might simply be known as "config". For now,
+        // it co-exists with other system assets.
+        assets.decode.get "wifi" --if_present=: | encoded |
+          catch --trace: effective = tison.decode encoded
 
     ssid/string? := effective.get wifi.CONFIG_SSID
     if not ssid or ssid.is_empty: throw "wifi ssid not provided"
     password/string := effective.get wifi.CONFIG_PASSWORD --if_absent=: ""
 
-    if not state_: state_ = NetworkState
     module ::= (state_.up: WifiModule.sta this ssid password) as WifiModule
     if module.ap:
       throw "wifi already established in AP mode"
@@ -91,7 +99,6 @@ class WifiServiceDefinition extends NetworkServiceDefinitionBase:
       throw "wifi channel must be between 1 and 13"
     broadcast/bool := config.get wifi.CONFIG_BROADCAST --if_absent=: true
 
-    if not state_: state_ = NetworkState
     module ::= (state_.up: WifiModule.ap this ssid password broadcast channel) as WifiModule
     if not module.ap:
       throw "wifi already connected in STA mode"
@@ -114,7 +121,6 @@ class WifiServiceDefinition extends NetworkServiceDefinitionBase:
 
   on_module_closed module/WifiModule -> none:
     resources_do: it.notify_ NetworkService.NOTIFY_CLOSED
-    state_ = null
 
 class WifiModule implements NetworkModule:
   static WIFI_CONNECTED    ::= 1 << 0

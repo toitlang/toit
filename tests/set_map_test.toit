@@ -565,6 +565,10 @@ class Stringlike:
     return true
 
 main:
+  stats := process_stats
+  initial_gcs := stats[STATS_INDEX_FULL_GC_COUNT]
+  initial_compacts := stats[STATS_INDEX_FULL_COMPACTING_GC_COUNT]
+
   test_map
   test_set
   test_remove
@@ -573,3 +577,10 @@ main:
   test_set_find {"one", "two", "three", "four", "five"}
   // 2650 has the same hash code as foo.
   test_set_find {"one", "two", "three", "four", "five", "2650"}
+
+  stats = process_stats
+  final_gcs := stats[STATS_INDEX_FULL_GC_COUNT]
+  gcs := final_gcs - initial_gcs
+  final_compacts := stats[STATS_INDEX_FULL_COMPACTING_GC_COUNT]
+  print "Performed $(gcs) full GC$(gcs == 1 ? "" : "s"), $(final_compacts - initial_compacts) of them compacting"
+  expect 0 <= initial_gcs <= final_gcs

@@ -43,8 +43,8 @@ bool FontBlock::verify(const uint8* data, uint32 length, const char* name) {
   if (Utils::read_unaligned_uint32(data + 4) != length) return false;
   if (data[length - 1] != 0xff) return false;
   uint32 offset = 40;
-  uint32 from = -1;
-  uint32 to = -1;
+  int32 from = -1;
+  int32 to = -1;
   while (true) {
     if (offset >= length) return false;
     int key = (signed char)data[offset];

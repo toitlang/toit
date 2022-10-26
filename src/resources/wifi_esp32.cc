@@ -33,7 +33,7 @@
 #include "../event_sources/system_esp32.h"
 
 namespace toit {
-
+#if defined(CONFIG_TOIT_ENABLE_WIFI)
 enum {
   WIFI_CONNECTED    = 1 << 0,
   WIFI_IP_ASSIGNED  = 1 << 1,
@@ -69,7 +69,7 @@ class WifiResourceGroup : public ResourceGroup {
     // Configure the WiFi to _start_ the channel scan from the last connected channel.
     // If there has been no previous connection, then the channel is 0 which causes a normal scan.
     uint8 channel = RtcMemory::wifi_channel();
-    if (!(0 <= channel && channel <= 13)) {
+    if (channel > 13) {
       channel = 0;
       RtcMemory::set_wifi_channel(0);
     }
@@ -459,7 +459,7 @@ PRIMITIVE(get_rssi) {
   if (!group->rssi(&rssi)) return process->program()->null_object();
   return Smi::from(rssi);
 }
-
+#endif // CONFIG_TOIT_ENABLE_WIFI
 } // namespace toit
 
 #endif // TOIT_FREERTOS

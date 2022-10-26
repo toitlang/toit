@@ -676,3 +676,4 @@ coming back to finish his story.
 
 main:
   expect_equals 33488 LARGE.size
+  expect_not_equals 0 LARGE.hash_code

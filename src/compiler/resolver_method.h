@@ -201,6 +201,9 @@ class MethodResolver : public ast::Visitor {
   bool is_reserved_identifier(Symbol symbol) {
     return Symbols::is_reserved(symbol);
   }
+  bool is_future_reserved_identifier(Symbol symbol) {
+    return Symbols::is_future_reserved(symbol);
+  }
   bool is_sdk_protected_identifier(Symbol symbol);
 
   void check_sdk_protection(Symbol name,

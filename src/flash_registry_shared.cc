@@ -14,12 +14,8 @@
 // directory of this repository.
 
 #include "top.h"
-#include "os.h"
+#include "embedded_data.h"
 #include "flash_registry.h"
-
-#ifdef TOIT_FREERTOS
-extern "C" uword toit_image_table;
-#endif
 
 namespace toit {
 
@@ -33,7 +29,7 @@ int FlashRegistry::find_next(int offset, ReservationList::Iterator* it) {
   }
   // If we are at an allocation, we return the address immediately after the allocation.
   const FlashAllocation* probe = reinterpret_cast<const FlashAllocation*>(allocations_memory() + offset);
-  if (probe->is_valid(offset, OS::image_uuid())) {
+  if (probe->is_valid(offset, EmbeddedData::uuid())) {
     return offset + probe->size();
   }
 
@@ -41,7 +37,7 @@ int FlashRegistry::find_next(int offset, ReservationList::Iterator* it) {
   for (int i = offset + FLASH_PAGE_SIZE; i < allocations_size(); i += FLASH_PAGE_SIZE) {
     if ((*it) != ReservationList::Iterator(null) && (*it)->left() == i) return i;
     const FlashAllocation* probe = reinterpret_cast<const FlashAllocation*>(allocations_memory() + i);
-    if (probe->is_valid(i, OS::image_uuid())) return i;
+    if (probe->is_valid(i, EmbeddedData::uuid())) return i;
   }
   return allocations_size();
 }
@@ -50,7 +46,7 @@ const FlashAllocation* FlashRegistry::at(int offset) {
   ASSERT(is_allocations_set_up());
   ASSERT(0 <= offset && offset < allocations_size());
   const FlashAllocation* probe = reinterpret_cast<const FlashAllocation*>(memory(offset, 0));
-  return (probe->is_valid(offset, OS::image_uuid())) ? probe : null;
+  return (probe->is_valid(offset, EmbeddedData::uuid())) ? probe : null;
 }
 
 bool FlashRegistry::pad_and_write(const void* chunk, int offset, int size) {
@@ -77,9 +73,10 @@ void* FlashRegistry::memory(int offset, int size) {
   }
 
 #ifdef TOIT_FREERTOS
-  const uword* table = &toit_image_table;
-  uword diff = static_cast<uword>(offset - 1);
-  return reinterpret_cast<void*>(reinterpret_cast<uword>(table) + diff);
+  const EmbeddedDataExtension* extension = EmbeddedData::extension();
+  const Program* program = extension->program(offset - 1);
+  const void* memory = program;
+  return const_cast<void*>(memory);
 #else
   return null;
 #endif

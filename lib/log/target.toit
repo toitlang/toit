@@ -3,7 +3,7 @@
 // found in the lib/LICENSE file.
 
 import bytes
-import system.api.logging show LoggingService LoggingServiceClient
+import system.api.log show LogService LogServiceClient
 
 import .level
 
@@ -15,16 +15,16 @@ class DefaultTarget implements Target:
     service_.log level message names keys values
 
 /**
-Logging service used by $DefaultTarget.
+Log service used by $DefaultTarget.
 */
-service_/LoggingService ::= (LoggingServiceClient --no-open).open or
-    StandardLoggingService_
+service_/LogService ::= (LogServiceClient --no-open).open or
+    StandardLogService_
 
 /**
-Standard logging service used when the system logging service cannot
+Standard log service used when the system log service cannot
   be resolved.
 */
-class StandardLoggingService_ implements LoggingService:
+class StandardLogService_ implements LogService:
   buffer_/bytes.Buffer ::= bytes.Buffer.with_initial_size 64
 
   log level/int message/string names/List? keys/List? values/List? -> none:
@@ -49,5 +49,10 @@ class StandardLoggingService_ implements LoggingService:
         buffer.write values[it]
       buffer.write "}"
 
-    print buffer.to_string
+    // Printing the constructed message may block, so we have to
+    // be careful and clear the buffer before doing so. Otherwise,
+    // another task might start using the non-empty buffer and
+    // interleaving the output in strange ways.
+    constructed ::= buffer.to_string
     buffer.clear
+    print constructed

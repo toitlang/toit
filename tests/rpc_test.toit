@@ -25,7 +25,7 @@ class TestBroker extends RpcBroker:
     cancel_requests pid
 
 main:
-  myself := current_process_
+  myself := Process.current.id
   broker := TestBroker
   broker.install
 
@@ -62,6 +62,7 @@ test_simple myself/int -> none:
   test myself true
   test myself false
   test myself "fisk"
+  test myself 0xb00ffeed
 
   // Test simple lists.
   test myself []
@@ -70,6 +71,7 @@ test_simple myself/int -> none:
   test myself [1, 2]
   test myself ["hest"]
   test myself [ByteArray 10: it]
+  test myself [0, 1, 2, 0xb00ffeed, 3, 4]
 
   // Test copy-on-write byte arrays.
   test myself #[1, 2, 3, 4]
@@ -159,13 +161,13 @@ test_small_byte_arrays myself/int -> none:
 
 test_problematic myself/int -> none:
   // Check for unhandled types of data.
-  test_illegal myself [MyClass]
-  test_illegal myself [MySerializable 4]
+  test_serialization_failed myself [MyClass]
+  test_serialization_failed myself [MySerializable 4]
 
   // Check for cyclic data structure.
   cyclic := []
   cyclic.add cyclic
-  test_illegal myself cyclic
+  test_cyclic myself cyclic
 
 test_performance myself/int -> none:
   iterations := 100_000
@@ -554,8 +556,11 @@ test myself/int arguments/any:
   else:
     expect.expect_equals expected actual
 
-test_illegal myself/int arguments/any:
-  expect.expect_throw "WRONG_OBJECT_TYPE": rpc.invoke myself PROCEDURE_ECHO arguments
+test_cyclic myself/int arguments/any:
+  expect.expect_throw "NESTING_TOO_DEEP": rpc.invoke myself PROCEDURE_ECHO arguments
+
+test_serialization_failed myself/int arguments/any:
+  expect.expect_throw "SERIALIZATION_FAILED": rpc.invoke myself PROCEDURE_ECHO arguments
 
 test_chain myself/int arguments/any -> List:
   1024.repeat: arguments = rpc.invoke myself PROCEDURE_ECHO arguments

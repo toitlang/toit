@@ -6,8 +6,9 @@
 
 #include <stdio.h>
 
-#include "../../utils.h"
+#include "../../heap_report.h"
 #include "../../objects.h"
+#include "../../utils.h"
 
 #include "gc_metadata.h"
 
@@ -27,6 +28,19 @@ void GcMetadata::set_up_singleton() {
   uword range_address = reinterpret_cast<uword>(range.address);
   lowest_address_ = Utils::round_down(range_address, TOIT_PAGE_SIZE);
   uword size = Utils::round_up(range.size + range_address - lowest_address_, TOIT_PAGE_SIZE);
+#ifdef TOIT_FREERTOS
+  // If we have very limited memory then we restrict the Toit heap
+  // to the high half, which reduces the metadata allocation from
+  // 24k to 12k.
+  const uword TWELVE_K_METADATA_LIMIT = 148 * KB;
+  const uword PLENTY_OF_MEMORY = 308 * KB;
+  if (!OS::use_spiram_for_metadata() && !OS::use_spiram_for_heap() &&
+      TWELVE_K_METADATA_LIMIT < size && size < PLENTY_OF_MEMORY) {
+    uword adjust = size - TWELVE_K_METADATA_LIMIT;
+    lowest_address_ += adjust;
+    size -= adjust;
+  }
+#endif
   heap_extent_ = size;
   heap_start_munged_ = (lowest_address_ >> 1) |
                        (static_cast<uword>(1) << (8 * sizeof(uword) - 1));
@@ -61,7 +75,10 @@ void GcMetadata::set_up_singleton() {
   // We create all the metadata with just one allocation.  Otherwise we will
   // lose memory when the malloc rounds a series of big allocations up to 4k
   // page boundaries.
-  metadata_ = reinterpret_cast<uint8*>(OS::grab_virtual_memory(null, metadata_size_));
+  {
+    HeapTagScope scope(ITERATE_CUSTOM_TAGS + TOIT_HEAP_MALLOC_TAG);
+    metadata_ = reinterpret_cast<uint8*>(OS::grab_virtual_memory(null, metadata_size_));
+  }
 
   if (metadata_ == null) {
     printf("[toit] ERROR: failed to allocate GC metadata\n");
@@ -194,19 +211,14 @@ restart:
     dest = dest.next_chunk();
     int overhang =
         end_of_last_source_object_moved - end_of_last_src_line_that_fits;
-    overhang >>= WORD_SHIFT;
+    // We are starting a new destination chunk, but the src is pointing at
+    // the start of a line that may start with the tail end of an object that
+    // was moved to a different destination chunk. In order for the destination
+    // calculation to work the dest address actually needs to point before the
+    // start of the chunk, to compensate for the count of live bits that apply
+    // to a different destination chunk.
     if (overhang > 0) {
-      // We are starting a new destination chunk, but the src is pointing at
-      // the start of a line that may start with the tail end of an object that
-      // was moved to a different destination chunk. This confuses the
-      // destination calculation, and it turns out that the easiest way to
-      // handle this is to zap the bits associated with the tail of the already
-      // moved object. This can have the effect of making a black object look
-      // grey, but we are done marking so that would only affect asserts.
-      uint32* overhang_bits =
-          mark_bits_for(end_of_last_source_object_moved - WORD_SIZE);
-      ASSERT((*overhang_bits & 1) != 0);
-      *overhang_bits &= ~((1U << overhang) - 1);
+      dest.address -= overhang;
     }
     src_start = src;
   }

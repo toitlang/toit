@@ -3,6 +3,7 @@
 // found in the lib/LICENSE file.
 
 import binary show LITTLE_ENDIAN
+import system.trace show send_trace_message
 
 /**
 Contains various utility functions.
@@ -273,13 +274,17 @@ STATS_INDEX_PROCESS_ID                     ::= 6
 STATS_INDEX_SYSTEM_FREE_MEMORY             ::= 7
 /// Index for $process_stats.
 STATS_INDEX_SYSTEM_LARGEST_FREE            ::= 8
+/// Index for $process_stats.
+STATS_INDEX_FULL_GC_COUNT                  ::= 9
+/// Index for $process_stats.
+STATS_INDEX_FULL_COMPACTING_GC_COUNT       ::= 10
 // The size the list needs to have to contain all these stats.  Must be last.
-STATS_LIST_SIZE_                           ::= 9
+STATS_LIST_SIZE_                           ::= 11
 
 /**
 Returns an array with stats for the current process.
 The stats, listed by index in the array, are:
-0. GC count for the process
+0. New-space (small collection) GC count for the process
 1. Allocated memory on the Toit heap of the process
 2. Reserved memory on the Toit heap of the process
 3. Process message count
@@ -288,6 +293,8 @@ The stats, listed by index in the array, are:
 6. Process ID
 7. Free memory in the system
 8. Largest free area in the system
+9. Full GC count for the process (including compacting GCs)
+10. Full compacting GC count for the process
 
 The "bytes allocated in the heap" tracks the total number of allocations, but
   doesn't deduct the sizes of objects that die. It is a way to follow the
@@ -396,8 +403,7 @@ class Profiler:
   */
   static report title/string --cutoff/int=10 -> none:
     encoded_profile := encode title cutoff
-    system_send_ SYSTEM_MIRROR_MESSAGE_ encoded_profile
-    process_messages_
+    send_trace_message encoded_profile
 
   /**
   Encodes the result of the profiler with the $title.
@@ -434,25 +440,33 @@ literal_index_ o -> int?:
 word_size_ -> int:
   #primitive.core.word_size
 
+/// Deprecated.
+hex_digit char/int [error_block] -> int:
+  return hex_char_to_value char --on_error=error_block
+
+/// Deprecated.
+hex_digit char/int -> int:
+  return hex_char_to_value char --on_error=(: throw "INVALID_ARGUMENT")
+
 /**
 Converts a hex digit character in the ranges
   '0'-'9', 'a'-'f', or 'A'-'F'.
 Returns the value between 0 and 15.
 Calls the block on invalid input and returns its return value if any.
 */
-hex_digit char/int [error_block] -> int:
+hex_char_to_value char/int [--on_error] -> int:
   if '0' <= char <= '9': return char - '0'
   if 'a' <= char <= 'f': return 10 + char - 'a'
   if 'A' <= char <= 'F': return 10 + char - 'A'
-  return error_block.call
+  return on_error.call
 
 /**
 Converts a hex digit character in the ranges
   '0'-'9', 'a'-'f', or 'A'-'F'.
 Returns the value between 0 and 15.
 */
-hex_digit char/int -> int:
-  return hex_digit char: throw "INVALID_ARGUMENT"
+hex_char_to_value char/int -> int:
+  return hex_char_to_value char --on_error=(: throw "INVALID_ARGUMENT")
 
 /**
 Converts a number between 0 and 15 to a lower case
@@ -475,21 +489,9 @@ Produces a histogram of object types and their memory
   the console.
 */
 print_objects marker/string="" gc/bool=true:
-  if gc:
-    before := gc_count
-    while gc_count == before: RecognizableFiller_
-  encoded_histogram := object_histogram_ marker
-  system_send_ SYSTEM_MIRROR_MESSAGE_ encoded_histogram
-  process_messages_
+  full_gcs := (process_stats)[STATS_INDEX_FULL_GC_COUNT]
+  encoded_histogram := object_histogram_ marker full_gcs
+  send_trace_message encoded_histogram
 
-class RecognizableFiller_:
-  a/int := 0
-  b/int := 0
-  c/int := 0
-  d/int := 0
-  e/int := 0
-  f/int := 0
-  g/int := 0
-
-object_histogram_ marker/string -> ByteArray:
+object_histogram_ marker/string full_gcs/int -> ByteArray:
   #primitive.debug.object_histogram

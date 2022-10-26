@@ -227,16 +227,35 @@ class SerialFragmentationDumper : public HeapFragmentationDumper {
 };
 
 void dump_heap_fragmentation(output_char_t* output_char_fn) {
-  const char* p = "toit serial decode ";
+  const char* p = "jag decode ";
   while (*p) output_char_fn(*p++);
 
   SerialFragmentationDumper dumper(output_char_fn);
 
-  int flags = MALLOC_ITERATE_ALL_ALLOCATIONS | MALLOC_ITERATE_UNALLOCATED | MALLOC_ITERATE_UNLOCKED;
-  heap_caps_iterate_tagged_memory_areas(&dumper, null, HeapFragmentationDumper::log_allocation, flags);
+  int flags = MALLOC_ITERATE_ALL_ALLOCATIONS | MALLOC_ITERATE_UNALLOCATED;
+  int caps = OS::toit_heap_caps_flags_for_heap();
+  heap_caps_iterate_tagged_memory_areas(&dumper, null, HeapFragmentationDumper::log_allocation, flags, caps);
   if (!dumper.has_overflow()) {
     dumper.write_end();  // Also writes length field at start.
   }
+}
+
+int compute_allocation_type(uword tag) {
+  if (tag == 0) {
+    tag = NULL_MALLOC_TAG;
+  } else if (tag == 'W') {
+    tag = WIFI_MALLOC_TAG;
+  } else if (tag == ITERATE_TAG_FREE) {
+    tag = FREE_MALLOC_TAG;
+  } else if (tag == ITERATE_TAG_HEAP_OVERHEAD) {
+    tag = HEAP_OVERHEAD_MALLOC_TAG;
+  } else {
+    tag -= ITERATE_CUSTOM_TAGS;
+    if (tag >= NUMBER_OF_MALLOC_TAGS) {
+      tag = UNKNOWN_MALLOC_TAG;
+    }
+  }
+  return tag;
 }
 
 #endif

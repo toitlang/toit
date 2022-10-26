@@ -16,57 +16,78 @@
 // directory of this repository.
 
 import encoding.base64 as base64
+import cli
+import host.file
 import host.file
 import host.pipe
 import .snapshot
 import .mirror as mirror
 
-handle_system_message encoded_system_message snapshot_content:
-  program := (SnapshotBundle snapshot_content).decode
+handle_system_message encoded_system_message snapshot_content -> none
+    --force_pretty/bool=false
+    --force_plain/bool=false
+    --filename/string?=null
+    --uuid/string?=null:
+  if force_pretty and force_plain: throw "Can't force both pretty and plain formats at once"
+  program := null
+  if snapshot_content:
+    bundle := SnapshotBundle snapshot_content
+    if bundle.uuid and uuid and uuid != bundle.uuid.stringify:
+      pipe.print_to_stdout "***********************************************************"
+      source := ?
+      if filename:
+        source = "file '$filename'"
+      else:
+        source = "snapshot bundle"
+      pipe.print_to_stdout "** WARNING: the $source contains an unexpected snapshot, $bundle.uuid!"
+      pipe.print_to_stdout "***********************************************************"
+    program = bundle.decode
   m := mirror.decode encoded_system_message program:
     pipe.print_to_stdout it
     return
-  if pipe.stdout.is_a_terminal:
+  if (pipe.stdout.is_a_terminal or force_pretty) and not force_plain:
     pipe.print_to_stdout m.terminal_stringify
   else:
     pipe.print_to_stdout m.stringify
 
-usage prog_name:
-  pipe.print_to_stderr """
-    Usage:
-      $prog_name <snapshot>
-      $prog_name <snapshot> <system message or heap_dump file>
-      $prog_name <snapshot> -b <base64-encoded-ubjson>
-      # Eg snapshot file can be toit.run.snapshot
-
-    If no system-message file is given, the stack trace is read from stdin."""
-  exit 1
-
 main args:
-  prog_name := "system_message"
-  if not 1 <= args.size <= 3: usage prog_name
-  snapshot := args[0]
-  if not file.is_file snapshot:
-    pipe.print_to_stderr "No such snapshot file: $snapshot"
-    usage prog_name
-  snapshot_content := file.read_content snapshot
-  if not SnapshotBundle.is_bundle_content snapshot_content:
-    pipe.print_to_stderr "Not a snapshot file: $snapshot"
-    usage prog_name
-  encoded_system_message := null
-  if args.size == 3:
-    if args[1] != "-b" or args[2].contains ".": usage prog_name
-    encoded_system_message = base64.decode args[2]
-  else if args.size == 2:
-    if not file.is_file args[1]:
-      pipe.print_to_stderr "No such ubjson file: $args[1]"
-      usage prog_name
-    encoded_system_message = file.read_content args[1]
-  else:
-    p := pipe.from "cat"
-    encoded_system_message = ByteArray 0
-    while byte_array := p.read: encoded_system_message += byte_array
+  command := null
+  command = cli.Command "root"
+      --short_help="Decodes system messages from devices"
+      --long_help="""
+        Decodes system messages like stack traces, profile runs, etc.
+          from the devices.  This utility is automatically called
+          by `jag decode` to provide nice output from the encoded
+          messages a device prints on the serial port.
+        """
+      --options=[
+        cli.OptionString "snapshot" --short_name="s"
+            --short_help="The snapshot file of the program that produced the message",
+        cli.OptionString "message" --short_name="m" --required
+            --short_help="The base64-encoded message from the device",
+        cli.OptionString "uuid" --short_name="u"
+            --short_help="UUID of the snapshot that produced the message",
+        cli.Flag "force-pretty"
+            --short_help="Force the report to use terminal graphics",
+        cli.Flag "force-plain"
+            --short_help="Force the report to be pure ASCII even on a terminal",
+      ]
+      --run=:: decode_system_message it command
+  command.run args
+
+decode_system_message parsed command -> none:
+  if not parsed: exit 1
+  encoded_system_message := base64.decode parsed["message"]
+  snapshot_content := null
+  if parsed["snapshot"]:
+    snapshot_content = file.read_content parsed["snapshot"]
+
   if encoded_system_message.size < 1 or encoded_system_message[0] != '[':
-    pipe.print_to_stderr "Not a ubjson file"
-    usage prog_name
+    pipe.print_to_stderr "\nNot a ubjson message: '$parsed["message"]'\n"
+    command.run ["--help"]
+    exit 1
   handle_system_message encoded_system_message snapshot_content
+      --filename=parsed["snapshot"]
+      --uuid=parsed["uuid"]
+      --force_pretty=parsed["force-pretty"]
+      --force_plain=parsed["force-plain"]

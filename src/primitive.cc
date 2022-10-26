@@ -69,10 +69,18 @@ Object* Primitive::allocate_array(int length, Object* filler, Process* process) 
 Object* Primitive::os_error(int error, Process* process) {
 #ifdef TOIT_FREERTOS
   if (error == ESP_ERR_NO_MEM) MALLOC_FAILED;
+  const size_t BUF_SIZE = 200;
+  char buffer[BUF_SIZE];
+  // This makes a string that is either informative or of the form: "UNKNOWN
+  // ERROR 0x2a(42)"
+  esp_err_to_name_r(error, buffer, BUF_SIZE);
+  buffer[BUF_SIZE - 1] = '\0';
+  char* error_text = buffer;
+#else
+  char* error_text = strerror(error);
 #endif
-  Error* err = null;
-  String* result = process->allocate_string(strerror(error), &err);
-  if (result == null) return err;
+  String* result = process->allocate_string(error_text);
+  if (result == null) ALLOCATION_FAILED;
   return Error::from(result);
 }
 

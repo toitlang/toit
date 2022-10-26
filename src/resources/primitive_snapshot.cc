@@ -31,8 +31,22 @@ namespace toit {
 MODULE_IMPLEMENTATION(snapshot, MODULE_SNAPSHOT)
 
 PRIMITIVE(launch) {
-  ARGS(Blob, bytes, int, gid, Blob, program_id);
+  ARGS(Blob, bytes, int, gid, Blob, program_id, Object, arguments);
   if (program_id.length() != 16) OUT_OF_BOUNDS;
+
+  unsigned size = 0;
+  { MessageEncoder size_encoder(process, null);
+    if (!size_encoder.encode(arguments)) WRONG_TYPE;
+    size = size_encoder.size();
+  }
+
+  uint8* buffer = null;
+  { HeapTagScope scope(ITERATE_CUSTOM_TAGS + EXTERNAL_BYTE_ARRAY_MALLOC_TAG);
+    buffer = unvoid_cast<uint8*>(malloc(size));
+    ASSERT(buffer);  // Allocations only fail on devices.
+    MessageEncoder encoder(process, buffer);
+    encoder.encode(arguments);
+  }
 
   InitialMemoryManager manager;
   bool ok = manager.allocate();
@@ -48,14 +62,13 @@ PRIMITIVE(launch) {
   // We don't use snapshots on devices so we assume malloc/new cannot fail.
   int pid = VM::current()->scheduler()->run_program(
       program,
-      process->args(),
+      buffer,
       process_group,
       manager.initial_chunk);
   ASSERT(pid != Scheduler::INVALID_PROCESS_ID);
   manager.dont_auto_free();
   return Smi::from(pid);
 }
-
 
 } // namespace toit
 

@@ -40,6 +40,9 @@ class FlashAllocation {
 
   class __attribute__ ((__packed__)) Header {
    public:
+    static const int METADATA_SIZE = 5;
+    static const int FLAGS_HAS_ASSETS_MASK = 1 << 7;
+
     explicit Header(uint32 allocation_offset);
 
     Header(uint32 allocation_offset, uint8 type, const uint8* id, const uint8* uuid, int size, const uint8* metadata) {
@@ -49,13 +52,13 @@ class FlashAllocation {
       ASSERT(Utils::is_aligned(size, FLASH_PAGE_SIZE));
       memcpy(_id, id, id_size());
       _pages_in_flash = static_cast<uint16>(Utils::round_up(size, FLASH_PAGE_SIZE) >> 12);
-      memcpy(_metadata, metadata, metadata_size());
+      memcpy(_metadata, metadata, METADATA_SIZE);
       set_uuid(uuid);
     }
 
-    static int metadata_size() { return sizeof(_metadata); }
     static int id_size() { return sizeof(_id); }
     const uint8* id() const { return _id; }
+    int size() const { return _pages_in_flash << 12; }
 
    private:
     // Data section for the header.
@@ -64,7 +67,7 @@ class FlashAllocation {
 
     uint8 _id[UUID_SIZE];
 
-    uint8 _metadata[5];  // Allocation specific meta data (picked to ensure 16 byte alignment).
+    uint8 _metadata[METADATA_SIZE];  // Allocation specific meta data (picked to ensure 16 byte alignment).
     uint16 _pages_in_flash;
     uint8 _type;
 
@@ -75,8 +78,6 @@ class FlashAllocation {
     bool is_valid(const uint8* uuid) const;
     uint8 type() const { return _type; }
     const uint8* metadata() const { return _metadata; }
-
-    int size() const { return _pages_in_flash << 12; }
 
     bool is_valid_allocation(const uint32 allocation_offset) const;
 
@@ -93,7 +94,7 @@ class FlashAllocation {
         memcpy(_id, id, id_size());
       }
       _pages_in_flash = 0;
-      memset(_metadata, 0xFF, metadata_size());
+      memset(_metadata, 0xFF, METADATA_SIZE);
       set_uuid(uuid);
     }
 
@@ -114,6 +115,15 @@ class FlashAllocation {
   const uint8* id() const { return _header.id(); }
   const uint8* metadata() const { return _header.metadata(); }
 
+  // Returns whether the allocation has appended assets.
+  bool has_assets() const {
+    int flags = _header.metadata()[0];
+    return (flags & Header::FLAGS_HAS_ASSETS_MASK) != 0;
+  }
+
+  // Get the total size of the appended assets if any.
+  int assets_size(uint8** bytes, int* length) const;
+
  private:
   Header _header;
 };
@@ -124,9 +134,9 @@ class Reservation : public ReservationList::Element {
  public:
   Reservation(int offset, int size) : _offset(offset), _size(size) {}
 
-  const int left() const { return _offset; }
-  const int right() const { return _offset + _size; }
-  const int size() const { return _size; }
+  int left() const { return _offset; }
+  int right() const { return _offset + _size; }
+  int size() const { return _size; }
 
  private:
   int _offset;

@@ -45,9 +45,45 @@ enum GPIOState {
 ResourcePool<int, -1> gpio_pins(
     0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
     10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
+#ifdef CONFIG_IDF_TARGET_ESP32S3
+    20, 21, 26, 27, 28, 29,
+    30, 31, 32, 33, 34, 35, 36, 37, 38, 39,
+    40, 41, 42, 43, 44, 45, 46, 47, 48, 49
+#else
     21, 22, 23, 25, 26, 27,
     32, 33, 34, 35, 36, 37, 38, 39
+#endif
 );
+
+#ifdef CONFIG_IDF_TARGET_ESP32
+static bool is_restricted_pin(int num) {
+  // The flash pins should generally not be used.
+  return 6 <= num && num <= 11;
+}
+#elif CONFIG_IDF_TARGET_ESP32C3
+static bool is_restricted_pin(int num) {
+  // The flash pins should generally not be used.
+  return 12 <= num && num <= 17;
+}
+#elif CONFIG_IDF_TARGET_ESP32S3
+static bool is_restricted_pin(int num) {
+  // Pins 26-32 are used for flash, and pins 33-37 are used for
+  // octal flash or octal PSRAM.
+  return 26 <= num && num <= 37;
+}
+#elif CONFIG_IDF_TARGET_ESP32S2
+static bool is_restricted_pin(int num) {
+  // Pins 26-32 are used for flash and PSRAM.
+  return 26 <= num && num <= 32;
+}
+#else
+#error Unknown ESP32 target architecture
+
+static bool is_restricted_pin(int num) {
+  return false;
+}
+
+#endif
 
 class GPIOResource : public EventQueueResource {
  public:
@@ -113,7 +149,7 @@ void GPIOResourceGroup::on_unregister_resource(Resource* r) {
     .intr_type = GPIO_INTR_DISABLE,
   };
   gpio_config(&cfg);
-  if (pin < 34) gpio_set_level(pin, 0);
+  if (GPIO_IS_VALID_OUTPUT_GPIO(pin)) gpio_set_level(pin, 0);
 
   gpio_pins.put(pin);
 }
@@ -145,10 +181,12 @@ PRIMITIVE(init) {
 }
 
 PRIMITIVE(use) {
-  ARGS(GPIOResourceGroup, resource_group, int, num);
+  ARGS(GPIOResourceGroup, resource_group, int, num, bool, allow_restricted);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;
+
+  if (!allow_restricted && is_restricted_pin(num)) INVALID_ARGUMENT;
 
   if (!gpio_pins.take(num)) ALREADY_IN_USE;
 

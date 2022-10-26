@@ -9,8 +9,7 @@ __entry__main -> none:
   current := Task_.current
   current.initialize_entry_task_
   current.evaluate_:
-    args := List_.from_array_ main_arguments_
-    #primitive.intrinsics.main args
+    #primitive.intrinsics.main main_arguments_
 
 // This is the entry point for processes just being spawned.
 // It calls the lambda passed in the spawn arguments.
@@ -33,9 +32,6 @@ __entry__task lambda -> none:
 
 // --------------------------------------------------------
 
-main_arguments_:
-  #primitive.core.args
-
 /**
 Returns the name of the toit file, image, or snapshot that the
   current program was run from.  May return null if this information
@@ -44,8 +40,11 @@ Returns the name of the toit file, image, or snapshot that the
 program_name -> string?:
   #primitive.core.command
 
+main_arguments_ -> any:
+  #primitive.core.main_arguments
+
 spawn_method_ -> int:
-  #primitive.core.hatch_method
+  #primitive.core.spawn_method
 
 spawn_arguments_ -> any:
-  #primitive.core.hatch_args
+  #primitive.core.spawn_arguments

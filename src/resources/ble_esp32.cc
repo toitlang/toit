@@ -15,7 +15,7 @@
 
 #include "../top.h"
 
-#ifdef TOIT_FREERTOS
+#if defined(TOIT_FREERTOS) && CONFIG_BT_ENABLED
 
 #include "../resource.h"
 #include "../objects.h"
@@ -596,7 +596,9 @@ PRIMITIVE(scan_start) {
     return Primitive::os_error(err, process);
   }
 
-  struct ble_gap_disc_params disc_params = { 0 };
+  struct ble_gap_disc_params disc_params{};
+  /* Use defaults for most parameters. */
+
   // Tell the controller to filter duplicates; we don't want to process
   // repeated advertisements from the same device.
   // disc_params.filter_duplicates = 1;
@@ -605,13 +607,7 @@ PRIMITIVE(scan_start) {
    * Perform a passive scan.  I.e., don't send follow-up scan requests to
    * each advertiser.
    */
-  disc_params.passive = 1;
-
-  /* Use defaults for the rest of the parameters. */
-  disc_params.itvl = 0;
-  disc_params.window = 0;
-  disc_params.filter_policy = 0;
-  disc_params.limited = 0;
+  disc_params.passive = 1,
 
   err = ble_gap_disc(BLE_ADDR_PUBLIC, duration_ms, &disc_params,
                      BLEEventSource::on_gap, group->gap());
@@ -645,9 +641,8 @@ PRIMITIVE(scan_next) {
     int rc = ble_hs_adv_parse_fields(&fields, next->data(), next->data_length());
     if (rc == 0) {
       if (fields.name_len > 0) {
-        Error* error = null;
-        String* name = process->allocate_string((const char*)fields.name, fields.name_len, &error);
-        if (error) return error;
+        String* name = process->allocate_string((const char*)fields.name, fields.name_len);
+        if (!name) ALLOCATION_FAILED;
         array->at_put(2, name);
       }
 
@@ -718,7 +713,7 @@ PRIMITIVE(advertise_start) {
 
   int32 duration_ms = duration_us < 0 ? BLE_HS_FOREVER : duration_us / 1000;
 
-  struct ble_gap_adv_params adv_params = { 0 };
+  struct ble_gap_adv_params adv_params{};
   adv_params.conn_mode = conn_mode;
 
   // TODO(anders): Be able to tune this.
@@ -737,7 +732,7 @@ PRIMITIVE(advertise_config) {
 
   USE(service_classes);
 
-  struct ble_hs_adv_fields fields = { 0 };
+  struct ble_hs_adv_fields fields{};
   if (name.length() > 0) {
     fields.name = name.address();
     fields.name_len = name.length();
@@ -805,7 +800,7 @@ PRIMITIVE(connect) {
     return Primitive::os_error(err, process);
   }
 
-  ble_addr_t addr = { 0 };
+  ble_addr_t addr{};
   addr.type = address.address()[0];
   memcpy_reverse(addr.val, address.address() + 1, 6);
 
@@ -1089,4 +1084,4 @@ PRIMITIVE(get_att_mtu) {
 
 } // namespace toit
 
-#endif // TOIT_FREERTOS
+#endif // defined(TOIT_FREERTOS) && defined(CONFIG_BT_ENABLED)

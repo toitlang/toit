@@ -15,7 +15,9 @@
 
 #include "../top.h"
 
-#ifdef TOIT_FREERTOS
+#if defined(TOIT_FREERTOS) && (defined(CONFIG_IDF_TARGET_ESP32) || \
+                               defined(CONFIG_IDF_TARGET_ESP32S2) || \
+                               defined(CONFIG_IDF_TARGET_ESP32S3))
 
 #include <driver/touch_sensor.h>
 
@@ -29,4 +31,4 @@ void keep_touch_active();
 
 } // namespace toit
 
-#endif // TOIT_FREERTOS
+#endif

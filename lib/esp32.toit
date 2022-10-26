@@ -2,7 +2,7 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import encoding.ubjson
+import system.trace show send_trace_message
 
 ESP_RST_UNKNOWN   ::= 0 // Reset reason can not be determined.
 ESP_RST_POWERON   ::= 1 // Reset due to power-on event.
@@ -87,11 +87,6 @@ Returns -1 if the wakeup wasn't caused by a touchpad.
 touchpad_wakeup_status -> int:
   #primitive.esp32.touchpad_wakeup_status
 
-image_config -> Map?:
-  config_data := image_config_
-  if config_data[0] == 0: return null
-  return (ubjson.Decoder config_data).decode
-
 /**
 Adjusts the real-time clock with the specified $adjustment.
 
@@ -110,9 +105,6 @@ The new time is visible immediately through calls to $Time.now.
 */
 set_real_time_clock time/Time -> none:
   set_real_time_clock_ time.s_since_epoch time.ns_part
-
-image_config_ -> ByteArray:
-  #primitive.esp32.image_config
 
 set_real_time_clock_ seconds/int ns/int -> none:
   #primitive.core.set_real_time_clock
@@ -135,3 +127,22 @@ There is only one RTC memory on the device, so all tasks or processes have
 rtc_user_bytes -> ByteArray:
   #primitive.esp32.rtc_user_bytes
 
+/**
+Sends (as a system message) a report over the usage of memory at the OS level.
+*/
+memory_page_report -> none:
+  report := memory_page_report_
+  send_trace_message report
+
+memory_page_report_ -> ByteArray:
+  #primitive.esp32.memory_page_report
+
+/**
+Sends (as a system message) a detailed report over the usage of memory at the OS level.
+*/
+dump_heap -> none:
+  report := dump_heap_ 300
+  send_trace_message report
+
+dump_heap_ slack/int -> ByteArray:
+  #primitive.core.dump_heap

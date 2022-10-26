@@ -2,38 +2,27 @@
 // Use of this source code is governed by a Zero-Clause BSD license that can
 // be found in the tests/LICENSE file.
 
-import serialization show serialize deserialize
+import encoding.tison
 import expect show *
 
 test_atom object:
   expect_equals
-    object
-    deserialize
-      serialize object
+      object
+      tison.decode
+          tison.encode object
 
 test_array array:
-  result := deserialize
-    serialize array
+  result := tison.decode
+      tison.encode array
   expect_equals array.size result.size
   for i := 0; i < array.size; i++:
     expect_equals array[i] result[i]
-
-test_array_cycle:
-/*
-  TODO(anders): Re-enable when fixed
-  array := Array_ 1
-  array[0] = array
-  result := deserialize
-    serialize array
-  expect_equals array.size result.size
-  expect (identical result[0] result)
-  */
 
 test_map:
   map := Map
   map["1"] = "1"
   map["45"] = "45"
-  result := deserialize (serialize map)
+  result := tison.decode (tison.encode map)
   expect_equals result["1"] "1"
   expect_equals result["45"] "45"
   expect (not result.contains 2)
@@ -63,6 +52,31 @@ main:
   a = Array_ 1
   a[0] = "Fisk"
   test_array a
-  test_array_cycle
   c := 75
   test_map
+  test_throwing_process_send
+  test_tison_throwing
+
+class Unserializable:
+
+test_throwing_process_send:
+  l := List 10: ByteArray_.external_ 100
+  expect_throw "TOO_MANY_EXTERNALS": process_send_ 0 0 l
+  // expect_throw "MESSAGE_NO_SUCH_RECEIVER": process_send_ 100000000 -10 #[]
+  expect_null (process_send_ 100000000 -10 #[])
+  l = []
+  l.add l
+  expect_throw "NESTING_TOO_DEEP": process_send_ 0 0 l
+  l = [Unserializable]
+  // We catch this, which means we don't get information about which class failed.
+  // If we left it uncaught, the stack trace decoder would tell us.
+  expect_throw "SERIALIZATION_FAILED": process_send_ 0 0 l
+
+test_tison_throwing:
+  l := []
+  l.add l
+  expect_throw "NESTING_TOO_DEEP": tison.encode l
+  l = [Unserializable]
+  // We catch this, which means we don't get information about which class failed.
+  // If we left it uncaught, the stack trace decoder would tell us.
+  expect_throw "SERIALIZATION_FAILED": tison.encode l

@@ -125,7 +125,7 @@ class ObjectHeap {
   void set_task(Task* task);
 
   // Garbage collection operation for runtime objects.
-  void gc(bool try_hard);
+  GcType gc(bool try_hard);
 
   bool add_finalizer(HeapObject* key, Object* lambda);
   bool has_finalizer(HeapObject* key, Object* lambda);
@@ -138,7 +138,12 @@ class ObjectHeap {
   Object* next_finalizer_to_run();
 
   // Tells how many gc operations this heap has experienced.
-  int gc_count() { return _gc_count; }
+  int gc_count(GcType type) {
+    if (type == NEW_SPACE_GC) return _gc_count;
+    if (type == FULL_GC) return _full_gc_count;
+    if (type == COMPACTING_GC) return _full_compacting_gc_count;
+    UNREACHABLE();
+  }
 
   void add_external_root(HeapRoot* element) { _external_roots.prepend(element); }
   void remove_external_root(HeapRoot* element) { element->unlink(); }
@@ -199,6 +204,8 @@ class ObjectHeap {
   ObjectNotifier* _finalizer_notifier = null;
 
   int _gc_count = 0;
+  int _full_gc_count = 0;
+  int _full_compacting_gc_count = 0;
   Object** _global_variables = null;
 
   HeapRootList _external_roots;

@@ -73,16 +73,8 @@ PRIMITIVE(write_string_on_stderr) {
   return _raw_message;
 }
 
-PRIMITIVE(hatch_method) {
-  Method method = process->hatch_method();
-  int id = method.is_valid()
-      ? process->program()->absolute_bci_from_bcp(method.header_bcp())
-      : -1;
-  return Smi::from(id);
-}
-
-PRIMITIVE(hatch_args) {
-  uint8* arguments = process->hatch_arguments();
+PRIMITIVE(main_arguments) {
+  uint8* arguments = process->main_arguments();
   if (!arguments) return process->program()->empty_array();
 
   MessageDecoder decoder(process, arguments);
@@ -92,14 +84,40 @@ PRIMITIVE(hatch_args) {
     ALLOCATION_FAILED;
   }
 
-  process->clear_hatch_arguments();
+  process->clear_main_arguments();
   free(arguments);
   decoder.register_external_allocations();
   return decoded;
 }
 
-PRIMITIVE(hatch) {
-  ARGS(Object, entry, Object, arguments)
+PRIMITIVE(spawn_arguments) {
+  uint8* arguments = process->spawn_arguments();
+  if (!arguments) return process->program()->empty_array();
+
+  MessageDecoder decoder(process, arguments);
+  Object* decoded = decoder.decode();
+  if (decoder.allocation_failed()) {
+    decoder.remove_disposing_finalizers();
+    ALLOCATION_FAILED;
+  }
+
+  process->clear_spawn_arguments();
+  free(arguments);
+  decoder.register_external_allocations();
+  return decoded;
+}
+
+PRIMITIVE(spawn_method) {
+  Method method = process->spawn_method();
+  int id = method.is_valid()
+      ? process->program()->absolute_bci_from_bcp(method.header_bcp())
+      : -1;
+  return Smi::from(id);
+}
+
+PRIMITIVE(spawn) {
+  ARGS(int, priority, Object, entry, Object, arguments)
+  if (priority != -1 && (priority < 0 || priority > 0xff)) OUT_OF_RANGE;
   if (!is_smi(entry)) WRONG_TYPE;
 
   int method_id = Smi::cast(entry)->value();
@@ -109,29 +127,41 @@ PRIMITIVE(hatch) {
   InitialMemoryManager manager;
   if (!manager.allocate()) ALLOCATION_FAILED;
 
-  int length = 0;
+  unsigned size = 0;
   { MessageEncoder size_encoder(process, null);
-    if (!size_encoder.encode(arguments)) WRONG_TYPE;
-    length = size_encoder.size();
+    if (!size_encoder.encode(arguments)) {
+      return size_encoder.create_error_object(process);
+    }
+    size = size_encoder.size();
   }
 
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + EXTERNAL_BYTE_ARRAY_MALLOC_TAG);
-  uint8* buffer = unvoid_cast<uint8*>(malloc(length));
+  uint8* buffer = unvoid_cast<uint8*>(malloc(size));
   if (buffer == null) MALLOC_FAILED;
 
   MessageEncoder encoder(process, buffer);
   if (!encoder.encode(arguments)) {
     encoder.free_copied();
     free(buffer);
-    if (encoder.malloc_failed()) MALLOC_FAILED;
+    // Should not happen, but just in case, throw "ERROR".
     OTHER_ERROR;
   }
 
-  Process* child = VM::current()->scheduler()->hatch(process->program(), process->group(), method, buffer, manager.initial_chunk);
-  if (!child) MALLOC_FAILED;
+  int pid = VM::current()->scheduler()->spawn(
+      process->program(),
+      process->group(),
+      priority,
+      method,
+      buffer,
+      manager.initial_chunk);
+  if (pid == Scheduler::INVALID_PROCESS_ID) {
+    encoder.free_copied();
+    free(buffer);
+    MALLOC_FAILED;
+  }
 
   manager.dont_auto_free();
-  return Smi::from(child->id());
+  return Smi::from(pid);
 }
 
 PRIMITIVE(get_generic_resource_group) {
@@ -145,14 +175,29 @@ PRIMITIVE(get_generic_resource_group) {
   return proxy;
 }
 
-PRIMITIVE(signal_kill) {
+PRIMITIVE(process_signal_kill) {
   ARGS(int, target_id);
 
   return BOOL(VM::current()->scheduler()->signal_process(process, target_id, Process::KILL));
 }
 
-PRIMITIVE(current_process_id) {
+PRIMITIVE(process_current_id) {
   return Smi::from(process->id());
+}
+
+PRIMITIVE(process_get_priority) {
+  ARGS(int, pid);
+  int priority = VM::current()->scheduler()->get_priority(pid);
+  if (priority < 0) INVALID_ARGUMENT;
+  return Smi::from(priority);
+}
+
+PRIMITIVE(process_set_priority) {
+  ARGS(int, pid, int, priority);
+  if (priority < 0 || priority > 0xff) OUT_OF_RANGE;
+  bool success = VM::current()->scheduler()->set_priority(pid, priority);
+  if (!success) INVALID_ARGUMENT;
+  return process->program()->null_object();
 }
 
 PRIMITIVE(object_class_id) {
@@ -282,24 +327,23 @@ PRIMITIVE(string_from_rune) {
   if (rune < 0 || rune > Utils::MAX_UNICODE) INVALID_ARGUMENT;
   // Don't allow surrogates.
   if (0xD800 <= rune && rune <= 0xDFFF) INVALID_ARGUMENT;
-  Error* error = null;
   String* result;
   if (rune <= 0x7F) {
     char buffer[] = { static_cast<char>(rune) };
-    result = process->allocate_string(buffer, 1, &error);
+    result = process->allocate_string(buffer, 1);
   } else if (rune <= 0x7FF) {
     char buffer[] = {
       static_cast<char>(0xC0 | (rune >> 6)),
       static_cast<char>(0x80 | (rune & 0x3F)),
     };
-    result = process->allocate_string(buffer, 2, &error);
+    result = process->allocate_string(buffer, 2);
   } else if (rune <= 0xFFFF) {
     char buffer[] = {
       static_cast<char>(0xE0 | (rune >> 12)),
       static_cast<char>(0x80 | ((rune >> 6)  & 0x3F)),
       static_cast<char>(0x80 | (rune & 0x3F)),
     };
-    result = process->allocate_string(buffer, 3, &error);
+    result = process->allocate_string(buffer, 3);
   } else {
     char buffer[] = {
       static_cast<char>(0xF0 | (rune >> 18)),
@@ -307,9 +351,9 @@ PRIMITIVE(string_from_rune) {
       static_cast<char>(0x80 | ((rune >> 6)  & 0x3F)),
       static_cast<char>(0x80 | (rune & 0x3F)),
     };
-    result = process->allocate_string(buffer, 4, &error);
+    result = process->allocate_string(buffer, 4);
   }
-  if (result == null) return error;
+  if (result == null) ALLOCATION_FAILED;
   return result;
 }
 
@@ -473,35 +517,7 @@ PRIMITIVE(read_int_little_endian) {
 
 PRIMITIVE(command) {
   if (Flags::program_name == null) return process->program()->null_object();
-  Error* error = null;
-  String* arg = process->allocate_string(Flags::program_name, &error);
-  if (arg == null) return error;
-  return arg;
-}
-
-PRIMITIVE(args) {
-  char** argv = process->args();
-  if (argv == null || argv[0] == null) {
-    // No argument are passed so use snapshot arguments program.
-    Array* snapshot_arguments = process->program()->snapshot_arguments();
-    // Copy and return the array.
-    int length = snapshot_arguments->length();
-    Array* result = process->object_heap()->allocate_array(length, process->program()->null_object());
-    if (result == null) ALLOCATION_FAILED;
-    for (int index = 0; index < length; index++) result->at_put(index, snapshot_arguments->at(index));
-    return result;
-  }
-  int argc = 0;
-  while (argv[argc] != null) argc++;
-  Array* result = process->object_heap()->allocate_array(argc, process->program()->null_object());
-  if (result == null) ALLOCATION_FAILED;
-  for (int index = 0; index < argc; index++) {
-    Error* error = null;
-    String* arg = process->allocate_string(argv[index], &error);
-    if (arg == null) return error;
-    Array::cast(result)->at_put(index, arg);
-  }
-  return result;
+  return process->allocate_string_or_error(Flags::program_name);
 }
 
 PRIMITIVE(smi_add) {
@@ -573,11 +589,20 @@ PRIMITIVE(smi_mod) {
   return Primitive::integer((int64) receiver % other, process);
 }
 
-// Signed for base 10, unsigned for bases 8 or 16.
+// Signed for base 10, unsigned for bases 2, 8 or 16.
 static Object* printf_style_integer_to_string(Process* process, int64 value, int base) {
-  ASSERT(base == 8 || base == 10 || base == 16);
-  char buffer[32];
+  ASSERT(base == 2 || base == 8 || base == 10 || base == 16);
+  char buffer[70];
   switch (base) {
+    case 2: {
+      char* p = buffer;
+      int first_bit = value == 0 ? 0 : 63 - Utils::clz(value);
+      for (int i = first_bit; i >= 0; i--) {
+        *p++ = '0' + ((value >> i) & 1);
+      }
+      *p++ = '\0';
+      break;
+    }
     case 8:
       snprintf(buffer, sizeof(buffer), "%llo", value);
       break;
@@ -587,6 +612,8 @@ static Object* printf_style_integer_to_string(Process* process, int64 value, int
     case 16:
       snprintf(buffer, sizeof(buffer), "%llx", value);
       break;
+    default:
+      buffer[0] = '\0';
   }
   return process->allocate_string_or_error(buffer);
 }
@@ -594,7 +621,7 @@ static Object* printf_style_integer_to_string(Process* process, int64 value, int
 PRIMITIVE(int64_to_string) {
   ARGS(int64, value, int, base);
   if (!(2 <= base && base <= 36)) OUT_OF_RANGE;
-  if (base == 10 || (value >= 0 && (base == 8 || base == 16))) {
+  if (base == 10 || (value >= 0 && (base == 2 || base == 8 || base == 16))) {
     return printf_style_integer_to_string(process, value, base);
   }
   const int BUFFER_SIZE = 70;
@@ -1270,7 +1297,7 @@ PRIMITIVE(smi_to_string_base_10) {
 // bases.
 PRIMITIVE(printf_style_int64_to_string) {
   ARGS(int64, receiver, int, base);
-  if (base != 8 && base != 16) INVALID_ARGUMENT;
+  if (base != 2 && base != 8 && base != 16) INVALID_ARGUMENT;
   return printf_style_integer_to_string(process, receiver, base);
 }
 
@@ -1325,10 +1352,9 @@ PRIMITIVE(float_to_string) {
   }
   char* buffer = safe_double_print(format, prec, receiver);
   if (buffer == null) MALLOC_FAILED;
-  Error* error = null;
-  Object* result = process->allocate_string(buffer, &error);
+  Object* result = process->allocate_string(buffer);
   free(buffer);
-  if (result == null) return error;
+  if (result == null) ALLOCATION_FAILED;
   return result;
 }
 
@@ -1400,9 +1426,8 @@ static bool is_validated_string(Program* program, Object* object) {
 
 static String* concat_strings(Process* process,
                               const uint8* bytes_a, int len_a,
-                              const uint8* bytes_b, int len_b,
-                              Error** error) {
-  String* result = process->allocate_string(len_a + len_b, error);
+                              const uint8* bytes_b, int len_b) {
+  String* result = process->allocate_string(len_a + len_b);
   if (result == null) return null;
   // Initialize object.
   String::Bytes bytes(result);
@@ -1416,7 +1441,6 @@ PRIMITIVE(string_add) {
   // The operator already checks that the objects are strings, but we want to
   // be really sure the primitive wasn't called in a different way. Otherwise
   // we can't be sure that the content only has valid strings.
-  Error* error = null;
   String* result;
   if (!is_validated_string(process->program(), receiver)) WRONG_TYPE;
   if (!is_validated_string(process->program(), other)) WRONG_TYPE;
@@ -1427,9 +1451,8 @@ PRIMITIVE(string_add) {
   if (!other->byte_content(process->program(), &other_blob, STRINGS_ONLY)) WRONG_TYPE;
   result = concat_strings(process,
                           receiver_blob.address(), receiver_blob.length(),
-                          other_blob.address(), other_blob.length(),
-                          &error);
-  if (result == null) return error;
+                          other_blob.address(), other_blob.length());
+  if (result == null) ALLOCATION_FAILED;
   return result;
 }
 
@@ -1459,13 +1482,12 @@ PRIMITIVE(string_slice) {
     int first_after = bytes.at(to);
     if (utf_8_continuation_byte(first_after)) ILLEGAL_UTF_8;
   }
-  Error* error = null;
   ASSERT(from >= 0);
   ASSERT(to <= receiver->length());
   ASSERT(from < to);
   int result_len = to - from;
-  String* result = process->allocate_string(result_len, &error);
-  if (result == null) return error;  // Allocation failure.
+  String* result = process->allocate_string(result_len);
+  if (result == null) ALLOCATION_FAILED;
   // Initialize object.
   String::Bytes result_bytes(result);
   result_bytes._initialize(0, receiver, from, to - from);
@@ -1479,15 +1501,14 @@ PRIMITIVE(concat_strings) {
   for (int index = 0; index < array->length(); index++) {
     if (!is_validated_string(process->program(), array->at(index))) WRONG_TYPE;
   }
-  Error* error = null;
   int length = 0;
   for (int index = 0; index < array->length(); index++) {
     Blob blob;
     HeapObject::cast(array->at(index))->byte_content(program, &blob, STRINGS_ONLY);
     length += blob.length();
   }
-  String* result = process->allocate_string(length, &error);
-  if (result == null) return error;
+  String* result = process->allocate_string(length);
+  if (result == null) ALLOCATION_FAILED;
   String::Bytes bytes(result);
   int pos = 0;
   for (int index = 0; index < array->length(); index++) {
@@ -1655,21 +1676,23 @@ PRIMITIVE(byte_array_at_put) {
 }
 
 PRIMITIVE(byte_array_new) {
-  ARGS(int, length);
+  ARGS(int, length, int, filler);
   if (length < 0) OUT_OF_BOUNDS;
-  Error* error = null;
-  ByteArray* result = process->allocate_byte_array(length, &error);
-  if (result == null) return error;
+  ByteArray* result = process->allocate_byte_array(length);
+  if (result == null) ALLOCATION_FAILED;
+  if (filler != 0) {
+    ByteArray::Bytes bytes(result);
+    memset(bytes.address(), filler, length);
+  }
   return result;
 }
 
 PRIMITIVE(byte_array_new_external) {
   ARGS(int, length);
   if (length < 0) OUT_OF_BOUNDS;
-  Error* error = null;
   bool force_external = true;
-  ByteArray* result = process->allocate_byte_array(length, &error, force_external);
-  if (result == null) return error;
+  ByteArray* result = process->allocate_byte_array(length, force_external);
+  if (result == null) ALLOCATION_FAILED;
   return result;
 }
 
@@ -1818,27 +1841,31 @@ PRIMITIVE(task_transfer) {
 PRIMITIVE(process_send) {
   ARGS(int, process_id, int, type, Object, array);
 
-  int length = 0;
+  unsigned size = 0;
   { MessageEncoder size_encoder(process, null);
-    if (!size_encoder.encode(array)) WRONG_TYPE;
-    length = size_encoder.size();
+    if (!size_encoder.encode(array)) {
+      return size_encoder.create_error_object(process);
+    }
+    size = size_encoder.size();
   }
 
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + EXTERNAL_BYTE_ARRAY_MALLOC_TAG);
-  uint8* buffer = unvoid_cast<uint8*>(malloc(length));
+  uint8* buffer = unvoid_cast<uint8*>(malloc(size));
   if (buffer == null) MALLOC_FAILED;
 
-  SystemMessage* message = null;
   MessageEncoder encoder(process, buffer);
-  if (encoder.encode(array)) {
-    message = _new SystemMessage(type, process->group()->id(), process->id(), buffer);
+  if (!encoder.encode(array)) {
+    encoder.free_copied();
+    free(buffer);
+    return encoder.create_error_object(process);
   }
+
+  SystemMessage* message = _new SystemMessage(type, process->group()->id(), process->id(), buffer);
 
   if (message == null) {
     encoder.free_copied();
     free(buffer);
-    if (encoder.malloc_failed()) MALLOC_FAILED;
-    OTHER_ERROR;
+    MALLOC_FAILED;
   }
 
   // From here on, the destructor of SystemMessage will free the buffer and
@@ -1854,14 +1881,36 @@ PRIMITIVE(process_send) {
     encoder.neuter_externals();
     // TODO(kasper): Consider doing in-place shrinking of internal, non-constant
     // byte arrays and strings.
+    return process->program()->null_object();
   } else {
     // Sending failed. Free any copied bits, but make sure to not free the externals
     // that have not been neutered on this path.
     encoder.free_copied();
     message->free_data_but_keep_externals();
     delete message;
+    // Object* result = process->allocate_string_or_error("MESSAGE_NO_SUCH_RECEIVER");
+    // if (Primitive::is_error(result)) return result;
+    // return Primitive::mark_as_error(HeapObject::cast(result));
+    return process->program()->null_object();
   }
-  return Smi::from(result);
+}
+
+Object* MessageEncoder::create_error_object(Process* process) {
+  Object* result = null;
+  if (_nesting_too_deep) {
+    result = process->allocate_string_or_error("NESTING_TOO_DEEP");
+  } else if (_problematic_class_id >= 0) {
+    result = Primitive::allocate_array(1, Smi::from(_problematic_class_id), process);
+  } else if (_too_many_externals) {
+    result = process->allocate_string_or_error("TOO_MANY_EXTERNALS");
+  }
+  if (result) {
+    if (Primitive::is_error(result)) return result;
+    return Primitive::mark_as_error(HeapObject::cast(result));
+  }
+  // The remaining errors are things like unserializable non-instances, non-smi
+  // lengths, large lists.  TODO: Be more specific and/or remove some limitations.
+  WRONG_TYPE;
 }
 
 PRIMITIVE(task_has_messages) {
@@ -1926,7 +1975,7 @@ PRIMITIVE(remove_finalizer) {
 }
 
 PRIMITIVE(gc_count) {
-  return Smi::from(process->object_heap()->gc_count());
+  return Smi::from(process->object_heap()->gc_count(NEW_SPACE_GC));
 }
 
 PRIMITIVE(create_off_heap_byte_array) {
@@ -1969,44 +2018,11 @@ PRIMITIVE(encode_object) {
   ProgramOrientedEncoder encoder(process->program(), &buffer);
   bool success = encoder.encode(target);
   if (!success) OUT_OF_BOUNDS;
-  Error* error = null;
-  ByteArray* result = process->allocate_byte_array(buffer.size(), &error);
-  if (result == null) return error;
+  ByteArray* result = process->allocate_byte_array(buffer.size());
+  if (result == null) ALLOCATION_FAILED;
   ByteArray::Bytes bytes(result);
   memcpy(bytes.address(), buffer.content(), buffer.size());
   return result;
-}
-
-PRIMITIVE(varint_encode) {
-  ARGS(MutableBlob, bytes, int, offset, int64, signed_value);
-  if (offset < 0) OUT_OF_BOUNDS;
-  // Worst case is 10 byte encoding.
-  if (offset + 10 > bytes.length()) OUT_OF_BOUNDS;
-  uint64_t value = signed_value;
-  uint8* address = bytes.address() + offset;
-  while (value > 0x7f) {
-    *address++ = value | 0x80;
-    value >>= 7;
-  }
-  *address++ = value;
-  return Smi::from(address - (bytes.address() + offset));
-}
-
-PRIMITIVE(varint_decode) {
-  ARGS(MutableBlob, bytes, int, offset);
-  if (offset < 0) OUT_OF_BOUNDS;
-  uint64_t result = 0;
-  uint8* address = bytes.address();
-  int shift = 0;
-  uint64_t MASK = 0x7f;
-  for (word length = bytes.length(); offset < length; offset++, shift += 7) {
-    uint8 b = address[offset];
-    result = result | ((b & MASK) << (shift & 0x3f));
-    if ((b & 0x80) == 0) {
-      return Primitive::integer(result, process);
-    }
-  }
-  OUT_OF_BOUNDS;
 }
 
 #ifdef IOT_DEVICE
@@ -2024,9 +2040,8 @@ PRIMITIVE(encode_error) {
   bool success = encoder.encode_error(type, message, process->task()->stack());
   process->scheduler_thread()->interpreter()->load_stack();
   if (!success) OUT_OF_BOUNDS;
-  Error* error = null;
-  ByteArray* result = process->allocate_byte_array(buffer.size(), &error);
-  if (result == null) return error;
+  ByteArray* result = process->allocate_byte_array(buffer.size());
+  if (result == null) ALLOCATION_FAILED;
   ByteArray::Bytes bytes(result);
   memcpy(bytes.address(), buffer.content(), buffer.size());
   return result;
@@ -2099,9 +2114,8 @@ PRIMITIVE(profiler_encode) {
   ProgramOrientedEncoder encoder(process->program(), &buffer);
   bool success = encoder.encode_profile(profiler, title, cutoff);
   if (!success) OUT_OF_BOUNDS;
-  Error* error = null;
-  ByteArray* result = process->allocate_byte_array(buffer.size(), &error);
-  if (result == null) return error;
+  ByteArray* result = process->allocate_byte_array(buffer.size());
+  if (result == null) ALLOCATION_FAILED;
   ByteArray::Bytes bytes(result);
   memcpy(bytes.address(), buffer.content(), buffer.size());
   return result;
@@ -2125,7 +2139,7 @@ PRIMITIVE(get_real_time_clock) {
   Array* result = process->object_heap()->allocate_array(2, Smi::zero());
   if (result == null) ALLOCATION_FAILED;
 
-  struct timespec time = { 0, };
+  struct timespec time{};
   if (!OS::get_real_time(&time)) OTHER_ERROR;
 
   Object* tv_sec = Primitive::integer(time.tv_sec, process);
@@ -2140,9 +2154,14 @@ PRIMITIVE(get_real_time_clock) {
 PRIMITIVE(set_real_time_clock) {
 #ifdef TOIT_FREERTOS
   ARGS(int64, tv_sec, int64, tv_nsec);
-  struct timespec time;
-  time.tv_sec = tv_sec;
-  time.tv_nsec = tv_nsec;
+  if (tv_sec < LONG_MIN || tv_sec > LONG_MAX) INVALID_ARGUMENT;
+  if (tv_nsec < LONG_MIN || tv_nsec > LONG_MAX) INVALID_ARGUMENT;
+  struct timespec time = {
+    .tv_sec = static_cast<long>(tv_sec),
+    .tv_nsec = static_cast<long>(tv_nsec),
+  };
+  static_assert(sizeof(time.tv_sec) == sizeof(long), "Unexpected size of timespec field");
+  static_assert(sizeof(time.tv_nsec) == sizeof(long), "Unexpected size of timespec field");
   if (!OS::set_real_time(&time)) OTHER_ERROR;
 #endif
   return Smi::zero();
@@ -2211,7 +2230,8 @@ class ByteArrayHeapFragmentationDumper : public HeapFragmentationDumper {
 static __attribute__((noinline)) uword get_heap_dump_size(const char* description) {
   SizeDiscoveryFragmentationDumper size_discovery(description);
   int flags = ITERATE_ALL_ALLOCATIONS | ITERATE_UNALLOCATED;
-  heap_caps_iterate_tagged_memory_areas(&size_discovery, null, HeapFragmentationDumper::log_allocation, flags);
+  int caps = OS::toit_heap_caps_flags_for_heap();
+  heap_caps_iterate_tagged_memory_areas(&size_discovery, null, HeapFragmentationDumper::log_allocation, flags, caps);
   size_discovery.write_end();
 
   return size_discovery.size();
@@ -2220,7 +2240,8 @@ static __attribute__((noinline)) uword get_heap_dump_size(const char* descriptio
 static __attribute__((noinline)) word heap_dump_to_byte_array(const char* reason, uint8* contents, uword size) {
   ByteArrayHeapFragmentationDumper dumper(reason, contents, size);
   int flags = ITERATE_ALL_ALLOCATIONS | ITERATE_UNALLOCATED;
-  heap_caps_iterate_tagged_memory_areas(&dumper, null, HeapFragmentationDumper::log_allocation, flags);
+  int caps = OS::toit_heap_caps_flags_for_heap();
+  heap_caps_iterate_tagged_memory_areas(&dumper, null, HeapFragmentationDumper::log_allocation, flags, caps);
   dumper.write_end();
   if (dumper.has_overflow()) return -1;
   return dumper.position();
@@ -2249,9 +2270,8 @@ PRIMITIVE(dump_heap) {
 
   uword size = get_heap_dump_size(description);
 
-  Error* error = null;
-  ByteArray* result = process->allocate_byte_array(size + padding, &error);
-  if (result == null) return error;
+  ByteArray* result = process->allocate_byte_array(size + padding);
+  if (result == null) ALLOCATION_FAILED;
   ByteArray::Bytes bytes(result);
   uint8* contents = bytes.address();
 

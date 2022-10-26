@@ -41,8 +41,10 @@
 #include <soc/soc.h>
 #include <soc/uart_reg.h>
 
-#ifdef CONFIG_IDF_TARGET_ESP32C3
+#if CONFIG_IDF_TARGET_ESP32C3
   #include <esp32c3/rtc.h>
+#elif CONFIG_IDF_TARGET_ESP32S3
+  #include <esp32s3/rtc.h>
 #else
   #include <esp32/rtc.h>
 #endif
@@ -54,10 +56,18 @@ namespace toit {
 // Flags used to get memory for the Toit heap, which needs to be fast and 8-bit
 // capable.  We will set this to the most useful value when we have detected
 // which types of RAM are available.
+#if CONFIG_TOIT_SPIRAM_HEAP
+bool OS::_use_spiram_for_heap = true;
+#else
 bool OS::_use_spiram_for_heap = false;
+#endif
 bool OS::_use_spiram_for_metadata = false;
 
+#if CONFIG_TOIT_SPIRAM_HEAP_ONLY
+static const int EXTERNAL_CAPS = MALLOC_CAP_SPIRAM;
+#else
 static const int EXTERNAL_CAPS = MALLOC_CAP_8BIT | MALLOC_CAP_SPIRAM;
+#endif
 static const int INTERNAL_CAPS = MALLOC_CAP_8BIT | MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA;
 
 int OS::toit_heap_caps_flags_for_heap() {
@@ -183,9 +193,8 @@ class ConditionVariable {
       FATAL("wait on unlocked mutex");
     }
 
-    ConditionVariableWaiter w = {
-      .task = xTaskGetCurrentTaskHandle()
-    };
+    ConditionVariableWaiter w{};
+    w.task = xTaskGetCurrentTaskHandle();
 
     TAILQ_INSERT_TAIL(&_waiter_list, &w, link);
 
@@ -287,6 +296,10 @@ void* thread_start(void* arg) {
   return null;
 }
 
+static void esp_thread_start(void* arg) {
+  thread_start(arg);
+}
+
 void Thread::_boot() {
   auto thread = reinterpret_cast<ThreadData*>(_handle);
   current_thread_ = this;
@@ -312,7 +325,7 @@ bool Thread::spawn(int stack_size, int core) {
   if (core == -1) core = tskNO_AFFINITY;
 
   BaseType_t res = xTaskCreatePinnedToCore(
-    reinterpret_cast<TaskFunction_t>(thread_start),
+    esp_thread_start,
     _name,
     stack_size,
     this,
@@ -413,14 +426,14 @@ bool OS::use_virtual_memory(void* address, uword size) {
 void OS::unuse_virtual_memory(void* address, uword size) {}
 
 OS::HeapMemoryRange OS::get_heap_memory_range() {
-  multi_heap_info_t info = { 0 };
+  multi_heap_info_t info{};
 
   int caps = EXTERNAL_CAPS;
   heap_caps_get_info(&info, caps);
 
   bool has_spiram = info.lowest_address != null;
 
-  caps = INTERNAL_CAPS;
+  caps = toit_heap_caps_flags_for_heap();
   heap_caps_get_info(&info, caps);
 
   if (has_spiram) {
@@ -546,27 +559,9 @@ class HeapSummaryPage {
     largest_free_ = 0;
   }
 
-  static int compute_type(uword tag) {
-    if (tag == 0) {
-      tag = NULL_MALLOC_TAG;
-    } else if (tag == 'W') {
-      tag = WIFI_MALLOC_TAG;
-    } else if (tag == ITERATE_TAG_FREE) {
-      tag = FREE_MALLOC_TAG;
-    } else if (tag == ITERATE_TAG_HEAP_OVERHEAD) {
-      tag = HEAP_OVERHEAD_MALLOC_TAG;
-    } else {
-      tag -= ITERATE_CUSTOM_TAGS;
-      if (tag < 0 || tag >= NUMBER_OF_MALLOC_TAGS) {
-        tag = UNKNOWN_MALLOC_TAG;
-      }
-    }
-    return tag;
-  }
-
   int register_user(uword tag, uword size) {
     uint16 saturated_size = Utils::min(size, 0xffffu);
-    int type = compute_type(tag);
+    int type = compute_allocation_type(tag);
     users_ |= 1 << type;
     sizes_[type] += saturated_size;
     counts_[type]++;
@@ -578,36 +573,36 @@ class HeapSummaryPage {
 
   void print() {
     if (address_ == 0) return;
-    printf("  ├────────────┼─────────────────────────────────────────────┤\n");
-    printf("  │ %p │   Largest free = %-5d                      │\n",
-        reinterpret_cast<void*>(address_), largest_free_);
-    printf("  │            ├───────────┬─────────┬───────────────────────┤\n");
+    printf("  ┌────────────┬─────────────────────────────────────────────┐\n");
+    printf("  │ Page:      │   Largest free = %-5d                      │\n",
+        largest_free_);
+    printf("  │ %p ├───────────┬─────────┬───────────────────────┤\n",
+        reinterpret_cast<void*>(address_));
     printf("  │            │   Bytes   │  Count  │  Type                 │\n");
     printf("  │            ├───────────┼─────────┼───────────────────────┤\n");
     for (int i = 0; i < NUMBER_OF_MALLOC_TAGS; i++) {
       if (users_ & (1 << i)) {
-        printf("  │            │ %7d   │ %6d  │  %-19s  │\n",
+        printf("  │            │ %7d   │ %6d  │  %-20s │\n",
              sizes_[i], counts_[i], HeapSummaryPage::name_of_type(i));
       }
     }
-    printf("  ├────────────┼───────────┴─────────┴───────────────────────┤\n");
+    printf("  └────────────┴───────────┴─────────┴───────────────────────┘\n");
   }
 
   static const char* name_of_type(int tag) {
     switch (tag) {
       case MISC_MALLOC_TAG: return "misc";
       case EXTERNAL_BYTE_ARRAY_MALLOC_TAG: return "external byte array";
-      case BIGNUM_MALLOC_TAG: return "bignum";
+      case BIGNUM_MALLOC_TAG: return "tls/bignum";
       case EXTERNAL_STRING_MALLOC_TAG: return "external string";
       case TOIT_HEAP_MALLOC_TAG: return "toit";
-      case UNUSED_TOIT_HEAP_MALLOC_TAG: return "unused";
       case FREE_MALLOC_TAG: return "free";
       case LWIP_MALLOC_TAG: return "lwip";
       case HEAP_OVERHEAD_MALLOC_TAG: return "heap overhead";
       case EVENT_SOURCE_MALLOC_TAG: return "event source";
-      case OTHER_THREADS_MALLOC_TAG: return "other threads";
-      case THREAD_SPAWN_MALLOC_TAG: return "thread spawn";
-      case NULL_MALLOC_TAG: return "null tag";
+      case OTHER_THREADS_MALLOC_TAG: return "thread/other";
+      case THREAD_SPAWN_MALLOC_TAG: return "thread/spawn";
+      case NULL_MALLOC_TAG: return "untagged";
       case WIFI_MALLOC_TAG: return "wifi";
     }
     return "unknown";
@@ -666,12 +661,9 @@ class HeapSummaryCollector {
     }
     int type = current_page_
         ? current_page_->register_user(tag, size)
-        : HeapSummaryPage::compute_type(tag);
-    // Disregard IRAM allocations.
-    if (reinterpret_cast<uword>(address) < 0x40000000) {
-      sizes_[type] += size;
-      counts_[type]++;
-    }
+        : compute_allocation_type(tag);
+    sizes_[type] += size;
+    counts_[type]++;
   }
 
   void print(const char* marker) {
@@ -689,7 +681,7 @@ class HeapSummaryCollector {
     for (int i = 0; i < NUMBER_OF_MALLOC_TAGS; i++) {
       // Leave out free space and allocation types with no allocations.
       if (i == FREE_MALLOC_TAG || sizes_[i] == 0) continue;
-      printf("  | %7d   | %6d  |  %-19s  |\n",
+      printf("  │ %7d   │ %6d  │  %-20s │\n",
           sizes_[i], counts_[i], HeapSummaryPage::name_of_type(i));
       size += sizes_[i];
       // The reported overhead isn't really separate allocations, so
@@ -700,12 +692,15 @@ class HeapSummaryCollector {
     }
 
     multi_heap_info_t info;
-    heap_caps_get_info(&info, MALLOC_CAP_8BIT);
+    int caps = OS::toit_heap_caps_flags_for_heap();
+    heap_caps_get_info(&info, caps);
     int capacity_bytes = info.total_allocated_bytes + info.total_free_bytes;
     int used_bytes = size * 100 / capacity_bytes;
     printf("  └───────────┴─────────┴───────────────────────┘\n");
-    printf("  Total: %d bytes in %d allocations (%d%%)\n",
-        size, count, used_bytes);
+    printf("  Total: %d bytes in %d allocations (%d%%), largest free %dk, total free %dk\n",
+        size, count, used_bytes,
+        static_cast<int>(info.largest_free_block >> 10),
+        static_cast<int>(info.total_free_bytes >> 10));
 
     int page_count = 0;
     for (int i = 0; i < max_pages_; i++) {
@@ -713,17 +708,12 @@ class HeapSummaryCollector {
     }
     if (page_count == 0) return;
 
-    printf("  ┌────────────┬─────────────────────────────────────────────┐\n");
     for (int i = 0; i < max_pages_; i++) {
       pages_[i].print();
     }
     if (dropped_pages_ > 0) {
-      printf("  ├────────────┼─────────────────────────────────────────────┤\n");
-      printf("  │   %8d │   Unreported pages, hit limit of %-4d       │\n",
-        dropped_pages_, max_pages_);
-      printf("  ├────────────┼─────────────────────────────────────────────┤\n");
+      printf("\n  %d unreported pages, hit limit of %d.\n", dropped_pages_, max_pages_);
     }
-    printf("  └────────────┴─────────────────────────────────────────────┘\n");
   }
 
  private:
@@ -749,7 +739,8 @@ void OS::heap_summary_report(int max_pages, const char* marker) {
     return;
   }
   int flags = ITERATE_ALL_ALLOCATIONS | ITERATE_UNALLOCATED;
-  heap_caps_iterate_tagged_memory_areas(&collector, null, &register_allocation, flags);
+  int caps = OS::toit_heap_caps_flags_for_heap();
+  heap_caps_iterate_tagged_memory_areas(&collector, null, &register_allocation, flags, caps);
   collector.print(marker);
 }
 
@@ -759,47 +750,7 @@ void OS::set_heap_tag(word tag) { }
 word OS::get_heap_tag() { return 0; }
 void OS::heap_summary_report(int max_pages, const char* marker) { }
 
-
 #endif // def TOIT_CMPCTMALLOC
-
-static const int TOIT_IMAGE_DATA_SIZE = 1024;
-static const int TOIT_CONFIG_IMAGE_SIZE = TOIT_IMAGE_DATA_SIZE - UUID_SIZE;
-
-class ImageData {
- public:
-  uint32_t image_pad = 0;
-  uint32_t image_magic1 = 0x7017da7a;  // "Toitdata"
-  // The data between image_magic1 and image_magic2 must be a multiple of 512
-  // bytes, otherwise the patching utility will not detect it. Search for
-  // 0x7017da7a. Note when updating this restriction is baked into the SDK that
-  // you are updating *from* so it can't be fixed without multiple SDK updates.
-  uint8_t image_config[TOIT_CONFIG_IMAGE_SIZE] = {0};
-  uint8_t image_uuid[UUID_SIZE] = {0};
-  uint32_t image_magic2 = 0xc09f19;    // "config"
-} __attribute__((packed));
-
-// Note, you can't declare this const because then the compiler thinks it can
-// just const propagate, but we are going to patch this before we flash it, so
-// we don't want that.  But it's still const because it goes in a flash section.
-__attribute__((section(".rodata_custom_desc"))) ImageData toit_image_data;
-
-const uint8* OS::image_uuid() {
-  return toit_image_data.image_uuid;
-}
-
-uint8* OS::image_config(size_t *length) {
-  if (length) *length = TOIT_CONFIG_IMAGE_SIZE;
-  // See 512-byte restriction above.
-  ASSERT(((TOIT_CONFIG_IMAGE_SIZE + UUID_SIZE) & 0x1ff) == 0);
-  uint8* result = (uint8*)toit_image_data.image_config;
-  if (result[0] == 0) {
-    // A null byte is not a valid start of a UBJSON stream.  This indicates
-    // that the config data was not patched in, or was patched in at the wrong
-    // address.
-    FATAL("No config data in image at %x: %02x %02x", &(result[0]), result[0], result[1]);
-  }
-  return result;
-}
 
 const char* OS::getenv(const char* variable) {
   // Unimplemented on purpose.
@@ -811,7 +762,7 @@ const char* OS::getenv(const char* variable) {
 
 bool OS::set_real_time(struct timespec* time) {
   if (clock_settime(CLOCK_REALTIME, time) == 0) return true;
-  struct timeval timeofday = { 0, };
+  struct timeval timeofday{};
   TIMESPEC_TO_TIMEVAL(&timeofday, time);
   return settimeofday(&timeofday, NULL) == 0;
 }

@@ -36,7 +36,7 @@ class Backend {
       , _source_mapper(source_mapper) { }
 
   // As a side-effect fills in the source-mapper.
-  Program* emit(ir::Program* program, char** snapshot_args);
+  Program* emit(ir::Program* program);
 
  private:
   SourceManager* _source_manager;

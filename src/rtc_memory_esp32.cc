@@ -15,7 +15,7 @@
 
 #include "objects.h"
 #include "os.h"
-#include "sha256.h"
+#include "embedded_data.h"
 #include "top.h"
 #include "utils.h"
 #include "uuid.h"
@@ -28,6 +28,8 @@
 
 #ifdef CONFIG_IDF_TARGET_ESP32C3
   #include <esp32c3/rom/ets_sys.h>
+#elif CONFIG_IDF_TARGET_ESP32S3
+#include <esp32s3/rom/ets_sys.h>
 #else
   #include <esp32/rom/ets_sys.h>
 #endif
@@ -37,12 +39,14 @@
 extern "C" {
 #ifdef CONFIG_IDF_TARGET_ESP32C3
   #include <esp32c3/clk.h>
+#elif CONFIG_IDF_TARGET_ESP32S3
+  #include <esp32s3/clk.h>
 #else
   #include <esp32/clk.h>
 #endif
 }
 
-struct RTCData {
+struct RtcData {
   uint64 total_deep_sleep_time;
   uint64 deep_sleep_time_stamp;
 
@@ -69,7 +73,7 @@ struct RTCData {
 };
 
 // Keep the RTC state in the noinit segment that isn't cleared on reboots.
-static RTC_NOINIT_ATTR RTCData rtc;
+static RTC_NOINIT_ATTR RtcData rtc;
 static RTC_NOINIT_ATTR uint32 rtc_checksum;
 static RTC_NOINIT_ATTR uint8 rtc_user_data[toit::RtcMemory::RTC_USER_DATA_SIZE];
 static bool reset_after_boot = false;
@@ -101,7 +105,7 @@ static uint32 crc32(uint32 crc, const uint8* ptr, size_t length) {
 }
 
 static uint32 compute_rtc_checksum() {
-  uint32 vm_checksum = crc32(0x12345678, toit::OS::image_uuid(), toit::UUID_SIZE);
+  uint32 vm_checksum = crc32(0x12345678, toit::EmbeddedData::uuid(), toit::UUID_SIZE);
   return crc32(vm_checksum, reinterpret_cast<uint8*>(&rtc), sizeof(rtc));
 }
 
@@ -123,8 +127,10 @@ static void reset_rtc(const char* reason) {
   // We only clear RTC on boot, so this must be exactly 1.
   rtc.boot_count = 1;
   // Clear real-time clock.
+#ifndef CONFIG_IDF_TARGET_ESP32S3
   struct timespec time = { 0, 0 };
   toit::OS::set_real_time(&time);
+#endif
   // Checksum will be updated after.
   reset_after_boot = true;
 }

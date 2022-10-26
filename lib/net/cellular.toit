@@ -7,18 +7,20 @@ import system.api.cellular show CellularServiceClient
 
 import .impl
 
-CONFIG_APN   /string ::= "apn"
-CONFIG_BANDS /string ::= "bands"
-CONFIG_RATS  /string ::= "rats"
+CONFIG_LOG_LEVEL / string ::= "cellular.log.level"
 
-CONFIG_UART_BAUD_RATE /string ::= "uart.baud"
-CONFIG_UART_RX        /string ::= "uart.rx"
-CONFIG_UART_TX        /string ::= "uart.tx"
-CONFIG_UART_CTS       /string ::= "uart.cts"
-CONFIG_UART_RTS       /string ::= "uart.rts"
+CONFIG_APN   /string ::= "cellular.apn"
+CONFIG_BANDS /string ::= "cellular.bands"
+CONFIG_RATS  /string ::= "cellular.rats"
 
-CONFIG_POWER /string ::= "power"
-CONFIG_RESET /string ::= "reset"
+CONFIG_UART_BAUD_RATE /string ::= "cellular.uart.baud"
+CONFIG_UART_RX        /string ::= "cellular.uart.rx"
+CONFIG_UART_TX        /string ::= "cellular.uart.tx"
+CONFIG_UART_CTS       /string ::= "cellular.uart.cts"
+CONFIG_UART_RTS       /string ::= "cellular.uart.rts"
+
+CONFIG_POWER /string ::= "cellular.power"
+CONFIG_RESET /string ::= "cellular.reset"
 
 CONFIG_ACTIVE_LOW  /int ::= 0
 CONFIG_ACTIVE_HIGH /int ::= 1

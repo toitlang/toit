@@ -1,0 +1,3 @@
+Serialization failed: Cannot encode instance of Foo.
+  0: process_send_             <sdk>/core/message.toit:28:7
+  1: main                      tests/negative/process_send_serialization_test.toit:8:3

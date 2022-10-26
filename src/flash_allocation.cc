@@ -15,7 +15,7 @@
 
 #include "flash_registry.h"
 #include "flash_allocation.h"
-#include "os.h"
+#include "embedded_data.h"
 #include "uuid.h"
 
 namespace toit {
@@ -33,7 +33,9 @@ void FlashAllocation::Header::set_uuid(const uint8* uuid) {
   memmove(_uuid, uuid, UUID_SIZE);
 }
 
-void FlashAllocation::validate() {  }
+void FlashAllocation::validate() {
+  // Do nothing.
+}
 
 bool FlashAllocation::is_valid(uint32 allocation_offset, const uint8* uuid) const {
   if ((allocation_offset & 1) == 1) return is_valid_allocation(0);
@@ -58,12 +60,22 @@ bool FlashAllocation::Header::is_valid_allocation(const uint32 allocation_offset
 
 bool FlashAllocation::initialize(uint32 offset, uint8 type, const uint8* id, int size, const uint8* metadata) {
   if (static_cast<unsigned>(size) < sizeof(Header)) return false;
-  const uint8* uuid = OS::image_uuid();
+  const uint8* uuid = EmbeddedData::uuid();
   void* result = FlashRegistry::memory(offset, size);
   Header header(offset, type, id, uuid, size, metadata);
   bool success = FlashRegistry::write_chunk(&header, offset, sizeof(header));
   FlashRegistry::flush();
   return success && static_cast<FlashAllocation*>(result)->is_valid(offset, uuid);
+}
+
+int FlashAllocation::assets_size(uint8** bytes, int* length) const {
+  if (!has_assets()) return 0;
+  uword allocation_address = reinterpret_cast<uword>(this);
+  uword assets_address = allocation_address + size();
+  int assets_length = *reinterpret_cast<uint32*>(assets_address);
+  if (bytes) *bytes = reinterpret_cast<uint8*>(assets_address + sizeof(uint32));
+  if (length) *length = assets_length;
+  return Utils::round_up(assets_length + sizeof(uint32), FLASH_PAGE_SIZE);
 }
 
 }  // namespace toit

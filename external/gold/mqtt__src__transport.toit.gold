@@ -1,7 +1,7 @@
-mqtt/src/full_client.toit:670:17: warning: Deprecated 'task'
+mqtt/src/full_client.toit:673:17: warning: Deprecated 'task'
       while not task.is_canceled:
                 ^~~~
-mqtt/src/full_client.toit:957:15: warning: Deprecated 'task'
+mqtt/src/full_client.toit:960:15: warning: Deprecated 'task'
     while not task.is_canceled:
               ^~~~
 mqtt/src/full_client.toit:56:15: warning: Deprecated 'task'
@@ -10,7 +10,7 @@ mqtt/src/full_client.toit:56:15: warning: Deprecated 'task'
 mqtt/src/packets.toit:65:12: warning: Deprecated 'BufferConsumer.put_byte'
     buffer.put_byte type << 4 | flags
            ^~~~~~~~
-mqtt/src/packets.toit:421:14: warning: Deprecated 'BufferConsumer.put_byte'
+mqtt/src/packets.toit:422:14: warning: Deprecated 'BufferConsumer.put_byte'
       buffer.put_byte topic_qos.max_qos
              ^~~~~~~~
 mqtt/src/packets.toit:79:14: warning: Deprecated 'BufferConsumer.put_byte'

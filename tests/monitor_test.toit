@@ -28,6 +28,7 @@ run:
   test_block_in_await
   test_process_messages_in_locked
   test_gate
+  test_latch
 
 monitor A:
   foo_ready := false
@@ -386,7 +387,7 @@ test_process_messages_in_locked kind/int:
 
   // Enqueue a message for ourselves. Will be processed on
   // the current task after blocking on the call to outer.block.
-  process_send_ current_process_ MessageHandler.TYPE [kind]
+  process_send_ Process.current.id MessageHandler.TYPE [kind]
   expect_equals 0 handler.calls
 
   expect_throw DEADLINE_EXCEEDED_ERROR:
@@ -423,6 +424,24 @@ test_gate:
     gate.enter
     gate.lock
     expect gate.is_locked
+
+test_latch:
+  l1 := Latch
+  task:: l1.set 42
+  expect_equals 42 l1.get
+
+  l2 := Latch
+  task:: l2.set --exception 87
+  expect_throw 87: l2.get
+
+  l3 := Latch
+  task::
+    catch:
+      try:
+        throw 99
+      finally: | is_exception exception |
+        l3.set --exception exception
+  expect_throw 99: l3.get
 
 test_semaphore:
   semaphore := Semaphore

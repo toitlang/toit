@@ -27,6 +27,9 @@ if ((NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "${CMAKE_HOST_SYSTEM_NAME}") OR
   # This turns out to work out fine, as we can run the 32-bit executables anyway and don't
   # need a different host build to compile the snapshots.
   set(TOIT_IS_CROSS TRUE)
+  # We are using the compiler from the host system, but we want to use the vessels
+  # from the target system.
+  set(TOIT_VESSELS_ROOT ${CMAKE_BINARY_DIR}/sdk/vessels)
 endif()
 
 set(TOITLSP_BIN "${CMAKE_BINARY_DIR}/sdk/bin/toit.lsp${CMAKE_EXECUTABLE_SUFFIX}")
@@ -154,49 +157,52 @@ add_custom_target(
 )
 
 add_subdirectory(src)
-add_subdirectory(tools)
 
-set(GO_ENV "$ENV{GO_BUILD_FLAGS}")
-separate_arguments(GO_ENV)
-list(APPEND GO_ENV CGO_ENABLED=1 GODEBUG=netdns=go "GOOS=${GOOS}" "GOARCH=${GOARCH}")
+if (NOT "${TOIT_SYSTEM_NAME}" MATCHES "esp32")
+  add_subdirectory(tools)
 
-set(GO_LINK_FLAGS "$ENV{GO_LINK_FLAGS} -X main.date=${BUILD_DATE} -X main.sdkVersion=${TOIT_GIT_VERSION}")
+  set(GO_ENV "$ENV{GO_BUILD_FLAGS}")
+  separate_arguments(GO_ENV)
+  list(APPEND GO_ENV CGO_ENABLED=1 GODEBUG=netdns=go "GOOS=${GOOS}" "GOARCH=${GOARCH}")
 
-add_custom_command(
-  OUTPUT "${TOITLSP_BIN}"
-  COMMAND "${CMAKE_COMMAND}" -E env ${GO_ENV} go build -ldflags "${GO_LINK_FLAGS}" -tags "netgo osusergo" -o "${TOITLSP_BIN}"
-  WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}/tools/toitlsp
-)
+  set(GO_LINK_FLAGS "$ENV{GO_LINK_FLAGS} -X main.date=${BUILD_DATE} -X main.sdkVersion=${TOIT_GIT_VERSION}")
 
-add_custom_command(
-  OUTPUT "${TOITPKG_BIN}"
-  COMMAND "${CMAKE_COMMAND}" -E env ${GO_ENV} go build -ldflags "${GO_LINK_FLAGS}" -tags "netgo osusergo" -o "${TOITPKG_BIN}"
-  WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}/tools/tpkg
-)
-
-add_custom_target(
-  build_go_tools
-  DEPENDS "${TOITLSP_BIN}" "${TOITPKG_BIN}"
-)
-add_dependencies(build_tools build_go_tools)
-
-enable_testing()
-add_subdirectory(tests)
-
-add_subdirectory(examples)
-# External Toit packages and projects.
-add_subdirectory(external)
-
-set(CMAKE_POLICY_DEFAULT_CMP0076 OLD)
-# The 'ENABLE_TESTING' and 'ENABLE_PROGRAMS' variables (used by mbedtls) have no prefix. As
-# such they might interfere with other libraries.
-# Eventually, we need to import mbedtls differently.
-set(ENABLE_TESTING CACHE BOOL OFF)
-set(ENABLE_PROGRAMS CACHE BOOL OFF)
-add_subdirectory(
-  "${IDF_PATH}/components/mbedtls/mbedtls"
-  "${CMAKE_BINARY_DIR}/mbedtls"
-  EXCLUDE_FROM_ALL
+  add_custom_command(
+    OUTPUT "${TOITLSP_BIN}"
+    COMMAND "${CMAKE_COMMAND}" -E env ${GO_ENV} go build -ldflags "${GO_LINK_FLAGS}" -tags "netgo osusergo" -o "${TOITLSP_BIN}"
+    WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}/tools/toitlsp
   )
 
-set(CMAKE_POLICY_DEFAULT_CMP0076 NEW)
+  add_custom_command(
+    OUTPUT "${TOITPKG_BIN}"
+    COMMAND "${CMAKE_COMMAND}" -E env ${GO_ENV} go build -ldflags "${GO_LINK_FLAGS}" -tags "netgo osusergo" -o "${TOITPKG_BIN}"
+    WORKING_DIRECTORY ${TOIT_SDK_SOURCE_DIR}/tools/tpkg
+  )
+
+  add_custom_target(
+    build_go_tools
+    DEPENDS "${TOITLSP_BIN}" "${TOITPKG_BIN}"
+  )
+  add_dependencies(build_tools build_go_tools)
+
+  enable_testing()
+  add_subdirectory(tests)
+
+  add_subdirectory(examples)
+  # External Toit packages and projects.
+  add_subdirectory(external)
+
+  set(CMAKE_POLICY_DEFAULT_CMP0076 OLD)
+  # The 'ENABLE_TESTING' and 'ENABLE_PROGRAMS' variables (used by mbedtls) have no prefix. As
+  # such they might interfere with other libraries.
+  # Eventually, we need to import mbedtls differently.
+  set(ENABLE_TESTING CACHE BOOL OFF)
+  set(ENABLE_PROGRAMS CACHE BOOL OFF)
+  add_subdirectory(
+    "${IDF_PATH}/components/mbedtls/mbedtls"
+    "${CMAKE_BINARY_DIR}/mbedtls"
+    EXCLUDE_FROM_ALL
+    )
+
+  set(CMAKE_POLICY_DEFAULT_CMP0076 NEW)
+endif() # TOIT_SYSTEM_NAME != esp32
