@@ -1,4 +1,4 @@
-// Copyright (C) 2018 Toitware ApS.
+// Copyright (C) 2022 Toitware ApS.
 //
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -22,13 +22,11 @@
 #include "windows.h"
 #include "winbase.h"
 #include <tchar.h>
-#include <stdio.h>
+#include <cstdio>
 
 #include "../objects.h"
 #include "../objects_inline.h"
-#include "../primitive.h"
-#include "../process.h"
-#include "../resource.h"
+
 namespace toit {
 
 const int kReadState = 1 << 0;
@@ -368,11 +366,8 @@ PRIMITIVE(read) {
   return data;
 }
 
-const int CONTROL_FLAG_LE  = 1 << 0;            /* line enable */
 const int CONTROL_FLAG_DTR = 1 << 1;            /* data terminal ready */
 const int CONTROL_FLAG_RTS = 1 << 2;            /* request to send */
-const int CONTROL_FLAG_ST  = 1 << 3;            /* secondary transmit */
-const int CONTROL_FLAG_SR  = 1 << 4;            /* secondary receive */
 const int CONTROL_FLAG_CTS = 1 << 5;            /* clear to send */
 const int CONTROL_FLAG_CAR = 1 << 6;            /* carrier detect */
 const int CONTROL_FLAG_RNG = 1 << 7;            /* ring */
