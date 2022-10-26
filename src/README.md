@@ -24,6 +24,19 @@ We make very sparing use of C++ references.  If used for function arguments
 they should be const references.  Use pointers for passing an object that
 can be modified.
 
+## Classes and structs.
+
+We prefer simple classes to structs, because that means we can make
+a constructor that initializes the fields.  Constructors should normally
+initialize all fields.
+
+If external code provides a struct that we use it is not necessary to
+use the `struct` keyword with the type.
+
+For very simple classes that almost could have been structs it is OK
+to have public fields without getters and setters.  This might be
+the case if the class is only used in one file.
+
 ## Casts
 
 We don't use old-style C casts because they are hard to search for and have no
@@ -54,6 +67,30 @@ Put spaces on both sides of binary operators:
 ```
   foo(a+b);    // No.
   foo(a + b);  // Better.
+```
+
+Prefer postfix increments.
+```
+  i++;    // Yes.
+  ++i;    // No.
+  i--;    // Yes.
+  --i;    // No.
+```
+
+When using C++ iterators there may be an efficiency reason to use prefix
+iterators instead.
+
+It is good to use parentheses to disambiguate precedence, but the reader
+is expected to know some common ones.
+
+```
+  x = a + b * c;               // OK, we all know that * and / bind stronger than + and -.
+  x = a * b + c;               // OK.
+  x = (a * b) + c;             // No, too many parentheses.
+  flag = (a && b) || c;        // OK, not everyone can remember that && binds stronger than ||.
+  flag = a && b || c;          // No, causes a warning from the compiler.
+  if (a == 0 && b >= 0) {      // OK, we all know that comparisons bind stronger than && and ||.
+  if ((a == 0) && (b == 0)) {  // No, too many parentheses.
 ```
 
 ### Spacing
