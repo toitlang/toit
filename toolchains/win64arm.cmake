@@ -13,13 +13,17 @@
 # The license can be found in the file `LICENSE` in the top level
 # directory of this repository.
 
+# Note: mbedtls fails unless _MSC_VER is replaced with _WIN32 in line 198 of timimg.c
+
 set(CMAKE_SYSTEM_NAME Windows)
 
-set(triple x86_64-w64-mingw32)
+set(triple armv7-w64-mingw32)
+set(CMAKE_COMPILER_IS_CLANG 1)
+set(_MSC_VER 1)
 
-set(CMAKE_C_COMPILER x86_64-w64-mingw32-gcc)
+set(CMAKE_C_COMPILER armv7-w64-mingw32-gcc)
 set(CMAKE_C_COMPILER_TARGET ${triple})
-set(CMAKE_CXX_COMPILER x86_64-w64-mingw32-g++)
+set(CMAKE_CXX_COMPILER armv7-w64-mingw32-g++)
 set(CMAKE_CXX_COMPILER_TARGET ${triple})
 
 set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} -m64 -x assembler-with-cpp" CACHE STRING "asm flags")
@@ -37,4 +41,4 @@ set(CMAKE_EXE_LINKER_FLAGS "-static-libgcc -static-libstdc++ -static")
 set(TOIT_SYSTEM_NAME "${CMAKE_SYSTEM_NAME}")
 
 set(GOOS "windows")
-set(GOARCH "amd64")
+set(GOARCH "arm64")

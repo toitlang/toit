@@ -17,6 +17,8 @@
 
 #ifdef TOIT_WINDOWS
 
+#define WINDOWS_ERROR return windows_error(process)
+
 #include "windows.h"
 #include "winbase.h"
 #include <tchar.h>
@@ -40,10 +42,13 @@ public:
   TAG(IntResource);
   HandleResource(ResourceGroup* group, HANDLE handle)
       : Resource(group)
-      , _handle(handle) {}
+      , _handle(handle) {
+    SecureZeroMemory(&_read, sizeof(OVERLAPPED));
+    _read.hEvent = CreateEvent(NULL,TRUE,FALSE,NULL);
+  }
 
   HANDLE handle() { return _handle; }
-
+  LPOVERLAPPED read() { return &_read; }
   void close() {
     CloseHandle(_handle);
   }
@@ -57,6 +62,7 @@ private:
   HANDLE _handle;
   bool rts_ = false;
   bool dtr_ = false;
+  OVERLAPPED _read{};
 };
 
 class UARTResourceGroup : public ResourceGroup {
@@ -72,9 +78,11 @@ public:
   }
 
 private:
-  uint32_t on_event(Resource* resource, word data, uint32_t state) {
+  uint32_t on_event(Resource* resource, word data, uint32_t state) override {
     if (data & EV_RXCHAR) state |= kReadState;
     if (data & EV_ERR) state |= kErrorState;
+    if (data & EV_TXEMPTY) state |= kWriteState;
+
     return state;
   }
 };
@@ -94,7 +102,7 @@ protected:
 private:
   HandleResource* _resource;
   UARTHandleEventSource* _event_source;
-  OVERLAPPED _overlapped;
+  OVERLAPPED _overlapped{};
 };
 
 // On windows event sources are not global, but per resource.
@@ -120,8 +128,11 @@ private:
 };
 
 void UARTMonitor::entry() {
+  // We start out by being able to write, so that state is set
+  _event_source->dispatch_event(EV_TXEMPTY, _resource);
+
   while (true) {
-    DWORD evt_mask;
+    DWORD evt_mask = 0;
     bool success = WaitCommEvent(_resource->handle(), &evt_mask, &_overlapped);
     if (success) {
       _event_source->dispatch_event(evt_mask, _resource);
@@ -129,24 +140,43 @@ void UARTMonitor::entry() {
       DWORD err = GetLastError();
       if( ERROR_IO_PENDING == err)
       {
-        printf("I/O is pending...\n");
+        if (WaitForSingleObject(_overlapped.hEvent, 30000) == WAIT_OBJECT_0) {
+          DWORD tmp;
+          GetOverlappedResult(_resource->handle(), &_overlapped, &tmp, FALSE);
 
-        // To do.
+          _event_source->dispatch_event(evt_mask, _resource);
+
+          ResetEvent(_overlapped.hEvent);
+        }
       }
       else if (ERROR_INVALID_HANDLE == err) {
-        // TODO: Is this what is called when the resource is closed?
-        printf ("Invalid handle\n");
-      } else {
-        printf("Wait failed with error %d.\n", GetLastError());
+        // The resource is closed, so we can safely exit this loop
         break;
+      } else {
+        // There is nothing we can do about it
       }
     }
 
   }
-  printf("UART DONE");
   free(this);
 }
 
+HeapObject* windows_error(Process* process) {
+  LPVOID lpMsgBuf;
+  DWORD dw = GetLastError();
+  FormatMessage(
+      FORMAT_MESSAGE_ALLOCATE_BUFFER |
+      FORMAT_MESSAGE_FROM_SYSTEM |
+      FORMAT_MESSAGE_IGNORE_INSERTS,
+      NULL,
+      dw,
+      MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+      (LPTSTR) &lpMsgBuf,
+      0, NULL );
+  String* error = process->allocate_string((LPCTSTR)lpMsgBuf);
+  if (error == null) ALLOCATION_FAILED;
+  return Primitive::mark_as_error(error);
+}
 
 MODULE_IMPLEMENTATION(uart, MODULE_UART);
 
@@ -189,9 +219,7 @@ PRIMITIVE(create_path) {
                              FILE_FLAG_OVERLAPPED,      //   overlapped I/O
                              NULL ); //  hTemplate must be NULL for comm devices
 
-  if (handle == INVALID_HANDLE_VALUE) {
-    return Primitive::os_error(errno, process);
-  }
+  if (handle == INVALID_HANDLE_VALUE) WINDOWS_ERROR;
 
   DCB dcb;
   SecureZeroMemory(&dcb, sizeof(DCB));
@@ -225,7 +253,7 @@ PRIMITIVE(create_path) {
 
   if (!success) {
     CloseHandle(handle);
-    return Primitive::os_error(errno, process);
+    WINDOWS_ERROR;
   }
 
   // Setup timeouts
@@ -237,14 +265,14 @@ PRIMITIVE(create_path) {
   success = SetCommTimeouts(handle, &comm_timeouts);
   if (!success) {
     CloseHandle(handle);
-    return Primitive::os_error(errno, process);
+    WINDOWS_ERROR;
   }
 
   // Setup Mask
-  success = SetCommMask(handle, EV_ERR | EV_RXCHAR);
+  success = SetCommMask(handle, EV_ERR | EV_RXCHAR | EV_TXEMPTY);
   if (!success) {
     CloseHandle(handle);
-    return Primitive::os_error(errno, process);
+    WINDOWS_ERROR;
   }
 
   HandleResource* resource = resource_group->register_handle(handle);
@@ -268,9 +296,8 @@ PRIMITIVE(get_baud_rate) {
   HANDLE handle = resource->handle();
   DCB dcb;
   bool success = GetCommState(handle, &dcb);
-  if (!success) {
-    return Primitive::os_error(errno, process);
-  }
+  if (!success) WINDOWS_ERROR;
+
 
   return Primitive::integer(dcb.BaudRate, process);
 }
@@ -281,15 +308,11 @@ PRIMITIVE(set_baud_rate) {
   HANDLE handle = resource->handle();
   DCB dcb;
   bool success = GetCommState(handle, &dcb);
-  if (!success) {
-    return Primitive::os_error(errno, process);
-  }
+  if (!success) WINDOWS_ERROR;
 
   dcb.BaudRate = baud_rate;
   success = SetCommState(handle, &dcb);
-  if (!success) {
-    return Primitive::os_error(errno, process);
-  }
+  if (!success) WINDOWS_ERROR;
 
   return process->program()->null_object();
 }
@@ -298,7 +321,6 @@ PRIMITIVE(set_baud_rate) {
 // Does not support break or wait
 PRIMITIVE(write) {
   ARGS(HandleResource, resource, Blob, data, int, from, int, to, int, break_length, bool, wait);
-
   if (break_length > 0 || wait) INVALID_ARGUMENT;
 
   HANDLE handle = resource->handle();
@@ -309,13 +331,12 @@ PRIMITIVE(write) {
 
   if (break_length < 0) OUT_OF_RANGE;
   DWORD written;
-  bool success = WriteFile(handle, tx, to - from, &written, null);
+  bool success = WriteFile(handle, tx, to - from, &written, resource->read());
+  if (!success && GetLastError() != ERROR_IO_PENDING)
+      WINDOWS_ERROR;
 
-  if (!success) {
-    return Primitive::os_error(errno, process);
-  }
-
-  return Smi::from(written);
+  // With overlapped io, the written field is 0, we assume that the overlapped io will write all.
+  return Smi::from(to - from);
 }
 
 PRIMITIVE(wait_tx) {
@@ -328,19 +349,20 @@ PRIMITIVE(read) {
 
   COMSTAT comm_stats;
   DWORD comm_errors;
-  if (!ClearCommError(handle, &comm_errors, &comm_stats)) return Primitive::os_error(errno, process);
+
+  if (!ClearCommError(handle, &comm_errors, &comm_stats)) WINDOWS_ERROR;
 
   if (comm_stats.cbInQue == 0) return process->program()->null_object();
 
-  Error* error = null;
-  ByteArray* data = process->allocate_byte_array(static_cast<int>(comm_stats.cbInQue), &error, /*force_external*/ true);
-  if (data == null) return error;
+  ByteArray* data = process->allocate_byte_array(static_cast<int>(comm_stats.cbInQue), /*force_external*/ true);
+  if (data == null) ALLOCATION_FAILED;
 
   DWORD bytes_read;
   ByteArray::Bytes rx(data);
-  bool success = ReadFile(handle, rx.address(), rx.length(), &bytes_read, null);
+  bool success = ReadFile(handle, rx.address(), rx.length(), &bytes_read, resource->read());
   if (!success) {
-    return Primitive::os_error(errno, process);
+    if (GetLastError() == ERROR_IO_PENDING) return process->program()->null_object();
+    WINDOWS_ERROR;
   }
 
   return data;
@@ -391,10 +413,8 @@ PRIMITIVE(get_control_flags) {
     if (modem_stats & MS_RLSD_ON) flags |= CONTROL_FLAG_CAR;
   }
 
-
   return Smi::from(flags);
 }
-
 
 }
 #endif
