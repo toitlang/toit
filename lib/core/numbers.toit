@@ -928,7 +928,7 @@ abstract class int extends num:
   /**
   Whether this number is aligned with $n.
 
-  This number and the given $n must be a power of 2 or 0.
+  The given $n must be a power of 2.
 
   # Examples
   ```
@@ -938,9 +938,9 @@ abstract class int extends num:
   0.is_aligned 4096      // => true
 
   2.is_aligned 1024  // => false
+  3.is_aligned 2     // => false.
 
   2.is_aligned 3     // Error.
-  3.is_aligned 2     // Error.
     ```
   */
   is_aligned n/int -> bool:
@@ -1027,6 +1027,66 @@ abstract class int extends num:
   */
   population_count -> int:
     #primitive.core.popcount
+
+  /**
+  Counts the number of ones in the binary representation of the integer.
+  Returns 1 if the number is odd, zero if the number is even.
+  The integer is treated as a 64 bit number.
+    Thus it returns 0 if called on -1.
+  # Examples
+  ```
+  (0b101101).parity  // => 0
+  (0b101100).parity  // => 1
+  (0b101110).parity  // => 0
+  (0b101111).parity  // => 1
+  (0).parity         // => 0
+  (-1).parity        // => 0
+  int.MIN.parity     // => 1
+  int.MAX.parity     // => 1
+  ```
+  */
+  parity -> int:
+    return population_count & 1
+
+  /**
+  Counts the number of ones in the binary representation of the integer.
+  Returns false if the number is odd, true if the number is even.
+  The integer is treated as a 64 bit number.
+    Thus it returns false if called on -1.
+  # Examples
+  ```
+  (0b101101).parity  // => true
+  (0b101100).parity  // => false
+  (0b101110).parity  // => true
+  (0b101111).parity  // => false
+  (0).parity         // => true
+  (-1).parity        // => true
+  int.MIN.parity     // => false
+  int.MAX.parity     // => false
+  ```
+  */
+  has_even_parity -> bool:
+    return (population_count & 1) == 0
+
+  /**
+  Counts the number of ones in the binary representation of the integer.
+  Returns true if the number is odd, false if the number is even.
+  The integer is treated as a 64 bit number.
+    Thus it returns true if called on -1.
+  # Examples
+  ```
+  (0b101101).parity  // => false
+  (0b101100).parity  // => true
+  (0b101110).parity  // => false
+  (0b101111).parity  // => true
+  (0).parity         // => false
+  (-1).parity        // => false
+  int.MIN.parity     // => true
+  int.MAX.parity     // => true
+  ```
+  */
+  has_odd_parity -> bool:
+    return (population_count & 1) == 1
 
 class SmallInteger_ extends int:
   /** See $super. */
