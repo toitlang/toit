@@ -103,7 +103,7 @@ PRIMITIVE(parse) {
     length = str->length() + 1;
     // Should not happen since Toit strings are null terminated.
     if (length == 1 || data[length - 1] != '\0') INVALID_ARGUMENT;
-    if (strlen(data) != length - 1) INVALID_ARGUMENT;  // String with nulls in it.
+    if (strlen(char_cast(data)) != length - 1) INVALID_ARGUMENT;  // String with nulls in it.
   } else if (input->byte_content(process->program(), &blob, STRINGS_OR_BYTE_ARRAYS)) {
     // If we're passed a byte array or a string slice, we hope that
     // it ends with a zero character. Otherwise parsing will fail.
