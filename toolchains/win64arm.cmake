@@ -27,8 +27,8 @@ set(CMAKE_CXX_COMPILER armv7-w64-mingw32-g++)
 set(CMAKE_CXX_COMPILER_TARGET ${triple})
 
 set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} -m64 -x assembler-with-cpp" CACHE STRING "asm flags")
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -m64 -Wno-error=sign-compare" CACHE STRING "c flags")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -m64" CACHE STRING "c++ flags")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -m64 -Wno-error=sign-compare -DMBEDTLS_TIMING_ALT=1 -I/Users/mikkel/proj/toit/src/ports" CACHE STRING "c flags")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -m64 -DMBEDTLS_TIMING_ALT=1" CACHE STRING "c++ flags")
 
 set(CMAKE_C_FLAGS_DEBUG "-Og -g" CACHE STRING "c Debug flags")
 set(CMAKE_C_FLAGS_RELEASE "-Os" CACHE STRING "c Release flags")

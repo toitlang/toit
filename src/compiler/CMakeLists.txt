@@ -62,6 +62,7 @@ target_link_libraries(
   ${TOIT_WINDOWS_LIBS}
   pthread
   ${CMAKE_DL_LIBS}
+  toit_porting
   )
 
 if (CMAKE_HOST_APPLE)
