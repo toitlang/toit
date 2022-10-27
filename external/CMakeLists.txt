@@ -190,34 +190,37 @@ endfunction()
 function(add_repo_tests REPO)
   get_filename_component(REPO_NAME "${REPO}" NAME)
   set(REPO_PATH "${DOWNLOADS_DIR}/${REPO_NAME}")
-  file(GLOB TEST_FILES RELATIVE "${CMAKE_SOURCE_DIR}"
+  file(GLOB TEST_FILES RELATIVE "${REPO_PATH}"
       "${REPO_PATH}/tests/*_test.toit"
       "${REPO_PATH}/tests/*_test_slow.toit")
 
-  file(RELATIVE_PATH TEST_PREFIX "${CMAKE_SOURCE_DIR}" "${REPO_PATH}")
+  # Set the TEST_PREFIX which will be used by the 'fail.cmake' files.
+  set(TEST_PREFIX "${REPO_NAME}")
   set(FAILING_TESTS)
   set(SKIP_TESTS)
   include("${REPO_PATH}/test/fail.cmake" OPTIONAL)
   include("${REPO_PATH}/tests/fail.cmake" OPTIONAL)
 
   foreach(FILE ${TEST_FILES})
-    if("${FILE}" IN_LIST SKIP_TESTS)
+    set(TEST_NAME "${REPO_NAME}/${FILE}")
+    if("${TEST_NAME}" IN_LIST SKIP_TESTS)
       continue()
     endif()
+
     add_test(
-      NAME "${FILE}"
+      NAME "${TEST_NAME}"
       COMMAND $<TARGET_FILE:toit.run> "${FILE}"
-      WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+      WORKING_DIRECTORY "${REPO_PATH}"
       CONFIGURATIONS external
     )
-    if("${FILE}" IN_LIST FAILING_TESTS)
-      set_tests_properties(${FILE} PROPERTIES WILL_FAIL TRUE)
+    if("${TEST_NAME}" IN_LIST FAILING_TESTS)
+      set_tests_properties(${TEST_NAME} PROPERTIES WILL_FAIL TRUE)
     endif()
 
-    if ("${FILE}" MATCHES "_slow\\.toit$")
-      set_tests_properties(${FILE} PROPERTIES TIMEOUT ${SLOW_TIMEOUT})
+    if ("${TEST_NAME}" MATCHES "_slow\\.toit$")
+      set_tests_properties(${TEST_NAME} PROPERTIES TIMEOUT ${SLOW_TIMEOUT})
     else()
-      set_tests_properties(${FILE} PROPERTIES TIMEOUT ${DEFAULT_TIMEOUT})
+      set_tests_properties(${TEST_NAME} PROPERTIES TIMEOUT ${DEFAULT_TIMEOUT})
     endif()
   endforeach()
 endfunction()
