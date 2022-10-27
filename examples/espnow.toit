@@ -4,13 +4,13 @@
 
 import esp32.espnow
 
-service ::= espnow.Service --pmk="pmk1234567890123".to_byte_array
+PMK ::= espnow.Key.from_string "pmk1234567890123"
+service ::= espnow.Service.with_key --key=PMK
 
 main:
   service.add_peer
-      espnow.BROADCAST_MAC
+      espnow.BROADCAST_ADDRESS
       --channel=1
-
   task:: espnow_tx_task
   task:: espnow_rx_task
 
@@ -20,7 +20,7 @@ espnow_tx_task:
     buffer := "hello $count"    
     ret := service.send
         buffer.to_byte_array
-        --address=espnow.BROADCAST_MAC
+        --address=espnow.BROADCAST_ADDRESS
     if ret < 0:
       print "Failed to send datagram result is $ret"
     else:

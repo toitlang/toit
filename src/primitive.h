@@ -659,7 +659,7 @@ namespace toit {
   PRIMITIVE(init, 2)                         \
   PRIMITIVE(send, 3)                         \
   PRIMITIVE(receive, 1)                      \
-  PRIMITIVE(add_peer, 4)                     \
+  PRIMITIVE(add_peer, 3)                     \
   PRIMITIVE(deinit, 1)                       \
 
 // ----------------------------------------------------------------------------

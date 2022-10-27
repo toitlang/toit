@@ -187,12 +187,12 @@ PRIMITIVE(init) {
 }
 
 PRIMITIVE(send) {
-  ARGS(Blob, addr, Blob, data, bool, wait);
+  ARGS(Blob, mac, Blob, data, bool, wait);
 
   // Reset the value of semaphore(max value is 1) to 0, so don't need to check result
   xSemaphoreTake(tx_sem, 0);
 
-  FATAL_IF_NOT_ESP_OK(esp_now_send(addr.address(), data.address(), data.length()));
+  FATAL_IF_NOT_ESP_OK(esp_now_send(mac.address(), data.address(), data.length()));
 
   if (wait) {
     portBASE_TYPE ret = xSemaphoreTake(tx_sem, pdMS_TO_TICKS(ESPNOW_TX_WAIT_US));
@@ -212,11 +212,11 @@ PRIMITIVE(receive) {
   ARGS(Object, output);
 
   Array* out = Array::cast(output);
-  if (out->length() == 2) INVALID_ARGUMENT;
+  if (out->length() != 2) INVALID_ARGUMENT;
 
-  ByteArray* address = null;
-  address = process->allocate_byte_array(6);
-  if (address == null) ALLOCATION_FAILED;
+  ByteArray* mac = null;
+  mac = process->allocate_byte_array(6);
+  if (mac == null) ALLOCATION_FAILED;
 
   ByteArray* data = process->allocate_byte_array(ESPNOW_RX_DATAGRAM_LEN_MAX, true);
   if (data == null) ALLOCATION_FAILED;
@@ -229,18 +229,18 @@ PRIMITIVE(receive) {
 
   data->resize_external(process, datagram->len);
 
-  memcpy(ByteArray::Bytes(address).address(), datagram->mac, 6);
+  memcpy(ByteArray::Bytes(mac).address(), datagram->mac, 6);
   memcpy(ByteArray::Bytes(data).address(), datagram->buffer, datagram->len);
   free_datagram(datagram);
 
-  out->at_put(0, address);
+  out->at_put(0, mac);
   out->at_put(1, data);
 
   return out;
 }
 
 PRIMITIVE(add_peer) {
-  ARGS(Blob, addr, int, channel, bool, encrypted, Blob, key);
+  ARGS(Blob, mac, int, channel, Blob, key);
 
   wifi_mode_t wifi_mode;
   FATAL_IF_NOT_ESP_OK(esp_wifi_get_mode(&wifi_mode));
@@ -249,10 +249,12 @@ PRIMITIVE(add_peer) {
   memset(&peer, 0, sizeof(esp_now_peer_info_t));
   peer.channel = channel;
   peer.ifidx = wifi_mode == WIFI_MODE_AP ? WIFI_IF_AP : WIFI_IF_STA;
-  peer.encrypt = encrypted;
-  memcpy(&peer.peer_addr, addr.address(), ESP_NOW_ETH_ALEN);
-  if (encrypted) {
+  memcpy(&peer.peer_addr, mac.address(), ESP_NOW_ETH_ALEN);
+  if (key.length()) {
+    peer.encrypt = true;
     memcpy(peer.lmk, key.address(), ESP_NOW_KEY_LEN);
+  } else {
+    peer.encrypt = false;
   }
   FATAL_IF_NOT_ESP_OK(esp_now_add_peer(&peer));
 

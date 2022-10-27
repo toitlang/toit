@@ -5,8 +5,6 @@
 STATION ::= 0 // Wi-Fi station mode
 SOFTAP  ::= 1 // Not support yet
 
-BROADCAST_MAC ::= #[0xff, 0xff, 0xff, 0xff, 0xff, 0xff]
-
 check_mac_ address/ByteArray:
   if address.size != 6:
       throw "ESP-Now MAC address length must be 6 bytes"
@@ -16,17 +14,26 @@ check_key_ key/ByteArray:
       throw "ESP-Now key length must be 16 bytes"
 
 check_channel_ channel/int:
-  if channel > 14 or channel < 0:
-      throw "ESP-Now channel range must be 0~14"
+  if not 0 <= channel <= 14:
+      throw "ESP-Now channel range must be 0-14"
 
 class Address:
-  address/ByteArray
+  mac/ByteArray
 
-  constructor .address:
-    check_mac_ address
+  constructor .mac:
+    check_mac_ mac
 
   stringify -> string:
-    return "$(%02x address[0]):$(%02x address[1]):$(%02x address[2]):$(%02x address[3]):$(%02x address[4]):$(%02x address[5])"
+    return "$(%02x mac[0]):$(%02x mac[1]):$(%02x mac[2]):$(%02x mac[3]):$(%02x mac[4]):$(%02x mac[5])"
+
+class Key:
+  data/ByteArray
+
+  constructor .data/ByteArray:
+    check_key_ data
+  
+  constructor.from_string string_data/string:
+    return Key string_data.to_byte_array
 
 class Datagram:
   address/Address
@@ -37,39 +44,36 @@ class Datagram:
 class Service:
   _group ::= ?
 
-  constructor --mode/int=STATION --pmk/ByteArray?=null:
-    if not pmk:
-      pmk = #[]
-    else:
-      check_key_ pmk
-    _group = espnow_init_ mode pmk
+  constructor --mode/int=STATION:
+    _group = espnow_init_ mode #[]
+  
+  constructor.with_key --mode/int=STATION --key/Key:
+    _group = espnow_init_ mode key.data
 
-  send data/ByteArray --address/ByteArray --wait/bool=true -> int:
-    check_mac_ address
-    return espnow_send_ address data wait
+  send data/ByteArray --address/Address --wait/bool=true -> int:
+    return espnow_send_ address.mac data wait
 
   receive -> Datagram?:
     array := espnow_receive_ (Array_ 2)
-    if not array:
-      return null
-    return Datagram (Address array[0]) array[1]
+    if not array: return null
+    address := Address array[0]
+    return Datagram address array[1]
 
-  add_peer address/ByteArray --channel/int --lmk/ByteArray?=null --encrypted/bool=(lmk != null) -> bool:
-    check_mac_ address
-    if not lmk:
-      lmk = #[]
-    else:
-      check_key_ lmk
-    return espnow_add_peer_ address channel encrypted lmk
+  add_peer address/Address --channel/int --key/Key?=null -> bool:
+    key_data := #[]
+    if key: key_data = key.data
+    return espnow_add_peer_ address.mac channel key_data
 
 espnow_init_ mode pmk:
   #primitive.espnow.init
 
-espnow_send_ addr data wait:
+espnow_send_ mac data wait:
   #primitive.espnow.send
 
 espnow_receive_ output:
   #primitive.espnow.receive
 
-espnow_add_peer_ addr channel encrypted key:
+espnow_add_peer_ mac channel key:
   #primitive.espnow.add_peer
+
+BROADCAST_ADDRESS ::= Address #[0xff, 0xff, 0xff, 0xff, 0xff, 0xff]
