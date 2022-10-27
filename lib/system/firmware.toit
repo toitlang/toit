@@ -17,12 +17,20 @@ The configuration of the current firmware.
 config /FirmwareConfig ::= FirmwareConfig_
 
 /**
-The content bytes of the current firmware.
+...
 */
-content -> FirmwareContent?:
-  if not _client_: return null
-  backing := _client_.content
-  return backing ? FirmwareContent_ backing : null
+map --from/int=0 --to/int?=null [block] -> none:
+  mapping/FirmwareMapping_? := null
+  if _client_:
+    data := firmware_map_ _client_.content
+    if data:
+      if not to: to = data.size
+      if (0 <= from <= to) and (to <= data.size):
+        mapping = FirmwareMapping_ data from (to - from)
+  try:
+    block.call mapping
+  finally:
+    if mapping: firmware_unmap_ mapping.data_
 
 /**
 Returns whether the currently executing firmware is
@@ -102,6 +110,9 @@ class FirmwareWriter extends ServiceResourceProxy:
   pad size/int --value/int=0 -> none:
     _client_.firmware_writer_pad handle_ size value
 
+  flush -> none:
+    _client_.firmware_writer_flush handle_
+
   commit --checksum/ByteArray?=null -> none:
     _client_.firmware_writer_commit handle_ checksum
 
@@ -117,9 +128,9 @@ interface FirmwareConfig:
   */
   ubjson -> ByteArray
 
-interface FirmwareContent:
+interface FirmwareMapping:
   /**
-  Returns the size of the firmware content in bytes.
+  Returns the size of the mapped firmware in bytes.
   */
   size -> int
 
@@ -129,20 +140,16 @@ interface FirmwareContent:
   operator [] index/int -> int
 
   /**
-
+  ...
   */
-  operator [..] --from/int=0 --to/int=size -> FirmwareContent
+  operator [..] --from/int=0 --to/int=size -> FirmwareMapping
 
   /**
   ...
   */
-  read from/int to/int --out/ByteArray --index/int=0 -> none
+  copy from/int to/int --into/ByteArray -> none
 
-  /**
-  Closes
-  */
-  close -> none
-
+// -------------------------------------------------------------------------
 
 class FirmwareConfig_ implements FirmwareConfig:
   operator [] key/string -> any:
@@ -151,21 +158,41 @@ class FirmwareConfig_ implements FirmwareConfig:
   ubjson -> ByteArray:
     return _client_.config_ubjson
 
-class FirmwareContent_ implements FirmwareContent:
-  backing_/ByteArray? := null
-  constructor .backing_:
-
-  size -> int:
-    return backing_.size
+class FirmwareMapping_ implements FirmwareMapping:
+  data_/ByteArray
+  offset_/int
+  size/int
+  constructor .data_ .offset_=0 .size=data_.size:
 
   operator [] index/int -> int:
-    return backing_[index]
+    #primitive.core.firmware_mapping_at
 
-  operator [..] --from/int=0 --to/int=size -> FirmwareContent:
-    return FirmwareContent_ backing_[from..to]
+  operator [..] --from/int=0 --to/int=size -> FirmwareMapping:
+    return FirmwareMapping_ data_ (offset_ + from) (to - from)
 
-  read from/int to/int --out/ByteArray --index/int=0 -> none:
-    out.replace index backing_ from to
+  copy from/int to/int --into/ByteArray -> none:
+    // TODO(kasper): Validate
+    hunk := to - from
+    // ...
+    align := (from + offset_) & 3
+    if align > 0: align = 4 - align
+    prefix := min align hunk
+    prefix.repeat: into[it] = this[from + it]
+    from += prefix
+    if from >= to: return
+    // Handle suffix.
+    suffix := min ((to + offset_) & 3) (hunk - prefix)
+    to -= suffix
+    suffix.repeat: into[hunk - suffix + it] = this[to + it]
+    if from >= to: return
+    // Copy the remaning bits using a block copy.
+    copy_block_ from to into prefix
 
-  close:
-    backing_ = null
+  copy_block_ from/int to/int into/ByteArray index/int -> none:
+    #primitive.core.firmware_mapping_copy
+
+firmware_map_ data/ByteArray? -> ByteArray?:
+  #primitive.core.firmware_map
+
+firmware_unmap_ data/ByteArray -> none:
+  #primitive.core.firmware_unmap

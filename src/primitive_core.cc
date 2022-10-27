@@ -43,6 +43,8 @@
 #ifdef TOIT_FREERTOS
 #include "esp_heap_caps.h"
 #include "esp_log.h"
+#include "esp_ota_ops.h"
+#include "esp_spi_flash.h"
 #include "esp_system.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -1844,6 +1846,7 @@ PRIMITIVE(process_send) {
   unsigned size = 0;
   { MessageEncoder size_encoder(process, null);
     if (!size_encoder.encode(array)) {
+      printf("[failed on size computation]\n");
       return size_encoder.create_error_object(process);
     }
     size = size_encoder.size();
@@ -1857,6 +1860,7 @@ PRIMITIVE(process_send) {
   if (!encoder.encode(array)) {
     encoder.free_copied();
     free(buffer);
+    printf("[failed on real encoding]\n");
     return encoder.create_error_object(process);
   }
 
@@ -2328,6 +2332,106 @@ PRIMITIVE(literal_index) {
 
 PRIMITIVE(word_size) {
   return Smi::from(WORD_SIZE);
+}
+
+#ifdef TOIT_FREERTOS
+static spi_flash_mmap_handle_t firmware_mmap_handle;
+static bool firmware_is_mapped = false;
+#endif
+
+PRIMITIVE(firmware_map) {
+  ARGS(Object, bytes);
+#ifndef TOIT_FREERTOS
+  return bytes;
+#else
+  if (bytes != process->program()->null_object()) {
+    // If we're passed non-null bytes, we use that as the
+    // firmware bits.
+    return bytes;
+  }
+
+  ByteArray* proxy = process->object_heap()->allocate_proxy();
+  if (proxy == null) ALLOCATION_FAILED;
+
+  if (firmware_is_mapped) {
+    // We unmap to allow the next attempt to get the current
+    // system image to succeed.
+    spi_flash_munmap(firmware_mmap_handle);
+    firmware_is_mapped = false;
+    QUOTA_EXCEEDED;  // Quota is 1.
+  }
+
+  const esp_partition_t* current_partition = esp_ota_get_running_partition();
+  if (current_partition == null) OTHER_ERROR;
+
+  const void* mapped_to = null;
+  esp_err_t err = esp_partition_mmap(
+      current_partition,
+      0,  // Offset from start of partition.
+      current_partition->size,
+      SPI_FLASH_MMAP_INST,
+      &mapped_to,
+      &firmware_mmap_handle);
+  if (err != ESP_OK) OTHER_ERROR;
+
+  firmware_is_mapped = true;
+  proxy->set_external_address(
+      current_partition->size,
+      const_cast<uint8*>(reinterpret_cast<const uint8*>(mapped_to)));
+  return proxy;
+#endif
+}
+
+PRIMITIVE(firmware_unmap) {
+#ifdef TOIT_FREERTOS
+  ARGS(ByteArray, proxy);
+  if (!firmware_is_mapped) process->program()->null_object();
+  spi_flash_munmap(firmware_mmap_handle);
+  firmware_is_mapped = false;
+  proxy->clear_external_address();
+#endif
+  return process->program()->null_object();
+}
+
+PRIMITIVE(firmware_mapping_at) {
+  ARGS(Instance, receiver, int, index);
+  int offset = Smi::cast(receiver->at(1))->value();
+  int size = Smi::cast(receiver->at(2))->value();
+  if (index < 0 || index >= size) OUT_OF_BOUNDS;
+
+  Blob input;
+  if (!receiver->at(0)->byte_content(process->program(), &input, STRINGS_OR_BYTE_ARRAYS)) {
+    WRONG_TYPE;
+  }
+
+  // Firmware is potentially mapped into memory that only allow word
+  // access. We read the full word before masking and shifting.
+  index += offset;
+  const uint32* words = reinterpret_cast<const uint32*>(input.address());
+  uint32 shifted = words[index >> 2] >> ((index & 3) << 3);
+  return Smi::from(shifted & 0xff);
+}
+
+PRIMITIVE(firmware_mapping_copy) {
+  ARGS(Instance, receiver, int, from, int, to, ByteArray, into, int, index);
+  int offset = Smi::cast(receiver->at(1))->value();
+  int size = Smi::cast(receiver->at(2))->value();
+  if (!Utils::is_aligned(from + offset, sizeof(uint32)) ||
+      !Utils::is_aligned(to + offset, sizeof(uint32))) INVALID_ARGUMENT;
+  if (from > to || from < 0 || to > size) OUT_OF_BOUNDS;
+
+  Blob input;
+  if (!receiver->at(0)->byte_content(process->program(), &input, STRINGS_OR_BYTE_ARRAYS)) {
+    WRONG_TYPE;
+  }
+
+  // Firmware is potentially mapped into memory that only allow word
+  // access. We use an IRAM safe memcpy alternative that guarantees
+  // always reading whole words to avoid issues with this.
+  // ByteArray::Bytes input(data);
+  ByteArray::Bytes output(into);
+  iram_safe_memcpy(output.address() + index, input.address() + from + offset, to - from);
+  return process->program()->null_object();
 }
 
 } // namespace toit

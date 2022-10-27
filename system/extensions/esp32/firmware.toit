@@ -93,11 +93,14 @@ class FirmwareWriter_ extends ServiceResource implements FirmwareWriter:
         written_ = ota_write_ buffer_
         fullness_ = 0
 
+  flush -> none:
+    if fullness_ == 0: return
+    written_ = ota_write_ buffer_[..fullness_]
+    fullness_ = 0
+
   commit checksum/ByteArray? -> none:
-    if fullness_ != 0:
-      written_ = ota_write_ buffer_[..fullness_]
-      fullness_ = 0
     // Always commit. Always.
+    flush
     ota_end_ written_ checksum
     buffer_ = null
 
