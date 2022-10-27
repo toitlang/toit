@@ -1474,7 +1474,7 @@ PRIMITIVE(string_slice) {
     // TODO: there should be a singleton empty string in the roots in program.h.
     return process->allocate_string_or_error("");
   }
-  ASSERT(from < length);
+  ASSERT(from < length);  // Checked above.
   // We must guard against chopped up UTF-8 sequences.  We can do this, knowing
   // that the receiver string is valid UTF-8, so a very minimal verification is
   // enough.
@@ -1483,7 +1483,7 @@ PRIMITIVE(string_slice) {
     if (utf_8_continuation_byte(first_after)) ILLEGAL_UTF_8;
   }
   ASSERT(from >= 0);
-  ASSERT(to <= receiver->length());
+  ASSERT(to <= receiver->length());  // Checked above.
   ASSERT(from < to);
   int result_len = to - from;
   String* result = process->allocate_string(result_len);
