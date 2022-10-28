@@ -101,8 +101,8 @@ PRIMITIVE(parse) {
     String* str = String::cast(input);
     data = reinterpret_cast<const uint8_t*>(str->as_cstr());
     length = str->length() + 1;
-    // Should not happen since Toit strings are null terminated.
-    if (length == 1 || data[length - 1] != '\0') INVALID_ARGUMENT;
+    // Toit strings are stored null terminated.
+    ASSERT(data[length - 1] == '\0');
     if (strlen(char_cast(data)) != length - 1) INVALID_ARGUMENT;  // String with nulls in it.
   } else if (input->byte_content(process->program(), &blob, STRINGS_OR_BYTE_ARRAYS)) {
     // If we're passed a byte array or a string slice, we hope that
