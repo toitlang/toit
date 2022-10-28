@@ -55,7 +55,11 @@ class FirmwareServiceDefinition extends FirmwareServiceDefinitionBase:
     return config_.get key
 
   content -> ByteArray?:
-    // TODO(kasper): Implement this.
+    // We deliberately return null here to let the caller know that
+    // it should try to use the firmware content provided by the
+    // underlying system (if any). On the ESP32, the system will
+    // use this to give access to the content of the currently
+    // running OTA partition.
     return null
 
   firmware_writer_open client/int from/int to/int -> FirmwareWriter:

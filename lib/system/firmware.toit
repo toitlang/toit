@@ -17,7 +17,11 @@ The configuration of the current firmware.
 config /FirmwareConfig ::= FirmwareConfig_
 
 /**
-...
+Map the current firmware into memory, so the content
+  bytes of it can be accessed.
+
+The mapping is only valid while executing the given
+  $block.
 */
 map --from/int=0 --to/int?=null [block] -> none:
   mapping/FirmwareMapping_? := null

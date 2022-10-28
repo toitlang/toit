@@ -115,4 +115,3 @@ class FirmwareServiceDefinition extends FirmwareServiceDefinitionBase:
     unreachable
   firmware_writer_open client/int from/int to/int -> FirmwareWriter:
     unreachable
-
