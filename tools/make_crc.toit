@@ -90,7 +90,7 @@ main args:
           class $name_camel extends Crc:
             constructor:
               super.$(endian)_endian $width --$polynomial_argument=$fields[2]$initial_string$xor_string"""
- 
+
 CRCCALC_TABLE ::= """
     CRC-16/CCITT-FALSE
     0x29B1	0x29B1	0x1021	0xFFFF	false	false	0x0000
