@@ -82,11 +82,11 @@ test_mapping bytes/ByteArray mapping/firmware.FirmwareMapping:
 
   buffer := ByteArray mapping.size + 100
   expect.expect_throw "OUT_OF_BOUNDS": mapping.copy -1 0 --into=buffer
-  // expect.expect_throw "OUT_OF_BOUNDS": mapping.copy 1000 1000 --into=buffer
+  expect.expect_throw "OUT_OF_BOUNDS": mapping.copy 1000 1000 --into=buffer
   expect.expect_throw "OUT_OF_BOUNDS": mapping.copy 0 mapping.size + 1 --into=buffer
-
-  // TODO(kasper): Test reversed arguments (to > from).
-
+  expect.expect_throw "OUT_OF_BOUNDS": mapping.copy 4 3 --into=buffer
+  expect.expect_throw "OUT_OF_BOUNDS": mapping.copy 20 7 --into=buffer
+  expect.expect_throw "OUT_OF_BOUNDS": mapping.copy 21 -1 --into=buffer
 
   if bytes.size < 4: return
   split := bytes.size / 2
