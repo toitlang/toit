@@ -2428,7 +2428,6 @@ PRIMITIVE(firmware_mapping_copy) {
   // Firmware is potentially mapped into memory that only allow word
   // access. We use an IRAM safe memcpy alternative that guarantees
   // always reading whole words to avoid issues with this.
-  // ByteArray::Bytes input(data);
   ByteArray::Bytes output(into);
   int bytes = to - from;
   iram_safe_memcpy(output.address() + index, input.address() + from + offset, bytes);
