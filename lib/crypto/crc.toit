@@ -44,19 +44,16 @@ class Crc extends Checksum:
 
   # Example
   ```
-  // The popular CRC-32 used in PNG.
+  // The CRC-32 used in PNG.
   crc := Crc.little_endian 32 --polynomial=0xEDB88320 --initial_state=0xffff_ffff --xor_result=0xffff_ffff
   ```
   */
   constructor.little_endian .width/int --.polynomial/int --initial_state/int=0 --.xor_result/int=0:
     if polynomial > 1 << width: throw "Polynomial and width don't match"
     little_endian = true
-    sum_=initial_state
-    if cache_.contains this:
-      table_ = cache_[this]
-    else:
-      table_ = calculate_table_little_endian_ width polynomial
-      cache_[this] = table_
+    sum_ = initial_state
+    table_ = cache_.get this
+        --init=: calculate_table_little_endian_ width polynomial
 
   /**
   Construct a CRC that processes bits in little-endian-first order.
@@ -67,7 +64,7 @@ class Crc extends Checksum:
 
   # Example
   ```
-  // The popular CRC-32 used in PNG.
+  // The CRC-32 used in PNG.
   crc := Crc.little_endian 32 --normal_polynomial=0x04C11DB7 --initial_state=0xffff_ffff --xor_result=0xffff_ffff
   ```
   */
@@ -87,7 +84,7 @@ class Crc extends Checksum:
 
   # Example
   ```
-  // The popular CRC-32 used in PNG.
+  // The CRC-32 used in PNG.
   // x³² + x²⁶ + x²³ + x²² + x¹⁶ + x¹² + x¹¹ + x¹⁰ + x⁸ + x⁷ + x⁵ + x⁴ + x² + x + 1.
   crc := Crc.little_endian 32
       --powers=[26, 23, 22, 16, 12, 11, 10, 8, 7, 5, 4, 2, 1, 0]
@@ -115,7 +112,7 @@ class Crc extends Checksum:
 
   # Example
   ```
-  // The popular CRC-16 used in Xmodem.
+  // The CRC-16 used in Xmodem.
   crc := Crc.big_endian 16 --polynomial=0x1021
   ```
   */
@@ -123,11 +120,8 @@ class Crc extends Checksum:
     if polynomial > 1 << width: throw "Polynomial and width don't match"
     little_endian = false
     sum_ = initial_state
-    if cache_.contains this:
-      table_ = cache_[this]
-    else:
-      table_ = calculate_table_big_endian_ width polynomial
-      cache_[this] = table_
+    table_ = cache_.get this
+        --init=: calculate_table_big_endian_ width polynomial
 
   /**
   Construct a CRC that processes bits in big-endian-first order.
@@ -158,7 +152,7 @@ class Crc extends Checksum:
     else:
       result = List 256: 0
     crc := 1
-    for i := 128; i > 0 ; i >>= 1:
+    for i := 128; i > 0; i >>= 1:
       if crc & 1 == 0:
         crc >>= 1
       else:
@@ -176,7 +170,7 @@ class Crc extends Checksum:
     hi_bit := 1 << (width - 1)
     mask := width == 64 ? -1 : ((1 << width) - 1)
     crc := hi_bit
-    for i := 1; i < 256 ; i <<= 1:
+    for i := 1; i < 256; i <<= 1:
       if crc & hi_bit == 0:
         crc <<= 1
       else:
