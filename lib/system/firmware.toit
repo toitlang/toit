@@ -140,12 +140,13 @@ interface FirmwareMapping:
   operator [] index/int -> int
 
   /**
-  ...
+  Returns a slice of the firmware mapping.
   */
   operator [..] --from/int=0 --to/int=size -> FirmwareMapping
 
   /**
-  ...
+  Copies a section of the mapped firmware into the $into byte
+    array.
   */
   copy from/int to/int --into/ByteArray -> none
 
@@ -162,33 +163,36 @@ class FirmwareMapping_ implements FirmwareMapping:
   data_/ByteArray
   offset_/int
   size/int
+
   constructor .data_ .offset_=0 .size=data_.size:
 
   operator [] index/int -> int:
     #primitive.core.firmware_mapping_at
 
   operator [..] --from/int=0 --to/int=size -> FirmwareMapping:
+    if not 0 <= from <= to <= size: throw "OUT_OF_BOUNDS"
     return FirmwareMapping_ data_ (offset_ + from) (to - from)
 
   copy from/int to/int --into/ByteArray -> none:
-    // TODO(kasper): Validate
-    hunk := to - from
-    // ...
-    align := (from + offset_) & 3
-    if align > 0: align = 4 - align
-    prefix := min align hunk
-    prefix.repeat: into[it] = this[from + it]
-    from += prefix
-    if from >= to: return
-    // Handle suffix.
-    suffix := min ((to + offset_) & 3) (hunk - prefix)
-    to -= suffix
-    suffix.repeat: into[hunk - suffix + it] = this[to + it]
-    if from >= to: return
-    // Copy the remaning bits using a block copy.
-    copy_block_ from to into prefix
+    if not 0 <= from <= to <= size: throw "OUT_OF_BOUNDS"
+    // Determine if we can do an aligned block copy taking
+    // the offset into account.
+    offset := offset_
+    block_from := min to ((round_up (from + offset) 4) - offset)
+    block_to := (round_down (to + offset) 4) - offset
+    // Copy the bytes in up to three chunks.
+    cursor := copy_range_ from block_from into 0
+    if block_from < block_to:
+      cursor = copy_block_ block_from block_to into cursor
+    else:
+      block_to = block_from
+    copy_range_ block_to to into cursor
 
-  copy_block_ from/int to/int into/ByteArray index/int -> none:
+  copy_range_ from/int to/int into/ByteArray index/int -> int:
+    while from < to: into[index++] = this[from++]
+    return index
+
+  copy_block_ from/int to/int into/ByteArray index/int -> int:
     #primitive.core.firmware_mapping_copy
 
 firmware_map_ data/ByteArray? -> ByteArray?:

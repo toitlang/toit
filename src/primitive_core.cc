@@ -1846,7 +1846,6 @@ PRIMITIVE(process_send) {
   unsigned size = 0;
   { MessageEncoder size_encoder(process, null);
     if (!size_encoder.encode(array)) {
-      printf("[failed on size computation]\n");
       return size_encoder.create_error_object(process);
     }
     size = size_encoder.size();
@@ -1860,7 +1859,6 @@ PRIMITIVE(process_send) {
   if (!encoder.encode(array)) {
     encoder.free_copied();
     free(buffer);
-    printf("[failed on real encoding]\n");
     return encoder.create_error_object(process);
   }
 
@@ -2432,8 +2430,9 @@ PRIMITIVE(firmware_mapping_copy) {
   // always reading whole words to avoid issues with this.
   // ByteArray::Bytes input(data);
   ByteArray::Bytes output(into);
-  iram_safe_memcpy(output.address() + index, input.address() + from + offset, to - from);
-  return process->program()->null_object();
+  int bytes = to - from;
+  iram_safe_memcpy(output.address() + index, input.address() + from + offset, bytes);
+  return Smi::from(index + bytes);
 }
 
 } // namespace toit
