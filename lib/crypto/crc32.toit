@@ -12,6 +12,8 @@ Computes the CRC32 checksum of the given $data.
 
 The $data must be a string or byte array.
 Returns the checksum as a 4 element byte array in little-endian order.
+
+Deprecated.  Use crc.crc_32 or crc.Crc32 instead.
 */
 crc32 data from/int=0 to/int=data.size -> ByteArray:
   crc := Crc.little_endian 32
@@ -21,7 +23,11 @@ crc32 data from/int=0 to/int=data.size -> ByteArray:
   crc.add data from to
   return crc.get
 
-/** CRC-32 checksum state. */
+/**
+CRC-32 checksum state.
+
+Deprecated.  Use crc.Crc32 instead.
+*/
 class Crc32 extends Crc:
   constructor:
     super.little_endian 32
