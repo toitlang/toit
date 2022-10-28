@@ -6,7 +6,7 @@ import crypto.crc
 import expect show *
 
 main:
-  //expect_equals 0x29B1 (crc.crc_16_ccitt_false "123456789")
+  expect_equals 0x29B1 (crc.crc_16_ccitt_false "123456789")
   expect_equals 0xBB3D (crc.crc_16_arc "123456789")
   expect_equals 0xE5CC (crc.crc_16_aug_ccitt "123456789")
   expect_equals 0xFEE8 (crc.crc_16_buypass "123456789")
