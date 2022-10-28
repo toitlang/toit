@@ -25,7 +25,7 @@ map --from/int=0 --to/int?=null [block] -> none:
     data := firmware_map_ _client_.content
     if data:
       if not to: to = data.size
-      if (0 <= from <= to) and (to <= data.size):
+      if 0 <= from <= to <= data.size:
         mapping = FirmwareMapping_ data from (to - from)
   try:
     block.call mapping
