@@ -1897,7 +1897,9 @@ PRIMITIVE(process_send) {
 
 Object* MessageEncoder::create_error_object(Process* process) {
   Object* result = null;
-  if (_nesting_too_deep) {
+  if (_malloc_failed) {
+    MALLOC_FAILED;
+  } else if (_nesting_too_deep) {
     result = process->allocate_string_or_error("NESTING_TOO_DEEP");
   } else if (_problematic_class_id >= 0) {
     result = Primitive::allocate_array(1, Smi::from(_problematic_class_id), process);
