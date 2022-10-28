@@ -317,7 +317,7 @@ jobs:
       - name: Update RELEASE in gcloud - Linux
         if: |
           runner.os == 'Linux' && matrix.shard == 1 &&
-          github.event_name == 'release' && !github.event.release.prerelease
+          github.event_name == 'release'
         env:
           TOIT_VERSION: ${{ steps.constants.outputs.toit_version }}
         run: |
