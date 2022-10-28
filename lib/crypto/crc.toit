@@ -13,7 +13,7 @@ Cyclic Redundancy Check (CRC).
 CRC is an error-detection code.
 
 See https://en.wikipedia.org/wiki/Cyclic_redundancy_check
-and https://crccalc.com/
+  and https://crccalc.com/
 */
 
 class Crc extends Checksum:
