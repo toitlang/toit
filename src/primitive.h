@@ -240,6 +240,10 @@ namespace toit {
   PRIMITIVE(get_env, 1)                      \
   PRIMITIVE(literal_index, 1)                \
   PRIMITIVE(word_size, 0)                    \
+  PRIMITIVE(firmware_map, 1)                 \
+  PRIMITIVE(firmware_unmap, 1)               \
+  PRIMITIVE(firmware_mapping_at, 2)          \
+  PRIMITIVE(firmware_mapping_copy, 5)        \
 
 #define MODULE_TIMER(PRIMITIVE)              \
   PRIMITIVE(init, 0)                         \
