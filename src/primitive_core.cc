@@ -1698,36 +1698,15 @@ PRIMITIVE(byte_array_new_external) {
   return result;
 }
 
-static bool memory_overlaps(const uint8* address_a, int length_a, const uint8* address_b, int length_b) {
-  if (address_a <= address_b && address_b < address_a + length_a) return true;
-  if (address_b <= address_a && address_a < address_b + length_b) return true;
-  return false;
-}
-
 PRIMITIVE(byte_array_replace) {
   ARGS(MutableBlob, receiver, int, index, Blob, source_object, int, from, int, to);
-
-  if (index < 0) OUT_OF_BOUNDS;
-
-  if (from < 0) OUT_OF_BOUNDS;
-  if (to < 0) OUT_OF_BOUNDS;
-  if (to > source_object.length()) OUT_OF_BOUNDS;
-
+  if (index < 0 || from < 0 || to < 0 || to > source_object.length()) OUT_OF_BOUNDS;
   int length = to - from;
-  if (length < 0) OUT_OF_BOUNDS;
-
-  if (index + length > receiver.length()) OUT_OF_BOUNDS;
+  if (length < 0 || index + length > receiver.length()) OUT_OF_BOUNDS;
 
   uint8* dest = receiver.address() + index;
   const uint8* source = source_object.address() + from;
-
-  if (((reinterpret_cast<uintptr_t>(source) | length) & 3) == 0 &&
-      !memory_overlaps(dest, length, source, length)) {
-    iram_safe_memcpy(dest, source, length);
-  } else {
-    memmove(dest, source, length);
-  }
-
+  memmove(dest, source, length);
   return process->program()->null_object();
 }
 
@@ -2405,7 +2384,8 @@ PRIMITIVE(firmware_mapping_at) {
   }
 
   // Firmware is potentially mapped into memory that only allow word
-  // access. We read the full word before masking and shifting.
+  // access. We read the full word before masking and shifting. This
+  // asssumes that we're running on a little endian platform.
   index += offset;
   const uint32* words = reinterpret_cast<const uint32*>(input.address());
   uint32 shifted = words[index >> 2] >> ((index & 3) << 3);
