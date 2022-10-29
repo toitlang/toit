@@ -356,9 +356,8 @@ PRIMITIVE(crc) {
   bool big_endian = width != 0;
   if (to == from) return _raw_accumulator;
   if (from < 0 || to > data.length() || from > to) OUT_OF_BOUNDS;
-  auto address = data.address();
   for (word i = from; i < to; i++) {
-    uint8 byte = address[i];
+    uint8 byte = data.address()[i];
     uint64 index = accumulator;
     if (big_endian) index >>= width - 8;
     index = (byte ^ index) & 0xff;
