@@ -194,8 +194,7 @@ namespace toit {
   PRIMITIVE(byte_array_is_valid_string_content, 3) \
   PRIMITIVE(byte_array_convert_to_string, 3) \
   PRIMITIVE(blob_index_of, 4)                \
-  PRIMITIVE(crc_little_endian, 5)            \
-  PRIMITIVE(crc_big_endian, 6)               \
+  PRIMITIVE(crc, 6)                          \
   PRIMITIVE(string_from_rune, 1)             \
   PRIMITIVE(string_write_to_byte_array, 5)   \
   PRIMITIVE(create_off_heap_byte_array, 1)   \

@@ -340,65 +340,53 @@ static Array* get_array_from_list(Object* object, Process* process) {
   return result;
 }
 
-PRIMITIVE(crc_little_endian) {
-  // For now we don't handle ByteArray as a table, which means we don't accelerate
-  // 8-bit CRCs.
-  ARGS(int64, accumulator, Blob, data, int, from, int, to, Object, table_object);
-  Array* table = get_array_from_list(table_object, process);
-  if (!table) INVALID_ARGUMENT;
-  if (table->length() != 0x100) INVALID_ARGUMENT;
-  if (to == from) return _raw_accumulator;
-  if (from < 0 || to > data.length() || from > to) OUT_OF_BOUNDS;
-  auto address = data.address();
-  for (word i = from; i < to; i++) {
-    uint8 byte = address[i];
-    int index = (byte ^ accumulator) & 0xff;
-    Object* table_entry = table->at(index);
-    uint64 entry;
-    if (is_smi(table_entry)) {
-      entry = Smi::cast(table_entry)->value();
-    } else if (is_large_integer(table_entry)) {
-      entry = LargeInteger::cast(table_entry)->value();
-    } else {
-      INVALID_ARGUMENT;
-    }
-    accumulator = (static_cast<uint64>(accumulator) >> 8) ^ entry;
-  }
-  return Primitive::integer(accumulator, process);
-}
-
-PRIMITIVE(crc_big_endian) {
-  // For now we don't handle ByteArray as a table, which means we don't accelerate
-  // 8-bit CRCs.
+PRIMITIVE(crc) {
   ARGS(int64, accumulator, int, width, Blob, data, int, from, int, to, Object, table_object);
   Array* table = get_array_from_list(table_object, process);
-  if (!table) INVALID_ARGUMENT;
-  if (width < 8 || width > 64) INVALID_ARGUMENT;
-  if (table->length() != 0x100) INVALID_ARGUMENT;
+  const uint8* byte_table = null;
+  if (table) {
+    if (table->length() != 0x100) INVALID_ARGUMENT;
+  } else {
+    Blob blob;
+    if (!table_object->byte_content(process->program(), &blob, STRINGS_OR_BYTE_ARRAYS)) WRONG_TYPE;
+    if (blob.length() != 0x100) INVALID_ARGUMENT;
+    byte_table = blob.address();
+  }
+  if (width < 0 || width > 64) INVALID_ARGUMENT;
+  bool big_endian = width != 0;
   if (to == from) return _raw_accumulator;
   if (from < 0 || to > data.length() || from > to) OUT_OF_BOUNDS;
-  uint64 mask;
-  if (width == 64) {
-    mask = 0;
-    mask = ~mask;
-  } else {
-    mask = 1;
-    mask = (mask << width) - 1;
-  }
   auto address = data.address();
   for (word i = from; i < to; i++) {
     uint8 byte = address[i];
-    int index = (byte ^ (static_cast<uint64>(accumulator) >> (width -8))) & 0xff;
-    Object* table_entry = table->at(index);
+    uint64 index = accumulator;
+    if (big_endian) index >>= width - 8;
+    index = (byte ^ index) & 0xff;
     int64 entry;
-    if (is_smi(table_entry)) {
-      entry = Smi::cast(table_entry)->value();
-    } else if (is_large_integer(table_entry)) {
-      entry = LargeInteger::cast(table_entry)->value();
+    if (byte_table) {
+      entry = byte_table[index];
     } else {
-      INVALID_ARGUMENT;
+      Object* table_entry = table->at(index);
+      if (is_smi(table_entry)) {
+        entry = Smi::cast(table_entry)->value();
+      } else if (is_large_integer(table_entry)) {
+        entry = LargeInteger::cast(table_entry)->value();
+      } else {
+        INVALID_ARGUMENT;
+      }
     }
-    accumulator = ((accumulator << 8) & mask) ^ entry;
+    if (big_endian) {
+      accumulator = (accumulator << 8) ^ entry;
+    } else {
+      accumulator = (static_cast<uint64>(accumulator) >> 8) ^ entry;
+    }
+  }
+  if ((width & 63) != 0) {
+    // If width is less than 64 we have to mask the result.  For the little
+    // endian case (width == 0) we don't need to mask.
+    uint64 mask = 1;
+    mask = (mask << (width & 63)) - 1;
+    accumulator &= mask;
   }
   return Primitive::integer(accumulator, process);
 }

@@ -188,12 +188,12 @@ class Crc extends Checksum:
   /** See $super. */
   add data from/int to/int -> none:
     if little_endian:
-      sum_ = calculcate_crc_little_endian_ sum_ data from to table_
+      sum_ = calculcate_crc_little_endian_ sum_ 0 data from to table_
     else:
       sum_ = calculcate_crc_big_endian_ sum_ width data from to table_
 
-  static calculcate_crc_little_endian_ sum/int data from/int to/int table -> int:
-    #primitive.core.crc_little_endian:
+  static calculcate_crc_little_endian_ sum/int zero/int data from/int to/int table -> int:
+    #primitive.core.crc:
       if data is string:
         (to - from).repeat:
           b := data.at --raw from + it
@@ -206,7 +206,7 @@ class Crc extends Checksum:
       return sum
 
   static calculcate_crc_big_endian_ sum/int width/int data from/int to/int table -> int:
-    #primitive.core.crc_big_endian:
+    #primitive.core.crc:
       mask := width == 64 ? -1 : ((1 << width) - 1)
       if data is string:
         (to - from).repeat:
