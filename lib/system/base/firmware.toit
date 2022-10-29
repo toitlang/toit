@@ -77,8 +77,8 @@ abstract class FirmwareServiceDefinitionBase extends ServiceDefinition implement
   firmware_writer_pad writer/FirmwareWriter size/int value/int -> none:
     writer.pad size value
 
-  firmware_writer_flush writer/FirmwareWriter -> none:
-    writer.flush
+  firmware_writer_flush writer/FirmwareWriter -> int:
+    return writer.flush
 
   firmware_writer_commit writer/FirmwareWriter checksum/ByteArray? -> none:
     writer.commit checksum
@@ -86,5 +86,5 @@ abstract class FirmwareServiceDefinitionBase extends ServiceDefinition implement
 interface FirmwareWriter:
   write bytes/ByteArray -> int
   pad size/int value/int -> int
-  flush -> none
+  flush -> int
   commit checksum/ByteArray? -> none
