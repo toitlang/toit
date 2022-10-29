@@ -342,6 +342,10 @@ static Array* get_array_from_list(Object* object, Process* process) {
 
 PRIMITIVE(crc) {
   ARGS(int64, accumulator, int, width, Blob, data, int, from, int, to, Object, table_object);
+  if ((width != 0 && width < 8) || width > 64) INVALID_ARGUMENT;
+  bool big_endian = width != 0;
+  if (to == from) return _raw_accumulator;
+  if (from < 0 || to > data.length() || from > to) OUT_OF_BOUNDS;
   Array* table = get_array_from_list(table_object, process);
   const uint8* byte_table = null;
   if (table) {
@@ -352,10 +356,6 @@ PRIMITIVE(crc) {
     if (blob.length() != 0x100) INVALID_ARGUMENT;
     byte_table = blob.address();
   }
-  if ((width != 0 && width < 8) || width > 64) INVALID_ARGUMENT;
-  bool big_endian = width != 0;
-  if (to == from) return _raw_accumulator;
-  if (from < 0 || to > data.length() || from > to) OUT_OF_BOUNDS;
   for (word i = from; i < to; i++) {
     uint8 byte = data.address()[i];
     uint64 index = accumulator;
