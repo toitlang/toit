@@ -352,7 +352,7 @@ PRIMITIVE(crc) {
     if (blob.length() != 0x100) INVALID_ARGUMENT;
     byte_table = blob.address();
   }
-  if (width < 0 || width > 64) INVALID_ARGUMENT;
+  if ((width != 0 && width < 8) || width > 64) INVALID_ARGUMENT;
   bool big_endian = width != 0;
   if (to == from) return _raw_accumulator;
   if (from < 0 || to > data.length() || from > to) OUT_OF_BOUNDS;
