@@ -324,6 +324,85 @@ PRIMITIVE(blob_index_of) {
 #endif
 }
 
+static Array* get_array_from_list(Object* object, Process* process) {
+  Array* result = null;
+  if (is_instance(object)) {
+    Instance* list = Instance::cast(object);
+    if (list->class_id() == process->program()->list_class_id()) {
+      Object* array_object;
+      // This 'if' will fail if we are dealing with a List so large
+      // that it has arraylets.
+      if (is_array(array_object = list->at(0))) {
+        result = Array::cast(array_object);
+      }
+    }
+  }
+  return result;
+}
+
+PRIMITIVE(crc_little_endian) {
+  // For now we don't handle ByteArray as a table, which means we don't accelerate
+  // 8-bit CRCs.
+  ARGS(int64, accumulator, Blob, data, int, from, int, to, Object, table_object);
+  Array* table = get_array_from_list(table_object, process);
+  if (!table) INVALID_ARGUMENT;
+  if (table->length() != 0x100) INVALID_ARGUMENT;
+  if (to == from) return _raw_accumulator;
+  if (from < 0 || to > data.length() || from > to) OUT_OF_BOUNDS;
+  auto address = data.address();
+  for (word i = from; i < to; i++) {
+    uint8 byte = address[i];
+    int index = (byte ^ accumulator) & 0xff;
+    Object* table_entry = table->at(index);
+    uint64 entry;
+    if (is_smi(table_entry)) {
+      entry = Smi::cast(table_entry)->value();
+    } else if (is_large_integer(table_entry)) {
+      entry = LargeInteger::cast(table_entry)->value();
+    } else {
+      INVALID_ARGUMENT;
+    }
+    accumulator = (static_cast<uint64>(accumulator) >> 8) ^ entry;
+  }
+  return Primitive::integer(accumulator, process);
+}
+
+PRIMITIVE(crc_big_endian) {
+  // For now we don't handle ByteArray as a table, which means we don't accelerate
+  // 8-bit CRCs.
+  ARGS(int64, accumulator, int, width, Blob, data, int, from, int, to, Object, table_object);
+  Array* table = get_array_from_list(table_object, process);
+  if (!table) INVALID_ARGUMENT;
+  if (width < 8 || width > 56) INVALID_ARGUMENT;
+  if (table->length() != 0x100) INVALID_ARGUMENT;
+  if (to == from) return _raw_accumulator;
+  if (from < 0 || to > data.length() || from > to) OUT_OF_BOUNDS;
+  uint64 mask;
+  if (width == 64) {
+    mask = 0;
+    mask = ~mask;
+  } else {
+    mask = 1;
+    mask = (mask << width) - 1;
+  }
+  auto address = data.address();
+  for (word i = from; i < to; i++) {
+    uint8 byte = address[i];
+    int index = (byte ^ (static_cast<uint64>(accumulator) >> (width -8))) & 0xff;
+    Object* table_entry = table->at(index);
+    int64 entry;
+    if (is_smi(table_entry)) {
+      entry = Smi::cast(table_entry)->value();
+    } else if (is_large_integer(table_entry)) {
+      entry = LargeInteger::cast(table_entry)->value();
+    } else {
+      INVALID_ARGUMENT;
+    }
+    accumulator = ((accumulator << 8) & mask) ^ entry;
+  }
+  return Primitive::integer(accumulator, process);
+}
+
 PRIMITIVE(string_from_rune) {
   ARGS(int, rune);
   if (rune < 0 || rune > Utils::MAX_UNICODE) INVALID_ARGUMENT;
@@ -1008,18 +1087,7 @@ PRIMITIVE(bytes_allocated_delta) {
 
 PRIMITIVE(process_stats) {
   ARGS(Object, list_object, int, group, int, id);
-  Array* result = null;
-  if (is_instance(list_object)) {
-    Instance* list = Instance::cast(list_object);
-    if (list->class_id() == process->program()->list_class_id()) {
-      Object* array_object;
-      if (is_array(array_object = list->at(0))) {
-        result = Array::cast(array_object);
-      } else {
-        OUT_OF_RANGE;  // List is so big it uses arraylets.
-      }
-    }
-  }
+  Array* result = get_array_from_list(list_object, process);
   if (result == null) INVALID_ARGUMENT;
   if (group == -1 || id == -1) {
     if (group != -1 || id != -1) INVALID_ARGUMENT;
