@@ -42,7 +42,7 @@ interface FirmwareService:
   firmware_writer_pad handle/int size/int value/int -> none
   static FIRMWARE_WRITER_PAD_INDEX /int ::= 10
 
-  firmware_writer_flush handle/int -> none
+  firmware_writer_flush handle/int -> int
   static FIRMWARE_WRITER_FLUSH_INDEX /int ::= 12
 
   firmware_writer_commit handle/int checksum/ByteArray? -> none
@@ -88,8 +88,8 @@ class FirmwareServiceClient extends ServiceClient implements FirmwareService:
   firmware_writer_pad handle/int size/int value/int -> none:
     invoke_ FirmwareService.FIRMWARE_WRITER_PAD_INDEX [handle, size, value]
 
-  firmware_writer_flush handle/int -> none:
-    invoke_ FirmwareService.FIRMWARE_WRITER_FLUSH_INDEX handle
+  firmware_writer_flush handle/int -> int:
+    return invoke_ FirmwareService.FIRMWARE_WRITER_FLUSH_INDEX handle
 
   firmware_writer_commit handle/int checksum/ByteArray? -> none:
     invoke_ FirmwareService.FIRMWARE_WRITER_COMMIT_INDEX [handle, checksum]

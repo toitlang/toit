@@ -291,7 +291,7 @@ PRIMITIVE(receive)  {
 
     if (is_array(capture.output)) {
       Array* out = Array::cast(capture.output);
-      ASSERT(out->length() == 3);
+      if (out->length() < 3) INVALID_ARGUMENT;
       out->at_put(0, array);
       ip_addr_t addr = packet->addr();
       uint32_t ipv4_address = ip_addr_get_ip4_u32(&addr);

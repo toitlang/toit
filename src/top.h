@@ -201,7 +201,7 @@ static_assert(sizeof(word) == 4, "invalid type size");
 #define malloc(size) toit::tracing_malloc(size, __FILE__, __LINE__)
 #define realloc(ptr, size) toit::tracing_realloc(ptr, size, __FILE__, __LINE__)
 #define free(p) toit::tracing_free(p, __FILE__, __LINE__)
-#define _new NewMarker(__FILE__, __LINE__) * new (std::nothrow)
+#define _new toit::NewMarker(__FILE__, __LINE__) * new (std::nothrow)
 #else
 #define _new new (std::nothrow)
 #endif

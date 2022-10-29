@@ -38,7 +38,7 @@ Siphash::Siphash(SimpleResourceGroup* group, const uint8* key, int output_length
   _v[2] = 0x6c7967656e657261 ^ k0;
   _v[3] = 0x7465646279746573 ^ k1;
   if (output_length == 16) _v[1] ^= 0xee;
-  ASSERT(output_length == 8 || output_length == 16);
+  ASSERT(output_length == 8 || output_length == 16);  // Checked in the primitive.
 }
 
 static inline uint64 rotl(uint64 in, int distance) {
