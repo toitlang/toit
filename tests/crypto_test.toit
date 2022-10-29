@@ -10,6 +10,7 @@ import crypto.siphash show *
 import crypto.sha1 show *
 import crypto.crc16 show *
 import crypto.crc32 show *
+import crypto.crc show *
 import crypto.hamming as hamming
 
 import encoding.hex as hex

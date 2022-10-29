@@ -30,8 +30,6 @@ main args:
         name_snake += "$(%c it + 0x20)"
       else if '0' <= it <= '9':
         name_camel += "$(%c it)"
-        if name_snake != "" and not '0' <= name_snake[name_snake.size - 1] <= '9':
-          name_snake += "_"
         name_snake += "$(%c it)"
       else:
         throw "What to do about '$(%c it)'?"
@@ -81,7 +79,7 @@ main args:
           The \$data must be a string or byte array.
           Returns the checksum as a$(width == 8 ? "n" : "") $width-bit integer.
           */
-          $name_snake data from/int=0 to/int=data.size -> int:
+          $name_snake data --from/int=0 --to/int=data.size -> int:
             crc := Crc.$(endian)_endian $width --$polynomial_argument=$fields[2]$initial_string$xor_string
             crc.add data from to
             return binary.$(endian_upper)_ENDIAN.uint$width crc.get 0
