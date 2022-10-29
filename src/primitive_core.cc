@@ -373,7 +373,7 @@ PRIMITIVE(crc_big_endian) {
   ARGS(int64, accumulator, int, width, Blob, data, int, from, int, to, Object, table_object);
   Array* table = get_array_from_list(table_object, process);
   if (!table) INVALID_ARGUMENT;
-  if (width < 8 || width > 56) INVALID_ARGUMENT;
+  if (width < 8 || width > 64) INVALID_ARGUMENT;
   if (table->length() != 0x100) INVALID_ARGUMENT;
   if (to == from) return _raw_accumulator;
   if (from < 0 || to > data.length() || from > to) OUT_OF_BOUNDS;
