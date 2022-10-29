@@ -16,7 +16,7 @@ Returns the checksum as a 4 element byte array in little-endian order.
 Deprecated.  Use $crc.crc_32 or $crc.Crc32 instead.
 */
 crc32 data from/int=0 to/int=data.size -> ByteArray:
-  state := Crc.little_endian 32
+  state := crc.Crc.little_endian 32
       --polynomial=0xEDB88320
       --initial_state=0xffff_ffff
       --xor_result=0xffff_ffff
