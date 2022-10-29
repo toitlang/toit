@@ -85,7 +85,7 @@ class FirmwareWriter_ extends ServiceResource implements FirmwareWriter:
 
   write bytes/ByteArray -> int:
     return write_ bytes.size: | index from to |
-      buffer_.replace index bytes from
+      buffer_.replace index bytes from to
 
   pad size/int value/int -> int:
     return write_ size: | index from to |
