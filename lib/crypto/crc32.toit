@@ -13,7 +13,7 @@ Computes the CRC32 checksum of the given $data.
 The $data must be a string or byte array.
 Returns the checksum as a 4 element byte array in little-endian order.
 
-Deprecated.  Use $crc.crc_32 or $crc.Crc32 instead.
+Deprecated.  Use $crc.crc32 or $crc.Crc32 instead.
 */
 crc32 data from/int=0 to/int=data.size -> ByteArray:
   state := crc.Crc.little_endian 32

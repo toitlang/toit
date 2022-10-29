@@ -17,7 +17,7 @@ Computes the CRC-16/XMODEM checksum of the given $data.
 The $data must be a string or byte array.
 Returns the checksum as a 2 element byte array in little-endian order.
 
-Deprecated.  Use $crc.crc_16_xmodem or $crc.Crc16Xmodem instead.
+Deprecated.  Use $crc.crc16_xmodem or $crc.Crc16Xmodem instead.
 
 Note that this returns the checksum in byte-swapped (little-endian)
   order.  The Xmodem CRC is a big-endian CRC algorithm and you
