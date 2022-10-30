@@ -461,8 +461,10 @@ PRIMITIVE(get_option) {
     case TCP_WINDOW_SIZE: {
       int value = 0;
       int size = sizeof(value);
+      printf("getsockopt window size\n\n");
       if (getsockopt(socket, SOL_SOCKET, SO_RCVBUF, reinterpret_cast<char *>(&value), &size) == -1)
         WINDOWS_ERROR;
+      printf("after. getsockopt window size\n\n");
 
       return Smi::from(value);
     }

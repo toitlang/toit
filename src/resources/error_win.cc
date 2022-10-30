@@ -33,9 +33,18 @@ HeapObject* windows_error(Process* process, DWORD error_number) {
       MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
       (LPTSTR) &lpMsgBuf,
       0, NULL );
-  String* error = process->allocate_string((LPCTSTR)lpMsgBuf);
-  if (error == null) ALLOCATION_FAILED;
-  return Primitive::mark_as_error(error);
+  if (lpMsgBuf) {
+    String* error = process->allocate_string((LPCTSTR) lpMsgBuf);
+    free(lpMsgBuf);
+    if (error == null) ALLOCATION_FAILED;
+    return Primitive::mark_as_error(error);
+  } else {
+    char buf[80];
+    snprintf(buf, 80, "Low-level win32 error: %lu", error_number);
+    String* error = process->allocate_string(buf);
+    if (error == null) ALLOCATION_FAILED;
+    return Primitive::mark_as_error(error);
+  }
 }
 
 HeapObject* windows_error(Process* process) {
