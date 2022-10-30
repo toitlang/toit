@@ -29,7 +29,7 @@ namespace toit {
 class ObjectNotifier;
 
 // A class that uses a RAII destructor to free memory already
-// allocated if a later alllocation fails.
+// allocated if a later allocation fails.
 class InitialMemoryManager {
  public:
   Chunk* initial_chunk = null;

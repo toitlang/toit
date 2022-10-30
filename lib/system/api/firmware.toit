@@ -7,7 +7,7 @@ import system.services show ServiceClient
 interface FirmwareService:
   static UUID  /string ::= "777096e8-05bc-4af7-919e-5ba696549bd5"
   static MAJOR /int    ::= 0
-  static MINOR /int    ::= 4
+  static MINOR /int    ::= 5
 
   is_validation_pending -> bool
   static IS_VALIDATION_PENDING_INDEX /int ::= 0
@@ -41,6 +41,9 @@ interface FirmwareService:
 
   firmware_writer_pad handle/int size/int value/int -> none
   static FIRMWARE_WRITER_PAD_INDEX /int ::= 10
+
+  firmware_writer_flush handle/int -> int
+  static FIRMWARE_WRITER_FLUSH_INDEX /int ::= 12
 
   firmware_writer_commit handle/int checksum/ByteArray? -> none
   static FIRMWARE_WRITER_COMMIT_INDEX /int ::= 7
@@ -84,6 +87,9 @@ class FirmwareServiceClient extends ServiceClient implements FirmwareService:
 
   firmware_writer_pad handle/int size/int value/int -> none:
     invoke_ FirmwareService.FIRMWARE_WRITER_PAD_INDEX [handle, size, value]
+
+  firmware_writer_flush handle/int -> int:
+    return invoke_ FirmwareService.FIRMWARE_WRITER_FLUSH_INDEX handle
 
   firmware_writer_commit handle/int checksum/ByteArray? -> none:
     invoke_ FirmwareService.FIRMWARE_WRITER_COMMIT_INDEX [handle, checksum]

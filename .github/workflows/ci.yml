@@ -292,20 +292,26 @@ jobs:
           path: toitdoc_${{ steps.constants.outputs.toit_version }}.json
 
       - name: Authenticate to Google cloud - Linux
-        if: runner.os == 'Linux' && matrix.shard == 1
+        if: |
+          runner.os == 'Linux' && matrix.shard == 1 &&
+          github.repository_owner == 'toitlang'
         uses: google-github-actions/auth@v0
         with:
           credentials_json: ${{ secrets.INFRASTRUCTURE_SERVICE_ACCOUNT_JSON_KEY }}
           service_account: github-action@infrastructure-220307.iam.gserviceaccount.com
 
       - name: Set up Cloud SDK
-        if: runner.os == 'Linux' && matrix.shard == 1
+        if: |
+          runner.os == 'Linux' && matrix.shard == 1 &&
+          github.repository_owner == 'toitlang'
         uses: google-github-actions/setup-gcloud@v0
         with:
           project_id: infrastructure-220307
 
       - name: Upload toitdoc to gcloud - Linux
-        if: runner.os == 'Linux' && matrix.shard == 1
+        if: |
+          runner.os == 'Linux' && matrix.shard == 1 &&
+          github.repository_owner == 'toitlang'
         env:
           TOIT_VERSION: ${{ steps.constants.outputs.toit_version }}
         run: |
@@ -317,7 +323,8 @@ jobs:
       - name: Update RELEASE in gcloud - Linux
         if: |
           runner.os == 'Linux' && matrix.shard == 1 &&
-          github.event_name == 'release' && !github.event.release.prerelease
+          github.event_name == 'release' &&
+          github.repository_owner == 'toitlang'
         env:
           TOIT_VERSION: ${{ steps.constants.outputs.toit_version }}
         run: |
@@ -335,8 +342,9 @@ jobs:
 
       - name: Upload release artifacts
         if: |
-          (github.event_name) == 'release' &&
-          (matrix.shard == 1)
+          github.event_name == 'release' &&
+          matrix.shard == 1 &&
+          github.repository_owner == 'toitlang'
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
@@ -447,7 +455,9 @@ jobs:
             build/firmware-esp32s3.gz
 
       - name: Upload ESP32 release firmware artifacts
-        if: (github.event_name) == 'release'
+        if: |
+          github.event_name == 'release' &&
+          github.repository_owner == 'toitlang'
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
@@ -456,7 +466,9 @@ jobs:
           overwrite: true
 
       - name: Upload ESP32-C3 release firmware artifacts
-        if: (github.event_name) == 'release'
+        if: |
+          github.event_name == 'release' &&
+          github.repository_owner == 'toitlang'
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
@@ -465,7 +477,9 @@ jobs:
           overwrite: true
 
       - name: Upload ESP32-S3 release firmware artifacts
-        if: (github.event_name) == 'release'
+        if: |
+          github.event_name == 'release' &&
+          github.repository_owner == 'toitlang'
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
@@ -635,7 +649,9 @@ jobs:
             build/${{ steps.constants.outputs.raspberry_pi64_artifact }}
 
       - name: Upload release Raspberry Pi artifacts 32-bit
-        if: github.event_name == 'release'
+        if: |
+          github.event_name == 'release' &&
+          github.repository_owner == 'toitlang'
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
@@ -644,7 +660,9 @@ jobs:
           overwrite: true
 
       - name: Upload release Raspberry Pi artifacts 64-bit
-        if: github.event_name == 'release'
+        if: |
+          github.event_name == 'release' &&
+          github.repository_owner == 'toitlang'
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}

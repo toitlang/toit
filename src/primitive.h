@@ -240,6 +240,10 @@ namespace toit {
   PRIMITIVE(get_env, 1)                      \
   PRIMITIVE(literal_index, 1)                \
   PRIMITIVE(word_size, 0)                    \
+  PRIMITIVE(firmware_map, 1)                 \
+  PRIMITIVE(firmware_unmap, 1)               \
+  PRIMITIVE(firmware_mapping_at, 2)          \
+  PRIMITIVE(firmware_mapping_copy, 5)        \
 
 #define MODULE_TIMER(PRIMITIVE)              \
   PRIMITIVE(init, 0)                         \
@@ -315,31 +319,38 @@ namespace toit {
 
 #define MODULE_BLE(PRIMITIVE)                \
   PRIMITIVE(init, 1)                         \
-  PRIMITIVE(gap, 1)                          \
+  PRIMITIVE(create_peripheral_manager, 1)    \
+  PRIMITIVE(create_central_manager, 1)       \
   PRIMITIVE(close, 1)                        \
+  PRIMITIVE(release_resource, 1)             \
   PRIMITIVE(scan_start, 2)                   \
   PRIMITIVE(scan_next, 1)                    \
   PRIMITIVE(scan_stop, 1)                    \
-  PRIMITIVE(advertise_start, 4)              \
-  PRIMITIVE(advertise_config, 4)             \
+  PRIMITIVE(connect, 2)                      \
+  PRIMITIVE(disconnect, 1)                   \
+  PRIMITIVE(discover_services, 2)            \
+  PRIMITIVE(discover_services_result, 1)     \
+  PRIMITIVE(discover_characteristics, 2)     \
+  PRIMITIVE(discover_characteristics_result, 1) \
+  PRIMITIVE(discover_descriptors, 1)         \
+  PRIMITIVE(discover_descriptors_result, 1)  \
+  PRIMITIVE(request_read, 1)                 \
+  PRIMITIVE(get_value, 1)                    \
+  PRIMITIVE(write_value, 3)                  \
+  PRIMITIVE(set_characteristic_notify, 2)    \
+  PRIMITIVE(advertise_start, 6)              \
   PRIMITIVE(advertise_stop, 1)               \
-  PRIMITIVE(connect, 3)                      \
-  PRIMITIVE(get_gatt, 1)                     \
-  PRIMITIVE(request_result, 1)               \
-  PRIMITIVE(request_data, 1)                 \
-  PRIMITIVE(send_data, 3)                    \
-  PRIMITIVE(request_service, 2)              \
-  PRIMITIVE(request_characteristic, 3)       \
-  PRIMITIVE(request_attribute, 2)            \
-  PRIMITIVE(server_configuration_init, 0)    \
-  PRIMITIVE(server_configuration_dispose, 1) \
-  PRIMITIVE(add_server_service, 2)           \
-  PRIMITIVE(add_server_characteristic, 4)    \
-  PRIMITIVE(set_characteristics_value, 2)    \
-  PRIMITIVE(notify_characteristics_value, 2) \
-  PRIMITIVE(get_characteristics_value, 1)    \
+  PRIMITIVE(add_service, 2)                  \
+  PRIMITIVE(add_characteristic, 5)           \
+  PRIMITIVE(add_descriptor, 5)               \
+  PRIMITIVE(deploy_service, 1)               \
+  PRIMITIVE(set_value, 2)                    \
+  PRIMITIVE(get_subscribed_clients, 1)       \
+  PRIMITIVE(notify_characteristics_value, 3) \
   PRIMITIVE(get_att_mtu, 1)                  \
   PRIMITIVE(set_preferred_mtu, 1)            \
+  PRIMITIVE(get_error, 1)                    \
+  PRIMITIVE(gc, 1)                           \
 
 #define MODULE_DHCP(PRIMITIVE)               \
   PRIMITIVE(wait_for_lwip_dhcp_on_linux, 0)  \
@@ -935,9 +946,13 @@ namespace toit {
 #define _A_T_PWMResource(N, name)         MAKE_UNPACKING_MACRO(PWMResource, N, name)
 #define _A_T_PcntUnitResource(N, name)    MAKE_UNPACKING_MACRO(PcntUnitResource, N, name)
 #define _A_T_RMTResource(N, name)         MAKE_UNPACKING_MACRO(RMTResource, N, name)
-#define _A_T_GAPResource(N, name)         MAKE_UNPACKING_MACRO(GAPResource, N, name)
-#define _A_T_GATTResource(N, name)        MAKE_UNPACKING_MACRO(GATTResource, N, name)
-#define _A_T_BLEServerConfigGroup(N, name)  MAKE_UNPACKING_MACRO(BLEServerConfigGroup, N, name)
+#define _A_T_BLECentralManagerResource(N, name) MAKE_UNPACKING_MACRO(BLECentralManagerResource, N, name)
+#define _A_T_BLERemoteDeviceResource(N, name)   MAKE_UNPACKING_MACRO(BLERemoteDeviceResource, N, name)
+
+#define _A_T_BLEPeripheralManagerResource(N, name) MAKE_UNPACKING_MACRO(BLEPeripheralManagerResource, N, name)
+#define _A_T_BLECharacteristicResource(N, name) MAKE_UNPACKING_MACRO(BLECharacteristicResource, N, name)
+#define _A_T_BLEServiceResource(N, name)        MAKE_UNPACKING_MACRO(BLEServiceResource, N, name)
+#define _A_T_BLEServerConfigGroup(N, name)      MAKE_UNPACKING_MACRO(BLEServerConfigGroup, N, name)
 #define _A_T_BLEServerServiceResource(N, name)  MAKE_UNPACKING_MACRO(BLEServerServiceResource, N, name)
 #define _A_T_BLEServerCharacteristicResource(N, name)  MAKE_UNPACKING_MACRO(BLEServerCharacteristicResource, N, name)
 #define _A_T_ServiceDescription(N, name)  MAKE_UNPACKING_MACRO(ServiceDescription, N, name)

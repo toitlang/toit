@@ -57,6 +57,10 @@ file(GLOB toit_resources_SRC
   "resources/*.cc"
   )
 
+if ("${CMAKE_SYSTEM_NAME}" MATCHES "Darwin")
+  list(APPEND toit_resources_SRC "resources/ble_darwin.mm")
+endif()
+
 file(GLOB toit_event_sources_SRC
   "event_sources/*.h"
   "event_sources/*.cc"
@@ -173,6 +177,10 @@ else()
   set(TOIT_WINDOWS_LIBS )
 endif()
 
+if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+  set(TOIT_BLUETOOTH_LIBS "-framework Foundation" "-framework CoreBluetooth" ObjC)
+endif()
+
 # Because of the `CACHE INTERNAL ""` at the end of the `set` we can
 #   use this variable outside of the directory.
 set(TOIT_LINK_LIBS
@@ -189,6 +197,7 @@ set(TOIT_LINK_LIBS
   ${TOIT_LINK_LIBS_LIBGCC}
   ${TOIT_LINK_SEGFAULT}
   toit_porting
+  ${TOIT_BLUETOOTH_LIBS}
   CACHE INTERNAL ""
   )
 

@@ -61,6 +61,7 @@ Object* Primitive::allocate_large_integer(int64 value, Process* process) {
 
 Object* Primitive::allocate_array(int length, Object* filler, Process* process) {
   ASSERT(length <= Array::max_length_in_process());
+  if (length > Array::max_length_in_process()) return null;
   Object* result = length == 0 ? process->program()->empty_array() :process->object_heap()->allocate_array(length, filler);
   if (result != null) return result;
   return mark_as_error(process->program()->allocation_failed());

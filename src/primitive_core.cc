@@ -43,6 +43,8 @@
 #ifdef TOIT_FREERTOS
 #include "esp_heap_caps.h"
 #include "esp_log.h"
+#include "esp_ota_ops.h"
+#include "esp_spi_flash.h"
 #include "esp_system.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -1474,7 +1476,7 @@ PRIMITIVE(string_slice) {
     // TODO: there should be a singleton empty string in the roots in program.h.
     return process->allocate_string_or_error("");
   }
-  ASSERT(from < length);
+  ASSERT(from < length);  // Checked above.
   // We must guard against chopped up UTF-8 sequences.  We can do this, knowing
   // that the receiver string is valid UTF-8, so a very minimal verification is
   // enough.
@@ -1483,7 +1485,7 @@ PRIMITIVE(string_slice) {
     if (utf_8_continuation_byte(first_after)) ILLEGAL_UTF_8;
   }
   ASSERT(from >= 0);
-  ASSERT(to <= receiver->length());
+  ASSERT(to <= receiver->length());  // Checked above.
   ASSERT(from < to);
   int result_len = to - from;
   String* result = process->allocate_string(result_len);
@@ -1696,36 +1698,15 @@ PRIMITIVE(byte_array_new_external) {
   return result;
 }
 
-static bool memory_overlaps(const uint8* address_a, int length_a, const uint8* address_b, int length_b) {
-  if (address_a <= address_b && address_b < address_a + length_a) return true;
-  if (address_b <= address_a && address_a < address_b + length_b) return true;
-  return false;
-}
-
 PRIMITIVE(byte_array_replace) {
   ARGS(MutableBlob, receiver, int, index, Blob, source_object, int, from, int, to);
-
-  if (index < 0) OUT_OF_BOUNDS;
-
-  if (from < 0) OUT_OF_BOUNDS;
-  if (to < 0) OUT_OF_BOUNDS;
-  if (to > source_object.length()) OUT_OF_BOUNDS;
-
+  if (index < 0 || from < 0 || to < 0 || to > source_object.length()) OUT_OF_BOUNDS;
   int length = to - from;
-  if (length < 0) OUT_OF_BOUNDS;
-
-  if (index + length > receiver.length()) OUT_OF_BOUNDS;
+  if (length < 0 || index + length > receiver.length()) OUT_OF_BOUNDS;
 
   uint8* dest = receiver.address() + index;
   const uint8* source = source_object.address() + from;
-
-  if (((reinterpret_cast<uintptr_t>(source) | length) & 3) == 0 &&
-      !memory_overlaps(dest, length, source, length)) {
-    iram_safe_memcpy(dest, source, length);
-  } else {
-    memmove(dest, source, length);
-  }
-
+  memmove(dest, source, length);
   return process->program()->null_object();
 }
 
@@ -1897,7 +1878,9 @@ PRIMITIVE(process_send) {
 
 Object* MessageEncoder::create_error_object(Process* process) {
   Object* result = null;
-  if (_nesting_too_deep) {
+  if (_malloc_failed) {
+    MALLOC_FAILED;
+  } else if (_nesting_too_deep) {
     result = process->allocate_string_or_error("NESTING_TOO_DEEP");
   } else if (_problematic_class_id >= 0) {
     result = Primitive::allocate_array(1, Smi::from(_problematic_class_id), process);
@@ -2328,6 +2311,107 @@ PRIMITIVE(literal_index) {
 
 PRIMITIVE(word_size) {
   return Smi::from(WORD_SIZE);
+}
+
+#ifdef TOIT_FREERTOS
+static spi_flash_mmap_handle_t firmware_mmap_handle;
+static bool firmware_is_mapped = false;
+#endif
+
+PRIMITIVE(firmware_map) {
+  ARGS(Object, bytes);
+#ifndef TOIT_FREERTOS
+  return bytes;
+#else
+  if (bytes != process->program()->null_object()) {
+    // If we're passed non-null bytes, we use that as the
+    // firmware bits.
+    return bytes;
+  }
+
+  ByteArray* proxy = process->object_heap()->allocate_proxy();
+  if (proxy == null) ALLOCATION_FAILED;
+
+  if (firmware_is_mapped) {
+    // We unmap to allow the next attempt to get the current
+    // system image to succeed.
+    spi_flash_munmap(firmware_mmap_handle);
+    firmware_is_mapped = false;
+    QUOTA_EXCEEDED;  // Quota is 1.
+  }
+
+  const esp_partition_t* current_partition = esp_ota_get_running_partition();
+  if (current_partition == null) OTHER_ERROR;
+
+  const void* mapped_to = null;
+  esp_err_t err = esp_partition_mmap(
+      current_partition,
+      0,  // Offset from start of partition.
+      current_partition->size,
+      SPI_FLASH_MMAP_INST,
+      &mapped_to,
+      &firmware_mmap_handle);
+  if (err != ESP_OK) OTHER_ERROR;
+
+  firmware_is_mapped = true;
+  proxy->set_external_address(
+      current_partition->size,
+      const_cast<uint8*>(reinterpret_cast<const uint8*>(mapped_to)));
+  return proxy;
+#endif
+}
+
+PRIMITIVE(firmware_unmap) {
+#ifdef TOIT_FREERTOS
+  ARGS(ByteArray, proxy);
+  if (!firmware_is_mapped) process->program()->null_object();
+  spi_flash_munmap(firmware_mmap_handle);
+  firmware_is_mapped = false;
+  proxy->clear_external_address();
+#endif
+  return process->program()->null_object();
+}
+
+PRIMITIVE(firmware_mapping_at) {
+  ARGS(Instance, receiver, int, index);
+  int offset = Smi::cast(receiver->at(1))->value();
+  int size = Smi::cast(receiver->at(2))->value();
+  if (index < 0 || index >= size) OUT_OF_BOUNDS;
+
+  Blob input;
+  if (!receiver->at(0)->byte_content(process->program(), &input, STRINGS_OR_BYTE_ARRAYS)) {
+    WRONG_TYPE;
+  }
+
+  // Firmware is potentially mapped into memory that only allow word
+  // access. We read the full word before masking and shifting. This
+  // asssumes that we're running on a little endian platform.
+  index += offset;
+  const uint32* words = reinterpret_cast<const uint32*>(input.address());
+  uint32 shifted = words[index >> 2] >> ((index & 3) << 3);
+  return Smi::from(shifted & 0xff);
+}
+
+PRIMITIVE(firmware_mapping_copy) {
+  ARGS(Instance, receiver, int, from, int, to, ByteArray, into, int, index);
+  int offset = Smi::cast(receiver->at(1))->value();
+  int size = Smi::cast(receiver->at(2))->value();
+  if (!Utils::is_aligned(from + offset, sizeof(uint32)) ||
+      !Utils::is_aligned(to + offset, sizeof(uint32))) INVALID_ARGUMENT;
+  if (from > to || from < 0 || to > size) OUT_OF_BOUNDS;
+
+  Blob input;
+  if (!receiver->at(0)->byte_content(process->program(), &input, STRINGS_OR_BYTE_ARRAYS)) {
+    WRONG_TYPE;
+  }
+
+  // Firmware is potentially mapped into memory that only allow word
+  // access. We use an IRAM safe memcpy alternative that guarantees
+  // always reading whole words to avoid issues with this.
+  ByteArray::Bytes output(into);
+  int bytes = to - from;
+  iram_safe_memcpy(output.address() + index, input.address() + from + offset, bytes);
+  return Smi::from(index + bytes);
 }
 
 } // namespace toit

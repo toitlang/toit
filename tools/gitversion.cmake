@@ -48,6 +48,8 @@ endfunction()
 #   Return v1.6.0-pre.22+<branch-name>.<commit-hash> if we know the name.
 # Note that "v1.6.0-pre." is also used on a release-v1.6 branch until the release has
 #   happened. Care must be taken to ensure that the version numbers increase correctly.
+# If there isn't any release-branch, then we use the DEFAULT_PRE_VERSION parameter as prefix.
+set(DEFAULT_PRE_VERSION "v2.0.0")
 function(compute_git_version VERSION)
   # Check that we are in a git tree.
   backtick(ignored ${GIT_EXECUTABLE} rev-parse --is-inside-work-tree)
@@ -91,9 +93,12 @@ function(compute_git_version VERSION)
   list(SORT RELEASE_BRANCHES COMPARE NATURAL ORDER DESCENDING)
   list(LENGTH RELEASE_BRANCHES BRANCHES_LENGTH)
   if (${BRANCHES_LENGTH} EQUAL 0)
-    backtick(COMMIT_COUNT ${GIT_EXECUTABLE} rev-list --count HEAD)
-    set(${VERSION} "v0.0.1-pre.${COMMIT_COUNT}" PARENT_SCOPE)
-    return()
+    if ("${LATEST_VERSION_TAG}" STREQUAL "")
+      backtick(COMMIT_COUNT ${GIT_EXECUTABLE} rev-list --count HEAD)
+      set(${VERSION} "${DEFAULT_PRE_VERSION}-pre.${COMMIT_COUNT}" PARENT_SCOPE)
+      return()
+    endif()
+    set(RELEASE_BRANCHES "/release-${LATEST_VERSION_TAG}")
   endif()
 
   function (version_from_branch BRANCH MAJOR MINOR)

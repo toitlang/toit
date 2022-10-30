@@ -3,6 +3,7 @@
 // found in the lib/LICENSE file.
 
 import .checksum
+import .crc as crc
 
 /**
 16-bit Cyclic redundancy check (CRC-16/XMODEM).
@@ -15,42 +16,32 @@ Computes the CRC-16/XMODEM checksum of the given $data.
 
 The $data must be a string or byte array.
 Returns the checksum as a 2 element byte array in little-endian order.
+
+Deprecated.  Use $crc.crc16_xmodem or $crc.Crc16Xmodem instead.
+
+Note that this returns the checksum in byte-swapped (little-endian)
+  order.  The Xmodem CRC is a big-endian CRC algorithm and you
+  would normally expect the result to be big-endian.
 */
 crc16 data from/int=0 to/int=data.size -> ByteArray:
-  return checksum Crc16 data from to
+  state := crc.Crc.big_endian 16 --polynomial=0x1021
+  state.add data from to
+  result := state.get
+  return #[result[1], result[0]]
 
-/** CRC-16/XMODEM checksum state. */
-class Crc16 extends Checksum:
-  sum_/int := 0
+/**
+CRC-16/XMODEM checksum state.
 
-  /** See $super. */
-  add data from/int to/int -> none:
-    sum := sum_
-    if data is string:
-      (to - from).repeat:
-        b := data.at --raw from + it
-        sum = update_ sum b
-    else:
-      if data is not ByteArray: throw "WRONG_OBJECT_TYPE"
-      (to - from).repeat:
-        b := data[from + it]
-        sum = update_ sum b
-    sum_ = sum
+Deprecated.  Use crc.Crc16Xmodem instead.
 
-  static update_ crc/int byte/int -> int:
-    crc = crc ^ (byte << 8)
-    8.repeat:
-      if crc & 0x8000 == 0:
-        crc <<= 1
-      else:
-        crc = (crc << 1) ^ 0x1021
-    return crc
+Note that this class returns the checksum in byte-swapped (little-endian)
+  order.  The Xmodem CRC is a big-endian CRC algorithm and you
+  would normally expect the result to be big-endian.
+*/
+class Crc16 extends crc.Crc:
+  constructor:
+    super.big_endian 16 --polynomial=0x1021
 
-  /**
-  See $super.
-
-  Returns the CRC16 checksum as a 2 element byte array in little-endian order.
-  */
   get -> ByteArray:
-    checksum := sum_
-    return ByteArray 2: (checksum >> (8 * it)) & 0xff
+    result := super
+    return #[result[1], result[0]]
