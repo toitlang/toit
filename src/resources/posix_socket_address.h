@@ -21,7 +21,7 @@
 
 #include "../process.h"
 #if defined(TOIT_WINDOWS)
-#include "winSock2.h"
+#include "winsock2.h"
 #else
 #include <sys/socket.h>
 #endif
