@@ -60,14 +60,26 @@ class TCPResourceGroup : public ResourceGroup {
   }
 };
 
+class SocketResource : public WindowsResource {
+ public:
+  SocketResource(TCPResourceGroup* resource_group, SOCKET socket)
+    : WindowsResource(resource_group)
+    , _socket(socket) {}
+  SOCKET socket() const { return _socket; }
+  void do_close() override {
+    closesocket(_socket);
+  }
+ private:
+  SOCKET _socket;
+};
+
 const int READ_BUFFER_SIZE = 1 << 16;
 
-class TCPSocketResource : public WindowsResource {
+class TCPSocketResource : public SocketResource {
  public:
   TAG(TCPSocketResource);
   TCPSocketResource(TCPResourceGroup* resource_group, SOCKET socket, HANDLE read_event, HANDLE write_event)
-      : WindowsResource(resource_group)
-      , _socket(socket) {
+      : SocketResource(resource_group, socket) {
     _read_buffer.buf = _read_data;
     _read_buffer.len = READ_BUFFER_SIZE;
     _read_overlapped.hEvent = read_event;
@@ -80,7 +92,6 @@ class TCPSocketResource : public WindowsResource {
     }
   }
 
-  SOCKET socket() const { return _socket; }
   DWORD read_count() const { return _read_count; }
   char* read_buffer() const { return _read_buffer.buf; }
   bool ready_for_write() const { return _write_buffer.buf == null; }
@@ -122,7 +133,7 @@ class TCPSocketResource : public WindowsResource {
   }
 
   void do_close() override {
-    closesocket(_socket);
+    SocketResource::do_close();
     CloseHandle(_read_overlapped.hEvent);
     CloseHandle(_write_overlapped.hEvent);
   }
@@ -130,7 +141,7 @@ class TCPSocketResource : public WindowsResource {
   bool issue_read_request() {
     _read_count = 0;
     DWORD flags = 0;
-    int receive_result = WSARecv(_socket, &_read_buffer, 1, NULL, &flags, &_read_overlapped, NULL);
+    int receive_result = WSARecv(socket(), &_read_buffer, 1, NULL, &flags, &_read_overlapped, NULL);
     if (receive_result == SOCKET_ERROR && WSAGetLastError() != WSA_IO_PENDING) {
       return false;
     }
@@ -139,7 +150,7 @@ class TCPSocketResource : public WindowsResource {
 
   bool receive_read_response() {
     DWORD flags;
-    bool overlapped_result = WSAGetOverlappedResult(_socket, &_read_overlapped, &_read_count, false, &flags);
+    bool overlapped_result = WSAGetOverlappedResult(socket(), &_read_overlapped, &_read_count, false, &flags);
     //printf("overlapped_result=%d, _read_count=%lu, last_error=%d\n", overlapped_result, _read_count, WSAGetLastError());
     return overlapped_result;
   }
@@ -152,7 +163,7 @@ class TCPSocketResource : public WindowsResource {
     _write_buffer.len = length;
 
     DWORD tmp;
-    int send_result = WSASend(_socket, &_write_buffer, 1, &tmp, 0, &_write_overlapped, NULL);
+    int send_result = WSASend(socket(), &_write_buffer, 1, &tmp, 0, &_write_overlapped, NULL);
 
     if (send_result == 0) {
       //printf("Immediate write: data length = %d, actual transmitted = %lu\n", length, tmp);
@@ -165,8 +176,6 @@ class TCPSocketResource : public WindowsResource {
   }
 
  private:
-  SOCKET _socket;
-
   WSABUF _read_buffer{};
   char _read_data[READ_BUFFER_SIZE]{};
   OVERLAPPED _read_overlapped{};
@@ -179,15 +188,12 @@ class TCPSocketResource : public WindowsResource {
   int _error = 0;
 };
 
-class TCPServerSocketResource : public WindowsResource {
+class TCPServerSocketResource : public SocketResource {
  public:
   TAG(TCPServerSocketResource);
   TCPServerSocketResource(TCPResourceGroup* resource_group, SOCKET socket, HANDLE event)
-    : WindowsResource(resource_group)
-    , _socket(socket)
+    : SocketResource(resource_group, socket)
     , _event(event) {}
-
-  SOCKET socket() const { return _socket; }
 
   std::vector<HANDLE> events() override {
     return std::vector<HANDLE>({ _event });
@@ -198,12 +204,11 @@ class TCPServerSocketResource : public WindowsResource {
   }
 
   void do_close() override {
-    closesocket(_socket);
+    SocketResource::do_close();
     CloseHandle(_event);
   }
 
  private:
-  SOCKET _socket;
   HANDLE _event;
 };
 
@@ -427,9 +432,9 @@ static Object* get_port(SOCKET socket, Process* process, bool peer) {
 }
 
 PRIMITIVE(get_option) {
-  ARGS(ByteArray, proxy, TCPSocketResource, tcp_resource, int, option);
+  ARGS(ByteArray, proxy, Resource, resource, int, option);
   USE(proxy);
-  SOCKET socket = tcp_resource->socket();
+  SOCKET socket = reinterpret_cast<SocketResource*>(resource)->socket();
 
   switch (option) {
     case TCP_ADDRESS:

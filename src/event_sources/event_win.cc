@@ -78,7 +78,6 @@ class WindowsEventThread: public Thread {
   }
 
   void remove_resource_event(WindowsResourceEvent* resource_event) {
-    ASSERT(_resource_events.size() < MAXIMUM_WAIT_OBJECTS - 2);
     Locker locker(_mutex);
     size_t number_erased = _resource_events.erase(resource_event);
     if (number_erased > 0)
