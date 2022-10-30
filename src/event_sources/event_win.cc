@@ -57,7 +57,6 @@ class WindowsEventThread: public Thread {
 
   ~WindowsEventThread() override {
     CloseHandle(_control_event);
-    Thread::~Thread();
   }
 
   void stop() {
