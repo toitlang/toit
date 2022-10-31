@@ -86,21 +86,31 @@ class TCPSocketResource : public SocketResource {
     _read_buffer.len = READ_BUFFER_SIZE;
     _read_overlapped.hEvent = read_event;
     _write_overlapped.hEvent = write_event;
+    printf("%llx TcpSocketResource.constructor: write_event: %llx\n",(word)this, (word)write_event);
     if (!issue_read_request()) {
-      _error = WSAGetLastError();
-      set_state(TCP_ERROR);
+      int error_code = WSAGetLastError();
+      if (error_code == WSAECONNRESET) {
+        set_state(TCP_CLOSE);
+      } else {
+        _error_code = WSAGetLastError();
+        printf("Socket constructor. Issue_read_failed, _error=%d\n", _error_code);
+        set_state(TCP_ERROR);
+      }
     } else {
       set_state(TCP_WRITE);
     }
-    printf("write_event: %llx\n",(word)write_event);
+  }
+
+  ~TCPSocketResource() override {
+    if (_write_buffer.buf != null) free(_write_buffer.buf);
   }
 
   DWORD read_count() const { return _read_count; }
   char* read_buffer() const { return _read_buffer.buf; }
-  bool ready_for_write() const { return _write_buffer.buf == null; }
-  bool ready_for_read() const { return _read_count != 0; }
+  bool ready_for_write() const { return _write_ready; }
+  bool ready_for_read() const { return _read_ready; }
   bool closed() const { return _closed; }
-  int error() const { return _error; }
+  int error_code() const { return _error_code; }
 
   std::vector<HANDLE> events() override {
     return std::vector<HANDLE>({
@@ -111,58 +121,39 @@ class TCPSocketResource : public SocketResource {
   }
 
   uint32_t on_event(HANDLE event, uint32_t state) override {
+    printf("%llx on_event(entry) state: %u, thread: %llx\n", (word)this, state, (word)Thread::current());
     if (event == _read_overlapped.hEvent) {
-      //printf("read event: %llx\n", (word)this);
-      if (receive_read_response()) {
-        printf("on_event read receive_read success: read_count: %lu\n", _read_count);
-        state |= TCP_READ;
-        if (_read_count == 0) {
-          state |= TCP_CLOSE;
-          _closed = true;
-        }
-      } else {
-        printf("on_event read receive_read failure: \n");
-        _error = WSAGetLastError();
-        if (WSAGetLastError() == WSAECONNRESET) {
-          state |= TCP_CLOSE | TCP_READ;
-          _closed = true;
-        } else
-          state |= TCP_ERROR;
-      }
+      _read_ready = true;
+      state |= TCP_READ;
     } else if (event == _write_overlapped.hEvent) {
-      //printf("write event: %llx\n", (word)this);
-      //Locker locker(_mutex);
-
-      if (_write_buffer.buf != null) {
-        free(_write_buffer.buf);
-        _write_buffer.buf = null;
-      }
-      printf("on_event.write\n");
+      _write_ready = true;
       state |= TCP_WRITE;
     } else if (event == _auxiliary_event) {
       WSANETWORKEVENTS network_events;
       if (WSAEnumNetworkEvents(socket(), NULL, &network_events) == SOCKET_ERROR) {
-        _error = WSAGetLastError();
+        _error_code = WSAGetLastError();
+        printf("on_event.auxiliary: Setting error to: %d\n", _error_code);
         state |= TCP_ERROR;
       };
       if (network_events.lNetworkEvents & FD_CLOSE) {
-        printf("close_error: %x\n", network_events.iErrorCode[FD_CLOSE_BIT]);
+        printf("%llx close_error: %x\n", (word)this, network_events.iErrorCode[FD_CLOSE_BIT]);
         if (network_events.iErrorCode[FD_CLOSE_BIT] == 0) {
           state |= TCP_READ;
-          _closing = true;
-          printf("closing\n");
+          printf("%llx closing\n",(word)this);
         } else {
-          _error = network_events.iErrorCode[FD_CLOSE_BIT];
+          _error_code = network_events.iErrorCode[FD_CLOSE_BIT];
           _closed = true;
           state |= TCP_CLOSE | TCP_READ;
         }
       }
     } else if (event == INVALID_HANDLE_VALUE) {
       // The event source sends INVALID_HANDLE_VALUE when the socket is closed.
-      _error = WSAECONNRESET;
+      _error_code = WSAECONNRESET;
+      printf("%llx on.event.software closed\n", (word)this);
       _closed = true;
       state |= TCP_CLOSE | TCP_READ;
     }
+    printf("%llx on_event(exit) state: %u\n", (word)this, state);
     return state;
   }
 
@@ -173,7 +164,9 @@ class TCPSocketResource : public SocketResource {
   }
 
   bool issue_read_request() {
+    _read_ready = false;
     _read_count = 0;
+    printf("%llx issue_read_request thread=%llx\n",(word)this,(word)Thread::current());
     DWORD flags = 0;
     int receive_result = WSARecv(socket(), &_read_buffer, 1, NULL, &flags, &_read_overlapped, NULL);
     if (receive_result == SOCKET_ERROR && WSAGetLastError() != WSA_IO_PENDING) {
@@ -185,12 +178,18 @@ class TCPSocketResource : public SocketResource {
   bool receive_read_response() {
     DWORD flags;
     bool overlapped_result = WSAGetOverlappedResult(socket(), &_read_overlapped, &_read_count, false, &flags);
-    //printf("overlapped_result=%d, _read_count=%lu, last_error=%d\n", overlapped_result, _read_count, WSAGetLastError());
+    if (_read_count == 0) _closed = true;
     return overlapped_result;
   }
 
   bool send(const uint8* buffer, int length) {
-    ASSERT(_write_buffer.buf == null);
+    if (_write_buffer.buf != null) {
+      free(_write_buffer.buf);
+      _write_buffer.buf = null;
+    }
+
+    _write_ready = false;
+
     // We need to copy the buffer out to a long-lived heap object
     _write_buffer.buf = static_cast<char*>(malloc(length));
     if (!_write_buffer.buf) {
@@ -205,7 +204,7 @@ class TCPSocketResource : public SocketResource {
     if (send_result == SOCKET_ERROR && WSAGetLastError() != WSA_IO_PENDING) {
       return false;
     }
-    printf(".send delayed=%d length=%d buffer[length-1]=%d\n",send_result == SOCKET_ERROR, length, buffer[length-1]);
+    printf("%llx send delayed=%d length=%d buffer[length-1]=%d\n",(word)this, send_result == SOCKET_ERROR, length, buffer[length-1]);
     return true;
   }
 
@@ -215,14 +214,15 @@ class TCPSocketResource : public SocketResource {
   char _read_data[READ_BUFFER_SIZE]{};
   OVERLAPPED _read_overlapped{};
   DWORD _read_count = 0;
+  bool _read_ready = false;
 
   WSABUF _write_buffer{};
   OVERLAPPED _write_overlapped{};
+  bool _write_ready = true;
 
   HANDLE _auxiliary_event;
   bool _closed = false;
-  bool _closing = false;
-  int _error = 0;
+  int _error_code = 0;
 };
 
 class TCPServerSocketResource : public SocketResource {
@@ -445,17 +445,10 @@ PRIMITIVE(write) {
 
   if (from < 0 || from > to || to > data.length()) OUT_OF_BOUNDS;
 
-  {
-    //Locker locker(tcp_resource->_mutex);
-    //printf("primitive.write: %llx\n",(word)tcp_resource);
-    if (!tcp_resource->ready_for_write()) {
-      printf("primitive.write: !ready_for_write\n");
-      return Smi::from(-1);
-    }
+  if (!tcp_resource->ready_for_write()) return Smi::from(-1);
 
-    bool send_result = tcp_resource->send(data.address() + from, to - from);
-    if (!send_result) WINDOWS_ERROR;
-  }
+  if (!tcp_resource->send(data.address() + from, to - from)) WINDOWS_ERROR;
+
   return Smi::from(to-from);
 }
 
@@ -467,7 +460,10 @@ PRIMITIVE(read)  {
 
   if (!tcp_resource->ready_for_read()) return Smi::from(-1);
 
-  //printf("primitive.read: %llx\n",(word)tcp_resource);
+  if (!tcp_resource->receive_read_response()) WINDOWS_ERROR;
+
+  if (tcp_resource->read_count() == 0) return process->program()->null_object();
+
   ByteArray* array = process->allocate_byte_array(static_cast<int>(tcp_resource->read_count()));
   if (array == null) ALLOCATION_FAILED;
 
@@ -571,6 +567,7 @@ PRIMITIVE(close_write) {
 
 PRIMITIVE(close) {
   ARGS(TCPResourceGroup, resource_group, Resource, resource);
+  printf("%llx primitive.tcp.close\n", (word)resource);
   // The event source will call do_close on the resource when it is safe to close the socket
   resource_group->unregister_resource(resource);
 
@@ -581,7 +578,8 @@ PRIMITIVE(close) {
 
 PRIMITIVE(error) {
   ARGS(TCPSocketResource, tcp_resource);
-  return Primitive::unmark_from_error(windows_error(process, tcp_resource->error()));
+  printf("%llx primitive.tcp.error\n", (word)tcp_resource);
+  return Primitive::unmark_from_error(windows_error(process, tcp_resource->error_code()));
 }
 
 PRIMITIVE(gc) {

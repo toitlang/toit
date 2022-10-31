@@ -76,31 +76,19 @@ class UDPSocketResource : public WindowsResource {
   char* read_buffer() const { return _read_buffer.buf; }
   ToitSocketAddress& read_peer_address() { return _read_peer_address; }
   DWORD error_code() const { return _error_code; }
-  bool ready_for_read() const { return _read_count != 0; }
-  bool ready_for_write() const { return _write_buffer.buf == null; }
+  bool ready_for_read() const { return _read_ready; }
+  bool ready_for_write() const { return _write_ready; }
 
   std::vector<HANDLE> events() override {
     return std::vector<HANDLE>({ _read_overlapped.hEvent, _write_overlapped.hEvent });
   }
 
   uint32_t on_event(HANDLE event, uint32_t state) override {
-    printf("on_event event=%llx, this=%llx  (read=%llx, write=%llx)\n",(word)event,(word)this, (word)_read_overlapped.hEvent, (word)_write_overlapped.hEvent);
     if (event == _read_overlapped.hEvent) {
-      printf("on_event.read. event=%llx, this=%llx\n",(word)event,(word)this);
-      if (receive_read_response()) {
-        printf("read_count: %lu\n",read_count());
-        state |= UDP_READ;
-      } else {
-        _error_code = GetLastError();
-        printf("on_event.read receive failed error_code=%lu\n",_error_code);
-
-        state |= UDP_ERROR;
-      }
+      _read_ready = true;
+      state |= UDP_READ;
     } else if (event == _write_overlapped.hEvent) {
-      if (_write_buffer.buf != null) {
-        free(_write_buffer.buf);
-        _write_buffer.buf = null;
-      }
+      _write_ready = true;
       state |= UDP_WRITE;
     }
 
@@ -115,6 +103,7 @@ class UDPSocketResource : public WindowsResource {
 
   bool issue_read_request() {
     _read_count = 0;
+    _read_ready = false;
     DWORD flags = 0;
     int receive_result = WSARecvFrom(_socket, &_read_buffer, 1, NULL, &flags,
                                      _read_peer_address.as_socket_address(),
@@ -136,6 +125,13 @@ class UDPSocketResource : public WindowsResource {
 
   bool send(const uint8* buffer, int length, ToitSocketAddress* socket_address) {
     // We need to copy the buffer out to a long-lived heap object
+    if (_write_buffer.buf != null) {
+      free(_write_buffer.buf);
+      _write_buffer.buf = null;
+    }
+
+    _write_ready = false;
+
     _write_buffer.buf = static_cast<char*>(malloc(length));
     memcpy(_write_buffer.buf, buffer, length);
     _write_buffer.len = length;
@@ -166,9 +162,11 @@ class UDPSocketResource : public WindowsResource {
   OVERLAPPED _read_overlapped{};
   DWORD _read_count = 0;
   ToitSocketAddress _read_peer_address;
+  bool _read_ready = false;
 
   WSABUF _write_buffer{};
   OVERLAPPED _write_overlapped{};
+  bool _write_ready = true;
 
   DWORD _error_code = ERROR_SUCCESS;
 };
@@ -260,11 +258,12 @@ PRIMITIVE(send) {
 
   if (from < 0 || from > to || to > data.length()) OUT_OF_BOUNDS;
 
+  if (!udp_resource->ready_for_write()) return Smi::from(-1);
+
   bool send_result;
   const uint8* send_buffer = data.address() + from;
   int send_size = to - from;
 
-  if (!udp_resource->ready_for_write()) return Smi::from(-1);
   if (address != process->program()->null_object()) {
     Blob address_bytes;
     if (!address->byte_content(process->program(), &address_bytes, STRINGS_OR_BYTE_ARRAYS)) WRONG_TYPE;
@@ -283,10 +282,7 @@ PRIMITIVE(receive) {
   ARGS(ByteArray, proxy, UDPSocketResource, udp_resource, Object, output);
   USE(proxy);
 
-  if (!udp_resource->ready_for_read()) {
-    printf("primitive.receive !ready_for_read\n");
-    return Smi::from(-1);
-  }
+  if (!udp_resource->ready_for_read()) return Smi::from(-1);
 
   // TODO: Support IPv6.
   ByteArray* address = null;
@@ -294,6 +290,8 @@ PRIMITIVE(receive) {
     address = process->allocate_byte_array(4);
     if (address == null) ALLOCATION_FAILED;
   }
+
+  if (!udp_resource->receive_read_response()) WINDOWS_ERROR;
 
   ByteArray* array = process->allocate_byte_array(static_cast<int>(udp_resource->read_count()));
   if (array == null) ALLOCATION_FAILED;

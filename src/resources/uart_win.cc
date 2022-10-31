@@ -69,8 +69,8 @@ public:
   void set_dtr(bool dtr) { dtr_ = dtr; }
   char* read_buffer() { return _read_data; }
   DWORD read_count() const { return _read_count; }
-  bool ready_for_write() { return _write_buffer == null; }
-  bool ready_for_read() const { return _read_count != 0; }
+  bool ready_for_write() const { return _write_ready; }
+  bool ready_for_read() const { return _read_ready != 0; }
   bool has_error() const { return _error_code != ERROR_SUCCESS; }
   DWORD error_code() const { return _error_code; }
 
@@ -97,6 +97,7 @@ public:
   }
 
   bool issue_read_request() {
+    _read_ready = false;
     _read_count = 0;
     bool success = ReadFile(_uart, _read_data, READ_BUFFER_SIZE, &_read_count, &_read_overlapped);
     if (!success && WSAGetLastError() != ERROR_IO_PENDING) {
@@ -111,7 +112,10 @@ public:
   }
 
   bool send(const uint8* buffer, int length) {
-    ASSERT(_write_buffer == null);
+    if (_write_buffer != null) free(_write_buffer);
+
+    _write_ready = false;
+
     // We need to copy the buffer out to a long-lived heap object
     _write_buffer = static_cast<char*>(malloc(length));
     memcpy(_write_buffer, buffer, length);
@@ -127,17 +131,10 @@ public:
 
   uint32_t on_event(HANDLE event, uint32_t state) override {
     if (event == _read_overlapped.hEvent) {
-      //printf("read event: %llx\n", (word)this);
-      if (receive_read_response()) {
-        state |= kReadState;
-      } else {
-        _error_code = GetLastError();
-      }
+      _read_ready = true;
+      state |= kReadState;
     } else if (event == _write_overlapped.hEvent) {
-      if (_write_buffer) {
-        free(_write_buffer);
-        _write_buffer = NULL;
-      }
+      _write_ready = true;
       state |= kWriteState;
     } else if (event == _comm_events_overlapped.hEvent) {
       DWORD tmp;
@@ -164,12 +161,14 @@ public:
   char _read_data[READ_BUFFER_SIZE]{};
   OVERLAPPED _read_overlapped{};
   DWORD _read_count = 0;
+  bool _read_ready = false;
 
   OVERLAPPED _write_overlapped{};
   char* _write_buffer = null;
+  bool _write_ready = true;
 
   OVERLAPPED _comm_events_overlapped{};
-  DWORD _event_mask;
+  DWORD _event_mask = 0;
 
   DWORD _error_code = ERROR_SUCCESS;
 };
@@ -384,13 +383,14 @@ PRIMITIVE(read) {
 
   if (!uart_resource->ready_for_read()) return process->program()->null_object();
 
+  if (!uart_resource->receive_read_response()) WINDOWS_ERROR;
+
   ByteArray* array = process->allocate_byte_array(static_cast<int>(uart_resource->read_count()));
   if (array == null) ALLOCATION_FAILED;
 
   memcpy(ByteArray::Bytes(array).address(), uart_resource->read_buffer(), uart_resource->read_count());
 
-  if (!uart_resource->issue_read_request())
-    WINDOWS_ERROR;
+  if (!uart_resource->issue_read_request())  WINDOWS_ERROR;
 
   return array;
 }

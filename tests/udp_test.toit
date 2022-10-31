@@ -13,15 +13,10 @@ import .dns as dns
 BROADCAST_ADDRESS ::= net.IpAddress.parse "255.255.255.255"
 
 main:
-  print "TOIT: ping_ping_test"
   ping_ping_test
-  print "TOIT: ping_ping_timeout_test"
   ping_ping_timeout_test
-  print "TOIT: broadcast_test"
   broadcast_test
-  print "TOIT: close_test"
   close_test
-  print "DONE"
 
 ping_ping_test:
   times := 10
@@ -40,9 +35,7 @@ ping_ping_test:
   for i := 0; i < times; i++:
     socket.write "testing"
     expect_equals "testing" socket.read.to_string
-  print "TOIT: sender: close"
   socket.close
-  print "TOIT: sender: closed"
 
 echo_responder times ready:
   socket := udp.Socket "127.0.0.1" 0
@@ -51,9 +44,8 @@ echo_responder times ready:
   for i := 0; i < times; i++:
     msg := socket.receive
     socket.send msg
-  print "TOIT: responder: close"
+
   socket.close
-  print "TOIT: responder: closed"
 
 class Timer:
   string_ := ?
