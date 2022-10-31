@@ -72,7 +72,7 @@ main:
   summer.add "123456789"
   expect_equals 0x6c40df5f0b497347 summer.get_as_int
 
-  // The 5 bit CRC from USB, little-endian polynomial 0b1_00101.
+  // The 5 bit CRC from USB, little-endian polynomial 0b00101.
   summer = crc.Crc.little_endian 5 --normal_polynomial=0x5 --initial_state=0x1f --xor_result=0x1f
   summer.add "123456789"
   expect_equals 0x19 summer.get_as_int
