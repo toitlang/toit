@@ -114,8 +114,8 @@ class FirmwareWriter extends ServiceResourceProxy:
   pad size/int --value/int=0 -> none:
     _client_.firmware_writer_pad handle_ size value
 
-  flush -> none:
-    _client_.firmware_writer_flush handle_
+  flush -> int:
+    return _client_.firmware_writer_flush handle_
 
   commit --checksum/ByteArray?=null -> none:
     _client_.firmware_writer_commit handle_ checksum
