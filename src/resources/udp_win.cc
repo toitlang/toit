@@ -61,10 +61,8 @@ class UDPSocketResource : public WindowsResource {
     set_state(UDP_WRITE);
     if (!issue_read_request()) {
       set_state(UDP_WRITE | UDP_ERROR);
-      printf("constructor issue_read_request error_code=%lu\n",_error_code);
       _error_code = GetLastError();
     };
-    printf("read_event: %llx, resource: %llx\n",(word)read_event, (word)this);
   }
 
   ~UDPSocketResource() override {
@@ -102,16 +100,14 @@ class UDPSocketResource : public WindowsResource {
   }
 
   bool issue_read_request() {
-    _read_count = 0;
     _read_ready = false;
+    _read_count = 0;
     DWORD flags = 0;
     int receive_result = WSARecvFrom(_socket, &_read_buffer, 1, NULL, &flags,
                                      _read_peer_address.as_socket_address(),
                                      _read_peer_address.size_pointer(),
                                      &_read_overlapped, NULL);
     if (receive_result == SOCKET_ERROR && WSAGetLastError() != WSA_IO_PENDING) {
-      _error_code = WSAGetLastError();
-      printf("issue_read_request error_code=%lu\n",_error_code);
       return false;
     }
     return true;
@@ -387,6 +383,7 @@ PRIMITIVE(set_option) {
 
 PRIMITIVE(close) {
   ARGS(UDPResourceGroup, resource_group, UDPSocketResource, udp_resource);
+
   // The event source will call do_close on the resource when it is safe to close the socket
   resource_group->unregister_resource(udp_resource);
 
@@ -401,7 +398,7 @@ PRIMITIVE(error) {
 }
 
 PRIMITIVE(gc) {
-  // Malloc "never" fails on Windows, so we should never try to trigger a GC.
+  // This implementation never sets the NEED_GC state
   UNREACHABLE();
 }
 

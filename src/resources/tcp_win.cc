@@ -22,7 +22,6 @@
 
 #include "posix_socket_address.h"
 
-
 #include <sys/time.h>
 
 #include "../objects_inline.h"
@@ -43,13 +42,6 @@ class TCPResourceGroup : public ResourceGroup {
   static SOCKET create_socket() {
     SOCKET socket = WSASocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, NULL, 0, WSA_FLAG_OVERLAPPED);
     if (socket == INVALID_SOCKET) return socket;
-
-//    int yes = 1;
-//    if (setsockopt(socket, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char *>(&yes), sizeof(yes)) == SOCKET_ERROR) {
-//      close_keep_errno(socket);
-//      return INVALID_SOCKET;
-//    }
-
     return socket;
   }
  private:
@@ -86,14 +78,12 @@ class TCPSocketResource : public SocketResource {
     _read_buffer.len = READ_BUFFER_SIZE;
     _read_overlapped.hEvent = read_event;
     _write_overlapped.hEvent = write_event;
-    printf("%llx TcpSocketResource.constructor: write_event: %llx\n",(word)this, (word)write_event);
     if (!issue_read_request()) {
       int error_code = WSAGetLastError();
       if (error_code == WSAECONNRESET) {
         set_state(TCP_CLOSE);
       } else {
         _error_code = WSAGetLastError();
-        printf("Socket constructor. Issue_read_failed, _error=%d\n", _error_code);
         set_state(TCP_ERROR);
       }
     } else {
@@ -121,7 +111,6 @@ class TCPSocketResource : public SocketResource {
   }
 
   uint32_t on_event(HANDLE event, uint32_t state) override {
-    printf("%llx on_event(entry) state: %u, thread: %llx\n", (word)this, state, (word)Thread::current());
     if (event == _read_overlapped.hEvent) {
       _read_ready = true;
       state |= TCP_READ;
@@ -132,14 +121,11 @@ class TCPSocketResource : public SocketResource {
       WSANETWORKEVENTS network_events;
       if (WSAEnumNetworkEvents(socket(), NULL, &network_events) == SOCKET_ERROR) {
         _error_code = WSAGetLastError();
-        printf("on_event.auxiliary: Setting error to: %d\n", _error_code);
         state |= TCP_ERROR;
       };
       if (network_events.lNetworkEvents & FD_CLOSE) {
-        printf("%llx close_error: %x\n", (word)this, network_events.iErrorCode[FD_CLOSE_BIT]);
         if (network_events.iErrorCode[FD_CLOSE_BIT] == 0) {
           state |= TCP_READ;
-          printf("%llx closing\n",(word)this);
         } else {
           _error_code = network_events.iErrorCode[FD_CLOSE_BIT];
           _closed = true;
@@ -149,11 +135,9 @@ class TCPSocketResource : public SocketResource {
     } else if (event == INVALID_HANDLE_VALUE) {
       // The event source sends INVALID_HANDLE_VALUE when the socket is closed.
       _error_code = WSAECONNRESET;
-      printf("%llx on.event.software closed\n", (word)this);
       _closed = true;
       state |= TCP_CLOSE | TCP_READ;
     }
-    printf("%llx on_event(exit) state: %u\n", (word)this, state);
     return state;
   }
 
@@ -166,7 +150,6 @@ class TCPSocketResource : public SocketResource {
   bool issue_read_request() {
     _read_ready = false;
     _read_count = 0;
-    printf("%llx issue_read_request thread=%llx\n",(word)this,(word)Thread::current());
     DWORD flags = 0;
     int receive_result = WSARecv(socket(), &_read_buffer, 1, NULL, &flags, &_read_overlapped, NULL);
     if (receive_result == SOCKET_ERROR && WSAGetLastError() != WSA_IO_PENDING) {
@@ -204,11 +187,9 @@ class TCPSocketResource : public SocketResource {
     if (send_result == SOCKET_ERROR && WSAGetLastError() != WSA_IO_PENDING) {
       return false;
     }
-    printf("%llx send delayed=%d length=%d buffer[length-1]=%d\n",(word)this, send_result == SOCKET_ERROR, length, buffer[length-1]);
     return true;
   }
 
-  //Mutex* _mutex = OS::allocate_mutex(2,"TCP");
  private:
   WSABUF _read_buffer{};
   char _read_data[READ_BUFFER_SIZE]{};
@@ -292,8 +273,6 @@ static HeapObject* create_events(Process* process, SOCKET socket, WSAEVENT& read
     WINDOWS_ERROR;
   }
 
-
-
   return null;
 }
 
@@ -328,7 +307,6 @@ PRIMITIVE(connect) {
   }
 
   auto tcp_resource = _new TCPSocketResource(resource_group, socket, read_event, write_event, auxiliary_event);
-  //printf("outgoing created: %llx\n", (word)tcp_resource);
   if (!tcp_resource) {
     close_keep_errno(socket);
     close_handle_keep_errno(read_event);
@@ -350,11 +328,8 @@ PRIMITIVE(accept) {
   ByteArray* resource_proxy = process->object_heap()->allocate_proxy();
   if (resource_proxy == null) ALLOCATION_FAILED;
 
-
-  //printf("primitive.accept\n");
   SOCKET socket = accept(server_socket_resource->socket(), NULL, NULL);
   if (socket == INVALID_SOCKET) {
-    //printf("primitive.accept INVALID_SOCKET\n");
     if (WSAGetLastError() == WSAEWOULDBLOCK)
       return process->program()->null_object();
     WINDOWS_ERROR;
@@ -368,7 +343,6 @@ PRIMITIVE(accept) {
   }
 
   auto tcp_resource = _new TCPSocketResource(resource_group, socket, read_event, write_event, auxiliary_event);
-  //printf("incoming created: %llx\n", (word)tcp_resource);
 
   if (!tcp_resource) {
     close_keep_errno(socket);
@@ -397,7 +371,6 @@ PRIMITIVE(listen) {
 
   SOCKET socket = TCPResourceGroup::create_socket();
   if (socket == INVALID_SOCKET) WINDOWS_ERROR;
-  socket_address.dump();
   if (bind(socket, socket_address.as_socket_address(), socket_address.size()) == SOCKET_ERROR) {
     close_keep_errno(socket);
     if (WSAGetLastError() == WSAEADDRINUSE) {
@@ -432,7 +405,6 @@ PRIMITIVE(listen) {
     MALLOC_FAILED;
   }
 
-  //printf("registering server socket: r=%llx, event=%llx\n",(word)resource, (word)event);
   resource_group->register_resource(resource);
 
   resource_proxy->set_external_address(resource);
@@ -567,7 +539,7 @@ PRIMITIVE(close_write) {
 
 PRIMITIVE(close) {
   ARGS(TCPResourceGroup, resource_group, Resource, resource);
-  printf("%llx primitive.tcp.close\n", (word)resource);
+
   // The event source will call do_close on the resource when it is safe to close the socket
   resource_group->unregister_resource(resource);
 
@@ -578,15 +550,13 @@ PRIMITIVE(close) {
 
 PRIMITIVE(error) {
   ARGS(TCPSocketResource, tcp_resource);
-  printf("%llx primitive.tcp.error\n", (word)tcp_resource);
   return Primitive::unmark_from_error(windows_error(process, tcp_resource->error_code()));
 }
 
 PRIMITIVE(gc) {
-  // Malloc never fails on Mac, so we should never try to trigger a GC.
+  // This implementation never sets the NEED_GC state
   UNREACHABLE();
 }
 
 } // namespace toit
-
 #endif // TOIT_BSD

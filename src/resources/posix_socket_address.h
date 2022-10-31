@@ -75,11 +75,6 @@ class ToitSocketAddress {
     return true;
   }
 
-  void dump() {
-    AllowThrowingNew host_only;
-    printf("%s:%d\n", inet_ntoa(as_socket_address_in()->sin_addr), port());
-  }
-
  private:
   sockaddr _socket_address{};
   int _socket_address_size = sizeof(sockaddr);

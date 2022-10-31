@@ -50,8 +50,6 @@ class WindowsEventThread: public Thread {
     , _event_source(event_source)
     , _recalculated(OS::allocate_condition_variable(event_source->mutex())) {
     _control_event = CreateEvent(NULL, true, false, NULL);
-    //printf("control_event=%llx\n", (word)_control_event);
-
     _handles[0] = _control_event;
   }
 
@@ -70,57 +68,38 @@ class WindowsEventThread: public Thread {
   }
   
   void add_resource_event(Locker& event_source_locker, WindowsResourceEvent* resource_event) {
-//    _event_source_locker = &event_source_locker;
     ASSERT(_resource_events.size() < MAXIMUM_WAIT_OBJECTS - 2);
     _resource_events.insert(resource_event);
-    //printf("add_resource_event. setting control\n");
     SetEvent(_control_event); // Recalculate the wait objects
     OS::wait(_recalculated);
-//    _event_source_locker = null;
   }
 
   void remove_resource_event(Locker& event_source_locker, WindowsResourceEvent* resource_event) {
-//    _event_source_locker = &event_source_locker;
     size_t number_erased = _resource_events.erase(resource_event);
     if (number_erased > 0) {
       SetEvent(_control_event); // Recalculate the wait objects
-      //printf("remove_resource_event: wait for condition\n");
       OS::wait(_recalculated);
     }
-//    _event_source_locker = null;
   }
 
  protected:
   void entry() override {
     while (true) {
-      //printf("Starting wait on %lu handles\n", _count);
       DWORD result = WaitForMultipleObjects(_count, _handles, false, INFINITE);
-      //DWORD dispatch_index = 0;
       {
         Locker locker(_event_source->mutex());
-//        if (result != WAIT_FAILED)
-//          printf("Notification on index %lu, %llx (control=%llx)\n", result, (word)_handles[result], (word)_handles[0]);
-//        else
-//          printf("wait failed\n");
-        
         if (result == WAIT_OBJECT_0 + 0) {
-//          printf("control event\n");
           if (_stopped) break;
-          // Handles should be recalculated
           recalculate_handles();
         } else if (result != WAIT_FAILED) {
           size_t index = result - WAIT_OBJECT_0;
           ResetEvent(_handles[index]);
           _event_source->on_event(locker, _resources[index], _handles[index]);
         } else {
-  //        if (GetLastError() == ERROR_INVALID_HANDLE) {
           FATAL("wait failed. error=%lu",GetLastError());
-            //recalculate_handles();
-  //        }
         }
       }
     }
-//    printf("Thread is stopped!");
   }
 
  private:
@@ -128,13 +107,11 @@ class WindowsEventThread: public Thread {
     _count = _resource_events.size() + 1;
     int index = 1;
     for (auto resource_event : _resource_events) {
-//      printf("handle[%d]=%llx\n", index, (unsigned long long)resource_event->event());
       _handles[index] = resource_event->event();
       _resources[index] = resource_event->resource();
       index++;
     }
     ResetEvent(_control_event);
-//    printf("recalculated, _count=%lu, _handles[0]=%llx\n", _count, (word)_handles[0]);
     OS::signal_all(_recalculated);
   }
 
@@ -145,14 +122,11 @@ class WindowsEventThread: public Thread {
   DWORD _count;
   std::unordered_set<WindowsResourceEvent*> _resource_events;
   WindowsEventSource* _event_source;
-//  Mutex* _mutex;
   ConditionVariable* _recalculated;
-//  Locker* _event_source_locker = null;
 };
 
-WindowsEventSource::WindowsEventSource() : LazyEventSource("WindowsEvents",1), _threads(), _resource_events() {
+WindowsEventSource::WindowsEventSource() : LazyEventSource("WindowsEvents", 1), _threads(), _resource_events() {
   ASSERT(_instance == null);
-
   _instance = this;
 }
 
@@ -209,7 +183,6 @@ void WindowsEventSource::on_unregister_resource(Locker &locker, Resource* r) {
 }
 
 void WindowsEventSource::on_event(Locker& locker, WindowsResource* r, HANDLE event) {
-//  printf("event_source.on_event r=%llx, event=%llx\n", (word)r,(word)event);
    word data = reinterpret_cast<word>(event);
    dispatch(locker, r, data);
 }
@@ -221,19 +194,14 @@ bool WindowsEventSource::start() {
 }
 
 void WindowsEventSource::stop() {
-//  printf("WindowsEventSource::stop - enter\n");
   for (auto thread : _threads) {
-//    printf("WindowsEventSource::~WindowsEventSource stop thread\n");
     thread->stop();
-//    printf("WindowsEventSource::~WindowsEventSource join thread\n");
     thread->join();
-//    printf("WindowsEventSource::~WindowsEventSource delete thread\n");
     delete thread;
   }
 
   WSACleanup();
-//  printf("WindowsEventSource::stop - exit\n");
 }
 
-}
+} // namespace toit
 #endif // TOIT_WINDOWS
