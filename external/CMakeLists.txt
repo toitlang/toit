@@ -60,6 +60,7 @@ set(TOIT_REPOS
     https://github.com/toitware/toit-pixel-display
     https://github.com/toitware/toit-pixel-strip
     https://github.com/toitware/toit-png-display
+    https://github.com/toitware/toit-protobuf
     https://github.com/toitware/toit-r46ca01
     https://github.com/toitware/toit-resistance-to-temperature
     # https://github.com/toitware/toit-rs485
