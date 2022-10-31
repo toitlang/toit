@@ -192,6 +192,8 @@ class Crc extends Checksum:
     else:
       sum_ = calculcate_crc_big_endian_ sum_ width data from to table_
 
+  // The zero argument should be zero to indicate to the primitive that
+  // this is a little-endian CRC.
   static calculcate_crc_little_endian_ sum/int zero/int data from/int to/int table -> int:
     #primitive.core.crc:
       if data is string:
