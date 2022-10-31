@@ -41,6 +41,7 @@ class Crc extends Checksum:
     significant bit representing the x^0 term, and the least significant
     bit representing the x^width-1 term.  This is the little endian
     (reversed) ordering for the polynomial.
+  The $width must be in the range of 3-64 bits.
 
   # Example
   ```
@@ -62,6 +63,7 @@ class Crc extends Checksum:
     significant bit representing the x^0 term, and the most significant bit
     representing the x^width-1 term.  This is the normal ordering for the
     polynomial.
+  The $width must be in the range of 3-64 bits.
 
   # Example
   ```
@@ -88,6 +90,7 @@ class Crc extends Checksum:
     CRC polynormial.
   The power corresponding to the width (32 for the x³² term in CRC-32)
     can be omitted since it is implied by the width of the CRC.
+  The $width must be in the range of 3-64 bits.
 
   # Example
   ```
@@ -116,6 +119,7 @@ class Crc extends Checksum:
   The $polynomial is an integer encoding of width $width with the most
     significant bit representing the x^0 term, and the least significant
     bit representing the x^width-1 term.
+  The $width must be in the range of 8-64 bits.
 
   # Example
   ```
@@ -124,7 +128,7 @@ class Crc extends Checksum:
   ```
   */
   constructor.big_endian .width/int --.polynomial/int --initial_state/int=0 --.xor_result/int=0:
-    if not 3 <= width <= 64: throw "INVALID_ARGUMENT"
+    if not 8 <= width <= 64: throw "INVALID_ARGUMENT"
     if width < 64 and polynomial > (1 << width): throw "Polynomial and width don't match"
     little_endian = false
     sum_ = initial_state
@@ -137,6 +141,7 @@ class Crc extends Checksum:
     CRC polynormial.
   The power corresponding to the width (32 for the x³² term in CRC-32)
     can be omitted since it is implied by the width of the CRC.
+  The $width must be in the range of 8-64 bits.
 
   # Example
   ```
