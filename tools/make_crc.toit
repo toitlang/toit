@@ -82,7 +82,7 @@ main args:
           $name_snake data --from/int=0 --to/int=data.size -> int:
             crc := Crc.$(endian)_endian $width --$polynomial_argument=$fields[2]$initial_string$xor_string
             crc.add data from to
-            return binary.$(endian_upper)_ENDIAN.uint$width crc.get 0
+            return crc.get_as_int
 
           /** $name checksum state. */
           class $name_camel extends Crc:
