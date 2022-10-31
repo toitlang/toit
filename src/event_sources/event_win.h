@@ -42,7 +42,7 @@ class WindowsEventSource :  public LazyEventSource {
   WindowsEventSource();
   ~WindowsEventSource() override;
 
-  void on_event(WindowsResource* r, HANDLE event);
+  void on_event(Locker& locker, WindowsResource* r, HANDLE event);
 
  protected:
   bool start() override;

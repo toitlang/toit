@@ -38,11 +38,6 @@ class UDPResourceGroup : public ResourceGroup {
   TAG(UDPResourceGroup);
   UDPResourceGroup(Process* process, EventSource* event_source) : ResourceGroup(process, event_source) {}
 
-  void tear_down() override {
-    WSACleanup();
-    ResourceGroup::tear_down();
-  }
-
  private:
   uint32_t on_event(Resource* resource, word data, uint32_t state) override {
     return reinterpret_cast<WindowsResource*>(resource)->on_event(
@@ -66,8 +61,10 @@ class UDPSocketResource : public WindowsResource {
     set_state(UDP_WRITE);
     if (!issue_read_request()) {
       set_state(UDP_WRITE | UDP_ERROR);
+      printf("constructor issue_read_request error_code=%lu\n",_error_code);
       _error_code = GetLastError();
     };
+    printf("read_event: %llx, resource: %llx\n",(word)read_event, (word)this);
   }
 
   ~UDPSocketResource() override {
@@ -87,21 +84,26 @@ class UDPSocketResource : public WindowsResource {
   }
 
   uint32_t on_event(HANDLE event, uint32_t state) override {
+    printf("on_event event=%llx, this=%llx  (read=%llx, write=%llx)\n",(word)event,(word)this, (word)_read_overlapped.hEvent, (word)_write_overlapped.hEvent);
     if (event == _read_overlapped.hEvent) {
-      if (receive_read_response())
+      printf("on_event.read. event=%llx, this=%llx\n",(word)event,(word)this);
+      if (receive_read_response()) {
+        printf("read_count: %lu\n",read_count());
         state |= UDP_READ;
-      else {
+      } else {
         _error_code = GetLastError();
+        printf("on_event.read receive failed error_code=%lu\n",_error_code);
+
         state |= UDP_ERROR;
       }
-    }
-    if (event == _write_overlapped.hEvent) {
+    } else if (event == _write_overlapped.hEvent) {
       if (_write_buffer.buf != null) {
         free(_write_buffer.buf);
         _write_buffer.buf = null;
       }
       state |= UDP_WRITE;
     }
+
     return state;
   }
 
@@ -112,6 +114,7 @@ class UDPSocketResource : public WindowsResource {
   }
 
   bool issue_read_request() {
+    _read_count = 0;
     DWORD flags = 0;
     int receive_result = WSARecvFrom(_socket, &_read_buffer, 1, NULL, &flags,
                                      _read_peer_address.as_socket_address(),
@@ -119,6 +122,7 @@ class UDPSocketResource : public WindowsResource {
                                      &_read_overlapped, NULL);
     if (receive_result == SOCKET_ERROR && WSAGetLastError() != WSA_IO_PENDING) {
       _error_code = WSAGetLastError();
+      printf("issue_read_request error_code=%lu\n",_error_code);
       return false;
     }
     return true;
@@ -279,7 +283,10 @@ PRIMITIVE(receive) {
   ARGS(ByteArray, proxy, UDPSocketResource, udp_resource, Object, output);
   USE(proxy);
 
-  if (!udp_resource->ready_for_read()) return Smi::from(-1);
+  if (!udp_resource->ready_for_read()) {
+    printf("primitive.receive !ready_for_read\n");
+    return Smi::from(-1);
+  }
 
   // TODO: Support IPv6.
   ByteArray* address = null;
@@ -328,21 +335,21 @@ static Object* get_port_or_error(SOCKET socket, Process* process) {
 }
 
 PRIMITIVE(get_option) {
-  ARGS(ByteArray, proxy, IntResource, connection_resource, int, option);
+  ARGS(ByteArray, proxy, UDPSocketResource, udp_resource, int, option);
   USE(proxy);
-  SOCKET fd = connection_resource->id();
+  SOCKET socket = udp_resource->socket();
 
   switch (option) {
     case UDP_ADDRESS:
-      return get_address_or_error(fd, process);
+      return get_address_or_error(socket, process);
 
     case UDP_PORT:
-      return get_port_or_error(fd, process);
+      return get_port_or_error(socket, process);
 
     case UDP_BROADCAST: {
       int value = 0;
       int size = sizeof(value);
-      if (getsockopt(fd, SOL_SOCKET, SO_BROADCAST, reinterpret_cast<char *>(&value), &size) == -1) {
+      if (getsockopt(socket, SOL_SOCKET, SO_BROADCAST, reinterpret_cast<char *>(&value), &size) == -1) {
         WINDOWS_ERROR;
       }
 

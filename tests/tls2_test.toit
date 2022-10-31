@@ -48,6 +48,7 @@ run_tests:
   test_site "drive.google.com" true
   if load_limiter.test_failures:
     throw load_limiter.has_test_failure
+  print "done"
 
 BALTIMORE_CYBERTRUST_ROOT ::= net.Certificate.parse """\
 -----BEGIN CERTIFICATE-----

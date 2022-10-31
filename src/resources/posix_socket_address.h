@@ -63,6 +63,7 @@ class ToitSocketAddress {
 
   bool lookup_address(const char* host, int port) {
     if (strlen(host) == 0) {
+      as_socket_address_in()->sin_family = AF_INET;
       as_socket_address_in()->sin_addr.s_addr = INADDR_ANY;
     } else {
       struct hostent* server = gethostbyname(host);

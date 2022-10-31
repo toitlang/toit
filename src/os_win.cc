@@ -42,7 +42,7 @@ int64 OS::get_system_time() {
 class Mutex {
  public:
   Mutex(int level, const char* name)
-    : _level(level) {
+    : _level(level), _name(name) {
     pthread_mutex_init(&_mutex, null);
   }
 
@@ -71,9 +71,10 @@ class Mutex {
   }
 
   int level() const { return _level; }
-
+  const char* name() const { return _name?_name:""; }
   int _level;
   pthread_mutex_t _mutex;
+  const char* _name;
 };
 
 class ConditionVariable {
@@ -150,7 +151,7 @@ void Locker::enter() {
   if (previous_locker != null) {
     int previous_level = previous_locker->_mutex->level();
     if (level <= previous_level) {
-      FATAL("trying to take lock of level %d while holding lock of level %d", level, previous_level);
+      FATAL("trying to take lock of level %d (%s) while holding lock of level %d (%s)", level, _mutex->name(), previous_level, previous_locker->_mutex->name());
     }
   }
   // Lock after checking the precondition to avoid deadlocking

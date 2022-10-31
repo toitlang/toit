@@ -48,9 +48,9 @@ class WindowsEventThread: public Thread {
     , _resources()
     , _count(1)
     , _event_source(event_source)
-    , _mutex(OS::allocate_mutex(1, "WindowsOverlapped" )){
+    , _recalculated(OS::allocate_condition_variable(event_source->mutex())) {
     _control_event = CreateEvent(NULL, true, false, NULL);
-    //printf("control_event=%llx\n", (unsigned long long)_control_event);
+    printf("control_event=%llx\n", (word)_control_event);
 
     _handles[0] = _control_event;
   }
@@ -60,7 +60,7 @@ class WindowsEventThread: public Thread {
   }
 
   void stop() {
-    Locker locker(_mutex);
+    Locker locker(_event_source->mutex());
     _stopped = true;
     SetEvent(_control_event);
   }
@@ -69,37 +69,58 @@ class WindowsEventThread: public Thread {
     return _resource_events.size();
   }
   
-  void add_resource_event(WindowsResourceEvent* resource_event) {
+  void add_resource_event(Locker& event_source_locker, WindowsResourceEvent* resource_event) {
+//    _event_source_locker = &event_source_locker;
     ASSERT(_resource_events.size() < MAXIMUM_WAIT_OBJECTS - 2);
-    Locker locker(_mutex);
     _resource_events.insert(resource_event);
+    printf("add_resource_event. setting control\n");
     SetEvent(_control_event); // Recalculate the wait objects
+    OS::wait(_recalculated);
+//    _event_source_locker = null;
   }
 
-  void remove_resource_event(WindowsResourceEvent* resource_event) {
-    Locker locker(_mutex);
+  void remove_resource_event(Locker& event_source_locker, WindowsResourceEvent* resource_event) {
+//    _event_source_locker = &event_source_locker;
     size_t number_erased = _resource_events.erase(resource_event);
-    if (number_erased > 0)
+    if (number_erased > 0) {
       SetEvent(_control_event); // Recalculate the wait objects
+      printf("remove_resource_event: wait for condition\n");
+      OS::wait(_recalculated);
+    }
+//    _event_source_locker = null;
   }
 
  protected:
   void entry() override {
     while (true) {
+      printf("Starting wait on %lu handles\n", _count);
       DWORD result = WaitForMultipleObjects(_count, _handles, false, INFINITE);
-      if (result == WAIT_OBJECT_0 + 0) {
-        if (_stopped) break;
-        Locker locker(_mutex);
-        // Handles should be recalculated
-        recalculate_handles();
-        ResetEvent(_control_event);
-      } else if (result != WAIT_FAILED){
-        size_t index = result - WAIT_OBJECT_0;
-//        printf("Notification on %llx\n", (unsigned long long)_handles[index]);
-        _event_source->on_event(_resources[index], _handles[index]);
-        ResetEvent(_handles[index]);
+      //DWORD dispatch_index = 0;
+      {
+        Locker locker(_event_source->mutex());
+        if (result != WAIT_FAILED)
+          printf("Notification on index %lu, %llx (control=%llx)\n", result, (word)_handles[result], (word)_handles[0]);
+        else
+          printf("wait failed\n");
+        
+        if (result == WAIT_OBJECT_0 + 0) {
+          printf("control event\n");
+          if (_stopped) break;
+          // Handles should be recalculated
+          recalculate_handles();
+        } else if (result != WAIT_FAILED) {
+          size_t index = result - WAIT_OBJECT_0;
+          ResetEvent(_handles[index]);
+          _event_source->on_event(locker, _resources[index], _handles[index]);
+        } else {
+  //        if (GetLastError() == ERROR_INVALID_HANDLE) {
+          FATAL("wait failed. error=%lu",GetLastError());
+            //recalculate_handles();
+  //        }
+        }
       }
     }
+    printf("Thread is stopped!");
   }
 
  private:
@@ -112,6 +133,9 @@ class WindowsEventThread: public Thread {
       _resources[index] = resource_event->resource();
       index++;
     }
+    ResetEvent(_control_event);
+    printf("recalculated, _count=%lu, _handles[0]=%llx\n", _count, (word)_handles[0]);
+    OS::signal_all(_recalculated);
   }
 
   bool _stopped = false;
@@ -121,27 +145,21 @@ class WindowsEventThread: public Thread {
   DWORD _count;
   std::unordered_set<WindowsResourceEvent*> _resource_events;
   WindowsEventSource* _event_source;
-  Mutex* _mutex;
+//  Mutex* _mutex;
+  ConditionVariable* _recalculated;
+//  Locker* _event_source_locker = null;
 };
 
-WindowsEventSource::WindowsEventSource() : LazyEventSource("WindowsEvents"), _threads(), _resource_events() {
+WindowsEventSource::WindowsEventSource() : LazyEventSource("WindowsEvents",1), _threads(), _resource_events() {
   ASSERT(_instance == null);
 
   _instance = this;
 }
 
 WindowsEventSource::~WindowsEventSource() {
-  for (auto thread : _threads) {
-    thread->stop();
-    thread->join();
-    delete thread;
-  }
-
   for (auto item : _resource_events) {
     delete item.second;
   }
-
-  WSACleanup();
 }
 
 void WindowsEventSource::on_register_resource(Locker &locker, Resource* r) {
@@ -156,7 +174,7 @@ void WindowsEventSource::on_register_resource(Locker &locker, Resource* r) {
     for(auto thread : _threads) {
       if (thread->size() < MAXIMUM_WAIT_OBJECTS - 2) {
         resource_event = _new WindowsResourceEvent(windows_resource, event, thread);
-        thread->add_resource_event(resource_event);
+        thread->add_resource_event(locker, resource_event);
         placed_it = true;
         break;
       }
@@ -165,9 +183,9 @@ void WindowsEventSource::on_register_resource(Locker &locker, Resource* r) {
       // Spawn a new thread
       auto thread = _new WindowsEventThread(this);
       _threads.push_back(thread);
-      resource_event = _new WindowsResourceEvent(windows_resource, event, thread);
-      thread->add_resource_event(resource_event);
       thread->spawn();
+      resource_event = _new WindowsResourceEvent(windows_resource, event, thread);
+      thread->add_resource_event(locker, resource_event);
     }
 
     _resource_events.insert(std::make_pair(windows_resource, resource_event));
@@ -180,17 +198,20 @@ void WindowsEventSource::on_unregister_resource(Locker &locker, Resource* r) {
   auto windows_resource = reinterpret_cast<WindowsResource*>(r);
   auto range = _resource_events.equal_range(windows_resource);
   for (auto it = range.first; it != range.second; ++it) {
-    it->second->thread()->remove_resource_event(it->second);
+    it->second->thread()->remove_resource_event(locker, it->second);
     delete it->second;
   }
+  _resource_events.erase(windows_resource);
+
   windows_resource->do_close();
-  // sending an event to let the resource update is state, typically to a CLOSE state
+  // sending an event to let the resource update its state, typically to a CLOSE state
   dispatch(locker, windows_resource, reinterpret_cast<word>(INVALID_HANDLE_VALUE));
 }
 
-void WindowsEventSource::on_event(WindowsResource* r, HANDLE event) {
+void WindowsEventSource::on_event(Locker& locker, WindowsResource* r, HANDLE event) {
 //  printf("event_source.on_event r=%llx, event=%llx\n", (word)r,(word)event);
-  dispatch(r, reinterpret_cast<word>(event));
+   word data = reinterpret_cast<word>(event);
+   dispatch(locker, r, data);
 }
 
 bool WindowsEventSource::start() {
@@ -200,7 +221,18 @@ bool WindowsEventSource::start() {
 }
 
 void WindowsEventSource::stop() {
+  printf("WindowsEventSource::stop - enter\n");
+  for (auto thread : _threads) {
+    printf("WindowsEventSource::~WindowsEventSource stop thread\n");
+    thread->stop();
+    printf("WindowsEventSource::~WindowsEventSource join thread\n");
+    thread->join();
+    printf("WindowsEventSource::~WindowsEventSource delete thread\n");
+    delete thread;
+  }
+
   WSACleanup();
+  printf("WindowsEventSource::stop - exit\n");
 }
 
 }

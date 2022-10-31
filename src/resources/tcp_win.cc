@@ -44,11 +44,11 @@ class TCPResourceGroup : public ResourceGroup {
     SOCKET socket = WSASocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, NULL, 0, WSA_FLAG_OVERLAPPED);
     if (socket == INVALID_SOCKET) return socket;
 
-    int yes = 1;
-    if (setsockopt(socket, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char *>(&yes), sizeof(yes)) == SOCKET_ERROR) {
-      close_keep_errno(socket);
-      return INVALID_SOCKET;
-    }
+//    int yes = 1;
+//    if (setsockopt(socket, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char *>(&yes), sizeof(yes)) == SOCKET_ERROR) {
+//      close_keep_errno(socket);
+//      return INVALID_SOCKET;
+//    }
 
     return socket;
   }
@@ -78,8 +78,10 @@ const int READ_BUFFER_SIZE = 1 << 16;
 class TCPSocketResource : public SocketResource {
  public:
   TAG(TCPSocketResource);
-  TCPSocketResource(TCPResourceGroup* resource_group, SOCKET socket, HANDLE read_event, HANDLE write_event)
-      : SocketResource(resource_group, socket) {
+  TCPSocketResource(TCPResourceGroup* resource_group, SOCKET socket,
+                    HANDLE read_event, HANDLE write_event, HANDLE auxiliary_event)
+      : SocketResource(resource_group, socket)
+      , _auxiliary_event(auxiliary_event) {
     _read_buffer.buf = _read_data;
     _read_buffer.len = READ_BUFFER_SIZE;
     _read_overlapped.hEvent = read_event;
@@ -90,6 +92,7 @@ class TCPSocketResource : public SocketResource {
     } else {
       set_state(TCP_WRITE);
     }
+    printf("write_event: %llx\n",(word)write_event);
   }
 
   DWORD read_count() const { return _read_count; }
@@ -100,15 +103,25 @@ class TCPSocketResource : public SocketResource {
   int error() const { return _error; }
 
   std::vector<HANDLE> events() override {
-    return std::vector<HANDLE>({ _read_overlapped.hEvent, _write_overlapped.hEvent });
+    return std::vector<HANDLE>({
+      _read_overlapped.hEvent,
+      _write_overlapped.hEvent,
+      _auxiliary_event
+      });
   }
 
   uint32_t on_event(HANDLE event, uint32_t state) override {
     if (event == _read_overlapped.hEvent) {
       //printf("read event: %llx\n", (word)this);
-      if (receive_read_response())
+      if (receive_read_response()) {
+        printf("on_event read receive_read success: read_count: %lu\n", _read_count);
         state |= TCP_READ;
-      else {
+        if (_read_count == 0) {
+          state |= TCP_CLOSE;
+          _closed = true;
+        }
+      } else {
+        printf("on_event read receive_read failure: \n");
         _error = WSAGetLastError();
         if (WSAGetLastError() == WSAECONNRESET) {
           state |= TCP_CLOSE | TCP_READ;
@@ -118,11 +131,32 @@ class TCPSocketResource : public SocketResource {
       }
     } else if (event == _write_overlapped.hEvent) {
       //printf("write event: %llx\n", (word)this);
+      //Locker locker(_mutex);
+
       if (_write_buffer.buf != null) {
         free(_write_buffer.buf);
         _write_buffer.buf = null;
       }
+      printf("on_event.write\n");
       state |= TCP_WRITE;
+    } else if (event == _auxiliary_event) {
+      WSANETWORKEVENTS network_events;
+      if (WSAEnumNetworkEvents(socket(), NULL, &network_events) == SOCKET_ERROR) {
+        _error = WSAGetLastError();
+        state |= TCP_ERROR;
+      };
+      if (network_events.lNetworkEvents & FD_CLOSE) {
+        printf("close_error: %x\n", network_events.iErrorCode[FD_CLOSE_BIT]);
+        if (network_events.iErrorCode[FD_CLOSE_BIT] == 0) {
+          state |= TCP_READ;
+          _closing = true;
+          printf("closing\n");
+        } else {
+          _error = network_events.iErrorCode[FD_CLOSE_BIT];
+          _closed = true;
+          state |= TCP_CLOSE | TCP_READ;
+        }
+      }
     } else if (event == INVALID_HANDLE_VALUE) {
       // The event source sends INVALID_HANDLE_VALUE when the socket is closed.
       _error = WSAECONNRESET;
@@ -159,22 +193,23 @@ class TCPSocketResource : public SocketResource {
     ASSERT(_write_buffer.buf == null);
     // We need to copy the buffer out to a long-lived heap object
     _write_buffer.buf = static_cast<char*>(malloc(length));
+    if (!_write_buffer.buf) {
+      WSASetLastError(ERROR_NOT_ENOUGH_MEMORY);
+      return false;
+    }
     memcpy(_write_buffer.buf, buffer, length);
     _write_buffer.len = length;
 
-    DWORD tmp;
-    int send_result = WSASend(socket(), &_write_buffer, 1, &tmp, 0, &_write_overlapped, NULL);
+    int send_result = WSASend(socket(), &_write_buffer, 1, NULL, 0, &_write_overlapped, NULL);
 
-    if (send_result == 0) {
-      //printf("Immediate write: data length = %d, actual transmitted = %lu\n", length, tmp);
-      //WindowsEventSource::instance()->on_event(this, _write_event);
-    } else if (WSAGetLastError() != WSA_IO_PENDING) {
+    if (send_result == SOCKET_ERROR && WSAGetLastError() != WSA_IO_PENDING) {
       return false;
     }
-
+    printf(".send delayed=%d length=%d buffer[length-1]=%d\n",send_result == SOCKET_ERROR, length, buffer[length-1]);
     return true;
   }
 
+  //Mutex* _mutex = OS::allocate_mutex(2,"TCP");
  private:
   WSABUF _read_buffer{};
   char _read_data[READ_BUFFER_SIZE]{};
@@ -184,7 +219,9 @@ class TCPSocketResource : public SocketResource {
   WSABUF _write_buffer{};
   OVERLAPPED _write_overlapped{};
 
+  HANDLE _auxiliary_event;
   bool _closed = false;
+  bool _closing = false;
   int _error = 0;
 };
 
@@ -230,6 +267,36 @@ PRIMITIVE(init) {
   return proxy;
 }
 
+static HeapObject* create_events(Process* process, SOCKET socket, WSAEVENT& read_event,
+                                 WSAEVENT& write_event, WSAEVENT& auxiliary_event) {
+  auxiliary_event = WSACreateEvent();
+  if (auxiliary_event == WSA_INVALID_EVENT) {
+    WINDOWS_ERROR;
+  }
+
+  if (WSAEventSelect(socket, auxiliary_event, FD_CLOSE) == SOCKET_ERROR) {
+    close_handle_keep_errno(auxiliary_event);
+    WINDOWS_ERROR;
+  }
+
+  read_event = WSACreateEvent();
+  if (read_event == WSA_INVALID_EVENT) {
+    close_handle_keep_errno(auxiliary_event);
+    WINDOWS_ERROR;
+  }
+
+  write_event = WSACreateEvent();
+  if (write_event == WSA_INVALID_EVENT) {
+    close_handle_keep_errno(read_event);
+    close_handle_keep_errno(auxiliary_event);
+    WINDOWS_ERROR;
+  }
+
+
+
+  return null;
+}
+
 PRIMITIVE(connect) {
   ARGS(TCPResourceGroup, resource_group, Blob, address, int, port, int, window_size);
 
@@ -252,26 +319,21 @@ PRIMITIVE(connect) {
     WINDOWS_ERROR;
   }
 
-  WSAEVENT read_event = WSACreateEvent();
-  if (read_event == WSA_INVALID_EVENT) {
+  WSAEVENT read_event, write_event, auxiliary_event;
+  auto error = create_events(process, socket, read_event, write_event, auxiliary_event);
+
+  if (error) {
     close_keep_errno(socket);
-    if (WSAGetLastError() == WSA_NOT_ENOUGH_MEMORY) MALLOC_FAILED;
-    WINDOWS_ERROR;
+    return error;
   }
 
-  WSAEVENT write_event = WSACreateEvent();
-  if (write_event == WSA_INVALID_EVENT) {
-    close_handle_keep_errno(read_event);
-    if (WSAGetLastError() == WSA_NOT_ENOUGH_MEMORY) MALLOC_FAILED;
-    WINDOWS_ERROR;
-  }
-
-  auto tcp_resource = _new TCPSocketResource(resource_group, socket, read_event, write_event);
+  auto tcp_resource = _new TCPSocketResource(resource_group, socket, read_event, write_event, auxiliary_event);
   //printf("outgoing created: %llx\n", (word)tcp_resource);
   if (!tcp_resource) {
     close_keep_errno(socket);
     close_handle_keep_errno(read_event);
     close_handle_keep_errno(write_event);
+    close_handle_keep_errno(auxiliary_event);
     MALLOC_FAILED;
   }
 
@@ -288,31 +350,24 @@ PRIMITIVE(accept) {
   ByteArray* resource_proxy = process->object_heap()->allocate_proxy();
   if (resource_proxy == null) ALLOCATION_FAILED;
 
-  WSAEVENT read_event = WSACreateEvent();
-  if (read_event == WSA_INVALID_EVENT) {
-    if (WSAGetLastError() == WSA_NOT_ENOUGH_MEMORY) MALLOC_FAILED;
-    WINDOWS_ERROR;
-  }
-
-  WSAEVENT write_event = WSACreateEvent();
-  if (write_event == WSA_INVALID_EVENT) {
-    close_handle_keep_errno(read_event);
-    if (WSAGetLastError() == WSA_NOT_ENOUGH_MEMORY) MALLOC_FAILED;
-    WINDOWS_ERROR;
-  }
 
   //printf("primitive.accept\n");
   SOCKET socket = accept(server_socket_resource->socket(), NULL, NULL);
   if (socket == INVALID_SOCKET) {
     //printf("primitive.accept INVALID_SOCKET\n");
-    close_handle_keep_errno(read_event);
-    close_handle_keep_errno(write_event);
     if (WSAGetLastError() == WSAEWOULDBLOCK)
       return process->program()->null_object();
     WINDOWS_ERROR;
   }
 
-  auto tcp_resource = _new TCPSocketResource(resource_group, socket, read_event, write_event);
+  WSAEVENT read_event, write_event, auxiliary_event;
+  auto error = create_events(process, socket, read_event, write_event, auxiliary_event);
+  if (error) {
+    close_keep_errno(socket);
+    return error;
+  }
+
+  auto tcp_resource = _new TCPSocketResource(resource_group, socket, read_event, write_event, auxiliary_event);
   //printf("incoming created: %llx\n", (word)tcp_resource);
 
   if (!tcp_resource) {
@@ -342,9 +397,14 @@ PRIMITIVE(listen) {
 
   SOCKET socket = TCPResourceGroup::create_socket();
   if (socket == INVALID_SOCKET) WINDOWS_ERROR;
-  //socket_address.dump();
+  socket_address.dump();
   if (bind(socket, socket_address.as_socket_address(), socket_address.size()) == SOCKET_ERROR) {
     close_keep_errno(socket);
+    if (WSAGetLastError() == WSAEADDRINUSE) {
+      String* error = process->allocate_string("Address already in use");
+      if (error == null) ALLOCATION_FAILED;
+      return Error::from(error);
+    }
     WINDOWS_ERROR;
   }
 
@@ -383,14 +443,19 @@ PRIMITIVE(write) {
   ARGS(ByteArray, proxy, TCPSocketResource, tcp_resource, Blob, data, int, from, int, to);
   USE(proxy);
 
-  //printf("primitive.write: %llx\n",(word)tcp_resource);
-  if (!tcp_resource->ready_for_write()) return Smi::from(-1);
-
   if (from < 0 || from > to || to > data.length()) OUT_OF_BOUNDS;
 
-  bool send_result = tcp_resource->send(data.address() + from, to - from);
-  if (!send_result) WINDOWS_ERROR;
+  {
+    //Locker locker(tcp_resource->_mutex);
+    //printf("primitive.write: %llx\n",(word)tcp_resource);
+    if (!tcp_resource->ready_for_write()) {
+      printf("primitive.write: !ready_for_write\n");
+      return Smi::from(-1);
+    }
 
+    bool send_result = tcp_resource->send(data.address() + from, to - from);
+    if (!send_result) WINDOWS_ERROR;
+  }
   return Smi::from(to-from);
 }
 
@@ -461,10 +526,8 @@ PRIMITIVE(get_option) {
     case TCP_WINDOW_SIZE: {
       int value = 0;
       int size = sizeof(value);
-      printf("getsockopt window size\n\n");
       if (getsockopt(socket, SOL_SOCKET, SO_RCVBUF, reinterpret_cast<char *>(&value), &size) == -1)
         WINDOWS_ERROR;
-      printf("after. getsockopt window size\n\n");
 
       return Smi::from(value);
     }

@@ -55,10 +55,14 @@ blocking_send_test:
   socket := server.accept
   writer := Writer socket
   100.repeat:
+    print "TOIT: Writing $it"
     writer.write ""
     writer.write "Message for sleepy reader $it"
+    print "TOIT: Wrote $it"
   socket.close_write
+  print "aa"
   while socket.read != null:
+  print "bb"
   socket.close
   server.close
 
@@ -81,6 +85,7 @@ sleepy_reader port:
       expected := "Message for sleepy reader $index"
       while str.starts_with expected:
         index++
+        print str[0..expected.size]
         str = str.copy expected.size
         expected = "Message for sleepy reader $index"
       expect str.size < expected.size

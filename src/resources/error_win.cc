@@ -23,6 +23,8 @@
 namespace toit {
 
 HeapObject* windows_error(Process* process, DWORD error_number) {
+  if (WSAGetLastError() == ERROR_NOT_ENOUGH_MEMORY) MALLOC_FAILED;
+
   LPVOID lpMsgBuf;
   FormatMessage(
       FORMAT_MESSAGE_ALLOCATE_BUFFER |
