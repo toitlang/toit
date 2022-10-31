@@ -250,9 +250,9 @@ Computes the CRC-16/CCITT-FALSE checksum of the given $data.
 The $data must be a string or byte array.
 Returns the checksum as a 16-bit integer.
 */
-crc16_ccitt_false data --from/int=0 --to/int=data.size -> int:
+crc16_ccitt_false data -> int:
   crc := Crc.big_endian 16 --polynomial=0x1021 --initial_state=0xffff
-  crc.add data from to
+  crc.add data
   return crc.get_as_int
 
 /** CRC-16/CCITT-FALSE checksum state. */
@@ -266,9 +266,9 @@ Computes the CRC-16/ARC checksum of the given $data.
 The $data must be a string or byte array.
 Returns the checksum as a 16-bit integer.
 */
-crc16_arc data --from/int=0 --to/int=data.size -> int:
+crc16_arc data -> int:
   crc := Crc.little_endian 16 --normal_polynomial=0x8005
-  crc.add data from to
+  crc.add data
   return crc.get_as_int
 
 /** CRC-16/ARC checksum state. */
@@ -282,9 +282,9 @@ Computes the CRC-16/AUG-CCITT checksum of the given $data.
 The $data must be a string or byte array.
 Returns the checksum as a 16-bit integer.
 */
-crc16_aug_ccitt data --from/int=0 --to/int=data.size -> int:
+crc16_aug_ccitt data -> int:
   crc := Crc.big_endian 16 --polynomial=0x1021 --initial_state=0x1d0f
-  crc.add data from to
+  crc.add data
   return crc.get_as_int
 
 /** CRC-16/AUG-CCITT checksum state. */
@@ -298,9 +298,9 @@ Computes the CRC-16/BUYPASS checksum of the given $data.
 The $data must be a string or byte array.
 Returns the checksum as a 16-bit integer.
 */
-crc16_buypass data --from/int=0 --to/int=data.size -> int:
+crc16_buypass data -> int:
   crc := Crc.big_endian 16 --polynomial=0x8005
-  crc.add data from to
+  crc.add data
   return crc.get_as_int
 
 /** CRC-16/BUYPASS checksum state. */
@@ -314,9 +314,9 @@ Computes the CRC-16/CDMA2000 checksum of the given $data.
 The $data must be a string or byte array.
 Returns the checksum as a 16-bit integer.
 */
-crc16_cdma2000 data --from/int=0 --to/int=data.size -> int:
+crc16_cdma2000 data -> int:
   crc := Crc.big_endian 16 --polynomial=0xC867 --initial_state=0xffff
-  crc.add data from to
+  crc.add data
   return crc.get_as_int
 
 /** CRC-16/CDMA2000 checksum state. */
@@ -330,9 +330,9 @@ Computes the CRC-16/DDS-110 checksum of the given $data.
 The $data must be a string or byte array.
 Returns the checksum as a 16-bit integer.
 */
-crc16_dds110 data --from/int=0 --to/int=data.size -> int:
+crc16_dds110 data -> int:
   crc := Crc.big_endian 16 --polynomial=0x8005 --initial_state=0x800d
-  crc.add data from to
+  crc.add data
   return crc.get_as_int
 
 /** CRC-16/DDS-110 checksum state. */
@@ -346,9 +346,9 @@ Computes the CRC-16/DECT-R checksum of the given $data.
 The $data must be a string or byte array.
 Returns the checksum as a 16-bit integer.
 */
-crc16_dect_r data --from/int=0 --to/int=data.size -> int:
+crc16_dect_r data -> int:
   crc := Crc.big_endian 16 --polynomial=0x0589 --xor_result=0x1
-  crc.add data from to
+  crc.add data
   return crc.get_as_int
 
 /** CRC-16/DECT-R checksum state. */
@@ -362,9 +362,9 @@ Computes the CRC-16/DECT-X checksum of the given $data.
 The $data must be a string or byte array.
 Returns the checksum as a 16-bit integer.
 */
-crc16_dect_x data --from/int=0 --to/int=data.size -> int:
+crc16_dect_x data -> int:
   crc := Crc.big_endian 16 --polynomial=0x0589
-  crc.add data from to
+  crc.add data
   return crc.get_as_int
 
 /** CRC-16/DECT-X checksum state. */
@@ -378,9 +378,9 @@ Computes the CRC-16/DNP checksum of the given $data.
 The $data must be a string or byte array.
 Returns the checksum as a 16-bit integer.
 */
-crc16_dnp data --from/int=0 --to/int=data.size -> int:
+crc16_dnp data -> int:
   crc := Crc.little_endian 16 --normal_polynomial=0x3D65 --xor_result=0xffff
-  crc.add data from to
+  crc.add data
   return crc.get_as_int
 
 /** CRC-16/DNP checksum state. */
@@ -394,9 +394,9 @@ Computes the CRC-16/EN-13757 checksum of the given $data.
 The $data must be a string or byte array.
 Returns the checksum as a 16-bit integer.
 */
-crc16_en13757 data --from/int=0 --to/int=data.size -> int:
+crc16_en13757 data -> int:
   crc := Crc.big_endian 16 --polynomial=0x3D65 --xor_result=0xffff
-  crc.add data from to
+  crc.add data
   return crc.get_as_int
 
 /** CRC-16/EN-13757 checksum state. */
@@ -410,9 +410,9 @@ Computes the CRC-16/GENIBUS checksum of the given $data.
 The $data must be a string or byte array.
 Returns the checksum as a 16-bit integer.
 */
-crc16_genibus data --from/int=0 --to/int=data.size -> int:
+crc16_genibus data -> int:
   crc := Crc.big_endian 16 --polynomial=0x1021 --initial_state=0xffff --xor_result=0xffff
-  crc.add data from to
+  crc.add data
   return crc.get_as_int
 
 /** CRC-16/GENIBUS checksum state. */
@@ -426,9 +426,9 @@ Computes the CRC-16/MAXIM checksum of the given $data.
 The $data must be a string or byte array.
 Returns the checksum as a 16-bit integer.
 */
-crc16_maxim data --from/int=0 --to/int=data.size -> int:
+crc16_maxim data -> int:
   crc := Crc.little_endian 16 --normal_polynomial=0x8005 --xor_result=0xffff
-  crc.add data from to
+  crc.add data
   return crc.get_as_int
 
 /** CRC-16/MAXIM checksum state. */
@@ -442,9 +442,9 @@ Computes the CRC-16/MCRF4XX checksum of the given $data.
 The $data must be a string or byte array.
 Returns the checksum as a 16-bit integer.
 */
-crc16_mcrf4xx data --from/int=0 --to/int=data.size -> int:
+crc16_mcrf4xx data -> int:
   crc := Crc.little_endian 16 --normal_polynomial=0x1021 --initial_state=0xffff
-  crc.add data from to
+  crc.add data
   return crc.get_as_int
 
 /** CRC-16/MCRF4XX checksum state. */
@@ -465,9 +465,9 @@ Crccalc.com lists the initial state of the CRC as 0xB2AA, whereas we
   with our code, and it is also the value given in the specification at
   https://networkupstools.org/protocols/riello/PSGPSER-0104.pdf
 */
-crc16_riello data --from/int=0 --to/int=data.size -> int:
+crc16_riello data -> int:
   crc := Crc.little_endian 16 --normal_polynomial=0x1021 --initial_state=0x554d
-  crc.add data from to
+  crc.add data
   return crc.get_as_int
 
 /**
@@ -490,9 +490,9 @@ Computes the CRC-16/T10-DIF checksum of the given $data.
 The $data must be a string or byte array.
 Returns the checksum as a 16-bit integer.
 */
-crc16_t10_dif data --from/int=0 --to/int=data.size -> int:
+crc16_t10_dif data -> int:
   crc := Crc.big_endian 16 --polynomial=0x8BB7
-  crc.add data from to
+  crc.add data
   return crc.get_as_int
 
 /** CRC-16/T10-DIF checksum state. */
@@ -506,9 +506,9 @@ Computes the CRC-16/TELEDISK checksum of the given $data.
 The $data must be a string or byte array.
 Returns the checksum as a 16-bit integer.
 */
-crc16_teledisk data --from/int=0 --to/int=data.size -> int:
+crc16_teledisk data -> int:
   crc := Crc.big_endian 16 --polynomial=0xA097
-  crc.add data from to
+  crc.add data
   return crc.get_as_int
 
 /** CRC-16/TELEDISK checksum state. */
@@ -528,9 +528,9 @@ Crccalc.com lists the initial state of the CRC as 0x89EC, whereas we
   one that gives the correct result (matching crccalc.com's check) when run
   with our code.
 */
-crc16_tms37157 data --from/int=0 --to/int=data.size -> int:
+crc16_tms37157 data -> int:
   crc := Crc.little_endian 16 --normal_polynomial=0x1021 --initial_state=0x3791
-  crc.add data from to
+  crc.add data
   return crc.get_as_int
 
 /**
@@ -552,9 +552,9 @@ Computes the CRC-16/USB checksum of the given $data.
 The $data must be a string or byte array.
 Returns the checksum as a 16-bit integer.
 */
-crc16_usb data --from/int=0 --to/int=data.size -> int:
+crc16_usb data -> int:
   crc := Crc.little_endian 16 --normal_polynomial=0x8005 --initial_state=0xffff --xor_result=0xffff
-  crc.add data from to
+  crc.add data
   return crc.get_as_int
 
 /** CRC-16/USB checksum state. */
@@ -574,9 +574,9 @@ Crccalc.com lists the initial state of the CRC as 0xC6C6, whereas we
   one that gives the correct result (matching crccalc.com's check) when run
   with our code.
 */
-crc_a data --from/int=0 --to/int=data.size -> int:
+crc_a data -> int:
   crc := Crc.little_endian 16 --normal_polynomial=0x1021 --initial_state=0x6363
-  crc.add data from to
+  crc.add data
   return crc.get_as_int
 
 /**
@@ -598,9 +598,9 @@ Computes the CRC-16/KERMIT checksum of the given $data.
 The $data must be a string or byte array.
 Returns the checksum as a 16-bit integer.
 */
-crc16_kermit data --from/int=0 --to/int=data.size -> int:
+crc16_kermit data -> int:
   crc := Crc.little_endian 16 --normal_polynomial=0x1021
-  crc.add data from to
+  crc.add data
   return crc.get_as_int
 
 /** CRC-16/KERMIT checksum state. */
@@ -614,9 +614,9 @@ Computes the CRC-16/MODBUS checksum of the given $data.
 The $data must be a string or byte array.
 Returns the checksum as a 16-bit integer.
 */
-crc16_modbus data --from/int=0 --to/int=data.size -> int:
+crc16_modbus data -> int:
   crc := Crc.little_endian 16 --normal_polynomial=0x8005 --initial_state=0xffff
-  crc.add data from to
+  crc.add data
   return crc.get_as_int
 
 /** CRC-16/MODBUS checksum state. */
@@ -630,9 +630,9 @@ Computes the CRC-16/X-25 checksum of the given $data.
 The $data must be a string or byte array.
 Returns the checksum as a 16-bit integer.
 */
-crc16_x25 data --from/int=0 --to/int=data.size -> int:
+crc16_x25 data -> int:
   crc := Crc.little_endian 16 --normal_polynomial=0x1021 --initial_state=0xffff --xor_result=0xffff
-  crc.add data from to
+  crc.add data
   return crc.get_as_int
 
 /** CRC-16/X-25 checksum state. */
@@ -646,9 +646,9 @@ Computes the CRC-16/XMODEM checksum of the given $data.
 The $data must be a string or byte array.
 Returns the checksum as a 16-bit integer.
 */
-crc16_xmodem data --from/int=0 --to/int=data.size -> int:
+crc16_xmodem data -> int:
   crc := Crc.big_endian 16 --polynomial=0x1021
-  crc.add data from to
+  crc.add data
   return crc.get_as_int
 
 /** CRC-16/XMODEM checksum state. */
@@ -662,9 +662,9 @@ Computes the CRC-8 checksum of the given $data.
 The $data must be a string or byte array.
 Returns the checksum as an 8-bit integer.
 */
-crc8 data --from/int=0 --to/int=data.size -> int:
+crc8 data -> int:
   crc := Crc.big_endian 8 --polynomial=0x07
-  crc.add data from to
+  crc.add data
   return crc.get_as_int
 
 /** CRC-8 checksum state. */
@@ -678,9 +678,9 @@ Computes the CRC-8/CDMA2000 checksum of the given $data.
 The $data must be a string or byte array.
 Returns the checksum as an 8-bit integer.
 */
-crc8_cdma2000 data --from/int=0 --to/int=data.size -> int:
+crc8_cdma2000 data -> int:
   crc := Crc.big_endian 8 --polynomial=0x9B --initial_state=0xff
-  crc.add data from to
+  crc.add data
   return crc.get_as_int
 
 /** CRC-8/CDMA2000 checksum state. */
@@ -694,9 +694,9 @@ Computes the CRC-8/DARC checksum of the given $data.
 The $data must be a string or byte array.
 Returns the checksum as an 8-bit integer.
 */
-crc8_darc data --from/int=0 --to/int=data.size -> int:
+crc8_darc data -> int:
   crc := Crc.little_endian 8 --normal_polynomial=0x39
-  crc.add data from to
+  crc.add data
   return crc.get_as_int
 
 /** CRC-8/DARC checksum state. */
@@ -710,9 +710,9 @@ Computes the CRC-8/DVB-S2 checksum of the given $data.
 The $data must be a string or byte array.
 Returns the checksum as an 8-bit integer.
 */
-crc8_dvb_s2 data --from/int=0 --to/int=data.size -> int:
+crc8_dvb_s2 data -> int:
   crc := Crc.big_endian 8 --polynomial=0xD5
-  crc.add data from to
+  crc.add data
   return crc.get_as_int
 
 /** CRC-8/DVB-S2 checksum state. */
@@ -726,9 +726,9 @@ Computes the CRC-8/EBU checksum of the given $data.
 The $data must be a string or byte array.
 Returns the checksum as an 8-bit integer.
 */
-crc8_ebu data --from/int=0 --to/int=data.size -> int:
+crc8_ebu data -> int:
   crc := Crc.little_endian 8 --normal_polynomial=0x1D --initial_state=0xff
-  crc.add data from to
+  crc.add data
   return crc.get_as_int
 
 /** CRC-8/EBU checksum state. */
@@ -742,9 +742,9 @@ Computes the CRC-8/I-CODE checksum of the given $data.
 The $data must be a string or byte array.
 Returns the checksum as an 8-bit integer.
 */
-crc8_i_code data --from/int=0 --to/int=data.size -> int:
+crc8_i_code data -> int:
   crc := Crc.big_endian 8 --polynomial=0x1D --initial_state=0xfd
-  crc.add data from to
+  crc.add data
   return crc.get_as_int
 
 /** CRC-8/I-CODE checksum state. */
@@ -758,9 +758,9 @@ Computes the CRC-8/ITU checksum of the given $data.
 The $data must be a string or byte array.
 Returns the checksum as an 8-bit integer.
 */
-crc8_itu data --from/int=0 --to/int=data.size -> int:
+crc8_itu data -> int:
   crc := Crc.big_endian 8 --polynomial=0x07 --xor_result=0x55
-  crc.add data from to
+  crc.add data
   return crc.get_as_int
 
 /** CRC-8/ITU checksum state. */
@@ -774,9 +774,9 @@ Computes the CRC-8/MAXIM checksum of the given $data.
 The $data must be a string or byte array.
 Returns the checksum as an 8-bit integer.
 */
-crc8_maxim data --from/int=0 --to/int=data.size -> int:
+crc8_maxim data -> int:
   crc := Crc.little_endian 8 --normal_polynomial=0x31
-  crc.add data from to
+  crc.add data
   return crc.get_as_int
 
 /** CRC-8/MAXIM checksum state. */
@@ -790,9 +790,9 @@ Computes the CRC-8/ROHC checksum of the given $data.
 The $data must be a string or byte array.
 Returns the checksum as an 8-bit integer.
 */
-crc8_rohc data --from/int=0 --to/int=data.size -> int:
+crc8_rohc data -> int:
   crc := Crc.little_endian 8 --normal_polynomial=0x07 --initial_state=0xff
-  crc.add data from to
+  crc.add data
   return crc.get_as_int
 
 /** CRC-8/ROHC checksum state. */
@@ -806,9 +806,9 @@ Computes the CRC-8/WCDMA checksum of the given $data.
 The $data must be a string or byte array.
 Returns the checksum as an 8-bit integer.
 */
-crc8_wcdma data --from/int=0 --to/int=data.size -> int:
+crc8_wcdma data -> int:
   crc := Crc.little_endian 8 --normal_polynomial=0x9B
-  crc.add data from to
+  crc.add data
   return crc.get_as_int
 
 /** CRC-8/WCDMA checksum state. */
@@ -822,9 +822,9 @@ Computes the CRC-32 checksum of the given $data.
 The $data must be a string or byte array.
 Returns the checksum as a 32-bit integer.
 */
-crc32 data --from/int=0 --to/int=data.size -> int:
+crc32 data -> int:
   crc := Crc.little_endian 32 --normal_polynomial=0x04C11DB7 --initial_state=0xffffffff --xor_result=0xffffffff
-  crc.add data from to
+  crc.add data
   return crc.get_as_int
 
 /** CRC-32 checksum state. */
@@ -838,9 +838,9 @@ Computes the CRC-32/BZIP2 checksum of the given $data.
 The $data must be a string or byte array.
 Returns the checksum as a 32-bit integer.
 */
-crc32_bzip2 data --from/int=0 --to/int=data.size -> int:
+crc32_bzip2 data -> int:
   crc := Crc.big_endian 32 --polynomial=0x04C11DB7 --initial_state=0xffffffff --xor_result=0xffffffff
-  crc.add data from to
+  crc.add data
   return crc.get_as_int
 
 /** CRC-32/BZIP2 checksum state. */
@@ -854,9 +854,9 @@ Computes the CRC-32C checksum of the given $data.
 The $data must be a string or byte array.
 Returns the checksum as a 32-bit integer.
 */
-crc32c data --from/int=0 --to/int=data.size -> int:
+crc32c data -> int:
   crc := Crc.little_endian 32 --normal_polynomial=0x1EDC6F41 --initial_state=0xffffffff --xor_result=0xffffffff
-  crc.add data from to
+  crc.add data
   return crc.get_as_int
 
 /** CRC-32C checksum state. */
@@ -870,9 +870,9 @@ Computes the CRC-32D checksum of the given $data.
 The $data must be a string or byte array.
 Returns the checksum as a 32-bit integer.
 */
-crc32d data --from/int=0 --to/int=data.size -> int:
+crc32d data -> int:
   crc := Crc.little_endian 32 --normal_polynomial=0xA833982B --initial_state=0xffffffff --xor_result=0xffffffff
-  crc.add data from to
+  crc.add data
   return crc.get_as_int
 
 /** CRC-32D checksum state. */
@@ -886,9 +886,9 @@ Computes the CRC-32/JAMCRC checksum of the given $data.
 The $data must be a string or byte array.
 Returns the checksum as a 32-bit integer.
 */
-crc32_jamcrc data --from/int=0 --to/int=data.size -> int:
+crc32_jamcrc data -> int:
   crc := Crc.little_endian 32 --normal_polynomial=0x04C11DB7 --initial_state=0xffffffff
-  crc.add data from to
+  crc.add data
   return crc.get_as_int
 
 /** CRC-32/JAMCRC checksum state. */
@@ -902,9 +902,9 @@ Computes the CRC-32/MPEG-2 checksum of the given $data.
 The $data must be a string or byte array.
 Returns the checksum as a 32-bit integer.
 */
-crc32_mpeg2 data --from/int=0 --to/int=data.size -> int:
+crc32_mpeg2 data -> int:
   crc := Crc.big_endian 32 --polynomial=0x04C11DB7 --initial_state=0xffffffff
-  crc.add data from to
+  crc.add data
   return crc.get_as_int
 
 /** CRC-32/MPEG-2 checksum state. */
@@ -918,9 +918,9 @@ Computes the CRC-32/POSIX checksum of the given $data.
 The $data must be a string or byte array.
 Returns the checksum as a 32-bit integer.
 */
-crc32_posix data --from/int=0 --to/int=data.size -> int:
+crc32_posix data -> int:
   crc := Crc.big_endian 32 --polynomial=0x04C11DB7 --xor_result=0xffffffff
-  crc.add data from to
+  crc.add data
   return crc.get_as_int
 
 /** CRC-32/POSIX checksum state. */
@@ -934,9 +934,9 @@ Computes the CRC-32Q checksum of the given $data.
 The $data must be a string or byte array.
 Returns the checksum as a 32-bit integer.
 */
-crc32q data --from/int=0 --to/int=data.size -> int:
+crc32q data -> int:
   crc := Crc.big_endian 32 --polynomial=0x814141AB
-  crc.add data from to
+  crc.add data
   return crc.get_as_int
 
 /** CRC-32Q checksum state. */
@@ -950,9 +950,9 @@ Computes the CRC-32/XFER checksum of the given $data.
 The $data must be a string or byte array.
 Returns the checksum as a 32-bit integer.
 */
-crc32_xfer data --from/int=0 --to/int=data.size -> int:
+crc32_xfer data -> int:
   crc := Crc.big_endian 32 --polynomial=0x000000AF
-  crc.add data from to
+  crc.add data
   return crc.get_as_int
 
 /** CRC-32/XFER checksum state. */

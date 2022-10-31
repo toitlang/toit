@@ -79,9 +79,9 @@ main args:
           The \$data must be a string or byte array.
           Returns the checksum as a$(width == 8 ? "n" : "") $width-bit integer.
           */
-          $name_snake data --from/int=0 --to/int=data.size -> int:
+          $name_snake data -> int:
             crc := Crc.$(endian)_endian $width --$polynomial_argument=$fields[2]$initial_string$xor_string
-            crc.add data from to
+            crc.add data
             return crc.get_as_int
 
           /** $name checksum state. */
