@@ -187,30 +187,39 @@ class Crc extends Checksum:
 
   /** See $super. */
   add data from/int to/int -> none:
-    sum := sum_
     if little_endian:
+      sum_ = calculcate_crc_little_endian_ sum_ 0 data from to table_
+    else:
+      sum_ = calculcate_crc_big_endian_ sum_ width data from to table_
+
+  // The zero argument should be zero to indicate to the primitive that
+  // this is a little-endian CRC.
+  static calculcate_crc_little_endian_ sum/int zero/int data from/int to/int table -> int:
+    #primitive.core.crc:
       if data is string:
         (to - from).repeat:
           b := data.at --raw from + it
-          sum = (sum >>> 8) ^ table_[(b ^ sum) & 0xff]
+          sum = (sum >>> 8) ^ table[(b ^ sum) & 0xff]
       else:
         if data is not ByteArray: throw "WRONG_OBJECT_TYPE"
         (to - from).repeat:
           b := data[from + it]
-          sum = (sum >>> 8) ^ table_[(b ^ sum) & 0xff]
-    else:
-      // Big endian.
+          sum = (sum >>> 8) ^ table[(b ^ sum) & 0xff]
+      return sum
+
+  static calculcate_crc_big_endian_ sum/int width/int data from/int to/int table -> int:
+    #primitive.core.crc:
       mask := width == 64 ? -1 : ((1 << width) - 1)
       if data is string:
         (to - from).repeat:
           b := data.at --raw from + it
-          sum = ((sum << 8) & mask) ^ table_[b ^ (sum >>> (width - 8))]
+          sum = ((sum << 8) & mask) ^ table[b ^ (sum >>> (width - 8))]
       else:
         if data is not ByteArray: throw "WRONG_OBJECT_TYPE"
         (to - from).repeat:
           b := data[from + it]
-          sum = ((sum << 8) & mask) ^ table_[b ^ (sum >>> (width - 8))]
-    sum_ = sum
+          sum = ((sum << 8) & mask) ^ table[b ^ (sum >>> (width - 8))]
+      return sum
 
   /**
   See $super.
