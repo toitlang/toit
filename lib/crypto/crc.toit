@@ -49,6 +49,7 @@ class Crc extends Checksum:
   ```
   */
   constructor.little_endian .width/int --.polynomial/int --initial_state/int=0 --.xor_result/int=0:
+    if not 3 <= width <= 64: throw "INVALID_ARGUMENT"
     if width < 64 and polynomial > (1 << width): throw "Polynomial and width don't match"
     little_endian = true
     sum_ = initial_state
@@ -69,6 +70,7 @@ class Crc extends Checksum:
   ```
   */
   constructor.little_endian .width/int --normal_polynomial/int --initial_state/int=0 --.xor_result/int=0:
+    if not 3 <= width <= 64: throw "INVALID_ARGUMENT"
     poly := 0
     for i := 0; i < width; i++:
       if (normal_polynomial >> i) & 1 == 1:
@@ -122,6 +124,7 @@ class Crc extends Checksum:
   ```
   */
   constructor.big_endian .width/int --.polynomial/int --initial_state/int=0 --.xor_result/int=0:
+    if not 3 <= width <= 64: throw "INVALID_ARGUMENT"
     if width < 64 and polynomial > (1 << width): throw "Polynomial and width don't match"
     little_endian = false
     sum_ = initial_state
