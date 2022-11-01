@@ -225,8 +225,7 @@ jobs:
           mkdir -p $(dirname ${{ steps.constants.outputs.external_result }})
           echo fail > ${{ steps.constants.outputs.external_result }}
           make enable-external
-          RES=`$TOITC pkg-http/tests/redirect_test.toit`
-          echo "reirect_test exit code: $RES"
+          $TOITC pkg-http/tests/redirect_test.toit
           find external > ${{ steps.constants.outputs.debug_dir }}/${{ matrix.container }}_${{ matrix.shard }}_files_after_enable_external.log
           make test-external
           make test-external-health
