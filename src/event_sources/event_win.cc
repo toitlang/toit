@@ -70,14 +70,14 @@ class WindowsEventThread: public Thread {
   void add_resource_event(Locker& event_source_locker, WindowsResourceEvent* resource_event) {
     ASSERT(_resource_events.size() < MAXIMUM_WAIT_OBJECTS - 2);
     _resource_events.insert(resource_event);
-    SetEvent(_control_event); // Recalculate the wait objects
+    SetEvent(_control_event); // Recalculate the wait objects.
     OS::wait(_recalculated);
   }
 
   void remove_resource_event(Locker& event_source_locker, WindowsResourceEvent* resource_event) {
     size_t number_erased = _resource_events.erase(resource_event);
     if (number_erased > 0) {
-      SetEvent(_control_event); // Recalculate the wait objects
+      SetEvent(_control_event); // Recalculate the wait objects.
       OS::wait(_recalculated);
     }
   }
@@ -143,7 +143,7 @@ void WindowsEventSource::on_register_resource(Locker &locker, Resource* r) {
   for (auto event : windows_resource->events()) {
     WindowsResourceEvent* resource_event;
 
-    // Find a thread with capacity
+    // Find a thread with capacity.
     bool placed_it = false;
     for(auto thread : _threads) {
       if (thread->size() < MAXIMUM_WAIT_OBJECTS - 2) {
@@ -154,7 +154,7 @@ void WindowsEventSource::on_register_resource(Locker &locker, Resource* r) {
       }
     }
     if (!placed_it) {
-      // Spawn a new thread
+      // No worker thread with capacity was found. Spawn a new thread.
       auto thread = _new WindowsEventThread(this);
       _threads.push_back(thread);
       thread->spawn();
@@ -178,7 +178,7 @@ void WindowsEventSource::on_unregister_resource(Locker &locker, Resource* r) {
   _resource_events.erase(windows_resource);
 
   windows_resource->do_close();
-  // sending an event to let the resource update its state, typically to a CLOSE state
+  // sending an event to let the resource update its state, typically to a CLOSE state.
   dispatch(locker, windows_resource, reinterpret_cast<word>(INVALID_HANDLE_VALUE));
 }
 
