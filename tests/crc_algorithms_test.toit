@@ -48,6 +48,7 @@ main:
   expect_equals 0x765E7680 (crc.crc32_posix "123456789")
   expect_equals 0x3010BF7F (crc.crc32q "123456789")
   expect_equals 0xBD0BE338 (crc.crc32_xfer "123456789")
+  expect_equals 0x995dc9bbdf1939fa (crc.crc64_xz "123456789")
 
   // The 64 bit CRC from the Go progamming language, with the polynomial
   // expressed in normalized order.
