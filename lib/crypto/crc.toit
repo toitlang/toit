@@ -967,3 +967,19 @@ crc32_xfer data -> int:
 class Crc32Xfer extends Crc:
   constructor:
     super.big_endian 32 --polynomial=0x000000AF
+
+/**
+Computes the CRC-64/XZ checksum of the given $data.
+
+The $data must be a string or byte array.
+Returns the checksum as a 32-bit integer.
+*/
+crc64_xz data -> int:
+  crc := Crc.little_endian 64 --normal_polynomial=0x42f0e1eba9ea3693 --initial_state=-1 --xor_result=-1
+  crc.add data
+  return crc.get_as_int
+
+/** CRC-64/XZ checksum state. */
+class Crc64Xz extends Crc:
+  constructor:
+    super.little_endian 64 --normal_polynomial=0x42f0e1eba9ea3693 --initial_state=-1 --xor_result=-1
