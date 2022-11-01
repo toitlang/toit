@@ -33,9 +33,6 @@ if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows" OR "${CMAKE_SYSTEM_NAME}" STREQUAL
     tests/cow_read_only_test_compiler.toit
     tests/uart_test.toit
   )
-  set(TOIT_SKIP_TESTS
-    tests/socket_test.toit
-  )
 endif()
 
 if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Darwin")

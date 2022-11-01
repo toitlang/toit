@@ -33,11 +33,11 @@ HeapObject* windows_error(Process* process, DWORD error_number) {
       NULL,
       error_number,
       MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-      (LPTSTR) &lpMsgBuf,
+      reinterpret_cast<LPTSTR>(&lpMsgBuf),
       0, NULL );
   if (lpMsgBuf) {
     String* error = process->allocate_string((LPCTSTR) lpMsgBuf);
-    free(lpMsgBuf);
+    LocalFree(lpMsgBuf);
     if (error == null) ALLOCATION_FAILED;
     return Primitive::mark_as_error(error);
   } else {
