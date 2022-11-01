@@ -225,10 +225,12 @@ jobs:
           mkdir -p $(dirname ${{ steps.constants.outputs.external_result }})
           echo fail > ${{ steps.constants.outputs.external_result }}
           make enable-external
-          echo "$TOITR pkg-http/tests/redirect_test.toit"
-          $TOITR pkg-http/tests/redirect_test.toit
-          echo "$TOITR pkg-http/tests/websocket_standalone_test.toit"
-          $TOITR pkg-http/tests/websocket_standalone_test.toit
+          pwd
+          ls build/host/external/pkg-http/tests/
+          echo "redirect_test.toit"
+          $TOITR build/host/external/pkg-http/tests/redirect_test.toit
+          echo "websocket_standalone_test.toit"
+          $TOITR build/host/external/pkg-http/tests/websocket_standalone_test.toit
           find external > ${{ steps.constants.outputs.debug_dir }}/${{ matrix.container }}_${{ matrix.shard }}_files_after_enable_external.log
           make test-external
           make test-external-health
