@@ -5,7 +5,7 @@
 import esp32.espnow
 
 PMK ::= espnow.Key.from_string "pmk1234567890123"
-service ::= espnow.Service.with_key --key=PMK
+service ::= espnow.Service.station --key=PMK
 
 main:
   service.add_peer

@@ -46,7 +46,7 @@ struct DataGram {
 
 const int kInvalidESPNow = -1;
 
-// Only allow one instance of provisioning running.
+// Only allow one instance to use espnow.
 static  ResourcePool<int, kInvalidESPNow> espnow_pool(
   0
 );
@@ -152,6 +152,8 @@ static void espnow_recv_cb(const uint8_t *mac_addr, const uint8_t *data, int dat
 
 PRIMITIVE(init) {
   ARGS(int, mode, Blob, pmk);
+
+  if (pmk.length() > 0 && pmk.length() != 16) INVALID_ARGUMENT;
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;
