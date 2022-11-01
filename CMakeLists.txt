@@ -129,7 +129,11 @@ if ("${TOIT_SYSTEM_NAME}" MATCHES "esp32")
   # MbedTLS sources agree on the defines.
   set(MBEDTLS_C_FLAGS "-DMBEDTLS_CONFIG_FILE=\\\"mbedtls/esp_config.h\\\"")
 else()
-  # These constants should stay in sync with the ones in the sdkconfig file of the ESP32 toolchain.
+  # For now we run with the full 16k size in the input buffer on host systems.
+  # For devices we still run with a smaller buffer, which saves memory
+  # pressure, but means the TLS connection often breaks after a while when the
+  # counterpart makes the packets larger.  This ...IN_CONTENT_LEN define is
+  # overriddden in sdkconfig files for devices.
   set(MBEDTLS_C_FLAGS "-DMBEDTLS_SSL_IN_CONTENT_LEN=16384 -DMBEDTLS_SSL_OUT_CONTENT_LEN=3700 -DMBEDTLS_PLATFORM_MEMORY=1")
 endif()
 
