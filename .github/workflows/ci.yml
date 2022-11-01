@@ -226,6 +226,9 @@ jobs:
           echo fail > ${{ steps.constants.outputs.external_result }}
           make enable-external
           echo "$TOITR pkg-http/tests/redirect_test.toit"
+          $TOITR pkg-http/tests/redirect_test.toit
+          echo "$TOITR pkg-http/tests/websocket_standalone_test.toit"
+          $TOITR pkg-http/tests/websocket_standalone_test.toit
           find external > ${{ steps.constants.outputs.debug_dir }}/${{ matrix.container }}_${{ matrix.shard }}_files_after_enable_external.log
           make test-external
           make test-external-health
