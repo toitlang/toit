@@ -36,10 +36,6 @@ const char* FlashRegistry::allocations_memory_ = null;
 
 static bool is_dirty = false;
 
-static uint32_t to_raw_address(int offset) {
-  return allocations_partition->address + offset;
-}
-
 static bool is_clean_page(const char* memory, unsigned offset) {
   uint32_t* cursor = reinterpret_cast<uint32_t*>(const_cast<char*>(memory + offset));
   uint32_t* end = cursor + FLASH_PAGE_SIZE / sizeof(uint32_t);
@@ -135,28 +131,6 @@ int FlashRegistry::erase_chunk(int offset, int size) {
 bool FlashRegistry::write_chunk(const void* chunk, int offset, int size) {
   esp_err_t result = esp_partition_write(allocations_partition, offset, chunk, size);
   if (result == ESP_OK) {
-    is_dirty = true;
-    return true;
-  } else {
-    return false;
-  }
-}
-
-int FlashRegistry::read_raw_chunk(int offset, void* destination, int size) {
-  uint32_t raw_address = to_raw_address(offset);
-  ASSERT(0 <= offset && raw_address + size < allocations_partition->address + allocations_size());
-  // TODO(lau): Use esp_flash_read - could potentially reduce code size.
-  esp_err_t result = spi_flash_read(raw_address, destination, size);
-  return  result == ESP_OK;
-}
-
-bool FlashRegistry::write_raw_chunk(const void* chunk, int offset, int size) {
-  uint32_t raw_address = to_raw_address(offset);
-  ASSERT(0 <= offset && raw_address + size < allocations_partition->address + allocations_size());
-  // TODO(lau): Use esp_flash_write - could potentially reduce code size.
-  esp_err_t result = spi_flash_write(raw_address, chunk, size);
-  if (result == ESP_OK) {
-    FlashRegistry::flush();
     is_dirty = true;
     return true;
   } else {

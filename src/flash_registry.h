@@ -33,6 +33,7 @@ class FlashRegistry {
 
   // Flash writing support.
   static int erase_chunk(int offset, int size);
+
   // This write may use encryption. Therefore, writes must be 16 byte aligned and target erased memory.
   static bool write_chunk(const void* chunk, int offset, int size);
 
@@ -42,11 +43,6 @@ class FlashRegistry {
   // Get a pointer to the memory of an allocation.
   // If encryption is enabled, then reads from this pointer will be implicitly decrypted.
   static void* memory(int offset, int size);
-
-  // Flash writing support for direct access to flash.
-  // These operations access the flash directly circumventing any encryption and decryption.
-  static int read_raw_chunk(int offset, void* destination, int size);
-  static bool write_raw_chunk(const void* chunk, int offset, int size);
 
   // Get the offset from the cursor.
   static int offset(const void* cursor);

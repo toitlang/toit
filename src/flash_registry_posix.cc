@@ -163,44 +163,6 @@ bool FlashRegistry::write_chunk(const void* chunk, int offset, int size) {
   return true;
 }
 
-/*
-  The boolean expression ~(d ^ s) | (s & ~d) has the truth table:
-
-  +---+---+---------------------+
-  | s | d | ~(d ^ s) | (s & ~d) |
-  +---+---+---------------------+
-  | 1 | 1 | 1                   |
-  | 1 | 0 | 1                   |
-  | 0 | 1 | 0                   |
-  | 0 | 0 | 1                   |
-  +---+---+---------------------+
-
-  So an invalid write to flash (i.e. flipping 0 to 1) results in 0.
-*/
-bool is_valid_write(void* memory, const void* chunk, int offset, int size) {
-  char* dest = reinterpret_cast<char*>(memory);
-  char* src = reinterpret_cast<char*>(const_cast<void*>(chunk));
-  for (int i = 0; i < size; i++) {
-    char in_memory = dest[i];
-    char write = src[i];
-    if ((~(in_memory ^ write) | (write & ~in_memory)) == 0xff) return false;
-  }
-  return true;
-}
-
-int FlashRegistry::read_raw_chunk(int offset, void* destination, int size) {
-  memcpy(destination, memory(offset, size) , size);
-  return size;
-}
-
-bool FlashRegistry::write_raw_chunk(const void* chunk, int offset, int size) {
-  void* dest = memory(offset, size);
-  ASSERT(is_valid_write(dest, chunk, offset, size));
-  memcpy(dest, chunk, size);
-  mark_dirty(offset, size);
-  return true;
-}
-
 int FlashRegistry::offset(const void* cursor) {
   ASSERT(allocations_memory() != null);
   word offset = Utils::address_distance(allocations_memory(), cursor);
