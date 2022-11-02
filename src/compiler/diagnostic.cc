@@ -144,13 +144,13 @@ void CompilationDiagnostics::emit(Severity severity, const char* format, va_list
 }
 
 void CompilationDiagnostics::start_group() {
-  ASSERT(!_in_group);
-  _in_group = true;
+  ASSERT(!in_group_);
+  in_group_ = true;
   group_package_id_ = Package::INVALID_PACKAGE_ID;
 }
 
 void CompilationDiagnostics::end_group() {
-  _in_group = false;
+  in_group_ = false;
 }
 
 void CompilationDiagnostics::emit(Severity severity,
@@ -162,7 +162,7 @@ void CompilationDiagnostics::emit(Severity severity,
   if (!show_package_warnings_) {
     Severity error_severity;
     std::string error_package_id;
-    if (_in_group) {
+    if (in_group_) {
       // For groups, the first encountered error defines where the error comes
       // from. Subsequent diagnostics in the group use that package id.
       if (group_package_id_ == Package::INVALID_PACKAGE_ID) {

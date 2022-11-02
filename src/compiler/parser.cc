@@ -372,14 +372,14 @@ class TreeHeightChecker : public TraversingVisitor {
       : max_height_(max_height)
       , diagnostics_(diagnostics) { }
 
-  bool reached_max_depth() const { return _reported_error; }
+  bool reached_max_depth() const { return reported_error_; }
 
 #define DECLARE(name) \
   void visit_##name(name* node) { \
     if (check_height(node)) { \
-      _current_height++; \
+      current_height_++; \
       TraversingVisitor::visit_##name(node); \
-      _current_height--; \
+      current_height_--; \
     } \
   }
 NODES(DECLARE)
@@ -389,16 +389,16 @@ NODES(DECLARE)
   int max_height_;
   Diagnostics* diagnostics_;
 
-  int _current_height = 0;
-  bool _reported_error = false;
+  int current_height_ = 0;
+  bool reported_error_ = false;
 
   bool check_height(Node* node) {
-    if (_reported_error) return false;
-    if (_current_height >= max_height_) {
+    if (reported_error_) return false;
+    if (current_height_ >= max_height_) {
       diagnostics_->report_error(node->range(),
                                  "Maximal recursion depth exceeded %d\n",
                                  max_height_);
-      _reported_error = true;
+      reported_error_ = true;
       return false;
     }
     return true;
@@ -415,13 +415,13 @@ bool Parser::check_tree_height(Unit* unit) {
 }
 
 void Parser::check_indentation_stack_depth() {
-  if (!_encountered_stack_overflow &&
+  if (!encountered_stack_overflow_ &&
       indentation_stack_.size() > Flags::max_recursion_depth) {
     ASSERT(made_progress(indentation_stack_));
     diagnostics()->report_error(current_range_safe(),
                                 "Maximal recursion depth exceeded %d\n",
                                 Flags::max_recursion_depth);
-    _encountered_stack_overflow = true;
+    encountered_stack_overflow_ = true;
     // Move to the end of the file to stop scanning it.
     scanner_->advance_to(source_->size());
   }
@@ -550,7 +550,7 @@ bool Parser::end_delimited(IndentationStack::Kind kind,
   if (current_token() != end_token) {
     auto start_range = indentation_stack_.top_start_range();
     encountered_error = true;
-    if (report_error_on_missing_delimiter && !_encountered_stack_overflow) {
+    if (report_error_on_missing_delimiter && !encountered_stack_overflow_) {
       report_error(start_range.extend(current_range().from()),
                   "Missing closing '%s'", Token::symbol(end_token).c_str());
     }

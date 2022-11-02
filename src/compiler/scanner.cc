@@ -43,15 +43,15 @@ Symbol Scanner::preserve_syntax(int begin, int end) {
 }
 
 Scanner::State Scanner::create_state(Token::Kind token) {
-  bool is_attached = (_last - begin_) == 0;
+  bool is_attached = (last_ - begin_) == 0;
   return {
-    .from = _last,
+    .from = last_,
     .to = index_,
     .data = data_,
     .indentation = static_cast<int16>(indentation_),
     .token_bools_ = Scanner::State::encode_token_bools(token,
                                                        is_attached,
-                                                       _is_lsp_selection),
+                                                       is_lsp_selection_),
   };
 }
 
@@ -71,7 +71,7 @@ Token::Kind Scanner::next_token() {
       return Token::EOS;
     }
 
-    int peek = input_[_last = index_];
+    int peek = input_[last_ = index_];
 
 
     switch (peek) {
@@ -427,7 +427,7 @@ Scanner::State Scanner::next_interpolated_part() {
   if (at_skippable_whitespace(peek)) {
     skip_skippable_whitespace(peek);
   }
-  _last = index_;
+  last_ = index_;
   peek = input_[index_];
   if (is_identifier_start(peek)) {
     return create_state(scan_identifier(peek));  // Don't allow $.
@@ -443,7 +443,7 @@ Scanner::State Scanner::next_interpolated_part() {
 // This is not always a valid format, but should catch some bad errors and then
 // make it easier to report errors at the right place.
 Scanner::State Scanner::next_string_format_part() {
-  begin_ = _last = index_;
+  begin_ = last_ = index_;
   int begin = index_;
   if (input_[index_] == '-' || input_[index_] == '^') index_++;
   for (int peek = input_[index_]; true; peek = advance()) {
@@ -464,7 +464,7 @@ Scanner::State Scanner::next_string_format_part() {
 }
 
 Scanner::State Scanner::next_string_part(bool is_multiline_string) {
-  begin_ = _last = index_;
+  begin_ = last_ = index_;
   int begin = index_;
   for (int peek = input_[index_]; true; peek = advance()) {
     if (peek == '"') {
@@ -734,7 +734,7 @@ Token::Kind Scanner::scan_identifier(int peek) {
   int begin = index_;
   ASSERT(is_identifier_start(peek));
 
-  _is_lsp_selection = false;
+  is_lsp_selection_ = false;
   do {
     if (peek == LSP_SELECTION_MARKER) {
       // If we are hitting an LSP-selection marker at a location where it
@@ -749,12 +749,12 @@ Token::Kind Scanner::scan_identifier(int peek) {
       if (!source_->is_lsp_marker_at(index_)) break;
       // If we hit a selection-marker just continue the loop, as if the marker
       // had never been there.
-      _is_lsp_selection = true;
+      is_lsp_selection_ = true;
     }
     peek = advance();
   } while (is_identifier_part(peek));
 
-  if (!_is_lsp_selection && begin == index_) {
+  if (!is_lsp_selection_ && begin == index_) {
     ASSERT(peek == LSP_SELECTION_MARKER);
     // We were hoping for an lsp selection, but just discovered an illegal character.
     return scan_illegal(peek);
@@ -769,7 +769,7 @@ Token::Kind Scanner::scan_identifier(int peek) {
   auto token_symbol = symbols_->canonicalize_identifier(from, to);
   if (lsp_buffer != null) free(lsp_buffer);
   data_ = token_symbol.symbol;
-  if (_is_lsp_selection && lsp_selection_is_identifier_) {
+  if (is_lsp_selection_ && lsp_selection_is_identifier_) {
     // Target wins over the stored kind. This means that keywords are also identified
     // as LSP-selections. (Which is what we want, since a completion on `for` should work).
     if (token_symbol.kind != Token::IDENTIFIER) {

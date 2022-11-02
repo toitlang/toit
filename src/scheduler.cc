@@ -887,7 +887,7 @@ void Scheduler::tick(Locker& locker, int64 now) {
     break;
   }
 
-  bool any_profiling = _num_profiled_processes > 0;
+  bool any_profiling = num_profiled_processes_ > 0;
   if (!any_profiling && first_non_empty_ready_queue < 0) {
     // No need to do preemption when there are no active profilers
     // and no other processes ready to run.
@@ -906,12 +906,12 @@ void Scheduler::tick(Locker& locker, int64 now) {
 }
 
 void Scheduler::tick_schedule(Locker& locker, int64 now, bool reschedule) {
-  int period = (_num_profiled_processes > 0)
+  int period = (num_profiled_processes_ > 0)
       ? TICK_PERIOD_PROFILING_US
       : TICK_PERIOD_US;
   int64 next = now + period;
   if (!reschedule && next >= tick_next()) return;
-  _next_tick = next;
+  next_tick_ = next;
   if (!reschedule) OS::signal(has_threads_);
 }
 
@@ -921,7 +921,7 @@ void Scheduler::notify_profiler(int change) {
 }
 
 void Scheduler::notify_profiler(Locker& locker, int change) {
-  _num_profiled_processes += change;
+  num_profiled_processes_ += change;
   tick_schedule(locker, OS::get_monotonic_time(), false);
 }
 

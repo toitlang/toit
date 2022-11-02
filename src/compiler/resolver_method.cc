@@ -1080,7 +1080,7 @@ void MethodResolver::resolve_fill() {
   } else {
     resolve_fill_method();
   }
-  if (_has_primitive_invocation) {
+  if (has_primitive_invocation_) {
     // Check that no mutated parameter is captured.
     for (auto param : method_->parameters()) {
       if (param->is_captured() && !param->is_effectively_final()) {
@@ -1097,29 +1097,29 @@ class ReturnCollector : public ast::TraversingVisitor {
     TraversingVisitor::visit_Return(node);
     returns_.push_back(node);
     if (node->value() == null) {
-      _has_return_without_value = true;
+      has_return_without_value_ = true;
     } else {
-      _has_return_with_value = true;
+      has_return_with_value_ = true;
     }
   }
 
   void visit_Call(ast::Call* node) {
     TraversingVisitor::visit_Call(node);
     if (node->is_call_primitive()) {
-      _has_return_with_value = true;
+      has_return_with_value_ = true;
       returns_.push_back(node);
     }
   }
 
-  bool has_return_with_value() const { return _has_return_with_value; }
-  bool has_return_without_value() const { return _has_return_without_value; }
+  bool has_return_with_value() const { return has_return_with_value_; }
+  bool has_return_without_value() const { return has_return_without_value_; }
   // The return list may also contain primitive calls, which implicitly return.
   std::vector<ast::Node*> all_returns() const { return returns_; }
 
  private:
    std::vector<ast::Node*> returns_;
-   bool _has_return_with_value = false;
-   bool _has_return_without_value = false;
+   bool has_return_with_value_ = false;
+   bool has_return_without_value_ = false;
 };
 
 void MethodResolver::_resolve_fill_parameters_return_type(
@@ -4869,7 +4869,7 @@ void MethodResolver::visit_call_primitive(ast::Call* node) {
     invocation = _new ir::Error(node->range());
   } else {
     invocation = _new ir::PrimitiveInvocation(module_name, primitive_name, module, index, node->range());
-    _has_primitive_invocation = true;
+    has_primitive_invocation_ = true;
   }
 
   ast::Block* ast_failure = null;

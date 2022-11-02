@@ -58,7 +58,7 @@ class FilesystemLocal : public Filesystem {
  private:
   const char* sdk_path_ = null;
   List<const char*> package_cache_paths_;
-  bool _has_computed_cache_paths = false;
+  bool has_computed_cache_paths_ = false;
 };
 
 } // namespace compiler

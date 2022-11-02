@@ -75,7 +75,7 @@ void SystemMessage::free_data_and_externals() {
 MessageEncoder::MessageEncoder(Process* process, uint8* buffer, MessageFormat format)
     : process_(process)
     , program_(process ? process->program() : null)
-    , _format(format)
+    , format_(format)
     , buffer_(buffer) {
 }
 
@@ -86,14 +86,14 @@ void MessageEncoder::encode_process_message(uint8* buffer, uint8 value) {
 }
 
 void MessageEncoder::free_copied() {
-  for (unsigned i = 0; i < _copied_count; i++) {
+  for (unsigned i = 0; i < copied_count_; i++) {
     free(copied_[i]);
   }
 }
 
 void MessageEncoder::neuter_externals() {
   ObjectHeap* heap = process_->object_heap();
-  for (unsigned i = 0; i < _externals_count; i++) {
+  for (unsigned i = 0; i < externals_count_; i++) {
     ByteArray* array = externals_[i];
     // Neuter the byte array. The contents of the array is now linked to from
     // an enqueued SystemMessage and will be used to construct a new external
@@ -121,9 +121,9 @@ bool TisonEncoder::encode(Object* object) {
   // and will encode this before the payload.
   if (encoding_for_size()) {
     unsigned payload_size = size() - sizeof(uint32);
-    ASSERT(payload_size > 0 && _payload_size == 0);
+    ASSERT(payload_size > 0 && payload_size_ == 0);
     // Make the payload size available to the outside.
-    _payload_size = payload_size;
+    payload_size_ = payload_size;
     // Encode the payload size, so the full size is correct.
     write_cardinal(payload_size);
   }
@@ -133,7 +133,7 @@ bool TisonEncoder::encode(Object* object) {
 bool MessageEncoder::encode_any(Object* object) {
   NestingTracker tracking(&nesting_);
   if (nesting_ > MESSAGING_ENCODING_MAX_NESTING) {
-    _nesting_too_deep = true;
+    nesting_too_deep_ = true;
     return false;
   }
 
@@ -175,7 +175,7 @@ bool MessageEncoder::encode_any(Object* object) {
     } else if (class_id == program->string_slice_class_id()) {
       return encode_copy(object, TAG_STRING);
     } else {
-      _problematic_class_id = class_id->value();
+      problematic_class_id_ = class_id->value();
     }
   } else if (object == program->null_object()) {
     write_uint8(TAG_NULL);
@@ -280,14 +280,14 @@ bool MessageEncoder::encode_byte_array(ByteArray* object) {
   write_uint8(TAG_BYTE_ARRAY);
   write_cardinal(bytes.length());
   write_pointer(bytes.address());
-  if (_externals_count >= MESSAGING_ENCODING_MAX_EXTERNALS) {
-    _too_many_externals = true;
+  if (externals_count_ >= MESSAGING_ENCODING_MAX_EXTERNALS) {
+    too_many_externals_ = true;
     return false;
   }
   if (encoding_for_size()) {
-    externals_[_externals_count] = object;
+    externals_[externals_count_] = object;
   }
-  _externals_count++;
+  externals_count_++;
   return true;
 }
 
@@ -325,7 +325,7 @@ bool MessageEncoder::encode_byte_array_external(void* data, int length) {
       // TODO(kasper): Report meaningful error.
       return false;
     }
-    copied_[_copied_count++] = data;
+    copied_[copied_count_++] = data;
   }
   return true;
 }
@@ -363,14 +363,14 @@ bool MessageEncoder::encode_copy(Object* object, int tag) {
     HeapTagScope scope(ITERATE_CUSTOM_TAGS + heap_tag);
     data = malloc(length + extra);
     if (data == null) {
-      _malloc_failed = true;
+      malloc_failed_ = true;
       return false;
     }
-    if (_copied_count >= ARRAY_SIZE(copied_)) {
+    if (copied_count_ >= ARRAY_SIZE(copied_)) {
       // TODO(kasper): Report meaningful error.
       return false;
     }
-    copied_[_copied_count++] = data;
+    copied_[copied_count_++] = data;
     memcpy(data, source, length + extra);
   }
   write_uint8(tag);
@@ -410,7 +410,7 @@ MessageDecoder::MessageDecoder(Process* process,
     , program_(process ? process->program() : null)
     , buffer_(buffer)
     , size_(size)
-    , _format(format) {
+    , format_(format) {
 }
 
 bool MessageDecoder::decode_process_message(const uint8* buffer, int* value) {
@@ -448,7 +448,7 @@ void MessageDecoder::register_external(HeapObject* object, int length) {
   }
   externals_[index] = object;
   externals_sizes_[index] = length;
-  _externals_count++;
+  externals_count_++;
 }
 
 Object* TisonDecoder::decode() {

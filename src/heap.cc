@@ -125,17 +125,17 @@ ObjectHeap::ObjectHeap(Program* program, Process* owner, Chunk* initial_chunk)
     , external_memory_(0)
     , total_external_memory_(0) {
   if (!initial_chunk) return;
-  _task = allocate_task();
-  ASSERT(_task);  // Should not fail, because a newly created heap has at least
+  task_ = allocate_task();
+  ASSERT(task_);  // Should not fail, because a newly created heap has at least
                   // enough space for the task structure.
-  _global_variables = program->global_variables.copy();
+  global_variables_ = program->global_variables.copy();
   // Currently the heap is empty and it has one block allocated for objects.
   update_pending_limit();
   limit_ = pending_limit_;
 }
 
 ObjectHeap::~ObjectHeap() {
-  free(_global_variables);
+  free(global_variables_);
 
   while (auto finalizer = registered_finalizers_.remove_first()) {
     delete finalizer;
@@ -263,7 +263,7 @@ Task* ObjectHeap::allocate_task() {
 }
 
 void ObjectHeap::set_task(Task* task) {
-  _task = task;
+  task_ = task;
   // The interpreter doesn't use the write barrier when pushing to the
   // stack so we have to add it here.
   GcMetadata::insert_into_remembered_set(task->stack());
@@ -291,8 +291,8 @@ static const char* format_unit(word n) {
 
 void ObjectHeap::iterate_roots(RootCallback* callback) {
   // Process the roots in the object heap.
-  callback->do_root(reinterpret_cast<Object**>(&_task));
-  callback->do_roots(_global_variables, program()->global_variables.length());
+  callback->do_root(reinterpret_cast<Object**>(&task_));
+  callback->do_roots(global_variables_, program()->global_variables.length());
   for (auto root : external_roots_) callback->do_roots(root->slot(), 1);
 
   // Process roots in the object_notifiers_ list.

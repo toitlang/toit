@@ -79,7 +79,7 @@ Process::Process(ProcessRunner* runner, ProcessGroup* group, SystemMessage* term
 
 Process::~Process() {
   state_ = TERMINATING;
-  MessageDecoder::deallocate(_spawn_arguments);
+  MessageDecoder::deallocate(spawn_arguments_);
   delete termination_message_;
 
   // Clean up unclaimed resource groups.
@@ -99,18 +99,18 @@ Process::~Process() {
 }
 
 void Process::set_main_arguments(uint8* arguments) {
-  ASSERT(_main_arguments == null);
-  _main_arguments = arguments;
+  ASSERT(main_arguments_ == null);
+  main_arguments_ = arguments;
 }
 
 void Process::set_spawn_arguments(uint8* arguments) {
-  ASSERT(_spawn_arguments == null);
-  _spawn_arguments = arguments;
+  ASSERT(spawn_arguments_ == null);
+  spawn_arguments_ = arguments;
 }
 
 #ifndef TOIT_FREERTOS
 void Process::set_main_arguments(char** argv) {
-  ASSERT(_main_arguments == null);
+  ASSERT(main_arguments_ == null);
   int argc = 0;
   if (argv) {
     while (argv[argc] != null) argc++;
@@ -126,11 +126,11 @@ void Process::set_main_arguments(char** argv) {
   ASSERT(buffer != null)
   MessageEncoder encoder(buffer);
   encoder.encode_arguments(argv, argc);
-  _main_arguments = buffer;
+  main_arguments_ = buffer;
 }
 
 void Process::set_spawn_arguments(SnapshotBundle system, SnapshotBundle application) {
-  ASSERT(_spawn_arguments == null);
+  ASSERT(spawn_arguments_ == null);
   int size;
   { MessageEncoder encoder(null);
     encoder.encode_bundles(system, application);
@@ -141,7 +141,7 @@ void Process::set_spawn_arguments(SnapshotBundle system, SnapshotBundle applicat
   ASSERT(buffer != null)
   MessageEncoder encoder(buffer);
   encoder.encode_bundles(system, application);
-  _spawn_arguments = buffer;
+  spawn_arguments_ = buffer;
 }
 #endif
 
@@ -355,7 +355,7 @@ void Process::clear_signal(Signal signal) {
 
 uint8 Process::update_priority() {
   uint8 priority = target_priority_;
-  _priority = priority;
+  priority_ = priority;
   return priority;
 }
 

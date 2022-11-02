@@ -81,16 +81,16 @@ class Lsp {
   LspDiagnosticsProtocol* diagnostics() { return protocol()->diagnostics(); }
   LspSnapshotProtocol* snapshot() { return protocol()->snapshot(); }
 
-  bool needs_summary() const { return _needs_summary; }
-  void set_needs_summary(bool value) { _needs_summary = value; }
+  bool needs_summary() const { return needs_summary_; }
+  void set_needs_summary(bool value) { needs_summary_ = value; }
   void emit_summary(const std::vector<Module*>& modules,
                     int core_index,
                     const ToitdocRegistry& toitdocs) {
     protocol()->summary()->emit(modules, core_index, toitdocs);
   }
 
-  bool should_emit_semantic_tokens() const { return _should_emit_semantic_tokens; }
-  void set_should_emit_semantic_tokens(bool value) { _should_emit_semantic_tokens = value; }
+  bool should_emit_semantic_tokens() const { return should_emit_semantic_tokens_; }
+  void set_should_emit_semantic_tokens(bool value) { should_emit_semantic_tokens_ = value; }
   void emit_semantic_tokens(Module* module, const char* path, SourceManager* manager) {
     emit_tokens(module, path, manager, protocol());
   }
@@ -98,8 +98,8 @@ class Lsp {
  private:
   LspProtocol* protocol_;
   LspSelectionHandler* selection_handler_ = null;
-  bool _needs_summary = false;
-  bool _should_emit_semantic_tokens = false;
+  bool needs_summary_ = false;
+  bool should_emit_semantic_tokens_ = false;
 };
 
 } // namespace toit::compiler

@@ -132,8 +132,8 @@ class ScannerStateQueue {
     auto buffer_memory = malloc(initial_size * sizeof(Scanner::State));
     auto state_buffer = unvoid_cast<Scanner::State*>(buffer_memory);
     states_ = List<Scanner::State>(state_buffer, initial_size);
-    states_[_previous_index] = Scanner::State::invalid();
-    _buffered_count_with_previous = 1;
+    states_[previous_index_] = Scanner::State::invalid();
+    buffered_count_with_previous_ = 1;
   }
 
   ScannerStateQueue(const ScannerStateQueue&) = delete;
@@ -143,28 +143,28 @@ class ScannerStateQueue {
   }
 
   void consume() {
-    ASSERT(_buffered_count_with_previous > 1);
-    _previous_index = wrap(_previous_index + 1);
-    _buffered_count_with_previous--;
+    ASSERT(buffered_count_with_previous_ > 1);
+    previous_index_ = wrap(previous_index_ + 1);
+    buffered_count_with_previous_--;
   }
 
   void discard_buffered() {
-    _previous_index = wrap(_previous_index + _buffered_count_with_previous - 1);
-    _buffered_count_with_previous = 1;  // Always keep the 'previous'.
+    previous_index_ = wrap(previous_index_ + buffered_count_with_previous_ - 1);
+    buffered_count_with_previous_ = 1;  // Always keep the 'previous'.
   }
 
   void buffer_interpolated_part() {
-    ASSERT(_buffered_count_with_previous == 1);
+    ASSERT(buffered_count_with_previous_ == 1);
     buffer(scanner()->next_interpolated_part());
   }
 
   void buffer_string_part(bool is_multiline) {
-    ASSERT(_buffered_count_with_previous == 1);
+    ASSERT(buffered_count_with_previous_ == 1);
     buffer(scanner()->next_string_part(is_multiline));
   }
 
   void buffer_string_format_part() {
-    ASSERT(_buffered_count_with_previous == 1);
+    ASSERT(buffered_count_with_previous_ == 1);
     buffer(scanner()->next_string_format_part());
   }
 
@@ -172,20 +172,20 @@ class ScannerStateQueue {
   //
   // It is legal to ask for `-1` to get the previous state.
   const Scanner::State& get(int i) {
-    if (i == -1) return states_[_previous_index];
-    while (i >= _buffered_count_with_previous - 1) {
+    if (i == -1) return states_[previous_index_];
+    while (i >= buffered_count_with_previous_ - 1) {
       buffer(scanner()->next());
     }
-    return states_[wrap(_previous_index + 1 + i)];
+    return states_[wrap(previous_index_ + 1 + i)];
   }
 
   int scanner_look_ahead(int n = 1) {
-    ASSERT(_buffered_count_with_previous == 1);
+    ASSERT(buffered_count_with_previous_ == 1);
     return scanner()->look_ahead(n);
   }
 
   int buffered_count() const {
-    return _buffered_count_with_previous - 1;
+    return buffered_count_with_previous_ - 1;
   }
 
  private:
@@ -193,9 +193,9 @@ class ScannerStateQueue {
   List<Scanner::State> states_;
 
   // The index to the 'previous' state. (The one that was most recently consumed).
-  // The first "normal" state is at index `wrap(_previous_index + 1)`.
-  int _previous_index = 0;
-  int _buffered_count_with_previous = 0;  // Includes the 'previous' state.
+  // The first "normal" state is at index `wrap(previous_index_ + 1)`.
+  int previous_index_ = 0;
+  int buffered_count_with_previous_ = 0;  // Includes the 'previous' state.
 
   Scanner* scanner() { return scanner_; }
 
@@ -205,18 +205,18 @@ class ScannerStateQueue {
   }
 
   void buffer(const Scanner::State& state) {
-    if (_buffered_count_with_previous >= states_.length()) {
+    if (buffered_count_with_previous_ >= states_.length()) {
       // Resize.
       // Rotate the states into the correct place, and then double in size.
-      if (_previous_index != 0) rotate(_previous_index);
+      if (previous_index_ != 0) rotate(previous_index_);
       auto old_buffer = states_.data();
       int new_length = states_.length() * 2;
       auto new_buffer = unvoid_cast<Scanner::State*>(
         realloc(old_buffer, new_length * sizeof(Scanner::State)));
       states_ = List<Scanner::State>(new_buffer, new_length);
     }
-    states_[wrap(_previous_index + _buffered_count_with_previous)] = state;
-    _buffered_count_with_previous++;
+    states_[wrap(previous_index_ + buffered_count_with_previous_)] = state;
+    buffered_count_with_previous_++;
   }
 
   void rotate(int new_start) {
@@ -224,7 +224,7 @@ class ScannerStateQueue {
     reverse(0, new_start);
     reverse(new_start, states_.length());
     reverse(0, states_.length());
-    _previous_index = 0;
+    previous_index_ = 0;
   }
 
   // [end] is exclusive.
@@ -290,7 +290,7 @@ class Parser {
   Scanner* scanner_;
   Diagnostics* diagnostics_;
 
-  bool _encountered_stack_overflow = false;
+  bool encountered_stack_overflow_ = false;
 
   ScannerStateQueue scanner_state_queue_;
   // A cache of the current parser state.

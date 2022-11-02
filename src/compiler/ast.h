@@ -805,12 +805,12 @@ class LiteralInteger : public Expression {
   IMPLEMENTS(LiteralInteger)
 
   Symbol data() const { return data_; }
-  bool is_negated() const { return _is_negated; }
-  void set_is_negated(bool value) { _is_negated = value; }
+  bool is_negated() const { return is_negated_; }
+  void set_is_negated(bool value) { is_negated_ = value; }
 
  private:
   const Symbol data_;
-  bool _is_negated = false;
+  bool is_negated_ = false;
 };
 
 class LiteralCharacter : public Expression {
@@ -864,12 +864,12 @@ class LiteralFloat : public Expression {
   IMPLEMENTS(LiteralFloat)
 
   Symbol data() const { return data_; }
-  bool is_negated() const { return _is_negated; }
-  void set_is_negated(bool value) { _is_negated = value; }
+  bool is_negated() const { return is_negated_; }
+  void set_is_negated(bool value) { is_negated_ = value; }
 
  private:
   const Symbol data_;
-  bool _is_negated = false;
+  bool is_negated_ = false;
 };
 
 class LiteralArray : public Expression {

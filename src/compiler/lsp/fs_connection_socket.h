@@ -39,8 +39,8 @@ class LspFsConnectionSocket : public LspFsConnection {
  private:
   const char* port_;
 
-  bool _is_initialized = false;
-  int64 _socket = -1;
+  bool is_initialized_ = false;
+  int64 socket_ = -1;
 };
 
 } // namespace toit::compiler

@@ -45,14 +45,14 @@ class SchedulerThread : public Thread, public SchedulerThreadList::Element {
 
   void entry();
 
-  bool is_pinned() const { return _is_pinned; }
-  void pin() { _is_pinned = true; }
-  void unpin() { _is_pinned = false; }
+  bool is_pinned() const { return is_pinned_; }
+  void pin() { is_pinned_ = true; }
+  void unpin() { is_pinned_ = false; }
 
  private:
   Scheduler* const scheduler_;
   Interpreter interpreter_;
-  bool _is_pinned = false;
+  bool is_pinned_ = false;
 };
 
 class Scheduler {
@@ -215,7 +215,7 @@ class Scheduler {
   void tick_schedule(Locker& locker, int64 now, bool reschedule);
 
   // Get the time for the next tick for process preemption.
-  int64 tick_next() const { return _next_tick; }
+  int64 tick_next() const { return next_tick_; }
 
   Mutex* mutex_;
   ConditionVariable* has_processes_;
@@ -234,7 +234,7 @@ class Scheduler {
   int num_processes_;
   int next_group_id_;
   int next_process_id_;
-  int64 _next_tick = 0;
+  int64 next_tick_ = 0;
 
   static const int NUMBER_OF_READY_QUEUES = 5;
   ProcessListFromScheduler ready_queue_[NUMBER_OF_READY_QUEUES];
@@ -258,7 +258,7 @@ class Scheduler {
   SchedulerThreadList threads_;
 
   // Keep track of the number of ready processes with an active profiler.
-  int _num_profiled_processes = 0;
+  int num_profiled_processes_ = 0;
 
   // Keep track of the boot process if it still alive.
   Process* boot_process_;

@@ -36,16 +36,16 @@ class State {
   //   copy of the other state.
   static State invalid() {
     State result;
-    result._is_valid = false;
+    result.is_valid_ = false;
     return result;
   }
 
-  bool is_valid() const { return _is_valid; }
+  bool is_valid() const { return is_valid_; }
 
   /// Merges the given [other] state into this state.
   void merge(State other) {
-    if (!other._is_valid) return;
-    if (!_is_valid) {
+    if (!other.is_valid_) return;
+    if (!is_valid_) {
       *this = other;
       return;
     }
@@ -139,7 +139,7 @@ class State {
   UnorderedMap<Node*, UndefinedKind> map_;
 
   bool does_return_ = false;
-  bool _is_valid = true;
+  bool is_valid_ = true;
 };
 
 struct LoopState {
@@ -260,7 +260,7 @@ class DefiniteChecker : public Visitor {
       // We use `has_seen_return` only for different error messages, and
       //   spuriously detecting a return makes the error message only
       //   slightly worse.
-      _has_seen_return = true;
+      has_seen_return_ = true;
 
       // Otherwise, we don't need to check the depth: if we are inside a block/lambda,
       //   then the state will be reset when we leave the block/lambda (since
@@ -294,13 +294,13 @@ class DefiniteChecker : public Visitor {
     if (!node->has_body()) return;
     method_ = node;
     state_.reset();
-    _has_seen_return = false;
+    has_seen_return_ = false;
     loop_state_ = LoopState::invalid();
 
     visit(node->body());
     bool should_check_returns = !node->is_constructor() && !node->return_type().is_none();
     if (should_check_returns && !state_.does_return()) {
-      if (_has_seen_return) {
+      if (has_seen_return_) {
         report_error(node->range(), "Method doesn't return a value on all paths");
       } else {
         report_error(node->range(), "Method doesn't return a value");
@@ -501,7 +501,7 @@ class DefiniteChecker : public Visitor {
   // Only used for nicer error messages. The `state_` tracks flow-sensitive
   //   `return`s. It is ok to set this variable to true, even if there isn't
   //   any real return.
-  bool _has_seen_return = false;
+  bool has_seen_return_ = false;
   Method* method_;
 
   Diagnostics* diagnostics() const { return diagnostics_; }

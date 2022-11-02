@@ -120,8 +120,8 @@ class ObjectHeap {
 
   void print(Printer* printer);
 
-  Object** global_variables() const { return _global_variables; }
-  Task* task() { return _task; }
+  Object** global_variables() const { return global_variables_; }
+  Task* task() { return task_; }
   void set_task(Task* task);
 
   // Garbage collection operation for runtime objects.
@@ -194,7 +194,7 @@ class ObjectHeap {
   std::atomic<word> external_memory_;  // Allocated external memory in bytes.
   std::atomic<word> total_external_memory_;  // Includes memory that was later freed.
 
-  Task* _task = null;
+  Task* task_ = null;
   ObjectNotifierList object_notifiers_;
 
   // A finalizer is in one of the following lists.
@@ -206,7 +206,7 @@ class ObjectHeap {
   int gc_count_ = 0;
   int full_gc_count_ = 0;
   int full_compacting_gc_count_ = 0;
-  Object** _global_variables = null;
+  Object** global_variables_ = null;
 
   HeapRootList external_roots_;
 

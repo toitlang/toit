@@ -251,7 +251,7 @@ class CompletionPipeline : public LocationLanguageServerPipeline {
   bool is_lsp_selection_identifier() { return true; }
 
  private:
-  Symbol _completion_prefix = Symbol::invalid();
+  Symbol completion_prefix_ = Symbol::invalid();
   std::string package_id_ = Package::INVALID_PACKAGE_ID;
 };
 
@@ -985,27 +985,27 @@ Source* CompletionPipeline::_load_file(const char* path, const PackageLock& pack
   }
 
   if (start_offset == offset || !is_identifier_start(text[start_offset])) {
-    _completion_prefix = Symbols::empty_string;
+    completion_prefix_ = Symbols::empty_string;
   } else {
     auto canonicalized = symbol_canonicalizer()->canonicalize_identifier(&text[start_offset], &text[offset]);
     if (canonicalized.kind == Token::Kind::IDENTIFIER) {
-      _completion_prefix = canonicalized.symbol;
+      completion_prefix_ = canonicalized.symbol;
     } else {
-      _completion_prefix = Token::symbol(canonicalized.kind);
+      completion_prefix_ = Token::symbol(canonicalized.kind);
     }
   }
   return result;
 }
 
 void CompletionPipeline::setup_lsp_selection_handler() {
-  lsp()->setup_completion_handler(_completion_prefix, package_id_, source_manager());
+  lsp()->setup_completion_handler(completion_prefix_, package_id_, source_manager());
 }
 
 
 void CompletionPipeline::lsp_complete_import_first_segment(ast::Identifier* segment,
                                                            const Package& current_package,
                                                            const PackageLock& package_lock) {
-  lsp()->complete_first_segment(_completion_prefix,
+  lsp()->complete_first_segment(completion_prefix_,
                                 segment,
                                 current_package,
                                 package_lock);
@@ -1014,7 +1014,7 @@ void CompletionPipeline::lsp_complete_import_first_segment(ast::Identifier* segm
 void CompletionPipeline::lsp_selection_import_path(const char* path,
                                                    const char* segment,
                                                    const char* resolved) {
-  lsp()->complete_import_path(_completion_prefix, path, filesystem());
+  lsp()->complete_import_path(completion_prefix_, path, filesystem());
 }
 
 void GotoDefinitionPipeline::setup_lsp_selection_handler() {

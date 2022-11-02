@@ -129,12 +129,12 @@ class BoxVisitor : public ir::ReplacingVisitor {
     // However, we still need to replace the references, in case a captured
     //   variable is captured inside a lambda.
 
-    ASSERT(_should_box);
-    _should_box = false;
+    ASSERT(should_box_);
+    should_box_ = false;
     auto new_captured_args = visit(node->captured_args());
     ASSERT(new_captured_args->is_Expression());
     node->set_captured_args(new_captured_args->as_Expression());
-    _should_box = true;
+    should_box_ = true;
 
     // Add the new additional parameters that are passed on the stack by the interpreter,
     //  and set the mapping, so that we can do the replacements when we see references
@@ -163,13 +163,13 @@ class BoxVisitor : public ir::ReplacingVisitor {
   }
 
  private:
-  bool _should_box = true;
+  bool should_box_ = true;
   ir::Constructor* constructor_;
   ir::Field* field_;
   Map<ir::Local*, std::pair<ir::CapturedLocal*, int>> capture_replacements_;
 
   bool needs_boxing(ir::Local* local) {
-    return _should_box &&
+    return should_box_ &&
         local != null &&
         local->is_captured() &&
         !local->is_effectively_final() &&

@@ -402,10 +402,10 @@ class ImageAllocator : public HeapAllocator {
   ProtectableAlignedMemory* image_ = null;
   // Memory is split into two sections: external (off-heap), and heap memory.
   // The current unused external memory starts at [external_top_], whereas
-  //   the unused heap memory starts at [_block_top].
+  //   the unused heap memory starts at [block_top_].
   void* memory_ = null;
   void* external_top_ = null;
-  void* _block_top = null;
+  void* block_top_ = null;
 
   Program* program_ = null;
 
@@ -891,8 +891,8 @@ bool ImageAllocator::initialize(int normal_block_count,
   external_top_ = Utils::address_at(external_top_, Utils::round_up(sizeof(Program), WORD_SIZE));
 
   int offset = Utils::round_up(reinterpret_cast<uword>(external_end), TOIT_PAGE_SIZE) - reinterpret_cast<uword>(external_end);
-  _block_top = Utils::address_at(external_end, offset);
-  ASSERT(Utils::is_aligned((uword)_block_top, TOIT_PAGE_SIZE));
+  block_top_ = Utils::address_at(external_end, offset);
+  ASSERT(Utils::is_aligned((uword)block_top_, TOIT_PAGE_SIZE));
   return true;
 }
 
@@ -917,8 +917,8 @@ ProgramImage ImageSnapshotReader::read_image(const uint8* id) {
 }
 
 void ImageAllocator::expand() {
-  ProgramBlock* block = new (_block_top) ProgramBlock();
-  _block_top = Utils::address_at(_block_top, TOIT_PAGE_SIZE);
+  ProgramBlock* block = new (block_top_) ProgramBlock();
+  block_top_ = Utils::address_at(block_top_, TOIT_PAGE_SIZE);
   program_->heap_.blocks_.append(block);
 }
 

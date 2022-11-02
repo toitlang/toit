@@ -37,8 +37,8 @@ namespace toit {
 namespace compiler {
 
 void LspFsConnectionSocket::initialize(Diagnostics* diagnostics) {
-  if (_is_initialized) return;
-  _is_initialized = true;
+  if (is_initialized_) return;
+  is_initialized_ = true;
   addrinfo hints;
   memset(&hints, 0, sizeof(struct addrinfo));
   hints.ai_family = AF_UNSPEC;     // Allow IPv4 or IPv6.
@@ -59,7 +59,7 @@ void LspFsConnectionSocket::initialize(Diagnostics* diagnostics) {
     int one = 1;
     setsockopt(socket_fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
     if (connect(socket_fd, info->ai_addr, info->ai_addrlen) != -1) {
-      _socket = socket_fd;
+      socket_ = socket_fd;
       break;
     }
     close(socket_fd);
@@ -67,9 +67,9 @@ void LspFsConnectionSocket::initialize(Diagnostics* diagnostics) {
 }
 
 LspFsConnectionSocket::~LspFsConnectionSocket() {
-  if (_socket != -1) {
-    close(_socket);
-    _socket = -1;
+  if (socket_ != -1) {
+    close(socket_);
+    socket_ = -1;
   }
 }
 

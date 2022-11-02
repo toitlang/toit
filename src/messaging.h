@@ -138,7 +138,7 @@ class MessageEncoder {
   static void encode_process_message(uint8* buffer, uint8 value);
 
   unsigned size() const { return cursor_; }
-  bool malloc_failed() const { return _malloc_failed; }
+  bool malloc_failed() const { return malloc_failed_; }
 
   void free_copied();
   void neuter_externals();
@@ -157,9 +157,9 @@ class MessageEncoder {
   MessageEncoder(Process* process, uint8* buffer, MessageFormat format);
 
   bool encoding_for_size() const { return buffer_ == null; }
-  bool encoding_tison() const { return _format == MESSAGE_FORMAT_TISON; }
-  unsigned copied_count() const { return _copied_count; }
-  unsigned externals_count() const { return _externals_count; }
+  bool encoding_tison() const { return format_ == MESSAGE_FORMAT_TISON; }
+  unsigned copied_count() const { return copied_count_; }
+  unsigned externals_count() const { return externals_count_; }
 
   bool encode_any(Object* object);
 
@@ -169,21 +169,21 @@ class MessageEncoder {
  private:
   Process* const process_ = null;
   Program* const program_ = null;
-  const MessageFormat _format = MESSAGE_FORMAT_IPC;
+  const MessageFormat format_ = MESSAGE_FORMAT_IPC;
 
   uint8* const buffer_;  // The buffer is null when we're encoding for size.
   int cursor_ = 0;
   int nesting_ = 0;
-  int _problematic_class_id = -1;
-  bool _nesting_too_deep = false;
-  bool _too_many_externals = false;
+  int problematic_class_id_ = -1;
+  bool nesting_too_deep_ = false;
+  bool too_many_externals_ = false;
 
-  bool _malloc_failed = false;
+  bool malloc_failed_ = false;
 
-  unsigned _copied_count = 0;
+  unsigned copied_count_ = 0;
   void* copied_[MESSAGING_ENCODING_MAX_EXTERNALS];
 
-  unsigned _externals_count = 0;
+  unsigned externals_count_ = 0;
   ByteArray* externals_[MESSAGING_ENCODING_MAX_EXTERNALS];
 
   bool encode_array(Array* object, int from, int to);
@@ -207,7 +207,7 @@ class TisonEncoder : public MessageEncoder {
       : MessageEncoder(process, null, MESSAGE_FORMAT_TISON) { }
   TisonEncoder(Process* process, uint8* buffer, unsigned payload_size)
       : MessageEncoder(process, buffer, MESSAGE_FORMAT_TISON)
-      , _payload_size(payload_size) {
+      , payload_size_(payload_size) {
     ASSERT(payload_size > 0);
   }
 
@@ -216,12 +216,12 @@ class TisonEncoder : public MessageEncoder {
     ASSERT(externals_count() == 0);
   }
 
-  unsigned payload_size() const { return _payload_size; }
+  unsigned payload_size() const { return payload_size_; }
 
   bool encode(Object* object);
 
  private:
-   unsigned _payload_size = 0;
+   unsigned payload_size_ = 0;
 };
 
 class MessageDecoder {
@@ -232,9 +232,9 @@ class MessageDecoder {
 
   static bool decode_process_message(const uint8* buffer, int* value);
 
-  bool success() const { return _status == DECODE_SUCCESS; }
-  bool allocation_failed() const { return _status == DECODE_ALLOCATION_FAILED; }
-  bool malformed_input() const { return _status == DECODE_MALFORMED_INPUT; }
+  bool success() const { return status_ == DECODE_SUCCESS; }
+  bool allocation_failed() const { return status_ == DECODE_ALLOCATION_FAILED; }
+  bool malformed_input() const { return status_ == DECODE_MALFORMED_INPUT; }
 
   void register_external_allocations();
   void remove_disposing_finalizers();
@@ -250,15 +250,15 @@ class MessageDecoder {
  protected:
   MessageDecoder(Process* process, const uint8* buffer, int size, MessageFormat format);
 
-  bool decoding_tison() const { return _format == MESSAGE_FORMAT_TISON; }
+  bool decoding_tison() const { return format_ == MESSAGE_FORMAT_TISON; }
   bool overflown() const { return cursor_ > size_; }
   int remaining() const { return size_ - cursor_; }
-  unsigned externals_count() const { return _externals_count; }
+  unsigned externals_count() const { return externals_count_; }
 
   Object* decode_any();
 
-  Object* mark_malformed() { _status = DECODE_MALFORMED_INPUT; return null; }
-  Object* mark_allocation_failed() { _status = DECODE_ALLOCATION_FAILED; return null; }
+  Object* mark_malformed() { status_ = DECODE_MALFORMED_INPUT; return null; }
+  Object* mark_allocation_failed() { status_ = DECODE_ALLOCATION_FAILED; return null; }
 
   uword read_cardinal();
   uint32 read_uint32();
@@ -274,12 +274,12 @@ class MessageDecoder {
   Program* const program_ = null;
   const uint8* const buffer_;
   const int size_ = INT_MAX;
-  const MessageFormat _format = MESSAGE_FORMAT_IPC;
+  const MessageFormat format_ = MESSAGE_FORMAT_IPC;
 
   int cursor_ = 0;
-  Status _status = DECODE_SUCCESS;
+  Status status_ = DECODE_SUCCESS;
 
-  unsigned _externals_count = 0;
+  unsigned externals_count_ = 0;
   HeapObject* externals_[MESSAGING_ENCODING_MAX_EXTERNALS];
   word externals_sizes_[MESSAGING_ENCODING_MAX_EXTERNALS];
 

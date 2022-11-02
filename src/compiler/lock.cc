@@ -283,10 +283,10 @@ class YamlParser {
   Diagnostics* diagnostics_;
   yaml_parser_t parser_;
   yaml_event_t event_;
-  bool _needs_freeing = false;
+  bool needs_freeing_ = false;
 
   yaml_event_t peek() {
-    ASSERT(_needs_freeing);
+    ASSERT(needs_freeing_);
     return event_;
   }
   Status next();
@@ -305,7 +305,7 @@ YamlParser::YamlParser(Source* source, Diagnostics* diagnostics)
 }
 
 YamlParser::~YamlParser() {
-  if (_needs_freeing) {
+  if (needs_freeing_) {
     yaml_event_delete(&event_);
   }
   yaml_parser_delete(&parser_);
@@ -378,15 +378,15 @@ YamlParser::Status YamlParser::parse_string(const std::function<YamlParser::Stat
 }
 
 YamlParser::Status YamlParser::next() {
-  if (_needs_freeing) {
+  if (needs_freeing_) {
     yaml_event_delete(&event_);
-    _needs_freeing = false;
+    needs_freeing_ = false;
   }
   if (!yaml_parser_parse(&parser_, &event_)) {
     report_parse_error();
     return FATAL;
   }
-  _needs_freeing = true;
+  needs_freeing_ = true;
   if (event_.type == YAML_NO_EVENT) {
     FATAL("shouldn't get a no-event");
   }

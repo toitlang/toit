@@ -208,20 +208,20 @@ SourceManagerSource* SourceManager::register_source(const std::string& absolute_
                                         error_path,
                                         source,
                                         size,
-                                        _next_offset);
+                                        next_offset_);
   sources_.push_back(entry);
   if (absolute_path != "") {
     path_to_source_.add(absolute_path, entry);
   }
   // Add one for the terminating character. This also allows to point to errors
   // at the end of the file. (Like unclosed strings, comments, ...)
-  _next_offset = entry->offset() + entry->size() + 1;
+  next_offset_ = entry->offset() + entry->size() + 1;
   return entry;
 }
 
 Source* SourceManager::source_for_position(Source::Position position) const {
   int absolute_offset = position.token();
-  ASSERT(0 <= absolute_offset && absolute_offset < _next_offset);
+  ASSERT(0 <= absolute_offset && absolute_offset < next_offset_);
 
   SourceManagerSource* entry = null;
 
@@ -254,7 +254,7 @@ Source* SourceManager::source_for_position(Source::Position position) const {
 
 Source::Location SourceManager::compute_location(Source::Position position) const {
   int absolute_offset = position.token();
-  ASSERT(0 <= absolute_offset && absolute_offset < _next_offset);
+  ASSERT(0 <= absolute_offset && absolute_offset < next_offset_);
 
   SourceManagerSource* entry = null;
 

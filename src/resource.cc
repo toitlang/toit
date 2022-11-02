@@ -219,17 +219,17 @@ void LazyEventSource::unregister_resource_group(ResourceGroup* resource_group) {
 
 bool LazyEventSource::use() {
   Locker locker(OS::global_mutex());
-  if (_usage == 0) {
+  if (usage_ == 0) {
     HeapTagScope scope(ITERATE_CUSTOM_TAGS + EVENT_SOURCE_MALLOC_TAG);
     if (!start()) return false;
   }
-  _usage++;
+  usage_++;
   return true;
 }
 
 void LazyEventSource::unuse() {
   Locker locker(OS::global_mutex());
-  if (--_usage == 0) {
+  if (--usage_ == 0) {
     stop();
   }
 }

@@ -38,8 +38,8 @@ static const char* const COMPILER_INPUT_PATH = "/<compiler-input>";
 static const char* const INFO_PATH = "/<info>";
 
 void FilesystemArchive::initialize(Diagnostics* diagnostics) {
-  if (_is_initialized) return;
-  _is_initialized = true;
+  if (is_initialized_) return;
+  is_initialized_ = true;
   char current_working_dir[PATH_MAX];
   int current_working_dir_len = -1;
   auto code = untar(path_, [&](const char* name,
@@ -102,13 +102,13 @@ void FilesystemArchive::initialize(Diagnostics* diagnostics) {
     // If the sdk-path file exists, but nothing is in it, we just assume that
     // the sdk is present. There might be errors later on because of the
     // empty path, though.
-    _contains_sdk = true;
+    contains_sdk_ = true;
   } else {
     int separator_offset = sdk_path_[sdk_path_len - 1] == '/' ? -1 : 0;
     for (auto& entry : archive_files_.underlying_map()) {
       if (strncmp(entry.first.c_str(), sdk_path_, sdk_path_len) == 0 &&
           entry.first.c_str()[sdk_path_len + separator_offset] == '/') {
-        _contains_sdk = true;
+        contains_sdk_ = true;
         break;
       }
     }
@@ -119,7 +119,7 @@ void FilesystemArchive::initialize(Diagnostics* diagnostics) {
     diagnostics->report_error("Missing cwd-path file in '%s'", path_);
     return;
   }
-  _cwd_path = cwd_path_probe->second.content;
+  cwd_path_ = cwd_path_probe->second.content;
 
   auto info_probe = archive_files_.find(std::string(INFO_PATH));
   if (info_probe == archive_files_.end()) {
@@ -133,7 +133,7 @@ void FilesystemArchive::initialize(Diagnostics* diagnostics) {
   }
 
   if (Flags::archive_entry_path != null) {
-    _entry_path = Flags::archive_entry_path;
+    entry_path_ = Flags::archive_entry_path;
   } else {
     auto input_path_probe = archive_files_.find(std::string(COMPILER_INPUT_PATH));
     if (input_path_probe == archive_files_.end()) {
@@ -158,10 +158,10 @@ void FilesystemArchive::initialize(Diagnostics* diagnostics) {
       if (!entry_path_list[0].is_string()) {
         goto bad_meta;
       }
-      _entry_path = strdup(entry_path_list[0].get<std::string>().c_str());
+      entry_path_ = strdup(entry_path_list[0].get<std::string>().c_str());
     } else {
       // This path is deprecated.
-      _entry_path = compiler_input.content;
+      entry_path_ = compiler_input.content;
     }
   }
 

@@ -37,13 +37,13 @@ class FilesystemArchive : public Filesystem {
   /// Loads the given archive, caching the contained files.
   void initialize(Diagnostics* diagnostics);
 
-  const char* entry_path() { return _entry_path; }
+  const char* entry_path() { return entry_path_; }
   bool is_absolute(const char* path) { return path[0] == '/'; }
 
   const char* sdk_path() { return sdk_path_; }
   List<const char*> package_cache_paths() { return package_cache_paths_; }
 
-  bool contains_sdk() { return _contains_sdk; }
+  bool contains_sdk() { return contains_sdk_; }
 
   static bool is_probably_archive(const char* path);
 
@@ -54,7 +54,7 @@ class FilesystemArchive : public Filesystem {
 
   const uint8* do_read_content(const char* path, int* size);
 
-  const char* getcwd(char* buffer, int buffer_size) { return _cwd_path; }
+  const char* getcwd(char* buffer, int buffer_size) { return cwd_path_; }
   void list_directory_entries(const char* path,
                               const std::function<void (const char*)> callback);
 
@@ -69,15 +69,15 @@ class FilesystemArchive : public Filesystem {
     bool is_directory;
   };
   const char* path_;
-  bool _is_initialized = false;
+  bool is_initialized_ = false;
 
-  bool _contains_sdk = false;
+  bool contains_sdk_ = false;
 
   // These entries are overwritten in the initialize function.
-  const char* _entry_path = "/";
+  const char* entry_path_ = "/";
   const char* sdk_path_ = "/";
   List<const char*> package_cache_paths_;
-  const char* _cwd_path = "/";
+  const char* cwd_path_ = "/";
   UnorderedMap<std::string, FileEntry> archive_files_;
   UnorderedMap<std::string, PathInfo> path_infos_;
   UnorderedMap<std::string, List<std::string>> directory_listings_;

@@ -256,7 +256,7 @@ Interpreter::Result Interpreter::run() {
   preemption_method_header_bcp_ = null;
   Object** sp = load_stack();
   Program* program = process_->program();
-  uword _index_ = 0;
+  uword index__ = 0;
   static_assert(FRAME_SIZE == 2, "Unexpected frame size");
   {
     Object* frame_marker = POP();
@@ -702,10 +702,10 @@ Interpreter::Result Interpreter::run() {
 
   INVOKE_VIRTUAL_FALLBACK: {
     Object* receiver = POP();
-    Method target = program->find_method(receiver, _index_);
+    Method target = program->find_method(receiver, index__);
     if (!target.is_valid()) {
       PUSH(receiver);
-      PUSH(Smi::from(_index_));
+      PUSH(Smi::from(index__));
       target = program->lookup_failure();
     }
     CALL_METHOD(target, INVOKE_EQ_LENGTH);
@@ -735,7 +735,7 @@ Interpreter::Result Interpreter::run() {
       DISPATCH(INVOKE_EQ_LENGTH);
     }
     PUSH(a0);
-    _index_ = program->invoke_bytecode_offset(INVOKE_EQ);
+    index__ = program->invoke_bytecode_offset(INVOKE_EQ);
     goto INVOKE_VIRTUAL_FALLBACK;
   OPCODE_END()
 
@@ -755,7 +755,7 @@ Interpreter::Result Interpreter::run() {
       DISPATCH(opcode##_LENGTH);                                       \
     }                                                                  \
     PUSH(a0);                                                          \
-    _index_ = program->invoke_bytecode_offset(opcode);                 \
+    index__ = program->invoke_bytecode_offset(opcode);                 \
     goto INVOKE_VIRTUAL_FALLBACK;                                      \
   OPCODE_END();
 
@@ -777,7 +777,7 @@ Interpreter::Result Interpreter::run() {
       DISPATCH(opcode##_LENGTH);                                       \
     }                                                                  \
     PUSH(a0);                                                          \
-    _index_ = program->invoke_bytecode_offset(opcode);                 \
+    index__ = program->invoke_bytecode_offset(opcode);                 \
     goto INVOKE_VIRTUAL_FALLBACK;                                      \
   OPCODE_END();
 
@@ -798,7 +798,7 @@ Interpreter::Result Interpreter::run() {
       DISPATCH(opcode##_LENGTH);                                       \
     }                                                                  \
     PUSH(a0);                                                          \
-    _index_ = program->invoke_bytecode_offset(opcode);                 \
+    index__ = program->invoke_bytecode_offset(opcode);                 \
     goto INVOKE_VIRTUAL_FALLBACK;                                      \
   OPCODE_END();
 
@@ -817,7 +817,7 @@ Interpreter::Result Interpreter::run() {
       DISPATCH(opcode##_LENGTH);                                       \
     }                                                                  \
     PUSH(a0);                                                          \
-    _index_ = program->invoke_bytecode_offset(opcode);                 \
+    index__ = program->invoke_bytecode_offset(opcode);                 \
     goto INVOKE_VIRTUAL_FALLBACK;                                      \
   OPCODE_END();
 
@@ -840,7 +840,7 @@ Interpreter::Result Interpreter::run() {
       DISPATCH(INVOKE_AT_LENGTH);
     }
     PUSH(receiver);
-    _index_ = program->invoke_bytecode_offset(INVOKE_AT);
+    index__ = program->invoke_bytecode_offset(INVOKE_AT);
     goto INVOKE_VIRTUAL_FALLBACK;
   OPCODE_END();
 
@@ -856,7 +856,7 @@ Interpreter::Result Interpreter::run() {
       DISPATCH(INVOKE_AT_PUT_LENGTH);
     }
     PUSH(receiver);
-    _index_ = program->invoke_bytecode_offset(INVOKE_AT_PUT);
+    index__ = program->invoke_bytecode_offset(INVOKE_AT_PUT);
     goto INVOKE_VIRTUAL_FALLBACK;
   OPCODE_END();
 
@@ -1095,7 +1095,7 @@ Interpreter::Result Interpreter::run() {
     uint32 absolute_bci = Utils::read_unaligned_uint32(bcp + 2);
     Smi* block = Smi::cast(POP());
     Object** target_sp = from_block(block);
-    _index_ = 0;
+    index__ = 0;
     PUSH(Smi::from(height_diff));
     PUSH(to_block(target_sp));
     auto encoded_bci = Smi::from((absolute_bci << 1) | 1);

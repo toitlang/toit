@@ -111,7 +111,7 @@ class MethodResolver : public ast::Visitor {
   ast::Node* current_lambda_;
   LoopStatus loop_status_;
   int loop_block_depth_;
-  bool _has_primitive_invocation = false;
+  bool has_primitive_invocation_ = false;
   std::vector<std::pair<Symbol, ast::Node*>> break_continue_label_stack_;
 
   SourceManager* source_manager() const { return source_manager_; }

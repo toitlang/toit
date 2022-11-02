@@ -55,7 +55,7 @@ class TLSEventSource : public LazyEventSource, public Thread {
  private:
   void entry() override;
 
-  ConditionVariable* _sockets_changed = null;
+  ConditionVariable* sockets_changed_ = null;
   TLSSocketList sockets_;
   bool stop_ = false;
 };

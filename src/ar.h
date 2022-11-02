@@ -253,7 +253,7 @@ class FileReader {
   int find(const char* name, File* file, bool reset = true);
 
  private:
-  bool _is_first = true;
+  bool is_first_ = true;
   FILE* file_ = null;
 
   int read_ar_header();

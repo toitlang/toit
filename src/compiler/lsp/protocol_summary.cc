@@ -233,7 +233,7 @@ class Writer {
   UnorderedMap<ir::Node*, ToitdocPath> paths_;
   UnorderedMap<ir::Node*, int> toplevel_ids_;
   LspWriter* lsp_writer_;
-  Source* _current_source = null;
+  Source* current_source_ = null;
 
   template<typename T> void print_toitdoc(T node);
   void print_range(const Source::Range& range);
@@ -279,8 +279,8 @@ void Writer::print_toitdoc(T node) {
 }
 
 void Writer::print_range(const Source::Range& range) {
-  this->printf("%d\n", _current_source->offset_in_source(range.from()));
-  this->printf("%d\n", _current_source->offset_in_source(range.to()));
+  this->printf("%d\n", current_source_->offset_in_source(range.from()));
+  this->printf("%d\n", current_source_->offset_in_source(range.to()));
 }
 
 void Writer::safe_print_symbol(Symbol symbol) {
@@ -494,10 +494,10 @@ void Writer::print_modules() {
     // Ignore error modules.
     if (module->is_error_module()) continue;
 
-    _current_source = module->unit()->source();
+    current_source_ = module->unit()->source();
 
     // For simplicity repeat the module path and the class count.
-    this->printf("%s\n", _current_source->absolute_path());
+    this->printf("%s\n", current_source_->absolute_path());
 
     print_dependencies(module);
 

@@ -29,10 +29,10 @@ std::string Package::build_error_path(Filesystem* fs, const std::string& path) c
   if (id_ == VIRTUAL_PACKAGE_ID) {
     return path;
   }
-  auto relative = fs->relative(path, _absolute_error_path);
+  auto relative = fs->relative(path, absolute_error_path_);
   if (id_ == ENTRY_PACKAGE_ID) {
     PathBuilder builder(fs);
-    builder.join(_relative_error_path, relative);
+    builder.join(relative_error_path_, relative);
     builder.canonicalize();
     return builder.buffer();
   }

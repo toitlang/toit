@@ -56,13 +56,13 @@ class X509Certificate : public Resource {
 
   uint8* checksum() { return &checksum_[0]; }
 
-  void reference() { _references++; }
-  bool dereference() { return --_references == 0; }
+  void reference() { references_++; }
+  bool dereference() { return --references_ == 0; }
 
  private:
   mbedtls_x509_crt cert_;
   uint8 checksum_[Sha256::HASH_LENGTH];
-  int _references = 1;
+  int references_ = 1;
 };
 
 } // namespace toit

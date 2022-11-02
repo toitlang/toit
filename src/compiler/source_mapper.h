@@ -52,27 +52,27 @@ class SourceMapper {
 
     void register_call(int bytecode_offset, Source::Range range) {
       ASSERT(is_valid());
-      ASSERT(!_is_finalized);
+      ASSERT(!is_finalized_);
       source_mapper_->register_bytecode(method_index_, bytecode_offset, range);
     }
 
     void register_as_check(int bytecode_offset, Source::Range range, const char* class_name) {
       ASSERT(is_valid());
-      ASSERT(!_is_finalized);
+      ASSERT(!is_finalized_);
       source_mapper_->register_bytecode(method_index_, bytecode_offset, range);
       source_mapper_->register_as(method_index_, bytecode_offset, class_name);
     }
 
     void register_pubsub_call(int bytecode_offset, int target_dispatch_index, const char* topic) {
       ASSERT(is_valid());
-      ASSERT(!_is_finalized);
+      ASSERT(!is_finalized_);
       source_mapper_->register_pubsub_call(method_index_, bytecode_offset, target_dispatch_index, topic);
     }
 
     void finalize(int method_id, int size) {
       ASSERT(is_valid());
-      ASSERT(!_is_finalized);
-      _is_finalized = true;
+      ASSERT(!is_finalized_);
+      is_finalized_ = true;
       ASSERT(method_id >= 0);
       ASSERT(size >= 0);
       ASSERT(source_mapper_->source_information_[method_index_].id == -1);
@@ -97,7 +97,7 @@ class SourceMapper {
 
     SourceMapper* source_mapper_;
     int method_index_;
-    bool _is_finalized = false;
+    bool is_finalized_ = false;
   };
 
   explicit SourceMapper(SourceManager* manager) : manager_(manager) { }

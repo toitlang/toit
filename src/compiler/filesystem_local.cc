@@ -129,8 +129,8 @@ const char* FilesystemLocal::sdk_path() {
 }
 
 List<const char*> FilesystemLocal::package_cache_paths() {
-  if (!_has_computed_cache_paths) {
-    _has_computed_cache_paths = true;
+  if (!has_computed_cache_paths_) {
+    has_computed_cache_paths_ = true;
     char* cache_paths = getenv("TOIT_PACKAGE_CACHE_PATHS");
     if (cache_paths != null) {
       package_cache_paths_ = string_split(strdup(cache_paths), ":");

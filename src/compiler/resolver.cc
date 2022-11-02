@@ -1387,13 +1387,13 @@ static bool is_valid_operator_shape(Symbol name, const ResolutionShape& shape) {
 class HasExplicitReturnVisitor : public ast::TraversingVisitor {
  public:
   void visit_Return(ast::Return* node) {
-    _result = true;
+    result_ = true;
     // No need to traverse the rest of the expression.
   }
 
   void visit_Call(ast::Call* node) {
-    if (node->is_call_primitive()) _result = true;
-    if (!_result) {
+    if (node->is_call_primitive()) result_ = true;
+    if (!result_) {
       TraversingVisitor::visit_Call(node);
     }
   }
@@ -1404,14 +1404,14 @@ class HasExplicitReturnVisitor : public ast::TraversingVisitor {
     for (int i = expressions.length() - 1; i >= 0; i--) {
       expressions[i]->accept(this);
       // No need to continue, once we found a return.
-      if (_result) return;
+      if (result_) return;
     }
   }
 
-  bool result() { return _result; }
+  bool result() { return result_; }
 
  private:
-   bool _result = false;
+   bool result_ = false;
 };
 
 void Resolver::check_method(ast::Method* method, ir::Class* holder,

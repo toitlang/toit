@@ -285,7 +285,7 @@ class Scanner {
 
  private:
   Symbol data_ = Symbol::invalid();
-  bool _is_lsp_selection = false;
+  bool is_lsp_selection_ = false;
 
   const uint8* input_;
   Source* source_;
@@ -305,7 +305,7 @@ class Scanner {
   int index_ = 0;
 
   int begin_ = -1;
-  int _last = -1;
+  int last_ = -1;
 
   ListBuilder<Comment> comments_;
 

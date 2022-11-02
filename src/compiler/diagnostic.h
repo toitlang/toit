@@ -129,7 +129,7 @@ class CompilationDiagnostics : public Diagnostics {
 
  private:
   bool show_package_warnings_;
-  bool _in_group = false;
+  bool in_group_ = false;
   std::string group_package_id_;
   Severity group_severity_;
 };

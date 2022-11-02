@@ -29,18 +29,18 @@ TLSEventSource::TLSEventSource()
 }
 
 TLSEventSource::~TLSEventSource() {
-  ASSERT(_sockets_changed == null);
+  ASSERT(sockets_changed_ == null);
   instance_ = null;
 }
 
 bool TLSEventSource::start() {
   Locker locker(mutex());
-  ASSERT(_sockets_changed == null);
-  _sockets_changed = OS::allocate_condition_variable(mutex());
-  if (_sockets_changed == null) return false;
+  ASSERT(sockets_changed_ == null);
+  sockets_changed_ = OS::allocate_condition_variable(mutex());
+  if (sockets_changed_ == null) return false;
   if (!spawn(5 * KB)) {
-    OS::dispose(_sockets_changed);
-    _sockets_changed = null;
+    OS::dispose(sockets_changed_);
+    sockets_changed_ = null;
     return false;
   }
   stop_ = false;
@@ -53,18 +53,18 @@ void TLSEventSource::stop() {
     Locker locker(mutex());
     stop_ = true;
 
-    OS::signal(_sockets_changed);
+    OS::signal(sockets_changed_);
   }
 
   join();
-  OS::dispose(_sockets_changed);
-  _sockets_changed = null;
+  OS::dispose(sockets_changed_);
+  sockets_changed_ = null;
 }
 
 void TLSEventSource::handshake(TLSSocket* socket) {
   Locker locker(mutex());
   sockets_.append(socket);
-  OS::signal(_sockets_changed);
+  OS::signal(sockets_changed_);
 }
 
 void TLSEventSource::on_unregister_resource(Locker& locker, Resource* r) {
@@ -89,7 +89,7 @@ void TLSEventSource::entry() {
       dispatch(locker, socket, result);
     }
 
-    OS::wait(_sockets_changed);
+    OS::wait(sockets_changed_);
   }
 }
 

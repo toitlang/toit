@@ -83,8 +83,8 @@ class Process : public ProcessListFromProcessGroup::Element,
   bool is_suspended() const { return state_ == SUSPENDED_IDLE || state_ == SUSPENDED_SCHEDULED; }
 
   // Returns whether this process is privileged (a system process).
-  bool is_privileged() const { return _is_privileged; }
-  void mark_as_priviliged() { _is_privileged = true; }
+  bool is_privileged() const { return is_privileged_; }
+  void mark_as_priviliged() { is_privileged_ = true; }
 
   // Garbage collection operation for runtime objects.
   GcType gc(bool try_hard) {
@@ -92,8 +92,8 @@ class Process : public ProcessListFromProcessGroup::Element,
     return object_heap()->gc(try_hard);
   }
 
-  bool idle_since_gc() const { return _idle_since_gc; }
-  void set_idle_since_gc(bool value) { _idle_since_gc = value; }
+  bool idle_since_gc() const { return idle_since_gc_; }
+  void set_idle_since_gc(bool value) { idle_since_gc_ = value; }
 
   bool has_finalizer(HeapObject* key, Object* lambda) {
     return object_heap()->has_finalizer(key, lambda);
@@ -120,12 +120,12 @@ class Process : public ProcessListFromProcessGroup::Element,
   ProcessRunner* runner() const { return runner_; }
 
   Method entry() const { return entry_; }
-  uint8* main_arguments() { return _main_arguments; }
-  void clear_main_arguments() { _main_arguments = null; }
+  uint8* main_arguments() { return main_arguments_; }
+  void clear_main_arguments() { main_arguments_ = null; }
 
   Method spawn_method() const { return spawn_method_; }
-  uint8* spawn_arguments() const { return _spawn_arguments; }
-  void clear_spawn_arguments() { _spawn_arguments = null; }
+  uint8* spawn_arguments() const { return spawn_arguments_; }
+  void clear_spawn_arguments() { spawn_arguments_ = null; }
 
   // Handling of messages and completions.
   bool has_messages();
@@ -156,7 +156,7 @@ class Process : public ProcessListFromProcessGroup::Element,
   // Processes have a priority in the range [0..255]. The scheduler
   // prioritizes running processes with higher priorities, so processes
   // with lower priorities might get starved by more important things.
-  uint8 priority() const { return _priority; }
+  uint8 priority() const { return priority_; }
 
   // The scheduler needs to be in charge of updating priorities,
   // because it might have a process in queue determined by the
@@ -208,18 +208,18 @@ class Process : public ProcessListFromProcessGroup::Element,
     return result;
   }
 
-  Profiler* profiler() const { return _profiler; }
+  Profiler* profiler() const { return profiler_; }
 
   int install_profiler(int task_id) {
     ASSERT(profiler() == null);
-    _profiler = _new Profiler(task_id);
-    if (_profiler == null) return -1;
+    profiler_ = _new Profiler(task_id);
+    if (profiler_ == null) return -1;
     return profiler()->allocated_bytes();
   }
 
   void uninstall_profiler() {
     Profiler* p = profiler();
-    _profiler = null;
+    profiler_ = null;
     delete p;
   }
 
@@ -235,13 +235,13 @@ class Process : public ProcessListFromProcessGroup::Element,
 
   int const id_;
   int next_task_id_;
-  bool _is_privileged = false;
+  bool is_privileged_ = false;
 
   Program* program_;
   ProcessRunner* runner_;
   ProcessGroup* group_;
 
-  uint8 _priority = PRIORITY_NORMAL;
+  uint8 priority_ = PRIORITY_NORMAL;
   uint8 target_priority_ = PRIORITY_NORMAL;
 
   uword program_heap_address_;
@@ -251,8 +251,8 @@ class Process : public ProcessListFromProcessGroup::Element,
   Method spawn_method_;
 
   // The arguments (if any) are encoded as messages using the MessageEncoder.
-  uint8* _main_arguments = null;
-  uint8* _spawn_arguments = null;
+  uint8* main_arguments_ = null;
+  uint8* spawn_arguments_ = null;
 
   ObjectHeap object_heap_;
   int64 last_bytes_allocated_;
@@ -271,10 +271,10 @@ class Process : public ProcessListFromProcessGroup::Element,
   State state_;
   SchedulerThread* scheduler_thread_;
 
-  bool _construction_failed = false;
-  bool _idle_since_gc = true;
+  bool construction_failed_ = false;
+  bool idle_since_gc_ = true;
 
-  Profiler* _profiler = null;
+  Profiler* profiler_ = null;
 
   ResourceGroupListFromProcess resource_groups_;
   friend class HeapObject;

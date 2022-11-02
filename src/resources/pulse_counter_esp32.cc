@@ -116,8 +116,8 @@ class PcntUnitResource : public Resource {
     }
 
     // Without a call to 'clear' the unit would not start counting.
-    if (!_cleared) {
-      _cleared = true;
+    if (!cleared_) {
+      cleared_ = true;
       return pcnt_counter_clear(config.unit);
     }
     return ESP_OK;
@@ -160,7 +160,7 @@ class PcntUnitResource : public Resource {
         close_channel(channel);
       }
     }
-    _cleared = false;
+    cleared_ = false;
 
     // In v4.4.1 there is no way to shut down the counter.
     // In later versions we have to call `pcnt_del_unit`.
@@ -192,7 +192,7 @@ class PcntUnitResource : public Resource {
   int16 high_limit_;
   int glitch_filter_ns_;
   bool used_channels_[PCNT_CHANNEL_MAX] = { false, };
-  bool _cleared = false;
+  bool cleared_ = false;
 };
 
 class PcntUnitResourceGroup : public ResourceGroup {

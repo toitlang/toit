@@ -40,14 +40,14 @@ class VM {
   Scheduler* scheduler() const { return scheduler_; }
 
   EventSourceManager* event_manager() const { return event_manager_; }
-  EventSource* nop_event_source() const { return _nop_event_source; }
+  EventSource* nop_event_source() const { return nop_event_source_; }
 
  private:
   static VM* current_;
   Scheduler* scheduler_;
 
   EventSourceManager* event_manager_ = null;
-  EventSource* _nop_event_source = null;
+  EventSource* nop_event_source_ = null;
 };
 
 } // namespace toit

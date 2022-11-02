@@ -235,7 +235,7 @@ class SourceManager {
  private:
   Filesystem* filesystem_;
 
-  int _next_offset = 0;
+  int next_offset_ = 0;
 
   std::vector<SourceManagerSource*> sources_;
   UnorderedMap<std::string, SourceManagerSource*> path_to_source_;

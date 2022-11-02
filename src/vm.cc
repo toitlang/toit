@@ -46,8 +46,8 @@ VM::VM() {
   scheduler_ = _new Scheduler();
 
   event_manager_ = _new EventSourceManager();
-  _nop_event_source = _new NopEventSource();
-  event_manager_->add_event_source(_nop_event_source);
+  nop_event_source_ = _new NopEventSource();
+  event_manager_->add_event_source(nop_event_source_);
 }
 
 VM::~VM() {

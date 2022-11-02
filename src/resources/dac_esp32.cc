@@ -94,14 +94,14 @@ class DacResource : public Resource {
 
  private:
   dac_channel_t channel_;
-  bool _uses_cosine = false;
+  bool uses_cosine_ = false;
 };
 
 esp_err_t DacResource::use_cosine() {
   Locker locker(OS::resource_mutex());
   esp_err_t err = ESP_OK;
-  if (_uses_cosine) return err;
-  _uses_cosine = true;
+  if (uses_cosine_) return err;
+  uses_cosine_ = true;
   cosine_user_count++;
   if (cosine_user_count == 1) {
     // First user.
@@ -113,8 +113,8 @@ esp_err_t DacResource::use_cosine() {
 esp_err_t DacResource::unuse_cosine() {
   Locker locker(OS::resource_mutex());
   esp_err_t err = ESP_OK;
-  if (!_uses_cosine) return err;
-  _uses_cosine = false;
+  if (!uses_cosine_) return err;
+  uses_cosine_ = false;
   cosine_user_count--;
   if (cosine_user_count == 0) {
     // Last user.

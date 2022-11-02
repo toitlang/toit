@@ -27,12 +27,12 @@ constexpr ir::Node* ClassScope::SUPER_CLASS_SEPARATOR;
 ///
 /// Returns `null` if the given node is not a [Prefix].
 ImportScope* Scope::_find_import_scope(ast::Node* node) {
-  if (node == _find_import_scope_node_cache) {
+  if (node == find_import_scope_node_cache_) {
     return find_import_scope_result_cache_;
   }
   if (!node->is_Identifier()) return null;
 
-  _find_import_scope_node_cache = node;
+  find_import_scope_node_cache_ = node;
   find_import_scope_result_cache_ = null;
   auto prefix_name = node->as_Identifier()->data();
 
@@ -62,12 +62,12 @@ ResolutionEntry Scope::lookup_static_or_prefixed(ast::Node* node) {
 }
 
 ResolutionEntry Scope::lookup_static(ast::Node* node) {
-  if (node == _lookup_static_node_cache) {
+  if (node == lookup_static_node_cache_) {
     return lookup_static_result_cache_;
   }
 
   ResolutionEntry not_found;
-  _lookup_static_node_cache = node;
+  lookup_static_node_cache_ = node;
   lookup_static_result_cache_ = not_found;
 
   if (!node->is_Dot()) return not_found;
@@ -90,12 +90,12 @@ ResolutionEntry Scope::lookup_static(ast::Node* node) {
 }
 
 ResolutionEntry Scope::lookup_prefixed(ast::Node* node) {
-  if (node == _lookup_prefix_node_cache) {
+  if (node == lookup_prefix_node_cache_) {
     return lookup_prefix_result_cache_;
   }
 
   ResolutionEntry not_found;
-  _lookup_prefix_node_cache = node;
+  lookup_prefix_node_cache_ = node;
   lookup_prefix_result_cache_ = not_found;
 
   if (!node->is_Dot()) return not_found;
@@ -199,7 +199,7 @@ ResolutionEntry ModuleScope::lookup_external(Symbol name,
   auto probe = module_declarations_.find(name);
   if (probe != module_declarations_.end()) return probe->second;
 
-  ASSERT(_exported_identifiers_map_has_been_set);
+  ASSERT(exported_identifiers_map_has_been_set_);
   probe = exported_identifiers_map_.find(name);
   if (probe != exported_identifiers_map_.end()) return probe->second;
   if (export_all_) {
@@ -228,7 +228,7 @@ void ModuleScope::for_each_external(const std::function<void (Symbol, const Reso
   // Avoid infinite cycles.
   if (already_visited->contains(this)) return;
 
-  ASSERT(_exported_identifiers_map_has_been_set);
+  ASSERT(exported_identifiers_map_has_been_set_);
   module_declarations_.for_each(callback);
   exported_identifiers_map_.for_each(callback);
   if (export_all_) {

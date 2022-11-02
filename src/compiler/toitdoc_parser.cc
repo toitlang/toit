@@ -238,7 +238,7 @@ class ToitdocParser {
 
   int index_ = 0;
   int line_indentation_ = 0;
-  bool _is_at_dedent = false;
+  bool is_at_dedent_ = false;
   /// The next index after a newline.
   /// This variable is set when encountering a '\n'.
   /// We use this to avoid computing the indentation after a newline token
@@ -826,7 +826,7 @@ void ToitdocParser::pop_construct(Construct construct) {
   indentation_stack_.pop_back();
   construct_stack_.pop_back();
   // Make the next 'peek' recompute whether we are at the end of the current construct.
-  _is_at_dedent = false;
+  is_at_dedent_ = false;
   next_indentation_ = -1;
   next_index_ = -1;
 }
@@ -951,7 +951,7 @@ int ToitdocParser::peek() {
       return toitdoc_source_->text()[index_];
   }
 
-  if (_is_at_dedent) return '\0';
+  if (is_at_dedent_) return '\0';
   auto text = toitdoc_source_->text();
   // The toit-doc source is null-terminated, so it's safe to read at out-of bounds.
   ASSERT(index_ <= toitdoc_source_->size());
@@ -992,7 +992,7 @@ int ToitdocParser::peek() {
       }
     }
     if (skipped_over_multiple_lines && !allows_empty_line) {
-      _is_at_dedent = true;
+      is_at_dedent_ = true;
       return '\0';
     }
     if (next_indentation_ < indentation_stack_.back()) {
@@ -1004,12 +1004,12 @@ int ToitdocParser::peek() {
         }
         return ' ';
       } else {
-        _is_at_dedent = true;
+        is_at_dedent_ = true;
         return '\0';
       }
     } else if (next_indentation_ == indentation_stack_.back()) {
       if (must_be_indented) {
-        _is_at_dedent = true;
+        is_at_dedent_ = true;
         return '\0';
       } else {
         return ' ';
@@ -1033,7 +1033,7 @@ void ToitdocParser::advance(int n) {
   for (int i = 0; i < n; i++) {
     int c = peek();
     if (c == '\0') {
-      _is_at_dedent = false;
+      is_at_dedent_ = false;
       return;
     }
     if (next_index_ >= 0) {

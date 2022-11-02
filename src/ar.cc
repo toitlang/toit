@@ -289,8 +289,8 @@ int FileReader::close() {
 int FileReader::next(File* file) {
   file->clear_name();
   file->clear_content();
-  if (_is_first) {
-    _is_first = false;
+  if (is_first_) {
+    is_first_ = false;
     int status = read_ar_header();
     if (status != 0) return status;
   }
@@ -306,9 +306,9 @@ int FileReader::next(File* file) {
 int FileReader::find(const char* name, File* file, bool reset) {
   if (reset) {
     fseek(file_, 0L, SEEK_SET);
-    _is_first = true;
+    is_first_ = true;
   }
-  if (_is_first) {
+  if (is_first_) {
     int status = read_ar_header();
     if (status != 0) return status;
   }

@@ -318,11 +318,11 @@ class Scope : public IterableScope {
 
   ImportScope* _find_import_scope(ast::Node* node);
 
-  ast::Node* _find_import_scope_node_cache = null;
+  ast::Node* find_import_scope_node_cache_ = null;
   ImportScope* find_import_scope_result_cache_ = null;
-  ast::Node* _lookup_static_node_cache = null;
+  ast::Node* lookup_static_node_cache_ = null;
   ResolutionEntry lookup_static_result_cache_;
-  ast::Node* _lookup_prefix_node_cache = null;
+  ast::Node* lookup_prefix_node_cache_ = null;
   ResolutionEntry lookup_prefix_result_cache_;
 };
 
@@ -612,19 +612,19 @@ class ModuleScope : public Scope {
 
   ResolutionEntryMap entries() const { return module_declarations_; }
 
-  bool exported_identifiers_map_has_been_set() const { return _exported_identifiers_map_has_been_set; }
+  bool exported_identifiers_map_has_been_set() const { return exported_identifiers_map_has_been_set_; }
   ResolutionEntryMap exported_identifiers_map() const { return exported_identifiers_map_; }
 
   void set_exported_identifiers_map(ResolutionEntryMap exported_identifiers_map) {
     exported_identifiers_map_ = exported_identifiers_map;
-    _exported_identifiers_map_has_been_set = true;
+    exported_identifiers_map_has_been_set_ = true;
   }
 
  private:
   Module* module_;
   NonPrefixedImportScope* non_prefixed_imported_;
   bool export_all_;
-  bool _exported_identifiers_map_has_been_set = false;
+  bool exported_identifiers_map_has_been_set_ = false;
   ResolutionEntryMap exported_identifiers_map_;
 
   ResolutionEntryMap module_declarations_;

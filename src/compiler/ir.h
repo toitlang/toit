@@ -349,17 +349,17 @@ class Class : public Node {
   }
   void replace_factories(List<Method*> new_factories) { factories_ = new_factories; }
 
-  StaticsScope* statics() const { return _statics; }
+  StaticsScope* statics() const { return statics_; }
   void set_statics(StaticsScope* statics) {
-    ASSERT(_statics == null);
-    _statics = statics;
+    ASSERT(statics_ == null);
+    statics_ = statics;
   }
 
   /// The elements visible for toitdoc scopes.
   /// This includes constructors, static/instance methods, static/instance fields all
   ///   mixed together.
-  Scope* toitdoc_scope() const { return _toitdoc_scope; }
-  void set_toitdoc_scope(Scope* scope) { _toitdoc_scope = scope; }
+  Scope* toitdoc_scope() const { return toitdoc_scope_; }
+  void set_toitdoc_scope(Scope* scope) { toitdoc_scope_ = scope; }
 
   List<MethodInstance*> methods() const { return methods_; }
   void set_methods(List<MethodInstance*> methods) {
@@ -378,8 +378,8 @@ class Class : public Node {
   Source::Range range() const { return range_; }
 
   /// These functions are set by the tree-shaker.
-  bool is_instantiated() const { return _is_instantiated; }
-  void set_is_instantiated(bool value) { _is_instantiated = value; }
+  bool is_instantiated() const { return is_instantiated_; }
+  void set_is_instantiated(bool value) { is_instantiated_ = value; }
 
   Selector<CallShape> typecheck_selector() const { return typecheck_selector_; }
   void set_typecheck_selector(Selector<CallShape> selector) {
@@ -411,10 +411,10 @@ class Class : public Node {
   List<MethodInstance*> methods_;
   List<Field*> fields_;
 
-  StaticsScope* _statics = null;
-  Scope* _toitdoc_scope = null;
+  StaticsScope* statics_ = null;
+  Scope* toitdoc_scope_ = null;
 
-  bool _is_instantiated = true;
+  bool is_instantiated_ = true;
 
   int id_;
   int start_id_;
@@ -719,14 +719,14 @@ class Constructor : public Method {
   // Synthetic default constructor.
   Constructor(Symbol name, Class* klass, Source::Range range)
       : Method(name, klass, ResolutionShape(0).with_implicit_this(), false, CONSTRUCTOR, range)
-      , _is_synthetic(true) { }
+      , is_synthetic_(true) { }
   IMPLEMENTS(Constructor)
 
   Class* klass() const { return holder(); }
-  bool is_synthetic() const { return _is_synthetic; }
+  bool is_synthetic() const { return is_synthetic_; }
 
  private:
-  bool _is_synthetic = false;
+  bool is_synthetic_ = false;
 };
 
 class Global : public Method {
@@ -751,8 +751,8 @@ class Global : public Method {
   // might not return true for every effectively final global.
   // This property is only valid after the first resolution pass, as mutations
   // are only recorded during that pass.
-  bool is_effectively_final() const { return _mutation_count == 0; }
-  void register_mutation() { _mutation_count++; }
+  bool is_effectively_final() const { return mutation_count_ == 0; }
+  void register_mutation() { mutation_count_++; }
 
   void set_explicit_return_type(Type type) {
     Method::set_return_type(type);
@@ -783,7 +783,7 @@ class Global : public Method {
   bool is_lazy() { return is_lazy_; }
 
  private:
-  int _mutation_count = 0;
+  int mutation_count_ = 0;
   bool is_final_;
   bool is_lazy_;
   int global_id_;
@@ -850,8 +850,8 @@ class FieldStub : public MethodInstance {
 
   bool is_synthetic() const { return true; }
 
-  bool is_throwing() const { return _is_throwing; }
-  void mark_throwing() { _is_throwing = true; }
+  bool is_throwing() const { return is_throwing_; }
+  void mark_throwing() { is_throwing_ = true; }
 
   bool is_checking_setter() const {
     ASSERT(!checked_type_.is_valid() || !is_getter());
@@ -865,7 +865,7 @@ class FieldStub : public MethodInstance {
 
  private:
    Field* field_;
-   bool _is_throwing = false;
+   bool is_throwing_ = false;
    Type checked_type_;
 };
 
@@ -921,14 +921,14 @@ class FieldStore : public Expression {
 
   void replace_value(Expression* new_value) { value_ = new_value; }
 
-  bool is_box_store() const { return _is_box_store; }
-  void mark_box_store() { _is_box_store = true; }
+  bool is_box_store() const { return is_box_store_; }
+  void mark_box_store() { is_box_store_ = true; }
 
  private:
   Expression* receiver_;
   Field* field_;
   Expression* value_;
-  bool _is_box_store = false;
+  bool is_box_store_ = false;
 };
 
 class FieldLoad : public Expression {
@@ -942,13 +942,13 @@ class FieldLoad : public Expression {
 
   void replace_receiver(Expression* new_receiver) { receiver_ = new_receiver; }
 
-  bool is_box_load() const { return _is_box_load; }
-  void mark_box_load() { _is_box_load = true; }
+  bool is_box_load() const { return is_box_load_; }
+  void mark_box_load() { is_box_load_ = true; }
 
  private:
   Expression* receiver_;
   Field* field_;
-  bool _is_box_load = false;
+  bool is_box_load_ = false;
 };
 
 class Sequence : public Expression {
@@ -1233,16 +1233,16 @@ class Local : public Node {
   /// Whether this local is effectively final.
   /// This property is only valid after the first resolution pass, as mutations
   /// are only recorded during that pass.
-  virtual bool is_effectively_final() const { return _mutation_count == 0; }
-  virtual void register_mutation() { _mutation_count++; }
+  virtual bool is_effectively_final() const { return mutation_count_ == 0; }
+  virtual void register_mutation() { mutation_count_++; }
 
-  virtual bool is_captured() const { return _is_captured; }
-  virtual void mark_captured() { _is_captured = true; }
-  virtual int mutation_count() const { return _mutation_count; }
+  virtual bool is_captured() const { return is_captured_; }
+  virtual void mark_captured() { is_captured_ = true; }
+  virtual int mutation_count() const { return mutation_count_; }
 
-  void mark_effectively_final_loop_variable() { _is_effectively_final_loop_variable = true; }
+  void mark_effectively_final_loop_variable() { is_effectively_final_loop_variable_ = true; }
   /// Whether this local is a loop variable that is unchanged in the loop's body.
-  virtual bool is_effectively_final_loop_variable() const { return _is_effectively_final_loop_variable; }
+  virtual bool is_effectively_final_loop_variable() const { return is_effectively_final_loop_variable_; }
 
   virtual bool is_block() const { return is_block_; }
 
@@ -1271,12 +1271,12 @@ class Local : public Node {
  private:
   Symbol name_;
   Source::Range range_;
-  int _mutation_count = 0;
+  int mutation_count_ = 0;
   bool is_final_;
-  bool _is_effectively_final_loop_variable = false;
+  bool is_effectively_final_loop_variable_ = false;
   bool is_block_;
   bool has_explicit_type_;
-  bool _is_captured = false;
+  bool is_captured_ = false;
   Type type_;
 
  protected:
@@ -1467,13 +1467,13 @@ class Call : public Expression {
   List<Expression*> arguments() const { return arguments_; }
   CallShape shape() const { return shape_; }
 
-  void mark_tail_call() { _is_tail_call = true; }
-  bool is_tail_call() const { return _is_tail_call; }
+  void mark_tail_call() { is_tail_call_ = true; }
+  bool is_tail_call() const { return is_tail_call_; }
 
  private:
   List<Expression*> arguments_;
   CallShape shape_;
-  bool _is_tail_call = false;
+  bool is_tail_call_ = false;
 };
 
 class CallStatic : public Call {
@@ -1537,11 +1537,11 @@ class CallConstructor : public CallStatic {
   Class* klass() const { return constructor()->klass(); }
   Constructor* constructor() const { return target()->target()->as_Constructor(); }
 
-  bool is_box_construction() const { return _is_box_construction; }
-  void mark_box_construction() { _is_box_construction = true; }
+  bool is_box_construction() const { return is_box_construction_; }
+  void mark_box_construction() { is_box_construction_ = true; }
 
  private:
-  bool _is_box_construction = false;
+  bool is_box_construction_ = false;
 };
 
 class CallVirtual : public Call {
