@@ -151,7 +151,7 @@ void Locker::enter() {
   if (previous_locker != null) {
     int previous_level = previous_locker->mutex_->level();
     if (level <= previous_level) {
-      FATAL("trying to take lock of level %d (%s) while holding lock of level %d (%s)", level, _mutex->name(), previous_level, previous_locker->_mutex->name());
+      FATAL("trying to take lock of level %d (%s) while holding lock of level %d (%s)", level, mutex_->name(), previous_level, previous_locker->mutex_->name());
     }
   }
   // Lock after checking the precondition to avoid deadlocking
