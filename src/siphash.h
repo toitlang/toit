@@ -28,7 +28,7 @@ class Siphash : public SimpleResource {
 
   void add(const uint8* contents, intptr_t extra);
   void get_hash(uint8* hash);
-  int output_length() { return _output_length; }
+  int output_length() { return output_length_; }
 
  private:
   static const uint32_t BLOCK_SIZE = 8;
@@ -37,13 +37,13 @@ class Siphash : public SimpleResource {
   void round();
   void process_block();
 
-  uint8 _data[BLOCK_SIZE];
-  uint64_t _v[4];
-  int _block_posn;
-  int _c_rounds;
-  int _d_rounds;
-  uword _length;
-  int _output_length;
+  uint8 data_[BLOCK_SIZE];
+  uint64_t v_[4];
+  int block_posn_;
+  int c_rounds_;
+  int d_rounds_;
+  uword length_;
+  int output_length_;
 };
 
 }

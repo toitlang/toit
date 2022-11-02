@@ -63,7 +63,7 @@ Object* X509ResourceGroup::parse(Process* process, const uint8_t* encoded, size_
 }
 
 Object* X509Certificate::common_name_or_error(Process* process) {
-  const mbedtls_asn1_named_data* item = &_cert.subject;
+  const mbedtls_asn1_named_data* item = &cert_.subject;
   while (item) {
     // Find OID that corresponds to the CN (CommonName) field of the subject.
     if (item->oid.len == 3 && strncmp("\x55\x04\x03", char_cast(item->oid.p), 3) == 0) {

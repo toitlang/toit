@@ -46,37 +46,37 @@ class FlashAllocation {
     explicit Header(uint32 allocation_offset);
 
     Header(uint32 allocation_offset, uint8 type, const uint8* id, const uint8* uuid, int size, const uint8* metadata) {
-      _marker = MARKER;
-      _me = allocation_offset;
-      _type = type;
+      marker_ = MARKER;
+      me_ = allocation_offset;
+      type_ = type;
       ASSERT(Utils::is_aligned(size, FLASH_PAGE_SIZE));
-      memcpy(_id, id, id_size());
-      _pages_in_flash = static_cast<uint16>(Utils::round_up(size, FLASH_PAGE_SIZE) >> 12);
+      memcpy(id_, id, id_size());
+      pages_in_flash_ = static_cast<uint16>(Utils::round_up(size, FLASH_PAGE_SIZE) >> 12);
       memcpy(_metadata, metadata, METADATA_SIZE);
       set_uuid(uuid);
     }
 
-    static int id_size() { return sizeof(_id); }
-    const uint8* id() const { return _id; }
-    int size() const { return _pages_in_flash << 12; }
+    static int id_size() { return sizeof(id_); }
+    const uint8* id() const { return id_; }
+    int size() const { return pages_in_flash_ << 12; }
 
    private:
     // Data section for the header.
-    uint32 _marker;  // Magic marker.
-    uint32 _me;      // Offset in allocation partition for validation.
+    uint32 marker_;  // Magic marker.
+    uint32 me_;      // Offset in allocation partition for validation.
 
-    uint8 _id[UUID_SIZE];
+    uint8 id_[UUID_SIZE];
 
     uint8 _metadata[METADATA_SIZE];  // Allocation specific meta data (picked to ensure 16 byte alignment).
-    uint16 _pages_in_flash;
-    uint8 _type;
+    uint16 pages_in_flash_;
+    uint8 type_;
 
-    uint8 _uuid[UUID_SIZE];
+    uint8 uuid_[UUID_SIZE];
 
     static const uint32 MARKER = 0xDEADFACE;
 
     bool is_valid(const uint8* uuid) const;
-    uint8 type() const { return _type; }
+    uint8 type() const { return type_; }
     const uint8* metadata() const { return _metadata; }
 
     bool is_valid_allocation(const uint32 allocation_offset) const;
@@ -86,14 +86,14 @@ class FlashAllocation {
     void set_uuid(const uint8* uuid);
 
     void initialize(uint32 allocation_offset, const uint8* uuid, const uint8* id) {
-      _marker = MARKER;
-      _me = allocation_offset;
+      marker_ = MARKER;
+      me_ = allocation_offset;
       if (id == null) {
-        memset(_id, 0, id_size());
+        memset(id_, 0, id_size());
       } else {
-        memcpy(_id, id, id_size());
+        memcpy(id_, id, id_size());
       }
-      _pages_in_flash = 0;
+      pages_in_flash_ = 0;
       memset(_metadata, 0xFF, METADATA_SIZE);
       set_uuid(uuid);
     }
@@ -102,22 +102,22 @@ class FlashAllocation {
   };
 
   void set_header(uint32 allocation_offset, uint8* uuid, const uint8* id = null) {
-    _header.initialize(allocation_offset, uuid, id);
+    header_.initialize(allocation_offset, uuid, id);
   }
 
   // Returns the size for programs stored in flash.
-  int size() const { return _header.size(); }
-  uint8 type() const { return _header.type(); }
+  int size() const { return header_.size(); }
+  uint8 type() const { return header_.type(); }
 
   bool is_valid(uint32 allocation_offset, const uint8* uuid) const;
 
   // Returns a pointer to the id of the program.
-  const uint8* id() const { return _header.id(); }
-  const uint8* metadata() const { return _header.metadata(); }
+  const uint8* id() const { return header_.id(); }
+  const uint8* metadata() const { return header_.metadata(); }
 
   // Returns whether the allocation has appended assets.
   bool has_assets() const {
-    int flags = _header.metadata()[0];
+    int flags = header_.metadata()[0];
     return (flags & Header::FLAGS_HAS_ASSETS_MASK) != 0;
   }
 
@@ -125,22 +125,22 @@ class FlashAllocation {
   int assets_size(uint8** bytes, int* length) const;
 
  private:
-  Header _header;
+  Header header_;
 };
 
 class Reservation;
 typedef LinkedList<Reservation> ReservationList;
 class Reservation : public ReservationList::Element {
  public:
-  Reservation(int offset, int size) : _offset(offset), _size(size) {}
+  Reservation(int offset, int size) : offset_(offset), size_(size) {}
 
-  int left() const { return _offset; }
-  int right() const { return _offset + _size; }
-  int size() const { return _size; }
+  int left() const { return offset_; }
+  int right() const { return offset_ + size_; }
+  int size() const { return size_; }
 
  private:
-  int _offset;
-  int _size;
+  int offset_;
+  int size_;
 };
 
 } // namespace toit

@@ -116,14 +116,14 @@ class Program : public FlashAllocation {
   };
   #undef DECLARE_ENTRY_POINT
 
-  Object* root(int index) const { ASSERT(index >= 0 && index < ROOT_COUNT); return _roots[index]; }
+  Object* root(int index) const { ASSERT(index >= 0 && index < ROOT_COUNT); return roots_[index]; }
 
-  #define DECLARE_ROOT_ACCESSOR(type, name) type* name() { return static_cast<type*>(_roots[name##_INDEX]); }
+  #define DECLARE_ROOT_ACCESSOR(type, name) type* name() { return static_cast<type*>(roots_[name##_INDEX]); }
   PROGRAM_ROOTS(DECLARE_ROOT_ACCESSOR)
   #undef DECLARE_ROOT_ACCESSOR
 
   #define DECLARE_ENTRY_POINT_ACCESSOR(name, lib_name, arity) Method name() { \
-    int dispatch_index = _entry_point_indexes[name##_INDEX]; \
+    int dispatch_index = entry_point_indexes_[name##_INDEX]; \
     return Method(&bytecodes[dispatch_table[dispatch_index]]); }
   ENTRY_POINTS(DECLARE_ENTRY_POINT_ACCESSOR)
   #undef DECLARE_ENTRY_POINT_ACCESSOR
@@ -174,13 +174,13 @@ class Program : public FlashAllocation {
 #endif
 
   // Size of all objects stored in this program.
-  int object_size() const { return _heap.object_size(); }
+  int object_size() const { return heap_.object_size(); }
 
   // Return the program heap.
-  ProgramRawHeap* heap() { return &_heap; }
+  ProgramRawHeap* heap() { return &heap_; }
   // The address of where the program heap starts.
   // The returned address points to the the first block's header.
-  void* heap_address() { return _heap._blocks.first(); }
+  void* heap_address() { return heap_.blocks_.first(); }
 
   ProgramUsage usage();
 
@@ -189,51 +189,51 @@ class Program : public FlashAllocation {
   void do_roots(RootCallback* callback);
 
   void take_blocks(ProgramBlockList* blocks) {
-    _heap.take_blocks(blocks);
+    heap_.take_blocks(blocks);
   }
 
   bool is_valid_program() const;
 
   void validate();
 
-  String* source_mapping() const { return _source_mapping; }
+  String* source_mapping() const { return source_mapping_; }
 
   int invoke_bytecode_offset(Opcode opcode) const {
     ASSERT(opcode >= INVOKE_EQ && opcode <= INVOKE_AT_PUT);
-    return _invoke_bytecode_offsets[opcode - INVOKE_EQ];
+    return invoke_bytecode_offsets_[opcode - INVOKE_EQ];
   }
 
   template <typename T> class Table {
    public:
-    Table() : _array(null), _length(-1) {}
+    Table() : array_(null), length_(-1) {}
     ~Table() {
-      if (_array != null) free(_array);
+      if (array_ != null) free(array_);
     }
 
     void create(int length) {
       T* array = unvoid_cast<T*>(malloc(sizeof(T) * length));
       ASSERT(array != null);
       for (int i = length - 1; i >= 0; i--) array[i] = null;
-      _array = array;
-      _length = length;
+      array_ = array;
+      length_ = length;
     }
 
     T at(int index) {
-      ASSERT(index >= 0 && index < _length);
-      return _array[index];
+      ASSERT(index >= 0 && index < length_);
+      return array_[index];
     }
 
     void at_put(int index, T value) {
-      ASSERT(index >= 0 && index < _length);
-      _array[index] = value;
+      ASSERT(index >= 0 && index < length_);
+      array_[index] = value;
     }
 
-    T* array() const { return _array; }
-    int length() const { return _length; }
+    T* array() const { return array_; }
+    int length() const { return length_; }
 
 #ifndef TOIT_FREERTOS
     void read(SnapshotReader* st) {
-      _array = reinterpret_cast<T*>(st->read_external_object_table(&_length));
+      array_ = reinterpret_cast<T*>(st->read_external_object_table(&length_));
     }
 
     void write(SnapshotWriter* st) {
@@ -247,7 +247,7 @@ class Program : public FlashAllocation {
 
     void do_pointers(PointerCallback* callback) {
       callback->object_table(raw_array(), length());
-      callback->c_address(reinterpret_cast<void**>(&_array));
+      callback->c_address(reinterpret_cast<void**>(&array_));
     }
 
     Object** copy() {
@@ -258,10 +258,10 @@ class Program : public FlashAllocation {
     }
 
    private:
-    T* _array;
-    int _length;
+    T* array_;
+    int length_;
 
-    Object** raw_array() { return reinterpret_cast<Object**>(_array); }
+    Object** raw_array() { return reinterpret_cast<Object**>(array_); }
 
     friend class Program;
   };
@@ -293,7 +293,7 @@ class Program : public FlashAllocation {
 
  private:
   static const int INVOKE_BYTECODE_COUNT = INVOKE_AT_PUT - INVOKE_EQ + 1;
-  int _invoke_bytecode_offsets[INVOKE_BYTECODE_COUNT];
+  int invoke_bytecode_offsets_[INVOKE_BYTECODE_COUNT];
 
   static uint16 compute_class_bits(TypeTag tag, int instance_byte_size) {
     ASSERT(0 <= instance_byte_size);
@@ -305,7 +305,7 @@ class Program : public FlashAllocation {
 
   void set_invoke_bytecode_offset(Opcode opcode, int offset) {
     ASSERT(opcode >= INVOKE_EQ && opcode <= INVOKE_AT_PUT);
-    _invoke_bytecode_offsets[opcode - INVOKE_EQ] = offset;
+    invoke_bytecode_offsets_[opcode - INVOKE_EQ] = offset;
   }
 
   uword tables_size() {
@@ -314,10 +314,10 @@ class Program : public FlashAllocation {
             sizeof(uint16) * (class_bits.length() + interface_check_offsets.length() + class_check_ids.length());
   }
 
-  ProgramRawHeap _heap;
+  ProgramRawHeap heap_;
 
-  Object* _roots[ROOT_COUNT];
-  #define DECLARE_ROOT(type, name) void set_##name(type* v) { _roots[name##_INDEX] = v; }
+  Object* roots_[ROOT_COUNT];
+  #define DECLARE_ROOT(type, name) void set_##name(type* v) { roots_[name##_INDEX] = v; }
   PROGRAM_ROOTS(DECLARE_ROOT)
   #undef DECLARE_ROOT
 
@@ -326,15 +326,15 @@ class Program : public FlashAllocation {
   BUILTIN_CLASS_IDS(DECLARE_CLASS_ID_ROOT)
   #undef DECLARE_CLASS_ID_ROOT
 
-  int _entry_point_indexes[ENTRY_POINTS_COUNT];
+  int entry_point_indexes_[ENTRY_POINTS_COUNT];
   void _set_entry_point_index(int entry_point_index, int dispatch_index) {
     ASSERT(0 <= entry_point_index && entry_point_index < ENTRY_POINTS_COUNT);
     ASSERT(entry_point_index >= 0);
-    _entry_point_indexes[entry_point_index] = dispatch_index;
+    entry_point_indexes_[entry_point_index] = dispatch_index;
   }
 
-  String* _source_mapping;
-  void set_source_mapping(String* mapping) { _source_mapping = mapping; }
+  String* source_mapping_;
+  void set_source_mapping(String* mapping) { source_mapping_ = mapping; }
 
   void set_dispatch_table(List<int32> table) { dispatch_table = table; }
   void set_class_bits_table(List<uint16> table) { class_bits = table; }
@@ -345,8 +345,8 @@ class Program : public FlashAllocation {
   // Should only be called from ProgramImage.
   void do_pointers(PointerCallback* callback);
 
-  uword _program_heap_address;
-  uword _program_heap_size;
+  uword program_heap_address_;
+  uword program_heap_size_;
 
   friend class Process;
   friend class ProgramHeap;

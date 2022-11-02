@@ -34,15 +34,15 @@ class ToitSocketAddress {
     as_socket_address_in()->sin_family = AF_INET;
   }
 
-  ToitSocketAddress() : _socket_address() {}
+  ToitSocketAddress() : socket_address_() {}
 
   int port() { return ntohs(as_socket_address_in()->sin_port); }
   uint8* address() { return reinterpret_cast<uint8*>(&(as_socket_address_in()->sin_addr.s_addr)); }
   int address_length() { return sizeof(in_addr); }
-  inline sockaddr_in* as_socket_address_in() { return reinterpret_cast<sockaddr_in*>(&_socket_address); }
-  inline sockaddr* as_socket_address() { return &_socket_address; }
-  inline int* size_pointer() { return &_socket_address_size; }
-  inline int size() const { return _socket_address_size; }
+  inline sockaddr_in* as_socket_address_in() { return reinterpret_cast<sockaddr_in*>(&socket_address_); }
+  inline sockaddr* as_socket_address() { return &socket_address_; }
+  inline int* size_pointer() { return &socket_address_size_; }
+  inline int size() const { return socket_address_size_; }
 
   toit::Object* as_toit_string(toit::Process* process) {
     char buffer[16];
@@ -76,8 +76,8 @@ class ToitSocketAddress {
   }
 
  private:
-  sockaddr _socket_address{};
-  int _socket_address_size = sizeof(sockaddr);
+  sockaddr socket_address_{};
+  int socket_address_size_ = sizeof(sockaddr);
 };
 }
 

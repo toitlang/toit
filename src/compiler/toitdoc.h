@@ -41,28 +41,28 @@ class Toitdoc {
   Toitdoc(toitdoc::Contents* contents,
           List<RefNode> refs,
           Source::Range range)
-      : _contents(contents)
-      , _refs(refs)
-      , _range(range) { }
+      : contents_(contents)
+      , refs_(refs)
+      , range_(range) { }
 
   Toitdoc()  // Needed, so it can be used as a map value.
-      : _contents(null)
-      , _range(Source::Range::invalid()) { }
+      : contents_(null)
+      , range_(Source::Range::invalid()) { }
 
-  bool is_valid() const { return _contents != null; }
-  toitdoc::Contents* contents() const { return _contents; }
-  List<RefNode> refs() const { return _refs; }
+  bool is_valid() const { return contents_ != null; }
+  toitdoc::Contents* contents() const { return contents_; }
+  List<RefNode> refs() const { return refs_; }
 
-  Source::Range range() const { return _range; }
+  Source::Range range() const { return range_; }
 
   static Toitdoc invalid() {
     return Toitdoc();
   }
 
  private:
-  toitdoc::Contents* _contents;
-  List<RefNode> _refs;
-  Source::Range _range;
+  toitdoc::Contents* contents_;
+  List<RefNode> refs_;
+  Source::Range range_;
 };
 
 class ToitdocRegistry {
@@ -71,26 +71,26 @@ class ToitdocRegistry {
   Toitdoc<ir::Node*> toitdoc_for(Module* module) const { return toitdoc_for(static_cast<void*>(module)); }
 
   void set_toitdoc(ir::Node* node, Toitdoc<ir::Node*> toitdoc) {
-    _map[static_cast<void*>(node)] = toitdoc;
+    map_[static_cast<void*>(node)] = toitdoc;
   }
 
   void set_toitdoc(Module* module, Toitdoc<ir::Node*> toitdoc) {
-    _map[static_cast<void*>(module)] = toitdoc;
+    map_[static_cast<void*>(module)] = toitdoc;
   }
 
   template<typename F>
   void for_each(const F& callback) {
-    _map.for_each(callback);
+    map_.for_each(callback);
   }
 
  private:
   Toitdoc<ir::Node*> toitdoc_for(void* node) const {
-    auto probe = _map.find(node);
-    if (probe == _map.end()) return Toitdoc<ir::Node*>::invalid();
+    auto probe = map_.find(node);
+    if (probe == map_.end()) return Toitdoc<ir::Node*>::invalid();
     return probe->second;
   }
 
-  Map<void*, Toitdoc<ir::Node*>> _map;
+  Map<void*, Toitdoc<ir::Node*>> map_;
 };
 
 } // namespace toit::compiler

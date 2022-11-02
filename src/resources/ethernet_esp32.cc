@@ -61,32 +61,32 @@ class EthernetResourceGroup : public ResourceGroup {
                         esp_netif_t* netif, esp_eth_handle_t eth_handle,
                         esp_eth_netif_glue_handle_t netif_glue)
       : ResourceGroup(process, event_source)
-      , _id(id)
-      , _netif(netif)
-      , _eth_handle(eth_handle)
-      , _netif_glue(netif_glue) {
+      , id_(id)
+      , netif_(netif)
+      , eth_handle_(eth_handle)
+      , netif_glue_(netif_glue) {
   }
 
   void connect() {
-    ESP_ERROR_CHECK(esp_eth_start(_eth_handle));
+    ESP_ERROR_CHECK(esp_eth_start(eth_handle_));
   }
 
   ~EthernetResourceGroup() {
-    ESP_ERROR_CHECK(esp_eth_stop(_eth_handle));
-    ESP_ERROR_CHECK(esp_eth_clear_default_handlers(_eth_handle));
-    ESP_ERROR_CHECK(esp_eth_del_netif_glue(_netif_glue));
-    ESP_ERROR_CHECK(esp_eth_driver_uninstall(_eth_handle));
-    esp_netif_destroy(_netif);
-    ethernet_pool.put(_id);
+    ESP_ERROR_CHECK(esp_eth_stop(eth_handle_));
+    ESP_ERROR_CHECK(esp_eth_clear_default_handlers(eth_handle_));
+    ESP_ERROR_CHECK(esp_eth_del_netif_glue(netif_glue_));
+    ESP_ERROR_CHECK(esp_eth_driver_uninstall(eth_handle_));
+    esp_netif_destroy(netif_);
+    ethernet_pool.put(id_);
   }
 
   uint32_t on_event(Resource* resource, word data, uint32_t state);
 
  private:
-  int _id;
-  esp_netif_t *_netif;
-  esp_eth_handle_t _eth_handle;
-  esp_eth_netif_glue_handle_t _netif_glue;
+  int id_;
+  esp_netif_t *netif_;
+  esp_eth_handle_t eth_handle_;
+  esp_eth_netif_glue_handle_t netif_glue_;
  };
 
 class EthernetEvents : public SystemResource {
@@ -112,11 +112,11 @@ class EthernetIpEvents : public SystemResource {
   }
 
   const char* ip() {
-    return _ip;
+    return ip_;
   }
 
   void update_ip(uint32 addr) {
-    sprintf(_ip, "%d.%d.%d.%d",
+    sprintf(ip_, "%d.%d.%d.%d",
             (addr >> 0) & 0xff,
             (addr >> 8) & 0xff,
             (addr >> 16) & 0xff,
@@ -124,12 +124,12 @@ class EthernetIpEvents : public SystemResource {
   }
 
   void clear_ip() {
-    memset(_ip, 0, sizeof(_ip));
+    memset(ip_, 0, sizeof(ip_));
   }
 
  private:
   friend class EthernetResourceGroup;
-  char _ip[16];
+  char ip_[16];
 };
 
 uint32_t EthernetResourceGroup::on_event(Resource* resource, word data, uint32_t state) {

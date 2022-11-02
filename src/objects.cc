@@ -307,18 +307,18 @@ bool Object::encode_on(ProgramOrientedEncoder* encoder) {
 void Stack::transfer_to_interpreter(Interpreter* interpreter) {
   ASSERT(top() >= 0);
   ASSERT(top() <= length());
-  interpreter->_limit = _stack_limit_addr();
-  interpreter->_base = _stack_base_addr();
-  interpreter->_sp = _stack_sp_addr();
-  interpreter->_try_sp = _stack_try_sp_addr();
-  ASSERT(top() == (interpreter->_sp - _stack_limit_addr()));
+  interpreter->limit_ = _stack_limit_addr();
+  interpreter->base_ = _stack_base_addr();
+  interpreter->sp_ = _stack_sp_addr();
+  interpreter->try_sp_ = _stack_try_sp_addr();
+  ASSERT(top() == (interpreter->sp_ - _stack_limit_addr()));
   _set_top(-1);
 }
 
 void Stack::transfer_from_interpreter(Interpreter* interpreter) {
   ASSERT(top() == -1);
-  _set_top(interpreter->_sp - _stack_limit_addr());
-  _set_try_top(interpreter->_try_sp - _stack_limit_addr());
+  _set_top(interpreter->sp_ - _stack_limit_addr());
+  _set_try_top(interpreter->try_sp_ - _stack_limit_addr());
   ASSERT(top() >= 0);
   ASSERT(top() <= length());
 }

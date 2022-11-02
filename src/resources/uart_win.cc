@@ -42,54 +42,54 @@ public:
   TAG(UARTResource);
   UARTResource(ResourceGroup* group, HANDLE uart, HANDLE read_event, HANDLE write_event, HANDLE error_event)
       : WindowsResource(group)
-      , _uart(uart) {
-    _read_overlapped.hEvent = read_event;
-    _write_overlapped.hEvent = write_event;
-    _comm_events_overlapped.hEvent = error_event;
+      , uart_(uart) {
+    read_overlapped_.hEvent = read_event;
+    write_overlapped_.hEvent = write_event;
+    comm_events_overlapped_.hEvent = error_event;
 
     set_state(kWriteState);
 
     if (!issue_read_request()) {
-      _error_code = GetLastError();
+      error_code_ = GetLastError();
     }
 
     if (!issue_comm_events_request()) {
-      _error_code = GetLastError();
+      error_code_ = GetLastError();
     }
   }
 
   ~UARTResource() override {
-    if (_write_buffer) free(_write_buffer);
+    if (write_buffer_) free(write_buffer_);
   }
 
-  HANDLE uart() { return _uart; }
+  HANDLE uart() { return uart_; }
   bool rts() const { return rts_; }
   bool dtr() const { return dtr_; }
   void set_rts(bool rts) { rts_ = rts; }
   void set_dtr(bool dtr) { dtr_ = dtr; }
-  char* read_buffer() { return _read_data; }
-  DWORD read_count() const { return _read_count; }
-  bool ready_for_write() const { return _write_ready; }
-  bool ready_for_read() const { return _read_ready != 0; }
-  bool has_error() const { return _error_code != ERROR_SUCCESS; }
-  DWORD error_code() const { return _error_code; }
+  char* read_buffer() { return read_data_; }
+  DWORD read_count() const { return read_count_; }
+  bool ready_for_write() const { return write_ready_; }
+  bool ready_for_read() const { return read_ready_ != 0; }
+  bool has_error() const { return error_code_ != ERROR_SUCCESS; }
+  DWORD error_code() const { return error_code_; }
 
   void do_close() override {
-    CloseHandle(_read_overlapped.hEvent);
-    CloseHandle(_write_overlapped.hEvent);
-    CloseHandle(_uart);
+    CloseHandle(read_overlapped_.hEvent);
+    CloseHandle(write_overlapped_.hEvent);
+    CloseHandle(uart_);
   }
 
   std::vector<HANDLE> events() override {
     return std::vector<HANDLE>({
-      _read_overlapped.hEvent,
-      _write_overlapped.hEvent,
-      _comm_events_overlapped.hEvent
+                                   read_overlapped_.hEvent,
+                                   write_overlapped_.hEvent,
+                                   comm_events_overlapped_.hEvent
     });
   }
 
   bool issue_comm_events_request() {
-    bool succeeded = WaitCommEvent(_uart, &_event_mask, &_comm_events_overlapped);
+    bool succeeded = WaitCommEvent(uart_, &event_mask_, &comm_events_overlapped_);
     if (!succeeded && GetLastError() != ERROR_IO_PENDING) {
       return false;
     }
@@ -97,9 +97,9 @@ public:
   }
 
   bool issue_read_request() {
-    _read_ready = false;
-    _read_count = 0;
-    bool success = ReadFile(_uart, _read_data, READ_BUFFER_SIZE, &_read_count, &_read_overlapped);
+    read_ready_ = false;
+    read_count_ = 0;
+    bool success = ReadFile(uart_, read_data_, READ_BUFFER_SIZE, &read_count_, &read_overlapped_);
     if (!success && WSAGetLastError() != ERROR_IO_PENDING) {
       return false;
     }
@@ -107,21 +107,21 @@ public:
   }
 
   bool receive_read_response() {
-    bool overlapped_result = GetOverlappedResult(_uart, &_read_overlapped, &_read_count, false);
+    bool overlapped_result = GetOverlappedResult(uart_, &read_overlapped_, &read_count_, false);
     return overlapped_result;
   }
 
   bool send(const uint8* buffer, int length) {
-    if (_write_buffer != null) free(_write_buffer);
+    if (write_buffer_ != null) free(write_buffer_);
 
-    _write_ready = false;
+    write_ready_ = false;
 
     // We need to copy the buffer out to a long-lived heap object
-    _write_buffer = static_cast<char*>(malloc(length));
-    memcpy(_write_buffer, buffer, length);
+    write_buffer_ = static_cast<char*>(malloc(length));
+    memcpy(write_buffer_, buffer, length);
 
     DWORD tmp;
-    bool send_result = WriteFile(_uart, buffer, length, &tmp, &_write_overlapped);
+    bool send_result = WriteFile(uart_, buffer, length, &tmp, &write_overlapped_);
     if (!send_result && WSAGetLastError() != ERROR_IO_PENDING) {
       return false;
     }
@@ -130,23 +130,23 @@ public:
   }
 
   uint32_t on_event(HANDLE event, uint32_t state) override {
-    if (event == _read_overlapped.hEvent) {
-      _read_ready = true;
+    if (event == read_overlapped_.hEvent) {
+      read_ready_ = true;
       state |= kReadState;
-    } else if (event == _write_overlapped.hEvent) {
-      _write_ready = true;
+    } else if (event == write_overlapped_.hEvent) {
+      write_ready_ = true;
       state |= kWriteState;
-    } else if (event == _comm_events_overlapped.hEvent) {
+    } else if (event == comm_events_overlapped_.hEvent) {
       DWORD tmp;
-      bool succeeded = GetOverlappedResult(_uart, &_comm_events_overlapped, &tmp, false);
+      bool succeeded = GetOverlappedResult(uart_, &comm_events_overlapped_, &tmp, false);
       if (!succeeded) {
-        _error_code = GetLastError();
+        error_code_ = GetLastError();
       } else {
-        if (_event_mask & EV_ERR) state |= kErrorState;
+        if (event_mask_ & EV_ERR) state |= kErrorState;
         /* TODO(mikkel): Handle EV_TXEMPTY and EV_BREAK */
 
         if (!issue_comm_events_request()) {
-          _error_code = GetLastError();
+          error_code_ = GetLastError();
         }
       }
     }
@@ -154,23 +154,23 @@ public:
   }
 
  private:
-  HANDLE _uart;
+  HANDLE uart_;
   bool rts_ = false;
   bool dtr_ = false;
 
-  char _read_data[READ_BUFFER_SIZE]{};
-  OVERLAPPED _read_overlapped{};
-  DWORD _read_count = 0;
-  bool _read_ready = false;
+  char read_data_[READ_BUFFER_SIZE]{};
+  OVERLAPPED read_overlapped_{};
+  DWORD read_count_ = 0;
+  bool read_ready_ = false;
 
-  OVERLAPPED _write_overlapped{};
-  char* _write_buffer = null;
-  bool _write_ready = true;
+  OVERLAPPED write_overlapped_{};
+  char* write_buffer_ = null;
+  bool write_ready_ = true;
 
-  OVERLAPPED _comm_events_overlapped{};
-  DWORD _event_mask = 0;
+  OVERLAPPED comm_events_overlapped_{};
+  DWORD event_mask_ = 0;
 
-  DWORD _error_code = ERROR_SUCCESS;
+  DWORD error_code_ = ERROR_SUCCESS;
 };
 
 class UARTResourceGroup : public ResourceGroup {

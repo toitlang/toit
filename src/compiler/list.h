@@ -29,43 +29,43 @@ class ListBuilder {
  public:
   ListBuilder() { }
 
-  int length() const { return _data.size(); }
-  bool is_empty() const { return _data.empty(); }
+  int length() const { return data_.size(); }
+  bool is_empty() const { return data_.empty(); }
 
   void clear() {
-    _data.clear();
+    data_.clear();
   }
 
   void add(T element) {
-    _data.push_back(element);
+    data_.push_back(element);
   }
 
   void add(List<T> elements) {
     if (elements.is_empty()) return;
-    _data.reserve(_data.size() + elements.length());
-    _data.insert(_data.end(), elements.begin(), elements.end());
+    data_.reserve(data_.size() + elements.length());
+    data_.insert(data_.end(), elements.begin(), elements.end());
   }
 
   T& last() {
     ASSERT(length() > 0);
-    return _data.back();
+    return data_.back();
   }
 
   T remove_last() {
     ASSERT(!is_empty());
-    T result = _data.back();
-    _data.pop_back();
+    T result = data_.back();
+    data_.pop_back();
     return result;
   }
 
   T& operator[](int index) {
     ASSERT(index >= 0 && index < length());
-    return _data[index];
+    return data_[index];
   }
 
   const T& operator[](int index) const {
     ASSERT(index >= 0 && index < length());
-    return _data[index];
+    return data_[index];
   }
 
   static List<T> allocate(int length) {
@@ -74,7 +74,7 @@ class ListBuilder {
   }
 
   List<T> build() {
-    return build_from_vector(_data);
+    return build_from_vector(data_);
   }
 
   static List<T> build(T element) {
@@ -119,7 +119,7 @@ class ListBuilder {
   }
 
  private:
-  std::vector<T> _data;
+  std::vector<T> data_;
 };
 
 } // namespace toit::compiler

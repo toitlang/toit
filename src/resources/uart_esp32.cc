@@ -55,14 +55,14 @@ public:
 
   UARTResource(ResourceGroup* group, uart_port_t port, QueueHandle_t queue)
       : EventQueueResource(group, queue)
-      , _port(port) {}
+      , port_(port) {}
 
-  uart_port_t port() const { return _port; }
+  uart_port_t port() const { return port_; }
 
   bool receive_event(word* data) override;
 
 private:
-  uart_port_t _port;
+  uart_port_t port_;
 };
 
 bool UARTResource::receive_event(word* data) {

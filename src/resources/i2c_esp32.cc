@@ -46,19 +46,19 @@ class I2CResourceGroup : public ResourceGroup {
   TAG(I2CResourceGroup);
   I2CResourceGroup(Process* process, i2c_port_t port)
     : ResourceGroup(process)
-    , _port(port) { }
+    , port_(port) { }
 
   ~I2CResourceGroup() {
     SystemEventSource::instance()->run([&]() -> void {
-      FATAL_IF_NOT_ESP_OK(i2c_driver_delete(_port));
+      FATAL_IF_NOT_ESP_OK(i2c_driver_delete(port_));
     });
-    i2c_ports.put(_port);
+    i2c_ports.put(port_);
   }
 
-  i2c_port_t port() const { return _port; }
+  i2c_port_t port() const { return port_; }
 
  private:
-  i2c_port_t _port;
+  i2c_port_t port_;
 };
 
 MODULE_IMPLEMENTATION(i2c, MODULE_I2C);

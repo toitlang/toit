@@ -56,7 +56,7 @@ struct SemanticToken {
 
 class TokenVisitor : public TraversingVisitor {
  public:
-  TokenVisitor(const char* path, SourceManager* manager) : _path(path), _manager(manager) { }
+  TokenVisitor(const char* path, SourceManager* manager) : path_(path), manager_(manager) { }
 
   void visit_ast_import(ast::Import* import, Module* module) {
     auto prefix = import->prefix();
@@ -86,7 +86,7 @@ class TokenVisitor : public TraversingVisitor {
     }
   }
 
-  std::vector<SemanticToken> tokens() const { return _tokens; }
+  std::vector<SemanticToken> tokens() const { return tokens_; }
 
  private:
   void emit_token(const Source::Range& range, ir::Node* node, bool is_definition = false) {
@@ -104,13 +104,13 @@ class TokenVisitor : public TraversingVisitor {
     }
   }
   void emit_token(const Source::Range& range, TokenType type, int modifiers = 0) {
-    auto location_from = _manager->compute_location(range.from());
-    auto location_to = _manager->compute_location(range.to());
-    if (location_from.source->absolute_path() != _path) return;
+    auto location_from = manager_->compute_location(range.from());
+    auto location_to = manager_->compute_location(range.to());
+    if (location_from.source->absolute_path() != path_) return;
     if (location_from.line_number != location_to.line_number) return;
     int column_from = utf16_offset_in_line(location_from);
     int column_to = utf16_offset_in_line(location_to);
-    _tokens.push_back({
+    tokens_.push_back({
       .line = location_from.line_number - 1,
       .column = column_from,
       .length = column_to - column_from,
@@ -119,9 +119,9 @@ class TokenVisitor : public TraversingVisitor {
     });
   }
 
-  const char* _path;
-  SourceManager* _manager;
-  std::vector<SemanticToken> _tokens;
+  const char* path_;
+  SourceManager* manager_;
+  std::vector<SemanticToken> tokens_;
 };
 
 }

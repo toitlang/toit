@@ -37,7 +37,7 @@ class DispatchTable {
   static DispatchTable build(List<ir::Class*> classes,
                              List<ir::Method*> methods);
 
-  int length() const { return _table.length(); }
+  int length() const { return table_.length(); }
 
   // Returns the slot-index for *static* methods.
   //
@@ -58,23 +58,23 @@ class DispatchTable {
   // combination of `holder + selector` points to a slot. There we can then
   // check whether the slot-entry has the right selector, and if yes, invoke it.
   int dispatch_offset_for(const DispatchSelector& selector) {
-    auto probe = _selector_offsets.find(selector);
-    if (probe != _selector_offsets.end()) return probe->second;
+    auto probe = selector_offsets_.find(selector);
+    if (probe != selector_offsets_.end()) return probe->second;
     return -1;
   }
   int id_for(const ir::Class* klass) const { return klass->start_id(); }
 
   void for_each_selector_offset(std::function<void (DispatchSelector, int)> callback) {
-    _selector_offsets.for_each(callback);
+    selector_offsets_.for_each(callback);
   }
 
  private:
   DispatchTable(List<ir::Method*> table,
                 const Map<DispatchSelector, int>& selector_offsets)
-      : _table(table), _selector_offsets(selector_offsets) { }
+      : table_(table), selector_offsets_(selector_offsets) { }
 
-  List<ir::Method*> _table;
-  Map<DispatchSelector, int> _selector_offsets;
+  List<ir::Method*> table_;
+  Map<DispatchSelector, int> selector_offsets_;
 };
 
 } // namespace toit::compiler

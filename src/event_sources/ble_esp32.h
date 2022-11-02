@@ -25,7 +25,7 @@ namespace toit {
 
 class BLEEventSource : public LazyEventSource {
  public:
-  static BLEEventSource* instance() { return _instance; }
+  static BLEEventSource* instance() { return instance_; }
 
   BLEEventSource();
 
@@ -37,7 +37,7 @@ class BLEEventSource : public LazyEventSource {
   void stop() override;
 
  protected:
-  static BLEEventSource* _instance;
+  static BLEEventSource* instance_;
 
   ~BLEEventSource() override;
 };

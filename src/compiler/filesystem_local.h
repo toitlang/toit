@@ -56,9 +56,9 @@ class FilesystemLocal : public Filesystem {
                               const std::function<void (const char*)> callback);
 
  private:
-  const char* _sdk_path = null;
-  List<const char*> _package_cache_paths;
-  bool _has_computed_cache_paths = false;
+  const char* sdk_path_ = null;
+  List<const char*> package_cache_paths_;
+  bool has_computed_cache_paths_ = false;
 };
 
 } // namespace compiler

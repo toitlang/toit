@@ -28,19 +28,19 @@ template<typename T>
 class CycleDetector {
  public:
   int in_progress_size() const {
-    return static_cast<int>(_in_progress.size());
+    return static_cast<int>(in_progress_.size());
   }
 
   void start(const T& entry) {
-    ASSERT(_in_progress_map.find(entry) == _in_progress_map.end());
-    _in_progress_map[entry] = _in_progress.size();
-    _in_progress.push_back(entry);
+    ASSERT(in_progress_map_.find(entry) == in_progress_map_.end());
+    in_progress_map_[entry] = in_progress_.size();
+    in_progress_.push_back(entry);
   }
 
   void stop(const T& entry) {
-    ASSERT(_in_progress.back() == entry);
-    _in_progress_map.remove(entry);
-    _in_progress.pop_back();
+    ASSERT(in_progress_.back() == entry);
+    in_progress_map_.remove(entry);
+    in_progress_.pop_back();
   }
 
   /// Checks whether the given entry is in a cycle.
@@ -51,17 +51,17 @@ class CycleDetector {
   ///  * Returns true.
   bool check_cycle(const T& entry,
                    const std::function<void (const std::vector<T>& cycle)> cycle_callback) {
-    auto probe = _in_progress_map.find(entry);
-    if (probe == _in_progress_map.end()) return false;
+    auto probe = in_progress_map_.find(entry);
+    if (probe == in_progress_map_.end()) return false;
     // We are in a cycle.
-    auto cycle = std::vector<T>(_in_progress.begin() + probe->second, _in_progress.end());
+    auto cycle = std::vector<T>(in_progress_.begin() + probe->second, in_progress_.end());
     cycle_callback(cycle);
     return true;
   }
 
  private:
-  UnorderedMap<T, int> _in_progress_map;
-  std::vector<T> _in_progress;
+  UnorderedMap<T, int> in_progress_map_;
+  std::vector<T> in_progress_;
 };
 
 } // namespace toit::compiler

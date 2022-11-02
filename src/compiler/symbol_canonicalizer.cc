@@ -38,27 +38,27 @@ ENTRY_POINTS(E)
 };
 
 SymbolCanonicalizer::SymbolCanonicalizer()
-      : _identifier_trie(0), _number_trie(0) {
+      : identifier_trie_(0), number_trie_(0) {
   for (unsigned i = 0; i < ARRAY_SIZE(keywords); i++) {
     Token::Kind kind = keywords[i];
     const uint8* syntax = unsigned_cast(Token::symbol(kind).c_str());
-    Trie* trie = _identifier_trie.get(syntax);
+    Trie* trie = identifier_trie_.get(syntax);
     trie->kind = kind;
     trie->data = Symbol::invalid();
   }
   for (unsigned i = 0; i < ARRAY_SIZE(identifiers); i++) {
     Symbol symbol = identifiers[i];
     const uint8* syntax = unsigned_cast(symbol.c_str());
-    Trie* trie = _identifier_trie.get(syntax);
+    Trie* trie = identifier_trie_.get(syntax);
     trie->kind = Token::IDENTIFIER;
-    ASSERT(i == static_cast<unsigned>(_syntax.length()));
-    _syntax.add(syntax);
+    ASSERT(i == static_cast<unsigned>(syntax_.length()));
+    syntax_.add(syntax);
     trie->data = symbol;
   }
 }
 
 SymbolCanonicalizer::TokenSymbol SymbolCanonicalizer::canonicalize_identifier(const uint8* from, const uint8* to) {
-  Trie* trie = _identifier_trie.get(from, to);
+  Trie* trie = identifier_trie_.get(from, to);
   if (trie->kind == 0) {
     trie->kind = Token::IDENTIFIER;
     trie->data = Symbol::synthetic(from, to);
@@ -70,7 +70,7 @@ SymbolCanonicalizer::TokenSymbol SymbolCanonicalizer::canonicalize_identifier(co
 }
 
 Symbol SymbolCanonicalizer::canonicalize_number(const uint8* from, const uint8* to) {
-  Trie* trie = _number_trie.get(from, to);
+  Trie* trie = number_trie_.get(from, to);
   if (trie->kind == 0) {
     // We are arbitrarily using 'integer' as token here.
     // It's not important, and only serves as an indication that we have already seen

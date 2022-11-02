@@ -328,68 +328,68 @@ extern void dont_optimize_away_these_allocations(void** blocks);
 template<typename T>
 class List {
  public:
-  List() : _data(null), _length(0) { }
-  List(T* data, int length) : _data(data), _length(length) {
+  List() : data_(null), length_(0) { }
+  List(T* data, int length) : data_(data), length_(length) {
     ASSERT(length >= 0);
   }
 
-  T* data() const { return _data; }
-  T*& data() { return _data; }
-  int length() const { return _length; }
-  bool is_empty() const { return _length == 0; }
+  T* data() const { return data_; }
+  T*& data() { return data_; }
+  int length() const { return length_; }
+  bool is_empty() const { return length_ == 0; }
 
   T& operator[](int index) {
-    ASSERT(index >= 0 && index < _length);
-    return _data[index];
+    ASSERT(index >= 0 && index < length_);
+    return data_[index];
   }
 
   const T& operator[](int index) const {
-    ASSERT(index >= 0 && index < _length);
-    return _data[index];
+    ASSERT(index >= 0 && index < length_);
+    return data_[index];
   }
 
   void clear() {
-    _data = null;
-    _length = 0;
+    data_ = null;
+    length_ = 0;
   }
 
-  T* begin() { return _data; }
-  const T* begin() const { return _data; }
-  T* end() { return &_data[_length]; }
-  const T* end() const { return &_data[_length]; }
+  T* begin() { return data_; }
+  const T* begin() const { return data_; }
+  T* end() { return &data_[length_]; }
+  const T* end() const { return &data_[length_]; }
 
   bool is_inside(const T* pointer) const {
     return (pointer >= begin() && pointer < end());
   }
 
   const List<T> sublist(int from, int to) const {
-    ASSERT(0 <= from && from <= to && to < _length);
-    return List<T>(&_data[from], to - from);
+    ASSERT(0 <= from && from <= to && to < length_);
+    return List<T>(&data_[from], to - from);
   }
 
   T& first() {
-    ASSERT(_length > 0);
-    return _data[0];
+    ASSERT(length_ > 0);
+    return data_[0];
   }
 
   T& last() {
-    ASSERT(_length > 0);
-    return _data[_length - 1];
+    ASSERT(length_ > 0);
+    return data_[length_ - 1];
   }
 
   const T& first() const {
-    ASSERT(_length > 0);
-    return _data[0];
+    ASSERT(length_ > 0);
+    return data_[0];
   }
 
   const T& last() const {
-    ASSERT(_length > 0);
-    return _data[_length - 1];
+    ASSERT(length_ > 0);
+    return data_[length_ - 1];
   }
 
  private:
-  T* _data;
-  int _length;
+  T* data_;
+  int length_;
 };
 
 class Base64Encoder {
@@ -436,11 +436,11 @@ struct Defer {
 template <typename T>
 class DeferDelete {
  public:
-  DeferDelete(T* object) : _object(object) {}
-  ~DeferDelete() { delete _object; }
+  DeferDelete(T* object) : object_(object) {}
+  ~DeferDelete() { delete object_; }
 
  private:
-  T* _object;
+  T* object_;
 };
 
 } // namespace toit

@@ -665,7 +665,7 @@ namespace toit {
   static const PrimitiveEntry name##_primitive_table[] = {          \
     entries(MODULE_IMPLEMENTATION_ENTRY)                            \
   };                                                                \
-  const PrimitiveEntry* name##_primitives = name##_primitive_table;
+  const PrimitiveEntry* name##primitives_ = name##_primitive_table;
 
 // ----------------------------------------------------------------------------
 
@@ -1130,7 +1130,7 @@ class Primitive {
 
   // Module-specific primitive lookup. May return null if the primitive isn't linked in.
   static const PrimitiveEntry* at(unsigned module, unsigned index) {
-    const PrimitiveEntry* table = _primitives[module];
+    const PrimitiveEntry* table = primitives_[module];
     return (table == null) ? null : &table[index];
   }
 
@@ -1145,7 +1145,7 @@ class Primitive {
   }
 
  private:
-  static const PrimitiveEntry* _primitives[];
+  static const PrimitiveEntry* primitives_[];
 };
 
 } // namespace toit

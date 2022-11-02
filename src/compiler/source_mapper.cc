@@ -29,9 +29,9 @@ class SourceInfoCollector;
 class StringTable {
  public:
   int find_index_for(const char* string) {
-    if (_map.find(string) != _map.end()) return _map[string];
+    if (map_.find(string) != map_.end()) return map_[string];
     int index = table.size();
-    _map[string] = index;
+    map_[string] = index;
     table.push_back(string);
     return index;
   }
@@ -39,7 +39,7 @@ class StringTable {
 
  private:
   std::list<std::string> table;
-  std::map<std::string, int> _map;
+  std::map<std::string, int> map_;
 };
 
 // Abstract class for collecting source info.
@@ -68,30 +68,30 @@ void StringTable::visit(SourceInfoCollector* collector) {
 
 class SourceInfoAllocator: public SourceInfoCollector {
  public:
-  SourceInfoAllocator(StringTable* strings = null) : _strings(strings) {}
+  SourceInfoAllocator(StringTable* strings = null) : strings_(strings) {}
 
   void write_string(const char* value) {
-    write_int(_strings->find_index_for(value));
+    write_int(strings_->find_index_for(value));
   }
 
   void write_string_content(const char* value) {
     int len = value == null ? 0 : strlen(value);
     write_int(len);
-    _size += len;
+    size_ += len;
   }
 
-  void write_byte(uint8 value) { _size++; }
+  void write_byte(uint8 value) { size_++; }
 
-  int size() { return _size; }
+  int size() { return size_; }
 
  private:
-  int _size = INT_SIZE * 2;
-  StringTable* _strings;
+  int size_ = INT_SIZE * 2;
+  StringTable* strings_;
 };
 
 class SourceInfoEmitter: public SourceInfoCollector {
  public:
-  SourceInfoEmitter(uint8* buffer, StringTable* strings) : buffer(buffer), _strings(strings) {}
+  SourceInfoEmitter(uint8* buffer, StringTable* strings) : buffer(buffer), strings_(strings) {}
 
   void write_header(int tag, int size) {
     write_header_int(tag);
@@ -103,7 +103,7 @@ class SourceInfoEmitter: public SourceInfoCollector {
   }
 
   void write_string(const char* value) {
-    write_int(_strings->find_index_for(value));
+    write_int(strings_->find_index_for(value));
   }
 
   void write_string_content(const char* value) {
@@ -116,7 +116,7 @@ class SourceInfoEmitter: public SourceInfoCollector {
  private:
   int pos = 0;
   uint8* buffer;
-  StringTable* _strings;
+  StringTable* strings_;
 
   void write_header_int(int value) {
     ASSERT(value >= 0);
@@ -130,10 +130,10 @@ class SourceInfoEmitter: public SourceInfoCollector {
 
 void SourceMapper::visit_selectors(SourceInfoCollector* collector) {
   // For now just write unique
-  collector->write_int(_selectors.size());
-  for (auto location_id : _selectors.keys()) {
+  collector->write_int(selectors_.size());
+  for (auto location_id : selectors_.keys()) {
     collector->write_int(location_id);
-    auto selector_class_entry = _selectors.at(location_id);
+    auto selector_class_entry = selectors_.at(location_id);
     int encoded_super_id = selector_class_entry.super_location_id + 1;
     collector->write_int(encoded_super_id);
     collector->write_int(selector_class_entry.selectors.size());
@@ -144,8 +144,8 @@ void SourceMapper::visit_selectors(SourceInfoCollector* collector) {
 }
 
 void SourceMapper::visit_method_info(SourceInfoCollector* collector) {
-  collector->write_int(_source_information.size());
-  for (auto entry : _source_information) {
+  collector->write_int(source_information_.size());
+  for (auto entry : source_information_) {
     collector->write_int(entry.id);
     collector->write_int(entry.bytecode_size);
     collector->write_byte(static_cast<uint8>(entry.type));
@@ -194,12 +194,12 @@ void SourceMapper::visit_method_info(SourceInfoCollector* collector) {
 }
 
 void SourceMapper::visit_class_info(SourceInfoCollector* collector) {
-  collector->write_int(_class_information.size());
+  collector->write_int(class_information_.size());
   int id = 0;
-  for (auto klass : _class_information.keys()) {
+  for (auto klass : class_information_.keys()) {
     // We don't need to encode the id, as it's given by the index in the class-table.
     ASSERT(klass->id() == id++);
-    auto entry = _class_information[klass];
+    auto entry = class_information_[klass];
     int encoded_super = entry.super + 1;
     collector->write_int(encoded_super);
     collector->write_int(entry.location_id);
@@ -229,16 +229,16 @@ void SourceMapper::visit_primitive_info(SourceInfoCollector* collector) {
 }
 
 void SourceMapper::visit_selector_offset_info(SourceInfoCollector* collector) {
-  collector->write_int(_selector_offsets.size());
-  for (auto p : _selector_offsets) {
+  collector->write_int(selector_offsets_.size());
+  for (auto p : selector_offsets_) {
     collector->write_int(p.first);
     collector->write_string(p.second);
   }
 }
 
 void SourceMapper::visit_global_info(SourceInfoCollector* collector) {
-  collector->write_int(_global_information.size());
-  for (auto info : _global_information) {
+  collector->write_int(global_information_.size());
+  for (auto info : global_information_) {
     collector->write_string(info.name);
     collector->write_string(info.holder_name);
     int encoded_holder_class_id = info.holder_class_id + 1;
@@ -304,7 +304,7 @@ SourceMapper::MethodEntry SourceMapper::build_method_entry(int index,
                                                            const char* name,
                                                            const char* holder_name,
                                                            Source::Range range) {
-  auto location = _manager->compute_location(range.from());
+  auto location = manager_->compute_location(range.from());
   return {
     .index = index,
     .id = -1,  // Set to -1, and must be updated later.
@@ -341,7 +341,7 @@ void SourceMapper::register_selectors(List<ir::Class*> classes) {
       selector_names.insert(name);
       selector_names.insert(name + "=");
     }
-    _selectors[location_id] = {
+    selectors_[location_id] = {
       .super_location_id = super_id,
       .selectors = selector_names.to_vector(),
     };
@@ -359,8 +359,8 @@ void SourceMapper::add_class_entry(int id,
   for (auto field : klass->fields()) {
     fields.push_back(field->name().c_str());
   }
-  auto location = _manager->compute_location(position);
-  _class_information[klass] = {
+  auto location = manager_->compute_location(position);
+  class_information_[klass] = {
     .id = id,
     .super = klass->has_super() ? klass->super()->id() : -1,
     .location_id = location_id,
@@ -376,12 +376,12 @@ void SourceMapper::add_class_entry(int id,
 }
 
 void SourceMapper::add_global_entry(ir::Global* global) {
-  ASSERT(static_cast<int>(_global_information.size()) == global->global_id());
+  ASSERT(static_cast<int>(global_information_.size()) == global->global_id());
   // For globals with initializers, we duplicate the holder-id and holder-name information.
   int holder_id;
   const char* holder_name;
   extract_holder_information(global->holder(), &holder_id, &holder_name);
-  _global_information.push_back({
+  global_information_.push_back({
     .name = global->name().c_str(),
     .holder_name = holder_name,
     .holder_class_id = holder_id,
@@ -389,7 +389,7 @@ void SourceMapper::add_global_entry(ir::Global* global) {
 }
 
 SourceMapper::MethodMapper SourceMapper::register_method(ir::Method* method) {
-  int index = _source_information.size();
+  int index = source_information_.size();
   auto name = method->name().c_str();
   if (method->is_setter()) {
     int len = strlen(name);
@@ -420,12 +420,12 @@ SourceMapper::MethodMapper SourceMapper::register_method(ir::Method* method) {
   int holder_id;
   const char* holder_name;
   extract_holder_information(method->holder(), &holder_id, &holder_name);
-  _source_information.push_back(build_method_entry(index, type, holder_id, name, holder_name, range));
+  source_information_.push_back(build_method_entry(index, type, holder_id, name, holder_name, range));
   return MethodMapper(this, index);
 }
 
 SourceMapper::MethodMapper SourceMapper::register_global(ir::Global* global) {
-  int index = _source_information.size();
+  int index = source_information_.size();
   auto name = global->name().c_str();
   auto range = global->range();
   // The source-information here is only for the initializer.
@@ -433,32 +433,32 @@ SourceMapper::MethodMapper SourceMapper::register_global(ir::Global* global) {
   int holder_id;
   const char* holder_name;
   extract_holder_information(global->holder(), &holder_id, &holder_name);
-  _source_information.push_back(build_method_entry(index, MethodType::GLOBAL, holder_id, name, holder_name, range));
+  source_information_.push_back(build_method_entry(index, MethodType::GLOBAL, holder_id, name, holder_name, range));
   return MethodMapper(this, index);
 }
 
 SourceMapper::MethodMapper SourceMapper::register_lambda(int outer_index, ir::Code* code) {
-  int index = _source_information.size();
+  int index = source_information_.size();
   auto name = "<lambda>";
   auto range = code->range();
   int encoded_outer = encode_outer_index(outer_index);
-  _source_information.push_back(build_method_entry(index, MethodType::LAMBDA, encoded_outer, name, "", range));
+  source_information_.push_back(build_method_entry(index, MethodType::LAMBDA, encoded_outer, name, "", range));
   return MethodMapper(this, index);
 }
 
 SourceMapper::MethodMapper SourceMapper::register_block(int outer_index, ir::Code* code) {
-  int index = _source_information.size();
+  int index = source_information_.size();
   auto name = "<block>";
   auto range = code->range();
   int encoded_outer = encode_outer_index(outer_index);
-  _source_information.push_back(build_method_entry(index, MethodType::BLOCK, encoded_outer, name, "", range));
+  source_information_.push_back(build_method_entry(index, MethodType::BLOCK, encoded_outer, name, "", range));
   return MethodMapper(this, index);
 }
 
 void SourceMapper::register_bytecode(int method_index, int bytecode_offset, Source::Range range) {
   ASSERT(method_index >= 0);
-  auto& method_data = _source_information[method_index];
-  auto location = _manager->compute_location(range.from());
+  auto& method_data = source_information_[method_index];
+  auto location = manager_->compute_location(range.from());
   method_data.bytecode_positions[bytecode_offset] = {
     .line = location.line_number,
     .column = location.offset_in_line + 1,  // Offsets are 0-based, but columns are 1-based.
@@ -467,7 +467,7 @@ void SourceMapper::register_bytecode(int method_index, int bytecode_offset, Sour
 
 void SourceMapper::register_as(int method_index, int bytecode_offset, const char* class_name) {
   ASSERT(method_index >= 0);
-  auto& method_data = _source_information[method_index];
+  auto& method_data = source_information_[method_index];
   method_data.as_class_names[bytecode_offset] = class_name;
 }
 
@@ -476,7 +476,7 @@ void SourceMapper::register_pubsub_call(int method_index,
                                         int target_dispatch_index,
                                         const char* topic) {
   ASSERT(method_index >= 0);
-  auto& method_data = _source_information[method_index];
+  auto& method_data = source_information_[method_index];
   method_data.pubsub_info.push_back({
     .bytecode_offset = bytecode_offset,
     .target_dispatch_index = target_dispatch_index,

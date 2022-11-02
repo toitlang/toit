@@ -43,21 +43,21 @@ MODULE_IMPLEMENTATION(file, MODULE_FILE)
 
 class AutoCloser {
  public:
-  explicit AutoCloser(int fd) : _fd(fd) {}
+  explicit AutoCloser(int fd) : fd_(fd) {}
   ~AutoCloser() {
-    if (_fd >= 0) {
-      close(_fd);
+    if (fd_ >= 0) {
+      close(fd_);
     }
   }
 
   int clear() {
-    int tmp = _fd;
-    _fd = -1;
+    int tmp = fd_;
+    fd_ = -1;
     return tmp;
   }
 
  private:
-  int _fd;
+  int fd_;
 };
 
 // For Posix-like calls, including socket calls.

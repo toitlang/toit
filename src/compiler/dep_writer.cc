@@ -46,15 +46,15 @@ void DepWriter::write_deps_to_file_if_different(const char* dep_path,
     generate_dependency_entry(unit->absolute_path(), builder.build());
   }
 
-  auto dep_buffer = _buffer;
+  auto dep_buffer = buffer_;
 
-  _buffer = "";
+  buffer_ = "";
   generate_header(out_path);
-  auto header_buffer = _buffer;
+  auto header_buffer = buffer_;
 
-  _buffer = "";
+  buffer_ = "";
   generate_footer();
-  auto footer_buffer = _buffer;
+  auto footer_buffer = buffer_;
 
   if (strcmp(dep_path, "-") == 0) {
     printf("%s%s%s", header_buffer.c_str(), dep_buffer.c_str(), footer_buffer.c_str());
@@ -89,7 +89,7 @@ void DepWriter::write_deps_to_file_if_different(const char* dep_path,
 }
 
 void DepWriter::write(const char* data) {
-  _buffer += data;
+  buffer_ += data;
 }
 
 void DepWriter::writeln_int(int x) {

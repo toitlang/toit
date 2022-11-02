@@ -28,26 +28,26 @@ class MutationVisitor : public TraversingVisitor {
  public:
   void visit_AssignmentGlobal(AssignmentGlobal* node) {
     TraversingVisitor::visit_AssignmentGlobal(node);
-    _mutated_globals.insert(node->global());
+    mutated_globals_.insert(node->global());
   }
 
-  UnorderedSet<Global*> mutated_globals() { return _mutated_globals; }
+  UnorderedSet<Global*> mutated_globals() { return mutated_globals_; }
 
  private:
-  UnorderedSet<Global*> _mutated_globals;
+  UnorderedSet<Global*> mutated_globals_;
 };
 
 class DependencyVisitor : public MutationVisitor {
  public:
   void visit_ReferenceGlobal(ReferenceGlobal* node) {
     MutationVisitor::visit_ReferenceGlobal(node);
-    _dependencies.insert(node->target());
+    dependencies_.insert(node->target());
   }
 
-  Set<Global*> global_dependencies() { return _dependencies; }
+  Set<Global*> global_dependencies() { return dependencies_; }
 
  private:
-  Set<Global*> _dependencies;
+  Set<Global*> dependencies_;
 };
 
 static bool is_inlineable(Expression* expression) {
@@ -75,12 +75,12 @@ static Literal* inlined_value_for(Expression* expression) {
 class FoldingInliningVisitor : public ReplacingVisitor {
  public:
   FoldingInliningVisitor(const UnorderedSet<Global*>& mutated_globals)
-      : _mutated_globals(mutated_globals) { }
+      : mutated_globals_(mutated_globals) { }
 
   Expression* visit_ReferenceGlobal(ReferenceGlobal* node) {
     node = ReplacingVisitor::visit_ReferenceGlobal(node)->as_ReferenceGlobal();
     auto global = node->target();
-    if (_mutated_globals.contains(global)) return node;
+    if (mutated_globals_.contains(global)) return node;
     if (is_inlineable(global->body())) {
       // We don't make a copy of the literal, which means that we end up having a DAG.
       return inlined_value_for(global->body());
@@ -146,7 +146,7 @@ class FoldingInliningVisitor : public ReplacingVisitor {
   }
 
  private:
-  UnorderedSet<Global*> _mutated_globals;
+  UnorderedSet<Global*> mutated_globals_;
 
   Expression* fold_int_int(int64 left, int64 right, Symbol selector, Source::Range range);
   Expression* fold_float_float(double left, double right, Symbol selector, Source::Range range);

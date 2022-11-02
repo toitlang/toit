@@ -53,40 +53,40 @@ class UDPSocketResource : public WindowsResource {
   TAG(UDPSocketResource);
   UDPSocketResource(UDPResourceGroup* resource_group, SOCKET socket, HANDLE read_event, HANDLE write_event)
     : WindowsResource(resource_group)
-    , _socket(socket) {
-    _read_buffer.buf = _read_data;
-    _read_buffer.len = READ_BUFFER_SIZE;
-    _read_overlapped.hEvent = read_event;
-    _write_overlapped.hEvent = write_event;
+    , socket_(socket) {
+    read_buffer_.buf = read_data_;
+    read_buffer_.len = READ_BUFFER_SIZE;
+    read_overlapped_.hEvent = read_event;
+    write_overlapped_.hEvent = write_event;
     set_state(UDP_WRITE);
     if (!issue_read_request()) {
       set_state(UDP_WRITE | UDP_ERROR);
-      _error_code = GetLastError();
+      error_code_ = GetLastError();
     };
   }
 
   ~UDPSocketResource() override {
-    if (_write_buffer.buf) free(_write_buffer.buf);
+    if (write_buffer_.buf) free(write_buffer_.buf);
   }
 
-  SOCKET socket() const { return _socket; }
-  DWORD read_count() const { return _read_count; }
-  char* read_buffer() const { return _read_buffer.buf; }
-  ToitSocketAddress& read_peer_address() { return _read_peer_address; }
-  DWORD error_code() const { return _error_code; }
-  bool ready_for_read() const { return _read_ready; }
-  bool ready_for_write() const { return _write_ready; }
+  SOCKET socket() const { return socket_; }
+  DWORD read_count() const { return read_count_; }
+  char* read_buffer() const { return read_buffer_.buf; }
+  ToitSocketAddress& read_peer_address() { return read_peer_address_; }
+  DWORD error_code() const { return error_code_; }
+  bool ready_for_read() const { return read_ready_; }
+  bool ready_for_write() const { return write_ready_; }
 
   std::vector<HANDLE> events() override {
-    return std::vector<HANDLE>({ _read_overlapped.hEvent, _write_overlapped.hEvent });
+    return std::vector<HANDLE>({read_overlapped_.hEvent, write_overlapped_.hEvent });
   }
 
   uint32_t on_event(HANDLE event, uint32_t state) override {
-    if (event == _read_overlapped.hEvent) {
-      _read_ready = true;
+    if (event == read_overlapped_.hEvent) {
+      read_ready_ = true;
       state |= UDP_READ;
-    } else if (event == _write_overlapped.hEvent) {
-      _write_ready = true;
+    } else if (event == write_overlapped_.hEvent) {
+      write_ready_ = true;
       state |= UDP_WRITE;
     }
 
@@ -94,19 +94,19 @@ class UDPSocketResource : public WindowsResource {
   }
 
   void do_close() override {
-    closesocket(_socket);
-    CloseHandle(_read_overlapped.hEvent);
-    CloseHandle(_write_overlapped.hEvent);
+    closesocket(socket_);
+    CloseHandle(read_overlapped_.hEvent);
+    CloseHandle(write_overlapped_.hEvent);
   }
 
   bool issue_read_request() {
-    _read_ready = false;
-    _read_count = 0;
+    read_ready_ = false;
+    read_count_ = 0;
     DWORD flags = 0;
-    int receive_result = WSARecvFrom(_socket, &_read_buffer, 1, NULL, &flags,
-                                     _read_peer_address.as_socket_address(),
-                                     _read_peer_address.size_pointer(),
-                                     &_read_overlapped, NULL);
+    int receive_result = WSARecvFrom(socket_, &read_buffer_, 1, NULL, &flags,
+                                     read_peer_address_.as_socket_address(),
+                                     read_peer_address_.size_pointer(),
+                                     &read_overlapped_, NULL);
     if (receive_result == SOCKET_ERROR && WSAGetLastError() != WSA_IO_PENDING) {
       return false;
     }
@@ -115,32 +115,32 @@ class UDPSocketResource : public WindowsResource {
 
   bool receive_read_response() {
     DWORD flags;
-    bool overlapped_result = WSAGetOverlappedResult(_socket, &_read_overlapped, &_read_count, false, &flags);
+    bool overlapped_result = WSAGetOverlappedResult(socket_, &read_overlapped_, &read_count_, false, &flags);
     return overlapped_result;
   }
 
   bool send(const uint8* buffer, int length, ToitSocketAddress* socket_address) {
     // We need to copy the buffer out to a long-lived heap object
-    if (_write_buffer.buf != null) {
-      free(_write_buffer.buf);
-      _write_buffer.buf = null;
+    if (write_buffer_.buf != null) {
+      free(write_buffer_.buf);
+      write_buffer_.buf = null;
     }
 
-    _write_ready = false;
+    write_ready_ = false;
 
-    _write_buffer.buf = static_cast<char*>(malloc(length));
-    memcpy(_write_buffer.buf, buffer, length);
-    _write_buffer.len = length;
+    write_buffer_.buf = static_cast<char*>(malloc(length));
+    memcpy(write_buffer_.buf, buffer, length);
+    write_buffer_.len = length;
 
     int send_result;
     DWORD tmp;
     if (socket_address) {
-      send_result = WSASendTo(_socket, &_write_buffer, 1, &tmp, 0,
+      send_result = WSASendTo(socket_, &write_buffer_, 1, &tmp, 0,
                               socket_address->as_socket_address(),
                               socket_address->size(),
-                              &_write_overlapped, NULL);
+                              &write_overlapped_, NULL);
     } else {
-      send_result = WSASend(_socket, &_write_buffer, 1, &tmp, 0, &_write_overlapped, NULL);
+      send_result = WSASend(socket_, &write_buffer_, 1, &tmp, 0, &write_overlapped_, NULL);
     }
 
     if (send_result == SOCKET_ERROR && WSAGetLastError() != WSA_IO_PENDING) {
@@ -151,20 +151,20 @@ class UDPSocketResource : public WindowsResource {
   }
 
  private:
-  SOCKET _socket;
+  SOCKET socket_;
 
-  WSABUF _read_buffer{};
-  char _read_data[READ_BUFFER_SIZE]{};
-  OVERLAPPED _read_overlapped{};
-  DWORD _read_count = 0;
-  ToitSocketAddress _read_peer_address;
-  bool _read_ready = false;
+  WSABUF read_buffer_{};
+  char read_data_[READ_BUFFER_SIZE]{};
+  OVERLAPPED read_overlapped_{};
+  DWORD read_count_ = 0;
+  ToitSocketAddress read_peer_address_;
+  bool read_ready_ = false;
 
-  WSABUF _write_buffer{};
-  OVERLAPPED _write_overlapped{};
-  bool _write_ready = true;
+  WSABUF write_buffer_{};
+  OVERLAPPED write_overlapped_{};
+  bool write_ready_ = true;
 
-  DWORD _error_code = ERROR_SUCCESS;
+  DWORD error_code_ = ERROR_SUCCESS;
 };
 
 MODULE_IMPLEMENTATION(udp, MODULE_UDP)

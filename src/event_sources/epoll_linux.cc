@@ -59,15 +59,15 @@ bool read_full(int fd, uint8_t* data, int length) {
   return true;
 }
 
-EpollEventSource* EpollEventSource::_instance = null;
+EpollEventSource* EpollEventSource::instance_ = null;
 
 EpollEventSource::EpollEventSource() : EventSource("Epoll")
     , Thread("Epoll") {
-  ASSERT(_instance == null);
-  _instance = this;
+  ASSERT(instance_ == null);
+  instance_ = this;
 
-  _epoll_fd = epoll_create1(EPOLL_CLOEXEC);
-  if (_epoll_fd < 0) {
+  epoll_fd_ = epoll_create1(EPOLL_CLOEXEC);
+  if (epoll_fd_ < 0) {
     FATAL("failed allocating epoll file descriptor: %d", errno)
   }
 
@@ -76,13 +76,13 @@ EpollEventSource::EpollEventSource() : EventSource("Epoll")
     FATAL("failed allocating pipe file descriptors: %d", errno)
   }
 
-  _control_read = fds[0];
-  _control_write = fds[1];
+  control_read_ = fds[0];
+  control_write_ = fds[1];
 
   epoll_event event = {0, {0}};
   event.events = EPOLLIN | EPOLLOUT;
-  event.data.fd = _control_read;
-  if (epoll_ctl(_epoll_fd, EPOLL_CTL_ADD, _control_read, &event) == -1) {
+  event.data.fd = control_read_;
+  if (epoll_ctl(epoll_fd_, EPOLL_CTL_ADD, control_read_, &event) == -1) {
     FATAL("failed to register close fd: %d\n", errno);
   }
 
@@ -90,11 +90,11 @@ EpollEventSource::EpollEventSource() : EventSource("Epoll")
 }
 
 EpollEventSource::~EpollEventSource() {
-  close(_control_write);
+  close(control_write_);
   join();
-  close(_epoll_fd);
+  close(epoll_fd_);
 
-  _instance = null;
+  instance_ = null;
 }
 
 
@@ -103,7 +103,7 @@ void EpollEventSource::on_register_resource(Locker& locker, Resource* r) {
   uint64_t cmd = resource->id();
   cmd <<= 32;
   cmd |= kAdd;
-  if (!write_full(_control_write, reinterpret_cast<uint8_t*>(&cmd), sizeof(cmd))) {
+  if (!write_full(control_write_, reinterpret_cast<uint8_t*>(&cmd), sizeof(cmd))) {
     FATAL("failed to send 0x%llx to epoll: %d", cmd, errno);
   }
 }
@@ -113,7 +113,7 @@ void EpollEventSource::on_unregister_resource(Locker& locker, Resource* r) {
   uint64_t cmd = resource->id();
   cmd <<= 32;
   cmd |= kRemove;
-  if (!write_full(_control_write, reinterpret_cast<uint8_t*>(&cmd), sizeof(cmd))) {
+  if (!write_full(control_write_, reinterpret_cast<uint8_t*>(&cmd), sizeof(cmd))) {
     FATAL("failed to send 0x%llx to epoll: %d", cmd, errno);
   }
 }
@@ -121,17 +121,17 @@ void EpollEventSource::on_unregister_resource(Locker& locker, Resource* r) {
 void EpollEventSource::entry() {
   while (true) {
     epoll_event event;
-    int ready = epoll_wait(_epoll_fd, &event, 1, -1);
+    int ready = epoll_wait(epoll_fd_, &event, 1, -1);
     switch (ready) {
       case 1: {
-        if (event.data.fd == _control_read) {
+        if (event.data.fd == control_read_) {
           if (event.events & EPOLLHUP) {
-            close(_control_read);
+            close(control_read_);
             return;
           }
 
           uint64_t cmd = 0;
-          if (!read_full(_control_read, reinterpret_cast<uint8_t*>(&cmd), sizeof(cmd))) {
+          if (!read_full(control_read_, reinterpret_cast<uint8_t*>(&cmd), sizeof(cmd))) {
             FATAL("failed to receive 0x%llx in epoll: %d", cmd, errno);
           }
 
@@ -141,14 +141,14 @@ void EpollEventSource::entry() {
                 epoll_event event = {0, {0}};
                 event.events = EPOLLIN | EPOLLOUT | EPOLLET;
                 event.data.fd = id;
-                if (epoll_ctl(_epoll_fd, EPOLL_CTL_ADD, id, &event) == -1) {
+                if (epoll_ctl(epoll_fd_, EPOLL_CTL_ADD, id, &event) == -1) {
                   FATAL("failed to add 0x%lx to epoll: %d", id, errno);
                 }
               }
               break;
 
             case kRemove: {
-                if (epoll_ctl(_epoll_fd, EPOLL_CTL_DEL, id, null) == -1) {
+                if (epoll_ctl(epoll_fd_, EPOLL_CTL_DEL, id, null) == -1) {
                   FATAL("failed to remove 0x%lx from epoll: %d", id, errno);
                 }
                 // Don't close STD pipes.

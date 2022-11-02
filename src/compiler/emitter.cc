@@ -33,33 +33,33 @@ inline void Emitter::emit(Opcode opcode, int value) {
 }
 
 inline void Emitter::emit_opcode(Opcode opcode) {
-  _opcode_positions.add(position());
-  _builder.add(opcode);
+  opcode_positions_.add(position());
+  builder_.add(opcode);
 }
 
 inline void Emitter::emit_uint8(uint8 value) {
-  _builder.add(value & 0xff);
+  builder_.add(value & 0xff);
 }
 
 inline void Emitter::emit_uint16(uint16 value) {
-  _builder.add(value & 0xff);
-  _builder.add(value >> 8);
+  builder_.add(value & 0xff);
+  builder_.add(value >> 8);
 }
 
 inline void Emitter::emit_uint16_at(int offset, uint16 value) {
-  _builder[offset] = value & 0xff;
-  _builder[offset + 1] = value >> 8;
+  builder_[offset] = value & 0xff;
+  builder_[offset + 1] = value >> 8;
 }
 
 inline void Emitter::emit_uint32(uint32 value) {
-  _builder.add((value >>  0) & 0xff);
-  _builder.add((value >>  8) & 0xff);
-  _builder.add((value >> 16) & 0xff);
-  _builder.add((value >> 24) & 0xff);
+  builder_.add((value >>  0) & 0xff);
+  builder_.add((value >>  8) & 0xff);
+  builder_.add((value >> 16) & 0xff);
+  builder_.add((value >> 24) & 0xff);
 }
 
 List<uint8> Emitter::bytecodes() {
-  return _builder.build();
+  return builder_.build();
 }
 
 inline void Emitter::emit_possibly_wide(Opcode op, word value) {
@@ -81,18 +81,18 @@ void Emitter::emit_load_local(int offset) {
     // Make sure that the last bytecode is the last byte and patch it
     // to be the combination of 'pop' and 'load local'.
     unsigned index = position() - 1;
-    ASSERT(_opcode_positions.last() == index);
-    _builder[index] = POP_LOAD_LOCAL;
+    ASSERT(opcode_positions_.last() == index);
+    builder_[index] = POP_LOAD_LOCAL;
     emit_uint8(offset);
   } else if (offset <= MAX_BYTECODE_VALUE &&
       last_is(POP, &value) &&
       value == 2) {
     // We change this to POP_1, followed by POP_LOAD_LOCAL, as this make
     //   other peepholes easier to implement.
-    int previous_position = _opcode_positions.last();
-    _builder[previous_position] = POP_1;
-    ASSERT(_builder.last() == 2);  // The POP value.
-    _builder.remove_last();
+    int previous_position = opcode_positions_.last();
+    builder_[previous_position] = POP_1;
+    ASSERT(builder_.last() == 2);  // The POP value.
+    builder_.remove_last();
     emit(POP_LOAD_LOCAL, offset);
   } else if (offset >= 0 && offset <= 5) {
     emit_opcode(static_cast<Opcode>(LOAD_LOCAL_0 + offset));
@@ -103,15 +103,15 @@ void Emitter::emit_load_local(int offset) {
 
 bool Emitter::last_is(Opcode opcode, int* value) {
   if (previous_opcode() != opcode) return false;
-  if (value) *value = _builder[_opcode_positions.last()  + 1];
+  if (value) *value = builder_[opcode_positions_.last()  + 1];
   return true;
 }
 
 Opcode Emitter::previous_opcode(int n) {
-  if (_opcode_positions.length() <= n) return ILLEGAL_END;
-  auto position = _opcode_positions[_opcode_positions.length() - 1 - n];
-  if (position < _last_bound) return ILLEGAL_END;
-  return static_cast<Opcode>(_builder[position]);
+  if (opcode_positions_.length() <= n) return ILLEGAL_END;
+  auto position = opcode_positions_[opcode_positions_.length() - 1 - n];
+  if (position < last_bound_) return ILLEGAL_END;
+  return static_cast<Opcode>(builder_[position]);
 }
 
 void Emitter::bind(Label* label) {
@@ -120,11 +120,11 @@ void Emitter::bind(Label* label) {
   for (int i = 0; i < label->uses(); i++) {
     int use = label->use_at(i);
     int offset = position - use;
-    ASSERT(_builder[use + 1] == 0 && _builder[use + 2] == 0);
+    ASSERT(builder_[use + 1] == 0 && builder_[use + 2] == 0);
     emit_uint16_at(use + 1, offset);
   }
   label->bind(position, height());
-  _last_bound = position;
+  last_bound_ = position;
 }
 
 void Emitter::load_integer(word value) {
@@ -147,37 +147,37 @@ void Emitter::load_integer(word value) {
     emit_opcode(LOAD_SMI_U32);
     emit_uint32(value);
   }
-  _stack.push(ExpressionStack::OBJECT);
+  stack_.push(ExpressionStack::OBJECT);
 }
 
 void Emitter::load_n_smis(int n) {
   ASSERT(0 < n && n < 0x100);
   emit(LOAD_SMIS_0, n);
   for (int i = 0; i < n; i++) {
-    _stack.push(ExpressionStack::OBJECT);
+    stack_.push(ExpressionStack::OBJECT);
   }
 }
 
 void Emitter::load_literal(int index) {
   ASSERT(index >= 0);
   emit_possibly_wide(LOAD_LITERAL, index);
-  _stack.push(ExpressionStack::OBJECT);
+  stack_.push(ExpressionStack::OBJECT);
 }
 
 void Emitter::load_null() {
   emit_opcode(LOAD_NULL);
-  _stack.push(ExpressionStack::OBJECT);
+  stack_.push(ExpressionStack::OBJECT);
 }
 
 void Emitter::load_global_var(int global_id, bool is_lazy) {
   emit_possibly_wide(is_lazy ? LOAD_GLOBAL_VAR_LAZY : LOAD_GLOBAL_VAR, global_id);
-  _stack.push(ExpressionStack::OBJECT);
+  stack_.push(ExpressionStack::OBJECT);
 }
 
 void Emitter::load_global_var_dynamic() {
   emit_opcode(LOAD_GLOBAL_VAR_DYNAMIC);
-  _stack.pop();
-  _stack.push(ExpressionStack::OBJECT);
+  stack_.pop();
+  stack_.push(ExpressionStack::OBJECT);
 }
 
 void Emitter::store_global_var(int global_id) {
@@ -186,30 +186,30 @@ void Emitter::store_global_var(int global_id) {
 
 void Emitter::store_global_var_dynamic() {
   emit_opcode(STORE_GLOBAL_VAR_DYNAMIC);
-  _stack.pop(2);
+  stack_.pop(2);
 }
 
 void Emitter::load_field(int n) {
   ASSERT(n >= 0);
-  _stack.pop();
-  _stack.push(ExpressionStack::OBJECT);
+  stack_.pop();
+  stack_.push(ExpressionStack::OBJECT);
 
   if (n < 16) {
     int local;
-    unsigned last = _opcode_positions.last();
-    if (_builder[last] >= LOAD_LOCAL_0 && previous_opcode() <= LOAD_LOCAL_5) {
+    unsigned last = opcode_positions_.last();
+    if (builder_[last] >= LOAD_LOCAL_0 && previous_opcode() <= LOAD_LOCAL_5) {
       ASSERT(last == position() - 1);
-      local = _builder[last] - LOAD_LOCAL_0;
-      _builder[last] = LOAD_FIELD_LOCAL;
+      local = builder_[last] - LOAD_LOCAL_0;
+      builder_[last] = LOAD_FIELD_LOCAL;
       emit_uint8(n << 4 | local);
       return;
     } else if (last_is(LOAD_LOCAL, &local) && local < 16) {
-      _builder[last] = LOAD_FIELD_LOCAL;
-      _builder[last + 1] = n << 4 | local;
+      builder_[last] = LOAD_FIELD_LOCAL;
+      builder_[last + 1] = n << 4 | local;
       return;
     } else if (last_is(POP_LOAD_LOCAL, &local) && local < 16) {
-      _builder[last] = POP_LOAD_FIELD_LOCAL;
-      _builder[last + 1] = n << 4 | local;
+      builder_[last] = POP_LOAD_FIELD_LOCAL;
+      builder_[last + 1] = n << 4 | local;
       return;
     }
   }
@@ -219,46 +219,46 @@ void Emitter::load_field(int n) {
 void Emitter::store_field(int n) {
   ASSERT(n >= 0);
   emit_possibly_wide(STORE_FIELD, n);
-  ExpressionStack::Type type = _stack.type(0);
-  _stack.pop();
-  _stack.pop();  // Drop the instance.
-  _stack.push(type);
+  ExpressionStack::Type type = stack_.type(0);
+  stack_.pop();
+  stack_.pop();  // Drop the instance.
+  stack_.push(type);
 }
 
 void Emitter::load_local(int n) {
   ASSERT(n >= 0 && n < height());
   int offset = height() - n - 1;
-  ExpressionStack::Type type = _stack.type(offset);
-  _stack.push(type);
+  ExpressionStack::Type type = stack_.type(offset);
+  stack_.push(type);
   emit_load_local(offset);
 }
 
 void Emitter::load_outer_local(int n, Emitter* outer_emitter) {
   ASSERT(n >= 0 && n < outer_emitter->height());
-  ASSERT(outer_emitter->_stack.type(0) == ExpressionStack::BLOCK_CONSTRUCTION_TOKEN);
+  ASSERT(outer_emitter->stack_.type(0) == ExpressionStack::BLOCK_CONSTRUCTION_TOKEN);
   int offset = outer_emitter->height() - n - 1;
-  ExpressionStack::Type type = outer_emitter->_stack.type(offset);
+  ExpressionStack::Type type = outer_emitter->stack_.type(offset);
   emit(LOAD_OUTER, offset);
-  _stack.pop();  // The block reference.
-  _stack.push(type);
+  stack_.pop();  // The block reference.
+  stack_.push(type);
 }
 
 void Emitter::load_parameter(int n, ExpressionStack::Type type) {
   ASSERT(n >= 0 && n < arity());
   int frame_size = Interpreter::FRAME_SIZE;
   int offset = height() + frame_size + (arity() - n - 1);
-  _stack.push(type);
+  stack_.push(type);
   emit_load_local(offset);
 }
 
 void Emitter::load_outer_parameter(int n, ExpressionStack::Type type, Emitter* outer_emitter) {
   ASSERT(n >= 0 && n < outer_emitter->arity());
-  ASSERT(outer_emitter->_stack.type(0) == ExpressionStack::BLOCK_CONSTRUCTION_TOKEN);
+  ASSERT(outer_emitter->stack_.type(0) == ExpressionStack::BLOCK_CONSTRUCTION_TOKEN);
   int frame_size = Interpreter::FRAME_SIZE;
   int offset = outer_emitter->height() + frame_size + (outer_emitter->arity() - n - 1);
   emit(LOAD_OUTER, offset);
-  _stack.pop();  // The block reference.
-  _stack.push(type);
+  stack_.pop();  // The block reference.
+  stack_.push(type);
 }
 
 void Emitter::store_local(int n) {
@@ -269,10 +269,10 @@ void Emitter::store_local(int n) {
 
 void Emitter::store_outer_local(int n, Emitter* outer_emitter) {
   ASSERT(n >= 0 && n < outer_emitter->height());
-  ASSERT(outer_emitter->_stack.type(0) == ExpressionStack::BLOCK_CONSTRUCTION_TOKEN);
+  ASSERT(outer_emitter->stack_.type(0) == ExpressionStack::BLOCK_CONSTRUCTION_TOKEN);
   int offset = outer_emitter->height() - n - 1;
   emit(STORE_OUTER, offset);
-  _stack.pop();
+  stack_.pop();
 }
 
 void Emitter::store_parameter(int n) {
@@ -284,53 +284,53 @@ void Emitter::store_parameter(int n) {
 
 void Emitter::store_outer_parameter(int n, Emitter* outer_emitter) {
   ASSERT(n >= 0 && n < outer_emitter->arity());
-  ASSERT(outer_emitter->_stack.type(0) == ExpressionStack::BLOCK_CONSTRUCTION_TOKEN);
+  ASSERT(outer_emitter->stack_.type(0) == ExpressionStack::BLOCK_CONSTRUCTION_TOKEN);
   int offset = outer_emitter->arity() - n - 1;
   int frame_size = Interpreter::FRAME_SIZE;
   emit(STORE_OUTER, offset + outer_emitter->height() + frame_size);
-  _stack.pop();
+  stack_.pop();
 }
 
 void Emitter::load_block(int n) {
   ASSERT(n >= 0 && n < height());
   int offset = height() - n - 1;
   emit(LOAD_BLOCK, offset);
-  _stack.push(ExpressionStack::BLOCK);
+  stack_.push(ExpressionStack::BLOCK);
 }
 
 void Emitter::load_outer_block(int n, Emitter* outer_emitter) {
   ASSERT(n >= 0 && n < outer_emitter->height());
-  ASSERT(outer_emitter->_stack.type(0) == ExpressionStack::BLOCK_CONSTRUCTION_TOKEN);
+  ASSERT(outer_emitter->stack_.type(0) == ExpressionStack::BLOCK_CONSTRUCTION_TOKEN);
   int offset = outer_emitter->height() - n - 1;
   // The reference isn't yet encoded as block. That's why we need to call the
   //   LOAD_OUTER_BLOCK and not just `LOAD_OUTER`.
-  ASSERT(outer_emitter->_stack.type(offset) == ExpressionStack::OBJECT);
+  ASSERT(outer_emitter->stack_.type(offset) == ExpressionStack::OBJECT);
   emit(LOAD_OUTER_BLOCK, offset);
-  _stack.pop();  // The block reference.
-  _stack.push(ExpressionStack::BLOCK);
+  stack_.pop();  // The block reference.
+  stack_.push(ExpressionStack::BLOCK);
 }
 
 void Emitter::pop(int n) {
   if (n == 0) return;
   ASSERT(n >= 0 && n <= height());
-  unsigned last_pos = _opcode_positions.last();
+  unsigned last_pos = opcode_positions_.last();
   auto previous = previous_opcode();
   if (n == 1 &&
       (previous == STORE_LOCAL || previous == STORE_FIELD)) {
     if (previous == STORE_LOCAL) {
-      _builder[last_pos] = STORE_LOCAL_POP;
+      builder_[last_pos] = STORE_LOCAL_POP;
     } else if (previous == STORE_FIELD) {
-      _builder[last_pos] = STORE_FIELD_POP;
+      builder_[last_pos] = STORE_FIELD_POP;
     }
   } else if (previous == POP || previous == POP_1) {
-    int value = previous == POP ? _builder[last_pos + 1] : 1;
+    int value = previous == POP ? builder_[last_pos + 1] : 1;
     int new_value = value + n;
     if (new_value <= MAX_BYTECODE_VALUE) {
       if (previous == POP) {
-        _builder[last_pos + 1] = new_value;
+        builder_[last_pos + 1] = new_value;
       } else {
-        _builder[last_pos] = POP;
-        _builder.add(new_value);
+        builder_[last_pos] = POP;
+        builder_.add(new_value);
       }
     } else if (n == 1) {
       emit_opcode(POP_1);
@@ -342,13 +342,13 @@ void Emitter::pop(int n) {
   } else {
     emit(POP, n);
   }
-  _stack.pop(n);
+  stack_.pop(n);
 }
 
 void Emitter::allocate(int class_id) {
   ASSERT(class_id >= 0);
   emit_possibly_wide(ALLOCATE, class_id);
-  _stack.push(ExpressionStack::OBJECT);
+  stack_.push(ExpressionStack::OBJECT);
 }
 
 void Emitter::invoke_global(int index, int arity, bool is_tail_call) {
@@ -359,16 +359,16 @@ void Emitter::invoke_global(int index, int arity, bool is_tail_call) {
     emit_uint8(height());
     emit_uint8(this->arity());
   }
-  _stack.pop(arity);
-  _stack.push(ExpressionStack::OBJECT);
+  stack_.pop(arity);
+  stack_.push(ExpressionStack::OBJECT);
 }
 
 void Emitter::invoke_block(int arity) {
   ASSERT(arity >= 1);
-  ASSERT(_stack.type(arity - 1) == ExpressionStack::BLOCK);
+  ASSERT(stack_.type(arity - 1) == ExpressionStack::BLOCK);
   emit(INVOKE_BLOCK, arity);
-  _stack.pop(arity);
-  _stack.push(ExpressionStack::OBJECT);
+  stack_.pop(arity);
+  stack_.push(ExpressionStack::OBJECT);
 }
 
 void Emitter::invoke_virtual(Opcode opcode, int offset, int arity) {
@@ -383,22 +383,22 @@ void Emitter::invoke_virtual(Opcode opcode, int offset, int arity) {
     emit_possibly_wide(opcode, arity - 1);
     emit_uint16(offset);
   }
-  _stack.pop(arity);
-  _stack.push(ExpressionStack::OBJECT);
+  stack_.pop(arity);
+  stack_.push(ExpressionStack::OBJECT);
 }
 
 void Emitter::invoke_initializer_tail() {
   emit_opcode(INVOKE_INITIALIZER_TAIL);
   emit_uint8(height());
   emit_uint8(this->arity());
-  _stack.pop();
+  stack_.pop();
 }
 
 void Emitter::typecheck(Opcode opcode, int index, bool is_nullable) {
   int encoded = (index << 1) + (is_nullable ? 1 : 0);
   emit_possibly_wide(opcode, encoded);
-  _stack.pop(1);
-  _stack.push(ExpressionStack::OBJECT);
+  stack_.pop(1);
+  stack_.push(ExpressionStack::OBJECT);
 }
 
 int Emitter::typecheck_local(int n, int index) {
@@ -421,7 +421,7 @@ int Emitter::typecheck_local_at_offset(int offset, int index) {
     return position();
   }
   emit_load_local(offset);
-  _stack.push(ExpressionStack::OBJECT);
+  stack_.push(ExpressionStack::OBJECT);
   Opcode opcode = AS_CLASS;
   bool is_nullable = false;
   typecheck(opcode, index, is_nullable);
@@ -434,7 +434,7 @@ void Emitter::primitive(int module, int index) {
   ASSERT(height() == 0);  // Must be on empty stack.
   emit(PRIMITIVE, module);
   emit_uint16(index);
-  _stack.push(ExpressionStack::OBJECT);
+  stack_.push(ExpressionStack::OBJECT);
 }
 
 void Emitter::branch(Condition condition, Label* label) {
@@ -443,11 +443,11 @@ void Emitter::branch(Condition condition, Label* label) {
     op = label->is_bound() ? BRANCH_BACK : BRANCH;
   } else if (condition == IF_TRUE) {
     op = label->is_bound() ? BRANCH_BACK_IF_TRUE : BRANCH_IF_TRUE;
-    _stack.pop();
+    stack_.pop();
   } else {
     ASSERT(condition == IF_FALSE);
     op = label->is_bound() ? BRANCH_BACK_IF_FALSE: BRANCH_IF_FALSE;
-    _stack.pop();
+    stack_.pop();
   }
 
   int position = this->position();
@@ -465,7 +465,7 @@ void Emitter::branch(Condition condition, Label* label) {
 }
 
 void Emitter::invoke_lambda_tail(int parameters, int max_capture_count) {
-  _stack.reserve(max_capture_count);
+  stack_.reserve(max_capture_count);
   emit(INVOKE_LAMBDA_TAIL, parameters);
 }
 
@@ -478,15 +478,15 @@ void Emitter::ret() {
 void Emitter::ret_null() {
   int value;
   if (previous_opcode() == POP_1) {
-    ASSERT(_builder.last() == POP_1);
-    _builder.last() = RETURN_NULL;
+    ASSERT(builder_.last() == POP_1);
+    builder_.last() = RETURN_NULL;
     emit_uint8(height() + 1);
     emit_uint8(arity());
   } else if (last_is(POP, &value)) {
-    int last_pos = _opcode_positions.last();
-    _builder[last_pos] = RETURN_NULL;
-    ASSERT(last_pos + 1 == _builder.length() -1);
-    _builder[last_pos + 1] = height() + value;
+    int last_pos = opcode_positions_.last();
+    builder_[last_pos] = RETURN_NULL;
+    ASSERT(last_pos + 1 == builder_.length() -1);
+    builder_[last_pos + 1] = height() + value;
     emit_uint8(arity());
   } else {
     emit_opcode(RETURN_NULL);
@@ -507,19 +507,19 @@ void Emitter::nlr(int height, int arity) {
     ASSERT(arity >= 0 && arity < 0x0f);
     emit(NON_LOCAL_RETURN, (height << 4) | arity);
   }
-  _stack.pop();
+  stack_.pop();
 }
 
 void Emitter::register_absolute_reference(const AbsoluteReference& reference) {
-  _absolute_references.add(reference);
+  absolute_references_.add(reference);
 }
 
 void Emitter::nl_branch(AbsoluteLabel* label, int height_diff) {
   emit(NON_LOCAL_BRANCH, height_diff);
-  _absolute_uses.add(label->use_absolute(position()));
+  absolute_uses_.add(label->use_absolute(position()));
   // Will be replaced once the global label knows its absolute position.
   emit_uint32(0);
-  _stack.pop();
+  stack_.pop();
 }
 
 void Emitter::_throw() {
@@ -533,39 +533,39 @@ void Emitter::link() {
 
 void Emitter::unlink() {
   emit(UNLINK, 0);
-  _stack.pop();
+  stack_.pop();
 }
 
 void Emitter::unwind() {
   emit_opcode(UNWIND);
-   _stack.pop(3);
+   stack_.pop(3);
 }
 
 void Emitter::halt(int yield) {
   emit(HALT, yield);
   if (yield == 0) {
-    _stack.push(ExpressionStack::OBJECT);
+    stack_.push(ExpressionStack::OBJECT);
   }
 }
 
 void Emitter::intrinsic_smi_repeat() {
   emit_opcode(INTRINSIC_SMI_REPEAT);
-  _stack.pop(1);
+  stack_.pop(1);
 }
 
 void Emitter::intrinsic_array_do() {
   emit_opcode(INTRINSIC_ARRAY_DO);
-  _stack.pop(1);
+  stack_.pop(1);
 }
 
 void Emitter::intrinsic_hash_find() {
   emit_opcode(INTRINSIC_HASH_FIND);
-  _stack.pop(7);
+  stack_.pop(7);
 }
 
 void Emitter::intrinsic_hash_do() {
   emit_opcode(INTRINSIC_HASH_DO);
-  _stack.pop(1);
+  stack_.pop(1);
 }
 
 

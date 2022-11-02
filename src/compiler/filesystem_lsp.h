@@ -30,10 +30,10 @@ namespace compiler {
 
 class FilesystemLsp : public Filesystem {
  public:
-  explicit FilesystemLsp(LspFsProtocol* protocol) : _protocol(protocol) { }
+  explicit FilesystemLsp(LspFsProtocol* protocol) : protocol_(protocol) { }
 
   void initialize(Diagnostics* diagnostics) {
-    _protocol->initialize(diagnostics);
+    protocol_->initialize(diagnostics);
   }
 
   const char* entry_path() { return null; }
@@ -54,8 +54,8 @@ class FilesystemLsp : public Filesystem {
                               const std::function<void (const char*)> callback);
 
  private:
-  UnorderedMap<std::string, LspFsProtocol::PathInfo> _file_cache;
-  LspFsProtocol* _protocol;
+  UnorderedMap<std::string, LspFsProtocol::PathInfo> file_cache_;
+  LspFsProtocol* protocol_;
 
   LspFsProtocol::PathInfo info_for(const char* path);
 };

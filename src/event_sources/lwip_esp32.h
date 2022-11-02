@@ -43,7 +43,7 @@ Object* lwip_error(Process* process, err_t err);
 // LwIP.
 class LwIPEventSource : public EventSource {
  public:
-  static LwIPEventSource* instance() { return _instance; }
+  static LwIPEventSource* instance() { return instance_; }
 
   LwIPEventSource();
   ~LwIPEventSource();
@@ -68,14 +68,14 @@ class LwIPEventSource : public EventSource {
     }
 
     // Wait for the LwIP thread to perform our task.
-    Locker locker(_mutex);
-    while (!call.done) OS::wait(_call_done);
+    Locker locker(mutex_);
+    while (!call.done) OS::wait(call_done_);
     return call.result;
   }
 
   // This event source (and LwIP thread) is shared across all Toit processes,
   // so there is a mutex to control access.
-  Mutex* mutex() { return _mutex; }
+  Mutex* mutex() { return mutex_; }
 
  private:
   struct CallContext {
@@ -86,10 +86,10 @@ class LwIPEventSource : public EventSource {
 
   static void on_thread(void* arg);
 
-  static LwIPEventSource* _instance;
+  static LwIPEventSource* instance_;
 
-  Mutex* _mutex;
-  ConditionVariable* _call_done;
+  Mutex* mutex_;
+  ConditionVariable* call_done_;
 };
 
 } // namespace toit

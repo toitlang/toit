@@ -34,36 +34,36 @@
 namespace toit {
 
 void MbedTLSResourceGroup::uninit() {
-  mbedtls_ctr_drbg_free(&_ctr_drbg);
-  mbedtls_entropy_free(&_entropy);
+  mbedtls_ctr_drbg_free(&ctr_drbg_);
+  mbedtls_entropy_free(&entropy_);
 }
 
 void BaseMbedTLSSocket::uninit_certs() {
-  if (_private_key != null) mbedtls_pk_free(_private_key);
-  delete _private_key;
-  _private_key = null;
+  if (private_key_ != null) mbedtls_pk_free(private_key_);
+  delete private_key_;
+  private_key_ = null;
 }
 
 int BaseMbedTLSSocket::add_certificate(X509Certificate* cert, const uint8_t* private_key, size_t private_key_length, const uint8_t* password, int password_length) {
   uninit_certs();  // Remove any old cert on the config.
 
-  _private_key = _new mbedtls_pk_context;
-  if (!_private_key) return MBEDTLS_ERR_PK_ALLOC_FAILED;
-  mbedtls_pk_init(_private_key);
-  int ret = mbedtls_pk_parse_key(_private_key, private_key, private_key_length, password, password_length);
+  private_key_ = _new mbedtls_pk_context;
+  if (!private_key_) return MBEDTLS_ERR_PK_ALLOC_FAILED;
+  mbedtls_pk_init(private_key_);
+  int ret = mbedtls_pk_parse_key(private_key_, private_key, private_key_length, password, password_length);
   if (ret < 0) {
-    delete _private_key;
-    _private_key = null;
+    delete private_key_;
+    private_key_ = null;
     return ret;
   }
 
-  ret = mbedtls_ssl_conf_own_cert(&_conf, cert->cert(), _private_key);
+  ret = mbedtls_ssl_conf_own_cert(&conf_, cert->cert(), private_key_);
   return ret;
 }
 
 int BaseMbedTLSSocket::add_root_certificate(X509Certificate* cert) {
   // Copy to a per-certificate chain.
-  mbedtls_x509_crt** last = &_root_certs;
+  mbedtls_x509_crt** last = &root_certs_;
   // Move to end of chain.
   while (*last != null) last = &(*last)->next;
   ASSERT(!cert->cert()->next);
@@ -72,13 +72,13 @@ int BaseMbedTLSSocket::add_root_certificate(X509Certificate* cert) {
   if (*last == null) return MBEDTLS_ERR_PK_ALLOC_FAILED;
   // By default we don't enable certificate verification in server mode, but if
   // the user adds a root that indicates that they certainly want verification.
-  mbedtls_ssl_conf_authmode(&_conf, MBEDTLS_SSL_VERIFY_REQUIRED);
+  mbedtls_ssl_conf_authmode(&conf_, MBEDTLS_SSL_VERIFY_REQUIRED);
   return 0;
 }
 
 void BaseMbedTLSSocket::apply_certs() {
-  if (_root_certs) {
-    mbedtls_ssl_conf_ca_chain(&_conf, _root_certs, null);
+  if (root_certs_) {
+    mbedtls_ssl_conf_ca_chain(&conf_, root_certs_, null);
   }
 }
 
@@ -116,13 +116,13 @@ int MbedTLSResourceGroup::verify_callback(mbedtls_x509_crt* crt, int certificate
         if (issuer) {
           memcpy(issuer, buffer, ret);
           issuer[ret] = '\0';
-          if (_error_issuer) free(_error_issuer);
-          _error_issuer = issuer;
+          if (error_issuer_) free(error_issuer_);
+          error_issuer_ = issuer;
         }
       }
     }
-    _error_flags = *flags;
-    _error_depth = certificate_depth;
+    error_flags_ = *flags;
+    error_depth_ = certificate_depth;
   }
   return 0; // Keep going.
 }
@@ -147,9 +147,9 @@ static void tagging_mbedtls_free(void* address) {
 void MbedTLSResourceGroup::init_conf(mbedtls_ssl_config* conf) {
   mbedtls_platform_set_calloc_free(tagging_mbedtls_calloc, tagging_mbedtls_free);
   mbedtls_ssl_config_init(conf);
-  mbedtls_ssl_conf_rng(conf, mbedtls_ctr_drbg_random, &_ctr_drbg);
+  mbedtls_ssl_conf_rng(conf, mbedtls_ctr_drbg_random, &ctr_drbg_);
   auto transport = MBEDTLS_SSL_TRANSPORT_STREAM;
-  auto client_server = (_mode == TLS_SERVER) ? MBEDTLS_SSL_IS_SERVER : MBEDTLS_SSL_IS_CLIENT;
+  auto client_server = (mode_ == TLS_SERVER) ? MBEDTLS_SSL_IS_SERVER : MBEDTLS_SSL_IS_CLIENT;
 
   // This enables certificate verification in client mode, but does not
   // enable it in server mode.
@@ -171,9 +171,9 @@ void MbedTLSResourceGroup::init_conf(mbedtls_ssl_config* conf) {
 }
 
 int MbedTLSResourceGroup::init() {
-  mbedtls_ctr_drbg_init(&_ctr_drbg);
-  mbedtls_entropy_init(&_entropy);
-  int ret = mbedtls_ctr_drbg_seed(&_ctr_drbg, mbedtls_entropy_func, &_entropy, null, 0);
+  mbedtls_ctr_drbg_init(&ctr_drbg_);
+  mbedtls_entropy_init(&entropy_);
+  int ret = mbedtls_ctr_drbg_seed(&ctr_drbg_, mbedtls_entropy_func, &entropy_, null, 0);
   return ret;
 }
 
@@ -192,17 +192,17 @@ uint32_t MbedTLSResourceGroup::on_event(Resource* resource, word data, uint32_t 
 
 BaseMbedTLSSocket::BaseMbedTLSSocket(MbedTLSResourceGroup* group)
   : TLSSocket(group)
-  , _root_certs(null)
-  , _private_key(null) {
+  , root_certs_(null)
+  , private_key_(null) {
   mbedtls_ssl_init(&ssl);
-  group->init_conf(&_conf);
+  group->init_conf(&conf_);
 }
 
 BaseMbedTLSSocket::~BaseMbedTLSSocket() {
   mbedtls_ssl_free(&ssl);
   uninit_certs();
-  mbedtls_ssl_config_free(&_conf);
-  for (mbedtls_x509_crt* c = _root_certs; c != null;) {
+  mbedtls_ssl_config_free(&conf_);
+  for (mbedtls_x509_crt* c = root_certs_; c != null;) {
     mbedtls_x509_crt* n = c->next;
     delete c;
     c = n;
@@ -211,19 +211,19 @@ BaseMbedTLSSocket::~BaseMbedTLSSocket() {
 
 MbedTLSSocket::MbedTLSSocket(MbedTLSResourceGroup* group)
   : BaseMbedTLSSocket(group)
-  , _outgoing_packet(group->process()->program()->null_object())
-  , _outgoing_fullness(0)
-  , _incoming_packet(group->process()->program()->null_object())
-  , _incoming_from(0) {
+  , outgoing_packet_(group->process()->program()->null_object())
+  , outgoing_fullness_(0)
+  , incoming_packet_(group->process()->program()->null_object())
+  , incoming_from_(0) {
   ObjectHeap* heap = group->process()->object_heap();
-  heap->add_external_root(&_outgoing_packet);
-  heap->add_external_root(&_incoming_packet);
+  heap->add_external_root(&outgoing_packet_);
+  heap->add_external_root(&incoming_packet_);
 }
 
 MbedTLSSocket::~MbedTLSSocket() {
   ObjectHeap* heap = resource_group()->process()->object_heap();
-  heap->remove_external_root(&_outgoing_packet);
-  heap->remove_external_root(&_incoming_packet);
+  heap->remove_external_root(&outgoing_packet_);
+  heap->remove_external_root(&incoming_packet_);
 }
 
 MODULE_IMPLEMENTATION(tls, MODULE_TLS)
@@ -548,7 +548,7 @@ PRIMITIVE(error) {
 }
 
 bool MbedTLSSocket::init(const char*) {
-  if (int ret = mbedtls_ssl_setup(&ssl, &_conf)) {
+  if (int ret = mbedtls_ssl_setup(&ssl, &conf_)) {
     if (ret == MBEDTLS_ERR_SSL_ALLOC_FAILED) return false;
     FATAL("mbedtls_ssl_setup returned %d (not %d)", ret, MBEDTLS_ERR_SSL_ALLOC_FAILED);
   }

@@ -107,7 +107,7 @@ class File {
 class MemoryBuilder {
  public:
   ~MemoryBuilder() {
-    free(_buffer);
+    free(buffer_);
   }
 
   /// Returns 0 on success.
@@ -125,15 +125,15 @@ class MemoryBuilder {
   /// It is safe to call close even if an earlier operation (like
   /// [open] or [add] failed.
   void close(uint8** buffer, int* size) {
-    *buffer = _buffer;
-    *size = _size;
-    _buffer = null;
-    _size = 0;
+    *buffer = buffer_;
+    *size = size_;
+    buffer_ = null;
+    size_ = 0;
   }
 
  private:
-  uint8* _buffer = null;
-  int _size = 0;
+  uint8* buffer_ = null;
+  int size_ = 0;
 };
 
 /// Builds an Ar archive, writing it directly to a file.
@@ -156,12 +156,12 @@ class FileBuilder {
   int add(File ar_file);
 
  private:
-  FILE* _file = NULL;
+  FILE* file_ = NULL;
 };
 
 class MemoryReader {
  public:
-  MemoryReader(uint8* buffer, int size) : _buffer(buffer), _size(size) {}
+  MemoryReader(uint8* buffer, int size) : buffer_(buffer), size_(size) {}
 
   /// Fills the next file.
   /// On success, the name of the file is allocated and should be freed with
@@ -192,9 +192,9 @@ class MemoryReader {
   int find(const char* name, File* file, bool reset = true);
 
  private:
-  uint8* _buffer;
-  int _size;
-  int _offset = 0;
+  uint8* buffer_;
+  int size_;
+  int offset_ = 0;
 };
 
 class FileReader {
@@ -203,7 +203,7 @@ class FileReader {
 
   /// Provides this instance with an already opened file pointer.
   /// In this case the calls to [open] and [close] are not necessary.
-  FileReader(FILE* file) : _file(file) {}
+  FileReader(FILE* file) : file_(file) {}
 
   /// Opens the file.
   /// Returns 0 on success.
@@ -253,8 +253,8 @@ class FileReader {
   int find(const char* name, File* file, bool reset = true);
 
  private:
-  bool _is_first = true;
-  FILE* _file = null;
+  bool is_first_ = true;
+  FILE* file_ = null;
 
   int read_ar_header();
   int read_file_header(File* file);

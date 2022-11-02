@@ -47,14 +47,14 @@ namespace ast {
 template<typename Shape>
 class Selector {
  public:
-  Selector(Symbol name, Shape shape) : _name(name), _shape(shape) {}
+  Selector(Symbol name, Shape shape) : name_(name), shape_(shape) {}
 
-  Symbol name() const { return _name; }
+  Symbol name() const { return name_; }
 
-  Shape shape() const { return _shape; }
+  Shape shape() const { return shape_; }
 
   bool operator==(const Selector& other) const {
-    return _name == other._name && _shape == other._shape;
+    return name_ == other.name_ && shape_ == other.shape_;
   }
 
   bool operator!=(const Selector& other) const {
@@ -62,35 +62,35 @@ class Selector {
   }
 
   size_t hash() const {
-    return (_name.hash() << 16) ^ _shape.hash();
+    return (name_.hash() << 16) ^ shape_.hash();
   }
 
   bool less(const Selector<Shape>& other) const {
-    if (_name.c_str() != other._name.c_str()) {
-      return _name.c_str() < other._name.c_str();
+    if (name_.c_str() != other.name_.c_str()) {
+      return name_.c_str() < other.name_.c_str();
     }
-    return _shape.less(other._shape);
+    return shape_.less(other.shape_);
   }
 
-  bool is_valid() const { return _name.is_valid(); }
+  bool is_valid() const { return name_.is_valid(); }
 
  private:
-  Symbol _name;
-  Shape _shape;
+  Symbol name_;
+  Shape shape_;
 };
 
 class CallBuilder {
  public:
   explicit CallBuilder(Source::Range range)
-      : _range(range)
-      , _named_count(0)
-      , _block_count(0) {}
+      : range_(range)
+      , named_count_(0)
+      , block_count_(0) {}
 
   CallShape shape();
   List<ir::Expression*> arguments() {
-    auto result = ListBuilder<ir::Expression*>::allocate(_args.size());
-    for (size_t i = 0; i < _args.size(); i++) {
-      result[i] = _args[i].expression;
+    auto result = ListBuilder<ir::Expression*>::allocate(args_.size());
+    for (size_t i = 0; i < args_.size(); i++) {
+      result[i] = args_[i].expression;
     }
     return result;
   }
@@ -106,8 +106,8 @@ class CallBuilder {
   ir::Expression* call_instance(ir::Dot* dot);
   ir::Expression* call_instance(ir::Dot* dot, Source::Range range);
 
-  bool has_block_arguments() const { return _block_count > 0; }
-  bool has_named_arguments() const { return _named_count > 0; }
+  bool has_block_arguments() const { return block_count_ > 0; }
+  bool has_named_arguments() const { return named_count_ > 0; }
 
   /// Sorts the parameters corresponding to how the CallBuilder does the call.
   static void sort_parameters(std::vector<ast::Parameter*>& parameters);
@@ -127,10 +127,10 @@ class CallBuilder {
 
     bool is_named() const { return name.is_valid(); }
   };
-  std::vector<Arg> _args;
-  Source::Range _range;
-  int _named_count;
-  int _block_count;
+  std::vector<Arg> args_;
+  Source::Range range_;
+  int named_count_;
+  int block_count_;
 
   // Sorts the arguments for instance calls.
   // The same ordering is also used for creating the call-shape.
@@ -138,7 +138,7 @@ class CallBuilder {
 
   // If the call has named arguments, creates temporary variables to ensure that the
   // evaluation order is correct.
-  // Updates the expression in the [_args] vector with references to the temporary variables.
+  // Updates the expression in the [args_] vector with references to the temporary variables.
   //
   // The given [fun] function may freely reorder all arguments without
   // worrying about evaluation order.

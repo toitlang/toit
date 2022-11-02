@@ -28,10 +28,10 @@ bool Scanner::is_identifier_start(int c) {
 }
 
 void Scanner::skip_hash_bang_line() {
-  if (_input[0] == '#' && _input[1] == '!') {
+  if (input_[0] == '#' && input_[1] == '!') {
     for (int i = 2; true; i++) {
-      if (is_newline(_input[i]) || _input[i] == '\0') {
-        _index += i;
+      if (is_newline(input_[i]) || input_[i] == '\0') {
+        index_ += i;
         break;
       }
     }
@@ -39,19 +39,19 @@ void Scanner::skip_hash_bang_line() {
 }
 
 Symbol Scanner::preserve_syntax(int begin, int end) {
-  return Symbol::synthetic(_input + begin, _input + end);
+  return Symbol::synthetic(input_ + begin, input_ + end);
 }
 
 Scanner::State Scanner::create_state(Token::Kind token) {
-  bool is_attached = (_last - _begin) == 0;
+  bool is_attached = (last_ - begin_) == 0;
   return {
-    .from = _last,
-    .to = _index,
-    .data = _data,
-    .indentation = static_cast<int16>(_indentation),
-    ._token_bools = Scanner::State::encode_token_bools(token,
+    .from = last_,
+    .to = index_,
+    .data = data_,
+    .indentation = static_cast<int16>(indentation_),
+    .token_bools_ = Scanner::State::encode_token_bools(token,
                                                        is_attached,
-                                                       _is_lsp_selection),
+                                                       is_lsp_selection_),
   };
 }
 
@@ -60,18 +60,18 @@ Scanner::State Scanner::next() {
 }
 
 List<Scanner::Comment> Scanner::comments() {
-  return _comments.build();
+  return comments_.build();
 }
 
 Token::Kind Scanner::next_token() {
-  _begin = _index;
+  begin_ = index_;
   do {
     if (at_eos()) {
-      _indentation = 0;
+      indentation_ = 0;
       return Token::EOS;
     }
 
-    int peek = _input[_last = _index];
+    int peek = input_[last_ = index_];
 
 
     switch (peek) {
@@ -134,7 +134,7 @@ Token::Kind Scanner::next_token() {
       case '!':  // 33
         peek = advance();
         if (peek == '=') return scan_single(Token::NE);
-        report_error(_index - 1, _index, "'!' has been deprecated for 'not'");
+        report_error(index_ - 1, index_, "'!' has been deprecated for 'not'");
         return Token::NOT;
 
       case '"':  // 34
@@ -151,7 +151,7 @@ Token::Kind Scanner::next_token() {
             look_ahead(8) == 'v' &&
             look_ahead(9) == 'e' &&
             !is_identifier_part(look_ahead(10))) {
-          // We use `advance` (instead of just updating the _index field), so we
+          // We use `advance` (instead of just updating the index_ field), so we
           // get the checks from that function.
           advance(); // #
           advance(); // p
@@ -183,7 +183,7 @@ Token::Kind Scanner::next_token() {
         peek = advance();
         if (peek == '=') return scan_single(Token::ASSIGN_BIT_AND);
         if (peek == '&') {
-          report_error(_index - 1, _index + 1, "'&&' has been deprecated for 'and'");
+          report_error(index_ - 1, index_ + 1, "'&&' has been deprecated for 'and'");
           return scan_single(Token::LOGICAL_AND);
         }
         return Token::BIT_AND;
@@ -357,7 +357,7 @@ Token::Kind Scanner::next_token() {
           advance();
           peek = advance();
           if (peek == '!') {
-            report_error(_index - 1, _index + 1, "'is!' has been deprecated for 'is not'");
+            report_error(index_ - 1, index_ + 1, "'is!' has been deprecated for 'is not'");
             advance();
             return Token::IS_NOT;
           }
@@ -399,7 +399,7 @@ Token::Kind Scanner::next_token() {
         peek = advance();
         if (peek == '=') return scan_single(Token::ASSIGN_BIT_OR);
         if (peek == '|') {
-          report_error(_index - 1, _index + 1, "'||' has been deprecated for 'or'");
+          report_error(index_ - 1, index_ + 1, "'||' has been deprecated for 'or'");
           return scan_single(Token::LOGICAL_OR);
         }
         return Token::BIT_OR;
@@ -422,17 +422,17 @@ Token::Kind Scanner::next_token() {
 }
 
 Scanner::State Scanner::next_interpolated_part() {
-  _begin = _index;
-  int peek = _input[_index];
+  begin_ = index_;
+  int peek = input_[index_];
   if (at_skippable_whitespace(peek)) {
     skip_skippable_whitespace(peek);
   }
-  _last = _index;
-  peek = _input[_index];
+  last_ = index_;
+  peek = input_[index_];
   if (is_identifier_start(peek)) {
     return create_state(scan_identifier(peek));  // Don't allow $.
   } else {
-    _index = _begin;
+    index_ = begin_;
     return next();
   }
 }
@@ -443,32 +443,32 @@ Scanner::State Scanner::next_interpolated_part() {
 // This is not always a valid format, but should catch some bad errors and then
 // make it easier to report errors at the right place.
 Scanner::State Scanner::next_string_format_part() {
-  _begin = _last = _index;
-  int begin = _index;
-  if (_input[_index] == '-' || _input[_index] == '^') _index++;
-  for (int peek = _input[_index]; true; peek = advance()) {
+  begin_ = last_ = index_;
+  int begin = index_;
+  if (input_[index_] == '-' || input_[index_] == '^') index_++;
+  for (int peek = input_[index_]; true; peek = advance()) {
     if (is_decimal_digit(peek)) continue;
     if (peek == '.') continue;
     if (is_letter(peek)) {
       peek = advance();
       if (at_skippable_whitespace(peek) || at_eos()) {
-        _data = preserve_syntax(begin, _index);
+        data_ = preserve_syntax(begin, index_);
         return create_state(Token::STRING);
       }
     }
-    report_error(_begin, _index, "Invalid format string");
+    report_error(begin_, index_, "Invalid format string");
     advance();
-    _data = Symbols::empty_string;
+    data_ = Symbols::empty_string;
     return create_state(Token::STRING);
   }
 }
 
 Scanner::State Scanner::next_string_part(bool is_multiline_string) {
-  _begin = _last = _index;
-  int begin = _index;
-  for (int peek = _input[_index]; true; peek = advance()) {
+  begin_ = last_ = index_;
+  int begin = index_;
+  for (int peek = input_[index_]; true; peek = advance()) {
     if (peek == '"') {
-      int index = _index;
+      int index = index_;
       if (is_multiline_string) {
         if (look_ahead() != '"') continue;
         advance();
@@ -476,29 +476,29 @@ Scanner::State Scanner::next_string_part(bool is_multiline_string) {
         advance();
         // Allow up to 5 double quotes, for triple quoted strings that end with
         // two double quotes.
-        while (_index - index < 4 && look_ahead() == '"') {
+        while (index_ - index < 4 && look_ahead() == '"') {
           advance();
         }
-        index = _index - 2;
-        _data = preserve_syntax(begin, index);
+        index = index_ - 2;
+        data_ = preserve_syntax(begin, index);
         advance();
         return create_state(Token::STRING_END_MULTI_LINE);
       }
-      _data = preserve_syntax(begin, index);
+      data_ = preserve_syntax(begin, index);
       advance();
       return create_state(Token::STRING_END);
     } else if (peek == '\\') {
       advance();
     } else if (peek == '$') {
-      _data = preserve_syntax(begin, _index);
+      data_ = preserve_syntax(begin, index_);
       advance();
       auto token = is_multiline_string
           ? Token::STRING_PART_MULTI_LINE
           : Token::STRING_PART;
       return create_state(token);
     } else if (at_eos() || (!is_multiline_string && is_newline(peek))) {
-      report_error(begin, _index, "%s", "Unterminated string");
-      _data = Symbols::empty_string;
+      report_error(begin, index_, "%s", "Unterminated string");
+      data_ = Symbols::empty_string;
       if (is_multiline_string) {
         return create_state(Token::STRING_END_MULTI_LINE);
       } else {
@@ -527,7 +527,7 @@ Token::Kind Scanner::scan_newline(int peek) {
         indentation++;
         peek = advance();
       } else if (peek == '\t') {
-        report_error(_index, _index + 1, "Can't have tabs in leading whitespace");
+        report_error(index_, index_ + 1, "Can't have tabs in leading whitespace");
         // Tabs indentation to the next TAB_WIDTH character column.
         indentation += TAB_WIDTH;
         indentation -= indentation % TAB_WIDTH;
@@ -536,39 +536,39 @@ Token::Kind Scanner::scan_newline(int peek) {
         ASSERT(peek == '/' && look_ahead() == '*');
         peek = advance();
         capture_multi_line_comment(peek);
-        peek = _input[_index];
+        peek = input_[index_];
       }
     }
 
     if (peek == '/' && look_ahead() == '/') {
       advance();
       capture_single_line_comment(peek);
-      peek = _input[_index];
+      peek = input_[index_];
     }
 
     // Continue as long as we're moving through whitespace
     // only lines.
   } while (peek == '\n' || peek == '\r');
   // Ignore all whitespace, if it's at the end of the file.
-  _indentation = at_eos() ? 0 : indentation;
+  indentation_ = at_eos() ? 0 : indentation;
   return Token::NEWLINE;
 }
 
 Token::Kind Scanner::scan_character(int peek) {
   // Used for both character literal and format in interpolated strings.
   ASSERT(peek == '\'');
-  int begin = _index + 1;
+  int begin = index_ + 1;
   while (true) {
     peek = advance();
     if (peek == '\'') {
-      _data = preserve_syntax(begin, _index);
+      data_ = preserve_syntax(begin, index_);
       advance();
       return Token::CHARACTER;
     } else if (peek == '\\') {
       advance();
     } else if (at_eos() || is_newline(peek)) {
-      report_error(begin - 1, _index, "%s", "Unterminated character");
-      _data = Symbols::one;  // Any character works, but we already have a "1".
+      report_error(begin - 1, index_, "%s", "Unterminated character");
+      data_ = Symbols::one;  // Any character works, but we already have a "1".
       return Token::CHARACTER;
     }
   }
@@ -578,8 +578,8 @@ Token::Kind Scanner::scan_string(int peek) {
   bool is_multiline_string = false;
   ASSERT(peek == '"');
 
-  int error_pos = _index;
-  int begin = _index + 1;
+  int error_pos = index_;
+  int begin = index_ + 1;
 
   // Check whether we have a multiline string.
   if (look_ahead() == '"') {
@@ -590,7 +590,7 @@ Token::Kind Scanner::scan_string(int peek) {
       is_multiline_string = true;
     } else {
       // Just the empty string.
-      _data = preserve_syntax(begin, _index);
+      data_ = preserve_syntax(begin, index_);
       advance();
       return Token::STRING;
     }
@@ -599,7 +599,7 @@ Token::Kind Scanner::scan_string(int peek) {
   while (true) {
     peek = advance();
     if (peek == '"') {
-      int index = _index;
+      int index = index_;
       if (is_multiline_string) {
         if (look_ahead() != '"') continue;
         advance();
@@ -607,26 +607,26 @@ Token::Kind Scanner::scan_string(int peek) {
         advance();
         // Allow up to 5 double quotes, for triple quoted strings that end with
         // two double quotes.
-        while (_index - index < 4 && look_ahead() == '"') {
+        while (index_ - index < 4 && look_ahead() == '"') {
           advance();
         }
-        index = _index - 2;
-        _data = preserve_syntax(begin, index);
+        index = index_ - 2;
+        data_ = preserve_syntax(begin, index);
         advance();
         return Token::STRING_MULTI_LINE;
       }
-      _data = preserve_syntax(begin, index);
+      data_ = preserve_syntax(begin, index);
       advance();
       return Token::STRING;
     } else if (peek == '\\') {
       advance();
     } else if (peek == '$') {
-      _data = preserve_syntax(begin, _index);
+      data_ = preserve_syntax(begin, index_);
       advance();
       return is_multiline_string ? Token::STRING_PART_MULTI_LINE : Token::STRING_PART;
     } else if (at_eos() || (!is_multiline_string && is_newline(peek))) {
-      report_error(error_pos, _index, "%s", "Unterminated string");
-      _data = preserve_syntax(begin, _index);
+      report_error(error_pos, index_, "%s", "Unterminated string");
+      data_ = preserve_syntax(begin, index_);
       if (is_multiline_string) {
         return Token::STRING_MULTI_LINE;
       } else {
@@ -640,7 +640,7 @@ Token::Kind Scanner::scan_number(int peek) {
   Token::Kind result = Token::INTEGER;
   const char* error_message = null;
 
-  int begin = _index;
+  int begin = index_;
   ASSERT(is_decimal_digit(peek) || peek == '.');
 
   int base = 10;
@@ -723,18 +723,18 @@ Token::Kind Scanner::scan_number(int peek) {
          (peek == '.' && is_hex_digit(look_ahead()))) {
     peek = advance();
   }
-  report_error(begin, _index, error_message);
+  report_error(begin, index_, error_message);
 
   done:
-  _data = _symbols->canonicalize_number(_input + begin, _input + _index);
+  data_ = symbols_->canonicalize_number(input_ + begin, input_ + index_);
   return result;
 }
 
 Token::Kind Scanner::scan_identifier(int peek) {
-  int begin = _index;
+  int begin = index_;
   ASSERT(is_identifier_start(peek));
 
-  _is_lsp_selection = false;
+  is_lsp_selection_ = false;
   do {
     if (peek == LSP_SELECTION_MARKER) {
       // If we are hitting an LSP-selection marker at a location where it
@@ -744,17 +744,17 @@ Token::Kind Scanner::scan_identifier(int peek) {
       // don't immediately report an error, but return the scanned identifier first.
       // Then the main-loop will try again to read an identifier, at which point we
       // report the error.
-      // This `_lsp_selection_callback(_index)` might thus be invoked twice, if
+      // This `_lsp_selection_callback(index_)` might thus be invoked twice, if
       // it's at a bad location.
-      if (!_source->is_lsp_marker_at(_index)) break;
+      if (!source_->is_lsp_marker_at(index_)) break;
       // If we hit a selection-marker just continue the loop, as if the marker
       // had never been there.
-      _is_lsp_selection = true;
+      is_lsp_selection_ = true;
     }
     peek = advance();
   } while (is_identifier_part(peek));
 
-  if (!_is_lsp_selection && begin == _index) {
+  if (!is_lsp_selection_ && begin == index_) {
     ASSERT(peek == LSP_SELECTION_MARKER);
     // We were hoping for an lsp selection, but just discovered an illegal character.
     return scan_illegal(peek);
@@ -764,16 +764,16 @@ Token::Kind Scanner::scan_identifier(int peek) {
   uint8* lsp_buffer = null;
   const uint8* from;
   const uint8* to;
-  source()->text_range_without_marker(begin, _index, &from, &to);
+  source()->text_range_without_marker(begin, index_, &from, &to);
   // Note that the symbol could be of length 0, if it was the lsp selection.
-  auto token_symbol = _symbols->canonicalize_identifier(from, to);
+  auto token_symbol = symbols_->canonicalize_identifier(from, to);
   if (lsp_buffer != null) free(lsp_buffer);
-  _data = token_symbol.symbol;
-  if (_is_lsp_selection && _lsp_selection_is_identifier) {
+  data_ = token_symbol.symbol;
+  if (is_lsp_selection_ && lsp_selection_is_identifier_) {
     // Target wins over the stored kind. This means that keywords are also identified
     // as LSP-selections. (Which is what we want, since a completion on `for` should work).
     if (token_symbol.kind != Token::IDENTIFIER) {
-      _data = Token::symbol(token_symbol.kind);
+      data_ = Token::symbol(token_symbol.kind);
     }
     return Token::IDENTIFIER;
   }
@@ -803,7 +803,7 @@ void Scanner::capture_single_line_comment(int peek) {
   ASSERT(peek == '/');  // At the second '/'.
   peek = advance();
   // The comment should include the '//'.
-  int begin = _index - 2;
+  int begin = index_ - 2;
 
   bool is_toitdoc = peek == '/';
 
@@ -811,14 +811,14 @@ void Scanner::capture_single_line_comment(int peek) {
     peek = advance();
   }
 
-  _comments.add(Comment(false, is_toitdoc, _source->range(begin, _index)));
+  comments_.add(Comment(false, is_toitdoc, source_->range(begin, index_)));
 }
 
 void Scanner::capture_multi_line_comment(int peek) {
   ASSERT(peek == '*');
   peek = advance();
   // The comment should include the '/*'.
-  int begin = _index - 2;
+  int begin = index_ - 2;
 
   bool is_toitdoc = peek == '*' && look_ahead(1) != '/';
 
@@ -849,16 +849,16 @@ void Scanner::capture_multi_line_comment(int peek) {
   }
 
   if (nesting_count != 0) {
-    report_error(begin, _index, "%s", "Unterminated multi-line comment");
+    report_error(begin, index_, "%s", "Unterminated multi-line comment");
   }
 
-  _comments.add(Comment(true, is_toitdoc, _source->range(begin, _index)));
+  comments_.add(Comment(true, is_toitdoc, source_->range(begin, index_)));
 }
 
 void Scanner::report_error(int from, int to, const char* format, ...) {
   va_list arguments;
   va_start(arguments, format);
-  _diagnostics->report_error(_source->range(from, to), format, arguments);
+  diagnostics_->report_error(source_->range(from, to), format, arguments);
   va_end(arguments);
 }
 

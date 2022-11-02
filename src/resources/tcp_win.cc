@@ -57,14 +57,14 @@ class SocketResource : public WindowsResource {
  public:
   SocketResource(TCPResourceGroup* resource_group, SOCKET socket)
     : WindowsResource(resource_group)
-    , _socket(socket) {}
-  SOCKET socket() const { return _socket; }
+    , socket_(socket) {}
+  SOCKET socket() const { return socket_; }
   void do_close() override {
-    closesocket(_socket);
+    closesocket(socket_);
   }
 
  private:
-  SOCKET _socket;
+  SOCKET socket_;
 };
 
 const int READ_BUFFER_SIZE = 1 << 16;
@@ -75,17 +75,17 @@ class TCPSocketResource : public SocketResource {
   TCPSocketResource(TCPResourceGroup* resource_group, SOCKET socket,
                     HANDLE read_event, HANDLE write_event, HANDLE auxiliary_event)
       : SocketResource(resource_group, socket)
-      , _auxiliary_event(auxiliary_event) {
-    _read_buffer.buf = _read_data;
-    _read_buffer.len = READ_BUFFER_SIZE;
-    _read_overlapped.hEvent = read_event;
-    _write_overlapped.hEvent = write_event;
+      , auxiliary_event_(auxiliary_event) {
+    read_buffer_.buf = read_data_;
+    read_buffer_.len = READ_BUFFER_SIZE;
+    read_overlapped_.hEvent = read_event;
+    write_overlapped_.hEvent = write_event;
     if (!issue_read_request()) {
       int error_code = WSAGetLastError();
       if (error_code == WSAECONNRESET) {
         set_state(TCP_CLOSE);
       } else {
-        _error_code = WSAGetLastError();
+        error_code_ = WSAGetLastError();
         set_state(TCP_ERROR);
       }
     } else {
@@ -94,50 +94,50 @@ class TCPSocketResource : public SocketResource {
   }
 
   ~TCPSocketResource() override {
-    if (_write_buffer.buf != null) free(_write_buffer.buf);
+    if (write_buffer_.buf != null) free(write_buffer_.buf);
   }
 
-  DWORD read_count() const { return _read_count; }
-  char* read_buffer() const { return _read_buffer.buf; }
-  bool ready_for_write() const { return _write_ready; }
-  bool ready_for_read() const { return _read_ready; }
-  bool closed() const { return _closed; }
-  int error_code() const { return _error_code; }
+  DWORD read_count() const { return read_count_; }
+  char* read_buffer() const { return read_buffer_.buf; }
+  bool ready_for_write() const { return write_ready_; }
+  bool ready_for_read() const { return read_ready_; }
+  bool closed() const { return closed_; }
+  int error_code() const { return error_code_; }
 
   std::vector<HANDLE> events() override {
     return std::vector<HANDLE>({
-      _read_overlapped.hEvent,
-      _write_overlapped.hEvent,
-      _auxiliary_event
+                                   read_overlapped_.hEvent,
+                                   write_overlapped_.hEvent,
+                                   auxiliary_event_
       });
   }
 
   uint32_t on_event(HANDLE event, uint32_t state) override {
-    if (event == _read_overlapped.hEvent) {
-      _read_ready = true;
+    if (event == read_overlapped_.hEvent) {
+      read_ready_ = true;
       state |= TCP_READ;
-    } else if (event == _write_overlapped.hEvent) {
-      _write_ready = true;
+    } else if (event == write_overlapped_.hEvent) {
+      write_ready_ = true;
       state |= TCP_WRITE;
-    } else if (event == _auxiliary_event) {
+    } else if (event == auxiliary_event_) {
       WSANETWORKEVENTS network_events;
       if (WSAEnumNetworkEvents(socket(), NULL, &network_events) == SOCKET_ERROR) {
-        _error_code = WSAGetLastError();
+        error_code_ = WSAGetLastError();
         state |= TCP_ERROR;
       };
       if (network_events.lNetworkEvents & FD_CLOSE) {
         if (network_events.iErrorCode[FD_CLOSE_BIT] == 0) {
           state |= TCP_READ;
         } else {
-          _error_code = network_events.iErrorCode[FD_CLOSE_BIT];
-          _closed = true;
+          error_code_ = network_events.iErrorCode[FD_CLOSE_BIT];
+          closed_ = true;
           state |= TCP_CLOSE | TCP_READ;
         }
       }
     } else if (event == INVALID_HANDLE_VALUE) {
       // The event source sends INVALID_HANDLE_VALUE when the socket is closed.
-      _error_code = WSAECONNRESET;
-      _closed = true;
+      error_code_ = WSAECONNRESET;
+      closed_ = true;
       state |= TCP_CLOSE | TCP_READ;
     }
     return state;
@@ -145,15 +145,15 @@ class TCPSocketResource : public SocketResource {
 
   void do_close() override {
     SocketResource::do_close();
-    CloseHandle(_read_overlapped.hEvent);
-    CloseHandle(_write_overlapped.hEvent);
+    CloseHandle(read_overlapped_.hEvent);
+    CloseHandle(write_overlapped_.hEvent);
   }
 
   bool issue_read_request() {
-    _read_ready = false;
-    _read_count = 0;
+    read_ready_ = false;
+    read_count_ = 0;
     DWORD flags = 0;
-    int receive_result = WSARecv(socket(), &_read_buffer, 1, NULL, &flags, &_read_overlapped, NULL);
+    int receive_result = WSARecv(socket(), &read_buffer_, 1, NULL, &flags, &read_overlapped_, NULL);
     if (receive_result == SOCKET_ERROR && WSAGetLastError() != WSA_IO_PENDING) {
       return false;
     }
@@ -162,29 +162,29 @@ class TCPSocketResource : public SocketResource {
 
   bool receive_read_response() {
     DWORD flags;
-    bool overlapped_result = WSAGetOverlappedResult(socket(), &_read_overlapped, &_read_count, false, &flags);
-    if (_read_count == 0) _closed = true;
+    bool overlapped_result = WSAGetOverlappedResult(socket(), &read_overlapped_, &read_count_, false, &flags);
+    if (read_count_ == 0) closed_ = true;
     return overlapped_result;
   }
 
   bool send(const uint8* buffer, int length) {
-    if (_write_buffer.buf != null) {
-      free(_write_buffer.buf);
-      _write_buffer.buf = null;
+    if (write_buffer_.buf != null) {
+      free(write_buffer_.buf);
+      write_buffer_.buf = null;
     }
 
-    _write_ready = false;
+    write_ready_ = false;
 
     // We need to copy the buffer out to a long-lived heap object
-    _write_buffer.buf = static_cast<char*>(malloc(length));
-    if (!_write_buffer.buf) {
+    write_buffer_.buf = static_cast<char*>(malloc(length));
+    if (!write_buffer_.buf) {
       WSASetLastError(ERROR_NOT_ENOUGH_MEMORY);
       return false;
     }
-    memcpy(_write_buffer.buf, buffer, length);
-    _write_buffer.len = length;
+    memcpy(write_buffer_.buf, buffer, length);
+    write_buffer_.len = length;
 
-    int send_result = WSASend(socket(), &_write_buffer, 1, NULL, 0, &_write_overlapped, NULL);
+    int send_result = WSASend(socket(), &write_buffer_, 1, NULL, 0, &write_overlapped_, NULL);
 
     if (send_result == SOCKET_ERROR && WSAGetLastError() != WSA_IO_PENDING) {
       return false;
@@ -193,19 +193,19 @@ class TCPSocketResource : public SocketResource {
   }
 
  private:
-  WSABUF _read_buffer{};
-  char _read_data[READ_BUFFER_SIZE]{};
-  OVERLAPPED _read_overlapped{};
-  DWORD _read_count = 0;
-  bool _read_ready = false;
+  WSABUF read_buffer_{};
+  char read_data_[READ_BUFFER_SIZE]{};
+  OVERLAPPED read_overlapped_{};
+  DWORD read_count_ = 0;
+  bool read_ready_ = false;
 
-  WSABUF _write_buffer{};
-  OVERLAPPED _write_overlapped{};
-  bool _write_ready = true;
+  WSABUF write_buffer_{};
+  OVERLAPPED write_overlapped_{};
+  bool write_ready_ = true;
 
-  HANDLE _auxiliary_event;
-  bool _closed = false;
-  int _error_code = 0;
+  HANDLE auxiliary_event_;
+  bool closed_ = false;
+  int error_code_ = 0;
 };
 
 class TCPServerSocketResource : public SocketResource {
@@ -213,10 +213,10 @@ class TCPServerSocketResource : public SocketResource {
   TAG(TCPServerSocketResource);
   TCPServerSocketResource(TCPResourceGroup* resource_group, SOCKET socket, HANDLE event)
     : SocketResource(resource_group, socket)
-    , _event(event) {}
+    , event_(event) {}
 
   std::vector<HANDLE> events() override {
-    return std::vector<HANDLE>({ _event });
+    return std::vector<HANDLE>({event_ });
   }
 
   uint32_t on_event(HANDLE event, uint32_t state) override {
@@ -225,11 +225,11 @@ class TCPServerSocketResource : public SocketResource {
 
   void do_close() override {
     SocketResource::do_close();
-    CloseHandle(_event);
+    CloseHandle(event_);
   }
 
  private:
-  HANDLE _event;
+  HANDLE event_;
 };
 
 MODULE_IMPLEMENTATION(tcp, MODULE_TCP)

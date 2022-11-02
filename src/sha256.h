@@ -37,7 +37,7 @@ class Sha256 : public SimpleResource {
   void get(uint8* hash);
 
  private:
-  mbedtls_sha256_context _context;
+  mbedtls_sha256_context context_;
 };
 
 }
