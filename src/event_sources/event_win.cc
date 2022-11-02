@@ -96,7 +96,7 @@ class WindowsEventThread: public Thread {
           ResetEvent(_handles[index]);
           _event_source->on_event(locker, _resources[index], _handles[index]);
         } else {
-          FATAL("wait failed. error=%lu",GetLastError());
+          FATAL("wait failed. error=%lu", GetLastError());
         }
       }
     }

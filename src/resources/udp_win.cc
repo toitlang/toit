@@ -195,7 +195,7 @@ PRIMITIVE(bind) {
   if (socket == INVALID_SOCKET) WINDOWS_ERROR;
 
   int yes = 1;
-  if (setsockopt(socket, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char *>(&yes), sizeof(yes)) == SOCKET_ERROR) {
+  if (setsockopt(socket, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&yes), sizeof(yes)) == SOCKET_ERROR) {
     close_keep_errno(socket);
     WINDOWS_ERROR;
   }
@@ -298,7 +298,7 @@ PRIMITIVE(receive) {
 
   if (is_array(output)) {
     Array* out = Array::cast(output);
-    ASSERT(out->length() == 3);
+    if (out->length() != 3) INVALID_ARGUMENT;
     out->at_put(0, array);
     ToitSocketAddress& read_peer_address = udp_resource->read_peer_address();
     memcpy(ByteArray::Bytes(address).address(), read_peer_address.address(), read_peer_address.address_length());
@@ -343,7 +343,7 @@ PRIMITIVE(get_option) {
     case UDP_BROADCAST: {
       int value = 0;
       int size = sizeof(value);
-      if (getsockopt(socket, SOL_SOCKET, SO_BROADCAST, reinterpret_cast<char *>(&value), &size) == -1) {
+      if (getsockopt(socket, SOL_SOCKET, SO_BROADCAST, reinterpret_cast<char*>(&value), &size) == -1) {
         WINDOWS_ERROR;
       }
 
@@ -368,7 +368,7 @@ PRIMITIVE(set_option) {
         WRONG_TYPE;
       }
       if (setsockopt(udp_resource->socket(), SOL_SOCKET, SO_BROADCAST,
-                     reinterpret_cast<char *>(&value), sizeof(value)) == SOCKET_ERROR) {
+                     reinterpret_cast<char*>(&value), sizeof(value)) == SOCKET_ERROR) {
         WINDOWS_ERROR;
       }
       break;

@@ -44,6 +44,7 @@ class TCPResourceGroup : public ResourceGroup {
     if (socket == INVALID_SOCKET) return socket;
     return socket;
   }
+
  private:
   uint32_t on_event(Resource* resource, word data, uint32_t state) override {
     return reinterpret_cast<WindowsResource*>(resource)->on_event(
@@ -61,6 +62,7 @@ class SocketResource : public WindowsResource {
   void do_close() override {
     closesocket(_socket);
   }
+
  private:
   SOCKET _socket;
 };
@@ -434,6 +436,7 @@ PRIMITIVE(read)  {
 
   if (!tcp_resource->receive_read_response()) WINDOWS_ERROR;
 
+  // With overlapped (async) reads a read_count of 0 indicates end of stream.
   if (tcp_resource->read_count() == 0) return process->program()->null_object();
 
   ByteArray* array = process->allocate_byte_array(static_cast<int>(tcp_resource->read_count()));
