@@ -7,6 +7,12 @@ import monitor show ResourceState_
 import reader
 import writer
 
+class StopBits:
+  value_ /int
+
+  constructor.private_ value:
+    value_ = value
+
 /**
 Support for Universal asynchronous receiver-transmitter (UART).
 
@@ -19,9 +25,9 @@ The UART Port exposes the hardware features for communicating with an external
   peripheral using asynchronous communication.
 */
 class Port implements reader.Reader:
-  static STOP_BITS_1   ::= 1
-  static STOP_BITS_1_5 ::= 2
-  static STOP_BITS_2   ::= 3
+  static STOP_BITS_1   ::= StopBits.private_ 1
+  static STOP_BITS_1_5 ::= StopBits.private_ 2
+  static STOP_BITS_2   ::= StopBits.private_ 3
 
   static PARITY_DISABLED ::= 1
   static PARITY_EVEN     ::= 2
@@ -73,7 +79,7 @@ class Port implements reader.Reader:
   */
   constructor
       --tx/gpio.Pin? --rx/gpio.Pin? --rts/gpio.Pin?=null --cts/gpio.Pin?=null
-      --baud_rate/int --data_bits/int=8 --stop_bits/int=STOP_BITS_1
+      --baud_rate/int --data_bits/int=8 --stop_bits/StopBits=STOP_BITS_1
       --invert_tx/bool=false --invert_rx/bool=false
       --parity/int=PARITY_DISABLED
       --mode/int=MODE_UART:
@@ -90,7 +96,7 @@ class Port implements reader.Reader:
       cts ? cts.num : -1
       baud_rate
       data_bits
-      stop_bits
+      stop_bits.value_
       parity
       tx_flags
       mode
@@ -107,18 +113,18 @@ class Port implements reader.Reader:
   constructor device/string
       --baud_rate/int
       --data_bits/int=8
-      --stop_bits/int=STOP_BITS_1
+      --stop_bits/StopBits=STOP_BITS_1
       --parity/int=PARITY_DISABLED:
       return HostPort device --baud_rate=baud_rate --data_bits=data_bits --stop_bits=stop_bits --parity=parity
 
   constructor.host_port_ device/string
        --baud_rate/int
        --data_bits/int=8
-       --stop_bits/int=STOP_BITS_1
+       --stop_bits/StopBits=STOP_BITS_1
        --parity/int=PARITY_DISABLED:
      group := resource_group_
      should_ensure_write_state_ = true
-     uart_ = uart_create_path_ group device baud_rate data_bits stop_bits parity
+     uart_ = uart_create_path_ group device baud_rate data_bits stop_bits.value_ parity
      state_ = ResourceState_ group uart_
 
   /**
@@ -237,7 +243,7 @@ class HostPort extends Port:
   constructor device/string
       --baud_rate/int
       --data_bits/int=8
-      --stop_bits/int=Port.STOP_BITS_1
+      --stop_bits/StopBits=Port.STOP_BITS_1
       --parity/int=Port.PARITY_DISABLED:
     super.host_port_ device --baud_rate=baud_rate --data_bits=data_bits --stop_bits=stop_bits --parity=parity
 
