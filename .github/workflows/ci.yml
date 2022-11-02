@@ -437,6 +437,7 @@ jobs:
           make esp32
           make ESP32_CHIP=esp32s3 esp32
           make ESP32_CHIP=esp32c3 esp32
+          make ESP32_CHIP=esp32s2 esp32
 
       - name: Pack firmware artifacts
         shell: bash
@@ -444,6 +445,7 @@ jobs:
           gzip --to-stdout build/esp32/firmware.envelope > build/firmware-esp32.gz
           gzip --to-stdout build/esp32c3/firmware.envelope > build/firmware-esp32c3.gz
           gzip --to-stdout build/esp32s3/firmware.envelope > build/firmware-esp32s3.gz
+          gzip --to-stdout build/esp32s2/firmware.envelope > build/firmware-esp32s2.gz
 
       - name: Upload firmware artifacts
         uses: actions/upload-artifact@v3
@@ -453,6 +455,7 @@ jobs:
             build/firmware-esp32.gz
             build/firmware-esp32c3.gz
             build/firmware-esp32s3.gz
+            build/firmware-esp32s2.gz
 
       - name: Upload ESP32 release firmware artifacts
         if: |
@@ -484,6 +487,17 @@ jobs:
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: build/firmware-esp32s3.gz
+          tag: ${{ github.ref }}
+          overwrite: true
+
+      - name: Upload ESP32-S2 release firmware artifacts
+        if: |
+          github.event_name == 'release' &&
+          github.repository_owner == 'toitlang'
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: build/firmware-esp32s2.gz
           tag: ${{ github.ref }}
           overwrite: true
 
@@ -578,6 +592,16 @@ jobs:
         run: |
           mkdir -p build/raspberry_pi64
           cp -Ra build/raspberry_pi/sdk build/raspberry_pi64
+
+      - name: Patch esptool requirements
+        # We don't want to use the cryptography package that uses rust.
+        # The latest version that can still be installed without rust is 3.4.8.
+        # If we want to use a newer version, we would need to:
+        # - Install rust in the container: apt-get install -y cargo
+        # - Make sure there is enough space in the container.
+        #    This is done by a `with` argument: image_additional_mb: 512
+        run: |
+          sed -i 's/cryptography/cryptography<=3.4.8/' third_party/esp-idf/components/esptool_py/esptool/setup.py
 
       - name: Build esptool 32-bit
         uses: pguyot/arm-runner-action@v2

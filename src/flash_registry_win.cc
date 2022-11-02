@@ -50,14 +50,6 @@ bool FlashRegistry::write_chunk(const void* chunk, int offset, int size) {
   UNIMPLEMENTED();
 }
 
-int FlashRegistry::read_raw_chunk(int offset, void* destination, int size) {
-  UNIMPLEMENTED();
-}
-
-bool FlashRegistry::write_raw_chunk(const void* chunk, int offset, int size) {
-  UNIMPLEMENTED();
-}
-
 int FlashRegistry::offset(const void* cursor) {
   UNIMPLEMENTED();
 }
