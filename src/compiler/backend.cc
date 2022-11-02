@@ -39,7 +39,7 @@ class BackendCollector : public ir::TraversingVisitor {
  public:
   void visit_Code(ir::Code* node) {
     TraversingVisitor::visit_Code(node);
-    _max_captured_count = std::max(_max_captured_count, node->captured_count());
+    max_captured_count_ = std::max(max_captured_count_, node->captured_count());
   }
 
   void visit_Typecheck(ir::Typecheck* node) {
@@ -47,32 +47,32 @@ class BackendCollector : public ir::TraversingVisitor {
     if (node->type().is_class()) {
       auto klass = node->type().klass();
       if (klass->is_interface()) {
-        _interface_usage_counts[klass]++;
+        interface_usage_counts_[klass]++;
       } else {
-        _class_usage_counts[klass]++;
+        class_usage_counts_[klass]++;
       }
     }
   }
 
-  int max_captured_count() const { return _max_captured_count; }
+  int max_captured_count() const { return max_captured_count_; }
 
   /// Returns a list of all classes that were used in typechecks.
   /// The result is sorted by usage-count, most-used first.
   List<ir::Class*> compute_sorted_typecheck_classes() {
-    return to_sorted_list(_class_usage_counts);
+    return to_sorted_list(class_usage_counts_);
   }
 
   /// Returns a list of all interfaces that were used in typechecks.
   /// The result is sorted by usage-count, most-used first.
   List<ir::Class*> compute_sorted_typecheck_interfaces() {
-    return to_sorted_list(_interface_usage_counts);
+    return to_sorted_list(interface_usage_counts_);
   }
 
  private:
-  int _max_captured_count = 0;
+  int max_captured_count_ = 0;
 
-  Map<ir::Class*, int> _class_usage_counts;
-  Map<ir::Class*, int> _interface_usage_counts;
+  Map<ir::Class*, int> class_usage_counts_;
+  Map<ir::Class*, int> interface_usage_counts_;
 
   List<ir::Class*> to_sorted_list(Map<ir::Class*, int>& counts) {
     std::vector<std::pair<ir::Class*, int>> sorted;

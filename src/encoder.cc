@@ -26,17 +26,17 @@ namespace toit {
 
 class EncodeVisitor : public Visitor {
  public:
-  explicit EncodeVisitor(ProgramOrientedEncoder* encoder) : _encoder(encoder), _level(0) {};
+  explicit EncodeVisitor(ProgramOrientedEncoder* encoder) : encoder_(encoder), level_(0) {};
 
   void visit_byte_array(const uint8* bytes, int length) {
-    _encoder->write_byte_array_header(length);
+    encoder_->write_byte_array_header(length);
     for (int i = 0; i < length; i++) {
-      _encoder->write_byte(bytes[i]);
+      encoder_->write_byte(bytes[i]);
     }
   }
 
  private:
-  EncodeVisitor(ProgramOrientedEncoder* encoder, int level) : _encoder(encoder), _level(level) {};
+  EncodeVisitor(ProgramOrientedEncoder* encoder, int level) : encoder_(encoder), level_(level) {};
 
   // Restrictions when encoding collections.
   const int MAX_NOF_STRING_ELEMENTS = 104;
@@ -44,62 +44,62 @@ class EncodeVisitor : public Visitor {
   const int MAX_NOF_ARRAY_ELEMENTS = 10;
 
   void visit_smi(Smi* smi) {
-    _encoder->write_int(smi->value());
+    encoder_->write_int(smi->value());
   }
   void visit_string(String* string) {
-    _encoder->write_byte('S');
+    encoder_->write_byte('S');
     String::Bytes bytes(string);
     const char* OVERFLOW_DOTS = "...";
     const int printed = Utils::min(bytes.length(), MAX_NOF_STRING_ELEMENTS);
     const bool overflow = bytes.length() > MAX_NOF_STRING_ELEMENTS;
     const int limit = printed + (overflow ? strlen(OVERFLOW_DOTS) : 0);
-    _encoder->write_int(limit);
+    encoder_->write_int(limit);
     for (int i = 0; i < printed; i++) {
-      _encoder->write_byte(bytes.at(i));
+      encoder_->write_byte(bytes.at(i));
     }
     if (overflow) {
       for (const char* p = OVERFLOW_DOTS; *p; p++) {
-        _encoder->write_byte(*p);
+        encoder_->write_byte(*p);
       }
     }
   }
 
   void visit_array(Array* array) {
-    _encoder->write_header(2, 'A');
-    _encoder->write_int(array->length());
-    _encoder->write_byte('[');
-    _encoder->write_byte('#');
+    encoder_->write_header(2, 'A');
+    encoder_->write_int(array->length());
+    encoder_->write_byte('[');
+    encoder_->write_byte('#');
     const int limit = Utils::min(array->length(), MAX_NOF_ARRAY_ELEMENTS);
-    _encoder->write_int(limit);
-    EncodeVisitor sub(_encoder, _level + 1);
+    encoder_->write_int(limit);
+    EncodeVisitor sub(encoder_, level_ + 1);
     for (int i = 0; i < limit; i++) {
       sub.accept(array->at(i));
     }
   }
 
   void visit_byte_array(ByteArray* byte_array) {
-    _encoder->write_byte('[');
-    _encoder->write_byte('$');
-    _encoder->write_byte('U');
-    _encoder->write_byte('#');
+    encoder_->write_byte('[');
+    encoder_->write_byte('$');
+    encoder_->write_byte('U');
+    encoder_->write_byte('#');
     ByteArray::Bytes bytes(byte_array);
     const int limit = Utils::min(bytes.length(), MAX_NOF_BYTEARRAY_ELEMENTS);
-    _encoder->write_int(limit);
+    encoder_->write_int(limit);
     for (int i = 0; i < limit; i++) {
-      _encoder->write_byte(bytes.at(i));
+      encoder_->write_byte(bytes.at(i));
     }
   }
 
   void visit_stack(Stack* stack);
 
   void visit_list(Instance* instance, Array* backing_array, int size) {
-    _encoder->write_header(2, 'L');
-    _encoder->write_int(size);
-    _encoder->write_byte('[');
-    _encoder->write_byte('#');
+    encoder_->write_header(2, 'L');
+    encoder_->write_int(size);
+    encoder_->write_byte('[');
+    encoder_->write_byte('#');
     const int limit = Utils::min(size, MAX_NOF_ARRAY_ELEMENTS);
-    _encoder->write_int(limit);
-    EncodeVisitor sub(_encoder, _level + 1);
+    encoder_->write_int(limit);
+    EncodeVisitor sub(encoder_, level_ + 1);
     for (int i = 0; i < limit; i++) {
       sub.accept(backing_array->at(i));
     }
@@ -107,7 +107,7 @@ class EncodeVisitor : public Visitor {
 
   void visit_instance(Instance* instance) {
     Smi* class_id = instance->class_id();
-    if (class_id == _encoder->program()->list_class_id() && is_array(instance->at(Instance::LIST_ARRAY_INDEX))) {
+    if (class_id == encoder_->program()->list_class_id() && is_array(instance->at(Instance::LIST_ARRAY_INDEX))) {
       // The backing storage in a list can be either an array -- or a
       // large array. Only optimize if it isn't large.
       // We use the same layout assumptions for List_ as the interpreter.
@@ -116,25 +116,25 @@ class EncodeVisitor : public Visitor {
           Array::cast(instance->at(Instance::LIST_ARRAY_INDEX)),
           Smi::cast(instance->at(Instance::LIST_SIZE_INDEX))->value());
     } else {
-      _encoder->write_header(1, 'I');
-      _encoder->write_int(class_id->value());
+      encoder_->write_header(1, 'I');
+      encoder_->write_int(class_id->value());
     }
   }
 
   void visit_oddball(HeapObject* oddball) {
-    Program* program = _encoder->program();
-    if (oddball == program->null_object()) _encoder->write_byte('Z');
-    else if (oddball == program->true_object()) _encoder->write_byte('T');
-    else if (oddball == program->false_object()) _encoder->write_byte('F');
+    Program* program = encoder_->program();
+    if (oddball == program->null_object()) encoder_->write_byte('Z');
+    else if (oddball == program->true_object()) encoder_->write_byte('T');
+    else if (oddball == program->false_object()) encoder_->write_byte('F');
     else UNREACHABLE();
   }
 
   void visit_double(Double* d) {
-    _encoder->write_double(d->value());
+    encoder_->write_double(d->value());
   }
 
   void visit_large_integer(LargeInteger* large_integer) {
-    _encoder->write_int(large_integer->value());
+    encoder_->write_int(large_integer->value());
   }
 
   void visit_task(Task* value) {
@@ -143,14 +143,14 @@ class EncodeVisitor : public Visitor {
 
  public:
   void visit_frame(int index, int absolute_bci) {
-    _encoder->write_header(2, 'F');
-    _encoder->write_int(index);
-    _encoder->write_int(absolute_bci);
+    encoder_->write_header(2, 'F');
+    encoder_->write_int(index);
+    encoder_->write_int(absolute_bci);
   }
 
  private:
-  ProgramOrientedEncoder* _encoder;
-  int _level;
+  ProgramOrientedEncoder* encoder_;
+  int level_;
 };
 
 #ifdef IOT_DEVICE
@@ -162,21 +162,21 @@ class EncodeVisitor : public Visitor {
 
 class EncodeFrameCallback : public FrameCallback {
  public:
-  EncodeFrameCallback(EncodeVisitor* visitor, int number_of_frames) : _visitor(visitor), _number_of_frames(number_of_frames), _count(0) {}
+  EncodeFrameCallback(EncodeVisitor* visitor, int number_of_frames) : visitor_(visitor), number_of_frames_(number_of_frames), count_(0) {}
 
   void do_frame(Stack* stack, int number, int absolute_bci) {
      if (_include(number)) {
-       _visitor->visit_frame(number, absolute_bci);
-       _count++;
+       visitor_->visit_frame(number, absolute_bci);
+       count_++;
      }
   }
 
   int number_of_frames_written() {
-    return _count;
+    return count_;
   }
 
   int number_of_frames_to_write() {
-    return Utils::min(_number_of_frames, MAX_NUMBER_OF_STACK_FRAMES);
+    return Utils::min(number_of_frames_, MAX_NUMBER_OF_STACK_FRAMES);
   }
 
  private:
@@ -189,35 +189,35 @@ class EncodeFrameCallback : public FrameCallback {
     int boundary_1 = MAX_NUMBER_OF_STACK_FRAMES / 3;
     int boundary_2 = MAX_NUMBER_OF_STACK_FRAMES - boundary_1;
     // This means we only dump the top and bottom frames if we have more than 20 stack frames.
-    return (index < boundary_1) || (_number_of_frames - index) <= boundary_2;
+    return (index < boundary_1) || (number_of_frames_ - index) <= boundary_2;
   }
 
-  EncodeVisitor* const _visitor;
-  int const _number_of_frames;
-  int _count;
+  EncodeVisitor* const visitor_;
+  int const number_of_frames_;
+  int count_;
 };
 
 void EncodeVisitor::visit_stack(Stack* stack) {
   FrameCallback nothing;
-  int number_of_frames = stack->frames_do(_encoder->program(), &nothing);
-  EncodeVisitor sub(_encoder, _level + 1);
+  int number_of_frames = stack->frames_do(encoder_->program(), &nothing);
+  EncodeVisitor sub(encoder_, level_ + 1);
   EncodeFrameCallback doit(&sub, number_of_frames);
-  _encoder->write_byte('[');
-  _encoder->write_byte('#');
-  _encoder->write_int(2);
-  _encoder->write_int('S');
-  _encoder->write_byte('[');
-  _encoder->write_byte('#');
+  encoder_->write_byte('[');
+  encoder_->write_byte('#');
+  encoder_->write_int(2);
+  encoder_->write_int('S');
+  encoder_->write_byte('[');
+  encoder_->write_byte('#');
   int const nof = doit.number_of_frames_to_write();
-  _encoder->write_int(nof);
-  stack->frames_do(_encoder->program(), &doit);
+  encoder_->write_int(nof);
+  stack->frames_do(encoder_->program(), &doit);
   ASSERT(nof == doit.number_of_frames_written());
 }
 
 
 ProgramOrientedEncoder::ProgramOrientedEncoder(Program* program, Buffer* buffer)
   : Encoder(buffer),
-    _program(program) {
+    program_(program) {
   // Always encode header information to identify:
   // - Program SDK version
   // - VM SDK model
@@ -273,7 +273,7 @@ bool ProgramOrientedEncoder::encode_profile(Profiler* profiler, String* title, i
 }
 
 void Encoder::write_byte(uint8 c) {
-  _buffer->put_byte(c);
+  buffer_->put_byte(c);
 }
 
 void Encoder::write_header(int size, uint8 tag) {
@@ -293,33 +293,33 @@ const int64 MY_UINT8_MAX = 255;
 
 void Encoder::write_int(int64 i) {
   if (i >= 0 && i <= MY_UINT8_MAX) {
-    _buffer->put_byte('U');
-    _buffer->put_byte(i);
+    buffer_->put_byte('U');
+    buffer_->put_byte(i);
   } else if (i >= MY_INT8_MIN && i <= MY_INT8_MAX) {
-    _buffer->put_byte('i');
-    _buffer->put_byte(i);
+    buffer_->put_byte('i');
+    buffer_->put_byte(i);
   } else if (i >= MY_INT16_MIN && i <= MY_INT16_MAX) {
-    _buffer->put_byte('I');
-    _buffer->put_int16(i);
+    buffer_->put_byte('I');
+    buffer_->put_int16(i);
   } else if (i >= MY_INT32_MIN && i <= MY_INT32_MAX) {
-    _buffer->put_byte('l');
-    _buffer->put_int32(i);
+    buffer_->put_byte('l');
+    buffer_->put_int32(i);
   } else {
-    _buffer->put_byte('L');
-    _buffer->put_int64(i);
+    buffer_->put_byte('L');
+    buffer_->put_int64(i);
   }
 }
 
 void Encoder::write_int32(int64 i) {
   ASSERT(i >= MY_INT32_MIN && i <= MY_INT32_MAX);
-  _buffer->put_byte('l');
-  _buffer->put_int32(i);
+  buffer_->put_byte('l');
+  buffer_->put_int32(i);
 }
 
 void Encoder::write_double(double value) {
-  _buffer->put_byte('D');
+  buffer_->put_byte('D');
   auto raw = bit_cast<int64>(value);
-  _buffer->put_int64(raw);
+  buffer_->put_int64(raw);
 }
 
 void Encoder::write_byte_array_header(int length) {

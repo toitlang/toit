@@ -48,31 +48,31 @@ class Symbol {
 
   const char* c_str() const {
     ASSERT(is_valid());
-    // We can't use `"<invalid>"` as `_str`, as the constexpr and dynamic string constants
+    // We can't use `"<invalid>"` as `str_`, as the constexpr and dynamic string constants
     // are not necessarily the same.
     // Returning `<invalid>` here makes the compiler more stable. We should generally not
     // need it, but when it happens we don't crash as easily.
     if (!is_valid()) return "<invalid>";
-    return _str;
+    return str_;
   }
 
   // Tells weather this symbol is a private identifier, ends with '_'.
   bool is_private_identifier() {
     if (!is_valid()) return false;
-    int len = strlen(_str);
+    int len = strlen(str_);
     if (len <= 1) return false;
-    return _str[len-1] == '_';
+    return str_[len-1] == '_';
   }
 
   bool operator==(const Symbol& other) const {
-    return _str == other._str;
+    return str_ == other.str_;
   }
 
   bool operator!=(const Symbol& other) const {
-    return _str != other._str;
+    return str_ != other.str_;
   }
 
-  bool is_valid() const { return _str != null; }
+  bool is_valid() const { return str_ != null; }
 
   size_t hash() const {
     if (!is_valid()) return 29542603;  // Random number.
@@ -81,12 +81,12 @@ class Symbol {
   }
 
  private:
-  constexpr explicit Symbol(const char* name) : _str(name) { }
+  constexpr explicit Symbol(const char* name) : str_(name) { }
 
   friend class ListBuilder<Symbol>;
   Symbol() { }
 
-  const char* _str;
+  const char* str_;
 };
 
 } // namespace toit::compiler

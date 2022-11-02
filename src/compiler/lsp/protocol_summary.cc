@@ -60,12 +60,12 @@ class ToitdocWriter : public toitdoc::Visitor {
   ToitdocWriter(Toitdoc<ir::Node*> toitdoc,
                 const UnorderedMap<ir::Node*, ToitdocPath>& paths,
                 LspWriter* lsp_writer)
-      : _toitdoc(toitdoc)
-      , _paths(paths)
-      , _lsp_writer(lsp_writer) { }
+      : toitdoc_(toitdoc)
+      , paths_(paths)
+      , lsp_writer_(lsp_writer) { }
 
   void write() {
-    visit(_toitdoc.contents());
+    visit(toitdoc_.contents());
   }
 
   void visit_Contents(toitdoc::Contents* node) {
@@ -110,14 +110,14 @@ class ToitdocWriter : public toitdoc::Visitor {
   void visit_Ref(toitdoc::Ref* node) {
     this->printf("REF\n");
     print_symbol(node->text());
-    auto resolved = _toitdoc.refs()[node->id()];
+    auto resolved = toitdoc_.refs()[node->id()];
     if (resolved == null) {
       this->printf("-1\n");
     } else if (resolved->is_Parameter()) {
       // TODO(florian): handle parameters.
       this->printf("-2\n");
     } else {
-      auto path = _paths.at(resolved);
+      auto path = paths_.at(resolved);
       int kind_id = static_cast<int>(path.kind);
       auto holder_name = Symbol::invalid();
       auto name = Symbol::invalid();
@@ -171,9 +171,9 @@ class ToitdocWriter : public toitdoc::Visitor {
   void visit_Expression(toitdoc::Expression* node) { visit(node); }
 
  private:
-  Toitdoc<ir::Node*> _toitdoc;
-  UnorderedMap<ir::Node*, ToitdocPath> _paths;
-  LspWriter* _lsp_writer;
+  Toitdoc<ir::Node*> toitdoc_;
+  UnorderedMap<ir::Node*, ToitdocPath> paths_;
+  LspWriter* lsp_writer_;
 
   template<typename T, typename T2>
   void print_list(T elements, void (ToitdocWriter::*callback)(T2)) {
@@ -206,7 +206,7 @@ class ToitdocWriter : public toitdoc::Visitor {
   void printf(const char* format, ...) {
     va_list arguments;
     va_start(arguments, format);
-    _lsp_writer->printf(format, arguments);
+    lsp_writer_->printf(format, arguments);
     va_end(arguments);
   }
 };
@@ -218,22 +218,22 @@ class Writer {
                   int core_index,
                   const UnorderedMap<ir::Node*, ToitdocPath>& paths,
                   LspWriter* lsp_writer)
-      : _modules(modules)
-      , _toitdocs(toitdocs)
-      , _core_index(core_index)
-      , _paths(paths)
-      , _lsp_writer(lsp_writer) { }
+      : modules_(modules)
+      , toitdocs_(toitdocs)
+      , core_index_(core_index)
+      , paths_(paths)
+      , lsp_writer_(lsp_writer) { }
 
   void print_modules();
 
  private:
-  const std::vector<Module*> _modules;
-  ToitdocRegistry _toitdocs;
-  int _core_index;
-  UnorderedMap<ir::Node*, ToitdocPath> _paths;
-  UnorderedMap<ir::Node*, int> _toplevel_ids;
-  LspWriter* _lsp_writer;
-  Source* _current_source = null;
+  const std::vector<Module*> modules_;
+  ToitdocRegistry toitdocs_;
+  int core_index_;
+  UnorderedMap<ir::Node*, ToitdocPath> paths_;
+  UnorderedMap<ir::Node*, int> toplevel_ids_;
+  LspWriter* lsp_writer_;
+  Source* current_source_ = null;
 
   template<typename T> void print_toitdoc(T node);
   void print_range(const Source::Range& range);
@@ -262,16 +262,16 @@ class Writer {
   void printf(const char* format, ...) {
     va_list arguments;
     va_start(arguments, format);
-    _lsp_writer->printf(format, arguments);
+    lsp_writer_->printf(format, arguments);
     va_end(arguments);
   }
 };
 
 template<typename T>
 void Writer::print_toitdoc(T node) {
-  auto toitdoc = _toitdocs.toitdoc_for(node);
+  auto toitdoc = toitdocs_.toitdoc_for(node);
   if (toitdoc.is_valid()) {
-    ToitdocWriter toitdoc_writer(toitdoc, _paths, _lsp_writer);
+    ToitdocWriter toitdoc_writer(toitdoc, paths_, lsp_writer_);
     toitdoc_writer.write();
   } else {
     this->printf("0\n");
@@ -279,8 +279,8 @@ void Writer::print_toitdoc(T node) {
 }
 
 void Writer::print_range(const Source::Range& range) {
-  this->printf("%d\n", _current_source->offset_in_source(range.from()));
-  this->printf("%d\n", _current_source->offset_in_source(range.to()));
+  this->printf("%d\n", current_source_->offset_in_source(range.from()));
+  this->printf("%d\n", current_source_->offset_in_source(range.to()));
 }
 
 void Writer::safe_print_symbol(Symbol symbol) {
@@ -292,7 +292,7 @@ void Writer::safe_print_symbol(Symbol symbol) {
 }
 
 void Writer::print_toplevel_ref(ir::Node* toplevel_element) {
-  this->printf("%d\n", _toplevel_ids.at(toplevel_element));
+  this->printf("%d\n", toplevel_ids_.at(toplevel_element));
 }
 
 void Writer::print_type(ir::Type type) {
@@ -334,8 +334,8 @@ void Writer::print_method(ir::Method* method) {
     safe_print_symbol(method->name());
   }
   print_range(method->range());
-  auto probe = _toplevel_ids.find(method);
-  this->printf("%d\n", probe == _toplevel_ids.end() ? -1 : probe->second);
+  auto probe = toplevel_ids_.find(method);
+  this->printf("%d\n", probe == toplevel_ids_.end() ? -1 : probe->second);
   switch (method->kind()) {
     case ir::Method::INSTANCE:
       if (method->is_FieldStub()) {
@@ -395,7 +395,7 @@ void Writer::print_method(ir::Method* method) {
 void Writer::print_class(ir::Class* klass) {
   safe_print_symbol(klass->name());
   print_range(klass->range());
-  this->printf("%d\n", _toplevel_ids.at(klass));
+  this->printf("%d\n", toplevel_ids_.at(klass));
   const char* kind;
   if (klass->is_interface()) {
     kind = "interface";
@@ -438,11 +438,11 @@ void Writer::print_export(Symbol exported_id, const ResolutionEntry& entry) {
 }
 
 void Writer::print_dependencies(Module* module) {
-  bool is_core = module == _modules[_core_index];
+  bool is_core = module == modules_[core_index_];
   ListBuilder<const char*> deps;
   if (is_core) {
     // Every module (except for core) implicitly imports core.
-    deps.add(_modules[_core_index]->unit()->absolute_path());
+    deps.add(modules_[core_index_]->unit()->absolute_path());
   }
   auto unit = module->unit();
   for (auto import : unit->imports()) {
@@ -456,7 +456,7 @@ void Writer::print_dependencies(Module* module) {
 }
 
 void Writer::print_modules() {
-  auto modules = _modules;
+  auto modules = modules_;
   this->printf("SUMMARY\n");
   // First print the number of classes in each module, so it's easier to
   // use them for typing and inheritance.
@@ -486,18 +486,18 @@ void Writer::print_modules() {
       toplevel_ids[global] = toplevel_id++;
     }
   }
-  _toplevel_ids = toplevel_ids;
+  toplevel_ids_ = toplevel_ids;
 
-  auto core_module = modules[_core_index];
+  auto core_module = modules[core_index_];
 
   for (auto module : modules) {
     // Ignore error modules.
     if (module->is_error_module()) continue;
 
-    _current_source = module->unit()->source();
+    current_source_ = module->unit()->source();
 
     // For simplicity repeat the module path and the class count.
-    this->printf("%s\n", _current_source->absolute_path());
+    this->printf("%s\n", current_source_->absolute_path());
 
     print_dependencies(module);
 
@@ -541,7 +541,7 @@ class ToitdocPathMappingCreator {
 
         // No need to collect parameter paths.
         if (ref->is_Parameter()) continue;
-        _ref_targets.insert(ref);
+        ref_targets_.insert(ref);
       }
     });
 
@@ -557,18 +557,18 @@ class ToitdocPathMappingCreator {
         visit_container(ToitdocPath::Kind::METHOD, module, klass, klass->methods());
       }
     }
-    return _mapping;
+    return mapping_;
   }
 
  private:
-  Set<ir::Node*> _ref_targets;
-  UnorderedMap<ir::Node*, ToitdocPath> _mapping;
+  Set<ir::Node*> ref_targets_;
+  UnorderedMap<ir::Node*, ToitdocPath> mapping_;
 
   template<typename Container>
   void visit_container(ToitdocPath::Kind kind, Module* module, ir::Class* klass, Container list) {
     for (auto element : list) {
-      if (_ref_targets.contains(element)) {
-        _mapping[element] = {
+      if (ref_targets_.contains(element)) {
+        mapping_[element] = {
           .kind = kind,
           .module = module,
           .klass = klass

@@ -28,7 +28,7 @@ namespace toit {
 class SnapshotBundle {
  public:
   SnapshotBundle(uint8* buffer, int size)
-      : _buffer(buffer), _size(size) { }
+      : buffer_(buffer), size_(size) { }
 
   /// Returns a new SnapshotBundle, where the buffer is allocated with 'malloc'.
   /// The given data is not reused and can be freed.
@@ -52,13 +52,13 @@ class SnapshotBundle {
   /// also writes an error message on stderr.
   bool write_to_file(const char* path, bool silent = false);
 
-  bool is_valid() const { return _buffer != null; }
+  bool is_valid() const { return buffer_ != null; }
 
   Snapshot snapshot();
 
-  uint8* buffer() { return _buffer; }
-  const uint8* buffer() const { return _buffer; }
-  int size() const { return _size; }
+  uint8* buffer() { return buffer_; }
+  const uint8* buffer() const { return buffer_; }
+  int size() const { return size_; }
 
   // Read the UUID from the file into a 16 byte buffer.  Returns false if the
   // UUID was not in the snapshot file.
@@ -71,8 +71,8 @@ class SnapshotBundle {
   static bool is_bundle_file(const char* path);
 
  private:
-  uint8* _buffer;
-  int _size;
+  uint8* buffer_;
+  int size_;
 };
 
 } // namespace toit

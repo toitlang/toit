@@ -47,7 +47,7 @@ class PackageLock {
                           Filesystem* fs,
                           Diagnostics* diagnostics);
 
-  bool has_errors() const { return _has_errors; }
+  bool has_errors() const { return has_errors_; }
 
   // Resolves the prefix inside the given package.
   //
@@ -56,11 +56,11 @@ class PackageLock {
   Package resolve_prefix(const Package& package, const std::string& prefix) const;
 
   // Null if no lock_file was found/given.
-  Source* lock_file_source() const { return _lock_file_source; }
+  Source* lock_file_source() const { return lock_file_source_; }
 
   void list_sdk_prefixes(const std::function<void (const std::string& candidate)>& callback) const;
 
-  std::string sdk_constraint() const { return _sdk_constraint; }
+  std::string sdk_constraint() const { return sdk_constraint_; }
 
  private:
   PackageLock(Source* source,
@@ -70,30 +70,30 @@ class PackageLock {
               bool hasErrors);
 
   // The source of the lock-file. Null if not found.
-  Source* _lock_file_source;
+  Source* lock_file_source_;
 
   // Whether the package-lock file had errors.
   // This does not include resolution errors.
   // This field is only true if we couldn't parse the lock file and thus are
   // not using some information from it.
-  bool _has_errors;
+  bool has_errors_;
 
   // The sdk is implicitly imported without a prefix. We use this
   // set as a fall-back when a package doesn't have any explicit mapping for
   // a prefix.
-  Set<std::string> _sdk_prefixes;
+  Set<std::string> sdk_prefixes_;
 
   // For each package-id a mapping from prefix to entry.
   // Does not contain the virtual package.
-  const Map<std::string, Package> _packages;
+  const Map<std::string, Package> packages_;
 
   // A map from path to package-id.
   // The cache will be seeded with the absolute paths of the packages, and then
   // filled up with new paths when the [package_for] function encounters new ones.
-  mutable Map<std::string, std::string> _path_to_package_cache;
+  mutable Map<std::string, std::string> path_to_package_cache_;
 
   // The SDK constraint for this application.
-  std::string _sdk_constraint;
+  std::string sdk_constraint_;
 };
 
 /// Finds the lock-file relative to [source_path] if not null. Otherwise uses the

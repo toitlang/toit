@@ -28,38 +28,38 @@ namespace compiler {
 class Label {
  public:
   Label()
-      : _position_or_use_count(-1)
-      , _first_uses()
-      , _height(-1) { }
+      : position_or_use_count_(-1)
+      , first_uses_()
+      , height_(-1) { }
 
   bool is_bound() const { return _has_position(); }
 
   int position() const {
     ASSERT(is_bound());
-    return _decode_position(_position_or_use_count);
+    return _decode_position(position_or_use_count_);
   }
 
   void bind(int position, int height) {
     ASSERT(!is_bound());
-    _position_or_use_count = _encode_position(position);
+    position_or_use_count_ = _encode_position(position);
     ASSERT(is_bound());
 
-    ASSERT(_height == -1 || _height == height);
-    _height = height;
-    ASSERT(_height >= 0);
+    ASSERT(height_ == -1 || height_ == height);
+    height_ = height;
+    ASSERT(height_ >= 0);
   }
 
   int uses() const {
     ASSERT(!_has_position());
-    return _decode_use_count(_position_or_use_count);
+    return _decode_use_count(position_or_use_count_);
   }
 
   int use_at(int n) const {
     ASSERT(n >= 0 && n < uses());
     ASSERT(n < uses());
     int result = (n < _FIRST_USES_SIZE)
-        ? _first_uses[n]
-        : _additional_uses[n - _FIRST_USES_SIZE];
+        ? first_uses_[n]
+        : additional_uses_[n - _FIRST_USES_SIZE];
     return result;
   }
 
@@ -68,16 +68,16 @@ class Label {
  private:
   static const int _FIRST_USES_SIZE = 4;
 
-  int _position_or_use_count;
-  int _first_uses[_FIRST_USES_SIZE];
+  int position_or_use_count_;
+  int first_uses_[_FIRST_USES_SIZE];
 
-  std::vector<int> _additional_uses;
+  std::vector<int> additional_uses_;
 
   // The height can be set at use-site or bind-site. The other side always
   // checks that the height agrees.
-  int _height;
+  int height_;
 
-  bool _has_position() const { return _position_or_use_count >= 0; }
+  bool _has_position() const { return position_or_use_count_ >= 0; }
 
   static int _encode_position(int position) { return position; }
   static int _encode_use_count(int use_count) { return -use_count - 1; }
@@ -113,24 +113,24 @@ class Label {
 class AbsoluteUse {
  public:
   AbsoluteUse(int relative_position)
-      : _position(-relative_position) { }
+      : position_(-relative_position) { }
 
-  bool has_relative_position() const { return _position <= 0; }
+  bool has_relative_position() const { return position_ <= 0; }
   bool has_absolute_position() const { return !has_relative_position(); }
 
   void make_absolute(int absolute_entry_bci) {
     ASSERT(has_relative_position());
-    int relative_position = -_position;
-    _position = absolute_entry_bci + relative_position;
+    int relative_position = -position_;
+    position_ = absolute_entry_bci + relative_position;
   }
 
   int absolute_position() const {
     ASSERT(has_absolute_position());
-    return _position;
+    return position_;
   }
 
  private:
-  int _position;
+  int position_;
 };
 
 /// Represents a pointer into the code.
@@ -144,24 +144,24 @@ class AbsoluteReference {
  public:
   AbsoluteReference(int relative_position,
                     List<AbsoluteUse*> absolute_uses)
-      : _relative_position(relative_position)
-      , _absolute_uses(absolute_uses) { }
+      : relative_position_(relative_position)
+      , absolute_uses_(absolute_uses) { }
 
   void free_absolute_uses() {
-    for (auto use : _absolute_uses) { delete use; }
-    _absolute_uses.clear();
+    for (auto use : absolute_uses_) { delete use; }
+    absolute_uses_.clear();
   }
 
   int absolute_position(int absolute_entry_bci) {
-    return absolute_entry_bci + _relative_position;
+    return absolute_entry_bci + relative_position_;
 
   }
 
-  List<AbsoluteUse*> absolute_uses() const { return _absolute_uses; }
+  List<AbsoluteUse*> absolute_uses() const { return absolute_uses_; }
 
  private:
-  int _relative_position;
-  List<AbsoluteUse*> _absolute_uses;
+  int relative_position_;
+  List<AbsoluteUse*> absolute_uses_;
 
   friend class ListBuilder<AbsoluteReference>;
   AbsoluteReference() { }
@@ -181,20 +181,20 @@ class AbsoluteLabel : public Label {
  public:
   AbsoluteUse* use_absolute(int relative_position) {
     auto result = _new AbsoluteUse(relative_position);
-    _absolute_uses.push_back(result);
+    absolute_uses_.push_back(result);
     return result;
   }
 
-  bool has_absolute_uses() const { return !_absolute_uses.empty(); }
+  bool has_absolute_uses() const { return !absolute_uses_.empty(); }
 
   AbsoluteReference build_absolute_reference() const {
     ASSERT(is_bound());
     return AbsoluteReference(position(),
-                             ListBuilder<AbsoluteUse*>::build_from_vector(_absolute_uses));
+                             ListBuilder<AbsoluteUse*>::build_from_vector(absolute_uses_));
   }
 
  private:
-  std::vector<AbsoluteUse*> _absolute_uses;
+  std::vector<AbsoluteUse*> absolute_uses_;
 };
 
 } // namespace toit::compiler

@@ -35,10 +35,10 @@ class Holes {
   };
 
   Hole pop_hole_of_size(int size) {
-    if (!_holes.empty() && _holes[0].size >= size) {
-      auto result = _holes[0];
-      std::pop_heap(_holes.begin(), _holes.end(), [](Hole a, Hole b) { return a.size < b.size; });
-      _holes.pop_back();
+    if (!holes_.empty() && holes_[0].size >= size) {
+      auto result = holes_[0];
+      std::pop_heap(holes_.begin(), holes_.end(), [](Hole a, Hole b) { return a.size < b.size; });
+      holes_.pop_back();
       return result;
     }
     return {
@@ -48,49 +48,49 @@ class Holes {
   }
 
   void insert(Hole hole) {
-    _holes.push_back(hole);
-    std::push_heap(_holes.begin(), _holes.end(), [](Hole a, Hole b) { return a.size < b.size; });
+    holes_.push_back(hole);
+    std::push_heap(holes_.begin(), holes_.end(), [](Hole a, Hole b) { return a.size < b.size; });
   }
 
   bool is_empty() const {
-    return _holes.empty();
+    return holes_.empty();
   }
 
  private:
-  std::vector<Hole> _holes;
+  std::vector<Hole> holes_;
 };
 
 class SelectorRow {
  public:
   explicit SelectorRow(const DispatchSelector& selector)
-      : _selector(selector)
-      , _begin(-1)
-      , _end(-1) { }
+      : selector_(selector)
+      , begin_(-1)
+      , end_(-1) { }
 
-  DispatchSelector selector() const { return _selector; }
+  DispatchSelector selector() const { return selector_; }
 
-  int begin() const { return _begin; }
-  int end() const { return _end; }
-  int size() const { return _end - _begin; }
+  int begin() const { return begin_; }
+  int end() const { return end_; }
+  int size() const { return end_ - begin_; }
 
   void define(Class* holder, Method* member) {
     ASSERT(holder == member->holder());
-    _holders.push_back(holder);
-    _members.push_back(member);
+    holders_.push_back(holder);
+    members_.push_back(member);
   }
 
   void finalize() {
-    ASSERT(_begin == -1 && _end == -1);
-    Class* first = _holders[0];
-    _begin = first->start_id();
-    _end = first->end_id();
+    ASSERT(begin_ == -1 && end_ == -1);
+    Class* first = holders_[0];
+    begin_ = first->start_id();
+    end_ = first->end_id();
 
-    for (unsigned i = 1; i < _holders.size(); i++) {
-      Class* holder = _holders[i];
+    for (unsigned i = 1; i < holders_.size(); i++) {
+      Class* holder = holders_[i];
       int begin = holder->start_id();
       int end = holder->end_id();
-      if (begin < _begin) _begin = begin;
-      if (end > _end) _end = end;
+      if (begin < begin_) begin_ = begin;
+      if (end > end_) end_ = end;
     }
   }
 
@@ -107,12 +107,12 @@ class SelectorRow {
 
   void fill(std::vector<Method*>* table, int offset) {
     // Check that the holders are sorted such that the more specialized entries are first.
-    ASSERT(_sorted_specialized_first(_holders));
+    ASSERT(_sorted_specialized_first(holders_));
     // The amount we can skip once we found an entry
     std::vector<int> skip_stack;
-    for (unsigned i = 0; i < _holders.size(); i++) {
-      Class* holder = _holders[i];
-      Method* member = _members[i];
+    for (unsigned i = 0; i < holders_.size(); i++) {
+      Class* holder = holders_[i];
+      Method* member = members_[i];
       int start = offset + holder->start_id();
       int end = offset + holder->end_id();
       int id = start;
@@ -161,28 +161,28 @@ class SelectorRow {
   }
 
  private:
-  DispatchSelector _selector;
+  DispatchSelector selector_;
 
   // All used entries in this row are in the [begin, end) interval.
-  int _begin;
-  int _end;
+  int begin_;
+  int end_;
 
   // Unique member definitions ordered with the most specific ones first.
-  std::vector<Class*> _holders;
-  std::vector<Method*> _members;
+  std::vector<Class*> holders_;
+  std::vector<Method*> members_;
 };
 
 class RowFitter {
  public:
   // Start fitting at the given offset.
-  RowFitter() : _limit(0) { }
+  RowFitter() : limit_(0) { }
 
-  int limit() const { return _limit; }
+  int limit() const { return limit_; }
 
   void define(DispatchSelector& selector, Class* holder, Method* member) {
-    SelectorRow* row = _selectors.lookup(selector);
+    SelectorRow* row = selectors_.lookup(selector);
     if (row == null) {
-      row = _selectors[selector] = _new SelectorRow(selector);
+      row = selectors_[selector] = _new SelectorRow(selector);
     }
     row->define(holder, member);
   }
@@ -190,8 +190,8 @@ class RowFitter {
   std::vector<SelectorRow*> sorted_rows() {
     // Finalize and sort all the rows.
     std::vector<SelectorRow*> rows;
-    for (auto key : _selectors.keys()) {
-      SelectorRow* row = _selectors[key];
+    for (auto key : selectors_.keys()) {
+      SelectorRow* row = selectors_[key];
       row->finalize();
       rows.push_back(row);
     }
@@ -205,7 +205,7 @@ class RowFitter {
     int start;
     std::vector<Holes::Hole> unused_holes;
     while (true) {
-      auto hole = _holes.pop_hole_of_size(row_size);
+      auto hole = holes_.pop_hole_of_size(row_size);
       bool in_hole;
       if (hole.size >= row_size) {
         start = hole.at;
@@ -218,7 +218,7 @@ class RowFitter {
       offset = start - row->begin();
 
       if (in_hole &&
-          (offset < 0 || _used_offsets.contains(offset))) {
+          (offset < 0 || used_offsets_.contains(offset))) {
         // We could try to see if the hole is bigger than needed and whether we
         // can fit into the hole by shifting to the right. It's rare enough that
         // we don't bother. Just give up with this hole and try the next one.
@@ -229,7 +229,7 @@ class RowFitter {
       // We are now certain to keep the hole.
       // If the hole wasn't the correct size push back the remaining size.
       if (hole.size > row_size) {
-        _holes.insert({ .size = hole.size - row_size, .at = hole.at + row_size });
+        holes_.insert({ .size = hole.size - row_size, .at = hole.at + row_size });
       }
 
       // Pad to avoid negative offsets. This can only happen when we are not in
@@ -243,7 +243,7 @@ class RowFitter {
       // Pad to guarantee unique offsets. This can only happen when we are not
       // in a hole.
       int original_offset = offset;
-      while (_used_offsets.contains(offset)) {
+      while (used_offsets_.contains(offset)) {
         ASSERT(!in_hole);
         start++;
         offset++;
@@ -251,16 +251,16 @@ class RowFitter {
       if (offset != original_offset) {
         int hole_size = offset - original_offset;
         int at = start - hole_size;
-        _holes.insert({ .size = hole_size, .at = at });
+        holes_.insert({ .size = hole_size, .at = at });
       }
       break;
     }
     // Return all the unused holes.
-    for (auto hole : unused_holes) _holes.insert(hole);
-    _used_offsets.insert(offset);
+    for (auto hole : unused_holes) holes_.insert(hole);
+    used_offsets_.insert(offset);
 
     // Keep track of the highest used offset.
-    if (offset > _limit) _limit = offset;
+    if (offset > limit_) limit_ = offset;
 
     // Allocate the necessary space.
     if (static_cast<int>(table->size()) < offset + row->end()) {
@@ -274,7 +274,7 @@ class RowFitter {
       if ((*table)[i] == null) {
         int hole_begin = i;
         while ((*table)[i] == null) i++;
-        _holes.insert({ .size = i - hole_begin, .at = hole_begin });
+        holes_.insert({ .size = i - hole_begin, .at = hole_begin });
       }
     }
     return offset;
@@ -283,17 +283,17 @@ class RowFitter {
   /// Returns the total size of the unused holes.
   int pop_all_holes() {
     int result = 0;
-    while (!_holes.is_empty()) {
-      result += _holes.pop_hole_of_size(1).size;
+    while (!holes_.is_empty()) {
+      result += holes_.pop_hole_of_size(1).size;
     }
     return result;
   }
 
  private:
-  Map<DispatchSelector, SelectorRow*> _selectors;
-  UnorderedSet<int> _used_offsets;
-  int _limit;
-  Holes _holes;
+  Map<DispatchSelector, SelectorRow*> selectors_;
+  UnorderedSet<int> used_offsets_;
+  int limit_;
+  Holes holes_;
 };
 } // namespace toit::compiler::<anynomous>
 
@@ -304,12 +304,12 @@ class DispatchTableBuilder {
   void cook(List<Class*> classes, List<Method*> methods);
   void print_table();
 
-  Map<DispatchSelector, int>& selector_offsets() { return _selector_offsets; }
-  List<Method*> dispatch_table() { return _dispatch_table; }
+  Map<DispatchSelector, int>& selector_offsets() { return selector_offsets_; }
+  List<Method*> dispatch_table() { return dispatch_table_; }
 
  private:
-  Map<DispatchSelector, int> _selector_offsets;
-  List<Method*> _dispatch_table;
+  Map<DispatchSelector, int> selector_offsets_;
+  List<Method*> dispatch_table_;
 
   void handle_methods(List<Method*> methods);
   // Returns the amount of instantiated classes.
@@ -397,7 +397,7 @@ void DispatchTableBuilder::handle_classes(List<Class*> classes, int static_metho
   // Compute the table.
   std::vector<SelectorRow*> rows = fitter.sorted_rows();
   for (auto row : rows) {
-    _selector_offsets[row->selector()] = fitter.fit_and_fill(&result, row, classes);
+    selector_offsets_[row->selector()] = fitter.fit_and_fill(&result, row, classes);
   }
 
   int unused_slots = fitter.pop_all_holes();
@@ -453,14 +453,14 @@ void DispatchTableBuilder::handle_classes(List<Class*> classes, int static_metho
   }
   result.resize(final_size);
 
-  _dispatch_table = ListBuilder<Method*>::build_from_vector(result);;
+  dispatch_table_ = ListBuilder<Method*>::build_from_vector(result);;
 }
 
 bool DispatchTableBuilder::indexes_are_correct() {
-  for (int i = 0; i < _dispatch_table.length(); i++) {
-    auto method = _dispatch_table[i];
+  for (int i = 0; i < dispatch_table_.length(); i++) {
+    auto method = dispatch_table_[i];
     if (method == null) continue;
-    if (_dispatch_table[method->index()] != method) return false;
+    if (dispatch_table_[method->index()] != method) return false;
   }
   return true;
 }
@@ -516,7 +516,7 @@ void DispatchTableBuilder::print_table() {
 
 int DispatchTable::slot_index_for(const Method* method) const {
   int index = method->index();
-  ASSERT(_table[index] == method);
+  ASSERT(table_[index] == method);
   return index;
 }
 
@@ -532,7 +532,7 @@ void DispatchTable::for_each_slot_index(const ir::Method* member,
   int member_slot_index = slot_index_for(member);
   if (start <= member_slot_index && member_slot_index < limit) {
     for (int i = start; i < limit; i++) {
-      if (_table[i] == member) {
+      if (table_[i] == member) {
         callback(i);
       }
     }

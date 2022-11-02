@@ -18,21 +18,21 @@
 namespace toit {
 
 Sha256::Sha256(SimpleResourceGroup* group) : SimpleResource(group) {
-  mbedtls_sha256_init(&_context);
+  mbedtls_sha256_init(&context_);
   static const int SHA256 = 0;
-  mbedtls_sha256_starts_ret(&_context, SHA256);
+  mbedtls_sha256_starts_ret(&context_, SHA256);
 }
 
 Sha256::~Sha256() {
-  mbedtls_sha256_free(&_context);
+  mbedtls_sha256_free(&context_);
 }
 
 void Sha256::add(const uint8* contents, intptr_t extra) {
-  mbedtls_sha256_update_ret(&_context, contents, extra);
+  mbedtls_sha256_update_ret(&context_, contents, extra);
 }
 
 void Sha256::get(uint8_t* hash) {
-  mbedtls_sha256_finish_ret(&_context, hash);
+  mbedtls_sha256_finish_ret(&context_, hash);
 }
 
 }

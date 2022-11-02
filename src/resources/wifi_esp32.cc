@@ -54,16 +54,16 @@ class WifiResourceGroup : public ResourceGroup {
   TAG(WifiResourceGroup);
   WifiResourceGroup(Process* process, SystemEventSource* event_source, int id, esp_netif_t* netif)
       : ResourceGroup(process, event_source)
-      , _id(id)
-      , _netif(netif) {
+      , id_(id)
+      , netif_(netif) {
     clear_ip_address();
   }
 
-  uint32 ip_address() const { return _ip_address; }
-  bool has_ip_address() const { return _ip_address != 0; }
+  uint32 ip_address() const { return ip_address_; }
+  bool has_ip_address() const { return ip_address_ != 0; }
 
-  void set_ip_address(uint32 address) { _ip_address = address; }
-  void clear_ip_address() { _ip_address = 0; }
+  void set_ip_address(uint32 address) { ip_address_ = address; }
+  void clear_ip_address() { ip_address_ = 0; }
 
   esp_err_t connect(const char* ssid, const char* password) {
     // Configure the WiFi to _start_ the channel scan from the last connected channel.
@@ -118,16 +118,16 @@ class WifiResourceGroup : public ResourceGroup {
 
   ~WifiResourceGroup() {
     FATAL_IF_NOT_ESP_OK(esp_wifi_deinit());
-    esp_netif_destroy_default_wifi(_netif);
-    wifi_pool.put(_id);
+    esp_netif_destroy_default_wifi(netif_);
+    wifi_pool.put(id_);
   }
 
   uint32 on_event(Resource* resource, word data, uint32 state);
 
  private:
-  int _id;
-  esp_netif_t *_netif;
-  uint32 _ip_address;
+  int id_;
+  esp_netif_t* netif_;
+  uint32 ip_address_;
 
   void cache_wifi_channel() {
     uint8 primary_channel;
@@ -143,19 +143,19 @@ class WifiEvents : public SystemResource {
   TAG(WifiEvents);
   explicit WifiEvents(WifiResourceGroup* group)
       : SystemResource(group, WIFI_EVENT)
-      , _disconnect_reason(WIFI_REASON_UNSPECIFIED) {
+      , disconnect_reason_(WIFI_REASON_UNSPECIFIED) {
   }
 
   ~WifiEvents() {
     FATAL_IF_NOT_ESP_OK(esp_wifi_stop());
   }
 
-  uint8 disconnect_reason() const { return _disconnect_reason; }
-  void set_disconnect_reason(uint8 reason) { _disconnect_reason = reason; }
+  uint8 disconnect_reason() const { return disconnect_reason_; }
+  void set_disconnect_reason(uint8 reason) { disconnect_reason_ = reason; }
 
  private:
   friend class WifiResourceGroup;
-  uint8 _disconnect_reason;
+  uint8 disconnect_reason_;
 };
 
 class WifiIpEvents : public SystemResource {

@@ -30,15 +30,15 @@ typedef LinkedList<ProcessWaitResult> ProcessWaitResultList;
 class ProcessWaitResult : public ProcessWaitResultList::Element {
  public:
   ProcessWaitResult(pid_t pid, int wstatus)
-    : _pid(pid)
-    , _wstatus(wstatus) {}
+    : pid_(pid)
+    , wstatus_(wstatus) {}
 
-  pid_t pid() const { return _pid; }
-  pid_t wstatus() const { return _wstatus; }
+  pid_t pid() const { return pid_; }
+  pid_t wstatus() const { return wstatus_; }
 
  private:
-  pid_t _pid;
-  int _wstatus;
+  pid_t pid_;
+  int wstatus_;
 };
 
 // An EventSource that spends most of its time waiting in the waitpid() system
@@ -46,7 +46,7 @@ class ProcessWaitResult : public ProcessWaitResultList::Element {
 // platforms.
 class SubprocessEventSource : public EventSource, public Thread {
  public:
-  static SubprocessEventSource* instance() { return _instance; }
+  static SubprocessEventSource* instance() { return instance_; }
 
   SubprocessEventSource();
   ~SubprocessEventSource();
@@ -60,14 +60,14 @@ class SubprocessEventSource : public EventSource, public Thread {
 
   void entry() override;
 
-  static SubprocessEventSource* _instance;
+  static SubprocessEventSource* instance_;
   // Subprocesses that already terminated but we didn't wait for them yet.
-  ProcessWaitResultList _results;
+  ProcessWaitResultList results_;
   // Subprocesses that we should ignore when they terminate.
-  ProcessWaitResultList _ignores;
-  ConditionVariable* _subprocess_waits_changed;
-  bool _running;
-  bool _stop;
+  ProcessWaitResultList ignores_;
+  ConditionVariable* subprocess_waits_changed_;
+  bool running_;
+  bool stop_;
 };
 
 } // namespace toit

@@ -145,7 +145,7 @@ static const FontCharacter* create_replacement(int code_point);
 const FontCharacter* Font::get_char(int cp, bool substitue_mojibake) {
   int hashed = (cp >> _CACHE_GRANULARITY_BITS) ^ (cp >> 6) ^ (cp >> 10) ^ (cp >> 14);
   hashed &= _CACHE_SIZE - 1;
-  if (!_does_section_match(_cache[hashed], cp)) {
+  if (!_does_section_match(cache_[hashed], cp)) {
     const FontCharacter* c = _get_section_for_code_point(cp);
     if (c == null) {
       if (substitue_mojibake)
@@ -153,9 +153,9 @@ const FontCharacter* Font::get_char(int cp, bool substitue_mojibake) {
       else
         return null;
     }
-    _cache[hashed] = c;
+    cache_[hashed] = c;
   }
-  const FontCharacter* c = _cache[hashed];
+  const FontCharacter* c = cache_[hashed];
   while (c != null) {
     if (c->code_point() == cp) return c;
     if (!_does_section_match(c, cp)) return create_replacement(cp);
@@ -166,8 +166,8 @@ const FontCharacter* Font::get_char(int cp, bool substitue_mojibake) {
 
 const FontCharacter* Font::_get_section_for_code_point(int code_point) {
   code_point &= _CACHE_MASK;
-  for (int i = 0; i < _block_count; i++) {
-    const FontBlock* block = _blocks[i];
+  for (int i = 0; i < block_count_; i++) {
+    const FontBlock* block = blocks_[i];
     if ((block->from() & _CACHE_MASK) <= code_point && code_point < block->to()) {
       for (const FontCharacter* c = block->data(); !c->is_terminator(); c = c->next()) {
         // Check if we found the first character in the same granularity
@@ -362,20 +362,20 @@ static const FontCharacter* create_replacement(int code_point) {
 }
 
 void FontDecompresser::compute_next_line() {
-  int bytes = (_width + 7) >> 3;
+  int bytes = (width_ + 7) >> 3;
   for (int i = 0; i < bytes; i++) {
     int next = line_[i];
-    if (_saved_sames != 0) {
-      _saved_sames--;
+    if (saved_sames_ != 0) {
+      saved_sames_--;
       continue;
     }
-    switch (_command(_control_position++)) {
+    switch (_command(control_position_++)) {
       case SAME_1:
         break;
       case PREFIX_2:
-        switch (_command(_control_position++)) {
+        switch (_command(control_position_++)) {
           case SAME_4_7:
-            _saved_sames = 3 + (_command(_control_position++));
+            saved_sames_ = 3 + (_command(control_position_++));
             break;
           case GROW_RIGHT:
             next |= next >> 1;
@@ -384,11 +384,11 @@ void FontDecompresser::compute_next_line() {
             next >>= 1;
             break;
           case PREFIX_2_3: 
-            switch (_command(_control_position++)) {
+            switch (_command(control_position_++)) {
               case SAME_10_25: {
-                int hi = _command(_control_position++);
-                int lo = _command(_control_position++);
-                _saved_sames = 9 + (hi << 2) + lo;
+                int hi = _command(control_position_++);
+                int lo = _command(control_position_++);
+                saved_sames_ = 9 + (hi << 2) + lo;
                 break;
               }
               case LO_BIT:
@@ -405,7 +405,7 @@ void FontDecompresser::compute_next_line() {
         }
         break;
       case PREFIX_3:
-        switch (_command(_control_position++)) {
+        switch (_command(control_position_++)) {
           case LEFT:
             next <<= 1;
             break;
@@ -416,7 +416,7 @@ void FontDecompresser::compute_next_line() {
             next = 0;
             break;
           case PREFIX_3_3:
-            switch (_command(_control_position++)) {
+            switch (_command(control_position_++)) {
               case SHRINK_LEFT:
                 next &= next >> 1;
                 break;
@@ -434,10 +434,10 @@ void FontDecompresser::compute_next_line() {
         }
         break;
       case NEW: {
-        next = _command(_control_position++) << 6;
-        next |= _command(_control_position++) << 4;
-        next |= _command(_control_position++) << 2;
-        next |= _command(_control_position++);
+        next = _command(control_position_++) << 6;
+        next |= _command(control_position_++) << 4;
+        next |= _command(control_position_++) << 2;
+        next |= _command(control_position_++);
         break;
       }
     }

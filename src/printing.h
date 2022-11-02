@@ -27,7 +27,7 @@ namespace toit {
 
 class Printer {
  public:
-  Printer(Program* program) : _program(program) {}
+  Printer(Program* program) : program_(program) {}
 
   virtual void printf(const char* format, ...) = 0;
 
@@ -35,9 +35,9 @@ class Printer {
   // you get to specify the length.
   void print_buffer(const uint8_t* buffer, int length);
 
-  Program* program() { return _program; }
+  Program* program() { return program_; }
  private:
-  Program* _program;
+  Program* program_;
 };
 
 class ConsolePrinter : public Printer {
@@ -54,19 +54,19 @@ class ConsolePrinter : public Printer {
 class BufferPrinter : public Printer {
  public:
   BufferPrinter(Program* program, char* buffer, int buffer_len)
-    : Printer(program), _ptr(buffer), _buffer(buffer), _buffer_len(buffer_len), _remaining(buffer_len) {}
+    : Printer(program), ptr_(buffer), buffer_(buffer), buffer_len_(buffer_len), remaining_(buffer_len) {}
 
   int length() const {
-    return _ptr - _buffer;
+    return ptr_ - buffer_;
   }
 
   virtual void printf(const char* format, ...);
 
  private:
-  char* _ptr;
-  char* _buffer;
-  int _buffer_len;
-  int _remaining;
+  char* ptr_;
+  char* buffer_;
+  int buffer_len_;
+  int remaining_;
 };
 
 void print_object(Printer* printer, Object* object);

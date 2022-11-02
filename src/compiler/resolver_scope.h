@@ -56,48 +56,48 @@ class Module {
          List<ir::Global*> globals,
          bool export_all,
          const Set<Symbol>& exported_identifiers)
-      : _unit(unit)
-      , _classes(classes)
-      , _methods(methods)
-      , _globals(globals)
-      , _export_all(export_all)
-      , _exported_identifiers(exported_identifiers)
-      , _scope(null) { }
+      : unit_(unit)
+      , classes_(classes)
+      , methods_(methods)
+      , globals_(globals)
+      , export_all_(export_all)
+      , exported_identifiers_(exported_identifiers)
+      , scope_(null) { }
 
-  ast::Unit* unit() const { return _unit; }
+  ast::Unit* unit() const { return unit_; }
 
-  List<ir::Class*> classes() const { return _classes; }
-  List<ir::Method*> methods() const { return _methods; }
-  List<ir::Global*> globals() const { return _globals; }
+  List<ir::Class*> classes() const { return classes_; }
+  List<ir::Method*> methods() const { return methods_; }
+  List<ir::Global*> globals() const { return globals_; }
 
   // Imported modules are not exported. They may have a prefix.
   //
   // The returned list is sorted, so that modules without prefix are first.
-  List<PrefixedModule> imported_modules() const { return _imported_modules; }
+  List<PrefixedModule> imported_modules() const { return imported_modules_; }
   void set_imported_modules(List<PrefixedModule> modules) {
     ASSERT(_non_prefixed_are_first(modules));
-    _imported_modules = modules;
+    imported_modules_ = modules;
   }
 
-  bool export_all() const { return _export_all; }
-  Set<Symbol> exported_identifiers() const { return _exported_identifiers; }
+  bool export_all() const { return export_all_; }
+  Set<Symbol> exported_identifiers() const { return exported_identifiers_; }
 
-  ModuleScope* scope() const { return _scope; }
-  void set_scope(ModuleScope* scope) { _scope = scope; }
+  ModuleScope* scope() const { return scope_; }
+  void set_scope(ModuleScope* scope) { scope_ = scope; }
 
-  bool is_error_module() const { return _unit->is_error_unit(); }
+  bool is_error_module() const { return unit_->is_error_unit(); }
 
  private:
-  ast::Unit* _unit;
-  List<ir::Class*> _classes;
-  List<ir::Method*> _methods;
-  List<ir::Global*> _globals;
+  ast::Unit* unit_;
+  List<ir::Class*> classes_;
+  List<ir::Method*> methods_;
+  List<ir::Global*> globals_;
 
-  List<PrefixedModule> _imported_modules;
-  bool _export_all;
-  Set<Symbol> _exported_identifiers;
+  List<PrefixedModule> imported_modules_;
+  bool export_all_;
+  Set<Symbol> exported_identifiers_;
 
-  ModuleScope* _scope;
+  ModuleScope* scope_;
 
   static bool _non_prefixed_are_first(List<PrefixedModule> modules) {
     if (modules.is_empty()) return true;
@@ -123,62 +123,62 @@ class ResolutionEntry {
     AMBIGUOUS,
   };
 
-  ResolutionEntry() : _kind(NODES), _nodes(List<ir::Node*>()) { }
+  ResolutionEntry() : kind_(NODES), nodes_(List<ir::Node*>()) { }
   explicit ResolutionEntry(List<ir::Node*> nodes)
-      : _kind(NODES), _nodes(nodes) { }
+      : kind_(NODES), nodes_(nodes) { }
   explicit ResolutionEntry(ir::Node* node)
-      : _kind(NODES), _nodes(ListBuilder<ir::Node*>::build(node)) { }
+      : kind_(NODES), nodes_(ListBuilder<ir::Node*>::build(node)) { }
 
-  explicit ResolutionEntry(ImportScope* prefix) : _kind(PREFIX), _prefix(prefix) { }
+  explicit ResolutionEntry(ImportScope* prefix) : kind_(PREFIX), prefix_(prefix) { }
 
   // Used for ambiguous nodes.
-  explicit ResolutionEntry(Kind kind) : _kind(kind), _nodes(List<ir::Node*>()) { }
+  explicit ResolutionEntry(Kind kind) : kind_(kind), nodes_(List<ir::Node*>()) { }
 
-  Kind kind() const { return _kind; }
+  Kind kind() const { return kind_; }
 
   List<ir::Node*> nodes() const {
-    ASSERT(_kind == NODES || _kind == AMBIGUOUS);
-    return _nodes;
+    ASSERT(kind_ == NODES || kind_ == AMBIGUOUS);
+    return nodes_;
   }
   void set_nodes(List<ir::Node*> nodes) {
-    ASSERT(_kind == NODES || _kind == AMBIGUOUS);
-    _nodes = nodes;
+    ASSERT(kind_ == NODES || kind_ == AMBIGUOUS);
+    nodes_ = nodes;
   }
 
   bool is_empty() const {
-    return _kind == NODES && _nodes.is_empty();
+    return kind_ == NODES && nodes_.is_empty();
   }
 
   bool is_class() const {
-    return _kind == NODES &&
-        _nodes.length() == 1 &&
-        (_nodes[0]->is_Class() || _nodes[0]->is_Constructor());
+    return kind_ == NODES &&
+        nodes_.length() == 1 &&
+        (nodes_[0]->is_Class() || nodes_[0]->is_Constructor());
   }
 
   ir::Class* klass() const {
     ASSERT(is_class());
-    if (_nodes[0]->is_Class()) return _nodes[0]->as_Class();
-    return _nodes[0]->as_Constructor()->klass();
+    if (nodes_[0]->is_Class()) return nodes_[0]->as_Class();
+    return nodes_[0]->as_Constructor()->klass();
   }
 
-  bool is_single() const { return _kind == NODES && _nodes.length() == 1; }
+  bool is_single() const { return kind_ == NODES && nodes_.length() == 1; }
   ir::Node* single() const {
     ASSERT(is_single());
-    return _nodes[0];
+    return nodes_[0];
   }
 
-  bool is_prefix() const { return _kind == PREFIX; }
+  bool is_prefix() const { return kind_ == PREFIX; }
 
   ImportScope* prefix() const {
-    ASSERT(_kind == PREFIX);
-    return _prefix;
+    ASSERT(kind_ == PREFIX);
+    return prefix_;
   }
 
  private:
-  Kind _kind;
+  Kind kind_;
   union {
-    List<ir::Node*> _nodes;
-    ImportScope* _prefix;
+    List<ir::Node*> nodes_;
+    ImportScope* prefix_;
   };
 };
 
@@ -203,18 +203,18 @@ class FilteredIterableScope : public IterableScope {
  public:
   FilteredIterableScope(IterableScope* wrapped,
                         std::function<bool (Symbol, const ResolutionEntry&)> predicate)
-      : _wrapped(wrapped)
-      , _predicate(predicate) { }
+      : wrapped_(wrapped)
+      , predicate_(predicate) { }
 
   void for_each(const std::function<void (Symbol, const ResolutionEntry&)>& callback) {
-    _wrapped->for_each([&] (Symbol symbol, const ResolutionEntry& entry) {
-      if (_predicate(symbol, entry)) callback(symbol, entry);
+    wrapped_->for_each([&] (Symbol symbol, const ResolutionEntry& entry) {
+      if (predicate_(symbol, entry)) callback(symbol, entry);
     });
   }
 
  private:
-  IterableScope* _wrapped;
-  std::function<bool (Symbol, const ResolutionEntry&)> _predicate;
+  IterableScope* wrapped_;
+  std::function<bool (Symbol, const ResolutionEntry&)> predicate_;
 };
 
 class Scope : public IterableScope {
@@ -228,7 +228,7 @@ class Scope : public IterableScope {
     int block_depth;
   } LookupResult;
 
-  explicit Scope(Scope* outer) : _outer(outer) { }
+  explicit Scope(Scope* outer) : outer_(outer) { }
 
   virtual void add(Symbol name, ResolutionEntry entry) = 0;
 
@@ -279,7 +279,7 @@ class Scope : public IterableScope {
   /// Every scope has a surrounding module-scope (representing the top-level).
   virtual ModuleScope* module_scope() { return outer()->module_scope(); }
 
-  Scope* outer() const { return _outer; }
+  Scope* outer() const { return outer_; }
 
   /// Whether the given [node] is a prefixed identifier of the form `prefix.identifier` where
   /// the `prefix` is a module prefix.
@@ -314,16 +314,16 @@ class Scope : public IterableScope {
   ResolutionEntry lookup_static(ast::Node* node);
 
  private:
-  Scope* _outer;
+  Scope* outer_;
 
   ImportScope* _find_import_scope(ast::Node* node);
 
-  ast::Node* _find_import_scope_node_cache = null;
-  ImportScope* _find_import_scope_result_cache = null;
-  ast::Node* _lookup_static_node_cache = null;
-  ResolutionEntry _lookup_static_result_cache;
-  ast::Node* _lookup_prefix_node_cache = null;
-  ResolutionEntry _lookup_prefix_result_cache;
+  ast::Node* find_import_scope_node_cache_ = null;
+  ImportScope* find_import_scope_result_cache_ = null;
+  ast::Node* lookup_static_node_cache_ = null;
+  ResolutionEntry lookup_static_result_cache_;
+  ast::Node* lookup_prefix_node_cache_ = null;
+  ResolutionEntry lookup_prefix_result_cache_;
 };
 
 /// A scope (but not implementing the `Scope` interface) for static declarations
@@ -331,52 +331,52 @@ class Scope : public IterableScope {
 /// Toplevel statics are handled in ModuleScopes.
 class StaticsScope : public IterableScope {
  public:
-  StaticsScope() : _map_is_valid(true) { }
+  StaticsScope() : map_is_valid_(true) { }
 
   void add(Symbol name, const ResolutionEntry& entry) {
-    ASSERT(_map_is_valid);
-    _entries[name] = entry;
+    ASSERT(map_is_valid_);
+    entries_[name] = entry;
     for (auto node : entry.nodes()) {
       ASSERT(node->is_Method());
-      _nodes.push_back(node->as_Method());
+      nodes_.push_back(node->as_Method());
     }
   }
 
   /// Looks up the corresponding name in the prefixes and imported modules.
   ResolutionEntry lookup(Symbol name) {
-    ASSERT(_map_is_valid);
-    auto probe = _entries.find(name);
-    if (probe != _entries.end()) return probe->second;
+    ASSERT(map_is_valid_);
+    auto probe = entries_.find(name);
+    if (probe != entries_.end()) return probe->second;
     return ResolutionEntry();
   }
 
   /// Invokes the given [callback] on each entry that could be found via [lookup].
   void for_each(const std::function<void (Symbol, const ResolutionEntry&)>& callback) {
-    ASSERT(_map_is_valid);
-    _entries.for_each(callback);
+    ASSERT(map_is_valid_);
+    entries_.for_each(callback);
   }
 
-  std::vector<ir::Method*> nodes() const { return _nodes; }
+  std::vector<ir::Method*> nodes() const { return nodes_; }
   void replace_nodes(const std::vector<ir::Method*>& new_nodes) {
-    ASSERT(!_map_is_valid);
-    _nodes = new_nodes;
+    ASSERT(!map_is_valid_);
+    nodes_ = new_nodes;
   }
 
   void invalidate_resolution_map() {
-    _entries.clear();
-    _map_is_valid = false;
+    entries_.clear();
+    map_is_valid_ = false;
   }
 
-  Scope::ResolutionEntryMap entries() const { return _entries; }
+  Scope::ResolutionEntryMap entries() const { return entries_; }
 
   bool is_prefixed_scope() const { return true; }
 
  private:
-  bool _map_is_valid;
-  Scope::ResolutionEntryMap _entries;
-  // The nodes are redundant (since they are already in the _entries map), but
+  bool map_is_valid_;
+  Scope::ResolutionEntryMap entries_;
+  // The nodes are redundant (since they are already in the entries_ map), but
   // this simplifies the code a lot.
-  std::vector<ir::Method*> _nodes;
+  std::vector<ir::Method*> nodes_;
 };
 
 /// One or more imported modules with the same prefix.
@@ -385,13 +385,13 @@ class StaticsScope : public IterableScope {
 /// See [NonPrefixedImportScope].
 class ImportScope : public IterableScope {
  public:
-  explicit ImportScope(Symbol prefix) : _prefix(prefix) { }
+  explicit ImportScope(Symbol prefix) : prefix_(prefix) { }
 
   void add(ModuleScope* scope, bool is_explicitly_imported) {
-    _imported_scopes.insert(scope);
+    imported_scopes_.insert(scope);
     // If a scope is imported both implicitly and explicitly, the explicit
     //   import wins.
-    if (is_explicitly_imported) _explicitly_imported.insert(scope);
+    if (is_explicitly_imported) explicitly_imported_.insert(scope);
   }
 
   /// Looks up the corresponding name in the modules.
@@ -427,23 +427,23 @@ class ImportScope : public IterableScope {
     for_each(callback, true, already_visited);
   }
 
-  Symbol prefix() const { return _prefix; }
+  Symbol prefix() const { return prefix_; }
 
   Set<ModuleScope*> imported_scopes() const {
-    return _imported_scopes;
+    return imported_scopes_;
   }
 
   bool is_prefixed_scope() const {
-    return _prefix.is_valid() && _prefix.c_str()[0] != '\0';
+    return prefix_.is_valid() && prefix_.c_str()[0] != '\0';
   }
 
  private:
-  Symbol _prefix;
-  Set<ModuleScope*> _imported_scopes;
-  Set<ModuleScope*> _explicitly_imported;
+  Symbol prefix_;
+  Set<ModuleScope*> imported_scopes_;
+  Set<ModuleScope*> explicitly_imported_;
 
-  Scope::ResolutionEntryMap _cache;
-  Scope::ResolutionEntryMap _cache_external;
+  Scope::ResolutionEntryMap cache_;
+  Scope::ResolutionEntryMap cache_external_;
 
   /// Looks up the corresponding name in the modules.
   ResolutionEntry lookup(Symbol name,
@@ -471,7 +471,7 @@ class NonPrefixedImportScope : public ImportScope {
   }
 
   void add(Symbol name, const ResolutionEntry& entry) {
-    _prefixes_and_explicit[name] = entry;
+    prefixes_and_explicit_[name] = entry;
   }
 
   /// Looks up the corresponding name in the prefixes and imported modules.
@@ -481,8 +481,8 @@ class NonPrefixedImportScope : public ImportScope {
   ResolutionEntry lookup(Symbol name, UnorderedSet<ModuleScope*>* already_visited) {
     // Try the prefixes and explicit entries first, since they
     // shadow imported identifiers.
-    auto probe = _prefixes_and_explicit.find(name);
-    if (probe != _prefixes_and_explicit.end()) return probe->second;
+    auto probe = prefixes_and_explicit_.find(name);
+    if (probe != prefixes_and_explicit_.end()) return probe->second;
 
     return ImportScope::lookup(name, already_visited);
   }
@@ -492,8 +492,8 @@ class NonPrefixedImportScope : public ImportScope {
   ResolutionEntry lookup_external(Symbol name, UnorderedSet<ModuleScope*>* already_visited) {
     // Try the prefixes and explicit entries first, since they
     // shadow imported identifiers.
-    auto probe = _prefixes_and_explicit.find(name);
-    if (probe != _prefixes_and_explicit.end()) return probe->second;
+    auto probe = prefixes_and_explicit_.find(name);
+    if (probe != prefixes_and_explicit_.end()) return probe->second;
 
     return ImportScope::lookup_external(name, already_visited);
   }
@@ -503,7 +503,7 @@ class NonPrefixedImportScope : public ImportScope {
   /// First invokes [callback] on prefixes, and `show` identifiers.
   void for_each(const std::function<void (Symbol, const ResolutionEntry&)>& callback,
                 UnorderedSet<ModuleScope*>* already_visited) {
-    _prefixes_and_explicit.for_each(callback);
+    prefixes_and_explicit_.for_each(callback);
     ImportScope::for_each(callback, already_visited);
   }
 
@@ -513,7 +513,7 @@ class NonPrefixedImportScope : public ImportScope {
   /// First invokes [callback] on prefixes, and `show` identifiers.
   void for_each_external(const std::function<void (Symbol, const ResolutionEntry&)>& callback,
                          UnorderedSet<ModuleScope*>* already_visited) {
-    _prefixes_and_explicit.for_each(callback);
+    prefixes_and_explicit_.for_each(callback);
     ImportScope::for_each_external(callback, already_visited);
   }
 
@@ -521,32 +521,32 @@ class NonPrefixedImportScope : public ImportScope {
   ///
   /// Does not search the [name] in other imported declarations.
   ResolutionEntry lookup_prefix_and_explicit(Symbol name) {
-    auto probe = _prefixes_and_explicit.find(name);
-    if (probe == _prefixes_and_explicit.end()) return ResolutionEntry();
+    auto probe = prefixes_and_explicit_.find(name);
+    if (probe == prefixes_and_explicit_.end()) return ResolutionEntry();
     return probe->second;
   }
 
  private:
-  Scope::ResolutionEntryMap _prefixes_and_explicit;
+  Scope::ResolutionEntryMap prefixes_and_explicit_;
 };
 
 /// The top-level scope of a module.
 ///
 /// Contains all top-level entries, and all imported declarations.
 ///
-/// Supports "_module" lookups that only consider non-imported declarations.
+/// Supports "module_" lookups that only consider non-imported declarations.
 class ModuleScope : public Scope {
  public:
   ModuleScope(Module* module,
               bool export_all)
       : Scope(null)
-      , _module(module)
-      , _non_prefixed_imported(null)
-      , _export_all(export_all) { }
+      , module_(module)
+      , non_prefixed_imported_(null)
+      , export_all_(export_all) { }
 
   void add(Symbol name, ResolutionEntry entry) {
     ASSERT(!contains_local(name));
-    _module_declarations[name] = entry;
+    module_declarations_[name] = entry;
   }
 
   /// Searches in the module declarations *and* all imported declarations.
@@ -558,26 +558,26 @@ class ModuleScope : public Scope {
   ///   - `export`ed declarations of modules that have been imported without prefix
   ///   - `show` declarations of imported modules
   ResolutionEntry lookup_shallow(Symbol name) {
-    auto probe = _module_declarations.find(name);
-    if (probe != _module_declarations.end()) return probe->second;
+    auto probe = module_declarations_.find(name);
+    if (probe != module_declarations_.end()) return probe->second;
 
     UnorderedSet<ModuleScope*> already_visited;
-    return _non_prefixed_imported->lookup(name, &already_visited);
+    return non_prefixed_imported_->lookup(name, &already_visited);
   }
 
   /// Invokes callback for all declarations that could be found with `lookup_shallow`.
   void for_each_shallow(const std::function<void (Symbol, const ResolutionEntry&)>& callback) {
-    _module_declarations.for_each(callback);
+    module_declarations_.for_each(callback);
 
     UnorderedSet<ModuleScope*> already_visited;
-    _non_prefixed_imported->for_each(callback, &already_visited);
+    non_prefixed_imported_->for_each(callback, &already_visited);
   }
 
   /// Only searches in the non-transitive identifiers of the module.
   /// This does not include prefixes.
   ResolutionEntry lookup_module(Symbol name) {
-    auto probe = _module_declarations.find(name);
-    if (probe != _module_declarations.end()) return probe->second;
+    auto probe = module_declarations_.find(name);
+    if (probe != module_declarations_.end()) return probe->second;
     return ResolutionEntry();
   }
 
@@ -599,40 +599,40 @@ class ModuleScope : public Scope {
                                                    const ResolutionEntry&)>& callback,
                                                    UnorderedSet<ModuleScope*>* already_visited);
 
-  Module* module() const { return _module; }
+  Module* module() const { return module_; }
 
   ClassScope* enclosing_class_scope() { return null; }
   ModuleScope* module_scope() { return this; }
 
   // All the imports that are reachable without prefix.
   void set_non_prefixed_imported(NonPrefixedImportScope* modules) {
-    _non_prefixed_imported = modules;
+    non_prefixed_imported_ = modules;
   }
-  NonPrefixedImportScope* non_prefixed_imported() const { return _non_prefixed_imported; }
+  NonPrefixedImportScope* non_prefixed_imported() const { return non_prefixed_imported_; }
 
-  ResolutionEntryMap entries() const { return _module_declarations; }
+  ResolutionEntryMap entries() const { return module_declarations_; }
 
-  bool exported_identifiers_map_has_been_set() const { return _exported_identifiers_map_has_been_set; }
-  ResolutionEntryMap exported_identifiers_map() const { return _exported_identifiers_map; }
+  bool exported_identifiers_map_has_been_set() const { return exported_identifiers_map_has_been_set_; }
+  ResolutionEntryMap exported_identifiers_map() const { return exported_identifiers_map_; }
 
   void set_exported_identifiers_map(ResolutionEntryMap exported_identifiers_map) {
-    _exported_identifiers_map = exported_identifiers_map;
-    _exported_identifiers_map_has_been_set = true;
+    exported_identifiers_map_ = exported_identifiers_map;
+    exported_identifiers_map_has_been_set_ = true;
   }
 
  private:
-  Module* _module;
-  NonPrefixedImportScope* _non_prefixed_imported;
-  bool _export_all;
-  bool _exported_identifiers_map_has_been_set = false;
-  ResolutionEntryMap _exported_identifiers_map;
+  Module* module_;
+  NonPrefixedImportScope* non_prefixed_imported_;
+  bool export_all_;
+  bool exported_identifiers_map_has_been_set_ = false;
+  ResolutionEntryMap exported_identifiers_map_;
 
-  ResolutionEntryMap _module_declarations;
+  ResolutionEntryMap module_declarations_;
 
   /// Whether this module has a (non-imported) top-level declaration of the
   /// given name.
   bool contains_local(Symbol name) {
-    return _module_declarations.find(name) != _module_declarations.end();
+    return module_declarations_.find(name) != module_declarations_.end();
   }
 };
 
@@ -644,12 +644,12 @@ class SimpleScope : public Scope {
     // We would like to check that the name isn't in the dictionary yet.
     // However, we continue analysis even after we detected duplicated names,
     // in which case an assert would trigger.
-    _dictionary[name] = entry;
+    dictionary_[name] = entry;
   }
 
   ResolutionEntry lookup_shallow(Symbol name) {
-    auto probe = _dictionary.find(name);
-    if (probe == _dictionary.end()) {
+    auto probe = dictionary_.find(name);
+    if (probe == dictionary_.end()) {
       return ResolutionEntry();
     } else {
       return probe->second;
@@ -657,16 +657,16 @@ class SimpleScope : public Scope {
   }
 
   void for_each_shallow(const std::function<void (Symbol, const ResolutionEntry&)>& callback) {
-    _dictionary.for_each(callback);
+    dictionary_.for_each(callback);
   }
 
   ClassScope* enclosing_class_scope() { return outer()->enclosing_class_scope(); }
 
  protected:
-  ResolutionEntryMap dictionary() { return _dictionary; }
+  ResolutionEntryMap dictionary() { return dictionary_; }
 
  private:
-  ResolutionEntryMap _dictionary;
+  ResolutionEntryMap dictionary_;
 };
 
 /// The scope inside a class.
@@ -674,7 +674,7 @@ class SimpleScope : public Scope {
 /// Includes fields, and super-class members which shadow top-level elements.
 class ClassScope : public SimpleScope {
  public:
-  explicit ClassScope(ir::Class* klass, Scope* outer) : SimpleScope(outer), _class(klass) {
+  explicit ClassScope(ir::Class* klass, Scope* outer) : SimpleScope(outer), class_(klass) {
     ASSERT(outer != null);
   }
 
@@ -684,10 +684,10 @@ class ClassScope : public SimpleScope {
 
   ClassScope* enclosing_class_scope() { return this; }
 
-  ir::Class* klass() const { return _class; }
+  ir::Class* klass() const { return class_; }
 
  private:
-  ir::Class* _class;
+  ir::Class* class_;
 };
 
 /// A scope within a method (or initializer).
@@ -746,59 +746,59 @@ class LambdaScope : public SimpleScope {
 
     auto single = outer_result.entry.single();
     if (single->is_Local()) {
-      _captured_depths[single->as_Local()] = outer_result.block_depth;
+      captured_depths_[single->as_Local()] = outer_result.block_depth;
     }
 
     return  outer_result;
   }
 
-  Map<ir::Local*, int> captured_depths() const { return _captured_depths; }
+  Map<ir::Local*, int> captured_depths() const { return captured_depths_; }
 
  private:
-  Map<ir::Local*, int> _captured_depths;
+  Map<ir::Local*, int> captured_depths_;
 };
 
 /// A scope that adds the `it` parameter, and keeps track of whether the parameter was used.
 class ItScope : public Scope {
  public:
   explicit ItScope(Scope* outer)
-      : Scope(outer), _it(null), _it_was_used(false) { }
+      : Scope(outer), it_(null), it_was_used_(false) { }
 
   void add(Symbol name, ResolutionEntry entry) { outer()->add(name, entry); }
 
   ResolutionEntry lookup_shallow(Symbol name) {
-    if (name == _it->name()) {
-      _it_was_used = true;
-      return ResolutionEntry(_it);
+    if (name == it_->name()) {
+      it_was_used_ = true;
+      return ResolutionEntry(it_);
     }
     return ResolutionEntry();
   }
 
   void for_each_shallow(const std::function<void (Symbol, const ResolutionEntry&)>& callback) {
-    ASSERT(_it != null);
-    callback(_it->name(), ResolutionEntry(_it));
+    ASSERT(it_ != null);
+    callback(it_->name(), ResolutionEntry(it_));
   }
 
   ClassScope* enclosing_class_scope() { return outer()->enclosing_class_scope(); }
 
-  ir::Parameter* it() const { return _it; }
-  void set_it(ir::Parameter* it) { _it = it; }
+  ir::Parameter* it() const { return it_; }
+  void set_it(ir::Parameter* it) { it_ = it; }
 
-  bool it_was_used() const { return _it_was_used; }
+  bool it_was_used() const { return it_was_used_; }
 
  private:
-  ir::Parameter* _it;
-  bool _it_was_used;
+  ir::Parameter* it_;
+  bool it_was_used_;
 };
 
 class ScopeFiller {
  public:
   explicit ScopeFiller(bool discard_invalid_symbols = false)
-      : _discard_invalid(discard_invalid_symbols) { }
+      : discard_invalid_(discard_invalid_symbols) { }
 
   void add(Symbol name, ir::Node* node) {
-    if (!name.is_valid() && _discard_invalid) return;
-    _declarations[name].push_back(node);
+    if (!name.is_valid() && discard_invalid_) return;
+    declarations_[name].push_back(node);
   }
 
   template<typename T> void add_all(T ir_list) {
@@ -808,16 +808,16 @@ class ScopeFiller {
   }
 
   template<typename S> void fill(S scope) {
-    for (auto name : _declarations.keys()) {
-      auto& vector = _declarations[name];
+    for (auto name : declarations_.keys()) {
+      auto& vector = declarations_[name];
       auto list = ListBuilder<ir::Node*>::build_from_vector(vector);
       scope->add(name, ResolutionEntry(list));
     }
   }
 
  private:
-  bool _discard_invalid;
-  Map<Symbol, std::vector<ir::Node*>> _declarations;
+  bool discard_invalid_;
+  Map<Symbol, std::vector<ir::Node*>> declarations_;
 };
 
 } // namespace toit::compiler

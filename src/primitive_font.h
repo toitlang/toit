@@ -150,42 +150,42 @@ class Font : public SimpleResource {
    TAG(Font);
    Font(SimpleResourceGroup* group)
      : SimpleResource(group),
-       _blocks(null),
-       _block_count(0) {
-     for (int i = 0; i < _CACHE_SIZE; i++) _cache[i] = null;
+       blocks_(null),
+       block_count_(0) {
+     for (int i = 0; i < _CACHE_SIZE; i++) cache_[i] = null;
    }
 
    ~Font() {
-     for (int i = 0; i < _block_count; i++) {
-       delete _blocks[i];
+     for (int i = 0; i < block_count_; i++) {
+       delete blocks_[i];
      }
-     delete _blocks;
-     _blocks = null;
+     delete blocks_;
+     blocks_ = null;
    }
 
    // Returns false on allocation error.
    bool add(const FontBlock* block) {
-     const FontBlock** blocks = _new FontBlock const*[_block_count + 1];
+     const FontBlock** blocks = _new FontBlock const*[block_count_ + 1];
      if (!blocks) return false;
-     for (int i = 0; i < _block_count; i++) {
-       blocks[i] = _blocks[i];
+     for (int i = 0; i < block_count_; i++) {
+       blocks[i] = blocks_[i];
      }
-     blocks[_block_count] = block;
-     delete[] _blocks;
-     _blocks = blocks;
-     _block_count++;
+     blocks[block_count_] = block;
+     delete[] blocks_;
+     blocks_ = blocks;
+     block_count_++;
      return true;
    }
 
  private:
    // Null terminated array of block pointers.
-   const FontBlock* const* _blocks;
-   int _block_count;
+   const FontBlock* const* blocks_;
+   int block_count_;
    static const int _CACHE_SIZE = 32;
    static const int _CACHE_GRANULARITY_BITS = 3;
    static const int _CACHE_GRANULARITY = 1 << _CACHE_GRANULARITY_BITS;
    static const int _CACHE_MASK = ~(_CACHE_GRANULARITY - 1);
-   const FontCharacter* _cache[_CACHE_SIZE];
+   const FontCharacter* cache_[_CACHE_SIZE];
 
  public:
   const FontCharacter* get_char(int cp, bool substitute_mojibake=true);
@@ -221,10 +221,10 @@ class BitmapDecompresser {
 class FontDecompresser : public BitmapDecompresser {
  public:
   FontDecompresser(int width, int height, const uint8* data)
-      : _width(width)
-      , _control_position(0)
-      , _control_bits(data)
-      , _saved_sames(0) {
+      : width_(width)
+      , control_position_(0)
+      , control_bits_(data)
+      , saved_sames_(0) {
     memset(line_, 0, sizeof(line_));
   }
 
@@ -257,13 +257,13 @@ class FontDecompresser : public BitmapDecompresser {
  private:
   uint8 line_[32];
 
-  int _width;
-  int _control_position;
-  const uint8* _control_bits;
-  int _saved_sames;
+  int width_;
+  int control_position_;
+  const uint8* control_bits_;
+  int saved_sames_;
 
   int _command(int index) {
-    return ((_control_bits[index >> 2] << ((index & 3) * 2)) >> 6) & 3;
+    return ((control_bits_[index >> 2] << ((index & 3) * 2)) >> 6) & 3;
   }
 };
 

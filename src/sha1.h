@@ -35,16 +35,16 @@ class Sha1 : public SimpleResource {
 
   inline uint32_t get_big_endian_word(int byte_index) {
     return
-      (_data[byte_index + 0] << 24) |
-      (_data[byte_index + 1] << 16) |
-      (_data[byte_index + 2] << 8) |
-      (_data[byte_index + 3] << 0);
+      (data_[byte_index + 0] << 24) |
+      (data_[byte_index + 1] << 16) |
+      (data_[byte_index + 2] << 8) |
+      (data_[byte_index + 3] << 0);
   }
 
-  uint8 _data[BLOCK_SIZE];
-  uint32_t _h[5];
-  uint32_t _block_posn;
-  intptr_t _length;
+  uint8 data_[BLOCK_SIZE];
+  uint32_t h_[5];
+  uint32_t block_posn_;
+  intptr_t length_;
 };
 
 }

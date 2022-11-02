@@ -17,6 +17,6 @@
 
 namespace toit {
 
-EntropyMixer EntropyMixer::_instance;
+EntropyMixer EntropyMixer::instance_;
 
 }

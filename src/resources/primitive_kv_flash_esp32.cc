@@ -30,16 +30,16 @@ class PersistentResourceGroup : public ResourceGroup {
   TAG(PersistentResourceGroup);
   PersistentResourceGroup(nvs_handle handle, Process* process)
       : ResourceGroup(process, null)
-      , _handle(handle) {}
+      , handle_(handle) {}
 
   ~PersistentResourceGroup() {
-    nvs_close(_handle);
+    nvs_close(handle_);
   }
 
-  nvs_handle handle() { return _handle; }
+  nvs_handle handle() { return handle_; }
 
  private:
-  nvs_handle _handle;
+  nvs_handle handle_;
 };
 
 bool is_valid_key(const char* key, Process* process) {

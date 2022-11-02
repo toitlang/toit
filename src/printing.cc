@@ -277,166 +277,166 @@ class PrintVisitor : public Visitor {
 
 class ShortPrintVisitor : public PrintVisitor {
  public:
-  explicit ShortPrintVisitor(Printer* printer, bool toplevel) : _printer(printer), _toplevel(toplevel) {}
+  explicit ShortPrintVisitor(Printer* printer, bool toplevel) : printer_(printer), toplevel_(toplevel) {}
   ~ShortPrintVisitor() {}
 
  protected:
   void visit_smi(Smi* smi) {
-    _printer->printf("%ld", smi->value());
+    printer_->printf("%ld", smi->value());
   }
 
   void visit_string(String* string) {
     const int MAX = 1280;
-    if (!_toplevel) _printer->printf("\"");
+    if (!toplevel_) printer_->printf("\"");
     String::Bytes bytes(string);
-    _printer->print_buffer(bytes.address(), Utils::min(bytes.length(), MAX));
-    if (MAX < string->length()) _printer->printf("...");
-    if (!_toplevel) _printer->printf("\"");
+    printer_->print_buffer(bytes.address(), Utils::min(bytes.length(), MAX));
+    if (MAX < string->length()) printer_->printf("...");
+    if (!toplevel_) printer_->printf("\"");
   }
 
   void visit_array(Array* array) {
-    _printer->printf("an Array [%d]", array->length());
+    printer_->printf("an Array [%d]", array->length());
   }
 
   void visit_byte_array(ByteArray* byte_array) {
     int length = byte_array->raw_length();
     if (length < 0) length = -1 - length;
     if (byte_array->has_external_address()) {
-      _printer->printf("an external ByteArray (tag:%ld) [%d]", byte_array->external_tag(), length);
+      printer_->printf("an external ByteArray (tag:%ld) [%d]", byte_array->external_tag(), length);
     } else {
-      _printer->printf("a ByteArray [%d]", length);
+      printer_->printf("a ByteArray [%d]", length);
     }
   }
 
   void visit_stack(Stack* stack) {
-    _printer->printf("a Stack [%d, %d]", stack->top(), stack->length());
+    printer_->printf("a Stack [%d, %d]", stack->top(), stack->length());
   }
 
   void visit_instance(Instance* instance) {
-    if (!_toplevel) _printer->printf("`");
-    _printer->printf("instance<%ld>", instance->class_id()->value());
-    if (!_toplevel) _printer->printf("`");
+    if (!toplevel_) printer_->printf("`");
+    printer_->printf("instance<%ld>", instance->class_id()->value());
+    if (!toplevel_) printer_->printf("`");
   }
 
   void visit_oddball(HeapObject* oddball) {
-    if (_printer->program() == null) {
-      _printer->printf("true/false/null(%ld)", oddball->class_id()->value());
+    if (printer_->program() == null) {
+      printer_->printf("true/false/null(%ld)", oddball->class_id()->value());
     }
-    if (oddball == _printer->program()->true_object()) {
-      _printer->printf("true");
-    } else if (oddball == _printer->program()->false_object()) {
-      _printer->printf("false");
-    } else if (oddball == _printer->program()->null_object()) {
-      _printer->printf("null");
+    if (oddball == printer_->program()->true_object()) {
+      printer_->printf("true");
+    } else if (oddball == printer_->program()->false_object()) {
+      printer_->printf("false");
+    } else if (oddball == printer_->program()->null_object()) {
+      printer_->printf("null");
     } else {
       UNREACHABLE();
     }
   }
 
   void visit_double(Double* value) {
-    _printer->printf("%lf", value->value());
+    printer_->printf("%lf", value->value());
   }
 
   void visit_large_integer(LargeInteger* large_integer) {
-    _printer->printf("%lldL", large_integer->value());
+    printer_->printf("%lldL", large_integer->value());
   }
 
   void visit_task(Task* value) {
-    _printer->printf("task-%d", value->id());
+    printer_->printf("task-%d", value->id());
   }
 
  private:
-  Printer* _printer;
-  bool _toplevel;
+  Printer* printer_;
+  bool toplevel_;
 };
 
 class LongPrintVisitor : public PrintVisitor {
  public:
-  explicit LongPrintVisitor(Printer* printer) : _printer(printer), _sub(printer, false) { }
+  explicit LongPrintVisitor(Printer* printer) : printer_(printer), sub_(printer, false) { }
 
  protected:
   void print_heap_address(HeapObject* object) {
-    _printer->printf(" [%p]", object);
+    printer_->printf(" [%p]", object);
   }
 
   void visit_smi(Smi* smi) {
-    _printer->printf("%ld", smi->value());
+    printer_->printf("%ld", smi->value());
   }
 
   void visit_string(String* string) {
     print_heap_address(string);
-    _printer->printf("string '");
+    printer_->printf("string '");
     String::Bytes bytes(string);
-    _printer->print_buffer(bytes.address(), bytes.length());
-    _printer->printf("'\n");
+    printer_->print_buffer(bytes.address(), bytes.length());
+    printer_->printf("'\n");
   }
 
   void visit_array(Array* array) {
     print_heap_address(array);
-    _printer->printf("Array [%d]\n", array->length());
+    printer_->printf("Array [%d]\n", array->length());
     for (int index = 0; index < array->length(); index++) {
-      _printer->printf(" - %d: ", index);
-      _sub.accept(array->at(index));
-      _printer->printf("\n");
+      printer_->printf(" - %d: ", index);
+      sub_.accept(array->at(index));
+      printer_->printf("\n");
     }
   }
 
   void visit_byte_array(ByteArray* byte_array) {
     print_heap_address(byte_array);
     ByteArray::Bytes bytes(byte_array);
-    _printer->printf("ByteArray [%d]\n", bytes.length());
+    printer_->printf("ByteArray [%d]\n", bytes.length());
     for (int index = 0; index < bytes.length(); index++) {
-      _printer->printf(" - %d: %d", index, bytes.at(index));
-      _printer->printf("\n");
+      printer_->printf(" - %d: %d", index, bytes.at(index));
+      printer_->printf("\n");
     }
   }
 
   void visit_stack(Stack* stack) {
     print_heap_address(stack);
-    _printer->printf("Stack [%d,%d]\n", stack->length(), stack->length());
+    printer_->printf("Stack [%d,%d]\n", stack->length(), stack->length());
   }
 
   void visit_instance(Instance* instance) {
     print_heap_address(instance);
-    _printer->printf("Instance of class %ld\n", instance->class_id()->value());
-    int fields = Instance::fields_from_size(_printer->program()->instance_size_for(instance));
+    printer_->printf("Instance of class %ld\n", instance->class_id()->value());
+    int fields = Instance::fields_from_size(printer_->program()->instance_size_for(instance));
     for (int index = 0; index < fields; index++) {
-      _printer->printf(" - %d: ", index);
-      _sub.accept(instance->at(index));
-      _printer->printf("\n");
+      printer_->printf(" - %d: ", index);
+      sub_.accept(instance->at(index));
+      printer_->printf("\n");
     }
   }
 
   void visit_oddball(HeapObject* oddball) {
     print_heap_address(oddball);
-    if (_printer->program() == null) {
-      _printer->printf("true/false/null(%ld)", oddball->class_id()->value());
+    if (printer_->program() == null) {
+      printer_->printf("true/false/null(%ld)", oddball->class_id()->value());
     }
-    if (oddball == _printer->program()->true_object()) {
-      _printer->printf("true");
-    } else if (oddball == _printer->program()->false_object()) {
-      _printer->printf("false");
-    } else if (oddball == _printer->program()->null_object()) {
-      _printer->printf("null");
+    if (oddball == printer_->program()->true_object()) {
+      printer_->printf("true");
+    } else if (oddball == printer_->program()->false_object()) {
+      printer_->printf("false");
+    } else if (oddball == printer_->program()->null_object()) {
+      printer_->printf("null");
     }
   }
 
   void visit_double(Double* value) {
-    _printer->printf("double %lf\n", value->value());
+    printer_->printf("double %lf\n", value->value());
   }
 
   void visit_large_integer(LargeInteger* large_integer) {
-    _printer->printf("large integer %lldL\n", large_integer->value());
+    printer_->printf("large integer %lldL\n", large_integer->value());
   }
 
   void visit_task(Task* value) {
-    _printer->printf("a Task\n");
+    printer_->printf("a Task\n");
     visit_instance(value);
   }
 
  private:
-  Printer* _printer;
-  ShortPrintVisitor _sub;
+  Printer* printer_;
+  ShortPrintVisitor sub_;
 };
 
 void print_object(Printer* printer, Object* object) {
@@ -490,7 +490,7 @@ static void zap_utf8_backwards(char* from, char* limit) {
 void BufferPrinter::printf(const char* format, ...) {
   va_list ap;
   va_start(ap, format);
-  int chars = vsnprintf(_ptr, _remaining, format, ap);
+  int chars = vsnprintf(ptr_, remaining_, format, ap);
   va_end(ap);
 
   // If the buffer overflows, then cut out the middle.  We do this by putting
@@ -498,59 +498,59 @@ void BufferPrinter::printf(const char* format, ...) {
   // there are n bytes and vsnprintf returns n, then that's an overflow because
   // there was no space for the terminating null, and in this case nothing was
   // written.
-  if (chars >= _remaining) {
-    char* middle = _buffer + (_buffer_len >> 1);
+  if (chars >= remaining_) {
+    char* middle = buffer_ + (buffer_len_ >> 1);
     const char* dots = "...\n...";
     const int dots_len = strlen(dots);
     memcpy(middle, dots, dots_len);
-    zap_utf8_forwards(middle + dots_len, _buffer + _buffer_len);
-    zap_utf8_backwards(middle, _buffer);
+    zap_utf8_forwards(middle + dots_len, buffer_ + buffer_len_);
+    zap_utf8_backwards(middle, buffer_);
     char* dots_end = middle + dots_len;
-    if (_ptr < dots_end) {
+    if (ptr_ < dots_end) {
       // We were less than half way through the buffer, but a single printf
       // caused an overflow.
-      _ptr = dots_end;
-      _remaining = _buffer + _buffer_len - _ptr;
+      ptr_ = dots_end;
+      remaining_ = buffer_ + buffer_len_ - ptr_;
       chars = 0;
     } else {
       // There was some data after the elision dots.
-      int quarter = _buffer_len >> 2;
-      if (_ptr < dots_end + quarter) {
+      int quarter = buffer_len_ >> 2;
+      if (ptr_ < dots_end + quarter) {
         // We were less than three quarters through the buffer, but a single
         // printf caused an overflow.  Remove everything after the dots.
-        _ptr = dots_end;
-        _remaining = _buffer + _buffer_len - _ptr;
+        ptr_ = dots_end;
+        remaining_ = buffer_ + buffer_len_ - ptr_;
       } else {
         // We were more than three quarters through the buffer when we
         // overflowed. Copy the excess after the three quarters mark back to
         // the halfway mark.
-        int copy = _ptr - (dots_end + quarter);
-        ASSERT(dots_end + quarter + copy <= _buffer + _buffer_len);
+        int copy = ptr_ - (dots_end + quarter);
+        ASSERT(dots_end + quarter + copy <= buffer_ + buffer_len_);
         memcpy(dots_end, dots_end + quarter, copy);
-        _ptr -= quarter;
-        _remaining += quarter;
+        ptr_ -= quarter;
+        remaining_ += quarter;
       }
       // Retry the printf.
-      ASSERT(_ptr + _remaining == _buffer + _buffer_len);
+      ASSERT(ptr_ + remaining_ == buffer_ + buffer_len_);
       va_list ap2;
       va_start(ap2, format);
-      chars = vsnprintf(_ptr, _remaining, format, ap2);
+      chars = vsnprintf(ptr_, remaining_, format, ap2);
       va_end(ap2);
-      if (chars > _remaining) {
+      if (chars > remaining_) {
         // We overflowed again.
         const char* end_dots = "...\n";
         const int end_dots_length = strlen(end_dots);
-        char* dots_start = _buffer + _buffer_len - end_dots_length;
+        char* dots_start = buffer_ + buffer_len_ - end_dots_length;
         memcpy(dots_start, end_dots, end_dots_length);
-        zap_utf8_backwards(dots_start, _buffer);
-        chars = _remaining;
+        zap_utf8_backwards(dots_start, buffer_);
+        chars = remaining_;
       }
     }
   }
-  _remaining -= chars;
-  _ptr += chars;
-  ASSERT(_ptr + _remaining == _buffer + _buffer_len);
-  ASSERT(_ptr >= _buffer && _remaining >= 0);
+  remaining_ -= chars;
+  ptr_ += chars;
+  ASSERT(ptr_ + remaining_ == buffer_ + buffer_len_);
+  ASSERT(ptr_ >= buffer_ && remaining_ >= 0);
 }
 
 #endif

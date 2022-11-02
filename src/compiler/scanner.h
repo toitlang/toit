@@ -45,56 +45,56 @@ const int LSP_SELECTION_MARKER = 1;
 class LspSource : public Source {
  public:
   LspSource(Source* wrapped, int offset)
-      : _wrapped(wrapped)
-      , _text_with_marker(null)
-      , _lsp_offset(offset) {
-    _text_with_marker = unvoid_cast<uint8*>(malloc(_wrapped->size() + 2));
-    strncpy(char_cast(_text_with_marker),
-            char_cast(_wrapped->text()),
+      : wrapped_(wrapped)
+      , text_with_marker_(null)
+      , lsp_offset_(offset) {
+    text_with_marker_ = unvoid_cast<uint8*>(malloc(wrapped_->size() + 2));
+    strncpy(char_cast(text_with_marker_),
+            char_cast(wrapped_->text()),
             offset);
-    _text_with_marker[offset] = LSP_SELECTION_MARKER;
-    strncpy(char_cast(&_text_with_marker[offset + 1]),
-            char_cast(&_wrapped->text()[offset]),
-            _wrapped->size() - offset + 1);
-    ASSERT(_text_with_marker[_wrapped->size() + 1] == '\0');
+    text_with_marker_[offset] = LSP_SELECTION_MARKER;
+    strncpy(char_cast(&text_with_marker_[offset + 1]),
+            char_cast(&wrapped_->text()[offset]),
+            wrapped_->size() - offset + 1);
+    ASSERT(text_with_marker_[wrapped_->size() + 1] == '\0');
   }
 
   ~LspSource() {
-    free(_text_with_marker);
+    free(text_with_marker_);
   }
 
   bool is_lsp_marker_at(int offset) {
-    return offset == _lsp_offset;
+    return offset == lsp_offset_;
   }
 
   bool is_valid() { return true; }
-  const char* absolute_path() const { return _wrapped->absolute_path(); }
-  std::string package_id() const { return _wrapped->package_id(); }
-  std::string error_path() const { return _wrapped->error_path(); }
-  const uint8* text() const { return _text_with_marker; }
+  const char* absolute_path() const { return wrapped_->absolute_path(); }
+  std::string package_id() const { return wrapped_->package_id(); }
+  std::string error_path() const { return wrapped_->error_path(); }
+  const uint8* text() const { return text_with_marker_; }
   Range range(int from, int to) const {
-    if (from > _lsp_offset) from--;
-    if (to > _lsp_offset) to--;
-    return _wrapped->range(from, to);
+    if (from > lsp_offset_) from--;
+    if (to > lsp_offset_) to--;
+    return wrapped_->range(from, to);
   }
-  int size() const { return _wrapped->size() + 1; }
+  int size() const { return wrapped_->size() + 1; }
   int offset_in_source(Position position) const {
-    int wrapped_offset = _wrapped->offset_in_source(position);
-    if (wrapped_offset >= _lsp_offset) return wrapped_offset + 1;
+    int wrapped_offset = wrapped_->offset_in_source(position);
+    if (wrapped_offset >= lsp_offset_) return wrapped_offset + 1;
     return wrapped_offset;
   }
 
   void text_range_without_marker(int from, int to, const uint8** text_from, const uint8** text_to) {
-    if (from > _lsp_offset) from--;
-    if (to > _lsp_offset) to--;
-    *text_from = &_wrapped->text()[from];
-    *text_to = &_wrapped->text()[to];
+    if (from > lsp_offset_) from--;
+    if (to > lsp_offset_) to--;
+    *text_from = &wrapped_->text()[from];
+    *text_to = &wrapped_->text()[to];
   }
 
  private:
-  Source* _wrapped;
-  uint8* _text_with_marker;
-  int _lsp_offset;
+  Source* wrapped_;
+  uint8* text_with_marker_;
+  int lsp_offset_;
 };
 
 static inline bool is_newline(int c) {
@@ -149,27 +149,27 @@ class Scanner {
     Comment(bool is_multiline,
             bool is_toit_doc,
             Source::Range range)
-        : _is_multiline(is_multiline)
-        , _is_toitdoc(is_toit_doc)
-        , _range(range) { }
+        : is_multiline_(is_multiline)
+        , is_toitdoc_(is_toit_doc)
+        , range_(range) { }
 
-    bool is_multiline() const { return _is_multiline; }
-    bool is_toitdoc() const { return _is_toitdoc; }
-    Source::Range range() const { return _range; }
+    bool is_multiline() const { return is_multiline_; }
+    bool is_toitdoc() const { return is_toitdoc_; }
+    Source::Range range() const { return range_; }
 
-    bool is_valid() const { return _range.is_valid(); }
+    bool is_valid() const { return range_.is_valid(); }
 
     static Comment invalid() {
       return Comment(true, false, Source::Range::invalid());
     }
 
    private:
-    bool _is_multiline;
-    bool _is_toitdoc;
-    Source::Range _range;
+    bool is_multiline_;
+    bool is_toitdoc_;
+    Source::Range range_;
 
     friend class ListBuilder<Comment>;
-    Comment() : _range(Source::Range::invalid()) { }
+    Comment() : range_(Source::Range::invalid()) { }
   };
 
 
@@ -179,7 +179,7 @@ class Scanner {
     Symbol data;        // The data associated with this token.
     int16 indentation;    // The indentation of the token.
     // Encodes the token and the boolean values `is_attached` and `is_lsp_selection`.
-    int16 _token_bools;
+    int16 token_bools_;
 
     static int16 encode_token_bools(Token::Kind token,
                                     bool is_attached,
@@ -195,7 +195,7 @@ class Scanner {
         .to = 0,
         .data = Symbol::invalid(),
         .indentation = -1, // -1 means the state is invalid.
-        ._token_bools = encode_token_bools(Token::DEDENT,
+        .token_bools_ = encode_token_bools(Token::DEDENT,
                                            false,
                                            false),
       };
@@ -208,12 +208,12 @@ class Scanner {
     }
 
     // The current token.
-    Token::Kind token() const { return static_cast<Token::Kind>(_token_bools >> 2); }
+    Token::Kind token() const { return static_cast<Token::Kind>(token_bools_ >> 2); }
     // Whether there were any non-indentation spaces in front of this token.
-    bool is_attached() const { return (_token_bools & IS_ATTACHED_BIT) != 0; }
+    bool is_attached() const { return (token_bools_ & IS_ATTACHED_BIT) != 0; }
     // Whether the current identifier token is the LSP-selection. (See [LSP_SELECTION_MARKER]).
     // Only relevant, when the token is of kind Token::IDENTIFIER.
-    bool is_lsp_selection() const { return (_token_bools & IS_LSP_SELECTION_BIT) != 0; }
+    bool is_lsp_selection() const { return (token_bools_ & IS_LSP_SELECTION_BIT) != 0; }
 
     std::pair<int, int> range() const { return std::make_pair(from, to); }
 
@@ -223,26 +223,26 @@ class Scanner {
   };
 
   Scanner(Source* source, SymbolCanonicalizer* symbols, Diagnostics* diagnostics)
-      : _input(source->text())
-      , _source(source)
-      , _lsp_selection_is_identifier(false)
-      , _symbols(symbols)
-      , _diagnostics(diagnostics) { }
+      : input_(source->text())
+      , source_(source)
+      , lsp_selection_is_identifier_(false)
+      , symbols_(symbols)
+      , diagnostics_(diagnostics) { }
 
   Scanner(Source* source,
           bool lsp_selection_is_identifier,
           SymbolCanonicalizer* symbols,
           Diagnostics* diagnostics)
-      : _input(source->text())
-      , _source(source)
-      , _lsp_selection_is_identifier(lsp_selection_is_identifier)
-      , _symbols(symbols)
-      , _diagnostics(diagnostics) { }
+      : input_(source->text())
+      , source_(source)
+      , lsp_selection_is_identifier_(lsp_selection_is_identifier)
+      , symbols_(symbols)
+      , diagnostics_(diagnostics) { }
 
   void skip_hash_bang_line();
 
   void advance_to(int offset) {
-    _index = offset;
+    index_ = offset;
   }
 
   State next();
@@ -253,26 +253,26 @@ class Scanner {
 
   List<Comment> comments();
 
-  Source* source() const { return _source; }
-  SymbolCanonicalizer* symbol_canonicalizer() const { return _symbols; }
+  Source* source() const { return source_; }
+  SymbolCanonicalizer* symbol_canonicalizer() const { return symbols_; }
 
   static bool is_identifier_start(int c);
 
   Source::Range current_range() const {
-    if (_index == _source->size()) {
-      return _source->range(_index - 1, _index);
+    if (index_ == source_->size()) {
+      return source_->range(index_ - 1, index_);
     } else {
-      return _source->range(_index, _index + 1);
+      return source_->range(index_, index_ + 1);
     }
   }
 
  private:
   int peek() { return look_ahead(0); }
   int look_ahead(int n = 1) {
-    ASSERT(_index + n >= 0 && _index + n <= _source->size());
-    return _input[_index + n];
+    ASSERT(index_ + n >= 0 && index_ + n <= source_->size());
+    return input_[index_ + n];
   }
-  bool at_eos() const { return _index >= _source->size(); }
+  bool at_eos() const { return index_ >= source_->size(); }
   bool at_skippable_whitespace(int peek) {
     return is_whitespace_not_newline(peek) || at_escaped_newline(peek);
   }
@@ -284,39 +284,39 @@ class Scanner {
   friend class ScannerStateQueue;
 
  private:
-  Symbol _data = Symbol::invalid();
-  bool _is_lsp_selection = false;
+  Symbol data_ = Symbol::invalid();
+  bool is_lsp_selection_ = false;
 
-  const uint8* _input;
-  Source* _source;
+  const uint8* input_;
+  Source* source_;
 
   // Whether LSP-selections should be treated as identifier tokens.
   // For completions we assume that keywords are just "incomplete" identifiers, whereas
   // for goto-definitions we want to handle keywords as keywords.
   // For example: `if for@` should still propose a completion and treat the `for` as an identifier
   //  (potentially completing to "former").
-  bool _lsp_selection_is_identifier;
+  bool lsp_selection_is_identifier_;
 
-  SymbolCanonicalizer* _symbols;
-  Diagnostics* _diagnostics;
+  SymbolCanonicalizer* symbols_;
+  Diagnostics* diagnostics_;
 
-  int _indentation = 0;
+  int indentation_ = 0;
 
-  int _index = 0;
+  int index_ = 0;
 
-  int _begin = -1;
-  int _last = -1;
+  int begin_ = -1;
+  int last_ = -1;
 
-  ListBuilder<Comment> _comments;
+  ListBuilder<Comment> comments_;
 
   int advance() {
     // Never advance past the EOS.
-    if (_index < _source->size()) _index++;
-    int result = _input[_index];
+    if (index_ < source_->size()) index_++;
+    int result = input_[index_];
     // Advance over the '\n' as well.
-    if (result == '\n' && _input[_index - 1] == '\r' && _index < _source->size()) {
-      _index++;
-      result = _input[_index];
+    if (result == '\n' && input_[index_ - 1] == '\r' && index_ < source_->size()) {
+      index_++;
+      result = input_[index_];
     }
     ASSERT(result >= 0);
     return result;
@@ -327,7 +327,7 @@ class Scanner {
   State create_state(Token::Kind token);
   Token::Kind next_token();
 
-  Token::Kind scan_single(Token::Kind kind) { ++_index; return kind; }
+  Token::Kind scan_single(Token::Kind kind) { ++index_; return kind; }
 
   Token::Kind scan_newline(int peek);
   Token::Kind scan_character(int peek);

@@ -95,7 +95,7 @@ SnapshotBundle::SnapshotBundle(List<uint8> snapshot,
   add(DEBUG_SNAPSHOT_NAME, debug_snapshot);
   add(DEBUG_SOURCE_MAP_NAME, debug_source_map_data);
 
-  builder.close(&_buffer, &_size);
+  builder.close(&buffer_, &size_);
 }
 
 bool SnapshotBundle::is_bundle_file(FILE* file) {
@@ -121,7 +121,7 @@ bool SnapshotBundle::is_bundle_file(const char* path) {
 }
 
 Snapshot SnapshotBundle::snapshot() {
-  ar::MemoryReader reader(_buffer, _size);
+  ar::MemoryReader reader(buffer_, size_);
   ar::File file;
   int status = reader.find("snapshot", &file);
   if (status != 0) FATAL("Invalid SnapshotBundle");
@@ -129,7 +129,7 @@ Snapshot SnapshotBundle::snapshot() {
 }
 
 bool SnapshotBundle::uuid(uint8* buffer_16) const {
-  ar::MemoryReader reader(_buffer, _size);
+  ar::MemoryReader reader(buffer_, size_);
   ar::File file;
   int status = reader.find("uuid", &file);
   if (status != 0 || file.byte_size < UUID_SIZE) return false;

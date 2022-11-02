@@ -20,15 +20,15 @@
 #include "ble_esp32.h"
 namespace toit {
 
-BLEEventSource* BLEEventSource::_instance = null;
+BLEEventSource* BLEEventSource::instance_ = null;
 
 BLEEventSource::BLEEventSource()
     : LazyEventSource("BLE", 1) {
-  _instance = this;
+  instance_ = this;
 }
 
 BLEEventSource::~BLEEventSource() {
-  _instance = null;
+  instance_ = null;
 }
 
 void BLEEventSource::on_event(BLEResource* resource, word data) {

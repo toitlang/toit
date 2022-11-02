@@ -24,16 +24,16 @@ namespace toit {
 namespace compiler {
 
 void CallBuilder::prefix_argument(ir::Expression* arg) {
-  auto old_args = _args;
-  _args.clear();
+  auto old_args = args_;
+  args_.clear();
   add_argument(arg, Symbol::invalid());
-  _args.insert(_args.end(), old_args.begin(), old_args.end());
+  args_.insert(args_.end(), old_args.begin(), old_args.end());
 }
 
 void CallBuilder::add_argument(ir::Expression* arg, Symbol name) {
-  _args.push_back(Arg(arg, arg->is_block(), name));
-  if (name.is_valid()) _named_count++;
-  if (arg->is_block()) _block_count++;
+  args_.push_back(Arg(arg, arg->is_block(), name));
+  if (name.is_valid()) named_count_++;
+  if (arg->is_block()) block_count_++;
 }
 
 void CallBuilder::add_arguments(List<ir::Expression*> args) {
@@ -41,10 +41,10 @@ void CallBuilder::add_arguments(List<ir::Expression*> args) {
 }
 
 CallShape CallBuilder::shape() {
-  if (_named_count == 0) {
-    return CallShape(_args.size(), _block_count);
+  if (named_count_ == 0) {
+    return CallShape(args_.size(), block_count_);
   } else {
-    std::vector<Arg> sorted_args = _args;  // Make a copy.
+    std::vector<Arg> sorted_args = args_;  // Make a copy.
     sort_arguments(&sorted_args);
 
     int named_count = 0;
@@ -59,7 +59,7 @@ CallShape CallBuilder::shape() {
       names[i] = sorted_args[i + unnamed_args_count].name;
       ASSERT(names[i].is_valid());
     }
-    return CallShape(sorted_args.size(), _block_count, names, named_block_count, false);
+    return CallShape(sorted_args.size(), block_count_, names, named_block_count, false);
   }
 }
 
@@ -67,33 +67,33 @@ ir::Expression* CallBuilder::call_constructor(ir::ReferenceMethod* target) {
   auto method_shape = target->target()->resolution_shape();
   bool has_implicit_this = true;
   return do_call_static(method_shape, has_implicit_this, [&](CallShape call_shape, List<ir::Expression*> args) {
-    return _new ir::CallConstructor(target, call_shape, args, _range);
+    return _new ir::CallConstructor(target, call_shape, args, range_);
   });
 }
 ir::Expression* CallBuilder::call_static(ir::ReferenceMethod* target) {
   auto method_shape = target->target()->resolution_shape();
   bool has_implicit_this = false;
   return do_call_static(method_shape, has_implicit_this, [&](CallShape call_shape, List<ir::Expression*> args) {
-    return _new ir::CallStatic(target, call_shape, args, _range);
+    return _new ir::CallStatic(target, call_shape, args, range_);
   });
 }
 ir::Expression* CallBuilder::call_builtin(ir::Builtin* builtin) {
   ResolutionShape method_shape(builtin->arity());
   bool has_implicit_this = false;
   return do_call_static(method_shape, has_implicit_this, [&](CallShape call_shape, List<ir::Expression*> args) {
-    return _new ir::CallBuiltin(builtin, call_shape, args, _range);
+    return _new ir::CallBuiltin(builtin, call_shape, args, range_);
   });
 }
 ir::Expression* CallBuilder::call_block(ir::Expression* block) {
   return do_block_call(block, [&](ir::Expression* block, CallShape call_shape, List<ir::Expression*> args) {
-    return _new ir::CallBlock(block, call_shape, args, _range);
+    return _new ir::CallBlock(block, call_shape, args, range_);
   });
 }
 ir::Expression* CallBuilder::call_instance(ir::Dot* dot) {
   return call_instance(dot, Source::Range::invalid());
 }
 ir::Expression* CallBuilder::call_instance(ir::Dot* dot, Source::Range range) {
-  if (!range.is_valid()) range = _range;
+  if (!range.is_valid()) range = range_;
   return do_call_instance(dot, [&](ir::Dot* dot, CallShape call_shape, List<ir::Expression*> args) {
     return _new ir::CallVirtual(dot, call_shape, args, range);
   });
@@ -136,7 +136,7 @@ void CallBuilder::sort_arguments(std::vector<Arg>* args) {
 
 // Hoists arguments out of the call if necessary.
 //
-// Updates the expression in the [_args] vector with references to the temporary variables.
+// Updates the expression in the [args_] vector with references to the temporary variables.
 //
 // This is necessary for blocks, and calls that have named arguments.
 //
@@ -153,8 +153,8 @@ ir::Expression* CallBuilder::with_hoisted_args(ir::Expression* target,
 
   // Just a few shortcuts.
   if (target == null || !target->is_block()) {
-    if (_named_count == 0 && _block_count == 0) return fun(target);
-    if (_block_count == 0 && _args.size() <= 1) return fun(target);
+    if (named_count_ == 0 && block_count_ == 0) return fun(target);
+    if (block_count_ == 0 && args_.size() <= 1) return fun(target);
   }
 
   ListBuilder<ir::Expression*> sequence_exprs;
@@ -169,7 +169,7 @@ ir::Expression* CallBuilder::with_hoisted_args(ir::Expression* target,
     }
     // If there are no named arguments, then we don't need to create temporaries for any
     // other type.
-    if (_named_count == 0) return expression;
+    if (named_count_ == 0) return expression;
 
     if (expression->is_Reference()) return expression;
     if (expression->is_Literal()) return expression;
@@ -186,14 +186,14 @@ ir::Expression* CallBuilder::with_hoisted_args(ir::Expression* target,
   if (target != null) {
     target = create_temporary_if_necessary(target);
   }
-  for (auto& arg : _args) {
+  for (auto& arg : args_) {
     arg.expression = create_temporary_if_necessary(arg.expression);
   }
 
   if (sequence_exprs.is_empty()) return fun(target);
 
   sequence_exprs.add(fun(target));
-  return _new ir::Sequence(sequence_exprs.build(), _range);
+  return _new ir::Sequence(sequence_exprs.build(), range_);
 }
 
 ir::Expression* CallBuilder::do_call_static(ResolutionShape shape,
@@ -202,17 +202,17 @@ ir::Expression* CallBuilder::do_call_static(ResolutionShape shape,
   return with_hoisted_args(null, [&](ir::Expression* _) {
     // For simplicity, remove the implicit this from the shape if necessary.
     if (has_implicit_this) shape = shape.without_implicit_this();
-    int provided_count = _args.size();
+    int provided_count = args_.size();
     int needed_count = shape.max_arity();
     List<ir::Expression*> ir_arguments = ListBuilder<ir::Expression*>::allocate(needed_count);
 
-    if (provided_count == needed_count && _named_count == 0) {
+    if (provided_count == needed_count && named_count_ == 0) {
       // Shortcut for the usual case where there are no named arguments, and we don't need to fill
       // optional arguments.
-      for (size_t i = 0; i < _args.size(); i++) {
-        ir_arguments[i] = _args[i].expression;
+      for (size_t i = 0; i < args_.size(); i++) {
+        ir_arguments[i] = args_[i].expression;
       }
-      CallShape call_shape(needed_count, _block_count);
+      CallShape call_shape(needed_count, block_count_);
       if (has_implicit_this) call_shape = call_shape.with_implicit_this();
       return create_call(call_shape, ir_arguments);
     }
@@ -223,20 +223,20 @@ ir::Expression* CallBuilder::do_call_static(ResolutionShape shape,
 
     auto next_ir_arg = [&](bool must_be_non_block) {
       // Skip over named arguments. Those are handled differently.
-      while (argument_index < _args.size() &&
-              _args[argument_index].is_named()) {
+      while (argument_index < args_.size() &&
+              args_[argument_index].is_named()) {
         argument_index++;
       }
       // Fill up non-block and block arguments independently.
-      if (argument_index < _args.size()) {
-        if (must_be_non_block && _args[argument_index].is_block) {
+      if (argument_index < args_.size()) {
+        if (must_be_non_block && args_[argument_index].is_block) {
           // Fill up the non-block arg.
-          return (_new ir::LiteralNull(_range))->as_Expression();
+          return (_new ir::LiteralNull(range_))->as_Expression();
         }
-        return _args[argument_index++].expression;
+        return args_[argument_index++].expression;
       }
       if (!must_be_non_block) FATAL("Block arguments can't have default value");
-      return (_new ir::LiteralNull(_range))->as_Expression();
+      return (_new ir::LiteralNull(range_))->as_Expression();
     };
 
     int ir_argument_index = 0;
@@ -248,7 +248,7 @@ ir::Expression* CallBuilder::do_call_static(ResolutionShape shape,
     }
 
     UnorderedMap<Symbol, Arg> named_mapping;
-    for (auto arg : _args) {
+    for (auto arg : args_) {
       if (arg.is_named()) named_mapping[arg.name] = arg;
     }
     int named_non_block_count = shape.names().length() - shape.named_block_count();
@@ -265,11 +265,11 @@ ir::Expression* CallBuilder::do_call_static(ResolutionShape shape,
         continue;
       }
       if (!shape.optional_names()[i]) FATAL("Not optional argument");
-      ir_arguments[ir_argument_index++] = _new ir::LiteralNull(_range);
+      ir_arguments[ir_argument_index++] = _new ir::LiteralNull(range_);
     }
     ASSERT(used_names_count == named_mapping.size());
 
-    CallShape call_shape(needed_count, _block_count,
+    CallShape call_shape(needed_count, block_count_,
                          shape.names(), shape.named_block_count(), false);
     if (has_implicit_this) call_shape = call_shape.with_implicit_this();
     return create_call(call_shape, ir_arguments);
@@ -280,27 +280,27 @@ ir::Expression* CallBuilder::do_call_instance(ir::Dot* dot,
                                               std::function<ir::Call* (ir::Dot* dot, CallShape shape, List<ir::Expression*>)> create_call) {
   return with_hoisted_args(dot->receiver(), [&](ir::Expression* new_receiver) {
     dot->replace_receiver(new_receiver);
-    int arity = _args.size();
+    int arity = args_.size();
     CallShape call_shape(0);
-    if (_named_count == 0) {
-      call_shape = CallShape(arity, _block_count).with_implicit_this();
+    if (named_count_ == 0) {
+      call_shape = CallShape(arity, block_count_).with_implicit_this();
     } else {
       // Sort the arguments in-place.
       // At this point we can change the args-vector, since it may contain references to temporary variables
       // anyway.
-      sort_arguments(&_args);
-      auto names = ListBuilder<Symbol>::allocate(_named_count);
+      sort_arguments(&args_);
+      auto names = ListBuilder<Symbol>::allocate(named_count_);
       int named_block_count = 0;
-      for (int i = 0; i < _named_count; i++) {
-        auto arg = _args[_args.size() - _named_count + i];
+      for (int i = 0; i < named_count_; i++) {
+        auto arg = args_[args_.size() - named_count_ + i];
         names[i] = arg.name;
         ASSERT(names[i].is_valid());
         if (arg.is_block) named_block_count++;
       }
-      call_shape = CallShape(arity, _block_count, names, named_block_count, false).with_implicit_this();
+      call_shape = CallShape(arity, block_count_, names, named_block_count, false).with_implicit_this();
     }
     auto ir_arguments = ListBuilder<ir::Expression*>::allocate(arity);
-    for (size_t i = 0; i < _args.size(); i++) ir_arguments[i] = _args[i].expression;
+    for (size_t i = 0; i < args_.size(); i++) ir_arguments[i] = args_[i].expression;
 
     return create_call(dot, call_shape, ir_arguments);
   });
@@ -309,10 +309,10 @@ ir::Expression* CallBuilder::do_call_instance(ir::Dot* dot,
 ir::Expression* CallBuilder::do_block_call(ir::Expression* block,
                                            std::function<ir::Call* (ir::Expression* block, CallShape shape, List<ir::Expression*>)> create_call) {
   return with_hoisted_args(block, [&](ir::Expression* new_block) {
-    int arity = _args.size();
+    int arity = args_.size();
     auto ir_arguments = ListBuilder<ir::Expression*>::allocate(arity);
-    for (size_t i = 0; i < _args.size(); i++) ir_arguments[i] = _args[i].expression;
-    CallShape call_shape = CallShape(arity, _block_count).with_implicit_this();
+    for (size_t i = 0; i < args_.size(); i++) ir_arguments[i] = args_[i].expression;
+    CallShape call_shape = CallShape(arity, block_count_).with_implicit_this();
     return create_call(new_block, call_shape, ir_arguments);
   });
 }

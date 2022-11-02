@@ -72,21 +72,21 @@ class Interpreter {
       DEEP_SLEEP,
     };
 
-    explicit Result(State state) : _state(state), _value(0) {}
-    explicit Result(int64 value) : _state(TERMINATED), _value(value) {}
-    Result(State state, int64 value) : _state(state), _value(value) {}
+    explicit Result(State state) : state_(state), value_(0) {}
+    explicit Result(int64 value) : state_(TERMINATED), value_(value) {}
+    Result(State state, int64 value) : state_(state), value_(value) {}
 
-    State state() { return _state; }
-    int64 value() { return _value; }
+    State state() { return state_; }
+    int64 value() { return value_; }
 
    private:
-    State _state;
-    int64 _value;
+    State state_;
+    int64 value_;
   };
 
   Interpreter();
 
-  Process* process() { return _process; }
+  Process* process() { return process_; }
   void activate(Process* process);
   void deactivate();
 
@@ -113,23 +113,23 @@ class Interpreter {
   void prepare_task(Method entry, Instance* code);
 
   void preempt();
-  uint8* preemption_method_header_bcp() const { return _preemption_method_header_bcp; }
+  uint8* preemption_method_header_bcp() const { return preemption_method_header_bcp_; }
 
  private:
   Object** const PREEMPTION_MARKER = reinterpret_cast<Object**>(UINTPTR_MAX);
-  Process* _process;
+  Process* process_;
 
   // Cached pointers into the stack object.
-  Object** _limit;
-  Object** _base;
-  Object** _sp;
-  Object** _try_sp;
+  Object** limit_;
+  Object** base_;
+  Object** sp_;
+  Object** try_sp_;
 
   // Stack overflow handling.
-  std::atomic<Object**> _watermark;
+  std::atomic<Object**> watermark_;
 
   // Preemption method.
-  uint8* _preemption_method_header_bcp;
+  uint8* preemption_method_header_bcp_;
 
   void trace(uint8* bcp);
   Method lookup_entry();
@@ -154,20 +154,20 @@ class Interpreter {
   inline bool typecheck_interface(Program* program, Object* value, int interface_selector_index, bool is_nullable) const;
 
   bool is_stack_empty() const {
-    return _sp == _base;
+    return sp_ == base_;
   }
 
   void push(Object* object) {
-    ASSERT(_sp > _limit);
-    *(--_sp) = object;
+    ASSERT(sp_ > limit_);
+    *(--sp_) = object;
   }
 
   Object** from_block(Smi* block) const {
-    return _base - (block->value() - BLOCK_SALT);
+    return base_ - (block->value() - BLOCK_SALT);
   }
 
   Smi* to_block(Object** pointer) const {
-    return Smi::from(_base - pointer + BLOCK_SALT);
+    return Smi::from(base_ - pointer + BLOCK_SALT);
   }
 
   friend class Stack;

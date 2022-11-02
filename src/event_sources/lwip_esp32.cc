@@ -111,7 +111,7 @@ Object* lwip_error(Process* process, err_t err) {
   return Primitive::mark_as_error(str);
 }
 
-LwIPEventSource* LwIPEventSource::_instance = null;
+LwIPEventSource* LwIPEventSource::instance_ = null;
 
 MODULE_IMPLEMENTATION(dhcp, MODULE_DHCP)
 
@@ -179,8 +179,8 @@ PRIMITIVE(wait_for_lwip_dhcp_on_linux) {
 
 LwIPEventSource::LwIPEventSource()
     : EventSource("LwIP", 1)
-    , _mutex(OS::allocate_mutex(0, "LwIPEventSource"))
-    , _call_done(OS::allocate_condition_variable(_mutex)) {
+    , mutex_(OS::allocate_mutex(0, "LwIPEventSource"))
+    , call_done_(OS::allocate_condition_variable(mutex_)) {
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + LWIP_MALLOC_TAG);
 #if defined(TOIT_FREERTOS)
   // Create the LWIP thread.
@@ -199,8 +199,8 @@ LwIPEventSource::LwIPEventSource()
   sys_sem_free(&init_semaphore);
 #endif
 
-  ASSERT(_instance == null);
-  _instance = this;
+  ASSERT(instance_ == null);
+  instance_ = this;
 
   call_on_thread([&]() -> Object *{
     OS::set_heap_tag(ITERATE_CUSTOM_TAGS + LWIP_MALLOC_TAG);
@@ -209,9 +209,9 @@ LwIPEventSource::LwIPEventSource()
 }
 
 LwIPEventSource::~LwIPEventSource() {
-  _instance = null;
-  OS::dispose(_call_done);
-  OS::dispose(_mutex);
+  instance_ = null;
+  OS::dispose(call_done_);
+  OS::dispose(mutex_);
 }
 
 void LwIPEventSource::on_thread(void* arg) {
@@ -221,9 +221,9 @@ void LwIPEventSource::on_thread(void* arg) {
 
   call->result = call->func();
 
-  Locker lock(event_source->_mutex);
+  Locker lock(event_source->mutex_);
   call->done = true;
-  OS::signal(event_source->_call_done);
+  OS::signal(event_source->call_done_);
 }
 
 #else // defined(TOIT_FREERTOS) || defined(TOIT_USE_LWIP)

@@ -22,9 +22,9 @@ namespace compiler {
 /// Loads the given archive, caching the contained files.
 void FilesystemHybrid::initialize(Diagnostics* diagnostics) {
   // Doesn't cost to initialize the local filesystem.
-  _fs_local.initialize(diagnostics);
-  if (_use_fs_archive) {
-    _fs_archive.initialize(diagnostics);
+  fs_local_.initialize(diagnostics);
+  if (use_fs_archive_) {
+    fs_archive_.initialize(diagnostics);
   }
 }
 
@@ -93,32 +93,32 @@ void FilesystemHybrid::list_directory_entries(const char* path,
 
 template<typename T>
 T FilesystemHybrid::do_with_active_fs(const std::function<T (Filesystem* fs)> callback) {
-  if (_use_fs_archive) return callback(&_fs_archive);
-  return callback(&_fs_local);
+  if (use_fs_archive_) return callback(&fs_archive_);
+  return callback(&fs_local_);
 }
 
 template<typename T>
 T FilesystemHybrid::do_with_active_fs(const char* path,
                                       const std::function<T (const char* path, Filesystem* fs)> callback) {
-  if (_use_fs_archive) {
-    if (path == null || _fs_archive.contains_sdk()) {
-      return callback(path, &_fs_archive);
+  if (use_fs_archive_) {
+    if (path == null || fs_archive_.contains_sdk()) {
+      return callback(path, &fs_archive_);
     }
-    const char* sdk_path = _fs_archive.sdk_path();
+    const char* sdk_path = fs_archive_.sdk_path();
     size_t sdk_path_len = strlen(sdk_path);
     if (strncmp(path, sdk_path, sdk_path_len) == 0 &&
-        (sdk_path[sdk_path_len - 1] == _fs_archive.path_separator() || path[sdk_path_len] == _fs_archive.path_separator())) {
+        (sdk_path[sdk_path_len - 1] == fs_archive_.path_separator() || path[sdk_path_len] == fs_archive_.path_separator())) {
       // Replace the archive's SDK path with the local SDK path and
       // let the local filesystem do the work.
       char local_path[PATH_MAX];
-      const char* local_sdk_path = _fs_local.sdk_path();
-      snprintf(local_path, PATH_MAX, "%s%c%s", local_sdk_path, _fs_archive.path_separator(), &path[sdk_path_len]);
+      const char* local_sdk_path = fs_local_.sdk_path();
+      snprintf(local_path, PATH_MAX, "%s%c%s", local_sdk_path, fs_archive_.path_separator(), &path[sdk_path_len]);
       local_path[PATH_MAX - 1] = '\0';
-      return callback(local_path, &_fs_local);
+      return callback(local_path, &fs_local_);
     }
-    return callback(path, &_fs_archive);
+    return callback(path, &fs_archive_);
   }
-  return callback(path, &_fs_local);
+  return callback(path, &fs_local_);
 }
 
 } // namespace compiler

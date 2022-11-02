@@ -49,11 +49,11 @@ bool FilesystemLsp::do_is_directory(const char* path) {
 }
 
 const char* FilesystemLsp::sdk_path() {
-  return _protocol->sdk_path();
+  return protocol_->sdk_path();
 }
 
 List<const char*> FilesystemLsp::package_cache_paths() {
-  return _protocol->package_cache_paths();
+  return protocol_->package_cache_paths();
 }
 
 const uint8* FilesystemLsp::do_read_content(const char* path, int* size) {
@@ -64,16 +64,16 @@ const uint8* FilesystemLsp::do_read_content(const char* path, int* size) {
 
 void FilesystemLsp::list_directory_entries(const char* path,
                                            const std::function<void (const char*)> callback) {
-  _protocol->list_directory_entries(path, callback);
+  protocol_->list_directory_entries(path, callback);
 }
 
 LspFsProtocol::PathInfo FilesystemLsp::info_for(const char* path) {
   std::string lookup_key(path);
-  auto probe = _file_cache.find(lookup_key);
-  if (probe != _file_cache.end()) return probe->second;
+  auto probe = file_cache_.find(lookup_key);
+  if (probe != file_cache_.end()) return probe->second;
 
-  auto info = _protocol->fetch_info_for(path);
-  _file_cache[lookup_key] = info;
+  auto info = protocol_->fetch_info_for(path);
+  file_cache_[lookup_key] = info;
   return info;
 }
 

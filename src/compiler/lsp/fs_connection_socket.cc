@@ -36,7 +36,7 @@ void LspFsConnectionSocket::putline(const char* line) {
   int len = strlen(line);
   int offset = 0;
   while (offset < len) {
-    int n = send(_socket, line + offset, len - offset, 0);
+    int n = send(socket_, line + offset, len - offset, 0);
     if (n == -1) {
       FATAL("failed writing line");
     }
@@ -44,7 +44,7 @@ void LspFsConnectionSocket::putline(const char* line) {
   }
 
   const char nl = '\n';
-  if (send(_socket, &nl, 1, 0) != 1) {
+  if (send(socket_, &nl, 1, 0) != 1) {
     FATAL("failed writing newline");
   }
 }
@@ -55,7 +55,7 @@ char* LspFsConnectionSocket::getline() {
 
   size_t offset = 0;
   while (offset < sizeof(buffer)) {
-    int n = recv(_socket, buffer + offset, 1, 0);
+    int n = recv(socket_, buffer + offset, 1, 0);
     if (n != 1) {
       FATAL("failed reading line");
     }
@@ -73,7 +73,7 @@ char* LspFsConnectionSocket::getline() {
 int LspFsConnectionSocket::read_data(uint8* content, int size) {
   int offset = 0;
   while (offset < size) {
-    int n = recv(_socket, char_cast(content) + offset, size - offset, 0);
+    int n = recv(socket_, char_cast(content) + offset, size - offset, 0);
     if (n == -1) return -1;
     offset += n;
   }

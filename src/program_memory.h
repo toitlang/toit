@@ -28,31 +28,31 @@ class ProgramRawHeap;
 // A class used for printing usage of a memory area.
 class ProgramUsage {
  public:
-  explicit ProgramUsage(const char* name) : _name(name), _reserved(0), _allocated(0) {}
-  ProgramUsage(const char* name, int reserved) : _name(name), _reserved(reserved), _allocated(reserved) {}
-  ProgramUsage(const char* name, int reserved, int allocated) : _name(name), _reserved(reserved), _allocated(allocated) {}
+  explicit ProgramUsage(const char* name) : name_(name), reserved_(0), allocated_(0) {}
+  ProgramUsage(const char* name, int reserved) : name_(name), reserved_(reserved), allocated_(reserved) {}
+  ProgramUsage(const char* name, int reserved, int allocated) : name_(name), reserved_(reserved), allocated_(allocated) {}
 
   // For accumulating usage information.
   void add(ProgramUsage* other) {
-    _reserved += other->_reserved;
-    _allocated += other->_allocated;
+    reserved_ += other->reserved_;
+    allocated_ += other->allocated_;
   }
 
   void add_external(int allocated) {
-    _reserved += allocated;
-    _allocated += allocated;
+    reserved_ += allocated;
+    allocated_ += allocated;
   }
 
   void print(int indent = 0);
 
-  const char* name() { return _name; }
-  int reserved() const { return _reserved; }
-  int allocated() const { return _allocated; }
+  const char* name() { return name_; }
+  int reserved() const { return reserved_; }
+  int allocated() const { return allocated_; }
 
  private:
-  const char* _name;
-  int _reserved;
-  int _allocated;
+  const char* name_;
+  int reserved_;
+  int allocated_;
 };
 
 typedef LinkedFIFO<ProgramBlock> ProgramBlockLinkedList;
@@ -68,7 +68,7 @@ class ProgramBlock : public ProgramBlockLinkedList::Element {
     return new (result) ProgramBlock();
   }
 
-  void* top() const { return _top; }
+  void* top() const { return top_; }
   void* base() const { return Utils::address_at(const_cast<ProgramBlock*>(this), sizeof(ProgramBlock)); }
   void* limit() const { return Utils::address_at(const_cast<ProgramBlock*>(this), TOIT_PAGE_SIZE); }
 
@@ -95,12 +95,12 @@ class ProgramBlock : public ProgramBlockLinkedList::Element {
   }
 
   void _reset() {
-    _top = base();
+    top_ = base();
   }
 
   void wipe();
 
-  void* _top;
+  void* top_;
   friend class ProgramBlockList;
   friend class ProgramHeap;
   friend class ProgramHeapMemory;
@@ -108,7 +108,7 @@ class ProgramBlock : public ProgramBlockLinkedList::Element {
 
 class ProgramBlockList {
  public:
-  ProgramBlockList() : _length(0) { }
+  ProgramBlockList() : length_(0) { }
   ~ProgramBlockList();
 
   // Returns the number of bytes allocated.
@@ -117,49 +117,49 @@ class ProgramBlockList {
   void set_writable(bool value);
 
   void append(ProgramBlock* b) {
-    _blocks.append(b);
-    _length++;
+    blocks_.append(b);
+    length_++;
   }
 
   void prepend(ProgramBlock* b) {
-    _blocks.prepend(b);
-    _length++;
+    blocks_.prepend(b);
+    length_++;
   }
 
   bool is_empty() const {
-    return _blocks.is_empty();
+    return blocks_.is_empty();
   }
 
   ProgramBlock* first() const {
-    return _blocks.first();
+    return blocks_.first();
   }
 
   ProgramBlock* remove_first() {
-    ProgramBlock* block = _blocks.remove_first();
-    if (block) _length--;
+    ProgramBlock* block = blocks_.remove_first();
+    if (block) length_--;
     return block;
   }
 
   ProgramBlock* last() const {
-    return _blocks.last();
+    return blocks_.last();
   }
 
   void take_blocks(ProgramBlockList* list, ProgramRawHeap* heap);
   void free_blocks(ProgramRawHeap* heap);
   void discard_blocks();
 
-  word length() const { return _length; }
+  word length() const { return length_; }
 
   void do_pointers(Program* program, PointerCallback* callback);
 
   void print();
 
-  typename ProgramBlockLinkedList::Iterator begin() { return _blocks.begin(); }
-  typename ProgramBlockLinkedList::Iterator end() { return _blocks.end(); }
+  typename ProgramBlockLinkedList::Iterator begin() { return blocks_.begin(); }
+  typename ProgramBlockLinkedList::Iterator end() { return blocks_.end(); }
 
  private:
-  ProgramBlockLinkedList _blocks;
-  word _length;  // Number of blocks in the this list.
+  ProgramBlockLinkedList blocks_;
+  word length_;  // Number of blocks in the this list.
 };
 
 // Memory provide blocks for objects.
@@ -168,17 +168,17 @@ class ProgramHeapMemory {
 
   void set_writable(ProgramBlock* block, bool value);
 
-  Mutex* mutex() const { return _memory_mutex; }
+  Mutex* mutex() const { return memory_mutex_; }
 
-  static ProgramHeapMemory* instance() { return &_instance; }
+  static ProgramHeapMemory* instance() { return &instance_; }
 
   ProgramHeapMemory();
   ~ProgramHeapMemory();
 
  private:
-  static ProgramHeapMemory _instance;
+  static ProgramHeapMemory instance_;
 
-  Mutex* _memory_mutex;
+  Mutex* memory_mutex_;
 };
 
 class ProgramRawHeap {
@@ -189,24 +189,24 @@ class ProgramRawHeap {
 
   // Size of all objects stored in this heap.
   int object_size() const {
-    return _blocks.payload_size();
+    return blocks_.payload_size();
   }
 
   // Number of blocks allocated.  This is used for reserving space for a GC, so
   // it does not include off-heap allocations which don't need to be moved in a
   // GC.
-  word number_of_blocks() const { return _blocks.length(); }
+  word number_of_blocks() const { return blocks_.length(); }
 
   ProgramUsage usage(const char* name);
   void print();
 
   // Should only be called from ProgramImage.
   void do_pointers(Program* program, PointerCallback* callback) {
-    _blocks.do_pointers(program, callback);
+    blocks_.do_pointers(program, callback);
   }
 
  protected:
-  ProgramBlockList _blocks;
+  ProgramBlockList blocks_;
 
  private:
   friend class ImageAllocator;

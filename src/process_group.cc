@@ -24,13 +24,13 @@
 namespace toit {
 
 ProcessGroup::ProcessGroup(int id, Program* program, AlignedMemoryBase* memory)
-    : _id(id)
-    , _program(program)
-    , _memory(memory) {
+    : id_(id)
+    , program_(program)
+    , memory_(memory) {
 }
 
 ProcessGroup::~ProcessGroup() {
-  delete _memory;
+  delete memory_;
 }
 
 ProcessGroup* ProcessGroup::create(int id, Program* program, AlignedMemoryBase* memory) {
@@ -39,7 +39,7 @@ ProcessGroup* ProcessGroup::create(int id, Program* program, AlignedMemoryBase* 
 
 Process* ProcessGroup::lookup(int process_id) {
   ASSERT(VM::current()->scheduler()->is_locked());
-  for (auto process : _processes) {
+  for (auto process : processes_) {
     if (process->id() == process_id) return process;
   }
   return null;
@@ -47,16 +47,16 @@ Process* ProcessGroup::lookup(int process_id) {
 
 void ProcessGroup::add(Process* process) {
   ASSERT(VM::current()->scheduler()->is_locked());
-  _processes.prepend(process);
+  processes_.prepend(process);
 }
 
 bool ProcessGroup::remove(Process* process) {
   ASSERT(VM::current()->scheduler()->is_locked());
-  Process* p = _processes.remove(process);
+  Process* p = processes_.remove(process);
   if (p != process) {
     FATAL("Process not in list");
   }
-  return !_processes.is_empty();
+  return !processes_.is_empty();
 }
 
 } // namespace toit

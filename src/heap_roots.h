@@ -29,19 +29,19 @@ typedef LinkedFIFO<FinalizerNode> FinalizerNodeFIFO;
 class FinalizerNode : public FinalizerNodeFIFO::Element {
  public:
   FinalizerNode(HeapObject* key, Object* lambda)
-  : _key(key), _lambda(lambda) {}
+  : key_(key), lambda_(lambda) {}
   virtual ~FinalizerNode() {}
 
-  HeapObject* key() { return _key; }
-  void set_key(HeapObject* value) { _key = value; }
-  Object* lambda() { return _lambda; }
+  HeapObject* key() { return key_; }
+  void set_key(HeapObject* value) { key_ = value; }
+  Object* lambda() { return lambda_; }
 
   // Garbage collection support.
   void roots_do(RootCallback* cb);
 
  private:
-  HeapObject* _key;
-  Object* _lambda;
+  HeapObject* key_;
+  Object* lambda_;
 };
 
 typedef LinkedFIFO<VMFinalizerNode> VMFinalizerNodeFIFO;
@@ -49,11 +49,11 @@ typedef LinkedFIFO<VMFinalizerNode> VMFinalizerNodeFIFO;
 class VMFinalizerNode : public VMFinalizerNodeFIFO::Element {
  public:
   VMFinalizerNode(HeapObject* key)
-  : _key(key) {}
+  : key_(key) {}
   virtual ~VMFinalizerNode() {}
 
-  HeapObject* key() { return _key; }
-  void set_key(HeapObject* value) { _key = value; }
+  HeapObject* key() { return key_; }
+  void set_key(HeapObject* value) { key_ = value; }
 
   // Garbage collection support.
   void roots_do(RootCallback* cb);
@@ -61,7 +61,7 @@ class VMFinalizerNode : public VMFinalizerNodeFIFO::Element {
   void free_external_memory(Process* process);
 
  private:
-  HeapObject* _key;
+  HeapObject* key_;
 };
 
 typedef DoubleLinkedList<ObjectNotifier> ObjectNotifierList;
@@ -71,25 +71,25 @@ class ObjectNotifier : public ObjectNotifierList::Element {
   ObjectNotifier(Process* process, Object* object);
   ~ObjectNotifier();
 
-  Process* process() const { return _process; }
-  ObjectNotifyMessage* message() const { return _message; }
-  Object* object() const { return _object; }
+  Process* process() const { return process_; }
+  ObjectNotifyMessage* message() const { return message_; }
+  Object* object() const { return object_; }
 
   void set_message(ObjectNotifyMessage* message) {
-    _message = message;
+    message_ = message;
   }
 
   void update_object(Object* object) {
-    _object = object;
+    object_ = object;
   }
 
  private:
-  Process* _process;
+  Process* process_;
 
   // Object to notify.
-  Object* _object;
+  Object* object_;
 
-  ObjectNotifyMessage* _message;
+  ObjectNotifyMessage* message_;
 
   // Garbage collection support.
   void roots_do(RootCallback* cb);
@@ -101,17 +101,17 @@ class HeapRoot;
 typedef DoubleLinkedList<HeapRoot> HeapRootList;
 class HeapRoot : public HeapRootList::Element {
  public:
-  explicit HeapRoot(Object* obj) : _obj(obj) {}
+  explicit HeapRoot(Object* obj) : obj_(obj) {}
 
-  Object* operator*() const { return _obj; }
-  Object* operator->() const { return _obj; }
-  void operator=(Object* obj) { _obj = obj; }
+  Object* operator*() const { return obj_; }
+  Object* operator->() const { return obj_; }
+  void operator=(Object* obj) { obj_ = obj; }
 
-  Object** slot() { return &_obj; }
+  Object** slot() { return &obj_; }
   void unlink() { HeapRootList::Element::unlink(); }
 
  private:
-  Object* _obj;
+  Object* obj_;
 };
 
 }  // namespace.

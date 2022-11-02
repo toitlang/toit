@@ -57,14 +57,14 @@ class BLEResource : public Resource {
   };
   BLEResource(ResourceGroup* group, Kind kind)
       : Resource(group)
-      , _kind(kind) {}
+      , kind_(kind) {}
 
-  Kind kind() const { return _kind; }
+  Kind kind() const { return kind_; }
 
   BLEResourceGroup* group() { return reinterpret_cast<BLEResourceGroup*>(resource_group()); }
 
  private:
-  const Kind _kind;
+  const Kind kind_;
 };
 
 } // Namespace toit.

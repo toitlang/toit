@@ -16,15 +16,15 @@ class HeapObjectFunctionVisitor : public HeapObjectVisitor {
  public:
   HeapObjectFunctionVisitor(Program* program, const std::function<void (HeapObject*)>& func)
     : HeapObjectVisitor(program)
-    , _func(func) {}
+    , func_(func) {}
 
   virtual uword visit(HeapObject* object) override {
-    _func(object);
+    func_(object);
     return object->size(program_);
   }
 
  private:
-  const std::function<void (HeapObject*)>& _func;
+  const std::function<void (HeapObject*)>& func_;
 };
 
 // TwoSpaceHeap represents the container for all HeapObjects.
