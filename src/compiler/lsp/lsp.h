@@ -33,26 +33,26 @@ namespace compiler {
 /// it needs.
 class Lsp {
  public:
-  explicit Lsp(LspProtocol* protocol) : _protocol(protocol) { }
+  explicit Lsp(LspProtocol* protocol) : protocol_(protocol) { }
   ~Lsp() {
-    if (_selection_handler != null) {
-      delete _selection_handler;
-      _selection_handler = null;
+    if (selection_handler_ != null) {
+      delete selection_handler_;
+      selection_handler_ = null;
     }
   }
 
   void setup_completion_handler(Symbol prefix, const std::string package_id, SourceManager* source_manager) {
-    ASSERT(_selection_handler == null);
-    _selection_handler = _new CompletionHandler(prefix, package_id, source_manager, protocol());
+    ASSERT(selection_handler_ == null);
+    selection_handler_ = _new CompletionHandler(prefix, package_id, source_manager, protocol());
   }
 
   void setup_goto_definition_handler(SourceManager* source_manager) {
-    ASSERT(_selection_handler == null);
-    _selection_handler = _new GotoDefinitionHandler(source_manager, protocol());
+    ASSERT(selection_handler_ == null);
+    selection_handler_ = _new GotoDefinitionHandler(source_manager, protocol());
   }
 
-  bool has_selection_handler() const { return _selection_handler != null; }
-  LspSelectionHandler* selection_handler() { return _selection_handler; }
+  bool has_selection_handler() const { return selection_handler_ != null; }
+  LspSelectionHandler* selection_handler() { return selection_handler_; }
 
   // Completion of the first segment happens before the selection handler is set up.
   void complete_first_segment(Symbol prefix,
@@ -76,7 +76,7 @@ class Lsp {
     GotoDefinitionHandler::import_path(resolved, protocol());
   }
 
-  LspProtocol* protocol() { return _protocol; }
+  LspProtocol* protocol() { return protocol_; }
 
   LspDiagnosticsProtocol* diagnostics() { return protocol()->diagnostics(); }
   LspSnapshotProtocol* snapshot() { return protocol()->snapshot(); }
@@ -96,8 +96,8 @@ class Lsp {
   }
 
  private:
-  LspProtocol* _protocol;
-  LspSelectionHandler* _selection_handler = null;
+  LspProtocol* protocol_;
+  LspSelectionHandler* selection_handler_ = null;
   bool _needs_summary = false;
   bool _should_emit_semantic_tokens = false;
 };

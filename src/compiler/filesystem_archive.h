@@ -32,7 +32,7 @@ class Diagnostics;
 class FilesystemArchive : public Filesystem {
  public:
   FilesystemArchive(const char* path)
-      : _path(path) { }
+      : path_(path) { }
 
   /// Loads the given archive, caching the contained files.
   void initialize(Diagnostics* diagnostics);
@@ -40,8 +40,8 @@ class FilesystemArchive : public Filesystem {
   const char* entry_path() { return _entry_path; }
   bool is_absolute(const char* path) { return path[0] == '/'; }
 
-  const char* sdk_path() { return _sdk_path; }
-  List<const char*> package_cache_paths() { return _package_cache_paths; }
+  const char* sdk_path() { return sdk_path_; }
+  List<const char*> package_cache_paths() { return package_cache_paths_; }
 
   bool contains_sdk() { return _contains_sdk; }
 
@@ -68,19 +68,19 @@ class FilesystemArchive : public Filesystem {
     bool is_regular_file;
     bool is_directory;
   };
-  const char* _path;
+  const char* path_;
   bool _is_initialized = false;
 
   bool _contains_sdk = false;
 
   // These entries are overwritten in the initialize function.
   const char* _entry_path = "/";
-  const char* _sdk_path = "/";
-  List<const char*> _package_cache_paths;
+  const char* sdk_path_ = "/";
+  List<const char*> package_cache_paths_;
   const char* _cwd_path = "/";
-  UnorderedMap<std::string, FileEntry> _archive_files;
-  UnorderedMap<std::string, PathInfo> _path_infos;
-  UnorderedMap<std::string, List<std::string>> _directory_listings;
+  UnorderedMap<std::string, FileEntry> archive_files_;
+  UnorderedMap<std::string, PathInfo> path_infos_;
+  UnorderedMap<std::string, List<std::string>> directory_listings_;
 };
 
 } // namespace compiler

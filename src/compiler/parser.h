@@ -60,49 +60,49 @@ class IndentationStack {
     SEQUENCE,
   };
 
-  int top_indentation() const { return _data.back().indentation; }
-  Kind top_kind() const { return _data.back().kind; }
-  Token::Kind top_end_token() const { return _data.back().end_token; }
-  Source::Range top_start_range() const { return _data.back().start_range; }
+  int top_indentation() const { return data_.back().indentation; }
+  Kind top_kind() const { return data_.back().kind; }
+  Token::Kind top_end_token() const { return data_.back().end_token; }
+  Source::Range top_start_range() const { return data_.back().start_range; }
 
-  int size() const { return _data.size(); }
+  int size() const { return data_.size(); }
 
   void push(int level, Kind kind, Source::Range start_range) {
     push(level, kind, Token::INVALID, start_range);
   }
 
   void push(int level, Kind kind, Token::Kind end_token, Source::Range start_range) {
-    _data.push_back(Entry(level, kind, end_token, start_range));
+    data_.push_back(Entry(level, kind, end_token, start_range));
   }
 
   void pop(int n) {
     ASSERT(n <= size());
-    _data.resize(size() - n);
+    data_.resize(size() - n);
   }
 
   int pop() {
     int result = top_indentation();
-    _data.pop_back();
+    data_.pop_back();
     return result;
   }
 
-  bool is_empty() const { return _data.empty(); }
+  bool is_empty() const { return data_.empty(); }
 
   bool is_outmost(Kind kind) {
     ASSERT(top_kind() == kind);
     int this_indentation = top_indentation();
-    for (int i = _data.size() - 2; i >= 0; i--) {
-      auto entry = _data[i];
+    for (int i = data_.size() - 2; i >= 0; i--) {
+      auto entry = data_[i];
       if (entry.indentation != this_indentation) return true;
       if (entry.kind == kind) return false;
     }
     return true;
   }
 
-  int indentation_at(int index) const { return _data[index].indentation; }
-  Kind kind_at(int index) const { return _data[index].kind; }
-  Token::Kind end_token_at(int index) const { return _data[index].end_token; }
-  Source::Range start_range_at(int index) const { return _data[index].start_range; }
+  int indentation_at(int index) const { return data_[index].indentation; }
+  Kind kind_at(int index) const { return data_[index].kind; }
+  Token::Kind end_token_at(int index) const { return data_[index].end_token; }
+  Source::Range start_range_at(int index) const { return data_[index].start_range; }
 
 
  private:
@@ -118,7 +118,7 @@ class IndentationStack {
     Source::Range start_range;
   };
 
-  std::vector<Entry> _data;
+  std::vector<Entry> data_;
 };
 
 // A queue that maintains the scanner tokens.
@@ -127,19 +127,19 @@ class IndentationStack {
 class ScannerStateQueue {
  public:
   explicit ScannerStateQueue(Scanner* scanner)
-      : _scanner(scanner) {
+      : scanner_(scanner) {
     const int initial_size = 4;
     auto buffer_memory = malloc(initial_size * sizeof(Scanner::State));
     auto state_buffer = unvoid_cast<Scanner::State*>(buffer_memory);
-    _states = List<Scanner::State>(state_buffer, initial_size);
-    _states[_previous_index] = Scanner::State::invalid();
+    states_ = List<Scanner::State>(state_buffer, initial_size);
+    states_[_previous_index] = Scanner::State::invalid();
     _buffered_count_with_previous = 1;
   }
 
   ScannerStateQueue(const ScannerStateQueue&) = delete;
 
   ~ScannerStateQueue() {
-    free(_states.data());
+    free(states_.data());
   }
 
   void consume() {
@@ -172,11 +172,11 @@ class ScannerStateQueue {
   //
   // It is legal to ask for `-1` to get the previous state.
   const Scanner::State& get(int i) {
-    if (i == -1) return _states[_previous_index];
+    if (i == -1) return states_[_previous_index];
     while (i >= _buffered_count_with_previous - 1) {
       buffer(scanner()->next());
     }
-    return _states[wrap(_previous_index + 1 + i)];
+    return states_[wrap(_previous_index + 1 + i)];
   }
 
   int scanner_look_ahead(int n = 1) {
@@ -189,41 +189,41 @@ class ScannerStateQueue {
   }
 
  private:
-  Scanner* _scanner;
-  List<Scanner::State> _states;
+  Scanner* scanner_;
+  List<Scanner::State> states_;
 
   // The index to the 'previous' state. (The one that was most recently consumed).
   // The first "normal" state is at index `wrap(_previous_index + 1)`.
   int _previous_index = 0;
   int _buffered_count_with_previous = 0;  // Includes the 'previous' state.
 
-  Scanner* scanner() { return _scanner; }
+  Scanner* scanner() { return scanner_; }
 
   int wrap(int i) {
-    ASSERT(Utils::is_power_of_two(_states.length()));
-    return i & (_states.length() - 1);
+    ASSERT(Utils::is_power_of_two(states_.length()));
+    return i & (states_.length() - 1);
   }
 
   void buffer(const Scanner::State& state) {
-    if (_buffered_count_with_previous >= _states.length()) {
+    if (_buffered_count_with_previous >= states_.length()) {
       // Resize.
       // Rotate the states into the correct place, and then double in size.
       if (_previous_index != 0) rotate(_previous_index);
-      auto old_buffer = _states.data();
-      int new_length = _states.length() * 2;
+      auto old_buffer = states_.data();
+      int new_length = states_.length() * 2;
       auto new_buffer = unvoid_cast<Scanner::State*>(
         realloc(old_buffer, new_length * sizeof(Scanner::State)));
-      _states = List<Scanner::State>(new_buffer, new_length);
+      states_ = List<Scanner::State>(new_buffer, new_length);
     }
-    _states[wrap(_previous_index + _buffered_count_with_previous)] = state;
+    states_[wrap(_previous_index + _buffered_count_with_previous)] = state;
     _buffered_count_with_previous++;
   }
 
   void rotate(int new_start) {
     // Reverse the two parts. Then reverse them together.
     reverse(0, new_start);
-    reverse(new_start, _states.length());
-    reverse(0, _states.length());
+    reverse(new_start, states_.length());
+    reverse(0, states_.length());
     _previous_index = 0;
   }
 
@@ -232,9 +232,9 @@ class ScannerStateQueue {
     int from = start;
     int to = end - 1;  // `end` is exclusive.
     while (from < to) {
-      auto tmp = _states[from];
-      _states[from] = _states[to];
-      _states[to] = tmp;
+      auto tmp = states_[from];
+      states_[from] = states_[to];
+      states_[to] = tmp;
       from++;
       to--;
     }
@@ -246,12 +246,12 @@ class Parser {
   Parser(Source* source,
          Scanner* scanner,
          Diagnostics* diagnostics)
-      : _source(source)
-      , _scanner(scanner)
-      , _diagnostics(diagnostics)
-      , _scanner_state_queue(scanner)
-      , _current_state(State::invalid())
-      , _peek_state(State::invalid()) { }
+      : source_(source)
+      , scanner_(scanner)
+      , diagnostics_(diagnostics)
+      , scanner_state_queue_(scanner)
+      , current_state_(State::invalid())
+      , peek_state_(State::invalid()) { }
 
   ast::Unit* parse_unit(Source* override_source = null);
 
@@ -286,24 +286,24 @@ class Parser {
     void mark_invalid() { scanner_state.mark_invalid(); }
   };
 
-  Source* _source;
-  Scanner* _scanner;
-  Diagnostics* _diagnostics;
+  Source* source_;
+  Scanner* scanner_;
+  Diagnostics* diagnostics_;
 
   bool _encountered_stack_overflow = false;
 
-  ScannerStateQueue _scanner_state_queue;
+  ScannerStateQueue scanner_state_queue_;
   // A cache of the current parser state.
   // The parser state is completely determined by the current scanner state.
-  State _current_state;
+  State current_state_;
   // A state we can use when returning from [peek_state]. This avoids copying
   //   the whole state all the time.
-  State _peek_state;
+  State peek_state_;
 
-  IndentationStack _indentation_stack;
+  IndentationStack indentation_stack_;
 
-  Scanner* scanner() { return _scanner; }
-  Diagnostics* diagnostics() const { return _diagnostics; }
+  Scanner* scanner() { return scanner_; }
+  Diagnostics* diagnostics() const { return diagnostics_; }
 
   bool allowed_to_consume(Token::Kind token);
   bool consumer_exists(Token::Kind token, int next_line_indentation);
@@ -348,14 +348,14 @@ class Parser {
 
   int scanner_peek() { return scanner_look_ahead(0); }
   int scanner_look_ahead(int n = 1) {
-    ASSERT(!_current_state.is_valid());
-    return _scanner_state_queue.scanner_look_ahead(n);
+    ASSERT(!current_state_.is_valid());
+    return scanner_state_queue_.scanner_look_ahead(n);
   }
 
 
   /// Returns the n'th state after the current one.
   ///
-  /// If `n == 0` and the _current_state is valid, returns it.
+  /// If `n == 0` and the current_state_ is valid, returns it.
   ///
   /// In most cases, `n == 0` is only equivalent to the current state. However,
   ///   current_state() automatically consumes NEWLINE tokens if they don't
@@ -372,9 +372,9 @@ class Parser {
   /// NEWLINE/EOS tokens are changed to DEDENT tokens depending on the
   ///   current indentation-stack.
   const State& peek_state(int n = 1) {
-    if (_current_state.is_valid() && n == 0) return _current_state;
-    peek_state(n, &_peek_state);
-    return _peek_state;
+    if (current_state_.is_valid() && n == 0) return current_state_;
+    peek_state(n, &peek_state_);
+    return peek_state_;
   }
 
   // See peek_state. Instead of returning, fills the given state.
@@ -390,14 +390,14 @@ class Parser {
   /// Skips over NEWLINE states, but updates the next state's `at_newline` field
   ///   when it does that.
   const State& current_state() {
-    if (!_current_state.is_valid()) {
-      peek_state(0, &_current_state);
-      if (_current_state.token == Token::NEWLINE) {
+    if (!current_state_.is_valid()) {
+      peek_state(0, &current_state_);
+      if (current_state_.token == Token::NEWLINE) {
         consume();
-        peek_state(0, &_current_state);
+        peek_state(0, &current_state_);
       }
     }
-    return _current_state;
+    return current_state_;
   }
 
   /// The indentation of the current line.
@@ -446,7 +446,7 @@ class Parser {
   Token::Kind current_token_if_delimiter() {
     auto kind = current_token();
     if (kind == Token::DEDENT &&
-        current_indentation() == _indentation_stack.top_indentation()) {
+        current_indentation() == indentation_stack_.top_indentation()) {
       return peek_token();
     }
     return kind;
@@ -486,9 +486,9 @@ class Parser {
   ///   function, when we are parsing string interpolations.
   /// See `current_state()` where we fetch the next state.
   void consume() {
-    ASSERT(_current_state.is_valid());
-    _current_state.mark_invalid();
-    _scanner_state_queue.consume();
+    ASSERT(current_state_.is_valid());
+    current_state_.mark_invalid();
+    scanner_state_queue_.consume();
   }
 
   bool optional(Token::Kind kind);
@@ -497,20 +497,20 @@ class Parser {
   /// Requests the scanner to continue scanning for an interpolated expression in
   /// a string.
   void scan_interpolated_part() {
-    ASSERT(!_current_state.is_valid());
-    _scanner_state_queue.buffer_interpolated_part();
+    ASSERT(!current_state_.is_valid());
+    scanner_state_queue_.buffer_interpolated_part();
   }
   /// Requests the scanner to continue scanning for a string after an
   /// interpolated expression.
   void scan_string_part(bool is_multiline) {
-    ASSERT(!_current_state.is_valid());
-    _scanner_state_queue.buffer_string_part(is_multiline);
+    ASSERT(!current_state_.is_valid());
+    scanner_state_queue_.buffer_string_part(is_multiline);
   }
   /// Requests the scanner to continue scanning for an interpolation format in an
   /// interpolated expression.
   void scan_string_format_part() {
-    ASSERT(!_current_state.is_valid());
-    _scanner_state_queue.buffer_string_format_part();
+    ASSERT(!current_state_.is_valid());
+    scanner_state_queue_.buffer_string_format_part();
   }
 
   ast::Import* parse_import();

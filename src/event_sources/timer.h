@@ -30,23 +30,23 @@ class Timer : public Resource, public TimerList::Element {
   TAG(Timer);
   Timer(ResourceGroup* resource_group)
     : Resource(resource_group)
-    , _timeout(-1) { }
+    , timeout_(-1) { }
 
   ~Timer() {
     ASSERT(TimerList::Element::is_not_linked());
   }
 
-  void set_timeout(int64_t timeout) { _timeout = timeout; }
+  void set_timeout(int64_t timeout) { timeout_ = timeout; }
 
-  int64 timeout() const { return _timeout; }
+  int64 timeout() const { return timeout_; }
 
  private:
-  int64 _timeout;
+  int64 timeout_;
 };
 
 class TimerEventSource : public EventSource, public Thread {
  public:
-  static TimerEventSource* instance() { return _instance; }
+  static TimerEventSource* instance() { return instance_; }
 
   TimerEventSource();
   ~TimerEventSource();
@@ -58,11 +58,11 @@ class TimerEventSource : public EventSource, public Thread {
  private:
   void entry() override;
 
-  static TimerEventSource* _instance;
+  static TimerEventSource* instance_;
 
-  ConditionVariable* _timer_changed;
-  TimerList _timers;
-  bool _stop;
+  ConditionVariable* timer_changed_;
+  TimerList timers_;
+  bool stop_;
 };
 
 } // namespace toit

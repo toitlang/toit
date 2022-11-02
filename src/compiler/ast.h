@@ -99,11 +99,11 @@ NODES(DECLARE)
 
 class Node {
  public:
-  Node() : _range(Source::Range::invalid()) { }
+  Node() : range_(Source::Range::invalid()) { }
   virtual void accept(Visitor* visitor) = 0;
 
-  Source::Range range() const { return _range; }
-  void set_range(Source::Range value) { _range = value; }
+  Source::Range range() const { return range_; }
+  void set_range(Source::Range value) { range_ = value; }
 
   void print();
 
@@ -116,7 +116,7 @@ NODES(DECLARE)
   virtual const char* node_type() const { return "Node"; }
 
  private:
-  Source::Range _range;
+  Source::Range range_;
 };
 
 #define IMPLEMENTS(name)                                                 \
@@ -128,50 +128,50 @@ NODES(DECLARE)
 class Unit : public Node {
  public:
   Unit(Source* source, List<Import*> imports, List<Export*> exports, List<Node*> declarations)
-      : _is_error_unit(false)
-      , _source(source)
-      , _imports(imports)
-      , _exports(exports)
-      , _declarations(declarations) { }
+      : is_error_unit_(false)
+      , source_(source)
+      , imports_(imports)
+      , exports_(exports)
+      , declarations_(declarations) { }
   explicit Unit(bool is_error_unit)
-      : _is_error_unit(is_error_unit)
-      , _source(null)
-      , _imports(List<Import*>())
-      , _exports(List<Export*>())
-      , _declarations(List<Node*>()) {
+      : is_error_unit_(is_error_unit)
+      , source_(null)
+      , imports_(List<Import*>())
+      , exports_(List<Export*>())
+      , declarations_(List<Node*>()) {
     ASSERT(is_error_unit);
   }
 
   IMPLEMENTS(Unit)
 
   const char* absolute_path() const {
-    return _source == null ? "" : _source->absolute_path();
+    return source_ == null ? "" : source_->absolute_path();
   }
   std::string error_path() const {
-    return _source == null ? std::string("") : _source->error_path();
+    return source_ == null ? std::string("") : source_->error_path();
   }
-  Source* source() const { return _source; }
-  List<Import*> imports() const { return _imports; }
-  List<Export*> exports() const { return _exports; }
-  List<Node*> declarations() const { return _declarations; }
+  Source* source() const { return source_; }
+  List<Import*> imports() const { return imports_; }
+  List<Export*> exports() const { return exports_; }
+  List<Node*> declarations() const { return declarations_; }
   void set_declarations(List<Node*> new_declarations) {
-    _declarations = new_declarations;
+    declarations_ = new_declarations;
   }
 
-  bool is_error_unit() const { return _is_error_unit; }
+  bool is_error_unit() const { return is_error_unit_; }
 
-  Toitdoc<ast::Node*> toitdoc() const { return _toitdoc; }
+  Toitdoc<ast::Node*> toitdoc() const { return toitdoc_; }
   void set_toitdoc(Toitdoc<ast::Node*> toitdoc) {
-    _toitdoc = toitdoc;
+    toitdoc_ = toitdoc;
   }
 
  private:
-  bool _is_error_unit;
-  Source* _source;
-  List<Import*> _imports;
-  List<Export*> _exports;
-  List<Node*> _declarations;
-  Toitdoc<ast::Node*> _toitdoc = Toitdoc<ast::Node*>::invalid();
+  bool is_error_unit_;
+  Source* source_;
+  List<Import*> imports_;
+  List<Export*> exports_;
+  List<Node*> declarations_;
+  Toitdoc<ast::Node*> toitdoc_ = Toitdoc<ast::Node*>::invalid();
 };
 
 class Import : public Node {
@@ -182,13 +182,13 @@ class Import : public Node {
          Identifier* prefix,
          List<Identifier*> show_identifiers,
          bool show_all)
-      : _is_relative(is_relative)
-      , _dot_outs(dot_outs)
-      , _segments(segments)
-      , _prefix(prefix)
-      , _show_identifiers(show_identifiers)
-      , _show_all(show_all)
-      , _unit(null) {
+      : is_relative_(is_relative)
+      , dot_outs_(dot_outs)
+      , segments_(segments)
+      , prefix_(prefix)
+      , show_identifiers_(show_identifiers)
+      , show_all_(show_all)
+      , unit_(null) {
     // Can't have a prefix with show.
     ASSERT(prefix == null || show_identifiers.is_empty());
     // Can't have a prefix with show-all.
@@ -198,48 +198,48 @@ class Import : public Node {
   }
   IMPLEMENTS(Import)
 
-  bool is_relative() const { return _is_relative; }
+  bool is_relative() const { return is_relative_; }
 
   /// The number of dot-outs.
   ///
   /// For example: `import ...foo` has 2 dot-outs. The first dot is only a
   ///   signal that the import is relative.
-  int dot_outs() const { return _dot_outs; }
+  int dot_outs() const { return dot_outs_; }
 
-  List<Identifier*> segments() const { return _segments; }
+  List<Identifier*> segments() const { return segments_; }
 
   /// Returns null if there wasn't any prefix.
-  Identifier* prefix() const { return _prefix; }
+  Identifier* prefix() const { return prefix_; }
 
-  List<Identifier*> show_identifiers() const { return _show_identifiers; }
+  List<Identifier*> show_identifiers() const { return show_identifiers_; }
 
-  bool show_all() const { return _show_all; }
+  bool show_all() const { return show_all_; }
 
-  Unit* unit() const { return _unit; }
-  void set_unit(Unit* unit) { _unit = unit; }
+  Unit* unit() const { return unit_; }
+  void set_unit(Unit* unit) { unit_ = unit; }
 
  private:
-  bool _is_relative;
-  int _dot_outs;
-  List<Identifier*> _segments;
-  Identifier* _prefix;
-  List<Identifier*> _show_identifiers;
-  bool _show_all;
-  Unit* _unit;
+  bool is_relative_;
+  int dot_outs_;
+  List<Identifier*> segments_;
+  Identifier* prefix_;
+  List<Identifier*> show_identifiers_;
+  bool show_all_;
+  Unit* unit_;
 };
 
 class Export : public Node {
  public:
-  explicit Export(List<Identifier*> identifiers) : _identifiers(identifiers), _export_all(false) { }
-  explicit Export(bool export_all) : _export_all(export_all) { }
+  explicit Export(List<Identifier*> identifiers) : identifiers_(identifiers), export_all_(false) { }
+  explicit Export(bool export_all) : export_all_(export_all) { }
   IMPLEMENTS(Export)
 
-  List<Identifier*> identifiers() const { return _identifiers; }
-  bool export_all() const { return _export_all; }
+  List<Identifier*> identifiers() const { return identifiers_; }
+  bool export_all() const { return export_all_; }
 
  private:
-  List<Identifier*> _identifiers;
-  bool _export_all;
+  List<Identifier*> identifiers_;
+  bool export_all_;
 };
 
 class Class : public Node {
@@ -252,40 +252,40 @@ class Class : public Node {
         bool is_abstract,
         bool is_monitor,
         bool is_interface)
-      : _name(name)
-      , _super(super)
-      , _interfaces(interfaces)
-      , _members(members)
-      , _is_abstract(is_abstract)
-      , _is_monitor(is_monitor)
-      , _is_interface(is_interface) { }
+      : name_(name)
+      , super_(super)
+      , interfaces_(interfaces)
+      , members_(members)
+      , is_abstract_(is_abstract)
+      , is_monitor_(is_monitor)
+      , is_interface_(is_interface) { }
   IMPLEMENTS(Class)
 
-  bool has_super() const { return _super != null; }
+  bool has_super() const { return super_ != null; }
 
-  Identifier* name() const { return _name; }
-  Expression* super() const { return _super; }
-  List<Expression*> interfaces() const { return _interfaces; }
-  List<Declaration*> members() const { return _members; }
+  Identifier* name() const { return name_; }
+  Expression* super() const { return super_; }
+  List<Expression*> interfaces() const { return interfaces_; }
+  List<Declaration*> members() const { return members_; }
 
-  bool is_abstract() const { return _is_abstract; }
-  bool is_monitor() const { return _is_monitor; }
-  bool is_interface() const { return _is_interface; }
+  bool is_abstract() const { return is_abstract_; }
+  bool is_monitor() const { return is_monitor_; }
+  bool is_interface() const { return is_interface_; }
 
   void set_toitdoc(Toitdoc<ast::Node*> toitdoc) {
-    _toitdoc = toitdoc;
+    toitdoc_ = toitdoc;
   }
-  Toitdoc<ast::Node*> toitdoc() const { return _toitdoc; }
+  Toitdoc<ast::Node*> toitdoc() const { return toitdoc_; }
 
  private:
-  Identifier* _name;
-  Expression* _super;
-  List<Expression*> _interfaces;
-  List<Declaration*> _members;
-  bool _is_abstract;
-  bool _is_monitor;
-  bool _is_interface;
-  Toitdoc<ast::Node*> _toitdoc = Toitdoc<ast::Node*>::invalid();
+  Identifier* name_;
+  Expression* super_;
+  List<Expression*> interfaces_;
+  List<Declaration*> members_;
+  bool is_abstract_;
+  bool is_monitor_;
+  bool is_interface_;
+  Toitdoc<ast::Node*> toitdoc_ = Toitdoc<ast::Node*>::invalid();
 };
 
 class Expression : public Node {
@@ -301,68 +301,68 @@ class Error : public Expression {
 class NamedArgument : public Expression {
  public:
   NamedArgument(Identifier* name, bool inverted, Expression* expression)
-      : _name(name)
-      , _inverted(inverted)
-      , _expression(expression) { }
+      : name_(name)
+      , inverted_(inverted)
+      , expression_(expression) { }
   IMPLEMENTS(NamedArgument)
 
-  Identifier* name() const { return _name; }
+  Identifier* name() const { return name_; }
   // Expression may be null, if there wasn't any `=`.
-  Expression* expression() const { return _expression; }
+  Expression* expression() const { return expression_; }
 
   // Whether the named argument was prefixed with a `no-`.
-  bool inverted() const { return _inverted; }
+  bool inverted() const { return inverted_; }
 
  private:
-  Identifier* _name;
-  bool _inverted;
-  Expression* _expression;
+  Identifier* name_;
+  bool inverted_;
+  Expression* expression_;
 };
 
 class Declaration : public Node {
  public:
   explicit Declaration(Expression* name_or_dot)  // name must be an Identifier or a Dot.
-      : _name_or_dot(name_or_dot) { }
+      : name_or_dot_(name_or_dot) { }
   IMPLEMENTS(Declaration)
 
   virtual Identifier* name() const {
-    ASSERT(_name_or_dot->is_Identifier());
-    return _name_or_dot->as_Identifier();
+    ASSERT(name_or_dot_->is_Identifier());
+    return name_or_dot_->as_Identifier();
   }
 
-  Expression* name_or_dot() const { return _name_or_dot; }
+  Expression* name_or_dot() const { return name_or_dot_; }
 
   void set_toitdoc(Toitdoc<ast::Node*> toitdoc) {
-    _toitdoc = toitdoc;
+    toitdoc_ = toitdoc;
   }
 
-  Toitdoc<ast::Node*> toitdoc() const { return _toitdoc; }
+  Toitdoc<ast::Node*> toitdoc() const { return toitdoc_; }
 
 private:
-  Expression* _name_or_dot;
-  Toitdoc<ast::Node*> _toitdoc = Toitdoc<ast::Node*>::invalid();
+  Expression* name_or_dot_;
+  Toitdoc<ast::Node*> toitdoc_ = Toitdoc<ast::Node*>::invalid();
 };
 
 class Identifier : public Expression {
  public:
-  explicit Identifier(Symbol data) : _data(data) { }
+  explicit Identifier(Symbol data) : data_(data) { }
   IMPLEMENTS(Identifier)
 
-  Symbol data() const { return _data; }
+  Symbol data() const { return data_; }
 
  private:
-   const Symbol _data;
+   const Symbol data_;
 };
 
 class Nullable : public Expression {
  public:
-  explicit Nullable(Expression* type) : _type(type) { }
+  explicit Nullable(Expression* type) : type_(type) { }
   IMPLEMENTS(Nullable)
 
-  Expression* type() const { return _type; }
+  Expression* type() const { return type_; }
 
  private:
-  Expression* _type;
+  Expression* type_;
 };
 
 /// The selection of an LSP request.
@@ -381,25 +381,25 @@ class Field : public Declaration {
         bool is_abstract,
         bool is_final)
       : Declaration(name)
-      , _type(type)
-      , _initializer(initializer)
-      , _is_static(is_static)
-      , _is_abstract(is_abstract)
-      , _is_final(is_final) { }
+      , type_(type)
+      , initializer_(initializer)
+      , is_static_(is_static)
+      , is_abstract_(is_abstract)
+      , is_final_(is_final) { }
   IMPLEMENTS(Field)
 
-  Expression* type() const { return _type; }
-  Expression* initializer() const { return _initializer; }
-  bool is_static() const { return _is_static; }
-  bool is_abstract() const { return _is_abstract; }
-  bool is_final() const { return _is_final; }
+  Expression* type() const { return type_; }
+  Expression* initializer() const { return initializer_; }
+  bool is_static() const { return is_static_; }
+  bool is_abstract() const { return is_abstract_; }
+  bool is_final() const { return is_final_; }
 
  private:
-  Expression* _type;
-  Expression* _initializer;
-  bool _is_static;
-  bool _is_abstract;
-  bool _is_final;
+  Expression* type_;
+  Expression* initializer_;
+  bool is_static_;
+  bool is_abstract_;
+  bool is_final_;
 };
 
 class Method : public Declaration {
@@ -412,27 +412,27 @@ class Method : public Declaration {
          List<Parameter*> parameters,
          Sequence* body)
       : Declaration(name_or_dot)
-      , _return_type(return_type)
-      , _is_setter(is_setter)
-      , _is_static(is_static)
-      , _is_abstract(is_abstract)
-      , _parameters(parameters)
-      , _body(body) { }
+      , return_type_(return_type)
+      , is_setter_(is_setter)
+      , is_static_(is_static)
+      , is_abstract_(is_abstract)
+      , parameters_(parameters)
+      , body_(body) { }
   IMPLEMENTS(Method)
 
-  Expression* return_type() const { return _return_type; }
-  bool is_setter() const { return _is_setter; }
-  bool is_static() const { return _is_static; }
-  bool is_abstract() const { return _is_abstract; }
+  Expression* return_type() const { return return_type_; }
+  bool is_setter() const { return is_setter_; }
+  bool is_static() const { return is_static_; }
+  bool is_abstract() const { return is_abstract_; }
 
-  List<Parameter*> parameters() const { return _parameters; }
+  List<Parameter*> parameters() const { return parameters_; }
 
   /// Might be null if there was no body.
-  Sequence* body() const { return _body; }
+  Sequence* body() const { return body_; }
 
   /// The arity of the function, including block parameters, but not
   /// including implicit `this` arguments.
-  int arity() const { return _parameters.length(); }
+  int arity() const { return parameters_.length(); }
 
   Identifier* name() const {
     FATAL("don't use");
@@ -445,303 +445,303 @@ class Method : public Declaration {
   }
 
  private:
-  Expression* _return_type;
-  bool _is_setter;
-  bool _is_static;
-  bool _is_abstract;
-  List<Parameter*> _parameters;
+  Expression* return_type_;
+  bool is_setter_;
+  bool is_static_;
+  bool is_abstract_;
+  List<Parameter*> parameters_;
 
-  Sequence* _body;
+  Sequence* body_;
 
-  List<Expression*> _initializers;
+  List<Expression*> initializers_;
 };
 
 class BreakContinue : public Expression {
  public:
   BreakContinue(bool is_break) : BreakContinue(is_break, null, null) { }
   BreakContinue(bool is_break, Expression* value, Identifier* label)
-      : _is_break(is_break)
-      , _value(value)
-      , _label(label) { }
+      : is_break_(is_break)
+      , value_(value)
+      , label_(label) { }
   IMPLEMENTS(BreakContinue)
 
-  bool is_break() const { return _is_break; }
-  Expression* value() const { return _value; }
-  Identifier* label() const { return _label; }
+  bool is_break() const { return is_break_; }
+  Expression* value() const { return value_; }
+  Identifier* label() const { return label_; }
 
  private:
-  bool _is_break;
-  Expression* _value;
-  Identifier* _label;
+  bool is_break_;
+  Expression* value_;
+  Identifier* label_;
 };
 
 class Parenthesis : public Expression {
  public:
-  explicit Parenthesis(Expression* expression) : _expression(expression) { }
+  explicit Parenthesis(Expression* expression) : expression_(expression) { }
   IMPLEMENTS(Parenthesis)
 
-  Expression* expression() const { return _expression; }
+  Expression* expression() const { return expression_; }
 
  private:
-  Expression* _expression;
+  Expression* expression_;
 };
 
 class Block : public Expression {
  public:
   Block(Sequence* body, List<Parameter*> parameters)
-      : _body(body)
-      , _parameters(parameters) { }
+      : body_(body)
+      , parameters_(parameters) { }
   IMPLEMENTS(Block)
 
-  Sequence* body() const { return _body; }
+  Sequence* body() const { return body_; }
 
-  List<Parameter*> parameters() const { return _parameters; }
+  List<Parameter*> parameters() const { return parameters_; }
 
  private:
-  Sequence* _body;
-  List<Parameter*> _parameters;
+  Sequence* body_;
+  List<Parameter*> parameters_;
 };
 
 class Lambda : public Expression {
  public:
   Lambda(Sequence* body, List<Parameter*> parameters)
-      : _body(body)
-      , _parameters(parameters) { }
+      : body_(body)
+      , parameters_(parameters) { }
   IMPLEMENTS(Lambda)
 
-  Sequence* body() const { return _body; }
+  Sequence* body() const { return body_; }
 
-  List<Parameter*> parameters() const { return _parameters; }
+  List<Parameter*> parameters() const { return parameters_; }
 
  private:
-  Sequence* _body;
-  List<Parameter*> _parameters;
+  Sequence* body_;
+  List<Parameter*> parameters_;
 };
 
 class Sequence : public Expression {
  public:
   explicit Sequence(List<Expression*> expressions)
-      : _expressions(expressions) { }
+      : expressions_(expressions) { }
   IMPLEMENTS(Sequence)
 
-  List<Expression*> expressions() const { return _expressions; }
+  List<Expression*> expressions() const { return expressions_; }
 
  private:
-  List<Expression*> _expressions;
+  List<Expression*> expressions_;
 };
 
 class DeclarationLocal : public Expression {
  public:
   DeclarationLocal(Token::Kind kind, Identifier* name, Expression* type, Expression* value)
-      : _kind(kind)
-      , _name(name)
-      , _type(type)
-      , _value(value) { }
+      : kind_(kind)
+      , name_(name)
+      , type_(type)
+      , value_(value) { }
   IMPLEMENTS(DeclarationLocal)
 
-  Token::Kind kind() const { return _kind; }
-  Identifier* name() const { return _name; }
-  Expression* type() const { return _type; }
-  Expression* value() const { return _value; }
+  Token::Kind kind() const { return kind_; }
+  Identifier* name() const { return name_; }
+  Expression* type() const { return type_; }
+  Expression* value() const { return value_; }
 
  private:
-  Token::Kind _kind;
-  Identifier* _name;
-  Expression* _type;
-  Expression* _value;
+  Token::Kind kind_;
+  Identifier* name_;
+  Expression* type_;
+  Expression* value_;
 };
 
 class If : public Expression {
  public:
   If(Expression* expression, Expression* yes, Expression* no)
-      : _expression(expression)
-      , _yes(yes)
-      , _no(no) { }
+      : expression_(expression)
+      , yes_(yes)
+      , no_(no) { }
   IMPLEMENTS(If)
 
-  Expression* expression() const { return _expression; }
-  Expression* yes() const { return _yes; }
-  Expression* no() const { return _no; }
+  Expression* expression() const { return expression_; }
+  Expression* yes() const { return yes_; }
+  Expression* no() const { return no_; }
 
   void set_no(Expression* no) {
-    ASSERT(_no == null);
-    _no = no;
+    ASSERT(no_ == null);
+    no_ = no;
   }
 
  private:
-  Expression* _expression;
-  Expression* _yes;
-  Expression* _no;
+  Expression* expression_;
+  Expression* yes_;
+  Expression* no_;
 };
 
 class While : public Expression {
  public:
   While(Expression* condition, Expression* body)
-      : _condition(condition)
-      , _body(body) { }
+      : condition_(condition)
+      , body_(body) { }
   IMPLEMENTS(While)
 
-  Expression* condition() const { return _condition; }
-  Expression* body() const { return _body; }
+  Expression* condition() const { return condition_; }
+  Expression* body() const { return body_; }
 
  private:
-  Expression* _condition;
-  Expression* _body;
+  Expression* condition_;
+  Expression* body_;
 };
 
 class For : public Expression {
  public:
   For(Expression* initializer, Expression* condition, Expression* update, Expression* body)
-      : _initializer(initializer)
-      , _condition(condition)
-      , _body(body)
-      , _update(update) { }
+      : initializer_(initializer)
+      , condition_(condition)
+      , body_(body)
+      , update_(update) { }
   IMPLEMENTS(For)
 
-  Expression* initializer() const { return _initializer; }
-  Expression* condition() const { return _condition; }
-  Expression* update() const { return _update; }
-  Expression* body() const { return _body; }
+  Expression* initializer() const { return initializer_; }
+  Expression* condition() const { return condition_; }
+  Expression* update() const { return update_; }
+  Expression* body() const { return body_; }
 
  private:
-  Expression* _initializer;
-  Expression* _condition;
-  Expression* _body;
-  Expression* _update;
+  Expression* initializer_;
+  Expression* condition_;
+  Expression* body_;
+  Expression* update_;
 
 };
 
 class TryFinally : public Expression {
  public:
   TryFinally(Sequence* body, List<Parameter*> handler_parameters, Sequence* handler)
-      : _body(body)
-      , _handler_parameters(handler_parameters)
-      , _handler(handler) { }
+      : body_(body)
+      , handler_parameters_(handler_parameters)
+      , handler_(handler) { }
   IMPLEMENTS(TryFinally)
 
-  Sequence* body() const { return _body; }
-  List<Parameter*> handler_parameters() const { return _handler_parameters; }
-  Sequence* handler() const { return _handler; }
+  Sequence* body() const { return body_; }
+  List<Parameter*> handler_parameters() const { return handler_parameters_; }
+  Sequence* handler() const { return handler_; }
 
  private:
-  Sequence* _body;
-  List<Parameter*> _handler_parameters;
-  Sequence* _handler;
+  Sequence* body_;
+  List<Parameter*> handler_parameters_;
+  Sequence* handler_;
 };
 
 class Return : public Expression {
  public:
-  Return(Expression* value) : _value(value) { }
+  Return(Expression* value) : value_(value) { }
   IMPLEMENTS(Return)
 
-  Expression* value() const { return _value; }
+  Expression* value() const { return value_; }
 
  private:
-  Expression* _value;
+  Expression* value_;
 };
 
 class Unary : public Expression {
  public:
   Unary(Token::Kind kind, bool prefix, Expression* expression)
-      : _kind(kind)
-      , _prefix(prefix)
-      , _expression(expression) { }
+      : kind_(kind)
+      , prefix_(prefix)
+      , expression_(expression) { }
   IMPLEMENTS(Unary)
 
-  Token::Kind kind() const { return _kind; }
-  bool prefix() const { return _prefix; }
-  Expression* expression() const { return _expression; }
+  Token::Kind kind() const { return kind_; }
+  bool prefix() const { return prefix_; }
+  Expression* expression() const { return expression_; }
 
  private:
-  Token::Kind _kind;
-  bool _prefix;
-  Expression* _expression;
+  Token::Kind kind_;
+  bool prefix_;
+  Expression* expression_;
 };
 
 class Binary : public Expression {
  public:
   Binary(Token::Kind kind, Expression* left, Expression* right)
-      : _kind(kind)
-      , _left(left)
-      , _right(right) { }
+      : kind_(kind)
+      , left_(left)
+      , right_(right) { }
   IMPLEMENTS(Binary)
 
-  Token::Kind kind() const { return _kind; }
-  Expression* left() const { return _left; }
-  Expression* right() const { return _right; }
+  Token::Kind kind() const { return kind_; }
+  Expression* left() const { return left_; }
+  Expression* right() const { return right_; }
 
  private:
-  Token::Kind _kind;
-  Expression* _left;
-  Expression* _right;
+  Token::Kind kind_;
+  Expression* left_;
+  Expression* right_;
 };
 
 class Dot : public Expression {
  public:
   Dot(Expression* receiver, Identifier* name)
-     : _receiver(receiver)
-     , _name(name) { }
+     : receiver_(receiver)
+     , name_(name) { }
   IMPLEMENTS(Dot)
 
-  Expression* receiver() const { return _receiver; }
-  Identifier* name() const { return _name; }
+  Expression* receiver() const { return receiver_; }
+  Identifier* name() const { return name_; }
 
  private:
-  Expression* _receiver;
-  Identifier* _name;
+  Expression* receiver_;
+  Identifier* name_;
 };
 
 class Index : public Expression {
  public:
   Index(Expression* receiver, List<Expression*> arguments)
-      : _receiver(receiver)
-      , _arguments(arguments) { }
+      : receiver_(receiver)
+      , arguments_(arguments) { }
   IMPLEMENTS(Index)
 
-  Expression* receiver() const { return _receiver; }
-  List<Expression*> arguments() const { return _arguments; }
+  Expression* receiver() const { return receiver_; }
+  List<Expression*> arguments() const { return arguments_; }
 
  private:
-  Expression* _receiver;
-  List<Expression*> _arguments;
+  Expression* receiver_;
+  List<Expression*> arguments_;
 };
 
 class IndexSlice : public Expression {
  public:
   IndexSlice(Expression* receiver, Expression* from, Expression* to)
-      : _receiver(receiver)
-      , _from(from)
-      , _to(to) { }
+      : receiver_(receiver)
+      , from_(from)
+      , to_(to) { }
   IMPLEMENTS(IndexSlice)
 
-  Expression* receiver() const { return _receiver; }
+  Expression* receiver() const { return receiver_; }
   // May be null if none was given.
-  Expression* from() const { return _from; }
+  Expression* from() const { return from_; }
   // May be null if none was given.
-  Expression* to() const { return _to; }
+  Expression* to() const { return to_; }
 
  private:
-  Expression* _receiver;
-  Expression* _from;
-  Expression* _to;
+  Expression* receiver_;
+  Expression* from_;
+  Expression* to_;
 };
 
 class Call : public Expression {
  public:
   Call(Expression* target, List<Expression*> arguments, bool is_call_primitive)
-      : _target(target)
-      , _arguments(arguments)
-      , _is_call_primitive(is_call_primitive) { }
+      : target_(target)
+      , arguments_(arguments)
+      , is_call_primitive_(is_call_primitive) { }
   IMPLEMENTS(Call)
 
-  Expression* target() const { return _target; }
-  List<Expression*> arguments() const { return _arguments; }
-  bool is_call_primitive() const { return _is_call_primitive; }
+  Expression* target() const { return target_; }
+  List<Expression*> arguments() const { return arguments_; }
+  bool is_call_primitive() const { return is_call_primitive_; }
 
  private:
-  Expression* _target;
-  List<Expression*> _arguments;
-  bool _is_call_primitive;
+  Expression* target_;
+  List<Expression*> arguments_;
+  bool is_call_primitive_;
 };
 
 class Parameter : public Expression {
@@ -752,28 +752,28 @@ class Parameter : public Expression {
             bool is_named,
             bool is_field_storing,
             bool is_block)
-      : _name(name)
-      , _type(type)
-      , _default_value(default_value)
-      , _is_named(is_named)
-      , _is_field_storing(is_field_storing)
-      , _is_block(is_block) { }
+      : name_(name)
+      , type_(type)
+      , default_value_(default_value)
+      , is_named_(is_named)
+      , is_field_storing_(is_field_storing)
+      , is_block_(is_block) { }
   IMPLEMENTS(Parameter)
 
-  Identifier* name() const { return _name; }
-  Expression* default_value() const { return _default_value; }
-  Expression* type() const { return _type; }
-  bool is_named() const { return _is_named; }
-  bool is_field_storing() const { return _is_field_storing; }
-  bool is_block() const { return _is_block; }
+  Identifier* name() const { return name_; }
+  Expression* default_value() const { return default_value_; }
+  Expression* type() const { return type_; }
+  bool is_named() const { return is_named_; }
+  bool is_field_storing() const { return is_field_storing_; }
+  bool is_block() const { return is_block_; }
 
  private:
-   Identifier* _name;
-   Expression* _type;
-   Expression* _default_value;
-   bool _is_named;
-   bool _is_field_storing;
-   bool _is_block;
+   Identifier* name_;
+   Expression* type_;
+   Expression* default_value_;
+   bool is_named_;
+   bool is_field_storing_;
+   bool is_block_;
 };
 
 class LiteralNull : public Expression {
@@ -790,168 +790,168 @@ class LiteralUndefined : public Expression {
 
 class LiteralBoolean : public Expression {
  public:
-  explicit LiteralBoolean(bool value) : _value(value) { }
+  explicit LiteralBoolean(bool value) : value_(value) { }
   IMPLEMENTS(LiteralBoolean)
 
-  bool value() const { return _value; }
+  bool value() const { return value_; }
 
  private:
-  bool _value;
+  bool value_;
 };
 
 class LiteralInteger : public Expression {
  public:
-  explicit LiteralInteger(Symbol data) : _data(data) { }
+  explicit LiteralInteger(Symbol data) : data_(data) { }
   IMPLEMENTS(LiteralInteger)
 
-  Symbol data() const { return _data; }
+  Symbol data() const { return data_; }
   bool is_negated() const { return _is_negated; }
   void set_is_negated(bool value) { _is_negated = value; }
 
  private:
-  const Symbol _data;
+  const Symbol data_;
   bool _is_negated = false;
 };
 
 class LiteralCharacter : public Expression {
  public:
-  explicit LiteralCharacter(Symbol data) : _data(data) { }
+  explicit LiteralCharacter(Symbol data) : data_(data) { }
   IMPLEMENTS(LiteralCharacter)
 
-  Symbol data() const { return _data; }
+  Symbol data() const { return data_; }
 
  private:
-  const Symbol _data;
+  const Symbol data_;
 };
 
 class LiteralString : public Expression {
  public:
   explicit LiteralString(Symbol data, bool is_multiline)
-      : _data(data)
-      , _is_multiline(is_multiline) { }
+      : data_(data)
+      , is_multiline_(is_multiline) { }
   IMPLEMENTS(LiteralString)
 
-  Symbol data() const { return _data; }
-  bool is_multiline() const { return _is_multiline; }
+  Symbol data() const { return data_; }
+  bool is_multiline() const { return is_multiline_; }
 
  private:
-  const Symbol _data;
-  const bool _is_multiline;
+  const Symbol data_;
+  const bool is_multiline_;
 };
 
 class LiteralStringInterpolation : public Expression {
  public:
   LiteralStringInterpolation(
     List<LiteralString*> parts, List<LiteralString*> formats, List<Expression*> expressions)
-      : _parts(parts)
-      , _formats(formats)
-      , _expressions(expressions) { }
+      : parts_(parts)
+      , formats_(formats)
+      , expressions_(expressions) { }
   IMPLEMENTS(LiteralStringInterpolation)
 
-  List<LiteralString*> parts() const { return _parts; }
-  List<LiteralString*> formats() const { return _formats; }
-  List<Expression*> expressions() const { return _expressions; }
+  List<LiteralString*> parts() const { return parts_; }
+  List<LiteralString*> formats() const { return formats_; }
+  List<Expression*> expressions() const { return expressions_; }
 
  private:
-  List<LiteralString*> _parts;
-  List<LiteralString*> _formats;
-  List<Expression*> _expressions;
+  List<LiteralString*> parts_;
+  List<LiteralString*> formats_;
+  List<Expression*> expressions_;
 };
 
 class LiteralFloat : public Expression {
  public:
-  explicit LiteralFloat(Symbol data) : _data(data) { }
+  explicit LiteralFloat(Symbol data) : data_(data) { }
   IMPLEMENTS(LiteralFloat)
 
-  Symbol data() const { return _data; }
+  Symbol data() const { return data_; }
   bool is_negated() const { return _is_negated; }
   void set_is_negated(bool value) { _is_negated = value; }
 
  private:
-  const Symbol _data;
+  const Symbol data_;
   bool _is_negated = false;
 };
 
 class LiteralArray : public Expression {
  public:
-  explicit LiteralArray(List<Expression*> elements) : _elements(elements) { }
+  explicit LiteralArray(List<Expression*> elements) : elements_(elements) { }
   IMPLEMENTS(LiteralArray)
 
-  List<Expression*> elements() const { return _elements; }
+  List<Expression*> elements() const { return elements_; }
 
  private:
-  List<Expression*> _elements;
+  List<Expression*> elements_;
 };
 
 class LiteralList : public Expression {
  public:
-  explicit LiteralList(List<Expression*> elements) : _elements(elements) { }
+  explicit LiteralList(List<Expression*> elements) : elements_(elements) { }
   IMPLEMENTS(LiteralList)
 
-  List<Expression*> elements() const { return _elements; }
+  List<Expression*> elements() const { return elements_; }
 
  private:
-  List<Expression*> _elements;
+  List<Expression*> elements_;
 };
 
 class LiteralByteArray : public Expression {
  public:
-  explicit LiteralByteArray(List<Expression*> elements) : _elements(elements) { }
+  explicit LiteralByteArray(List<Expression*> elements) : elements_(elements) { }
   IMPLEMENTS(LiteralByteArray)
 
-  List<Expression*> elements() const { return _elements; }
+  List<Expression*> elements() const { return elements_; }
 
  private:
-  List<Expression*> _elements;
+  List<Expression*> elements_;
 };
 
 class LiteralSet : public Expression {
   public:
-  explicit LiteralSet(List<Expression*> elements) : _elements(elements) { }
+  explicit LiteralSet(List<Expression*> elements) : elements_(elements) { }
   IMPLEMENTS(LiteralSet)
 
-  List<Expression*> elements() const { return _elements; }
+  List<Expression*> elements() const { return elements_; }
 
  private:
-  List<Expression*> _elements;
+  List<Expression*> elements_;
 };
 
 class LiteralMap : public Expression {
  public:
   LiteralMap(List<Expression*> keys, List<Expression*> values)
-      : _keys(keys)
-      , _values(values) { }
+      : keys_(keys)
+      , values_(values) { }
   IMPLEMENTS(LiteralMap)
 
-  List<Expression*> keys() const { return _keys; }
-  List<Expression*> values() const { return _values; }
+  List<Expression*> keys() const { return keys_; }
+  List<Expression*> values() const { return values_; }
 
  private:
-  List<Expression*> _keys;
-  List<Expression*> _values;
+  List<Expression*> keys_;
+  List<Expression*> values_;
 };
 
 class ToitdocReference : public Node {
  public:
   ToitdocReference(Expression* target, bool is_setter)
-      : _is_signature_reference(false)
-      , _target(target)
-      , _is_setter(is_setter) { }
+      : is_signature_reference_(false)
+      , target_(target)
+      , is_setter_(is_setter) { }
 
   ToitdocReference(Expression* target, bool target_is_setter, List<Parameter*> parameters)
-      : _is_signature_reference(true)
-      , _target(target)
-      , _is_setter(target_is_setter)
-      , _parameters(parameters) { }
+      : is_signature_reference_(true)
+      , target_(target)
+      , is_setter_(target_is_setter)
+      , parameters_(parameters) { }
   IMPLEMENTS(ToitdocReference);
 
   bool is_error() const {
-    return _target->is_Error();
+    return target_->is_Error();
   }
 
   /// Whether this reference was parenthesized, and thus the whole signature should match.
   bool is_signature_reference() const {
-    return _is_signature_reference;
+    return is_signature_reference_;
   }
 
   /// Returns the target of the reference.
@@ -959,18 +959,18 @@ class ToitdocReference : public Node {
   /// - an Identifier (potentially an operator, like '+')
   /// - a Dot
   /// - an `Error` instance if the parsing failed.
-  Expression* target() const { return _target; }
+  Expression* target() const { return target_; }
 
   /// Whether the target is a setter (where the identifier was suffixed by a '=').
-  bool is_setter() const { return _is_setter; }
+  bool is_setter() const { return is_setter_; }
 
-  List<Parameter*> parameters() const { return _parameters; }
+  List<Parameter*> parameters() const { return parameters_; }
 
  private:
-  bool _is_signature_reference;
-  Expression* _target;
-  bool _is_setter;
-  List<Parameter*> _parameters;
+  bool is_signature_reference_;
+  Expression* target_;
+  bool is_setter_;
+  List<Parameter*> parameters_;
 };
 
 #undef IMPLEMENTS

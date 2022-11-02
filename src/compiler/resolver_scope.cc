@@ -28,19 +28,19 @@ constexpr ir::Node* ClassScope::SUPER_CLASS_SEPARATOR;
 /// Returns `null` if the given node is not a [Prefix].
 ImportScope* Scope::_find_import_scope(ast::Node* node) {
   if (node == _find_import_scope_node_cache) {
-    return _find_import_scope_result_cache;
+    return find_import_scope_result_cache_;
   }
   if (!node->is_Identifier()) return null;
 
   _find_import_scope_node_cache = node;
-  _find_import_scope_result_cache = null;
+  find_import_scope_result_cache_ = null;
   auto prefix_name = node->as_Identifier()->data();
 
   auto lookup_result = lookup(prefix_name);
   if (!lookup_result.entry.is_prefix()) return null;
 
   ImportScope* result = lookup_result.entry.prefix();
-  _find_import_scope_result_cache = result;
+  find_import_scope_result_cache_ = result;
   return result;
 }
 
@@ -63,12 +63,12 @@ ResolutionEntry Scope::lookup_static_or_prefixed(ast::Node* node) {
 
 ResolutionEntry Scope::lookup_static(ast::Node* node) {
   if (node == _lookup_static_node_cache) {
-    return _lookup_static_result_cache;
+    return lookup_static_result_cache_;
   }
 
   ResolutionEntry not_found;
   _lookup_static_node_cache = node;
-  _lookup_static_result_cache = not_found;
+  lookup_static_result_cache_ = not_found;
 
   if (!node->is_Dot()) return not_found;
   auto ast_dot = node->as_Dot();
@@ -85,18 +85,18 @@ ResolutionEntry Scope::lookup_static(ast::Node* node) {
   if (!entry.is_class()) return not_found;
   auto ir_class = entry.klass();
   auto result = ir_class->statics()->lookup(ast_dot->name()->data());
-  _lookup_static_result_cache = result;
+  lookup_static_result_cache_ = result;
   return result;
 }
 
 ResolutionEntry Scope::lookup_prefixed(ast::Node* node) {
   if (node == _lookup_prefix_node_cache) {
-    return _lookup_prefix_result_cache;
+    return lookup_prefix_result_cache_;
   }
 
   ResolutionEntry not_found;
   _lookup_prefix_node_cache = node;
-  _lookup_prefix_result_cache = not_found;
+  lookup_prefix_result_cache_ = not_found;
 
   if (!node->is_Dot()) return not_found;
   auto ast_dot = node->as_Dot();
@@ -104,7 +104,7 @@ ResolutionEntry Scope::lookup_prefixed(ast::Node* node) {
   if (prefix == null) return not_found;
   UnorderedSet<ModuleScope*> already_visited;
   auto result = prefix->lookup(ast_dot->name()->data(), &already_visited);
-  _lookup_prefix_result_cache = result;
+  lookup_prefix_result_cache_ = result;
   return result;
 }
 
@@ -114,9 +114,9 @@ ResolutionEntry ImportScope::lookup(Symbol name,
                                     UnorderedSet<ModuleScope*>* already_visited) {
   Scope::ResolutionEntryMap* cache;
   if (is_external) {
-    cache = &_cache_external;
+    cache = &cache_external_;
   } else {
-    cache = &_cache;
+    cache = &cache_;
   }
 
   {
@@ -128,8 +128,8 @@ ResolutionEntry ImportScope::lookup(Symbol name,
   // Try to find the identifier in the imported scopes.
   ResolutionEntry entry;
   Set<ir::Node*> ambiguous_nodes;
-  for (auto scope : _imported_scopes) {
-    if (is_external && !_explicitly_imported.contains(scope)) continue;
+  for (auto scope : imported_scopes_) {
+    if (is_external && !explicitly_imported_.contains(scope)) continue;
     auto module_entry = scope->lookup_external(name, already_visited);
     switch (module_entry.kind()) {
       case ResolutionEntry::PREFIX: UNREACHABLE(); break;
@@ -176,7 +176,7 @@ ResolutionEntry ImportScope::lookup(Symbol name,
   }
   end_scope_loop:
   // Only cache if it actually helps.
-  if (_imported_scopes.size() > 1) {
+  if (imported_scopes_.size() > 1) {
     (*cache)[name] = entry;
   }
   return entry;
@@ -185,8 +185,8 @@ ResolutionEntry ImportScope::lookup(Symbol name,
 void ImportScope::for_each(const std::function<void (Symbol, const ResolutionEntry&)>& callback,
                            bool is_external,
                            UnorderedSet<ModuleScope*>* already_visited) {
-  for (auto scope : _imported_scopes) {
-    if (is_external && !_explicitly_imported.contains(scope)) continue;
+  for (auto scope : imported_scopes_) {
+    if (is_external && !explicitly_imported_.contains(scope)) continue;
     scope->for_each_external(callback, already_visited);
   }
 }
@@ -196,15 +196,15 @@ ResolutionEntry ModuleScope::lookup_external(Symbol name,
   // Avoid infinite cycles.
   if (already_visited->contains(this)) return ResolutionEntry();
 
-  auto probe = _module_declarations.find(name);
-  if (probe != _module_declarations.end()) return probe->second;
+  auto probe = module_declarations_.find(name);
+  if (probe != module_declarations_.end()) return probe->second;
 
   ASSERT(_exported_identifiers_map_has_been_set);
-  probe = _exported_identifiers_map.find(name);
-  if (probe != _exported_identifiers_map.end()) return probe->second;
-  if (_export_all) {
+  probe = exported_identifiers_map_.find(name);
+  if (probe != exported_identifiers_map_.end()) return probe->second;
+  if (export_all_) {
     already_visited->insert(this);
-    auto entry = _non_prefixed_imported->lookup_external(name, already_visited);
+    auto entry = non_prefixed_imported_->lookup_external(name, already_visited);
     already_visited->erase(this);
     switch (entry.kind()) {
       // Prefixes are not exported.
@@ -229,11 +229,11 @@ void ModuleScope::for_each_external(const std::function<void (Symbol, const Reso
   if (already_visited->contains(this)) return;
 
   ASSERT(_exported_identifiers_map_has_been_set);
-  _module_declarations.for_each(callback);
-  _exported_identifiers_map.for_each(callback);
-  if (_export_all) {
+  module_declarations_.for_each(callback);
+  exported_identifiers_map_.for_each(callback);
+  if (export_all_) {
     already_visited->insert(this);
-    _non_prefixed_imported->for_each_external(callback, already_visited);
+    non_prefixed_imported_->for_each_external(callback, already_visited);
     already_visited->erase(this);
   }
 }

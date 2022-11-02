@@ -35,18 +35,18 @@ class LwIPSocket : public Resource, public BacklogSocketList::Element {
 
   LwIPSocket(ResourceGroup* group, Kind kind)
     : Resource(group)
-    , _kind(kind)
-    , _tpcb(null)
-    , _error(ERR_OK)
-    , _send_pending(0)
-    , _send_closed(false)
-    , _read_buffer(null)
-    , _read_offset(0)
-    , _read_closed(false) {
+    , kind_(kind)
+    , tpcb_(null)
+    , error_(ERR_OK)
+    , send_pending_(0)
+    , send_closed_(false)
+    , read_buffer_(null)
+    , read_offset_(0)
+    , read_closed_(false) {
   }
 
   ~LwIPSocket() {
-    ASSERT(_tpcb == null);
+    ASSERT(tpcb_ == null);
   }
 
   void tear_down();
@@ -93,43 +93,43 @@ class LwIPSocket : public Resource, public BacklogSocketList::Element {
     return reinterpret_cast<LwIPSocket*>(id << 2);
   }
 
-  tcp_pcb* tpcb() { return _tpcb; }
-  void set_tpcb(tcp_pcb* tpcb) { _tpcb = tpcb; }
+  tcp_pcb* tpcb() { return tpcb_; }
+  void set_tpcb(tcp_pcb* tpcb) { tpcb_ = tpcb; }
 
-  err_t error() { return _error; }
+  err_t error() { return error_; }
 
-  Kind kind() { return _kind; }
+  Kind kind() { return kind_; }
 
-  int send_pending() { return _send_pending; }
-  void set_send_pending(int pending) { _send_pending = pending; }
-  bool send_closed() { return _send_closed; }
-  void mark_send_closed() { _send_closed = true; }
+  int send_pending() { return send_pending_; }
+  void set_send_pending(int pending) { send_pending_ = pending; }
+  bool send_closed() { return send_closed_; }
+  void mark_send_closed() { send_closed_ = true; }
 
-  void set_read_buffer(pbuf* p) { _read_buffer = p; }
-  pbuf* read_buffer() { return _read_buffer; }
-  void set_read_offset(int offset) { _read_offset = offset; }
-  int read_offset() { return _read_offset; }
-  bool read_closed() { return _read_closed; }
-  void mark_read_closed() { _read_closed = true; }
+  void set_read_buffer(pbuf* p) { read_buffer_ = p; }
+  pbuf* read_buffer() { return read_buffer_; }
+  void set_read_offset(int offset) { read_offset_ = offset; }
+  int read_offset() { return read_offset_; }
+  bool read_closed() { return read_closed_; }
+  void mark_read_closed() { read_closed_ = true; }
 
   int new_backlog_socket(tcp_pcb* tpcb);
   LwIPSocket* accept();
 
  private:
-  Kind _kind;
-  tcp_pcb* _tpcb;
-  err_t _error;
+  Kind kind_;
+  tcp_pcb* tpcb_;
+  err_t error_;
 
-  int _send_pending;
-  bool _send_closed;
+  int send_pending_;
+  bool send_closed_;
 
-  pbuf* _read_buffer;
-  int _read_offset;
-  bool _read_closed;
+  pbuf* read_buffer_;
+  int read_offset_;
+  bool read_closed_;
 
   // Sockets that are connected on a listening socket, but have not yet been
   // accepted by the application.
-  BacklogSocketList _backlog;
+  BacklogSocketList backlog_;
 };
 
 } // namespace toit

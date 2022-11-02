@@ -28,7 +28,7 @@ class Diagnostics;
 
 class LspFsConnectionSocket : public LspFsConnection {
  public:
-  explicit LspFsConnectionSocket(const char* port) : _port(port) { }
+  explicit LspFsConnectionSocket(const char* port) : port_(port) { }
   ~LspFsConnectionSocket();
 
   void initialize(Diagnostics* diagnostics);
@@ -37,7 +37,7 @@ class LspFsConnectionSocket : public LspFsConnection {
   int read_data(uint8* content, int size);
 
  private:
-  const char* _port;
+  const char* port_;
 
   bool _is_initialized = false;
   int64 _socket = -1;

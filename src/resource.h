@@ -37,9 +37,9 @@ class Resource : public ResourceList::Element, public ResourceListFromEventSourc
  public:
   TAGS(Resource);
   explicit Resource(ResourceGroup* resource_group)
-    : _resource_group(resource_group)
-    , _state(0)
-    , _object_notifier(null) {
+    : resource_group_(resource_group)
+    , state_(0)
+    , object_notifier_(null) {
   }
 
   virtual ~Resource();
@@ -47,13 +47,13 @@ class Resource : public ResourceList::Element, public ResourceListFromEventSourc
   template<typename T>
   T as() { return static_cast<T>(this); }
 
-  ResourceGroup* resource_group() const { return _resource_group; }
+  ResourceGroup* resource_group() const { return resource_group_; }
 
-  uint32_t state() const { return _state; }
-  void set_state(uint32_t state) { _state = state; }
+  uint32_t state() const { return state_; }
+  void set_state(uint32_t state) { state_ = state; }
 
-  ObjectNotifier* object_notifier() const { return _object_notifier; }
-  void set_object_notifier(ObjectNotifier* object_notifier) { _object_notifier = object_notifier; }
+  ObjectNotifier* object_notifier() const { return object_notifier_; }
+  void set_object_notifier(ObjectNotifier* object_notifier) { object_notifier_ = object_notifier; }
 
   // When a resource group is torn down we call this.  Normally it deletes it, but
   // it may just mark it for deletion in case there are still other references to it,
@@ -63,11 +63,11 @@ class Resource : public ResourceList::Element, public ResourceListFromEventSourc
   }
 
  private:
-  ResourceGroup* _resource_group;
-  uint32_t _state;
+  ResourceGroup* resource_group_;
+  uint32_t state_;
 
   // The object_notifier is manipulated under the EventSource lock.
-  ObjectNotifier* _object_notifier;
+  ObjectNotifier* object_notifier_;
 };
 
 class IntResource : public Resource {
@@ -75,12 +75,12 @@ class IntResource : public Resource {
   TAG(IntResource);
   IntResource(ResourceGroup* group, word id)
     : Resource(group)
-    , _id(id) {}
+    , id_(id) {}
 
-  word id() { return _id; }
+  word id() { return id_; }
 
  private:
-  word _id;
+  word id_;
 };
 
 typedef LinkedList<ResourceGroup> ResourceGroupListFromProcess;
@@ -103,9 +103,9 @@ class ResourceGroup : public ResourceGroupListFromProcess::Element {
    */
   virtual void tear_down();
 
-  Process* process() { return _process; }
+  Process* process() { return process_; }
 
-  EventSource* event_source() { return _event_source; }
+  EventSource* event_source() { return event_source_; }
 
   IntResource* register_id(word id);
   void register_resource(Resource* resource);
@@ -128,12 +128,12 @@ class ResourceGroup : public ResourceGroupListFromProcess::Element {
     ::operator delete(ptr);
   }
 
-  ResourceList& resources() { return _resources; }
+  ResourceList& resources() { return resources_; }
 
  private:
-  Process* const _process;
-  EventSource* _event_source;
-  ResourceList _resources;
+  Process* const process_;
+  EventSource* event_source_;
+  ResourceList resources_;
 
   friend class EventSource;
 };
@@ -142,22 +142,22 @@ typedef LinkedList<EventSource> EventSourceList;
 template <typename Resource>
 class AutoUnregisteringResource {
  public:
-  AutoUnregisteringResource(ResourceGroup* group, Resource* resource) : _group(group), _resource(resource) {}
+  AutoUnregisteringResource(ResourceGroup* group, Resource* resource) : group_(group), resource_(resource) {}
 
   ~AutoUnregisteringResource() {
-    if (_resource) {
-      _group->unregister_resource(_resource);
+    if (resource_) {
+      group_->unregister_resource(resource_);
     }
   }
 
   void set_external_address(ByteArray* proxy) {
-    proxy->set_external_address(_resource);
-    _resource = null;
+    proxy->set_external_address(resource_);
+    resource_ = null;
   }
 
  private:
-  ResourceGroup* _group;
-  Resource* _resource;
+  ResourceGroup* group_;
+  Resource* resource_;
 };
 
 // A resource group for resource objects that only need freeing when the
@@ -190,26 +190,26 @@ template <typename T>
 class SimpleResourceAllocationManager {
  public:
   SimpleResourceAllocationManager(T* ptr)
-      : _ptr(ptr) {
+      : ptr_(ptr) {
     SimpleResource* this_class_is_for_subclasses_of_simple_resource = ptr;
     USE(this_class_is_for_subclasses_of_simple_resource);
   }
 
   ~SimpleResourceAllocationManager() {
-    if (_ptr) {
-      _ptr->resource_group()->unregister_resource(_ptr);
-      _ptr = null;
+    if (ptr_) {
+      ptr_->resource_group()->unregister_resource(ptr_);
+      ptr_ = null;
     }
   }
 
   T* keep_result() {
-    T* result = _ptr;
-    _ptr = null;
+    T* result = ptr_;
+    ptr_ = null;
     return result;
   }
 
  private:
-  T* _ptr;
+  T* ptr_;
 };
 
 // Each EventSourceManger subclass is a singleton that is used by all processes
@@ -219,7 +219,7 @@ class SimpleResourceAllocationManager {
 // waiting.  For example on Linux the thread is blocked in epoll_wait().
 class EventSource : public EventSourceList::Element {
  public:
-  const char* name() { return _name; }
+  const char* name() { return name_; }
 
   void register_resource(Resource* resource);
   void unregister_resource(Resource* resource);
@@ -236,12 +236,12 @@ class EventSource : public EventSourceList::Element {
   void set_state(Resource* r, uint32_t state);
   void set_state(const Locker& locker, Resource* r, uint32_t state);
 
-  Mutex* mutex() { return _mutex; }
+  Mutex* mutex() { return mutex_; }
 
   bool is_locked();  // For asserts.
 
   ResourceListFromEventSource& resources() {
-    return _resources;
+    return resources_;
   }
 
  protected:
@@ -266,9 +266,9 @@ class EventSource : public EventSourceList::Element {
 
   friend class EventSourceManager;
 
-  Mutex* _mutex;
-  ResourceListFromEventSource _resources;
-  const char* _name;
+  Mutex* mutex_;
+  ResourceListFromEventSource resources_;
+  const char* name_;
 };
 
 class LazyEventSource : public EventSource {
@@ -300,17 +300,17 @@ class LazyEventSource : public EventSource {
 class EventSourceManager {
  public:
   ~EventSourceManager() {
-    while (EventSource* c = _event_sources.remove_first()) {
+    while (EventSource* c = event_sources_.remove_first()) {
       delete c;
     }
   }
 
   void add_event_source(EventSource* event_source) {
-    _event_sources.prepend(event_source);
+    event_sources_.prepend(event_source);
   }
 
  private:
-  EventSourceList _event_sources;
+  EventSourceList event_sources_;
 };
 
 } // namespace toit

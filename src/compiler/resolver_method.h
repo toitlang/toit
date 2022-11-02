@@ -59,20 +59,20 @@ class MethodResolver : public ast::Visitor {
                  Lsp* lsp,
                  SourceManager* source_manager,
                  Diagnostics* diagnostics)
-      : _method(method)
-      , _holder(holder)
-      , _ir_to_ast_map(ir_to_ast_map)
-      , _entry_module(entry_module)
-      , _core_module(core_module)
-      , _lsp(lsp)
-      , _source_manager(source_manager)
-      , _diagnostics(diagnostics)
-      , _scope(scope)
-      , _resolution_mode(STATIC)
-      , _super_forcing_expression(null)
-      , _current_lambda(null)
-      , _loop_status(NO_LOOP)
-      , _loop_block_depth(0) { }
+      : method_(method)
+      , holder_(holder)
+      , ir_to_ast_map_(ir_to_ast_map)
+      , entry_module_(entry_module)
+      , core_module_(core_module)
+      , lsp_(lsp)
+      , source_manager_(source_manager)
+      , diagnostics_(diagnostics)
+      , scope_(scope)
+      , resolution_mode_(STATIC)
+      , super_forcing_expression_(null)
+      , current_lambda_(null)
+      , loop_status_(NO_LOOP)
+      , loop_block_depth_(0) { }
 
   void resolve_fill();
 
@@ -95,38 +95,38 @@ class MethodResolver : public ast::Visitor {
   typedef const std::function<ir::Local* (ir::Expression*)> CreateTemp;
   typedef const std::function<ir::Expression* (ir::Expression*)> StoreOldValue;
 
-  ir::Method* _method;
-  ir::Class* _holder;
-  UnorderedMap<ir::Node*, ast::Node*>* _ir_to_ast_map;
-  Module* _entry_module;
-  Module* _core_module;
-  Lsp* _lsp;
-  SourceManager* _source_manager;
-  Diagnostics* _diagnostics;
-  std::vector<ir::Node*> _stack;
-  Scope* _scope;
-  ResolutionMode _resolution_mode;
+  ir::Method* method_;
+  ir::Class* holder_;
+  UnorderedMap<ir::Node*, ast::Node*>* ir_to_ast_map_;
+  Module* entry_module_;
+  Module* core_module_;
+  Lsp* lsp_;
+  SourceManager* source_manager_;
+  Diagnostics* diagnostics_;
+  std::vector<ir::Node*> stack_;
+  Scope* scope_;
+  ResolutionMode resolution_mode_;
   // The expression that forced to switch the constructor to instance mode.
-  ast::Expression* _super_forcing_expression;
-  ast::Node* _current_lambda;
-  LoopStatus _loop_status;
-  int _loop_block_depth;
+  ast::Expression* super_forcing_expression_;
+  ast::Node* current_lambda_;
+  LoopStatus loop_status_;
+  int loop_block_depth_;
   bool _has_primitive_invocation = false;
-  std::vector<std::pair<Symbol, ast::Node*>> _break_continue_label_stack;
+  std::vector<std::pair<Symbol, ast::Node*>> break_continue_label_stack_;
 
-  SourceManager* source_manager() const { return _source_manager; }
-  Diagnostics* diagnostics() const { return _diagnostics; }
-  Scope* scope() const { return _scope; }
+  SourceManager* source_manager() const { return source_manager_; }
+  Diagnostics* diagnostics() const { return diagnostics_; }
+  Scope* scope() const { return scope_; }
 
   void push(ir::Node* value) {
     ASSERT(value != null);
-    _stack.push_back(value);
+    stack_.push_back(value);
   }
 
   ir::Node* pop() {
-    ASSERT(!_stack.empty());
-    ir::Node* result = _stack.back();
-    _stack.pop_back();
+    ASSERT(!stack_.empty());
+    ir::Node* result = stack_.back();
+    stack_.pop_back();
     return result;
   }
 
@@ -136,7 +136,7 @@ class MethodResolver : public ast::Visitor {
   // Doesn't restrict the expression to avoid dependent errors.
   ir::Expression* resolve_error(ast::Node* node);
 
-  Scope::LookupResult lookup(Symbol name) const { return _scope->lookup(name); }
+  Scope::LookupResult lookup(Symbol name) const { return scope_->lookup(name); }
   Scope::LookupResult lookup(ast::Identifier* id) const { return lookup(id->data()); }
 
   void report_abstract_class_instantiation_error(const ast::Node* position_node,
@@ -163,7 +163,7 @@ class MethodResolver : public ast::Visitor {
 
   bool _parameter_has_explicit_type(ir::Parameter* ir_parameter) const {
     if (!ir_parameter->type().is_any()) return true;
-    auto ast_parameter = _ir_to_ast_map->at(ir_parameter)->as_Parameter();
+    auto ast_parameter = ir_to_ast_map_->at(ir_parameter)->as_Parameter();
     return ast_parameter->type() != null;
   }
 
@@ -181,7 +181,7 @@ class MethodResolver : public ast::Visitor {
     bool encountered_error;
   };
   Candidates _compute_target_candidates(ast::Node* target_node, Scope* scope);
-  // Computes the constructor super candidates for the current [_method].
+  // Computes the constructor super candidates for the current [method_].
   List<ir::Node*> _compute_constructor_super_candidates(ast::Node* target_node);
   ir::Node* _resolve_call_target(ast::Node* target_node,
                                  CallShape shape,

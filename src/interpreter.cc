@@ -32,58 +32,58 @@ namespace toit {
 static const int RESERVED_STACK_FOR_STACK_OVERFLOWS = 3;
 
 Interpreter::Interpreter()
-    : _process(null)
-    , _limit(null)
-    , _base(null)
-    , _sp(null)
-    , _try_sp(null)
-    , _watermark(null) {
+    : process_(null)
+    , limit_(null)
+    , base_(null)
+    , sp_(null)
+    , try_sp_(null)
+    , watermark_(null) {
 }
 
 void Interpreter::activate(Process* process) {
-  _process = process;
+  process_ = process;
 }
 
 void Interpreter::deactivate() {
-  _process = null;
+  process_ = null;
 }
 
 void Interpreter::preempt() {
-  _watermark = PREEMPTION_MARKER;
+  watermark_ = PREEMPTION_MARKER;
 }
 
 Method Interpreter::lookup_entry() {
-  Method result = _process->entry();
+  Method result = process_->entry();
   if (!result.is_valid()) FATAL("Cannot locate entry method for interpreter");
   return result;
 }
 
 Object** Interpreter::load_stack() {
-  Stack* stack = _process->task()->stack();
+  Stack* stack = process_->task()->stack();
   GcMetadata::insert_into_remembered_set(stack);
   stack->transfer_to_interpreter(this);
-  Object** watermark = _watermark;
-  Object** new_watermark = _limit + RESERVED_STACK_FOR_STACK_OVERFLOWS;
+  Object** watermark = watermark_;
+  Object** new_watermark = limit_ + RESERVED_STACK_FOR_STACK_OVERFLOWS;
   while (true) {
     // Updates watermark unless preemption marker is set (will be set after preemption).
     if (watermark == PREEMPTION_MARKER) break;
-    if (_watermark.compare_exchange_strong(watermark, new_watermark)) break;
+    if (watermark_.compare_exchange_strong(watermark, new_watermark)) break;
   }
-  return _sp;
+  return sp_;
 }
 
 void Interpreter::store_stack(Object** sp) {
-  if (sp != null) _sp = sp;
-  Stack* stack = _process->task()->stack();
+  if (sp != null) sp_ = sp;
+  Stack* stack = process_->task()->stack();
   stack->transfer_from_interpreter(this);
-  _limit = null;
-  _base = null;
-  _sp = null;
+  limit_ = null;
+  base_ = null;
+  sp_ = null;
 
-  Object** watermark = _watermark;
+  Object** watermark = watermark_;
   while (true) {
     if (watermark == PREEMPTION_MARKER) break;
-    if (_watermark.compare_exchange_strong(watermark, null)) break;
+    if (watermark_.compare_exchange_strong(watermark, null)) break;
   }
 }
 
@@ -91,27 +91,27 @@ void Interpreter::prepare_task(Method entry, Instance* code) {
   push(code);
   static_assert(FRAME_SIZE == 2, "Unexpected frame size");
   push(reinterpret_cast<Object*>(entry.entry()));
-  push(_process->program()->frame_marker());
+  push(process_->program()->frame_marker());
 
   push(Smi::from(0));  // Argument: stack
   push(Smi::from(0));  // Argument: value
 
   static_assert(FRAME_SIZE == 2, "Unexpected frame size");
   push(reinterpret_cast<Object*>(entry.bcp_from_bci(LOAD_NULL_LENGTH)));
-  push(_process->program()->frame_marker());
+  push(process_->program()->frame_marker());
 }
 
 Object** Interpreter::gc(Object** sp, bool malloc_failed, int attempts, bool force_cross_process) {
   ASSERT(attempts >= 1 && attempts <= 3);  // Allocation attempts.
   if (attempts == 3) {
     OS::heap_summary_report(0, "out of memory");
-    if (VM::current()->scheduler()->is_boot_process(_process)) {
+    if (VM::current()->scheduler()->is_boot_process(process_)) {
       OS::out_of_memory("Out of memory in system process");
     }
     return sp;
   }
   store_stack(sp);
-  VM::current()->scheduler()->gc(_process, malloc_failed, attempts > 1 || force_cross_process);
+  VM::current()->scheduler()->gc(process_, malloc_failed, attempts > 1 || force_cross_process);
   return load_stack();
 }
 
@@ -121,11 +121,11 @@ void Interpreter::prepare_process() {
   Method entry = lookup_entry();
   static_assert(FRAME_SIZE == 2, "Unexpected frame size");
   push(reinterpret_cast<Object*>(entry.entry()));
-  push(_process->program()->frame_marker());
+  push(process_->program()->frame_marker());
 
   static_assert(FRAME_SIZE == 2, "Unexpected frame size");
   push(reinterpret_cast<Object*>(entry.entry()));
-  push(_process->program()->frame_marker());
+  push(process_->program()->frame_marker());
 
   store_stack();
 }
@@ -144,7 +144,7 @@ void Interpreter::prepare_process() {
 #define STACK_AT_PUT(n, o) ({ int _n_ = n; Object* _o_ = o; *(sp + _n_) = _o_; })
 
 Object** Interpreter::push_error(Object** sp, Object* type, const char* message) {
-  Process* process = _process;
+  Process* process = process_;
   PUSH(type);
 
   // Stack: Type, ...
@@ -207,26 +207,26 @@ Object** Interpreter::push_error(Object** sp, Object* type, const char* message)
 }
 
 Object** Interpreter::push_out_of_memory_error(Object** sp) {
-  PUSH(_process->program()->out_of_memory_error());
+  PUSH(process_->program()->out_of_memory_error());
   return sp;
 }
 
 Object** Interpreter::handle_stack_overflow(Object** sp, OverflowState* state, Method method) {
-  if (_watermark == PREEMPTION_MARKER) {
+  if (watermark_ == PREEMPTION_MARKER) {
     // Reset the watermark now that we're handling the preemption.
-    _watermark = null;
+    watermark_ = null;
     *state = OVERFLOW_PREEMPT;
     return sp;
   }
 
-  Process* process = _process;
-  int length = _process->task()->stack()->length();
+  Process* process = process_;
+  int length = process_->task()->stack()->length();
   int new_length = -1;
   if (length < Stack::max_length()) {
     // The max_height doesn't include space for the frame of the next call (if there is one).
     // For simplicity just always assume that there will be a call at max-height and add `FRAME_SIZE`.
     int needed_space = method.max_height() + Interpreter::FRAME_SIZE + RESERVED_STACK_FOR_STACK_OVERFLOWS;
-    int headroom = sp - _limit;
+    int headroom = sp - limit_;
     ASSERT(headroom < needed_space);  // We shouldn't try to grow the stack otherwise.
 
     new_length = Utils::max(length + (length >> 1), (length - headroom) + needed_space);
@@ -272,7 +272,7 @@ Object** Interpreter::handle_stack_overflow(Object** sp, OverflowState* state, M
 
 void Interpreter::trace(uint8* bcp) {
 #ifdef TOIT_DEBUG
-  auto program = _process->program();
+  auto program = process_->program();
   ConsolePrinter printer(program);
   printf("[%6d] ", program->absolute_bci_from_bcp(bcp));
   print_bytecode(&printer, bcp, 0);

@@ -49,7 +49,7 @@ void LspFsConnectionSocket::initialize(Diagnostics* diagnostics) {
   hints.ai_protocol = 0;           // Any protocol.
 
   addrinfo* result;
-  int status = getaddrinfo(null, _port, &hints, &result);
+  int status = getaddrinfo(null, port_, &hints, &result);
   if (status != 0) {
     fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(status));
     exit(EXIT_FAILURE);

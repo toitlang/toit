@@ -277,10 +277,10 @@ void TraversingVisitor::visit_ToitdocReference(ToitdocReference* node) {
 class AstPrinter : public Visitor {
  public:
   AstPrinter()
-      : _indentation(0) { }
+      : indentation_(0) { }
 
   void indent() {
-    for (int i = 0; i < _indentation; i++) {
+    for (int i = 0; i < indentation_; i++) {
       printf("  ");
     }
   }
@@ -319,12 +319,12 @@ class AstPrinter : public Visitor {
       node->super()->accept(this);
     }
     printf(":\n");
-    _indentation++;
+    indentation_++;
     for (int i = 0; i < node->members().length(); i++) {
       indent();
       node->members()[i]->accept(this);
     }
-    _indentation--;
+    indentation_--;
   }
 
   void visit_Field(Field* node) {
@@ -485,14 +485,14 @@ class AstPrinter : public Visitor {
 
   void visit_Sequence(Sequence* node) {
     printf("\n");
-    _indentation++;
+    indentation_++;
     for (int i = 0; i < node->expressions().length(); i++) {
       Expression* expression = node->expressions()[i];
       indent();
       expression->accept(this);
       printf("\n");
     }
-    _indentation--;
+    indentation_--;
   }
 
   void visit_Identifier(Identifier* node) {
@@ -640,7 +640,7 @@ class AstPrinter : public Visitor {
   }
 
  private:
-  int _indentation;
+  int indentation_;
 };
 
 void Node::print() {

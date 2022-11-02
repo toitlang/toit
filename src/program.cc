@@ -33,7 +33,7 @@ void Program::write(SnapshotWriter* st) {
 
   st->write_cardinal(ROOT_COUNT);
   for (int i = 0; i < ROOT_COUNT; i++) {
-    st->write_object(_roots[i]);
+    st->write_object(roots_[i]);
   }
   st->write_cardinal(BUILTIN_CLASS_IDS_COUNT);
   for (int i = 0; i < BUILTIN_CLASS_IDS_COUNT; i++) {
@@ -42,11 +42,11 @@ void Program::write(SnapshotWriter* st) {
   st->write_cardinal(INVOKE_BYTECODE_COUNT);
   for (int i = 0; i < INVOKE_BYTECODE_COUNT; i++) {
     // The value might be one negative value -1 so we adjust it with +1 to make it a cardinal.
-    st->write_cardinal(_invoke_bytecode_offsets[i] + 1);
+    st->write_cardinal(invoke_bytecode_offsets_[i] + 1);
   }
   st->write_cardinal(ENTRY_POINTS_COUNT);
   for (int i = 0; i < ENTRY_POINTS_COUNT; i++) {
-    st->write_cardinal(_entry_point_indexes[i]);
+    st->write_cardinal(entry_point_indexes_[i]);
   }
   st->write_external_list_uint16(class_check_ids);
   st->write_external_list_uint16(interface_check_offsets);
@@ -64,7 +64,7 @@ void Program::read(SnapshotReader* st) {
   // ROOTS table.
   int nof_roots = st->read_cardinal();
   ASSERT(nof_roots == ROOT_COUNT);
-  for (int i = 0; i < ROOT_COUNT; i++) _roots[i] = st->read_object();
+  for (int i = 0; i < ROOT_COUNT; i++) roots_[i] = st->read_object();
   // Builtin classes.
   int nof_builtin_classes = st->read_cardinal();
   ASSERT(nof_builtin_classes == BUILTIN_CLASS_IDS_COUNT);
@@ -74,13 +74,13 @@ void Program::read(SnapshotReader* st) {
   ASSERT(nof_invoke_bytecodes == INVOKE_BYTECODE_COUNT);
   for (int i = 0; i < INVOKE_BYTECODE_COUNT; i++) {
     // The read value must be readjusted with -1.
-    _invoke_bytecode_offsets[i] = st->read_cardinal() - 1;
+    invoke_bytecode_offsets_[i] = st->read_cardinal() - 1;
   }
   // ENTRY_POINTS_COUNT table.
   int nof_entry_points = st->read_cardinal();
   ASSERT(nof_entry_points == ENTRY_POINTS_COUNT);
   for (int i = 0; i < ENTRY_POINTS_COUNT; i++) {
-    _entry_point_indexes[i] = st->read_cardinal();
+    entry_point_indexes_[i] = st->read_cardinal();
   }
   class_check_ids = st->read_external_list_uint16();
   interface_check_offsets = st->read_external_list_uint16();
@@ -94,7 +94,7 @@ void Program::read(SnapshotReader* st) {
 #endif  // TOIT_FREERTOS
 
 void Program::do_roots(RootCallback* callback) {
-  callback->do_roots(_roots, ROOT_COUNT);
+  callback->do_roots(roots_, ROOT_COUNT);
   global_variables.do_roots(callback);
   literals.do_roots(callback);
 }
@@ -102,7 +102,7 @@ void Program::do_roots(RootCallback* callback) {
 ProgramUsage Program::usage() {
   ProgramUsage total("program", sizeof(Program));
   total.add_external(tables_size());
-  ProgramUsage h = _heap.usage("program object heap");
+  ProgramUsage h = heap_.usage("program object heap");
   total.add(&h);
   total.add_external(4 + dispatch_table.length() * 4);  // Length + dispatch entries.
   total.add_external(4 + bytecodes.length());  // Length + bytecodes.
@@ -118,12 +118,12 @@ int Program::number_of_unused_dispatch_table_entries() {
 }
 
 Program::Program(void* program_heap_address, uword program_heap_size)
-    : _invoke_bytecode_offsets()
-    , _roots()
-    , _entry_point_indexes()
-    , _source_mapping(null)
-    , _program_heap_address(reinterpret_cast<uword>(program_heap_address))
-    , _program_heap_size(program_heap_size) {}
+    : invoke_bytecode_offsets_()
+    , roots_()
+    , entry_point_indexes_()
+    , source_mapping_(null)
+    , program_heap_address_(reinterpret_cast<uword>(program_heap_address))
+    , program_heap_size_(program_heap_size) {}
 
 Program::~Program() {
   // TODO(lars): Check the program count is 0.
@@ -133,17 +133,17 @@ void Program::do_pointers(PointerCallback* callback) {
   global_variables.do_pointers(callback);
   literals.do_pointers(callback);
 
-  callback->object_table(_roots, ROOT_COUNT);
-  callback->c_address(reinterpret_cast<void**>(&_roots));
+  callback->object_table(roots_, ROOT_COUNT);
+  callback->c_address(reinterpret_cast<void**>(&roots_));
   callback->c_address(reinterpret_cast<void**>(&dispatch_table.data()));
   callback->c_address(reinterpret_cast<void**>(&bytecodes.data()));
   callback->c_address(reinterpret_cast<void**>(&class_check_ids.data()));
   callback->c_address(reinterpret_cast<void**>(&interface_check_offsets.data()));
   callback->c_address(reinterpret_cast<void**>(&class_bits.data()));
-  callback->c_address(reinterpret_cast<void**>(&_program_heap_address));
-  if (!_program_heap_address) *((char*)_program_heap_address) = 0;
+  callback->c_address(reinterpret_cast<void**>(&program_heap_address_));
+  if (!program_heap_address_) *((char*)program_heap_address_) = 0;
 
-  _heap.do_pointers(this, callback);
+  heap_.do_pointers(this, callback);
 }
 
 }  // namespace toit

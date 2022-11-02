@@ -36,17 +36,17 @@ class OptimizationVisitor : public ReplacingVisitor {
   OptimizationVisitor(Program* program,
                       const UnorderedMap<Class*, QueryableClass> queryables,
                       const UnorderedSet<Symbol>& field_names)
-      : _program(program)
-      , _holder(null)
-      , _method(null)
-      , _queryables(queryables)
-      , _field_names(field_names) { }
+      : program_(program)
+      , holder_(null)
+      , method_(null)
+      , queryables_(queryables)
+      , field_names_(field_names) { }
 
   /// Transforms virtual calls into static calls (when possible).
   /// Transforms virtual getters/setters into field accesses (when possible).
   Node* visit_CallVirtual(CallVirtual* node) {
     node = ReplacingVisitor::visit_CallVirtual(node)->as_CallVirtual();
-    return optimize_virtual_call(node, _holder, _method, _field_names, _queryables);
+    return optimize_virtual_call(node, holder_, method_, field_names_, queryables_);
   }
 
   /// Pushes `return`s into `if`s.
@@ -58,13 +58,13 @@ class OptimizationVisitor : public ReplacingVisitor {
   /// Removes code after `return`s.
   Node* visit_Sequence(Sequence* node) {
     node = ReplacingVisitor::visit_Sequence(node)->as_Sequence();
-    node = eliminate_dead_code(node, _program);
+    node = eliminate_dead_code(node, program_);
     return simplify_sequence(node);
   }
 
   Node* visit_Typecheck(Typecheck* node) {
     node = ReplacingVisitor::visit_Typecheck(node)->as_Typecheck();
-    return optimize_typecheck(node, _holder, _method);
+    return optimize_typecheck(node, holder_, method_);
   }
 
   Node* visit_Super(Super* node) {
@@ -73,15 +73,15 @@ class OptimizationVisitor : public ReplacingVisitor {
     return node->expression();
   }
 
-  void set_class(Class* klass) { _holder = klass; }
-  void set_method(Method* method) { _method = method; }
+  void set_class(Class* klass) { holder_ = klass; }
+  void set_method(Method* method) { method_ = method; }
 
  private:
-  Program* _program;
-  Class* _holder;  // Null, if not in class (or a static method/field).
-  Method* _method;
-  UnorderedMap<Class*, QueryableClass> _queryables;
-  UnorderedSet<Symbol> _field_names;
+  Program* program_;
+  Class* holder_;  // Null, if not in class (or a static method/field).
+  Method* method_;
+  UnorderedMap<Class*, QueryableClass> queryables_;
+  UnorderedSet<Symbol> field_names_;
 };
 
 void optimize(Program* program) {

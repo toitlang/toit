@@ -20,15 +20,15 @@
 
 namespace toit {
 
-TimerEventSource* TimerEventSource::_instance = null;
+TimerEventSource* TimerEventSource::instance_ = null;
 
 TimerEventSource::TimerEventSource()
     : EventSource("Timer")
     , Thread("Timer")
-    , _timer_changed(OS::allocate_condition_variable(mutex()))
-    , _stop(false) {
-  ASSERT(_instance == null);
-  _instance = this;
+    , timer_changed_(OS::allocate_condition_variable(mutex()))
+    , stop_(false) {
+  ASSERT(instance_ == null);
+  instance_ = this;
   spawn();
 }
 
@@ -36,41 +36,41 @@ TimerEventSource::~TimerEventSource() {
   {
     // Stop the main thread.
     Locker locker(mutex());
-    _stop = true;
+    stop_ = true;
 
-    OS::signal(_timer_changed);
+    OS::signal(timer_changed_);
   }
 
   join();
 
-  ASSERT(_timers.is_empty());
+  ASSERT(timers_.is_empty());
 
-  OS::dispose(_timer_changed);
+  OS::dispose(timer_changed_);
 
-  _instance = null;
+  instance_ = null;
 }
 
 void TimerEventSource::arm(Timer* timer, int64_t timeout) {
   Locker locker(mutex());
-  bool is_linked = _timers.is_linked(timer);
+  bool is_linked = timers_.is_linked(timer);
   if (is_linked && timer->timeout() == timeout) {
     return;
   }
 
   // Get current timeout, if any.
-  auto head = _timers.first();
+  auto head = timers_.first();
   int64_t old_timeout = head ? head->timeout() : timeout + 1;
 
   // Remove in case it was already enqueued.
   if (is_linked) {
-    _timers.unlink(timer);
+    timers_.unlink(timer);
   }
 
   // Clear and install timer.
   timer->set_state(0);
   timer->set_timeout(timeout);
 
-  _timers.insert_before(timer, [&timer](Timer* t) { return timer->timeout() < t->timeout(); });
+  timers_.insert_before(timer, [&timer](Timer* t) { return timer->timeout() < t->timeout(); });
 
   if (timeout < old_timeout) {
     // Signal if new timeout is less the the old.
@@ -79,7 +79,7 @@ void TimerEventSource::arm(Timer* timer, int64_t timeout) {
     // delays the wakeup to the already scheduled time. The result
     // is overall at maximum the same number of wakeups, but most likely
     // much less.
-    OS::signal(_timer_changed);
+    OS::signal(timer_changed_);
   }
 }
 
@@ -87,12 +87,12 @@ void TimerEventSource::on_unregister_resource(Locker& locker, Resource* r) {
   ASSERT(is_locked());
   Timer* timer = r->as<Timer*>();
 
-  Timer* first = _timers.first();
-  if (_timers.is_linked(timer)) {
-    _timers.unlink(timer);
+  Timer* first = timers_.first();
+  if (timers_.is_linked(timer)) {
+    timers_.unlink(timer);
     if (first == timer) {
       // Signal if the first one changes.
-      OS::signal(_timer_changed);
+      OS::signal(timer_changed_);
     }
   }
 }
@@ -101,23 +101,23 @@ void TimerEventSource::entry() {
   Locker locker(mutex());
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + EVENT_SOURCE_MALLOC_TAG);
 
-  while (!_stop) {
+  while (!stop_) {
     int64 time = OS::get_monotonic_time();
 
     int64 delay_us = 0;
-    while (!_timers.is_empty()) {
-      if (time >= _timers.first()->timeout()) {
-        Timer* timer = _timers.remove_first();
+    while (!timers_.is_empty()) {
+      if (time >= timers_.first()->timeout()) {
+        Timer* timer = timers_.remove_first();
         dispatch(locker, timer, 0);
       } else {
-        delay_us = _timers.first()->timeout() - time;
+        delay_us = timers_.first()->timeout() - time;
         break;
       }
     }
     if (delay_us > 0) {
-      OS::wait_us(_timer_changed, delay_us);
+      OS::wait_us(timer_changed_, delay_us);
     } else {
-      OS::wait(_timer_changed);
+      OS::wait(timer_changed_);
     }
   }
 }

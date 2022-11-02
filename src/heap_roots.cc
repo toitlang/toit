@@ -21,12 +21,12 @@
 namespace toit {
 
 void FinalizerNode::roots_do(RootCallback* cb) {
-  cb->do_root(reinterpret_cast<Object**>(&_key));
-  cb->do_root(reinterpret_cast<Object**>(&_lambda));
+  cb->do_root(reinterpret_cast<Object**>(&key_));
+  cb->do_root(reinterpret_cast<Object**>(&lambda_));
 }
 
 void VMFinalizerNode::roots_do(RootCallback* cb) {
-  cb->do_root(reinterpret_cast<Object**>(&_key));
+  cb->do_root(reinterpret_cast<Object**>(&key_));
 }
 
 void VMFinalizerNode::free_external_memory(Process* process) {

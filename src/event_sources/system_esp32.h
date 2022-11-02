@@ -38,20 +38,20 @@ class SystemResource : public Resource {
  public:
   SystemResource(ResourceGroup* group, esp_event_base_t event_base, int32_t event_id = ESP_EVENT_ANY_ID)
       : Resource(group)
-      , _event_base(event_base)
-      , _event_id(event_id) {}
+      , event_base_(event_base)
+      , event_id_(event_id) {}
 
-  esp_event_base_t event_base() { return _event_base; }
-  int32_t event_id() { return _event_id; }
+  esp_event_base_t event_base() { return event_base_; }
+  int32_t event_id() { return event_id_; }
 
  private:
-  esp_event_base_t _event_base;
-  int32_t _event_id;
+  esp_event_base_t event_base_;
+  int32_t event_id_;
 };
 
 class SystemEventSource : public EventSource {
  public:
-  static SystemEventSource* instance() { return _instance; }
+  static SystemEventSource* instance() { return instance_; }
 
   SystemEventSource();
 
@@ -69,11 +69,11 @@ class SystemEventSource : public EventSource {
  private:
   static void on_event(void* arg, esp_event_base_t base, int32_t id, void* event_data);
 
-  ConditionVariable* _run_cond;
-  bool _in_run;
-  bool _is_run_done;
+  ConditionVariable* run_cond_;
+  bool in_run_;
+  bool is_run_done_;
 
-  static SystemEventSource* _instance;
+  static SystemEventSource* instance_;
 };
 
 } // namespace toit

@@ -28,9 +28,9 @@ namespace {  // anonymous
 class ToitdocDiagnostics : public Diagnostics {
  public:
   explicit ToitdocDiagnostics(Diagnostics* wrapped)
-      : Diagnostics(wrapped->source_manager()), _wrapped(wrapped) { }
+      : Diagnostics(wrapped->source_manager()), wrapped_(wrapped) { }
 
-  bool should_report_missing_main() const { return _wrapped->should_report_missing_main(); }
+  bool should_report_missing_main() const { return wrapped_->should_report_missing_main(); }
 
  protected:
   Severity adjust_severity(Severity severity) {
@@ -38,14 +38,14 @@ class ToitdocDiagnostics : public Diagnostics {
     return severity;
   }
   void emit(Severity severity, const char* format, va_list& arguments) {
-    _wrapped->emit(severity, format, arguments);
+    wrapped_->emit(severity, format, arguments);
   }
   void emit(Severity severity, Source::Range range, const char* format, va_list& arguments) {
-    _wrapped->emit(severity, range, format, arguments);
+    wrapped_->emit(severity, range, format, arguments);
   }
 
  private:
-  Diagnostics* _wrapped;
+  Diagnostics* wrapped_;
 };
 
 static uint8* memdup(const std::string& text) {
@@ -62,28 +62,28 @@ class ToitdocSource : public Source {
                 const std::string& text,
                 const std::vector<int>& source_line_offsets,
                 const std::vector<int>& toitdoc_line_offsets)
-      : _source(source)
+      : source_(source)
       // We can't use `strdup` as the text might contain '\0' characters.
-      , _text(memdup(text))
-      , _size(static_cast<int>(text.size()))
-      , _source_line_offsets(source_line_offsets)
-      , _toitdoc_line_offsets(toitdoc_line_offsets) { }
+      , text_(memdup(text))
+      , size_(static_cast<int>(text.size()))
+      , source_line_offsets_(source_line_offsets)
+      , toitdoc_line_offsets_(toitdoc_line_offsets) { }
 
   ~ToitdocSource() {
-    free(_text);
+    free(text_);
   }
 
-  const char* absolute_path() const { return _source->absolute_path(); }
-  std::string package_id() const { return _source->package_id(); }
-  std::string error_path() const { return _source->error_path(); }
+  const char* absolute_path() const { return source_->absolute_path(); }
+  std::string package_id() const { return source_->package_id(); }
+  std::string error_path() const { return source_->error_path(); }
 
-  const uint8* text() const { return _text; }
+  const uint8* text() const { return text_; }
 
   Range range(int from, int to) const {
-    return _source->range(source_offset_at(from), source_offset_at(to));
+    return source_->range(source_offset_at(from), source_offset_at(to));
   }
 
-  int size() const { return _size; }
+  int size() const { return size_; }
 
   // This functionality isn't supported.
   int offset_in_source(Position position) const { UNREACHABLE();  }
@@ -96,27 +96,27 @@ class ToitdocSource : public Source {
   int source_offset_at(int offset) const;
 
   void text_range_without_marker(int from, int to, const uint8** text_from, const uint8** text_to) {
-    _source->text_range_without_marker(source_offset_at(from),
+    source_->text_range_without_marker(source_offset_at(from),
                                        source_offset_at(to),
                                        text_from,
                                        text_to);
   }
 
  private:
-  Source* _source;
-  uint8* _text;
-  int _size;
-  std::vector<int> _source_line_offsets;
-  std::vector<int> _toitdoc_line_offsets;
+  Source* source_;
+  uint8* text_;
+  int size_;
+  std::vector<int> source_line_offsets_;
+  std::vector<int> toitdoc_line_offsets_;
 };
 
 /// Collects the toitdoc text, while maintaining a mapping to the underlying source.
 class ToitdocTextBuilder {
  public:
   explicit ToitdocTextBuilder(Source* source, int source_from, int source_to)
-      : _source(source)
-      , _source_from(source_from)
-      , _source_to(source_to) { }
+      : source_(source)
+      , source_from_(source_from)
+      , source_to_(source_to) { }
 
   /// Adds the substring source[source_from...source_to] to the text.
   /// [source_from] is inclusive.
@@ -132,39 +132,39 @@ class ToitdocTextBuilder {
   /// The string must not include the newline character.
   /// [source_at] is used as position in the source mapping.
   void add_line(std::string str, int source_at) {
-    ASSERT(_source_from <= source_at && source_at <= _source_to);
+    ASSERT(source_from_ <= source_at && source_at <= source_to_);
     // The `source_at` position can only be equal to source_to, if the
     // line is empty.
-    ASSERT(source_at != _source_to || str == "");
+    ASSERT(source_at != source_to_ || str == "");
     ASSERT(str.empty() || str[str.size() - 1] != '\n');
-    _source_line_offsets.push_back(source_at);
-    _toitdoc_line_offsets.push_back(_text.size());
-    _text += str;
-    _text += "\n";
+    source_line_offsets_.push_back(source_at);
+    toitdoc_line_offsets_.push_back(text_.size());
+    text_ += str;
+    text_ += "\n";
   }
 
   ToitdocSource* build() {
     // Always ensure that we have an entry in the offsets.
-    if (_source_line_offsets.empty()) {
-      add_line("", _source_from);
+    if (source_line_offsets_.empty()) {
+      add_line("", source_from_);
     }
     // Drop the last '\n' from the buffer, as it might not exist in
     // the actual source.
-    _text.pop_back();
-    if (!_text.empty() && _text[_text.size() - 1] == '\r') {
+    text_.pop_back();
+    if (!text_.empty() && text_[text_.size() - 1] == '\r') {
       // On Windows also drop the '\r', so we don't end up in the middle of a \r\n.
-      _text.pop_back();
+      text_.pop_back();
     }
-    return _new ToitdocSource(_source, _text, _source_line_offsets, _toitdoc_line_offsets);
+    return _new ToitdocSource(source_, text_, source_line_offsets_, toitdoc_line_offsets_);
   }
 
  private:
-  Source* _source;
-  int _source_from;
-  int _source_to;
-  std::string _text;
-  std::vector<int> _source_line_offsets;
-  std::vector<int> _toitdoc_line_offsets;
+  Source* source_;
+  int source_from_;
+  int source_to_;
+  std::string text_;
+  std::vector<int> source_line_offsets_;
+  std::vector<int> toitdoc_line_offsets_;
 };
 
 /// Parses a given toitdoc, searching for code segments, references, ...
@@ -173,18 +173,18 @@ class ToitdocParser {
   ToitdocParser(ToitdocSource* toitdoc_source,
                 SymbolCanonicalizer* symbols,
                 Diagnostics* diagnostics)
-      : _toitdoc_source(toitdoc_source)
-      , _symbols(symbols)
-      , _diagnostics(diagnostics) { }
+      : toitdoc_source_(toitdoc_source)
+      , symbols_(symbols)
+      , diagnostics_(diagnostics) { }
 
   Toitdoc<ast::Node*> parse();
 
  private:
-  ToitdocSource* _toitdoc_source;
-  SymbolCanonicalizer* _symbols;
-  Diagnostics* _diagnostics;
+  ToitdocSource* toitdoc_source_;
+  SymbolCanonicalizer* symbols_;
+  Diagnostics* diagnostics_;
 
-  std::vector<ast::Node*> _reference_asts;
+  std::vector<ast::Node*> reference_asts_;
 
 
   toitdoc::Section* parse_section();
@@ -217,35 +217,35 @@ class ToitdocParser {
   class ConstructScope {
    public:
     ConstructScope(ToitdocParser* parser, Construct construct)
-        : ConstructScope(parser, construct, parser->_line_indentation) {}
+        : ConstructScope(parser, construct, parser->line_indentation_) {}
 
     ConstructScope(ToitdocParser* parser, Construct construct, int indentation)
-        : _parser(parser), _construct(construct) {
+        : parser_(parser), construct_(construct) {
       parser->push_construct(construct, indentation);
     }
 
     ~ConstructScope() {
-      _parser->pop_construct(_construct);
+      parser_->pop_construct(construct_);
     }
 
    private:
-    ToitdocParser* _parser;
-    Construct _construct;
+    ToitdocParser* parser_;
+    Construct construct_;
   };
 
-  std::vector<int> _indentation_stack;
-  std::vector<Construct> _construct_stack;
+  std::vector<int> indentation_stack_;
+  std::vector<Construct> construct_stack_;
 
-  int _index = 0;
-  int _line_indentation = 0;
+  int index_ = 0;
+  int line_indentation_ = 0;
   bool _is_at_dedent = false;
   /// The next index after a newline.
   /// This variable is set when encountering a '\n'.
   /// We use this to avoid computing the indentation after a newline token
   ///   multiple times.
   /// If this variable is not -1, we can directly jump to this index when advancing.
-  int _next_index = -1;
-  int _next_indentation = -1;
+  int next_index_ = -1;
+  int next_indentation_ = -1;
 
   void push_construct(Construct construct, int indentation);
   void pop_construct(Construct construct);
@@ -285,17 +285,17 @@ class CommentsManager {
                   Source* source,
                   SymbolCanonicalizer* symbols,
                   Diagnostics* diagnostics)
-      : _comments(comments)
-      , _source(source)
-      , _symbols(symbols)
-      , _diagnostics(diagnostics) {
+      : comments_(comments)
+      , source_(source)
+      , symbols_(symbols)
+      , diagnostics_(diagnostics) {
     ASSERT(is_sorted(comments));
   }
 
   int find_closest_before(ast::Node* node);
   Toitdoc<ast::Node*> find_for(ast::Node* node);
   bool is_attached(int index1, int index2) {
-    return is_attached(_comments[index1].range(), _comments[index2].range(), false);
+    return is_attached(comments_[index1].range(), comments_[index2].range(), false);
   }
   bool is_attached(Source::Range previous,
                    Source::Range next,
@@ -303,12 +303,12 @@ class CommentsManager {
   Toitdoc<ast::Node*> make_ast_toitdoc(int index);
 
  private:
-  List<Scanner::Comment> _comments;
-  Source* _source;
-  SymbolCanonicalizer* _symbols;
-  Diagnostics* _diagnostics;
+  List<Scanner::Comment> comments_;
+  Source* source_;
+  SymbolCanonicalizer* symbols_;
+  Diagnostics* diagnostics_;
 
-  int _last_index = 0;
+  int last_index_ = 0;
 
   static bool is_sorted(List<Scanner::Comment> comments) {
     for (int i = 1; i < comments.length(); i++) {
@@ -321,23 +321,23 @@ class CommentsManager {
 };
 
 int ToitdocSource::source_offset_at(int offset) const  {
-  ASSERT(!_source_line_offsets.empty());
+  ASSERT(!source_line_offsets_.empty());
 
-  if (offset >= _toitdoc_line_offsets.back()) {
-    int offset_in_line = offset - _toitdoc_line_offsets.back();
-    return _source_line_offsets.back() + offset_in_line;
+  if (offset >= toitdoc_line_offsets_.back()) {
+    int offset_in_line = offset - toitdoc_line_offsets_.back();
+    return source_line_offsets_.back() + offset_in_line;
   }
   // Binary search to find the offset in the toitdoc line offset.
   int start = 0;
-  int end = _toitdoc_line_offsets.size() - 1;
+  int end = toitdoc_line_offsets_.size() - 1;
   while (true) {
     int mid = start + (end - start) / 2;
-    if (_toitdoc_line_offsets[mid] <= offset &&
-        offset < _toitdoc_line_offsets[mid + 1]) {
-      int offset_in_line = offset - _toitdoc_line_offsets[mid];
-      return _source_line_offsets[mid] + offset_in_line;
+    if (toitdoc_line_offsets_[mid] <= offset &&
+        offset < toitdoc_line_offsets_[mid + 1]) {
+      int offset_in_line = offset - toitdoc_line_offsets_[mid];
+      return source_line_offsets_[mid] + offset_in_line;
     }
-    if (_toitdoc_line_offsets[mid] > offset) {
+    if (toitdoc_line_offsets_[mid] > offset) {
       end = mid;
     } else {
       start = mid + 1;
@@ -347,7 +347,7 @@ int ToitdocSource::source_offset_at(int offset) const  {
 
 bool ToitdocSource::is_lsp_marker_at(int offset) {
   int source_offset = source_offset_at(offset);
-  return _source->is_lsp_marker_at(source_offset);
+  return source_->is_lsp_marker_at(source_offset);
 }
 
 static ToitdocSource* extract_multiline_comment_text(Source* source, int from, int to) {
@@ -444,8 +444,8 @@ Toitdoc<ast::Node*> ToitdocParser::parse() {
   }
   auto contents = _new toitdoc::Contents(sections.build());
   return Toitdoc<ast::Node*>(contents,
-                             ListBuilder<ast::Node*>::build_from_vector(_reference_asts),
-                             _toitdoc_source->range(0, _toitdoc_source->size()));
+                             ListBuilder<ast::Node*>::build_from_vector(reference_asts_),
+                             toitdoc_source_->range(0, toitdoc_source_->size()));
 }
 
 toitdoc::Section* ToitdocParser::parse_section() {
@@ -458,9 +458,9 @@ toitdoc::Section* ToitdocParser::parse_section() {
     advance();
     // Skip over leading whitespace.
     while (peek() == ' ') advance();
-    int begin = _index;
+    int begin = index_;
     while (peek() != '\0') advance();
-    title = make_symbol(begin, _index);
+    title = make_symbol(begin, index_);
   }
   skip_whitespace();
   while (peek() != '#' && peek() != '\0') {
@@ -485,19 +485,19 @@ toitdoc::Statement* ToitdocParser::parse_statement() {
 toitdoc::CodeSection* ToitdocParser::parse_code_section() {
   ConstructScope scope(this, CODE_SECTION);
   advance("```");
-  int begin = _index;
+  int begin = index_;
   // In theory we could look 3 characters ahead and skip to there if it isn't a '`', but
   // that is difficult to do if we don't want to jump over the terminating '\0'.
   while(peek() != '\0') {
     if (matches("```")) {
-      int end = _index;
+      int end = index_;
       advance("```");
       return _new toitdoc::CodeSection(make_symbol(begin, end));
     }
     advance();
   }
-  report_error(begin - 3, _index, "Unterminated code section");
-  return _new toitdoc::CodeSection(make_symbol(begin, _index));
+  report_error(begin - 3, index_, "Unterminated code section");
+  return _new toitdoc::CodeSection(make_symbol(begin, index_));
 }
 
 static bool is_eol(int c) {
@@ -532,7 +532,7 @@ static bool is_comment_start(int c1, int c2) {
 toitdoc::Itemized* ToitdocParser::parse_itemized() {
   ConstructScope scope(this, ITEMIZED);
   ASSERT(matches("- ") || matches("* "));
-  int indentation = _line_indentation;
+  int indentation = line_indentation_;
   ListBuilder<toitdoc::Item*> items;
 
   do {
@@ -555,7 +555,7 @@ toitdoc::Item* ToitdocParser::parse_item(int indentation) {
     // For example:
     //    - - foo  // should not be a list of list.
     //    - ```not a code segment```
-    // Once we have a new line, we can use the regular `_line_indentation`.
+    // Once we have a new line, we can use the regular `line_indentation_`.
     ConstructScope scope(this, ITEM_START, indentation);
 
     skip_whitespace();
@@ -577,11 +577,11 @@ toitdoc::Item* ToitdocParser::parse_item(int indentation) {
 toitdoc::Paragraph* ToitdocParser::parse_paragraph(int indentation_override) {
   ConstructScope scope(this,
                        PARAGRAPH,
-                       indentation_override >= 0 ? indentation_override : _line_indentation);
+                       indentation_override >= 0 ? indentation_override : line_indentation_);
 
   ListBuilder<toitdoc::Expression*> expressions;
 
-  int text_start = _index;
+  int text_start = index_;
   while (true) {
     bool is_special_char = false;
 
@@ -651,8 +651,8 @@ toitdoc::Paragraph* ToitdocParser::parse_paragraph(int indentation_override) {
     }
 
     // Extract all the text so far, so we can handle the special char.
-    if (text_start != _index) {
-      expressions.add(_new toitdoc::Text(make_symbol(text_start, _index)));
+    if (text_start != index_) {
+      expressions.add(_new toitdoc::Text(make_symbol(text_start, index_)));
     }
 
     if (c == '\0') break;
@@ -671,7 +671,7 @@ toitdoc::Paragraph* ToitdocParser::parse_paragraph(int indentation_override) {
       default: UNREACHABLE();
     }
 
-    text_start = _index;
+    text_start = index_;
   }
 
   ASSERT(peek() == '\0');
@@ -730,8 +730,8 @@ Symbol ToitdocParser::parse_delimited(int delimiter,
                                       bool keep_delimiters_and_escapes,
                                       const char* error_message) {
   ASSERT(peek() == delimiter);
-  int delimited_begin = _index;
-  int chunk_start = keep_delimiters_and_escapes ? _index : _index + 1;
+  int delimited_begin = index_;
+  int chunk_start = keep_delimiters_and_escapes ? index_ : index_ + 1;
   int c;
   std::string buffer;
   do {
@@ -743,9 +743,9 @@ Symbol ToitdocParser::parse_delimited(int delimiter,
         // Skip over the escaped character.
         advance(2);
       } else {
-        buffer += make_string(chunk_start, _index);
+        buffer += make_string(chunk_start, index_);
         advance();
-        chunk_start = _index;
+        chunk_start = index_;
         advance();
       }
     }
@@ -754,10 +754,10 @@ Symbol ToitdocParser::parse_delimited(int delimiter,
 
   int end_offset;
   if (c != delimiter) {
-    report_error(delimited_begin, _index, error_message);
-    end_offset = _index;
+    report_error(delimited_begin, index_, error_message);
+    end_offset = index_;
   } else {
-    end_offset = keep_delimiters_and_escapes ? _index + 1 : _index;
+    end_offset = keep_delimiters_and_escapes ? index_ + 1 : index_;
     advance();
   }
   buffer += make_string(chunk_start, end_offset);
@@ -766,21 +766,21 @@ Symbol ToitdocParser::parse_delimited(int delimiter,
 
 toitdoc::Ref* ToitdocParser::parse_ref() {
   ASSERT(peek() == '$');
-  int begin = _index + 1;
+  int begin = index_ + 1;
 
   bool is_parenthesized = look_ahead(1) == '(';
-  NullDiagnostics null_diagnostics(_diagnostics->source_manager());
+  NullDiagnostics null_diagnostics(diagnostics_->source_manager());
   // We never want errors from the scanner. This makes it possible to
   // read after the toitdoc-reference part in the scanner.
   // Note that this also means that we won't complain about tabs in
   // signature references (as in `$(foo\n\tbar)`).
-  Scanner scanner(_toitdoc_source, _symbols, &null_diagnostics);
+  Scanner scanner(toitdoc_source_, symbols_, &null_diagnostics);
   scanner.advance_to(begin);
-  Parser parser(_toitdoc_source, &scanner, _diagnostics);
-  auto ast_node = parser.parse_toitdoc_reference(&_index);
-  int id = _reference_asts.size();
-  _reference_asts.push_back(ast_node);
-  int end = _index;
+  Parser parser(toitdoc_source_, &scanner, diagnostics_);
+  auto ast_node = parser.parse_toitdoc_reference(&index_);
+  int id = reference_asts_.size();
+  reference_asts_.push_back(ast_node);
+  int end = index_;
   if (is_parenthesized) {
     begin++;
     if (look_ahead(-1) == ')') end--;
@@ -791,7 +791,7 @@ toitdoc::Ref* ToitdocParser::parse_ref() {
 void ToitdocParser::skip_comment(bool should_report_error) {
   ConstructScope scope(this, COMMENT);
   ASSERT(look_ahead(0) == '/' && look_ahead(1) == '*');
-  int begin = _index;
+  int begin = index_;
   advance(2);
   int c;
   do {
@@ -812,29 +812,29 @@ void ToitdocParser::skip_comment(bool should_report_error) {
     }
   } while (true);
   if (should_report_error) {
-    report_error(begin, _index, "Unterminated comment");
+    report_error(begin, index_, "Unterminated comment");
   }
 }
 
 void ToitdocParser::push_construct(Construct construct, int indentation) {
-  _indentation_stack.push_back(indentation);
-  _construct_stack.push_back(construct);
+  indentation_stack_.push_back(indentation);
+  construct_stack_.push_back(construct);
 }
 
 void ToitdocParser::pop_construct(Construct construct) {
-  ASSERT(_construct_stack.back() == construct);
-  _indentation_stack.pop_back();
-  _construct_stack.pop_back();
+  ASSERT(construct_stack_.back() == construct);
+  indentation_stack_.pop_back();
+  construct_stack_.pop_back();
   // Make the next 'peek' recompute whether we are at the end of the current construct.
   _is_at_dedent = false;
-  _next_indentation = -1;
-  _next_index = -1;
+  next_indentation_ = -1;
+  next_index_ = -1;
 }
 
 std::string ToitdocParser::make_string(int from, int to) {
   bool squash_spaces = false;
   bool replace_newlines_with_space = false;
-  switch (_construct_stack.back()) {
+  switch (construct_stack_.back()) {
     case CONTENTS:
     case SECTION_TITLE:
     case PARAGRAPH:
@@ -857,14 +857,14 @@ std::string ToitdocParser::make_string(int from, int to) {
   char* buffer = unvoid_cast<char*>(malloc(to - from + 1));
   int buffer_index = 0;
 
-  auto text = _toitdoc_source->text();
+  auto text = toitdoc_source_->text();
   bool last_was_space = false;
   bool last_was_newline = false;
   for (int i = from; i < to; i++) {
     if (last_was_newline) {
       last_was_newline = false;
       // Skip the indentation.
-      for (int j = 0; j < _indentation_stack.back(); j++) {
+      for (int j = 0; j < indentation_stack_.back(); j++) {
         // We might run over the allocated 'to', but that shouldn't be a problem.
         if (text[i] != ' ') break;
         i++;
@@ -901,7 +901,7 @@ int ToitdocParser::peek() {
   bool allows_empty_line = false; // May have empty lines. (Counter-example: paragraphs).
   bool must_be_indented = false;  // Whether the next lines must be indented or can be at the same level as the construct.
 
-  switch (_construct_stack.back()) {
+  switch (construct_stack_.back()) {
     case SECTION_TITLE:
     case ITEM_START:
       is_single_line = true;
@@ -948,58 +948,58 @@ int ToitdocParser::peek() {
       break;
 
     case COMMENT:
-      return _toitdoc_source->text()[_index];
+      return toitdoc_source_->text()[index_];
   }
 
   if (_is_at_dedent) return '\0';
-  auto text = _toitdoc_source->text();
+  auto text = toitdoc_source_->text();
   // The toit-doc source is null-terminated, so it's safe to read at out-of bounds.
-  ASSERT(_index <= _toitdoc_source->size());
-  ASSERT(text[_toitdoc_source->size()] == '\0');
-  int c = text[_index];
+  ASSERT(index_ <= toitdoc_source_->size());
+  ASSERT(text[toitdoc_source_->size()] == '\0');
+  int c = text[index_];
   if (is_newline(c)) {
     // Note that this branch always returns, and that it never returns '\r' or
     //   '\n' (only ' ' or '\0').
     // Callers thus don't need to worry about '\n', but can simply check for
     //   whitespace by looking for spaces.
     if (is_single_line) return '\0';
-    if (_next_index != -1) {
+    if (next_index_ != -1) {
       // We already computed the indentation once and know that we aren't at a dedent.
       return ' ';
     }
     // The source is null-terminated. It's safe to read out of bounds.
-    if (c == '\r' && text[_index + 1] == '\n') {
-      _next_index = _index + 2;
+    if (c == '\r' && text[index_ + 1] == '\n') {
+      next_index_ = index_ + 2;
     } else {
-      _next_index = _index + 1;
+      next_index_ = index_ + 1;
     }
-    _next_indentation = 0;
+    next_indentation_ = 0;
     bool skipped_over_multiple_lines = false;
     // The only whitespace we care for are spaces.
     // Otherwise we would need to deal with the width of '\t'.
-    while (text[_next_index] == ' ' || is_newline(text[_next_index])) {
-      if (is_newline(text[_next_index])) {
+    while (text[next_index_] == ' ' || is_newline(text[next_index_])) {
+      if (is_newline(text[next_index_])) {
         skipped_over_multiple_lines = true;
-        _next_indentation = 0;
+        next_indentation_ = 0;
       } else {
-        _next_indentation++;
+        next_indentation_++;
       }
       // The source is null-terminated. It's safe to read out of bounds.
-      if (text[_next_index] == '\r' && text[_next_index + 1] == '\n') {
-        _next_index += 2;
+      if (text[next_index_] == '\r' && text[next_index_ + 1] == '\n') {
+        next_index_ += 2;
       } else {
-        _next_index++;
+        next_index_++;
       }
     }
     if (skipped_over_multiple_lines && !allows_empty_line) {
       _is_at_dedent = true;
       return '\0';
     }
-    if (_next_indentation < _indentation_stack.back()) {
+    if (next_indentation_ < indentation_stack_.back()) {
       if (is_delimited) {
-        if (_next_indentation < _indentation_stack.back() &&
-            text[_next_index] != '\0') {
-          _diagnostics->report_error(_toitdoc_source->range(_index, _index + 1),
+        if (next_indentation_ < indentation_stack_.back() &&
+            text[next_index_] != '\0') {
+          diagnostics_->report_error(toitdoc_source_->range(index_, index_ + 1),
                                       "Bad indentation");
         }
         return ' ';
@@ -1007,7 +1007,7 @@ int ToitdocParser::peek() {
         _is_at_dedent = true;
         return '\0';
       }
-    } else if (_next_indentation == _indentation_stack.back()) {
+    } else if (next_indentation_ == indentation_stack_.back()) {
       if (must_be_indented) {
         _is_at_dedent = true;
         return '\0';
@@ -1023,9 +1023,9 @@ int ToitdocParser::peek() {
 }
 
 int ToitdocParser::look_ahead(int n) {
-  ASSERT(0 <= _index + n && _index + n <= _toitdoc_source->size());
+  ASSERT(0 <= index_ + n && index_ + n <= toitdoc_source_->size());
   if (n == 0) return peek();
-  return _toitdoc_source->text()[_index + n];
+  return toitdoc_source_->text()[index_ + n];
 }
 
 
@@ -1036,24 +1036,24 @@ void ToitdocParser::advance(int n) {
       _is_at_dedent = false;
       return;
     }
-    if (_next_index >= 0) {
-      _index = _next_index;
-      _line_indentation = _next_indentation;
-      _next_index = -1;
-      _next_indentation = -1;
+    if (next_index_ >= 0) {
+      index_ = next_index_;
+      line_indentation_ = next_indentation_;
+      next_index_ = -1;
+      next_indentation_ = -1;
     } else {
-      _index++;
+      index_++;
     }
   }
 }
 
 void ToitdocParser::skip_initial_whitespace() {
-  auto text = _toitdoc_source->text();
+  auto text = toitdoc_source_->text();
   int initial_indentation = 0;
   while (text[initial_indentation] == ' ') {
     initial_indentation++;
   }
-  _line_indentation = initial_indentation;
+  line_indentation_ = initial_indentation;
   skip_whitespace();
 }
 
@@ -1062,30 +1062,30 @@ void ToitdocParser::skip_whitespace() {
 }
 
 void ToitdocParser::report_error(int from, int to, const char* message) {
-  report_error(_toitdoc_source->range(from, to), message);
+  report_error(toitdoc_source_->range(from, to), message);
 }
 
 void ToitdocParser::report_error(Source::Range range, const char* message) {
   // If the diagnostics is (as expected) a ToitdocDiagnostics, it will change the
   //   error into a warning.
-  _diagnostics->report_error(range, message);
+  diagnostics_->report_error(range, message);
 }
 
 int CommentsManager::find_closest_before(ast::Node* node) {
   auto node_range = node->range();
-  if (node_range.is_before(_comments[0].range())) return -1;
-  if (_comments.last().range().is_before(node_range)) return _comments.length() - 1;
+  if (node_range.is_before(comments_[0].range())) return -1;
+  if (comments_.last().range().is_before(node_range)) return comments_.length() - 1;
 
-  if (_comments[_last_index].range().is_before(node_range) &&
-      node_range.is_before(_comments[_last_index + 1].range())) {
-    return _last_index;
+  if (comments_[last_index_].range().is_before(node_range) &&
+      node_range.is_before(comments_[last_index_ + 1].range())) {
+    return last_index_;
   }
   int start = 0;
-  int end = _comments.length() - 1;
+  int end = comments_.length() - 1;
   while (start < end) {
     int mid = start + (end - start) / 2;
-    if (_comments[mid].range().is_before(node_range)) {
-      if (node_range.is_before(_comments[mid + 1].range())) {
+    if (comments_[mid].range().is_before(node_range)) {
+      if (node_range.is_before(comments_[mid + 1].range())) {
         return mid;
       }
       start = mid + 1;
@@ -1106,10 +1106,10 @@ bool CommentsManager::is_attached(Source::Range previous,
                                   Source::Range next,
                                   bool allow_modifiers) {
   // Check that there is one newline, and otherwise only whitespace.
-  int start_offset = _source->offset_in_source(previous.to());
-  int end_offset = _source->offset_in_source(next.from());
+  int start_offset = source_->offset_in_source(previous.to());
+  int end_offset = source_->offset_in_source(next.from());
   int i = start_offset;
-  auto text = _source->text();
+  auto text = source_->text();
   while (i < end_offset and text[i] == ' ') i++;
   if (i == end_offset) return true;
   if (text[i] == '\r') i++;
@@ -1131,7 +1131,7 @@ Toitdoc<ast::Node*> CommentsManager::find_for(ast::Node* node) {
   auto not_found = Toitdoc<ast::Node*>::invalid();
   int closest = find_closest_before(node);
   if (closest == -1) return not_found;
-  if (!is_attached(_comments[closest].range(), node->range(), true)) return not_found;
+  if (!is_attached(comments_[closest].range(), node->range(), true)) return not_found;
   int closest_toit = closest;
   // Walk backward to find the closest toitdoc.
   // Usually it's the first attached comment, but we allow non-toitdocs:
@@ -1142,7 +1142,7 @@ Toitdoc<ast::Node*> CommentsManager::find_for(ast::Node* node) {
   //     class SomeClass:
   //
   while (true) {
-    if (_comments[closest_toit].is_toitdoc()) break;
+    if (comments_[closest_toit].is_toitdoc()) break;
     if (closest_toit == 0) return not_found;
     if (!is_attached(closest_toit - 1, closest_toit)) {
       return not_found;
@@ -1157,28 +1157,28 @@ Toitdoc<ast::Node*> CommentsManager::make_ast_toitdoc(int index) {
   // precede and succeed it.
   int first_toit = index;
   int last_toit = index;
-  if (!_comments[index].is_multiline()) {
+  if (!comments_[index].is_multiline()) {
     while (first_toit > 0 &&
-          !_comments[first_toit - 1].is_multiline() &&
-          _comments[first_toit - 1].is_toitdoc() &&
+          !comments_[first_toit - 1].is_multiline() &&
+          comments_[first_toit - 1].is_toitdoc() &&
           is_attached(first_toit - 1, first_toit)) {
       first_toit--;
     }
-    while (last_toit < _comments.length() - 1 &&
-          !_comments[last_toit + 1].is_multiline() &&
-          _comments[last_toit + 1].is_toitdoc() &&
+    while (last_toit < comments_.length() - 1 &&
+          !comments_[last_toit + 1].is_multiline() &&
+          comments_[last_toit + 1].is_toitdoc() &&
           is_attached(last_toit, last_toit + 1)) {
       last_toit++;
     }
   }
 
-  auto range = _comments[first_toit].range().extend(_comments[last_toit].range());
-  int from_offset = _source->offset_in_source(range.from());
-  int to_offset = _source->offset_in_source(range.to());
-  ToitdocSource* collected_text = _comments[first_toit].is_multiline()
-      ? extract_multiline_comment_text(_source, from_offset, to_offset)
-      : extract_singleline_comment_text(_source, from_offset, to_offset);
-  ToitdocParser parser(collected_text, _symbols, _diagnostics);
+  auto range = comments_[first_toit].range().extend(comments_[last_toit].range());
+  int from_offset = source_->offset_in_source(range.from());
+  int to_offset = source_->offset_in_source(range.to());
+  ToitdocSource* collected_text = comments_[first_toit].is_multiline()
+      ? extract_multiline_comment_text(source_, from_offset, to_offset)
+      : extract_singleline_comment_text(source_, from_offset, to_offset);
+  ToitdocParser parser(collected_text, symbols_, diagnostics_);
   return parser.parse();
 }
 

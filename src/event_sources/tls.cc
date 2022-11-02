@@ -20,17 +20,17 @@
 
 namespace toit {
 
-TLSEventSource* TLSEventSource::_instance = null;
+TLSEventSource* TLSEventSource::instance_ = null;
 
 TLSEventSource::TLSEventSource()
     : LazyEventSource("TLS", 1)
     , Thread("TLS") {
-  _instance = this;
+  instance_ = this;
 }
 
 TLSEventSource::~TLSEventSource() {
   ASSERT(_sockets_changed == null);
-  _instance = null;
+  instance_ = null;
 }
 
 bool TLSEventSource::start() {
@@ -43,7 +43,7 @@ bool TLSEventSource::start() {
     _sockets_changed = null;
     return false;
   }
-  _stop = false;
+  stop_ = false;
   return true;
 }
 
@@ -51,7 +51,7 @@ void TLSEventSource::stop() {
   {
     // Stop the main thread.
     Locker locker(mutex());
-    _stop = true;
+    stop_ = true;
 
     OS::signal(_sockets_changed);
   }
@@ -63,23 +63,23 @@ void TLSEventSource::stop() {
 
 void TLSEventSource::handshake(TLSSocket* socket) {
   Locker locker(mutex());
-  _sockets.append(socket);
+  sockets_.append(socket);
   OS::signal(_sockets_changed);
 }
 
 void TLSEventSource::on_unregister_resource(Locker& locker, Resource* r) {
   ASSERT(is_locked());
   TLSSocket* socket = r->as<TLSSocket*>();
-  _sockets.remove(socket);
+  sockets_.remove(socket);
 }
 
 void TLSEventSource::entry() {
   Locker locker(mutex());
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + EVENT_SOURCE_MALLOC_TAG);
 
-  while (!_stop) {
+  while (!stop_) {
     while (true) {
-      TLSSocket* socket = _sockets.remove_first();
+      TLSSocket* socket = sockets_.remove_first();
       if (socket == null) break;
 
       // Keep locker while handshake is going on, to avoid conflicting remove.

@@ -30,7 +30,7 @@ class Diagnostics;
 
 class Filesystem {
  public:
-  virtual ~Filesystem() { free(const_cast<char*>(_cwd)); }
+  virtual ~Filesystem() { free(const_cast<char*>(cwd_)); }
 
   /// Can be called multiple times.
   /// Subclasses must ensure that multiple calls don't lead to problems.
@@ -109,10 +109,10 @@ class Filesystem {
 
   std::string _relative(const std::string& path, std::string to);
 
-  UnorderedMap<std::string, InterceptedFile> _intercepted;
-  const char* _library_root = null;
-  const char* _vessel_root = null;
-  const char* _cwd = null;
+  UnorderedMap<std::string, InterceptedFile> intercepted_;
+  const char* library_root_ = null;
+  const char* vessel_root_ = null;
+  const char* cwd_ = null;
 };
 
 } // namespace compiler

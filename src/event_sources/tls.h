@@ -35,7 +35,7 @@ class TLSSocket : public Resource, public TLSSocketList::Element {
 
 class TLSEventSource : public LazyEventSource, public Thread {
  public:
-  static TLSEventSource* instance() { return _instance; }
+  static TLSEventSource* instance() { return instance_; }
 
   TLSEventSource();
 
@@ -45,7 +45,7 @@ class TLSEventSource : public LazyEventSource, public Thread {
 
  protected:
   friend class LazyEventSource;
-  static TLSEventSource* _instance;
+  static TLSEventSource* instance_;
 
   ~TLSEventSource();
 
@@ -56,8 +56,8 @@ class TLSEventSource : public LazyEventSource, public Thread {
   void entry() override;
 
   ConditionVariable* _sockets_changed = null;
-  TLSSocketList _sockets;
-  bool _stop = false;
+  TLSSocketList sockets_;
+  bool stop_ = false;
 };
 
 } // namespace toit

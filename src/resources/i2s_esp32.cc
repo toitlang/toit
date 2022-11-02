@@ -74,24 +74,24 @@ class I2SResource: public EventQueueResource {
   TAG(I2SResource);
   I2SResource(I2SResourceGroup* group, i2s_port_t port, int alignment, QueueHandle_t queue)
     : EventQueueResource(group, queue)
-    , _port(port)
-    , _alignment(alignment) { }
+    , port_(port)
+    , alignment_(alignment) { }
 
   ~I2SResource() override {
     SystemEventSource::instance()->run([&]() -> void {
-      FATAL_IF_NOT_ESP_OK(i2s_driver_uninstall(_port));
+      FATAL_IF_NOT_ESP_OK(i2s_driver_uninstall(port_));
     });
-    i2s_ports.put(_port);
+    i2s_ports.put(port_);
   }
 
-  i2s_port_t port() const { return _port; }
-  int alignment() const { return _alignment; }
+  i2s_port_t port() const { return port_; }
+  int alignment() const { return alignment_; }
 
   bool receive_event(word* data) override;
 
  private:
-  i2s_port_t _port;
-  int _alignment;
+  i2s_port_t port_;
+  int alignment_;
 };
 
 bool I2SResource::receive_event(word* data) {

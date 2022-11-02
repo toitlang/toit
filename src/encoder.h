@@ -58,54 +58,54 @@ class Buffer {
 
 class MallocedBuffer : public Buffer {
  public:
-  explicit MallocedBuffer(int length) : _buffer(null) {
+  explicit MallocedBuffer(int length) : buffer_(null) {
     allocate(length);
   }
 
   void allocate(int length) {
     ASSERT(length > 0);
-    ASSERT(_buffer == null);
-    _buffer = reinterpret_cast<uint8*>(malloc(length));
-    _length = (_buffer != null) ? length : 0;
-    _pos = 0;
+    ASSERT(buffer_ == null);
+    buffer_ = reinterpret_cast<uint8*>(malloc(length));
+    length_ = (buffer_ != null) ? length : 0;
+    pos_ = 0;
   }
 
   ~MallocedBuffer() {
-    free(_buffer);
+    free(buffer_);
   }
 
   virtual void put_byte(uint8 c) {
-    if (_pos < _length) _buffer[_pos] = c;
-    _pos++;
+    if (pos_ < length_) buffer_[pos_] = c;
+    pos_++;
   }
 
-  bool has_content() const { return _length > 0; }
-  uint8* content() const { return _buffer; }
+  bool has_content() const { return length_ > 0; }
+  uint8* content() const { return buffer_; }
 
   uint8* take_content() {
-    uint8* result = _buffer;
-    _buffer = null;
-    _length = 0;
+    uint8* result = buffer_;
+    buffer_ = null;
+    length_ = 0;
     return result;
   }
 
   virtual bool has_overflow() {
-    return _pos >= _length;
+    return pos_ >= length_;
   }
 
-  int size() { return _pos; }
+  int size() { return pos_; }
 
  private:
-  uint8* _buffer;
-  int _length;
-  int _pos;
+  uint8* buffer_;
+  int length_;
+  int pos_;
 };
 
 class Encoder {
  public:
-  Encoder(Buffer* buffer) : _buffer(buffer) {}
+  Encoder(Buffer* buffer) : buffer_(buffer) {}
 
-  Buffer* buffer() { return _buffer; }
+  Buffer* buffer() { return buffer_; }
 
   void write_byte(uint8 c);
   void write_int(int64 value);
@@ -118,10 +118,10 @@ class Encoder {
   void write_int32(int64 value);
 
  protected:
-  Buffer* buffer() const { return _buffer; }
+  Buffer* buffer() const { return buffer_; }
 
  private:
-  Buffer* _buffer;
+  Buffer* buffer_;
 };
 
 class ProgramOrientedEncoder : public Encoder {
@@ -135,10 +135,10 @@ class ProgramOrientedEncoder : public Encoder {
 
   bool encode_profile(Profiler* profile, String* title, int cutoff);
 
-  Program* program() { return _program; }
+  Program* program() { return program_; }
 
  private:
-  Program* _program;
+  Program* program_;
 };
 
 

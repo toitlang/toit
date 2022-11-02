@@ -21,7 +21,7 @@ namespace compiler {
 class BoxVisitor : public ir::ReplacingVisitor {
  public:
   BoxVisitor(ir::Constructor* constructor, ir::Field* field)
-      : _constructor(constructor), _field(field) {}
+      : constructor_(constructor), field_(field) {}
 
   ir::Method* visit_Method(toit::compiler::ir::Method* node) {
     auto new_method = ir::ReplacingVisitor::visit_Method(node);
@@ -63,14 +63,14 @@ class BoxVisitor : public ir::ReplacingVisitor {
     auto new_reference = ir::ReplacingVisitor::visit_ReferenceLocal(node);
     ASSERT(new_reference == node);
     auto local = node->target();
-    auto probe = _capture_replacements.find(local);
-    if (probe != _capture_replacements.end()) {
+    auto probe = capture_replacements_.find(local);
+    if (probe != capture_replacements_.end()) {
       auto param = probe->second.first;
       auto depth = probe->second.second;
       node = _new ir::ReferenceLocal(param, node->block_depth() - depth, node->range());
     }
     if (!needs_boxing(local)) return node;
-    auto field_load = _new ir::FieldLoad(node, _field, node->range());
+    auto field_load = _new ir::FieldLoad(node, field_, node->range());
     field_load->mark_box_load();
     return field_load;
   }
@@ -79,8 +79,8 @@ class BoxVisitor : public ir::ReplacingVisitor {
     auto new_assig = ir::ReplacingVisitor::visit_AssignmentLocal(node);
     ASSERT(new_assig == node);
     auto local = node->local();
-    auto probe = _capture_replacements.find(local);
-    if (probe != _capture_replacements.end()) {
+    auto probe = capture_replacements_.find(local);
+    if (probe != capture_replacements_.end()) {
       auto param = probe->second.first;
       auto depth = probe->second.second;
       node = _new ir::AssignmentLocal(param, node->block_depth() - depth, node->right(), node->range());
@@ -88,7 +88,7 @@ class BoxVisitor : public ir::ReplacingVisitor {
     if (!needs_boxing(local)) return node;
     auto field_store = _new ir::FieldStore(
         _new ir::ReferenceLocal(node->local(), node->block_depth(), node->range()),
-        _field,
+        field_,
         node->right(),
         node->range());
     field_store->mark_box_store();
@@ -105,7 +105,7 @@ class BoxVisitor : public ir::ReplacingVisitor {
       // box is "refreshed" at every iteration.
       auto range = loop_variable->range();
       auto old_value_load = _new ir::FieldLoad(_new ir::ReferenceLocal(loop_variable, 0, range),
-                                               _field,
+                                               field_,
                                                range);
       old_value_load->mark_box_load();
       auto new_box = create_box(old_value_load, range);
@@ -154,19 +154,19 @@ class BoxVisitor : public ir::ReplacingVisitor {
       }
       node->code()->set_parameters(new_params.build());
     }
-    auto old_replacements = _capture_replacements;
-    _capture_replacements = capture_replacements;
+    auto old_replacements = capture_replacements_;
+    capture_replacements_ = capture_replacements;
     auto new_code = node->code()->accept(this);
     ASSERT(new_code = node->code());
-    _capture_replacements = old_replacements;
+    capture_replacements_ = old_replacements;
     return node;
   }
 
  private:
   bool _should_box = true;
-  ir::Constructor* _constructor;
-  ir::Field* _field;
-  Map<ir::Local*, std::pair<ir::CapturedLocal*, int>> _capture_replacements;
+  ir::Constructor* constructor_;
+  ir::Field* field_;
+  Map<ir::Local*, std::pair<ir::CapturedLocal*, int>> capture_replacements_;
 
   bool needs_boxing(ir::Local* local) {
     return _should_box &&
@@ -179,7 +179,7 @@ class BoxVisitor : public ir::ReplacingVisitor {
   ir::Expression* create_box(ir::Expression* initial_value, Source::Range range) {
     CallBuilder call_builder(range);
     call_builder.add_argument(initial_value, Symbol::invalid());
-    auto box = call_builder.call_constructor(new ir::ReferenceMethod(_constructor, range));
+    auto box = call_builder.call_constructor(new ir::ReferenceMethod(constructor_, range));
     box->as_CallConstructor()->mark_box_construction();
     return box;
   }

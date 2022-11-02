@@ -97,9 +97,9 @@ void OS::set_writable(ProgramBlock* block, bool value) {
 }
 
 void OS::tear_down() {
-  free(_global_mutex);
-  free(_scheduler_mutex);
-  free(_resource_mutex);
+  free(global_mutex_);
+  free(scheduler_mutex_);
+  free(resource_mutex_);
 }
 
 const char* OS::get_platform() {

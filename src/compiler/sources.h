@@ -38,7 +38,7 @@ class Source {
    public:
     static Position invalid() { return Position(-1); }
 
-    bool is_valid() const { return _token != -1; }
+    bool is_valid() const { return token_ != -1; }
 
     /// Whether this position is before the [other] position.
     ///
@@ -46,15 +46,15 @@ class Source {
     /// However, will return a deterministic response for positions
     /// from two different files.
     bool is_before(const Position& other) const {
-      return _token < other._token;
+      return token_ < other.token_;
     }
 
     size_t hash() const {
-      return _token;
+      return token_;
     }
 
     bool operator==(const Position& other) const {
-      return _token == other._token;
+      return token_ == other.token_;
     }
 
     bool operator!=(const Position& other) const {
@@ -63,18 +63,18 @@ class Source {
 
    public:  // Only for `Source` implementations and the location_id (in the source_mapping).
     static Position from_token(int token) { return Position(token); }
-    int token() const { return _token; }
+    int token() const { return token_; }
 
    private:
-    explicit Position(int token) : _token(token) { }
+    explicit Position(int token) : token_(token) { }
 
-    int _token;
+    int token_;
   };
 
   class Range {
    public:
-    explicit Range(Position position) : _from(position), _to(position) {}
-    Range(Position from, Position to) : _from(from), _to(to) {
+    explicit Range(Position position) : from_(position), to_(position) {}
+    Range(Position from, Position to) : from_(from), to_(to) {
       ASSERT((from.is_valid() && to.is_valid()) || (!from.is_valid() && !to.is_valid()));
     }
 
@@ -87,7 +87,7 @@ class Source {
     }
     [[nodiscard]] Range extend(Position to) const { return extend(Range(to, to)); }
 
-    bool is_valid() const { return _from.is_valid(); }
+    bool is_valid() const { return from_.is_valid(); }
 
     /// Whether this range is before the [other] range.
     ///
@@ -97,21 +97,21 @@ class Source {
     /// However, will return a deterministic response for ranges
     /// from two different files.
     bool is_before(const Range& other) const {
-      return _from.is_before(other.from());
+      return from_.is_before(other.from());
     }
 
     Position from() const {
       ASSERT(is_valid());
-      return _from;
+      return from_;
     }
 
     Position to() const {
       ASSERT(is_valid());
-      return _to;
+      return to_;
     }
 
     bool operator==(const Range& other) const {
-      return _from == other._from && _to == other._to;
+      return from_ == other.from_ && to_ == other.to_;
     }
 
     bool operator!=(const Range& other) const {
@@ -119,12 +119,12 @@ class Source {
     }
 
     size_t hash() const {
-      return (_from.hash() << 13) ^ (_to.hash());
+      return (from_.hash() << 13) ^ (to_.hash());
     }
 
    private:
-    Position _from;
-    Position _to;
+    Position from_;
+    Position to_;
   };
 
   struct Location {
@@ -203,10 +203,10 @@ class SourceManager {
   static constexpr const char* const VIRTUAL_FILE_PREFIX = "///";
 
   SourceManager(Filesystem* filesystem)
-      : _filesystem(filesystem)
-      , _cached_source_entry(null)
-      , _cached_offset(-1)
-      , _cached_location(null, 0, 0, 0, 0) { }
+      : filesystem_(filesystem)
+      , cached_source_entry_(null)
+      , cached_offset_(-1)
+      , cached_location_(null, 0, 0, 0, 0) { }
 
   /// Loads the given file.
   ///
@@ -233,16 +233,16 @@ class SourceManager {
   bool is_loaded(const std::string& path);
 
  private:
-  Filesystem* _filesystem;
+  Filesystem* filesystem_;
 
   int _next_offset = 0;
 
-  std::vector<SourceManagerSource*> _sources;
-  UnorderedMap<std::string, SourceManagerSource*> _path_to_source;
+  std::vector<SourceManagerSource*> sources_;
+  UnorderedMap<std::string, SourceManagerSource*> path_to_source_;
 
-  mutable SourceManagerSource* _cached_source_entry;
-  mutable int _cached_offset;
-  mutable Source::Location _cached_location;
+  mutable SourceManagerSource* cached_source_entry_;
+  mutable int cached_offset_;
+  mutable Source::Location cached_location_;
 
   SourceManagerSource* register_source(const std::string& path,
                                        const std::string& package_id,

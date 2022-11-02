@@ -56,7 +56,7 @@ Array* ObjectHeap::allocate_array(int length, Object* filler) {
     return null;  // Allocation failure.
   }
   // Initialize object.
-  result->_set_header(_program, _program->array_class_id());
+  result->_set_header(program_, program_->array_class_id());
   Array::cast(result)->_initialize_no_write_barrier(length, filler);
   return Array::cast(result);
 }
@@ -68,7 +68,7 @@ ByteArray* ObjectHeap::allocate_internal_byte_array(int length) {
   ByteArray* result = unvoid_cast<ByteArray*>(_allocate_raw(ByteArray::internal_allocation_size(length)));
   if (result == null) return null;  // Allocation failure.
   // Initialize object.
-  result->_set_header(_program, _program->byte_array_class_id());
+  result->_set_header(program_, program_->byte_array_class_id());
   result->_initialize(length);
   return result;
 }
@@ -77,7 +77,7 @@ Double* ObjectHeap::allocate_double(double value) {
   HeapObject* result = _allocate_raw(Double::allocation_size());
   if (result == null) return null;  // Allocation failure.
   // Initialize object.
-  result->_set_header(_program, _program->double_class_id());
+  result->_set_header(program_, program_->double_class_id());
   Double::cast(result)->_initialize(value);
   return Double::cast(result);
 }
@@ -86,7 +86,7 @@ LargeInteger* ObjectHeap::allocate_large_integer(int64 value) {
   HeapObject* result = _allocate_raw(LargeInteger::allocation_size());
   if (result == null) return null;  // Allocation failure.
   // Initialize object.
-  result->_set_header(_program, _program->large_integer_class_id());
+  result->_set_header(program_, program_->large_integer_class_id());
   LargeInteger::cast(result)->_initialize(value);
   return LargeInteger::cast(result);
 }
@@ -119,11 +119,11 @@ InitialMemoryManager::~InitialMemoryManager() {
 }
 
 ObjectHeap::ObjectHeap(Program* program, Process* owner, Chunk* initial_chunk)
-    : _program(program)
-    , _owner(owner)
-    , _two_space_heap(program, this, initial_chunk)
-    , _external_memory(0)
-    , _total_external_memory(0) {
+    : program_(program)
+    , owner_(owner)
+    , two_space_heap_(program, this, initial_chunk)
+    , external_memory_(0)
+    , total_external_memory_(0) {
   if (!initial_chunk) return;
   _task = allocate_task();
   ASSERT(_task);  // Should not fail, because a newly created heap has at least
@@ -131,32 +131,32 @@ ObjectHeap::ObjectHeap(Program* program, Process* owner, Chunk* initial_chunk)
   _global_variables = program->global_variables.copy();
   // Currently the heap is empty and it has one block allocated for objects.
   update_pending_limit();
-  _limit = _pending_limit;
+  limit_ = pending_limit_;
 }
 
 ObjectHeap::~ObjectHeap() {
   free(_global_variables);
 
-  while (auto finalizer = _registered_finalizers.remove_first()) {
+  while (auto finalizer = registered_finalizers_.remove_first()) {
     delete finalizer;
   }
 
-  while (auto finalizer = _runnable_finalizers.remove_first()) {
+  while (auto finalizer = runnable_finalizers_.remove_first()) {
     delete finalizer;
   }
 
-  while (auto finalizer = _registered_vm_finalizers.remove_first()) {
+  while (auto finalizer = registered_vm_finalizers_.remove_first()) {
     finalizer->free_external_memory(owner());
     delete finalizer;
   }
 
-  delete _finalizer_notifier;
+  delete finalizer_notifier_;
 
-  ASSERT(_object_notifiers.is_empty());
+  ASSERT(object_notifiers_.is_empty());
 }
 
 word ObjectHeap::update_pending_limit() {
-  word length = _two_space_heap.size() + _external_memory;
+  word length = two_space_heap_.size() + external_memory_;
   // We call a new GC when the heap size has doubled, in an attempt to do
   // meaningful work before the next GC, but while still not allowing the heap
   // to grow too much when there is garbage to be found.
@@ -166,31 +166,31 @@ word ObjectHeap::update_pending_limit() {
     // If the user set a max then we feel more justified in using up to that
     // much memory, so we allow the heap to quadruple before the next GC, but
     // limited by the max.
-    new_limit = Utils::min(_max_heap_size, new_limit * 2);
+    new_limit = Utils::min(max_heap_size_, new_limit * 2);
   }
-  _pending_limit = new_limit;
+  pending_limit_ = new_limit;
   return new_limit;
 }
 
 word ObjectHeap::max_external_allocation() {
   if (!has_limit() && !has_max_heap_size()) return _UNLIMITED_EXPANSION;
-  word total = _external_memory + _two_space_heap.size();
-  if (total >= _limit) return 0;
-  return _limit - total;
+  word total = external_memory_ + two_space_heap_.size();
+  if (total >= limit_) return 0;
+  return limit_ - total;
 }
 
 void ObjectHeap::register_external_allocation(word size) {
   if (size == 0) return;
   // Overloading on an atomic type makes an atomic += and returns new value.
-  _external_memory += size;
-  _total_external_memory += size;
+  external_memory_ += size;
+  total_external_memory_ += size;
 }
 
 void ObjectHeap::unregister_external_allocation(word size) {
   if (size == 0) return;
   // Overloading on an atomic type makes an atomic += and returns new value.
-  uword old_external_memory = _external_memory;
-  uword external_memory = _external_memory -= size;
+  uword old_external_memory = external_memory_;
+  uword external_memory = external_memory_ -= size;
   USE(old_external_memory);
   USE(external_memory);
   // Check that the external memory does not underflow into 'negative' range.
@@ -203,7 +203,7 @@ ByteArray* ObjectHeap::allocate_external_byte_array(int length, uint8* memory, b
   ByteArray* result = unvoid_cast<ByteArray*>(_allocate_raw(ByteArray::external_allocation_size()));
   if (result == null) return null;  // Allocation failure.
   // Initialize object.
-  result->_set_header(_program, _program->byte_array_class_id());
+  result->_set_header(program_, program_->byte_array_class_id());
   result->_initialize_external_memory(length, memory, clear_content);
   //  We add a specialized finalizer on the result so we can free the external memory.
   if (dispose) {
@@ -293,22 +293,22 @@ void ObjectHeap::iterate_roots(RootCallback* callback) {
   // Process the roots in the object heap.
   callback->do_root(reinterpret_cast<Object**>(&_task));
   callback->do_roots(_global_variables, program()->global_variables.length());
-  for (auto root : _external_roots) callback->do_roots(root->slot(), 1);
+  for (auto root : external_roots_) callback->do_roots(root->slot(), 1);
 
-  // Process roots in the _object_notifiers list.
-  for (ObjectNotifier* n : _object_notifiers) n->roots_do(callback);
-  // Process roots in the _runnable_finalizers.
-  for (FinalizerNode* node : _runnable_finalizers) {
+  // Process roots in the object_notifiers_ list.
+  for (ObjectNotifier* n : object_notifiers_) n->roots_do(callback);
+  // Process roots in the runnable_finalizers_.
+  for (FinalizerNode* node : runnable_finalizers_) {
     node->roots_do(callback);
   }
 }
 
 GcType ObjectHeap::gc(bool try_hard) {
-  GcType type = _two_space_heap.collect_new_space(try_hard);
-  _gc_count++;
+  GcType type = two_space_heap_.collect_new_space(try_hard);
+  gc_count_++;
   if (type != NEW_SPACE_GC) {
-    _full_gc_count++;
-    if (type == COMPACTING_GC) _full_compacting_gc_count++;
+    full_gc_count_++;
+    if (type == COMPACTING_GC) full_compacting_gc_count_++;
     // Update the pending limit that will be installed after the current
     // primitive (that caused the GC) completes.
     update_pending_limit();
@@ -316,26 +316,26 @@ GcType ObjectHeap::gc(bool try_hard) {
   // Use only the hard limit for the rest of this primitive.  We don't want to
   // trigger any heuristic GCs before the primitive is over or we might cause a
   // triple GC, which throws an exception.
-  _limit = _max_heap_size;
+  limit_ = max_heap_size_;
   return type;
 }
 
 // Install a new allocation limit at the end of a primitive that caused a GC.
 void ObjectHeap::install_heap_limit() {
-  word total = _external_memory + _two_space_heap.size();
-  if (total > _pending_limit) {
+  word total = external_memory_ + two_space_heap_.size();
+  if (total > pending_limit_) {
     // If we already went over the heuristic limit that triggers a new GC we set
     // a flag that means the next scavenge won't promote into old space.
-    _two_space_heap.set_promotion_failed();
+    two_space_heap_.set_promotion_failed();
   }
-  _limit = _pending_limit;
+  limit_ = pending_limit_;
 }
 
 void ObjectHeap::process_registered_finalizers(RootCallback* ss, LivenessOracle* from_space) {
   // Process the registered finalizer list.
-  if (!_registered_finalizers.is_empty() && Flags::tracegc && Flags::verbose) printf(" - Processing registered finalizers\n");
+  if (!registered_finalizers_.is_empty() && Flags::tracegc && Flags::verbose) printf(" - Processing registered finalizers\n");
   ObjectHeap* heap = this;
-  _registered_finalizers.remove_wherever([ss, heap, from_space](FinalizerNode* node) -> bool {
+  registered_finalizers_.remove_wherever([ss, heap, from_space](FinalizerNode* node) -> bool {
     bool is_alive = from_space->is_alive(node->key());
     if (!is_alive) {
       // Clear the key so it is not retained.
@@ -346,14 +346,14 @@ void ObjectHeap::process_registered_finalizers(RootCallback* ss, LivenessOracle*
     if (is_alive) return false;  // Keep node in list.
     // From here down, the node is going to be unlinked by returning true.
     if (Flags::tracegc && Flags::verbose) printf(" - Finalizer %p is unreachable\n", node);
-    heap->_runnable_finalizers.append(node);
+    heap->runnable_finalizers_.append(node);
     return true; // Remove node from list.
   });
 }
 
 void ObjectHeap::process_registered_vm_finalizers(RootCallback* ss, LivenessOracle* from_space) {
   // Process registered VM finalizers.
-  _registered_vm_finalizers.remove_wherever([ss, this, from_space](VMFinalizerNode* node) -> bool {
+  registered_vm_finalizers_.remove_wherever([ss, this, from_space](VMFinalizerNode* node) -> bool {
     bool is_alive = from_space->is_alive(node->key());
 
     if (is_alive && Flags::tracegc && Flags::verbose) printf(" - Finalizer %p is alive\n", node);
@@ -369,7 +369,7 @@ void ObjectHeap::process_registered_vm_finalizers(RootCallback* ss, LivenessOrac
 }
 
 bool ObjectHeap::has_finalizer(HeapObject* key, Object* lambda) {
-  for (FinalizerNode* node : _registered_finalizers) {
+  for (FinalizerNode* node : registered_finalizers_) {
     if (node->key() == key) return true;
   }
   return false;
@@ -380,7 +380,7 @@ bool ObjectHeap::add_finalizer(HeapObject* key, Object* lambda) {
   ASSERT(!has_finalizer(key, lambda));
   auto node = _new FinalizerNode(key, lambda);
   if (node == null) return false;  // Allocation failed.
-  _registered_finalizers.append(node);
+  registered_finalizers_.append(node);
   return true;
 }
 
@@ -388,13 +388,13 @@ bool ObjectHeap::add_vm_finalizer(HeapObject* key) {
   // We should already have checked whether the object is already registered.
   auto node = _new VMFinalizerNode(key);
   if (node == null) return false;  // Allocation failed.
-  _registered_vm_finalizers.append(node);
+  registered_vm_finalizers_.append(node);
   return true;
 }
 
 bool ObjectHeap::remove_finalizer(HeapObject* key) {
   bool found = false;
-  _registered_finalizers.remove_wherever([key, &found](FinalizerNode* node) -> bool {
+  registered_finalizers_.remove_wherever([key, &found](FinalizerNode* node) -> bool {
     if (node->key() == key) {
       delete node;
       found = true;
@@ -407,7 +407,7 @@ bool ObjectHeap::remove_finalizer(HeapObject* key) {
 
 bool ObjectHeap::remove_vm_finalizer(HeapObject* key) {
   bool found = false;
-  _registered_vm_finalizers.remove_wherever([key, &found](VMFinalizerNode* node) -> bool {
+  registered_vm_finalizers_.remove_wherever([key, &found](VMFinalizerNode* node) -> bool {
     if (node->key() == key) {
       delete node;
       found = true;
@@ -419,7 +419,7 @@ bool ObjectHeap::remove_vm_finalizer(HeapObject* key) {
 }
 
 Object* ObjectHeap::next_finalizer_to_run() {
-  FinalizerNode* node = _runnable_finalizers.remove_first();
+  FinalizerNode* node = runnable_finalizers_.remove_first();
   if (node == null) {
     return program()->null_object();
   }
@@ -430,19 +430,19 @@ Object* ObjectHeap::next_finalizer_to_run() {
 }
 
 ObjectNotifier::ObjectNotifier(Process* process, Object* object)
-    : _process(process)
-    , _object(object)
-    , _message(null) {
-  _process->object_heap()->_object_notifiers.prepend(this);
+    : process_(process)
+    , object_(object)
+    , message_(null) {
+  process_->object_heap()->object_notifiers_.prepend(this);
 }
 
 ObjectNotifier::~ObjectNotifier() {
   unlink();
-  if (_message && _message->clear_object_notifier()) delete _message;
+  if (message_ && message_->clear_object_notifier()) delete message_;
 }
 
 void ObjectNotifier::roots_do(RootCallback* cb) {
-  cb->do_root(reinterpret_cast<Object**>(&_object));
+  cb->do_root(reinterpret_cast<Object**>(&object_));
 }
 
 }

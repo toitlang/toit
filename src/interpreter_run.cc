@@ -141,14 +141,14 @@ Method Program::find_method(Object* receiver, int offset) {
 // CHECK_STACK_OVERFLOW checks if there is enough stack space to call
 // the given target method.
 #define CHECK_STACK_OVERFLOW(target)                                  \
-  if (sp - target.max_height() < _watermark) {                        \
+  if (sp - target.max_height() < watermark_) {                        \
     OverflowState state;                                              \
     sp = handle_stack_overflow(sp, &state, target);                   \
     switch (state) {                                                  \
       case OVERFLOW_RESUME:                                           \
         break;                                                        \
       case OVERFLOW_PREEMPT:                                          \
-        _preemption_method_header_bcp = target.header_bcp();          \
+        preemption_method_header_bcp_ = target.header_bcp();          \
         static_assert(FRAME_SIZE == 2, "Unexpected frame size");      \
         PUSH(reinterpret_cast<Object*>(target.entry()));              \
         PUSH(program->frame_marker());                                \
@@ -161,9 +161,9 @@ Method Program::find_method(Object* receiver, int offset) {
 
 // CHECK_PREEMPT checks for preemption by looking at the watermark.
 #define CHECK_PREEMPT(entry)                                          \
-  if (_watermark == PREEMPTION_MARKER) {                              \
-    _watermark = null;                                                \
-    _preemption_method_header_bcp = Method::header_from_entry(entry); \
+  if (watermark_ == PREEMPTION_MARKER) {                              \
+    watermark_ = null;                                                \
+    preemption_method_header_bcp_ = Method::header_from_entry(entry); \
     static_assert(FRAME_SIZE == 2, "Unexpected frame size");          \
     PUSH(reinterpret_cast<Object*>(bcp));                             \
     PUSH(program->frame_marker());                                    \
@@ -253,9 +253,9 @@ Interpreter::Result Interpreter::run() {
 #undef LABEL
 
   // Interpretation state.
-  _preemption_method_header_bcp = null;
+  preemption_method_header_bcp_ = null;
   Object** sp = load_stack();
-  Program* program = _process->program();
+  Program* program = process_->program();
   uword _index_ = 0;
   static_assert(FRAME_SIZE == 2, "Unexpected frame size");
   {
@@ -397,7 +397,7 @@ Interpreter::Result Interpreter::run() {
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(LOAD_GLOBAL_VAR, global_index);
-    Object** global_variables = _process->object_heap()->global_variables();
+    Object** global_variables = process_->object_heap()->global_variables();
     PUSH(global_variables[global_index]);
   OPCODE_END();
 
@@ -408,12 +408,12 @@ Interpreter::Result Interpreter::run() {
       Method target = program->program_failure();
       CALL_METHOD(target, LOAD_GLOBAL_VAR_DYNAMIC_LENGTH);
     }
-    Object** global_variables = _process->object_heap()->global_variables();
+    Object** global_variables = process_->object_heap()->global_variables();
     PUSH(global_variables[global_index]);
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(LOAD_GLOBAL_VAR_LAZY, global_index);
-    Object** global_variables = _process->object_heap()->global_variables();
+    Object** global_variables = process_->object_heap()->global_variables();
     Object* value = global_variables[global_index];
     if (is_instance(value)) {
       Instance* instance = Instance::cast(value);
@@ -431,7 +431,7 @@ Interpreter::Result Interpreter::run() {
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(STORE_GLOBAL_VAR, global_index);
-    Object** global_variables = _process->object_heap()->global_variables();
+    Object** global_variables = process_->object_heap()->global_variables();
     global_variables[global_index] = STACK_AT(0);
   OPCODE_END();
 
@@ -443,7 +443,7 @@ Interpreter::Result Interpreter::run() {
       Method target = program->program_failure();
       CALL_METHOD(target, STORE_GLOBAL_VAR_DYNAMIC_LENGTH);
     }
-    Object** global_variables = _process->object_heap()->global_variables();
+    Object** global_variables = process_->object_heap()->global_variables();
     global_variables[global_index] = value;
   OPCODE_END();
 
@@ -472,17 +472,17 @@ Interpreter::Result Interpreter::run() {
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(ALLOCATE, class_index);
-    Object* result = _process->object_heap()->allocate_instance(Smi::from(class_index));
+    Object* result = process_->object_heap()->allocate_instance(Smi::from(class_index));
     for (int attempts = 1; result == null && attempts < 4; attempts++) {
 #ifdef TOIT_GC_LOGGING
       if (attempts == 3) {
         printf("[gc @ %p%s | 3rd time allocate failure %zd]\n",
-            _process, VM::current()->scheduler()->is_boot_process(_process) ? "*" : " ",
+            process_, VM::current()->scheduler()->is_boot_process(process_) ? "*" : " ",
             class_index);
       }
 #endif //TOIT_GC_LOGGING
       sp = gc(sp, false, attempts, false);
-      result = _process->object_heap()->allocate_instance(Smi::from(class_index));
+      result = process_->object_heap()->allocate_instance(Smi::from(class_index));
     }
     if (result == null) {
       sp = push_error(sp, program->allocation_failed(), "");
@@ -495,7 +495,7 @@ Interpreter::Result Interpreter::run() {
     }
     PUSH(result);
     if (Flags::gcalot) sp = gc(sp, false, 1, false);
-    _process->object_heap()->check_install_heap_limit();
+    process_->object_heap()->check_install_heap_limit();
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(IS_CLASS, encoded);
@@ -834,7 +834,7 @@ Interpreter::Result Interpreter::run() {
     Object* arg = STACK_AT(0);
     Object* value = null;
 
-    if (fast_at(_process, receiver, arg, false, &value)) {
+    if (fast_at(process_, receiver, arg, false, &value)) {
       STACK_AT_PUT(1, value);
       DROP1();
       DISPATCH(INVOKE_AT_LENGTH);
@@ -849,7 +849,7 @@ Interpreter::Result Interpreter::run() {
     Object* arg = STACK_AT(1);
     Object* value = STACK_AT(0);
 
-    if (fast_at(_process, receiver, arg, true, &value)) {
+    if (fast_at(process_, receiver, arg, true, &value)) {
       STACK_AT_PUT(2, value);
       DROP1();
       DROP1();
@@ -962,9 +962,9 @@ Interpreter::Result Interpreter::run() {
       int arity = primitive->arity;
       Primitive::Entry* entry = reinterpret_cast<Primitive::Entry*>(primitive->function);
 
-      _sp = sp;
-      Object* result = entry(_process, sp + parameter_offset + arity - 1); // Skip the frame.
-      sp = _sp;
+      sp_ = sp;
+      Object* result = entry(process_, sp + parameter_offset + arity - 1); // Skip the frame.
+      sp = sp_;
 
       for (int attempts = 1; true; attempts++) {
         if (!Primitive::is_error(result)) goto done;
@@ -987,16 +987,16 @@ Interpreter::Result Interpreter::run() {
 #ifdef TOIT_GC_LOGGING
         if (attempts == 3) {
           printf("[gc @ %p%s | 3rd time primitive failure %d::%d%s]\n",
-              _process, VM::current()->scheduler()->is_boot_process(_process) ? "*" : " ",
+              process_, VM::current()->scheduler()->is_boot_process(process_) ? "*" : " ",
               primitive_module, primitive_index,
               malloc_failed ? " (malloc)" : "");
         }
 #endif
 
         sp = gc(sp, malloc_failed, attempts, force_cross_process);
-        _sp = sp;
-        result = entry(_process, sp + parameter_offset + arity - 1); // Skip the frame.
-        sp = _sp;
+        sp_ = sp;
+        result = entry(process_, sp + parameter_offset + arity - 1); // Skip the frame.
+        sp = sp_;
       }
 
       // GC might have taken place in object heap but local "method" is from program heap.
@@ -1012,7 +1012,7 @@ Interpreter::Result Interpreter::run() {
       DROP(arity);
       ASSERT(!is_stack_empty());
       PUSH(result);
-      _process->object_heap()->check_install_heap_limit();
+      process_->object_heap()->check_install_heap_limit();
       DISPATCH(0);
     }
   OPCODE_END();
@@ -1023,7 +1023,7 @@ Interpreter::Result Interpreter::run() {
     // The exception is already in TOS.
     // Push the target address (the base), and the marker that this is an exception.
     // The unwind-code will find the first finally and execute it.
-    PUSH(to_block(_base));
+    PUSH(to_block(base_));
     PUSH(Smi::from(UNWIND_REASON_WHEN_THROWING_EXCEPTION));
     goto UNWIND_IMPLEMENTATION;
   OPCODE_END();
@@ -1116,12 +1116,12 @@ Interpreter::Result Interpreter::run() {
                                        //   the method_index and height-difference (of a non-local branch)
     PUSH(Smi::from(-0xdead));          // The target SP of an unwind.
     PUSH(Smi::from(-1));               // Marker how the unwind is entered. Can also contain arity and/or bci.
-    PUSH(Smi::from(_base - _try_sp));  // Chain to the next _try_sp (see UNLINK below)
-    _try_sp = sp;
+    PUSH(Smi::from(base_ - try_sp_));  // Chain to the next try_sp_ (see UNLINK below)
+    try_sp_ = sp;
   OPCODE_END();
 
   OPCODE_BEGIN(UNLINK);
-    _try_sp = _base - Smi::cast(POP())->value();
+    try_sp_ = base_ - Smi::cast(POP())->value();
   OPCODE_END();
 
   UNWIND_IMPLEMENTATION: {
@@ -1160,19 +1160,19 @@ Interpreter::Result Interpreter::run() {
     Object** target_sp = from_block(block);
     Object* result_or_height_diff = POP();
 
-    if (target_sp > _try_sp) {
+    if (target_sp > try_sp_) {
       // Hit unwind protect.
 
       // Remember: the try-block is implemented as a 0-argument block call.
       // We want to continue the finally-block as if we had returned from the
       // try-block call. At the end of the finally-block there will be an
       // unwind.
-      // Before starting the finally-block we update the link-information (at _try_sp)
+      // Before starting the finally-block we update the link-information (at try_sp_)
       // so that the `unwind` can then proceed accordingly (continuing with the
       // non-local return or exception).
       //
       // Since the implementation of the try-block-call is deterministic we can
-      // find the call from the _try_sp. We had pushed 1 for the block-pointer and
+      // find the call from the try_sp_. We had pushed 1 for the block-pointer and
       // the `CALL_METHOD` then pushed FRAME_SIZE more entries (including the return
       // address).
       //
@@ -1184,9 +1184,9 @@ Interpreter::Result Interpreter::run() {
       // Set the sp to the point where we had the try-call.
       int block_pointer_slot = 1;
       int frame_size = Interpreter::FRAME_SIZE;
-      sp = _try_sp - block_pointer_slot - frame_size;
+      sp = try_sp_ - block_pointer_slot - frame_size;
       // Update the link-information.
-      int link_offset = _try_sp - sp;
+      int link_offset = try_sp_ - sp;
       STACK_AT_PUT(link_offset + 1, tos);
       STACK_AT_PUT(link_offset + 2, to_block(target_sp));
       STACK_AT_PUT(link_offset + 3, result_or_height_diff);
@@ -1401,7 +1401,7 @@ Interpreter::Result Interpreter::run() {
       PUSH(entry);
       if (target.arity() > 2) {
         Object* value;
-        bool result = fast_at(_process, backing, Smi::from(c + 1), false, &value);
+        bool result = fast_at(process_, backing, Smi::from(c + 1), false, &value);
         ASSERT(result);
         PUSH(value);
       }
@@ -1591,7 +1591,7 @@ Interpreter::Result Interpreter::run() {
       if (is_array(index_object)) {
         Array::cast(index_object)->at_put(index_position, entry);
       } else {
-        bool success = fast_at(_process, index_object, Smi::from(index_position), true, &entry);
+        bool success = fast_at(process_, index_object, Smi::from(index_position), true, &entry);
         ASSERT(success);
       }
     }
@@ -1666,7 +1666,7 @@ Interpreter::Result Interpreter::run() {
         hash_and_position = Smi::cast(Array::cast(index_object)->at(slot))->value();
       } else {
         Object* hap;
-        bool success = fast_at(_process, index_object, Smi::from(slot), false, &hap);
+        bool success = fast_at(process_, index_object, Smi::from(slot), false, &hap);
         ASSERT(success);
         ASSERT(is_smi(hap));
         hash_and_position = Smi::cast(hap)->value();
@@ -1707,7 +1707,7 @@ Interpreter::Result Interpreter::run() {
       // k := backing_[position]
       Object* backing_object = HeapObject::cast(collection->at(Instance::MAP_BACKING_INDEX));
       Object* k;
-      bool success = fast_at(_process, backing_object, position, false, &k);
+      bool success = fast_at(process_, backing_object, position, false, &k);
       ASSERT(success);
       word deleted_slot = Smi::cast(STACK_AT(DELETED_SLOT))->value();
       // if deleted_slot is invalid and k is Tombstone_

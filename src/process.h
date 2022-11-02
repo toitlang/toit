@@ -77,10 +77,10 @@ class Process : public ProcessListFromProcessGroup::Element,
 
   ~Process();
 
-  int id() const { return _id; }
-  int next_task_id() { return _next_task_id++; }
+  int id() const { return id_; }
+  int next_task_id() { return next_task_id_++; }
 
-  bool is_suspended() const { return _state == SUSPENDED_IDLE || _state == SUSPENDED_SCHEDULED; }
+  bool is_suspended() const { return state_ == SUSPENDED_IDLE || state_ == SUSPENDED_SCHEDULED; }
 
   // Returns whether this process is privileged (a system process).
   bool is_privileged() const { return _is_privileged; }
@@ -112,18 +112,18 @@ class Process : public ProcessListFromProcessGroup::Element,
     return object_heap()->next_finalizer_to_run();
   }
 
-  Program* program() { return _program; }
-  ProcessGroup* group() { return _group; }
-  ObjectHeap* object_heap() { return &_object_heap; }
+  Program* program() { return program_; }
+  ProcessGroup* group() { return group_; }
+  ObjectHeap* object_heap() { return &object_heap_; }
   Task* task() { return object_heap()->task(); }
 
-  ProcessRunner* runner() const { return _runner; }
+  ProcessRunner* runner() const { return runner_; }
 
-  Method entry() const { return _entry; }
+  Method entry() const { return entry_; }
   uint8* main_arguments() { return _main_arguments; }
   void clear_main_arguments() { _main_arguments = null; }
 
-  Method spawn_method() const { return _spawn_method; }
+  Method spawn_method() const { return spawn_method_; }
   uint8* spawn_arguments() const { return _spawn_arguments; }
   void clear_spawn_arguments() { _spawn_arguments = null; }
 
@@ -138,20 +138,20 @@ class Process : public ProcessListFromProcessGroup::Element,
   uint64_t random();
   void random_seed(const uint8_t* buffer, size_t size);
 
-  State state() { return _state; }
-  void set_state(State state) { _state = state; }
+  State state() { return state_; }
+  void set_state(State state) { state_ = state; }
 
   void add_resource_group(ResourceGroup* r);
   void remove_resource_group(ResourceGroup* r);
 
-  SchedulerThread* scheduler_thread() { return _scheduler_thread; }
+  SchedulerThread* scheduler_thread() { return scheduler_thread_; }
   void set_scheduler_thread(SchedulerThread* scheduler_thread) {
-    _scheduler_thread = scheduler_thread;
+    scheduler_thread_ = scheduler_thread;
   }
 
   void signal(Signal signal);
   void clear_signal(Signal signal);
-  uint32 signals() const { return _signals; }
+  uint32 signals() const { return signals_; }
 
   // Processes have a priority in the range [0..255]. The scheduler
   // prioritizes running processes with higher priorities, so processes
@@ -164,12 +164,12 @@ class Process : public ProcessListFromProcessGroup::Element,
   // again. Once a process is ready to run, the scheduler will
   // update the priority and make the target priority the current
   // priority.
-  void set_target_priority(uint8 value) { _target_priority = value; }
+  void set_target_priority(uint8 value) { target_priority_ = value; }
   uint8 update_priority();
 
-  int current_directory() { return _current_directory; }
-  void set_current_directory(int fd) { _current_directory = fd; }
-  int gc_count(GcType type) { return _object_heap.gc_count(type); }
+  int current_directory() { return current_directory_; }
+  void set_current_directory(int fd) { current_directory_ = fd; }
+  int gc_count(GcType type) { return object_heap_.gc_count(type); }
 
   String* allocate_string(const char* content);
   String* allocate_string(int length);
@@ -179,32 +179,32 @@ class Process : public ProcessListFromProcessGroup::Element,
   ByteArray* allocate_byte_array(int length, bool force_external=false);
 
   void set_max_heap_size(word bytes) {
-    _object_heap.set_max_heap_size(bytes);
+    object_heap_.set_max_heap_size(bytes);
   }
 
   bool should_allow_external_allocation(word size) {
-    word max = _object_heap.max_external_allocation();
+    word max = object_heap_.max_external_allocation();
     bool result = max >= size;
-    _object_heap.set_last_allocation_result(result ? ObjectHeap::ALLOCATION_SUCCESS : ObjectHeap::ALLOCATION_HIT_LIMIT);
+    object_heap_.set_last_allocation_result(result ? ObjectHeap::ALLOCATION_SUCCESS : ObjectHeap::ALLOCATION_HIT_LIMIT);
     return result;
   }
 
   bool system_refused_memory() const {
-    return _object_heap.system_refused_memory();
+    return object_heap_.system_refused_memory();
   }
 
   void register_external_allocation(word size) {
-    _object_heap.register_external_allocation(size);
+    object_heap_.register_external_allocation(size);
   }
 
   void unregister_external_allocation(word size) {
-    _object_heap.unregister_external_allocation(size);
+    object_heap_.unregister_external_allocation(size);
   }
 
   int64 bytes_allocated_delta() {
     int64 current = object_heap()->total_bytes_allocated();
-    int64 result = current - _last_bytes_allocated;
-    _last_bytes_allocated = current;
+    int64 result = current - last_bytes_allocated_;
+    last_bytes_allocated_ = current;
     return result;
   }
 
@@ -225,7 +225,7 @@ class Process : public ProcessListFromProcessGroup::Element,
 
   inline bool on_program_heap(HeapObject* object) {
     uword address = reinterpret_cast<uword>(object);
-    return address - _program_heap_address < _program_heap_size;
+    return address - program_heap_address_ < program_heap_size_;
   }
 
  private:
@@ -233,50 +233,50 @@ class Process : public ProcessListFromProcessGroup::Element,
   void _append_message(Message* message);
   void _ensure_random_seeded();
 
-  int const _id;
-  int _next_task_id;
+  int const id_;
+  int next_task_id_;
   bool _is_privileged = false;
 
-  Program* _program;
-  ProcessRunner* _runner;
-  ProcessGroup* _group;
+  Program* program_;
+  ProcessRunner* runner_;
+  ProcessGroup* group_;
 
   uint8 _priority = PRIORITY_NORMAL;
-  uint8 _target_priority = PRIORITY_NORMAL;
+  uint8 target_priority_ = PRIORITY_NORMAL;
 
-  uword _program_heap_address;
-  uword _program_heap_size;
+  uword program_heap_address_;
+  uword program_heap_size_;
 
-  Method _entry;
-  Method _spawn_method;
+  Method entry_;
+  Method spawn_method_;
 
   // The arguments (if any) are encoded as messages using the MessageEncoder.
   uint8* _main_arguments = null;
   uint8* _spawn_arguments = null;
 
-  ObjectHeap _object_heap;
-  int64 _last_bytes_allocated;
+  ObjectHeap object_heap_;
+  int64 last_bytes_allocated_;
 
-  MessageFIFO _messages;
+  MessageFIFO messages_;
 
-  SystemMessage* _termination_message;
+  SystemMessage* termination_message_;
 
-  bool _random_seeded;
+  bool random_seeded_;
   uint64_t _random_state0;
   uint64_t _random_state1;
 
-  int _current_directory;
+  int current_directory_;
 
-  uint32_t _signals;
-  State _state;
-  SchedulerThread* _scheduler_thread;
+  uint32_t signals_;
+  State state_;
+  SchedulerThread* scheduler_thread_;
 
   bool _construction_failed = false;
   bool _idle_since_gc = true;
 
   Profiler* _profiler = null;
 
-  ResourceGroupListFromProcess _resource_groups;
+  ResourceGroupListFromProcess resource_groups_;
   friend class HeapObject;
   friend class Scheduler;
 };
@@ -289,34 +289,34 @@ class Process : public ProcessListFromProcessGroup::Element,
 class AllocationManager {
  public:
   explicit AllocationManager(Process* process)
-    : _ptr(null)
-    , _size(0)
-    , _process(process) {}
+    : ptr_(null)
+    , size_(0)
+    , process_(process) {}
 
   AllocationManager(Process* process, void* ptr, word size)
-    : _ptr(ptr)
-    , _size(size)
-    , _process(process) {
+    : ptr_(ptr)
+    , size_(size)
+    , process_(process) {
     process->register_external_allocation(size);
   }
 
   uint8_t* alloc(word length) {
-    ASSERT(_ptr == null);
-    bool ok = _process->should_allow_external_allocation(length);
+    ASSERT(ptr_ == null);
+    bool ok = process_->should_allow_external_allocation(length);
     if (!ok) {
       return null;
     }
     // Don't change this to use C++ array 'new' because that isn't compatible
     // with realloc.
-    _ptr = malloc(length);
-    if (_ptr == null) {
-      _process->object_heap()->set_last_allocation_result(ObjectHeap::ALLOCATION_OUT_OF_MEMORY);
+    ptr_ = malloc(length);
+    if (ptr_ == null) {
+      process_->object_heap()->set_last_allocation_result(ObjectHeap::ALLOCATION_OUT_OF_MEMORY);
     } else {
-      _process->register_external_allocation(length);
-      _size = length;
+      process_->register_external_allocation(length);
+      size_ = length;
     }
 
-    return unvoid_cast<uint8_t*>(_ptr);
+    return unvoid_cast<uint8_t*>(ptr_);
   }
 
   static uint8* reallocate(uint8* old_allocation, word new_size) {
@@ -326,29 +326,29 @@ class AllocationManager {
   uint8_t* calloc(word length, word size) {
     uint8_t* allocation = alloc(length * size);
     if (allocation != null) {
-      ASSERT(_size == length * size);
-      memset(allocation, 0, _size);
+      ASSERT(size_ == length * size);
+      memset(allocation, 0, size_);
     }
     return allocation;
   }
 
   ~AllocationManager() {
-    if (_ptr != null) {
-      free(_ptr);
-      _process->unregister_external_allocation(_size);
+    if (ptr_ != null) {
+      free(ptr_);
+      process_->unregister_external_allocation(size_);
     }
   }
 
   uint8_t* keep_result() {
-    void* result = _ptr;
-    _ptr = null;
+    void* result = ptr_;
+    ptr_ = null;
     return unvoid_cast<uint8_t*>(result);
   }
 
  private:
-  void* _ptr;
-  word _size;
-  Process* _process;
+  void* ptr_;
+  word size_;
+  Process* process_;
 };
 
 } // namespace toit

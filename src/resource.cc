@@ -23,12 +23,12 @@
 namespace toit {
 
 Resource::~Resource() {
-  delete _object_notifier;
+  delete object_notifier_;
 }
 
 ResourceGroup::ResourceGroup(Process* process, EventSource* event_source)
-  : _process(process)
-  , _event_source(event_source) {
+  : process_(process)
+  , event_source_(event_source) {
   if (event_source != null) {
     event_source->register_resource_group(this);
   }
@@ -36,19 +36,19 @@ ResourceGroup::ResourceGroup(Process* process, EventSource* event_source)
 }
 
 void ResourceGroup::tear_down() {
-  while (Resource* resource = _resources.remove_first()) {
-    if (_event_source != null) {
-      _event_source->unregister_resource(resource);
+  while (Resource* resource = resources_.remove_first()) {
+    if (event_source_ != null) {
+      event_source_->unregister_resource(resource);
     }
     on_unregister_resource(resource);
     resource->make_deletable();
   }
 
-  if (_event_source != null) {
-    _event_source->unregister_resource_group(this);
+  if (event_source_ != null) {
+    event_source_->unregister_resource_group(this);
   }
 
-  _process->remove_resource_group(this);
+  process_->remove_resource_group(this);
   delete this;
 }
 
@@ -59,16 +59,16 @@ IntResource* ResourceGroup::register_id(word id) {
 }
 
 void ResourceGroup::register_resource(Resource* resource) {
-  _resources.prepend(resource);
+  resources_.prepend(resource);
   on_register_resource(resource);
 
-  if (_event_source != null) {
-    _event_source->register_resource(resource);
+  if (event_source_ != null) {
+    event_source_->register_resource(resource);
   }
 }
 
 void ResourceGroup::unregister_id(word id) {
-  for (auto it : _resources) {
+  for (auto it : resources_) {
     IntResource* resource = static_cast<IntResource*>(it);
     if (resource->id() == id) {
       unregister_resource(resource);
@@ -78,12 +78,12 @@ void ResourceGroup::unregister_id(word id) {
 }
 
 void ResourceGroup::unregister_resource(Resource* resource) {
-  if (_event_source != null) {
-    _event_source->unregister_resource(resource);
+  if (event_source_ != null) {
+    event_source_->unregister_resource(resource);
   }
 
-  if (_resources.is_linked(resource)) {
-    _resources.unlink(resource);
+  if (resources_.is_linked(resource)) {
+    resources_.unlink(resource);
     on_unregister_resource(resource);
   }
 
@@ -91,33 +91,33 @@ void ResourceGroup::unregister_resource(Resource* resource) {
 }
 
 EventSource::EventSource(const char* name, int lock_level)
-    : _mutex(OS::allocate_mutex(lock_level, "EventSource"))
-    , _name(name) {
+    : mutex_(OS::allocate_mutex(lock_level, "EventSource"))
+    , name_(name) {
 }
 
 EventSource::~EventSource() {
-  ASSERT(_resources.is_empty());
-  OS::dispose(_mutex);
+  ASSERT(resources_.is_empty());
+  OS::dispose(mutex_);
 }
 
 bool EventSource::is_locked() {
-  return OS::is_locked(_mutex);
+  return OS::is_locked(mutex_);
 }
 
 void EventSource::register_resource(Resource* r) {
-  Locker locker(_mutex);
+  Locker locker(mutex_);
   ASSERT(reinterpret_cast<uword>(r) > 1000000);
-  _resources.append(r);
+  resources_.append(r);
   on_register_resource(locker, r);
 }
 
 void EventSource::unregister_resource(Resource* r) {
-  Locker locker(_mutex);
+  Locker locker(mutex_);
   unregister_resource(locker, r);
 }
 
 void EventSource::unregister_resource(Locker& locker, Resource* r) {
-  if (_resources.is_linked(r)) _resources.unlink(r);
+  if (resources_.is_linked(r)) resources_.unlink(r);
   // Be sure to notify to wake up any ongoing uses.
   try_notify(r, locker, true);
   on_unregister_resource(locker, r);
@@ -130,12 +130,12 @@ void EventSource::unregister_resource_group(ResourceGroup* resource_group) {
 }
 
 void EventSource::set_state(word id, uint32_t state) {
-  Locker locker(_mutex);
+  Locker locker(mutex_);
   set_state(locker, find_resource_by_id(locker, id), state);
 }
 
 void EventSource::set_state(Resource* r, uint32_t state) {
-  Locker locker(_mutex);
+  Locker locker(mutex_);
   set_state(locker, r, state);
 }
 
@@ -145,7 +145,7 @@ void EventSource::set_state(const Locker& locker, Resource* r, uint32_t state) {
 }
 
 void EventSource::dispatch(Resource* r, word data) {
-  Locker locker(_mutex);
+  Locker locker(mutex_);
   dispatch(locker, r, data);
 }
 
@@ -165,7 +165,7 @@ void EventSource::try_notify(Resource* r, const Locker& locker, bool force) {
 }
 
 bool EventSource::update_resource_monitor(Resource* r, Process* process, Object* monitor) {
-  Locker locker(_mutex);
+  Locker locker(mutex_);
 
   ObjectNotifier* notifier = r->object_notifier();
   if (notifier) {
@@ -190,7 +190,7 @@ bool EventSource::update_resource_monitor(Resource* r, Process* process, Object*
 }
 
 void EventSource::delete_resource_monitor(Resource* r) {
-  Locker locker(_mutex);
+  Locker locker(mutex_);
   ObjectNotifier* notifier = r->object_notifier();
   if (!notifier) return;
   delete notifier;
@@ -198,7 +198,7 @@ void EventSource::delete_resource_monitor(Resource* r) {
 }
 
 uint32_t EventSource::read_state(Resource* r) {
-  Locker locker(_mutex);
+  Locker locker(mutex_);
 
   uint32_t state = r->state();
   r->set_state(0);
@@ -206,7 +206,7 @@ uint32_t EventSource::read_state(Resource* r) {
 }
 
 IntResource* EventSource::find_resource_by_id(const Locker& locker, word id) {
-  for (auto it : _resources) {
+  for (auto it : resources_) {
     IntResource* r = static_cast<IntResource*>(it);
     if (r->id() == id) return r;
   }

@@ -25,122 +25,122 @@ namespace compiler {
 template<typename K, typename V> class Map {
  public:
   V& operator [](const K& key) {
-    auto probe = _map.find(key);
-    if (probe == _map.end()) {
-      _vector.push_back(key);
-      return _map[key];
+    auto probe = map_.find(key);
+    if (probe == map_.end()) {
+      vector_.push_back(key);
+      return map_[key];
     } else {
       return probe->second;
     }
   }
 
   void set(const K& key, const V& value) {
-    auto probe = _map.find(key);
-    if (probe == _map.end()) {
-      _vector.push_back(key);
-      _map.emplace(key, value);
+    auto probe = map_.find(key);
+    if (probe == map_.end()) {
+      vector_.push_back(key);
+      map_.emplace(key, value);
     } else {
       probe->second = value;
     }
   }
 
-  V at(const K& key) { return _map.at(key); }
-  const V at(const K& key) const { return _map.at(key); }
+  V at(const K& key) { return map_.at(key); }
+  const V at(const K& key) const { return map_.at(key); }
 
   template<typename F>
   void for_each(const F& callback) {
-    for (auto key : _vector) {
-      callback(key, _map[key]);
+    for (auto key : vector_) {
+      callback(key, map_[key]);
     }
   }
 
   bool contains_key(const K& key) {
-    return _map.find(key) != _map.end();
+    return map_.find(key) != map_.end();
   }
 
   typename std::unordered_map<K, V>::iterator find(const K& key) {
-    return _map.find(key);
+    return map_.find(key);
   }
   typename std::unordered_map<K, V>::const_iterator find(const K& key) const {
-    return _map.find(key);
+    return map_.find(key);
   }
-  typename std::unordered_map<K, V>::iterator end() { return _map.end(); }
-  typename std::unordered_map<K, V>::const_iterator end() const { return _map.end(); }
+  typename std::unordered_map<K, V>::iterator end() { return map_.end(); }
+  typename std::unordered_map<K, V>::const_iterator end() const { return map_.end(); }
 
-  std::vector<K>& keys() { return _vector; }
-  const std::vector<K>& keys() const { return _vector; }
+  std::vector<K>& keys() { return vector_; }
+  const std::vector<K>& keys() const { return vector_; }
 
-  std::unordered_map<K, V>& underlying_map() { return _map; }
-  const std::unordered_map<K, V>& underlying_map() const { return _map; }
+  std::unordered_map<K, V>& underlying_map() { return map_; }
+  const std::unordered_map<K, V>& underlying_map() const { return map_; }
 
-  bool empty() const { return _vector.empty(); }
-  int size() const { return _vector.size(); }
+  bool empty() const { return vector_.empty(); }
+  int size() const { return vector_.size(); }
 
   void clear() {
-    _map.clear();
-    _vector.clear();
+    map_.clear();
+    vector_.clear();
   }
 
  private:
-  std::unordered_map<K, V> _map;
-  std::vector<K> _vector;  // To keep insertion order.
+  std::unordered_map<K, V> map_;
+  std::vector<K> vector_;  // To keep insertion order.
 };
 
 template<typename K, typename V> class Map<K, V*> {
  public:
   V*& operator [](const K& key) {
-    auto probe = _map.find(key);
-    if (probe == _map.end()) {
-      _vector.push_back(key);
-      return _map[key];
+    auto probe = map_.find(key);
+    if (probe == map_.end()) {
+      vector_.push_back(key);
+      return map_[key];
     } else {
       return probe->second;
     }
   }
 
-  V* at(const K& key) { return _map.at(key); }
+  V* at(const K& key) { return map_.at(key); }
 
   V* lookup(const K& key) {
-    auto probe = _map.find(key);
-    if (probe == _map.end()) return null;
+    auto probe = map_.find(key);
+    if (probe == map_.end()) return null;
     return probe->second;
   }
 
   typename std::unordered_map<K, V*>::iterator find(const K& key) {
-    return _map.find(key);
+    return map_.find(key);
   }
   typename std::unordered_map<K, V*>::const_iterator find(const K& key) const {
-    return _map.find(key);
+    return map_.find(key);
   }
-  typename std::unordered_map<K, V*>::iterator end() { return _map.end(); }
-  typename std::unordered_map<K, V*>::const_iterator end() const { return _map.end(); }
+  typename std::unordered_map<K, V*>::iterator end() { return map_.end(); }
+  typename std::unordered_map<K, V*>::const_iterator end() const { return map_.end(); }
 
-  std::vector<K>& keys() { return _vector; }
+  std::vector<K>& keys() { return vector_; }
 
-  std::unordered_map<K, V*>& underlying_map() { return _map; }
+  std::unordered_map<K, V*>& underlying_map() { return map_; }
 
-  bool empty() const { return _vector.empty(); }
-  int size() const { return _vector.size(); }
+  bool empty() const { return vector_.empty(); }
+  int size() const { return vector_.size(); }
 
   void clear() {
-    _map.clear();
-    _vector.clear();
+    map_.clear();
+    vector_.clear();
   }
 
  private:
-  std::unordered_map<K, V*> _map;
-  std::vector<K> _vector;  // To keep insertion order.
+  std::unordered_map<K, V*> map_;
+  std::vector<K> vector_;  // To keep insertion order.
 };
 
 /// A wrapper around the std::set to make its API more convenient and close to
 /// how we use it.
 template<typename K, typename V> class UnorderedMap {
  public:
-  typename std::unordered_map<K, V>::iterator find(const K& key) { return _map.find(key); }
-  typename std::unordered_map<K, V>::iterator end() { return _map.end(); }
+  typename std::unordered_map<K, V>::iterator find(const K& key) { return map_.find(key); }
+  typename std::unordered_map<K, V>::iterator end() { return map_.end(); }
 
   bool add(const K& key, V value) {
-    auto pair = _map.insert({key, value});
+    auto pair = map_.insert({key, value});
     if (pair.second) {
       pair.first->second = value;
     }
@@ -148,35 +148,35 @@ template<typename K, typename V> class UnorderedMap {
   }
 
   void add_all(const UnorderedMap<K, V>& other) {
-    _map.insert(other._map.begin(), other._map.end());
+    map_.insert(other.map_.begin(), other.map_.end());
   }
 
-  V& operator [](const K& key) { return _map[key]; }
-  V at(const K& key) { return _map.at(key); }
-  const V at(const K& key) const { return _map.at(key); }
+  V& operator [](const K& key) { return map_[key]; }
+  V at(const K& key) { return map_.at(key); }
+  const V at(const K& key) const { return map_.at(key); }
 
-  std::unordered_map<K, V>& underlying_map() { return _map; }
+  std::unordered_map<K, V>& underlying_map() { return map_; }
 
-  bool empty() const { return _map.empty(); }
-  int size() const { return _map.size(); }
+  bool empty() const { return map_.empty(); }
+  int size() const { return map_.size(); }
 
-  void clear() { _map.clear(); }
+  void clear() { map_.clear(); }
 
-  bool remove(const K& key) { return _map.erase(key) > 0; }
+  bool remove(const K& key) { return map_.erase(key) > 0; }
 
  private:
-  std::unordered_map<K, V> _map;
+  std::unordered_map<K, V> map_;
 };
 
 /// A wrapper around the std::set to make its API more convenient and close to
 /// how we use it.
 template<typename K, typename V> class UnorderedMap<K, V*> {
  public:
-  typename std::unordered_map<K, V*>::iterator find(const K& key) { return _map.find(key); }
-  typename std::unordered_map<K, V*>::iterator end() { return _map.end(); }
+  typename std::unordered_map<K, V*>::iterator find(const K& key) { return map_.find(key); }
+  typename std::unordered_map<K, V*>::iterator end() { return map_.end(); }
 
   bool add(const K& key, V* value) {
-    auto pair = _map.insert({key, value});
+    auto pair = map_.insert({key, value});
     if (pair.second) {
       pair.first->second = value;
     }
@@ -184,30 +184,30 @@ template<typename K, typename V> class UnorderedMap<K, V*> {
   }
 
   void add_all(const UnorderedMap<K, V*>& other) {
-    _map.insert(other._map.begin(), other._map.end());
+    map_.insert(other.map_.begin(), other.map_.end());
   }
 
-  V*& operator [](const K& key) { return _map[key]; }
+  V*& operator [](const K& key) { return map_[key]; }
 
   V* lookup(const K& key) const {
-    auto probe = _map.find(key);
-    if (probe == _map.end()) return null;
+    auto probe = map_.find(key);
+    if (probe == map_.end()) return null;
     return probe->second;
   }
 
-  V* at(const K& key) const { return _map.at(key); }
+  V* at(const K& key) const { return map_.at(key); }
 
-  std::unordered_map<K, V*>& underlying_map() { return _map; }
+  std::unordered_map<K, V*>& underlying_map() { return map_; }
 
-  bool empty() const { return _map.empty(); }
-  int size() const { return _map.size(); }
+  bool empty() const { return map_.empty(); }
+  int size() const { return map_.size(); }
 
-  void clear() { _map.clear(); }
+  void clear() { map_.clear(); }
 
-  bool remove(const K& key) { return _map.erase(key) > 0; }
+  bool remove(const K& key) { return map_.erase(key) > 0; }
 
  private:
-  std::unordered_map<K, V*> _map;
+  std::unordered_map<K, V*> map_;
 };
 
 

@@ -146,7 +146,7 @@ void CompilationDiagnostics::emit(Severity severity, const char* format, va_list
 void CompilationDiagnostics::start_group() {
   ASSERT(!_in_group);
   _in_group = true;
-  _group_package_id = Package::INVALID_PACKAGE_ID;
+  group_package_id_ = Package::INVALID_PACKAGE_ID;
 }
 
 void CompilationDiagnostics::end_group() {
@@ -159,18 +159,18 @@ void CompilationDiagnostics::emit(Severity severity,
                                   va_list& arguments) {
   auto from_location = source_manager()->compute_location(range.from());
 
-  if (!_show_package_warnings) {
+  if (!show_package_warnings_) {
     Severity error_severity;
     std::string error_package_id;
     if (_in_group) {
       // For groups, the first encountered error defines where the error comes
       // from. Subsequent diagnostics in the group use that package id.
-      if (_group_package_id == Package::INVALID_PACKAGE_ID) {
-        _group_package_id = from_location.source->package_id();
-        _group_severity = severity;
+      if (group_package_id_ == Package::INVALID_PACKAGE_ID) {
+        group_package_id_ = from_location.source->package_id();
+        group_severity_ = severity;
       }
-      error_package_id = _group_package_id;
-      error_severity = _group_severity;
+      error_package_id = group_package_id_;
+      error_severity = group_severity_;
     } else {
       error_package_id = from_location.source->package_id();
       error_severity = severity;

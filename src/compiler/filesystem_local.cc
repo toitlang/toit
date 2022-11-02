@@ -109,9 +109,9 @@ bool FilesystemLocal::do_is_directory(const char* path) {
 }
 
 const char* FilesystemLocal::sdk_path() {
-  if (_sdk_path == null) {
+  if (sdk_path_ == null) {
     if (Flags::lib_path != null) {
-      _sdk_path = to_local_path(Flags::lib_path);
+      sdk_path_ = to_local_path(Flags::lib_path);
     } else {
       // Compute the library_root based on the executable path.
       char* path = get_executable_path();
@@ -122,10 +122,10 @@ const char* FilesystemLocal::sdk_path() {
       // `dirname` might return its result in a static buffer (especially on macos), and we
       // have to copy the result back into path. (+1 for the terminating '\0' character).
       memmove(path, toit_root, root_len + 1);
-      _sdk_path = path;
+      sdk_path_ = path;
     }
   }
-  return _sdk_path;
+  return sdk_path_;
 }
 
 List<const char*> FilesystemLocal::package_cache_paths() {
@@ -133,7 +133,7 @@ List<const char*> FilesystemLocal::package_cache_paths() {
     _has_computed_cache_paths = true;
     char* cache_paths = getenv("TOIT_PACKAGE_CACHE_PATHS");
     if (cache_paths != null) {
-      _package_cache_paths = string_split(strdup(cache_paths), ":");
+      package_cache_paths_ = string_split(strdup(cache_paths), ":");
     } else {
       char* home_path;
       if (strcmp(OS::get_platform(), "Windows") == 0) {
@@ -146,11 +146,11 @@ List<const char*> FilesystemLocal::package_cache_paths() {
         // However, the LSP server currently only looks at the env var.
         FATAL("Couldn't determine home");
       }
-      _package_cache_paths = ListBuilder<const char*>::build(
+      package_cache_paths_ = ListBuilder<const char*>::build(
         compute_package_cache_path_from_home(home_path, this));
     }
   }
-  return _package_cache_paths;
+  return package_cache_paths_;
 }
 
 const char* FilesystemLocal::getcwd(char* buffer, int buffer_size) {

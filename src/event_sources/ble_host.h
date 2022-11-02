@@ -16,14 +16,14 @@ namespace toit {
 // RAII helper class to just lock the mutex from a non-toit thread
 class LightLocker {
  public:
-  explicit LightLocker(Mutex *mutex): _mutex(mutex) {
-    OS::lock(_mutex);
+  explicit LightLocker(Mutex *mutex): mutex_(mutex) {
+    OS::lock(mutex_);
   }
   ~LightLocker() {
-    OS::unlock(_mutex);
+    OS::unlock(mutex_);
   }
  private:
-  Mutex* _mutex;
+  Mutex* mutex_;
 };
 
 class BLEResourceGroup;
@@ -37,7 +37,7 @@ class HostBLEEventSource: public LazyEventSource, public Thread {
   HostBLEEventSource();
   ~HostBLEEventSource() override;
 
-  static HostBLEEventSource* instance() { return _instance; }
+  static HostBLEEventSource* instance() { return instance_; }
 
   void on_event(BLEResource* resource, word data);
 
@@ -48,18 +48,18 @@ class HostBLEEventSource: public LazyEventSource, public Thread {
   [[noreturn]] void entry() override;
 
  private:
-  static HostBLEEventSource* _instance;
-  ConditionVariable* _event_queue_updated;
-  BLEEventList _event_queue;
+  static HostBLEEventSource* instance_;
+  ConditionVariable* event_queue_updated_;
+  BLEEventList event_queue_;
 };
 
 class BLEEvent: public BLEEventList::Element {
  public:
-  BLEEvent(BLEResource *resource, word event): _resource(resource), _event(event) {}
-  BLEResource* resource() { return _resource; }
-  word event() { return _event; }
+  BLEEvent(BLEResource *resource, word event): resource_(resource), event_(event) {}
+  BLEResource* resource() { return resource_; }
+  word event() { return event_; }
  private:
-  BLEResource* _resource;
-  word _event;
+  BLEResource* resource_;
+  word event_;
 };
 } // Namespace toit.

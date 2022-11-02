@@ -26,17 +26,17 @@ namespace toit {
 namespace compiler {
 
 std::string Package::build_error_path(Filesystem* fs, const std::string& path) const {
-  if (_id == VIRTUAL_PACKAGE_ID) {
+  if (id_ == VIRTUAL_PACKAGE_ID) {
     return path;
   }
   auto relative = fs->relative(path, _absolute_error_path);
-  if (_id == ENTRY_PACKAGE_ID) {
+  if (id_ == ENTRY_PACKAGE_ID) {
     PathBuilder builder(fs);
     builder.join(_relative_error_path, relative);
     builder.canonicalize();
     return builder.buffer();
   }
-  if (_id == SDK_PACKAGE_ID) {
+  if (id_ == SDK_PACKAGE_ID) {
     PathBuilder builder(fs);
     builder.join("<sdk>", relative);
     return builder.buffer();
@@ -48,7 +48,7 @@ std::string Package::build_error_path(Filesystem* fs, const std::string& path) c
 }
 
 void Package::list_prefixes(const std::function<void (const std::string& candidate)>& callback) const{
-  for (auto prefix : _prefixes.keys()) {
+  for (auto prefix : prefixes_.keys()) {
     callback(prefix);
   }
 }

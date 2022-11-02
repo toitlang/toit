@@ -39,14 +39,14 @@ class ProgramHeap : public ProgramRawHeap {
 
    private:
     void ensure_started();
-    ProgramBlockList& _list;
-    ProgramBlockLinkedList::Iterator _iterator;
-    ProgramBlock* _block;
-    void* _current;
-    Program* _program;
+    ProgramBlockList& list_;
+    ProgramBlockLinkedList::Iterator iterator_;
+    ProgramBlock* block_;
+    void* current_;
+    Program* program_;
   };
 
-  Iterator object_iterator() { return Iterator(_blocks, _program); }
+  Iterator object_iterator() { return Iterator(blocks_, program_); }
 
   static int max_allocation_size(int word_size = WORD_SIZE) { return ProgramBlock::max_payload_size(word_size); }
 
@@ -67,31 +67,31 @@ class ProgramHeap : public ProgramRawHeap {
 
   // Make all blocks in this heap writable or read only.
   void set_writable(bool value) {
-    _blocks.set_writable(value);
+    blocks_.set_writable(value);
   }
 
-  Program* program() { return _program; }
+  Program* program() { return program_; }
 
-  int64 total_bytes_allocated() const { return _total_bytes_allocated; }
+  int64 total_bytes_allocated() const { return total_bytes_allocated_; }
 
 #ifndef TOIT_DEPLOY
   void enter_gc() {
-    ASSERT(!_in_gc);
-    ASSERT(_gc_allowed);
-    _in_gc = true;
+    ASSERT(!in_gc_);
+    ASSERT(gc_allowed_);
+    in_gc_ = true;
   }
   void leave_gc() {
-    ASSERT(_in_gc);
-    _in_gc = false;
+    ASSERT(in_gc_);
+    in_gc_ = false;
   }
   void enter_no_gc() {
-    ASSERT(!_in_gc);
-    ASSERT(_gc_allowed);
-    _gc_allowed = false;
+    ASSERT(!in_gc_);
+    ASSERT(gc_allowed_);
+    gc_allowed_ = false;
   }
   void leave_no_gc() {
-    ASSERT(!_gc_allowed);
-    _gc_allowed = true;
+    ASSERT(!gc_allowed_);
+    gc_allowed_ = true;
   }
 #else
   void enter_gc() {}
@@ -101,7 +101,7 @@ class ProgramHeap : public ProgramRawHeap {
 #endif
 
   bool system_refused_memory() const {
-    return _last_allocation_result == ALLOCATION_OUT_OF_MEMORY;
+    return last_allocation_result_ == ALLOCATION_OUT_OF_MEMORY;
   }
 
   enum AllocationResult {
@@ -111,7 +111,7 @@ class ProgramHeap : public ProgramRawHeap {
   };
 
   void set_last_allocation_result(AllocationResult result) {
-    _last_allocation_result = result;
+    last_allocation_result_ = result;
   }
 
   void migrate_to(Program* program);
@@ -121,13 +121,13 @@ class ProgramHeap : public ProgramRawHeap {
   ByteArray* allocate_byte_array(const uint8*, int length);
 
  protected:
-  Program* const _program;
+  Program* const program_;
   HeapObject* _allocate_raw(int byte_size);
   virtual AllocationResult _expand();
-  bool _in_gc;
-  bool _gc_allowed;
-  int64 _total_bytes_allocated;
-  AllocationResult _last_allocation_result;
+  bool in_gc_;
+  bool gc_allowed_;
+  int64 total_bytes_allocated_;
+  AllocationResult last_allocation_result_;
 
   friend class ProgramSnapshotReader;
   friend class ObjectAllocator;
@@ -138,17 +138,17 @@ class ProgramHeapRoot;
 typedef DoubleLinkedList<ProgramHeapRoot> ProgramHeapRootList;
 class ProgramHeapRoot : public ProgramHeapRootList::Element {
  public:
-  explicit ProgramHeapRoot(Object* obj) : _obj(obj) {}
+  explicit ProgramHeapRoot(Object* obj) : obj_(obj) {}
 
-  Object* operator*() const { return _obj; }
-  Object* operator->() const { return _obj; }
-  void operator=(Object* obj) { _obj = obj; }
+  Object* operator*() const { return obj_; }
+  Object* operator->() const { return obj_; }
+  void operator=(Object* obj) { obj_ = obj; }
 
-  Object** slot() { return &_obj; }
+  Object** slot() { return &obj_; }
   void unlink() { ProgramHeapRootList::Element::unlink(); }
 
  private:
-  Object* _obj;
+  Object* obj_;
 };
 
 } // namespace toit

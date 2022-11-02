@@ -50,8 +50,8 @@ class State {
       return;
     }
 
-    auto& other_map = other._map;
-    for (auto& p : _map.underlying_map()) {
+    auto& other_map = other.map_;
+    for (auto& p : map_.underlying_map()) {
       if (p.second == UNDEFINED) {
         if (other_map.find(p.first) == other_map.end()) {
           p.second = PARTIALLY_DEFINED;
@@ -61,22 +61,22 @@ class State {
     // If an element wasn't killed in both paths, add it back.
     for (auto p : other_map.underlying_map()) {
       if (p.second == PARTIALLY_DEFINED) {
-        _map[p.first] = PARTIALLY_DEFINED;
-      } else if (_map.find(p.first) == _map.end()) {
-        _map.add(p.first, PARTIALLY_DEFINED);
+        map_[p.first] = PARTIALLY_DEFINED;
+      } else if (map_.find(p.first) == map_.end()) {
+        map_.add(p.first, PARTIALLY_DEFINED);
       }
     }
-    _does_return = _does_return && other.does_return();
+    does_return_ = does_return_ && other.does_return();
   }
 
   void mark_undefined(Node* variable) {
     ASSERT(is_valid());
-    _map[variable] = UNDEFINED;
+    map_[variable] = UNDEFINED;
   }
 
   void mark_all_as_partially_defined(Local* loop_variable = null) {
     ASSERT(is_valid());
-    for (auto& p : _map.underlying_map()) {
+    for (auto& p : map_.underlying_map()) {
       if (p.first != loop_variable) {
         p.second = PARTIALLY_DEFINED;
       }
@@ -85,49 +85,49 @@ class State {
 
   void remove(Node* variable) {
     ASSERT(is_valid());
-    _map.remove(variable);
+    map_.remove(variable);
   }
 
   bool is_completely_undefined(Node* node) {
     ASSERT(is_valid());
-    auto probe = _map.find(node);
-    return probe != _map.end() && probe->second == UNDEFINED;
+    auto probe = map_.find(node);
+    return probe != map_.end() && probe->second == UNDEFINED;
   }
 
   bool is_undefined(Node* node) {
     ASSERT(is_valid());
-    return _map.find(node) != _map.end();
+    return map_.find(node) != map_.end();
   }
 
   void reset() {
     ASSERT(is_valid());
-    _map.clear();
-    _does_return = false;
+    map_.clear();
+    does_return_ = false;
   }
 
   void clear_variables() {
     ASSERT(is_valid());
-    _map.clear();
+    map_.clear();
   }
 
   bool empty() const {
     ASSERT(is_valid());
-    return _map.empty();
+    return map_.empty();
   }
 
   bool does_return() const {
     ASSERT(is_valid());
-    return _does_return;
+    return does_return_;
   }
 
   void mark_return() {
     ASSERT(is_valid());
-    _does_return = true;
+    does_return_ = true;
   }
 
   void set_does_return(bool new_val) {
     ASSERT(is_valid());
-    _does_return = new_val;
+    does_return_ = new_val;
   }
 
  private:
@@ -136,9 +136,9 @@ class State {
     PARTIALLY_DEFINED,
   };
   // Set of undefined locals and fields.
-  UnorderedMap<Node*, UndefinedKind> _map;
+  UnorderedMap<Node*, UndefinedKind> map_;
 
-  bool _does_return = false;
+  bool does_return_ = false;
   bool _is_valid = true;
 };
 
@@ -164,8 +164,8 @@ struct LoopState {
 class DefiniteChecker : public Visitor {
  public:
   explicit DefiniteChecker(Diagnostics* diagnostics)
-      : _diagnostics(diagnostics)
-      , _loop_state(LoopState::invalid()) {}
+      : diagnostics_(diagnostics)
+      , loop_state_(LoopState::invalid()) {}
 
   void visit(Node* node) {
     node->accept(this);
@@ -175,82 +175,82 @@ class DefiniteChecker : public Visitor {
 
   void visit_If(If* node) {
     visit(node->condition());
-    auto old_state = _state;
+    auto old_state = state_;
     visit(node->yes());
-    auto yes_state = _state;
-    _state = old_state;
+    auto yes_state = state_;
+    state_ = old_state;
     visit(node->no());
-    _state.merge(yes_state);
+    state_.merge(yes_state);
   }
 
   void visit_TryFinally(TryFinally* node) {
-    auto old_state = _state;
+    auto old_state = state_;
     // Note that we shortcut the `visit_Code` which would reset the
-    //   fields (in particular the `_does_return`), as it can't know
+    //   fields (in particular the `does_return_`), as it can't know
     //   that the body is unconditionally executed.
     visit(node->body()->body());
-    bool does_return = _state.does_return();
-    _state = old_state;
+    bool does_return = state_.does_return();
+    state_ = old_state;
     visit(node->handler());
     // If the body returns or the finally returns, then
     //   we know that the try/finally returns (or throws).
     if (does_return) {
-      _state.set_does_return(does_return);
+      state_.set_does_return(does_return);
     }
   }
 
   void visit_While(While* node) {
     visit(node->condition());
     // We assume that the body/update is never executed.
-    auto old_state = _state;
-    auto old_loop_state = _loop_state;
+    auto old_state = state_;
+    auto old_loop_state = loop_state_;
 
-    _loop_state = LoopState(node);
+    loop_state_ = LoopState(node);
 
     // Since we can assume that the body is executed multiple times, we
     //   mark all undefined variables as partially defined.
     // The only exception is the loop-variable itself.
-    _state.mark_all_as_partially_defined(node->loop_variable());
+    state_.mark_all_as_partially_defined(node->loop_variable());
     visit(node->body());
-    _state.merge(_loop_state.continue_state);
+    state_.merge(loop_state_.continue_state);
     visit(node->update());
 
     if (node->condition()->is_LiteralBoolean() &&
         node->condition()->as_LiteralBoolean()->value()) {
       // A while-true loop.
-      if (_loop_state.break_state.is_valid()) {
-        _state = _loop_state.break_state;
+      if (loop_state_.break_state.is_valid()) {
+        state_ = loop_state_.break_state;
       } else {
         // No break in a while-true loop.
         // Assume there was a return or throw.
-        _state.clear_variables();
-        _state.mark_return();
+        state_.clear_variables();
+        state_.mark_return();
       }
     } else {
-      _state = old_state;
+      state_ = old_state;
     }
-    _loop_state = old_loop_state;
+    loop_state_ = old_loop_state;
   }
 
   void visit_LogicalBinary(LogicalBinary* node) {
     visit(node->left());
-    auto left_state = _state;
+    auto left_state = state_;
     visit(node->right());
     // We have to assume that the RHS was never executed.
-    _state = left_state;
+    state_ = left_state;
   }
 
   void visit_Code(Code* node) {
-    auto old_state = _state;
+    auto old_state = state_;
 
     // We have to assume that the block/lambda is executed multiple times.
-    _state.mark_all_as_partially_defined();
+    state_.mark_all_as_partially_defined();
 
     // We keep the loop state: if we reach a break or continue, it's ok to
     //   merge the data.
     visit(node->body());
     // We can't assume that the block/lambda is called.
-    _state = old_state;
+    state_ = old_state;
   }
 
   void visit_Return(Return* node) {
@@ -267,11 +267,11 @@ class DefiniteChecker : public Visitor {
       //   the analysis never assumes that the block/lambda is called).
       // Inside the block/lambda, the `return` "works", in that it correctly aborts
       //   any loop, or `if` branch.
-      _state.mark_return();
+      state_.mark_return();
     }
     visit(node->value());
     // No need to report errors/warnings after a return.
-    _state.clear_variables();
+    state_.clear_variables();
   }
 
   void visit_Program(Program* node) {
@@ -292,14 +292,14 @@ class DefiniteChecker : public Visitor {
 
   void visit_Method(Method* node) {
     if (!node->has_body()) return;
-    _method = node;
-    _state.reset();
+    method_ = node;
+    state_.reset();
     _has_seen_return = false;
-    _loop_state = LoopState::invalid();
+    loop_state_ = LoopState::invalid();
 
     visit(node->body());
     bool should_check_returns = !node->is_constructor() && !node->return_type().is_none();
-    if (should_check_returns && !_state.does_return()) {
+    if (should_check_returns && !state_.does_return()) {
       if (_has_seen_return) {
         report_error(node->range(), "Method doesn't return a value on all paths");
       } else {
@@ -331,7 +331,7 @@ class DefiniteChecker : public Visitor {
     visit(node->value());
     auto field = node->field();
     if (node->value()->is_LiteralUndefined()) {
-      _state.mark_undefined(field);
+      state_.mark_undefined(field);
     } else {
       kill(field);
     }
@@ -342,15 +342,15 @@ class DefiniteChecker : public Visitor {
   }
 
   void visit_Sequence(Sequence* node) {
-    auto old_locals = _current_locals;
-    _current_locals.clear();
+    auto old_locals = current_locals_;
+    current_locals_.clear();
     for (auto expr : node->expressions()) {
       visit(expr);
     }
-    for (auto local : _current_locals) {
+    for (auto local : current_locals_) {
       kill(local);
     }
-    _current_locals = old_locals;
+    current_locals_ = old_locals;
   }
 
   void visit_Builtin(Builtin* node) { }
@@ -360,11 +360,11 @@ class DefiniteChecker : public Visitor {
   }
 
   void visit_LoopBranch(LoopBranch* node) {
-    if (_loop_state.is_valid()) {
+    if (loop_state_.is_valid()) {
       if (node->is_break()) {
-        _loop_state.break_state.merge(_state);
+        loop_state_.break_state.merge(state_);
       } else {
-        _loop_state.continue_state.merge(_state);
+        loop_state_.continue_state.merge(state_);
       }
     }
   }
@@ -391,12 +391,12 @@ class DefiniteChecker : public Visitor {
   void visit_LspSelectionDot(LspSelectionDot* node) { visit_Dot(node); }
 
   void visit_Super(Super* node) {
-    ASSERT(_method->is_constructor());
-    if (_state.empty()) return;
-    for (auto field : _method->holder()->fields()) {
-      if (_state.is_undefined(field)) {
-        _state.remove(field);
-        if (_method->is_synthetic()) {
+    ASSERT(method_->is_constructor());
+    if (state_.empty()) return;
+    for (auto field : method_->holder()->fields()) {
+      if (state_.is_undefined(field)) {
+        state_.remove(field);
+        if (method_->is_synthetic()) {
           report_error(field->range(),
                        "Field '%s' must be initialized in a constructor",
                        field->name().c_str());
@@ -430,8 +430,8 @@ class DefiniteChecker : public Visitor {
       // Since we return from the method here, we don't need to worry about
       //   uninitialized fields, and can just do as if they had been set to a
       //   value.
-      _state.clear_variables();
-      _state.mark_return();
+      state_.clear_variables();
+      state_.mark_return();
     }
   }
   void visit_Lambda(Lambda* node) {
@@ -452,7 +452,7 @@ class DefiniteChecker : public Visitor {
   void visit_AssignmentDefine(AssignmentDefine* node) {
     visit(node->right());
     if (node->right()->is_LiteralUndefined()) {
-      _state.mark_undefined(node->local());
+      state_.mark_undefined(node->local());
     }
   }
 
@@ -461,10 +461,10 @@ class DefiniteChecker : public Visitor {
     visit(node->right());
     if (node->right()->is_LiteralUndefined()) {
       // This can only happen for loop-variables.
-      ASSERT(_state.is_undefined(local));
+      ASSERT(state_.is_undefined(local));
     } else {
-      if (local->is_final() && !_state.is_completely_undefined(local)) {
-        if (_state.is_undefined(local)) {
+      if (local->is_final() && !state_.is_completely_undefined(local)) {
+        if (state_.is_undefined(local)) {
           report_error(node->range(), "Can't assign to final local multiple times");
         } else {
           report_error(node->range(), "Can't assign to final local");
@@ -491,25 +491,25 @@ class DefiniteChecker : public Visitor {
   void visit_PrimitiveInvocation(PrimitiveInvocation* node) { }
 
  private:
-  Diagnostics* _diagnostics;
+  Diagnostics* diagnostics_;
 
   // The list of undefined locals that is leaves the scope when we
   //   leave the current sequence.
-  std::vector<Local*> _current_locals;
-  State _state;
-  LoopState _loop_state;
-  // Only used for nicer error messages. The `_state` tracks flow-sensitive
+  std::vector<Local*> current_locals_;
+  State state_;
+  LoopState loop_state_;
+  // Only used for nicer error messages. The `state_` tracks flow-sensitive
   //   `return`s. It is ok to set this variable to true, even if there isn't
   //   any real return.
   bool _has_seen_return = false;
-  Method* _method;
+  Method* method_;
 
-  Diagnostics* diagnostics() const { return _diagnostics; }
+  Diagnostics* diagnostics() const { return diagnostics_; }
 
-  void kill(Node* variable) { _state.remove(variable); }
+  void kill(Node* variable) { state_.remove(variable); }
 
   void use(Field* field, Source::Range range) {
-    if (_state.is_undefined(field)) {
+    if (state_.is_undefined(field)) {
       report_error(range,
                    "Field '%s' must be initialized before first use",
                    field->name().c_str());
@@ -517,7 +517,7 @@ class DefiniteChecker : public Visitor {
   }
 
   void use(Local* local, Source::Range range) {
-    if (_state.is_undefined(local)) {
+    if (state_.is_undefined(local)) {
       report_error(range,
                    "Local '%s' must be initialized before first use",
                    local->name().c_str());

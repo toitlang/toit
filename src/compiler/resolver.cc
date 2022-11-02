@@ -46,7 +46,7 @@ void Resolver::report_error(const ast::Node* position_node, const char* format, 
 void Resolver::report_error(ir::Node* position_node, const char* format, ...) {
   va_list arguments;
   va_start(arguments, format);
-  diagnostics()->report_error(_ir_to_ast_map.at(position_node)->range(), format, arguments);
+  diagnostics()->report_error(ir_to_ast_map_.at(position_node)->range(), format, arguments);
   va_end(arguments);
 }
 
@@ -60,7 +60,7 @@ void Resolver::report_note(const ast::Node* position_node, const char* format, .
 void Resolver::report_note(ir::Node* position_node, const char* format, ...) {
   va_list arguments;
   va_start(arguments, format);
-  diagnostics()->report_note(_ir_to_ast_map.at(position_node)->range(), format, arguments);
+  diagnostics()->report_note(ir_to_ast_map_.at(position_node)->range(), format, arguments);
   va_end(arguments);
 }
 
@@ -81,7 +81,7 @@ void Resolver::report_warning(const ast::Node* position_node, const char* format
 void Resolver::report_warning(ir::Node* position_node, const char* format, ...) {
   va_list arguments;
   va_start(arguments, format);
-  diagnostics()->report_warning(_ir_to_ast_map.at(position_node)->range(), format, arguments);
+  diagnostics()->report_warning(ir_to_ast_map_.at(position_node)->range(), format, arguments);
   va_end(arguments);
 }
 
@@ -115,17 +115,17 @@ ir::Program* Resolver::resolve(const std::vector<ast::Unit*>& units,
     if (i == entry_index) continue;
     Module* module = i == -1 ? entry_module : modules[i];
     resolve_fill_module(module, entry_module, core_module);
-    if (_lsp != null && _lsp->should_emit_semantic_tokens()) {
+    if (lsp_ != null && lsp_->should_emit_semantic_tokens()) {
       ASSERT(module == entry_module);
       // Immediately print the tokens.
       // The function should exit, thus aborting the remaining resolutions.
-      _lsp->emit_semantic_tokens(module, entry_module->unit()->absolute_path(), _source_manager);
+      lsp_->emit_semantic_tokens(module, entry_module->unit()->absolute_path(), source_manager_);
       UNREACHABLE();
     }
   }
 
-  if (_lsp != null && _lsp->needs_summary()) {
-    _lsp->emit_summary(modules, core_index, _toitdocs);
+  if (lsp_ != null && lsp_->needs_summary()) {
+    lsp_->emit_summary(modules, core_index, toitdocs_);
   }
 
   ListBuilder<ir::Class*> all_classes;
@@ -216,14 +216,14 @@ std::vector<Module*> Resolver::build_modules(const std::vector<ast::Unit*>& unit
                                                shape,
                                                kind,
                                                method->range());
-        _ir_to_ast_map[ir] = method;
+        ir_to_ast_map_[ir] = method;
         methods.add(ir);
       } else if (auto global = declaration->as_Field()) {
         check_field(global, null);
         auto ir = _new ir::Global(global->name()->data(),
                                   global->is_final(),
                                   global->range());
-        _ir_to_ast_map[ir] = global;
+        ir_to_ast_map_[ir] = global;
         globals.add(ir);
       } else if (auto klass = declaration->as_Class()) {
         check_class(klass);
@@ -231,7 +231,7 @@ std::vector<Module*> Resolver::build_modules(const std::vector<ast::Unit*>& unit
         auto position = klass->range();
         bool is_abstract = klass->is_interface() || klass->is_abstract();
         ir::Class* ir = _new ir::Class(name, klass->is_interface(), is_abstract, position);
-        _ir_to_ast_map[ir] = klass;
+        ir_to_ast_map_[ir] = klass;
         classes.add(ir);
       } else {
         UNREACHABLE();
@@ -506,7 +506,7 @@ void Resolver::check_clashing_or_conflicting(Symbol name, List<ir::Node*> declar
     std::vector<ir::Global*> globals;
     std::vector<ir::Method*> methods;
     for (const auto& declaration : declarations) {
-      auto ast_node = _ir_to_ast_map.at(declaration);
+      auto ast_node = ir_to_ast_map_.at(declaration);
       if (!earliest_range.is_valid() || ast_node->range().is_before(earliest_range)) {
         earliest_range = ast_node->range();
         earliest_node = declaration;
@@ -598,7 +598,7 @@ void Resolver::check_future_reserved_globals(std::vector<Module*> modules) {
       if (method->is_runtime_method()) continue;
       auto name = method->name();
       if (Symbols::is_future_reserved(name)) {
-        auto ast_name = _ir_to_ast_map.at(method)->as_Method()->name_or_dot();
+        auto ast_name = ir_to_ast_map_.at(method)->as_Method()->name_or_dot();
         report_warning(ast_name,
                        "Name '%s' will be reserved in future releases",
                        name.c_str());
@@ -726,7 +726,7 @@ void Resolver::resolve_shows_and_exports(std::vector<Module*>& modules) {
         // Also check whether this identifier is a prefix or toplevel in this module.
         auto entry = module->scope()->lookup_module(name);
         if (!entry.is_empty()) {
-          auto other = _ir_to_ast_map[entry.nodes()[0]];
+          auto other = ir_to_ast_map_[entry.nodes()[0]];
           diagnostics()->start_group();
           report_error(ast_identifier, "Name clash with toplevel declaration '%s'", name.c_str());
           report_note(other, "Toplevel declaration of '%s'", name.c_str());
@@ -963,7 +963,7 @@ void Resolver::resolve_shows_and_exports(std::vector<Module*>& modules) {
   }
 
   if (lsp_node != null) {
-    _lsp->selection_handler()->show(lsp_node, lsp_resolution_entry, lsp_scope);
+    lsp_->selection_handler()->show(lsp_node, lsp_resolution_entry, lsp_scope);
   }
 }
 
@@ -1096,7 +1096,7 @@ ir::Class* Resolver::resolve_class_or_interface(ast::Expression* ast_node,
     type_declaration = scope->lookup_shallow(type_name);
     if (ast_node->is_LspSelection()) {
       ir::Node* ir_resolved = type_declaration.is_single() ? type_declaration.single() : null;
-      _lsp->selection_handler()->class_or_interface(ast_node, scope, holder, ir_resolved, needs_interface);
+      lsp_->selection_handler()->class_or_interface(ast_node, scope, holder, ir_resolved, needs_interface);
     }
   } else if (ast_node->is_Dot()) {
     auto ast_dot = ast_node->as_Dot();
@@ -1109,7 +1109,7 @@ ir::Class* Resolver::resolve_class_or_interface(ast::Expression* ast_node,
       auto prefix_scope = prefix_lookup_result.entry.is_prefix()
           ? static_cast<IterableScope*>(prefix_lookup_result.entry.prefix())
           : static_cast<IterableScope*>(&empty_scope);
-      _lsp->selection_handler()->class_or_interface(ast_dot->name(),
+      lsp_->selection_handler()->class_or_interface(ast_dot->name(),
                                                     prefix_scope,
                                                     holder,
                                                      ir_resolved,
@@ -1120,7 +1120,7 @@ ir::Class* Resolver::resolve_class_or_interface(ast::Expression* ast_node,
       ir::Node* ir_resolved = receiver_as_type_declaration.is_single()
           ? receiver_as_type_declaration.single()
           : null;
-      _lsp->selection_handler()->class_or_interface(ast_node, scope, holder, ir_resolved, needs_interface);
+      lsp_->selection_handler()->class_or_interface(ast_node, scope, holder, ir_resolved, needs_interface);
     }
   } else {
     ASSERT(ast_node->is_Error());
@@ -1623,8 +1623,8 @@ void Resolver::fill_classes_with_skeletons(std::vector<Module*> modules) {
         // Add the implicit stack field.
         auto stack_field = _new ir::Field(Symbols::stack_, ir_class, false, ir_class->range());
         fields.add(stack_field);
-        // TODO(florian): find field type for `_stack` field.
-        _ir_to_ast_map[stack_field] =
+        // TODO(florian): find field type for `stack_` field.
+        ir_to_ast_map_[stack_field] =
             _new ast::Field(_new ast::Identifier(Symbols::stack_),
                             null,    // No type.
                             _new ast::LiteralNull(),
@@ -1695,7 +1695,7 @@ void Resolver::fill_classes_with_skeletons(std::vector<Module*> modules) {
             case ir::Method::FIELD_INITIALIZER:
               UNREACHABLE();
           }
-          _ir_to_ast_map[ir_method] = member;
+          ir_to_ast_map_[ir_method] = member;
         } else {
           ASSERT(name_or_dot->is_Identifier());
           Symbol member_name = name_or_dot->as_Identifier()->data();
@@ -1704,18 +1704,18 @@ void Resolver::fill_classes_with_skeletons(std::vector<Module*> modules) {
           check_field(ast_field, ir_class);
           if (ast_field->is_static()) {
             auto ir_global = _new ir::Global(member_name, ir_class, ast_field->is_final(), position);
-            _ir_to_ast_map[ir_global] = member;
+            ir_to_ast_map_[ir_global] = member;
             statics_scope_filler.add(ir_global->name(), ir_global);
           } else {
             auto ir_field = _new ir::Field(member_name, ir_class, ast_field->is_final(), ast_field->range());
-            _ir_to_ast_map[ir_field] = member;
+            ir_to_ast_map_[ir_field] = member;
             fields.add(ir_field);
             auto ir_getter = _new ir::FieldStub(ir_field, ir_class, true, position);
             auto ir_setter = _new ir::FieldStub(ir_field, ir_class, false, position);
             methods.add(ir_getter);
             methods.add(ir_setter);
-            _ir_to_ast_map[ir_getter] = member;
-            _ir_to_ast_map[ir_setter] = member;
+            ir_to_ast_map_[ir_getter] = member;
+            ir_to_ast_map_[ir_setter] = member;
           }
         }
       }
@@ -2015,16 +2015,16 @@ void Resolver::resolve_fill_method(ir::Method* method,
                                    Module* core_module) {
   // Skip synthetic methods already compiled.
   if (method->body() != null) {
-    ASSERT(_ir_to_ast_map.find(method) == _ir_to_ast_map.end());
+    ASSERT(ir_to_ast_map_.find(method) == ir_to_ast_map_.end());
     return;
   }
 
-  MethodResolver resolver(method, holder, scope, &_ir_to_ast_map, entry_module, core_module,
-                          _lsp, _source_manager, _diagnostics);
+  MethodResolver resolver(method, holder, scope, &ir_to_ast_map_, entry_module, core_module,
+                          lsp_, source_manager_, diagnostics_);
   resolver.resolve_fill();
 
   if (!method->is_synthetic()) {
-    auto ast_node = _ir_to_ast_map.at(method)->as_Declaration();
+    auto ast_node = ir_to_ast_map_.at(method)->as_Declaration();
     if (ast_node->toitdoc().is_valid()) {
       LocalScope scope_with_parameters(scope);
       for (auto parameter : method->parameters()) {
@@ -2033,10 +2033,10 @@ void Resolver::resolve_fill_method(ir::Method* method,
       auto toitdoc = resolve_toitdoc(ast_node->toitdoc(),
                                      ast_node,
                                      &scope_with_parameters,
-                                     _lsp,
-                                     _ir_to_ast_map,
+                                     lsp_,
+                                     ir_to_ast_map_,
                                      diagnostics());
-      _toitdocs.set_toitdoc(method, toitdoc);
+      toitdocs_.set_toitdoc(method, toitdoc);
     }
   }
 }
@@ -2054,19 +2054,19 @@ void Resolver::resolve_field(ir::Field* field,
                                  fake_shape,
                                  false,
                                  field->range());
-  MethodResolver resolver(&fake_method, holder, scope, &_ir_to_ast_map, entry_module, core_module,
-                          _lsp, _source_manager, _diagnostics);
+  MethodResolver resolver(&fake_method, holder, scope, &ir_to_ast_map_, entry_module, core_module,
+                          lsp_, source_manager_, diagnostics_);
   resolver.resolve_field(field);
 
-  auto ast_node = _ir_to_ast_map.at(field)->as_Declaration();
+  auto ast_node = ir_to_ast_map_.at(field)->as_Declaration();
   if (ast_node->toitdoc().is_valid()) {
     auto toitdoc = resolve_toitdoc(ast_node->toitdoc(),
                                    ast_node,
                                    scope,
-                                   _lsp,
-                                   _ir_to_ast_map,
+                                   lsp_,
+                                   ir_to_ast_map_,
                                    diagnostics());
-    _toitdocs.set_toitdoc(field, toitdoc);
+    toitdocs_.set_toitdoc(field, toitdoc);
   }
 }
 
@@ -2192,10 +2192,10 @@ void Resolver::resolve_fill_module(Module* module,
     auto toitdoc = resolve_toitdoc(unit->toitdoc(),
                                    unit,
                                    module->scope(),
-                                   _lsp,
-                                   _ir_to_ast_map,
+                                   lsp_,
+                                   ir_to_ast_map_,
                                    diagnostics());
-    _toitdocs.set_toitdoc(module, toitdoc);
+    toitdocs_.set_toitdoc(module, toitdoc);
   }
   resolve_fill_toplevel_methods(module, entry_module, core_module);
   resolve_fill_classes(module, entry_module, core_module);
@@ -2215,7 +2215,7 @@ void Resolver::resolve_fill_class(ir::Class* klass,
                                   ModuleScope* module_scope,
                                   Module* entry_module,
                                   Module* core_module) {
-  auto ast_node = _ir_to_ast_map.at(klass)->as_Class();
+  auto ast_node = ir_to_ast_map_.at(klass)->as_Class();
 
   // Note that we build up the super-chain multiple times. That is, we
   // visit a super class as often as the super class is present.
@@ -2268,10 +2268,10 @@ void Resolver::resolve_fill_class(ir::Class* klass,
     auto toitdoc = resolve_toitdoc(ast_node->toitdoc(),
                                    ast_node,
                                    &class_scope,
-                                   _lsp,
-                                   _ir_to_ast_map,
+                                   lsp_,
+                                   ir_to_ast_map_,
                                    diagnostics());
-    _toitdocs.set_toitdoc(klass, toitdoc);
+    toitdocs_.set_toitdoc(klass, toitdoc);
   }
 
   for (auto field : klass->fields()) {

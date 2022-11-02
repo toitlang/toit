@@ -59,47 +59,47 @@ const char* compute_package_cache_path_from_home(const char* home, Filesystem* f
 
 Package PackageLock::resolve_prefix(const Package& package,
                                     const std::string& prefix) const {
-  auto prefix_probe = package._prefixes.find(prefix);
-  if (prefix_probe != package._prefixes.end()) {
+  auto prefix_probe = package.prefixes_.find(prefix);
+  if (prefix_probe != package.prefixes_.end()) {
     auto prefix_id = prefix_probe->second;
-    auto pkg_probe = _packages.find(prefix_id);
-    if (pkg_probe == _packages.end()) {
+    auto pkg_probe = packages_.find(prefix_id);
+    if (pkg_probe == packages_.end()) {
       // The prefix points to a package-id that is in the lock file, but we
       // weren't able to find the actual package.
-      return _packages.at(Package::ERROR_PACKAGE_ID);
+      return packages_.at(Package::ERROR_PACKAGE_ID);
     }
     return pkg_probe->second;
   }
   // No prefix mapping for this package-id.
   // Assume it's for the SDK.
-  if (_sdk_prefixes.contains(prefix)) {
-    return _packages.at(Package::SDK_PACKAGE_ID);
+  if (sdk_prefixes_.contains(prefix)) {
+    return packages_.at(Package::SDK_PACKAGE_ID);
   }
   return Package::invalid();
 }
 
 Package PackageLock::package_for(const std::string& path, Filesystem* fs) const {
   if (SourceManager::is_virtual_file(path.c_str())) {
-    return _packages.at(Package::VIRTUAL_PACKAGE_ID);
+    return packages_.at(Package::VIRTUAL_PACKAGE_ID);
   }
 
   // Paths that come in here must be absolute.
   ASSERT(fs->is_absolute(path.c_str()));
-  auto cache_probe = _path_to_package_cache.find(path);
-  if (cache_probe != _path_to_package_cache.end()) {
-    return _packages.at(cache_probe->second);
+  auto cache_probe = path_to_package_cache_.find(path);
+  if (cache_probe != path_to_package_cache_.end()) {
+    return packages_.at(cache_probe->second);
   }
   std::vector<std::string> to_cache;
   for (int i = path.size() - 1; i >= 0; i--) {
     if (path[i] == fs->path_separator()) {
       auto sub = path.substr(0, i);
-      auto probe = _path_to_package_cache.find(sub);
-      if (probe != _path_to_package_cache.end()) {
-        _path_to_package_cache[path] = probe->second;
+      auto probe = path_to_package_cache_.find(sub);
+      if (probe != path_to_package_cache_.end()) {
+        path_to_package_cache_[path] = probe->second;
         for (auto p : to_cache) {
-          _path_to_package_cache[p] = probe->second;
+          path_to_package_cache_[p] = probe->second;
         }
-        return _packages.at(probe->second);
+        return packages_.at(probe->second);
       }
       to_cache.push_back(sub);
     }
@@ -109,7 +109,7 @@ Package PackageLock::package_for(const std::string& path, Filesystem* fs) const 
   // much as they want.
   // It also simplifies handling of package.lock files that aren't stored at
   // the root of a project.
-  return _packages.at(Package::ENTRY_PACKAGE_ID);
+  return packages_.at(Package::ENTRY_PACKAGE_ID);
 }
 
 // Searches for the lock file in the given directory.
@@ -171,7 +171,7 @@ static std::string build_canonical_sdk_dir(Filesystem* fs) {
 }
 
 void PackageLock::list_sdk_prefixes(const std::function<void (const std::string& candidate)>& callback) const {
-  for (auto sdk_prefix : _sdk_prefixes) {
+  for (auto sdk_prefix : sdk_prefixes_) {
     callback(sdk_prefix);
   }
 }
@@ -181,15 +181,15 @@ PackageLock::PackageLock(Source* lock_source,
                          const Map<std::string, Package>& packages,
                          const Set<std::string>& sdk_prefixes,
                          bool has_errors)
-    : _lock_file_source(lock_source)
-    , _has_errors(has_errors)
-    , _sdk_prefixes(sdk_prefixes)
-    , _packages(packages)
-    , _sdk_constraint(sdk_constraint) {
+    : lock_file_source_(lock_source)
+    , has_errors_(has_errors)
+    , sdk_prefixes_(sdk_prefixes)
+    , packages_(packages)
+    , sdk_constraint_(sdk_constraint) {
   for (auto id : packages.keys()) {
     auto package = packages.at(id);
     if (!package.has_valid_path()) continue;
-    _path_to_package_cache[package.absolute_path()] = id;
+    path_to_package_cache_[package.absolute_path()] = id;
   }
 }
 
@@ -279,15 +279,15 @@ class YamlParser {
   bool is_at_end() const;
 
  private:
-  Source* _source;
-  Diagnostics* _diagnostics;
-  yaml_parser_t _parser;
-  yaml_event_t _event;
+  Source* source_;
+  Diagnostics* diagnostics_;
+  yaml_parser_t parser_;
+  yaml_event_t event_;
   bool _needs_freeing = false;
 
   yaml_event_t peek() {
     ASSERT(_needs_freeing);
-    return _event;
+    return event_;
   }
   Status next();
 
@@ -298,31 +298,31 @@ class YamlParser {
 }
 
 YamlParser::YamlParser(Source* source, Diagnostics* diagnostics)
-  : _source(source), _diagnostics(diagnostics) {
-  yaml_parser_initialize(&_parser);
+  : source_(source), diagnostics_(diagnostics) {
+  yaml_parser_initialize(&parser_);
   auto ucontent = reinterpret_cast<const unsigned char*>(source->text());
-  yaml_parser_set_input_string(&_parser, ucontent, source->size());
+  yaml_parser_set_input_string(&parser_, ucontent, source->size());
 }
 
 YamlParser::~YamlParser() {
   if (_needs_freeing) {
-    yaml_event_delete(&_event);
+    yaml_event_delete(&event_);
   }
-  yaml_parser_delete(&_parser);
+  yaml_parser_delete(&parser_);
 }
 
 YamlParser::Status YamlParser::skip_to_body() {
   auto status = next();
   if (status != OK) return status;
-  if (_event.type != YAML_STREAM_START_EVENT) {
+  if (event_.type != YAML_STREAM_START_EVENT) {
     report_parse_error();
     return FATAL;
   }
   status = next();
   if (status != OK) return status;
   // Empty files don't have a body. We are ok with that.
-  if (_event.type == YAML_STREAM_END_EVENT) return OK;
-  if (_event.type != YAML_DOCUMENT_START_EVENT) {
+  if (event_.type == YAML_STREAM_END_EVENT) return OK;
+  if (event_.type != YAML_DOCUMENT_START_EVENT) {
     report_parse_error();
     return FATAL;
   }
@@ -330,7 +330,7 @@ YamlParser::Status YamlParser::skip_to_body() {
 }
 
 bool YamlParser::is_at_end() const {
-  return _event.type == YAML_STREAM_END_EVENT || _event.type == YAML_DOCUMENT_END_EVENT;
+  return event_.type == YAML_STREAM_END_EVENT || event_.type == YAML_DOCUMENT_END_EVENT;
 }
 
 YamlParser::Status YamlParser::parse_map(const std::function<YamlParser::Status (const std::string& key,
@@ -371,7 +371,7 @@ YamlParser::Status YamlParser::parse_string(const std::function<YamlParser::Stat
   // TODO(florian): check whether we need to read 'event.data.scalar.style'.
   unsigned char* scalar_str = event.data.scalar.value;
   std::string str(char_cast(scalar_str));
-  auto range = _source->range(event.start_mark.index, event.end_mark.index);
+  auto range = source_->range(event.start_mark.index, event.end_mark.index);
   auto status = next();
   if (status != OK) return status;
   return callback(str, range);
@@ -379,15 +379,15 @@ YamlParser::Status YamlParser::parse_string(const std::function<YamlParser::Stat
 
 YamlParser::Status YamlParser::next() {
   if (_needs_freeing) {
-    yaml_event_delete(&_event);
+    yaml_event_delete(&event_);
     _needs_freeing = false;
   }
-  if (!yaml_parser_parse(&_parser, &_event)) {
+  if (!yaml_parser_parse(&parser_, &event_)) {
     report_parse_error();
     return FATAL;
   }
   _needs_freeing = true;
-  if (_event.type == YAML_NO_EVENT) {
+  if (event_.type == YAML_NO_EVENT) {
     FATAL("shouldn't get a no-event");
   }
   return OK;
@@ -443,9 +443,9 @@ YamlParser::Status YamlParser::skip() {
 }
 
 void YamlParser::report_parse_error() {
-  auto error_range = _source->range(_parser.problem_mark.index, _parser.problem_mark.index);
-  auto message = _parser.problem;
-  _diagnostics->report_error(error_range, "Couldn't parse package lock file: %s", message);
+  auto error_range = source_->range(parser_.problem_mark.index, parser_.problem_mark.index);
+  auto message = parser_.problem;
+  diagnostics_->report_error(error_range, "Couldn't parse package lock file: %s", message);
 }
 
 static const char* type_to_string(yaml_event_type_t type) {
@@ -479,9 +479,9 @@ static const char* type_to_string(yaml_event_type_t type) {
 
 void YamlParser::report_unexpected(const char* expected_type) {
 
-  auto error_range(_source->range(_event.start_mark.index, _event.end_mark.index));
-  auto actual = type_to_string(_event.type);
-  _diagnostics->report_error(error_range,
+  auto error_range(source_->range(event_.start_mark.index, event_.end_mark.index));
+  auto actual = type_to_string(event_.type);
+  diagnostics_->report_error(error_range,
                              "Invalid package lock file. Expected a %s, got a%s %s",
                              expected_type,
                              actual[0] == 'a' || actual[0] == '<' || actual[0] == 'e' ? "n" : "",

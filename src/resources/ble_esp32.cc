@@ -52,27 +52,27 @@ typedef DoubleLinkedList<DiscoveredPeripheral> DiscoveredPeripheralList;
 class DiscoveredPeripheral : public DiscoveredPeripheralList::Element {
  public:
   DiscoveredPeripheral(ble_addr_t addr, int8 rssi, uint8* data, uint8 data_length, uint8 event_type)
-      : _addr(addr)
-      , _rssi(rssi)
-      , _data(data)
-      , _data_length(data_length)
-      , _event_type(event_type) {}
+      : addr_(addr)
+      , rssi_(rssi)
+      , data_(data)
+      , data_length_(data_length)
+      , event_type_(event_type) {}
 
   ~DiscoveredPeripheral() {
-    free(_data);
+    free(data_);
   }
 
-  ble_addr_t addr() { return _addr; }
-  int8 rssi() const { return _rssi; }
-  uint8* data() { return _data; }
-  uint8 data_length() const { return _data_length; }
-  uint8 event_type() const { return _event_type; }
+  ble_addr_t addr() { return addr_; }
+  int8 rssi() const { return rssi_; }
+  uint8* data() { return data_; }
+  uint8 data_length() const { return data_length_; }
+  uint8 event_type() const { return event_type_; }
  private:
-  ble_addr_t _addr;
-  int8 _rssi;
-  uint8* _data;
-  uint8 _data_length;
-  uint8 _event_type;
+  ble_addr_t addr_;
+  int8 rssi_;
+  uint8* data_;
+  uint8 data_length_;
+  uint8 event_type_;
 };
 
 // The thread on the BLEResourceGroup is responsible for running the nimble background thread. All events from the
@@ -85,40 +85,40 @@ class BLEResourceGroup : public ResourceGroup, public Thread {
   BLEResourceGroup(Process* process, BLEEventSource* event_source, int id, Mutex* mutex)
       : ResourceGroup(process, event_source)
       , Thread("BLE")
-      , _id(id)
-      , _sync(false)
-      , _tearing_down(false)
-      , _mutex(mutex) {
-    ASSERT(!_instance)
+      , id_(id)
+      , sync_(false)
+      , tearing_down_(false)
+      , mutex_(mutex) {
+    ASSERT(!instance_)
     // Note that the resource group creation is guarded by the resource pool of size 1,
     // so there can never be two instances created and it is safe to set the static variable
     // here.
-    _instance = this;
+    instance_ = this;
     spawn(CONFIG_NIMBLE_TASK_STACK_SIZE);
   }
 
   void tear_down() override {
     FATAL_IF_NOT_ESP_OK(nimble_port_stop());
     join();
-    _tearing_down = true;
+    tearing_down_ = true;
 
     nimble_port_deinit();
 
     FATAL_IF_NOT_ESP_OK(esp_nimble_hci_and_controller_deinit());
 
-    ble_pool.put(_id);
+    ble_pool.put(id_);
 
     ResourceGroup::tear_down();
   }
 
-  static BLEResourceGroup* instance() { return _instance; };
+  static BLEResourceGroup* instance() { return instance_; };
 
-  Mutex* mutex() { return _mutex; }
+  Mutex* mutex() { return mutex_; }
 
   // The BLE Host will notify when the BLE subsystem is synchronized. Before a successful sync, most
   // operation will not succeed.
   void set_sync(bool sync) {
-    _sync = sync;
+    sync_ = sync;
     if (sync) {
       for (auto resource : resources()) {
         auto ble_resource = reinterpret_cast<BLEResource*>(resource);
@@ -127,8 +127,8 @@ class BLEResourceGroup : public ResourceGroup, public Thread {
     }
   }
 
-  bool sync() const { return _sync; }
-  bool tearing_down() const { return _tearing_down; }
+  bool sync() const { return sync_; }
+  bool tearing_down() const { return tearing_down_; }
   uint32_t on_event(Resource* resource, word data, uint32_t state) override;
 
  protected:
@@ -136,44 +136,44 @@ class BLEResourceGroup : public ResourceGroup, public Thread {
     nimble_port_run();
   }
   ~BLEResourceGroup() override {
-    _instance = null;
+    instance_ = null;
   };
 
  private:
-  int _id;
-  bool _sync;
-  bool _tearing_down;
-  Mutex* _mutex;
-  static BLEResourceGroup* _instance;
+  int id_;
+  bool sync_;
+  bool tearing_down_;
+  Mutex* mutex_;
+  static BLEResourceGroup* instance_;
 };
 
 // There can be only one active BLEResourceGroup. This reference will be
 // active when the resource group exists
-BLEResourceGroup* BLEResourceGroup::_instance = null;
+BLEResourceGroup* BLEResourceGroup::instance_ = null;
 
 class DiscoverableResource {
  public:
-  DiscoverableResource() : _returned(false) {}
-  bool is_returned() const { return _returned; }
-  void set_returned(bool returned) { _returned = returned; }
+  DiscoverableResource() : returned_(false) {}
+  bool is_returned() const { return returned_; }
+  void set_returned(bool returned) { returned_ = returned; }
  private:
-  bool _returned;
+  bool returned_;
 };
 
 class BLEErrorCapableResource: public BLEResource {
  public:
   BLEErrorCapableResource(ResourceGroup* group, Kind kind)
   : BLEResource(group, kind)
-  , _malloc_error(false)
-  , _error(0) {}
+  , malloc_error_(false)
+  , error_(0) {}
 
-  bool has_malloc_error() const { return _malloc_error;}
-  void set_malloc_error(bool malloc_error) { _malloc_error = malloc_error; }
-  int error() const { return _error; }
-  void set_error(int error) { _error = error; }
+  bool has_malloc_error() const { return malloc_error_;}
+  void set_malloc_error(bool malloc_error) { malloc_error_ = malloc_error; }
+  int error() const { return error_; }
+  void set_error(int error) { error_ = error; }
  private:
-  bool _malloc_error;
-  int _error;
+  bool malloc_error_;
+  int error_;
 };
 
 class BLEServiceResource;
@@ -182,39 +182,39 @@ class BLEReadWriteElement : public BLEErrorCapableResource {
  public:
   BLEReadWriteElement(ResourceGroup* group, Kind kind, ble_uuid_any_t uuid, uint16 handle)
       : BLEErrorCapableResource(group,kind)
-      , _uuid(uuid)
-      , _handle(handle)
-      , _mbuf_received(null)
-      , _mbuf_to_send(null) {}
-  ble_uuid_any_t &uuid() { return _uuid; }
-  ble_uuid_t* ptr_uuid() { return &_uuid.u; }
-  uint16 handle() const { return _handle; }
-  uint16* ptr_handle() { return &_handle; }
+      , uuid_(uuid)
+      , handle_(handle)
+      , mbuf_received_(null)
+      , mbuf_to_send_(null) {}
+  ble_uuid_any_t &uuid() { return uuid_; }
+  ble_uuid_t* ptr_uuid() { return &uuid_.u; }
+  uint16 handle() const { return handle_; }
+  uint16* ptr_handle() { return &handle_; }
   virtual BLEServiceResource* service() = 0;
   void set_mbuf_received(os_mbuf* mbuf)  {
-    if (_mbuf_received == null)  {
-      _mbuf_received = mbuf;
+    if (mbuf_received_ == null)  {
+      mbuf_received_ = mbuf;
     } else if (mbuf == null) {
-      os_mbuf_free_chain(_mbuf_received);
-      _mbuf_received = null;
+      os_mbuf_free_chain(mbuf_received_);
+      mbuf_received_ = null;
     } else {
-      os_mbuf_concat(_mbuf_received, mbuf);
+      os_mbuf_concat(mbuf_received_, mbuf);
     }
   };
 
   os_mbuf* mbuf_received() {
-    return _mbuf_received;
+    return mbuf_received_;
   }
 
   os_mbuf* mbuf_to_send() {
     Locker locker(BLEResourceGroup::instance()->mutex());
-    return _mbuf_to_send;
+    return mbuf_to_send_;
   }
 
   void set_mbuf_to_send(os_mbuf* mbuf) {
     Locker locker(BLEResourceGroup::instance()->mutex());
-    if (_mbuf_to_send != null) os_mbuf_free(_mbuf_to_send);
-    _mbuf_to_send = mbuf;
+    if (mbuf_to_send_ != null) os_mbuf_free(mbuf_to_send_);
+    mbuf_to_send_ = mbuf;
   }
 
   static int on_attribute_read(uint16_t conn_handle,
@@ -237,10 +237,10 @@ class BLEReadWriteElement : public BLEErrorCapableResource {
   void _on_attribute_read(const ble_gatt_error *error, ble_gatt_attr *attr);
   int _on_access(ble_gatt_access_ctxt* ctxt);
 
-  ble_uuid_any_t _uuid;
-  uint16 _handle;
-  os_mbuf* _mbuf_received;
-  os_mbuf* _mbuf_to_send;
+  ble_uuid_any_t uuid_;
+  uint16 handle_;
+  os_mbuf* mbuf_received_;
+  os_mbuf* mbuf_to_send_;
 
 };
 
@@ -255,15 +255,15 @@ class BLEDescriptorResource: public BLEReadWriteElement, public DescriptorList::
   BLEDescriptorResource(ResourceGroup* group, BLECharacteristicResource *characteristic,
                         ble_uuid_any_t uuid, uint16 handle, int properties)
     : BLEReadWriteElement(group, DESCRIPTOR, uuid, handle)
-    , _characteristic(characteristic)
-    , _properties(properties) {}
+    , characteristic_(characteristic)
+    , properties_(properties) {}
 
   BLEServiceResource* service() override;
-  uint8 properties() const { return _properties; }
+  uint8 properties() const { return properties_; }
 
  private:
-  BLECharacteristicResource* _characteristic;
-  uint8 _properties;
+  BLECharacteristicResource* characteristic_;
+  uint8 properties_;
 };
 
 class Subscription;
@@ -271,19 +271,19 @@ typedef class DoubleLinkedList<Subscription> SubscriptionList;
 class Subscription : public SubscriptionList::Element {
  public:
   Subscription(bool indication, bool notification, uint16 connHandle)
-      : _indication(indication)
-      , _notification(notification)
-      , _conn_handle(connHandle) {}
-  void set_indication(bool indication) { _indication = indication; }
-  bool indication() const { return _indication; }
-  void set_notification(bool notification) { _notification = notification; }
-  bool notification() const { return _notification; }
-  bool conn_handle() const { return _conn_handle; }
+      : indication_(indication)
+      , notification_(notification)
+      , conn_handle_(connHandle) {}
+  void set_indication(bool indication) { indication_ = indication; }
+  bool indication() const { return indication_; }
+  void set_notification(bool notification) { notification_ = notification; }
+  bool notification() const { return notification_; }
+  bool conn_handle() const { return conn_handle_; }
 
  private:
-  bool _indication;
-  bool _notification;
-  uint16 _conn_handle;
+  bool indication_;
+  bool notification_;
+  uint16 conn_handle_;
 };
 
 typedef DoubleLinkedList<BLECharacteristicResource> CharacteristicResourceList;
@@ -295,20 +295,20 @@ class BLECharacteristicResource :
                             ble_uuid_any_t uuid, uint8 properties, uint16 handle,
                             uint16 definition_handle)
       : BLEReadWriteElement(group, CHARACTERISTIC, uuid, handle)
-      , _service(service)
-      , _properties(properties)
-      , _definition_handle(definition_handle) {}
+      , service_(service)
+      , properties_(properties)
+      , definition_handle_(definition_handle) {}
 
   ~BLECharacteristicResource() override {
-    while (!_subscriptions.is_empty()) {
-      free(_subscriptions.remove_first());
+    while (!subscriptions_.is_empty()) {
+      free(subscriptions_.remove_first());
     }
   }
 
-  BLEServiceResource* service() override { return _service; }
+  BLEServiceResource* service() override { return service_; }
 
-  uint8 properties() const { return _properties;  }
-  uint16 definition_handle() const { return _definition_handle; }
+  uint8 properties() const { return properties_;  }
+  uint16 definition_handle() const { return definition_handle_; }
 
   BLEDescriptorResource* get_or_create_descriptor(ble_uuid_any_t uuid, uint16_t handle,
                                                   uint8 properties, bool can_create=false);
@@ -326,14 +326,14 @@ class BLECharacteristicResource :
   }
 
   DescriptorList& descriptors() {
-    return _descriptors;
+    return descriptors_;
   }
 
   bool update_subscription_status(uint8_t indicate, uint8_t notify, uint16_t conn_handle);
-  SubscriptionList& subscriptions() { return _subscriptions; }
+  SubscriptionList& subscriptions() { return subscriptions_; }
 
   void make_deletable() override {
-    while (BLEDescriptorResource* descriptor = _descriptors.remove_first()) {
+    while (BLEDescriptorResource* descriptor = descriptors_.remove_first()) {
       if (!group()->tearing_down())
         group()->unregister_resource(descriptor);
     }
@@ -362,11 +362,11 @@ class BLECharacteristicResource :
   void _on_write_response(const ble_gatt_error* error, ble_gatt_attr* attr);
   void _on_subscribe_response(const ble_gatt_error* error, ble_gatt_attr* attr);
 
-  BLEServiceResource* _service;
-  uint8 _properties;
-  uint16 _definition_handle;
-  DescriptorList _descriptors;
-  SubscriptionList _subscriptions;
+  BLEServiceResource* service_;
+  uint8 properties_;
+  uint16 definition_handle_;
+  DescriptorList descriptors_;
+  SubscriptionList subscriptions_;
 };
 
 typedef DoubleLinkedList<BLEServiceResource> ServiceResourceList;
@@ -379,26 +379,26 @@ class BLEServiceResource:
   BLEServiceResource(BLEResourceGroup* group,
                      ble_uuid_any_t uuid, uint16 start_handle, uint16 end_handle)
       : BLEErrorCapableResource(group, SERVICE)
-      , _uuid(uuid)
-      , _start_handle(start_handle)
-      , _end_handle(end_handle)
-      , _deployed(false)
-      , _characteristics_discovered(false)
-      , _device(null)
-      , _peripheral_manager(null) {}
+      , uuid_(uuid)
+      , start_handle_(start_handle)
+      , end_handle_(end_handle)
+      , deployed_(false)
+      , characteristics_discovered_(false)
+      , device_(null)
+      , peripheral_manager_(null) {}
 
  public:
   TAG(BLEServiceResource);
   BLEServiceResource(BLEResourceGroup* group, BLERemoteDeviceResource* device,
                      ble_uuid_any_t uuid, uint16 start_handle, uint16 end_handle)
       : BLEServiceResource(group, uuid, start_handle, end_handle) {
-    _device = device;
+    device_ = device;
   }
 
   BLEServiceResource(BLEResourceGroup* group, BLEPeripheralManagerResource* peripheral_manager,
                      ble_uuid_any_t uuid, uint16 start_handle, uint16 end_handle)
       : BLEServiceResource(group, uuid, start_handle, end_handle) {
-    _peripheral_manager = peripheral_manager;
+    peripheral_manager_ = peripheral_manager;
   }
 
   BLECharacteristicResource* get_or_create_characteristics_resource(
@@ -406,29 +406,29 @@ class BLEServiceResource:
       uint16 value_handle);
 
   void make_deletable() override {
-    while (auto characteristic = _characteristics.remove_first()) {
+    while (auto characteristic = characteristics_.remove_first()) {
       if (!group()->tearing_down())
         group()->unregister_resource(characteristic);
     }
     BLEResource::make_deletable();
   }
 
-  ble_uuid_any_t& uuid() { return _uuid; }
-  ble_uuid_t* ptr_uuid() { return &_uuid.u; }
-  uint16 start_handle() const { return _start_handle; }
-  uint16 end_handle() const { return _end_handle; }
+  ble_uuid_any_t& uuid() { return uuid_; }
+  ble_uuid_t* ptr_uuid() { return &uuid_.u; }
+  uint16 start_handle() const { return start_handle_; }
+  uint16 end_handle() const { return end_handle_; }
 
-  BLERemoteDeviceResource* device() const { return _device; }
-  BLEPeripheralManagerResource* peripheral_manager() const { return _peripheral_manager; }
-  CharacteristicResourceList& characteristics() { return _characteristics; }
+  BLERemoteDeviceResource* device() const { return device_; }
+  BLEPeripheralManagerResource* peripheral_manager() const { return peripheral_manager_; }
+  CharacteristicResourceList& characteristics() { return characteristics_; }
   void clear_characteristics() {
-    while (!_characteristics.is_empty())
-      group()->unregister_resource(_characteristics.remove_first());
+    while (!characteristics_.is_empty())
+      group()->unregister_resource(characteristics_.remove_first());
   }
-  bool deployed() const { return _deployed; }
-  void set_deployed(bool deployed) { _deployed = deployed; }
-  bool characteristics_discovered() const { return _characteristics_discovered; }
-  void set_characteristics_discovered(bool discovered) { _characteristics_discovered = discovered; }
+  bool deployed() const { return deployed_; }
+  void set_deployed(bool deployed) { deployed_ = deployed; }
+  bool characteristics_discovered() const { return characteristics_discovered_; }
+  void set_characteristics_discovered(bool discovered) { characteristics_discovered_ = discovered; }
 
   static int on_characteristic_discovered(uint16_t conn_handle,
                                           const ble_gatt_error* error,
@@ -456,14 +456,14 @@ class BLEServiceResource:
                                  uint16_t chr_val_handle,
                                  bool called_from_notify);
 
-  CharacteristicResourceList _characteristics;
-  ble_uuid_any_t _uuid;
-  uint16 _start_handle;
-  uint16 _end_handle;
-  bool _deployed;
-  bool _characteristics_discovered;
-  BLERemoteDeviceResource *_device;
-  BLEPeripheralManagerResource *_peripheral_manager;
+  CharacteristicResourceList characteristics_;
+  ble_uuid_any_t uuid_;
+  uint16 start_handle_;
+  uint16 end_handle_;
+  bool deployed_;
+  bool characteristics_discovered_;
+  BLERemoteDeviceResource* device_;
+  BLEPeripheralManagerResource* peripheral_manager_;
 };
 
 class BLECentralManagerResource : public BLEErrorCapableResource {
@@ -489,11 +489,11 @@ class BLECentralManagerResource : public BLEErrorCapableResource {
   static bool is_scanning() { return ble_gap_disc_active(); }
 
   DiscoveredPeripheral* get_discovered_peripheral() {
-    return _newly_discovered_peripherals.first();
+    return newly_discovered_peripherals_.first();
   }
 
   DiscoveredPeripheral* remove_discovered_peripheral() {
-    return _newly_discovered_peripherals.remove_first();
+    return newly_discovered_peripherals_.remove_first();
   }
 
   static int on_discovery(ble_gap_event *event, void *arg) {
@@ -503,7 +503,7 @@ class BLECentralManagerResource : public BLEErrorCapableResource {
 
  private:
   void _on_discovery(ble_gap_event *event);
-  DiscoveredPeripheralList _newly_discovered_peripherals;
+  DiscoveredPeripheralList newly_discovered_peripherals_;
 };
 
 template <typename T>
@@ -520,16 +520,16 @@ class ServiceContainer : public BLEErrorCapableResource {
 
   virtual T* type() = 0;
   BLEServiceResource* get_or_create_service_resource(ble_uuid_any_t uuid, uint16 start, uint16 end);
-  ServiceResourceList& services() { return _services; }
+  ServiceResourceList& services() { return services_; }
   void clear_services() {
-    while (auto service = _services.remove_first()) {
+    while (auto service = services_.remove_first()) {
       if (!group()->tearing_down()) {
         group()->unregister_resource(service);
       }
     }
   }
  private:
-  ServiceResourceList _services;
+  ServiceResourceList services_;
 };
 
 
@@ -538,8 +538,8 @@ class BLEPeripheralManagerResource : public ServiceContainer<BLEPeripheralManage
   TAG(BLEPeripheralManagerResource);
   explicit BLEPeripheralManagerResource(BLEResourceGroup* group)
   : ServiceContainer(group, PERIPHERAL_MANAGER)
-  , _advertising_params({})
-  , _advertising_started(false) {}
+  , advertising_params_({})
+  , advertising_started_(false) {}
 
   ~BLEPeripheralManagerResource() override {
     if (is_advertising()) {
@@ -549,10 +549,10 @@ class BLEPeripheralManagerResource : public ServiceContainer<BLEPeripheralManage
 
   BLEPeripheralManagerResource* type() override { return this; }
 
-  bool advertising_started() const { return _advertising_started; }
-  void set_advertising_started(bool advertising_started)  { _advertising_started = advertising_started; }
+  bool advertising_started() const { return advertising_started_; }
+  void set_advertising_started(bool advertising_started)  { advertising_started_ = advertising_started; }
 
-  ble_gap_adv_params& advertising_params() { return _advertising_params; }
+  ble_gap_adv_params& advertising_params() { return advertising_params_; }
 
   static int on_gap(struct ble_gap_event *event, void *arg) {
     return unvoid_cast<BLEPeripheralManagerResource*>(arg)->_on_gap(event);
@@ -562,8 +562,8 @@ class BLEPeripheralManagerResource : public ServiceContainer<BLEPeripheralManage
 
  private:
   int _on_gap(struct ble_gap_event *event);
-  ble_gap_adv_params _advertising_params;
-  bool _advertising_started;
+  ble_gap_adv_params advertising_params_;
+  bool advertising_started_;
 };
 
 class BLERemoteDeviceResource : public ServiceContainer<BLERemoteDeviceResource> {
@@ -571,7 +571,7 @@ class BLERemoteDeviceResource : public ServiceContainer<BLERemoteDeviceResource>
   TAG(BLERemoteDeviceResource);
   explicit BLERemoteDeviceResource(BLEResourceGroup* group)
     : ServiceContainer(group, REMOTE_DEVICE)
-    , _handle(kInvalidHandle) {}
+    , handle_(kInvalidHandle) {}
 
   BLERemoteDeviceResource* type() override { return this; }
 
@@ -588,13 +588,13 @@ class BLERemoteDeviceResource : public ServiceContainer<BLERemoteDeviceResource>
     return BLE_ERR_SUCCESS;
   }
 
-  uint16 handle() const { return _handle; }
-  void set_handle(uint16 handle) { _handle = handle; }
+  uint16 handle() const { return handle_; }
+  void set_handle(uint16 handle) { handle_ = handle; }
  private:
   void _on_event(ble_gap_event *event);
   void _on_service_discovered(const ble_gatt_error* error, const ble_gatt_svc* service);
 
-  uint16 _handle;
+  uint16 handle_;
 };
 
 Object* nimble_error_code_to_string(Process* process, int error_code, bool host) {
@@ -699,19 +699,19 @@ uint32_t BLEResourceGroup::on_event(Resource* resource, word data, uint32_t stat
 }
 
 BLEServiceResource* BLEDescriptorResource::service() {
-  return _characteristic->service();
+  return characteristic_->service();
 }
 
 template<typename T>
 BLEServiceResource*
 ServiceContainer<T>::get_or_create_service_resource(ble_uuid_any_t uuid, uint16 start, uint16 end) {
-  for (auto service : _services) {
+  for (auto service : services_) {
     if (uuid_equals(uuid, service->uuid())) return service;
   }
   auto service = _new BLEServiceResource(group(),type(), uuid, start,end);
   if (!service) return null;
   group()->register_resource(service);
-  _services.append(service);
+  services_.append(service);
   return service;
 }
 
@@ -756,14 +756,14 @@ BLEServiceResource::_on_characteristic_discovered(const struct ble_gatt_error* e
 BLECharacteristicResource* BLEServiceResource::get_or_create_characteristics_resource(
     ble_uuid_any_t uuid, uint8 properties, uint16 def_handle,
     uint16 value_handle) {
-  for (auto item : _characteristics) {
+  for (auto item : characteristics_) {
     if (uuid_equals(uuid, item->uuid())) return item;
   }
 
   auto characteristic = _new BLECharacteristicResource(group(), this, uuid, properties, value_handle, def_handle);
   if (!characteristic) return null;
   group()->register_resource(characteristic);
-  _characteristics.append(characteristic);
+  characteristics_.append(characteristic);
   return characteristic;
 }
 
@@ -798,7 +798,7 @@ void BLECentralManagerResource::_on_discovery(ble_gap_event* event) {
 
       {
         Locker locker(BLEResourceGroup::instance()->mutex());
-        _newly_discovered_peripherals.append(discovered_peripheral);
+        newly_discovered_peripherals_.append(discovered_peripheral);
       }
 
       BLEEventSource::instance()->on_event(this, kBLEDiscovery);
@@ -874,7 +874,7 @@ void BLERemoteDeviceResource::_on_service_discovered(const ble_gatt_error* error
 
 BLEDescriptorResource* BLECharacteristicResource::get_or_create_descriptor(
     ble_uuid_any_t uuid, uint16_t handle, uint8 properties, bool can_create) {
-  for (auto descriptor : _descriptors) {
+  for (auto descriptor : descriptors_) {
     if (uuid_equals(uuid, descriptor->uuid())) return descriptor;
   }
   if (!can_create) return null;
@@ -882,7 +882,7 @@ BLEDescriptorResource* BLECharacteristicResource::get_or_create_descriptor(
   auto descriptor = _new BLEDescriptorResource(group(), this, uuid, handle, properties);
   if (!descriptor) return null;
   group()->register_resource(descriptor);
-  _descriptors.append(descriptor);
+  descriptors_.append(descriptor);
   return descriptor;
 }
 
@@ -974,7 +974,7 @@ BLEServiceResource::_on_descriptor_discovered(const struct ble_gatt_error* error
       // Find the characteristic.
       BLECharacteristicResource* characteristic = null;
 
-      for (auto current : _characteristics) {
+      for (auto current : characteristics_) {
         if (!characteristic) {
           if (dsc->handle <= start_handle()) return;
         } else {
@@ -1016,10 +1016,10 @@ BLEServiceResource::_on_descriptor_discovered(const struct ble_gatt_error* error
 }
 
 bool BLECharacteristicResource::update_subscription_status(uint8_t indicate, uint8_t notify, uint16_t conn_handle) {
-  for (auto subscription : _subscriptions) {
+  for (auto subscription : subscriptions_) {
     if (subscription->conn_handle() == conn_handle) {
       if (!indicate && !notify) {
-        _subscriptions.unlink(subscription);
+        subscriptions_.unlink(subscription);
         free(subscription);
         return true;
       } else {
@@ -1040,7 +1040,7 @@ bool BLECharacteristicResource::update_subscription_status(uint8_t indicate, uin
     if (!subscription) return false;
   }
 
-  _subscriptions.append(subscription);
+  subscriptions_.append(subscription);
   return true;
 }
 

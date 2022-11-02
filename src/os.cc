@@ -33,12 +33,12 @@
 
 namespace toit {
 
-Mutex* OS::_global_mutex = null;
-Mutex* OS::_scheduler_mutex = null;
-Mutex* OS::_resource_mutex = null;
+Mutex* OS::global_mutex_ = null;
+Mutex* OS::scheduler_mutex_ = null;
+Mutex* OS::resource_mutex_ = null;
 // Unless we explicily detect an old CPU revision we assume we have a high
 // (recent) CPU with no problems.
-int    OS::_cpu_revision = 1000000;
+int    OS::cpu_revision_ = 1000000;
 
 void OS::timespec_increment(timespec* ts, int64 ns) {
   const int64 ns_per_second = 1000000000LL;
@@ -147,10 +147,10 @@ static void* try_grab_aligned(void* suggestion, uword size) {
   return OS::grab_virtual_memory(reinterpret_cast<void*>(rounded), size);
 }
 
-OS::HeapMemoryRange OS::_single_range = { 0 };
+OS::HeapMemoryRange OS::single_range_ = { 0 };
 
 void* OS::allocate_pages(uword size) {
-  if (_single_range.size == 0) FATAL("GcMetadata::set_up not called");
+  if (single_range_.size == 0) FATAL("GcMetadata::set_up not called");
   size = Utils::round_up(size, TOIT_PAGE_SIZE);
   uword original_size = size;
   // First attempt, let the OS pick a location.
@@ -159,8 +159,8 @@ void* OS::allocate_pages(uword size) {
   uword numeric_address = reinterpret_cast<uword>(result);
   uword result_end = numeric_address + size;
   int attempt = 0;
-  while (result < _single_range.address ||
-         result_end > reinterpret_cast<uword>(_single_range.address) + _single_range.size ||
+  while (result < single_range_.address ||
+         result_end > reinterpret_cast<uword>(single_range_.address) + single_range_.size ||
          numeric_address != Utils::round_up(numeric_address, TOIT_PAGE_SIZE)) {
     if (attempt++ > 20) FATAL("Out of memory");
     // We did not get a result in the right range.
@@ -169,7 +169,7 @@ void* OS::allocate_pages(uword size) {
     uword mask = MAX_HEAP - 1;
     uword r = rand();
     r <<= TOIT_PAGE_SIZE_LOG2;  // Do this on a separate line so that it is done on a word-sized integer.
-    uword suggestion = reinterpret_cast<uword>(_single_range.address) + (r & mask);
+    uword suggestion = reinterpret_cast<uword>(single_range_.address) + (r & mask);
     result = try_grab_aligned(reinterpret_cast<void*>(suggestion), size);
     numeric_address = reinterpret_cast<uword>(result);
     result_end = numeric_address + size;
@@ -192,11 +192,11 @@ OS::HeapMemoryRange OS::get_heap_memory_range() {
   if (addr < HALF_MAX) {
     // Address is near the start of address space, so we set the range
     // to be the first MAX_HEAP of the address space.
-    _single_range.address = reinterpret_cast<void*>(TOIT_PAGE_SIZE);
+    single_range_.address = reinterpret_cast<void*>(TOIT_PAGE_SIZE);
   } else if (addr + HALF_MAX + TOIT_PAGE_SIZE < addr) {
     // Address is near the end of address space, so we set the range to
     // be the last MAX_HEAP of the address space.
-    _single_range.address = reinterpret_cast<void*>(-static_cast<word>(MAX_HEAP + TOIT_PAGE_SIZE));
+    single_range_.address = reinterpret_cast<void*>(-static_cast<word>(MAX_HEAP + TOIT_PAGE_SIZE));
   } else {
     uword from = addr - MAX_HEAP / 2;
 #if defined(TOIT_DARWIN) && defined(BUILD_64)
@@ -206,18 +206,18 @@ OS::HeapMemoryRange OS::get_heap_memory_range() {
     // both sides of the 4Gbytes boundary.
     const uword FOUR_GB = 4LL * GB;
     if (from < FOUR_GB && to > FOUR_GB) {
-      _single_range.address = reinterpret_cast<void*>(FOUR_GB);
+      single_range_.address = reinterpret_cast<void*>(FOUR_GB);
     } else {
 #else
     {
 #endif
       // We will be allocating within a symmetric range either side of this
       // single allocation.
-      _single_range.address = reinterpret_cast<void*>(from);
+      single_range_.address = reinterpret_cast<void*>(from);
     }
   }
-  _single_range.size = MAX_HEAP;
-  return _single_range;
+  single_range_.size = MAX_HEAP;
+  return single_range_;
 }
 
 #endif  // ndef TOIT_FREERTOS
