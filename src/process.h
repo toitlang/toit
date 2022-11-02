@@ -262,8 +262,8 @@ class Process : public ProcessListFromProcessGroup::Element,
   SystemMessage* termination_message_;
 
   bool random_seeded_;
-  uint64_t _random_state0;
-  uint64_t _random_state1;
+  uint64_t random_state0_;
+  uint64_t random_state1_;
 
   int current_directory_;
 

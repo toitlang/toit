@@ -47,8 +47,8 @@ Process::Process(Program* program, ProcessRunner* runner, ProcessGroup* group, S
     , last_bytes_allocated_(0)
     , termination_message_(termination)
     , random_seeded_(false)
-    , _random_state0(1)
-    , _random_state1(2)
+    , random_state0_(1)
+    , random_state1_(2)
     , current_directory_(-1)
     , signals_(0)
     , state_(IDLE)
@@ -311,25 +311,25 @@ void Process::_ensure_random_seeded() {
 uint64_t Process::random() {
   _ensure_random_seeded();
   // xorshift128+.
-  uint64_t s1 = _random_state0;
-  uint64_t s0 = _random_state1;
-  _random_state0 = s0;
+  uint64_t s1 = random_state0_;
+  uint64_t s0 = random_state1_;
+  random_state0_ = s0;
   s1 ^= s1 << 23;
   s1 ^= s1 >> 18;
   s1 ^= s0;
   s1 ^= s0 >> 5;
-  _random_state1 = s1;
-  return _random_state0 + _random_state1;
+  random_state1_ = s1;
+  return random_state0_ + random_state1_;
 }
 
 void Process::random_seed(const uint8* buffer, size_t size) {
-  _random_state0 = 0xdefa17;
-  _random_state1 = 0xf00baa;
-  memcpy(&_random_state0, buffer, Utils::min(size, sizeof(_random_state0)));
-  if (size >= sizeof(_random_state0)) {
-    buffer += sizeof(_random_state0);
-    size -= sizeof(_random_state0);
-    memcpy(&_random_state1, buffer, Utils::min(size, sizeof(_random_state1)));
+  random_state0_ = 0xdefa17;
+  random_state1_ = 0xf00baa;
+  memcpy(&random_state0_, buffer, Utils::min(size, sizeof(random_state0_)));
+  if (size >= sizeof(random_state0_)) {
+    buffer += sizeof(random_state0_);
+    size -= sizeof(random_state0_);
+    memcpy(&random_state1_, buffer, Utils::min(size, sizeof(random_state1_)));
   }
   random_seeded_ = true;
 }
