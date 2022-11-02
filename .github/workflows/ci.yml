@@ -579,6 +579,16 @@ jobs:
           mkdir -p build/raspberry_pi64
           cp -Ra build/raspberry_pi/sdk build/raspberry_pi64
 
+      - name: Patch esptool requirements
+        # We don't want to use the cryptography package that uses rust.
+        # The latest version that can still be installed without rust is 3.4.8.
+        # If we want to use a newer version, we would need to:
+        # - Install rust in the container: apt-get install -y cargo
+        # - Make sure there is enough space in the container.
+        #    This is done by a `with` argument: image_additional_mb: 512
+        run: |
+          sed -i 's/cryptography/cryptography<=3.4.8/' third_party/esp-idf/components/esptool_py/esptool/setup.py
+
       - name: Build esptool 32-bit
         uses: pguyot/arm-runner-action@v2
         with:
