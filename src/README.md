@@ -208,6 +208,21 @@ to the loop variable.
 
 Top-level constants are named with `ALL_CAPS_AND_UNDERSCORES`.
 
+Private member variables (fields) are named with lower case and underscores,
+and a trailing underscore.  (This matches the naming in Google's C++ style and
+also the naming in Toit.)
+
+```
+class Pair {
+ public:
+  Pair(uint16 x, uint16 y)
+      : value_((static_cast<uint32>(x) << 16) | y) {}
+
+ private:
+  uint32 value_;
+};
+```
+
 ## Readability
 
 Try to avoid unnamed bool arguments if it's not clear at the call site what
