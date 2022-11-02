@@ -18,13 +18,10 @@ espnow_tx_task:
   count := 0
   while true:
     buffer := "hello $count"    
-    ret := service.send
+    service.send
         buffer.to_byte_array
         --address=espnow.BROADCAST_ADDRESS
-    if ret < 0:
-      print "Failed to send datagram result is $ret"
-    else:
-      print "Send datagram: \"$buffer\""
+    print "Send datagram: \"$buffer\""
 
     count++
     sleep --ms=1000

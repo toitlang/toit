@@ -40,8 +40,8 @@ class Service:
     key_data := key ? key.data : #[]
     _group = espnow_init_ STATION_ key_data
 
-  send data/ByteArray --address/Address --wait/bool=true -> int:
-    return espnow_send_ address.mac data wait
+  send data/ByteArray --address/Address --wait/bool=true -> none:
+    espnow_send_ address.mac data wait
 
   receive -> Datagram?:
     array := espnow_receive_ (Array_ 2)
