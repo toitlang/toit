@@ -324,6 +324,72 @@ PRIMITIVE(blob_index_of) {
 #endif
 }
 
+static Array* get_array_from_list(Object* object, Process* process) {
+  Array* result = null;
+  if (is_instance(object)) {
+    Instance* list = Instance::cast(object);
+    if (list->class_id() == process->program()->list_class_id()) {
+      Object* array_object;
+      // This 'if' will fail if we are dealing with a List so large
+      // that it has arraylets.
+      if (is_array(array_object = list->at(0))) {
+        result = Array::cast(array_object);
+      }
+    }
+  }
+  return result;
+}
+
+PRIMITIVE(crc) {
+  ARGS(int64, accumulator, int, width, Blob, data, int, from, int, to, Object, table_object);
+  if ((width != 0 && width < 8) || width > 64) INVALID_ARGUMENT;
+  bool big_endian = width != 0;
+  if (to == from) return _raw_accumulator;
+  if (from < 0 || to > data.length() || from > to) OUT_OF_BOUNDS;
+  Array* table = get_array_from_list(table_object, process);
+  const uint8* byte_table = null;
+  if (table) {
+    if (table->length() != 0x100) INVALID_ARGUMENT;
+  } else {
+    Blob blob;
+    if (!table_object->byte_content(process->program(), &blob, STRINGS_OR_BYTE_ARRAYS)) WRONG_TYPE;
+    if (blob.length() != 0x100) INVALID_ARGUMENT;
+    byte_table = blob.address();
+  }
+  for (word i = from; i < to; i++) {
+    uint8 byte = data.address()[i];
+    uint64 index = accumulator;
+    if (big_endian) index >>= width - 8;
+    index = (byte ^ index) & 0xff;
+    int64 entry;
+    if (byte_table) {
+      entry = byte_table[index];
+    } else {
+      Object* table_entry = table->at(index);
+      if (is_smi(table_entry)) {
+        entry = Smi::cast(table_entry)->value();
+      } else if (is_large_integer(table_entry)) {
+        entry = LargeInteger::cast(table_entry)->value();
+      } else {
+        INVALID_ARGUMENT;
+      }
+    }
+    if (big_endian) {
+      accumulator = (accumulator << 8) ^ entry;
+    } else {
+      accumulator = (static_cast<uint64>(accumulator) >> 8) ^ entry;
+    }
+  }
+  if ((width & 63) != 0) {
+    // If width is less than 64 we have to mask the result.  For the little
+    // endian case (width == 0) we don't need to mask.
+    uint64 mask = 1;
+    mask = (mask << (width & 63)) - 1;
+    accumulator &= mask;
+  }
+  return Primitive::integer(accumulator, process);
+}
+
 PRIMITIVE(string_from_rune) {
   ARGS(int, rune);
   if (rune < 0 || rune > Utils::MAX_UNICODE) INVALID_ARGUMENT;
@@ -1008,18 +1074,7 @@ PRIMITIVE(bytes_allocated_delta) {
 
 PRIMITIVE(process_stats) {
   ARGS(Object, list_object, int, group, int, id);
-  Array* result = null;
-  if (is_instance(list_object)) {
-    Instance* list = Instance::cast(list_object);
-    if (list->class_id() == process->program()->list_class_id()) {
-      Object* array_object;
-      if (is_array(array_object = list->at(0))) {
-        result = Array::cast(array_object);
-      } else {
-        OUT_OF_RANGE;  // List is so big it uses arraylets.
-      }
-    }
-  }
+  Array* result = get_array_from_list(list_object, process);
   if (result == null) INVALID_ARGUMENT;
   if (group == -1 || id == -1) {
     if (group != -1 || id != -1) INVALID_ARGUMENT;

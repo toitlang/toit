@@ -48,3 +48,37 @@ main:
   expect_equals 0x765E7680 (crc.crc32_posix "123456789")
   expect_equals 0x3010BF7F (crc.crc32q "123456789")
   expect_equals 0xBD0BE338 (crc.crc32_xfer "123456789")
+  expect_equals 0x995dc9bbdf1939fa (crc.crc64_xz "123456789")
+
+  // The 64 bit CRC from the Go progamming language, with the polynomial
+  // expressed in normalized order.
+  summer := crc.Crc.little_endian 64
+      --normal_polynomial=0x0000_0000_0000_001b
+      --initial_state=0xffff_ffff_ffff_ffff
+      --xor_result=0xffff_ffff_ffff_ffff
+  summer.add "123456789"
+  expect_equals 0xb90956c775a41001 summer.get_as_int
+
+  // The 64 bit CRC from the Go progamming language, with the polynomial
+  // expressed in little endian order.
+  summer = crc.Crc.little_endian 64
+      --polynomial=0xd800_0000_0000_0000
+      --initial_state=0xffff_ffff_ffff_ffff
+      --xor_result=0xffff_ffff_ffff_ffff
+  summer.add "123456789"
+  expect_equals 0xb90956c775a41001 summer.get_as_int
+
+  // The 64 bit CRC from ECMA182 used in tape cartridges.
+  summer = crc.Crc.big_endian 64 --polynomial=0x42f0e1eba9ea3693
+  summer.add "123456789"
+  expect_equals 0x6c40df5f0b497347 summer.get_as_int
+
+  // The 5 bit CRC from USB, little-endian polynomial 0b00101.
+  summer = crc.Crc.little_endian 5 --normal_polynomial=0x5 --initial_state=0x1f --xor_result=0x1f
+  summer.add "123456789"
+  expect_equals 0x19 summer.get_as_int
+
+  // The 5 bit CRC from USB, polynomial 0b1_10100.
+  summer = crc.Crc.little_endian 5 --polynomial=0x14 --initial_state=0x1f --xor_result=0x1f
+  summer.add "123456789"
+  expect_equals 0x19 summer.get_as_int
