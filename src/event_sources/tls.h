@@ -28,7 +28,7 @@ typedef LinkedFIFO<TLSSocket, 1> TLSSocketList;
 class TLSSocket : public Resource, public TLSSocketList::Element {
  public:
   TLSSocket(ResourceGroup* resource_group)
-    : Resource(resource_group) { }
+    : Resource(resource_group) {}
 
   virtual word handshake() = 0;
 };

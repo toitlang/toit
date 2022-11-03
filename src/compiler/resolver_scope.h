@@ -62,7 +62,7 @@ class Module {
       , globals_(globals)
       , export_all_(export_all)
       , exported_identifiers_(exported_identifiers)
-      , scope_(null) { }
+      , scope_(null) {}
 
   ast::Unit* unit() const { return unit_; }
 
@@ -123,16 +123,16 @@ class ResolutionEntry {
     AMBIGUOUS,
   };
 
-  ResolutionEntry() : kind_(NODES), nodes_(List<ir::Node*>()) { }
+  ResolutionEntry() : kind_(NODES), nodes_(List<ir::Node*>()) {}
   explicit ResolutionEntry(List<ir::Node*> nodes)
-      : kind_(NODES), nodes_(nodes) { }
+      : kind_(NODES), nodes_(nodes) {}
   explicit ResolutionEntry(ir::Node* node)
-      : kind_(NODES), nodes_(ListBuilder<ir::Node*>::build(node)) { }
+      : kind_(NODES), nodes_(ListBuilder<ir::Node*>::build(node)) {}
 
-  explicit ResolutionEntry(ImportScope* prefix) : kind_(PREFIX), prefix_(prefix) { }
+  explicit ResolutionEntry(ImportScope* prefix) : kind_(PREFIX), prefix_(prefix) {}
 
   // Used for ambiguous nodes.
-  explicit ResolutionEntry(Kind kind) : kind_(kind), nodes_(List<ir::Node*>()) { }
+  explicit ResolutionEntry(Kind kind) : kind_(kind), nodes_(List<ir::Node*>()) {}
 
   Kind kind() const { return kind_; }
 
@@ -204,7 +204,7 @@ class FilteredIterableScope : public IterableScope {
   FilteredIterableScope(IterableScope* wrapped,
                         std::function<bool (Symbol, const ResolutionEntry&)> predicate)
       : wrapped_(wrapped)
-      , predicate_(predicate) { }
+      , predicate_(predicate) {}
 
   void for_each(const std::function<void (Symbol, const ResolutionEntry&)>& callback) {
     wrapped_->for_each([&] (Symbol symbol, const ResolutionEntry& entry) {
@@ -228,7 +228,7 @@ class Scope : public IterableScope {
     int block_depth;
   } LookupResult;
 
-  explicit Scope(Scope* outer) : outer_(outer) { }
+  explicit Scope(Scope* outer) : outer_(outer) {}
 
   virtual void add(Symbol name, ResolutionEntry entry) = 0;
 
@@ -331,7 +331,7 @@ class Scope : public IterableScope {
 /// Toplevel statics are handled in ModuleScopes.
 class StaticsScope : public IterableScope {
  public:
-  StaticsScope() : map_is_valid_(true) { }
+  StaticsScope() : map_is_valid_(true) {}
 
   void add(Symbol name, const ResolutionEntry& entry) {
     ASSERT(map_is_valid_);
@@ -385,7 +385,7 @@ class StaticsScope : public IterableScope {
 /// See [NonPrefixedImportScope].
 class ImportScope : public IterableScope {
  public:
-  explicit ImportScope(Symbol prefix) : prefix_(prefix) { }
+  explicit ImportScope(Symbol prefix) : prefix_(prefix) {}
 
   void add(ModuleScope* scope, bool is_explicitly_imported) {
     imported_scopes_.insert(scope);
@@ -464,7 +464,7 @@ class ImportScope : public IterableScope {
 ///   - all [ImportScope]s of modules that have been imported with a prefix.
 class NonPrefixedImportScope : public ImportScope {
  public:
-  NonPrefixedImportScope() : ImportScope(Symbols::empty_string) { }
+  NonPrefixedImportScope() : ImportScope(Symbols::empty_string) {}
 
   void add(ModuleScope* scope, bool is_explicitly_imported) {
     ImportScope::add(scope, is_explicitly_imported);
@@ -542,7 +542,7 @@ class ModuleScope : public Scope {
       : Scope(null)
       , module_(module)
       , non_prefixed_imported_(null)
-      , export_all_(export_all) { }
+      , export_all_(export_all) {}
 
   void add(Symbol name, ResolutionEntry entry) {
     ASSERT(!contains_local(name));
@@ -762,7 +762,7 @@ class LambdaScope : public SimpleScope {
 class ItScope : public Scope {
  public:
   explicit ItScope(Scope* outer)
-      : Scope(outer), it_(null), it_was_used_(false) { }
+      : Scope(outer), it_(null), it_was_used_(false) {}
 
   void add(Symbol name, ResolutionEntry entry) { outer()->add(name, entry); }
 
@@ -794,7 +794,7 @@ class ItScope : public Scope {
 class ScopeFiller {
  public:
   explicit ScopeFiller(bool discard_invalid_symbols = false)
-      : discard_invalid_(discard_invalid_symbols) { }
+      : discard_invalid_(discard_invalid_symbols) {}
 
   void add(Symbol name, ir::Node* node) {
     if (!name.is_valid() && discard_invalid_) return;

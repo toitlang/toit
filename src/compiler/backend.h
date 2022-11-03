@@ -33,7 +33,7 @@ class Backend {
  public:
   explicit Backend(SourceManager* source_manager, SourceMapper* source_mapper)
       : source_manager_(source_manager)
-      , source_mapper_(source_mapper) { }
+      , source_mapper_(source_mapper) {}
 
   // As a side-effect fills in the source-mapper.
   Program* emit(ir::Program* program);

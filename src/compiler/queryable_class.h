@@ -26,10 +26,10 @@ class QueryableClass {
  public:
   typedef UnorderedMap<Selector<PlainShape>, ir::Method*> SelectorMap;
 
-  QueryableClass() : class_(null) { }
+  QueryableClass() : class_(null) {}
 
   QueryableClass(ir::Class* klass, SelectorMap& methods)
-      : class_(klass), methods_(methods) { }
+      : class_(klass), methods_(methods) {}
 
   ir::Method* lookup(Selector<PlainShape> selector) const { return methods_.lookup(selector); }
   ir::Method* lookup(Selector<CallShape> selector) const {

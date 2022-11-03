@@ -62,7 +62,7 @@ class ToitdocWriter : public toitdoc::Visitor {
                 LspWriter* lsp_writer)
       : toitdoc_(toitdoc)
       , paths_(paths)
-      , lsp_writer_(lsp_writer) { }
+      , lsp_writer_(lsp_writer) {}
 
   void write() {
     visit(toitdoc_.contents());
@@ -222,7 +222,7 @@ class Writer {
       , toitdocs_(toitdocs)
       , core_index_(core_index)
       , paths_(paths)
-      , lsp_writer_(lsp_writer) { }
+      , lsp_writer_(lsp_writer) {}
 
   void print_modules();
 

@@ -36,7 +36,7 @@ struct LspFsConnection {
 
 class LspFsProtocol {
  public:
-  LspFsProtocol(LspFsConnection* connection) : connection_(connection) { }
+  LspFsProtocol(LspFsConnection* connection) : connection_(connection) {}
   struct PathInfo {
     bool exists;
     bool is_regular_file;

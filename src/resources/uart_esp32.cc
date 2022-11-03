@@ -76,7 +76,7 @@ class UARTResourceGroup : public ResourceGroup {
  public:
   TAG(UARTResourceGroup);
   UARTResourceGroup(Process* process, EventSource* event_source)
-    : ResourceGroup(process, event_source){ }
+    : ResourceGroup(process, event_source){}
 
   virtual void on_unregister_resource(Resource* r) {
     UARTResource* uart_res = static_cast<UARTResource*>(r);

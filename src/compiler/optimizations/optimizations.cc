@@ -40,7 +40,7 @@ class OptimizationVisitor : public ReplacingVisitor {
       , holder_(null)
       , method_(null)
       , queryables_(queryables)
-      , field_names_(field_names) { }
+      , field_names_(field_names) {}
 
   /// Transforms virtual calls into static calls (when possible).
   /// Transforms virtual getters/setters into field accesses (when possible).

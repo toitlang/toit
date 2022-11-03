@@ -149,7 +149,7 @@ PRIMITIVE(open) {
 class LeakyDirectory {
  public:
   TAG(LeakyDirectory);
-  LeakyDirectory(DIR* dir) : dir_(dir) { }
+  LeakyDirectory(DIR* dir) : dir_(dir) {}
   ~LeakyDirectory() { closedir(dir_); }
 
   DIR* dir() const { return dir_; }
@@ -161,7 +161,7 @@ class LeakyDirectory {
 class Directory : public SimpleResource, public LeakyDirectory {
  public:
   TAG(Directory);
-  Directory(SimpleResourceGroup* group, DIR* dir) : SimpleResource(group), LeakyDirectory(dir) { }
+  Directory(SimpleResourceGroup* group, DIR* dir) : SimpleResource(group), LeakyDirectory(dir) {}
 };
 
 // Deprecated primitive that can leak memory if you forget to call close.

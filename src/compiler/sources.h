@@ -66,7 +66,7 @@ class Source {
     int token() const { return token_; }
 
    private:
-    explicit Position(int token) : token_(token) { }
+    explicit Position(int token) : token_(token) {}
 
     int token_;
   };
@@ -137,7 +137,7 @@ class Source {
         , offset_in_source(offset_in_source)
         , offset_in_line(offset_in_line)
         , line_number(line_number)
-        , line_offset(line_offset) { }
+        , line_offset(line_offset) {}
 
     Source* source;
     int offset_in_source;
@@ -206,7 +206,7 @@ class SourceManager {
       : filesystem_(filesystem)
       , cached_source_entry_(null)
       , cached_offset_(-1)
-      , cached_location_(null, 0, 0, 0, 0) { }
+      , cached_location_(null, 0, 0, 0, 0) {}
 
   /// Loads the given file.
   ///

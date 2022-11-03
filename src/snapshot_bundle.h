@@ -28,7 +28,7 @@ namespace toit {
 class SnapshotBundle {
  public:
   SnapshotBundle(uint8* buffer, int size)
-      : buffer_(buffer), size_(size) { }
+      : buffer_(buffer), size_(size) {}
 
   /// Returns a new SnapshotBundle, where the buffer is allocated with 'malloc'.
   /// The given data is not reused and can be freed.

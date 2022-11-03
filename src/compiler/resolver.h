@@ -45,7 +45,7 @@ class Resolver {
            Diagnostics* diagnostics)
       : source_manager_(source_manager)
       , diagnostics_(diagnostics)
-      , lsp_(lsp) { }
+      , lsp_(lsp) {}
 
   ir::Program* resolve(const std::vector<ast::Unit*>& units,
                        int entry_unit_index,

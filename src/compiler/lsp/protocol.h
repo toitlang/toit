@@ -69,7 +69,7 @@ struct LspWriterStdout : public LspWriter {
 
 class LspProtocolBase {
  public:
-  LspProtocolBase(LspWriter* writer) : writer_(writer) { }
+  LspProtocolBase(LspWriter* writer) : writer_(writer) {}
 
  protected:
   void print_lsp_range(const LspRange& range);

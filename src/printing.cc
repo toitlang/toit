@@ -352,7 +352,7 @@ class ShortPrintVisitor : public PrintVisitor {
 
 class LongPrintVisitor : public PrintVisitor {
  public:
-  explicit LongPrintVisitor(Printer* printer) : printer_(printer), sub_(printer, false) { }
+  explicit LongPrintVisitor(Printer* printer) : printer_(printer), sub_(printer, false) {}
 
  protected:
   void print_heap_address(HeapObject* object) {

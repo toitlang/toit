@@ -81,10 +81,10 @@ class Symbol {
   }
 
  private:
-  constexpr explicit Symbol(const char* name) : str_(name) { }
+  constexpr explicit Symbol(const char* name) : str_(name) {}
 
   friend class ListBuilder<Symbol>;
-  Symbol() { }
+  Symbol() {}
 
   const char* str_;
 };

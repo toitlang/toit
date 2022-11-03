@@ -71,7 +71,7 @@ class CallShape {
       , total_block_count_(block_count)
       , names_(List<Symbol>())
       , named_block_count_(0)
-      , is_setter_(false) { }
+      , is_setter_(false) {}
 
   /// Creates a call shape.
   ///
@@ -279,7 +279,7 @@ class ResolutionShape {
   explicit ResolutionShape(int arity)
       : call_shape_(arity, 0, List<Symbol>(), 0, false)
       , optional_unnamed_(0)
-      , optional_names_(std::vector<bool>()) { }
+      , optional_names_(std::vector<bool>()) {}
 
   static ResolutionShape invalid() { return ResolutionShape(-1); }
   bool is_valid() const { return call_shape_.is_valid(); }
@@ -403,22 +403,22 @@ class ResolutionShape {
                   const std::vector<bool>& optional_names)
       : call_shape_(arity, total_block_count, names, named_block_count, is_setter)
       , optional_unnamed_(optional_unnamed)
-      , optional_names_(optional_names) { }
+      , optional_names_(optional_names) {}
 
   ResolutionShape(const CallShape& call_shape,
                   int optional_unnamed,
                   const std::vector<bool>& optional_names)
       : call_shape_(call_shape)
       , optional_unnamed_(optional_unnamed)
-      , optional_names_(optional_names) { }
+      , optional_names_(optional_names) {}
 
   explicit ResolutionShape(const CallShape& call_shape)
       : call_shape_(call_shape)
       , optional_unnamed_(0)
-      , optional_names_(std::vector<bool>()) { }
+      , optional_names_(std::vector<bool>()) {}
 
   friend class ListBuilder<ResolutionShape>;
-  ResolutionShape() :call_shape_(CallShape::invalid()) { }
+  ResolutionShape() :call_shape_(CallShape::invalid()) {}
 
   CallShape call_shape_;
   int optional_unnamed_;

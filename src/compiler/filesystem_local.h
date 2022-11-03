@@ -25,7 +25,7 @@ namespace compiler {
 
 class FilesystemLocal : public Filesystem {
  public:
-  void initialize(Diagnostics* diagnostics) { }
+  void initialize(Diagnostics* diagnostics) {}
 
   const char* entry_path() { return null; }
 
