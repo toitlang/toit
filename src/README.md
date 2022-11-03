@@ -120,6 +120,25 @@ parentheses.
     return;             // No. Use curly braces for multi-line 'if's and loops.
 ```
 
+Empty methods, like constructors, are written as `{}` with no space.
+
+Single line methods, like getters, are written with spaces inside the brackets.
+
+```
+class Pair {
+ public:
+  Pair(uint16 x, uint16 y)
+      : combined_value_((static_cast<uint32>(x) << 16) | y) {}  // No space between {}.
+
+  uint16 x() const { return combined_value_ >> 16; }     // Getters can be on one line.
+  uint16 y() const { return combined_value_ & 0xffff; }
+
+ private:
+  // Private member has snake_case_ with trailing underscore.
+  uint32 combined_value_;
+};
+```
+
 ### Indentation and line length
 
 We use two-space indentation for grouping compound statements.  Never tabs.
