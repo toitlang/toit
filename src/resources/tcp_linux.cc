@@ -89,6 +89,7 @@ class SocketResourceGroup : public ResourceGroup {
   }
 
   void close_socket(int id) {
+    // Unregisters the ID, which causes a call to close() in the EpollEventSource.
     unregister_id(id);
   }
 
@@ -180,7 +181,7 @@ PRIMITIVE(connect) {
   addr.sin_port = htons(port);
   int result = connect(id, reinterpret_cast<struct sockaddr*>(&addr), size);
   if (result != 0 && errno != EINPROGRESS) {
-    close(id);
+    close_keep_errno(id);
     ASSERT(errno > 0);
     return Primitive::os_error(errno, process);
   }
@@ -238,13 +239,13 @@ PRIMITIVE(listen) {
 
   int result = bind_socket(id, hostname, port);
   if (result != 0) {
-    close(id);
+    close_keep_errno(id);
     if (result == -1) return Primitive::os_error(errno, process);
     WRONG_TYPE;
   }
 
   if (listen(id, backlog) == -1) {
-    close(id);
+    close_keep_errno(id);
     return Primitive::os_error(errno, process);
   }
 
