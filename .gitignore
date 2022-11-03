@@ -26,7 +26,6 @@ tedi_test.go
 *.swp
 *.swo
 *.swn
-/toolchains/esp32s3/sdkconfig
-/toolchains/esp32s2/sdkconfig
-/toolchains/esp32c3/sdkconfig
-/toolchains/esp32/sdkconfig
+
+/toolchains/*/sdkconfig
+/toolchains/*/sdkconfig.old

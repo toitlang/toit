@@ -200,7 +200,7 @@ class ConditionVariable {
 
     mutex_->unlock();
 
-#ifdef CONFIG_IDF_TARGET_ESP32C3
+#ifndef CONFIG_IDF_TARGET_ESP32
     uint32_t value = 0;
 #else
     uint32 value = 0;

@@ -48,6 +48,12 @@ extern "C" {
 #endif
 }
 
+#ifndef CONFIG_IDF_TARGET_ESP32
+extern "C" {
+  esp_err_t esp_timer_impl_early_init(void);
+}
+#endif
+
 struct RtcData {
   uint64 total_deep_sleep_time;
   uint64 deep_sleep_time_stamp;
@@ -128,6 +134,11 @@ static void reset_rtc(const char* reason) {
   memset(&rtc, 0, sizeof(rtc));
   // We only clear RTC on boot, so this must be exactly 1.
   rtc.boot_count = 1;
+
+#ifndef CONFIG_IDF_TARGET_ESP32
+  esp_timer_impl_early_init();
+#endif
+
   // Clear real-time clock.
 #ifndef CONFIG_IDF_TARGET_ESP32S3
   struct timespec time = { 0, 0 };
