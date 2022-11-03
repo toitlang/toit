@@ -272,7 +272,11 @@ PRIMITIVE(read) {
   ARGS(IntResource, resource);
   touch_pad_t pad = static_cast<touch_pad_t>(resource->id());
 
+#ifdef CONFIG_IDF_TARGET_ESP32
+  uint16_t val;
+#else
   uint32_t val;
+#endif
   esp_err_t err = touch_pad_read_raw_data(pad, &val);
   if (err != ESP_OK) return Primitive::os_error(err, process);
   return Smi::from(static_cast<int>(val));
