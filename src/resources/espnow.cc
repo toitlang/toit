@@ -61,24 +61,11 @@ class ESPNowResourceGroup : public ResourceGroup {
  public:
   TAG(ESPNowResourceGroup);
 
-  ESPNowResourceGroup(Process* process);
+  ESPNowResourceGroup(Process* process) : ResourceGroup(process) {}
   ~ESPNowResourceGroup();
+
+  bool Init();
 };
-
-ESPNowResourceGroup::ESPNowResourceGroup(Process* process)
-  : ResourceGroup(process) {
-  tx_sem = xSemaphoreCreateCounting(1, 0);
-  ASSERT(tx_sem);
-
-  rx_queue = xQueueCreate(ESPNOW_RX_DATAGRAM_NUM, sizeof(void *));
-  ASSERT(rx_queue);
-
-  rx_datagrams_mutex = xSemaphoreCreateMutex();
-  ASSERT(rx_datagrams_mutex);
-
-  rx_datagrams = unvoid_cast<struct DataGram*>(malloc(sizeof(struct DataGram) * ESPNOW_RX_DATAGRAM_NUM));
-  ASSERT(rx_datagrams);
-}
 
 ESPNowResourceGroup::~ESPNowResourceGroup() {
   vSemaphoreDelete(tx_sem);
@@ -92,6 +79,42 @@ ESPNowResourceGroup::~ESPNowResourceGroup() {
 
   free(rx_datagrams);
   rx_datagrams = NULL;
+}
+
+bool ESPNowResourceGroup::Init(void) {
+  tx_sem = xSemaphoreCreateCounting(1, 0);
+  if (!tx_sem) {
+    return false;
+  }
+
+  rx_queue = xQueueCreate(ESPNOW_RX_DATAGRAM_NUM, sizeof(void *));
+  if (!rx_queue) {
+    vSemaphoreDelete(tx_sem);
+    tx_sem = NULL;
+    return false;
+  }
+
+  rx_datagrams_mutex = xSemaphoreCreateMutex();
+  if (!rx_datagrams_mutex) {
+    vQueueDelete(rx_queue);
+    rx_queue = NULL;
+    vSemaphoreDelete(tx_sem);
+    tx_sem = NULL;
+    return false;
+  }
+
+  rx_datagrams = unvoid_cast<struct DataGram*>(malloc(sizeof(struct DataGram) * ESPNOW_RX_DATAGRAM_NUM));
+  if (!rx_datagrams) {
+    vSemaphoreDelete(rx_datagrams_mutex);
+    rx_datagrams_mutex = NULL;
+    vQueueDelete(rx_queue);
+    rx_queue = NULL;
+    vSemaphoreDelete(tx_sem);
+    tx_sem = NULL;
+    return false;
+  }
+
+  return true;
 }
 
 MODULE_IMPLEMENTATION(espnow, MODULE_ESPNOW)
@@ -163,6 +186,11 @@ PRIMITIVE(init) {
 
   ESPNowResourceGroup* group = _new ESPNowResourceGroup(process);
   if (!group) {
+    espnow_pool.put(id);
+    MALLOC_FAILED;
+  }
+
+  if (!group->Init()) {
     espnow_pool.put(id);
     MALLOC_FAILED;
   }
