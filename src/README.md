@@ -216,10 +216,14 @@ also the naming in Toit.)
 class Pair {
  public:
   Pair(uint16 x, uint16 y)
-      : value_((static_cast<uint32>(x) << 16) | y) {}
+      : combined_value_((static_cast<uint32>(x) << 16) | y) {}  // No space between {}.
+
+  uint16 x() const { return combined_value_ >> 16; }     // Getters can be on one line.
+  uint16 y() const { return combined_value_ & 0xffff; }
 
  private:
-  uint32 value_;
+  // Private member has snake_case_ with trailing underscore.
+  uint32 combined_value_;
 };
 ```
 
