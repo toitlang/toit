@@ -25,6 +25,7 @@ namespace toit {
 static const int ALLOCATION_SIZE = 2 * MB;
 static const int ENCRYPTION_WRITE_SIZE = 16;
 
+// An aligned (FLASH_BASED_SIZE) view into the allocations_malloced.
 const char* FlashRegistry::allocations_memory_ = null;
 static void* allocations_malloced = null;
 
@@ -33,6 +34,8 @@ void FlashRegistry::set_up() {
   ASSERT(allocations_memory() == null);
 
   allocations_malloced = malloc(ALLOCATION_SIZE + FLASH_PAGE_SIZE);
+  // Align the memory to FLASH_PAGE_SIZE.
+  // Note that we allocated FLASH_PAGE_SIZE more than necessary, so we could do this.
   allocations_memory_ = Utils::round_up(unvoid_cast<char*>(allocations_malloced), FLASH_PAGE_SIZE);
 }
 
