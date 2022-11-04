@@ -305,7 +305,7 @@ PRIMITIVE(total_deep_sleep_time) {
 }
 
 PRIMITIVE(enable_external_wakeup) {
-#ifdef CONFIG_IDF_TARGET_ESP32
+#ifndef CONFIG_IDF_TARGET_ESP32C3
   ARGS(int64, pin_mask, bool, on_any_high);
   esp_err_t err = esp_sleep_enable_ext1_wakeup(pin_mask, on_any_high ? ESP_EXT1_WAKEUP_ANY_HIGH : ESP_EXT1_WAKEUP_ALL_LOW);
   if (err != ESP_OK) {
@@ -317,7 +317,7 @@ PRIMITIVE(enable_external_wakeup) {
 }
 
 PRIMITIVE(enable_touchpad_wakeup) {
-#ifdef CONFIG_IDF_TARGET_ESP32
+#ifndef CONFIG_IDF_TARGET_ESP32C3
   esp_err_t err = esp_sleep_enable_touchpad_wakeup();
   if (err != ESP_OK) {
     ESP_LOGE("Toit", "Failed: sleep_enable_touchpad_wakeup");
