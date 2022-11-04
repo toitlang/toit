@@ -136,7 +136,7 @@ static void reset_rtc(const char* reason) {
   rtc.boot_count = 1;
 
 #ifndef CONFIG_IDF_TARGET_ESP32
-  // Non ESP32 targets should use the SYSTIMER which needs a call to early init.
+  // Non-ESP32 targets use the SYSTIMER which needs a call to early init.
   // https://github.com/toitware/esp-idf/blob/67fa2950f6bed9cc8e2e89a8ffac1ed77f087214/components/esp_timer/Kconfig#L54
   esp_timer_impl_early_init();
 #endif
