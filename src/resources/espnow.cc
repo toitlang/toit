@@ -64,7 +64,7 @@ class ESPNowResourceGroup : public ResourceGroup {
   ESPNowResourceGroup(Process* process) : ResourceGroup(process) {}
   ~ESPNowResourceGroup();
 
-  bool Init();
+  bool init();
 };
 
 ESPNowResourceGroup::~ESPNowResourceGroup() {
@@ -81,7 +81,7 @@ ESPNowResourceGroup::~ESPNowResourceGroup() {
   rx_datagrams = NULL;
 }
 
-bool ESPNowResourceGroup::Init(void) {
+bool ESPNowResourceGroup::init(void) {
   tx_sem = xSemaphoreCreateCounting(1, 0);
   if (!tx_sem) {
     return false;
@@ -190,7 +190,7 @@ PRIMITIVE(init) {
     MALLOC_FAILED;
   }
 
-  if (!group->Init()) {
+  if (!group->init()) {
     espnow_pool.put(id);
     MALLOC_FAILED;
   }
