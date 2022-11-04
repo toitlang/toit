@@ -33,7 +33,7 @@ void FlashRegistry::set_up() {
   ASSERT(allocations_memory() == null);
 
   allocations_malloced = malloc(ALLOCATION_SIZE + FLASH_PAGE_SIZE);
-  allocations_memory_ = Utils::round_up(unvoid_cast<char*>(allocations_malloc), FLASH_PAGE_SIZE);
+  allocations_memory_ = Utils::round_up(unvoid_cast<char*>(allocations_malloced), FLASH_PAGE_SIZE);
 }
 
 void FlashRegistry::tear_down() {
