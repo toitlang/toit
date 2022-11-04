@@ -26,7 +26,6 @@ list(APPEND TOIT_SKIP_TESTS
 
 if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows" OR "${CMAKE_SYSTEM_NAME}" STREQUAL "MSYS")
   list(APPEND TOIT_FAILING_TESTS
-    tests/containers_test.toit
     tests/time_test.toit
     tests/zlib_test.toit
     tests/class_field_limit_test_compiler.toit
