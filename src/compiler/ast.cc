@@ -181,15 +181,13 @@ void TraversingVisitor::visit_IndexSlice(IndexSlice* node) {
   if (node->to() != null) node->to()->accept(this);
 }
 
-void TraversingVisitor::visit_Identifier(Identifier* node) {
-}
+void TraversingVisitor::visit_Identifier(Identifier* node) {}
 
 void TraversingVisitor::visit_Nullable(Nullable* node) {
   node->type()->accept(this);
 }
 
-void TraversingVisitor::visit_LspSelection(LspSelection* node) {
-}
+void TraversingVisitor::visit_LspSelection(LspSelection* node) {}
 
 void TraversingVisitor::visit_Parameter(Parameter* node) {
   node->name()->accept(this);
@@ -199,23 +197,17 @@ void TraversingVisitor::visit_Parameter(Parameter* node) {
   }
 }
 
-void TraversingVisitor::visit_LiteralNull(LiteralNull* node) {
-}
+void TraversingVisitor::visit_LiteralNull(LiteralNull* node) {}
 
-void TraversingVisitor::visit_LiteralUndefined(LiteralUndefined* node) {
-}
+void TraversingVisitor::visit_LiteralUndefined(LiteralUndefined* node) {}
 
-void TraversingVisitor::visit_LiteralBoolean(LiteralBoolean* node) {
-}
+void TraversingVisitor::visit_LiteralBoolean(LiteralBoolean* node) {}
 
-void TraversingVisitor::visit_LiteralInteger(LiteralInteger* node) {
-}
+void TraversingVisitor::visit_LiteralInteger(LiteralInteger* node) {}
 
-void TraversingVisitor::visit_LiteralCharacter(LiteralCharacter* node) {
-}
+void TraversingVisitor::visit_LiteralCharacter(LiteralCharacter* node) {}
 
-void TraversingVisitor::visit_LiteralString(LiteralString* node) {
-}
+void TraversingVisitor::visit_LiteralString(LiteralString* node) {}
 
 void TraversingVisitor::visit_LiteralStringInterpolation(LiteralStringInterpolation* node) {
   for (int i = 0; i < node->parts().length(); i++) {
