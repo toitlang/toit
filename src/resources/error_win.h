@@ -1,4 +1,4 @@
-// Copyright (C) 2021 Toitware ApS.
+// Copyright (C) 2022 Toitware ApS.
 //
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -13,20 +13,20 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+#pragma once
+
 #include "../top.h"
 
-#if defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32S2) || defined(CONFIG_IDF_TARGET_ESP32S3)
+#ifdef TOIT_WINDOWS
+#include "windows.h"
 
-#include <driver/touch_sensor.h>
+#define WINDOWS_ERROR return windows_error(process)
 
 namespace toit {
+  HeapObject* windows_error(Process* process);
+  HeapObject* windows_error(Process* process, DWORD error_number);
+  void close_keep_errno(SOCKET socket);
+  void close_handle_keep_errno(HANDLE handle);
+}
 
-int touch_pad_to_pin_num(touch_pad_t pad);
-
-// Signals the touch-pad peripheral that it should not deinit when not used anymore.
-// This is primarily used to allow wakeup from deep-sleep.
-void keep_touch_active();
-
-} // namespace toit
-
-#endif
+#endif // TOIT_WINDOWS

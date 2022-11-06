@@ -200,11 +200,7 @@ class ConditionVariable {
 
     mutex_->unlock();
 
-#ifdef CONFIG_IDF_TARGET_ESP32C3
     uint32_t value = 0;
-#else
-    uint32 value = 0;
-#endif
     bool success = xTaskNotifyWait(0x00, 0xffffffff, &value, ticks) == pdTRUE;
 
     mutex_->lock();

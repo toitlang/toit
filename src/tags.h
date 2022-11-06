@@ -53,6 +53,9 @@ namespace toit {
   fn(BLECharacteristicResource)         \
   fn(BLEDescriptorResource)             \
   fn(Directory)                         \
+  fn(UDPSocketResource)                 \
+  fn(TCPSocketResource)                 \
+  fn(TCPServerSocketResource)           \
 
 #define TLS_CLASSES_DO(fn)              \
   fn(MbedTLSSocket)                     \

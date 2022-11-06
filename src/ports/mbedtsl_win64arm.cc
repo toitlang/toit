@@ -1,4 +1,4 @@
-// Copyright (C) 2021 Toitware ApS.
+// Copyright (C) 2022 Toitware ApS.
 //
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -12,21 +12,21 @@
 //
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
+#if defined(_WIN32) && defined(MBEDTLS_TIMING_ALT)
+extern "C" {
+#include "windows.h"
+unsigned long mbedtls_timing_hardclock( void )
+{
+  LARGE_INTEGER offset;
 
-#include "../top.h"
+  QueryPerformanceCounter( &offset );
 
-#if defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32S2) || defined(CONFIG_IDF_TARGET_ESP32S3)
+  return( (unsigned long)( offset.QuadPart ) );
+}
 
-#include <driver/touch_sensor.h>
+} // extern "C"
+#endif // defined(_WIN32) && defined(_ARM_)
 
-namespace toit {
-
-int touch_pad_to_pin_num(touch_pad_t pad);
-
-// Signals the touch-pad peripheral that it should not deinit when not used anymore.
-// This is primarily used to allow wakeup from deep-sleep.
-void keep_touch_active();
-
-} // namespace toit
+#if defined(_WIN32)
 
 #endif

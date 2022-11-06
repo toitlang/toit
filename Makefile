@@ -185,6 +185,32 @@ build/$(PI_CROSS_ARCH)/sysroot/usr: check-env-sysroot
 pi: pi-sysroot
 	$(MAKE) CROSS_ARCH=raspberry_pi SYSROOT="$(CURDIR)/build/$(PI_CROSS_ARCH)/sysroot" all-cross
 
+ARM_LINUX_GNUEABI_CROSS_ARCH := arm-linux-gnueabi
+
+.PHONY: arm-linux-gnueabi-sysroot
+arm-linux-gnueabi-sysroot: build/$(ARM_LINUX_GNUEABI_CROSS_ARCH)/sysroot/usr
+
+ARM_LINUX_GNUEABI_SYSROOT_URL=https://releases.linaro.org/components/toolchain/binaries/latest-7/arm-linux-gnueabi/sysroot-glibc-linaro-2.25-2019.12-arm-linux-gnueabi.tar.xz
+ARM_LINUX_GNUEABI_GCC_TOOLCHAIN_URL=https://releases.linaro.org/components/toolchain/binaries/latest-7/arm-linux-gnueabi/gcc-linaro-7.5.0-2019.12-i686_arm-linux-gnueabi.tar.xz
+
+build/$(ARM_LINUX_GNUEABI_CROSS_ARCH)/sysroot/sysroot.tar.xz:
+	mkdir -p build/$(ARM_LINUX_GNUEABI_CROSS_ARCH)/sysroot
+	wget --output-document build/$(ARM_LINUX_GNUEABI_CROSS_ARCH)/sysroot/sysroot.tar.xz $(ARM_LINUX_GNUEABI_SYSROOT_URL)
+
+build/$(ARM_LINUX_GNUEABI_CROSS_ARCH)/sysroot/gcc-toolchain.tar.xz:
+	mkdir -p build/$(ARM_LINUX_GNUEABI_CROSS_ARCH)/sysroot
+	wget --output-document build/$(ARM_LINUX_GNUEABI_CROSS_ARCH)/sysroot/gcc-toolchain.tar.xz $(ARM_LINUX_GNUEABI_GCC_TOOLCHAIN_URL)
+
+build/$(ARM_LINUX_GNUEABI_CROSS_ARCH)/sysroot/usr: build/$(ARM_LINUX_GNUEABI_CROSS_ARCH)/sysroot/sysroot.tar.xz
+build/$(ARM_LINUX_GNUEABI_CROSS_ARCH)/sysroot/usr: build/$(ARM_LINUX_GNUEABI_CROSS_ARCH)/sysroot/gcc-toolchain.tar.xz
+	tar x --strip-components=1 -f build/$(ARM_LINUX_GNUEABI_CROSS_ARCH)/sysroot/sysroot.tar.xz -C build/$(ARM_LINUX_GNUEABI_CROSS_ARCH)/sysroot
+	tar x --strip-components=1 -f build/$(ARM_LINUX_GNUEABI_CROSS_ARCH)/sysroot/gcc-toolchain.tar.xz -C build/$(ARM_LINUX_GNUEABI_CROSS_ARCH)/sysroot
+	touch $@
+
+.PHONY: arm-linux-gnueabi
+arm-linux-gnueabi: arm-linux-gnueabi-sysroot
+	$(MAKE) CROSS_ARCH=$(ARM_LINUX_GNUEABI_CROSS_ARCH) SYSROOT="$(CURDIR)/build/$(ARM_LINUX_GNUEABI_CROSS_ARCH)/sysroot" all-cross
+
 # ESP32 VARIANTS
 .PHONY: check-esp32-env
 check-esp32-env:

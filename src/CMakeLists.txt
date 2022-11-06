@@ -82,7 +82,13 @@ file(GLOB gc_sources_SRC
   "third_party/dartino/two_space_heap.cc"
   )
 
-set(toit_vm_SRC ${toit_vm_runtime_SRC} ${toit_resources_SRC} ${toit_event_sources_SRC} ${lwip_on_linux_sources_SRC} ${gc_sources_SRC})
+file(GLOB porting_sources_SRC
+  "ports/*.h"
+  "ports/*.cc"
+  )
+
+set(toit_vm_SRC ${toit_vm_runtime_SRC} ${toit_resources_SRC} ${toit_event_sources_SRC}
+                ${lwip_on_linux_sources_SRC} ${gc_sources_SRC})
 
 add_library(
   toit_core
@@ -93,6 +99,11 @@ add_library(
   toit_vm
   ${toit_vm_SRC}
   ${toit_core_SRC}
+  )
+
+add_library(
+  toit_porting
+  ${porting_sources_SRC}
   )
 
 set_source_files_properties(interpreter_core.cc PROPERTIES COMPILE_OPTIONS "-O3")
@@ -185,6 +196,7 @@ set(TOIT_LINK_LIBS
   ${CMAKE_DL_LIBS}
   ${TOIT_LINK_LIBS_LIBGCC}
   ${TOIT_LINK_SEGFAULT}
+  toit_porting
   ${TOIT_BLUETOOTH_LIBS}
   CACHE INTERNAL ""
   )
