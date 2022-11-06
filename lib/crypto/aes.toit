@@ -14,7 +14,7 @@ abstract class Aes:
   aes_ := ?
 
   /**
-  Initialize an Aes class from a subclass. 
+  Initialize an Aes class from a subclass.
   If the $initialization_vector is empty, then AES ECB mode is selected.
   If the $initialization_vector has length 16, then AES CBC mode is selected.
   */
@@ -34,6 +34,7 @@ abstract class Aes:
 
   /**
   Decrypts the given $ciphertext.
+
   The size of the $ciphertext must be a multiple of 16.
   Returns a byte array with the decrypted data.
   */
@@ -83,8 +84,8 @@ class AesCbc extends Aes:
   /**
   Creates an AES-CBC state for encryption.
 
-  The $key must be 16, 24 or 32 secret bytes and the 
-   $initialization_vector must be 16 random bytes.
+  The $key must be 16, 24 or 32 secret bytes and the
+    $initialization_vector must be 16 random bytes.
   */
   constructor.encryptor key/ByteArray initialization_vector/ByteArray:
     super.initialize_ key initialization_vector --encrypt
@@ -96,8 +97,8 @@ class AesCbc extends Aes:
   /**
   Creates an AES-CBC state for decryption.
 
-  The $key must be 16, 24 or 32 secret bytes and the 
-  $initialization_vector must be 16 bytes.
+  The $key must be 16, 24 or 32 secret bytes and the
+    $initialization_vector must be 16 bytes.
   */
   constructor.decryptor key/ByteArray initialization_vector/ByteArray:
     super.initialize_ key initialization_vector --no-encrypt
@@ -111,18 +112,17 @@ class AesCbc extends Aes:
     aes_cbc_close_ aes_
 
 /**
-AAdvanced Encryption Standard Electronic codebook (AES-ECB).
-#
+Advanced Encryption Standard Electronic codebook (AES-ECB).
 
-#Warning
+# Warning
 
-This encryption mode is no longer recommended, due to flaws 
-  in its security.  Use only for interfacing with legacy 
+This encryption mode is no longer recommended, due to flaws
+  in its security.  Use only for interfacing with legacy
   systems that require it.
 
 This implementation uses hardware accelerated primitives.
 
-AES-ECB state for encrypting and decrypting 
+AES-ECB state for encrypting and decrypting
 
 To encrypt, construct an AES encryption state with $AesEcb.encryptor and
   encrypt a block with $encrypt.
