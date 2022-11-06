@@ -328,7 +328,7 @@ extern void dont_optimize_away_these_allocations(void** blocks);
 template<typename T>
 class List {
  public:
-  List() : data_(null), length_(0) { }
+  List() : data_(null), length_(0) {}
   List(T* data, int length) : data_(data), length_(length) {
     ASSERT(length >= 0);
   }

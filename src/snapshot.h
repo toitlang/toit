@@ -96,7 +96,7 @@ class PointerCallback {
 class Snapshot {
  public:
   Snapshot(const uint8* buffer, int size)
-      : buffer_(buffer), size_(size) { }
+      : buffer_(buffer), size_(size) {}
 
   static Snapshot invalid() { return Snapshot(null, 0); }
 
@@ -210,7 +210,7 @@ class SnapshotWriter {
 
 class SnapshotGenerator {
  public:
-  explicit SnapshotGenerator(Program* program) : program_(program) { }
+  explicit SnapshotGenerator(Program* program) : program_(program) {}
   ~SnapshotGenerator();
 
   void generate(Program* program);

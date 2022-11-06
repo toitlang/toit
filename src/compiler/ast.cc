@@ -277,7 +277,7 @@ void TraversingVisitor::visit_ToitdocReference(ToitdocReference* node) {
 class AstPrinter : public Visitor {
  public:
   AstPrinter()
-      : indentation_(0) { }
+      : indentation_(0) {}
 
   void indent() {
     for (int i = 0; i < indentation_; i++) {

@@ -135,7 +135,7 @@ class UARTResourceGroup : public ResourceGroup {
  public:
   TAG(UARTResourceGroup);
   UARTResourceGroup(Process* process, EventSource* event_source)
-    : ResourceGroup(process, event_source){ }
+    : ResourceGroup(process, event_source){}
 
   int create_uart(const char* path, speed_t speed, int data_bits, int stop_bits, int parity) {
     // We always set the close-on-exec flag otherwise we leak descriptors when we fork.

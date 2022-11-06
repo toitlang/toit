@@ -33,7 +33,7 @@ namespace compiler {
 /// it needs.
 class Lsp {
  public:
-  explicit Lsp(LspProtocol* protocol) : protocol_(protocol) { }
+  explicit Lsp(LspProtocol* protocol) : protocol_(protocol) {}
   ~Lsp() {
     if (selection_handler_ != null) {
       delete selection_handler_;

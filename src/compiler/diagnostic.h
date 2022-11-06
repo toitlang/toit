@@ -72,8 +72,8 @@ class Diagnostics {
   void report_note(Source::Range range, const char* format, ...);
   void report_note(const ast::Node* position_node, const char* format, ...);
 
-  virtual void start_group() { }
-  virtual void end_group() { }
+  virtual void start_group() {}
+  virtual void end_group() {}
 
   bool encountered_error() const {
     return encountered_error_;
@@ -94,7 +94,7 @@ class Diagnostics {
 
  protected:
   explicit Diagnostics(SourceManager* source_manager)
-      : source_manager_(source_manager), encountered_error_(false), encountered_warning_(false) { }
+      : source_manager_(source_manager), encountered_error_(false), encountered_warning_(false) {}
 
   void set_encountered_error(bool value) {
     encountered_error_ = value;
@@ -176,12 +176,12 @@ class NullDiagnostics : public Diagnostics {
 
   bool should_report_missing_main() const { return false; }
 
-  void start_group() { }
-  void end_group() { }
+  void start_group() {}
+  void end_group() {}
 
  protected:
-  void emit(Severity severity, const char* format, va_list& arguments) { }
-  void emit(Severity severity, Source::Range range, const char* format, va_list& arguments) { }
+  void emit(Severity severity, const char* format, va_list& arguments) {}
+  void emit(Severity severity, Source::Range range, const char* format, va_list& arguments) {}
 };
 
 } // namespace toit::compiler

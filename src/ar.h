@@ -41,14 +41,14 @@ class File {
     , name_disposal_(name_disposal)
     , content_(content_arg)
     , content_disposal_(content_disposal)
-    , byte_size(byte_size_arg) { }
+    , byte_size(byte_size_arg) {}
 
   File()
     : name_(null)
     , name_disposal_(AR_DONT_FREE)
     , content_(null)
     , content_disposal_(AR_DONT_FREE)
-    , byte_size(0) { }
+    , byte_size(0) {}
 
   ~File() {
     free_name();

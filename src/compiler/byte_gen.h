@@ -52,7 +52,7 @@ class ByteGen : private ir::Visitor {
       , break_target_(null)
       , continue_target_(null)
       , loop_height_(-1)
-      , is_for_value_(false) { }
+      , is_for_value_(false) {}
 
   int assemble_global(ir::Global* global);
   int assemble_method(ir::Method* method,

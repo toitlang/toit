@@ -37,7 +37,7 @@ class ExpressionStack {
     BLOCK_CONSTRUCTION_TOKEN
   };
 
-  ExpressionStack() : data_(), types_(data_, CAPACITY), height_(0) { }
+  ExpressionStack() : data_(), types_(data_, CAPACITY), height_(0) {}
 
   int height() const { return height_; }
   int max_height() const { return max_height_; }
@@ -68,7 +68,7 @@ class Emitter {
   explicit Emitter(int arity)
       : arity_(arity)
       , builder_()
-      , last_bound_(0) { }
+      , last_bound_(0) {}
 
   enum Condition {
     UNCONDITIONAL,

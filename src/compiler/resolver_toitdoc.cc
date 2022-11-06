@@ -41,7 +41,7 @@ class LeftMostIterator : public ToitdocScopeIterator {
       : scope_(scope)
       , holder_(holder)
       , this_class_(this_class)
-      , super_entries_(super_entries) { }
+      , super_entries_(super_entries) {}
 
   void for_each(const std::function<void (Symbol)>& parameter_callback,
                 const std::function<void (Symbol, const ResolutionEntry&)>& callback) {
@@ -76,7 +76,7 @@ It sees both static and dynamic entries.
 class ClassIterator : public ToitdocScopeIterator {
  public:
   ClassIterator(ir::Class* klass)
-      : class_(klass) { }
+      : class_(klass) {}
 
   void for_each(const std::function<void (Symbol)>& parameter_callback,
                 const std::function<void (Symbol, const ResolutionEntry&)>& callback) {
@@ -95,7 +95,7 @@ An iterator for prefixes.
 class PrefixIterator : public ToitdocScopeIterator {
  public:
   PrefixIterator(ImportScope* import_scope)
-      : import_scope_(import_scope) { }
+      : import_scope_(import_scope) {}
 
   void for_each(const std::function<void (Symbol)>& parameter_callback,
                 const std::function<void (Symbol, const ResolutionEntry&)>& callback) {

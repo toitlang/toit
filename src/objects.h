@@ -676,7 +676,7 @@ class LargeInteger : public HeapObject {
 
 class FrameCallback {
  public:
-  virtual void do_frame(Stack* frame, int number, int absolute_bci) { }
+  virtual void do_frame(Stack* frame, int number, int absolute_bci) {}
 };
 
 
@@ -1060,7 +1060,7 @@ class String : public HeapObject {
 class Method {
  public:
   Method(List<uint8> all_bytes, int offset) : Method(&all_bytes[offset]) {}
-  Method(uint8* bytes) : bytes_(bytes) { }
+  Method(uint8* bytes) : bytes_(bytes) {}
 
   static Method invalid() { return Method(null); }
   static int allocation_size(int bytecode_size, int max_height) {

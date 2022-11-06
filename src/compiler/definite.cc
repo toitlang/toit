@@ -146,7 +146,7 @@ struct LoopState {
   explicit LoopState(While* loop)
       : loop(loop)
       , break_state(State::invalid())
-      , continue_state(State::invalid()) { }
+      , continue_state(State::invalid()) {}
 
   static LoopState invalid() {
     return LoopState(null);
@@ -324,7 +324,7 @@ class DefiniteChecker : public Visitor {
     }
   }
 
-  void visit_Nop(Nop* node) { }
+  void visit_Nop(Nop* node) {}
 
   void visit_FieldStore(FieldStore* node) {
     // First visit the value, before killing it.
@@ -353,7 +353,7 @@ class DefiniteChecker : public Visitor {
     current_locals_ = old_locals;
   }
 
-  void visit_Builtin(Builtin* node) { }
+  void visit_Builtin(Builtin* node) {}
 
   void visit_Not(Not* node) {
     visit(node->value());
@@ -372,14 +372,14 @@ class DefiniteChecker : public Visitor {
   void visit_Reference(Reference* node) { UNREACHABLE(); }
 
   void visit_ReferenceClass(ReferenceClass* node) { UNREACHABLE(); }
-  void visit_ReferenceMethod(ReferenceMethod* node) { }
+  void visit_ReferenceMethod(ReferenceMethod* node) {}
 
   void visit_ReferenceLocal(ReferenceLocal* node) {
     use(node->target(), node->range());
   }
 
   void visit_ReferenceBlock(ReferenceBlock* node) { visit_ReferenceLocal(node); }
-  void visit_ReferenceGlobal(ReferenceGlobal* node) { }
+  void visit_ReferenceGlobal(ReferenceGlobal* node) {}
 
   void visit_Local(Local* node) { UNREACHABLE(); }
   void visit_Parameter(Parameter* node) { UNREACHABLE(); }
@@ -478,7 +478,7 @@ class DefiniteChecker : public Visitor {
     visit(node->right());
   }
 
-  void visit_Literal(Literal* node) { }
+  void visit_Literal(Literal* node) {}
 
   void visit_LiteralNull(LiteralNull* node) { visit_Literal(node); }
   void visit_LiteralUndefined(LiteralUndefined* node) { visit_Literal(node); }
@@ -488,7 +488,7 @@ class DefiniteChecker : public Visitor {
   void visit_LiteralBoolean(LiteralBoolean* node) { visit_Literal(node); }
   void visit_LiteralByteArray(LiteralByteArray* node) { visit_Literal(node); }
 
-  void visit_PrimitiveInvocation(PrimitiveInvocation* node) { }
+  void visit_PrimitiveInvocation(PrimitiveInvocation* node) {}
 
  private:
   Diagnostics* diagnostics_;

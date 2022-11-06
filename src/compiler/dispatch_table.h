@@ -71,7 +71,7 @@ class DispatchTable {
  private:
   DispatchTable(List<ir::Method*> table,
                 const Map<DispatchSelector, int>& selector_offsets)
-      : table_(table), selector_offsets_(selector_offsets) { }
+      : table_(table), selector_offsets_(selector_offsets) {}
 
   List<ir::Method*> table_;
   Map<DispatchSelector, int> selector_offsets_;

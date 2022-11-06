@@ -30,7 +30,7 @@ namespace compiler {
 
 class FilesystemLsp : public Filesystem {
  public:
-  explicit FilesystemLsp(LspFsProtocol* protocol) : protocol_(protocol) { }
+  explicit FilesystemLsp(LspFsProtocol* protocol) : protocol_(protocol) {}
 
   void initialize(Diagnostics* diagnostics) {
     protocol_->initialize(diagnostics);
