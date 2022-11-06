@@ -263,8 +263,7 @@ bool OS::set_real_time(struct timespec* time) {
   FATAL("cannot set the time");
 }
 
-ProtectableAlignedMemory::~ProtectableAlignedMemory() {
-}
+ProtectableAlignedMemory::~ProtectableAlignedMemory() {}
 
 void ProtectableAlignedMemory::mark_read_only() {
   // TODO(anders): Unimplemented.

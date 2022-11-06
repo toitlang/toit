@@ -215,8 +215,7 @@ class LocationLanguageServerPipeline : public LanguageServerPipeline {
       : LanguageServerPipeline(configuration)
       , lsp_selection_path_(path)
       , line_number_(line_number)
-      , column_number_(column_number) {
-  }
+      , column_number_(column_number) {}
 
  protected:
   ast::Unit* parse(Source* source);
@@ -262,8 +261,7 @@ class GotoDefinitionPipeline : public LocationLanguageServerPipeline {
                          int column_number, // 1-based
                          const PipelineConfiguration& configuration)
       : LocationLanguageServerPipeline(completion_path, line_number, column_number,
-                                       configuration) {
-  }
+                                       configuration) {}
 
  protected:
   void setup_lsp_selection_handler();

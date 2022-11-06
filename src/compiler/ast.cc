@@ -36,11 +36,9 @@ void TraversingVisitor::visit_Unit(Unit* node) {
   }
 }
 
-void TraversingVisitor::visit_Import(Import* node) {
-}
+void TraversingVisitor::visit_Import(Import* node) {}
 
-void TraversingVisitor::visit_Export(Export* node) {
-}
+void TraversingVisitor::visit_Export(Export* node) {}
 
 void TraversingVisitor::visit_Class(Class* node) {
   node->name()->accept(this);
@@ -70,11 +68,9 @@ void TraversingVisitor::visit_Method(Method* node) {
   }
 }
 
-void TraversingVisitor::visit_Expression(Expression* node) {
-}
+void TraversingVisitor::visit_Expression(Expression* node) {}
 
-void TraversingVisitor::visit_Error(Error* node) {
-}
+void TraversingVisitor::visit_Error(Error* node) {}
 
 void TraversingVisitor::visit_NamedArgument(NamedArgument* node) {
   node->name()->accept(this);

@@ -39,8 +39,7 @@ class Resource : public ResourceList::Element, public ResourceListFromEventSourc
   explicit Resource(ResourceGroup* resource_group)
     : resource_group_(resource_group)
     , state_(0)
-    , object_notifier_(null) {
-  }
+    , object_notifier_(null) {}
 
   virtual ~Resource();
 
@@ -167,11 +166,9 @@ class SimpleResourceGroup : public ResourceGroup {
  public:
   TAG(SimpleResourceGroup);
   explicit SimpleResourceGroup(Process* process)
-    : ResourceGroup(process) {
-  }
+    : ResourceGroup(process) {}
 
-  ~SimpleResourceGroup() {
-  }
+  ~SimpleResourceGroup() {}
 };
 
 // A resource for resource objects that only need freeing when the process
@@ -274,8 +271,7 @@ class EventSource : public EventSourceList::Element {
 class LazyEventSource : public EventSource {
  public:
   LazyEventSource(const char* name, int lock_level = 0)
-    : EventSource(name, lock_level) {
-  }
+    : EventSource(name, lock_level) {}
 
   // Overridden to automatically call unuse().
   void unregister_resource_group(ResourceGroup* resource_group) override;

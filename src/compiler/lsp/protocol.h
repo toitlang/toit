@@ -176,8 +176,7 @@ class LspProtocol {
       , completion_(writer)
       , summary_(writer)
       , snapshot_(writer)
-      , semantic_(writer) {
-  }
+      , semantic_(writer) {}
 
   LspDiagnosticsProtocol* diagnostics() { return &diagnostics_; }
   LspGotoDefinitionProtocol* goto_definition() { return &goto_definition_; }

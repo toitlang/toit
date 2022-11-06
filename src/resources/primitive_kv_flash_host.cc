@@ -38,8 +38,7 @@ class PersistentResourceGroup : public ResourceGroup {
   explicit PersistentResourceGroup(Process* process)
       : ResourceGroup(process, null) {}
 
-  ~PersistentResourceGroup() {
-  }
+  ~PersistentResourceGroup() {}
 };
 
 bool is_valid_key(const char* key, Process* process) {

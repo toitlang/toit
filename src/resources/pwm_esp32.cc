@@ -69,8 +69,7 @@ class PWMResource : public Resource {
   TAG(PWMResource);
   PWMResource(ResourceGroup* group, ledc_channel_t channel)
     : Resource(group)
-    , channel_(channel) {
-  }
+    , channel_(channel) {}
 
   ledc_channel_t channel() { return channel_; }
 

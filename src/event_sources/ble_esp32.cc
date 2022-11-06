@@ -40,8 +40,7 @@ bool BLEEventSource::start() {
   return true;
 }
 
-void BLEEventSource::stop() {
-}
+void BLEEventSource::stop() {}
 
 } // namespace toit
 

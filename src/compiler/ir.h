@@ -1330,8 +1330,7 @@ class CapturedLocal : public Parameter {
                   index,
                   false,
                   range)
-      , captured_(captured) {
-  }
+      , captured_(captured) {}
   IMPLEMENTS(CapturedLocal)
 
   bool is_final() const { return captured_->is_final(); }

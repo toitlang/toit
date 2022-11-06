@@ -1329,8 +1329,7 @@ ImageInputStream::ImageInputStream(const ProgramImage& image,
     : image_(image)
     , relocation_bits(relocation_bits)
     , current(image.begin())
-    , index(0) {
-}
+    , index(0) {}
 
 int ImageInputStream::words_to_read() {
   ASSERT(!eos());

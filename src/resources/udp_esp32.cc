@@ -44,8 +44,7 @@ class Packet : public LinkedFIFO<Packet>::Element {
   Packet(struct pbuf* pbuf, ip_addr_t addr, u16_t port)
     : pbuf_(pbuf)
     , addr_(addr)
-    , port_(port) {
-  }
+    , port_(port) {}
 
   ~Packet() {
     pbuf_free(pbuf_);
@@ -68,8 +67,7 @@ class UDPSocket : public Resource {
     : Resource(group)
     , mutex_(null)
     , upcb_(upcb)
-    , buffered_bytes_(0) {
-  }
+    , buffered_bytes_(0) {}
 
   ~UDPSocket() {
     while (auto packet = packages_.remove_first()) {

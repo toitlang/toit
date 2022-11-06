@@ -171,8 +171,7 @@ class ConditionVariable {
     TAILQ_INIT(&waiter_list_);
   }
 
-  ~ConditionVariable() {
-  }
+  ~ConditionVariable() {}
 
   void wait() {
     wait_ticks(portMAX_DELAY);
@@ -283,8 +282,7 @@ struct ThreadData {
 Thread::Thread(const char* name)
     : name_(name)
     , handle_(null)
-    , locker_(null) {
-}
+    , locker_(null) {}
 
 void* thread_start(void* arg) {
   Thread* thread = unvoid_cast<Thread*>(arg);
@@ -462,8 +460,7 @@ OS::HeapMemoryRange OS::get_heap_memory_range() {
   return range;
 }
 
-void OS::tear_down() {
-}
+void OS::tear_down() {}
 
 const char* OS::get_platform() {
   return "FreeRTOS";
