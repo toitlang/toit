@@ -110,7 +110,8 @@ HeapObject* get_relative_path(Process* process, const char* pathname, char* outp
   size_t pathname_length = strlen(pathname);
 
   // Poor man's version. For better platform handling, use UNICODE and PathCchAppendEx
-  if (pathname[0] == '\\' || (pathname_length > 2 && pathname[1] == ':' && pathname[2] == '\\')) {
+  if (pathname[0] == '\\' ||
+      (pathname_length > 2 && pathname[1] == ':' && (pathname[2] == '\\' || pathname[2] == '/'))) {
     if (GetFullPathName(pathname, MAX_PATH, output, NULL) == 0)  WINDOWS_ERROR;
     return null;
   } else {
