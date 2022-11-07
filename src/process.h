@@ -167,8 +167,13 @@ class Process : public ProcessListFromProcessGroup::Element,
   void set_target_priority(uint8 value) { target_priority_ = value; }
   uint8 update_priority();
 
+#if defined(TOIT_WINDOWS)
+  const char* current_directory();
+  void set_current_directory(const char* current_directory);
+#else
   int current_directory() { return current_directory_; }
   void set_current_directory(int fd) { current_directory_ = fd; }
+#endif
   int gc_count(GcType type) { return object_heap_.gc_count(type); }
 
   String* allocate_string(const char* content);
@@ -265,7 +270,11 @@ class Process : public ProcessListFromProcessGroup::Element,
   uint64_t random_state0_;
   uint64_t random_state1_;
 
+#if defined(TOIT_WINDOWS)
+  const char* current_directory_;
+#else
   int current_directory_;
+#endif
 
   uint32_t signals_;
   State state_;

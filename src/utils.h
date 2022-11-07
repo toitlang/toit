@@ -19,6 +19,7 @@
 #include <type_traits>
 
 #include "top.h"
+#include "os.h"
 
 namespace toit {
 
@@ -441,6 +442,26 @@ class DeferDelete {
 
  private:
   T* object_;
+};
+
+class AsyncThread : public Thread {
+ public:
+  explicit AsyncThread(std::function<void()> func) : Thread("async"), _func(std::move(func)) {
+    spawn();
+  }
+
+  static void run_async(const std::function<void()> &func) {
+    _new AsyncThread(func);
+  }
+
+ protected:
+  void entry() override {
+    _func();
+    delete this;
+  }
+
+ private:
+  const std::function<void()> _func;
 };
 
 } // namespace toit

@@ -22,45 +22,46 @@
 
 namespace toit {
 
-WindowsEventSource* WindowsEventSource::_instance = null;
+WindowsEventSource* WindowsEventSource::instance_ = null;
 
 class WindowsEventThread;
 class WindowsResourceEvent {
  public:
   WindowsResourceEvent(WindowsResource* resource, HANDLE event, WindowsEventThread* thread)
-    : _resource(resource)
-    , _event(event)
-    , _thread(thread) {}
-  WindowsResource* resource() const { return _resource; }
-  HANDLE event() const { return _event; }
-  WindowsEventThread* thread() const { return _thread; }
+    : resource_(resource)
+    , event_(event)
+    , thread_(thread) {}
+  WindowsResource* resource() const { return resource_; }
+  HANDLE event() const { return event_; }
+  WindowsEventThread* thread() const { return thread_; }
+  bool is_event_enabled() { return resource_->is_event_enabled(event_); }
  private:
-  WindowsResource* _resource;
-  HANDLE _event;
-  WindowsEventThread* _thread;
+  WindowsResource* resource_;
+  HANDLE event_;
+  WindowsEventThread* thread_;
 };
 
 class WindowsEventThread: public Thread {
  public:
   explicit WindowsEventThread(WindowsEventSource* event_source)
     : Thread("WindowsEventThread")
-    , _handles()
-    , _resources()
-    , _count(1)
-    , _event_source(event_source)
-    , _recalculated(OS::allocate_condition_variable(event_source->mutex())) {
-    _control_event = CreateEvent(NULL, true, false, NULL);
-    _handles[0] = _control_event;
+    , handles_()
+    , resources_()
+    , count_(1)
+    , event_source_(event_source)
+    , recalculated_(OS::allocate_condition_variable(event_source->mutex())) {
+    control_event_ = CreateEvent(NULL, true, false, NULL);
+    handles_[0] = control_event_;
   }
 
   ~WindowsEventThread() override {
-    CloseHandle(_control_event);
+    CloseHandle(control_event_);
   }
 
   void stop() {
-    Locker locker(_event_source->mutex());
-    _stopped = true;
-    SetEvent(_control_event);
+    Locker locker(event_source_->mutex());
+    stopped_ = true;
+    SetEvent(control_event_);
   }
   
   size_t size() {
@@ -70,31 +71,34 @@ class WindowsEventThread: public Thread {
   void add_resource_event(Locker& event_source_locker, WindowsResourceEvent* resource_event) {
     ASSERT(_resource_events.size() < MAXIMUM_WAIT_OBJECTS - 2);
     _resource_events.insert(resource_event);
-    SetEvent(_control_event); // Recalculate the wait objects.
-    OS::wait(_recalculated);
+    SetEvent(control_event_); // Recalculate the wait objects.
+    OS::wait(recalculated_);
   }
 
   void remove_resource_event(Locker& event_source_locker, WindowsResourceEvent* resource_event) {
     size_t number_erased = _resource_events.erase(resource_event);
     if (number_erased > 0) {
-      SetEvent(_control_event); // Recalculate the wait objects.
-      OS::wait(_recalculated);
+      SetEvent(control_event_); // Recalculate the wait objects.
+      OS::wait(recalculated_);
     }
   }
 
  protected:
   void entry() override {
     while (true) {
-      DWORD result = WaitForMultipleObjects(_count, _handles, false, INFINITE);
+      DWORD result = WaitForMultipleObjects(count_, handles_, false, INFINITE);
       {
-        Locker locker(_event_source->mutex());
+        Locker locker(event_source_->mutex());
         if (result == WAIT_OBJECT_0 + 0) {
-          if (_stopped) break;
+          if (stopped_) break;
           recalculate_handles();
         } else if (result != WAIT_FAILED) {
           size_t index = result - WAIT_OBJECT_0;
-          ResetEvent(_handles[index]);
-          _event_source->on_event(locker, _resources[index], _handles[index]);
+          ResetEvent(handles_[index]);
+          if (resources_[index]->is_event_enabled(handles_[index]))
+            event_source_->on_event(locker, resources_[index], handles_[index]);
+          else
+            recalculate_handles();
         } else {
           FATAL("wait failed. error=%lu", GetLastError());
         }
@@ -104,78 +108,76 @@ class WindowsEventThread: public Thread {
 
  private:
   void recalculate_handles() {
-    _count = _resource_events.size() + 1;
     int index = 1;
     for (auto resource_event : _resource_events) {
-      _handles[index] = resource_event->event();
-      _resources[index] = resource_event->resource();
-      index++;
+      if (resource_event->is_event_enabled()) {
+        handles_[index] = resource_event->event();
+        resources_[index] = resource_event->resource();
+        index++;
+      }
     }
-    ResetEvent(_control_event);
-    OS::signal_all(_recalculated);
+    count_ = index;
+    ResetEvent(control_event_);
+    OS::signal_all(recalculated_);
   }
 
-  bool _stopped = false;
-  HANDLE _control_event;
-  HANDLE _handles[MAXIMUM_WAIT_OBJECTS];
-  WindowsResource* _resources[MAXIMUM_WAIT_OBJECTS];
-  DWORD _count;
+  bool stopped_ = false;
+  HANDLE control_event_;
+  HANDLE handles_[MAXIMUM_WAIT_OBJECTS];
+  WindowsResource* resources_[MAXIMUM_WAIT_OBJECTS];
+  DWORD count_;
   std::unordered_set<WindowsResourceEvent*> _resource_events;
-  WindowsEventSource* _event_source;
-  ConditionVariable* _recalculated;
+  WindowsEventSource* event_source_;
+  ConditionVariable* recalculated_;
 };
 
-WindowsEventSource::WindowsEventSource() : LazyEventSource("WindowsEvents", 1), _threads(), _resource_events() {
-  ASSERT(_instance == null);
-  _instance = this;
+WindowsEventSource::WindowsEventSource() : LazyEventSource("WindowsEvents", 1), threads_(), resource_events_() {
+  ASSERT(instance_ == null);
+  instance_ = this;
 }
 
 WindowsEventSource::~WindowsEventSource() {
-  for (auto item : _resource_events) {
+  for (auto item : resource_events_) {
     delete item.second;
   }
 }
 
 void WindowsEventSource::on_register_resource(Locker &locker, Resource* r) {
-  AllowThrowingNew host_only;
-
   auto windows_resource = reinterpret_cast<WindowsResource*>(r);
   for (auto event : windows_resource->events()) {
     WindowsResourceEvent* resource_event;
 
     // Find a thread with capacity.
     bool placed_it = false;
-    for(auto thread : _threads) {
+    for(auto thread : threads_) {
       if (thread->size() < MAXIMUM_WAIT_OBJECTS - 2) {
         resource_event = _new WindowsResourceEvent(windows_resource, event, thread);
-        thread->add_resource_event(locker, resource_event);
         placed_it = true;
         break;
       }
     }
+
     if (!placed_it) {
       // No worker thread with capacity was found. Spawn a new thread.
       auto thread = _new WindowsEventThread(this);
-      _threads.push_back(thread);
+      threads_.push_back(thread);
       thread->spawn();
       resource_event = _new WindowsResourceEvent(windows_resource, event, thread);
-      thread->add_resource_event(locker, resource_event);
     }
 
-    _resource_events.insert(std::make_pair(windows_resource, resource_event));
+    resource_events_.insert(std::make_pair(windows_resource, resource_event));
+    resource_event->thread()->add_resource_event(locker, resource_event);
   }
 }
 
 void WindowsEventSource::on_unregister_resource(Locker &locker, Resource* r) {
-  AllowThrowingNew host_only;
-
   auto windows_resource = reinterpret_cast<WindowsResource*>(r);
-  auto range = _resource_events.equal_range(windows_resource);
+  auto range = resource_events_.equal_range(windows_resource);
   for (auto it = range.first; it != range.second; ++it) {
     it->second->thread()->remove_resource_event(locker, it->second);
     delete it->second;
   }
-  _resource_events.erase(windows_resource);
+  resource_events_.erase(windows_resource);
 
   windows_resource->do_close();
   // sending an event to let the resource update its state, typically to a CLOSE state.
@@ -194,7 +196,7 @@ bool WindowsEventSource::start() {
 }
 
 void WindowsEventSource::stop() {
-  for (auto thread : _threads) {
+  for (auto thread : threads_) {
     thread->stop();
     thread->join();
     delete thread;

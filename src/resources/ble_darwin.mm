@@ -19,6 +19,7 @@
 
 #include "../objects.h"
 #include "../objects_inline.h"
+#include "../utils.h"
 #include "../event_sources/ble_host.h"
 
 #undef BOOL
@@ -707,26 +708,6 @@ NSArray<CBUUID*>* ns_uuid_array_from_array_of_strings(Process* process, Array* a
   return nil;
 }
 
-class AsyncThread : public Thread {
- public:
-  explicit AsyncThread(std::function<void()> func) : Thread("async"), _func(std::move(func)) {
-    spawn();
-  }
-
- protected:
-  void entry() override {
-    _func();
-    delete this;
-  }
-
- private:
-  const std::function<void()> _func;
-};
-
-static void run_async(const std::function<void()> &func) {
-  _new AsyncThread(func);
-}
-
 MODULE_IMPLEMENTATION(ble, MODULE_BLE)
 
 PRIMITIVE(init) {
@@ -805,7 +786,7 @@ PRIMITIVE(scan_start) {
   central_manager->set_scan_active(true);
   [central_manager->central_manager() scanForPeripheralsWithServices:nil options:nil];
 
-  run_async([=]() -> void {
+  AsyncThread::run_async([=]() -> void {
     LightLocker locker(central_manager->scan_mutex());
     OS::wait_us(central_manager->stop_scan_condition(), duration_us);
     [central_manager->central_manager() stopScan];

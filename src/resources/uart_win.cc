@@ -27,7 +27,7 @@
 
 #include "../event_sources/event_win.h"
 
-#include "error_win.h"
+#include "../error_win.h"
 
 namespace toit {
 
@@ -35,7 +35,7 @@ const int kReadState = 1 << 0;
 const int kErrorState = 1 << 1;
 const int kWriteState = 1 << 2;
 
-const int READ_BUFFER_SIZE = 1 << 16;
+static const int READ_BUFFER_SIZE = 1 << 16;
 
 class UARTResource : public WindowsResource {
 public:
@@ -121,7 +121,7 @@ public:
     memcpy(write_buffer_, buffer, length);
 
     DWORD tmp;
-    bool send_result = WriteFile(uart_, buffer, length, &tmp, &write_overlapped_);
+    bool send_result = WriteFile(uart_, write_buffer_, length, &tmp, &write_overlapped_);
     if (!send_result && WSAGetLastError() != ERROR_IO_PENDING) {
       return false;
     }
