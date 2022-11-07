@@ -219,7 +219,7 @@ PRIMITIVE(init) {
 PRIMITIVE(send) {
   ARGS(Blob, mac, Blob, data, bool, wait);
 
-  // Reset the value of semaphore(max value is 1) to 0, so don't need to check result
+  // // Reset the value of semaphore(max value is 1) to 0, so no need to check the result.
   xSemaphoreTake(tx_sem, 0);
 
   FATAL_IF_NOT_ESP_OK(esp_now_send(mac.address(), data.address(), data.length()));
