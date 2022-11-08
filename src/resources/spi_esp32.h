@@ -31,12 +31,13 @@ class SPIResourceGroup : public ResourceGroup {
  public:
   TAG(SPIResourceGroup);
   SPIResourceGroup(Process* process, EventSource* event_source, spi_host_device_t host_device, int dma_chan);
-  ~SPIResourceGroup();
-  spi_host_device_t host_device() { return _host_device; }
+  ~SPIResourceGroup() override;
+
+  spi_host_device_t host_device() { return host_device_; }
 
  private:
-  spi_host_device_t _host_device;
-  int _dma_chan;
+  spi_host_device_t host_device_;
+  int dma_chan_;
 };
 
 class SPIDevice : public Resource {

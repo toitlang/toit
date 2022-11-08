@@ -51,28 +51,19 @@ ResourcePool<spi_host_device_t, kInvalidHostDevice> spi_host_devices(
 #endif
 );
 
-class SPIResourceGroup : public ResourceGroup {
- public:
-  TAG(SPIResourceGroup);
-  SPIResourceGroup(Process* process, EventSource* event_source, spi_host_device_t host_device, int dma_chan)
+SPIResourceGroup::SPIResourceGroup(Process* process, EventSource* event_source, spi_host_device_t host_device,
+                                   int dma_chan)
     : ResourceGroup(process, event_source)
     , host_device_(host_device)
     , dma_chan_(dma_chan) {}
 
-  ~SPIResourceGroup() {
-    SystemEventSource::instance()->run([&]() -> void {
-      FATAL_IF_NOT_ESP_OK(spi_bus_free(host_device_));
-    });
-    spi_host_devices.put(host_device_);
-    dma_channels.put(dma_chan_);
-  }
-
-  spi_host_device_t host_device() { return host_device_; }
-
- private:
-  spi_host_device_t host_device_;
-  int dma_chan_;
-};
+SPIResourceGroup::~SPIResourceGroup() {
+  SystemEventSource::instance()->run([&]() -> void {
+    FATAL_IF_NOT_ESP_OK(spi_bus_free(host_device_));
+  });
+  spi_host_devices.put(host_device_);
+  dma_channels.put(dma_chan_);
+}
 
 MODULE_IMPLEMENTATION(spi, MODULE_SPI);
 
