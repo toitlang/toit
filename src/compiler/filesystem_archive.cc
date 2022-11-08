@@ -38,11 +38,11 @@ static const char* const COMPILER_INPUT_PATH = "/<compiler-input>";
 static const char* const INFO_PATH = "/<info>";
 
 void FilesystemArchive::initialize(Diagnostics* diagnostics) {
-  if (_is_initialized) return;
-  _is_initialized = true;
+  if (is_initialized_) return;
+  is_initialized_ = true;
   char current_working_dir[PATH_MAX];
   int current_working_dir_len = -1;
-  auto code = untar(_path, [&](const char* name,
+  auto code = untar(path_, [&](const char* name,
                                char* content,
                                int size) {
     if (name[0] != '/') {
@@ -61,7 +61,7 @@ void FilesystemArchive::initialize(Diagnostics* diagnostics) {
       builder.join(current_working_dir, name);
       name = builder.strdup();
     }
-    _archive_files[std::string(name)] = {
+    archive_files_[std::string(name)] = {
       .content = content,
       .size = size,
     };
@@ -70,74 +70,74 @@ void FilesystemArchive::initialize(Diagnostics* diagnostics) {
     case UntarCode::ok:
       break;
     case UntarCode::not_found:
-      diagnostics->report_error("Couldn't find source-archive '%s'", _path);
+      diagnostics->report_error("Couldn't find source-archive '%s'", path_);
       return;
     case UntarCode::not_ustar:
-      diagnostics->report_error("Source-archive not in expected ustar format '%s'", _path);
+      diagnostics->report_error("Source-archive not in expected ustar format '%s'", path_);
       return;
     case UntarCode::other:
-      diagnostics->report_error("Error loading source archive '%s'", _path);
+      diagnostics->report_error("Error loading source archive '%s'", path_);
       return;
   }
 
-  auto sdk_path_probe = _archive_files.find(std::string(SDK_PATH_PATH));
-  if (sdk_path_probe == _archive_files.end()) {
-    diagnostics->report_error("Missing sdk-path file in '%s'", _path);
+  auto sdk_path_probe = archive_files_.find(std::string(SDK_PATH_PATH));
+  if (sdk_path_probe == archive_files_.end()) {
+    diagnostics->report_error("Missing sdk-path file in '%s'", path_);
     return;
   }
-  _sdk_path = sdk_path_probe->second.content;
+  sdk_path_ = sdk_path_probe->second.content;
 
-  auto package_cache_paths_probe = _archive_files.find(std::string(PACKAGE_CACHE_PATHS_PATH));
-  if (package_cache_paths_probe == _archive_files.end()) {
-    diagnostics->report_error("Missing package-cache-paths file in '%s'", _path);
+  auto package_cache_paths_probe = archive_files_.find(std::string(PACKAGE_CACHE_PATHS_PATH));
+  if (package_cache_paths_probe == archive_files_.end()) {
+    diagnostics->report_error("Missing package-cache-paths file in '%s'", path_);
     return;
   }
-  _package_cache_paths = string_split(package_cache_paths_probe->second.content, "\n");
+  package_cache_paths_ = string_split(package_cache_paths_probe->second.content, "\n");
 
   // Check whether the archive contains the SDK.
   // If there is a file with the same prefix, we consider it to be there.
-  size_t sdk_path_len = strlen(_sdk_path);
+  size_t sdk_path_len = strlen(sdk_path_);
   if (sdk_path_len == 0) {
     // This should never happen.
     // If the sdk-path file exists, but nothing is in it, we just assume that
     // the sdk is present. There might be errors later on because of the
     // empty path, though.
-    _contains_sdk = true;
+    contains_sdk_ = true;
   } else {
-    int separator_offset = _sdk_path[sdk_path_len - 1] == '/' ? -1 : 0;
-    for (auto& entry : _archive_files.underlying_map()) {
-      if (strncmp(entry.first.c_str(), _sdk_path, sdk_path_len) == 0 &&
+    int separator_offset = sdk_path_[sdk_path_len - 1] == '/' ? -1 : 0;
+    for (auto& entry : archive_files_.underlying_map()) {
+      if (strncmp(entry.first.c_str(), sdk_path_, sdk_path_len) == 0 &&
           entry.first.c_str()[sdk_path_len + separator_offset] == '/') {
-        _contains_sdk = true;
+        contains_sdk_ = true;
         break;
       }
     }
   }
 
-  auto cwd_path_probe = _archive_files.find(std::string(CWD_PATH_PATH));
-  if (cwd_path_probe == _archive_files.end()) {
-    diagnostics->report_error("Missing cwd-path file in '%s'", _path);
+  auto cwd_path_probe = archive_files_.find(std::string(CWD_PATH_PATH));
+  if (cwd_path_probe == archive_files_.end()) {
+    diagnostics->report_error("Missing cwd-path file in '%s'", path_);
     return;
   }
-  _cwd_path = cwd_path_probe->second.content;
+  cwd_path_ = cwd_path_probe->second.content;
 
-  auto info_probe = _archive_files.find(std::string(INFO_PATH));
-  if (info_probe == _archive_files.end()) {
-    diagnostics->report_error("Missing info file in '%s'", _path);
+  auto info_probe = archive_files_.find(std::string(INFO_PATH));
+  if (info_probe == archive_files_.end()) {
+    diagnostics->report_error("Missing info file in '%s'", path_);
     return;
   }
   const char* info = info_probe->second.content;
   if (strcmp(info, "toit/archive") != 0) {
-    diagnostics->report_error("Not a toit-archive '%s'", _path);
+    diagnostics->report_error("Not a toit-archive '%s'", path_);
     return;
   }
 
   if (Flags::archive_entry_path != null) {
-    _entry_path = Flags::archive_entry_path;
+    entry_path_ = Flags::archive_entry_path;
   } else {
-    auto input_path_probe = _archive_files.find(std::string(COMPILER_INPUT_PATH));
-    if (input_path_probe == _archive_files.end()) {
-      diagnostics->report_error("Missing compiler-input file in '%s'", _path);
+    auto input_path_probe = archive_files_.find(std::string(COMPILER_INPUT_PATH));
+    if (input_path_probe == archive_files_.end()) {
+      diagnostics->report_error("Missing compiler-input file in '%s'", path_);
       return;
     }
 
@@ -158,17 +158,17 @@ void FilesystemArchive::initialize(Diagnostics* diagnostics) {
       if (!entry_path_list[0].is_string()) {
         goto bad_meta;
       }
-      _entry_path = strdup(entry_path_list[0].get<std::string>().c_str());
+      entry_path_ = strdup(entry_path_list[0].get<std::string>().c_str());
     } else {
       // This path is deprecated.
-      _entry_path = compiler_input.content;
+      entry_path_ = compiler_input.content;
     }
   }
 
   {
-    auto meta_probe = _archive_files.find(std::string(META_PATH));
-    if (meta_probe == _archive_files.end()) {
-      diagnostics->report_error("Missing meta file in '%s'", _path);
+    auto meta_probe = archive_files_.find(std::string(META_PATH));
+    if (meta_probe == archive_files_.end()) {
+      diagnostics->report_error("Missing meta file in '%s'", path_);
       return;
     }
     auto entry = meta_probe->second;
@@ -195,7 +195,7 @@ void FilesystemArchive::initialize(Diagnostics* diagnostics) {
           if (!is_regular.is_boolean()) goto bad_meta;
           if (!is_directory.is_boolean()) goto bad_meta;
           if (!has_content.is_boolean()) goto bad_meta;
-          _path_infos[std::string(name)] = {
+          path_infos_[std::string(name)] = {
             .exists = exists,
             .is_regular_file = static_cast<bool>(is_regular),
             .is_directory = static_cast<bool>(is_directory),
@@ -212,7 +212,7 @@ void FilesystemArchive::initialize(Diagnostics* diagnostics) {
             if (!entry.is_string()) goto bad_meta;
             builder.add(entry.get<std::string>());
           }
-          _directory_listings[name] = builder.build();
+          directory_listings_[name] = builder.build();
         }
       }
     }
@@ -220,31 +220,31 @@ void FilesystemArchive::initialize(Diagnostics* diagnostics) {
   return;
 
   bad_meta:
-    diagnostics->report_error("Bad meta file format in '%s'", _path);
+    diagnostics->report_error("Bad meta file format in '%s'", path_);
     return;
 }
 
 bool FilesystemArchive::do_exists(const char* path) {
-  auto info_probe = _path_infos.find(std::string(path));
-  if (info_probe == _path_infos.end()) return false;
+  auto info_probe = path_infos_.find(std::string(path));
+  if (info_probe == path_infos_.end()) return false;
   return info_probe->second.exists;
 }
 
 bool FilesystemArchive::do_is_regular_file(const char* path) {
-  auto info_probe = _path_infos.find(std::string(path));
-  if (info_probe == _path_infos.end()) return false;
+  auto info_probe = path_infos_.find(std::string(path));
+  if (info_probe == path_infos_.end()) return false;
   return info_probe->second.is_regular_file;
 }
 
 bool FilesystemArchive::do_is_directory(const char* path) {
-  auto info_probe = _path_infos.find(std::string(path));
-  if (info_probe == _path_infos.end()) return false;
+  auto info_probe = path_infos_.find(std::string(path));
+  if (info_probe == path_infos_.end()) return false;
   return info_probe->second.is_directory;
 }
 
 const uint8* FilesystemArchive::do_read_content(const char* path, int* size) {
-  auto probe = _archive_files.find(path);
-  if (probe != _archive_files.end()) {
+  auto probe = archive_files_.find(path);
+  if (probe != archive_files_.end()) {
     auto entry = probe->second;
     *size = entry.size;
     return unsigned_cast(entry.content);
@@ -254,8 +254,8 @@ const uint8* FilesystemArchive::do_read_content(const char* path, int* size) {
 
 void FilesystemArchive::list_directory_entries(const char* path,
                                                const std::function<void (const char*)> callback) {
-  auto probe = _directory_listings.find(std::string(path));
-  if (probe == _directory_listings.end()) return;
+  auto probe = directory_listings_.find(std::string(path));
+  if (probe == directory_listings_.end()) return;
   for (auto& entry : probe->second) {
     callback(entry.c_str());
   }

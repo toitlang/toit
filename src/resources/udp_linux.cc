@@ -197,7 +197,7 @@ PRIMITIVE(receive)  {
 
   if (is_array(output)) {
     Array* out = Array::cast(output);
-    ASSERT(out->length() == 3);
+    if (out->length() < 3) INVALID_ARGUMENT;
     out->at_put(0, array);
     memcpy(ByteArray::Bytes(address).address(), &addr.sin_addr.s_addr, 4);
     out->at_put(1, address);

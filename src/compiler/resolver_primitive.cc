@@ -22,7 +22,7 @@ namespace compiler{
 #define PRIMITIVE_NAME(name, arity) \
   #name,
 #define PRIMITIVE_NAME_TABLE(name, entries) \
-static const char* name##_names[] = { \
+static const char* name##names_[] = { \
   entries(PRIMITIVE_NAME) \
   null \
 };
@@ -39,7 +39,7 @@ MODULES(PRIMITIVE_ARITY_TABLE)
 #define MODULE_NAME(name, entries) \
   #name,
 #define MODULE_PRIMITIVE_NAMES(name, entries) \
-  name##_names,
+  name##names_,
 #define MODULE_PRIMITIVE_ARITIES(name, entries) \
   name##_arities,
 static const char* module_names[] = {

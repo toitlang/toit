@@ -62,9 +62,10 @@ target_link_libraries(
   ${TOIT_WINDOWS_LIBS}
   pthread
   ${CMAKE_DL_LIBS}
+  toit_porting
   )
 
-if (APPLE)
+if (CMAKE_HOST_APPLE)
   set(LN_FORCE "F")
 else()
   set(LN_FORCE "Tf")

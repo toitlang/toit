@@ -279,7 +279,7 @@ Object* Interpreter::hash_do(Program* program, Object* current, Object* backing,
     // This can fail if the user makes big changes to the collection in the
     // do block.  We don't support this, but we also don't want to crash.
     // We also hit out-of-range at the end of the iteration.
-    bool in_range = fast_at(_process, backing, Smi::from(c), false, &entry);
+    bool in_range = fast_at(process_, backing, Smi::from(c), false, &entry);
     if (!in_range) {
       return program->null_object();  // Done - success.
     }

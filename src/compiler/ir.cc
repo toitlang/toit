@@ -45,7 +45,7 @@ void TraversingVisitor::visit_Class(Class* node) {
   for (auto method: node->methods()) method->accept(this);
 }
 
-void TraversingVisitor::visit_Field(Field* node) { }
+void TraversingVisitor::visit_Field(Field* node) {}
 
 void TraversingVisitor::visit_Method(Method* node) {
   for (auto parameter : node->parameters()) parameter->accept(this);
@@ -69,7 +69,7 @@ void TraversingVisitor::visit_Error(Error* node) {
   }
 }
 
-void TraversingVisitor::visit_Nop(Nop* node) { }
+void TraversingVisitor::visit_Nop(Nop* node) {}
 
 void TraversingVisitor::visit_FieldStore(FieldStore* node) {
   node->receiver()->accept(this);
@@ -84,7 +84,7 @@ void TraversingVisitor::visit_Sequence(Sequence* node) {
   for (auto expr : node->expressions()) expr->accept(this);
 }
 
-void TraversingVisitor::visit_Builtin(Builtin* node) { }
+void TraversingVisitor::visit_Builtin(Builtin* node) {}
 
 void TraversingVisitor::visit_TryFinally(TryFinally* node) {
   node->body()->accept(this);
@@ -108,14 +108,14 @@ void TraversingVisitor::visit_While(While* node) {
   node->update()->accept(this);
 }
 
-void TraversingVisitor::visit_LoopBranch(LoopBranch* node) { }
+void TraversingVisitor::visit_LoopBranch(LoopBranch* node) {}
 
 void TraversingVisitor::visit_Code(Code* node) {
   for (auto parameter : node->parameters()) parameter->accept(this);
   node->body()->accept(this);
 }
 
-void TraversingVisitor::visit_Reference(Reference* node) { }
+void TraversingVisitor::visit_Reference(Reference* node) {}
 
 void TraversingVisitor::visit_ReferenceClass(ReferenceClass* node) { visit_Reference(node); }
 void TraversingVisitor::visit_ReferenceMethod(ReferenceMethod* node) { visit_Reference(node); }
@@ -123,7 +123,7 @@ void TraversingVisitor::visit_ReferenceLocal(ReferenceLocal* node) { visit_Refer
 void TraversingVisitor::visit_ReferenceBlock(ReferenceBlock* node) { visit_Reference(node); }
 void TraversingVisitor::visit_ReferenceGlobal(ReferenceGlobal* node) { visit_Reference(node); }
 
-void TraversingVisitor::visit_Local(Local* node) { }
+void TraversingVisitor::visit_Local(Local* node) {}
 void TraversingVisitor::visit_Parameter(Parameter* node) { visit_Local(node); }
 void TraversingVisitor::visit_CapturedLocal(CapturedLocal* node) { visit_Parameter(node); }
 void TraversingVisitor::visit_Block(Block* node) { visit_Local(node); }
@@ -174,7 +174,7 @@ void TraversingVisitor::visit_AssignmentDefine(AssignmentDefine* node) { visit_A
 void TraversingVisitor::visit_AssignmentLocal(AssignmentLocal* node) { visit_Assignment(node); }
 void TraversingVisitor::visit_AssignmentGlobal(AssignmentGlobal* node) { visit_Assignment(node); }
 
-void TraversingVisitor::visit_Literal(Literal* node) { }
+void TraversingVisitor::visit_Literal(Literal* node) {}
 
 void TraversingVisitor::visit_LiteralNull(LiteralNull* node) { visit_Literal(node); }
 void TraversingVisitor::visit_LiteralUndefined(LiteralUndefined* node) { visit_Literal(node); }
@@ -184,7 +184,7 @@ void TraversingVisitor::visit_LiteralString(LiteralString* node) { visit_Literal
 void TraversingVisitor::visit_LiteralByteArray(LiteralByteArray* node) { visit_Literal(node); }
 void TraversingVisitor::visit_LiteralBoolean(LiteralBoolean* node) { visit_Literal(node); }
 
-void TraversingVisitor::visit_PrimitiveInvocation(PrimitiveInvocation* node) { }
+void TraversingVisitor::visit_PrimitiveInvocation(PrimitiveInvocation* node) {}
 
 Node* ReplacingVisitor::visit(Node* node) {
   return node->accept(this);
@@ -473,12 +473,12 @@ Node* ReplacingVisitor::visit_PrimitiveInvocation(PrimitiveInvocation* node) {
 class Printer : public Visitor {
  public:
   explicit Printer(bool use_resolution_shape)
-      : _indentation(0), _use_resolution_shape(use_resolution_shape) { }
+      : indentation_(0), use_resolution_shape_(use_resolution_shape) {}
 
   template<typename T>
   void _visit_multiple(List<T> nodes, char separation = '\n') {
     bool should_indent = separation == '\n';
-    if (should_indent) _indentation++;
+    if (should_indent) indentation_++;
     for (int i = 0; i < nodes.length(); i++) {
       if (should_indent) {
         indent();
@@ -487,7 +487,7 @@ class Printer : public Visitor {
       }
       nodes[i]->accept(this);
     }
-    if (should_indent) _indentation--;
+    if (should_indent) indentation_--;
   }
 
   void visit_Program(Program* node) {
@@ -515,10 +515,10 @@ class Printer : public Visitor {
     if (node->super() != null) {
       printf(" %s\n", node->super()->name().c_str());
     }
-    _indentation++;
+    indentation_++;
     for (auto field : node->fields()) visit(field);
     for (auto method : node->methods()) visit(method);
-    _indentation--;
+    indentation_--;
   }
   void visit_Field(Field* node) {
     indent();
@@ -530,13 +530,13 @@ class Printer : public Visitor {
   void visit_Error(Error* node) {
     indent();
     printf("(ERROR:");
-    _indentation++;
+    indentation_++;
     for (auto nested : node->nested()) {
       printf("\n");
       indent();
       visit(nested);
     }
-    _indentation--;
+    indentation_--;
     printf("\n");
     indent();
     printf(")");
@@ -568,7 +568,7 @@ class Printer : public Visitor {
     std::vector<bool> optional_named;
     int unnamed_block_count = 0;
     int named_block_count;
-    if (_use_resolution_shape) {
+    if (use_resolution_shape_) {
       auto shape = node->resolution_shape();
       optional_unnamed = shape.max_unnamed_non_block() - shape.min_unnamed_non_block();
       names = shape.names();
@@ -614,11 +614,11 @@ class Printer : public Visitor {
     }
     printf(")");
 
-    _indentation++;
+    indentation_++;
     if (node->has_body()) {
       visit(node->body());
     }
-    _indentation--;
+    indentation_--;
 
     indent();
     printf(")\n");
@@ -647,11 +647,11 @@ class Printer : public Visitor {
       printf("|");
     }
     printf("\n");
-    _indentation++;
+    indentation_++;
 
     visit(node->body());
 
-    _indentation--;
+    indentation_--;
     indent();
     printf(")\n");
   }
@@ -663,9 +663,9 @@ class Printer : public Visitor {
   void visit_TryFinally(TryFinally* node) {
     indent();
     printf("(try:\n");
-    _indentation++;
+    indentation_++;
     visit(node->body());
-    _indentation--;
+    indentation_--;
     indent();
     printf("finally:");
     if (!node->handler_parameters().is_empty()) {
@@ -674,9 +674,9 @@ class Printer : public Visitor {
       printf("|");
     }
     printf("\n");
-    _indentation++;
+    indentation_++;
     visit(node->handler());
-    _indentation--;
+    indentation_--;
     indent();
     printf(")\n");
   }
@@ -687,16 +687,16 @@ class Printer : public Visitor {
     visit(node->condition());
     printf(":\n");
 
-    _indentation++;
+    indentation_++;
     visit(node->yes());
-    _indentation--;
+    indentation_--;
 
     indent();
     printf("else:");
 
-    _indentation++;
+    indentation_++;
     visit(node->no());
-    _indentation--;
+    indentation_--;
 
     indent();
     printf(")\n");
@@ -713,15 +713,15 @@ class Printer : public Visitor {
     visit(node->condition());
     printf(":\n");
 
-    _indentation++;
+    indentation_++;
     visit(node->body());
-    _indentation--;
+    indentation_--;
 
     printf("update:\n");
 
-    _indentation++;
+    indentation_++;
     visit(node->update());
-    _indentation--;
+    indentation_--;
 
     indent();
     printf(")\n");
@@ -812,14 +812,14 @@ class Printer : public Visitor {
 
   void visit_Lambda(Lambda* node) {
     printf("(Lamba:\n");
-    _indentation++;
+    indentation_++;
     visit(node->arguments()[1]);
-    _indentation--;
+    indentation_--;
     indent();
     printf("-- Body:\n");
-    _indentation++;
+    indentation_++;
     visit(node->code());
-    _indentation--;
+    indentation_--;
 
     indent();
     printf(")");
@@ -863,7 +863,7 @@ class Printer : public Visitor {
     auto target = node->target();
     int arity;
     int block_count;
-    if (_use_resolution_shape) {
+    if (use_resolution_shape_) {
       arity = target->resolution_shape().max_arity();
       block_count = target->resolution_shape().total_block_count();
     } else {
@@ -1000,11 +1000,11 @@ class Printer : public Visitor {
   }
 
  private:
-  int _indentation;
-  bool _use_resolution_shape;
+  int indentation_;
+  bool use_resolution_shape_;
 
   void indent() {
-    for (int i = 0; i < _indentation; i++) {
+    for (int i = 0; i < indentation_; i++) {
       printf("  ");
     }
   }

@@ -42,22 +42,22 @@ class RMTResource : public Resource {
   TAG(RMTResource);
   RMTResource(ResourceGroup* group, rmt_channel_t channel, int memory_block_count)
       : Resource(group)
-      , _channel(channel)
-      , _memory_block_count(memory_block_count) {}
+      , channel_(channel)
+      , memory_block_count_(memory_block_count) {}
 
-  rmt_channel_t channel() const { return _channel; }
-  int memory_block_count() const { return _memory_block_count; }
+  rmt_channel_t channel() const { return channel_; }
+  int memory_block_count() const { return memory_block_count_; }
 
  private:
-  rmt_channel_t _channel;
-  int _memory_block_count;
+  rmt_channel_t channel_;
+  int memory_block_count_;
 };
 
 class RMTResourceGroup : public ResourceGroup {
  public:
   TAG(RMTResourceGroup);
   RMTResourceGroup(Process* process)
-    : ResourceGroup(process, null) { }
+    : ResourceGroup(process, null) {}
 
   virtual void on_unregister_resource(Resource* r) override {
     RMTResource* rmt_resource = static_cast<RMTResource*>(r);

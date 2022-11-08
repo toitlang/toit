@@ -92,14 +92,14 @@ class GPIOResource : public EventQueueResource {
   GPIOResource(ResourceGroup* group, int pin)
       // GPIO resources share a queue, which is always on the event source, so pass null.
       : EventQueueResource(group, null)
-      , _pin(pin) {}
+      , pin_(pin) {}
 
-  int pin() const { return _pin; }
+  int pin() const { return pin_; }
 
   bool check_gpio(word pin) override;
 
  private:
-  int _pin;
+  int pin_;
 };
 
 class GPIOResourceGroup : public ResourceGroup {
@@ -163,7 +163,7 @@ void IRAM_ATTR GPIOResourceGroup::isr_handler(void* arg) {
 }
 
 bool GPIOResource::check_gpio(word pin) {
-  if (pin != _pin) return false;
+  if (pin != pin_) return false;
   return true;
 }
 

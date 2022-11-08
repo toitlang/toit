@@ -46,16 +46,15 @@ class PcntUnitResource : public Resource {
   TAG(PcntUnitResource);
   PcntUnitResource(ResourceGroup* group, pcnt_unit_t unit_id, int16 low_limit, int16 high_limit, uint32 glitch_filter_ns)
       : Resource(group)
-    , _unit_id(unit_id)
-    , _low_limit(low_limit)
-    , _high_limit(high_limit)
-    , _glitch_filter_ns(glitch_filter_ns) {
-  }
+    , unit_id_(unit_id)
+    , low_limit_(low_limit)
+    , high_limit_(high_limit)
+    , glitch_filter_ns_(glitch_filter_ns) {}
 
   bool is_open_channel(pcnt_channel_t channel) {
     if (channel == kInvalidChannel) return false;
     int index = static_cast<int>(channel);
-    return 0 <= index && index < PCNT_CHANNEL_MAX && _used_channels[index];
+    return 0 <= index && index < PCNT_CHANNEL_MAX && used_channels_[index];
   }
 
   esp_err_t add_channel(int pin_number,
@@ -75,7 +74,7 @@ class PcntUnitResource : public Resource {
     static_assert(ESP_IDF_VERSION_MAJOR == 4 && ESP_IDF_VERSION_MINOR == 4,
                   "Newer ESP-IDF might need different code");
     for (int i = 0; i < PCNT_CHANNEL_MAX; i++) {
-      if (!_used_channels[i]) {
+      if (!used_channels_[i]) {
         *channel = static_cast<pcnt_channel_t>(i);
         break;
       }
@@ -91,9 +90,9 @@ class PcntUnitResource : public Resource {
       .hctrl_mode = when_control_high,
       .pos_mode = on_positive_edge,
       .neg_mode = on_negative_edge,
-      .counter_h_lim = _high_limit,
-      .counter_l_lim = _low_limit,
-      .unit = _unit_id,
+      .counter_h_lim = high_limit_,
+      .counter_l_lim = low_limit_,
+      .unit = unit_id_,
       .channel = *channel,
     };
     // For v4.4.1:
@@ -105,19 +104,19 @@ class PcntUnitResource : public Resource {
     esp_err_t err = pcnt_unit_config(&config);
     if (err != ESP_OK) return err;
 
-    _used_channels[static_cast<int>(*channel)] = true;
+    used_channels_[static_cast<int>(*channel)] = true;
 
-    if (_glitch_filter_ns >= 0) {
+    if (glitch_filter_ns_ >= 0) {
 
       // The glitch-filter value should have been checked in the constructor.
-      int glitch_filter_thres = APB_CLK_FREQ / 1000000 * _glitch_filter_ns / 1000;
-      pcnt_set_filter_value(_unit_id, static_cast<uint16_t>(glitch_filter_thres));
-      pcnt_filter_enable(_unit_id);
+      int glitch_filter_thres = APB_CLK_FREQ / 1000000 * glitch_filter_ns_ / 1000;
+      pcnt_set_filter_value(unit_id_, static_cast<uint16_t>(glitch_filter_thres));
+      pcnt_filter_enable(unit_id_);
     }
 
     // Without a call to 'clear' the unit would not start counting.
-    if (!_cleared) {
-      _cleared = true;
+    if (!cleared_) {
+      cleared_ = true;
       return pcnt_counter_clear(config.unit);
     }
     return ESP_OK;
@@ -142,25 +141,25 @@ class PcntUnitResource : public Resource {
       .neg_mode = PCNT_CHANNEL_EDGE_ACTION_HOLD,
       .counter_h_lim = 0,
       .counter_l_lim = 0,
-      .unit = _unit_id,
+      .unit = unit_id_,
       .channel = channel,
     };
     // TODO(florian): when should we consider the channel to be free again?
     // Probably not that important yet, but more important when we actually call `pcnt_del_channel`.
-    _used_channels[static_cast<int>(channel)] = false;
+    used_channels_[static_cast<int>(channel)] = false;
     return pcnt_unit_config(&config);
   }
 
   void tear_down() {
     for (int i = 0; i < PCNT_CHANNEL_MAX; i++) {
-      if (!_used_channels[i]) continue;
+      if (!used_channels_[i]) continue;
       auto channel = static_cast<pcnt_channel_t>(i);
       if (channel != kInvalidChannel) {
         // In the teardown we don't handle errors for cloning the channel.
         close_channel(channel);
       }
     }
-    _cleared = false;
+    cleared_ = false;
 
     // In v4.4.1 there is no way to shut down the counter.
     // In later versions we have to call `pcnt_del_unit`.
@@ -173,7 +172,7 @@ class PcntUnitResource : public Resource {
   }
 
   // The unit id should not be exposed to the user.
-  pcnt_unit_t unit_id() const { return _unit_id; }
+  pcnt_unit_t unit_id() const { return unit_id_; }
 
   // Returns the APB ticks for a given glitch filter configuration.
   // The glitch filter runs on the APB clock, which generally is clocked at 80MHz.
@@ -187,12 +186,12 @@ class PcntUnitResource : public Resource {
   }
 
  private:
-  pcnt_unit_t _unit_id;
-  int16 _low_limit;
-  int16 _high_limit;
-  int _glitch_filter_ns;
-  bool _used_channels[PCNT_CHANNEL_MAX] = { false, };
-  bool _cleared = false;
+  pcnt_unit_t unit_id_;
+  int16 low_limit_;
+  int16 high_limit_;
+  int glitch_filter_ns_;
+  bool used_channels_[PCNT_CHANNEL_MAX] = { false, };
+  bool cleared_ = false;
 };
 
 class PcntUnitResourceGroup : public ResourceGroup {

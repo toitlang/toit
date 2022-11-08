@@ -57,6 +57,10 @@ file(GLOB toit_resources_SRC
   "resources/*.cc"
   )
 
+if ("${CMAKE_SYSTEM_NAME}" MATCHES "Darwin")
+  list(APPEND toit_resources_SRC "resources/ble_darwin.mm")
+endif()
+
 file(GLOB toit_event_sources_SRC
   "event_sources/*.h"
   "event_sources/*.cc"
@@ -78,7 +82,13 @@ file(GLOB gc_sources_SRC
   "third_party/dartino/two_space_heap.cc"
   )
 
-set(toit_vm_SRC ${toit_vm_runtime_SRC} ${toit_resources_SRC} ${toit_event_sources_SRC} ${lwip_on_linux_sources_SRC} ${gc_sources_SRC})
+file(GLOB porting_sources_SRC
+  "ports/*.h"
+  "ports/*.cc"
+  )
+
+set(toit_vm_SRC ${toit_vm_runtime_SRC} ${toit_resources_SRC} ${toit_event_sources_SRC}
+                ${lwip_on_linux_sources_SRC} ${gc_sources_SRC})
 
 add_library(
   toit_core
@@ -89,6 +99,11 @@ add_library(
   toit_vm
   ${toit_vm_SRC}
   ${toit_core_SRC}
+  )
+
+add_library(
+  toit_porting
+  ${porting_sources_SRC}
   )
 
 set_source_files_properties(interpreter_core.cc PROPERTIES COMPILE_OPTIONS "-O3")
@@ -162,6 +177,10 @@ else()
   set(TOIT_WINDOWS_LIBS )
 endif()
 
+if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+  set(TOIT_BLUETOOTH_LIBS "-framework Foundation" "-framework CoreBluetooth" ObjC)
+endif()
+
 # Because of the `CACHE INTERNAL ""` at the end of the `set` we can
 #   use this variable outside of the directory.
 set(TOIT_LINK_LIBS
@@ -177,6 +196,8 @@ set(TOIT_LINK_LIBS
   ${CMAKE_DL_LIBS}
   ${TOIT_LINK_LIBS_LIBGCC}
   ${TOIT_LINK_SEGFAULT}
+  toit_porting
+  ${TOIT_BLUETOOTH_LIBS}
   CACHE INTERNAL ""
   )
 

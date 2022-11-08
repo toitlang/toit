@@ -278,13 +278,13 @@ PRIMITIVE(read) {
 
 class Freer {
  public:
-  explicit Freer(char** p) : _ptr(p) {}
+  explicit Freer(char** p) : ptr_(p) {}
   ~Freer() {
-    free(_ptr);
+    free(ptr_);
   }
 
  private:
-  char** _ptr;
+  char** ptr_;
 };
 
 // o can be an IntResource, a Smi or null (which returns -1).

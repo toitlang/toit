@@ -15,9 +15,7 @@
 
 #include "../top.h"
 
-#if defined(TOIT_FREERTOS) && (defined(CONFIG_IDF_TARGET_ESP32) || \
-                               defined(CONFIG_IDF_TARGET_ESP32S2) || \
-                               defined(CONFIG_IDF_TARGET_ESP32S3))
+#if defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32S2) || defined(CONFIG_IDF_TARGET_ESP32S3)
 
 #include <driver/gpio.h>
 #include <driver/touch_sensor.h>
@@ -274,13 +272,12 @@ PRIMITIVE(read) {
   ARGS(IntResource, resource);
   touch_pad_t pad = static_cast<touch_pad_t>(resource->id());
 
-#if CONFIG_IDF_TARGET_ESP32S3 || CONFIG_IDF_TARGET_ESP32S2
-  uint32_t val;
-  esp_err_t err = touch_pad_read_raw_data(pad, &val);
-#else
+#ifdef CONFIG_IDF_TARGET_ESP32
   uint16_t val;
-  esp_err_t err = touch_pad_read(pad, &val);
+#else
+  uint32_t val;
 #endif
+  esp_err_t err = touch_pad_read_raw_data(pad, &val);
   if (err != ESP_OK) return Primitive::os_error(err, process);
   return Smi::from(static_cast<int>(val));
 }
@@ -310,4 +307,4 @@ PRIMITIVE(set_threshold) {
 
 } // namespace toit
 
-#endif // TOIT_FREERTOS
+#endif // defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32S2) || defined(CONFIG_IDF_TARGET_ESP32S3)

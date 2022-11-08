@@ -22,7 +22,7 @@ namespace toit {
 
 class KQueueEventSource : public EventSource, public Thread {
  public:
-  static KQueueEventSource* instance() { return _instance; }
+  static KQueueEventSource* instance() { return instance_; }
 
   KQueueEventSource();
   ~KQueueEventSource();
@@ -33,11 +33,11 @@ class KQueueEventSource : public EventSource, public Thread {
  private:
   void entry() override;
 
-  static KQueueEventSource* _instance;
+  static KQueueEventSource* instance_;
 
-  int _kqueue_fd;
-  int _control_read;
-  int _control_write;
+  int kqueue_fd_;
+  int control_read_;
+  int control_write_;
 };
 
 } // namespace toit

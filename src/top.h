@@ -201,7 +201,7 @@ static_assert(sizeof(word) == 4, "invalid type size");
 #define malloc(size) toit::tracing_malloc(size, __FILE__, __LINE__)
 #define realloc(ptr, size) toit::tracing_realloc(ptr, size, __FILE__, __LINE__)
 #define free(p) toit::tracing_free(p, __FILE__, __LINE__)
-#define _new NewMarker(__FILE__, __LINE__) * new (std::nothrow)
+#define _new toit::NewMarker(__FILE__, __LINE__) * new (std::nothrow)
 #else
 #define _new new (std::nothrow)
 #endif
@@ -226,7 +226,7 @@ void tracing_free(void* ptr, const char* file, int line);
 
 class NewMarker	{
  public:
-  NewMarker(char const* file, int line) : file(file), line(line) { }
+  NewMarker(char const* file, int line) : file(file), line(line) {}
   char const* const file;
   int const line;
 };
@@ -273,7 +273,7 @@ void fail(const char* file, int line, const char* format, ...) __attribute__ ((_
 #endif
 #else  // TOIT_DEPLOY
 void fail(const char* format, ...) __attribute__ ((__noreturn__));
-#define ASSERT(cond) while (false && (cond)) { }
+#define ASSERT(cond) while (false && (cond)) {}
 #define FATAL(message, ...) toit::fail(#message, ##__VA_ARGS__);
 #ifdef TOIT_FREERTOS
 #define FATAL_IF_NOT_ESP_OK(cond) do { if ((cond) != ESP_OK) toit::fail("%s", #cond); } while (0)

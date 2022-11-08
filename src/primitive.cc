@@ -31,11 +31,11 @@ enum {
 #undef MODULE_ENUM
 
 #define MODULE_PRIMITIVES_WEAK(name, entries) \
-  const PrimitiveEntry* name##_primitives __attribute__((weak));
+  const PrimitiveEntry* name##primitives_ __attribute__((weak));
 #define MODULE_PRIMITIVES(name, entries) \
-  _primitives[INDEX_##name] = name##_primitives;
+  primitives_[INDEX_##name] = name##primitives_;
 
-const PrimitiveEntry* Primitive::_primitives[COUNT];
+const PrimitiveEntry* Primitive::primitives_[COUNT];
 
 MODULES(MODULE_PRIMITIVES_WEAK)
 void Primitive::set_up() {
@@ -61,6 +61,7 @@ Object* Primitive::allocate_large_integer(int64 value, Process* process) {
 
 Object* Primitive::allocate_array(int length, Object* filler, Process* process) {
   ASSERT(length <= Array::max_length_in_process());
+  if (length > Array::max_length_in_process()) return null;
   Object* result = length == 0 ? process->program()->empty_array() :process->object_heap()->allocate_array(length, filler);
   if (result != null) return result;
   return mark_as_error(process->program()->allocation_failed());

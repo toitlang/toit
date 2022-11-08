@@ -37,22 +37,22 @@ class ByteGen : private ir::Visitor {
           UnorderedMap<ir::Class*, int>* typecheck_indexes,
           SourceMapper* source_mapper,
           ProgramBuilder* program_builder)
-      : _lookup_failure(lookup_failure)
-      , _as_check_failure(as_check_failure)
-      , _max_captured_count(max_captured_count)
-      , _dispatch_table(dispatch_table)
-      , _typecheck_indexes(typecheck_indexes)
-      , _source_mapper(source_mapper)
-      , _program_builder(program_builder)
-      , _method(null)
-      , _method_mapper(SourceMapper::MethodMapper::invalid())
-      , _emitter(null)
-      , _local_heights()
-      , _locals_count(0)
-      , _break_target(null)
-      , _continue_target(null)
-      , _loop_height(-1)
-      , _is_for_value(false) { }
+      : lookup_failure_(lookup_failure)
+      , as_check_failure_(as_check_failure)
+      , max_captured_count_(max_captured_count)
+      , dispatch_table_(dispatch_table)
+      , typecheck_indexes_(typecheck_indexes)
+      , source_mapper_(source_mapper)
+      , program_builder_(program_builder)
+      , method_(null)
+      , method_mapper_(SourceMapper::MethodMapper::invalid())
+      , emitter_(null)
+      , local_heights_()
+      , locals_count_(0)
+      , break_target_(null)
+      , continue_target_(null)
+      , loop_height_(-1)
+      , is_for_value_(false) {}
 
   int assemble_global(ir::Global* global);
   int assemble_method(ir::Method* method,
@@ -82,51 +82,51 @@ class ByteGen : private ir::Visitor {
                                  const List<AbsoluteReference>& references);
 
  private:
-  ir::Method* const _lookup_failure;
-  ir::Method* const _as_check_failure;
-  int const _max_captured_count;
-  DispatchTable* const _dispatch_table;
-  UnorderedMap<ir::Class*, int>* const _typecheck_indexes;
-  SourceMapper* const _source_mapper;
-  ProgramBuilder* const _program_builder;
+  ir::Method* const lookup_failure_;
+  ir::Method* const as_check_failure_;
+  int const max_captured_count_;
+  DispatchTable* const dispatch_table_;
+  UnorderedMap<ir::Class*, int>* const typecheck_indexes_;
+  SourceMapper* const source_mapper_;
+  ProgramBuilder* const program_builder_;
 
   // Updated only at the outermost method/global.
-  // This means that nested blocks/lambdas share the same `_method`.
-  ir::Method* _method;
+  // This means that nested blocks/lambdas share the same `method_`.
+  ir::Method* method_;
 
   // Updated for outermost method/global *and* nested blocks/lambdas.
-  SourceMapper::MethodMapper _method_mapper;
-  Emitter* _emitter;
-  std::vector<Emitter*> _outer_emitters_stack;
+  SourceMapper::MethodMapper method_mapper_;
+  Emitter* emitter_;
+  std::vector<Emitter*> outer_emitters_stack_;
 
   // The height of every local.
-  int _local_heights[128];
+  int local_heights_[128];
   // The number of locals that have been registered so far.
-  int _locals_count;
+  int locals_count_;
 
-  AbsoluteLabel* _break_target;
-  AbsoluteLabel* _continue_target;
-  int _loop_height;
+  AbsoluteLabel* break_target_;
+  AbsoluteLabel* continue_target_;
+  int loop_height_;
 
-  bool _is_for_value;
+  bool is_for_value_;
 
-  Emitter* emitter() const { return _emitter; }
-  DispatchTable* dispatch_table() { return _dispatch_table; }
-  SourceMapper::MethodMapper method_mapper() const { return _method_mapper; }
-  ProgramBuilder* program_builder() const { return _program_builder; }
+  Emitter* emitter() const { return emitter_; }
+  DispatchTable* dispatch_table() { return dispatch_table_; }
+  SourceMapper::MethodMapper method_mapper() const { return method_mapper_; }
+  ProgramBuilder* program_builder() const { return program_builder_; }
 
   int register_local() {
     return register_local(emitter()->height());
   }
 
   int register_local(int height) {
-    _local_heights[_locals_count] = height;
-    return _locals_count++;
+    local_heights_[locals_count_] = height;
+    return locals_count_++;
   }
 
   int local_height(int index) {
-    ASSERT(0 <= index && index < _locals_count);
-    return _local_heights[index];
+    ASSERT(0 <= index && index < locals_count_);
+    return local_heights_[index];
   }
 
   int register_string_literal(Symbol identifier);
@@ -136,8 +136,8 @@ class ByteGen : private ir::Visitor {
   int register_double_literal(double data);
   int register_integer64_literal(int64 data);
 
-  bool is_for_value() const { return _is_for_value; }
-  bool is_for_effect() const { return !_is_for_value; }
+  bool is_for_value() const { return is_for_value_; }
+  bool is_for_effect() const { return !is_for_value_; }
 
   void visit(ir::Node* node);
   void visit_for_value(ir::Node* node);

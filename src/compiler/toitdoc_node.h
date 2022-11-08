@@ -75,29 +75,29 @@ TOITDOC_NODES(DECLARE)
 class Contents : public Node {
  public:
   explicit Contents(List<Section*> sections)
-      : _sections(sections) { }
+      : sections_(sections) {}
   IMPLEMENTS(Contents)
 
-  List<Section*> sections() const { return _sections; }
+  List<Section*> sections() const { return sections_; }
 
  private:
-  List<Section*> _sections;
+  List<Section*> sections_;
 };
 
 class Section : public Node {
  public:
   /// The title may be invalid, if it's the first section of a comment.
   Section(Symbol title, List<Statement*> statements)
-      : _title(title)
-      , _statements(statements) { }
+      : title_(title)
+      , statements_(statements) {}
   IMPLEMENTS(Section)
 
-  Symbol title() const { return _title; }
-  List<Statement*> statements() const { return _statements; }
+  Symbol title() const { return title_; }
+  List<Statement*> statements() const { return statements_; }
 
  private:
-  Symbol _title;
-  List<Statement*> _statements;
+  Symbol title_;
+  List<Statement*> statements_;
 };
 
 class Statement : public Node {
@@ -108,48 +108,48 @@ class Statement : public Node {
 class CodeSection : public Statement {
  public:
   explicit CodeSection(Symbol code)
-      : _code(code) { }
+      : code_(code) {}
   IMPLEMENTS(CodeSection);
 
-  Symbol code() const { return _code; }
+  Symbol code() const { return code_; }
 
  private:
-  Symbol _code;
+  Symbol code_;
 };
 
 class Itemized : public Statement {
  public:
   explicit Itemized(List<Item*> items)
-      : _items(items) { }
+      : items_(items) {}
   IMPLEMENTS(Itemized);
 
-  List<Item*> items() const { return _items; }
+  List<Item*> items() const { return items_; }
 
  private:
-  List<Item*> _items;
+  List<Item*> items_;
 };
 
 class Item : public Statement {
  public:
   explicit Item(List<Statement*> statements)
-      : _statements(statements) { }
+      : statements_(statements) {}
   IMPLEMENTS(Item);
 
-  List<Statement*> statements() const { return _statements; }
+  List<Statement*> statements() const { return statements_; }
 
  private:
-  List<Statement*> _statements;
+  List<Statement*> statements_;
 };
 
 class Paragraph : public Statement {
  public:
   explicit Paragraph(List<Expression*> expressions)
-      : _expressions(expressions) { }
+      : expressions_(expressions) {}
   IMPLEMENTS(Paragraph);
 
-  List<Expression*> expressions() const { return _expressions; }
+  List<Expression*> expressions() const { return expressions_; }
  private:
-  List<Expression*> _expressions;
+  List<Expression*> expressions_;
 };
 
 class Expression : public Node {
@@ -160,40 +160,40 @@ class Expression : public Node {
 class Text : public Expression {
  public:
   explicit Text(Symbol text)
-      : _text(text) { }
+      : text_(text) {}
   IMPLEMENTS(Text);
 
-  Symbol text() const { return _text; }
+  Symbol text() const { return text_; }
 
  private:
-  Symbol _text;
+  Symbol text_;
 };
 
 class Code : public Expression {
  public:
   explicit Code(Symbol text)
-      : _text(text) { }
+      : text_(text) {}
   IMPLEMENTS(Code);
 
-  Symbol text() const { return _text; }
+  Symbol text() const { return text_; }
 
  private:
-  Symbol _text;
+  Symbol text_;
 };
 
 class Ref : public Expression {
  public:
   Ref(int id, Symbol text)
-      : _id(id)
-      , _text(text) { }
+      : id_(id)
+      , text_(text) {}
   IMPLEMENTS(Ref);
 
-  int id() const { return _id; }
-  Symbol text() const { return _text; }
+  int id() const { return id_; }
+  Symbol text() const { return text_; }
 
  private:
-  int _id;
-  Symbol _text;
+  int id_;
+  Symbol text_;
 };
 
 #undef IMPLEMENTS

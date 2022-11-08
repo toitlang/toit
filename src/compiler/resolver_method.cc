@@ -284,7 +284,7 @@ static bool is_assignment(ast::Node* node) {
 }
 
 void MethodResolver::report_error(ir::Node* position_node, const char* format, ...) {
-  auto range = _ir_to_ast_map->at(position_node)->range();
+  auto range = ir_to_ast_map_->at(position_node)->range();
   va_list arguments;
   va_start(arguments, format);
   diagnostics()->report_error(range, format, arguments);
@@ -313,7 +313,7 @@ void MethodResolver::report_error(const char* format, ...) {
 }
 
 void MethodResolver::report_note(ir::Node* position_node, const char* format, ...) {
-  auto range = _ir_to_ast_map->at(position_node)->range();
+  auto range = ir_to_ast_map_->at(position_node)->range();
   va_list arguments;
   va_start(arguments, format);
   diagnostics()->report_note(range, format, arguments);
@@ -379,7 +379,7 @@ ir::Type MethodResolver::resolve_type(ast::Expression* type, bool is_return_type
     if (type_name == Symbols::any) return ir::Type::any();
     type_declaration = lookup(type_name).entry;
     if (type->is_LspSelection()) {
-      _lsp->selection_handler()->type(type, scope(), type_declaration, is_return_type);
+      lsp_->selection_handler()->type(type, scope(), type_declaration, is_return_type);
     }
   } else if (type->is_Dot()) {
     auto dot = type->as_Dot();
@@ -387,12 +387,12 @@ ir::Type MethodResolver::resolve_type(ast::Expression* type, bool is_return_type
     type_declaration = scope()->lookup_prefixed(type);
     if (dot->receiver()->is_LspSelection()) {
       auto entry = lookup(dot->receiver()->as_Identifier()->data()).entry;
-      _lsp->selection_handler()->type(type, scope(), entry, is_return_type);
+      lsp_->selection_handler()->type(type, scope(), entry, is_return_type);
     } else if (dot->name()->is_LspSelection()) {
       if (dot->receiver()->is_Identifier()) {
         auto lookup_entry = lookup(dot->receiver()->as_Identifier()->data()).entry;
         if (lookup_entry.is_prefix()) {
-          _lsp->selection_handler()->type(type, lookup_entry.prefix(), type_declaration, is_return_type);
+          lsp_->selection_handler()->type(type, lookup_entry.prefix(), type_declaration, is_return_type);
         } else {
           // We are not going to visit this node again. Might as well stop now.
           exit(2);
@@ -414,7 +414,7 @@ ir::Type MethodResolver::resolve_type(ast::Expression* type, bool is_return_type
       diagnostics()->report_warning(type->range(),
                                     "Use of 'String' as type is deprecated. Use 'string' instead");
       // The `String` resolves to its `string` version unless it has been shadowed.
-      auto core_scope = _core_module->scope();
+      auto core_scope = core_module_->scope();
       auto lookup_entry = core_scope->lookup(Symbols::string).entry;
       if (!lookup_entry.is_class()) { FATAL("Couldn't find 'string' type"); }
       return ir::Type(lookup_entry.klass());
@@ -457,14 +457,14 @@ ir::Type MethodResolver::resolve_type(ast::Expression* type, bool is_return_type
 }
 
 void MethodResolver::resolve_fill_field_stub() {
-  ASSERT(_method->is_FieldStub());
-  _resolution_mode = INSTANCE;
+  ASSERT(method_->is_FieldStub());
+  resolution_mode_ = INSTANCE;
 
   // Global initializers don't take arguments.
-  if (_method->is_Global()) return;
-  auto field_stub = _method->as_FieldStub();
+  if (method_->is_Global()) return;
+  auto field_stub = method_->as_FieldStub();
   auto field = field_stub->field();
-  auto ast_field = _ir_to_ast_map->at(field)->as_Field();
+  auto ast_field = ir_to_ast_map_->at(field)->as_Field();
   auto range = ast_field->range();
   ir::Type ir_type = field->type();
 
@@ -473,7 +473,7 @@ void MethodResolver::resolve_fill_field_stub() {
 
   int parameter_index = 0;
   auto this_parameter = _new ir::Parameter(MethodResolver::this_identifier(),
-                                           ir::Type(_holder),
+                                           ir::Type(holder_),
                                            false,  // Not a block.
                                            parameter_index++,
                                            false,
@@ -528,10 +528,10 @@ void MethodResolver::resolve_fill_field_stub() {
       body = _new ir::Sequence(expressions, range);
     }
   }
-  _method->set_return_type(ir_type);
-  ASSERT(_method->return_type().is_valid());
-  _method->set_parameters(ir_parameters.build());
-  _method->set_body(body);
+  method_->set_return_type(ir_type);
+  ASSERT(method_->return_type().is_valid());
+  method_->set_parameters(ir_parameters.build());
+  method_->set_body(body);
 }
 
 /// Returns the index of the `super` instruction in the body.
@@ -555,50 +555,50 @@ int MethodResolver::_find_super_invocation(List<ast::Expression*> expressions) {
 
 class FindFinalFieldStoreVisitor : public ir::TraversingVisitor {
  public:
-  FindFinalFieldStoreVisitor() : _field_store(null) { }
+  FindFinalFieldStoreVisitor() : field_store_(null) {}
 
-  ir::FieldStore* field_store() const { return _field_store; }
+  ir::FieldStore* field_store() const { return field_store_; }
 
   void visit_FieldStore(ir::FieldStore* node) {
-    if (_field_store == null && node->field()->is_final()) {
-      _field_store = node;
+    if (field_store_ == null && node->field()->is_final()) {
+      field_store_ = node;
     }
   }
 
  private:
-  ir::FieldStore* _field_store;
+  ir::FieldStore* field_store_;
 };
 
 void MethodResolver::resolve_fill_constructor() {
-  ASSERT(_method->is_Constructor());
-  auto klass = _method->as_Constructor()->klass();
+  ASSERT(method_->is_Constructor());
+  auto klass = method_->as_Constructor()->klass();
 
-  _resolution_mode = CONSTRUCTOR_STATIC;
+  resolution_mode_ = CONSTRUCTOR_STATIC;
 
   ResolutionShape synthetic_constructor_shape = ResolutionShape(0).with_implicit_this();
-  bool is_synthetic_constructor = _method->resolution_shape() == synthetic_constructor_shape &&
-                                  _ir_to_ast_map->find(_method) == _ir_to_ast_map->end();
+  bool is_synthetic_constructor = method_->resolution_shape() == synthetic_constructor_shape &&
+                                  ir_to_ast_map_->find(method_) == ir_to_ast_map_->end();
 
   Set<ir::Parameter*> field_storing_parameters;
   std::vector<ir::Expression*> parameter_expressions;
   if (is_synthetic_constructor) {
     auto ir_parameter = _new ir::Parameter(MethodResolver::this_identifier(),
-                                           ir::Type(_holder),
+                                           ir::Type(holder_),
                                            false,  // Not a block.
                                            0,
                                            false,
                                            Source::Range::invalid());
 
-    _method->set_parameters(ListBuilder<ir::Parameter*>::build(ir_parameter));
-    _method->set_return_type(ir::Type(klass));
+    method_->set_parameters(ListBuilder<ir::Parameter*>::build(ir_parameter));
+    method_->set_return_type(ir::Type(klass));
   } else {
-    auto ast_method = _ir_to_ast_map->at(_method)->as_Method();
+    auto ast_method = ir_to_ast_map_->at(method_)->as_Method();
     if (ast_method->return_type() != null) {
       report_error(ast_method->return_type(), "Constructors may not have return types");
     }
     _resolve_fill_parameters_return_type(&field_storing_parameters, &parameter_expressions);
   }
-  ASSERT(_method->return_type().is_valid());
+  ASSERT(method_->return_type().is_valid());
 
   ListBuilder<ir::Expression*> compiled_expressions;
   for (auto expression : parameter_expressions) {
@@ -606,8 +606,8 @@ void MethodResolver::resolve_fill_constructor() {
   }
 
   // Note that we haven't pushed the scope yet.
-  LocalScope parameter_scope(_scope);
-  for (auto parameter : _method->parameters()) {
+  LocalScope parameter_scope(scope_);
+  for (auto parameter : method_->parameters()) {
     auto name = parameter->name();
     if (name.is_valid()) {
       parameter_scope.add(parameter->name(), ResolutionEntry(parameter));
@@ -619,7 +619,7 @@ void MethodResolver::resolve_fill_constructor() {
                                                      field_storing_parameters.end());
 
   for (auto ir_field : klass->fields()) {
-    auto ast_field = _ir_to_ast_map->at(ir_field)->as_Field();
+    auto ast_field = ir_to_ast_map_->at(ir_field)->as_Field();
     Symbol field_name = ast_field->name()->data();
 
     auto entry = parameter_scope.lookup_shallow(field_name);
@@ -636,7 +636,7 @@ void MethodResolver::resolve_fill_constructor() {
           // Copy the type of the target to the field-storing parameter.
           ir_parameter->set_type(ir_field->type());
         }
-        range = _ir_to_ast_map->at(ir_parameter)->range();
+        range = ir_to_ast_map_->at(ir_parameter)->range();
         ir_initial_value = _new ir::ReferenceLocal(ir_parameter, 0, range);
         if (ir_parameter->type().is_class()) {
           // We can't rely on the typecheck of the field below, as FIELD_INITIALIZER_AS_CHECKS
@@ -650,29 +650,29 @@ void MethodResolver::resolve_fill_constructor() {
       }
     }
     if (ir_initial_value == null) {
-      _resolution_mode = FIELD;
-      auto old_diagnostics = _diagnostics;
-      NullDiagnostics null_diagnostics(_diagnostics);
+      resolution_mode_ = FIELD;
+      auto old_diagnostics = diagnostics_;
+      NullDiagnostics null_diagnostics(diagnostics_);
       // Don't report errors for fields. That is done outside.
-      _diagnostics = &null_diagnostics;
+      diagnostics_ = &null_diagnostics;
       if (ast_field->initializer() == null) {
         range = ast_field->range();
         ir_initial_value = _new ir::LiteralUndefined(range);
       } else {
         range = ast_field->initializer()->range();
-        LocalScope field_initializer_scope(_scope);
-        _scope = &field_initializer_scope;
+        LocalScope field_initializer_scope(scope_);
+        scope_ = &field_initializer_scope;
         ir_initial_value = resolve_expression(ast_field->initializer(),
                                               "Can't initialize field with block");
-        _scope = field_initializer_scope.outer();
+        scope_ = field_initializer_scope.outer();
       }
-      _diagnostics = old_diagnostics;
+      diagnostics_ = old_diagnostics;
     }
 
     if (!ir_initial_value->is_LiteralNull() ||
         (ir_field->type().is_class() && !ir_field->type().is_nullable())) {
       ASSERT(range.is_valid());
-      auto this_ref = _new ir::ReferenceLocal(_method->parameters()[0], 0, range);
+      auto this_ref = _new ir::ReferenceLocal(method_->parameters()[0], 0, range);
       if (ir_field->type().is_class() && !ir_initial_value->is_LiteralUndefined()) {
         ir_initial_value = _new ir::Typecheck(ir::Typecheck::FIELD_INITIALIZER_AS_CHECK,
                                               ir_initial_value,
@@ -695,8 +695,8 @@ void MethodResolver::resolve_fill_constructor() {
     }
   }
 
-  LocalScope body_scope(_scope);
-  for (auto parameter : _method->parameters()) {
+  LocalScope body_scope(scope_);
+  for (auto parameter : method_->parameters()) {
     if (field_storing_parameters.contains(parameter)) {
       // Field-storing parameters are not visible for the body. All accesses there go
       // directly to the field.
@@ -707,12 +707,12 @@ void MethodResolver::resolve_fill_constructor() {
 
   // Now that we have dealt with the fields of constructors "push" the scope
   // that contains the parameters.
-  _scope = &body_scope;
+  scope_ = &body_scope;
 
   List<ast::Expression*> expressions;
   int super_position = -1;
   if (!is_synthetic_constructor) {
-    auto ast_node = _ir_to_ast_map->at(_method)->as_Method();
+    auto ast_node = ir_to_ast_map_->at(method_)->as_Method();
     auto body = ast_node->body();
     if (body != null) expressions = body->expressions();
     super_position = _find_super_invocation(expressions);
@@ -725,13 +725,13 @@ void MethodResolver::resolve_fill_constructor() {
   auto build_synthetic_super = [&]() {
     ast::Identifier ast_super(Symbols::super);
     if (is_synthetic_constructor) {
-      ast_super.set_range(_ir_to_ast_map->at(klass)->range());
+      ast_super.set_range(ir_to_ast_map_->at(klass)->range());
     } else {
-      ast_super.set_range(_ir_to_ast_map->at(_method)->range());
+      ast_super.set_range(ir_to_ast_map_->at(method_)->range());
     }
-    _resolution_mode = CONSTRUCTOR_SUPER;
+    resolution_mode_ = CONSTRUCTOR_SUPER;
     visit_Identifier(&ast_super);
-    _resolution_mode = CONSTRUCTOR_LIMBO_INSTANCE;
+    resolution_mode_ = CONSTRUCTOR_LIMBO_INSTANCE;
     auto ir_node = pop();
     ASSERT(ir_node->is_Expression());
     return ir_node->as_Expression();
@@ -744,31 +744,31 @@ void MethodResolver::resolve_fill_constructor() {
 
   // If there is an explicit `super` call, then the section before the call is
   // `static`. Otherwise, it's in limbo state (depending on the expressions we compile).
-  _resolution_mode = super_position == -1 ? CONSTRUCTOR_LIMBO_STATIC : CONSTRUCTOR_STATIC;
+  resolution_mode_ = super_position == -1 ? CONSTRUCTOR_LIMBO_STATIC : CONSTRUCTOR_STATIC;
   for (int i = 0; i < expressions.length(); i++) {
     auto expr = expressions[i];
     if (i == super_position) {
-      ASSERT(_resolution_mode == CONSTRUCTOR_STATIC);
-      _resolution_mode = CONSTRUCTOR_SUPER;
+      ASSERT(resolution_mode_ == CONSTRUCTOR_STATIC);
+      resolution_mode_ = CONSTRUCTOR_SUPER;
       auto super_call = resolve_statement(expr, null);
       bool is_explicit = true;
       bool is_at_end = false;
       compiled_expressions.add(_new ir::Super(super_call, is_explicit, is_at_end, expr->range()));
       has_emitted_super_invocation = true;
-      _resolution_mode = CONSTRUCTOR_INSTANCE;
+      resolution_mode_ = CONSTRUCTOR_INSTANCE;
       continue;
     }
 
-    auto old_mode = _resolution_mode;
+    auto old_mode = resolution_mode_;
     auto ir_expression = resolve_statement(expr, null);
 
     // If necessary, add a synthetic `super` before the expression we just
     // compiled.
     if (old_mode == CONSTRUCTOR_LIMBO_STATIC &&
-        _resolution_mode == CONSTRUCTOR_LIMBO_INSTANCE) {
+        resolution_mode_ == CONSTRUCTOR_LIMBO_INSTANCE) {
 
       // For later error reporting.
-      _super_forcing_expression = expr;
+      super_forcing_expression_ = expr;
 
       // If we can insert a synthetic `super` call, we will do that before this line.
       // We need to make sure that the compiled expression does not contain
@@ -804,37 +804,37 @@ void MethodResolver::resolve_fill_constructor() {
       auto super_call = build_synthetic_super();
       bool is_explicit = false;
       bool is_at_end = true;
-      compiled_expressions.add(_new ir::Super(super_call, is_explicit, is_at_end, _method->range()));
+      compiled_expressions.add(_new ir::Super(super_call, is_explicit, is_at_end, method_->range()));
     } else {
       bool is_at_end = true;
-      compiled_expressions.add(_new ir::Super(is_at_end, _method->range()));
+      compiled_expressions.add(_new ir::Super(is_at_end, method_->range()));
     }
   }
 
-  auto this_ref = _new ir::ReferenceLocal(_method->parameters()[0], 0, _method->range());
-  compiled_expressions.add(_new ir::Return(this_ref, false, _method->range()));
+  auto this_ref = _new ir::ReferenceLocal(method_->parameters()[0], 0, method_->range());
+  compiled_expressions.add(_new ir::Return(this_ref, false, method_->range()));
 
-  _method->set_body(_new ir::Sequence(compiled_expressions.build(), _method->range()));
+  method_->set_body(_new ir::Sequence(compiled_expressions.build(), method_->range()));
 
-  ASSERT(_scope == &body_scope);
-  _scope = _scope->outer();
+  ASSERT(scope_ == &body_scope);
+  scope_ = scope_->outer();
 }
 
 void MethodResolver::resolve_fill_global() {
-  _resolution_mode = STATIC;
+  resolution_mode_ = STATIC;
 
-  LocalScope body_scope(_scope);
-  _scope = &body_scope;
+  LocalScope body_scope(scope_);
+  scope_ = &body_scope;
 
-  auto ast_node = _ir_to_ast_map->at(_method);
+  auto ast_node = ir_to_ast_map_->at(method_);
   auto range = Source::Range::invalid();
   auto ast_field = ast_node->as_Field();
   if (ast_field->type() != null) {
-    _method->as_Global()->set_explicit_return_type(resolve_type(ast_field->type(), false));
-    ASSERT(_method->return_type().is_valid());
+    method_->as_Global()->set_explicit_return_type(resolve_type(ast_field->type(), false));
+    ASSERT(method_->return_type().is_valid());
   } else {
     // The type of the global will be infered later.
-    _method->set_return_type(ir::Type::invalid());
+    method_->set_return_type(ir::Type::invalid());
   }
   ir::Expression* initial_value;
   if (ast_field->initializer() == null) {
@@ -854,7 +854,7 @@ void MethodResolver::resolve_fill_global() {
     // The failure method takes the global id as argument.
     // However, we don't know the id yet, so we use a builtin to extract it at the end.
     CallBuilder builder(range);
-    builder.add_argument(_new ir::ReferenceGlobal(_method->as_Global(), false, range), Symbol::invalid());
+    builder.add_argument(_new ir::ReferenceGlobal(method_->as_Global(), false, range), Symbol::invalid());
     auto id_call = builder.call_builtin(_new ir::Builtin(ir::Builtin::GLOBAL_ID));
     body = _call_runtime(Symbols::uninitialized_global_failure_,
                          list_of(id_call),
@@ -862,34 +862,34 @@ void MethodResolver::resolve_fill_global() {
   } else {
     body = _new ir::Return(initial_value, false, range);
   }
-  _method->set_body(_new ir::Sequence(list_of(body), range));
+  method_->set_body(_new ir::Sequence(list_of(body), range));
 
-  ASSERT(_scope == &body_scope);
-  _scope = _scope->outer();
+  ASSERT(scope_ == &body_scope);
+  scope_ = scope_->outer();
 }
 
 void MethodResolver::resolve_fill_method() {
-  auto ast_node = _ir_to_ast_map->at(_method)->as_Method();
+  auto ast_node = ir_to_ast_map_->at(method_)->as_Method();
 
-  _resolution_mode = _method->is_static() ? STATIC : INSTANCE;
+  resolution_mode_ = method_->is_static() ? STATIC : INSTANCE;
 
   Set<ir::Parameter*> field_storing_parameters;
   std::vector<ir::Expression*> parameter_expressions;
   _resolve_fill_parameters_return_type(&field_storing_parameters, &parameter_expressions);
 
-  if (_method->is_factory() && ast_node->return_type() != null) {
+  if (method_->is_factory() && ast_node->return_type() != null) {
     report_error(ast_node->return_type(), "Factories may not have return types");
   }
 
-  if (_method->is_setter()) {
+  if (method_->is_setter()) {
     if (ast_node->return_type() != null &&
-        !_method->return_type().is_none()) {
+        !method_->return_type().is_none()) {
       report_error(ast_node->return_type(), "Setters can only have 'void' as return type");
     }
-    int this_count = _method->is_static() ? 0 : 1;
-    if (_method->parameters().length() == this_count) {
+    int this_count = method_->is_static() ? 0 : 1;
+    if (method_->parameters().length() == this_count) {
       report_error(ast_node, "Setters must take exactly one parameter");
-    } else if (_method->parameters().length() > this_count + 1) {
+    } else if (method_->parameters().length() > this_count + 1) {
       report_error(ast_node->parameters()[1], "Setters must take exactly one parameter");
     }
   }
@@ -900,8 +900,8 @@ void MethodResolver::resolve_fill_method() {
   }
 
   // Note that the scope isn't pushed yet.
-  LocalScope method_scope(_scope);
-  for (auto parameter : _method->parameters()) {
+  LocalScope method_scope(scope_);
+  for (auto parameter : method_->parameters()) {
     if (field_storing_parameters.contains(parameter)) {
       // Field-storing parameters aren't visible to the body.
       continue;
@@ -910,13 +910,13 @@ void MethodResolver::resolve_fill_method() {
   }
 
   if (!field_storing_parameters.empty()) {
-    if (_method->is_static() ||
-        _method->is_abstract() ||
-        (_method->is_instance() && _method->holder()->is_interface())) {
+    if (method_->is_static() ||
+        method_->is_abstract() ||
+        (method_->is_instance() && method_->holder()->is_interface())) {
       const char* kind;
-      if (_method->is_static()) {
+      if (method_->is_static()) {
         kind = "static functions";
-      } else if (_method->is_abstract()) {
+      } else if (method_->is_abstract()) {
         kind = "abstract methods";
       } else {
         kind = "interface methods";
@@ -925,9 +925,9 @@ void MethodResolver::resolve_fill_method() {
         report_error(ir_parameter, "Field-storing parameter not allowed in %s", kind);
       }
     } else {
-      auto this_parameter = _method->parameters()[0];
+      auto this_parameter = method_->parameters()[0];
       UnorderedSet<ir::Field*> class_fields;
-      class_fields.insert(_holder->fields().begin(), _holder->fields().end());
+      class_fields.insert(holder_->fields().begin(), holder_->fields().end());
       for (auto field_storing : field_storing_parameters) {
         auto setter_shape = CallShape::for_instance_setter();
         auto probe = lookup(field_storing->name());
@@ -961,7 +961,7 @@ void MethodResolver::resolve_fill_method() {
           }
           auto dot = _new ir::Dot(_new ir::ReferenceLocal(this_parameter, 0, field_storing->range()),
                                   field_storing->name());
-          auto ast_node = _ir_to_ast_map->at(field_storing);
+          auto ast_node = ir_to_ast_map_->at(field_storing);
           ir::Expression* new_field_value = _new ir::ReferenceLocal(field_storing, 0, field_storing->range());
           if (field_type.is_class()) {
             new_field_value = _new ir::Typecheck(ir::Typecheck::FIELD_AS_CHECK,
@@ -981,11 +981,11 @@ void MethodResolver::resolve_fill_method() {
     }
   }
 
-  _scope = &method_scope;
+  scope_ = &method_scope;
 
   auto ast_body = ast_node->body();
   if (ast_body != null) {
-    auto method_range = _method->range();
+    auto method_range = method_->range();
     visit_Sequence(ast_body);
     auto ir_node = pop();
     ASSERT(ir_node->is_Sequence());
@@ -995,19 +995,19 @@ void MethodResolver::resolve_fill_method() {
     ListBuilder<ir::Expression*> extended;
     extended.add(ir_body->expressions());
     ir::Expression* last_expression = null;
-    auto return_type = _method->return_type();
-    if (return_type.is_class() && !_method->return_type().is_nullable()) {
+    auto return_type = method_->return_type();
+    if (return_type.is_class() && !method_->return_type().is_nullable()) {
       last_expression = _new ir::Typecheck(ir::Typecheck::RETURN_AS_CHECK,
                                           _new ir::LiteralNull(method_range),
-                                          _method->return_type(),
-                                          _method->return_type().klass()->name(),
+                                          method_->return_type(),
+                                          method_->return_type().klass()->name(),
                                           method_range);
     } else {
       last_expression = _new ir::Return(_new ir::LiteralNull(method_range), true, method_range);
     }
     extended.add(last_expression);
     compiled_expressions.add(_new ir::Sequence(extended.build(), method_range));
-    _method->set_body(_new ir::Sequence(compiled_expressions.build(), method_range));
+    method_->set_body(_new ir::Sequence(compiled_expressions.build(), method_range));
   } else {
     // Don't set the body.
     // We might miss errors on the default-values, but we would otherwise
@@ -1015,8 +1015,8 @@ void MethodResolver::resolve_fill_method() {
   }
 
 
-  ASSERT(_scope == &method_scope);
-  _scope = _scope->outer();
+  ASSERT(scope_ == &method_scope);
+  scope_ = scope_->outer();
 }
 
 /// Whether the given name resembles a constant name.
@@ -1040,8 +1040,8 @@ static bool has_constant_name(Symbol name) {
 }
 
 void MethodResolver::resolve_field(ir::Field* ir_field) {
-  auto ast_field = _ir_to_ast_map->at(ir_field)->as_Field();
-  _resolution_mode = FIELD;
+  auto ast_field = ir_to_ast_map_->at(ir_field)->as_Field();
+  resolution_mode_ = FIELD;
 
   if (ir_field->is_final() &&
       ast_field->initializer() != null &&
@@ -1059,30 +1059,30 @@ void MethodResolver::resolve_field(ir::Field* ir_field) {
     ir_field->set_type(resolve_type(ast_type, false));
   }
 
-  LocalScope expression_scope(_scope);
-  _scope = &expression_scope;
+  LocalScope expression_scope(scope_);
+  scope_ = &expression_scope;
 
   if (ast_field->initializer() != null) {
     resolve_expression(ast_field->initializer(),
                        "Can't initialize field with a block");
   }
 
-  _scope = _scope->outer();
+  scope_ = scope_->outer();
 }
 
 void MethodResolver::resolve_fill() {
-  if (_method->is_FieldStub()) {
+  if (method_->is_FieldStub()) {
     resolve_fill_field_stub();
-  } else if (_method->is_Global()) {
+  } else if (method_->is_Global()) {
     resolve_fill_global();
-  } else if (_method->is_Constructor()) {
+  } else if (method_->is_Constructor()) {
     resolve_fill_constructor();
   } else {
     resolve_fill_method();
   }
-  if (_has_primitive_invocation) {
+  if (has_primitive_invocation_) {
     // Check that no mutated parameter is captured.
-    for (auto param : _method->parameters()) {
+    for (auto param : method_->parameters()) {
       if (param->is_captured() && !param->is_effectively_final()) {
         report_error(param->range(),
                      "Mutated parameters can't be captured in methods with primitive invocations");
@@ -1095,31 +1095,31 @@ class ReturnCollector : public ast::TraversingVisitor {
  public:
   void visit_Return(ast::Return* node) {
     TraversingVisitor::visit_Return(node);
-    _returns.push_back(node);
+    returns_.push_back(node);
     if (node->value() == null) {
-      _has_return_without_value = true;
+      has_return_without_value_ = true;
     } else {
-      _has_return_with_value = true;
+      has_return_with_value_ = true;
     }
   }
 
   void visit_Call(ast::Call* node) {
     TraversingVisitor::visit_Call(node);
     if (node->is_call_primitive()) {
-      _has_return_with_value = true;
-      _returns.push_back(node);
+      has_return_with_value_ = true;
+      returns_.push_back(node);
     }
   }
 
-  bool has_return_with_value() const { return _has_return_with_value; }
-  bool has_return_without_value() const { return _has_return_without_value; }
+  bool has_return_with_value() const { return has_return_with_value_; }
+  bool has_return_without_value() const { return has_return_without_value_; }
   // The return list may also contain primitive calls, which implicitly return.
-  std::vector<ast::Node*> all_returns() const { return _returns; }
+  std::vector<ast::Node*> all_returns() const { return returns_; }
 
  private:
-   std::vector<ast::Node*> _returns;
-   bool _has_return_with_value = false;
-   bool _has_return_without_value = false;
+   std::vector<ast::Node*> returns_;
+   bool has_return_with_value_ = false;
+   bool has_return_without_value_ = false;
 };
 
 void MethodResolver::_resolve_fill_parameters_return_type(
@@ -1127,10 +1127,10 @@ void MethodResolver::_resolve_fill_parameters_return_type(
     std::vector<ir::Expression*>* parameter_expressions) {
   _resolve_fill_return_type();
 
-  auto ast_method = _ir_to_ast_map->at(_method)->as_Method();
+  auto ast_method = ir_to_ast_map_->at(method_)->as_Method();
   ASSERT(ast_method != null);
 
-  bool has_implicit_this = _method->is_instance() || _method->is_constructor();
+  bool has_implicit_this = method_->is_instance() || method_->is_constructor();
 
   std::vector<ir::Expression*> type_check_expressions;
   List<ir::Parameter*> ir_parameters;
@@ -1139,21 +1139,21 @@ void MethodResolver::_resolve_fill_parameters_return_type(
                       &ir_parameters,
                       field_storing_parameters,
                       parameter_expressions);
-  _method->set_parameters(ir_parameters);
+  method_->set_parameters(ir_parameters);
 }
 
 void MethodResolver::_resolve_fill_return_type() {
-  auto ast_method = _ir_to_ast_map->at(_method)->as_Method();
+  auto ast_method = ir_to_ast_map_->at(method_)->as_Method();
   ASSERT(ast_method != null);
 
   if (ast_method->return_type() != null) {
-    _method->set_return_type(ir::Type(resolve_type(ast_method->return_type(), true)));
-  } else if (_method->is_constructor() || _method->is_factory()) {
-    _method->set_return_type(ir::Type(_holder));
+    method_->set_return_type(ir::Type(resolve_type(ast_method->return_type(), true)));
+  } else if (method_->is_constructor() || method_->is_factory()) {
+    method_->set_return_type(ir::Type(holder_));
   } else if (ast_method->body() == null) {
     // Either abstract, interface method, or bad function. Either way, we can't search
     //   for returns and have to assume that the method returns something.
-    _method->set_return_type(ir::Type::any());
+    method_->set_return_type(ir::Type::any());
   } else {
     ReturnCollector visitor;
     visitor.visit(ast_method);
@@ -1168,14 +1168,14 @@ void MethodResolver::_resolve_fill_return_type() {
         }
       }
       diagnostics()->end_group();
-      _method->set_return_type(ir::Type::any());
+      method_->set_return_type(ir::Type::any());
     } else if (visitor.has_return_with_value()) {
-      _method->set_return_type(ir::Type::any());
+      method_->set_return_type(ir::Type::any());
     } else {
-      _method->set_return_type(ir::Type::none());
+      method_->set_return_type(ir::Type::none());
     }
   }
-  ASSERT(_method->return_type().is_valid());
+  ASSERT(method_->return_type().is_valid());
 }
 
 // Handles the parameters and their default values.
@@ -1184,7 +1184,7 @@ void MethodResolver::_resolve_fill_return_type() {
 //
 // Returns (in an output parameter) the list of field-storing parameters.
 // These parameters will have their corresponding ast-node in the
-//   `_ir_to_ast_map` (for error reporting).
+//   `ir_to_ast_map_` (for error reporting).
 // The field_storing_parameters parameter may be null.
 //
 // Returns (in an output parameter) the necessary expressions to set the default
@@ -1213,14 +1213,14 @@ void MethodResolver::_resolve_parameters(
   *ir_parameters = ListBuilder<ir::Parameter*>::allocate(ir_parameter_length);
 
 
-  LocalScope default_value_scope(_scope);
-  Scope* old_scope = _scope;
-  _scope = &default_value_scope;
+  LocalScope default_value_scope(scope_);
+  Scope* old_scope = scope_;
+  scope_ = &default_value_scope;
 
   if (has_implicit_this) {
     ASSERT(id_offset == 0);
     auto implicit_this = _new ir::Parameter(MethodResolver::this_identifier(),
-                                            ir::Type(_holder),
+                                            ir::Type(holder_),
                                             false,  // Not a block
                                             0,
                                             false,
@@ -1303,17 +1303,17 @@ void MethodResolver::_resolve_parameters(
 
     if (parameter->is_field_storing() && parameter->name()->is_LspSelection()) {
       List<ir::Field*> fields;
-      auto holder = _method->holder();
+      auto holder = method_->holder();
       if (holder != null) {
         fields = holder->fields();
       }
-      bool field_storing_is_allowed = _method->is_constructor() || _method->is_instance();
-      _lsp->selection_handler()->field_storing_parameter(parameter, fields, field_storing_is_allowed);
+      bool field_storing_is_allowed = method_->is_constructor() || method_->is_instance();
+      lsp_->selection_handler()->field_storing_parameter(parameter, fields, field_storing_is_allowed);
     }
 
     if (field_storing_parameters != null && parameter->is_field_storing()) {
       (*field_storing_parameters).insert(ir_parameter);
-      (*_ir_to_ast_map)[ir_parameter] = parameter;
+      (*ir_to_ast_map_)[ir_parameter] = parameter;
     }
 
     // Resolve the default values.
@@ -1378,7 +1378,7 @@ void MethodResolver::_resolve_parameters(
     default_value_scope.add(ir_parameter->name(), ResolutionEntry(ir_parameter));
   }
 
-  _scope = old_scope;
+  scope_ = old_scope;
 }
 
 ir::Expression* MethodResolver::_instantiate_runtime(Symbol id,
@@ -1389,7 +1389,7 @@ ir::Expression* MethodResolver::_instantiate_runtime(Symbol id,
   auto shape_without_implicit_this = CallShape::for_static_call_no_named(arguments);
   ir::Node* resolved_target = _resolve_call_target(&ast_id,
                                                    shape_without_implicit_this,
-                                                   _core_module->scope()); // Search in core-library.
+                                                   core_module_->scope()); // Search in core-library.
   ASSERT(resolved_target->is_ReferenceMethod());
   ASSERT(resolved_target->as_ReferenceMethod()->target()->is_static());
   auto ref_target = resolved_target->as_ReferenceMethod();
@@ -1406,7 +1406,7 @@ ir::ReferenceMethod* MethodResolver::_resolve_runtime_call(Symbol id, CallShape 
   ast::Identifier ast_id(id);
   auto target = _resolve_call_target(&ast_id,
                                      shape,
-                                     _core_module->scope());  // Search in the core library.
+                                     core_module_->scope());  // Search in the core library.
   ASSERT(target->is_ReferenceMethod());
   ASSERT(!target->as_ReferenceMethod()->target()->is_constructor());
   ASSERT(target->as_ReferenceMethod()->target()->is_static());
@@ -1483,9 +1483,9 @@ void MethodResolver::visit_Lambda(ast::Lambda* node) {
 }
 
 ir::Expression* MethodResolver::_create_lambda(ast::Lambda* node, Symbol label) {
-  Scope* old_scope = _scope;
-  LambdaScope lambda_scope(_scope);
-  _scope = &lambda_scope;
+  Scope* old_scope = scope_;
+  LambdaScope lambda_scope(scope_);
+  scope_ = &lambda_scope;
 
   ListBuilder<Source::Range> ranges;
 
@@ -1494,8 +1494,8 @@ ir::Expression* MethodResolver::_create_lambda(ast::Lambda* node, Symbol label) 
     range = range.extend(node->parameters().last()->range());
     report_error(range, "Lambdas can have at most 4 parameters");
   }
-  ast::Node* old_lambda = _current_lambda;
-  _current_lambda = node;
+  ast::Node* old_lambda = current_lambda_;
+  current_lambda_ = node;
 
   auto code = _create_code(node,
                            node->parameters(),
@@ -1503,13 +1503,13 @@ ir::Expression* MethodResolver::_create_lambda(ast::Lambda* node, Symbol label) 
                            false,  // Not a block.
                            true,   // May have an implicit 'it' parameter.
                            label);
-  _current_lambda = old_lambda;
+  current_lambda_ = old_lambda;
 
   auto captured_depths = lambda_scope.captured_depths();
 
-  ASSERT(_scope == &lambda_scope);
+  ASSERT(scope_ == &lambda_scope);
   ASSERT(lambda_scope.outer() == old_scope);
-  _scope = old_scope;
+  scope_ = old_scope;
 
   code->set_captured_count(captured_depths.size());
 
@@ -1536,13 +1536,13 @@ ir::Expression* MethodResolver::_create_lambda(ast::Lambda* node, Symbol label) 
     captured_args = _create_array(arguments, node->range());
   }
 
-  // Invoke the top-level `_lambda` function with the code and captured arguments.
+  // Invoke the top-level `lambda_` function with the code and captured arguments.
   auto lambda_args_list = list_of(code,
                                   captured_args,
                                   _new ir::LiteralInteger(arguments.length(), node->range()));
   auto shape = CallShape::for_static_call_no_named(lambda_args_list);
-  auto _lambda = _resolve_runtime_call(Symbols::lambda_, shape);
-  return _new ir::Lambda(_lambda,
+  auto lambda_ = _resolve_runtime_call(Symbols::lambda_, shape);
+  return _new ir::Lambda(lambda_,
                          shape,
                          lambda_args_list,
                          captured_depths,
@@ -1550,8 +1550,8 @@ ir::Expression* MethodResolver::_create_lambda(ast::Lambda* node, Symbol label) 
 }
 
 void MethodResolver::visit_Sequence(ast::Sequence* node) {
-  LocalScope scope(_scope);
-  _scope = &scope;
+  LocalScope scope(scope_);
+  scope_ = &scope;
 
   List<ast::Expression*> expressions = node->expressions();
   ListBuilder<ir::Expression*> ir_expressions;
@@ -1560,8 +1560,8 @@ void MethodResolver::visit_Sequence(ast::Sequence* node) {
   }
   push(_new ir::Sequence(ir_expressions.build(), node->range()));
 
-  ASSERT(_scope = &scope);
-  _scope = scope.outer();
+  ASSERT(scope_ = &scope);
+  scope_ = scope.outer();
 }
 
 void MethodResolver::visit_DeclarationLocal(ast::DeclarationLocal* node) {
@@ -1574,8 +1574,8 @@ void MethodResolver::visit_TryFinally(ast::TryFinally* node) {
   auto ir_body = _create_block(&ast_block, // Create a block from the sequence.
                                false,      // Does not have an implicit `it` parameter.
                                Symbol::invalid());
-  LocalScope handler_scope(_scope);
-  _scope = &handler_scope;
+  LocalScope handler_scope(scope_);
+  scope_ = &handler_scope;
 
   auto handler_parameters = node->handler_parameters();
   int parameter_count = handler_parameters.length();
@@ -1681,7 +1681,7 @@ void MethodResolver::visit_TryFinally(ast::TryFinally* node) {
                                                  type.klass()->name(),
                                                  range));
     }
-    _scope->add(local->name(), ResolutionEntry(local));
+    scope_->add(local->name(), ResolutionEntry(local));
     ir_handler_parameters[i] = ir_handler_parameter;
   }
 
@@ -1693,7 +1693,7 @@ void MethodResolver::visit_TryFinally(ast::TryFinally* node) {
     ir_handler = _new ir::Sequence(handler_expressions.build(), node->range());
   }
 
-  _scope = handler_scope.outer();
+  scope_ = handler_scope.outer();
 
   auto try_ = _new ir::TryFinally(ir_body,
                                   ir_handler_parameters,
@@ -1703,8 +1703,8 @@ void MethodResolver::visit_TryFinally(ast::TryFinally* node) {
 }
 
 void MethodResolver::visit_If(ast::If* node) {
-  LocalScope if_scope(_scope);
-  _scope = &if_scope;
+  LocalScope if_scope(scope_);
+  scope_ = &if_scope;
 
   auto ast_condition = node->expression();
   bool has_declaring_condition = ast_condition->is_DeclarationLocal();
@@ -1731,7 +1731,7 @@ void MethodResolver::visit_If(ast::If* node) {
   } else {
     result = _new ir::If(ir_condition, ir_yes, ir_no, node->range());
   }
-  _scope = if_scope.outer();
+  scope_ = if_scope.outer();
   push(result);
 }
 
@@ -1748,8 +1748,8 @@ void MethodResolver::visit_loop(ast::Node* node,
   ir::Expression* ir_condition = null;
   ir::Expression* ir_update = null;
 
-  LocalScope loop_scope(_scope);
-  _scope = &loop_scope;
+  LocalScope loop_scope(scope_);
+  scope_ = &loop_scope;
 
   if (ast_condition != null && ast_condition->is_DeclarationLocal()) {
     ASSERT(ast_initializer == null);
@@ -1835,15 +1835,15 @@ void MethodResolver::visit_loop(ast::Node* node,
     if (!loop_variable->is_captured()) old_mutation_count = loop_variable->mutation_count();
   }
 
-  auto old_status = _loop_status;
-  int old_loop_depth = _loop_block_depth;
-  _loop_status = IN_LOOP;
-  _loop_block_depth = 0;
+  auto old_status = loop_status_;
+  int old_loop_depth = loop_block_depth_;
+  loop_status_ = IN_LOOP;
+  loop_block_depth_ = 0;
 
   auto ir_body = resolve_expression(ast_body, null);
 
-  _loop_status = old_status;
-  _loop_block_depth = old_loop_depth;
+  loop_status_ = old_status;
+  loop_block_depth_ = old_loop_depth;
 
   if (loop_variable != null && loop_variable->mutation_count() == old_mutation_count) {
     loop_variable->mark_effectively_final_loop_variable();
@@ -1858,8 +1858,8 @@ void MethodResolver::visit_loop(ast::Node* node,
   expressions.add(_new ir::LiteralNull(node->range()));
   push(_new ir::Sequence(expressions.build(), node->range()));
 
-  ASSERT(_scope = &loop_scope);
-  _scope = loop_scope.outer();
+  ASSERT(scope_ = &loop_scope);
+  scope_ = loop_scope.outer();
 }
 
 void MethodResolver::visit_While(ast::While* node) {
@@ -1889,7 +1889,7 @@ void MethodResolver::visit_BreakContinue(ast::BreakContinue* node) {
   ASSERT(node->value() == null);
 
   const char* kind = node->is_break() ? "break" : "continue";
-  switch (_loop_status) {
+  switch (loop_status_) {
     case NO_LOOP:
       report_error(node, "'%s' must be inside loop", kind);
       push(_new ir::Error(node->range()));
@@ -1898,14 +1898,14 @@ void MethodResolver::visit_BreakContinue(ast::BreakContinue* node) {
     case IN_LAMBDA_LOOP:
       diagnostics()->start_group();
       report_error(node, "'%s' can't break out of lambda", kind);
-      report_note(_current_lambda, "Location of the lambda that '%s' would break out of", kind);
+      report_note(current_lambda_, "Location of the lambda that '%s' would break out of", kind);
       diagnostics()->end_group();
       push(_new ir::Error(node->range()));
       break;
 
     case IN_LOOP:
     case IN_BLOCKED_LOOP:
-      push(_new ir::LoopBranch(node->is_break(), _loop_block_depth, node->range()));
+      push(_new ir::LoopBranch(node->is_break(), loop_block_depth_, node->range()));
   }
 }
 
@@ -1917,24 +1917,24 @@ ir::Code* MethodResolver::_create_code(
     bool has_implicit_it_parameter,
     Symbol label) {
 
-  auto old_status = _loop_status;
+  auto old_status = loop_status_;
   switch (old_status) {
     case NO_LOOP:
       break;
     case IN_LOOP:
-      ASSERT(_loop_block_depth == 0);
+      ASSERT(loop_block_depth_ == 0);
       [[fallthrough]];
     case IN_BLOCKED_LOOP:
-      _loop_status = is_block ? IN_BLOCKED_LOOP : IN_LAMBDA_LOOP;
+      loop_status_ = is_block ? IN_BLOCKED_LOOP : IN_LAMBDA_LOOP;
       break;
     case IN_LAMBDA_LOOP:
       break;
   }
-  if (_loop_status == IN_BLOCKED_LOOP) _loop_block_depth++;
+  if (loop_status_ == IN_BLOCKED_LOOP) loop_block_depth_++;
 
-  _break_continue_label_stack.push_back(std::make_pair(label, node));
+  break_continue_label_stack_.push_back(std::make_pair(label, node));
 
-  Scope* old_scope = _scope;
+  Scope* old_scope = scope_;
   ItScope it_scope(scope());
 
   int id_offset = is_block ? 1 : 0;
@@ -1949,7 +1949,7 @@ ir::Code* MethodResolver::_create_code(
                                            false,
                                            node->range());
     it_scope.set_it(ir_parameter);
-    _scope = &it_scope;
+    scope_ = &it_scope;
   } else {
     Set<ir::Parameter*> field_storing_parameters;
 
@@ -1983,7 +1983,7 @@ ir::Code* MethodResolver::_create_code(
   }
 
   for (auto ir_parameter : ir_parameters) {
-    _scope->add(ir_parameter->name(), ResolutionEntry(ir_parameter));
+    scope_->add(ir_parameter->name(), ResolutionEntry(ir_parameter));
   }
 
   auto error_message = is_block
@@ -1991,17 +1991,17 @@ ir::Code* MethodResolver::_create_code(
       : "Can't return a block from a lambda";
   auto ir_body = resolve_expression(body, error_message);
 
-  _scope = old_scope;
+  scope_ = old_scope;
 
   if (it_scope.it_was_used()) {
     ASSERT(ir_parameters.is_empty());
     ir_parameters = ListBuilder<ir::Parameter*>::build(it_scope.it());
   }
 
-  if (_loop_status == IN_BLOCKED_LOOP) _loop_block_depth--;
-  _loop_status = old_status;
+  if (loop_status_ == IN_BLOCKED_LOOP) loop_block_depth_--;
+  loop_status_ = old_status;
 
-  _break_continue_label_stack.pop_back();
+  break_continue_label_stack_.pop_back();
 
   if (!parameter_expressions.empty()) {
     // Prefix the body with the parameter expressions.
@@ -2019,8 +2019,8 @@ ir::Code* MethodResolver::_create_code(
 ir::Code* MethodResolver::_create_block(ast::Block* node,
                                         bool has_implicit_it_parameter,
                                         Symbol label) {
-  BlockScope block_scope(_scope);
-  _scope = &block_scope;
+  BlockScope block_scope(scope_);
+  scope_ = &block_scope;
 
   auto result = _create_code(node,
                              node->parameters(),
@@ -2028,14 +2028,14 @@ ir::Code* MethodResolver::_create_block(ast::Block* node,
                              true,  // Has an implicit block parameter.
                              has_implicit_it_parameter,
                              label);
-  ASSERT(_scope == &block_scope);
-  _scope = _scope->outer();
+  ASSERT(scope_ == &block_scope);
+  scope_ = scope_->outer();
 
   return result;
 }
 
 List<ir::Node*> MethodResolver::_compute_constructor_super_candidates(ast::Node* target_node) {
-  auto constructor = _method->as_Constructor();
+  auto constructor = method_->as_Constructor();
   auto super = constructor->klass()->super();
   if (is_literal_super(target_node)) {
     ListBuilder<ir::Node*> candidates;
@@ -2062,7 +2062,7 @@ ir::Expression* MethodResolver::_resolve_constructor_super_target(ast::Node* tar
       return _new ir::ReferenceMethod(method, target_node->range());
     }
   }
-  auto constructor = _method->as_Constructor();
+  auto constructor = method_->as_Constructor();
   auto super = constructor->klass()->super();
   // TODO(florian): List all possible options and explain why they didn't match.
   // Bonus points for continuing the resolution in the super scopes and detect
@@ -2088,8 +2088,8 @@ MethodResolver::Candidates MethodResolver::_compute_target_candidates(ast::Node*
     block_depth = lookup_result.block_depth;
     starting_index = 0;
   } else if (target_node->is_Dot()) {
-    ASSERT(_scope->is_prefixed_identifier(target_node) ||
-           _scope->is_static_identifier(target_node));
+    ASSERT(scope_->is_prefixed_identifier(target_node) ||
+           scope_->is_static_identifier(target_node));
     error_position_node = target_node->as_Dot()->name();
     name = target_node->as_Dot()->name()->data();
     candidate_entry = scope->lookup_static_or_prefixed(target_node);
@@ -2099,7 +2099,7 @@ MethodResolver::Candidates MethodResolver::_compute_target_candidates(ast::Node*
     ASSERT(is_literal_super(target_node));
     error_position_node = target_node;
     allow_abstracts = false;
-    name = _method->name();
+    name = method_->name();
     // Resolve the current method and get the ResolutionEntry.
     // We need to do this on the class-scope to avoid finding a local that has
     // the same name as this method.
@@ -2309,11 +2309,11 @@ ir::Node* MethodResolver::_resolve_call_target(ast::Node* target_node,
         return _new ir::ReferenceMethod(method_node, range);
       }
       // Instance method or field.
-      switch (_resolution_mode) {
+      switch (resolution_mode_) {
         case CONSTRUCTOR_LIMBO_STATIC:
           // As soon as we access super-members or invoke non-field members,
           // we have to switch to instance-mode.
-          _resolution_mode = CONSTRUCTOR_LIMBO_INSTANCE;
+          resolution_mode_ = CONSTRUCTOR_LIMBO_INSTANCE;
           break;
 
         case CONSTRUCTOR_STATIC:
@@ -2331,7 +2331,7 @@ ir::Node* MethodResolver::_resolve_call_target(ast::Node* target_node,
           break;
 
         case STATIC: {
-          const char* kind = _method->is_factory() ? "factories" : "static contexts";
+          const char* kind = method_->is_factory() ? "factories" : "static contexts";
           report_error(target_node, "Can't access instance members in %s", kind);
           return _new ir::Error(range);
         }
@@ -2445,17 +2445,17 @@ ir::Expression* MethodResolver::resolve_statement(ast::Node* node,
 
 ir::Expression* MethodResolver::resolve_error(ast::Node* node) {
   // Delimit the node as if it was enclosed in a sequence.
-  LocalScope scope(_scope);
-  _scope = &scope;
+  LocalScope scope(scope_);
+  scope_ = &scope;
   auto expression = resolve_statement(node, null);
-  _scope = scope.outer();
+  scope_ = scope.outer();
   return _new ir::Sequence(list_of(expression), node->range());
 }
 
 void MethodResolver::_handle_lsp_call_dot(ast::Dot* ast_dot, ir::Expression* ir_receiver) {
   ASSERT(ast_dot->name()->is_LspSelection());
-  ASSERT(!_scope->is_prefixed_identifier(ast_dot));
-  ASSERT(!_scope->is_static_identifier(ast_dot));
+  ASSERT(!scope_->is_prefixed_identifier(ast_dot));
+  ASSERT(!scope_->is_static_identifier(ast_dot));
   // We are not handling virtual call completions here.
   // We are only handling the xxx.<lsp_selection> where `xxx` resolves to something that could be
   //   a prefix or class-name.
@@ -2467,7 +2467,7 @@ void MethodResolver::_handle_lsp_call_dot(ast::Dot* ast_dot, ir::Expression* ir_
   if (ir_receiver->is_block()) {
     // Most likely, the selector is `call`. At least that's what the
     //   completion will suggest.
-    _lsp->selection_handler()->call_block(ast_dot, ir_receiver);
+    lsp_->selection_handler()->call_block(ast_dot, ir_receiver);
   } else if (ir_receiver->is_CallConstructor() &&
              !ast_dot->receiver()->is_Parenthesis()) {
     // We have to deal with the special case `Class.x` where `x` could either
@@ -2478,12 +2478,12 @@ void MethodResolver::_handle_lsp_call_dot(ast::Dot* ast_dot, ir::Expression* ir_
     // The selector doesn't resolve to a static target (otherwise we wouldn't be here), so
     // no need to try to find candidates.
     List<ir::Node*> candidates;
-    _lsp->selection_handler()->call_class(ast_dot,
+    lsp_->selection_handler()->call_class(ast_dot,
                                           call_constructor->klass(),
                                           null,
                                           null,
                                           candidates,
-                                          _scope);
+                                          scope_);
   } else if (ir_receiver->is_Error() ||
               (ir_receiver->is_CallStatic() &&
               ir_receiver->as_CallStatic()->target()->target()->is_factory())) {
@@ -2492,20 +2492,20 @@ void MethodResolver::_handle_lsp_call_dot(ast::Dot* ast_dot, ir::Expression* ir_
     // an ir-error here), or it has an unnamed factory.
     ResolutionEntry class_entry;
     if (ast_dot->receiver()->is_Identifier()) {
-      class_entry = _scope->lookup(ast_dot->receiver()->as_Identifier()->data()).entry;
-    } else if (_scope->is_prefixed_identifier(ast_dot->receiver())) {
-      class_entry = _scope->lookup_prefixed(ast_dot->receiver());
+      class_entry = scope_->lookup(ast_dot->receiver()->as_Identifier()->data()).entry;
+    } else if (scope_->is_prefixed_identifier(ast_dot->receiver())) {
+      class_entry = scope_->lookup_prefixed(ast_dot->receiver());
     }
     if (class_entry.is_class()) {
       // The selector doesn't resolve to a static target (otherwise we wouldn't be here), so
       // no need to try to find candidates.
       List<ir::Node*> candidates;
-      _lsp->selection_handler()->call_class(ast_dot,
+      lsp_->selection_handler()->call_class(ast_dot,
                                             class_entry.klass(),
                                             null,
                                             null,
                                             candidates,
-                                            _scope);
+                                            scope_);
     }
   }
 }
@@ -2522,45 +2522,45 @@ void MethodResolver::_handle_lsp_call_identifier(ast::Node* ast_target,
   // When it's a Dot, then we were able to identify the target.
   // Either because it was just prefixed, or as a static in a class.
   ASSERT(!ast_target->is_Dot() ||
-         (_scope->is_prefixed_identifier(ast_target) ||
-          _scope->is_static_identifier(ast_target)))
+         (scope_->is_prefixed_identifier(ast_target) ||
+          scope_->is_static_identifier(ast_target)))
 
   auto candidates = _compute_target_candidates(ast_target, scope());
   if (ast_target->is_Identifier()) {
-    _lsp->selection_handler()->call_static(ast_target,
+    lsp_->selection_handler()->call_static(ast_target,
                                            ir_target1,
                                            ir_target2,
                                            candidates.nodes,
                                            scope(),
-                                           _method);
-  } else if (_scope->is_prefixed_identifier(ast_target)) {
+                                           method_);
+  } else if (scope_->is_prefixed_identifier(ast_target)) {
     auto ast_dot = ast_target->as_Dot();
     auto prefix_name = ast_dot->receiver()->as_Identifier()->data();
-    auto entry = _scope->lookup(prefix_name).entry;
+    auto entry = scope_->lookup(prefix_name).entry;
     ASSERT(entry.kind() == ResolutionEntry::PREFIX);
-    _lsp->selection_handler()->call_prefixed(ast_target->as_Dot(),
+    lsp_->selection_handler()->call_prefixed(ast_target->as_Dot(),
                                              ir_target1,
                                              ir_target2,
                                              candidates.nodes,
                                              entry.prefix());
   } else {
-    ASSERT(_scope->is_static_identifier(ast_target));
+    ASSERT(scope_->is_static_identifier(ast_target));
     auto ast_dot = ast_target->as_Dot();
     ResolutionEntry class_entry;
     auto receiver = ast_dot->receiver();
     if (receiver->is_Identifier()) {
       auto class_name = receiver->as_Identifier()->data();
-      class_entry = _scope->lookup(class_name).entry;
+      class_entry = scope_->lookup(class_name).entry;
     } else {
-      class_entry = _scope->lookup_prefixed(receiver);
+      class_entry = scope_->lookup_prefixed(receiver);
     }
     ir::Class* ir_class = class_entry.klass();
-    _lsp->selection_handler()->call_class(ast_dot,
+    lsp_->selection_handler()->call_class(ast_dot,
                                           ir_class,
                                           ir_target1,
                                           ir_target2,
                                           candidates.nodes,
-                                          _scope);
+                                          scope_);
   }
 }
 
@@ -2576,7 +2576,7 @@ void MethodResolver::_visit_potential_call_identifier(ast::Node* ast_target,
   auto ir_target = _resolve_call_target(ast_target, shape_without_implicit_this);
   if (named_lsp_selection != null) {
     auto candidates = _compute_target_candidates(ast_target, scope());
-    _lsp->selection_handler()->call_static_named(named_lsp_selection,
+    lsp_->selection_handler()->call_static_named(named_lsp_selection,
                                                  ir_target,
                                                  candidates.nodes);
   }
@@ -2594,11 +2594,11 @@ void MethodResolver::_visit_potential_call_identifier(ast::Node* ast_target,
   } else if (ir_target->is_ReferenceLocal() || ir_target->is_ReferenceGlobal()) {
     if (shape_without_implicit_this == CallShape(0)) {
       if (ir_target->is_ReferenceGlobal() &&
-          ir_target->as_ReferenceGlobal()->target() == _method &&
-          _current_lambda == null) {
+          ir_target->as_ReferenceGlobal()->target() == method_ &&
+          current_lambda_ == null) {
         report_error(ast_target,
                      "Can't access global '%s' while initializing it",
-                     _method->name().c_str());
+                     method_->name().c_str());
       }
       push(ir_target);  // Not a call.
     } else {
@@ -2746,19 +2746,19 @@ void MethodResolver::_visit_potential_call_super(ast::Node* ast_target,
   // is a member method of this instance.
   auto shape_without_implicit_this = call_builder.shape();
 
-  switch (_resolution_mode) {
+  switch (resolution_mode_) {
     case INSTANCE: {
       ASSERT(is_literal_super(ast_target));
       // We are getting the static resolution of the call target.
       auto ir_target = _resolve_call_target(ast_target, shape_without_implicit_this);
       if (ast_target->is_LspSelection()) {
         auto candidates = _compute_target_candidates(ast_target, scope());
-        _lsp->selection_handler()->call_static(ast_target,
+        lsp_->selection_handler()->call_static(ast_target,
                                                ir_target,
                                                null,
                                                candidates.nodes,
                                                scope(),
-                                               _method);
+                                               method_);
       }
       if (ir_target->is_Error()) {
         ir_target->as_Error()->set_nested(call_builder.arguments());
@@ -2786,17 +2786,17 @@ void MethodResolver::_visit_potential_call_super(ast::Node* ast_target,
         auto ir_target = _resolve_constructor_super_target(ast_target, shape);
         if (ast_target->is_LspSelection()) {
           auto candidates = _compute_constructor_super_candidates(ast_target);
-          _lsp->selection_handler()->call_static(ast_target,
+          lsp_->selection_handler()->call_static(ast_target,
                                                  ir_target,
                                                  null,
                                                  candidates,
                                                  scope(),
-                                                 _method);
+                                                 method_);
         } else if (ast_target->is_Dot() && ast_target->as_Dot()->name()->is_LspSelection()) {
           // The candidates include statics and factories with the same name. This might make it
           //   easier to figure out what's wrong.
           auto candidates = _compute_constructor_super_candidates(ast_target);
-          auto super = _holder->super();
+          auto super = holder_->super();
           auto super_statics_scope = super != null ? super->statics() : null;
           // For completion we only want constructors, but not statics or factories.
           FilteredIterableScope filtered(super_statics_scope, [&] (Symbol, const ResolutionEntry& entry) {
@@ -2805,7 +2805,7 @@ void MethodResolver::_visit_potential_call_super(ast::Node* ast_target,
             }
             return false;
           });
-          _lsp->selection_handler()->call_prefixed(ast_target->as_Dot(),
+          lsp_->selection_handler()->call_prefixed(ast_target->as_Dot(),
                                                    ir_target,
                                                    null,
                                                    candidates,
@@ -2814,12 +2814,12 @@ void MethodResolver::_visit_potential_call_super(ast::Node* ast_target,
           // We don't provide any target for goto-definition. (The only good option would be the actual target,
           //   but that's already handled by goto-definition of the actual 'name'.
           // For completion we just provide all current static targets.
-          _lsp->selection_handler()->call_static(ast_target->as_Dot()->receiver(),
+          lsp_->selection_handler()->call_static(ast_target->as_Dot()->receiver(),
                                                  null,
                                                  null,
                                                  List<ir::Node*>(),
                                                  scope(),
-                                                 _method);
+                                                 method_);
         }
         if (ir_target->is_ReferenceMethod()) {
           // 1. we need to add `this` in front.
@@ -2852,7 +2852,7 @@ void MethodResolver::_visit_potential_call_super(ast::Node* ast_target,
       push(_new ir::Error(ast_target->range(), call_builder.arguments()));
       break;
     case STATIC:
-      auto kind = _method->is_factory() ? "factory" : "static";
+      auto kind = method_->is_factory() ? "factory" : "static";
       report_error(ast_target, "Can't access 'super' in %s method", kind);
       push(_new ir::Error(ast_target->range(), call_builder.arguments()));
       break;
@@ -2866,12 +2866,12 @@ void MethodResolver::_visit_potential_call(ast::Expression* potential_call,
 
   bool is_constructor_super_call = false;
 
-  switch (_resolution_mode) {
+  switch (resolution_mode_) {
     case CONSTRUCTOR_SUPER: {
       ASSERT(is_literal_super(ast_target) || ast_target->is_Dot());
       is_constructor_super_call = true;
       // Make sure the arguments are compiled in a static context.
-      _resolution_mode = CONSTRUCTOR_STATIC;
+      resolution_mode_ = CONSTRUCTOR_STATIC;
       break;
     }
 
@@ -2989,8 +2989,8 @@ void MethodResolver::_visit_potential_call(ast::Expression* potential_call,
     ASSERT(potential_call->is_Call() || potential_call->is_Dot() || potential_call->is_Identifier());
 
     if ((ast_target->is_Identifier() && !is_literal_super(ast_target)) ||
-        _scope->is_prefixed_identifier(ast_target) ||
-        _scope->is_static_identifier(ast_target)) {
+        scope_->is_prefixed_identifier(ast_target) ||
+        scope_->is_static_identifier(ast_target)) {
       // 'foo 1 2', or 'prefix.foo 1 2' or 'Klass.resolved 1 2'.
       _visit_potential_call_identifier(ast_target,
                                       call_builder,
@@ -3071,17 +3071,17 @@ void MethodResolver::visit_labeled_break_continue(ast::BreakContinue* node) {
   // we hope to hit an outer one first.
   int label_index = -1;
   bool crosses_lambda_boundary = false;
-  for (int i = _break_continue_label_stack.size() - 1; i >= 0; i--) {
-    if (_break_continue_label_stack[i].first == label) {
+  for (int i = break_continue_label_stack_.size() - 1; i >= 0; i--) {
+    if (break_continue_label_stack_[i].first == label) {
       label_index = i;
       break;
     }
-    if (_break_continue_label_stack[i].second->is_Lambda()) {
+    if (break_continue_label_stack_[i].second->is_Lambda()) {
       crosses_lambda_boundary = true;
     }
   }
   if (node->label()->is_LspSelection()) {
-    _lsp->selection_handler()->return_label(node, label_index, _break_continue_label_stack);
+    lsp_->selection_handler()->return_label(node, label_index, break_continue_label_stack_);
   }
 
   if (label_index == -1) {
@@ -3098,16 +3098,16 @@ void MethodResolver::visit_labeled_break_continue(ast::BreakContinue* node) {
   if (label_index == -1) {
     push(_new ir::Error(node->range(), list_of(return_value)));
   } else {
-    int return_depth = _break_continue_label_stack.size() - 1 - label_index;
+    int return_depth = break_continue_label_stack_.size() - 1 - label_index;
     push(_new ir::Return(return_value, return_depth, node->range()));
   }
 }
 
 void MethodResolver::visit_Return(ast::Return* node) {
-  if (_method->is_field_initializer() ||
-      _resolution_mode == FIELD ||
-      _method->is_Global()) {
-    const char* kind = _method->is_Global() ? "global" : "field";
+  if (method_->is_field_initializer() ||
+      resolution_mode_ == FIELD ||
+      method_->is_Global()) {
+    const char* kind = method_->is_Global() ? "global" : "field";
     diagnostics()->report_error(node->range(),
                                 "Can't return from within a %s initializer",
                                 kind);
@@ -3122,25 +3122,25 @@ void MethodResolver::visit_Return(ast::Return* node) {
 
   ir::Expression* return_value = null;
   if (node->value() != null) {
-    if (_method->return_type().is_none()) {
+    if (method_->return_type().is_none()) {
       diagnostics()->report_warning(node->range(),
                                     "Return type of function is 'none'. Can't return a value");
     }
     return_value = resolve_expression(node->value(), "Can't return a block", true);
   } else {
-    if (!_method->return_type().is_none() &&
-        _ir_to_ast_map->at(_method)->as_Method()->return_type() != null) {
+    if (!method_->return_type().is_none() &&
+        ir_to_ast_map_->at(method_)->as_Method()->return_type() != null) {
       diagnostics()->report_warning(node->range(), "Missing return value");
       return_value = _new ir::LiteralUndefined(node->range());
     } else {
       return_value = _new ir::LiteralNull(node->range());
     }
   }
-  if (_current_lambda != null) {
+  if (current_lambda_ != null) {
     report_error(node, "Can't explicitly return from within a lambda");
     push(_new ir::Error(node->range(), list_of(return_value)));
   } else {
-    auto return_type = _method->return_type();
+    auto return_type = method_->return_type();
     if (return_type.is_class()) {
       return_value = _new ir::Typecheck(ir::Typecheck::RETURN_AS_CHECK,
                                         return_value,
@@ -3168,10 +3168,10 @@ void MethodResolver::visit_literal_this(ast::Identifier* node) {
   ASSERT(is_literal_this(node));
 
   if (node->is_LspSelection()) {
-    _lsp->selection_handler()->this_(node, _holder, scope(), _method);
+    lsp_->selection_handler()->this_(node, holder_, scope(), method_);
   }
 
-  switch (_resolution_mode) {
+  switch (resolution_mode_) {
     case CONSTRUCTOR_STATIC:
       report_error(node, "Can't access 'this' before a super call in the constructor");
       push(_new ir::Error(node->range()));
@@ -3179,7 +3179,7 @@ void MethodResolver::visit_literal_this(ast::Identifier* node) {
 
     case CONSTRUCTOR_LIMBO_STATIC:
       // Access to 'this' requires to switch to instance-mode.
-      _resolution_mode = CONSTRUCTOR_LIMBO_INSTANCE;
+      resolution_mode_ = CONSTRUCTOR_LIMBO_INSTANCE;
       break;
 
     case FIELD:
@@ -3338,7 +3338,7 @@ ir::Expression* MethodResolver::_define(ast::Expression* node,
           diagnostics()->end_group();
         }
         if (!entry.is_empty() && entry.nodes()[0]->is_FieldStub() &&
-            (!_method->is_static() || _method->is_constructor())) {  // Statics can't access the instance fields anyway.
+            (!method_->is_static() || method_->is_constructor())) {  // Statics can't access the instance fields anyway.
           diagnostics()->start_group();
           report_error(ast_name,
                       "Definition of '%s' shadows outer field definition",
@@ -3471,11 +3471,11 @@ ir::Expression* MethodResolver::_potentially_store_field(ast::Node* node,
                                                          StoreOldValue& store_old) {
   bool is_compound = node->is_Binary() && node->as_Binary()->kind() != Token::ASSIGN;
 
-  ASSERT(_resolution_mode == CONSTRUCTOR_STATIC ||
-         _resolution_mode == CONSTRUCTOR_INSTANCE ||
-         _resolution_mode == CONSTRUCTOR_LIMBO_STATIC ||
-         _resolution_mode == CONSTRUCTOR_LIMBO_INSTANCE);
-  Scope* scope = lookup_class_scope ? _scope->enclosing_class_scope() : _scope;
+  ASSERT(resolution_mode_ == CONSTRUCTOR_STATIC ||
+         resolution_mode_ == CONSTRUCTOR_INSTANCE ||
+         resolution_mode_ == CONSTRUCTOR_LIMBO_STATIC ||
+         resolution_mode_ == CONSTRUCTOR_LIMBO_INSTANCE);
+  Scope* scope = lookup_class_scope ? scope_->enclosing_class_scope() : scope_;
   auto lookup_result = scope->lookup(name);
   if (lookup_result.entry.is_prefix()) return null;
   auto candidates = lookup_result.entry.nodes();
@@ -3502,11 +3502,11 @@ ir::Expression* MethodResolver::_potentially_store_field(ast::Node* node,
 
     auto field = candidate->as_FieldStub()->field();
 
-    if (_resolution_mode == CONSTRUCTOR_INSTANCE && field->is_final()) {
+    if (resolution_mode_ == CONSTRUCTOR_INSTANCE && field->is_final()) {
       report_error(node, "Can't assign final field in dynamic part of constructor");
     }
-    if (_resolution_mode == CONSTRUCTOR_LIMBO_INSTANCE && field->is_final()) {
-      if (_super_forcing_expression == null) {
+    if (resolution_mode_ == CONSTRUCTOR_LIMBO_INSTANCE && field->is_final()) {
+      if (super_forcing_expression_ == null) {
         // Do nothing.
         // We will run through the expression again and then report an error.
         // It might be this assignment, or an earlier one. Either way we don't need
@@ -3514,7 +3514,7 @@ ir::Expression* MethodResolver::_potentially_store_field(ast::Node* node,
       } else {
         diagnostics()->start_group();
         report_error(node, "Can't assign final field in dynamic part of constructor");
-        report_note(_super_forcing_expression,
+        report_note(super_forcing_expression_,
                     "Expression that switched to dynamic part");
         diagnostics()->end_group();
       }
@@ -3531,8 +3531,8 @@ ir::Expression* MethodResolver::_potentially_store_field(ast::Node* node,
 
     auto ir_this = _this_ref(node->range(), true);  // Don't care for the resolution-mode.
     if (field->type().is_class() &&
-        (_resolution_mode == CONSTRUCTOR_INSTANCE ||
-         _resolution_mode == CONSTRUCTOR_LIMBO_INSTANCE)) {
+        (resolution_mode_ == CONSTRUCTOR_INSTANCE ||
+         resolution_mode_ == CONSTRUCTOR_LIMBO_INSTANCE)) {
       ir_value = _new ir::Typecheck(ir::Typecheck::FIELD_AS_CHECK,
                                     ir_value,
                                     field->type(),
@@ -3541,10 +3541,10 @@ ir::Expression* MethodResolver::_potentially_store_field(ast::Node* node,
     }
     auto field_store = _new ir::FieldStore(ir_this, field, ir_value, node->range());
     if (field->is_final() &&
-       (_resolution_mode == CONSTRUCTOR_LIMBO_STATIC ||
-        _resolution_mode == CONSTRUCTOR_LIMBO_INSTANCE)) {
+       (resolution_mode_ == CONSTRUCTOR_LIMBO_STATIC ||
+        resolution_mode_ == CONSTRUCTOR_LIMBO_INSTANCE)) {
       // Store the ast-node, since we might need it for error-reporting.
-      (*_ir_to_ast_map)[field_store] = node;
+      (*ir_to_ast_map_)[field_store] = node;
     }
     return field_store;
   }
@@ -3554,11 +3554,11 @@ ir::Expression* MethodResolver::_potentially_store_field(ast::Node* node,
 ir::Expression* MethodResolver::_potentially_load_field(Symbol name,
                                                         bool lookup_class_scope,
                                                         Source::Range range) {
-  ASSERT(_resolution_mode == CONSTRUCTOR_STATIC ||
-         _resolution_mode == CONSTRUCTOR_INSTANCE ||
-         _resolution_mode == CONSTRUCTOR_LIMBO_STATIC ||
-         _resolution_mode == CONSTRUCTOR_LIMBO_INSTANCE);
-  Scope* scope = lookup_class_scope ? _scope->enclosing_class_scope() : _scope;
+  ASSERT(resolution_mode_ == CONSTRUCTOR_STATIC ||
+         resolution_mode_ == CONSTRUCTOR_INSTANCE ||
+         resolution_mode_ == CONSTRUCTOR_LIMBO_STATIC ||
+         resolution_mode_ == CONSTRUCTOR_LIMBO_INSTANCE);
+  Scope* scope = lookup_class_scope ? scope_->enclosing_class_scope() : scope_;
   auto lookup_result = scope->lookup(name);
   if (lookup_result.entry.is_prefix()) return null;
   auto candidates = lookup_result.entry.nodes();
@@ -3602,10 +3602,10 @@ ir::Expression* MethodResolver::_assign_dot(ast::Binary* node,
       // lsp selections.
       !dot->receiver()->is_LspSelection() &&
       !dot->name()->is_LspSelection() &&
-      (_resolution_mode == CONSTRUCTOR_STATIC ||
-       _resolution_mode == CONSTRUCTOR_INSTANCE ||
-       _resolution_mode == CONSTRUCTOR_LIMBO_STATIC ||
-       _resolution_mode == CONSTRUCTOR_LIMBO_INSTANCE)) {
+      (resolution_mode_ == CONSTRUCTOR_STATIC ||
+       resolution_mode_ == CONSTRUCTOR_INSTANCE ||
+       resolution_mode_ == CONSTRUCTOR_LIMBO_STATIC ||
+       resolution_mode_ == CONSTRUCTOR_LIMBO_INSTANCE)) {
     Symbol name = dot->name()->data();
     auto field_initialization =
         _potentially_store_field(node, name, true, node->right(), store_old);
@@ -3769,12 +3769,12 @@ bool MethodResolver::_assign_identifier_resolve_left(ast::Binary* node,
   }
 
   if (is_super) {
-    if (!_method->name().is_valid()) {
+    if (!method_->name().is_valid()) {
       // No need to search for a super node, if we don't even know our own name.
       ASSERT(diagnostics()->encountered_error());
       return false;
     }
-    switch (_resolution_mode) {
+    switch (resolution_mode_) {
       case STATIC:
         report_error(error_position_node, "Can't assign to 'super' in static contexts");
         return false;
@@ -3917,7 +3917,7 @@ ir::Expression* MethodResolver::_assign_identifier(ast::Binary* node,
   if (ast_left->is_Identifier() && !ast_left->is_LspSelection()) {
     // Not prefixed.
     auto name = ast_left->as_Identifier()->data();
-    switch (_resolution_mode) {
+    switch (resolution_mode_) {
       case CONSTRUCTOR_STATIC:
       case CONSTRUCTOR_INSTANCE:
       case CONSTRUCTOR_LIMBO_STATIC:
@@ -3958,7 +3958,7 @@ ir::Expression* MethodResolver::_assign_identifier(ast::Binary* node,
   if (!is_super &&
       (ir_setter_node->is_Method() && ir_setter_node->as_Method()->is_instance())) {
     // The identifier referred to an instance setter/field.
-    switch (_resolution_mode) {
+    switch (resolution_mode_) {
       case CONSTRUCTOR_LIMBO_STATIC:
         // The reference to `this` below will automatically switch state.
         break;
@@ -3978,7 +3978,7 @@ ir::Expression* MethodResolver::_assign_identifier(ast::Binary* node,
         break;
 
       case STATIC: {
-        const char* kind = _method->is_factory() ? "factories" : "static contexts";
+        const char* kind = method_->is_factory() ? "factories" : "static contexts";
         report_error(ast_left, "Can't access instance members in %s", kind);
         return _new ir::Error(range, list_of(resolve_expression(ast_right, null, true)));
       }
@@ -4054,8 +4054,8 @@ ir::Expression* MethodResolver::_assign_identifier(ast::Binary* node,
     auto local = assig->local();
     auto right = assig->right();
     if (right->is_ReferenceLocal() && right->as_ReferenceLocal()->target() == local) {
-      if (_method->is_constructor() || _method->is_instance()) {
-        auto fields = _method->holder()->fields();
+      if (method_->is_constructor() || method_->is_instance()) {
+        auto fields = method_->holder()->fields();
         for (int i = 0; i < fields.length(); i++) {
           auto field_name = fields[i]->name();
           if (field_name.is_valid() && field_name == local->name()) {
@@ -4631,7 +4631,7 @@ void MethodResolver::visit_LiteralByteArray(ast::LiteralByteArray* node) {
     ir_byte_array = _new ir::Sequence(expressions.build(), range);
   }
   // We want all these expressions to have the inferred type `ByteArray`.
-  auto byte_array_entry = _core_module->scope()->lookup_shallow(Symbols::ByteArray);
+  auto byte_array_entry = core_module_->scope()->lookup_shallow(Symbols::ByteArray);
   ASSERT(byte_array_entry.is_class());
   auto byte_array_class = byte_array_entry.klass();
   ASSERT(byte_array_class->is_interface());
@@ -4714,7 +4714,7 @@ void MethodResolver::visit_call_main(ast::Call* node) {
   bool takes_args = false;
   for (int main_arity = 1; main_arity >= 0; main_arity--) {
     auto main_shape = ResolutionShape(main_arity);
-    auto main_entry = _entry_module->scope()->lookup_module(Symbols::main);
+    auto main_entry = entry_module_->scope()->lookup_module(Symbols::main);
     switch (main_entry.kind()) {
       case ResolutionEntry::PREFIX:
       case ResolutionEntry::AMBIGUOUS:
@@ -4735,7 +4735,7 @@ void MethodResolver::visit_call_main(ast::Call* node) {
   }
   if (main_method == null) {
     if (diagnostics()->should_report_missing_main()) {
-      auto error_path = _entry_module->unit()->error_path();
+      auto error_path = entry_module_->unit()->error_path();
       report_error("Couldn't find 'main' (with 0 or 1 argument) in entry file '%s'",
                    error_path.c_str());
       push(_new ir::Error(node->range()));
@@ -4846,8 +4846,8 @@ void MethodResolver::visit_call_primitive(ast::Call* node) {
 
     if (!encountered_error) {
       int primitive_arity = PrimitiveResolver::arity(index, module);
-      if (primitive_arity != _method->parameters().length()) {
-        report_error(_method,
+      if (primitive_arity != method_->parameters().length()) {
+        report_error(method_,
                     "Primitive '%s:%s' takes %d parameters\n",
                     module_name.c_str(),
                     primitive_name.c_str(),
@@ -4861,7 +4861,7 @@ void MethodResolver::visit_call_primitive(ast::Call* node) {
       (primitive_node != null && primitive_node->is_LspSelection())) {
     ASSERT(module_node != null);
     ast::Node* selected_node = module_node->is_LspSelection() ? module_node : primitive_node;
-    _lsp->selection_handler()->call_primitive(selected_node, module_name, primitive_name, module, index,
+    lsp_->selection_handler()->call_primitive(selected_node, module_name, primitive_name, module, index,
                                               selected_node == module_node);
   }
   ir::Expression* invocation;
@@ -4869,7 +4869,7 @@ void MethodResolver::visit_call_primitive(ast::Call* node) {
     invocation = _new ir::Error(node->range());
   } else {
     invocation = _new ir::PrimitiveInvocation(module_name, primitive_name, module, index, node->range());
-    _has_primitive_invocation = true;
+    has_primitive_invocation_ = true;
   }
 
   ast::Block* ast_failure = null;
@@ -4898,8 +4898,8 @@ void MethodResolver::visit_call_primitive(ast::Call* node) {
       report_error(ast_failure, "Failure blocks can take at most one argument");
     }
 
-    LocalScope scope(_scope);
-    _scope = &scope;
+    LocalScope scope(scope_);
+    scope_ = &scope;
     ir::Local* parameter_local;
     if (ast_failure->parameters().length() == 1) {
       auto ast_parameter = ast_failure->parameters()[0];
@@ -4927,8 +4927,8 @@ void MethodResolver::visit_call_primitive(ast::Call* node) {
     scope.add(parameter_local->name(), ResolutionEntry(parameter_local));
     push(_new ir::Sequence(list_of(define, resolve_expression(ast_failure->body(), null)),
                            node->range()));
-    ASSERT(_scope == &scope);
-    _scope = scope.outer();
+    ASSERT(scope_ == &scope);
+    scope_ = scope.outer();
   }
 }
 

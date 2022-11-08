@@ -55,14 +55,14 @@ public:
 
   UARTResource(ResourceGroup* group, uart_port_t port, QueueHandle_t queue)
       : EventQueueResource(group, queue)
-      , _port(port) {}
+      , port_(port) {}
 
-  uart_port_t port() const { return _port; }
+  uart_port_t port() const { return port_; }
 
   bool receive_event(word* data) override;
 
 private:
-  uart_port_t _port;
+  uart_port_t port_;
 };
 
 bool UARTResource::receive_event(word* data) {
@@ -76,7 +76,7 @@ class UARTResourceGroup : public ResourceGroup {
  public:
   TAG(UARTResourceGroup);
   UARTResourceGroup(Process* process, EventSource* event_source)
-    : ResourceGroup(process, event_source){ }
+    : ResourceGroup(process, event_source){}
 
   virtual void on_unregister_resource(Resource* r) {
     UARTResource* uart_res = static_cast<UARTResource*>(r);

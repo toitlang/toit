@@ -21,7 +21,7 @@ main:
   connect_error_test
   blocking_send_test
   already_in_use_test
-
+  print "done"
 connect_error_test:
   // Port 47 is reserved/unassigned.
   socket := TcpSocket

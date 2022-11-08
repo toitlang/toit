@@ -62,21 +62,21 @@ MODULE_IMPLEMENTATION(file, MODULE_FILE)
 
 class AutoCloser {
  public:
-  explicit AutoCloser(int fd) : _fd(fd) {}
+  explicit AutoCloser(int fd) : fd_(fd) {}
   ~AutoCloser() {
-    if (_fd >= 0) {
-      close(_fd);
+    if (fd_ >= 0) {
+      close(fd_);
     }
   }
 
   int clear() {
-    int tmp = _fd;
-    _fd = -1;
+    int tmp = fd_;
+    fd_ = -1;
     return tmp;
   }
 
  private:
-  int _fd;
+  int fd_;
 };
 
 Object* return_open_error(Process* process, int err) {
@@ -161,19 +161,19 @@ PRIMITIVE(open) {
 class LeakyDirectory {
  public:
   TAG(LeakyDirectory);
-  LeakyDirectory(DIR* dir) : _dir(dir) { }
-  ~LeakyDirectory() { closedir(_dir); }
+  LeakyDirectory(DIR* dir) : dir_(dir) {}
+  ~LeakyDirectory() { closedir(dir_); }
 
-  DIR* dir() const { return _dir; }
+  DIR* dir() const { return dir_; }
 
  private:
-  DIR* _dir;
+  DIR* dir_;
 };
 
 class Directory : public SimpleResource, public LeakyDirectory {
  public:
   TAG(Directory);
-  Directory(SimpleResourceGroup* group, DIR* dir) : SimpleResource(group), LeakyDirectory(dir) { }
+  Directory(SimpleResourceGroup* group, DIR* dir) : SimpleResource(group), LeakyDirectory(dir) {}
 };
 
 // Deprecated primitive that can leak memory if you forget to call close.

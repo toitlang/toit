@@ -46,11 +46,16 @@ namespace toit {
   fn(PcntUnitResource)                  \
   fn(PWMResource)                       \
   fn(RMTResource)                       \
-  fn(GAPResource)                       \
-  fn(GATTResource)                      \
-  fn(BLEServerServiceResource)          \
-  fn(BLEServerCharacteristicResource)   \
+  fn(BLECentralManagerResource)         \
+  fn(BLEPeripheralManagerResource)      \
+  fn(BLERemoteDeviceResource)           \
+  fn(BLEServiceResource)                \
+  fn(BLECharacteristicResource)         \
+  fn(BLEDescriptorResource)             \
   fn(Directory)                         \
+  fn(UDPSocketResource)                 \
+  fn(TCPSocketResource)                 \
+  fn(TCPServerSocketResource)           \
 
 #define TLS_CLASSES_DO(fn)              \
   fn(MbedTLSSocket)                     \
@@ -84,6 +89,7 @@ namespace toit {
   fn(PcntUnitResourceGroup)             \
   fn(PWMResourceGroup)                  \
   fn(TouchResourceGroup)                \
+  fn(ESPNowResourceGroup)               \
 
 #define MAKE_ENUM(name)                 \
   name##Tag,                            \

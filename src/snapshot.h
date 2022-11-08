@@ -34,52 +34,52 @@ class EmittingSnapshotWriter;
 class ProgramImage {
  public:
   ProgramImage(void* address, int size)
-      : _memory(null), _address(address), _size(size) {}
+      : memory_(null), address_(address), size_(size) {}
 #ifndef TOIT_FREERTOS
   ProgramImage(ProtectableAlignedMemory* memory)
-      : _memory(memory)
-      , _address(memory->address())
-      , _size(static_cast<int>(memory->byte_size())) {}
+      : memory_(memory)
+      , address_(memory->address())
+      , size_(static_cast<int>(memory->byte_size())) {}
 #endif
 
   static ProgramImage invalid() { return ProgramImage(null, 0); }
 
-  bool is_valid() const { return _address != null; }
+  bool is_valid() const { return address_ != null; }
 
   // Call back for each pointer.
   void do_pointers(PointerCallback* callback) const;
 
-  Program* program() const { return reinterpret_cast<Program*>(_address); }
+  Program* program() const { return reinterpret_cast<Program*>(address_); }
 
-  word* begin() const { return reinterpret_cast<word*>(_address); }
-  word* end() const { return Utils::address_at(begin(), _size); }
+  word* begin() const { return reinterpret_cast<word*>(address_); }
+  word* end() const { return Utils::address_at(begin(), size_); }
 
   // The byte_size needed for the unfolded page aligned image.
-  int byte_size() const { return _size; }
+  int byte_size() const { return size_; }
 
   // Tells whether addr is inside the image,
   bool address_inside(word* addr) const { return addr >= begin() && addr < end(); }
 
-  void* address() const { return _address; }
-  AlignedMemoryBase* memory() const { return _memory; }
+  void* address() const { return address_; }
+  AlignedMemoryBase* memory() const { return memory_; }
 
   /// Frees the memory.
   /// Uses `delete` for the aligned memory, or `free` for the `void*`.
   /// It is safe to call release of an invalid image.
   void release() {
-    if (_memory == null) {
-      free(_address);
+    if (memory_ == null) {
+      free(address_);
     } else {
-      delete _memory;
+      delete memory_;
     }
-    _memory = null;
-    _address = null;
+    memory_ = null;
+    address_ = null;
   }
 
  private:
-  AlignedMemoryBase* _memory;
-  void* _address;
-  int _size;
+  AlignedMemoryBase* memory_;
+  void* address_;
+  int size_;
 };
 
 class PointerCallback {
@@ -96,21 +96,21 @@ class PointerCallback {
 class Snapshot {
  public:
   Snapshot(const uint8* buffer, int size)
-      : _buffer(buffer), _size(size) { }
+      : buffer_(buffer), size_(size) {}
 
   static Snapshot invalid() { return Snapshot(null, 0); }
 
-  bool is_valid() const { return _buffer != null; }
+  bool is_valid() const { return buffer_ != null; }
 
   ProgramImage read_image(const uint8* id);
   Object* read_object(Process* process);
 
-  const uint8* buffer() const { return _buffer; }
-  int size() const { return _size; }
+  const uint8* buffer() const { return buffer_; }
+  int size() const { return size_; }
 
  private:
-  const uint8* const _buffer;
-  const int _size;
+  const uint8* const buffer_;
+  const int size_;
 };
 
 class SnapshotAllocator {
@@ -159,11 +159,11 @@ class SnapshotReader {
   Object** read_external_object_table(int* length);
 
   void register_class_bits(uint16* class_bits, int length) {
-    _class_bits = class_bits;
-    _class_bits_length = length;
+    class_bits_ = class_bits;
+    class_bits_length_ = length;
   }
 
-  bool eos() { return _pos == _snapshot_size; }
+  bool eos() { return pos_ == snapshot_size_; }
 
  protected:
   Object* read_integer(bool is_negated);
@@ -181,18 +181,18 @@ class SnapshotReader {
   int32* allocate_external_int32s(int count);
   uint8* allocate_external_bytes(int count);
 
-  const uint8* const _buffer;
-  int const _length;
-  SnapshotAllocator* _allocator;
+  const uint8* const buffer_;
+  int const length_;
+  SnapshotAllocator* allocator_;
 
-  int _large_integer_id;  // Set in `read_header`.
-  int _snapshot_size;
-  int _index;
-  int _pos;
-  HeapObject** _table;
-  int _table_length;
-  uint16* _class_bits;
-  int _class_bits_length;
+  int large_integer_id_;  // Set in `read_header`.
+  int snapshot_size_;
+  int index_;
+  int pos_;
+  HeapObject** table_;
+  int table_length_;
+  uint16* class_bits_;
+  int class_bits_length_;
 };
 
 class SnapshotWriter {
@@ -210,23 +210,23 @@ class SnapshotWriter {
 
 class SnapshotGenerator {
  public:
-  explicit SnapshotGenerator(Program* program) : _program(program) { }
+  explicit SnapshotGenerator(Program* program) : program_(program) {}
   ~SnapshotGenerator();
 
   void generate(Program* program);
   void generate(Object* object, Process* process);
 
-  uint8* the_buffer() const { return _buffer; }
-  int the_length() const { return _length; }
+  uint8* the_buffer() const { return buffer_; }
+  int the_length() const { return length_; }
 
   // Transfers ownership of the buffer to the caller.
   // The buffer should be released with `free`.
   uint8* take_buffer(int* length);
 
  private:
-  Program* const _program;
-  uint8* _buffer = null;
-  int _length = 0;
+  Program* const program_;
+  uint8* buffer_ = null;
+  int length_ = 0;
 
   int large_integer_class_id();
 
@@ -251,12 +251,12 @@ class ImageInputStream {
 
   int words_to_read();
   int read(word* buffer);
-  bool eos() { return current >= _image.end(); }
+  bool eos() { return current >= image_.end(); }
 
-  ProgramImage image() const { return _image; }
+  ProgramImage image() const { return image_; }
 
  private:
-  ProgramImage _image;
+  ProgramImage image_;
   RelocationBits* relocation_bits;
   word* current;
   int index;
@@ -272,25 +272,25 @@ class ImageOutputStream {
 
   static const int CHUNK_SIZE = 1 + WORD_BIT_SIZE;
 
-  void* cursor() const { return _current; }
-  bool empty() const { return _current == _image.begin(); }
+  void* cursor() const { return current_; }
+  bool empty() const { return current_ == image_.begin(); }
 
   void write(const word* buffer, int size, word* output = null);
 
-  ProgramImage image() const { return _image; }
+  ProgramImage image() const { return image_; }
 
-  const uint8* program_id() const { return &_program_id[0]; }
+  const uint8* program_id() const { return &program_id_[0]; }
   void set_program_id(const uint8* id);
 
-  int program_size() const { return _program_size; }
-  void set_program_size(int size) { _program_size = size; }
+  int program_size() const { return program_size_; }
+  void set_program_size(int size) { program_size_ = size; }
 
  private:
-  ProgramImage _image;
-  word* _current;
+  ProgramImage image_;
+  word* current_;
 
-  uint8 _program_id[UUID_SIZE];
-  int _program_size = 0;
+  uint8 program_id_[UUID_SIZE];
+  int program_size_ = 0;
 };
 
 } // namespace toit

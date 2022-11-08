@@ -97,9 +97,9 @@ void OS::set_writable(ProgramBlock* block, bool value) {
 }
 
 void OS::tear_down() {
-  dispose(_global_mutex);
-  dispose(_scheduler_mutex);
-  dispose(_resource_mutex);
+  dispose(global_mutex_);
+  dispose(scheduler_mutex_);
+  dispose(resource_mutex_);
 }
 
 const char* OS::get_platform() {
@@ -148,12 +148,12 @@ word OS::get_heap_tag() {
 
 #else // def TOIT_CMPCTMALLOC
 
-void OS::set_heap_tag(word tag) { }
+void OS::set_heap_tag(word tag) {}
 word OS::get_heap_tag() { return 0; }
 
 #endif // def TOIT_CMPCTMALLOC
 
-void OS::heap_summary_report(int max_pages, const char* marker) { }
+void OS::heap_summary_report(int max_pages, const char* marker) {}
 
 }
 

@@ -22,13 +22,13 @@ namespace toit {
 
 class EpollEventSource : public EventSource, public Thread {
  public:
-  static EpollEventSource* instance() { return _instance; }
+  static EpollEventSource* instance() { return instance_; }
 
   EpollEventSource();
   ~EpollEventSource();
 
   bool is_control_fd(int fd) const {
-    return fd == _control_read || fd == _control_write;
+    return fd == control_read_ || fd == control_write_;
   }
 
  private:
@@ -37,11 +37,11 @@ class EpollEventSource : public EventSource, public Thread {
 
   void entry() override;
 
-  static EpollEventSource* _instance;
+  static EpollEventSource* instance_;
 
-  int _epoll_fd;
-  int _control_read;
-  int _control_write;
+  int epoll_fd_;
+  int control_read_;
+  int control_write_;
 };
 
 } // namespace toit

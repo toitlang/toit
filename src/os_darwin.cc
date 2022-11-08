@@ -97,9 +97,9 @@ void OS::set_writable(ProgramBlock* block, bool value) {
 }
 
 void OS::tear_down() {
-  free(_global_mutex);
-  free(_scheduler_mutex);
-  free(_resource_mutex);
+  free(global_mutex_);
+  free(scheduler_mutex_);
+  free(resource_mutex_);
 }
 
 const char* OS::get_platform() {
@@ -128,9 +128,9 @@ int OS::read_entire_file(char* name, uint8** buffer) {
   return length;
 }
 
-void OS::set_heap_tag(word tag) { }
+void OS::set_heap_tag(word tag) {}
 word OS::get_heap_tag() { return 0; }
-void OS::heap_summary_report(int max_pages, const char* marker) { }
+void OS::heap_summary_report(int max_pages, const char* marker) {}
 
 }
 

@@ -99,34 +99,34 @@ class Object {
 // A class that combines a memory address with the size of it.
 class Blob {
  public:
-  Blob() : _address(null), _length(0) {}
+  Blob() : address_(null), length_(0) {}
   Blob(const uint8* address, int length)
-      : _address(address), _length(length) {}
+      : address_(address), length_(length) {}
 
-  const uint8* address() const { return _address; }
-  int length() const { return _length; }
+  const uint8* address() const { return address_; }
+  int length() const { return length_; }
 
   bool slow_equals(const char* c_string) const;
 
  private:
-  const uint8* _address;
-  int _length;
+  const uint8* address_;
+  int length_;
 };
 
 // A class that combines a memory address with the size of it.
 // Same as `Blob` but the mutable version of it.
 class MutableBlob {
  public:
-  MutableBlob() : _address(null), _length(0) {}
+  MutableBlob() : address_(null), length_(0) {}
   MutableBlob(uint8* address, int length)
-      : _address(address), _length(length) {}
+      : address_(address), length_(length) {}
 
-  uint8* address() { return _address; }
-  int length() { return _length; }
+  uint8* address() { return address_; }
+  int length() { return length_; }
 
  private:
-  uint8* _address;
-  int _length;
+  uint8* address_;
+  int length_;
 };
 
 // An error is a temporary object (a tagged string) only used for signaling a primitive has failed.
@@ -445,18 +445,18 @@ class ByteArray : public HeapObject {
     explicit Bytes(ByteArray* array) {
       int l = array->raw_length();
       if (l >= 0) {
-        _address = array->content();
-        _length = l;
+        address_ = array->content();
+        length_ = l;
       } else {
-        _address = array->as_external();
-        _length = -1 -l;
+        address_ = array->as_external();
+        length_ = -1 -l;
       }
       ASSERT(length() >= 0);
     }
-    Bytes(uint8* address, const int length) : _address(address), _length(length) {}
+    Bytes(uint8* address, const int length) : address_(address), length_(length) {}
 
-    uint8* address() { return _address; }
-    int length() { return _length; }
+    uint8* address() { return address_; }
+    int length() { return length_; }
 
     uint8 at(int index) {
       ASSERT(index >= 0 && index < length());
@@ -473,8 +473,8 @@ class ByteArray : public HeapObject {
     }
 
    private:
-    uint8* _address;
-    int _length;
+    uint8* address_;
+    int length_;
   };
 
   bool has_external_address() { return raw_length() < 0; }
@@ -676,7 +676,7 @@ class LargeInteger : public HeapObject {
 
 class FrameCallback {
  public:
-  virtual void do_frame(Stack* frame, int number, int absolute_bci) { }
+  virtual void do_frame(Stack* frame, int number, int absolute_bci) {}
 };
 
 
@@ -926,18 +926,18 @@ class String : public HeapObject {
     explicit Bytes(String* string) {
       int len = string->_internal_length();
       if (len != SENTINEL) {
-        _address = string->_as_utf8bytes();
-        _length = len;
+        address_ = string->_as_utf8bytes();
+        length_ = len;
       } else {
-        _address = string->as_external();
-        _length = string->_external_length();
+        address_ = string->as_external();
+        length_ = string->_external_length();
       }
       ASSERT(length() >= 0);
     }
-    Bytes(uint8* address, const int length) : _address(address), _length(length) {}
+    Bytes(uint8* address, const int length) : address_(address), length_(length) {}
 
-    uint8* address() { return _address; }
-    int length() { return _length; }
+    uint8* address() { return address_; }
+    int length() { return length_; }
 
     uint8 at(int index) {
       ASSERT(index >= 0 && index < length());
@@ -972,8 +972,8 @@ class String : public HeapObject {
     }
 
    private:
-    uint8* _address;
-    int _length;
+    uint8* address_;
+    int length_;
   };
 
  private:
@@ -1060,28 +1060,28 @@ class String : public HeapObject {
 class Method {
  public:
   Method(List<uint8> all_bytes, int offset) : Method(&all_bytes[offset]) {}
-  Method(uint8* bytes) : _bytes(bytes) { }
+  Method(uint8* bytes) : bytes_(bytes) {}
 
   static Method invalid() { return Method(null); }
   static int allocation_size(int bytecode_size, int max_height) {
     return HEADER_SIZE + bytecode_size;
   }
 
-  bool is_valid() const { return _bytes != null; }
+  bool is_valid() const { return bytes_ != null; }
 
-  bool is_normal_method() const { return _kind() == METHOD; }
-  bool is_block_method() const { return  _kind() == BLOCK; }
-  bool is_lambda_method() const { return _kind() == LAMBDA; }
-  bool is_field_accessor() const { return _kind() == FIELD_ACCESSOR; }
+  bool is_normal_method() const { return kind_() == METHOD; }
+  bool is_block_method() const { return  kind_() == BLOCK; }
+  bool is_lambda_method() const { return kind_() == LAMBDA; }
+  bool is_field_accessor() const { return kind_() == FIELD_ACCESSOR; }
 
-  int arity() const { return _bytes[ARITY_OFFSET]; }
-  int captured_count() const { return _value(); }
-  int selector_offset() const { return _value(); }
-  uint8* entry() const { return &_bytes[ENTRY_OFFSET]; }
-  int max_height() const { return (_bytes[KIND_HEIGHT_OFFSET] >> KIND_BITS) * 4; }
+  int arity() const { return bytes_[ARITY_OFFSET]; }
+  int captured_count() const { return value_(); }
+  int selector_offset() const { return value_(); }
+  uint8* entry() const { return &bytes_[ENTRY_OFFSET]; }
+  int max_height() const { return (bytes_[KIND_HEIGHT_OFFSET] >> KIND_BITS) * 4; }
 
-  uint8* bcp_from_bci(int bci) const { return &_bytes[ENTRY_OFFSET + bci]; }
-  uint8* header_bcp() const { return _bytes; }
+  uint8* bcp_from_bci(int bci) const { return &bytes_[ENTRY_OFFSET + bci]; }
+  uint8* header_bcp() const { return bytes_; }
 
   static uint8* header_from_entry(uint8* entry) { return entry - ENTRY_OFFSET; }
 
@@ -1118,11 +1118,11 @@ class Method {
   static const int ENTRY_OFFSET = VALUE_OFFSET + 2;
   static const int HEADER_SIZE = ENTRY_OFFSET;
 
-  uint8* _bytes;
+  uint8* bytes_;
 
   enum Kind { METHOD = 0, LAMBDA, BLOCK, FIELD_ACCESSOR };
 
-  Kind _kind() const { return static_cast<Kind>(_bytes[KIND_HEIGHT_OFFSET] & KIND_MASK); }
+  Kind kind_() const { return static_cast<Kind>(bytes_[KIND_HEIGHT_OFFSET] & KIND_MASK); }
 
   void _initialize(Kind kind, int value, int arity, List<uint8> bytecodes, int max_height) {
     ASSERT(0 <= arity && arity < (1 <<  BYTE_BIT_SIZE));
@@ -1131,28 +1131,28 @@ class Method {
     _set_value(value);
     _set_bytecodes(bytecodes);
 
-    ASSERT(this->_kind()  == kind);
+    ASSERT(this->kind_()  == kind);
     ASSERT(this->arity()  == arity);
-    ASSERT(this->_value() == value);
+    ASSERT(this->value_() == value);
   }
 
   int _int16_at(int offset) const {
     int16 result;
-    memcpy(&result, &_bytes[offset], 2);
+    memcpy(&result, &bytes_[offset], 2);
     return result;
   }
 
   void _set_int16_at(int offset, int value) {
     int16 source = value;
-    memcpy(&_bytes[offset], &source, 2);
+    memcpy(&bytes_[offset], &source, 2);
   }
 
-  int _value() const { return _int16_at(VALUE_OFFSET); }
+  int value_() const { return _int16_at(VALUE_OFFSET); }
   void _set_value(int value) { _set_int16_at(VALUE_OFFSET, value); }
 
   void _set_arity(int arity) {
     ASSERT(arity <= 0xFF);
-    _bytes[ARITY_OFFSET] = arity;
+    bytes_[ARITY_OFFSET] = arity;
   }
   void _set_kind_height(Kind kind, int max_height) {
     // We need two bits for the kind.
@@ -1164,13 +1164,13 @@ class Method {
       FATAL("Max stack height too big");
     }
     int encoded_height = scaled_height << KIND_BITS;
-    _bytes[KIND_HEIGHT_OFFSET] = kind | encoded_height;
+    bytes_[KIND_HEIGHT_OFFSET] = kind | encoded_height;
   }
   void _set_captured_count(int value) { _set_value(value); }
   void _set_selector_offset(int value) { _set_value(value); }
   void _set_bytecodes(List<uint8> bytecodes) {
     if (bytecodes.length() > 0) {
-      memcpy(&_bytes[ENTRY_OFFSET], bytecodes.data(), bytecodes.length());
+      memcpy(&bytes_[ENTRY_OFFSET], bytecodes.data(), bytecodes.length());
     }
   }
 };

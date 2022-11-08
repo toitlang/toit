@@ -38,29 +38,29 @@ namespace toit {
 // It has to be possible to call this twice because it is called from the
 // process shutdown, but also from the finalizer if the GC spots it.
 void LwIPSocket::tear_down() {
-  if (_tpcb != null) {
-    if (_kind == LwIPSocket::kConnection) {
-      tcp_recv(_tpcb, null);
-      tcp_sent(_tpcb, null);
+  if (tpcb_ != null) {
+    if (kind_ == LwIPSocket::kConnection) {
+      tcp_recv(tpcb_, null);
+      tcp_sent(tpcb_, null);
     } else {
-      tcp_accept(_tpcb, null);
+      tcp_accept(tpcb_, null);
     }
-    tcp_arg(_tpcb, null);
+    tcp_arg(tpcb_, null);
 
-    err_t err = tcp_close(_tpcb);
+    err_t err = tcp_close(tpcb_);
     if (err != ERR_OK) {
       FATAL("tcp_close failed with error %d\n", err);
     }
 
-    _tpcb = null;
+    tpcb_ = null;
   }
 
-  if (_read_buffer != null) {
-    pbuf_free(_read_buffer);
-    _read_buffer = null;
+  if (read_buffer_ != null) {
+    pbuf_free(read_buffer_);
+    read_buffer_ = null;
   }
 
-  while (LwIPSocket* unaccepted_socket = _backlog.remove_first()) {
+  while (LwIPSocket* unaccepted_socket = backlog_.remove_first()) {
     unaccepted_socket->tear_down();
     delete unaccepted_socket;
   }
@@ -71,9 +71,9 @@ class SocketResourceGroup : public ResourceGroup {
   TAG(SocketResourceGroup);
   SocketResourceGroup(Process* process, LwIPEventSource* event_source)
       : ResourceGroup(process, event_source)
-      , _event_source(event_source) {}
+      , event_source_(event_source) {}
 
-  LwIPEventSource* event_source() { return _event_source; }
+  LwIPEventSource* event_source() { return event_source_; }
 
  protected:
   virtual void on_unregister_resource(Resource* r) {
@@ -85,7 +85,7 @@ class SocketResourceGroup : public ResourceGroup {
   }
 
  private:
-  LwIPEventSource* _event_source;
+  LwIPEventSource* event_source_;
 };
 
 int LwIPSocket::on_accept(tcp_pcb* tpcb, err_t err) {
@@ -117,7 +117,7 @@ int LwIPSocket::on_connected(err_t err) {
   // According to the documentation err is currently always ERR_OK, but trying
   // to be defensive here.
   if (err == ERR_OK) {
-    tcp_recv(_tpcb, on_read);
+    tcp_recv(tpcb_, on_read);
   } else {
     socket_error(err);
   }
@@ -134,13 +134,13 @@ void LwIPSocket::on_read(pbuf* p, err_t err) {
   }
 
   if (p == null) {
-    _read_closed = true;
+    read_closed_ = true;
   } else {
-    pbuf* e = _read_buffer;
+    pbuf* e = read_buffer_;
     if (e != null) {
       pbuf_cat(e, p);
     } else {
-      _read_buffer = p;
+      read_buffer_ = p;
     }
   }
 
@@ -150,10 +150,10 @@ void LwIPSocket::on_read(pbuf* p, err_t err) {
 void LwIPSocket::on_wrote(int length) {
   Locker locker(LwIPEventSource::instance()->mutex());
 
-  _send_pending -= length;
+  send_pending_ -= length;
 
-  if (_send_closed && _send_pending == 0) {
-    err_t err = tcp_shutdown(_tpcb, 0, 1);
+  if (send_closed_ && send_pending_ == 0) {
+    err_t err = tcp_shutdown(tpcb_, 0, 1);
     if (err != ERR_OK) socket_error(err);
     return;
   }
@@ -163,10 +163,10 @@ void LwIPSocket::on_wrote(int length) {
 }
 
 void LwIPSocket::on_error(err_t err) {
-  // The _tpcb has already been deallocated when this is called.
-  _tpcb = null;
+  // The tpcb_ has already been deallocated when this is called.
+  tpcb_ = null;
   if (err == ERR_CLSD) {
-    _read_closed = true;
+    read_closed_ = true;
   } else if (err == ERR_MEM) {
     // If we got an allocation error that caused the connection to close
     // then it's too late for a GC and we have to throw something that
@@ -180,11 +180,11 @@ void LwIPSocket::on_error(err_t err) {
 void LwIPSocket::send_state() {
   uint32_t state = 0;
 
-  if (_read_buffer != null) state |= TCP_READ;
-  if (!_backlog.is_empty()) state |= TCP_READ;
-  if (!_send_closed && tpcb() != null && tcp_sndbuf(tpcb()) > 0) state |= TCP_WRITE;
-  if (_read_closed) state |= TCP_READ;
-  if (_error != ERR_OK) state |= TCP_ERROR;
+  if (read_buffer_ != null) state |= TCP_READ;
+  if (!backlog_.is_empty()) state |= TCP_READ;
+  if (!send_closed_ && tpcb() != null && tcp_sndbuf(tpcb()) > 0) state |= TCP_WRITE;
+  if (read_closed_) state |= TCP_READ;
+  if (error_ != ERR_OK) state |= TCP_ERROR;
   if (needs_gc) state |= TCP_NEEDS_GC;
 
   // TODO: Avoid instance usage.
@@ -196,7 +196,7 @@ void LwIPSocket::socket_error(err_t err) {
     needs_gc = true;
   } else {
     set_tpcb(null);
-    _error = err;
+    error_ = err;
   }
   send_state();
 }
@@ -216,13 +216,13 @@ int LwIPSocket::new_backlog_socket(tcp_pcb* tpcb) {
   tcp_err(tpcb, on_error);
   tcp_recv(tpcb, on_read);
 
-  _backlog.append(socket);
+  backlog_.append(socket);
   return ERR_OK;
 }
 
 // May return null if there is nothing in the backlog.
 LwIPSocket* LwIPSocket::accept() {
-  return _backlog.remove_first();
+  return backlog_.remove_first();
 }
 
 MODULE_IMPLEMENTATION(tcp, MODULE_TCP)

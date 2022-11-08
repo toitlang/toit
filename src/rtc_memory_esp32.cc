@@ -29,7 +29,9 @@
 #ifdef CONFIG_IDF_TARGET_ESP32C3
   #include <esp32c3/rom/ets_sys.h>
 #elif CONFIG_IDF_TARGET_ESP32S3
-#include <esp32s3/rom/ets_sys.h>
+  #include <esp32s3/rom/ets_sys.h>
+#elif CONFIG_IDF_TARGET_ESP32S2
+  #include <esp32s2/rom/ets_sys.h>
 #else
   #include <esp32/rom/ets_sys.h>
 #endif
@@ -45,6 +47,12 @@ extern "C" {
   #include <esp32/clk.h>
 #endif
 }
+
+#ifndef CONFIG_IDF_TARGET_ESP32
+extern "C" {
+  esp_err_t esp_timer_impl_early_init(void);
+}
+#endif
 
 struct RtcData {
   uint64 total_deep_sleep_time;
@@ -126,6 +134,13 @@ static void reset_rtc(const char* reason) {
   memset(&rtc, 0, sizeof(rtc));
   // We only clear RTC on boot, so this must be exactly 1.
   rtc.boot_count = 1;
+
+#ifndef CONFIG_IDF_TARGET_ESP32
+  // Non-ESP32 targets use the SYSTIMER which needs a call to early init.
+  // https://github.com/toitware/esp-idf/blob/67fa2950f6bed9cc8e2e89a8ffac1ed77f087214/components/esp_timer/Kconfig#L54
+  esp_timer_impl_early_init();
+#endif
+
   // Clear real-time clock.
 #ifndef CONFIG_IDF_TARGET_ESP32S3
   struct timespec time = { 0, 0 };

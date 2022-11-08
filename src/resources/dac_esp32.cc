@@ -87,21 +87,21 @@ class DacResource : public Resource {
     unuse_cosine();
   }
 
-  dac_channel_t channel() const { return _channel; }
+  dac_channel_t channel() const { return channel_; }
 
   esp_err_t use_cosine();
   esp_err_t unuse_cosine();
 
  private:
-  dac_channel_t _channel;
-  bool _uses_cosine = false;
+  dac_channel_t channel_;
+  bool uses_cosine_ = false;
 };
 
 esp_err_t DacResource::use_cosine() {
   Locker locker(OS::resource_mutex());
   esp_err_t err = ESP_OK;
-  if (_uses_cosine) return err;
-  _uses_cosine = true;
+  if (uses_cosine_) return err;
+  uses_cosine_ = true;
   cosine_user_count++;
   if (cosine_user_count == 1) {
     // First user.
@@ -113,8 +113,8 @@ esp_err_t DacResource::use_cosine() {
 esp_err_t DacResource::unuse_cosine() {
   Locker locker(OS::resource_mutex());
   esp_err_t err = ESP_OK;
-  if (!_uses_cosine) return err;
-  _uses_cosine = false;
+  if (!uses_cosine_) return err;
+  uses_cosine_ = false;
   cosine_user_count--;
   if (cosine_user_count == 0) {
     // Last user.
@@ -135,11 +135,11 @@ class DacResourceGroup : public ResourceGroup {
     dac_output_disable(dac_resource->channel());
   }
  private:
-  static int _cosine_user_count;
+  static int cosine_user_count_;
 };
 
 DacResource::DacResource(DacResourceGroup* group, dac_channel_t channel)
-    : Resource(group), _channel(channel) {}
+    : Resource(group), channel_(channel) {}
 
 
 MODULE_IMPLEMENTATION(dac, MODULE_DAC)

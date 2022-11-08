@@ -50,7 +50,7 @@ namespace {
 template <typename V>
 class Node {
  public:
-  Node(uword key, const V& value) : key(key), value(value), left(null), right(null) { }
+  Node(uword key, const V& value) : key(key), value(value), left(null), right(null) {}
   uword key;
   V value;
   Node<V>* left;
@@ -60,10 +60,10 @@ class Node {
 template <typename V>
 class BinaryTree {
  public:
-  BinaryTree() : ref_count(_new int(1)) { }
+  BinaryTree() : ref_count(_new int(1)) {}
   BinaryTree(const BinaryTree& other)
       : ref_count(other.ref_count)
-      , _size(other._size)
+      , size_(other.size_)
       , root(other.root) {
     (*ref_count)++;
   }
@@ -84,7 +84,7 @@ class BinaryTree {
       delete ref_count;
     }
     ref_count = other.ref_count;
-    _size = other._size;
+    size_ = other.size_;
     root = other.root;
     return *this;
   }
@@ -94,7 +94,7 @@ class BinaryTree {
     // Mangle the key to give a more uniform distribution.
     key = hash(key);
     if (root == null) {
-      _size++;
+      size_++;
       root = _new Node<V>(key, value);
       return;
     }
@@ -106,7 +106,7 @@ class BinaryTree {
       }
       if (key < current->key) {
         if (current->left == null) {
-          _size++;
+          size_++;
           current->left = _new Node<V>(key, value);
           return;
         }
@@ -115,7 +115,7 @@ class BinaryTree {
       }
       ASSERT(key > current->key);
       if (current->right == null) {
-        _size++;
+        size_++;
         current->right = _new Node<V>(key, value);
         return;
       }
@@ -142,11 +142,11 @@ class BinaryTree {
     }
   }
 
-  int size() const { return _size; }
+  int size() const { return size_; }
 
  private:
   int* ref_count;
-  int _size = 0;
+  int size_ = 0;
   Node<V>* root = null;
   mutable std::pair<uword, V> found;
 
@@ -207,10 +207,10 @@ class HeapAllocator : public SnapshotAllocator {
                   int external_pointer_count,
                   int external_int32_count,
                   int external_byte_count) override {
-    _normal_block_count = normal_block_count;
-    _external_pointer_count = external_pointer_count;
+    normal_block_count_ = normal_block_count;
+    external_pointer_count_ = external_pointer_count;
     _external_int32_count = external_int32_count;
-    _external_byte_count = external_byte_count;
+    external_byte_count_ = external_byte_count;
     return true;
   }
 
@@ -230,19 +230,19 @@ class HeapAllocator : public SnapshotAllocator {
     return unvoid_cast<int32*>(allocate_external(count * 4));
   }
 
-  int normal_block_count() const { return _normal_block_count; }
-  int external_pointer_count() const { return _external_pointer_count; }
+  int normal_block_count() const { return normal_block_count_; }
+  int external_pointer_count() const { return external_pointer_count_; }
   int external_int32_count() const { return _external_int32_count; }
-  int external_byte_count() const { return _external_byte_count; }
+  int external_byte_count() const { return external_byte_count_; }
 
  protected:
   virtual void* allocate_external(int byte_size) = 0;
 
  private:
-  int _normal_block_count;
-  int _external_pointer_count;
+  int normal_block_count_;
+  int external_pointer_count_;
   int _external_int32_count;
-  int _external_byte_count;
+  int external_byte_count_;
 };
 
 /// A virtual allocator with a given word size.
@@ -252,25 +252,25 @@ class HeapAllocator : public SnapshotAllocator {
 class SizedVirtualAllocator {
  public:
   SizedVirtualAllocator(int word_size)
-      : _word_size(word_size)
-      , limit(ProgramHeap::max_allocation_size(word_size)) { }
+      : word_size_(word_size)
+      , limit(ProgramHeap::max_allocation_size(word_size)) {}
 
   HeapObject* allocate_object(TypeTag tag, int length);
 
   void allocate_integer(int64 value) {
-    if ((_word_size == 4 && Smi::is_valid32(value)) ||
-        (_word_size == 8 && Smi::is_valid64(value))) {
+    if ((word_size_ == 4 && Smi::is_valid32(value)) ||
+        (word_size_ == 8 && Smi::is_valid64(value))) {
       return;
     }
     allocate_object(TypeTag::LARGE_INTEGER_TAG, 0);
   }
 
   void allocate_external_pointers(int count) {
-    _external_pointer_count += count;
+    external_pointer_count_ += count;
   }
 
   void allocate_external_int32s(int count) {
-    int required_int32s = Utils::round_up(count, _word_size / 4);
+    int required_int32s = Utils::round_up(count, word_size_ / 4);
     _external_int32_count += required_int32s;
   }
 
@@ -281,29 +281,29 @@ class SizedVirtualAllocator {
   }
 
   void allocate_external_bytes(int count) {
-    _external_byte_count += Utils::round_up(count, _word_size);
+    external_byte_count_ += Utils::round_up(count, word_size_);
   }
 
-  int normal_block_count() const { return _normal_block_count; }
-  int external_pointer_count() const {  return _external_pointer_count; }
+  int normal_block_count() const { return normal_block_count_; }
+  int external_pointer_count() const {  return external_pointer_count_; }
   int external_int32_count() const {  return _external_int32_count; }
-  int external_byte_count() const {  return _external_byte_count; }
+  int external_byte_count() const {  return external_byte_count_; }
 
  private:
-  int _word_size;
+  int word_size_;
   const int limit;
   int top = 0;
-  int _normal_block_count = 0;
-  int _external_pointer_count = 0;
+  int normal_block_count_ = 0;
+  int external_pointer_count_ = 0;
   int _external_int32_count = 0;
-  int _external_byte_count = 0;
+  int external_byte_count_ = 0;
 };
 
 class VirtualAllocator : public SnapshotAllocator {
  public:
   VirtualAllocator()
       : _allocator32(4)
-      , _allocator64(8) { }
+      , _allocator64(8) {}
 
   bool initialize(int normal_block_count,
                   int external_pointer_count,
@@ -387,11 +387,11 @@ class ImageAllocator : public HeapAllocator {
 
   HeapObject* allocate_object(TypeTag tag, int length) override;
 
-  ProtectableAlignedMemory* image() const { return _image; }
+  ProtectableAlignedMemory* image() const { return image_; }
 
-  void* memory() const { return _memory; }
+  void* memory() const { return memory_; }
 
-  void set_program(Program* program) { _program = program; }
+  void set_program(Program* program) { program_ = program; }
 
   void expand();
 
@@ -399,15 +399,15 @@ class ImageAllocator : public HeapAllocator {
   void* allocate_external(int byte_size) override;
 
  private:
-  ProtectableAlignedMemory* _image = null;
+  ProtectableAlignedMemory* image_ = null;
   // Memory is split into two sections: external (off-heap), and heap memory.
-  // The current unused external memory starts at [_external_top], whereas
-  //   the unused heap memory starts at [_block_top].
-  void* _memory = null;
-  void* _external_top = null;
-  void* _block_top = null;
+  // The current unused external memory starts at [external_top_], whereas
+  //   the unused heap memory starts at [block_top_].
+  void* memory_ = null;
+  void* external_top_ = null;
+  void* block_top_ = null;
 
-  Program* _program = null;
+  Program* program_ = null;
 
   // Returns the byte_size needed for the unfolded page aligned image.
   uword image_byte_size();
@@ -425,7 +425,7 @@ using WorkAroundMap = BinaryTreeMap<V>;
 class ImageSnapshotReader : public SnapshotReader {
  public:
   ImageSnapshotReader(const uint8* buffer, int length)
-    : SnapshotReader(buffer, length, &_image_allocator) { }
+    : SnapshotReader(buffer, length, &image_allocator_) {}
 
   // Reads the snapshot.
   ProgramImage read_image(const uint8* id);
@@ -434,16 +434,16 @@ class ImageSnapshotReader : public SnapshotReader {
   bool read_header();
 
  private:
-  ImageAllocator _image_allocator;
-  Program* _program = null;
+  ImageAllocator image_allocator_;
+  Program* program_ = null;
 };
 
 class BaseSnapshotWriter : public SnapshotWriter {
  public:
   BaseSnapshotWriter(int large_integer_class_id,
                      Program* program)
-      : _large_integer_class_id(large_integer_class_id)
-      , _program(program) { }
+      : large_integer_class_id_(large_integer_class_id)
+      , program_(program) {}
 
   void write_byte(uint8 value) = 0;
   void write_cardinal(uword value);
@@ -455,7 +455,7 @@ class BaseSnapshotWriter : public SnapshotWriter {
   void write_external_list_uint8(List<uint8> list);
 
  protected:
-  VirtualAllocator _allocator;
+  VirtualAllocator allocator_;
 
   virtual void write_bytes(uint8* data, int length) = 0;
 
@@ -467,12 +467,12 @@ class BaseSnapshotWriter : public SnapshotWriter {
   /// The result of this call does not change the size of the generated snapshot.
   virtual bool is_back_reference_target(uword object_key) = 0;
 
-  int large_integer_class_id() const { return _large_integer_class_id; }
+  int large_integer_class_id() const { return large_integer_class_id_; }
 
  private:
-  int const _large_integer_class_id;
+  int const large_integer_class_id_;
 
-  Program* const _program;
+  Program* const program_;
 
   void write_object_header(SnapshotTypeTag tag, int extra = 0) {
     write_cardinal(static_cast<int>(tag) + (extra << OBJECT_HEADER_TYPE_SIZE));
@@ -495,8 +495,8 @@ class CollectingSnapshotWriter : public BaseSnapshotWriter {
 
   void reserve_header(int header_byte_size);
 
-  int length() const { return _length; }
-  const WorkAroundSet<uword>& back_reference_targets() const { return _back_reference_targets; }
+  int length() const { return length_; }
+  const WorkAroundSet<uword>& back_reference_targets() const { return back_reference_targets_; }
 
  protected:
   void write_bytes(uint8* data, int length);
@@ -505,9 +505,9 @@ class CollectingSnapshotWriter : public BaseSnapshotWriter {
   bool is_back_reference_target(uword object_key);
 
  private:
-  int _length = 0;
-  WorkAroundSet<uword> _seen;
-  WorkAroundSet<uword> _back_reference_targets;
+  int length_ = 0;
+  WorkAroundSet<uword> seen_;
+  WorkAroundSet<uword> back_reference_targets_;
 };
 
 class EmittingSnapshotWriter : public BaseSnapshotWriter {
@@ -518,9 +518,9 @@ class EmittingSnapshotWriter : public BaseSnapshotWriter {
                          int large_integer_class_id,
                          Program* program)
       : BaseSnapshotWriter(large_integer_class_id, program)
-      , _buffer(buffer)
-      , _length(length)
-      , _back_reference_targets(back_reference_targets) { }
+      , buffer_(buffer)
+      , length_(length)
+      , back_reference_targets_(back_reference_targets) {}
 
   void write_byte(uint8 value);
 
@@ -530,7 +530,7 @@ class EmittingSnapshotWriter : public BaseSnapshotWriter {
   //   virtual allocator.
   void write_program_snapshot_header();
 
-  int remaining() const { return _length - _pos; }
+  int remaining() const { return length_ - pos_; }
 
  protected:
   void write_bytes(uint8* data, int length);
@@ -539,34 +539,34 @@ class EmittingSnapshotWriter : public BaseSnapshotWriter {
   bool is_back_reference_target(uword object_key);
 
  private:
-  uint8* const _buffer;
-  int const _length;
-  WorkAroundSet<uword> const _back_reference_targets;
-  WorkAroundMap<uword, int> _back_reference_mapping;
-  int _pos = 0;
-  int _back_reference_index = 0;
+  uint8* const buffer_;
+  int const length_;
+  WorkAroundSet<uword> const back_reference_targets_;
+  WorkAroundMap<uword, int> back_reference_mapping_;
+  int pos_ = 0;
+  int back_reference_index_ = 0;
 
   /// Returns the new offset.
   int write_uint32_at(int byte_offset, uint32 value);
 };
 
 ProgramImage Snapshot::read_image(const uint8* id) {
-  ImageSnapshotReader reader(_buffer, _size);
+  ImageSnapshotReader reader(buffer_, size_);
   return reader.read_image(id);
 }
 
 SnapshotReader::SnapshotReader(const uint8* buffer, int length, SnapshotAllocator* allocator)
-    : _buffer(buffer)
-    , _length(length)
-    , _allocator(allocator)
-    , _large_integer_id(-1)
-    , _snapshot_size(0)
-    , _index(0)
-    , _pos(0)
-    , _table(null) { }
+    : buffer_(buffer)
+    , length_(length)
+    , allocator_(allocator)
+    , large_integer_id_(-1)
+    , snapshot_size_(0)
+    , index_(0)
+    , pos_(0)
+    , table_(null) {}
 
 SnapshotReader::~SnapshotReader() {
-  delete[] _table;
+  delete[] table_;
 }
 
 bool SnapshotReader::initialize(int snapshot_size,
@@ -576,32 +576,32 @@ bool SnapshotReader::initialize(int snapshot_size,
                                 int external_byte_count,
                                 int table_length,
                                 int large_integer_id) {
-  _snapshot_size = snapshot_size;
-  bool succeeded = _allocator->initialize(normal_block_count,
+  snapshot_size_ = snapshot_size;
+  bool succeeded = allocator_->initialize(normal_block_count,
                                           external_pointer_count,
                                           external_int32_count,
                                           external_byte_count);
   if (!succeeded) return false;
-  _table_length = table_length;
-  _table = _new HeapObject*[_table_length];
-  _large_integer_id = large_integer_id;
-  return _table != null;
+  table_length_ = table_length;
+  table_ = _new HeapObject*[table_length_];
+  large_integer_id_ = large_integer_id;
+  return table_ != null;
 }
 
 HeapObject* SnapshotReader::allocate_object(TypeTag tag, int length) {
-  return _allocator->allocate_object(tag, length);
+  return allocator_->allocate_object(tag, length);
 }
 Object** SnapshotReader::allocate_external_pointers(int count) {
-  return _allocator->allocate_external_pointers(count);
+  return allocator_->allocate_external_pointers(count);
 }
 uint16* SnapshotReader::allocate_external_uint16s(int count) {
-  return _allocator->allocate_external_uint16s(count);
+  return allocator_->allocate_external_uint16s(count);
 }
 int32* SnapshotReader::allocate_external_int32s(int count) {
-  return _allocator->allocate_external_int32s(count);
+  return allocator_->allocate_external_int32s(count);
 }
 uint8* SnapshotReader::allocate_external_bytes(int count) {
-  return _allocator->allocate_external_bytes(count);
+  return allocator_->allocate_external_bytes(count);
 }
 
 // Returns object table length.
@@ -677,8 +677,8 @@ uint64 SnapshotReader::read_cardinal64() {
 }
 
 uint8 SnapshotReader::read_byte() {
-  ASSERT(_pos < _length);
-  return _buffer[_pos++];
+  ASSERT(pos_ < length_);
+  return buffer_[pos_++];
 }
 
 double SnapshotReader::read_double() {
@@ -709,10 +709,10 @@ Object* SnapshotReader::read_integer(bool is_negated) {
   int64 value = static_cast<int64>(read_cardinal64());
   if (is_negated) value = -value;
   if (Smi::is_valid(value)) return Smi::from(value);
-  auto large_integer_class_bits = _class_bits[_large_integer_id];
+  auto large_integer_class_bits = class_bits_[large_integer_id_];
   TypeTag class_tag = Program::class_tag_from_class_bits(large_integer_class_bits);
   LargeInteger* result = static_cast<LargeInteger*>(allocate_object(TypeTag::LARGE_INTEGER_TAG, 0));
-  result->_set_header(Smi::from(_large_integer_id), class_tag);
+  result->_set_header(Smi::from(large_integer_id_), class_tag);
   result->_set_value(value);
   return result;
 }
@@ -746,7 +746,7 @@ Object* SnapshotReader::read_object() {
   switch (type) {
     case SnapshotTypeTag::POSITIVE_SMI_TAG: return read_integer(false);
     case SnapshotTypeTag::NEGATIVE_SMI_TAG: return read_integer(true);
-    case SnapshotTypeTag::BACK_REFERENCE_TAG: return _table[extra];
+    case SnapshotTypeTag::BACK_REFERENCE_TAG: return table_[extra];
     case SnapshotTypeTag::OBJECT_TAG:
     case SnapshotTypeTag::IN_TABLE_TAG:
       // Handled here.
@@ -756,9 +756,9 @@ Object* SnapshotReader::read_object() {
   int optional_length = extra;
   TypeTag heap_tag = (TypeTag) (read_byte());
   HeapObject* result = allocate_object(heap_tag, optional_length);
-  if (in_table) _table[_index++] = result;
+  if (in_table) table_[index_++] = result;
   result->_set_header(Smi::cast(read_object()));
-  ASSERT((0 <= result->class_id()->value() && result->class_id()->value() < _class_bits_length));
+  ASSERT((0 <= result->class_id()->value() && result->class_id()->value() < class_bits_length_));
   ASSERT(ARRAY_TAG <= result->class_tag() && result->class_tag() <= LARGE_INTEGER_TAG);
   switch (heap_tag) {
     case TypeTag::ARRAY_TAG:
@@ -813,8 +813,8 @@ List<uint8> SnapshotReader::read_external_list_uint8() {
   int length = read_int32();
   uint8* data = allocate_external_bytes(length);
   ASSERT(Utils::is_aligned(reinterpret_cast<uword>(data), WORD_SIZE));
-  memcpy(data, &_buffer[_pos], length);
-  _pos += length;
+  memcpy(data, &buffer_[pos_], length);
+  pos_ += length;
   return List<uint8>(data, length);
 }
 
@@ -832,10 +832,10 @@ Object** SnapshotReader::read_external_object_table(int* length) {
 HeapObject* SizedVirtualAllocator::allocate_object(TypeTag tag, int length) {
   int word_count, extra_bytes;
   allocation_size(tag, length, &word_count, &extra_bytes);
-  int byte_size = _align(word_count * _word_size + extra_bytes, _word_size);
-  ASSERT(byte_size > 0 && Utils::is_aligned(byte_size, _word_size));
+  int byte_size = _align(word_count * word_size_ + extra_bytes, word_size_);
+  ASSERT(byte_size > 0 && Utils::is_aligned(byte_size, word_size_));
   if (top == 0) {
-    _normal_block_count++;
+    normal_block_count_++;
     top += byte_size;
   } else {
     if (top + byte_size > limit) {
@@ -876,75 +876,75 @@ bool ImageAllocator::initialize(int normal_block_count,
   //  2. heap/block
   // Heap memory must be chunked into blocks of TOIT_PAGE_SIZE so that it can be
   // used more uniformly with the rest of the memory. (For example GC).
-  _image = _new ProtectableAlignedMemory(memory_byte_size, TOIT_PAGE_SIZE);
-  _memory = _image->address();
-  if (_memory == null) return false;
+  image_ = _new ProtectableAlignedMemory(memory_byte_size, TOIT_PAGE_SIZE);
+  memory_ = image_->address();
+  if (memory_ == null) return false;
 
 #ifndef TOIT_DEBUG
   // Keep the uninitialized 0xcd markers in debug mode, but otherwise
   // initialize the memory to 0 to make the image more deterministic.
-  memset(_memory, 0, memory_byte_size);
+  memset(memory_, 0, memory_byte_size);
 #endif
-  _external_top = _memory;
-  void* const external_end = Utils::address_at(_external_top, external_size());
+  external_top_ = memory_;
+  void* const external_end = Utils::address_at(external_top_, external_size());
 
-  _external_top = Utils::address_at(_external_top, Utils::round_up(sizeof(Program), WORD_SIZE));
+  external_top_ = Utils::address_at(external_top_, Utils::round_up(sizeof(Program), WORD_SIZE));
 
   int offset = Utils::round_up(reinterpret_cast<uword>(external_end), TOIT_PAGE_SIZE) - reinterpret_cast<uword>(external_end);
-  _block_top = Utils::address_at(external_end, offset);
-  ASSERT(Utils::is_aligned((uword)_block_top, TOIT_PAGE_SIZE));
+  block_top_ = Utils::address_at(external_end, offset);
+  ASSERT(Utils::is_aligned((uword)block_top_, TOIT_PAGE_SIZE));
   return true;
 }
 
 ProgramImage ImageSnapshotReader::read_image(const uint8* id) {
-  // Also calls SnapshotReader::initialize() which calls _allocator->initialize().
-  // _allocator is an ImageAllocator
+  // Also calls SnapshotReader::initialize() which calls allocator_->initialize().
+  // allocator_ is an ImageAllocator
   //   which is a subclass of HeapAllocator
   //     which is a subset of SnapshotAllocator
   bool succeeded = read_header();
   ASSERT(succeeded);  // We expect to never run out of memory on the desktop.
-  _program  = new (_image_allocator.memory()) Program(_image_allocator.image()->address(), _image_allocator.image()->byte_size());
-  _image_allocator.set_program(_program);
+  program_  = new (image_allocator_.memory()) Program(image_allocator_.image()->address(), image_allocator_.image()->byte_size());
+  image_allocator_.set_program(program_);
   // Initialize the uuid to 0. It can be patched from the outside.
   uint8 uuid[UUID_SIZE] = {0};
-  _program->set_header(0, uuid, id);
+  program_->set_header(0, uuid, id);
 
-  _image_allocator.expand();
-  _program->read(this);
-  _image_allocator.image()->mark_read_only();
+  image_allocator_.expand();
+  program_->read(this);
+  image_allocator_.image()->mark_read_only();
 
-  return ProgramImage(_image_allocator.image());
+  return ProgramImage(image_allocator_.image());
 }
 
 void ImageAllocator::expand() {
-  ProgramBlock* block = new (_block_top) ProgramBlock();
-  _block_top = Utils::address_at(_block_top, TOIT_PAGE_SIZE);
-  _program->_heap._blocks.append(block);
+  ProgramBlock* block = new (block_top_) ProgramBlock();
+  block_top_ = Utils::address_at(block_top_, TOIT_PAGE_SIZE);
+  program_->heap_.blocks_.append(block);
 }
 
 HeapObject* ImageAllocator::allocate_object(TypeTag tag, int length) {
   int word_count, extra_bytes;
   allocation_size(tag, length, &word_count, &extra_bytes);
   int byte_size = _align(word_count * sizeof(word) + extra_bytes);
-  HeapObject* result = _program->_heap._blocks.last()->allocate_raw(byte_size);
+  HeapObject* result = program_->heap_.blocks_.last()->allocate_raw(byte_size);
   if (result != null) return result;
   ASSERT(byte_size < ProgramHeap::max_allocation_size());
   expand();
-  return _program->_heap._blocks.last()->allocate_raw(byte_size);
+  return program_->heap_.blocks_.last()->allocate_raw(byte_size);
 }
 
 void* ImageAllocator::allocate_external(int byte_size) {
-  void* result = _external_top;
-  _external_top = Utils::address_at(_external_top, Utils::round_up(byte_size, WORD_SIZE));
+  void* result = external_top_;
+  external_top_ = Utils::address_at(external_top_, Utils::round_up(byte_size, WORD_SIZE));
   return result;
 }
 
 SnapshotGenerator::~SnapshotGenerator() {
-  free(_buffer);
+  free(buffer_);
 }
 
 int SnapshotGenerator::large_integer_class_id() {
-  return _program->large_integer_class_id()->value();
+  return program_->large_integer_class_id()->value();
 }
 
 void SnapshotGenerator::generate(Program* program) {
@@ -956,17 +956,17 @@ void SnapshotGenerator::generate(Program* program) {
 void SnapshotGenerator::generate(int header_byte_size,
                                  std::function<void (EmittingSnapshotWriter*)> write_header,
                                  std::function<void (SnapshotWriter*)> write_object) {
-  CollectingSnapshotWriter collector(large_integer_class_id(), _program);
+  CollectingSnapshotWriter collector(large_integer_class_id(), program_);
   collector.reserve_header(header_byte_size);
   write_object(&collector);
 
-  _length = collector.length();
-  _buffer = unvoid_cast<uint8*>(malloc(_length));
-  EmittingSnapshotWriter emitter(_buffer,
-                                 _length,
+  length_ = collector.length();
+  buffer_ = unvoid_cast<uint8*>(malloc(length_));
+  EmittingSnapshotWriter emitter(buffer_,
+                                 length_,
                                  collector.back_reference_targets(),
                                  large_integer_class_id(),
-                                 _program);
+                                 program_);
   emitter.reserve_header(header_byte_size);
   write_object(&emitter);
   write_header(&emitter);
@@ -974,41 +974,41 @@ void SnapshotGenerator::generate(int header_byte_size,
   // We might have allocated too much memory, as we didn't know the size of
   //   the back references.
   if (emitter.remaining() != 0) {
-    _length = _length - emitter.remaining();
-    _buffer = unvoid_cast<uint8*>(realloc(_buffer, _length));
+    length_ = length_ - emitter.remaining();
+    buffer_ = unvoid_cast<uint8*>(realloc(buffer_, length_));
   }
 }
 
 uint8* SnapshotGenerator::take_buffer(int* length) {
-  *length = _length;
-  auto result = _buffer;
-  _buffer = null;
-  _length = 0;
+  *length = length_;
+  auto result = buffer_;
+  buffer_ = null;
+  length_ = 0;
   return result;
 }
 
 void CollectingSnapshotWriter::reserve_header(int header_byte_size) {
-  _length += header_byte_size;
+  length_ += header_byte_size;
 }
 void CollectingSnapshotWriter::write_byte(uint8 value) {
-  _length += 1;
+  length_ += 1;
 }
 void CollectingSnapshotWriter::write_bytes(uint8* data, int length) {
-  _length += length;
+  length_ += length;
 }
 
 bool CollectingSnapshotWriter::is_back_reference(uword object_key, int* back_reference_id) {
-  auto probe = _seen.find(object_key);
-  if (probe == _seen.end()) {
-    _seen.insert(object_key);
+  auto probe = seen_.find(object_key);
+  if (probe == seen_.end()) {
+    seen_.insert(object_key);
     *back_reference_id = -1;
     return false;
   }
-  _back_reference_targets.insert(object_key);
+  back_reference_targets_.insert(object_key);
   // For simplicity just return the current object count.
   // The back reference id is almost certainly lower, but this way we make sure
   //   to have enough space.
-  *back_reference_id = _seen.size();
+  *back_reference_id = seen_.size();
   return true;
 }
 
@@ -1021,23 +1021,23 @@ bool CollectingSnapshotWriter::is_back_reference_target(uword object_key) {
 
 void EmittingSnapshotWriter::reserve_header(int header_byte_size) {
   int amount = header_byte_size;
-  ASSERT(_pos + amount <= _length);
-  _pos += amount;
+  ASSERT(pos_ + amount <= length_);
+  pos_ += amount;
 }
 
 void EmittingSnapshotWriter::write_byte(uint8 value) {
-  ASSERT(_pos + 1 <= _length);
-  _buffer[_pos++] = value;
+  ASSERT(pos_ + 1 <= length_);
+  buffer_[pos_++] = value;
 }
 void EmittingSnapshotWriter::write_bytes(uint8* data, int length) {
-  ASSERT(_pos + length <= _length);
-  memcpy(&_buffer[_pos], data, length);
-  _pos += length;
+  ASSERT(pos_ + length <= length_);
+  memcpy(&buffer_[pos_], data, length);
+  pos_ += length;
 }
 
 bool EmittingSnapshotWriter::is_back_reference(uword object_key, int* back_reference_id) {
-  auto probe = _back_reference_mapping.find(object_key);
-  if (probe == _back_reference_mapping.end()) {
+  auto probe = back_reference_mapping_.find(object_key);
+  if (probe == back_reference_mapping_.end()) {
     *back_reference_id = -1;
     return false;
   }
@@ -1046,10 +1046,10 @@ bool EmittingSnapshotWriter::is_back_reference(uword object_key, int* back_refer
 }
 
 bool EmittingSnapshotWriter::is_back_reference_target(uword object_key) {
-  ASSERT(_back_reference_mapping.find(object_key) == _back_reference_mapping.end());
-  auto probe = _back_reference_targets.find(object_key);
-  if (probe == _back_reference_targets.end()) return false;
-  _back_reference_mapping.emplace(object_key, _back_reference_index++);
+  ASSERT(back_reference_mapping_.find(object_key) == back_reference_mapping_.end());
+  auto probe = back_reference_targets_.find(object_key);
+  if (probe == back_reference_targets_.end()) return false;
+  back_reference_mapping_.emplace(object_key, back_reference_index_++);
   return true;
 }
 
@@ -1084,7 +1084,7 @@ void BaseSnapshotWriter::write_integer(int64 value) {
   }
   if (!Smi::is_valid32(value)) {
     // No need to allocate any object if it's a valid 32-bit smi.
-    _allocator.allocate_integer(value);
+    allocator_.allocate_integer(value);
   }
 }
 
@@ -1093,7 +1093,7 @@ int EmittingSnapshotWriter::write_uint32_at(int byte_offset, uint32 value) {
   uint8 bytes[4];
   memcpy(&bytes, &value, sizeof(value));
   for (int i = 0; i < 4; i++) {
-    _buffer[byte_offset + i] = bytes[i];
+    buffer_[byte_offset + i] = bytes[i];
   }
   return byte_offset + UINT32_SIZE;
 }
@@ -1101,17 +1101,17 @@ int EmittingSnapshotWriter::write_uint32_at(int byte_offset, uint32 value) {
 void EmittingSnapshotWriter::write_program_snapshot_header() {
   int offset = 0;
   offset = write_uint32_at(offset, PROGRAM_SNAPSHOT_MAGIC);
-  offset = write_uint32_at(offset, _pos);
-  int block_count32 = _allocator.normal_block_count(4);
-  int block_count64 = _allocator.normal_block_count(8);
+  offset = write_uint32_at(offset, pos_);
+  int block_count32 = allocator_.normal_block_count(4);
+  int block_count64 = allocator_.normal_block_count(8);
   int encoded_block_count = (block_count32 << 16) + block_count64;
   offset = write_uint32_at(offset, encoded_block_count);
   // Use the 64-bit values for the external entries, as they have more alignment.
   // We could encode them separately, but we wouldn't win a lot.
-  offset = write_uint32_at(offset, _allocator.external_pointer_count(64));
-  offset = write_uint32_at(offset, _allocator.external_int32_count(64));
-  offset = write_uint32_at(offset, _allocator.external_byte_count(64));
-  int object_table_length = _back_reference_index;
+  offset = write_uint32_at(offset, allocator_.external_pointer_count(64));
+  offset = write_uint32_at(offset, allocator_.external_int32_count(64));
+  offset = write_uint32_at(offset, allocator_.external_byte_count(64));
+  int object_table_length = back_reference_index_;
   offset = write_uint32_at(offset, object_table_length);
   offset = write_uint32_at(offset, large_integer_class_id());
   ASSERT(offset == PROGRAM_SNAPSHOT_HEADER_BYTE_SIZE);
@@ -1161,7 +1161,7 @@ void BaseSnapshotWriter::write_external_object_table(Object** table, int length)
   for (int i = 0; i < length; i++) {
     write_object(table[i]);
   }
-  _allocator.allocate_external_pointers(length);
+  allocator_.allocate_external_pointers(length);
 }
 
 void BaseSnapshotWriter::write_external_list_int32(List<int32> list) {
@@ -1170,7 +1170,7 @@ void BaseSnapshotWriter::write_external_list_int32(List<int32> list) {
     // Use `write_int32` to make sure endianness is not an issue.
     write_int32(list[i]);
   }
-  _allocator.allocate_external_int32s(list.length());
+  allocator_.allocate_external_int32s(list.length());
 }
 
 void BaseSnapshotWriter::write_external_list_uint16(List<uint16> list) {
@@ -1179,13 +1179,13 @@ void BaseSnapshotWriter::write_external_list_uint16(List<uint16> list) {
     // Use `write_uint16` to make sure endianness is not an issue.
     write_uint16(list[i]);
   }
-  _allocator.allocate_external_uint16s(list.length());
+  allocator_.allocate_external_uint16s(list.length());
 }
 
 void BaseSnapshotWriter::write_external_list_uint8(List<uint8> list) {
   write_int32(list.length());
   write_bytes(list.data(), list.length());
-  _allocator.allocate_external_bytes(list.length());
+  allocator_.allocate_external_bytes(list.length());
 }
 
 static int optional_length(HeapObject* object, Program* program) {
@@ -1208,11 +1208,11 @@ void BaseSnapshotWriter::write_heap_object(HeapObject* object) {
   }
   bool is_target = is_back_reference_target(key);
   TypeTag tag = object->class_tag();
-  int length = optional_length(object, _program);
+  int length = optional_length(object, program_);
   write_object_header(is_target ? SnapshotTypeTag::IN_TABLE_TAG : SnapshotTypeTag::OBJECT_TAG,
                       length);
   write_byte(tag);
-  _allocator.allocate_object(tag, length);
+  allocator_.allocate_object(tag, length);
   ASSERT(is_smi(object->header()));
   write_object(object->header());
   switch (object->class_tag()) {
@@ -1229,7 +1229,7 @@ void BaseSnapshotWriter::write_heap_object(HeapObject* object) {
       // Oddballs have no body parts.
       break;
     case TypeTag::INSTANCE_TAG:
-      Instance::cast(object)->write_content(_program->instance_size_for(object), this);
+      Instance::cast(object)->write_content(program_->instance_size_for(object), this);
       break;
     case TypeTag::DOUBLE_TAG:
       Double::cast(object)->write_content(this);
@@ -1257,20 +1257,20 @@ void ProgramImage::do_pointers(PointerCallback* callback) const {
 class RelocationBits : public PointerCallback {
  public:
   RelocationBits(const ProgramImage& image)
-      : _relocation_bits(_new word[image.byte_size() / PAYLOAD_SIZE])
-  , _image(image) {
+      : relocation_bits_(_new word[image.byte_size() / PAYLOAD_SIZE])
+  , image_(image) {
     ASSERT(image.byte_size() % PAYLOAD_SIZE == 0);
-    memset(_relocation_bits, 0, WORD_SIZE * (image.byte_size() / PAYLOAD_SIZE));
+    memset(relocation_bits_, 0, WORD_SIZE * (image.byte_size() / PAYLOAD_SIZE));
   }
 
   bool get_bit_for(word* addr) {
     int word_index = word_index_for(addr);
     int bit_number = bit_number_for(addr);
-    return (_relocation_bits[word_index] >> bit_number) & 1U;
+    return (relocation_bits_[word_index] >> bit_number) & 1U;
   }
 
   word get_bits_for_payload(int n) {
-    return _relocation_bits[n];
+    return relocation_bits_[n];
   }
 
  public:
@@ -1283,8 +1283,8 @@ class RelocationBits : public PointerCallback {
     // Only make non null pointers relocatable.
     if (*p != null) {
       word* value = (word*) *p;
-      ASSERT(_image.address_inside(value) ||
-             (is_sentinel && value == _image.address()) + _image.byte_size());
+      ASSERT(image_.address_inside(value) ||
+             (is_sentinel && value == image_.address()) + image_.byte_size());
       set_bit_for(reinterpret_cast<word*>(p));
     }
   }
@@ -1292,13 +1292,13 @@ class RelocationBits : public PointerCallback {
  private:
   static const int PAYLOAD_SIZE = WORD_BIT_SIZE * WORD_SIZE;
 
-  word* _relocation_bits;
-  ProgramImage _image;
+  word* relocation_bits_;
+  ProgramImage image_;
 
   void set_bit_for(word* addr) {
     int word_index = word_index_for(addr);
     int bit_number = bit_number_for(addr);
-    _relocation_bits[word_index] |= 1UL << bit_number;
+    relocation_bits_[word_index] |= 1UL << bit_number;
     ASSERT(get_bit_for(addr));
   }
 
@@ -1313,8 +1313,8 @@ class RelocationBits : public PointerCallback {
   }
 
   word distance_to(word* addr) {
-    ASSERT(_image.address_inside(addr));
-    return Utils::address_distance(_image.begin(), addr);
+    ASSERT(image_.address_inside(addr));
+    return Utils::address_distance(image_.begin(), addr);
   }
 };
 
@@ -1326,27 +1326,26 @@ RelocationBits* ImageInputStream::build_relocation_bits(const ProgramImage& imag
 
 ImageInputStream::ImageInputStream(const ProgramImage& image,
                                    RelocationBits* relocation_bits)
-    : _image(image)
+    : image_(image)
     , relocation_bits(relocation_bits)
     , current(image.begin())
-    , index(0) {
-}
+    , index(0) {}
 
 int ImageInputStream::words_to_read() {
   ASSERT(!eos());
-  int ready_words = Utils::address_distance(current, _image.end()) / WORD_SIZE;
+  int ready_words = Utils::address_distance(current, image_.end()) / WORD_SIZE;
   return Utils::min(ImageOutputStream::CHUNK_SIZE, 1 + ready_words);
 }
 
 int ImageInputStream::read(word* buffer) {
   ASSERT(!eos());
   int pos = 1;
-  while (pos <= WORD_BIT_SIZE && (current < _image.end())) {
+  while (pos <= WORD_BIT_SIZE && (current < image_.end())) {
     word value = *current;
     if (relocation_bits->get_bit_for(current)) {
-      value = Utils::address_distance(_image.begin(), reinterpret_cast<word*>(value));
-      // Sentinels may point to `_image.end()`.
-      ASSERT(value <= (word) Utils::address_distance(_image.begin(), _image.end()));
+      value = Utils::address_distance(image_.begin(), reinterpret_cast<word*>(value));
+      // Sentinels may point to `image_.end()`.
+      ASSERT(value <= (word) Utils::address_distance(image_.begin(), image_.end()));
     }
     current = Utils::address_at(current, WORD_SIZE);
     buffer[pos++] = value;
@@ -1358,29 +1357,29 @@ int ImageInputStream::read(word* buffer) {
 #endif  // TOIT_FREERTOS
 
 ImageOutputStream::ImageOutputStream(ProgramImage image)
-    : _image(image)
-    , _current(image.begin()) {
-  memset(_program_id, 0, sizeof(_program_id));
+    : image_(image)
+    , current_(image.begin()) {
+  memset(program_id_, 0, sizeof(program_id_));
 }
 
 void ImageOutputStream::write(const word* buffer, int size, word* output) {
   ASSERT(1 < size && size <= CHUNK_SIZE);
-  if (output == null) output = _current;
+  if (output == null) output = current_;
   // The input buffer is often part of network packets with various headers,
   // so the embedded words aren't guaranteed to be word-aligned.
   word mask = Utils::read_unaligned_word(&buffer[0]);
   for (int index = 1; index < size; index++) {
     word value = Utils::read_unaligned_word(&buffer[index]);
     // Relocate value if needed with the address of the image.
-    if (mask & 1U) value += reinterpret_cast<word>(_image.begin());
+    if (mask & 1U) value += reinterpret_cast<word>(image_.begin());
     mask = mask >> 1;
     output[index - 1] = value;
-    _current++;
+    current_++;
   }
 }
 
 void ImageOutputStream::set_program_id(const uint8* id) {
-  memmove(_program_id, id, sizeof(_program_id));
+  memmove(program_id_, id, sizeof(program_id_));
 }
 
 }  // namespace toit

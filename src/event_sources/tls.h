@@ -28,14 +28,14 @@ typedef LinkedFIFO<TLSSocket, 1> TLSSocketList;
 class TLSSocket : public Resource, public TLSSocketList::Element {
  public:
   TLSSocket(ResourceGroup* resource_group)
-    : Resource(resource_group) { }
+    : Resource(resource_group) {}
 
   virtual word handshake() = 0;
 };
 
 class TLSEventSource : public LazyEventSource, public Thread {
  public:
-  static TLSEventSource* instance() { return _instance; }
+  static TLSEventSource* instance() { return instance_; }
 
   TLSEventSource();
 
@@ -45,7 +45,7 @@ class TLSEventSource : public LazyEventSource, public Thread {
 
  protected:
   friend class LazyEventSource;
-  static TLSEventSource* _instance;
+  static TLSEventSource* instance_;
 
   ~TLSEventSource();
 
@@ -55,9 +55,9 @@ class TLSEventSource : public LazyEventSource, public Thread {
  private:
   void entry() override;
 
-  ConditionVariable* _sockets_changed = null;
-  TLSSocketList _sockets;
-  bool _stop = false;
+  ConditionVariable* sockets_changed_ = null;
+  TLSSocketList sockets_;
+  bool stop_ = false;
 };
 
 } // namespace toit

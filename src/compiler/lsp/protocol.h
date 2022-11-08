@@ -69,13 +69,13 @@ struct LspWriterStdout : public LspWriter {
 
 class LspProtocolBase {
  public:
-  LspProtocolBase(LspWriter* writer) : _writer(writer) { }
+  LspProtocolBase(LspWriter* writer) : writer_(writer) {}
 
  protected:
   void print_lsp_range(const LspRange& range);
 
   void printf(const char* format, va_list& arguments) {
-    _writer->printf(format, arguments);
+    writer_->printf(format, arguments);
   }
 
   void printf(const char* format, ...) {
@@ -86,13 +86,13 @@ class LspProtocolBase {
   }
 
   void write(const uint8* data, int size) {
-    _writer->write(data, size);
+    writer_->write(data, size);
   }
 
-  LspWriter* writer() { return _writer; }
+  LspWriter* writer() { return writer_; }
 
  private:
-  LspWriter* _writer;
+  LspWriter* writer_;
 };
 
 class LspDiagnosticsProtocol : public LspProtocolBase {
@@ -171,28 +171,27 @@ class LspSemanticTokensProtocol : public LspProtocolBase {
 class LspProtocol {
  public:
   explicit LspProtocol(LspWriter* writer)
-      : _diagnostics(writer)
-      , _goto_definition(writer)
-      , _completion(writer)
-      , _summary(writer)
-      , _snapshot(writer)
-      , _semantic(writer) {
-  }
+      : diagnostics_(writer)
+      , goto_definition_(writer)
+      , completion_(writer)
+      , summary_(writer)
+      , snapshot_(writer)
+      , semantic_(writer) {}
 
-  LspDiagnosticsProtocol* diagnostics() { return &_diagnostics; }
-  LspGotoDefinitionProtocol* goto_definition() { return &_goto_definition; }
-  LspCompletionProtocol* completion() { return &_completion; }
-  LspSummaryProtocol* summary() { return &_summary; }
-  LspSnapshotProtocol* snapshot() { return &_snapshot; }
-  LspSemanticTokensProtocol* semantic() { return &_semantic; }
+  LspDiagnosticsProtocol* diagnostics() { return &diagnostics_; }
+  LspGotoDefinitionProtocol* goto_definition() { return &goto_definition_; }
+  LspCompletionProtocol* completion() { return &completion_; }
+  LspSummaryProtocol* summary() { return &summary_; }
+  LspSnapshotProtocol* snapshot() { return &snapshot_; }
+  LspSemanticTokensProtocol* semantic() { return &semantic_; }
 
  private:
-  LspDiagnosticsProtocol _diagnostics;
-  LspGotoDefinitionProtocol _goto_definition;
-  LspCompletionProtocol _completion;
-  LspSummaryProtocol _summary;
-  LspSnapshotProtocol _snapshot;
-  LspSemanticTokensProtocol _semantic;
+  LspDiagnosticsProtocol diagnostics_;
+  LspGotoDefinitionProtocol goto_definition_;
+  LspCompletionProtocol completion_;
+  LspSummaryProtocol summary_;
+  LspSnapshotProtocol snapshot_;
+  LspSemanticTokensProtocol semantic_;
 };
 
 } // namespace toit::compiler

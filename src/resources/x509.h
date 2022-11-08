@@ -27,11 +27,9 @@ class X509ResourceGroup : public ResourceGroup {
  public:
   TAG(X509ResourceGroup);
   explicit X509ResourceGroup(Process* process)
-    : ResourceGroup(process) {
-  }
+    : ResourceGroup(process) {}
 
-  ~X509ResourceGroup() {
-  }
+  ~X509ResourceGroup() {}
 
   Object* parse(Process* process, const uint8_t *encoded, size_t encoded_size);
 };
@@ -41,28 +39,28 @@ class X509Certificate : public Resource {
   TAG(X509Certificate);
 
   explicit X509Certificate(X509ResourceGroup* group) : Resource(group) {
-    mbedtls_x509_crt_init(&_cert);
+    mbedtls_x509_crt_init(&cert_);
   }
 
   ~X509Certificate() {
-    mbedtls_x509_crt_free(&_cert);
+    mbedtls_x509_crt_free(&cert_);
   }
 
   mbedtls_x509_crt* cert() {
-    return &_cert;
+    return &cert_;
   }
 
   Object* common_name_or_error(Process* process);
 
-  uint8* checksum() { return &_checksum[0]; }
+  uint8* checksum() { return &checksum_[0]; }
 
-  void reference() { _references++; }
-  bool dereference() { return --_references == 0; }
+  void reference() { references_++; }
+  bool dereference() { return --references_ == 0; }
 
  private:
-  mbedtls_x509_crt _cert;
-  uint8 _checksum[Sha256::HASH_LENGTH];
-  int _references = 1;
+  mbedtls_x509_crt cert_;
+  uint8 checksum_[Sha256::HASH_LENGTH];
+  int references_ = 1;
 };
 
 } // namespace toit

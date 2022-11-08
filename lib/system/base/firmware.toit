@@ -46,6 +46,9 @@ abstract class FirmwareServiceDefinitionBase extends ServiceDefinition implement
     if index == FirmwareService.FIRMWARE_WRITER_PAD_INDEX:
       writer ::= (resource client arguments[0]) as FirmwareWriter
       return firmware_writer_pad writer arguments[1] arguments[2]
+    if index == FirmwareService.FIRMWARE_WRITER_FLUSH_INDEX:
+      writer ::= (resource client arguments) as FirmwareWriter
+      return firmware_writer_flush writer
     if index == FirmwareService.FIRMWARE_WRITER_COMMIT_INDEX:
       writer ::= (resource client arguments[0]) as FirmwareWriter
       return firmware_writer_commit writer arguments[1]
@@ -74,10 +77,14 @@ abstract class FirmwareServiceDefinitionBase extends ServiceDefinition implement
   firmware_writer_pad writer/FirmwareWriter size/int value/int -> none:
     writer.pad size value
 
+  firmware_writer_flush writer/FirmwareWriter -> int:
+    return writer.flush
+
   firmware_writer_commit writer/FirmwareWriter checksum/ByteArray? -> none:
     writer.commit checksum
 
 interface FirmwareWriter:
   write bytes/ByteArray -> int
   pad size/int value/int -> int
+  flush -> int
   commit checksum/ByteArray? -> none

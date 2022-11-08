@@ -29,7 +29,7 @@ class LinkedListPatcher;
 template <typename T, int N = 1>
 class LinkedListElement {
  public:
-  LinkedListElement() : _next(null) {}
+  LinkedListElement() : next_(null) {}
 
   ~LinkedListElement() {
     ASSERT(is_not_linked());
@@ -39,53 +39,53 @@ class LinkedListElement {
   // For asserts, a conservative assertion that the element is not linked in a
   // list (but it might be last).
   bool is_not_linked() const {
-    return _next == null;
+    return next_ == null;
   }
 
  private:
   void clear_next() {
-    _next = null;
+    next_ = null;
   }
 
   T* container() { return static_cast<T*>(this); }
   const T* container() const { return static_cast<const T*>(this); }
 
   void append(LinkedListElement* entry) {
-    ASSERT(_next == null);
-    _next = entry;
+    ASSERT(next_ == null);
+    next_ = entry;
   }
 
   LinkedListElement* unlink_next() {
-    LinkedListElement* next = _next;
-    _next = next->_next;
-    next->_next = null;
+    LinkedListElement* next = next_;
+    next_ = next->next_;
+    next->next_ = null;
     return next;
   }
 
   void insert_after(LinkedListElement* entry) {
     // Assert the new entry is not already linked into a list.
-    ASSERT(entry->_next == null);
-    entry->_next = _next;
-    _next = entry;
+    ASSERT(entry->next_ == null);
+    entry->next_ = next_;
+    next_ = entry;
   }
 
   // Name makes sense on anchors.
   bool is_empty() const {
-    return _next == null;
+    return next_ == null;
   }
 
   // Name makes sense on individual elements.
   bool is_last() const {
-    return _next == null;
+    return next_ == null;
   }
 
-  LinkedListElement* next() const { return _next; }
+  LinkedListElement* next() const { return next_; }
 
   friend class LinkedList<T, N>;
   friend class LinkedFIFO<T, N>;
   friend class LinkedListPatcher<T>;
 
-  LinkedListElement* _next;
+  LinkedListElement* next_;
 };
 
 // These two linked_list_report_last_removed templates are a way to get the
@@ -96,8 +96,7 @@ static inline void linked_list_report_last_removed(Reporter r, Element* element)
 }
 
 template<typename Element>
-static inline void linked_list_report_last_removed(std::nullptr_t n, Element* element) {
-}
+static inline void linked_list_report_last_removed(std::nullptr_t n, Element* element) {}
 
 // Singly linked list container that does not take ownership or attempt to
 // allocate/deallocate.
@@ -121,69 +120,69 @@ class LinkedList {
   class Iterator {
    public:
     explicit Iterator(LinkedListElement<T, N>* entry)
-        : _entry(entry) {}
+        : entry_(entry) {}
 
     T* operator->() {
-      return _entry->container();
+      return entry_->container();
     }
 
     T* operator*() {
-      return _entry->container();
+      return entry_->container();
     }
 
     bool operator==(const Iterator&other) const {
-      return _entry == other._entry;
+      return entry_ == other.entry_;
     }
 
     bool operator!=(const Iterator&other) const {
-      return _entry != other._entry;
+      return entry_ != other.entry_;
     }
 
     Iterator& operator++() {
-      _entry = _entry->next();
+      entry_ = entry_->next();
       return *this;
     }
 
    private:
     friend class LinkedList;
 
-    LinkedListElement<T, N>* _entry;
+    LinkedListElement<T, N>* entry_;
   };
 
   class ConstIterator {
    public:
     explicit ConstIterator(const LinkedListElement<T, N>* entry)
-        : _entry(entry) {}
+        : entry_(entry) {}
 
     const T* operator->() {
-      return _entry->container();
+      return entry_->container();
     }
 
     const T* operator*() {
-      return _entry->container();
+      return entry_->container();
     }
 
     bool operator==(const ConstIterator&other) const {
-      return _entry == other._entry;
+      return entry_ == other.entry_;
     }
 
     bool operator!=(const ConstIterator&other) const {
-      return _entry != other._entry;
+      return entry_ != other.entry_;
     }
 
     ConstIterator& operator++() {
-      _entry = _entry->next();
+      entry_ = entry_->next();
       return *this;
     }
 
    private:
     friend class LinkedList;
 
-    const LinkedListElement<T, N>* _entry;
+    const LinkedListElement<T, N>* entry_;
   };
 
   inline void prepend(T* a) {
-    _anchor.insert_after(convert(a));
+    anchor_.insert_after(convert(a));
   }
 
   // Inserts before the element where predictate(T*) first returns true.
@@ -191,7 +190,7 @@ class LinkedList {
   // not it was appended.
   template <typename Predicate>
   inline bool insert_before(T* element, Predicate predicate) {
-    auto prev = &_anchor;
+    auto prev = &anchor_;
     for (auto it : *this) {
       if (predicate(it)) {
         prev->insert_after(element);
@@ -203,16 +202,16 @@ class LinkedList {
     return true;
   }
 
-  inline bool is_empty() const { return _anchor.is_empty(); }
+  inline bool is_empty() const { return anchor_.is_empty(); }
 
   inline T* first() const {
     if (is_empty()) return null;
-    return _anchor.next()->container();
+    return anchor_.next()->container();
   }
 
   inline T* remove_first() {
     if (is_empty()) return null;
-    return _anchor.unlink_next()->container();
+    return anchor_.unlink_next()->container();
   }
 
   T* remove(T* entry) {
@@ -237,8 +236,8 @@ class LinkedList {
     return remove_helper(predicate, null, false);
   }
 
-  Iterator begin() { return Iterator(_anchor.next()); }
-  ConstIterator begin() const { return ConstIterator(_anchor.next()); }
+  Iterator begin() { return Iterator(anchor_.next()); }
+  ConstIterator begin() const { return ConstIterator(anchor_.next()); }
 
   Iterator end() { return Iterator(null); }
   ConstIterator end() const { return ConstIterator(null); }
@@ -246,8 +245,8 @@ class LinkedList {
  protected:
   template <typename Predicate, typename RemovalReporter>
   inline T* remove_helper(Predicate predicate, RemovalReporter reporter, bool predicate_can_delete) {
-    auto prev = &_anchor;
-    for (auto current = _anchor.next(); current != null; ) {
+    auto prev = &anchor_;
+    for (auto current = anchor_.next(); current != null; ) {
       auto next = current->next();
       // The element is not in the list during the predicate call, since the
       // predicate may delete it or put it in a different list.
@@ -259,19 +258,19 @@ class LinkedList {
         if (next == null) {
           linked_list_report_last_removed(reporter, prev);
         }
-        prev->_next = next;
+        prev->next_ = next;
         if (!predicate_can_delete) {
           current->clear_next();
           return current->container();
         }
       } else {
-        // Predicate asked to keep the element - we must restore the _next pointer.
+        // Predicate asked to keep the element - we must restore the next_ pointer.
         if (predicate_can_delete) {
-          current->_next = next;
+          current->next_ = next;
         } else {
           // The predicate of the remove method should not delete its argument
           // or put it in a different list.
-          ASSERT(current->_next == next);
+          ASSERT(current->next_ == next);
         }
         prev = current;
       }
@@ -281,7 +280,7 @@ class LinkedList {
   }
 
  protected:
-  Element _anchor;
+  Element anchor_;
 
   Element* convert(T* entry) {
     return static_cast<Element*>(entry);
@@ -307,13 +306,13 @@ class LinkedList {
 template <typename T, int N = 1>
 class LinkedFIFO : public LinkedList<T, N> {
  public:
-  LinkedFIFO<T, N>() : _tail(&this->_anchor) {}
+  LinkedFIFO<T, N>() : tail_(&this->anchor_) {}
 
   typedef LinkedList<T, N> Super;
   typedef typename Super::Element Element;
 
   inline void prepend(T* a) {
-    if (this->is_empty()) _tail = a;
+    if (this->is_empty()) tail_ = a;
     Super::prepend(a);
   }
 
@@ -323,25 +322,25 @@ class LinkedFIFO : public LinkedList<T, N> {
   template <typename Predicate>
   inline bool insert_before(T* element, Predicate predicate) {
     bool appended = Super::insert_before(element, predicate);
-    if (appended) _tail = element;
+    if (appended) tail_ = element;
     return appended;
   }
 
   inline T* remove_first() {
     T* result = Super::remove_first();
-    if (this->is_empty()) _tail = &this->_anchor;
+    if (this->is_empty()) tail_ = &this->anchor_;
     return result;
   }
 
   inline T* last() const {
     if (this->is_empty()) return null;
-    return _tail->container();
+    return tail_->container();
   }
 
   T* remove(T* entry) {
     return Super::remove_helper(
         [&entry](T* e) -> bool { return e == entry; },          // Find element that matches.
-        [this](Element* pred) { _tail = pred; },  // Update _tail if last element is removed.
+        [this](Element* pred) { tail_ = pred; },  // Update tail_ if last element is removed.
         false);
   }
 
@@ -351,7 +350,7 @@ class LinkedFIFO : public LinkedList<T, N> {
   void remove_wherever(Predicate predicate) {
     Super::remove_helper(
         predicate,
-        [this](Element* pred) { _tail = pred; },  // Update _tail if last element is removed.
+        [this](Element* pred) { tail_ = pred; },  // Update tail_ if last element is removed.
         true);
   }
 
@@ -360,105 +359,105 @@ class LinkedFIFO : public LinkedList<T, N> {
   inline T* remove_where(Predicate predicate) {
     return Super::remove_helper(
         predicate,
-        [this](Element* pred) { _tail = pred; },  // Update _tail if last element is removed.
+        [this](Element* pred) { tail_ = pred; },  // Update tail_ if last element is removed.
         false);
   }
 
   void append(T* entry) {
-    if (!_tail) {
+    if (!tail_) {
       prepend(entry);
     } else {
-      _tail->insert_after(entry);
-      _tail = entry;
+      tail_->insert_after(entry);
+      tail_ = entry;
     }
   }
 
  private:
   // For use when appending, this either points to the anchor (for empty lists)
   // or to the last element in the list
-  Element* _tail;
+  Element* tail_;
 
   friend class LinkedListPatcher<T>;
 };
 
-// This is a somewhat nasty class that allows you raw access to the _next field
+// This is a somewhat nasty class that allows you raw access to the next_ field
 // of a linked list element.
 template <typename T>
 class LinkedListPatcher {
  public:
   explicit LinkedListPatcher(typename LinkedList<T>::Element& element)
-    : _next(&element._next)
-    , _tail(null) {}
+    : next_(&element.next_)
+    , tail_(null) {}
 
   explicit LinkedListPatcher(LinkedList<T>& list)
-    : _next(&list._anchor._next)
-    , _tail(null) {}
+    : next_(&list.anchor_.next_)
+    , tail_(null) {}
 
   explicit LinkedListPatcher(LinkedFIFO<T>& list)
-    : _next(&list._anchor._next)
-    , _tail(&list._tail) {}
+    : next_(&list.anchor_.next_)
+    , tail_(&list.tail_) {}
 
-  typename LinkedList<T>::Element* next() const { return *_next; }
-  typename LinkedList<T>::Element* tail() const { return *_tail; }
+  typename LinkedList<T>::Element* next() const { return *next_; }
+  typename LinkedList<T>::Element* tail() const { return *tail_; }
 
-  void set_next(typename LinkedList<T>::Element* value) { *_next = value; }
-  void set_tail(typename LinkedList<T>::Element* value) { *_tail = value; }
+  void set_next(typename LinkedList<T>::Element* value) { *next_ = value; }
+  void set_tail(typename LinkedList<T>::Element* value) { *tail_ = value; }
 
-  typename LinkedList<T>::Element** next_cell() const { return _next; }
-  typename LinkedList<T>::Element** tail_cell() const { return _tail; }
+  typename LinkedList<T>::Element** next_cell() const { return next_; }
+  typename LinkedList<T>::Element** tail_cell() const { return tail_; }
 
  private:
-  typename LinkedList<T>::Element** _next;
-  typename LinkedList<T>::Element** _tail;
+  typename LinkedList<T>::Element** next_;
+  typename LinkedList<T>::Element** tail_;
 };
 
 template <typename T, int N = 1>
 class DoubleLinkedListElement {
  public:
-  DoubleLinkedListElement() : _next(this), _prev(this) {}
+  DoubleLinkedListElement() : next_(this), prev_(this) {}
 
   ~DoubleLinkedListElement() {}
 
   // Copy constructor:
   DoubleLinkedListElement& operator=(DoubleLinkedListElement&& other) {
-    ASSERT(_next == this);
-    ASSERT(_prev == this);
-    if (other._next != &other) {
-      _next = other._next;
-      _next->_prev = this;
-      _prev = other._prev;
-      _prev->_next = this;
+    ASSERT(next_ == this);
+    ASSERT(prev_ == this);
+    if (other.next_ != &other) {
+      next_ = other.next_;
+      next_->prev_ = this;
+      prev_ = other.prev_;
+      prev_->next_ = this;
     }
-    other._next = &other;
-    other._prev = &other;
+    other.next_ = &other;
+    other.prev_ = &other;
     return *this;
   }
 
   // Move constructor:
-  DoubleLinkedListElement(DoubleLinkedListElement&& other) : _next(this), _prev(this) {
-    if (other._next != &other) {
-      _next = other._next;
-      _next->_prev = this;
-      _prev = other._prev;
-      _prev->_next = this;
+  DoubleLinkedListElement(DoubleLinkedListElement&& other) : next_(this), prev_(this) {
+    if (other.next_ != &other) {
+      next_ = other.next_;
+      next_->prev_ = this;
+      prev_ = other.prev_;
+      prev_->next_ = this;
     }
-    other._next = &other;
-    other._prev = &other;
+    other.next_ = &other;
+    other.prev_ = &other;
   }
 
   bool is_not_linked() const {
-    return _next == this;
+    return next_ == this;
   }
 
  protected:
   DoubleLinkedListElement* unlink() {
     ASSERT(is_linked());
-    DoubleLinkedListElement* next = _next;
-    DoubleLinkedListElement* prev = _prev;
-    next->_prev = prev;
-    prev->_next = next;
-    _next = this;
-    _prev = this;
+    DoubleLinkedListElement* next = next_;
+    DoubleLinkedListElement* prev = prev_;
+    next->prev_ = prev;
+    prev->next_ = next;
+    next_ = this;
+    prev_ = this;
     return this;
   }
 
@@ -467,44 +466,44 @@ class DoubleLinkedListElement {
   const T* container() const { return static_cast<const T*>(this); }
 
   void insert_after(DoubleLinkedListElement* entry) {
-    ASSERT(entry->_next == entry);
-    ASSERT(entry->_prev == entry);
-    DoubleLinkedListElement* old_next = _next;
-    _next = entry;
-    entry->_next = old_next;
-    old_next->_prev = entry;
-    entry->_prev = this;
+    ASSERT(entry->next_ == entry);
+    ASSERT(entry->prev_ == entry);
+    DoubleLinkedListElement* old_next = next_;
+    next_ = entry;
+    entry->next_ = old_next;
+    old_next->prev_ = entry;
+    entry->prev_ = this;
   }
 
   void insert_before(DoubleLinkedListElement* entry) {
-    _prev->insert_after(entry);
+    prev_->insert_after(entry);
   }
 
   DoubleLinkedListElement* unlink_next() {
-    return _next->unlink();
+    return next_->unlink();
   }
 
   DoubleLinkedListElement* unlink_prev() {
-    return _prev->unlink();
+    return prev_->unlink();
   }
 
   // Name makes sense on anchors.
   bool is_empty() const {
-    return _next == this;
+    return next_ == this;
   }
 
   // Name makes sense on non-anchor elements.
   bool is_linked() const {
-    return _next != this;
+    return next_ != this;
   }
 
-  DoubleLinkedListElement* next() const { return _next; }
-  DoubleLinkedListElement* prev() const { return _prev; }
+  DoubleLinkedListElement* next() const { return next_; }
+  DoubleLinkedListElement* prev() const { return prev_; }
 
   friend class DoubleLinkedList<T, N>;
 
-  DoubleLinkedListElement* _next;
-  DoubleLinkedListElement* _prev;
+  DoubleLinkedListElement* next_;
+  DoubleLinkedListElement* prev_;
 };
 
 // Doubly linked list container that does not take ownership or attempt to
@@ -529,75 +528,75 @@ class DoubleLinkedList {
   class Iterator {
    public:
     explicit Iterator(Element* entry)
-        : _entry(entry) {}
+        : entry_(entry) {}
 
     T* operator->() {
-      return _entry->container();
+      return entry_->container();
     }
 
     T* operator*() {
-      return _entry->container();
+      return entry_->container();
     }
 
     bool operator==(const Iterator&other) const {
-      return _entry == other._entry;
+      return entry_ == other.entry_;
     }
 
     bool operator!=(const Iterator&other) const {
-      return _entry != other._entry;
+      return entry_ != other.entry_;
     }
 
     Iterator& operator++() {
-      _entry = _entry->next();
+      entry_ = entry_->next();
       return *this;
     }
 
     Iterator& operator--() {
-      _entry = _entry->prev();
+      entry_ = entry_->prev();
       return *this;
     }
 
    private:
     friend class DoubleLinkedList;
 
-    Element* _entry;
+    Element* entry_;
   };
 
   class ConstIterator {
    public:
     explicit ConstIterator(const Element* entry)
-        : _entry(entry) {}
+        : entry_(entry) {}
 
     const T* operator->() {
-      return _entry->container();
+      return entry_->container();
     }
 
     const T* operator*() {
-      return _entry->container();
+      return entry_->container();
     }
 
     bool operator==(const ConstIterator& other) const {
-      return _entry == other._entry;
+      return entry_ == other.entry_;
     }
 
     bool operator!=(const ConstIterator& other) const {
-      return _entry != other._entry;
+      return entry_ != other.entry_;
     }
 
     ConstIterator& operator++() {
-      _entry = _entry->next();
+      entry_ = entry_->next();
       return *this;
     }
 
     ConstIterator& operator--() {
-      _entry = _entry->prev();
+      entry_ = entry_->prev();
       return *this;
     }
 
    private:
     friend class DoubleLinkedList;
 
-    const Element* _entry;
+    const Element* entry_;
   };
 
   // Inserts before the element where predicate(T*) first returns true.
@@ -616,14 +615,14 @@ class DoubleLinkedList {
   }
 
   inline void prepend(T* a) {
-    _anchor.insert_after(convert(a));
+    anchor_.insert_after(convert(a));
   }
 
   inline void append(T* a) {
-    _anchor.insert_before(convert(a));
+    anchor_.insert_before(convert(a));
   }
 
-  inline bool is_empty() const { return _anchor.is_empty(); }
+  inline bool is_empty() const { return anchor_.is_empty(); }
 
   inline bool is_linked(Element* a) const {
     return !a->is_not_linked();
@@ -639,7 +638,7 @@ class DoubleLinkedList {
   // false the element is reinserted in the position it came from.
   template <typename Predicate>
   inline void remove_wherever(Predicate predicate) {
-    for (auto current = _anchor.next(); current != &_anchor; ) {
+    for (auto current = anchor_.next(); current != &anchor_; ) {
       auto next = current->next();
       // The element is not in the list during the predicate call, since the
       // predicate may delete it or put it in a different list.
@@ -658,7 +657,7 @@ class DoubleLinkedList {
   // predicate returns true the element is removed from the list and deleted.
   template <typename Predicate>
   inline void delete_wherever(Predicate predicate) {
-    for (auto current = _anchor.next(); current != &_anchor; ) {
+    for (auto current = anchor_.next(); current != &anchor_; ) {
       if (predicate(current->container())) {
         auto next = current->next();
         unlink(current);
@@ -672,32 +671,32 @@ class DoubleLinkedList {
 
   inline T* first() const {
     if (is_empty()) return null;
-    return _anchor.next()->container();
+    return anchor_.next()->container();
   }
 
   inline T* last() const {
     if (is_empty()) return null;
-    return _anchor.prev()->container();
+    return anchor_.prev()->container();
   }
 
   inline T* remove_first() {
     if (is_empty()) return null;
-    return _anchor.next()->unlink()->container();
+    return anchor_.next()->unlink()->container();
   }
 
   inline T* remove_last() {
     if (is_empty()) return null;
-    return _anchor.prev()->unlink()->container();
+    return anchor_.prev()->unlink()->container();
   }
 
-  Iterator begin() { return Iterator(_anchor.next()); }
-  ConstIterator begin() const { return ConstIterator(_anchor.next()); }
+  Iterator begin() { return Iterator(anchor_.next()); }
+  ConstIterator begin() const { return ConstIterator(anchor_.next()); }
 
-  Iterator end() { return Iterator(&_anchor); }
-  ConstIterator end() const { return ConstIterator(&_anchor); }
+  Iterator end() { return Iterator(&anchor_); }
+  ConstIterator end() const { return ConstIterator(&anchor_); }
 
  protected:
-  Element _anchor;
+  Element anchor_;
 
   Element* convert(T* entry) {
     return static_cast<Element*>(entry);

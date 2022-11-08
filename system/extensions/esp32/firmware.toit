@@ -55,7 +55,11 @@ class FirmwareServiceDefinition extends FirmwareServiceDefinitionBase:
     return config_.get key
 
   content -> ByteArray?:
-    // TODO(kasper): Implement this.
+    // We deliberately return null here to let the caller know that
+    // it should try to use the firmware content provided by the
+    // underlying system (if any). On the ESP32, the system will
+    // use this to give access to the content of the currently
+    // running OTA partition.
     return null
 
   firmware_writer_open client/int from/int to/int -> FirmwareWriter:
@@ -67,7 +71,10 @@ The $FirmwareWriter_ uses the OTA support of the ESP32 to let you
   you must reboot (use deep_sleep) for the update to take effect.
 */
 class FirmwareWriter_ extends ServiceResource implements FirmwareWriter:
-  buffer_/ByteArray? := ByteArray 4096
+  static REQUIRED_WRITE_ALIGNMENT ::= 16
+  static PAGE_SIZE ::= 4096
+
+  buffer_/ByteArray? := ByteArray PAGE_SIZE
   fullness_/int := 0
   written_/int := ?
 
@@ -77,27 +84,38 @@ class FirmwareWriter_ extends ServiceResource implements FirmwareWriter:
     super service client
 
   write bytes/ByteArray -> int:
-    return List.chunk_up 0 bytes.size (buffer_.size - fullness_) buffer_.size: | from to chunk |
-      buffer_.replace fullness_ bytes from to
-      fullness_ += chunk
-      if fullness_ == buffer_.size:
-        written_ = ota_write_ buffer_
-        fullness_ = 0
+    return write_ bytes.size: | index from to |
+      buffer_.replace index bytes from to
 
   pad size/int value/int -> int:
-    return List.chunk_up 0 size (buffer_.size - fullness_) buffer_.size: | from to chunk |
-      end := fullness_ + chunk
-      buffer_.fill --from=fullness_ --to=end value
-      fullness_ = end
-      if fullness_ == buffer_.size:
-        written_ = ota_write_ buffer_
-        fullness_ = 0
+    return write_ size: | index from to |
+      buffer_.fill --from=index --to=(index + to - from) value
+
+  write_ size [block] -> int:
+    // We try to write just enough to get back to writing full pages
+    // after an early flush. We do this by computing the fullness level
+    // at which we want to flush. If we're already page aligned, we will
+    // flush after writing another page.
+    fullness_flush := (round_up (written_ + 1) PAGE_SIZE) - written_
+    return List.chunk_up 0 size (fullness_flush - fullness_) PAGE_SIZE: | from to |
+      block.call fullness_ from to
+      fullness_ += to - from
+      if fullness_ == fullness_flush:
+        unflushed := flush
+        assert: unflushed == 0
+        fullness_flush = PAGE_SIZE
+
+  flush -> int:
+    flushable := round_down fullness_ REQUIRED_WRITE_ALIGNMENT
+    if flushable == 0: return 0
+    written_ = ota_write_ buffer_[..flushable]
+    buffer_.replace 0 buffer_ flushable fullness_
+    fullness_ -= flushable
+    return fullness_
 
   commit checksum/ByteArray? -> none:
-    if fullness_ != 0:
-      written_ = ota_write_ buffer_[..fullness_]
-      fullness_ = 0
     // Always commit. Always.
+    flush
     ota_end_ written_ checksum
     buffer_ = null
 

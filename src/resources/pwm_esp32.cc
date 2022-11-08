@@ -69,13 +69,12 @@ class PWMResource : public Resource {
   TAG(PWMResource);
   PWMResource(ResourceGroup* group, ledc_channel_t channel)
     : Resource(group)
-    , _channel(channel) {
-  }
+    , channel_(channel) {}
 
-  ledc_channel_t channel() { return _channel; }
+  ledc_channel_t channel() { return channel_; }
 
  private:
-  ledc_channel_t _channel;
+  ledc_channel_t channel_;
 };
 
 class PWMResourceGroup : public ResourceGroup {
@@ -83,16 +82,16 @@ class PWMResourceGroup : public ResourceGroup {
   TAG(PWMResourceGroup);
   PWMResourceGroup(Process* process, ledc_timer_t timer, uint32 max_value)
      : ResourceGroup(process)
-     , _timer(timer)
-     , _max_value(max_value) {}
+     , timer_(timer)
+     , max_value_(max_value) {}
 
   ~PWMResourceGroup() {
-    ledc_timer_rst(SPEED_MODE, _timer);
-    ledc_timers.put(_timer);
+    ledc_timer_rst(SPEED_MODE, timer_);
+    ledc_timers.put(timer_);
   }
 
-  ledc_timer_t timer() { return _timer; }
-  uint32 max_value() { return _max_value; }
+  ledc_timer_t timer() { return timer_; }
+  uint32 max_value() { return max_value_; }
 
  protected:
   virtual void on_unregister_resource(Resource* r) {
@@ -102,8 +101,8 @@ class PWMResourceGroup : public ResourceGroup {
   }
 
  private:
-  ledc_timer_t _timer;
-  uint32 _max_value;
+  ledc_timer_t timer_;
+  uint32 max_value_;
 };
 
 uint32 msb(uint32 n){

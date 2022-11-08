@@ -67,11 +67,11 @@ class CallShape {
  public:
   // A simple shape for static functions calls.
   explicit CallShape(int arity, int block_count = 0)
-      : _arity(arity)
-      , _total_block_count(block_count)
-      , _names(List<Symbol>())
-      , _named_block_count(0)
-      , _is_setter(false) { }
+      : arity_(arity)
+      , total_block_count_(block_count)
+      , names_(List<Symbol>())
+      , named_block_count_(0)
+      , is_setter_(false) {}
 
   /// Creates a call shape.
   ///
@@ -82,26 +82,26 @@ class CallShape {
   ///            The names must be sorted alphabetically section-wise for non-block and block arguments.
   CallShape(int arity, int total_block_count, List<Symbol> names, int named_block_count,
     bool is_setter)
-      : _arity(arity)
-      , _total_block_count(total_block_count)
-      , _names(names)
-      , _named_block_count(named_block_count)
-      , _is_setter(is_setter) {
+      : arity_(arity)
+      , total_block_count_(total_block_count)
+      , names_(names)
+      , named_block_count_(named_block_count)
+      , is_setter_(is_setter) {
     ASSERT(_names_are_sorted());
   }
 
   static CallShape invalid() { return CallShape(-1); }
 
-  bool is_valid() const { return _arity >= 0; }
-  bool is_setter() const { return _is_setter; }
+  bool is_valid() const { return arity_ >= 0; }
+  bool is_setter() const { return is_setter_; }
 
   /// The arity of the method/call.
   /// Includes blocks, implicit `this` (where given), and named arguments.
-  int arity() const { return _arity; }
+  int arity() const { return arity_; }
 
   /// The total number of arguments that are blocks.
   int total_block_count() const {
-    return _total_block_count;
+    return total_block_count_;
   }
 
   /// The number of unnamed non-block arguments.
@@ -109,25 +109,25 @@ class CallShape {
     return arity() - names().length() - unnamed_block_count();
   }
   int unnamed_block_count() const {
-    return _total_block_count - _named_block_count;
+    return total_block_count_ - named_block_count_;
   }
   /// The number of arguments that are named *and* are blocks.
   int named_block_count() const {
-    return _named_block_count;
+    return named_block_count_;
   }
   /// The number of arguments that are named *and* are blocks.
   int named_non_block_count() const {
-    return _names.length() - _named_block_count;
+    return names_.length() - named_block_count_;
   }
 
   /// Whether argument [i] is a block.
   bool is_block(int i) const {
-    int unnamed_args_count = _arity - _names.length();
-    int unnamed_block_count = _total_block_count - _named_block_count;
+    int unnamed_args_count = arity_ - names_.length();
+    int unnamed_block_count = total_block_count_ - named_block_count_;
     int unnamed_non_blocks = unnamed_args_count - unnamed_block_count;
     if (i < unnamed_non_blocks) return false;
     if (i < unnamed_args_count) return true;
-    return i >= _arity - _named_block_count;
+    return i >= arity_ - named_block_count_;
   }
 
   // The names of the arguments.
@@ -137,26 +137,26 @@ class CallShape {
   // The last `named_block_count` named arguments are blocks.
   // Names are sorted alphabetically in two sections. The non-block arguments first,
   // then the block arguments.
-  List<Symbol> names() const { return _names; }
+  List<Symbol> names() const { return names_; }
 
   /// Returns the name of argument [i].
   ///
   /// Returns Symbol::invalid() if the argument is not named.
   Symbol name_for(int i) const {
-    int unnamed_args_count = _arity - _names.length();
+    int unnamed_args_count = arity_ - names_.length();
     if (i < unnamed_args_count) return Symbol::invalid();
-    return _names[i - unnamed_args_count];
+    return names_[i - unnamed_args_count];
   }
-  bool has_named_arguments() const { return _names.length() > 0; }
+  bool has_named_arguments() const { return names_.length() > 0; }
 
   bool operator==(const CallShape& other) const {
     if (is_setter() == other.is_setter()
         && arity() == other.arity()
-        && _total_block_count == other._total_block_count
-        && _named_block_count == other._named_block_count
-        && _names.length() == other._names.length()) {
-      for (int i = 0; i < _names.length(); i++) {
-        if (_names[i] != other._names[i]) return false;
+        && total_block_count_ == other.total_block_count_
+        && named_block_count_ == other.named_block_count_
+        && names_.length() == other.names_.length()) {
+      for (int i = 0; i < names_.length(); i++) {
+        if (names_[i] != other.names_[i]) return false;
       }
       return true;
     }
@@ -175,11 +175,11 @@ class CallShape {
   static CallShape for_instance_getter() { return CallShape(1, 0, List<Symbol>(), 0, false); }
 
   CallShape with_implicit_this() const {
-    return CallShape(_arity + 1, _total_block_count, _names, _named_block_count, _is_setter);
+    return CallShape(arity_ + 1, total_block_count_, names_, named_block_count_, is_setter_);
   }
   CallShape without_implicit_this() const {
     ASSERT(unnamed_non_block_count() > 0);
-    return CallShape(_arity - 1, _total_block_count, _names, _named_block_count, _is_setter);
+    return CallShape(arity_ - 1, total_block_count_, names_, named_block_count_, is_setter_);
   }
 
   /// This shape where all optional arguments are given.
@@ -213,19 +213,19 @@ class CallShape {
   }
 
  private:
-  int _arity;
-  int _total_block_count;
-  List<Symbol> _names;
-  int _named_block_count;
-  bool _is_setter;
+  int arity_;
+  int total_block_count_;
+  List<Symbol> names_;
+  int named_block_count_;
+  bool is_setter_;
 
   bool _names_are_sorted() {
     // The names are sorted in two sections: non-blocks and blocks.
     for (int j = 0; j < 2; j++) {
-      int start = (j == 0) ? 0 : (_names.length() - _named_block_count);
-      int end = (j == 0) ? (_names.length() - _named_block_count) : _names.length();
+      int start = (j == 0) ? 0 : (names_.length() - named_block_count_);
+      int end = (j == 0) ? (names_.length() - named_block_count_) : names_.length();
       for (int i = start + 1; i < end; i++) {
-        if (strcmp(_names[i - 1].c_str(), _names[i].c_str()) > 0) return false;
+        if (strcmp(names_[i - 1].c_str(), names_[i].c_str()) > 0) return false;
       }
     }
     return true;
@@ -242,102 +242,102 @@ class CallShape {
 /// just a wrapper around the CallShape counterpart).
 class PlainShape {
  public:
-  explicit PlainShape(const CallShape& shape) : _call_shape(shape) {}
+  explicit PlainShape(const CallShape& shape) : call_shape_(shape) {}
 
-  bool operator==(const PlainShape& other) const { return _call_shape == other._call_shape; }
+  bool operator==(const PlainShape& other) const { return call_shape_ == other.call_shape_; }
   bool operator!=(const PlainShape& other) const { return !(*this == other); }
 
   static PlainShape invalid() { return PlainShape(CallShape::invalid()); }
-  bool is_valid() const { return _call_shape.is_valid(); }
+  bool is_valid() const { return call_shape_.is_valid(); }
   /// Whether the method was marked as setter. This does not imply that the
   ///   the method takes the correct number of arguments.
-  bool is_setter() const { return _call_shape.is_setter(); }
+  bool is_setter() const { return call_shape_.is_setter(); }
 
-  int arity() const { return _call_shape.arity(); }
-  int total_block_count() const { return _call_shape.total_block_count(); }
-  int named_block_count() const { return _call_shape.named_block_count(); }
-  int unnamed_block_count() const { return _call_shape.unnamed_block_count(); }
-  List<Symbol> names() const { return _call_shape.names(); }
+  int arity() const { return call_shape_.arity(); }
+  int total_block_count() const { return call_shape_.total_block_count(); }
+  int named_block_count() const { return call_shape_.named_block_count(); }
+  int unnamed_block_count() const { return call_shape_.unnamed_block_count(); }
+  List<Symbol> names() const { return call_shape_.names(); }
 
-  CallShape to_equivalent_call_shape() const { return _call_shape; }
+  CallShape to_equivalent_call_shape() const { return call_shape_; }
 
   size_t hash() const {
-    return _call_shape.hash();
+    return call_shape_.hash();
   }
 
   bool less(const PlainShape& other) const {
-    return _call_shape.less(other._call_shape);
+    return call_shape_.less(other.call_shape_);
   }
 
  private:
-  CallShape _call_shape;
+  CallShape call_shape_;
 };
 
 class ResolutionShape {
  public:
   // A simple shape for static functions.
   explicit ResolutionShape(int arity)
-      : _call_shape(arity, 0, List<Symbol>(), 0, false)
-      , _optional_unnamed(0)
-      , _optional_names(std::vector<bool>()) { }
+      : call_shape_(arity, 0, List<Symbol>(), 0, false)
+      , optional_unnamed_(0)
+      , optional_names_(std::vector<bool>()) {}
 
   static ResolutionShape invalid() { return ResolutionShape(-1); }
-  bool is_valid() const { return _call_shape.is_valid(); }
+  bool is_valid() const { return call_shape_.is_valid(); }
   /// Whether the method was marked as setter. This does not imply that the
   ///   the method takes the correct number of arguments.
-  bool is_setter() const { return _call_shape.is_setter(); }
+  bool is_setter() const { return call_shape_.is_setter(); }
 
   /// The maximum arity of the function.
   ///
   /// This number includes `this` (if applicable), all named, and optional
   /// parameters (including the ones with default-values).
-  int max_arity() const { return _call_shape.arity(); }
+  int max_arity() const { return call_shape_.arity(); }
 
-  int total_block_count() const { return _call_shape.total_block_count(); }
+  int total_block_count() const { return call_shape_.total_block_count(); }
 
   /// The minimal number of unnamed non-block arguments.
   int min_unnamed_non_block() const {
-    return _call_shape.unnamed_non_block_count() - _optional_unnamed;
+    return call_shape_.unnamed_non_block_count() - optional_unnamed_;
   }
   /// The maximal number of *unnamed* non-block arguments.
   int max_unnamed_non_block() const {
-    return _call_shape.unnamed_non_block_count();
+    return call_shape_.unnamed_non_block_count();
   }
 
   // The number of *unnamed* block arguments.
-  int unnamed_block_count() const { return _call_shape.unnamed_block_count(); }
+  int unnamed_block_count() const { return call_shape_.unnamed_block_count(); }
 
   /// The names of all parameters.
   ///
   /// Some of these might be optional. See [optional_names] to see which ones.
-  List<Symbol> names() const { return _call_shape.names(); }
+  List<Symbol> names() const { return call_shape_.names(); }
 
   /// The number of blocks among the names. These are last in the [names] list.
-  int named_non_block_count() const { return _call_shape.names().length(); }
+  int named_non_block_count() const { return call_shape_.names().length(); }
 
   /// The number of blocks among the names. These are last in the [names] list.
-  int named_block_count() const { return _call_shape.named_block_count(); }
+  int named_block_count() const { return call_shape_.named_block_count(); }
 
   /// A bit-vector, encoding which names are optional (and thus
   /// have a default value.
   ///
   std::vector<bool> optional_names() const {
-    return _optional_names;
+    return optional_names_;
   }
 
   bool has_optional_parameters() const {
     if (is_setter()) return false;
-    if (_optional_unnamed != 0) return true;
-    for (size_t i = 0; i < _optional_names.size(); i++) {
-      if (_optional_names[i]) return true;
+    if (optional_unnamed_ != 0) return true;
+    for (size_t i = 0; i < optional_names_.size(); i++) {
+      if (optional_names_[i]) return true;
     }
     return false;
   }
 
   bool operator==(const ResolutionShape& other) const {
-    return _call_shape == other._call_shape &&
-       _optional_unnamed == other._optional_unnamed &&
-       _optional_names == other._optional_names;
+    return call_shape_ == other.call_shape_ &&
+       optional_unnamed_ == other.optional_unnamed_ &&
+       optional_names_ == other.optional_names_;
   }
 
   bool operator!=(const ResolutionShape& other) const {
@@ -352,14 +352,14 @@ class ResolutionShape {
 
   }
   ResolutionShape with_implicit_this() const {
-    return ResolutionShape(_call_shape.with_implicit_this(),
-                           _optional_unnamed,
-                           _optional_names);
+    return ResolutionShape(call_shape_.with_implicit_this(),
+                           optional_unnamed_,
+                           optional_names_);
   }
   ResolutionShape without_implicit_this() const {
-    return ResolutionShape(_call_shape.without_implicit_this(),
-                           _optional_unnamed,
-                           _optional_names);
+    return ResolutionShape(call_shape_.without_implicit_this(),
+                           optional_unnamed_,
+                           optional_names_);
   }
 
   /// Returns the method's shape as if all optional parameters were given.
@@ -378,19 +378,19 @@ class ResolutionShape {
   bool is_fully_shadowed_by(const std::vector<ResolutionShape> overriders, CallShape* see_through);
 
   size_t hash() const {
-    return _call_shape.hash()
-        ^ (_optional_unnamed << 7)
-        ^ (std::hash<std::vector<bool>>()(_optional_names) << 12);
+    return call_shape_.hash()
+        ^ (optional_unnamed_ << 7)
+        ^ (std::hash<std::vector<bool>>()(optional_names_) << 12);
   }
 
   bool less(const ResolutionShape& other) const {
-    if (_call_shape != other._call_shape) {
-      return _call_shape.less(other._call_shape);
+    if (call_shape_ != other.call_shape_) {
+      return call_shape_.less(other.call_shape_);
     }
-    if (_optional_unnamed != other._optional_unnamed) {
-      return _optional_unnamed < other._optional_unnamed;
+    if (optional_unnamed_ != other.optional_unnamed_) {
+      return optional_unnamed_ < other.optional_unnamed_;
     }
-    return _optional_names < other._optional_names;
+    return optional_names_ < other.optional_names_;
   }
 
  private:
@@ -401,28 +401,28 @@ class ResolutionShape {
                   bool is_setter,
                   int optional_unnamed,
                   const std::vector<bool>& optional_names)
-      : _call_shape(arity, total_block_count, names, named_block_count, is_setter)
-      , _optional_unnamed(optional_unnamed)
-      , _optional_names(optional_names) { }
+      : call_shape_(arity, total_block_count, names, named_block_count, is_setter)
+      , optional_unnamed_(optional_unnamed)
+      , optional_names_(optional_names) {}
 
   ResolutionShape(const CallShape& call_shape,
                   int optional_unnamed,
                   const std::vector<bool>& optional_names)
-      : _call_shape(call_shape)
-      , _optional_unnamed(optional_unnamed)
-      , _optional_names(optional_names) { }
+      : call_shape_(call_shape)
+      , optional_unnamed_(optional_unnamed)
+      , optional_names_(optional_names) {}
 
   explicit ResolutionShape(const CallShape& call_shape)
-      : _call_shape(call_shape)
-      , _optional_unnamed(0)
-      , _optional_names(std::vector<bool>()) { }
+      : call_shape_(call_shape)
+      , optional_unnamed_(0)
+      , optional_names_(std::vector<bool>()) {}
 
   friend class ListBuilder<ResolutionShape>;
-  ResolutionShape() :_call_shape(CallShape::invalid()) { }
+  ResolutionShape() :call_shape_(CallShape::invalid()) {}
 
-  CallShape _call_shape;
-  int _optional_unnamed;
-  std::vector<bool> _optional_names;
+  CallShape call_shape_;
+  int optional_unnamed_;
+  std::vector<bool> optional_names_;
 };
 
 } // namespace toit::compiler

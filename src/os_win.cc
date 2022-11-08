@@ -42,26 +42,26 @@ int64 OS::get_system_time() {
 class Mutex {
  public:
   Mutex(int level, const char* name)
-    : _level(level) {
-    pthread_mutex_init(&_mutex, null);
+    : level_(level), name_(name) {
+    pthread_mutex_init(&mutex_, null);
   }
 
   ~Mutex() {
-    pthread_mutex_destroy(&_mutex);
+    pthread_mutex_destroy(&mutex_);
   }
 
   void lock() {
-    int error = pthread_mutex_lock(&_mutex);
+    int error = pthread_mutex_lock(&mutex_);
     if (error != 0) FATAL("mutex lock failed with error %d", error);
   }
 
   void unlock() {
-    int error = pthread_mutex_unlock(&_mutex);
+    int error = pthread_mutex_unlock(&mutex_);
     if (error != 0) FATAL("mutex unlock failed with error %d", error);
   }
 
   bool is_locked() {
-    int error = pthread_mutex_trylock(&_mutex);
+    int error = pthread_mutex_trylock(&mutex_);
     if (error == 0) {
       unlock();
       return false;
@@ -70,27 +70,28 @@ class Mutex {
     return true;
   }
 
-  int level() const { return _level; }
-
-  int _level;
-  pthread_mutex_t _mutex;
+  int level() const { return level_; }
+  const char* name() const { return name_?name_:""; }
+  int level_;
+  pthread_mutex_t mutex_;
+  const char* name_;
 };
 
 class ConditionVariable {
  public:
   explicit ConditionVariable(Mutex* mutex)
-      : _mutex(mutex) {
-    if (pthread_cond_init(&_cond, NULL) != 0) {
+      : mutex_(mutex) {
+    if (pthread_cond_init(&cond_, NULL) != 0) {
       FATAL("pthread_cond_init() error");
     }
   }
 
   ~ConditionVariable() {
-    pthread_cond_destroy(&_cond);
+    pthread_cond_destroy(&cond_);
   }
 
   void wait() {
-    if (pthread_cond_wait(&_cond, &_mutex->_mutex) != 0) {
+    if (pthread_cond_wait(&cond_, &mutex_->mutex_) != 0) {
       FATAL("pthread_cond_timedwait() error");
     }
   }
@@ -104,62 +105,62 @@ class ConditionVariable {
       FATAL("cannot get time for deadline");
     }
     OS::timespec_increment(&deadline, us * 1000LL);
-    int error = pthread_cond_timedwait(&_cond, &_mutex->_mutex, &deadline);
+    int error = pthread_cond_timedwait(&cond_, &mutex_->mutex_, &deadline);
     if (error == 0) return true;
     if (error == ETIMEDOUT) return false;
     FATAL("pthread_cond_timedwait() error: %d", error);
   }
 
   void signal() {
-    if (!_mutex->is_locked()) {
+    if (!mutex_->is_locked()) {
       FATAL("signal on unlocked mutex");
     }
-    int error = pthread_cond_signal(&_cond);
+    int error = pthread_cond_signal(&cond_);
     if (error != 0) {
       FATAL("pthread_cond_signal() error: %d", error);
     }
   }
 
   void signal_all() {
-    if (!_mutex->is_locked()) {
+    if (!mutex_->is_locked()) {
       FATAL("signal_all on unlocked mutex");
     }
-    int error = pthread_cond_broadcast(&_cond);
+    int error = pthread_cond_broadcast(&cond_);
     if (error != 0) {
       FATAL("pthread_cond_broadcast() error: %d", error);
     }
   }
 
  private:
-  Mutex* _mutex;
-  pthread_cond_t _cond;
+  Mutex* mutex_;
+  pthread_cond_t cond_;
 };
 
 void Locker::leave() {
   Thread* thread = Thread::current();
-  if (thread->_locker != this) FATAL("unlocking would break lock order");
-  thread->_locker = _previous;
+  if (thread->locker_ != this) FATAL("unlocking would break lock order");
+  thread->locker_ = previous_;
   // Perform the actual unlock.
-  _mutex->unlock();
+  mutex_->unlock();
 }
 
 void Locker::enter() {
   Thread* thread = Thread::current();
-  int level = _mutex->level();
-  Locker* previous_locker = thread->_locker;
+  int level = mutex_->level();
+  Locker* previous_locker = thread->locker_;
   if (previous_locker != null) {
-    int previous_level = previous_locker->_mutex->level();
+    int previous_level = previous_locker->mutex_->level();
     if (level <= previous_level) {
-      FATAL("trying to take lock of level %d while holding lock of level %d", level, previous_level);
+      FATAL("trying to take lock of level %d (%s) while holding lock of level %d (%s)", level, mutex_->name(), previous_level, previous_locker->mutex_->name());
     }
   }
   // Lock after checking the precondition to avoid deadlocking
   // instead of just failing the precondition check.
-  _mutex->lock();
+  mutex_->lock();
   // Only update variables after we have the lock - that grants right
   // to update the locker.
-  _previous = thread->_locker;
-  thread->_locker = this;
+  previous_ = thread->locker_;
+  thread->locker_ = this;
 }
 
 static pthread_key_t thread_key;
@@ -169,10 +170,10 @@ static pthread_t pthread_from_handle(void* handle) {
 }
 
 Thread::Thread(const char* name)
-    : _name(name)
-    , _handle(null)
-    , _locker(null) {
-  USE(_name);
+    : name_(name)
+    , handle_(null)
+    , locker_(null) {
+  USE(name_);
 }
 
 void* thread_start(void* arg) {
@@ -189,7 +190,7 @@ void Thread::_boot() {
 }
 
 bool Thread::spawn(int stack_size, int core) {
-  int result = pthread_create(reinterpret_cast<pthread_t*>(&_handle), null, &thread_start, void_cast(this));
+  int result = pthread_create(reinterpret_cast<pthread_t*>(&handle_), null, &thread_start, void_cast(this));
   if (result != 0) {
     FATAL("pthread_create failed");
   }
@@ -198,14 +199,14 @@ bool Thread::spawn(int stack_size, int core) {
 
 // Run on current thread.
 void Thread::run() {
-  ASSERT(_handle == null);
+  ASSERT(handle_ == null);
   thread_start(void_cast(this));
 }
 
 void Thread::join() {
-  ASSERT(_handle != null);
+  ASSERT(handle_ != null);
   void* return_value;
-  pthread_join(pthread_from_handle(_handle), &return_value);
+  pthread_join(pthread_from_handle(handle_), &return_value);
 }
 
 void Thread::ensure_system_thread() {
@@ -221,9 +222,9 @@ void OS::set_up() {
   ASSERT(sizeof(void*) == sizeof(pthread_t));
   (void) pthread_key_create(&thread_key, null);
   Thread::ensure_system_thread();
-  _global_mutex = allocate_mutex(0, "Global mutex");
-  _scheduler_mutex = allocate_mutex(4, "Scheduler mutex");
-  _resource_mutex = allocate_mutex(99, "Resource mutex");
+  global_mutex_ = allocate_mutex(0, "Global mutex");
+  scheduler_mutex_ = allocate_mutex(4, "Scheduler mutex");
+  resource_mutex_ = allocate_mutex(99, "Resource mutex");
 }
 
 Thread* Thread::current() {
@@ -262,8 +263,7 @@ bool OS::set_real_time(struct timespec* time) {
   FATAL("cannot set the time");
 }
 
-ProtectableAlignedMemory::~ProtectableAlignedMemory() {
-}
+ProtectableAlignedMemory::~ProtectableAlignedMemory() {}
 
 void ProtectableAlignedMemory::mark_read_only() {
   // TODO(anders): Unimplemented.
@@ -323,9 +323,9 @@ void OS::set_writable(ProgramBlock* block, bool value) {
 }
 
 void OS::tear_down() {
-  dispose(_global_mutex);
-  dispose(_scheduler_mutex);
-  dispose(_resource_mutex);
+  dispose(global_mutex_);
+  dispose(scheduler_mutex_);
+  dispose(resource_mutex_);
 }
 
 const char* OS::get_platform() {
@@ -340,7 +340,7 @@ void OS::set_heap_tag(word tag) {}
 
 word OS::get_heap_tag() { return 0; }
 
-void OS::heap_summary_report(int max_pages, const char* marker) { }
+void OS::heap_summary_report(int max_pages, const char* marker) {}
 
 } // namespace toit
 

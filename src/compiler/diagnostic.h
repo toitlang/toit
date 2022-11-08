@@ -43,14 +43,14 @@ class Diagnostics {
 
   void report(Severity severity, const char* format, va_list& arguments) {
     severity = adjust_severity(severity);
-    if (severity == Severity::error) _encountered_error = true;
-    if (severity == Severity::warning) _encountered_warning = true;
+    if (severity == Severity::error) encountered_error_ = true;
+    if (severity == Severity::warning) encountered_warning_ = true;
     emit(severity, format, arguments);
   }
   void report(Severity severity, Source::Range range, const char* format, va_list& arguments) {
     severity = adjust_severity(severity);
-    if (severity == Severity::error) _encountered_error = true;
-    if (severity == Severity::warning) _encountered_warning = true;
+    if (severity == Severity::error) encountered_error_ = true;
+    if (severity == Severity::warning) encountered_warning_ = true;
     emit(severity, range, format, arguments);
   }
 
@@ -72,18 +72,18 @@ class Diagnostics {
   void report_note(Source::Range range, const char* format, ...);
   void report_note(const ast::Node* position_node, const char* format, ...);
 
-  virtual void start_group() { }
-  virtual void end_group() { }
+  virtual void start_group() {}
+  virtual void end_group() {}
 
   bool encountered_error() const {
-    return _encountered_error;
+    return encountered_error_;
   }
 
   bool encountered_warning() const {
-    return _encountered_warning;
+    return encountered_warning_;
   }
 
-  SourceManager* source_manager() { return _source_manager; }
+  SourceManager* source_manager() { return source_manager_; }
 
   void report_location(Source::Range range, const char* prefix);
 
@@ -94,29 +94,29 @@ class Diagnostics {
 
  protected:
   explicit Diagnostics(SourceManager* source_manager)
-      : _source_manager(source_manager), _encountered_error(false), _encountered_warning(false) { }
+      : source_manager_(source_manager), encountered_error_(false), encountered_warning_(false) {}
 
   void set_encountered_error(bool value) {
-    _encountered_error = value;
+    encountered_error_ = value;
   }
 
   void set_encountered_warning(bool value) {
-    _encountered_warning = value;
+    encountered_warning_ = value;
   }
 
   virtual Severity adjust_severity(Severity severity) { return severity; }
 
  private:
-  SourceManager* _source_manager;
-  bool _encountered_error;
-  bool _encountered_warning;
+  SourceManager* source_manager_;
+  bool encountered_error_;
+  bool encountered_warning_;
 };
 
 class CompilationDiagnostics : public Diagnostics {
  public:
   explicit CompilationDiagnostics(SourceManager* source_manager, bool show_package_warnings)
       : Diagnostics(source_manager)
-      , _show_package_warnings(show_package_warnings) {}
+      , show_package_warnings_(show_package_warnings) {}
 
   bool should_report_missing_main() const { return true; }
 
@@ -128,10 +128,10 @@ class CompilationDiagnostics : public Diagnostics {
   void emit(Severity severity, Source::Range range, const char* format, va_list& arguments);
 
  private:
-  bool _show_package_warnings;
-  bool _in_group = false;
-  std::string _group_package_id;
-  Severity _group_severity;
+  bool show_package_warnings_;
+  bool in_group_ = false;
+  std::string group_package_id_;
+  Severity group_severity_;
 };
 
 class AnalysisDiagnostics : public CompilationDiagnostics {
@@ -146,7 +146,7 @@ class LanguageServerAnalysisDiagnostics : public Diagnostics {
  public:
   explicit LanguageServerAnalysisDiagnostics(SourceManager* source_manager, Lsp* lsp)
       : Diagnostics(source_manager)
-      , _lsp(lsp) {}
+      , lsp_(lsp) {}
 
   bool should_report_missing_main() const { return false; }
 
@@ -157,10 +157,10 @@ class LanguageServerAnalysisDiagnostics : public Diagnostics {
   void emit(Severity severity, const char* format, va_list& arguments);
   void emit(Severity severity, Source::Range range, const char* format, va_list& arguments);
 
-  Lsp* lsp() { return _lsp; }
+  Lsp* lsp() { return lsp_; }
 
  private:
-  Lsp* _lsp;
+  Lsp* lsp_;
 };
 
 class NullDiagnostics : public Diagnostics {
@@ -176,12 +176,12 @@ class NullDiagnostics : public Diagnostics {
 
   bool should_report_missing_main() const { return false; }
 
-  void start_group() { }
-  void end_group() { }
+  void start_group() {}
+  void end_group() {}
 
  protected:
-  void emit(Severity severity, const char* format, va_list& arguments) { }
-  void emit(Severity severity, Source::Range range, const char* format, va_list& arguments) { }
+  void emit(Severity severity, const char* format, va_list& arguments) {}
+  void emit(Severity severity, Source::Range range, const char* format, va_list& arguments) {}
 };
 
 } // namespace toit::compiler

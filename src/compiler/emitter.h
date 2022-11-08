@@ -37,38 +37,38 @@ class ExpressionStack {
     BLOCK_CONSTRUCTION_TOKEN
   };
 
-  ExpressionStack() : _data(), _types(_data, CAPACITY), _height(0) { }
+  ExpressionStack() : data_(), types_(data_, CAPACITY), height_(0) {}
 
-  int height() const { return _height; }
-  int max_height() const { return _max_height; }
+  int height() const { return height_; }
+  int max_height() const { return max_height_; }
 
-  Type type(int n) const { return _types[_height - n - 1]; }
+  Type type(int n) const { return types_[height_ - n - 1]; }
 
   void push(Type type) {
-    _types[_height++] = type;
-    _max_height = std::max(_max_height, _height);
+    types_[height_++] = type;
+    max_height_ = std::max(max_height_, height_);
   }
-  void pop(int n = 1) { ASSERT(n >= 0 && n <= _height); _height -= n; }
+  void pop(int n = 1) { ASSERT(n >= 0 && n <= height_); height_ -= n; }
 
   void reserve(int count) {
-    _max_height = std::max(_max_height, _height + count);
+    max_height_ = std::max(max_height_, height_ + count);
   }
 
  private:
   static const int CAPACITY = 128;
-  Type _data[CAPACITY];
+  Type data_[CAPACITY];
 
-  List<Type> _types;
-  int _height;
-  int _max_height = 0;
+  List<Type> types_;
+  int height_;
+  int max_height_ = 0;
 };
 
 class Emitter {
  public:
   explicit Emitter(int arity)
-      : _arity(arity)
-      , _builder()
-      , _last_bound(0) { }
+      : arity_(arity)
+      , builder_()
+      , last_bound_(0) {}
 
   enum Condition {
     UNCONDITIONAL,
@@ -78,11 +78,11 @@ class Emitter {
 
   List<uint8> bytecodes();
 
-  unsigned position() const { return _builder.length(); }
+  unsigned position() const { return builder_.length(); }
 
-  int arity() const { return _arity; }
-  int height() const { return _stack.height(); }
-  int max_height() const { return _stack.max_height(); }
+  int arity() const { return arity_; }
+  int height() const { return stack_.height(); }
+  int max_height() const { return stack_.max_height(); }
 
   void bind(Label* label);
 
@@ -121,22 +121,22 @@ class Emitter {
   List<ExpressionStack::Type> pop_return_types(int n);
   void dup() { load_local(height() - 1); }
 
-  void forget(int n) { _stack.pop(n); }
+  void forget(int n) { stack_.pop(n); }
   void remember(int n, ExpressionStack::Type type = ExpressionStack::OBJECT) {
     ASSERT(n >= 0);
     for (int i = 0; i < n; i++) {
-      _stack.push(type);
+      stack_.push(type);
     }
   }
   void remember(List<ExpressionStack::Type> types) {
     for (int i = 0; i < types.length(); i++) {
-      _stack.push(types[i]);
+      stack_.push(types[i]);
     }
   }
   List<ExpressionStack::Type> stack_types(int n) {
     auto result = ListBuilder<ExpressionStack::Type>::allocate(n);
     for (int i = 0; i < n; i++) {
-      result[i] = _stack.type(n - i - 1);
+      result[i] = stack_.type(n - i - 1);
     }
     return result;
   }
@@ -178,8 +178,8 @@ class Emitter {
   void intrinsic_hash_find();
   void intrinsic_hash_do();
 
-  List<AbsoluteReference> build_absolute_references() { return _absolute_references.build(); }
-  List<AbsoluteUse*> build_absolute_uses() { return _absolute_uses.build(); }
+  List<AbsoluteReference> build_absolute_references() { return absolute_references_.build(); }
+  List<AbsoluteUse*> build_absolute_uses() { return absolute_uses_.build(); }
 
   // Returns a previous opcode.
   // If n == 0, returns the last emitted bytecode.
@@ -188,18 +188,18 @@ class Emitter {
   toit::Opcode previous_opcode(int n = 0);
 
  private:
-  const int _arity;
-  ListBuilder<uint8> _builder;
-  ListBuilder<AbsoluteReference> _absolute_references;
-  ListBuilder<AbsoluteUse*> _absolute_uses;
+  const int arity_;
+  ListBuilder<uint8> builder_;
+  ListBuilder<AbsoluteReference> absolute_references_;
+  ListBuilder<AbsoluteUse*> absolute_uses_;
 
   // Support for peephole optimizations. We keep track of bound labels, so we
   // don't optimize across a branch target and we know the precise start position
   // for all opcodes in the emitted code.
-  ListBuilder<unsigned> _opcode_positions;
-  unsigned _last_bound;
+  ListBuilder<unsigned> opcode_positions_;
+  unsigned last_bound_;
 
-  ExpressionStack _stack;
+  ExpressionStack stack_;
 
   word extend(word value);
 

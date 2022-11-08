@@ -27,16 +27,16 @@
 
 namespace toit {
 
-EventQueueEventSource* EventQueueEventSource::_instance = null;
+EventQueueEventSource* EventQueueEventSource::instance_ = null;
 
 EventQueueEventSource::EventQueueEventSource()
     : EventSource("EVQ")
     , Thread("EVQ")
-    , _stop(xSemaphoreCreateBinary())
-    , _gpio_queue(xQueueCreate(32, sizeof(word)))
-    , _queue_set(xQueueCreateSet(32)) {
-  xQueueAddToSet(_stop, _queue_set);
-  xQueueAddToSet(_gpio_queue, _queue_set);
+    , stop_(xSemaphoreCreateBinary())
+    , gpio_queue_(xQueueCreate(32, sizeof(word)))
+    , queue_set_(xQueueCreateSet(32)) {
+  xQueueAddToSet(stop_, queue_set_);
+  xQueueAddToSet(gpio_queue_, queue_set_);
 
   SystemEventSource::instance()->run([&]() -> void {
     FATAL_IF_NOT_ESP_OK(gpio_install_isr_service(ESP_INTR_FLAG_IRAM));
@@ -45,12 +45,12 @@ EventQueueEventSource::EventQueueEventSource()
   // Create OS thread to handle events.
   spawn();
 
-  ASSERT(_instance == null);
-  _instance = this;
+  ASSERT(instance_ == null);
+  instance_ = this;
 }
 
 EventQueueEventSource::~EventQueueEventSource() {
-  xSemaphoreGive(_stop);
+  xSemaphoreGive(stop_);
 
   join();
 
@@ -58,10 +58,10 @@ EventQueueEventSource::~EventQueueEventSource() {
     gpio_uninstall_isr_service();
   });
 
-  vQueueDelete(_queue_set);
-  vQueueDelete(_gpio_queue);
-  vSemaphoreDelete(_stop);
-  _instance = null;
+  vQueueDelete(queue_set_);
+  vQueueDelete(gpio_queue_);
+  vSemaphoreDelete(stop_);
+  instance_ = null;
 }
 
 void EventQueueEventSource::entry() {
@@ -71,17 +71,17 @@ void EventQueueEventSource::entry() {
   while (true) {
     { Unlocker unlock(locker);
       // Wait for any queue/semaphore to wake up.
-      xQueueSelectFromSet(_queue_set, portMAX_DELAY);
+      xQueueSelectFromSet(queue_set_, portMAX_DELAY);
     }
 
     // First test if we should shut down.
-    if (xSemaphoreTake(_stop, 0)) {
+    if (xSemaphoreTake(stop_, 0)) {
       return;
     }
 
     // See if there's a GPIO event.
     word pin;
-    while (xQueueReceive(_gpio_queue, &pin, 0)) {
+    while (xQueueReceive(gpio_queue_, &pin, 0)) {
       bool data = gpio_get_level(gpio_num_t(pin)) != 0;
       for (auto r : resources()) {
         auto resource = static_cast<EventQueueResource*>(r);
@@ -115,7 +115,7 @@ void EventQueueEventSource::on_register_resource(Locker& locker, Resource* r) {
     while (resource->receive_event(&data)) {
       dispatch(locker, r, data);
     }
-  } while (xQueueAddToSet(queue, _queue_set) != pdPASS);
+  } while (xQueueAddToSet(queue, queue_set_) != pdPASS);
 }
 
 void EventQueueEventSource::on_unregister_resource(Locker& locker, Resource* r) {
@@ -131,7 +131,7 @@ void EventQueueEventSource::on_unregister_resource(Locker& locker, Resource* r) 
     while (resource->receive_event(&data)) {
       // Don't dispatch while unregistering.
     }
-  } while (xQueueRemoveFromSet(queue, _queue_set) != pdPASS);
+  } while (xQueueRemoveFromSet(queue, queue_set_) != pdPASS);
 }
 
 } // namespace toit

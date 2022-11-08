@@ -42,23 +42,22 @@ const int MAX_QUEUE_SIZE = 1024 * 8;
 class Packet : public LinkedFIFO<Packet>::Element {
  public:
   Packet(struct pbuf* pbuf, ip_addr_t addr, u16_t port)
-    : _pbuf(pbuf)
-    , _addr(addr)
-    , _port(port) {
-  }
+    : pbuf_(pbuf)
+    , addr_(addr)
+    , port_(port) {}
 
   ~Packet() {
-    pbuf_free(_pbuf);
+    pbuf_free(pbuf_);
   }
 
-  struct pbuf* pbuf() { return _pbuf; }
-  ip_addr_t addr() { return _addr; }
-  u16_t port() { return _port; }
+  struct pbuf* pbuf() { return pbuf_; }
+  ip_addr_t addr() { return addr_; }
+  u16_t port() { return port_; }
 
  private:
-  struct pbuf* _pbuf;
-  ip_addr_t _addr;
-  u16_t _port;
+  struct pbuf* pbuf_;
+  ip_addr_t addr_;
+  u16_t port_;
 };
 
 class UDPSocket : public Resource {
@@ -66,22 +65,21 @@ class UDPSocket : public Resource {
   TAG(UDPSocket);
   UDPSocket(ResourceGroup* group, udp_pcb* upcb)
     : Resource(group)
-    , _mutex(null)
-    , _upcb(upcb)
-    , _buffered_bytes(0) {
-  }
+    , mutex_(null)
+    , upcb_(upcb)
+    , buffered_bytes_(0) {}
 
   ~UDPSocket() {
-    while (auto packet = _packages.remove_first()) {
+    while (auto packet = packages_.remove_first()) {
       delete packet;
     }
   }
 
   void tear_down() {
-    if (_upcb) {
-      udp_recv(_upcb, null, null);
-      udp_remove(_upcb);
-      _upcb = null;
+    if (upcb_) {
+      udp_recv(upcb_, null, null);
+      udp_remove(upcb_);
+      upcb_ = null;
     }
   }
 
@@ -94,28 +92,28 @@ class UDPSocket : public Resource {
 
   void set_recv();
 
-  udp_pcb* upcb() { return _upcb; }
+  udp_pcb* upcb() { return upcb_; }
 
   void queue_packet(Packet* packet) {
-    _buffered_bytes += packet->pbuf()->len;
-    _packages.append(packet);
+    buffered_bytes_ += packet->pbuf()->len;
+    packages_.append(packet);
   }
 
   void take_packet() {
-    Packet* packet = _packages.remove_first();
-    if (packet != null) _buffered_bytes -= packet->pbuf()->len;
+    Packet* packet = packages_.remove_first();
+    if (packet != null) buffered_bytes_ -= packet->pbuf()->len;
     delete packet;
   }
 
   Packet* next_packet() {
-    return _packages.first();
+    return packages_.first();
   }
 
  private:
-  Mutex* _mutex;
-  udp_pcb* _upcb;
-  LinkedFIFO<Packet> _packages;
-  int _buffered_bytes;
+  Mutex* mutex_;
+  udp_pcb* upcb_;
+  LinkedFIFO<Packet> packages_;
+  int buffered_bytes_;
 };
 
 class UDPResourceGroup : public ResourceGroup {
@@ -123,9 +121,9 @@ class UDPResourceGroup : public ResourceGroup {
   TAG(UDPResourceGroup);
   UDPResourceGroup(Process* process, LwIPEventSource* event_source)
       : ResourceGroup(process, event_source)
-      , _event_source(event_source) {}
+      , event_source_(event_source) {}
 
-  LwIPEventSource* event_source() { return _event_source; }
+  LwIPEventSource* event_source() { return event_source_; }
 
  protected:
   virtual void on_unregister_resource(Resource* r) {
@@ -136,7 +134,7 @@ class UDPResourceGroup : public ResourceGroup {
   }
 
  private:
-  LwIPEventSource* _event_source;
+  LwIPEventSource* event_source_;
 };
 
 void UDPSocket::on_recv(pbuf* p, const ip_addr_t* addr, u16_t port) {
@@ -158,7 +156,7 @@ void UDPSocket::on_recv(pbuf* p, const ip_addr_t* addr, u16_t port) {
 }
 
 void UDPSocket::set_recv() {
-  if (_buffered_bytes < MAX_QUEUE_SIZE) {
+  if (buffered_bytes_ < MAX_QUEUE_SIZE) {
     udp_recv(upcb(), UDPSocket::on_recv, this);
   } else {
     udp_recv(upcb(), null, null);
@@ -168,7 +166,7 @@ void UDPSocket::set_recv() {
 void UDPSocket::send_state() {
   uint32_t state = UDP_WRITE;
 
-  if (!_packages.is_empty()) state |= UDP_READ;
+  if (!packages_.is_empty()) state |= UDP_READ;
   if (needs_gc) state |= UDP_NEEDS_GC;
 
   // TODO: Avoid instance usage.
@@ -291,7 +289,7 @@ PRIMITIVE(receive)  {
 
     if (is_array(capture.output)) {
       Array* out = Array::cast(capture.output);
-      ASSERT(out->length() == 3);
+      if (out->length() < 3) INVALID_ARGUMENT;
       out->at_put(0, array);
       ip_addr_t addr = packet->addr();
       uint32_t ipv4_address = ip_addr_get_ip4_u32(&addr);

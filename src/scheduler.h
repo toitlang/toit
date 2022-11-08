@@ -37,22 +37,22 @@ class SchedulerThread : public Thread, public SchedulerThreadList::Element {
  public:
   explicit SchedulerThread(Scheduler* scheduler)
       : Thread("Toit")
-      , _scheduler(scheduler) {}
+      , scheduler_(scheduler) {}
 
   ~SchedulerThread() {}
 
-  Interpreter* interpreter() { return &_interpreter; }
+  Interpreter* interpreter() { return &interpreter_; }
 
   void entry();
 
-  bool is_pinned() const { return _is_pinned; }
-  void pin() { _is_pinned = true; }
-  void unpin() { _is_pinned = false; }
+  bool is_pinned() const { return is_pinned_; }
+  void pin() { is_pinned_ = true; }
+  void unpin() { is_pinned_ = false; }
 
  private:
-  Scheduler* const _scheduler;
-  Interpreter _interpreter;
-  bool _is_pinned = false;
+  Scheduler* const scheduler_;
+  Interpreter interpreter_;
+  bool is_pinned_ = false;
 };
 
 class Scheduler {
@@ -155,8 +155,8 @@ class Scheduler {
 
   static const int INVALID_PROCESS_ID = -1;
 
-  bool is_locked() const { return OS::is_locked(_mutex); }
-  bool is_boot_process(Process* process) const { return _boot_process == process; }
+  bool is_locked() const { return OS::is_locked(mutex_); }
+  bool is_boot_process(Process* process) const { return boot_process_ == process; }
 
  private:
   // Introduce a new process to the scheduler. The scheduler will not terminate until
@@ -189,7 +189,7 @@ class Scheduler {
   void process_ready(Process* process);
   void process_ready(Locker& locker, Process* process);
 
-  bool has_exit_reason() { return _exit_state.reason != EXIT_NONE; }
+  bool has_exit_reason() { return exit_state_.reason != EXIT_NONE; }
 
   scheduler_err_t send_system_message(Locker& locker, SystemMessage* message);
 
@@ -215,32 +215,32 @@ class Scheduler {
   void tick_schedule(Locker& locker, int64 now, bool reschedule);
 
   // Get the time for the next tick for process preemption.
-  int64 tick_next() const { return _next_tick; }
+  int64 tick_next() const { return next_tick_; }
 
-  Mutex* _mutex;
-  ConditionVariable* _has_processes;
-  ConditionVariable* _has_threads;
-  ExitState _exit_state;
+  Mutex* mutex_;
+  ConditionVariable* has_processes_;
+  ConditionVariable* has_threads_;
+  ExitState exit_state_;
 
-  // Condition variable used for both _gc_cross_processes and _gc_waiting_for_preemption.
-  ConditionVariable* _gc_condition;
+  // Condition variable used for both gc_cross_processes_ and gc_waiting_for_preemption_.
+  ConditionVariable* gc_condition_;
 
   // Are we currently doing a cross-process GC?
-  bool _gc_cross_processes;
+  bool gc_cross_processes_;
 
   // Number of OS threads that we're waiting for to be preempted for GC.
-  int _gc_waiting_for_preemption;
+  int gc_waiting_for_preemption_;
 
-  int _num_processes;
-  int _next_group_id;
-  int _next_process_id;
-  int64 _next_tick = 0;
+  int num_processes_;
+  int next_group_id_;
+  int next_process_id_;
+  int64 next_tick_ = 0;
 
   static const int NUMBER_OF_READY_QUEUES = 5;
-  ProcessListFromScheduler _ready_queue[NUMBER_OF_READY_QUEUES];
+  ProcessListFromScheduler ready_queue_[NUMBER_OF_READY_QUEUES];
 
   ProcessListFromScheduler& ready_queue(uint8 priority) {
-    return _ready_queue[compute_ready_queue_index(priority)];
+    return ready_queue_[compute_ready_queue_index(priority)];
   }
 
   static int compute_ready_queue_index(uint8 priority) {
@@ -253,19 +253,19 @@ class Scheduler {
 
   bool has_ready_processes(Locker& locker);
 
-  int _num_threads;
-  int _max_threads;
-  SchedulerThreadList _threads;
+  int num_threads_;
+  int max_threads_;
+  SchedulerThreadList threads_;
 
   // Keep track of the number of ready processes with an active profiler.
-  int _num_profiled_processes = 0;
+  int num_profiled_processes_ = 0;
 
   // Keep track of the boot process if it still alive.
-  Process* _boot_process;
+  Process* boot_process_;
 
   // The scheduler keeps track of all live process groups. The linked
   // list is only manipulated while holding the scheduler mutex.
-  ProcessGroupList _groups;
+  ProcessGroupList groups_;
 
   friend class Process;
 };
