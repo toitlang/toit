@@ -42,8 +42,7 @@ class LwIPSocket : public Resource, public BacklogSocketList::Element {
     , send_closed_(false)
     , read_buffer_(null)
     , read_offset_(0)
-    , read_closed_(false) {
-  }
+    , read_closed_(false) {}
 
   ~LwIPSocket() {
     ASSERT(tpcb_ == null);

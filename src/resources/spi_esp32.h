@@ -35,8 +35,7 @@ class SPIDevice : public Resource {
   SPIDevice(ResourceGroup* group, spi_device_handle_t handle, int dc)
     : Resource(group)
     , handle_(handle)
-    , dc_(dc) {
-  }
+    , dc_(dc) {}
 
   ~SPIDevice() {
     spi_bus_remove_device(handle_);

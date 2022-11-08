@@ -26,8 +26,7 @@ namespace toit {
 ProcessGroup::ProcessGroup(int id, Program* program, AlignedMemoryBase* memory)
     : id_(id)
     , program_(program)
-    , memory_(memory) {
-}
+    , memory_(memory) {}
 
 ProcessGroup::~ProcessGroup() {
   delete memory_;

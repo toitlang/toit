@@ -37,8 +37,7 @@ Interpreter::Interpreter()
     , base_(null)
     , sp_(null)
     , try_sp_(null)
-    , watermark_(null) {
-}
+    , watermark_(null) {}
 
 void Interpreter::activate(Process* process) {
   process_ = process;

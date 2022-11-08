@@ -27,11 +27,9 @@ class X509ResourceGroup : public ResourceGroup {
  public:
   TAG(X509ResourceGroup);
   explicit X509ResourceGroup(Process* process)
-    : ResourceGroup(process) {
-  }
+    : ResourceGroup(process) {}
 
-  ~X509ResourceGroup() {
-  }
+  ~X509ResourceGroup() {}
 
   Object* parse(Process* process, const uint8_t *encoded, size_t encoded_size);
 };

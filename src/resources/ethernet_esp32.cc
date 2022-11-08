@@ -64,8 +64,7 @@ class EthernetResourceGroup : public ResourceGroup {
       , id_(id)
       , netif_(netif)
       , eth_handle_(eth_handle)
-      , netif_glue_(netif_glue) {
-  }
+      , netif_glue_(netif_glue) {}
 
   void connect() {
     ESP_ERROR_CHECK(esp_eth_start(eth_handle_));
@@ -93,11 +92,9 @@ class EthernetEvents : public SystemResource {
  public:
   TAG(EthernetEvents);
   explicit EthernetEvents(EthernetResourceGroup* group)
-      : SystemResource(group, ETH_EVENT) {
-  }
+      : SystemResource(group, ETH_EVENT) {}
 
-  ~EthernetEvents() {
-  }
+  ~EthernetEvents() {}
 
  private:
   friend class EthernetResourceGroup;

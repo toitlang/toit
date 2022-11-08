@@ -143,8 +143,7 @@ class WifiEvents : public SystemResource {
   TAG(WifiEvents);
   explicit WifiEvents(WifiResourceGroup* group)
       : SystemResource(group, WIFI_EVENT)
-      , disconnect_reason_(WIFI_REASON_UNSPECIFIED) {
-  }
+      , disconnect_reason_(WIFI_REASON_UNSPECIFIED) {}
 
   ~WifiEvents() {
     FATAL_IF_NOT_ESP_OK(esp_wifi_stop());
@@ -162,8 +161,7 @@ class WifiIpEvents : public SystemResource {
  public:
   TAG(WifiIpEvents);
   explicit WifiIpEvents(WifiResourceGroup* group)
-      : SystemResource(group, IP_EVENT) {
-  }
+      : SystemResource(group, IP_EVENT) {}
 };
 
 uint32 WifiResourceGroup::on_event(Resource* resource, word data, uint32 state) {

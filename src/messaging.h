@@ -102,8 +102,7 @@ class ObjectNotifyMessage : public Message {
  public:
   explicit ObjectNotifyMessage(ObjectNotifier* notifier)
       : notifier_(notifier)
-      , queued_(false) {
-  }
+      , queued_(false) {}
 
   virtual MessageType message_type() const override { return MESSAGE_MONITOR_NOTIFY; }
 
