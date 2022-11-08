@@ -7,7 +7,7 @@ import .utils
 
 test args filter:
   out := run_toitp args ["-bc", filter]
-  lines := out.split "\n"
+  lines := out.split (platform == PLATFORM_WINDOWS ? "\r\n" : "\n")
   expect (lines.first.starts_with "Bytecodes for methods")
 
   expected_bytecodes := [

@@ -7,7 +7,7 @@ import .utils
 
 main args:
   out := run_toitp args ["-l"]
-  lines := out.split "\n"
+  lines := out.split (platform == PLATFORM_WINDOWS ? "\r\n" : "\n")
 
   found_foo_string := false
   found_int_literal := false
