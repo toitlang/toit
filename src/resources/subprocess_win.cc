@@ -30,7 +30,6 @@ static const int PROCESS_SIGNALLED = 2;
 static const int PROCESS_EXIT_CODE_SHIFT = 2;
 static const int PROCESS_EXIT_CODE_MASK = 0xff;
 static const int PROCESS_SIGNAL_SHIFT = 10;
-static const int PROCESS_SIGNAL_MASK = 0xff;
 
 uint32_t SubprocessResourceGroup::on_event(Resource* resource, word data, uint32_t state) {
   return reinterpret_cast<WindowsResource*>(resource)->on_event(
@@ -48,8 +47,8 @@ uint32_t SubprocessResource::on_event(HANDLE event, uint32_t state) {
   DWORD exit_code;
   GetExitCodeProcess(handle_, &exit_code);
 
-  if (killed()) state |= PROCESS_SIGNALLED | 9 << PROCESS_SIGNAL_SHIFT;
-  else state |= PROCESS_EXITED | ( exit_code & PROCESS_EXIT_CODE_MASK ) << PROCESS_EXIT_CODE_SHIFT;
+  if (killed()) state |= PROCESS_SIGNALLED | (9 << PROCESS_SIGNAL_SHIFT);
+  else state |= PROCESS_EXITED | ((exit_code & PROCESS_EXIT_CODE_MASK) << PROCESS_EXIT_CODE_SHIFT);
 
   stopped_state_ = state;
   return state;
@@ -73,15 +72,14 @@ PRIMITIVE(init) {
 }
 
 PRIMITIVE(wait_for) {
-//  ARGS(SubprocessResource, subprocess);
-//  subprocess->resource_group()->register_resource(subprocess);
+  // On Windows we always add an event to get notified when a subprocess ends. So this primitive is intentionally just
+  // returning null.
   return process->program()->null_object();
 }
 
 PRIMITIVE(dont_wait_for) {
-//  ARGS(SubprocessResource, subprocess);
-//  subprocess->resource_group()->unregister_resource(subprocess);  // Also deletes subprocess.
-//  subprocess_proxy->clear_external_address();
+  // On Windows we always add an event to get notified when a subprocess ends. So this primitive is intentionally just
+  // returning null.
   return process->program()->null_object();
 }
 
@@ -101,4 +99,5 @@ PRIMITIVE(strsignal) {
 }
 
 } // namespace toit
+
 #endif // TOIT_WINDOWS

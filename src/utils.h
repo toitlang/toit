@@ -446,15 +446,15 @@ class DeferDelete {
 
 class AsyncThread : public Thread {
  public:
-  explicit AsyncThread(std::function<void()> func) : Thread("async"), _func(std::move(func)) {
-    spawn();
-  }
-
   static void run_async(const std::function<void()> &func) {
     _new AsyncThread(func);
   }
 
  protected:
+  explicit AsyncThread(std::function<void()> func) : Thread("async"), _func(std::move(func)) {
+    spawn();
+  }
+
   void entry() override {
     _func();
     delete this;

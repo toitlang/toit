@@ -92,7 +92,7 @@ Process::~Process() {
   }
 
 #if defined(TOIT_WINDOWS)
-  if (current_directory_ != null) free(const_cast<void*>(reinterpret_cast<const void*>(current_directory_)));
+  free(const_cast<void*>(void_cast(current_directory_)));
 #else
   if (current_directory_ >= 0) {
     OS::close(current_directory_);
@@ -371,7 +371,7 @@ uint8 Process::update_priority() {
 #if defined(TOIT_WINDOWS)
 const char* Process::current_directory() { return current_directory_; }
 void Process::set_current_directory(const char* current_directory) {
-  if (current_directory_ != null) free(const_cast<void*>(reinterpret_cast<const void*>(current_directory_)));
+  free(const_cast<void*>(void_cast(current_directory_)));
   current_directory_ = current_directory;
 }
 #endif

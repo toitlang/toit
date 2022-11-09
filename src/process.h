@@ -167,6 +167,8 @@ class Process : public ProcessListFromProcessGroup::Element,
   void set_target_priority(uint8 value) { target_priority_ = value; }
   uint8 update_priority();
 
+  // TODO(mikkel): current_directory could be a union with an int and a char*. The clients of this member would know
+  //               which field to access.
 #if defined(TOIT_WINDOWS)
   const char* current_directory();
   void set_current_directory(const char* current_directory);

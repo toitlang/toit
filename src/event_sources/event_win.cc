@@ -28,9 +28,9 @@ class WindowsEventThread;
 class WindowsResourceEvent {
  public:
   WindowsResourceEvent(WindowsResource* resource, HANDLE event, WindowsEventThread* thread)
-    : resource_(resource)
-    , event_(event)
-    , thread_(thread) {}
+      : resource_(resource)
+      , event_(event)
+      , thread_(thread) {}
   WindowsResource* resource() const { return resource_; }
   HANDLE event() const { return event_; }
   WindowsEventThread* thread() const { return thread_; }
@@ -44,12 +44,12 @@ class WindowsResourceEvent {
 class WindowsEventThread: public Thread {
  public:
   explicit WindowsEventThread(WindowsEventSource* event_source)
-    : Thread("WindowsEventThread")
-    , handles_()
-    , resources_()
-    , count_(1)
-    , event_source_(event_source)
-    , recalculated_(OS::allocate_condition_variable(event_source->mutex())) {
+      : Thread("WindowsEventThread")
+      , handles_()
+      , resources_()
+      , count_(1)
+      , event_source_(event_source)
+      , recalculated_(OS::allocate_condition_variable(event_source->mutex())) {
     control_event_ = CreateEvent(NULL, true, false, NULL);
     handles_[0] = control_event_;
   }
@@ -65,18 +65,18 @@ class WindowsEventThread: public Thread {
   }
   
   size_t size() {
-    return _resource_events.size();
+    return resource_events_.size();
   }
   
   void add_resource_event(Locker& event_source_locker, WindowsResourceEvent* resource_event) {
-    ASSERT(_resource_events.size() < MAXIMUM_WAIT_OBJECTS - 2);
-    _resource_events.insert(resource_event);
+    ASSERT(resource_events_.size() < MAXIMUM_WAIT_OBJECTS - 2);
+    resource_events_.insert(resource_event);
     SetEvent(control_event_); // Recalculate the wait objects.
     OS::wait(recalculated_);
   }
 
   void remove_resource_event(Locker& event_source_locker, WindowsResourceEvent* resource_event) {
-    size_t number_erased = _resource_events.erase(resource_event);
+    size_t number_erased = resource_events_.erase(resource_event);
     if (number_erased > 0) {
       SetEvent(control_event_); // Recalculate the wait objects.
       OS::wait(recalculated_);
@@ -109,7 +109,7 @@ class WindowsEventThread: public Thread {
  private:
   void recalculate_handles() {
     int index = 1;
-    for (auto resource_event : _resource_events) {
+    for (auto resource_event : resource_events_) {
       if (resource_event->is_event_enabled()) {
         handles_[index] = resource_event->event();
         resources_[index] = resource_event->resource();
@@ -126,7 +126,7 @@ class WindowsEventThread: public Thread {
   HANDLE handles_[MAXIMUM_WAIT_OBJECTS];
   WindowsResource* resources_[MAXIMUM_WAIT_OBJECTS];
   DWORD count_;
-  std::unordered_set<WindowsResourceEvent*> _resource_events;
+  std::unordered_set<WindowsResourceEvent*> resource_events_;
   WindowsEventSource* event_source_;
   ConditionVariable* recalculated_;
 };

@@ -37,8 +37,8 @@ class SubprocessResource : public WindowsResource {
  public:
   TAG(SubprocessResource);
   SubprocessResource(ResourceGroup* resource_group, HANDLE handle)
-    : WindowsResource(resource_group)
-    , handle_(handle) {}
+      : WindowsResource(resource_group)
+      , handle_(handle) {}
 
   std::vector<HANDLE> events() override;
 
@@ -57,4 +57,5 @@ class SubprocessResource : public WindowsResource {
   word stopped_state_ = 0;
 };
 #endif // defined(TOIT_WINDOWS)
+
 } // namespace toit

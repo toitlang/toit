@@ -96,12 +96,14 @@ const char* current_dir(Process* process) {
   const char* current_directory = process->current_directory();
   if (current_directory) return current_directory;
   DWORD length = GetCurrentDirectory(0, NULL);
-  if (length == 0)
+  if (length == 0) {
     FATAL("Failed to get current dir");
+  }
   current_directory = reinterpret_cast<char*>(malloc(length));
   if (!current_directory) return null;
-  if (GetCurrentDirectory(length, const_cast<char*>(current_directory)) == 0)
+  if (GetCurrentDirectory(length, const_cast<char*>(current_directory)) == 0) {
     FATAL("Failed to get current dir");
+  }
   process->set_current_directory(current_directory);
   return current_directory;
 }
@@ -109,17 +111,16 @@ const char* current_dir(Process* process) {
 HeapObject* get_relative_path(Process* process, const char* pathname, char* output) {
   size_t pathname_length = strlen(pathname);
 
-  // Poor man's version. For better platform handling, use UNICODE and PathCchAppendEx
+  // Poor man's version. For better platform handling, use UNICODE and PathCchAppendEx.
   if (pathname[0] == '\\' ||
       (pathname_length > 2 && pathname[1] == ':' && (pathname[2] == '\\' || pathname[2] == '/'))) {
-    if (GetFullPathName(pathname, MAX_PATH, output, NULL) == 0)  WINDOWS_ERROR;
-    return null;
+    if (GetFullPathName(pathname, MAX_PATH, output, NULL) == 0) WINDOWS_ERROR;
   } else {
     const char* current_directory = current_dir(process);
     if (!current_directory) MALLOC_FAILED;
     char temp[MAX_PATH];
     if (snprintf(temp, MAX_PATH, "%s\\%s", current_directory, pathname) >= MAX_PATH) INVALID_ARGUMENT;
-    if (GetFullPathName(temp, MAX_PATH, output, NULL) == 0)  WINDOWS_ERROR;
+    if (GetFullPathName(temp, MAX_PATH, output, NULL) == 0) WINDOWS_ERROR;
   }
   return null;
 }
@@ -153,8 +154,7 @@ PRIMITIVE(open) {
     // with open (eg a pipe, a socket, a directory).  We forbid this because
     // these file descriptors can block, and this API does not support
     // blocking.
-    if (strcmpi(R"(\\.\NUL)", pathname) != 0)
-      INVALID_ARGUMENT;
+    if (strcmpi(R"(\\.\NUL)", pathname) != 0) INVALID_ARGUMENT;
   }
   closer.clear();
   return Smi::from(fd);
@@ -199,8 +199,9 @@ PRIMITIVE(opendir2) {
 
   HANDLE dir_handle = FindFirstFile(directory->path(), directory->find_file_data());
   if (dir_handle == INVALID_HANDLE_VALUE) {
-    if (GetLastError() == ERROR_NO_MORE_FILES) directory->set_done(true);
-    else {
+    if (GetLastError() == ERROR_NO_MORE_FILES) {
+      directory->set_done(true);
+    } else {
       delete directory;
       WINDOWS_ERROR;
     }
@@ -309,8 +310,9 @@ PRIMITIVE(close) {
   while (true) {
     int result = close(fd);
     if (result < 0) {
-      if (GetFileType(reinterpret_cast<HANDLE>(fd)) == FILE_TYPE_PIPE && errno == EBADF)
+      if (GetFileType(reinterpret_cast<HANDLE>(fd)) == FILE_TYPE_PIPE && errno == EBADF) {
         return process->program()->null_object(); // Ignore already closed on PIPEs
+      }
       if (errno == EINTR) continue;
       if (errno == EBADF) ALREADY_CLOSED;
       if (errno == ENOSPC) QUOTA_EXCEEDED;
@@ -462,8 +464,9 @@ PRIMITIVE(mkdtemp) {
     ret = GetTempPath(MAX_PATH, temp_dir_name);
     if (ret + 2 > MAX_PATH) INVALID_ARGUMENT;
     if (ret == 0) WINDOWS_ERROR;
-    if (temp_dir_name[strlen(temp_dir_name)-1] != '\\')
+    if (temp_dir_name[strlen(temp_dir_name)-1] != '\\') {
       strncat(temp_dir_name, "\\", strlen(temp_dir_name) - 1);
+    }
   }
   if (strlen(temp_dir_name) + UUID_TEXT_LENGTH + strlen(prefix) + 1 > MAX_PATH) INVALID_ARGUMENT;
 
