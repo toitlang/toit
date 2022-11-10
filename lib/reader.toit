@@ -64,6 +64,7 @@ class BufferedReader implements Reader:
     If this is not possible, calls $on_end.
   */
   ensure_ requested [on_end] -> none:
+    if requested < 0: throw "INVALID_ARGUMENT"
     while buffered < requested:
       if not more_: on_end.call
 
@@ -154,7 +155,7 @@ class BufferedReader implements Reader:
           return
 
         n -= size
-        base_cursor_ += size
+        base_cursor_ += arrays_.first.size
         first_array_position_ = 0
 
         arrays_.remove_first
@@ -174,6 +175,7 @@ class BufferedReader implements Reader:
   At least $n + 1 bytes must be available.
   */
   byte n -> int:
+    if n < 0: throw "INVALID_ARGUMENT"
     ensure n + 1
     n += first_array_position_
     arrays_.do:
@@ -192,7 +194,9 @@ class BufferedReader implements Reader:
   At least $n bytes must be available.
   */
   bytes n -> ByteArray:
-    if n == 0: return ByteArray 0
+    if n <= 0:
+      if n == 0: return ByteArray 0
+      throw "INVALID_ARGUMENT"
     ensure n
     start := first_array_position_
     first := arrays_.first
@@ -326,6 +330,7 @@ class BufferedReader implements Reader:
   Deprecated.  Use $(read --max_size) instead.
   */
   read_up_to max_size/int -> ByteArray:
+    if max_size < 0: throw "INVALID_ARGUMENT"
     ensure 1
     array := arrays_.first
     if first_array_position_ == 0 and array.size <= max_size:
@@ -403,6 +408,7 @@ class BufferedReader implements Reader:
     $max_size should never be zero.
   */
   read_string --max_size/int?=null -> string?:
+    if max_size < 0: throw "INVALID_ARGUMENT"
     if arrays_.size == 0:
       array := reader_.read
       if array == null: return null
