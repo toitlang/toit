@@ -90,7 +90,7 @@ int run_program(SnapshotBundle boot_bundle, SnapshotBundle application_bundle, c
         sleep_time.tv_sec = exit.value / 1000;
         sleep_time.tv_nsec = (exit.value % 1000) * 1000000;
 
-        while (nanosleep(&sleep_time, &sleep_time) != 0 && errno == EINTR) { }
+        while (nanosleep(&sleep_time, &sleep_time) != 0 && errno == EINTR) {}
         break;
       }
     }

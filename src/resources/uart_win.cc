@@ -177,7 +177,7 @@ class UARTResourceGroup : public ResourceGroup {
 public:
   TAG(UARTResourceGroup);
   explicit UARTResourceGroup(Process* process, EventSource* event_source)
-      : ResourceGroup(process, event_source) { }
+      : ResourceGroup(process, event_source) {}
 
 private:
   uint32_t on_event(Resource* resource, word data, uint32_t state) override {

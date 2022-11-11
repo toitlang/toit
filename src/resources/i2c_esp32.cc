@@ -46,7 +46,7 @@ class I2CResourceGroup : public ResourceGroup {
   TAG(I2CResourceGroup);
   I2CResourceGroup(Process* process, i2c_port_t port)
     : ResourceGroup(process)
-    , port_(port) { }
+    , port_(port) {}
 
   ~I2CResourceGroup() {
     SystemEventSource::instance()->run([&]() -> void {

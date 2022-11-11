@@ -21,7 +21,7 @@ OldSpace::OldSpace(Program* program, TwoSpaceHeap* owner)
     : Space(program, CAN_RESIZE, OLD_SPACE_PAGE),
       heap_(owner) {}
 
-OldSpace::~OldSpace() { }
+OldSpace::~OldSpace() {}
 
 void OldSpace::flush() {
   if (top_ != 0) {

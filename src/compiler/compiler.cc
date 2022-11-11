@@ -118,7 +118,7 @@ class Pipeline {
   };
 
   explicit Pipeline(const PipelineConfiguration& configuration)
-      : configuration_(configuration) { }
+      : configuration_(configuration) {}
 
   Result run(List<const char*> source_paths);
 
@@ -133,10 +133,10 @@ class Pipeline {
 
   virtual void lsp_selection_import_path(const char* path,
                                          const char* segment,
-                                         const char* resolved) { }
+                                         const char* resolved) {}
   virtual void lsp_complete_import_first_segment(ast::Identifier* segment,
                                                  const Package& current_package,
-                                                 const PackageLock& package_lock) { }
+                                                 const PackageLock& package_lock) {}
 
   virtual List<const char*> adjust_source_paths(List<const char*> source_paths);
   virtual PackageLock load_package_lock(List<const char*> source_paths);
@@ -215,8 +215,7 @@ class LocationLanguageServerPipeline : public LanguageServerPipeline {
       : LanguageServerPipeline(configuration)
       , lsp_selection_path_(path)
       , line_number_(line_number)
-      , column_number_(column_number) {
-  }
+      , column_number_(column_number) {}
 
  protected:
   ast::Unit* parse(Source* source);
@@ -262,8 +261,7 @@ class GotoDefinitionPipeline : public LocationLanguageServerPipeline {
                          int column_number, // 1-based
                          const PipelineConfiguration& configuration)
       : LocationLanguageServerPipeline(completion_path, line_number, column_number,
-                                       configuration) {
-  }
+                                       configuration) {}
 
  protected:
   void setup_lsp_selection_handler();
@@ -277,7 +275,7 @@ class GotoDefinitionPipeline : public LocationLanguageServerPipeline {
 
 class LineReader {
  public:
-  explicit LineReader(FILE* file) : file_(file), line_(null), line_size_(0) { }
+  explicit LineReader(FILE* file) : file_(file), line_(null), line_size_(0) {}
   ~LineReader() {
     free(line_);
   }

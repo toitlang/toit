@@ -30,7 +30,7 @@ class Label {
   Label()
       : position_or_use_count_(-1)
       , first_uses_()
-      , height_(-1) { }
+      , height_(-1) {}
 
   bool is_bound() const { return _has_position(); }
 
@@ -113,7 +113,7 @@ class Label {
 class AbsoluteUse {
  public:
   AbsoluteUse(int relative_position)
-      : position_(-relative_position) { }
+      : position_(-relative_position) {}
 
   bool has_relative_position() const { return position_ <= 0; }
   bool has_absolute_position() const { return !has_relative_position(); }
@@ -145,7 +145,7 @@ class AbsoluteReference {
   AbsoluteReference(int relative_position,
                     List<AbsoluteUse*> absolute_uses)
       : relative_position_(relative_position)
-      , absolute_uses_(absolute_uses) { }
+      , absolute_uses_(absolute_uses) {}
 
   void free_absolute_uses() {
     for (auto use : absolute_uses_) { delete use; }
@@ -164,7 +164,7 @@ class AbsoluteReference {
   List<AbsoluteUse*> absolute_uses_;
 
   friend class ListBuilder<AbsoluteReference>;
-  AbsoluteReference() { }
+  AbsoluteReference() {}
 };
 
 /// Represents a label that can be used as a target for a non-local branch.

@@ -50,7 +50,7 @@ namespace {
 template <typename V>
 class Node {
  public:
-  Node(uword key, const V& value) : key(key), value(value), left(null), right(null) { }
+  Node(uword key, const V& value) : key(key), value(value), left(null), right(null) {}
   uword key;
   V value;
   Node<V>* left;
@@ -60,7 +60,7 @@ class Node {
 template <typename V>
 class BinaryTree {
  public:
-  BinaryTree() : ref_count(_new int(1)) { }
+  BinaryTree() : ref_count(_new int(1)) {}
   BinaryTree(const BinaryTree& other)
       : ref_count(other.ref_count)
       , size_(other.size_)
@@ -253,7 +253,7 @@ class SizedVirtualAllocator {
  public:
   SizedVirtualAllocator(int word_size)
       : word_size_(word_size)
-      , limit(ProgramHeap::max_allocation_size(word_size)) { }
+      , limit(ProgramHeap::max_allocation_size(word_size)) {}
 
   HeapObject* allocate_object(TypeTag tag, int length);
 
@@ -303,7 +303,7 @@ class VirtualAllocator : public SnapshotAllocator {
  public:
   VirtualAllocator()
       : _allocator32(4)
-      , _allocator64(8) { }
+      , _allocator64(8) {}
 
   bool initialize(int normal_block_count,
                   int external_pointer_count,
@@ -425,7 +425,7 @@ using WorkAroundMap = BinaryTreeMap<V>;
 class ImageSnapshotReader : public SnapshotReader {
  public:
   ImageSnapshotReader(const uint8* buffer, int length)
-    : SnapshotReader(buffer, length, &image_allocator_) { }
+    : SnapshotReader(buffer, length, &image_allocator_) {}
 
   // Reads the snapshot.
   ProgramImage read_image(const uint8* id);
@@ -443,7 +443,7 @@ class BaseSnapshotWriter : public SnapshotWriter {
   BaseSnapshotWriter(int large_integer_class_id,
                      Program* program)
       : large_integer_class_id_(large_integer_class_id)
-      , program_(program) { }
+      , program_(program) {}
 
   void write_byte(uint8 value) = 0;
   void write_cardinal(uword value);
@@ -520,7 +520,7 @@ class EmittingSnapshotWriter : public BaseSnapshotWriter {
       : BaseSnapshotWriter(large_integer_class_id, program)
       , buffer_(buffer)
       , length_(length)
-      , back_reference_targets_(back_reference_targets) { }
+      , back_reference_targets_(back_reference_targets) {}
 
   void write_byte(uint8 value);
 
@@ -563,7 +563,7 @@ SnapshotReader::SnapshotReader(const uint8* buffer, int length, SnapshotAllocato
     , snapshot_size_(0)
     , index_(0)
     , pos_(0)
-    , table_(null) { }
+    , table_(null) {}
 
 SnapshotReader::~SnapshotReader() {
   delete[] table_;
@@ -1329,8 +1329,7 @@ ImageInputStream::ImageInputStream(const ProgramImage& image,
     : image_(image)
     , relocation_bits(relocation_bits)
     , current(image.begin())
-    , index(0) {
-}
+    , index(0) {}
 
 int ImageInputStream::words_to_read() {
   ASSERT(!eos());

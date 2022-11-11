@@ -99,7 +99,7 @@ NODES(DECLARE)
 
 class Node {
  public:
-  Node() : range_(Source::Range::invalid()) { }
+  Node() : range_(Source::Range::invalid()) {}
   virtual void accept(Visitor* visitor) = 0;
 
   Source::Range range() const { return range_; }
@@ -132,7 +132,7 @@ class Unit : public Node {
       , source_(source)
       , imports_(imports)
       , exports_(exports)
-      , declarations_(declarations) { }
+      , declarations_(declarations) {}
   explicit Unit(bool is_error_unit)
       : is_error_unit_(is_error_unit)
       , source_(null)
@@ -230,8 +230,8 @@ class Import : public Node {
 
 class Export : public Node {
  public:
-  explicit Export(List<Identifier*> identifiers) : identifiers_(identifiers), export_all_(false) { }
-  explicit Export(bool export_all) : export_all_(export_all) { }
+  explicit Export(List<Identifier*> identifiers) : identifiers_(identifiers), export_all_(false) {}
+  explicit Export(bool export_all) : export_all_(export_all) {}
   IMPLEMENTS(Export)
 
   List<Identifier*> identifiers() const { return identifiers_; }
@@ -258,7 +258,7 @@ class Class : public Node {
       , members_(members)
       , is_abstract_(is_abstract)
       , is_monitor_(is_monitor)
-      , is_interface_(is_interface) { }
+      , is_interface_(is_interface) {}
   IMPLEMENTS(Class)
 
   bool has_super() const { return super_ != null; }
@@ -303,7 +303,7 @@ class NamedArgument : public Expression {
   NamedArgument(Identifier* name, bool inverted, Expression* expression)
       : name_(name)
       , inverted_(inverted)
-      , expression_(expression) { }
+      , expression_(expression) {}
   IMPLEMENTS(NamedArgument)
 
   Identifier* name() const { return name_; }
@@ -322,7 +322,7 @@ class NamedArgument : public Expression {
 class Declaration : public Node {
  public:
   explicit Declaration(Expression* name_or_dot)  // name must be an Identifier or a Dot.
-      : name_or_dot_(name_or_dot) { }
+      : name_or_dot_(name_or_dot) {}
   IMPLEMENTS(Declaration)
 
   virtual Identifier* name() const {
@@ -345,7 +345,7 @@ private:
 
 class Identifier : public Expression {
  public:
-  explicit Identifier(Symbol data) : data_(data) { }
+  explicit Identifier(Symbol data) : data_(data) {}
   IMPLEMENTS(Identifier)
 
   Symbol data() const { return data_; }
@@ -356,7 +356,7 @@ class Identifier : public Expression {
 
 class Nullable : public Expression {
  public:
-  explicit Nullable(Expression* type) : type_(type) { }
+  explicit Nullable(Expression* type) : type_(type) {}
   IMPLEMENTS(Nullable)
 
   Expression* type() const { return type_; }
@@ -368,7 +368,7 @@ class Nullable : public Expression {
 /// The selection of an LSP request.
 class LspSelection : public Identifier {
  public:
-  explicit LspSelection(Symbol data) : Identifier(data) { }
+  explicit LspSelection(Symbol data) : Identifier(data) {}
   IMPLEMENTS(LspSelection)
 };
 
@@ -385,7 +385,7 @@ class Field : public Declaration {
       , initializer_(initializer)
       , is_static_(is_static)
       , is_abstract_(is_abstract)
-      , is_final_(is_final) { }
+      , is_final_(is_final) {}
   IMPLEMENTS(Field)
 
   Expression* type() const { return type_; }
@@ -417,7 +417,7 @@ class Method : public Declaration {
       , is_static_(is_static)
       , is_abstract_(is_abstract)
       , parameters_(parameters)
-      , body_(body) { }
+      , body_(body) {}
   IMPLEMENTS(Method)
 
   Expression* return_type() const { return return_type_; }
@@ -458,11 +458,11 @@ class Method : public Declaration {
 
 class BreakContinue : public Expression {
  public:
-  BreakContinue(bool is_break) : BreakContinue(is_break, null, null) { }
+  BreakContinue(bool is_break) : BreakContinue(is_break, null, null) {}
   BreakContinue(bool is_break, Expression* value, Identifier* label)
       : is_break_(is_break)
       , value_(value)
-      , label_(label) { }
+      , label_(label) {}
   IMPLEMENTS(BreakContinue)
 
   bool is_break() const { return is_break_; }
@@ -477,7 +477,7 @@ class BreakContinue : public Expression {
 
 class Parenthesis : public Expression {
  public:
-  explicit Parenthesis(Expression* expression) : expression_(expression) { }
+  explicit Parenthesis(Expression* expression) : expression_(expression) {}
   IMPLEMENTS(Parenthesis)
 
   Expression* expression() const { return expression_; }
@@ -490,7 +490,7 @@ class Block : public Expression {
  public:
   Block(Sequence* body, List<Parameter*> parameters)
       : body_(body)
-      , parameters_(parameters) { }
+      , parameters_(parameters) {}
   IMPLEMENTS(Block)
 
   Sequence* body() const { return body_; }
@@ -506,7 +506,7 @@ class Lambda : public Expression {
  public:
   Lambda(Sequence* body, List<Parameter*> parameters)
       : body_(body)
-      , parameters_(parameters) { }
+      , parameters_(parameters) {}
   IMPLEMENTS(Lambda)
 
   Sequence* body() const { return body_; }
@@ -521,7 +521,7 @@ class Lambda : public Expression {
 class Sequence : public Expression {
  public:
   explicit Sequence(List<Expression*> expressions)
-      : expressions_(expressions) { }
+      : expressions_(expressions) {}
   IMPLEMENTS(Sequence)
 
   List<Expression*> expressions() const { return expressions_; }
@@ -536,7 +536,7 @@ class DeclarationLocal : public Expression {
       : kind_(kind)
       , name_(name)
       , type_(type)
-      , value_(value) { }
+      , value_(value) {}
   IMPLEMENTS(DeclarationLocal)
 
   Token::Kind kind() const { return kind_; }
@@ -556,7 +556,7 @@ class If : public Expression {
   If(Expression* expression, Expression* yes, Expression* no)
       : expression_(expression)
       , yes_(yes)
-      , no_(no) { }
+      , no_(no) {}
   IMPLEMENTS(If)
 
   Expression* expression() const { return expression_; }
@@ -578,7 +578,7 @@ class While : public Expression {
  public:
   While(Expression* condition, Expression* body)
       : condition_(condition)
-      , body_(body) { }
+      , body_(body) {}
   IMPLEMENTS(While)
 
   Expression* condition() const { return condition_; }
@@ -595,7 +595,7 @@ class For : public Expression {
       : initializer_(initializer)
       , condition_(condition)
       , body_(body)
-      , update_(update) { }
+      , update_(update) {}
   IMPLEMENTS(For)
 
   Expression* initializer() const { return initializer_; }
@@ -616,7 +616,7 @@ class TryFinally : public Expression {
   TryFinally(Sequence* body, List<Parameter*> handler_parameters, Sequence* handler)
       : body_(body)
       , handler_parameters_(handler_parameters)
-      , handler_(handler) { }
+      , handler_(handler) {}
   IMPLEMENTS(TryFinally)
 
   Sequence* body() const { return body_; }
@@ -631,7 +631,7 @@ class TryFinally : public Expression {
 
 class Return : public Expression {
  public:
-  Return(Expression* value) : value_(value) { }
+  Return(Expression* value) : value_(value) {}
   IMPLEMENTS(Return)
 
   Expression* value() const { return value_; }
@@ -645,7 +645,7 @@ class Unary : public Expression {
   Unary(Token::Kind kind, bool prefix, Expression* expression)
       : kind_(kind)
       , prefix_(prefix)
-      , expression_(expression) { }
+      , expression_(expression) {}
   IMPLEMENTS(Unary)
 
   Token::Kind kind() const { return kind_; }
@@ -663,7 +663,7 @@ class Binary : public Expression {
   Binary(Token::Kind kind, Expression* left, Expression* right)
       : kind_(kind)
       , left_(left)
-      , right_(right) { }
+      , right_(right) {}
   IMPLEMENTS(Binary)
 
   Token::Kind kind() const { return kind_; }
@@ -680,7 +680,7 @@ class Dot : public Expression {
  public:
   Dot(Expression* receiver, Identifier* name)
      : receiver_(receiver)
-     , name_(name) { }
+     , name_(name) {}
   IMPLEMENTS(Dot)
 
   Expression* receiver() const { return receiver_; }
@@ -695,7 +695,7 @@ class Index : public Expression {
  public:
   Index(Expression* receiver, List<Expression*> arguments)
       : receiver_(receiver)
-      , arguments_(arguments) { }
+      , arguments_(arguments) {}
   IMPLEMENTS(Index)
 
   Expression* receiver() const { return receiver_; }
@@ -711,7 +711,7 @@ class IndexSlice : public Expression {
   IndexSlice(Expression* receiver, Expression* from, Expression* to)
       : receiver_(receiver)
       , from_(from)
-      , to_(to) { }
+      , to_(to) {}
   IMPLEMENTS(IndexSlice)
 
   Expression* receiver() const { return receiver_; }
@@ -731,7 +731,7 @@ class Call : public Expression {
   Call(Expression* target, List<Expression*> arguments, bool is_call_primitive)
       : target_(target)
       , arguments_(arguments)
-      , is_call_primitive_(is_call_primitive) { }
+      , is_call_primitive_(is_call_primitive) {}
   IMPLEMENTS(Call)
 
   Expression* target() const { return target_; }
@@ -757,7 +757,7 @@ class Parameter : public Expression {
       , default_value_(default_value)
       , is_named_(is_named)
       , is_field_storing_(is_field_storing)
-      , is_block_(is_block) { }
+      , is_block_(is_block) {}
   IMPLEMENTS(Parameter)
 
   Identifier* name() const { return name_; }
@@ -778,19 +778,19 @@ class Parameter : public Expression {
 
 class LiteralNull : public Expression {
  public:
-  LiteralNull() { }
+  LiteralNull() {}
   IMPLEMENTS(LiteralNull)
 };
 
 class LiteralUndefined : public Expression {
  public:
-  LiteralUndefined() { }
+  LiteralUndefined() {}
   IMPLEMENTS(LiteralUndefined)
 };
 
 class LiteralBoolean : public Expression {
  public:
-  explicit LiteralBoolean(bool value) : value_(value) { }
+  explicit LiteralBoolean(bool value) : value_(value) {}
   IMPLEMENTS(LiteralBoolean)
 
   bool value() const { return value_; }
@@ -801,7 +801,7 @@ class LiteralBoolean : public Expression {
 
 class LiteralInteger : public Expression {
  public:
-  explicit LiteralInteger(Symbol data) : data_(data) { }
+  explicit LiteralInteger(Symbol data) : data_(data) {}
   IMPLEMENTS(LiteralInteger)
 
   Symbol data() const { return data_; }
@@ -815,7 +815,7 @@ class LiteralInteger : public Expression {
 
 class LiteralCharacter : public Expression {
  public:
-  explicit LiteralCharacter(Symbol data) : data_(data) { }
+  explicit LiteralCharacter(Symbol data) : data_(data) {}
   IMPLEMENTS(LiteralCharacter)
 
   Symbol data() const { return data_; }
@@ -828,7 +828,7 @@ class LiteralString : public Expression {
  public:
   explicit LiteralString(Symbol data, bool is_multiline)
       : data_(data)
-      , is_multiline_(is_multiline) { }
+      , is_multiline_(is_multiline) {}
   IMPLEMENTS(LiteralString)
 
   Symbol data() const { return data_; }
@@ -845,7 +845,7 @@ class LiteralStringInterpolation : public Expression {
     List<LiteralString*> parts, List<LiteralString*> formats, List<Expression*> expressions)
       : parts_(parts)
       , formats_(formats)
-      , expressions_(expressions) { }
+      , expressions_(expressions) {}
   IMPLEMENTS(LiteralStringInterpolation)
 
   List<LiteralString*> parts() const { return parts_; }
@@ -860,7 +860,7 @@ class LiteralStringInterpolation : public Expression {
 
 class LiteralFloat : public Expression {
  public:
-  explicit LiteralFloat(Symbol data) : data_(data) { }
+  explicit LiteralFloat(Symbol data) : data_(data) {}
   IMPLEMENTS(LiteralFloat)
 
   Symbol data() const { return data_; }
@@ -874,7 +874,7 @@ class LiteralFloat : public Expression {
 
 class LiteralArray : public Expression {
  public:
-  explicit LiteralArray(List<Expression*> elements) : elements_(elements) { }
+  explicit LiteralArray(List<Expression*> elements) : elements_(elements) {}
   IMPLEMENTS(LiteralArray)
 
   List<Expression*> elements() const { return elements_; }
@@ -885,7 +885,7 @@ class LiteralArray : public Expression {
 
 class LiteralList : public Expression {
  public:
-  explicit LiteralList(List<Expression*> elements) : elements_(elements) { }
+  explicit LiteralList(List<Expression*> elements) : elements_(elements) {}
   IMPLEMENTS(LiteralList)
 
   List<Expression*> elements() const { return elements_; }
@@ -896,7 +896,7 @@ class LiteralList : public Expression {
 
 class LiteralByteArray : public Expression {
  public:
-  explicit LiteralByteArray(List<Expression*> elements) : elements_(elements) { }
+  explicit LiteralByteArray(List<Expression*> elements) : elements_(elements) {}
   IMPLEMENTS(LiteralByteArray)
 
   List<Expression*> elements() const { return elements_; }
@@ -907,7 +907,7 @@ class LiteralByteArray : public Expression {
 
 class LiteralSet : public Expression {
   public:
-  explicit LiteralSet(List<Expression*> elements) : elements_(elements) { }
+  explicit LiteralSet(List<Expression*> elements) : elements_(elements) {}
   IMPLEMENTS(LiteralSet)
 
   List<Expression*> elements() const { return elements_; }
@@ -920,7 +920,7 @@ class LiteralMap : public Expression {
  public:
   LiteralMap(List<Expression*> keys, List<Expression*> values)
       : keys_(keys)
-      , values_(values) { }
+      , values_(values) {}
   IMPLEMENTS(LiteralMap)
 
   List<Expression*> keys() const { return keys_; }
@@ -936,13 +936,13 @@ class ToitdocReference : public Node {
   ToitdocReference(Expression* target, bool is_setter)
       : is_signature_reference_(false)
       , target_(target)
-      , is_setter_(is_setter) { }
+      , is_setter_(is_setter) {}
 
   ToitdocReference(Expression* target, bool target_is_setter, List<Parameter*> parameters)
       : is_signature_reference_(true)
       , target_(target)
       , is_setter_(target_is_setter)
-      , parameters_(parameters) { }
+      , parameters_(parameters) {}
   IMPLEMENTS(ToitdocReference);
 
   bool is_error() const {

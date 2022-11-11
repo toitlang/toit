@@ -29,8 +29,7 @@ bool HostBLEEventSource::start() {
   return true;
 }
 
-void HostBLEEventSource::stop() {
-}
+void HostBLEEventSource::stop() {}
 
 void HostBLEEventSource::on_event(BLEResource* resource, word data) {
   LightLocker locker(mutex());

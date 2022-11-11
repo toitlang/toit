@@ -72,7 +72,7 @@ class MethodResolver : public ast::Visitor {
       , super_forcing_expression_(null)
       , current_lambda_(null)
       , loop_status_(NO_LOOP)
-      , loop_block_depth_(0) { }
+      , loop_block_depth_(0) {}
 
   void resolve_fill();
 

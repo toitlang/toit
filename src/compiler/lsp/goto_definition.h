@@ -28,7 +28,7 @@ class GotoDefinitionHandler : public LspSelectionHandler {
  public:
   explicit GotoDefinitionHandler(SourceManager* source_manager, LspProtocol* protocol)
       : LspSelectionHandler(protocol)
-      , source_manager_(source_manager) { }
+      , source_manager_(source_manager) {}
 
   void class_or_interface(ast::Node* node, IterableScope* scope, ir::Class* holder, ir::Node* resolved, bool needs_interface);
   void type(ast::Node* node, IterableScope* scope, ResolutionEntry resolved, bool allow_none);

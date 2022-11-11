@@ -555,7 +555,7 @@ int MethodResolver::_find_super_invocation(List<ast::Expression*> expressions) {
 
 class FindFinalFieldStoreVisitor : public ir::TraversingVisitor {
  public:
-  FindFinalFieldStoreVisitor() : field_store_(null) { }
+  FindFinalFieldStoreVisitor() : field_store_(null) {}
 
   ir::FieldStore* field_store() const { return field_store_; }
 

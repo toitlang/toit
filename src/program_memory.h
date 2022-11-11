@@ -108,7 +108,7 @@ class ProgramBlock : public ProgramBlockLinkedList::Element {
 
 class ProgramBlockList {
  public:
-  ProgramBlockList() : length_(0) { }
+  ProgramBlockList() : length_(0) {}
   ~ProgramBlockList();
 
   // Returns the number of bytes allocated.
@@ -183,7 +183,7 @@ class ProgramHeapMemory {
 
 class ProgramRawHeap {
  public:
-  ProgramRawHeap() { }
+  ProgramRawHeap() {}
 
   void take_blocks(ProgramBlockList* blocks);
 

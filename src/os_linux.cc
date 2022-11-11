@@ -148,12 +148,12 @@ word OS::get_heap_tag() {
 
 #else // def TOIT_CMPCTMALLOC
 
-void OS::set_heap_tag(word tag) { }
+void OS::set_heap_tag(word tag) {}
 word OS::get_heap_tag() { return 0; }
 
 #endif // def TOIT_CMPCTMALLOC
 
-void OS::heap_summary_report(int max_pages, const char* marker) { }
+void OS::heap_summary_report(int max_pages, const char* marker) {}
 
 }
 

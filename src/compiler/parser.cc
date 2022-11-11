@@ -73,7 +73,7 @@ static inline T add_range(std::pair<int, int> range, Source* source, T node) {
 
 class ParserPeeker {
  public:
-  ParserPeeker(Parser* parser) : parser_(parser) { }
+  ParserPeeker(Parser* parser) : parser_(parser) {}
 
   Token::Kind current_token() { return current_state().token; }
 
@@ -370,7 +370,7 @@ class TreeHeightChecker : public TraversingVisitor {
  public:
   TreeHeightChecker(int max_height, Diagnostics* diagnostics)
       : max_height_(max_height)
-      , diagnostics_(diagnostics) { }
+      , diagnostics_(diagnostics) {}
 
   bool reached_max_depth() const { return reported_error_; }
 

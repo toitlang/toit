@@ -51,7 +51,7 @@ enum {
 
 class Message : public MessageFIFO::Element {
  public:
-  virtual ~Message() { }
+  virtual ~Message() {}
 
   virtual MessageType message_type() const = 0;
 
@@ -67,8 +67,8 @@ class SystemMessage : public Message {
     SPAWNED = 1,
   };
 
-  SystemMessage(int type, int gid, int pid, uint8* data) : type_(type), gid_(gid), pid_(pid), data_(data) { }
-  SystemMessage(int type, int gid, int pid) : type_(type), gid_(gid), pid_(pid), data_(null) { }
+  SystemMessage(int type, int gid, int pid, uint8* data) : type_(type), gid_(gid), pid_(pid), data_(data) {}
+  SystemMessage(int type, int gid, int pid) : type_(type), gid_(gid), pid_(pid), data_(null) {}
   virtual ~SystemMessage() override { free_data_and_externals(); }
 
   virtual MessageType message_type() const override { return MESSAGE_SYSTEM; }
@@ -102,8 +102,7 @@ class ObjectNotifyMessage : public Message {
  public:
   explicit ObjectNotifyMessage(ObjectNotifier* notifier)
       : notifier_(notifier)
-      , queued_(false) {
-  }
+      , queued_(false) {}
 
   virtual MessageType message_type() const override { return MESSAGE_MONITOR_NOTIFY; }
 
@@ -131,9 +130,9 @@ class ObjectNotifyMessage : public Message {
 
 class MessageEncoder {
  public:
-  explicit MessageEncoder(uint8* buffer) : buffer_(buffer) { }
+  explicit MessageEncoder(uint8* buffer) : buffer_(buffer) {}
   MessageEncoder(Process* process, uint8* buffer)
-      : MessageEncoder(process, buffer, MESSAGE_FORMAT_IPC) { }
+      : MessageEncoder(process, buffer, MESSAGE_FORMAT_IPC) {}
 
   static void encode_process_message(uint8* buffer, uint8 value);
 
@@ -204,7 +203,7 @@ class MessageEncoder {
 class TisonEncoder : public MessageEncoder {
  public:
   TisonEncoder(Process* process)
-      : MessageEncoder(process, null, MESSAGE_FORMAT_TISON) { }
+      : MessageEncoder(process, null, MESSAGE_FORMAT_TISON) {}
   TisonEncoder(Process* process, uint8* buffer, unsigned payload_size)
       : MessageEncoder(process, buffer, MESSAGE_FORMAT_TISON)
       , payload_size_(payload_size) {
@@ -226,9 +225,9 @@ class TisonEncoder : public MessageEncoder {
 
 class MessageDecoder {
  public:
-  explicit MessageDecoder(const uint8* buffer) : buffer_(buffer) { }
+  explicit MessageDecoder(const uint8* buffer) : buffer_(buffer) {}
   MessageDecoder(Process* process, const uint8* buffer)
-      : MessageDecoder(process, buffer, INT_MAX, MESSAGE_FORMAT_IPC) { }
+      : MessageDecoder(process, buffer, INT_MAX, MESSAGE_FORMAT_IPC) {}
 
   static bool decode_process_message(const uint8* buffer, int* value);
 
@@ -306,7 +305,7 @@ class MessageDecoder {
 class TisonDecoder : public MessageDecoder {
  public:
   TisonDecoder(Process* process, const uint8* buffer, int length)
-      : MessageDecoder(process, buffer, length, MESSAGE_FORMAT_TISON) { }
+      : MessageDecoder(process, buffer, length, MESSAGE_FORMAT_TISON) {}
 
   ~TisonDecoder() {
     ASSERT(externals_count() == 0);
@@ -317,7 +316,7 @@ class TisonDecoder : public MessageDecoder {
 
 class ExternalSystemMessageHandler : private ProcessRunner {
  public:
-  ExternalSystemMessageHandler(VM* vm) : vm_(vm), process_(null) { }
+  ExternalSystemMessageHandler(VM* vm) : vm_(vm), process_(null) {}
 
   // Try to start the messaging handler. Returns true if successful and false
   // if starting it failed due to lack of memory.

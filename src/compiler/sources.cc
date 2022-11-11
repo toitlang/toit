@@ -42,7 +42,7 @@ class SourceManagerSource : public Source {
       , error_path_(error_path)
       , text_(text)
       , size_(size),
-      offset_(offset) { }
+      offset_(offset) {}
 
   static SourceManagerSource invalid() {
     return SourceManagerSource(null, Package::INVALID_PACKAGE_ID, "", null, 0, 0);

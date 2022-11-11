@@ -137,7 +137,7 @@ class AlignedMemory : public AlignedMemoryBase {
 class ProtectableAlignedMemory : public AlignedMemoryBase {
  public:
   ProtectableAlignedMemory(size_t size_in_bytes, size_t alignment)
-      : memory_(size_in_bytes, compute_alignment(alignment)) { }
+      : memory_(size_in_bytes, compute_alignment(alignment)) {}
   virtual ~ProtectableAlignedMemory();
 
   // Returns the aligned address.

@@ -120,8 +120,7 @@ class MbedTLSResourceGroup : public ResourceGroup {
     , mode_(mode)
     , error_flags_(0)
     , error_depth_(0)
-    , error_issuer_(null) {
-  }
+    , error_issuer_(null) {}
 
   ~MbedTLSResourceGroup() {
     free(error_issuer_);

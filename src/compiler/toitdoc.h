@@ -43,11 +43,11 @@ class Toitdoc {
           Source::Range range)
       : contents_(contents)
       , refs_(refs)
-      , range_(range) { }
+      , range_(range) {}
 
   Toitdoc()  // Needed, so it can be used as a map value.
       : contents_(null)
-      , range_(Source::Range::invalid()) { }
+      , range_(Source::Range::invalid()) {}
 
   bool is_valid() const { return contents_ != null; }
   toitdoc::Contents* contents() const { return contents_; }

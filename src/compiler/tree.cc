@@ -88,20 +88,20 @@ class GrowerVisitor : public TraversingVisitor {
 
 class TreeLogger {
  public:
-  virtual void root(Method* method) { }
-  virtual void root(Class* klass) { }
+  virtual void root(Method* method) {}
+  virtual void root(Class* klass) {}
   virtual void add(Method* method,
                    Set<Class*> classes,
                    Set<Method*> methods,
-                   Set<CallSelector> selectors) { }
-  virtual void add_method_with_selector(CallSelector selector, Method* method) { }
+                   Set<CallSelector> selectors) {}
+  virtual void add_method_with_selector(CallSelector selector, Method* method) {}
 
-  virtual void print() { }
+  virtual void print() {}
 };
 
 class GraphvizTreeLogger : public TreeLogger {
  public:
-  GraphvizTreeLogger() { }
+  GraphvizTreeLogger() {}
 
   void root(Method* method) { root_methods_.push_back(method); }
   void root(Class* klass) { root_classes_.push_back(klass); }

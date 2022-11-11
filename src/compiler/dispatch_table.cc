@@ -65,7 +65,7 @@ class SelectorRow {
   explicit SelectorRow(const DispatchSelector& selector)
       : selector_(selector)
       , begin_(-1)
-      , end_(-1) { }
+      , end_(-1) {}
 
   DispatchSelector selector() const { return selector_; }
 
@@ -175,7 +175,7 @@ class SelectorRow {
 class RowFitter {
  public:
   // Start fitting at the given offset.
-  RowFitter() : limit_(0) { }
+  RowFitter() : limit_(0) {}
 
   int limit() const { return limit_; }
 
@@ -299,7 +299,7 @@ class RowFitter {
 
 class DispatchTableBuilder {
  public:
-  DispatchTableBuilder() { }
+  DispatchTableBuilder() {}
 
   void cook(List<Class*> classes, List<Method*> methods);
   void print_table();

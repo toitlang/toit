@@ -601,7 +601,7 @@ Object* nimble_error_code_to_string(Process* process, int error_code, bool host)
   static const size_t BUFFER_LEN = 400;
   char buffer[BUFFER_LEN];
   const char* gist = "https://gist.github.com/mikkeldamsgaard/0857ce6a8b073a52d6f07973a441ad54";
-  int length = snprintf(buffer, BUFFER_LEN, "NimBLE error, Type: %s, error code: 0z%02x. See %s",
+  int length = snprintf(buffer, BUFFER_LEN, "NimBLE error, Type: %s, error code: 0x%02x. See %s",
                         host ? "host" : "client",
                         error_code % 0x100,
                         gist);
@@ -1825,7 +1825,7 @@ PRIMITIVE(add_characteristic) {
 }
 
 PRIMITIVE(add_descriptor) {
-  ARGS(BLECharacteristicResource, characteristic, Blob, raw_uuid, Object, value, int, properties, int, permissions)
+  ARGS(BLECharacteristicResource, characteristic, Blob, raw_uuid, int, properties, int, permissions, Object, value)
 
   if (!characteristic->service()->peripheral_manager()) INVALID_ARGUMENT;
 
@@ -1901,6 +1901,7 @@ PRIMITIVE(deploy_service) {
         MALLOC_FAILED;
       }
 
+      gatt_svr_chars[characteristic_index].descriptors = gatt_desc_defs;
 
       int descriptor_index = 0;
       for (auto descriptor : characteristic->descriptors()) {
@@ -1908,6 +1909,7 @@ PRIMITIVE(deploy_service) {
         gatt_desc_defs[descriptor_index].att_flags = descriptor->properties();
         gatt_desc_defs[descriptor_index].access_cb = BLEReadWriteElement::on_access;
         gatt_desc_defs[descriptor_index].arg = descriptor;
+        descriptor_index++;
       }
     }
     characteristic_index++;
