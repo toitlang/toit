@@ -47,6 +47,7 @@
 #include "monitor.h"
 #include "optimizations/optimizations.h"
 #include "parser.h"
+#include "propagation/type_propagator.h"
 #include "resolver.h"
 #include "../snapshot_bundle.h"
 #include "stubs.h"
@@ -699,8 +700,8 @@ SnapshotBundle Compiler::compile(const char* source_path,
     Pipeline main_pipeline(main_configuration);
     pipeline_main_result = main_pipeline.run(source_paths);
     if (pipeline_main_result.is_valid()) {
-      DebugCompilationPipeline debug_pipeline(debug_configuration);
-      pipeline_debug_result = debug_pipeline.run(source_paths);
+      //DebugCompilationPipeline debug_pipeline(debug_configuration);
+      //pipeline_debug_result = debug_pipeline.run(source_paths);
     }
   } else {
 #ifdef TOIT_POSIX
@@ -721,9 +722,9 @@ SnapshotBundle Compiler::compile(const char* source_path,
       auto pipeline_result = pipeline.run(source_paths);
       send_pipeline_result(write_fd, pipeline_result);
       if (pipeline_result.is_valid()) {
-        DebugCompilationPipeline debug_pipeline(debug_configuration);
-        pipeline_result = debug_pipeline.run(source_paths);
-        send_pipeline_result(write_fd, pipeline_result);
+        //DebugCompilationPipeline debug_pipeline(debug_configuration);
+        //pipeline_result = debug_pipeline.run(source_paths);
+        //send_pipeline_result(write_fd, pipeline_result);
       }
       close(write_fd);
       exit(0);
@@ -731,7 +732,7 @@ SnapshotBundle Compiler::compile(const char* source_path,
     close(write_fd);  // Not needing that direction.
     pipeline_main_result = receive_pipeline_result(read_fd);
     if (pipeline_main_result.is_valid()) {
-      pipeline_debug_result = receive_pipeline_result(read_fd);
+      //pipeline_debug_result = receive_pipeline_result(read_fd);
     }
     close(read_fd);
     wait_for_child(cpid, main_configuration.diagnostics);
@@ -1600,6 +1601,11 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths) {
 
   Backend backend(source_manager(), &source_mapper);
   auto program = backend.emit(ir_program);
+
+  { TypePropagator propagator(program);
+    propagator.propagate();
+  }
+
   SnapshotGenerator generator(program);
   generator.generate(program);
   int source_map_size;

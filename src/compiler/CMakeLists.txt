@@ -20,6 +20,8 @@ file(GLOB toit_compiler_SRC
     "lsp/*.cc"
     "optimizations/*.h"
     "optimizations/*.cc"
+    "propagation/*.h"
+    "propagation/*.cc"
 )
 list(FILTER toit_compiler_SRC EXCLUDE REGEX "/toitc.cc$")
 
