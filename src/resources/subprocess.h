@@ -28,8 +28,6 @@ class SubprocessResourceGroup : public ResourceGroup {
   TAG(SubprocessResourceGroup);
   SubprocessResourceGroup(Process* process, EventSource* event_source) : ResourceGroup(process, event_source) {}
   uint32_t on_event(Resource* resource, word data, uint32_t state) override;
-
- private:
 };
 
 #if defined(TOIT_WINDOWS)
