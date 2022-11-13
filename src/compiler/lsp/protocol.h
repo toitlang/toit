@@ -69,7 +69,7 @@ struct LspWriterStdout : public LspWriter {
 
 class LspProtocolBase {
  public:
-  LspProtocolBase(LspWriter* writer) : writer_(writer) { }
+  LspProtocolBase(LspWriter* writer) : writer_(writer) {}
 
  protected:
   void print_lsp_range(const LspRange& range);
@@ -176,8 +176,7 @@ class LspProtocol {
       , completion_(writer)
       , summary_(writer)
       , snapshot_(writer)
-      , semantic_(writer) {
-  }
+      , semantic_(writer) {}
 
   LspDiagnosticsProtocol* diagnostics() { return &diagnostics_; }
   LspGotoDefinitionProtocol* goto_definition() { return &goto_definition_; }

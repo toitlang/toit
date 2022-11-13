@@ -108,9 +108,9 @@ class IndentationStack {
  private:
   struct Entry {
     Entry(int level, Kind kind, Token::Kind end_token, Source::Range start_range)
-        : indentation(level), kind(kind), end_token(end_token), start_range(start_range) { }
+        : indentation(level), kind(kind), end_token(end_token), start_range(start_range) {}
     Entry()
-        : indentation(-1), kind(IMPORT), end_token(Token::INVALID), start_range(Source::Range::invalid()) { }
+        : indentation(-1), kind(IMPORT), end_token(Token::INVALID), start_range(Source::Range::invalid()) {}
 
     int indentation;
     Kind kind;
@@ -251,7 +251,7 @@ class Parser {
       , diagnostics_(diagnostics)
       , scanner_state_queue_(scanner)
       , current_state_(State::invalid())
-      , peek_state_(State::invalid()) { }
+      , peek_state_(State::invalid()) {}
 
   ast::Unit* parse_unit(Source* override_source = null);
 

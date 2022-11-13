@@ -93,14 +93,14 @@ class SourceMapper {
    private:
     friend class SourceMapper;
     MethodMapper(SourceMapper* source_mapper, int method_index)
-        : source_mapper_(source_mapper), method_index_(method_index) { }
+        : source_mapper_(source_mapper), method_index_(method_index) {}
 
     SourceMapper* source_mapper_;
     int method_index_;
     bool is_finalized_ = false;
   };
 
-  explicit SourceMapper(SourceManager* manager) : manager_(manager) { }
+  explicit SourceMapper(SourceManager* manager) : manager_(manager) {}
 
   /// Returns a malloced buffer of the source-map.
   uint8* cook(int* size);

@@ -27,7 +27,7 @@ namespace compiler {
 template<typename T>
 class ListBuilder {
  public:
-  ListBuilder() { }
+  ListBuilder() {}
 
   int length() const { return data_.size(); }
   bool is_empty() const { return data_.empty(); }

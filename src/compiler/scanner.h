@@ -151,7 +151,7 @@ class Scanner {
             Source::Range range)
         : is_multiline_(is_multiline)
         , is_toitdoc_(is_toit_doc)
-        , range_(range) { }
+        , range_(range) {}
 
     bool is_multiline() const { return is_multiline_; }
     bool is_toitdoc() const { return is_toitdoc_; }
@@ -169,7 +169,7 @@ class Scanner {
     Source::Range range_;
 
     friend class ListBuilder<Comment>;
-    Comment() : range_(Source::Range::invalid()) { }
+    Comment() : range_(Source::Range::invalid()) {}
   };
 
 
@@ -227,7 +227,7 @@ class Scanner {
       , source_(source)
       , lsp_selection_is_identifier_(false)
       , symbols_(symbols)
-      , diagnostics_(diagnostics) { }
+      , diagnostics_(diagnostics) {}
 
   Scanner(Source* source,
           bool lsp_selection_is_identifier,
@@ -237,7 +237,7 @@ class Scanner {
       , source_(source)
       , lsp_selection_is_identifier_(lsp_selection_is_identifier)
       , symbols_(symbols)
-      , diagnostics_(diagnostics) { }
+      , diagnostics_(diagnostics) {}
 
   void skip_hash_bang_line();
 

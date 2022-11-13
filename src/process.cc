@@ -78,8 +78,7 @@ Process::Process(Program* program, ProcessGroup* group, SystemMessage* terminati
 }
 
 Process::Process(ProcessRunner* runner, ProcessGroup* group, SystemMessage* termination)
-    : Process(null, runner, group, termination, null) {
-}
+    : Process(null, runner, group, termination, null) {}
 
 Process::~Process() {
   state_ = TERMINATING;

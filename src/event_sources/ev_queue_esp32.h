@@ -30,7 +30,7 @@ public:
       : Resource(group)
       , queue_(queue){}
 
-  virtual ~EventQueueResource() { };
+  virtual ~EventQueueResource() {};
 
   QueueHandle_t queue() const { return queue_; }
 

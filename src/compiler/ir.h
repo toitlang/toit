@@ -187,7 +187,7 @@ class Type {
       : kind_(kind), class_(klass), is_nullable_(is_nullable) {}
 
   friend class ListBuilder<Type>;
-  Type() { }
+  Type() {}
 
   int kind_;
   Class* class_;
@@ -239,7 +239,7 @@ class Program : public Node {
       , identical_(identical)
       , lookup_failure_(lookup_failure)
       , as_check_failure_(as_check_failure)
-      , lambda_box_(lambda_box) { }
+      , lambda_box_(lambda_box) {}
   IMPLEMENTS(Program)
 
   List<Class*> classes() const { return classes_; }
@@ -294,7 +294,7 @@ class Class : public Node {
       , end_id_(-1)
       , first_subclass_(null)
       , subclass_sibling_link_(null)
-      , total_field_count_(-1) { }
+      , total_field_count_(-1) {}
   IMPLEMENTS(Class)
 
   Symbol name() const { return name_; }
@@ -504,7 +504,7 @@ class Method : public Node {
       , kind_(kind)
       , range_(range)
       , body_(null)
-      , index_(-1) { }
+      , index_(-1) {}
 
   explicit Method(Symbol name,
                   Class* holder,  // `null` if not inside a class.
@@ -524,7 +524,7 @@ class Method : public Node {
       , kind_(kind)
       , range_(range)
       , body_(null)
-      , index_(-1) { }
+      , index_(-1) {}
 
  public:
   IMPLEMENTS(Method)
@@ -673,32 +673,32 @@ class Method : public Node {
 class MethodInstance : public Method {
  public:
   MethodInstance(Symbol name, Class* holder, const ResolutionShape& shape, bool is_abstract, Source::Range range)
-      : Method(name, holder, shape, is_abstract, INSTANCE, range) { }
+      : Method(name, holder, shape, is_abstract, INSTANCE, range) {}
   MethodInstance(Symbol name, Class* holder, const PlainShape& shape, bool is_abstract, Source::Range range)
-      : Method(name, holder, shape, is_abstract, INSTANCE, range) { }
+      : Method(name, holder, shape, is_abstract, INSTANCE, range) {}
   MethodInstance(Method::MethodKind kind, Symbol name, Class* holder, const ResolutionShape& shape, bool is_abstract, Source::Range range)
-      : Method(name, holder, shape, is_abstract, kind, range) { }
+      : Method(name, holder, shape, is_abstract, kind, range) {}
   IMPLEMENTS(MethodInstance)
 };
 
 class MonitorMethod : public MethodInstance {
  public:
   MonitorMethod(Symbol name, Class* holder, const ResolutionShape& shape, Source::Range range)
-      : MethodInstance(name, holder, shape, false, range) { }
+      : MethodInstance(name, holder, shape, false, range) {}
   IMPLEMENTS(MonitorMethod)
 };
 
 class AdapterStub : public MethodInstance {
  public:
   AdapterStub(Symbol name, Class* holder, const PlainShape& shape, Source::Range range)
-      : MethodInstance(name, holder, shape, false, range) { }
+      : MethodInstance(name, holder, shape, false, range) {}
   IMPLEMENTS(AdapterStub)
 };
 
 class IsInterfaceStub : public MethodInstance {
  public:
   IsInterfaceStub(Symbol name, Class* holder, const PlainShape& shape, Source::Range range)
-      : MethodInstance(name, holder, shape, false, range) { }
+      : MethodInstance(name, holder, shape, false, range) {}
   IMPLEMENTS(IsInterfaceStub);
 };
 
@@ -707,19 +707,19 @@ class IsInterfaceStub : public MethodInstance {
 class MethodStatic : public Method {
  public:
   MethodStatic(Symbol name, Class* holder, const ResolutionShape& shape, MethodKind kind, Source::Range range)
-      : Method(name, holder, shape, false, kind, range) { }
+      : Method(name, holder, shape, false, kind, range) {}
   IMPLEMENTS(MethodStatic)
 };
 
 class Constructor : public Method {
  public:
   Constructor(Symbol name, Class* klass, const ResolutionShape& shape, Source::Range range)
-      : Method(name, klass, shape, false, CONSTRUCTOR, range) { }
+      : Method(name, klass, shape, false, CONSTRUCTOR, range) {}
 
   // Synthetic default constructor.
   Constructor(Symbol name, Class* klass, Source::Range range)
       : Method(name, klass, ResolutionShape(0).with_implicit_this(), false, CONSTRUCTOR, range)
-      , is_synthetic_(true) { }
+      , is_synthetic_(true) {}
   IMPLEMENTS(Constructor)
 
   Class* klass() const { return holder(); }
@@ -735,12 +735,12 @@ class Global : public Method {
       : Method(name, null, ResolutionShape(0), false, GLOBAL_INITIALIZER, range)
       , is_final_(is_final)
       , is_lazy_(true)
-      , global_id_(-1) { }
+      , global_id_(-1) {}
   Global(Symbol name, Class* holder, bool is_final, Source::Range range)
       : Method(name, holder, ResolutionShape(0), false, GLOBAL_INITIALIZER, range)
       , is_final_(is_final)
       , is_lazy_(true)
-      , global_id_(-1) { }
+      , global_id_(-1) {}
   IMPLEMENTS(Global)
 
   // Whether this global is marked to be final.
@@ -798,7 +798,7 @@ class Field : public Node {
       , type_(Type::invalid())
       , is_final_(is_final)
       , resolved_index_(-1)
-      , range_(range) { }
+      , range_(range) {}
   IMPLEMENTS(Field)
 
   Symbol name() const { return name_; }
@@ -842,7 +842,7 @@ class FieldStub : public MethodInstance {
                        false,
                        range)
       , field_(field)
-      , checked_type_(Type::invalid()) { }
+      , checked_type_(Type::invalid()) {}
   IMPLEMENTS(FieldStub)
 
   Field* field() const { return field_; }
@@ -872,7 +872,7 @@ class FieldStub : public MethodInstance {
 // TODO(kasper): Not really an expression. Maybe just a node? or a body part?
 class Expression : public Node {
  public:
-  explicit Expression(Source::Range range) : range_(range) { }
+  explicit Expression(Source::Range range) : range_(range) {}
   IMPLEMENTS(Expression)
 
   virtual bool is_block() const { return false; }
@@ -885,9 +885,9 @@ class Expression : public Node {
 class Error : public Expression {
  public:
   explicit Error(Source::Range range)
-      : Expression(range), nested_(List<Expression*>()) { }
+      : Expression(range), nested_(List<Expression*>()) {}
   Error(Source::Range range, List<ir::Expression*> nested)
-      : Expression(range), nested_(nested) { }
+      : Expression(range), nested_(nested) {}
   IMPLEMENTS(Error);
 
   List<Expression*> nested() const { return nested_; }
@@ -899,7 +899,7 @@ class Error : public Expression {
 
 class Nop : public Expression {
  public:
-  explicit Nop(Source::Range range) : Expression(range) { }
+  explicit Nop(Source::Range range) : Expression(range) {}
   IMPLEMENTS(Nop)
 };
 
@@ -912,7 +912,7 @@ class FieldStore : public Expression {
       : Expression(range)
       , receiver_(receiver)
       , field_(field)
-      , value_(value) { }
+      , value_(value) {}
   IMPLEMENTS(FieldStore)
 
   Expression* receiver() const { return receiver_; }
@@ -934,7 +934,7 @@ class FieldStore : public Expression {
 class FieldLoad : public Expression {
  public:
   FieldLoad(Expression* receiver, Field* field, Source::Range range)
-      : Expression(range), receiver_(receiver), field_(field) { }
+      : Expression(range), receiver_(receiver), field_(field) {}
   IMPLEMENTS(FieldLoad)
 
   Expression* receiver() const { return receiver_; }
@@ -954,7 +954,7 @@ class FieldLoad : public Expression {
 class Sequence : public Expression {
  public:
   Sequence(List<Expression*> expressions, Source::Range range)
-      : Expression(range), expressions_(expressions) { }
+      : Expression(range), expressions_(expressions) {}
   IMPLEMENTS(Sequence)
 
   List<Expression*> expressions() const { return expressions_; }
@@ -984,7 +984,7 @@ class Builtin : public Node {
     GLOBAL_ID,
   };
 
-  explicit Builtin(BuiltinKind kind) : kind_(kind) { }
+  explicit Builtin(BuiltinKind kind) : kind_(kind) {}
   IMPLEMENTS(Builtin)
 
   static Builtin* resolve(Symbol id) {
@@ -1044,7 +1044,7 @@ class TryFinally : public Expression {
       : Expression(range)
       , body_(body)
       , handler_parameters_(handler_parameters)
-      , handler_(handler) { }
+      , handler_(handler) {}
   IMPLEMENTS(TryFinally)
 
   Code* body() const { return body_; }
@@ -1063,7 +1063,7 @@ class TryFinally : public Expression {
 class If : public Expression {
  public:
   If(Expression* condition, Expression* yes, Expression* no, Source::Range range)
-      : Expression(range), condition_(condition), yes_(yes), no_(no) { }
+      : Expression(range), condition_(condition), yes_(yes), no_(no) {}
   IMPLEMENTS(If)
 
   Expression* condition() const { return condition_; }
@@ -1083,7 +1083,7 @@ class If : public Expression {
 class Not : public Expression {
  public:
   explicit Not(Expression* value, Source::Range range)
-      : Expression(range), value_(value) { }
+      : Expression(range), value_(value) {}
   IMPLEMENTS(Not)
 
   Expression* value() const { return value_; }
@@ -1100,7 +1100,7 @@ class While : public Expression {
       , condition_(condition)
       , body_(body)
       , update_(update)
-      , loop_variable_(loop_variable) { }
+      , loop_variable_(loop_variable) {}
   IMPLEMENTS(While)
 
   Expression* condition() const { return condition_; }
@@ -1123,7 +1123,7 @@ class While : public Expression {
 class LoopBranch : public Expression {
  public:
   LoopBranch(bool is_break, int loop_depth, Source::Range range)
-      : Expression(range), is_break_(is_break), block_depth_(loop_depth) { }
+      : Expression(range), is_break_(is_break), block_depth_(loop_depth) {}
   IMPLEMENTS(LoopBranch)
 
   bool is_break() const { return is_break_; }
@@ -1166,7 +1166,7 @@ class Code : public Expression {
 
 class Reference : public Expression {
  public:
-  explicit Reference(Source::Range range) : Expression(range) { }
+  explicit Reference(Source::Range range) : Expression(range) {}
   IMPLEMENTS(Reference)
 
   virtual Node* target() const = 0;
@@ -1175,7 +1175,7 @@ class Reference : public Expression {
 class ReferenceClass : public Reference {
  public:
   explicit ReferenceClass(Class* target, Source::Range range)
-      : Reference(range), target_(target) { }
+      : Reference(range), target_(target) {}
   IMPLEMENTS(ReferenceClass)
 
   Class* target() const { return target_; }
@@ -1186,7 +1186,7 @@ class ReferenceClass : public Reference {
 
 class ReferenceMethod : public Reference {
  public:
-  ReferenceMethod(Method* target, Source::Range range) : Reference(range), target_(target) { }
+  ReferenceMethod(Method* target, Source::Range range) : Reference(range), target_(target) {}
   IMPLEMENTS(ReferenceMethod)
 
   Method* target() const { return target_; }
@@ -1198,7 +1198,7 @@ class ReferenceMethod : public Reference {
 class ReferenceGlobal : public Reference {
  public:
   explicit ReferenceGlobal(Global* target, bool is_lazy, Source::Range range)
-      : Reference(range), target_(target), is_lazy_(is_lazy) { }
+      : Reference(range), target_(target), is_lazy_(is_lazy) {}
   IMPLEMENTS(ReferenceGlobal)
 
   Global* target() const { return target_; }
@@ -1220,9 +1220,9 @@ class Local : public Node {
       , is_block_(is_block)
       , has_explicit_type_(type.is_valid())
       , type_(type)
-      , index_(-1) { }
+      , index_(-1) {}
   Local(Symbol name, bool is_final, bool is_block, Source::Range range)
-      : Local(name, is_final, is_block, Type::invalid(), range) { }
+      : Local(name, is_final, is_block, Type::invalid(), range) {}
   IMPLEMENTS(Local)
 
   Symbol name() const { return name_; }
@@ -1330,8 +1330,7 @@ class CapturedLocal : public Parameter {
                   index,
                   false,
                   range)
-      , captured_(captured) {
-  }
+      , captured_(captured) {}
   IMPLEMENTS(CapturedLocal)
 
   bool is_final() const { return captured_->is_final(); }
@@ -1375,7 +1374,7 @@ class Block : public Local {
 class Dot : public Node {
  public:
   Dot(Expression* receiver, Symbol selector)
-      : receiver_(receiver), selector_(selector) { }
+      : receiver_(receiver), selector_(selector) {}
   IMPLEMENTS(Dot)
 
   Expression* receiver() const { return receiver_; }
@@ -1408,7 +1407,7 @@ class LspSelectionDot : public Dot {
 class ReferenceLocal : public Reference {
  public:
   ReferenceLocal(Local* target, int block_depth, const Source::Range& range)
-    : Reference(range), target_(target), block_depth_(block_depth) { }
+    : Reference(range), target_(target), block_depth_(block_depth) {}
   IMPLEMENTS(ReferenceLocal)
 
   Local* target() const { return target_; }
@@ -1423,7 +1422,7 @@ class ReferenceLocal : public Reference {
 class ReferenceBlock : public ReferenceLocal {
  public:
   ReferenceBlock(Block* target, int block_depth, Source::Range range)
-      : ReferenceLocal(target, block_depth, range) { }
+      : ReferenceLocal(target, block_depth, range) {}
   IMPLEMENTS(ReferenceBlock)
 
   Block* target() const { return ReferenceLocal::target()->as_Block(); }
@@ -1437,12 +1436,12 @@ class Super : public Expression {
   Super(bool is_at_end, Source::Range range)
       : Expression(range)
       , is_explicit_(false)
-      , is_at_end_(is_at_end) { }
+      , is_at_end_(is_at_end) {}
   Super(Expression* expression, bool is_explicit, bool is_at_end, Source::Range range)
       : Expression(range)
       , expression_(expression)
       , is_explicit_(is_explicit)
-      , is_at_end_(is_at_end) { }
+      , is_at_end_(is_at_end) {}
   IMPLEMENTS(Super)
 
   Expression* expression() const { return expression_; }
@@ -1460,7 +1459,7 @@ class Super : public Expression {
 class Call : public Expression {
  public:
   Call(List<Expression*> arguments, const CallShape& shape, Source::Range range)
-      : Expression(range), arguments_(arguments), shape_(shape) { }
+      : Expression(range), arguments_(arguments), shape_(shape) {}
   IMPLEMENTS(Call)
 
   virtual Node* target() const = 0;
@@ -1483,13 +1482,13 @@ class CallStatic : public Call {
              List<Expression*> arguments,
              Source::Range range)
       : Call(arguments, shape, range)
-      , method_(method) { }
+      , method_(method) {}
   CallStatic(ReferenceMethod* method,
              List<Expression*> arguments,
              const CallShape& shape,
              Source::Range range)
       : Call(arguments, shape, range)
-      , method_(method) { }
+      , method_(method) {}
 
   IMPLEMENTS(CallStatic)
 
@@ -1566,7 +1565,7 @@ class CallVirtual : public Call {
              CallShape(0).with_implicit_this(),
              Source::Range::invalid())
       , target_(target)
-      , opcode_(opcode) { }
+      , opcode_(opcode) {}
   IMPLEMENTS(CallVirtual)
 
   Dot* target() const { return target_; }
@@ -1611,7 +1610,7 @@ class CallBuiltin : public Call {
               List<Expression*> arguments,
               Source::Range range)
       : Call(arguments, shape, range)
-      , target_(builtin) { }
+      , target_(builtin) {}
   IMPLEMENTS(CallBuiltin)
 
   Builtin* target() const { return target_; }
@@ -1637,7 +1636,7 @@ class Typecheck : public Expression {
       , kind_(kind)
       , expression_(expression)
       , type_(type)
-      , type_name_(type_name) { }
+      , type_name_(type_name) {}
   IMPLEMENTS(Typecheck);
 
   Type type() const { return type_; }
@@ -1687,7 +1686,7 @@ class Return : public Expression {
     if (is_end_of_method_return) ASSERT(value->is_LiteralNull());
   }
   Return(Expression* value, int depth, Source::Range range)
-      : Expression(range), value_(value), depth_(depth), is_end_of_method_return_(false) { }
+      : Expression(range), value_(value), depth_(depth), is_end_of_method_return_(false) {}
   IMPLEMENTS(Return)
 
   Expression* value() const { return value_; }
@@ -1716,7 +1715,7 @@ class LogicalBinary : public Expression {
   };
 
   LogicalBinary(Expression* left, Expression* right, Operator op, Source::Range range)
-      : Expression(range), left_(left), right_(right), operator_(op) { }
+      : Expression(range), left_(left), right_(right), operator_(op) {}
   IMPLEMENTS(LogicalBinary)
 
   Expression* left() const { return left_; }
@@ -1735,7 +1734,7 @@ class LogicalBinary : public Expression {
 class Assignment : public Expression {
  public:
   Assignment(Node* left, Expression* right, Source::Range range)
-      : Expression(range), left_(left), right_(right) { }
+      : Expression(range), left_(left), right_(right) {}
   IMPLEMENTS(Assignment)
 
   Node* left() const { return left_; }
@@ -1753,7 +1752,7 @@ class Assignment : public Expression {
 class AssignmentLocal : public Assignment {
  public:
   AssignmentLocal(Local* left, int block_depth, Expression* right, Source::Range range)
-      : Assignment(left, right, range), block_depth_(block_depth) { }
+      : Assignment(left, right, range), block_depth_(block_depth) {}
   IMPLEMENTS(AssignmentLocal)
 
   Local* local() const { return left()->as_Local(); }
@@ -1766,7 +1765,7 @@ class AssignmentLocal : public Assignment {
 class AssignmentGlobal : public Assignment {
  public:
   AssignmentGlobal(Global* left, Expression* right, Source::Range range)
-      : Assignment(left, right, range) { }
+      : Assignment(left, right, range) {}
   IMPLEMENTS(AssignmentGlobal)
 
   Global* global() const { return left()->as_Global(); }
@@ -1775,7 +1774,7 @@ class AssignmentGlobal : public Assignment {
 class AssignmentDefine : public Assignment {
  public:
   AssignmentDefine(Local* left, Expression* right, Source::Range range)
-      : Assignment(left, right, range) { }
+      : Assignment(left, right, range) {}
   IMPLEMENTS(AssignmentDefine)
 
   Local* local() const { return left()->as_Local(); }
@@ -1783,13 +1782,13 @@ class AssignmentDefine : public Assignment {
 
 class Literal : public Expression {
  public:
-  explicit Literal(Source::Range range) : Expression(range) { }
+  explicit Literal(Source::Range range) : Expression(range) {}
   IMPLEMENTS(Literal)
 };
 
 class LiteralNull : public Literal {
  public:
-  explicit LiteralNull(Source::Range range) : Literal(range) { }
+  explicit LiteralNull(Source::Range range) : Literal(range) {}
   IMPLEMENTS(LiteralNull)
 };
 
@@ -1799,13 +1798,13 @@ class LiteralNull : public Literal {
 //   read.
 class LiteralUndefined : public Literal {
  public:
-  LiteralUndefined(Source::Range range) : Literal(range) { }
+  LiteralUndefined(Source::Range range) : Literal(range) {}
   IMPLEMENTS(LiteralUndefined)
 };
 
 class LiteralInteger : public Literal {
  public:
-  explicit LiteralInteger(int64 value, Source::Range range) : Literal(range), value_(value) { }
+  explicit LiteralInteger(int64 value, Source::Range range) : Literal(range), value_(value) {}
   IMPLEMENTS(LiteralInteger)
 
   int64 value() const { return value_; }
@@ -1816,7 +1815,7 @@ class LiteralInteger : public Literal {
 
 class LiteralFloat : public Literal {
  public:
-  explicit LiteralFloat(double value, Source::Range range) : Literal(range), value_(value) { }
+  explicit LiteralFloat(double value, Source::Range range) : Literal(range), value_(value) {}
   IMPLEMENTS(LiteralFloat)
 
   double value() const { return value_; }
@@ -1828,7 +1827,7 @@ class LiteralFloat : public Literal {
 class LiteralString : public Literal {
  public:
   LiteralString(const char* value, int length, Source::Range range)
-      : Literal(range), value_(value), length_(length) { }
+      : Literal(range), value_(value), length_(length) {}
   IMPLEMENTS(LiteralString)
 
   const char* value() const { return value_; }
@@ -1841,7 +1840,7 @@ class LiteralString : public Literal {
 
 class LiteralByteArray : public Literal {
  public:
-  LiteralByteArray(List<uint8> data, Source::Range range) : Literal(range), data_(data) { }
+  LiteralByteArray(List<uint8> data, Source::Range range) : Literal(range), data_(data) {}
   IMPLEMENTS(LiteralByteArray)
 
   List<uint8> data() { return data_; }
@@ -1852,7 +1851,7 @@ class LiteralByteArray : public Literal {
 
 class LiteralBoolean : public Literal {
  public:
-  explicit LiteralBoolean(bool value, Source::Range range) : Literal(range), value_(value) { }
+  explicit LiteralBoolean(bool value, Source::Range range) : Literal(range), value_(value) {}
   IMPLEMENTS(LiteralBoolean)
 
   bool value() const { return value_; }
@@ -1872,7 +1871,7 @@ class PrimitiveInvocation : public Expression {
       , module_(module)
       , primitive_(primitive)
       , module_index_(module_index)
-      , primitive_index_(primitive_index) { }
+      , primitive_index_(primitive_index) {}
   IMPLEMENTS(PrimitiveInvocation)
 
   Symbol module() const { return module_; }

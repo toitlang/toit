@@ -263,8 +263,7 @@ bool OS::set_real_time(struct timespec* time) {
   FATAL("cannot set the time");
 }
 
-ProtectableAlignedMemory::~ProtectableAlignedMemory() {
-}
+ProtectableAlignedMemory::~ProtectableAlignedMemory() {}
 
 void ProtectableAlignedMemory::mark_read_only() {
   // TODO(anders): Unimplemented.
@@ -341,7 +340,7 @@ void OS::set_heap_tag(word tag) {}
 
 word OS::get_heap_tag() { return 0; }
 
-void OS::heap_summary_report(int max_pages, const char* marker) { }
+void OS::heap_summary_report(int max_pages, const char* marker) {}
 
 } // namespace toit
 

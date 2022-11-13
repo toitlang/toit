@@ -49,8 +49,7 @@ class PcntUnitResource : public Resource {
     , unit_id_(unit_id)
     , low_limit_(low_limit)
     , high_limit_(high_limit)
-    , glitch_filter_ns_(glitch_filter_ns) {
-  }
+    , glitch_filter_ns_(glitch_filter_ns) {}
 
   bool is_open_channel(pcnt_channel_t channel) {
     if (channel == kInvalidChannel) return false;

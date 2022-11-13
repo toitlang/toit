@@ -96,8 +96,7 @@ static inline void linked_list_report_last_removed(Reporter r, Element* element)
 }
 
 template<typename Element>
-static inline void linked_list_report_last_removed(std::nullptr_t n, Element* element) {
-}
+static inline void linked_list_report_last_removed(std::nullptr_t n, Element* element) {}
 
 // Singly linked list container that does not take ownership or attempt to
 // allocate/deallocate.

@@ -56,7 +56,7 @@ struct SemanticToken {
 
 class TokenVisitor : public TraversingVisitor {
  public:
-  TokenVisitor(const char* path, SourceManager* manager) : path_(path), manager_(manager) { }
+  TokenVisitor(const char* path, SourceManager* manager) : path_(path), manager_(manager) {}
 
   void visit_ast_import(ast::Import* import, Module* module) {
     auto prefix = import->prefix();

@@ -30,7 +30,7 @@ class FilesystemHybrid : public Filesystem {
  public:
   FilesystemHybrid(const char* path)
       : use_fs_archive_(FilesystemArchive::is_probably_archive(path))
-      , fs_archive_(path) { }
+      , fs_archive_(path) {}
 
   void initialize(Diagnostics* diagnostics);
   const char* entry_path();

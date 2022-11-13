@@ -75,7 +75,7 @@ static Literal* inlined_value_for(Expression* expression) {
 class FoldingInliningVisitor : public ReplacingVisitor {
  public:
   FoldingInliningVisitor(const UnorderedSet<Global*>& mutated_globals)
-      : mutated_globals_(mutated_globals) { }
+      : mutated_globals_(mutated_globals) {}
 
   Expression* visit_ReferenceGlobal(ReferenceGlobal* node) {
     node = ReplacingVisitor::visit_ReferenceGlobal(node)->as_ReferenceGlobal();

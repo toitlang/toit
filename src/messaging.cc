@@ -76,8 +76,7 @@ MessageEncoder::MessageEncoder(Process* process, uint8* buffer, MessageFormat fo
     : process_(process)
     , program_(process ? process->program() : null)
     , format_(format)
-    , buffer_(buffer) {
-}
+    , buffer_(buffer) {}
 
 void MessageEncoder::encode_process_message(uint8* buffer, uint8 value) {
   MessageEncoder encoder(null, buffer);
@@ -410,8 +409,7 @@ MessageDecoder::MessageDecoder(Process* process,
     , program_(process ? process->program() : null)
     , buffer_(buffer)
     , size_(size)
-    , format_(format) {
-}
+    , format_(format) {}
 
 bool MessageDecoder::decode_process_message(const uint8* buffer, int* value) {
   MessageDecoder decoder(null, buffer);

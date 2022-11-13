@@ -92,8 +92,7 @@ void ResourceGroup::unregister_resource(Resource* resource) {
 
 EventSource::EventSource(const char* name, int lock_level)
     : mutex_(OS::allocate_mutex(lock_level, "EventSource"))
-    , name_(name) {
-}
+    , name_(name) {}
 
 EventSource::~EventSource() {
   ASSERT(resources_.is_empty());
@@ -123,11 +122,9 @@ void EventSource::unregister_resource(Locker& locker, Resource* r) {
   on_unregister_resource(locker, r);
 }
 
-void EventSource::register_resource_group(ResourceGroup* resource_group) {
-}
+void EventSource::register_resource_group(ResourceGroup* resource_group) {}
 
-void EventSource::unregister_resource_group(ResourceGroup* resource_group) {
-}
+void EventSource::unregister_resource_group(ResourceGroup* resource_group) {}
 
 void EventSource::set_state(word id, uint32_t state) {
   Locker locker(mutex_);

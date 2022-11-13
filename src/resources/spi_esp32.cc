@@ -57,7 +57,7 @@ class SPIResourceGroup : public ResourceGroup {
   SPIResourceGroup(Process* process, EventSource* event_source, spi_host_device_t host_device, int dma_chan)
     : ResourceGroup(process, event_source)
     , host_device_(host_device)
-    , dma_chan_(dma_chan) { }
+    , dma_chan_(dma_chan) {}
 
   ~SPIResourceGroup() {
     SystemEventSource::instance()->run([&]() -> void {

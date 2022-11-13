@@ -90,6 +90,7 @@ namespace toit {
   fn(PcntUnitResourceGroup)             \
   fn(PWMResourceGroup)                  \
   fn(TouchResourceGroup)                \
+  fn(ESPNowResourceGroup)               \
 
 #define MAKE_ENUM(name)                 \
   name##Tag,                            \

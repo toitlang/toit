@@ -30,7 +30,7 @@ class Timer : public Resource, public TimerList::Element {
   TAG(Timer);
   Timer(ResourceGroup* resource_group)
     : Resource(resource_group)
-    , timeout_(-1) { }
+    , timeout_(-1) {}
 
   ~Timer() {
     ASSERT(TimerList::Element::is_not_linked());

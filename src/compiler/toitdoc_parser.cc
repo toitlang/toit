@@ -28,7 +28,7 @@ namespace {  // anonymous
 class ToitdocDiagnostics : public Diagnostics {
  public:
   explicit ToitdocDiagnostics(Diagnostics* wrapped)
-      : Diagnostics(wrapped->source_manager()), wrapped_(wrapped) { }
+      : Diagnostics(wrapped->source_manager()), wrapped_(wrapped) {}
 
   bool should_report_missing_main() const { return wrapped_->should_report_missing_main(); }
 
@@ -67,7 +67,7 @@ class ToitdocSource : public Source {
       , text_(memdup(text))
       , size_(static_cast<int>(text.size()))
       , source_line_offsets_(source_line_offsets)
-      , toitdoc_line_offsets_(toitdoc_line_offsets) { }
+      , toitdoc_line_offsets_(toitdoc_line_offsets) {}
 
   ~ToitdocSource() {
     free(text_);
@@ -116,7 +116,7 @@ class ToitdocTextBuilder {
   explicit ToitdocTextBuilder(Source* source, int source_from, int source_to)
       : source_(source)
       , source_from_(source_from)
-      , source_to_(source_to) { }
+      , source_to_(source_to) {}
 
   /// Adds the substring source[source_from...source_to] to the text.
   /// [source_from] is inclusive.
@@ -175,7 +175,7 @@ class ToitdocParser {
                 Diagnostics* diagnostics)
       : toitdoc_source_(toitdoc_source)
       , symbols_(symbols)
-      , diagnostics_(diagnostics) { }
+      , diagnostics_(diagnostics) {}
 
   Toitdoc<ast::Node*> parse();
 

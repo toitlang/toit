@@ -57,7 +57,7 @@ class RMTResourceGroup : public ResourceGroup {
  public:
   TAG(RMTResourceGroup);
   RMTResourceGroup(Process* process)
-    : ResourceGroup(process, null) { }
+    : ResourceGroup(process, null) {}
 
   virtual void on_unregister_resource(Resource* r) override {
     RMTResource* rmt_resource = static_cast<RMTResource*>(r);

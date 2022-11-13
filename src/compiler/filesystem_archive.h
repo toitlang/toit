@@ -32,7 +32,7 @@ class Diagnostics;
 class FilesystemArchive : public Filesystem {
  public:
   FilesystemArchive(const char* path)
-      : path_(path) { }
+      : path_(path) {}
 
   /// Loads the given archive, caching the contained files.
   void initialize(Diagnostics* diagnostics);

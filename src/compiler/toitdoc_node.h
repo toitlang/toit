@@ -75,7 +75,7 @@ TOITDOC_NODES(DECLARE)
 class Contents : public Node {
  public:
   explicit Contents(List<Section*> sections)
-      : sections_(sections) { }
+      : sections_(sections) {}
   IMPLEMENTS(Contents)
 
   List<Section*> sections() const { return sections_; }
@@ -89,7 +89,7 @@ class Section : public Node {
   /// The title may be invalid, if it's the first section of a comment.
   Section(Symbol title, List<Statement*> statements)
       : title_(title)
-      , statements_(statements) { }
+      , statements_(statements) {}
   IMPLEMENTS(Section)
 
   Symbol title() const { return title_; }
@@ -108,7 +108,7 @@ class Statement : public Node {
 class CodeSection : public Statement {
  public:
   explicit CodeSection(Symbol code)
-      : code_(code) { }
+      : code_(code) {}
   IMPLEMENTS(CodeSection);
 
   Symbol code() const { return code_; }
@@ -120,7 +120,7 @@ class CodeSection : public Statement {
 class Itemized : public Statement {
  public:
   explicit Itemized(List<Item*> items)
-      : items_(items) { }
+      : items_(items) {}
   IMPLEMENTS(Itemized);
 
   List<Item*> items() const { return items_; }
@@ -132,7 +132,7 @@ class Itemized : public Statement {
 class Item : public Statement {
  public:
   explicit Item(List<Statement*> statements)
-      : statements_(statements) { }
+      : statements_(statements) {}
   IMPLEMENTS(Item);
 
   List<Statement*> statements() const { return statements_; }
@@ -144,7 +144,7 @@ class Item : public Statement {
 class Paragraph : public Statement {
  public:
   explicit Paragraph(List<Expression*> expressions)
-      : expressions_(expressions) { }
+      : expressions_(expressions) {}
   IMPLEMENTS(Paragraph);
 
   List<Expression*> expressions() const { return expressions_; }
@@ -160,7 +160,7 @@ class Expression : public Node {
 class Text : public Expression {
  public:
   explicit Text(Symbol text)
-      : text_(text) { }
+      : text_(text) {}
   IMPLEMENTS(Text);
 
   Symbol text() const { return text_; }
@@ -172,7 +172,7 @@ class Text : public Expression {
 class Code : public Expression {
  public:
   explicit Code(Symbol text)
-      : text_(text) { }
+      : text_(text) {}
   IMPLEMENTS(Code);
 
   Symbol text() const { return text_; }
@@ -185,7 +185,7 @@ class Ref : public Expression {
  public:
   Ref(int id, Symbol text)
       : id_(id)
-      , text_(text) { }
+      , text_(text) {}
   IMPLEMENTS(Ref);
 
   int id() const { return id_; }

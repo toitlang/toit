@@ -75,7 +75,7 @@ class I2SResource: public EventQueueResource {
   I2SResource(I2SResourceGroup* group, i2s_port_t port, int alignment, QueueHandle_t queue)
     : EventQueueResource(group, queue)
     , port_(port)
-    , alignment_(alignment) { }
+    , alignment_(alignment) {}
 
   ~I2SResource() override {
     SystemEventSource::instance()->run([&]() -> void {

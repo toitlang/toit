@@ -171,8 +171,7 @@ class ConditionVariable {
     TAILQ_INIT(&waiter_list_);
   }
 
-  ~ConditionVariable() {
-  }
+  ~ConditionVariable() {}
 
   void wait() {
     wait_ticks(portMAX_DELAY);
@@ -200,11 +199,7 @@ class ConditionVariable {
 
     mutex_->unlock();
 
-#ifdef CONFIG_IDF_TARGET_ESP32C3
     uint32_t value = 0;
-#else
-    uint32 value = 0;
-#endif
     bool success = xTaskNotifyWait(0x00, 0xffffffff, &value, ticks) == pdTRUE;
 
     mutex_->lock();
@@ -287,8 +282,7 @@ struct ThreadData {
 Thread::Thread(const char* name)
     : name_(name)
     , handle_(null)
-    , locker_(null) {
-}
+    , locker_(null) {}
 
 void* thread_start(void* arg) {
   Thread* thread = unvoid_cast<Thread*>(arg);
@@ -466,8 +460,7 @@ OS::HeapMemoryRange OS::get_heap_memory_range() {
   return range;
 }
 
-void OS::tear_down() {
-}
+void OS::tear_down() {}
 
 const char* OS::get_platform() {
   return "FreeRTOS";
@@ -746,9 +739,9 @@ void OS::heap_summary_report(int max_pages, const char* marker) {
 
 #else // def TOIT_CMPCTMALLOC
 
-void OS::set_heap_tag(word tag) { }
+void OS::set_heap_tag(word tag) {}
 word OS::get_heap_tag() { return 0; }
-void OS::heap_summary_report(int max_pages, const char* marker) { }
+void OS::heap_summary_report(int max_pages, const char* marker) {}
 
 #endif // def TOIT_CMPCTMALLOC
 
