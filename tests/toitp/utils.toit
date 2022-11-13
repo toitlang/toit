@@ -16,7 +16,7 @@ run_toitp test_args/List toitp_args/List -> string:
 
 // Extracts the entry names, discarding the index and the location.
 extract_entries output/string --max_length/int -> List:
-  lines := output.split "\n"
+  lines := output.split LINE_TERMINATOR
   result := lines.copy 1
   result.filter --in_place: it != ""
   result.map --in_place:

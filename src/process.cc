@@ -49,7 +49,6 @@ Process::Process(Program* program, ProcessRunner* runner, ProcessGroup* group, S
     , random_seeded_(false)
     , random_state0_(1)
     , random_state1_(2)
-    , current_directory_(-1)
     , signals_(0)
     , state_(IDLE)
     , scheduler_thread_(null) {
@@ -59,6 +58,11 @@ Process::Process(Program* program, ProcessRunner* runner, ProcessGroup* group, S
   ASSERT(!program || program_heap_size_ > 0);
   // Link this process to the program heap.
   group_->add(this);
+#if defined(TOIT_WINDOWS)
+  current_directory_ = null;
+#else
+  current_directory_ = -1;
+#endif
   ASSERT(group_->lookup(id_) == this);
 }
 
@@ -86,9 +90,13 @@ Process::~Process() {
     r->tear_down();  // Also removes from linked list.
   }
 
+#if defined(TOIT_WINDOWS)
+  free(const_cast<void*>(void_cast(current_directory_)));
+#else
   if (current_directory_ >= 0) {
     OS::close(current_directory_);
   }
+#endif
 
   // Use [has_message] to ensure that system_acks are processed and message
   // budget is returned.
@@ -357,5 +365,14 @@ uint8 Process::update_priority() {
   priority_ = priority;
   return priority;
 }
+
+
+#if defined(TOIT_WINDOWS)
+const char* Process::current_directory() { return current_directory_; }
+void Process::set_current_directory(const char* current_directory) {
+  free(const_cast<void*>(void_cast(current_directory_)));
+  current_directory_ = current_directory;
+}
+#endif
 
 }
