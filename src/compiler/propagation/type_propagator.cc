@@ -20,6 +20,7 @@
 #include "../../objects.h"
 #include "../../program.h"
 #include "../../interpreter.h"
+#include "../../printing.h"
 
 namespace toit {
 namespace compiler {
@@ -30,7 +31,9 @@ namespace compiler {
       ASSERT(bcp + n < program->bytecodes.data() + program->bytecodes.length());   \
       Opcode next = static_cast<Opcode>(bcp[n]);                                   \
       bcp += n;                                                                    \
-      printf("[%p : %d]\n", bcp, next);                                            \
+      printf("[%p | ", bcp);                                                       \
+      print_bytecode_console(bcp);                                                 \
+      printf("]\n");                                                               \
       goto *dispatch_table[next];                                                  \
     }
 
@@ -575,6 +578,7 @@ static void process(MethodTemplate* method, WorkItem item, Worklist& worklist) {
   OPCODE_BEGIN(PRIMITIVE);
     stack->push_any();
     method->ret(stack);
+    return;
     stack->push_any();  // This is the primitive failure.
   OPCODE_END();
 

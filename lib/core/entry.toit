@@ -7,7 +7,7 @@
 // it returns.
 __entry__main:
   current := Task_.current
-  // current.initialize_entry_task_
+  current.initialize_entry_task_
 
   x := 2
   return x + 3
