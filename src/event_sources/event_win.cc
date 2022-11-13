@@ -63,11 +63,11 @@ class WindowsEventThread: public Thread {
     stopped_ = true;
     SetEvent(control_event_);
   }
-  
+
   size_t size() {
     return resource_events_.size();
   }
-  
+
   void add_resource_event(Locker& event_source_locker, WindowsResourceEvent* resource_event) {
     ASSERT(resource_events_.size() < MAXIMUM_WAIT_OBJECTS - 2);
     resource_events_.insert(resource_event);
@@ -149,7 +149,7 @@ void WindowsEventSource::on_register_resource(Locker &locker, Resource* r) {
 
     // Find a thread with capacity.
     bool placed_it = false;
-    for(auto thread : threads_) {
+    for (auto thread : threads_) {
       if (thread->size() < MAXIMUM_WAIT_OBJECTS - 2) {
         resource_event = _new WindowsResourceEvent(windows_resource, event, thread);
         placed_it = true;
