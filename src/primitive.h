@@ -68,6 +68,7 @@ namespace toit {
   M(flash_kv, MODULE_FLASH_KV)               \
   M(debug,   MODULE_DEBUG)                   \
   M(espnow,  MODULE_ESPNOW)                  \
+  M(bignum,  MODULE_BIGNUM)                  \
 
 #define MODULE_CORE(PRIMITIVE)               \
   PRIMITIVE(write_string_on_stdout, 2)       \
@@ -669,6 +670,19 @@ namespace toit {
   PRIMITIVE(add_peer, 3)                     \
   PRIMITIVE(deinit, 1)                       \
 
+#define MODULE_BIGNUM(PRIMITIVE)             \
+  PRIMITIVE(init, 1)                         \
+  PRIMITIVE(init_from_string, 1)             \
+  PRIMITIVE(bytes, 1)                        \
+  PRIMITIVE(string, 1)                       \
+  PRIMITIVE(equal, 2)                        \
+  PRIMITIVE(add, 2)                          \
+  PRIMITIVE(subtract, 2)                     \
+  PRIMITIVE(multiply, 2)                     \
+  PRIMITIVE(divide, 2)                       \
+  PRIMITIVE(mod, 2)                          \
+  PRIMITIVE(exp_mod, 3)                      \
+
 // ----------------------------------------------------------------------------
 
 #define MODULE_IMPLEMENTATION_PRIMITIVE(name, arity)                \
@@ -926,6 +940,7 @@ namespace toit {
 #define _A_T_RMTResourceGroup(N, name)    MAKE_UNPACKING_MACRO(RMTResourceGroup, N, name)
 #define _A_T_PcntUnitResourceGroup(N, name) MAKE_UNPACKING_MACRO(PcntUnitResourceGroup, N, name)
 #define _A_T_ESPNowResourceGroup(N, name) MAKE_UNPACKING_MACRO(ESPNowResourceGroup, N, name)
+#define _A_T_BigNumResourceGroup(N, name) MAKE_UNPACKING_MACRO(BigNumResourceGroup, N, name)
 
 #define _A_T_Resource(N, name)            MAKE_UNPACKING_MACRO(Resource, N, name)
 #define _A_T_Directory(N, name)           MAKE_UNPACKING_MACRO(Directory, N, name)
