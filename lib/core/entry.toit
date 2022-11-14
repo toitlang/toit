@@ -6,14 +6,17 @@
 // calling the main function and halting the system after
 // it returns.
 __entry__main:
-  current := Task_.current
-  current.initialize_entry_task_
-
-  x := 2
+  //current := Task_.current
+  //current.initialize_entry_task_
+  y := 1
+  x := foo: y + 2
   return x + 3
 
   //current.evaluate_:
   //  #primitive.intrinsics.main main_arguments_
+
+foo [block]:
+  return block.call
 
 // This is the entry point for processes just being spawned.
 // It calls the lambda passed in the spawn arguments.

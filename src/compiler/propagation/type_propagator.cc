@@ -578,7 +578,6 @@ static void process(MethodTemplate* method, WorkItem item, Worklist& worklist) {
   OPCODE_BEGIN(PRIMITIVE);
     stack->push_any();
     method->ret(stack);
-    return;
     stack->push_any();  // This is the primitive failure.
   OPCODE_END();
 
