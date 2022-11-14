@@ -19,11 +19,9 @@ class Flash:
   mount_point/string
 
   /**
-  Mounts an SD-card as a FAT file system under $mount_point on the $spi_bus.
+  Mounts an SD-card as a FAT file system under $mount_point on the $spi_bus without formatting the flash.
 
-  The $cs is the chip select pin for the SD-card holder and $frequency is the spi frequency.
-
-  If $format is true, then format the SD-card with $max_files and $allocation_unit_size if it is not formatted.
+  The $cs is the chip select pin for the SD-card holder.
   */
   constructor.sdcard
       --.mount_point/string
@@ -37,7 +35,7 @@ class Flash:
   Mounts an SD-card as a FAT file system under $mount_point on the $spi_bus and formats the SD-card
     with $max_files and $allocation_unit_size if it is not already formatted.
 
-  The $cs is the chip select pin for the SD-card holder and $frequency is the spi frequency.
+  The $cs is the chip select pin for the SD-card holder.
   */
   constructor.sdcard_format
       --.mount_point/string
@@ -49,64 +47,93 @@ class Flash:
     flash_ = init_sdcard_ mount_point spi_bus.spi_ cs.num 1 max_files allocation_unit_size
 
   /**
-  Mounts an external NOR flash chip on the $spi_bus.
+  Mounts an external NOR flash chip on the $spi_bus without formatting the flash.
 
   The $cs is the chip select pin for the chip on the $spi_bus and $frequency is the SPI frequency.
     $frequency should be one of the FLASH_FREQ_ constants.
-
-  If $format is true, then format the SD-card with $max_files and $allocation_unit_size if it is not formatted.
   */
   constructor.nor
       --.mount_point/string
       --spi_bus/spi.Bus
       --cs/gpio.Pin
+      --frequency/int=FLASH_40MHZ:
+    if not mount_point.starts_with "/": throw "INVALID_ARGUMENT"
+    flash_ = init_nor_flash_ mount_point spi_bus.spi_ cs.num frequency 0 0 0
+
+  /**
+  Mounts an external NOR flash chip on the $spi_bus and format the SD-card with $max_files and
+    $allocation_unit_size if it is not formatted.
+
+  The $cs is the chip select pin for the chip on the $spi_bus and $frequency is the SPI frequency.
+    $frequency should be one of the FLASH_FREQ_ constants.
+  */
+  constructor.nor_format
+      --.mount_point/string
+      --spi_bus/spi.Bus
+      --cs/gpio.Pin
       --frequency/int=FLASH_40MHZ
-      --format/bool=false
       --max_files/int=5
       --allocation_unit_size/int=16384:
     if not mount_point.starts_with "/": throw "INVALID_ARGUMENT"
-    flash_ = init_nor_flash_ mount_point spi_bus.spi_ cs.num frequency (format?1:0) max_files allocation_unit_size
+    flash_ = init_nor_flash_ mount_point spi_bus.spi_ cs.num frequency 1 max_files allocation_unit_size
 
   /**
-  Mounts an external NAND flash chip on the $spi_bus.
+  Mounts an external NAND flash chip on the $spi_bus without formatting the flash.
 
   The $cs is the chip select pin for the chip on the $spi_bus and $frequency is the SPI frequency.
     $frequency should be one of the FLASH_FREQ_ constants
-
-  If $format is true, then format the SD-card with $max_files and $allocation_unit_size if it is not formatted.
   */
   constructor.nand
       --.mount_point/string
       --spi_bus/spi.Bus
       --cs/gpio.Pin
+      --frequency/int=FLASH_40MHZ:
+    if not mount_point.starts_with "/": throw "INVALID_ARGUMENT"
+
+    frequency_mhz := frequency_to_mhz_ frequency
+    flash_ = init_nand_flash_ mount_point spi_bus.spi_ cs.num frequency_mhz 0 0 0
+
+  /**
+  Mounts an external NAND flash chip on the $spi_bus and formats the flash with $max_files and
+     $allocation_unit_size if it is not already formatted.
+
+  The $cs is the chip select pin for the chip on the $spi_bus and $frequency is the SPI frequency.
+    $frequency should be one of the FLASH_FREQ_ constants
+  */
+  constructor.nand_format
+      --.mount_point/string
+      --spi_bus/spi.Bus
+      --cs/gpio.Pin
       --frequency/int=FLASH_40MHZ
-      --format/bool=false
       --max_files/int=5
       --allocation_unit_size/int=2048:
     if not mount_point.starts_with "/": throw "INVALID_ARGUMENT"
-    freq/int := 0
-    if frequency == FLASH_5MHZ:
-      freq = 5_000_000
-    else if frequency == FLASH_10MHZ:
-      freq = 10_000_000
-    else if frequency == FLASH_20MHZ:
-      freq = 20_000_000
-    else if frequency == FLASH_26MHZ:
-      freq = (80_000_000/3).to_int
-    else if frequency == FLASH_40MHZ:
-      freq = 40_000_000
-    else if frequency == FLASH_80MHZ:
-      freq = 80_000_000
-    else:
-      throw "INVALID_ARGUMENT"
 
-    flash_ = init_nand_flash_ mount_point spi_bus.spi_ cs.num freq (format?1:0) max_files allocation_unit_size
+    frequency_mhz := frequency_to_mhz_ frequency
+    flash_ = init_nand_flash_ mount_point spi_bus.spi_ cs.num frequency_mhz 1 max_files allocation_unit_size
 
   /**
   Unmounts and releases resources for the external storage.
   */
   close:
     close_spi_flash_ flash_
+
+frequency_to_mhz_ frequency:
+  if frequency == FLASH_5MHZ:
+    return 5_000_000
+  else if frequency == FLASH_10MHZ:
+    return 10_000_000
+  else if frequency == FLASH_20MHZ:
+    return 20_000_000
+  else if frequency == FLASH_26MHZ:
+    return (80_000_000/3).to_int
+  else if frequency == FLASH_40MHZ:
+    return 40_000_000
+  else if frequency == FLASH_80MHZ:
+    return 80_000_000
+  else:
+    throw "INVALID_ARGUMENT"
+
 
 init_nor_flash_ mount_point spi_bus cs frequency format max_files allocation_unit_size -> any:
   #primitive.spi_flash.init_nor_flash
