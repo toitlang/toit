@@ -225,7 +225,7 @@ PRIMITIVE(init_nand_flash) {
   spi_device_handle_t nand_spi_device;
   esp_err_t ret = spi_bus_add_device(SPI3_HOST, &dev_cfg, &nand_spi_device);
   if (ret != ESP_OK) {
-    group->close();
+    group->tear_down();
     return Primitive::os_error(ret, process);
   }
   group->set_nand_spi_device(nand_spi_device);
@@ -237,7 +237,7 @@ PRIMITIVE(init_nand_flash) {
   spi_nand_flash_device_t* nand_flash_device;
   ret = spi_nand_flash_init_device(&nand_config, &nand_flash_device);
   if (ret != ESP_OK) {
-    group->close();
+    group->tear_down();
     return Primitive::os_error(ret, process);
   }
   group->set_nand_flash_device(nand_flash_device);
@@ -250,7 +250,7 @@ PRIMITIVE(init_nand_flash) {
 
   ret = esp_vfs_fat_nand_mount(mp, nand_flash_device, &mount_config);
   if (ret != ESP_OK) {
-    group->close();
+    group->tear_down();
     return Primitive::os_error(ret, process);
   }
 
