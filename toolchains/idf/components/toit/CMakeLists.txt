@@ -6,7 +6,6 @@ set(TOIT_BASE_DIR ${COMPONENT_PATH}/../../../..)
 idf_component_register(INCLUDE_DIRS "${TOIT_BASE_DIR}/src"
         REQUIRES "esp_adc_cal" "mbedtls" "bt" "app_update" "ulp" "fatfs")
 
-
 cmake_policy(SET CMP0079 NEW)
 
 set(TOIT_SYSTEM_NAME "esp32")

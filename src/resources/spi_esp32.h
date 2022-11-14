@@ -30,14 +30,14 @@ namespace toit {
 class SPIResourceGroup : public ResourceGroup {
  public:
   TAG(SPIResourceGroup);
-  SPIResourceGroup(Process* process, EventSource* event_source, spi_host_device_t host_device, int dma_chan);
+  SPIResourceGroup(Process* process, EventSource* event_source, spi_host_device_t host_device, int dma_channel);
   ~SPIResourceGroup() override;
 
   spi_host_device_t host_device() { return host_device_; }
 
  private:
   spi_host_device_t host_device_;
-  int dma_chan_;
+  int dma_channel_;
 };
 
 class SPIDevice : public Resource {

@@ -27,80 +27,83 @@
 #include <esp_vfs_fat.h>
 #include <esp_flash_spi_init.h>
 
-
 namespace toit {
 
-class SPIFlashResourceGroup: ResourceGroup {
+class SPIFlashResourceGroup: public ResourceGroup {
  public:
   TAG(SPIFlashResourceGroup);
-  SPIFlashResourceGroup(Process* process, const char *mount_point)
+  SPIFlashResourceGroup(Process* process, const char* mount_point)
      : ResourceGroup(process, null)
-     , _mount_point(mount_point) {
+     , mount_point_(mount_point) {
   }
-
 
   ~SPIFlashResourceGroup() override {
-    // sdcard
-    if (_card) esp_vfs_fat_sdcard_unmount(_mount_point, _card);
+    // SD-card.
+    if (card_) esp_vfs_fat_sdcard_unmount(mount_point_, card_);
 
-    // nor flash
-    if (_wl_handle != -1) esp_vfs_fat_spiflash_unmount(_mount_point, _wl_handle);
-    if (_data_partition) esp_partition_deregister_external(_data_partition);
-    if (_chip) spi_bus_remove_flash_device(_chip);
+    // NOR flash.
+    if (wl_handle_ != -1) esp_vfs_fat_spiflash_unmount(mount_point_, wl_handle_);
+    if (data_partition_) esp_partition_deregister_external(data_partition_);
+    if (chip_) spi_bus_remove_flash_device(chip_);
 
 #ifdef CONFIG_SPI_FLASH_NAND_ENABLED
-    // nand flash
-    if (_nand_flash_device) esp_vfs_fat_nand_unmount(_mount_point, _nand_flash_device);
-    if (_nand_flash_device) spi_nand_flash_deinit_device(_nand_flash_device);
-    _nand_flash_device = null;
-    if (_nand_spi_device) spi_bus_remove_device(_nand_spi_device);
-    _nand_spi_device = null;
+    // NAND flash.
+    if (nand_flash_device_) esp_vfs_fat_nand_unmount(mount_point_, nand_flash_device_);
+    if (nand_flash_device_) spi_nand_flash_deinit_device(nand_flash_device_);
+    if (nand_spi_device_) spi_bus_remove_device(nand_spi_device_);
 #endif
-    free((void *)_mount_point);
+    free(void_cast(const_cast<char*>(mount_point_)));
   }
 
-  void close() {
-    tear_down();
-  }
-
-  esp_flash_t* chip() { return _chip; }
-  void set_data_partition(const esp_partition_t* data_partition) { _data_partition = data_partition; }
-  void set_wl_handle(wl_handle_t handle) { _wl_handle = handle; }
+  esp_flash_t* chip() { return chip_; }
+  void set_data_partition(const esp_partition_t* data_partition) { data_partition_ = data_partition; }
+  void set_wl_handle(wl_handle_t handle) { wl_handle_ = handle; }
 #ifdef CONFIG_SPI_FLASH_NAND_ENABLED
-  void set_nand_flash_device(spi_nand_flash_device_t *nand_flash_device) { _nand_flash_device = nand_flash_device; }
-  void set_nand_spi_device(spi_device_handle_t nand_spi_device) { _nand_spi_device = nand_spi_device; }
+  void set_nand_flash_device(spi_nand_flash_device_t* nand_flash_device) { nand_flash_device_ = nand_flash_device; }
+  void set_nand_spi_device(spi_device_handle_t nand_spi_device) { nand_spi_device_ = nand_spi_device; }
 #endif
-  void set_card(sdmmc_card_t *card) { _card = card; }
-  void set_chip(esp_flash_t *chip) { _chip = chip; }
-private:
-  const char *_mount_point;
-  sdmmc_card_t *_card = null;
-  esp_flash_t *_chip = null;
-  const esp_partition_t *_data_partition = null;
-  wl_handle_t _wl_handle = -1;
+  void set_card(sdmmc_card_t* card) { card_ = card; }
+  void set_chip(esp_flash_t* chip) { chip_ = chip; }
+
+ private:
+  const char* mount_point_;
+  sdmmc_card_t* card_ = null;
+  esp_flash_t* chip_ = null;
+  const esp_partition_t* data_partition_ = null;
+  wl_handle_t wl_handle_ = -1;
 #ifdef CONFIG_SPI_FLASH_NAND_ENABLED
-  spi_nand_flash_device_t *_nand_flash_device = null;
-  spi_device_handle_t _nand_spi_device = null;
+  spi_nand_flash_device_t* nand_flash_device_ = null;
+  spi_device_handle_t nand_spi_device_ = null;
 #endif
 };
 
 MODULE_IMPLEMENTATION(spi_flash, MODULE_SPI_FLASH);
+
+static HeapObject* init_common(Process* process, const char* mount_point,
+                               SPIFlashResourceGroup** group, char** mount_point_buffer_output) {
+  char* mount_point_buffer = static_cast<char*>(malloc(strlen(mount_point)));
+  if (!*mount_point_buffer) MALLOC_FAILED;
+  strcpy(mount_point_buffer, mount_point);
+
+  *group = _new SPIFlashResourceGroup(process, mount_point_buffer);
+
+  if (!group) {
+    free(mount_point_buffer);
+    ALLOCATION_FAILED;
+  }
+
+  if (mount_point_buffer_output) *mount_point_buffer_output = mount_point_buffer;
+  return null;
+}
 
 PRIMITIVE(init_sdcard) {
   ARGS(cstring, mount_point, SPIResourceGroup, spi_host, int, gpio_cs, int, format_if_mount_failed, int, max_files, int, allocation_unit_size)
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (!proxy) ALLOCATION_FAILED;
 
-  char* mp = static_cast<char *>(malloc(strlen(mount_point)));
-  if (!mp) MALLOC_FAILED;
-  strcpy(mp, mount_point);
-
-  auto group = _new SPIFlashResourceGroup(process,  mp);
-
-  if (!group) {
-    free(mp);
-    ALLOCATION_FAILED;
-  }
+  SPIFlashResourceGroup* group;
+  auto init_result = init_common(process, mount_point, &group, null);
+  if (init_result != null) return init_result;
 
   sdmmc_host_t host = SDSPI_HOST_DEFAULT();
   host.slot = spi_host->host_device();
@@ -134,16 +137,10 @@ PRIMITIVE(init_nor_flash) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (!proxy) ALLOCATION_FAILED;
 
-  char* mp = static_cast<char *>(malloc(strlen(mount_point)));
-  if (!mp) MALLOC_FAILED;
-  strcpy(mp, mount_point);
-
-  auto group = _new SPIFlashResourceGroup(process,  mp);
-
-  if (!group) {
-    free(mp);
-    ALLOCATION_FAILED;
-  }
+  char* mount_point_buffer;
+  SPIFlashResourceGroup* group;
+  auto init_result = init_common(process, mount_point, &group, &mount_point_buffer);
+  if (init_result != null) return init_result;
 
   esp_flash_spi_device_config_t conf = {
       .host_id = spi_bus->host_device(),
@@ -154,7 +151,7 @@ PRIMITIVE(init_nor_flash) {
       .cs_id = 0
   };
 
-  esp_flash_t *chip;
+  esp_flash_t* chip;
   esp_err_t ret = spi_bus_add_flash_device(&chip, &conf);
   if (ret != ESP_OK) {
     return Primitive::os_error(ret, process);
@@ -165,24 +162,24 @@ PRIMITIVE(init_nor_flash) {
   ret = esp_flash_init(chip);
 
   if (ret != ESP_OK) {
-    group->close();
+    group->tear_down();
     return Primitive::os_error(ret, process);
   }
 
   size_t size;
   ret = esp_flash_get_size(chip, &size);
   if (ret != ESP_OK) {
-    group->close();
+    group->tear_down();
     return Primitive::os_error(ret, process);
   }
 
-  // We are using mount_point as the label for the external partition since that should be unique when multiple NOR
-  // flash chips are used
+  // We are using mount_point as the label for the external partition since that should
+  // be unique when multiple NOR flash chips are used.
   const esp_partition_t* partition;
   ret = esp_partition_register_external(chip, 0, size, mount_point,
                                         ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_FAT, &partition);
   if (ret != ESP_OK) {
-    group->close();
+    group->tear_down();
     return Primitive::os_error(ret, process);
   }
 
@@ -195,9 +192,9 @@ PRIMITIVE(init_nor_flash) {
   };
 
   wl_handle_t wl_handle;
-  ret = esp_vfs_fat_spiflash_mount(mp, mount_point, &mount_config, &wl_handle);
+  ret = esp_vfs_fat_spiflash_mount(mount_point_buffer, mount_point, &mount_config, &wl_handle);
   if (ret != ESP_OK) {
-    group->close();
+    group->tear_down();
     return Primitive::os_error(ret, process);
   }
 
@@ -214,16 +211,9 @@ PRIMITIVE(init_nand_flash) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (!proxy) ALLOCATION_FAILED;
 
-  char* mp = static_cast<char *>(malloc(strlen(mount_point)));
-  if (!mp) MALLOC_FAILED;
-  strcpy(mp, mount_point);
-
-  auto group = _new SPIFlashResourceGroup(process,  mp);
-
-  if (!group) {
-    free(mp);
-    ALLOCATION_FAILED;
-  }
+  SPIFlashResourceGroup* group;
+  auto init_result = init_common(process, mount_point, &group, null);
+  if (init_result != null) return init_result;
 
   spi_device_interface_config_t dev_cfg = {
       .mode = 0,
@@ -232,7 +222,6 @@ PRIMITIVE(init_nand_flash) {
       .flags = SPI_DEVICE_HALFDUPLEX,
       .queue_size = 1
   };
-  ESP_LOGI("toitspi", "Setting up device with frequency: %d", frequency);
   spi_device_handle_t nand_spi_device;
   esp_err_t ret = spi_bus_add_device(SPI3_HOST, &dev_cfg, &nand_spi_device);
   if (ret != ESP_OK) {
@@ -245,8 +234,7 @@ PRIMITIVE(init_nand_flash) {
       .device_handle = nand_spi_device,
       .gc_factor = 45
   };
-  ESP_LOGI("toitspi", "Init nand flash device");
-  spi_nand_flash_device_t *nand_flash_device;
+  spi_nand_flash_device_t* nand_flash_device;
   ret = spi_nand_flash_init_device(&nand_config, &nand_flash_device);
   if (ret != ESP_OK) {
     group->close();
@@ -254,7 +242,6 @@ PRIMITIVE(init_nand_flash) {
   }
   group->set_nand_flash_device(nand_flash_device);
 
-  ESP_LOGI("toitspi", "Mount allocation unit size: %d, max_files: %d",allocation_unit_size, max_files);
   esp_vfs_fat_mount_config_t mount_config = {
       .format_if_mount_failed = static_cast<bool>(format_if_mount_failed),
       .max_files = max_files,
@@ -277,7 +264,8 @@ PRIMITIVE(init_nand_flash) {
 
 PRIMITIVE(close) {
   ARGS(SPIFlashResourceGroup, group)
-  group->close();
+  group->tear_down();
+  group_proxy->clear_external_address();
   return process->program()->null_object();
 }
 
