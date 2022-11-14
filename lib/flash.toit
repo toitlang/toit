@@ -7,12 +7,12 @@ import reader show Reader
 import writer show Writer
 import gpio
 
-FLASH_5MHZ    ::= 0
-FLASH_10MHZ   ::= 1
-FLASH_20MHZ   ::= 2
-FLASH_26MHZ   ::= 3
-FLASH_40MHZ   ::= 4
-FLASH_80MHZ   ::= 5
+FLASH_5MHZ  ::= 0
+FLASH_10MHZ ::= 1
+FLASH_20MHZ ::= 2
+FLASH_26MHZ ::= 3
+FLASH_40MHZ ::= 4
+FLASH_80MHZ ::= 5
 
 class Flash:
   flash_ := null
@@ -23,13 +23,12 @@ class Flash:
 
   The $cs is the chip select pin for the SD-card holder.
   */
-  constructor.sdcard
+  constructor.sdcard_unformatted
       --.mount_point/string
       --spi_bus/spi.Bus
       --cs/gpio.Pin:
     if not mount_point.starts_with "/": throw "INVALID_ARGUMENT"
     flash_ = init_sdcard_ mount_point spi_bus.spi_ cs.num 0 0 0
-
 
   /**
   Mounts an SD-card as a FAT file system under $mount_point on the $spi_bus and formats the SD-card
@@ -37,7 +36,7 @@ class Flash:
 
   The $cs is the chip select pin for the SD-card holder.
   */
-  constructor.sdcard_format
+  constructor.sdcard
       --.mount_point/string
       --spi_bus/spi.Bus
       --cs/gpio.Pin
@@ -52,7 +51,7 @@ class Flash:
   The $cs is the chip select pin for the chip on the $spi_bus and $frequency is the SPI frequency.
     $frequency should be one of the FLASH_FREQ_ constants.
   */
-  constructor.nor
+  constructor.nor_unformatted
       --.mount_point/string
       --spi_bus/spi.Bus
       --cs/gpio.Pin
@@ -67,7 +66,7 @@ class Flash:
   The $cs is the chip select pin for the chip on the $spi_bus and $frequency is the SPI frequency.
     $frequency should be one of the FLASH_FREQ_ constants.
   */
-  constructor.nor_format
+  constructor.nor
       --.mount_point/string
       --spi_bus/spi.Bus
       --cs/gpio.Pin
@@ -83,7 +82,7 @@ class Flash:
   The $cs is the chip select pin for the chip on the $spi_bus and $frequency is the SPI frequency.
     $frequency should be one of the FLASH_FREQ_ constants
   */
-  constructor.nand
+  constructor.nand_unformatted
       --.mount_point/string
       --spi_bus/spi.Bus
       --cs/gpio.Pin
@@ -100,7 +99,7 @@ class Flash:
   The $cs is the chip select pin for the chip on the $spi_bus and $frequency is the SPI frequency.
     $frequency should be one of the FLASH_FREQ_ constants
   */
-  constructor.nand_format
+  constructor.nand
       --.mount_point/string
       --spi_bus/spi.Bus
       --cs/gpio.Pin

@@ -77,33 +77,41 @@ class SPIFlashResourceGroup: public ResourceGroup {
 #endif
 };
 
-MODULE_IMPLEMENTATION(spi_flash, MODULE_SPI_FLASH);
+MODULE_IMPLEMENTATION(spi_flash, MODULE_SPI_FLASH)
 
-static HeapObject* init_common(Process* process, const char* mount_point,
-                               SPIFlashResourceGroup** group, char** mount_point_buffer_output) {
+static ByteArray* init_common(Process* process, const char* mount_point,
+                               SPIFlashResourceGroup** group, HeapObject** error) {
+  ByteArray* proxy = process->object_heap()->allocate_proxy();
+  if (!proxy) {
+    *error = Primitive::mark_as_error(process->program()->allocation_failed());
+    return null;
+  }
+
   char* mount_point_buffer = static_cast<char*>(malloc(strlen(mount_point)));
-  if (!*mount_point_buffer) MALLOC_FAILED;
+  if (!mount_point_buffer) {
+    *error = Primitive::mark_as_error(process->program()->malloc_failed());
+    return null;
+  }
   strcpy(mount_point_buffer, mount_point);
 
   *group = _new SPIFlashResourceGroup(process, mount_point_buffer);
-
-  if (!group) {
+  if (!*group) {
     free(mount_point_buffer);
-    ALLOCATION_FAILED;
+    *error = Primitive::mark_as_error(process->program()->malloc_failed());
+    return null;
   }
 
-  if (mount_point_buffer_output) *mount_point_buffer_output = mount_point_buffer;
-  return null;
+  proxy->set_external_address(*group);
+
+  return proxy;
 }
 
 PRIMITIVE(init_sdcard) {
   ARGS(cstring, mount_point, SPIResourceGroup, spi_host, int, gpio_cs, int, format_if_mount_failed, int, max_files, int, allocation_unit_size)
-  ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (!proxy) ALLOCATION_FAILED;
-
   SPIFlashResourceGroup* group;
-  auto init_result = init_common(process, mount_point, &group, null);
-  if (init_result != null) return init_result;
+  HeapObject* error;
+  ByteArray* proxy = init_common(process, mount_point, &group, &error);
+  if (!proxy) return error;
 
   sdmmc_host_t host = SDSPI_HOST_DEFAULT();
   host.slot = spi_host->host_device();
@@ -120,12 +128,12 @@ PRIMITIVE(init_sdcard) {
   sdmmc_card_t* card;
   esp_err_t ret = esp_vfs_fat_sdspi_mount(mount_point, &host, &slot_config, &mount_config, &card);
   if (ret != ESP_OK) {
+    group->tear_down();
     return Primitive::os_error(ret, process);
   }
 
   group->set_card(card);
 
-  proxy->set_external_address(group);
   return proxy;
 }
 
@@ -134,13 +142,10 @@ PRIMITIVE(init_nor_flash) {
 
   if (frequency < 0 || frequency > ESP_FLASH_80MHZ) INVALID_ARGUMENT;
 
-  ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (!proxy) ALLOCATION_FAILED;
-
-  char* mount_point_buffer;
   SPIFlashResourceGroup* group;
-  auto init_result = init_common(process, mount_point, &group, &mount_point_buffer);
-  if (init_result != null) return init_result;
+  HeapObject* error;
+  ByteArray* proxy = init_common(process, mount_point, &group, &error);
+  if (!proxy) return error;
 
   esp_flash_spi_device_config_t conf = {
       .host_id = spi_bus->host_device(),
@@ -154,6 +159,7 @@ PRIMITIVE(init_nor_flash) {
   esp_flash_t* chip;
   esp_err_t ret = spi_bus_add_flash_device(&chip, &conf);
   if (ret != ESP_OK) {
+    group->tear_down();
     return Primitive::os_error(ret, process);
   }
 
@@ -192,7 +198,7 @@ PRIMITIVE(init_nor_flash) {
   };
 
   wl_handle_t wl_handle;
-  ret = esp_vfs_fat_spiflash_mount(mount_point_buffer, mount_point, &mount_config, &wl_handle);
+  ret = esp_vfs_fat_spiflash_mount(mount_point, mount_point, &mount_config, &wl_handle);
   if (ret != ESP_OK) {
     group->tear_down();
     return Primitive::os_error(ret, process);
@@ -200,7 +206,6 @@ PRIMITIVE(init_nor_flash) {
 
   group->set_wl_handle(wl_handle);
 
-  proxy->set_external_address(group);
   return proxy;
 }
 
@@ -208,12 +213,10 @@ PRIMITIVE(init_nand_flash) {
 #ifdef CONFIG_SPI_FLASH_NAND_ENABLED
   ARGS(cstring, mount_point, SPIResourceGroup, spi_bus, int, gpio_cs, int, frequency, int, format_if_mount_failed, int, max_files, int, allocation_unit_size);
 
-  ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (!proxy) ALLOCATION_FAILED;
-
   SPIFlashResourceGroup* group;
-  auto init_result = init_common(process, mount_point, &group, null);
-  if (init_result != null) return init_result;
+  HeapObject* error;
+  ByteArray* proxy = init_common(process, mount_point, &group, &error);
+  if (!proxy) return error;
 
   spi_device_interface_config_t dev_cfg = {
       .mode = 0,
@@ -248,18 +251,16 @@ PRIMITIVE(init_nand_flash) {
       .allocation_unit_size = static_cast<size_t>(allocation_unit_size)
   };
 
-  ret = esp_vfs_fat_nand_mount(mp, nand_flash_device, &mount_config);
+  ret = esp_vfs_fat_nand_mount(mount_point, nand_flash_device, &mount_config);
   if (ret != ESP_OK) {
     group->tear_down();
     return Primitive::os_error(ret, process);
   }
 
-  proxy->set_external_address(group);
   return proxy;
 #else
   UNIMPLEMENTED_PRIMITIVE;
 #endif // CONFIG_SPI_FLASH_NAND_ENABLED
-
 }
 
 PRIMITIVE(close) {
