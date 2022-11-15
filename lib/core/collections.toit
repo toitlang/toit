@@ -2941,8 +2941,13 @@ class IdentityMap extends Map:
     return identical key key_or_probe
 
 /**
-A collection where you can add to the end, and remove items from
-  either end efficiently.
+A double-ended queue.
+
+Supports adding and removing at the beginning and the end. Both operations
+  are efficient and use an amortized time of O(1).
+
+A deque is a generalization of a stack and a queue, and can be used for both
+  purposes.
 */
 class Deque implements Collection:
   // Traditionally we would have a head index, a tail index and an array
