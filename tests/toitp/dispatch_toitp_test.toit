@@ -7,7 +7,7 @@ import .utils
 
 main args:
   out := run_toitp args ["-d"]
-  lines := out.split "\n"
+  lines := out.split LINE_TERMINATOR
   methods := lines.copy 1
   methods.filter --in_place: it != ""
   methods.map --in_place:

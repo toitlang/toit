@@ -7,7 +7,7 @@ import .utils
 
 main args:
   out := run_toitp args ["--senders", "the_target"]
-  lines := out.split "\n"
+  lines := out.split LINE_TERMINATOR
   expect_equals """Methods with calls to "the_target"[3]:""" lines[0]
 
   ["global_lazy_field", "global_fun", "foo"].do: |needle|

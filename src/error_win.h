@@ -15,7 +15,7 @@
 
 #pragma once
 
-#include "../top.h"
+#include "top.h"
 
 #ifdef TOIT_WINDOWS
 #include "windows.h"

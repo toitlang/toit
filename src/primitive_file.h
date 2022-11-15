@@ -19,6 +19,9 @@
 
 namespace toit {
 
+#if defined(TOIT_WINDOWS)
+const char* current_dir(Process* process);
+#else
 int current_dir(Process* process);
-
+#endif
 }

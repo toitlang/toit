@@ -56,6 +56,8 @@ namespace toit {
   fn(UDPSocketResource)                 \
   fn(TCPSocketResource)                 \
   fn(TCPServerSocketResource)           \
+  fn(SubprocessResource)                \
+  fn(PipeResource)                      \
 
 #define TLS_CLASSES_DO(fn)              \
   fn(MbedTLSSocket)                     \
@@ -67,6 +69,7 @@ namespace toit {
   fn(I2CResourceGroup)                  \
   fn(I2SResourceGroup)                  \
   fn(SPIResourceGroup)                  \
+  fn(SPIFlashResourceGroup)             \
   fn(SignalResourceGroup)               \
   fn(SocketResourceGroup)               \
   fn(TCPResourceGroup)                  \

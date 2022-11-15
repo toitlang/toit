@@ -256,6 +256,8 @@ PLATFORM_WINDOWS ::= "Windows"
 PLATFORM_MACOS ::= "macOS"
 PLATFORM_LINUX ::= "Linux"
 
+LINE_TERMINATOR ::= platform == PLATFORM_WINDOWS ? "\r\n" : "\n"
+
 /// Index for $process_stats.
 STATS_INDEX_GC_COUNT                       ::= 0
 /// Index for $process_stats.

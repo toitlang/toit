@@ -30,7 +30,7 @@
 #include "../event_sources/event_win.h"
 
 #include "tcp.h"
-#include "error_win.h"
+#include "../error_win.h"
 
 namespace toit {
 

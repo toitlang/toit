@@ -27,6 +27,10 @@
 namespace toit {
 
 void VM::load_platform_event_sources() {
+  // The Windows host implementation is using stdlib in multiple threads. The standard library collections
+  // calls new behind the scenes in some cases. The AllowThrowingNew RII is not thread safe, so for this host
+  // implementation the throwing_new_allowed is enabled globally.
+  toit::throwing_new_allowed = true;
   event_manager()->add_event_source(_new TimerEventSource());
   event_manager()->add_event_source(_new TLSEventSource());
   event_manager()->add_event_source(_new WindowsEventSource());
