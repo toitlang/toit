@@ -117,12 +117,11 @@ expect_bytes_equal expected/ByteArray actual/ByteArray:
 /** Expects $throw_block to throw an object equal to the $expected value. */
 expect_throw expected [throw_block]:
   try:
-    error := catch --trace=(: expected != it) --unwind=(: expected != it):
-      throw_block.call
-    if expected != error:
-      expect false --message="Expected throw, got <null>"
+     throw_block.call
   finally: | is_exception exception |
-    if is_exception:
+    if not is_exception:
+      expect false --message="Expected throw, got <null>"
+    if expected != exception.value:
       expect false --message="Expected throw with <$expected>, but was <$exception.value>"
     return
 

@@ -2,6 +2,7 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+import binary show Buffer
 import monitor
 import reader
 import writer
@@ -10,6 +11,16 @@ import binary show BIG_ENDIAN
 
 import .certificate
 import .socket
+
+class TlsSessionState:
+
+class ClientHandshakeState_:
+  session /Session
+
+  state /int := CLIENT_STATE_INITIAL_
+
+  constructor .session .session_state
+
 
 /**
 TLS Session upgrades a reader/writer pair to a TLS encrypted communication channel.
@@ -25,16 +36,14 @@ class Session:
   handshake_timeout/Duration
 
   reader_/reader.BufferedReader
-  switched_to_encrypted_ := false
   writer_ ::= ?
   server_name_/string? ::= null
+  session_state_ /TlsSessionState
 
   // A latch until the handshake has completed.
   handshake_in_progress_/monitor.Latch? := monitor.Latch
-  group_/TlsGroup_? := null
-  tls_ := null
 
-  outgoing_buffer_/ByteArray := #[]
+  outgoing_buffer_/List := []  // A list of ByteArrays.
   closed_for_write_ := false
 
   /**
@@ -50,11 +59,47 @@ class Session:
   */
   constructor.client unbuffered_reader .writer_
       --server_name/string?=null
+      --dns_name/string?=server_name
       --.certificate=null
       --.root_certificates=[]
       --.handshake_timeout/Duration=DEFAULT_HANDSHAKE_TIMEOUT:
     reader_ = reader.BufferedReader unbuffered_reader
     server_name_ = server_name
+    handshake
+
+  handshake -> none:
+    client_hello /ByteArray := session.create_client_hello_
+    while client_hello.size > 0:
+      sent := session.writer_.write client_hello
+      client_hello = client_hello[sent..]
+
+  create_client_hello_ -> ByteArray:
+    // Record header.
+    buffer := Buffer
+    buffer.write_byte HANDSHAKE_
+    buffer.write_uint16 LEGACY_VERSION_
+    record_length_offset := buffer.size
+    buffer.write_uint16 0  // To be filled in later.
+
+    // Message header.
+    buffer.write_uint16 LEGACY_VERSION_
+    random := ByteArray 32: random 0x100  // TODO: Use secure random numbers.
+    buffer.write random
+    buffer.write_byte 0  // TODO: Support pre-shared keys.
+    buffer.write_uint16 2  // Two bytes of accepted ciphersuite.
+    buffer.write_uint16 TLS_AES_128_GCM_SHA256_
+    buffer.write_byte 0  // No compression methods.
+    extensions_size_offset := buffer.size
+    buffer.write_uint16 0  // To be filled in later.
+    if server_name_:
+      buffer.write_byte EXTENSION_SERVER_NAME_
+      buffer.write_uint16 server_name_.size + 3  // Size of server names.
+      buffer.write_byte 0  // host_name enum.
+      buffer.write_uint16 server_name_.size
+      buffer.write server_name_
+    
+
+
 
   /**
   Creates a new TLS session at the server-side.
@@ -83,14 +128,7 @@ class Session:
     duration of a complete TLS handshake. If the session state is invalid, the
     operation will fall back to performing the full handshake.
   */
-  handshake --session_state/ByteArray?=null -> none:
-    if tls_:
-      if not handshake_in_progress_: throw "TLS_ALREADY_HANDSHAKEN"
-      error := handshake_in_progress_.get
-      if error: throw error
-      return
-
-    group_ = is_server ? tls_group_server_ : tls_group_client_
+  handshake --session_state/SessionState?=null -> none:
     handle := group_.use
     tls_ = tls_create_ handle server_name_
     add_finalizer this:: this.close
@@ -218,6 +256,14 @@ class Session:
   static ALERT_ ::= 21
   static HANDSHAKE_ ::= 22
   static APPLICATION_DATA_ ::= 23
+
+  static LEGACY_VERSION_ ::= 0x0303
+
+  static TLS_AES_128_GCM_SHA256_ ::= 0x1301
+  static TLS_AES_256_GCM_SHA384_ ::= 0x1302
+  static TLS_CHACHA20_POLY1305_SHA256_ ::= 0x1303
+  static TLS_AES_128_CCM_SHA256_ ::= 0x1304
+  static TLS_AES_128_CCM_8_SHA256_ ::= 0x1305
 
   is_ascii_ c/int -> bool:
     if ' ' <= c <= '~': return true
