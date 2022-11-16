@@ -68,7 +68,6 @@ inline bool Interpreter::typecheck_interface(Program* program,
                                              Object* value,
                                              int interface_selector_index,
                                              bool is_nullable) const {
-
   if (is_nullable && value == program->null_object()) return true;
   int selector_offset = program->interface_check_offsets[interface_selector_index];
   Method target = program->find_method(value, selector_offset);

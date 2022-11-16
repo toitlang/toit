@@ -27,6 +27,7 @@ class Program;
 
 namespace compiler {
 
+class TypePropagator;
 class MethodTemplate;
 
 class TypeSet {
@@ -34,25 +35,40 @@ class TypeSet {
   TypeSet(const TypeSet& other)
       : bits_(other.bits_) {}
 
-  bool contains(unsigned id) const {
-    uword old_bits = bits_[id / WORD_BIT_SIZE];
-    uword mask = 1 << (id % WORD_BIT_SIZE);
+  bool contains(unsigned type) const {
+    uword old_bits = bits_[type / WORD_BIT_SIZE];
+    uword mask = 1UL << (type % WORD_BIT_SIZE);
     return (old_bits & mask) != 0;
   }
 
-  bool add(unsigned id) {
-    unsigned index = id / WORD_BIT_SIZE;
+  bool contains_null(Program* program) const;
+
+  bool add(unsigned type) {
+    unsigned index = type / WORD_BIT_SIZE;
     uword old_bits = bits_[index];
-    uword mask = 1 << (id % WORD_BIT_SIZE);
+    uword mask = 1UL << (type % WORD_BIT_SIZE);
     bits_[index] = old_bits | mask;
     return (old_bits & mask) != 0;
   }
 
-  bool add_all(TypeSet* other, int words) {
+  void remove(unsigned type) {
+    unsigned index = type / WORD_BIT_SIZE;
+    uword old_bits = bits_[index];
+    uword mask = 1UL << (type % WORD_BIT_SIZE);
+    bits_[index] = old_bits & ~mask;
+  }
+
+  void remove_null(Program* program);
+  void remove_range(unsigned start, unsigned end);
+
+  bool remove_typecheck_class(Program* program, int index, bool is_nullable);
+  bool remove_typecheck_interface(Program* program, int index, bool is_nullable);
+
+  bool add_all(TypeSet other, int words) {
     bool added = false;
     for (int i = 0; i < words; i++) {
       uword old_bits = bits_[i];
-      uword new_bits = old_bits | other->bits_[i];
+      uword new_bits = old_bits | other.bits_[i];
       added = added || (new_bits != old_bits);
       bits_[i] = new_bits;
     }
@@ -94,12 +110,19 @@ class TypeResult {
     return type_;
   }
 
-  bool merge(TypeSet* other);
+  TypeSet use(MethodTemplate* user) {
+    users_.push_back(user);
+    return type();
+  }
+
+  bool merge(TypePropagator* propagator, TypeSet other);
 
  private:
   const int words_per_type_;
   uword* const bits_;
   TypeSet type_;
+
+  std::vector<MethodTemplate*> users_;
 };
 
 class TypeStack {
@@ -144,15 +167,16 @@ class TypeStack {
 
   bool merge_top(TypeSet type) {
     TypeSet top = local(0);
-    return top.add_all(&type, words_per_type_);
+    return top.add_all(type, words_per_type_);
   }
 
   TypeSet push_empty();
 
   void push_any();
   void push_null(Program* program);
+  void push_bool(Program* program);
   void push_smi(Program* program);
-  void push_instance(int id);
+  void push_instance(unsigned id);
   void push(Program* program, Object* object);
 
   void pop() {
@@ -191,14 +215,20 @@ class TypePropagator {
   int words_per_type() const;
   void propagate();
 
-  void call_static(TypeStack* stack, uint8* caller, Method target);
-  void call_virtual(TypeStack* stack, uint8* caller, int arity, int offset);
+  void call_static(MethodTemplate* caller, TypeStack* stack, uint8* callsite, Method target);
+  void call_virtual(MethodTemplate* caller, TypeStack* stack, uint8* callsite, int arity, int offset);
+
+  TypeResult* global_variable(int index);
+
+  void enqueue(MethodTemplate* method);
 
  private:
   Program* const program_;
   std::unordered_map<uint8*, std::vector<MethodTemplate*>> templates_;
+  std::unordered_map<int, TypeResult*> globals_;
+  std::vector<MethodTemplate*> enqueued_;
 
-  void call_method(TypeStack* stack, uint8* caller, Method target, std::vector<int>& arguments);
+  void call_method(MethodTemplate* caller, TypeStack* stack, uint8* callsite, Method target, std::vector<int>& arguments);
 
   MethodTemplate* find(uint8* caller, Method target, std::vector<int> arguments);
   MethodTemplate* instantiate(Method method, std::vector<int> arguments);
@@ -222,18 +252,21 @@ class MethodTemplate {
     return true;
   }
 
+  bool enqueued() const { return enqueued_; }
+  void mark_enqueued() { enqueued_ = true; }
+  void clear_enqueued() { enqueued_ = false; }
+
   TypeSet type() {
     return result_.type();
   }
 
-  TypeSet call() {
-    // TODO(kasper): Register dependency.
-    return type();
+  TypeSet call(MethodTemplate* caller) {
+    return result_.use(caller);
   }
 
-  void ret(TypeStack* stack) {
+  void ret(TypePropagator* propagator, TypeStack* stack) {
     TypeSet top = stack->local(0);
-    result_.merge(&top);
+    result_.merge(propagator, top);
     stack->pop();
   }
 
@@ -244,6 +277,7 @@ class MethodTemplate {
   const Method method_;
   const std::vector<int> arguments_;
   TypeResult result_;
+  bool enqueued_ = false;
 };
 
 } // namespace toit::compiler

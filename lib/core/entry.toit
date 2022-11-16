@@ -5,18 +5,13 @@
 // This is the system entry point. It is responsible for
 // calling the main function and halting the system after
 // it returns.
-__entry__main:
-  //current := Task_.current
-  //current.initialize_entry_task_
-  y := 1
-  x := foo: y + 2
-  return x + 3
-
-  //current.evaluate_:
-  //  #primitive.intrinsics.main main_arguments_
-
-foo [block]:
-  return block.call
+__entry__main -> none:
+  #primitive.intrinsics.main main_arguments_
+  return
+  current := Task_.current
+  current.initialize_entry_task_
+  current.evaluate_:
+    #primitive.intrinsics.main main_arguments_
 
 // This is the entry point for processes just being spawned.
 // It calls the lambda passed in the spawn arguments.
