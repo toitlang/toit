@@ -1,0 +1,7 @@
+prefixes:
+  protobuf: toit-protobuf
+packages:
+  toit-protobuf:
+    url: github.com/toitware/toit-protobuf
+    version: 1.1.0
+    hash: 363491a929eadf21147f03b3d42aad80f6cd5943

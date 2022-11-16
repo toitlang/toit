@@ -1694,9 +1694,19 @@ PRIMITIVE(advertise_start) {
 
   ble_hs_adv_fields fields{};
   if (name.length() > 0) {
-    fields.name = name.address();
-    fields.name_len = name.length();
-    fields.name_is_complete = 1;
+    // fields.name = name.address();
+    // fields.name_len = name.length();
+    // fields.name_is_complete = 1;
+
+    ble_hs_adv_fields resp_data{};
+    resp_data.name = name.address();
+    resp_data.name_len = name.length();
+    resp_data.name_is_complete = 1;
+    int ret = ble_gap_adv_rsp_set_fields(&resp_data);
+    if (ret != BLE_ERR_SUCCESS) {
+      if (ret == BLE_HS_EMSGSIZE) OUT_OF_RANGE;
+      return nimle_stack_error(process,ret);
+    }
   }
 
   fields.flags = flags;
