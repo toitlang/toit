@@ -2943,8 +2943,9 @@ class IdentityMap extends Map:
 /**
 A double-ended queue.
 
-Supports adding and removing at the beginning and the end. Both operations
-  are efficient and use an amortized time of O(1).
+A collection of items, where new items can be added at the end. They can
+  be removed at the beginning and the end. These operations are efficient
+  and use an amortized time of O(1).
 
 A deque is a generalization of a stack and a queue, and can be used for both
   purposes.
