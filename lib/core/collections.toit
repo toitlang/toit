@@ -2146,9 +2146,8 @@ abstract class HashedInsertionOrderedCollection_:
       // If the intrinsic fails, return the start position.  This
       // is very rare because the intrinsic will generally return a
       // progress-indicating integer rather than failing.
-      return reversed
-        ? backing_ ? backing_.size - step : null
-        : backing_ ? 0 : null
+      if backing_ == null: return null
+      return reversed ? backing_.size - step : 0
 
   rebuild_ old_size/int step/int --allow_shrink/bool --rebuild_backing/bool:
     if rebuild_backing:
