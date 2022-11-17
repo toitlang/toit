@@ -18,6 +18,7 @@
 #include "objects_inline.h"
 #include "primitive.h"
 #include "process.h"
+#include "psa_key.h"
 #include "sha1.h"
 #include "sha256.h"
 #include "siphash.h"
@@ -116,6 +117,70 @@ PRIMITIVE(siphash_get) {
   siphash->resource_group()->unregister_resource(siphash);
   siphash_proxy->clear_external_address();
   return result;
+}
+
+PsaKey::~PsaKey() {
+  if (key_id_ != PSA_KEY_ID_NULL) psa_destroy_key(key_id_);
+}
+
+PRIMITIVE(psa_key_init) {
+  ARGS(SimpleResourceGroup, group, Blob, key, int, algorithm, int, key_type, int, usage_flags);
+  if (!(0 <= key_type && key_type < NUMBER_OF_KEY_TYPES) ||
+      !(0 <= algorithm_type && algorithm_type < NUMBER_OF_KEY_TYPES) ||
+      !(0 <= usage_flags && usage_flags <= MAX_USAGE_FLAGS)) {
+    INVALID_ARGUMENT;
+  }
+
+  ByteArray* proxy = process->object_heap()->allocate_proxy();
+  if (proxy == null) ALLOCATION_FAILED;
+
+  psa_algorithm_t psa_algorithm;
+  psa_key_type_t psa_key_type;
+
+  if (algorithm == ALGORITHM_GCM) {
+    psa_algorithm = PSA_ALG_GCM;
+  } else if (algorithm == ALGORITHM_CHACHA20_POLY1305) {
+    psa_algorithm = PSA_ALG_CHACHA20_POLY1305;
+  } else {
+    INVALID_ARGUMENT;
+  }
+
+  if (key_type == KEY_TYPE_AES) {
+    psa_key_type = PSA_KEY_TYPE_AES;
+  } else if (key_type == KEY_TYPE_CHACHA20) {
+    psa_key_type = PSA_KEY_TYPE_CHACHA20;
+  } else {
+    INVALID_ARGUMENT;
+  }
+
+  PsaKey* psa_key = _new(PsaKey(group, psa_algorithm, psa_key_type));
+  if (!psa_key) MALLOC_FAILED;
+
+  psa_key_attributes_t psa_attributes = PSA_KEY_ATTRIBUTES_INIT;
+  psa_set_key_algorithm(&psa_attributes, psa_algorithm);
+  psa_set_key_type(&psa_attributes, psa_key_type);
+  psa_set_key_bits(&psa_attributes, key.length() * BYTE_BIT_SIZE);
+  psa_key_usage_t psa_flags = 0;
+  if ((usage_flags & USE_FOR_ENCRYPT) != 0) psa_flags |= PSA_KEY_USAGE_ENCRYPT;
+  if ((usage_flags & USE_FOR_DECRYPT) != 0) psa_flags |= PSA_KEY_USAGE_DECRYPT;
+  psa_set_key_usage_flags(&psa_attributes, psa_flags);
+
+  psa_key_id_t psa_key_identity;
+  psa_status_t result = psa_import_key(&psa_attributes, key.address(), key.length(), &psa_key_identity);
+  if (result == PSA_SUCCESS) {
+    psa_key->set_key_id(psa_key_identity);
+    proxy->set_external_address(psa_key);
+    return proxy;
+  }
+  delete psa_key;
+  if (result == PSA_ERROR_INSUFFICIENT_STORAGE ||
+      result == PSA_ERROR_INSUFFICIENT_MEMORY) {
+    MALLOC_FAILED;
+  }
+  if (result == PSA_ERROR_INVALID_ARGUMENT) {
+    INVALID_ARGUMENT;
+  }
+  OTHER_ERROR;
 }
 
 AesContext::AesContext(
