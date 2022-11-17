@@ -68,8 +68,8 @@ hex_test -> none:
   expect_equals #[0xf5, 0x52] (hex.decode "F552")
   expect_equals #[0x41, 0x34] (hex.decode "4134")
 
-  expect_invalid_argument: hex.decode "a"
-  expect_invalid_argument: hex.decode "s"
+  expect_equals #[10] (hex.decode "a")
+  expect_integer_parsing_error: hex.decode "s"
   expect_integer_parsing_error: hex.decode "sa"
   expect_integer_parsing_error: hex.decode "as"
   expect_invalid_argument: hex.decode "0348af8g1921"
