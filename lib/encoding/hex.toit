@@ -1,4 +1,4 @@
-// Copyright (C) 2020 Toitware ApS. All rights reserved.
+// Copyright (C) 2022 Toitware ApS. All rights reserved.
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
@@ -51,7 +51,6 @@ create_decoding_map_ -> ByteArray:
 /**
 Takes an input string consisting only of valid hexadecimal digits
   and returns the corresponding bytes in big-endian order.
-In URL mode the data must be valid base64url encoding.
 # Example
 ```
   hex.decode "f00d"   // Evaluates to #[0xf0, 0x0d].
