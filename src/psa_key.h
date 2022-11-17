@@ -41,9 +41,6 @@ static const int USE_FOR_ENCRYPT = (1 << 0);
 static const int USE_FOR_DECRYPT = (1 << 1);
 static const int MAX_USAGE_FLAGS = (1 << 2) - 1;
 
-enum PsaKeyUsage {
-
-
 /**
   The PSA library requires that crypto keys are registered
   in a vault and manually deleted.  This code supports
@@ -53,9 +50,8 @@ enum PsaKeyUsage {
 class PsaKey : public SimpleResource {
  public:
   TAG(PsaKey);
-  PsaKey(SimpleResourceGroup* group, psa_key_type_ key_type)
+  PsaKey(SimpleResourceGroup* group)
       : SimpleResource(group)
-      , key_type_(key_type)
       , key_id_(PSA_KEY_ID_NULL) {}
   virtual ~PsaKey();
 
@@ -67,8 +63,6 @@ class PsaKey : public SimpleResource {
     key_id_ = key_id;
   }
 
-  psa_algorithm_type_ algorithm_type_;
-  psa_key_type_ key_type_;
   psa_key_id_t key_id_;
 };
 

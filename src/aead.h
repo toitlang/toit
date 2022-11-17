@@ -38,12 +38,24 @@ class AeadContext : public SimpleResource {
   // The algorithm is one of:
   // PSA_ALG_GCM
   // PSA_ALG_CHACHA20_POLY1305
-  AeadContext(SimpleResourceGroup* group, int algorithm, const Blob* key, const Blob* nonce);
+  AeadContext(SimpleResourceGroup* group, psa_key_id_t key_id, psa_algorithm_t psa_algorithm, const Blob* nonce, bool encrypt)
+      : key_id_(key_id)
+      , psa_operation_(PSA_AEAD_OPERATION_INIT) {
+    if (encrypt) {
+      psa_aead_encrypt_setup(&psa_operation_, key_id, psa_algorithm);
+    } else {
+      psa_aead_decrypt_setup(&psa_operation_, key_id, psa_algorithm);
+    }
+  }
   virtual ~AeadContext();
 
   static constexpr uint8 BLOCK_SIZE = 16;
 
-  psa_aead_context context_;
+  psa_aead_operation_t* psa_operation() { return &psa_operation_; }
+
+ private:
+  psa_key_id_t key_id_;
+  psa_aead_operation_t psa_operation_;
 };
 
 /*

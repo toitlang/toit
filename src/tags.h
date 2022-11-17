@@ -58,7 +58,7 @@ namespace toit {
   fn(TCPServerSocketResource)           \
   fn(SubprocessResource)                \
   fn(PipeResource)                      \
-  fn(PsaKeyResource)                    \
+  fn(PsaKey)                            \
 
 #define TLS_CLASSES_DO(fn)              \
   fn(MbedTLSSocket)                     \

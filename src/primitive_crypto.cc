@@ -126,7 +126,7 @@ PsaKey::~PsaKey() {
 PRIMITIVE(psa_key_init) {
   ARGS(SimpleResourceGroup, group, Blob, key, int, algorithm, int, key_type, int, usage_flags);
   if (!(0 <= key_type && key_type < NUMBER_OF_KEY_TYPES) ||
-      !(0 <= algorithm_type && algorithm_type < NUMBER_OF_KEY_TYPES) ||
+      !(0 <= algorithm && algorithm < NUMBER_OF_KEY_TYPES) ||
       !(0 <= usage_flags && usage_flags <= MAX_USAGE_FLAGS)) {
     INVALID_ARGUMENT;
   }
@@ -153,7 +153,7 @@ PRIMITIVE(psa_key_init) {
     INVALID_ARGUMENT;
   }
 
-  PsaKey* psa_key = _new(PsaKey(group, psa_algorithm, psa_key_type));
+  PsaKey* psa_key = _new PsaKey(group);
   if (!psa_key) MALLOC_FAILED;
 
   psa_key_attributes_t psa_attributes = PSA_KEY_ATTRIBUTES_INIT;
