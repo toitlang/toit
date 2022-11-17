@@ -24,206 +24,142 @@
 
 namespace toit {
 
-class BigNumResourceGroup : public ResourceGroup {
- public:
-  TAG(BigNumResourceGroup);
+typedef int (*mpi_basic_func_t)(mbedtls_mpi *X, const mbedtls_mpi *A, const mbedtls_mpi *B);
 
-  BigNumResourceGroup(Process* process) : ResourceGroup(process) {
-    mbedtls_mpi_init(&bignum);
-  }
-  ~BigNumResourceGroup() {
-    mbedtls_mpi_free(&bignum);
-  }
+static int mbedtls_mpi_div_mpi_no_r(mbedtls_mpi *X,
+                                    const mbedtls_mpi *A,
+                                    const mbedtls_mpi *B);
 
-  bool init(const uint8_t *data, int len) {
-    int ret = mbedtls_mpi_read_binary(&bignum, data, len);
-    if (ret != 0) return false;
-    
-    return true;
-  }
-
-  bool init_from_string(const char *data) {
-    int ret = mbedtls_mpi_read_string(&bignum, 16, data);
-    if (ret != 0) return false;
-    
-    return true;
-  }
-
-  mbedtls_mpi bignum;
+static const mpi_basic_func_t MPI_BASIC_FUNCS[] = {
+    mbedtls_mpi_add_mpi,
+    mbedtls_mpi_sub_mpi,
+    mbedtls_mpi_mul_mpi,
+    mbedtls_mpi_div_mpi_no_r,
+    mbedtls_mpi_mod_mpi,
 };
+static const int MPI_BASIC_FUNCS_NUM = sizeof(MPI_BASIC_FUNCS) / sizeof(MPI_BASIC_FUNCS[0]);
+
+static int mbedtls_mpi_div_mpi_no_r(mbedtls_mpi *X,
+                                    const mbedtls_mpi *A,
+                                    const mbedtls_mpi *B)
+{
+  return mbedtls_mpi_div_mpi(X, NULL, A, B);
+}
 
 MODULE_IMPLEMENTATION(bignum, MODULE_BIGNUM)
 
-PRIMITIVE(init) {
-  ARGS(Blob, data);
 
-  if (data.length() <= 0) INVALID_ARGUMENT;
+PRIMITIVE(operator) {
+  ARGS(int, operator_id, bool, a_sign, Blob, a_limbs, bool, b_sign, Blob, b_limbs);
 
-  ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  int ret;
+  mbedtls_mpi a_mpi;
+  mbedtls_mpi b_mpi;
+  mbedtls_mpi x_mpi;
 
-  BigNumResourceGroup* group = _new BigNumResourceGroup(process);
-  if (!group) MALLOC_FAILED;
+  if (operator_id >= MPI_BASIC_FUNCS_NUM) INVALID_ARGUMENT;
 
-  if (!group->init(data.address(), data.length())) MALLOC_FAILED;
+  Array* array = process->object_heap()->allocate_array(2, Smi::zero());
+  if (array == null) ALLOCATION_FAILED;
 
-  proxy->set_external_address(group);
+  mbedtls_mpi_init(&a_mpi);
+  mbedtls_mpi_init(&b_mpi);
+  mbedtls_mpi_init(&x_mpi);
 
-  return proxy;
-}
-
-PRIMITIVE(init_from_string) {
-  ARGS(String, data);
-
-  if (data->length() <= 0) INVALID_ARGUMENT;
-
-  ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
-
-  BigNumResourceGroup* group = _new BigNumResourceGroup(process);
-  if (!group) MALLOC_FAILED;
-
-  if (!group->init_from_string(data->as_cstr())) MALLOC_FAILED;
-
-  proxy->set_external_address(group);
-
-  return proxy;
-}
-
-PRIMITIVE(bytes) {
-  ARGS(BigNumResourceGroup, A);
-
-  size_t n = mbedtls_mpi_size(&A->bignum);
-  ByteArray* data = process->allocate_byte_array(n);
-  if (data == null) ALLOCATION_FAILED;
-
-  memcpy(ByteArray::Bytes(data).address(), A->bignum.p, n);
-
-  return data;
-}
-
-PRIMITIVE(string) {
-  ARGS(BigNumResourceGroup, A);
-
-  size_t n = mbedtls_mpi_size(&A->bignum) * 2 + 3;
-  String* data = process->allocate_string(n);
-  if (data == null) ALLOCATION_FAILED;
-
-  String::Bytes bytes(data);
-  int ret = mbedtls_mpi_write_string(&A->bignum, 16, (char *)bytes.address(), n, &n);
+  ret = mbedtls_mpi_read_binary(&a_mpi, a_limbs.address(), a_limbs.length());
   if (ret != 0) MALLOC_FAILED;
 
-  return data;
-}
+  ret = mbedtls_mpi_read_binary(&b_mpi, b_limbs.address(), b_limbs.length());
+  if (ret != 0) {
+    mbedtls_mpi_free(&a_mpi);
+    MALLOC_FAILED;
+  }
 
-PRIMITIVE(equal) {
-  ARGS(BigNumResourceGroup, A, BigNumResourceGroup, B);
+  if (a_sign) a_mpi.s = -1;
+  if (b_sign) b_mpi.s = -1;
 
-  int ret = mbedtls_mpi_cmp_mpi(&A->bignum, &B->bignum);
-
-  return BOOL(ret == 0);
-}
-
-PRIMITIVE(add) {
-  ARGS(BigNumResourceGroup, A, BigNumResourceGroup, B);
-
-  ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
-
-  BigNumResourceGroup* group = _new BigNumResourceGroup(process);
-  if (!group) MALLOC_FAILED;
-
-  int ret = mbedtls_mpi_add_mpi(&group->bignum, &A->bignum, &B->bignum);
+  ret = MPI_BASIC_FUNCS[operator_id](&x_mpi, &a_mpi, &b_mpi);
+  mbedtls_mpi_free(&b_mpi);
+  mbedtls_mpi_free(&a_mpi);
   if (ret != 0) MALLOC_FAILED;
 
-  proxy->set_external_address(group);
+  size_t n = mbedtls_mpi_size(&x_mpi);
+  ByteArray* limbs = process->allocate_byte_array(n);
+  if (limbs == null) {
+    mbedtls_mpi_free(&x_mpi);
+    ALLOCATION_FAILED;
+  }
 
-  return proxy;
-}
+  bool sign = x_mpi.s == -1 ? true : false;
+  ret = mbedtls_mpi_write_binary(&x_mpi, ByteArray::Bytes(limbs).address(), n);
+  mbedtls_mpi_free(&x_mpi);
+  if (ret) INVALID_ARGUMENT;
 
-PRIMITIVE(subtract) {
-  ARGS(BigNumResourceGroup, A, BigNumResourceGroup, B);
+  array->at_put(0, BOOL(sign));
+  array->at_put(1, limbs);
 
-  ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
-
-  BigNumResourceGroup* group = _new BigNumResourceGroup(process);
-  if (!group) MALLOC_FAILED;
-
-  int ret = mbedtls_mpi_sub_mpi(&group->bignum, &A->bignum, &B->bignum);
-  if (ret != 0) MALLOC_FAILED;
-
-  proxy->set_external_address(group);
-
-  return proxy;
-}
-
-PRIMITIVE(multiply) {
-  ARGS(BigNumResourceGroup, A, BigNumResourceGroup, B);
-
-  ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
-
-  BigNumResourceGroup* group = _new BigNumResourceGroup(process);
-  if (!group) MALLOC_FAILED;
-
-  int ret = mbedtls_mpi_mul_mpi(&group->bignum, &A->bignum, &B->bignum);
-  if (ret != 0) MALLOC_FAILED;
-
-  proxy->set_external_address(group);
-
-  return proxy;
-}
-
-PRIMITIVE(divide) {
-  ARGS(BigNumResourceGroup, A, BigNumResourceGroup, B);
-
-  ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
-
-  BigNumResourceGroup* group = _new BigNumResourceGroup(process);
-  if (!group) MALLOC_FAILED;
-
-  int ret = mbedtls_mpi_div_mpi(&group->bignum, NULL, &A->bignum, &B->bignum);
-  if (ret != 0) MALLOC_FAILED;
-
-  proxy->set_external_address(group);
-
-  return proxy;
-}
-
-PRIMITIVE(mod) {
-  ARGS(BigNumResourceGroup, A, BigNumResourceGroup, B);
-
-  ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
-
-  BigNumResourceGroup* group = _new BigNumResourceGroup(process);
-  if (!group) MALLOC_FAILED;
-
-  int ret = mbedtls_mpi_mod_mpi(&group->bignum, &A->bignum, &B->bignum);
-  if (ret != 0) MALLOC_FAILED;
-
-  proxy->set_external_address(group);
-
-  return proxy;
+  return array;
 }
 
 PRIMITIVE(exp_mod) {
-  ARGS(BigNumResourceGroup, A, BigNumResourceGroup, E, BigNumResourceGroup, N);
+  ARGS(bool, a_sign, Blob, a_limbs, bool, b_sign, Blob, b_limbs, bool, c_sign, Blob, c_limbs);
 
-  ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
+  int ret;
+  mbedtls_mpi a_mpi;
+  mbedtls_mpi b_mpi;
+  mbedtls_mpi c_mpi;
+  mbedtls_mpi x_mpi;
 
-  BigNumResourceGroup* group = _new BigNumResourceGroup(process);
-  if (!group) MALLOC_FAILED;
+  Array* array = process->object_heap()->allocate_array(2, Smi::zero());
+  if (array == null) ALLOCATION_FAILED;
 
-  int ret = mbedtls_mpi_exp_mod(&group->bignum, &A->bignum, &E->bignum, &N->bignum, NULL);
+  mbedtls_mpi_init(&a_mpi);
+  mbedtls_mpi_init(&b_mpi);
+  mbedtls_mpi_init(&c_mpi);
+  mbedtls_mpi_init(&x_mpi);
+
+  ret = mbedtls_mpi_read_binary(&a_mpi, a_limbs.address(), a_limbs.length());
   if (ret != 0) MALLOC_FAILED;
 
-  proxy->set_external_address(group);
+  ret = mbedtls_mpi_read_binary(&b_mpi, b_limbs.address(), b_limbs.length());
+  if (ret != 0) {
+    mbedtls_mpi_free(&a_mpi);
+    MALLOC_FAILED;
+  }
 
-  return proxy;
+  ret = mbedtls_mpi_read_binary(&c_mpi, c_limbs.address(), c_limbs.length());
+  if (ret != 0) {
+    mbedtls_mpi_free(&b_mpi);
+    mbedtls_mpi_free(&a_mpi);
+    MALLOC_FAILED;
+  }
+
+  if (a_sign) a_mpi.s = -1;
+  if (b_sign) b_mpi.s = -1;
+  if (c_sign) c_mpi.s = -1;
+
+  ret = mbedtls_mpi_exp_mod(&x_mpi, &a_mpi, &b_mpi, &c_mpi, NULL);
+  mbedtls_mpi_free(&c_mpi);
+  mbedtls_mpi_free(&b_mpi);
+  mbedtls_mpi_free(&a_mpi);
+  if (ret != 0) MALLOC_FAILED;
+
+  size_t n = mbedtls_mpi_size(&x_mpi);
+  ByteArray* limbs = process->allocate_byte_array(n);
+  if (limbs == null) {
+    mbedtls_mpi_free(&x_mpi);
+    ALLOCATION_FAILED;
+  }
+
+  bool sign = x_mpi.s == -1 ? true : false;
+  ret = mbedtls_mpi_write_binary(&x_mpi, ByteArray::Bytes(limbs).address(), n);
+  mbedtls_mpi_free(&x_mpi);
+  if (ret) INVALID_ARGUMENT;
+
+  array->at_put(0, BOOL(sign));
+  array->at_put(1, limbs);
+
+  return array;
 }
 
 } // namespace toit

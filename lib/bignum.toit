@@ -2,74 +2,85 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-class Bignum:
-  bignum_ := ?
+import encoding.hex
 
-  constructor data/ByteArray:
-    bignum_ = bignum_init_ data
+BIGNUM_ADD_ ::= 0
+BIGNUM_SUB_ ::= 1
+BIGNUM_MUL_ ::= 2
+BIGNUM_DIV_ ::= 3
+BIGNUM_MOD_ ::= 4
+
+class Bignum:
+  sign_/bool := ?
+  limbs_/ByteArray := ?
+
+  constructor .sign_/bool .limbs_/ByteArray:
 
   constructor.from_string data/string:
-    bignum_ = bignum_init_from_string_ data
+    if data[0] == '-':
+      sign_ = true
+      data = data[1..]
+    else:
+      sign_ = false
+    
+    if data.size & 0x1 !=0:
+      data = "0" + data
+    
+    limbs_ = hex.decode data
 
-  constructor.from_bignum bignum/any:
-    bignum_ = bignum
-
-  bytes -> ByteArray:
-    return bignum_bytes_ bignum_
-
-  stringify -> string:
-    return bignum_string_ bignum_
-
-  operator + other/Bignum:
-    return Bignum.from_bignum (bignum_add_ bignum_ other.bignum_)
-
-  operator - other/Bignum:
-    return Bignum.from_bignum (bignum_subtract_ bignum_ other.bignum_)
-
-  operator * other/Bignum:
-    return Bignum.from_bignum (bignum_multiply_ bignum_ other.bignum_)
-
-  operator / other/Bignum:
-    return Bignum.from_bignum (bignum_divide_ bignum_ other.bignum_)
-
-  operator % other/Bignum:
-    return Bignum.from_bignum (bignum_mod_ bignum_ other.bignum_)
+  int_to_arry_ i/int -> ByteArray:
+    return #[(i >>  0) & 0xff, (i >>  8) & 0xff,
+             (i >> 16) & 0xff, (i >> 24) & 0xff]
   
-  operator == other/Bignum:
-    return bignum_equal_ bignum_ other.bignum_
+  trans_other_ other/any -> Bignum:
+    if other is int:
+      other = Bignum
+          other < 0
+          int_to_arry_ other.abs
+    else if other is not Bignum:
+      throw "$(other.type) is not supported"
+    
+    return other
 
-mod_exp A/Bignum E/Bignum N/Bignum -> Bignum:
-  return Bignum.from_bignum (bignum_exp_mod_ A.bignum_ E.bignum_ N.bignum_)
+  basic_operator_ operation/int sign/bool limbs/ByteArray other/any:
+    other = trans_other_ other
+    result :=  bignum_operator_ operation sign limbs other.sign_ other.limbs_
+    return Bignum result[0] result[1]
 
-bignum_init_ data:
-  #primitive.bignum.init
+  operator + other -> Bignum:
+    return basic_operator_ BIGNUM_ADD_ sign_ limbs_ other
 
-bignum_init_from_string_ string:
-  #primitive.bignum.init_from_string
+  operator - other -> Bignum:
+    return basic_operator_ BIGNUM_SUB_ sign_ limbs_ other
 
-bignum_bytes_ bignum:
-  #primitive.bignum.bytes
+  operator * other -> Bignum:
+    return basic_operator_ BIGNUM_MUL_ sign_ limbs_ other
 
-bignum_string_ bignum:
-  #primitive.bignum.string
+  operator / other -> Bignum:
+    return basic_operator_ BIGNUM_DIV_ sign_ limbs_ other
 
-bignum_equal_ A B:
-  #primitive.bignum.equal
+  operator % other -> Bignum:
+    return basic_operator_ BIGNUM_MOD_ sign_ limbs_ other
+  
+  operator == other -> bool:
+    other = trans_other_ other
+    
+    if sign_ != other.sign_:
+      return false
 
-bignum_add_ A B:
-  #primitive.bignum.add
+    return limbs_ == other.limbs_
+  
+  stringify -> string:
+    s := sign_ ? "-" : "" 
+    s += hex.encode limbs_
+    return s
 
-bignum_subtract_ A B:
-  #primitive.bignum.subtract
+mod_exp A/Bignum B/Bignum C/Bignum -> Bignum:
+  result := bignum_exp_mod_ A.sign_ A.limbs_ B.sign_ B.limbs_ C.sign_ C.limbs_
+  return Bignum result[0] result[1]
 
-bignum_multiply_ A B:
-  #primitive.bignum.multiply
+bignum_operator_ operator_id a_sign a_limbs b_sign b_limbs:
+  #primitive.bignum.operator
 
-bignum_divide_ A B:
-  #primitive.bignum.divide
-
-bignum_mod_ A B:
-  #primitive.bignum.mod
-
-bignum_exp_mod_ A E N:
+bignum_exp_mod_ a_sign a_limbs b_sign b_limbs c_sign c_limbs:
   #primitive.bignum.exp_mod

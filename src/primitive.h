@@ -671,17 +671,8 @@ namespace toit {
   PRIMITIVE(deinit, 1)                       \
 
 #define MODULE_BIGNUM(PRIMITIVE)             \
-  PRIMITIVE(init, 1)                         \
-  PRIMITIVE(init_from_string, 1)             \
-  PRIMITIVE(bytes, 1)                        \
-  PRIMITIVE(string, 1)                       \
-  PRIMITIVE(equal, 2)                        \
-  PRIMITIVE(add, 2)                          \
-  PRIMITIVE(subtract, 2)                     \
-  PRIMITIVE(multiply, 2)                     \
-  PRIMITIVE(divide, 2)                       \
-  PRIMITIVE(mod, 2)                          \
-  PRIMITIVE(exp_mod, 3)                      \
+  PRIMITIVE(operator, 5)                     \
+  PRIMITIVE(exp_mod, 6)                      \
 
 // ----------------------------------------------------------------------------
 
