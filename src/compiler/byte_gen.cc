@@ -302,7 +302,11 @@ void ByteGen::visit_Code(Code* node) {
       : _assemble_lambda(node);
 
   // Push the method id on the stack.
-  __ load_integer(id);
+  if (node->is_block()) {
+    __ load_block_method(id);
+  } else {
+    __ load_integer(id);
+  }
 
   // Pop the block-token, and replace it with the top of the stack (which is
   // an ExpressionStack::Object).

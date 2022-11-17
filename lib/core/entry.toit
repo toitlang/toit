@@ -6,8 +6,6 @@
 // calling the main function and halting the system after
 // it returns.
 __entry__main -> none:
-  #primitive.intrinsics.main main_arguments_
-  return
   current := Task_.current
   current.initialize_entry_task_
   current.evaluate_:

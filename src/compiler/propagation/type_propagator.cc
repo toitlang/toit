@@ -31,9 +31,6 @@ namespace compiler {
       ASSERT(bcp + n < program->bytecodes.data() + program->bytecodes.length());   \
       Opcode next = static_cast<Opcode>(bcp[n]);                                   \
       bcp += n;                                                                    \
-      printf("[%p | ", bcp);                                                       \
-      print_bytecode_console(bcp);                                                 \
-      printf("]\n");                                                               \
       goto *dispatch_table[next];                                                  \
     }
 
@@ -67,15 +64,36 @@ namespace compiler {
 
 void TypeSet::print(Program* program, const char* banner) {
   printf("TypeSet(%s) = {", banner);
-  bool first = true;
-  for (unsigned id = 0; id < program->class_bits.length(); id++) {
-    if (!contains(id)) continue;
-    if (first) printf(" ");
-    else printf(", ");
-    printf("%d", id);
-    first = false;
+  if (is_block()) {
+    printf(" block=%p", block());
+  } else {
+    bool first = true;
+    for (unsigned id = 0; id < program->class_bits.length(); id++) {
+      if (!contains(id)) continue;
+      if (first) printf(" ");
+      else printf(", ");
+      printf("%d", id);
+      first = false;
+    }
   }
-  printf(" }\n");
+  printf(" }");
+}
+
+int TypeSet::size(Program* program) const {
+  if (is_block()) return 1;
+  int size = 0;
+  for (unsigned id = 0; id < program->class_bits.length(); id++) {
+    if (contains(id)) size++;
+  }
+  return size;
+}
+
+bool TypeSet::is_empty(Program* program) const {
+  if (is_block()) return false;
+  for (unsigned id = 0; id < program->class_bits.length(); id++) {
+    if (contains(id)) return false;
+  }
+  return true;
 }
 
 bool TypeSet::contains_null(Program* program) const {
@@ -103,8 +121,7 @@ bool TypeSet::remove_typecheck_class(Program* program, int index, bool is_nullab
     add(program->null_class_id()->value());
     return true;
   }
-  // TODO(kasper): Return false if the type is empty after this.
-  return true;
+  return !is_empty(program);
 }
 
 bool TypeSet::remove_typecheck_interface(Program* program, int index, bool is_nullable) {
@@ -125,8 +142,7 @@ bool TypeSet::remove_typecheck_interface(Program* program, int index, bool is_nu
     add(program->null_class_id()->value());
     return true;
   }
-  // TODO(kasper): Return false if the type is empty after this.
-  return true;
+  return !is_empty(program);
 }
 
 TypePropagator::TypePropagator(Program* program)
@@ -136,22 +152,25 @@ TypePropagator::TypePropagator(Program* program)
 int TypePropagator::words_per_type() const {
   int classes = program_->class_bits.length();
   int words_per_type = (classes + WORD_BIT_SIZE - 1) / WORD_BIT_SIZE;
-  return words_per_type;
+  return Utils::max(words_per_type + 1, 2);  // Need at least two words for block types.
 }
 
 void TypePropagator::propagate() {
-  MethodTemplate* entry = instantiate(program_->entry_main(), std::vector<int>());
+  MethodTemplate* entry = instantiate(program_->entry_main(), std::vector<ConcreteType>());
   enqueue(entry);
 
   while (enqueued_.size() != 0) {
     MethodTemplate* last = enqueued_[enqueued_.size() - 1];
     enqueued_.pop_back();
-    last->propagate();
     last->clear_enqueued();
+    last->propagate();
   }
+
+  printf("[\n");
 
   TypeStack* stack = new TypeStack(-1, 1, words_per_type());
   TypeSet type = stack->get(0);
+  bool first = true;
   for (auto it = templates_.begin(); it != templates_.end(); it++) {
     type.clear(words_per_type());
     std::vector<MethodTemplate*>& templates = it->second;
@@ -159,38 +178,77 @@ void TypePropagator::propagate() {
       MethodTemplate* method = templates[i];
       type.add_all(method->type(), words_per_type());
     }
-    printf("call at %p: ", it->first);
-    type.print(program(), "propagated");
+    if (first) {
+      first = false;
+    } else {
+      printf(",\n");
+    }
+    int position = program()->absolute_bci_from_bcp(it->first);
+    printf("{ \"position\": %d, \"type\": [", position);
+    bool first_n = true;
+    for (unsigned id = 0; id < program()->class_bits.length(); id++) {
+      if (!type.contains(id)) continue;
+      if (first_n) {
+        first_n = false;
+      } else {
+        printf(", ");
+      }
+      printf("%u", id);
+    }
+    printf("]}");
   }
+
+  printf("\n]\n");
 }
 
-void TypePropagator::call_method(MethodTemplate* caller, TypeStack* stack, uint8* callsite, Method target, std::vector<int>& arguments) {
+void TypePropagator::call_method(
+    MethodTemplate* caller,
+    TypeStack* stack,
+    uint8* callsite,
+    Method target,
+    std::vector<ConcreteType>& arguments) {
   int arity = target.arity();
   int index = arguments.size();
   if (index == arity) {
-    printf("[%p - invoke method:", callsite);
-    for (unsigned i = 0; i < arguments.size(); i++) {
-      printf(" %d", arguments[i]);
+    if (false) {
+      printf("[%p - invoke method:", callsite);
+      for (unsigned i = 0; i < arguments.size(); i++) {
+        if (arguments[i].is_block()) {
+          printf(" %p", arguments[i].block());
+        } else {
+          printf(" %d", arguments[i].id());
+        }
+      }
+      printf("]\n");
     }
-    printf("]\n");
     MethodTemplate* callee = find(callsite, target, arguments);
     TypeSet result = callee->call(caller);
     stack->merge_top(result);
     return;
   }
 
-  TypeSet type = stack->local(arity - index);
   Program* program = this->program();
-  for (unsigned id = 0; id < program->class_bits.length(); id++) {
-    if (!type.contains(id)) continue;
-    arguments.push_back(id);
+  TypeSet type = stack->local(arity - index);
+  if (type.is_block()) {
+    arguments.push_back(ConcreteType(type.block()));
     call_method(caller, stack, callsite, target, arguments);
     arguments.pop_back();
+  } else if (type.size(program) > 5) {
+    arguments.push_back(ConcreteType());
+    call_method(caller, stack, callsite, target, arguments);
+    arguments.pop_back();
+  } else {
+    for (unsigned id = 0; id < program->class_bits.length(); id++) {
+      if (!type.contains(id)) continue;
+      arguments.push_back(ConcreteType(id));
+      call_method(caller, stack, callsite, target, arguments);
+      arguments.pop_back();
+    }
   }
 }
 
 void TypePropagator::call_static(MethodTemplate* caller, TypeStack* stack, uint8* callsite, Method target) {
-  std::vector<int> arguments;
+  std::vector<ConcreteType> arguments;
   stack->push_empty();
   call_method(caller, stack, callsite, target, arguments);
   stack->drop_arguments(target.arity());
@@ -199,7 +257,7 @@ void TypePropagator::call_static(MethodTemplate* caller, TypeStack* stack, uint8
 void TypePropagator::call_virtual(MethodTemplate* caller, TypeStack* stack, uint8* callsite, int arity, int offset) {
   TypeSet receiver = stack->local(arity - 1);
 
-  std::vector<int> arguments;
+  std::vector<ConcreteType> arguments;
   stack->push_empty();
 
   Program* program = this->program();
@@ -210,7 +268,7 @@ void TypePropagator::call_virtual(MethodTemplate* caller, TypeStack* stack, uint
     if (entry_id == -1) continue;
     Method target(program->bytecodes, entry_id);
     if (target.selector_offset() != offset) continue;
-    arguments.push_back(id);
+    arguments.push_back(ConcreteType(id));
     call_method(caller, stack, callsite, target, arguments);
     arguments.pop_back();
   }
@@ -235,7 +293,7 @@ void TypePropagator::enqueue(MethodTemplate* method) {
   enqueued_.push_back(method);
 }
 
-MethodTemplate* TypePropagator::find(uint8* caller, Method target, std::vector<int> arguments) {
+MethodTemplate* TypePropagator::find(uint8* caller, Method target, std::vector<ConcreteType> arguments) {
   auto it = templates_.find(caller);
   if (it == templates_.end()) {
     std::vector<MethodTemplate*> templates;
@@ -259,7 +317,7 @@ MethodTemplate* TypePropagator::find(uint8* caller, Method target, std::vector<i
   }
 }
 
-MethodTemplate* TypePropagator::instantiate(Method method, std::vector<int> arguments) {
+MethodTemplate* TypePropagator::instantiate(Method method, std::vector<ConcreteType> arguments) {
   MethodTemplate* result = new MethodTemplate(this, method, arguments);
   return result;
 }
@@ -273,11 +331,16 @@ bool TypeResult::merge(TypePropagator* propagator, TypeSet other) {
 }
 
 bool TypeStack::merge(TypeStack* other) {
+  ASSERT(sp() == other->sp());
   bool result = false;
   for (unsigned i = 0; i < sp_; i++) {
     TypeSet existing_type = get(i);
     TypeSet other_type = other->get(i);
-    result = existing_type.add_all(other_type, words_per_type_) || result;
+    if (existing_type.is_block()) {
+      ASSERT(existing_type.block() == other_type.block());
+    } else {
+      result = existing_type.add_all(other_type, words_per_type_) || result;
+    }
   }
   return result;
 }
@@ -303,6 +366,32 @@ void TypeStack::push_smi(Program* program) {
   type.add(program->smi_class_id()->value());
 }
 
+void TypeStack::push_int(Program* program) {
+  TypeSet type = push_empty();
+  type.add(program->smi_class_id()->value());
+  type.add(program->large_integer_class_id()->value());
+}
+
+void TypeStack::push_float(Program* program) {
+  TypeSet type = push_empty();
+  type.add(program->double_class_id()->value());
+}
+
+void TypeStack::push_string(Program* program) {
+  TypeSet type = push_empty();
+  type.add(program->string_class_id()->value());
+}
+
+void TypeStack::push_array(Program* program) {
+  TypeSet type = push_empty();
+  type.add(program->array_class_id()->value());
+}
+
+void TypeStack::push_byte_array(Program* program) {
+  TypeSet type = push_empty();
+  type.add(program->byte_array_class_id()->value());
+}
+
 void TypeStack::push_bool(Program* program) {
   TypeSet type = push_empty();
   type.add(program->true_class_id()->value());
@@ -323,10 +412,22 @@ void TypeStack::push(Program* program, Object* object) {
   }
 }
 
-void TypeStack::seed_arguments(std::vector<int> arguments) {
+void TypeStack::push_block(BlockTemplate* block) {
+  TypeSet type = push_empty();
+  type.set_block(block);
+}
+
+void TypeStack::seed_arguments(std::vector<ConcreteType> arguments) {
   for (unsigned i = 0; i < arguments.size(); i++) {
     TypeSet type = get(i);
-    type.add(arguments[i]);
+    ConcreteType argument_type = arguments[i];
+    if (argument_type.is_block()) {
+      type.set_block(argument_type.block());
+    } else if (argument_type.is_any()) {
+      type.fill(words_per_type_);
+    } else {
+      type.add(argument_type.id());
+    }
   }
 }
 
@@ -380,7 +481,7 @@ class Worklist {
   std::unordered_map<uint8*, TypeStack*> stacks_;
 };
 
-static void process(MethodTemplate* method, WorkItem item, Worklist& worklist) {
+static void process(MethodTemplate* method, uint8* bcp, TypeStack* stack, Worklist& worklist) {
 #define LABEL(opcode, length, format, print) &&interpret_##opcode,
   static void* dispatch_table[] = {
     BYTECODES(LABEL)
@@ -389,13 +490,11 @@ static void process(MethodTemplate* method, WorkItem item, Worklist& worklist) {
 
   TypePropagator* propagator = method->propagator();
   Program* program = propagator->program();
-  uint8* bcp = item.bcp;
-  TypeStack* stack = item.stack;
-
   DISPATCH(0);
 
   OPCODE_BEGIN_WITH_WIDE(LOAD_LOCAL, stack_offset);
-    stack->push(stack->local(stack_offset));
+    TypeSet local = stack->local(stack_offset);
+    stack->push(local);
   OPCODE_END();
 
   OPCODE_BEGIN(LOAD_LOCAL_0);
@@ -430,7 +529,7 @@ static void process(MethodTemplate* method, WorkItem item, Worklist& worklist) {
 
   OPCODE_BEGIN(STORE_LOCAL);
     B_ARG1(stack_offset);
-    TypeSet top = stack->local(stack_offset);
+    TypeSet top = stack->local(0);
     stack->set_local(stack_offset, top);
   OPCODE_END();
 
@@ -441,11 +540,27 @@ static void process(MethodTemplate* method, WorkItem item, Worklist& worklist) {
   OPCODE_END();
 
   OPCODE_BEGIN(LOAD_OUTER);
-    UNIMPLEMENTED();
+    B_ARG1(stack_offset);
+    TypeSet block = stack->local(0);
+    TypeStack* outer = stack->outer();
+    int n = outer->level() - block.block()->level();
+    for (int i = 0; i < n; i++) outer = outer->outer();
+    TypeSet value = outer->local(stack_offset);
+    stack->pop();
+    stack->push(value);
   OPCODE_END();
 
   OPCODE_BEGIN(STORE_OUTER);
-    UNIMPLEMENTED();
+    B_ARG1(stack_offset);
+    TypeSet value = stack->local(0);
+    TypeSet block = stack->local(1);
+    TypeStack* outer = stack->outer();
+    int n = outer->level() - block.block()->level();
+    for (int i = 0; i < n; i++) outer = outer->outer();
+    outer->set_local(stack_offset, value);
+    stack->pop();
+    stack->pop();
+    stack->push(value);
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(LOAD_FIELD, index);
@@ -522,6 +637,13 @@ static void process(MethodTemplate* method, WorkItem item, Worklist& worklist) {
     stack->push_smi(program);
   OPCODE_END();
 
+  OPCODE_BEGIN(LOAD_BLOCK_METHOD);
+    Method inner = Method(program->bytecodes, Utils::read_unaligned_uint32(bcp + 1));
+    BlockTemplate* block = method->find_block(inner, stack->level(), bcp);
+    stack->push_block(block);
+    block->propagate(method, stack);
+  OPCODE_END();
+
   OPCODE_BEGIN_WITH_WIDE(LOAD_GLOBAL_VAR, index);
     TypeResult* variable = propagator->global_variable(index);
     stack->push(variable->use(method));
@@ -532,7 +654,7 @@ static void process(MethodTemplate* method, WorkItem item, Worklist& worklist) {
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(LOAD_GLOBAL_VAR_LAZY, index);
-    UNIMPLEMENTED();
+    stack->push_any();  // TODO(kasper): Not so great.
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(STORE_GLOBAL_VAR, index);
@@ -546,11 +668,22 @@ static void process(MethodTemplate* method, WorkItem item, Worklist& worklist) {
   OPCODE_END();
 
   OPCODE_BEGIN(LOAD_BLOCK);
-    stack->push_null(program);  // TODO(kasper): This is quite wrong.
+    B_ARG1(index);
+    TypeSet block = stack->local(index);
+    ASSERT(block.is_block());
+    stack->push(block);
   OPCODE_END();
 
   OPCODE_BEGIN(LOAD_OUTER_BLOCK);
-    UNIMPLEMENTED();
+    B_ARG1(stack_offset);
+    TypeSet block = stack->local(0);
+    TypeStack* outer = stack->outer();
+    int n = outer->level() - block.block()->level();
+    for (int i = 0; i < n; i++) outer = outer->outer();
+    TypeSet value = outer->local(stack_offset);
+    ASSERT(value.is_block());
+    stack->pop();
+    stack->push(value);
   OPCODE_END();
 
   OPCODE_BEGIN(POP);
@@ -603,16 +736,35 @@ static void process(MethodTemplate* method, WorkItem item, Worklist& worklist) {
     S_ARG1(offset);
     Method target(program->bytecodes, program->dispatch_table[offset]);
     propagator->call_static(method, stack, bcp, target);
+    if (stack->local(0).is_empty(program)) return;
   OPCODE_END();
 
   OPCODE_BEGIN(INVOKE_STATIC_TAIL);
-    UNIMPLEMENTED();
+    S_ARG1(offset);
+    Method target(program->bytecodes, program->dispatch_table[offset]);
+    propagator->call_static(method, stack, bcp, target);
+    if (stack->local(0).is_empty(program)) return;
+    if (stack->outer()) {
+      TypeSet receiver = stack->get(0);
+      BlockTemplate* block = receiver.block();
+      block->ret(propagator, stack);
+    } else {
+      method->ret(propagator, stack);
+    }
+    return;
   OPCODE_END();
 
   OPCODE_BEGIN(INVOKE_BLOCK);
     B_ARG1(index);
+    TypeSet receiver = stack->local(index - 1);
+    BlockTemplate* block = receiver.block();
+    for (int i = 1; i < block->arity(); i++) {
+      TypeSet argument = stack->local(index - (i + 1));
+      block->argument(i)->merge(propagator, argument);
+    }
     for (int i = 0; i < index; i++) stack->pop();
-    stack->push_any();  // TODO(kasper): Not great.
+    TypeSet value = block->use(method);
+    stack->push(value);
   OPCODE_END();
 
   OPCODE_BEGIN(INVOKE_INITIALIZER_TAIL);
@@ -708,9 +860,70 @@ static void process(MethodTemplate* method, WorkItem item, Worklist& worklist) {
   OPCODE_END();
 
   OPCODE_BEGIN(PRIMITIVE);
-    stack->push_any();
+    B_ARG1(primitive_module);
+    unsigned primitive_index = Utils::read_unaligned_uint16(bcp + 2);
+    bool known = false;
+    if (primitive_module == 0) {
+      switch (primitive_index) {
+        case 0:   // core.write_string_on_stdout
+        case 24:  // core.string_add
+        case 28:  // core.smi_to_string_base_10
+          stack->push_string(program);
+          known = true;
+          break;
+
+        case 15:  // core.array_new
+          stack->push_array(program);
+          known = true;
+          break;
+
+        case 31:   // core.blob_equals
+        case 34:   // core.object_equals  <--- CANNOT FAIL
+        case 81:   // core.smi_equals
+        case 82:   // core.float_equals
+        case 145:  // core.large_integer_equals
+          stack->push_bool(program);
+          known = true;
+          break;
+
+/*
+          stack->push_smi(program);
+          known = true;
+          break;
+*/
+
+        case 53:   // core.smi_divide
+        case 70:   // core.smi_mod
+        case 92:   // core.number_to_integer
+        case 143:  // core.large_integer_divide
+        case 144:  // core.large_integer_mod
+          stack->push_int(program);
+          known = true;
+          break;
+
+        case 41:  // core.number_to_float
+        case 58:  // core.float_divide
+        case 59:  // core.float_mod
+          stack->push_float(program);
+          known = true;
+          break;
+
+        case 156: // core.encode_error
+          stack->push_byte_array(program);
+          known = true;
+          break;
+
+        default:
+          // Do nothing.
+          break;
+      }
+    }
+    if (!known) {
+      if (false) printf("[primitive %d:%u => any]\n", primitive_module, primitive_index);
+      stack->push_any();
+    }
     method->ret(propagator, stack);
-    stack->push_any();  // This is the primitive failure.
+    stack->push_string(program);  // Primitive failures are typically strings.
   OPCODE_END();
 
   OPCODE_BEGIN(THROW);
@@ -718,22 +931,38 @@ static void process(MethodTemplate* method, WorkItem item, Worklist& worklist) {
   OPCODE_END();
 
   OPCODE_BEGIN(RETURN);
-    method->ret(propagator, stack);
+    if (stack->outer()) {
+      TypeSet receiver = stack->get(0);
+      BlockTemplate* block = receiver.block();
+      block->ret(propagator, stack);
+    } else {
+      method->ret(propagator, stack);
+    }
     return;
   OPCODE_END();
 
   OPCODE_BEGIN(RETURN_NULL);
     stack->push_null(program);
-    method->ret(propagator, stack);
+    if (stack->outer()) {
+      TypeSet receiver = stack->get(0);
+      BlockTemplate* block = receiver.block();
+      block->ret(propagator, stack);
+    } else {
+      method->ret(propagator, stack);
+    }
     return;
   OPCODE_END();
 
   OPCODE_BEGIN(NON_LOCAL_RETURN);
-    UNIMPLEMENTED();
+    stack->pop();  // Pop block.
+    method->ret(propagator, stack);
+    return;
   OPCODE_END();
 
   OPCODE_BEGIN(NON_LOCAL_RETURN_WIDE);
-    UNIMPLEMENTED();
+    stack->pop();  // Pop block.
+    method->ret(propagator, stack);
+    return;
   OPCODE_END();
 
   OPCODE_BEGIN(NON_LOCAL_BRANCH);
@@ -741,15 +970,19 @@ static void process(MethodTemplate* method, WorkItem item, Worklist& worklist) {
   OPCODE_END();
 
   OPCODE_BEGIN(LINK);
-    UNIMPLEMENTED();
+    stack->push_smi(program);
+    stack->push_any();  // TODO(kasper): is_exception
+    stack->push_any();  // TODO(kasper): Exception
+    stack->push_smi(program);
   OPCODE_END();
 
   OPCODE_BEGIN(UNLINK);
-    UNIMPLEMENTED();
+    stack->pop();
+
   OPCODE_END();
 
   OPCODE_BEGIN(UNWIND);
-    UNIMPLEMENTED();
+    return;
   OPCODE_END();
 
   OPCODE_BEGIN(HALT);
@@ -757,36 +990,91 @@ static void process(MethodTemplate* method, WorkItem item, Worklist& worklist) {
   OPCODE_END();
 
   OPCODE_BEGIN(INTRINSIC_SMI_REPEAT);
-    UNIMPLEMENTED();
+    // Fall-through to generic case.
+    stack->pop();
   OPCODE_END();
 
   OPCODE_BEGIN(INTRINSIC_ARRAY_DO);
-    UNIMPLEMENTED();
+    // Fall-through to generic case.
+    stack->pop();
   OPCODE_END();
 
   OPCODE_BEGIN(INTRINSIC_HASH_DO);
-    UNIMPLEMENTED();
+    // Fall-through to generic case.
+    stack->pop();
   OPCODE_END();
 
   OPCODE_BEGIN(INTRINSIC_HASH_FIND);
-    UNIMPLEMENTED();
+    // Fall-through to generic case.
+    for (int i = 0; i < 7; i++) stack->pop();
   OPCODE_END();
 }
 
+BlockTemplate* MethodTemplate::find_block(Method method, int level, uint8* bcp) {
+  auto it = blocks_.find(bcp);
+  if (it == blocks_.end()) {
+    BlockTemplate* block = new BlockTemplate(method, level, propagator_->words_per_type());
+    for (int i = 1; i < method.arity(); i++) {
+      block->argument(i)->use(this);
+    }
+    blocks_[bcp] = block;
+    return block;
+  } else {
+    return it->second;
+  }
+}
+
+static int MTL = 0;
+
 void MethodTemplate::propagate() {
-  printf("[propagating types through %p]\n", method_.entry());
+  if (false) printf("[propagating types through %p (%d)]\n", method_.entry(), MTL);
+  MTL++;
 
   int words_per_type = propagator_->words_per_type();
   int sp = method_.arity() + Interpreter::FRAME_SIZE;
   TypeStack* stack = new TypeStack(sp - 1, sp + method_.max_height() + 1, words_per_type);
   stack->seed_arguments(arguments_);
-  Worklist worklist(method_.entry(), stack);
 
+  Worklist worklist(method_.entry(), stack);
   while (worklist.has_next()) {
     WorkItem item = worklist.next();
-    process(this, item, worklist);
+    if (false) printf("  --- %p\n", item.bcp);
+    process(this, item.bcp, item.stack, worklist);
     delete item.stack;
   }
+
+  MTL--;
+}
+
+void BlockTemplate::propagate(MethodTemplate* context, TypeStack* outer) {
+  if (false) printf("[propagating types through block %p]\n", method_.entry());
+
+  int words_per_type = context->propagator()->words_per_type();
+  int sp = method_.arity() + Interpreter::FRAME_SIZE;
+  TypeStack* stack = new TypeStack(sp - 1, sp + method_.max_height() + 1, words_per_type);
+  for (unsigned i = 1; i < method_.arity(); i++) {
+    TypeSet type = argument(i)->type();
+    stack->set(i, type);
+  }
+
+  stack->push_block(this);
+  TypeSet receiver = stack->local(0);
+  stack->set(0, receiver);
+  stack->pop();
+
+  TypeStack* outer_copy = outer->copy();
+  stack->set_outer(outer_copy);
+
+  Worklist worklist(method_.entry(), stack);
+  while (worklist.has_next()) {
+    WorkItem item = worklist.next();
+    if (false) printf("  --- %p\n", item.bcp);
+    process(context, item.bcp, item.stack, worklist);
+    delete item.stack;
+  }
+
+  outer->merge(outer_copy);
+  delete outer_copy;
 }
 
 } // namespace toit::compiler

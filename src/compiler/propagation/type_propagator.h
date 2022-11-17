@@ -29,32 +29,94 @@ namespace compiler {
 
 class TypePropagator;
 class MethodTemplate;
+class BlockTemplate;
+
+class ConcreteType {
+ public:
+  explicit ConcreteType()
+      : data_(ANY) {}
+
+  explicit ConcreteType(unsigned id)
+      : data_((id << 1) | 1) {}
+
+  explicit ConcreteType(BlockTemplate* block)
+      : data_(reinterpret_cast<uword>(block)) {}
+
+  bool is_block() const {
+    return (data_ & 1) == 0;
+  }
+
+  bool is_any() const {
+    return data_ == ANY;
+  }
+
+  bool matches(const ConcreteType& other) const {
+    return data_ == other.data_;
+  }
+
+  unsigned id() const {
+    ASSERT(!is_block());
+    return data_ >> 1;
+  }
+
+  BlockTemplate* block() const {
+    ASSERT(is_block());
+    return reinterpret_cast<BlockTemplate*>(data_);
+  }
+
+ private:
+  static const uword ANY = ~0UL;
+  uword data_;
+};
 
 class TypeSet {
  public:
   TypeSet(const TypeSet& other)
       : bits_(other.bits_) {}
 
+  bool is_block() const {
+    return bits_[0] == 1;
+  }
+
+  int size(Program* program) const;
+  bool is_empty(Program* program) const;
+
+  BlockTemplate* block() const {
+    ASSERT(is_block());
+    return reinterpret_cast<BlockTemplate*>(bits_[1]);
+  }
+
+  void set_block(BlockTemplate* block) {
+    bits_[0] = 1;
+    bits_[1] = reinterpret_cast<uword>(block);
+  }
+
   bool contains(unsigned type) const {
-    uword old_bits = bits_[type / WORD_BIT_SIZE];
-    uword mask = 1UL << (type % WORD_BIT_SIZE);
+    ASSERT(!is_block());
+    unsigned entry = type + 1;
+    uword old_bits = bits_[entry / WORD_BIT_SIZE];
+    uword mask = 1UL << (entry % WORD_BIT_SIZE);
     return (old_bits & mask) != 0;
   }
 
   bool contains_null(Program* program) const;
 
   bool add(unsigned type) {
-    unsigned index = type / WORD_BIT_SIZE;
+    ASSERT(!is_block());
+    unsigned entry = type + 1;
+    unsigned index = entry / WORD_BIT_SIZE;
     uword old_bits = bits_[index];
-    uword mask = 1UL << (type % WORD_BIT_SIZE);
+    uword mask = 1UL << (entry % WORD_BIT_SIZE);
     bits_[index] = old_bits | mask;
     return (old_bits & mask) != 0;
   }
 
   void remove(unsigned type) {
-    unsigned index = type / WORD_BIT_SIZE;
+    ASSERT(!is_block());
+    unsigned entry = type + 1;
+    unsigned index = entry / WORD_BIT_SIZE;
     uword old_bits = bits_[index];
-    uword mask = 1UL << (type % WORD_BIT_SIZE);
+    uword mask = 1UL << (entry % WORD_BIT_SIZE);
     bits_[index] = old_bits & ~mask;
   }
 
@@ -65,6 +127,8 @@ class TypeSet {
   bool remove_typecheck_interface(Program* program, int index, bool is_nullable);
 
   bool add_all(TypeSet other, int words) {
+    ASSERT(!is_block());
+    ASSERT(!other.is_block());
     bool added = false;
     for (int i = 0; i < words; i++) {
       uword old_bits = bits_[i];
@@ -77,10 +141,13 @@ class TypeSet {
 
   void clear(int words) {
     memset(bits_, 0, words * WORD_SIZE);
+    ASSERT(!is_block());
   }
 
   void fill(int words) {
     memset(bits_, 0xff, words * WORD_SIZE);
+    bits_[0] &= ~1;  // Clear LSB.
+    ASSERT(!is_block());
   }
 
   void print(Program* program, const char* banner);
@@ -131,10 +198,29 @@ class TypeStack {
       : sp_(sp)
       , size_(size)
       , words_per_type_(words_per_type)
-      , words_(static_cast<uword*>(malloc(size * words_per_type_ * WORD_SIZE))) {}
+      , words_(static_cast<uword*>(malloc(size * words_per_type_ * WORD_SIZE))) {
+    memset(words_, 0, (sp + 1) * words_per_type * WORD_SIZE);
+  }
 
   ~TypeStack() {
     free(words_);
+  }
+
+  int sp() const {
+    return sp_;
+  }
+
+  TypeStack* outer() const {
+    return outer_;
+  }
+
+  void set_outer(TypeStack* outer) {
+    outer_ = outer;
+  }
+
+  int level() const {
+    if (!outer_) return 0;
+    return outer_->level() + 1;
   }
 
   TypeSet get(unsigned index) {
@@ -176,8 +262,14 @@ class TypeStack {
   void push_null(Program* program);
   void push_bool(Program* program);
   void push_smi(Program* program);
+  void push_int(Program* program);
+  void push_float(Program* program);
+  void push_string(Program* program);
+  void push_array(Program* program);
+  void push_byte_array(Program* program);
   void push_instance(unsigned id);
   void push(Program* program, Object* object);
+  void push_block(BlockTemplate* block);
 
   void pop() {
     sp_--;
@@ -186,7 +278,7 @@ class TypeStack {
   bool merge(TypeStack* other);
 
   // TODO(kasper): Poor name.
-  void seed_arguments(std::vector<int> arguments);
+  void seed_arguments(std::vector<ConcreteType> arguments);
 
   TypeStack* copy() {
     return new TypeStack(this);
@@ -197,12 +289,14 @@ class TypeStack {
   const int size_;
   const int words_per_type_;
   uword* const words_;
+  TypeStack* outer_ = null;
 
   explicit TypeStack(TypeStack* other)
       : sp_(other->sp_)
       , size_(other->size_)
       , words_per_type_(other->words_per_type_)
-      , words_(static_cast<uword*>(malloc(size_ * words_per_type_ * WORD_SIZE))) {
+      , words_(static_cast<uword*>(malloc(size_ * words_per_type_ * WORD_SIZE)))
+      , outer_(other->outer_) {
     memcpy(words_, other->words_, (sp_ + 1) * words_per_type_ * WORD_SIZE);
   }
 };
@@ -228,15 +322,15 @@ class TypePropagator {
   std::unordered_map<int, TypeResult*> globals_;
   std::vector<MethodTemplate*> enqueued_;
 
-  void call_method(MethodTemplate* caller, TypeStack* stack, uint8* callsite, Method target, std::vector<int>& arguments);
+  void call_method(MethodTemplate* caller, TypeStack* stack, uint8* callsite, Method target, std::vector<ConcreteType>& arguments);
 
-  MethodTemplate* find(uint8* caller, Method target, std::vector<int> arguments);
-  MethodTemplate* instantiate(Method method, std::vector<int> arguments);
+  MethodTemplate* find(uint8* caller, Method target, std::vector<ConcreteType> arguments);
+  MethodTemplate* instantiate(Method method, std::vector<ConcreteType> arguments);
 };
 
 class MethodTemplate {
  public:
-  MethodTemplate(TypePropagator* propagator, Method method, std::vector<int> arguments)
+  MethodTemplate(TypePropagator* propagator, Method method, std::vector<ConcreteType> arguments)
       : propagator_(propagator)
       , method_(method)
       , arguments_(arguments)
@@ -244,10 +338,10 @@ class MethodTemplate {
 
   TypePropagator* propagator() const { return propagator_; }
 
-  bool matches(Method target, std::vector<int> arguments) {
+  bool matches(Method target, std::vector<ConcreteType> arguments) {
     if (target.entry() != method_.entry()) return false;
     for (unsigned i = 0; i < arguments.size(); i++) {
-      if (arguments[i] != arguments_[i]) return false;
+      if (!arguments[i].matches(arguments_[i])) return false;
     }
     return true;
   }
@@ -270,14 +364,69 @@ class MethodTemplate {
     stack->pop();
   }
 
+  BlockTemplate* find_block(Method method, int level, uint8* bcp);
+
   void propagate();
 
  private:
   TypePropagator* const propagator_;
   const Method method_;
-  const std::vector<int> arguments_;
+  const std::vector<ConcreteType> arguments_;
   TypeResult result_;
   bool enqueued_ = false;
+
+  std::unordered_map<uint8*, BlockTemplate*> blocks_;
+};
+
+class BlockTemplate {
+ public:
+  BlockTemplate(Method method, int level, int words_per_type)
+      : method_(method)
+      , level_(level)
+      , arguments_(static_cast<TypeResult**>(malloc(method.arity() * sizeof(TypeResult*))))
+      , result_(words_per_type) {
+    // TODO(kasper): It is silly that we keep the receiver in here.
+    for (int i = 0; i < method_.arity(); i++) {
+      arguments_[i] = new TypeResult(words_per_type);
+    }
+  }
+
+  ~BlockTemplate() {
+    for (int i = 0; i < method_.arity(); i++) {
+      delete arguments_[i];
+    }
+    free(arguments_);
+  }
+
+  int level() const {
+    return level_;
+  }
+
+  int arity() const {
+    return method_.arity();
+  }
+
+  TypeResult* argument(int index) {
+    return arguments_[index];
+  }
+
+  TypeSet use(MethodTemplate* user) {
+    return result_.use(user);
+  }
+
+  void ret(TypePropagator* propagator, TypeStack* stack) {
+    TypeSet top = stack->local(0);
+    result_.merge(propagator, top);
+    stack->pop();
+  }
+
+  void propagate(MethodTemplate* context, TypeStack* outer);
+
+ private:
+  const Method method_;
+  const int level_;
+  TypeResult** const arguments_;
+  TypeResult result_;
 };
 
 } // namespace toit::compiler

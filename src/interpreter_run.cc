@@ -395,6 +395,10 @@ Interpreter::Result Interpreter::run() {
     PUSH(Smi::from(Utils::read_unaligned_uint32(bcp + 1)));
   OPCODE_END();
 
+  OPCODE_BEGIN(LOAD_BLOCK_METHOD);
+    PUSH(Smi::from(Utils::read_unaligned_uint32(bcp + 1)));
+  OPCODE_END();
+
   OPCODE_BEGIN_WITH_WIDE(LOAD_GLOBAL_VAR, global_index);
     Object** global_variables = process_->object_heap()->global_variables();
     PUSH(global_variables[global_index]);

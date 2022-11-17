@@ -689,6 +689,9 @@ class ToitMethod:
       index += bc_length
 
   output program/Program:
+    output program: null
+
+  output program/Program [block]:
     debug_info := program.method_info_for id
     print "$id: $(debug_info.short_stringify program)"
     index := 0
@@ -702,6 +705,8 @@ class ToitMethod:
       if bc_length > 1:
         argument = bytecodes[index + 1]
       line += bytecode_string this index argument program
+      extra := block.call absolute_bci
+      if extra: line += " // $extra"
       print line
       index += bc_length
     print ""
@@ -790,6 +795,7 @@ BYTE_CODES ::= [
   Bytecode "LOAD_SMI_U8"                2 OP_BU "load smi",
   Bytecode "LOAD_SMI_U16"               3 OP_SU "load smi",
   Bytecode "LOAD_SMI_U32"               5 OP_WU "load smi",
+  Bytecode "LOAD_BLOCK_METHOD"          5 OP_WU "load block method",
   Bytecode "LOAD_GLOBAL_VAR"            2 OP_BG "load global var",
   Bytecode "LOAD_GLOBAL_VAR_DYNAMIC"    1 OP "load global var dynamic",
   Bytecode "LOAD_GLOBAL_VAR_WIDE"       3 OP_SG "load global var wide",
