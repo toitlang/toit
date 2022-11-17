@@ -11,6 +11,17 @@ create_encoding_map_ -> ByteArray:
   "0123456789abcdef".write_to_byte_array result
   return result
 
+/**
+Takes an input byte array or string
+  and returns the corresponding string of hex digits.
+# Examples
+```
+  hex.encode #[0x12, 0x34]  // Evaluates to the string "1234".
+  hex.encode #[0x00, 0x42]  // Evaluates to the string "0042".
+  hex.encode "A*"           // Evaluates to the string "412a".
+  hex.encode #[]            // Evaluates to the empty string "".
+```
+*/
 encode data -> string:
   if data.size == 0: return ""
   if data.size == 1: return "$(%02x data[0])"
@@ -37,6 +48,16 @@ create_decoding_map_ -> ByteArray:
     result['A' + it] = it + 10
   return result
 
+/**
+Takes an input string consisting only of valid hexadecimal digits
+  and returns the corresponding bytes in big-endian order.
+In URL mode the data must be valid base64url encoding.
+# Example
+```
+  hex.decode "f00d"   // Evaluates to #[0xf0, 0x0d].
+  hex.decode "7CAFE"  // Evaluates to #[0x07, 0xca, 0xfe].
+```
+*/
 decode str/string -> ByteArray:
   if str.size == 0: return #[]
   if str.size <= 2: return #[int.parse --radix=16 str]
@@ -46,9 +67,9 @@ decode str/string -> ByteArray:
       --lookup_table=DECODING_MAP_
       --operation=OR
   if checker[0] & 0x10 != 0: throw "INVALID_ARGUMENT"
-  result := ByteArray (str.size + 1) >> 1
-  // Put high nibbles.
   odd := str.size & 1
+  result := ByteArray (str.size >> 1) + odd
+  // Put high nibbles.
   blit str[odd..] result[odd..] (result.size - odd)
       --source_pixel_stride=2
       --lookup_table=DECODING_MAP_
