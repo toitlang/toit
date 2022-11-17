@@ -39,22 +39,22 @@ create_decoding_map_ -> ByteArray:
 
 decode str/string -> ByteArray:
   if str.size == 0: return #[]
-  if str.size == 2: return #[int.parse --radix=16 str]
-  if str.size & 1 != 0: throw "INVALID_ARGUMENT"
+  if str.size <= 2: return #[int.parse --radix=16 str]
   checker := #[0]
   blit str checker str.size
       --destination_pixel_stride=0
       --lookup_table=DECODING_MAP_
       --operation=OR
   if checker[0] & 0x10 != 0: throw "INVALID_ARGUMENT"
-  result := ByteArray str.size >> 1
+  result := ByteArray (str.size + 1) >> 1
   // Put high nibbles.
-  blit str result result.size
+  odd := str.size & 1
+  blit str[odd..] result[odd..] (result.size - odd)
       --source_pixel_stride=2
       --lookup_table=DECODING_MAP_
       --shift=-4
   // Or in the low nibbles.
-  blit str[1..] result result.size
+  blit str[odd ^ 1..] result result.size
       --source_pixel_stride=2
       --lookup_table=DECODING_MAP_
       --operation=OR
