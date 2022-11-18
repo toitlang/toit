@@ -797,7 +797,7 @@ SchedulerThread* Scheduler::start_thread(Locker& locker) {
   if (new_thread == null) FATAL("OS thread spawn failed");
   int core = num_threads_++;
   threads_.prepend(new_thread);
-  if (!new_thread->spawn(4 * KB, core)) FATAL("OS thread spawn failed");
+  if (!new_thread->spawn(7 * KB, core)) FATAL("OS thread spawn failed");
   return new_thread;
 }
 

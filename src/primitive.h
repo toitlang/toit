@@ -58,6 +58,7 @@ namespace toit {
   M(touch,   MODULE_TOUCH)                   \
   M(programs_registry, MODULE_PROGRAMS_REGISTRY) \
   M(flash,   MODULE_FLASH_REGISTRY)          \
+  M(spi_flash, MODULE_SPI_FLASH)             \
   M(file,    MODULE_FILE)                    \
   M(pipe,    MODULE_PIPE)                    \
   M(zlib,    MODULE_ZLIB)                    \
@@ -577,6 +578,12 @@ namespace toit {
   PRIMITIVE(cancel_reservation, 1)           \
   PRIMITIVE(erase_flash_registry, 0)         \
 
+#define MODULE_SPI_FLASH(PRIMITIVE)          \
+  PRIMITIVE(init_sdcard, 6)                  \
+  PRIMITIVE(init_nor_flash, 7)               \
+  PRIMITIVE(init_nand_flash, 7)              \
+  PRIMITIVE(close, 1)                        \
+
 #define MODULE_FILE(PRIMITIVE)               \
   PRIMITIVE(open, 3)                         \
   PRIMITIVE(read, 1)                         \
@@ -902,6 +909,7 @@ namespace toit {
 #define _A_T_ResourceGroup(N, name)       MAKE_UNPACKING_MACRO(ResourceGroup, N, name)
 #define _A_T_SPIDevice(N, name)           MAKE_UNPACKING_MACRO(SPIDevice, N, name)
 #define _A_T_SPIResourceGroup(N, name)    MAKE_UNPACKING_MACRO(SPIResourceGroup, N, name)
+#define _A_T_SPIFlashResourceGroup(N, name)  MAKE_UNPACKING_MACRO(SPIFlashResourceGroup, N, name)
 #define _A_T_SignalResourceGroup(N, name) MAKE_UNPACKING_MACRO(SignalResourceGroup, N, name)
 #define _A_T_SocketResourceGroup(N, name) MAKE_UNPACKING_MACRO(SocketResourceGroup, N, name)
 #define _A_T_TCPResourceGroup(N, name)    MAKE_UNPACKING_MACRO(TCPResourceGroup, N, name)
@@ -949,6 +957,9 @@ namespace toit {
 #define _A_T_UDPSocketResource(N, name)   MAKE_UNPACKING_MACRO(UDPSocketResource, N, name)
 #define _A_T_TCPSocketResource(N, name)   MAKE_UNPACKING_MACRO(TCPSocketResource, N, name)
 #define _A_T_TCPServerSocketResource(N, name)   MAKE_UNPACKING_MACRO(TCPServerSocketResource, N, name)
+#define _A_T_SubprocessResource(N, name)  MAKE_UNPACKING_MACRO(SubprocessResource, N, name)
+#define _A_T_ReadPipeResource(N, name)    MAKE_UNPACKING_MACRO(ReadPipeResource, N, name)
+#define _A_T_WritePipeResource(N, name)   MAKE_UNPACKING_MACRO(WritePipeResource, N, name)
 #define _A_T_I2SResource(N, name)         MAKE_UNPACKING_MACRO(I2SResource, N, name)
 #define _A_T_AdcResource(N, name)         MAKE_UNPACKING_MACRO(AdcResource, N, name)
 #define _A_T_DacResource(N, name)         MAKE_UNPACKING_MACRO(DacResource, N, name)

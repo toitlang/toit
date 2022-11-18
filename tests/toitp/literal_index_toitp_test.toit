@@ -13,7 +13,7 @@ main args:
 
   // Get the indexes from the program.
   out /string := pipe.backticks [toit_run, snap]
-  lines := out.split "\n"
+  lines := out.split LINE_TERMINATOR
   lines.do:
     if it == "": continue.do
     parts := it.split " - "

@@ -429,7 +429,7 @@ class LocalService extends Resource_ implements Attribute:
   /**
   Convenience method to add a read-only characteristic with the given $uuid and $value.
   */
-  add_read_only_characteristic --value/ByteArray -> LocalCharacteristic:
+  add_read_only_characteristic uuid/BleUuid --value/ByteArray -> LocalCharacteristic:
     return add_characteristic
         uuid
         --properties=CHARACTERISTIC_PROPERTY_READ
@@ -536,7 +536,7 @@ class LocalDescriptor extends LocalReadWriteElement_ implements Attribute:
   properties/int
 
   constructor .characteristic .uuid .properties .permissions value:
-    resource :=  ble_add_descriptor_ characteristic.resource_ uuid properties permissions value
+    resource :=  ble_add_descriptor_ characteristic.resource_ uuid.encode_for_platform_ properties permissions value
     super characteristic.service resource
 
   write value/ByteArray:
