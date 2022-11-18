@@ -48,15 +48,6 @@ is_unicode_whitespace_ c/int -> bool:
       c == 0x3000 or
       c == 0xFEFF
 
-/**
-A Unicode text object.
-Strings are sequences of Unicode code points, stored in UTF-8 format.
-This is a fully fledged class, not a 'primitive type'.
-A string can only contain valid UTF-8 byte sequences.  To store arbitrary
-  byte sequences or other encodings like ISO 8859, use $ByteArray.
-Strings are immutable objects.
-See more on strings at https://docs.toit.io/language/strings
-*/
 abstract class string implements Comparable:
   static MIN_SLICE_SIZE_ ::= 16
 
@@ -167,20 +158,13 @@ abstract class string implements Comparable:
     syntax: `str[from..to]`. Since both arguments are optional (as they have
     default values), it is valid to omit `from` or `to`.
 
-  Positions that would create an invalid UTF-8 sequence are rejected with
-    an exception.
-
   # Examples
   ```
-  str := "Hello, world!"
+  str := "hello world"
   hello := str[..5]
-  world := str[7..]
-  comma := str[5..6]
-  print hello  // => "Hello"
-  print comma  // => ","
-  print world  // => "world!"
-  amelie := "Amélie"
-  amelie[2..3]  // Throws an exception.
+  world := str[6..]
+  print hello  // => "hello"
+  print world  // => "world"
   ```
   */
   // TODO(florian): make this an overloaded function. Currently we can't because
