@@ -68,7 +68,7 @@ void TypeSet::print(Program* program, const char* banner) {
     printf(" block=%p", block());
   } else {
     bool first = true;
-    for (unsigned id = 0; id < program->class_bits.length(); id++) {
+    for (int id = 0; id < program->class_bits.length(); id++) {
       if (!contains(id)) continue;
       if (first) printf(" ");
       else printf(", ");
@@ -82,7 +82,7 @@ void TypeSet::print(Program* program, const char* banner) {
 int TypeSet::size(Program* program) const {
   if (is_block()) return 1;
   int size = 0;
-  for (unsigned id = 0; id < program->class_bits.length(); id++) {
+  for (int id = 0; id < program->class_bits.length(); id++) {
     if (contains(id)) size++;
   }
   return size;
@@ -90,7 +90,7 @@ int TypeSet::size(Program* program) const {
 
 bool TypeSet::is_empty(Program* program) const {
   if (is_block()) return false;
-  for (unsigned id = 0; id < program->class_bits.length(); id++) {
+  for (int id = 0; id < program->class_bits.length(); id++) {
     if (contains(id)) return false;
   }
   return true;
@@ -98,7 +98,7 @@ bool TypeSet::is_empty(Program* program) const {
 
 bool TypeSet::is_any(Program* program) const {
   if (is_block()) return false;
-  for (unsigned id = 0; id < program->class_bits.length(); id++) {
+  for (int id = 0; id < program->class_bits.length(); id++) {
     if (!contains(id)) return false;
   }
   return true;
@@ -209,12 +209,12 @@ void TypePropagator::propagate() {
   printf("[\n");
   TypeSet type = stack->get(0);
   bool first = true;
-  for (auto it = templates_.begin(); it != templates_.end(); it++) {
+  for (auto it = sites_.begin(); it != sites_.end(); it++) {
     type.clear(words_per_type());
-    std::vector<MethodTemplate*>& templates = it->second;
-    for (unsigned i = 0; i < templates.size(); i++) {
-      MethodTemplate* method = templates[i];
-      type.add_all(method->type(), words_per_type());
+    std::vector<TypeResult*>& sites = it->second;
+    for (unsigned i = 0; i < sites.size(); i++) {
+      TypeResult* result = sites[i];
+      type.add_all(result->type(), words_per_type());
     }
     if (first) {
       first = false;
@@ -249,14 +249,14 @@ void TypePropagator::propagate() {
 void TypePropagator::call_method(
     MethodTemplate* caller,
     TypeStack* stack,
-    uint8* callsite,
+    uint8* site,
     Method target,
     std::vector<ConcreteType>& arguments) {
   int arity = target.arity();
   int index = arguments.size();
   if (index == arity) {
     if (false) {
-      printf("[%p - invoke method:", callsite);
+      printf("[%p - invoke method:", site);
       for (unsigned i = 0; i < arguments.size(); i++) {
         if (arguments[i].is_block()) {
           printf(" %p", arguments[i].block());
@@ -266,8 +266,8 @@ void TypePropagator::call_method(
       }
       printf("]\n");
     }
-    MethodTemplate* callee = find(callsite, target, arguments);
-    TypeSet result = callee->call(caller);
+    MethodTemplate* callee = find(target, arguments);
+    TypeSet result = callee->call(this, caller, site);
     stack->merge_top(result);
     return;
   }
@@ -276,30 +276,30 @@ void TypePropagator::call_method(
   TypeSet type = stack->local(arity - index);
   if (type.is_block()) {
     arguments.push_back(ConcreteType(type.block()));
-    call_method(caller, stack, callsite, target, arguments);
+    call_method(caller, stack, site, target, arguments);
     arguments.pop_back();
   } else if (type.size(program) > 5) {
     arguments.push_back(ConcreteType());
-    call_method(caller, stack, callsite, target, arguments);
+    call_method(caller, stack, site, target, arguments);
     arguments.pop_back();
   } else {
     for (unsigned id = 0; id < program->class_bits.length(); id++) {
       if (!type.contains(id)) continue;
       arguments.push_back(ConcreteType(id));
-      call_method(caller, stack, callsite, target, arguments);
+      call_method(caller, stack, site, target, arguments);
       arguments.pop_back();
     }
   }
 }
 
-void TypePropagator::call_static(MethodTemplate* caller, TypeStack* stack, uint8* callsite, Method target) {
+void TypePropagator::call_static(MethodTemplate* caller, TypeStack* stack, uint8* site, Method target) {
   std::vector<ConcreteType> arguments;
   stack->push_empty();
-  call_method(caller, stack, callsite, target, arguments);
+  call_method(caller, stack, site, target, arguments);
   stack->drop_arguments(target.arity());
 }
 
-void TypePropagator::call_virtual(MethodTemplate* caller, TypeStack* stack, uint8* callsite, int arity, int offset) {
+void TypePropagator::call_virtual(MethodTemplate* caller, TypeStack* stack, uint8* site, int arity, int offset) {
   TypeSet receiver = stack->local(arity - 1);
 
   std::vector<ConcreteType> arguments;
@@ -314,21 +314,21 @@ void TypePropagator::call_virtual(MethodTemplate* caller, TypeStack* stack, uint
     Method target(program->bytecodes, entry_id);
     if (target.selector_offset() != offset) continue;
     arguments.push_back(ConcreteType(id));
-    call_method(caller, stack, callsite, target, arguments);
+    call_method(caller, stack, site, target, arguments);
     arguments.pop_back();
   }
 
   stack->drop_arguments(arity);
 }
 
-void TypePropagator::load_field(MethodTemplate* user, TypeStack* stack, int index) {
+void TypePropagator::load_field(MethodTemplate* user, TypeStack* stack, uint8* site, int index) {
   TypeSet instance = stack->local(0);
   stack->push_empty();
 
   Program* program = this->program();
   for (unsigned id = 0; id < program->class_bits.length(); id++) {
     if (!instance.contains(id)) continue;
-    TypeSet result = field(id, index)->use(user);
+    TypeSet result = field(id, index)->use(this, user, site);
     stack->merge_top(result);
   }
 
@@ -380,13 +380,30 @@ void TypePropagator::enqueue(MethodTemplate* method) {
   enqueued_.push_back(method);
 }
 
-MethodTemplate* TypePropagator::find(uint8* caller, Method target, std::vector<ConcreteType> arguments) {
-  auto it = templates_.find(caller);
+void TypePropagator::add_site(uint8* site, TypeResult* result) {
+  auto it = sites_.find(site);
+  if (it == sites_.end()) {
+    std::vector<TypeResult*> sites;
+    sites.push_back(result);
+    sites_[site] = sites;
+    return;
+  }
+  std::vector<TypeResult*>& sites = it->second;
+  for (unsigned i = 0; i < sites.size(); i++) {
+    TypeResult* candidate = sites[i];
+    if (result == candidate) return;
+  }
+  sites.push_back(result);
+}
+
+MethodTemplate* TypePropagator::find(Method target, std::vector<ConcreteType> arguments) {
+  uint8* key = target.header_bcp();
+  auto it = templates_.find(key);
   if (it == templates_.end()) {
     std::vector<MethodTemplate*> templates;
     MethodTemplate* result = instantiate(target, arguments);
     templates.push_back(result);
-    templates_[caller] = templates;
+    templates_[key] = templates;
     result->propagate();
     return result;
   } else {
@@ -409,6 +426,12 @@ MethodTemplate* TypePropagator::instantiate(Method method, std::vector<ConcreteT
   return result;
 }
 
+TypeSet TypeResult::use(TypePropagator* propagator, MethodTemplate* user, uint8* site) {
+  if (site) propagator->add_site(site, this);
+  users_.push_back(user);
+  return type();
+}
+
 bool TypeResult::merge(TypePropagator* propagator, TypeSet other) {
   if (!type_.add_all(other, words_per_type_)) return false;
   for (unsigned i = 0; i < users_.size(); i++) {
@@ -420,7 +443,7 @@ bool TypeResult::merge(TypePropagator* propagator, TypeSet other) {
 bool TypeStack::merge(TypeStack* other) {
   ASSERT(sp() == other->sp());
   bool result = false;
-  for (unsigned i = 0; i < sp_; i++) {
+  for (int i = 0; i < sp_; i++) {
     TypeSet existing_type = get(i);
     TypeSet other_type = other->get(i);
     if (existing_type.is_block()) {
@@ -651,7 +674,7 @@ static void process(MethodTemplate* method, uint8* bcp, TypeStack* stack, Workli
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(LOAD_FIELD, field_index);
-    propagator->load_field(method, stack, field_index);
+    propagator->load_field(method, stack, bcp, field_index);
     if (stack->local(0).is_empty(program)) return;
   OPCODE_END();
 
@@ -661,7 +684,7 @@ static void process(MethodTemplate* method, uint8* bcp, TypeStack* stack, Workli
     int field_index = encoded >> 4;
     TypeSet instance = stack->local(local);
     stack->push(instance);
-    propagator->load_field(method, stack, field_index);
+    propagator->load_field(method, stack, bcp, field_index);
     if (stack->local(0).is_empty(program)) return;
   OPCODE_END();
 
@@ -671,7 +694,7 @@ static void process(MethodTemplate* method, uint8* bcp, TypeStack* stack, Workli
     int field_index = encoded >> 4;
     TypeSet instance = stack->local(local + 1);
     stack->set_local(0, instance);
-    propagator->load_field(method, stack, field_index);
+    propagator->load_field(method, stack, bcp, field_index);
     if (stack->local(0).is_empty(program)) return;
   OPCODE_END();
 
@@ -728,7 +751,7 @@ static void process(MethodTemplate* method, uint8* bcp, TypeStack* stack, Workli
 
   OPCODE_BEGIN_WITH_WIDE(LOAD_GLOBAL_VAR, index);
     TypeResult* variable = propagator->global_variable(index);
-    stack->push(variable->use(method));
+    stack->push(variable->use(propagator, method, bcp));
     if (stack->local(0).is_empty(program)) return;
   OPCODE_END();
 
@@ -858,7 +881,7 @@ static void process(MethodTemplate* method, uint8* bcp, TypeStack* stack, Workli
       block->argument(i)->merge(propagator, argument);
     }
     for (int i = 0; i < index; i++) stack->pop();
-    TypeSet value = block->use(method);
+    TypeSet value = block->use(propagator, method, bcp);
     if (value.is_empty(program)) return;
     stack->push(value);
   OPCODE_END();
@@ -1153,14 +1176,14 @@ static void process(MethodTemplate* method, uint8* bcp, TypeStack* stack, Workli
   OPCODE_END();
 }
 
-BlockTemplate* MethodTemplate::find_block(Method method, int level, uint8* bcp) {
-  auto it = blocks_.find(bcp);
+BlockTemplate* MethodTemplate::find_block(Method method, int level, uint8* site) {
+  auto it = blocks_.find(site);
   if (it == blocks_.end()) {
     BlockTemplate* block = new BlockTemplate(method, level, propagator_->words_per_type());
     for (int i = 1; i < method.arity(); i++) {
-      block->argument(i)->use(this);
+      block->argument(i)->use(propagator_, this, null);
     }
-    blocks_[bcp] = block;
+    blocks_[site] = block;
     return block;
   } else {
     return it->second;

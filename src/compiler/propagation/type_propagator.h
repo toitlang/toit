@@ -180,11 +180,7 @@ class TypeResult {
     return type_;
   }
 
-  TypeSet use(MethodTemplate* user) {
-    users_.push_back(user);
-    return type();
-  }
-
+  TypeSet use(TypePropagator* propagator, MethodTemplate* user, uint8* site);
   bool merge(TypePropagator* propagator, TypeSet other);
 
  private:
@@ -316,27 +312,30 @@ class TypePropagator {
   int words_per_type() const;
   void propagate();
 
-  void call_static(MethodTemplate* caller, TypeStack* stack, uint8* callsite, Method target);
-  void call_virtual(MethodTemplate* caller, TypeStack* stack, uint8* callsite, int arity, int offset);
+  void call_static(MethodTemplate* caller, TypeStack* stack, uint8* site, Method target);
+  void call_virtual(MethodTemplate* caller, TypeStack* stack, uint8* site, int arity, int offset);
 
-  void load_field(MethodTemplate* user, TypeStack* stack, int index);
+  void load_field(MethodTemplate* user, TypeStack* stack, uint8* site, int index);
   void store_field(MethodTemplate* user, TypeStack* stack, int index);
 
   TypeResult* global_variable(int index);
   TypeResult* field(unsigned type, int index);
 
   void enqueue(MethodTemplate* method);
+  void add_site(uint8* site, TypeResult* result);
 
  private:
   Program* const program_;
+  std::unordered_map<uint8*, std::vector<TypeResult*>> sites_;
+
   std::unordered_map<uint8*, std::vector<MethodTemplate*>> templates_;
   std::unordered_map<int, TypeResult*> globals_;
   std::unordered_map<unsigned, std::unordered_map<int, TypeResult*>> fields_;
   std::vector<MethodTemplate*> enqueued_;
 
-  void call_method(MethodTemplate* caller, TypeStack* stack, uint8* callsite, Method target, std::vector<ConcreteType>& arguments);
+  void call_method(MethodTemplate* caller, TypeStack* stack, uint8* site, Method target, std::vector<ConcreteType>& arguments);
 
-  MethodTemplate* find(uint8* caller, Method target, std::vector<ConcreteType> arguments);
+  MethodTemplate* find(Method target, std::vector<ConcreteType> arguments);
   MethodTemplate* instantiate(Method method, std::vector<ConcreteType> arguments);
 };
 
@@ -364,12 +363,8 @@ class MethodTemplate {
   void mark_enqueued() { enqueued_ = true; }
   void clear_enqueued() { enqueued_ = false; }
 
-  TypeSet type() {
-    return result_.type();
-  }
-
-  TypeSet call(MethodTemplate* caller) {
-    return result_.use(caller);
+  TypeSet call(TypePropagator* propagator, MethodTemplate* caller, uint8* site) {
+    return result_.use(propagator, caller, site);
   }
 
   void ret(TypePropagator* propagator, TypeStack* stack) {
@@ -378,7 +373,7 @@ class MethodTemplate {
     stack->pop();
   }
 
-  BlockTemplate* find_block(Method method, int level, uint8* bcp);
+  BlockTemplate* find_block(Method method, int level, uint8* site);
 
   void propagate();
 
@@ -424,8 +419,8 @@ class BlockTemplate {
     return arguments_[index];
   }
 
-  TypeSet use(MethodTemplate* user) {
-    return result_.use(user);
+  TypeSet use(TypePropagator* propagator, MethodTemplate* user, uint8* site) {
+    return result_.use(propagator, user, site);
   }
 
   void ret(TypePropagator* propagator, TypeStack* stack) {
