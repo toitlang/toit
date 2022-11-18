@@ -1000,11 +1000,16 @@ static void process(MethodTemplate* method, uint8* bcp, TypeStack* stack, Workli
           known = true;
           break;
 
-/*
+        case 111:   // core.task_current
+        case 112:   // core.task_new
+          stack->push_instance(program->task_class_id()->value());
+          known = true;
+          break;
+
+        case 113:  // core.task_transfer
           stack->push_smi(program);
           known = true;
           break;
-*/
 
         case 19:   // core.smi_unary_minus
         case 20:   // core.smi_not    <-- Actually returns a SMI.
@@ -1193,7 +1198,7 @@ void BlockTemplate::propagate(MethodTemplate* context, TypeStack* outer) {
   int words_per_type = context->propagator()->words_per_type();
   int sp = method_.arity() + Interpreter::FRAME_SIZE;
   TypeStack* stack = new TypeStack(sp - 1, sp + method_.max_height() + 1, words_per_type);
-  for (unsigned i = 1; i < method_.arity(); i++) {
+  for (int i = 1; i < method_.arity(); i++) {
     TypeSet type = argument(i)->type();
     stack->set(i, type);
   }

@@ -37,6 +37,9 @@ main args:
         cli.OptionString "types" --required --short_name="t"
             --short_help="..."
             --type="file",
+        cli.Flag "sdk"
+            --short_help="Show types for the sdk"
+            --default=false,
       ]
       --run=:: decode_types it command
   command.run args
@@ -46,9 +49,9 @@ decode_types parsed command -> none:
   snapshot_content := file.read_content parsed["snapshot"]
   types_content := file.read_content parsed["types"]
   types := json.decode types_content
-  show_types types snapshot_content
+  show_types --sdk=parsed["sdk"] types snapshot_content
 
-show_types types/List snapshot_content/ByteArray -> none:
+show_types --sdk/bool types/List snapshot_content/ByteArray -> none:
   bundle := SnapshotBundle snapshot_content
   program := bundle.decode
   methods := {}
@@ -60,9 +63,10 @@ show_types types/List snapshot_content/ByteArray -> none:
     type_strings[position] = type_string program entry["type"]
 
   sorted_methods := List.from methods
-  sorted_methods = sorted_methods.filter: | method/ToitMethod |
-    info := program.method_info_for method.id
-    not info.error_path.starts_with "<sdk>"
+  if not sdk:
+    sorted_methods = sorted_methods.filter: | method/ToitMethod |
+      info := program.method_info_for method.id
+      not info.error_path.starts_with "<sdk>"
   sorted_methods.sort --in_place: | a/ToitMethod b/ToitMethod |
     ia := program.method_info_for a.id
     ib := program.method_info_for b.id
