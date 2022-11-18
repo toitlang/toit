@@ -38,51 +38,33 @@ class AeadContext : public SimpleResource {
   // The algorithm is one of:
   // PSA_ALG_GCM
   // PSA_ALG_CHACHA20_POLY1305
-  AeadContext(SimpleResourceGroup* group, psa_key_id_t key_id, psa_algorithm_t psa_algorithm, const Blob* nonce, bool encrypt)
+  AeadContext(SimpleResourceGroup* group, psa_key_id_t key_id, psa_algorithm_t algorithm, bool encrypt) {
       : key_id_(key_id)
-      , psa_operation_(PSA_AEAD_OPERATION_INIT) {
+      , algorithm_(algorithm),
+      , encrypt_(encrypt),
+      , operation_(PSA_AEAD_OPERATION_INIT) {
     if (encrypt) {
-      psa_aead_encrypt_setup(&psa_operation_, key_id, psa_algorithm);
+      psa_aead_encrypt_setup(&operation_, key_id, algorithm);
     } else {
-      psa_aead_decrypt_setup(&psa_operation_, key_id, psa_algorithm);
+      psa_aead_decrypt_setup(&operation_, key_id, algorithm);
     }
   }
+
   virtual ~AeadContext();
 
   static constexpr uint8 BLOCK_SIZE = 16;
 
-  psa_aead_operation_t* psa_operation() { return &psa_operation_; }
+  psa_aead_operation_t* psa_operation() { return &operation_; }
+  psa_key_id_t psa_key_id() const { return key_id_; }
+  psa_algorithm_t psa_algorithm() const { return algorithm_; }
+  bool is_encrypt() const { return encrypt_; }
 
  private:
   psa_key_id_t key_id_;
-  psa_aead_operation_t psa_operation_;
+  psa_algorithm_t algorithm_;
+  bool encrypt_;
+  psa_aead_operation_t operation_;
 };
-
-/*
-  AES-CBC context class. 
-  In addition to the base AES context,
-  this cipher type also needs an initialization 
-  vector.
-*/
-class AesCbcContext : public AesContext {
- public:
-  TAG(AesCbcContext);
-  AesCbcContext(SimpleResourceGroup* group, const Blob* key, const uint8* iv, bool encrypt);
-  
-  uint8 iv_[AES_BLOCK_SIZE];
-};
-
-}
-
-#ifdef TOIT_FREERTOS
-extern "C" {
-
-#define mbedtls_aes_init esp_aes_init
-#define mbedtls_aes_free esp_aes_free
-#define mbedtls_aes_setkey_enc esp_aes_setkey
-#define mbedtls_aes_setkey_dec esp_aes_setkey
-#define mbedtls_aes_crypt_cbc esp_aes_crypt_cbc
-#define mbedtls_aes_crypt_ecb esp_aes_crypt_ecb
 
 }
 #endif

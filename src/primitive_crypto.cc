@@ -126,7 +126,7 @@ PsaKey::~PsaKey() {
 PRIMITIVE(psa_key_init) {
   ARGS(SimpleResourceGroup, group, Blob, key, int, algorithm, int, key_type, int, usage_flags);
   if (!(0 <= key_type && key_type < NUMBER_OF_KEY_TYPES) ||
-      !(0 <= algorithm && algorithm < NUMBER_OF_KEY_TYPES) ||
+      !(0 <= algorithm && algorithm < NUMBER_OF_ALGORITHM_TYPES) ||
       !(0 <= usage_flags && usage_flags <= MAX_USAGE_FLAGS)) {
     INVALID_ARGUMENT;
   }
@@ -181,6 +181,47 @@ PRIMITIVE(psa_key_init) {
     INVALID_ARGUMENT;
   }
   OTHER_ERROR;
+}
+
+PRIMITIVE(psa_key_close) {
+  ARGS(PsaKey, key);
+  key->resource_group()->unregister_resource(context);
+  key_proxy->clear_external_address();
+  return process->program()->null_object();
+}
+
+PRIMITIVE(psa_aead_init) {
+  ARGS(SimpleResourceGroup, group, PsaKey key, int, algorithm, bool, encrypt);
+  if (!(0 <= algorithm && algorithm < NUMBER_OF_ALGORITHM_TYPES)) {
+    INVALID_ARGUMENT;
+  }
+
+  ByteArray* proxy = process->object_heap()->allocate_proxy();
+  if (proxy == null) ALLOCATION_FAILED;
+
+  psa_algorithm_t psa_algorithm;
+
+  if (algorithm == ALGORITHM_GCM) {
+    psa_algorithm = PSA_ALG_GCM;
+  } else if (algorithm == ALGORITHM_CHACHA20_POLY1305) {
+    psa_algorithm = PSA_ALG_CHACHA20_POLY1305;
+  } else {
+    INVALID_ARGUMENT;
+  }
+
+  AeadContext* aead_context = _new AeadContext(group, key->get_key_id(), psa_algorithm, encrypt);
+  if (!aead_context) MALLOC_FAILED;
+  
+  psa_status_t result;
+  if (encrypt) {
+    result = psa_aead_encrypt_setup(&operation_, key->get_key_id(), psa_algorithm);
+  } else {
+    result = psa_aead_decrypt_setup(&operation_, key->get_key_id(), psa_algorithm);
+  }
+  if (result == PSA_SUCCESS) {
+    proxy->set_external_address(aead_context);
+    return proxy;
+  }
 }
 
 AesContext::AesContext(
