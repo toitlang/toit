@@ -671,7 +671,7 @@ namespace toit {
   PRIMITIVE(deinit, 1)                       \
 
 #define MODULE_BIGNUM(PRIMITIVE)             \
-  PRIMITIVE(operator, 5)                     \
+  PRIMITIVE(binary_operator, 5)              \
   PRIMITIVE(exp_mod, 6)                      \
 
 // ----------------------------------------------------------------------------
@@ -931,7 +931,6 @@ namespace toit {
 #define _A_T_RMTResourceGroup(N, name)    MAKE_UNPACKING_MACRO(RMTResourceGroup, N, name)
 #define _A_T_PcntUnitResourceGroup(N, name) MAKE_UNPACKING_MACRO(PcntUnitResourceGroup, N, name)
 #define _A_T_ESPNowResourceGroup(N, name) MAKE_UNPACKING_MACRO(ESPNowResourceGroup, N, name)
-#define _A_T_BigNumResourceGroup(N, name) MAKE_UNPACKING_MACRO(BigNumResourceGroup, N, name)
 
 #define _A_T_Resource(N, name)            MAKE_UNPACKING_MACRO(Resource, N, name)
 #define _A_T_Directory(N, name)           MAKE_UNPACKING_MACRO(Directory, N, name)

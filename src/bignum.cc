@@ -7,7 +7,7 @@
 //
 // This library is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+// MERCHANTABILITY or FITNESS FOR a PARTICULAR PURPOSE.  See the GNU
 // Lesser General Public License for more details.
 //
 // The license can be found in the file `LICENSE` in the top level
@@ -24,11 +24,11 @@
 
 namespace toit {
 
-typedef int (*mpi_basic_func_t)(mbedtls_mpi *X, const mbedtls_mpi *A, const mbedtls_mpi *B);
+typedef int (*mpi_basic_func_t)(mbedtls_mpi* x, const mbedtls_mpi* a, const mbedtls_mpi* b);
 
-static int mbedtls_mpi_div_mpi_no_r(mbedtls_mpi *X,
-                                    const mbedtls_mpi *A,
-                                    const mbedtls_mpi *B);
+static int mbedtls_mpi_div_mpi_no_r(mbedtls_mpi* x,
+                                    const mbedtls_mpi* a,
+                                    const mbedtls_mpi* b);
 
 static const mpi_basic_func_t MPI_BASIC_FUNCS[] = {
     mbedtls_mpi_add_mpi,
@@ -39,25 +39,25 @@ static const mpi_basic_func_t MPI_BASIC_FUNCS[] = {
 };
 static const int MPI_BASIC_FUNCS_NUM = sizeof(MPI_BASIC_FUNCS) / sizeof(MPI_BASIC_FUNCS[0]);
 
-static int mbedtls_mpi_div_mpi_no_r(mbedtls_mpi *X,
-                                    const mbedtls_mpi *A,
-                                    const mbedtls_mpi *B)
+static int mbedtls_mpi_div_mpi_no_r(mbedtls_mpi* x,
+                                    const mbedtls_mpi* a,
+                                    const mbedtls_mpi* b)
 {
-  return mbedtls_mpi_div_mpi(X, NULL, A, B);
+  return mbedtls_mpi_div_mpi(x, null, a, b);
 }
 
 MODULE_IMPLEMENTATION(bignum, MODULE_BIGNUM)
 
 
-PRIMITIVE(operator) {
-  ARGS(int, operator_id, bool, a_sign, Blob, a_limbs, bool, b_sign, Blob, b_limbs);
+PRIMITIVE(binary_operator) {
+  ARGS(int, operator_id, bool, a_negative, Blob, a_limbs, bool, b_negative, Blob, b_limbs);
 
   int ret;
   mbedtls_mpi a_mpi;
   mbedtls_mpi b_mpi;
   mbedtls_mpi x_mpi;
 
-  if (operator_id >= MPI_BASIC_FUNCS_NUM) INVALID_ARGUMENT;
+  if (operator_id >= MPI_BASIC_FUNCS_NUM || operator_id < 0) INVALID_ARGUMENT;
 
   Array* array = process->object_heap()->allocate_array(2, Smi::zero());
   if (array == null) ALLOCATION_FAILED;
@@ -75,13 +75,16 @@ PRIMITIVE(operator) {
     MALLOC_FAILED;
   }
 
-  if (a_sign) a_mpi.s = -1;
-  if (b_sign) b_mpi.s = -1;
+  if (a_negative) a_mpi.s = -1;
+  if (b_negative) b_mpi.s = -1;
 
   ret = MPI_BASIC_FUNCS[operator_id](&x_mpi, &a_mpi, &b_mpi);
   mbedtls_mpi_free(&b_mpi);
   mbedtls_mpi_free(&a_mpi);
-  if (ret != 0) MALLOC_FAILED;
+  if (ret != 0) {
+    if (ret == MBEDTLS_ERR_MPI_DIVISION_BY_ZERO) return Primitive::mark_as_error(process->program()->division_by_zero());
+    else MALLOC_FAILED;
+  }
 
   size_t n = mbedtls_mpi_size(&x_mpi);
   ByteArray* limbs = process->allocate_byte_array(n);
@@ -102,7 +105,7 @@ PRIMITIVE(operator) {
 }
 
 PRIMITIVE(exp_mod) {
-  ARGS(bool, a_sign, Blob, a_limbs, bool, b_sign, Blob, b_limbs, bool, c_sign, Blob, c_limbs);
+  ARGS(bool, a_negative, Blob, a_limbs, bool, b_negative, Blob, b_limbs, bool, c_negative, Blob, c_limbs);
 
   int ret;
   mbedtls_mpi a_mpi;
@@ -134,15 +137,18 @@ PRIMITIVE(exp_mod) {
     MALLOC_FAILED;
   }
 
-  if (a_sign) a_mpi.s = -1;
-  if (b_sign) b_mpi.s = -1;
-  if (c_sign) c_mpi.s = -1;
+  if (a_negative) a_mpi.s = -1;
+  if (b_negative) b_mpi.s = -1;
+  if (c_negative) c_mpi.s = -1;
 
   ret = mbedtls_mpi_exp_mod(&x_mpi, &a_mpi, &b_mpi, &c_mpi, NULL);
   mbedtls_mpi_free(&c_mpi);
   mbedtls_mpi_free(&b_mpi);
   mbedtls_mpi_free(&a_mpi);
-  if (ret != 0) MALLOC_FAILED;
+  if (ret != 0) {
+    if (ret == MBEDTLS_ERR_MPI_DIVISION_BY_ZERO) return Primitive::mark_as_error(process->program()->division_by_zero());
+    else MALLOC_FAILED;
+  }
 
   size_t n = mbedtls_mpi_size(&x_mpi);
   ByteArray* limbs = process->allocate_byte_array(n);
