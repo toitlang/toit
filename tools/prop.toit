@@ -62,7 +62,7 @@ show_types types/List snapshot_content/ByteArray -> none:
   sorted_methods := List.from methods
   sorted_methods = sorted_methods.filter: | method/ToitMethod |
     info := program.method_info_for method.id
-    true or not info.error_path.starts_with "<sdk>"
+    not info.error_path.starts_with "<sdk>"
   sorted_methods.sort --in_place: | a/ToitMethod b/ToitMethod |
     ia := program.method_info_for a.id
     ib := program.method_info_for b.id

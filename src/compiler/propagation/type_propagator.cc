@@ -166,6 +166,7 @@ int TypePropagator::words_per_type() const {
 void TypePropagator::propagate() {
   TypeStack* stack = new TypeStack(-1, 1, words_per_type());
 
+  // Initialize the types of pre-initialized global variables.
   for (int i = 0; i < program()->global_variables.length(); i++) {
     Object* value = program()->global_variables.at(i);
     if (is_instance(value)) {
@@ -176,6 +177,25 @@ void TypePropagator::propagate() {
     global_variable(i)->merge(this, stack->local(0));
     stack->pop();
   }
+
+  // Initialize the fields of Task_. We allocate instances of these in
+  // the VM, so we need to make sure the type propagator knows about the
+  // types we store in the fields.
+  int task_fields = program()->instance_size_for(program()->task_class_id());
+  for (int i = 0; i < task_fields; i++) {
+    if (i == Task::STACK_INDEX) {
+      continue;  // Skip the 'stack' field.
+    } else if (i == Task::ID_INDEX) {
+      stack->push_smi(program());
+    } else {
+      stack->push_null(program());
+    }
+    field(program()->task_class_id()->value(), i)->merge(this, stack->local(0));
+    stack->pop();
+  }
+
+  // TODO(kasper): Deal with Exception_ fields. These are also initialized from
+  // within the VM at times.
 
   MethodTemplate* entry = instantiate(program()->entry_main(), std::vector<ConcreteType>());
   enqueue(entry);
@@ -763,9 +783,14 @@ static void process(MethodTemplate* method, uint8* bcp, TypeStack* stack, Workli
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(ALLOCATE, class_index);
-    // TODO(kasper): Woops. Some of the fields are probably
-    // null when we allocate the object. Can we check if they
-    // are guaranteed to be overwritten?
+    // TODO(kasper): Can we check if the fields we
+    // mark as being nullable are guaranteed to be overwritten?
+    int fields = program->instance_size_for(Smi::from(class_index));
+    for (int i = 0; i < fields; i++) {
+      stack->push_null(program);
+      propagator->field(class_index, i)->merge(propagator, stack->local(0));
+      stack->pop();
+    }
     stack->push_instance(class_index);
   OPCODE_END();
 
@@ -1096,7 +1121,6 @@ static void process(MethodTemplate* method, uint8* bcp, TypeStack* stack, Workli
     stack->pop();
     stack->pop();
     stack->pop();
-    return; // FIXME
   OPCODE_END();
 
   OPCODE_BEGIN(HALT);

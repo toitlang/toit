@@ -94,8 +94,4 @@ inline void Stack::set_task(Task* value) {
   _at_put(TASK_OFFSET, value);
 }
 
-inline void Task::set_result(Object* value) {
-  at_put(RESULT_INDEX, value);
-}
-
 } // namespace toit

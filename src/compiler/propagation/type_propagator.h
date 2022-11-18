@@ -317,6 +317,7 @@ class TypePropagator {
   void store_field(MethodTemplate* user, TypeStack* stack, int index);
 
   TypeResult* global_variable(int index);
+  TypeResult* field(unsigned type, int index);
 
   void enqueue(MethodTemplate* method);
 
@@ -331,8 +332,6 @@ class TypePropagator {
 
   MethodTemplate* find(uint8* caller, Method target, std::vector<ConcreteType> arguments);
   MethodTemplate* instantiate(Method method, std::vector<ConcreteType> arguments);
-
-  TypeResult* field(unsigned type, int index);
 };
 
 class MethodTemplate {
