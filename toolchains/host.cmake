@@ -14,8 +14,6 @@
 # directory of this repository.
 
 set(TOIT_SYSTEM_NAME "${CMAKE_SYSTEM_NAME}")
-string(TOLOWER "${CMAKE_SYSTEM_NAME}" lowercase)
-set(TOIT_MODEL "${lowercase}")
 
 set(CMAKE_C_FLAGS_DEBUG "-O1 -g" CACHE STRING "c Debug flags")
 set(CMAKE_CXX_FLAGS_DEBUG "-O1 -ggdb3 -fdiagnostics-color $ENV{LOCAL_CXXFLAGS}" CACHE STRING "c++ Debug flags")
