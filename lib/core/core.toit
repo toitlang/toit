@@ -6,12 +6,12 @@ import .assert_
 import .collections
 import .comparable
 import .entry
-import .events
+import .events_
 import .exceptions
 import .finalization
 import .for_testing_
-import .message
-import .monitor_impl
+import .message_
+import .monitor_impl_
 import .numbers
 import .objects
 import .print

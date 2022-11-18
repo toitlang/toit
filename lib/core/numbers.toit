@@ -534,10 +534,9 @@ abstract class int extends num:
   The maximum integer value.
 
   The maximum value is equal to:
-    * 9223372036854775807
-    * 2**63-1
-    * 0x7fff_ffff_ffff_ffff
-  (** is "to the power of".)
+  * 9223372036854775807
+  * 2**63-1  (** is "to the power of")
+  * 0x7fff_ffff_ffff_ffff
   */
   static MAX ::= 0x7fff_ffff_ffff_ffff
 
@@ -545,10 +544,9 @@ abstract class int extends num:
   The minimum integer value.
 
   The minimum value is equal to:
-    * -9223372036854775808
-    * -2**63
-    * 0x8000_0000_0000_0000
-  (** is "to the power of".)
+  * -9223372036854775808
+  * -2**63 (** is "to the power of").
+  * 0x8000_0000_0000_0000
   */
   static MIN ::= -MAX - 1
 
@@ -684,7 +682,7 @@ abstract class int extends num:
         if it != 0 or size == 1: return on_error.call PARSE_ERR_
         negative = true
       else if char == '_' and not underscore:
-        if is_invalid_underscore it size negative:
+        if is_invalid_underscore_ it size negative:
           return on_error.call PARSE_ERR_
         else:
           underscore = true
@@ -695,7 +693,7 @@ abstract class int extends num:
     if negative: result = -result
     return result
 
-  static is_invalid_underscore index size negative:
+  static is_invalid_underscore_ index size negative:
     // The '_' should not be the first or the last character.
     return (not negative and index == 0) or (negative and index == 1) or index == size - 1
 
