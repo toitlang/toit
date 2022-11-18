@@ -168,7 +168,9 @@ class TypeResult {
   explicit TypeResult(int words_per_type)
       : words_per_type_(words_per_type)
       , bits_(static_cast<uword*>(malloc(words_per_type * WORD_SIZE)))
-      , type_(bits_) {}
+      , type_(bits_) {
+    memset(bits_, 0, words_per_type * WORD_SIZE);
+  }
 
   ~TypeResult() {
     free(bits_);
@@ -225,10 +227,14 @@ class TypeStack {
   }
 
   TypeSet get(unsigned index) {
+    ASSERT(index >= 0);
+    ASSERT(index < size_);
     return TypeSet(&words_[index * words_per_type_]);
   }
 
   void set(unsigned index, TypeSet type) {
+    ASSERT(index >= 0);
+    ASSERT(index < size_);
     memcpy(&words_[index * words_per_type_], type.bits_, words_per_type_ * WORD_SIZE);
   }
 
