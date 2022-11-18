@@ -465,8 +465,12 @@ namespace toit {
   PRIMITIVE(aes_ecb_close, 1)                \
   PRIMITIVE(psa_key_init, 5)                 \
   PRIMITIVE(psa_key_close, 1)                \
-  PRIMIITVE(psa_aead_init, 6)                \
-  PRIMIITVE(psa_aead_set_length, 5)          \
+  PRIMITIVE(psa_aead_init, 6)                \
+  PRIMITIVE(psa_aead_set_length, 2)          \
+  PRIMITIVE(psa_aead_add, 3)                 \
+  PRIMITIVE(psa_aead_get_tag_size, 1)        \
+  PRIMITIVE(psa_aead_finish, 2)              \
+  PRIMITIVE(psa_aead_verify, 3)              \
 
 #define MODULE_ENCODING(PRIMITIVE)           \
   PRIMITIVE(base64_encode, 2)                \

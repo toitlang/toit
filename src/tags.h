@@ -59,6 +59,7 @@ namespace toit {
   fn(SubprocessResource)                \
   fn(PipeResource)                      \
   fn(PsaKey)                            \
+  fn(AeadContext)                       \
 
 #define TLS_CLASSES_DO(fn)              \
   fn(MbedTLSSocket)                     \

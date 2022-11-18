@@ -170,7 +170,7 @@ PRIMITIVE(psa_key_init) {
     INVALID_ARGUMENT;
   }
 
-  PsaKey* psa_key = _new PsaKey(group);
+  PsaKey* psa_key = _new PsaKey(group, key.length() * BYTE_BIT_SIZE);
   if (!psa_key) MALLOC_FAILED;
 
   psa_key_attributes_t psa_attributes = PSA_KEY_ATTRIBUTES_INIT;
@@ -195,13 +195,13 @@ PRIMITIVE(psa_key_init) {
 
 PRIMITIVE(psa_key_close) {
   ARGS(PsaKey, key);
-  key->resource_group()->unregister_resource(context);
+  key->resource_group()->unregister_resource(key);
   key_proxy->clear_external_address();
   return process->program()->null_object();
 }
 
 PRIMITIVE(psa_aead_init) {
-  ARGS(SimpleResourceGroup, group, PsaKey key, Blob, nonce, int, key_type, int, algorithm, bool, encrypt);
+  ARGS(SimpleResourceGroup, group, PsaKey, key, Blob, nonce, int, key_type, int, algorithm, bool, encrypt);
   if (!(0 <= key_type && key_type < NUMBER_OF_KEY_TYPES) ||
       !(0 <= algorithm && algorithm < NUMBER_OF_ALGORITHM_TYPES)) {
     INVALID_ARGUMENT;
@@ -231,18 +231,18 @@ PRIMITIVE(psa_aead_init) {
 
   AeadContext* aead_context = _new AeadContext(
       group,
-      key->get_key_id(),
+      key->key_id(),
       psa_key_type,
-      key.length() * BYTE_BIT_SIZE,
+      key->bit_length(),
       psa_algorithm,
       encrypt);
   if (!aead_context) MALLOC_FAILED;
   
   psa_status_t result;
   if (encrypt) {
-    result = psa_aead_encrypt_setup(aead_context->psa_operation(), key->get_key_id(), psa_algorithm);
+    result = psa_aead_encrypt_setup(aead_context->psa_operation(), key->key_id(), psa_algorithm);
   } else {
-    result = psa_aead_decrypt_setup(aead_context->psa_operation(), key->get_key_id(), psa_algorithm);
+    result = psa_aead_decrypt_setup(aead_context->psa_operation(), key->key_id(), psa_algorithm);
   }
   if (result != PSA_SUCCESS) {
     delete aead_context;
@@ -278,20 +278,20 @@ PRIMITIVE(psa_aead_add) {
     // at least 16 bytes.
     OUT_OF_BOUNDS;
   }
-  size_t max_output_needed = PSA_AEAD_UPDATE_OUTPUT_SIZE(context->psa_key_type(), context->psa_algorithm(), data.length());
-  if (max_output_needed > result.length) {
+  ssize_t max_output_needed = PSA_AEAD_UPDATE_OUTPUT_SIZE(context->key_type(), context->psa_algorithm(), data.length());
+  if (max_output_needed > result.length()) {
     return process->program()->null_object();
   }
   size_t output_length;
-  psa_status_t result = psa_aead_update(
-      context->psa_context(),
+  psa_status_t ok = psa_aead_update(
+      context->psa_operation(),
       data.address(),
       data.length(),
       result.address(),
       result.length(),
-      &output_length),
-  if (result != PSA_SUCCESS) {
-    return handle_psa_error(process, result);
+      &output_length);
+  if (ok != PSA_SUCCESS) {
+    return handle_psa_error(process, ok);
   }
   context->set_remaining_length_in_current_message(remains - data.length());
   return Smi::from(output_length);
@@ -299,7 +299,7 @@ PRIMITIVE(psa_aead_add) {
 
 PRIMITIVE(psa_aead_get_tag_size) {
   ARGS(AeadContext, context);
-  return Smi::from(PSA_AEAD_TAG_LENGTH(context->psa_key_type(), context->key_bit_length(), context->psa_algorithm()));
+  return Smi::from(PSA_AEAD_TAG_LENGTH(context->key_type(), context->key_bit_length(), context->psa_algorithm()));
 }
 
 /**
@@ -317,7 +317,7 @@ PRIMITIVE(psa_aead_finish) {
   if (!context->is_encrypt()) INVALID_ARGUMENT;
   if (context->remaining_length_in_current_message() != 0) INVALID_ARGUMENT;
   int last_data_length = PSA_AEAD_FINISH_OUTPUT_SIZE(context->key_type(), context->psa_algorithm());
-  int tag_length = PSA_AEAD_TAG_LENGTH(context->psa_key_type(), context->key_bit_length(), context->psa_algorithm());
+  int tag_length = PSA_AEAD_TAG_LENGTH(context->key_type(), context->key_bit_length(), context->psa_algorithm());
   if (result.length() < last_data_length + tag_length) {
     return process->program()->null_object();
   }
@@ -325,21 +325,21 @@ PRIMITIVE(psa_aead_finish) {
   size_t output_length = 0;
   size_t tag_output_length = 0;
   uint8 tag[PSA_AEAD_FINISH_OUTPUT_MAX_SIZE];
-  result = psa_aead_finish(
-      context->psa_context(),
+  psa_status_t ok = psa_aead_finish(
+      context->psa_operation(),
       result.address(),
       result.length(),
       &output_length,
       &tag[0],
       sizeof(tag),
       &tag_output_length);
-  if (result == PSA_SUCCESS) {
-    return handle_psa_error(process, result);
+  if (ok == PSA_SUCCESS) {
+    return handle_psa_error(process, ok);
   }
-  if (output_length + tag_output_length > result.length()) {
+  if (output_length + tag_output_length > static_cast<size_t>(result.length())) {
     OUT_OF_BOUNDS;
   }
-  memcpy(result.length() + output_length, tag, tag_output_length);
+  memcpy(result.address() + output_length, tag, tag_output_length);
   return Smi::from(output_length + tag_output_length);
 }
 
@@ -352,8 +352,8 @@ If the result byte array was not big enough, returns null.  In this case no
 The calculation for the size of the result array is conservative, so it may
   demand a byte array that is larger than it turns out to need.
 */
-PRIMITIVE(psa_aead_finish) {
-  ARGS(AeadContext, context, Blob verification_tag, MutableBlob, result);
+PRIMITIVE(psa_aead_verify) {
+  ARGS(AeadContext, context, Blob, verification_tag, MutableBlob, result);
   if (context->is_encrypt()) INVALID_ARGUMENT;
   if (context->remaining_length_in_current_message() != 0) INVALID_ARGUMENT;
   int last_data_length = PSA_AEAD_VERIFY_OUTPUT_SIZE(context->key_type(), context->psa_algorithm());
@@ -362,15 +362,15 @@ PRIMITIVE(psa_aead_finish) {
   }
 
   size_t output_length = 0;
-  result = psa_aead_verify(
-      context->psa_context(),
+  psa_status_t ok = psa_aead_verify(
+      context->psa_operation(),
       result.address(),
       result.length(),
       &output_length,
       verification_tag.address(),
       verification_tag.length());
-  if (result == PSA_SUCCESS) {
-    return handle_psa_error(process, result);
+  if (ok == PSA_SUCCESS) {
+    return handle_psa_error(process, ok);
   }
   return Smi::from(output_length);
 }

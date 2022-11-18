@@ -38,12 +38,13 @@ class AeadContext : public SimpleResource {
   // The algorithm is one of:
   // PSA_ALG_GCM
   // PSA_ALG_CHACHA20_POLY1305
-  AeadContext(SimpleResourceGroup* group, psa_key_id_t key_id, psa_key_type_t key_type, int key_bit_length, psa_algorithm_t algorithm, bool encrypt) {
-      : key_id_(key_id)
-      , key_type_(key_type),
+  AeadContext(SimpleResourceGroup* group, psa_key_id_t key_id, psa_key_type_t key_type, int key_bit_length, psa_algorithm_t algorithm, bool encrypt)
+      : SimpleResource(group)
+      , key_id_(key_id)
+      , key_type_(key_type)
       , key_bit_length_(key_bit_length)
-      , algorithm_(algorithm),
-      , encrypt_(encrypt),
+      , algorithm_(algorithm)
+      , encrypt_(encrypt)
       , operation_(PSA_AEAD_OPERATION_INIT) {
     if (encrypt) {
       psa_aead_encrypt_setup(&operation_, key_id, algorithm);
@@ -57,11 +58,13 @@ class AeadContext : public SimpleResource {
   static constexpr uint8 BLOCK_SIZE = 16;
 
   psa_aead_operation_t* psa_operation() { return &operation_; }
-  psa_key_id_t psa_key_id() const { return key_id_; }
-  psa_key_type_t psa_key_type() const { return key_type_; }
+  psa_key_id_t key_id() const { return key_id_; }
+  psa_key_type_t key_type() const { return key_type_; }
   int key_bit_length() const { return key_bit_length_; }
   psa_algorithm_t psa_algorithm() const { return algorithm_; }
   bool is_encrypt() const { return encrypt_; }
+  int remaining_length_in_current_message() const { return remaining_length_in_current_message_; }
+  void set_remaining_length_in_current_message(int length) { remaining_length_in_current_message_ = length; }
 
  private:
   psa_key_id_t key_id_;
@@ -70,6 +73,7 @@ class AeadContext : public SimpleResource {
   psa_algorithm_t algorithm_;
   bool encrypt_;
   psa_aead_operation_t operation_;
+  int remaining_length_in_current_message_ = 0;
 };
 
 enum PsaKeyType {
@@ -98,19 +102,20 @@ static const int MAX_USAGE_FLAGS = (1 << 2) - 1;
 class PsaKey : public SimpleResource {
  public:
   TAG(PsaKey);
-  PsaKey(SimpleResourceGroup* group)
+  PsaKey(SimpleResourceGroup* group, int bit_length)
       : SimpleResource(group)
+      , bit_length_(bit_length)
       , key_id_(PSA_KEY_ID_NULL) {}
   virtual ~PsaKey();
 
-  psa_key_id_t get_key_id() const {
-    return key_id_;
-  }
+  psa_key_id_t key_id() const { return key_id_; }
+  int bit_length() const { return bit_length_; }
 
   void set_key_id(psa_key_id_t key_id) {
     key_id_ = key_id;
   }
 
+  int bit_length_;
   psa_key_id_t key_id_;
 };
 
