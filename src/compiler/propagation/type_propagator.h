@@ -349,6 +349,9 @@ class MethodTemplate {
 
   TypePropagator* propagator() const { return propagator_; }
 
+  int arity() const { return arguments_.size(); }
+  ConcreteType argument(int index) { return arguments_[index]; }
+
   int bci() const;
 
   bool matches(Method target, std::vector<ConcreteType> arguments) {

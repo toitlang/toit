@@ -689,11 +689,14 @@ class ToitMethod:
       index += bc_length
 
   output program/Program:
-    output program: null
+    output program null: null
 
-  output program/Program [block]:
+  output program/Program arguments/List? [block]:
     debug_info := program.method_info_for id
     print "$id: $(debug_info.short_stringify program)"
+    if arguments:
+      arguments.size.repeat: | n |
+        print "$id:  - argument $n: $arguments[n]"
     index := 0
     length := bytecodes.size
     while index < length:

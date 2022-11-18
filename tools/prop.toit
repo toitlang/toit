@@ -56,11 +56,16 @@ show_types --sdk/bool types/List snapshot_content/ByteArray -> none:
   program := bundle.decode
   methods := {}
   type_strings := {:}
+  method_args := {:}
   types.do: | entry/Map |
     position := entry["position"]
     method := program.method_from_absolute_bci position
     methods.add method
-    type_strings[position] = type_string program entry["type"]
+    if entry.contains "type":
+      type_strings[position] = type_string program entry["type"]
+    else:
+      method_args[position] = entry["arguments"].map: | x |
+        type_string program x
 
   sorted_methods := List.from methods
   if not sdk:
@@ -75,9 +80,11 @@ show_types --sdk/bool types/List snapshot_content/ByteArray -> none:
     continue.sort ia.position.line.compare_to ib.position.line
 
   sorted_methods.do: | method/ToitMethod |
-    method.output program: | position/int | type_strings.get position
+    args := method_args.get method.id
+    method.output program args: | position/int | type_strings.get position
 
 type_string program/Program type/any -> string:
+  if type == "[]": return "[block]"
   if type == "*": return "{*}"
   names := type.map: | id |
     program.class_name_for id

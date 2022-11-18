@@ -136,7 +136,7 @@ bool TypeSet::remove_typecheck_interface(Program* program, int index, bool is_nu
   bool contains_null_before = contains_null(program);
   // TODO(kasper): We can make this faster.
   int selector_offset = program->interface_check_offsets[index];
-  for (unsigned id = 0; id < program->class_bits.length(); id++) {
+  for (int id = 0; id < program->class_bits.length(); id++) {
     if (!contains(id)) continue;
     int entry_index = id + selector_offset;
     int entry_id = program->dispatch_table[entry_index];
@@ -161,6 +161,26 @@ int TypePropagator::words_per_type() const {
   int classes = program_->class_bits.length();
   int words_per_type = (classes + WORD_BIT_SIZE - 1) / WORD_BIT_SIZE;
   return Utils::max(words_per_type + 1, 2);  // Need at least two words for block types.
+}
+
+static void print_type_as_json(Program* program, TypeSet type) {
+  if (type.is_any(program)) {
+    printf("\"*\"");
+    return;
+  }
+
+  printf("[");
+  bool first = true;
+  for (int id = 0; id < program->class_bits.length(); id++) {
+    if (!type.contains(id)) continue;
+    if (first) {
+      first = false;
+    } else {
+      printf(",");
+    }
+    printf("%d", id);
+  }
+  printf("]");
 }
 
 void TypePropagator::propagate() {
@@ -209,6 +229,7 @@ void TypePropagator::propagate() {
   printf("[\n");
   TypeSet type = stack->get(0);
   bool first = true;
+
   for (auto it = sites_.begin(); it != sites_.end(); it++) {
     type.clear(words_per_type());
     std::vector<TypeResult*>& sites = it->second;
@@ -223,23 +244,46 @@ void TypePropagator::propagate() {
     }
     int position = program()->absolute_bci_from_bcp(it->first);
     printf("  { \"position\": %d, \"type\": ", position);
-    if (type.is_any(program())) {
-      printf("\"*\"");
-    } else {
-      printf("[");
-      bool first_n = true;
-      for (unsigned id = 0; id < program()->class_bits.length(); id++) {
-        if (!type.contains(id)) continue;
-        if (first_n) {
-          first_n = false;
-        } else {
-          printf(", ");
-        }
-        printf("%u", id);
-      }
-      printf("]");
-    }
+    print_type_as_json(program(), type);
     printf("}");
+  }
+
+  for (auto it = templates_.begin(); it != templates_.end(); it++) {
+    if (first) {
+      first = false;
+    } else {
+      printf(",\n");
+    }
+    int position = program()->absolute_bci_from_bcp(it->first);
+    printf("  { \"position\": %d, \"arguments\": [", position);
+
+    std::vector<MethodTemplate*>& templates = it->second;
+    MethodTemplate* method = templates[0];
+    int arity = method->arity();
+    for (int n = 0; n < arity; n++) {
+      type.clear(words_per_type());
+      bool is_block = false;
+      for (unsigned i = 0; i < templates.size(); i++) {
+        ConcreteType argument_type = templates[i]->argument(n);
+        if (argument_type.is_block()) {
+          is_block = true;
+        } else if (argument_type.is_any()) {
+          type.fill(words_per_type());
+          break;
+        } else {
+          type.add(argument_type.id());
+        }
+      }
+      if (n != 0) {
+        printf(",");
+      }
+      if (is_block) {
+        printf("\"[]\"");
+      } else {
+        print_type_as_json(program(), type);
+      }
+    }
+    printf("]}");
   }
 
   printf("\n]\n");
@@ -283,7 +327,7 @@ void TypePropagator::call_method(
     call_method(caller, stack, site, target, arguments);
     arguments.pop_back();
   } else {
-    for (unsigned id = 0; id < program->class_bits.length(); id++) {
+    for (int id = 0; id < program->class_bits.length(); id++) {
       if (!type.contains(id)) continue;
       arguments.push_back(ConcreteType(id));
       call_method(caller, stack, site, target, arguments);
@@ -306,7 +350,7 @@ void TypePropagator::call_virtual(MethodTemplate* caller, TypeStack* stack, uint
   stack->push_empty();
 
   Program* program = this->program();
-  for (unsigned id = 0; id < program->class_bits.length(); id++) {
+  for (int id = 0; id < program->class_bits.length(); id++) {
     if (!receiver.contains(id)) continue;
     int entry_index = id + offset;
     int entry_id = program->dispatch_table[entry_index];
@@ -326,7 +370,7 @@ void TypePropagator::load_field(MethodTemplate* user, TypeStack* stack, uint8* s
   stack->push_empty();
 
   Program* program = this->program();
-  for (unsigned id = 0; id < program->class_bits.length(); id++) {
+  for (int id = 0; id < program->class_bits.length(); id++) {
     if (!instance.contains(id)) continue;
     TypeSet result = field(id, index)->use(this, user, site);
     stack->merge_top(result);
@@ -340,7 +384,7 @@ void TypePropagator::store_field(MethodTemplate* user, TypeStack* stack, int ind
   TypeSet instance = stack->local(1);
 
   Program* program = this->program();
-  for (unsigned id = 0; id < program->class_bits.length(); id++) {
+  for (int id = 0; id < program->class_bits.length(); id++) {
     if (!instance.contains(id)) continue;
     field(id, index)->merge(this, value);
   }
@@ -818,11 +862,13 @@ static void process(MethodTemplate* method, uint8* bcp, TypeStack* stack, Workli
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(IS_CLASS, encoded);
+    USE(encoded);
     stack->pop();
     stack->push_bool(program);
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(IS_INTERFACE, encoded);
+    USE(encoded);
     stack->pop();
     stack->push_bool(program);
   OPCODE_END();
@@ -1029,6 +1075,7 @@ static void process(MethodTemplate* method, uint8* bcp, TypeStack* stack, Workli
           known = true;
           break;
 
+        case 12:   // core.array_length
         case 113:  // core.task_transfer
           stack->push_smi(program);
           known = true;
