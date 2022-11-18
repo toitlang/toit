@@ -59,6 +59,7 @@ namespace toit {
   ROOT(String,     stack_overflow)           \
   ROOT(String,     unimplemented)            \
   ROOT(String,     wrong_object_type)        \
+  ROOT(String,     invalid_signature)        \
 
 
 #define BUILTIN_CLASS_IDS(ID)    \

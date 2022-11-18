@@ -465,6 +465,8 @@ namespace toit {
   PRIMITIVE(aes_ecb_close, 1)                \
   PRIMITIVE(psa_key_init, 5)                 \
   PRIMITIVE(psa_key_close, 1)                \
+  PRIMIITVE(psa_aead_init, 6)                \
+  PRIMIITVE(psa_aead_set_length, 5)          \
 
 #define MODULE_ENCODING(PRIMITIVE)           \
   PRIMITIVE(base64_encode, 2)                \
@@ -981,6 +983,7 @@ namespace toit {
 #define _A_T_Peer(N, name)                MAKE_UNPACKING_MACRO(Peer, N, name)
 #define _A_T_Channel(N, name)             MAKE_UNPACKING_MACRO(Channel, N, name)
 #define _A_T_PsaKey(N, name)              MAKE_UNPACKING_MACRO(PsaKey, N, name)
+#define _A_T_AeadContext(N, name)         MAKE_UNPACKING_MACRO(AeadContext, N, name)
 
 // ARGS is expanded to one of the following depending on number of passed parameters.
 #define _ODD ARGS cannot take odd number of arguments
@@ -1125,6 +1128,7 @@ namespace toit {
 #define UNIMPLEMENTED_PRIMITIVE return Primitive::mark_as_error(process->program()->unimplemented())
 #define WRONG_TYPE return Primitive::mark_as_error(process->program()->wrong_object_type())
 #define ALREADY_CLOSED return Primitive::mark_as_error(process->program()->already_closed())
+#define INVALID_SIGNATURE return Primitive::mark_as_error(process->program()->invalid_signature())
 
 #define OTHER_ERROR return Primitive::mark_as_error(process->program()->error())
 
