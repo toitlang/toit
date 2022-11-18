@@ -96,6 +96,14 @@ bool TypeSet::is_empty(Program* program) const {
   return true;
 }
 
+bool TypeSet::is_any(Program* program) const {
+  if (is_block()) return false;
+  for (unsigned id = 0; id < program->class_bits.length(); id++) {
+    if (!contains(id)) return false;
+  }
+  return true;
+}
+
 bool TypeSet::contains_null(Program* program) const {
   return contains(program->null_class_id()->value());
 }
@@ -156,9 +164,21 @@ int TypePropagator::words_per_type() const {
 }
 
 void TypePropagator::propagate() {
-  MethodTemplate* entry = instantiate(program_->entry_main(), std::vector<ConcreteType>());
-  enqueue(entry);
+  TypeStack* stack = new TypeStack(-1, 1, words_per_type());
 
+  for (int i = 0; i < program()->global_variables.length(); i++) {
+    Object* value = program()->global_variables.at(i);
+    if (is_instance(value)) {
+      Instance* instance = Instance::cast(value);
+      if (instance->class_id() == program()->lazy_initializer_class_id()) continue;
+    }
+    stack->push(program(), value);
+    global_variable(i)->merge(this, stack->local(0));
+    stack->pop();
+  }
+
+  MethodTemplate* entry = instantiate(program()->entry_main(), std::vector<ConcreteType>());
+  enqueue(entry);
   while (enqueued_.size() != 0) {
     MethodTemplate* last = enqueued_[enqueued_.size() - 1];
     enqueued_.pop_back();
@@ -167,8 +187,6 @@ void TypePropagator::propagate() {
   }
 
   printf("[\n");
-
-  TypeStack* stack = new TypeStack(-1, 1, words_per_type());
   TypeSet type = stack->get(0);
   bool first = true;
   for (auto it = templates_.begin(); it != templates_.end(); it++) {
@@ -184,21 +202,28 @@ void TypePropagator::propagate() {
       printf(",\n");
     }
     int position = program()->absolute_bci_from_bcp(it->first);
-    printf("{ \"position\": %d, \"type\": [", position);
-    bool first_n = true;
-    for (unsigned id = 0; id < program()->class_bits.length(); id++) {
-      if (!type.contains(id)) continue;
-      if (first_n) {
-        first_n = false;
-      } else {
-        printf(", ");
+    printf("  { \"position\": %d, \"type\": ", position);
+    if (type.is_any(program())) {
+      printf("\"*\"");
+    } else {
+      printf("[");
+      bool first_n = true;
+      for (unsigned id = 0; id < program()->class_bits.length(); id++) {
+        if (!type.contains(id)) continue;
+        if (first_n) {
+          first_n = false;
+        } else {
+          printf(", ");
+        }
+        printf("%u", id);
       }
-      printf("%u", id);
+      printf("]");
     }
-    printf("]}");
+    printf("}");
   }
 
   printf("\n]\n");
+  delete stack;
 }
 
 void TypePropagator::call_method(
@@ -274,6 +299,48 @@ void TypePropagator::call_virtual(MethodTemplate* caller, TypeStack* stack, uint
   }
 
   stack->drop_arguments(arity);
+}
+
+void TypePropagator::load_field(MethodTemplate* user, TypeStack* stack, int index) {
+  TypeSet instance = stack->local(0);
+  stack->push_empty();
+
+  Program* program = this->program();
+  for (unsigned id = 0; id < program->class_bits.length(); id++) {
+    if (!instance.contains(id)) continue;
+    TypeSet result = field(id, index)->use(user);
+    stack->merge_top(result);
+  }
+
+  stack->drop_arguments(1);
+}
+
+void TypePropagator::store_field(MethodTemplate* user, TypeStack* stack, int index) {
+  TypeSet value = stack->local(0);
+  TypeSet instance = stack->local(1);
+
+  Program* program = this->program();
+  for (unsigned id = 0; id < program->class_bits.length(); id++) {
+    if (!instance.contains(id)) continue;
+    field(id, index)->merge(this, value);
+  }
+
+  stack->drop_arguments(1);
+}
+
+TypeResult* TypePropagator::field(unsigned type, int index) {
+  auto it = fields_.find(type);
+  std::unordered_map<int, TypeResult*>& map = (it == fields_.end())
+      ? (fields_[type] = std::unordered_map<int, TypeResult*>())
+      : it->second;
+  auto itx = map.find(index);
+  if (itx == map.end()) {
+    TypeResult* variable = new TypeResult(words_per_type());
+    map[index] = variable;
+    return variable;
+  } else {
+    return itx->second;
+  }
 }
 
 TypeResult* TypePropagator::global_variable(int index) {
@@ -563,43 +630,38 @@ static void process(MethodTemplate* method, uint8* bcp, TypeStack* stack, Workli
     stack->push(value);
   OPCODE_END();
 
-  OPCODE_BEGIN_WITH_WIDE(LOAD_FIELD, index);
-    TypeSet instance = stack->local(0);
-    stack->pop();
-    stack->push_any();  // TODO(kasper): Not great.
+  OPCODE_BEGIN_WITH_WIDE(LOAD_FIELD, field_index);
+    propagator->load_field(method, stack, field_index);
+    if (stack->local(0).is_empty(program)) return;
   OPCODE_END();
 
   OPCODE_BEGIN(LOAD_FIELD_LOCAL);
     B_ARG1(encoded);
     int local = encoded & 0x0f;
-    int field = encoded >> 4;
+    int field_index = encoded >> 4;
     TypeSet instance = stack->local(local);
-    stack->push_any();  // TODO(kasper): Not great.
+    stack->push(instance);
+    propagator->load_field(method, stack, field_index);
+    if (stack->local(0).is_empty(program)) return;
   OPCODE_END();
 
   OPCODE_BEGIN(POP_LOAD_FIELD_LOCAL);
     B_ARG1(encoded);
     int local = encoded & 0x0f;
-    int field = encoded >> 4;
+    int field_index = encoded >> 4;
     TypeSet instance = stack->local(local + 1);
-    stack->pop();
-    stack->push_any();  // TODO(kasper): Not great.
+    stack->set_local(0, instance);
+    propagator->load_field(method, stack, field_index);
+    if (stack->local(0).is_empty(program)) return;
   OPCODE_END();
 
-  OPCODE_BEGIN_WITH_WIDE(STORE_FIELD, index);
-    TypeSet value = stack->local(0);
-    TypeSet receiver = stack->local(1);
-    // TODO(kasper): Update field.
-    stack->pop();
-    stack->pop();
-    stack->push(value);
+  OPCODE_BEGIN_WITH_WIDE(STORE_FIELD, field_index);
+    propagator->store_field(method, stack, field_index);
   OPCODE_END();
 
   OPCODE_BEGIN(STORE_FIELD_POP);
-    TypeSet value = stack->local(0);
-    TypeSet receiver = stack->local(1);
-    // TODO(kasper): Update field.
-    stack->pop();
+    B_ARG1(field_index);
+    propagator->store_field(method, stack, field_index);
     stack->pop();
   OPCODE_END();
 
@@ -647,6 +709,7 @@ static void process(MethodTemplate* method, uint8* bcp, TypeStack* stack, Workli
   OPCODE_BEGIN_WITH_WIDE(LOAD_GLOBAL_VAR, index);
     TypeResult* variable = propagator->global_variable(index);
     stack->push(variable->use(method));
+    if (stack->local(0).is_empty(program)) return;
   OPCODE_END();
 
   OPCODE_BEGIN(LOAD_GLOBAL_VAR_DYNAMIC);
@@ -654,7 +717,11 @@ static void process(MethodTemplate* method, uint8* bcp, TypeStack* stack, Workli
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(LOAD_GLOBAL_VAR_LAZY, index);
-    stack->push_any();  // TODO(kasper): Not so great.
+    Instance* initializer = Instance::cast(program->global_variables.at(index));
+    int method_id = Smi::cast(initializer->at(0))->value();
+    Method target(program->bytecodes, method_id);
+    propagator->call_static(method, stack, bcp, target);
+    if (stack->local(0).is_empty(program)) return;
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(STORE_GLOBAL_VAR, index);
@@ -696,6 +763,9 @@ static void process(MethodTemplate* method, uint8* bcp, TypeStack* stack, Workli
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(ALLOCATE, class_index);
+    // TODO(kasper): Woops. Some of the fields are probably
+    // null when we allocate the object. Can we check if they
+    // are guaranteed to be overwritten?
     stack->push_instance(class_index);
   OPCODE_END();
 
@@ -764,6 +834,7 @@ static void process(MethodTemplate* method, uint8* bcp, TypeStack* stack, Workli
     }
     for (int i = 0; i < index; i++) stack->pop();
     TypeSet value = block->use(method);
+    if (value.is_empty(program)) return;
     stack->push(value);
   OPCODE_END();
 
@@ -774,22 +845,26 @@ static void process(MethodTemplate* method, uint8* bcp, TypeStack* stack, Workli
   OPCODE_BEGIN_WITH_WIDE(INVOKE_VIRTUAL, arity);
     int offset = Utils::read_unaligned_uint16(bcp + 2);
     propagator->call_virtual(method, stack, bcp, arity + 1, offset);
+    if (stack->local(0).is_empty(program)) return;
   OPCODE_END();
 
   OPCODE_BEGIN(INVOKE_VIRTUAL_GET);
     int offset = Utils::read_unaligned_uint16(bcp + 1);
     propagator->call_virtual(method, stack, bcp, 1, offset);
+    if (stack->local(0).is_empty(program)) return;
   OPCODE_END();
 
   OPCODE_BEGIN(INVOKE_VIRTUAL_SET);
     int offset = Utils::read_unaligned_uint16(bcp + 1);
     propagator->call_virtual(method, stack, bcp, 2, offset);
+    if (stack->local(0).is_empty(program)) return;
   OPCODE_END();
 
 #define INVOKE_VIRTUAL_BINARY(opcode)                         \
   OPCODE_BEGIN(opcode);                                       \
     int offset = program->invoke_bytecode_offset(opcode);     \
     propagator->call_virtual(method, stack, bcp, 2, offset);  \
+    if (stack->local(0).is_empty(program)) return;            \
   OPCODE_END();
 
   INVOKE_VIRTUAL_BINARY(INVOKE_EQ)
@@ -865,9 +940,10 @@ static void process(MethodTemplate* method, uint8* bcp, TypeStack* stack, Workli
     bool known = false;
     if (primitive_module == 0) {
       switch (primitive_index) {
-        case 0:   // core.write_string_on_stdout
-        case 24:  // core.string_add
-        case 28:  // core.smi_to_string_base_10
+        case 0:    // core.write_string_on_stdout
+        case 24:   // core.string_add
+        case 28:   // core.smi_to_string_base_10
+        case 110:  // core.concat_strings
           stack->push_string(program);
           known = true;
           break;
@@ -879,9 +955,22 @@ static void process(MethodTemplate* method, uint8* bcp, TypeStack* stack, Workli
 
         case 31:   // core.blob_equals
         case 34:   // core.object_equals  <--- CANNOT FAIL
+        case 35:   // core.identical      <--- CANNOT FAIL
+        case 66:   // core.smi_less_than
+        case 67:   // core.smi_less_than_or_equal
+        case 68:   // core.smi_greater_than
+        case 69:   // core.smi_greater_than_or_equal
+        case 71:   // core.float_less_than
+        case 72:   // core.float_less_than_or_equal
+        case 73:   // core.float_greater_than
+        case 74:   // core.float_greater_than_or_equal
         case 81:   // core.smi_equals
         case 82:   // core.float_equals
         case 145:  // core.large_integer_equals
+        case 146:  // core.large_integer_less_than
+        case 147:  // core.large_integer_less_than_or_equal
+        case 148:  // core.large_integer_greater_than
+        case 149:  // core.large_integer_greater_than_or_equal
           stack->push_bool(program);
           known = true;
           break;
@@ -892,9 +981,28 @@ static void process(MethodTemplate* method, uint8* bcp, TypeStack* stack, Workli
           break;
 */
 
+        case 19:   // core.smi_unary_minus
+        case 20:   // core.smi_not    <-- Actually returns a SMI.
+        case 21:   // core.smi_and
+        case 22:   // core.smi_or
+        case 23:   // core.smi_xor
+        case 50:   // core.smi_add
+        case 51:   // core.smi_subtract
+        case 52:   // core.smi_multiply
         case 53:   // core.smi_divide
         case 70:   // core.smi_mod
         case 92:   // core.number_to_integer
+        case 132:  // core.large_integer_unary_minus
+        case 133:  // core.large_integer_not
+        case 134:  // core.large_integer_and
+        case 135:  // core.large_integer_or
+        case 136:  // core.large_integer_xor
+        case 137:  // core.large_integer_shift_right
+        case 138:  // core.large_integer_unsigned_shift_right
+        case 139:  // core.large_integer_shift_left
+        case 140:  // core.large_integer_add
+        case 141:  // core.large_integer_subtract
+        case 142:  // core.large_integer_multiply
         case 143:  // core.large_integer_divide
         case 144:  // core.large_integer_mod
           stack->push_int(program);
@@ -902,6 +1010,10 @@ static void process(MethodTemplate* method, uint8* bcp, TypeStack* stack, Workli
           break;
 
         case 41:  // core.number_to_float
+        case 54:  // core.float_unary_minus
+        case 55:  // core.float_add
+        case 56:  // core.float_subtract
+        case 57:  // core.float_multiply
         case 58:  // core.float_divide
         case 59:  // core.float_mod
           stack->push_float(program);
@@ -978,11 +1090,13 @@ static void process(MethodTemplate* method, uint8* bcp, TypeStack* stack, Workli
 
   OPCODE_BEGIN(UNLINK);
     stack->pop();
-
   OPCODE_END();
 
   OPCODE_BEGIN(UNWIND);
-    return;
+    stack->pop();
+    stack->pop();
+    stack->pop();
+    return; // FIXME
   OPCODE_END();
 
   OPCODE_BEGIN(HALT);
@@ -1024,8 +1138,11 @@ BlockTemplate* MethodTemplate::find_block(Method method, int level, uint8* bcp) 
   }
 }
 
-static int MTL = 0;
+int MethodTemplate::bci() const {
+  return propagator_->program()->absolute_bci_from_bcp(method_.header_bcp());
+}
 
+static int MTL = 0;
 void MethodTemplate::propagate() {
   if (false) printf("[propagating types through %p (%d)]\n", method_.entry(), MTL);
   MTL++;

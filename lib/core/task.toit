@@ -98,6 +98,8 @@ class Task_ implements Task:
   Same as $task, but returns it as a $Task_ object instead.
   */
   static current -> Task_:
+    return current_   // TODO(kasper): Fix me.
+  static current_:
     #primitive.core.task_current
 
   background -> bool:

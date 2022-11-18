@@ -80,6 +80,7 @@ class TypeSet {
 
   int size(Program* program) const;
   bool is_empty(Program* program) const;
+  bool is_any(Program* program) const;
 
   BlockTemplate* block() const {
     ASSERT(is_block());
@@ -312,6 +313,9 @@ class TypePropagator {
   void call_static(MethodTemplate* caller, TypeStack* stack, uint8* callsite, Method target);
   void call_virtual(MethodTemplate* caller, TypeStack* stack, uint8* callsite, int arity, int offset);
 
+  void load_field(MethodTemplate* user, TypeStack* stack, int index);
+  void store_field(MethodTemplate* user, TypeStack* stack, int index);
+
   TypeResult* global_variable(int index);
 
   void enqueue(MethodTemplate* method);
@@ -320,12 +324,15 @@ class TypePropagator {
   Program* const program_;
   std::unordered_map<uint8*, std::vector<MethodTemplate*>> templates_;
   std::unordered_map<int, TypeResult*> globals_;
+  std::unordered_map<unsigned, std::unordered_map<int, TypeResult*>> fields_;
   std::vector<MethodTemplate*> enqueued_;
 
   void call_method(MethodTemplate* caller, TypeStack* stack, uint8* callsite, Method target, std::vector<ConcreteType>& arguments);
 
   MethodTemplate* find(uint8* caller, Method target, std::vector<ConcreteType> arguments);
   MethodTemplate* instantiate(Method method, std::vector<ConcreteType> arguments);
+
+  TypeResult* field(unsigned type, int index);
 };
 
 class MethodTemplate {
@@ -337,6 +344,8 @@ class MethodTemplate {
       , result_(propagator->words_per_type()) {}
 
   TypePropagator* propagator() const { return propagator_; }
+
+  int bci() const;
 
   bool matches(Method target, std::vector<ConcreteType> arguments) {
     if (target.entry() != method_.entry()) return false;

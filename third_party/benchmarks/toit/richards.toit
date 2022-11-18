@@ -165,6 +165,7 @@ class Scheduler:
   - $task: the task to add.
    */
   add_task id/int priority/int queue/Packet? task:
+    if not list: list = null  // TODO(kasper): Fugly.
     current_tcb = TaskControlBlock list id priority queue task
     list = current_tcb
     blocks[id] = current_tcb
