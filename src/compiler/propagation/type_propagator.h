@@ -269,7 +269,7 @@ class TypeStack {
   void push_float(Program* program);
   void push_string(Program* program);
   void push_array(Program* program);
-  void push_byte_array(Program* program);
+  void push_byte_array(Program* program, bool nullable=false);
   void push_instance(unsigned id);
   void push(Program* program, Object* object);
   void push_block(BlockTemplate* block);

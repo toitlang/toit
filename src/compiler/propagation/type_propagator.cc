@@ -214,8 +214,16 @@ void TypePropagator::propagate() {
     stack->pop();
   }
 
-  // TODO(kasper): Deal with Exception_ fields. These are also initialized from
-  // within the VM at times.
+  // Initialize Exception_.value
+  ASSERT(program()->instance_size_for(program()->exception_class_id()) == 2);
+  stack->push_any();
+  field(program()->exception_class_id()->value(), 0)->merge(this, stack->local(0));
+  stack->pop();
+
+  // Initialize Exception_.trace
+  stack->push_byte_array(program(), true);
+  field(program()->task_class_id()->value(), 1)->merge(this, stack->local(0));
+  stack->pop();
 
   MethodTemplate* entry = instantiate(program()->entry_main(), std::vector<ConcreteType>());
   enqueue(entry);
@@ -541,9 +549,10 @@ void TypeStack::push_array(Program* program) {
   type.add(program->array_class_id()->value());
 }
 
-void TypeStack::push_byte_array(Program* program) {
+void TypeStack::push_byte_array(Program* program, bool nullable) {
   TypeSet type = push_empty();
   type.add(program->byte_array_class_id()->value());
+  if (nullable) type.add(program->null_class_id()->value());
 }
 
 void TypeStack::push_bool(Program* program) {
@@ -1182,10 +1191,10 @@ static void process(MethodTemplate* method, uint8* bcp, TypeStack* stack, Workli
   OPCODE_END();
 
   OPCODE_BEGIN(LINK);
-    stack->push_smi(program);
-    stack->push_any();  // TODO(kasper): is_exception
-    stack->push_any();  // TODO(kasper): Exception
-    stack->push_smi(program);
+    stack->push_instance(program->exception_class_id()->value());
+    stack->push_empty();       // Unwind target.
+    stack->push_smi(program);  // Unwind reason.
+    stack->push_smi(program);  // Unwind chain next.
   OPCODE_END();
 
   OPCODE_BEGIN(UNLINK);
