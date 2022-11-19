@@ -352,7 +352,7 @@ class MethodTemplate {
   int arity() const { return arguments_.size(); }
   ConcreteType argument(int index) { return arguments_[index]; }
 
-  int bci() const;
+  int method_id() const;
 
   bool matches(Method target, std::vector<ConcreteType> arguments) {
     if (target.entry() != method_.entry()) return false;
@@ -377,6 +377,7 @@ class MethodTemplate {
   }
 
   BlockTemplate* find_block(Method method, int level, uint8* site);
+  void collect_blocks(std::unordered_map<uint8*, std::vector<BlockTemplate*>>& map);
 
   void propagate();
 
@@ -409,6 +410,8 @@ class BlockTemplate {
     }
     free(arguments_);
   }
+
+  int method_id(Program* program) const;
 
   int level() const {
     return level_;

@@ -1223,7 +1223,7 @@ class MethodInfo:
   print program/Program:
     print (stringify program)
 
-  constructor .id .bytecode_size .name .type .outer .holder_name .absolute_path .error_path \
+  constructor .id .bytecode_size .name .type .outer .holder_name .absolute_path .error_path
       .position .bytecode_positions .as_class_names .pubsub_info:
 
   stacktrace_string program/Program:

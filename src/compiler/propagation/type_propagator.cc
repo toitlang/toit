@@ -256,17 +256,23 @@ void TypePropagator::propagate() {
     printf("}");
   }
 
+  std::unordered_map<uint8*, std::vector<BlockTemplate*>> blocks;
   for (auto it = templates_.begin(); it != templates_.end(); it++) {
+    std::vector<MethodTemplate*>& templates = it->second;
+    for (unsigned i = 0; i < templates.size(); i++) {
+      templates[i]->collect_blocks(blocks);
+    }
+
     if (first) {
       first = false;
     } else {
       printf(",\n");
     }
-    int position = program()->absolute_bci_from_bcp(it->first);
+
+    MethodTemplate* method = templates[0];
+    int position = method->method_id();
     printf("  { \"position\": %d, \"arguments\": [", position);
 
-    std::vector<MethodTemplate*>& templates = it->second;
-    MethodTemplate* method = templates[0];
     int arity = method->arity();
     for (int n = 0; n < arity; n++) {
       type.clear(words_per_type());
@@ -290,6 +296,31 @@ void TypePropagator::propagate() {
       } else {
         print_type_as_json(program(), type);
       }
+    }
+    printf("]}");
+  }
+
+  for (auto it = blocks.begin(); it != blocks.end(); it++) {
+    if (first) {
+      first = false;
+    } else {
+      printf(",\n");
+    }
+    std::vector<BlockTemplate*>& blocks = it->second;
+    BlockTemplate* block = blocks[0];
+
+    int position = block->method_id(program());
+    printf("  { \"position\": %d, \"arguments\": [\"[]\"", position);
+
+    int arity = block->arity();
+    for (int n = 1; n < arity; n++) {
+      type.clear(words_per_type());
+      for (unsigned i = 0; i < blocks.size(); i++) {
+        TypeResult* argument = blocks[i]->argument(n);
+        type.add_all(argument->type(), words_per_type());
+      }
+      printf(",");
+      print_type_as_json(program(), type);
     }
     printf("]}");
   }
@@ -1246,7 +1277,21 @@ BlockTemplate* MethodTemplate::find_block(Method method, int level, uint8* site)
   }
 }
 
-int MethodTemplate::bci() const {
+void MethodTemplate::collect_blocks(std::unordered_map<uint8*, std::vector<BlockTemplate*>>& map) {
+  for (auto it = blocks_.begin(); it != blocks_.end(); it++) {
+    auto inner = map.find(it->first);
+    if (inner == map.end()) {
+      std::vector<BlockTemplate*> blocks;
+      blocks.push_back(it->second);
+      map[it->first] = blocks;
+      continue;
+    }
+    std::vector<BlockTemplate*>& blocks = inner->second;
+    blocks.push_back(it->second);
+  }
+}
+
+int MethodTemplate::method_id() const {
   return propagator_->program()->absolute_bci_from_bcp(method_.header_bcp());
 }
 
@@ -1269,6 +1314,10 @@ void MethodTemplate::propagate() {
   }
 
   MTL--;
+}
+
+int BlockTemplate::method_id(Program* program) const {
+  return program->absolute_bci_from_bcp(method_.header_bcp());
 }
 
 void BlockTemplate::propagate(MethodTemplate* context, TypeStack* outer) {
