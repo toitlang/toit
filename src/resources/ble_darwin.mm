@@ -1101,7 +1101,7 @@ PRIMITIVE(write_value) {
 
 PRIMITIVE(set_characteristic_notify) {
   ARGS(BLECharacteristicResource, characteristic, bool, enable);
-  printf("enable: %d, %s\n",enable,[[[characteristic->characteristic() UUID] UUIDString] UTF8String]);
+
   [characteristic->characteristic().service.peripheral
       setNotifyValue:enable
    forCharacteristic:characteristic->characteristic()];
