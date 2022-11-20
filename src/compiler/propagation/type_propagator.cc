@@ -431,6 +431,19 @@ void TypePropagator::store_field(MethodTemplate* user, TypeStack* stack, int ind
   stack->drop_arguments(1);
 }
 
+void TypePropagator::load_outer(TypeStack* stack, uint8* site, int index) {
+  TypeSet block = stack->local(0);
+  TypeStack* outer = stack->outer();
+  int n = outer->level() - block.block()->level();
+  for (int i = 0; i < n; i++) outer = outer->outer();
+  TypeSet value = outer->local(index);
+  stack->pop();
+  stack->push(value);
+  if (value.is_block()) return;
+  TypeResult* merged = this->outer(site);
+  merged->merge(this, value);
+}
+
 TypeResult* TypePropagator::field(unsigned type, int index) {
   auto it = fields_.find(type);
   std::unordered_map<int, TypeResult*>& map = (it == fields_.end())
@@ -451,6 +464,18 @@ TypeResult* TypePropagator::global_variable(int index) {
   if (it == globals_.end()) {
     TypeResult* variable = new TypeResult(words_per_type());
     globals_[index] = variable;
+    return variable;
+  } else {
+    return it->second;
+  }
+}
+
+TypeResult* TypePropagator::outer(uint8* site) {
+  auto it = outers_.find(site);
+  if (it == outers_.end()) {
+    TypeResult* variable = new TypeResult(words_per_type());
+    outers_[site] = variable;
+    add_site(site, variable);
     return variable;
   } else {
     return it->second;
@@ -735,13 +760,7 @@ static void process(MethodTemplate* method, uint8* bcp, TypeStack* stack, Workli
 
   OPCODE_BEGIN(LOAD_OUTER);
     B_ARG1(stack_offset);
-    TypeSet block = stack->local(0);
-    TypeStack* outer = stack->outer();
-    int n = outer->level() - block.block()->level();
-    for (int i = 0; i < n; i++) outer = outer->outer();
-    TypeSet value = outer->local(stack_offset);
-    stack->pop();
-    stack->push(value);
+    propagator->load_outer(stack, bcp, stack_offset);
   OPCODE_END();
 
   OPCODE_BEGIN(STORE_OUTER);
@@ -870,14 +889,9 @@ static void process(MethodTemplate* method, uint8* bcp, TypeStack* stack, Workli
 
   OPCODE_BEGIN(LOAD_OUTER_BLOCK);
     B_ARG1(stack_offset);
-    TypeSet block = stack->local(0);
-    TypeStack* outer = stack->outer();
-    int n = outer->level() - block.block()->level();
-    for (int i = 0; i < n; i++) outer = outer->outer();
-    TypeSet value = outer->local(stack_offset);
+    propagator->load_outer(stack, bcp, stack_offset);
+    TypeSet value = stack->local(0);
     ASSERT(value.is_block());
-    stack->pop();
-    stack->push(value);
   OPCODE_END();
 
   OPCODE_BEGIN(POP);

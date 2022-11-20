@@ -318,8 +318,11 @@ class TypePropagator {
   void load_field(MethodTemplate* user, TypeStack* stack, uint8* site, int index);
   void store_field(MethodTemplate* user, TypeStack* stack, int index);
 
+  void load_outer(TypeStack* stack, uint8* site, int index);
+
   TypeResult* global_variable(int index);
   TypeResult* field(unsigned type, int index);
+  TypeResult* outer(uint8* site);
 
   void enqueue(MethodTemplate* method);
   void add_site(uint8* site, TypeResult* result);
@@ -330,6 +333,7 @@ class TypePropagator {
 
   std::unordered_map<uint8*, std::vector<MethodTemplate*>> templates_;
   std::unordered_map<int, TypeResult*> globals_;
+  std::unordered_map<uint8*, TypeResult*> outers_;
   std::unordered_map<unsigned, std::unordered_map<int, TypeResult*>> fields_;
   std::vector<MethodTemplate*> enqueued_;
 
