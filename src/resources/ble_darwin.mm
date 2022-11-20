@@ -38,12 +38,22 @@ class BLEResourceGroup : public ResourceGroup {
       : ResourceGroup(process, HostBLEEventSource::instance()) {
   }
 
+  void tear_down() override {
+    tearing_down_ = true;
+    ResourceGroup::tear_down();
+  }
+
+  bool is_tearing_down() { return tearing_down_; }
+
  protected:
   uint32_t on_event(Resource* resource, word data, uint32_t state) override {
     USE(resource);
     state |= data;
     return state;
   }
+
+ private:
+  bool tearing_down_ = false;
 };
 
 class BLECharacteristicResource;
@@ -650,9 +660,11 @@ BLEServiceResource* ServiceContainer<T>::get_or_create_service_resource(CBServic
 
 template<typename T>
 void ServiceContainer<T>::make_deletable() {
-  NSArray<BLEResourceHolder*>* services = [_service_resource_index allValues];
-  for (int i = 0; i < [services count]; i++) {
-    group()->unregister_resource(services[i].resource);
+  if (!group()->is_tearing_down()) {
+    NSArray<BLEResourceHolder*>* services = [_service_resource_index allValues];
+    for (int i = 0; i < [services count]; i++) {
+      group()->unregister_resource(services[i].resource);
+    }
   }
   BLEResource::make_deletable();
 }
@@ -671,9 +683,11 @@ BLECharacteristicResource* BLEServiceResource::get_or_create_characteristic_reso
 }
 
 void BLEServiceResource::make_deletable() {
-  NSArray<BLEResourceHolder*>* characteristics = [_characteristics_resource_index allValues];
-  for (int i = 0; i < [characteristics count]; i++) {
-    group()->unregister_resource(characteristics[i].resource);
+  if (!group()->is_tearing_down()) {
+    NSArray<BLEResourceHolder*>* characteristics = [_characteristics_resource_index allValues];
+    for (int i = 0; i < [characteristics count]; i++) {
+      group()->unregister_resource(characteristics[i].resource);
+    }
   }
   BLEResource::make_deletable();
 }
@@ -1087,7 +1101,7 @@ PRIMITIVE(write_value) {
 
 PRIMITIVE(set_characteristic_notify) {
   ARGS(BLECharacteristicResource, characteristic, bool, enable);
-
+  printf("enable: %d, %s\n",enable,[[[characteristic->characteristic() UUID] UUIDString] UTF8String]);
   [characteristic->characteristic().service.peripheral
       setNotifyValue:enable
    forCharacteristic:characteristic->characteristic()];

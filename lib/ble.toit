@@ -115,13 +115,13 @@ class AdvertisementData:
   */
   connectable/bool
 
-  constructor --.name=null --.service_classes=[] --.manufacturer_data=#[] --.connectable=false:
+  constructor --.name=null --.service_classes=[] --.manufacturer_data=#[] --.connectable=false --check_size=true:
     size := 0
     if name: size += 2 + name.size
     service_classes.do: | uuid/BleUuid |
       size += 2 + uuid.to_byte_array.size
     if not manufacturer_data.is_empty: size += 2 + manufacturer_data.size
-    if size > 31: throw "PACKET_SIZE_EXCEEDED"
+    if size > 31 and check_size: throw "PACKET_SIZE_EXCEEDED"
 
 /**
 A remote device discovered by a scanning.
@@ -607,6 +607,7 @@ class Central extends Resource_:
             --service_classes=service_classes
             --manufacturer_data=(next[4]?next[4]:#[])
             --connectable=next[5]
+            --check_size=false
         block.call discovery
     finally:
       ble_scan_stop_ resource_
