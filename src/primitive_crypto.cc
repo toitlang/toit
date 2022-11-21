@@ -18,7 +18,7 @@
 #include "objects_inline.h"
 #include "primitive.h"
 #include "process.h"
-#include "psa_crypto.h"
+#include "gcm_crypto.h"
 #include "sha1.h"
 #include "sha256.h"
 #include "siphash.h"
@@ -119,148 +119,125 @@ PRIMITIVE(siphash_get) {
   return result;
 }
 
-Object* handle_psa_error(Process* process, psa_status_t result) {
-  if (result == PSA_ERROR_INSUFFICIENT_STORAGE ||
-      result == PSA_ERROR_INSUFFICIENT_MEMORY) {
-    MALLOC_FAILED;
-  }
-  if (result == PSA_ERROR_INVALID_ARGUMENT) {
-    INVALID_ARGUMENT;
-  }
-  if (result == PSA_ERROR_BUFFER_TOO_SMALL) {
-    OUT_OF_BOUNDS;
-  }
-  if (result == PSA_ERROR_INVALID_SIGNATURE) {
-    INVALID_SIGNATURE;
-  }
-  OTHER_ERROR;
+CryptographicKey::~CryptographicKey() {
+  free(key_);
 }
 
-PsaKey::~PsaKey() {
-  if (key_id_ != PSA_KEY_ID_NULL) psa_destroy_key(key_id_);
-}
-
-PRIMITIVE(psa_key_init) {
-  ARGS(SimpleResourceGroup, group, Blob, key, int, algorithm, int, key_type, int, usage_flags);
-  if (!(0 <= key_type && key_type < NUMBER_OF_KEY_TYPES) ||
-      !(0 <= algorithm && algorithm < NUMBER_OF_ALGORITHM_TYPES) ||
-      !(0 <= usage_flags && usage_flags <= MAX_USAGE_FLAGS)) {
+PRIMITIVE(cryptographic_key_init) {
+  ARGS(SimpleResourceGroup, group, Blob, key, int, algorithm);
+  if (!(0 <= algorithm && algorithm < NUMBER_OF_ALGORITHM_TYPES)) {
     INVALID_ARGUMENT;
   }
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;
 
-  psa_algorithm_t psa_algorithm;
-  psa_key_type_t psa_key_type;
+  mbedtls_cipher_id_t mbedtls_cipher;
 
-  if (algorithm == ALGORITHM_GCM) {
-    psa_algorithm = PSA_ALG_GCM;
+  if (algorithm == ALGORITHM_AES_128_GCM_SHA256) {
+    mbedtls_cipher = MBEDTLS_CIPHER_ID_AES;
   } else if (algorithm == ALGORITHM_CHACHA20_POLY1305) {
-    psa_algorithm = PSA_ALG_CHACHA20_POLY1305;
+    mbedtls_cipher = MBEDTLS_CIPHER_ID_CHACHA20;
   } else {
     INVALID_ARGUMENT;
   }
 
-  if (key_type == KEY_TYPE_AES) {
-    psa_key_type = PSA_KEY_TYPE_AES;
-  } else if (key_type == KEY_TYPE_CHACHA20) {
-    psa_key_type = PSA_KEY_TYPE_CHACHA20;
-  } else {
-    INVALID_ARGUMENT;
+  uint8* key_buffer := unvoid_cast<uint8*>(malloc(key.length()));
+  if (key_buffer == null) MALLOC_FAILED;
+  memcpy(key_buffer, key.address(), key.length());
+
+  CryptographicKey* cryptographic_key = _new CryptographicKey(group, key.length() * BYTE_BIT_SIZE, mbedtls_cipher);
+  if (!cryptographic_key) {
+    free(key_buffer);
+    MALLOC_FAILED;
   }
 
-  PsaKey* psa_key = _new PsaKey(group, key.length() * BYTE_BIT_SIZE);
-  if (!psa_key) MALLOC_FAILED;
+  cryptographic_key->set_key(key_buffer);
 
-  psa_key_attributes_t psa_attributes = PSA_KEY_ATTRIBUTES_INIT;
-  psa_set_key_algorithm(&psa_attributes, psa_algorithm);
-  psa_set_key_type(&psa_attributes, psa_key_type);
-  psa_set_key_bits(&psa_attributes, key.length() * BYTE_BIT_SIZE);
-  psa_key_usage_t psa_flags = 0;
-  if ((usage_flags & USE_FOR_ENCRYPT) != 0) psa_flags |= PSA_KEY_USAGE_ENCRYPT;
-  if ((usage_flags & USE_FOR_DECRYPT) != 0) psa_flags |= PSA_KEY_USAGE_DECRYPT;
-  psa_set_key_usage_flags(&psa_attributes, psa_flags);
-
-  psa_key_id_t psa_key_identity;
-  psa_status_t result = psa_import_key(&psa_attributes, key.address(), key.length(), &psa_key_identity);
-  if (result != PSA_SUCCESS) {
-    delete psa_key;
-    return handle_psa_error(process, result);
-  }
-  psa_key->set_key_id(psa_key_identity);
-  proxy->set_external_address(psa_key);
+  proxy->set_external_address(cryptographic_key);
   return proxy;
 }
 
-PRIMITIVE(psa_key_close) {
-  ARGS(PsaKey, key);
+PRIMITIVE(cryptographic_key_close) {
+  ARGS(CryptographicKey, key);
   key->resource_group()->unregister_resource(key);
   key_proxy->clear_external_address();
   return process->program()->null_object();
 }
 
-PRIMITIVE(psa_aead_init) {
-  ARGS(SimpleResourceGroup, group, PsaKey, key, Blob, nonce, int, key_type, int, algorithm, bool, encrypt);
-  if (!(0 <= key_type && key_type < NUMBER_OF_KEY_TYPES) ||
-      !(0 <= algorithm && algorithm < NUMBER_OF_ALGORITHM_TYPES)) {
+PRIMITIVE(gcm_init) {
+  ARGS(SimpleResourceGroup, group, CryptographicKey, key, int, algorithm, bool, encrypt);
+  if (!(0 <= algorithm && algorithm < NUMBER_OF_ALGORITHM_TYPES)) {
     INVALID_ARGUMENT;
   }
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;
 
-  psa_algorithm_t psa_algorithm;
-  psa_key_type_t psa_key_type;
+  mbedtls_cipher_id_t mbedtls_cipher;
 
-  if (algorithm == ALGORITHM_GCM) {
-    psa_algorithm = PSA_ALG_GCM;
+  if (algorithm == ALGORITHM_AES_128_GCM_SHA256) {
+    mbedtls_cipher = MBEDTLS_CIPHER_ID_AES;
   } else if (algorithm == ALGORITHM_CHACHA20_POLY1305) {
-    psa_algorithm = PSA_ALG_CHACHA20_POLY1305;
+    mbedtls_cipher = MBEDTLS_CIPHER_ID_CHACHA20;
   } else {
     INVALID_ARGUMENT;
   }
 
-  if (key_type == KEY_TYPE_AES) {
-    psa_key_type = PSA_KEY_TYPE_AES;
-  } else if (key_type == KEY_TYPE_CHACHA20) {
-    psa_key_type = PSA_KEY_TYPE_CHACHA20;
-  } else {
-    INVALID_ARGUMENT;
-  }
+  // We don't want the lifetime of the CryptographicKey object to have to
+  // depend on the lifetime of the GcmContext object, so we make a copy.
+  auto key_buffer = unvoid_cast<uint8*>malloc(key->length());
+  if (key_buffer == null) MALLOC_FAILED;
+  memcpy(key_buffer, key->address(), key->length());
 
-  AeadContext* aead_context = _new AeadContext(
+  GcmContext* gcm_context = _new GcmContext(
       group,
-      key->key_id(),
-      psa_key_type,
-      key->bit_length(),
-      psa_algorithm,
+      key_buffer
+      key->length(),
+      mbedtls_cipher,
       encrypt);
-  if (!aead_context) MALLOC_FAILED;
+
+  if (!gcm_context) {
+    free(key_buffer);
+    MALLOC_FAILED;
+  }
+
+  // From here, the copy of the key is managed by the GcmContext and we do not
+  // free it explicitly on error.
+
+  int err = mbedtls_gcm_setkey(gcm_context->context(), algorithm, key_buffer, key->length() * BYTE_BIT_SIZE);
+  if (err != 0) {
+    group->unregister_resource(gcm_context);
+    return tls_error(null, process, err);
+  }
   
-  psa_status_t result;
-  if (encrypt) {
-    result = psa_aead_encrypt_setup(aead_context->psa_operation(), key->key_id(), psa_algorithm);
-  } else {
-    result = psa_aead_decrypt_setup(aead_context->psa_operation(), key->key_id(), psa_algorithm);
-  }
-  if (result != PSA_SUCCESS) {
-    delete aead_context;
-    return handle_psa_error(process, result);
-  }
-  result = psa_aead_set_nonce(aead_context->psa_operation(), nonce.address(), nonce.length());
-  if (result != PSA_SUCCESS) {
-    delete aead_context;
-    return handle_psa_error(process, result);
-  }
   proxy->set_external_address(aead_context);
   return proxy;
 }
 
-PRIMITIVE(psa_aead_set_length) {
-  ARGS(AeadContext, context, int, length);
+// Start the encryption of a message, or TLS record.  Takes a 12 byte nonce.
+// As described in RFC5288 section 3, the first 4 bytes of the nonce are kept
+// secret, and the next 8 bytes are transmitted along with each record.
+// Internally these primitives will add 4 more bytes of block counter, starting
+// at 1, to form a 16 byte IV.  It is vital that the nonce is not reused, and
+// this is normally achieved by counting up the explicit part by one for each
+// record that is encrypted.  In TLS this means that this part of the nonce
+// corresponds to the sequence number of the record.
+PRIMITIVE(gcm_start_message) {
+  ARGS(GcmContext, context, int, length, Blob, nonce);
   if (context->remaining_length_in_current_message() != 0) INVALID_ARGUMENT;
   context->set_remaining_length_in_current_message(length);
+  if (nonce->length() != GcmContext::NONCE_SIZE) INVALID_ARGUMENT;
+  int mode = context->is_encrypt() ? MBEDTLS_GC_ENCRYPT : MBEDTLS_GC_DECRYPT;
+  int result = mbedtls_gcm_starts(
+      context->context(),
+      mode,
+      nonce->address(),
+      nonce->length(),
+      null,  // No additional data.
+      0);
+  if (result != 0) return tls_error(null, process, result);
+
   return process->program()->null_object();
 }
 
@@ -268,111 +245,121 @@ PRIMITIVE(psa_aead_set_length) {
 If the result byte array was big enough, returns a Smi to indicate how much data was placed in it.
 If the result byte array was not big enough, returns null.  In this case no data was consumed.
 */
-PRIMITIVE(psa_aead_add) {
-  ARGS(AeadContext, context, Blob, data, MutableBlob, result);
-  auto remains = context->remaining_length_in_current_message();
-  if (remains < data.length()) OUT_OF_BOUNDS;
-  if (result.address() <= data.address() && data.address() - result.address() < 16) {
-    // It can be possible to give a write buffer that overlaps with the read
-    // buffer.  This can be great for memory use, but they have to be offset by
-    // at least 16 bytes.
-    OUT_OF_BOUNDS;
+PRIMITIVE(gcm_add) {
+  ARGS(GcmContext, context, Blob, data, MutableBlob, result);
+  const uint8* data_address = data.address();
+  int data_length = data.length();
+  int remains = context->remaining_length_in_current_message();
+  if (remains < length) OUT_OF_BOUNDS;
+  remains -= data.length();
+
+  // Start by copying into the temporary buffer in the context.
+  const int to_copy = Utils::min(
+      GcmContext::BLOCK_SIZE - context->buffered_bytes(),
+      data_length);
+  memcpy(context->buffered_data() + context->buffered_bytes(), data_address, to_copy);
+  data_address += to_copy;
+  data_length -= to_copy;
+  const int buffered = context->buffered_bytes() + to_copy;
+  if (buffered < GcmContext::BUFFER_SIZE && remains != 0) {
+    // Success.  We copied all the data into the internal buffer, and so the
+    // output byte array is inevitably big enough.
+    // Update the context and the number of bytes of new output.
+    context->set_buffered_bytes(buffered);
+    context->set_remaining_length_in_current_message(remains);
+    return Smi::from(0);
   }
-  ssize_t max_output_needed = PSA_AEAD_UPDATE_OUTPUT_SIZE(context->key_type(), context->psa_algorithm(), data.length());
-  if (max_output_needed > result.length()) {
+
+  // Some data is to be encrypted/decrypted.
+  const int to_process_after_internal_buffer = remains == 0
+      ? data_length
+      : Utils::round_down(data_length, GcmContext::BLOCK_SIZE);
+  if (buffered + to_process_after_internal_buffer > result.length()) {
+    // Output byte array not big enough.  At this point we have not yet
+    // modified the context.  Return null to indicate the problem.
     return process->program()->null_object();
   }
-  size_t output_length;
-  psa_status_t ok = psa_aead_update(
-      context->psa_operation(),
-      data.address(),
-      data.length(),
-      result.address(),
-      result.length(),
-      &output_length);
-  if (ok != PSA_SUCCESS) {
-    return handle_psa_error(process, ok);
-  }
-  context->set_remaining_length_in_current_message(remains - data.length());
-  return Smi::from(output_length);
+
+  // From here we know the result buffer is big enough, and can write data into
+  // the context.
+  context->set_remaining_length_in_current_message(remains);
+
+  uint8* result_address = result.address();
+
+  mbedtls_gcm_update(
+      context->context(),
+      buffered,
+      context->buffered_data(),
+      result_address);
+
+  result_address += buffered;
+
+  mbedtls_gcm_update(
+      context->context(),
+      to_process_after_internal_buffer,
+      data_address,
+      result_address);
+
+  data_address += to_process_after_internal_buffer;
+  data_length -= to_process_after_internal_buffer;
+
+  context->set_buffered_bytes(data_length);
+  memcpy(context->buffered_bytes(), data_address, data_length);
+
+  // Return the amount of data output.
+  return Smi::from(buffered + to_process_after_internal_buffer);
 }
 
-PRIMITIVE(psa_aead_get_tag_size) {
-  ARGS(AeadContext, context);
-  return Smi::from(PSA_AEAD_TAG_LENGTH(context->key_type(), context->key_bit_length(), context->psa_algorithm()));
+PRIMITIVE(gcm_get_tag_size) {
+  ARGS(GcmContext, context);
+  return Smi::from(GcmContext::TAG_SIZE);
 }
 
 /**
 Ends the encryption of a message.
-If the result byte array was big enough, returns a Smi to indicate how much
-  data was placed in it.
-If the result byte array was not big enough, returns null.  In this case no
-  data was consumed.
-The calculation for the size of the result array is conservative, so it may
-  demand a byte array that is larger than it turns out to need.
-The verification tag is just appended to the encrypted data.
+Returns the encryption tag.
 */
-PRIMITIVE(psa_aead_finish) {
-  ARGS(AeadContext, context, MutableBlob, result);
+PRIMITIVE(gcm_finish) {
+  ARGS(GcmContext, context);
   if (!context->is_encrypt()) INVALID_ARGUMENT;
   if (context->remaining_length_in_current_message() != 0) INVALID_ARGUMENT;
-  int last_data_length = PSA_AEAD_FINISH_OUTPUT_SIZE(context->key_type(), context->psa_algorithm());
-  int tag_length = PSA_AEAD_TAG_LENGTH(context->key_type(), context->key_bit_length(), context->psa_algorithm());
-  if (result.length() < last_data_length + tag_length) {
-    return process->program()->null_object();
-  }
+  ByteArray* result = process->allocate_byte_array(GcmContext::TAG_SIZE);
+  if (result == null) ALLOCATION_FAILED;
+  ByteArray::Bytes tag_bytes(result);
 
-  size_t output_length = 0;
-  size_t tag_output_length = 0;
-  uint8 tag[PSA_AEAD_FINISH_OUTPUT_MAX_SIZE];
-  psa_status_t ok = psa_aead_finish(
-      context->psa_operation(),
-      result.address(),
-      result.length(),
-      &output_length,
-      &tag[0],
-      sizeof(tag),
-      &tag_output_length);
-  if (ok == PSA_SUCCESS) {
-    return handle_psa_error(process, ok);
+  int ok = mbedtls_gcm_finish(
+      context->context(),
+      tag_bytes.address(),
+      tag_bytes.length());
+  if (ok != 0) {
+    return tls_error(null, process, ok);
   }
-  if (output_length + tag_output_length > static_cast<size_t>(result.length())) {
-    OUT_OF_BOUNDS;
-  }
-  memcpy(result.address() + output_length, tag, tag_output_length);
-  return Smi::from(output_length + tag_output_length);
+  return result;
 }
 
 /**
 Ends the decryption of a message.
-If the result byte array was big enough, returns a Smi to indicate how much
-  data was placed in it.
-If the result byte array was not big enough, returns null.  In this case no
-  data was consumed.
-The calculation for the size of the result array is conservative, so it may
-  demand a byte array that is larger than it turns out to need.
+Returns zero if the tag matches the calculated one.
+Returns non-zero if the tag does not match.
 */
-PRIMITIVE(psa_aead_verify) {
-  ARGS(AeadContext, context, Blob, verification_tag, MutableBlob, result);
+PRIMITIVE(gcm_verify) {
+  ARGS(GcmContext, context, Blob, verification_tag);
   if (context->is_encrypt()) INVALID_ARGUMENT;
-  if (context->remaining_length_in_current_message() != 0) INVALID_ARGUMENT;
-  int last_data_length = PSA_AEAD_VERIFY_OUTPUT_SIZE(context->key_type(), context->psa_algorithm());
-  if (result.length() < last_data_length) {
-    return process->program()->null_object();
-  }
+  if (verification_tag.length() != GcmContext::TAG_SIZE) INVALID_ARGUMENT;
 
-  size_t output_length = 0;
-  psa_status_t ok = psa_aead_verify(
-      context->psa_operation(),
-      result.address(),
-      result.length(),
-      &output_length,
-      verification_tag.address(),
-      verification_tag.length());
-  if (ok == PSA_SUCCESS) {
-    return handle_psa_error(process, ok);
+  uint8 calculated_tag[GcmContext::TAG_SIZE];
+  int ok = mbedtls_gcm_finish(
+      context->context(),
+      calculated_tag,
+      GcmContext::TAG_SIZE);
+  if (ok != 0) {
+    return tls_error(null, process, ok);
   }
-  return Smi::from(output_length);
+  uint8 zero = 0;
+  // Constant time calculation.
+  for (int i = 0; i < GcmContext::TAG_SIZE; i++) {
+    zero |= calculated_tag[i] ^ verification_tag.address()[i];
+  return Smi::from(zero);
 }
 
 AesContext::AesContext(
