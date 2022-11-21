@@ -65,14 +65,14 @@ PRIMITIVE(write_string_on_stdout) {
   ARGS(cstring, message, bool, add_newline);
   fprintf(stdout, "%s%s", message, add_newline ? "\n" : "");
   fflush(stdout);
-  return _raw_message;
+  return process->program()->null_object();
 }
 
 PRIMITIVE(write_string_on_stderr) {
   ARGS(cstring, message, bool, add_newline);
   fprintf(stderr, "%s%s", message, add_newline ? "\n" : "");
   fflush(stderr);
-  return _raw_message;
+  return process->program()->null_object();
 }
 
 PRIMITIVE(main_arguments) {
@@ -1999,7 +1999,7 @@ PRIMITIVE(add_finalizer) {
   ARGS(HeapObject, object, Object, finalizer)
   if (process->has_finalizer(object, finalizer)) OUT_OF_BOUNDS;
   if (!process->add_finalizer(object, finalizer)) MALLOC_FAILED;
-  return object;
+  return process->program()->null_object();
 }
 
 PRIMITIVE(remove_finalizer) {

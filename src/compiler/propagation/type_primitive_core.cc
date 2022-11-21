@@ -20,11 +20,15 @@ namespace compiler {
 
 MODULE_TYPES(core, MODULE_CORE)
 
-TYPE_PRIMITIVE_ANY(process_stats)  // TODO(kasper): Not sure what this returns.
-TYPE_PRIMITIVE_ANY(string_write_to_byte_array)  // TODO(kasper): Mutable blob!
+TYPE_PRIMITIVE(process_stats) {
+  result.add_array(program);
+  result.add_null(program);
+  failure.add_string(program);
+}
 
-TYPE_PRIMITIVE_STRING(write_string_on_stdout)  // TODO(kasper): Actually returns the first argument.
-TYPE_PRIMITIVE_STRING(write_string_on_stderr)  // TODO(kasper): Actually returns the first argument.
+TYPE_PRIMITIVE_ANY(string_write_to_byte_array)  // TODO(kasper): Returns an argument.
+TYPE_PRIMITIVE_NULL(write_string_on_stdout)
+TYPE_PRIMITIVE_NULL(write_string_on_stderr)
 
 TYPE_PRIMITIVE_INT(time)
 TYPE_PRIMITIVE_ARRAY(time_info)
@@ -198,7 +202,7 @@ TYPE_PRIMITIVE_BYTE_ARRAY(encode_object)
 TYPE_PRIMITIVE_BYTE_ARRAY(encode_error)
 TYPE_PRIMITIVE_SMI(word_size)
 TYPE_PRIMITIVE_NULL(rebuild_hash_index)
-TYPE_PRIMITIVE_ANY(add_finalizer)  // TODO(kasper): Return its argument.
+TYPE_PRIMITIVE_NULL(add_finalizer)
 TYPE_PRIMITIVE_BOOL(remove_finalizer)
 TYPE_PRIMITIVE_BYTE_ARRAY(create_off_heap_byte_array)  // TODO(kasper): Should we try to get rid of this?
 TYPE_PRIMITIVE_INT(crc)
@@ -211,8 +215,18 @@ TYPE_PRIMITIVE_ARRAY(get_real_time_clock)
 TYPE_PRIMITIVE_SMI(set_real_time_clock)
 TYPE_PRIMITIVE_INT(get_system_time)
 
-TYPE_PRIMITIVE_NULL(process_send)  // TODO(kasper): This can return a non-string failure.
-TYPE_PRIMITIVE_SMI(spawn)  // TODO(kasper): This can return a non-string failure.
+TYPE_PRIMITIVE(process_send) {
+  result.add_null(program);
+  failure.add_string(program);
+  failure.add_array(program);
+}
+
+TYPE_PRIMITIVE(spawn) {
+  result.add_smi(program);
+  failure.add_string(program);
+  failure.add_array(program);
+}
+
 TYPE_PRIMITIVE_ANY(main_arguments)
 TYPE_PRIMITIVE_SMI(spawn_method)
 TYPE_PRIMITIVE_ANY(spawn_arguments)
