@@ -200,14 +200,16 @@ class AesGcm:
   /**
   Encrypts the given $plain_text with the given initialization_vector.
   The plain_text should be a ByteArray or a string.
+  If provided, the $authenticated_data is data that takes part in the
+    verification tag, but does not get encrypted.
   Returns the encrypted plain_text.  The verification tag, 16 bytes, is appended to the result.
   */
-  encrypt plain_text -> ByteArray:
+  encrypt plain_text --authenticated_data="" -> ByteArray:
     if not gcm_aes_: throw "ALREADY_CLOSED"
 
     result := ByteArray plain_text.size + 16
 
-    gcm_start_message_ gcm_aes_ plain_text.size initialization_vector_
+    gcm_start_message_ gcm_aes_ plain_text.size authenticated_data initialization_vector_
     bytes /int := gcm_add_ gcm_aes_ plain_text result
     if bytes != plain_text.size: throw "UNKNOWN_ERROR"
     tag := gcm_finish_ gcm_aes_
@@ -220,7 +222,7 @@ class AesGcm:
   The $verification_tag, 16 bytes, is checked and an exception is thrown if it fails.
   If the verification_tag is not provided, it is assumed to be appended to the $cipher_text.
   */
-  decrypt cipher_text/ByteArray --verification_tag/ByteArray?=null -> ByteArray:
+  decrypt cipher_text/ByteArray --authenticated_data="" --verification_tag/ByteArray?=null -> ByteArray:
     if not gcm_aes_: throw "ALREADY_CLOSED"
 
     buffer := ByteArray 128
@@ -230,7 +232,7 @@ class AesGcm:
       verification_tag = cipher_text[edge..]
       cipher_text = cipher_text[..edge]
 
-    gcm_start_message_ gcm_aes_ cipher_text.size initialization_vector_
+    gcm_start_message_ gcm_aes_ cipher_text.size authenticated_data initialization_vector_
     result := ByteArray cipher_text.size
     bytes /int := gcm_add_ gcm_aes_ cipher_text result
 
@@ -247,8 +249,8 @@ class AesGcm:
   When decrypting it is vital that the decrypted data is not used in any way
     before the verification tag has been verified.
   */
-  start --length/int -> none:
-    gcm_start_message_ gcm_aes_ length initialization_vector_
+  start --length/int --authenticated_data="" -> none:
+    gcm_start_message_ gcm_aes_ length authenticated_data initialization_vector_
 
   /**
   Encrypts or decrypts some data.
@@ -311,7 +313,7 @@ gcm_init_ group key/ByteArray algorithm/int encrypt/bool:
 gcm_close_ gcm:
   #primitive.crypto.gcm_close
 
-gcm_start_message_ gcm length/int initialization_vector/ByteArray -> none:
+gcm_start_message_ gcm length/int authenticated_data initialization_vector/ByteArray -> none:
   #primitive.crypto.gcm_start_message
 
 /**

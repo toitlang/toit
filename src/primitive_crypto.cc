@@ -182,7 +182,7 @@ PRIMITIVE(gcm_close) {
 // record that is encrypted.  In TLS this means that this part of the nonce
 // corresponds to the sequence number of the record.
 PRIMITIVE(gcm_start_message) {
-  ARGS(GcmContext, context, int, length, Blob, nonce);
+  ARGS(GcmContext, context, int, length, Blob, authenticated_data, Blob, nonce);
   if (context->remaining_length_in_current_message() != 0) INVALID_ARGUMENT;
   context->set_remaining_length_in_current_message(length);
   if (nonce.length() != GcmContext::NONCE_SIZE) INVALID_ARGUMENT;
@@ -192,8 +192,8 @@ PRIMITIVE(gcm_start_message) {
       mode,
       nonce.address(),
       nonce.length(),
-      null,  // No additional data.
-      0);
+      authenticated_data.address(),  // No additional data.
+      authenticated_data.length());
   if (result != 0) return tls_error(null, process, result);
 
   return process->program()->null_object();
