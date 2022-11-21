@@ -996,7 +996,7 @@ void MethodResolver::resolve_fill_method() {
     extended.add(ir_body->expressions());
     ir::Expression* last_expression = null;
     auto return_type = method_->return_type();
-    if (return_type.is_class() && !method_->return_type().is_nullable()) {
+    if (return_type.is_class() && !return_type.is_nullable()) {
       last_expression = _new ir::Typecheck(ir::Typecheck::RETURN_AS_CHECK,
                                           _new ir::LiteralNull(method_range),
                                           method_->return_type(),
@@ -4798,6 +4798,15 @@ void MethodResolver::visit_call_primitive(ast::Call* node) {
         primitive_node = outer_dot->name();
         primitive_name = outer_dot->name()->data();
       }
+    }
+  }
+
+  if (false) {
+    auto return_type = method_->return_type();
+    if (return_type.is_class()) {
+      fprintf(stderr, "[primitive.%s.%s has return type]\n",
+          module_name.c_str(),
+          primitive_name.c_str());
     }
   }
 

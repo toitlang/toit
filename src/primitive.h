@@ -680,7 +680,7 @@ namespace toit {
   static const PrimitiveEntry name##_primitive_table[] = {          \
     entries(MODULE_IMPLEMENTATION_ENTRY)                            \
   };                                                                \
-  const PrimitiveEntry* name##primitives_ = name##_primitive_table;
+  const PrimitiveEntry* name##_primitives_ = name##_primitive_table;
 
 // ----------------------------------------------------------------------------
 

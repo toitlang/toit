@@ -15,6 +15,8 @@
 
 #pragma once
 
+#include "type_set.h"
+
 #include "../../top.h"
 #include "../../objects.h"
 
@@ -67,100 +69,6 @@ class ConcreteType {
  private:
   static const uword ANY = ~0UL;
   uword data_;
-};
-
-class TypeSet {
- public:
-  TypeSet(const TypeSet& other)
-      : bits_(other.bits_) {}
-
-  bool is_block() const {
-    return bits_[0] == 1;
-  }
-
-  int size(Program* program) const;
-  bool is_empty(Program* program) const;
-  bool is_any(Program* program) const;
-
-  BlockTemplate* block() const {
-    ASSERT(is_block());
-    return reinterpret_cast<BlockTemplate*>(bits_[1]);
-  }
-
-  void set_block(BlockTemplate* block) {
-    bits_[0] = 1;
-    bits_[1] = reinterpret_cast<uword>(block);
-  }
-
-  bool contains(unsigned type) const {
-    ASSERT(!is_block());
-    unsigned entry = type + 1;
-    uword old_bits = bits_[entry / WORD_BIT_SIZE];
-    uword mask = 1UL << (entry % WORD_BIT_SIZE);
-    return (old_bits & mask) != 0;
-  }
-
-  bool contains_null(Program* program) const;
-
-  bool add(unsigned type) {
-    ASSERT(!is_block());
-    unsigned entry = type + 1;
-    unsigned index = entry / WORD_BIT_SIZE;
-    uword old_bits = bits_[index];
-    uword mask = 1UL << (entry % WORD_BIT_SIZE);
-    bits_[index] = old_bits | mask;
-    return (old_bits & mask) != 0;
-  }
-
-  void remove(unsigned type) {
-    ASSERT(!is_block());
-    unsigned entry = type + 1;
-    unsigned index = entry / WORD_BIT_SIZE;
-    uword old_bits = bits_[index];
-    uword mask = 1UL << (entry % WORD_BIT_SIZE);
-    bits_[index] = old_bits & ~mask;
-  }
-
-  void remove_null(Program* program);
-  void remove_range(unsigned start, unsigned end);
-
-  bool remove_typecheck_class(Program* program, int index, bool is_nullable);
-  bool remove_typecheck_interface(Program* program, int index, bool is_nullable);
-
-  bool add_all(TypeSet other, int words) {
-    ASSERT(!is_block());
-    ASSERT(!other.is_block());
-    bool added = false;
-    for (int i = 0; i < words; i++) {
-      uword old_bits = bits_[i];
-      uword new_bits = old_bits | other.bits_[i];
-      added = added || (new_bits != old_bits);
-      bits_[i] = new_bits;
-    }
-    return added;
-  }
-
-  void clear(int words) {
-    memset(bits_, 0, words * WORD_SIZE);
-    ASSERT(!is_block());
-  }
-
-  void fill(int words) {
-    memset(bits_, 0xff, words * WORD_SIZE);
-    bits_[0] &= ~1;  // Clear LSB.
-    ASSERT(!is_block());
-  }
-
-  void print(Program* program, const char* banner);
-
- private:
-  explicit TypeSet(uword* bits)
-      : bits_(bits) {}
-
-  uword* const bits_;
-
-  friend class TypeStack;
-  friend class TypeResult;
 };
 
 class TypeResult {
@@ -309,7 +217,7 @@ class TypePropagator {
   explicit TypePropagator(Program* program);
 
   Program* program() const { return program_; }
-  int words_per_type() const;
+  int words_per_type() const { return words_per_type_; }
   void propagate();
 
   void call_static(MethodTemplate* caller, TypeStack* stack, uint8* site, Method target);
@@ -329,6 +237,7 @@ class TypePropagator {
 
  private:
   Program* const program_;
+  int words_per_type_;
   std::unordered_map<uint8*, std::vector<TypeResult*>> sites_;
 
   std::unordered_map<uint8*, std::vector<MethodTemplate*>> templates_;

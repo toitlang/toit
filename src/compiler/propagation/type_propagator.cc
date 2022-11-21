@@ -14,8 +14,9 @@
 // directory of this repository.
 
 #include "type_propagator.h"
-#include "../../top.h"
+#include "type_primitive.h"
 
+#include "../../top.h"
 #include "../../bytecodes.h"
 #include "../../objects.h"
 #include "../../program.h"
@@ -62,107 +63,13 @@ namespace compiler {
 #define B_ARG1(name) uint8 name = bcp[1];
 #define S_ARG1(name) uint16 name = Utils::read_unaligned_uint16(bcp + 1);
 
-void TypeSet::print(Program* program, const char* banner) {
-  printf("TypeSet(%s) = {", banner);
-  if (is_block()) {
-    printf(" block=%p", block());
-  } else {
-    bool first = true;
-    for (int id = 0; id < program->class_bits.length(); id++) {
-      if (!contains(id)) continue;
-      if (first) printf(" ");
-      else printf(", ");
-      printf("%d", id);
-      first = false;
-    }
-  }
-  printf(" }");
-}
-
-int TypeSet::size(Program* program) const {
-  if (is_block()) return 1;
-  int size = 0;
-  for (int id = 0; id < program->class_bits.length(); id++) {
-    if (contains(id)) size++;
-  }
-  return size;
-}
-
-bool TypeSet::is_empty(Program* program) const {
-  if (is_block()) return false;
-  for (int id = 0; id < program->class_bits.length(); id++) {
-    if (contains(id)) return false;
-  }
-  return true;
-}
-
-bool TypeSet::is_any(Program* program) const {
-  if (is_block()) return false;
-  for (int id = 0; id < program->class_bits.length(); id++) {
-    if (!contains(id)) return false;
-  }
-  return true;
-}
-
-bool TypeSet::contains_null(Program* program) const {
-  return contains(program->null_class_id()->value());
-}
-
-void TypeSet::remove_null(Program* program) {
-  remove(program->null_class_id()->value());
-}
-
-void TypeSet::remove_range(unsigned start, unsigned end) {
-  // TODO(kasper): We can make this much faster.
-  for (unsigned type = start; type < end; type++) {
-    remove(type);
-  }
-}
-
-bool TypeSet::remove_typecheck_class(Program* program, int index, bool is_nullable) {
-  unsigned start = program->class_check_ids[2 * index];
-  unsigned end = program->class_check_ids[2 * index + 1];
-  bool contains_null_before = contains_null(program);
-  remove_range(0, start);
-  remove_range(end, program->class_bits.length());
-  if (contains_null_before && is_nullable) {
-    add(program->null_class_id()->value());
-    return true;
-  }
-  return !is_empty(program);
-}
-
-bool TypeSet::remove_typecheck_interface(Program* program, int index, bool is_nullable) {
-  bool contains_null_before = contains_null(program);
-  // TODO(kasper): We can make this faster.
-  int selector_offset = program->interface_check_offsets[index];
-  for (int id = 0; id < program->class_bits.length(); id++) {
-    if (!contains(id)) continue;
-    int entry_index = id + selector_offset;
-    int entry_id = program->dispatch_table[entry_index];
-    if (entry_id != -1) {
-      Method target(program->bytecodes, entry_id);
-      if (target.selector_offset() == selector_offset) continue;
-    }
-    remove(id);
-  }
-  if (contains_null_before && is_nullable) {
-    add(program->null_class_id()->value());
-    return true;
-  }
-  return !is_empty(program);
-}
-
 TypePropagator::TypePropagator(Program* program)
-    : program_(program) {
+    : program_(program)
+    , words_per_type_(TypeSet::words_per_type(program)) {
+  TypePrimitive::set_up();
 }
 
-int TypePropagator::words_per_type() const {
-  int classes = program_->class_bits.length();
-  int words_per_type = (classes + WORD_BIT_SIZE - 1) / WORD_BIT_SIZE;
-  return Utils::max(words_per_type + 1, 2);  // Need at least two words for block types.
-}
-
+// TODO(kasper): Move to TypeSet?
 static void print_type_as_json(Program* program, TypeSet type) {
   if (type.is_any(program)) {
     printf("\"*\"");
@@ -215,7 +122,7 @@ void TypePropagator::propagate() {
   }
 
   // Initialize Exception_.value
-  ASSERT(program()->instance_size_for(program()->exception_class_id()) == 2);
+  ASSERT(program()->instance_fields_for(program()->exception_class_id()) == 2);
   stack->push_any();
   field(program()->exception_class_id()->value(), 0)->merge(this, stack->local(0));
   stack->pop();
@@ -228,7 +135,7 @@ void TypePropagator::propagate() {
   MethodTemplate* entry = instantiate(program()->entry_main(), std::vector<ConcreteType>());
   enqueue(entry);
   while (enqueued_.size() != 0) {
-    MethodTemplate* last = enqueued_[enqueued_.size() - 1];
+    MethodTemplate* last = enqueued_.back();
     enqueued_.pop_back();
     last->clear_enqueued();
     last->propagate();
@@ -681,7 +588,7 @@ class Worklist {
   }
 
   WorkItem next() {
-    uint8* bcp = unprocessed_[unprocessed_.size() - 1];
+    uint8* bcp = unprocessed_.back();
     unprocessed_.pop_back();
     return WorkItem {
       .bcp = bcp,
@@ -906,7 +813,7 @@ static void process(MethodTemplate* method, uint8* bcp, TypeStack* stack, Workli
   OPCODE_BEGIN_WITH_WIDE(ALLOCATE, class_index);
     // TODO(kasper): Can we check if the fields we
     // mark as being nullable are guaranteed to be overwritten?
-    int fields = program->instance_size_for(Smi::from(class_index));
+    int fields = program->instance_fields_for(Smi::from(class_index));
     for (int i = 0; i < fields; i++) {
       stack->push_null(program);
       propagator->field(class_index, i)->merge(propagator, stack->local(0));
@@ -1085,111 +992,14 @@ static void process(MethodTemplate* method, uint8* bcp, TypeStack* stack, Workli
   OPCODE_BEGIN(PRIMITIVE);
     B_ARG1(primitive_module);
     unsigned primitive_index = Utils::read_unaligned_uint16(bcp + 2);
-    bool known = false;
-    if (primitive_module == 0) {
-      switch (primitive_index) {
-        case 0:    // core.write_string_on_stdout
-        case 24:   // core.string_add
-        case 28:   // core.smi_to_string_base_10
-        case 110:  // core.concat_strings
-          stack->push_string(program);
-          known = true;
-          break;
-
-        case 15:  // core.array_new
-          stack->push_array(program);
-          known = true;
-          break;
-
-        case 31:   // core.blob_equals
-        case 34:   // core.object_equals  <--- CANNOT FAIL
-        case 35:   // core.identical      <--- CANNOT FAIL
-        case 66:   // core.smi_less_than
-        case 67:   // core.smi_less_than_or_equal
-        case 68:   // core.smi_greater_than
-        case 69:   // core.smi_greater_than_or_equal
-        case 71:   // core.float_less_than
-        case 72:   // core.float_less_than_or_equal
-        case 73:   // core.float_greater_than
-        case 74:   // core.float_greater_than_or_equal
-        case 81:   // core.smi_equals
-        case 82:   // core.float_equals
-        case 145:  // core.large_integer_equals
-        case 146:  // core.large_integer_less_than
-        case 147:  // core.large_integer_less_than_or_equal
-        case 148:  // core.large_integer_greater_than
-        case 149:  // core.large_integer_greater_than_or_equal
-          stack->push_bool(program);
-          known = true;
-          break;
-
-        case 111:   // core.task_current
-        case 112:   // core.task_new
-          stack->push_instance(program->task_class_id()->value());
-          known = true;
-          break;
-
-        case 12:   // core.array_length
-        case 113:  // core.task_transfer
-          stack->push_smi(program);
-          known = true;
-          break;
-
-        case 19:   // core.smi_unary_minus
-        case 20:   // core.smi_not    <-- Actually returns a SMI.
-        case 21:   // core.smi_and
-        case 22:   // core.smi_or
-        case 23:   // core.smi_xor
-        case 50:   // core.smi_add
-        case 51:   // core.smi_subtract
-        case 52:   // core.smi_multiply
-        case 53:   // core.smi_divide
-        case 70:   // core.smi_mod
-        case 92:   // core.number_to_integer
-        case 132:  // core.large_integer_unary_minus
-        case 133:  // core.large_integer_not
-        case 134:  // core.large_integer_and
-        case 135:  // core.large_integer_or
-        case 136:  // core.large_integer_xor
-        case 137:  // core.large_integer_shift_right
-        case 138:  // core.large_integer_unsigned_shift_right
-        case 139:  // core.large_integer_shift_left
-        case 140:  // core.large_integer_add
-        case 141:  // core.large_integer_subtract
-        case 142:  // core.large_integer_multiply
-        case 143:  // core.large_integer_divide
-        case 144:  // core.large_integer_mod
-          stack->push_int(program);
-          known = true;
-          break;
-
-        case 41:  // core.number_to_float
-        case 54:  // core.float_unary_minus
-        case 55:  // core.float_add
-        case 56:  // core.float_subtract
-        case 57:  // core.float_multiply
-        case 58:  // core.float_divide
-        case 59:  // core.float_mod
-          stack->push_float(program);
-          known = true;
-          break;
-
-        case 156: // core.encode_error
-          stack->push_byte_array(program);
-          known = true;
-          break;
-
-        default:
-          // Do nothing.
-          break;
-      }
-    }
-    if (!known) {
-      if (false) printf("[primitive %d:%u => any]\n", primitive_module, primitive_index);
-      stack->push_any();
-    }
+    const TypePrimitiveEntry* primitive = TypePrimitive::at(primitive_module, primitive_index);
+    if (primitive == null) return;
+    TypePrimitive::Entry* entry = reinterpret_cast<TypePrimitive::Entry*>(primitive->function);
+    stack->push_empty();
+    stack->push_empty();
+    entry(program, stack->local(0), stack->local(1));
     method->ret(propagator, stack);
-    stack->push_string(program);  // Primitive failures are typically strings.
+    if (stack->local(0).is_empty(program)) return;
   OPCODE_END();
 
   OPCODE_BEGIN(THROW);

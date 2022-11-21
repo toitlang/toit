@@ -132,8 +132,8 @@ template<typename K, typename V> class Map<K, V*> {
   std::vector<K> vector_;  // To keep insertion order.
 };
 
-/// A wrapper around the std::set to make its API more convenient and close to
-/// how we use it.
+/// A wrapper around the std::unordered_map to make its API more convenient
+/// and close to how we use it.
 template<typename K, typename V> class UnorderedMap {
  public:
   typename std::unordered_map<K, V>::iterator find(const K& key) { return map_.find(key); }
@@ -168,8 +168,8 @@ template<typename K, typename V> class UnorderedMap {
   std::unordered_map<K, V> map_;
 };
 
-/// A wrapper around the std::set to make its API more convenient and close to
-/// how we use it.
+/// A wrapper around the std::unordered_map to make its API more convenient
+/// and close to how we use it.
 template<typename K, typename V> class UnorderedMap<K, V*> {
  public:
   typename std::unordered_map<K, V*>::iterator find(const K& key) { return map_.find(key); }

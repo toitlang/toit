@@ -37,7 +37,7 @@ target_link_libraries(
   toit_compiler
   ${YAML_STATIC_LIB_NAME}
   ${SEMVER_STATIC_LIB_NAME}
-)
+  )
 
 add_executable(
   toit.compile
