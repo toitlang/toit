@@ -18,28 +18,10 @@
 namespace toit {
 namespace compiler {
 
-#define MODULE_ENUM(name, entries) INDEX_##name,
-enum {
-  MODULES(MODULE_ENUM)
-  COUNT
-};
-#undef MODULE_ENUM
+MODULE_TYPES(spi_linux, MODULE_SPI_LINUX)
 
-#define MODULE_PRIMITIVES_WEAK(name, entries) \
-  extern const TypePrimitiveEntry* name##_types_;
-#define MODULE_PRIMITIVES(name, entries) \
-  primitives_[INDEX_##name] = name##_types_;
-
-const TypePrimitiveEntry* TypePrimitive::primitives_[COUNT];
-
-MODULES(MODULE_PRIMITIVES_WEAK)
-
-void TypePrimitive::set_up() {
-  MODULES(MODULE_PRIMITIVES)
-}
-
-#undef MODULE_PRIMITIVES_WEAK
-#undef MODULE_PRIMITIVES
+TYPE_PRIMITIVE_ANY(open)
+TYPE_PRIMITIVE_ANY(transfer)
 
 }  // namespace toit::compiler
 }  // namespace toit

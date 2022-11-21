@@ -18,28 +18,18 @@
 namespace toit {
 namespace compiler {
 
-#define MODULE_ENUM(name, entries) INDEX_##name,
-enum {
-  MODULES(MODULE_ENUM)
-  COUNT
-};
-#undef MODULE_ENUM
+MODULE_TYPES(udp, MODULE_UDP)
 
-#define MODULE_PRIMITIVES_WEAK(name, entries) \
-  extern const TypePrimitiveEntry* name##_types_;
-#define MODULE_PRIMITIVES(name, entries) \
-  primitives_[INDEX_##name] = name##_types_;
-
-const TypePrimitiveEntry* TypePrimitive::primitives_[COUNT];
-
-MODULES(MODULE_PRIMITIVES_WEAK)
-
-void TypePrimitive::set_up() {
-  MODULES(MODULE_PRIMITIVES)
-}
-
-#undef MODULE_PRIMITIVES_WEAK
-#undef MODULE_PRIMITIVES
+TYPE_PRIMITIVE_ANY(init)
+TYPE_PRIMITIVE_ANY(bind)
+TYPE_PRIMITIVE_ANY(connect)
+TYPE_PRIMITIVE_ANY(receive)
+TYPE_PRIMITIVE_ANY(send)
+TYPE_PRIMITIVE_ANY(get_option)
+TYPE_PRIMITIVE_ANY(set_option)
+TYPE_PRIMITIVE_ANY(error)
+TYPE_PRIMITIVE_ANY(close)
+TYPE_PRIMITIVE_ANY(gc)
 
 }  // namespace toit::compiler
 }  // namespace toit

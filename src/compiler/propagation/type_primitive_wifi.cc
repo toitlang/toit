@@ -18,28 +18,17 @@
 namespace toit {
 namespace compiler {
 
-#define MODULE_ENUM(name, entries) INDEX_##name,
-enum {
-  MODULES(MODULE_ENUM)
-  COUNT
-};
-#undef MODULE_ENUM
+MODULE_TYPES(wifi, MODULE_WIFI)
 
-#define MODULE_PRIMITIVES_WEAK(name, entries) \
-  extern const TypePrimitiveEntry* name##_types_;
-#define MODULE_PRIMITIVES(name, entries) \
-  primitives_[INDEX_##name] = name##_types_;
-
-const TypePrimitiveEntry* TypePrimitive::primitives_[COUNT];
-
-MODULES(MODULE_PRIMITIVES_WEAK)
-
-void TypePrimitive::set_up() {
-  MODULES(MODULE_PRIMITIVES)
-}
-
-#undef MODULE_PRIMITIVES_WEAK
-#undef MODULE_PRIMITIVES
+TYPE_PRIMITIVE_ANY(init)
+TYPE_PRIMITIVE_ANY(close)
+TYPE_PRIMITIVE_ANY(connect)
+TYPE_PRIMITIVE_ANY(establish)
+TYPE_PRIMITIVE_ANY(setup_ip)
+TYPE_PRIMITIVE_ANY(disconnect)
+TYPE_PRIMITIVE_ANY(disconnect_reason)
+TYPE_PRIMITIVE_ANY(get_ip)
+TYPE_PRIMITIVE_ANY(get_rssi)
 
 }  // namespace toit::compiler
 }  // namespace toit

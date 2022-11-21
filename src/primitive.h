@@ -184,7 +184,6 @@ namespace toit {
   PRIMITIVE(task_current, 0)                 \
   PRIMITIVE(task_new, 1)                     \
   PRIMITIVE(task_transfer, 2)                \
-  PRIMITIVE(task_stack, 1)                   \
   PRIMITIVE(gc_count, 0)                     \
   PRIMITIVE(byte_array_is_raw_bytes, 1)      \
   PRIMITIVE(byte_array_length, 1)            \
@@ -496,10 +495,6 @@ namespace toit {
 
 #define MODULE_SNAPSHOT(PRIMITIVE)           \
   PRIMITIVE(launch, 4)                       \
-
-#define MODULE_SERIALIZATION(PRIMITIVE)      \
-  PRIMITIVE(serialize, 1)                    \
-  PRIMITIVE(deserialize, 1)                  \
 
 #define MODULE_IMAGE(PRIMITIVE)              \
   PRIMITIVE(current_id, 0)                   \

@@ -61,10 +61,6 @@ interface Interface_:
   operator == other
   stringify -> string
 
-// A stub entry for the Meta class which is the class of classes themselves.
-class Class_:
-  constructor: throw "Must not be instantiated"
-
 // A stub entry representing the internal Stack.
 class Stack_:
   constructor: throw "Must not be instantiated"

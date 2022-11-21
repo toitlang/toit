@@ -18,28 +18,25 @@
 namespace toit {
 namespace compiler {
 
-#define MODULE_ENUM(name, entries) INDEX_##name,
-enum {
-  MODULES(MODULE_ENUM)
-  COUNT
-};
-#undef MODULE_ENUM
+MODULE_TYPES(esp32, MODULE_ESP32)
 
-#define MODULE_PRIMITIVES_WEAK(name, entries) \
-  extern const TypePrimitiveEntry* name##_types_;
-#define MODULE_PRIMITIVES(name, entries) \
-  primitives_[INDEX_##name] = name##_types_;
-
-const TypePrimitiveEntry* TypePrimitive::primitives_[COUNT];
-
-MODULES(MODULE_PRIMITIVES_WEAK)
-
-void TypePrimitive::set_up() {
-  MODULES(MODULE_PRIMITIVES)
-}
-
-#undef MODULE_PRIMITIVES_WEAK
-#undef MODULE_PRIMITIVES
+TYPE_PRIMITIVE_ANY(ota_begin)
+TYPE_PRIMITIVE_ANY(ota_write)
+TYPE_PRIMITIVE_ANY(ota_end)
+TYPE_PRIMITIVE_ANY(ota_state)
+TYPE_PRIMITIVE_ANY(ota_validate)
+TYPE_PRIMITIVE_ANY(ota_rollback)
+TYPE_PRIMITIVE_ANY(reset_reason)
+TYPE_PRIMITIVE_ANY(enable_external_wakeup)
+TYPE_PRIMITIVE_ANY(enable_touchpad_wakeup)
+TYPE_PRIMITIVE_ANY(wakeup_cause)
+TYPE_PRIMITIVE_ANY(ext1_wakeup_status)
+TYPE_PRIMITIVE_ANY(touchpad_wakeup_status)
+TYPE_PRIMITIVE_ANY(total_deep_sleep_time)
+TYPE_PRIMITIVE_ANY(total_run_time)
+TYPE_PRIMITIVE_ANY(get_mac_address)
+TYPE_PRIMITIVE_ANY(rtc_user_bytes)
+TYPE_PRIMITIVE_ANY(memory_page_report)
 
 }  // namespace toit::compiler
 }  // namespace toit

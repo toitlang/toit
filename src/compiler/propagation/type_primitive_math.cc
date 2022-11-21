@@ -18,28 +18,22 @@
 namespace toit {
 namespace compiler {
 
-#define MODULE_ENUM(name, entries) INDEX_##name,
-enum {
-  MODULES(MODULE_ENUM)
-  COUNT
-};
-#undef MODULE_ENUM
+MODULE_TYPES(math, MODULE_MATH)
 
-#define MODULE_PRIMITIVES_WEAK(name, entries) \
-  extern const TypePrimitiveEntry* name##_types_;
-#define MODULE_PRIMITIVES(name, entries) \
-  primitives_[INDEX_##name] = name##_types_;
-
-const TypePrimitiveEntry* TypePrimitive::primitives_[COUNT];
-
-MODULES(MODULE_PRIMITIVES_WEAK)
-
-void TypePrimitive::set_up() {
-  MODULES(MODULE_PRIMITIVES)
-}
-
-#undef MODULE_PRIMITIVES_WEAK
-#undef MODULE_PRIMITIVES
+TYPE_PRIMITIVE_ANY(sin)
+TYPE_PRIMITIVE_ANY(cos)
+TYPE_PRIMITIVE_ANY(tan)
+TYPE_PRIMITIVE_ANY(sinh)
+TYPE_PRIMITIVE_ANY(cosh)
+TYPE_PRIMITIVE_ANY(tanh)
+TYPE_PRIMITIVE_ANY(asin)
+TYPE_PRIMITIVE_ANY(acos)
+TYPE_PRIMITIVE_ANY(atan)
+TYPE_PRIMITIVE_ANY(atan2)
+TYPE_PRIMITIVE_ANY(sqrt)
+TYPE_PRIMITIVE_ANY(pow)
+TYPE_PRIMITIVE_ANY(exp)
+TYPE_PRIMITIVE_ANY(log)
 
 }  // namespace toit::compiler
 }  // namespace toit

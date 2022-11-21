@@ -18,28 +18,18 @@
 namespace toit {
 namespace compiler {
 
-#define MODULE_ENUM(name, entries) INDEX_##name,
-enum {
-  MODULES(MODULE_ENUM)
-  COUNT
-};
-#undef MODULE_ENUM
+MODULE_TYPES(bitmap, MODULE_BITMAP)
 
-#define MODULE_PRIMITIVES_WEAK(name, entries) \
-  extern const TypePrimitiveEntry* name##_types_;
-#define MODULE_PRIMITIVES(name, entries) \
-  primitives_[INDEX_##name] = name##_types_;
-
-const TypePrimitiveEntry* TypePrimitive::primitives_[COUNT];
-
-MODULES(MODULE_PRIMITIVES_WEAK)
-
-void TypePrimitive::set_up() {
-  MODULES(MODULE_PRIMITIVES)
-}
-
-#undef MODULE_PRIMITIVES_WEAK
-#undef MODULE_PRIMITIVES
+TYPE_PRIMITIVE_ANY(draw_text)
+TYPE_PRIMITIVE_ANY(byte_draw_text)
+TYPE_PRIMITIVE_ANY(draw_bitmap)
+TYPE_PRIMITIVE_ANY(draw_bytemap)
+TYPE_PRIMITIVE_ANY(byte_zap)
+TYPE_PRIMITIVE_ANY(blit)
+TYPE_PRIMITIVE_ANY(rectangle)
+TYPE_PRIMITIVE_ANY(byte_rectangle)
+TYPE_PRIMITIVE_ANY(composit)
+TYPE_PRIMITIVE_ANY(bytemap_blur)
 
 }  // namespace toit::compiler
 }  // namespace toit

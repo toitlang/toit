@@ -1185,7 +1185,7 @@ class SmallInteger_ extends int:
     #primitive.intrinsics.smi_repeat:
       // The intrinsic only fails if we cannot call the block with a single
       // argument. We force this to throw by doing the same here.
-      block.call null
+      block.call this
 
   // Double dispatch support for binary operations.
 

@@ -1314,7 +1314,7 @@ PRIMITIVE(string_rune_count) {
     count -= Utils::popcount(w & end_mask);
   }
 
-  return Primitive::integer(count, process);
+  return Smi::from(count);
 }
 
 
@@ -1824,11 +1824,6 @@ PRIMITIVE(smi_shift_left) {
   if (number_of_bits >= 64) return Smi::zero();
   int64 value = Smi::cast(receiver)->value();
   return Primitive::integer(value << number_of_bits, process);
-}
-
-PRIMITIVE(task_stack) {
-  ARGS(Task, task);
-  return task->stack();
 }
 
 PRIMITIVE(task_current) {

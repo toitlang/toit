@@ -18,28 +18,22 @@
 namespace toit {
 namespace compiler {
 
-#define MODULE_ENUM(name, entries) INDEX_##name,
-enum {
-  MODULES(MODULE_ENUM)
-  COUNT
-};
-#undef MODULE_ENUM
+MODULE_TYPES(crypto, MODULE_CRYPTO)
 
-#define MODULE_PRIMITIVES_WEAK(name, entries) \
-  extern const TypePrimitiveEntry* name##_types_;
-#define MODULE_PRIMITIVES(name, entries) \
-  primitives_[INDEX_##name] = name##_types_;
-
-const TypePrimitiveEntry* TypePrimitive::primitives_[COUNT];
-
-MODULES(MODULE_PRIMITIVES_WEAK)
-
-void TypePrimitive::set_up() {
-  MODULES(MODULE_PRIMITIVES)
-}
-
-#undef MODULE_PRIMITIVES_WEAK
-#undef MODULE_PRIMITIVES
+TYPE_PRIMITIVE_ANY(sha1_start)
+TYPE_PRIMITIVE_ANY(sha1_add)
+TYPE_PRIMITIVE_ANY(sha1_get)
+TYPE_PRIMITIVE_ANY(sha256_start)
+TYPE_PRIMITIVE_ANY(sha256_add)
+TYPE_PRIMITIVE_ANY(sha256_get)
+TYPE_PRIMITIVE_ANY(siphash_start)
+TYPE_PRIMITIVE_ANY(siphash_add)
+TYPE_PRIMITIVE_ANY(siphash_get)
+TYPE_PRIMITIVE_ANY(aes_init)
+TYPE_PRIMITIVE_ANY(aes_cbc_crypt)
+TYPE_PRIMITIVE_ANY(aes_ecb_crypt)
+TYPE_PRIMITIVE_ANY(aes_cbc_close)
+TYPE_PRIMITIVE_ANY(aes_ecb_close)
 
 }  // namespace toit::compiler
 }  // namespace toit

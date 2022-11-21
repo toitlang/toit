@@ -18,28 +18,15 @@
 namespace toit {
 namespace compiler {
 
-#define MODULE_ENUM(name, entries) INDEX_##name,
-enum {
-  MODULES(MODULE_ENUM)
-  COUNT
-};
-#undef MODULE_ENUM
+MODULE_TYPES(gpio, MODULE_GPIO)
 
-#define MODULE_PRIMITIVES_WEAK(name, entries) \
-  extern const TypePrimitiveEntry* name##_types_;
-#define MODULE_PRIMITIVES(name, entries) \
-  primitives_[INDEX_##name] = name##_types_;
-
-const TypePrimitiveEntry* TypePrimitive::primitives_[COUNT];
-
-MODULES(MODULE_PRIMITIVES_WEAK)
-
-void TypePrimitive::set_up() {
-  MODULES(MODULE_PRIMITIVES)
-}
-
-#undef MODULE_PRIMITIVES_WEAK
-#undef MODULE_PRIMITIVES
+TYPE_PRIMITIVE_ANY(init)
+TYPE_PRIMITIVE_ANY(use)
+TYPE_PRIMITIVE_ANY(unuse)
+TYPE_PRIMITIVE_ANY(config)
+TYPE_PRIMITIVE_ANY(get)
+TYPE_PRIMITIVE_ANY(set)
+TYPE_PRIMITIVE_ANY(config_interrupt)
 
 }  // namespace toit::compiler
 }  // namespace toit
