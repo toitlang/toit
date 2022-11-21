@@ -25,33 +25,6 @@
 namespace toit {
 
 /**
-  An object (opaque from the Toit side) for holding a cryptographic key.
-*/
-class CryptographicKey : public SimpleResource {
- public:
-  TAG(CryptographicKey);
-  CryptographicKey(SimpleResourceGroup* group, int length, mbedtls_cipher_id_t cipher)
-      : SimpleResource(group)
-      , length_(length)
-      , mbedtls_cipher_(cipher)
-      , key_(null) {}
-  virtual ~CryptographicKey();
-
-  const uint8* key() const { return key_; }
-  mbedtls_cipher_id_t cipher() const { return mbedtls_cipher_; }
-  int length() const { return length_; }
-
-  void set_key(const uint8* key) {
-    key_ = key;
-  }
-
- private:
-  int length_;
-  mbedtls_cipher_id_t mbedtls_cipher_;
-  const uint8* key_;
-};
-
-/**
   GCM is a mode for crypto operations that supports AEAD (Authenticated
   encryption with associated data).  This is used for popular TLS symmetric
   (post-handshake) crypto operations like TLS_AES_128_GCM_SHA256.
@@ -62,16 +35,13 @@ class CryptographicKey : public SimpleResource {
 class GcmContext : public SimpleResource {
  public:
   TAG(GcmContext);
-  // The cipher_id is one of:
-  // MBEDTLS_CIPHER_ID_AES
-  // MBEDTLS_CIPHER_ID_CHACHA20
-  GcmContext(SimpleResourceGroup* group, const uint8* key, int key_length, mbedtls_cipher_id_t cipher_id, bool encrypt)
+  // The cipher_id must currently be MBEDTLS_CIPHER_ID_AES.
+  GcmContext(SimpleResourceGroup* group, const uint8* key, mbedtls_cipher_id_t cipher_id, bool encrypt)
       : SimpleResource(group)
-      , key_(key)
-      , key_length_(key_length)
       , cipher_id_(cipher_id)
       , encrypt_(encrypt) {
     mbedtls_gcm_init(&context_);
+    memcpy(key_, key, KEY_SIZE);
   }
 
   virtual ~GcmContext();
@@ -79,10 +49,10 @@ class GcmContext : public SimpleResource {
   static const int NONCE_SIZE = 12;
   static const int BLOCK_SIZE = 16;
   static const int TAG_SIZE = 16;
+  static const int KEY_SIZE = 16;
 
   inline mbedtls_gcm_context* gcm_context() { return &context_; }
   inline const uint8* key() const { return key_; }
-  inline int key_length() const { return key_length_; }
   inline mbedtls_cipher_id_t cipher_id() const { return cipher_id_; }
   inline bool is_encrypt() const { return encrypt_; }
   inline int remaining_length_in_current_message() const { return remaining_length_in_current_message_; }
@@ -94,8 +64,7 @@ class GcmContext : public SimpleResource {
  private:
   uint8 buffered_data_[BLOCK_SIZE];
   int buffered_bytes_ = 0;  // 0-15.
-  const uint8* key_;
-  int key_length_;
+  uint8 key_[KEY_SIZE];
   mbedtls_cipher_id_t cipher_id_;
   bool encrypt_;
   mbedtls_gcm_context context_;
@@ -104,8 +73,7 @@ class GcmContext : public SimpleResource {
 
 enum GcmAlgorithmType {
   ALGORITHM_AES_128_GCM_SHA256 = 0,
-  ALGORITHM_CHACHA20_POLY1305  = 1,
-  NUMBER_OF_ALGORITHM_TYPES    = 2
+  NUMBER_OF_ALGORITHM_TYPES    = 1
 };
 
 class MbedTLSResourceGroup;

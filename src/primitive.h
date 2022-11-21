@@ -463,8 +463,6 @@ namespace toit {
   PRIMITIVE(aes_ecb_crypt, 3)                \
   PRIMITIVE(aes_cbc_close, 1)                \
   PRIMITIVE(aes_ecb_close, 1)                \
-  PRIMITIVE(cryptographic_key_init, 3)       \
-  PRIMITIVE(cryptographic_key_close, 1)      \
   PRIMITIVE(gcm_init, 4)                     \
   PRIMITIVE(gcm_close, 1)                    \
   PRIMITIVE(gcm_start_message, 3)            \
@@ -987,7 +985,6 @@ namespace toit {
 #define _A_T_ServiceDescription(N, name)  MAKE_UNPACKING_MACRO(ServiceDescription, N, name)
 #define _A_T_Peer(N, name)                MAKE_UNPACKING_MACRO(Peer, N, name)
 #define _A_T_Channel(N, name)             MAKE_UNPACKING_MACRO(Channel, N, name)
-#define _A_T_CryptographicKey(N, name)    MAKE_UNPACKING_MACRO(CryptographicKey, N, name)
 #define _A_T_GcmContext(N, name)          MAKE_UNPACKING_MACRO(GcmContext, N, name)
 
 // ARGS is expanded to one of the following depending on number of passed parameters.

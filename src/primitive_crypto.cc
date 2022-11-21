@@ -120,62 +120,17 @@ PRIMITIVE(siphash_get) {
   return result;
 }
 
-CryptographicKey::~CryptographicKey() {
-  free(reinterpret_cast<uint8*>(const_cast<uint8*>(key_)));
-}
-
-PRIMITIVE(cryptographic_key_init) {
-  ARGS(SimpleResourceGroup, group, Blob, key, int, algorithm);
-  if (!(0 <= algorithm && algorithm < NUMBER_OF_ALGORITHM_TYPES)) {
-    INVALID_ARGUMENT;
-  }
-
-  ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
-
-  mbedtls_cipher_id_t mbedtls_cipher;
-
-  if (algorithm == ALGORITHM_AES_128_GCM_SHA256) {
-    mbedtls_cipher = MBEDTLS_CIPHER_ID_AES;
-  } else if (algorithm == ALGORITHM_CHACHA20_POLY1305) {
-    mbedtls_cipher = MBEDTLS_CIPHER_ID_CHACHA20;
-  } else {
-    INVALID_ARGUMENT;
-  }
-
-  auto key_buffer = unvoid_cast<uint8*>(malloc(key.length()));
-  if (key_buffer == null) MALLOC_FAILED;
-  memcpy(key_buffer, key.address(), key.length());
-
-  CryptographicKey* cryptographic_key = _new CryptographicKey(group, key.length(), mbedtls_cipher);
-  if (!cryptographic_key) {
-    free(key_buffer);
-    MALLOC_FAILED;
-  }
-
-  cryptographic_key->set_key(key_buffer);
-
-  proxy->set_external_address(cryptographic_key);
-  return proxy;
-}
-
-PRIMITIVE(cryptographic_key_close) {
-  ARGS(CryptographicKey, key);
-  key->resource_group()->unregister_resource(key);
-  key_proxy->clear_external_address();
-  return process->program()->null_object();
-}
-
 GcmContext::~GcmContext(){
   mbedtls_gcm_free(&context_);
-  free(reinterpret_cast<uint8*>(const_cast<uint8*>(key_)));
 }
 
 PRIMITIVE(gcm_init) {
-  ARGS(SimpleResourceGroup, group, CryptographicKey, key, int, algorithm, bool, encrypt);
+  ARGS(SimpleResourceGroup, group, Blob, key, int, algorithm, bool, encrypt);
   if (!(0 <= algorithm && algorithm < NUMBER_OF_ALGORITHM_TYPES)) {
     INVALID_ARGUMENT;
   }
+
+  if (key.length() != GcmContext::KEY_SIZE) INVALID_ARGUMENT;
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;
@@ -184,36 +139,24 @@ PRIMITIVE(gcm_init) {
 
   if (algorithm == ALGORITHM_AES_128_GCM_SHA256) {
     mbedtls_cipher = MBEDTLS_CIPHER_ID_AES;
-  } else if (algorithm == ALGORITHM_CHACHA20_POLY1305) {
-    mbedtls_cipher = MBEDTLS_CIPHER_ID_CHACHA20;
   } else {
     INVALID_ARGUMENT;
   }
 
-  if (mbedtls_cipher != key->cipher()) INVALID_ARGUMENT;
-
-  // We don't want the lifetime of the CryptographicKey object to have to
-  // depend on the lifetime of the GcmContext object, so we make a copy.
-  auto key_buffer = unvoid_cast<uint8*>(malloc(key->length()));
-  if (key_buffer == null) MALLOC_FAILED;
-  memcpy(key_buffer, key->key(), key->length());
-
   GcmContext* gcm_context = _new GcmContext(
       group,
-      key_buffer,
-      key->length(),
+      key.address(),
       mbedtls_cipher,
       encrypt);
 
   if (!gcm_context) {
-    free(key_buffer);
     MALLOC_FAILED;
   }
 
   // From here, the copy of the key is managed by the GcmContext and we do not
   // free it explicitly on error.
 
-  int err = mbedtls_gcm_setkey(gcm_context->gcm_context(), mbedtls_cipher, key_buffer, key->length() * BYTE_BIT_SIZE);
+  int err = mbedtls_gcm_setkey(gcm_context->gcm_context(), mbedtls_cipher, gcm_context->key(), GcmContext::KEY_SIZE * BYTE_BIT_SIZE);
   if (err != 0) {
     group->unregister_resource(gcm_context);
     return tls_error(null, process, err);

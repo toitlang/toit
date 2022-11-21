@@ -160,7 +160,172 @@ class AesEcb extends Aes:
   close_aes_ -> none:
     aes_ecb_close_ aes_
 
+ALGORITHM_AES_128_GCM_SHA256 ::= 0
 
+/**
+Encryptor/decryptor for Galois/Counter Mode of AES, an encryption mode that is
+  often used for TLS.
+
+An instance of this class can encrypt or decrypt one message.
+
+See https://en.wikipedia.org/wiki/Galois/Counter_Mode.
+*/
+class AesGcm:
+  gcm_aes_ := ?
+  initialization_vector_ /ByteArray := ?
+  buffer_ /ByteArray? := null
+
+  /**
+  Initialize a AesGcm AEAD class for encryption.
+  The $key should be a 128 bit AES key.
+  The $initialization_vector should be 12 bytes of data.  It is extremely
+    important that the initialization_vector is not reused with the same key.
+    The initialization_vector must be known to the decrypting counterparty.
+  */
+  constructor.encryptor key/ByteArray initialization_vector/ByteArray --algorithm/int=ALGORITHM_AES_128_GCM_SHA256:
+    gcm_aes_ = gcm_init_ resource_freeing_module_ key algorithm true
+    initialization_vector_ = initialization_vector
+    add_finalizer this:: this.close
+
+  /**
+  Initialize a AesGcm AEAD class for encryption or decryption.
+  The $key should be a 128 bit AES key.
+  The $initialization_vector should be 12 bytes of data, obtained from the encrypting counterparty.
+  */
+  constructor.decryptor key/ByteArray initialization_vector/ByteArray --algorithm/int=ALGORITHM_AES_128_GCM_SHA256:
+    gcm_aes_ = gcm_init_ resource_freeing_module_ key algorithm false
+    initialization_vector_ = initialization_vector
+    add_finalizer this:: this.close
+
+  /**
+  Encrypts the given $plain_text with the given initialization_vector.
+  The plain_text should be a ByteArray or a string.
+  Returns the encrypted plain_text.  The verification tag, 16 bytes, is appended to the result.
+  */
+  encrypt plain_text -> ByteArray:
+    if not gcm_aes_: throw "ALREADY_CLOSED"
+
+    result := ByteArray plain_text.size + 16
+
+    gcm_start_message_ gcm_aes_ plain_text.size initialization_vector_
+    bytes /int := gcm_add_ gcm_aes_ plain_text result
+    if bytes != plain_text.size: throw "UNKNOWN_ERROR"
+    tag := gcm_finish_ gcm_aes_
+    result.replace bytes tag
+    close
+    return result
+
+  /**
+  Decrypts the given $cipher_text with the given initialization_vector.
+  The $verification_tag, 16 bytes, is checked and an exception is thrown if it fails.
+  If the verification_tag is not provided, it is assumed to be appended to the $cipher_text.
+  */
+  decrypt cipher_text/ByteArray --verification_tag/ByteArray?=null -> ByteArray:
+    if not gcm_aes_: throw "ALREADY_CLOSED"
+
+    buffer := ByteArray 128
+
+    if not verification_tag:
+      edge := cipher_text.size - 16
+      verification_tag = cipher_text[edge..]
+      cipher_text = cipher_text[..edge]
+
+    gcm_start_message_ gcm_aes_ cipher_text.size initialization_vector_
+    result := ByteArray cipher_text.size
+    bytes /int := gcm_add_ gcm_aes_ cipher_text result
+
+    check := gcm_verify_ gcm_aes_ verification_tag
+    if check != 0:
+      throw "INVALID_SIGNATURE"
+
+    return result
+
+  /**
+  Starts an encryption or decryption with the given initialization_vector.
+  After calling this method, the $add method can be used to encrypt or decrypt
+    a ByteArray.
+  When decrypting it is vital that the decrypted data is not used in any way
+    before the verification tag has been verified.
+  */
+  start --length/int -> none:
+    gcm_start_message_ gcm_aes_ length initialization_vector_
+
+  /**
+  Encrypts or decrypts some data.
+  Can be called after calling $start.
+  The $data argument is consumed by this operation:  After this call, the given
+    ByteArray can no longer be used.
+  The returned ByteArray can be regarded as fresh, though it may be one of the
+    ByteArrays previously passed to this function.
+  When decrypting it is vital that the decrypted data is not used in any way
+    before the verification tag has been verified.
+  */
+  add data/ByteArray -> ByteArray:
+    if buffer_ and buffer_.size >= data:
+      bytes := gcm_add_ gcm_aes_ data buffer_
+      if bytes:
+        result := buffer_[0..bytes]
+        buffer_ = data
+        return result
+    // Output buffer was too small.  Make one that is certainly big enough.
+    result := ByteArray data.size + 16
+    bytes /int := gcm_add_ gcm_aes_ data result
+    if buffer_ == null or data.size > buffer_.size: buffer_ = data
+    return result
+
+  /**
+  Finishes encrypting.
+  Can be called after $start and $add.
+  Returns the 16 byte verification tag.
+  */
+  finish -> ByteArray:
+    result := gcm_finish_ gcm_aes_
+    close
+    return result
+
+  /**
+  Finishes decrypting.
+  Can be called after $start and $add.
+  Throws an exception if the 16 byte $verification_tag does not match the
+    decrypted data.
+  It is vital that the decrypted data is not used in any way before this method
+    has been called.
+  It is vital that if this method throws an exception, the previously decrypted
+    data is not used.
+  */
+  verify verification_tag/ByteArray -> none:
+    result := gcm_verify_ gcm_aes_ verification_tag
+    close
+    if result != 0: throw "INVALID_SIGNATURE"
+
+  /** Closes this encrypter/decrypter and releases associated resources. */
+  close -> none:
+    if not gcm_aes_: return
+    gcm_close_ gcm_aes_
+    gcm_aes_ = null
+    remove_finalizer this
+
+gcm_init_ group key/ByteArray algorithm/int encrypt/bool:
+  #primitive.crypto.gcm_init
+
+gcm_close_ gcm:
+  #primitive.crypto.gcm_close
+
+gcm_start_message_ gcm length/int initialization_vector/ByteArray -> none:
+  #primitive.crypto.gcm_start_message
+
+/**
+If the result byte array was big enough, returns a Smi to indicate how much data was placed in it.
+If the result byte array was not big enough, returns null.  In this case no data was consumed.
+*/
+gcm_add_ gcm data result/ByteArray -> int?:
+  #primitive.crypto.gcm_add
+
+gcm_finish_ gcm -> ByteArray:
+  #primitive.crypto.gcm_finish
+
+gcm_verify_ gcm verification_tag/ByteArray -> int:
+  #primitive.crypto.gcm_verify
 
 aes_init_ group key/ByteArray initialization_vector/ByteArray? encrypt/bool:
   #primitive.crypto.aes_init
