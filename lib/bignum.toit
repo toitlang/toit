@@ -15,38 +15,34 @@ class Bignum:
   negative_/bool := ?
   limbs_/ByteArray := ?
 
-  constructor .negative_/bool .limbs_/ByteArray:
+  constructor.with_bytes .negative_/bool .limbs_/ByteArray:
 
-  constructor.from_string data/string:
+  constructor data/string:
     if data[0] == '-':
       negative_ = true
       data = data[1..]
     else:
       negative_ = false
-    
-    if data.size & 0x1 != 0:
-      data = "0" + data
-    
     limbs_ = hex.decode data
 
-  int_to_arry_ i/int -> ByteArray:
+  static int_to_array_ i/int -> ByteArray:
     result := ByteArray 8
     BIG_ENDIAN.put_int64 result 0 i
     return result
 
   trans_other_ other/any -> Bignum:
     if other is int:
-      other = Bignum
+      other = Bignum.with_bytes
           other < 0
-          int_to_arry_ other.abs
+          int_to_array_ other.abs
     else if other is not Bignum:
-      throw "$(other.type) is not supported"
+      throw "WRONG_OBJECT_TYPE"
     return other
 
   basic_operator_ operation/int other/any:
     other = trans_other_ other
     result :=  bignum_operator_ operation negative_ limbs_ other.negative_ other.limbs_
-    return Bignum result[0] result[1]
+    return Bignum.with_bytes result[0] result[1]
 
   operator + other -> Bignum:
     return basic_operator_ BIGNUM_ADD_ other
@@ -78,7 +74,7 @@ class Bignum:
 
 mod_exp A/Bignum B/Bignum C/Bignum -> Bignum:
   result := bignum_exp_mod_ A.negative_ A.limbs_ B.negative_ B.limbs_ C.negative_ C.limbs_
-  return Bignum result[0] result[1]
+  return Bignum.with_bytes result[0] result[1]
 
 bignum_operator_ operator_id a_sign a_limbs b_sign b_limbs:
   #primitive.bignum.binary_operator

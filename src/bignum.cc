@@ -83,6 +83,7 @@ PRIMITIVE(binary_operator) {
   mbedtls_mpi_free(&a_mpi);
   if (ret != 0) {
     if (ret == MBEDTLS_ERR_MPI_DIVISION_BY_ZERO) return Primitive::mark_as_error(process->program()->division_by_zero());
+    if (ret == MBEDTLS_ERR_MPI_NEGATIVE_VALUE) return Primitive::mark_as_error(process->program()->negative_argument());
     else MALLOC_FAILED;
   }
 
