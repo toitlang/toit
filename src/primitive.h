@@ -463,14 +463,15 @@ namespace toit {
   PRIMITIVE(aes_ecb_crypt, 3)                \
   PRIMITIVE(aes_cbc_close, 1)                \
   PRIMITIVE(aes_ecb_close, 1)                \
-  PRIMITIVE(psa_key_init, 5)                 \
-  PRIMITIVE(psa_key_close, 1)                \
-  PRIMITIVE(psa_aead_init, 6)                \
-  PRIMITIVE(psa_aead_set_length, 2)          \
-  PRIMITIVE(psa_aead_add, 3)                 \
-  PRIMITIVE(psa_aead_get_tag_size, 1)        \
-  PRIMITIVE(psa_aead_finish, 2)              \
-  PRIMITIVE(psa_aead_verify, 3)              \
+  PRIMITIVE(cryptographic_key_init, 3)       \
+  PRIMITIVE(cryptographic_key_close, 1)      \
+  PRIMITIVE(gcm_init, 4)                     \
+  PRIMITIVE(gcm_close, 1)                    \
+  PRIMITIVE(gcm_start_message, 3)            \
+  PRIMITIVE(gcm_add, 3)                      \
+  PRIMITIVE(gcm_get_tag_size, 1)             \
+  PRIMITIVE(gcm_finish, 1)                   \
+  PRIMITIVE(gcm_verify, 2)                   \
 
 #define MODULE_ENCODING(PRIMITIVE)           \
   PRIMITIVE(base64_encode, 2)                \

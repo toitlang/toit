@@ -19,6 +19,7 @@
 #include "primitive.h"
 #include "process.h"
 #include "gcm_crypto.h"
+#include "resource.h"
 #include "sha1.h"
 #include "sha256.h"
 #include "siphash.h"
@@ -120,7 +121,7 @@ PRIMITIVE(siphash_get) {
 }
 
 CryptographicKey::~CryptographicKey() {
-  free(key_);
+  free(reinterpret_cast<uint8*>(const_cast<uint8*>(key_)));
 }
 
 PRIMITIVE(cryptographic_key_init) {
@@ -142,11 +143,11 @@ PRIMITIVE(cryptographic_key_init) {
     INVALID_ARGUMENT;
   }
 
-  uint8* key_buffer := unvoid_cast<uint8*>(malloc(key.length()));
+  auto key_buffer = unvoid_cast<uint8*>(malloc(key.length()));
   if (key_buffer == null) MALLOC_FAILED;
   memcpy(key_buffer, key.address(), key.length());
 
-  CryptographicKey* cryptographic_key = _new CryptographicKey(group, key.length() * BYTE_BIT_SIZE, mbedtls_cipher);
+  CryptographicKey* cryptographic_key = _new CryptographicKey(group, key.length(), mbedtls_cipher);
   if (!cryptographic_key) {
     free(key_buffer);
     MALLOC_FAILED;
@@ -163,6 +164,11 @@ PRIMITIVE(cryptographic_key_close) {
   key->resource_group()->unregister_resource(key);
   key_proxy->clear_external_address();
   return process->program()->null_object();
+}
+
+GcmContext::~GcmContext(){
+  mbedtls_gcm_free(&context_);
+  free(reinterpret_cast<uint8*>(const_cast<uint8*>(key_)));
 }
 
 PRIMITIVE(gcm_init) {
@@ -184,15 +190,17 @@ PRIMITIVE(gcm_init) {
     INVALID_ARGUMENT;
   }
 
+  if (mbedtls_cipher != key->cipher()) INVALID_ARGUMENT;
+
   // We don't want the lifetime of the CryptographicKey object to have to
   // depend on the lifetime of the GcmContext object, so we make a copy.
-  auto key_buffer = unvoid_cast<uint8*>malloc(key->length());
+  auto key_buffer = unvoid_cast<uint8*>(malloc(key->length()));
   if (key_buffer == null) MALLOC_FAILED;
-  memcpy(key_buffer, key->address(), key->length());
+  memcpy(key_buffer, key->key(), key->length());
 
   GcmContext* gcm_context = _new GcmContext(
       group,
-      key_buffer
+      key_buffer,
       key->length(),
       mbedtls_cipher,
       encrypt);
@@ -205,14 +213,21 @@ PRIMITIVE(gcm_init) {
   // From here, the copy of the key is managed by the GcmContext and we do not
   // free it explicitly on error.
 
-  int err = mbedtls_gcm_setkey(gcm_context->context(), algorithm, key_buffer, key->length() * BYTE_BIT_SIZE);
+  int err = mbedtls_gcm_setkey(gcm_context->gcm_context(), mbedtls_cipher, key_buffer, key->length() * BYTE_BIT_SIZE);
   if (err != 0) {
     group->unregister_resource(gcm_context);
     return tls_error(null, process, err);
   }
   
-  proxy->set_external_address(aead_context);
+  proxy->set_external_address(gcm_context);
   return proxy;
+}
+
+PRIMITIVE(gcm_close) {
+  ARGS(GcmContext, context);
+  context->resource_group()->unregister_resource(context);
+  context_proxy->clear_external_address();
+  return process->program()->null_object();
 }
 
 // Start the encryption of a message, or TLS record.  Takes a 12 byte nonce.
@@ -227,13 +242,13 @@ PRIMITIVE(gcm_start_message) {
   ARGS(GcmContext, context, int, length, Blob, nonce);
   if (context->remaining_length_in_current_message() != 0) INVALID_ARGUMENT;
   context->set_remaining_length_in_current_message(length);
-  if (nonce->length() != GcmContext::NONCE_SIZE) INVALID_ARGUMENT;
-  int mode = context->is_encrypt() ? MBEDTLS_GC_ENCRYPT : MBEDTLS_GC_DECRYPT;
+  if (nonce.length() != GcmContext::NONCE_SIZE) INVALID_ARGUMENT;
+  int mode = context->is_encrypt() ? MBEDTLS_GCM_ENCRYPT : MBEDTLS_GCM_DECRYPT;
   int result = mbedtls_gcm_starts(
-      context->context(),
+      context->gcm_context(),
       mode,
-      nonce->address(),
-      nonce->length(),
+      nonce.address(),
+      nonce.length(),
       null,  // No additional data.
       0);
   if (result != 0) return tls_error(null, process, result);
@@ -250,8 +265,8 @@ PRIMITIVE(gcm_add) {
   const uint8* data_address = data.address();
   int data_length = data.length();
   int remains = context->remaining_length_in_current_message();
-  if (remains < length) OUT_OF_BOUNDS;
-  remains -= data.length();
+  if (remains < data_length) OUT_OF_BOUNDS;
+  remains -= data_length;
 
   // Start by copying into the temporary buffer in the context.
   const int to_copy = Utils::min(
@@ -261,7 +276,7 @@ PRIMITIVE(gcm_add) {
   data_address += to_copy;
   data_length -= to_copy;
   const int buffered = context->buffered_bytes() + to_copy;
-  if (buffered < GcmContext::BUFFER_SIZE && remains != 0) {
+  if (buffered < GcmContext::BLOCK_SIZE && remains != 0) {
     // Success.  We copied all the data into the internal buffer, and so the
     // output byte array is inevitably big enough.
     // Update the context and the number of bytes of new output.
@@ -287,7 +302,7 @@ PRIMITIVE(gcm_add) {
   uint8* result_address = result.address();
 
   mbedtls_gcm_update(
-      context->context(),
+      context->gcm_context(),
       buffered,
       context->buffered_data(),
       result_address);
@@ -295,7 +310,7 @@ PRIMITIVE(gcm_add) {
   result_address += buffered;
 
   mbedtls_gcm_update(
-      context->context(),
+      context->gcm_context(),
       to_process_after_internal_buffer,
       data_address,
       result_address);
@@ -304,7 +319,7 @@ PRIMITIVE(gcm_add) {
   data_length -= to_process_after_internal_buffer;
 
   context->set_buffered_bytes(data_length);
-  memcpy(context->buffered_bytes(), data_address, data_length);
+  memcpy(context->buffered_data(), data_address, data_length);
 
   // Return the amount of data output.
   return Smi::from(buffered + to_process_after_internal_buffer);
@@ -328,7 +343,7 @@ PRIMITIVE(gcm_finish) {
   ByteArray::Bytes tag_bytes(result);
 
   int ok = mbedtls_gcm_finish(
-      context->context(),
+      context->gcm_context(),
       tag_bytes.address(),
       tag_bytes.length());
   if (ok != 0) {
@@ -349,7 +364,7 @@ PRIMITIVE(gcm_verify) {
 
   uint8 calculated_tag[GcmContext::TAG_SIZE];
   int ok = mbedtls_gcm_finish(
-      context->context(),
+      context->gcm_context(),
       calculated_tag,
       GcmContext::TAG_SIZE);
   if (ok != 0) {
@@ -359,6 +374,7 @@ PRIMITIVE(gcm_verify) {
   // Constant time calculation.
   for (int i = 0; i < GcmContext::TAG_SIZE; i++) {
     zero |= calculated_tag[i] ^ verification_tag.address()[i];
+  }
   return Smi::from(zero);
 }
 

@@ -30,20 +30,24 @@ namespace toit {
 class CryptographicKey : public SimpleResource {
  public:
   TAG(CryptographicKey);
-  CryptographicKey(SimpleResourceGroup* group, int length)
+  CryptographicKey(SimpleResourceGroup* group, int length, mbedtls_cipher_id_t cipher)
       : SimpleResource(group)
       , length_(length)
+      , mbedtls_cipher_(cipher)
       , key_(null) {}
   virtual ~CryptographicKey();
 
   const uint8* key() const { return key_; }
+  mbedtls_cipher_id_t cipher() const { return mbedtls_cipher_; }
   int length() const { return length_; }
 
   void set_key(const uint8* key) {
     key_ = key;
   }
 
+ private:
   int length_;
+  mbedtls_cipher_id_t mbedtls_cipher_;
   const uint8* key_;
 };
 
@@ -85,13 +89,13 @@ class GcmContext : public SimpleResource {
   inline void set_remaining_length_in_current_message(int length) { remaining_length_in_current_message_ = length; }
   inline uint8* buffered_data() { return buffered_data_; }
   inline int buffered_bytes() const { return buffered_bytes_; }
+  inline void set_buffered_bytes(int value) { buffered_bytes_ = value; }
 
  private:
-  uint8 buffered_data_[BUFFER_SIZE];
+  uint8 buffered_data_[BLOCK_SIZE];
   int buffered_bytes_ = 0;  // 0-15.
   const uint8* key_;
   int key_length_;
-  uint8 iv_[IV_SIZE];
   mbedtls_cipher_id_t cipher_id_;
   bool encrypt_;
   mbedtls_gcm_context context_;
@@ -103,5 +107,10 @@ enum GcmAlgorithmType {
   ALGORITHM_CHACHA20_POLY1305  = 1,
   NUMBER_OF_ALGORITHM_TYPES    = 2
 };
+
+class MbedTLSResourceGroup;
+
+// From resources/tls.cc.
+extern Object* tls_error(MbedTLSResourceGroup* group, Process* process, int err);
 
 }
