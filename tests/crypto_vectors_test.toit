@@ -23,13 +23,17 @@ main:
   read_file map "third_party/openssl/evptests.txt"
   add_fragility_tests map
 
-  map.do: | algo tests |
+  map.do: | algorithm tests |
     tests.do: | test/Test |
-      if algo == "AES-128-GCM":
+      if algorithm == "AES-128-GCM":
         test_aes_128_gcm test
-      else if algo == "SHA1":
+      else if algorithm == "AES-128-ECB" or algorithm == "AES-192-ECB" or algorithm == "AES-256-ECB":
+        test_aes test --ecb
+      else if algorithm == "AES-128-CBC" or algorithm == "AES-192-CBC" or algorithm == "AES-256-CBC":
+        test_aes test --cbc
+      else if algorithm == "SHA1":
         test_hash test: Sha1
-      else if algo == "SHA256":
+      else if algorithm == "SHA256":
         test_hash test: Sha256
 
 read_file map/Map filename/string -> none:
@@ -48,11 +52,11 @@ read_file map/Map filename/string -> none:
 add_line line/string current_comment/string line_number/string map/Map -> none:
   line = line.trim
   colon := line.index_of ":"
-  algo := line[..colon].to_ascii_upper
+  algorithm := line[..colon].to_ascii_upper
   vectors := line[colon + 1..]
   data := []
   vectors.split ":": data.add (hex.decode it)
-  (map.get algo --init=:[]).add (Test data line_number current_comment)
+  (map.get algorithm --init=:[]).add (Test data line_number current_comment)
 
 test_hash test/Test [block] -> none:
   input := test.data[2]
@@ -62,6 +66,31 @@ test_hash test/Test [block] -> none:
   hasher.add input
   hash := hasher.get
   expect_equals expected_hash hash
+
+test_aes test/Test --ecb/bool=false --cbc/bool=false -> none:
+  expect (ecb or cbc)
+  expect (not (ecb and cbc))
+  key := test.data[0]
+  iv := test.data[1]
+  expected_plain_text := test.data[2]
+  expected_cipher_text := test.data[3]
+
+  print "$test.comment ($test.line_number)"
+
+  encryptor := ?
+  decryptor := ?
+  if ecb:
+    encryptor = AesEcb.encryptor key
+    decryptor = AesEcb.decryptor key
+  else:
+    encryptor = AesCbc.encryptor key iv
+    decryptor = AesCbc.decryptor key iv
+
+  cipher_text := encryptor.encrypt expected_plain_text
+  expect_equals expected_cipher_text cipher_text
+
+  plain_text := decryptor.decrypt expected_cipher_text
+  expect_equals expected_plain_text plain_text
 
 test_aes_128_gcm test/Test -> none:
   key := test.data[0]
@@ -148,7 +177,6 @@ test_aes_128_gcm test/Test -> none:
 
 add_fragility_tests map/Map:
   comment := "From 'The fragility of AES-GCM authentication algorithm' by Shay Gueron and Vlad Krasnov"
-  figure := "figure 3"
   key := "3da6c536d6295579c0959a7043efb503"
   iv := "2b926197d34e091ef722db94"
   aad := """
@@ -158,9 +186,8 @@ add_fragility_tests map/Map:
       202122232425262728292a2b2c2d2e2f\
       303132333435363738393a3b3c3d3e3f"""
   tag := "69dd586555ce3fcc89663801a71d957b"
-  add_line "AES-128-GCM:$key:$iv:::$aad:$tag" comment figure map
+  add_line "AES-128-GCM:$key:$iv:::$aad:$tag" comment "figure 3" map
 
-  figure = "figure 5"
   key = "84d5733dc8b6f9184dcb9eba2f2cb9f0"
   iv = "35d319a903b6f43adbe915a8"
   aad = """
@@ -173,4 +200,4 @@ add_fragility_tests map/Map:
       00000000000000000000000000000000\
       707172737475767778797a7b7c7d7e7f"""
   tag = "ed1b32c63ee51ea90320235df0b93cdc"
-  add_line "AES-128-GCM:$key:$iv:::$aad:$tag" comment figure map
+  add_line "AES-128-GCM:$key:$iv:::$aad:$tag" comment "figure 5" map
