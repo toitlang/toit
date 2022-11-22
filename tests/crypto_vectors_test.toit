@@ -14,8 +14,9 @@ class Test:
   data /List
   line_number /string
   comment /string
+  source /string
 
-  constructor .data .line_number .comment:
+  constructor --.data --.line_number --.comment --.source:
 
 main:
   map := {:}
@@ -47,16 +48,16 @@ read_file map/Map filename/string -> none:
       if line.starts_with "#":
         current_comment = line[1..].trim
       else:
-        add_line line current_comment "line $line_number" map
+        add_line line --source=filename --comment=current_comment --line_number="line $line_number" --to=map
 
-add_line line/string current_comment/string line_number/string map/Map -> none:
+add_line line/string --source/string --comment/string --line_number/string --to/Map -> none:
   line = line.trim
   colon := line.index_of ":"
   algorithm := line[..colon].to_ascii_upper
   vectors := line[colon + 1..]
   data := []
   vectors.split ":": data.add (hex.decode it)
-  (map.get algorithm --init=:[]).add (Test data line_number current_comment)
+  (to.get algorithm --init=:[]).add (Test --data=data --source=source --line_number=line_number --comment=comment)
 
 test_hash test/Test [block] -> none:
   input := test.data[2]
@@ -75,7 +76,7 @@ test_aes test/Test --ecb/bool=false --cbc/bool=false -> none:
   expected_plain_text := test.data[2]
   expected_cipher_text := test.data[3]
 
-  print "$test.comment ($test.line_number)"
+  print "$test.source, $test.line_number, AES, $test.comment"
 
   encryptor := ?
   decryptor := ?
@@ -104,7 +105,7 @@ test_aes_128_gcm test/Test -> none:
   // The algorithm for this is no longer recommended.
   if nonce.size != 12: return
 
-  print "$test.comment ($test.line_number)"
+  print "$test.source, $test.line_number, GCM, $test.comment"
 
   // Use the simple all-at-once methods that just append the verification
   // tag to the ciphertext.
@@ -186,7 +187,7 @@ add_fragility_tests map/Map:
       202122232425262728292a2b2c2d2e2f\
       303132333435363738393a3b3c3d3e3f"""
   tag := "69dd586555ce3fcc89663801a71d957b"
-  add_line "AES-128-GCM:$key:$iv:::$aad:$tag" comment "figure 3" map
+  add_line "AES-128-GCM:$key:$iv:::$aad:$tag" --comment=comment --line_number="figure 3" --source="Gueron & Krasnov" --to=map
 
   key = "84d5733dc8b6f9184dcb9eba2f2cb9f0"
   iv = "35d319a903b6f43adbe915a8"
@@ -200,4 +201,4 @@ add_fragility_tests map/Map:
       00000000000000000000000000000000\
       707172737475767778797a7b7c7d7e7f"""
   tag = "ed1b32c63ee51ea90320235df0b93cdc"
-  add_line "AES-128-GCM:$key:$iv:::$aad:$tag" comment "figure 5" map
+  add_line "AES-128-GCM:$key:$iv:::$aad:$tag" --comment=comment --line_number="figure 5" --source="Gueron & Krasnov" --to=map
