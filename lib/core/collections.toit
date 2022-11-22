@@ -153,7 +153,7 @@ A linear collection of objects.
 A List is an array with constant-time access to numbered elements,
   starting at index zero.  (This is not a linked-list collection.)
 Lists are mutable and growable.
-See also https://docs.toit.io/language/listsetmap
+See also https://docs.toit.io/language/listsetmap.
 */
 abstract class List extends CollectionBase:
 
@@ -2220,7 +2220,7 @@ The == operator should be compatible with the hash_code method so
   be rare to maintain good performance.
 Strings, byte arrays, and numbers fulfill these requirements and can be used as
   keys in sets.
-See also https://docs.toit.io/language/listsetmap
+See also https://docs.toit.io/language/listsetmap.
 */
 class Set extends HashedInsertionOrderedCollection_ implements Collection:
   static STEP_ ::= 1
@@ -2503,7 +2503,7 @@ The == operator should be compatible with the hash_code method so
   be rare to maintain good performance.
 Strings, byte arrays, and numbers fulfill these requirements and can be used as
   keys in maps.
-See also https://docs.toit.io/language/listsetmap
+See also https://docs.toit.io/language/listsetmap.
 */
 class Map extends HashedInsertionOrderedCollection_:
   static STEP_ ::= 2

@@ -5,7 +5,7 @@
 /**
 A number.
 This is an abstract super class for $int and $float.
-See also https://docs.toit.io/language/math
+See also https://docs.toit.io/language/math.
 */
 abstract class num implements Comparable:
   equals_from_float_ other/float -> bool: return false
@@ -539,7 +539,7 @@ Ints are always 64 bit two's complement signed values between $int.MIN and
   $int.MAX.  Overflow is silent.
 This is a fully fledged class, not a 'primitive type'.
 Ints are immutable objects.
-See also https://docs.toit.io/language/math
+See also https://docs.toit.io/language/math.
 */
 abstract class int extends num:
   /**
@@ -1360,7 +1360,7 @@ Floats are double precision IEEE 754 values, including $float.NAN,
   $float.INFINITY, -$float.INFINITY and negative zero.
 This is a fully fledged class, not a 'primitive type'.
 Floats are immutable objects.
-See also https://docs.toit.io/language/math
+See also https://docs.toit.io/language/math.
 */
 class float extends num:
 

@@ -71,7 +71,7 @@ class Stack_:
 
 /**
 A Boolean value.
-See also https://docs.toit.io/language/booleans
+See also https://docs.toit.io/language/booleans.
 */
 class bool:
 
@@ -114,7 +114,7 @@ Lambdas and blocks both represent some code that can be called at a later point.
 When a lambda is called, the function that created it might not be alive anymore. As such,
   lambdas can not use non-local returns.
 
-See also https://docs.toit.io/language/tasks
+See also https://docs.toit.io/language/tasks.
 */
 class Lambda:
   method_ ::= ?

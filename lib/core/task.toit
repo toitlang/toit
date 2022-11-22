@@ -64,7 +64,7 @@ Tasks are created by calling $(task code). They can either terminate by themselv
   (gracefully or with an exception) or by being canceled from the outside with
   $cancel.
 
-See more on tasks at https://docs.toit.io/language/tasks
+See more on tasks at https://docs.toit.io/language/tasks.
 
 If a task finishes with an exception it brings down the whole program.
 */

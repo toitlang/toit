@@ -55,7 +55,7 @@ This is a fully fledged class, not a 'primitive type'.
 A string can only contain valid UTF-8 byte sequences.  To store arbitrary
   byte sequences or other encodings like ISO 8859, use $ByteArray.
 Strings are immutable objects.
-See more on strings at https://docs.toit.io/language/strings
+See more on strings at https://docs.toit.io/language/strings.
 */
 abstract class string implements Comparable:
   static MIN_SLICE_SIZE_ ::= 16
@@ -301,7 +301,7 @@ abstract class string implements Comparable:
 
   The normal way of using this functionality is through the
     string interpolation syntax - see
-    https://docs.toit.io/language/strings/#string-interpolation
+    https://docs.toit.io/language/strings/#string-interpolation.
 
   The $format description is very similar to `printf`.
 
