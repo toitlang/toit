@@ -1349,10 +1349,11 @@ void MethodResolver::_resolve_parameters(
           ASSERT(diagnostics()->encountered_error());
           comparison = _new ir::LiteralBoolean(false, parameter->range());
         } else {
-          comparison = _call_runtime(Symbols::identical,
-                                      list_of(_new ir::ReferenceLocal(ir_parameter, 0, parameter->range()),
-                                              _new ir::LiteralNull(parameter->range())),
-                                      parameter->range());
+          CallBuilder builder(parameter->range());
+          builder.add_arguments(list_of(
+              _new ir::ReferenceLocal(ir_parameter, 0, parameter->range()),
+              _new ir::LiteralNull(parameter->range())));
+          comparison = builder.call_builtin(_new ir::Builtin(ir::Builtin::IDENTICAL));
         }
         auto assignment = _new ir::AssignmentLocal(ir_parameter, 0, ir_default_value, ir_parameter->range());
         auto ir_if = _new ir::If(comparison,

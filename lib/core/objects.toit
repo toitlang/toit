@@ -15,7 +15,7 @@ class Object:
   /**
   Whether this object is equal to the $other.
 
-  By default, $identical is used for equality.
+  By default, identical is used for equality.
 
   # Inheritance
   Classes overwrite this operator to get an equality specific to their needs.

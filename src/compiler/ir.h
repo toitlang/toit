@@ -226,7 +226,6 @@ class Program : public Node {
           List<Class*> tree_roots,
           List<Method*> entry_points,
           List<Type> literal_types,
-          Method* identical,
           Method* lookup_failure,
           Method* as_check_failure,
           Class* lambda_box)
@@ -236,7 +235,6 @@ class Program : public Node {
       , tree_roots_(tree_roots)
       , entry_points_(entry_points)
       , literal_types_(literal_types)
-      , identical_(identical)
       , lookup_failure_(lookup_failure)
       , as_check_failure_(as_check_failure)
       , lambda_box_(lambda_box) {}
@@ -255,7 +253,6 @@ class Program : public Node {
   }
 
   Method* lookup_failure() const { return lookup_failure_; }
-  Method* identical() const { return identical_; }
   Method* as_check_failure() const { return as_check_failure_; }
 
   Class* lambda_box() const { return lambda_box_; }
@@ -273,7 +270,6 @@ class Program : public Node {
   List<Class*> tree_roots_;
   List<Method*> entry_points_;
   List<Type> literal_types_;
-  Method* identical_;
   Method* lookup_failure_;
   Method* as_check_failure_;
   Class* lambda_box_;
@@ -982,6 +978,7 @@ class Builtin : public Node {
     LOAD_GLOBAL,
     INVOKE_INITIALIZER,
     GLOBAL_ID,
+    IDENTICAL,
   };
 
   explicit Builtin(BuiltinKind kind) : kind_(kind) {}
@@ -1006,6 +1003,8 @@ class Builtin : public Node {
       return _new Builtin(LOAD_GLOBAL);
     } else if (id == Symbols::__invoke_initializer__) {
       return _new Builtin(INVOKE_INITIALIZER);
+    } else if (id == Symbols::identical) {
+      return _new Builtin(IDENTICAL);
     }
     // The global-id builtin isn't accessible from userspace.
     return null;
@@ -1016,6 +1015,7 @@ class Builtin : public Node {
   int arity() const {
     switch (kind()) {
       case STORE_GLOBAL:
+      case IDENTICAL:
         return 2;
 
       case THROW:

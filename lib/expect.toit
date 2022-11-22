@@ -35,7 +35,7 @@ expect_equals expected actual:
   if expected != actual:
     expect false --message="Expected <$expected>, but was <$actual>"
 
-/** Expects $actual to be $identical to $expected. */
+/** Expects $actual to be identical to $expected. */
 expect_identical expected actual:
   if not identical expected actual:
     expect false --message="Expected <$expected>, but was <$actual>"
@@ -45,7 +45,7 @@ expect_not_equals unexpected actual:
   if unexpected == actual:
     expect false --message="Expected unequal for <$actual>"
 
-/** Expects $actual not to be $identical to $unexpected. */
+/** Expects $actual not to be identical to $unexpected. */
 expect_not_identical unexpected actual:
   if identical unexpected actual:
     expect false --message="Expected unequal for <$actual>"

@@ -154,8 +154,8 @@ ir::Program* Resolver::resolve(const std::vector<ast::Unit*>& units,
   auto entry_points = find_entry_points(modules[core_index]);
   auto literal_types = find_literal_types(modules[core_index]);
 
-  ir::Method* identical = resolve_entry_point(Symbols::identical, 2, modules[core_index]->scope());
-  ASSERT(identical != null);
+  //ir::Method* identical = resolve_entry_point(Symbols::identical, 2, modules[core_index]->scope());
+  //ASSERT(identical != null);
 
   ir::Method* lookup_failure = null;
   for (auto method : entry_points) {
@@ -179,7 +179,6 @@ ir::Program* Resolver::resolve(const std::vector<ast::Unit*>& units,
                                   tree_roots,
                                   entry_points,
                                   literal_types,
-                                  identical,
                                   lookup_failure,
                                   as_check_failure,
                                   lambda_box);
