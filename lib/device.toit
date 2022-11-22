@@ -2,7 +2,7 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-import device_impl as impl
+import device_impl_ as impl
 import uuid
 import encoding.tison
 

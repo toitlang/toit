@@ -546,10 +546,9 @@ abstract class int extends num:
   The maximum integer value.
 
   The maximum value is equal to:
-    * 9223372036854775807
-    * 2**63-1
-    * 0x7fff_ffff_ffff_ffff
-  (** is "to the power of".)
+  * 9223372036854775807
+  * 2**63-1  (** is "to the power of")
+  * 0x7fff_ffff_ffff_ffff
   */
   static MAX ::= 0x7fff_ffff_ffff_ffff
 
@@ -557,10 +556,9 @@ abstract class int extends num:
   The minimum integer value.
 
   The minimum value is equal to:
-    * -9223372036854775808
-    * -2**63
-    * 0x8000_0000_0000_0000
-  (** is "to the power of".)
+  * -9223372036854775808
+  * -2**63 (** is "to the power of").
+  * 0x8000_0000_0000_0000
   */
   static MIN ::= -MAX - 1
 
