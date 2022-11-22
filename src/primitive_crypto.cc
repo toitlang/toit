@@ -207,6 +207,7 @@ PRIMITIVE(gcm_add) {
   ARGS(GcmContext, context, Blob, data, MutableBlob, result);
   const uint8* data_address = data.address();
   int data_length = data.length();
+  if (data_length == 0) return Smi::from(0);
   int remains = context->remaining_length_in_current_message();
   if (remains < data_length) OUT_OF_BOUNDS;
   remains -= data_length;

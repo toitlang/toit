@@ -263,7 +263,7 @@ class AesGcm:
     before the verification tag has been verified.
   */
   add data/ByteArray -> ByteArray:
-    if buffer_ and buffer_.size >= data:
+    if buffer_:
       bytes := gcm_add_ gcm_aes_ data buffer_
       if bytes:
         result := buffer_[0..bytes]
@@ -273,7 +273,7 @@ class AesGcm:
     result := ByteArray data.size + 16
     bytes /int := gcm_add_ gcm_aes_ data result
     if buffer_ == null or data.size > buffer_.size: buffer_ = data
-    return result
+    return result[..bytes]
 
   /**
   Finishes encrypting.
