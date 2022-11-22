@@ -68,6 +68,7 @@ namespace toit {
   M(flash_kv, MODULE_FLASH_KV)               \
   M(debug,   MODULE_DEBUG)                   \
   M(espnow,  MODULE_ESPNOW)                  \
+  M(bignum,  MODULE_BIGNUM)                  \
 
 #define MODULE_CORE(PRIMITIVE)               \
   PRIMITIVE(write_string_on_stdout, 2)       \
@@ -675,6 +676,10 @@ namespace toit {
   PRIMITIVE(receive, 1)                      \
   PRIMITIVE(add_peer, 3)                     \
   PRIMITIVE(deinit, 1)                       \
+
+#define MODULE_BIGNUM(PRIMITIVE)             \
+  PRIMITIVE(binary_operator, 5)              \
+  PRIMITIVE(exp_mod, 6)                      \
 
 // ----------------------------------------------------------------------------
 
