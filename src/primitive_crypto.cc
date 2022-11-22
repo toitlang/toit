@@ -200,8 +200,10 @@ PRIMITIVE(gcm_start_message) {
 }
 
 /**
-If the result byte array was big enough, returns a Smi to indicate how much data was placed in it.
-If the result byte array was not big enough, returns null.  In this case no data was consumed.
+If the result byte array was big enough, returns a Smi to indicate how much
+  data was placed in it.
+If the result byte array was not big enough, returns null.  In this case no
+  data was consumed.
 */
 PRIMITIVE(gcm_add) {
   ARGS(GcmContext, context, Blob, data, MutableBlob, result);
