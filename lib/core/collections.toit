@@ -2156,9 +2156,8 @@ abstract class HashedInsertionOrderedCollection_:
       // If the intrinsic fails, return the start position.  This
       // is very rare because the intrinsic will generally return a
       // progress-indicating integer rather than failing.
-      return reversed
-        ? backing_ ? backing_.size - step : 0
-        : 0
+      if backing_ == null: return null
+      return reversed ? backing_.size - step : 0
 
   rebuild_ old_size/int step/int --allow_shrink/bool --rebuild_backing/bool:
     if rebuild_backing:
@@ -2709,7 +2708,7 @@ class Map extends HashedInsertionOrderedCollection_:
     i := hash_do_ STEP_ false block
     if not i: return
     assert: backing_
-    limit := backing_ ? backing_.size : 0
+    limit := backing_.size
     while i < limit:
       key := backing_[i]
       if key is not Tombstone_:
