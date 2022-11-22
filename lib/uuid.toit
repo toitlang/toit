@@ -59,7 +59,7 @@ The generated UUID uses the variant 1 (RFC 4122/DCE 1.1), and is
   thus also known as "Leach-Salz" UUID.
 */
 // TODO(4197): should be typed.
-uuid5 namespace data:
+uuid5 namespace data -> Uuid:
   hash := crypto.Sha1
   // TODO(4197): why do we need to call `to_byte_array` here.
   //   Is the documentation wrong and we want to accept more than
