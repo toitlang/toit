@@ -1180,10 +1180,12 @@ class ProgramSegment extends HeapSegment:
 
 
 class Position:
-  line ::= -1
-  column ::= -1
-
+  line/int ::= ?
+  column/int ::= ?
   constructor .line .column:
+
+  operator == other -> bool:
+    return other is Position and line == other.line and column == other.column
 
   stringify:
     return "$line:$column"
@@ -1202,7 +1204,6 @@ class MethodInfo:
   bytecode_positions /Map ::= ?  // of bytecode to Position
   as_class_names /Map ::= ?      // of bytecode to strings
   pubsub_info /List ::= ?
-
 
   static INSTANCE_TYPE      ::= 0
   static GLOBAL_TYPE        ::= 1

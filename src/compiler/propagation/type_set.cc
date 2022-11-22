@@ -15,6 +15,8 @@
 
 #include "type_set.h"
 
+#include <sstream>
+
 namespace toit {
 namespace compiler {
 
@@ -33,6 +35,29 @@ void TypeSet::print(Program* program, const char* banner) {
     }
   }
   printf(" }");
+}
+
+std::string TypeSet::as_json(Program* program) const {
+  if (is_block()) {
+    return "\"[]\"";
+  } else if (is_any(program)) {
+    return "\"*\"";
+  }
+
+  std::stringstream result;
+  result << "[";
+  bool first = true;
+  for (int id = 0; id < program->class_bits.length(); id++) {
+    if (!contains(id)) continue;
+    if (first) {
+      first = false;
+    } else {
+      result << ",";
+    }
+    result << id;
+  }
+  result << "]";
+  return result.str();
 }
 
 int TypeSet::size(Program* program) const {

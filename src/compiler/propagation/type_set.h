@@ -15,6 +15,8 @@
 
 #pragma once
 
+#include <string>
+
 #include "../../top.h"
 #include "../../objects.h"
 #include "../../program.h"
@@ -120,6 +122,8 @@ class TypeSet {
     bits_[0] &= ~1;  // Clear LSB.
     ASSERT(!is_block());
   }
+
+  std::string as_json(Program* program) const;
 
   void print(Program* program, const char* banner);
 

@@ -23,6 +23,8 @@
 #include "../../interpreter.h"
 #include "../../printing.h"
 
+#include <sstream>
+
 namespace toit {
 namespace compiler {
 
@@ -67,27 +69,6 @@ TypePropagator::TypePropagator(Program* program)
     : program_(program)
     , words_per_type_(TypeSet::words_per_type(program)) {
   TypePrimitive::set_up();
-}
-
-// TODO(kasper): Move to TypeSet?
-static void print_type_as_json(Program* program, TypeSet type) {
-  if (type.is_any(program)) {
-    printf("\"*\"");
-    return;
-  }
-
-  printf("[");
-  bool first = true;
-  for (int id = 0; id < program->class_bits.length(); id++) {
-    if (!type.contains(id)) continue;
-    if (first) {
-      first = false;
-    } else {
-      printf(",");
-    }
-    printf("%d", id);
-  }
-  printf("]");
 }
 
 void TypePropagator::propagate() {
@@ -141,7 +122,8 @@ void TypePropagator::propagate() {
     last->propagate();
   }
 
-  printf("[\n");
+  std::stringstream out;
+  out << "[\n";
   TypeSet type = stack->get(0);
   bool first = true;
 
@@ -153,12 +135,12 @@ void TypePropagator::propagate() {
     if (first) {
       first = false;
     } else {
-      printf(",\n");
+      out << ",\n";
     }
     int position = program()->absolute_bci_from_bcp(site);
-    printf("  { \"position\": %d, \"type\": ", position);
-    print_type_as_json(program(), type);
-    printf("}");
+    std::string type_string = type.as_json(program());
+    out << "  {\"position\": " << position;
+    out << ", \"type\": " << type_string << "}";
   });
 
   std::unordered_map<uint8*, std::vector<BlockTemplate*>> blocks;
@@ -171,21 +153,21 @@ void TypePropagator::propagate() {
     if (first) {
       first = false;
     } else {
-      printf(",\n");
+      out << ",\n";
     }
 
     MethodTemplate* method = templates[0];
     int position = method->method_id();
-    printf("  { \"position\": %d, \"arguments\": [", position);
+    out << "  {\"position\": " << position;
+    out << ", \"arguments\": [";
 
     int arity = method->arity();
     for (int n = 0; n < arity; n++) {
       type.clear(words_per_type());
-      bool is_block = false;
       for (unsigned i = 0; i < templates.size(); i++) {
         ConcreteType argument_type = templates[i]->argument(n);
         if (argument_type.is_block()) {
-          is_block = true;
+          break;
         } else if (argument_type.is_any()) {
           type.fill(words_per_type());
           break;
@@ -194,28 +176,26 @@ void TypePropagator::propagate() {
         }
       }
       if (n != 0) {
-        printf(",");
+        out << ",";
       }
-      if (is_block) {
-        printf("\"[]\"");
-      } else {
-        print_type_as_json(program(), type);
-      }
+      std::string type_string = type.as_json(program());
+      out << type_string;
     }
-    printf("]}");
+    out << "]}";
   }
 
   for (auto it = blocks.begin(); it != blocks.end(); it++) {
     if (first) {
       first = false;
     } else {
-      printf(",\n");
+      out << ",\n";
     }
     std::vector<BlockTemplate*>& blocks = it->second;
     BlockTemplate* block = blocks[0];
 
     int position = block->method_id(program());
-    printf("  { \"position\": %d, \"arguments\": [\"[]\"", position);
+    out << "  {\"position\": " << position;
+    out << ", \"arguments\": [\"[]\"";
 
     int arity = block->arity();
     for (int n = 1; n < arity; n++) {
@@ -224,13 +204,14 @@ void TypePropagator::propagate() {
         TypeResult* argument = blocks[i]->argument(n);
         type.add_all(argument->type(), words_per_type());
       }
-      printf(",");
-      print_type_as_json(program(), type);
+      std::string type_string = type.as_json(program());
+      out << "," << type_string;
     }
-    printf("]}");
+    out << "]}";
   }
 
-  printf("\n]\n");
+  out << "\n]\n";
+  printf("%s", out.str().c_str());
   delete stack;
 }
 
