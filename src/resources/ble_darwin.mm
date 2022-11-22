@@ -817,7 +817,7 @@ PRIMITIVE(scan_next) {
   DiscoveredPeripheral* peripheral = central_manager->next_discovered_peripheral();
   if (!peripheral) return process->program()->null_object();
 
-  Array* array = process->object_heap()->allocate_array(6, process->program()->null_object());
+  Array* array = process->object_heap()->allocate_array(7, process->program()->null_object());
   if (!array) ALLOCATION_FAILED;
 
   const char* address = [[[peripheral->peripheral() identifier] UUIDString] UTF8String];
@@ -868,8 +868,10 @@ PRIMITIVE(scan_next) {
     array->at_put(4, custom_data);
   }
 
+  array->at_put(5, Smi::from(0)); // flags not available on Darwin
+
   NSNumber* is_connectable = peripheral->connectable();
-  array->at_put(5, (is_connectable != nil && is_connectable.boolValue == YES)
+  array->at_put(6, (is_connectable != nil && is_connectable.boolValue == YES)
                    ? process->program()->true_object()
                    : process->program()->false_object());
 
@@ -1111,9 +1113,10 @@ PRIMITIVE(set_characteristic_notify) {
 
 PRIMITIVE(advertise_start) {
   ARGS(BLEPeripheralManagerResource, peripheral_manager, Blob, name, Array, service_classes,
-       Blob, manufacturing_data, int, interval_us, int, conn_mode);
+       Blob, manufacturing_data, int, interval_us, int, conn_mode, int, flags);
   USE(interval_us);
   USE(conn_mode);
+  USE(flags);
 
   NSMutableDictionary* data = [NSMutableDictionary new];
 
