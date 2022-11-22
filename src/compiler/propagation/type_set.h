@@ -20,7 +20,6 @@
 #include "../../program.h"
 
 namespace toit {
-
 namespace compiler {
 
 class BlockTemplate;
@@ -140,5 +139,5 @@ class TypeSet {
   friend class TypeResult;
 };
 
-}
-}
+}  // namespace toit::compiler
+}  // namespace toit

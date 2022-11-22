@@ -14,7 +14,6 @@
 // directory of this repository.
 
 #include "type_set.h"
-#include "../../program.h"
 
 namespace toit {
 namespace compiler {
