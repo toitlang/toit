@@ -26,8 +26,8 @@ main:
 
   map.do: | algorithm tests |
     tests.do: | test/Test |
-      if algorithm == "AES-128-GCM":
-        test_aes_128_gcm test
+      if algorithm == "AES-128-GCM" or algorithm == "AES-192-GCM" or algorithm == "AES-256-GCM":
+        test_aes_gcm test
       else if algorithm == "AES-128-ECB" or algorithm == "AES-192-ECB" or algorithm == "AES-256-ECB":
         test_aes test --ecb
       else if algorithm == "AES-128-CBC" or algorithm == "AES-192-CBC" or algorithm == "AES-256-CBC":
@@ -93,7 +93,7 @@ test_aes test/Test --ecb/bool=false --cbc/bool=false -> none:
   plain_text := decryptor.decrypt expected_cipher_text
   expect_equals expected_plain_text plain_text
 
-test_aes_128_gcm test/Test -> none:
+test_aes_gcm test/Test -> none:
   key := test.data[0]
   nonce := test.data[1]
   expected_plain_text := test.data[2]
@@ -103,9 +103,11 @@ test_aes_128_gcm test/Test -> none:
 
   // We don't currently support IVs that are not 96 bits.
   // The algorithm for this is no longer recommended.
-  if nonce.size != 12: return
+  if nonce.size != 12:
+    print "$test.source, $test.line_number, AES-$(key.size * 8)-GCM nonce has wrong size - $(nonce.size * 8) bits"
+    return
 
-  print "$test.source, $test.line_number, GCM, $test.comment"
+  print "$test.source, $test.line_number, AES-$(key.size * 8)-GCM, $test.comment"
 
   // Use the simple all-at-once methods that just append the verification
   // tag to the ciphertext.

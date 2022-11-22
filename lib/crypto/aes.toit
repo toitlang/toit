@@ -160,7 +160,7 @@ class AesEcb extends Aes:
   close_aes_ -> none:
     aes_ecb_close_ aes_
 
-ALGORITHM_AES_128_GCM_SHA256 ::= 0
+ALGORITHM_AES_GCM_SHA256 ::= 0
 
 /**
 Encryptor/decryptor for Galois/Counter Mode of AES, an encryption mode that is
@@ -181,23 +181,23 @@ class AesGcm:
 
   /**
   Initialize a AesGcm AEAD class for encryption.
-  The $key should be a 128 bit AES key.
+  The $key should be a 16, 24, or 32 bytes of AES key.
   The $initialization_vector should be 12 bytes of data.  It is extremely
     important that the initialization_vector is not reused with the same key.
     The initialization_vector must be known to the decrypting counterparty.
   */
-  constructor.encryptor key/ByteArray initialization_vector/ByteArray --algorithm/int=ALGORITHM_AES_128_GCM_SHA256:
+  constructor.encryptor key/ByteArray initialization_vector/ByteArray --algorithm/int=ALGORITHM_AES_GCM_SHA256:
     gcm_aes_ = gcm_init_ resource_freeing_module_ key algorithm true
     initialization_vector_ = initialization_vector
     add_finalizer this:: this.close
 
   /**
   Initialize a AesGcm AEAD class for encryption or decryption.
-  The $key should be a 128 bit AES key.
+  The $key should be a 16, 24, or 32 bit AES key.
   The $initialization_vector should be 12 bytes of data, obtained from the
     encrypting counterparty.
   */
-  constructor.decryptor key/ByteArray initialization_vector/ByteArray --algorithm/int=ALGORITHM_AES_128_GCM_SHA256:
+  constructor.decryptor key/ByteArray initialization_vector/ByteArray --algorithm/int=ALGORITHM_AES_GCM_SHA256:
     gcm_aes_ = gcm_init_ resource_freeing_module_ key algorithm false
     initialization_vector_ = initialization_vector
     add_finalizer this:: this.close

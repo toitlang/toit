@@ -130,14 +130,14 @@ PRIMITIVE(gcm_init) {
     INVALID_ARGUMENT;
   }
 
-  if (key.length() != GcmContext::KEY_SIZE) INVALID_ARGUMENT;
+  if (key.length() != 16 && key.length() != 24 && key.length() != 32) INVALID_ARGUMENT;
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;
 
   mbedtls_cipher_id_t mbedtls_cipher;
 
-  if (algorithm == ALGORITHM_AES_128_GCM_SHA256) {
+  if (algorithm == ALGORITHM_AES_GCM_SHA256) {
     mbedtls_cipher = MBEDTLS_CIPHER_ID_AES;
   } else {
     INVALID_ARGUMENT;
@@ -145,7 +145,6 @@ PRIMITIVE(gcm_init) {
 
   GcmContext* gcm_context = _new GcmContext(
       group,
-      key.address(),
       mbedtls_cipher,
       encrypt);
 
@@ -153,10 +152,7 @@ PRIMITIVE(gcm_init) {
     MALLOC_FAILED;
   }
 
-  // From here, the copy of the key is managed by the GcmContext and we do not
-  // free it explicitly on error.
-
-  int err = mbedtls_gcm_setkey(gcm_context->gcm_context(), mbedtls_cipher, gcm_context->key(), GcmContext::KEY_SIZE * BYTE_BIT_SIZE);
+  int err = mbedtls_gcm_setkey(gcm_context->gcm_context(), mbedtls_cipher, key.address(), key.length() * BYTE_BIT_SIZE);
   if (err != 0) {
     group->unregister_resource(gcm_context);
     return tls_error(null, process, err);
