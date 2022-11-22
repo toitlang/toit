@@ -71,6 +71,7 @@ class Stack_:
 
 /**
 A Boolean value.
+See also https://docs.toit.io/language/booleans.
 */
 class bool:
 
@@ -92,7 +93,7 @@ class Null_:
     return "null"
 
 /**
-A lambda.
+A lambda, or closure.
 
 Use this as a type for Lambdas (`:: ...`).
 
@@ -100,7 +101,7 @@ Lambdas are also known as closures in other languages.
 
 Lambdas are executable pieces of code that can be passed around in a
   program and called for execution. A lambda can reference globals,
-  fields, and variables.
+  fields, and variables.  Local variables can be captured.
 
 # Aliases
 - Closure
@@ -112,6 +113,8 @@ Lambdas and blocks both represent some code that can be called at a later point.
 
 When a lambda is called, the function that created it might not be alive anymore. As such,
   lambdas can not use non-local returns.
+
+See also https://docs.toit.io/language/tasks.
 */
 class Lambda:
   method_ ::= ?
