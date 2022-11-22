@@ -17,6 +17,9 @@
 
 #include "type_set.h"
 
+#include "../map.h"
+#include "../set.h"
+
 #include "../../top.h"
 #include "../../objects.h"
 
@@ -96,7 +99,7 @@ class TypeResult {
   uword* const bits_;
   TypeSet type_;
 
-  std::vector<MethodTemplate*> users_;
+  Set<MethodTemplate*> users_;
 };
 
 class TypeStack {
@@ -238,7 +241,8 @@ class TypePropagator {
  private:
   Program* const program_;
   int words_per_type_;
-  std::unordered_map<uint8*, std::vector<TypeResult*>> sites_;
+
+  Map<uint8*, Set<TypeResult*>> sites_;
 
   std::unordered_map<uint8*, std::vector<MethodTemplate*>> templates_;
   std::unordered_map<int, TypeResult*> globals_;

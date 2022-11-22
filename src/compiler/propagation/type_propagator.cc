@@ -145,23 +145,21 @@ void TypePropagator::propagate() {
   TypeSet type = stack->get(0);
   bool first = true;
 
-  for (auto it = sites_.begin(); it != sites_.end(); it++) {
+  sites_.for_each([&](uint8* site, Set<TypeResult*>& results) {
     type.clear(words_per_type());
-    std::vector<TypeResult*>& sites = it->second;
-    for (unsigned i = 0; i < sites.size(); i++) {
-      TypeResult* result = sites[i];
-      type.add_all(result->type(), words_per_type());
+    for (auto it = results.begin(); it != results.end(); it++) {
+      type.add_all((*it)->type(), words_per_type());
     }
     if (first) {
       first = false;
     } else {
       printf(",\n");
     }
-    int position = program()->absolute_bci_from_bcp(it->first);
+    int position = program()->absolute_bci_from_bcp(site);
     printf("  { \"position\": %d, \"type\": ", position);
     print_type_as_json(program(), type);
     printf("}");
-  }
+  });
 
   std::unordered_map<uint8*, std::vector<BlockTemplate*>> blocks;
   for (auto it = templates_.begin(); it != templates_.end(); it++) {
@@ -245,17 +243,6 @@ void TypePropagator::call_method(
   int arity = target.arity();
   int index = arguments.size();
   if (index == arity) {
-    if (false) {
-      printf("[%p - invoke method:", site);
-      for (unsigned i = 0; i < arguments.size(); i++) {
-        if (arguments[i].is_block()) {
-          printf(" %p", arguments[i].block());
-        } else {
-          printf(" %d", arguments[i].id());
-        }
-      }
-      printf("]\n");
-    }
     MethodTemplate* callee = find(target, arguments);
     TypeSet result = callee->call(this, caller, site);
     stack->merge_top(result);
@@ -396,19 +383,7 @@ void TypePropagator::enqueue(MethodTemplate* method) {
 }
 
 void TypePropagator::add_site(uint8* site, TypeResult* result) {
-  auto it = sites_.find(site);
-  if (it == sites_.end()) {
-    std::vector<TypeResult*> sites;
-    sites.push_back(result);
-    sites_[site] = sites;
-    return;
-  }
-  std::vector<TypeResult*>& sites = it->second;
-  for (unsigned i = 0; i < sites.size(); i++) {
-    TypeResult* candidate = sites[i];
-    if (result == candidate) return;
-  }
-  sites.push_back(result);
+  sites_[site].insert(result);
 }
 
 MethodTemplate* TypePropagator::find(Method target, std::vector<ConcreteType> arguments) {
@@ -443,14 +418,14 @@ MethodTemplate* TypePropagator::instantiate(Method method, std::vector<ConcreteT
 
 TypeSet TypeResult::use(TypePropagator* propagator, MethodTemplate* user, uint8* site) {
   if (site) propagator->add_site(site, this);
-  users_.push_back(user);
+  users_.insert(user);
   return type();
 }
 
 bool TypeResult::merge(TypePropagator* propagator, TypeSet other) {
   if (!type_.add_all(other, words_per_type_)) return false;
-  for (unsigned i = 0; i < users_.size(); i++) {
-    propagator->enqueue(users_[i]);
+  for (auto it = users_.begin(); it != users_.end(); it++) {
+    propagator->enqueue(*it);
   }
   return true;
 }
@@ -1119,11 +1094,7 @@ int MethodTemplate::method_id() const {
   return propagator_->program()->absolute_bci_from_bcp(method_.header_bcp());
 }
 
-static int MTL = 0;
 void MethodTemplate::propagate() {
-  if (false) printf("[propagating types through %p (%d)]\n", method_.entry(), MTL);
-  MTL++;
-
   int words_per_type = propagator_->words_per_type();
   int sp = method_.arity() + Interpreter::FRAME_SIZE;
   TypeStack* stack = new TypeStack(sp - 1, sp + method_.max_height() + 1, words_per_type);
@@ -1132,12 +1103,9 @@ void MethodTemplate::propagate() {
   Worklist worklist(method_.entry(), stack);
   while (worklist.has_next()) {
     WorkItem item = worklist.next();
-    if (false) printf("  --- %p\n", item.bcp);
     process(this, item.bcp, item.stack, worklist);
     delete item.stack;
   }
-
-  MTL--;
 }
 
 int BlockTemplate::method_id(Program* program) const {
@@ -1145,8 +1113,6 @@ int BlockTemplate::method_id(Program* program) const {
 }
 
 void BlockTemplate::propagate(MethodTemplate* context, TypeStack* outer) {
-  if (false) printf("[propagating types through block %p]\n", method_.entry());
-
   int words_per_type = context->propagator()->words_per_type();
   int sp = method_.arity() + Interpreter::FRAME_SIZE;
   TypeStack* stack = new TypeStack(sp - 1, sp + method_.max_height() + 1, words_per_type);
@@ -1166,7 +1132,6 @@ void BlockTemplate::propagate(MethodTemplate* context, TypeStack* outer) {
   Worklist worklist(method_.entry(), stack);
   while (worklist.has_next()) {
     WorkItem item = worklist.next();
-    if (false) printf("  --- %p\n", item.bcp);
     process(context, item.bcp, item.stack, worklist);
     delete item.stack;
   }

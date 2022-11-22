@@ -26,16 +26,13 @@ import .snapshot
 main args:
   command := null
   command = cli.Command "root"
-      --short_help="Shows propagated types"
-      --long_help="""
-        ...
-        """
+      --short_help="Dumps propagated types"
       --options=[
         cli.OptionString "snapshot" --required --short_name="s"
             --short_help="The snapshot file for the program"
             --type="file",
         cli.OptionString "types" --required --short_name="t"
-            --short_help="..."
+            --short_help="The collected types in a JSON file"
             --type="file",
         cli.Flag "sdk"
             --short_help="Show types for the sdk"
