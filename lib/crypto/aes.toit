@@ -175,6 +175,10 @@ class AesGcm:
   initialization_vector_ /ByteArray := ?
   buffer_ /ByteArray? := null
 
+  static IV_SIZE ::= 12
+  static TAG_SIZE ::= 16
+  static BLOCK_SIZE_ ::= 16
+
   /**
   Initialize a AesGcm AEAD class for encryption.
   The $key should be a 128 bit AES key.
@@ -190,7 +194,8 @@ class AesGcm:
   /**
   Initialize a AesGcm AEAD class for encryption or decryption.
   The $key should be a 128 bit AES key.
-  The $initialization_vector should be 12 bytes of data, obtained from the encrypting counterparty.
+  The $initialization_vector should be 12 bytes of data, obtained from the
+    encrypting counterparty.
   */
   constructor.decryptor key/ByteArray initialization_vector/ByteArray --algorithm/int=ALGORITHM_AES_128_GCM_SHA256:
     gcm_aes_ = gcm_init_ resource_freeing_module_ key algorithm false
@@ -198,16 +203,17 @@ class AesGcm:
     add_finalizer this:: this.close
 
   /**
-  Encrypts the given $plain_text with the given initialization_vector.
+  Encrypts the given $plain_text.
   The plain_text should be a ByteArray or a string.
   If provided, the $authenticated_data is data that takes part in the
     verification tag, but does not get encrypted.
-  Returns the encrypted plain_text.  The verification tag, 16 bytes, is appended to the result.
+  Returns the encrypted plain_text.  The verification tag, 16 bytes, is
+    appended to the result.
   */
   encrypt plain_text --authenticated_data="" -> ByteArray:
     if not gcm_aes_: throw "ALREADY_CLOSED"
 
-    result := ByteArray plain_text.size + 16
+    result := ByteArray plain_text.size + TAG_SIZE
 
     gcm_start_message_ gcm_aes_ plain_text.size authenticated_data initialization_vector_
     bytes /int := gcm_add_ gcm_aes_ plain_text result
@@ -218,14 +224,14 @@ class AesGcm:
     return result
 
   /**
-  Decrypts the given $cipher_text with the given initialization_vector.
-  The $verification_tag, 16 bytes, is checked and an exception is thrown if it fails.
-  If the verification_tag is not provided, it is assumed to be appended to the $cipher_text.
+  Decrypts the given $cipher_text.
+  The $verification_tag, 16 bytes, is checked and an exception is thrown if it
+    fails.
+  If the verification_tag is not provided, it is assumed to be appended to the
+    $cipher_text.
   */
   decrypt cipher_text/ByteArray --authenticated_data="" --verification_tag/ByteArray?=null -> ByteArray:
     if not gcm_aes_: throw "ALREADY_CLOSED"
-
-    buffer := ByteArray 128
 
     if not verification_tag:
       edge := cipher_text.size - 16
@@ -243,11 +249,11 @@ class AesGcm:
     return result
 
   /**
-  Starts an encryption or decryption with the given initialization_vector.
+  Starts an encryption or decryption.
   After calling this method, the $add method can be used to encrypt or decrypt
     a ByteArray.
   When decrypting it is vital that the decrypted data is not used in any way
-    before the verification tag has been verified.
+    before the verification tag has been verified with a call to $verify.
   */
   start --length/int --authenticated_data="" -> none:
     gcm_start_message_ gcm_aes_ length authenticated_data initialization_vector_
@@ -260,7 +266,7 @@ class AesGcm:
   The returned ByteArray can be regarded as fresh, though it may be one of the
     ByteArrays previously passed to this function.
   When decrypting it is vital that the decrypted data is not used in any way
-    before the verification tag has been verified.
+    before the verification tag has been verified with a call to $verify.
   */
   add data/ByteArray -> ByteArray:
     if buffer_:
@@ -270,7 +276,7 @@ class AesGcm:
         buffer_ = data
         return result
     // Output buffer was too small.  Make one that is certainly big enough.
-    result := ByteArray data.size + 16
+    result := ByteArray data.size + BLOCK_SIZE_
     bytes /int := gcm_add_ gcm_aes_ data result
     if buffer_ == null or data.size > buffer_.size: buffer_ = data
     return result[..bytes]
@@ -317,8 +323,10 @@ gcm_start_message_ gcm length/int authenticated_data initialization_vector/ByteA
   #primitive.crypto.gcm_start_message
 
 /**
-If the result byte array was big enough, returns a Smi to indicate how much data was placed in it.
-If the result byte array was not big enough, returns null.  In this case no data was consumed.
+If the result byte array was big enough, returns a Smi to indicate how much
+  data was placed in it.
+If the result byte array was not big enough, returns null.  In this case no
+  data was consumed.
 */
 gcm_add_ gcm data result/ByteArray -> int?:
   #primitive.crypto.gcm_add

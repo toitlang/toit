@@ -181,13 +181,6 @@ hamming_test:
             null
             hamming.fix_16_11 correct ^ (1 << bit_flip_1) ^ (1 << bit_flip_2)
 
-increment initialization_vector/ByteArray:
-  position := initialization_vector.size - 8
-  BIG_ENDIAN.put_int64
-      initialization_vector
-      position
-      BIG_ENDIAN.int64 initialization_vector position
-
 aead_simple_test:
   key := ByteArray 16: random 256
   initialization_vector := ByteArray 12: random 256

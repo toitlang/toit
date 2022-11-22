@@ -1130,7 +1130,6 @@ namespace toit {
 #define UNIMPLEMENTED_PRIMITIVE return Primitive::mark_as_error(process->program()->unimplemented())
 #define WRONG_TYPE return Primitive::mark_as_error(process->program()->wrong_object_type())
 #define ALREADY_CLOSED return Primitive::mark_as_error(process->program()->already_closed())
-#define INVALID_SIGNATURE return Primitive::mark_as_error(process->program()->invalid_signature())
 
 #define OTHER_ERROR return Primitive::mark_as_error(process->program()->error())
 

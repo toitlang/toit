@@ -12,7 +12,7 @@ import crypto.sha256 show *
 
 class Test:
   data /List
-  line_number /int
+  line_number /string
   comment /string
 
   constructor .data .line_number .comment:
@@ -43,9 +43,9 @@ read_file map/Map filename/string -> none:
       if line.starts_with "#":
         current_comment = line[1..].trim
       else:
-        add_line line current_comment line_number map
+        add_line line current_comment "line $line_number" map
 
-add_line line/string current_comment/string line_number/int map/Map -> none:
+add_line line/string current_comment/string line_number/string map/Map -> none:
   line = line.trim
   colon := line.index_of ":"
   algo := line[..colon].to_ascii_upper
@@ -75,7 +75,7 @@ test_aes_128_gcm test/Test -> none:
   // The algorithm for this is no longer recommended.
   if nonce.size != 12: return
 
-  print "$test.comment (line $test.line_number)"
+  print "$test.comment ($test.line_number)"
 
   // Use the simple all-at-once methods that just append the verification
   // tag to the ciphertext.
@@ -148,7 +148,7 @@ test_aes_128_gcm test/Test -> none:
 
 add_fragility_tests map/Map:
   comment := "From 'The fragility of AES-GCM authentication algorithm' by Shay Gueron and Vlad Krasnov"
-  line_number := 3  // Actually figure number 3.
+  figure := "figure 3"
   key := "3da6c536d6295579c0959a7043efb503"
   iv := "2b926197d34e091ef722db94"
   aad := """
@@ -158,9 +158,9 @@ add_fragility_tests map/Map:
       202122232425262728292a2b2c2d2e2f\
       303132333435363738393a3b3c3d3e3f"""
   tag := "69dd586555ce3fcc89663801a71d957b"
-  add_line "AES-128-GCM:$key:$iv:::$aad:$tag" comment line_number map
+  add_line "AES-128-GCM:$key:$iv:::$aad:$tag" comment figure map
 
-  line_number = 5  // Actually figure number 5.
+  figure = "figure 5"
   key = "84d5733dc8b6f9184dcb9eba2f2cb9f0"
   iv = "35d319a903b6f43adbe915a8"
   aad = """
@@ -173,4 +173,4 @@ add_fragility_tests map/Map:
       00000000000000000000000000000000\
       707172737475767778797a7b7c7d7e7f"""
   tag = "ed1b32c63ee51ea90320235df0b93cdc"
-  add_line "AES-128-GCM:$key:$iv:::$aad:$tag" comment line_number map
+  add_line "AES-128-GCM:$key:$iv:::$aad:$tag" comment figure map

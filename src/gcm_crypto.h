@@ -28,9 +28,6 @@ namespace toit {
   GCM is a mode for crypto operations that supports AEAD (Authenticated
   encryption with associated data).  This is used for popular TLS symmetric
   (post-handshake) crypto operations like TLS_AES_128_GCM_SHA256.
-
-  Associated data is not currently supported (data that is authenticated, but
-  not encrypted).
 */
 class GcmContext : public SimpleResource {
  public:

@@ -96,7 +96,6 @@ set(TOIT_GENERIC_FLAGS "${TOIT_GENERIC_FLAGS} -Wall -ffunction-sections -fdata-s
 
 include_directories(
   "${IDF_PATH}/components/mbedtls/mbedtls/include"
-  "${IDF_PATH}/components/mbedtls/psa/include"
   )
 
 if (DEFINED USE_LWIP)
