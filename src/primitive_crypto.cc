@@ -13,16 +13,18 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+#include "mbedtls/gcm.h"
+
 #include "aes.h"
 #include "objects.h"
 #include "objects_inline.h"
 #include "primitive.h"
 #include "process.h"
-#include "gcm_crypto.h"
 #include "resource.h"
 #include "sha1.h"
 #include "sha256.h"
 #include "siphash.h"
+#include "tags.h"
 
 namespace toit {
 
@@ -119,6 +121,57 @@ PRIMITIVE(siphash_get) {
   siphash_proxy->clear_external_address();
   return result;
 }
+
+/**
+GCM is a mode for crypto operations that supports AEAD (Authenticated
+  encryption with associated data).  This is used for popular TLS symmetric
+  (post-handshake) crypto operations like TLS_AES_128_GCM_SHA256.
+*/
+class GcmContext : public SimpleResource {
+ public:
+  TAG(GcmContext);
+  // The cipher_id must currently be MBEDTLS_CIPHER_ID_AES.
+  GcmContext(SimpleResourceGroup* group, mbedtls_cipher_id_t cipher_id, bool encrypt)
+      : SimpleResource(group)
+      , cipher_id_(cipher_id)
+      , encrypt_(encrypt) {
+    mbedtls_gcm_init(&context_);
+  }
+
+  virtual ~GcmContext();
+
+  static const int NONCE_SIZE = 12;
+  static const int BLOCK_SIZE = 16;
+  static const int TAG_SIZE = 16;
+
+  inline mbedtls_gcm_context* gcm_context() { return &context_; }
+  inline mbedtls_cipher_id_t cipher_id() const { return cipher_id_; }
+  inline bool is_encrypt() const { return encrypt_; }
+  inline bool currently_generating_message() const { return currently_generating_message_; }
+  inline void set_currently_generating_message() { currently_generating_message_ = true; }
+  inline void increment_length(int by) { length_ += by; }
+  inline uint8* buffered_data() { return buffered_data_; }
+  inline int number_of_buffered_bytes() const { return length_ & (BLOCK_SIZE - 1); }
+
+ private:
+  uint8 buffered_data_[BLOCK_SIZE];
+  bool currently_generating_message_ = false;
+  uint64_t length_ = 0;
+  mbedtls_cipher_id_t cipher_id_;
+  bool encrypt_;
+  mbedtls_gcm_context context_;
+};
+
+// These numbers must stay in sync with constants in primitive_crypto.cc.
+enum GcmAlgorithmType {
+  ALGORITHM_AES_GCM_SHA256 = 0,
+  NUMBER_OF_ALGORITHM_TYPES = 1
+};
+
+class MbedTLSResourceGroup;
+
+// From resources/tls.cc.
+extern Object* tls_error(MbedTLSResourceGroup* group, Process* process, int err);
 
 GcmContext::~GcmContext(){
   mbedtls_gcm_free(&context_);
