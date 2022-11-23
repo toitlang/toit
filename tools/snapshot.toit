@@ -1409,8 +1409,9 @@ class MethodSegment extends MapSegment:
     name  := read_string_
     holder_name /string? := read_string_
     if holder_name == "": holder_name = null
-    absolute_path  := read_string_
-    path  := read_string_
+    absolute_path  := read_string_.replace "\\" "/"
+    // Map the path to UNIX style.
+    path  := read_string_.replace "\\" "/"
     position := read_position_
     bytecode_positions := read_bytecode_positions_
     as_class_names := read_as_class_names_
