@@ -13,6 +13,8 @@
 // The license can be found in the file `LICENSE` in the top level
 // directory of this repository.
 
+#pragma once
+
 #include "../top.h"
 
 #if defined(TOIT_WINDOWS)
@@ -30,6 +32,7 @@ class WindowsResource : public Resource {
   virtual std::vector<HANDLE> events() = 0;
   virtual uint32_t on_event(HANDLE event, uint32_t state) = 0;
   virtual void do_close() = 0;
+  virtual bool is_event_enabled(HANDLE event) { return true; }
 };
 
 class WindowsEventThread;
@@ -37,7 +40,7 @@ class WindowsResourceEvent;
 
 class WindowsEventSource :  public LazyEventSource {
  public:
-  static WindowsEventSource* instance() { return _instance; }
+  static WindowsEventSource* instance() { return instance_; }
 
   WindowsEventSource();
   ~WindowsEventSource() override;
@@ -53,10 +56,10 @@ class WindowsEventSource :  public LazyEventSource {
   void on_register_resource(Locker& locker, Resource* r) override;
   void on_unregister_resource(Locker& locker, Resource* r) override;
 
-  static WindowsEventSource* _instance;
+  static WindowsEventSource* instance_;
 
-  std::vector<WindowsEventThread*> _threads;
-  std::unordered_multimap<WindowsResource*, WindowsResourceEvent*> _resource_events;
+  std::vector<WindowsEventThread*> threads_;
+  std::unordered_multimap<WindowsResource*, WindowsResourceEvent*> resource_events_;
 };
 
 }

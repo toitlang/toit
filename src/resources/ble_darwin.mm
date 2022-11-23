@@ -19,6 +19,7 @@
 
 #include "../objects.h"
 #include "../objects_inline.h"
+#include "../utils.h"
 #include "../event_sources/ble_host.h"
 
 #undef BOOL
@@ -37,12 +38,22 @@ class BLEResourceGroup : public ResourceGroup {
       : ResourceGroup(process, HostBLEEventSource::instance()) {
   }
 
+  void tear_down() override {
+    tearing_down_ = true;
+    ResourceGroup::tear_down();
+  }
+
+  bool is_tearing_down() const { return tearing_down_; }
+
  protected:
   uint32_t on_event(Resource* resource, word data, uint32_t state) override {
     USE(resource);
     state |= data;
     return state;
   }
+
+ private:
+  bool tearing_down_ = false;
 };
 
 class BLECharacteristicResource;
@@ -111,7 +122,7 @@ class BLEServiceResource: public BLEResource, public DiscoverableResource {
  public:
   TAG(BLEServiceResource);
 
-  BLEServiceResource(BLEResourceGroup* group, BLERemoteDeviceResource *device, CBService* service)
+  BLEServiceResource(BLEResourceGroup* group, BLERemoteDeviceResource* device, CBService* service)
     : BLEResource(group, SERVICE)
     , _service([service retain])
     , _device(device)
@@ -152,7 +163,7 @@ class CharacteristicData;
 typedef DoubleLinkedList<CharacteristicData> CharacteristicDataList;
 class CharacteristicData: public CharacteristicDataList::Element {
  public:
-  explicit CharacteristicData(NSData *data): _data([data retain]) {}
+  explicit CharacteristicData(NSData* data): _data([data retain]) {}
   ~CharacteristicData() { [_data release]; }
   NSData* data() { return _data; }
  private:
@@ -163,7 +174,7 @@ class BLECharacteristicResource : public BLEResource, public DiscoverableResourc
  public:
   TAG(BLECharacteristicResource);
 
-  BLECharacteristicResource(BLEResourceGroup* group, BLEServiceResource *service, CBCharacteristic* characteristic)
+  BLECharacteristicResource(BLEResourceGroup* group, BLEServiceResource* service, CBCharacteristic* characteristic)
       : BLEResource(group, CHARACTERISTIC)
       , _characteristic([characteristic retain])
       , _characteristic_data_list()
@@ -191,7 +202,7 @@ class BLECharacteristicResource : public BLEResource, public DiscoverableResourc
     _characteristic_data_list.append(_new CharacteristicData(data));
   }
 
-  CharacteristicData *remove_first() {
+  CharacteristicData* remove_first() {
     return _characteristic_data_list.remove_first();
   }
 
@@ -201,11 +212,11 @@ class BLECharacteristicResource : public BLEResource, public DiscoverableResourc
 
   BLEServiceResource* service() { return _service; }
 
-  void add_central(CBCentral *central) {
+  void add_central(CBCentral* central) {
     [_subscriptions addObject:[central retain]];
   }
 
-  void remove_central(CBCentral *central) {
+  void remove_central(CBCentral* central) {
     [_subscriptions removeObjectIdenticalTo:central];
   }
 
@@ -264,8 +275,8 @@ class DiscoveredPeripheral : public DiscoveredPeripheralList::Element {
 class BLECentralManagerResource : public  BLEResource {
  public:
   TAG(BLECentralManagerResource);
-  
-  explicit BLECentralManagerResource(BLEResourceGroup *group) 
+
+  explicit BLECentralManagerResource(BLEResourceGroup* group)
       : BLEResource(group, CENTRAL_MANAGER)
       , _scan_mutex(OS::allocate_mutex(1, "scan"))
       , _stop_scan_condition(OS::allocate_condition_variable(scan_mutex()))
@@ -281,7 +292,7 @@ class BLECentralManagerResource : public  BLEResource {
     OS::dispose(_stop_scan_condition);
     OS::dispose(_scan_mutex);
   }
-  
+
   Mutex* scan_mutex() { return _scan_mutex; }
 
   ConditionVariable* stop_scan_condition() { return _stop_scan_condition; }
@@ -291,7 +302,7 @@ class BLECentralManagerResource : public  BLEResource {
   void set_scan_active(bool scan_active) { _scan_active = scan_active; }
 
   CBCentralManager* central_manager() { return _central_manager; }
-  void set_central_manager(CBCentralManager *central_manager) { _central_manager = [central_manager retain]; }
+  void set_central_manager(CBCentralManager* central_manager) { _central_manager = [central_manager retain]; }
   void add_discovered_peripheral(DiscoveredPeripheral* discoveredPeripheral) {
     if ([_peripherals objectForKey:[discoveredPeripheral->peripheral() identifier]] == nil) {
       _peripherals[[discoveredPeripheral->peripheral() identifier]] = discoveredPeripheral->peripheral();
@@ -310,7 +321,7 @@ class BLECentralManagerResource : public  BLEResource {
   CBPeripheral* get_peripheral(NSUUID* address) {
     return _peripherals[address];
   }
-  
+
  private:
   Mutex* _scan_mutex;
   ConditionVariable* _stop_scan_condition;
@@ -323,8 +334,8 @@ class BLECentralManagerResource : public  BLEResource {
 class BLEPeripheralManagerResource : public ServiceContainer<BLEPeripheralManagerResource> {
  public:
   TAG(BLEPeripheralManagerResource);
-  
-  explicit BLEPeripheralManagerResource(BLEResourceGroup *group) 
+
+  explicit BLEPeripheralManagerResource(BLEResourceGroup* group)
       : ServiceContainer(group, PERIPHERAL_MANAGER)
       , _peripheral_manager(nil)
       , _service_resource_index([[NSMutableDictionary new] retain]) {}
@@ -335,10 +346,10 @@ class BLEPeripheralManagerResource : public ServiceContainer<BLEPeripheralManage
     }
     [_service_resource_index release];
   }
-  
+
   CBPeripheralManager* peripheral_manager() const { return _peripheral_manager; }
-  void set_peripheral_manager(CBPeripheralManager* peripheral_manager) { 
-    _peripheral_manager = [peripheral_manager retain]; 
+  void set_peripheral_manager(CBPeripheralManager* peripheral_manager) {
+    _peripheral_manager = [peripheral_manager retain];
   }
 
   BLEPeripheralManagerResource* type() override {
@@ -571,9 +582,9 @@ didUpdateNotificationStateForCharacteristic:(CBCharacteristic*)characteristic
   didReceiveWriteRequests:(NSArray<CBATTRequest*>*)requests {
   for (int i = 0; i < [requests count]; i++) {
     CBATTRequest* request = requests[i];
-    toit::BLECharacteristicResource* characteristic_resource = 
+    toit::BLECharacteristicResource* characteristic_resource =
         toit::lookup_local_characteristic_resource(peripheral, request.characteristic);
-    
+
     characteristic_resource->append_data(request.value);
     toit::HostBLEEventSource::instance()->on_event(characteristic_resource, toit::kBLEDataReceived);
     [peripheral respondToRequest:request withResult:CBATTErrorSuccess];
@@ -649,9 +660,13 @@ BLEServiceResource* ServiceContainer<T>::get_or_create_service_resource(CBServic
 
 template<typename T>
 void ServiceContainer<T>::make_deletable() {
-  NSArray<BLEResourceHolder*>* services = [_service_resource_index allValues];
-  for (int i = 0; i < [services count]; i++) {
-    group()->unregister_resource(services[i].resource);
+  // Tearing down the resource group will also delete the services (resources) that
+	// this service container holds on to. We don't want to do that twice.
+  if (!group()->is_tearing_down()) {
+    NSArray<BLEResourceHolder*>* services = [_service_resource_index allValues];
+    for (int i = 0; i < [services count]; i++) {
+      group()->unregister_resource(services[i].resource);
+    }
   }
   BLEResource::make_deletable();
 }
@@ -670,9 +685,11 @@ BLECharacteristicResource* BLEServiceResource::get_or_create_characteristic_reso
 }
 
 void BLEServiceResource::make_deletable() {
-  NSArray<BLEResourceHolder*>* characteristics = [_characteristics_resource_index allValues];
-  for (int i = 0; i < [characteristics count]; i++) {
-    group()->unregister_resource(characteristics[i].resource);
+  if (!group()->is_tearing_down()) {
+    NSArray<BLEResourceHolder*>* characteristics = [_characteristics_resource_index allValues];
+    for (int i = 0; i < [characteristics count]; i++) {
+      group()->unregister_resource(characteristics[i].resource);
+    }
   }
   BLEResource::make_deletable();
 }
@@ -707,26 +724,6 @@ NSArray<CBUUID*>* ns_uuid_array_from_array_of_strings(Process* process, Array* a
   return nil;
 }
 
-class AsyncThread : public Thread {
- public:
-  explicit AsyncThread(std::function<void()> func) : Thread("async"), _func(std::move(func)) {
-    spawn();
-  }
-
- protected:
-  void entry() override {
-    _func();
-    delete this;
-  }
-
- private:
-  const std::function<void()> _func;
-};
-
-static void run_async(const std::function<void()> &func) {
-  _new AsyncThread(func);
-}
-
 MODULE_IMPLEMENTATION(ble, MODULE_BLE)
 
 PRIMITIVE(init) {
@@ -750,8 +747,8 @@ PRIMITIVE(create_central_manager) {
 
   auto _centralManagerQueue =
       dispatch_queue_create("toit.centralManagerQueue", DISPATCH_QUEUE_SERIAL);
-  TOITCentralManagerDelegate* delegate = 
-      [[TOITCentralManagerDelegate alloc] 
+  TOITCentralManagerDelegate* delegate =
+      [[TOITCentralManagerDelegate alloc]
           initWithCentralManagerResource:central_manager_resource];
   CBCentralManager* central_manager =
       [[CBCentralManager alloc]
@@ -768,14 +765,14 @@ PRIMITIVE(create_peripheral_manager) {
   ARGS(BLEResourceGroup, group);
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;
-  
-  BLEPeripheralManagerResource *peripheral_manager_resource = _new BLEPeripheralManagerResource(group);
+
+  BLEPeripheralManagerResource* peripheral_manager_resource = _new BLEPeripheralManagerResource(group);
   group->register_resource(peripheral_manager_resource);
 
   auto peripheral_manager_queue =
       dispatch_queue_create("toit.peripheralManagerQueue", DISPATCH_QUEUE_SERIAL);
-  TOITPeripheralManagerDelegate* delegate = 
-      [[TOITPeripheralManagerDelegate alloc] 
+  TOITPeripheralManagerDelegate* delegate =
+      [[TOITPeripheralManagerDelegate alloc]
            initWithPeripheralManagerResource:peripheral_manager_resource];
   CBPeripheralManager* peripheral_manager =
       [[CBPeripheralManager alloc]
@@ -805,7 +802,7 @@ PRIMITIVE(scan_start) {
   central_manager->set_scan_active(true);
   [central_manager->central_manager() scanForPeripheralsWithServices:nil options:nil];
 
-  run_async([=]() -> void {
+  AsyncThread::run_async([=]() -> void {
     LightLocker locker(central_manager->scan_mutex());
     OS::wait_us(central_manager->stop_scan_condition(), duration_us);
     [central_manager->central_manager() stopScan];
@@ -822,7 +819,7 @@ PRIMITIVE(scan_next) {
   DiscoveredPeripheral* peripheral = central_manager->next_discovered_peripheral();
   if (!peripheral) return process->program()->null_object();
 
-  Array* array = process->object_heap()->allocate_array(6, process->program()->null_object());
+  Array* array = process->object_heap()->allocate_array(7, process->program()->null_object());
   if (!array) ALLOCATION_FAILED;
 
   const char* address = [[[peripheral->peripheral() identifier] UUIDString] UTF8String];
@@ -873,10 +870,11 @@ PRIMITIVE(scan_next) {
     array->at_put(4, custom_data);
   }
 
+  array->at_put(5, Smi::from(0)); // Flags are not available on Darwin.
+
   NSNumber* is_connectable = peripheral->connectable();
-  array->at_put(5, (is_connectable != nil && is_connectable.boolValue == YES)
-                   ? process->program()->true_object()
-                   : process->program()->false_object());
+  Program* program = process->program();
+  array->at_put(6, program->boolean(is_connectable != nil && is_connectable.boolValue == YES));
 
   delete peripheral;
 
@@ -967,7 +965,7 @@ PRIMITIVE(discover_services_result) {
 
     String* uuid_str = process->allocate_string([[services[i].UUID UUIDString] UTF8String]);
     if (uuid_str == null) ALLOCATION_FAILED;
-    
+
     Array* service_info = process->object_heap()->allocate_array(2, process->program()->null_object());
     if (service_info == null) ALLOCATION_FAILED;
 
@@ -1116,9 +1114,10 @@ PRIMITIVE(set_characteristic_notify) {
 
 PRIMITIVE(advertise_start) {
   ARGS(BLEPeripheralManagerResource, peripheral_manager, Blob, name, Array, service_classes,
-       Blob, manufacturing_data, int, interval_us, int, conn_mode);
+       Blob, manufacturing_data, int, interval_us, int, conn_mode, int, flags);
   USE(interval_us);
   USE(conn_mode);
+  USE(flags);
 
   NSMutableDictionary* data = [NSMutableDictionary new];
 
@@ -1240,7 +1239,7 @@ PRIMITIVE(notify_characteristics_value) {
   ARGS(BLECharacteristicResource, characteristic_resource, Object, conn_handle, Object, value);
   USE(conn_handle);
 
-  BLEPeripheralManagerResource *peripheral_manager = characteristic_resource->service()->peripheral_manager();
+  BLEPeripheralManagerResource* peripheral_manager = characteristic_resource->service()->peripheral_manager();
   if (!peripheral_manager) WRONG_TYPE;
 
   Blob bytes;

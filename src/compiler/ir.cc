@@ -850,6 +850,7 @@ class Printer : public Visitor {
       case Builtin::LOAD_GLOBAL: name = "load_global"; break;
       case Builtin::INVOKE_INITIALIZER: name = "invoke_initializer"; break;
       case Builtin::GLOBAL_ID: name = "global_id"; break;
+      case Builtin::IDENTICAL: name = "identical"; break;
     }
     printf("Builtin-%s", name);
   }

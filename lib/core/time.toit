@@ -3,7 +3,7 @@
 // found in the lib/LICENSE file.
 
 import encoding.tison
-import .time_impl
+import .time_impl_
 
 /**
 Support for time and durations.

@@ -19,6 +19,7 @@ class TestReader implements reader.Reader:
 main:
   simple
   utf_8
+  consumed
 
 simple:
   r := reader.BufferedReader (TestReader ["H".to_byte_array, "ost: ".to_byte_array])
@@ -86,3 +87,67 @@ split_test ba/ByteArray split_point/int offset/int part_2_size:
   expect_equals null r.read_string
   expect_equals DIFFICULT_STRING
     s1 + s2
+
+class MultiByteArrayReader implements reader.Reader:
+  arrays /List ::= []
+  index /int := 0
+
+  constructor:
+    arrays.add
+        ByteArray 13: it
+    arrays.add
+        ByteArray 1: it + 13
+    arrays.add
+        ByteArray 5: it + 14
+    arrays.add
+        ByteArray 95: it + 19
+    arrays.add
+        ByteArray 12: it + 114
+    arrays.add
+        ByteArray 42: it + 126
+    arrays.add
+        ByteArray 2: it + 168
+    arrays.add
+        ByteArray 29: it + 170
+    arrays.add
+        ByteArray 45: it + 199
+    arrays.add
+        ByteArray 45: it + 244
+    arrays.add
+        ByteArray 10: it + 254
+    arrays.add
+        ByteArray 1: it + 255
+
+  read:
+    return arrays[index++]
+
+consumed:
+  consumed_one_at_a_time
+  consumed_get_and_unget
+  consumed_thirteen_at_a_time
+
+consumed_one_at_a_time:
+  br := reader.BufferedReader MultiByteArrayReader
+  256.repeat:
+    expect_equals it br.consumed
+    expect_equals it br.read_byte
+
+consumed_get_and_unget:
+  br2 := reader.BufferedReader MultiByteArrayReader
+  expected_cursor := 0
+  for i := 0; i < 256; i++:
+    expect_equals expected_cursor i
+    if i + 13 > 256: break
+    br2.read_bytes 13
+    expect_equals (expected_cursor + 13) br2.consumed
+    br2.unget
+        ByteArray 13
+    expect_equals expected_cursor br2.consumed
+    br2.read_byte
+    expected_cursor++
+
+consumed_thirteen_at_a_time:
+  br3 := reader.BufferedReader MultiByteArrayReader
+  for i := 0; i < 256; i += 13:
+    expect_equals i br3.consumed
+    br3.read_bytes 13

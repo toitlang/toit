@@ -58,6 +58,7 @@ namespace toit {
   M(touch,   MODULE_TOUCH)                   \
   M(programs_registry, MODULE_PROGRAMS_REGISTRY) \
   M(flash,   MODULE_FLASH_REGISTRY)          \
+  M(spi_flash, MODULE_SPI_FLASH)             \
   M(file,    MODULE_FILE)                    \
   M(pipe,    MODULE_PIPE)                    \
   M(zlib,    MODULE_ZLIB)                    \
@@ -67,6 +68,7 @@ namespace toit {
   M(flash_kv, MODULE_FLASH_KV)               \
   M(debug,   MODULE_DEBUG)                   \
   M(espnow,  MODULE_ESPNOW)                  \
+  M(bignum,  MODULE_BIGNUM)                  \
 
 #define MODULE_CORE(PRIMITIVE)               \
   PRIMITIVE(write_string_on_stdout, 2)       \
@@ -103,8 +105,6 @@ namespace toit {
   PRIMITIVE(blob_equals, 2)                  \
   PRIMITIVE(string_compare, 2)               \
   PRIMITIVE(string_rune_count, 1)            \
-  PRIMITIVE(object_equals, 2)                \
-  PRIMITIVE(identical, 2)                    \
   PRIMITIVE(random, 0)                       \
   PRIMITIVE(random_seed, 1)                  \
   PRIMITIVE(add_entropy, 1)                  \
@@ -180,10 +180,8 @@ namespace toit {
   PRIMITIVE(task_has_messages, 0)            \
   PRIMITIVE(task_receive_message, 0)         \
   PRIMITIVE(concat_strings, 1)               \
-  PRIMITIVE(task_current, 0)                 \
   PRIMITIVE(task_new, 1)                     \
   PRIMITIVE(task_transfer, 2)                \
-  PRIMITIVE(task_stack, 1)                   \
   PRIMITIVE(gc_count, 0)                     \
   PRIMITIVE(byte_array_is_raw_bytes, 1)      \
   PRIMITIVE(byte_array_length, 1)            \
@@ -340,7 +338,7 @@ namespace toit {
   PRIMITIVE(get_value, 1)                    \
   PRIMITIVE(write_value, 3)                  \
   PRIMITIVE(set_characteristic_notify, 2)    \
-  PRIMITIVE(advertise_start, 6)              \
+  PRIMITIVE(advertise_start, 7)              \
   PRIMITIVE(advertise_stop, 1)               \
   PRIMITIVE(add_service, 2)                  \
   PRIMITIVE(add_characteristic, 5)           \
@@ -578,6 +576,12 @@ namespace toit {
   PRIMITIVE(cancel_reservation, 1)           \
   PRIMITIVE(erase_flash_registry, 0)         \
 
+#define MODULE_SPI_FLASH(PRIMITIVE)          \
+  PRIMITIVE(init_sdcard, 6)                  \
+  PRIMITIVE(init_nor_flash, 7)               \
+  PRIMITIVE(init_nand_flash, 7)              \
+  PRIMITIVE(close, 1)                        \
+
 #define MODULE_FILE(PRIMITIVE)               \
   PRIMITIVE(open, 3)                         \
   PRIMITIVE(read, 1)                         \
@@ -662,6 +666,10 @@ namespace toit {
   PRIMITIVE(receive, 1)                      \
   PRIMITIVE(add_peer, 3)                     \
   PRIMITIVE(deinit, 1)                       \
+
+#define MODULE_BIGNUM(PRIMITIVE)             \
+  PRIMITIVE(binary_operator, 5)              \
+  PRIMITIVE(exp_mod, 6)                      \
 
 // ----------------------------------------------------------------------------
 
@@ -903,6 +911,7 @@ namespace toit {
 #define _A_T_ResourceGroup(N, name)       MAKE_UNPACKING_MACRO(ResourceGroup, N, name)
 #define _A_T_SPIDevice(N, name)           MAKE_UNPACKING_MACRO(SPIDevice, N, name)
 #define _A_T_SPIResourceGroup(N, name)    MAKE_UNPACKING_MACRO(SPIResourceGroup, N, name)
+#define _A_T_SPIFlashResourceGroup(N, name)  MAKE_UNPACKING_MACRO(SPIFlashResourceGroup, N, name)
 #define _A_T_SignalResourceGroup(N, name) MAKE_UNPACKING_MACRO(SignalResourceGroup, N, name)
 #define _A_T_SocketResourceGroup(N, name) MAKE_UNPACKING_MACRO(SocketResourceGroup, N, name)
 #define _A_T_TCPResourceGroup(N, name)    MAKE_UNPACKING_MACRO(TCPResourceGroup, N, name)
@@ -950,6 +959,9 @@ namespace toit {
 #define _A_T_UDPSocketResource(N, name)   MAKE_UNPACKING_MACRO(UDPSocketResource, N, name)
 #define _A_T_TCPSocketResource(N, name)   MAKE_UNPACKING_MACRO(TCPSocketResource, N, name)
 #define _A_T_TCPServerSocketResource(N, name)   MAKE_UNPACKING_MACRO(TCPServerSocketResource, N, name)
+#define _A_T_SubprocessResource(N, name)  MAKE_UNPACKING_MACRO(SubprocessResource, N, name)
+#define _A_T_ReadPipeResource(N, name)    MAKE_UNPACKING_MACRO(ReadPipeResource, N, name)
+#define _A_T_WritePipeResource(N, name)   MAKE_UNPACKING_MACRO(WritePipeResource, N, name)
 #define _A_T_I2SResource(N, name)         MAKE_UNPACKING_MACRO(I2SResource, N, name)
 #define _A_T_AdcResource(N, name)         MAKE_UNPACKING_MACRO(AdcResource, N, name)
 #define _A_T_DacResource(N, name)         MAKE_UNPACKING_MACRO(DacResource, N, name)

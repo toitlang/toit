@@ -601,7 +601,7 @@ Object* nimble_error_code_to_string(Process* process, int error_code, bool host)
   static const size_t BUFFER_LEN = 400;
   char buffer[BUFFER_LEN];
   const char* gist = "https://gist.github.com/mikkeldamsgaard/0857ce6a8b073a52d6f07973a441ad54";
-  int length = snprintf(buffer, BUFFER_LEN, "NimBLE error, Type: %s, error code: 0z%02x. See %s",
+  int length = snprintf(buffer, BUFFER_LEN, "NimBLE error, Type: %s, error code: 0x%02x. See %s",
                         host ? "host" : "client",
                         error_code % 0x100,
                         gist);
@@ -1279,7 +1279,7 @@ PRIMITIVE(scan_next) {
   DiscoveredPeripheral* next = central_manager->get_discovered_peripheral();
   if (!next) return process->program()->null_object();
 
-  Array* array = process->object_heap()->allocate_array(6, process->program()->null_object());
+  Array* array = process->object_heap()->allocate_array(7, process->program()->null_object());
   if (!array) ALLOCATION_FAILED;
 
   ByteArray* id = process->object_heap()->allocate_internal_byte_array(7);
@@ -1338,9 +1338,11 @@ PRIMITIVE(scan_next) {
         memcpy(custom_data_bytes.address(), fields.mfg_data, fields.mfg_data_len);
         array->at_put(4, custom_data);
       }
+
+      array->at_put(5, Smi::from(fields.flags));
     }
 
-    array->at_put(5, BOOL(next->event_type() == BLE_HCI_ADV_RPT_EVTYPE_ADV_IND ||
+    array->at_put(6, BOOL(next->event_type() == BLE_HCI_ADV_RPT_EVTYPE_ADV_IND ||
                           next->event_type() == BLE_HCI_ADV_RPT_EVTYPE_DIR_IND));
   }
 
@@ -1686,7 +1688,7 @@ PRIMITIVE(set_characteristic_notify) {
 
 PRIMITIVE(advertise_start) {
   ARGS(BLEPeripheralManagerResource, peripheral_manager, Blob, name, Array, service_classes,
-       Blob, manufacturing_data, int, interval_us, int, conn_mode)
+       Blob, manufacturing_data, int, interval_us, int, conn_mode, int, flags)
 
   if (BLEPeripheralManagerResource::is_advertising()) ALREADY_EXISTS;
 
@@ -1696,6 +1698,8 @@ PRIMITIVE(advertise_start) {
     fields.name_len = name.length();
     fields.name_is_complete = 1;
   }
+
+  fields.flags = flags;
 
   ble_uuid16_t uuids_16[service_classes->length()];
   ble_uuid32_t uuids_32[service_classes->length()];
@@ -1825,7 +1829,7 @@ PRIMITIVE(add_characteristic) {
 }
 
 PRIMITIVE(add_descriptor) {
-  ARGS(BLECharacteristicResource, characteristic, Blob, raw_uuid, Object, value, int, properties, int, permissions)
+  ARGS(BLECharacteristicResource, characteristic, Blob, raw_uuid, int, properties, int, permissions, Object, value)
 
   if (!characteristic->service()->peripheral_manager()) INVALID_ARGUMENT;
 
@@ -1901,6 +1905,7 @@ PRIMITIVE(deploy_service) {
         MALLOC_FAILED;
       }
 
+      gatt_svr_chars[characteristic_index].descriptors = gatt_desc_defs;
 
       int descriptor_index = 0;
       for (auto descriptor : characteristic->descriptors()) {
@@ -1908,6 +1913,7 @@ PRIMITIVE(deploy_service) {
         gatt_desc_defs[descriptor_index].att_flags = descriptor->properties();
         gatt_desc_defs[descriptor_index].access_cb = BLEReadWriteElement::on_access;
         gatt_desc_defs[descriptor_index].arg = descriptor;
+        descriptor_index++;
       }
     }
     characteristic_index++;

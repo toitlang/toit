@@ -39,8 +39,9 @@ For floats, two NaN's (not-a-number) are identical when they have the same
   `==` where NaN's are never equal, so `float.NAN == float.NAN` is always
   false.
 */
-identical x y:
-  #primitive.core.identical
+identical x/any y/any -> bool:
+  // Recognized by the compiler and implemented as separate bytecode.
+  unreachable
 
 /**
 Returns the min of $a and $b.
@@ -255,6 +256,8 @@ PLATFORM_FREERTOS ::= "FreeRTOS"
 PLATFORM_WINDOWS ::= "Windows"
 PLATFORM_MACOS ::= "macOS"
 PLATFORM_LINUX ::= "Linux"
+
+LINE_TERMINATOR ::= platform == PLATFORM_WINDOWS ? "\r\n" : "\n"
 
 /// Index for $process_stats.
 STATS_INDEX_GC_COUNT                       ::= 0

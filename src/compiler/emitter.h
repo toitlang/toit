@@ -171,6 +171,8 @@ class Emitter {
   void unlink();
   void unwind();
 
+  void identical();
+
   void halt(int yield);
 
   void intrinsic_smi_repeat();

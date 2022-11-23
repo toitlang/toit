@@ -17,7 +17,7 @@
 
 #if defined(TOIT_WINDOWS)
 #include "posix_socket_address.h"
-#include "error_win.h"
+#include "../error_win.h"
 
 #include <windows.h>
 
@@ -229,9 +229,8 @@ PRIMITIVE(bind) {
 
   resource_group->register_resource(resource);
 
-  AutoUnregisteringResource<UDPSocketResource> resource_manager(resource_group, resource);
+  resource_proxy->set_external_address(resource);
 
-  resource_manager.set_external_address(resource_proxy);
   return resource_proxy;
 }
 

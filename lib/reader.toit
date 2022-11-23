@@ -45,6 +45,9 @@ class BufferedReader implements Reader:
   // The position in the first byte array that we got to.
   first_array_position_ := 0
 
+  // The number of bytes in byte arrays that have been used up.
+  base_consumed_ := 0
+
   /*
   Constructs a buffered reader that wraps the given $reader_.
   **/
@@ -53,6 +56,7 @@ class BufferedReader implements Reader:
   /** Clears any buffered data. */
   clear -> none:
     arrays_ = ByteArrayList_
+    base_consumed_ += first_array_position_
     first_array_position_ = 0
 
   /**
@@ -60,6 +64,7 @@ class BufferedReader implements Reader:
     If this is not possible, calls $on_end.
   */
   ensure_ requested [on_end] -> none:
+    if requested < 0: throw "INVALID_ARGUMENT"
     while buffered < requested:
       if not more_: on_end.call
 
@@ -82,7 +87,9 @@ class BufferedReader implements Reader:
 
   add_byte_array_ data -> none:
     arrays_.add data
-    if arrays_.size == 1: first_array_position_ = 0
+    if arrays_.size == 1:
+      base_consumed_ += first_array_position_
+      first_array_position_ = 0
 
   /**
   Ensures that at least $n bytes are available.
@@ -125,6 +132,12 @@ class BufferedReader implements Reader:
     return arrays_.size_in_bytes - first_array_position_
 
   /**
+  The number of bytes that have been consumed from the BufferedReader.
+  */
+  consumed -> int:
+    return base_consumed_ + first_array_position_
+
+  /**
   Skips $n bytes.
 
   # Errors
@@ -142,6 +155,7 @@ class BufferedReader implements Reader:
           return
 
         n -= size
+        base_consumed_ += arrays_.first.size
         first_array_position_ = 0
 
         arrays_.remove_first
@@ -161,6 +175,7 @@ class BufferedReader implements Reader:
   At least $n + 1 bytes must be available.
   */
   byte n -> int:
+    if n < 0: throw "INVALID_ARGUMENT"
     ensure n + 1
     n += first_array_position_
     arrays_.do:
@@ -179,7 +194,9 @@ class BufferedReader implements Reader:
   At least $n bytes must be available.
   */
   bytes n -> ByteArray:
-    if n == 0: return ByteArray 0
+    if n <= 0:
+      if n == 0: return ByteArray 0
+      throw "INVALID_ARGUMENT"
     ensure n
     start := first_array_position_
     first := arrays_.first
@@ -279,6 +296,7 @@ class BufferedReader implements Reader:
       array := arrays_.first
       if first_array_position_ == 0 and (max_size == null or array.size <= max_size):
         arrays_.remove_first
+        base_consumed_ += array.size
         return array
       byte_count := array.size - first_array_position_
       if max_size:
@@ -286,6 +304,7 @@ class BufferedReader implements Reader:
       end := first_array_position_ + byte_count
       result := array[first_array_position_..end]
       if end == array.size:
+        base_consumed_ += array.size
         first_array_position_ = 0
         arrays_.remove_first
       else:
@@ -293,7 +312,9 @@ class BufferedReader implements Reader:
       return result
 
     array := reader_.read
-    if max_size == null or array == null or array.size <= max_size:
+    if array == null: return null
+    if max_size == null or array.size <= max_size:
+      base_consumed_ += array.size
       return array
     arrays_.add array
     first_array_position_ = max_size
@@ -310,15 +331,20 @@ class BufferedReader implements Reader:
   Deprecated.  Use $(read --max_size) instead.
   */
   read_up_to max_size/int -> ByteArray:
+    if max_size < 0: throw "INVALID_ARGUMENT"
     ensure 1
     array := arrays_.first
     if first_array_position_ == 0 and array.size <= max_size:
       arrays_.remove_first
+      base_consumed_ += array.size
       return array
     size := min (array.size - first_array_position_) max_size
     result := array[first_array_position_..first_array_position_ + size]
     first_array_position_ += size
-    if first_array_position_ == array.size: arrays_.remove_first
+    if first_array_position_ == array.size:
+      base_consumed_ += array.size
+      first_array_position_ = 0
+      arrays_.remove_first
     return result
 
   /**
@@ -383,6 +409,7 @@ class BufferedReader implements Reader:
     $max_size should never be zero.
   */
   read_string --max_size/int?=null -> string?:
+    if max_size and max_size < 0: throw "INVALID_ARGUMENT"
     if arrays_.size == 0:
       array := reader_.read
       if array == null: return null
@@ -405,6 +432,7 @@ class BufferedReader implements Reader:
     if not max_size: max_size = buffered
     if first_array_position_ == 0 and array.size <= max_size and array[array.size - 1] <= 0x7f:
       arrays_.remove_first
+      base_consumed_ += array.size
       return array.to_string
 
     size := min buffered max_size
@@ -558,14 +586,17 @@ class BufferedReader implements Reader:
     operations.  This takes ownership of $value so it is kept
     alive and its contents should not be modified after being
     given to the BufferedReader.
+  This causes the $consumed count to go backwards.
   */
   unget value/ByteArray -> none:
     if first_array_position_ != 0:
       first := arrays_.first
       arrays_.remove_first
+      base_consumed_ += first_array_position_
       first = first[first_array_position_..]
       arrays_.prepend first
       first_array_position_ = 0
+    base_consumed_ -= value.size
     arrays_.prepend value
 
 class Element_:
