@@ -105,8 +105,6 @@ namespace toit {
   PRIMITIVE(blob_equals, 2)                  \
   PRIMITIVE(string_compare, 2)               \
   PRIMITIVE(string_rune_count, 1)            \
-  PRIMITIVE(object_equals, 2)                \
-  PRIMITIVE(identical, 2)                    \
   PRIMITIVE(random, 0)                       \
   PRIMITIVE(random_seed, 1)                  \
   PRIMITIVE(add_entropy, 1)                  \
@@ -182,10 +180,8 @@ namespace toit {
   PRIMITIVE(task_has_messages, 0)            \
   PRIMITIVE(task_receive_message, 0)         \
   PRIMITIVE(concat_strings, 1)               \
-  PRIMITIVE(task_current, 0)                 \
   PRIMITIVE(task_new, 1)                     \
   PRIMITIVE(task_transfer, 2)                \
-  PRIMITIVE(task_stack, 1)                   \
   PRIMITIVE(gc_count, 0)                     \
   PRIMITIVE(byte_array_is_raw_bytes, 1)      \
   PRIMITIVE(byte_array_length, 1)            \
