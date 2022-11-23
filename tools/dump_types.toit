@@ -76,9 +76,13 @@ show_types --sdk/bool types/List snapshot_content/ByteArray -> none:
     if nd != 0: continue.sort nd
     continue.sort ia.position.line.compare_to ib.position.line
 
+  first := true
   sorted_methods.do: | method/ToitMethod |
+    if first: first = false
+    else: print ""
     args := method_args.get method.id
-    method.output program args: | position/int | type_strings.get position
+    method.output program args --no-show_positions: | position/int |
+      type_strings.get position
 
 type_string program/Program type/any -> string:
   if type == "[]": return "[block]"

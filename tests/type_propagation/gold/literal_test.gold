@@ -1,27 +1,26 @@
-222: main tests/type_propagation/literal_test.toit:5:1
-  0/ 226 [053] - invoke static get_smi tests/type_propagation/literal_test.toit:10:1 // {SmallInteger_}
-  3/ 229 [041] - pop 1
-  4/ 230 [053] - invoke static get_string tests/type_propagation/literal_test.toit:13:1 // {String_}
-  7/ 233 [041] - pop 1
-  8/ 234 [053] - invoke static get_smi_or_string tests/type_propagation/literal_test.toit:16:1 // {String_|SmallInteger_}
- 11/ 237 [089] - return null S1 0
+main tests/type_propagation/literal_test.toit:5:1
+  0[053] - invoke static get_smi tests/type_propagation/literal_test.toit // {SmallInteger_}
+  3[041] - pop 1
+  4[053] - invoke static get_string tests/type_propagation/literal_test.toit // {String_}
+  7[041] - pop 1
+  8[053] - invoke static get_smi_or_string tests/type_propagation/literal_test.toit // {String_|SmallInteger_}
+ 11[089] - return null S1 0
 
-240: get_smi tests/type_propagation/literal_test.toit:10:1
-  0/ 244 [026] - load smi 42
-  2/ 246 [088] - return S1 0
+get_smi tests/type_propagation/literal_test.toit:10:1
+  0[026] - load smi 42
+  2[088] - return S1 0
 
-249: get_string tests/type_propagation/literal_test.toit:13:1
-  0/ 253 [020] - load literal hest
-  2/ 255 [088] - return S1 0
+get_string tests/type_propagation/literal_test.toit:13:1
+  0[020] - load literal hest
+  2[088] - return S1 0
 
-258: get_smi_or_string tests/type_propagation/literal_test.toit:16:1
-  0/ 262 [053] - invoke static get_smi tests/type_propagation/literal_test.toit:10:1 // {SmallInteger_}
-  3/ 265 [014] - load local 0
-  4/ 266 [023] - load smi 0
-  5/ 267 [058] - invoke virtual == // {True_|False_}
-  9/ 271 [082] - branch if false T16
- 12/ 274 [014] - load local 0
- 13/ 275 [088] - return S2 0
- 16/ 278 [053] - invoke static get_string tests/type_propagation/literal_test.toit:13:1 // {String_}
- 19/ 281 [088] - return S2 0
-
+get_smi_or_string tests/type_propagation/literal_test.toit:16:1
+  0[053] - invoke static get_smi tests/type_propagation/literal_test.toit // {SmallInteger_}
+  3[014] - load local 0
+  4[023] - load smi 0
+  5[058] - invoke virtual == // {True_|False_}
+  9[082] - branch if false T16
+ 12[014] - load local 0
+ 13[088] - return S2 0
+ 16[053] - invoke static get_string tests/type_propagation/literal_test.toit // {String_}
+ 19[088] - return S2 0

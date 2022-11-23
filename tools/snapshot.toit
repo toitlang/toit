@@ -517,7 +517,7 @@ class ToitMethod:
     return bci + id + HEADER_SIZE
 
   // bytecode_string is static to support future byte code tracing.
-  static bytecode_string method/ToitMethod bci index program/Program:
+  static bytecode_string method/ToitMethod bci index program/Program --show_positions/bool=true:
     opcode := method.bytecodes[bci]
     bytecode := BYTE_CODES[opcode]
     line := "[$(%03d opcode)] - $bytecode.description"
@@ -588,7 +588,7 @@ class ToitMethod:
       dispatch_index := method.uint16 bci + 1
       target := program.dispatch_table[dispatch_index]
       debug_info := program.method_info_for target
-      line += " $(debug_info.short_stringify program)"
+      line += " $(debug_info.short_stringify program --show_positions=show_positions)"
     else if format == OP_SO:
       offset := method.uint16 bci + 1
       line += " $(program.selector_from_dispatch_offset offset)"
@@ -690,10 +690,12 @@ class ToitMethod:
 
   output program/Program:
     output program null: null
+    print ""
 
-  output program/Program arguments/List? [block]:
+  output program/Program arguments/List? --show_positions/bool=true [block]:
     debug_info := program.method_info_for id
-    print "$id: $(debug_info.short_stringify program)"
+    prefix := show_positions ? "$id: " : ""
+    print "$prefix$(debug_info.short_stringify program)"
     if arguments:
       arguments.size.repeat: | n |
         print "$id:  - argument $n: $arguments[n]"
@@ -701,18 +703,18 @@ class ToitMethod:
     length := bytecodes.size
     while index < length:
       absolute_bci := absolute_bci_from_bci index
-      line := "$(%3d index)/$(%4d absolute_bci) "
+      line := "$(%3d index)"
+      if show_positions: line += "/$(%4d absolute_bci) "
       opcode := bytecodes[index]
       bc_length := BYTE_CODES[opcode].size
       argument := 0;
       if bc_length > 1:
         argument = bytecodes[index + 1]
-      line += bytecode_string this index argument program
+      line += bytecode_string this index argument program --show_positions=show_positions
       extra := block.call absolute_bci
       if extra: line += " // $extra"
       print line
       index += bc_length
-    print ""
 
   hash_code:
     return id
@@ -1212,9 +1214,11 @@ class MethodInfo:
   static BLOCK_TYPE         ::= 3
   static TOP_LEVEL_TYPE     ::= 4
 
-  short_stringify program/Program:
+  short_stringify program/Program --show_positions/bool=true:
     prefix := prefix_string program
-    return "$prefix $error_path:$position"
+    return show_positions
+        ? "$prefix $error_path:$position"
+        : "$prefix $error_path"
 
   position relative_bci/int -> Position:
     return bytecode_positions.get relative_bci --if_absent=: position
