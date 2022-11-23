@@ -975,7 +975,7 @@ Interpreter::Result Interpreter::run() {
     const int parameter_offset = Interpreter::FRAME_SIZE;
     unsigned primitive_index = Utils::read_unaligned_uint16(bcp + 2);
     const PrimitiveEntry* primitive = Primitive::at(primitive_module, primitive_index);
-    if (Flags::primitives) printf("Invoking primitive %d::%d\n", primitive_module, primitive_index);
+    if (Flags::primitives) printf("[invoking primitive %d::%d]\n", primitive_module, primitive_index);
     if (primitive == null) {
       PUSH(Smi::from(primitive_module));
       PUSH(Smi::from(primitive_index));

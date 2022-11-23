@@ -92,8 +92,9 @@ void Interpreter::prepare_task(Method entry, Instance* code) {
   push(reinterpret_cast<Object*>(entry.entry()));
   push(process_->program()->frame_marker());
 
-  push(Smi::from(0));  // Argument: stack
-  push(Smi::from(0));  // Argument: value
+  // Push the arguments to the faked call to 'task_transfer_'.
+  push(process_->task());                     // Argument: to/Task
+  push(process_->program()->false_object());  // Argument: detach_stack/bool
 
   static_assert(FRAME_SIZE == 2, "Unexpected frame size");
   push(reinterpret_cast<Object*>(entry.bcp_from_bci(LOAD_NULL_LENGTH)));
@@ -116,6 +117,7 @@ Object** Interpreter::gc(Object** sp, bool malloc_failed, int attempts, bool for
 
 void Interpreter::prepare_process() {
   load_stack();
+  push(process_->task());
 
   Method entry = lookup_entry();
   static_assert(FRAME_SIZE == 2, "Unexpected frame size");
