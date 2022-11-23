@@ -20,7 +20,7 @@ class Test:
 
 main:
   map := {:}
-  read_file map "third_party/boringssl/test_vectors.txt"
+  read_file map "third_party/boringssl/cipher_test.txt"
   read_file map "third_party/openssl/evptests.txt"
   add_fragility_tests map
 
