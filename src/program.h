@@ -118,7 +118,7 @@ class Program : public FlashAllocation {
 
   Object* root(int index) const { ASSERT(index >= 0 && index < ROOT_COUNT); return roots_[index]; }
 
-  #define DECLARE_ROOT_ACCESSOR(type, name) type* name() { return static_cast<type*>(roots_[name##_INDEX]); }
+  #define DECLARE_ROOT_ACCESSOR(type, name) type* name() const { return static_cast<type*>(roots_[name##_INDEX]); }
   PROGRAM_ROOTS(DECLARE_ROOT_ACCESSOR)
   #undef DECLARE_ROOT_ACCESSOR
 
@@ -130,10 +130,13 @@ class Program : public FlashAllocation {
 
   Smi* class_id(int index) const { ASSERT(index >= 0 && index < BUILTIN_CLASS_IDS_COUNT); return _builtin_class_ids[index]; }
 
-  #define DECLARE_BUILTIN_CLASS_ID_ACCESSOR(name) Smi* name() { return _builtin_class_ids[name##_INDEX]; }
+  #define DECLARE_BUILTIN_CLASS_ID_ACCESSOR(name) Smi* name() const { return _builtin_class_ids[name##_INDEX]; }
     BUILTIN_CLASS_IDS(DECLARE_BUILTIN_CLASS_ID_ACCESSOR)
   #undef DECLARE_BUILTIN_CLASS_ID_ACCESSOR
 
+  Object* boolean(bool value) const {
+    return value ? true_object() : false_object();
+  }
 
   // Implementation is located in interpreter_run.cc
   inline Method find_method(Object* receiver, int offset);

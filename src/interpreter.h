@@ -147,7 +147,6 @@ class Interpreter {
 
   Object* hash_do(Program* program, Object* current, Object* backing, int step, Object* block, Object** entry_return);
 
-  inline Object* boolean(Program* program, bool x) const;
   inline bool is_true_value(Program* program, Object* value) const;
 
   inline bool typecheck_class(Program* program, Object* value, int class_index, bool is_nullable) const;

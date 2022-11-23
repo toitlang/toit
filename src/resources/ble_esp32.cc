@@ -1279,7 +1279,7 @@ PRIMITIVE(scan_next) {
   DiscoveredPeripheral* next = central_manager->get_discovered_peripheral();
   if (!next) return process->program()->null_object();
 
-  Array* array = process->object_heap()->allocate_array(6, process->program()->null_object());
+  Array* array = process->object_heap()->allocate_array(7, process->program()->null_object());
   if (!array) ALLOCATION_FAILED;
 
   ByteArray* id = process->object_heap()->allocate_internal_byte_array(7);
@@ -1338,9 +1338,11 @@ PRIMITIVE(scan_next) {
         memcpy(custom_data_bytes.address(), fields.mfg_data, fields.mfg_data_len);
         array->at_put(4, custom_data);
       }
+
+      array->at_put(5, Smi::from(fields.flags));
     }
 
-    array->at_put(5, BOOL(next->event_type() == BLE_HCI_ADV_RPT_EVTYPE_ADV_IND ||
+    array->at_put(6, BOOL(next->event_type() == BLE_HCI_ADV_RPT_EVTYPE_ADV_IND ||
                           next->event_type() == BLE_HCI_ADV_RPT_EVTYPE_DIR_IND));
   }
 
@@ -1686,7 +1688,7 @@ PRIMITIVE(set_characteristic_notify) {
 
 PRIMITIVE(advertise_start) {
   ARGS(BLEPeripheralManagerResource, peripheral_manager, Blob, name, Array, service_classes,
-       Blob, manufacturing_data, int, interval_us, int, conn_mode)
+       Blob, manufacturing_data, int, interval_us, int, conn_mode, int, flags)
 
   if (BLEPeripheralManagerResource::is_advertising()) ALREADY_EXISTS;
 
@@ -1696,6 +1698,8 @@ PRIMITIVE(advertise_start) {
     fields.name_len = name.length();
     fields.name_is_complete = 1;
   }
+
+  fields.flags = flags;
 
   ble_uuid16_t uuids_16[service_classes->length()];
   ble_uuid32_t uuids_32[service_classes->length()];

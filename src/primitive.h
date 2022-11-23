@@ -338,7 +338,7 @@ namespace toit {
   PRIMITIVE(get_value, 1)                    \
   PRIMITIVE(write_value, 3)                  \
   PRIMITIVE(set_characteristic_notify, 2)    \
-  PRIMITIVE(advertise_start, 6)              \
+  PRIMITIVE(advertise_start, 7)              \
   PRIMITIVE(advertise_stop, 1)               \
   PRIMITIVE(add_service, 2)                  \
   PRIMITIVE(add_characteristic, 5)           \
