@@ -695,7 +695,7 @@ class ToitMethod:
   output program/Program arguments/List? --show_positions/bool=true [block]:
     debug_info := program.method_info_for id
     prefix := show_positions ? "$id: " : ""
-    print "$prefix$(debug_info.short_stringify program)"
+    print "$prefix$(debug_info.short_stringify program --show_positions=show_positions)"
     if arguments:
       arguments.size.repeat: | n |
         print "$id:  - argument $n: $arguments[n]"
@@ -1216,9 +1216,9 @@ class MethodInfo:
 
   short_stringify program/Program --show_positions/bool=true:
     prefix := prefix_string program
-    return show_positions
-        ? "$prefix $error_path:$position"
-        : "$prefix $error_path"
+    if show_positions: return "$prefix $error_path:$position"
+    normalized_path := error_path.replace "\\" "/"
+    return "$prefix $normalized_path"
 
   position relative_bci/int -> Position:
     return bytecode_positions.get relative_bci --if_absent=: position
@@ -1409,9 +1409,8 @@ class MethodSegment extends MapSegment:
     name  := read_string_
     holder_name /string? := read_string_
     if holder_name == "": holder_name = null
-    absolute_path  := read_string_.replace "\\" "/"
-    // Map the path to UNIX style.
-    path  := read_string_.replace "\\" "/"
+    absolute_path  := read_string_
+    path  := read_string_
     position := read_position_
     bytecode_positions := read_bytecode_positions_
     as_class_names := read_as_class_names_
