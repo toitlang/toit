@@ -6,7 +6,7 @@ import expect show *
 
 import crypto show *
 import crypto.aes show *
-import crypto.sha256 show *
+import crypto.sha show *
 import crypto.siphash show *
 import crypto.sha1 show *
 import crypto.crc16 show *
@@ -80,11 +80,17 @@ hex_test -> none:
 
 hash_test -> none:
   EMPTY_HEX ::= "da39a3ee5e6b4b0d3255bfef95601890afd80709"
+  EMPTY_SHA224 ::= "d14a028c2a3a2bc9476102bb288234c415a2b01f828ea62ac5b3e42f"
   EMPTY_SHA2 ::= "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  EMPTY_SHA384 ::= "38b060a751ac96384cd9327eb1b1e36a21fdb71114be07434c0cc7bf63f6e1da274edebfe76f65fbd51ad2f14898b95b"
+  EMPTY_SHA512 ::= "cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e"
   EMPTY_CRC32 ::=  "00000000"
   EMPTY_CRC16 ::=  "0000"
   expect_equals EMPTY_HEX (hex.encode (sha1 ""))
+  expect_equals EMPTY_SHA224 (hex.encode (sha224 ""))
   expect_equals EMPTY_SHA2 (hex.encode (sha256 ""))
+  expect_equals EMPTY_SHA384 (hex.encode (sha384 ""))
+  expect_equals EMPTY_SHA512 (hex.encode (sha512 ""))
   expect_equals EMPTY_CRC32 (hex.encode (crc32 ""))
   expect_equals "2jmj7l5rSw0yVb/vlWAYkK/YBwk=" (base64.encode (sha1 ""))
 
@@ -94,10 +100,16 @@ hash_test -> none:
   hash2 := sha256 PARTY
   hash3 := crc32 PARTY
   hash4 := crc16 PARTY
+  hash5 := sha224 PARTY
+  hash6 := sha384 PARTY
+  hash7 := sha512 PARTY
   expect_equals "f160938592eeac116451ebc4da23dbc17e29283aef99de0197d705ad4d4c43f1" (hex.encode hash2)
   expect_equals "852430d0" (hex.encode hash3)
   expect_equals "a87e" (hex.encode hash4)
   expect_equals "AtKDelzDGqn+uPZqKj25gZRkVCs=" (base64.encode hash)
+  expect_equals "0824c514a92fcac7cbe5221d1d28d7e0cfb061d4dbb33f0a8f1fe9c2" (hex.encode hash5)
+  expect_equals "77d1a7ca704cd324b3519f2d89f455953e25801373bfc5a9eea38d16bc1aa57f1c90f0250c7bab60b07622c9bad5c1bf" (hex.encode hash6)
+  expect_equals "f8777873ec6d5108191afeccc87c696fea78dcdf156a420bf3efadb1669d0adf56a2139ca7da2b8511e1ac25a9ce230dc0a7fe7a721e2ebcb7f8182f41dcc162" (hex.encode hash7)
 
   expect_equals EMPTY_HEX (hex.encode (sha1 ""))
   expect_equal_arrays (sha1 (ByteArray 0)) (sha1 "")

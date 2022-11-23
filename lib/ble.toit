@@ -82,11 +82,15 @@ Conceptually, attributes are on the server, and can be accessed (read and/or wri
 interface Attribute:
   uuid -> BleUuid
 
-BLE_CONNECT_MODE_NONE          ::= 0
-BLE_CONNECT_MODE_DIRECTIONAL   ::= 1
-BLE_CONNECT_MODE_UNDIRECTIONAL ::= 2
+BLE_CONNECT_MODE_NONE                  ::= 0
+BLE_CONNECT_MODE_DIRECTIONAL           ::= 1
+BLE_CONNECT_MODE_UNDIRECTIONAL         ::= 2
 
-BLE_DEFAULT_PREFERRED_MTU_     ::= 23
+BLE_ADVERTISE_FLAGS_LIMITED_DISCOVERY  ::= 0x01
+BLE_ADVERTISE_FLAGS_GENERAL_DISCOVERY  ::= 0x02
+BLE_ADVERTISE_FLAGS_BREDR_UNSUPPORTED  ::= 0x04
+
+BLE_DEFAULT_PREFERRED_MTU_             ::= 23
 
 /**
 Advertisement data as either sent by advertising or received through scanning.
@@ -115,13 +119,20 @@ class AdvertisementData:
   */
   connectable/bool
 
-  constructor --.name=null --.service_classes=[] --.manufacturer_data=#[] --.connectable=false:
+  /**
+  Advertise flags. This must be a bitwise 'or' of the BLE_ADVERTISE_FLAG_* constants
+    (see $BLE_ADVERTISE_FLAGS_GENERAL_DISCOVERY and similar).
+  */
+  flags/int
+
+  constructor --.name=null --.service_classes=[] --.manufacturer_data=#[]
+              --.connectable=false --.flags=0 --check_size=true:
     size := 0
     if name: size += 2 + name.size
     service_classes.do: | uuid/BleUuid |
       size += 2 + uuid.to_byte_array.size
     if not manufacturer_data.is_empty: size += 2 + manufacturer_data.size
-    if size > 31: throw "PACKET_SIZE_EXCEEDED"
+    if size > 31 and check_size: throw "PACKET_SIZE_EXCEEDED"
 
 /**
 A remote device discovered by a scanning.
@@ -606,7 +617,9 @@ class Central extends Resource_:
             --name=next[2]
             --service_classes=service_classes
             --manufacturer_data=(next[4]?next[4]:#[])
-            --connectable=next[5]
+            --flags=next[5]
+            --connectable=next[6]
+            --check_size=false
         block.call discovery
     finally:
       ble_scan_stop_ resource_
@@ -656,6 +669,7 @@ class Peripheral extends Resource_:
       data.manufacturer_data
       interval.in_us
       connection_mode
+      data.flags
 
     state := resource_state_.wait_for_state ADVERTISE_START_SUCEEDED_EVENT_ | ADVERTISE_START_FAILED_EVENT_
     if state & ADVERTISE_START_FAILED_EVENT_ != 0: throw "Failed to start advertising"
@@ -912,7 +926,7 @@ ble_write_value__ characteristic value with_response:
 ble_set_characteristic_notify_ characteristic value:
   #primitive.ble.set_characteristic_notify
 
-ble_advertise_start_ peripheral_manager name services manufacturer_data interval connection_mode:
+ble_advertise_start_ peripheral_manager name services manufacturer_data interval connection_mode flags:
   #primitive.ble.advertise_start
 
 ble_advertise_stop_ peripheral_manager:

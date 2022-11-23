@@ -34,7 +34,7 @@ namespace toit {
   fn(AesCbcContext)                     \
   fn(SslSession)                        \
   fn(Sha1)                              \
-  fn(Sha256)                            \
+  fn(Sha)                               \
   fn(Siphash)                           \
   fn(Adler32)                           \
   fn(ZlibRle)                           \

@@ -1,27 +1,27 @@
-tests/crypto_test.toit:88:42: warning: Deprecated 'crc32'
+tests/crypto_test.toit:94:42: warning: Deprecated 'crc32'
   expect_equals EMPTY_CRC32 (hex.encode (crc32 ""))
                                          ^~~~~
-tests/crypto_test.toit:95:12: warning: Deprecated 'crc32'
+tests/crypto_test.toit:101:12: warning: Deprecated 'crc32'
   hash3 := crc32 PARTY
            ^~~~~
-tests/crypto_test.toit:96:12: warning: Deprecated 'crc16'
+tests/crypto_test.toit:102:12: warning: Deprecated 'crc16'
   hash4 := crc16 PARTY
            ^~~~~
-tests/crypto_test.toit:112:12: warning: Class 'Crc32' is deprecated
+tests/crypto_test.toit:124:12: warning: Class 'Crc32' is deprecated
   crc32 := Crc32
            ^~~~~
-tests/crypto_test.toit:113:12: warning: Class 'Crc16' is deprecated
+tests/crypto_test.toit:125:12: warning: Class 'Crc16' is deprecated
   crc16 := Crc16
            ^~~~~
-tests/crypto_test.toit:115:42: warning: Class 'Crc32' is deprecated
+tests/crypto_test.toit:127:42: warning: Class 'Crc32' is deprecated
   expect_equals EMPTY_CRC32 (hex.encode (Crc32).get)
                                          ^~~~~
-tests/crypto_test.toit:116:42: warning: Class 'Crc16' is deprecated
+tests/crypto_test.toit:128:42: warning: Class 'Crc16' is deprecated
   expect_equals EMPTY_CRC16 (hex.encode (Crc16).get)
                                          ^~~~~
-tests/crypto_test.toit:133:11: warning: Class 'Crc32' is deprecated
+tests/crypto_test.toit:145:11: warning: Class 'Crc32' is deprecated
   crc32 = Crc32
           ^~~~~
-tests/crypto_test.toit:134:11: warning: Class 'Crc16' is deprecated
+tests/crypto_test.toit:146:11: warning: Class 'Crc16' is deprecated
   crc16 = Crc16
           ^~~~~

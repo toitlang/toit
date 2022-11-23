@@ -22,7 +22,7 @@
 #include "process.h"
 #include "resource.h"
 #include "sha1.h"
-#include "sha256.h"
+#include "sha.h"
 #include "siphash.h"
 #include "tags.h"
 
@@ -61,33 +61,34 @@ PRIMITIVE(sha1_get) {
   return result;
 }
 
-PRIMITIVE(sha256_start) {
-  ARGS(SimpleResourceGroup, group)
+PRIMITIVE(sha_start) {
+  ARGS(SimpleResourceGroup, group, int, bits);
+  if (bits != 224 && bits != 256 && bits != 384 && bits != 512) INVALID_ARGUMENT;
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;
 
-  Sha256* sha256 = _new Sha256(group);
-  if (!sha256) MALLOC_FAILED;
-  proxy->set_external_address(sha256);
+  Sha* sha = _new Sha(group, bits);
+  if (!sha) MALLOC_FAILED;
+  proxy->set_external_address(sha);
   return proxy;
 }
 
-PRIMITIVE(sha256_add) {
-  ARGS(Sha256, sha256, Blob, data, int, from, int, to);
-  if (!sha256) INVALID_ARGUMENT;
+PRIMITIVE(sha_add) {
+  ARGS(Sha, sha, Blob, data, int, from, int, to);
+  if (!sha) INVALID_ARGUMENT;
   if (from < 0 || from > to || to > data.length()) OUT_OF_RANGE;
-  sha256->add(data.address() + from, to - from);
+  sha->add(data.address() + from, to - from);
   return process->program()->null_object();
 }
 
-PRIMITIVE(sha256_get) {
-  ARGS(Sha256, sha256);
-  ByteArray* result = process->allocate_byte_array(Sha256::HASH_LENGTH);
+PRIMITIVE(sha_get) {
+  ARGS(Sha, sha);
+  ByteArray* result = process->allocate_byte_array(sha->hash_length());
   if (result == null) ALLOCATION_FAILED;
   ByteArray::Bytes bytes(result);
-  sha256->get(bytes.address());
-  sha256->resource_group()->unregister_resource(sha256);
-  sha256_proxy->clear_external_address();
+  sha->get(bytes.address());
+  sha->resource_group()->unregister_resource(sha);
+  sha_proxy->clear_external_address();
   return result;
 }
 

@@ -19,7 +19,7 @@
 
 #include "../heap.h"
 #include "../resource.h"
-#include "../sha256.h"
+#include "../sha.h"
 
 namespace toit {
 
@@ -59,7 +59,7 @@ class X509Certificate : public Resource {
 
  private:
   mbedtls_x509_crt cert_;
-  uint8 checksum_[Sha256::HASH_LENGTH];
+  uint8 checksum_[Sha::HASH_LENGTH_256];
   int references_ = 1;
 };
 
