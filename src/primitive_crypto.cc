@@ -170,25 +170,28 @@ PRIMITIVE(gcm_close) {
 }
 
 // Start the encryption of a message, or TLS record.  Takes a 12 byte nonce.
-// As described in RFC5288 section 3, the first 4 bytes of the nonce are kept
-// secret, and the next 8 bytes are transmitted along with each record.
+// It is vital that the nonce is not reused with the same key.
 // Internally these primitives will add 4 more bytes of block counter, starting
-// at 1, to form a 16 byte IV.  It is vital that the nonce is not reused, and
-// this is normally achieved by counting up the explicit part by one for each
-// record that is encrypted.  In TLS this means that this part of the nonce
-// corresponds to the sequence number of the record.
+//   at 1, to form a 16 byte IV.
+//
+// TLS:
+// As described in RFC5288 section 3, the first 4 bytes of the nonce are kept
+//   secret, and the next 8 bytes are transmitted along with each record.
+// In order to avoid reuse of the nonce, the explicit part is normally counted
+//   up by one for each record that is encrypted.  This means that this part of
+//   the nonce corresponds to the sequence number of the record.
 PRIMITIVE(gcm_start_message) {
-  ARGS(GcmContext, context, int, length, Blob, authenticated_data, Blob, nonce);
-  if (context->remaining_length_in_current_message() != 0) INVALID_ARGUMENT;
-  context->set_remaining_length_in_current_message(length);
+  ARGS(GcmContext, context, Blob, authenticated_data, Blob, nonce);
+  if (context->currently_generating_message() != 0) INVALID_ARGUMENT;
   if (nonce.length() != GcmContext::NONCE_SIZE) INVALID_ARGUMENT;
+  context->set_currently_generating_message();
   int mode = context->is_encrypt() ? MBEDTLS_GCM_ENCRYPT : MBEDTLS_GCM_DECRYPT;
   int result = mbedtls_gcm_starts(
       context->gcm_context(),
       mode,
       nonce.address(),
       nonce.length(),
-      authenticated_data.address(),  // No additional data.
+      authenticated_data.address(),
       authenticated_data.length());
   if (result != 0) return tls_error(null, process, result);
 
@@ -203,12 +206,10 @@ If the result byte array was not big enough, returns null.  In this case no
 */
 PRIMITIVE(gcm_add) {
   ARGS(GcmContext, context, Blob, data, MutableBlob, result);
+  if (!context->currently_generating_message()) INVALID_ARGUMENT;
   const uint8* data_address = data.address();
   int data_length = data.length();
   if (data_length == 0) return Smi::from(0);
-  int remains = context->remaining_length_in_current_message();
-  if (remains < data_length) OUT_OF_BOUNDS;
-  remains -= data_length;
 
   // Start by copying into the temporary buffer in the context.
   const int to_copy = Utils::min(
@@ -218,19 +219,17 @@ PRIMITIVE(gcm_add) {
   data_address += to_copy;
   data_length -= to_copy;
   const int buffered = context->buffered_bytes() + to_copy;
-  if (buffered < GcmContext::BLOCK_SIZE && remains != 0) {
+  if (buffered < GcmContext::BLOCK_SIZE) {
     // Success.  We copied all the data into the internal buffer, and so the
     // output byte array is inevitably big enough.
     // Update the context and the number of bytes of new output.
-    context->set_buffered_bytes(buffered);
-    context->set_remaining_length_in_current_message(remains);
+    context->increment_length(to_copy);
     return Smi::from(0);
   }
 
   // Some data is to be encrypted/decrypted.
-  const int to_process_after_internal_buffer = remains == 0
-      ? data_length
-      : Utils::round_down(data_length, GcmContext::BLOCK_SIZE);
+  const int to_process_after_internal_buffer =
+      Utils::round_down(data_length, GcmContext::BLOCK_SIZE);
   if (buffered + to_process_after_internal_buffer > result.length()) {
     // Output byte array not big enough.  At this point we have not yet
     // modified the context.  Return null to indicate the problem.
@@ -239,7 +238,7 @@ PRIMITIVE(gcm_add) {
 
   // From here we know the result buffer is big enough, and can write data into
   // the context.
-  context->set_remaining_length_in_current_message(remains);
+  context->increment_length(data.length());
 
   uint8* result_address = result.address();
 
@@ -260,7 +259,6 @@ PRIMITIVE(gcm_add) {
   data_address += to_process_after_internal_buffer;
   data_length -= to_process_after_internal_buffer;
 
-  context->set_buffered_bytes(data_length);
   memcpy(context->buffered_data(), data_address, data_length);
 
   // Return the amount of data output.
@@ -274,23 +272,30 @@ PRIMITIVE(gcm_get_tag_size) {
 
 /**
 Ends the encryption of a message.
-Returns the encryption tag.
+Returns the last data encrypted, followed by the encryption tag
 */
 PRIMITIVE(gcm_finish) {
   ARGS(GcmContext, context);
   if (!context->is_encrypt()) INVALID_ARGUMENT;
-  if (context->remaining_length_in_current_message() != 0) INVALID_ARGUMENT;
-  ByteArray* result = process->allocate_byte_array(GcmContext::TAG_SIZE);
+  if (!context->currently_generating_message()) INVALID_ARGUMENT;
+  int rest = context->buffered_bytes();
+  ByteArray* result = process->allocate_byte_array(rest + GcmContext::TAG_SIZE);
   if (result == null) ALLOCATION_FAILED;
-  ByteArray::Bytes tag_bytes(result);
+  ByteArray::Bytes result_bytes(result);
 
-  int ok = mbedtls_gcm_finish(
+  int ok = mbedtls_gcm_update(
+    context->gcm_context(),
+    rest,
+    context->buffered_data(),
+    result_bytes.address());
+  if (ok != 0) return tls_error(null, process, ok);
+
+  ok = mbedtls_gcm_finish(
       context->gcm_context(),
-      tag_bytes.address(),
-      tag_bytes.length());
-  if (ok != 0) {
-    return tls_error(null, process, ok);
-  }
+      result_bytes.address() + rest,
+      result_bytes.length() - rest);
+  if (ok != 0) return tls_error(null, process, ok);
+
   return result;
 }
 
@@ -300,12 +305,20 @@ Returns zero if the tag matches the calculated one.
 Returns non-zero if the tag does not match.
 */
 PRIMITIVE(gcm_verify) {
-  ARGS(GcmContext, context, Blob, verification_tag);
+  ARGS(GcmContext, context, Blob, verification_tag, MutableBlob, rest);
   if (context->is_encrypt()) INVALID_ARGUMENT;
   if (verification_tag.length() != GcmContext::TAG_SIZE) INVALID_ARGUMENT;
+  if (rest.length() < context->buffered_bytes()) INVALID_ARGUMENT;
+
+  int ok = mbedtls_gcm_update(
+    context->gcm_context(),
+    context->buffered_bytes(),
+    context->buffered_data(),
+    rest.address());
+  if (ok != 0) return tls_error(null, process, ok);
 
   uint8 calculated_tag[GcmContext::TAG_SIZE];
-  int ok = mbedtls_gcm_finish(
+  ok = mbedtls_gcm_finish(
       context->gcm_context(),
       calculated_tag,
       GcmContext::TAG_SIZE);

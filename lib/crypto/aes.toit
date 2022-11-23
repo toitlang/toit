@@ -174,6 +174,7 @@ class AesGcm:
   gcm_aes_ := ?
   initialization_vector_ /ByteArray := ?
   buffer_ /ByteArray? := null
+  size /int := 0
 
   static IV_SIZE ::= 12
   static TAG_SIZE ::= 16
@@ -215,11 +216,12 @@ class AesGcm:
 
     result := ByteArray plain_text.size + TAG_SIZE
 
-    gcm_start_message_ gcm_aes_ plain_text.size authenticated_data initialization_vector_
+    gcm_start_message_ gcm_aes_ authenticated_data initialization_vector_
     bytes /int := gcm_add_ gcm_aes_ plain_text result
-    if bytes != plain_text.size: throw "UNKNOWN_ERROR"
-    tag := gcm_finish_ gcm_aes_
-    result.replace bytes tag
+    if bytes != (round_down plain_text.size BLOCK_SIZE_): throw "UNKNOWN_ERROR"
+    rest_and_tag := gcm_finish_ gcm_aes_
+    if bytes + rest_and_tag.size != plain_text.size + BLOCK_SIZE_: throw "UNKNOWN_ERROR"
+    result.replace bytes rest_and_tag
     close
     return result
 
@@ -238,11 +240,12 @@ class AesGcm:
       verification_tag = cipher_text[edge..]
       cipher_text = cipher_text[..edge]
 
-    gcm_start_message_ gcm_aes_ cipher_text.size authenticated_data initialization_vector_
+    gcm_start_message_ gcm_aes_ authenticated_data initialization_vector_
     result := ByteArray cipher_text.size
     bytes /int := gcm_add_ gcm_aes_ cipher_text result
+    if bytes != (round_down cipher_text.size BLOCK_SIZE_): throw "UNKNOWN_ERROR"
 
-    check := gcm_verify_ gcm_aes_ verification_tag
+    check := gcm_verify_ gcm_aes_ verification_tag result[bytes..]
     if check != 0:
       throw "INVALID_SIGNATURE"
 
@@ -252,11 +255,11 @@ class AesGcm:
   Starts an encryption or decryption.
   After calling this method, the $add method can be used to encrypt or decrypt
     a ByteArray.
-  When decrypting it is vital that the decrypted data is not used in any way
+  When decrypting, it is vital that the decrypted data is not used in any way
     before the verification tag has been verified with a call to $verify.
   */
-  start --length/int --authenticated_data="" -> none:
-    gcm_start_message_ gcm_aes_ length authenticated_data initialization_vector_
+  start --authenticated_data="" -> none:
+    gcm_start_message_ gcm_aes_ authenticated_data initialization_vector_
 
   /**
   Encrypts or decrypts some data.
@@ -269,6 +272,7 @@ class AesGcm:
     before the verification tag has been verified with a call to $verify.
   */
   add data/ByteArray -> ByteArray:
+    size += data.size
     if buffer_:
       bytes := gcm_add_ gcm_aes_ data buffer_
       if bytes:
@@ -284,12 +288,16 @@ class AesGcm:
   /**
   Finishes encrypting.
   Can be called after $start and $add.
-  Returns the 16 byte verification tag.
+  Returns a two-element list with the last encrypted bytes and the verification
+    tag.  The last encrypted bytes will be a zero length ByteArray if the
+    size of the plaintext was a multiple of 16.
   */
-  finish -> ByteArray:
+  finish -> List:
     result := gcm_finish_ gcm_aes_
     close
-    return result
+    cut := result.size - BLOCK_SIZE_
+    assert: cut == size % BLOCK_SIZE_
+    return [result[..cut], result[cut..]]
 
   /**
   Finishes decrypting.
@@ -300,11 +308,16 @@ class AesGcm:
     has been called.
   It is vital that if this method throws an exception, the previously decrypted
     data is not used.
+  Returns the last few bytes of the decrypted data.  This is an empty ByteArray
+    if the size of the ciphertext was a multiple of 16.
   */
-  verify verification_tag/ByteArray -> none:
-    result := gcm_verify_ gcm_aes_ verification_tag
+  verify verification_tag/ByteArray -> ByteArray:
+    result := ByteArray
+        size & (BLOCK_SIZE_ - 1)
+    check := gcm_verify_ gcm_aes_ verification_tag result
     close
-    if result != 0: throw "INVALID_SIGNATURE"
+    if check != 0: throw "INVALID_SIGNATURE"
+    return result
 
   /** Closes this encrypter/decrypter and releases associated resources. */
   close -> none:
@@ -319,7 +332,7 @@ gcm_init_ group key/ByteArray algorithm/int encrypt/bool:
 gcm_close_ gcm:
   #primitive.crypto.gcm_close
 
-gcm_start_message_ gcm length/int authenticated_data initialization_vector/ByteArray -> none:
+gcm_start_message_ gcm authenticated_data initialization_vector/ByteArray -> none:
   #primitive.crypto.gcm_start_message
 
 /**
@@ -331,10 +344,17 @@ If the result byte array was not big enough, returns null.  In this case no
 gcm_add_ gcm data result/ByteArray -> int?:
   #primitive.crypto.gcm_add
 
+/**
+Returns the last ciphertext bytes and the tag, concatenated.
+*/
 gcm_finish_ gcm -> ByteArray:
   #primitive.crypto.gcm_finish
 
-gcm_verify_ gcm verification_tag/ByteArray -> int:
+/**
+The rest_of_decrypted_data should be at least the size of the added data %
+  BLOCK_SIZE_.
+*/
+gcm_verify_ gcm verification_tag/ByteArray rest_of_decrypted_data/ByteArray -> int:
   #primitive.crypto.gcm_verify
 
 aes_init_ group key/ByteArray initialization_vector/ByteArray? encrypt/bool:

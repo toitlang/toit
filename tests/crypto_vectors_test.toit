@@ -137,7 +137,7 @@ test_aes_gcm test/Test -> none:
     for cut2 := cut1; cut2 <= expected_plain_text.size; cut2++:
       // Test in-place encryption.
       encryptor := AesGcm.encryptor key nonce
-      encryptor.start --length=expected_plain_text.size --authenticated_data=authenticated
+      encryptor.start --authenticated_data=authenticated
       parts := []
       part1 := expected_plain_text.copy 0 cut1
       part2 := expected_plain_text.copy cut1 cut2
@@ -145,14 +145,16 @@ test_aes_gcm test/Test -> none:
       parts.add (encryptor.add part1)
       parts.add (encryptor.add part2)
       parts.add (encryptor.add part3)
-      verification_tag = encryptor.finish
-      cipher_text = parts[0] + parts[1] + parts[2]  // Byte array concatenation.
+      finish := encryptor.finish
+      parts.add finish[0]
+      verification_tag = finish[1]
+      cipher_text = parts.reduce: | a b | a + b  // Byte array concatenation.
       expect_equals expected_verification_tag verification_tag
       expect_equals expected_cipher_text cipher_text
 
       // Test in-place decryption.
       decryptor := AesGcm.decryptor key nonce
-      decryptor.start --length=expected_cipher_text.size --authenticated_data=authenticated
+      decryptor.start --authenticated_data=authenticated
       parts = []
       part1 = expected_cipher_text.copy 0 cut1
       part2 = expected_cipher_text.copy cut1 cut2
@@ -160,13 +162,13 @@ test_aes_gcm test/Test -> none:
       parts.add (decryptor.add part1)
       parts.add (decryptor.add part2)
       parts.add (decryptor.add part3)
-      decryptor.verify verification_tag
-      plain_text = parts[0] + parts[1] + parts[2]  // Byte array concatenation.
+      parts.add (decryptor.verify verification_tag)
+      plain_text = parts.reduce: | a b | a + b  // Byte array concatenation.
       expect_equals expected_plain_text plain_text
 
       // Test in-place decryption failure.
       decryptor = AesGcm.decryptor key nonce
-      decryptor.start --length=expected_cipher_text.size --authenticated_data=authenticated
+      decryptor.start --authenticated_data=authenticated
       parts = []
       part1 = expected_cipher_text.copy 0 cut1
       part2 = expected_cipher_text.copy cut1 cut2

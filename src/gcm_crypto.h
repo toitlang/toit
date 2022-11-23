@@ -49,19 +49,20 @@ class GcmContext : public SimpleResource {
   inline mbedtls_gcm_context* gcm_context() { return &context_; }
   inline mbedtls_cipher_id_t cipher_id() const { return cipher_id_; }
   inline bool is_encrypt() const { return encrypt_; }
-  inline int remaining_length_in_current_message() const { return remaining_length_in_current_message_; }
-  inline void set_remaining_length_in_current_message(int length) { remaining_length_in_current_message_ = length; }
+  inline bool currently_generating_message() const { return currently_generating_message_; }
+  inline void set_currently_generating_message() { currently_generating_message_ = true; }
+  inline void increment_length(int by) { length_ += by; }
   inline uint8* buffered_data() { return buffered_data_; }
-  inline int buffered_bytes() const { return buffered_bytes_; }
-  inline void set_buffered_bytes(int value) { buffered_bytes_ = value; }
+  inline int buffered_bytes() const { return length_ & (BLOCK_SIZE - 1); }
 
  private:
   uint8 buffered_data_[BLOCK_SIZE];
   int buffered_bytes_ = 0;  // 0-15.
+  bool currently_generating_message_ = false;
+  uint64_t length_ = 0;
   mbedtls_cipher_id_t cipher_id_;
   bool encrypt_;
   mbedtls_gcm_context context_;
-  int remaining_length_in_current_message_ = 0;
 };
 
 enum GcmAlgorithmType {

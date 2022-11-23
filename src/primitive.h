@@ -462,11 +462,11 @@ namespace toit {
   PRIMITIVE(aes_ecb_close, 1)                \
   PRIMITIVE(gcm_init, 4)                     \
   PRIMITIVE(gcm_close, 1)                    \
-  PRIMITIVE(gcm_start_message, 4)            \
+  PRIMITIVE(gcm_start_message, 3)            \
   PRIMITIVE(gcm_add, 3)                      \
   PRIMITIVE(gcm_get_tag_size, 1)             \
   PRIMITIVE(gcm_finish, 1)                   \
-  PRIMITIVE(gcm_verify, 2)                   \
+  PRIMITIVE(gcm_verify, 3)                   \
 
 #define MODULE_ENCODING(PRIMITIVE)           \
   PRIMITIVE(base64_encode, 2)                \
