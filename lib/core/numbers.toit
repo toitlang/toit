@@ -2,7 +2,11 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
-/** A number. */
+/**
+A number.
+This is an abstract super class for $int and $float.
+See also https://docs.toit.io/language/math.
+*/
 abstract class num implements Comparable:
   equals_from_float_ other/float -> bool: return false
   equals_from_small_integer_ other/int -> bool: return false
@@ -529,6 +533,14 @@ abstract class num implements Comparable:
   */
   abstract sqrt -> float
 
+/**
+A 64 bit integer.
+Ints are always 64 bit two's complement signed values between $int.MIN and
+  $int.MAX.  Overflow is silent.
+This is a fully fledged class, not a 'primitive type'.
+Ints are immutable objects.
+See also https://docs.toit.io/language/math.
+*/
 abstract class int extends num:
   /**
   The maximum integer value.
@@ -1342,6 +1354,14 @@ class LargeInteger_ extends int:
   greater_than_or_equal_from_float_ other:
     return other >= to_float
 
+/**
+A 64 bit floating point value.
+Floats are double precision IEEE 754 values, including $float.NAN,
+  $float.INFINITY, -$float.INFINITY and negative zero.
+This is a fully fledged class, not a 'primitive type'.
+Floats are immutable objects.
+See also https://docs.toit.io/language/math.
+*/
 class float extends num:
 
   /**

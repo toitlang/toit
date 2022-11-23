@@ -148,6 +148,13 @@ abstract class CollectionBase implements Collection:
     return result
 
 
+/**
+A linear collection of objects.
+A List is an array with constant-time access to numbered elements,
+  starting at index zero.  (This is not a linked-list collection.)
+Lists are mutable and growable.
+See also https://docs.toit.io/language/listsetmap.
+*/
 abstract class List extends CollectionBase:
 
   /**
@@ -1322,6 +1329,9 @@ abstract class ByteArrayBase_ implements ByteArray:
 
   /**
   Converts this instance to a string, interpreting its bytes as UTF-8.
+  Invalid UTF-8 sequences are rejected with an exception.  This includes
+    overlong encodings, encodings of UTF-16 surrogates and encodings of
+    values that are outside the Unicode range.
   */
   to_string from/int=0 to/int=size -> string:
     #primitive.core.byte_array_convert_to_string
@@ -2146,9 +2156,8 @@ abstract class HashedInsertionOrderedCollection_:
       // If the intrinsic fails, return the start position.  This
       // is very rare because the intrinsic will generally return a
       // progress-indicating integer rather than failing.
-      return reversed
-        ? backing_ ? backing_.size - step : 0
-        : 0
+      if backing_ == null: return null
+      return reversed ? backing_.size - step : 0
 
   rebuild_ old_size/int step/int --allow_shrink/bool --rebuild_backing/bool:
     if rebuild_backing:
@@ -2210,6 +2219,7 @@ The == operator should be compatible with the hash_code method so
   be rare to maintain good performance.
 Strings, byte arrays, and numbers fulfill these requirements and can be used as
   keys in sets.
+See also https://docs.toit.io/language/listsetmap.
 */
 class Set extends HashedInsertionOrderedCollection_ implements Collection:
   static STEP_ ::= 1
@@ -2492,6 +2502,7 @@ The == operator should be compatible with the hash_code method so
   be rare to maintain good performance.
 Strings, byte arrays, and numbers fulfill these requirements and can be used as
   keys in maps.
+See also https://docs.toit.io/language/listsetmap.
 */
 class Map extends HashedInsertionOrderedCollection_:
   static STEP_ ::= 2
@@ -2697,7 +2708,7 @@ class Map extends HashedInsertionOrderedCollection_:
     i := hash_do_ STEP_ false block
     if not i: return
     assert: backing_
-    limit := backing_ ? backing_.size : 0
+    limit := backing_.size
     while i < limit:
       key := backing_[i]
       if key is not Tombstone_:
