@@ -32,8 +32,8 @@ typedef Selector<CallShape> CallSelector;
 
 class GrowerVisitor : public TraversingVisitor {
  public:
-  explicit GrowerVisitor(Method* identical, Method* as_check_failure)
-      : identical_(identical), as_check_failure_(as_check_failure) {}
+  explicit GrowerVisitor(Method* as_check_failure)
+      : as_check_failure_(as_check_failure) {}
 
   Set<Class*> found_classes() const { return found_classes_; }
   Set<Method*> found_methods() const { return found_methods_; }
@@ -70,7 +70,6 @@ class GrowerVisitor : public TraversingVisitor {
   }
 
   void visit_Typecheck(Typecheck* node) {
-    if (node->type().is_nullable()) found_methods_.insert(identical_);
     if (node->is_as_check()) found_methods_.insert(as_check_failure_);
     if (node->is_interface_check()) {
       found_selectors_.insert(node->type().klass()->typecheck_selector());
@@ -79,7 +78,6 @@ class GrowerVisitor : public TraversingVisitor {
   }
 
  private:
-  ir::Method* identical_;
   ir::Method* as_check_failure_;
   Set<Class*> found_classes_;
   Set<Method*> found_methods_;
@@ -294,7 +292,7 @@ void TreeGrower::grow(Program* program) {
     for (auto method : method_queue) {
       if (method->is_abstract()) continue;
 
-      GrowerVisitor visitor(program->identical(), program->as_check_failure());
+      GrowerVisitor visitor(program->as_check_failure());
       // Skip already visited methods.
       if (grown_methods_.contains(method)) continue;
       grown_methods_.insert(method);

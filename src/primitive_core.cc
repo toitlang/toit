@@ -1317,31 +1317,6 @@ PRIMITIVE(string_rune_count) {
   return Primitive::integer(count, process);
 }
 
-
-PRIMITIVE(object_equals) {
-  ARGS(Object, receiver, Object, other)
-  return BOOL(receiver == other);
-}
-
-PRIMITIVE(identical) {
-  ARGS(Object, a, Object, b)
-  if (a == b) return BOOL(true);
-  if (is_double(a) && is_double(b)) {
-    auto double_a = Double::cast(a);
-    auto double_b = Double::cast(b);
-    return BOOL(double_a->bits() == double_b->bits());
-  }
-  if (is_large_integer(a) && is_large_integer(b)) {
-    auto large_a = LargeInteger::cast(a);
-    auto large_b = LargeInteger::cast(b);
-    return BOOL(large_a->value() == large_b->value());
-  }
-  if (is_string(a) && is_string(b)) {
-    return BOOL(String::cast(a)->compare(String::cast(b)) == 0);
-  }
-  return BOOL(false);
-}
-
 PRIMITIVE(smi_to_string_base_10) {
   ARGS(word, receiver);
   char buffer[32];

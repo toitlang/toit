@@ -39,8 +39,9 @@ For floats, two NaN's (not-a-number) are identical when they have the same
   `==` where NaN's are never equal, so `float.NAN == float.NAN` is always
   false.
 */
-identical x y:
-  #primitive.core.identical
+identical x/any y/any -> bool:
+  // Recognized by the compiler and implemented as separate bytecode.
+  unreachable
 
 /**
 Returns the min of $a and $b.

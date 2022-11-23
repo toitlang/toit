@@ -37,7 +37,7 @@ class Object:
     codes must also be equal (`a.hash_code == b.hash_code`).
   */
   operator == other:
-    #primitive.core.object_equals
+    return identical this other
 
   /**
   Stringifies this object.

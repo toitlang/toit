@@ -853,6 +853,7 @@ BYTE_CODES ::= [
   Bytecode "NON_LOCAL_RETURN"           2 OP_BU "non-local return",
   Bytecode "NON_LOCAL_RETURN_WIDE"      4 OP_SU_SU "non-local return wide",
   Bytecode "NON_LOCAL_BRANCH"           6 OP_BU_WU "non-local branch",
+  Bytecode "IDENTICAL"                  1 OP "identical",
   Bytecode "LINK"                       2 OP_BU "link try",
   Bytecode "UNLINK"                     2 OP_BU "unlink try",
   Bytecode "UNWIND"                     1 OP "unwind",
