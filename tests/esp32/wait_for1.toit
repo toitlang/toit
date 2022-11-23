@@ -66,7 +66,9 @@ main:
   pin_in.wait_for 1
 
   print "sending ultra short pulses"
-  channel := rmt.Channel pin_out --output
+  // For some reason we seem to miss one pulse if we run at 80MHz (clk_div=1).
+  // 40MHz seems to be fine, though.
+  channel := rmt.Channel pin_out --output --clk_div=2
   signals := rmt.Signals 2
   signals.set 0 --period=1 --level=1
   signals.set 1 --period=0 --level=0
