@@ -105,8 +105,6 @@ namespace toit {
   PRIMITIVE(blob_equals, 2)                  \
   PRIMITIVE(string_compare, 2)               \
   PRIMITIVE(string_rune_count, 1)            \
-  PRIMITIVE(object_equals, 2)                \
-  PRIMITIVE(identical, 2)                    \
   PRIMITIVE(random, 0)                       \
   PRIMITIVE(random_seed, 1)                  \
   PRIMITIVE(add_entropy, 1)                  \

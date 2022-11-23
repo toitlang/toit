@@ -1317,17 +1317,6 @@ PRIMITIVE(string_rune_count) {
   return Primitive::integer(count, process);
 }
 
-
-PRIMITIVE(object_equals) {
-  ARGS(Object, receiver, Object, other)
-  return BOOL(receiver == other);
-}
-
-PRIMITIVE(identical) {
-  // TODO(kasper): Get rid of this primitive completely.
-  UNIMPLEMENTED_PRIMITIVE;
-}
-
 PRIMITIVE(smi_to_string_base_10) {
   ARGS(word, receiver);
   char buffer[32];

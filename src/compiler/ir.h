@@ -1003,10 +1003,9 @@ class Builtin : public Node {
       return _new Builtin(LOAD_GLOBAL);
     } else if (id == Symbols::__invoke_initializer__) {
       return _new Builtin(INVOKE_INITIALIZER);
-    } else if (id == Symbols::identical) {
-      return _new Builtin(IDENTICAL);
     }
-    // The global-id builtin isn't accessible from userspace.
+    // The identical builtin is recognized by the static call resolver
+    // and the global-id builtin isn't accessible from userspace.
     return null;
   }
 

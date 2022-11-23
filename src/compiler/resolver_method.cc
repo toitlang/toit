@@ -2307,7 +2307,13 @@ ir::Node* MethodResolver::_resolve_call_target(ast::Node* target_node,
       }
       if (method_node->is_static()) {
         check_sdk_protection(name, target_node->range(), method_node->range());
-        return _new ir::ReferenceMethod(method_node, range);
+        // We special case the identical top-level method, because we want to
+        // turn calls to that into a special bytecode.
+        if (name == Symbols::identical) {
+          return _new ir::Builtin(ir::Builtin::IDENTICAL);
+        } else {
+          return _new ir::ReferenceMethod(method_node, range);
+        }
       }
       // Instance method or field.
       switch (resolution_mode_) {

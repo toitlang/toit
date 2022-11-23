@@ -15,7 +15,7 @@ class Object:
   /**
   Whether this object is equal to the $other.
 
-  By default, identical is used for equality.
+  By default, $identical is used for equality.
 
   # Inheritance
   Classes overwrite this operator to get an equality specific to their needs.
@@ -37,7 +37,7 @@ class Object:
     codes must also be equal (`a.hash_code == b.hash_code`).
   */
   operator == other:
-    #primitive.core.object_equals
+    return identical this other
 
   /**
   Stringifies this object.
