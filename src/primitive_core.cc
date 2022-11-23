@@ -1826,15 +1826,6 @@ PRIMITIVE(smi_shift_left) {
   return Primitive::integer(value << number_of_bits, process);
 }
 
-PRIMITIVE(task_stack) {
-  ARGS(Task, task);
-  return task->stack();
-}
-
-PRIMITIVE(task_current) {
-  return process->object_heap()->task();
-}
-
 PRIMITIVE(task_new) {
   ARGS(Instance, code);
   Task* task = process->object_heap()->allocate_task();
@@ -1871,7 +1862,7 @@ PRIMITIVE(task_transfer) {
     process->object_heap()->set_task(to);
     process->scheduler_thread()->interpreter()->load_stack();
   }
-  return Smi::from(42);
+  return Primitive::mark_as_error(to);
 }
 
 PRIMITIVE(process_send) {
