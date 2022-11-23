@@ -36,10 +36,6 @@ inline bool are_smis(Object* a, Object* b) {
   return result;
 }
 
-inline Object* Interpreter::boolean(Program* program, bool x) const {
-  return x ? program->true_object() : program->false_object();
-}
-
 inline bool Interpreter::is_true_value(Program* program, Object* value) const {
   // Only false and null are considered false values.
   if (value == program->false_object()) return false;
@@ -716,7 +712,7 @@ Interpreter::Result Interpreter::run() {
     Object* a1 = STACK_AT(0);
     if (a0 == a1) {
       // All identical objects, except for NaNs, are equal to themselves.
-      STACK_AT_PUT(1, boolean(program, !(is_double(a0) && isnan(Double::cast(a0)->value()))));
+      STACK_AT_PUT(1, program->boolean(!(is_double(a0) && isnan(Double::cast(a0)->value()))));
       DROP1();
       DISPATCH(INVOKE_EQ_LENGTH);
     } else if (a0 == program->null_object() || a1 == program->null_object()) {
@@ -726,11 +722,11 @@ Interpreter::Result Interpreter::run() {
     } else if (are_smis(a0, a1)) {
       word i0 = Smi::cast(a0)->value();
       word i1 = Smi::cast(a1)->value();
-      STACK_AT_PUT(1, boolean(program, i0 == i1));
+      STACK_AT_PUT(1, program->boolean(i0 == i1));
       DROP1();
       DISPATCH(INVOKE_EQ_LENGTH);
     } else if (int result = compare_numbers(a0, a1)) {
-      STACK_AT_PUT(1, boolean(program, (result & COMPARE_FLAG_EQUAL) != 0));
+      STACK_AT_PUT(1, program->boolean((result & COMPARE_FLAG_EQUAL) != 0));
       DROP1();
       DISPATCH(INVOKE_EQ_LENGTH);
     }
@@ -746,12 +742,12 @@ Interpreter::Result Interpreter::run() {
     if (are_smis(a0, a1)) {                                            \
       word i0 = Smi::cast(a0)->value();                                \
       word i1 = Smi::cast(a1)->value();                                \
-      STACK_AT_PUT(1, boolean(program, i0 op i1));                     \
-      DROP1();                                                          \
+      STACK_AT_PUT(1, program->boolean(i0 op i1));                     \
+      DROP1();                                                         \
       DISPATCH(opcode##_LENGTH);                                       \
     } else if (int result = compare_numbers(a0, a1)) {                 \
-      STACK_AT_PUT(1, boolean(program, (result & bit) != 0));          \
-      DROP1();                                                          \
+      STACK_AT_PUT(1, program->boolean((result & bit) != 0));          \
+      DROP1();                                                         \
       DISPATCH(opcode##_LENGTH);                                       \
     }                                                                  \
     PUSH(a0);                                                          \

@@ -873,7 +873,8 @@ PRIMITIVE(scan_next) {
   array->at_put(5, Smi::from(0)); // Flags are not available on Darwin.
 
   NSNumber* is_connectable = peripheral->connectable();
-  array->at_put(6, BOOL(is_connectable != nil && is_connectable.boolValue == YES));
+  Program* program = process->program();
+  array->at_put(6, program->boolean(is_connectable != nil && is_connectable.boolValue == YES));
 
   delete peripheral;
 
