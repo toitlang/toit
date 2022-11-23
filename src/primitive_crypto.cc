@@ -283,7 +283,7 @@ PRIMITIVE(gcm_add) {
   context->increment_length(in.length());
 
   if (buffered != 0) {
-    // Copy into the temporary buffer in the context.
+    // We have data buffered.  Fill the block and crypt it separately.
     const int to_copy = Utils::min(
         BLOCK_SIZE - buffered,
         in_length);
