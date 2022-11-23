@@ -715,15 +715,15 @@ Interpreter::Result Interpreter::run() {
     } else if (is_double(a0) && is_double(a1)) {
       auto d0 = Double::cast(a0);
       auto d1 = Double::cast(a1);
-      STACK_AT_PUT(1, boolean(program, d0->bits() == d1->bits()));
+      STACK_AT_PUT(1, program->boolean(d0->bits() == d1->bits()));
     } else if (is_large_integer(a0) && is_large_integer(a1)) {
       auto l0 = LargeInteger::cast(a0);
       auto l1 = LargeInteger::cast(a1);
-      STACK_AT_PUT(1, boolean(program, l0->value() == l1->value()));
+      STACK_AT_PUT(1, program->boolean(l0->value() == l1->value()));
     } else if (is_string(a0) && is_string(a1)) {
       auto s0 = String::cast(a0);
       auto s1 = String::cast(a1);
-      STACK_AT_PUT(1, boolean(program, s0->compare(s1) == 0));
+      STACK_AT_PUT(1, program->boolean(s0->compare(s1) == 0));
     } else {
       STACK_AT_PUT(1, program->false_object());
     }
