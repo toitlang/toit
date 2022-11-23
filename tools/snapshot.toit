@@ -1217,7 +1217,7 @@ class MethodInfo:
   short_stringify program/Program --show_positions/bool=true:
     prefix := prefix_string program
     if show_positions: return "$prefix $error_path:$position"
-    normalized_path := error_path.replace "\\" "/"
+    normalized_path := error_path.replace --all "\\" "/"
     return "$prefix $normalized_path"
 
   position relative_bci/int -> Position:
