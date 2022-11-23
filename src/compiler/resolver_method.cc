@@ -1349,10 +1349,11 @@ void MethodResolver::_resolve_parameters(
           ASSERT(diagnostics()->encountered_error());
           comparison = _new ir::LiteralBoolean(false, parameter->range());
         } else {
-          comparison = _call_runtime(Symbols::identical,
-                                      list_of(_new ir::ReferenceLocal(ir_parameter, 0, parameter->range()),
-                                              _new ir::LiteralNull(parameter->range())),
-                                      parameter->range());
+          CallBuilder builder(parameter->range());
+          builder.add_arguments(list_of(
+              _new ir::ReferenceLocal(ir_parameter, 0, parameter->range()),
+              _new ir::LiteralNull(parameter->range())));
+          comparison = builder.call_builtin(_new ir::Builtin(ir::Builtin::IDENTICAL));
         }
         auto assignment = _new ir::AssignmentLocal(ir_parameter, 0, ir_default_value, ir_parameter->range());
         auto ir_if = _new ir::If(comparison,
@@ -2306,7 +2307,13 @@ ir::Node* MethodResolver::_resolve_call_target(ast::Node* target_node,
       }
       if (method_node->is_static()) {
         check_sdk_protection(name, target_node->range(), method_node->range());
-        return _new ir::ReferenceMethod(method_node, range);
+        // We special case the identical top-level method, because we want to
+        // turn calls to that into a special bytecode.
+        if (name == Symbols::identical && method_node->is_runtime_method() && method_node->holder() == null) {
+          return _new ir::Builtin(ir::Builtin::IDENTICAL);
+        } else {
+          return _new ir::ReferenceMethod(method_node, range);
+        }
       }
       // Instance method or field.
       switch (resolution_mode_) {

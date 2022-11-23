@@ -68,6 +68,7 @@ namespace toit {
   M(flash_kv, MODULE_FLASH_KV)               \
   M(debug,   MODULE_DEBUG)                   \
   M(espnow,  MODULE_ESPNOW)                  \
+  M(bignum,  MODULE_BIGNUM)                  \
 
 #define MODULE_CORE(PRIMITIVE)               \
   PRIMITIVE(write_string_on_stdout, 2)       \
@@ -104,8 +105,6 @@ namespace toit {
   PRIMITIVE(blob_equals, 2)                  \
   PRIMITIVE(string_compare, 2)               \
   PRIMITIVE(string_rune_count, 1)            \
-  PRIMITIVE(object_equals, 2)                \
-  PRIMITIVE(identical, 2)                    \
   PRIMITIVE(random, 0)                       \
   PRIMITIVE(random_seed, 1)                  \
   PRIMITIVE(add_entropy, 1)                  \
@@ -181,7 +180,6 @@ namespace toit {
   PRIMITIVE(task_has_messages, 0)            \
   PRIMITIVE(task_receive_message, 0)         \
   PRIMITIVE(concat_strings, 1)               \
-  PRIMITIVE(task_current, 0)                 \
   PRIMITIVE(task_new, 1)                     \
   PRIMITIVE(task_transfer, 2)                \
   PRIMITIVE(gc_count, 0)                     \
@@ -663,6 +661,10 @@ namespace toit {
   PRIMITIVE(receive, 1)                      \
   PRIMITIVE(add_peer, 3)                     \
   PRIMITIVE(deinit, 1)                       \
+
+#define MODULE_BIGNUM(PRIMITIVE)             \
+  PRIMITIVE(binary_operator, 5)              \
+  PRIMITIVE(exp_mod, 6)                      \
 
 // ----------------------------------------------------------------------------
 

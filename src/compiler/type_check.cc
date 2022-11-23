@@ -479,6 +479,9 @@ class TypeChecker : public ReturningVisitor<Type> {
       case Builtin::GLOBAL_ID:
         ASSERT(node->arguments().length() == 1 && node->arguments()[0]->is_ReferenceGlobal());
         return integer_type_;
+
+      case Builtin::IDENTICAL:
+        return boolean_type_;
     };
     UNREACHABLE();
   }

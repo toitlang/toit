@@ -3,5 +3,5 @@ Got: 1 Expected: 2.
 Target:
      main.<lambda>             tests/negative/lambda_call_test.toit:6:13
 
-  0: Lambda.call               <sdk>/core/objects.toit:127:3
+  0: Lambda.call               <sdk>/core/objects.toit:130:3
   1: main                      tests/negative/lambda_call_test.toit:7:10

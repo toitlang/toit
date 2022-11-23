@@ -548,6 +548,11 @@ void Emitter::unwind() {
   stack_.pop(3);
 }
 
+void Emitter::identical() {
+  emit_opcode(IDENTICAL);
+  stack_.pop(1);
+}
+
 void Emitter::halt(int yield) {
   emit(HALT, yield);
   if (yield == 0) {

@@ -794,10 +794,22 @@ void ByteGen::visit_CallBuiltin(CallBuiltin* node) {
       if (is_for_value()) emitter()->remember(1);
       break;
 
-    case Builtin::GLOBAL_ID:
+    case Builtin::GLOBAL_ID: {
       ASSERT(node->arguments()[0]->is_ReferenceGlobal());
       auto global = node->arguments()[0]->as_ReferenceGlobal()->target();
       __ load_integer(global->global_id());
+      break;
+    }
+
+    case Builtin::IDENTICAL:
+      if (is_for_effect()) {
+        visit_for_effect(node->arguments()[0]);
+        visit_for_effect(node->arguments()[1]);
+      } else {
+        visit_for_value(node->arguments()[0]);
+        visit_for_value(node->arguments()[1]);
+        __ identical();
+      }
       break;
   }
 }

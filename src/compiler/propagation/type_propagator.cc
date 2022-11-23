@@ -1001,6 +1001,12 @@ static void process(MethodTemplate* method, uint8* bcp, TypeStack* stack, Workli
     UNIMPLEMENTED();
   OPCODE_END();
 
+  OPCODE_BEGIN(IDENTICAL);
+    stack->pop();
+    stack->pop();
+    stack->push_bool(program);
+  OPCODE_END();
+
   OPCODE_BEGIN(LINK);
     stack->push_instance(program->exception_class_id()->value());
     stack->push_empty();       // Unwind target.

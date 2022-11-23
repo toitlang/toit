@@ -71,9 +71,6 @@ TYPE_PRIMITIVE_SMI(compare_to)
 TYPE_PRIMITIVE_BOOL(min_special_compare_to)
 TYPE_PRIMITIVE_SMI(string_compare)
 TYPE_PRIMITIVE_SMI(string_rune_count)
-
-TYPE_PRIMITIVE_BOOL(identical)
-TYPE_PRIMITIVE_BOOL(object_equals)
 TYPE_PRIMITIVE_BOOL(blob_equals)
 
 TYPE_PRIMITIVE_SMI(random)
@@ -169,9 +166,11 @@ TYPE_PRIMITIVE_BOOL(compare_simple_json_string)
 
 TYPE_PRIMITIVE_BOOL(task_has_messages)
 TYPE_PRIMITIVE_ANY(task_receive_message)
-TYPE_PRIMITIVE_TASK(task_current)
 TYPE_PRIMITIVE_TASK(task_new)
-TYPE_PRIMITIVE_SMI(task_transfer)
+
+TYPE_PRIMITIVE(task_transfer) {
+  failure.add_task(program);
+}
 
 TYPE_PRIMITIVE_STRING(float_to_string)
 TYPE_PRIMITIVE_INT(float_to_raw)

@@ -15,7 +15,7 @@ Returns the object for the current task.
 Deprecated: Use $Task.current instead.
 */
 task -> Task:
-  #primitive.core.task_current
+  return Task_.current
 
 /**
 Creates a new user task.
@@ -64,6 +64,8 @@ Tasks are created by calling $(task code). They can either terminate by themselv
   (gracefully or with an exception) or by being canceled from the outside with
   $cancel.
 
+See more on tasks at https://docs.toit.io/language/tasks.
+
 If a task finishes with an exception it brings down the whole program.
 */
 interface Task:
@@ -71,7 +73,7 @@ interface Task:
   Returns the current task.
   */
   static current -> Task:
-    #primitive.core.task_current
+    return Task_.current
 
   /**
   Cancels the task.
@@ -95,10 +97,9 @@ interface Task:
 
 class Task_ implements Task:
   /**
-  Same as $task, but returns it as a $Task_ object instead.
+  Same as $Task.current, but returns it as a $Task_ object instead.
   */
-  static current -> Task_:
-    #primitive.core.task_current
+  static current/Task_? := null
 
   background -> bool:
     return background_
@@ -279,4 +280,6 @@ task_new_ lambda/Lambda -> Task_:
   #primitive.core.task_new
 
 task_transfer_to_ to/Task_ detach_stack:
-  #primitive.core.task_transfer
+  #primitive.core.task_transfer: | task |
+    Task_.current = task
+    return task

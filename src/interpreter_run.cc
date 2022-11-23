@@ -714,6 +714,29 @@ Interpreter::Result Interpreter::run() {
     CALL_METHOD(target, INVOKE_EQ_LENGTH);
   }
 
+  OPCODE_BEGIN(IDENTICAL);
+    Object* a0 = STACK_AT(1);
+    Object* a1 = STACK_AT(0);
+    if (a0 == a1) {
+      STACK_AT_PUT(1, program->true_object());
+    } else if (is_double(a0) && is_double(a1)) {
+      auto d0 = Double::cast(a0);
+      auto d1 = Double::cast(a1);
+      STACK_AT_PUT(1, boolean(program, d0->bits() == d1->bits()));
+    } else if (is_large_integer(a0) && is_large_integer(a1)) {
+      auto l0 = LargeInteger::cast(a0);
+      auto l1 = LargeInteger::cast(a1);
+      STACK_AT_PUT(1, boolean(program, l0->value() == l1->value()));
+    } else if (is_string(a0) && is_string(a1)) {
+      auto s0 = String::cast(a0);
+      auto s1 = String::cast(a1);
+      STACK_AT_PUT(1, boolean(program, s0->compare(s1) == 0));
+    } else {
+      STACK_AT_PUT(1, program->false_object());
+    }
+    DROP1();
+  OPCODE_END();
+
   OPCODE_BEGIN(INVOKE_EQ);
     Object* a0 = STACK_AT(1);
     Object* a1 = STACK_AT(0);
@@ -740,7 +763,7 @@ Interpreter::Result Interpreter::run() {
     PUSH(a0);
     index__ = program->invoke_bytecode_offset(INVOKE_EQ);
     goto INVOKE_VIRTUAL_FALLBACK;
-  OPCODE_END()
+  OPCODE_END();
 
 #define INVOKE_RELATIONAL(opcode, op, bit)                             \
   OPCODE_BEGIN(opcode);                                                \
@@ -955,7 +978,7 @@ Interpreter::Result Interpreter::run() {
     const int parameter_offset = Interpreter::FRAME_SIZE;
     unsigned primitive_index = Utils::read_unaligned_uint16(bcp + 2);
     const PrimitiveEntry* primitive = Primitive::at(primitive_module, primitive_index);
-    if (Flags::primitives) printf("Invoking primitive %d::%d\n", primitive_module, primitive_index);
+    if (Flags::primitives) printf("[invoking primitive %d::%d]\n", primitive_module, primitive_index);
     if (primitive == null) {
       PUSH(Smi::from(primitive_module));
       PUSH(Smi::from(primitive_index));

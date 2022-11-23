@@ -1317,31 +1317,6 @@ PRIMITIVE(string_rune_count) {
   return Smi::from(count);
 }
 
-
-PRIMITIVE(object_equals) {
-  ARGS(Object, receiver, Object, other)
-  return BOOL(receiver == other);
-}
-
-PRIMITIVE(identical) {
-  ARGS(Object, a, Object, b)
-  if (a == b) return BOOL(true);
-  if (is_double(a) && is_double(b)) {
-    auto double_a = Double::cast(a);
-    auto double_b = Double::cast(b);
-    return BOOL(double_a->bits() == double_b->bits());
-  }
-  if (is_large_integer(a) && is_large_integer(b)) {
-    auto large_a = LargeInteger::cast(a);
-    auto large_b = LargeInteger::cast(b);
-    return BOOL(large_a->value() == large_b->value());
-  }
-  if (is_string(a) && is_string(b)) {
-    return BOOL(String::cast(a)->compare(String::cast(b)) == 0);
-  }
-  return BOOL(false);
-}
-
 PRIMITIVE(smi_to_string_base_10) {
   ARGS(word, receiver);
   char buffer[32];
@@ -1826,10 +1801,6 @@ PRIMITIVE(smi_shift_left) {
   return Primitive::integer(value << number_of_bits, process);
 }
 
-PRIMITIVE(task_current) {
-  return process->object_heap()->task();
-}
-
 PRIMITIVE(task_new) {
   ARGS(Instance, code);
   Task* task = process->object_heap()->allocate_task();
@@ -1866,7 +1837,7 @@ PRIMITIVE(task_transfer) {
     process->object_heap()->set_task(to);
     process->scheduler_thread()->interpreter()->load_stack();
   }
-  return Smi::from(42);
+  return Primitive::mark_as_error(to);
 }
 
 PRIMITIVE(process_send) {

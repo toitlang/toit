@@ -189,6 +189,7 @@ enum BytecodeFormat {
   BYTECODE(NON_LOCAL_RETURN,           2, OP_BU, "non-local return")           \
   BYTECODE(NON_LOCAL_RETURN_WIDE,      4, OP_SU_SU, "non-local return wide")   \
   BYTECODE(NON_LOCAL_BRANCH,           6, OP_BU_WU, "non-local branch")        \
+  BYTECODE(IDENTICAL,                  1, OP, "identical")                     \
   BYTECODE(LINK,                       2, OP_BU, "link try")                   \
   BYTECODE(UNLINK,                     2, OP_BU, "unlink try")                 \
   BYTECODE(UNWIND,                     1, OP, "unwind")                        \
