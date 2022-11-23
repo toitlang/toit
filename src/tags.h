@@ -58,6 +58,7 @@ namespace toit {
   fn(TCPServerSocketResource)           \
   fn(SubprocessResource)                \
   fn(PipeResource)                      \
+  fn(GcmContext)                        \
 
 #define TLS_CLASSES_DO(fn)              \
   fn(MbedTLSSocket)                     \
