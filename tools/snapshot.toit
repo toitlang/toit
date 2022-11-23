@@ -524,13 +524,13 @@ class ToitMethod:
     format := bytecode.format
     if format == OP:
     else if format  == OP_BU:
-      line += " $index "
+      line += " $index"
     else if format == OP_SU:
       line += " $(method.uint16 bci + 1)"
     else if format == OP_BS:
       line += " S$index "
     else if format == OP_SS:
-      line += " S$(method.uint16 bci + 1) "
+      line += " S$(method.uint16 bci + 1)"
     else if format == OP_BL:
       line += " $program.literals[index]"
     else if format == OP_SL:

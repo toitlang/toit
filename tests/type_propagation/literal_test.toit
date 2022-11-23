@@ -3,7 +3,17 @@
 // be found in the tests/LICENSE file.
 
 main:
-  literal
+  get_smi
+  get_string
+  get_smi_or_string
 
-literal:
+get_smi:
   return 42
+
+get_string:
+  return "hest"
+
+get_smi_or_string:
+  x := get_smi
+  if x == 0: return x
+  return get_string

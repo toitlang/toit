@@ -28,9 +28,6 @@ endif()
 if (NOT DEFINED GOLD)
   message(FATAL_ERROR "Missing GOLD argument")
 endif()
-if (NOT DEFINED LIB_DIR)
-  message(FATAL_ERROR "Missing LIB_DIR argument")
-endif()
 if (NOT DEFINED TEST_ROOT)
   message(FATAL_ERROR "Missing TEST_ROOT argument")
 endif()
@@ -38,13 +35,11 @@ if (NOT DEFINED TMP)
   message(FATAL_ERROR "Missing TMP argument")
 endif()
 
-if (NOT DEFINED GIT_VERSION)
-  # GIT_VERSION is optional.
-  set(GIT_VERSION "")
-endif()
+set(TMP_SNAPSHOT "${TMP}/${TEST_NAME}.snapshot")
+set(TMP_TYPES "${TMP}/${TEST_NAME}.types")
 
 execute_process(
-  COMMAND "${TOIT_COMPILE}" -w "${TMP}/${TEST_NAME}.snapshot" -Xpropagate "${TEST}"
+  COMMAND "${TOIT_COMPILE}" -w "${TMP_SNAPSHOT}" -Xpropagate "${TEST}"
   OUTPUT_VARIABLE STDOUT
   RESULT_VARIABLE EXIT_CODE
 )
@@ -53,10 +48,10 @@ if (NOT ("${EXIT_CODE}" EQUAL 0))
   message(FATAL_ERROR "Propagating types failed with exit code ${EXIT_CODE}.")
 endif()
 
-file(WRITE "${TMP}/${TEST_NAME}.types" "${STDOUT}")
+file(WRITE "${TMP_TYPES}" "${STDOUT}")
 
 execute_process(
-  COMMAND "${TOIT_VM}" "${TEST_ROOT}/tools/dump_types.toit" -s "${TMP}/${TEST_NAME}.snapshot" -t "${TMP}/${TEST_NAME}.types"
+  COMMAND "${TOIT_VM}" "${TEST_ROOT}/tools/dump_types.toit" -s "${TMP_SNAPSHOT}" -t "${TMP_TYPES}"
   OUTPUT_VARIABLE STDOUT
   ERROR_VARIABLE STDERR
   RESULT_VARIABLE EXIT_CODE
