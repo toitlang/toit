@@ -113,7 +113,11 @@ void TypePropagator::propagate() {
   field(program()->task_class_id()->value(), 1)->merge(this, stack->local(0));
   stack->pop();
 
-  MethodTemplate* entry = instantiate(program()->entry_main(), std::vector<ConcreteType>());
+  // TODO(kasper): Also teach the system about the type of the argument to
+  // __entry__spawn. Only do this if we're actually spawning processes.
+  std::vector<ConcreteType> main_arguments;
+  main_arguments.push_back(ConcreteType(program()->task_class_id()->value()));
+  MethodTemplate* entry = instantiate(program()->entry_main(), main_arguments);
   enqueue(entry);
   while (enqueued_.size() != 0) {
     MethodTemplate* last = enqueued_.back();

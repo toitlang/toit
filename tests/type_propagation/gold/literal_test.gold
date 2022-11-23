@@ -1,0 +1,8 @@
+222: main tests/type_propagation/literal_test.toit:5:1
+  0/ 226 [053] - invoke static literal tests/type_propagation/literal_test.toit:8:1 // {SmallInteger_}
+  3/ 229 [089] - return null S1 0
+
+232: literal tests/type_propagation/literal_test.toit:8:1
+  0/ 236 [026] - load smi 42 
+  2/ 238 [088] - return S1 0
+
