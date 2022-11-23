@@ -33,7 +33,7 @@ EventQueueEventSource::EventQueueEventSource()
     : EventSource("EVQ")
     , Thread("EVQ")
     , stop_(xSemaphoreCreateBinary())
-    , gpio_queue_(xQueueCreate(32, sizeof(word)))
+    , gpio_queue_(xQueueCreate(32, sizeof(GPIOEvent)))
     , queue_set_(xQueueCreateSet(32)) {
   xQueueAddToSet(stop_, queue_set_);
   xQueueAddToSet(gpio_queue_, queue_set_);
@@ -80,13 +80,12 @@ void EventQueueEventSource::entry() {
     }
 
     // See if there's a GPIO event.
-    word pin;
-    while (xQueueReceive(gpio_queue_, &pin, 0)) {
-      bool data = gpio_get_level(gpio_num_t(pin)) != 0;
+    GPIOEvent data;
+    while (xQueueReceive(gpio_queue_, &data, 0)) {
       for (auto r : resources()) {
         auto resource = static_cast<EventQueueResource*>(r);
-        if (resource->check_gpio(pin)) {
-          dispatch(locker, r, data);
+        if (resource->check_gpio(data.pin)) {
+          dispatch(locker, r, data.timestamp);
         }
       }
     }

@@ -25,8 +25,7 @@ Only one $Pin instance of any given GPIO number can be open at any given point
 To release the resources associated with the $Pin, call $Pin.close.
 */
 class Pin:
-  static GPIO_STATE_DOWN_ ::= 1
-  static GPIO_STATE_UP_   ::= 2
+  static GPIO_STATE_EDGE_TRIGGERED_ ::= 1
 
   static resource_group_ ::= gpio_init_
 
@@ -247,18 +246,26 @@ class Pin:
   */
   wait_for value -> none:
     if get == value: return
-    expected_state := value == 1 ? GPIO_STATE_UP_ : GPIO_STATE_DOWN_
-    state_.clear_state expected_state
-    gpio_config_interrupt_ num true
+    state_.clear_state GPIO_STATE_EDGE_TRIGGERED_
+    config_timestamp := gpio_config_interrupt_ resource_ true
     try:
       // Make sure the pin didn't change to the expected value while we
       // were setting up the interrupt.
       if get == value: return
 
-      state_.wait_for_state expected_state
+      while true:
+        state_.wait_for_state GPIO_STATE_EDGE_TRIGGERED_
+        event_timestamp := gpio_last_edge_trigger_timestamp_ resource_
+        // If there was an edge transition after we configured the interrupt,
+        // we are guaranteed that we have seen the value we are waiting for.
+        // The pin's value might already be different now, but we know
+        // that it was at the correct value at least for a brief periood of
+        // time when the interrupt triggered.
+        if event_timestamp >= config_timestamp: return
+        // The following test shouldn't be necessary, but doesn't hurt either.
+        if get == value: return
     finally:
-      gpio_config_interrupt_ num false
-      state_.clear_state expected_state
+      gpio_config_interrupt_ resource_ false
 
 /**
 Virtual pin.
@@ -366,5 +373,8 @@ gpio_get_ num:
 gpio_set_ num value:
   #primitive.gpio.set
 
-gpio_config_interrupt_ num enabled/bool:
+gpio_config_interrupt_ resource enabled/bool:
   #primitive.gpio.config_interrupt
+
+gpio_last_edge_trigger_timestamp_ resource:
+  #primitive.gpio.last_edge_trigger_timestamp
