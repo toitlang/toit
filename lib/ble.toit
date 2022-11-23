@@ -86,7 +86,7 @@ BLE_CONNECT_MODE_NONE                  ::= 0
 BLE_CONNECT_MODE_DIRECTIONAL           ::= 1
 BLE_CONNECT_MODE_UNDIRECTIONAL         ::= 2
 
-BLE_ADVERTISE_FLAGS_LIMITIED_DISCOVERY ::= 0x01
+BLE_ADVERTISE_FLAGS_LIMITED_DISCOVERY  ::= 0x01
 BLE_ADVERTISE_FLAGS_GENERAL_DISCOVERY  ::= 0x02
 BLE_ADVERTISE_FLAGS_BREDR_UNSUPPORTED  ::= 0x04
 
@@ -120,7 +120,7 @@ class AdvertisementData:
   connectable/bool
 
   /**
-  Advertise flags. This must be a bitwise or of the BLE_ADVERTISE_FLAG_* constants
+  Advertise flags. This must be a bitwise 'or' of the BLE_ADVERTISE_FLAG_* constants
     (see $BLE_ADVERTISE_FLAGS_GENERAL_DISCOVERY and similar).
   */
   flags/int
