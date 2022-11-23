@@ -182,8 +182,8 @@ class AesGcm:
 
   /**
   Initialize a AesGcm AEAD class for encryption.
-  The $key should be a 16, 24, or 32 bytes of AES key.
-  The $initialization_vector should be 12 bytes of data.  It is extremely
+  The $key must be a 16, 24, or 32 bytes of AES key.
+  The $initialization_vector must be 12 bytes of data.  It is extremely
     important that the initialization_vector is not reused with the same key.
     The initialization_vector must be known to the decrypting counterparty.
   */
@@ -194,8 +194,8 @@ class AesGcm:
 
   /**
   Initialize a AesGcm AEAD class for encryption or decryption.
-  The $key should be a 16, 24, or 32 bit AES key.
-  The $initialization_vector should be 12 bytes of data, obtained from the
+  The $key must be a 16, 24, or 32 bit AES key.
+  The $initialization_vector must be 12 bytes of data, obtained from the
     encrypting counterparty.
   */
   constructor.decryptor key/ByteArray initialization_vector/ByteArray --algorithm/int=ALGORITHM_AES_GCM_SHA256:
@@ -205,11 +205,13 @@ class AesGcm:
 
   /**
   Encrypts the given $plain_text.
-  The plain_text should be a ByteArray or a string.
+  The plain_text must be a ByteArray or a string.
   If provided, the $authenticated_data is data that takes part in the
     verification tag, but does not get encrypted.
   Returns the encrypted plain_text.  The verification tag, 16 bytes, is
     appended to the result.
+  This method is equivalent to calling $start, $add, and $finish, and
+    therefore it closes this instance.
   */
   encrypt plain_text --authenticated_data="" -> ByteArray:
     if not gcm_aes_: throw "ALREADY_CLOSED"
@@ -217,11 +219,11 @@ class AesGcm:
     result := ByteArray plain_text.size + TAG_SIZE
 
     gcm_start_message_ gcm_aes_ authenticated_data initialization_vector_
-    bytes /int := gcm_add_ gcm_aes_ plain_text result
-    if bytes != (round_down plain_text.size BLOCK_SIZE_): throw "UNKNOWN_ERROR"
+    number_of_bytes /int := gcm_add_ gcm_aes_ plain_text result
+    if number_of_bytes != (round_down plain_text.size BLOCK_SIZE_): throw "UNKNOWN_ERROR"
     rest_and_tag := gcm_finish_ gcm_aes_
-    if bytes + rest_and_tag.size != plain_text.size + BLOCK_SIZE_: throw "UNKNOWN_ERROR"
-    result.replace bytes rest_and_tag
+    if number_of_bytes + rest_and_tag.size != plain_text.size + TAG_SIZE: throw "UNKNOWN_ERROR"
+    result.replace number_of_bytes rest_and_tag
     close
     return result
 
@@ -231,6 +233,8 @@ class AesGcm:
     fails.
   If the verification_tag is not provided, it is assumed to be appended to the
     $cipher_text.
+  This method is equivalent to calling $start, $add, and $verify, and
+    therefore it closes this instance.
   */
   decrypt cipher_text/ByteArray --authenticated_data="" --verification_tag/ByteArray?=null -> ByteArray:
     if not gcm_aes_: throw "ALREADY_CLOSED"
@@ -242,10 +246,10 @@ class AesGcm:
 
     gcm_start_message_ gcm_aes_ authenticated_data initialization_vector_
     result := ByteArray cipher_text.size
-    bytes /int := gcm_add_ gcm_aes_ cipher_text result
-    if bytes != (round_down cipher_text.size BLOCK_SIZE_): throw "UNKNOWN_ERROR"
+    number_of_bytes /int := gcm_add_ gcm_aes_ cipher_text result
+    if number_of_bytes != (round_down cipher_text.size BLOCK_SIZE_): throw "UNKNOWN_ERROR"
 
-    check := gcm_verify_ gcm_aes_ verification_tag result[bytes..]
+    check := gcm_verify_ gcm_aes_ verification_tag result[number_of_bytes..]
     if check != 0:
       throw "INVALID_SIGNATURE"
 
@@ -274,16 +278,17 @@ class AesGcm:
   add data/ByteArray -> ByteArray:
     size += data.size
     if buffer_:
-      bytes := gcm_add_ gcm_aes_ data buffer_
-      if bytes:
-        result := buffer_[0..bytes]
+      number_of_bytes := gcm_add_ gcm_aes_ data buffer_
+      if number_of_bytes:
+        result := buffer_[0..number_of_bytes]
         buffer_ = data
         return result
     // Output buffer was too small.  Make one that is certainly big enough.
-    result := ByteArray data.size + BLOCK_SIZE_
-    bytes /int := gcm_add_ gcm_aes_ data result
-    if buffer_ == null or data.size > buffer_.size: buffer_ = data
-    return result[..bytes]
+    result := ByteArray
+        round_up data.size BLOCK_SIZE_
+    number_of_bytes /int := gcm_add_ gcm_aes_ data result
+    if not buffer_ or data.size > buffer_.size: buffer_ = data
+    return result[..number_of_bytes]
 
   /**
   Finishes encrypting.
@@ -291,6 +296,7 @@ class AesGcm:
   Returns a two-element list with the last encrypted bytes and the verification
     tag.  The last encrypted bytes will be a zero length ByteArray if the
     size of the plaintext was a multiple of 16.
+  Closes this instance.
   */
   finish -> List:
     result := gcm_finish_ gcm_aes_
@@ -310,6 +316,7 @@ class AesGcm:
     data is not used.
   Returns the last few bytes of the decrypted data.  This is an empty ByteArray
     if the size of the ciphertext was a multiple of 16.
+  Closes this instance.
   */
   verify verification_tag/ByteArray -> ByteArray:
     result := ByteArray

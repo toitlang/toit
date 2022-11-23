@@ -169,12 +169,14 @@ PRIMITIVE(gcm_close) {
   return process->program()->null_object();
 }
 
-// Start the encryption of a message, or TLS record.  Takes a 12 byte nonce.
+// Start the encryption of a message.  Takes a 12 byte nonce.
 // It is vital that the nonce is not reused with the same key.
-// Internally these primitives will add 4 more bytes of block counter, starting
-//   at 1, to form a 16 byte IV.
+// Internally the gcm_* primitives will add 4 more bytes of block counter,
+//   starting at 1, to form a 16 byte IV.
 //
 // TLS:
+// In TLS each record corresponds to one message, and it is the responsiblity
+//   of the TLS layer to supply a fresh nonce per message.
 // As described in RFC5288 section 3, the first 4 bytes of the nonce are kept
 //   secret, and the next 8 bytes are transmitted along with each record.
 // In order to avoid reuse of the nonce, the explicit part is normally counted
@@ -199,70 +201,70 @@ PRIMITIVE(gcm_start_message) {
 }
 
 /**
-If the result byte array was big enough, returns a Smi to indicate how much
+If the out byte array was big enough, returns a Smi to indicate how much
   data was placed in it.
-If the result byte array was not big enough, returns null.  In this case no
+If the out byte array was not big enough, returns null.  In this case no
   data was consumed.
 */
 PRIMITIVE(gcm_add) {
-  ARGS(GcmContext, context, Blob, data, MutableBlob, result);
+  ARGS(GcmContext, context, Blob, in, MutableBlob, out);
   if (!context->currently_generating_message()) INVALID_ARGUMENT;
-  const uint8* data_address = data.address();
-  int data_length = data.length();
-  if (data_length == 0) return Smi::from(0);
 
-  // Start by copying into the temporary buffer in the context.
-  const int to_copy = Utils::min(
-      GcmContext::BLOCK_SIZE - context->buffered_bytes(),
-      data_length);
-  memcpy(context->buffered_data() + context->buffered_bytes(), data_address, to_copy);
-  data_address += to_copy;
-  data_length -= to_copy;
-  const int buffered = context->buffered_bytes() + to_copy;
-  if (buffered < GcmContext::BLOCK_SIZE) {
-    // Success.  We copied all the data into the internal buffer, and so the
-    // output byte array is inevitably big enough.
-    // Update the context and the number of bytes of new output.
-    context->increment_length(to_copy);
-    return Smi::from(0);
-  }
+  static const int BLOCK_SIZE = GcmContext::BLOCK_SIZE;
 
-  // Some data is to be encrypted/decrypted.
-  const int to_process_after_internal_buffer =
-      Utils::round_down(data_length, GcmContext::BLOCK_SIZE);
-  if (buffered + to_process_after_internal_buffer > result.length()) {
-    // Output byte array not big enough.  At this point we have not yet
-    // modified the context.  Return null to indicate the problem.
+  uint8*       out_address = out.address();
+  const uint8* in_address  = in.address();
+  int          in_length   = in.length();
+
+  int output_length = Utils::round_down(
+      context->number_of_buffered_bytes() + in_length,
+      BLOCK_SIZE);
+  if (output_length > out.length()) {
+    // Output byte array not big enough.
     return process->program()->null_object();
   }
 
-  // From here we know the result buffer is big enough, and can write data into
-  // the context.
-  context->increment_length(data.length());
+  int buffered = context->number_of_buffered_bytes();
+  // We cache buffered above because the next line changes the result of
+  // context->number_of_buffered_bytes().
+  context->increment_length(in.length());
 
-  uint8* result_address = result.address();
+  if (buffered != 0) {
+    // Copy into the temporary buffer in the context.
+    const int to_copy = Utils::min(
+        BLOCK_SIZE - buffered,
+        in_length);
+    memcpy(context->buffered_data() + buffered, in_address, to_copy);
+    in_address += to_copy;
+    in_length -= to_copy;
+    if (buffered + to_copy == BLOCK_SIZE) {
+      // We filled the temporary buffer.
+      mbedtls_gcm_update(
+          context->gcm_context(),
+          BLOCK_SIZE,
+          context->buffered_data(),
+          out_address);
+      out_address += BLOCK_SIZE;
+    }
+  }
+
+  int to_process = Utils::round_down(in_length, BLOCK_SIZE);
+  ASSERT(out_address + to_process <= out.address() + out.length());
 
   mbedtls_gcm_update(
       context->gcm_context(),
-      buffered,
-      context->buffered_data(),
-      result_address);
+      to_process,
+      in_address,
+      out_address);
 
-  result_address += buffered;
+  in_address  += to_process;
+  in_length   -= to_process;
+  out_address += to_process;
 
-  mbedtls_gcm_update(
-      context->gcm_context(),
-      to_process_after_internal_buffer,
-      data_address,
-      result_address);
-
-  data_address += to_process_after_internal_buffer;
-  data_length -= to_process_after_internal_buffer;
-
-  memcpy(context->buffered_data(), data_address, data_length);
+  memcpy(context->buffered_data(), in_address, in_length);
 
   // Return the amount of data output.
-  return Smi::from(buffered + to_process_after_internal_buffer);
+  return Smi::from(out_address - out.address());
 }
 
 PRIMITIVE(gcm_get_tag_size) {
@@ -278,7 +280,7 @@ PRIMITIVE(gcm_finish) {
   ARGS(GcmContext, context);
   if (!context->is_encrypt()) INVALID_ARGUMENT;
   if (!context->currently_generating_message()) INVALID_ARGUMENT;
-  int rest = context->buffered_bytes();
+  int rest = context->number_of_buffered_bytes();
   ByteArray* result = process->allocate_byte_array(rest + GcmContext::TAG_SIZE);
   if (result == null) ALLOCATION_FAILED;
   ByteArray::Bytes result_bytes(result);
@@ -308,11 +310,11 @@ PRIMITIVE(gcm_verify) {
   ARGS(GcmContext, context, Blob, verification_tag, MutableBlob, rest);
   if (context->is_encrypt()) INVALID_ARGUMENT;
   if (verification_tag.length() != GcmContext::TAG_SIZE) INVALID_ARGUMENT;
-  if (rest.length() < context->buffered_bytes()) INVALID_ARGUMENT;
+  if (rest.length() < context->number_of_buffered_bytes()) INVALID_ARGUMENT;
 
   int ok = mbedtls_gcm_update(
     context->gcm_context(),
-    context->buffered_bytes(),
+    context->number_of_buffered_bytes(),
     context->buffered_data(),
     rest.address());
   if (ok != 0) return tls_error(null, process, ok);

@@ -53,11 +53,10 @@ class GcmContext : public SimpleResource {
   inline void set_currently_generating_message() { currently_generating_message_ = true; }
   inline void increment_length(int by) { length_ += by; }
   inline uint8* buffered_data() { return buffered_data_; }
-  inline int buffered_bytes() const { return length_ & (BLOCK_SIZE - 1); }
+  inline int number_of_buffered_bytes() const { return length_ & (BLOCK_SIZE - 1); }
 
  private:
   uint8 buffered_data_[BLOCK_SIZE];
-  int buffered_bytes_ = 0;  // 0-15.
   bool currently_generating_message_ = false;
   uint64_t length_ = 0;
   mbedtls_cipher_id_t cipher_id_;
@@ -65,9 +64,10 @@ class GcmContext : public SimpleResource {
   mbedtls_gcm_context context_;
 };
 
+// These numbers must stay in sync with constants in primitive_crypto.cc.
 enum GcmAlgorithmType {
   ALGORITHM_AES_GCM_SHA256 = 0,
-  NUMBER_OF_ALGORITHM_TYPES    = 1
+  NUMBER_OF_ALGORITHM_TYPES = 1
 };
 
 class MbedTLSResourceGroup;
