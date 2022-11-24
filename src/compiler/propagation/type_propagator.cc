@@ -327,17 +327,20 @@ void TypePropagator::load_outer(TypeStack* stack, uint8* site, int index) {
 
 TypeResult* TypePropagator::field(unsigned type, int index) {
   auto it = fields_.find(type);
-  std::unordered_map<int, TypeResult*>& map = (it == fields_.end())
-      ? (fields_[type] = std::unordered_map<int, TypeResult*>())
-      : it->second;
-  auto itx = map.find(index);
-  if (itx == map.end()) {
+  if (it != fields_.end()) {
+    std::unordered_map<int, TypeResult*>& map = it->second;
+    auto itx = map.find(index);
+    if (itx != map.end()) return itx->second;
     TypeResult* variable = new TypeResult(words_per_type());
     map[index] = variable;
     return variable;
-  } else {
-    return itx->second;
   }
+
+  std::unordered_map<int, TypeResult*> map;
+  TypeResult* variable = new TypeResult(words_per_type());
+  map[index] = variable;
+  fields_[type] = map;
+  return variable;
 }
 
 TypeResult* TypePropagator::global_variable(int index) {
