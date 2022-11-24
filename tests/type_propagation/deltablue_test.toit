@@ -36,6 +36,8 @@ I've kept it this way to avoid deviating too much from the original implementati
 */
 
 main -> none:
+  planner = Planner
+  return
   10.repeat:
     chain_test 50
     projection_test 50
