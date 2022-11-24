@@ -23,7 +23,6 @@
 #include "primitive.h"
 #include "process.h"
 #include "scheduler.h"
-#include "sha1.h"
 #include "sha.h"
 
 #include "rtc_memory_esp32.h"

@@ -6,12 +6,21 @@ import .checksum
 import .sha
 
 /**
-Secure Hash Algorithm (SHA-224, SHA-256, SHA-384, and SHA-512).
+Secure Hash Algorithm (SHA1, SHA2-224, SHA2-256, SHA2-384, and SHA2-512).
 
 This implementation uses hardware accelerated primitives.
 
-See https://en.wikipedia.org/wiki/SHA-256.
+See https://en.wikipedia.org/wiki/SHA-256 and
+https://en.wikipedia.org/wiki/SHA-1.
 */
+
+/**
+Computes the SHA1 hash of the given $data.
+
+The $data must be a string or byte array.
+*/
+sha1 data from/int=0 to/int=data.size -> ByteArray:
+  return checksum Sha1 data from to
 
 /**
 Computes the SHA224 hash of the given $data.
@@ -66,6 +75,11 @@ class Sha_ extends Checksum:
   get -> ByteArray:
     remove_finalizer this
     return sha_get_ sha_state_
+
+/** SHA1 hash state. */
+class Sha1 extends Sha_:
+  constructor:
+    super 160
 
 /** SHA-224 hash state. */
 class Sha224 extends Sha_:

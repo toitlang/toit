@@ -20,7 +20,10 @@ namespace toit {
 Sha::Sha(SimpleResourceGroup* group, int bits)
     : SimpleResource(group)
     , bits_(bits) {
-  if (bits == 224) {
+  if (bits == 160) {
+    mbedtls_sha1_init(&context_1_);
+    mbedtls_sha1_starts_ret(&context_1_);
+  } else if (bits == 224) {
     mbedtls_sha256_init(&context_);
     mbedtls_sha256_starts_ret(&context_, 1);
   } else if (bits == 256) {
@@ -36,7 +39,9 @@ Sha::Sha(SimpleResourceGroup* group, int bits)
 }
 
 Sha::~Sha() {
-  if (bits_ <= 256) {
+  if (bits_ == 160) {
+    mbedtls_sha1_free(&context_1_);
+  } else if (bits_ <= 256) {
     mbedtls_sha256_free(&context_);
   } else {
     mbedtls_sha512_free(&context_512_);
@@ -44,7 +49,9 @@ Sha::~Sha() {
 }
 
 void Sha::add(const uint8* contents, intptr_t extra) {
-  if (bits_ <= 256) {
+  if (bits_ == 160) {
+    mbedtls_sha1_update_ret(&context_1_, contents, extra);
+  } else if (bits_ <= 256) {
     mbedtls_sha256_update_ret(&context_, contents, extra);
   } else {
     mbedtls_sha512_update_ret(&context_512_, contents, extra);
@@ -53,7 +60,9 @@ void Sha::add(const uint8* contents, intptr_t extra) {
 
 void Sha::get(uint8_t* hash) {
   uint8 buffer[64];
-  if (bits_ <= 256) {
+  if (bits_ == 160) {
+    mbedtls_sha1_finish_ret(&context_1_, buffer);
+  } else if (bits_ <= 256) {
     mbedtls_sha256_finish_ret(&context_, buffer);
   } else {
     mbedtls_sha512_finish_ret(&context_512_, buffer);

@@ -446,9 +446,6 @@ namespace toit {
   PRIMITIVE(get_count, 1)                    \
 
 #define MODULE_CRYPTO(PRIMITIVE)             \
-  PRIMITIVE(sha1_start, 1)                   \
-  PRIMITIVE(sha1_add, 4)                     \
-  PRIMITIVE(sha1_get, 1)                     \
   PRIMITIVE(sha_start, 2)                    \
   PRIMITIVE(sha_add, 4)                      \
   PRIMITIVE(sha_get, 1)                      \
@@ -955,7 +952,6 @@ namespace toit {
 #define _A_T_X509Certificate(N, name)     MAKE_UNPACKING_MACRO(X509Certificate, N, name)
 #define _A_T_AesContext(N, name)          MAKE_UNPACKING_MACRO(AesContext, N, name)
 #define _A_T_AesCbcContext(N, name)       MAKE_UNPACKING_MACRO(AesCbcContext, N, name)
-#define _A_T_Sha1(N, name)                MAKE_UNPACKING_MACRO(Sha1, N, name)
 #define _A_T_Siphash(N, name)             MAKE_UNPACKING_MACRO(Siphash, N, name)
 #define _A_T_Sha(N, name)                 MAKE_UNPACKING_MACRO(Sha, N, name)
 #define _A_T_Adler32(N, name)             MAKE_UNPACKING_MACRO(Adler32, N, name)

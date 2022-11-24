@@ -21,7 +21,6 @@
 #include "primitive.h"
 #include "process.h"
 #include "resource.h"
-#include "sha1.h"
 #include "sha.h"
 #include "siphash.h"
 #include "tags.h"
@@ -30,40 +29,9 @@ namespace toit {
 
 MODULE_IMPLEMENTATION(crypto, MODULE_CRYPTO)
 
-PRIMITIVE(sha1_start) {
-  ARGS(SimpleResourceGroup, group);
-  ByteArray* proxy = process->object_heap()->allocate_proxy();
-  if (proxy == null) ALLOCATION_FAILED;
-
-  Sha1* sha1 = _new Sha1(group);
-  if (!sha1) MALLOC_FAILED;
-  proxy->set_external_address(sha1);
-  return proxy;
-}
-
-PRIMITIVE(sha1_add) {
-  ARGS(Sha1, sha1, Blob, data, int, from, int, to);
-
-  if (from < 0 || from > to || to > data.length()) OUT_OF_RANGE;
-  sha1->add(data.address() + from, to - from);
-  return process->program()->null_object();
-}
-
-PRIMITIVE(sha1_get) {
-  ARGS(Sha1, sha1);
-  ByteArray* result = process->allocate_byte_array(20);
-  if (result == null) ALLOCATION_FAILED;
-  uint8 hash[20];
-  sha1->get_hash(hash);
-  memcpy(ByteArray::Bytes(result).address(), hash, 20);
-  sha1->resource_group()->unregister_resource(sha1);
-  sha1_proxy->clear_external_address();
-  return result;
-}
-
 PRIMITIVE(sha_start) {
   ARGS(SimpleResourceGroup, group, int, bits);
-  if (bits != 224 && bits != 256 && bits != 384 && bits != 512) INVALID_ARGUMENT;
+  if (bits != 160 && bits != 224 && bits != 256 && bits != 384 && bits != 512) INVALID_ARGUMENT;
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;
 

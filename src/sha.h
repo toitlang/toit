@@ -15,6 +15,7 @@
 
 #pragma once
 
+#include <mbedtls/sha1.h>
 #include <mbedtls/sha256.h>
 #include <mbedtls/sha512.h>
 
@@ -32,10 +33,11 @@ class Sha : public SimpleResource {
   Sha(SimpleResourceGroup* group, int bits);
   virtual ~Sha();
 
-  static const int HASH_LENGTH_224 = 28;
-  static const int HASH_LENGTH_256 = 32;
-  static const int HASH_LENGTH_384 = 48;
-  static const int HASH_LENGTH_512 = 64;
+  static const int HASH_LENGTH_160 = 20;  // Sha1.
+  static const int HASH_LENGTH_224 = 28;  // Sha2.
+  static const int HASH_LENGTH_256 = 32;  // Sha2.
+  static const int HASH_LENGTH_384 = 48;  // Sha2.
+  static const int HASH_LENGTH_512 = 64;  // Sha2.
 
   int hash_length() const { return bits_ >> 3; }
 
@@ -45,6 +47,7 @@ class Sha : public SimpleResource {
  private:
   int bits_;
   union {
+    mbedtls_sha1_context context_1_;
     mbedtls_sha256_context context_;
     mbedtls_sha512_context context_512_;
   };
