@@ -30,13 +30,13 @@ namespace toit {
 
 void VM::load_platform_event_sources() {
 #if defined(TOIT_USE_LWIP)
-  event_manager()->add_event_source(_new LwIPEventSource());
+  event_manager()->add_event_source(_new LwipEventSource());
 #endif
   // TODO(Lau): add new event source to other platforms.
   event_manager()->add_event_source(_new TimerEventSource());
   event_manager()->add_event_source(_new EpollEventSource());
   event_manager()->add_event_source(_new SubprocessEventSource());
-  event_manager()->add_event_source(_new TLSEventSource());
+  event_manager()->add_event_source(_new TlsEventSource());
 }
 
 } // namespace toit

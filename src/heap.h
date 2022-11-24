@@ -198,9 +198,9 @@ class ObjectHeap {
   ObjectNotifierList object_notifiers_;
 
   // A finalizer is in one of the following lists.
-  FinalizerNodeFIFO registered_finalizers_;       // Contains registered finalizers.
-  FinalizerNodeFIFO runnable_finalizers_;         // Contains finalizers that must be executed.
-  VMFinalizerNodeFIFO registered_vm_finalizers_;  // Contains registered VM finalizers.
+  FinalizerNodeFifo registered_finalizers_;       // Contains registered finalizers.
+  FinalizerNodeFifo runnable_finalizers_;         // Contains finalizers that must be executed.
+  VmFinalizerNodeFifo registered_vm_finalizers_;  // Contains registered VM finalizers.
   ObjectNotifier* finalizer_notifier_ = null;
 
   int gc_count_ = 0;
@@ -212,19 +212,6 @@ class ObjectHeap {
 
   friend class ObjectNotifier;
   friend class Process;
-};
-
-class NoGC {
- public:
-  explicit NoGC(ObjectHeap* heap) : heap_(heap) {
-    heap->enter_no_gc();
-  }
-  ~NoGC() {
-    heap_->leave_no_gc();
-  }
-
- private:
-  ObjectHeap* heap_;
 };
 
 } // namespace toit

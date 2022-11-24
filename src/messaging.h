@@ -27,7 +27,7 @@ class Message;
 class Process;
 class VM;
 
-typedef LinkedFIFO<Message> MessageFIFO;
+typedef LinkedFifo<Message> MessageFIFO;
 
 enum MessageType {
   MESSAGE_INVALID = 0,

@@ -12,37 +12,37 @@
 #include "ble_host.h"
 namespace toit {
 
-HostBLEEventSource* HostBLEEventSource::instance_ = null;
+HostBleEventSource* HostBleEventSource::instance_ = null;
 
-HostBLEEventSource::HostBLEEventSource()
+HostBleEventSource::HostBleEventSource()
     : LazyEventSource("BLE Events"), Thread("BLE Events"),
       event_queue_updated_(OS::allocate_condition_variable(mutex())), event_queue_() {
   instance_ = this;
   spawn();
 }
 
-HostBLEEventSource::~HostBLEEventSource() {
+HostBleEventSource::~HostBleEventSource() {
   instance_ = null;
 }
 
-bool HostBLEEventSource::start() {
+bool HostBleEventSource::start() {
   return true;
 }
 
-void HostBLEEventSource::stop() {}
+void HostBleEventSource::stop() {}
 
-void HostBLEEventSource::on_event(BLEResource* resource, word data) {
+void HostBleEventSource::on_event(BleResource* resource, word data) {
   LightLocker locker(mutex());
-  event_queue_.append(_new BLEEvent(resource, data));
+  event_queue_.append(_new BleEvent(resource, data));
   OS::signal(event_queue_updated_);
 }
 
-[[noreturn]] void HostBLEEventSource::entry() {
+[[noreturn]] void HostBleEventSource::entry() {
   Locker locker(mutex());
 
   while (true) {
     while (!event_queue_.is_empty()) {
-      BLEEvent* event = event_queue_.remove_first();
+      BleEvent* event = event_queue_.remove_first();
       dispatch(locker, event->resource(), event->event());
     }
     OS::wait(event_queue_updated_);

@@ -169,10 +169,10 @@ enum GcmAlgorithmType {
   NUMBER_OF_ALGORITHM_TYPES = 1
 };
 
-class MbedTLSResourceGroup;
+class MbedTlsResourceGroup;
 
 // From resources/tls.cc.
-extern Object* tls_error(MbedTLSResourceGroup* group, Process* process, int err);
+extern Object* tls_error(MbedTlsResourceGroup* group, Process* process, int err);
 
 GcmContext::~GcmContext(){
   mbedtls_gcm_free(&context_);

@@ -29,15 +29,15 @@
 
 namespace toit {
 
-class SPIFlashResourceGroup: public ResourceGroup {
+class SpiFlashResourceGroup: public ResourceGroup {
  public:
-  TAG(SPIFlashResourceGroup);
-  SPIFlashResourceGroup(Process* process, const char* mount_point)
+  TAG(SpiFlashResourceGroup);
+  SpiFlashResourceGroup(Process* process, const char* mount_point)
      : ResourceGroup(process, null)
      , mount_point_(mount_point) {
   }
 
-  ~SPIFlashResourceGroup() override {
+  ~SpiFlashResourceGroup() override {
     // SD-card.
     if (card_) esp_vfs_fat_sdcard_unmount(mount_point_, card_);
 
@@ -80,7 +80,7 @@ class SPIFlashResourceGroup: public ResourceGroup {
 MODULE_IMPLEMENTATION(spi_flash, MODULE_SPI_FLASH)
 
 static ByteArray* init_common(Process* process, const char* mount_point,
-                               SPIFlashResourceGroup** group, HeapObject** error) {
+                               SpiFlashResourceGroup** group, HeapObject** error) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (!proxy) {
     *error = Primitive::mark_as_error(process->program()->allocation_failed());
@@ -94,7 +94,7 @@ static ByteArray* init_common(Process* process, const char* mount_point,
   }
   strcpy(mount_point_buffer, mount_point);
 
-  *group = _new SPIFlashResourceGroup(process, mount_point_buffer);
+  *group = _new SpiFlashResourceGroup(process, mount_point_buffer);
   if (!*group) {
     free(mount_point_buffer);
     *error = Primitive::mark_as_error(process->program()->malloc_failed());
@@ -107,8 +107,8 @@ static ByteArray* init_common(Process* process, const char* mount_point,
 }
 
 PRIMITIVE(init_sdcard) {
-  ARGS(cstring, mount_point, SPIResourceGroup, spi_host, int, gpio_cs, int, format_if_mount_failed, int, max_files, int, allocation_unit_size)
-  SPIFlashResourceGroup* group;
+  ARGS(cstring, mount_point, SpiResourceGroup, spi_host, int, gpio_cs, int, format_if_mount_failed, int, max_files, int, allocation_unit_size)
+  SpiFlashResourceGroup* group;
   HeapObject* error;
   ByteArray* proxy = init_common(process, mount_point, &group, &error);
   if (!proxy) return error;
@@ -138,11 +138,11 @@ PRIMITIVE(init_sdcard) {
 }
 
 PRIMITIVE(init_nor_flash) {
-  ARGS(cstring, mount_point, SPIResourceGroup, spi_bus, int, gpio_cs,int, frequency, int, format_if_mount_failed, int, max_files, int, allocation_unit_size)
+  ARGS(cstring, mount_point, SpiResourceGroup, spi_bus, int, gpio_cs,int, frequency, int, format_if_mount_failed, int, max_files, int, allocation_unit_size)
 
   if (frequency < 0 || frequency > ESP_FLASH_80MHZ) INVALID_ARGUMENT;
 
-  SPIFlashResourceGroup* group;
+  SpiFlashResourceGroup* group;
   HeapObject* error;
   ByteArray* proxy = init_common(process, mount_point, &group, &error);
   if (!proxy) return error;
@@ -211,9 +211,9 @@ PRIMITIVE(init_nor_flash) {
 
 PRIMITIVE(init_nand_flash) {
 #ifdef CONFIG_SPI_FLASH_NAND_ENABLED
-  ARGS(cstring, mount_point, SPIResourceGroup, spi_bus, int, gpio_cs, int, frequency, int, format_if_mount_failed, int, max_files, int, allocation_unit_size);
+  ARGS(cstring, mount_point, SpiResourceGroup, spi_bus, int, gpio_cs, int, frequency, int, format_if_mount_failed, int, max_files, int, allocation_unit_size);
 
-  SPIFlashResourceGroup* group;
+  SpiFlashResourceGroup* group;
   HeapObject* error;
   ByteArray* proxy = init_common(process, mount_point, &group, &error);
   if (!proxy) return error;
@@ -264,7 +264,7 @@ PRIMITIVE(init_nand_flash) {
 }
 
 PRIMITIVE(close) {
-  ARGS(SPIFlashResourceGroup, group)
+  ARGS(SpiFlashResourceGroup, group)
   group->tear_down();
   group_proxy->clear_external_address();
   return process->program()->null_object();
