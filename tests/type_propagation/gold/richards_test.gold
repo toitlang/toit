@@ -88,7 +88,33 @@ run_richards tests/type_propagation/richards_test.toit
 155[058] - invoke virtual add_device_task // {Null_}
 159[002] - pop, load local S1
 161[058] - invoke virtual schedule // {Null_}
-165[089] - return null S3 0
+165[041] - pop 1
+166[029] - load [block] in run_richards tests/type_propagation/richards_test.toit
+171[038] - load block 0
+173[053] - invoke static assert_ <sdk>/core/assert_.toit // {Null_}
+176[040] - pop 2
+178[029] - load [block] in run_richards tests/type_propagation/richards_test.toit
+183[038] - load block 0
+185[053] - invoke static assert_ <sdk>/core/assert_.toit // {Null_}
+188[089] - return null S4 0
+
+[block] in run_richards tests/type_propagation/richards_test.toit
+ - argument 0: [block]
+  0[016] - load local 2
+  1[005] - load outer S2 // {Scheduler}
+  3[058] - invoke virtual queue_count // {Null_|LargeInteger_|SmallInteger_}
+  7[027] - load smi 23246
+ 10[058] - invoke virtual == // {True_|False_}
+ 14[088] - return S1 1
+
+[block] in run_richards tests/type_propagation/richards_test.toit
+ - argument 0: [block]
+  0[016] - load local 2
+  1[005] - load outer S2 // {Scheduler}
+  3[058] - invoke virtual hold_count // {Null_|LargeInteger_|SmallInteger_}
+  7[027] - load smi 9297
+ 10[058] - invoke virtual == // {True_|False_}
+ 14[088] - return S1 1
 
 Scheduler tests/type_propagation/richards_test.toit
  - argument 0: {Scheduler}

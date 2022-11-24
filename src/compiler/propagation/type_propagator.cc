@@ -126,9 +126,11 @@ void TypePropagator::propagate() {
     last->propagate();
   }
 
+  stack->push_empty();
+  TypeSet type = stack->get(0);
+
   std::stringstream out;
   out << "[\n";
-  TypeSet type = stack->get(0);
   bool first = true;
 
   sites_.for_each([&](uint8* site, Set<TypeResult*>& results) {

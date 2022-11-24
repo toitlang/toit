@@ -39,7 +39,7 @@ set(TMP_SNAPSHOT "${TMP}/${TEST_NAME}.snapshot")
 set(TMP_TYPES "${TMP}/${TEST_NAME}.types")
 
 execute_process(
-  COMMAND "${TOIT_COMPILE}" -w "${TMP_SNAPSHOT}" -Xpropagate "${TEST}"
+  COMMAND "${TOIT_COMPILE}" -w "${TMP_SNAPSHOT}" -Xenable_asserts -Xpropagate "${TEST}"
   OUTPUT_VARIABLE STDOUT
   RESULT_VARIABLE EXIT_CODE
 )
