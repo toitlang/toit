@@ -418,7 +418,7 @@ bool TypeResult::merge(TypePropagator* propagator, TypeSet other) {
 bool TypeStack::merge(TypeStack* other) {
   ASSERT(sp() == other->sp());
   bool result = false;
-  for (int i = 0; i < sp_; i++) {
+  for (int i = 0; i <= sp_; i++) {
     TypeSet existing_type = get(i);
     TypeSet other_type = other->get(i);
     if (existing_type.is_block()) {

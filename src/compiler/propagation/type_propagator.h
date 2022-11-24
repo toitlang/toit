@@ -135,12 +135,14 @@ class TypeStack {
 
   TypeSet get(unsigned index) {
     ASSERT(index >= 0);
+    ASSERT(index <= sp_);
     ASSERT(index < size_);
     return TypeSet(&words_[index * words_per_type_]);
   }
 
   void set(unsigned index, TypeSet type) {
     ASSERT(index >= 0);
+    ASSERT(index <= sp_);
     ASSERT(index < size_);
     memcpy(&words_[index * words_per_type_], type.bits_, words_per_type_ * WORD_SIZE);
   }

@@ -698,7 +698,7 @@ class ToitMethod:
     print "$prefix$(debug_info.short_stringify program --show_positions=show_positions)"
     if arguments:
       arguments.size.repeat: | n |
-        print "$id:  - argument $n: $arguments[n]"
+        print "$prefix - argument $n: $arguments[n]"
     index := 0
     length := bytecodes.size
     while index < length:
