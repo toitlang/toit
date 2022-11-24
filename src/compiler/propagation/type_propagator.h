@@ -108,8 +108,9 @@ class TypeStack {
       : sp_(sp)
       , size_(size)
       , words_per_type_(words_per_type)
-      , words_(static_cast<uword*>(malloc(size * words_per_type_ * WORD_SIZE))) {
-    memset(words_, 0, (sp + 1) * words_per_type * WORD_SIZE);
+      , words_(static_cast<uword*>(malloc(size * words_per_type * WORD_SIZE))) {
+    // memset(words_, 0, (sp + 1) * words_per_type * WORD_SIZE);
+    memset(words_, 0, size * words_per_type * WORD_SIZE);
   }
 
   ~TypeStack() {
@@ -213,7 +214,8 @@ class TypeStack {
       , words_per_type_(other->words_per_type_)
       , words_(static_cast<uword*>(malloc(size_ * words_per_type_ * WORD_SIZE)))
       , outer_(other->outer_) {
-    memcpy(words_, other->words_, (sp_ + 1) * words_per_type_ * WORD_SIZE);
+    // memcpy(words_, other->words_, (sp_ + 1) * words_per_type_ * WORD_SIZE);
+    memcpy(words_, other->words_, size_ * words_per_type_ * WORD_SIZE);
   }
 };
 
