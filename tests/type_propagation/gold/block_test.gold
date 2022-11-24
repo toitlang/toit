@@ -6,7 +6,7 @@ main tests/type_propagation/block_test.toit
 
 test_simple tests/type_propagation/block_test.toit
   0[023] - load smi 0
-  1[029] - load block method 236
+  1[029] - load [block] in test_simple tests/type_propagation/block_test.toit
   6[025] - load smi 1
   7[038] - load block 1
   9[058] - invoke virtual repeat // {Null_}
@@ -26,21 +26,21 @@ test_simple tests/type_propagation/block_test.toit
  11[088] - return S1 1
 
 test_invokes tests/type_propagation/block_test.toit
-  0[029] - load block method 280
+  0[029] - load [block] in test_invokes tests/type_propagation/block_test.toit
   5[038] - load block 0
   7[053] - invoke static invoke tests/type_propagation/block_test.toit // {SmallInteger_}
  10[040] - pop 2
- 12[029] - load block method 289
+ 12[029] - load [block] in test_invokes tests/type_propagation/block_test.toit
  17[020] - load literal horse
  19[038] - load block 1
  21[053] - invoke static invoke tests/type_propagation/block_test.toit // {String_}
  24[040] - pop 2
- 26[029] - load block method 305
+ 26[029] - load [block] in test_invokes tests/type_propagation/block_test.toit
  31[026] - load smi 87
  33[038] - load block 1
  35[053] - invoke static invoke tests/type_propagation/block_test.toit // {SmallInteger_}
  38[040] - pop 2
- 40[029] - load block method 333
+ 40[029] - load [block] in test_invokes tests/type_propagation/block_test.toit
  45[020] - load literal Oddball (true/false/null)
  47[038] - load block 1
  49[053] - invoke static invoke tests/type_propagation/block_test.toit // {True_}
@@ -60,7 +60,7 @@ test_invokes tests/type_propagation/block_test.toit
 [block] in test_invokes tests/type_propagation/block_test.toit
  - argument 0: [block]
  - argument 1: {SmallInteger_}
-  0[029] - load block method 297
+  0[029] - load [block] in [block] in test_invokes tests/type_propagation/block_test.toit
   5[017] - load local 3
   6[038] - load block 1
   8[053] - invoke static invoke tests/type_propagation/block_test.toit // {SmallInteger_}
@@ -76,7 +76,7 @@ test_invokes tests/type_propagation/block_test.toit
 [block] in test_invokes tests/type_propagation/block_test.toit
  - argument 0: [block]
  - argument 1: {True_}
-  0[029] - load block method 325
+  0[029] - load [block] in [block] in test_invokes tests/type_propagation/block_test.toit
   5[017] - load local 3
   6[038] - load block 1
   8[053] - invoke static invoke tests/type_propagation/block_test.toit // {True_}

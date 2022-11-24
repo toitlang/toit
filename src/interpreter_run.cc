@@ -1300,7 +1300,7 @@ Interpreter::Result Interpreter::run() {
   OPCODE_END();
 
   OPCODE_BEGIN(INTRINSIC_SMI_REPEAT);
-    DROP(1);  // Drop last result of calling the block (or initial discardable value).
+    DROP1();  // Drop last result of calling the block (or initial discardable value).
     Smi* current = Smi::cast(STACK_AT(0));
     // Load the parameters to Array.do.
     int parameter_offset = 1 + Interpreter::FRAME_SIZE;  // 1 for the `current`.
@@ -1318,14 +1318,14 @@ Interpreter::Result Interpreter::run() {
     // like primitive calls do.
     word current_value = current->value();
     if (current_value >= end->value()) {
-      DROP(1);
+      DROP1();
       // Restore bcp.
       static_assert(FRAME_SIZE == 2, "Unexpected frame size");
       Object* frame_marker = POP();
       ASSERT(frame_marker == program->frame_marker());
       bcp = reinterpret_cast<uint8*>(POP());
       // Discard arguments in callers frame.
-      DROP(1);
+      DROP1();
       ASSERT(!is_stack_empty());
       STACK_AT_PUT(0, program->null_object());
       DISPATCH(0);
@@ -1340,7 +1340,7 @@ Interpreter::Result Interpreter::run() {
   OPCODE_END();
 
   OPCODE_BEGIN(INTRINSIC_ARRAY_DO);
-    DROP(1);  // Drop last result of calling the block (or initial discardable value).
+    DROP1();  // Drop last result of calling the block (or initial discardable value).
     word current = Smi::cast(STACK_AT(0))->value();
     // Load the parameters to Array.do.
     int parameter_offset = 1 + Interpreter::FRAME_SIZE;  // 1 for the `current`.
@@ -1358,7 +1358,7 @@ Interpreter::Result Interpreter::run() {
     // Once we're past the end index, we return from the surrounding method just
     // like primitive calls do.
     if (current >= end->value()) {
-      DROP(1);
+      DROP1();
       // Restore bcp.
       static_assert(FRAME_SIZE == 2, "Unexpected frame size");
       Object* frame_marker = POP();
@@ -1745,8 +1745,8 @@ Interpreter::Result Interpreter::run() {
           STACK_AT_PUT(STARTING_SLOT, Smi::from(starting_slot));
           STACK_AT_PUT(SLOT_STEP, Smi::from(slot_step));
           STACK_AT_PUT(POSITION, position);
-          Smi* compare_block  = Smi::cast(STACK_AT(parameter_offset + COMPARE));
-          Method compare_target   = Method(program->bytecodes, Smi::cast(*from_block(compare_block))->value());
+          Smi* compare_block = Smi::cast(STACK_AT(parameter_offset + COMPARE));
+          Method compare_target = Method(program->bytecodes, Smi::cast(*from_block(compare_block))->value());
           Object* key = STACK_AT(parameter_offset + KEY);
           PUSH(compare_block);
           PUSH(key);

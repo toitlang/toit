@@ -1,5 +1,5 @@
 main tests/type_propagation/deltablue_test.toit
-  0[029] - load block method 332
+  0[029] - load [block] in main tests/type_propagation/deltablue_test.toit
   5[026] - load smi 10
   7[038] - load block 1
   9[058] - invoke virtual repeat // {Null_}
@@ -1042,7 +1042,7 @@ Variable.remove_constraint tests/type_propagation/deltablue_test.toit
   0[052] - load local, as class, pop 2 - EqualityConstraint(43 - 47)
   2[017] - load local 3
   3[058] - invoke virtual constraints // {Null_|List_}
-  7[029] - load block method 28882
+  7[029] - load [block] in Variable.remove_constraint tests/type_propagation/deltablue_test.toit
  12[015] - load local 1
  13[038] - load block 1
  15[020] - load literal Oddball (true/false/null)
@@ -1125,7 +1125,7 @@ Planner.incremental_remove tests/type_propagation/deltablue_test.toit
  20[015] - load local 1
  21[058] - invoke virtual remove_propagate_from // {List_}
  25[033] - load global var lazy G0 // {Strength}
- 27[029] - load block method 28107
+ 27[029] - load [block] in Planner.incremental_remove tests/type_propagation/deltablue_test.toit
  32[016] - load local 2
  33[038] - load block 1
  35[058] - invoke virtual do // {Null_}
@@ -1221,7 +1221,7 @@ Planner.extract_plan_from_constraints tests/type_propagation/deltablue_test.toit
   7[014] - load local 0
   8[004] - store local, pop S1
  10[053] - invoke static create_list_literal_from_array_ <sdk>/core/collections.toit // {List_}
- 13[029] - load block method 28334
+ 13[029] - load [block] in Planner.extract_plan_from_constraints tests/type_propagation/deltablue_test.toit
  18[018] - load local 4
  19[038] - load block 1
  21[058] - invoke virtual do // {Null_}
@@ -1316,7 +1316,7 @@ Planner.remove_propagate_from tests/type_propagation/deltablue_test.toit
  48[081] - branch if true T102
  51[014] - load local 0
  52[058] - invoke virtual remove_last // {*}
- 56[029] - load block method 28501
+ 56[029] - load [block] in Planner.remove_propagate_from tests/type_propagation/deltablue_test.toit
  61[015] - load local 1
  62[058] - invoke virtual constraints // {Null_|List_}
  66[038] - load block 1
@@ -1324,7 +1324,7 @@ Planner.remove_propagate_from tests/type_propagation/deltablue_test.toit
  72[041] - pop 1
  73[002] - pop, load local S0
  75[058] - invoke virtual determined_by // {Null_|EqualityConstraint|ScaleConstraint|EditConstraint|StayConstraint}
- 79[029] - load block method 28526
+ 79[029] - load [block] in Planner.remove_propagate_from tests/type_propagation/deltablue_test.toit
  84[016] - load local 2
  85[058] - invoke virtual constraints // {Null_|List_}
  89[038] - load block 1
@@ -1377,7 +1377,7 @@ Planner.add_constraints_consuming_to tests/type_propagation/deltablue_test.toit
   2[052] - load local, as class, pop 2 - List_(36 - 40)
   4[017] - load local 3
   5[058] - invoke virtual determined_by // {Null_|EqualityConstraint|ScaleConstraint|EditConstraint|StayConstraint}
-  9[029] - load block method 28684
+  9[029] - load [block] in Planner.add_constraints_consuming_to tests/type_propagation/deltablue_test.toit
  14[019] - load local 5
  15[058] - invoke virtual constraints // {Null_|List_}
  19[038] - load block 1
@@ -1432,7 +1432,7 @@ Plan.add_constraint tests/type_propagation/deltablue_test.toit
 
 Plan.execute tests/type_propagation/deltablue_test.toit
  - argument 0: {Plan}
-  0[029] - load block method 28015
+  0[029] - load [block] in Plan.execute tests/type_propagation/deltablue_test.toit
   5[017] - load local 3
   6[058] - invoke virtual list_ // {Null_|List_}
  10[038] - load block 1
@@ -1736,7 +1736,7 @@ change tests/type_propagation/deltablue_test.toit
  15[053] - invoke static create_array_ <sdk>/core/collections.toit // {LargeArray_|SmallArray_}
  18[053] - invoke static create_list_literal_from_array_ <sdk>/core/collections.toit // {List_}
  21[058] - invoke virtual extract_plan_from_constraints // {Plan}
- 25[029] - load block method 1059
+ 25[029] - load [block] in change tests/type_propagation/deltablue_test.toit
  30[026] - load smi 10
  32[038] - load block 1
  34[058] - invoke virtual repeat // {Null_}

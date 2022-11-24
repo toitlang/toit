@@ -593,7 +593,12 @@ class ToitMethod:
       offset := method.uint16 bci + 1
       line += " $(program.selector_from_dispatch_offset offset)"
     else if format == OP_WU:
-      line += " $(method.uint32 bci + 1)"
+      value := method.uint32 bci + 1
+      if bytecode.name == "LOAD_BLOCK_METHOD":
+        debug_info := program.method_info_for value
+        line += " $(debug_info.short_stringify program --show_positions=show_positions)"
+      else:
+        line += " $value"
     else if format == OP_BS_BU:
       line += " S$index $(method.bytecodes[bci+2])"
     else if format == OP_BS_SO:
@@ -800,7 +805,7 @@ BYTE_CODES ::= [
   Bytecode "LOAD_SMI_U8"                2 OP_BU "load smi",
   Bytecode "LOAD_SMI_U16"               3 OP_SU "load smi",
   Bytecode "LOAD_SMI_U32"               5 OP_WU "load smi",
-  Bytecode "LOAD_BLOCK_METHOD"          5 OP_WU "load block method",
+  Bytecode "LOAD_BLOCK_METHOD"          5 OP_WU "load",  // Has specialized stringification.
   Bytecode "LOAD_GLOBAL_VAR"            2 OP_BG "load global var",
   Bytecode "LOAD_GLOBAL_VAR_DYNAMIC"    1 OP "load global var dynamic",
   Bytecode "LOAD_GLOBAL_VAR_WIDE"       3 OP_SG "load global var wide",
