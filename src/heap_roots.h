@@ -22,11 +22,11 @@ namespace toit {
 
 class ObjectNotifier;
 class FinalizerNode;
-class VMFinalizerNode;
+class VmFinalizerNode;
 
-typedef LinkedFIFO<FinalizerNode> FinalizerNodeFIFO;
+typedef LinkedFifo<FinalizerNode> FinalizerNodeFifo;
 
-class FinalizerNode : public FinalizerNodeFIFO::Element {
+class FinalizerNode : public FinalizerNodeFifo::Element {
  public:
   FinalizerNode(HeapObject* key, Object* lambda)
   : key_(key), lambda_(lambda) {}
@@ -44,13 +44,13 @@ class FinalizerNode : public FinalizerNodeFIFO::Element {
   Object* lambda_;
 };
 
-typedef LinkedFIFO<VMFinalizerNode> VMFinalizerNodeFIFO;
+typedef LinkedFifo<VmFinalizerNode> VmFinalizerNodeFifo;
 
-class VMFinalizerNode : public VMFinalizerNodeFIFO::Element {
+class VmFinalizerNode : public VmFinalizerNodeFifo::Element {
  public:
-  VMFinalizerNode(HeapObject* key)
+  VmFinalizerNode(HeapObject* key)
   : key_(key) {}
-  virtual ~VMFinalizerNode() {}
+  virtual ~VmFinalizerNode() {}
 
   HeapObject* key() { return key_; }
   void set_key(HeapObject* value) { key_ = value; }

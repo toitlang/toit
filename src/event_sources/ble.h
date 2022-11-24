@@ -18,34 +18,34 @@
 namespace toit {
 
 enum {
-  kBLEStarted = 1 << 0,
-  kBLECompleted = 1 << 1,
-  kBLEDiscovery = 1 << 2,
-  kBLEConnected = 1 << 3,
-  kBLEConnectFailed = 1 << 4,
-  kBLEDisconnected = 1 << 5,
-  kBLEServicesDiscovered = 1 << 6,
-  kBLECharacteristicsDiscovered = 1 << 7,
-  kBLEDescriptorsDiscovered = 1 << 8,
-  kBLEValueDataReady = 1 << 9,
-  kBLEValueDataReadFailed = 1 << 10,
-  kBLEValueWriteSucceeded = 1 << 11,
-  kBLEValueWriteFailed = 1 << 12,
-  kBLEReadyToSendWithoutResponse = 1 << 13,
-  kBLESubscriptionOperationSucceeded = 1 << 14,
-  kBLESubscriptionOperationFailed = 1 << 15,
-  kBLEAdvertiseStartSucceeded = 1 << 16,
-  kBLEAdvertiseStartFailed = 1 << 17,
-  kBLEServiceAddSucceeded = 1 << 18,
-  kBLEServiceAddFailed = 1 << 19,
-  kBLEDataReceived = 1 << 20,
-  kBLEDiscoverOperationFailed = 1 << 21,
-  kBLEMallocFailed = 1 << 22
+  kBleStarted = 1 << 0,
+  kBleCompleted = 1 << 1,
+  kBleDiscovery = 1 << 2,
+  kBleConnected = 1 << 3,
+  kBleConnectFailed = 1 << 4,
+  kBleDisconnected = 1 << 5,
+  kBleServicesDiscovered = 1 << 6,
+  kBleCharacteristicsDiscovered = 1 << 7,
+  kBleDescriptorsDiscovered = 1 << 8,
+  kBleValueDataReady = 1 << 9,
+  kBleValueDataReadFailed = 1 << 10,
+  kBleValueWriteSucceeded = 1 << 11,
+  kBleValueWriteFailed = 1 << 12,
+  kBleReadyToSendWithoutResponse = 1 << 13,
+  kBleSubscriptionOperationSucceeded = 1 << 14,
+  kBleSubscriptionOperationFailed = 1 << 15,
+  kBleAdvertiseStartSucceeded = 1 << 16,
+  kBleAdvertiseStartFailed = 1 << 17,
+  kBleServiceAddSucceeded = 1 << 18,
+  kBleServiceAddFailed = 1 << 19,
+  kBleDataReceived = 1 << 20,
+  kBleDiscoverOperationFailed = 1 << 21,
+  kBleMallocFailed = 1 << 22
 };
 
-class BLEResourceGroup;
+class BleResourceGroup;
 
-class BLEResource : public Resource {
+class BleResource : public Resource {
  public:
   enum Kind {
     CENTRAL_MANAGER,
@@ -55,13 +55,13 @@ class BLEResource : public Resource {
     CHARACTERISTIC,
     DESCRIPTOR
   };
-  BLEResource(ResourceGroup* group, Kind kind)
+  BleResource(ResourceGroup* group, Kind kind)
       : Resource(group)
       , kind_(kind) {}
 
   Kind kind() const { return kind_; }
 
-  BLEResourceGroup* group() { return reinterpret_cast<BLEResourceGroup*>(resource_group()); }
+  BleResourceGroup* group() { return reinterpret_cast<BleResourceGroup*>(resource_group()); }
 
  private:
   const Kind kind_;

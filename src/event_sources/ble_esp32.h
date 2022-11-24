@@ -23,13 +23,13 @@
 #include "ble.h"
 namespace toit {
 
-class BLEEventSource : public LazyEventSource {
+class BleEventSource : public LazyEventSource {
  public:
-  static BLEEventSource* instance() { return instance_; }
+  static BleEventSource* instance() { return instance_; }
 
-  BLEEventSource();
+  BleEventSource();
 
-  void on_event(BLEResource* resource, word data);
+  void on_event(BleResource* resource, word data);
 
  protected:
   bool start() override;
@@ -37,9 +37,9 @@ class BLEEventSource : public LazyEventSource {
   void stop() override;
 
  protected:
-  static BLEEventSource* instance_;
+  static BleEventSource* instance_;
 
-  ~BLEEventSource() override;
+  ~BleEventSource() override;
 };
 
 } // namespace toit

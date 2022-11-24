@@ -20,7 +20,7 @@
 template <typename T, int N>
 class LinkedList;
 template <typename T, int N>
-class LinkedFIFO;
+class LinkedFifo;
 template <typename T, int N>
 class DoubleLinkedList;
 template <typename T>
@@ -82,7 +82,7 @@ class LinkedListElement {
   LinkedListElement* next() const { return next_; }
 
   friend class LinkedList<T, N>;
-  friend class LinkedFIFO<T, N>;
+  friend class LinkedFifo<T, N>;
   friend class LinkedListPatcher<T>;
 
   LinkedListElement* next_;
@@ -294,7 +294,7 @@ class LinkedList {
 // To use with your own Foo class:
 //
 // class Foo;
-// typedef LinkedFIFO<Foo> FooFIFO;
+// typedef LinkedFifo<Foo> FooFIFO;
 // class Foo : public FooFIFO::Element {
 //   ...
 // }
@@ -304,9 +304,9 @@ class LinkedList {
 //   for (Foo* it : the_foos) {
 //   }
 template <typename T, int N = 1>
-class LinkedFIFO : public LinkedList<T, N> {
+class LinkedFifo : public LinkedList<T, N> {
  public:
-  LinkedFIFO<T, N>() : tail_(&this->anchor_) {}
+  LinkedFifo<T, N>() : tail_(&this->anchor_) {}
 
   typedef LinkedList<T, N> Super;
   typedef typename Super::Element Element;
@@ -393,7 +393,7 @@ class LinkedListPatcher {
     : next_(&list.anchor_.next_)
     , tail_(null) {}
 
-  explicit LinkedListPatcher(LinkedFIFO<T>& list)
+  explicit LinkedListPatcher(LinkedFifo<T>& list)
     : next_(&list.anchor_.next_)
     , tail_(&list.tail_) {}
 

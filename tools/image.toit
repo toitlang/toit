@@ -768,7 +768,7 @@ class ToitMemoryBlockLinkedList:
     // Inherited from LinkedList<Block>
     // The anchor is a LinkedListElement, which just contains one element '_next'.
     "_anchor": PrimitiveType.POINTER,
-    // Inherited from LinkedFIFO<Block>
+    // Inherited from LinkedFifo<Block>
     "_tail": PrimitiveType.POINTER,
   }
 

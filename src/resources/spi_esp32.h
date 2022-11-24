@@ -27,11 +27,11 @@
 
 namespace toit {
 
-class SPIResourceGroup : public ResourceGroup {
+class SpiResourceGroup : public ResourceGroup {
  public:
-  TAG(SPIResourceGroup);
-  SPIResourceGroup(Process* process, EventSource* event_source, spi_host_device_t host_device, int dma_channel);
-  ~SPIResourceGroup() override;
+  TAG(SpiResourceGroup);
+  SpiResourceGroup(Process* process, EventSource* event_source, spi_host_device_t host_device, int dma_channel);
+  ~SpiResourceGroup() override;
 
   spi_host_device_t host_device() { return host_device_; }
 
@@ -40,17 +40,17 @@ class SPIResourceGroup : public ResourceGroup {
   int dma_channel_;
 };
 
-class SPIDevice : public Resource {
+class SpiDevice : public Resource {
  public:
   static const int BUFFER_SIZE = 16;
 
-  TAG(SPIDevice);
-  SPIDevice(ResourceGroup* group, spi_device_handle_t handle, int dc)
+  TAG(SpiDevice);
+  SpiDevice(ResourceGroup* group, spi_device_handle_t handle, int dc)
     : Resource(group)
     , handle_(handle)
     , dc_(dc) {}
 
-  ~SPIDevice() {
+  ~SpiDevice() {
     spi_bus_remove_device(handle_);
   }
 

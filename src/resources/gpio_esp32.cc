@@ -37,7 +37,7 @@
 
 namespace toit {
 
-enum GPIOState {
+enum GpioState {
   GPIO_STATE_DOWN = 1,
   GPIO_STATE_UP = 2,
 };
@@ -85,11 +85,11 @@ static bool is_restricted_pin(int num) {
 
 #endif
 
-class GPIOResource : public EventQueueResource {
+class GpioResource : public EventQueueResource {
  public:
-  TAG(GPIOResource);
+  TAG(GpioResource);
 
-  GPIOResource(ResourceGroup* group, int pin)
+  GpioResource(ResourceGroup* group, int pin)
       // GPIO resources share a queue, which is always on the event source, so pass null.
       : EventQueueResource(group, null)
       , pin_(pin) {}
@@ -102,10 +102,10 @@ class GPIOResource : public EventQueueResource {
   int pin_;
 };
 
-class GPIOResourceGroup : public ResourceGroup {
+class GpioResourceGroup : public ResourceGroup {
  public:
-  TAG(GPIOResourceGroup);
-  explicit GPIOResourceGroup(Process* process)
+  TAG(GpioResourceGroup);
+  explicit GpioResourceGroup(Process* process)
       : ResourceGroup(process, EventQueueEventSource::instance()) {
     queue = EventQueueEventSource::instance()->gpio_queue();
   }
@@ -123,15 +123,15 @@ class GPIOResourceGroup : public ResourceGroup {
   static void IRAM_ATTR isr_handler(void* arg);
 };
 
-void GPIOResourceGroup::on_register_resource(Resource* r) {
-  gpio_num_t pin = static_cast<gpio_num_t>(static_cast<GPIOResource*>(r)->pin());
+void GpioResourceGroup::on_register_resource(Resource* r) {
+  gpio_num_t pin = static_cast<gpio_num_t>(static_cast<GpioResource*>(r)->pin());
   SystemEventSource::instance()->run([&]() -> void {
     FATAL_IF_NOT_ESP_OK(gpio_isr_handler_add(pin, isr_handler, reinterpret_cast<void*>(pin)));
   });
 }
 
-void GPIOResourceGroup::on_unregister_resource(Resource* r) {
-  gpio_num_t pin = static_cast<gpio_num_t>(static_cast<GPIOResource*>(r)->pin());
+void GpioResourceGroup::on_unregister_resource(Resource* r) {
+  gpio_num_t pin = static_cast<gpio_num_t>(static_cast<GpioResource*>(r)->pin());
 
   SystemEventSource::instance()->run([&]() -> void {
     FATAL_IF_NOT_ESP_OK(gpio_isr_handler_remove(gpio_num_t(pin)));
@@ -154,15 +154,15 @@ void GPIOResourceGroup::on_unregister_resource(Resource* r) {
   gpio_pins.put(pin);
 }
 
-QueueHandle_t IRAM_ATTR GPIOResourceGroup::queue;
+QueueHandle_t IRAM_ATTR GpioResourceGroup::queue;
 
-void IRAM_ATTR GPIOResourceGroup::isr_handler(void* arg) {
+void IRAM_ATTR GpioResourceGroup::isr_handler(void* arg) {
   word id = unvoid_cast<word>(arg);
   xQueueSendToBackFromISR(queue, &id, null);
   return;
 }
 
-bool GPIOResource::check_gpio(word pin) {
+bool GpioResource::check_gpio(word pin) {
   if (pin != pin_) return false;
   return true;
 }
@@ -173,7 +173,7 @@ PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;
 
-  GPIOResourceGroup* gpio = _new GPIOResourceGroup(process);
+  GpioResourceGroup* gpio = _new GpioResourceGroup(process);
   if (!gpio) MALLOC_FAILED;
 
   proxy->set_external_address(gpio);
@@ -181,7 +181,7 @@ PRIMITIVE(init) {
 }
 
 PRIMITIVE(use) {
-  ARGS(GPIOResourceGroup, resource_group, int, num, bool, allow_restricted);
+  ARGS(GpioResourceGroup, resource_group, int, num, bool, allow_restricted);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;
@@ -190,7 +190,7 @@ PRIMITIVE(use) {
 
   if (!gpio_pins.take(num)) ALREADY_IN_USE;
 
-  GPIOResource* resource = _new GPIOResource(resource_group, num);
+  GpioResource* resource = _new GpioResource(resource_group, num);
   if (!resource) {
     gpio_pins.put(num);
     MALLOC_FAILED;
@@ -203,7 +203,7 @@ PRIMITIVE(use) {
 }
 
 PRIMITIVE(unuse) {
-  ARGS(GPIOResourceGroup, resource_group, GPIOResource, resource);
+  ARGS(GpioResourceGroup, resource_group, GpioResource, resource);
 
   resource_group->unregister_resource(resource);
   resource_proxy->clear_external_address();

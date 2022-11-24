@@ -28,7 +28,7 @@ namespace toit {
 // Process is linked into two different linked lists, so we have to make
 // use of the arbitrary N template argument to distinguish the two.
 typedef LinkedList<Process, 1> ProcessListFromProcessGroup;
-typedef LinkedFIFO<Process, 2> ProcessListFromScheduler;
+typedef LinkedFifo<Process, 2> ProcessListFromScheduler;
 
 class Process : public ProcessListFromProcessGroup::Element,
                 public ProcessListFromScheduler::Element {

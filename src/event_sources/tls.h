@@ -21,33 +21,33 @@
 
 namespace toit {
 
-class TLSSocket;
+class TlsSocket;
 
-typedef LinkedFIFO<TLSSocket, 1> TLSSocketList;
+typedef LinkedFifo<TlsSocket, 1> TlsSocketList;
 
-class TLSSocket : public Resource, public TLSSocketList::Element {
+class TlsSocket : public Resource, public TlsSocketList::Element {
  public:
-  TLSSocket(ResourceGroup* resource_group)
+  TlsSocket(ResourceGroup* resource_group)
     : Resource(resource_group) {}
 
   virtual word handshake() = 0;
 };
 
-class TLSEventSource : public LazyEventSource, public Thread {
+class TlsEventSource : public LazyEventSource, public Thread {
  public:
-  static TLSEventSource* instance() { return instance_; }
+  static TlsEventSource* instance() { return instance_; }
 
-  TLSEventSource();
+  TlsEventSource();
 
   virtual void on_unregister_resource(Locker& locker, Resource* r) override;
 
-  void handshake(TLSSocket* socket);
+  void handshake(TlsSocket* socket);
 
  protected:
   friend class LazyEventSource;
-  static TLSEventSource* instance_;
+  static TlsEventSource* instance_;
 
-  ~TLSEventSource();
+  ~TlsEventSource();
 
   virtual bool start() override;
   virtual void stop() override;
@@ -56,7 +56,7 @@ class TLSEventSource : public LazyEventSource, public Thread {
   void entry() override;
 
   ConditionVariable* sockets_changed_ = null;
-  TLSSocketList sockets_;
+  TlsSocketList sockets_;
   bool stop_ = false;
 };
 

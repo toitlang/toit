@@ -353,7 +353,7 @@ void ObjectHeap::process_registered_finalizers(RootCallback* ss, LivenessOracle*
 
 void ObjectHeap::process_registered_vm_finalizers(RootCallback* ss, LivenessOracle* from_space) {
   // Process registered VM finalizers.
-  registered_vm_finalizers_.remove_wherever([ss, this, from_space](VMFinalizerNode* node) -> bool {
+  registered_vm_finalizers_.remove_wherever([ss, this, from_space](VmFinalizerNode* node) -> bool {
     bool is_alive = from_space->is_alive(node->key());
 
     if (is_alive && Flags::tracegc && Flags::verbose) printf(" - Finalizer %p is alive\n", node);
@@ -386,7 +386,7 @@ bool ObjectHeap::add_finalizer(HeapObject* key, Object* lambda) {
 
 bool ObjectHeap::add_vm_finalizer(HeapObject* key) {
   // We should already have checked whether the object is already registered.
-  auto node = _new VMFinalizerNode(key);
+  auto node = _new VmFinalizerNode(key);
   if (node == null) return false;  // Allocation failed.
   registered_vm_finalizers_.append(node);
   return true;
@@ -407,7 +407,7 @@ bool ObjectHeap::remove_finalizer(HeapObject* key) {
 
 bool ObjectHeap::remove_vm_finalizer(HeapObject* key) {
   bool found = false;
-  registered_vm_finalizers_.remove_wherever([key, &found](VMFinalizerNode* node) -> bool {
+  registered_vm_finalizers_.remove_wherever([key, &found](VmFinalizerNode* node) -> bool {
     if (node->key() == key) {
       delete node;
       found = true;
