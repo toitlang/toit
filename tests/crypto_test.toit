@@ -212,7 +212,6 @@ sip_test:
   in := ByteArray 64
 
   64.repeat: | size |
-    print size
     in[size] = size
     hash_8  := siphash in[0..size] key --output_length=8
     expect_equals SIP_VECTOR_8[size] hash_8
