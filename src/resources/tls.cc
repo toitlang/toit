@@ -748,6 +748,17 @@ PRIMITIVE(get_internals) {
   memcpy(ByteArray::Bytes(decode_iv).address(), socket->ssl.transform_in->iv_dec, iv_len);
   mbedtls_gcm_context* out_gcm_context = reinterpret_cast<mbedtls_gcm_context*>(out_cipher_ctx->cipher_ctx);
   mbedtls_gcm_context* in_gcm_context = reinterpret_cast<mbedtls_gcm_context*>(in_cipher_ctx->cipher_ctx);
+  // The key was set on this with mbedtls_cipher_setkey.
+  // It calls out_cipher_context->cipher_info->base->setkey_enc_func.
+  // It also has a field (void*) called cipher_ctx.  We end up in
+  // aes_setkey_enc_wrap, which casts the pointer to an mbedtls_aes_context and
+  // calls mbedtls_aes_setkey_enc.  Looks like it places it in mbedtls_aes_context->rk
+  // and then spreads the key out over the rest.
+  // If using hardware acceleration, then we define the MBEDTLS_AES_ALT macro,
+  // which causes mbedtls to include the aes_alt.h file from ESP, which
+  // uses defines and typedefs to redirect MbedTLS to use the esp_aes_* functions.
+  mbedtls_cipher_context_t* out_cipher_context = &out_gcm_context->cipher_ctx;
+  mbedtls_cipher_context_t* in_cipher_context = &in_gcm_context->cipher_ctx;
   if (  out_gcm_context->mode != MBEDTLS_GCM_ENCRYPT
       || in_gcm_context->mode != MBEDTLS_GCM_DECRYPT) {
     return process->program()->null_object();
