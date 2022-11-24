@@ -705,7 +705,7 @@ PRIMITIVE(set_session) {
 }
 
 PRIMITIVE(get_internals) {
-  ARGS(BaseMbedTLSSocket, socket);
+  ARGS(BaseMbedTlsSocket, socket);
   size_t iv_len = socket->ssl.transform_out->ivlen;
   // mbedtls_cipher_context_t from include/mbedtls/cipher.h.
   mbedtls_cipher_context_t* out_cipher_ctx = &socket->ssl.transform_out->cipher_ctx_enc;
