@@ -101,7 +101,6 @@ function(compute_git_version VERSION)
       set(${VERSION} "${DEFAULT_PRE_VERSION}-pre.${COMMIT_COUNT}" PARENT_SCOPE)
       return()
     endif()
-  #  set(RELEASE_BRANCHES "/release-${LATEST_VERSION_TAG}")
   endif()
 
   function (version_from_branch BRANCH MAJOR MINOR)
@@ -246,7 +245,7 @@ function(compute_git_version VERSION)
   if (NOT "${LATEST_VERSION_TAG}" STREQUAL "")
     string(SUBSTRING "${LATEST_VERSION_TAG}" 1 -1 LATEST_VERSION_TAG_NO_V)
     if (LATEST_VERSION_TAG_NO_V VERSION_GREATER "${branch_major}.${branch_minor}.0")
-          # Count the commits since the tag.
+      # Count the commits since the tag.
       commits_since_common_ancestor(${LATEST_VERSION_TAG} COMMITS_SINCE_LAST_TAG)
       if (${LATEST_VERSION_TAG} MATCHES "v([0-9]+)\\.([0-9]+)\\.([0-9]+)-")
         # The tag is a prerelease.
@@ -260,8 +259,6 @@ function(compute_git_version VERSION)
         # Add a '-pre.<commit-count>' suffix.
         set(RESULT_PREFIX "${LATEST_VERSION_TAG}-pre.${COMMITS_SINCE_LAST_TAG}")
       endif()
-    else()
-      message("not greater")
     endif()
   endif()
   if ("${RESULT_PREFIX}" STREQUAL "")
