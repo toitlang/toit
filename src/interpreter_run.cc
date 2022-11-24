@@ -1480,6 +1480,12 @@ Interpreter::Result Interpreter::run() {
       STARTING_SLOT,
       NUMBER_OF_BYTECODE_LOCALS,  // Must be last.
     };
+
+    // TODO(kasper): Temporarily disabled intrinsic bytecode to gain back some
+    // space in the IRAM segment of the ESP32.
+    DROP(NUMBER_OF_BYTECODE_LOCALS);
+    DISPATCH(INTRINSIC_HASH_FIND_LENGTH);
+
     // Parameter offsets, correspond to the argument order of hash_find_.
     enum {
       COMPARE             = 0,
