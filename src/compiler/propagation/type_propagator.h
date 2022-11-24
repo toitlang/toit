@@ -133,29 +133,29 @@ class TypeStack {
     return outer_->level() + 1;
   }
 
-  TypeSet get(unsigned index) {
+  TypeSet get(int index) {
     ASSERT(index >= 0);
     ASSERT(index <= sp_);
     ASSERT(index < size_);
     return TypeSet(&words_[index * words_per_type_]);
   }
 
-  void set(unsigned index, TypeSet type) {
+  void set(int index, TypeSet type) {
     ASSERT(index >= 0);
     ASSERT(index <= sp_);
     ASSERT(index < size_);
     memcpy(&words_[index * words_per_type_], type.bits_, words_per_type_ * WORD_SIZE);
   }
 
-  TypeSet local(unsigned index) {
+  TypeSet local(int index) {
     return get(sp_ - index);
   }
 
-  void set_local(unsigned index, TypeSet type) {
+  void set_local(int index, TypeSet type) {
     set(sp_ - index, type);
   }
 
-  void drop_arguments(unsigned arity) {
+  void drop_arguments(int arity) {
     if (arity == 0) return;
     TypeSet top = local(0);
     set_local(arity, top);
