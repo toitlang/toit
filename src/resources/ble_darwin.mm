@@ -444,7 +444,7 @@ didWriteValueForCharacteristic:(CBCharacteristic*)characteristic
 - (void)peripheralIsReadyToSendWriteWithoutResponse:(CBPeripheral*)peripheral {
   if (peripheral.delegate != nil) {
     toit::BleRemoteDeviceResource* device = ((ToitPeripheralDelegate*) peripheral.delegate).device;
-    toit::HostBleEventSource::instance()->on_event(device, toit::kBlBleadyToSendWithoutResponse);
+    toit::HostBleEventSource::instance()->on_event(device, toit::kBleReadyToSendWithoutResponse);
   }
 }
 
