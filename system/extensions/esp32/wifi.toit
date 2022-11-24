@@ -30,9 +30,16 @@ import system.base.network show NetworkModule NetworkResource NetworkState
 
 import ..shared.network_base
 
+WIFI_SCAN_SSID_     ::= 0
+WIFI_SCAN_BSSID_    ::= 1
+WIFI_SCAN_RSSI_     ::= 2
+WIFI_SCAN_AUTHMODE_ ::= 3
+WIFI_SCAN_CHANNEL_  ::= 4
+
 class WifiServiceDefinition extends NetworkServiceDefinitionBase:
   static WIFI_CONFIG_STORE_KEY ::= "system/wifi"
 
+  module_/WifiModule? := null
   state_/NetworkState ::= NetworkState
   store_/device.FlashStore ::= device.FlashStore
 
@@ -48,6 +55,8 @@ class WifiServiceDefinition extends NetworkServiceDefinitionBase:
     if index == WifiService.RSSI_INDEX:
       network := (resource client arguments) as NetworkResource
       return rssi network
+    if index == WifiService.SCAN_INDEX:
+      return scan arguments
     return super pid client index arguments
 
   connect client/int -> List:
@@ -71,10 +80,15 @@ class WifiServiceDefinition extends NetworkServiceDefinitionBase:
     if not ssid or ssid.is_empty: throw "wifi ssid not provided"
     password/string := effective.get wifi.CONFIG_PASSWORD --if_absent=: ""
 
-    module ::= (state_.up: WifiModule.sta this ssid password) as WifiModule
-    if module.ap:
+    if module_ != null:
+      module_.disconnect
+      module_ = null
+
+    module_ = (state_.up: WifiModule.sta this ssid password) as WifiModule
+    
+    if module_.ap:
       throw "wifi already established in AP mode"
-    if module.ssid != ssid or module.password != password:
+    if module_.ssid != ssid or module_.password != password:
       throw "wifi already connected with different credentials"
 
     if save:
@@ -99,14 +113,19 @@ class WifiServiceDefinition extends NetworkServiceDefinitionBase:
       throw "wifi channel must be between 1 and 13"
     broadcast/bool := config.get wifi.CONFIG_BROADCAST --if_absent=: true
 
-    module ::= (state_.up: WifiModule.ap this ssid password broadcast channel) as WifiModule
-    if not module.ap:
+    if module_ != null:
+      module_.disconnect
+      module_ = null
+    
+    module_ = (state_.up: WifiModule.ap this ssid password broadcast channel) as WifiModule
+    
+    if not module_.ap:
       throw "wifi already connected in STA mode"
-    if module.ssid != ssid or module.password != password:
+    if module_.ssid != ssid or module_.password != password:
       throw "wifi already established with different credentials"
-    if module.channel != channel:
-      throw "wifi already established on channel $module.channel"
-    if module.broadcast != broadcast:
+    if module_.channel != channel:
+      throw "wifi already established on channel $module_.channel"
+    if module_.broadcast != broadcast:
       no := broadcast ? "no " : ""
       throw "wifi already established with $(no)ssid broadcasting"
 
@@ -118,6 +137,18 @@ class WifiServiceDefinition extends NetworkServiceDefinitionBase:
 
   rssi resource/NetworkResource -> int?:
     return (state_.module as WifiModule).rssi
+  
+  scan config/Map -> List?:
+    if module_:
+      if module_.ap:
+        throw "wifi already established in AP mode"
+    else:
+      module_ = WifiModule.sta this "" ""
+
+    channel := config.get wifi.CONFIG_SCAN_CHANNEL
+    passive := config.get wifi.CONFIG_SCAN_PASSIVE
+    period  := config.get wifi.CONFIG_SCAN_PERIOD
+    return module_.scan channel passive period
 
   on_module_closed module/WifiModule -> none:
     resources_do: it.notify_ NetworkService.NOTIFY_CLOSED
@@ -128,6 +159,7 @@ class WifiModule implements NetworkModule:
   static WIFI_IP_LOST      ::= 1 << 2
   static WIFI_DISCONNECTED ::= 1 << 3
   static WIFI_RETRY        ::= 1 << 4
+  static WIFI_SCAN_DONE    ::= 1 << 5
 
   static WIFI_RETRY_DELAY_     ::= Duration --s=1
   static WIFI_CONNECT_TIMEOUT_ ::= Duration --s=10
@@ -235,6 +267,30 @@ class WifiModule implements NetworkModule:
   rssi -> int?:
     return wifi_get_rssi_ resource_group_
 
+  scan channel/int passive/bool period/int -> List?:
+    if ap or not resource_group_: return null
+
+    resource := wifi_start_scan_ resource_group_ channel passive period
+    scan_events := monitor.ResourceState_ resource_group_ resource
+    state := scan_events.wait
+    if (state & WIFI_SCAN_DONE) == 0: throw "WIFI_SCAN_ERROR"
+    scan_events.dispose
+
+    ap_array := wifi_read_scan_ resource_group_
+    if ap_array == null:
+      return null
+
+    ap_list := List
+    ap_array.do:
+      ap_info := Map
+      ap_info[wifi.SCAN_AP_SSID] = it[WIFI_SCAN_SSID_]
+      ap_info[wifi.SCAN_AP_BSSID] = it[WIFI_SCAN_BSSID_]
+      ap_info[wifi.SCAN_AP_RSSI] = it[WIFI_SCAN_RSSI_]
+      ap_info[wifi.SCAN_AP_AUTHMODE] = it[WIFI_SCAN_AUTHMODE_]
+      ap_info[wifi.SCAN_AP_CHANNEL] = it[WIFI_SCAN_CHANNEL_]
+      ap_list.add ap_info
+    return ap_list
+
   on_event_ state/int:
     // TODO(kasper): We should be clearing the state in the
     // $monitor.ResourceState_ object, but since we're only
@@ -270,3 +326,9 @@ wifi_get_ip_ resource_group -> ByteArray?:
 
 wifi_get_rssi_ resource_group -> int?:
   #primitive.wifi.get_rssi
+
+wifi_start_scan_ resource_group channel passive period_ms:
+  #primitive.wifi.start_scan
+
+wifi_read_scan_ resource_group -> Array_:
+  #primitive.wifi.read_scan

@@ -13,6 +13,18 @@ CONFIG_PASSWORD  /string ::= "wifi.password"
 CONFIG_BROADCAST /string ::= "wifi.broadcast"
 CONFIG_CHANNEL   /string ::= "wifi.channel"
 
+CONFIG_SCAN_CHANNEL /string ::= "scan.channel"
+CONFIG_SCAN_PASSIVE /string ::= "scan.passive"
+CONFIG_SCAN_PERIOD  /string ::= "scan.period"
+
+SCAN_AP_SSID     /string ::= "scan.ap.ssid"
+SCAN_AP_BSSID    /string ::= "scan.ap.bssid"
+SCAN_AP_RSSI     /string ::= "scan.ap.rssi"
+SCAN_AP_AUTHMODE /string ::= "scan.ap.authmode"
+SCAN_AP_CHANNEL  /string ::= "scan.ap.channel"
+
+SCAN_TIMEOUT_/int := 1000 /* microseconds */ 
+
 service_/WifiServiceClient? ::= (WifiServiceClient --no-open).open
 
 interface Interface extends net.Interface:
@@ -52,6 +64,47 @@ establish config/Map? -> Interface:
   service := service_
   if not service: throw "WiFi unavailable"
   return WifiInterface_ service (service.establish config)
+
+scan channels/ByteArray --passive/bool=false --period_per_channel/int=SCAN_TIMEOUT_ -> List:
+  if channels.size < 1: throw "Channels are unspecified"
+
+  ap_list := List
+  channels.do:
+    channel/int := it
+    data := scan
+        --channel=channel
+        --passive=passive
+        --period=period_per_channel
+    ap_list += data
+  return ap_list
+
+scan --channel/int=1 --passive/bool=false --period/int=SCAN_TIMEOUT_ -> List:
+  service := service_
+  if not service: throw "WiFi unavailable"
+
+  config ::= {
+    CONFIG_SCAN_PASSIVE: passive,
+    CONFIG_SCAN_CHANNEL: channel,
+    CONFIG_SCAN_PERIOD: period,
+  }
+  return service.scan config
+
+wifi_authmode_name number/int -> string:
+  WIFI_AUTHMODE_NAME /Map ::= {
+    0: "Open",
+    1: "WEP",
+    2: "WPA PSK",
+    3: "WPA2 PSK",
+    4: "WPA/WPA2 PSK",
+    5: "WPA2 Enterprise",
+    6: "WPA3 PSK",
+    7: "WPA2/WPA3 PSK",
+    8: "WAPI PSK",
+  }
+
+  if number < 0 or number >= WIFI_AUTHMODE_NAME.size:
+    return "Undefined"
+  return WIFI_AUTHMODE_NAME[number]
 
 class WifiInterface_ extends SystemInterface_ implements Interface:
   constructor client/WifiServiceClient connection/List:

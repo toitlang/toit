@@ -40,6 +40,7 @@ enum {
   WIFI_IP_LOST      = 1 << 2,
   WIFI_DISCONNECTED = 1 << 3,
   WIFI_RETRY        = 1 << 4,
+  WIFI_SCAN_DONE    = 1 << 5,
 };
 
 const int kInvalidWifi = -1;
@@ -85,7 +86,10 @@ class WifiResourceGroup : public ResourceGroup {
     err = esp_wifi_set_config(WIFI_IF_STA, &config);
     if (err != ESP_OK) return err;
 
-    return esp_wifi_start();
+    err = esp_wifi_start();
+    if (err != ESP_OK) return err;
+    
+    return esp_wifi_connect();
   }
 
   esp_err_t establish(const char* ssid, const char* password, bool broadcast, int channel) {
@@ -116,8 +120,39 @@ class WifiResourceGroup : public ResourceGroup {
     return true;
   }
 
+  esp_err_t start_scan(bool passive, int channel, uint32_t period_ms) {
+    wifi_scan_config_t config{};
+
+    config.channel = channel;
+    if (passive) {
+      config.scan_type = WIFI_SCAN_TYPE_PASSIVE;
+      config.scan_time.passive = period_ms;
+    } else {
+      config.scan_time.active.max = period_ms;
+      config.scan_time.active.min = period_ms;
+    }
+
+    esp_err_t err = esp_wifi_set_mode(WIFI_MODE_STA);
+    if (err != ESP_OK) return err;
+
+    err = esp_wifi_start();
+    if (err != ERR_OK) return err;
+    
+    err = esp_wifi_scan_start(&config, false);
+    if (err != ERR_OK) return err;
+  
+    return ESP_OK;
+  }
+
   ~WifiResourceGroup() {
-    FATAL_IF_NOT_ESP_OK(esp_wifi_deinit());
+    esp_err_t err = esp_wifi_deinit();
+    if (err == ESP_ERR_WIFI_NOT_STOPPED) {
+      FATAL_IF_NOT_ESP_OK(esp_wifi_stop());
+      FATAL_IF_NOT_ESP_OK(esp_wifi_deinit());
+    } else {
+      FATAL_IF_NOT_ESP_OK(err);
+    }
+
     esp_netif_destroy_default_wifi(netif_);
     wifi_pool.put(id_);
   }
@@ -166,81 +201,100 @@ class WifiIpEvents : public SystemResource {
 
 uint32 WifiResourceGroup::on_event(Resource* resource, word data, uint32 state) {
   SystemEvent* system_event = reinterpret_cast<SystemEvent*>(data);
-  switch (system_event->id) {
-    case WIFI_EVENT_STA_CONNECTED:
-      state |= WIFI_CONNECTED;
-      cache_wifi_channel();
-      break;
 
-    case WIFI_EVENT_STA_DISCONNECTED: {
-      uint8 reason = reinterpret_cast<wifi_event_sta_disconnected_t*>(system_event->event_data)->reason;
-      switch (reason) {
-        case WIFI_REASON_ASSOC_LEAVE:
-        case WIFI_REASON_ASSOC_EXPIRE:
-        case WIFI_REASON_AUTH_EXPIRE:
-          state |= WIFI_RETRY;
-          break;
-        default:
-          state |= WIFI_DISCONNECTED;
-          break;
+  if (system_event->base == WIFI_EVENT) {
+    switch (system_event->id) {
+      case WIFI_EVENT_STA_CONNECTED:
+        state |= WIFI_CONNECTED;
+        cache_wifi_channel();
+        break;
+
+      case WIFI_EVENT_STA_DISCONNECTED: {
+        uint8 reason = reinterpret_cast<wifi_event_sta_disconnected_t*>(system_event->event_data)->reason;
+        switch (reason) {
+          case WIFI_REASON_ASSOC_LEAVE:
+          case WIFI_REASON_ASSOC_EXPIRE:
+          case WIFI_REASON_AUTH_EXPIRE:
+            state |= WIFI_RETRY;
+            break;
+          default:
+            state |= WIFI_DISCONNECTED;
+            break;
+        }
+        static_cast<WifiEvents*>(resource)->set_disconnect_reason(reason);
+        break;
       }
-      static_cast<WifiEvents*>(resource)->set_disconnect_reason(reason);
-      break;
+
+      case WIFI_EVENT_STA_START:
+        break;
+
+      case WIFI_EVENT_SCAN_DONE: {
+        state |= WIFI_SCAN_DONE;
+        break;
+      }
+
+      case WIFI_EVENT_STA_STOP:
+        break;
+
+      case WIFI_EVENT_STA_BEACON_TIMEOUT:
+        // The beacon timeout mechanism is used by ESP32 station to detect whether the AP
+        // is alive or not. If the station continuously loses 60 beacons of the connected
+        // AP, the beacon timeout happens.
+        //
+        // After the beacon times out, the station sends 5 probe requests to the AP. If
+        // still no probe response or beacon is received from AP, the station disconnects
+        // from the AP and raises the WIFI_EVENT_STA_DISCONNECTED event.
+        break;
+
+      case WIFI_EVENT_AP_START:
+        state |= WIFI_CONNECTED;
+        break;
+
+      case WIFI_EVENT_AP_STOP:
+        state |= WIFI_DISCONNECTED;
+        break;
+
+      case WIFI_EVENT_AP_STACONNECTED:
+        break;
+
+      case WIFI_EVENT_AP_STADISCONNECTED:
+        break;
+
+      default:
+        printf(
+#ifdef CONFIG_IDF_TARGET_ESP32C3
+            "unhandled IP event: %lu\n",
+#else
+            "unhandled IP event: %d\n",
+#endif
+            system_event->id
+        );
     }
+  } else if (system_event->base == IP_EVENT) {
+    switch (system_event->id) {
+      case IP_EVENT_STA_GOT_IP: {
+        ip_event_got_ip_t* event = reinterpret_cast<ip_event_got_ip_t*>(system_event->event_data);
+        set_ip_address(event->ip_info.ip.addr);
+        state |= WIFI_IP_ASSIGNED;
+        break;
+      }
 
-    case WIFI_EVENT_STA_START:
-      FATAL_IF_NOT_ESP_OK(esp_wifi_connect());
-      break;
-
-    case WIFI_EVENT_STA_STOP:
-      break;
-
-    case WIFI_EVENT_STA_BEACON_TIMEOUT:
-      // The beacon timeout mechanism is used by ESP32 station to detect whether the AP
-      // is alive or not. If the station continuously loses 60 beacons of the connected
-      // AP, the beacon timeout happens.
-      //
-      // After the beacon times out, the station sends 5 probe requests to the AP. If
-      // still no probe response or beacon is received from AP, the station disconnects
-      // from the AP and raises the WIFI_EVENT_STA_DISCONNECTED event.
-      break;
-
-    case WIFI_EVENT_AP_START:
-      state |= WIFI_CONNECTED;
-      break;
-
-    case WIFI_EVENT_AP_STOP:
-      state |= WIFI_DISCONNECTED;
-      break;
-
-    case WIFI_EVENT_AP_STACONNECTED:
-      break;
-
-    case WIFI_EVENT_AP_STADISCONNECTED:
-      break;
-
-    case IP_EVENT_STA_GOT_IP: {
-      ip_event_got_ip_t* event = reinterpret_cast<ip_event_got_ip_t*>(system_event->event_data);
-      set_ip_address(event->ip_info.ip.addr);
-      state |= WIFI_IP_ASSIGNED;
-      break;
-    }
-
-    case IP_EVENT_STA_LOST_IP: {
-      state |= WIFI_IP_LOST;
-      clear_ip_address();
-      break;
-    }
+      case IP_EVENT_STA_LOST_IP: {
+        state |= WIFI_IP_LOST;
+        clear_ip_address();
+        break;
+      }
 
     default:
       printf(
 #ifdef CONFIG_IDF_TARGET_ESP32C3
-          "unhandled WiFi event: %lu\n",
+          "unhandled IP event: %lu\n",
 #else
-          "unhandled WiFi event: %d\n",
+          "unhandled IP event: %d\n",
 #endif
           system_event->id
       );
+    }
   }
 
   return state;
@@ -456,6 +510,75 @@ PRIMITIVE(get_rssi) {
   int8 rssi;
   if (!group->rssi(&rssi)) return process->program()->null_object();
   return Smi::from(rssi);
+}
+
+PRIMITIVE(start_scan) {
+  ARGS(WifiResourceGroup, group, int, channel, bool, passive, int, period_ms);
+
+  ByteArray* proxy = process->object_heap()->allocate_proxy();
+  if (proxy == null) ALLOCATION_FAILED;
+
+  WifiEvents* wifi = _new WifiEvents(group);
+  if (wifi == null) MALLOC_FAILED;
+
+  group->register_resource(wifi);
+
+  esp_err_t ret = group->start_scan(passive, channel, period_ms);
+  if (ret != ESP_OK) {
+    group->unregister_resource(wifi);
+    return Primitive::os_error(ret, process);
+  }
+
+  proxy->set_external_address(wifi);
+  return proxy;
+}
+
+PRIMITIVE(read_scan) {
+  ARGS(WifiResourceGroup, group);
+
+  uint16_t num;
+  esp_err_t ret = esp_wifi_scan_get_ap_num(&num);
+  if (ret != ESP_OK) return Primitive::os_error(ret, process);
+
+  if (num == 0) {
+    return process->program()->null_object();
+  }
+
+  size_t size = num * sizeof(wifi_ap_record_t);
+  ByteArray* ap_record_buffer = process->allocate_byte_array(size);
+  if (!ap_record_buffer) ALLOCATION_FAILED;
+
+  uint16_t get_num = num;
+  wifi_ap_record_t *ap_record = (wifi_ap_record_t *)ByteArray::Bytes(ap_record_buffer).address();
+  ret = esp_wifi_scan_get_ap_records(&get_num, ap_record);
+  if (ret != ESP_OK) return Primitive::os_error(ret, process);
+
+  Array* ap_record_array = process->object_heap()->allocate_array(get_num, Smi::zero());
+  if (ap_record_array == null) ALLOCATION_FAILED;
+
+  for (int i = 0; i < get_num; i++) {
+    Array* ap_info = process->object_heap()->allocate_array(5, Smi::zero());
+    if (ap_info == null) ALLOCATION_FAILED;
+
+    String* ssid = process->allocate_string((char *)ap_record[i].ssid);
+    if (ssid == null) ALLOCATION_FAILED;
+
+    size_t bssid_size = 6;
+    ByteArray* bssid = process->allocate_byte_array(bssid_size);
+    if (bssid == null) ALLOCATION_FAILED;
+
+    memcpy(ByteArray::Bytes(bssid).address(), ap_record[i].bssid, bssid_size);
+
+    ap_info->at_put(0, ssid);
+    ap_info->at_put(1, bssid);
+    ap_info->at_put(2, Smi::from(ap_record[i].rssi));
+    ap_info->at_put(3, Smi::from(ap_record[i].authmode));
+    ap_info->at_put(4, Smi::from(ap_record[i].primary));
+
+    ap_record_array->at_put(i, ap_info);
+  }
+
+  return ap_record_array;
 }
 #endif // CONFIG_TOIT_ENABLE_WIFI
 } // namespace toit
