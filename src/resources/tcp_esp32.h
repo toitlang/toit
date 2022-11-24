@@ -24,16 +24,16 @@
 
 namespace toit {
 
-class LwIPSocket;
+class LwipSocket;
 
-typedef LinkedFIFO<LwIPSocket> BacklogSocketList;
+typedef LinkedFifo<LwipSocket> BacklogSocketList;
 
-class LwIPSocket : public Resource, public BacklogSocketList::Element {
+class LwipSocket : public Resource, public BacklogSocketList::Element {
  public:
-  TAG(LwIPSocket);
+  TAG(LwipSocket);
   enum Kind { kListening, kConnection };
 
-  LwIPSocket(ResourceGroup* group, Kind kind)
+  LwipSocket(ResourceGroup* group, Kind kind)
     : Resource(group)
     , kind_(kind)
     , tpcb_(null)
@@ -44,32 +44,32 @@ class LwIPSocket : public Resource, public BacklogSocketList::Element {
     , read_offset_(0)
     , read_closed_(false) {}
 
-  ~LwIPSocket() {
+  ~LwipSocket() {
     ASSERT(tpcb_ == null);
   }
 
   void tear_down();
 
   static err_t on_accept(void* arg, tcp_pcb* tpcb, err_t err) {
-    int result = unvoid_cast<LwIPSocket*>(arg)->on_accept(tpcb, err);
+    int result = unvoid_cast<LwipSocket*>(arg)->on_accept(tpcb, err);
     return result;
   }
   int on_accept(tcp_pcb* tpcb, err_t err);
 
   static err_t on_connected(void* arg, tcp_pcb* tpcb, err_t err) {
-    int result = unvoid_cast<LwIPSocket*>(arg)->on_connected(err);
+    int result = unvoid_cast<LwipSocket*>(arg)->on_connected(err);
     return result;
   }
   int on_connected(err_t err);
 
   static err_t on_read(void* arg, tcp_pcb* tpcb, pbuf* p, err_t err) {
-    unvoid_cast<LwIPSocket*>(arg)->on_read(p, err);
+    unvoid_cast<LwipSocket*>(arg)->on_read(p, err);
     return ERR_OK;
   }
   void on_read(pbuf* p, err_t err);
 
   static err_t on_wrote(void* arg, tcp_pcb* tpcb, uint16_t length) {
-    unvoid_cast<LwIPSocket*>(arg)->on_wrote(length);
+    unvoid_cast<LwipSocket*>(arg)->on_wrote(length);
     return ERR_OK;
   }
   void on_wrote(int length);
@@ -77,7 +77,7 @@ class LwIPSocket : public Resource, public BacklogSocketList::Element {
   static void on_error(void* arg, err_t err) {
     // Ignore if already deleted.
     if (arg == null) return;
-    unvoid_cast<LwIPSocket*>(arg)->on_error(err);
+    unvoid_cast<LwipSocket*>(arg)->on_error(err);
   }
   void on_error(err_t err);
 
@@ -88,8 +88,8 @@ class LwIPSocket : public Resource, public BacklogSocketList::Element {
     return Smi::from(reinterpret_cast<uintptr_t>(this) >> 2);
   }
 
-  static LwIPSocket* from_id(int id) {
-    return reinterpret_cast<LwIPSocket*>(id << 2);
+  static LwipSocket* from_id(int id) {
+    return reinterpret_cast<LwipSocket*>(id << 2);
   }
 
   tcp_pcb* tpcb() { return tpcb_; }
@@ -112,7 +112,7 @@ class LwIPSocket : public Resource, public BacklogSocketList::Element {
   void mark_read_closed() { read_closed_ = true; }
 
   int new_backlog_socket(tcp_pcb* tpcb);
-  LwIPSocket* accept();
+  LwipSocket* accept();
 
  private:
   Kind kind_;

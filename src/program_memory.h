@@ -55,7 +55,7 @@ class ProgramUsage {
   int allocated_;
 };
 
-typedef LinkedFIFO<ProgramBlock> ProgramBlockLinkedList;
+typedef LinkedFifo<ProgramBlock> ProgramBlockLinkedList;
 
 class ProgramBlock : public ProgramBlockLinkedList::Element {
  public:

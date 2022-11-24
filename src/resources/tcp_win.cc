@@ -34,10 +34,10 @@
 
 namespace toit {
 
-class TCPResourceGroup : public ResourceGroup {
+class TcpResourceGroup : public ResourceGroup {
  public:
-  TAG(TCPResourceGroup);
-  TCPResourceGroup(Process* process, EventSource* event_source) : ResourceGroup(process, event_source) {}
+  TAG(TcpResourceGroup);
+  TcpResourceGroup(Process* process, EventSource* event_source) : ResourceGroup(process, event_source) {}
 
   static SOCKET create_socket() {
     SOCKET socket = WSASocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, NULL, 0, WSA_FLAG_OVERLAPPED);
@@ -55,7 +55,7 @@ class TCPResourceGroup : public ResourceGroup {
 
 class SocketResource : public WindowsResource {
  public:
-  SocketResource(TCPResourceGroup* resource_group, SOCKET socket)
+  SocketResource(TcpResourceGroup* resource_group, SOCKET socket)
     : WindowsResource(resource_group)
     , socket_(socket) {}
   SOCKET socket() const { return socket_; }
@@ -69,10 +69,10 @@ class SocketResource : public WindowsResource {
 
 const int READ_BUFFER_SIZE = 1 << 16;
 
-class TCPSocketResource : public SocketResource {
+class TcpSocketResource : public SocketResource {
  public:
-  TAG(TCPSocketResource);
-  TCPSocketResource(TCPResourceGroup* resource_group, SOCKET socket,
+  TAG(TcpSocketResource);
+  TcpSocketResource(TcpResourceGroup* resource_group, SOCKET socket,
                     HANDLE read_event, HANDLE write_event, HANDLE auxiliary_event)
       : SocketResource(resource_group, socket)
       , auxiliary_event_(auxiliary_event) {
@@ -93,7 +93,7 @@ class TCPSocketResource : public SocketResource {
     }
   }
 
-  ~TCPSocketResource() override {
+  ~TcpSocketResource() override {
     if (write_buffer_.buf != null) free(write_buffer_.buf);
   }
 
@@ -208,10 +208,10 @@ class TCPSocketResource : public SocketResource {
   int error_code_ = 0;
 };
 
-class TCPServerSocketResource : public SocketResource {
+class TcpServerSocketResource : public SocketResource {
  public:
-  TAG(TCPServerSocketResource);
-  TCPServerSocketResource(TCPResourceGroup* resource_group, SOCKET socket, HANDLE event)
+  TAG(TcpServerSocketResource);
+  TcpServerSocketResource(TcpResourceGroup* resource_group, SOCKET socket, HANDLE event)
     : SocketResource(resource_group, socket)
     , event_(event) {}
 
@@ -238,7 +238,7 @@ PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;
 
-  auto resource_group = _new TCPResourceGroup(process, WindowsEventSource::instance());
+  auto resource_group = _new TcpResourceGroup(process, WindowsEventSource::instance());
   if (!resource_group) MALLOC_FAILED;
 
   if (!WindowsEventSource::instance()->use()) {
@@ -279,12 +279,12 @@ static HeapObject* create_events(Process* process, SOCKET socket, WSAEVENT& read
 }
 
 PRIMITIVE(connect) {
-  ARGS(TCPResourceGroup, resource_group, Blob, address, int, port, int, window_size);
+  ARGS(TcpResourceGroup, resource_group, Blob, address, int, port, int, window_size);
 
   ByteArray* resource_proxy = process->object_heap()->allocate_proxy();
   if (resource_proxy == null) ALLOCATION_FAILED;
 
-  SOCKET socket = TCPResourceGroup::create_socket();
+  SOCKET socket = TcpResourceGroup::create_socket();
   if (socket == INVALID_SOCKET) WINDOWS_ERROR;
 
   if (window_size != 0 && setsockopt(socket, SOL_SOCKET, SO_RCVBUF,
@@ -308,7 +308,7 @@ PRIMITIVE(connect) {
     return error;
   }
 
-  auto tcp_resource = _new TCPSocketResource(resource_group, socket, read_event, write_event, auxiliary_event);
+  auto tcp_resource = _new TcpSocketResource(resource_group, socket, read_event, write_event, auxiliary_event);
   if (!tcp_resource) {
     close_keep_errno(socket);
     close_handle_keep_errno(read_event);
@@ -325,7 +325,7 @@ PRIMITIVE(connect) {
 }
 
 PRIMITIVE(accept) {
-  ARGS(TCPResourceGroup, resource_group, TCPServerSocketResource, server_socket_resource);
+  ARGS(TcpResourceGroup, resource_group, TcpServerSocketResource, server_socket_resource);
 
   ByteArray* resource_proxy = process->object_heap()->allocate_proxy();
   if (resource_proxy == null) ALLOCATION_FAILED;
@@ -344,7 +344,7 @@ PRIMITIVE(accept) {
     return error;
   }
 
-  auto tcp_resource = _new TCPSocketResource(resource_group, socket, read_event, write_event, auxiliary_event);
+  auto tcp_resource = _new TcpSocketResource(resource_group, socket, read_event, write_event, auxiliary_event);
 
   if (!tcp_resource) {
     close_keep_errno(socket);
@@ -361,7 +361,7 @@ PRIMITIVE(accept) {
 }
 
 PRIMITIVE(listen) {
-  ARGS(TCPResourceGroup, resource_group, cstring, hostname, int, port, int, backlog);
+  ARGS(TcpResourceGroup, resource_group, cstring, hostname, int, port, int, backlog);
 
   ByteArray* resource_proxy = process->object_heap()->allocate_proxy();
   if (resource_proxy == null) ALLOCATION_FAILED;
@@ -371,7 +371,7 @@ PRIMITIVE(listen) {
     WINDOWS_ERROR;
   };
 
-  SOCKET socket = TCPResourceGroup::create_socket();
+  SOCKET socket = TcpResourceGroup::create_socket();
   if (socket == INVALID_SOCKET) WINDOWS_ERROR;
   if (bind(socket, socket_address.as_socket_address(), socket_address.size()) == SOCKET_ERROR) {
     close_keep_errno(socket);
@@ -400,7 +400,7 @@ PRIMITIVE(listen) {
     WINDOWS_ERROR;
   }
 
-  auto resource = _new TCPServerSocketResource(resource_group, socket, event);
+  auto resource = _new TcpServerSocketResource(resource_group, socket, event);
   if (!resource) {
     close_keep_errno(socket);
     close_handle_keep_errno(event);
@@ -414,7 +414,7 @@ PRIMITIVE(listen) {
 }
 
 PRIMITIVE(write) {
-  ARGS(ByteArray, proxy, TCPSocketResource, tcp_resource, Blob, data, int, from, int, to);
+  ARGS(ByteArray, proxy, TcpSocketResource, tcp_resource, Blob, data, int, from, int, to);
   USE(proxy);
 
   if (from < 0 || from > to || to > data.length()) OUT_OF_BOUNDS;
@@ -427,7 +427,7 @@ PRIMITIVE(write) {
 }
 
 PRIMITIVE(read)  {
-  ARGS(ByteArray, proxy, TCPSocketResource, tcp_resource);
+  ARGS(ByteArray, proxy, TcpSocketResource, tcp_resource);
   USE(proxy);
 
   if (tcp_resource->closed()) return process->program()->null_object();
@@ -509,7 +509,7 @@ PRIMITIVE(get_option) {
 }
 
 PRIMITIVE(set_option) {
-  ARGS(ByteArray, proxy, TCPSocketResource, tcp_resource, int, option, Object, raw);
+  ARGS(ByteArray, proxy, TcpSocketResource, tcp_resource, int, option, Object, raw);
   USE(proxy);
 
   if (option == TCP_KEEP_ALIVE) {
@@ -531,7 +531,7 @@ PRIMITIVE(set_option) {
 }
 
 PRIMITIVE(close_write) {
-  ARGS(ByteArray, proxy, TCPSocketResource, tcp_resource);
+  ARGS(ByteArray, proxy, TcpSocketResource, tcp_resource);
   USE(proxy);
 
   int result = shutdown(tcp_resource->socket(), SD_SEND);
@@ -541,7 +541,7 @@ PRIMITIVE(close_write) {
 }
 
 PRIMITIVE(close) {
-  ARGS(TCPResourceGroup, resource_group, Resource, resource);
+  ARGS(TcpResourceGroup, resource_group, Resource, resource);
 
   // The event source will call do_close on the resource when it is safe to close the socket
   resource_group->unregister_resource(resource);
@@ -552,7 +552,7 @@ PRIMITIVE(close) {
 }
 
 PRIMITIVE(error) {
-  ARGS(TCPSocketResource, tcp_resource);
+  ARGS(TcpSocketResource, tcp_resource);
   return Primitive::unmark_from_error(windows_error(process, tcp_resource->error_code()));
 }
 

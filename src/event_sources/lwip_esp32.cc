@@ -111,7 +111,7 @@ Object* lwip_error(Process* process, err_t err) {
   return Primitive::mark_as_error(str);
 }
 
-LwIPEventSource* LwIPEventSource::instance_ = null;
+LwipEventSource* LwipEventSource::instance_ = null;
 
 MODULE_IMPLEMENTATION(dhcp, MODULE_DHCP)
 
@@ -124,7 +124,7 @@ PRIMITIVE(wait_for_lwip_dhcp_on_linux) {
     fprintf(stderr, "Waiting for DHCP server\n");
 
     err_t err;
-    LwIPEventSource::instance()->call_on_thread([&]() -> Object *{
+    LwipEventSource::instance()->call_on_thread([&]() -> Object *{
       dhcp_set_struct(&global_netif, &static_dhcp);
       netif_set_up(&global_netif);
       err = dhcp_start(&global_netif);
@@ -154,7 +154,7 @@ PRIMITIVE(wait_for_lwip_dhcp_on_linux) {
     uint8_t byte3 = 128 + (ip_addr_offset >> 8);
     uint8_t byte4 = ip_addr_offset &0xff;
     fprintf(stderr, "Set IP address %d.%d.%d.%d, mask 255.255.0.0, gw %d.%d.0.1\n", byte1, byte2, byte3, byte4, byte1, byte2);
-    LwIPEventSource::instance()->call_on_thread([&]() -> Object *{
+    LwipEventSource::instance()->call_on_thread([&]() -> Object *{
       ip4_addr_t ip, netmask, gateway;
       ip4_addr_set_u32(&ip, (byte1 << 0) | (byte2 << 8) | (byte3 << 16) | (byte4 << 24));  // IP:      172.27.128.xx
       ip4_addr_set_u32(&netmask, 0x0000FFFF);                                              // Netmask: 255.255.0.0
@@ -177,9 +177,9 @@ PRIMITIVE(wait_for_lwip_dhcp_on_linux) {
 #endif
 
 
-LwIPEventSource::LwIPEventSource()
+LwipEventSource::LwipEventSource()
     : EventSource("LwIP", 1)
-    , mutex_(OS::allocate_mutex(0, "LwIPEventSource"))
+    , mutex_(OS::allocate_mutex(0, "LwipEventSource"))
     , call_done_(OS::allocate_condition_variable(mutex_)) {
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + LWIP_MALLOC_TAG);
 #if defined(TOIT_FREERTOS)
@@ -208,13 +208,13 @@ LwIPEventSource::LwIPEventSource()
   });
 }
 
-LwIPEventSource::~LwIPEventSource() {
+LwipEventSource::~LwipEventSource() {
   instance_ = null;
   OS::dispose(call_done_);
   OS::dispose(mutex_);
 }
 
-void LwIPEventSource::on_thread(void* arg) {
+void LwipEventSource::on_thread(void* arg) {
   Thread::ensure_system_thread();
   CallContext* call = unvoid_cast<CallContext*>(arg);
   auto event_source = instance();

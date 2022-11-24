@@ -31,15 +31,15 @@ Object* X509ResourceGroup::parse(Process* process, const uint8_t* encoded, size_
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;
 
-  uint8 checksum[Sha256::HASH_LENGTH];
-  { Sha256 sha256(null);
+  uint8 checksum[Sha::HASH_LENGTH_256];
+  { Sha sha256(null, 256);
     sha256.add(encoded, encoded_size);
     sha256.get(&checksum[0]);
   }
 
   for (Resource* it : resources()) {
     X509Certificate* other = static_cast<X509Certificate*>(it);
-    if (memcmp(checksum, other->checksum(), Sha256::HASH_LENGTH) == 0) {
+    if (memcmp(checksum, other->checksum(), Sha::HASH_LENGTH_256) == 0) {
       other->reference();
       proxy->set_external_address(other);
       return proxy;
@@ -55,7 +55,7 @@ Object* X509ResourceGroup::parse(Process* process, const uint8_t* encoded, size_
     return tls_error(null, process, ret);
   }
 
-  memcpy(cert->checksum(), checksum, Sha256::HASH_LENGTH);
+  memcpy(cert->checksum(), checksum, Sha::HASH_LENGTH_256);
   register_resource(cert);
 
   proxy->set_external_address(cert);

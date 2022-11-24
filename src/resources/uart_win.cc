@@ -37,10 +37,10 @@ const int kWriteState = 1 << 2;
 
 static const int READ_BUFFER_SIZE = 1 << 16;
 
-class UARTResource : public WindowsResource {
+class UartResource : public WindowsResource {
 public:
-  TAG(UARTResource);
-  UARTResource(ResourceGroup* group, HANDLE uart, HANDLE read_event, HANDLE write_event, HANDLE error_event)
+  TAG(UartResource);
+  UartResource(ResourceGroup* group, HANDLE uart, HANDLE read_event, HANDLE write_event, HANDLE error_event)
       : WindowsResource(group)
       , uart_(uart) {
     read_overlapped_.hEvent = read_event;
@@ -58,7 +58,7 @@ public:
     }
   }
 
-  ~UARTResource() override {
+  ~UartResource() override {
     if (write_buffer_) free(write_buffer_);
   }
 
@@ -173,10 +173,10 @@ public:
   DWORD error_code_ = ERROR_SUCCESS;
 };
 
-class UARTResourceGroup : public ResourceGroup {
+class UartResourceGroup : public ResourceGroup {
 public:
-  TAG(UARTResourceGroup);
-  explicit UARTResourceGroup(Process* process, EventSource* event_source)
+  TAG(UartResourceGroup);
+  explicit UartResourceGroup(Process* process, EventSource* event_source)
       : ResourceGroup(process, event_source) {}
 
 private:
@@ -193,7 +193,7 @@ PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;
 
-  auto resource_group = _new UARTResourceGroup(process, WindowsEventSource::instance());
+  auto resource_group = _new UartResourceGroup(process, WindowsEventSource::instance());
 
   if (!WindowsEventSource::instance()->use()) {
     resource_group->tear_down();
@@ -211,7 +211,7 @@ PRIMITIVE(create) {
 }
 
 PRIMITIVE(create_path) {
-  ARGS(UARTResourceGroup, resource_group, cstring, path, int, baud_rate, int, data_bits, int, stop_bits, int, parity);
+  ARGS(UartResourceGroup, resource_group, cstring, path, int, baud_rate, int, data_bits, int, stop_bits, int, parity);
 
   if (data_bits < 5 || data_bits > 8) INVALID_ARGUMENT;
   if (stop_bits < 1 || stop_bits > 3) INVALID_ARGUMENT;
@@ -305,7 +305,7 @@ PRIMITIVE(create_path) {
     WINDOWS_ERROR;
   }
 
-  auto uart_resource = _new UARTResource(resource_group, uart, read_event, write_event, error_event);
+  auto uart_resource = _new UartResource(resource_group, uart, read_event, write_event, error_event);
   if (!uart_resource) {
     close_handle_keep_errno(uart);
     close_handle_keep_errno(read_event);
@@ -322,14 +322,14 @@ PRIMITIVE(create_path) {
 }
 
 PRIMITIVE(close) {
-  ARGS(UARTResourceGroup, resource_group, UARTResource, uart_resource);
+  ARGS(UartResourceGroup, resource_group, UartResource, uart_resource);
   resource_group->unregister_resource(uart_resource);
   uart_resource_proxy->clear_external_address();
   return process->program()->null_object();
 }
 
 PRIMITIVE(get_baud_rate) {
-  ARGS(UARTResource, uart_resource);
+  ARGS(UartResource, uart_resource);
   DCB dcb;
 
   bool success = GetCommState(uart_resource->uart(), &dcb);
@@ -339,7 +339,7 @@ PRIMITIVE(get_baud_rate) {
 }
 
 PRIMITIVE(set_baud_rate) {
-  ARGS(UARTResource, uart_resource, int, baud_rate);
+  ARGS(UartResource, uart_resource, int, baud_rate);
   DCB dcb{};
   bool success = GetCommState(uart_resource->uart(), &dcb);
   if (!success) WINDOWS_ERROR;
@@ -354,7 +354,7 @@ PRIMITIVE(set_baud_rate) {
 // Writes the data to the UART.
 // Does not support break or wait
 PRIMITIVE(write) {
-  ARGS(UARTResource, uart_resource, Blob, data, int, from, int, to, int, break_length, bool, wait);
+  ARGS(UartResource, uart_resource, Blob, data, int, from, int, to, int, break_length, bool, wait);
   if (break_length > 0 || wait) INVALID_ARGUMENT;
 
   const uint8* tx = data.address();
@@ -377,7 +377,7 @@ PRIMITIVE(wait_tx) {
 }
 
 PRIMITIVE(read) {
-  ARGS(UARTResource, uart_resource);
+  ARGS(UartResource, uart_resource);
 
   if (uart_resource->has_error()) return windows_error(process, uart_resource->error_code());
 
@@ -403,7 +403,7 @@ const int CONTROL_FLAG_RNG = 1 << 7;            /* ring */
 const int CONTROL_FLAG_DSR = 1 << 8;            /* data set ready */
 
 PRIMITIVE(set_control_flags) {
-  ARGS(UARTResource, uart_resource, int, flags);
+  ARGS(UartResource, uart_resource, int, flags);
   HANDLE uart = uart_resource->uart();
 
   if ((flags & CONTROL_FLAG_DTR) && !uart_resource->dtr()) {
@@ -424,7 +424,7 @@ PRIMITIVE(set_control_flags) {
 }
 
 PRIMITIVE(get_control_flags) {
-  ARGS(UARTResource, uart_resource);
+  ARGS(UartResource, uart_resource);
 
   int flags = 0;
   if (uart_resource->dtr()) flags |= CONTROL_FLAG_DTR;

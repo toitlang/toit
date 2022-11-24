@@ -5,13 +5,15 @@
 import expect show *
 
 import crypto show *
-import crypto.sha256 show *
+import crypto.aes show *
+import crypto.sha show *
 import crypto.siphash show *
 import crypto.sha1 show *
 import crypto.crc16 show *
 import crypto.crc32 show *
 import crypto.hamming as hamming
 
+import binary show BIG_ENDIAN
 import encoding.hex as hex
 import encoding.base64 as base64
 
@@ -48,6 +50,7 @@ main:
   hamming_test
   hash_test
   sip_test
+  aead_simple_test
 
 hex_test -> none:
   expect_equals "" (hex.encode #[])
@@ -77,11 +80,17 @@ hex_test -> none:
 
 hash_test -> none:
   EMPTY_HEX ::= "da39a3ee5e6b4b0d3255bfef95601890afd80709"
+  EMPTY_SHA224 ::= "d14a028c2a3a2bc9476102bb288234c415a2b01f828ea62ac5b3e42f"
   EMPTY_SHA2 ::= "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  EMPTY_SHA384 ::= "38b060a751ac96384cd9327eb1b1e36a21fdb71114be07434c0cc7bf63f6e1da274edebfe76f65fbd51ad2f14898b95b"
+  EMPTY_SHA512 ::= "cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e"
   EMPTY_CRC32 ::=  "00000000"
   EMPTY_CRC16 ::=  "0000"
   expect_equals EMPTY_HEX (hex.encode (sha1 ""))
+  expect_equals EMPTY_SHA224 (hex.encode (sha224 ""))
   expect_equals EMPTY_SHA2 (hex.encode (sha256 ""))
+  expect_equals EMPTY_SHA384 (hex.encode (sha384 ""))
+  expect_equals EMPTY_SHA512 (hex.encode (sha512 ""))
   expect_equals EMPTY_CRC32 (hex.encode (crc32 ""))
   expect_equals "2jmj7l5rSw0yVb/vlWAYkK/YBwk=" (base64.encode (sha1 ""))
 
@@ -91,10 +100,16 @@ hash_test -> none:
   hash2 := sha256 PARTY
   hash3 := crc32 PARTY
   hash4 := crc16 PARTY
+  hash5 := sha224 PARTY
+  hash6 := sha384 PARTY
+  hash7 := sha512 PARTY
   expect_equals "f160938592eeac116451ebc4da23dbc17e29283aef99de0197d705ad4d4c43f1" (hex.encode hash2)
   expect_equals "852430d0" (hex.encode hash3)
   expect_equals "a87e" (hex.encode hash4)
   expect_equals "AtKDelzDGqn+uPZqKj25gZRkVCs=" (base64.encode hash)
+  expect_equals "0824c514a92fcac7cbe5221d1d28d7e0cfb061d4dbb33f0a8f1fe9c2" (hex.encode hash5)
+  expect_equals "77d1a7ca704cd324b3519f2d89f455953e25801373bfc5a9eea38d16bc1aa57f1c90f0250c7bab60b07622c9bad5c1bf" (hex.encode hash6)
+  expect_equals "f8777873ec6d5108191afeccc87c696fea78dcdf156a420bf3efadb1669d0adf56a2139ca7da2b8511e1ac25a9ce230dc0a7fe7a721e2ebcb7f8182f41dcc162" (hex.encode hash7)
 
   expect_equals EMPTY_HEX (hex.encode (sha1 ""))
   expect_equal_arrays (sha1 (ByteArray 0)) (sha1 "")
@@ -177,6 +192,19 @@ hamming_test:
           expect_equals
             null
             hamming.fix_16_11 correct ^ (1 << bit_flip_1) ^ (1 << bit_flip_2)
+
+aead_simple_test:
+  key := ByteArray 16: random 256
+  initialization_vector := ByteArray 12: random 256
+
+  encrypted := (AesGcm.encryptor key initialization_vector).encrypt DREAM
+
+  expect_equals DREAM.size + 16 encrypted.size
+  expect_not_equals DREAM[..DREAM.size].to_byte_array DREAM
+
+  round_trip := (AesGcm.decryptor key initialization_vector).decrypt encrypted
+
+  expect_equals DREAM.to_byte_array round_trip
 
 sip_test:
   key := ByteArray 16: it
@@ -341,3 +369,51 @@ SIP_VECTOR_16 ::= [
     #[0x58, 0x53, 0x54, 0x23, 0x21, 0xf5, 0x67, 0xa0, 0x05, 0xd5, 0x47, 0xa4, 0xf0, 0x47, 0x59, 0xbd,],
     #[0x51, 0x50, 0xd1, 0x77, 0x2f, 0x50, 0x83, 0x4a, 0x50, 0x3e, 0x06, 0x9a, 0x97, 0x3f, 0xbd, 0x7c,],
 ]
+
+DREAM ::= """
+    Sarnac had worked almost continuously for the better part of a year
+    upon some very subtle chemical reactions of the nervous cells of the
+    sympathetic system.  His first enquiries had led to the opening out
+    of fresh and surprising possibilities, and these again had lured him
+    on to still broader and more fascinating prospects.  He worked
+    perhaps too closely; he found his hope and curiosity unimpaired, but
+    there was less delicacy of touch in his manipulation, and he was
+    thinking less quickly and accurately.  He needed a holiday.  He had
+    come to the end of a chapter in his work and wished to brace himself
+    for a new beginning.  Sunray had long hoped to be away with him; she,
+    too, was at a phase in her work when interruption was possible, and
+    so the two went off together to wander among the lakes and mountains.
+
+    Their companionship was at a very delightful stage.  Their close
+    relationship and their friendship was of old standing, so that they
+    were quite at their ease with one another, yet they were not too
+    familiar to have lost the keen edge of their interest in each other's
+    proceedings.  Sunray was very much in love with Sarnac and glad, and
+    Sarnac was always happy and pleasantly exalted when Sunray was near
+    him.  Sunray was the richer-hearted and cleverer lover.  They talked
+    of everything in the world but Sarnac's work because that had to rest
+    and grow fresh again.  Of her own work Sunray talked abundantly.  She
+    had been making stories and pictures of happiness and sorrow in the
+    past ages of the world, and she was full of curious speculations
+    about the ways in which the ancestral mind has thought and felt.
+
+    They played with boats upon the great lake for some days, they sailed
+    and paddled and drew up their canoe among the sweet-scented rushes of
+    the islands and bathed and swam.  They went from one guest-house to
+    another upon the water and met many interesting and refreshing
+    people.  In one house an old man of ninety-eight was staying: he was
+    amusing his declining years by making statuettes of the greatest
+    beauty and humour; it was wonderful to see the clay take shape in his
+    hands.  Moreover, he had a method of cooking the lake fish that was
+    very appetising, and he made a great dish of them so that everyone
+    who was dining in the place could have some.  And there was a
+    musician who made Sunray talk about the days gone by, and afterwards
+    he played music with his own hands on a clavier to express the
+    ancient feelings of men.  He played one piece that was, he explained,
+    two thousand years old; it was by a man named Chopin, and it was
+    called the Revolutionary Etude.  Sunray could not have believed a
+    piano capable of such passionate resentment.  After that he played
+    grotesque and angry battle music and crude marching tunes from those
+    half-forgotten times, and then he invented wrathful and passionate
+    music of his own.
+    """

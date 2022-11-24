@@ -1446,7 +1446,34 @@ Interpreter::Result Interpreter::run() {
     UNREACHABLE();
   OPCODE_END();
 
-  OPCODE_BEGIN(INTRINSIC_HASH_FIND);
+  OPCODE_BEGIN(INTRINSIC_HASH_FIND); {
+    Method block_to_call(0);
+    HashFindAction action;
+    Object* result;
+    sp = hash_find(sp, program, &action, &block_to_call, &result);
+    if (action == kBail) {
+      DISPATCH(INTRINSIC_HASH_FIND_LENGTH);
+    } else if (action == kRestartBytecode) {
+      DISPATCH(0);
+    } else if (action == kReturnValue) {
+      bcp = reinterpret_cast<uint8*>(POP());
+      ASSERT(!is_stack_empty());
+      STACK_AT_PUT(0, result);
+      DISPATCH(0);
+    } else {
+      ASSERT(action == kCallBlockThenRestartBytecode);
+      CALL_METHOD(block_to_call, 0);  // Continue at the same bytecode after the block call.
+    }
+  }
+  OPCODE_END();
+}
+
+#undef DISPATCH
+#undef DISPATCH_TO
+#undef OPCODE_BEGIN
+#undef OPCODE_END
+
+Object** Interpreter::hash_find(Object** sp, Program* program, Interpreter::HashFindAction* action_return, Method* block_to_call, Object** result_to_return) {
     // This opcode attempts to implement the find_body_ method on hash sets and
     // maps.  It is best read in conjunction with that method, remembering
     // that the byte code restarts after each block call.  It take three blocks:
@@ -1532,8 +1559,9 @@ Interpreter::Result Interpreter::run() {
       Method rebuild_target = Method(program->bytecodes, Smi::cast(*from_block(rebuild_block))->value());
       PUSH(rebuild_block);
       PUSH(STACK_AT(OLD_SIZE));
-      CALL_METHOD(rebuild_target, 0);  // Continue at the same bytecode after the block call.
-      UNREACHABLE();
+      *block_to_call = rebuild_target;
+      *action_return = kCallBlockThenRestartBytecode;
+      return sp;
     }
 
     Object* hash_object = STACK_AT(parameter_offset + HASH);
@@ -1562,8 +1590,8 @@ Interpreter::Result Interpreter::run() {
         // Leave one value on the stack, which the compiler expects to find as
         // the result of the intrinsic.
         DROP(NUMBER_OF_BYTECODE_LOCALS - 1);
-        DISPATCH(INTRINSIC_HASH_FIND_LENGTH);
-        UNREACHABLE();
+        *action_return = kBail;
+        return sp;
       }
     }
     Object* index_object = collection->at(Instance::MAP_INDEX_INDEX);
@@ -1587,8 +1615,8 @@ Interpreter::Result Interpreter::run() {
         // Leave one value on the stack, which the compiler expects to find as
         // the result of the intrinsic.
         DROP(NUMBER_OF_BYTECODE_LOCALS - 1);
-        DISPATCH(INTRINSIC_HASH_FIND_LENGTH);
-        UNREACHABLE();
+        *action_return = kBail;
+        return sp;
       }
     }
     ASSERT(Utils::is_power_of_two(index_mask + 1));
@@ -1646,13 +1674,13 @@ Interpreter::Result Interpreter::run() {
       static_assert(FRAME_SIZE == 2, "Unexpected frame size");
       Object* frame_marker = POP();
       ASSERT(frame_marker == program->frame_marker());
-      bcp = reinterpret_cast<uint8*>(POP());
+      *result_to_return = result;
+      Object* new_bcp = POP();
       // Discard arguments in callers frame.
       DROP(NUMBER_OF_ARGUMENTS - 1);
-      ASSERT(!is_stack_empty());
-      STACK_AT_PUT(0, result);
-      DISPATCH(0);
-      UNREACHABLE();
+      PUSH(new_bcp);
+      *action_return = kReturnValue;
+      return sp;
     }
 
     // These three must be synced to their local variable stack slots before
@@ -1717,8 +1745,9 @@ Interpreter::Result Interpreter::run() {
           Method not_found_target =
               Method(program->bytecodes, Smi::cast(*from_block(not_found_block))->value());
           PUSH(not_found_block);
-          CALL_METHOD(not_found_target, 0);  // Continue at the same bytecode.
-          UNREACHABLE();
+          *block_to_call = not_found_target;
+          *action_return = kCallBlockThenRestartBytecode;
+          return sp;
         } else {
           // Here we already called the not_found block once, so we want to go
           // directly to state NOT_FOUND or REBUILD without a block call.  This
@@ -1726,8 +1755,8 @@ Interpreter::Result Interpreter::run() {
           // position as if it had been returned from the block, then restart
           // the byte code to go to the correct place.
           PUSH(append_position);  // Fake block return value.
-          DISPATCH(0);  // Restart byte code.
-          UNREACHABLE();
+          *action_return = kRestartBytecode;
+          return sp;
         }
       }
       // Found non-free slot.
@@ -1757,17 +1786,12 @@ Interpreter::Result Interpreter::run() {
           PUSH(compare_block);
           PUSH(key);
           PUSH(k);
-          CALL_METHOD(compare_target, 0);  // Continue at the same bytecode.
-          UNREACHABLE();
+          *block_to_call = compare_target;
+          *action_return = kCallBlockThenRestartBytecode;
+          return sp;
         }
       }
     }  // while(true) loop.
-  OPCODE_END();
 }
-
-#undef DISPATCH
-#undef DISPATCH_TO
-#undef OPCODE_BEGIN
-#undef OPCODE_END
 
 } // namespace toit

@@ -32,7 +32,7 @@ void VM::load_platform_event_sources() {
   // implementation the throwing_new_allowed is enabled globally.
   toit::throwing_new_allowed = true;
   event_manager()->add_event_source(_new TimerEventSource());
-  event_manager()->add_event_source(_new TLSEventSource());
+  event_manager()->add_event_source(_new TlsEventSource());
   event_manager()->add_event_source(_new WindowsEventSource());
 }
 

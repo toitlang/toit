@@ -16,6 +16,7 @@
 #pragma once
 
 #include <mbedtls/sha256.h>
+#include <mbedtls/sha512.h>
 
 #include "resource.h"
 #include "tags.h"
@@ -23,21 +24,30 @@
 
 namespace toit {
 
-class Sha256 : public SimpleResource {
+class Sha : public SimpleResource {
  public:
-  TAG(Sha256);
+  TAG(Sha);
   // If you pass null for the group, it is not managed by the SimpleResourceGroup and
   // you must take care of allocating and freeing manually.
-  Sha256(SimpleResourceGroup* group);
-  virtual ~Sha256();
+  Sha(SimpleResourceGroup* group, int bits);
+  virtual ~Sha();
 
-  static const int HASH_LENGTH = 32;  // 32 bytes.
+  static const int HASH_LENGTH_224 = 28;
+  static const int HASH_LENGTH_256 = 32;
+  static const int HASH_LENGTH_384 = 48;
+  static const int HASH_LENGTH_512 = 64;
+
+  int hash_length() const { return bits_ >> 3; }
 
   void add(const uint8* contents, intptr_t extra);
   void get(uint8* hash);
 
  private:
-  mbedtls_sha256_context context_;
+  int bits_;
+  union {
+    mbedtls_sha256_context context_;
+    mbedtls_sha512_context context_512_;
+  };
 };
 
 }

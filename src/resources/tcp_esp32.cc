@@ -37,9 +37,9 @@ namespace toit {
 
 // It has to be possible to call this twice because it is called from the
 // process shutdown, but also from the finalizer if the GC spots it.
-void LwIPSocket::tear_down() {
+void LwipSocket::tear_down() {
   if (tpcb_ != null) {
-    if (kind_ == LwIPSocket::kConnection) {
+    if (kind_ == LwipSocket::kConnection) {
       tcp_recv(tpcb_, null);
       tcp_sent(tpcb_, null);
     } else {
@@ -60,7 +60,7 @@ void LwIPSocket::tear_down() {
     read_buffer_ = null;
   }
 
-  while (LwIPSocket* unaccepted_socket = backlog_.remove_first()) {
+  while (LwipSocket* unaccepted_socket = backlog_.remove_first()) {
     unaccepted_socket->tear_down();
     delete unaccepted_socket;
   }
@@ -69,27 +69,27 @@ void LwIPSocket::tear_down() {
 class SocketResourceGroup : public ResourceGroup {
  public:
   TAG(SocketResourceGroup);
-  SocketResourceGroup(Process* process, LwIPEventSource* event_source)
+  SocketResourceGroup(Process* process, LwipEventSource* event_source)
       : ResourceGroup(process, event_source)
       , event_source_(event_source) {}
 
-  LwIPEventSource* event_source() { return event_source_; }
+  LwipEventSource* event_source() { return event_source_; }
 
  protected:
   virtual void on_unregister_resource(Resource* r) {
     // Tear down sockets on the lwip-thread.
     event_source()->call_on_thread([&]() -> Object* {
-      r->as<LwIPSocket*>()->tear_down();
+      r->as<LwipSocket*>()->tear_down();
       return Smi::from(0);
     });
   }
 
  private:
-  LwIPEventSource* event_source_;
+  LwipEventSource* event_source_;
 };
 
-int LwIPSocket::on_accept(tcp_pcb* tpcb, err_t err) {
-  Locker locker(LwIPEventSource::instance()->mutex());
+int LwipSocket::on_accept(tcp_pcb* tpcb, err_t err) {
+  Locker locker(LwipEventSource::instance()->mutex());
 
   if (err != ERR_OK) {
     // Currently this only happend when a SYN is received and
@@ -111,8 +111,8 @@ int LwIPSocket::on_accept(tcp_pcb* tpcb, err_t err) {
   return result;
 }
 
-int LwIPSocket::on_connected(err_t err) {
-  Locker locker(LwIPEventSource::instance()->mutex());
+int LwipSocket::on_connected(err_t err) {
+  Locker locker(LwipEventSource::instance()->mutex());
 
   // According to the documentation err is currently always ERR_OK, but trying
   // to be defensive here.
@@ -125,8 +125,8 @@ int LwIPSocket::on_connected(err_t err) {
   return err;
 }
 
-void LwIPSocket::on_read(pbuf* p, err_t err) {
-  Locker locker(LwIPEventSource::instance()->mutex());
+void LwipSocket::on_read(pbuf* p, err_t err) {
+  Locker locker(LwipEventSource::instance()->mutex());
 
   if (err != ERR_OK) {
     socket_error(err);
@@ -147,8 +147,8 @@ void LwIPSocket::on_read(pbuf* p, err_t err) {
   send_state();
 }
 
-void LwIPSocket::on_wrote(int length) {
-  Locker locker(LwIPEventSource::instance()->mutex());
+void LwipSocket::on_wrote(int length) {
+  Locker locker(LwipEventSource::instance()->mutex());
 
   send_pending_ -= length;
 
@@ -162,7 +162,7 @@ void LwIPSocket::on_wrote(int length) {
   send_state();
 }
 
-void LwIPSocket::on_error(err_t err) {
+void LwipSocket::on_error(err_t err) {
   // The tpcb_ has already been deallocated when this is called.
   tpcb_ = null;
   if (err == ERR_CLSD) {
@@ -177,7 +177,7 @@ void LwIPSocket::on_error(err_t err) {
   }
 }
 
-void LwIPSocket::send_state() {
+void LwipSocket::send_state() {
   uint32_t state = 0;
 
   if (read_buffer_ != null) state |= TCP_READ;
@@ -188,10 +188,10 @@ void LwIPSocket::send_state() {
   if (needs_gc) state |= TCP_NEEDS_GC;
 
   // TODO: Avoid instance usage.
-  LwIPEventSource::instance()->set_state(this, state);
+  LwipEventSource::instance()->set_state(this, state);
 }
 
-void LwIPSocket::socket_error(err_t err) {
+void LwipSocket::socket_error(err_t err) {
   if (err == ERR_MEM) {
     needs_gc = true;
   } else {
@@ -201,8 +201,8 @@ void LwIPSocket::socket_error(err_t err) {
   send_state();
 }
 
-int LwIPSocket::new_backlog_socket(tcp_pcb* tpcb) {
-  LwIPSocket* socket = _new LwIPSocket(resource_group(), kConnection);
+int LwipSocket::new_backlog_socket(tcp_pcb* tpcb) {
+  LwipSocket* socket = _new LwipSocket(resource_group(), kConnection);
   if (socket == null) {
     // We are not in a primitive, so we can't retry the operation.
     // We return ERR_ABRT to tell LwIP that the connection is dead.
@@ -221,7 +221,7 @@ int LwIPSocket::new_backlog_socket(tcp_pcb* tpcb) {
 }
 
 // May return null if there is nothing in the backlog.
-LwIPSocket* LwIPSocket::accept() {
+LwipSocket* LwipSocket::accept() {
   return backlog_.remove_first();
 }
 
@@ -231,7 +231,7 @@ PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;
 
-  SocketResourceGroup* resource_group = _new SocketResourceGroup(process, LwIPEventSource::instance());
+  SocketResourceGroup* resource_group = _new SocketResourceGroup(process, LwipEventSource::instance());
   if (!resource_group) MALLOC_FAILED;
 
   proxy->set_external_address(resource_group);
@@ -244,7 +244,7 @@ PRIMITIVE(listen) {
   ByteArray* resource_proxy = process->object_heap()->allocate_proxy();
   if (resource_proxy == null) ALLOCATION_FAILED;
 
-  LwIPSocket* socket = _new LwIPSocket(resource_group, LwIPSocket::kListening);
+  LwipSocket* socket = _new LwipSocket(resource_group, LwipSocket::kListening);
   if (socket == null) MALLOC_FAILED;
 
   ip_addr_t bind_address;
@@ -259,7 +259,7 @@ PRIMITIVE(listen) {
 
   CAPTURE6(
       SocketResourceGroup*, resource_group,
-      LwIPSocket*, socket,
+      LwipSocket*, socket,
       int, port,
       int, backlog,
       ip_addr_t&, bind_address,
@@ -294,7 +294,7 @@ PRIMITIVE(listen) {
     capture.socket->set_tpcb(tpcb);
     tcp_arg(tpcb, capture.socket);
 
-    tcp_accept(tpcb, LwIPSocket::on_accept);
+    tcp_accept(tpcb, LwipSocket::on_accept);
 
     capture.resource_group->register_resource(capture.socket);
 
@@ -309,7 +309,7 @@ PRIMITIVE(connect) {
   ByteArray* resource_proxy = process->object_heap()->allocate_proxy();
   if (resource_proxy == null) ALLOCATION_FAILED;
 
-  LwIPSocket* socket = _new LwIPSocket(resource_group, LwIPSocket::kConnection);
+  LwipSocket* socket = _new LwipSocket(resource_group, LwipSocket::kConnection);
   if (socket == null) MALLOC_FAILED;
 
   ip_addr_t addr;
@@ -323,7 +323,7 @@ PRIMITIVE(connect) {
   CAPTURE5(
       SocketResourceGroup*, resource_group,
       int, port,
-      LwIPSocket*, socket,
+      LwipSocket*, socket,
       ip_addr_t&, addr,
       Process*, process);
 
@@ -338,9 +338,9 @@ PRIMITIVE(connect) {
 
     capture.socket->set_tpcb(tpcb);
     tcp_arg(tpcb, capture.socket);
-    tcp_err(tpcb, LwIPSocket::on_error);
+    tcp_err(tpcb, LwipSocket::on_error);
 
-    err_t err = tcp_connect(tpcb, &capture.addr, capture.port, LwIPSocket::on_connected);
+    err_t err = tcp_connect(tpcb, &capture.addr, capture.port, LwipSocket::on_connected);
     if (err != ERR_OK) {
       capture.socket->tear_down();
       delete capture.socket;
@@ -355,19 +355,19 @@ PRIMITIVE(connect) {
 }
 
 PRIMITIVE(accept) {
-  ARGS(SocketResourceGroup, resource_group, LwIPSocket, listen_socket);
+  ARGS(SocketResourceGroup, resource_group, LwipSocket, listen_socket);
 
   ByteArray* resource_proxy = process->object_heap()->allocate_proxy();
   if (resource_proxy == null) ALLOCATION_FAILED;
 
   CAPTURE4(
     SocketResourceGroup*, resource_group,
-    LwIPSocket*, listen_socket,
+    LwipSocket*, listen_socket,
     ByteArray*, resource_proxy,
     Process*, process);
 
   return resource_group->event_source()->call_on_thread([&]() -> Object* {
-    LwIPSocket* accepted = capture.listen_socket->accept();
+    LwipSocket* accepted = capture.listen_socket->accept();
     if (accepted == null) {
       return capture.process->program()->null_object();
     }
@@ -405,7 +405,7 @@ static ByteArray* allocate_read_buffer(Process* process, pbuf* p) {
 }
 
 PRIMITIVE(read)  {
-  ARGS(SocketResourceGroup, resource_group, LwIPSocket, socket);
+  ARGS(SocketResourceGroup, resource_group, LwipSocket, socket);
 
   return resource_group->event_source()->call_on_thread([&]() -> Object* {
     if (socket->error() != ERR_OK) return lwip_error(process, socket->error());
@@ -442,7 +442,7 @@ PRIMITIVE(read)  {
 }
 
 PRIMITIVE(write) {
-  ARGS(SocketResourceGroup, resource_group, LwIPSocket, socket, Blob, data, int, from, int, to);
+  ARGS(SocketResourceGroup, resource_group, LwipSocket, socket, Blob, data, int, from, int, to);
 
   const uint8* content = data.address();
   if (from < 0 || from > to || to > data.length()) OUT_OF_BOUNDS;
@@ -453,7 +453,7 @@ PRIMITIVE(write) {
   if (to == 0) return Smi::from(to);
 
   CAPTURE4(
-      LwIPSocket*, socket,
+      LwipSocket*, socket,
       const uint8_t*, content,
       int, to,
       Process*, process);
@@ -473,7 +473,7 @@ PRIMITIVE(write) {
       }
 
       capture.socket->set_send_pending(capture.socket->send_pending() + to);
-      tcp_sent(capture.socket->tpcb(), LwIPSocket::on_wrote);
+      tcp_sent(capture.socket->tpcb(), LwipSocket::on_wrote);
     } else if (err == ERR_MEM) {
       // If send queue is empty, we know the internal allocation failed. Be sure to
       // trigger GC and retry, as there will be no tcp_sent event.
@@ -491,7 +491,7 @@ PRIMITIVE(write) {
 }
 
 PRIMITIVE(close_write) {
-  ARGS(SocketResourceGroup, resource_group, LwIPSocket, socket);
+  ARGS(SocketResourceGroup, resource_group, LwipSocket, socket);
 
   return resource_group->event_source()->call_on_thread([&]() -> Object* {
     if (socket->error() != ERR_OK) return lwip_error(process, socket->error());
@@ -511,7 +511,7 @@ PRIMITIVE(close_write) {
 }
 
 PRIMITIVE(close) {
-  ARGS(SocketResourceGroup, resource_group, LwIPSocket, socket);
+  ARGS(SocketResourceGroup, resource_group, LwipSocket, socket);
 
   resource_group->unregister_resource(socket);
 
@@ -521,11 +521,11 @@ PRIMITIVE(close) {
 }
 
 PRIMITIVE(error) {
-  ARGS(LwIPSocket, socket);
+  ARGS(LwipSocket, socket);
   return lwip_error(process, socket->error());
 }
 
-static Object* get_address(LwIPSocket* socket, Process* process, bool peer) {
+static Object* get_address(LwipSocket* socket, Process* process, bool peer) {
   uint32_t address = peer ?
     ip_addr_get_ip4_u32(&socket->tpcb()->remote_ip) :
     ip_addr_get_ip4_u32(&socket->tpcb()->local_ip);
@@ -544,8 +544,8 @@ static Object* get_address(LwIPSocket* socket, Process* process, bool peer) {
 }
 
 PRIMITIVE(get_option) {
-  ARGS(SocketResourceGroup, resource_group, LwIPSocket, socket, int, option);
-  CAPTURE3(LwIPSocket*, socket, int, option, Process*, process);
+  ARGS(SocketResourceGroup, resource_group, LwipSocket, socket, int, option);
+  CAPTURE3(LwipSocket*, socket, int, option, Process*, process);
 
   return resource_group->event_source()->call_on_thread([&]() -> Object* {
     Process* process = capture.process;
@@ -587,8 +587,8 @@ PRIMITIVE(get_option) {
 }
 
 PRIMITIVE(set_option) {
-  ARGS(SocketResourceGroup, resource_group, LwIPSocket, socket, int, option, Object, raw);
-  CAPTURE4(LwIPSocket*, socket, Object*, raw, int, option, Process*, process);
+  ARGS(SocketResourceGroup, resource_group, LwipSocket, socket, int, option, Object, raw);
+  CAPTURE4(LwipSocket*, socket, Object*, raw, int, option, Process*, process);
 
   return resource_group->event_source()->call_on_thread([&]() -> Object* {
     Process* process = capture.process;
