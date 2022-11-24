@@ -11,7 +11,7 @@ test_simple tests/type_propagation/block_test.toit
   7[038] - load block 1
   9[058] - invoke virtual repeat // {Null_}
  13[041] - pop 1
- 14[002] - pop, load local S0 
+ 14[002] - pop, load local S0
  16[053] - invoke static id tests/type_propagation/block_test.toit // {LargeInteger_|SmallInteger_}
  19[089] - return null S2 0
 
@@ -19,10 +19,10 @@ test_simple tests/type_propagation/block_test.toit
  - argument 0: [block]
   0[016] - load local 2
   1[017] - load local 3
-  2[005] - load outer S1  // {SmallInteger_}
+  2[005] - load outer S1 // {SmallInteger_}
   4[025] - load smi 1
   5[058] - invoke virtual + // {LargeInteger_|SmallInteger_}
-  9[006] - store outer S1 
+  9[006] - store outer S1
  11[088] - return S1 1
 
 test_invokes tests/type_propagation/block_test.toit
@@ -64,7 +64,7 @@ test_invokes tests/type_propagation/block_test.toit
   5[017] - load local 3
   6[038] - load block 1
   8[053] - invoke static invoke tests/type_propagation/block_test.toit // {SmallInteger_}
- 11[004] - store local, pop S1 
+ 11[004] - store local, pop S1
  13[088] - return S1 2
 
 [block] in [block] in test_invokes tests/type_propagation/block_test.toit
@@ -80,7 +80,7 @@ test_invokes tests/type_propagation/block_test.toit
   5[017] - load local 3
   6[038] - load block 1
   8[053] - invoke static invoke tests/type_propagation/block_test.toit // {True_}
- 11[004] - store local, pop S1 
+ 11[004] - store local, pop S1
  13[088] - return S1 2
 
 [block] in [block] in test_invokes tests/type_propagation/block_test.toit
@@ -97,7 +97,7 @@ id tests/type_propagation/block_test.toit
 invoke tests/type_propagation/block_test.toit
  - argument 0: {}
   0[016] - load local 2
-  1[055] - invoke block S1  // {SmallInteger_}
+  1[055] - invoke block S1 // {SmallInteger_}
   3[088] - return S1 1
 
 invoke tests/type_propagation/block_test.toit
@@ -105,5 +105,5 @@ invoke tests/type_propagation/block_test.toit
  - argument 1: {}
   0[016] - load local 2
   1[018] - load local 4
-  2[055] - invoke block S2  // {String_|True_|SmallInteger_}
+  2[055] - invoke block S2 // {String_|True_|SmallInteger_}
   4[088] - return S1 2
