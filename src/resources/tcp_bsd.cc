@@ -56,10 +56,10 @@ void close_keep_errno(int fd) {
   errno = err;
 }
 
-class TCPResourceGroup : public ResourceGroup {
+class TcpResourceGroup : public ResourceGroup {
  public:
-  TAG(TCPResourceGroup);
-  TCPResourceGroup(Process* process, EventSource* event_source) : ResourceGroup(process, event_source) {}
+  TAG(TcpResourceGroup);
+  TcpResourceGroup(Process* process, EventSource* event_source) : ResourceGroup(process, event_source) {}
 
   int create_socket() {
     // TODO: Get domain from address.
@@ -143,7 +143,7 @@ PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;
 
-  TCPResourceGroup* resource_group = _new TCPResourceGroup(process, KQueueEventSource::instance());
+  TcpResourceGroup* resource_group = _new TcpResourceGroup(process, KQueueEventSource::instance());
   if (!resource_group) MALLOC_FAILED;
 
   proxy->set_external_address(resource_group);
@@ -151,7 +151,7 @@ PRIMITIVE(init) {
 }
 
 PRIMITIVE(close) {
-  ARGS(TCPResourceGroup, resource_group, IntResource, fd_resource);
+  ARGS(TcpResourceGroup, resource_group, IntResource, fd_resource);
   int fd = fd_resource->id();
 
   resource_group->close_socket(fd);
@@ -173,7 +173,7 @@ PRIMITIVE(close_write) {
 }
 
 PRIMITIVE(connect) {
-  ARGS(TCPResourceGroup, resource_group, Blob, address, int, port, int, window_size);
+  ARGS(TcpResourceGroup, resource_group, Blob, address, int, port, int, window_size);
 
   ByteArray* resource_proxy = process->object_heap()->allocate_proxy();
   if (resource_proxy == null) ALLOCATION_FAILED;
@@ -212,7 +212,7 @@ PRIMITIVE(connect) {
 }
 
 PRIMITIVE(accept) {
-  ARGS(TCPResourceGroup, resource_group, IntResource, listen_fd_resource);
+  ARGS(TcpResourceGroup, resource_group, IntResource, listen_fd_resource);
 
   ByteArray* resource_proxy = process->object_heap()->allocate_proxy();
   if (resource_proxy == null) ALLOCATION_FAILED;
@@ -244,7 +244,7 @@ PRIMITIVE(accept) {
 }
 
 PRIMITIVE(listen) {
-  ARGS(TCPResourceGroup, resource_group, cstring, hostname, int, port, int, backlog);
+  ARGS(TcpResourceGroup, resource_group, cstring, hostname, int, port, int, backlog);
 
   ByteArray* resource_proxy = process->object_heap()->allocate_proxy();
   if (resource_proxy == null) ALLOCATION_FAILED;

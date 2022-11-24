@@ -34,11 +34,11 @@
 
 namespace toit {
 
-class MbedTLSResourceGroup;
-class MbedTLSSocket;
+class MbedTlsResourceGroup;
+class MbedTlsSocket;
 class X509Certificate;
 
-Object* tls_error(MbedTLSResourceGroup* group, Process* process, int err);
+Object* tls_error(MbedTlsResourceGroup* group, Process* process, int err);
 bool ensure_handshake_memory();
 
 enum TLS_STATE {
@@ -49,10 +49,10 @@ enum TLS_STATE {
 };
 
 // Common base for TLS (stream based) and in the future perhaps DTLS (datagram based) sockets.
-class BaseMbedTLSSocket : public TLSSocket {
+class BaseMbedTlsSocket : public TlsSocket {
  public:
-  BaseMbedTLSSocket(MbedTLSResourceGroup* group);
-  ~BaseMbedTLSSocket();
+  BaseMbedTlsSocket(MbedTlsResourceGroup* group);
+  ~BaseMbedTlsSocket();
 
   mbedtls_ssl_context ssl;
 
@@ -71,13 +71,13 @@ class BaseMbedTLSSocket : public TLSSocket {
   mbedtls_pk_context* private_key_;
 };
 
-// Although it's a resource we never actually wait on a MbedTLSSocket, preferring
+// Although it's a resource we never actually wait on a MbedTlsSocket, preferring
 // to wait on the underlying TCP socket.
-class MbedTLSSocket : public BaseMbedTLSSocket {
+class MbedTlsSocket : public BaseMbedTlsSocket {
  public:
-  TAG(MbedTLSSocket);
-  explicit MbedTLSSocket(MbedTLSResourceGroup* group);
-  ~MbedTLSSocket();
+  TAG(MbedTlsSocket);
+  explicit MbedTlsSocket(MbedTlsResourceGroup* group);
+  ~MbedTlsSocket();
 
   Object* get_clear_outgoing();
 
@@ -107,22 +107,22 @@ class MbedTLSSocket : public BaseMbedTLSSocket {
   int incoming_from_;
 };
 
-class MbedTLSResourceGroup : public ResourceGroup {
+class MbedTlsResourceGroup : public ResourceGroup {
  public:
   enum Mode {
     TLS_CLIENT,
     TLS_SERVER
   };
 
-  TAG(MbedTLSResourceGroup);
-  MbedTLSResourceGroup(Process* process, TLSEventSource* event_source, Mode mode)
+  TAG(MbedTlsResourceGroup);
+  MbedTlsResourceGroup(Process* process, TlsEventSource* event_source, Mode mode)
     : ResourceGroup(process, event_source)
     , mode_(mode)
     , error_flags_(0)
     , error_depth_(0)
     , error_issuer_(null) {}
 
-  ~MbedTLSResourceGroup() {
+  ~MbedTlsResourceGroup() {
     free(error_issuer_);
     error_issuer_ = null;
     uninit();
@@ -134,7 +134,7 @@ class MbedTLSResourceGroup : public ResourceGroup {
   void uninit();
 
   Object* tls_socket_create(Process* process, const char* hostname);
-  Object* tls_handshake(Process* process, TLSSocket* socket);
+  Object* tls_handshake(Process* process, TlsSocket* socket);
 
   int verify_callback(mbedtls_x509_crt* cert, int certificate_depth, uint32_t* flags);
 
@@ -156,8 +156,8 @@ class MbedTLSResourceGroup : public ResourceGroup {
   int error_depth_;
   char* error_issuer_;
 
-  friend class BaseMbedTLSSocket;
-  friend class MbedTLSSocket;
+  friend class BaseMbedTlsSocket;
+  friend class MbedTlsSocket;
 };
 
 class SslSession {

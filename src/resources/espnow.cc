@@ -44,10 +44,10 @@ struct DataGram {
   uint8_t buffer[ESPNOW_RX_DATAGRAM_LEN_MAX];
 };
 
-const int kInvalidESPNow = -1;
+const int kInvalidEspNow = -1;
 
 // Only allow one instance to use espnow.
-static  ResourcePool<int, kInvalidESPNow> espnow_pool(
+static  ResourcePool<int, kInvalidEspNow> espnow_pool(
   0
 );
 
@@ -57,17 +57,17 @@ static QueueHandle_t rx_queue;
 static SemaphoreHandle_t rx_datagrams_mutex;
 static struct DataGram* rx_datagrams;
 
-class ESPNowResourceGroup : public ResourceGroup {
+class EspNowResourceGroup : public ResourceGroup {
  public:
-  TAG(ESPNowResourceGroup);
+  TAG(EspNowResourceGroup);
 
-  ESPNowResourceGroup(Process* process) : ResourceGroup(process) {}
-  ~ESPNowResourceGroup();
+  EspNowResourceGroup(Process* process) : ResourceGroup(process) {}
+  ~EspNowResourceGroup();
 
   bool init();
 };
 
-ESPNowResourceGroup::~ESPNowResourceGroup() {
+EspNowResourceGroup::~EspNowResourceGroup() {
   vSemaphoreDelete(tx_sem);
   tx_sem = NULL;
 
@@ -81,7 +81,7 @@ ESPNowResourceGroup::~ESPNowResourceGroup() {
   rx_datagrams = NULL;
 }
 
-bool ESPNowResourceGroup::init(void) {
+bool EspNowResourceGroup::init(void) {
   tx_sem = xSemaphoreCreateCounting(1, 0);
   if (!tx_sem) {
     return false;
@@ -182,9 +182,9 @@ PRIMITIVE(init) {
   if (proxy == null) ALLOCATION_FAILED;
 
   int id = espnow_pool.any();
-  if (id == kInvalidESPNow) ALREADY_IN_USE;
+  if (id == kInvalidEspNow) ALREADY_IN_USE;
 
-  ESPNowResourceGroup* group = _new ESPNowResourceGroup(process);
+  EspNowResourceGroup* group = _new EspNowResourceGroup(process);
   if (!group) {
     espnow_pool.put(id);
     MALLOC_FAILED;
@@ -292,7 +292,7 @@ PRIMITIVE(add_peer) {
 }
 
 PRIMITIVE(deinit) {
-  ARGS(ESPNowResourceGroup, group);
+  ARGS(EspNowResourceGroup, group);
 
   FATAL_IF_NOT_ESP_OK(esp_now_deinit());
 

@@ -33,8 +33,8 @@ void VM::load_platform_event_sources() {
   event_manager()->add_event_source(_new TimerEventSource());
   event_manager()->add_event_source(_new KQueueEventSource());
   event_manager()->add_event_source(_new SubprocessEventSource());
-  event_manager()->add_event_source(_new TLSEventSource());
-  event_manager()->add_event_source(_new HostBLEEventSource());
+  event_manager()->add_event_source(_new TlsEventSource());
+  event_manager()->add_event_source(_new HostBleEventSource());
 }
 
 } // namespace toit

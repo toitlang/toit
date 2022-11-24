@@ -39,7 +39,7 @@ namespace toit {
 
 const int MAX_QUEUE_SIZE = 1024 * 8;
 
-class Packet : public LinkedFIFO<Packet>::Element {
+class Packet : public LinkedFifo<Packet>::Element {
  public:
   Packet(struct pbuf* pbuf, ip_addr_t addr, u16_t port)
     : pbuf_(pbuf)
@@ -60,16 +60,16 @@ class Packet : public LinkedFIFO<Packet>::Element {
   u16_t port_;
 };
 
-class UDPSocket : public Resource {
+class UdpSocket : public Resource {
  public:
-  TAG(UDPSocket);
-  UDPSocket(ResourceGroup* group, udp_pcb* upcb)
+  TAG(UdpSocket);
+  UdpSocket(ResourceGroup* group, udp_pcb* upcb)
     : Resource(group)
     , mutex_(null)
     , upcb_(upcb)
     , buffered_bytes_(0) {}
 
-  ~UDPSocket() {
+  ~UdpSocket() {
     while (auto packet = packages_.remove_first()) {
       delete packet;
     }
@@ -84,7 +84,7 @@ class UDPSocket : public Resource {
   }
 
   static void on_recv(void* arg, udp_pcb* upcb, pbuf* p, const ip_addr_t* addr, u16_t port) {
-    unvoid_cast<UDPSocket*>(arg)->on_recv(p, addr, port);
+    unvoid_cast<UdpSocket*>(arg)->on_recv(p, addr, port);
   }
   void on_recv(pbuf* p, const ip_addr_t* addr, u16_t port);
 
@@ -112,33 +112,33 @@ class UDPSocket : public Resource {
  private:
   Mutex* mutex_;
   udp_pcb* upcb_;
-  LinkedFIFO<Packet> packages_;
+  LinkedFifo<Packet> packages_;
   int buffered_bytes_;
 };
 
-class UDPResourceGroup : public ResourceGroup {
+class UdpResourceGroup : public ResourceGroup {
  public:
-  TAG(UDPResourceGroup);
-  UDPResourceGroup(Process* process, LwIPEventSource* event_source)
+  TAG(UdpResourceGroup);
+  UdpResourceGroup(Process* process, LwipEventSource* event_source)
       : ResourceGroup(process, event_source)
       , event_source_(event_source) {}
 
-  LwIPEventSource* event_source() { return event_source_; }
+  LwipEventSource* event_source() { return event_source_; }
 
  protected:
   virtual void on_unregister_resource(Resource* r) {
     event_source()->call_on_thread([&]() -> Object* {
-      r->as<UDPSocket*>()->tear_down();
+      r->as<UdpSocket*>()->tear_down();
       return null;
     });
   }
 
  private:
-  LwIPEventSource* event_source_;
+  LwipEventSource* event_source_;
 };
 
-void UDPSocket::on_recv(pbuf* p, const ip_addr_t* addr, u16_t port) {
-  Locker locker(LwIPEventSource::instance()->mutex());
+void UdpSocket::on_recv(pbuf* p, const ip_addr_t* addr, u16_t port) {
+  Locker locker(LwipEventSource::instance()->mutex());
 
   Packet* packet = _new Packet(p, *addr, port);
   if (packet == null) {
@@ -155,22 +155,22 @@ void UDPSocket::on_recv(pbuf* p, const ip_addr_t* addr, u16_t port) {
   send_state();
 }
 
-void UDPSocket::set_recv() {
+void UdpSocket::set_recv() {
   if (buffered_bytes_ < MAX_QUEUE_SIZE) {
-    udp_recv(upcb(), UDPSocket::on_recv, this);
+    udp_recv(upcb(), UdpSocket::on_recv, this);
   } else {
     udp_recv(upcb(), null, null);
   }
 }
 
-void UDPSocket::send_state() {
+void UdpSocket::send_state() {
   uint32_t state = UDP_WRITE;
 
   if (!packages_.is_empty()) state |= UDP_READ;
   if (needs_gc) state |= UDP_NEEDS_GC;
 
   // TODO: Avoid instance usage.
-  LwIPEventSource::instance()->set_state(this, state);
+  LwipEventSource::instance()->set_state(this, state);
 }
 
 MODULE_IMPLEMENTATION(udp, MODULE_UDP)
@@ -179,7 +179,7 @@ PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;
 
-  UDPResourceGroup* resource_group = _new UDPResourceGroup(process, LwIPEventSource::instance());
+  UdpResourceGroup* resource_group = _new UdpResourceGroup(process, LwipEventSource::instance());
   if (!resource_group) MALLOC_FAILED;
 
   proxy->set_external_address(resource_group);
@@ -187,7 +187,7 @@ PRIMITIVE(init) {
 }
 
 PRIMITIVE(bind) {
-  ARGS(UDPResourceGroup, resource_group, Blob, address, int, port);
+  ARGS(UdpResourceGroup, resource_group, Blob, address, int, port);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;
@@ -201,7 +201,7 @@ PRIMITIVE(bind) {
   }
 
   CAPTURE4(
-      UDPResourceGroup*, resource_group,
+      UdpResourceGroup*, resource_group,
       ip_addr_t&, addr,
       int, port,
       Process*, process);
@@ -217,12 +217,12 @@ PRIMITIVE(bind) {
       return lwip_error(capture.process, err);
     }
 
-    UDPSocket* socket = _new UDPSocket(capture.resource_group, upcb);
+    UdpSocket* socket = _new UdpSocket(capture.resource_group, upcb);
     if (socket == null) {
       udp_remove(upcb);
       MALLOC_FAILED;
     }
-    udp_recv(upcb, UDPSocket::on_recv, socket);
+    udp_recv(upcb, UdpSocket::on_recv, socket);
     proxy->set_external_address(socket);
 
     capture.resource_group->register_resource(socket);
@@ -233,7 +233,7 @@ PRIMITIVE(bind) {
 }
 
 PRIMITIVE(connect) {
-  ARGS(UDPResourceGroup, resource_group, UDPSocket, socket, Blob, address, int, port);
+  ARGS(UdpResourceGroup, resource_group, UdpSocket, socket, Blob, address, int, port);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;
@@ -247,7 +247,7 @@ PRIMITIVE(connect) {
   }
 
   CAPTURE4(
-      UDPSocket*, socket,
+      UdpSocket*, socket,
       int, port,
       ip_addr_t&, addr,
       Process*, process);
@@ -263,11 +263,11 @@ PRIMITIVE(connect) {
 }
 
 PRIMITIVE(receive)  {
-  ARGS(UDPResourceGroup, resource_group, UDPSocket, socket, Object, output);
+  ARGS(UdpResourceGroup, resource_group, UdpSocket, socket, Object, output);
 
   CAPTURE3(
       Process*, process,
-      UDPSocket*, socket,
+      UdpSocket*, socket,
       Object*, output);
 
   return resource_group->event_source()->call_on_thread([&]() -> Object* {
@@ -308,7 +308,7 @@ PRIMITIVE(receive)  {
 
 
 PRIMITIVE(send) {
-  ARGS(UDPResourceGroup, resource_group, UDPSocket, socket, Blob, data, int, from, int, to, Object, address, int, port);
+  ARGS(UdpResourceGroup, resource_group, UdpSocket, socket, Blob, data, int, from, int, to, Object, address, int, port);
 
   const uint8* content = data.address();
   if (from < 0 || from > to || to > data.length()) OUT_OF_BOUNDS;
@@ -329,7 +329,7 @@ PRIMITIVE(send) {
   }
 
   CAPTURE6(
-      UDPSocket*, socket,
+      UdpSocket*, socket,
       int, to,
       ip_addr_t&, addr,
       Process*, process,
@@ -360,7 +360,7 @@ PRIMITIVE(send) {
 }
 
 PRIMITIVE(close) {
-  ARGS(UDPResourceGroup, resource_group, UDPSocket, socket);
+  ARGS(UdpResourceGroup, resource_group, UdpSocket, socket);
 
   resource_group->unregister_resource(socket);
 
@@ -376,7 +376,7 @@ PRIMITIVE(error) {
   WRONG_TYPE;
 }
 
-static Object* get_address_or_error(UDPSocket* socket, Process* process, bool peer) {
+static Object* get_address_or_error(UdpSocket* socket, Process* process, bool peer) {
   uint32_t address = peer ?
     ip_addr_get_ip4_u32(&socket->upcb()->remote_ip) :
     ip_addr_get_ip4_u32(&socket->upcb()->local_ip);
@@ -395,8 +395,8 @@ static Object* get_address_or_error(UDPSocket* socket, Process* process, bool pe
 }
 
 PRIMITIVE(get_option) {
-  ARGS(UDPResourceGroup, resource_group, UDPSocket, socket, int, option);
-  CAPTURE3(UDPSocket*, socket, int, option, Process*, process);
+  ARGS(UdpResourceGroup, resource_group, UdpSocket, socket, int, option);
+  CAPTURE3(UdpSocket*, socket, int, option, Process*, process);
 
   return resource_group->event_source()->call_on_thread([&]() -> Object* {
     switch (capture.option) {
@@ -419,9 +419,9 @@ PRIMITIVE(get_option) {
 }
 
 PRIMITIVE(set_option) {
-  ARGS(UDPResourceGroup, resource_group, UDPSocket, socket, int, option, Object, raw);
+  ARGS(UdpResourceGroup, resource_group, UdpSocket, socket, int, option, Object, raw);
   CAPTURE4(
-      UDPSocket*, socket,
+      UdpSocket*, socket,
       int, option,
       Object*, raw,
       Process*, process);
@@ -445,7 +445,7 @@ PRIMITIVE(set_option) {
 }
 
 PRIMITIVE(gc) {
-  ARGS(UDPResourceGroup, group);
+  ARGS(UdpResourceGroup, group);
   Object* do_gc = group->event_source()->call_on_thread([&]() -> Object* {
     bool result = needs_gc;
     needs_gc = false;

@@ -17,7 +17,7 @@
 
 namespace toit {
 
-enum TCPState {
+enum TcpState {
   TCP_READ  = 1 << 0,
   TCP_WRITE = 1 << 1,
   TCP_CLOSE = 1 << 2,
@@ -25,7 +25,7 @@ enum TCPState {
   TCP_NEEDS_GC = 1 << 4,
 };
 
-enum TCPOption {
+enum TcpOption {
   TCP_PORT         = 1,
   TCP_PEER_PORT    = 2,
   TCP_ADDRESS      = 3,

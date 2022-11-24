@@ -26,20 +26,20 @@ class LightLocker {
   Mutex* mutex_;
 };
 
-class BLEResourceGroup;
+class BleResourceGroup;
 
-class BLEEvent;
+class BleEvent;
 
-typedef DoubleLinkedList<BLEEvent> BLEEventList;
+typedef DoubleLinkedList<BleEvent> BleEventList;
 
-class HostBLEEventSource: public LazyEventSource, public Thread {
+class HostBleEventSource: public LazyEventSource, public Thread {
  public:
-  HostBLEEventSource();
-  ~HostBLEEventSource() override;
+  HostBleEventSource();
+  ~HostBleEventSource() override;
 
-  static HostBLEEventSource* instance() { return instance_; }
+  static HostBleEventSource* instance() { return instance_; }
 
-  void on_event(BLEResource* resource, word data);
+  void on_event(BleResource* resource, word data);
 
  protected:
   bool start() override;
@@ -48,18 +48,18 @@ class HostBLEEventSource: public LazyEventSource, public Thread {
   [[noreturn]] void entry() override;
 
  private:
-  static HostBLEEventSource* instance_;
+  static HostBleEventSource* instance_;
   ConditionVariable* event_queue_updated_;
-  BLEEventList event_queue_;
+  BleEventList event_queue_;
 };
 
-class BLEEvent: public BLEEventList::Element {
+class BleEvent: public BleEventList::Element {
  public:
-  BLEEvent(BLEResource *resource, word event): resource_(resource), event_(event) {}
-  BLEResource* resource() { return resource_; }
+  BleEvent(BleResource *resource, word event): resource_(resource), event_(event) {}
+  BleResource* resource() { return resource_; }
   word event() { return event_; }
  private:
-  BLEResource* resource_;
+  BleResource* resource_;
   word event_;
 };
 } // Namespace toit.

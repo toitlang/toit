@@ -38,15 +38,15 @@ extern bool needs_gc;
 // Returns the error as a string. Returns null on allocation failure.
 Object* lwip_error(Process* process, err_t err);
 
-// The LwIPEventSource handles the LwIP thread, which is system-wide.  All LwIP
+// The LwipEventSource handles the LwIP thread, which is system-wide.  All LwIP
 // code must run on this thread, and it blocks when nothing is happening in
 // LwIP.
-class LwIPEventSource : public EventSource {
+class LwipEventSource : public EventSource {
  public:
-  static LwIPEventSource* instance() { return instance_; }
+  static LwipEventSource* instance() { return instance_; }
 
-  LwIPEventSource();
-  ~LwIPEventSource();
+  LwipEventSource();
+  ~LwipEventSource();
 
   // Calls a closure on the LwIP thread, while temporarily blocking the thread
   // that calls call_on_thread. The LwIP thread code runs for a short time and
@@ -86,7 +86,7 @@ class LwIPEventSource : public EventSource {
 
   static void on_thread(void* arg);
 
-  static LwIPEventSource* instance_;
+  static LwipEventSource* instance_;
 
   Mutex* mutex_;
   ConditionVariable* call_done_;
