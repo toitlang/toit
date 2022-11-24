@@ -128,9 +128,9 @@ class TypeSet {
   void print(Program* program, const char* banner);
 
   static int words_per_type(Program* program) {
-    int classes = program->class_bits.length();
-    int words_per_type = (classes + WORD_BIT_SIZE - 1) / WORD_BIT_SIZE;
-    return Utils::max(words_per_type + 1, 2);  // Need at least two words for block types.
+    int bits = program->class_bits.length() + 1;  // Need one extra bit to recognize blocks.
+    int words_per_type = (bits + WORD_BIT_SIZE - 1) / WORD_BIT_SIZE;
+    return Utils::max(words_per_type, 2);  // Need at least two words for block types.
   }
 
  private:
