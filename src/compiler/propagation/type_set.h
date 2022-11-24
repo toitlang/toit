@@ -53,7 +53,7 @@ class TypeSet {
     ASSERT(!is_block());
     unsigned entry = type + 1;
     uword old_bits = bits_[entry / WORD_BIT_SIZE];
-    uword mask = 1UL << (entry % WORD_BIT_SIZE);
+    uword mask = static_cast<uword>(1) << (entry % WORD_BIT_SIZE);
     return (old_bits & mask) != 0;
   }
 
@@ -65,7 +65,7 @@ class TypeSet {
     unsigned entry = type + 1;
     unsigned index = entry / WORD_BIT_SIZE;
     uword old_bits = bits_[index];
-    uword mask = 1UL << (entry % WORD_BIT_SIZE);
+    uword mask = static_cast<uword>(1) << (entry % WORD_BIT_SIZE);
     bits_[index] = old_bits | mask;
     return (old_bits & mask) != 0;
   }
@@ -88,7 +88,7 @@ class TypeSet {
     unsigned entry = type + 1;
     unsigned index = entry / WORD_BIT_SIZE;
     uword old_bits = bits_[index];
-    uword mask = 1UL << (entry % WORD_BIT_SIZE);
+    uword mask = static_cast<uword>(1) << (entry % WORD_BIT_SIZE);
     bits_[index] = old_bits & ~mask;
   }
 
