@@ -3,18 +3,16 @@
 // found in the lib/LICENSE file.
 
 import spi
-import reader show Reader
-import writer show Writer
 import gpio
 
-FLASH_5MHZ  ::= 0
-FLASH_10MHZ ::= 1
-FLASH_20MHZ ::= 2
-FLASH_26MHZ ::= 3
-FLASH_40MHZ ::= 4
-FLASH_80MHZ ::= 5
+FREQUENCY_5MHZ  ::= 0
+FREQUENCY_10MHZ ::= 1
+FREQUENCY_20MHZ ::= 2
+FREQUENCY_26MHZ ::= 3
+FREQUENCY_40MHZ ::= 4
+FREQUENCY_80MHZ ::= 5
 
-class Flash:
+class Mount:
   flash_ := null
   mount_point/string
 
@@ -55,7 +53,7 @@ class Flash:
       --.mount_point/string
       --spi_bus/spi.Bus
       --cs/gpio.Pin
-      --frequency/int=FLASH_40MHZ:
+      --frequency/int=FREQUENCY_40MHZ:
     if not mount_point.starts_with "/": throw "INVALID_ARGUMENT"
     flash_ = init_nor_flash_ mount_point spi_bus.spi_ cs.num frequency 0 0 0
 
@@ -70,7 +68,7 @@ class Flash:
       --.mount_point/string
       --spi_bus/spi.Bus
       --cs/gpio.Pin
-      --frequency/int=FLASH_40MHZ
+      --frequency/int=FREQUENCY_40MHZ
       --max_files/int=5
       --allocation_unit_size/int=16384:
     if not mount_point.starts_with "/": throw "INVALID_ARGUMENT"
@@ -86,7 +84,7 @@ class Flash:
       --.mount_point/string
       --spi_bus/spi.Bus
       --cs/gpio.Pin
-      --frequency/int=FLASH_40MHZ:
+      --frequency/int=FREQUENCY_40MHZ:
     if not mount_point.starts_with "/": throw "INVALID_ARGUMENT"
 
     frequency_mhz := frequency_to_mhz_ frequency
@@ -103,7 +101,7 @@ class Flash:
       --.mount_point/string
       --spi_bus/spi.Bus
       --cs/gpio.Pin
-      --frequency/int=FLASH_40MHZ
+      --frequency/int=FREQUENCY_40MHZ
       --max_files/int=5
       --allocation_unit_size/int=2048:
     if not mount_point.starts_with "/": throw "INVALID_ARGUMENT"
@@ -117,22 +115,21 @@ class Flash:
   close:
     close_spi_flash_ flash_
 
-frequency_to_mhz_ frequency:
-  if frequency == FLASH_5MHZ:
+frequency_to_mhz_ frequency/int -> int:
+  if frequency == FREQUENCY_5MHZ:
     return 5_000_000
-  else if frequency == FLASH_10MHZ:
+  else if frequency == FREQUENCY_10MHZ:
     return 10_000_000
-  else if frequency == FLASH_20MHZ:
+  else if frequency == FREQUENCY_20MHZ:
     return 20_000_000
-  else if frequency == FLASH_26MHZ:
-    return (80_000_000/3).to_int
-  else if frequency == FLASH_40MHZ:
+  else if frequency == FREQUENCY_26MHZ:
+    return 80_000_000 / 3
+  else if frequency == FREQUENCY_40MHZ:
     return 40_000_000
-  else if frequency == FLASH_80MHZ:
+  else if frequency == FREQUENCY_80MHZ:
     return 80_000_000
   else:
     throw "INVALID_ARGUMENT"
-
 
 init_nor_flash_ mount_point spi_bus cs frequency format max_files allocation_unit_size -> any:
   #primitive.spi_flash.init_nor_flash
