@@ -38,8 +38,7 @@
 namespace toit {
 
 enum GpioState {
-  GPIO_STATE_DOWN = 1,
-  GPIO_STATE_UP = 2,
+  GPIO_STATE_EDGE_TRIGGERED = 1,
 };
 
 ResourcePool<int, -1> gpio_pins(
@@ -92,14 +91,42 @@ class GpioResource : public EventQueueResource {
   GpioResource(ResourceGroup* group, int pin)
       // GPIO resources share a queue, which is always on the event source, so pass null.
       : EventQueueResource(group, null)
-      , pin_(pin) {}
+      , pin_(pin)
+      , interrupt_listeners_count_(0)
+      , last_edge_detection_(-1)
+      {}
 
   int pin() const { return pin_; }
 
   bool check_gpio(word pin) override;
 
+  /// Increments the number of interrupt listeners.
+  /// Returns true if this is the first interrupt listener.
+  bool increment_interrupt_listeners_count() {
+    interrupt_listeners_count_++;
+    return interrupt_listeners_count_ == 1;
+  }
+
+  /// Decrements the number of interrupt listeners.
+  /// Returns true if this was the last interrupt listener.
+  bool decrement_interrupt_listeners_count() {
+    interrupt_listeners_count_--;
+    return interrupt_listeners_count_ == 0;
+  }
+
+  void set_last_edge_detection_timestamp(word timestamp) {
+    last_edge_detection_ = timestamp;
+  }
+
+  word last_edge_detection() const { return last_edge_detection_; }
+
  private:
   int pin_;
+  // The number of users that have enabled interrupts.
+  int interrupt_listeners_count_;
+  // The timestamp for which an edge transition was detected.
+  // Any user that started listening after this value should ignore the transition.
+  word last_edge_detection_;
 };
 
 class GpioResourceGroup : public ResourceGroup {
@@ -115,7 +142,8 @@ class GpioResourceGroup : public ResourceGroup {
 
  private:
   virtual uint32_t on_event(Resource* resource, word data, uint32_t state) {
-    return state | (data ? GPIO_STATE_UP : GPIO_STATE_DOWN);
+    static_cast<GpioResource*>(resource)->set_last_edge_detection_timestamp(static_cast<int>(data));
+    return state | GPIO_STATE_EDGE_TRIGGERED;
   }
 
   static QueueHandle_t IRAM_ATTR queue;
@@ -156,15 +184,32 @@ void GpioResourceGroup::on_unregister_resource(Resource* r) {
 
 QueueHandle_t IRAM_ATTR GpioResourceGroup::queue;
 
+// A counter for interrupt-enabling requests.
+// We use this counter instead of a timestamp which is hard to get inside an interrupt
+// handler.
+// When a user requests to be informed about interrupts, we increment the counter.
+// When an interrupt triggers, it records the current counter, and pushes the event
+// into a queue. (Sligthly) later the event is taken out of the queue and used to
+// notify all users that are listening at that moment. Due to race conditions, there
+// might be users now that weren't subscribed when the event actually happened.
+// We pass the counter so that they can determine whether the event is actually
+// relevant to them.
+word IRAM_ATTR isr_counter = 0;
+
 void IRAM_ATTR GpioResourceGroup::isr_handler(void* arg) {
-  word id = unvoid_cast<word>(arg);
-  xQueueSendToBackFromISR(queue, &id, null);
+  GpioEvent event {
+    .pin = unvoid_cast<word>(arg),
+    // Since real timestamps are hard to get inside an interrupt handler, we use
+    // the isr_counter instead. It is monotonically increasing and grows exactly when
+    // we need the values to change.
+    .timestamp = isr_counter,
+  };
+  xQueueSendToBackFromISR(queue, &event, null);
   return;
 }
 
 bool GpioResource::check_gpio(word pin) {
-  if (pin != pin_) return false;
-  return true;
+  return pin == pin_;
 }
 
 MODULE_IMPLEMENTATION(gpio, MODULE_GPIO)
@@ -239,18 +284,29 @@ PRIMITIVE(config) {
 }
 
 PRIMITIVE(config_interrupt) {
-  ARGS(int, num, bool, enable);
+  ARGS(GpioResource, resource, bool, enable);
   esp_err_t err = ESP_OK;
-  CAPTURE3(int, num, bool, enable, esp_err_t&, err);
-  SystemEventSource::instance()->run([&]() -> void {
-    if (capture.enable) {
-      capture.err = gpio_intr_enable((gpio_num_t)capture.num);
-    } else {
-      capture.err = gpio_intr_disable((gpio_num_t)capture.num);
+  gpio_num_t num = static_cast<gpio_num_t>(resource->pin());
+  if (enable) {
+    if (resource->increment_interrupt_listeners_count()) {
+      SystemEventSource::instance()->run([&]() -> void {
+        err = gpio_intr_enable(num);
+      });
     }
-  });
+  } else {
+    if (resource->decrement_interrupt_listeners_count()) {
+      SystemEventSource::instance()->run([&]() -> void {
+        err = gpio_intr_disable(num);
+      });
+    }
+  }
   if (err != ESP_OK) return Primitive::os_error(err, process);
-  return process->program()->null_object();
+  return Smi::from((isr_counter++) & 0x3FFFFFFF);
+}
+
+PRIMITIVE(last_edge_trigger_timestamp) {
+  ARGS(GpioResource, resource);
+  return Smi::from(resource->last_edge_detection() & 0x3FFFFFFF);
 }
 
 PRIMITIVE(get) {
