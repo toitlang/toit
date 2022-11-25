@@ -284,7 +284,7 @@ PRIMITIVE(config) {
 }
 
 PRIMITIVE(config_interrupt) {
-  ARGS(GPIOResource, resource, bool, enable);
+  ARGS(GpioResource, resource, bool, enable);
   esp_err_t err = ESP_OK;
   gpio_num_t num = static_cast<gpio_num_t>(resource->pin());
   if (enable) {
@@ -305,7 +305,7 @@ PRIMITIVE(config_interrupt) {
 }
 
 PRIMITIVE(last_edge_trigger_timestamp) {
-  ARGS(GPIOResource, resource);
+  ARGS(GpioResource, resource);
   return Smi::from(resource->last_edge_detection() & 0x3FFFFFFF);
 }
 
