@@ -506,8 +506,9 @@ flash parsed/cli.Parsed -> none:
   firmware_bin := extract_binary envelope --config_encoded=config_encoded
   binary := Esp32Binary firmware_bin
 
-  list := program_name.split "/"
-  dir := list[..list.size - 1].join "/"
+  separator := (platform == PLATFORM_WINDOWS) ? "\\" : "/"
+  list := program_name.split separator
+  dir := list[..list.size - 1].join separator
   esptool/List? := null
   if program_name.ends_with ".toit":
     esptool_py := "$dir/../third_party/esp-idf/components/esptool_py/esptool/esptool.py"
