@@ -579,6 +579,7 @@ static void process(MethodTemplate* method, uint8* bcp, TypeStack* stack, Workli
   };
 #undef LABEL
 
+  bool linked = false;
   TypePropagator* propagator = method->propagator();
   Program* program = propagator->program();
   DISPATCH(0);
@@ -854,7 +855,20 @@ static void process(MethodTemplate* method, uint8* bcp, TypeStack* stack, Workli
     }
     for (int i = 0; i < index; i++) stack->pop();
     TypeSet value = block->use(propagator, method, bcp);
-    if (value.is_empty(program)) return;
+    if (value.is_empty(program)) {
+      if (!linked) return;
+      // We've just invoked a try-block that is guaranteed
+      // to unwind as indicated by the empty return type.
+      // We propagate this information to the 'unwind' bytecode
+      // so that it can avoid propagating types through the
+      // code that follows it (fall through) because there are
+      // cases (like the monitor methods that call 'locked_')
+      // where the compiler assumes that we will not execute
+      // that part and avoids terminating the method with a
+      // 'return' bytecode.
+      TypeSet reason = stack->local(1);
+      reason.add_smi(program);  // TODO(kasper): Should this be something better?
+    }
     stack->push(value);
   OPCODE_END();
 
@@ -1019,15 +1033,22 @@ static void process(MethodTemplate* method, uint8* bcp, TypeStack* stack, Workli
   OPCODE_BEGIN(LINK);
     stack->push_instance(program->exception_class_id()->value());
     stack->push_empty();       // Unwind target.
-    stack->push_smi(program);  // Unwind reason.
+    stack->push_empty();       // Unwind reason.
     stack->push_smi(program);  // Unwind chain next.
+    linked = true;
   OPCODE_END();
 
   OPCODE_BEGIN(UNLINK);
     stack->pop();
+    linked = false;
   OPCODE_END();
 
   OPCODE_BEGIN(UNWIND);
+    // If the try-block is guaranteed to cause unwinding,
+    // we avoid analyzing the bytecodes following this one.
+    TypeSet reason = stack->local(0);
+    bool unwind = !reason.is_empty(program);
+    if (unwind) return;
     stack->pop();
     stack->pop();
     stack->pop();

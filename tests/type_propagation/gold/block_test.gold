@@ -5,7 +5,7 @@ main tests/type_propagation/block_test.toit
   7[041] - pop 1
   8[053] - invoke static test_nesting tests/type_propagation/block_test.toit // {Null_}
  11[041] - pop 1
- 12[053] - invoke static test_catch tests/type_propagation/block_test.toit // {}
+ 12[053] - invoke static test_catch tests/type_propagation/block_test.toit // {Null_}
  15[089] - return null S1 0
 
 test_simple tests/type_propagation/block_test.toit
@@ -176,20 +176,20 @@ test_catch tests/type_propagation/block_test.toit
  23[038] - load block 0
  25[022] - load null
  26[022] - load null
- 27[053] - invoke static catch <sdk>/core/exceptions.toit // {}
+ 27[053] - invoke static catch <sdk>/core/exceptions.toit // {*}
  30[041] - pop 1
  31[002] - pop, load local S0
- 33[053] - invoke static id tests/type_propagation/block_test.toit
+ 33[053] - invoke static id tests/type_propagation/block_test.toit // {Null_|SmallInteger_}
  36[041] - pop 1
  37[022] - load null
  38[029] - load [block] in test_catch tests/type_propagation/block_test.toit
  43[038] - load block 0
  45[022] - load null
  46[022] - load null
- 47[053] - invoke static catch <sdk>/core/exceptions.toit
+ 47[053] - invoke static catch <sdk>/core/exceptions.toit // {*}
  50[041] - pop 1
  51[002] - pop, load local S0
- 53[053] - invoke static id tests/type_propagation/block_test.toit
+ 53[053] - invoke static id tests/type_propagation/block_test.toit // {Null_|float}
  56[089] - return null S4 0
 
 [block] in test_catch tests/type_propagation/block_test.toit
@@ -208,6 +208,26 @@ test_catch tests/type_propagation/block_test.toit
   6[020] - load literal woops
   8[053] - invoke static throw <sdk>/core/exceptions.toit // {}
  11[088] - return S1 1
+
+[block] in test_catch tests/type_propagation/block_test.toit
+ - argument 0: [block]
+  0[016] - load local 2
+  1[020] - load literal horse
+  3[006] - store outer S1
+  5[041] - pop 1
+  6[053] - invoke static maybe_throw tests/type_propagation/block_test.toit // {Null_}
+  9[002] - pop, load local S2
+ 11[020] - load literal 3.2999999999999998224
+ 13[006] - store outer S1
+ 15[088] - return S1 1
+
+maybe_throw tests/type_propagation/block_test.toit
+  0[053] - invoke static pick tests/type_propagation/block_test.toit // {True_|False_}
+  3[082] - branch if false T12
+  6[020] - load literal woops
+  8[053] - invoke static throw <sdk>/core/exceptions.toit // {}
+ 11[041] - pop 1
+ 12[089] - return null S0 0
 
 id tests/type_propagation/block_test.toit
  - argument 0: {String_|Null_|True_|float|LargeInteger_|SmallInteger_}
