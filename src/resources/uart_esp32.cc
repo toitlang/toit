@@ -36,12 +36,12 @@
 
 namespace toit {
 
-const uart_port_t kInvalidUARTPort = uart_port_t(-1);
+const uart_port_t kInvalidUartPort = uart_port_t(-1);
 
 const int kReadState = 1 << 0;
 const int kErrorState = 1 << 1;
 
-ResourcePool<uart_port_t, kInvalidUARTPort> uart_ports(
+ResourcePool<uart_port_t, kInvalidUartPort> uart_ports(
   // UART_NUM_0 is reserved serial communication (stdout).
 #if !defined(CONFIG_IDF_TARGET_ESP32C3) && !defined(CONFIG_IDF_TARGET_ESP32S2)
   UART_NUM_2,
@@ -49,11 +49,11 @@ ResourcePool<uart_port_t, kInvalidUARTPort> uart_ports(
   UART_NUM_1
 );
 
-class UARTResource : public EventQueueResource {
+class UartResource : public EventQueueResource {
 public:
-  TAG(UARTResource);
+  TAG(UartResource);
 
-  UARTResource(ResourceGroup* group, uart_port_t port, QueueHandle_t queue)
+  UartResource(ResourceGroup* group, uart_port_t port, QueueHandle_t queue)
       : EventQueueResource(group, queue)
       , port_(port) {}
 
@@ -65,21 +65,21 @@ private:
   uart_port_t port_;
 };
 
-bool UARTResource::receive_event(word* data) {
+bool UartResource::receive_event(word* data) {
   uart_event_t event;
   bool more = xQueueReceive(queue(), &event, 0);
   if (more) *data = event.type;
   return more;
 }
 
-class UARTResourceGroup : public ResourceGroup {
+class UartResourceGroup : public ResourceGroup {
  public:
-  TAG(UARTResourceGroup);
-  UARTResourceGroup(Process* process, EventSource* event_source)
+  TAG(UartResourceGroup);
+  UartResourceGroup(Process* process, EventSource* event_source)
     : ResourceGroup(process, event_source){}
 
   virtual void on_unregister_resource(Resource* r) {
-    UARTResource* uart_res = static_cast<UARTResource*>(r);
+    UartResource* uart_res = static_cast<UartResource*>(r);
     SystemEventSource::instance()->run([&]() -> void {
       FATAL_IF_NOT_ESP_OK(uart_driver_delete(uart_res->port()));
     });
@@ -112,7 +112,7 @@ PRIMITIVE(init) {
   if (proxy == null) {
     ALLOCATION_FAILED;
   }
-  UARTResourceGroup* uart = _new UARTResourceGroup(process, EventQueueEventSource::instance());
+  UartResourceGroup* uart = _new UartResourceGroup(process, EventQueueEventSource::instance());
   if (!uart) MALLOC_FAILED;
 
   proxy->set_external_address(uart);
@@ -120,7 +120,7 @@ PRIMITIVE(init) {
 }
 
 PRIMITIVE(create) {
-  ARGS(UARTResourceGroup, group, int, tx, int, rx, int, rts, int, cts,
+  ARGS(UartResourceGroup, group, int, tx, int, rx, int, rts, int, cts,
        int, baud_rate, int, data_bits, int, stop_bits, int, parity,
        int, options, int, mode);
 
@@ -131,7 +131,7 @@ PRIMITIVE(create) {
   if (mode < UART_MODE_UART || mode > UART_MODE_IRDA) INVALID_ARGUMENT;
   if (mode == UART_MODE_RS485_HALF_DUPLEX && cts != -1) INVALID_ARGUMENT;
 
-  uart_port_t port = kInvalidUARTPort;
+  uart_port_t port = kInvalidUartPort;
 
   // Check if there is a preferred device.
   if ((tx == -1 || tx == 17) &&
@@ -153,7 +153,7 @@ PRIMITIVE(create) {
     port = UART_NUM_0;
   }
   port = uart_ports.preferred(port);
-  if (port == kInvalidUARTPort) OUT_OF_RANGE;
+  if (port == kInvalidUartPort) OUT_OF_RANGE;
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) {
@@ -225,7 +225,7 @@ PRIMITIVE(create) {
     return Primitive::os_error(err, process);
   }
 
-  UARTResource* res = _new UARTResource(group, port, args.queue);
+  UartResource* res = _new UartResource(group, port, args.queue);
   if (!res) {
     SystemEventSource::instance()->run([&]() -> void {
       FATAL_IF_NOT_ESP_OK(uart_driver_delete(port));
@@ -247,14 +247,14 @@ PRIMITIVE(create_path) {
 }
 
 PRIMITIVE(close) {
-  ARGS(UARTResourceGroup, uart, UARTResource, res);
+  ARGS(UartResourceGroup, uart, UartResource, res);
   uart->unregister_resource(res);
   res_proxy->clear_external_address();
   return process->program()->null_object();
 }
 
 PRIMITIVE(get_baud_rate) {
-  ARGS(UARTResource, uart);
+  ARGS(UartResource, uart);
 
   uint32_t baud_rate;
   esp_err_t err = uart_get_baudrate(uart->port(), &baud_rate);
@@ -266,7 +266,7 @@ PRIMITIVE(get_baud_rate) {
 }
 
 PRIMITIVE(set_baud_rate) {
-  ARGS(UARTResource, uart, int, baud_rate);
+  ARGS(UartResource, uart, int, baud_rate);
 
   esp_err_t err = uart_set_baudrate(uart->port(), baud_rate);
   if (err != ESP_OK) {
@@ -280,7 +280,7 @@ PRIMITIVE(set_baud_rate) {
 // If wait is true, waits, unless the baud-rate is too low. If the function did
 // not wait, returns the negative value of the written bytes.
 PRIMITIVE(write) {
-  ARGS(UARTResource, uart, Blob, data, int, from, int, to, int, break_length, bool, wait);
+  ARGS(UartResource, uart, Blob, data, int, from, int, to, int, break_length, bool, wait);
 
   const uint8* tx = data.address();
   if (from < 0 || from > to || to > data.length()) OUT_OF_RANGE;
@@ -322,7 +322,7 @@ PRIMITIVE(write) {
 }
 
 PRIMITIVE(wait_tx) {
-  ARGS(UARTResource, uart);
+  ARGS(UartResource, uart);
 
   esp_err_t err = uart_wait_tx_done(uart->port(), 0);
   if (err == ESP_ERR_TIMEOUT) {
@@ -336,7 +336,7 @@ PRIMITIVE(wait_tx) {
 }
 
 PRIMITIVE(read) {
-  ARGS(UARTResource, uart);
+  ARGS(UartResource, uart);
 
   size_t available = 0;
   esp_err_t err = uart_get_buffered_data_len(uart->port(), &available);

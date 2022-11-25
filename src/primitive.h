@@ -449,9 +449,9 @@ namespace toit {
   PRIMITIVE(sha1_start, 1)                   \
   PRIMITIVE(sha1_add, 4)                     \
   PRIMITIVE(sha1_get, 1)                     \
-  PRIMITIVE(sha256_start, 1)                 \
-  PRIMITIVE(sha256_add, 4)                   \
-  PRIMITIVE(sha256_get, 1)                   \
+  PRIMITIVE(sha_start, 2)                    \
+  PRIMITIVE(sha_add, 4)                      \
+  PRIMITIVE(sha_get, 1)                      \
   PRIMITIVE(siphash_start, 5)                \
   PRIMITIVE(siphash_add, 4)                  \
   PRIMITIVE(siphash_get, 1)                  \
@@ -460,6 +460,13 @@ namespace toit {
   PRIMITIVE(aes_ecb_crypt, 3)                \
   PRIMITIVE(aes_cbc_close, 1)                \
   PRIMITIVE(aes_ecb_close, 1)                \
+  PRIMITIVE(gcm_init, 4)                     \
+  PRIMITIVE(gcm_close, 1)                    \
+  PRIMITIVE(gcm_start_message, 3)            \
+  PRIMITIVE(gcm_add, 3)                      \
+  PRIMITIVE(gcm_get_tag_size, 1)             \
+  PRIMITIVE(gcm_finish, 1)                   \
+  PRIMITIVE(gcm_verify, 3)                   \
 
 #define MODULE_ENCODING(PRIMITIVE)           \
   PRIMITIVE(base64_encode, 2)                \
@@ -901,85 +908,86 @@ namespace toit {
 
 #define _A_T_SimpleResourceGroup(N, name) MAKE_UNPACKING_MACRO(SimpleResourceGroup, N, name)
 #define _A_T_DacResourceGroup(N, name)    MAKE_UNPACKING_MACRO(DacResourceGroup, N, name)
-#define _A_T_GPIOResourceGroup(N, name)   MAKE_UNPACKING_MACRO(GPIOResourceGroup, N, name)
+#define _A_T_GpioResourceGroup(N, name)   MAKE_UNPACKING_MACRO(GpioResourceGroup, N, name)
 #define _A_T_TouchResourceGroup(N, name)  MAKE_UNPACKING_MACRO(TouchResourceGroup, N, name)
-#define _A_T_I2CResourceGroup(N, name)    MAKE_UNPACKING_MACRO(I2CResourceGroup, N, name)
-#define _A_T_I2SResourceGroup(N, name)    MAKE_UNPACKING_MACRO(I2SResourceGroup, N, name)
+#define _A_T_I2cResourceGroup(N, name)    MAKE_UNPACKING_MACRO(I2cResourceGroup, N, name)
+#define _A_T_I2sResourceGroup(N, name)    MAKE_UNPACKING_MACRO(I2sResourceGroup, N, name)
 #define _A_T_PersistentResourceGroup(N, name) MAKE_UNPACKING_MACRO(PersistentResourceGroup, N, name)
 #define _A_T_PipeResourceGroup(N, name)   MAKE_UNPACKING_MACRO(PipeResourceGroup, N, name)
 #define _A_T_SubprocessResourceGroup(N, name) MAKE_UNPACKING_MACRO(SubprocessResourceGroup, N, name)
 #define _A_T_ResourceGroup(N, name)       MAKE_UNPACKING_MACRO(ResourceGroup, N, name)
-#define _A_T_SPIDevice(N, name)           MAKE_UNPACKING_MACRO(SPIDevice, N, name)
-#define _A_T_SPIResourceGroup(N, name)    MAKE_UNPACKING_MACRO(SPIResourceGroup, N, name)
-#define _A_T_SPIFlashResourceGroup(N, name)  MAKE_UNPACKING_MACRO(SPIFlashResourceGroup, N, name)
+#define _A_T_SpiDevice(N, name)           MAKE_UNPACKING_MACRO(SpiDevice, N, name)
+#define _A_T_SpiResourceGroup(N, name)    MAKE_UNPACKING_MACRO(SpiResourceGroup, N, name)
+#define _A_T_SpiFlashResourceGroup(N, name)  MAKE_UNPACKING_MACRO(SpiFlashResourceGroup, N, name)
 #define _A_T_SignalResourceGroup(N, name) MAKE_UNPACKING_MACRO(SignalResourceGroup, N, name)
 #define _A_T_SocketResourceGroup(N, name) MAKE_UNPACKING_MACRO(SocketResourceGroup, N, name)
-#define _A_T_TCPResourceGroup(N, name)    MAKE_UNPACKING_MACRO(TCPResourceGroup, N, name)
-#define _A_T_MbedTLSResourceGroup(N, name)MAKE_UNPACKING_MACRO(MbedTLSResourceGroup, N, name)
+#define _A_T_TcpResourceGroup(N, name)    MAKE_UNPACKING_MACRO(TcpResourceGroup, N, name)
+#define _A_T_MbedTlsResourceGroup(N, name)MAKE_UNPACKING_MACRO(MbedTlsResourceGroup, N, name)
 #define _A_T_TimerResourceGroup(N, name)  MAKE_UNPACKING_MACRO(TimerResourceGroup, N, name)
-#define _A_T_UDPResourceGroup(N, name)    MAKE_UNPACKING_MACRO(UDPResourceGroup, N, name)
-#define _A_T_UARTResourceGroup(N, name)   MAKE_UNPACKING_MACRO(UARTResourceGroup, N, name)
+#define _A_T_UdpResourceGroup(N, name)    MAKE_UNPACKING_MACRO(UdpResourceGroup, N, name)
+#define _A_T_UartResourceGroup(N, name)   MAKE_UNPACKING_MACRO(UartResourceGroup, N, name)
 #define _A_T_WifiResourceGroup(N, name)   MAKE_UNPACKING_MACRO(WifiResourceGroup, N, name)
 #define _A_T_EthernetResourceGroup(N, name) MAKE_UNPACKING_MACRO(EthernetResourceGroup, N, name)
-#define _A_T_BLEResourceGroup(N, name)    MAKE_UNPACKING_MACRO(BLEResourceGroup, N, name)
+#define _A_T_BleResourceGroup(N, name)    MAKE_UNPACKING_MACRO(BleResourceGroup, N, name)
 #define _A_T_X509ResourceGroup(N, name)   MAKE_UNPACKING_MACRO(X509ResourceGroup, N, name)
-#define _A_T_PWMResourceGroup(N, name)    MAKE_UNPACKING_MACRO(PWMResourceGroup, N, name)
+#define _A_T_PwmResourceGroup(N, name)    MAKE_UNPACKING_MACRO(PwmResourceGroup, N, name)
 #define _A_T_RpcResourceGroup(N, name)    MAKE_UNPACKING_MACRO(RpcResourceGroup, N, name)
-#define _A_T_RMTResourceGroup(N, name)    MAKE_UNPACKING_MACRO(RMTResourceGroup, N, name)
+#define _A_T_RmtResourceGroup(N, name)    MAKE_UNPACKING_MACRO(RmtResourceGroup, N, name)
 #define _A_T_PcntUnitResourceGroup(N, name) MAKE_UNPACKING_MACRO(PcntUnitResourceGroup, N, name)
-#define _A_T_ESPNowResourceGroup(N, name) MAKE_UNPACKING_MACRO(ESPNowResourceGroup, N, name)
+#define _A_T_EspNowResourceGroup(N, name) MAKE_UNPACKING_MACRO(EspNowResourceGroup, N, name)
 
 #define _A_T_Resource(N, name)            MAKE_UNPACKING_MACRO(Resource, N, name)
 #define _A_T_Directory(N, name)           MAKE_UNPACKING_MACRO(Directory, N, name)
 #define _A_T_Font(N, name)                MAKE_UNPACKING_MACRO(Font, N, name)
 #define _A_T_ImageOutputStream(N, name)   MAKE_UNPACKING_MACRO(ImageOutputStream, N, name)
-#define _A_T_I2CCommand(N, name)          MAKE_UNPACKING_MACRO(I2CCommand, N, name)
+#define _A_T_I2cCommand(N, name)          MAKE_UNPACKING_MACRO(I2cCommand, N, name)
 #define _A_T_IntResource(N, name)         MAKE_UNPACKING_MACRO(IntResource, N, name)
 #define _A_T_LookupResult(N, name)        MAKE_UNPACKING_MACRO(LookupResult, N, name)
-#define _A_T_LwIPSocket(N, name)          MAKE_UNPACKING_MACRO(LwIPSocket, N, name)
+#define _A_T_LwipSocket(N, name)          MAKE_UNPACKING_MACRO(LwipSocket, N, name)
 #define _A_T_Timer(N, name)               MAKE_UNPACKING_MACRO(Timer, N, name)
-#define _A_T_UDPSocket(N, name)           MAKE_UNPACKING_MACRO(UDPSocket, N, name)
+#define _A_T_UdpSocket(N, name)           MAKE_UNPACKING_MACRO(UdpSocket, N, name)
 #define _A_T_WifiEvents(N, name)          MAKE_UNPACKING_MACRO(WifiEvents, N, name)
 #define _A_T_WifiIpEvents(N, name)        MAKE_UNPACKING_MACRO(WifiIpEvents, N, name)
 #define _A_T_EthernetEvents(N, name)      MAKE_UNPACKING_MACRO(EthernetEvents, N, name)
 #define _A_T_EthernetIpEvents(N, name)    MAKE_UNPACKING_MACRO(EthernetIpEvents, N, name)
-#define _A_T_MbedTLSSocket(N, name)       MAKE_UNPACKING_MACRO(MbedTLSSocket, N, name)
-#define _A_T_BaseMbedTLSSocket(N, name)   MAKE_UNPACKING_MACRO(BaseMbedTLSSocket, N, name)
+#define _A_T_MbedTlsSocket(N, name)       MAKE_UNPACKING_MACRO(MbedTlsSocket, N, name)
+#define _A_T_BaseMbedTlsSocket(N, name)   MAKE_UNPACKING_MACRO(BaseMbedTlsSocket, N, name)
 #define _A_T_SslSession(N, name)          MAKE_UNPACKING_MACRO(SslSession, N, name)
 #define _A_T_X509Certificate(N, name)     MAKE_UNPACKING_MACRO(X509Certificate, N, name)
 #define _A_T_AesContext(N, name)          MAKE_UNPACKING_MACRO(AesContext, N, name)
 #define _A_T_AesCbcContext(N, name)       MAKE_UNPACKING_MACRO(AesCbcContext, N, name)
 #define _A_T_Sha1(N, name)                MAKE_UNPACKING_MACRO(Sha1, N, name)
 #define _A_T_Siphash(N, name)             MAKE_UNPACKING_MACRO(Siphash, N, name)
-#define _A_T_Sha256(N, name)              MAKE_UNPACKING_MACRO(Sha256, N, name)
+#define _A_T_Sha(N, name)                 MAKE_UNPACKING_MACRO(Sha, N, name)
 #define _A_T_Adler32(N, name)             MAKE_UNPACKING_MACRO(Adler32, N, name)
 #define _A_T_ZlibRle(N, name)             MAKE_UNPACKING_MACRO(ZlibRle, N, name)
-#define _A_T_GPIOResource(N, name)        MAKE_UNPACKING_MACRO(GPIOResource, N, name)
-#define _A_T_UARTResource(N, name)        MAKE_UNPACKING_MACRO(UARTResource, N, name)
-#define _A_T_UDPSocketResource(N, name)   MAKE_UNPACKING_MACRO(UDPSocketResource, N, name)
-#define _A_T_TCPSocketResource(N, name)   MAKE_UNPACKING_MACRO(TCPSocketResource, N, name)
-#define _A_T_TCPServerSocketResource(N, name)   MAKE_UNPACKING_MACRO(TCPServerSocketResource, N, name)
+#define _A_T_GpioResource(N, name)        MAKE_UNPACKING_MACRO(GpioResource, N, name)
+#define _A_T_UartResource(N, name)        MAKE_UNPACKING_MACRO(UartResource, N, name)
+#define _A_T_UdpSocketResource(N, name)   MAKE_UNPACKING_MACRO(UdpSocketResource, N, name)
+#define _A_T_TcpSocketResource(N, name)   MAKE_UNPACKING_MACRO(TcpSocketResource, N, name)
+#define _A_T_TcpServerSocketResource(N, name)   MAKE_UNPACKING_MACRO(TcpServerSocketResource, N, name)
 #define _A_T_SubprocessResource(N, name)  MAKE_UNPACKING_MACRO(SubprocessResource, N, name)
 #define _A_T_ReadPipeResource(N, name)    MAKE_UNPACKING_MACRO(ReadPipeResource, N, name)
 #define _A_T_WritePipeResource(N, name)   MAKE_UNPACKING_MACRO(WritePipeResource, N, name)
-#define _A_T_I2SResource(N, name)         MAKE_UNPACKING_MACRO(I2SResource, N, name)
+#define _A_T_I2sResource(N, name)         MAKE_UNPACKING_MACRO(I2sResource, N, name)
 #define _A_T_AdcResource(N, name)         MAKE_UNPACKING_MACRO(AdcResource, N, name)
 #define _A_T_DacResource(N, name)         MAKE_UNPACKING_MACRO(DacResource, N, name)
-#define _A_T_PWMResource(N, name)         MAKE_UNPACKING_MACRO(PWMResource, N, name)
+#define _A_T_PwmResource(N, name)         MAKE_UNPACKING_MACRO(PwmResource, N, name)
 #define _A_T_PcntUnitResource(N, name)    MAKE_UNPACKING_MACRO(PcntUnitResource, N, name)
-#define _A_T_RMTResource(N, name)         MAKE_UNPACKING_MACRO(RMTResource, N, name)
-#define _A_T_BLECentralManagerResource(N, name) MAKE_UNPACKING_MACRO(BLECentralManagerResource, N, name)
-#define _A_T_BLERemoteDeviceResource(N, name)   MAKE_UNPACKING_MACRO(BLERemoteDeviceResource, N, name)
+#define _A_T_RmtResource(N, name)         MAKE_UNPACKING_MACRO(RmtResource, N, name)
+#define _A_T_BleCentralManagerResource(N, name) MAKE_UNPACKING_MACRO(BleCentralManagerResource, N, name)
+#define _A_T_BleRemoteDeviceResource(N, name)   MAKE_UNPACKING_MACRO(BleRemoteDeviceResource, N, name)
 
-#define _A_T_BLEPeripheralManagerResource(N, name) MAKE_UNPACKING_MACRO(BLEPeripheralManagerResource, N, name)
-#define _A_T_BLECharacteristicResource(N, name) MAKE_UNPACKING_MACRO(BLECharacteristicResource, N, name)
-#define _A_T_BLEServiceResource(N, name)        MAKE_UNPACKING_MACRO(BLEServiceResource, N, name)
-#define _A_T_BLEServerConfigGroup(N, name)      MAKE_UNPACKING_MACRO(BLEServerConfigGroup, N, name)
-#define _A_T_BLEServerServiceResource(N, name)  MAKE_UNPACKING_MACRO(BLEServerServiceResource, N, name)
-#define _A_T_BLEServerCharacteristicResource(N, name)  MAKE_UNPACKING_MACRO(BLEServerCharacteristicResource, N, name)
+#define _A_T_BlePeripheralManagerResource(N, name) MAKE_UNPACKING_MACRO(BlePeripheralManagerResource, N, name)
+#define _A_T_BleCharacteristicResource(N, name) MAKE_UNPACKING_MACRO(BleCharacteristicResource, N, name)
+#define _A_T_BleServiceResource(N, name)        MAKE_UNPACKING_MACRO(BleServiceResource, N, name)
+#define _A_T_BleServerConfigGroup(N, name)      MAKE_UNPACKING_MACRO(BleServerConfigGroup, N, name)
+#define _A_T_BleServerServiceResource(N, name)  MAKE_UNPACKING_MACRO(BleServerServiceResource, N, name)
+#define _A_T_BleServerCharacteristicResource(N, name)  MAKE_UNPACKING_MACRO(BleServerCharacteristicResource, N, name)
 #define _A_T_ServiceDescription(N, name)  MAKE_UNPACKING_MACRO(ServiceDescription, N, name)
 #define _A_T_Peer(N, name)                MAKE_UNPACKING_MACRO(Peer, N, name)
 #define _A_T_Channel(N, name)             MAKE_UNPACKING_MACRO(Channel, N, name)
+#define _A_T_GcmContext(N, name)          MAKE_UNPACKING_MACRO(GcmContext, N, name)
 
 // ARGS is expanded to one of the following depending on number of passed parameters.
 #define _ODD ARGS cannot take odd number of arguments

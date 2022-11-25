@@ -33,10 +33,10 @@
 
 namespace toit {
 
-class UDPResourceGroup : public ResourceGroup {
+class UdpResourceGroup : public ResourceGroup {
  public:
-  TAG(UDPResourceGroup);
-  UDPResourceGroup(Process* process, EventSource* event_source) : ResourceGroup(process, event_source) {}
+  TAG(UdpResourceGroup);
+  UdpResourceGroup(Process* process, EventSource* event_source) : ResourceGroup(process, event_source) {}
 
  private:
   uint32_t on_event(Resource* resource, word data, uint32_t state) override {
@@ -48,10 +48,10 @@ class UDPResourceGroup : public ResourceGroup {
 
 const int READ_BUFFER_SIZE = 1 << 16;
 
-class UDPSocketResource : public WindowsResource {
+class UdpSocketResource : public WindowsResource {
  public:
-  TAG(UDPSocketResource);
-  UDPSocketResource(UDPResourceGroup* resource_group, SOCKET socket, HANDLE read_event, HANDLE write_event)
+  TAG(UdpSocketResource);
+  UdpSocketResource(UdpResourceGroup* resource_group, SOCKET socket, HANDLE read_event, HANDLE write_event)
     : WindowsResource(resource_group)
     , socket_(socket) {
     read_buffer_.buf = read_data_;
@@ -65,7 +65,7 @@ class UDPSocketResource : public WindowsResource {
     };
   }
 
-  ~UDPSocketResource() override {
+  ~UdpSocketResource() override {
     if (write_buffer_.buf) free(write_buffer_.buf);
   }
 
@@ -173,7 +173,7 @@ PRIMITIVE(init) {
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;
 
-  auto resource_group = _new UDPResourceGroup(process, WindowsEventSource::instance());
+  auto resource_group = _new UdpResourceGroup(process, WindowsEventSource::instance());
   if (!resource_group) MALLOC_FAILED;
 
   if (!WindowsEventSource::instance()->use()) {
@@ -186,7 +186,7 @@ PRIMITIVE(init) {
 }
 
 PRIMITIVE(bind) {
-  ARGS(UDPResourceGroup, resource_group, Blob, address, int, port);
+  ARGS(UdpResourceGroup, resource_group, Blob, address, int, port);
 
   ByteArray* resource_proxy = process->object_heap()->allocate_proxy();
   if (resource_proxy == null) ALLOCATION_FAILED;
@@ -219,7 +219,7 @@ PRIMITIVE(bind) {
     WINDOWS_ERROR;
   }
 
-  auto resource = _new UDPSocketResource(resource_group, socket, read_event, write_event);
+  auto resource = _new UdpSocketResource(resource_group, socket, read_event, write_event);
   if (!resource) {
     close_keep_errno(socket);
     close_handle_keep_errno(read_event);
@@ -235,7 +235,7 @@ PRIMITIVE(bind) {
 }
 
 PRIMITIVE(connect) {
-  ARGS(ByteArray, proxy, UDPSocketResource, udp_resource, Blob, address, int, port);
+  ARGS(ByteArray, proxy, UdpSocketResource, udp_resource, Blob, address, int, port);
   USE(proxy);
   
   ToitSocketAddress socket_address(address.address(), address.length(), port);
@@ -248,7 +248,7 @@ PRIMITIVE(connect) {
 }
 
 PRIMITIVE(send) {
-  ARGS(ByteArray, proxy, UDPSocketResource, udp_resource, Blob, data, int, from, int, to, Object, address, int, port);
+  ARGS(ByteArray, proxy, UdpSocketResource, udp_resource, Blob, data, int, from, int, to, Object, address, int, port);
   USE(proxy);
 
   if (from < 0 || from > to || to > data.length()) OUT_OF_BOUNDS;
@@ -274,7 +274,7 @@ PRIMITIVE(send) {
 }
 
 PRIMITIVE(receive) {
-  ARGS(ByteArray, proxy, UDPSocketResource, udp_resource, Object, output);
+  ARGS(ByteArray, proxy, UdpSocketResource, udp_resource, Object, output);
   USE(proxy);
 
   if (!udp_resource->ready_for_read()) return Smi::from(-1);
@@ -328,7 +328,7 @@ static Object* get_port_or_error(SOCKET socket, Process* process) {
 }
 
 PRIMITIVE(get_option) {
-  ARGS(ByteArray, proxy, UDPSocketResource, udp_resource, int, option);
+  ARGS(ByteArray, proxy, UdpSocketResource, udp_resource, int, option);
   USE(proxy);
   SOCKET socket = udp_resource->socket();
 
@@ -355,7 +355,7 @@ PRIMITIVE(get_option) {
 }
 
 PRIMITIVE(set_option) {
-  ARGS(ByteArray, proxy, UDPSocketResource, udp_resource, int, option, Object, raw);
+  ARGS(ByteArray, proxy, UdpSocketResource, udp_resource, int, option, Object, raw);
   USE(proxy);
 
   switch (option) {
@@ -381,7 +381,7 @@ PRIMITIVE(set_option) {
 }
 
 PRIMITIVE(close) {
-  ARGS(UDPResourceGroup, resource_group, UDPSocketResource, udp_resource);
+  ARGS(UdpResourceGroup, resource_group, UdpSocketResource, udp_resource);
 
   // The event source will call do_close on the resource when it is safe to close the socket
   resource_group->unregister_resource(udp_resource);
@@ -392,7 +392,7 @@ PRIMITIVE(close) {
 }
 
 PRIMITIVE(error) {
-  ARGS(UDPSocketResource, udp_resource);
+  ARGS(UdpSocketResource, udp_resource);
   return Primitive::unmark_from_error(windows_error(process, udp_resource->error_code()));
 }
 

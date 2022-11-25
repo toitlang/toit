@@ -260,7 +260,7 @@ PRIMITIVE(init_esp32) {
 
 
 PRIMITIVE(init_spi) {
-  ARGS(int, mac_chip, SPIDevice, spi_device, int, int_num)
+  ARGS(int, mac_chip, SpiDevice, spi_device, int, int_num)
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;

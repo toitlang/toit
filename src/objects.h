@@ -627,7 +627,7 @@ class ByteArray : public HeapObject {
   friend class ObjectHeap;
   friend class ProgramHeap;
   friend class ShortPrintVisitor;
-  friend class VMFinalizerNode;
+  friend class VmFinalizerNode;
 
  protected:
   static int _offset_from(int index) {
@@ -1054,7 +1054,7 @@ class String : public HeapObject {
 
   friend class ObjectHeap;
   friend class ProgramHeap;
-  friend class VMFinalizerNode;
+  friend class VmFinalizerNode;
 };
 
 class Method {

@@ -797,7 +797,9 @@ SchedulerThread* Scheduler::start_thread(Locker& locker) {
   if (new_thread == null) FATAL("OS thread spawn failed");
   int core = num_threads_++;
   threads_.prepend(new_thread);
-  if (!new_thread->spawn(7 * KB, core)) FATAL("OS thread spawn failed");
+  // TODO(kasper): Try to get back to only using 4KB for the stacks. We
+  // bumped the limit to support SD card mounting on ESP32.
+  if (!new_thread->spawn(8 * KB, core)) FATAL("OS thread spawn failed");
   return new_thread;
 }
 

@@ -492,9 +492,10 @@ flash parsed/cli.Parsed -> none:
   baud := parsed["baud"]
   envelope := Envelope.load input_path
 
-  stat := file.stat port
-  if not stat or stat[file.ST_TYPE] != file.CHARACTER_DEVICE:
-    throw "cannot open port '$port'"
+  if platform != PLATFORM_WINDOWS:
+    stat := file.stat port
+    if not stat or stat[file.ST_TYPE] != file.CHARACTER_DEVICE:
+      throw "cannot open port '$port'"
 
   config_encoded := ByteArray 0
   if config_path:

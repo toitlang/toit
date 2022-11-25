@@ -84,6 +84,13 @@ class Interpreter {
     int64 value_;
   };
 
+  enum HashFindAction {
+    kBail,
+    kRestartBytecode,
+    kReturnValue,
+    kCallBlockThenRestartBytecode
+  };
+
   Interpreter();
 
   Process* process() { return process_; }
@@ -146,6 +153,7 @@ class Interpreter {
   Object** push_out_of_memory_error(Object** sp);
 
   Object* hash_do(Program* program, Object* current, Object* backing, int step, Object* block, Object** entry_return);
+  Object** hash_find(Object** sp, Program* program, HashFindAction* action_return, Method* block_return, Object** result_return);
 
   inline bool is_true_value(Program* program, Object* value) const;
 

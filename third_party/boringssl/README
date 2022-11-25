@@ -1,0 +1,4 @@
+The cipher_test.txt file in this directory is downloaded from
+https://boringssl.googlesource.com/boringssl/+/771a138f2612c581a547cb3f045b3f6753fe5571/crypto/cipher/test/cipher_test.txt
+It has no Copyright header.
+No local modifications.

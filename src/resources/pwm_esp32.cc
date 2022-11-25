@@ -64,10 +64,10 @@ ResourcePool<ledc_channel_t, kInvalidLedcChannel> ledc_channels(
 const uint32_t kMaxFrequencyBits = 26;
 const uint32_t kMaxFrequency = 40000000;  // 40MHz with duty resolution of 1 bit.
 
-class PWMResource : public Resource {
+class PwmResource : public Resource {
  public:
-  TAG(PWMResource);
-  PWMResource(ResourceGroup* group, ledc_channel_t channel)
+  TAG(PwmResource);
+  PwmResource(ResourceGroup* group, ledc_channel_t channel)
     : Resource(group)
     , channel_(channel) {}
 
@@ -77,15 +77,15 @@ class PWMResource : public Resource {
   ledc_channel_t channel_;
 };
 
-class PWMResourceGroup : public ResourceGroup {
+class PwmResourceGroup : public ResourceGroup {
  public:
-  TAG(PWMResourceGroup);
-  PWMResourceGroup(Process* process, ledc_timer_t timer, uint32 max_value)
+  TAG(PwmResourceGroup);
+  PwmResourceGroup(Process* process, ledc_timer_t timer, uint32 max_value)
      : ResourceGroup(process)
      , timer_(timer)
      , max_value_(max_value) {}
 
-  ~PWMResourceGroup() {
+  ~PwmResourceGroup() {
     ledc_timer_rst(SPEED_MODE, timer_);
     ledc_timers.put(timer_);
   }
@@ -95,7 +95,7 @@ class PWMResourceGroup : public ResourceGroup {
 
  protected:
   virtual void on_unregister_resource(Resource* r) {
-    PWMResource* pwm = reinterpret_cast<PWMResource*>(r);
+    PwmResource* pwm = reinterpret_cast<PwmResource*>(r);
     ledc_stop(SPEED_MODE, pwm->channel(), 0);
     ledc_channels.put(pwm->channel());
   }
@@ -147,7 +147,7 @@ PRIMITIVE(init) {
     return Primitive::os_error(err, process);
   }
 
-  PWMResourceGroup* gpio = _new PWMResourceGroup(process, timer, (1 << resolution_bits) - 1);
+  PwmResourceGroup* gpio = _new PwmResourceGroup(process, timer, (1 << resolution_bits) - 1);
   if (!gpio) {
     ledc_timer_rst(SPEED_MODE, timer);
     ledc_timers.put(timer);
@@ -159,7 +159,7 @@ PRIMITIVE(init) {
 }
 
 PRIMITIVE(close) {
-  ARGS(PWMResourceGroup, resource_group);
+  ARGS(PwmResourceGroup, resource_group);
 
   resource_group->tear_down();
 
@@ -168,13 +168,13 @@ PRIMITIVE(close) {
   return process->program()->null_object();
 }
 
-static uint32 compute_duty_factor(PWMResourceGroup* pwm, double factor) {
+static uint32 compute_duty_factor(PwmResourceGroup* pwm, double factor) {
   factor = Utils::max(Utils::min(factor, 1.0), 0.0);
   return uint32(factor * pwm->max_value());
 }
 
 PRIMITIVE(start) {
-  ARGS(PWMResourceGroup, resource_group, int, pin, double, factor);
+  ARGS(PwmResourceGroup, resource_group, int, pin, double, factor);
 
   ByteArray* proxy = process->object_heap()->allocate_proxy();
   if (proxy == null) ALLOCATION_FAILED;
@@ -198,7 +198,7 @@ PRIMITIVE(start) {
     return Primitive::os_error(err, process);
   }
 
-  PWMResource* pwm = _new PWMResource(resource_group, channel);
+  PwmResource* pwm = _new PwmResource(resource_group, channel);
   if (!pwm) {
     ledc_stop(SPEED_MODE, channel, 0);
     ledc_channels.put(channel);
@@ -213,7 +213,7 @@ PRIMITIVE(start) {
 }
 
 PRIMITIVE(factor) {
-  ARGS(PWMResourceGroup, resource_group, PWMResource, resource);
+  ARGS(PwmResourceGroup, resource_group, PwmResource, resource);
 
   uint32 duty = ledc_get_duty(SPEED_MODE, resource->channel());
   if (duty == LEDC_ERR_DUTY) {
@@ -224,7 +224,7 @@ PRIMITIVE(factor) {
 }
 
 PRIMITIVE(set_factor) {
-  ARGS(PWMResourceGroup, resource_group, PWMResource, resource, double, factor);
+  ARGS(PwmResourceGroup, resource_group, PwmResource, resource, double, factor);
 
   uint32 duty = compute_duty_factor(resource_group, factor);
   esp_err_t err = ledc_set_duty(SPEED_MODE, resource->channel(), duty);
@@ -241,7 +241,7 @@ PRIMITIVE(set_factor) {
 }
 
 PRIMITIVE(frequency) {
-  ARGS(PWMResourceGroup, resource_group);
+  ARGS(PwmResourceGroup, resource_group);
 
   uint32 frequency = ledc_get_freq(SPEED_MODE, resource_group->timer());
   if (frequency == 0) OTHER_ERROR;
@@ -251,7 +251,7 @@ PRIMITIVE(frequency) {
 }
 
 PRIMITIVE(set_frequency) {
-  ARGS(PWMResourceGroup, resource_group, int, frequency);
+  ARGS(PwmResourceGroup, resource_group, int, frequency);
 
   if (frequency <= 0 || frequency > kMaxFrequency) OUT_OF_BOUNDS;
 
@@ -265,7 +265,7 @@ PRIMITIVE(set_frequency) {
 }
 
 PRIMITIVE(close_channel) {
-  ARGS(PWMResourceGroup, resource_group, PWMResource, resource);
+  ARGS(PwmResourceGroup, resource_group, PwmResource, resource);
 
   resource_group->unregister_resource(resource);
 

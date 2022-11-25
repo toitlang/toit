@@ -19,7 +19,7 @@
 #include "objects.h"
 #include "primitive_font.h"
 #include "primitive.h"
-#include "sha256.h"
+#include "sha.h"
 
 namespace toit {
 
@@ -84,15 +84,15 @@ bool FontBlock::verify(const uint8* data, uint32 length, const char* name) {
   if (from < 0 || to < 0 || from > Utils::MAX_UNICODE || from >= to) return false;
   // Check integrity with Sha256 in case encrypted file has been tampered with.
   uint8 has_checksum = 0;
-  for (int i = 0; i < Sha256::HASH_LENGTH; i++) has_checksum |= data[i + 8];
+  for (int i = 0; i < Sha::HASH_LENGTH_256; i++) has_checksum |= data[i + 8];
   if (has_checksum) {
-    Sha256 sha(null);
+    Sha sha(null, 256);
     sha.add(data + 40, length - 40);
-    uint8 calculated[Sha256::HASH_LENGTH];
+    uint8 calculated[Sha::HASH_LENGTH_256];
     sha.get(calculated);
     // Check sha256 checksum without bailing out early.
     uint8 sha256_errors = 0;
-    for (int i = 0; i < Sha256::HASH_LENGTH; i++) sha256_errors |= calculated[i] ^ data[i + 8];
+    for (int i = 0; i < Sha::HASH_LENGTH_256; i++) sha256_errors |= calculated[i] ^ data[i + 8];
     if (sha256_errors) return false;
   }
   return true;

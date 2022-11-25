@@ -24,7 +24,7 @@
 #include "process.h"
 #include "scheduler.h"
 #include "sha1.h"
-#include "sha256.h"
+#include "sha.h"
 
 #include "rtc_memory_esp32.h"
 
@@ -197,9 +197,9 @@ PRIMITIVE(ota_end) {
   uint8* buffer = allocation.alloc(BLOCK);
   if (buffer == null) ALLOCATION_FAILED;
 
-  Sha256* sha256 = _new Sha256(null);
+  Sha* sha256 = _new Sha(null, 256);
   if (sha256 == null) ALLOCATION_FAILED;
-  DeferDelete<Sha256> d(sha256);
+  DeferDelete<Sha> d(sha256);
 
   if (size != 0) {
     if (ota_partition == null) {
@@ -232,17 +232,17 @@ PRIMITIVE(ota_end) {
     // byte, and so not really reliable.)
     Blob checksum_bytes;
     if (expected->byte_content(process->program(), &checksum_bytes, STRINGS_OR_BYTE_ARRAYS)) {
-      if (checksum_bytes.length() != Sha256::HASH_LENGTH) INVALID_ARGUMENT;
+      if (checksum_bytes.length() != Sha::HASH_LENGTH_256) INVALID_ARGUMENT;
       for (int i = 0; i < size; i += BLOCK) {
         int chunk = Utils::min(BLOCK, size - i);
         err = esp_partition_read(ota_partition, i, buffer, chunk);
         if (err != ESP_OK) OUT_OF_BOUNDS;
         sha256->add(buffer, chunk);
       }
-      uint8 calculated[Sha256::HASH_LENGTH];
+      uint8 calculated[Sha::HASH_LENGTH_256];
       sha256->get(calculated);
       int diff = 0;
-      for (int i = 0; i < Sha256::HASH_LENGTH; i++) {
+      for (int i = 0; i < Sha::HASH_LENGTH_256; i++) {
         diff |= calculated[i] ^ checksum_bytes.address()[i];
       }
       if (diff != 0) {

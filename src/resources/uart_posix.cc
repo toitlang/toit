@@ -131,10 +131,10 @@ const int kReadState = 1 << 0;
 const int kErrorState = 1 << 1;
 const int kWriteState = 1 << 2;
 
-class UARTResourceGroup : public ResourceGroup {
+class UartResourceGroup : public ResourceGroup {
  public:
-  TAG(UARTResourceGroup);
-  UARTResourceGroup(Process* process, EventSource* event_source)
+  TAG(UartResourceGroup);
+  UartResourceGroup(Process* process, EventSource* event_source)
     : ResourceGroup(process, event_source){}
 
   int create_uart(const char* path, speed_t speed, int data_bits, int stop_bits, int parity) {
@@ -265,9 +265,9 @@ PRIMITIVE(init) {
   if (proxy == null) ALLOCATION_FAILED;
 
 #if defined(TOIT_LINUX)
-  UARTResourceGroup* resource_group = _new UARTResourceGroup(process, EpollEventSource::instance());
+  UartResourceGroup* resource_group = _new UartResourceGroup(process, EpollEventSource::instance());
 #elif defined(TOIT_BSD)
-  UARTResourceGroup* resource_group = _new UARTResourceGroup(process, KQueueEventSource::instance());
+  UartResourceGroup* resource_group = _new UartResourceGroup(process, KQueueEventSource::instance());
 #endif
   if (!resource_group) MALLOC_FAILED;
 
@@ -280,7 +280,7 @@ PRIMITIVE(create) {
 }
 
 PRIMITIVE(create_path) {
-  ARGS(UARTResourceGroup, resource_group, cstring, path, int, baud_rate, int, data_bits, int, stop_bits, int, parity);
+  ARGS(UartResourceGroup, resource_group, cstring, path, int, baud_rate, int, data_bits, int, stop_bits, int, parity);
 
   speed_t speed;
   bool arbitrary_baud_rate;
@@ -307,7 +307,7 @@ PRIMITIVE(create_path) {
 }
 
 PRIMITIVE(close) {
-  ARGS(UARTResourceGroup, resource_group, IntResource, uart_resource);
+  ARGS(UartResourceGroup, resource_group, IntResource, uart_resource);
   resource_group->close_uart(uart_resource->id());
   uart_resource_proxy->clear_external_address();
   return process->program()->null_object();

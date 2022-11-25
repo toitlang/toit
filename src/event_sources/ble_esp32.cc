@@ -20,27 +20,27 @@
 #include "ble_esp32.h"
 namespace toit {
 
-BLEEventSource* BLEEventSource::instance_ = null;
+BleEventSource* BleEventSource::instance_ = null;
 
-BLEEventSource::BLEEventSource()
+BleEventSource::BleEventSource()
     : LazyEventSource("BLE", 1) {
   instance_ = this;
 }
 
-BLEEventSource::~BLEEventSource() {
+BleEventSource::~BleEventSource() {
   instance_ = null;
 }
 
-void BLEEventSource::on_event(BLEResource* resource, word data) {
+void BleEventSource::on_event(BleResource* resource, word data) {
   Locker locker(mutex());
   if (resource) dispatch(locker, resource, data);
 }
 
-bool BLEEventSource::start() {
+bool BleEventSource::start() {
   return true;
 }
 
-void BLEEventSource::stop() {}
+void BleEventSource::stop() {}
 
 } // namespace toit
 
