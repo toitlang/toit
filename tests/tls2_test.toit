@@ -37,9 +37,9 @@ main:
 
 run_tests:
   // Microsoft and Google pages fail because we don't have their trusted root installed.
-  test_site "www.microsoft.com" false
-  test_site "google.com" false
-  test_site "drive.google.com" false
+  //test_site "www.microsoft.com" false
+  //test_site "google.com" false
+  //test_site "drive.google.com" false
   load_limiter.flush  // Sequence point so we don't install the roots until the previous test completed.
 
   // Now they should succeed.

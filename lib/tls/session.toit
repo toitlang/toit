@@ -112,6 +112,7 @@ class Session:
           flush_outgoing_
         if state == TOIT_TLS_DONE_:
           // Connected.
+          (get_internals_ tls_).do: print it
           return
         else if state == TOIT_TLS_WANT_READ_:
           with_timeout handshake_timeout:
@@ -405,3 +406,6 @@ tls_get_session_ tls_socket -> ByteArray:
 
 tls_set_session_ tls_socket session/ByteArray:
   #primitive.tls.set_session
+
+get_internals_ tls_socket -> List:
+  #primitive.tls.get_internals
