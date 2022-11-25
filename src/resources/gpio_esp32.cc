@@ -197,7 +197,7 @@ QueueHandle_t IRAM_ATTR GpioResourceGroup::queue;
 word IRAM_ATTR isr_counter = 0;
 
 void IRAM_ATTR GpioResourceGroup::isr_handler(void* arg) {
-  GPIOEvent event {
+  GpioEvent event {
     .pin = unvoid_cast<word>(arg),
     // Since real timestamps are hard to get inside an interrupt handler, we use
     // the isr_counter instead. It is monotonically increasing and grows exactly when

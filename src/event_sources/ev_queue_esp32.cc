@@ -33,7 +33,7 @@ EventQueueEventSource::EventQueueEventSource()
     : EventSource("EVQ")
     , Thread("EVQ")
     , stop_(xSemaphoreCreateBinary())
-    , gpio_queue_(xQueueCreate(32, sizeof(GPIOEvent)))
+    , gpio_queue_(xQueueCreate(32, sizeof(GpioEvent)))
     , queue_set_(xQueueCreateSet(32)) {
   xQueueAddToSet(stop_, queue_set_);
   xQueueAddToSet(gpio_queue_, queue_set_);
@@ -80,7 +80,7 @@ void EventQueueEventSource::entry() {
     }
 
     // See if there's a GPIO event.
-    GPIOEvent data;
+    GpioEvent data;
     while (xQueueReceive(gpio_queue_, &data, 0)) {
       for (auto r : resources()) {
         auto resource = static_cast<EventQueueResource*>(r);

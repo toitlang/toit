@@ -24,7 +24,7 @@
 
 namespace toit {
 
-struct GPIOEvent {
+struct GpioEvent {
   word pin;
   word timestamp;
 };
