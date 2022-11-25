@@ -259,12 +259,14 @@ class Pin:
         // If there was an edge transition after we configured the interrupt,
         // we are guaranteed that we have seen the value we are waiting for.
         // The pin's value might already be different now, but we know
-        // that it was at the correct value at least for a brief periood of
+        // that it was at the correct value at least for a brief period of
         // time when the interrupt triggered.
-        if event_timestamp >= config_timestamp: return
-        if config_timestamp > 0xFFF_FFFF and event_timestamp < 0xFF_FFFF:
-          // Clearly an overflow. This means the event was after the config call.
-          return
+        if (event_timestamp - config_timestamp).abs < 0xFF_FFFF:
+          if event_timestamp >= config_timestamp: return
+        else:
+          // Unrealistically far from each other.
+          // Assume an overflow happened (either the event or config timestamp).
+          if event_timestamp < config_timestamp: return
         // The following test shouldn't be necessary, but doesn't hurt either.
         if get == value: return
     finally:
