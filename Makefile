@@ -239,7 +239,7 @@ menuconfig-no-env: check-env check-esp32-env
 
 .PHONY: flash
 flash:
-	if [ "$(shell command -v xtensa-esp32-elf-g++)" = "" ]; then 'source $(IDF_PATH)/export.sh'; fi; \
+	if [ "$(shell command -v xtensa-esp32-elf-g++)" = "" ]; then source '$(IDF_PATH)/export.sh'; fi; \
 	    $(MAKE) flash-no-env
 
 .PHONY: flash-no-env

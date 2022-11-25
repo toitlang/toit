@@ -23,14 +23,14 @@ abstract class Aes:
     add_finalizer this:: this.close
 
   /**
-  Encrypts the given $cleartext.
+  Encrypts the given $plaintext.
 
-  The size of the $cleartext must be a multiple of 16.
+  The size of the $plaintext must be a multiple of 16.
   Returns a byte array with the encrypted data.
   */
-  encrypt cleartext/ByteArray -> ByteArray:
+  encrypt plaintext/ByteArray -> ByteArray:
     if not aes_: throw "ALREADY_CLOSED"
-    return crypt_ cleartext --encrypt
+    return crypt_ plaintext --encrypt
 
   /**
   Decrypts the given $ciphertext.
@@ -204,50 +204,50 @@ class AesGcm:
     add_finalizer this:: this.close
 
   /**
-  Encrypts the given $plain_text.
-  The plain_text must be a ByteArray or a string.
+  Encrypts the given $plaintext.
+  The plaintext must be a ByteArray or a string.
   If provided, the $authenticated_data is data that takes part in the
     verification tag, but does not get encrypted.
-  Returns the encrypted plain_text.  The verification tag, 16 bytes, is
+  Returns the encrypted plaintext.  The verification tag, 16 bytes, is
     appended to the result.
   This method is equivalent to calling $start, $add, and $finish, and
     therefore it closes this instance.
   */
-  encrypt plain_text --authenticated_data="" -> ByteArray:
+  encrypt plaintext --authenticated_data="" -> ByteArray:
     if not gcm_aes_: throw "ALREADY_CLOSED"
 
-    result := ByteArray plain_text.size + TAG_SIZE
+    result := ByteArray plaintext.size + TAG_SIZE
 
     gcm_start_message_ gcm_aes_ authenticated_data initialization_vector_
-    number_of_bytes /int := gcm_add_ gcm_aes_ plain_text result
-    if number_of_bytes != (round_down plain_text.size BLOCK_SIZE_): throw "UNKNOWN_ERROR"
+    number_of_bytes /int := gcm_add_ gcm_aes_ plaintext result
+    if number_of_bytes != (round_down plaintext.size BLOCK_SIZE_): throw "UNKNOWN_ERROR"
     rest_and_tag := gcm_finish_ gcm_aes_
-    if number_of_bytes + rest_and_tag.size != plain_text.size + TAG_SIZE: throw "UNKNOWN_ERROR"
+    if number_of_bytes + rest_and_tag.size != plaintext.size + TAG_SIZE: throw "UNKNOWN_ERROR"
     result.replace number_of_bytes rest_and_tag
     close
     return result
 
   /**
-  Decrypts the given $cipher_text.
+  Decrypts the given $ciphertext.
   The $verification_tag, 16 bytes, is checked and an exception is thrown if it
     fails.
   If the verification_tag is not provided, it is assumed to be appended to the
-    $cipher_text.
+    $ciphertext.
   This method is equivalent to calling $start, $add, and $verify, and
     therefore it closes this instance.
   */
-  decrypt cipher_text/ByteArray --authenticated_data="" --verification_tag/ByteArray?=null -> ByteArray:
+  decrypt ciphertext/ByteArray --authenticated_data="" --verification_tag/ByteArray?=null -> ByteArray:
     if not gcm_aes_: throw "ALREADY_CLOSED"
 
     if not verification_tag:
-      edge := cipher_text.size - 16
-      verification_tag = cipher_text[edge..]
-      cipher_text = cipher_text[..edge]
+      edge := ciphertext.size - 16
+      verification_tag = ciphertext[edge..]
+      ciphertext = ciphertext[..edge]
 
     gcm_start_message_ gcm_aes_ authenticated_data initialization_vector_
-    result := ByteArray cipher_text.size
-    number_of_bytes /int := gcm_add_ gcm_aes_ cipher_text result
-    if number_of_bytes != (round_down cipher_text.size BLOCK_SIZE_): throw "UNKNOWN_ERROR"
+    result := ByteArray ciphertext.size
+    number_of_bytes /int := gcm_add_ gcm_aes_ ciphertext result
+    if number_of_bytes != (round_down ciphertext.size BLOCK_SIZE_): throw "UNKNOWN_ERROR"
 
     check := gcm_verify_ gcm_aes_ verification_tag result[number_of_bytes..]
     if check != 0:

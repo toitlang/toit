@@ -73,8 +73,8 @@ test_aes test/Test --ecb/bool=false --cbc/bool=false -> none:
   expect (not (ecb and cbc))
   key := test.data[0]
   iv := test.data[1]
-  expected_plain_text := test.data[2]
-  expected_cipher_text := test.data[3]
+  expected_plaintext := test.data[2]
+  expected_ciphertext := test.data[3]
 
   print "$test.source, $test.line_number, AES, $test.comment"
 
@@ -87,17 +87,17 @@ test_aes test/Test --ecb/bool=false --cbc/bool=false -> none:
     encryptor = AesCbc.encryptor key iv
     decryptor = AesCbc.decryptor key iv
 
-  cipher_text := encryptor.encrypt expected_plain_text
-  expect_equals expected_cipher_text cipher_text
+  ciphertext := encryptor.encrypt expected_plaintext
+  expect_equals expected_ciphertext ciphertext
 
-  plain_text := decryptor.decrypt expected_cipher_text
-  expect_equals expected_plain_text plain_text
+  plaintext := decryptor.decrypt expected_ciphertext
+  expect_equals expected_plaintext plaintext
 
 test_aes_gcm test/Test -> none:
   key := test.data[0]
   nonce := test.data[1]
-  expected_plain_text := test.data[2]
-  expected_cipher_text := test.data[3]
+  expected_plaintext := test.data[2]
+  expected_ciphertext := test.data[3]
   authenticated := test.data[4]
   expected_verification_tag := test.data[5]
 
@@ -111,68 +111,68 @@ test_aes_gcm test/Test -> none:
 
   // Use the simple all-at-once methods that just append the verification
   // tag to the ciphertext.
-  cipher_text_and_tag := (AesGcm.encryptor key nonce).encrypt expected_plain_text --authenticated_data=authenticated
-  cut := cipher_text_and_tag.size - 16
-  verification_tag := cipher_text_and_tag[cut..]
-  cipher_text := cipher_text_and_tag[..cut]
-  expect_equals expected_cipher_text cipher_text
+  ciphertext_and_tag := (AesGcm.encryptor key nonce).encrypt expected_plaintext --authenticated_data=authenticated
+  cut := ciphertext_and_tag.size - 16
+  verification_tag := ciphertext_and_tag[cut..]
+  ciphertext := ciphertext_and_tag[..cut]
+  expect_equals expected_ciphertext ciphertext
   expect_equals expected_verification_tag verification_tag
-  plain_text := (AesGcm.decryptor key nonce).decrypt cipher_text_and_tag --authenticated_data=authenticated
-  expect_equals expected_plain_text plain_text
+  plaintext := (AesGcm.decryptor key nonce).decrypt ciphertext_and_tag --authenticated_data=authenticated
+  expect_equals expected_plaintext plaintext
 
   // Test decryption again with separate verification tag.
-  plain_text = (AesGcm.decryptor key nonce).decrypt cipher_text --authenticated_data=authenticated --verification_tag=verification_tag
-  expect_equals expected_plain_text plain_text
+  plaintext = (AesGcm.decryptor key nonce).decrypt ciphertext --authenticated_data=authenticated --verification_tag=verification_tag
+  expect_equals expected_plaintext plaintext
 
   // Flip first bit in the verification tag and verify it fails.
   verification_tag[0] ^= 0x80
-  expect_throw "INVALID_SIGNATURE": (AesGcm.decryptor key nonce).decrypt cipher_text --authenticated_data=authenticated --verification_tag=verification_tag
+  expect_throw "INVALID_SIGNATURE": (AesGcm.decryptor key nonce).decrypt ciphertext --authenticated_data=authenticated --verification_tag=verification_tag
 
   // Flip last bit in the verification tag and verify it fails.
   verification_tag[0] ^= 0x80
   verification_tag[15] ^= 1
-  expect_throw "INVALID_SIGNATURE": (AesGcm.decryptor key nonce).decrypt cipher_text --authenticated_data=authenticated --verification_tag=verification_tag
+  expect_throw "INVALID_SIGNATURE": (AesGcm.decryptor key nonce).decrypt ciphertext --authenticated_data=authenticated --verification_tag=verification_tag
 
-  for cut1 := 0; cut1 <= expected_plain_text.size; cut1++:
-    for cut2 := cut1; cut2 <= expected_plain_text.size; cut2++:
+  for cut1 := 0; cut1 <= expected_plaintext.size; cut1++:
+    for cut2 := cut1; cut2 <= expected_plaintext.size; cut2++:
       // Test in-place encryption.
       encryptor := AesGcm.encryptor key nonce
       encryptor.start --authenticated_data=authenticated
       parts := []
-      part1 := expected_plain_text.copy 0 cut1
-      part2 := expected_plain_text.copy cut1 cut2
-      part3 := expected_plain_text.copy cut2
+      part1 := expected_plaintext.copy 0 cut1
+      part2 := expected_plaintext.copy cut1 cut2
+      part3 := expected_plaintext.copy cut2
       parts.add (encryptor.add part1)
       parts.add (encryptor.add part2)
       parts.add (encryptor.add part3)
       finish := encryptor.finish
       parts.add finish[0]
       verification_tag = finish[1]
-      cipher_text = parts.reduce: | a b | a + b  // Byte array concatenation.
+      ciphertext = parts.reduce: | a b | a + b  // Byte array concatenation.
       expect_equals expected_verification_tag verification_tag
-      expect_equals expected_cipher_text cipher_text
+      expect_equals expected_ciphertext ciphertext
 
       // Test in-place decryption.
       decryptor := AesGcm.decryptor key nonce
       decryptor.start --authenticated_data=authenticated
       parts = []
-      part1 = expected_cipher_text.copy 0 cut1
-      part2 = expected_cipher_text.copy cut1 cut2
-      part3 = expected_cipher_text.copy cut2
+      part1 = expected_ciphertext.copy 0 cut1
+      part2 = expected_ciphertext.copy cut1 cut2
+      part3 = expected_ciphertext.copy cut2
       parts.add (decryptor.add part1)
       parts.add (decryptor.add part2)
       parts.add (decryptor.add part3)
       parts.add (decryptor.verify verification_tag)
-      plain_text = parts.reduce: | a b | a + b  // Byte array concatenation.
-      expect_equals expected_plain_text plain_text
+      plaintext = parts.reduce: | a b | a + b  // Byte array concatenation.
+      expect_equals expected_plaintext plaintext
 
       // Test in-place decryption failure.
       decryptor = AesGcm.decryptor key nonce
       decryptor.start --authenticated_data=authenticated
       parts = []
-      part1 = expected_cipher_text.copy 0 cut1
-      part2 = expected_cipher_text.copy cut1 cut2
-      part3 = expected_cipher_text.copy cut2
+      part1 = expected_ciphertext.copy 0 cut1
+      part2 = expected_ciphertext.copy cut1 cut2
+      part3 = expected_ciphertext.copy cut2
       parts.add (decryptor.add part1)
       parts.add (decryptor.add part2)
       parts.add (decryptor.add part3)
