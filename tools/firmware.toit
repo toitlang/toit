@@ -506,7 +506,14 @@ flash parsed/cli.Parsed -> none:
   firmware_bin := extract_binary envelope --config_encoded=config_encoded
   binary := Esp32Binary firmware_bin
 
-  separator := (platform == PLATFORM_WINDOWS) ? "\\" : "/"
+  separator := ?
+  bin_extension := ?
+  if platform == PLATFORM_WINDOWS:
+    separator = "\\"
+    bin_extension = ".exe"
+  else:
+    separator = "/"
+    bin_extension = ""
   list := program_name.split separator
   dir := list[..list.size - 1].join separator
   esptool/List? := null
@@ -516,7 +523,7 @@ flash parsed/cli.Parsed -> none:
       throw "cannot find esptool in '$esptool_py'"
     esptool = ["python", esptool_py ]
   else:
-    esptool = ["$dir/esptool"]
+    esptool = ["$dir/esptool$bin_extension"]
     if not file.is_file esptool[0]:
       throw "cannot find esptool in '$esptool[0]'"
 
