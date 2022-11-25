@@ -262,6 +262,9 @@ class Pin:
         // that it was at the correct value at least for a brief periood of
         // time when the interrupt triggered.
         if event_timestamp >= config_timestamp: return
+        if config_timestamp > 0xFFF_FFFF and event_timestamp < 0xFF_FFFF:
+          // Clearly an overflow. This means the event was after the config call.
+          return
         // The following test shouldn't be necessary, but doesn't hurt either.
         if get == value: return
     finally:

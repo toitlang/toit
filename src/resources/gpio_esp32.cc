@@ -301,12 +301,12 @@ PRIMITIVE(config_interrupt) {
     }
   }
   if (err != ESP_OK) return Primitive::os_error(err, process);
-  return Smi::from(isr_counter++);
+  return Smi::from((isr_counter++) & 0x3FFFFFFF);
 }
 
 PRIMITIVE(last_edge_trigger_timestamp) {
   ARGS(GPIOResource, resource);
-  return Primitive::integer(resource->last_edge_detection(), process);
+  return Smi::from(resource->last_edge_detection() & 0x3FFFFFFF);
 }
 
 PRIMITIVE(get) {
