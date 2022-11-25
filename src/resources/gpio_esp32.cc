@@ -142,7 +142,7 @@ class GpioResourceGroup : public ResourceGroup {
 
  private:
   virtual uint32_t on_event(Resource* resource, word data, uint32_t state) {
-    static_cast<GPIOResource*>(resource)->set_last_edge_detection_timestamp(static_cast<int>(data));
+    static_cast<GpioResource*>(resource)->set_last_edge_detection_timestamp(static_cast<int>(data));
     return state | GPIO_STATE_EDGE_TRIGGERED;
   }
 
