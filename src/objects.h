@@ -730,6 +730,7 @@ class Stack : public HeapObject {
   void _set_try_top(int value) { _word_at_put(TRY_TOP_OFFSET, value); }
 
   void _initialize(int length) {
+    _at_put(TASK_OFFSET, Smi::zero());
     _set_length(length);
     _set_top(length);
     _set_try_top(length);
