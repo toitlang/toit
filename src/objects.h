@@ -682,9 +682,6 @@ class FrameCallback {
 
 class Stack : public HeapObject {
  public:
-  INLINE Task* task();
-  INLINE void set_task(Task* value);
-
   int length() { return _word_at(LENGTH_OFFSET); }
   int top() { return _word_at(TOP_OFFSET); }
   int try_top() { return _word_at(TRY_TOP_OFFSET); }
@@ -719,8 +716,7 @@ class Stack : public HeapObject {
   }
 
  private:
-  static const int TASK_OFFSET = HeapObject::SIZE;
-  static const int LENGTH_OFFSET = TASK_OFFSET + WORD_SIZE;
+  static const int LENGTH_OFFSET = HeapObject::SIZE + WORD_SIZE;
   static const int TOP_OFFSET = LENGTH_OFFSET + WORD_SIZE;
   static const int TRY_TOP_OFFSET = TOP_OFFSET + WORD_SIZE;
   static const int HEADER_SIZE = TRY_TOP_OFFSET + WORD_SIZE;
@@ -730,7 +726,6 @@ class Stack : public HeapObject {
   void _set_try_top(int value) { _word_at_put(TRY_TOP_OFFSET, value); }
 
   void _initialize(int length) {
-    _at_put(TASK_OFFSET, Smi::zero());
     _set_length(length);
     _set_top(length);
     _set_try_top(length);
@@ -1401,10 +1396,6 @@ class Task : public Instance {
 
   friend class ObjectHeap;
 };
-
-inline Task* Stack::task() {
-  return Task::cast(_at(TASK_OFFSET));
-}
 
 inline bool is_smi(Object* o) {
   return (reinterpret_cast<uword>(o) & Object::SMI_TAG_MASK) == Object::SMI_TAG;
