@@ -179,8 +179,7 @@ PRIMITIVE(wait_for_lwip_dhcp_on_linux) {
 
 LwipEventSource::LwipEventSource()
     : EventSource("LwIP", 1)
-    , mutex_(OS::allocate_mutex(0, "LwipEventSource"))
-    , call_done_(OS::allocate_condition_variable(mutex_)) {
+    , call_done_(OS::allocate_condition_variable(mutex())) {
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + LWIP_MALLOC_TAG);
 #if defined(TOIT_FREERTOS)
   // Create the LWIP thread.
@@ -203,6 +202,7 @@ LwipEventSource::LwipEventSource()
   instance_ = this;
 
   call_on_thread([&]() -> Object *{
+    Thread::ensure_system_thread();
     OS::set_heap_tag(ITERATE_CUSTOM_TAGS + LWIP_MALLOC_TAG);
     return null;
   });
@@ -211,19 +211,21 @@ LwipEventSource::LwipEventSource()
 LwipEventSource::~LwipEventSource() {
   instance_ = null;
   OS::dispose(call_done_);
-  OS::dispose(mutex_);
 }
 
 void LwipEventSource::on_thread(void* arg) {
-  Thread::ensure_system_thread();
   CallContext* call = unvoid_cast<CallContext*>(arg);
-  auto event_source = instance();
+  Object* result = call->func();
 
-  call->result = call->func();
-
-  Locker lock(event_source->mutex_);
+  auto lwip = instance();
+  Locker locker(lwip->mutex());
+  call->result = result;
   call->done = true;
-  OS::signal(event_source->call_done_);
+
+  // We must signal all waiters to make sure we don't end
+  // up in a situation where the LWIP calls are done in a
+  // different order than the waiting.
+  OS::signal_all(lwip->call_done());
 }
 
 #else // defined(TOIT_FREERTOS) || defined(TOIT_USE_LWIP)

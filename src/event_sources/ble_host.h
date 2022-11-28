@@ -13,10 +13,10 @@
 
 namespace toit {
 
-// RAII helper class to just lock the mutex from a non-toit thread
+// RAII helper class to just lock the mutex from a non-Toit thread.
 class LightLocker {
  public:
-  explicit LightLocker(Mutex *mutex): mutex_(mutex) {
+  explicit LightLocker(Mutex* mutex) : mutex_(mutex) {
     OS::lock(mutex_);
   }
   ~LightLocker() {

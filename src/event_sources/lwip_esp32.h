@@ -68,14 +68,10 @@ class LwipEventSource : public EventSource {
     }
 
     // Wait for the LwIP thread to perform our task.
-    Locker locker(mutex_);
+    Locker locker(mutex());
     while (!call.done) OS::wait(call_done_);
     return call.result;
   }
-
-  // This event source (and LwIP thread) is shared across all Toit processes,
-  // so there is a mutex to control access.
-  Mutex* mutex() { return mutex_; }
 
  private:
   struct CallContext {
@@ -85,10 +81,9 @@ class LwipEventSource : public EventSource {
   };
 
   static void on_thread(void* arg);
+  ConditionVariable* call_done() const { return call_done_; }
 
   static LwipEventSource* instance_;
-
-  Mutex* mutex_;
   ConditionVariable* call_done_;
 };
 
