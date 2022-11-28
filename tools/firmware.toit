@@ -492,9 +492,10 @@ flash parsed/cli.Parsed -> none:
   baud := parsed["baud"]
   envelope := Envelope.load input_path
 
-  stat := file.stat port
-  if not stat or stat[file.ST_TYPE] != file.CHARACTER_DEVICE:
-    throw "cannot open port '$port'"
+  if platform != PLATFORM_WINDOWS:
+    stat := file.stat port
+    if not stat or stat[file.ST_TYPE] != file.CHARACTER_DEVICE:
+      throw "cannot open port '$port'"
 
   config_encoded := ByteArray 0
   if config_path:
@@ -505,8 +506,16 @@ flash parsed/cli.Parsed -> none:
   firmware_bin := extract_binary envelope --config_encoded=config_encoded
   binary := Esp32Binary firmware_bin
 
-  list := program_name.split "/"
-  dir := list[..list.size - 1].join "/"
+  separator := ?
+  bin_extension := ?
+  if platform == PLATFORM_WINDOWS:
+    separator = "\\"
+    bin_extension = ".exe"
+  else:
+    separator = "/"
+    bin_extension = ""
+  list := program_name.split separator
+  dir := list[..list.size - 1].join separator
   esptool/List? := null
   if program_name.ends_with ".toit":
     esptool_py := "$dir/../third_party/esp-idf/components/esptool_py/esptool/esptool.py"
@@ -514,7 +523,7 @@ flash parsed/cli.Parsed -> none:
       throw "cannot find esptool in '$esptool_py'"
     esptool = ["python", esptool_py ]
   else:
-    esptool = ["$dir/esptool"]
+    esptool = ["$dir/esptool$bin_extension"]
     if not file.is_file esptool[0]:
       throw "cannot find esptool in '$esptool[0]'"
 
