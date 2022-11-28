@@ -282,7 +282,6 @@ void Stack::copy_to(HeapObject* other, int other_length) {
   ASSERT(other_length >= used);
   int displacement = other_length - length();
   memcpy(to->_array_address(top() + displacement), _array_address(top()), used * WORD_SIZE);
-  to->_at_put(TASK_OFFSET, _at(TASK_OFFSET));
   to->_set_length(other_length);
   to->_set_top(displacement + top());
   to->_set_try_top(displacement + try_top());
