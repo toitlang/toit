@@ -767,8 +767,8 @@ PRIMITIVE(get_internals) {
       || in_gcm_context->mode != MBEDTLS_GCM_DECRYPT) {
     return process->program()->null_object();
   }
-  memcpy(ByteArray::Bytes(encode_key).address(), (uint8*)(out_aes_context->rk), key_bitlen >> 8);
-  memcpy(ByteArray::Bytes(decode_key).address(), (uint8*)(in_aes_context->rk), key_bitlen >> 8);
+  memcpy(ByteArray::Bytes(encode_key).address(), (uint8*)(out_aes_context->rk), key_bitlen >> 3);
+  memcpy(ByteArray::Bytes(decode_key).address(), (uint8*)(in_aes_context->rk), key_bitlen >> 3);
   result->at_put(0, encode_iv);
   result->at_put(1, decode_iv);
   result->at_put(2, encode_key);
