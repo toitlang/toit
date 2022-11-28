@@ -116,7 +116,7 @@ class Session:
           return
         else if state == TOIT_TLS_WANT_READ_:
           with_timeout handshake_timeout:
-            read_handshake_message_
+            read_incoming_packet_
         else if state == TOIT_TLS_WANT_WRITE_:
           // This is already handled above with flush_outgoing_
         else:
@@ -253,14 +253,12 @@ class Session:
   // Reads and blocks until we have enough data to construct a whole
   // handshaking message.  May return an synthetic record, (defragmented
   // from several records on the wire).
-  extract_first_message_ -> ByteArray:
-    if switched_to_encrypted_ or (reader_.byte 0) == APPLICATION_DATA_:
-      // We rarely (never?) find a record with the application data type
-      // because normally we have switched to encrypted mode before this
-      // happens.  In any case we lose the ability to see the message
-      // structure when encryption is activated and from this point we
-      // just feed data unchanged to MbedTLS.
-      return reader_.read
+  read_handshaking_message_ -> ByteArray:
+    assert: not switched_to_encrypted_
+    // We rarely (never?) find a record with the application data type
+    // because normally we have switched to encrypted mode before this
+    // happens.
+    if (reader_.byte 0) == APPLICATION_DATA_: throw "Unencrypted application data received"
     header := reader_.read_bytes 5
     content_type := header[0]
     remaining_message_bytes / int := ?
@@ -268,6 +266,7 @@ class Session:
       remaining_message_bytes = 2
     else if content_type == CHANGE_CIPHER_SPEC_:
       remaining_message_bytes = 1
+      extract_negotiated_keys_
       switched_to_encrypted_ = true
     else:
       if content_type != HANDSHAKE_:
@@ -322,8 +321,17 @@ class Session:
       reader_.unget synthetic_header
     return record
 
-  read_handshake_message_ -> none:
-    packet := extract_first_message_
+  extract_negotiated_keys_ -> none:
+
+  decrypt_incoming_ -> ByteArray?
+    return reader_.read
+
+  read_incoming_packet_ -> none:
+    packet := ?
+    if switched_to_encrypted_:
+      packet = decrypt_incoming_
+    else:
+      packet = read_handshaking_message_
     tls_set_incoming_ tls_ packet 0
 
 
