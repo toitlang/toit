@@ -258,7 +258,6 @@ Task* ObjectHeap::allocate_task() {
   for (int i = Task::ID_INDEX + 1; i < fields; i++) {
     result->at_put(i, program()->null_object());
   }
-  stack->set_task(result);
   return result;
 }
 
