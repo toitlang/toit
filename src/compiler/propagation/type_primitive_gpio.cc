@@ -27,6 +27,7 @@ TYPE_PRIMITIVE_ANY(config)
 TYPE_PRIMITIVE_ANY(get)
 TYPE_PRIMITIVE_ANY(set)
 TYPE_PRIMITIVE_ANY(config_interrupt)
+TYPE_PRIMITIVE_ANY(last_edge_trigger_timestamp)
 
 }  // namespace toit::compiler
 }  // namespace toit
