@@ -223,46 +223,24 @@ class Session:
       --if_absent=: throw "urc not registered: $name"
 
   /**
-  Executes a `read` command with the $command_name.
-  */
-  read command_name/string --timeout/Duration?=null -> Result:
-    cmd ::= ?
-    if timeout == null:
-      cmd = Command.read command_name
-    else:
-      cmd = Command.read command_name --timeout=timeout
-    return send cmd
-
-  /**
   Executes a $Command.read with the $command_name.
 
-  Returns null on time out when non $check.
+  Returns null on timeout when non $check.
   */
-  read command_name/string --timeout/Duration?=null --check/bool -> Result?:
+  read command_name/string --timeout/Duration?=null --check/bool=true -> Result?:
     cmd ::= ?
     if timeout == null:
       cmd = Command.read command_name
     else:
       cmd = Command.read command_name --timeout=timeout
     return check ? send cmd : send_non_check cmd
-
-  /**
-  Executes a `test` command with the $command_name.
-  */
-  test command_name/string --timeout/Duration?=null -> Result:
-    cmd ::= ?
-    if timeout == null:
-      cmd = Command.test command_name 
-    else:
-      cmd = Command.test command_name --timeout=timeout
-    return send cmd
 
   /**
   Executes a $Command.test with the $command_name.
 
-  Returns null on time out when non $check.
+  Returns null on timeout when non $check.
   */
-  test command_name/string --timeout/Duration?=null --check/bool -> Result?:
+  test command_name/string --timeout/Duration?=null --check/bool=true -> Result?:
     cmd ::= ?
     if timeout == null:
       cmd = Command.test command_name 
@@ -271,22 +249,11 @@ class Session:
     return check ? send cmd : send_non_check cmd
 
   /**
-  Executes a `set` command with the $command_name, along with $parameters and optional $data.
-  */
-  set command_name/string parameters/List --data=null --timeout/Duration?=null -> Result:
-    cmd ::= ?
-    if timeout == null:
-      cmd = Command.set command_name --parameters=parameters --data=data
-    else:
-      cmd = Command.set command_name --parameters=parameters --data=data --timeout=timeout
-    return send cmd
-
-  /**
   Executes a $Command.set with the $command_name.
 
-  Returns null on time out when non $check.
+  Returns null on timeout when non $check.
   */
-  set command_name/string parameters/List --data=null --timeout/Duration?=null --check/bool-> Result?:
+  set command_name/string parameters/List --data=null --timeout/Duration?=null --check/bool=true -> Result?:
     cmd ::= ?
     if timeout == null:
       cmd = Command.set command_name --parameters=parameters --data=data
@@ -295,22 +262,11 @@ class Session:
     return check ? send cmd : send_non_check cmd
 
   /**
-  Executes an `action` command with the $command_name.
-  */
-  action command_name/string --timeout/Duration?=null -> Result:
-    cmd ::= ?
-    if timeout == null:
-      cmd = Command.action command_name
-    else:
-      cmd = Command.action command_name --timeout=timeout
-    return send cmd
-
-  /**
   Executes a $Command.action with the $command_name.
 
-  Returns null on time out when non $check.
+  Returns null on timeout when non $check.
   */
-  action command_name/string --timeout/Duration?=null --check/bool -> Result?:
+  action command_name/string --timeout/Duration?=null --check/bool=true -> Result?:
     cmd ::= ?
     if timeout == null:
       cmd = Command.action command_name 
