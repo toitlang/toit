@@ -276,8 +276,6 @@ class SemiSpace : public Space {
 
   virtual bool is_flushed();
 
-  void trigger_gc_soon() { limit_ = top_ + SENTINEL_SIZE; }
-
   // Allocate raw object. Returns 0 if a garbage collection is needed
   // and causes a fatal error if no garbage collection is needed and
   // there is no room to allocate the object.
