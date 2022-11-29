@@ -124,7 +124,7 @@ PRIMITIVE(wait_for_lwip_dhcp_on_linux) {
     fprintf(stderr, "Waiting for DHCP server\n");
 
     err_t err;
-    LwipEventSource::instance()->call_on_thread([&]() -> Object *{
+    LwipEventSource::instance()->call_on_thread([&]() -> Object* {
       dhcp_set_struct(&global_netif, &static_dhcp);
       netif_set_up(&global_netif);
       err = dhcp_start(&global_netif);
@@ -154,7 +154,7 @@ PRIMITIVE(wait_for_lwip_dhcp_on_linux) {
     uint8_t byte3 = 128 + (ip_addr_offset >> 8);
     uint8_t byte4 = ip_addr_offset &0xff;
     fprintf(stderr, "Set IP address %d.%d.%d.%d, mask 255.255.0.0, gw %d.%d.0.1\n", byte1, byte2, byte3, byte4, byte1, byte2);
-    LwipEventSource::instance()->call_on_thread([&]() -> Object *{
+    LwipEventSource::instance()->call_on_thread([&]() -> Object* {
       ip4_addr_t ip, netmask, gateway;
       ip4_addr_set_u32(&ip, (byte1 << 0) | (byte2 << 8) | (byte3 << 16) | (byte4 << 24));  // IP:      172.27.128.xx
       ip4_addr_set_u32(&netmask, 0x0000FFFF);                                              // Netmask: 255.255.0.0
@@ -201,10 +201,10 @@ LwipEventSource::LwipEventSource()
   ASSERT(instance_ == null);
   instance_ = this;
 
-  call_on_thread([&]() -> Object *{
+  call_on_thread([&]() -> Object* {
     Thread::ensure_system_thread();
     OS::set_heap_tag(ITERATE_CUSTOM_TAGS + LWIP_MALLOC_TAG);
-    return null;
+    return Smi::from(0);
   });
 }
 
