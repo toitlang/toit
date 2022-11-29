@@ -114,11 +114,6 @@ void Space::validate_before_mark_sweep(PageType expected_page_type, bool object_
 }
 #endif
 
-HeapObject* SemiSpace::new_location(HeapObject* old_location) {
-  ASSERT(includes(old_location->_raw()));
-  return old_location->forwarding_address();
-}
-
 bool SemiSpace::is_alive(HeapObject* old_location) {
   // If we are doing a scavenge and are asked whether an old-space object is
   // alive, return true.

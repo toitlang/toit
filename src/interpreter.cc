@@ -59,7 +59,6 @@ Method Interpreter::lookup_entry() {
 
 Object** Interpreter::load_stack() {
   Stack* stack = process_->task()->stack();
-  GcMetadata::insert_into_remembered_set(stack);
   stack->transfer_to_interpreter(this);
   Object** watermark = watermark_;
   Object** new_watermark = limit_ + RESERVED_STACK_FOR_STACK_OVERFLOWS;
@@ -221,7 +220,7 @@ Object** Interpreter::handle_stack_overflow(Object** sp, OverflowState* state, M
   }
 
   Process* process = process_;
-  int length = process_->task()->stack()->length();
+  int length = process->task()->stack()->length();
   int new_length = -1;
   if (length < Stack::max_length()) {
     // The max_height doesn't include space for the frame of the next call (if there is one).

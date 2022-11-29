@@ -1372,7 +1372,7 @@ class Task : public Instance {
   static const int RESULT_INDEX = ID_INDEX + 1;
 
   Stack* stack() { return Stack::cast(at(STACK_INDEX)); }
-  void set_stack(Stack* value);
+  void set_stack(Stack* value) { at_put(STACK_INDEX, value); }
 
   int id() { return Smi::cast(at(ID_INDEX))->value(); }
 
@@ -1392,7 +1392,10 @@ class Task : public Instance {
   }
 
  private:
-  void _initialize(Stack* stack, Smi* id);
+  void _initialize(Stack* stack, Smi* id) {
+    at_put(ID_INDEX, id);
+    set_stack(stack);
+  }
 
   friend class ObjectHeap;
 };
