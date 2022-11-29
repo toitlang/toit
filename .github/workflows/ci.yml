@@ -157,10 +157,19 @@ jobs:
           sudo tar -czf apt-cacher-ng/cache.tar.gz -C /var/cache/apt-cacher-ng .
           sudo chown $(whoami) apt-cacher-ng/cache.tar.gz
 
-      - uses: actions/setup-python@v4
-        if: matrix.shard == 1
+      - name: Set up Python - non-Windows
+        uses: actions/setup-python@v4
+        if: matrix.shard == 1 && runner.os != 'Windows'
         with:
           python-version: '3.10'
+          cache: 'pip'
+
+      - name: Set up Python - Windows
+        uses: actions/setup-python@v4
+        if: matrix.shard == 1 && runner.os == 'Windows'
+        with:
+          # Use 3.8 since that version still works on Windows 7.
+          python-version: '3.8'
           cache: 'pip'
 
       - name: Setup compilation env
