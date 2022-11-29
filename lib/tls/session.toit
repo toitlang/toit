@@ -7,6 +7,7 @@ import reader
 import writer
 import net.x509 as x509
 import binary show BIG_ENDIAN
+import crypto.aes
 
 import .certificate
 import .socket
@@ -25,7 +26,8 @@ class Session:
   handshake_timeout/Duration
 
   reader_/reader.BufferedReader
-  switched_to_encrypted_ := false
+  switched_read_to_encrypted_ := false
+  switched_write_to_encrypted_ := false
   writer_ ::= ?
   server_name_/string? ::= null
 
@@ -33,6 +35,9 @@ class Session:
   handshake_in_progress_/monitor.Latch? := monitor.Latch
   group_/TlsGroup_? := null
   tls_ := null
+  symmetric_keys_/List? := null
+  outgoing_sequence_number_ /int := 0
+  incoming_sequence_number_ /int := 0
 
   outgoing_buffer_/ByteArray := #[]
   closed_for_write_ := false
@@ -111,8 +116,18 @@ class Session:
         with_timeout handshake_timeout:
           flush_outgoing_
         if state == TOIT_TLS_DONE_:
-          // Connected.
-          (get_internals_ tls_).do: print it
+          // Connected.  Try to extract the keys so we can handle the rest of
+          // the connection from Toit.  TODO: Free all MbedTLS resources if this
+          // succeeds.
+          symmetric_keys_ = get_internals_ tls_
+          if symmetric_keys_:
+            // Expand the 12 byte nonces to 16 bytes, adding a 32 bit bit
+            // endian counter that starts at 1.
+            for i := 0; i < 2; i++:
+              expanded_iv := ByteArray 16
+              expanded_iv.replace 0 symmetric_keys_[i]
+              expanded_iv[15] = 1
+              symmetric_keys_[i] = expanded_iv
           return
         else if state == TOIT_TLS_WANT_READ_:
           with_timeout handshake_timeout:
@@ -137,8 +152,9 @@ class Session:
   session_state -> ByteArray:
     return tls_get_session_ tls_
 
-  write data from=0 to=data.size:
+  write data from=0 to=data.size -> int:
     ensure_handshaken_
+    if symmetric_keys_: return write_with_toit_encryption_ data from to
     if not tls_: throw "TLS_SOCKET_NOT_CONNECTED"
     sent := 0
     while true:
@@ -153,6 +169,7 @@ class Session:
 
   read:
     ensure_handshaken_
+    if symmetric_keys_: return read_with_toit_encryption_
     if not tls_: throw "TLS_SOCKET_NOT_CONNECTED"
     while true:
       res := tls_read_ tls_
@@ -160,6 +177,46 @@ class Session:
         if not read_more_: return null
       else:
         return res
+
+  write_with_toit_encryption_ data from/int to/int -> int:
+    if to - from  == 0: return 0
+    // We want to be nice to the receiver in case it is an embedded device, so we
+    // don't send too large packets.  This size is intended to fit in two MTUs on
+    // Ethernet.
+    List.chunk_up from to 2800: | from2/int to2/int length2 |
+      record_header := #[APPLICATION_DATA_, 3, 3, 0, 0]
+      BIG_ENDIAN.put_uint16 record_header 3 length2
+      nonce := symmetric_keys_[0]
+      key := symmetric_keys_[2]
+      // The explicit part of the nonce (IV) must not be reused, but apart from that
+      // there are no requirements.  We just reuse the sequence number.
+      BIG_ENDIAN.put_int64 nonce 4 outgoing_sequence_number_++
+      nonce_explicit := nonce[4..]
+      sequence_number /ByteArray := nonce_explicit
+      encryptor := aes.AesGcm.encryptor key nonce
+      encryptor.start --authenticated_data=(sequence_number + record_header)
+      // Now that we have used the actual size of the plaintext as the authentication data
+      // we update the header with the real size on the wire, which includes some more data.
+      BIG_ENDIAN.put_uint16 record_header 3 (length2 + nonce_explicit.size + aes.AesGcm.TAG_SIZE)
+      List.chunk_up from2 to2 512: | from3 to3 length3 |
+        first /bool := from3 == from2
+        last /bool := to3 == to2
+        plaintext := data.copy from3 to3
+        encrypted := encryptor.add plaintext
+        if first:
+          encrypted = record_header + nonce_explicit + encrypted
+        if last:
+          rest := encryptor.finish
+          encrypted += rest[0] + rest[1]
+        else:
+          yield  // Don't monopolize the CPU with long crypto operations.
+        written := 0
+        while written < encrypted.size:
+          written += writer_.write encrypted written
+    return to - from
+
+  read_with_toit_encryption_ -> ByteArray?:
+    unreachable  // Unimplemented.
 
   /**
   Closes the session for write operations.
@@ -192,6 +249,10 @@ class Session:
     if not handshake_in_progress_: return
     handshake
 
+  /// Gets the data that MbedTLS wants to transmit and and writes it to the
+  /// underlying socket.  Used during the handshake.  If we are letting MbedTLS
+  /// handle the post-handshake symmetric encryption then we also use this after
+  /// the handshake.
   flush_outgoing_ -> none:
     from := 0
     while true:
@@ -207,8 +268,11 @@ class Session:
         tls_set_outgoing_ tls_ outgoing_buffer_ 0
         return
 
+  /// Gets the next encrypted data from the socket, and puts it in the incoming
+  /// buffer, ready to be ingested into MbedTLS.  Only used after the handshake,
+  /// and only if we are letting MbedTLS handle the post-handshake symmetric
+  /// decryption.
   read_more_ -> bool:
-    from := tls_get_incoming_from_ tls_
     ba := reader_.read
     if not ba or not tls_: return false
     tls_set_incoming_ tls_ ba 0
@@ -254,7 +318,7 @@ class Session:
   // handshaking message.  May return an synthetic record, (defragmented
   // from several records on the wire).
   read_handshaking_message_ -> ByteArray:
-    assert: not switched_to_encrypted_
+    assert: not switched_read_to_encrypted_
     // We rarely (never?) find a record with the application data type
     // because normally we have switched to encrypted mode before this
     // happens.
@@ -266,8 +330,8 @@ class Session:
       remaining_message_bytes = 2
     else if content_type == CHANGE_CIPHER_SPEC_:
       remaining_message_bytes = 1
-      extract_negotiated_keys_
-      switched_to_encrypted_ = true
+      switched_read_to_encrypted_ = true
+      // We will still process this tiny CHANGE_CIPHER_SPEC_ packet.
     else:
       if content_type != HANDSHAKE_:
         // If we get an unknown record type the probable reason is that
@@ -283,6 +347,7 @@ class Session:
         if text_end > 2:
           server_reply = "- server replied unencrypted:\n$(reader_.read_string text_end)"
         throw "Unknown TLS record type: $content_type$server_reply"
+      assert: content_type == HANDSHAKE_
       reader_.ensure 4  // 4 byte handshake message header.
       // Big endian 24 bit handshake message size.
       remaining_message_bytes = (reader_.byte 1) << 16
@@ -323,16 +388,12 @@ class Session:
 
   extract_negotiated_keys_ -> none:
 
-  decrypt_incoming_ -> ByteArray?
-    return reader_.read
-
+  // Only used during handshaking.
   read_incoming_packet_ -> none:
     packet := ?
-    if switched_to_encrypted_:
-      packet = decrypt_incoming_
-    else:
+    if not switched_read_to_encrypted_:
       packet = read_handshaking_message_
-    tls_set_incoming_ tls_ packet 0
+      tls_set_incoming_ tls_ packet 0
 
 
 TOIT_TLS_DONE_ := 1 << 0

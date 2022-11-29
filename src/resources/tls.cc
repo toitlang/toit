@@ -427,6 +427,11 @@ PRIMITIVE(handshake) {
   return process->program()->null_object();
 }
 
+// This is only used after the handshake.  It reads data that has been decrypted.
+// Normally returns a byte array.
+// MbedTLS may need more data to be input (buffered) before it can return any
+// decrypted data.  In that case we return TLS_WANT_READ.
+// If the connection is closed, returns null.
 PRIMITIVE(read)  {
   ARGS(MbedTlsSocket, socket);
 
@@ -453,6 +458,11 @@ PRIMITIVE(read)  {
   return array;
 }
 
+// This is only used after the handshake.  It reads data that has been decrypted.
+// Normally returns a byte array.
+// MbedTLS may need more data to be input (buffered) before it can return any
+// decrypted data.  In that case we return TLS_WANT_READ, an integer.
+// If the connection is closed, returns null.
 PRIMITIVE(write) {
   ARGS(MbedTlsSocket, socket, Blob, data, int, from, int, to)
 
