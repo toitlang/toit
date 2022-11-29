@@ -261,13 +261,6 @@ Task* ObjectHeap::allocate_task() {
   return result;
 }
 
-void ObjectHeap::set_task(Task* task) {
-  task_ = task;
-  // The interpreter doesn't use the write barrier when pushing to the
-  // stack so we have to add it here.
-  GcMetadata::insert_into_remembered_set(task->stack());
-}
-
 Stack* ObjectHeap::allocate_stack(int length) {
   int size = Stack::allocation_size(length);
   Stack* result = unvoid_cast<Stack*>(_allocate_raw(size));

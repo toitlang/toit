@@ -131,14 +131,50 @@ void ByteArray::resize_external(Process* process, word new_length) {
   }
 }
 
-void Task::_initialize(Stack* stack, Smi* id) {
-  set_stack(stack);
-  at_put(ID_INDEX, id);
+void Stack::copy_to(HeapObject* other, int other_length) {
+  other->_at_put(HeapObject::HEADER_OFFSET, _at(HeapObject::HEADER_OFFSET));
+  Stack* to = Stack::cast(other);
+  int used = length() - top();
+  ASSERT(other_length >= used);
+  int displacement = other_length - length();
+  memcpy(to->_array_address(top() + displacement), _array_address(top()), used * WORD_SIZE);
+  to->_set_length(other_length);
+  to->_set_top(displacement + top());
+  to->_set_try_top(displacement + try_top());
+  // We've updated the 'to' stack without using the write barrier.
+  // This is typically only done from within the interpreter, where
+  // the 'to' stack immediately becomes the current interpreter
+  // stack through a call of to->transfer_to_interpreter(...). In
+  // such cases, it isn't strictly necessary to insert the to stack
+  // in the remembered set here, because it will always happen
+  // before leaving the interpreter; also before garbage collections.
+  // However, we play it safe and add it here because we have
+  // written into the stack and it might point to new objects.
+  GcMetadata::insert_into_remembered_set(to);
 }
 
-void Task::set_stack(Stack* value) {
-  at_put(STACK_INDEX, value);
-  GcMetadata::insert_into_remembered_set(value);
+void Stack::transfer_to_interpreter(Interpreter* interpreter) {
+  ASSERT(top() >= 0);
+  ASSERT(top() <= length());
+  interpreter->limit_ = _stack_limit_addr();
+  interpreter->base_ = _stack_base_addr();
+  interpreter->sp_ = _stack_sp_addr();
+  interpreter->try_sp_ = _stack_try_sp_addr();
+  ASSERT(top() == (interpreter->sp_ - _stack_limit_addr()));
+  _set_top(-1);
+}
+
+void Stack::transfer_from_interpreter(Interpreter* interpreter) {
+  ASSERT(top() == -1);
+  _set_top(interpreter->sp_ - _stack_limit_addr());
+  _set_try_top(interpreter->try_sp_ - _stack_limit_addr());
+  ASSERT(top() >= 0);
+  ASSERT(top() <= length());
+  // The interpreter doesn't use the write barrier when pushing to the
+  // stack, so we have to add it here. This is always done before
+  // garbage collections, so any stack that has been used by the
+  // interpreter since the last GC will be part of the remembered set.
+  GcMetadata::insert_into_remembered_set(this);
 }
 
 bool HeapObject::in_remembered_set() {
