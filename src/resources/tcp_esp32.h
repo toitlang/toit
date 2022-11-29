@@ -84,14 +84,6 @@ class LwipSocket : public Resource, public BacklogSocketList::Element {
   void send_state();
   void socket_error(err_t err);
 
-  Smi* as_smi() {
-    return Smi::from(reinterpret_cast<uintptr_t>(this) >> 2);
-  }
-
-  static LwipSocket* from_id(int id) {
-    return reinterpret_cast<LwipSocket*>(id << 2);
-  }
-
   tcp_pcb* tpcb() { return tpcb_; }
   void set_tpcb(tcp_pcb* tpcb) { tpcb_ = tpcb; }
 

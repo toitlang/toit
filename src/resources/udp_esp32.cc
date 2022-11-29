@@ -65,12 +65,11 @@ class UdpSocket : public Resource {
   TAG(UdpSocket);
   UdpSocket(ResourceGroup* group, udp_pcb* upcb)
     : Resource(group)
-    , mutex_(null)
     , upcb_(upcb)
     , buffered_bytes_(0) {}
 
   ~UdpSocket() {
-    while (auto packet = packages_.remove_first()) {
+    while (auto packet = packets_.remove_first()) {
       delete packet;
     }
   }
@@ -96,23 +95,22 @@ class UdpSocket : public Resource {
 
   void queue_packet(Packet* packet) {
     buffered_bytes_ += packet->pbuf()->len;
-    packages_.append(packet);
+    packets_.append(packet);
   }
 
   void take_packet() {
-    Packet* packet = packages_.remove_first();
+    Packet* packet = packets_.remove_first();
     if (packet != null) buffered_bytes_ -= packet->pbuf()->len;
     delete packet;
   }
 
   Packet* next_packet() {
-    return packages_.first();
+    return packets_.first();
   }
 
  private:
-  Mutex* mutex_;
   udp_pcb* upcb_;
-  LinkedFifo<Packet> packages_;
+  LinkedFifo<Packet> packets_;
   int buffered_bytes_;
 };
 
@@ -166,7 +164,7 @@ void UdpSocket::set_recv() {
 void UdpSocket::send_state() {
   uint32_t state = UDP_WRITE;
 
-  if (!packages_.is_empty()) state |= UDP_READ;
+  if (!packets_.is_empty()) state |= UDP_READ;
   if (needs_gc) state |= UDP_NEEDS_GC;
 
   // TODO: Avoid instance usage.

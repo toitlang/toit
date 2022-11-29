@@ -43,16 +43,6 @@ void OldSpace::flush() {
   }
 }
 
-HeapObject* OldSpace::new_location(HeapObject* old_location) {
-  ASSERT(includes(old_location->_raw()));
-  ASSERT(GcMetadata::is_marked(old_location));
-  if (compacting_) {
-    return HeapObject::from_address(GcMetadata::get_destination(old_location));
-  } else {
-    return old_location;
-  }
-}
-
 bool OldSpace::is_alive(HeapObject* old_location) {
   // We can't assert that the object is in old-space, because
   // at the end of a mark-sweep the new-space objects are also

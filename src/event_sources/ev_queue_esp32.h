@@ -24,6 +24,11 @@
 
 namespace toit {
 
+struct GpioEvent {
+  word pin;
+  word timestamp;
+};
+
 class EventQueueResource : public Resource {
 public:
   EventQueueResource(ResourceGroup* group, QueueHandle_t queue)
@@ -42,6 +47,7 @@ public:
   // value.
   // Returns whether the pin number matched.
   virtual bool check_gpio(word pin) { return false; }
+
 
 private:
   QueueHandle_t queue_; // Note: The queue is freed from the driver uninstall.

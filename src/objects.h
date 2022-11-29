@@ -682,9 +682,6 @@ class FrameCallback {
 
 class Stack : public HeapObject {
  public:
-  INLINE Task* task();
-  INLINE void set_task(Task* value);
-
   int length() { return _word_at(LENGTH_OFFSET); }
   int top() { return _word_at(TOP_OFFSET); }
   int try_top() { return _word_at(TRY_TOP_OFFSET); }
@@ -719,8 +716,7 @@ class Stack : public HeapObject {
   }
 
  private:
-  static const int TASK_OFFSET = HeapObject::SIZE;
-  static const int LENGTH_OFFSET = TASK_OFFSET + WORD_SIZE;
+  static const int LENGTH_OFFSET = HeapObject::SIZE + WORD_SIZE;
   static const int TOP_OFFSET = LENGTH_OFFSET + WORD_SIZE;
   static const int TRY_TOP_OFFSET = TOP_OFFSET + WORD_SIZE;
   static const int HEADER_SIZE = TRY_TOP_OFFSET + WORD_SIZE;
@@ -1376,7 +1372,7 @@ class Task : public Instance {
   static const int RESULT_INDEX = ID_INDEX + 1;
 
   Stack* stack() { return Stack::cast(at(STACK_INDEX)); }
-  void set_stack(Stack* value);
+  void set_stack(Stack* value) { at_put(STACK_INDEX, value); }
 
   int id() { return Smi::cast(at(ID_INDEX))->value(); }
 
@@ -1396,14 +1392,13 @@ class Task : public Instance {
   }
 
  private:
-  void _initialize(Stack* stack, Smi* id);
+  void _initialize(Stack* stack, Smi* id) {
+    at_put(ID_INDEX, id);
+    set_stack(stack);
+  }
 
   friend class ObjectHeap;
 };
-
-inline Task* Stack::task() {
-  return Task::cast(_at(TASK_OFFSET));
-}
 
 inline bool is_smi(Object* o) {
   return (reinterpret_cast<uword>(o) & Object::SMI_TAG_MASK) == Object::SMI_TAG;

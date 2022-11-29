@@ -164,10 +164,6 @@ class Space : public LivenessOracle {
   //    survive regardless of their mark bit.
   virtual bool is_alive(HeapObject* old_location) = 0;
 
-  // Do not call if the object died in the current GC.  Used for weak
-  // processing.
-  virtual HeapObject* new_location(HeapObject* old_location) = 0;
-
   // Returns the total size of allocated chunks.
   uword size() const;
 
@@ -274,7 +270,6 @@ class SemiSpace : public Space {
   virtual uword used() const;
 
   virtual bool is_alive(HeapObject* old_location);
-  virtual HeapObject* new_location(HeapObject* old_location);
 
   // flush will make the current chunk consistent for iteration.
   virtual void flush();
@@ -417,8 +412,6 @@ class OldSpace : public Space {
   virtual ~OldSpace();
 
   virtual bool is_alive(HeapObject* old_location);
-
-  virtual HeapObject* new_location(HeapObject* old_location);
 
   virtual uword used() const;
 
