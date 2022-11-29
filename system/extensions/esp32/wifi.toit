@@ -80,7 +80,7 @@ class WifiServiceDefinition extends NetworkServiceDefinitionBase:
     if not ssid or ssid.is_empty: throw "wifi ssid not provided"
     password/string := effective.get wifi.CONFIG_PASSWORD --if_absent=: ""
 
-    if module_ != null:
+    if module_ != null and state_.module == null:
       module_.disconnect
       module_ = null
 
@@ -113,7 +113,7 @@ class WifiServiceDefinition extends NetworkServiceDefinitionBase:
       throw "wifi channel must be between 1 and 13"
     broadcast/bool := config.get wifi.CONFIG_BROADCAST --if_absent=: true
 
-    if module_ != null:
+    if module_ != null and state_.module == null:
       module_.disconnect
       module_ = null
     
