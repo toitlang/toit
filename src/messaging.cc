@@ -283,10 +283,7 @@ bool MessageEncoder::encode_byte_array(ByteArray* object) {
     too_many_externals_ = true;
     return false;
   }
-  if (encoding_for_size()) {
-    externals_[externals_count_] = object;
-  }
-  externals_count_++;
+  externals_[externals_count_++] = object;
   return true;
 }
 
