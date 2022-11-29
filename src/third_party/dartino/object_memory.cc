@@ -119,7 +119,7 @@ void Space::iterate_overflowed_objects(RootCallback* visitor, MarkingStack* stac
   }
 }
 
-void Space::iterate_objects(HeapObjectVisitor* visitor) {
+void Space::iterate_objects(HeapObjectVisitor* visitor, LivenessOracle* filter) {
   if (is_empty()) return;
   flush();
   for (auto chunk : chunk_list_) {
@@ -127,9 +127,13 @@ void Space::iterate_objects(HeapObjectVisitor* visitor) {
     uword current = chunk->start();
     while (!has_sentinel_at(current)) {
       HeapObject* object = HeapObject::from_address(current);
-      word size = visitor->visit(object);
-      ASSERT(size > 0);
-      current += size;
+      if (!filter || filter->is_alive(object)) {
+        word size = visitor->visit(object);
+        ASSERT(size > 0);
+        current += size;
+      } else {
+        current += object->size(program_);
+      }
     }
     visitor->chunk_end(chunk, current);
   }

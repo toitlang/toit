@@ -156,12 +156,17 @@ class Space : public LivenessOracle {
   virtual void flush() = 0;
   virtual bool is_flushed() = 0;
 
-  // Used for weak processing.  Can only be called:
+  // Used for weak processing and compacting.  Can only be called:
   // 1) For copying collections: right after copying but before you delete the
   //    from-space.  Only for heap objects originally in the from-space.
   // 2) For mark-sweep collections: Between marking and sweeping.  Only makes
   //    sense for the mark-sweep space, since objects in the semispace will
   //    survive regardless of their mark bit.
+  // 3) For mark-compact collections: Called on new-space objects to avoid
+  //    updating pointers from dead new-space objects that point into old
+  //    space when compacting.  Note that the mark bits are used to determine
+  //    liveness although we are in new space - marking will mark object in
+  //    new-space even though they are not compacted or swept.
   virtual bool is_alive(HeapObject* old_location) = 0;
 
   // Do not call if the object died in the current GC.  Used for weak
@@ -172,7 +177,7 @@ class Space : public LivenessOracle {
   uword size() const;
 
   // Iterate over all objects in this space.
-  void iterate_objects(HeapObjectVisitor* visitor);
+  void iterate_objects(HeapObjectVisitor* visitor, LivenessOracle* filter = null);
 
   // Iterate all the objects that are grey, after a mark stack overflow.
   void iterate_overflowed_objects(RootCallback* visitor, MarkingStack* stack);
@@ -440,9 +445,6 @@ class OldSpace : public Space {
 
   // Find pointers to young-space.
   void visit_remembered_set(ScavengeVisitor* visitor);
-
-  // Until the write barrier works.
-  void rebuild_remembered_set();
 
   // For the objects promoted to the old space during scavenge.
   void start_scavenge();

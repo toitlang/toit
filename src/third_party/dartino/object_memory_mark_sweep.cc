@@ -261,13 +261,6 @@ class RememberedSetRebuilder : public HeapObjectVisitor {
   RememberedSetRebuilder2 pointer_callback;
 };
 
-// Until we have a write barrier we have to iterate the whole
-// of old space.
-void OldSpace::rebuild_remembered_set() {
-  RememberedSetRebuilder rebuilder(program_);
-  iterate_objects(&rebuilder);
-}
-
 void OldSpace::visit_remembered_set(ScavengeVisitor* visitor) {
   flush();
   for (auto chunk : chunk_list_) {
