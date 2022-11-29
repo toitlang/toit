@@ -59,16 +59,3 @@ class AesCbcContext : public AesContext {
 };
 
 }
-
-#ifdef TOIT_FREERTOS
-extern "C" {
-
-#define mbedtls_aes_init esp_aes_init
-#define mbedtls_aes_free esp_aes_free
-#define mbedtls_aes_setkey_enc esp_aes_setkey
-#define mbedtls_aes_setkey_dec esp_aes_setkey
-#define mbedtls_aes_crypt_cbc esp_aes_crypt_cbc
-#define mbedtls_aes_crypt_ecb esp_aes_crypt_ecb
-
-}
-#endif

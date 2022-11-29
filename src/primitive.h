@@ -296,6 +296,7 @@ namespace toit {
   PRIMITIVE(error, 2)                        \
   PRIMITIVE(get_session, 1)                  \
   PRIMITIVE(set_session, 2)                  \
+  PRIMITIVE(get_internals, 1)                \
 
 #define MODULE_WIFI(PRIMITIVE)               \
   PRIMITIVE(init, 1)                         \
