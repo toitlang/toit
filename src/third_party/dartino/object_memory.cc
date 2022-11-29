@@ -132,7 +132,15 @@ void Space::iterate_objects(HeapObjectVisitor* visitor, LivenessOracle* filter) 
         ASSERT(size > 0);
         current += size;
       } else {
-        current += object->size(program_);
+        word size = object->size(program_);
+#ifdef DEBUG
+        // Zapping words after the header should be harmless in new-space.
+        // In old-space this would interfere with the remembered set scanning,
+        // but there we don't use this call with a non-null filter.
+        uword address = object->_raw();
+        memset(reinterpret_cast<void*>(address + WORD_SIZE), 0x55, size - WORD_SIZE);
+#endif
+        current += size;
       }
     }
     visitor->chunk_end(chunk, current);
