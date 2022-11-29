@@ -758,10 +758,15 @@ PRIMITIVE(get_internals) {
   memcpy(ByteArray::Bytes(decode_iv).address(), socket->ssl.transform_in->iv_dec, iv_len);
   mbedtls_gcm_context* out_gcm_context = reinterpret_cast<mbedtls_gcm_context*>(out_cipher_ctx->cipher_ctx);
   mbedtls_gcm_context* in_gcm_context = reinterpret_cast<mbedtls_gcm_context*>(in_cipher_ctx->cipher_ctx);
+#if SOC_AES_SUPPORT_GCM
+  mbedtls_aes_context* out_aes_context = &out_gcm_context->aes_ctx;
+  mbedtls_aes_context* in_aes_context = &in_gcm_context->aes_ctx;
+#else
   mbedtls_cipher_context_t* out_cipher_context = &out_gcm_context->cipher_ctx;
   mbedtls_cipher_context_t* in_cipher_context = &in_gcm_context->cipher_ctx;
   mbedtls_aes_context* out_aes_context = reinterpret_cast<mbedtls_aes_context*>(out_cipher_context->cipher_ctx);
   mbedtls_aes_context* in_aes_context = reinterpret_cast<mbedtls_aes_context*>(in_cipher_context->cipher_ctx);
+#endif
   if (  out_gcm_context->mode != MBEDTLS_GCM_ENCRYPT
       || in_gcm_context->mode != MBEDTLS_GCM_DECRYPT) {
     return process->program()->null_object();
