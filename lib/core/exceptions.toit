@@ -153,7 +153,7 @@ class Exception_:
 lookup_failure_ receiver selector_or_selector_offset:
   rethrow "LOOKUP_FAILED"
     encode_error_ "LOOKUP_FAILED"
-      create_array_ selector_or_selector_offset  (Object.class_id receiver) receiver
+      create_array_ selector_or_selector_offset (Object.class_id receiver) receiver
 
 uninitialized_global_failure_ global_id:
   rethrow "UNINITIALIZED_GLOBAL"
