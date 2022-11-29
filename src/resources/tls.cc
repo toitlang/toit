@@ -726,29 +726,27 @@ PRIMITIVE(get_internals) {
   const mbedtls_cipher_info_t* in_info = in_cipher_ctx->cipher_info;
 
   // Sanity check the connection for parameters we can cope with.
-  if (   (out_info->type == MBEDTLS_CIPHER_CHACHA20_POLY1305 &&
-             out_info->type == MBEDTLS_CIPHER_CHACHA20_POLY1305)) {
-    printf("cha fucking cha\n");
-  }
   if (   (out_info->type != MBEDTLS_CIPHER_AES_128_GCM &&
-             out_info->type != MBEDTLS_CIPHER_AES_256_GCM)) return Smi::from(1000 + out_info->type);
-  if (   (in_info->type != MBEDTLS_CIPHER_AES_128_GCM &&
-             in_info->type != MBEDTLS_CIPHER_AES_256_GCM)) return Smi::from(1);
-  if (   out_info->mode != MBEDTLS_MODE_GCM) return Smi::from(2);
-  if (   in_info->mode != MBEDTLS_MODE_GCM) return Smi::from(3);
-  if (   out_info->key_bitlen != key_bitlen) return Smi::from(4);
-  if (   in_info->key_bitlen != key_bitlen) return Smi::from(5);
-  if (   iv_len != 12) return Smi::from(6);
-  if (   out_info->iv_size != 12) return Smi::from(7);
-  if (   in_info->iv_size != 12) return Smi::from(8);
-  //if (   out_info->flags != 0) return Smi::from(9);
-  //if (   in_info->flags != 0) return Smi::from(10);
-  if (   out_info->block_size != 16) return Smi::from(11);
-  if (   in_info->block_size != 16) return Smi::from(12);
-  if (   socket->ssl.transform_in->taglen != 16) return Smi::from(13);
-  if (   socket->ssl.transform_out->taglen != 16) return Smi::from(14);
-  if (   socket->ssl.transform_in->ivlen != iv_len) return Smi::from(15);
-  if (   in_cipher_ctx->key_bitlen != static_cast<int>(key_bitlen)) return Smi::from(16);
+             out_info->type != MBEDTLS_CIPHER_AES_256_GCM)
+      || (in_info->type != MBEDTLS_CIPHER_AES_128_GCM &&
+             in_info->type != MBEDTLS_CIPHER_AES_256_GCM)
+      || out_info->mode != MBEDTLS_MODE_GCM
+      || in_info->mode != MBEDTLS_MODE_GCM
+      || out_info->key_bitlen != key_bitlen
+      || in_info->key_bitlen != key_bitlen
+      || iv_len != 12
+      || out_info->iv_size != 12
+      || in_info->iv_size != 12
+      || out_info->flags != 0
+      || in_info->flags != 0
+      || out_info->block_size != 16
+      || in_info->block_size != 16
+      || socket->ssl.transform_in->taglen != 16
+      || socket->ssl.transform_out->taglen != 16
+      || socket->ssl.transform_in->ivlen != iv_len
+      || in_cipher_ctx->key_bitlen != static_cast<int>(key_bitlen)) {
+    return process->program()->null_object();
+  }
 
   ByteArray* encode_iv = process->allocate_byte_array(iv_len);
   ByteArray* decode_iv = process->allocate_byte_array(iv_len);
@@ -760,15 +758,6 @@ PRIMITIVE(get_internals) {
   memcpy(ByteArray::Bytes(decode_iv).address(), socket->ssl.transform_in->iv_dec, iv_len);
   mbedtls_gcm_context* out_gcm_context = reinterpret_cast<mbedtls_gcm_context*>(out_cipher_ctx->cipher_ctx);
   mbedtls_gcm_context* in_gcm_context = reinterpret_cast<mbedtls_gcm_context*>(in_cipher_ctx->cipher_ctx);
-  // The key was set on this with mbedtls_cipher_setkey.
-  // It calls out_cipher_context->cipher_info->base->setkey_enc_func.
-  // It also has a field (void*) called cipher_ctx.  We end up in
-  // aes_setkey_enc_wrap, which casts the pointer to an mbedtls_aes_context and
-  // calls mbedtls_aes_setkey_enc.  Looks like it places it in mbedtls_aes_context->rk
-  // and then spreads the key out over the rest.
-  // If using hardware acceleration, then we define the MBEDTLS_AES_ALT macro,
-  // which causes mbedtls to include the aes_alt.h file from ESP, which
-  // uses defines and typedefs to redirect MbedTLS to use the esp_aes_* functions.
   mbedtls_cipher_context_t* out_cipher_context = &out_gcm_context->cipher_ctx;
   mbedtls_cipher_context_t* in_cipher_context = &in_gcm_context->cipher_ctx;
   mbedtls_aes_context* out_aes_context = reinterpret_cast<mbedtls_aes_context*>(out_cipher_context->cipher_ctx);

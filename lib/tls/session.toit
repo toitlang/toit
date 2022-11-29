@@ -12,6 +12,12 @@ import crypto.aes
 import .certificate
 import .socket
 
+// Record types from RFC 5246.
+CHANGE_CIPHER_SPEC_ ::= 20
+ALERT_ ::= 21
+HANDSHAKE_ ::= 22
+APPLICATION_DATA_ ::= 23
+
 /**
 TLS Session upgrades a reader/writer pair to a TLS encrypted communication channel.
 
@@ -35,7 +41,7 @@ class Session:
   handshake_in_progress_/monitor.Latch? := monitor.Latch
   group_/TlsGroup_? := null
   tls_ := null
-  symmetric_keys_/List? := null
+  symmetric_session_ /AesGcmSession? := null
   outgoing_sequence_number_ /int := 0
   incoming_sequence_number_ /int := 0
 
@@ -116,18 +122,7 @@ class Session:
         with_timeout handshake_timeout:
           flush_outgoing_
         if state == TOIT_TLS_DONE_:
-          // Connected.  Try to extract the keys so we can handle the rest of
-          // the connection from Toit.  TODO: Free all MbedTLS resources if this
-          // succeeds.
-          symmetric_keys_ = get_internals_ tls_
-          if symmetric_keys_:
-            // Expand the 12 byte nonces to 16 bytes, adding a 32 bit bit
-            // endian counter that starts at 1.
-            for i := 0; i < 2; i++:
-              expanded_iv := ByteArray 16
-              expanded_iv.replace 0 symmetric_keys_[i]
-              expanded_iv[15] = 1
-              symmetric_keys_[i] = expanded_iv
+          extract_key_data_
           return
         else if state == TOIT_TLS_WANT_READ_:
           with_timeout handshake_timeout:
@@ -142,6 +137,18 @@ class Session:
       handshake_in_progress_ = null
       resource_state.dispose
 
+  extract_key_data_ -> none:
+    // Connected.  Try to extract the keys so we can handle the rest of
+    // the connection from Toit.  TODO: Free all MbedTLS resources if this
+    // succeeds.
+    symmetric_keys := get_internals_ tls_
+    if symmetric_keys:
+      symmetric_session_ = AesGcmSession reader_ writer_
+          --encryption_iv=symmetric_keys[0]
+          --decryption_iv=symmetric_keys[1]
+          --encryption_key=symmetric_keys[2]
+          --decryption_key=symmetric_keys[3]
+
   /**
   Gets the session state, a ByteArray that can be used to resume
     a TLS session at a later point.
@@ -153,8 +160,8 @@ class Session:
     return tls_get_session_ tls_
 
   write data from=0 to=data.size -> int:
+    if symmetric_session_: return symmetric_session_.write data from to
     ensure_handshaken_
-    if symmetric_keys_: return write_with_toit_encryption_ data from to
     if not tls_: throw "TLS_SOCKET_NOT_CONNECTED"
     sent := 0
     while true:
@@ -168,8 +175,8 @@ class Session:
       sent += wrote
 
   read:
+    if symmetric_session_: return symmetric_session_.read
     ensure_handshaken_
-    if symmetric_keys_: return read_with_toit_encryption_
     if not tls_: throw "TLS_SOCKET_NOT_CONNECTED"
     while true:
       res := tls_read_ tls_
@@ -177,46 +184,6 @@ class Session:
         if not read_more_: return null
       else:
         return res
-
-  write_with_toit_encryption_ data from/int to/int -> int:
-    if to - from  == 0: return 0
-    // We want to be nice to the receiver in case it is an embedded device, so we
-    // don't send too large packets.  This size is intended to fit in two MTUs on
-    // Ethernet.
-    List.chunk_up from to 2800: | from2/int to2/int length2 |
-      record_header := #[APPLICATION_DATA_, 3, 3, 0, 0]
-      BIG_ENDIAN.put_uint16 record_header 3 length2
-      nonce := symmetric_keys_[0]
-      key := symmetric_keys_[2]
-      // The explicit part of the nonce (IV) must not be reused, but apart from that
-      // there are no requirements.  We just reuse the sequence number.
-      BIG_ENDIAN.put_int64 nonce 4 outgoing_sequence_number_++
-      nonce_explicit := nonce[4..]
-      sequence_number /ByteArray := nonce_explicit
-      encryptor := aes.AesGcm.encryptor key nonce
-      encryptor.start --authenticated_data=(sequence_number + record_header)
-      // Now that we have used the actual size of the plaintext as the authentication data
-      // we update the header with the real size on the wire, which includes some more data.
-      BIG_ENDIAN.put_uint16 record_header 3 (length2 + nonce_explicit.size + aes.AesGcm.TAG_SIZE)
-      List.chunk_up from2 to2 512: | from3 to3 length3 |
-        first /bool := from3 == from2
-        last /bool := to3 == to2
-        plaintext := data.copy from3 to3
-        encrypted := encryptor.add plaintext
-        if first:
-          encrypted = record_header + nonce_explicit + encrypted
-        if last:
-          rest := encryptor.finish
-          encrypted += rest[0] + rest[1]
-        else:
-          yield  // Don't monopolize the CPU with long crypto operations.
-        written := 0
-        while written < encrypted.size:
-          written += writer_.write encrypted written
-    return to - from
-
-  read_with_toit_encryption_ -> ByteArray?:
-    unreachable  // Unimplemented.
 
   /**
   Closes the session for write operations.
@@ -277,12 +244,6 @@ class Session:
     if not ba or not tls_: return false
     tls_set_incoming_ tls_ ba 0
     return true
-
-  // Record types from RFC 5246.
-  static CHANGE_CIPHER_SPEC_ ::= 20
-  static ALERT_ ::= 21
-  static HANDSHAKE_ ::= 22
-  static APPLICATION_DATA_ ::= 23
 
   is_ascii_ c/int -> bool:
     if ' ' <= c <= '~': return true
@@ -395,6 +356,126 @@ class Session:
       packet = read_handshaking_message_
       tls_set_incoming_ tls_ packet 0
 
+byte_array_join_ arrays/List -> ByteArray:
+  if arrays.size == 0: return #[]
+  if arrays.size == 1: return arrays[0]
+  if arrays.size == 2: return arrays[0] + arrays[1]
+  size := arrays.reduce --initial=0: | a b | a + b.size
+  result := ByteArray size
+  position := 0
+  arrays.do:
+    result.replace position it
+    position += it.size
+  return result
+
+class AesGcmSession:
+  encryption_key_ /ByteArray
+  encryption_iv_  /ByteArray
+  decryption_key_ /ByteArray
+  decryption_iv_  /ByteArray
+  outgoing_sequence_number_ := 0
+  incoming_sequence_number_ := 0
+  writer_ ::= ?
+  reader_ /reader.BufferedReader
+  buffered_plaintext_ /List := []
+  buffered_plaintext_index_ /int := 0
+  seen_ivs_ := {}  // An imperfect sanity check for reused IVs.
+
+  constructor .writer_ .reader_ --encryption_key/ByteArray --encryption_iv/ByteArray --decryption_key/ByteArray --decryption_iv/ByteArray:
+    encryption_key_ = encryption_key
+    encryption_iv_ = encryption_iv
+    decryption_key_ = decryption_key
+    decryption_iv_ = decryption_iv
+
+  write data from/int to/int -> int:
+    if to - from  == 0: return 0
+    // We want to be nice to the receiver in case it is an embedded device, so we
+    // don't send too large records.  This size is intended to fit in two MTUs on
+    // Ethernet.
+    List.chunk_up from to 2800: | from2/int to2/int length2 |
+      record_header := #[APPLICATION_DATA_, 3, 3, 0, 0]
+      BIG_ENDIAN.put_uint16 record_header 3 length2
+      // The explicit part of the IV (nonce) must not be reused, but apart from
+      // that there are no requirements.  We just reuse the sequence number, which
+      // is a common solution.
+      BIG_ENDIAN.put_int64 encryption_iv_ 4 outgoing_sequence_number_++
+      iv_explicit := encryption_iv_[4..]
+      sequence_number /ByteArray := iv_explicit
+      encryptor := aes.AesGcm.encryptor encryption_key_ encryption_iv_
+      encryptor.start --authenticated_data=(sequence_number + record_header)
+      // Now that we have used the actual size of the plaintext as the authentication data
+      // we update the header with the real size on the wire, which includes some more data.
+      BIG_ENDIAN.put_uint16 record_header 3 (length2 + iv_explicit.size + aes.AesGcm.TAG_SIZE)
+      List.chunk_up from2 to2 512: | from3 to3 length3 |
+        first /bool := from3 == from2
+        last /bool := to3 == to2
+        plaintext := data.copy from3 to3
+        parts := [encryptor.add plaintext]
+        if first:
+          parts = [record_header, iv_explicit, parts[0]]
+        if last:
+          parts.add encryptor.finish
+        else:
+          yield  // Don't monopolize the CPU with long crypto operations.
+        encrypted := byte_array_join_ parts
+        written := 0
+        while written < encrypted.size:
+          written += writer_.write encrypted written
+    return to - from
+
+  read -> ByteArray?:
+    result := null
+    try:
+      result = read_
+      return result
+    finally: | is_exception exception |
+      if not result or is_exception:
+        // If anything goes wrong we close the connection - don't want to give
+        // anyone a second chance to probe us with dodgy data.
+        //reader_.close
+        writer_.close
+
+  read_ -> ByteArray?:
+    while true:
+      if buffered_plaintext_index_ == buffered_plaintext_.size:
+        return buffered_plaintext_[buffered_plaintext_index_++]
+      record_header := reader_.read_bytes 5
+      if not record_header: return null
+      if record_header[0] != APPLICATION_DATA_ or record_header[1] != 3 or record_header[2] != 3: throw "PROTOCOL_ERROR"
+      encrypted_length := BIG_ENDIAN.uint16 record_header 3
+      // According to RFC5246: The length MUST NOT exceed 2^14 + 1024.
+      if encrypted_length > (1 << 14) + 1024: throw "PROTOCOL_ERROR"
+      explicit_iv := reader_.read_bytes 8
+      numeric_iv := BIG_ENDIAN.int64 explicit_iv 0
+      if seen_ivs_.contains numeric_iv: throw "PROTOCOL_ERROR"
+      seen_ivs_.add numeric_iv
+      if seen_ivs_.size > 8: seen_ivs_ = {}
+      if not explicit_iv: return null
+      plaintext_length := encrypted_length - aes.AesGcm.TAG_SIZE - explicit_iv.size
+      decryption_iv_.replace 4 explicit_iv
+      decryptor := aes.AesGcm.decryptor decryption_key_ decryption_iv_
+      sequence_number := ByteArray 8
+      BIG_ENDIAN.put_int64 sequence_number 0 incoming_sequence_number_++
+      // Overwrite the length with the unpadded length before adding the header
+      // to the authenticated data.
+      BIG_ENDIAN.put_uint16 record_header 3 plaintext_length
+      decryptor.start --authenticated_data=(sequence_number + record_header)
+      // Accumulate plaintext in a local to ensure that no data is read by the
+      // application that has not been verified.
+      buffered_plaintext := []
+      while plaintext_length > 0:
+        encrypted := reader_.read --max_size=plaintext_length
+        if not encrypted: return null
+        plaintext_length -= encrypted.size
+        plain_chunk := decryptor.add encrypted
+        if plain_chunk.size != 0: buffered_plaintext.add plain_chunk
+      received_tag := reader_.read_bytes aes.AesGcm.TAG_SIZE
+      if not received_tag: return null
+      plain_chunk := decryptor.verify received_tag
+      // Since we got here, the tag was successfully verified.
+      if plain_chunk.size != 0: buffered_plaintext.add plain_chunk
+      buffered_plaintext_ = buffered_plaintext
+      buffered_plaintext_index_ = 0
 
 TOIT_TLS_DONE_ := 1 << 0
 TOIT_TLS_WANT_READ_ := 1 << 1
