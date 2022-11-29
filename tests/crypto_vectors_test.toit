@@ -112,9 +112,9 @@ test_aes_gcm test/Test -> none:
   // Use the simple all-at-once methods that just append the verification
   // tag to the ciphertext.
   ciphertext_and_tag := (AesGcm.encryptor key nonce).encrypt expected_plaintext --authenticated_data=authenticated
-  cut := ciphertext_and_tag.size - 16
-  verification_tag := ciphertext_and_tag[cut..]
-  ciphertext := ciphertext_and_tag[..cut]
+  end := ciphertext_and_tag.size - AesGcm.TAG_SIZE
+  verification_tag := ciphertext_and_tag[end..]
+  ciphertext := ciphertext_and_tag[..end]
   expect_equals expected_ciphertext ciphertext
   expect_equals expected_verification_tag verification_tag
   plaintext := (AesGcm.decryptor key nonce).decrypt ciphertext_and_tag --authenticated_data=authenticated
@@ -146,8 +146,9 @@ test_aes_gcm test/Test -> none:
       parts.add (encryptor.add part2)
       parts.add (encryptor.add part3)
       finish := encryptor.finish
-      parts.add finish[0]
-      verification_tag = finish[1]
+      end = finish.size - AesGcm.TAG_SIZE
+      parts.add finish[0..end]
+      verification_tag = finish[end..]
       ciphertext = parts.reduce: | a b | a + b  // Byte array concatenation.
       expect_equals expected_verification_tag verification_tag
       expect_equals expected_ciphertext ciphertext

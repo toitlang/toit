@@ -293,17 +293,15 @@ class AesGcm:
   /**
   Finishes encrypting.
   Can be called after $start and $add.
-  Returns a two-element list with the last encrypted bytes and the verification
-    tag.  The last encrypted bytes will be a zero length ByteArray if the
-    size of the plaintext was a multiple of 16.
+  Returns a concatenation of the last encrypted bytes and the verification
+    tag.  The last encrypted bytes will have zero length if the size of the
+    plaintext was a multiple of 16.
   Closes this instance.
   */
-  finish -> List:
+  finish -> ByteArray:
     result := gcm_finish_ gcm_aes_
     close
-    cut := result.size - BLOCK_SIZE_
-    assert: cut == size % BLOCK_SIZE_
-    return [result[..cut], result[cut..]]
+    return result
 
   /**
   Finishes decrypting.
