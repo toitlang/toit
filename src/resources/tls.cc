@@ -766,8 +766,17 @@ PRIMITIVE(get_internals) {
       || in_gcm_context->mode != MBEDTLS_GCM_DECRYPT) {
     return process->program()->null_object();
   }
-  memcpy(ByteArray::Bytes(encode_key).address(), (uint8*)(out_aes_context->rk), key_bitlen >> 3);
-  memcpy(ByteArray::Bytes(decode_key).address(), (uint8*)(in_aes_context->rk), key_bitlen >> 3);
+#ifdef TOIT_FREERTOS
+  if (out_aes_context->key_bytes != key_bitlen >> 3 ||
+      in_aes_context->key_bytes != key_bitlen >> 3) {
+    return process->program()->null_object();
+  }
+  memcpy(ByteArray::Bytes(encode_key).address(), out_aes_context->key, key_bitlen >> 3);
+  memcpy(ByteArray::Bytes(decode_key).address(), in_aes_context->key, key_bitlen >> 3);
+#else
+  memcpy(ByteArray::Bytes(encode_key).address(), out_aes_context->rk, key_bitlen >> 3);
+  memcpy(ByteArray::Bytes(decode_key).address(), in_aes_context->rk, key_bitlen >> 3);
+#endif
   result->at_put(0, encode_iv);
   result->at_put(1, decode_iv);
   result->at_put(2, encode_key);
