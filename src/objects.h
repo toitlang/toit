@@ -851,9 +851,10 @@ class Stack : public HeapObject {
 
  private:
   // We keep a 'guard zone' of words that must not be touched right after
-  // the header of the stack object. If the stack overflows into the guard
-  // zone we will catch the issue when enter or leave the interpreter - or
-  // when we transfer control between tasks.
+  // the header of the stack object. The stack grows downwards towards lower
+  // addresses. If the stack overflows into the guard zone we will catch the
+  // issue when enter or leave the interpreter - or when we transfer control
+  // between tasks.
 #ifdef BUILD_32
   static const uword GUARD_ZONE_MARKER = 0xcaadabe7;
 #elif BUILD_64
