@@ -261,11 +261,11 @@ Interpreter::Result Interpreter::run() {
     Object* frame_marker = POP();
     ASSERT(frame_marker == program->frame_marker());
     bcp = reinterpret_cast<uint8*>(POP());
-    // When we're preempted right when a stack needs to grow, we remember
-    // that we haven't done the correct stack overflow check and taken
-    // care of any necessary stack growth. We do that now that we're
-    // resuming interpretation. This is also another preemption check
-    // so we risk making no progress if we keep getting preempted.
+    // When we are preempted at a call-site, we haven't done the
+    // correct stack overflow check yet. We do the check now,
+    // using the remembered 'pending' target method.
+    // This is also another preemption check so we risk making no
+    // progress if we keep getting preempted.
     if (pending.is_valid()) CHECK_STACK_OVERFLOW(pending);
   }
 
