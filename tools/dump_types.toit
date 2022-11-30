@@ -42,7 +42,6 @@ main args:
   command.run args
 
 decode_types parsed command -> none:
-  if not parsed: exit 1
   snapshot_content := file.read_content parsed["snapshot"]
   types_content := file.read_content parsed["types"]
   types := json.decode types_content

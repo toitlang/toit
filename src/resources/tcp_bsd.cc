@@ -345,6 +345,7 @@ static Object* get_address(int id, Process* process, bool peer) {
       (addr_word >> 16) & 0xff,
       (addr_word >> 8) & 0xff,
       (addr_word >> 0) & 0xff);
+  buffer[sizeof(buffer) - 1] = '\0';
   return process->allocate_string_or_error(buffer);
 }
 
