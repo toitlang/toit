@@ -43,16 +43,6 @@ void OldSpace::flush() {
   }
 }
 
-HeapObject* OldSpace::new_location(HeapObject* old_location) {
-  ASSERT(includes(old_location->_raw()));
-  ASSERT(GcMetadata::is_marked(old_location));
-  if (compacting_) {
-    return HeapObject::from_address(GcMetadata::get_destination(old_location));
-  } else {
-    return old_location;
-  }
-}
-
 bool OldSpace::is_alive(HeapObject* old_location) {
   // We can't assert that the object is in old-space, because
   // at the end of a mark-sweep the new-space objects are also
@@ -260,13 +250,6 @@ class RememberedSetRebuilder : public HeapObjectVisitor {
  private:
   RememberedSetRebuilder2 pointer_callback;
 };
-
-// Until we have a write barrier we have to iterate the whole
-// of old space.
-void OldSpace::rebuild_remembered_set() {
-  RememberedSetRebuilder rebuilder(program_);
-  iterate_objects(&rebuilder);
-}
 
 void OldSpace::visit_remembered_set(ScavengeVisitor* visitor) {
   flush();

@@ -480,7 +480,7 @@ flash_cmd -> cli.Command:
             --required,
         cli.OptionInt "baud"
             --default=921600,
-        cli.OptionEnum "chip" ["esp32"]
+        cli.OptionEnum "chip" ["esp32", "esp32c3", "esp32s2", "esp32s3"]
             --default="esp32"
       ]
       --run=:: flash it

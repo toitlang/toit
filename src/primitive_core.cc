@@ -1807,20 +1807,18 @@ PRIMITIVE(task_new) {
   if (task == null) ALLOCATION_FAILED;
   Method entry = process->program()->entry_task();
   if (!entry.is_valid()) FATAL("Cannot locate task entry method");
+  Task* current = process->object_heap()->task();
 
-  Object* tru = process->program()->true_object();
-  if ((reinterpret_cast<uword>(tru) & 3) != 1) FATAL("Program heap misaligned");
-
-  Task* old = process->object_heap()->task();
-  process->scheduler_thread()->interpreter()->store_stack();
+  Interpreter* interpreter = process->scheduler_thread()->interpreter();
+  interpreter->store_stack();
 
   process->object_heap()->set_task(task);
-  process->scheduler_thread()->interpreter()->load_stack();
-  process->scheduler_thread()->interpreter()->prepare_task(entry, code);
-  process->scheduler_thread()->interpreter()->store_stack();
+  interpreter->load_stack();
+  interpreter->prepare_task(entry, code);
+  interpreter->store_stack();
 
-  process->object_heap()->set_task(old);
-  process->scheduler_thread()->interpreter()->load_stack();
+  process->object_heap()->set_task(current);
+  interpreter->load_stack();
 
   return task;
 }
@@ -1831,11 +1829,12 @@ PRIMITIVE(task_transfer) {
   if (from != to) {
     // Make sure we don't transfer to a dead task.
     if (!to->has_stack()) OTHER_ERROR;
-    process->scheduler_thread()->interpreter()->store_stack();
+    Interpreter* interpreter = process->scheduler_thread()->interpreter();
+    interpreter->store_stack();
     // Remove the link from the task to the stack if requested.
     if (detach_stack) from->detach_stack();
     process->object_heap()->set_task(to);
-    process->scheduler_thread()->interpreter()->load_stack();
+    interpreter->load_stack();
   }
   return Primitive::mark_as_error(to);
 }

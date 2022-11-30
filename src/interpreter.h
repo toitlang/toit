@@ -112,10 +112,10 @@ class Interpreter {
   static int compare_numbers(Object* lhs, Object *rhs) INTERPRETER_CORE;
 
   // Load stack info from process's stack.
-  Object** load_stack();
+  Object** load_stack(Method* pending = null);
 
   // Store stack into to process's stack.
-  void store_stack(Object** sp = null);
+  void store_stack(Object** sp = null, Method pending = Method::invalid());
 
   void prepare_task(Method entry, Instance* code);
 

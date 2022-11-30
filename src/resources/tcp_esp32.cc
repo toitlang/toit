@@ -89,8 +89,6 @@ class SocketResourceGroup : public ResourceGroup {
 };
 
 int LwipSocket::on_accept(tcp_pcb* tpcb, err_t err) {
-  Locker locker(LwipEventSource::instance()->mutex());
-
   if (err != ERR_OK) {
     // Currently this only happend when a SYN is received and
     // there is not enough memory.  In this case err is ERR_MEM.
@@ -112,8 +110,6 @@ int LwipSocket::on_accept(tcp_pcb* tpcb, err_t err) {
 }
 
 int LwipSocket::on_connected(err_t err) {
-  Locker locker(LwipEventSource::instance()->mutex());
-
   // According to the documentation err is currently always ERR_OK, but trying
   // to be defensive here.
   if (err == ERR_OK) {
@@ -126,8 +122,6 @@ int LwipSocket::on_connected(err_t err) {
 }
 
 void LwipSocket::on_read(pbuf* p, err_t err) {
-  Locker locker(LwipEventSource::instance()->mutex());
-
   if (err != ERR_OK) {
     socket_error(err);
     return;
@@ -148,8 +142,6 @@ void LwipSocket::on_read(pbuf* p, err_t err) {
 }
 
 void LwipSocket::on_wrote(int length) {
-  Locker locker(LwipEventSource::instance()->mutex());
-
   send_pending_ -= length;
 
   if (send_closed_ && send_pending_ == 0) {
@@ -512,11 +504,8 @@ PRIMITIVE(close_write) {
 
 PRIMITIVE(close) {
   ARGS(SocketResourceGroup, resource_group, LwipSocket, socket);
-
   resource_group->unregister_resource(socket);
-
   socket_proxy->clear_external_address();
-
   return process->program()->null_object();
 }
 

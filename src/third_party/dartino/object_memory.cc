@@ -119,7 +119,7 @@ void Space::iterate_overflowed_objects(RootCallback* visitor, MarkingStack* stac
   }
 }
 
-void Space::iterate_objects(HeapObjectVisitor* visitor) {
+void Space::iterate_objects(HeapObjectVisitor* visitor, LivenessOracle* filter) {
   if (is_empty()) return;
   flush();
   for (auto chunk : chunk_list_) {
@@ -127,9 +127,21 @@ void Space::iterate_objects(HeapObjectVisitor* visitor) {
     uword current = chunk->start();
     while (!has_sentinel_at(current)) {
       HeapObject* object = HeapObject::from_address(current);
-      word size = visitor->visit(object);
-      ASSERT(size > 0);
-      current += size;
+      if (!filter || filter->is_alive(object)) {
+        word size = visitor->visit(object);
+        ASSERT(size > 0);
+        current += size;
+      } else {
+        word size = object->size(program_);
+#ifdef DEBUG
+        // Zapping words after the header should be harmless in new-space.
+        // In old-space this would interfere with the remembered set scanning,
+        // but there we don't use this call with a non-null filter.
+        uword address = object->_raw();
+        memset(reinterpret_cast<void*>(address + WORD_SIZE), 0x55, size - WORD_SIZE);
+#endif
+        current += size;
+      }
     }
     visitor->chunk_end(chunk, current);
   }

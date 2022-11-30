@@ -235,6 +235,8 @@ int Stack::absolute_bci_at_preemption(Program* program) {
 
 void Stack::roots_do(Program* program, RootCallback* cb) {
   int top = this->top();
+  ASSERT(top >= 0);
+  ASSERT(top <= length());
   // Skip over pointers into the bytecodes.
   void* bytecodes_from = program->bytecodes.data();
   void* bytecodes_to = &program->bytecodes.data()[program->bytecodes.length()];
@@ -253,7 +255,7 @@ int Stack::frames_do(Program* program, FrameCallback* cb) {
   int stack_length = _stack_base_addr() - _stack_sp_addr();
   int frame_no = 0;
   // The last return address we encountered. Represents the location inside the
-  //   method that is currently on the frame.
+  // method that is currently on the frame.
   uint8* last_return_bcp = null;
   bool is_first_frame = true;
   for (int index = 0; index < stack_length - 1; index++) {
@@ -275,19 +277,6 @@ int Stack::frames_do(Program* program, FrameCallback* cb) {
   return frame_no;
 }
 
-void Stack::copy_to(HeapObject* other, int other_length) {
-  other->_at_put(HeapObject::HEADER_OFFSET, _at(HeapObject::HEADER_OFFSET));
-  Stack* to = Stack::cast(other);
-  int used = length() - top();
-  ASSERT(other_length >= used);
-  int displacement = other_length - length();
-  memcpy(to->_array_address(top() + displacement), _array_address(top()), used * WORD_SIZE);
-  to->_at_put(TASK_OFFSET, _at(TASK_OFFSET));
-  to->_set_length(other_length);
-  to->_set_top(displacement + top());
-  to->_set_try_top(displacement + try_top());
-}
-
 void Instance::roots_do(int instance_size, RootCallback* cb) {
   int fields = fields_from_size(instance_size);
   cb->do_roots(_root_at(_offset_from(0)), fields);
@@ -302,25 +291,6 @@ void Instance::initialize(int instance_size) {
 
 bool Object::encode_on(ProgramOrientedEncoder* encoder) {
   return encoder->encode(this);
-}
-
-void Stack::transfer_to_interpreter(Interpreter* interpreter) {
-  ASSERT(top() >= 0);
-  ASSERT(top() <= length());
-  interpreter->limit_ = _stack_limit_addr();
-  interpreter->base_ = _stack_base_addr();
-  interpreter->sp_ = _stack_sp_addr();
-  interpreter->try_sp_ = _stack_try_sp_addr();
-  ASSERT(top() == (interpreter->sp_ - _stack_limit_addr()));
-  _set_top(-1);
-}
-
-void Stack::transfer_from_interpreter(Interpreter* interpreter) {
-  ASSERT(top() == -1);
-  _set_top(interpreter->sp_ - _stack_limit_addr());
-  _set_try_top(interpreter->try_sp_ - _stack_limit_addr());
-  ASSERT(top() >= 0);
-  ASSERT(top() <= length());
 }
 
 bool String::starts_with_vowel() {
