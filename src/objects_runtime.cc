@@ -131,28 +131,27 @@ void ByteArray::resize_external(Process* process, word new_length) {
   }
 }
 
-void Stack::copy_to(HeapObject* other, int other_length) {
-  Stack* to = Stack::cast(other);
+void Stack::copy_to(Stack* other) {
   int used = length() - top();
-  ASSERT(other_length >= used);
-  int displacement = other_length - length();
-  memcpy(to->_array_address(top() + displacement), _array_address(top()), used * WORD_SIZE);
-  to->_set_top(displacement + top());
-  to->_set_try_top(displacement + try_top());
-  // We've updated the 'to' stack without using the write barrier.
+  ASSERT(other->length() >= used);
+  int displacement = other->length() - length();
+  memcpy(other->_array_address(top() + displacement), _array_address(top()), used * WORD_SIZE);
+  other->_set_top(displacement + top());
+  other->_set_try_top(displacement + try_top());
+  // We've updated the other stack without using the write barrier.
   // This is typically only done from within the interpreter, where
-  // the 'to' stack immediately becomes the current interpreter
-  // stack through a call of to->transfer_to_interpreter(...). In
-  // such cases, it isn't strictly necessary to insert the to stack
-  // in the remembered set here, because it will always happen
+  // the other stack immediately becomes the current interpreter
+  // stack through a call of other->transfer_to_interpreter(...). In
+  // such cases, it isn't strictly necessary to insert the other
+  // stack in the remembered set here, because it will always happen
   // before leaving the interpreter; also before garbage collections.
   // However, we play it safe and add it here because we have
   // written into the stack and it might point to new objects.
-  GcMetadata::insert_into_remembered_set(to);
+  GcMetadata::insert_into_remembered_set(other);
 }
 
 void Stack::transfer_to_interpreter(Interpreter* interpreter) {
-  if (!is_guard_zone_untouched()) FATAL("stack overflow detected");
+  if (is_guard_zone_touched()) FATAL("stack overflow detected");
   ASSERT(top() >= 0);
   ASSERT(top() <= length());
   interpreter->limit_ = _stack_limit_addr();
@@ -164,7 +163,7 @@ void Stack::transfer_to_interpreter(Interpreter* interpreter) {
 }
 
 void Stack::transfer_from_interpreter(Interpreter* interpreter) {
-  if (!is_guard_zone_untouched()) FATAL("stack overflow detected");
+  if (is_guard_zone_touched()) FATAL("stack overflow detected");
   ASSERT(top() == -1);
   _set_top(interpreter->sp_ - _stack_limit_addr());
   _set_try_top(interpreter->try_sp_ - _stack_limit_addr());

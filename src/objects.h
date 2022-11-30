@@ -804,23 +804,30 @@ class Stack : public HeapObject {
   int length() { return _word_at(LENGTH_OFFSET); }
   int top() { return _word_at(TOP_OFFSET); }
   int try_top() { return _word_at(TRY_TOP_OFFSET); }
+  int absolute_bci_at_preemption(Program* program);
 
+  // We keep track of a single method that we have invoked, but where the
+  // check for stack overflow and any necessary growth of the stack hasn't
+  // been taken care of, because we got interrupted by preemption. The
+  // interpreter checks this field when it resumes execution on a stack,
+  // so we are sure that there is enough stack space available for the
+  // already invoked method.
   Method pending_stack_check_method() {
-    return Method(reinterpret_cast<uint8*>(_word_at(PENDING_STACK_CHECK_METHOD_OFFSET)));
+    uword pending = _word_at(PENDING_STACK_CHECK_METHOD_OFFSET);
+    return Method(reinterpret_cast<uint8*>(pending));
   }
 
   void set_pending_stack_check_method(Method method) {
-    _word_at_put(PENDING_STACK_CHECK_METHOD_OFFSET, reinterpret_cast<uword>(method.header_bcp()));
+    uword bcp = reinterpret_cast<uword>(method.header_bcp());
+    _word_at_put(PENDING_STACK_CHECK_METHOD_OFFSET, bcp);
   }
-
-  int absolute_bci_at_preemption(Program* program);
 
   void transfer_to_interpreter(Interpreter* interpreter);
   void transfer_from_interpreter(Interpreter* interpreter);
 
   int size() { return allocation_size(length()); }
 
-  void copy_to(HeapObject* other, int other_length);
+  void copy_to(Stack* other);
 
   void roots_do(Program* program, RootCallback* cb);
 
@@ -857,7 +864,7 @@ class Stack : public HeapObject {
 #else
   // TODO(kasper): We do not want to pay for the guard zone in deployments,
   // so we should keep the zone empty there after a bit of testing..
-  static const int GUARD_ZONE_WORDS = 2;
+  static const int GUARD_ZONE_WORDS = 4;
 #endif
   static const int GUARD_ZONE_SIZE = GUARD_ZONE_WORDS * WORD_SIZE;
 
@@ -882,11 +889,11 @@ class Stack : public HeapObject {
     }
   }
 
-  bool is_guard_zone_untouched() {
+  bool is_guard_zone_touched() {
     for (int i = 0; i < GUARD_ZONE_WORDS; i++) {
-      if (*guard_zone_address(i) != GUARD_ZONE_MARKER) return false;
+      if (*guard_zone_address(i) != GUARD_ZONE_MARKER) return true;
     }
-    return true;
+    return false;
   }
 
   uword* guard_zone_address(int index) {

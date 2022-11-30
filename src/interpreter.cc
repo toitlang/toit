@@ -271,7 +271,7 @@ Object** Interpreter::handle_stack_overflow(Object** sp, OverflowState* state, M
   }
 
   store_stack(sp);
-  process->task()->stack()->copy_to(new_stack, new_length);
+  process->task()->stack()->copy_to(new_stack);
   process->task()->set_stack(new_stack);
   sp = load_stack();
   *state = OVERFLOW_RESUME;
