@@ -32,8 +32,6 @@ class Session:
   handshake_timeout/Duration
 
   reader_/reader.BufferedReader
-  switched_read_to_encrypted_ := false
-  switched_write_to_encrypted_ := false
   writer_ ::= ?
   server_name_/string? ::= null
 
@@ -41,12 +39,13 @@ class Session:
   handshake_in_progress_/monitor.Latch? := monitor.Latch
   group_/TlsGroup_? := null
   tls_ := null
-  symmetric_session_ /AesGcmSession? := null
-  outgoing_sequence_number_ /int := 0
-  incoming_sequence_number_ /int := 0
 
   outgoing_buffer_/ByteArray := #[]
   closed_for_write_ := false
+
+  switched_read_to_encrypted_ := false
+  switched_write_to_encrypted_ := false
+  symmetric_session_ /AesGcmSession? := null
 
   /**
   Creates a new TLS session at the client-side.
@@ -121,8 +120,10 @@ class Session:
         resource_state.clear_state state
         with_timeout handshake_timeout:
           flush_outgoing_
+        print state
         if state == TOIT_TLS_DONE_:
           extract_key_data_
+          switched_write_to_encrypted_ = true
           return
         else if state == TOIT_TLS_WANT_READ_:
           with_timeout handshake_timeout:
@@ -141,9 +142,10 @@ class Session:
     // Connected.  Try to extract the keys so we can handle the rest of
     // the connection from Toit.  TODO: Free all MbedTLS resources if this
     // succeeds.
+    print "extract_key_data_"
     symmetric_keys := get_internals_ tls_
     if symmetric_keys:
-      symmetric_session_ = AesGcmSession reader_ writer_
+      symmetric_session_ = AesGcmSession writer_ reader_
           --encryption_iv=symmetric_keys[0]
           --decryption_iv=symmetric_keys[1]
           --encryption_key=symmetric_keys[2]
@@ -160,7 +162,7 @@ class Session:
     return tls_get_session_ tls_
 
   write data from=0 to=data.size -> int:
-    if symmetric_session_: return symmetric_session_.write data from to
+    if switched_write_to_encrypted_: return symmetric_session_.write data from to
     ensure_handshaken_
     if not tls_: throw "TLS_SOCKET_NOT_CONNECTED"
     sent := 0
@@ -175,7 +177,7 @@ class Session:
       sent += wrote
 
   read:
-    if symmetric_session_: return symmetric_session_.read
+    if switched_read_to_encrypted_: return symmetric_session_.read
     ensure_handshaken_
     if not tls_: throw "TLS_SOCKET_NOT_CONNECTED"
     while true:
@@ -279,12 +281,14 @@ class Session:
   // handshaking message.  May return an synthetic record, (defragmented
   // from several records on the wire).
   read_handshaking_message_ -> ByteArray:
+    print "In read_handshaking_message_"
     assert: not switched_read_to_encrypted_
     // We rarely (never?) find a record with the application data type
     // because normally we have switched to encrypted mode before this
     // happens.
     if (reader_.byte 0) == APPLICATION_DATA_: throw "Unencrypted application data received"
     header := reader_.read_bytes 5
+    print "Header $header"
     content_type := header[0]
     remaining_message_bytes / int := ?
     if content_type == ALERT_:
@@ -292,6 +296,7 @@ class Session:
     else if content_type == CHANGE_CIPHER_SPEC_:
       remaining_message_bytes = 1
       switched_read_to_encrypted_ = true
+      print "switched_read_to_encrypted_"
       // We will still process this tiny CHANGE_CIPHER_SPEC_ packet.
     else:
       if content_type != HANDSHAKE_:
@@ -316,11 +321,13 @@ class Session:
       remaining_message_bytes += (reader_.byte 3)
       remaining_message_bytes += 4  // Encoded size does not include the 4 byte handshake header.
 
+    print "Content-type=$content_type, remaining_message_bytes=$remaining_message_bytes"
+
     // The protocol requires that records are less than 16k large, so if there is
     // a single message that doesn't fit in a record we can't defragment.  MbedTLS
     // has a lower limit, currently configured to 6000 bytes, so this isn't actually
     // limiting us.
-    if remaining_message_bytes >= 0x4000: throw "TLS handshake message too large to defragment"
+    if remaining_message_bytes >= 0x4000: throw "TLS handshake message too large to defragment (content_type=$content_type $(%04x remaining_message_bytes))"
     // Make an artificial record that was not on the wire.
     record := ByteArray remaining_message_bytes + 5  // Include space for header.
     record.replace 0 header
@@ -351,10 +358,8 @@ class Session:
 
   // Only used during handshaking.
   read_incoming_packet_ -> none:
-    packet := ?
-    if not switched_read_to_encrypted_:
-      packet = read_handshaking_message_
-      tls_set_incoming_ tls_ packet 0
+    packet := read_handshaking_message_
+    tls_set_incoming_ tls_ packet 0
 
 byte_array_join_ arrays/List -> ByteArray:
   if arrays.size == 0: return #[]
