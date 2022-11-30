@@ -136,7 +136,7 @@ class Process : public ProcessListFromProcessGroup::Element,
   SystemMessage* take_termination_message(uint8 result);
 
   uint64_t random();
-  void random_seed(const uint8_t* buffer, size_t size);
+  void random_seed(const uint8* buffer, size_t size);
 
   State state() { return state_; }
   void set_state(State state) { state_ = state; }
@@ -304,16 +304,19 @@ class AllocationManager {
     , size_(0)
     , process_(process) {}
 
-  AllocationManager(Process* process, void* ptr, word size)
-    : ptr_(ptr)
+  template<typename T>
+  AllocationManager(Process* process, T* ptr, word size=0)
+    : ptr_(void_cast(ptr))
     , size_(size)
     , process_(process) {
-    process->register_external_allocation(size);
+    if (process) process->register_external_allocation(size);
   }
 
-  uint8_t* alloc(word length) {
+  uint8* alloc(word length) {
     ASSERT(ptr_ == null);
-    bool ok = process_->should_allow_external_allocation(length);
+    bool ok = process_
+        ? process_->should_allow_external_allocation(length)
+        : true;
     if (!ok) {
       return null;
     }
@@ -321,21 +324,21 @@ class AllocationManager {
     // with realloc.
     ptr_ = malloc(length);
     if (ptr_ == null) {
-      process_->object_heap()->set_last_allocation_result(ObjectHeap::ALLOCATION_OUT_OF_MEMORY);
+      if (process_) process_->object_heap()->set_last_allocation_result(ObjectHeap::ALLOCATION_OUT_OF_MEMORY);
     } else {
-      process_->register_external_allocation(length);
+      if (process_) process_->register_external_allocation(length);
       size_ = length;
     }
 
-    return unvoid_cast<uint8_t*>(ptr_);
+    return unvoid_cast<uint8*>(ptr_);
   }
 
   static uint8* reallocate(uint8* old_allocation, word new_size) {
     return unvoid_cast<uint8*>(::realloc(old_allocation, new_size));
   }
 
-  uint8_t* calloc(word length, word size) {
-    uint8_t* allocation = alloc(length * size);
+  uint8* calloc(word length, word size) {
+    uint8* allocation = alloc(length * size);
     if (allocation != null) {
       ASSERT(size_ == length * size);
       memset(allocation, 0, size_);
@@ -346,20 +349,43 @@ class AllocationManager {
   ~AllocationManager() {
     if (ptr_ != null) {
       free(ptr_);
-      process_->unregister_external_allocation(size_);
+      if (process_) process_->unregister_external_allocation(size_);
     }
   }
 
-  uint8_t* keep_result() {
+  uint8* keep_result() {
     void* result = ptr_;
     ptr_ = null;
-    return unvoid_cast<uint8_t*>(result);
+    return unvoid_cast<uint8*>(result);
   }
 
  private:
   void* ptr_;
   word size_;
   Process* process_;
+};
+
+class Finally {
+ public:
+  inline void dont_auto_free() { do_ = false; }
+  inline bool finalize() { return do_; }
+
+ private:
+  bool do_ = true;
+};
+
+#define GENERATE_FINALLY(ClassName, type, action)      \
+class ClassName : public Finally {                     \
+ public:                                               \
+  inline ClassName(type value) : field_(value) {}      \
+  inline ~ClassName() {                                \
+    if (finalize()) {                                  \
+      type value = field_;                             \
+      action;                                          \
+    }                                                  \
+  }                                                    \
+ private:                                              \
+  type field_;                                         \
 };
 
 } // namespace toit
