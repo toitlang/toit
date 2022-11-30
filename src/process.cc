@@ -33,7 +33,7 @@ const char* Process::StateName[] = {
   "RUNNING",
 };
 
-Process::Process(Program* program, ProcessRunner* runner, ProcessGroup* group, SystemMessage* termination, Chunk* initial_chunk)
+Process::Process(Program* program, ProcessRunner* runner, ProcessGroup* group, SystemMessage* termination, Chunk* initial_chunk, Object** global_variables)
     : id_(VM::current()->scheduler()->next_process_id())
     , next_task_id_(0)
     , program_(program)
@@ -43,7 +43,7 @@ Process::Process(Program* program, ProcessRunner* runner, ProcessGroup* group, S
     , program_heap_size_(program ? program->program_heap_size_ : 0)
     , entry_(Method::invalid())
     , spawn_method_(Method::invalid())
-    , object_heap_(program, this, initial_chunk)
+    , object_heap_(program, this, initial_chunk, global_variables)
     , last_bytes_allocated_(0)
     , termination_message_(termination)
     , random_seeded_(false)
@@ -66,19 +66,19 @@ Process::Process(Program* program, ProcessRunner* runner, ProcessGroup* group, S
   ASSERT(group_->lookup(id_) == this);
 }
 
-Process::Process(Program* program, ProcessGroup* group, SystemMessage* termination, Chunk* initial_chunk)
-    : Process(program, null, group, termination, initial_chunk) {
+Process::Process(Program* program, ProcessGroup* group, SystemMessage* termination, Chunk* initial_chunk, Object** global_variables)
+    : Process(program, null, group, termination, initial_chunk, global_variables) {
   entry_ = program->entry_main();
 }
 
-Process::Process(Program* program, ProcessGroup* group, SystemMessage* termination, Method method, Chunk* initial_chunk)
-    : Process(program, null, group, termination, initial_chunk) {
+Process::Process(Program* program, ProcessGroup* group, SystemMessage* termination, Method method, Chunk* initial_chunk, Object** global_variables)
+    : Process(program, null, group, termination, initial_chunk, global_variables) {
   entry_ = program->entry_spawn();
   spawn_method_ = method;
 }
 
 Process::Process(ProcessRunner* runner, ProcessGroup* group, SystemMessage* termination)
-    : Process(null, runner, group, termination, null) {}
+    : Process(null, runner, group, termination, null, null) {}
 
 Process::~Process() {
   state_ = TERMINATING;

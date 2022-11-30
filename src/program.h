@@ -260,7 +260,7 @@ class Program : public FlashAllocation {
 
     Object** copy() {
       Object** copy = unvoid_cast<Object**>(malloc(sizeof(Object*) * length()));
-      ASSERT(copy != null);
+      if (copy == null) return copy;
       memcpy(copy, raw_array(), sizeof(Object*) * length());
       return copy;
     }
