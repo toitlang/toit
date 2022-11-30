@@ -1829,11 +1829,12 @@ PRIMITIVE(task_transfer) {
   if (from != to) {
     // Make sure we don't transfer to a dead task.
     if (!to->has_stack()) OTHER_ERROR;
-    process->scheduler_thread()->interpreter()->store_stack();
+    Interpreter* interpreter = process->scheduler_thread()->interpreter();
+    interpreter->store_stack();
     // Remove the link from the task to the stack if requested.
     if (detach_stack) from->detach_stack();
     process->object_heap()->set_task(to);
-    process->scheduler_thread()->interpreter()->load_stack();
+    interpreter->load_stack();
   }
   return Primitive::mark_as_error(to);
 }
