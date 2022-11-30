@@ -149,14 +149,23 @@ PRIMITIVE(spawn) {
     OTHER_ERROR;
   }
 
+  Object** global_variables = process->program()->global_variables.copy();
+  if (!global_variables) {
+    encoder.free_copied();
+    free(buffer);
+    MALLOC_FAILED;
+  }
+
   int pid = VM::current()->scheduler()->spawn(
       process->program(),
       process->group(),
       priority,
       method,
       buffer,
-      manager.initial_chunk);
+      manager.initial_chunk,
+      global_variables);
   if (pid == Scheduler::INVALID_PROCESS_ID) {
+    free(global_variables);
     encoder.free_copied();
     free(buffer);
     MALLOC_FAILED;

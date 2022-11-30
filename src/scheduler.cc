@@ -103,7 +103,9 @@ Process* Scheduler::new_boot_process(Locker& locker, Program* program, int group
 
   ProcessGroup* group = ProcessGroup::create(group_id, program);
   SystemMessage* termination = new_process_message(SystemMessage::TERMINATED, group_id);
-  Process* process = _new Process(program, group, termination, manager.initial_chunk);
+  Object** global_variables = program->global_variables.copy();
+  ASSERT(global_variables);  // Booting system.
+  Process* process = _new Process(program, group, termination, manager.initial_chunk, global_variables);
   ASSERT(process);
   manager.dont_auto_free();
   // Start the boot process with a high priority. It can always
@@ -207,13 +209,13 @@ int Scheduler::next_group_id() {
   return next_group_id_++;
 }
 
-int Scheduler::run_program(Program* program, uint8* arguments, ProcessGroup* group, Chunk* initial_chunk) {
+int Scheduler::run_program(Program* program, uint8* arguments, ProcessGroup* group, Chunk* initial_chunk, Object** global_variables) {
   Locker locker(mutex_);
   SystemMessage* termination = new_process_message(SystemMessage::TERMINATED, group->id());
   if (termination == null) {
     return INVALID_PROCESS_ID;
   }
-  Process* process = _new Process(program, group, termination, initial_chunk);
+  Process* process = _new Process(program, group, termination, initial_chunk, global_variables);
   if (process == null) {
     delete termination;
     return INVALID_PROCESS_ID;
@@ -323,13 +325,13 @@ bool Scheduler::signal_process(Process* sender, int target_id, Process::Signal s
 }
 
 int Scheduler::spawn(Program* program, ProcessGroup* process_group, int priority,
-                     Method method, uint8* arguments, Chunk* initial_chunk) {
+                     Method method, uint8* arguments, Chunk* initial_chunk, Object** global_variables) {
   Locker locker(mutex_);
 
   SystemMessage* termination = new_process_message(SystemMessage::TERMINATED, process_group->id());
   if (!termination) return INVALID_PROCESS_ID;
 
-  Process* process = _new Process(program, process_group, termination, method, initial_chunk);
+  Process* process = _new Process(program, process_group, termination, method, initial_chunk, global_variables);
   if (!process) {
     delete termination;
     return INVALID_PROCESS_ID;
