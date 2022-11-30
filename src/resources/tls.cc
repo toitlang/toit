@@ -289,6 +289,7 @@ Object* tls_error(MbedTlsResourceGroup* group, Process* process, int err) {
     buffer[used + 2] = '\0';
     used += 2;
     snprintf(buffer + used, sizeof(buffer) - used, "Cert depth %d:\n", group->error_depth());
+    buffer[sizeof(buffer) - 1] = '\0';
     used = strlen(buffer);
     mbedtls_x509_crt_verify_info(buffer + used, BUFFER_LEN - used, " * ", group->error_flags());
     used = strlen(buffer);

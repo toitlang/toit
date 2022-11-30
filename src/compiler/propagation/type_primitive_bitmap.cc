@@ -20,16 +20,16 @@ namespace compiler {
 
 MODULE_TYPES(bitmap, MODULE_BITMAP)
 
-TYPE_PRIMITIVE_ANY(draw_text)
-TYPE_PRIMITIVE_ANY(byte_draw_text)
-TYPE_PRIMITIVE_ANY(draw_bitmap)
-TYPE_PRIMITIVE_ANY(draw_bytemap)
-TYPE_PRIMITIVE_ANY(byte_zap)
-TYPE_PRIMITIVE_ANY(blit)
-TYPE_PRIMITIVE_ANY(rectangle)
-TYPE_PRIMITIVE_ANY(byte_rectangle)
-TYPE_PRIMITIVE_ANY(composit)
-TYPE_PRIMITIVE_ANY(bytemap_blur)
+TYPE_PRIMITIVE_NULL(draw_text)
+TYPE_PRIMITIVE_NULL(byte_draw_text)
+TYPE_PRIMITIVE_NULL(draw_bitmap)
+TYPE_PRIMITIVE_NULL(draw_bytemap)
+TYPE_PRIMITIVE_SMI(byte_zap)
+TYPE_PRIMITIVE_NULL(blit)
+TYPE_PRIMITIVE_NULL(rectangle)
+TYPE_PRIMITIVE_BOOL(byte_rectangle)
+TYPE_PRIMITIVE_NULL(composit)
+TYPE_PRIMITIVE_NULL(bytemap_blur)
 
 }  // namespace toit::compiler
 }  // namespace toit

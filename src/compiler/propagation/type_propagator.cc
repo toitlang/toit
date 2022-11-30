@@ -175,7 +175,7 @@ void TypePropagator::propagate() {
         if (argument_type.is_block()) {
           break;
         } else if (argument_type.is_any()) {
-          type.fill(words_per_type());
+          type.add_any(program());
           break;
         } else {
           type.add(argument_type.id());
@@ -414,8 +414,8 @@ TypeSet TypeResult::use(TypePropagator* propagator, MethodTemplate* user, uint8*
 
 bool TypeResult::merge(TypePropagator* propagator, TypeSet other) {
   if (!type_.add_all(other, words_per_type_)) return false;
-  for (auto it = users_.begin(); it != users_.end(); it++) {
-    propagator->enqueue(*it);
+  for (auto user : users_) {
+    propagator->enqueue(user);
   }
   return true;
 }
@@ -572,6 +572,8 @@ class Worklist {
   std::unordered_map<uint8*, TypeStack*> stacks_;
 };
 
+// Propagates the typestack starting at the given bcp in this method context.
+// The bcp could be the beginning of the method, a block entry, a branch target, ...
 static void process(MethodTemplate* method, uint8* bcp, TypeStack* stack, Worklist& worklist) {
 #define LABEL(opcode, length, format, print) &&interpret_##opcode,
   static void* dispatch_table[] = {
@@ -720,6 +722,11 @@ static void process(MethodTemplate* method, uint8* bcp, TypeStack* stack, Workli
 
   OPCODE_BEGIN(LOAD_BLOCK_METHOD);
     Method inner = Method(program->bytecodes, Utils::read_unaligned_uint32(bcp + 1));
+    // Finds or creates a block-template for the given block.
+    // The block's parameters are marked such that a change in their type enqueues this
+    // current method template.
+    // Note that the method template is for a specific combination of parameter types. As
+    // such we evaluate the contained blocks independently too.
     BlockTemplate* block = method->find_block(inner, stack->level(), bcp);
     stack->push_block(block);
     block->propagate(method, stack);
@@ -851,16 +858,21 @@ static void process(MethodTemplate* method, uint8* bcp, TypeStack* stack, Workli
     BlockTemplate* block = receiver.block();
     for (int i = 1; i < block->arity(); i++) {
       TypeSet argument = stack->local(index - (i + 1));
+      // Merge the argument-type.
+      // If the type changed, queues the block's surrounding method.
       block->argument(i)->merge(propagator, argument);
     }
     for (int i = 0; i < index; i++) stack->pop();
+    // If the return type of this block changes, enqueue the surrounding 
+    // method again.
     TypeSet value = block->use(propagator, method, bcp);
     if (value.is_empty(program)) {
       if (!linked) return;
       // We've just invoked a try-block that is guaranteed
       // to unwind as indicated by the empty return type.
-      // We propagate this information to the 'unwind' bytecode
-      // so that it can avoid propagating types through the
+      // We propagate this information to the 'unwind' bytecode which is
+      // guaranteed to follow this bytecode after a few other bytecodes (like
+      // POP and UNLINK). This way it can avoid propagating types through the
       // code that follows it (fall through) because there are
       // cases (like the monitor methods that call 'locked_')
       // where the compiler assumes that we will not execute
@@ -1035,6 +1047,11 @@ static void process(MethodTemplate* method, uint8* bcp, TypeStack* stack, Workli
     stack->push_empty();       // Unwind target.
     stack->push_empty();       // Unwind reason.
     stack->push_smi(program);  // Unwind chain next.
+    // Try/finally is implemented as:
+    //   LINK, LOAD BLOCK, INVOKE BLOCK, POP, UNLINK, <finally code>, UNWIND.
+    // As such we can never have nested linked code, as the block would be
+    // evaluated independently.
+    ASSERT(!linked);
     linked = true;
   OPCODE_END();
 

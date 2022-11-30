@@ -26,16 +26,22 @@ import .snapshot
 main args:
   command := null
   command = cli.Command "root"
-      --short_help="Dumps propagated types"
+      --long_help="""
+      Dumps propagated types.
+      
+      Run the compiler with '-Xpropagate -w program.snapshot program.toit > program.types'.
+      Then use the generated snapshot and types for this tool.
+      """
+      --short_help="Dumps propagated types."
       --options=[
         cli.OptionString "snapshot" --required --short_name="s"
-            --short_help="The snapshot file for the program"
+            --short_help="The snapshot file for the program."
             --type="file",
         cli.OptionString "types" --required --short_name="t"
-            --short_help="The collected types in a JSON file"
+            --short_help="The collected types in a JSON file."
             --type="file",
         cli.Flag "sdk"
-            --short_help="Show types for the sdk"
+            --short_help="Show types for the sdk."
             --default=false,
       ]
       --run=:: decode_types it command
@@ -71,9 +77,8 @@ show_types --sdk/bool types/List snapshot_content/ByteArray -> none:
   sorted_methods.sort --in_place: | a/ToitMethod b/ToitMethod |
     ia := program.method_info_for a.id
     ib := program.method_info_for b.id
-    nd := ia.error_path.compare_to ib.error_path
-    if nd != 0: continue.sort nd
-    continue.sort ia.position.line.compare_to ib.position.line
+    ia.error_path.compare_to ib.error_path --if_equal=:
+      ia.position.line.compare_to ib.position.line
 
   first := true
   sorted_methods.do: | method/ToitMethod |

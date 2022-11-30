@@ -716,8 +716,7 @@ class ToitMethod:
       if bc_length > 1:
         argument = bytecodes[index + 1]
       line += bytecode_string this index argument program --show_positions=show_positions
-      extra := block.call absolute_bci
-      if extra: line += " // $extra"
+      if extra := block.call absolute_bci: line += " // $extra"
       print line
       index += bc_length
 
