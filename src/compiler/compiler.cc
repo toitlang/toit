@@ -47,6 +47,7 @@
 #include "monitor.h"
 #include "optimizations/optimizations.h"
 #include "parser.h"
+#include "propagation/type_propagator.h"
 #include "resolver.h"
 #include "../snapshot_bundle.h"
 #include "stubs.h"
@@ -120,7 +121,7 @@ class Pipeline {
   explicit Pipeline(const PipelineConfiguration& configuration)
       : configuration_(configuration) {}
 
-  Result run(List<const char*> source_paths);
+  Result run(List<const char*> source_paths, bool propagate);
 
  protected:
   virtual Source* _load_file(const char* path, const PackageLock& package_lock);
@@ -446,7 +447,7 @@ void Compiler::lsp_complete(const char* source_path,
                             const PipelineConfiguration& configuration) {
   ASSERT(configuration.diagnostics != null);
   CompletionPipeline pipeline(source_path, line_number, column_number, configuration);
-  pipeline.run(ListBuilder<const char*>::build(source_path));
+  pipeline.run(ListBuilder<const char*>::build(source_path), false);
 }
 
 void Compiler::lsp_goto_definition(const char* source_path,
@@ -456,14 +457,14 @@ void Compiler::lsp_goto_definition(const char* source_path,
   ASSERT(configuration.diagnostics != null);
   GotoDefinitionPipeline pipeline(source_path, line_number, column_number, configuration);
 
-  pipeline.run(ListBuilder<const char*>::build(source_path));
+  pipeline.run(ListBuilder<const char*>::build(source_path), false);
 }
 
 void Compiler::lsp_analyze(List<const char*> source_paths,
                            const PipelineConfiguration& configuration) {
   ASSERT(configuration.diagnostics != null);
   LanguageServerPipeline pipeline(configuration);
-  pipeline.run(source_paths);
+  pipeline.run(source_paths, false);
 }
 
 void Compiler::lsp_snapshot(const char* source_path,
@@ -483,7 +484,7 @@ void Compiler::lsp_semantic_tokens(const char* source_path,
   configuration.lsp->set_should_emit_semantic_tokens(true);
   ASSERT(configuration.diagnostics != null);
   LanguageServerPipeline pipeline(configuration);
-  pipeline.run(ListBuilder<const char*>::build(source_path));
+  pipeline.run(ListBuilder<const char*>::build(source_path), false);
 }
 
 static bool _sorted_by_inheritance(List<ir::Class*> classes) {
@@ -547,7 +548,7 @@ void Compiler::analyze(List<const char*> source_paths,
     .is_for_analysis = true,
   };
   Pipeline pipeline(configuration);
-  pipeline.run(source_paths);
+  pipeline.run(source_paths, false);
 }
 
 #ifdef TOIT_POSIX
@@ -697,10 +698,10 @@ SnapshotBundle Compiler::compile(const char* source_path,
       exit(1);
     }
     Pipeline main_pipeline(main_configuration);
-    pipeline_main_result = main_pipeline.run(source_paths);
+    pipeline_main_result = main_pipeline.run(source_paths, Flags::propagate);
     if (pipeline_main_result.is_valid()) {
       DebugCompilationPipeline debug_pipeline(debug_configuration);
-      pipeline_debug_result = debug_pipeline.run(source_paths);
+      pipeline_debug_result = debug_pipeline.run(source_paths, false);
     }
   } else {
 #ifdef TOIT_POSIX
@@ -718,11 +719,11 @@ SnapshotBundle Compiler::compile(const char* source_path,
       close(read_fd);
 
       Pipeline pipeline(main_configuration);
-      auto pipeline_result = pipeline.run(source_paths);
+      auto pipeline_result = pipeline.run(source_paths, Flags::propagate);
       send_pipeline_result(write_fd, pipeline_result);
       if (pipeline_result.is_valid()) {
         DebugCompilationPipeline debug_pipeline(debug_configuration);
-        pipeline_result = debug_pipeline.run(source_paths);
+        pipeline_result = debug_pipeline.run(source_paths, false);
         send_pipeline_result(write_fd, pipeline_result);
       }
       close(write_fd);
@@ -1500,7 +1501,7 @@ static void check_sdk(const std::string& constraint, Diagnostics* diagnostics) {
   };
 }
 
-Pipeline::Result Pipeline::run(List<const char*> source_paths) {
+Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
   auto fs = configuration_.filesystem;
   fs->initialize(diagnostics());
   source_paths = adjust_source_paths(source_paths);
@@ -1600,6 +1601,12 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths) {
 
   Backend backend(source_manager(), &source_mapper);
   auto program = backend.emit(ir_program);
+
+  if (propagate) {
+    TypePropagator propagator(program);
+    propagator.propagate();
+  }
+
   SnapshotGenerator generator(program);
   generator.generate(program);
   int source_map_size;

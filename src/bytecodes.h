@@ -117,6 +117,7 @@ enum BytecodeFormat {
   BYTECODE(LOAD_SMI_U8,                2, OP_BU, "load smi")                   \
   BYTECODE(LOAD_SMI_U16,               3, OP_SU, "load smi")                   \
   BYTECODE(LOAD_SMI_U32,               5, OP_WU, "load smi")                   \
+  BYTECODE(LOAD_BLOCK_METHOD,          5, OP_WU, "load block method")          \
   \
   BYTECODE(LOAD_GLOBAL_VAR,            2, OP_BG, "load global var")            \
   BYTECODE(LOAD_GLOBAL_VAR_DYNAMIC,    1, OP,    "load global var dynamic")    \

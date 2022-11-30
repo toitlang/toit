@@ -26,6 +26,8 @@
 #include "../resolver_scope.h"
 #include "../set.h"
 
+#include "../../flags.h"
+
 namespace toit {
 namespace compiler {
 
@@ -45,6 +47,9 @@ class OptimizationVisitor : public ReplacingVisitor {
   /// Transforms virtual calls into static calls (when possible).
   /// Transforms virtual getters/setters into field accesses (when possible).
   Node* visit_CallVirtual(CallVirtual* node) {
+    // TODO(kasper): This feels a bit hacky, but we prefer keeping the
+    // virtual calls for the purposes of the type propagation phase.
+    if (Flags::propagate) return node;
     node = ReplacingVisitor::visit_CallVirtual(node)->as_CallVirtual();
     return optimize_virtual_call(node, holder_, method_, field_names_, queryables_);
   }

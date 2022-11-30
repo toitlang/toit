@@ -89,8 +89,4 @@ inline void Instance::at_put(int index, Object* value) {
   _at_put(_offset_from(index), value);
 }
 
-inline void Task::set_result(Object* value) {
-  at_put(RESULT_INDEX, value);
-}
-
 } // namespace toit

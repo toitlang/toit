@@ -598,8 +598,6 @@ class TypeChecker : public ReturningVisitor<Type> {
   Type visit_LiteralByteArray(LiteralByteArray* node) {
     return Type::any();
   }
-
-
   Type visit_PrimitiveInvocation(PrimitiveInvocation* node) {
     // TODO(florian): get the type of primitive invocations.
     return Type::any();

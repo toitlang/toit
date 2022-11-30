@@ -150,6 +150,13 @@ void Emitter::load_integer(word value) {
   stack_.push(ExpressionStack::OBJECT);
 }
 
+void Emitter::load_block_method(int offset) {
+  ASSERT(offset >= 0);
+  emit_opcode(LOAD_BLOCK_METHOD);
+  emit_uint32(offset);
+  stack_.push(ExpressionStack::OBJECT);
+}
+
 void Emitter::load_n_smis(int n) {
   ASSERT(0 < n && n < 0x100);
   emit(LOAD_SMIS_0, n);
@@ -538,7 +545,7 @@ void Emitter::unlink() {
 
 void Emitter::unwind() {
   emit_opcode(UNWIND);
-   stack_.pop(3);
+  stack_.pop(3);
 }
 
 void Emitter::identical() {

@@ -264,11 +264,12 @@ static Object* get_address_or_error(int id, Process* process, bool peer) {
   if (result != 0) return Primitive::os_error(errno, process);
   char buffer[16];
   uint32_t addr_word = ntohl(sin.sin_addr.s_addr);
-  sprintf(buffer, "%d.%d.%d.%d",
+  snprintf(buffer, sizeof(buffer), "%d.%d.%d.%d",
       (addr_word >> 24) & 0xff,
       (addr_word >> 16) & 0xff,
       (addr_word >> 8) & 0xff,
       (addr_word >> 0) & 0xff);
+  buffer[sizeof(buffer) - 1] = '\0';
   return process->allocate_string_or_error(buffer, strlen(buffer));
 }
 

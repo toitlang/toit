@@ -1422,14 +1422,11 @@ class Task : public Instance {
  public:
   static const int STACK_INDEX = 0;
   static const int ID_INDEX = STACK_INDEX + 1;
-  static const int RESULT_INDEX = ID_INDEX + 1;
 
   Stack* stack() { return Stack::cast(at(STACK_INDEX)); }
   void set_stack(Stack* value) { at_put(STACK_INDEX, value); }
 
   int id() { return Smi::cast(at(ID_INDEX))->value(); }
-
-  inline void set_result(Object* value);
 
   static Task* cast(Object* value) {
     ASSERT(is_task(value));
