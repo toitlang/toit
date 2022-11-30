@@ -236,6 +236,11 @@ void TypePropagator::call_method(
     return;
   }
 
+  // This is the heart of the Cartesian Product Algorithm (CPA). We
+  // compute the cartesian product of all the argument types and
+  // instantiate a method template for each possible combination. This
+  // is essentially <arity> nested loops with a few cut-offs for blocks
+  // and megamorphic types that tend to blow up the analysis.
   Program* program = this->program();
   TypeSet type = stack->local(arity - index);
   if (type.is_block()) {
@@ -243,6 +248,10 @@ void TypePropagator::call_method(
     call_method(caller, stack, site, target, arguments);
     arguments.pop_back();
   } else if (type.size(program) > 5) {
+    // If one of the arguments is megamorphic, we analyze the target
+    // method with the any type for that argument instead. This cuts
+    // down on the number of separate analysis at the cost of more
+    // mixing of types and worse propagated types.
     arguments.push_back(ConcreteType());
     call_method(caller, stack, site, target, arguments);
     arguments.pop_back();
@@ -313,6 +322,8 @@ void TypePropagator::store_field(MethodTemplate* user, TypeStack* stack, int ind
 }
 
 void TypePropagator::load_outer(TypeStack* stack, uint8* site, int index) {
+  // We load from outer type stacks by following the 'outer' chain
+  // from the inner blocks out towards the surrounding method.
   TypeSet block = stack->local(0);
   TypeStack* outer = stack->outer();
   int n = outer->level() - block.block()->level();
@@ -321,6 +332,10 @@ void TypePropagator::load_outer(TypeStack* stack, uint8* site, int index) {
   stack->pop();
   stack->push(value);
   if (value.is_block()) return;
+  // We keep track of the types we've seen for outer locals for
+  // this particular access site. We use this to exclusively
+  // for the output of the type propagator, so we don't actually
+  // use the merged type anywhere in the analysis.
   TypeResult* merged = this->outer(site);
   merged->merge(this, value);
 }
@@ -863,7 +878,7 @@ static void process(MethodTemplate* method, uint8* bcp, TypeStack* stack, Workli
       block->argument(i)->merge(propagator, argument);
     }
     for (int i = 0; i < index; i++) stack->pop();
-    // If the return type of this block changes, enqueue the surrounding 
+    // If the return type of this block changes, enqueue the surrounding
     // method again.
     TypeSet value = block->use(propagator, method, bcp);
     if (value.is_empty(program)) {
