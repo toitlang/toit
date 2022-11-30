@@ -680,11 +680,138 @@ class FrameCallback {
 };
 
 
+class Method {
+ public:
+  Method(List<uint8> all_bytes, int offset) : Method(&all_bytes[offset]) {}
+  explicit Method(uint8* bytes) : bytes_(bytes) {}
+
+  static Method invalid() { return Method(null); }
+  static int allocation_size(int bytecode_size, int max_height) {
+    return HEADER_SIZE + bytecode_size;
+  }
+
+  bool is_valid() const { return bytes_ != null; }
+
+  bool is_normal_method() const { return kind_() == METHOD; }
+  bool is_block_method() const { return  kind_() == BLOCK; }
+  bool is_lambda_method() const { return kind_() == LAMBDA; }
+  bool is_field_accessor() const { return kind_() == FIELD_ACCESSOR; }
+
+  int arity() const { return bytes_[ARITY_OFFSET]; }
+  int captured_count() const { return value_(); }
+  int selector_offset() const { return value_(); }
+  uint8* entry() const { return &bytes_[ENTRY_OFFSET]; }
+  int max_height() const { return (bytes_[KIND_HEIGHT_OFFSET] >> KIND_BITS) * 4; }
+
+  uint8* bcp_from_bci(int bci) const { return &bytes_[ENTRY_OFFSET + bci]; }
+  uint8* header_bcp() const { return bytes_; }
+
+  static uint8* header_from_entry(uint8* entry) { return entry - ENTRY_OFFSET; }
+
+ private: // Friend access for ProgramBuilder.
+  void _initialize_block(int arity, List<uint8> bytecodes, int max_height) {
+    _initialize(BLOCK, 0, arity, bytecodes, max_height);
+    ASSERT(this->arity() == arity);
+    ASSERT(!this->is_field_accessor());
+  }
+
+  void _initialize_lambda(int captured_count, int arity, List<uint8> bytecodes, int max_height) {
+    _initialize(LAMBDA, captured_count, arity, bytecodes, max_height);
+    ASSERT(this->arity() == arity);
+    ASSERT(!this->is_field_accessor());
+    ASSERT(this->captured_count() == captured_count);
+  }
+
+  void _initialize_method(int selector_offset, bool is_field_accessor, int arity, List<uint8> bytecodes, int max_height) {
+    Kind kind = is_field_accessor ? FIELD_ACCESSOR : METHOD;
+    _initialize(kind, selector_offset, arity, bytecodes, max_height);
+    ASSERT(this->arity() == arity);
+    ASSERT(this->selector_offset() == selector_offset);
+  }
+
+  friend class compiler::ProgramBuilder;
+
+ private:
+  static const int ARITY_OFFSET = 0;
+  static const int KIND_HEIGHT_OFFSET = ARITY_OFFSET + BYTE_SIZE;
+  static const int KIND_BITS = 2;
+  static const int KIND_MASK = (1 << KIND_BITS) - 1;
+  static const int HEIGHT_BITS = 8 - KIND_BITS;
+  static const int VALUE_OFFSET = KIND_HEIGHT_OFFSET + BYTE_SIZE;
+  static const int ENTRY_OFFSET = VALUE_OFFSET + 2;
+  static const int HEADER_SIZE = ENTRY_OFFSET;
+
+  uint8* bytes_;
+
+  enum Kind { METHOD = 0, LAMBDA, BLOCK, FIELD_ACCESSOR };
+
+  Kind kind_() const { return static_cast<Kind>(bytes_[KIND_HEIGHT_OFFSET] & KIND_MASK); }
+
+  void _initialize(Kind kind, int value, int arity, List<uint8> bytecodes, int max_height) {
+    ASSERT(0 <= arity && arity < (1 <<  BYTE_BIT_SIZE));
+    _set_kind_height(kind, max_height);
+    _set_arity(arity);
+    _set_value(value);
+    _set_bytecodes(bytecodes);
+
+    ASSERT(this->kind_()  == kind);
+    ASSERT(this->arity()  == arity);
+    ASSERT(this->value_() == value);
+  }
+
+  int _int16_at(int offset) const {
+    int16 result;
+    memcpy(&result, &bytes_[offset], 2);
+    return result;
+  }
+
+  void _set_int16_at(int offset, int value) {
+    int16 source = value;
+    memcpy(&bytes_[offset], &source, 2);
+  }
+
+  int value_() const { return _int16_at(VALUE_OFFSET); }
+  void _set_value(int value) { _set_int16_at(VALUE_OFFSET, value); }
+
+  void _set_arity(int arity) {
+    ASSERT(arity <= 0xFF);
+    bytes_[ARITY_OFFSET] = arity;
+  }
+  void _set_kind_height(Kind kind, int max_height) {
+    // We need two bits for the kind.
+    ASSERT(kind <= KIND_MASK);
+    // We store multiples of 4 as max height.
+    int scaled_height = (max_height + 3) / 4;
+    const int MAX_SCALED_HEIGHT = (1 << HEIGHT_BITS) - 1;
+    if (scaled_height > MAX_SCALED_HEIGHT) {
+      FATAL("Max stack height too big");
+    }
+    int encoded_height = scaled_height << KIND_BITS;
+    bytes_[KIND_HEIGHT_OFFSET] = kind | encoded_height;
+  }
+  void _set_captured_count(int value) { _set_value(value); }
+  void _set_selector_offset(int value) { _set_value(value); }
+  void _set_bytecodes(List<uint8> bytecodes) {
+    if (bytecodes.length() > 0) {
+      memcpy(&bytes_[ENTRY_OFFSET], bytecodes.data(), bytecodes.length());
+    }
+  }
+};
+
+
 class Stack : public HeapObject {
  public:
   int length() { return _word_at(LENGTH_OFFSET); }
   int top() { return _word_at(TOP_OFFSET); }
   int try_top() { return _word_at(TRY_TOP_OFFSET); }
+
+  Method pending_stack_check_method() {
+    return Method(reinterpret_cast<uint8*>(_word_at(PENDING_STACK_CHECK_METHOD_OFFSET)));
+  }
+
+  void set_pending_stack_check_method(Method method) {
+    _word_at_put(PENDING_STACK_CHECK_METHOD_OFFSET, reinterpret_cast<uword>(method.header_bcp()));
+  }
 
   int absolute_bci_at_preemption(Program* program);
 
@@ -716,10 +843,30 @@ class Stack : public HeapObject {
   }
 
  private:
+  // We keep a 'guard zone' of words that must not be touched right after
+  // the header of the stack object. If the stack overflows into the guard
+  // zone we will catch the issue when enter or leave the interpreter - or
+  // when we transfer control between tasks.
+#ifdef BUILD_32
+  static const uword GUARD_ZONE_MARKER = 0xcaadabe7;
+#elif BUILD_64
+  static const uword GUARD_ZONE_MARKER = 0x7eb91112caadabe7;
+#endif
+#ifdef DEBUG
+  static const int GUARD_ZONE_WORDS = 8;
+#else
+  // TODO(kasper): We do not want to pay for the guard zone in deployments,
+  // so we should keep the zone empty there after a bit of testing..
+  static const int GUARD_ZONE_WORDS = 2;
+#endif
+  static const int GUARD_ZONE_SIZE = GUARD_ZONE_WORDS * WORD_SIZE;
+
   static const int LENGTH_OFFSET = HeapObject::SIZE + WORD_SIZE;
   static const int TOP_OFFSET = LENGTH_OFFSET + WORD_SIZE;
   static const int TRY_TOP_OFFSET = TOP_OFFSET + WORD_SIZE;
-  static const int HEADER_SIZE = TRY_TOP_OFFSET + WORD_SIZE;
+  static const int PENDING_STACK_CHECK_METHOD_OFFSET = TRY_TOP_OFFSET + WORD_SIZE;
+  static const int GUARD_ZONE_OFFSET = PENDING_STACK_CHECK_METHOD_OFFSET + WORD_SIZE;
+  static const int HEADER_SIZE = GUARD_ZONE_OFFSET + GUARD_ZONE_SIZE;
 
   void _set_length(int value) { _word_at_put(LENGTH_OFFSET, value); }
   void _set_top(int value) { _word_at_put(TOP_OFFSET, value); }
@@ -729,6 +876,22 @@ class Stack : public HeapObject {
     _set_length(length);
     _set_top(length);
     _set_try_top(length);
+    set_pending_stack_check_method(Method::invalid());
+    for (int i = 0; i < GUARD_ZONE_WORDS; i++) {
+      *guard_zone_address(i) = GUARD_ZONE_MARKER;
+    }
+  }
+
+  bool is_guard_zone_untouched() {
+    for (int i = 0; i < GUARD_ZONE_WORDS; i++) {
+      if (*guard_zone_address(i) != GUARD_ZONE_MARKER) return false;
+    }
+    return true;
+  }
+
+  uword* guard_zone_address(int index) {
+    ASSERT(index >= 0 && index < GUARD_ZONE_WORDS);
+    return _raw_at(GUARD_ZONE_OFFSET + index * WORD_SIZE);
   }
 
   Object** _stack_base_addr() { return reinterpret_cast<Object**>(_raw_at(_array_offset_from(length()))); }
@@ -1051,124 +1214,6 @@ class String : public HeapObject {
   friend class ObjectHeap;
   friend class ProgramHeap;
   friend class VmFinalizerNode;
-};
-
-class Method {
- public:
-  Method(List<uint8> all_bytes, int offset) : Method(&all_bytes[offset]) {}
-  Method(uint8* bytes) : bytes_(bytes) {}
-
-  static Method invalid() { return Method(null); }
-  static int allocation_size(int bytecode_size, int max_height) {
-    return HEADER_SIZE + bytecode_size;
-  }
-
-  bool is_valid() const { return bytes_ != null; }
-
-  bool is_normal_method() const { return kind_() == METHOD; }
-  bool is_block_method() const { return  kind_() == BLOCK; }
-  bool is_lambda_method() const { return kind_() == LAMBDA; }
-  bool is_field_accessor() const { return kind_() == FIELD_ACCESSOR; }
-
-  int arity() const { return bytes_[ARITY_OFFSET]; }
-  int captured_count() const { return value_(); }
-  int selector_offset() const { return value_(); }
-  uint8* entry() const { return &bytes_[ENTRY_OFFSET]; }
-  int max_height() const { return (bytes_[KIND_HEIGHT_OFFSET] >> KIND_BITS) * 4; }
-
-  uint8* bcp_from_bci(int bci) const { return &bytes_[ENTRY_OFFSET + bci]; }
-  uint8* header_bcp() const { return bytes_; }
-
-  static uint8* header_from_entry(uint8* entry) { return entry - ENTRY_OFFSET; }
-
- private: // Friend access for ProgramBuilder.
-  void _initialize_block(int arity, List<uint8> bytecodes, int max_height) {
-    _initialize(BLOCK, 0, arity, bytecodes, max_height);
-    ASSERT(this->arity() == arity);
-    ASSERT(!this->is_field_accessor());
-  }
-
-  void _initialize_lambda(int captured_count, int arity, List<uint8> bytecodes, int max_height) {
-    _initialize(LAMBDA, captured_count, arity, bytecodes, max_height);
-    ASSERT(this->arity() == arity);
-    ASSERT(!this->is_field_accessor());
-    ASSERT(this->captured_count() == captured_count);
-  }
-
-  void _initialize_method(int selector_offset, bool is_field_accessor, int arity, List<uint8> bytecodes, int max_height) {
-    Kind kind = is_field_accessor ? FIELD_ACCESSOR : METHOD;
-    _initialize(kind, selector_offset, arity, bytecodes, max_height);
-    ASSERT(this->arity() == arity);
-    ASSERT(this->selector_offset() == selector_offset);
-  }
-
-  friend class compiler::ProgramBuilder;
-
- private:
-  static const int ARITY_OFFSET = 0;
-  static const int KIND_HEIGHT_OFFSET = ARITY_OFFSET + BYTE_SIZE;
-  static const int KIND_BITS = 2;
-  static const int KIND_MASK = (1 << KIND_BITS) - 1;
-  static const int HEIGHT_BITS = 8 - KIND_BITS;
-  static const int VALUE_OFFSET = KIND_HEIGHT_OFFSET + BYTE_SIZE;
-  static const int ENTRY_OFFSET = VALUE_OFFSET + 2;
-  static const int HEADER_SIZE = ENTRY_OFFSET;
-
-  uint8* bytes_;
-
-  enum Kind { METHOD = 0, LAMBDA, BLOCK, FIELD_ACCESSOR };
-
-  Kind kind_() const { return static_cast<Kind>(bytes_[KIND_HEIGHT_OFFSET] & KIND_MASK); }
-
-  void _initialize(Kind kind, int value, int arity, List<uint8> bytecodes, int max_height) {
-    ASSERT(0 <= arity && arity < (1 <<  BYTE_BIT_SIZE));
-    _set_kind_height(kind, max_height);
-    _set_arity(arity);
-    _set_value(value);
-    _set_bytecodes(bytecodes);
-
-    ASSERT(this->kind_()  == kind);
-    ASSERT(this->arity()  == arity);
-    ASSERT(this->value_() == value);
-  }
-
-  int _int16_at(int offset) const {
-    int16 result;
-    memcpy(&result, &bytes_[offset], 2);
-    return result;
-  }
-
-  void _set_int16_at(int offset, int value) {
-    int16 source = value;
-    memcpy(&bytes_[offset], &source, 2);
-  }
-
-  int value_() const { return _int16_at(VALUE_OFFSET); }
-  void _set_value(int value) { _set_int16_at(VALUE_OFFSET, value); }
-
-  void _set_arity(int arity) {
-    ASSERT(arity <= 0xFF);
-    bytes_[ARITY_OFFSET] = arity;
-  }
-  void _set_kind_height(Kind kind, int max_height) {
-    // We need two bits for the kind.
-    ASSERT(kind <= KIND_MASK);
-    // We store multiples of 4 as max height.
-    int scaled_height = (max_height + 3) / 4;
-    const int MAX_SCALED_HEIGHT = (1 << HEIGHT_BITS) - 1;
-    if (scaled_height > MAX_SCALED_HEIGHT) {
-      FATAL("Max stack height too big");
-    }
-    int encoded_height = scaled_height << KIND_BITS;
-    bytes_[KIND_HEIGHT_OFFSET] = kind | encoded_height;
-  }
-  void _set_captured_count(int value) { _set_value(value); }
-  void _set_selector_offset(int value) { _set_value(value); }
-  void _set_bytecodes(List<uint8> bytecodes) {
-    if (bytecodes.length() > 0) {
-      memcpy(&bytes_[ENTRY_OFFSET], bytecodes.data(), bytecodes.length());
-    }
-  }
 };
 
 

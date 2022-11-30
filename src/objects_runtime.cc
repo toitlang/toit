@@ -132,13 +132,11 @@ void ByteArray::resize_external(Process* process, word new_length) {
 }
 
 void Stack::copy_to(HeapObject* other, int other_length) {
-  other->_at_put(HeapObject::HEADER_OFFSET, _at(HeapObject::HEADER_OFFSET));
   Stack* to = Stack::cast(other);
   int used = length() - top();
   ASSERT(other_length >= used);
   int displacement = other_length - length();
   memcpy(to->_array_address(top() + displacement), _array_address(top()), used * WORD_SIZE);
-  to->_set_length(other_length);
   to->_set_top(displacement + top());
   to->_set_try_top(displacement + try_top());
   // We've updated the 'to' stack without using the write barrier.
@@ -154,6 +152,7 @@ void Stack::copy_to(HeapObject* other, int other_length) {
 }
 
 void Stack::transfer_to_interpreter(Interpreter* interpreter) {
+  if (!is_guard_zone_untouched()) FATAL("stack overflow detected");
   ASSERT(top() >= 0);
   ASSERT(top() <= length());
   interpreter->limit_ = _stack_limit_addr();
@@ -165,6 +164,7 @@ void Stack::transfer_to_interpreter(Interpreter* interpreter) {
 }
 
 void Stack::transfer_from_interpreter(Interpreter* interpreter) {
+  if (!is_guard_zone_untouched()) FATAL("stack overflow detected");
   ASSERT(top() == -1);
   _set_top(interpreter->sp_ - _stack_limit_addr());
   _set_try_top(interpreter->try_sp_ - _stack_limit_addr());

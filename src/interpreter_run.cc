@@ -148,7 +148,7 @@ Method Program::find_method(Object* receiver, int offset) {
         static_assert(FRAME_SIZE == 2, "Unexpected frame size");      \
         PUSH(reinterpret_cast<Object*>(target.entry()));              \
         PUSH(program->frame_marker());                                \
-        store_stack(sp);                                              \
+        store_stack(sp, target);                                      \
         return Result(Result::PREEMPTED);                             \
       case OVERFLOW_EXCEPTION:                                        \
         goto THROW_IMPLEMENTATION;                                    \
@@ -249,16 +249,27 @@ Interpreter::Result Interpreter::run() {
 #undef LABEL
 
   // Interpretation state.
-  preemption_method_header_bcp_ = null;
-  Object** sp = load_stack();
   Program* program = process_->program();
+  preemption_method_header_bcp_ = null;
   uword index__ = 0;
-  static_assert(FRAME_SIZE == 2, "Unexpected frame size");
-  {
+  Object** sp;
+  uint8* bcp;
+
+  { Method pending = Method::invalid();
+    sp = load_stack(&pending);
+    static_assert(FRAME_SIZE == 2, "Unexpected frame size");
     Object* frame_marker = POP();
     ASSERT(frame_marker == program->frame_marker());
+    bcp = reinterpret_cast<uint8*>(POP());
+    // When we're preempted right when a stack needs to grow, we remember
+    // that we haven't done the correct stack overflow check and taken
+    // care of any necessary stack growth. We do that now that we're
+    // resuming interpretation. This is also another preemption check
+    // so we risk making no progress if we keep getting preempted.
+    if (pending.is_valid()) CHECK_STACK_OVERFLOW(pending);
   }
-  uint8* bcp = reinterpret_cast<uint8*>(POP());
+
+  // Dispatch to the first bytecode. Here we go!
   DISPATCH(0);
 
   OPCODE_BEGIN_WITH_WIDE(LOAD_LOCAL, stack_offset);
@@ -537,7 +548,7 @@ Interpreter::Result Interpreter::run() {
       // The receiver is still on the stack.
       // Push the absolute bci of the as-check, so that we can find the interface name.
       PUSH(Smi::from(program->absolute_bci_from_bcp(bcp + _length_)));
-      Method target  = program->as_check_failure();
+      Method target = program->as_check_failure();
       CALL_METHOD(target, _length_);
     }
   OPCODE_END();
@@ -1659,7 +1670,7 @@ Object** Interpreter::hash_find(Object** sp, Program* program, Interpreter::Hash
         result = STACK_AT(POSITION);
       }
     }
-    // return result.
+    // Return result.
     DROP(NUMBER_OF_BYTECODE_LOCALS);
     // Restore bcp.
     static_assert(FRAME_SIZE == 2, "Unexpected frame size");

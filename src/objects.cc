@@ -235,6 +235,8 @@ int Stack::absolute_bci_at_preemption(Program* program) {
 
 void Stack::roots_do(Program* program, RootCallback* cb) {
   int top = this->top();
+  ASSERT(top >= 0);
+  ASSERT(top <= length());
   // Skip over pointers into the bytecodes.
   void* bytecodes_from = program->bytecodes.data();
   void* bytecodes_to = &program->bytecodes.data()[program->bytecodes.length()];
@@ -253,7 +255,7 @@ int Stack::frames_do(Program* program, FrameCallback* cb) {
   int stack_length = _stack_base_addr() - _stack_sp_addr();
   int frame_no = 0;
   // The last return address we encountered. Represents the location inside the
-  //   method that is currently on the frame.
+  // method that is currently on the frame.
   uint8* last_return_bcp = null;
   bool is_first_frame = true;
   for (int index = 0; index < stack_length - 1; index++) {
