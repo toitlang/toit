@@ -13,6 +13,8 @@ main:
   ap_list := wifi.scan
       SCAN_CHANNELS
       --period_per_channel=1000
+  if ap_list == null:
+    throw "Scan done, but no AP is found"
 
   print """
       $(%-32s "SSID") $(%-18s "BSSID") \

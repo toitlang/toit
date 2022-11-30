@@ -65,9 +65,8 @@ establish config/Map? -> Interface:
   if not service: throw "WiFi unavailable"
   return WifiInterface_ service (service.establish config)
 
-scan channels/ByteArray --passive/bool=false --period_per_channel/int=SCAN_TIMEOUT_ -> List:
+scan channels/ByteArray --passive/bool=false --period_per_channel/int=SCAN_TIMEOUT_ -> List?:
   if channels.size < 1: throw "Channels are unspecified"
-
   ap_list := List
   channels.do:
     channel/int := it
@@ -75,13 +74,13 @@ scan channels/ByteArray --passive/bool=false --period_per_channel/int=SCAN_TIMEO
         --channel=channel
         --passive=passive
         --period=period_per_channel
-    ap_list += data
-  return ap_list
+    if data != null:
+      ap_list += data
+  return ap_list.size > 0 ? ap_list : null
 
-scan --channel/int=1 --passive/bool=false --period/int=SCAN_TIMEOUT_ -> List:
+scan --channel/int=1 --passive/bool=false --period/int=SCAN_TIMEOUT_ -> List?:
   service := service_
   if not service: throw "WiFi unavailable"
-
   config ::= {
     CONFIG_SCAN_PASSIVE: passive,
     CONFIG_SCAN_CHANNEL: channel,
