@@ -5,14 +5,13 @@
 // The standard BLE peripheral demo for simulating a heart rate monitor.
 
 import net.wifi
-import encoding.hex
 
 SCAN_CHANNELS := #[1, 2, 3, 4, 5, 6, 7]
 
 main:
   ap_list := wifi.scan
       SCAN_CHANNELS
-      --period_per_channel=1000
+      --period_per_channel_ms=120
   if ap_list == null:
     throw "Scan done, but no AP is found"
 
@@ -22,18 +21,8 @@ main:
       $(%-8s "Author")\n"""
 
   ap_list.do:
-    ssid := it[wifi.SCAN_AP_SSID]
-    bssid := it[wifi.SCAN_AP_BSSID]
-    rssi := it[wifi.SCAN_AP_RSSI]
-    authmode := it[wifi.SCAN_AP_AUTHMODE]
-    channel := it[wifi.SCAN_AP_CHANNEL]
-
-    automode_name := wifi.wifi_authmode_name authmode
-    bssid_desc := """
-        $(%02x bssid[0]):$(%02x bssid[1]):$(%02x bssid[2]):\
-        $(%02x bssid[3]):$(%02x bssid[4]):$(%02x bssid[5])"""
-
+    ap := it as wifi.AccessPoint
     print """
-        $(%-32s ssid) $(%-18s bssid_desc) \
-        $(%-6s rssi) $(%-8s channel) \
-        $(%-8s automode_name)"""
+        $(%-32s ap.ssid) $(%-18s ap.bssid_name) \
+        $(%-6s ap.rssi) $(%-8s ap.channel) \
+        $(%-8s ap.authmode_name)"""

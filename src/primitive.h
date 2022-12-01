@@ -307,6 +307,7 @@ namespace toit {
   PRIMITIVE(disconnect_reason, 1)            \
   PRIMITIVE(get_ip, 1)                       \
   PRIMITIVE(get_rssi, 1)                     \
+  PRIMITIVE(init_scan, 1)                    \
   PRIMITIVE(start_scan, 4)                   \
   PRIMITIVE(read_scan, 1)                    \
 
