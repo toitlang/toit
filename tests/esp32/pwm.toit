@@ -3,7 +3,7 @@
 // be found in the tests/LICENSE file.
 
 /**
-Tests the pulse_counter library.
+Tests the LEDC (pwm) library.
 
 Setup:
 Connect pin 18 and 19 with a 330 Ohm resistor. The resistor isn't
