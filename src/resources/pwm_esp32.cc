@@ -72,9 +72,9 @@ class PwmResource : public Resource {
     , channel_(channel)
     , num_(num) {}
 
-  ledc_channel_t channel() { return channel_; }
-
+  ledc_channel_t channel() const { return channel_; }
   gpio_num_t num() const { return num_; }
+
  private:
   ledc_channel_t channel_;
   gpio_num_t num_;
