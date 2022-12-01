@@ -46,6 +46,10 @@ ResourcePool<ledc_timer_t, kInvalidLedcTimer> ledc_timers(
     LEDC_TIMER_0, LEDC_TIMER_1, LEDC_TIMER_2, LEDC_TIMER_3
 );
 
+#ifndef SOC_LEDC_CHANNEL_NUM
+#error "SOC_LEDC_CHANNEL_NUM not defined"
+#endif
+
 const ledc_channel_t kInvalidLedcChannel = ledc_channel_t(-1);
 ResourcePool<ledc_channel_t, kInvalidLedcChannel> ledc_channels(
     LEDC_CHANNEL_0,

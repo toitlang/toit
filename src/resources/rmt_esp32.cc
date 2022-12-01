@@ -30,6 +30,10 @@ namespace toit {
 
 const rmt_channel_t kInvalidChannel = static_cast<rmt_channel_t>(-1);
 
+#ifndef SOC_RMT_CHANNELS_PER_GROUP
+#error "SOC_RMT_CHANNELS_PER_GROUP not defined"
+#endif
+
 ResourcePool<rmt_channel_t, kInvalidChannel> rmt_channels(
     RMT_CHANNEL_0, RMT_CHANNEL_1, RMT_CHANNEL_2, RMT_CHANNEL_3
 #if SOC_RMT_CHANNELS_PER_GROUP > 4
