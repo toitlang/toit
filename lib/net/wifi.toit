@@ -30,30 +30,30 @@ WIFI_SCAN_AUTHMODE_ ::= 3
 WIFI_SCAN_CHANNEL_  ::= 4
 WIFI_SCAN_ELEMENT_COUNT_ ::= 5
 
-SCAN_TIMEOUT_MS_/int := 1000 /* microseconds */ 
+SCAN_TIMEOUT_MS_/int := 1000 
 
 service_/WifiServiceClient? ::= (WifiServiceClient --no-open).open
 
 class AccessPoint:
-  ssid/string := ?
-  bssid/ByteArray := ?
-  rssi/int := ?
-  authmode/int := ?
-  channel/int := ?
+  ssid/string
+  bssid/ByteArray
+  rssi/int
+  authmode/int
+  channel/int
 
-  static WIFI_AUTHMODE_NAME_/Map ::= {
-    0: "Open",
-    1: "WEP",
-    2: "WPA PSK",
-    3: "WPA2 PSK",
-    4: "WPA/WPA2 PSK",
-    5: "WPA2 Enterprise",
-    6: "WPA3 PSK",
-    7: "WPA2/WPA3 PSK",
-    8: "WAPI PSK",
-  }
+  static WIFI_AUTHMODE_NAME_/List ::= [
+    "Open",
+    "WEP",
+    "WPA PSK",
+    "WPA2 PSK",
+    "WPA/WPA2 PSK",
+    "WPA2 Enterprise",
+    "WPA3 PSK",
+    "WPA2/WPA3 PSK",
+    "WAPI PSK",
+  ]
 
-  constructor .ssid/string .bssid/ByteArray .rssi/int .authmode/int .channel/int:
+  constructor --.ssid/string --.bssid/ByteArray --.rssi/int --.authmode/int --.channel/int:
 
   authmode_name -> string:
     if authmode < 0 or authmode >= WIFI_AUTHMODE_NAME_.size:
@@ -101,32 +101,32 @@ establish config/Map? -> Interface:
   if not service: throw "WiFi unavailable"
   return WifiInterface_ service (service.establish config)
 
-scan channels/ByteArray --passive/bool=false --period_per_channel_ms/int=SCAN_TIMEOUT_MS_ -> List?:
+scan channels/ByteArray --passive/bool=false --period_per_channel_ms/int=SCAN_TIMEOUT_MS_ -> List:
   if channels.size < 1: throw "Channels are unspecified"
 
   service := service_
   if not service: throw "WiFi unavailable"
 
-  ap_list := List
   config ::= {
     CONFIG_SCAN_PASSIVE: passive,
     CONFIG_SCAN_CHANNELS: channels,
     CONFIG_SCAN_PERIOD: period_per_channel_ms,
   }
 
-  ap_array := service.scan config
-  ap_count := ap_array.size / WIFI_SCAN_ELEMENT_COUNT_
+  ap_list := []
+  data_list := service.scan config
+  ap_count := data_list.size / WIFI_SCAN_ELEMENT_COUNT_
   ap_count.repeat:
     offset := it * WIFI_SCAN_ELEMENT_COUNT_
     ap := AccessPoint
-        ap_array[offset + WIFI_SCAN_SSID_]
-        ap_array[offset + WIFI_SCAN_BSSID_]
-        ap_array[offset + WIFI_SCAN_RSSI_]
-        ap_array[offset + WIFI_SCAN_AUTHMODE_]
-        ap_array[offset + WIFI_SCAN_CHANNEL_]
+        --ssid=data_list[offset + WIFI_SCAN_SSID_]
+        --bssid=data_list[offset + WIFI_SCAN_BSSID_]
+        --rssi=data_list[offset + WIFI_SCAN_RSSI_]
+        --authmode=data_list[offset + WIFI_SCAN_AUTHMODE_]
+        --channel=data_list[offset + WIFI_SCAN_CHANNEL_]
     ap_list.add ap
 
-  return ap_list.size > 0 ? ap_list : null
+  return ap_list
 
 class WifiInterface_ extends SystemInterface_ implements Interface:
   constructor client/WifiServiceClient connection/List:

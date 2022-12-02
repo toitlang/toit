@@ -121,16 +121,17 @@ class WifiServiceDefinition extends NetworkServiceDefinitionBase:
   rssi resource/NetworkResource -> int?:
     return (state_.module as WifiModule).rssi
   
-  scan config/Map -> Array_:
+  scan config/Map -> List:
     if state_.module:
       throw "wifi already connected or established"
     module := WifiModule.sta this "" ""
-    channels := config.get wifi.CONFIG_SCAN_CHANNELS
-    passive := config.get wifi.CONFIG_SCAN_PASSIVE
-    period  := config.get wifi.CONFIG_SCAN_PERIOD
-    ap_array := module.scan channels passive period
-    module.disconnect
-    return ap_array
+    try:
+      channels := config.get wifi.CONFIG_SCAN_CHANNELS
+      passive := config.get wifi.CONFIG_SCAN_PASSIVE
+      period  := config.get wifi.CONFIG_SCAN_PERIOD
+      return module.scan channels passive period
+    finally:
+      module.disconnect
 
   on_module_closed module/WifiModule -> none:
     resources_do: it.notify_ NetworkService.NOTIFY_CLOSED
@@ -249,13 +250,13 @@ class WifiModule implements NetworkModule:
   rssi -> int?:
     return wifi_get_rssi_ resource_group_
 
-  scan channels/ByteArray passive/bool period/int -> Array_:
+  scan channels/ByteArray passive/bool period/int -> List:
     if ap or not resource_group_:
-      throw "Wi-Fi is AP mode or not initialized"
+      throw "wifi is AP mode or not initialized"
 
     resource := wifi_init_scan_ resource_group_
     scan_events := monitor.ResourceState_ resource_group_ resource
-    ap_array := Array_ 0
+    result := []
     try:
       channels.do:
         wifi_start_scan_ resource_group_ it passive period
@@ -263,11 +264,11 @@ class WifiModule implements NetworkModule:
         if (state & WIFI_SCAN_DONE) == 0: throw "WIFI_SCAN_ERROR"
         scan_events.clear_state WIFI_SCAN_DONE
         array := wifi_read_scan_ resource_group_
-        ap_array += array
+        result.add_all array
     finally:
       scan_events.dispose
 
-    return ap_array
+    return result
 
   on_event_ state/int:
     // TODO(kasper): We should be clearing the state in the

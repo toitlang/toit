@@ -12,7 +12,7 @@ main:
   ap_list := wifi.scan
       SCAN_CHANNELS
       --period_per_channel_ms=120
-  if ap_list == null:
+  if ap_list.size == 0:
     throw "Scan done, but no AP is found"
 
   print """

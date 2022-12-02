@@ -19,7 +19,7 @@ interface WifiService extends NetworkService:
   rssi handle/int -> int?
 
   static SCAN_INDEX /int ::= 1003
-  scan config/Map -> Array_
+  scan config/Map -> List
 
 class WifiServiceClient extends NetworkServiceClient implements WifiService:
   constructor --open/bool=true:
@@ -37,5 +37,5 @@ class WifiServiceClient extends NetworkServiceClient implements WifiService:
   rssi handle/int -> int?:
     return invoke_ WifiService.RSSI_INDEX handle
 
-  scan config/Map -> Array_:
+  scan config/Map -> List:
     return invoke_ WifiService.SCAN_INDEX config
