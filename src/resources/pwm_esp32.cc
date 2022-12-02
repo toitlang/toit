@@ -46,6 +46,10 @@ ResourcePool<ledc_timer_t, kInvalidLedcTimer> ledc_timers(
     LEDC_TIMER_0, LEDC_TIMER_1, LEDC_TIMER_2, LEDC_TIMER_3
 );
 
+#ifndef SOC_LEDC_CHANNEL_NUM
+#error "SOC_LEDC_CHANNEL_NUM not defined"
+#endif
+
 const ledc_channel_t kInvalidLedcChannel = ledc_channel_t(-1);
 ResourcePool<ledc_channel_t, kInvalidLedcChannel> ledc_channels(
     LEDC_CHANNEL_0,
@@ -67,14 +71,17 @@ const uint32_t kMaxFrequency = 40000000;  // 40MHz with duty resolution of 1 bit
 class PwmResource : public Resource {
  public:
   TAG(PwmResource);
-  PwmResource(ResourceGroup* group, ledc_channel_t channel)
+  PwmResource(ResourceGroup* group, ledc_channel_t channel, gpio_num_t num)
     : Resource(group)
-    , channel_(channel) {}
+    , channel_(channel)
+    , num_(num) {}
 
-  ledc_channel_t channel() { return channel_; }
+  ledc_channel_t channel() const { return channel_; }
+  gpio_num_t num() const { return num_; }
 
  private:
   ledc_channel_t channel_;
+  gpio_num_t num_;
 };
 
 class PwmResourceGroup : public ResourceGroup {
@@ -97,6 +104,14 @@ class PwmResourceGroup : public ResourceGroup {
   virtual void on_unregister_resource(Resource* r) {
     PwmResource* pwm = reinterpret_cast<PwmResource*>(r);
     ledc_stop(SPEED_MODE, pwm->channel(), 0);
+    gpio_config_t cfg = {
+        .pin_bit_mask = BIT64(pwm->num()),
+        .mode = GPIO_MODE_DISABLE,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    gpio_config(&cfg);
     ledc_channels.put(pwm->channel());
   }
 
@@ -198,7 +213,7 @@ PRIMITIVE(start) {
     return Primitive::os_error(err, process);
   }
 
-  PwmResource* pwm = _new PwmResource(resource_group, channel);
+  PwmResource* pwm = _new PwmResource(resource_group, channel, static_cast<gpio_num_t>(pin));
   if (!pwm) {
     ledc_stop(SPEED_MODE, channel, 0);
     ledc_channels.put(channel);

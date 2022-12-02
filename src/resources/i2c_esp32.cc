@@ -34,6 +34,10 @@ namespace toit {
 const int kI2cTransactionTimeout = 10;
 const i2c_port_t kInvalidPort = i2c_port_t(-1);
 
+#ifndef SOC_I2C_NUM
+#error "SOC_I2C_NUM not defined"
+#endif
+
 ResourcePool<i2c_port_t, kInvalidPort> i2c_ports(
    I2C_NUM_0
 #if SOC_I2C_NUM >= 2
