@@ -140,7 +140,7 @@ class TypeSet {
   uword* const bits_;
 
   friend class TypeStack;
-  friend class TypeResult;
+  friend class TypeVariable;
 };
 
 }  // namespace toit::compiler
