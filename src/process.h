@@ -365,27 +365,4 @@ class AllocationManager {
   Process* process_;
 };
 
-class Finally {
- public:
-  inline void dont_auto_free() { do_ = false; }
-  inline bool finalize() { return do_; }
-
- private:
-  bool do_ = true;
-};
-
-#define GENERATE_FINALLY(ClassName, type, action)      \
-class ClassName : public Finally {                     \
- public:                                               \
-  inline ClassName(type value) : field_(value) {}      \
-  inline ~ClassName() {                                \
-    if (finalize()) {                                  \
-      type value = field_;                             \
-      action;                                          \
-    }                                                  \
-  }                                                    \
- private:                                              \
-  type field_;                                         \
-};
-
 } // namespace toit

@@ -138,7 +138,8 @@ PRIMITIVE(spawn) {
   }
 
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + EXTERNAL_BYTE_ARRAY_MALLOC_TAG);
-  uint8* buffer = unvoid_cast<uint8*>(malloc(size));
+  MallocedBuffer malloced_buffer(size);
+  uint8* buffer = malloced_buffer.content();
   if (buffer == null) MALLOC_FAILED;
 
   MessageEncoder encoder(process, buffer);

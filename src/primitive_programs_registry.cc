@@ -31,8 +31,6 @@ PRIMITIVE(next_group_id) {
   return Smi::from(group_id);
 }
 
-GENERATE_FINALLY(MessageEncoderFinally, MessageEncoder&, value.free_copied())
-
 PRIMITIVE(spawn) {
   ARGS(int, offset, int, size, int, group_id, Object, arguments);
 
@@ -53,10 +51,9 @@ PRIMITIVE(spawn) {
     buffer = unvoid_cast<uint8*>(malloc(message_size));
     if (buffer == null) MALLOC_FAILED;
   }
-  AllocationManager free_buffer(null, buffer);
+  AllocationManager free_buffer(process, buffer);
 
   MessageEncoder encoder(process, buffer);
-  MessageEncoderFinally free_encoder(encoder);
   if (!encoder.encode(arguments)) {
     return encoder.create_error_object(process);
   }
@@ -66,15 +63,14 @@ PRIMITIVE(spawn) {
 
   ProcessGroup* process_group = ProcessGroup::create(group_id, program);
   if (!process_group) MALLOC_FAILED;
-  AllocationManager free_process_group(null, process_group);
+  AllocationManager free_process_group(process, process_group);
 
   Object** global_variables = program->global_variables.copy();
   if (!global_variables) MALLOC_FAILED;
-  AllocationManager free_global_variables(null, global_variables);
+  AllocationManager free_global_variables(process, global_variables);
 
   int pid = VM::current()->scheduler()->run_program(program, buffer, process_group, manager.initial_chunk, global_variables);
   if (pid == Scheduler::INVALID_PROCESS_ID) MALLOC_FAILED;
-  free_encoder.dont_auto_free();
   manager.dont_auto_free();
   free_buffer.keep_result();
   free_process_group.keep_result();
