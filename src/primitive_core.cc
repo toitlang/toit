@@ -126,8 +126,8 @@ PRIMITIVE(spawn) {
   ASSERT(method_id != -1);
   Method method(process->program()->bytecodes, method_id);
 
-  InitialMemoryManager manager;
-  if (!manager.allocate()) ALLOCATION_FAILED;
+  InitialMemoryManager initial_memory_manager;
+  if (!initial_memory_manager.allocate()) ALLOCATION_FAILED;
 
   unsigned size = 0;
   { MessageEncoder size_encoder(process, null);
@@ -138,41 +138,29 @@ PRIMITIVE(spawn) {
   }
 
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + EXTERNAL_BYTE_ARRAY_MALLOC_TAG);
-  MallocedBuffer malloced_buffer(size);
-  uint8* buffer = malloced_buffer.content();
+  uint8* buffer = unvoid_cast<uint8*>(malloc(size));
   if (buffer == null) MALLOC_FAILED;
 
-  MessageEncoder encoder(process, buffer);
+  MessageEncoder encoder(process, buffer);  // Takes over buffer.
   if (!encoder.encode(arguments)) {
-    encoder.free_copied();
-    free(buffer);
-    // Should not happen, but just in case, throw "ERROR".
-    OTHER_ERROR;
+    // Probably an allocation error.
+    return encoder.create_error_object(process);
   }
 
-  Object** global_variables = process->program()->global_variables.copy();
-  if (!global_variables) {
-    encoder.free_copied();
-    free(buffer);
-    MALLOC_FAILED;
-  }
+  initial_memory_manager.global_variables = process->program()->global_variables.copy();
+  if (!initial_memory_manager.global_variables) MALLOC_FAILED;
 
   int pid = VM::current()->scheduler()->spawn(
       process->program(),
       process->group(),
       priority,
       method,
-      buffer,
-      manager.initial_chunk,
-      global_variables);
+      &encoder,                  // Takes over encoder.
+      &initial_memory_manager);  // Takes over initial memory.
   if (pid == Scheduler::INVALID_PROCESS_ID) {
-    free(global_variables);
-    encoder.free_copied();
-    free(buffer);
     MALLOC_FAILED;
   }
 
-  manager.dont_auto_free();
   return Smi::from(pid);
 }
 
@@ -1864,46 +1852,28 @@ PRIMITIVE(process_send) {
   uint8* buffer = unvoid_cast<uint8*>(malloc(size));
   if (buffer == null) MALLOC_FAILED;
 
-  MessageEncoder encoder(process, buffer);
+  MessageEncoder encoder(process, buffer);  // Takes over buffer.
   if (!encoder.encode(array)) {
-    encoder.free_copied();
-    free(buffer);
     return encoder.create_error_object(process);
   }
 
-  SystemMessage* message = _new SystemMessage(type, process->group()->id(), process->id(), buffer);
+  // Takes over the buffer and neutralizes the MessageEncoder.
+  SystemMessage* message = _new SystemMessage(type, process->group()->id(), process->id(), &encoder);
+  if (message == null) MALLOC_FAILED;
 
-  if (message == null) {
-    encoder.free_copied();
-    free(buffer);
-    MALLOC_FAILED;
-  }
-
-  // From here on, the destructor of SystemMessage will free the buffer and
-  // potentially the externals too if ownership isn't transferred elsewhere
-  // when the message is received.
+  // One of the calls below takes over the SystemMessage.
   scheduler_err_t result = (process_id >= 0)
       ? VM::current()->scheduler()->send_message(process_id, message)
       : VM::current()->scheduler()->send_system_message(message);
-  if (result == MESSAGE_OK) {
-    // Neuter will disassociate the external memory from the ByteArray, and
-    // also remove the memory from the accounting of the sending process.  The
-    // memory is unaccounted until it is attached to the receiving process.
-    encoder.neuter_externals();
-    // TODO(kasper): Consider doing in-place shrinking of internal, non-constant
-    // byte arrays and strings.
-    return process->program()->null_object();
-  } else {
-    // Sending failed. Free any copied bits, but make sure to not free the externals
-    // that have not been neutered on this path.
-    encoder.free_copied();
-    message->free_data_but_keep_externals();
-    delete message;
+  // TODO(kasper): Consider doing in-place shrinking of internal, non-constant
+  // byte arrays and strings.
+  if (result != MESSAGE_OK) {
+    // TODO: We should reactivate - see https://github.com/toitlang/toit/pull/1107
     // Object* result = process->allocate_string_or_error("MESSAGE_NO_SUCH_RECEIVER");
     // if (Primitive::is_error(result)) return result;
     // return Primitive::mark_as_error(HeapObject::cast(result));
-    return process->program()->null_object();
   }
+  return process->program()->null_object();
 }
 
 Object* MessageEncoder::create_error_object(Process* process) {
@@ -1951,8 +1921,8 @@ PRIMITIVE(task_receive_message) {
   } else if (message_type == MESSAGE_SYSTEM) {
     Array* array = process->object_heap()->allocate_array(4, Smi::from(0));
     if (array == null) ALLOCATION_FAILED;
-    SystemMessage* system = static_cast<SystemMessage*>(message);
-    MessageDecoder decoder(process, system->data());
+    SystemMessage* system_message = static_cast<SystemMessage*>(message);
+    MessageDecoder decoder(process, system_message->data());
 
     Object* decoded = decoder.decode();
     if (decoder.allocation_failed()) {
@@ -1960,11 +1930,11 @@ PRIMITIVE(task_receive_message) {
       ALLOCATION_FAILED;
     }
     decoder.register_external_allocations();
-    system->free_data_but_keep_externals();
+    system_message->free_data_but_keep_externals();
 
-    array->at_put(0, Smi::from(system->type()));
-    array->at_put(1, Smi::from(system->gid()));
-    array->at_put(2, Smi::from(system->pid()));
+    array->at_put(0, Smi::from(system_message->type()));
+    array->at_put(1, Smi::from(system_message->gid()));
+    array->at_put(2, Smi::from(system_message->pid()));
     array->at_put(3, decoded);
     result = array;
   } else {

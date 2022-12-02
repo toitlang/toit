@@ -44,12 +44,12 @@ PRIMITIVE(launch) {
   { HeapTagScope scope(ITERATE_CUSTOM_TAGS + EXTERNAL_BYTE_ARRAY_MALLOC_TAG);
     buffer = unvoid_cast<uint8*>(malloc(size));
     ASSERT(buffer);  // Allocations only fail on devices.
-    MessageEncoder encoder(process, buffer);
-    encoder.encode(arguments);
   }
+  MessageEncoder encoder(process, buffer);  // Takes over buffer.
+  encoder.encode(arguments);
 
-  InitialMemoryManager manager;
-  bool ok = manager.allocate();
+  InitialMemoryManager initial_memory_manager;
+  bool ok = initial_memory_manager.allocate();
   USE(ok);
   ASSERT(ok);
 
@@ -59,18 +59,16 @@ PRIMITIVE(launch) {
   ProcessGroup* process_group = ProcessGroup::create(gid, program, image.memory());
   ASSERT(process_group);  // Allocations only fail on devices.
 
-  Object** global_variables = program->global_variables.copy();
-  ASSERT(global_variables);
+  initial_memory_manager.global_variables = program->global_variables.copy();
+  ASSERT(initial_memory_manager.global_variables);
 
   // We don't use snapshots on devices so we assume malloc/new cannot fail.
   int pid = VM::current()->scheduler()->run_program(
       program,
-      buffer,
+      &encoder,                 // Takes over the encoder.
       process_group,
-      manager.initial_chunk,
-      global_variables);
+      &initial_memory_manager); // Takes over the initial_memory_manager.
   ASSERT(pid != Scheduler::INVALID_PROCESS_ID);
-  manager.dont_auto_free();
   return Smi::from(pid);
 }
 

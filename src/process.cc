@@ -33,7 +33,7 @@ const char* Process::StateName[] = {
   "RUNNING",
 };
 
-Process::Process(Program* program, ProcessRunner* runner, ProcessGroup* group, SystemMessage* termination, Chunk* initial_chunk, Object** global_variables)
+Process::Process(Program* program, ProcessRunner* runner, ProcessGroup* group, SystemMessage* termination, InitialMemoryManager* initial_memory)
     : id_(VM::current()->scheduler()->next_process_id())
     , next_task_id_(0)
     , program_(program)
@@ -43,7 +43,11 @@ Process::Process(Program* program, ProcessRunner* runner, ProcessGroup* group, S
     , program_heap_size_(program ? program->program_heap_size_ : 0)
     , entry_(Method::invalid())
     , spawn_method_(Method::invalid())
-    , object_heap_(program, this, initial_chunk, global_variables)
+    , object_heap_(
+        program,
+        this,
+        initial_memory ? initial_memory->initial_chunk : null,
+        initial_memory ? initial_memory->global_variables : null)
     , last_bytes_allocated_(0)
     , termination_message_(termination)
     , random_seeded_(false)
@@ -52,6 +56,7 @@ Process::Process(Program* program, ProcessRunner* runner, ProcessGroup* group, S
     , signals_(0)
     , state_(IDLE)
     , scheduler_thread_(null) {
+  if (initial_memory) initial_memory->dont_auto_free();
   // We can't start a process from a heap that has not been linearly allocated
   // because we use the address range to distinguish program pointers and
   // process pointers.
@@ -66,19 +71,19 @@ Process::Process(Program* program, ProcessRunner* runner, ProcessGroup* group, S
   ASSERT(group_->lookup(id_) == this);
 }
 
-Process::Process(Program* program, ProcessGroup* group, SystemMessage* termination, Chunk* initial_chunk, Object** global_variables)
-    : Process(program, null, group, termination, initial_chunk, global_variables) {
+Process::Process(Program* program, ProcessGroup* group, SystemMessage* termination, InitialMemoryManager* initial_memory)
+    : Process(program, null, group, termination, initial_memory) {
   entry_ = program->entry_main();
 }
 
-Process::Process(Program* program, ProcessGroup* group, SystemMessage* termination, Method method, Chunk* initial_chunk, Object** global_variables)
-    : Process(program, null, group, termination, initial_chunk, global_variables) {
+Process::Process(Program* program, ProcessGroup* group, SystemMessage* termination, Method method, InitialMemoryManager* initial_memory)
+    : Process(program, null, group, termination, initial_memory) {
   entry_ = program->entry_spawn();
   spawn_method_ = method;
 }
 
 Process::Process(ProcessRunner* runner, ProcessGroup* group, SystemMessage* termination)
-    : Process(null, runner, group, termination, null, null) {}
+    : Process(null, runner, group, termination, null) {}
 
 Process::~Process() {
   state_ = TERMINATING;
@@ -129,11 +134,11 @@ void Process::set_main_arguments(char** argv) {
     size = encoder.size();
   }
 
-  uint8* buffer = unvoid_cast<uint8*>(malloc(size));
+  uint8* buffer = unvoid_cast<uint8*>(malloc(size));  // Never fails on host.
   ASSERT(buffer != null)
-  MessageEncoder encoder(buffer);
+  MessageEncoder encoder(buffer);  // Takes over buffer.
   encoder.encode_arguments(argv, argc);
-  main_arguments_ = buffer;
+  main_arguments_ = encoder.take_buffer();
 }
 
 void Process::set_spawn_arguments(SnapshotBundle system, SnapshotBundle application) {
@@ -144,11 +149,11 @@ void Process::set_spawn_arguments(SnapshotBundle system, SnapshotBundle applicat
     size = encoder.size();
   }
 
-  uint8* buffer = unvoid_cast<uint8*>(malloc(size));
+  uint8* buffer = unvoid_cast<uint8*>(malloc(size));  // Never fails on host.
   ASSERT(buffer != null)
-  MessageEncoder encoder(buffer);
+  MessageEncoder encoder(buffer);  // Takes over buffer.
   encoder.encode_bundles(system, application);
-  spawn_arguments_ = buffer;
+  spawn_arguments_ = encoder.take_buffer();
 }
 #endif
 

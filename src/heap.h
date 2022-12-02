@@ -33,9 +33,11 @@ class ObjectNotifier;
 class InitialMemoryManager {
  public:
   Chunk* initial_chunk = null;
+  Object** global_variables = null;
 
   void dont_auto_free() {
     initial_chunk = null;
+    global_variables = null;
   }
 
   // Allocates initial pages for heap.  Returns success.

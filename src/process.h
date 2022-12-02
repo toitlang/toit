@@ -59,10 +59,10 @@ class Process : public ProcessListFromProcessGroup::Element,
   static const char* StateName[];
 
   // Constructor for an internal process based on Toit code.
-  Process(Program* program, ProcessGroup* group, SystemMessage* termination, Chunk* initial_chunk, Object** global_variables);
+  Process(Program* program, ProcessGroup* group, SystemMessage* termination, InitialMemoryManager* initial_memory);
 
   // Constructor for an internal process spawned from Toit code.
-  Process(Program* program, ProcessGroup* group, SystemMessage* termination, Method method, Chunk* initial_chunk, Object** global_variables);
+  Process(Program* program, ProcessGroup* group, SystemMessage* termination, Method method, InitialMemoryManager* initial_memory);
 
   // Constructor for an external process with no Toit code.
   Process(ProcessRunner* runner, ProcessGroup* group, SystemMessage* termination);
@@ -236,7 +236,7 @@ class Process : public ProcessListFromProcessGroup::Element,
   }
 
  private:
-  Process(Program* program, ProcessRunner* runner, ProcessGroup* group, SystemMessage* termination, Chunk* initial_chunk, Object** global_variables);
+  Process(Program* program, ProcessRunner* runner, ProcessGroup* group, SystemMessage* termination, InitialMemoryManager* initial_memory);
   void _append_message(Message* message);
   void _ensure_random_seeded();
 

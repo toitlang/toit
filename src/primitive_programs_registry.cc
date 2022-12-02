@@ -51,30 +51,26 @@ PRIMITIVE(spawn) {
     buffer = unvoid_cast<uint8*>(malloc(message_size));
     if (buffer == null) MALLOC_FAILED;
   }
-  AllocationManager free_buffer(process, buffer);
 
-  MessageEncoder encoder(process, buffer);
+  MessageEncoder encoder(process, buffer);  // Takes over buffer.
   if (!encoder.encode(arguments)) {
     return encoder.create_error_object(process);
   }
 
-  InitialMemoryManager manager;
-  if (!manager.allocate()) ALLOCATION_FAILED;
+  InitialMemoryManager initial_memory_manager;
+  if (!initial_memory_manager.allocate()) ALLOCATION_FAILED;
 
   ProcessGroup* process_group = ProcessGroup::create(group_id, program);
   if (!process_group) MALLOC_FAILED;
   AllocationManager free_process_group(process, process_group);
 
-  Object** global_variables = program->global_variables.copy();
-  if (!global_variables) MALLOC_FAILED;
-  AllocationManager free_global_variables(process, global_variables);
+  initial_memory_manager.global_variables = program->global_variables.copy();
+  if (!initial_memory_manager.global_variables) MALLOC_FAILED;
 
-  int pid = VM::current()->scheduler()->run_program(program, buffer, process_group, manager.initial_chunk, global_variables);
+  // Takes over the encoder and the initial_memory_manager.
+  int pid = VM::current()->scheduler()->run_program(program, &encoder, process_group, &initial_memory_manager);
   if (pid == Scheduler::INVALID_PROCESS_ID) MALLOC_FAILED;
-  manager.dont_auto_free();
-  free_buffer.keep_result();
   free_process_group.keep_result();
-  free_global_variables.keep_result();
   return Smi::from(pid);
 }
 
