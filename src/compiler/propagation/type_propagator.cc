@@ -15,6 +15,7 @@
 
 #include "type_propagator.h"
 #include "type_primitive.h"
+#include "type_scope.h"
 
 #include "../../top.h"
 #include "../../bytecodes.h"
@@ -72,7 +73,7 @@ TypePropagator::TypePropagator(Program* program)
 }
 
 void TypePropagator::propagate() {
-  TypeStack* stack = new TypeStack(-1, 1, words_per_type());
+  TypeStack stack(-1, 1, words_per_type());
 
   // Initialize the types of pre-initialized global variables.
   for (int i = 0; i < program()->global_variables.length(); i++) {
@@ -81,9 +82,9 @@ void TypePropagator::propagate() {
       Instance* instance = Instance::cast(value);
       if (instance->class_id() == program()->lazy_initializer_class_id()) continue;
     }
-    stack->push(program(), value);
-    global_variable(i)->merge(this, stack->local(0));
-    stack->pop();
+    stack.push(program(), value);
+    global_variable(i)->merge(this, stack.local(0));
+    stack.pop();
   }
 
   // Initialize the fields of Task_. We allocate instances of these in
@@ -94,24 +95,24 @@ void TypePropagator::propagate() {
     if (i == Task::STACK_INDEX) {
       continue;  // Skip the 'stack' field.
     } else if (i == Task::ID_INDEX) {
-      stack->push_smi(program());
+      stack.push_smi(program());
     } else {
-      stack->push_null(program());
+      stack.push_null(program());
     }
-    field(program()->task_class_id()->value(), i)->merge(this, stack->local(0));
-    stack->pop();
+    field(program()->task_class_id()->value(), i)->merge(this, stack.local(0));
+    stack.pop();
   }
 
   // Initialize Exception_.value
   ASSERT(program()->instance_fields_for(program()->exception_class_id()) == 2);
-  stack->push_any();
-  field(program()->exception_class_id()->value(), 0)->merge(this, stack->local(0));
-  stack->pop();
+  stack.push_any();
+  field(program()->exception_class_id()->value(), 0)->merge(this, stack.local(0));
+  stack.pop();
 
   // Initialize Exception_.trace
-  stack->push_byte_array(program(), true);
-  field(program()->task_class_id()->value(), 1)->merge(this, stack->local(0));
-  stack->pop();
+  stack.push_byte_array(program(), true);
+  field(program()->task_class_id()->value(), 1)->merge(this, stack.local(0));
+  stack.pop();
 
   // TODO(kasper): Also teach the system about the type of the argument to
   // __entry__spawn. Only do this if we're actually spawning processes.
@@ -126,14 +127,14 @@ void TypePropagator::propagate() {
     last->propagate();
   }
 
-  stack->push_empty();
-  TypeSet type = stack->get(0);
+  stack.push_empty();
+  TypeSet type = stack.get(0);
 
   std::stringstream out;
   out << "[\n";
   bool first = true;
 
-  sites_.for_each([&](uint8* site, Set<TypeResult*>& results) {
+  sites_.for_each([&](uint8* site, Set<TypeVariable*>& results) {
     type.clear(words_per_type());
     for (auto it = results.begin(); it != results.end(); it++) {
       type.add_all((*it)->type(), words_per_type());
@@ -207,7 +208,7 @@ void TypePropagator::propagate() {
     for (int n = 1; n < arity; n++) {
       type.clear(words_per_type());
       for (unsigned i = 0; i < blocks.size(); i++) {
-        TypeResult* argument = blocks[i]->argument(n);
+        TypeVariable* argument = blocks[i]->argument(n);
         type.add_all(argument->type(), words_per_type());
       }
       std::string type_string = type.as_json(program());
@@ -218,7 +219,6 @@ void TypePropagator::propagate() {
 
   out << "\n]\n";
   printf("%s", out.str().c_str());
-  delete stack;
 }
 
 void TypePropagator::call_method(
@@ -252,7 +252,7 @@ void TypePropagator::call_method(
     // method with the any type for that argument instead. This cuts
     // down on the number of separate analysis at the cost of more
     // mixing of types and worse propagated types.
-    arguments.push_back(ConcreteType());
+    arguments.push_back(ConcreteType::any());
     call_method(caller, stack, site, target, arguments);
     arguments.pop_back();
   } else {
@@ -321,47 +321,43 @@ void TypePropagator::store_field(MethodTemplate* user, TypeStack* stack, int ind
   stack->drop_arguments(1);
 }
 
-void TypePropagator::load_outer(TypeStack* stack, uint8* site, int index) {
-  // We load from outer type stacks by following the 'outer' chain
-  // from the inner blocks out towards the surrounding method.
+void TypePropagator::load_outer(TypeScope* scope, uint8* site, int index) {
+  TypeStack* stack = scope->top();
   TypeSet block = stack->local(0);
-  TypeStack* outer = stack->outer();
-  int n = outer->level() - block.block()->level();
-  for (int i = 0; i < n; i++) outer = outer->outer();
-  TypeSet value = outer->local(index);
+  TypeSet value = scope->load_outer(block, index);
   stack->pop();
   stack->push(value);
   if (value.is_block()) return;
   // We keep track of the types we've seen for outer locals for
-  // this particular access site. We use this to exclusively
+  // this particular access site. We use this merged type exclusively
   // for the output of the type propagator, so we don't actually
   // use the merged type anywhere in the analysis.
-  TypeResult* merged = this->outer(site);
+  TypeVariable* merged = this->outer(site);
   merged->merge(this, value);
 }
 
-TypeResult* TypePropagator::field(unsigned type, int index) {
+TypeVariable* TypePropagator::field(unsigned type, int index) {
   auto it = fields_.find(type);
   if (it != fields_.end()) {
-    std::unordered_map<int, TypeResult*>& map = it->second;
+    std::unordered_map<int, TypeVariable*>& map = it->second;
     auto itx = map.find(index);
     if (itx != map.end()) return itx->second;
-    TypeResult* variable = new TypeResult(words_per_type());
+    TypeVariable* variable = new TypeVariable(words_per_type());
     map[index] = variable;
     return variable;
   }
 
-  std::unordered_map<int, TypeResult*> map;
-  TypeResult* variable = new TypeResult(words_per_type());
+  std::unordered_map<int, TypeVariable*> map;
+  TypeVariable* variable = new TypeVariable(words_per_type());
   map[index] = variable;
   fields_[type] = map;
   return variable;
 }
 
-TypeResult* TypePropagator::global_variable(int index) {
+TypeVariable* TypePropagator::global_variable(int index) {
   auto it = globals_.find(index);
   if (it == globals_.end()) {
-    TypeResult* variable = new TypeResult(words_per_type());
+    TypeVariable* variable = new TypeVariable(words_per_type());
     globals_[index] = variable;
     return variable;
   } else {
@@ -369,10 +365,10 @@ TypeResult* TypePropagator::global_variable(int index) {
   }
 }
 
-TypeResult* TypePropagator::outer(uint8* site) {
+TypeVariable* TypePropagator::outer(uint8* site) {
   auto it = outers_.find(site);
   if (it == outers_.end()) {
-    TypeResult* variable = new TypeResult(words_per_type());
+    TypeVariable* variable = new TypeVariable(words_per_type());
     outers_[site] = variable;
     add_site(site, variable);
     return variable;
@@ -387,7 +383,7 @@ void TypePropagator::enqueue(MethodTemplate* method) {
   enqueued_.push_back(method);
 }
 
-void TypePropagator::add_site(uint8* site, TypeResult* result) {
+void TypePropagator::add_site(uint8* site, TypeVariable* result) {
   sites_[site].insert(result);
 }
 
@@ -421,143 +417,27 @@ MethodTemplate* TypePropagator::instantiate(Method method, std::vector<ConcreteT
   return result;
 }
 
-TypeSet TypeResult::use(TypePropagator* propagator, MethodTemplate* user, uint8* site) {
-  if (site) propagator->add_site(site, this);
-  users_.insert(user);
-  return type();
-}
-
-bool TypeResult::merge(TypePropagator* propagator, TypeSet other) {
-  if (!type_.add_all(other, words_per_type_)) return false;
-  for (auto user : users_) {
-    propagator->enqueue(user);
-  }
-  return true;
-}
-
-bool TypeStack::merge(TypeStack* other) {
-  ASSERT(sp() == other->sp());
-  bool result = false;
-  for (int i = 0; i <= sp_; i++) {
-    TypeSet existing_type = get(i);
-    TypeSet other_type = other->get(i);
-    if (existing_type.is_block()) {
-      ASSERT(existing_type.block() == other_type.block());
-    } else {
-      result = existing_type.add_all(other_type, words_per_type_) || result;
-    }
-  }
-  return result;
-}
-
-TypeSet TypeStack::push_empty() {
-  TypeSet result = get(++sp_);
-  result.clear(words_per_type_);
-  return result;
-}
-
-void TypeStack::push_any() {
-  TypeSet result = get(++sp_);
-  result.fill(words_per_type_);
-}
-
-void TypeStack::push_null(Program* program) {
-  TypeSet type = push_empty();
-  type.add(program->null_class_id()->value());
-}
-
-void TypeStack::push_smi(Program* program) {
-  TypeSet type = push_empty();
-  type.add(program->smi_class_id()->value());
-}
-
-void TypeStack::push_int(Program* program) {
-  TypeSet type = push_empty();
-  type.add(program->smi_class_id()->value());
-  type.add(program->large_integer_class_id()->value());
-}
-
-void TypeStack::push_float(Program* program) {
-  TypeSet type = push_empty();
-  type.add(program->double_class_id()->value());
-}
-
-void TypeStack::push_string(Program* program) {
-  TypeSet type = push_empty();
-  type.add(program->string_class_id()->value());
-}
-
-void TypeStack::push_array(Program* program) {
-  TypeSet type = push_empty();
-  type.add(program->array_class_id()->value());
-}
-
-void TypeStack::push_byte_array(Program* program, bool nullable) {
-  TypeSet type = push_empty();
-  type.add(program->byte_array_class_id()->value());
-  if (nullable) type.add(program->null_class_id()->value());
-}
-
-void TypeStack::push_bool(Program* program) {
-  TypeSet type = push_empty();
-  type.add(program->true_class_id()->value());
-  type.add(program->false_class_id()->value());
-}
-
-void TypeStack::push_instance(unsigned id) {
-  TypeSet type = push_empty();
-  type.add(id);
-}
-
-void TypeStack::push(Program* program, Object* object) {
-  TypeSet type = push_empty();
-  if (is_heap_object(object)) {
-    type.add(HeapObject::cast(object)->class_id()->value());
-  } else {
-    type.add(program->smi_class_id()->value());
-  }
-}
-
-void TypeStack::push_block(BlockTemplate* block) {
-  TypeSet type = push_empty();
-  type.set_block(block);
-}
-
-void TypeStack::seed_arguments(std::vector<ConcreteType> arguments) {
-  for (unsigned i = 0; i < arguments.size(); i++) {
-    TypeSet type = get(i);
-    ConcreteType argument_type = arguments[i];
-    if (argument_type.is_block()) {
-      type.set_block(argument_type.block());
-    } else if (argument_type.is_any()) {
-      type.fill(words_per_type_);
-    } else {
-      type.add(argument_type.id());
-    }
-  }
-}
-
 // TODO(kasper): Poor name.
 struct WorkItem {
   uint8* bcp;
-  TypeStack* stack;
+  TypeScope* scope;
 };
 
 class Worklist {
  public:
-  Worklist(uint8* entry, TypeStack* stack) {
-    stacks_[entry] = stack;
+  Worklist(uint8* entry, TypeScope* scope) {
+    scopes_[entry] = scope;
     unprocessed_.push_back(entry);
   }
 
-  void add(uint8* bcp, TypeStack* stack) {
-    auto it = stacks_.find(bcp);
-    if (it == stacks_.end()) {
-      stacks_[bcp] = stack->copy();
+  void add(uint8* bcp, TypeScope* scope) {
+    auto it = scopes_.find(bcp);
+    if (it == scopes_.end()) {
+      scopes_[bcp] = scope->copy();
       unprocessed_.push_back(bcp);
     } else {
-      TypeStack* existing = it->second;
-      if (existing->merge(stack)) {
+      TypeScope* existing = it->second;
+      if (existing->merge(scope)) {
         unprocessed_.push_back(bcp);
       }
     }
@@ -572,24 +452,24 @@ class Worklist {
     unprocessed_.pop_back();
     return WorkItem {
       .bcp = bcp,
-      .stack = stacks_[bcp]->copy()
+      .scope = scopes_[bcp]->copy()
     };
   }
 
   ~Worklist() {
-    for (auto it = stacks_.begin(); it != stacks_.end(); it++) {
+    for (auto it = scopes_.begin(); it != scopes_.end(); it++) {
       delete it->second;
     }
   }
 
  private:
   std::vector<uint8*> unprocessed_;
-  std::unordered_map<uint8*, TypeStack*> stacks_;
+  std::unordered_map<uint8*, TypeScope*> scopes_;
 };
 
-// Propagates the typestack starting at the given bcp in this method context.
+// Propagates the type stack starting at the given bcp in this method context.
 // The bcp could be the beginning of the method, a block entry, a branch target, ...
-static void process(MethodTemplate* method, uint8* bcp, TypeStack* stack, Worklist& worklist) {
+static void process(MethodTemplate* method, uint8* bcp, TypeScope* scope, Worklist& worklist) {
 #define LABEL(opcode, length, format, print) &&interpret_##opcode,
   static void* dispatch_table[] = {
     BYTECODES(LABEL)
@@ -599,6 +479,7 @@ static void process(MethodTemplate* method, uint8* bcp, TypeStack* stack, Workli
   bool linked = false;
   TypePropagator* propagator = method->propagator();
   Program* program = propagator->program();
+  TypeStack* stack = scope->top();
   DISPATCH(0);
 
   OPCODE_BEGIN_WITH_WIDE(LOAD_LOCAL, stack_offset);
@@ -650,17 +531,14 @@ static void process(MethodTemplate* method, uint8* bcp, TypeStack* stack, Workli
 
   OPCODE_BEGIN(LOAD_OUTER);
     B_ARG1(stack_offset);
-    propagator->load_outer(stack, bcp, stack_offset);
+    propagator->load_outer(scope, bcp, stack_offset);
   OPCODE_END();
 
   OPCODE_BEGIN(STORE_OUTER);
     B_ARG1(stack_offset);
     TypeSet value = stack->local(0);
     TypeSet block = stack->local(1);
-    TypeStack* outer = stack->outer();
-    int n = outer->level() - block.block()->level();
-    for (int i = 0; i < n; i++) outer = outer->outer();
-    outer->set_local(stack_offset, value);
+    scope->store_outer(block, stack_offset, value);
     stack->pop();
     stack->pop();
     stack->push(value);
@@ -742,13 +620,13 @@ static void process(MethodTemplate* method, uint8* bcp, TypeStack* stack, Workli
     // current method template.
     // Note that the method template is for a specific combination of parameter types. As
     // such we evaluate the contained blocks independently too.
-    BlockTemplate* block = method->find_block(inner, stack->level(), bcp);
+    BlockTemplate* block = method->find_block(inner, scope->level(), bcp);
     stack->push_block(block);
-    block->propagate(method, stack);
+    block->propagate(method, scope);
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(LOAD_GLOBAL_VAR, index);
-    TypeResult* variable = propagator->global_variable(index);
+    TypeVariable* variable = propagator->global_variable(index);
     stack->push(variable->use(propagator, method, bcp));
     if (stack->local(0).is_empty(program)) return;
   OPCODE_END();
@@ -766,7 +644,7 @@ static void process(MethodTemplate* method, uint8* bcp, TypeStack* stack, Workli
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(STORE_GLOBAL_VAR, index);
-    TypeResult* variable = propagator->global_variable(index);
+    TypeVariable* variable = propagator->global_variable(index);
     TypeSet top = stack->local(0);
     variable->merge(propagator, top);
   OPCODE_END();
@@ -784,7 +662,7 @@ static void process(MethodTemplate* method, uint8* bcp, TypeStack* stack, Workli
 
   OPCODE_BEGIN(LOAD_OUTER_BLOCK);
     B_ARG1(stack_offset);
-    propagator->load_outer(stack, bcp, stack_offset);
+    propagator->load_outer(scope, bcp, stack_offset);
     TypeSet value = stack->local(0);
     ASSERT(value.is_block());
   OPCODE_END();
@@ -857,10 +735,13 @@ static void process(MethodTemplate* method, uint8* bcp, TypeStack* stack, Workli
     Method target(program->bytecodes, program->dispatch_table[offset]);
     propagator->call_static(method, stack, bcp, target);
     if (stack->local(0).is_empty(program)) return;
-    if (stack->outer()) {
+    if (scope->level() > 0) {
       TypeSet receiver = stack->get(0);
       BlockTemplate* block = receiver.block();
       block->ret(propagator, stack);
+      // TODO(kasper): We may also need to merge on throws and
+      // non-local returns.
+      scope->outer()->merge(scope);
     } else {
       method->ret(propagator, stack);
     }
@@ -957,38 +838,38 @@ static void process(MethodTemplate* method, uint8* bcp, TypeStack* stack, Workli
 
   OPCODE_BEGIN(BRANCH);
     uint8* target = bcp + Utils::read_unaligned_uint16(bcp + 1);
-    worklist.add(target, stack);
+    worklist.add(target, scope);
     return;
   OPCODE_END();
 
   OPCODE_BEGIN(BRANCH_IF_TRUE);
     stack->pop();
     uint8* target = bcp + Utils::read_unaligned_uint16(bcp + 1);
-    worklist.add(target, stack);
+    worklist.add(target, scope);
   OPCODE_END();
 
   OPCODE_BEGIN(BRANCH_IF_FALSE);
     stack->pop();
     uint8* target = bcp + Utils::read_unaligned_uint16(bcp + 1);
-    worklist.add(target, stack);
+    worklist.add(target, scope);
   OPCODE_END();
 
   OPCODE_BEGIN(BRANCH_BACK);
     uint8* target = bcp - Utils::read_unaligned_uint16(bcp + 1);
-    worklist.add(target, stack);
+    worklist.add(target, scope);
     return;
   OPCODE_END();
 
   OPCODE_BEGIN(BRANCH_BACK_IF_TRUE);
     stack->pop();
     uint8* target = bcp - Utils::read_unaligned_uint16(bcp + 1);
-    worklist.add(target, stack);
+    worklist.add(target, scope);
   OPCODE_END();
 
   OPCODE_BEGIN(BRANCH_BACK_IF_FALSE);
     stack->pop();
     uint8* target = bcp - Utils::read_unaligned_uint16(bcp + 1);
-    worklist.add(target, stack);
+    worklist.add(target, scope);
   OPCODE_END();
 
   OPCODE_BEGIN(INVOKE_LAMBDA_TAIL);
@@ -1013,10 +894,13 @@ static void process(MethodTemplate* method, uint8* bcp, TypeStack* stack, Workli
   OPCODE_END();
 
   OPCODE_BEGIN(RETURN);
-    if (stack->outer()) {
+    if (scope->level() > 0) {
       TypeSet receiver = stack->get(0);
       BlockTemplate* block = receiver.block();
       block->ret(propagator, stack);
+      // TODO(kasper): We may also need to merge on throws and
+      // non-local returns.
+      scope->outer()->merge(scope);
     } else {
       method->ret(propagator, stack);
     }
@@ -1025,10 +909,13 @@ static void process(MethodTemplate* method, uint8* bcp, TypeStack* stack, Workli
 
   OPCODE_BEGIN(RETURN_NULL);
     stack->push_null(program);
-    if (stack->outer()) {
+    if (scope->level() > 0) {
       TypeSet receiver = stack->get(0);
       BlockTemplate* block = receiver.block();
       block->ret(propagator, stack);
+      // TODO(kasper): We may also need to merge on throws and
+      // non-local returns.
+      scope->outer()->merge(scope);
     } else {
       method->ret(propagator, stack);
     }
@@ -1144,16 +1031,13 @@ int MethodTemplate::method_id() const {
 }
 
 void MethodTemplate::propagate() {
-  int words_per_type = propagator_->words_per_type();
-  int sp = method_.arity() + Interpreter::FRAME_SIZE;
-  TypeStack* stack = new TypeStack(sp - 1, sp + method_.max_height() + 1, words_per_type);
-  stack->seed_arguments(arguments_);
+  TypeScope* scope = new TypeScope(this);
 
-  Worklist worklist(method_.entry(), stack);
+  Worklist worklist(method_.entry(), scope);
   while (worklist.has_next()) {
     WorkItem item = worklist.next();
-    process(this, item.bcp, item.stack, worklist);
-    delete item.stack;
+    process(this, item.bcp, item.scope, worklist);
+    delete item.scope;
   }
 }
 
@@ -1161,32 +1045,15 @@ int BlockTemplate::method_id(Program* program) const {
   return program->absolute_bci_from_bcp(method_.header_bcp());
 }
 
-void BlockTemplate::propagate(MethodTemplate* context, TypeStack* outer) {
-  int words_per_type = context->propagator()->words_per_type();
-  int sp = method_.arity() + Interpreter::FRAME_SIZE;
-  TypeStack* stack = new TypeStack(sp - 1, sp + method_.max_height() + 1, words_per_type);
-  for (int i = 1; i < method_.arity(); i++) {
-    TypeSet type = argument(i)->type();
-    stack->set(i, type);
-  }
+void BlockTemplate::propagate(MethodTemplate* context, TypeScope* scope) {
+  TypeScope* inner = new TypeScope(this, scope);
 
-  stack->push_block(this);
-  TypeSet receiver = stack->local(0);
-  stack->set(0, receiver);
-  stack->pop();
-
-  TypeStack* outer_copy = outer->copy();
-  stack->set_outer(outer_copy);
-
-  Worklist worklist(method_.entry(), stack);
+  Worklist worklist(method_.entry(), inner);
   while (worklist.has_next()) {
     WorkItem item = worklist.next();
-    process(context, item.bcp, item.stack, worklist);
-    delete item.stack;
+    process(context, item.bcp, item.scope, worklist);
+    delete item.scope;
   }
-
-  outer->merge(outer_copy);
-  delete outer_copy;
 }
 
 } // namespace toit::compiler
