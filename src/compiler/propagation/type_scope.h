@@ -58,7 +58,7 @@ class TypeScope {
 
   // References to other stacks are wrapped, so we can tell the
   // difference between stacks we have already copied and stacks
-  // that need to be lazily copied when needed.
+  // that must to be lazily copied when needed.
   static bool is_copied(uword wrapped) {
     return (wrapped & 1) == 1;
   }
