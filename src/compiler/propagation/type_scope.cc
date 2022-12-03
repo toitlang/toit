@@ -23,12 +23,12 @@ namespace compiler {
 
 TypeScope::TypeScope(MethodTemplate* method)
     : words_per_type_(method->propagator()->words_per_type())
-    , stacks_(static_cast<TypeStack**>(malloc(1 * sizeof(TypeStack*))))
     , level_(0)
-    , outer_(null) {
+    , outer_(null)
+    , wrapped_(static_cast<uword*>(malloc(1 * sizeof(uword)))) {
   int sp = method->method().arity() + Interpreter::FRAME_SIZE;
   TypeStack* stack = new TypeStack(sp - 1, sp + method->method().max_height() + 1, words_per_type_);
-  stacks_[0] = stack;
+  wrapped_[0] = wrap(stack, true);
 
   for (unsigned i = 0; i < method->arity(); i++) {
     TypeSet type = stack->get(i);
@@ -45,17 +45,18 @@ TypeScope::TypeScope(MethodTemplate* method)
 
 TypeScope::TypeScope(BlockTemplate* block, TypeScope* outer)
     : words_per_type_(outer->words_per_type_)
-    , stacks_(static_cast<TypeStack**>(malloc((outer->level() + 2) * sizeof(TypeStack*))))
     , level_(outer->level() + 1)
-    , outer_(outer) {
-  for (int i = 0; i <= outer->level(); i++) {
-    stacks_[i] = outer->stacks_[i]->copy();
+    , outer_(outer)
+    , wrapped_(static_cast<uword*>(malloc((level_ + 1) * sizeof(uword)))) {
+  for (int i = 0; i < level_; i++) {
+    TypeStack* stack = unwrap(outer->wrapped_[i]);
+    wrapped_[i] = wrap(stack, false);
   }
 
   Method method = block->method();
   int sp = method.arity() + Interpreter::FRAME_SIZE;
   TypeStack* stack = new TypeStack(sp - 1, sp + method.max_height() + 1, words_per_type_);
-  stacks_[level_] = stack;
+  wrapped_[level_] = wrap(stack, true);
 
   TypeSet receiver = stack->get(0);
   receiver.set_block(block);
@@ -65,42 +66,60 @@ TypeScope::TypeScope(BlockTemplate* block, TypeScope* outer)
   }
 }
 
-TypeScope::TypeScope(const TypeScope* other)
+TypeScope::TypeScope(const TypeScope* other, bool lazy)
     : words_per_type_(other->words_per_type_)
-    , stacks_(static_cast<TypeStack**>(malloc((other->level() + 1) * sizeof(TypeStack*))))
     , level_(other->level())
-    , outer_(other->outer_) {
-  for (int i = 0; i <= other->level(); i++) {
-    stacks_[i] = other->stacks_[i]->copy();
+    , outer_(other->outer_)
+    , wrapped_(static_cast<uword*>(malloc((level_ + 1) * sizeof(uword)))) {
+  for (int i = 0; i < level_; i++) {
+    TypeStack* stack = other->at(i);
+    wrapped_[i] = lazy ? wrap(stack, false) : wrap(stack->copy(), true);
   }
+  // Always copy the top-most stack frame. It is manipulated
+  // all the time, so we might as well copy it eagerly.
+  wrapped_[level_] = wrap(other->at(level_)->copy(), true);
 }
 
 TypeScope::~TypeScope() {
   for (int i = 0; i <= level_; i++) {
-    delete stacks_[i];
+    uword wrapped = wrapped_[i];
+    if (is_copied(wrapped)) delete unwrap(wrapped);
   }
-  free(stacks_);
+  free(wrapped_);
 }
 
 TypeSet TypeScope::load_outer(TypeSet block, int index) {
-  TypeStack* stack = stacks_[block.block()->level()];
+  TypeStack* stack = at(block.block()->level());
   return stack->local(index);
 }
 
 void TypeScope::store_outer(TypeSet block, int index, TypeSet value) {
-  TypeStack* stack = stacks_[block.block()->level()];
+  int level = block.block()->level();
+  uword wrapped = wrapped_[level];
+  TypeStack* stack = unwrap(wrapped);
+  if (!is_copied(wrapped)) {
+    stack = stack->copy();
+    wrapped_[level] = wrap(stack, true);
+  }
   stack->set_local(index, value);
 }
 
 TypeScope* TypeScope::copy() const {
-  return new TypeScope(this);
+  return new TypeScope(this, false);
+}
+
+TypeScope* TypeScope::copy_lazily() const {
+  return new TypeScope(this, true);
 }
 
 bool TypeScope::merge(const TypeScope* other) {
   ASSERT(level_ <= other->level());
   bool result = false;
   for (int i = 0; i <= level_; i++) {
-    result = stacks_[i]->merge(other->stacks_[i]) || result;
+    TypeStack* stack = at(i);
+    TypeStack* addition = other->at(i);
+    if (stack == addition) continue;
+    result = stack->merge(addition) || result;
   }
   return result;
 }

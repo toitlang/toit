@@ -426,6 +426,9 @@ struct WorkItem {
 class Worklist {
  public:
   Worklist(uint8* entry, TypeScope* scope) {
+    // TODO(kasper): We should be able to get away
+    // with not copying the initial scope at all and
+    // just use it as the working scope.
     scopes_[entry] = scope;
     unprocessed_.push_back(entry);
   }
@@ -433,6 +436,9 @@ class Worklist {
   void add(uint8* bcp, TypeScope* scope) {
     auto it = scopes_.find(bcp);
     if (it == scopes_.end()) {
+      // Make a full copy of the scope so we can use it
+      // to collect merged types from all the different
+      // paths that can end up in here.
       scopes_[bcp] = scope->copy();
       unprocessed_.push_back(bcp);
     } else {
@@ -452,7 +458,8 @@ class Worklist {
     unprocessed_.pop_back();
     return WorkItem {
       .bcp = bcp,
-      .scope = scopes_[bcp]->copy()
+      // The working scope is copied lazily.
+      .scope = scopes_[bcp]->copy_lazily()
     };
   }
 
