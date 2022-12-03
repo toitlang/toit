@@ -136,8 +136,6 @@ class UdpResourceGroup : public ResourceGroup {
 };
 
 void UdpSocket::on_recv(pbuf* p, const ip_addr_t* addr, u16_t port) {
-  Locker locker(LwipEventSource::instance()->mutex());
-
   Packet* packet = _new Packet(p, *addr, port);
   if (packet == null) {
     // TODO(kasper): It would be better to try to pre-allocate the Packet

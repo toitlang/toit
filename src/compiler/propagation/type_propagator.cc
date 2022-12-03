@@ -329,7 +329,7 @@ void TypePropagator::load_outer(TypeScope* scope, uint8* site, int index) {
   stack->push(value);
   if (value.is_block()) return;
   // We keep track of the types we've seen for outer locals for
-  // this particular access site. We use this to exclusively
+  // this particular access site. We use this merged type exclusively
   // for the output of the type propagator, so we don't actually
   // use the merged type anywhere in the analysis.
   TypeVariable* merged = this->outer(site);
