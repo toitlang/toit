@@ -502,10 +502,6 @@ namespace toit {
 #define MODULE_SNAPSHOT(PRIMITIVE)           \
   PRIMITIVE(launch, 4)                       \
 
-#define MODULE_SERIALIZATION(PRIMITIVE)      \
-  PRIMITIVE(serialize, 1)                    \
-  PRIMITIVE(deserialize, 1)                  \
-
 #define MODULE_IMAGE(PRIMITIVE)              \
   PRIMITIVE(current_id, 0)                   \
   PRIMITIVE(writer_create, 2)                \
@@ -690,7 +686,7 @@ namespace toit {
   static const PrimitiveEntry name##_primitive_table[] = {          \
     entries(MODULE_IMPLEMENTATION_ENTRY)                            \
   };                                                                \
-  const PrimitiveEntry* name##primitives_ = name##_primitive_table;
+  const PrimitiveEntry* name##_primitives_ = name##_primitive_table;
 
 // ----------------------------------------------------------------------------
 

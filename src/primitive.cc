@@ -31,9 +31,9 @@ enum {
 #undef MODULE_ENUM
 
 #define MODULE_PRIMITIVES_WEAK(name, entries) \
-  const PrimitiveEntry* name##primitives_ __attribute__((weak));
+  const PrimitiveEntry* name##_primitives_ __attribute__((weak)) = null;
 #define MODULE_PRIMITIVES(name, entries) \
-  primitives_[INDEX_##name] = name##primitives_;
+  primitives_[INDEX_##name] = name##_primitives_;
 
 const PrimitiveEntry* Primitive::primitives_[COUNT];
 

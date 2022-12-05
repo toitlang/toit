@@ -28,8 +28,12 @@
 namespace toit {
 
 // We push the exception and two elements for the unwinding implementation
-// on the stack when we handle stack overflows.
-static const int RESERVED_STACK_FOR_STACK_OVERFLOWS = 3;
+// on the stack when we handle stack overflows. This is in addition to the
+// extra frame information we store for the call, because those are not
+// reflected in the max-height of the called method. We do not keep track
+// of where in a method we might do a call, so we conservatively assume
+// that it will happen at max-height and reserve space for that.
+static const int RESERVED_STACK_FOR_CALLS = Interpreter::FRAME_SIZE + 3;
 
 Interpreter::Interpreter()
     : process_(null)
@@ -57,11 +61,15 @@ Method Interpreter::lookup_entry() {
   return result;
 }
 
-Object** Interpreter::load_stack() {
+Object** Interpreter::load_stack(Method* pending) {
   Stack* stack = process_->task()->stack();
   stack->transfer_to_interpreter(this);
+  if (pending) {
+    *pending = stack->pending_stack_check_method();
+    stack->set_pending_stack_check_method(Method::invalid());
+  }
   Object** watermark = watermark_;
-  Object** new_watermark = limit_ + RESERVED_STACK_FOR_STACK_OVERFLOWS;
+  Object** new_watermark = limit_ + RESERVED_STACK_FOR_CALLS;
   while (true) {
     // Updates watermark unless preemption marker is set (will be set after preemption).
     if (watermark == PREEMPTION_MARKER) break;
@@ -70,10 +78,12 @@ Object** Interpreter::load_stack() {
   return sp_;
 }
 
-void Interpreter::store_stack(Object** sp) {
+void Interpreter::store_stack(Object** sp, Method pending) {
   if (sp != null) sp_ = sp;
   Stack* stack = process_->task()->stack();
   stack->transfer_from_interpreter(this);
+  ASSERT(!stack->pending_stack_check_method().is_valid());
+  if (pending.is_valid()) stack->set_pending_stack_check_method(pending);
   limit_ = null;
   base_ = null;
   sp_ = null;
@@ -223,16 +233,14 @@ Object** Interpreter::handle_stack_overflow(Object** sp, OverflowState* state, M
   int length = process->task()->stack()->length();
   int new_length = -1;
   if (length < Stack::max_length()) {
-    // The max_height doesn't include space for the frame of the next call (if there is one).
-    // For simplicity just always assume that there will be a call at max-height and add `FRAME_SIZE`.
-    int needed_space = method.max_height() + Interpreter::FRAME_SIZE + RESERVED_STACK_FOR_STACK_OVERFLOWS;
+    int needed_space = method.max_height() + RESERVED_STACK_FOR_CALLS;
     int headroom = sp - limit_;
     ASSERT(headroom < needed_space);  // We shouldn't try to grow the stack otherwise.
 
     new_length = Utils::max(length + (length >> 1), (length - headroom) + needed_space);
     new_length = Utils::min(Stack::max_length(), new_length);
     int new_headroom = headroom + (new_length - length);
-    if (new_headroom < needed_space) new_length = -1;  // Growing the stack will not bring us out of the red zone.
+    if (new_headroom < needed_space) new_length = -1;  // Growing the stack will not give us enough space.
   }
 
   if (new_length < 0) {
@@ -263,7 +271,7 @@ Object** Interpreter::handle_stack_overflow(Object** sp, OverflowState* state, M
   }
 
   store_stack(sp);
-  process->task()->stack()->copy_to(new_stack, new_length);
+  process->task()->stack()->copy_to(new_stack);
   process->task()->set_stack(new_stack);
   sp = load_stack();
   *state = OVERFLOW_RESUME;

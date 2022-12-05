@@ -32,8 +32,7 @@ test_finalizers:
 
 test_add_finalizer:
   object := List
-  expect_equals
-    object
+  expect_null
     add_finalizer object null
 
   expect_throw
@@ -45,8 +44,7 @@ test_add_finalizer:
     : add_finalizer 5:: null
 
   byte_array ::= ByteArray 0
-  expect_equals
-    byte_array
+  expect_null
     add_finalizer byte_array:: null
 
   expect_no_throw:

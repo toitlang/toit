@@ -106,6 +106,7 @@ endif()
 
 add_subdirectory(minus_s)
 add_subdirectory(negative)
+add_subdirectory(type_propagation)
 add_subdirectory(optimizations)
 add_subdirectory(ctest)
 add_subdirectory(toitp)

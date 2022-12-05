@@ -59,12 +59,16 @@ PRIMITIVE(launch) {
   ProcessGroup* process_group = ProcessGroup::create(gid, program, image.memory());
   ASSERT(process_group);  // Allocations only fail on devices.
 
+  Object** global_variables = program->global_variables.copy();
+  ASSERT(global_variables);
+
   // We don't use snapshots on devices so we assume malloc/new cannot fail.
   int pid = VM::current()->scheduler()->run_program(
       program,
       buffer,
       process_group,
-      manager.initial_chunk);
+      manager.initial_chunk,
+      global_variables);
   ASSERT(pid != Scheduler::INVALID_PROCESS_ID);
   manager.dont_auto_free();
   return Smi::from(pid);

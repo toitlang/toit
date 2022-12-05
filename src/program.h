@@ -154,6 +154,10 @@ class Program : public FlashAllocation {
     return static_cast<TypeTag>(class_bits & CLASS_TAG_MASK);
   }
 
+  inline int instance_fields_for(Smi* class_id) {
+    return Instance::fields_from_size(instance_size_for(class_id));
+  }
+
   inline int instance_size_for(Smi* class_id) {
     word value = class_id->value();
     if (value < 0) {
@@ -256,7 +260,7 @@ class Program : public FlashAllocation {
 
     Object** copy() {
       Object** copy = unvoid_cast<Object**>(malloc(sizeof(Object*) * length()));
-      ASSERT(copy != null);
+      if (copy == null) return copy;
       memcpy(copy, raw_array(), sizeof(Object*) * length());
       return copy;
     }

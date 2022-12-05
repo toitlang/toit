@@ -118,17 +118,17 @@ InitialMemoryManager::~InitialMemoryManager() {
   }
 }
 
-ObjectHeap::ObjectHeap(Program* program, Process* owner, Chunk* initial_chunk)
+ObjectHeap::ObjectHeap(Program* program, Process* owner, Chunk* initial_chunk, Object** global_variables)
     : program_(program)
     , owner_(owner)
     , two_space_heap_(program, this, initial_chunk)
     , external_memory_(0)
-    , total_external_memory_(0) {
+    , total_external_memory_(0)
+    , global_variables_(global_variables) {
   if (!initial_chunk) return;
   task_ = allocate_task();
   ASSERT(task_);  // Should not fail, because a newly created heap has at least
                   // enough space for the task structure.
-  global_variables_ = program->global_variables.copy();
   // Currently the heap is empty and it has one block allocated for objects.
   update_pending_limit();
   limit_ = pending_limit_;

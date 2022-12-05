@@ -64,7 +64,6 @@ inline bool Interpreter::typecheck_interface(Program* program,
                                              Object* value,
                                              int interface_selector_index,
                                              bool is_nullable) const {
-
   if (is_nullable && value == program->null_object()) return true;
   int selector_offset = program->interface_check_offsets[interface_selector_index];
   Method target = program->find_method(value, selector_offset);
@@ -148,7 +147,7 @@ Method Program::find_method(Object* receiver, int offset) {
         static_assert(FRAME_SIZE == 2, "Unexpected frame size");      \
         PUSH(reinterpret_cast<Object*>(target.entry()));              \
         PUSH(program->frame_marker());                                \
-        store_stack(sp);                                              \
+        store_stack(sp, target);                                      \
         return Result(Result::PREEMPTED);                             \
       case OVERFLOW_EXCEPTION:                                        \
         goto THROW_IMPLEMENTATION;                                    \
@@ -249,16 +248,27 @@ Interpreter::Result Interpreter::run() {
 #undef LABEL
 
   // Interpretation state.
-  preemption_method_header_bcp_ = null;
-  Object** sp = load_stack();
   Program* program = process_->program();
+  preemption_method_header_bcp_ = null;
   uword index__ = 0;
-  static_assert(FRAME_SIZE == 2, "Unexpected frame size");
-  {
+  Object** sp;
+  uint8* bcp;
+
+  { Method pending = Method::invalid();
+    sp = load_stack(&pending);
+    static_assert(FRAME_SIZE == 2, "Unexpected frame size");
     Object* frame_marker = POP();
     ASSERT(frame_marker == program->frame_marker());
+    bcp = reinterpret_cast<uint8*>(POP());
+    // When we are preempted at a call-site, we haven't done the
+    // correct stack overflow check yet. We do the check now,
+    // using the remembered 'pending' target method.
+    // This is also another preemption check so we risk making no
+    // progress if we keep getting preempted.
+    if (pending.is_valid()) CHECK_STACK_OVERFLOW(pending);
   }
-  uint8* bcp = reinterpret_cast<uint8*>(POP());
+
+  // Dispatch to the first bytecode. Here we go!
   DISPATCH(0);
 
   OPCODE_BEGIN_WITH_WIDE(LOAD_LOCAL, stack_offset);
@@ -389,6 +399,10 @@ Interpreter::Result Interpreter::run() {
   OPCODE_END();
 
   OPCODE_BEGIN(LOAD_SMI_U32);
+    PUSH(Smi::from(Utils::read_unaligned_uint32(bcp + 1)));
+  OPCODE_END();
+
+  OPCODE_BEGIN(LOAD_METHOD);
     PUSH(Smi::from(Utils::read_unaligned_uint32(bcp + 1)));
   OPCODE_END();
 
@@ -537,7 +551,7 @@ Interpreter::Result Interpreter::run() {
       // The receiver is still on the stack.
       // Push the absolute bci of the as-check, so that we can find the interface name.
       PUSH(Smi::from(program->absolute_bci_from_bcp(bcp + _length_)));
-      Method target  = program->as_check_failure();
+      Method target = program->as_check_failure();
       CALL_METHOD(target, _length_);
     }
   OPCODE_END();
@@ -1297,7 +1311,7 @@ Interpreter::Result Interpreter::run() {
   OPCODE_END();
 
   OPCODE_BEGIN(INTRINSIC_SMI_REPEAT);
-    DROP(1);  // Drop last result of calling the block (or initial discardable value).
+    DROP1();  // Drop last result of calling the block (or initial discardable value).
     Smi* current = Smi::cast(STACK_AT(0));
     // Load the parameters to Array.do.
     int parameter_offset = 1 + Interpreter::FRAME_SIZE;  // 1 for the `current`.
@@ -1315,14 +1329,14 @@ Interpreter::Result Interpreter::run() {
     // like primitive calls do.
     word current_value = current->value();
     if (current_value >= end->value()) {
-      DROP(1);
+      DROP1();
       // Restore bcp.
       static_assert(FRAME_SIZE == 2, "Unexpected frame size");
       Object* frame_marker = POP();
       ASSERT(frame_marker == program->frame_marker());
       bcp = reinterpret_cast<uint8*>(POP());
       // Discard arguments in callers frame.
-      DROP(1);
+      DROP1();
       ASSERT(!is_stack_empty());
       STACK_AT_PUT(0, program->null_object());
       DISPATCH(0);
@@ -1337,7 +1351,7 @@ Interpreter::Result Interpreter::run() {
   OPCODE_END();
 
   OPCODE_BEGIN(INTRINSIC_ARRAY_DO);
-    DROP(1);  // Drop last result of calling the block (or initial discardable value).
+    DROP1();  // Drop last result of calling the block (or initial discardable value).
     word current = Smi::cast(STACK_AT(0))->value();
     // Load the parameters to Array.do.
     int parameter_offset = 1 + Interpreter::FRAME_SIZE;  // 1 for the `current`.
@@ -1355,7 +1369,7 @@ Interpreter::Result Interpreter::run() {
     // Once we're past the end index, we return from the surrounding method just
     // like primitive calls do.
     if (current >= end->value()) {
-      DROP(1);
+      DROP1();
       // Restore bcp.
       static_assert(FRAME_SIZE == 2, "Unexpected frame size");
       Object* frame_marker = POP();
@@ -1659,7 +1673,7 @@ Object** Interpreter::hash_find(Object** sp, Program* program, Interpreter::Hash
         result = STACK_AT(POSITION);
       }
     }
-    // return result.
+    // Return result.
     DROP(NUMBER_OF_BYTECODE_LOCALS);
     // Restore bcp.
     static_assert(FRAME_SIZE == 2, "Unexpected frame size");
@@ -1771,8 +1785,8 @@ Object** Interpreter::hash_find(Object** sp, Program* program, Interpreter::Hash
         STACK_AT_PUT(STARTING_SLOT, Smi::from(starting_slot));
         STACK_AT_PUT(SLOT_STEP, Smi::from(slot_step));
         STACK_AT_PUT(POSITION, position);
-        Smi* compare_block  = Smi::cast(STACK_AT(parameter_offset + COMPARE));
-        Method compare_target   = Method(program->bytecodes, Smi::cast(*from_block(compare_block))->value());
+        Smi* compare_block = Smi::cast(STACK_AT(parameter_offset + COMPARE));
+        Method compare_target = Method(program->bytecodes, Smi::cast(*from_block(compare_block))->value());
         Object* key = STACK_AT(parameter_offset + KEY);
         PUSH(compare_block);
         PUSH(key);

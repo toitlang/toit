@@ -47,7 +47,7 @@ class InitialMemoryManager {
 
 class ObjectHeap {
  public:
-  ObjectHeap(Program* program, Process* owner, Chunk* initial_chunk);
+  ObjectHeap(Program* program, Process* owner, Chunk* initial_chunk, Object** globals);
   ~ObjectHeap();
 
   // TODO: In the new heap there need not be a max allocation size.
