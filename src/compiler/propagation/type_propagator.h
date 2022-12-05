@@ -153,27 +153,25 @@ class BlockTemplate {
     free(arguments_);
   }
 
+  MethodTemplate* origin() const { return origin_; }
   Method method() const { return method_; }
   int method_id(Program* program) const;
+  int level() const { return level_; }
+  int arity() const { return method_.arity(); }
+  TypeVariable* argument(int index) { return arguments_[index]; }
+  bool is_invoked_from_try_block() const { return is_invoked_from_try_block_; }
 
-  int level() const {
-    return level_;
+  ConcreteType pass_as_argument(TypeScope* scope) {
+    // If we pass a block as an argument inside a try-block, we
+    // conservatively assume that it is going to be invoked.
+    if (scope->is_in_try_block()) invoke_from_try_block();
+    return ConcreteType(this);
   }
 
-  int arity() const {
-    return method_.arity();
+  TypeSet invoke(TypePropagator* propagator, TypeScope* scope, uint8* site) {
+    if (scope->is_in_try_block()) invoke_from_try_block();
+    return result_.use(propagator, scope->method(), site);
   }
-
-  TypeVariable* argument(int index) {
-    return arguments_[index];
-  }
-
-  TypeSet use(TypePropagator* propagator, MethodTemplate* user, uint8* site) {
-    return result_.use(propagator, user, site);
-  }
-
-  bool used_from_linked() const { return used_from_linked_; }
-  void mark_used_from_linked();
 
   void ret(TypePropagator* propagator, TypeStack* stack) {
     TypeSet top = stack->local(0);
@@ -181,7 +179,7 @@ class BlockTemplate {
     stack->pop();
   }
 
-  void propagate(MethodTemplate* context, TypeScope* scope, bool linked);
+  void propagate(TypeScope* scope, bool linked);
 
  private:
   MethodTemplate* const origin_;
@@ -189,7 +187,9 @@ class BlockTemplate {
   const int level_;
   TypeVariable** const arguments_;
   TypeVariable result_;
-  bool used_from_linked_ = false;
+  bool is_invoked_from_try_block_ = false;
+
+  void invoke_from_try_block();
 };
 
 } // namespace toit::compiler

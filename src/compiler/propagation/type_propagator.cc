@@ -234,12 +234,10 @@ void TypePropagator::call_method(
     MethodTemplate* callee = find(target, arguments);
     TypeSet result = callee->call(this, caller, site);
     stack->merge_top(result);
-    if (scope->level() > 0) {
-      // For all we know, the call might throw. We should
-      // propagate more information, so we know that certain
-      // methods never throw.
-      scope->outer()->merge(scope, TypeScope::MERGE_UNWIND);
-    }
+    // For all we know, the call might throw. We should
+    // propagate more information, so we know that certain
+    // methods never throw.
+    scope->throw_maybe();
     return;
   }
 
@@ -251,11 +249,7 @@ void TypePropagator::call_method(
   Program* program = this->program();
   TypeSet type = stack->local(arity - index);
   if (type.is_block()) {
-    BlockTemplate* block = type.block();
-    if (scope->level_linked() >= 0) {
-      block->mark_used_from_linked();
-    }
-    arguments.push_back(ConcreteType(block));
+    arguments.push_back(type.block()->pass_as_argument(scope));
     call_method(caller, scope, site, target, arguments);
     arguments.pop_back();
   } else if (type.size(program) > 5) {
@@ -301,7 +295,7 @@ void TypePropagator::call_virtual(MethodTemplate* caller, TypeScope* scope, uint
         : Method::invalid();
     if (!target.is_valid() || target.selector_offset() != offset) {
       // There is a chance we'll get a lookup error thrown here.
-      scope->outer()->merge(scope, TypeScope::MERGE_UNWIND);
+      scope->throw_maybe();
       continue;
     }
     arguments.push_back(ConcreteType(id));
@@ -494,7 +488,7 @@ class Worklist {
 
 // Propagates the type stack starting at the given bcp in this method context.
 // The bcp could be the beginning of the method, a block entry, a branch target, ...
-static void process(MethodTemplate* method, uint8* bcp, TypeScope* scope, Worklist& worklist) {
+static void process(TypeScope* scope, uint8* bcp, Worklist& worklist) {
 #define LABEL(opcode, length, format, print) &&interpret_##opcode,
   static void* dispatch_table[] = {
     BYTECODES(LABEL)
@@ -502,6 +496,7 @@ static void process(MethodTemplate* method, uint8* bcp, TypeScope* scope, Workli
 #undef LABEL
 
   bool linked = false;
+  MethodTemplate* method = scope->method();
   TypePropagator* propagator = method->propagator();
   Program* program = propagator->program();
   TypeStack* stack = scope->top();
@@ -647,8 +642,12 @@ static void process(MethodTemplate* method, uint8* bcp, TypeScope* scope, Workli
     // such we evaluate the contained blocks independently too.
     BlockTemplate* block = method->find_block(inner, scope->level(), bcp);
     stack->push_block(block);
-    bool linked_inner = bcp[LOAD_BLOCK_METHOD_LENGTH] == LINK;
-    block->propagate(method, scope, block->used_from_linked() || linked_inner);
+    // If the block might be used in a try-block, we need to know
+    // so we can correctly merge the type of outer locals. If we're
+    // not in a try-block, changes to outer locals cannot be seen
+    // when we unwind, but potentially being in a try block changes that.
+    bool is_inner_linked = bcp[LOAD_BLOCK_METHOD_LENGTH] == LINK;
+    block->propagate(scope, is_inner_linked || block->is_invoked_from_try_block());
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(LOAD_GLOBAL_VAR, index);
@@ -712,10 +711,8 @@ static void process(MethodTemplate* method, uint8* bcp, TypeScope* scope, Workli
       stack->pop();
     }
     stack->push_instance(class_index);
-    if (scope->level() > 0) {
-      // Allocating an instance can throw.
-      scope->outer()->merge(scope, TypeScope::MERGE_UNWIND);
-    }
+    // Allocating an instance can throw.
+    scope->throw_maybe();
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(IS_CLASS, encoded);
@@ -734,10 +731,8 @@ static void process(MethodTemplate* method, uint8* bcp, TypeScope* scope, Workli
     int class_index = encoded >> 1;
     bool is_nullable = (encoded & 1) != 0;
     TypeSet top = stack->local(0);
-    if (scope->level() > 0) {
-      // For all we know, doing the 'as' check can throw.
-      scope->outer()->merge(scope, TypeScope::MERGE_UNWIND);
-    }
+    // For all we know, doing the 'as' check can throw.
+    scope->throw_maybe();
     if (!top.remove_typecheck_class(program, class_index, is_nullable)) return;
   OPCODE_END();
 
@@ -745,10 +740,8 @@ static void process(MethodTemplate* method, uint8* bcp, TypeScope* scope, Workli
     int interface_selector_index = encoded >> 1;
     bool is_nullable = (encoded & 1) != 0;
     TypeSet top = stack->local(0);
-    if (scope->level() > 0) {
-      // For all we know, doing the 'as' check can throw.
-      scope->outer()->merge(scope, TypeScope::MERGE_UNWIND);
-    }
+    // For all we know, doing the 'as' check can throw.
+    scope->throw_maybe();
     if (!top.remove_typecheck_interface(program, interface_selector_index, is_nullable)) return;
   OPCODE_END();
 
@@ -758,10 +751,8 @@ static void process(MethodTemplate* method, uint8* bcp, TypeScope* scope, Workli
     bool is_nullable = false;
     int class_index = encoded & 0x1F;
     TypeSet local = stack->local(stack_offset);
-    if (scope->level() > 0) {
-      // For all we know, doing the 'as' check can throw.
-      scope->outer()->merge(scope, TypeScope::MERGE_UNWIND);
-    }
+    // For all we know, doing the 'as' check can throw.
+    scope->throw_maybe();
     if (!local.remove_typecheck_class(program, class_index, is_nullable)) return;
   OPCODE_END();
 
@@ -794,22 +785,20 @@ static void process(MethodTemplate* method, uint8* bcp, TypeScope* scope, Workli
     BlockTemplate* block = receiver.block();
     for (int i = 1; i < block->arity(); i++) {
       TypeSet argument = stack->local(index - (i + 1));
-      // Merge the argument-type.
-      // If the type changed, queues the block's surrounding method.
+      // Merge the argument type. If the type changed, we enqueues
+      // the block's surrounding method because it has used the
+      // argument type variable.
       block->argument(i)->merge(propagator, argument);
     }
     for (int i = 0; i < index; i++) stack->pop();
-    // If the return type of this block changes, enqueue the
+    // If the return type of this block changes, we enqueue the
     // surrounding method again.
-    TypeSet value = block->use(propagator, method, bcp);
-    // ...
-    if (scope->level_linked() >= 0) {
-      block->mark_used_from_linked();
-    }
-    if (scope->level() > 0) {
-      // For all we know, invoking the block can throw.
-      scope->outer()->merge(scope, TypeScope::MERGE_UNWIND);
-    }
+    TypeSet value = block->invoke(propagator, scope, bcp);
+    // For all we know, invoking the block can throw. We can
+    // improve on this by propagating information about which
+    // blocks throw.
+    scope->throw_maybe();
+
     if (value.is_empty(program)) {
       if (!linked) return;
       // We've just invoked a try-block that is guaranteed
@@ -938,9 +927,7 @@ static void process(MethodTemplate* method, uint8* bcp, TypeScope* scope, Workli
   OPCODE_END();
 
   OPCODE_BEGIN(THROW);
-    if (scope->level() > 0) {
-      scope->outer()->merge(scope, TypeScope::MERGE_UNWIND);
-    }
+    scope->throw_maybe();
     return;
   OPCODE_END();
 
@@ -1085,7 +1072,7 @@ void MethodTemplate::propagate() {
   Worklist worklist(method_.entry(), scope);
   while (worklist.has_next()) {
     WorkItem item = worklist.next();
-    process(this, item.bcp, item.scope, worklist);
+    process(item.scope, item.bcp, worklist);
     delete item.scope;
   }
 }
@@ -1094,19 +1081,24 @@ int BlockTemplate::method_id(Program* program) const {
   return program->absolute_bci_from_bcp(method_.header_bcp());
 }
 
-void BlockTemplate::mark_used_from_linked() {
-  if (used_from_linked_) return;
-  used_from_linked_ = true;
+void BlockTemplate::invoke_from_try_block() {
+  if (is_invoked_from_try_block_) return;
+  // If we find that this block may have been invoked from
+  // within a try-block, we re-analyze the surrounding
+  // method, so we can track stores to outer locals that
+  // may be visible because of caught exceptions or
+  // stopped unwinding.
+  is_invoked_from_try_block_ = true;
   origin_->propagator()->enqueue(origin_);
 }
 
-void BlockTemplate::propagate(MethodTemplate* context, TypeScope* scope, bool linked) {
+void BlockTemplate::propagate(TypeScope* scope, bool linked) {
   TypeScope* inner = new TypeScope(this, scope, linked);
 
   Worklist worklist(method_.entry(), inner);
   while (worklist.has_next()) {
     WorkItem item = worklist.next();
-    process(context, item.bcp, item.scope, worklist);
+    process(item.scope, item.bcp, worklist);
     delete item.scope;
   }
 }

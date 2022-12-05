@@ -32,7 +32,9 @@ class TypeScope {
 
   TypeStack* top() const { return unwrap(wrapped_[level_]); }
   int level() const { return level_; }
-  int level_linked() const { return level_linked_; }
+  bool is_in_try_block() const { return level_linked_ >= 0; }
+
+  MethodTemplate* method() const { return method_; }
   TypeScope* outer() const { return outer_; }
 
   TypeStack* at(int n) const {
@@ -43,6 +45,7 @@ class TypeScope {
 
   TypeSet load_outer(TypeSet block, int index);
   void store_outer(TypeSet block, int index, TypeSet value);
+  void throw_maybe();
 
   TypeScope* copy() const;
   TypeScope* copy_lazily() const;
@@ -58,7 +61,16 @@ class TypeScope {
  private:
   const int words_per_type_;
   const int level_;
+
+  // We keep track of the level of the innermost block scope that
+  // is (potentially) linked in as a try-block. When merging types
+  // for unwinding, we do not have to look at scopes nested inside
+  // that because they will be skipped by the unwinding that can
+  // at worst stop at the innermost linked scope.
   const int level_linked_;
+  int level_linked() const { return level_linked_; }
+
+  MethodTemplate* method_;
   TypeScope* const outer_;
   uword* const wrapped_;
 
