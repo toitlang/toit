@@ -47,8 +47,8 @@ class TypePropagator {
   int words_per_type() const { return words_per_type_; }
   void propagate();
 
-  void call_static(MethodTemplate* caller, TypeStack* stack, uint8* site, Method target);
-  void call_virtual(MethodTemplate* caller, TypeStack* stack, uint8* site, int arity, int offset);
+  void call_static(MethodTemplate* caller, TypeScope* scope, uint8* site, Method target);
+  void call_virtual(MethodTemplate* caller, TypeScope* scope, uint8* site, int arity, int offset);
 
   void load_field(MethodTemplate* user, TypeStack* stack, uint8* site, int index);
   void store_field(MethodTemplate* user, TypeStack* stack, int index);
@@ -74,7 +74,7 @@ class TypePropagator {
   std::unordered_map<unsigned, std::unordered_map<int, TypeVariable*>> fields_;
   std::vector<MethodTemplate*> enqueued_;
 
-  void call_method(MethodTemplate* caller, TypeStack* stack, uint8* site, Method target, std::vector<ConcreteType>& arguments);
+  void call_method(MethodTemplate* caller, TypeScope* scope, uint8* site, Method target, std::vector<ConcreteType>& arguments);
 
   MethodTemplate* find(Method target, std::vector<ConcreteType> arguments);
   MethodTemplate* instantiate(Method method, std::vector<ConcreteType> arguments);
@@ -134,8 +134,9 @@ class MethodTemplate {
 
 class BlockTemplate {
  public:
-  BlockTemplate(Method method, int level, int words_per_type)
-      : method_(method)
+  BlockTemplate(MethodTemplate* origin, Method method, int level, int words_per_type)
+      : origin_(origin)
+      , method_(method)
       , level_(level)
       , arguments_(static_cast<TypeVariable**>(malloc(method.arity() * sizeof(TypeVariable*))))
       , result_(words_per_type) {
@@ -152,23 +153,24 @@ class BlockTemplate {
     free(arguments_);
   }
 
+  MethodTemplate* origin() const { return origin_; }
   Method method() const { return method_; }
   int method_id(Program* program) const;
+  int level() const { return level_; }
+  int arity() const { return method_.arity(); }
+  TypeVariable* argument(int index) { return arguments_[index]; }
+  bool is_invoked_from_try_block() const { return is_invoked_from_try_block_; }
 
-  int level() const {
-    return level_;
+  ConcreteType pass_as_argument(TypeScope* scope) {
+    // If we pass a block as an argument inside a try-block, we
+    // conservatively assume that it is going to be invoked.
+    if (scope->is_in_try_block()) invoke_from_try_block();
+    return ConcreteType(this);
   }
 
-  int arity() const {
-    return method_.arity();
-  }
-
-  TypeVariable* argument(int index) {
-    return arguments_[index];
-  }
-
-  TypeSet use(TypePropagator* propagator, MethodTemplate* user, uint8* site) {
-    return result_.use(propagator, user, site);
+  TypeSet invoke(TypePropagator* propagator, TypeScope* scope, uint8* site) {
+    if (scope->is_in_try_block()) invoke_from_try_block();
+    return result_.use(propagator, scope->method(), site);
   }
 
   void ret(TypePropagator* propagator, TypeStack* stack) {
@@ -177,13 +179,17 @@ class BlockTemplate {
     stack->pop();
   }
 
-  void propagate(MethodTemplate* context, TypeScope* scope);
+  void propagate(TypeScope* scope, bool linked);
 
  private:
+  MethodTemplate* const origin_;
   const Method method_;
   const int level_;
   TypeVariable** const arguments_;
   TypeVariable result_;
+  bool is_invoked_from_try_block_ = false;
+
+  void invoke_from_try_block();
 };
 
 } // namespace toit::compiler
