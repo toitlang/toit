@@ -294,6 +294,17 @@ void TypePropagator::call_virtual(MethodTemplate* caller, TypeStack* stack, uint
   stack->drop_arguments(arity);
 }
 
+void TypePropagator::propagate_through_lambda(Method method) {
+  ASSERT(method.is_lambda_method());
+  std::vector<ConcreteType> arguments;
+  // TODO(kasper): Can we at least push an instance of the Lambda class
+  // as the receiver type?
+  for (int i = 0; i < method.arity(); i++) {
+    arguments.push_back(ConcreteType::any());
+  }
+  find(method, arguments);
+}
+
 void TypePropagator::load_field(MethodTemplate* user, TypeStack* stack, uint8* site, int index) {
   TypeSet instance = stack->local(0);
   stack->push_empty();
@@ -620,16 +631,21 @@ static void process(MethodTemplate* method, uint8* bcp, TypeScope* scope, Workli
     stack->push_smi(program);
   OPCODE_END();
 
-  OPCODE_BEGIN(LOAD_BLOCK_METHOD);
+  OPCODE_BEGIN(LOAD_METHOD);
     Method inner = Method(program->bytecodes, Utils::read_unaligned_uint32(bcp + 1));
     // Finds or creates a block-template for the given block.
     // The block's parameters are marked such that a change in their type enqueues this
     // current method template.
     // Note that the method template is for a specific combination of parameter types. As
     // such we evaluate the contained blocks independently too.
-    BlockTemplate* block = method->find_block(inner, scope->level(), bcp);
-    stack->push_block(block);
-    block->propagate(method, scope);
+    if (inner.is_block_method()) {
+      BlockTemplate* block = method->find_block(inner, scope->level(), bcp);
+      stack->push_block(block);
+      block->propagate(method, scope);
+    } else {
+      propagator->propagate_through_lambda(inner);
+      stack->push_smi(program);
+    }
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(LOAD_GLOBAL_VAR, index);
@@ -880,7 +896,10 @@ static void process(MethodTemplate* method, uint8* bcp, TypeScope* scope, Workli
   OPCODE_END();
 
   OPCODE_BEGIN(INVOKE_LAMBDA_TAIL);
-    UNIMPLEMENTED();
+    // TODO(kasper): This can throw if we're passing too few arguments.
+    stack->push_any();
+    method->ret(propagator, stack);
+    return;
   OPCODE_END();
 
   OPCODE_BEGIN(PRIMITIVE);

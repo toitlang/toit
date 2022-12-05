@@ -89,7 +89,7 @@ class Emitter {
   void load_integer(word value);
   void load_n_smis(int n);
   void load_literal(int index);
-  void load_block_method(int offset);
+  void load_method(int offset);
 
   void load_null();
   void load_true() { load_literal(0); }

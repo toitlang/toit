@@ -50,6 +50,8 @@ class TypePropagator {
   void call_static(MethodTemplate* caller, TypeStack* stack, uint8* site, Method target);
   void call_virtual(MethodTemplate* caller, TypeStack* stack, uint8* site, int arity, int offset);
 
+  void propagate_through_lambda(Method method);
+
   void load_field(MethodTemplate* user, TypeStack* stack, uint8* site, int index);
   void store_field(MethodTemplate* user, TypeStack* stack, int index);
 

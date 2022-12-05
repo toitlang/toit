@@ -150,9 +150,9 @@ void Emitter::load_integer(word value) {
   stack_.push(ExpressionStack::OBJECT);
 }
 
-void Emitter::load_block_method(int offset) {
+void Emitter::load_method(int offset) {
   ASSERT(offset >= 0);
-  emit_opcode(LOAD_BLOCK_METHOD);
+  emit_opcode(LOAD_METHOD);
   emit_uint32(offset);
   stack_.push(ExpressionStack::OBJECT);
 }
