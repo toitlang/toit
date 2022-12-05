@@ -312,6 +312,10 @@ void TypePropagator::propagate_through_lambda(Method method) {
   // TODO(kasper): Can we at least push an instance of the Lambda class
   // as the receiver type?
   for (int i = 0; i < method.arity(); i++) {
+    // We're instantiating a lambda instance here, so we don't
+    // know which arguments will be passed to it when it is
+    // invoked. For now, we conservatively assume it can be
+    // anything even though that isn't great.
     arguments.push_back(ConcreteType::any());
   }
   find(method, arguments);
