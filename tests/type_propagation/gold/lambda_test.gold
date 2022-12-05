@@ -1,0 +1,67 @@
+main tests/type_propagation/lambda_test.toit
+  0[053] - invoke static test_simple tests/type_propagation/lambda_test.toit // {*}
+  3[041] - pop 1
+  4[053] - invoke static test_arguments tests/type_propagation/lambda_test.toit // {Null_}
+  7[089] - return null S1 0
+
+test_simple tests/type_propagation/lambda_test.toit
+  0[029] - load [lambda] in test_simple tests/type_propagation/lambda_test.toit
+  5[023] - load smi 0
+  6[022] - load null
+  7[053] - invoke static Array_ <sdk>/core/collections.toit // {LargeArray_|SmallArray_}
+ 10[014] - load local 0
+ 11[004] - store local, pop S1
+ 13[023] - load smi 0
+ 14[053] - invoke static lambda_ <sdk>/core/objects.toit // {Lambda}
+ 17[014] - load local 0
+ 18[058] - invoke virtual call // {*}
+ 22[088] - return S2 0
+
+[lambda] in test_simple tests/type_propagation/lambda_test.toit
+  0[026] - load smi 42
+  2[088] - return S1 0
+
+test_arguments tests/type_propagation/lambda_test.toit
+  0[029] - load [lambda] in test_arguments tests/type_propagation/lambda_test.toit
+  5[023] - load smi 0
+  6[022] - load null
+  7[053] - invoke static Array_ <sdk>/core/collections.toit // {LargeArray_|SmallArray_}
+ 10[014] - load local 0
+ 11[004] - store local, pop S1
+ 13[023] - load smi 0
+ 14[053] - invoke static lambda_ <sdk>/core/objects.toit // {Lambda}
+ 17[026] - load smi 42
+ 19[058] - invoke virtual call // {*}
+ 23[041] - pop 1
+ 24[029] - load [lambda] in test_arguments tests/type_propagation/lambda_test.toit
+ 29[023] - load smi 0
+ 30[022] - load null
+ 31[053] - invoke static Array_ <sdk>/core/collections.toit // {LargeArray_|SmallArray_}
+ 34[014] - load local 0
+ 35[004] - store local, pop S1
+ 37[023] - load smi 0
+ 38[053] - invoke static lambda_ <sdk>/core/objects.toit // {Lambda}
+ 41[026] - load smi 42
+ 43[020] - load literal fisk
+ 45[058] - invoke virtual call // {*}
+ 49[089] - return null S1 0
+
+[lambda] in test_arguments tests/type_propagation/lambda_test.toit
+ - argument 0: {*}
+  0[016] - load local 2
+  1[053] - invoke static id tests/type_propagation/lambda_test.toit // {*}
+  4[088] - return S1 1
+
+[lambda] in test_arguments tests/type_propagation/lambda_test.toit
+ - argument 0: {*}
+ - argument 1: {*}
+  0[017] - load local 3
+  1[053] - invoke static id tests/type_propagation/lambda_test.toit // {*}
+  4[002] - pop, load local S2
+  6[053] - invoke static id tests/type_propagation/lambda_test.toit // {*}
+  9[088] - return S1 2
+
+id tests/type_propagation/lambda_test.toit
+ - argument 0: {*}
+  0[016] - load local 2
+  1[088] - return S1 1

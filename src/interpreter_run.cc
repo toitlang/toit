@@ -402,7 +402,7 @@ Interpreter::Result Interpreter::run() {
     PUSH(Smi::from(Utils::read_unaligned_uint32(bcp + 1)));
   OPCODE_END();
 
-  OPCODE_BEGIN(LOAD_BLOCK_METHOD);
+  OPCODE_BEGIN(LOAD_METHOD);
     PUSH(Smi::from(Utils::read_unaligned_uint32(bcp + 1)));
   OPCODE_END();
 

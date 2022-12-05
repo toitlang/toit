@@ -33,16 +33,18 @@ Worklist::~Worklist() {
 }
 
 void Worklist::add(uint8* bcp, TypeScope* scope) {
-  auto it = scopes_.find(bcp);
-  if (it == scopes_.end()) {
+  auto probe = scopes_.find(bcp);
+  if (probe == scopes_.end()) {
     // Make a full copy of the scope so we can use it
     // to collect merged types from all the different
     // paths that can end up in here.
     scopes_[bcp] = scope->copy();
     unprocessed_.push_back(bcp);
   } else {
-    TypeScope* existing = it->second;
+    TypeScope* existing = probe->second;
     if (existing->merge(scope, TypeScope::MERGE_LOCAL)) {
+      // TODO(kasper): Try to avoid adding this if it is
+      // already in the list of unprocessed items.
       unprocessed_.push_back(bcp);
     }
   }
