@@ -734,9 +734,11 @@ static void process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& workli
     BlockTemplate* block = receiver.block();
     for (int i = 1; i < block->arity(); i++) {
       TypeSet argument = stack->local(index - (i + 1));
-      // Merge the argument type. If the type changed, we enqueues
+      // Merge the argument type. If the type changed, we enqueue
       // the block's surrounding method because it has used the
-      // argument type variable.
+      // argument type variable. We always start at the method,
+      // so we have the full scope available to all blocks when
+      // propagating types through them.
       block->argument(i)->merge(propagator, argument);
     }
     for (int i = 0; i < index; i++) stack->pop();
