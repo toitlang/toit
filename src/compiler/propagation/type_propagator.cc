@@ -306,6 +306,21 @@ void TypePropagator::call_virtual(MethodTemplate* caller, TypeScope* scope, uint
   stack->drop_arguments(arity);
 }
 
+void TypePropagator::propagate_through_lambda(Method method) {
+  ASSERT(method.is_lambda_method());
+  std::vector<ConcreteType> arguments;
+  // TODO(kasper): Can we at least push an instance of the Lambda class
+  // as the receiver type?
+  for (int i = 0; i < method.arity(); i++) {
+    // We're instantiating a lambda instance here, so we don't
+    // know which arguments will be passed to it when it is
+    // invoked. For now, we conservatively assume it can be
+    // anything even though that isn't great.
+    arguments.push_back(ConcreteType::any());
+  }
+  find(method, arguments);
+}
+
 void TypePropagator::load_field(MethodTemplate* user, TypeStack* stack, uint8* site, int index) {
   TypeSet instance = stack->local(0);
   stack->push_empty();
@@ -633,21 +648,26 @@ static void process(TypeScope* scope, uint8* bcp, Worklist& worklist) {
     stack->push_smi(program);
   OPCODE_END();
 
-  OPCODE_BEGIN(LOAD_BLOCK_METHOD);
+  OPCODE_BEGIN(LOAD_METHOD);
     Method inner = Method(program->bytecodes, Utils::read_unaligned_uint32(bcp + 1));
-    // Finds or creates a block-template for the given block.
-    // The block's parameters are marked such that a change in their type enqueues this
-    // current method template.
-    // Note that the method template is for a specific combination of parameter types. As
-    // such we evaluate the contained blocks independently too.
-    BlockTemplate* block = method->find_block(inner, scope->level(), bcp);
-    stack->push_block(block);
-    // If the block might be used in a try-block, we need to know
-    // so we can correctly merge the type of outer locals. If we're
-    // not in a try-block, changes to outer locals cannot be seen
-    // when we unwind, but potentially being in a try block changes that.
-    bool is_inner_linked = bcp[LOAD_BLOCK_METHOD_LENGTH] == LINK;
-    block->propagate(scope, is_inner_linked || block->is_invoked_from_try_block());
+    if (inner.is_block_method()) {
+      // Finds or creates a block-template for the given block.
+      // The block's parameters are marked such that a change in their type enqueues this
+      // current method template.
+      // Note that the method template is for a specific combination of parameter types. As
+      // such we evaluate the contained blocks independently too.
+      BlockTemplate* block = method->find_block(inner, scope->level(), bcp);
+      stack->push_block(block);
+      // If the block might be used in a try-block, we need to know
+      // so we can correctly merge the type of outer locals. If we're
+      // not in a try-block, changes to outer locals cannot be seen
+      // when we unwind, but potentially being in a try block changes that.
+      bool is_inner_linked = bcp[LOAD_METHOD_LENGTH] == LINK;
+      block->propagate(scope, is_inner_linked || block->is_invoked_from_try_block());
+    } else {
+      propagator->propagate_through_lambda(inner);
+      stack->push_smi(program);
+    }
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(LOAD_GLOBAL_VAR, index);
@@ -912,7 +932,10 @@ static void process(TypeScope* scope, uint8* bcp, Worklist& worklist) {
   OPCODE_END();
 
   OPCODE_BEGIN(INVOKE_LAMBDA_TAIL);
-    UNIMPLEMENTED();
+    // TODO(kasper): This can throw if we're passing too few arguments.
+    stack->push_any();
+    method->ret(propagator, stack);
+    return;
   OPCODE_END();
 
   OPCODE_BEGIN(PRIMITIVE);
