@@ -28,9 +28,6 @@ class ConcreteType {
   explicit ConcreteType(unsigned id)
       : data_((id << 1) | 1) {}
 
-  explicit ConcreteType(BlockTemplate* block)
-      : data_(reinterpret_cast<uword>(block)) {}
-
   static ConcreteType any() { return ConcreteType(); }
 
   bool is_block() const {
@@ -60,6 +57,11 @@ class ConcreteType {
   uword data_;
 
   ConcreteType() : data_(ANY) {}
+
+  explicit ConcreteType(BlockTemplate* block)
+      : data_(reinterpret_cast<uword>(block)) {}
+
+  friend class BlockTemplate;
 };
 
 } // namespace toit::compiler

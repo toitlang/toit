@@ -19,8 +19,6 @@ test_invokes:
   invoke 87: invoke it: it
   invoke true: invoke it: it
 
-// TODO(kasper): This currently does not work as expected.
-// This is reflected by the gold file :(
 test_nesting:
   x := null
   invoke:
@@ -28,8 +26,8 @@ test_nesting:
       x = 42
     else:
       x = "horse"
-    id x  // Expect: smi|string
-  id x    // Expect: smi|string
+    id x  // Expect: smi|string|
+  id x    // Expect: smi|string|null
 
   y := null
   invoke:
@@ -53,14 +51,14 @@ test_catch:
   catch:
     x = 80
     throw "woops"
-  id x
+  id x  // Expect: smi|null
 
   y := null
   catch:
     y = "horse"
     maybe_throw
     y = 3.3
-  id y
+  id y  // Expect: string|float|null
 
 maybe_throw:
   if pick: throw "woops"

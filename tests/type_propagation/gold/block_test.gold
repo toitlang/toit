@@ -179,7 +179,7 @@ test_catch tests/type_propagation/block_test.toit
  27[053] - invoke static catch <sdk>/core/exceptions.toit // {*}
  30[041] - pop 1
  31[002] - pop, load local S0
- 33[053] - invoke static id tests/type_propagation/block_test.toit // {Null_}
+ 33[053] - invoke static id tests/type_propagation/block_test.toit // {Null_|SmallInteger_}
  36[041] - pop 1
  37[022] - load null
  38[029] - load [block] in test_catch tests/type_propagation/block_test.toit
@@ -189,7 +189,7 @@ test_catch tests/type_propagation/block_test.toit
  47[053] - invoke static catch <sdk>/core/exceptions.toit // {*}
  50[041] - pop 1
  51[002] - pop, load local S0
- 53[053] - invoke static id tests/type_propagation/block_test.toit // {Null_|float}
+ 53[053] - invoke static id tests/type_propagation/block_test.toit // {String_|Null_|float}
  56[089] - return null S4 0
 
 [block] in test_catch tests/type_propagation/block_test.toit

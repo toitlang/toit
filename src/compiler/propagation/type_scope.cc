@@ -24,13 +24,15 @@ namespace compiler {
 TypeScope::TypeScope(MethodTemplate* method)
     : words_per_type_(method->propagator()->words_per_type())
     , level_(0)
+    , level_linked_(-1)
+    , method_(method)
     , outer_(null)
     , wrapped_(static_cast<uword*>(malloc(1 * sizeof(uword)))) {
   int sp = method->method().arity() + Interpreter::FRAME_SIZE;
   TypeStack* stack = new TypeStack(sp - 1, sp + method->method().max_height() + 1, words_per_type_);
   wrapped_[0] = wrap(stack, true);
 
-  for (unsigned i = 0; i < method->arity(); i++) {
+  for (int i = 0; i < method->arity(); i++) {
     TypeSet type = stack->get(i);
     ConcreteType argument_type = method->argument(i);
     if (argument_type.is_block()) {
@@ -43,9 +45,11 @@ TypeScope::TypeScope(MethodTemplate* method)
   }
 }
 
-TypeScope::TypeScope(BlockTemplate* block, TypeScope* outer)
+TypeScope::TypeScope(BlockTemplate* block, TypeScope* outer, bool linked)
     : words_per_type_(outer->words_per_type_)
     , level_(outer->level() + 1)
+    , level_linked_(linked ? outer->level() : outer->level_linked())
+    , method_(block->origin())
     , outer_(outer)
     , wrapped_(static_cast<uword*>(malloc((level_ + 1) * sizeof(uword)))) {
   for (int i = 0; i < level_; i++) {
@@ -69,7 +73,9 @@ TypeScope::TypeScope(BlockTemplate* block, TypeScope* outer)
 TypeScope::TypeScope(const TypeScope* other, bool lazy)
     : words_per_type_(other->words_per_type_)
     , level_(other->level())
-    , outer_(other->outer_)
+    , level_linked_(other->level_linked())
+    , method_(other->method())
+    , outer_(other->outer())
     , wrapped_(static_cast<uword*>(malloc((level_ + 1) * sizeof(uword)))) {
   for (int i = 0; i < level_; i++) {
     TypeStack* stack = other->at(i);
@@ -104,6 +110,11 @@ void TypeScope::store_outer(TypeSet block, int index, TypeSet value) {
   stack->set_local(index, value);
 }
 
+void TypeScope::throw_maybe() {
+  if (level() == 0) return;
+  outer()->merge(this, TypeScope::MERGE_UNWIND);
+}
+
 TypeScope* TypeScope::copy() const {
   return new TypeScope(this, false);
 }
@@ -112,10 +123,22 @@ TypeScope* TypeScope::copy_lazily() const {
   return new TypeScope(this, true);
 }
 
-bool TypeScope::merge(const TypeScope* other) {
-  ASSERT(level_ <= other->level());
+bool TypeScope::merge(const TypeScope* other, MergeKind kind) {
+  int level_target = -1;
+  switch (kind) {
+    case MERGE_LOCAL:
+      level_target = other->level();
+      break;
+    case MERGE_RETURN:
+      level_target = other->level() - 1;
+      break;
+    case MERGE_UNWIND:
+      level_target = other->level_linked();
+      break;
+  }
+  ASSERT(level_target <= level_);
   bool result = false;
-  for (int i = 0; i <= level_; i++) {
+  for (int i = 0; i <= level_target; i++) {
     TypeStack* stack = at(i);
     TypeStack* addition = other->at(i);
     if (stack == addition) continue;
