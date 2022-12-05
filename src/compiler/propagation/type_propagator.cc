@@ -223,16 +223,23 @@ void TypePropagator::propagate() {
 
 void TypePropagator::call_method(
     MethodTemplate* caller,
-    TypeStack* stack,
+    TypeScope* scope,
     uint8* site,
     Method target,
     std::vector<ConcreteType>& arguments) {
+  TypeStack* stack = scope->top();
   int arity = target.arity();
   int index = arguments.size();
   if (index == arity) {
     MethodTemplate* callee = find(target, arguments);
     TypeSet result = callee->call(this, caller, site);
     stack->merge_top(result);
+    if (scope->level() > 0) {
+      // For all we know, the call might throw. We should
+      // propagate more information, so we know that certain
+      // methods never throw.
+      scope->outer()->merge(scope, TypeScope::MERGE_UNWIND);
+    }
     return;
   }
 
@@ -244,8 +251,12 @@ void TypePropagator::call_method(
   Program* program = this->program();
   TypeSet type = stack->local(arity - index);
   if (type.is_block()) {
-    arguments.push_back(ConcreteType(type.block()));
-    call_method(caller, stack, site, target, arguments);
+    BlockTemplate* block = type.block();
+    if (scope->level_linked() >= 0) {
+      block->mark_used_from_linked();
+    }
+    arguments.push_back(ConcreteType(block));
+    call_method(caller, scope, site, target, arguments);
     arguments.pop_back();
   } else if (type.size(program) > 5) {
     // If one of the arguments is megamorphic, we analyze the target
@@ -253,26 +264,28 @@ void TypePropagator::call_method(
     // down on the number of separate analysis at the cost of more
     // mixing of types and worse propagated types.
     arguments.push_back(ConcreteType::any());
-    call_method(caller, stack, site, target, arguments);
+    call_method(caller, scope, site, target, arguments);
     arguments.pop_back();
   } else {
     for (int id = 0; id < program->class_bits.length(); id++) {
       if (!type.contains(id)) continue;
       arguments.push_back(ConcreteType(id));
-      call_method(caller, stack, site, target, arguments);
+      call_method(caller, scope, site, target, arguments);
       arguments.pop_back();
     }
   }
 }
 
-void TypePropagator::call_static(MethodTemplate* caller, TypeStack* stack, uint8* site, Method target) {
+void TypePropagator::call_static(MethodTemplate* caller, TypeScope* scope, uint8* site, Method target) {
+  TypeStack* stack = scope->top();
   std::vector<ConcreteType> arguments;
   stack->push_empty();
-  call_method(caller, stack, site, target, arguments);
+  call_method(caller, scope, site, target, arguments);
   stack->drop_arguments(target.arity());
 }
 
-void TypePropagator::call_virtual(MethodTemplate* caller, TypeStack* stack, uint8* site, int arity, int offset) {
+void TypePropagator::call_virtual(MethodTemplate* caller, TypeScope* scope, uint8* site, int arity, int offset) {
+  TypeStack* stack = scope->top();
   TypeSet receiver = stack->local(arity - 1);
 
   std::vector<ConcreteType> arguments;
@@ -283,11 +296,16 @@ void TypePropagator::call_virtual(MethodTemplate* caller, TypeStack* stack, uint
     if (!receiver.contains(id)) continue;
     int entry_index = id + offset;
     int entry_id = program->dispatch_table[entry_index];
-    if (entry_id == -1) continue;
-    Method target(program->bytecodes, entry_id);
-    if (target.selector_offset() != offset) continue;
+    Method target = (entry_id >= 0)
+        ? Method(program->bytecodes, entry_id)
+        : Method::invalid();
+    if (!target.is_valid() || target.selector_offset() != offset) {
+      // There is a chance we'll get a lookup error thrown here.
+      scope->outer()->merge(scope, TypeScope::MERGE_UNWIND);
+      continue;
+    }
     arguments.push_back(ConcreteType(id));
-    call_method(caller, stack, site, target, arguments);
+    call_method(caller, scope, site, target, arguments);
     arguments.pop_back();
   }
 
@@ -443,7 +461,7 @@ class Worklist {
       unprocessed_.push_back(bcp);
     } else {
       TypeScope* existing = it->second;
-      if (existing->merge(scope)) {
+      if (existing->merge(scope, TypeScope::MERGE_LOCAL)) {
         unprocessed_.push_back(bcp);
       }
     }
@@ -629,7 +647,8 @@ static void process(MethodTemplate* method, uint8* bcp, TypeScope* scope, Workli
     // such we evaluate the contained blocks independently too.
     BlockTemplate* block = method->find_block(inner, scope->level(), bcp);
     stack->push_block(block);
-    block->propagate(method, scope);
+    bool linked_inner = bcp[LOAD_BLOCK_METHOD_LENGTH] == LINK;
+    block->propagate(method, scope, block->used_from_linked() || linked_inner);
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(LOAD_GLOBAL_VAR, index);
@@ -646,7 +665,7 @@ static void process(MethodTemplate* method, uint8* bcp, TypeScope* scope, Workli
     Instance* initializer = Instance::cast(program->global_variables.at(index));
     int method_id = Smi::cast(initializer->at(0))->value();
     Method target(program->bytecodes, method_id);
-    propagator->call_static(method, stack, bcp, target);
+    propagator->call_static(method, scope, bcp, target);
     if (stack->local(0).is_empty(program)) return;
   OPCODE_END();
 
@@ -693,6 +712,10 @@ static void process(MethodTemplate* method, uint8* bcp, TypeScope* scope, Workli
       stack->pop();
     }
     stack->push_instance(class_index);
+    if (scope->level() > 0) {
+      // Allocating an instance can throw.
+      scope->outer()->merge(scope, TypeScope::MERGE_UNWIND);
+    }
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(IS_CLASS, encoded);
@@ -711,6 +734,10 @@ static void process(MethodTemplate* method, uint8* bcp, TypeScope* scope, Workli
     int class_index = encoded >> 1;
     bool is_nullable = (encoded & 1) != 0;
     TypeSet top = stack->local(0);
+    if (scope->level() > 0) {
+      // For all we know, doing the 'as' check can throw.
+      scope->outer()->merge(scope, TypeScope::MERGE_UNWIND);
+    }
     if (!top.remove_typecheck_class(program, class_index, is_nullable)) return;
   OPCODE_END();
 
@@ -718,6 +745,10 @@ static void process(MethodTemplate* method, uint8* bcp, TypeScope* scope, Workli
     int interface_selector_index = encoded >> 1;
     bool is_nullable = (encoded & 1) != 0;
     TypeSet top = stack->local(0);
+    if (scope->level() > 0) {
+      // For all we know, doing the 'as' check can throw.
+      scope->outer()->merge(scope, TypeScope::MERGE_UNWIND);
+    }
     if (!top.remove_typecheck_interface(program, interface_selector_index, is_nullable)) return;
   OPCODE_END();
 
@@ -727,28 +758,30 @@ static void process(MethodTemplate* method, uint8* bcp, TypeScope* scope, Workli
     bool is_nullable = false;
     int class_index = encoded & 0x1F;
     TypeSet local = stack->local(stack_offset);
+    if (scope->level() > 0) {
+      // For all we know, doing the 'as' check can throw.
+      scope->outer()->merge(scope, TypeScope::MERGE_UNWIND);
+    }
     if (!local.remove_typecheck_class(program, class_index, is_nullable)) return;
   OPCODE_END();
 
   OPCODE_BEGIN(INVOKE_STATIC);
     S_ARG1(offset);
     Method target(program->bytecodes, program->dispatch_table[offset]);
-    propagator->call_static(method, stack, bcp, target);
+    propagator->call_static(method, scope, bcp, target);
     if (stack->local(0).is_empty(program)) return;
   OPCODE_END();
 
   OPCODE_BEGIN(INVOKE_STATIC_TAIL);
     S_ARG1(offset);
     Method target(program->bytecodes, program->dispatch_table[offset]);
-    propagator->call_static(method, stack, bcp, target);
+    propagator->call_static(method, scope, bcp, target);
     if (stack->local(0).is_empty(program)) return;
     if (scope->level() > 0) {
       TypeSet receiver = stack->get(0);
       BlockTemplate* block = receiver.block();
       block->ret(propagator, stack);
-      // TODO(kasper): We may also need to merge on throws and
-      // non-local returns.
-      scope->outer()->merge(scope);
+      scope->outer()->merge(scope, TypeScope::MERGE_RETURN);
     } else {
       method->ret(propagator, stack);
     }
@@ -766,9 +799,17 @@ static void process(MethodTemplate* method, uint8* bcp, TypeScope* scope, Workli
       block->argument(i)->merge(propagator, argument);
     }
     for (int i = 0; i < index; i++) stack->pop();
-    // If the return type of this block changes, enqueue the surrounding
-    // method again.
+    // If the return type of this block changes, enqueue the
+    // surrounding method again.
     TypeSet value = block->use(propagator, method, bcp);
+    // ...
+    if (scope->level_linked() >= 0) {
+      block->mark_used_from_linked();
+    }
+    if (scope->level() > 0) {
+      // For all we know, invoking the block can throw.
+      scope->outer()->merge(scope, TypeScope::MERGE_UNWIND);
+    }
     if (value.is_empty(program)) {
       if (!linked) return;
       // We've just invoked a try-block that is guaranteed
@@ -793,26 +834,26 @@ static void process(MethodTemplate* method, uint8* bcp, TypeScope* scope, Workli
 
   OPCODE_BEGIN_WITH_WIDE(INVOKE_VIRTUAL, arity);
     int offset = Utils::read_unaligned_uint16(bcp + 2);
-    propagator->call_virtual(method, stack, bcp, arity + 1, offset);
+    propagator->call_virtual(method, scope, bcp, arity + 1, offset);
     if (stack->local(0).is_empty(program)) return;
   OPCODE_END();
 
   OPCODE_BEGIN(INVOKE_VIRTUAL_GET);
     int offset = Utils::read_unaligned_uint16(bcp + 1);
-    propagator->call_virtual(method, stack, bcp, 1, offset);
+    propagator->call_virtual(method, scope, bcp, 1, offset);
     if (stack->local(0).is_empty(program)) return;
   OPCODE_END();
 
   OPCODE_BEGIN(INVOKE_VIRTUAL_SET);
     int offset = Utils::read_unaligned_uint16(bcp + 1);
-    propagator->call_virtual(method, stack, bcp, 2, offset);
+    propagator->call_virtual(method, scope, bcp, 2, offset);
     if (stack->local(0).is_empty(program)) return;
   OPCODE_END();
 
 #define INVOKE_VIRTUAL_BINARY(opcode)                         \
   OPCODE_BEGIN(opcode);                                       \
     int offset = program->invoke_bytecode_offset(opcode);     \
-    propagator->call_virtual(method, stack, bcp, 2, offset);  \
+    propagator->call_virtual(method, scope, bcp, 2, offset);  \
     if (stack->local(0).is_empty(program)) return;            \
   OPCODE_END();
 
@@ -840,7 +881,7 @@ static void process(MethodTemplate* method, uint8* bcp, TypeScope* scope, Workli
 
   OPCODE_BEGIN(INVOKE_AT_PUT);
     int offset = program->invoke_bytecode_offset(INVOKE_AT_PUT);
-    propagator->call_virtual(method, stack, bcp, 3, offset);
+    propagator->call_virtual(method, scope, bcp, 3, offset);
   OPCODE_END();
 
   OPCODE_BEGIN(BRANCH);
@@ -897,6 +938,9 @@ static void process(MethodTemplate* method, uint8* bcp, TypeScope* scope, Workli
   OPCODE_END();
 
   OPCODE_BEGIN(THROW);
+    if (scope->level() > 0) {
+      scope->outer()->merge(scope, TypeScope::MERGE_UNWIND);
+    }
     return;
   OPCODE_END();
 
@@ -905,9 +949,7 @@ static void process(MethodTemplate* method, uint8* bcp, TypeScope* scope, Workli
       TypeSet receiver = stack->get(0);
       BlockTemplate* block = receiver.block();
       block->ret(propagator, stack);
-      // TODO(kasper): We may also need to merge on throws and
-      // non-local returns.
-      scope->outer()->merge(scope);
+      scope->outer()->merge(scope, TypeScope::MERGE_RETURN);
     } else {
       method->ret(propagator, stack);
     }
@@ -920,9 +962,7 @@ static void process(MethodTemplate* method, uint8* bcp, TypeScope* scope, Workli
       TypeSet receiver = stack->get(0);
       BlockTemplate* block = receiver.block();
       block->ret(propagator, stack);
-      // TODO(kasper): We may also need to merge on throws and
-      // non-local returns.
-      scope->outer()->merge(scope);
+      scope->outer()->merge(scope, TypeScope::MERGE_RETURN);
     } else {
       method->ret(propagator, stack);
     }
@@ -932,12 +972,14 @@ static void process(MethodTemplate* method, uint8* bcp, TypeScope* scope, Workli
   OPCODE_BEGIN(NON_LOCAL_RETURN);
     stack->pop();  // Pop block.
     method->ret(propagator, stack);
+    scope->outer()->merge(scope, TypeScope::MERGE_UNWIND);
     return;
   OPCODE_END();
 
   OPCODE_BEGIN(NON_LOCAL_RETURN_WIDE);
     stack->pop();  // Pop block.
     method->ret(propagator, stack);
+    scope->outer()->merge(scope, TypeScope::MERGE_UNWIND);
     return;
   OPCODE_END();
 
@@ -1008,7 +1050,7 @@ static void process(MethodTemplate* method, uint8* bcp, TypeScope* scope, Workli
 BlockTemplate* MethodTemplate::find_block(Method method, int level, uint8* site) {
   auto it = blocks_.find(site);
   if (it == blocks_.end()) {
-    BlockTemplate* block = new BlockTemplate(method, level, propagator_->words_per_type());
+    BlockTemplate* block = new BlockTemplate(this, method, level, propagator_->words_per_type());
     for (int i = 1; i < method.arity(); i++) {
       block->argument(i)->use(propagator_, this, null);
     }
@@ -1052,8 +1094,14 @@ int BlockTemplate::method_id(Program* program) const {
   return program->absolute_bci_from_bcp(method_.header_bcp());
 }
 
-void BlockTemplate::propagate(MethodTemplate* context, TypeScope* scope) {
-  TypeScope* inner = new TypeScope(this, scope);
+void BlockTemplate::mark_used_from_linked() {
+  if (used_from_linked_) return;
+  used_from_linked_ = true;
+  origin_->propagator()->enqueue(origin_);
+}
+
+void BlockTemplate::propagate(MethodTemplate* context, TypeScope* scope, bool linked) {
+  TypeScope* inner = new TypeScope(this, scope, linked);
 
   Worklist worklist(method_.entry(), inner);
   while (worklist.has_next()) {

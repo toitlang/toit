@@ -47,8 +47,8 @@ class TypePropagator {
   int words_per_type() const { return words_per_type_; }
   void propagate();
 
-  void call_static(MethodTemplate* caller, TypeStack* stack, uint8* site, Method target);
-  void call_virtual(MethodTemplate* caller, TypeStack* stack, uint8* site, int arity, int offset);
+  void call_static(MethodTemplate* caller, TypeScope* scope, uint8* site, Method target);
+  void call_virtual(MethodTemplate* caller, TypeScope* scope, uint8* site, int arity, int offset);
 
   void load_field(MethodTemplate* user, TypeStack* stack, uint8* site, int index);
   void store_field(MethodTemplate* user, TypeStack* stack, int index);
@@ -74,7 +74,7 @@ class TypePropagator {
   std::unordered_map<unsigned, std::unordered_map<int, TypeVariable*>> fields_;
   std::vector<MethodTemplate*> enqueued_;
 
-  void call_method(MethodTemplate* caller, TypeStack* stack, uint8* site, Method target, std::vector<ConcreteType>& arguments);
+  void call_method(MethodTemplate* caller, TypeScope* scope, uint8* site, Method target, std::vector<ConcreteType>& arguments);
 
   MethodTemplate* find(Method target, std::vector<ConcreteType> arguments);
   MethodTemplate* instantiate(Method method, std::vector<ConcreteType> arguments);
@@ -134,8 +134,9 @@ class MethodTemplate {
 
 class BlockTemplate {
  public:
-  BlockTemplate(Method method, int level, int words_per_type)
-      : method_(method)
+  BlockTemplate(MethodTemplate* origin, Method method, int level, int words_per_type)
+      : origin_(origin)
+      , method_(method)
       , level_(level)
       , arguments_(static_cast<TypeVariable**>(malloc(method.arity() * sizeof(TypeVariable*))))
       , result_(words_per_type) {
@@ -171,19 +172,24 @@ class BlockTemplate {
     return result_.use(propagator, user, site);
   }
 
+  bool used_from_linked() const { return used_from_linked_; }
+  void mark_used_from_linked();
+
   void ret(TypePropagator* propagator, TypeStack* stack) {
     TypeSet top = stack->local(0);
     result_.merge(propagator, top);
     stack->pop();
   }
 
-  void propagate(MethodTemplate* context, TypeScope* scope);
+  void propagate(MethodTemplate* context, TypeScope* scope, bool linked);
 
  private:
+  MethodTemplate* const origin_;
   const Method method_;
   const int level_;
   TypeVariable** const arguments_;
   TypeVariable result_;
+  bool used_from_linked_ = false;
 };
 
 } // namespace toit::compiler

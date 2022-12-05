@@ -27,11 +27,12 @@ class MethodTemplate;
 class TypeScope {
  public:
   explicit TypeScope(MethodTemplate* method);
-  TypeScope(BlockTemplate* block, TypeScope* outer);
+  TypeScope(BlockTemplate* block, TypeScope* outer, bool linked);
   ~TypeScope();
 
   TypeStack* top() const { return unwrap(wrapped_[level_]); }
   int level() const { return level_; }
+  int level_linked() const { return level_linked_; }
   TypeScope* outer() const { return outer_; }
 
   TypeStack* at(int n) const {
@@ -46,11 +47,18 @@ class TypeScope {
   TypeScope* copy() const;
   TypeScope* copy_lazily() const;
 
-  bool merge(const TypeScope* other);
+  enum MergeKind {
+    MERGE_LOCAL,
+    MERGE_RETURN,
+    MERGE_UNWIND
+  };
+
+  bool merge(const TypeScope* other, MergeKind kind);
 
  private:
   const int words_per_type_;
   const int level_;
+  const int level_linked_;
   TypeScope* const outer_;
   uword* const wrapped_;
 

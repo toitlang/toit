@@ -24,6 +24,7 @@ namespace compiler {
 TypeScope::TypeScope(MethodTemplate* method)
     : words_per_type_(method->propagator()->words_per_type())
     , level_(0)
+    , level_linked_(-1)
     , outer_(null)
     , wrapped_(static_cast<uword*>(malloc(1 * sizeof(uword)))) {
   int sp = method->method().arity() + Interpreter::FRAME_SIZE;
@@ -43,9 +44,10 @@ TypeScope::TypeScope(MethodTemplate* method)
   }
 }
 
-TypeScope::TypeScope(BlockTemplate* block, TypeScope* outer)
+TypeScope::TypeScope(BlockTemplate* block, TypeScope* outer, bool linked)
     : words_per_type_(outer->words_per_type_)
     , level_(outer->level() + 1)
+    , level_linked_(linked ? outer->level() : outer->level_linked())
     , outer_(outer)
     , wrapped_(static_cast<uword*>(malloc((level_ + 1) * sizeof(uword)))) {
   for (int i = 0; i < level_; i++) {
@@ -69,6 +71,7 @@ TypeScope::TypeScope(BlockTemplate* block, TypeScope* outer)
 TypeScope::TypeScope(const TypeScope* other, bool lazy)
     : words_per_type_(other->words_per_type_)
     , level_(other->level())
+    , level_linked_(other->level_linked())
     , outer_(other->outer_)
     , wrapped_(static_cast<uword*>(malloc((level_ + 1) * sizeof(uword)))) {
   for (int i = 0; i < level_; i++) {
@@ -112,10 +115,23 @@ TypeScope* TypeScope::copy_lazily() const {
   return new TypeScope(this, true);
 }
 
-bool TypeScope::merge(const TypeScope* other) {
-  ASSERT(level_ <= other->level());
+bool TypeScope::merge(const TypeScope* other, MergeKind kind) {
+  int level_target;
+  switch (kind) {
+    case MERGE_LOCAL:
+      level_target = other->level();
+      break;
+    case MERGE_RETURN:
+      level_target = other->level() - 1;
+      break;
+    case MERGE_UNWIND:
+      level_target = other->level_linked();
+      if (level_target < 0) return false;
+      break;
+  }
+  ASSERT(level_target <= level_);
   bool result = false;
-  for (int i = 0; i <= level_; i++) {
+  for (int i = 0; i <= level_target; i++) {
     TypeStack* stack = at(i);
     TypeStack* addition = other->at(i);
     if (stack == addition) continue;
