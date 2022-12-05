@@ -242,14 +242,14 @@ pick tests/type_propagation/block_test.toit
  11[088] - return S1 0
 
 invoke tests/type_propagation/block_test.toit
- - argument 0: {}
+ - argument 0: [block]
   0[016] - load local 2
   1[055] - invoke block S1 // {String_|Null_|True_|float|SmallInteger_}
   3[088] - return S1 1
 
 invoke tests/type_propagation/block_test.toit
  - argument 0: {String_|True_|SmallInteger_}
- - argument 1: {}
+ - argument 1: [block]
   0[016] - load local 2
   1[018] - load local 4
   2[055] - invoke block S2 // {String_|True_|SmallInteger_}

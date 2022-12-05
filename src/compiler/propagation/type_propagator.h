@@ -20,6 +20,7 @@
 #include "type_stack.h"
 #include "type_variable.h"
 #include "type_scope.h"
+#include "worklist.h"
 
 #include "../map.h"
 #include "../set.h"
@@ -181,7 +182,7 @@ class BlockTemplate {
     stack->pop();
   }
 
-  void propagate(TypeScope* scope, bool linked);
+  void propagate(TypeScope* scope, std::vector<Worklist*>& worklists, bool linked);
 
  private:
   MethodTemplate* const origin_;
