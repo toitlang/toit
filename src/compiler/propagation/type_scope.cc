@@ -70,9 +70,9 @@ TypeScope::TypeScope(BlockTemplate* block, TypeScope* outer, bool linked)
   }
 }
 
-TypeScope::TypeScope(const TypeScope* other, bool lazy)
+TypeScope::TypeScope(const TypeScope* other, int level, bool lazy)
     : words_per_type_(other->words_per_type_)
-    , level_(other->level())
+    , level_(level)
     , level_linked_(other->level_linked())
     , method_(other->method())
     , outer_(other->outer())
@@ -116,11 +116,12 @@ void TypeScope::throw_maybe() {
 }
 
 TypeScope* TypeScope::copy() const {
-  return new TypeScope(this, false);
+  return new TypeScope(this, level_, false);
 }
 
-TypeScope* TypeScope::copy_lazily() const {
-  return new TypeScope(this, true);
+TypeScope* TypeScope::copy_lazily(int level) const {
+  if (level < 0) level = level_;
+  return new TypeScope(this, level, true);
 }
 
 bool TypeScope::merge(const TypeScope* other, MergeKind kind) {

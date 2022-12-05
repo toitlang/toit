@@ -170,15 +170,18 @@ void TypePropagator::propagate() {
 
     int arity = method->arity();
     for (int n = 0; n < arity; n++) {
+      bool is_block = false;
       type.clear(words_per_type());
       for (unsigned i = 0; i < templates.size(); i++) {
         ConcreteType argument_type = templates[i]->argument(n);
         if (argument_type.is_block()) {
-          break;
+          if (!is_block) type.set_block(argument_type.block());
+          is_block = true;
         } else if (argument_type.is_any()) {
+          ASSERT(!is_block);
           type.add_any(program());
-          break;
         } else {
+          ASSERT(!is_block);
           type.add(argument_type.id());
         }
       }
@@ -429,66 +432,9 @@ MethodTemplate* TypePropagator::instantiate(Method method, std::vector<ConcreteT
   return result;
 }
 
-// TODO(kasper): Poor name.
-struct WorkItem {
-  uint8* bcp;
-  TypeScope* scope;
-};
-
-class Worklist {
- public:
-  Worklist(uint8* entry, TypeScope* scope) {
-    // TODO(kasper): We should be able to get away
-    // with not copying the initial scope at all and
-    // just use it as the working scope.
-    scopes_[entry] = scope;
-    unprocessed_.push_back(entry);
-  }
-
-  void add(uint8* bcp, TypeScope* scope) {
-    auto it = scopes_.find(bcp);
-    if (it == scopes_.end()) {
-      // Make a full copy of the scope so we can use it
-      // to collect merged types from all the different
-      // paths that can end up in here.
-      scopes_[bcp] = scope->copy();
-      unprocessed_.push_back(bcp);
-    } else {
-      TypeScope* existing = it->second;
-      if (existing->merge(scope, TypeScope::MERGE_LOCAL)) {
-        unprocessed_.push_back(bcp);
-      }
-    }
-  }
-
-  bool has_next() const {
-    return !unprocessed_.empty();
-  }
-
-  WorkItem next() {
-    uint8* bcp = unprocessed_.back();
-    unprocessed_.pop_back();
-    return WorkItem {
-      .bcp = bcp,
-      // The working scope is copied lazily.
-      .scope = scopes_[bcp]->copy_lazily()
-    };
-  }
-
-  ~Worklist() {
-    for (auto it = scopes_.begin(); it != scopes_.end(); it++) {
-      delete it->second;
-    }
-  }
-
- private:
-  std::vector<uint8*> unprocessed_;
-  std::unordered_map<uint8*, TypeScope*> scopes_;
-};
-
 // Propagates the type stack starting at the given bcp in this method context.
 // The bcp could be the beginning of the method, a block entry, a branch target, ...
-static void process(TypeScope* scope, uint8* bcp, Worklist& worklist) {
+static void process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& worklists) {
 #define LABEL(opcode, length, format, print) &&interpret_##opcode,
   static void* dispatch_table[] = {
     BYTECODES(LABEL)
@@ -647,17 +593,13 @@ static void process(TypeScope* scope, uint8* bcp, Worklist& worklist) {
     // not in a try-block, changes to outer locals cannot be seen
     // when we unwind, but potentially being in a try block changes that.
     bool is_inner_linked = bcp[LOAD_BLOCK_METHOD_LENGTH] == LINK;
-    block->propagate(scope, is_inner_linked || block->is_invoked_from_try_block());
+    block->propagate(scope, worklists, is_inner_linked || block->is_invoked_from_try_block());
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(LOAD_GLOBAL_VAR, index);
     TypeVariable* variable = propagator->global_variable(index);
     stack->push(variable->use(propagator, method, bcp));
     if (stack->local(0).is_empty(program)) return;
-  OPCODE_END();
-
-  OPCODE_BEGIN(LOAD_GLOBAL_VAR_DYNAMIC);
-    UNIMPLEMENTED();
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(LOAD_GLOBAL_VAR_LAZY, index);
@@ -673,16 +615,23 @@ static void process(TypeScope* scope, uint8* bcp, Worklist& worklist) {
     TypeSet top = stack->local(0);
     variable->merge(propagator, top);
   OPCODE_END();
-
-  OPCODE_BEGIN(STORE_GLOBAL_VAR_DYNAMIC);
-    UNIMPLEMENTED();
-  OPCODE_END();
-
   OPCODE_BEGIN(LOAD_BLOCK);
     B_ARG1(index);
     TypeSet block = stack->local(index);
     ASSERT(block.is_block());
     stack->push(block);
+  OPCODE_END();
+
+  OPCODE_BEGIN(LOAD_GLOBAL_VAR_DYNAMIC);
+    UNIMPLEMENTED();
+  OPCODE_END();
+
+  OPCODE_BEGIN(STORE_GLOBAL_VAR_DYNAMIC);
+    UNIMPLEMENTED();
+  OPCODE_END();
+
+  OPCODE_BEGIN(INVOKE_INITIALIZER_TAIL);
+    UNIMPLEMENTED();
   OPCODE_END();
 
   OPCODE_BEGIN(LOAD_OUTER_BLOCK);
@@ -817,10 +766,6 @@ static void process(TypeScope* scope, uint8* bcp, Worklist& worklist) {
     stack->push(value);
   OPCODE_END();
 
-  OPCODE_BEGIN(INVOKE_INITIALIZER_TAIL);
-    UNIMPLEMENTED();
-  OPCODE_END();
-
   OPCODE_BEGIN_WITH_WIDE(INVOKE_VIRTUAL, arity);
     int offset = Utils::read_unaligned_uint16(bcp + 2);
     propagator->call_virtual(method, scope, bcp, arity + 1, offset);
@@ -875,38 +820,38 @@ static void process(TypeScope* scope, uint8* bcp, Worklist& worklist) {
 
   OPCODE_BEGIN(BRANCH);
     uint8* target = bcp + Utils::read_unaligned_uint16(bcp + 1);
-    worklist.add(target, scope);
+    worklists.back()->add(target, scope);
     return;
   OPCODE_END();
 
   OPCODE_BEGIN(BRANCH_IF_TRUE);
     stack->pop();
     uint8* target = bcp + Utils::read_unaligned_uint16(bcp + 1);
-    worklist.add(target, scope);
+    worklists.back()->add(target, scope);
   OPCODE_END();
 
   OPCODE_BEGIN(BRANCH_IF_FALSE);
     stack->pop();
     uint8* target = bcp + Utils::read_unaligned_uint16(bcp + 1);
-    worklist.add(target, scope);
+    worklists.back()->add(target, scope);
   OPCODE_END();
 
   OPCODE_BEGIN(BRANCH_BACK);
     uint8* target = bcp - Utils::read_unaligned_uint16(bcp + 1);
-    worklist.add(target, scope);
+    worklists.back()->add(target, scope);
     return;
   OPCODE_END();
 
   OPCODE_BEGIN(BRANCH_BACK_IF_TRUE);
     stack->pop();
     uint8* target = bcp - Utils::read_unaligned_uint16(bcp + 1);
-    worklist.add(target, scope);
+    worklists.back()->add(target, scope);
   OPCODE_END();
 
   OPCODE_BEGIN(BRANCH_BACK_IF_FALSE);
     stack->pop();
     uint8* target = bcp - Utils::read_unaligned_uint16(bcp + 1);
-    worklist.add(target, scope);
+    worklists.back()->add(target, scope);
   OPCODE_END();
 
   OPCODE_BEGIN(INVOKE_LAMBDA_TAIL);
@@ -971,7 +916,22 @@ static void process(TypeScope* scope, uint8* bcp, Worklist& worklist) {
   OPCODE_END();
 
   OPCODE_BEGIN(NON_LOCAL_BRANCH);
-    UNIMPLEMENTED();
+    // TODO(kasper): We should be able to do better here, because
+    // we're only unwinding to a specific scope level and we may
+    // not be crossing the try-block.
+    scope->outer()->merge(scope, TypeScope::MERGE_UNWIND);
+    // Decode the branch target and enqueue the processing work
+    // in the worklist associated with the target scope.
+    B_ARG1(height_diff);
+    uint32 target_bci = Utils::read_unaligned_uint32(bcp + 2);
+    uint8* target_bcp = program->bcp_from_absolute_bci(target_bci);
+    TypeSet block = stack->local(0);
+    int target_level = block.block()->level();
+    TypeScope* target_scope = scope->copy_lazily(target_level);
+    for (int i = 0; i < height_diff; i++) target_scope->top()->pop();
+    worklists[target_level]->add(target_bcp, target_scope);
+    delete target_scope;
+    return;
   OPCODE_END();
 
   OPCODE_BEGIN(IDENTICAL);
@@ -1069,10 +1029,13 @@ int MethodTemplate::method_id() const {
 void MethodTemplate::propagate() {
   TypeScope* scope = new TypeScope(this);
 
+  std::vector<Worklist*> worklists;
   Worklist worklist(method_.entry(), scope);
+  worklists.push_back(&worklist);
+
   while (worklist.has_next()) {
-    WorkItem item = worklist.next();
-    process(item.scope, item.bcp, worklist);
+    Worklist::Item item = worklist.next();
+    process(item.scope, item.bcp, worklists);
     delete item.scope;
   }
 }
@@ -1092,15 +1055,19 @@ void BlockTemplate::invoke_from_try_block() {
   origin_->propagator()->enqueue(origin_);
 }
 
-void BlockTemplate::propagate(TypeScope* scope, bool linked) {
+void BlockTemplate::propagate(TypeScope* scope, std::vector<Worklist*>& worklists, bool linked) {
   TypeScope* inner = new TypeScope(this, scope, linked);
 
   Worklist worklist(method_.entry(), inner);
+  worklists.push_back(&worklist);
+
   while (worklist.has_next()) {
-    WorkItem item = worklist.next();
-    process(item.scope, item.bcp, worklist);
+    Worklist::Item item = worklist.next();
+    process(item.scope, item.bcp, worklists);
     delete item.scope;
   }
+
+  worklists.pop_back();
 }
 
 } // namespace toit::compiler

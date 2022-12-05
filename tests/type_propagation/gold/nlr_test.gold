@@ -137,7 +137,7 @@ pick tests/type_propagation/nlr_test.toit
  11[088] - return S1 0
 
 invoke tests/type_propagation/nlr_test.toit
- - argument 0: {}
+ - argument 0: [block]
   0[016] - load local 2
   1[055] - invoke block S1 // {Null_}
   3[088] - return S1 1

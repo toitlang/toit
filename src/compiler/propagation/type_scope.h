@@ -48,7 +48,7 @@ class TypeScope {
   void throw_maybe();
 
   TypeScope* copy() const;
-  TypeScope* copy_lazily() const;
+  TypeScope* copy_lazily(int level = -1) const;
 
   enum MergeKind {
     MERGE_LOCAL,
@@ -74,7 +74,7 @@ class TypeScope {
   TypeScope* const outer_;
   uword* const wrapped_;
 
-  TypeScope(const TypeScope* other, bool lazy);
+  TypeScope(const TypeScope* other, int level, bool lazy);
 
   // References to other stacks are wrapped, so we can tell the
   // difference between stacks we have already copied and stacks
