@@ -122,7 +122,7 @@ std::string TypeDatabase::as_json() const {
 void TypeDatabase::add_method(Method method) {
   int position = program_->absolute_bci_from_bcp(method.header_bcp());
   ASSERT(methods_.find(position) == methods_.end());
-  methods_[position] = new TypeStack(-1, method.arity(), words_per_type_);
+  methods_[position] = new TypeStack(method.arity() - 1, method.arity(), words_per_type_);
 }
 
 void TypeDatabase::add_argument(Method method, int n, const TypeSet type) {
