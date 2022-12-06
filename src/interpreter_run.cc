@@ -569,7 +569,7 @@ Interpreter::Result Interpreter::run() {
       PUSH(value);
       // Push the absolute bci of the as-check, so that we can find the interface name.
       PUSH(Smi::from(program->absolute_bci_from_bcp(bcp + AS_LOCAL_LENGTH)));
-      Method target  = program->as_check_failure();
+      Method target = program->as_check_failure();
       CALL_METHOD(target, AS_LOCAL_LENGTH);
     }
   OPCODE_END();

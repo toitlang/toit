@@ -253,5 +253,13 @@ TYPE_PRIMITIVE_ANY(firmware_unmap)
 TYPE_PRIMITIVE_ANY(firmware_mapping_at)
 TYPE_PRIMITIVE_ANY(firmware_mapping_copy)
 
+bool TypePrimitive::uses_entry_task(unsigned module, unsigned index) {
+  return module == 0 && index == (183 - 74);
+}
+
+bool TypePrimitive::uses_entry_spawn(unsigned module, unsigned index) {
+  return module == 0 && index == (171 - 74);
+}
+
 }  // namespace toit::compiler
 }  // namespace toit

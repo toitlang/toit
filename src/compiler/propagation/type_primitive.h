@@ -62,6 +62,9 @@ class TypePrimitive {
     return (table == null) ? null : &table[index];
   }
 
+  static bool uses_entry_task(unsigned module, unsigned index);
+  static bool uses_entry_spawn(unsigned module, unsigned index);
+
  private:
   static const TypePrimitiveEntry* primitives_[];
 };
