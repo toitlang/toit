@@ -88,7 +88,7 @@ class WifiResourceGroup : public ResourceGroup {
 
     err = esp_wifi_start();
     if (err != ESP_OK) return err;
-    
+
     return esp_wifi_connect();
   }
 
@@ -123,7 +123,7 @@ class WifiResourceGroup : public ResourceGroup {
   esp_err_t init_scan(void) {
     esp_err_t err = esp_wifi_set_mode(WIFI_MODE_STA);
     if (err != ESP_OK) return err;
-  
+
     return esp_wifi_start();
   }
 
@@ -138,7 +138,7 @@ class WifiResourceGroup : public ResourceGroup {
       config.scan_time.active.max = period_ms;
       config.scan_time.active.min = period_ms;
     }
-    
+
     return esp_wifi_scan_start(&config, false);
   }
 
@@ -162,8 +162,8 @@ class WifiResourceGroup : public ResourceGroup {
   esp_netif_t* netif_;
   uint32 ip_address_;
 
-  uint32_t on_event_wifi(Resource* resource, word data, uint32 state);
-  uint32_t on_event_ip(Resource* resource, word data, uint32 state);
+  uint32 on_event_wifi(Resource* resource, word data, uint32 state);
+  uint32 on_event_ip(Resource* resource, word data, uint32 state);
 
   void cache_wifi_channel() {
     uint8 primary_channel;
