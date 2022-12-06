@@ -1,0 +1,143 @@
+main tests/type_propagation/nlr_test.toit
+  0[053] - invoke static test_simple tests/type_propagation/nlr_test.toit // {Null_}
+  3[041] - pop 1
+  4[053] - invoke static test_try tests/type_propagation/nlr_test.toit // {Null_}
+  7[089] - return null S1 0
+
+test_simple tests/type_propagation/nlr_test.toit
+  0[053] - invoke static always_return tests/type_propagation/nlr_test.toit // {SmallInteger_}
+  3[041] - pop 1
+  4[053] - invoke static maybe_return tests/type_propagation/nlr_test.toit // {String_|SmallInteger_}
+  7[089] - return null S1 0
+
+test_try tests/type_propagation/nlr_test.toit
+  0[053] - invoke static stop_unwinding tests/type_propagation/nlr_test.toit // {String_|float|SmallInteger_}
+  3[041] - pop 1
+  4[053] - invoke static stop_unwinding_alternative tests/type_propagation/nlr_test.toit // {String_|True_|float|SmallInteger_}
+  7[089] - return null S1 0
+
+always_return tests/type_propagation/nlr_test.toit
+  0[029] - load [block] in always_return tests/type_propagation/nlr_test.toit
+  5[038] - load block 0
+  7[053] - invoke static invoke tests/type_propagation/nlr_test.toit // {}
+ 10[040] - pop 2
+ 12[053] - invoke static unreachable <sdk>/core/exceptions.toit
+ 15[041] - pop 1
+
+[block] in always_return tests/type_propagation/nlr_test.toit
+ - argument 0: [block]
+  0[026] - load smi 42
+  2[017] - load local 3
+  3[090] - non-local return 0
+  5[088] - return S1 1
+
+maybe_return tests/type_propagation/nlr_test.toit
+  0[029] - load [block] in maybe_return tests/type_propagation/nlr_test.toit
+  5[038] - load block 0
+  7[053] - invoke static invoke tests/type_propagation/nlr_test.toit // {Null_}
+ 10[040] - pop 2
+ 12[020] - load literal hest
+ 14[088] - return S1 0
+
+[block] in maybe_return tests/type_propagation/nlr_test.toit
+ - argument 0: [block]
+  0[022] - load null
+  1[053] - invoke static pick tests/type_propagation/nlr_test.toit // {True_|False_}
+  4[082] - branch if false T13
+  7[041] - pop 1
+  8[026] - load smi 42
+ 10[017] - load local 3
+ 11[090] - non-local return 0
+ 13[088] - return S1 1
+
+stop_unwinding tests/type_propagation/nlr_test.toit
+  0[026] - load smi 42
+  2[029] - load [block] in stop_unwinding tests/type_propagation/nlr_test.toit
+  7[094] - link try 0
+  9[038] - load block 4
+ 11[055] - invoke block S1 // {}
+ 13[041] - pop 1
+ 14[095] - unlink try 0
+ 16[018] - load local 4
+ 17[088] - return S6 0
+ 20[096] - unwind
+ 21[089] - return null S2 0
+
+[block] in stop_unwinding tests/type_propagation/nlr_test.toit
+ - argument 0: [block]
+  0[016] - load local 2
+  1[022] - load null
+  2[006] - store outer S1
+  4[002] - pop, load local S2
+  6[020] - load literal 3.2999999999999998224
+  8[006] - store outer S1
+ 10[041] - pop 1
+ 11[029] - load [block] in [block] in stop_unwinding tests/type_propagation/nlr_test.toit
+ 16[038] - load block 0
+ 18[053] - invoke static invoke tests/type_propagation/nlr_test.toit // {}
+ 21[041] - pop 1
+ 22[002] - pop, load local S2
+ 24[020] - load literal Oddball (true/false/null)
+ 26[006] - store outer S1
+ 28[088] - return S1 1
+
+[block] in [block] in stop_unwinding tests/type_propagation/nlr_test.toit
+ - argument 0: [block]
+  0[020] - load literal hest
+  2[017] - load local 3
+  3[005] - load outer S3
+  5[090] - non-local return 16
+  7[088] - return S1 1
+
+stop_unwinding_alternative tests/type_propagation/nlr_test.toit
+  0[026] - load smi 42
+  2[029] - load [block] in stop_unwinding_alternative tests/type_propagation/nlr_test.toit
+  7[094] - link try 0
+  9[038] - load block 4
+ 11[055] - invoke block S1 // {True_}
+ 13[041] - pop 1
+ 14[095] - unlink try 0
+ 16[018] - load local 4
+ 17[088] - return S6 0
+ 20[096] - unwind
+ 21[089] - return null S2 0
+
+[block] in stop_unwinding_alternative tests/type_propagation/nlr_test.toit
+ - argument 0: [block]
+  0[016] - load local 2
+  1[020] - load literal 3.2999999999999998224
+  3[006] - store outer S1
+  5[041] - pop 1
+  6[029] - load [block] in [block] in stop_unwinding_alternative tests/type_propagation/nlr_test.toit
+ 11[038] - load block 0
+ 13[053] - invoke static invoke tests/type_propagation/nlr_test.toit // {Null_}
+ 16[041] - pop 1
+ 17[002] - pop, load local S2
+ 19[020] - load literal Oddball (true/false/null)
+ 21[006] - store outer S1
+ 23[088] - return S1 1
+
+[block] in [block] in stop_unwinding_alternative tests/type_propagation/nlr_test.toit
+ - argument 0: [block]
+  0[022] - load null
+  1[053] - invoke static pick tests/type_propagation/nlr_test.toit // {True_|False_}
+  4[082] - branch if false T15
+  7[041] - pop 1
+  8[020] - load literal hest
+ 10[017] - load local 3
+ 11[005] - load outer S3
+ 13[090] - non-local return 16
+ 15[088] - return S1 1
+
+pick tests/type_propagation/nlr_test.toit
+  0[026] - load smi 100
+  2[053] - invoke static random <sdk>/core/utils.toit // {LargeInteger_|SmallInteger_}
+  5[026] - load smi 50
+  7[063] - invoke lt // {True_|False_}
+  8[088] - return S1 0
+
+invoke tests/type_propagation/nlr_test.toit
+ - argument 0: [block]
+  0[016] - load local 2
+  1[055] - invoke block S1 // {Null_}
+  3[088] - return S1 1

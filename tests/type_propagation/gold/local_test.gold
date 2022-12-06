@@ -195,5 +195,5 @@ pick tests/type_propagation/local_test.toit
   0[026] - load smi 100
   2[053] - invoke static random <sdk>/core/utils.toit // {LargeInteger_|SmallInteger_}
   5[026] - load smi 50
-  7[058] - invoke virtual < // {True_|False_}
- 11[088] - return S1 0
+  7[063] - invoke lt // {True_|False_}
+  8[088] - return S1 0

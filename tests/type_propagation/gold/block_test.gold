@@ -25,9 +25,9 @@ test_simple tests/type_propagation/block_test.toit
   1[017] - load local 3
   2[005] - load outer S1 // {SmallInteger_}
   4[025] - load smi 1
-  5[058] - invoke virtual + // {LargeInteger_|SmallInteger_}
-  9[006] - store outer S1
- 11[088] - return S1 1
+  5[073] - invoke add // {LargeInteger_|SmallInteger_}
+  6[006] - store outer S1
+  8[088] - return S1 1
 
 test_invokes tests/type_propagation/block_test.toit
   0[029] - load [block] in test_invokes tests/type_propagation/block_test.toit
@@ -100,15 +100,15 @@ test_nesting tests/type_propagation/block_test.toit
   8[053] - invoke static invoke tests/type_propagation/block_test.toit // {String_|SmallInteger_}
  11[041] - pop 1
  12[002] - pop, load local S0
- 14[053] - invoke static id tests/type_propagation/block_test.toit // {String_|Null_}
+ 14[053] - invoke static id tests/type_propagation/block_test.toit // {String_|Null_|SmallInteger_}
  17[041] - pop 1
  18[022] - load null
  19[029] - load [block] in test_nesting tests/type_propagation/block_test.toit
  24[038] - load block 0
- 26[053] - invoke static invoke tests/type_propagation/block_test.toit // {float}
+ 26[053] - invoke static invoke tests/type_propagation/block_test.toit // {Null_|True_|float}
  29[041] - pop 1
  30[002] - pop, load local S0
- 32[053] - invoke static id tests/type_propagation/block_test.toit // {Null_|float}
+ 32[053] - invoke static id tests/type_propagation/block_test.toit // {Null_|True_|float}
  35[089] - return null S3 0
 
 [block] in test_nesting tests/type_propagation/block_test.toit
@@ -136,8 +136,8 @@ test_nesting tests/type_propagation/block_test.toit
   7[053] - invoke static invoke tests/type_propagation/block_test.toit // {True_|float}
  10[041] - pop 1
  11[002] - pop, load local S2
- 13[005] - load outer S1 // {float}
- 15[053] - invoke static id tests/type_propagation/block_test.toit // {float}
+ 13[005] - load outer S1 // {Null_|True_|float}
+ 15[053] - invoke static id tests/type_propagation/block_test.toit // {Null_|True_|float}
  18[088] - return S1 1
 
 [block] in [block] in test_nesting tests/type_propagation/block_test.toit
@@ -189,7 +189,7 @@ test_catch tests/type_propagation/block_test.toit
  47[053] - invoke static catch <sdk>/core/exceptions.toit // {*}
  50[041] - pop 1
  51[002] - pop, load local S0
- 53[053] - invoke static id tests/type_propagation/block_test.toit // {Null_|float}
+ 53[053] - invoke static id tests/type_propagation/block_test.toit // {String_|Null_|float}
  56[089] - return null S4 0
 
 [block] in test_catch tests/type_propagation/block_test.toit
@@ -238,18 +238,18 @@ pick tests/type_propagation/block_test.toit
   0[026] - load smi 100
   2[053] - invoke static random <sdk>/core/utils.toit // {LargeInteger_|SmallInteger_}
   5[026] - load smi 50
-  7[058] - invoke virtual < // {True_|False_}
- 11[088] - return S1 0
+  7[063] - invoke lt // {True_|False_}
+  8[088] - return S1 0
 
 invoke tests/type_propagation/block_test.toit
- - argument 0: {}
+ - argument 0: [block]
   0[016] - load local 2
-  1[055] - invoke block S1 // {String_|True_|float|SmallInteger_}
+  1[055] - invoke block S1 // {String_|Null_|True_|float|SmallInteger_}
   3[088] - return S1 1
 
 invoke tests/type_propagation/block_test.toit
  - argument 0: {String_|True_|SmallInteger_}
- - argument 1: {}
+ - argument 1: [block]
   0[016] - load local 2
   1[018] - load local 4
   2[055] - invoke block S2 // {String_|True_|SmallInteger_}

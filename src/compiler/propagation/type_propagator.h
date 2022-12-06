@@ -15,7 +15,12 @@
 
 #pragma once
 
+#include "concrete_type.h"
 #include "type_set.h"
+#include "type_stack.h"
+#include "type_variable.h"
+#include "type_scope.h"
+#include "worklist.h"
 
 #include "../map.h"
 #include "../set.h"
@@ -32,190 +37,8 @@ class Program;
 
 namespace compiler {
 
-class TypePropagator;
 class MethodTemplate;
 class BlockTemplate;
-
-class ConcreteType {
- public:
-  explicit ConcreteType()
-      : data_(ANY) {}
-
-  explicit ConcreteType(unsigned id)
-      : data_((id << 1) | 1) {}
-
-  explicit ConcreteType(BlockTemplate* block)
-      : data_(reinterpret_cast<uword>(block)) {}
-
-  bool is_block() const {
-    return (data_ & 1) == 0;
-  }
-
-  bool is_any() const {
-    return data_ == ANY;
-  }
-
-  bool matches(const ConcreteType& other) const {
-    return data_ == other.data_;
-  }
-
-  unsigned id() const {
-    ASSERT(!is_block());
-    return data_ >> 1;
-  }
-
-  BlockTemplate* block() const {
-    ASSERT(is_block());
-    return reinterpret_cast<BlockTemplate*>(data_);
-  }
-
- private:
-  static const uword ANY = ~0UL;
-  uword data_;
-};
-
-class TypeResult {
- public:
-  explicit TypeResult(int words_per_type)
-      : words_per_type_(words_per_type)
-      , bits_(static_cast<uword*>(malloc(words_per_type * WORD_SIZE)))
-      , type_(bits_) {
-    memset(bits_, 0, words_per_type * WORD_SIZE);
-  }
-
-  ~TypeResult() {
-    free(bits_);
-  }
-
-  TypeSet type() const {
-    return type_;
-  }
-
-  TypeSet use(TypePropagator* propagator, MethodTemplate* user, uint8* site);
-  bool merge(TypePropagator* propagator, TypeSet other);
-
- private:
-  const int words_per_type_;
-  uword* const bits_;
-  TypeSet type_;
-
-  Set<MethodTemplate*> users_;
-};
-
-class TypeStack {
- public:
-  TypeStack(int sp, int size, int words_per_type)
-      : sp_(sp)
-      , size_(size)
-      , words_per_type_(words_per_type)
-      , words_(static_cast<uword*>(malloc(size * words_per_type * WORD_SIZE))) {
-    memset(words_, 0, (sp + 1) * words_per_type * WORD_SIZE);
-  }
-
-  ~TypeStack() {
-    free(words_);
-  }
-
-  int sp() const {
-    return sp_;
-  }
-
-  TypeStack* outer() const {
-    return outer_;
-  }
-
-  void set_outer(TypeStack* outer) {
-    outer_ = outer;
-  }
-
-  int level() const {
-    if (!outer_) return 0;
-    return outer_->level() + 1;
-  }
-
-  TypeSet get(int index) {
-    ASSERT(index >= 0);
-    ASSERT(index <= sp_);
-    ASSERT(index < size_);
-    return TypeSet(&words_[index * words_per_type_]);
-  }
-
-  void set(int index, TypeSet type) {
-    ASSERT(index >= 0);
-    ASSERT(index <= sp_);
-    ASSERT(index < size_);
-    memcpy(&words_[index * words_per_type_], type.bits_, words_per_type_ * WORD_SIZE);
-  }
-
-  TypeSet local(int index) {
-    return get(sp_ - index);
-  }
-
-  void set_local(int index, TypeSet type) {
-    set(sp_ - index, type);
-  }
-
-  void drop_arguments(int arity) {
-    if (arity == 0) return;
-    TypeSet top = local(0);
-    set_local(arity, top);
-    sp_ -= arity;
-  }
-
-  void push(TypeSet type) {
-    sp_++;
-    set_local(0, type);
-  }
-
-  bool merge_top(TypeSet type) {
-    TypeSet top = local(0);
-    return top.add_all(type, words_per_type_);
-  }
-
-  TypeSet push_empty();
-
-  void push_any();
-  void push_null(Program* program);
-  void push_bool(Program* program);
-  void push_smi(Program* program);
-  void push_int(Program* program);
-  void push_float(Program* program);
-  void push_string(Program* program);
-  void push_array(Program* program);
-  void push_byte_array(Program* program, bool nullable=false);
-  void push_instance(unsigned id);
-  void push(Program* program, Object* object);
-  void push_block(BlockTemplate* block);
-
-  void pop() {
-    sp_--;
-  }
-
-  bool merge(TypeStack* other);
-
-  // TODO(kasper): Poor name.
-  void seed_arguments(std::vector<ConcreteType> arguments);
-
-  TypeStack* copy() {
-    return new TypeStack(this);
-  }
-
- private:
-  int sp_;
-  const int size_;
-  const int words_per_type_;
-  uword* const words_;
-  TypeStack* outer_ = null;
-
-  explicit TypeStack(TypeStack* other)
-      : sp_(other->sp_)
-      , size_(other->size_)
-      , words_per_type_(other->words_per_type_)
-      , words_(static_cast<uword*>(malloc(size_ * words_per_type_ * WORD_SIZE)))
-      , outer_(other->outer_) {
-    memcpy(words_, other->words_, (sp_ + 1) * words_per_type_ * WORD_SIZE);
-  }
-};
 
 class TypePropagator {
  public:
@@ -225,34 +48,36 @@ class TypePropagator {
   int words_per_type() const { return words_per_type_; }
   void propagate();
 
-  void call_static(MethodTemplate* caller, TypeStack* stack, uint8* site, Method target);
-  void call_virtual(MethodTemplate* caller, TypeStack* stack, uint8* site, int arity, int offset);
+  void call_static(MethodTemplate* caller, TypeScope* scope, uint8* site, Method target);
+  void call_virtual(MethodTemplate* caller, TypeScope* scope, uint8* site, int arity, int offset);
+
+  void propagate_through_lambda(Method method);
 
   void load_field(MethodTemplate* user, TypeStack* stack, uint8* site, int index);
   void store_field(MethodTemplate* user, TypeStack* stack, int index);
 
-  void load_outer(TypeStack* stack, uint8* site, int index);
+  void load_outer(TypeScope* stack, uint8* site, int index);
 
-  TypeResult* global_variable(int index);
-  TypeResult* field(unsigned type, int index);
-  TypeResult* outer(uint8* site);
+  TypeVariable* global_variable(int index);
+  TypeVariable* field(unsigned type, int index);
+  TypeVariable* outer(uint8* site);
 
   void enqueue(MethodTemplate* method);
-  void add_site(uint8* site, TypeResult* result);
+  void add_site(uint8* site, TypeVariable* result);
 
  private:
   Program* const program_;
   int words_per_type_;
 
-  Map<uint8*, Set<TypeResult*>> sites_;
+  Map<uint8*, Set<TypeVariable*>> sites_;
 
   std::unordered_map<uint8*, std::vector<MethodTemplate*>> templates_;
-  std::unordered_map<int, TypeResult*> globals_;
-  std::unordered_map<uint8*, TypeResult*> outers_;
-  std::unordered_map<unsigned, std::unordered_map<int, TypeResult*>> fields_;
+  std::unordered_map<int, TypeVariable*> globals_;
+  std::unordered_map<uint8*, TypeVariable*> outers_;
+  std::unordered_map<unsigned, std::unordered_map<int, TypeVariable*>> fields_;
   std::vector<MethodTemplate*> enqueued_;
 
-  void call_method(MethodTemplate* caller, TypeStack* stack, uint8* site, Method target, std::vector<ConcreteType>& arguments);
+  void call_method(MethodTemplate* caller, TypeScope* scope, uint8* site, Method target, std::vector<ConcreteType>& arguments);
 
   MethodTemplate* find(Method target, std::vector<ConcreteType> arguments);
   MethodTemplate* instantiate(Method method, std::vector<ConcreteType> arguments);
@@ -270,7 +95,7 @@ class MethodTemplate {
 
   int arity() const { return arguments_.size(); }
   ConcreteType argument(int index) { return arguments_[index]; }
-
+  Method method() const { return method_; }
   int method_id() const;
 
   bool matches(Method target, std::vector<ConcreteType> arguments) {
@@ -304,7 +129,7 @@ class MethodTemplate {
   TypePropagator* const propagator_;
   const Method method_;
   const std::vector<ConcreteType> arguments_;
-  TypeResult result_;
+  TypeVariable result_;
   bool enqueued_ = false;
 
   std::unordered_map<uint8*, BlockTemplate*> blocks_;
@@ -312,14 +137,15 @@ class MethodTemplate {
 
 class BlockTemplate {
  public:
-  BlockTemplate(Method method, int level, int words_per_type)
-      : method_(method)
+  BlockTemplate(MethodTemplate* origin, Method method, int level, int words_per_type)
+      : origin_(origin)
+      , method_(method)
       , level_(level)
-      , arguments_(static_cast<TypeResult**>(malloc(method.arity() * sizeof(TypeResult*))))
+      , arguments_(static_cast<TypeVariable**>(malloc(method.arity() * sizeof(TypeVariable*))))
       , result_(words_per_type) {
     // TODO(kasper): It is silly that we keep the receiver in here.
     for (int i = 0; i < method_.arity(); i++) {
-      arguments_[i] = new TypeResult(words_per_type);
+      arguments_[i] = new TypeVariable(words_per_type);
     }
   }
 
@@ -330,22 +156,24 @@ class BlockTemplate {
     free(arguments_);
   }
 
+  MethodTemplate* origin() const { return origin_; }
+  Method method() const { return method_; }
   int method_id(Program* program) const;
+  int level() const { return level_; }
+  int arity() const { return method_.arity(); }
+  TypeVariable* argument(int index) { return arguments_[index]; }
+  bool is_invoked_from_try_block() const { return is_invoked_from_try_block_; }
 
-  int level() const {
-    return level_;
+  ConcreteType pass_as_argument(TypeScope* scope) {
+    // If we pass a block as an argument inside a try-block, we
+    // conservatively assume that it is going to be invoked.
+    if (scope->is_in_try_block()) invoke_from_try_block();
+    return ConcreteType(this);
   }
 
-  int arity() const {
-    return method_.arity();
-  }
-
-  TypeResult* argument(int index) {
-    return arguments_[index];
-  }
-
-  TypeSet use(TypePropagator* propagator, MethodTemplate* user, uint8* site) {
-    return result_.use(propagator, user, site);
+  TypeSet invoke(TypePropagator* propagator, TypeScope* scope, uint8* site) {
+    if (scope->is_in_try_block()) invoke_from_try_block();
+    return result_.use(propagator, scope->method(), site);
   }
 
   void ret(TypePropagator* propagator, TypeStack* stack) {
@@ -354,13 +182,17 @@ class BlockTemplate {
     stack->pop();
   }
 
-  void propagate(MethodTemplate* context, TypeStack* outer);
+  void propagate(TypeScope* scope, std::vector<Worklist*>& worklists, bool linked);
 
  private:
+  MethodTemplate* const origin_;
   const Method method_;
   const int level_;
-  TypeResult** const arguments_;
-  TypeResult result_;
+  TypeVariable** const arguments_;
+  TypeVariable result_;
+  bool is_invoked_from_try_block_ = false;
+
+  void invoke_from_try_block();
 };
 
 } // namespace toit::compiler
