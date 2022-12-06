@@ -95,6 +95,7 @@ class TypeStack {
   void push_any();
   void push_null(Program* program);
   void push_bool(Program* program);
+  void push_bool_specific(Program* program, bool value);
   void push_smi(Program* program);
   void push_int(Program* program);
   void push_float(Program* program);

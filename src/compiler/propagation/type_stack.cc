@@ -87,6 +87,15 @@ void TypeStack::push_bool(Program* program) {
   type.add(program->false_class_id()->value());
 }
 
+void TypeStack::push_bool_specific(Program* program, bool value) {
+  TypeSet type = push_empty();
+  if (value) {
+    type.add(program->true_class_id()->value());
+  } else {
+    type.add(program->false_class_id()->value());
+  }
+}
+
 void TypeStack::push_instance(unsigned id) {
   TypeSet type = push_empty();
   type.add(id);

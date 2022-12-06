@@ -65,10 +65,40 @@ namespace compiler {
 #define B_ARG1(name) uint8 name = bcp[1];
 #define S_ARG1(name) uint16 name = Utils::read_unaligned_uint16(bcp + 1);
 
+static const int INITIALIZER_ID_INDEX = 0;
+
 TypePropagator::TypePropagator(Program* program)
     : program_(program)
     , words_per_type_(TypeSet::words_per_type(program)) {
   TypePrimitive::set_up();
+}
+
+void TypePropagator::ensure_entry_main() {
+  if (has_entry_main_) return;
+  TypeScope scope(1, words_per_type());
+  TypeStack* stack = scope.top();
+  stack->push_instance(program()->task_class_id()->value());
+  Method target = program()->entry_main();
+  call_static(null, &scope, null, target);
+  has_entry_main_ = true;
+}
+
+void TypePropagator::ensure_run_global_initializer() {
+  if (has_run_global_initializer_) return;
+  TypeScope scope(2, words_per_type());
+  TypeStack* stack = scope.top();
+  // Seed the type of LazyInitializer_.id_or_tasks_ field.
+  int initializer_class_id = program()->lazy_initializer_class_id()->value();
+  TypeVariable* id_field = field(initializer_class_id, INITIALIZER_ID_INDEX);
+  stack->push_smi(program());
+  id_field->merge(this, stack->local(0));
+  stack->pop();
+  // Run the static helper method.
+  stack->push_smi(program());
+  stack->push_instance(initializer_class_id);
+  Method target = program()->run_global_initializer();
+  call_static(null, &scope, null, target);
+  has_run_global_initializer_ = true;
 }
 
 void TypePropagator::propagate(TypeDatabase* types) {
@@ -113,12 +143,7 @@ void TypePropagator::propagate(TypeDatabase* types) {
   field(program()->task_class_id()->value(), 1)->merge(this, stack.local(0));
   stack.pop();
 
-  // TODO(kasper): Also teach the system about the type of the argument to
-  // __entry__spawn. Only do this if we're actually spawning processes.
-  std::vector<ConcreteType> main_arguments;
-  main_arguments.push_back(ConcreteType(program()->task_class_id()->value()));
-  MethodTemplate* entry = instantiate(program()->entry_main(), main_arguments);
-  enqueue(entry);
+  ensure_entry_main();
   while (enqueued_.size() != 0) {
     MethodTemplate* last = enqueued_.back();
     enqueued_.pop_back();
@@ -586,8 +611,14 @@ static void process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& workli
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(LOAD_GLOBAL_VAR_LAZY, index);
+    // The interpreter calls 'run_global_initializer_' to ensure
+    // that we deal with reentrant initialization correctly. This
+    // can throw.
+    propagator->ensure_run_global_initializer();
+    scope->throw_maybe();
+    // Analyze a call to the initializer method.
     Instance* initializer = Instance::cast(program->global_variables.at(index));
-    int method_id = Smi::cast(initializer->at(0))->value();
+    int method_id = Smi::cast(initializer->at(INITIALIZER_ID_INDEX))->value();
     Method target(program->bytecodes, method_id);
     propagator->call_static(method, scope, bcp, target);
     if (stack->local(0).is_empty(program)) return;
@@ -598,6 +629,7 @@ static void process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& workli
     TypeSet top = stack->local(0);
     variable->merge(propagator, top);
   OPCODE_END();
+
   OPCODE_BEGIN(LOAD_BLOCK);
     B_ARG1(index);
     TypeSet block = stack->local(index);
@@ -606,15 +638,32 @@ static void process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& workli
   OPCODE_END();
 
   OPCODE_BEGIN(LOAD_GLOBAL_VAR_DYNAMIC);
-    UNIMPLEMENTED();
+    // Global variables that need lazy initialization
+    // are handled as part of the LOAD_GLOBAL_VAR_LAZY
+    // bytecode. The LOAD_GLOBAL_VAR_DYNAMIC bytecode
+    // is only used from within the special entry point
+    // 'run_global_initializer_' and in that context
+    // it can produce any value.
+    stack->pop();  // Drop the id.
+    stack->push_any();
   OPCODE_END();
 
   OPCODE_BEGIN(STORE_GLOBAL_VAR_DYNAMIC);
-    UNIMPLEMENTED();
+    // Just ignore stores. The LOAD_GLOBAL_VAR_DYNAMIC
+    // bytecode conservatively assumes that anything can
+    // be stored in the global variable.
+    stack->pop();  // Drop the value.
+    stack->pop();  // Drop the id.
   OPCODE_END();
 
   OPCODE_BEGIN(INVOKE_INITIALIZER_TAIL);
-    UNIMPLEMENTED();
+    // The initializer is analyzed as a call directly
+    // from the LOAD_GLOBAL_VAR_LAZY bytecode. Here, it
+    // is fine to let it produce any value.
+    stack->pop();  // Drop the id.
+    stack->push_any();
+    method->ret(propagator, stack);
+    return;
   OPCODE_END();
 
   OPCODE_BEGIN(LOAD_OUTER_BLOCK);
@@ -1016,6 +1065,27 @@ int MethodTemplate::method_id() const {
 
 void MethodTemplate::propagate() {
   TypeScope* scope = new TypeScope(this);
+
+  // We need to special case the 'operator ==' method, because the interpreter
+  // does a manual null check on both arguments, which means that null never
+  // flows into the method body. We have to simulate that.
+  Program* program = propagator_->program();
+  if (method_.selector_offset() == program->invoke_bytecode_offset(INVOKE_EQ)) {
+    TypeStack* stack = scope->top();
+    ConcreteType null_type = ConcreteType(program->null_class_id()->value());
+    bool receiver_is_null = argument(0).matches(null_type);
+    bool argument_is_null = argument(1).matches(null_type);
+    if (receiver_is_null || argument_is_null) {
+      stack->push_bool_specific(program, receiver_is_null && argument_is_null);
+      ret(propagator_, stack);
+      delete scope;
+      return;
+    }
+    for (int i = 0; i < arity(); i++) {
+      TypeSet argument = stack->get(i);
+      argument.remove_null(program);
+    }
+  }
 
   std::vector<Worklist*> worklists;
   Worklist worklist(method_.entry(), scope);

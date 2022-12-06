@@ -18,7 +18,9 @@
 #if !defined(TOIT_FREERTOS) || CONFIG_TOIT_CRYPTO
 #include <mbedtls/error.h>
 #include <mbedtls/pem.h>
+#include <mbedtls/gcm.h>
 #include <mbedtls/platform.h>
+#include <mbedtls/ssl_internal.h>
 
 #include "../heap_report.h"
 #include "../primitive.h"
@@ -426,6 +428,11 @@ PRIMITIVE(handshake) {
   return process->program()->null_object();
 }
 
+// This is only used after the handshake.  It reads data that has been decrypted.
+// Normally returns a byte array.
+// MbedTLS may need more data to be input (buffered) before it can return any
+// decrypted data.  In that case we return TLS_WANT_READ.
+// If the connection is closed, returns null.
 PRIMITIVE(read)  {
   ARGS(MbedTlsSocket, socket);
 
@@ -452,6 +459,11 @@ PRIMITIVE(read)  {
   return array;
 }
 
+// This is only used after the handshake.  It reads data that has been decrypted.
+// Normally returns a byte array.
+// MbedTLS may need more data to be input (buffered) before it can return any
+// decrypted data.  In that case we return TLS_WANT_READ, an integer.
+// If the connection is closed, returns null.
 PRIMITIVE(write) {
   ARGS(MbedTlsSocket, socket, Blob, data, int, from, int, to)
 
@@ -701,6 +713,86 @@ PRIMITIVE(set_session) {
     return tls_error(null, process, result);
   }
   return process->program()->null_object();
+}
+
+static bool known_cipher_info(const mbedtls_cipher_info_t* info, size_t key_bitlen, int iv_len) {
+  if (info->type != MBEDTLS_CIPHER_AES_128_GCM && info->type != MBEDTLS_CIPHER_AES_256_GCM) return false;
+  if (info->mode != MBEDTLS_MODE_GCM) return false;
+  if (info->key_bitlen != key_bitlen) return false;
+  if (iv_len != 12) return false;
+  if (info->iv_size != 12) return false;
+  if (info->flags != 0) return false;
+  if (info->block_size != 16) return false;
+  return true;
+}
+
+static bool known_transform(mbedtls_ssl_transform* transform, size_t iv_len) {
+  if (transform->taglen != 16) return false;
+  if (transform->ivlen != iv_len) return false;
+  return true;
+}
+
+PRIMITIVE(get_internals) {
+  ARGS(BaseMbedTlsSocket, socket);
+  size_t iv_len = socket->ssl.transform_out->ivlen;
+  // mbedtls_cipher_context_t from include/mbedtls/cipher.h.
+  mbedtls_cipher_context_t* out_cipher_ctx = &socket->ssl.transform_out->cipher_ctx_enc;
+  mbedtls_cipher_context_t* in_cipher_ctx = &socket->ssl.transform_in->cipher_ctx_dec;
+  size_t key_bitlen = out_cipher_ctx->key_bitlen;
+  // mbedtls_cipher_info_t from include/mbedtls/cipher.h.
+  const mbedtls_cipher_info_t* out_info = out_cipher_ctx->cipher_info;
+  const mbedtls_cipher_info_t* in_info = in_cipher_ctx->cipher_info;
+
+  // Check the connection for parameters we can cope with.
+  if (!known_cipher_info(out_info, key_bitlen, iv_len)) return process->program()->null_object();
+  if (!known_cipher_info(in_info, key_bitlen, iv_len)) return process->program()->null_object();
+  if (!known_transform(socket->ssl.transform_out, iv_len)) return process->program()->null_object();
+  if (!known_transform(socket->ssl.transform_in, iv_len)) return process->program()->null_object();
+  if (in_cipher_ctx->key_bitlen != static_cast<int>(key_bitlen)) return process->program()->null_object();
+  if (out_cipher_ctx->key_bitlen != static_cast<int>(key_bitlen)) return process->program()->null_object();
+
+  size_t key_len = key_bitlen >> 3;
+
+  ByteArray* encode_iv = process->allocate_byte_array(iv_len);
+  ByteArray* decode_iv = process->allocate_byte_array(iv_len);
+  ByteArray* encode_key = process->allocate_byte_array(key_len);
+  ByteArray* decode_key = process->allocate_byte_array(key_len);
+  Array* result = process->object_heap()->allocate_array(4, Smi::zero());
+  if (!encode_iv || !decode_iv || !encode_key || !decode_key || !result) ALLOCATION_FAILED;
+  memcpy(ByteArray::Bytes(encode_iv).address(), socket->ssl.transform_out->iv_enc, iv_len);
+  memcpy(ByteArray::Bytes(decode_iv).address(), socket->ssl.transform_in->iv_dec, iv_len);
+  mbedtls_gcm_context* out_gcm_context = reinterpret_cast<mbedtls_gcm_context*>(out_cipher_ctx->cipher_ctx);
+  mbedtls_gcm_context* in_gcm_context = reinterpret_cast<mbedtls_gcm_context*>(in_cipher_ctx->cipher_ctx);
+#if SOC_AES_SUPPORT_GCM
+  mbedtls_aes_context* out_aes_context = &out_gcm_context->aes_ctx;
+  mbedtls_aes_context* in_aes_context = &in_gcm_context->aes_ctx;
+#else
+  mbedtls_cipher_context_t* out_cipher_context = &out_gcm_context->cipher_ctx;
+  mbedtls_cipher_context_t* in_cipher_context = &in_gcm_context->cipher_ctx;
+  mbedtls_aes_context* out_aes_context = reinterpret_cast<mbedtls_aes_context*>(out_cipher_context->cipher_ctx);
+  mbedtls_aes_context* in_aes_context = reinterpret_cast<mbedtls_aes_context*>(in_cipher_context->cipher_ctx);
+#endif
+  if (  out_gcm_context->mode != MBEDTLS_GCM_ENCRYPT
+      || in_gcm_context->mode != MBEDTLS_GCM_DECRYPT) {
+    return process->program()->null_object();
+  }
+#ifdef TOIT_FREERTOS
+  if (out_aes_context->key_bytes != key_len ||
+      in_aes_context->key_bytes != key_len) {
+    return process->program()->null_object();
+  }
+  memcpy(ByteArray::Bytes(encode_key).address(), out_aes_context->key, key_len);
+  memcpy(ByteArray::Bytes(decode_key).address(), in_aes_context->key, key_len);
+#else
+  memcpy(ByteArray::Bytes(encode_key).address(), out_aes_context->rk, key_len);
+  memcpy(ByteArray::Bytes(decode_key).address(), in_aes_context->rk, key_len);
+#endif
+  result->at_put(0, encode_iv);
+  result->at_put(1, decode_iv);
+  result->at_put(2, encode_key);
+  result->at_put(3, decode_key);
+
+  return result;
 }
 
 } // namespace toit

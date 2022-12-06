@@ -296,6 +296,7 @@ namespace toit {
   PRIMITIVE(error, 2)                        \
   PRIMITIVE(get_session, 1)                  \
   PRIMITIVE(set_session, 2)                  \
+  PRIMITIVE(get_internals, 1)                \
 
 #define MODULE_WIFI(PRIMITIVE)               \
   PRIMITIVE(init, 1)                         \
@@ -307,6 +308,9 @@ namespace toit {
   PRIMITIVE(disconnect_reason, 1)            \
   PRIMITIVE(get_ip, 1)                       \
   PRIMITIVE(get_rssi, 1)                     \
+  PRIMITIVE(init_scan, 1)                    \
+  PRIMITIVE(start_scan, 4)                   \
+  PRIMITIVE(read_scan, 1)                    \
 
 #define MODULE_ETHERNET(PRIMITIVE)           \
   PRIMITIVE(init_esp32, 5)                   \
@@ -460,13 +464,13 @@ namespace toit {
   PRIMITIVE(aes_ecb_crypt, 3)                \
   PRIMITIVE(aes_cbc_close, 1)                \
   PRIMITIVE(aes_ecb_close, 1)                \
-  PRIMITIVE(gcm_init, 4)                     \
-  PRIMITIVE(gcm_close, 1)                    \
-  PRIMITIVE(gcm_start_message, 3)            \
-  PRIMITIVE(gcm_add, 3)                      \
-  PRIMITIVE(gcm_get_tag_size, 1)             \
-  PRIMITIVE(gcm_finish, 1)                   \
-  PRIMITIVE(gcm_verify, 3)                   \
+  PRIMITIVE(aead_init, 4)                    \
+  PRIMITIVE(aead_close, 1)                   \
+  PRIMITIVE(aead_start_message, 3)           \
+  PRIMITIVE(aead_add, 3)                     \
+  PRIMITIVE(aead_get_tag_size, 1)            \
+  PRIMITIVE(aead_finish, 1)                  \
+  PRIMITIVE(aead_verify, 3)                  \
 
 #define MODULE_ENCODING(PRIMITIVE)           \
   PRIMITIVE(base64_encode, 2)                \
@@ -983,7 +987,7 @@ namespace toit {
 #define _A_T_ServiceDescription(N, name)  MAKE_UNPACKING_MACRO(ServiceDescription, N, name)
 #define _A_T_Peer(N, name)                MAKE_UNPACKING_MACRO(Peer, N, name)
 #define _A_T_Channel(N, name)             MAKE_UNPACKING_MACRO(Channel, N, name)
-#define _A_T_GcmContext(N, name)          MAKE_UNPACKING_MACRO(GcmContext, N, name)
+#define _A_T_AeadContext(N, name)         MAKE_UNPACKING_MACRO(AeadContext, N, name)
 
 // ARGS is expanded to one of the following depending on number of passed parameters.
 #define _ODD ARGS cannot take odd number of arguments

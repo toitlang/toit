@@ -1,4 +1,4 @@
-// Copyright (C) 2020 Toitware ApS. All rights reserved.
+// Copyright (C) 2022 Toitware ApS. All rights reserved.
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
@@ -160,7 +160,8 @@ class AesEcb extends Aes:
   close_aes_ -> none:
     aes_ecb_close_ aes_
 
-ALGORITHM_AES_GCM_SHA256 ::= 0
+ALGORITHM_AES_GCM ::= 0
+ALGORITHM_CHACHA20_POLY1305 ::= 1
 
 /**
 Encryptor/decryptor for Galois/Counter Mode of AES, an encryption mode that is
@@ -170,8 +171,41 @@ An instance of this class can encrypt or decrypt one message.
 
 See https://en.wikipedia.org/wiki/Galois/Counter_Mode.
 */
-class AesGcm:
-  gcm_aes_ := ?
+class AesGcm extends Aead_:
+  static IV_SIZE ::= 12
+  static TAG_SIZE ::= 16
+  static BLOCK_SIZE_ ::= 16
+
+  /**
+  Initialize a AesGcm AEAD class for encryption.
+  The $key must be 16, 24, or 32 bytes of AES key.
+  The $initialization_vector must be 12 bytes of data.  It is extremely
+    important that the initialization_vector is not reused with the same key.
+    The initialization_vector must be known to the decrypting counterparty.
+  */
+  constructor.encryptor key/ByteArray initialization_vector/ByteArray:
+    super.encryptor key initialization_vector --algorithm=ALGORITHM_AES_GCM
+
+  /**
+  Initialize a AesGcm AEAD class for encryption or decryption.
+  The $key must be 16, 24, or 32 bytes of AES key.
+  The $initialization_vector must be 12 bytes of data, obtained from the
+    encrypting counterparty.
+  */
+  constructor.decryptor key/ByteArray initialization_vector/ByteArray:
+    super.decryptor key initialization_vector --algorithm=ALGORITHM_AES_GCM
+
+/**
+Encryptor/decryptor for authenicated encryption with AEAD, an encryption mode
+  that is often used for TLS.
+Subclasses include $AesGcm and ChaCha20Poly1305.
+
+An instance of this class can encrypt or decrypt one message.
+
+See https://en.wikipedia.org/wiki/Authenticated_encryption
+*/
+class Aead_:
+  aead_ := ?
   initialization_vector_ /ByteArray := ?
   buffer_ /ByteArray? := null
   size /int := 0
@@ -181,25 +215,27 @@ class AesGcm:
   static BLOCK_SIZE_ ::= 16
 
   /**
-  Initialize a AesGcm AEAD class for encryption.
-  The $key must be a 16, 24, or 32 bytes of AES key.
+  Initialize an AEAD class for encryption.
+  The $key must be of an appropriate size for the algorithm.
   The $initialization_vector must be 12 bytes of data.  It is extremely
     important that the initialization_vector is not reused with the same key.
     The initialization_vector must be known to the decrypting counterparty.
+  The $algorithm must be $ALGORITHM_AES_GCM or ALGORITHM_CHACHA20_POLY1305.
   */
-  constructor.encryptor key/ByteArray initialization_vector/ByteArray --algorithm/int=ALGORITHM_AES_GCM_SHA256:
-    gcm_aes_ = gcm_init_ resource_freeing_module_ key algorithm true
+  constructor.encryptor key/ByteArray initialization_vector/ByteArray --algorithm/int:
+    aead_ = aead_init_ resource_freeing_module_ key algorithm true
     initialization_vector_ = initialization_vector
     add_finalizer this:: this.close
 
   /**
-  Initialize a AesGcm AEAD class for encryption or decryption.
-  The $key must be a 16, 24, or 32 bit AES key.
+  Initialize an AEAD class for decryption.
+  The $key must be of an appropriate size for the algorithm.
   The $initialization_vector must be 12 bytes of data, obtained from the
     encrypting counterparty.
+  The $algorithm must be $ALGORITHM_AES_GCM or ALGORITHM_CHACHA20_POLY1305.
   */
-  constructor.decryptor key/ByteArray initialization_vector/ByteArray --algorithm/int=ALGORITHM_AES_GCM_SHA256:
-    gcm_aes_ = gcm_init_ resource_freeing_module_ key algorithm false
+  constructor.decryptor key/ByteArray initialization_vector/ByteArray --algorithm/int:
+    aead_ = aead_init_ resource_freeing_module_ key algorithm false
     initialization_vector_ = initialization_vector
     add_finalizer this:: this.close
 
@@ -214,14 +250,14 @@ class AesGcm:
     therefore it closes this instance.
   */
   encrypt plaintext --authenticated_data="" -> ByteArray:
-    if not gcm_aes_: throw "ALREADY_CLOSED"
+    if not aead_: throw "ALREADY_CLOSED"
 
     result := ByteArray plaintext.size + TAG_SIZE
 
-    gcm_start_message_ gcm_aes_ authenticated_data initialization_vector_
-    number_of_bytes /int := gcm_add_ gcm_aes_ plaintext result
+    aead_start_message_ aead_ authenticated_data initialization_vector_
+    number_of_bytes /int := aead_add_ aead_ plaintext result
     if number_of_bytes != (round_down plaintext.size BLOCK_SIZE_): throw "UNKNOWN_ERROR"
-    rest_and_tag := gcm_finish_ gcm_aes_
+    rest_and_tag := aead_finish_ aead_
     if number_of_bytes + rest_and_tag.size != plaintext.size + TAG_SIZE: throw "UNKNOWN_ERROR"
     result.replace number_of_bytes rest_and_tag
     close
@@ -237,19 +273,19 @@ class AesGcm:
     therefore it closes this instance.
   */
   decrypt ciphertext/ByteArray --authenticated_data="" --verification_tag/ByteArray?=null -> ByteArray:
-    if not gcm_aes_: throw "ALREADY_CLOSED"
+    if not aead_: throw "ALREADY_CLOSED"
 
     if not verification_tag:
       edge := ciphertext.size - 16
       verification_tag = ciphertext[edge..]
       ciphertext = ciphertext[..edge]
 
-    gcm_start_message_ gcm_aes_ authenticated_data initialization_vector_
+    aead_start_message_ aead_ authenticated_data initialization_vector_
     result := ByteArray ciphertext.size
-    number_of_bytes /int := gcm_add_ gcm_aes_ ciphertext result
+    number_of_bytes /int := aead_add_ aead_ ciphertext result
     if number_of_bytes != (round_down ciphertext.size BLOCK_SIZE_): throw "UNKNOWN_ERROR"
 
-    check := gcm_verify_ gcm_aes_ verification_tag result[number_of_bytes..]
+    check := aead_verify_ aead_ verification_tag result[number_of_bytes..]
     if check != 0:
       throw "INVALID_SIGNATURE"
 
@@ -263,7 +299,7 @@ class AesGcm:
     before the verification tag has been verified with a call to $verify.
   */
   start --authenticated_data="" -> none:
-    gcm_start_message_ gcm_aes_ authenticated_data initialization_vector_
+    aead_start_message_ aead_ authenticated_data initialization_vector_
 
   /**
   Encrypts or decrypts some data.
@@ -278,7 +314,7 @@ class AesGcm:
   add data/ByteArray -> ByteArray:
     size += data.size
     if buffer_:
-      number_of_bytes := gcm_add_ gcm_aes_ data buffer_
+      number_of_bytes := aead_add_ aead_ data buffer_
       if number_of_bytes:
         result := buffer_[0..number_of_bytes]
         buffer_ = data
@@ -286,7 +322,7 @@ class AesGcm:
     // Output buffer was too small.  Make one that is certainly big enough.
     result := ByteArray
         round_up data.size BLOCK_SIZE_
-    number_of_bytes /int := gcm_add_ gcm_aes_ data result
+    number_of_bytes /int := aead_add_ aead_ data result
     if not buffer_ or data.size > buffer_.size: buffer_ = data
     return result[..number_of_bytes]
 
@@ -299,7 +335,7 @@ class AesGcm:
   Closes this instance.
   */
   finish -> ByteArray:
-    result := gcm_finish_ gcm_aes_
+    result := aead_finish_ aead_
     close
     return result
 
@@ -319,26 +355,26 @@ class AesGcm:
   verify verification_tag/ByteArray -> ByteArray:
     result := ByteArray
         size & (BLOCK_SIZE_ - 1)
-    check := gcm_verify_ gcm_aes_ verification_tag result
+    check := aead_verify_ aead_ verification_tag result
     close
     if check != 0: throw "INVALID_SIGNATURE"
     return result
 
   /** Closes this encrypter/decrypter and releases associated resources. */
   close -> none:
-    if not gcm_aes_: return
-    gcm_close_ gcm_aes_
-    gcm_aes_ = null
+    if not aead_: return
+    aead_close_ aead_
+    aead_ = null
     remove_finalizer this
 
-gcm_init_ group key/ByteArray algorithm/int encrypt/bool:
-  #primitive.crypto.gcm_init
+aead_init_ group key/ByteArray algorithm/int encrypt/bool:
+  #primitive.crypto.aead_init
 
-gcm_close_ gcm:
-  #primitive.crypto.gcm_close
+aead_close_ aead:
+  #primitive.crypto.aead_close
 
-gcm_start_message_ gcm authenticated_data initialization_vector/ByteArray -> none:
-  #primitive.crypto.gcm_start_message
+aead_start_message_ aead authenticated_data initialization_vector/ByteArray -> none:
+  #primitive.crypto.aead_start_message
 
 /**
 If the result byte array was big enough, returns a Smi to indicate how much
@@ -346,21 +382,21 @@ If the result byte array was big enough, returns a Smi to indicate how much
 If the result byte array was not big enough, returns null.  In this case no
   data was consumed.
 */
-gcm_add_ gcm data result/ByteArray -> int?:
-  #primitive.crypto.gcm_add
+aead_add_ aead data result/ByteArray -> int?:
+  #primitive.crypto.aead_add
 
 /**
 Returns the last ciphertext bytes and the tag, concatenated.
 */
-gcm_finish_ gcm -> ByteArray:
-  #primitive.crypto.gcm_finish
+aead_finish_ aead -> ByteArray:
+  #primitive.crypto.aead_finish
 
 /**
 The rest_of_decrypted_data should be at least the size of the added data %
   BLOCK_SIZE_.
 */
-gcm_verify_ gcm verification_tag/ByteArray rest_of_decrypted_data/ByteArray -> int:
-  #primitive.crypto.gcm_verify
+aead_verify_ aead verification_tag/ByteArray rest_of_decrypted_data/ByteArray -> int:
+  #primitive.crypto.aead_verify
 
 aes_init_ group key/ByteArray initialization_vector/ByteArray? encrypt/bool:
   #primitive.crypto.aes_init

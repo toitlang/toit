@@ -38,6 +38,7 @@ TYPE_PRIMITIVE_ANY(add_certificate)
 TYPE_PRIMITIVE_ANY(error)
 TYPE_PRIMITIVE_ANY(get_session)
 TYPE_PRIMITIVE_ANY(set_session)
+TYPE_PRIMITIVE_ANY(get_internals)
 
 }  // namespace toit::compiler
 }  // namespace toit

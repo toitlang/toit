@@ -21,6 +21,11 @@
 namespace toit {
 namespace compiler {
 
+// We add an extra stack slot to all stacks in scopes to
+// allow for a single temporary value to be pushed. This
+// is often used as an accumulator or a temporary result.
+static const int EXTRA = 1;
+
 TypeScope::TypeScope(MethodTemplate* method)
     : words_per_type_(method->propagator()->words_per_type())
     , level_(0)
@@ -29,7 +34,8 @@ TypeScope::TypeScope(MethodTemplate* method)
     , outer_(null)
     , wrapped_(static_cast<uword*>(malloc(1 * sizeof(uword)))) {
   int sp = method->method().arity() + Interpreter::FRAME_SIZE;
-  TypeStack* stack = new TypeStack(sp - 1, sp + method->method().max_height() + 1, words_per_type_);
+  int size = sp + method->method().max_height() + EXTRA;
+  TypeStack* stack = new TypeStack(sp - 1, size, words_per_type_);
   wrapped_[0] = wrap(stack, true);
 
   for (int i = 0; i < method->arity(); i++) {
@@ -43,6 +49,17 @@ TypeScope::TypeScope(MethodTemplate* method)
       type.add(argument_type.id());
     }
   }
+}
+
+TypeScope::TypeScope(int slots, int words_per_type)
+    : words_per_type_(words_per_type)
+    , level_(0)
+    , level_linked_(-1)
+    , method_(null)
+    , outer_(null)
+    , wrapped_(static_cast<uword*>(malloc(1 * sizeof(uword)))) {
+  TypeStack* stack = new TypeStack(-1, slots + EXTRA, words_per_type_);
+  wrapped_[0] = wrap(stack, true);
 }
 
 TypeScope::TypeScope(BlockTemplate* block, TypeScope* outer, bool linked)
@@ -59,7 +76,8 @@ TypeScope::TypeScope(BlockTemplate* block, TypeScope* outer, bool linked)
 
   Method method = block->method();
   int sp = method.arity() + Interpreter::FRAME_SIZE;
-  TypeStack* stack = new TypeStack(sp - 1, sp + method.max_height() + 1, words_per_type_);
+  int size = sp + method.max_height() + EXTRA;
+  TypeStack* stack = new TypeStack(sp - 1, size, words_per_type_);
   wrapped_[level_] = wrap(stack, true);
 
   TypeSet receiver = stack->get(0);
