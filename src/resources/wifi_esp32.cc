@@ -112,14 +112,6 @@ class WifiResourceGroup : public ResourceGroup {
     return esp_wifi_start();
   }
 
-  bool rssi(int8* output) {
-    wifi_ap_record_t ap_info;
-    esp_err_t err = esp_wifi_sta_get_ap_info(&ap_info);
-    if (err != ERR_OK) return false;
-    *output = ap_info.rssi;
-    return true;
-  }
-
   esp_err_t init_scan(void) {
     esp_err_t err = esp_wifi_set_mode(WIFI_MODE_STA);
     if (err != ESP_OK) return err;
@@ -522,13 +514,6 @@ PRIMITIVE(get_ip) {
   return result;
 }
 
-PRIMITIVE(get_rssi) {
-  ARGS(WifiResourceGroup, group);
-  int8 rssi;
-  if (!group->rssi(&rssi)) return process->program()->null_object();
-  return Smi::from(rssi);
-}
-
 PRIMITIVE(init_scan) {
   ARGS(WifiResourceGroup, group)
 
@@ -601,6 +586,35 @@ PRIMITIVE(read_scan) {
     ap_array->at_put(offset + 3, Smi::from(ap_record[i].authmode));
     ap_array->at_put(offset + 4, Smi::from(ap_record[i].primary));
   }
+
+  return ap_array;
+}
+
+PRIMITIVE(get_ap_info) {
+  ARGS(WifiResourceGroup, group);
+
+  wifi_ap_record_t ap_record;
+  esp_err_t ret = esp_wifi_sta_get_ap_info(&ap_record);
+  if (ret != OK) return Primitive::os_error(ret, process);
+
+  const size_t element_count = 5;
+  Array* ap_array = process->object_heap()->allocate_array(element_count, Smi::zero());
+  if (ap_array == null) ALLOCATION_FAILED;
+
+  String* ssid = process->allocate_string((char *)ap_record.ssid);
+  if (ssid == null) ALLOCATION_FAILED;
+
+  size_t bssid_size = 6;
+  ByteArray* bssid = process->allocate_byte_array(bssid_size);
+  if (bssid == null) ALLOCATION_FAILED;
+
+  memcpy(ByteArray::Bytes(bssid).address(), ap_record.bssid, bssid_size);
+
+  ap_array->at_put(0, ssid);
+  ap_array->at_put(1, bssid);
+  ap_array->at_put(2, Smi::from(ap_record.rssi));
+  ap_array->at_put(3, Smi::from(ap_record.authmode));
+  ap_array->at_put(4, Smi::from(ap_record.primary));
 
   return ap_array;
 }

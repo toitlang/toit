@@ -307,10 +307,10 @@ namespace toit {
   PRIMITIVE(disconnect, 2)                   \
   PRIMITIVE(disconnect_reason, 1)            \
   PRIMITIVE(get_ip, 1)                       \
-  PRIMITIVE(get_rssi, 1)                     \
   PRIMITIVE(init_scan, 1)                    \
   PRIMITIVE(start_scan, 4)                   \
   PRIMITIVE(read_scan, 1)                    \
+  PRIMITIVE(get_ap_info, 1)                  \
 
 #define MODULE_ETHERNET(PRIMITIVE)           \
   PRIMITIVE(init_esp32, 5)                   \
