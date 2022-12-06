@@ -715,6 +715,23 @@ PRIMITIVE(set_session) {
   return process->program()->null_object();
 }
 
+static bool known_cipher_info(const mbedtls_cipher_info_t* info, size_t key_bitlen, int iv_len) {
+  if (info->type != MBEDTLS_CIPHER_AES_128_GCM && info->type != MBEDTLS_CIPHER_AES_256_GCM) return false;
+  if (info->mode != MBEDTLS_MODE_GCM) return false;
+  if (info->key_bitlen != key_bitlen) return false;
+  if (iv_len != 12) return false;
+  if (info->iv_size != 12) return false;
+  if (info->flags != 0) return false;
+  if (info->block_size != 16) return false;
+  return true;
+}
+
+static bool known_transform(mbedtls_ssl_transform* transform, size_t iv_len) {
+  if (transform->taglen != 16) return false;
+  if (transform->ivlen != iv_len) return false;
+  return true;
+}
+
 PRIMITIVE(get_internals) {
   ARGS(BaseMbedTlsSocket, socket);
   size_t iv_len = socket->ssl.transform_out->ivlen;
@@ -726,33 +743,20 @@ PRIMITIVE(get_internals) {
   const mbedtls_cipher_info_t* out_info = out_cipher_ctx->cipher_info;
   const mbedtls_cipher_info_t* in_info = in_cipher_ctx->cipher_info;
 
-  // Sanity check the connection for parameters we can cope with.
-  if (   (out_info->type != MBEDTLS_CIPHER_AES_128_GCM &&
-             out_info->type != MBEDTLS_CIPHER_AES_256_GCM)
-      || (in_info->type != MBEDTLS_CIPHER_AES_128_GCM &&
-             in_info->type != MBEDTLS_CIPHER_AES_256_GCM)
-      || out_info->mode != MBEDTLS_MODE_GCM
-      || in_info->mode != MBEDTLS_MODE_GCM
-      || out_info->key_bitlen != key_bitlen
-      || in_info->key_bitlen != key_bitlen
-      || iv_len != 12
-      || out_info->iv_size != 12
-      || in_info->iv_size != 12
-      || out_info->flags != 0
-      || in_info->flags != 0
-      || out_info->block_size != 16
-      || in_info->block_size != 16
-      || socket->ssl.transform_in->taglen != 16
-      || socket->ssl.transform_out->taglen != 16
-      || socket->ssl.transform_in->ivlen != iv_len
-      || in_cipher_ctx->key_bitlen != static_cast<int>(key_bitlen)) {
-    return process->program()->null_object();
-  }
+  // Check the connection for parameters we can cope with.
+  if (!known_cipher_info(out_info, key_bitlen, iv_len)) return process->program()->null_object();
+  if (!known_cipher_info(in_info, key_bitlen, iv_len)) return process->program()->null_object();
+  if (!known_transform(socket->ssl.transform_out, iv_len)) return process->program()->null_object();
+  if (!known_transform(socket->ssl.transform_in, iv_len)) return process->program()->null_object();
+  if (in_cipher_ctx->key_bitlen != static_cast<int>(key_bitlen)) return process->program()->null_object();
+  if (out_cipher_ctx->key_bitlen != static_cast<int>(key_bitlen)) return process->program()->null_object();
+
+  size_t key_len = key_bitlen >> 3;
 
   ByteArray* encode_iv = process->allocate_byte_array(iv_len);
   ByteArray* decode_iv = process->allocate_byte_array(iv_len);
-  ByteArray* encode_key = process->allocate_byte_array(key_bitlen >> 3);
-  ByteArray* decode_key = process->allocate_byte_array(key_bitlen >> 3);
+  ByteArray* encode_key = process->allocate_byte_array(key_len);
+  ByteArray* decode_key = process->allocate_byte_array(key_len);
   Array* result = process->object_heap()->allocate_array(4, Smi::zero());
   if (!encode_iv || !decode_iv || !encode_key || !decode_key || !result) ALLOCATION_FAILED;
   memcpy(ByteArray::Bytes(encode_iv).address(), socket->ssl.transform_out->iv_enc, iv_len);
@@ -773,15 +777,15 @@ PRIMITIVE(get_internals) {
     return process->program()->null_object();
   }
 #ifdef TOIT_FREERTOS
-  if (out_aes_context->key_bytes != key_bitlen >> 3 ||
-      in_aes_context->key_bytes != key_bitlen >> 3) {
+  if (out_aes_context->key_bytes != key_len ||
+      in_aes_context->key_bytes != key_len) {
     return process->program()->null_object();
   }
-  memcpy(ByteArray::Bytes(encode_key).address(), out_aes_context->key, key_bitlen >> 3);
-  memcpy(ByteArray::Bytes(decode_key).address(), in_aes_context->key, key_bitlen >> 3);
+  memcpy(ByteArray::Bytes(encode_key).address(), out_aes_context->key, key_len);
+  memcpy(ByteArray::Bytes(decode_key).address(), in_aes_context->key, key_len);
 #else
-  memcpy(ByteArray::Bytes(encode_key).address(), out_aes_context->rk, key_bitlen >> 3);
-  memcpy(ByteArray::Bytes(decode_key).address(), in_aes_context->rk, key_bitlen >> 3);
+  memcpy(ByteArray::Bytes(encode_key).address(), out_aes_context->rk, key_len);
+  memcpy(ByteArray::Bytes(decode_key).address(), in_aes_context->rk, key_len);
 #endif
   result->at_put(0, encode_iv);
   result->at_put(1, decode_iv);
