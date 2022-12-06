@@ -653,7 +653,7 @@ static void process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& workli
     // can throw.
     propagator->ensure_run_global_initializer();
     scope->throw_maybe();
-    // Analyze a call to the initialier method.
+    // Analyze a call to the initializer method.
     Instance* initializer = Instance::cast(program->global_variables.at(index));
     int method_id = Smi::cast(initializer->at(INITIALIZER_ID_INDEX))->value();
     Method target(program->bytecodes, method_id);

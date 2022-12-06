@@ -21,6 +21,9 @@
 namespace toit {
 namespace compiler {
 
+// We add an extra stack slot to all stacks in scopes to
+// allow for a single temporary value to be pushed. This
+// is often used as an accumulator or a temporary result.
 static const int EXTRA = 1;
 
 TypeScope::TypeScope(MethodTemplate* method)
