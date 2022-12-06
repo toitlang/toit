@@ -1054,6 +1054,27 @@ int MethodTemplate::method_id() const {
 void MethodTemplate::propagate() {
   TypeScope* scope = new TypeScope(this);
 
+  // We need to special case the 'operator ==' method, because the interpreter
+  // does a manual null check on both arguments, which means that null never
+  // flows into the method body. We have to simulate that.
+  Program* program = propagator_->program();
+  if (method_.selector_offset() == program->invoke_bytecode_offset(INVOKE_EQ)) {
+    TypeStack* stack = scope->top();
+    ConcreteType null_type = ConcreteType(program->null_class_id()->value());
+    bool receiver_is_null = argument(0).matches(null_type);
+    bool argument_is_null = argument(1).matches(null_type);
+    if (receiver_is_null || argument_is_null) {
+      stack->push_bool_specific(program, receiver_is_null && argument_is_null);
+      ret(propagator_, stack);
+      delete scope;
+      return;
+    }
+    for (int i = 0; i < arity(); i++) {
+      TypeSet argument = stack->get(i);
+      argument.remove_null(program);
+    }
+  }
+
   std::vector<Worklist*> worklists;
   Worklist worklist(method_.entry(), scope);
   worklists.push_back(&worklist);
