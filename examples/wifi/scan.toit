@@ -13,7 +13,8 @@ main:
       SCAN_CHANNELS
       --period_per_channel_ms=120
   if ap_list.size == 0:
-    throw "Scan done, but no AP is found"
+    print "Scan done, but no AP is found"
+    return
 
   print """
       $(%-32s "SSID") $(%-18s "BSSID") \
@@ -21,7 +22,7 @@ main:
       $(%-8s "Author")\n"""
 
   ap_list.do:
-    ap := it as wifi.AccessPoint
+    ap_list.do: | ap/wifi.AccessPoint |
     print """
         $(%-32s ap.ssid) $(%-18s ap.bssid_name) \
         $(%-6s ap.rssi) $(%-8s ap.channel) \

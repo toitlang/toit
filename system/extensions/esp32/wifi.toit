@@ -128,7 +128,7 @@ class WifiServiceDefinition extends NetworkServiceDefinitionBase:
     try:
       channels := config.get wifi.CONFIG_SCAN_CHANNELS
       passive := config.get wifi.CONFIG_SCAN_PASSIVE
-      period  := config.get wifi.CONFIG_SCAN_PERIOD
+      period := config.get wifi.CONFIG_SCAN_PERIOD
       return module.scan channels passive period
     finally:
       module.disconnect

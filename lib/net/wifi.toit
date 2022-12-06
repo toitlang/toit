@@ -113,20 +113,16 @@ scan channels/ByteArray --passive/bool=false --period_per_channel_ms/int=SCAN_TI
     CONFIG_SCAN_PERIOD: period_per_channel_ms,
   }
 
-  ap_list := []
   data_list := service.scan config
   ap_count := data_list.size / WIFI_SCAN_ELEMENT_COUNT_
-  ap_count.repeat:
+  return List ap_count:
     offset := it * WIFI_SCAN_ELEMENT_COUNT_
-    ap := AccessPoint
+    AccessPoint
         --ssid=data_list[offset + WIFI_SCAN_SSID_]
         --bssid=data_list[offset + WIFI_SCAN_BSSID_]
         --rssi=data_list[offset + WIFI_SCAN_RSSI_]
         --authmode=data_list[offset + WIFI_SCAN_AUTHMODE_]
         --channel=data_list[offset + WIFI_SCAN_CHANNEL_]
-    ap_list.add ap
-
-  return ap_list
 
 class WifiInterface_ extends SystemInterface_ implements Interface:
   constructor client/WifiServiceClient connection/List:
