@@ -39,6 +39,7 @@ namespace compiler {
 
 class MethodTemplate;
 class BlockTemplate;
+class TypeDatabase;
 
 class TypePropagator {
  public:
@@ -46,7 +47,8 @@ class TypePropagator {
 
   Program* program() const { return program_; }
   int words_per_type() const { return words_per_type_; }
-  void propagate();
+
+  void propagate(TypeDatabase* types);
 
   void call_static(MethodTemplate* caller, TypeScope* scope, uint8* site, Method target);
   void call_virtual(MethodTemplate* caller, TypeScope* scope, uint8* site, int arity, int offset);

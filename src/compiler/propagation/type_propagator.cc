@@ -14,6 +14,7 @@
 // directory of this repository.
 
 #include "type_propagator.h"
+#include "type_database.h"
 #include "type_primitive.h"
 #include "type_scope.h"
 
@@ -72,7 +73,7 @@ TypePropagator::TypePropagator(Program* program)
   TypePrimitive::set_up();
 }
 
-void TypePropagator::propagate() {
+void TypePropagator::propagate(TypeDatabase* types) {
   TypeStack stack(-1, 1, words_per_type());
 
   // Initialize the types of pre-initialized global variables.
@@ -148,6 +149,8 @@ void TypePropagator::propagate() {
     std::string type_string = type.as_json(program());
     out << "  {\"position\": " << position;
     out << ", \"type\": " << type_string << "}";
+
+    types->add_usage(position, type);
   });
 
   std::unordered_map<uint8*, std::vector<BlockTemplate*>> blocks;
@@ -164,6 +167,8 @@ void TypePropagator::propagate() {
     }
 
     MethodTemplate* method = templates[0];
+    types->add_method(method->method());
+
     int position = method->method_id();
     out << "  {\"position\": " << position;
     out << ", \"arguments\": [";
@@ -190,6 +195,8 @@ void TypePropagator::propagate() {
       }
       std::string type_string = type.as_json(program());
       out << type_string;
+
+      types->add_argument(method->method(), n, type);
     }
     out << "]}";
   }
@@ -202,10 +209,15 @@ void TypePropagator::propagate() {
     }
     std::vector<BlockTemplate*>& blocks = it->second;
     BlockTemplate* block = blocks[0];
+    types->add_method(block->method());
 
     int position = block->method_id(program());
     out << "  {\"position\": " << position;
     out << ", \"arguments\": [\"[]\"";
+
+    type.clear(words_per_type());
+    type.set_block(block);
+    types->add_argument(block->method(), 0, type);
 
     int arity = block->arity();
     for (int n = 1; n < arity; n++) {
@@ -216,6 +228,8 @@ void TypePropagator::propagate() {
       }
       std::string type_string = type.as_json(program());
       out << "," << type_string;
+
+      types->add_argument(block->method(), n, type);
     }
     out << "]}";
   }

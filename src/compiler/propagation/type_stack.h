@@ -47,6 +47,10 @@ class TypeStack {
     return sp_;
   }
 
+  int available() const {
+    return size_ - (sp_ + 1);
+  }
+
   TypeSet get(int index) {
     ASSERT(index >= 0);
     ASSERT(index <= sp_);
