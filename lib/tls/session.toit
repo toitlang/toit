@@ -2,6 +2,8 @@
 // Use of this source code is governed by an MIT-style license that can be
 // found in the lib/LICENSE file.
 
+import crypto.aes show *
+import crypto.chacha20 show *
 import monitor
 import reader
 import writer
@@ -10,6 +12,42 @@ import binary show BIG_ENDIAN
 
 import .certificate
 import .socket
+
+// Record types from RFC 5246.
+CHANGE_CIPHER_SPEC_ ::= 20
+ALERT_ ::= 21
+HANDSHAKE_ ::= 22
+APPLICATION_DATA_ ::= 23
+
+class KeyData_:
+  key /ByteArray
+  iv /ByteArray
+  algorithm /int
+  sequence_number_ /int := 0
+
+  // Algorithm is one of ALGORITHM_AES_GCM or ALGORITHM_CHACHA20_POLY1305.
+  constructor --.key --.iv --.algorithm/int:
+
+  next_sequence_number -> ByteArray:
+    BIG_ENDIAN.put_int64 iv 4 sequence_number_++
+    return iv[4..]
+
+  has_explicit_iv -> bool:
+    return algorithm == ALGORITHM_AES_GCM
+
+  explicit_iv -> ByteArray:
+    if has_explicit_iv: return iv[4..]
+    return #[]
+
+  new_encryptor -> Aead_:
+    if algorithm == ALGORITHM_AES_GCM:
+      return AesGcm.encryptor key iv
+    return ChaCha20Poly1305.encryptor key iv
+
+  new_decryptor -> Aead_:
+    if algorithm == ALGORITHM_AES_GCM:
+      return AesGcm.decryptor key iv
+    return ChaCha20Poly1305.decryptor key iv
 
 /**
 TLS Session upgrades a reader/writer pair to a TLS encrypted communication channel.
@@ -24,8 +62,7 @@ class Session:
   root_certificates/List
   handshake_timeout/Duration
 
-  reader_/reader.BufferedReader
-  switched_to_encrypted_ := false
+  reader_/reader.BufferedReader? := ?
   writer_ ::= ?
   server_name_/string? ::= null
 
@@ -36,6 +73,10 @@ class Session:
 
   outgoing_buffer_/ByteArray := #[]
   closed_for_write_ := false
+
+  reads_encrypted_ := false
+  writes_encrypted_ := false
+  symmetric_session_/SymmetricSession_? := null
 
   /**
   Creates a new TLS session at the client-side.
@@ -111,6 +152,12 @@ class Session:
         with_timeout handshake_timeout:
           flush_outgoing_
         if state == TOIT_TLS_DONE_:
+          if symmetric_session_ != null:
+            // We don't use MbedTLS any more.
+            tls_close_ tls_
+            tls_ = null
+            group_.unuse
+            group_ = null
           // Connected.
           return
         else if state == TOIT_TLS_WANT_READ_:
@@ -125,6 +172,14 @@ class Session:
       handshake_in_progress_.set value
       handshake_in_progress_ = null
       resource_state.dispose
+
+  extract_key_data_ -> none:
+    if reads_encrypted_ and writes_encrypted_:
+      key_data /List := tls_get_internals_ tls_
+      if key_data != null:
+        write_key_data := KeyData_ --key=key_data[1] --iv=key_data[3] --algorithm=key_data[0]
+        read_key_data := KeyData_ --key=key_data[2] --iv=key_data[4] --algorithm=key_data[0]
+        symmetric_session_ = SymmetricSession_ writer_ reader_ write_key_data read_key_data
 
   /**
   Gets the session state, a ByteArray that can be used to resume
@@ -180,15 +235,19 @@ class Session:
   Closes the TLS session and releases any resources associated with it.
   */
   close:
-    if not tls_: return
-    critical_do:
-      tls_close_ tls_
-      tls_ = null
-      group_.unuse
-      group_ = null
-      reader_.clear
-      outgoing_buffer_ = #[]
-      remove_finalizer this
+    if tls_:
+      critical_do:
+        tls_close_ tls_
+        tls_ = null
+        group_.unuse
+        group_ = null
+        reader_.clear
+        outgoing_buffer_ = #[]
+        remove_finalizer this
+    if reader_:
+      // reader_.close TODO: Close the unbuffered_reader.
+      reader_ = null
+      writer_.close
 
   ensure_handshaken_:
     if not handshake_in_progress_: return
@@ -215,12 +274,6 @@ class Session:
     if not ba or not tls_: return false
     tls_set_incoming_ tls_ ba 0
     return true
-
-  // Record types from RFC 5246.
-  static CHANGE_CIPHER_SPEC_ ::= 20
-  static ALERT_ ::= 21
-  static HANDSHAKE_ ::= 22
-  static APPLICATION_DATA_ ::= 23
 
   is_ascii_ c/int -> bool:
     if ' ' <= c <= '~': return true
@@ -256,7 +309,7 @@ class Session:
   // handshaking message.  May return an synthetic record, (defragmented
   // from several records on the wire).
   extract_first_message_ -> ByteArray:
-    if switched_to_encrypted_ or (reader_.byte 0) == APPLICATION_DATA_:
+    if (reader_.byte 0) == APPLICATION_DATA_:
       // We rarely (never?) find a record with the application data type
       // because normally we have switched to encrypted mode before this
       // happens.  In any case we lose the ability to see the message
@@ -270,7 +323,8 @@ class Session:
       remaining_message_bytes = 2
     else if content_type == CHANGE_CIPHER_SPEC_:
       remaining_message_bytes = 1
-      switched_to_encrypted_ = true
+      reads_encrypted_ = true
+      extract_key_data_
     else:
       if content_type != HANDSHAKE_:
         // If we get an unknown record type the probable reason is that
@@ -328,6 +382,110 @@ class Session:
     packet := extract_first_message_
     tls_set_incoming_ tls_ packet 0
 
+class SymmetricSession_:
+  write_keys /KeyData_
+  read_keys /KeyData_
+  writer_ ::= ?
+  reader_ /reader.BufferedReader
+
+  buffered_plaintext_index_ := 0
+  buffered_plaintext_ := []
+
+  constructor .writer_ .reader_ .write_keys .read_keys:
+
+  write data from/int to/int -> int:
+    if to - from  == 0: return 0
+    // We want to be nice to the receiver in case it is an embedded device, so we
+    // don't send too large records.  This size is intended to fit in two MTUs on
+    // Ethernet.
+    List.chunk_up from to 2800: | from2/int to2/int length2 |
+      record_header := #[APPLICATION_DATA_, 3, 3, 0, 0]
+      BIG_ENDIAN.put_uint16 record_header 3 length2
+      // The explicit (transmitted) part of the IV (nonce) must not be reused,
+      // but apart from that there are no requirements.  We just reuse the
+      // sequence number, which is a common solution.  In the ChaCha20-Poly1305
+      // algorithm there is no explict (transmitted) part of the IV, so it is a
+      // requirement that we use the sequence number to keep the local and
+      // remote IVs in sync.
+      BIG_ENDIAN.put_int64 write_keys.iv 4 write_keys.sequence_number_++
+      explicit_iv := write_keys.explicit_iv
+      sequence_number /ByteArray := write_keys.next_sequence_number
+      encryptor := write_keys.new_encryptor
+      encryptor.start --authenticated_data=(sequence_number + record_header)
+      // Now that we have used the actual size of the plaintext as the authentication data
+      // we update the header with the real size on the wire, which includes some more data.
+      BIG_ENDIAN.put_uint16 record_header 3 (length2 + explicit_iv.size + Aead_.TAG_SIZE)
+      List.chunk_up from2 to2 512: | from3 to3 length3 |
+        first /bool := from3 == from2
+        last /bool := to3 == to2
+        plaintext := data.copy from3 to3
+        parts := [encryptor.add plaintext]
+        if first:
+          parts = [record_header, explicit_iv, parts[0]]
+        if last:
+          parts.add encryptor.finish
+        else:
+          yield  // Don't monopolize the CPU with long crypto operations.
+        encrypted := byte_array_join_ parts
+        written := 0
+        while written < encrypted.size:
+          written += writer_.write encrypted written
+    return to - from
+
+  read -> ByteArray?:
+    result := null
+    try:
+      result = read_
+      return result
+    finally: | is_exception exception |
+      if not result or is_exception:
+        // If anything goes wrong we close the connection - don't want to give
+        // anyone a second chance to probe us with dodgy data.
+        //reader_.close
+        writer_.close
+
+  read_ -> ByteArray?:
+    while true:
+      if buffered_plaintext_index_ != buffered_plaintext_.size:
+        return buffered_plaintext_[buffered_plaintext_index_++]
+      record_header := reader_.read_bytes 5
+      if not record_header: return null
+      if record_header[0] != APPLICATION_DATA_ or record_header[1] != 3 or record_header[2] != 3: throw "PROTOCOL_ERROR"
+      encrypted_length := BIG_ENDIAN.uint16 record_header 3
+      // According to RFC5246: The length MUST NOT exceed 2^14 + 1024.
+      if encrypted_length > (1 << 14) + 1024: throw "PROTOCOL_ERROR"
+
+      explicit_iv /ByteArray := ?
+      if read_keys.has_explicit_iv:
+        explicit_iv = reader_.read_bytes 8
+        if not explicit_iv: return null
+        read_keys.explicit_iv.replace 0 explicit_iv
+      else:
+        explicit_iv = #[]
+      sequence_number := read_keys.next_sequence_number
+
+      plaintext_length := encrypted_length - Aead_.TAG_SIZE - explicit_iv.size
+      decryptor := read_keys.new_decryptor
+      // Overwrite the length with the unpadded length before adding the header
+      // to the authenticated data.
+      BIG_ENDIAN.put_uint16 record_header 3 plaintext_length
+      decryptor.start --authenticated_data=(sequence_number + record_header)
+      // Accumulate plaintext in a local to ensure that no data is read by the
+      // application that has not been verified.
+      buffered_plaintext := []
+      while plaintext_length > 0:
+        encrypted := reader_.read --max_size=plaintext_length
+        if not encrypted: return null
+        plaintext_length -= encrypted.size
+        plain_chunk := decryptor.add encrypted
+        if plain_chunk.size != 0: buffered_plaintext.add plain_chunk
+      received_tag := reader_.read_bytes Aead_.TAG_SIZE
+      if not received_tag: return null
+      plain_chunk := decryptor.verify received_tag
+      // Since we got here, the tag was successfully verified.
+      if plain_chunk.size != 0: buffered_plaintext.add plain_chunk
+      buffered_plaintext_ = buffered_plaintext
+      buffered_plaintext_index_ = 0
 
 TOIT_TLS_DONE_ := 1 << 0
 TOIT_TLS_WANT_READ_ := 1 << 1
@@ -354,6 +512,17 @@ class TlsGroup_:
       handle_ = null
       tls_deinit_ handle
 
+byte_array_join_ arrays/List -> ByteArray:
+  if arrays.size == 0: return #[]
+  if arrays.size == 1: return arrays[0]
+  if arrays.size == 2: return arrays[0] + arrays[1]
+  size := arrays.reduce --initial=0: | a b | a + b.size
+  result := ByteArray size
+  position := 0
+  arrays.do:
+    result.replace position it
+    position += it.size
+  return result
 
 tls_init_ is_server/bool:
   #primitive.tls.init
