@@ -19,6 +19,7 @@
 #include <mbedtls/error.h>
 #include <mbedtls/pem.h>
 #include <mbedtls/gcm.h>
+#include <mbedtls/chachapoly.h>
 #include <mbedtls/platform.h>
 #include <mbedtls/ssl_internal.h>
 
@@ -716,13 +717,21 @@ PRIMITIVE(set_session) {
 }
 
 static bool known_cipher_info(const mbedtls_cipher_info_t* info, size_t key_bitlen, int iv_len) {
-  if (info->type != MBEDTLS_CIPHER_AES_128_GCM && info->type != MBEDTLS_CIPHER_AES_256_GCM) return false;
-  if (info->mode != MBEDTLS_MODE_GCM) return false;
+  if (info->mode == MBEDTLS_MODE_GCM) {
+    if (info->type != MBEDTLS_CIPHER_AES_128_GCM && info->type != MBEDTLS_CIPHER_AES_256_GCM) return false;
+    if (key_bitlen != 128 && key_bitlen != 192 && key_bitlen != 256) return false;
+    if (info->block_size != 16) return false;
+  } else if (info->mode == MBEDTLS_MODE_CHACHAPOLY) {
+    if (info->type != MBEDTLS_CIPHER_CHACHA20_POLY1305 && info->type != MBEDTLS_CIPHER_CHACHA20_POLY1305) return false;
+    if (key_bitlen != 256) return false;
+    if (info->block_size != 1) return false;
+  } else {
+    return false;
+  }
   if (info->key_bitlen != key_bitlen) return false;
   if (iv_len != 12) return false;
   if (info->iv_size != 12) return false;
   if (info->flags != 0) return false;
-  if (info->block_size != 16) return false;
   return true;
 }
 
@@ -744,6 +753,7 @@ PRIMITIVE(get_internals) {
   const mbedtls_cipher_info_t* in_info = in_cipher_ctx->cipher_info;
 
   // Check the connection for parameters we can cope with.
+  if (out_info->mode != in_info->mode) return process->program()->null_object();
   if (!known_cipher_info(out_info, key_bitlen, iv_len)) return process->program()->null_object();
   if (!known_cipher_info(in_info, key_bitlen, iv_len)) return process->program()->null_object();
   if (!known_transform(socket->ssl.transform_out, iv_len)) return process->program()->null_object();
@@ -757,40 +767,52 @@ PRIMITIVE(get_internals) {
   ByteArray* decode_iv = process->allocate_byte_array(iv_len);
   ByteArray* encode_key = process->allocate_byte_array(key_len);
   ByteArray* decode_key = process->allocate_byte_array(key_len);
-  Array* result = process->object_heap()->allocate_array(4, Smi::zero());
+  Array* result = process->object_heap()->allocate_array(5, Smi::zero());
   if (!encode_iv || !decode_iv || !encode_key || !decode_key || !result) ALLOCATION_FAILED;
   memcpy(ByteArray::Bytes(encode_iv).address(), socket->ssl.transform_out->iv_enc, iv_len);
   memcpy(ByteArray::Bytes(decode_iv).address(), socket->ssl.transform_in->iv_dec, iv_len);
-  mbedtls_gcm_context* out_gcm_context = reinterpret_cast<mbedtls_gcm_context*>(out_cipher_ctx->cipher_ctx);
-  mbedtls_gcm_context* in_gcm_context = reinterpret_cast<mbedtls_gcm_context*>(in_cipher_ctx->cipher_ctx);
+  if (out_info->mode == MBEDTLS_MODE_GCM) {
+    mbedtls_gcm_context* out_gcm_context = reinterpret_cast<mbedtls_gcm_context*>(out_cipher_ctx->cipher_ctx);
+    mbedtls_gcm_context* in_gcm_context = reinterpret_cast<mbedtls_gcm_context*>(in_cipher_ctx->cipher_ctx);
 #if SOC_AES_SUPPORT_GCM
-  mbedtls_aes_context* out_aes_context = &out_gcm_context->aes_ctx;
-  mbedtls_aes_context* in_aes_context = &in_gcm_context->aes_ctx;
+    mbedtls_aes_context* out_aes_context = &out_gcm_context->aes_ctx;
+    mbedtls_aes_context* in_aes_context = &in_gcm_context->aes_ctx;
 #else
-  mbedtls_cipher_context_t* out_cipher_context = &out_gcm_context->cipher_ctx;
-  mbedtls_cipher_context_t* in_cipher_context = &in_gcm_context->cipher_ctx;
-  mbedtls_aes_context* out_aes_context = reinterpret_cast<mbedtls_aes_context*>(out_cipher_context->cipher_ctx);
-  mbedtls_aes_context* in_aes_context = reinterpret_cast<mbedtls_aes_context*>(in_cipher_context->cipher_ctx);
+    mbedtls_cipher_context_t* out_cipher_context = &out_gcm_context->cipher_ctx;
+    mbedtls_cipher_context_t* in_cipher_context = &in_gcm_context->cipher_ctx;
+    mbedtls_aes_context* out_aes_context = reinterpret_cast<mbedtls_aes_context*>(out_cipher_context->cipher_ctx);
+    mbedtls_aes_context* in_aes_context = reinterpret_cast<mbedtls_aes_context*>(in_cipher_context->cipher_ctx);
 #endif
-  if (  out_gcm_context->mode != MBEDTLS_GCM_ENCRYPT
-      || in_gcm_context->mode != MBEDTLS_GCM_DECRYPT) {
-    return process->program()->null_object();
-  }
+    if (  out_gcm_context->mode != MBEDTLS_GCM_ENCRYPT
+        || in_gcm_context->mode != MBEDTLS_GCM_DECRYPT) {
+      return process->program()->null_object();
+    }
 #ifdef TOIT_FREERTOS
-  if (out_aes_context->key_bytes != key_len ||
-      in_aes_context->key_bytes != key_len) {
-    return process->program()->null_object();
-  }
-  memcpy(ByteArray::Bytes(encode_key).address(), out_aes_context->key, key_len);
-  memcpy(ByteArray::Bytes(decode_key).address(), in_aes_context->key, key_len);
+    if (out_aes_context->key_bytes != key_len ||
+        in_aes_context->key_bytes != key_len) {
+      return process->program()->null_object();
+    }
+    memcpy(ByteArray::Bytes(encode_key).address(), out_aes_context->key, key_len);
+    memcpy(ByteArray::Bytes(decode_key).address(), in_aes_context->key, key_len);
 #else
-  memcpy(ByteArray::Bytes(encode_key).address(), out_aes_context->rk, key_len);
-  memcpy(ByteArray::Bytes(decode_key).address(), in_aes_context->rk, key_len);
+    memcpy(ByteArray::Bytes(encode_key).address(), out_aes_context->rk, key_len);
+    memcpy(ByteArray::Bytes(decode_key).address(), in_aes_context->rk, key_len);
 #endif
-  result->at_put(0, encode_iv);
-  result->at_put(1, decode_iv);
-  result->at_put(2, encode_key);
-  result->at_put(3, decode_key);
+    result->at_put(0, Smi::from(ALGORITHM_AES_GCM));
+  } else {
+    ASSERT(out_info->mode == MBEDTLS_MODE_CHACHAPOLY);
+    mbedtls_chacha20_context* out_ccp_context =
+        &reinterpret_cast<mbedtls_chachapoly_context*>(out_cipher_ctx->cipher_ctx)->chacha20_ctx;
+    mbedtls_chacha20_context* in_ccp_context =
+        &reinterpret_cast<mbedtls_chachapoly_context*>(in_cipher_ctx->cipher_ctx)->chacha20_ctx;
+    memcpy(ByteArray::Bytes(encode_key).address(), reinterpret_cast<const uint8*>(&out_ccp_context->state[4]), key_len);
+    memcpy(ByteArray::Bytes(decode_key).address(), reinterpret_cast<const uint8*>(&in_ccp_context->state[4]), key_len);
+    result->at_put(0, Smi::from(ALGORITHM_CHACHA20_POLY1305));
+  }
+  result->at_put(1, encode_iv);
+  result->at_put(2, decode_iv);
+  result->at_put(3, encode_key);
+  result->at_put(4, decode_key);
 
   return result;
 }

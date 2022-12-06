@@ -38,6 +38,13 @@ class MbedTlsResourceGroup;
 class MbedTlsSocket;
 class X509Certificate;
 
+// These numbers must stay in sync with constants in aes.toit.
+enum AeadAlgorithmType {
+  ALGORITHM_AES_GCM = 0,
+  ALGORITHM_CHACHA20_POLY1305 = 1,
+  NUMBER_OF_ALGORITHM_TYPES = 2
+};
+
 Object* tls_error(MbedTlsResourceGroup* group, Process* process, int err);
 bool ensure_handshake_memory();
 
