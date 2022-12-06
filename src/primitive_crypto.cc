@@ -14,6 +14,7 @@
 // directory of this repository.
 
 #include "mbedtls/gcm.h"
+#include "mbedtls/chachapoly.h"
 
 #include "aes.h"
 #include "objects.h"
@@ -124,28 +125,35 @@ PRIMITIVE(siphash_get) {
 }
 
 /**
-GCM is a mode for crypto operations that supports AEAD (Authenticated
-  encryption with associated data).  This is used for popular TLS symmetric
-  (post-handshake) crypto operations like TLS_AES_128_GCM_SHA256.
+AEAD (Authenticated encryption with associated data).
+This is used for popular TLS symmetric (post-handshake) crypto operations like
+  TLS_AES_128_GCM_SHA256.
 */
-class GcmContext : public SimpleResource {
+class AeadContext : public SimpleResource {
  public:
-  TAG(GcmContext);
-  // The cipher_id must currently be MBEDTLS_CIPHER_ID_AES.
-  GcmContext(SimpleResourceGroup* group, mbedtls_cipher_id_t cipher_id, bool encrypt)
+  TAG(AeadContext);
+  // The cipher_id must currently be MBEDTLS_CIPHER_ID_AES or
+  // MBEDTLS_CIPHER_ID_CHACHA20.
+  AeadContext(SimpleResourceGroup* group, mbedtls_cipher_id_t cipher_id, bool encrypt)
       : SimpleResource(group)
       , cipher_id_(cipher_id)
       , encrypt_(encrypt) {
-    mbedtls_gcm_init(&context_);
+    if (cipher_id == MBEDTLS_CIPHER_ID_AES) {
+      mbedtls_gcm_init(&gcm_context_);
+    } else {
+      ASSERT(cipher_id == MBEDTLS_CIPHER_ID_CHACHA20);
+      mbedtls_chachapoly_init(&chachapoly_context_);
+    }
   }
 
-  virtual ~GcmContext();
+  virtual ~AeadContext();
 
   static const int NONCE_SIZE = 12;
   static const int BLOCK_SIZE = 16;
   static const int TAG_SIZE = 16;
 
-  inline mbedtls_gcm_context* gcm_context() { return &context_; }
+  inline mbedtls_chachapoly_context* chachapoly_context() { return &chachapoly_context_; }
+  inline mbedtls_gcm_context* gcm_context() { return &gcm_context_; }
   inline mbedtls_cipher_id_t cipher_id() const { return cipher_id_; }
   inline bool is_encrypt() const { return encrypt_; }
   inline bool currently_generating_message() const { return currently_generating_message_; }
@@ -153,6 +161,8 @@ class GcmContext : public SimpleResource {
   inline void increment_length(int by) { length_ += by; }
   inline uint8* buffered_data() { return buffered_data_; }
   inline int number_of_buffered_bytes() const { return length_ & (BLOCK_SIZE - 1); }
+  int update(int size, const uint8* input_data, uint8* output_data);
+  int finish(uint8* output_data, int size);
 
  private:
   uint8 buffered_data_[BLOCK_SIZE];
@@ -160,13 +170,35 @@ class GcmContext : public SimpleResource {
   uint64_t length_ = 0;
   mbedtls_cipher_id_t cipher_id_;
   bool encrypt_;
-  mbedtls_gcm_context context_;
+  union {
+    mbedtls_chachapoly_context chachapoly_context_;
+    mbedtls_gcm_context gcm_context_;
+  };
 };
+
+int AeadContext::update(int size, const uint8* input_data, uint8* output_data) {
+  if (cipher_id_ == MBEDTLS_CIPHER_ID_AES) {
+    return mbedtls_gcm_update(&gcm_context_, size, input_data, output_data);
+  } else {
+    return mbedtls_chachapoly_update(&chachapoly_context_, size, input_data, output_data);
+  }
+}
+
+int AeadContext::finish(uint8* output_data, int size) {
+  if (cipher_id_ == MBEDTLS_CIPHER_ID_AES) {
+    return mbedtls_gcm_finish(&gcm_context_, output_data, size);
+  } else {
+    ASSERT(cipher_id_ == MBEDTLS_CIPHER_ID_CHACHA20);
+    ASSERT(size == TAG_SIZE);
+    return mbedtls_chachapoly_finish(&chachapoly_context_, output_data);
+  }
+}
 
 // These numbers must stay in sync with constants in primitive_crypto.cc.
 enum GcmAlgorithmType {
-  ALGORITHM_AES_GCM_SHA256 = 0,
-  NUMBER_OF_ALGORITHM_TYPES = 1
+  ALGORITHM_AES_GCM = 0,
+  ALGORITHM_CHACHA20_POLY1305 = 1,
+  NUMBER_OF_ALGORITHM_TYPES = 2
 };
 
 class MbedTlsResourceGroup;
@@ -174,11 +206,16 @@ class MbedTlsResourceGroup;
 // From resources/tls.cc.
 extern Object* tls_error(MbedTlsResourceGroup* group, Process* process, int err);
 
-GcmContext::~GcmContext(){
-  mbedtls_gcm_free(&context_);
+AeadContext::~AeadContext(){
+  if (cipher_id_ == MBEDTLS_CIPHER_ID_AES) {
+    mbedtls_gcm_free(&gcm_context_);
+  } else {
+    ASSERT(cipher_id_ == MBEDTLS_CIPHER_ID_CHACHA20);
+    mbedtls_chachapoly_free(&chachapoly_context_);
+  }
 }
 
-PRIMITIVE(gcm_init) {
+PRIMITIVE(aead_init) {
   ARGS(SimpleResourceGroup, group, Blob, key, int, algorithm, bool, encrypt);
   if (!(0 <= algorithm && algorithm < NUMBER_OF_ALGORITHM_TYPES)) {
     INVALID_ARGUMENT;
@@ -191,33 +228,42 @@ PRIMITIVE(gcm_init) {
 
   mbedtls_cipher_id_t mbedtls_cipher;
 
-  if (algorithm == ALGORITHM_AES_GCM_SHA256) {
+  if (algorithm == ALGORITHM_AES_GCM) {
     mbedtls_cipher = MBEDTLS_CIPHER_ID_AES;
+  } else if (algorithm == ALGORITHM_CHACHA20_POLY1305) {
+    mbedtls_cipher = MBEDTLS_CIPHER_ID_CHACHA20;
   } else {
     INVALID_ARGUMENT;
   }
 
-  GcmContext* gcm_context = _new GcmContext(
+  AeadContext* aead_context = _new AeadContext(
       group,
       mbedtls_cipher,
       encrypt);
 
-  if (!gcm_context) {
+  if (!aead_context) {
     MALLOC_FAILED;
   }
 
-  int err = mbedtls_gcm_setkey(gcm_context->gcm_context(), mbedtls_cipher, key.address(), key.length() * BYTE_BIT_SIZE);
+  int err;
+  if (mbedtls_cipher == MBEDTLS_CIPHER_ID_AES) {
+    err = mbedtls_gcm_setkey(aead_context->gcm_context(), mbedtls_cipher, key.address(), key.length() * BYTE_BIT_SIZE);
+  } else {
+    ASSERT(mbedtls_cipher == MBEDTLS_CIPHER_ID_CHACHA20);
+    ASSERT(key.length() * BYTE_BIT_SIZE == 256);
+    err = mbedtls_chachapoly_setkey(aead_context->chachapoly_context(), key.address());
+  }
   if (err != 0) {
-    group->unregister_resource(gcm_context);
+    group->unregister_resource(aead_context);
     return tls_error(null, process, err);
   }
   
-  proxy->set_external_address(gcm_context);
+  proxy->set_external_address(aead_context);
   return proxy;
 }
 
-PRIMITIVE(gcm_close) {
-  ARGS(GcmContext, context);
+PRIMITIVE(aead_close) {
+  ARGS(AeadContext, context);
   context->resource_group()->unregister_resource(context);
   context_proxy->clear_external_address();
   return process->program()->null_object();
@@ -225,7 +271,7 @@ PRIMITIVE(gcm_close) {
 
 // Start the encryption of a message.  Takes a 12 byte nonce.
 // It is vital that the nonce is not reused with the same key.
-// Internally the gcm_* primitives will add 4 more bytes of block counter,
+// Internally the aead_* primitives will add 4 more bytes of block counter,
 //   starting at 1, to form a 16 byte IV.
 //
 // TLS:
@@ -236,19 +282,36 @@ PRIMITIVE(gcm_close) {
 // In order to avoid reuse of the nonce, the explicit part is normally counted
 //   up by one for each record that is encrypted.  This means that this part of
 //   the nonce corresponds to the sequence number of the record.
-PRIMITIVE(gcm_start_message) {
-  ARGS(GcmContext, context, Blob, authenticated_data, Blob, nonce);
+PRIMITIVE(aead_start_message) {
+  ARGS(AeadContext, context, Blob, authenticated_data, Blob, nonce);
   if (context->currently_generating_message() != 0) INVALID_ARGUMENT;
-  if (nonce.length() != GcmContext::NONCE_SIZE) INVALID_ARGUMENT;
+  if (nonce.length() != AeadContext::NONCE_SIZE) INVALID_ARGUMENT;
   context->set_currently_generating_message();
-  int mode = context->is_encrypt() ? MBEDTLS_GCM_ENCRYPT : MBEDTLS_GCM_DECRYPT;
-  int result = mbedtls_gcm_starts(
-      context->gcm_context(),
-      mode,
-      nonce.address(),
-      nonce.length(),
-      authenticated_data.address(),
-      authenticated_data.length());
+  int result;
+  if (context->cipher_id() == MBEDTLS_CIPHER_ID_AES) {
+    int mode = context->is_encrypt() ? MBEDTLS_GCM_ENCRYPT : MBEDTLS_GCM_DECRYPT;
+    result = mbedtls_gcm_starts(
+        context->gcm_context(),
+        mode,
+        nonce.address(),
+        nonce.length(),
+        authenticated_data.address(),
+        authenticated_data.length());
+  } else {
+    ASSERT(context->cipher_id() == MBEDTLS_CIPHER_ID_CHACHA20);
+    ASSERT(nonce.length() == 12);
+    mbedtls_chachapoly_mode_t mode = context->is_encrypt() ? MBEDTLS_CHACHAPOLY_ENCRYPT : MBEDTLS_CHACHAPOLY_DECRYPT;
+    result = mbedtls_chachapoly_starts(
+        context->chachapoly_context(),
+        nonce.address(),
+        mode);
+    if (result == 0) {
+      result = mbedtls_chachapoly_update_aad(
+          context->chachapoly_context(),
+          authenticated_data.address(),
+          authenticated_data.length());
+    }
+  }
   if (result != 0) return tls_error(null, process, result);
 
   return process->program()->null_object();
@@ -260,11 +323,11 @@ If the out byte array was big enough, returns a Smi to indicate how much
 If the out byte array was not big enough, returns null.  In this case no
   data was consumed.
 */
-PRIMITIVE(gcm_add) {
-  ARGS(GcmContext, context, Blob, in, MutableBlob, out);
+PRIMITIVE(aead_add) {
+  ARGS(AeadContext, context, Blob, in, MutableBlob, out);
   if (!context->currently_generating_message()) INVALID_ARGUMENT;
 
-  static const int BLOCK_SIZE = GcmContext::BLOCK_SIZE;
+  static const int BLOCK_SIZE = AeadContext::BLOCK_SIZE;
 
   uint8*       out_address = out.address();
   const uint8* in_address  = in.address();
@@ -293,11 +356,7 @@ PRIMITIVE(gcm_add) {
     in_length -= to_copy;
     if (buffered + to_copy == BLOCK_SIZE) {
       // We filled the temporary buffer.
-      mbedtls_gcm_update(
-          context->gcm_context(),
-          BLOCK_SIZE,
-          context->buffered_data(),
-          out_address);
+      context->update(BLOCK_SIZE, context->buffered_data(), out_address);
       out_address += BLOCK_SIZE;
     }
   }
@@ -305,11 +364,7 @@ PRIMITIVE(gcm_add) {
   int to_process = Utils::round_down(in_length, BLOCK_SIZE);
   ASSERT(out_address + to_process <= out.address() + out.length());
 
-  mbedtls_gcm_update(
-      context->gcm_context(),
-      to_process,
-      in_address,
-      out_address);
+  context->update(to_process, in_address, out_address);
 
   in_address  += to_process;
   in_length   -= to_process;
@@ -321,33 +376,28 @@ PRIMITIVE(gcm_add) {
   return Smi::from(out_address - out.address());
 }
 
-PRIMITIVE(gcm_get_tag_size) {
-  ARGS(GcmContext, context);
-  return Smi::from(GcmContext::TAG_SIZE);
+PRIMITIVE(aead_get_tag_size) {
+  ARGS(AeadContext, context);
+  return Smi::from(AeadContext::TAG_SIZE);
 }
 
 /**
 Ends the encryption of a message.
 Returns the last data encrypted, followed by the encryption tag
 */
-PRIMITIVE(gcm_finish) {
-  ARGS(GcmContext, context);
+PRIMITIVE(aead_finish) {
+  ARGS(AeadContext, context);
   if (!context->is_encrypt()) INVALID_ARGUMENT;
   if (!context->currently_generating_message()) INVALID_ARGUMENT;
   int rest = context->number_of_buffered_bytes();
-  ByteArray* result = process->allocate_byte_array(rest + GcmContext::TAG_SIZE);
+  ByteArray* result = process->allocate_byte_array(rest + AeadContext::TAG_SIZE);
   if (result == null) ALLOCATION_FAILED;
   ByteArray::Bytes result_bytes(result);
 
-  int ok = mbedtls_gcm_update(
-    context->gcm_context(),
-    rest,
-    context->buffered_data(),
-    result_bytes.address());
+  int ok = context->update(rest, context->buffered_data(), result_bytes.address());
   if (ok != 0) return tls_error(null, process, ok);
 
-  ok = mbedtls_gcm_finish(
-      context->gcm_context(),
+  ok = context->finish(
       result_bytes.address() + rest,
       result_bytes.length() - rest);
   if (ok != 0) return tls_error(null, process, ok);
@@ -360,30 +410,23 @@ Ends the decryption of a message.
 Returns zero if the tag matches the calculated one.
 Returns non-zero if the tag does not match.
 */
-PRIMITIVE(gcm_verify) {
-  ARGS(GcmContext, context, Blob, verification_tag, MutableBlob, rest);
+PRIMITIVE(aead_verify) {
+  ARGS(AeadContext, context, Blob, verification_tag, MutableBlob, rest);
   if (context->is_encrypt()) INVALID_ARGUMENT;
-  if (verification_tag.length() != GcmContext::TAG_SIZE) INVALID_ARGUMENT;
+  if (verification_tag.length() != AeadContext::TAG_SIZE) INVALID_ARGUMENT;
   if (rest.length() < context->number_of_buffered_bytes()) INVALID_ARGUMENT;
 
-  int ok = mbedtls_gcm_update(
-    context->gcm_context(),
-    context->number_of_buffered_bytes(),
-    context->buffered_data(),
-    rest.address());
+  int ok = context->update(context->number_of_buffered_bytes(), context->buffered_data(), rest.address());
   if (ok != 0) return tls_error(null, process, ok);
 
-  uint8 calculated_tag[GcmContext::TAG_SIZE];
-  ok = mbedtls_gcm_finish(
-      context->gcm_context(),
-      calculated_tag,
-      GcmContext::TAG_SIZE);
+  uint8 calculated_tag[AeadContext::TAG_SIZE];
+  ok = context->finish(calculated_tag, AeadContext::TAG_SIZE);
   if (ok != 0) {
     return tls_error(null, process, ok);
   }
   uint8 zero = 0;
   // Constant time calculation.
-  for (int i = 0; i < GcmContext::TAG_SIZE; i++) {
+  for (int i = 0; i < AeadContext::TAG_SIZE; i++) {
     zero |= calculated_tag[i] ^ verification_tag.address()[i];
   }
   return Smi::from(zero);

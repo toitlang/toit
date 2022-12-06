@@ -7,28 +7,28 @@ test_simple tests/type_propagation/field_test.toit
   2[026] - load smi 12
   4[053] - invoke static A tests/type_propagation/field_test.toit // {A}
   7[014] - load local 0
-  8[058] - invoke virtual x // {String_|Null_|SmallInteger_}
- 12[053] - invoke static id tests/type_propagation/field_test.toit // {String_|Null_|SmallInteger_}
- 15[041] - pop 1
- 16[042] - allocate instance A
- 18[020] - load literal horse
- 20[053] - invoke static A tests/type_propagation/field_test.toit // {A}
- 23[004] - store local, pop S1
- 25[014] - load local 0
- 26[058] - invoke virtual x // {String_|Null_|SmallInteger_}
- 30[053] - invoke static id tests/type_propagation/field_test.toit // {String_|Null_|SmallInteger_}
- 33[041] - pop 1
- 34[042] - allocate instance B
- 36[020] - load literal Oddball (true/false/null)
- 38[026] - load smi 42
- 40[053] - invoke static B tests/type_propagation/field_test.toit // {B}
- 43[014] - load local 0
- 44[058] - invoke virtual x // {Null_|True_}
- 48[053] - invoke static id tests/type_propagation/field_test.toit // {Null_|True_}
- 51[002] - pop, load local S0
- 53[058] - invoke virtual y // {Null_|SmallInteger_}
- 57[053] - invoke static id tests/type_propagation/field_test.toit // {Null_|SmallInteger_}
- 60[089] - return null S3 0
+  8[060] - invoke virtual get x // {String_|Null_|SmallInteger_}
+ 11[053] - invoke static id tests/type_propagation/field_test.toit // {String_|Null_|SmallInteger_}
+ 14[041] - pop 1
+ 15[042] - allocate instance A
+ 17[020] - load literal horse
+ 19[053] - invoke static A tests/type_propagation/field_test.toit // {A}
+ 22[004] - store local, pop S1
+ 24[014] - load local 0
+ 25[060] - invoke virtual get x // {String_|Null_|SmallInteger_}
+ 28[053] - invoke static id tests/type_propagation/field_test.toit // {String_|Null_|SmallInteger_}
+ 31[041] - pop 1
+ 32[042] - allocate instance B
+ 34[020] - load literal Oddball (true/false/null)
+ 36[026] - load smi 42
+ 38[053] - invoke static B tests/type_propagation/field_test.toit // {B}
+ 41[014] - load local 0
+ 42[060] - invoke virtual get x // {Null_|True_}
+ 45[053] - invoke static id tests/type_propagation/field_test.toit // {Null_|True_}
+ 48[002] - pop, load local S0
+ 50[060] - invoke virtual get y // {Null_|SmallInteger_}
+ 53[053] - invoke static id tests/type_propagation/field_test.toit // {Null_|SmallInteger_}
+ 56[089] - return null S3 0
 
 id tests/type_propagation/field_test.toit
  - argument 0: {String_|Null_|True_|SmallInteger_}

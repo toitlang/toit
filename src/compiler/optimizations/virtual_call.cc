@@ -20,6 +20,7 @@
 #include "../queryable_class.h"
 #include "../set.h"
 
+#include "../../flags.h"
 #include "../../bytecodes.h"
 
 namespace toit {
@@ -97,6 +98,12 @@ Expression* optimize_virtual_call(CallVirtual* node,
       // TODO(florian): we may switch to a static call if the receiver isn't an int/Array.
       direct_method = null;
     }
+  }
+
+  // TODO(kasper): This feels a bit hacky, but we prefer keeping the virtual
+  // calls non-direct for the purposes of the type propagation phase.
+  if (Flags::propagate) {
+    direct_method = null;
   }
 
   if (direct_method == null) {
