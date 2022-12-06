@@ -27,6 +27,7 @@
 
 #include "../../top.h"
 #include "../../objects.h"
+#include "../../entry_points.h"
 
 #include <vector>
 #include <unordered_map>
@@ -65,9 +66,19 @@ class TypePropagator {
   void enqueue(MethodTemplate* method);
   void add_site(uint8* site, TypeVariable* result);
 
+#define ENSURE_ENTRY_POINT(name, symbol, arity) \
+  void ensure_##name();
+  ENTRY_POINTS(ENSURE_ENTRY_POINT)
+#undef ENSURE_ENTRY_POINT
+
  private:
   Program* const program_;
   int words_per_type_;
+
+#define HAS_ENTRY_POINT(name, symbol, arity) \
+  bool has_##name##_ = false;
+  ENTRY_POINTS(HAS_ENTRY_POINT)
+#undef HAS_ENTRY_POINT
 
   Map<uint8*, Set<TypeVariable*>> sites_;
 

@@ -28,6 +28,7 @@ class TypeScope {
  public:
   explicit TypeScope(MethodTemplate* method);
   TypeScope(BlockTemplate* block, TypeScope* outer, bool linked);
+  TypeScope(int slots, int words_per_type);
   ~TypeScope();
 
   TypeStack* top() const { return unwrap(wrapped_[level_]); }
