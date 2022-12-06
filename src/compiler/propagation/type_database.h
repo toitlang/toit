@@ -20,6 +20,7 @@
 
 #include <unordered_map>
 #include <vector>
+#include <string>
 
 namespace toit {
 
@@ -32,16 +33,18 @@ class TypeStack;
 class TypeDatabase {
  public:
   static TypeDatabase* compute(Program* program);
+  ~TypeDatabase();
 
   const std::vector<Method> methods() const;
   const std::vector<TypeSet> arguments(Method method) const;
   const TypeSet usage(int position) const;
 
+  std::string as_json() const;
+
  private:
   Program* const program_;
   const int words_per_type_;
   std::vector<TypeStack*> types_;
-  const TypeSet empty_;
 
   std::unordered_map<int, TypeStack*> methods_;
   std::unordered_map<int, TypeSet> usage_;

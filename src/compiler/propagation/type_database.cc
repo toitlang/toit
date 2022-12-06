@@ -17,6 +17,8 @@
 #include "type_propagator.h"
 #include "type_stack.h"
 
+#include <sstream>
+
 namespace toit {
 namespace compiler {
 
@@ -24,11 +26,14 @@ static const int TYPES_BLOCK_SIZE = 1024;
 
 TypeDatabase::TypeDatabase(Program* program, int words_per_type)
     : program_(program)
-    , words_per_type_(words_per_type)
-    , empty_(null) {
-  TypeStack* initial = add_types_block();
-  initial->push_empty();
-  empty_ = initial->get(0);
+    , words_per_type_(words_per_type) {
+  add_types_block();
+}
+
+TypeDatabase::~TypeDatabase() {
+  for (auto it : types_) {
+    delete it;
+  }
 }
 
 TypeDatabase* TypeDatabase::compute(Program* program) {
@@ -63,10 +68,55 @@ const std::vector<TypeSet> TypeDatabase::arguments(Method method) const {
 const TypeSet TypeDatabase::usage(int position) const {
   auto probe = usage_.find(position);
   if (probe == usage_.end()) {
-    return empty_;
+    return TypeSet::invalid();
   } else {
     return probe->second;
   }
+}
+
+std::string TypeDatabase::as_json() const {
+  std::stringstream out;
+  out << "[\n";
+
+  bool first = true;
+  for (auto it : usage_) {
+    if (first) {
+      first = false;
+    } else {
+      out << ",\n";
+    }
+    std::string type_string = it.second.as_json(program_);
+    out << "  {\"position\": " << it.first;
+    out << ", \"type\": " << type_string << "}";
+  }
+
+  for (auto it : methods_) {
+    if (first) {
+      first = false;
+    } else {
+      out << ",\n";
+    }
+
+    int position = it.first;
+    out << "  {\"position\": " << it.first;
+    out << ", \"arguments\": [";
+
+    Method method(program_->bcp_from_absolute_bci(position));
+    int arity = method.arity();
+    TypeStack* arguments = it.second;
+    for (int i = 0; i < arity; i++) {
+      if (i != 0) {
+        out << ",";
+      }
+      TypeSet type = arguments->get(i);
+      std::string type_string = type.as_json(program_);
+      out << type_string;
+    }
+    out << "]}";
+  }
+
+  out << "\n]\n";
+  return out.str();
 }
 
 void TypeDatabase::add_method(Method method) {
@@ -85,7 +135,7 @@ void TypeDatabase::add_argument(Method method, int n, const TypeSet type) {
 
 void TypeDatabase::add_usage(int position, const TypeSet type) {
   ASSERT(usage_.find(position) == usage_.end());
-  usage_.emplace(position, type);
+  usage_.emplace(position, copy_type(type));
 }
 
 TypeSet TypeDatabase::copy_type(const TypeSet type) {

@@ -1604,6 +1604,8 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
 
   if (propagate) {
     TypeDatabase* types = TypeDatabase::compute(program);
+    auto json = types->as_json();
+    printf("%s", json.c_str());
     delete types;
   }
 
