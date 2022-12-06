@@ -21,7 +21,7 @@ namespace compiler {
 
 TypeSet TypeVariable::use(TypePropagator* propagator, MethodTemplate* user, uint8* site) {
   if (site) propagator->add_site(site, this);
-  users_.insert(user);
+  if (user) users_.insert(user);
   return type();
 }
 
