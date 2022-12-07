@@ -7,6 +7,7 @@ main:
   test_invokes
   test_nesting
   test_catch
+  test_too_few_arguments
 
 test_simple:
   x := 0
@@ -59,6 +60,11 @@ test_catch:
     maybe_throw
     y = 3.3
   id y  // Expect: string|float|null
+
+test_too_few_arguments:
+  catch:
+    invoke: | x y | null  // This should throw.
+    id 42                 // This should not be analyzed.
 
 maybe_throw:
   if pick: throw "woops"

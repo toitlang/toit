@@ -801,6 +801,12 @@ static void process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& workli
     B_ARG1(index);
     TypeSet receiver = stack->local(index - 1);
     BlockTemplate* block = receiver.block();
+    // If we're passing too few arguments to the block, this will
+    // throw and we should not continue analyzing on this path.
+    if (index < block->arity()) {
+      scope->throw_maybe();
+      return;
+    }
     for (int i = 1; i < block->arity(); i++) {
       TypeSet argument = stack->local(index - (i + 1));
       // Merge the argument type. If the type changed, we enqueue
