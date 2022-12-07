@@ -41,11 +41,7 @@ class TypeDatabase {
 
   std::string as_json() const;
 
-  void check_method_live(Method method) const {
-    int position = program_->absolute_bci_from_bcp(method.header_bcp());
-    if (methods_.find(position) != methods_.end()) return;
-    FATAL("method not live: %d", position);
-  }
+  void check_method_entry(Method method, Object** sp) const;
 
  private:
   Program* const program_;

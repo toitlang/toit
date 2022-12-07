@@ -172,7 +172,7 @@ Method Program::find_method(Object* receiver, int offset) {
 
 #ifdef TOIT_CHECK_PROPAGATED_TYPES
 #define CHECK_PROPAGATED_TYPES_METHOD_ENTRY(target) \
-  if (propagated_types) propagated_types->check_method_live(target);
+  if (propagated_types) propagated_types->check_method_entry(target, sp);
 #else
 #define CHECK_PROPAGATED_TYPES_METHOD_ENTRY(target)
 #endif

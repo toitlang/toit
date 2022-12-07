@@ -36,6 +36,28 @@ TypeDatabase::~TypeDatabase() {
   }
 }
 
+void TypeDatabase::check_method_entry(Method method, Object** sp) const {
+  int position = program_->absolute_bci_from_bcp(method.header_bcp());
+  auto probe = methods_.find(position);
+  if (probe == methods_.end()) {
+    FATAL("method not analyzed: %d", position);
+  }
+  TypeStack* stack = probe->second;
+  for (int i = 0; i < method.arity(); i++) {
+    TypeSet type = stack->get(i);
+    Object* argument = sp[1 + (method.arity() - i)];
+    if (type.is_block()) {
+      if (is_smi(argument)) continue;
+      FATAL("method expected a block at %d: %d", i, position);
+    }
+    Smi* class_id = is_smi(argument)
+        ? program_->smi_class_id()
+        : HeapObject::cast(argument)->class_id();
+    if (type.contains(class_id->value())) continue;
+    FATAL("method has wrong argument type %d @ %d: %d", class_id->value(), i, position);
+  }
+}
+
 TypeDatabase* TypeDatabase::compute(Program* program) {
   TypePropagator propagator(program);
   TypeDatabase* types = new TypeDatabase(program, propagator.words_per_type());

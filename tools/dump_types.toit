@@ -85,7 +85,7 @@ show_types --sdk/bool types/List snapshot_content/ByteArray -> none:
     if first: first = false
     else: print ""
     args := method_args.get method.id
-    method.output program args --no-show_positions: | position/int |
+    method.output program args /*--no-show_positions*/: | position/int |
       type_strings.get position
 
 type_string program/Program type/any -> string:
