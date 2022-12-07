@@ -191,12 +191,12 @@ Scheduler.current_tcb= tests/type_propagation/richards_test.toit
 
 Scheduler.current_id tests/type_propagation/richards_test.toit
  - argument 0: {Scheduler}
-  0[009] - load field local 82 // {Null_|SmallInteger_|ByteArray_}
+  0[009] - load field local 82 // {Null_|LargeInteger_|SmallInteger_|ByteArray_}
   2[088] - return S1 1
 
 Scheduler.current_id= tests/type_propagation/richards_test.toit
  - argument 0: {Scheduler}
- - argument 1: {Null_|SmallInteger_|ByteArray_}
+ - argument 1: {Null_|LargeInteger_|SmallInteger_|ByteArray_}
   0[017] - load local 3
   1[017] - load local 3
   2[011] - store field 5
@@ -360,8 +360,8 @@ Scheduler.schedule tests/type_propagation/richards_test.toit
  42[016] - load local 2
  43[017] - load local 3
  44[060] - invoke virtual get current_tcb // {*}
- 47[060] - invoke virtual get id // {Null_|SmallInteger_|ByteArray_}
- 50[061] - invoke virtual set current_id // {Null_|SmallInteger_|ByteArray_}
+ 47[060] - invoke virtual get id // {Null_|LargeInteger_|SmallInteger_|ByteArray_}
+ 50[061] - invoke virtual set current_id // {Null_|LargeInteger_|SmallInteger_|ByteArray_}
  53[002] - pop, load local S2
  55[017] - load local 3
  56[060] - invoke virtual get current_tcb // {*}
@@ -433,7 +433,7 @@ Scheduler.queue tests/type_propagation/richards_test.toit
   2[017] - load local 3
   3[060] - invoke virtual get blocks // {Null_|List_}
   6[017] - load local 3
-  7[060] - invoke virtual get id // {Null_|SmallInteger_}
+  7[060] - invoke virtual get id // {Null_|LargeInteger_|SmallInteger_}
  10[078] - invoke at // {*}
  11[014] - load local 0
  12[081] - branch if true T19
@@ -452,8 +452,8 @@ Scheduler.queue tests/type_propagation/richards_test.toit
  34[061] - invoke virtual set link // {Null_}
  37[002] - pop, load local S3
  39[019] - load local 5
- 40[060] - invoke virtual get current_id // {Null_|SmallInteger_|ByteArray_}
- 43[061] - invoke virtual set id // {SmallInteger_}
+ 40[060] - invoke virtual get current_id // {Null_|LargeInteger_|SmallInteger_|ByteArray_}
+ 43[061] - invoke virtual set id // {LargeInteger_|SmallInteger_}
  46[002] - pop, load local S0
  48[019] - load local 5
  49[060] - invoke virtual get current_tcb // {*}
@@ -1148,12 +1148,12 @@ Packet.link= tests/type_propagation/richards_test.toit
 
 Packet.id tests/type_propagation/richards_test.toit
  - argument 0: {Packet}
-  0[009] - load field local 18 // {Null_|SmallInteger_}
+  0[009] - load field local 18 // {Null_|LargeInteger_|SmallInteger_}
   2[088] - return S1 1
 
 Packet.id= tests/type_propagation/richards_test.toit
  - argument 0: {Packet}
- - argument 1: {Null_|SmallInteger_|ByteArray_}
+ - argument 1: {Null_|LargeInteger_|SmallInteger_|ByteArray_}
   0[052] - load local, as class, pop 2 - LargeInteger_(22 - 24)
   2[017] - load local 3
   3[017] - load local 3

@@ -5,6 +5,7 @@
 main:
   test_is_exception
   test_exception
+  test_catchy
 
 test_is_exception:
   return_is_exception
@@ -35,6 +36,15 @@ return_exception:
     // Do nothing.
   finally: | is_exception exception |
     return exception
+
+test_catchy:
+  catchy
+
+catchy:
+  try:
+    return null
+  finally: | is_exception exception |
+    return is_exception
 
 id x:
   return x
