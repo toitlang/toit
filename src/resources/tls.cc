@@ -745,6 +745,9 @@ PRIMITIVE(get_internals) {
   ARGS(BaseMbedTlsSocket, socket);
   size_t iv_len = socket->ssl.transform_out->ivlen;
   // mbedtls_cipher_context_t from include/mbedtls/cipher.h.
+  if (socket->ssl.transform_out == null || socket->ssl.transform_in == null) {
+    return Smi::from(42);  // Not ready yet.  This should not happen - it will throw in Toit.
+  }
   mbedtls_cipher_context_t* out_cipher_ctx = &socket->ssl.transform_out->cipher_ctx_enc;
   mbedtls_cipher_context_t* in_cipher_ctx = &socket->ssl.transform_in->cipher_ctx_dec;
   size_t key_bitlen = out_cipher_ctx->key_bitlen;

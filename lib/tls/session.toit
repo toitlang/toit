@@ -72,7 +72,10 @@ class Session:
   tls_ := null
 
   outgoing_buffer_/ByteArray := #[]
+  bytes_before_next_record_header_ := 0
   closed_for_write_ := false
+  outgoing_sequence_numbers_used_ := 0
+  incoming_sequence_numbers_used_ := 0
 
   reads_encrypted_ := false
   writes_encrypted_ := false
@@ -152,6 +155,7 @@ class Session:
         with_timeout handshake_timeout:
           flush_outgoing_
         if state == TOIT_TLS_DONE_:
+          extract_key_data_
           if symmetric_session_ != null:
             // We don't use MbedTLS any more.
             tls_close_ tls_
@@ -253,19 +257,49 @@ class Session:
     if not handshake_in_progress_: return
     handshake
 
+  // This takes any data that the MbedTLS callback has deposited in the
+  // outgoing_buffer_ byte array and writes it to the underlying socket.
+  // During handshakes we also want to keep track of the record boundaries
+  // so that we can switch to a Toit-level symmetric session when
+  // handshaking is complete.  For this we need to know how many handshake
+  // records were sent after encryption was activated.
   flush_outgoing_ -> none:
     from := 0
+    pending_bytes := #[]
     while true:
       fullness := tls_get_outgoing_fullness_ tls_
       if fullness > from:
+        while fullness - from > bytes_before_next_record_header_:
+          // We have the start of the next record available.
+          if fullness - from + 5 >= bytes_before_next_record_header_:
+            // We have the full record header available.
+            header := outgoing_buffer_[from + bytes_before_next_record_header_..]
+            content_type := header[0]
+            if content_type == CHANGE_CIPHER_SPEC_:
+              writes_encrypted_ = true
+            else if writes_encrypted_:
+              outgoing_sequence_numbers_used_++
+            record_size := BIG_ENDIAN.uint16 header 3
+            // Set this so it skips the next header and its contents.
+            bytes_before_next_record_header_ += 5 + record_size
+          else:
+            // We have a partial record header available.  Save up the partial
+            // record for later.
+            pending_bytes = outgoing_buffer_.copy (from + bytes_before_next_record_header_) (outgoing_buffer_.size)
+            // Remove the partial record from the data we are about to send.
+            fullness -= pending_bytes.size
         sent := writer_.write outgoing_buffer_ from fullness
         from += sent
+        bytes_before_next_record_header_ -= sent
       else:
         // The outgoing buffer can be neutered by the calls to
         // write. In that case, we allocate a fresh external one.
         if outgoing_buffer_.is_empty:
           outgoing_buffer_ = ByteArray_.external_ 1500
-        tls_set_outgoing_ tls_ outgoing_buffer_ 0
+        // Be sure not to lose the pending bytes.  Instead put them in the
+        // otherwise empty outgoing_buffer_.
+        outgoing_buffer_.replace 0 pending_bytes
+        tls_set_outgoing_ tls_ outgoing_buffer_ pending_bytes.size
         return
 
   read_more_ -> bool:
@@ -324,7 +358,6 @@ class Session:
     else if content_type == CHANGE_CIPHER_SPEC_:
       remaining_message_bytes = 1
       reads_encrypted_ = true
-      extract_key_data_
     else:
       if content_type != HANDSHAKE_:
         // If we get an unknown record type the probable reason is that
@@ -340,12 +373,20 @@ class Session:
         if text_end > 2:
           server_reply = "- server replied unencrypted:\n$(reader_.read_string text_end)"
         throw "Unknown TLS record type: $content_type$server_reply"
-      reader_.ensure 4  // 4 byte handshake message header.
-      // Big endian 24 bit handshake message size.
-      remaining_message_bytes = (reader_.byte 1) << 16
-      remaining_message_bytes += (reader_.byte 2) << 8
-      remaining_message_bytes += (reader_.byte 3)
-      remaining_message_bytes += 4  // Encoded size does not include the 4 byte handshake header.
+      if reads_encrypted_:
+        incoming_sequence_numbers_used_++
+        // Encrypted packet so we use the record header to determine size.
+        remaining_message_bytes = BIG_ENDIAN.uint16 header 3
+      else:
+        // Unencrypted, so we use the message header to determine size, which
+        // enables us to reassemble messages fragmented across multiple
+        // records, something MbedTLS can't do alone.
+        reader_.ensure 4  // 4 byte handshake message header.
+        // Big endian 24 bit handshake message size.
+        remaining_message_bytes = (reader_.byte 1) << 16
+        remaining_message_bytes += (reader_.byte 2) << 8
+        remaining_message_bytes += (reader_.byte 3)
+        remaining_message_bytes += 4  // Encoded size does not include the 4 byte handshake header.
 
     // The protocol requires that records are less than 16k large, so if there is
     // a single message that doesn't fit in a record we can't defragment.  MbedTLS
