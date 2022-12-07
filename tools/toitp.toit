@@ -102,7 +102,8 @@ print_primitive_table program/Program:
 print_bytecodes program/Program:
   methods/List := ?
   suffix := ?
-  absolute_bci := int.parse filter --on_error=:-1
+  absolute_bci := -1
+  if not filter.is_empty: absolute_bci = int.parse filter --on_error=: -1
   if absolute_bci >= 0:
     methods = [program.method_from_absolute_bci absolute_bci]
     suffix = " (only printing methods containing absolute bci $absolute_bci)"

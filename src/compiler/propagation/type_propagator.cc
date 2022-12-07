@@ -764,6 +764,12 @@ static void process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& workli
     B_ARG1(index);
     TypeSet receiver = stack->local(index - 1);
     BlockTemplate* block = receiver.block();
+    // If we're passing too few arguments to the block, this will
+    // throw and we should not continue analyzing on this path.
+    if (index < block->arity()) {
+      scope->throw_maybe();
+      return;
+    }
     for (int i = 1; i < block->arity(); i++) {
       TypeSet argument = stack->local(index - (i + 1));
       // Merge the argument type. If the type changed, we enqueue
@@ -794,8 +800,8 @@ static void process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& workli
       // where the compiler assumes that we will not execute
       // that part and avoids terminating the method with a
       // 'return' bytecode.
-      TypeSet reason = stack->local(1);
-      reason.add_smi(program);  // TODO(kasper): Should this be something better?
+      TypeSet target = stack->local(2);
+      target.add_smi(program);  // We don't know the target, but we know we have one.
     }
     stack->push(value);
   OPCODE_END();
@@ -980,7 +986,7 @@ static void process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& workli
   OPCODE_BEGIN(LINK);
     stack->push_instance(program->exception_class_id()->value());
     stack->push_empty();       // Unwind target.
-    stack->push_empty();       // Unwind reason.
+    stack->push_smi(program);  // Unwind reason. Looked at by finally blocks with parameters.
     stack->push_smi(program);  // Unwind chain next.
     // Try/finally is implemented as:
     //   LINK, LOAD BLOCK, INVOKE BLOCK, POP, UNLINK, <finally code>, UNWIND.
@@ -998,8 +1004,8 @@ static void process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& workli
   OPCODE_BEGIN(UNWIND);
     // If the try-block is guaranteed to cause unwinding,
     // we avoid analyzing the bytecodes following this one.
-    TypeSet reason = stack->local(0);
-    bool unwind = !reason.is_empty(program);
+    TypeSet target = stack->local(1);
+    bool unwind = !target.is_empty(program);
     if (unwind) return;
     stack->pop();
     stack->pop();
