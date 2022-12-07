@@ -271,7 +271,7 @@ Constraint.destroy_constraint tests/type_propagation/deltablue_test.toit
  20[089] - return null S1 1
 
 Constraint.is_input tests/type_propagation/deltablue_test.toit
- - argument 0: {StayConstraint}
+ - argument 0: {EqualityConstraint|ScaleConstraint|StayConstraint}
   0[020] - load literal Oddball (true/false/null)
   2[048] - as class True_(18 - 20)
   4[088] - return S1 1
@@ -1095,7 +1095,7 @@ Planner.current_mark= tests/type_propagation/deltablue_test.toit
 
 Planner.incremental_add tests/type_propagation/deltablue_test.toit
  - argument 0: {Planner}
- - argument 1: {EqualityConstraint|ScaleConstraint|EditConstraint|StayConstraint}
+ - argument 1: {*}
   0[052] - load local, as class, pop 2 - EqualityConstraint(43 - 47)
   2[017] - load local 3
   3[058] - invoke virtual new_mark // {LargeInteger_|SmallInteger_}
@@ -1143,18 +1143,18 @@ Planner.incremental_remove tests/type_propagation/deltablue_test.toit
 
 [block] in Planner.incremental_remove tests/type_propagation/deltablue_test.toit
  - argument 0: [block]
- - argument 1: {Null_}
+ - argument 1: {*}
   0[022] - load null
   1[017] - load local 3
-  2[060] - invoke virtual get strength
+  2[060] - invoke virtual get strength // {Null_|Strength}
   5[019] - load local 5
-  6[005] - load outer S1
-  8[062] - invoke eq
+  6[005] - load outer S1 // {Strength}
+  8[062] - invoke eq // {True_|False_}
   9[082] - branch if false T21
  12[002] - pop, load local S3
- 14[005] - load outer S7
+ 14[005] - load outer S7 // {Planner}
  16[017] - load local 3
- 17[058] - invoke virtual incremental_add
+ 17[058] - invoke virtual incremental_add // {Null_}
  21[088] - return S1 2
 
 Planner.new_mark tests/type_propagation/deltablue_test.toit
@@ -1234,18 +1234,18 @@ Planner.extract_plan_from_constraints tests/type_propagation/deltablue_test.toit
 
 [block] in Planner.extract_plan_from_constraints tests/type_propagation/deltablue_test.toit
  - argument 0: [block]
- - argument 1: {Null_}
+ - argument 1: {*}
   0[022] - load null
   1[017] - load local 3
-  2[058] - invoke virtual is_input
+  2[058] - invoke virtual is_input // {True_|False_}
   6[082] - branch if false T25
   9[017] - load local 3
- 10[060] - invoke virtual get is_satisfied
+ 10[060] - invoke virtual get is_satisfied // {Null_|True_|False_}
  13[082] - branch if false T25
  16[002] - pop, load local S3
- 18[005] - load outer S1
+ 18[005] - load outer S1 // {List_}
  20[017] - load local 3
- 21[058] - invoke virtual add
+ 21[058] - invoke virtual add // {Null_}
  25[088] - return S1 2
 
 Planner.add_propagate tests/type_propagation/deltablue_test.toit
@@ -1337,20 +1337,20 @@ Planner.remove_propagate_from tests/type_propagation/deltablue_test.toit
 
 [block] in Planner.remove_propagate_from tests/type_propagation/deltablue_test.toit
  - argument 0: [block]
- - argument 1: {Null_}
+ - argument 1: {*}
   0[022] - load null
   1[017] - load local 3
-  2[060] - invoke virtual get is_satisfied
+  2[060] - invoke virtual get is_satisfied // {Null_|True_|False_}
   5[081] - branch if true T17
   8[002] - pop, load local S3
- 10[005] - load outer S3
+ 10[005] - load outer S3 // {List_}
  12[017] - load local 3
- 13[058] - invoke virtual add
+ 13[058] - invoke virtual add // {Null_}
  17[088] - return S1 2
 
 [block] in Planner.remove_propagate_from tests/type_propagation/deltablue_test.toit
  - argument 0: [block]
- - argument 1: {Null_}
+ - argument 1: {*}
   0[022] - load null
   1[017] - load local 3
   2[019] - load local 5
@@ -1358,15 +1358,15 @@ Planner.remove_propagate_from tests/type_propagation/deltablue_test.toit
   5[062] - invoke eq // {True_|False_}
   6[081] - branch if true T35
   9[017] - load local 3
- 10[060] - invoke virtual get is_satisfied
+ 10[060] - invoke virtual get is_satisfied // {Null_|True_|False_}
  13[082] - branch if false T35
  16[002] - pop, load local S2
- 18[058] - invoke virtual recalculate
+ 18[058] - invoke virtual recalculate // {Null_}
  22[002] - pop, load local S3
- 24[005] - load outer S3
+ 24[005] - load outer S3 // {List_}
  26[017] - load local 3
- 27[058] - invoke virtual output
- 31[058] - invoke virtual add
+ 27[058] - invoke virtual output // {Variable}
+ 31[058] - invoke virtual add // {Null_}
  35[088] - return S1 2
 
 Planner.add_constraints_consuming_to tests/type_propagation/deltablue_test.toit
@@ -1386,7 +1386,7 @@ Planner.add_constraints_consuming_to tests/type_propagation/deltablue_test.toit
 
 [block] in Planner.add_constraints_consuming_to tests/type_propagation/deltablue_test.toit
  - argument 0: [block]
- - argument 1: {Null_}
+ - argument 1: {*}
   0[022] - load null
   1[017] - load local 3
   2[019] - load local 5
@@ -1394,12 +1394,12 @@ Planner.add_constraints_consuming_to tests/type_propagation/deltablue_test.toit
   5[062] - invoke eq // {True_|False_}
   6[081] - branch if true T25
   9[017] - load local 3
- 10[060] - invoke virtual get is_satisfied
+ 10[060] - invoke virtual get is_satisfied // {Null_|True_|False_}
  13[082] - branch if false T25
  16[002] - pop, load local S3
- 18[005] - load outer S4
+ 18[005] - load outer S4 // {List_}
  20[017] - load local 3
- 21[058] - invoke virtual add
+ 21[058] - invoke virtual add // {Null_}
  25[088] - return S1 2
 
 Plan tests/type_propagation/deltablue_test.toit
@@ -1441,9 +1441,9 @@ Plan.execute tests/type_propagation/deltablue_test.toit
 
 [block] in Plan.execute tests/type_propagation/deltablue_test.toit
  - argument 0: [block]
- - argument 1: {Null_}
+ - argument 1: {*}
   0[016] - load local 2
-  1[058] - invoke virtual execute
+  1[058] - invoke virtual execute // {Null_}
   5[088] - return S1 2
 
 chain_test tests/type_propagation/deltablue_test.toit
