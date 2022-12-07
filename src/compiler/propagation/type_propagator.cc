@@ -14,6 +14,7 @@
 // directory of this repository.
 
 #include "type_propagator.h"
+#include "type_database.h"
 #include "type_primitive.h"
 #include "type_scope.h"
 
@@ -23,8 +24,6 @@
 #include "../../program.h"
 #include "../../interpreter.h"
 #include "../../printing.h"
-
-#include <sstream>
 
 namespace toit {
 namespace compiler {
@@ -184,7 +183,7 @@ void TypePropagator::ensure_run_global_initializer() {
   has_run_global_initializer_ = true;
 }
 
-void TypePropagator::propagate() {
+void TypePropagator::propagate(TypeDatabase* types) {
   TypeStack stack(-1, 1, words_per_type());
 
   // Initialize the types of pre-initialized global variables.
@@ -238,25 +237,13 @@ void TypePropagator::propagate() {
 
   stack.push_empty();
   TypeSet type = stack.get(0);
-
-  std::stringstream out;
-  out << "[\n";
-  bool first = true;
-
   sites_.for_each([&](uint8* site, Set<TypeVariable*>& results) {
     type.clear(words_per_type());
     for (auto it = results.begin(); it != results.end(); it++) {
       type.add_all((*it)->type(), words_per_type());
     }
-    if (first) {
-      first = false;
-    } else {
-      out << ",\n";
-    }
     int position = program()->absolute_bci_from_bcp(site);
-    std::string type_string = type.as_json(program());
-    out << "  {\"position\": " << position;
-    out << ", \"type\": " << type_string << "}";
+    types->add_usage(position, type);
   });
 
   std::unordered_map<uint8*, std::vector<BlockTemplate*>> blocks;
@@ -265,18 +252,8 @@ void TypePropagator::propagate() {
     for (unsigned i = 0; i < templates.size(); i++) {
       templates[i]->collect_blocks(blocks);
     }
-
-    if (first) {
-      first = false;
-    } else {
-      out << ",\n";
-    }
-
     MethodTemplate* method = templates[0];
-    int position = method->method_id();
-    out << "  {\"position\": " << position;
-    out << ", \"arguments\": [";
-
+    types->add_method(method->method());
     int arity = method->arity();
     for (int n = 0; n < arity; n++) {
       bool is_block = false;
@@ -294,27 +271,18 @@ void TypePropagator::propagate() {
           type.add(argument_type.id());
         }
       }
-      if (n != 0) {
-        out << ",";
-      }
-      std::string type_string = type.as_json(program());
-      out << type_string;
+      types->add_argument(method->method(), n, type);
     }
-    out << "]}";
   }
 
   for (auto it = blocks.begin(); it != blocks.end(); it++) {
-    if (first) {
-      first = false;
-    } else {
-      out << ",\n";
-    }
     std::vector<BlockTemplate*>& blocks = it->second;
     BlockTemplate* block = blocks[0];
+    types->add_method(block->method());
 
-    int position = block->method_id(program());
-    out << "  {\"position\": " << position;
-    out << ", \"arguments\": [\"[]\"";
+    type.clear(words_per_type());
+    type.set_block(block);
+    types->add_argument(block->method(), 0, type);
 
     int arity = block->arity();
     for (int n = 1; n < arity; n++) {
@@ -323,14 +291,9 @@ void TypePropagator::propagate() {
         TypeVariable* argument = blocks[i]->argument(n);
         type.add_all(argument->type(), words_per_type());
       }
-      std::string type_string = type.as_json(program());
-      out << "," << type_string;
+      types->add_argument(block->method(), n, type);
     }
-    out << "]}";
   }
-
-  out << "\n]\n";
-  printf("%s", out.str().c_str());
 }
 
 void TypePropagator::call_method(
@@ -889,6 +852,12 @@ static void process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& workli
     B_ARG1(index);
     TypeSet receiver = stack->local(index - 1);
     BlockTemplate* block = receiver.block();
+    // If we're passing too few arguments to the block, this will
+    // throw and we should not continue analyzing on this path.
+    if (index < block->arity()) {
+      scope->throw_maybe();
+      return;
+    }
     for (int i = 1; i < block->arity(); i++) {
       TypeSet argument = stack->local(index - (i + 1));
       // Merge the argument type. If the type changed, we enqueue
@@ -920,8 +889,8 @@ static void process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& workli
       // where the compiler assumes that we will not execute
       // that part and avoids terminating the method with a
       // 'return' bytecode.
-      TypeSet reason = stack->local(1);
-      reason.add_smi(program);  // TODO(kasper): Should this be something better?
+      TypeSet target = stack->local(2);
+      target.add_smi(program);  // We don't know the target, but we know we have one.
     }
     stack->push(value);
   OPCODE_END();
@@ -1114,7 +1083,7 @@ static void process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& workli
   OPCODE_BEGIN(LINK);
     stack->push_instance(program->exception_class_id()->value());
     stack->push_empty();       // Unwind target.
-    stack->push_empty();       // Unwind reason.
+    stack->push_smi(program);  // Unwind reason. Looked at by finally blocks with parameters.
     stack->push_smi(program);  // Unwind chain next.
     // Try/finally is implemented as:
     //   LINK, LOAD BLOCK, INVOKE BLOCK, POP, UNLINK, <finally code>, UNWIND.
@@ -1132,8 +1101,8 @@ static void process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& workli
   OPCODE_BEGIN(UNWIND);
     // If the try-block is guaranteed to cause unwinding,
     // we avoid analyzing the bytecodes following this one.
-    TypeSet reason = stack->local(0);
-    bool unwind = !reason.is_empty(program);
+    TypeSet target = stack->local(1);
+    bool unwind = !target.is_empty(program);
     if (unwind) return;
     stack->pop();
     stack->pop();

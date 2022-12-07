@@ -6,7 +6,9 @@ main tests/type_propagation/block_test.toit
   8[053] - invoke static test_nesting tests/type_propagation/block_test.toit // {Null_}
  11[041] - pop 1
  12[053] - invoke static test_catch tests/type_propagation/block_test.toit // {Null_}
- 15[089] - return null S1 0
+ 15[041] - pop 1
+ 16[053] - invoke static test_too_few_arguments tests/type_propagation/block_test.toit // {Null_}
+ 19[089] - return null S1 0
 
 test_simple tests/type_propagation/block_test.toit
   0[023] - load smi 0
@@ -220,6 +222,31 @@ test_catch tests/type_propagation/block_test.toit
  11[020] - load literal 3.2999999999999998224
  13[006] - store outer S1
  15[088] - return S1 1
+
+test_too_few_arguments tests/type_propagation/block_test.toit
+  0[029] - load [block] in test_too_few_arguments tests/type_propagation/block_test.toit
+  5[038] - load block 0
+  7[022] - load null
+  8[022] - load null
+  9[053] - invoke static catch <sdk>/core/exceptions.toit // {*}
+ 12[089] - return null S2 0
+
+[block] in test_too_few_arguments tests/type_propagation/block_test.toit
+ - argument 0: [block]
+  0[029] - load [block] in [block] in test_too_few_arguments tests/type_propagation/block_test.toit
+  5[038] - load block 0
+  7[053] - invoke static invoke tests/type_propagation/block_test.toit // {}
+ 10[040] - pop 2
+ 12[026] - load smi 42
+ 14[053] - invoke static id tests/type_propagation/block_test.toit
+ 17[088] - return S1 1
+
+[block] in [block] in test_too_few_arguments tests/type_propagation/block_test.toit
+ - argument 0: [block]
+ - argument 1: {}
+ - argument 2: {}
+  0[022] - load null
+  1[088] - return S1 3
 
 maybe_throw tests/type_propagation/block_test.toit
   0[053] - invoke static pick tests/type_propagation/block_test.toit // {True_|False_}

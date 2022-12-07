@@ -31,6 +31,14 @@ class TypeSet {
   TypeSet(const TypeSet& other)
       : bits_(other.bits_) {}
 
+  static TypeSet invalid() {
+    return TypeSet(null);
+  }
+
+  bool is_valid() const {
+    return bits_ != null;
+  }
+
   bool is_block() const {
     return bits_[0] == 1;
   }
