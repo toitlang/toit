@@ -150,10 +150,10 @@ class Exception_:
 
 // Spontaneous entry points invoked by the interpreter when failure occurs at runtime.
 // We use 'rethrow' to avoid extra frame in trace.
-lookup_failure_ receiver selector_offset:
+lookup_failure_ receiver selector_or_selector_offset:
   rethrow "LOOKUP_FAILED"
     encode_error_ "LOOKUP_FAILED"
-      create_array_ selector_offset (Object.class_id receiver) receiver
+      create_array_ selector_or_selector_offset (Object.class_id receiver) receiver
 
 uninitialized_global_failure_ global_id:
   rethrow "UNINITIALIZED_GLOBAL"
@@ -169,13 +169,14 @@ program_failure_ bci:
 
 /**
 Signals an 'as' failure.
-The absolute bytecode index of the 'as' check is
-  passed as $bci.
+$id might be either:
+- a class name of type $string
+- an absolute BCI of the 'as' check.
 */
-as_check_failure_ receiver bci:
+as_check_failure_ receiver id:
   rethrow "AS_CHECK_FAILED"
     encode_error_ "AS_CHECK_FAILED"
-      create_array_ receiver bci
+      create_array_ receiver id
 
 serialization_failure_ id:
   rethrow "SERIALIZATION_FAILED"
