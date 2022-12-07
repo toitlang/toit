@@ -47,7 +47,7 @@
 #include "monitor.h"
 #include "optimizations/optimizations.h"
 #include "parser.h"
-#include "propagation/type_propagator.h"
+#include "propagation/type_database.h"
 #include "resolver.h"
 #include "../snapshot_bundle.h"
 #include "stubs.h"
@@ -1603,8 +1603,10 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
   auto program = backend.emit(ir_program);
 
   if (propagate) {
-    TypePropagator propagator(program);
-    propagator.propagate();
+    TypeDatabase* types = TypeDatabase::compute(program);
+    auto json = types->as_json();
+    printf("%s", json.c_str());
+    delete types;
   }
 
   SnapshotGenerator generator(program);

@@ -14,6 +14,7 @@
 // directory of this repository.
 
 #include "type_propagator.h"
+#include "type_database.h"
 #include "type_primitive.h"
 #include "type_scope.h"
 
@@ -23,8 +24,6 @@
 #include "../../program.h"
 #include "../../interpreter.h"
 #include "../../printing.h"
-
-#include <sstream>
 
 namespace toit {
 namespace compiler {
@@ -102,7 +101,7 @@ void TypePropagator::ensure_run_global_initializer() {
   has_run_global_initializer_ = true;
 }
 
-void TypePropagator::propagate() {
+void TypePropagator::propagate(TypeDatabase* types) {
   TypeStack stack(-1, 1, words_per_type());
 
   // Initialize the types of pre-initialized global variables.
@@ -154,25 +153,13 @@ void TypePropagator::propagate() {
 
   stack.push_empty();
   TypeSet type = stack.get(0);
-
-  std::stringstream out;
-  out << "[\n";
-  bool first = true;
-
   sites_.for_each([&](uint8* site, Set<TypeVariable*>& results) {
     type.clear(words_per_type());
     for (auto it = results.begin(); it != results.end(); it++) {
       type.add_all((*it)->type(), words_per_type());
     }
-    if (first) {
-      first = false;
-    } else {
-      out << ",\n";
-    }
     int position = program()->absolute_bci_from_bcp(site);
-    std::string type_string = type.as_json(program());
-    out << "  {\"position\": " << position;
-    out << ", \"type\": " << type_string << "}";
+    types->add_usage(position, type);
   });
 
   std::unordered_map<uint8*, std::vector<BlockTemplate*>> blocks;
@@ -181,18 +168,8 @@ void TypePropagator::propagate() {
     for (unsigned i = 0; i < templates.size(); i++) {
       templates[i]->collect_blocks(blocks);
     }
-
-    if (first) {
-      first = false;
-    } else {
-      out << ",\n";
-    }
-
     MethodTemplate* method = templates[0];
-    int position = method->method_id();
-    out << "  {\"position\": " << position;
-    out << ", \"arguments\": [";
-
+    types->add_method(method->method());
     int arity = method->arity();
     for (int n = 0; n < arity; n++) {
       bool is_block = false;
@@ -210,27 +187,18 @@ void TypePropagator::propagate() {
           type.add(argument_type.id());
         }
       }
-      if (n != 0) {
-        out << ",";
-      }
-      std::string type_string = type.as_json(program());
-      out << type_string;
+      types->add_argument(method->method(), n, type);
     }
-    out << "]}";
   }
 
   for (auto it = blocks.begin(); it != blocks.end(); it++) {
-    if (first) {
-      first = false;
-    } else {
-      out << ",\n";
-    }
     std::vector<BlockTemplate*>& blocks = it->second;
     BlockTemplate* block = blocks[0];
+    types->add_method(block->method());
 
-    int position = block->method_id(program());
-    out << "  {\"position\": " << position;
-    out << ", \"arguments\": [\"[]\"";
+    type.clear(words_per_type());
+    type.set_block(block);
+    types->add_argument(block->method(), 0, type);
 
     int arity = block->arity();
     for (int n = 1; n < arity; n++) {
@@ -239,14 +207,9 @@ void TypePropagator::propagate() {
         TypeVariable* argument = blocks[i]->argument(n);
         type.add_all(argument->type(), words_per_type());
       }
-      std::string type_string = type.as_json(program());
-      out << "," << type_string;
+      types->add_argument(block->method(), n, type);
     }
-    out << "]}";
   }
-
-  out << "\n]\n";
-  printf("%s", out.str().c_str());
 }
 
 void TypePropagator::call_method(
