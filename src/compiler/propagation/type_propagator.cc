@@ -109,6 +109,9 @@ void TypePropagator::ensure_lookup_failure() {
   TypeScope scope(2, words_per_type());
   TypeStack* stack = scope.top();
   stack->push_any();           // receiver
+  // We always pass the selector offset for implicit lookup
+  // failures. The compiler sometimes generates explicit calls
+  // to 'lookup_failure' and pass string selectors for those.
   stack->push_smi(program());  // selector_offset
   Method target = program()->lookup_failure();
   call_static(null, &scope, null, target);
@@ -120,6 +123,9 @@ void TypePropagator::ensure_as_check_failure() {
   TypeScope scope(2, words_per_type());
   TypeStack* stack = scope.top();
   stack->push_any();           // receiver
+  // We always pass the bci for implicit as check failures.
+  // The compiler sometimes generates explicit calls to
+  // 'as_check_failure' and pass string class names for those.
   stack->push_smi(program());  // bci
   Method target = program()->as_check_failure();
   call_static(null, &scope, null, target);
