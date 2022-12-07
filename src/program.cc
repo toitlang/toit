@@ -17,6 +17,10 @@
 #include "objects_inline.h"
 #include "snapshot.h"
 
+#ifdef TOIT_CHECK_PROPAGATED_TYPES
+#include "compiler/propagation/type_database.h"
+#endif
+
 namespace toit {
 
 int Program::absolute_bci_from_bcp(uint8* bcp) const {
@@ -126,7 +130,9 @@ Program::Program(void* program_heap_address, uword program_heap_size)
     , program_heap_size_(program_heap_size) {}
 
 Program::~Program() {
-  // TODO(lars): Check the program count is 0.
+#ifdef TOIT_CHECK_PROPAGATED_TYPES
+  delete propagated_types_;
+#endif
 }
 
 void Program::do_pointers(PointerCallback* callback) {
@@ -145,5 +151,19 @@ void Program::do_pointers(PointerCallback* callback) {
 
   heap_.do_pointers(this, callback);
 }
+
+#ifdef TOIT_CHECK_PROPAGATED_TYPES
+compiler::TypeDatabase* Program::propagated_types() {
+  compiler::TypeDatabase* types = propagated_types_;
+  if (types) return types;
+  uint64 start = OS::get_monotonic_time();
+  AllowThrowingNew allow;
+  types = compiler::TypeDatabase::compute(this);
+  propagated_types_ = types;
+  uint64 elapsed = OS::get_monotonic_time() - start;
+  printf("[propagating types through program %p => %lld ms]\n", this, elapsed / 1000);
+  return types;
+}
+#endif
 
 }  // namespace toit

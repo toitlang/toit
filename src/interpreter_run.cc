@@ -25,6 +25,10 @@
 
 #include "objects_inline.h"
 
+#ifdef TOIT_CHECK_PROPAGATED_TYPES
+#include "compiler/propagation/type_database.h"
+#endif
+
 namespace toit {
 
 inline bool are_smis(Object* a, Object* b) {
@@ -166,11 +170,19 @@ Method Program::find_method(Object* receiver, int offset) {
     return Result(Result::PREEMPTED);                                 \
   }
 
+#ifdef TOIT_CHECK_PROPAGATED_TYPES
+#define CHECK_PROPAGATED_TYPES_METHOD_ENTRY(target) \
+  if (propagated_types) propagated_types->check_method_live(target);
+#else
+#define CHECK_PROPAGATED_TYPES_METHOD_ENTRY(target)
+#endif
+
 #define CALL_METHOD_WITH_RETURN_ADDRESS(target, return_address)       \
   static_assert(FRAME_SIZE == 2, "Unexpected frame size");            \
   PUSH(reinterpret_cast<Object*>(return_address));                    \
   PUSH(program->frame_marker());                                      \
   CHECK_STACK_OVERFLOW(target)                                        \
+  CHECK_PROPAGATED_TYPES_METHOD_ENTRY(target);                        \
   bcp = target.entry();                                               \
   DISPATCH(0)
 
@@ -249,6 +261,12 @@ Interpreter::Result Interpreter::run() {
 
   // Interpretation state.
   Program* program = process_->program();
+#ifdef TOIT_CHECK_PROPAGATED_TYPES
+  compiler::TypeDatabase* propagated_types = null;
+  if (!process_->is_privileged()) {
+    propagated_types = program->propagated_types();
+  }
+#endif
   preemption_method_header_bcp_ = null;
   uword index__ = 0;
   Object** sp;

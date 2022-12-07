@@ -31,6 +31,10 @@
 #define TOIT_DEPLOY
 #endif
 
+#ifndef TOIT_FREERTOS
+#define TOIT_CHECK_PROPAGATED_TYPES
+#endif
+
 // -----------------------------------------------------------------------------
 // Build configuration:
 //  TOIT_DEBUG  : Debug build with plenty of debug information and verification.
