@@ -10,12 +10,12 @@ main tests/type_propagation/array_do_test.toit
 
 [block] in main tests/type_propagation/array_do_test.toit
  - argument 0: [block]
- - argument 1: {Null_}
+ - argument 1: {*}
   0[016] - load local 2
-  1[053] - invoke static id tests/type_propagation/array_do_test.toit // {Null_}
+  1[053] - invoke static id tests/type_propagation/array_do_test.toit // {*}
   4[088] - return S1 2
 
 id tests/type_propagation/array_do_test.toit
- - argument 0: {Null_}
+ - argument 0: {*}
   0[016] - load local 2
   1[088] - return S1 1
