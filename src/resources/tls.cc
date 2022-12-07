@@ -812,10 +812,10 @@ PRIMITIVE(get_internals) {
     memcpy(ByteArray::Bytes(decode_key).address(), reinterpret_cast<const uint8*>(&in_ccp_context->state[4]), key_len);
     result->at_put(0, Smi::from(ALGORITHM_CHACHA20_POLY1305));
   }
-  result->at_put(1, encode_iv);
-  result->at_put(2, decode_iv);
-  result->at_put(3, encode_key);
-  result->at_put(4, decode_key);
+  result->at_put(1, encode_key);
+  result->at_put(2, decode_key);
+  result->at_put(3, encode_iv);
+  result->at_put(4, decode_iv);
 
   return result;
 }

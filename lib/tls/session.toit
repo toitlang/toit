@@ -183,6 +183,8 @@ class Session:
       if key_data != null:
         write_key_data := KeyData_ --key=key_data[1] --iv=key_data[3] --algorithm=key_data[0]
         read_key_data := KeyData_ --key=key_data[2] --iv=key_data[4] --algorithm=key_data[0]
+        write_key_data.sequence_number_ = outgoing_sequence_numbers_used_
+        read_key_data.sequence_number_ = incoming_sequence_numbers_used_
         symmetric_session_ = SymmetricSession_ writer_ reader_ write_key_data read_key_data
 
   /**
@@ -195,12 +197,11 @@ class Session:
   session_state -> ByteArray:
     return tls_get_session_ tls_
 
-  internals -> List:
-    return tls_get_internals_ tls_
-
   write data from=0 to=data.size:
     ensure_handshaken_
-    if not tls_: throw "TLS_SOCKET_NOT_CONNECTED"
+    if not tls_:
+      if symmetric_session_: return symmetric_session_.write data from to
+      throw "TLS_SOCKET_NOT_CONNECTED"
     sent := 0
     while true:
       if from == to:
@@ -214,7 +215,9 @@ class Session:
 
   read:
     ensure_handshaken_
-    if not tls_: throw "TLS_SOCKET_NOT_CONNECTED"
+    if not tls_:
+      if symmetric_session_: return symmetric_session_.read
+      throw "TLS_SOCKET_NOT_CONNECTED"
     while true:
       res := tls_read_ tls_
       if res == TOIT_TLS_WANT_READ_:
@@ -459,7 +462,9 @@ class SymmetricSession_:
       List.chunk_up from2 to2 512: | from3 to3 length3 |
         first /bool := from3 == from2
         last /bool := to3 == to2
-        plaintext := data.copy from3 to3
+        plaintext := data is string
+            ? data.to_byte_array from3 to3
+            : data.copy from3 to3
         parts := [encryptor.add plaintext]
         if first:
           parts = [record_header, explicit_iv, parts[0]]
@@ -491,7 +496,9 @@ class SymmetricSession_:
         return buffered_plaintext_[buffered_plaintext_index_++]
       record_header := reader_.read_bytes 5
       if not record_header: return null
-      if record_header[0] != APPLICATION_DATA_ or record_header[1] != 3 or record_header[2] != 3: throw "PROTOCOL_ERROR"
+      if record_header[0] == ALERT_:
+        throw "Alert, size $(BIG_ENDIAN.uint16 record_header 3)"
+      if record_header[0] != APPLICATION_DATA_ or record_header[1] != 3 or record_header[2] != 3: throw "PROTOCOL_ERROR $record_header"
       encrypted_length := BIG_ENDIAN.uint16 record_header 3
       // According to RFC5246: The length MUST NOT exceed 2^14 + 1024.
       if encrypted_length > (1 << 14) + 1024: throw "PROTOCOL_ERROR"

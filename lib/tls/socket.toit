@@ -84,9 +84,6 @@ class Socket implements tcp.Socket:
   session_state -> ByteArray:
     return session_.session_state
 
-  internals -> List:
-    return session_.internals
-
   read -> ByteArray?:
     return session_.read
 
