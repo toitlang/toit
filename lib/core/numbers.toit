@@ -687,7 +687,7 @@ abstract class int extends num:
     negative := false
     underscore := false
     size := to - from
-    if size == 0: throw "OUT_OF_BOUNDS"
+    if size == 0: return on_error.call PARSE_ERR_
     size.repeat:
       char := data[from + it]
       if char == '-':
