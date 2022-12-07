@@ -795,7 +795,7 @@ static void process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& workli
       // that part and avoids terminating the method with a
       // 'return' bytecode.
       TypeSet reason = stack->local(1);
-      reason.clear(propagator->words_per_type());
+      reason.add_smi(program);  // TODO(kasper): Should this be something better?
     }
     stack->push(value);
   OPCODE_END();
@@ -980,7 +980,7 @@ static void process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& workli
   OPCODE_BEGIN(LINK);
     stack->push_instance(program->exception_class_id()->value());
     stack->push_empty();       // Unwind target.
-    stack->push_smi(program);  // Unwind reason.
+    stack->push_empty();       // Unwind reason.
     stack->push_smi(program);  // Unwind chain next.
     // Try/finally is implemented as:
     //   LINK, LOAD BLOCK, INVOKE BLOCK, POP, UNLINK, <finally code>, UNWIND.
@@ -999,7 +999,7 @@ static void process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& workli
     // If the try-block is guaranteed to cause unwinding,
     // we avoid analyzing the bytecodes following this one.
     TypeSet reason = stack->local(0);
-    bool unwind = reason.is_empty(program);
+    bool unwind = !reason.is_empty(program);
     if (unwind) return;
     stack->pop();
     stack->pop();
