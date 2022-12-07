@@ -161,7 +161,10 @@ compiler::TypeDatabase* Program::propagated_types() {
   types = compiler::TypeDatabase::compute(this);
   propagated_types_ = types;
   uint64 elapsed = OS::get_monotonic_time() - start;
-  printf("[propagating types through program %p => %lld ms]\n", this, elapsed / 1000);
+  if (false) {
+    printf("[propagating types through program %p => %lld ms]\n",
+        this, elapsed / 1000);
+  }
   return types;
 }
 #endif
