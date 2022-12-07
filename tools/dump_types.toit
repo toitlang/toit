@@ -28,7 +28,7 @@ main args:
   command = cli.Command "root"
       --long_help="""
       Dumps propagated types.
-      
+
       Run the compiler with '-Xpropagate -w program.snapshot program.toit > program.types'.
       Then use the generated snapshot and types for this tool.
       """
