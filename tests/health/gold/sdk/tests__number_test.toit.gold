@@ -1,27 +1,27 @@
-tests/number_test.toit:238:32: warning: Deprecated 'int.parse'
+tests/number_test.toit:240:32: warning: Deprecated 'int.parse'
   expect_int_parsing_error: int.parse "1_123" 1
                                ^
-tests/number_test.toit:239:32: warning: Deprecated 'int.parse'
+tests/number_test.toit:241:32: warning: Deprecated 'int.parse'
   expect_int_parsing_error: int.parse "1012_" 1
                                ^
-tests/number_test.toit:240:32: warning: Deprecated 'int.parse'
+tests/number_test.toit:242:32: warning: Deprecated 'int.parse'
   expect_int_parsing_error: int.parse "1012_1" 1 5
                                ^
-tests/number_test.toit:242:36: warning: Deprecated 'int.parse'
+tests/number_test.toit:245:36: warning: Deprecated 'int.parse'
   expect_number_out_of_bounds: (int.parse "123" -1 --on_error=: throw it)
                                    ^
-tests/number_test.toit:243:36: warning: Deprecated 'int.parse'
+tests/number_test.toit:246:36: warning: Deprecated 'int.parse'
   expect_number_out_of_bounds: (int.parse "123" 0 4 --on_error=: throw it)
                                    ^
-tests/number_test.toit:244:36: warning: Deprecated 'int.parse'
-  expect_number_out_of_bounds: (int.parse "123" 0 0 --on_error=: throw it)
-                                   ^
-tests/number_test.toit:249:10: warning: Deprecated 'int.parse'
+tests/number_test.toit:247:33: warning: Deprecated 'int.parse'
+  expect_int_parsing_error: (int.parse "123" 0 0 --on_error=: throw it)
+                                ^
+tests/number_test.toit:251:10: warning: Deprecated 'int.parse'
       int.parse "123" 1
          ^
-tests/number_test.toit:252:10: warning: Deprecated 'int.parse'
+tests/number_test.toit:254:10: warning: Deprecated 'int.parse'
       int.parse "1-23" 1
          ^
-tests/number_test.toit:255:10: warning: Deprecated 'int.parse'
+tests/number_test.toit:257:10: warning: Deprecated 'int.parse'
       int.parse "1-23" 2
          ^
