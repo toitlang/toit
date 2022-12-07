@@ -705,7 +705,13 @@ static void process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& workli
     Instance* initializer = Instance::cast(program->global_variables.at(index));
     int method_id = Smi::cast(initializer->at(INITIALIZER_ID_INDEX))->value();
     Method target(program->bytecodes, method_id);
-    propagator->call_static(method, scope, bcp, target);
+    propagator->call_static(method, scope, null, target);
+    // Merge the initializer result into the global variable.
+    TypeVariable* variable = propagator->global_variable(index);
+    variable->merge(propagator, stack->local(0));
+    stack->pop();
+    // Push the resulting type.
+    stack->push(variable->use(propagator, method, bcp));
     if (stack->local(0).is_empty(program)) return;
   OPCODE_END();
 
