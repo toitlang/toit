@@ -106,6 +106,17 @@ class TypeSet {
     return (old_bits & mask) != 0;
   }
 
+  bool contains_all(TypeSet other, int words) const {
+    ASSERT(!is_block());
+    ASSERT(!other.is_block());
+    for (int i = 0; i < words; i++) {
+      uword old_bits = bits_[i];
+      uword new_bits = old_bits | other.bits_[i];
+      if (new_bits != old_bits) return false;
+    }
+    return true;
+  }
+
   bool contains_null(Program* program) const { return contains_instance(program->null_class_id()); }
   bool contains_instance(Smi* class_id) const { return contains(class_id->value()); }
 

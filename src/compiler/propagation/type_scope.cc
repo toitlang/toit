@@ -88,20 +88,16 @@ TypeScope::TypeScope(BlockTemplate* block, TypeScope* outer, bool linked)
   }
 }
 
-TypeScope::TypeScope(const TypeScope* other, int level, bool lazy)
+TypeScope::TypeScope(const TypeScope* other, int level)
     : words_per_type_(other->words_per_type_)
     , level_(level)
     , level_linked_(other->level_linked())
     , method_(other->method())
     , outer_(other->outer())
-    , wrapped_(static_cast<uword*>(malloc((level_ + 1) * sizeof(uword)))) {
-  for (int i = 0; i < level_; i++) {
-    TypeStack* stack = other->at(i);
-    wrapped_[i] = lazy ? wrap(stack, false) : wrap(stack->copy(), true);
+    , wrapped_(static_cast<uword*>(malloc((level + 1) * sizeof(uword)))) {
+  for (int i = 0; i <= level; i++) {
+    wrapped_[i] = wrap(other->at(i), false);
   }
-  // Always copy the top-most stack frame. It is manipulated
-  // all the time, so we might as well copy it eagerly.
-  wrapped_[level_] = wrap(other->at(level_)->copy(), true);
 }
 
 TypeScope::~TypeScope() {
@@ -133,13 +129,21 @@ void TypeScope::throw_maybe() {
   outer()->merge(this, TypeScope::MERGE_UNWIND);
 }
 
-TypeScope* TypeScope::copy() const {
-  return new TypeScope(this, level_, false);
+TypeScope* TypeScope::copy_lazy(int level) const {
+  if (level < 0) level = level_;
+  return new TypeScope(this, level);
 }
 
-TypeScope* TypeScope::copy_lazily(int level) const {
-  if (level < 0) level = level_;
-  return new TypeScope(this, level, true);
+TypeStack* TypeScope::copy_top() {
+  ASSERT(top_ == null);
+  uword wrapped = wrapped_[level_];
+  TypeStack* top = unwrap(wrapped);
+  if (!is_copied(wrapped)) {
+    top = top->copy();
+    wrapped_[level_] = wrap(top, true);
+  }
+  top_ = top;
+  return top;
 }
 
 bool TypeScope::merge(const TypeScope* other, MergeKind kind) {
@@ -158,9 +162,14 @@ bool TypeScope::merge(const TypeScope* other, MergeKind kind) {
   ASSERT(level_target <= level_);
   bool result = false;
   for (int i = 0; i <= level_target; i++) {
-    TypeStack* stack = at(i);
+    uword wrapped = wrapped_[i];
+    TypeStack* stack = unwrap(wrapped);
     TypeStack* addition = other->at(i);
     if (stack == addition) continue;
+    if (!is_copied(wrapped) && stack->merge_required(addition)) {
+      stack = stack->copy();
+      wrapped_[i] = wrap(stack, true);
+    }
     result = stack->merge(addition) || result;
   }
   return result;

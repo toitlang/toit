@@ -523,7 +523,7 @@ MethodTemplate* TypePropagator::instantiate(Method method, std::vector<ConcreteT
 
 // Propagates the type stack starting at the given bcp in this method context.
 // The bcp could be the beginning of the method, a block entry, a branch target, ...
-static void process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& worklists) {
+static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& worklists) {
 #define LABEL(opcode, length, format, print) &&interpret_##opcode,
   static void* dispatch_table[] = {
     BYTECODES(LABEL)
@@ -601,7 +601,7 @@ static void process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& workli
 
   OPCODE_BEGIN_WITH_WIDE(LOAD_FIELD, field_index);
     propagator->load_field(method, stack, bcp, field_index);
-    if (stack->top_is_empty()) return;
+    if (stack->top_is_empty()) return scope;
   OPCODE_END();
 
   OPCODE_BEGIN(LOAD_FIELD_LOCAL);
@@ -611,7 +611,7 @@ static void process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& workli
     TypeSet instance = stack->local(local);
     stack->push(instance);
     propagator->load_field(method, stack, bcp, field_index);
-    if (stack->top_is_empty()) return;
+    if (stack->top_is_empty()) return scope;
   OPCODE_END();
 
   OPCODE_BEGIN(POP_LOAD_FIELD_LOCAL);
@@ -621,7 +621,7 @@ static void process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& workli
     TypeSet instance = stack->local(local + 1);
     stack->set_local(0, instance);
     propagator->load_field(method, stack, bcp, field_index);
-    if (stack->top_is_empty()) return;
+    if (stack->top_is_empty()) return scope;
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(STORE_FIELD, field_index);
@@ -693,7 +693,7 @@ static void process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& workli
   OPCODE_BEGIN_WITH_WIDE(LOAD_GLOBAL_VAR, index);
     TypeVariable* variable = propagator->global_variable(index);
     stack->push(variable->use(propagator, method, bcp));
-    if (stack->top_is_empty()) return;
+    if (stack->top_is_empty()) return scope;
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(LOAD_GLOBAL_VAR_LAZY, index);
@@ -713,7 +713,7 @@ static void process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& workli
     stack->pop();
     // Push the resulting type.
     stack->push(variable->use(propagator, method, bcp));
-    if (stack->top_is_empty()) return;
+    if (stack->top_is_empty()) return scope;
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(STORE_GLOBAL_VAR, index);
@@ -755,7 +755,7 @@ static void process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& workli
     stack->pop();  // Drop the id.
     stack->push_any(program);
     method->ret(propagator, stack);
-    return;
+    return scope;
   OPCODE_END();
 
   OPCODE_BEGIN(LOAD_OUTER_BLOCK);
@@ -807,7 +807,7 @@ static void process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& workli
     // For all we know, doing the 'as' check can throw.
     propagator->ensure_as_check_failure();
     scope->throw_maybe();
-    if (!top.remove_typecheck_class(program, class_index, is_nullable)) return;
+    if (!top.remove_typecheck_class(program, class_index, is_nullable)) return scope;
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(AS_INTERFACE, encoded);
@@ -817,7 +817,7 @@ static void process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& workli
     // For all we know, doing the 'as' check can throw.
     propagator->ensure_as_check_failure();
     scope->throw_maybe();
-    if (!top.remove_typecheck_interface(program, interface_selector_index, is_nullable)) return;
+    if (!top.remove_typecheck_interface(program, interface_selector_index, is_nullable)) return scope;
   OPCODE_END();
 
   OPCODE_BEGIN(AS_LOCAL);
@@ -829,21 +829,21 @@ static void process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& workli
     // For all we know, doing the 'as' check can throw.
     propagator->ensure_as_check_failure();
     scope->throw_maybe();
-    if (!local.remove_typecheck_class(program, class_index, is_nullable)) return;
+    if (!local.remove_typecheck_class(program, class_index, is_nullable)) return scope;
   OPCODE_END();
 
   OPCODE_BEGIN(INVOKE_STATIC);
     S_ARG1(offset);
     Method target(program->bytecodes, program->dispatch_table[offset]);
     propagator->call_static(method, scope, bcp, target);
-    if (stack->top_is_empty()) return;
+    if (stack->top_is_empty()) return scope;
   OPCODE_END();
 
   OPCODE_BEGIN(INVOKE_STATIC_TAIL);
     S_ARG1(offset);
     Method target(program->bytecodes, program->dispatch_table[offset]);
     propagator->call_static(method, scope, bcp, target);
-    if (stack->top_is_empty()) return;
+    if (stack->top_is_empty()) return scope;
     if (scope->level() > 0) {
       TypeSet receiver = stack->get(0);
       BlockTemplate* block = receiver.block();
@@ -852,7 +852,7 @@ static void process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& workli
     } else {
       method->ret(propagator, stack);
     }
-    return;
+    return scope;
   OPCODE_END();
 
   OPCODE_BEGIN(INVOKE_BLOCK);
@@ -863,7 +863,7 @@ static void process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& workli
     // throw and we should not continue analyzing on this path.
     if (index < block->arity()) {
       scope->throw_maybe();
-      return;
+      return scope;
     }
     for (int i = 1; i < block->arity(); i++) {
       TypeSet argument = stack->local(index - (i + 1));
@@ -885,7 +885,7 @@ static void process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& workli
     scope->throw_maybe();
 
     if (value.is_empty(propagator->words_per_type())) {
-      if (!linked) return;
+      if (!linked) return scope;
       // We've just invoked a try-block that is guaranteed
       // to unwind as indicated by the empty return type.
       // We propagate this information to the 'unwind' bytecode which is
@@ -905,26 +905,26 @@ static void process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& workli
   OPCODE_BEGIN_WITH_WIDE(INVOKE_VIRTUAL, arity);
     int offset = Utils::read_unaligned_uint16(bcp + 2);
     propagator->call_virtual(method, scope, bcp, arity + 1, offset);
-    if (stack->top_is_empty()) return;
+    if (stack->top_is_empty()) return scope;
   OPCODE_END();
 
   OPCODE_BEGIN(INVOKE_VIRTUAL_GET);
     int offset = Utils::read_unaligned_uint16(bcp + 1);
     propagator->call_virtual(method, scope, bcp, 1, offset);
-    if (stack->top_is_empty()) return;
+    if (stack->top_is_empty()) return scope;
   OPCODE_END();
 
   OPCODE_BEGIN(INVOKE_VIRTUAL_SET);
     int offset = Utils::read_unaligned_uint16(bcp + 1);
     propagator->call_virtual(method, scope, bcp, 2, offset);
-    if (stack->top_is_empty()) return;
+    if (stack->top_is_empty()) return scope;
   OPCODE_END();
 
 #define INVOKE_VIRTUAL_BINARY(opcode)                         \
   OPCODE_BEGIN(opcode);                                       \
     int offset = program->invoke_bytecode_offset(opcode);     \
     propagator->call_virtual(method, scope, bcp, 2, offset);  \
-    if (stack->top_is_empty()) return;                        \
+    if (stack->top_is_empty()) return scope;                   \
   OPCODE_END();
 
   INVOKE_VIRTUAL_BINARY(INVOKE_EQ)
@@ -956,38 +956,40 @@ static void process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& workli
 
   OPCODE_BEGIN(BRANCH);
     uint8* target = bcp + Utils::read_unaligned_uint16(bcp + 1);
-    worklists.back()->add(target, scope);
-    return;
+    return worklists.back()->add(target, scope, false);
   OPCODE_END();
 
   OPCODE_BEGIN(BRANCH_IF_TRUE);
     stack->pop();
     uint8* target = bcp + Utils::read_unaligned_uint16(bcp + 1);
-    worklists.back()->add(target, scope);
+    scope = worklists.back()->add(target, scope, true);
+    stack = scope->top();
   OPCODE_END();
 
   OPCODE_BEGIN(BRANCH_IF_FALSE);
     stack->pop();
     uint8* target = bcp + Utils::read_unaligned_uint16(bcp + 1);
-    worklists.back()->add(target, scope);
+    scope = worklists.back()->add(target, scope, true);
+    stack = scope->top();
   OPCODE_END();
 
   OPCODE_BEGIN(BRANCH_BACK);
     uint8* target = bcp - Utils::read_unaligned_uint16(bcp + 1);
-    worklists.back()->add(target, scope);
-    return;
+    return worklists.back()->add(target, scope, false);
   OPCODE_END();
 
   OPCODE_BEGIN(BRANCH_BACK_IF_TRUE);
     stack->pop();
     uint8* target = bcp - Utils::read_unaligned_uint16(bcp + 1);
-    worklists.back()->add(target, scope);
+    scope = worklists.back()->add(target, scope, true);
+    stack = scope->top();
   OPCODE_END();
 
   OPCODE_BEGIN(BRANCH_BACK_IF_FALSE);
     stack->pop();
     uint8* target = bcp - Utils::read_unaligned_uint16(bcp + 1);
-    worklists.back()->add(target, scope);
+    scope = worklists.back()->add(target, scope, true);
+    stack = scope->top();
   OPCODE_END();
 
   OPCODE_BEGIN(INVOKE_LAMBDA_TAIL);
@@ -995,21 +997,21 @@ static void process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& workli
     scope->throw_maybe();
     stack->push_any(program);
     method->ret(propagator, stack);
-    return;
+    return scope;
   OPCODE_END();
 
   OPCODE_BEGIN(PRIMITIVE);
     B_ARG1(module);
     unsigned index = Utils::read_unaligned_uint16(bcp + 2);
     const TypePrimitiveEntry* primitive = TypePrimitive::at(module, index);
-    if (primitive == null) return;
+    if (primitive == null) return scope;
     propagator->ensure_primitive_lookup_failure();
     TypePrimitive::Entry* entry = reinterpret_cast<TypePrimitive::Entry*>(primitive->function);
     stack->push_empty();
     stack->push_empty();
     entry(program, stack->local(0), stack->local(1));
     method->ret(propagator, stack);
-    if (stack->top_is_empty()) return;
+    if (stack->top_is_empty()) return scope;
     if (TypePrimitive::uses_entry_task(module, index)) {
       propagator->ensure_entry_task();
     }
@@ -1020,7 +1022,7 @@ static void process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& workli
 
   OPCODE_BEGIN(THROW);
     scope->throw_maybe();
-    return;
+    return scope;
   OPCODE_END();
 
   OPCODE_BEGIN(RETURN);
@@ -1032,7 +1034,7 @@ static void process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& workli
     } else {
       method->ret(propagator, stack);
     }
-    return;
+    return scope;
   OPCODE_END();
 
   OPCODE_BEGIN(RETURN_NULL);
@@ -1045,21 +1047,21 @@ static void process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& workli
     } else {
       method->ret(propagator, stack);
     }
-    return;
+    return scope;
   OPCODE_END();
 
   OPCODE_BEGIN(NON_LOCAL_RETURN);
     stack->pop();  // Pop block.
     method->ret(propagator, stack);
     scope->outer()->merge(scope, TypeScope::MERGE_UNWIND);
-    return;
+    return scope;
   OPCODE_END();
 
   OPCODE_BEGIN(NON_LOCAL_RETURN_WIDE);
     stack->pop();  // Pop block.
     method->ret(propagator, stack);
     scope->outer()->merge(scope, TypeScope::MERGE_UNWIND);
-    return;
+    return scope;
   OPCODE_END();
 
   OPCODE_BEGIN(NON_LOCAL_BRANCH);
@@ -1074,11 +1076,11 @@ static void process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& workli
     uint8* target_bcp = program->bcp_from_absolute_bci(target_bci);
     TypeSet block = stack->local(0);
     int target_level = block.block()->level();
-    TypeScope* target_scope = scope->copy_lazily(target_level);
+    TypeScope* target_scope = scope->copy_lazy(target_level);
     for (int i = 0; i < height_diff; i++) target_scope->top()->pop();
-    worklists[target_level]->add(target_bcp, target_scope);
-    delete target_scope;
-    return;
+    TypeScope* extra = worklists[target_level]->add(target_bcp, target_scope, false);
+    delete extra;
+    return scope;
   OPCODE_END();
 
   OPCODE_BEGIN(IDENTICAL);
@@ -1110,14 +1112,14 @@ static void process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& workli
     // we avoid analyzing the bytecodes following this one.
     TypeSet target = stack->local(1);
     bool unwind = !target.is_empty(propagator->words_per_type());
-    if (unwind) return;
+    if (unwind) return scope;
     stack->pop();
     stack->pop();
     stack->pop();
   OPCODE_END();
 
   OPCODE_BEGIN(HALT);
-    return;
+    return scope;
   OPCODE_END();
 
   OPCODE_BEGIN(INTRINSIC_SMI_REPEAT);
@@ -1203,8 +1205,8 @@ void MethodTemplate::propagate() {
 
   while (worklist.has_next()) {
     Worklist::Item item = worklist.next();
-    process(item.scope, item.bcp, worklists);
-    delete item.scope;
+    TypeScope* scope = process(item.scope, item.bcp, worklists);
+    delete scope;
   }
 }
 
@@ -1224,18 +1226,33 @@ void BlockTemplate::invoke_from_try_block() {
 }
 
 void BlockTemplate::propagate(TypeScope* scope, std::vector<Worklist*>& worklists, bool linked) {
-  TypeScope* inner = new TypeScope(this, scope, linked);
+  // TODO(kasper): It feels wasteful to re-analyze blocks that
+  // do not depend on the outer local types that were updated
+  // by an inner block (or the blocks themselves).
+  while (true) {
+    // We create a lazy copy of the current scope, so it becomes
+    // easy to track if an inner block has modified the scope.
+    // This is very close to how we handle loops, so the lazy
+    // copy ends up corresponding to the lazy copy we create when
+    // we re-analyze from the beginning of a loop if the loop
+    // or any nested loop changes local types.
+    TypeScope* copy = scope->copy_lazy();
+    TypeScope* inner = new TypeScope(this, copy, linked);
 
-  Worklist worklist(method_.entry(), inner);
-  worklists.push_back(&worklist);
+    Worklist worklist(method_.entry(), inner);
+    worklists.push_back(&worklist);
 
-  while (worklist.has_next()) {
-    Worklist::Item item = worklist.next();
-    process(item.scope, item.bcp, worklists);
-    delete item.scope;
+    while (worklist.has_next()) {
+      Worklist::Item item = worklist.next();
+      TypeScope* scope = process(item.scope, item.bcp, worklists);
+      delete scope;
+    }
+
+    worklists.pop_back();
+    bool done = !scope->merge(copy, TypeScope::MERGE_LOCAL);
+    delete copy;
+    if (done) return;
   }
-
-  worklists.pop_back();
 }
 
 } // namespace toit::compiler
