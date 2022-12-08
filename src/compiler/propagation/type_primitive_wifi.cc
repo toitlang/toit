@@ -29,6 +29,9 @@ TYPE_PRIMITIVE_ANY(disconnect)
 TYPE_PRIMITIVE_ANY(disconnect_reason)
 TYPE_PRIMITIVE_ANY(get_ip)
 TYPE_PRIMITIVE_ANY(get_rssi)
+TYPE_PRIMITIVE_ANY(init_scan)
+TYPE_PRIMITIVE_ANY(start_scan)
+TYPE_PRIMITIVE_ANY(read_scan)
 
 }  // namespace toit::compiler
 }  // namespace toit

@@ -48,6 +48,8 @@ class WifiServiceDefinition extends NetworkServiceDefinitionBase:
     if index == WifiService.RSSI_INDEX:
       network := (resource client arguments) as NetworkResource
       return rssi network
+    if index == WifiService.SCAN_INDEX:
+      return scan arguments
     return super pid client index arguments
 
   connect client/int -> List:
@@ -118,6 +120,18 @@ class WifiServiceDefinition extends NetworkServiceDefinitionBase:
 
   rssi resource/NetworkResource -> int?:
     return (state_.module as WifiModule).rssi
+  
+  scan config/Map -> List:
+    if state_.module:
+      throw "wifi already connected or established"
+    module := WifiModule.sta this "" ""
+    try:
+      channels := config.get wifi.CONFIG_SCAN_CHANNELS
+      passive := config.get wifi.CONFIG_SCAN_PASSIVE
+      period := config.get wifi.CONFIG_SCAN_PERIOD
+      return module.scan channels passive period
+    finally:
+      module.disconnect
 
   on_module_closed module/WifiModule -> none:
     resources_do: it.notify_ NetworkService.NOTIFY_CLOSED
@@ -128,6 +142,7 @@ class WifiModule implements NetworkModule:
   static WIFI_IP_LOST      ::= 1 << 2
   static WIFI_DISCONNECTED ::= 1 << 3
   static WIFI_RETRY        ::= 1 << 4
+  static WIFI_SCAN_DONE    ::= 1 << 5
 
   static WIFI_RETRY_DELAY_     ::= Duration --s=1
   static WIFI_CONNECT_TIMEOUT_ ::= Duration --s=10
@@ -235,6 +250,26 @@ class WifiModule implements NetworkModule:
   rssi -> int?:
     return wifi_get_rssi_ resource_group_
 
+  scan channels/ByteArray passive/bool period/int -> List:
+    if ap or not resource_group_:
+      throw "wifi is AP mode or not initialized"
+
+    resource := wifi_init_scan_ resource_group_
+    scan_events := monitor.ResourceState_ resource_group_ resource
+    result := []
+    try:
+      channels.do:
+        wifi_start_scan_ resource_group_ it passive period
+        state := scan_events.wait
+        if (state & WIFI_SCAN_DONE) == 0: throw "WIFI_SCAN_ERROR"
+        scan_events.clear_state WIFI_SCAN_DONE
+        array := wifi_read_scan_ resource_group_
+        result.add_all array
+    finally:
+      scan_events.dispose
+
+    return result
+
   on_event_ state/int:
     // TODO(kasper): We should be clearing the state in the
     // $monitor.ResourceState_ object, but since we're only
@@ -270,3 +305,12 @@ wifi_get_ip_ resource_group -> ByteArray?:
 
 wifi_get_rssi_ resource_group -> int?:
   #primitive.wifi.get_rssi
+
+wifi_init_scan_ resource_group:
+  #primitive.wifi.init_scan
+
+wifi_start_scan_ resource_group channel passive period_ms:
+  #primitive.wifi.start_scan
+
+wifi_read_scan_ resource_group -> Array_:
+  #primitive.wifi.read_scan

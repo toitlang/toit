@@ -18,6 +18,29 @@
 namespace toit {
 namespace compiler {
 
+#define MODULE_ENUM(name, entries) INDEX_##name,
+enum {
+  MODULES(MODULE_ENUM)
+  COUNT
+};
+#undef MODULE_ENUM
+
+#define PRIMITIVE_INDEX(name, arity) \
+  name,
+#define PRIMITIVE_INDEXES(entries) \
+  entries(PRIMITIVE_INDEX)
+
+class CoreIndexes {
+ public:
+  enum Enum {
+PRIMITIVE_INDEXES(MODULE_CORE)
+    count
+  };
+};
+
+#undef PRIMITIVE_INDEX
+#undef PRIMITIVE_INDEXES
+
 MODULE_TYPES(core, MODULE_CORE)
 
 TYPE_PRIMITIVE(process_stats) {
@@ -252,6 +275,14 @@ TYPE_PRIMITIVE_ANY(firmware_map)
 TYPE_PRIMITIVE_ANY(firmware_unmap)
 TYPE_PRIMITIVE_ANY(firmware_mapping_at)
 TYPE_PRIMITIVE_ANY(firmware_mapping_copy)
+
+bool TypePrimitive::uses_entry_task(unsigned module, unsigned index) {
+  return module == INDEX_core && index == CoreIndexes::task_new;
+}
+
+bool TypePrimitive::uses_entry_spawn(unsigned module, unsigned index) {
+  return module == INDEX_core && index == CoreIndexes::spawn;
+}
 
 }  // namespace toit::compiler
 }  // namespace toit

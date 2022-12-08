@@ -14,6 +14,7 @@
 // directory of this repository.
 
 #include "type_propagator.h"
+#include "type_database.h"
 #include "type_primitive.h"
 #include "type_scope.h"
 
@@ -23,8 +24,6 @@
 #include "../../program.h"
 #include "../../interpreter.h"
 #include "../../printing.h"
-
-#include <sstream>
 
 namespace toit {
 namespace compiler {
@@ -66,13 +65,125 @@ namespace compiler {
 #define B_ARG1(name) uint8 name = bcp[1];
 #define S_ARG1(name) uint16 name = Utils::read_unaligned_uint16(bcp + 1);
 
+static const int INITIALIZER_ID_INDEX = 0;
+
 TypePropagator::TypePropagator(Program* program)
     : program_(program)
     , words_per_type_(TypeSet::words_per_type(program)) {
   TypePrimitive::set_up();
 }
 
-void TypePropagator::propagate() {
+void TypePropagator::ensure_entry_main() {
+  if (has_entry_main_) return;
+  TypeScope scope(1, words_per_type());
+  TypeStack* stack = scope.top();
+  stack->push_instance(program()->task_class_id()->value());
+  Method target = program()->entry_main();
+  call_static(null, &scope, null, target);
+  has_entry_main_ = true;
+}
+
+void TypePropagator::ensure_entry_spawn() {
+  if (has_entry_spawn_) return;
+  TypeScope scope(1, words_per_type());
+  TypeStack* stack = scope.top();
+  stack->push_instance(program()->task_class_id()->value());
+  Method target = program()->entry_spawn();
+  call_static(null, &scope, null, target);
+  has_entry_spawn_ = true;
+}
+
+void TypePropagator::ensure_entry_task() {
+  if (has_entry_task_) return;
+  TypeScope scope(1, words_per_type());
+  TypeStack* stack = scope.top();
+  stack->push_any();  // TODO(kasper): Should be lambda.
+  Method target = program()->entry_task();
+  call_static(null, &scope, null, target);
+  has_entry_task_ = true;
+}
+
+void TypePropagator::ensure_lookup_failure() {
+  if (has_lookup_failure_) return;
+  TypeScope scope(2, words_per_type());
+  TypeStack* stack = scope.top();
+  stack->push_any();           // receiver
+  // We always pass the selector offset for implicit lookup
+  // failures. The compiler sometimes generates explicit calls
+  // to 'lookup_failure' and pass string selectors for those.
+  stack->push_smi(program());  // selector_offset
+  Method target = program()->lookup_failure();
+  call_static(null, &scope, null, target);
+  has_lookup_failure_ = true;
+}
+
+void TypePropagator::ensure_as_check_failure() {
+  if (has_as_check_failure_) return;
+  TypeScope scope(2, words_per_type());
+  TypeStack* stack = scope.top();
+  stack->push_any();           // receiver
+  // We always pass the bci for implicit as check failures.
+  // The compiler sometimes generates explicit calls to
+  // 'as_check_failure' and pass string class names for those.
+  stack->push_smi(program());  // bci
+  Method target = program()->as_check_failure();
+  call_static(null, &scope, null, target);
+  has_as_check_failure_ = true;
+}
+
+void TypePropagator::ensure_primitive_lookup_failure() {
+  if (has_primitive_lookup_failure_) return;
+  TypeScope scope(2, words_per_type());
+  TypeStack* stack = scope.top();
+  stack->push_smi(program());  // module
+  stack->push_smi(program());  // index
+  Method target = program()->primitive_lookup_failure();
+  call_static(null, &scope, null, target);
+  has_primitive_lookup_failure_ = true;
+}
+
+void TypePropagator::ensure_code_failure() {
+  if (has_code_failure_) return;
+  TypeScope scope(4, words_per_type());
+  TypeStack* stack = scope.top();
+  stack->push_bool(program());  // is_block
+  stack->push_smi(program());   // expected
+  stack->push_smi(program());   // provided
+  stack->push_smi(program());   // bci
+  Method target = program()->code_failure();
+  call_static(null, &scope, null, target);
+  has_code_failure_ = true;
+}
+
+void TypePropagator::ensure_program_failure() {
+  if (has_program_failure_) return;
+  TypeScope scope(1, words_per_type());
+  TypeStack* stack = scope.top();
+  stack->push_smi(program());  // bci
+  Method target = program()->program_failure();
+  call_static(null, &scope, null, target);
+  has_program_failure_ = true;
+}
+
+void TypePropagator::ensure_run_global_initializer() {
+  if (has_run_global_initializer_) return;
+  TypeScope scope(2, words_per_type());
+  TypeStack* stack = scope.top();
+  // Seed the type of LazyInitializer_.id_or_tasks_ field.
+  int initializer_class_id = program()->lazy_initializer_class_id()->value();
+  TypeVariable* id_field = field(initializer_class_id, INITIALIZER_ID_INDEX);
+  stack->push_smi(program());
+  id_field->merge(this, stack->local(0));
+  stack->pop();
+  // Run the static helper method.
+  stack->push_smi(program());
+  stack->push_instance(initializer_class_id);
+  Method target = program()->run_global_initializer();
+  call_static(null, &scope, null, target);
+  has_run_global_initializer_ = true;
+}
+
+void TypePropagator::propagate(TypeDatabase* types) {
   TypeStack stack(-1, 1, words_per_type());
 
   // Initialize the types of pre-initialized global variables.
@@ -114,12 +225,9 @@ void TypePropagator::propagate() {
   field(program()->task_class_id()->value(), 1)->merge(this, stack.local(0));
   stack.pop();
 
-  // TODO(kasper): Also teach the system about the type of the argument to
-  // __entry__spawn. Only do this if we're actually spawning processes.
-  std::vector<ConcreteType> main_arguments;
-  main_arguments.push_back(ConcreteType(program()->task_class_id()->value()));
-  MethodTemplate* entry = instantiate(program()->entry_main(), main_arguments);
-  enqueue(entry);
+  ensure_entry_main();
+  ensure_program_failure();  // Used in weird situations.
+
   while (enqueued_.size() != 0) {
     MethodTemplate* last = enqueued_.back();
     enqueued_.pop_back();
@@ -129,25 +237,13 @@ void TypePropagator::propagate() {
 
   stack.push_empty();
   TypeSet type = stack.get(0);
-
-  std::stringstream out;
-  out << "[\n";
-  bool first = true;
-
   sites_.for_each([&](uint8* site, Set<TypeVariable*>& results) {
     type.clear(words_per_type());
     for (auto it = results.begin(); it != results.end(); it++) {
       type.add_all((*it)->type(), words_per_type());
     }
-    if (first) {
-      first = false;
-    } else {
-      out << ",\n";
-    }
     int position = program()->absolute_bci_from_bcp(site);
-    std::string type_string = type.as_json(program());
-    out << "  {\"position\": " << position;
-    out << ", \"type\": " << type_string << "}";
+    types->add_usage(position, type);
   });
 
   std::unordered_map<uint8*, std::vector<BlockTemplate*>> blocks;
@@ -156,18 +252,8 @@ void TypePropagator::propagate() {
     for (unsigned i = 0; i < templates.size(); i++) {
       templates[i]->collect_blocks(blocks);
     }
-
-    if (first) {
-      first = false;
-    } else {
-      out << ",\n";
-    }
-
     MethodTemplate* method = templates[0];
-    int position = method->method_id();
-    out << "  {\"position\": " << position;
-    out << ", \"arguments\": [";
-
+    types->add_method(method->method());
     int arity = method->arity();
     for (int n = 0; n < arity; n++) {
       bool is_block = false;
@@ -185,27 +271,18 @@ void TypePropagator::propagate() {
           type.add(argument_type.id());
         }
       }
-      if (n != 0) {
-        out << ",";
-      }
-      std::string type_string = type.as_json(program());
-      out << type_string;
+      types->add_argument(method->method(), n, type);
     }
-    out << "]}";
   }
 
   for (auto it = blocks.begin(); it != blocks.end(); it++) {
-    if (first) {
-      first = false;
-    } else {
-      out << ",\n";
-    }
     std::vector<BlockTemplate*>& blocks = it->second;
     BlockTemplate* block = blocks[0];
+    types->add_method(block->method());
 
-    int position = block->method_id(program());
-    out << "  {\"position\": " << position;
-    out << ", \"arguments\": [\"[]\"";
+    type.clear(words_per_type());
+    type.set_block(block);
+    types->add_argument(block->method(), 0, type);
 
     int arity = block->arity();
     for (int n = 1; n < arity; n++) {
@@ -214,14 +291,9 @@ void TypePropagator::propagate() {
         TypeVariable* argument = blocks[i]->argument(n);
         type.add_all(argument->type(), words_per_type());
       }
-      std::string type_string = type.as_json(program());
-      out << "," << type_string;
+      types->add_argument(block->method(), n, type);
     }
-    out << "]}";
   }
-
-  out << "\n]\n";
-  printf("%s", out.str().c_str());
 }
 
 void TypePropagator::call_method(
@@ -298,6 +370,7 @@ void TypePropagator::call_virtual(MethodTemplate* caller, TypeScope* scope, uint
         : Method::invalid();
     if (!target.is_valid() || target.selector_offset() != offset) {
       // There is a chance we'll get a lookup error thrown here.
+      ensure_lookup_failure();
       scope->throw_maybe();
       continue;
     }
@@ -623,10 +696,22 @@ static void process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& workli
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(LOAD_GLOBAL_VAR_LAZY, index);
+    // The interpreter calls 'run_global_initializer_' to ensure
+    // that we deal with reentrant initialization correctly. This
+    // can throw.
+    propagator->ensure_run_global_initializer();
+    scope->throw_maybe();
+    // Analyze a call to the initializer method.
     Instance* initializer = Instance::cast(program->global_variables.at(index));
-    int method_id = Smi::cast(initializer->at(0))->value();
+    int method_id = Smi::cast(initializer->at(INITIALIZER_ID_INDEX))->value();
     Method target(program->bytecodes, method_id);
-    propagator->call_static(method, scope, bcp, target);
+    propagator->call_static(method, scope, null, target);
+    // Merge the initializer result into the global variable.
+    TypeVariable* variable = propagator->global_variable(index);
+    variable->merge(propagator, stack->local(0));
+    stack->pop();
+    // Push the resulting type.
+    stack->push(variable->use(propagator, method, bcp));
     if (stack->local(0).is_empty(program)) return;
   OPCODE_END();
 
@@ -635,6 +720,7 @@ static void process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& workli
     TypeSet top = stack->local(0);
     variable->merge(propagator, top);
   OPCODE_END();
+
   OPCODE_BEGIN(LOAD_BLOCK);
     B_ARG1(index);
     TypeSet block = stack->local(index);
@@ -643,15 +729,32 @@ static void process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& workli
   OPCODE_END();
 
   OPCODE_BEGIN(LOAD_GLOBAL_VAR_DYNAMIC);
-    UNIMPLEMENTED();
+    // Global variables that need lazy initialization
+    // are handled as part of the LOAD_GLOBAL_VAR_LAZY
+    // bytecode. The LOAD_GLOBAL_VAR_DYNAMIC bytecode
+    // is only used from within the special entry point
+    // 'run_global_initializer_' and in that context
+    // it can produce any value.
+    stack->pop();  // Drop the id.
+    stack->push_any();
   OPCODE_END();
 
   OPCODE_BEGIN(STORE_GLOBAL_VAR_DYNAMIC);
-    UNIMPLEMENTED();
+    // Just ignore stores. The LOAD_GLOBAL_VAR_DYNAMIC
+    // bytecode conservatively assumes that anything can
+    // be stored in the global variable.
+    stack->pop();  // Drop the value.
+    stack->pop();  // Drop the id.
   OPCODE_END();
 
   OPCODE_BEGIN(INVOKE_INITIALIZER_TAIL);
-    UNIMPLEMENTED();
+    // The initializer is analyzed as a call directly
+    // from the LOAD_GLOBAL_VAR_LAZY bytecode. Here, it
+    // is fine to let it produce any value.
+    stack->pop();  // Drop the id.
+    stack->push_any();
+    method->ret(propagator, stack);
+    return;
   OPCODE_END();
 
   OPCODE_BEGIN(LOAD_OUTER_BLOCK);
@@ -701,6 +804,7 @@ static void process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& workli
     bool is_nullable = (encoded & 1) != 0;
     TypeSet top = stack->local(0);
     // For all we know, doing the 'as' check can throw.
+    propagator->ensure_as_check_failure();
     scope->throw_maybe();
     if (!top.remove_typecheck_class(program, class_index, is_nullable)) return;
   OPCODE_END();
@@ -710,6 +814,7 @@ static void process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& workli
     bool is_nullable = (encoded & 1) != 0;
     TypeSet top = stack->local(0);
     // For all we know, doing the 'as' check can throw.
+    propagator->ensure_as_check_failure();
     scope->throw_maybe();
     if (!top.remove_typecheck_interface(program, interface_selector_index, is_nullable)) return;
   OPCODE_END();
@@ -721,6 +826,7 @@ static void process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& workli
     int class_index = encoded & 0x1F;
     TypeSet local = stack->local(stack_offset);
     // For all we know, doing the 'as' check can throw.
+    propagator->ensure_as_check_failure();
     scope->throw_maybe();
     if (!local.remove_typecheck_class(program, class_index, is_nullable)) return;
   OPCODE_END();
@@ -752,6 +858,12 @@ static void process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& workli
     B_ARG1(index);
     TypeSet receiver = stack->local(index - 1);
     BlockTemplate* block = receiver.block();
+    // If we're passing too few arguments to the block, this will
+    // throw and we should not continue analyzing on this path.
+    if (index < block->arity()) {
+      scope->throw_maybe();
+      return;
+    }
     for (int i = 1; i < block->arity(); i++) {
       TypeSet argument = stack->local(index - (i + 1));
       // Merge the argument type. If the type changed, we enqueue
@@ -768,6 +880,7 @@ static void process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& workli
     // For all we know, invoking the block can throw. We can
     // improve on this by propagating information about which
     // blocks throw.
+    propagator->ensure_code_failure();
     scope->throw_maybe();
 
     if (value.is_empty(program)) {
@@ -782,8 +895,8 @@ static void process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& workli
       // where the compiler assumes that we will not execute
       // that part and avoids terminating the method with a
       // 'return' bytecode.
-      TypeSet reason = stack->local(1);
-      reason.add_smi(program);  // TODO(kasper): Should this be something better?
+      TypeSet target = stack->local(2);
+      target.add_smi(program);  // We don't know the target, but we know we have one.
     }
     stack->push(value);
   OPCODE_END();
@@ -877,23 +990,31 @@ static void process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& workli
   OPCODE_END();
 
   OPCODE_BEGIN(INVOKE_LAMBDA_TAIL);
-    // TODO(kasper): This can throw if we're passing too few arguments.
+    propagator->ensure_code_failure();
+    scope->throw_maybe();
     stack->push_any();
     method->ret(propagator, stack);
     return;
   OPCODE_END();
 
   OPCODE_BEGIN(PRIMITIVE);
-    B_ARG1(primitive_module);
-    unsigned primitive_index = Utils::read_unaligned_uint16(bcp + 2);
-    const TypePrimitiveEntry* primitive = TypePrimitive::at(primitive_module, primitive_index);
+    B_ARG1(module);
+    unsigned index = Utils::read_unaligned_uint16(bcp + 2);
+    const TypePrimitiveEntry* primitive = TypePrimitive::at(module, index);
     if (primitive == null) return;
+    propagator->ensure_primitive_lookup_failure();
     TypePrimitive::Entry* entry = reinterpret_cast<TypePrimitive::Entry*>(primitive->function);
     stack->push_empty();
     stack->push_empty();
     entry(program, stack->local(0), stack->local(1));
     method->ret(propagator, stack);
     if (stack->local(0).is_empty(program)) return;
+    if (TypePrimitive::uses_entry_task(module, index)) {
+      propagator->ensure_entry_task();
+    }
+    if (TypePrimitive::uses_entry_spawn(module, index)) {
+      propagator->ensure_entry_spawn();
+    }
   OPCODE_END();
 
   OPCODE_BEGIN(THROW);
@@ -968,7 +1089,7 @@ static void process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& workli
   OPCODE_BEGIN(LINK);
     stack->push_instance(program->exception_class_id()->value());
     stack->push_empty();       // Unwind target.
-    stack->push_empty();       // Unwind reason.
+    stack->push_smi(program);  // Unwind reason. Looked at by finally blocks with parameters.
     stack->push_smi(program);  // Unwind chain next.
     // Try/finally is implemented as:
     //   LINK, LOAD BLOCK, INVOKE BLOCK, POP, UNLINK, <finally code>, UNWIND.
@@ -986,8 +1107,8 @@ static void process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& workli
   OPCODE_BEGIN(UNWIND);
     // If the try-block is guaranteed to cause unwinding,
     // we avoid analyzing the bytecodes following this one.
-    TypeSet reason = stack->local(0);
-    bool unwind = !reason.is_empty(program);
+    TypeSet target = stack->local(1);
+    bool unwind = !target.is_empty(program);
     if (unwind) return;
     stack->pop();
     stack->pop();
@@ -1053,6 +1174,27 @@ int MethodTemplate::method_id() const {
 
 void MethodTemplate::propagate() {
   TypeScope* scope = new TypeScope(this);
+
+  // We need to special case the 'operator ==' method, because the interpreter
+  // does a manual null check on both arguments, which means that null never
+  // flows into the method body. We have to simulate that.
+  Program* program = propagator_->program();
+  if (method_.selector_offset() == program->invoke_bytecode_offset(INVOKE_EQ)) {
+    TypeStack* stack = scope->top();
+    ConcreteType null_type = ConcreteType(program->null_class_id()->value());
+    bool receiver_is_null = argument(0).matches(null_type);
+    bool argument_is_null = argument(1).matches(null_type);
+    if (receiver_is_null || argument_is_null) {
+      stack->push_bool_specific(program, receiver_is_null && argument_is_null);
+      ret(propagator_, stack);
+      delete scope;
+      return;
+    }
+    for (int i = 0; i < arity(); i++) {
+      TypeSet argument = stack->get(i);
+      argument.remove_null(program);
+    }
+  }
 
   std::vector<Worklist*> worklists;
   Worklist worklist(method_.entry(), scope);
