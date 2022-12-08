@@ -29,25 +29,22 @@ class KeyData_:
   constructor --.key --.iv --.algorithm/int:
 
   next_sequence_number -> ByteArray:
-    BIG_ENDIAN.put_int64 iv 4 sequence_number_++
-    return iv[4..]
+    result := ByteArray 8
+    BIG_ENDIAN.put_int64 result 0 sequence_number_++
+    return result
 
   has_explicit_iv -> bool:
     return algorithm == ALGORITHM_AES_GCM
 
-  explicit_iv -> ByteArray:
-    if has_explicit_iv: return iv[4..]
-    return #[]
-
-  new_encryptor -> Aead_:
+  new_encryptor message_iv/ByteArray -> Aead_:
     if algorithm == ALGORITHM_AES_GCM:
-      return AesGcm.encryptor key iv
-    return ChaCha20Poly1305.encryptor key iv
+      return AesGcm.encryptor key message_iv
+    return ChaCha20Poly1305.encryptor key message_iv
 
-  new_decryptor -> Aead_:
+  new_decryptor message_iv/ByteArray -> Aead_:
     if algorithm == ALGORITHM_AES_GCM:
-      return AesGcm.decryptor key iv
-    return ChaCha20Poly1305.decryptor key iv
+      return AesGcm.decryptor key message_iv
+    return ChaCha20Poly1305.decryptor key message_iv
 
 /**
 TLS Session upgrades a reader/writer pair to a TLS encrypted communication channel.
@@ -291,6 +288,9 @@ class Session:
             pending_bytes = outgoing_buffer_.copy (from + bytes_before_next_record_header_) (outgoing_buffer_.size)
             // Remove the partial record from the data we are about to send.
             fullness -= pending_bytes.size
+        print "Sending:"
+        List.chunk_up from fullness 8: | f t l |
+          print "  $outgoing_buffer_[f..t]"
         sent := writer_.write outgoing_buffer_ from fullness
         from += sent
         bytes_before_next_record_header_ -= sent
@@ -445,20 +445,31 @@ class SymmetricSession_:
     List.chunk_up from to 2800: | from2/int to2/int length2 |
       record_header := #[APPLICATION_DATA_, 3, 3, 0, 0]
       BIG_ENDIAN.put_uint16 record_header 3 length2
+      // AES-GCM:
       // The explicit (transmitted) part of the IV (nonce) must not be reused,
       // but apart from that there are no requirements.  We just reuse the
-      // sequence number, which is a common solution.  In the ChaCha20-Poly1305
-      // algorithm there is no explict (transmitted) part of the IV, so it is a
+      // sequence number, which is a common solution.
+      // ChaCha20-Poly1305:
+      // There is no explict (transmitted) part of the IV, so it is a
       // requirement that we use the sequence number to keep the local and
-      // remote IVs in sync.
-      BIG_ENDIAN.put_int64 write_keys.iv 4 write_keys.sequence_number_++
-      explicit_iv := write_keys.explicit_iv
+      // remote IVs in sync.  As described in RFC8446 section 5.3 the serial
+      // number is xored with the last 8 bytes of the 12 byte nonce.
+      iv := write_keys.iv.copy
       sequence_number /ByteArray := write_keys.next_sequence_number
-      encryptor := write_keys.new_encryptor
+      explicit_iv /ByteArray := ?
+      if write_keys.has_explicit_iv:
+        explicit_iv = sequence_number
+        iv.replace 4 explicit_iv
+      else:
+        explicit_iv = #[]
+        8.repeat: iv[4 + it] ^= sequence_number[it]
+      encryptor := write_keys.new_encryptor iv
       encryptor.start --authenticated_data=(sequence_number + record_header)
       // Now that we have used the actual size of the plaintext as the authentication data
       // we update the header with the real size on the wire, which includes some more data.
-      BIG_ENDIAN.put_uint16 record_header 3 (length2 + explicit_iv.size + Aead_.TAG_SIZE)
+      real_length := length2 + explicit_iv.size + Aead_.TAG_SIZE
+      print "length=$length2 real_length=$real_length"
+      BIG_ENDIAN.put_uint16 record_header 3 real_length
       List.chunk_up from2 to2 512: | from3 to3 length3 |
         first /bool := from3 == from2
         last /bool := to3 == to2
@@ -473,6 +484,7 @@ class SymmetricSession_:
         else:
           yield  // Don't monopolize the CPU with long crypto operations.
         encrypted := byte_array_join_ parts
+        print "Encrypted $encrypted.size bytes: $encrypted"
         written := 0
         while written < encrypted.size:
           written += writer_.write encrypted written
@@ -504,16 +516,18 @@ class SymmetricSession_:
       if encrypted_length > (1 << 14) + 1024: throw "PROTOCOL_ERROR"
 
       explicit_iv /ByteArray := ?
+      iv /ByteArray := read_keys.iv.copy
+      sequence_number := read_keys.next_sequence_number
       if read_keys.has_explicit_iv:
         explicit_iv = reader_.read_bytes 8
         if not explicit_iv: return null
-        read_keys.explicit_iv.replace 0 explicit_iv
+        iv.replace 4 explicit_iv
       else:
         explicit_iv = #[]
-      sequence_number := read_keys.next_sequence_number
+        8.repeat: iv[4 + it] ^= sequence_number[it]
 
       plaintext_length := encrypted_length - Aead_.TAG_SIZE - explicit_iv.size
-      decryptor := read_keys.new_decryptor
+      decryptor := read_keys.new_decryptor iv
       // Overwrite the length with the unpadded length before adding the header
       // to the authenticated data.
       BIG_ENDIAN.put_uint16 record_header 3 plaintext_length
