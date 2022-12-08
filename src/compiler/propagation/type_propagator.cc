@@ -235,9 +235,6 @@ void TypePropagator::propagate(TypeDatabase* types) {
     last->propagate();
   }
 
-  fprintf(stderr, "[stacks: live = %d, allocated = %d]\n",
-      TypeStack::live, TypeStack::allocated);
-
   stack.push_empty();
   TypeSet type = stack.get(0);
   sites_.for_each([&](uint8* site, Set<TypeVariable*>& results) {

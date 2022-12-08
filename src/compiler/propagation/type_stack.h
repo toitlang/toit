@@ -31,31 +31,20 @@ namespace compiler {
 
 class TypeStack {
  public:
-  static int live;
-  static int allocated;
-
   TypeStack(int sp, int size, int words_per_type)
       : sp_(sp)
       , size_(size)
       , words_per_type_(words_per_type)
       , words_(static_cast<uword*>(malloc(size * words_per_type * WORD_SIZE))) {
     memset(words_, 0, (sp + 1) * words_per_type * WORD_SIZE);
-    live++;
-    allocated++;
   }
 
   ~TypeStack() {
     free(words_);
-    live--;
   }
 
-  int sp() const {
-    return sp_;
-  }
-
-  int available() const {
-    return size_ - (sp_ + 1);
-  }
+  int sp() const { return sp_; }
+  int available() const { return size_ - (sp_ + 1); }
 
   TypeSet get(int index) {
     ASSERT(index >= 0);
@@ -71,13 +60,8 @@ class TypeStack {
     memcpy(&words_[index * words_per_type_], type.bits_, words_per_type_ * WORD_SIZE);
   }
 
-  TypeSet local(int index) {
-    return get(sp_ - index);
-  }
-
-  void set_local(int index, TypeSet type) {
-    set(sp_ - index, type);
-  }
+  TypeSet local(int index) { return get(sp_ - index); }
+  void set_local(int index, TypeSet type) { set(sp_ - index, type); }
 
   void drop_arguments(int arity) {
     if (arity == 0) return;
@@ -112,16 +96,12 @@ class TypeStack {
   void push(Program* program, Object* object);
   void push_block(BlockTemplate* block);
 
-  void pop() {
-    sp_--;
-  }
+  void pop() { sp_--; }
 
   bool merge(TypeStack* other);
   bool merge_required(TypeStack* other);
 
-  TypeStack* copy() {
-    return new TypeStack(this);
-  }
+  TypeStack* copy() { return new TypeStack(this); }
 
  private:
   int sp_;
@@ -135,8 +115,6 @@ class TypeStack {
       , words_per_type_(other->words_per_type_)
       , words_(static_cast<uword*>(malloc(size_ * words_per_type_ * WORD_SIZE))) {
     memcpy(words_, other->words_, (sp_ + 1) * words_per_type_ * WORD_SIZE);
-    live++;
-    allocated++;
   }
 };
 

@@ -18,9 +18,6 @@
 namespace toit {
 namespace compiler {
 
-int TypeStack::live = 0;
-int TypeStack::allocated = 0;
-
 bool TypeStack::merge(TypeStack* other) {
   ASSERT(sp() == other->sp());
   bool result = false;
