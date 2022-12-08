@@ -52,7 +52,7 @@ class TypeScope {
   void store_outer(TypeSet block, int index, TypeSet value);
   void throw_maybe();
 
-  TypeScope* copy(int level = -1) const;
+  TypeScope* copy_lazy(int level = -1) const;
 
   enum MergeKind {
     MERGE_LOCAL,

@@ -1075,7 +1075,7 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
     uint8* target_bcp = program->bcp_from_absolute_bci(target_bci);
     TypeSet block = stack->local(0);
     int target_level = block.block()->level();
-    TypeScope* target_scope = scope->copy(target_level);
+    TypeScope* target_scope = scope->copy_lazy(target_level);
     for (int i = 0; i < height_diff; i++) target_scope->top()->pop();
     TypeScope* extra = worklists[target_level]->add(target_bcp, target_scope, false);
     delete extra;
@@ -1235,7 +1235,7 @@ void BlockTemplate::propagate(TypeScope* scope, std::vector<Worklist*>& worklist
     // copy ends up corresponding to the lazy copy we create when
     // we re-analyze from the beginning of a loop if the loop
     // or any nested loop changes local types.
-    TypeScope* copy = scope->copy();
+    TypeScope* copy = scope->copy_lazy();
     TypeScope* inner = new TypeScope(this, copy, linked);
 
     Worklist worklist(method_.entry(), inner);

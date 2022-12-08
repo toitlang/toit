@@ -129,7 +129,7 @@ void TypeScope::throw_maybe() {
   outer()->merge(this, TypeScope::MERGE_UNWIND);
 }
 
-TypeScope* TypeScope::copy(int level) const {
+TypeScope* TypeScope::copy_lazy(int level) const {
   if (level < 0) level = level_;
   return new TypeScope(this, level);
 }

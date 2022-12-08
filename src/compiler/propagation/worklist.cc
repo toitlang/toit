@@ -38,7 +38,7 @@ TypeScope* Worklist::add(uint8* bcp, TypeScope* scope, bool split) {
   if (probe == scopes_.end()) {
     scopes_[bcp] = scope;
     unprocessed_.push_back(bcp);
-    return split ? scope->copy() : null;
+    return split ? scope->copy_lazy() : null;
   } else {
     TypeScope* existing = probe->second;
     if (existing->merge(scope, TypeScope::MERGE_LOCAL)) {
@@ -55,7 +55,7 @@ Worklist::Item Worklist::next() {
   unprocessed_.pop_back();
   return Item {
     .bcp = bcp,
-    .scope = scopes_[bcp]->copy()
+    .scope = scopes_[bcp]->copy_lazy()
   };
 }
 
