@@ -31,16 +31,22 @@ namespace compiler {
 
 class TypeStack {
  public:
+  static int live;
+  static int allocated;
+
   TypeStack(int sp, int size, int words_per_type)
       : sp_(sp)
       , size_(size)
       , words_per_type_(words_per_type)
       , words_(static_cast<uword*>(malloc(size * words_per_type * WORD_SIZE))) {
     memset(words_, 0, (sp + 1) * words_per_type * WORD_SIZE);
+    live++;
+    allocated++;
   }
 
   ~TypeStack() {
     free(words_);
+    live--;
   }
 
   int sp() const {
@@ -111,6 +117,7 @@ class TypeStack {
   }
 
   bool merge(TypeStack* other);
+  bool merge_required(TypeStack* other);
 
   TypeStack* copy() {
     return new TypeStack(this);
@@ -128,6 +135,8 @@ class TypeStack {
       , words_per_type_(other->words_per_type_)
       , words_(static_cast<uword*>(malloc(size_ * words_per_type_ * WORD_SIZE))) {
     memcpy(words_, other->words_, (sp_ + 1) * words_per_type_ * WORD_SIZE);
+    live++;
+    allocated++;
   }
 };
 
