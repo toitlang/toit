@@ -19,6 +19,9 @@ ALERT_ ::= 21
 HANDSHAKE_ ::= 22
 APPLICATION_DATA_ ::= 23
 
+ALERT_WARNING_ ::= 1
+ALERT_FATAL_ ::= 2
+
 class KeyData_:
   key /ByteArray
   iv /ByteArray
@@ -213,7 +216,11 @@ class Session:
   read:
     ensure_handshaken_
     if not tls_:
-      if symmetric_session_: return symmetric_session_.read
+      if symmetric_session_:
+        result := symmetric_session_.read
+        if result == null:
+          close
+        return result
       throw "TLS_SOCKET_NOT_CONNECTED"
     while true:
       res := tls_read_ tls_
@@ -288,9 +295,6 @@ class Session:
             pending_bytes = outgoing_buffer_.copy (from + bytes_before_next_record_header_) (outgoing_buffer_.size)
             // Remove the partial record from the data we are about to send.
             fullness -= pending_bytes.size
-        print "Sending:"
-        List.chunk_up from fullness 8: | f t l |
-          print "  $outgoing_buffer_[f..t]"
         sent := writer_.write outgoing_buffer_ from fullness
         from += sent
         bytes_before_next_record_header_ -= sent
@@ -468,7 +472,6 @@ class SymmetricSession_:
       // Now that we have used the actual size of the plaintext as the authentication data
       // we update the header with the real size on the wire, which includes some more data.
       real_length := length2 + explicit_iv.size + Aead_.TAG_SIZE
-      print "length=$length2 real_length=$real_length"
       BIG_ENDIAN.put_uint16 record_header 3 real_length
       List.chunk_up from2 to2 512: | from3 to3 length3 |
         first /bool := from3 == from2
@@ -484,7 +487,6 @@ class SymmetricSession_:
         else:
           yield  // Don't monopolize the CPU with long crypto operations.
         encrypted := byte_array_join_ parts
-        print "Encrypted $encrypted.size bytes: $encrypted"
         written := 0
         while written < encrypted.size:
           written += writer_.write encrypted written
@@ -506,11 +508,12 @@ class SymmetricSession_:
     while true:
       if buffered_plaintext_index_ != buffered_plaintext_.size:
         return buffered_plaintext_[buffered_plaintext_index_++]
+      if not reader_.can_ensure 1:
+        return null
       record_header := reader_.read_bytes 5
       if not record_header: return null
-      if record_header[0] == ALERT_:
-        throw "Alert, size $(BIG_ENDIAN.uint16 record_header 3)"
-      if record_header[0] != APPLICATION_DATA_ or record_header[1] != 3 or record_header[2] != 3: throw "PROTOCOL_ERROR $record_header"
+      bad_content := record_header[0] != APPLICATION_DATA_ and record_header[0] != ALERT_
+      if bad_content or record_header[1] != 3 or record_header[2] != 3: throw "PROTOCOL_ERROR $record_header"
       encrypted_length := BIG_ENDIAN.uint16 record_header 3
       // According to RFC5246: The length MUST NOT exceed 2^14 + 1024.
       if encrypted_length > (1 << 14) + 1024: throw "PROTOCOL_ERROR"
@@ -546,8 +549,15 @@ class SymmetricSession_:
       plain_chunk := decryptor.verify received_tag
       // Since we got here, the tag was successfully verified.
       if plain_chunk.size != 0: buffered_plaintext.add plain_chunk
-      buffered_plaintext_ = buffered_plaintext
-      buffered_plaintext_index_ = 0
+      if record_header[0] == ALERT_:
+        alert_data := byte_array_join_ buffered_plaintext
+        if alert_data[0] != ALERT_WARNING_:
+          throw "Fatal alert: $alert_data[1]"
+        print "Alert: $buffered_plaintext[0]"
+      if record_header[0] == APPLICATION_DATA_:
+        print "Got $((byte_array_join_ buffered_plaintext).size) bytes"
+        buffered_plaintext_ = buffered_plaintext
+        buffered_plaintext_index_ = 0
 
 TOIT_TLS_DONE_ := 1 << 0
 TOIT_TLS_WANT_READ_ := 1 << 1

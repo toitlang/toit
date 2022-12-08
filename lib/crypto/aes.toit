@@ -223,7 +223,6 @@ class Aead_:
   The $algorithm must be $ALGORITHM_AES_GCM or ALGORITHM_CHACHA20_POLY1305.
   */
   constructor.encryptor key/ByteArray initialization_vector/ByteArray --algorithm/int:
-    print "Construct $algorithm key=$key"
     aead_ = aead_init_ resource_freeing_module_ key algorithm true
     initialization_vector_ = initialization_vector
     add_finalizer this:: this.close
@@ -300,7 +299,6 @@ class Aead_:
     before the verification tag has been verified with a call to $verify.
   */
   start --authenticated_data="" -> none:
-    print "Start, authenticated_data=$authenticated_data, iv=$initialization_vector_"
     aead_start_message_ aead_ authenticated_data initialization_vector_
 
   /**
