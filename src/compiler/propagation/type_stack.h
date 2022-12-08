@@ -90,9 +90,13 @@ class TypeStack {
     return top.add_all(type, words_per_type_);
   }
 
+  bool top_is_empty() {
+    return local(0).is_empty(words_per_type_);
+  }
+
   TypeSet push_empty();
 
-  void push_any();
+  void push_any(Program* program);
   void push_null(Program* program);
   void push_bool(Program* program);
   void push_bool_specific(Program* program, bool value);

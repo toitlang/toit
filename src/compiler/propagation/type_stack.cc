@@ -39,9 +39,9 @@ TypeSet TypeStack::push_empty() {
   return result;
 }
 
-void TypeStack::push_any() {
-  TypeSet result = get(++sp_);
-  result.fill(words_per_type_);
+void TypeStack::push_any(Program* program) {
+  TypeSet type = push_empty();
+  type.add_any(program);
 }
 
 void TypeStack::push_null(Program* program) {

@@ -28,6 +28,47 @@ class BlockTemplate;
 
 class TypeSet {
  public:
+  class Iterator {
+   public:
+    Iterator(TypeSet type, int words_per_type)
+        : cursor_(type.bits_)
+        , end_(&type.bits_[words_per_type - 1]) {
+      ASSERT(!type.is_block());
+      uword bits = *cursor_;
+      int base = -1;  // First type is at bit 1.
+      while (bits == 0 && cursor_ != end_) {
+        bits = *(++cursor_);
+        base += WORD_BIT_SIZE;
+      }
+      bits_ = bits;
+      base_ = base;
+    }
+
+    bool has_next() const { return bits_ != 0; }
+
+    unsigned next() {
+      ASSERT(has_next());
+      uword bits = bits_;
+      int index = Utils::ctz(bits);
+      int base = base_;
+      unsigned result = index + base;
+      bits &= ~(static_cast<uword>(1) << index);
+      while (bits == 0 && cursor_ != end_) {
+        bits = *(++cursor_);
+        base += WORD_BIT_SIZE;
+      }
+      bits_ = bits;
+      base_ = base;
+      return result;
+    }
+
+   private:
+    uword bits_;
+    int base_;
+    uword* cursor_;
+    uword* const end_;
+  };
+
   TypeSet(const TypeSet& other)
       : bits_(other.bits_) {}
 
@@ -43,8 +84,8 @@ class TypeSet {
     return bits_[0] == 1;
   }
 
-  int size(Program* program) const;
-  bool is_empty(Program* program) const;
+  int size(int words_per_type) const;
+  bool is_empty(int words_per_type) const;
   bool is_any(Program* program) const;
 
   BlockTemplate* block() const {
@@ -78,7 +119,7 @@ class TypeSet {
     return (old_bits & mask) != 0;
   }
 
-  void add_any(Program* program) { fill(words_per_type(program)); }
+  void add_any(Program* program) { add_range(0, program->class_bits.length()); }
   bool add_array(Program* program) { return add_instance(program->array_class_id()); }
   bool add_byte_array(Program* program) { return add_instance(program->byte_array_class_id()); }
   bool add_float(Program* program) { return add_instance(program->double_class_id()); }
@@ -90,6 +131,7 @@ class TypeSet {
 
   bool add_int(Program* program);
   bool add_bool(Program* program);
+  void add_range(unsigned start, unsigned end);
 
   void remove(unsigned type) {
     ASSERT(!is_block());
@@ -122,12 +164,6 @@ class TypeSet {
 
   void clear(int words) {
     memset(bits_, 0, words * WORD_SIZE);
-    ASSERT(!is_block());
-  }
-
-  void fill(int words) {
-    memset(bits_, 0xff, words * WORD_SIZE);
-    bits_[0] &= ~1;  // Clear LSB.
     ASSERT(!is_block());
   }
 
