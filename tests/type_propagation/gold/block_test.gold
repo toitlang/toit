@@ -8,7 +8,9 @@ main tests/type_propagation/block_test.toit
  12[053] - invoke static test_catch tests/type_propagation/block_test.toit // {Null_}
  15[041] - pop 1
  16[053] - invoke static test_too_few_arguments tests/type_propagation/block_test.toit // {Null_}
- 19[089] - return null S1 0
+ 19[041] - pop 1
+ 20[053] - invoke static test_modify_outer tests/type_propagation/block_test.toit // {Null_}
+ 23[089] - return null S1 0
 
 test_simple tests/type_propagation/block_test.toit
   0[023] - load smi 0
@@ -247,6 +249,31 @@ test_too_few_arguments tests/type_propagation/block_test.toit
  - argument 2: {}
   0[022] - load null
   1[088] - return S1 3
+
+test_modify_outer tests/type_propagation/block_test.toit
+  0[026] - load smi 42
+  2[014] - load local 0
+  3[029] - load [block] in test_modify_outer tests/type_propagation/block_test.toit
+  8[026] - load smi 2
+ 10[038] - load block 1
+ 12[058] - invoke virtual repeat // {Null_}
+ 16[041] - pop 1
+ 17[002] - pop, load local S1
+ 19[053] - invoke static id tests/type_propagation/block_test.toit // {String_|SmallInteger_}
+ 22[002] - pop, load local S0
+ 24[053] - invoke static id tests/type_propagation/block_test.toit // {SmallInteger_}
+ 27[089] - return null S3 0
+
+[block] in test_modify_outer tests/type_propagation/block_test.toit
+ - argument 0: [block]
+  0[016] - load local 2
+  1[017] - load local 3
+  2[005] - load outer S2 // {SmallInteger_}
+  4[006] - store outer S1
+  6[002] - pop, load local S2
+  8[020] - load literal hest
+ 10[006] - store outer S2
+ 12[088] - return S1 1
 
 maybe_throw tests/type_propagation/block_test.toit
   0[053] - invoke static pick tests/type_propagation/block_test.toit // {True_|False_}
