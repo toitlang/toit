@@ -34,6 +34,10 @@ class KeyData_:
   next_sequence_number -> ByteArray:
     result := ByteArray 8
     BIG_ENDIAN.put_int64 result 0 sequence_number_++
+    // We can't allow the sequence number to wrap around, because that would lead
+    // to iv reuse.  In the unlikely event that we transmit so much data we
+    // have to throw an exception and close the connection.
+    if sequence_number_ < 0: throw "CONNECTION_EXHAUSTED"
     return result
 
   has_explicit_iv -> bool:
@@ -72,6 +76,7 @@ class Session:
   handshake_timeout/Duration
 
   reader_/reader.BufferedReader? := ?
+  unbuffered_reader_ := ?
   writer_ ::= ?
   server_name_/string? ::= null
 
@@ -116,12 +121,12 @@ class Session:
   The handshake routine requires at most $handshake_timeout between each step
     in the handshake process.
   */
-  constructor.client unbuffered_reader .writer_
+  constructor.client .unbuffered_reader_ .writer_
       --server_name/string?=null
       --.certificate=null
       --.root_certificates=[]
       --.handshake_timeout/Duration=DEFAULT_HANDSHAKE_TIMEOUT:
-    reader_ = reader.BufferedReader unbuffered_reader
+    reader_ = reader.BufferedReader unbuffered_reader_
     server_name_ = server_name
 
   /**
@@ -133,11 +138,11 @@ class Session:
   The handshake routine requires at most $handshake_timeout between each step
     in the handshake process.
   */
-  constructor.server unbuffered_reader .writer_
+  constructor.server .unbuffered_reader_ .writer_
       --.certificate=null
       --.root_certificates=[]
       --.handshake_timeout/Duration=DEFAULT_HANDSHAKE_TIMEOUT:
-    reader_ = reader.BufferedReader unbuffered_reader
+    reader_ = reader.BufferedReader unbuffered_reader_
     is_server = true
 
   /**
@@ -203,13 +208,13 @@ class Session:
 
   extract_key_data_ -> none:
     if reads_encrypted_ and writes_encrypted_:
-      key_data /List := tls_get_internals_ tls_
+      key_data /List? := tls_get_internals_ tls_
       if key_data != null:
         write_key_data := KeyData_ --key=key_data[1] --iv=key_data[3] --algorithm=key_data[0]
         read_key_data := KeyData_ --key=key_data[2] --iv=key_data[4] --algorithm=key_data[0]
         write_key_data.sequence_number_ = outgoing_sequence_numbers_used_
         read_key_data.sequence_number_ = incoming_sequence_numbers_used_
-        symmetric_session_ = SymmetricSession_ writer_ reader_ write_key_data read_key_data
+        symmetric_session_ = SymmetricSession_ this writer_ reader_ write_key_data read_key_data
 
   /**
   Gets the session state, a ByteArray that can be used to resume
@@ -280,9 +285,11 @@ class Session:
         outgoing_buffer_ = #[]
         remove_finalizer this
     if reader_:
-      // reader_.close TODO: Close the unbuffered_reader.
       reader_ = null
       writer_.close
+    if unbuffered_reader_:
+      unbuffered_reader_.close
+      unbuffered_reader_ = null
 
   ensure_handshaken_:
     if not handshake_in_progress_: return
@@ -306,11 +313,12 @@ class Session:
             // We have the full record header available.
             header := outgoing_buffer_[from + bytes_before_next_record_header_..]
             content_type := header[0]
+            record_size := BIG_ENDIAN.uint16 header 3
             if content_type == CHANGE_CIPHER_SPEC_:
               writes_encrypted_ = true
             else if writes_encrypted_:
               outgoing_sequence_numbers_used_++
-            record_size := BIG_ENDIAN.uint16 header 3
+              check_for_zero_explicit_iv_ record_size header
             // Set this so it skips the next header and its contents.
             bytes_before_next_record_header_ += 5 + record_size
           else:
@@ -332,6 +340,15 @@ class Session:
         outgoing_buffer_.replace 0 pending_bytes
         tls_set_outgoing_ tls_ outgoing_buffer_ pending_bytes.size
         return
+
+  check_for_zero_explicit_iv_ record_size/int header/ByteArray -> none:
+    if record_size == 0x28 and header.size >= 13:
+      // If it looks like the checksum of the handshake, encoded with
+      // AES-GCM, then we check that the explicit nonce is 0.  This
+      // is always the case with the current MbedTLS, but since we
+      // can't reuse nonces without destroying security we would like
+      // a heads-up if a new version of MbedTLS changes this default.
+      if header[5..13] != #[0, 0, 0, 0, 0, 0, 0, 0]: throw "MBEDTLS_TOIT_INCOMPATIBLE"
 
   read_more_ -> bool:
     from := tls_get_incoming_from_ tls_
@@ -459,11 +476,12 @@ class SymmetricSession_:
   read_keys /KeyData_
   writer_ ::= ?
   reader_ /reader.BufferedReader
+  parent_ /Session
 
   buffered_plaintext_index_ := 0
   buffered_plaintext_ := []
 
-  constructor .writer_ .reader_ .write_keys .read_keys:
+  constructor .parent_ .writer_ .reader_ .write_keys .read_keys:
 
   write data from/int to/int -> int:
     if to - from  == 0: return 0
@@ -525,8 +543,7 @@ class SymmetricSession_:
       if not result or is_exception:
         // If anything goes wrong we close the connection - don't want to give
         // anyone a second chance to probe us with dodgy data.
-        //reader_.close
-        writer_.close
+        parent_.close
 
   read_ -> ByteArray?:
     while true:
