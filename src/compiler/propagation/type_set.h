@@ -31,6 +31,14 @@ class TypeSet {
   TypeSet(const TypeSet& other)
       : bits_(other.bits_) {}
 
+  static TypeSet invalid() {
+    return TypeSet(null);
+  }
+
+  bool is_valid() const {
+    return bits_ != null;
+  }
+
   bool is_block() const {
     return bits_[0] == 1;
   }
@@ -55,6 +63,17 @@ class TypeSet {
     uword old_bits = bits_[entry / WORD_BIT_SIZE];
     uword mask = static_cast<uword>(1) << (entry % WORD_BIT_SIZE);
     return (old_bits & mask) != 0;
+  }
+
+  bool contains_all(TypeSet other, int words) const {
+    ASSERT(!is_block());
+    ASSERT(!other.is_block());
+    for (int i = 0; i < words; i++) {
+      uword old_bits = bits_[i];
+      uword new_bits = old_bits | other.bits_[i];
+      if (new_bits != old_bits) return false;
+    }
+    return true;
   }
 
   bool contains_null(Program* program) const { return contains_instance(program->null_class_id()); }

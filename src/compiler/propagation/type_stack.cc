@@ -33,6 +33,20 @@ bool TypeStack::merge(TypeStack* other) {
   return result;
 }
 
+bool TypeStack::merge_required(TypeStack* other) {
+  ASSERT(sp() == other->sp());
+  for (int i = 0; i <= sp_; i++) {
+    TypeSet existing_type = get(i);
+    TypeSet other_type = other->get(i);
+    if (existing_type.is_block()) {
+      ASSERT(existing_type.block() == other_type.block());
+    } else if (!existing_type.contains_all(other_type, words_per_type_)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 TypeSet TypeStack::push_empty() {
   TypeSet result = get(++sp_);
   result.clear(words_per_type_);
@@ -85,6 +99,15 @@ void TypeStack::push_bool(Program* program) {
   TypeSet type = push_empty();
   type.add(program->true_class_id()->value());
   type.add(program->false_class_id()->value());
+}
+
+void TypeStack::push_bool_specific(Program* program, bool value) {
+  TypeSet type = push_empty();
+  if (value) {
+    type.add(program->true_class_id()->value());
+  } else {
+    type.add(program->false_class_id()->value());
+  }
 }
 
 void TypeStack::push_instance(unsigned id) {
