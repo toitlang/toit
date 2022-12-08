@@ -9,6 +9,7 @@ main:
   test_catch
   test_too_few_arguments
   test_modify_outer
+  test_modify_outer_nested
 
 test_simple:
   x := 0
@@ -73,6 +74,18 @@ test_modify_outer:
   2.repeat:
     y = x       // The updated type of 'x' should be visible.
     x = "hest"
+  id x
+  id y
+
+test_modify_outer_nested:
+  x/any := 42
+  y/any := x
+  2.repeat:
+    3.repeat:
+      y = x       // The updated type of 'x' should be visible.
+      x = "hest"
+    id x
+    id y
   id x
   id y
 

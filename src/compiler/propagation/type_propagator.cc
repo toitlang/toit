@@ -1223,18 +1223,33 @@ void BlockTemplate::invoke_from_try_block() {
 }
 
 void BlockTemplate::propagate(TypeScope* scope, std::vector<Worklist*>& worklists, bool linked) {
-  TypeScope* inner = new TypeScope(this, scope, linked);
+  // TODO(kasper): It feels wasteful to re-analyze blocks that
+  // do not depend on the outer local types that were updated
+  // by an inner block (or the blocks themselves).
+  while (true) {
+    // We create a lazy copy of the current scope, so it becomes
+    // easy to track if an inner block has modified the scope.
+    // This is very close to how we handle loops, so the lazy
+    // copy ends up corresponding to the lazy copy we create when
+    // we re-analyze from the beginning of a loop if the loop
+    // or any nested loop changes local types.
+    TypeScope* copy = scope->copy_lazily();
+    TypeScope* inner = new TypeScope(this, copy, linked);
 
-  Worklist worklist(method_.entry(), inner);
-  worklists.push_back(&worklist);
+    Worklist worklist(method_.entry(), inner);
+    worklists.push_back(&worklist);
 
-  while (worklist.has_next()) {
-    Worklist::Item item = worklist.next();
-    process(item.scope, item.bcp, worklists);
-    delete item.scope;
+    while (worklist.has_next()) {
+      Worklist::Item item = worklist.next();
+      process(item.scope, item.bcp, worklists);
+      delete item.scope;
+    }
+
+    worklists.pop_back();
+    bool done = !scope->merge(copy, TypeScope::MERGE_LOCAL);
+    delete copy;
+    if (done) return;
   }
-
-  worklists.pop_back();
 }
 
 } // namespace toit::compiler
