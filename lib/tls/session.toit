@@ -49,6 +49,15 @@ class KeyData_:
       return AesGcm.decryptor key message_iv
     return ChaCha20Poly1305.decryptor key message_iv
 
+// TLS verifying certificates and performing asymmetric crypto.
+SESSION_MODE_CONNECTING ::= 0
+// TLS connected, using symmetric crypto, controlled by MbedTLS.
+SESSION_MODE_MBED_TLS   ::= 1
+// TLS connected, using symmetric crypto, controlled in Toit.
+SESSION_MODE_TOIT       ::= 2
+// TLS connection closed.
+SESSION_MODE_CLOSED     ::= 3
+
 /**
 TLS Session upgrades a reader/writer pair to a TLS encrypted communication channel.
 
@@ -80,6 +89,21 @@ class Session:
   reads_encrypted_ := false
   writes_encrypted_ := false
   symmetric_session_/SymmetricSession_? := null
+
+  /**
+  Returns one of the SESSION_MODE_* constants.
+  */
+  mode -> int:
+    if tls_:
+      if reads_encrypted_ and writes_encrypted_:
+        return SESSION_MODE_MBED_TLS
+      else:
+        return SESSION_MODE_CONNECTING
+    else:
+      if symmetric_session_:
+        return SESSION_MODE_TOIT
+      else:
+        return SESSION_MODE_CLOSED
 
   /**
   Creates a new TLS session at the client-side.
@@ -552,10 +576,8 @@ class SymmetricSession_:
       if record_header[0] == ALERT_:
         alert_data := byte_array_join_ buffered_plaintext
         if alert_data[0] != ALERT_WARNING_:
-          throw "Fatal alert: $alert_data[1]"
-        print "Alert: $buffered_plaintext[0]"
+          throw "Fatal TLS alert: $alert_data[1]"
       if record_header[0] == APPLICATION_DATA_:
-        print "Got $((byte_array_join_ buffered_plaintext).size) bytes"
         buffered_plaintext_ = buffered_plaintext
         buffered_plaintext_index_ = 0
 

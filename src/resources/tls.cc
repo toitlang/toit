@@ -731,7 +731,7 @@ static bool known_cipher_info(const mbedtls_cipher_info_t* info, size_t key_bitl
   if (info->key_bitlen != key_bitlen) return false;
   if (iv_len != 12) return false;
   if (info->iv_size != 12) return false;
-  if (info->flags != 0) return false;
+  if ((info->flags & ~MBEDTLS_CIPHER_VARIABLE_IV_LEN) != 0) return false;
   return true;
 }
 
