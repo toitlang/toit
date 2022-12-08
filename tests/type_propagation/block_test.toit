@@ -8,6 +8,8 @@ main:
   test_nesting
   test_catch
   test_too_few_arguments
+  test_modify_outer
+  test_modify_outer_nested
 
 test_simple:
   x := 0
@@ -65,6 +67,27 @@ test_too_few_arguments:
   catch:
     invoke: | x y | null  // This should throw.
     id 42                 // This should not be analyzed.
+
+test_modify_outer:
+  x/any := 42
+  y/any := x
+  2.repeat:
+    y = x       // The updated type of 'x' should be visible.
+    x = "hest"
+  id x
+  id y
+
+test_modify_outer_nested:
+  x/any := 42
+  y/any := x
+  2.repeat:
+    3.repeat:
+      y = x       // The updated type of 'x' should be visible.
+      x = "hest"
+    id x
+    id y
+  id x
+  id y
 
 maybe_throw:
   if pick: throw "woops"

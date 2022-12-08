@@ -33,6 +33,20 @@ bool TypeStack::merge(TypeStack* other) {
   return result;
 }
 
+bool TypeStack::merge_required(TypeStack* other) {
+  ASSERT(sp() == other->sp());
+  for (int i = 0; i <= sp_; i++) {
+    TypeSet existing_type = get(i);
+    TypeSet other_type = other->get(i);
+    if (existing_type.is_block()) {
+      ASSERT(existing_type.block() == other_type.block());
+    } else if (!existing_type.contains_all(other_type, words_per_type_)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 TypeSet TypeStack::push_empty() {
   TypeSet result = get(++sp_);
   result.clear(words_per_type_);

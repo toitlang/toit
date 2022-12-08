@@ -35,7 +35,7 @@ class Worklist {
   bool has_next() const { return !unprocessed_.empty(); }
   Item next();
 
-  void add(uint8* bcp, TypeScope* scope);
+  TypeScope* add(uint8* bcp, TypeScope* scope, bool split);
 
  private:
   std::vector<uint8*> unprocessed_;
