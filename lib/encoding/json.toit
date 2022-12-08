@@ -4,7 +4,7 @@
 
 import binary show LITTLE_ENDIAN
 import bitmap
-import reader show Reader
+import reader show Reader BufferedReader
 
 INITIAL_BUFFER_SIZE_ ::= 64
 MAX_BUFFER_GROWTH_ ::= 1024
@@ -96,7 +96,8 @@ parse str/string:
   // makes the string more like a ByteArray.
   return d.decode (StringView_ str)
 
-decode_stream reader/Reader:
+/// $reader can be either a $Reader or a $BufferedReader.
+decode_stream reader:
   d := StreamingDecoder
   return d.decode_stream reader
 
@@ -293,7 +294,7 @@ class Decoder:
   tmp_buffer_ ::= Buffer_
   utf_8_buffer_/ByteArray? := null
   seen_strings_/Set? := null
-  reader_/Reader? := null
+  buffered_reader_/BufferedReader? := null
   static MAX_DEDUPED_STRING_SIZE_ ::= 128
   static MAX_DEDUPED_STRINGS_ ::= 128
 
@@ -504,8 +505,9 @@ class Decoder:
     start := offset_
     offset_ = o.abs
     // If the number ends at the end of the buffer we need to read more to
-    // see if it continues in the next byte array.
-    if offset_ == bytes_.size and reader_: throw "UNEXPECTED_END_OF_INPUT"
+    // see if it continues in the next byte array.  (The throw triggers
+    // another read in streaming mode.)
+    if offset_ == bytes_.size and buffered_reader_: throw "UNEXPECTED_END_OF_INPUT"
 
     data := bytes_ is StringView_ ? bytes_.str_ : bytes_
     if o < 0: return float.parse_ data start -o
@@ -536,8 +538,11 @@ class Decoder:
       return offset
 
 class StreamingDecoder extends Decoder:
-  decode_stream reader/Reader -> any:
-    reader_ = reader
+  /// $reader can be either a $Reader or a $BufferedReader.
+  decode_stream reader -> any:
+    if reader is not BufferedReader:
+      reader = BufferedReader reader
+    buffered_reader_ = reader as BufferedReader
     seen_strings_ = {}
     // Skip whitespace to get to the first data, which might be
     // a top-level number.
@@ -560,11 +565,16 @@ class StreamingDecoder extends Decoder:
       // number.
       while get_more_:
         // Slurp up whole stream.
-      reader_ = null  // Use non-incremental parsing.
+      buffered_reader_ = null  // Use non-incremental parsing.
 
     while true:
-      error := catch:
-        return decode_
+      error := catch --trace=(: it is not WrappedException_):
+        result := decode_
+        if offset_ != bytes_.size:
+          buffered_reader_.unget bytes_[offset_..]
+        bytes_ = null
+        offset_ = 0
+        return result
       if error is WrappedException_:
         throw error.inner
       offset_ = 0
@@ -573,12 +583,12 @@ class StreamingDecoder extends Decoder:
 
   // Returns true if we ran out of input.
   get_more_ -> bool:
-    if not reader_: return false
+    if not buffered_reader_: return false
     old_bytes := bytes_
     next_bytes := #[]
     while next_bytes.size == 0:
       error := catch:
-        next_bytes = reader_.read
+        next_bytes = buffered_reader_.read
       if error:
         throw
           WrappedException_ error
