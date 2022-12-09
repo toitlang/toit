@@ -136,6 +136,9 @@ class Session:
   session_state -> ByteArray:
     return tls_get_session_ tls_
 
+  internals -> List:
+    return tls_get_internals_ tls_
+
   write data from=0 to=data.size:
     ensure_handshaken_
     if not tls_: throw "TLS_SOCKET_NOT_CONNECTED"
@@ -405,3 +408,6 @@ tls_get_session_ tls_socket -> ByteArray:
 
 tls_set_session_ tls_socket session/ByteArray:
   #primitive.tls.set_session
+
+tls_get_internals_ tls_socket -> List:
+  #primitive.tls.get_internals
