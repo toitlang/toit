@@ -8,11 +8,11 @@ test_simple tests/type_propagation/map_test.toit
   5[014] - load local 0
   6[004] - store local, pop S1
   8[014] - load local 0
-  9[060] - invoke virtual get backing_ // {Null_|List_}
- 12[053] - invoke static id tests/type_propagation/map_test.toit // {Null_|List_}
+  9[060] - invoke virtual get backing_ // {Null_|List_|SmallArray_}
+ 12[053] - invoke static id tests/type_propagation/map_test.toit // {Null_|List_|SmallArray_}
  15[089] - return null S2 0
 
 id tests/type_propagation/map_test.toit
- - argument 0: {Null_|List_}
+ - argument 0: {Null_|List_|SmallArray_}
   0[016] - load local 2
   1[088] - return S1 1
