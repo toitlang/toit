@@ -22,6 +22,18 @@ APPLICATION_DATA_ ::= 23
 ALERT_WARNING_ ::= 1
 ALERT_FATAL_ ::= 2
 
+RECORD_HEADER_SIZE_    ::= 5
+
+class RecordHeader_:
+  bytes /ByteArray      // At least 5 bytes.
+  type -> int: return bytes[0]
+  major_version -> int: return bytes[1]
+  minor_version -> int: return bytes[2]
+  length -> int: return BIG_ENDIAN.uint16 bytes 3
+  length= value/int: BIG_ENDIAN.put_uint16 bytes 3 value
+
+  constructor .bytes:
+
 class KeyData_:
   key /ByteArray
   iv /ByteArray
@@ -303,18 +315,17 @@ class Session:
       if fullness > from:
         while fullness - from > bytes_before_next_record_header_:
           // We have the start of the next record available.
-          if fullness - from + 5 >= bytes_before_next_record_header_:
+          if fullness - from + RECORD_HEADER_SIZE_ >= bytes_before_next_record_header_:
             // We have the full record header available.
-            header := outgoing_buffer_[from + bytes_before_next_record_header_..]
-            content_type := header[0]
-            record_size := BIG_ENDIAN.uint16 header 3
-            if content_type == CHANGE_CIPHER_SPEC_:
+            header := RecordHeader_ outgoing_buffer_[from + bytes_before_next_record_header_..]
+            record_size := header.length
+            if header.type == CHANGE_CIPHER_SPEC_:
               writes_encrypted_ = true
             else if writes_encrypted_:
               outgoing_sequence_numbers_used_++
-              check_for_zero_explicit_iv_ record_size header
+              check_for_zero_explicit_iv_ header
             // Set this so it skips the next header and its contents.
-            bytes_before_next_record_header_ += 5 + record_size
+            bytes_before_next_record_header_ += RECORD_HEADER_SIZE_ + record_size
           else:
             // We have a partial record header available.  Save up the partial
             // record for later.
@@ -335,14 +346,14 @@ class Session:
         tls_set_outgoing_ tls_ outgoing_buffer_ pending_bytes.size
         return
 
-  check_for_zero_explicit_iv_ record_size/int header/ByteArray -> none:
-    if record_size == 0x28 and header.size >= 13:
+  check_for_zero_explicit_iv_ header/RecordHeader_ -> none:
+    if header.length == 0x28 and header.bytes.size >= 13:
       // If it looks like the checksum of the handshake, encoded with
       // AES-GCM, then we check that the explicit nonce is 0.  This
       // is always the case with the current MbedTLS, but since we
       // can't reuse nonces without destroying security we would like
       // a heads-up if a new version of MbedTLS changes this default.
-      if header[5..13] != #[0, 0, 0, 0, 0, 0, 0, 0]: throw "MBEDTLS_TOIT_INCOMPATIBLE"
+      if header.bytes[RECORD_HEADER_SIZE_..RECORD_HEADER_SIZE_ + 8] != #[0, 0, 0, 0, 0, 0, 0, 0]: throw "MBEDTLS_TOIT_INCOMPATIBLE"
 
   read_more_ -> bool:
     from := tls_get_incoming_from_ tls_
@@ -376,13 +387,10 @@ class Session:
   // bytes of data to create an synthetic record boundary.
   //
   // At some point MbedTLS gets a CHANGE_CIPHER_SPEC_ message, and after
-  // this point the data from the other side is encrypted.  This happens
-  // fairly late in the handshaking, and we have to hope that no more
-  // fragmented messages arrive after this point, because we can no longer
-  // understand the message data and defragment it.
+  // this point the data from the other side is encrypted.
 
   // Reads and blocks until we have enough data to construct a whole
-  // handshaking message.  May return an synthetic record, (defragmented
+  // handshaking message.  May return a synthetic record, (defragmented
   // from several records on the wire).
   extract_first_message_ -> ByteArray:
     if (reader_.byte 0) == APPLICATION_DATA_:
@@ -392,8 +400,8 @@ class Session:
       // structure when encryption is activated and from this point we
       // just feed data unchanged to MbedTLS.
       return reader_.read
-    header := reader_.read_bytes 5
-    content_type := header[0]
+    header := RecordHeader_ (reader_.read_bytes RECORD_HEADER_SIZE_)
+    content_type := header.type
     remaining_message_bytes / int := ?
     if content_type == ALERT_:
       remaining_message_bytes = 2
@@ -407,7 +415,7 @@ class Session:
         // accidentally connected to an HTTP server instead.  If the
         // response looks like ASCII then put it in the error thrown -
         // it may be helpful.
-        reader_.unget header
+        reader_.unget header.bytes
         text_end := 0
         while text_end < 100 and text_end < reader_.buffered and is_ascii_ (reader_.byte text_end):
           text_end++
@@ -418,7 +426,7 @@ class Session:
       if reads_encrypted_:
         incoming_sequence_numbers_used_++
         // Encrypted packet so we use the record header to determine size.
-        remaining_message_bytes = BIG_ENDIAN.uint16 header 3
+        remaining_message_bytes = header.length
       else:
         // Unencrypted, so we use the message header to determine size, which
         // enables us to reassemble messages fragmented across multiple
@@ -435,31 +443,32 @@ class Session:
     // has a lower limit, currently configured to 6000 bytes, so this isn't actually
     // limiting us.
     if remaining_message_bytes >= 0x4000: throw "TLS handshake message too large to defragment"
-    // Make an artificial record that was not on the wire.
-    record := ByteArray remaining_message_bytes + 5  // Include space for header.
-    record.replace 0 header
+    // Make a synthetic record that was not on the wire.
+    synthetic := ByteArray remaining_message_bytes + RECORD_HEADER_SIZE_  // Include space for header.
+    synthetic.replace 0 header.bytes
+    synthetic_header := RecordHeader_ synthetic
     // Overwrite record size of header.
-    BIG_ENDIAN.put_uint16 record 3 remaining_message_bytes
-    remaining_in_record := BIG_ENDIAN.uint16 header 3
+    synthetic_header.length = remaining_message_bytes
+    remaining_in_record := header.length
     while remaining_message_bytes > 0:
       m := min remaining_in_record remaining_message_bytes
       chunk := reader_.read --max_size=m
-      record.replace (record.size - remaining_message_bytes) chunk
+      synthetic.replace (synthetic.size - remaining_message_bytes) chunk
       remaining_message_bytes -= chunk.size
       remaining_in_record -= chunk.size
       if remaining_in_record == 0 and remaining_message_bytes != 0:
-        header = reader_.read_bytes 5  // Next record header.
-        if header[0] != content_type: throw "Unexpected content type in continued record"
-        remaining_in_record = BIG_ENDIAN.uint16 header 3
+        header = RecordHeader_ (reader_.read_bytes RECORD_HEADER_SIZE_)  // Next record header.
+        if header.type != content_type: throw "Unexpected content type in continued record"
+        remaining_in_record = header.length
     if remaining_in_record != 0:
-      // The message ended in the middle of a record.  We have to unget an
-      // artificial record header to the stream to take care of the rest of
+      // The message ended in the middle of a record.  We have to unget a
+      // synthetic record header to the stream to take care of the rest of
       // the record.
       reader_.ensure 1
-      synthetic_header := header.copy
-      BIG_ENDIAN.put_uint16 synthetic_header 3 remaining_in_record
-      reader_.unget synthetic_header
-    return record
+      unget_synthetic_header := RecordHeader_ header.bytes.copy
+      unget_synthetic_header.length = remaining_in_record
+      reader_.unget unget_synthetic_header.bytes
+    return synthetic
 
   read_handshake_message_ -> none:
     packet := extract_first_message_
@@ -483,8 +492,8 @@ class SymmetricSession_:
     // don't send too large records.  This size is intended to fit in two MTUs on
     // Ethernet.
     List.chunk_up from to 2800: | from2/int to2/int length2 |
-      record_header := #[APPLICATION_DATA_, 3, 3, 0, 0]
-      BIG_ENDIAN.put_uint16 record_header 3 length2
+      record_header := RecordHeader_ #[APPLICATION_DATA_, 3, 3, 0, 0]
+      record_header.length = length2
       // AES-GCM:
       // The explicit (transmitted) part of the IV (nonce) must not be reused,
       // but apart from that there are no requirements.  We just reuse the
@@ -504,11 +513,10 @@ class SymmetricSession_:
         explicit_iv = #[]
         8.repeat: iv[4 + it] ^= sequence_number[it]
       encryptor := write_keys.new_encryptor iv
-      encryptor.start --authenticated_data=(sequence_number + record_header)
+      encryptor.start --authenticated_data=(sequence_number + record_header.bytes)
       // Now that we have used the actual size of the plaintext as the authentication data
       // we update the header with the real size on the wire, which includes some more data.
-      real_length := length2 + explicit_iv.size + Aead_.TAG_SIZE
-      BIG_ENDIAN.put_uint16 record_header 3 real_length
+      record_header.length = length2 + explicit_iv.size + Aead_.TAG_SIZE
       List.chunk_up from2 to2 512: | from3 to3 length3 |
         first /bool := from3 == from2
         last /bool := to3 == to2
@@ -517,7 +525,7 @@ class SymmetricSession_:
             : data.copy from3 to3
         parts := [encryptor.add plaintext]
         if first:
-          parts = [record_header, explicit_iv, parts[0]]
+          parts = [record_header.bytes, explicit_iv, parts[0]]
         if last:
           parts.add encryptor.finish
         else:
@@ -543,11 +551,12 @@ class SymmetricSession_:
         return buffered_plaintext_[buffered_plaintext_index_++]
       if not reader_.can_ensure 1:
         return null
-      record_header := reader_.read_bytes 5
-      if not record_header: return null
-      bad_content := record_header[0] != APPLICATION_DATA_ and record_header[0] != ALERT_
-      if bad_content or record_header[1] != 3 or record_header[2] != 3: throw "PROTOCOL_ERROR $record_header"
-      encrypted_length := BIG_ENDIAN.uint16 record_header 3
+      bytes := reader_.read_bytes RECORD_HEADER_SIZE_
+      if not bytes: return null
+      record_header := RecordHeader_ bytes
+      bad_content := record_header.type != APPLICATION_DATA_ and record_header.type != ALERT_
+      if bad_content or record_header.major_version != 3 or record_header.minor_version != 3: throw "PROTOCOL_ERROR $record_header.bytes"
+      encrypted_length := record_header.length
       // According to RFC5246: The length MUST NOT exceed 2^14 + 1024.
       if encrypted_length > (1 << 14) + 1024: throw "PROTOCOL_ERROR"
 
@@ -566,8 +575,8 @@ class SymmetricSession_:
       decryptor := read_keys.new_decryptor iv
       // Overwrite the length with the unpadded length before adding the header
       // to the authenticated data.
-      BIG_ENDIAN.put_uint16 record_header 3 plaintext_length
-      decryptor.start --authenticated_data=(sequence_number + record_header)
+      record_header.length = plaintext_length
+      decryptor.start --authenticated_data=(sequence_number + record_header.bytes)
       // Accumulate plaintext in a local to ensure that no data is read by the
       // application that has not been verified.
       buffered_plaintext := []
@@ -582,11 +591,11 @@ class SymmetricSession_:
       plain_chunk := decryptor.verify received_tag
       // Since we got here, the tag was successfully verified.
       if plain_chunk.size != 0: buffered_plaintext.add plain_chunk
-      if record_header[0] == ALERT_:
+      if record_header.type == ALERT_:
         alert_data := byte_array_join_ buffered_plaintext
         if alert_data[0] != ALERT_WARNING_:
           throw "Fatal TLS alert: $alert_data[1]"
-      if record_header[0] == APPLICATION_DATA_:
+      if record_header.type == APPLICATION_DATA_:
         buffered_plaintext_ = buffered_plaintext
         buffered_plaintext_index_ = 0
 
