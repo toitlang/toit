@@ -589,6 +589,7 @@ class BufferedReader implements Reader:
   This causes the $consumed count to go backwards.
   */
   unget value/ByteArray -> none:
+    if value.size == 0: return
     if first_array_position_ != 0:
       first := arrays_.first
       arrays_.remove_first

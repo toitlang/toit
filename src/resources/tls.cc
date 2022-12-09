@@ -786,8 +786,8 @@ PRIMITIVE(get_internals) {
     mbedtls_aes_context* out_aes_context = reinterpret_cast<mbedtls_aes_context*>(out_cipher_context->cipher_ctx);
     mbedtls_aes_context* in_aes_context = reinterpret_cast<mbedtls_aes_context*>(in_cipher_context->cipher_ctx);
 #endif
-    if (  out_gcm_context->mode != MBEDTLS_GCM_ENCRYPT
-        || in_gcm_context->mode != MBEDTLS_GCM_DECRYPT) {
+    if (out_gcm_context->mode != MBEDTLS_GCM_ENCRYPT ||
+        in_gcm_context->mode != MBEDTLS_GCM_DECRYPT) {
       return process->program()->null_object();
     }
 #ifdef TOIT_FREERTOS
