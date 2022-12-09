@@ -228,9 +228,8 @@ class Session:
 
   write data from=0 to=data.size:
     ensure_handshaken_
-    if not tls_:
-      if symmetric_session_: return symmetric_session_.write data from to
-      throw "TLS_SOCKET_NOT_CONNECTED"
+    if symmetric_session_: return symmetric_session_.write data from to
+    if not tls_: throw "TLS_SOCKET_NOT_CONNECTED"
     sent := 0
     while true:
       if from == to:
@@ -244,13 +243,8 @@ class Session:
 
   read:
     ensure_handshaken_
-    if not tls_:
-      if symmetric_session_:
-        result := symmetric_session_.read
-        if result == null:
-          close
-        return result
-      throw "TLS_SOCKET_NOT_CONNECTED"
+    if symmetric_session_: return symmetric_session_.read
+    if not tls_: throw "TLS_SOCKET_NOT_CONNECTED"
     while true:
       res := tls_read_ tls_
       if res == TOIT_TLS_WANT_READ_:
@@ -499,7 +493,7 @@ class SymmetricSession_:
       // There is no explict (transmitted) part of the IV, so it is a
       // requirement that we use the sequence number to keep the local and
       // remote IVs in sync.  As described in RFC8446 section 5.3 the serial
-      // number is xored with the last 8 bytes of the 12 byte nonce.
+      // number is xor'ed with the last 8 bytes of the 12 byte nonce.
       iv := write_keys.iv.copy
       sequence_number /ByteArray := write_keys.next_sequence_number
       explicit_iv /ByteArray := ?
@@ -535,12 +529,10 @@ class SymmetricSession_:
     return to - from
 
   read -> ByteArray?:
-    result := null
     try:
-      result = read_
-      return result
+      return read_
     finally: | is_exception exception |
-      if not result or is_exception:
+      if is_exception:
         // If anything goes wrong we close the connection - don't want to give
         // anyone a second chance to probe us with dodgy data.
         parent_.close
@@ -624,9 +616,10 @@ class TlsGroup_:
       tls_deinit_ handle
 
 byte_array_join_ arrays/List -> ByteArray:
-  if arrays.size == 0: return #[]
-  if arrays.size == 1: return arrays[0]
-  if arrays.size == 2: return arrays[0] + arrays[1]
+  arrays_size := arrays.size
+  if arrays_size == 0: return #[]
+  if arrays_size == 1: return arrays[0]
+  if arrays_size == 2: return arrays[0] + arrays[1]
   size := arrays.reduce --initial=0: | a b | a + b.size
   result := ByteArray size
   position := 0
