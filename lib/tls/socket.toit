@@ -84,8 +84,11 @@ class Socket implements tcp.Socket:
   session_state -> ByteArray:
     return session_.session_state
 
-  internals -> List:
-    return session_.internals
+  /**
+  Returns one of $SESSION_MODE_CONNECTING, $SESSION_MODE_MBED_TLS, $SESSION_MODE_TOIT, $SESSION_MODE_CLOSED.
+  */
+  session_mode -> int:
+    return session_.mode
 
   read -> ByteArray?:
     return session_.read

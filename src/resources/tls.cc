@@ -731,7 +731,7 @@ static bool known_cipher_info(const mbedtls_cipher_info_t* info, size_t key_bitl
   if (info->key_bitlen != key_bitlen) return false;
   if (iv_len != 12) return false;
   if (info->iv_size != 12) return false;
-  if (info->flags != 0) return false;
+  if ((info->flags & ~MBEDTLS_CIPHER_VARIABLE_IV_LEN) != 0) return false;
   return true;
 }
 
@@ -745,6 +745,9 @@ PRIMITIVE(get_internals) {
   ARGS(BaseMbedTlsSocket, socket);
   size_t iv_len = socket->ssl.transform_out->ivlen;
   // mbedtls_cipher_context_t from include/mbedtls/cipher.h.
+  if (socket->ssl.transform_out == null || socket->ssl.transform_in == null) {
+    return Smi::from(42);  // Not ready yet.  This should not happen - it will throw in Toit.
+  }
   mbedtls_cipher_context_t* out_cipher_ctx = &socket->ssl.transform_out->cipher_ctx_enc;
   mbedtls_cipher_context_t* in_cipher_ctx = &socket->ssl.transform_in->cipher_ctx_dec;
   size_t key_bitlen = out_cipher_ctx->key_bitlen;
@@ -809,10 +812,10 @@ PRIMITIVE(get_internals) {
     memcpy(ByteArray::Bytes(decode_key).address(), reinterpret_cast<const uint8*>(&in_ccp_context->state[4]), key_len);
     result->at_put(0, Smi::from(ALGORITHM_CHACHA20_POLY1305));
   }
-  result->at_put(1, encode_iv);
-  result->at_put(2, decode_iv);
-  result->at_put(3, encode_key);
-  result->at_put(4, decode_key);
+  result->at_put(1, encode_key);
+  result->at_put(2, decode_key);
+  result->at_put(3, encode_iv);
+  result->at_put(4, decode_iv);
 
   return result;
 }

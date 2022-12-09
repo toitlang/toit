@@ -163,6 +163,7 @@ connect_to_site host port expected_certificate_name:
     try:
       writer := writer.Writer socket
       writer.write """GET / HTTP/1.1\r\nHost: $host\r\nConnection: close\r\n\r\n"""
+      print "$host: $((socket as any).session_.mode == tls.SESSION_MODE_TOIT ? "Toit mode" : "MbedTLS mode")"
 
       while data := socket.read:
         bytes += data.size

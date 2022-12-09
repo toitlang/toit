@@ -299,7 +299,7 @@ PRIMITIVE(aead_start_message) {
         context->chachapoly_context(),
         nonce.address(),
         mode);
-    if (result == 0) {
+    if (result == 0 && authenticated_data.length() != 0) {
       result = mbedtls_chachapoly_update_aad(
           context->chachapoly_context(),
           authenticated_data.address(),
