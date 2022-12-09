@@ -225,6 +225,20 @@ void TypePropagator::propagate(TypeDatabase* types) {
   field(program()->task_class_id()->value(), 1)->merge(this, stack.local(0));
   stack.pop();
 
+  // Initialize Map fields. We allocate the map instances from within
+  // the VM when decoding messages.
+  stack.push_smi(program());
+  field(program()->map_class_id()->value(), Instance::MAP_SIZE_INDEX)->merge(this, stack.local(0));
+  field(program()->map_class_id()->value(), Instance::MAP_SPACES_LEFT_INDEX)->merge(this, stack.local(0));
+  stack.pop();
+  stack.push_null(program());
+  field(program()->map_class_id()->value(), Instance::MAP_INDEX_INDEX)->merge(this, stack.local(0));
+  field(program()->map_class_id()->value(), Instance::MAP_BACKING_INDEX)->merge(this, stack.local(0));
+  stack.pop();
+  stack.push_array(program());
+  field(program()->map_class_id()->value(), Instance::MAP_BACKING_INDEX)->merge(this, stack.local(0));
+  stack.pop();
+
   ensure_entry_main();
   ensure_program_failure();  // Used in weird situations.
 
