@@ -136,6 +136,42 @@ class Utils {
     return x + 1;
   }
 
+  /**
+  Sets bit_size contiguous bits to ones in an area starting at the `from` bit.
+  Bits are numbered in little-endian order within a T.  Normally T would be
+  uint32 or uword.
+  from should be less than the bit-size of T.
+  */
+  template<typename T>
+  static inline void mark_bits(T* data, int from, int bit_size) {
+    static const int T_BITS = BYTE_BIT_SIZE * sizeof(T);
+    static const T ALL_ONES = -1;
+    if (bit_size + from >= T_BITS) {
+      // Handle the first word of marking where some bits at the start of the
+      // word are not set.
+      *data |= ALL_ONES << from;
+    } else {
+      // This is the case where the marked area both starts and ends in the same
+      // word.
+      T mask = 1;
+      mask = (mask << bit_size) - 1;
+      *data |= mask << from;
+      return;
+    }
+
+    data++;
+    ASSERT(bit_size + from >= T_BITS);
+    for (bit_size -= T_BITS - from; bit_size >= T_BITS; bit_size -= T_BITS) {
+      // Full bit_size where whole words are marked.
+      *data++ = ALL_ONES;
+    }
+    if (bit_size != 0) {
+      // The last word where some bits near the end of the word are not marked.
+      T one = 1;
+      *data |= (one << bit_size) - 1;
+    }
+  }
+
   template<typename T>
   static inline uint16 read_unaligned_uint16(T* ptr) {
     uint16 result;
