@@ -69,15 +69,15 @@ run_tests:
   non_working := [
     "$(dns_lookup "amazon.com")",   // This fails because the name we use to connect (an IP address string) doesn't match the cert name.
     "wrong.host.badssl.com/Common Name",
-    "self-signed.badssl.com/unknown root cert",
-    "untrusted-root.badssl.com/unknown root cert",
+    "self-signed.badssl.com/Certificate verification failed|unknown root cert",
+    "untrusted-root.badssl.com/Certificate verification failed|unknown root cert",
     //  "revoked.badssl.com",  // We don't have support for cert revocation yet.
     //  "pinning-test.badssl.com",  // We don't have support for cert pinning yet.
     //  "sha1-intermediate.badssl.com/unacceptable hash",  // Expired.
     // The peer rejects us here because we don't have any hash algorithm in common.
-    "rc4-md5.badssl.com/7780@received from our peer",
-    "rc4.badssl.com/7780@received from our peer",
-    "null.badssl.com/7780@received from our peer",
+    "rc4-md5.badssl.com/7780|received from our peer",
+    "rc4.badssl.com/7780|received from our peer",
+    "null.badssl.com/7780|received from our peer",
     //  "3des.badssl.com",         // Chrome allows this one too
     //  "mozilla-old.badssl.com",  // Chrome allows this one too
     "dh480.badssl.com",
@@ -116,12 +116,12 @@ test_site url expect_ok:
   else:
     task:: non_working_site host port extra_info
 
-non_working_site site port exception_text:
-  exception_code := null
-  if exception_text and exception_text.contains "@":
-    parts := exception_text.split "@"
-    exception_code = parts[0]
-    exception_text = parts[1]
+non_working_site site port exception_text1:
+  exception_text2 := null
+  if exception_text1 and exception_text1.contains "|":
+    parts := exception_text1.split "|"
+    exception_text2 = parts[0]
+    exception_text1 = parts[1]
 
   test_failure := false
   exception ::= catch:
@@ -129,10 +129,10 @@ non_working_site site port exception_text:
     load_limiter.log_test_failure "*** Incorrectly failed to reject SSL connection to $site ***"
     test_failure = true
   if not test_failure:
-    if exception_text and ("$exception".index_of exception_text) == -1 and (not exception_code or ("$exception".index_of exception_code) == -1):
+    if exception_text1 and ("$exception".index_of exception_text1) == -1 and (not exception_text2 or ("$exception".index_of exception_text2) == -1):
       print "$site:$port: Was expecting exception:"
       print "  $exception"
-      print "to contain the phrase '$exception_text' or code $exception_code"
+      print "to contain the phrase '$exception_text1' or '$exception_text2'"
       load_limiter.log_test_failure "Wrong error message"
   load_limiter.dec
 
@@ -163,6 +163,7 @@ connect_to_site host port expected_certificate_name:
     try:
       writer := writer.Writer socket
       writer.write """GET / HTTP/1.1\r\nHost: $host\r\nConnection: close\r\n\r\n"""
+      print "$host: $((socket as any).session_.mode == tls.SESSION_MODE_TOIT ? "Toit mode" : "MbedTLS mode")"
 
       while data := socket.read:
         bytes += data.size

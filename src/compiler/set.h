@@ -26,9 +26,11 @@ namespace compiler {
 
 template<typename T> class Set {
  public:
-  void insert(T x) {
+  bool insert(T x) {
     auto p = set_.insert(x);
-    if (p.second) vector_.push_back(x);
+    if (!p.second) return false;
+    vector_.push_back(x);
+    return true;
   }
 
   template<class InputIt> void insert(InputIt begin, InputIt end) {

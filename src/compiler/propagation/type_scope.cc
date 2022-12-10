@@ -66,7 +66,7 @@ TypeScope::TypeScope(BlockTemplate* block, TypeScope* outer, bool linked)
     : words_per_type_(outer->words_per_type_)
     , level_(outer->level() + 1)
     , level_linked_(linked ? outer->level() : outer->level_linked())
-    , method_(block->origin())
+    , method_(outer->method())
     , outer_(outer)
     , wrapped_(static_cast<uword*>(malloc((level_ + 1) * sizeof(uword)))) {
   for (int i = 0; i < level_; i++) {

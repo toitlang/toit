@@ -10,6 +10,7 @@ main:
   test_too_few_arguments
   test_modify_outer
   test_modify_outer_nested
+  test_recursion
 
 test_simple:
   x := 0
@@ -88,6 +89,38 @@ test_modify_outer_nested:
     id y
   id x
   id y
+
+test_recursion:
+  recursive_null: 42
+  recursive_null: false
+  recursive_call: 87
+  recursive_call: true
+  recursive_a_null: 42
+  recursive_a_null: "hest"
+  recursive_a_call: 87
+  recursive_a_call: "fisk"
+
+recursive_null [block]:
+  if pick: return recursive_null: null
+  return block.call
+
+recursive_call [block]:
+  if pick: return recursive_call block
+  return block.call
+
+recursive_a_null [block]:
+  if pick: return recursive_b_null: null
+  return block.call
+
+recursive_b_null [block]:
+  return recursive_a_null: null
+
+recursive_a_call [block]:
+  if pick: return recursive_b_call block
+  return block.call
+
+recursive_b_call [block]:
+  return recursive_a_call block
 
 maybe_throw:
   if pick: throw "woops"
