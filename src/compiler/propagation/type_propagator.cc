@@ -267,8 +267,8 @@ void TypePropagator::propagate(TypeDatabase* types) {
   for (auto it = methods_.begin(); it != methods_.end(); it++) {
     MethodTemplate* method = it->second;
     do {
-      method->collect_method(methods);
-      method = method->link();
+      method->collect_method(&methods);
+      method = method->next();
     } while (method);
   }
 
@@ -276,8 +276,8 @@ void TypePropagator::propagate(TypeDatabase* types) {
   for (auto it = blocks_.begin(); it != blocks_.end(); it++) {
     BlockTemplate* block = it->second;
     do {
-      block->collect_block(blocks);
-      block = block->link();
+      block->collect_block(&blocks);
+      block = block->next();
     } while (block);
   }
 
@@ -327,7 +327,16 @@ void TypePropagator::propagate(TypeDatabase* types) {
   }
 }
 
-void TypePropagator::call_method(MethodTemplate* caller, TypeScope* scope, uint8* site, Method target, std::vector<ConcreteType>& arguments) {
+// The arguments vector is used as a stack, so we
+// temporarily modify it while in (recursive) call.
+// Once we return, the vector appears untouched because
+// the additional elements will have been popped
+// off from the end of the vector.
+void TypePropagator::call_method(MethodTemplate* caller,
+                                 TypeScope* scope,
+                                 uint8* site,
+                                 Method target,
+                                 std::vector<ConcreteType>& arguments) {
   TypeStack* stack = scope->top();
   int arity = target.arity();
   int index = arguments.size();
@@ -437,7 +446,7 @@ void TypePropagator::call_block(TypeScope* scope, uint8* site, int arity) {
   for (int i = 0; i < arity; i++) stack->pop();
 
   // If the return type of this block changes, we enqueue the
-  // surrounding method again.
+  // current surrounding method (not the block's) again.
   if (arity >= block->arity()) {
     TypeSet value = block->invoke(this, scope, site);
     stack->push(value);
@@ -481,7 +490,7 @@ void TypePropagator::load_lambda(TypeScope* scope, Method method) {
     arguments.push_back(ConcreteType::any());
   }
   MethodTemplate* callee = find_method(method, arguments);
-  scope->top()->push_smi(program());
+  scope->top()->push_smi(program());  // Method of lambda.
   callee->propagate();
 }
 
@@ -582,7 +591,7 @@ MethodTemplate* TypePropagator::find_method(Method target, std::vector<ConcreteT
   uint32 key = ConcreteType::hash(target, arguments, false);
   auto it = methods_.find(key);
   MethodTemplate* head = (it != methods_.end()) ? it->second : null;
-  for (MethodTemplate* candidate = head; candidate; candidate = candidate->link()) {
+  for (MethodTemplate* candidate = head; candidate; candidate = candidate->next()) {
     if (candidate->matches(target, arguments)) return candidate;
   }
   MethodTemplate* result = new MethodTemplate(head, this, target, arguments);
@@ -594,7 +603,7 @@ BlockTemplate* TypePropagator::find_block(MethodTemplate* origin, Method target,
   uint32 key = ConcreteType::hash(target, origin->arguments(), true);
   auto it = blocks_.find(key);
   BlockTemplate* head = (it != blocks_.end()) ? it->second : null;
-  for (BlockTemplate* candidate = head; candidate; candidate = candidate->link()) {
+  for (BlockTemplate* candidate = head; candidate; candidate = candidate->next()) {
     if (candidate->matches(target, origin)) {
       candidate->use(this, origin);
       return candidate;
@@ -1194,28 +1203,28 @@ bool MethodTemplate::matches(Method target, std::vector<ConcreteType>& arguments
   return ConcreteType::equals(arguments_, arguments, false);
 }
 
-void MethodTemplate::collect_method(std::unordered_map<uint8*, std::vector<MethodTemplate*>>& map) {
+void MethodTemplate::collect_method(std::unordered_map<uint8*, std::vector<MethodTemplate*>>* map) {
   auto key = method_.header_bcp();
-  auto inner = map.find(key);
-  if (inner == map.end()) {
+  auto probe = map->find(key);
+  if (probe == map->end()) {
     std::vector<MethodTemplate*> methods;
     methods.push_back(this);
-    map[key] = methods;
+    (*map)[key] = methods;
   } else {
-    std::vector<MethodTemplate*>& blocks = inner->second;
+    std::vector<MethodTemplate*>& blocks = probe->second;
     blocks.push_back(this);
   }
 }
 
-void BlockTemplate::collect_block(std::unordered_map<uint8*, std::vector<BlockTemplate*>>& map) {
+void BlockTemplate::collect_block(std::unordered_map<uint8*, std::vector<BlockTemplate*>>* map) {
   auto key = method_.header_bcp();
-  auto inner = map.find(key);
-  if (inner == map.end()) {
+  auto probe = map->find(key);
+  if (probe == map->end()) {
     std::vector<BlockTemplate*> methods;
     methods.push_back(this);
-    map[key] = methods;
+    (*map)[key] = methods;
   } else {
-    std::vector<BlockTemplate*>& blocks = inner->second;
+    std::vector<BlockTemplate*>& blocks = probe->second;
     blocks.push_back(this);
   }
 }

@@ -102,18 +102,18 @@ class TypePropagator {
 
 class MethodTemplate {
  public:
-  MethodTemplate(MethodTemplate* link, TypePropagator* propagator, Method method, std::vector<ConcreteType> arguments)
-      : link_(link)
+  MethodTemplate(MethodTemplate* next, TypePropagator* propagator, Method method, std::vector<ConcreteType> arguments)
+      : next_(next)
       , propagator_(propagator)
       , method_(method)
       , arguments_(arguments)
       , result_(propagator->words_per_type()) {}
 
   ~MethodTemplate() {
-    delete link_;
+    delete next_;
   }
 
-  MethodTemplate* link() const { return link_; }
+  MethodTemplate* next() const { return next_; }
   TypePropagator* propagator() const { return propagator_; }
   const std::vector<ConcreteType>& arguments() const { return arguments_; }
 
@@ -139,12 +139,16 @@ class MethodTemplate {
     stack->pop();
   }
 
-  void collect_method(std::unordered_map<uint8*, std::vector<MethodTemplate*>>& map);
+  void collect_method(std::unordered_map<uint8*, std::vector<MethodTemplate*>>* map);
 
   void propagate();
 
  private:
-  MethodTemplate* const link_;
+  // Method templates that are associated with the same
+  // hash code (see ConcreteType::hash) are linked together
+  // to handle hash collisions.
+  MethodTemplate* const next_;
+
   TypePropagator* const propagator_;
   const Method method_;
   const std::vector<ConcreteType> arguments_;
@@ -156,8 +160,8 @@ class MethodTemplate {
 
 class BlockTemplate {
  public:
-  BlockTemplate(BlockTemplate* link, Method method, int level, int words_per_type)
-      : link_(link)
+  BlockTemplate(BlockTemplate* next, Method method, int level, int words_per_type)
+      : next_(next)
       , method_(method)
       , level_(level)
       , arguments_(static_cast<TypeVariable**>(malloc(method.arity() * sizeof(TypeVariable*))))
@@ -173,10 +177,10 @@ class BlockTemplate {
       delete arguments_[i];
     }
     free(arguments_);
-    delete link_;
+    delete next_;
   }
 
-  BlockTemplate* link() const { return link_; }
+  BlockTemplate* next() const { return next_; }
   Method method() const { return method_; }
   int method_id(Program* program) const;
   int level() const { return level_; }
@@ -207,10 +211,14 @@ class BlockTemplate {
 
   void propagate(TypeScope* scope, std::vector<Worklist*>& worklists, bool linked);
 
-  void collect_block(std::unordered_map<uint8*, std::vector<BlockTemplate*>>& map);
+  void collect_block(std::unordered_map<uint8*, std::vector<BlockTemplate*>>* map);
 
  private:
-  BlockTemplate* const link_;
+  // Block templates that are associated with the same
+  // hash code (see ConcreteType::hash) are linked together
+  // to handle hash collisions.
+  BlockTemplate* const next_;
+
   const Method method_;
   const int level_;
   TypeVariable** const arguments_;
