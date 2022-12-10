@@ -16,6 +16,13 @@
 #pragma once
 
 #include "../../top.h"
+#include "../../objects.h"
+
+// TODO(kasper): Consider introducing a proper datatype for
+// a list of concrete types - maybe coupled with the target
+// method. It could form a concrete invocation of sorts and
+// it could be a useful concept for methods and blocks.
+#include <vector>
 
 namespace toit {
 namespace compiler {
@@ -42,6 +49,11 @@ class ConcreteType {
     return data_ == other.data_;
   }
 
+  bool matches_ignoring_blocks(const ConcreteType& other) const {
+    if (is_block()) return other.is_block();
+    return data_ == other.data_;
+  }
+
   unsigned id() const {
     ASSERT(!is_block());
     return data_ >> 1;
@@ -51,6 +63,9 @@ class ConcreteType {
     ASSERT(is_block());
     return reinterpret_cast<BlockTemplate*>(data_);
   }
+
+  static uint32 hash(Method method, const std::vector<ConcreteType>& types, bool ignore_blocks);
+  static bool equals(const std::vector<ConcreteType>& x, const std::vector<ConcreteType>& y, bool ignore_blocks);
 
  private:
   static const uword ANY = ~0UL;

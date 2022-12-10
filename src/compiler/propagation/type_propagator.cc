@@ -260,20 +260,37 @@ void TypePropagator::propagate(TypeDatabase* types) {
     types->add_usage(position, type);
   });
 
+  // Group the methods and blocks based on the bytecode position, so
+  // we can collect the type information in a form that is indexable
+  // by bytecode pointers.
+  std::unordered_map<uint8*, std::vector<MethodTemplate*>> methods;
+  for (auto it = methods_.begin(); it != methods_.end(); it++) {
+    MethodTemplate* method = it->second;
+    do {
+      method->collect_method(&methods);
+      method = method->next();
+    } while (method);
+  }
+
   std::unordered_map<uint8*, std::vector<BlockTemplate*>> blocks;
-  for (auto it = templates_.begin(); it != templates_.end(); it++) {
-    std::vector<MethodTemplate*>& templates = it->second;
-    for (unsigned i = 0; i < templates.size(); i++) {
-      templates[i]->collect_blocks(blocks);
-    }
-    MethodTemplate* method = templates[0];
+  for (auto it = blocks_.begin(); it != blocks_.end(); it++) {
+    BlockTemplate* block = it->second;
+    do {
+      block->collect_block(&blocks);
+      block = block->next();
+    } while (block);
+  }
+
+  for (auto it = methods.begin(); it != methods.end(); it++) {
+    std::vector<MethodTemplate*>& list = it->second;
+    MethodTemplate* method = list[0];
     types->add_method(method->method());
     int arity = method->arity();
     for (int n = 0; n < arity; n++) {
       bool is_block = false;
       type.clear(words_per_type());
-      for (unsigned i = 0; i < templates.size(); i++) {
-        ConcreteType argument_type = templates[i]->argument(n);
+      for (unsigned i = 0; i < list.size(); i++) {
+        ConcreteType argument_type = list[i]->argument(n);
         if (argument_type.is_block()) {
           if (!is_block) type.set_block(argument_type.block());
           is_block = true;
@@ -290,8 +307,8 @@ void TypePropagator::propagate(TypeDatabase* types) {
   }
 
   for (auto it = blocks.begin(); it != blocks.end(); it++) {
-    std::vector<BlockTemplate*>& blocks = it->second;
-    BlockTemplate* block = blocks[0];
+    std::vector<BlockTemplate*>& list = it->second;
+    BlockTemplate* block = list[0];
     types->add_method(block->method());
 
     type.clear(words_per_type());
@@ -301,8 +318,8 @@ void TypePropagator::propagate(TypeDatabase* types) {
     int arity = block->arity();
     for (int n = 1; n < arity; n++) {
       type.clear(words_per_type());
-      for (unsigned i = 0; i < blocks.size(); i++) {
-        TypeVariable* argument = blocks[i]->argument(n);
+      for (unsigned i = 0; i < list.size(); i++) {
+        TypeVariable* argument = list[i]->argument(n);
         type.add_all(argument->type(), words_per_type());
       }
       types->add_argument(block->method(), n, type);
@@ -310,17 +327,27 @@ void TypePropagator::propagate(TypeDatabase* types) {
   }
 }
 
-void TypePropagator::call_method(
-    MethodTemplate* caller,
-    TypeScope* scope,
-    uint8* site,
-    Method target,
-    std::vector<ConcreteType>& arguments) {
+// The arguments vector is used as a stack, so we
+// temporarily modify it while in (recursive) call.
+// Once we return, the vector appears untouched because
+// the additional elements will have been popped
+// off from the end of the vector.
+void TypePropagator::call_method(MethodTemplate* caller,
+                                 TypeScope* scope,
+                                 uint8* site,
+                                 Method target,
+                                 std::vector<ConcreteType>& arguments) {
   TypeStack* stack = scope->top();
   int arity = target.arity();
   int index = arguments.size();
   if (index == arity) {
-    MethodTemplate* callee = find(target, arguments);
+    MethodTemplate* callee = find_method(target, arguments);
+    // TODO(kasper): Analyzing the callee method eagerly while still
+    // in the process of analyzing the caller is an optimization. It
+    // would be interesting to see the effect of avoiding that and
+    // just enqueuing the callee for analysis instead. It would lead
+    // to a re-analysis of the caller method.
+    if (!callee->analyzed()) callee->propagate();
     TypeSet result = callee->call(this, caller, site);
     stack->merge_top(result);
     // For all we know, the call might throw. We should
@@ -396,7 +423,61 @@ void TypePropagator::call_virtual(MethodTemplate* caller, TypeScope* scope, uint
   stack->drop_arguments(arity);
 }
 
-void TypePropagator::propagate_through_lambda(Method method) {
+void TypePropagator::call_block(TypeScope* scope, uint8* site, int arity) {
+  TypeStack* stack = scope->top();
+  TypeSet receiver = stack->local(arity - 1);
+  BlockTemplate* block = receiver.block();
+
+  // If we're passing too few arguments to the block, this will
+  // throw so we do not need to update the block's argument types.
+  if (arity >= block->arity()) {
+    for (int i = 1; i < block->arity(); i++) {
+      TypeSet argument = stack->local(arity - (i + 1));
+      // Merge the argument type. If the type changed, we enqueue
+      // the block's surrounding method because it has used the
+      // argument type variable. We always start at the method,
+      // so we have the full scope available to all blocks when
+      // propagating types through them.
+      block->argument(i)->merge(this, argument);
+    }
+  }
+
+  // Drop the arguments from the stack.
+  for (int i = 0; i < arity; i++) stack->pop();
+
+  // If the return type of this block changes, we enqueue the
+  // current surrounding method (not the block's) again.
+  if (arity >= block->arity()) {
+    TypeSet value = block->invoke(this, scope, site);
+    stack->push(value);
+  } else {
+    stack->push_empty();
+  }
+
+  // For all we know, invoking the block can throw. We can
+  // improve on this by propagating information about which
+  // blocks throw.
+  ensure_code_failure();
+  scope->throw_maybe();
+}
+
+void TypePropagator::load_block(MethodTemplate* loader, TypeScope* scope, Method method, bool linked, std::vector<Worklist*>& worklists) {
+  ASSERT(method.is_block_method());
+  // Finds or creates a block-template for the given block.
+  // The block's parameters are marked such that a change in their type enqueues this
+  // current method template.
+  // Note that the method template is for a specific combination of parameter types. As
+  // such we evaluate the contained blocks independently too.
+  BlockTemplate* block = find_block(loader, method, scope->level());
+  scope->top()->push_block(block);
+  // If the block might be used in a try-block, we need to know
+  // so we can correctly merge the type of outer locals. If we're
+  // not in a try-block, changes to outer locals cannot be seen
+  // when we unwind, but potentially being in a try block changes that.
+  block->propagate(scope, worklists, linked || block->is_invoked_from_try_block());
+}
+
+void TypePropagator::load_lambda(TypeScope* scope, Method method) {
   ASSERT(method.is_lambda_method());
   std::vector<ConcreteType> arguments;
   // TODO(kasper): Can we at least push an instance of the Lambda class
@@ -408,7 +489,9 @@ void TypePropagator::propagate_through_lambda(Method method) {
     // anything even though that isn't great.
     arguments.push_back(ConcreteType::any());
   }
-  find(method, arguments);
+  MethodTemplate* callee = find_method(method, arguments);
+  scope->top()->push_smi(program());  // Method of lambda.
+  callee->propagate();
 }
 
 void TypePropagator::load_field(MethodTemplate* user, TypeStack* stack, uint8* site, int index) {
@@ -504,33 +587,31 @@ void TypePropagator::add_site(uint8* site, TypeVariable* result) {
   sites_[site].insert(result);
 }
 
-MethodTemplate* TypePropagator::find(Method target, std::vector<ConcreteType> arguments) {
-  uint8* key = target.header_bcp();
-  auto it = templates_.find(key);
-  if (it == templates_.end()) {
-    std::vector<MethodTemplate*> templates;
-    MethodTemplate* result = instantiate(target, arguments);
-    templates.push_back(result);
-    templates_[key] = templates;
-    result->propagate();
-    return result;
-  } else {
-    std::vector<MethodTemplate*>& templates = it->second;
-    for (unsigned i = 0; i < templates.size(); i++) {
-      MethodTemplate* candidate = templates[i];
-      if (candidate->matches(target, arguments)) {
-        return candidate;
-      }
-    }
-    MethodTemplate* result = instantiate(target, arguments);
-    templates.push_back(result);
-    result->propagate();
-    return result;
+MethodTemplate* TypePropagator::find_method(Method target, std::vector<ConcreteType> arguments) {
+  uint32 key = ConcreteType::hash(target, arguments, false);
+  auto it = methods_.find(key);
+  MethodTemplate* head = (it != methods_.end()) ? it->second : null;
+  for (MethodTemplate* candidate = head; candidate; candidate = candidate->next()) {
+    if (candidate->matches(target, arguments)) return candidate;
   }
+  MethodTemplate* result = new MethodTemplate(head, this, target, arguments);
+  methods_[key] = result;
+  return result;
 }
 
-MethodTemplate* TypePropagator::instantiate(Method method, std::vector<ConcreteType> arguments) {
-  MethodTemplate* result = new MethodTemplate(this, method, arguments);
+BlockTemplate* TypePropagator::find_block(MethodTemplate* origin, Method target, int level) {
+  uint32 key = ConcreteType::hash(target, origin->arguments(), true);
+  auto it = blocks_.find(key);
+  BlockTemplate* head = (it != blocks_.end()) ? it->second : null;
+  for (BlockTemplate* candidate = head; candidate; candidate = candidate->next()) {
+    if (candidate->matches(target, origin)) {
+      candidate->use(this, origin);
+      return candidate;
+    }
+  }
+  BlockTemplate* result = new BlockTemplate(head, target, level, words_per_type());
+  blocks_[key] = result;
+  result->use(this, origin);
   return result;
 }
 
@@ -684,22 +765,10 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
   OPCODE_BEGIN(LOAD_METHOD);
     Method inner = Method(program->bytecodes, Utils::read_unaligned_uint32(bcp + 1));
     if (inner.is_block_method()) {
-      // Finds or creates a block-template for the given block.
-      // The block's parameters are marked such that a change in their type enqueues this
-      // current method template.
-      // Note that the method template is for a specific combination of parameter types. As
-      // such we evaluate the contained blocks independently too.
-      BlockTemplate* block = method->find_block(inner, scope->level(), bcp);
-      stack->push_block(block);
-      // If the block might be used in a try-block, we need to know
-      // so we can correctly merge the type of outer locals. If we're
-      // not in a try-block, changes to outer locals cannot be seen
-      // when we unwind, but potentially being in a try block changes that.
       bool is_inner_linked = bcp[LOAD_METHOD_LENGTH] == LINK;
-      block->propagate(scope, worklists, is_inner_linked || block->is_invoked_from_try_block());
+      propagator->load_block(method, scope, inner, is_inner_linked, worklists);
     } else {
-      propagator->propagate_through_lambda(inner);
-      stack->push_smi(program);
+      propagator->load_lambda(scope, inner);
     }
   OPCODE_END();
 
@@ -870,34 +939,8 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
 
   OPCODE_BEGIN(INVOKE_BLOCK);
     B_ARG1(index);
-    TypeSet receiver = stack->local(index - 1);
-    BlockTemplate* block = receiver.block();
-    // If we're passing too few arguments to the block, this will
-    // throw and we should not continue analyzing on this path.
-    if (index < block->arity()) {
-      scope->throw_maybe();
-      return scope;
-    }
-    for (int i = 1; i < block->arity(); i++) {
-      TypeSet argument = stack->local(index - (i + 1));
-      // Merge the argument type. If the type changed, we enqueue
-      // the block's surrounding method because it has used the
-      // argument type variable. We always start at the method,
-      // so we have the full scope available to all blocks when
-      // propagating types through them.
-      block->argument(i)->merge(propagator, argument);
-    }
-    for (int i = 0; i < index; i++) stack->pop();
-    // If the return type of this block changes, we enqueue the
-    // surrounding method again.
-    TypeSet value = block->invoke(propagator, scope, bcp);
-    // For all we know, invoking the block can throw. We can
-    // improve on this by propagating information about which
-    // blocks throw.
-    propagator->ensure_code_failure();
-    scope->throw_maybe();
-
-    if (value.is_empty(program)) {
+    propagator->call_block(scope, bcp, index);
+    if (stack->local(0).is_empty(program)) {
       if (!linked) return scope;
       // We've just invoked a try-block that is guaranteed
       // to unwind as indicated by the empty return type.
@@ -909,10 +952,9 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
       // where the compiler assumes that we will not execute
       // that part and avoids terminating the method with a
       // 'return' bytecode.
-      TypeSet target = stack->local(2);
+      TypeSet target = stack->local(3);
       target.add_smi(program);  // We don't know the target, but we know we have one.
     }
-    stack->push(value);
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(INVOKE_VIRTUAL, arity);
@@ -1156,31 +1198,34 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
   OPCODE_END();
 }
 
-BlockTemplate* MethodTemplate::find_block(Method method, int level, uint8* site) {
-  auto it = blocks_.find(site);
-  if (it == blocks_.end()) {
-    BlockTemplate* block = new BlockTemplate(this, method, level, propagator_->words_per_type());
-    for (int i = 1; i < method.arity(); i++) {
-      block->argument(i)->use(propagator_, this, null);
-    }
-    blocks_[site] = block;
-    return block;
+bool MethodTemplate::matches(Method target, std::vector<ConcreteType>& arguments) const {
+  if (target.entry() != method_.entry()) return false;
+  return ConcreteType::equals(arguments_, arguments, false);
+}
+
+void MethodTemplate::collect_method(std::unordered_map<uint8*, std::vector<MethodTemplate*>>* map) {
+  auto key = method_.header_bcp();
+  auto probe = map->find(key);
+  if (probe == map->end()) {
+    std::vector<MethodTemplate*> methods;
+    methods.push_back(this);
+    (*map)[key] = methods;
   } else {
-    return it->second;
+    std::vector<MethodTemplate*>& blocks = probe->second;
+    blocks.push_back(this);
   }
 }
 
-void MethodTemplate::collect_blocks(std::unordered_map<uint8*, std::vector<BlockTemplate*>>& map) {
-  for (auto it = blocks_.begin(); it != blocks_.end(); it++) {
-    auto inner = map.find(it->first);
-    if (inner == map.end()) {
-      std::vector<BlockTemplate*> blocks;
-      blocks.push_back(it->second);
-      map[it->first] = blocks;
-      continue;
-    }
-    std::vector<BlockTemplate*>& blocks = inner->second;
-    blocks.push_back(it->second);
+void BlockTemplate::collect_block(std::unordered_map<uint8*, std::vector<BlockTemplate*>>* map) {
+  auto key = method_.header_bcp();
+  auto probe = map->find(key);
+  if (probe == map->end()) {
+    std::vector<BlockTemplate*> methods;
+    methods.push_back(this);
+    (*map)[key] = methods;
+  } else {
+    std::vector<BlockTemplate*>& blocks = probe->second;
+    blocks.push_back(this);
   }
 }
 
@@ -1189,6 +1234,8 @@ int MethodTemplate::method_id() const {
 }
 
 void MethodTemplate::propagate() {
+  analyzed_ = true;
+
   TypeScope* scope = new TypeScope(this);
 
   // We need to special case the 'operator ==' method, because the interpreter
@@ -1227,6 +1274,19 @@ int BlockTemplate::method_id(Program* program) const {
   return program->absolute_bci_from_bcp(method_.header_bcp());
 }
 
+bool BlockTemplate::matches(Method target, MethodTemplate* user) const {
+  if (target.entry() != method_.entry()) return false;
+  return ConcreteType::equals(last_user_->arguments(), user->arguments(), true);
+}
+
+void BlockTemplate::use(TypePropagator* propagator, MethodTemplate* user) {
+  if (!users_.insert(user)) return;
+  for (int i = 1; i < method_.arity(); i++) {
+    argument(i)->use(propagator, user, null);
+  }
+  last_user_ = user;
+}
+
 void BlockTemplate::invoke_from_try_block() {
   if (is_invoked_from_try_block_) return;
   // If we find that this block may have been invoked from
@@ -1235,7 +1295,9 @@ void BlockTemplate::invoke_from_try_block() {
   // may be visible because of caught exceptions or
   // stopped unwinding.
   is_invoked_from_try_block_ = true;
-  origin_->propagator()->enqueue(origin_);
+  for (auto it : users_) {
+    it->propagator()->enqueue(it);
+  }
 }
 
 void BlockTemplate::propagate(TypeScope* scope, std::vector<Worklist*>& worklists, bool linked) {
