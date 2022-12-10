@@ -53,8 +53,10 @@ class TypePropagator {
 
   void call_static(MethodTemplate* caller, TypeScope* scope, uint8* site, Method target);
   void call_virtual(MethodTemplate* caller, TypeScope* scope, uint8* site, int arity, int offset);
+  void call_block(TypeScope* scope, uint8* site, int arity);
 
-  void propagate_through_lambda(Method method);
+  void load_block(MethodTemplate* loader, TypeScope* scope, Method method, bool linked, std::vector<Worklist*>& worklists);
+  void load_lambda(TypeScope* scope, Method method);
 
   void load_field(MethodTemplate* user, TypeStack* stack, uint8* site, int index);
   void store_field(MethodTemplate* user, TypeStack* stack, int index);
@@ -84,7 +86,9 @@ class TypePropagator {
 
   Map<uint8*, Set<TypeVariable*>> sites_;
 
-  std::unordered_map<uint8*, std::vector<MethodTemplate*>> templates_;
+  std::unordered_map<uint32, MethodTemplate*> methods_;
+  std::unordered_map<uint32, BlockTemplate*> blocks_;
+
   std::unordered_map<int, TypeVariable*> globals_;
   std::unordered_map<uint8*, TypeVariable*> outers_;
   std::unordered_map<unsigned, std::unordered_map<int, TypeVariable*>> fields_;
@@ -92,33 +96,35 @@ class TypePropagator {
 
   void call_method(MethodTemplate* caller, TypeScope* scope, uint8* site, Method target, std::vector<ConcreteType>& arguments);
 
-  MethodTemplate* find(Method target, std::vector<ConcreteType> arguments);
-  MethodTemplate* instantiate(Method method, std::vector<ConcreteType> arguments);
+  MethodTemplate* find_method(Method target, std::vector<ConcreteType> arguments);
+  BlockTemplate* find_block(MethodTemplate* origin, Method method, int level);
 };
 
 class MethodTemplate {
  public:
-  MethodTemplate(TypePropagator* propagator, Method method, std::vector<ConcreteType> arguments)
-      : propagator_(propagator)
+  MethodTemplate(MethodTemplate* next, TypePropagator* propagator, Method method, std::vector<ConcreteType> arguments)
+      : next_(next)
+      , propagator_(propagator)
       , method_(method)
       , arguments_(arguments)
       , result_(propagator->words_per_type()) {}
 
+  ~MethodTemplate() {
+    delete next_;
+  }
+
+  MethodTemplate* next() const { return next_; }
   TypePropagator* propagator() const { return propagator_; }
+  const std::vector<ConcreteType>& arguments() const { return arguments_; }
 
   int arity() const { return arguments_.size(); }
   ConcreteType argument(int index) { return arguments_[index]; }
   Method method() const { return method_; }
   int method_id() const;
 
-  bool matches(Method target, std::vector<ConcreteType> arguments) {
-    if (target.entry() != method_.entry()) return false;
-    for (unsigned i = 0; i < arguments.size(); i++) {
-      if (!arguments[i].matches(arguments_[i])) return false;
-    }
-    return true;
-  }
+  bool matches(Method target, std::vector<ConcreteType>& arguments) const;
 
+  bool analyzed() const { return analyzed_; }
   bool enqueued() const { return enqueued_; }
   void mark_enqueued() { enqueued_ = true; }
   void clear_enqueued() { enqueued_ = false; }
@@ -133,25 +139,29 @@ class MethodTemplate {
     stack->pop();
   }
 
-  BlockTemplate* find_block(Method method, int level, uint8* site);
-  void collect_blocks(std::unordered_map<uint8*, std::vector<BlockTemplate*>>& map);
+  void collect_method(std::unordered_map<uint8*, std::vector<MethodTemplate*>>* map);
 
   void propagate();
 
  private:
+  // Method templates that are associated with the same
+  // hash code (see ConcreteType::hash) are linked together
+  // to handle hash collisions.
+  MethodTemplate* const next_;
+
   TypePropagator* const propagator_;
   const Method method_;
   const std::vector<ConcreteType> arguments_;
   TypeVariable result_;
-  bool enqueued_ = false;
 
-  std::unordered_map<uint8*, BlockTemplate*> blocks_;
+  bool enqueued_ = false;
+  bool analyzed_ = false;
 };
 
 class BlockTemplate {
  public:
-  BlockTemplate(MethodTemplate* origin, Method method, int level, int words_per_type)
-      : origin_(origin)
+  BlockTemplate(BlockTemplate* next, Method method, int level, int words_per_type)
+      : next_(next)
       , method_(method)
       , level_(level)
       , arguments_(static_cast<TypeVariable**>(malloc(method.arity() * sizeof(TypeVariable*))))
@@ -167,15 +177,19 @@ class BlockTemplate {
       delete arguments_[i];
     }
     free(arguments_);
+    delete next_;
   }
 
-  MethodTemplate* origin() const { return origin_; }
+  BlockTemplate* next() const { return next_; }
   Method method() const { return method_; }
   int method_id(Program* program) const;
   int level() const { return level_; }
   int arity() const { return method_.arity(); }
   TypeVariable* argument(int index) { return arguments_[index]; }
   bool is_invoked_from_try_block() const { return is_invoked_from_try_block_; }
+
+  bool matches(Method target, MethodTemplate* user) const;
+  void use(TypePropagator* propagator, MethodTemplate* user);
 
   ConcreteType pass_as_argument(TypeScope* scope) {
     // If we pass a block as an argument inside a try-block, we
@@ -197,13 +211,29 @@ class BlockTemplate {
 
   void propagate(TypeScope* scope, std::vector<Worklist*>& worklists, bool linked);
 
+  void collect_block(std::unordered_map<uint8*, std::vector<BlockTemplate*>>* map);
+
  private:
-  MethodTemplate* const origin_;
+  // Block templates that are associated with the same
+  // hash code (see ConcreteType::hash) are linked together
+  // to handle hash collisions.
+  BlockTemplate* const next_;
+
   const Method method_;
   const int level_;
   TypeVariable** const arguments_;
   TypeVariable result_;
   bool is_invoked_from_try_block_ = false;
+
+  // All users of this block are various invocations of the same method.
+  // These are the surrounding methods that load the block.
+  Set<MethodTemplate*> users_;
+
+  // TODO(kasper): We temporarily keep a pointer to one of the
+  // users around. It doesn't matter which one, because we're only
+  // using it to determine if a BlockTemplate can be reused by
+  // another user in the BlockTemplate::matches function.
+  MethodTemplate* last_user_ = null;
 
   void invoke_from_try_block();
 };

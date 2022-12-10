@@ -101,7 +101,7 @@ class ListBuilder {
     return result;
   }
 
-  static List<T> build_from_vector(std::vector<T> vector) {
+  static List<T> build_from_vector(const std::vector<T> vector) {
     int len = vector.size();
     List<T> result = allocate(len);
     for (int i = 0; i < len; i++) {
