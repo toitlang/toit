@@ -558,6 +558,7 @@ class ToitProgram extends ToitObjectType:
       "_source_mapping": PrimitiveType.POINTER,
       "_program_heap_address": PrimitiveType.POINTER,
       "_program_heap_size": PrimitiveType.WORD,
+      "propagated_types_": PrimitiveType.POINTER,
     }
 
   snapshot_program /snapshot.Program

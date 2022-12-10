@@ -332,10 +332,6 @@ class Program : public FlashAllocation {
 
   ProgramRawHeap heap_;
 
-#ifdef TOIT_CHECK_PROPAGATED_TYPES
-  compiler::TypeDatabase* propagated_types_ = null;
-#endif
-
   Object* roots_[ROOT_COUNT];
   #define DECLARE_ROOT(type, name) void set_##name(type* v) { roots_[name##_INDEX] = v; }
   PROGRAM_ROOTS(DECLARE_ROOT)
@@ -367,6 +363,10 @@ class Program : public FlashAllocation {
 
   uword program_heap_address_;
   uword program_heap_size_;
+
+#ifdef TOIT_CHECK_PROPAGATED_TYPES
+  compiler::TypeDatabase* propagated_types_ = null;
+#endif
 
   friend class Process;
   friend class ProgramHeap;
