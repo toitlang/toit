@@ -19,7 +19,7 @@ SHELL=bash
 
 # General options.
 HOST=host
-BUILD_TYPE=Release
+BUILD_TYPE=Debug
 
 # Use 'make flash ESP32_ENTRY=examples/mandelbrot.toit' to flash
 # a firmware version with an embedded application.

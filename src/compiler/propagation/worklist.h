@@ -29,8 +29,10 @@ class Worklist {
     TypeScope* scope;
   };
 
-  Worklist(uint8* entry, TypeScope* scope);
+  Worklist(uint8* entry, TypeScope* scope, BlockTemplate* block);
   ~Worklist();
+
+  BlockTemplate* block() const { return block_; }
 
   bool has_next() const { return !unprocessed_.empty(); }
   Item next();
@@ -38,6 +40,8 @@ class Worklist {
   TypeScope* add(uint8* bcp, TypeScope* scope, bool split);
 
  private:
+  BlockTemplate* const block_;
+
   std::vector<uint8*> unprocessed_;
   std::unordered_map<uint8*, TypeScope*> scopes_;
 };
