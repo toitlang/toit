@@ -137,10 +137,11 @@ class Utils {
   }
 
   /**
-  Sets bit_size contiguous bits to ones in an area starting at the `from` bit.
+  Sets `bit_size` contiguous bits to ones in an area starting at the `from`
+    bit.
   Bits are numbered in little-endian order within a T.  Normally T would be
-  uint32 or uword.
-  from should be less than the bit-size of T.
+    uint32 or uword.
+  `from` should be less than the bit-size of T.
   */
   template<typename T>
   static inline void mark_bits(T* data, int from, int bit_size) {
@@ -150,14 +151,15 @@ class Utils {
   /**
   Sets bit_size contiguous bits to zeros in an area starting at the `from` bit.
   Bits are numbered in little-endian order within a T.  Normally T would be
-  uint32 or uword.
-  from should be less than the bit-size of T.
+    uint32 or uword.
+  `from` should be less than the bit-size of T.
   */
   template<typename T>
   static inline void clear_bits(T* data, int from, int bit_size) {
     set_or_clear_bits<T, false>(data, from, bit_size);
   }
 
+  // See `mark_bits` and `clear_bits`.
   template<typename T, bool set>
   static inline void set_or_clear_bits(T* data, int from, int bit_size) {
     static const int T_BITS = BYTE_BIT_SIZE * sizeof(T);
