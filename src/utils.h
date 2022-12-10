@@ -196,9 +196,8 @@ class Utils {
     }
     if (bit_size != 0) {
       // The last word where some bits near the end of the word are not marked.
-      T one = 1;
       if (set) {
-        *data |= (one << bit_size) - 1;
+        *data |= (ONE << bit_size) - 1;
       } else {
         *data &= ALL_ONES << bit_size;
       }
