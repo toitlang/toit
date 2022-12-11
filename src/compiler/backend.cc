@@ -228,7 +228,7 @@ void Backend::emit_method(ir::Method* method,
                           ByteGen* gen,
                           DispatchTable* dispatch_table,
                           ProgramBuilder* program_builder) {
-  int dispatch_offset = 0;
+  int dispatch_offset = -1;
   bool is_field_accessor = false;
   if (!method->is_static()) {
     ASSERT(method->holder() != null);
@@ -242,8 +242,10 @@ void Backend::emit_method(ir::Method* method,
   int id = gen->assemble_method(method, dispatch_offset, is_field_accessor);
 
   if (method->is_static()) {
+    ASSERT(dispatch_offset < 0);
     program_builder->set_dispatch_table_entry(dispatch_table->slot_index_for(method), id);
   } else {
+    ASSERT(dispatch_offset >= 0);
     bool was_executed;
     std::function<void (int)> callback = [&](int index) {
       was_executed = true;

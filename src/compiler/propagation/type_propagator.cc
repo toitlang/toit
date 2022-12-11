@@ -388,9 +388,45 @@ void TypePropagator::call_method(MethodTemplate* caller,
 
 void TypePropagator::call_static(MethodTemplate* caller, TypeScope* scope, uint8* site, Method target) {
   TypeStack* stack = scope->top();
+  int arity = target.arity();
+
   std::vector<ConcreteType> arguments;
   stack->push_empty();
-  call_method(caller, scope, site, target, arguments);
+
+  bool is_static = true;
+  int offset = target.selector_offset();
+  if (offset >= 0) {
+    TypeSet receiver = stack->local(arity);
+    // If the receiver is a single type, we don't need
+    // to do virtual lookups. This allows us to handle
+    // super calls where we cannot find the (virtual)
+    // super method in the dispatch table entries for
+    // the receiver because they have been overridden.
+    is_static = receiver.size(words_per_type_) <= 1;
+  }
+
+  if (is_static) {
+    call_method(caller, scope, site, target, arguments);
+  } else {
+    Program* program = this->program();
+    TypeSet receiver = stack->local(arity);
+    TypeSet::Iterator it(receiver, words_per_type_);
+    int variants = 0;
+    while (it.has_next()) {
+      unsigned id = it.next();
+      int entry_index = id + offset;
+      int entry_id = program->dispatch_table[entry_index];
+      if (entry_id < 0) continue;
+      Method entry = Method(program->bytecodes, entry_id);
+      if (entry.header_bcp() != target.header_bcp()) continue;
+      arguments.push_back(ConcreteType(id));
+      call_method(caller, scope, site, target, arguments);
+      arguments.pop_back();
+      variants++;
+    }
+    ASSERT(variants > 0);
+  }
+
   stack->drop_arguments(target.arity());
 }
 
@@ -481,8 +517,6 @@ void TypePropagator::load_block(MethodTemplate* loader, TypeScope* scope, Method
 void TypePropagator::load_lambda(TypeScope* scope, Method method) {
   ASSERT(method.is_lambda_method());
   std::vector<ConcreteType> arguments;
-  // TODO(kasper): Can we at least push an instance of the Lambda class
-  // as the receiver type?
   for (int i = 0; i < method.arity(); i++) {
     // We're instantiating a lambda instance here, so we don't
     // know which arguments will be passed to it when it is
@@ -1115,7 +1149,7 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
       method->ret(propagator, stack);
     } else {
       // The worklists keep track of the blocks they correspond
-      // to. The outermost worklist has a null block because it 
+      // to. The outermost worklist has a null block because it
       // corresponds to a method.
       BlockTemplate* block = worklists[level]->block();
       block->ret(propagator, stack);
@@ -1252,9 +1286,20 @@ int MethodTemplate::method_id() const {
 }
 
 void MethodTemplate::propagate() {
+  TypeScope* scope = new TypeScope(this);
   analyzed_ = true;
 
-  TypeScope* scope = new TypeScope(this);
+  // Check that virtual methods are always called with a
+  // concrete receiver type; not any.
+  bool is_normal = method_.is_normal_method() ||
+      method_.is_field_accessor();
+  bool is_virtual = is_normal && method_.selector_offset() >= 0;
+  if (is_virtual) {
+    ASSERT(arguments_.size() >= 1);
+    ConcreteType receiver = argument(0);
+    ASSERT(!receiver.is_any());
+    ASSERT(!receiver.is_block());
+  }
 
   // We need to special case the 'operator ==' method, because the interpreter
   // does a manual null check on both arguments, which means that null never
