@@ -6,7 +6,6 @@ import tls
 import .tcp as tcp
 import net.x509 as net
 import writer
-import esp32
 
 monitor LimitLoad:
   current := 0
@@ -163,9 +162,6 @@ connect_to_site host port add_root:
 
   while data := socket.read:
     bytes += data.size
-    if bytes - data.size < 25000 and bytes >= 25000:
-      esp32.memory_page_report
-      print_objects
 
   socket.close
 
