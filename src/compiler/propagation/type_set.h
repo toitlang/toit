@@ -35,7 +35,11 @@ class TypeSet {
         , end_(&type.bits_[words_per_type - 1]) {
       ASSERT(!type.is_block());
       uword bits = *cursor_;
-      int base = -1;  // First type is at bit 1.
+      // The first bit of a type set is used as a marker and
+      // guaranteed to be 0 for non-block typesets.
+      // The base is thus -1.
+      ASSERT((bits & 1) == 0);
+      int base = -1;
       while (bits == 0 && cursor_ != end_) {
         bits = *(++cursor_);
         base += WORD_BIT_SIZE;
@@ -49,6 +53,8 @@ class TypeSet {
     unsigned next() {
       ASSERT(has_next());
       uword bits = bits_;
+      // Compute the index of the next bit by counting 
+      // trailing zeros (ctz).
       int index = Utils::ctz(bits);
       int base = base_;
       unsigned result = index + base;
@@ -64,7 +70,7 @@ class TypeSet {
 
    private:
     uword bits_;
-    int base_;
+    int base_;  // The class-index of the first bit in bits_.
     uword* cursor_;
     uword* const end_;
   };
