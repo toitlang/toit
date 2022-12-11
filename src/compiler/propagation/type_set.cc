@@ -26,8 +26,10 @@ void TypeSet::print(Program* program, const char* banner) {
     printf(" block=%p", block());
   } else {
     bool first = true;
-    for (int id = 0; id < program->class_bits.length(); id++) {
-      if (!contains(id)) continue;
+    // TODO(kasper): Avoid re-computing the words per type here.
+    Iterator it(*this, words_per_type(program));
+    while (it.has_next()) {
+      unsigned id = it.next();
       if (first) printf(" ");
       else printf(", ");
       printf("%d", id);
@@ -47,8 +49,10 @@ std::string TypeSet::as_json(Program* program) const {
   std::stringstream result;
   result << "[";
   bool first = true;
-  for (int id = 0; id < program->class_bits.length(); id++) {
-    if (!contains(id)) continue;
+  // TODO(kasper): Avoid re-computing the words per type here.
+  Iterator it(*this, words_per_type(program));
+  while (it.has_next()) {
+    unsigned id = it.next();
     if (first) {
       first = false;
     } else {
@@ -60,29 +64,27 @@ std::string TypeSet::as_json(Program* program) const {
   return result.str();
 }
 
-int TypeSet::size(Program* program) const {
+int TypeSet::size(int words_per_type) const {
   if (is_block()) return 1;
-  int size = 0;
-  for (int id = 0; id < program->class_bits.length(); id++) {
-    if (contains(id)) size++;
+  int result = 0;
+  for (int i = 0; i < words_per_type; i++) {
+    result += Utils::popcount(bits_[i]);
   }
-  return size;
+  return result;
 }
 
-bool TypeSet::is_empty(Program* program) const {
+bool TypeSet::is_empty(int words_per_type) const {
   if (is_block()) return false;
-  for (int id = 0; id < program->class_bits.length(); id++) {
-    if (contains(id)) return false;
+  for (int i = 0; i < words_per_type; i++) {
+    if (bits_[i] != 0) return false;
   }
   return true;
 }
 
 bool TypeSet::is_any(Program* program) const {
   if (is_block()) return false;
-  for (int id = 0; id < program->class_bits.length(); id++) {
-    if (!contains(id)) return false;
-  }
-  return true;
+  // TODO(kasper): Avoid re-computing the words per type here.
+  return size(words_per_type(program)) == program->class_bits.length();
 }
 
 bool TypeSet::add_int(Program* program) {
@@ -95,6 +97,13 @@ bool TypeSet::add_bool(Program* program) {
   bool result = add_instance(program->true_class_id());
   result = add_instance(program->false_class_id()) || result;
   return result;
+}
+
+void TypeSet::add_range(unsigned start, unsigned end) {
+  // TODO(kasper): We can make this much faster.
+  for (unsigned type = start; type < end; type++) {
+    add(type);
+  }
 }
 
 void TypeSet::remove_range(unsigned start, unsigned end) {
@@ -114,15 +123,18 @@ bool TypeSet::remove_typecheck_class(Program* program, int index, bool is_nullab
     add(program->null_class_id()->value());
     return true;
   }
-  return !is_empty(program);
+  // TODO(kasper): Avoid re-computing the words per type here.
+  return !is_empty(words_per_type(program));
 }
 
 bool TypeSet::remove_typecheck_interface(Program* program, int index, bool is_nullable) {
   bool contains_null_before = contains_null(program);
-  // TODO(kasper): We can make this faster.
   int selector_offset = program->interface_check_offsets[index];
-  for (int id = 0; id < program->class_bits.length(); id++) {
-    if (!contains(id)) continue;
+  // TODO(kasper): Avoid re-computing the words per type here.
+  int words_per_type = TypeSet::words_per_type(program);
+  Iterator it(*this, words_per_type);
+  while (it.has_next()) {
+    unsigned id = it.next();
     int entry_index = id + selector_offset;
     int entry_id = program->dispatch_table[entry_index];
     if (entry_id != -1) {
@@ -135,7 +147,7 @@ bool TypeSet::remove_typecheck_interface(Program* program, int index, bool is_nu
     add(program->null_class_id()->value());
     return true;
   }
-  return !is_empty(program);
+  return !is_empty(words_per_type);
 }
 
 } // namespace toit::compiler
