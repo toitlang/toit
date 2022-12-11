@@ -1106,11 +1106,16 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
   OPCODE_END();
 
   OPCODE_BEGIN(NON_LOCAL_RETURN);
+    // For 'continue.label' the pushed block is the block from which the
+    // non-local return should return.
     int level = stack->local(0).block()->level();
     stack->pop();  // Pop block.
     if (level == 0) {
       method->ret(propagator, stack);
     } else {
+      // The worklists keep track of the blocks they correspond
+      // to. The outermost worklist has a null block because it 
+      // corresponds to a method.
       BlockTemplate* block = worklists[level]->block();
       block->ret(propagator, stack);
     }

@@ -40,6 +40,7 @@ class Worklist {
   TypeScope* add(uint8* bcp, TypeScope* scope, bool split);
 
  private:
+  // If this worklist is for a block, contains the value of it. Null otherwise.
   BlockTemplate* const block_;
 
   std::vector<uint8*> unprocessed_;
