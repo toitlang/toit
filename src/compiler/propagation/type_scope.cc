@@ -44,7 +44,7 @@ TypeScope::TypeScope(MethodTemplate* method)
     if (argument_type.is_block()) {
       type.set_block(argument_type.block());
     } else if (argument_type.is_any()) {
-      type.fill(words_per_type_);
+      type.add_any(method->propagator()->program());
     } else {
       type.add(argument_type.id());
     }
