@@ -51,6 +51,8 @@ class TypeDatabase {
   std::unordered_map<int, TypeStack*> methods_;
   std::unordered_map<int, TypeSet> usage_;
 
+  static std::unordered_map<Program*, TypeDatabase*> cache_;
+
   TypeDatabase(Program* program, int words_per_type);
 
   void add_method(Method method);

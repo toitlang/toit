@@ -264,7 +264,7 @@ Interpreter::Result Interpreter::run() {
 #ifdef TOIT_CHECK_PROPAGATED_TYPES
   compiler::TypeDatabase* propagated_types = null;
   if (!process_->is_privileged()) {
-    propagated_types = program->propagated_types();
+    propagated_types = compiler::TypeDatabase::compute(program);
   }
 #endif
   preemption_method_header_bcp_ = null;

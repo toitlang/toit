@@ -911,9 +911,8 @@ ProgramImage ImageSnapshotReader::read_image(const uint8* id) {
 
   image_allocator_.expand();
   program_->read(this);
-#ifndef TOIT_CHECK_PROPAGATED_TYPES
   image_allocator_.image()->mark_read_only();
-#endif
+
   return ProgramImage(image_allocator_.image());
 }
 

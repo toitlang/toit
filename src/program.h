@@ -25,10 +25,6 @@
 
 namespace toit {
 
-namespace compiler {
-class TypeDatabase;
-}
-
 // List of all roots in program_heap.
 #define PROGRAM_ROOTS(ROOT)                  \
   ROOT(HeapObject, null_object)              \
@@ -183,10 +179,6 @@ class Program : public FlashAllocation {
   // Snapshot operations.
   void write(SnapshotWriter* st);
   void read(SnapshotReader* st);
-#endif
-
-#ifdef TOIT_CHECK_PROPAGATED_TYPES
-  compiler::TypeDatabase* propagated_types();
 #endif
 
   // Size of all objects stored in this program.
@@ -363,10 +355,6 @@ class Program : public FlashAllocation {
 
   uword program_heap_address_;
   uword program_heap_size_;
-
-#ifdef TOIT_CHECK_PROPAGATED_TYPES
-  compiler::TypeDatabase* propagated_types_ = null;
-#endif
 
   friend class Process;
   friend class ProgramHeap;

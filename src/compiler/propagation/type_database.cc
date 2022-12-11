@@ -23,6 +23,7 @@ namespace toit {
 namespace compiler {
 
 static const int TYPES_BLOCK_SIZE = 1024;
+std::unordered_map<Program*, TypeDatabase*> TypeDatabase::cache_;
 
 TypeDatabase::TypeDatabase(Program* program, int words_per_type)
     : program_(program)
@@ -59,9 +60,20 @@ void TypeDatabase::check_method_entry(Method method, Object** sp) const {
 }
 
 TypeDatabase* TypeDatabase::compute(Program* program) {
+  auto probe = cache_.find(program);
+  if (probe != cache_.end()) return probe->second;
+
+  AllowThrowingNew allow;
+  uint64 start = OS::get_monotonic_time();
   TypePropagator propagator(program);
   TypeDatabase* types = new TypeDatabase(program, propagator.words_per_type());
   propagator.propagate(types);
+  uint64 elapsed = OS::get_monotonic_time() - start;
+  if (false) {
+    printf("[propagating types through program %p => %lld ms]\n",
+        program, elapsed / 1000);
+  }
+  cache_[program] = types;
   return types;
 }
 
