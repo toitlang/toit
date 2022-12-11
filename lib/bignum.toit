@@ -11,13 +11,23 @@ BIGNUM_MUL_ ::= 2
 BIGNUM_DIV_ ::= 3
 BIGNUM_MOD_ ::= 4
 
+/**
+An arbitrary-precision integer type.
+# Note
+Operations are not constant-time, so this library is not suitable for many
+  cryptographic tasks.
+# Note
+Even on host machines you may get out-of-memory errors for very large numbers.
+  The underlying MbedTLS library is compiled with a maxiumum number of base-256
+  digits, often 10_000.
+*/
 class Bignum:
   negative_/bool := ?
   limbs_/ByteArray := ?
 
   constructor.with_bytes .negative_/bool .limbs_/ByteArray:
 
-  constructor data/string:
+  constructor.hex data/string:
     if data[0] == '-':
       negative_ = true
       data = data[1..]
@@ -65,7 +75,16 @@ class Bignum:
     if negative_ != other.negative_:
       return false
 
-    return limbs_ == other.limbs_
+    m := min limbs_.size other.limbs_.size
+    cut1 := limbs_.size - m
+    cut2 := other.limbs_.size - m
+    // Check common bytes for equality.
+    if limbs_[cut1..] != other.limbs_[cut2..]:
+      return false
+    // Check leading bytes for zero.
+    cut1.repeat: if limbs_[it] != 0: return false
+    cut2.repeat: if other.limbs_[it] != 0: return false
+    return true
   
   stringify -> string:
     s := negative_ ? "-0x" : "0x" 
