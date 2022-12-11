@@ -18,7 +18,8 @@
 namespace toit {
 namespace compiler {
 
-Worklist::Worklist(uint8* entry, TypeScope* scope) {
+Worklist::Worklist(uint8* entry, TypeScope* scope, BlockTemplate* block)
+    : block_(block) {
   // TODO(kasper): As long as we never branch to the
   // very first bytecode, we should be able to get away
   // with not copying the initial scope at all and
