@@ -1106,15 +1106,32 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
   OPCODE_END();
 
   OPCODE_BEGIN(NON_LOCAL_RETURN);
+    // For 'continue.label' the pushed block is the block from which the
+    // non-local return should return.
+    int level = stack->local(0).block()->level();
     stack->pop();  // Pop block.
-    method->ret(propagator, stack);
+    if (level == 0) {
+      method->ret(propagator, stack);
+    } else {
+      // The worklists keep track of the blocks they correspond
+      // to. The outermost worklist has a null block because it 
+      // corresponds to a method.
+      BlockTemplate* block = worklists[level]->block();
+      block->ret(propagator, stack);
+    }
     scope->outer()->merge(scope, TypeScope::MERGE_UNWIND);
     return scope;
   OPCODE_END();
 
   OPCODE_BEGIN(NON_LOCAL_RETURN_WIDE);
+    int level = stack->local(0).block()->level();
     stack->pop();  // Pop block.
-    method->ret(propagator, stack);
+    if (level == 0) {
+      method->ret(propagator, stack);
+    } else {
+      BlockTemplate* block = worklists[level]->block();
+      block->ret(propagator, stack);
+    }
     scope->outer()->merge(scope, TypeScope::MERGE_UNWIND);
     return scope;
   OPCODE_END();
@@ -1260,7 +1277,7 @@ void MethodTemplate::propagate() {
   }
 
   std::vector<Worklist*> worklists;
-  Worklist worklist(method_.entry(), scope);
+  Worklist worklist(method_.entry(), scope, null);
   worklists.push_back(&worklist);
 
   while (worklist.has_next()) {
@@ -1314,7 +1331,8 @@ void BlockTemplate::propagate(TypeScope* scope, std::vector<Worklist*>& worklist
     TypeScope* copy = scope->copy_lazy();
     TypeScope* inner = new TypeScope(this, copy, linked);
 
-    Worklist worklist(method_.entry(), inner);
+    ASSERT(level() == worklists.size() - 1);
+    Worklist worklist(method_.entry(), inner, this);
     worklists.push_back(&worklist);
 
     while (worklist.has_next()) {
