@@ -33,9 +33,11 @@ class ObjectNotifier;
 class InitialMemoryManager {
  public:
   Chunk* initial_chunk = null;
+  Object** global_variables = null;
 
   void dont_auto_free() {
     initial_chunk = null;
+    global_variables = null;
   }
 
   // Allocates initial pages for heap.  Returns success.
@@ -47,7 +49,7 @@ class InitialMemoryManager {
 
 class ObjectHeap {
  public:
-  ObjectHeap(Program* program, Process* owner, Chunk* initial_chunk, Object** globals);
+  ObjectHeap(Program* program, Process* owner, Chunk* initial_chunk, Object** global_variables);
   ~ObjectHeap();
 
   // TODO: In the new heap there need not be a max allocation size.

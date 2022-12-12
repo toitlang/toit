@@ -24,6 +24,7 @@
 namespace toit {
 
 class Message;
+class MessageEncoder;
 class Process;
 class VM;
 
@@ -67,7 +68,8 @@ class SystemMessage : public Message {
     SPAWNED = 1,
   };
 
-  SystemMessage(int type, int gid, int pid, uint8* data) : type_(type), gid_(gid), pid_(pid), data_(data) {}
+  SystemMessage(int type, int gid, int pid, uint8* data);
+  SystemMessage(int type, int gid, int pid, MessageEncoder* encoder);
   SystemMessage(int type, int gid, int pid) : type_(type), gid_(gid), pid_(pid), data_(null) {}
   virtual ~SystemMessage() override { free_data_and_externals(); }
 
@@ -128,22 +130,42 @@ class ObjectNotifyMessage : public Message {
   bool queued_;
 };
 
+/**
+Takes ownership of the buffer.
+If the buffer is null, it simulates an encoding, calculating only the size, but
+  not causing any allocations.
+If the buffer is not null then allocations are made, pointed to by the encoded
+  message.  They will be freed by the destructor.  If a message is successfully
+  constructed, take_buffer() should be called so that allocations (including
+  the buffer) are not freed by the destructor.  It is then the responsibility of
+  the Message's destructor to free memory.
+*/
 class MessageEncoder {
  public:
   explicit MessageEncoder(uint8* buffer) : buffer_(buffer) {}
   MessageEncoder(Process* process, uint8* buffer)
-      : MessageEncoder(process, buffer, MESSAGE_FORMAT_IPC) {}
+      : MessageEncoder(process, buffer, MESSAGE_FORMAT_IPC, true) {}
+  ~MessageEncoder();
 
   static void encode_process_message(uint8* buffer, uint8 value);
 
   unsigned size() const { return cursor_; }
   bool malloc_failed() const { return malloc_failed_; }
 
-  void free_copied();
-  void neuter_externals();
+  /**
+  Some encoders can take over the data pointed to by external
+    ByteArrays.  It is also possible that external buffers have
+    been malloced, and are pointed at by the encoded message.
+  When all encoding is complete and no retryable (allocation) failures have
+    been encountered, this should be called.  It neuters the external byte
+    arrays and forgets the allocated external buffers, which must now be freed
+    by the receiver.
+  Also takes ownership of the buffer away.
+  */
+  uint8* take_buffer();
 
   bool encode(Object* object) { ASSERT(!encoding_tison()); return encode_any(object); }
-  bool encode_byte_array_external(void* data, int length);
+  bool encode_bytes_external(void* data, int length, bool free_on_failure = true);
 
 #ifndef TOIT_FREERTOS
   bool encode_arguments(char** argv, int argc);
@@ -153,7 +175,7 @@ class MessageEncoder {
   Object* create_error_object(Process* process);
 
  protected:
-  MessageEncoder(Process* process, uint8* buffer, MessageFormat format);
+  MessageEncoder(Process* process, uint8* buffer, MessageFormat format, bool take_ownership_of_buffer);
 
   bool encoding_for_size() const { return buffer_ == null; }
   bool encoding_tison() const { return format_ == MESSAGE_FORMAT_TISON; }
@@ -170,7 +192,12 @@ class MessageEncoder {
   Program* const program_ = null;
   const MessageFormat format_ = MESSAGE_FORMAT_IPC;
 
-  uint8* const buffer_;  // The buffer is null when we're encoding for size.
+  // The buffer is null when we're encoding for size.
+  // When encoding has completed, the buffer may be null because
+  //   someone else has taken responsibility for it and the data
+  //   it points at.
+  uint8* buffer_;
+  bool take_ownership_of_buffer_;
   int cursor_ = 0;
   int nesting_ = 0;
   int problematic_class_id_ = -1;
@@ -198,14 +225,17 @@ class MessageEncoder {
 
   void write_uint64(uint64 value);
   void write_pointer(void* value);
+
+  friend class SystemMessage;
 };
 
+// Doesn't take ownership of the buffer.
 class TisonEncoder : public MessageEncoder {
  public:
   TisonEncoder(Process* process)
-      : MessageEncoder(process, null, MESSAGE_FORMAT_TISON) {}
+      : MessageEncoder(process, null, MESSAGE_FORMAT_TISON, false) {}
   TisonEncoder(Process* process, uint8* buffer, unsigned payload_size)
-      : MessageEncoder(process, buffer, MESSAGE_FORMAT_TISON)
+      : MessageEncoder(process, buffer, MESSAGE_FORMAT_TISON, false)
       , payload_size_(payload_size) {
     ASSERT(payload_size > 0);
   }
@@ -337,11 +367,13 @@ class ExternalSystemMessageHandler : private ProcessRunner {
   // Callback for received messages.
   virtual void on_message(int sender, int type, void* data, int length) = 0;
 
-  // Send a message to a specific receiver. Returns true if the data was sent or
-  // false if an error occurred. If discard is true, the message is always discarded
-  // even on failures; otherwise, only messages that are succesfully sent are taken
-  // over by the receiver and must not be touched or deallocated by the sender.
-  bool send(int receiver, int type, void* data, int length, bool discard = false);
+  // Send a message to a specific pid, using Scheduler::send_message. Returns
+  // true if the data was sent or false if an error occurred. The data is
+  // assumed to be a malloced message.  If free_on_failure is true, the data is
+  // always freed even on failures; otherwise, only messages that are
+  // succesfully sent are taken over by the receiver and must not be touched or
+  // deallocated by the sender.
+  bool send(int pid, int type, void* data, int length, bool free_on_failure = false);
 
   // Support for handling failed allocations. Return true from the callback
   // if you have cleaned up and want to retry the allocation. Returning false
