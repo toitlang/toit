@@ -258,7 +258,7 @@ Constraint.destroy_constraint tests/type_propagation/deltablue_test.toit
 
 Constraint.is_input tests/type_propagation/deltablue_test.toit
  - argument 0: {EqualityConstraint|ScaleConstraint|StayConstraint}
-  0[020] - load literal Oddball (true/false/null)
+  0[020] - load literal false
   2[048] - as class True_(18 - 20)
   4[088] - return S1 1
 
@@ -277,7 +277,7 @@ UnaryConstraint tests/type_propagation/deltablue_test.toit
   4[048] - as class Variable(42 - 43)
   6[013] - store field, pop 1
   8[018] - load local 4
-  9[020] - load literal Oddball (true/false/null)
+  9[020] - load literal false
  11[048] - as class True_(18 - 20)
  13[013] - store field, pop 2
  15[018] - load local 4
@@ -294,7 +294,7 @@ UnaryConstraint.add_to_graph tests/type_propagation/deltablue_test.toit
   2[017] - load local 3
   3[053] - invoke static Variable.add_constraint tests/type_propagation/deltablue_test.toit // {Null_}
   6[002] - pop, load local S2
-  8[020] - load literal Oddball (true/false/null)
+  8[020] - load literal false
  10[048] - as class True_(18 - 20)
  12[013] - store field, pop 2
  14[089] - return null S0 1
@@ -309,9 +309,9 @@ UnaryConstraint.choose_method tests/type_propagation/deltablue_test.toit
   7[018] - load local 4
   8[062] - invoke eq // {True_|False_}
   9[081] - branch if true T17
- 12[020] - load literal Oddball (true/false/null)
+ 12[020] - load literal true
  14[080] - branch T19
- 17[020] - load literal Oddball (true/false/null)
+ 17[020] - load literal false
  19[014] - load local 0
  20[082] - branch if false T32
  23[010] - pop, load field local 4 // {Null_|Strength}
@@ -342,9 +342,9 @@ UnaryConstraint.recalculate tests/type_propagation/deltablue_test.toit
   8[017] - load local 3
   9[058] - invoke virtual is_input // {True_|False_}
  13[081] - branch if true T21
- 16[020] - load literal Oddball (true/false/null)
+ 16[020] - load literal true
  18[080] - branch T23
- 21[020] - load literal Oddball (true/false/null)
+ 21[020] - load literal false
  23[013] - store field, pop 5
  25[009] - load field local 18 // {Null_|Variable}
  27[007] - load field 5 // {Null_|True_|False_}
@@ -357,7 +357,7 @@ UnaryConstraint.recalculate tests/type_propagation/deltablue_test.toit
 UnaryConstraint.mark_unsatisfied tests/type_propagation/deltablue_test.toit
  - argument 0: {EditConstraint|StayConstraint}
   0[016] - load local 2
-  1[020] - load literal Oddball (true/false/null)
+  1[020] - load literal false
   3[048] - as class True_(18 - 20)
   5[013] - store field, pop 2
   7[089] - return null S0 1
@@ -366,7 +366,7 @@ UnaryConstraint.inputs_known tests/type_propagation/deltablue_test.toit
  - argument 0: {EditConstraint|StayConstraint}
  - argument 1: {LargeInteger_|SmallInteger_}
   0[052] - load local, as class, pop 2 - LargeInteger_(22 - 24)
-  2[020] - load literal Oddball (true/false/null)
+  2[020] - load literal true
   4[048] - as class True_(18 - 20)
   6[088] - return S1 2
 
@@ -376,7 +376,7 @@ UnaryConstraint.remove_from_graph tests/type_propagation/deltablue_test.toit
   2[017] - load local 3
   3[053] - invoke static Variable.remove_constraint tests/type_propagation/deltablue_test.toit // {Null_}
   6[002] - pop, load local S2
-  8[020] - load literal Oddball (true/false/null)
+  8[020] - load literal false
  10[048] - as class True_(18 - 20)
  12[013] - store field, pop 2
  14[089] - return null S0 1
@@ -413,7 +413,7 @@ EditConstraint tests/type_propagation/deltablue_test.toit
 
 EditConstraint.is_input tests/type_propagation/deltablue_test.toit
  - argument 0: {EditConstraint}
-  0[020] - load literal Oddball (true/false/null)
+  0[020] - load literal true
   2[048] - as class True_(18 - 20)
   4[088] - return S1 1
 
@@ -546,9 +546,9 @@ BinaryConstraint.is_satisfied tests/type_propagation/deltablue_test.toit
   2[025] - load smi 1
   3[062] - invoke eq // {True_|False_}
   4[081] - branch if true T12
-  7[020] - load literal Oddball (true/false/null)
+  7[020] - load literal true
   9[080] - branch T14
- 12[020] - load literal Oddball (true/false/null)
+ 12[020] - load literal false
  14[048] - as class True_(18 - 20)
  16[088] - return S1 1
 
@@ -825,7 +825,7 @@ Variable tests/type_propagation/deltablue_test.toit
  17[033] - load global var lazy G6 // {Strength}
  19[013] - store field, pop 4
  21[018] - load local 4
- 22[020] - load literal Oddball (true/false/null)
+ 22[020] - load literal true
  24[013] - store field, pop 5
  26[018] - load local 4
  27[023] - load smi 0
@@ -926,7 +926,7 @@ Variable.remove_constraint tests/type_propagation/deltablue_test.toit
   4[029] - load [block] in Variable.remove_constraint tests/type_propagation/deltablue_test.toit
   9[015] - load local 1
  10[038] - load block 1
- 12[020] - load literal Oddball (true/false/null)
+ 12[020] - load literal true
  14[058] - invoke virtual filter // {List_}
  18[040] - pop 3
  20[009] - load field local 35 // {Null_|EqualityConstraint|ScaleConstraint|EditConstraint|StayConstraint}
@@ -946,9 +946,9 @@ Variable.remove_constraint tests/type_propagation/deltablue_test.toit
   2[005] - load outer S4 // {EqualityConstraint|ScaleConstraint|EditConstraint|StayConstraint}
   4[062] - invoke eq // {True_|False_}
   5[081] - branch if true T13
-  8[020] - load literal Oddball (true/false/null)
+  8[020] - load literal true
  10[080] - branch T15
- 13[020] - load literal Oddball (true/false/null)
+ 13[020] - load literal false
  15[088] - return S1 2
 
 Planner tests/type_propagation/deltablue_test.toit
@@ -1136,7 +1136,7 @@ Planner.add_propagate tests/type_propagation/deltablue_test.toit
  39[000] - load local S6
  41[053] - invoke static Planner.incremental_remove tests/type_propagation/deltablue_test.toit // {Null_}
  44[041] - pop 1
- 45[020] - load literal Oddball (true/false/null)
+ 45[020] - load literal false
  47[048] - as class True_(18 - 20)
  49[088] - return S3 3
  52[014] - load local 0
@@ -1148,7 +1148,7 @@ Planner.add_propagate tests/type_propagation/deltablue_test.toit
  65[053] - invoke static Planner.add_constraints_consuming_to tests/type_propagation/deltablue_test.toit // {Null_}
  68[040] - pop 2
  70[083] - branch back T11
- 75[020] - load literal Oddball (true/false/null)
+ 75[020] - load literal true
  77[048] - as class True_(18 - 20)
  79[088] - return S2 3
 
@@ -1163,7 +1163,7 @@ Planner.remove_propagate_from tests/type_propagation/deltablue_test.toit
   7[033] - load global var lazy G6 // {Strength}
   9[013] - store field, pop 4
  11[016] - load local 2
- 12[020] - load literal Oddball (true/false/null)
+ 12[020] - load literal true
  14[013] - store field, pop 5
  16[023] - load smi 0
  17[022] - load null

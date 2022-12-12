@@ -469,9 +469,9 @@ TaskControlBlock.is_held_or_suspended tests/type_propagation/richards_test.toit
   5[023] - load smi 0
   6[062] - invoke eq // {True_|False_}
   7[081] - branch if true T15
- 10[020] - load literal Oddball (true/false/null)
+ 10[020] - load literal true
  12[080] - branch T17
- 15[020] - load literal Oddball (true/false/null)
+ 15[020] - load literal false
  17[014] - load local 0
  18[081] - branch if true T26
  21[010] - pop, load field local 82 // {Null_|LargeInteger_|SmallInteger_}

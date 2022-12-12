@@ -19,7 +19,7 @@ test_simple tests/type_propagation/field_test.toit
  28[053] - invoke static id tests/type_propagation/field_test.toit // {String_|Null_|SmallInteger_}
  31[041] - pop 1
  32[042] - allocate instance B
- 34[020] - load literal Oddball (true/false/null)
+ 34[020] - load literal true
  36[026] - load smi 42
  38[053] - invoke static B tests/type_propagation/field_test.toit // {B}
  41[014] - load local 0
