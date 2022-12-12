@@ -6,6 +6,7 @@ main:
   test_is_exception
   test_exception
   test_catchy
+  test_nlb_out_of_try
 
 test_is_exception:
   return_is_exception
@@ -46,5 +47,22 @@ catchy:
   finally: | is_exception exception |
     return is_exception
 
+test_nlb_out_of_try:
+  x/any := 4
+  try:
+    while true:
+      invoke: break
+    x = "hest"
+    if pick: invoke: return
+    x = null
+  finally:
+    id x
+
 id x:
   return x
+
+pick:
+  return (random 100) < 50
+
+invoke [block]:
+  block.call

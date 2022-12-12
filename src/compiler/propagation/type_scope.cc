@@ -88,15 +88,15 @@ TypeScope::TypeScope(BlockTemplate* block, TypeScope* outer, bool linked)
   }
 }
 
-TypeScope::TypeScope(const TypeScope* other, int level)
-    : words_per_type_(other->words_per_type_)
-    , level_(level)
-    , level_linked_(other->level_linked())
-    , method_(other->method())
-    , outer_(other->outer())
-    , wrapped_(static_cast<uword*>(malloc((level + 1) * sizeof(uword)))) {
-  for (int i = 0; i <= level; i++) {
-    wrapped_[i] = wrap(other->at(i), false);
+TypeScope::TypeScope(const TypeScope* source, const TypeScope* target)
+    : words_per_type_(target->words_per_type_)
+    , level_(target->level())
+    , level_linked_(target->level_linked())
+    , method_(target->method())
+    , outer_(target->outer())
+    , wrapped_(static_cast<uword*>(malloc((level_ + 1) * sizeof(uword)))) {
+  for (int i = 0; i <= level_; i++) {
+    wrapped_[i] = wrap(source->at(i), false);
   }
 }
 
@@ -129,9 +129,9 @@ void TypeScope::throw_maybe() {
   outer()->merge(this, TypeScope::MERGE_UNWIND);
 }
 
-TypeScope* TypeScope::copy_lazy(int level) const {
-  if (level < 0) level = level_;
-  return new TypeScope(this, level);
+TypeScope* TypeScope::copy_lazy(const TypeScope* target) const {
+  if (!target) target = this;
+  return new TypeScope(this, target);
 }
 
 TypeStack* TypeScope::copy_top() {

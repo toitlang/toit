@@ -1115,7 +1115,7 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
       method->ret(propagator, stack);
     } else {
       // The worklists keep track of the blocks they correspond
-      // to. The outermost worklist has a null block because it 
+      // to. The outermost worklist has a null block because it
       // corresponds to a method.
       BlockTemplate* block = worklists[level]->block();
       block->ret(propagator, stack);
@@ -1148,11 +1148,27 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
     uint32 target_bci = Utils::read_unaligned_uint32(bcp + 2);
     uint8* target_bcp = program->bcp_from_absolute_bci(target_bci);
     TypeSet block = stack->local(0);
+    // Find the right outer scope. The outer scope knows if it
+    // is linked and it knows its own outer scope, so it has
+    // the information necessary to continue analysis in the
+    // outer method or block.
     int target_level = block.block()->level();
-    TypeScope* target_scope = scope->copy_lazy(target_level);
-    for (int i = 0; i < height_diff; i++) target_scope->top()->pop();
-    TypeScope* extra = worklists[target_level]->add(target_bcp, target_scope, false);
-    delete extra;
+    TypeScope* outer = scope;
+    while (outer->level() != target_level) outer = outer->outer();
+    // Copy the scope using the computed outer scope as the target
+    // and drop the top stack slots as indicated by the height
+    // difference encoded in the bytecode.
+    TypeScope* target_scope = scope->copy_lazy(outer);
+    TypeStack* target_top = target_scope->top();
+    for (int i = 0; i < height_diff; i++) target_top->pop();
+    // Add the copied scope to the correct outer worklist. If we
+    // already have a scope registered for the branch target, we
+    // will merge into it and end up with a superfluous scope.
+    // Otherwise, we will get null back.
+    TypeScope* superfluous =
+        worklists[target_level]->add(target_bcp, target_scope, false);
+    delete superfluous;
+    // We're done. Return the scope, so we can deallocate it.
     return scope;
   OPCODE_END();
 
