@@ -137,12 +137,14 @@ static void* try_grab_aligned(void* suggestion, uword size) {
   // then it's a pretty good guess that the next few aligned
   // addresses might work.
   OS::ungrab_virtual_memory(result, size);
-  for (int i = 0; i < 4; i++) {
+  uword increment = size;
+  for (int i = 0; i < 16; i++) {
     void* next_suggestion = reinterpret_cast<void*>(rounded);
     result = OS::grab_virtual_memory(next_suggestion, size);
     if (result == next_suggestion) return result;
     if (result) OS::ungrab_virtual_memory(result, size);
-    rounded += size;
+    rounded += increment;
+    if ((i & 3) == 3) increment *= 2;
   }
   return OS::grab_virtual_memory(reinterpret_cast<void*>(rounded), size);
 }
