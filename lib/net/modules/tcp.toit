@@ -151,7 +151,7 @@ class TcpSocket extends TcpSocket_ implements net.Socket Reader:
       if error == "Connection closed": throw "Connection refused"
       throw error
 
-  read:
+  read -> ByteArray?:
     while true:
       state := ensure_state_ TOIT_TCP_READ_ --failure=: throw it
       result := tcp_read_ state.group state.resource
@@ -159,7 +159,7 @@ class TcpSocket extends TcpSocket_ implements net.Socket Reader:
       // TODO(anders): We could consider always clearing this after all reads.
       state.clear_state TOIT_TCP_READ_
 
-  write data from = 0 to = data.size:
+  write data from = 0 to = data.size -> int:
     while true:
       state := ensure_state_ TOIT_TCP_WRITE_ --error_bits=(TOIT_TCP_ERROR_ | TOIT_TCP_CLOSE_) --failure=: throw it
       wrote := tcp_write_ state.group state.resource data from to
