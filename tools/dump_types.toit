@@ -43,6 +43,8 @@ main args:
         cli.Flag "sdk"
             --short_help="Show types for the sdk."
             --default=false,
+        cli.Flag "show-positions" --short_name="p"
+            --default=false,
       ]
       --run=:: decode_types it command
   command.run args
@@ -51,9 +53,13 @@ decode_types parsed command -> none:
   snapshot_content := file.read_content parsed["snapshot"]
   types_content := file.read_content parsed["types"]
   types := json.decode types_content
-  show_types --sdk=parsed["sdk"] types snapshot_content
+  show_types types snapshot_content
+      --sdk=parsed["sdk"]
+      --show_positions=parsed["show-positions"]
 
-show_types --sdk/bool types/List snapshot_content/ByteArray -> none:
+show_types types/List snapshot_content/ByteArray -> none
+    --sdk/bool
+    --show_positions/bool:
   bundle := SnapshotBundle snapshot_content
   program := bundle.decode
   methods := {}
@@ -85,7 +91,7 @@ show_types --sdk/bool types/List snapshot_content/ByteArray -> none:
     if first: first = false
     else: print ""
     args := method_args.get method.id
-    method.output program args --no-show_positions: | position/int |
+    method.output program args --show_positions=show_positions: | position/int |
       type_strings.get position
 
 type_string program/Program type/any -> string:
