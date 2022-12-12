@@ -101,14 +101,14 @@ bool TypeSet::add_bool(Program* program) {
 
 void TypeSet::add_range(unsigned start, unsigned end) {
   int size = end - start;
-  int from = start + 1;  //
+  int from = start + 1;
   uword* data = &bits_[from / WORD_BIT_SIZE];
   Utils::mark_bits(data, from % WORD_BIT_SIZE, size);
 }
 
 void TypeSet::remove_range(unsigned start, unsigned end) {
   int size = end - start;
-  int from = start + 1;  //
+  int from = start + 1;
   uword* data = &bits_[from / WORD_BIT_SIZE];
   Utils::clear_bits(data, from % WORD_BIT_SIZE, size);
 }
