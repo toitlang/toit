@@ -254,7 +254,7 @@ void TypePropagator::propagate(TypeDatabase* types) {
   sites_.for_each([&](uint8* site, Set<TypeVariable*>& results) {
     type.clear(words_per_type());
     for (auto it = results.begin(); it != results.end(); it++) {
-      type.add_all((*it)->type(), words_per_type());
+      type.add_all_also_blocks((*it)->type(), words_per_type());
     }
     int position = program()->absolute_bci_from_bcp(site);
     types->add_usage(position, type);
@@ -572,13 +572,12 @@ void TypePropagator::load_outer(TypeScope* scope, uint8* site, int index) {
   TypeSet value = scope->load_outer(block, index);
   stack->pop();
   stack->push(value);
-  if (value.is_block()) return;
   // We keep track of the types we've seen for outer locals for
   // this particular access site. We use this merged type exclusively
   // for the output of the type propagator, so we don't actually
   // use the merged type anywhere in the analysis.
   TypeVariable* merged = this->outer(site);
-  merged->merge(this, value);
+  merged->type().add_all_also_blocks(value, words_per_type());
 }
 
 TypeVariable* TypePropagator::field(unsigned type, int index) {
@@ -1192,11 +1191,27 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
     uint32 target_bci = Utils::read_unaligned_uint32(bcp + 2);
     uint8* target_bcp = program->bcp_from_absolute_bci(target_bci);
     TypeSet block = stack->local(0);
+    // Find the right outer scope. The outer scope knows if it
+    // is linked and it knows its own outer scope, so it has
+    // the information necessary to continue analysis in the
+    // outer method or block.
     int target_level = block.block()->level();
-    TypeScope* target_scope = scope->copy_lazy(target_level);
-    for (int i = 0; i < height_diff; i++) target_scope->top()->pop();
-    TypeScope* extra = worklists[target_level]->add(target_bcp, target_scope, false);
-    delete extra;
+    TypeScope* outer = scope;
+    while (outer->level() != target_level) outer = outer->outer();
+    // Copy the scope using the computed outer scope as the target
+    // and drop the top stack slots as indicated by the height
+    // difference encoded in the bytecode.
+    TypeScope* target_scope = scope->copy_lazy(outer);
+    TypeStack* target_top = target_scope->top();
+    for (int i = 0; i < height_diff; i++) target_top->pop();
+    // Add the copied scope to the correct outer worklist. If we
+    // already have a scope registered for the branch target, we
+    // will merge into it and end up with a superfluous scope.
+    // Otherwise, we will get null back.
+    TypeScope* superfluous =
+        worklists[target_level]->add(target_bcp, target_scope, false);
+    delete superfluous;
+    // We're done. Return the scope, so we can deallocate it.
     return scope;
   OPCODE_END();
 
@@ -1398,7 +1413,7 @@ void BlockTemplate::propagate(TypeScope* scope, std::vector<Worklist*>& worklist
     TypeScope* copy = scope->copy_lazy();
     TypeScope* inner = new TypeScope(this, copy, linked);
 
-    ASSERT(level() == worklists.size() - 1);
+    ASSERT(level() == static_cast<int>(worklists.size()) - 1);
     Worklist worklist(method_.entry(), inner, this);
     worklists.push_back(&worklist);
 

@@ -44,7 +44,7 @@ PRIMITIVE_INDEXES(MODULE_CORE)
 MODULE_TYPES(core, MODULE_CORE)
 
 TYPE_PRIMITIVE(process_stats) {
-  result.add_array(program);
+  result.add_list(program);
   result.add_null(program);
   failure.add_string(program);
 }

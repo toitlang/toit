@@ -53,7 +53,7 @@ class TypeSet {
     unsigned next() {
       ASSERT(has_next());
       uword bits = bits_;
-      // Compute the index of the next bit by counting 
+      // Compute the index of the next bit by counting
       // trailing zeros (ctz).
       int index = Utils::ctz(bits);
       int base = base_;
@@ -145,10 +145,26 @@ class TypeSet {
   bool add_smi(Program* program) { return add_instance(program->smi_class_id()); }
   bool add_string(Program* program) { return add_instance(program->string_class_id()); }
   bool add_task(Program* program) { return add_instance(program->task_class_id()); }
+  bool add_list(Program* program) { return add_instance(program->list_class_id()); }
 
   bool add_int(Program* program);
   bool add_bool(Program* program);
   void add_range(unsigned start, unsigned end);
+
+  void add_all_also_blocks(TypeSet other, int words);
+
+  bool add_all(TypeSet other, int words) {
+    ASSERT(!is_block());
+    ASSERT(!other.is_block());
+    bool added = false;
+    for (int i = 0; i < words; i++) {
+      uword old_bits = bits_[i];
+      uword new_bits = old_bits | other.bits_[i];
+      added = added || (new_bits != old_bits);
+      bits_[i] = new_bits;
+    }
+    return added;
+  }
 
   void remove(unsigned type) {
     ASSERT(!is_block());
@@ -165,19 +181,6 @@ class TypeSet {
 
   bool remove_typecheck_class(Program* program, int index, bool is_nullable);
   bool remove_typecheck_interface(Program* program, int index, bool is_nullable);
-
-  bool add_all(TypeSet other, int words) {
-    ASSERT(!is_block());
-    ASSERT(!other.is_block());
-    bool added = false;
-    for (int i = 0; i < words; i++) {
-      uword old_bits = bits_[i];
-      uword new_bits = old_bits | other.bits_[i];
-      added = added || (new_bits != old_bits);
-      bits_[i] = new_bits;
-    }
-    return added;
-  }
 
   void clear(int words) {
     memset(bits_, 0, words * WORD_SIZE);
