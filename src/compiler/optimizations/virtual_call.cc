@@ -100,12 +100,6 @@ Expression* optimize_virtual_call(CallVirtual* node,
     }
   }
 
-  // TODO(kasper): This feels a bit hacky, but we prefer keeping the virtual
-  // calls non-direct for the purposes of the type propagation phase.
-  if (Flags::propagate) {
-    direct_method = null;
-  }
-
   if (direct_method == null) {
     // Can' make it a direct call, but maybe it's a potential field access.
     bool is_potential_field = field_names.contains(selector.name());

@@ -41,7 +41,7 @@ int ByteGen::assemble_method(Method* method,
 
 int ByteGen::assemble_global(ir::Global* global) {
   return assemble_function(global,
-                           0,      // dispatch_offset.
+                           -1,     // dispatch_offset.
                            false,  // is_field_accessor.
                            source_mapper_->register_global(global));
 }
