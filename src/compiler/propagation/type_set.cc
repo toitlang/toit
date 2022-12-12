@@ -100,17 +100,17 @@ bool TypeSet::add_bool(Program* program) {
 }
 
 void TypeSet::add_range(unsigned start, unsigned end) {
-  // TODO(kasper): We can make this much faster.
-  for (unsigned type = start; type < end; type++) {
-    add(type);
-  }
+  int size = end - start;
+  int from = start + 1;
+  uword* data = &bits_[from / WORD_BIT_SIZE];
+  Utils::mark_bits(data, from % WORD_BIT_SIZE, size);
 }
 
 void TypeSet::remove_range(unsigned start, unsigned end) {
-  // TODO(kasper): We can make this much faster.
-  for (unsigned type = start; type < end; type++) {
-    remove(type);
-  }
+  int size = end - start;
+  int from = start + 1;
+  uword* data = &bits_[from / WORD_BIT_SIZE];
+  Utils::clear_bits(data, from % WORD_BIT_SIZE, size);
 }
 
 bool TypeSet::remove_typecheck_class(Program* program, int index, bool is_nullable) {
