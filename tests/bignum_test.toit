@@ -5,20 +5,20 @@
 import expect show *
 import bignum show *
 
-A ::= Bignum """
+A ::= Bignum.hex """
         EFE021C2645FD1DC586E69184AF4A31E\
         D5F53E93B5F123FA41680867BA110131\
         944FE7952E2517337780CB0DB80E61AA\
         E7C8DDC6C5C6AADEB34EB38A2F40D5E6"""
 
-B ::= Bignum """
+B ::= Bignum.hex """
         0066A198186C18C10B2F5ED9B522752A\
         9830B69916E535C8F047518A889A43A5\
         94B6BED27A168D31D4A52F88925AA8F5"""
 
 test_add:
   X := A + B
-  U := Bignum """
+  U := Bignum.hex """
           EFE021C2645FD1DC586E69184AF4A31E\
           D65BE02BCE5D3CBB4C9767416F33765C\
           2C809E2E450A4CFC67C81C9840A8A550\
@@ -27,7 +27,7 @@ test_add:
 
   C := 1234567890
   X = A + C
-  U = Bignum """
+  U = Bignum.hex """
           EFE021C2645FD1DC586E69184AF4A31E\
           D5F53E93B5F123FA41680867BA110131\
           944FE7952E2517337780CB0DB80E61AA\
@@ -36,7 +36,7 @@ test_add:
 
   C = -1234567890
   X = A + C
-  U = Bignum """
+  U = Bignum.hex """
           EFE021C2645FD1DC586E69184AF4A31E\
           D5F53E93B5F123FA41680867BA110131\
           944FE7952E2517337780CB0DB80E61AA\
@@ -45,13 +45,13 @@ test_add:
 
 test_div:
   X := A / B
-  U := Bignum """
+  U := Bignum.hex """
           256567336059E52CAE22925474705F39A94"""
   expect X == U
 
   C := 1234567890
   X = A / C
-  U = Bignum """
+  U = Bignum.hex """
           0342823213345AE200ECF60F1C863CE3\
           ED62AA746D7E6BAC1F0FE86B5E826F63\
           86A5C12FD4C692BA550A04EF9A8ACFEA\
@@ -60,7 +60,7 @@ test_div:
 
   C = -1234567890
   X = A / C
-  U = Bignum """
+  U = Bignum.hex """
           -0342823213345AE200ECF60F1C863CE3\
           ED62AA746D7E6BAC1F0FE86B5E826F63\
           86A5C12FD4C692BA550A04EF9A8ACFEA\
@@ -69,7 +69,7 @@ test_div:
 
 test_sub:
   X := A - B
-  U := Bignum """
+  U := Bignum.hex """
           EFE021C2645FD1DC586E69184AF4A31E\
           D58E9CFB9D850B393638A98E04EE8C06\
           FC1F30FC173FE16A873979832F741E05\
@@ -78,7 +78,7 @@ test_sub:
 
   C := 1234567890
   X = A - C
-  U = Bignum """
+  U = Bignum.hex """
           EFE021C2645FD1DC586E69184AF4A31E\
           D5F53E93B5F123FA41680867BA110131\
           944FE7952E2517337780CB0DB80E61AA\
@@ -87,7 +87,7 @@ test_sub:
 
   C = -1234567890
   X = A - C
-  U = Bignum """
+  U = Bignum.hex """
           EFE021C2645FD1DC586E69184AF4A31E\
           D5F53E93B5F123FA41680867BA110131\
           944FE7952E2517337780CB0DB80E61AA\
@@ -96,7 +96,7 @@ test_sub:
 
 test_mul:
   X := A * B
-  U := Bignum """
+  U := Bignum.hex """
           602AB7ECA597A3D6B56FF9829A5E8B85\
           9E857EA95A03512E2BAE7391688D264A\
           A5663B0341DB9CCFD2C4C5F421FEC814\
@@ -108,7 +108,7 @@ test_mul:
 
   C := 1234567890
   X = A * C
-  U = Bignum """
+  U = Bignum.hex """
           44F37998BCA5593BE2912C1AE900145E\
           C50859823718DB2493607526F83D93D8\
           9A4D0DAF84ECC01569D72E84ECC29EF8\
@@ -118,7 +118,7 @@ test_mul:
 
   C = -1234567890
   X = A * C
-  U = Bignum """
+  U = Bignum.hex """
           -44F37998BCA5593BE2912C1AE900145E\
           C50859823718DB2493607526F83D93D8\
           9A4D0DAF84ECC01569D72E84ECC29EF8\
@@ -128,7 +128,7 @@ test_mul:
 
 test_mod:
   X := A % B
-  U := Bignum """
+  U := Bignum.hex """
           6613F26162223DF488E9CD48CC132C7A\
           0AC93C701B001B092E4E5B9F73BCD27B\
           9EE50D0657C77F374E903CDFA4C642"""
@@ -136,21 +136,40 @@ test_mod:
 
   C := 1234567890
   X = A % C
-  U = Bignum "405A38B0"
+  U = Bignum.hex "405A38B0"
   expect X == U
 
 test_exp_mod:
-  C := Bignum """
+  C := Bignum.hex """
           B2E7EFD37075B9F03FF989C7C5051C20\
           34D2A323810251127E7BF8625A4F49A5\
           F3E27F4DA8BD59C47D6DAABA4C8127BD\
           5B5C25763222FEFCCFC38B832366C29E"""
   X := mod_exp A C B
-  U := Bignum """
+  U := Bignum.hex """
           36E139AEA55215609D2816998ED020BB\
           BD96C37890F65171D948E9BC7CBAA4D9\
           325D24D6A3C12710F10A09FA08AB87"""
   expect X == U
+
+test_equality:
+  four_0 := Bignum.hex "0000"
+  expect_equals four_0 0
+  four_1 := Bignum.hex "0001"
+  expect_equals four_1 1
+  four_256 := Bignum.hex "0100"
+  expect_equals four_256 256
+  expect_not_equals four_256 0
+  four_257 := Bignum.hex "0101"
+  expect_not_equals four_257 1
+  expect_equals four_257 257
+  big := Bignum.hex "1"
+  natural := 1
+  62.repeat:
+    expect_equals big natural
+    expect_not_equals big (natural - 1)
+    big *= 2
+    natural *= 2
 
 main:
   test_add
@@ -159,3 +178,4 @@ main:
   test_div
   test_mod
   test_exp_mod
+  test_equality
