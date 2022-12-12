@@ -192,7 +192,7 @@ test_nlb_out_of_try tests/type_propagation/finally_test.toit
  - argument 0: [block]
   0[022] - load null
   1[017] - load local 3
-  2[005] - load outer S3
+  2[005] - load outer S3 // [block]
   4[090] - non-local return 16
   6[088] - return S1 1
 
