@@ -145,6 +145,7 @@ class TypeSet {
   bool add_smi(Program* program) { return add_instance(program->smi_class_id()); }
   bool add_string(Program* program) { return add_instance(program->string_class_id()); }
   bool add_task(Program* program) { return add_instance(program->task_class_id()); }
+  bool add_list(Program* program) { return add_instance(program->list_class_id()); }
 
   bool add_int(Program* program);
   bool add_bool(Program* program);
