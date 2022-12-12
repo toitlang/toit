@@ -106,8 +106,6 @@ MessageEncoder::~MessageEncoder() {
 }
 
 uint8* MessageEncoder::take_buffer() {
-  uint8* result = buffer_;
-
   ObjectHeap* heap = process_->object_heap();
   for (unsigned i = 0; i < externals_count_; i++) {
     ByteArray* array = externals_[i];
@@ -123,8 +121,9 @@ uint8* MessageEncoder::take_buffer() {
   for (unsigned i = 0; i < copied_count_; i++) {
     copied_[i] = null;
   }
-  buffer_ = null;
 
+  uint8* result = buffer_;
+  buffer_ = null;
   return result;
 }
 

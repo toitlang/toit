@@ -165,7 +165,7 @@ class MessageEncoder {
   uint8* take_buffer();
 
   bool encode(Object* object) { ASSERT(!encoding_tison()); return encode_any(object); }
-  bool encode_bytes_external(void* data, int length, bool free_on_failure=true);
+  bool encode_bytes_external(void* data, int length, bool free_on_failure = true);
 
 #ifndef TOIT_FREERTOS
   bool encode_arguments(char** argv, int argc);
