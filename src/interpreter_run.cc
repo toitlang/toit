@@ -269,8 +269,7 @@ Interpreter::Result Interpreter::run() {
   // Interpretation state.
   Program* program = process_->program();
 #ifdef TOIT_CHECK_PROPAGATED_TYPES
-  compiler::TypeDatabase* propagated_types =
-      propagated_types = compiler::TypeDatabase::compute(program);
+  compiler::TypeDatabase* propagated_types = compiler::TypeDatabase::compute(program);
 #endif
   preemption_method_header_bcp_ = null;
   uword index__ = 0;
