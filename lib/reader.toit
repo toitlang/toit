@@ -313,6 +313,7 @@ class BufferedReader implements Reader:
 
     array := reader_.read
     if array == null: return null
+    if array.size == 0: reader_ as int
     if max_size == null or array.size <= max_size:
       base_consumed_ += array.size
       return array

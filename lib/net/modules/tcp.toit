@@ -152,12 +152,12 @@ class TcpSocket extends TcpSocket_ implements net.Socket Reader:
       throw error
 
   read:
-    state := ensure_state_ TOIT_TCP_READ_ --failure=: throw it
-    result := tcp_read_ state.group state.resource
-    if result != -1: return result
-    // TODO(anders): We could consider always clearing this after all reads.
-    state.clear_state TOIT_TCP_READ_
-    return ByteArray 0
+    while true:
+      state := ensure_state_ TOIT_TCP_READ_ --failure=: throw it
+      result := tcp_read_ state.group state.resource
+      if result != -1: return result
+      // TODO(anders): We could consider always clearing this after all reads.
+      state.clear_state TOIT_TCP_READ_
 
   write data from = 0 to = data.size:
     state := ensure_state_ TOIT_TCP_WRITE_ --error_bits=(TOIT_TCP_ERROR_ | TOIT_TCP_CLOSE_) --failure=: throw it

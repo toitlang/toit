@@ -89,7 +89,7 @@ PRIMITIVE(init) {
 
 PRIMITIVE(parse) {
   ARGS(X509ResourceGroup, resource_group, Object, input);
-  HeapTagScope scope(ITERATE_CUSTOM_TAGS + BIGNUM_MALLOC_TAG);
+  HeapTagScope scope(ITERATE_CUSTOM_TAGS + HEAP_OVERHEAD_MALLOC_TAG);
 
   const uint8_t* data = null;
   size_t length = 0;

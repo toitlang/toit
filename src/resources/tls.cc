@@ -410,7 +410,7 @@ bool ensure_handshake_memory() {
   // network issues.
   HeapTagScope scope(ITERATE_CUSTOM_TAGS + BIGNUM_MALLOC_TAG);
   const int BLOCK_SIZE = 1900;
-  const int BLOCK_COUNT = 8;
+  const int BLOCK_COUNT = 1;
   void* blocks[BLOCK_COUNT] = { 0 };
   bool success = true;
   for (int i = 0; i < BLOCK_COUNT; i++) {

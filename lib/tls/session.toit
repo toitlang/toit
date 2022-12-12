@@ -444,6 +444,7 @@ class Session:
     // limiting us.
     if remaining_message_bytes >= 0x4000: throw "TLS handshake message too large to defragment"
     // Make a synthetic record that was not on the wire.
+    print "Creating handshake message of $remaining_message_bytes + $RECORD_HEADER_SIZE_"
     synthetic := ByteArray remaining_message_bytes + RECORD_HEADER_SIZE_  // Include space for header.
     synthetic.replace 0 header.bytes
     synthetic_header := RecordHeader_ synthetic
@@ -584,6 +585,7 @@ class SymmetricSession_:
         encrypted := reader_.read --max_size=plaintext_length
         if not encrypted: return null
         plaintext_length -= encrypted.size
+        if encrypted.size == 0: reader_ as int
         plain_chunk := decryptor.add encrypted
         if plain_chunk.size != 0: buffered_plaintext.add plain_chunk
       received_tag := reader_.read_bytes Aead_.TAG_SIZE
