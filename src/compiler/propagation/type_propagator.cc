@@ -528,13 +528,18 @@ void TypePropagator::load_outer(TypeScope* scope, uint8* site, int index) {
   TypeSet value = scope->load_outer(block, index);
   stack->pop();
   stack->push(value);
-  if (value.is_block()) return;
   // We keep track of the types we've seen for outer locals for
   // this particular access site. We use this merged type exclusively
   // for the output of the type propagator, so we don't actually
   // use the merged type anywhere in the analysis.
   TypeVariable* merged = this->outer(site);
-  merged->merge(this, value);
+  if (merged->type().is_block()) {
+    // Don't worry about merging blocks, but make sure
+    // that we know a block is expected.
+    ASSERT(value.is_block());
+  } else {
+    merged->merge(this, value);
+  }
 }
 
 TypeVariable* TypePropagator::field(unsigned type, int index) {
@@ -1115,7 +1120,7 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
       method->ret(propagator, stack);
     } else {
       // The worklists keep track of the blocks they correspond
-      // to. The outermost worklist has a null block because it 
+      // to. The outermost worklist has a null block because it
       // corresponds to a method.
       BlockTemplate* block = worklists[level]->block();
       block->ret(propagator, stack);

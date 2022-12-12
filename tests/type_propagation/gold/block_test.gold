@@ -153,18 +153,18 @@ test_nesting tests/type_propagation/block_test.toit
   0[053] - invoke static pick tests/type_propagation/block_test.toit // {True_|False_}
   3[082] - branch if false T17
   6[016] - load local 2
-  7[005] - load outer S3
+  7[005] - load outer S3 // [block]
   9[020] - load literal Oddball (true/false/null)
  11[006] - store outer S1
  13[041] - pop 1
  14[080] - branch T25
  17[016] - load local 2
- 18[005] - load outer S3
+ 18[005] - load outer S3 // [block]
  20[020] - load literal 3.7000000000000001776
  22[006] - store outer S1
  24[041] - pop 1
  25[016] - load local 2
- 26[005] - load outer S3
+ 26[005] - load outer S3 // [block]
  28[005] - load outer S1 // {True_|float}
  30[053] - invoke static id tests/type_propagation/block_test.toit // {True_|float}
  33[088] - return S1 1
@@ -311,13 +311,13 @@ test_modify_outer_nested tests/type_propagation/block_test.toit
 [block] in [block] in test_modify_outer_nested tests/type_propagation/block_test.toit
  - argument 0: [block]
   0[016] - load local 2
-  1[005] - load outer S3
+  1[005] - load outer S3 // [block]
   3[017] - load local 3
-  4[005] - load outer S3
+  4[005] - load outer S3 // [block]
   6[005] - load outer S2 // {String_|SmallInteger_}
   8[006] - store outer S1
  10[002] - pop, load local S2
- 12[005] - load outer S3
+ 12[005] - load outer S3 // [block]
  14[020] - load literal hest
  16[006] - store outer S2
  18[088] - return S1 1
