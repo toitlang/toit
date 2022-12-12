@@ -21,15 +21,13 @@ Strength tests/type_propagation/deltablue_test.toit
   0[018] - load local 4
   1[018] - load local 4
   2[048] - as class LargeInteger_(22 - 24)
-  4[048] - as class LargeInteger_(22 - 24)
-  6[013] - store field, pop 0
-  8[018] - load local 4
-  9[017] - load local 3
- 10[048] - as class StringSlice_(11 - 13)
- 12[048] - as class StringSlice_(11 - 13)
- 14[013] - store field, pop 1
- 16[018] - load local 4
- 17[088] - return S1 3
+  4[013] - store field, pop 0
+  6[018] - load local 4
+  7[017] - load local 3
+  8[048] - as class StringSlice_(11 - 13)
+ 10[013] - store field, pop 1
+ 12[018] - load local 4
+ 13[088] - return S1 3
 
 Strength.value tests/type_propagation/deltablue_test.toit
  - argument 0: {Strength}
@@ -180,10 +178,9 @@ Constraint tests/type_propagation/deltablue_test.toit
   0[017] - load local 3
   1[017] - load local 3
   2[048] - as class Strength(47 - 48)
-  4[048] - as class Strength(47 - 48)
-  6[013] - store field, pop 0
-  8[017] - load local 3
-  9[088] - return S1 2
+  4[013] - store field, pop 0
+  6[017] - load local 3
+  7[088] - return S1 2
 
 Constraint.add_constraint tests/type_propagation/deltablue_test.toit
  - argument 0: {EqualityConstraint|ScaleConstraint|EditConstraint|StayConstraint}
@@ -278,19 +275,18 @@ UnaryConstraint tests/type_propagation/deltablue_test.toit
   2[018] - load local 4
   3[017] - load local 3
   4[048] - as class Variable(42 - 43)
-  6[048] - as class Variable(42 - 43)
-  8[013] - store field, pop 1
- 10[018] - load local 4
- 11[020] - load literal Oddball (true/false/null)
- 13[048] - as class True_(18 - 20)
- 15[013] - store field, pop 2
- 17[018] - load local 4
- 18[018] - load local 4
- 19[053] - invoke static Constraint tests/type_propagation/deltablue_test.toit // {EditConstraint|StayConstraint}
- 22[002] - pop, load local S4
- 24[053] - invoke static Constraint.add_constraint tests/type_propagation/deltablue_test.toit // {Null_}
- 27[002] - pop, load local S4
- 29[088] - return S1 3
+  6[013] - store field, pop 1
+  8[018] - load local 4
+  9[020] - load literal Oddball (true/false/null)
+ 11[048] - as class True_(18 - 20)
+ 13[013] - store field, pop 2
+ 15[018] - load local 4
+ 16[018] - load local 4
+ 17[053] - invoke static Constraint tests/type_propagation/deltablue_test.toit // {EditConstraint|StayConstraint}
+ 20[002] - pop, load local S4
+ 22[053] - invoke static Constraint.add_constraint tests/type_propagation/deltablue_test.toit // {Null_}
+ 25[002] - pop, load local S4
+ 27[088] - return S1 3
 
 UnaryConstraint.add_to_graph tests/type_propagation/deltablue_test.toit
  - argument 0: {EditConstraint|StayConstraint}
@@ -434,24 +430,22 @@ BinaryConstraint tests/type_propagation/deltablue_test.toit
   2[019] - load local 5
   3[018] - load local 4
   4[048] - as class Variable(42 - 43)
-  6[048] - as class Variable(42 - 43)
-  8[013] - store field, pop 1
- 10[019] - load local 5
- 11[017] - load local 3
- 12[048] - as class Variable(42 - 43)
- 14[048] - as class Variable(42 - 43)
- 16[013] - store field, pop 2
- 18[019] - load local 5
- 19[025] - load smi 1
- 20[048] - as class LargeInteger_(22 - 24)
- 22[013] - store field, pop 3
- 24[019] - load local 5
- 25[019] - load local 5
- 26[053] - invoke static Constraint tests/type_propagation/deltablue_test.toit // {EqualityConstraint|ScaleConstraint}
- 29[002] - pop, load local S5
- 31[053] - invoke static Constraint.add_constraint tests/type_propagation/deltablue_test.toit // {Null_}
- 34[002] - pop, load local S5
- 36[088] - return S1 4
+  6[013] - store field, pop 1
+  8[019] - load local 5
+  9[017] - load local 3
+ 10[048] - as class Variable(42 - 43)
+ 12[013] - store field, pop 2
+ 14[019] - load local 5
+ 15[025] - load smi 1
+ 16[048] - as class LargeInteger_(22 - 24)
+ 18[013] - store field, pop 3
+ 20[019] - load local 5
+ 21[019] - load local 5
+ 22[053] - invoke static Constraint tests/type_propagation/deltablue_test.toit // {EqualityConstraint|ScaleConstraint}
+ 25[002] - pop, load local S5
+ 27[053] - invoke static Constraint.add_constraint tests/type_propagation/deltablue_test.toit // {Null_}
+ 30[002] - pop, load local S5
+ 32[088] - return S1 4
 
 BinaryConstraint.choose_method tests/type_propagation/deltablue_test.toit
  - argument 0: {EqualityConstraint|ScaleConstraint}
@@ -672,20 +666,18 @@ ScaleConstraint tests/type_propagation/deltablue_test.toit
   6[000] - load local S7
   8[018] - load local 4
   9[048] - as class Variable(42 - 43)
- 11[048] - as class Variable(42 - 43)
- 13[013] - store field, pop 4
- 15[000] - load local S7
- 17[017] - load local 3
- 18[048] - as class Variable(42 - 43)
- 20[048] - as class Variable(42 - 43)
- 22[013] - store field, pop 5
+ 11[013] - store field, pop 4
+ 13[000] - load local S7
+ 15[017] - load local 3
+ 16[048] - as class Variable(42 - 43)
+ 18[013] - store field, pop 5
+ 20[000] - load local S7
+ 22[000] - load local S7
  24[000] - load local S7
  26[000] - load local S7
- 28[000] - load local S7
- 30[000] - load local S7
- 32[053] - invoke static BinaryConstraint tests/type_propagation/deltablue_test.toit // {ScaleConstraint}
- 35[002] - pop, load local S7
- 37[088] - return S1 6
+ 28[053] - invoke static BinaryConstraint tests/type_propagation/deltablue_test.toit // {ScaleConstraint}
+ 31[002] - pop, load local S7
+ 33[088] - return S1 6
 
 ScaleConstraint.add_to_graph tests/type_propagation/deltablue_test.toit
  - argument 0: {ScaleConstraint}
@@ -821,32 +813,30 @@ Variable tests/type_propagation/deltablue_test.toit
   0[018] - load local 4
   1[018] - load local 4
   2[048] - as class StringSlice_(11 - 13)
-  4[048] - as class StringSlice_(11 - 13)
-  6[013] - store field, pop 0
-  8[018] - load local 4
-  9[017] - load local 3
- 10[048] - as class LargeInteger_(22 - 24)
- 12[048] - as class LargeInteger_(22 - 24)
- 14[013] - store field, pop 1
+  4[013] - store field, pop 0
+  6[018] - load local 4
+  7[017] - load local 3
+  8[048] - as class LargeInteger_(22 - 24)
+ 10[013] - store field, pop 1
+ 12[018] - load local 4
+ 13[023] - load smi 0
+ 14[013] - store field, pop 3
  16[018] - load local 4
- 17[023] - load smi 0
- 18[013] - store field, pop 3
- 20[018] - load local 4
- 21[033] - load global var lazy G6 // {Strength}
- 23[013] - store field, pop 4
- 25[018] - load local 4
- 26[020] - load literal Oddball (true/false/null)
- 28[013] - store field, pop 5
- 30[018] - load local 4
- 31[023] - load smi 0
- 32[022] - load null
- 33[053] - invoke static Array_ <sdk>/core/collections.toit // {LargeArray_|SmallArray_}
- 36[014] - load local 0
- 37[004] - store local, pop S1
- 39[053] - invoke static create_list_literal_from_array_ <sdk>/core/collections.toit // {List_}
- 42[013] - store field, pop 6
- 44[018] - load local 4
- 45[088] - return S1 3
+ 17[033] - load global var lazy G6 // {Strength}
+ 19[013] - store field, pop 4
+ 21[018] - load local 4
+ 22[020] - load literal Oddball (true/false/null)
+ 24[013] - store field, pop 5
+ 26[018] - load local 4
+ 27[023] - load smi 0
+ 28[022] - load null
+ 29[053] - invoke static Array_ <sdk>/core/collections.toit // {LargeArray_|SmallArray_}
+ 32[014] - load local 0
+ 33[004] - store local, pop S1
+ 35[053] - invoke static create_list_literal_from_array_ <sdk>/core/collections.toit // {List_}
+ 38[013] - store field, pop 6
+ 40[018] - load local 4
+ 41[088] - return S1 3
 
 Variable.value tests/type_propagation/deltablue_test.toit
  - argument 0: {Variable}
