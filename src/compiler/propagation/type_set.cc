@@ -106,6 +106,18 @@ void TypeSet::add_range(unsigned start, unsigned end) {
   }
 }
 
+void TypeSet::add_all_even_blocks(TypeSet other, int words) {
+  if (other.is_block()) {
+    if (is_empty(words)) {
+      set_block(other.block());
+    } else {
+      ASSERT(is_block());
+    }
+  } else {
+    add_all(other, words);
+  }
+}
+
 void TypeSet::remove_range(unsigned start, unsigned end) {
   // TODO(kasper): We can make this much faster.
   for (unsigned type = start; type < end; type++) {
