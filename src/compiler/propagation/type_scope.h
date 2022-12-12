@@ -52,7 +52,11 @@ class TypeScope {
   void store_outer(TypeSet block, int index, TypeSet value);
   void throw_maybe();
 
-  TypeScope* copy_lazy(int level = -1) const;
+  // Create a lazy copy of this type scope. If a target scope
+  // is provided, the copy only consists of the levels
+  // necessary to match the target. The other levels are
+  // discarded.
+  TypeScope* copy_lazy(const TypeScope* target = null) const;
 
   enum MergeKind {
     MERGE_LOCAL,
@@ -79,7 +83,7 @@ class TypeScope {
   TypeScope* const outer_;
   uword* const wrapped_;
 
-  TypeScope(const TypeScope* other, int level);
+  TypeScope(const TypeScope* source, const TypeScope* target);
 
   TypeStack* copy_top();
 

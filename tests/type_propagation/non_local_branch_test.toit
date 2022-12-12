@@ -5,6 +5,7 @@
 main:
   test_break
   test_continue
+  test_nested
 
 test_break:
   x/any := 42
@@ -23,6 +24,12 @@ test_continue:
       x = 3.3
       break
   id x
+
+test_nested:
+  invoke:
+    while true:
+      invoke:
+        break
 
 id x:
   return x
