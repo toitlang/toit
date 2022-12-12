@@ -31,10 +31,6 @@
 #define TOIT_DEPLOY
 #endif
 
-#ifndef TOIT_FREERTOS
-#define TOIT_CHECK_PROPAGATED_TYPES
-#endif
-
 // -----------------------------------------------------------------------------
 // Build configuration:
 //  TOIT_DEBUG  : Debug build with plenty of debug information and verification.
@@ -82,6 +78,12 @@
 #error "More than one OS configuration specified"
 #elif defined(TOIT_DARWIN) + defined(TOIT_LINUX) + defined(TOIT_WINDOWS) + defined(TOIT_FREERTOS) < 1
 #error "No OS configuration specified"
+#endif
+
+#if defined(TOIT_FREERTOS)
+#undef TOIT_CHECK_PROPAGATED_TYPES
+#else
+#define TOIT_CHECK_PROPAGATED_TYPES
 #endif
 
 #if (__WORDSIZE == 64) || __WIN64

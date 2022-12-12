@@ -171,10 +171,17 @@ Method Program::find_method(Object* receiver, int offset) {
   }
 
 #ifdef TOIT_CHECK_PROPAGATED_TYPES
-#define CHECK_PROPAGATED_TYPES_METHOD_ENTRY(target) \
-  if (propagated_types) propagated_types->check_method_entry(target, sp);
+#define CHECK_PROPAGATED_TYPES_METHOD_ENTRY(target)   \
+  if (propagated_types) {                             \
+    propagated_types->check_method_entry(target, sp); \
+  }
+#define CHECK_PROPAGATED_TYPES_USAGE(offset)          \
+  if (propagated_types) {                             \
+    propagated_types->check_usage(bcp + offset, *sp); \
+  }
 #else
 #define CHECK_PROPAGATED_TYPES_METHOD_ENTRY(target)
+#define CHECK_PROPAGATED_TYPES_USAGE(offset)
 #endif
 
 #define CALL_METHOD_WITH_RETURN_ADDRESS(target, return_address)       \
@@ -263,7 +270,7 @@ Interpreter::Result Interpreter::run() {
   Program* program = process_->program();
 #ifdef TOIT_CHECK_PROPAGATED_TYPES
   compiler::TypeDatabase* propagated_types =
-      compiler::TypeDatabase::compute(program);
+      propagated_types = compiler::TypeDatabase::compute(program);
 #endif
   preemption_method_header_bcp_ = null;
   uword index__ = 0;
@@ -337,6 +344,7 @@ Interpreter::Result Interpreter::run() {
     Smi* block = Smi::cast(POP());
     Object** block_ptr = from_block(block);
     PUSH(block_ptr[stack_offset]);
+    CHECK_PROPAGATED_TYPES_USAGE(0);
   OPCODE_END();
 
   OPCODE_BEGIN(STORE_OUTER);
@@ -351,6 +359,7 @@ Interpreter::Result Interpreter::run() {
   OPCODE_BEGIN_WITH_WIDE(LOAD_FIELD, field_index);
     Instance* instance = Instance::cast(POP());
     PUSH(instance->at(field_index));
+    CHECK_PROPAGATED_TYPES_USAGE(0);
   OPCODE_END();
 
   OPCODE_BEGIN(LOAD_FIELD_LOCAL);
@@ -359,6 +368,7 @@ Interpreter::Result Interpreter::run() {
     int field = encoded >> 4;
     Instance* instance = Instance::cast(STACK_AT(local));
     PUSH(instance->at(field));
+    CHECK_PROPAGATED_TYPES_USAGE(0);
   OPCODE_END();
 
   OPCODE_BEGIN(POP_LOAD_FIELD_LOCAL);
@@ -367,6 +377,7 @@ Interpreter::Result Interpreter::run() {
     int field = encoded >> 4;
     Instance* instance = Instance::cast(STACK_AT(local + 1));
     STACK_AT_PUT(0, instance->at(field));
+    CHECK_PROPAGATED_TYPES_USAGE(0);
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(STORE_FIELD, field_index);
@@ -425,6 +436,7 @@ Interpreter::Result Interpreter::run() {
   OPCODE_BEGIN_WITH_WIDE(LOAD_GLOBAL_VAR, global_index);
     Object** global_variables = process_->object_heap()->global_variables();
     PUSH(global_variables[global_index]);
+    CHECK_PROPAGATED_TYPES_USAGE(0);
   OPCODE_END();
 
   OPCODE_BEGIN(LOAD_GLOBAL_VAR_DYNAMIC);
@@ -454,6 +466,7 @@ Interpreter::Result Interpreter::run() {
     } else {
       PUSH(value);
     }
+    CHECK_PROPAGATED_TYPES_USAGE(0);
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(STORE_GLOBAL_VAR, global_index);

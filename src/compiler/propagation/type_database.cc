@@ -37,6 +37,27 @@ TypeDatabase::~TypeDatabase() {
   }
 }
 
+void TypeDatabase::check_usage(uint8* bcp, Object* value) const {
+  int position = program_->absolute_bci_from_bcp(bcp);
+  auto probe = usage_.find(position);
+  if (probe == usage_.end()) {
+    FATAL("usage not analyzed: %d", position);
+  }
+  TypeSet type = probe->second;
+  if (type.is_block()) {
+    // TODO(kasper): We should improve the type check
+    // for blocks and verify that they point into the
+    // right stack section.
+    if (is_smi(value)) return;
+    FATAL("expected a block at %d", position);
+  }
+  Smi* class_id = is_smi(value)
+      ? program_->smi_class_id()
+      : HeapObject::cast(value)->class_id();
+  if (type.contains(class_id->value())) return;
+  FATAL("didn't expect %d at %d", class_id->value(), position);
+}
+
 void TypeDatabase::check_method_entry(Method method, Object** sp) const {
   int position = program_->absolute_bci_from_bcp(method.header_bcp());
   auto probe = methods_.find(position);
@@ -48,6 +69,9 @@ void TypeDatabase::check_method_entry(Method method, Object** sp) const {
     TypeSet type = stack->get(i);
     Object* argument = sp[1 + (method.arity() - i)];
     if (type.is_block()) {
+      // TODO(kasper): We should improve the type check
+      // for blocks and verify that they point into the
+      // right stack section.
       if (is_smi(argument)) continue;
       FATAL("method expected a block at %d: %d", i, position);
     }
