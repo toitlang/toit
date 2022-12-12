@@ -31,20 +31,20 @@ test_arguments tests/type_propagation/lambda_test.toit
  13[023] - load smi 0
  14[053] - invoke static lambda_ <sdk>/core/objects.toit // {Lambda}
  17[026] - load smi 42
- 19[058] - invoke virtual call // {*}
- 23[041] - pop 1
- 24[029] - load [lambda] in test_arguments tests/type_propagation/lambda_test.toit
- 29[023] - load smi 0
- 30[022] - load null
- 31[053] - invoke static Array_ <sdk>/core/collections.toit // {LargeArray_|SmallArray_}
- 34[014] - load local 0
- 35[004] - store local, pop S1
- 37[023] - load smi 0
- 38[053] - invoke static lambda_ <sdk>/core/objects.toit // {Lambda}
- 41[026] - load smi 42
- 43[020] - load literal fisk
- 45[058] - invoke virtual call // {*}
- 49[089] - return null S1 0
+ 19[053] - invoke static Lambda.call <sdk>/core/objects.toit // {*}
+ 22[041] - pop 1
+ 23[029] - load [lambda] in test_arguments tests/type_propagation/lambda_test.toit
+ 28[023] - load smi 0
+ 29[022] - load null
+ 30[053] - invoke static Array_ <sdk>/core/collections.toit // {LargeArray_|SmallArray_}
+ 33[014] - load local 0
+ 34[004] - store local, pop S1
+ 36[023] - load smi 0
+ 37[053] - invoke static lambda_ <sdk>/core/objects.toit // {Lambda}
+ 40[026] - load smi 42
+ 42[020] - load literal fisk
+ 44[053] - invoke static Lambda.call <sdk>/core/objects.toit // {*}
+ 47[089] - return null S1 0
 
 [lambda] in test_arguments tests/type_propagation/lambda_test.toit
  - argument 0: {*}
