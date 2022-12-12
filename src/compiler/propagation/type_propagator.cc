@@ -408,6 +408,12 @@ void TypePropagator::call_static(MethodTemplate* caller, TypeScope* scope, uint8
   if (is_static) {
     call_method(caller, scope, site, target, arguments);
   } else {
+    // Run over all receiver type variants like we do for
+    // virtual calls. If and only if the target method
+    // can be looked up on the receiver we analyze the case.
+    // Otherwise, we ignore it and avoid marking this as
+    // a possible lookup error, because we trust the compiler
+    // to be right about the types.
     Program* program = this->program();
     TypeSet receiver = stack->local(arity);
     TypeSet::Iterator it(receiver, words_per_type_);
@@ -416,6 +422,10 @@ void TypePropagator::call_static(MethodTemplate* caller, TypeScope* scope, uint8
       unsigned id = it.next();
       int entry_index = id + offset;
       int entry_id = program->dispatch_table[entry_index];
+      // If the type propagator knows less about the types we
+      // can encounter than the compiler, we risk loading
+      // from areas of the dispatch table the compiler didn't
+      // anticipate. Guard against that.
       if (entry_id < 0) continue;
       Method entry = Method(program->bytecodes, entry_id);
       if (entry.header_bcp() != target.header_bcp()) continue;
@@ -1287,6 +1297,7 @@ int MethodTemplate::method_id() const {
 
 void MethodTemplate::propagate() {
   TypeScope* scope = new TypeScope(this);
+  TypeStack* stack = scope->top();
   analyzed_ = true;
 
   // Check that virtual methods are always called with a
@@ -1306,7 +1317,6 @@ void MethodTemplate::propagate() {
   // flows into the method body. We have to simulate that.
   Program* program = propagator_->program();
   if (method_.selector_offset() == program->invoke_bytecode_offset(INVOKE_EQ)) {
-    TypeStack* stack = scope->top();
     ConcreteType null_type = ConcreteType(program->null_class_id()->value());
     bool receiver_is_null = argument(0).matches(null_type);
     bool argument_is_null = argument(1).matches(null_type);
@@ -1322,8 +1332,19 @@ void MethodTemplate::propagate() {
     }
   }
 
+  // If we're calling the special '__entry__task' method, we need to
+  // take the specialized calling conventions for that particular
+  // method into account. The method is entered after the first bytecode
+  // and it expects that the stack looks like we just returned from a
+  // call to 'task_transfer'.
+  uint8* entry = method_.entry();
+  if (entry == program->entry_task().entry()) {
+    entry = method_.bcp_from_bci(LOAD_NULL_LENGTH);
+    stack->push_instance(program->task_class_id()->value());
+  }
+
   std::vector<Worklist*> worklists;
-  Worklist worklist(method_.entry(), scope, null);
+  Worklist worklist(entry, scope, null);
   worklists.push_back(&worklist);
 
   while (worklist.has_next()) {
