@@ -1268,16 +1268,15 @@ int MethodTemplate::method_id() const {
 }
 
 void MethodTemplate::propagate() {
-  analyzed_ = true;
-
   TypeScope* scope = new TypeScope(this);
+  TypeStack* stack = scope->top();
+  analyzed_ = true;
 
   // We need to special case the 'operator ==' method, because the interpreter
   // does a manual null check on both arguments, which means that null never
   // flows into the method body. We have to simulate that.
   Program* program = propagator_->program();
   if (method_.selector_offset() == program->invoke_bytecode_offset(INVOKE_EQ)) {
-    TypeStack* stack = scope->top();
     ConcreteType null_type = ConcreteType(program->null_class_id()->value());
     bool receiver_is_null = argument(0).matches(null_type);
     bool argument_is_null = argument(1).matches(null_type);
@@ -1293,8 +1292,19 @@ void MethodTemplate::propagate() {
     }
   }
 
+  // If we're calling the special '__entry__task' method, we need to
+  // take the specialized calling conventions for that particular
+  // method into account. The method is entered after the first bytecode
+  // and it expects that the stack looks like we just returned from a
+  // call to 'task_transfer'.
+  uint8* entry = method_.entry();
+  if (entry == program->entry_task().entry()) {
+    entry = method_.bcp_from_bci(LOAD_NULL_LENGTH);
+    stack->push_instance(program->task_class_id()->value());
+  }
+
   std::vector<Worklist*> worklists;
-  Worklist worklist(method_.entry(), scope, null);
+  Worklist worklist(entry, scope, null);
   worklists.push_back(&worklist);
 
   while (worklist.has_next()) {
