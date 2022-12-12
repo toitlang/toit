@@ -309,14 +309,12 @@ class AllocationManager {
     : ptr_(void_cast(ptr))
     , size_(size)
     , process_(process) {
-    if (process) process->register_external_allocation(size);
+    process->register_external_allocation(size);
   }
 
   uint8* alloc(word length) {
     ASSERT(ptr_ == null);
-    bool ok = process_
-        ? process_->should_allow_external_allocation(length)
-        : true;
+    bool ok = process_->should_allow_external_allocation(length);
     if (!ok) {
       return null;
     }
@@ -324,9 +322,9 @@ class AllocationManager {
     // with realloc.
     ptr_ = malloc(length);
     if (ptr_ == null) {
-      if (process_) process_->object_heap()->set_last_allocation_result(ObjectHeap::ALLOCATION_OUT_OF_MEMORY);
+      process_->object_heap()->set_last_allocation_result(ObjectHeap::ALLOCATION_OUT_OF_MEMORY);
     } else {
-      if (process_) process_->register_external_allocation(length);
+      process_->register_external_allocation(length);
       size_ = length;
     }
 
@@ -349,7 +347,7 @@ class AllocationManager {
   ~AllocationManager() {
     if (ptr_ != null) {
       free(ptr_);
-      if (process_) process_->unregister_external_allocation(size_);
+      process_->unregister_external_allocation(size_);
     }
   }
 
