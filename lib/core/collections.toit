@@ -912,7 +912,7 @@ class SmallArray_ extends Array_:
     #primitive.intrinsics.array_do:
       // The intrinsic only fails if we cannot call the block with a single
       // argument. We force this to throw by doing the same here.
-      block.call null
+      block.call this[0]
 
   /// Creates a new array of size $new_length, copying up to $old_length elements from this array.
   resize_for_list_ old_length/int new_length/int -> Array_:

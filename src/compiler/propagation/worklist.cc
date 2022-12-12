@@ -18,8 +18,10 @@
 namespace toit {
 namespace compiler {
 
-Worklist::Worklist(uint8* entry, TypeScope* scope) {
-  // TODO(kasper): We should be able to get away
+Worklist::Worklist(uint8* entry, TypeScope* scope, BlockTemplate* block)
+    : block_(block) {
+  // TODO(kasper): As long as we never branch to the
+  // very first bytecode, we should be able to get away
   // with not copying the initial scope at all and
   // just use it as the working scope.
   scopes_[entry] = scope;
@@ -32,14 +34,12 @@ Worklist::~Worklist() {
   }
 }
 
-void Worklist::add(uint8* bcp, TypeScope* scope) {
+TypeScope* Worklist::add(uint8* bcp, TypeScope* scope, bool split) {
   auto probe = scopes_.find(bcp);
   if (probe == scopes_.end()) {
-    // Make a full copy of the scope so we can use it
-    // to collect merged types from all the different
-    // paths that can end up in here.
-    scopes_[bcp] = scope->copy();
+    scopes_[bcp] = scope;
     unprocessed_.push_back(bcp);
+    return split ? scope->copy_lazy() : null;
   } else {
     TypeScope* existing = probe->second;
     if (existing->merge(scope, TypeScope::MERGE_LOCAL)) {
@@ -47,6 +47,7 @@ void Worklist::add(uint8* bcp, TypeScope* scope) {
       // already in the list of unprocessed items.
       unprocessed_.push_back(bcp);
     }
+    return scope;
   }
 }
 
@@ -55,8 +56,7 @@ Worklist::Item Worklist::next() {
   unprocessed_.pop_back();
   return Item {
     .bcp = bcp,
-    // The working scope is copied lazily.
-    .scope = scopes_[bcp]->copy_lazily()
+    .scope = scopes_[bcp]->copy_lazy()
   };
 }
 

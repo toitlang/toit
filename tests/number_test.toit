@@ -174,6 +174,8 @@ test_parse_integer:
 
   expect_equals 0
                 int.parse "foo" --on_error=: 0
+  expect_equals -1
+                int.parse "" --on_error=: -1
 
   expect_equals -2 (int_parse_helper " -2" 1 3)
   expect_equals 42 (int_parse_helper "level42" 5 7)
@@ -238,11 +240,11 @@ test_parse_integer:
   expect_int_parsing_error: int.parse "1_123" 1
   expect_int_parsing_error: int.parse "1012_" 1
   expect_int_parsing_error: int.parse "1012_1" 1 5
+  expect_int_parsing_error: int.parse ""
 
   expect_number_out_of_bounds: (int.parse "123" -1 --on_error=: throw it)
   expect_number_out_of_bounds: (int.parse "123" 0 4 --on_error=: throw it)
-  expect_number_out_of_bounds: (int.parse "123" 0 0 --on_error=: throw it)
-  expect_number_out_of_bounds: (int.parse "")
+  expect_int_parsing_error: (int.parse "123" 0 0 --on_error=: throw it)
 
   expect_equals
       23

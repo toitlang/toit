@@ -40,6 +40,7 @@ enum {
   WIFI_IP_LOST      = 1 << 2,
   WIFI_DISCONNECTED = 1 << 3,
   WIFI_RETRY        = 1 << 4,
+  WIFI_SCAN_DONE    = 1 << 5,
 };
 
 const int kInvalidWifi = -1;
@@ -85,7 +86,10 @@ class WifiResourceGroup : public ResourceGroup {
     err = esp_wifi_set_config(WIFI_IF_STA, &config);
     if (err != ESP_OK) return err;
 
-    return esp_wifi_start();
+    err = esp_wifi_start();
+    if (err != ESP_OK) return err;
+
+    return esp_wifi_connect();
   }
 
   esp_err_t establish(const char* ssid, const char* password, bool broadcast, int channel) {
@@ -116,8 +120,37 @@ class WifiResourceGroup : public ResourceGroup {
     return true;
   }
 
+  esp_err_t init_scan(void) {
+    esp_err_t err = esp_wifi_set_mode(WIFI_MODE_STA);
+    if (err != ESP_OK) return err;
+
+    return esp_wifi_start();
+  }
+
+  esp_err_t start_scan(bool passive, int channel, uint32_t period_ms) {
+    wifi_scan_config_t config{};
+
+    config.channel = channel;
+    if (passive) {
+      config.scan_type = WIFI_SCAN_TYPE_PASSIVE;
+      config.scan_time.passive = period_ms;
+    } else {
+      config.scan_time.active.max = period_ms;
+      config.scan_time.active.min = period_ms;
+    }
+
+    return esp_wifi_scan_start(&config, false);
+  }
+
   ~WifiResourceGroup() {
-    FATAL_IF_NOT_ESP_OK(esp_wifi_deinit());
+    esp_err_t err = esp_wifi_deinit();
+    if (err == ESP_ERR_WIFI_NOT_STOPPED) {
+      FATAL_IF_NOT_ESP_OK(esp_wifi_stop());
+      FATAL_IF_NOT_ESP_OK(esp_wifi_deinit());
+    } else {
+      FATAL_IF_NOT_ESP_OK(err);
+    }
+
     esp_netif_destroy_default_wifi(netif_);
     wifi_pool.put(id_);
   }
@@ -128,6 +161,9 @@ class WifiResourceGroup : public ResourceGroup {
   int id_;
   esp_netif_t* netif_;
   uint32 ip_address_;
+
+  uint32 on_event_wifi(Resource* resource, word data, uint32 state);
+  uint32 on_event_ip(Resource* resource, word data, uint32 state);
 
   void cache_wifi_channel() {
     uint8 primary_channel;
@@ -164,8 +200,9 @@ class WifiIpEvents : public SystemResource {
       : SystemResource(group, IP_EVENT) {}
 };
 
-uint32 WifiResourceGroup::on_event(Resource* resource, word data, uint32 state) {
+uint32 WifiResourceGroup::on_event_wifi(Resource* resource, word data, uint32 state) {
   SystemEvent* system_event = reinterpret_cast<SystemEvent*>(data);
+
   switch (system_event->id) {
     case WIFI_EVENT_STA_CONNECTED:
       state |= WIFI_CONNECTED;
@@ -189,8 +226,12 @@ uint32 WifiResourceGroup::on_event(Resource* resource, word data, uint32 state) 
     }
 
     case WIFI_EVENT_STA_START:
-      FATAL_IF_NOT_ESP_OK(esp_wifi_connect());
       break;
+
+    case WIFI_EVENT_SCAN_DONE: {
+      state |= WIFI_SCAN_DONE;
+      break;
+    }
 
     case WIFI_EVENT_STA_STOP:
       break;
@@ -219,6 +260,24 @@ uint32 WifiResourceGroup::on_event(Resource* resource, word data, uint32 state) 
     case WIFI_EVENT_AP_STADISCONNECTED:
       break;
 
+    default:
+      printf(
+#ifdef CONFIG_IDF_TARGET_ESP32C3
+          "unhandled Wi-Fi event: %lu\n",
+#else
+          "unhandled Wi-Fi event: %d\n",
+#endif
+          system_event->id
+      );
+  }
+
+  return state;
+}
+
+uint32 WifiResourceGroup::on_event_ip(Resource* resource, word data, uint32 state) {
+  SystemEvent* system_event = reinterpret_cast<SystemEvent*>(data);
+
+  switch (system_event->id) {
     case IP_EVENT_STA_GOT_IP: {
       ip_event_got_ip_t* event = reinterpret_cast<ip_event_got_ip_t*>(system_event->event_data);
       set_ip_address(event->ip_info.ip.addr);
@@ -235,12 +294,24 @@ uint32 WifiResourceGroup::on_event(Resource* resource, word data, uint32 state) 
     default:
       printf(
 #ifdef CONFIG_IDF_TARGET_ESP32C3
-          "unhandled WiFi event: %lu\n",
+          "unhandled IP event: %lu\n",
 #else
-          "unhandled WiFi event: %d\n",
+          "unhandled IP event: %d\n",
 #endif
           system_event->id
       );
+  }
+
+  return state;
+}
+
+uint32 WifiResourceGroup::on_event(Resource* resource, word data, uint32 state) {
+  SystemEvent* system_event = reinterpret_cast<SystemEvent*>(data);
+
+  if (system_event->base == WIFI_EVENT) {
+    state = on_event_wifi(resource, data, state);
+  } else if (system_event->base == IP_EVENT) {
+    state = on_event_ip(resource, data, state);
   }
 
   return state;
@@ -456,6 +527,82 @@ PRIMITIVE(get_rssi) {
   int8 rssi;
   if (!group->rssi(&rssi)) return process->program()->null_object();
   return Smi::from(rssi);
+}
+
+PRIMITIVE(init_scan) {
+  ARGS(WifiResourceGroup, group)
+
+  ByteArray* proxy = process->object_heap()->allocate_proxy();
+  if (proxy == null) ALLOCATION_FAILED;
+
+  WifiEvents* wifi = _new WifiEvents(group);
+  if (wifi == null) MALLOC_FAILED;
+
+  group->register_resource(wifi);
+
+  esp_err_t ret = group->init_scan();
+  if (ret != ESP_OK) {
+    group->unregister_resource(wifi);
+    return Primitive::os_error(ret, process);
+  }
+
+  proxy->set_external_address(wifi);
+  return proxy;
+}
+
+PRIMITIVE(start_scan) {
+  ARGS(WifiResourceGroup, group, int, channel, bool, passive, int, period_ms);
+
+  esp_err_t ret = group->start_scan(passive, channel, period_ms);
+  if (ret != ESP_OK) {
+    return Primitive::os_error(ret, process);
+  }
+
+  return process->program()->null_object();
+}
+
+PRIMITIVE(read_scan) {
+  ARGS(WifiResourceGroup, group);
+
+  uint16_t count;
+  esp_err_t ret = esp_wifi_scan_get_ap_num(&count);
+  if (ret != ESP_OK) return Primitive::os_error(ret, process);
+
+  if (count == 0) return process->program()->empty_array();
+
+  size_t size = count * sizeof(wifi_ap_record_t);
+  MallocedBuffer data_buffer(size);
+  if (!data_buffer.has_content()) MALLOC_FAILED;
+
+  uint16_t get_count = count;
+  wifi_ap_record_t* ap_record = reinterpret_cast<wifi_ap_record_t*>(data_buffer.content());
+  ret = esp_wifi_scan_get_ap_records(&get_count, ap_record);
+  if (ret != ESP_OK) return Primitive::os_error(ret, process);
+
+  const size_t element_count = 5;
+  size = element_count * get_count;
+  Array* ap_array = process->object_heap()->allocate_array(size, Smi::zero());
+  if (ap_array == null) ALLOCATION_FAILED;
+
+  for (int i = 0; i < get_count; i++) {
+    size_t offset = i * element_count;
+    String* ssid = process->allocate_string((char *)ap_record[i].ssid);
+    if (ssid == null) ALLOCATION_FAILED;
+
+    size_t bssid_size = 6;
+    ByteArray* bssid = process->allocate_byte_array(bssid_size);
+    if (bssid == null) ALLOCATION_FAILED;
+
+    memcpy(ByteArray::Bytes(bssid).address(), ap_record[i].bssid, bssid_size);
+
+    ap_array->at_put(offset, ssid);
+    ap_array->at_put(offset + 1, bssid);
+    ap_array->at_put(offset + 2, Smi::from(ap_record[i].rssi));
+    ap_array->at_put(offset + 3, Smi::from(ap_record[i].authmode));
+    ap_array->at_put(offset + 4, Smi::from(ap_record[i].primary));
+  }
+
+  return ap_array;
 }
 #endif // CONFIG_TOIT_ENABLE_WIFI
 } // namespace toit

@@ -3,24 +3,8 @@
 // be found in the tests/LICENSE file.
 
 main:
-  test_simple
-
-X ::= foo
-Y := foo
-Z := foo
-
-test_simple:
-  id X
-  id Y
-  Y = "hest"
-  id Y
-  id Z
-
-foo:
-  return 42
+  spawn:: id 7
+  id "hest"
 
 id x:
   return x
-
-pick:
-  return (random 100) < 50

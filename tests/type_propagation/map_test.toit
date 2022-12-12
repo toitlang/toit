@@ -5,22 +5,9 @@
 main:
   test_simple
 
-X ::= foo
-Y := foo
-Z := foo
-
 test_simple:
-  id X
-  id Y
-  Y = "hest"
-  id Y
-  id Z
-
-foo:
-  return 42
+  map := {:}
+  id (map.backing_)  // The VM sometimes produced maps with arrays as backing.
 
 id x:
   return x
-
-pick:
-  return (random 100) < 50

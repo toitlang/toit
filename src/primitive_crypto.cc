@@ -22,6 +22,7 @@
 #include "primitive.h"
 #include "process.h"
 #include "resource.h"
+#include "resources/tls.h"
 #include "sha1.h"
 #include "sha.h"
 #include "siphash.h"
@@ -194,13 +195,6 @@ int AeadContext::finish(uint8* output_data, int size) {
   }
 }
 
-// These numbers must stay in sync with constants in primitive_crypto.cc.
-enum GcmAlgorithmType {
-  ALGORITHM_AES_GCM = 0,
-  ALGORITHM_CHACHA20_POLY1305 = 1,
-  NUMBER_OF_ALGORITHM_TYPES = 2
-};
-
 class MbedTlsResourceGroup;
 
 // From resources/tls.cc.
@@ -305,7 +299,7 @@ PRIMITIVE(aead_start_message) {
         context->chachapoly_context(),
         nonce.address(),
         mode);
-    if (result == 0) {
+    if (result == 0 && authenticated_data.length() != 0) {
       result = mbedtls_chachapoly_update_aad(
           context->chachapoly_context(),
           authenticated_data.address(),

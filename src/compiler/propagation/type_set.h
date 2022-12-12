@@ -28,15 +28,70 @@ class BlockTemplate;
 
 class TypeSet {
  public:
+  class Iterator {
+   public:
+    Iterator(TypeSet type, int words_per_type)
+        : cursor_(type.bits_)
+        , end_(&type.bits_[words_per_type - 1]) {
+      ASSERT(!type.is_block());
+      uword bits = *cursor_;
+      // The first bit of a type set is used as a marker and
+      // guaranteed to be 0 for non-block typesets.
+      // The base is thus -1.
+      ASSERT((bits & 1) == 0);
+      int base = -1;
+      while (bits == 0 && cursor_ != end_) {
+        bits = *(++cursor_);
+        base += WORD_BIT_SIZE;
+      }
+      bits_ = bits;
+      base_ = base;
+    }
+
+    bool has_next() const { return bits_ != 0; }
+
+    unsigned next() {
+      ASSERT(has_next());
+      uword bits = bits_;
+      // Compute the index of the next bit by counting 
+      // trailing zeros (ctz).
+      int index = Utils::ctz(bits);
+      int base = base_;
+      unsigned result = index + base;
+      bits &= ~(static_cast<uword>(1) << index);
+      while (bits == 0 && cursor_ != end_) {
+        bits = *(++cursor_);
+        base += WORD_BIT_SIZE;
+      }
+      bits_ = bits;
+      base_ = base;
+      return result;
+    }
+
+   private:
+    uword bits_;
+    int base_;  // The class-index of the first bit in bits_.
+    uword* cursor_;
+    uword* const end_;
+  };
+
   TypeSet(const TypeSet& other)
       : bits_(other.bits_) {}
+
+  static TypeSet invalid() {
+    return TypeSet(null);
+  }
+
+  bool is_valid() const {
+    return bits_ != null;
+  }
 
   bool is_block() const {
     return bits_[0] == 1;
   }
 
-  int size(Program* program) const;
-  bool is_empty(Program* program) const;
+  int size(int words_per_type) const;
+  bool is_empty(int words_per_type) const;
   bool is_any(Program* program) const;
 
   BlockTemplate* block() const {
@@ -57,6 +112,17 @@ class TypeSet {
     return (old_bits & mask) != 0;
   }
 
+  bool contains_all(TypeSet other, int words) const {
+    ASSERT(!is_block());
+    ASSERT(!other.is_block());
+    for (int i = 0; i < words; i++) {
+      uword old_bits = bits_[i];
+      uword new_bits = old_bits | other.bits_[i];
+      if (new_bits != old_bits) return false;
+    }
+    return true;
+  }
+
   bool contains_null(Program* program) const { return contains_instance(program->null_class_id()); }
   bool contains_instance(Smi* class_id) const { return contains(class_id->value()); }
 
@@ -70,7 +136,7 @@ class TypeSet {
     return (old_bits & mask) != 0;
   }
 
-  void add_any(Program* program) { fill(words_per_type(program)); }
+  void add_any(Program* program) { add_range(0, program->class_bits.length()); }
   bool add_array(Program* program) { return add_instance(program->array_class_id()); }
   bool add_byte_array(Program* program) { return add_instance(program->byte_array_class_id()); }
   bool add_float(Program* program) { return add_instance(program->double_class_id()); }
@@ -82,6 +148,7 @@ class TypeSet {
 
   bool add_int(Program* program);
   bool add_bool(Program* program);
+  void add_range(unsigned start, unsigned end);
 
   void remove(unsigned type) {
     ASSERT(!is_block());
@@ -114,12 +181,6 @@ class TypeSet {
 
   void clear(int words) {
     memset(bits_, 0, words * WORD_SIZE);
-    ASSERT(!is_block());
-  }
-
-  void fill(int words) {
-    memset(bits_, 0xff, words * WORD_SIZE);
-    bits_[0] &= ~1;  // Clear LSB.
     ASSERT(!is_block());
   }
 

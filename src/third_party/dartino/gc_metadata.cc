@@ -274,33 +274,10 @@ uword GcMetadata::object_address_from_start(uword card, uint8 start) {
 // This routine only uses aligned 32 bit operations for the marking.
 void GcMetadata::slow_mark(HeapObject* object, uword size) {
   int mask_shift = ((reinterpret_cast<uword>(object) >> WORD_SHIFT) & 31);
-  uint32* bits = mark_bits_for(object);
+  uint32* data = mark_bits_for(object);
   uint32 words = size >> WORD_SHIFT;
 
-  if (words + mask_shift >= 32) {
-    // Handle the first word of marking where some bits at the start of the 32
-    // bit word are not set.
-    uint32 mask = 0xffffffff;
-    *bits |= mask << mask_shift;
-  } else {
-    // This is the case where the marked area both starts and ends in the same
-    // 32 bit word.
-    uint32 mask = 1;
-    mask = (mask << words) - 1;
-    *bits |= mask << mask_shift;
-    return;
-  }
-
-  bits++;
-  ASSERT(words + mask_shift >= 32);
-  for (words -= 32 - mask_shift; words >= 32; words -= 32) {
-    // Full words where all 32 bits are marked.
-    *bits++ = 0xffffffff;
-  }
-  if (words != 0) {
-    // The last word where some bits near the end of the word are not marked.
-    *bits |= (1U << words) - 1;
-  }
+  Utils::mark_bits(data, mask_shift, words);
 }
 
 void GcMetadata::mark_stack_overflow(HeapObject* object) {
