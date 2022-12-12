@@ -41,7 +41,7 @@ class TypeDatabase {
 
   std::string as_json() const;
 
-  void check_usage(uint8* bcp, Object* top) const;
+  void check_top(uint8* bcp, Object* top) const;
   void check_method_entry(Method method, Object** sp) const;
 
  private:

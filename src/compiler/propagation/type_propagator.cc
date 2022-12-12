@@ -28,6 +28,10 @@
 namespace toit {
 namespace compiler {
 
+#define BYTECODE_LENGTH(name, length, format, print) length,
+static int opcode_length[] { BYTECODES(BYTECODE_LENGTH) -1 };
+#undef BYTECODE_LENGTH
+
 // Dispatching helper macros.
 #define DISPATCH(n)                                                                \
     { ASSERT(program->bytecodes.data() <= bcp + n);                                \
@@ -251,6 +255,17 @@ void TypePropagator::propagate(TypeDatabase* types) {
 
   stack.push_empty();
   TypeSet type = stack.get(0);
+
+  if (has_entry_task_) {
+    // If we've analyzed the __entry__task method, we need to note
+    // that we can return to the bytecode that follows the initial
+    // faked 'load null' one. The top of stack will be a task.
+    uint8* entry = program()->entry_task().bcp_from_bci(LOAD_NULL_LENGTH);
+    type.clear(words_per_type());
+    type.add_instance(program()->task_class_id());
+    types->add_usage(program()->absolute_bci_from_bcp(entry), type);
+  }
+
   sites_.for_each([&](uint8* site, Set<TypeVariable*>& results) {
     type.clear(words_per_type());
     for (auto it = results.begin(); it != results.end(); it++) {
@@ -348,6 +363,7 @@ void TypePropagator::call_method(MethodTemplate* caller,
     // just enqueuing the callee for analysis instead. It would lead
     // to a re-analysis of the caller method.
     if (!callee->analyzed()) callee->propagate();
+    if (site) site += opcode_length[*site];
     TypeSet result = callee->call(this, caller, site);
     stack->merge_top(result);
     // For all we know, the call might throw. We should
@@ -495,6 +511,7 @@ void TypePropagator::call_block(TypeScope* scope, uint8* site, int arity) {
   // If the return type of this block changes, we enqueue the
   // current surrounding method (not the block's) again.
   if (arity >= block->arity()) {
+    if (site) site += opcode_length[*site];
     TypeSet value = block->invoke(this, scope, site);
     stack->push(value);
   } else {
@@ -832,7 +849,7 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
     Instance* initializer = Instance::cast(program->global_variables.at(index));
     int method_id = Smi::cast(initializer->at(INITIALIZER_ID_INDEX))->value();
     Method target(program->bytecodes, method_id);
-    propagator->call_static(method, scope, null, target);
+    propagator->call_static(method, scope, bcp, target);
     // Merge the initializer result into the global variable.
     TypeVariable* variable = propagator->global_variable(index);
     variable->merge(propagator, stack->local(0));

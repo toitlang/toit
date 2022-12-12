@@ -1,16 +1,16 @@
 main tests/type_propagation/map_test.toit
-  0[053] - invoke static test_simple tests/type_propagation/map_test.toit // {Null_}
-  3[089] - return null S1 0
+  0[053] - invoke static test_simple tests/type_propagation/map_test.toit
+  3[089] - return null S1 0 // {Null_}
 
 test_simple tests/type_propagation/map_test.toit
   0[042] - allocate instance Map
-  2[053] - invoke static Map <sdk>/core/collections.toit // {Map}
-  5[014] - load local 0
+  2[053] - invoke static Map <sdk>/core/collections.toit
+  5[014] - load local 0 // {Map}
   6[004] - store local, pop S1
   8[014] - load local 0
-  9[060] - invoke virtual get backing_ // {Null_|List_|SmallArray_}
+  9[060] - invoke virtual get backing_
  12[053] - invoke static id tests/type_propagation/map_test.toit // {Null_|List_|SmallArray_}
- 15[089] - return null S2 0
+ 15[089] - return null S2 0 // {Null_|List_|SmallArray_}
 
 id tests/type_propagation/map_test.toit
  - argument 0: {Null_|List_|SmallArray_}

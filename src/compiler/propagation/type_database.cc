@@ -37,7 +37,16 @@ TypeDatabase::~TypeDatabase() {
   }
 }
 
-void TypeDatabase::check_usage(uint8* bcp, Object* value) const {
+void TypeDatabase::check_top(uint8* bcp, Object* value) const {
+  // TODO(kasper): This isn't super nice, but we have to avoid
+  // getting hung up over the intrinsic bytecodes. We sometimes
+  // return from a block and restart at the intrinsic bytecode,
+  // but we don't care about that for now. We could make the
+  // propagator allow any value as the top stack element here,
+  // but it would achieve the same things as this check.
+  uint8 opcode = *bcp;
+  if (opcode > HALT) return;
+
   int position = program_->absolute_bci_from_bcp(bcp);
   auto probe = usage_.find(position);
   if (probe == usage_.end()) {

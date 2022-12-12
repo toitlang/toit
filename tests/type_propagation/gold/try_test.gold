@@ -1,18 +1,18 @@
 main tests/type_propagation/try_test.toit
-  0[053] - invoke static test_nested tests/type_propagation/try_test.toit // {Null_}
-  3[089] - return null S1 0
+  0[053] - invoke static test_nested tests/type_propagation/try_test.toit
+  3[089] - return null S1 0 // {Null_}
 
 test_nested tests/type_propagation/try_test.toit
-  0[053] - invoke static nested tests/type_propagation/try_test.toit // {Null_|SmallInteger_}
-  3[089] - return null S1 0
+  0[053] - invoke static nested tests/type_propagation/try_test.toit
+  3[089] - return null S1 0 // {Null_|SmallInteger_}
 
 nested tests/type_propagation/try_test.toit
   0[022] - load null
   1[029] - load [block] in nested tests/type_propagation/try_test.toit
   6[094] - link try 0
   8[038] - load block 4
- 10[055] - invoke block S1 // {Null_}
- 12[041] - pop 1
+ 10[055] - invoke block S1
+ 12[041] - pop 1 // {Null_}
  13[095] - unlink try 0
  15[018] - load local 4
  16[088] - return S6 0
@@ -25,8 +25,8 @@ nested tests/type_propagation/try_test.toit
   1[029] - load [block] in [block] in nested tests/type_propagation/try_test.toit
   6[094] - link try 0
   8[038] - load block 4
- 10[055] - invoke block S1 // {SmallInteger_}
- 12[041] - pop 1
+ 10[055] - invoke block S1
+ 12[041] - pop 1 // {SmallInteger_}
  13[095] - unlink try 0
  15[000] - load local S7
  17[019] - load local 5

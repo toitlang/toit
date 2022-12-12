@@ -1,64 +1,64 @@
 main tests/type_propagation/null_equals_test.toit
-  0[053] - invoke static obfuscate_null tests/type_propagation/null_equals_test.toit // {Null_}
-  3[014] - load local 0
+  0[053] - invoke static obfuscate_null tests/type_propagation/null_equals_test.toit
+  3[014] - load local 0 // {Null_}
   4[022] - load null
-  5[062] - invoke eq // {True_}
+  5[062] - invoke eq
   6[053] - invoke static id tests/type_propagation/null_equals_test.toit // {True_}
-  9[041] - pop 1
+  9[041] - pop 1 // {True_}
  10[022] - load null
  11[015] - load local 1
- 12[062] - invoke eq // {True_}
+ 12[062] - invoke eq
  13[053] - invoke static id tests/type_propagation/null_equals_test.toit // {True_}
- 16[041] - pop 1
+ 16[041] - pop 1 // {True_}
  17[023] - load smi 0
  18[022] - load null
- 19[053] - invoke static Array_ <sdk>/core/collections.toit // {LargeArray_|SmallArray_}
- 22[014] - load local 0
+ 19[053] - invoke static Array_ <sdk>/core/collections.toit
+ 22[014] - load local 0 // {LargeArray_|SmallArray_}
  23[004] - store local, pop S1
- 25[053] - invoke static create_list_literal_from_array_ <sdk>/core/collections.toit // {List_}
- 28[015] - load local 1
- 29[062] - invoke eq // {False_}
+ 25[053] - invoke static create_list_literal_from_array_ <sdk>/core/collections.toit
+ 28[015] - load local 1 // {List_}
+ 29[062] - invoke eq
  30[053] - invoke static id tests/type_propagation/null_equals_test.toit // {False_}
- 33[002] - pop, load local S0
+ 33[002] - pop, load local S0 // {False_}
  35[023] - load smi 0
  36[022] - load null
- 37[053] - invoke static Array_ <sdk>/core/collections.toit // {LargeArray_|SmallArray_}
- 40[014] - load local 0
+ 37[053] - invoke static Array_ <sdk>/core/collections.toit
+ 40[014] - load local 0 // {LargeArray_|SmallArray_}
  41[004] - store local, pop S1
- 43[053] - invoke static create_list_literal_from_array_ <sdk>/core/collections.toit // {List_}
- 46[062] - invoke eq // {False_}
+ 43[053] - invoke static create_list_literal_from_array_ <sdk>/core/collections.toit
+ 46[062] - invoke eq // {List_}
  47[053] - invoke static id tests/type_propagation/null_equals_test.toit // {False_}
- 50[041] - pop 1
+ 50[041] - pop 1 // {False_}
  51[042] - allocate instance A
- 53[053] - invoke static A tests/type_propagation/null_equals_test.toit // {A}
- 56[042] - allocate instance A
- 58[053] - invoke static A tests/type_propagation/null_equals_test.toit // {A}
- 61[062] - invoke eq // {String_}
+ 53[053] - invoke static A tests/type_propagation/null_equals_test.toit
+ 56[042] - allocate instance A // {A}
+ 58[053] - invoke static A tests/type_propagation/null_equals_test.toit
+ 61[062] - invoke eq // {A}
  62[053] - invoke static id tests/type_propagation/null_equals_test.toit // {String_}
- 65[041] - pop 1
+ 65[041] - pop 1 // {String_}
  66[042] - allocate instance A
- 68[053] - invoke static A tests/type_propagation/null_equals_test.toit // {A}
- 71[022] - load null
- 72[062] - invoke eq // {False_}
+ 68[053] - invoke static A tests/type_propagation/null_equals_test.toit
+ 71[022] - load null // {A}
+ 72[062] - invoke eq
  73[053] - invoke static id tests/type_propagation/null_equals_test.toit // {False_}
- 76[041] - pop 1
+ 76[041] - pop 1 // {False_}
  77[042] - allocate instance A
- 79[053] - invoke static A tests/type_propagation/null_equals_test.toit // {A}
- 82[015] - load local 1
- 83[062] - invoke eq // {False_}
+ 79[053] - invoke static A tests/type_propagation/null_equals_test.toit
+ 82[015] - load local 1 // {A}
+ 83[062] - invoke eq
  84[053] - invoke static id tests/type_propagation/null_equals_test.toit // {False_}
- 87[041] - pop 1
+ 87[041] - pop 1 // {False_}
  88[022] - load null
  89[042] - allocate instance A
- 91[053] - invoke static A tests/type_propagation/null_equals_test.toit // {A}
- 94[062] - invoke eq // {False_}
+ 91[053] - invoke static A tests/type_propagation/null_equals_test.toit
+ 94[062] - invoke eq // {A}
  95[053] - invoke static id tests/type_propagation/null_equals_test.toit // {False_}
- 98[002] - pop, load local S0
+ 98[002] - pop, load local S0 // {False_}
 100[042] - allocate instance A
-102[053] - invoke static A tests/type_propagation/null_equals_test.toit // {A}
-105[062] - invoke eq // {False_}
+102[053] - invoke static A tests/type_propagation/null_equals_test.toit
+105[062] - invoke eq // {A}
 106[053] - invoke static id tests/type_propagation/null_equals_test.toit // {False_}
-109[089] - return null S2 0
+109[089] - return null S2 0 // {False_}
 
 obfuscate_null tests/type_propagation/null_equals_test.toit
   0[089] - return null S0 0

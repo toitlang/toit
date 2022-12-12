@@ -1,120 +1,120 @@
 main tests/type_propagation/richards_test.toit
-  0[053] - invoke static run_richards tests/type_propagation/richards_test.toit // {Null_}
-  3[089] - return null S1 0
+  0[053] - invoke static run_richards tests/type_propagation/richards_test.toit
+  3[089] - return null S1 0 // {Null_}
 
 run_richards tests/type_propagation/richards_test.toit
   0[042] - allocate instance Scheduler
-  2[053] - invoke static Scheduler tests/type_propagation/richards_test.toit // {Scheduler}
-  5[014] - load local 0
+  2[053] - invoke static Scheduler tests/type_propagation/richards_test.toit
+  5[014] - load local 0 // {Scheduler}
   6[023] - load smi 0
   7[023] - load smi 0
   8[022] - load null
   9[027] - load smi 10000
- 12[058] - invoke virtual add_idle_task // {Null_}
- 16[041] - pop 1
+ 12[058] - invoke virtual add_idle_task
+ 16[041] - pop 1 // {Null_}
  17[042] - allocate instance Packet
  19[022] - load null
  20[025] - load smi 1
  21[025] - load smi 1
- 22[053] - invoke static Packet tests/type_propagation/richards_test.toit // {Packet}
- 25[042] - allocate instance Packet
+ 22[053] - invoke static Packet tests/type_propagation/richards_test.toit
+ 25[042] - allocate instance Packet // {Packet}
  27[015] - load local 1
  28[025] - load smi 1
  29[025] - load smi 1
- 30[053] - invoke static Packet tests/type_propagation/richards_test.toit // {Packet}
- 33[004] - store local, pop S1
+ 30[053] - invoke static Packet tests/type_propagation/richards_test.toit
+ 33[004] - store local, pop S1 // {Packet}
  35[015] - load local 1
  36[025] - load smi 1
  37[027] - load smi 1000
  40[017] - load local 3
- 41[058] - invoke virtual add_worker_task // {Null_}
- 45[041] - pop 1
+ 41[058] - invoke virtual add_worker_task
+ 45[041] - pop 1 // {Null_}
  46[042] - allocate instance Packet
  48[022] - load null
  49[026] - load smi 4
  51[023] - load smi 0
- 52[053] - invoke static Packet tests/type_propagation/richards_test.toit // {Packet}
- 55[004] - store local, pop S1
+ 52[053] - invoke static Packet tests/type_propagation/richards_test.toit
+ 55[004] - store local, pop S1 // {Packet}
  57[042] - allocate instance Packet
  59[015] - load local 1
  60[026] - load smi 4
  62[023] - load smi 0
- 63[053] - invoke static Packet tests/type_propagation/richards_test.toit // {Packet}
- 66[004] - store local, pop S1
+ 63[053] - invoke static Packet tests/type_propagation/richards_test.toit
+ 66[004] - store local, pop S1 // {Packet}
  68[042] - allocate instance Packet
  70[015] - load local 1
  71[026] - load smi 4
  73[023] - load smi 0
- 74[053] - invoke static Packet tests/type_propagation/richards_test.toit // {Packet}
- 77[004] - store local, pop S1
+ 74[053] - invoke static Packet tests/type_propagation/richards_test.toit
+ 77[004] - store local, pop S1 // {Packet}
  79[015] - load local 1
  80[026] - load smi 2
  82[027] - load smi 2000
  85[017] - load local 3
- 86[058] - invoke virtual add_handler_task // {Null_}
- 90[041] - pop 1
+ 86[058] - invoke virtual add_handler_task
+ 90[041] - pop 1 // {Null_}
  91[042] - allocate instance Packet
  93[022] - load null
  94[026] - load smi 5
  96[023] - load smi 0
- 97[053] - invoke static Packet tests/type_propagation/richards_test.toit // {Packet}
-100[004] - store local, pop S1
+ 97[053] - invoke static Packet tests/type_propagation/richards_test.toit
+100[004] - store local, pop S1 // {Packet}
 102[042] - allocate instance Packet
 104[015] - load local 1
 105[026] - load smi 5
 107[023] - load smi 0
-108[053] - invoke static Packet tests/type_propagation/richards_test.toit // {Packet}
-111[004] - store local, pop S1
+108[053] - invoke static Packet tests/type_propagation/richards_test.toit
+111[004] - store local, pop S1 // {Packet}
 113[042] - allocate instance Packet
 115[015] - load local 1
 116[026] - load smi 5
 118[023] - load smi 0
-119[053] - invoke static Packet tests/type_propagation/richards_test.toit // {Packet}
-122[004] - store local, pop S1
+119[053] - invoke static Packet tests/type_propagation/richards_test.toit
+122[004] - store local, pop S1 // {Packet}
 124[015] - load local 1
 125[026] - load smi 3
 127[027] - load smi 3000
 130[017] - load local 3
-131[058] - invoke virtual add_handler_task // {Null_}
-135[002] - pop, load local S1
+131[058] - invoke virtual add_handler_task
+135[002] - pop, load local S1 // {Null_}
 137[026] - load smi 4
 139[027] - load smi 4000
 142[022] - load null
-143[058] - invoke virtual add_device_task // {Null_}
-147[002] - pop, load local S1
+143[058] - invoke virtual add_device_task
+147[002] - pop, load local S1 // {Null_}
 149[026] - load smi 5
 151[027] - load smi 5000
 154[022] - load null
-155[058] - invoke virtual add_device_task // {Null_}
-159[002] - pop, load local S1
-161[058] - invoke virtual schedule // {Null_}
-165[041] - pop 1
+155[058] - invoke virtual add_device_task
+159[002] - pop, load local S1 // {Null_}
+161[058] - invoke virtual schedule
+165[041] - pop 1 // {Null_}
 166[029] - load [block] in run_richards tests/type_propagation/richards_test.toit
 171[038] - load block 0
-173[053] - invoke static assert_ <sdk>/core/assert_.toit // {Null_}
-176[040] - pop 2
+173[053] - invoke static assert_ <sdk>/core/assert_.toit
+176[040] - pop 2 // {Null_}
 178[029] - load [block] in run_richards tests/type_propagation/richards_test.toit
 183[038] - load block 0
-185[053] - invoke static assert_ <sdk>/core/assert_.toit // {Null_}
-188[089] - return null S4 0
+185[053] - invoke static assert_ <sdk>/core/assert_.toit
+188[089] - return null S4 0 // {Null_}
 
 [block] in run_richards tests/type_propagation/richards_test.toit
  - argument 0: [block]
   0[016] - load local 2
   1[005] - load outer S2 // {Scheduler}
-  3[060] - invoke virtual get queue_count // {Null_|LargeInteger_|SmallInteger_}
-  6[027] - load smi 23246
-  9[062] - invoke eq // {True_|False_}
- 10[088] - return S1 1
+  3[060] - invoke virtual get queue_count
+  6[027] - load smi 23246 // {Null_|LargeInteger_|SmallInteger_}
+  9[062] - invoke eq
+ 10[088] - return S1 1 // {True_|False_}
 
 [block] in run_richards tests/type_propagation/richards_test.toit
  - argument 0: [block]
   0[016] - load local 2
   1[005] - load outer S2 // {Scheduler}
-  3[060] - invoke virtual get hold_count // {Null_|LargeInteger_|SmallInteger_}
-  6[027] - load smi 9297
-  9[062] - invoke eq // {True_|False_}
- 10[088] - return S1 1
+  3[060] - invoke virtual get hold_count
+  6[027] - load smi 9297 // {Null_|LargeInteger_|SmallInteger_}
+  9[062] - invoke eq
+ 10[088] - return S1 1 // {True_|False_}
 
 Scheduler tests/type_propagation/richards_test.toit
  - argument 0: {Scheduler}
@@ -127,8 +127,8 @@ Scheduler tests/type_propagation/richards_test.toit
   8[016] - load local 2
   9[026] - load smi 6
  11[022] - load null
- 12[053] - invoke static List <sdk>/core/collections.toit // {List_}
- 15[013] - store field, pop 2
+ 12[053] - invoke static List <sdk>/core/collections.toit
+ 15[013] - store field, pop 2 // {List_}
  17[016] - load local 2
  18[088] - return S1 1
 
@@ -162,9 +162,9 @@ Scheduler.add_idle_task tests/type_propagation/richards_test.toit
  20[000] - load local S11
  22[025] - load smi 1
  23[000] - load local S9
- 25[053] - invoke static IdleTask tests/type_propagation/richards_test.toit // {IdleTask}
- 28[053] - invoke static Scheduler.add_running_task tests/type_propagation/richards_test.toit // {Null_}
- 31[089] - return null S1 5
+ 25[053] - invoke static IdleTask tests/type_propagation/richards_test.toit
+ 28[053] - invoke static Scheduler.add_running_task tests/type_propagation/richards_test.toit // {IdleTask}
+ 31[089] - return null S1 5 // {Null_}
 
 Scheduler.add_worker_task tests/type_propagation/richards_test.toit
  - argument 0: {Scheduler}
@@ -182,9 +182,9 @@ Scheduler.add_worker_task tests/type_propagation/richards_test.toit
  12[000] - load local S10
  14[026] - load smi 2
  16[023] - load smi 0
- 17[053] - invoke static WorkerTask tests/type_propagation/richards_test.toit // {WorkerTask}
- 20[053] - invoke static Scheduler.add_task tests/type_propagation/richards_test.toit // {Null_}
- 23[089] - return null S1 4
+ 17[053] - invoke static WorkerTask tests/type_propagation/richards_test.toit
+ 20[053] - invoke static Scheduler.add_task tests/type_propagation/richards_test.toit // {WorkerTask}
+ 23[089] - return null S1 4 // {Null_}
 
 Scheduler.add_handler_task tests/type_propagation/richards_test.toit
  - argument 0: {Scheduler}
@@ -200,9 +200,9 @@ Scheduler.add_handler_task tests/type_propagation/richards_test.toit
   9[019] - load local 5
  10[042] - allocate instance HandlerTask
  12[000] - load local S10
- 14[053] - invoke static HandlerTask tests/type_propagation/richards_test.toit // {HandlerTask}
- 17[053] - invoke static Scheduler.add_task tests/type_propagation/richards_test.toit // {Null_}
- 20[089] - return null S1 4
+ 14[053] - invoke static HandlerTask tests/type_propagation/richards_test.toit
+ 17[053] - invoke static Scheduler.add_task tests/type_propagation/richards_test.toit // {HandlerTask}
+ 20[089] - return null S1 4 // {Null_}
 
 Scheduler.add_device_task tests/type_propagation/richards_test.toit
  - argument 0: {Scheduler}
@@ -219,9 +219,9 @@ Scheduler.add_device_task tests/type_propagation/richards_test.toit
  11[019] - load local 5
  12[042] - allocate instance DeviceTask
  14[000] - load local S10
- 16[053] - invoke static DeviceTask tests/type_propagation/richards_test.toit // {DeviceTask}
- 19[053] - invoke static Scheduler.add_task tests/type_propagation/richards_test.toit // {Null_}
- 22[089] - return null S1 4
+ 16[053] - invoke static DeviceTask tests/type_propagation/richards_test.toit
+ 19[053] - invoke static Scheduler.add_task tests/type_propagation/richards_test.toit // {DeviceTask}
+ 22[089] - return null S1 4 // {Null_}
 
 Scheduler.add_running_task tests/type_propagation/richards_test.toit
  - argument 0: {Scheduler}
@@ -238,10 +238,10 @@ Scheduler.add_running_task tests/type_propagation/richards_test.toit
  11[000] - load local S6
  13[000] - load local S6
  15[000] - load local S6
- 17[053] - invoke static Scheduler.add_task tests/type_propagation/richards_test.toit // {Null_}
+ 17[053] - invoke static Scheduler.add_task tests/type_propagation/richards_test.toit
  20[010] - pop, load field local 70 // {*}
- 22[058] - invoke virtual set_running // {Null_}
- 26[089] - return null S1 5
+ 22[058] - invoke virtual set_running
+ 26[089] - return null S1 5 // {Null_}
 
 Scheduler.add_task tests/type_propagation/richards_test.toit
  - argument 0: {Scheduler}
@@ -260,16 +260,16 @@ Scheduler.add_task tests/type_propagation/richards_test.toit
  15[000] - load local S8
  17[000] - load local S8
  19[000] - load local S8
- 21[053] - invoke static TaskControlBlock tests/type_propagation/richards_test.toit // {TaskControlBlock}
- 24[013] - store field, pop 4
+ 21[053] - invoke static TaskControlBlock tests/type_propagation/richards_test.toit
+ 24[013] - store field, pop 4 // {TaskControlBlock}
  26[000] - load local S6
  28[009] - load field local 71 // {*}
  30[013] - store field, pop 3
  32[009] - load field local 38 // {Null_|List_}
  34[000] - load local S6
  36[009] - load field local 72 // {*}
- 38[079] - invoke at_put // {*}
- 39[089] - return null S1 5
+ 38[079] - invoke at_put
+ 39[089] - return null S1 5 // {*}
 
 Scheduler.schedule tests/type_propagation/richards_test.toit
  - argument 0: {Scheduler}
@@ -279,21 +279,21 @@ Scheduler.schedule tests/type_propagation/richards_test.toit
   5[009] - load field local 66 // {*}
   7[082] - branch if false T52
  10[009] - load field local 66 // {*}
- 12[058] - invoke virtual is_held_or_suspended // {True_|False_}
- 16[082] - branch if false T30
+ 12[058] - invoke virtual is_held_or_suspended
+ 16[082] - branch if false T30 // {True_|False_}
  19[016] - load local 2
  20[009] - load field local 67 // {*}
- 22[060] - invoke virtual get link // {Null_|Packet|TaskControlBlock}
- 25[013] - store field, pop 4
+ 22[060] - invoke virtual get link
+ 25[013] - store field, pop 4 // {Null_|Packet|TaskControlBlock}
  27[080] - branch T47
  30[016] - load local 2
  31[009] - load field local 67 // {*}
- 33[060] - invoke virtual get id // {Null_|LargeInteger_|SmallInteger_|ByteArray_}
- 36[013] - store field, pop 5
+ 33[060] - invoke virtual get id
+ 36[013] - store field, pop 5 // {Null_|LargeInteger_|SmallInteger_|ByteArray_}
  38[016] - load local 2
  39[009] - load field local 67 // {*}
- 41[058] - invoke virtual run // {*}
- 45[013] - store field, pop 4
+ 41[058] - invoke virtual run
+ 45[013] - store field, pop 4 // {*}
  47[083] - branch back T5
  52[089] - return null S0 1
 
@@ -303,18 +303,18 @@ Scheduler.hold_current tests/type_propagation/richards_test.toit
   2[017] - load local 3
   3[015] - load local 1
   4[025] - load smi 1
-  5[073] - invoke add // {LargeInteger_|SmallInteger_}
-  6[013] - store field, pop 1
+  5[073] - invoke add
+  6[013] - store field, pop 1 // {LargeInteger_|SmallInteger_}
   8[010] - pop, load field local 66 // {*}
- 10[058] - invoke virtual mark_as_held // {Null_}
+ 10[058] - invoke virtual mark_as_held
  14[010] - pop, load field local 66 // {*}
- 16[060] - invoke virtual get link // {Null_|Packet|TaskControlBlock}
- 19[088] - return S1 1
+ 16[060] - invoke virtual get link
+ 19[088] - return S1 1 // {Null_|Packet|TaskControlBlock}
 
 Scheduler.suspend_current tests/type_propagation/richards_test.toit
  - argument 0: {Scheduler}
   0[009] - load field local 66 // {*}
-  2[058] - invoke virtual mark_as_suspended // {Null_}
+  2[058] - invoke virtual mark_as_suspended
   6[010] - pop, load field local 66 // {*}
   8[088] - return S1 1
 
@@ -323,19 +323,19 @@ Scheduler.release tests/type_propagation/richards_test.toit
  - argument 1: {SmallInteger_}
   0[009] - load field local 35 // {Null_|List_}
   2[017] - load local 3
-  3[078] - invoke at // {*}
-  4[014] - load local 0
+  3[078] - invoke at
+  4[014] - load local 0 // {*}
   5[081] - branch if true T12
   8[014] - load local 0
   9[088] - return S2 2
  12[014] - load local 0
- 13[058] - invoke virtual mark_as_not_held // {Null_}
- 17[002] - pop, load local S0
- 19[060] - invoke virtual get priority // {Null_|SmallInteger_}
+ 13[058] - invoke virtual mark_as_not_held
+ 17[002] - pop, load local S0 // {Null_}
+ 19[060] - invoke virtual get priority
  22[009] - load field local 69 // {*}
- 24[060] - invoke virtual get priority // {Null_|SmallInteger_}
- 27[064] - invoke gt // {True_|False_}
- 28[082] - branch if false T38
+ 24[060] - invoke virtual get priority
+ 27[064] - invoke gt // {Null_|SmallInteger_}
+ 28[082] - branch if false T38 // {True_|False_}
  31[014] - load local 0
  32[088] - return S2 2
  35[080] - branch T43
@@ -349,8 +349,8 @@ Scheduler.queue tests/type_propagation/richards_test.toit
   0[052] - load local, as class, pop 2 - Packet(40 - 41)
   2[009] - load field local 35 // {Null_|List_}
   4[009] - load field local 19 // {Null_|LargeInteger_|SmallInteger_}
-  6[078] - invoke at // {*}
-  7[014] - load local 0
+  6[078] - invoke at
+  7[014] - load local 0 // {*}
   8[081] - branch if true T15
  11[014] - load local 0
  12[088] - return S2 2
@@ -358,8 +358,8 @@ Scheduler.queue tests/type_propagation/richards_test.toit
  17[019] - load local 5
  18[015] - load local 1
  19[025] - load smi 1
- 20[073] - invoke add // {LargeInteger_|SmallInteger_}
- 21[013] - store field, pop 0
+ 20[073] - invoke add
+ 21[013] - store field, pop 0 // {LargeInteger_|SmallInteger_}
  23[002] - pop, load local S3
  25[022] - load null
  26[048] - as class Packet?(40 - 41)
@@ -371,13 +371,13 @@ Scheduler.queue tests/type_propagation/richards_test.toit
  37[014] - load local 0
  38[009] - load field local 69 // {*}
  40[019] - load local 5
- 41[058] - invoke virtual check_priority_add // {*}
- 45[088] - return S2 2
+ 41[058] - invoke virtual check_priority_add
+ 45[088] - return S2 2 // {*}
 
 STATE_NOT_HELD tests/type_propagation/richards_test.toit
   0[026] - load smi 4
-  2[058] - invoke virtual ~ // {SmallInteger_}
-  6[088] - return S1 0
+  2[058] - invoke virtual ~
+  6[088] - return S1 0 // {SmallInteger_}
 
 TaskControlBlock.link tests/type_propagation/richards_test.toit
  - argument 0: {TaskControlBlock}
@@ -450,8 +450,8 @@ TaskControlBlock.mark_as_not_held tests/type_propagation/richards_test.toit
   0[016] - load local 2
   1[009] - load field local 83 // {Null_|LargeInteger_|SmallInteger_}
   3[033] - load global var lazy G0 // {SmallInteger_}
-  5[069] - invoke bit and // {LargeInteger_|SmallInteger_}
-  6[048] - as class LargeInteger_(22 - 24)
+  5[069] - invoke bit and // {SmallInteger_}
+  6[048] - as class LargeInteger_(22 - 24) // {LargeInteger_|SmallInteger_}
   8[013] - store field, pop 5
  10[089] - return null S0 1
 
@@ -460,8 +460,8 @@ TaskControlBlock.mark_as_held tests/type_propagation/richards_test.toit
   0[016] - load local 2
   1[009] - load field local 83 // {Null_|LargeInteger_|SmallInteger_}
   3[026] - load smi 4
-  5[067] - invoke bit or // {LargeInteger_|SmallInteger_}
-  6[048] - as class LargeInteger_(22 - 24)
+  5[067] - invoke bit or
+  6[048] - as class LargeInteger_(22 - 24) // {LargeInteger_|SmallInteger_}
   8[013] - store field, pop 5
  10[089] - return null S0 1
 
@@ -469,10 +469,10 @@ TaskControlBlock.is_held_or_suspended tests/type_propagation/richards_test.toit
  - argument 0: {TaskControlBlock}
   0[009] - load field local 82 // {Null_|LargeInteger_|SmallInteger_}
   2[026] - load smi 4
-  4[069] - invoke bit and // {LargeInteger_|SmallInteger_}
-  5[023] - load smi 0
-  6[062] - invoke eq // {True_|False_}
-  7[081] - branch if true T15
+  4[069] - invoke bit and
+  5[023] - load smi 0 // {LargeInteger_|SmallInteger_}
+  6[062] - invoke eq
+  7[081] - branch if true T15 // {True_|False_}
  10[020] - load literal Oddball (true/false/null)
  12[080] - branch T17
  15[020] - load literal Oddball (true/false/null)
@@ -480,16 +480,16 @@ TaskControlBlock.is_held_or_suspended tests/type_propagation/richards_test.toit
  18[081] - branch if true T26
  21[010] - pop, load field local 82 // {Null_|LargeInteger_|SmallInteger_}
  23[026] - load smi 2
- 25[062] - invoke eq // {True_|False_}
- 26[088] - return S1 1
+ 25[062] - invoke eq
+ 26[088] - return S1 1 // {True_|False_}
 
 TaskControlBlock.mark_as_suspended tests/type_propagation/richards_test.toit
  - argument 0: {TaskControlBlock}
   0[016] - load local 2
   1[009] - load field local 83 // {Null_|LargeInteger_|SmallInteger_}
   3[026] - load smi 2
-  5[067] - invoke bit or // {LargeInteger_|SmallInteger_}
-  6[048] - as class LargeInteger_(22 - 24)
+  5[067] - invoke bit or
+  6[048] - as class LargeInteger_(22 - 24) // {LargeInteger_|SmallInteger_}
   8[013] - store field, pop 5
  10[089] - return null S0 1
 
@@ -498,8 +498,8 @@ TaskControlBlock.mark_as_runnable tests/type_propagation/richards_test.toit
   0[016] - load local 2
   1[009] - load field local 83 // {Null_|LargeInteger_|SmallInteger_}
   3[025] - load smi 1
-  4[067] - invoke bit or // {LargeInteger_|SmallInteger_}
-  5[048] - as class LargeInteger_(22 - 24)
+  4[067] - invoke bit or
+  5[048] - as class LargeInteger_(22 - 24) // {LargeInteger_|SmallInteger_}
   7[013] - store field, pop 5
   9[089] - return null S0 1
 
@@ -508,14 +508,14 @@ TaskControlBlock.run tests/type_propagation/richards_test.toit
   0[022] - load null
   1[009] - load field local 83 // {Null_|LargeInteger_|SmallInteger_}
   3[026] - load smi 3
-  5[062] - invoke eq // {True_|False_}
-  6[082] - branch if false T35
+  5[062] - invoke eq
+  6[082] - branch if false T35 // {True_|False_}
   9[009] - load field local 51 // {Null_|Packet}
  11[004] - store local, pop S1
  13[017] - load local 3
  14[015] - load local 1
- 15[060] - invoke virtual get link // {Null_|Packet}
- 18[048] - as class Packet?(40 - 41)
+ 15[060] - invoke virtual get link
+ 18[048] - as class Packet?(40 - 41) // {Null_|Packet}
  20[013] - store field, pop 3
  22[017] - load local 3
  23[023] - load smi 0
@@ -527,8 +527,8 @@ TaskControlBlock.run tests/type_propagation/richards_test.toit
  33[013] - store field, pop 5
  35[009] - load field local 67 // {Null_|HandlerTask|WorkerTask|DeviceTask|IdleTask}
  37[015] - load local 1
- 38[058] - invoke virtual run // {*}
- 42[088] - return S2 1
+ 38[058] - invoke virtual run
+ 42[088] - return S2 1 // {*}
 
 TaskControlBlock.check_priority_add tests/type_propagation/richards_test.toit
  - argument 0: {TaskControlBlock}
@@ -541,20 +541,20 @@ TaskControlBlock.check_priority_add tests/type_propagation/richards_test.toit
   7[048] - as class Packet?(40 - 41)
   9[013] - store field, pop 3
  11[018] - load local 4
- 12[053] - invoke static TaskControlBlock.mark_as_runnable tests/type_propagation/richards_test.toit // {Null_}
+ 12[053] - invoke static TaskControlBlock.mark_as_runnable tests/type_propagation/richards_test.toit
  15[010] - pop, load field local 36 // {Null_|SmallInteger_}
  17[018] - load local 4
- 18[060] - invoke virtual get priority // {Null_|SmallInteger_}
- 21[064] - invoke gt // {True_|False_}
- 22[082] - branch if false T29
+ 18[060] - invoke virtual get priority
+ 21[064] - invoke gt // {Null_|SmallInteger_}
+ 22[082] - branch if false T29 // {True_|False_}
  25[018] - load local 4
  26[088] - return S1 3
  29[080] - branch T44
  32[018] - load local 4
  33[017] - load local 3
  34[009] - load field local 54 // {Null_|Packet}
- 36[058] - invoke virtual add_to // {Packet}
- 40[048] - as class Packet?(40 - 41)
+ 36[058] - invoke virtual add_to
+ 40[048] - as class Packet?(40 - 41) // {Packet}
  42[013] - store field, pop 3
  44[017] - load local 3
  45[088] - return S1 3
@@ -589,45 +589,45 @@ IdleTask.run tests/type_propagation/richards_test.toit
   2[018] - load local 4
   3[015] - load local 1
   4[025] - load smi 1
-  5[074] - invoke sub // {LargeInteger_|SmallInteger_}
-  6[048] - as class LargeInteger_(22 - 24)
+  5[074] - invoke sub
+  6[048] - as class LargeInteger_(22 - 24) // {LargeInteger_|SmallInteger_}
   8[013] - store field, pop 2
  10[010] - pop, load field local 35 // {Null_|LargeInteger_|SmallInteger_}
  12[023] - load smi 0
- 13[062] - invoke eq // {True_|False_}
- 14[082] - branch if false T25
+ 13[062] - invoke eq
+ 14[082] - branch if false T25 // {True_|False_}
  17[009] - load field local 3 // {Null_|Scheduler}
- 19[053] - invoke static Scheduler.hold_current tests/type_propagation/richards_test.toit // {Null_|Packet|TaskControlBlock}
- 22[088] - return S1 2
+ 19[053] - invoke static Scheduler.hold_current tests/type_propagation/richards_test.toit
+ 22[088] - return S1 2 // {Null_|Packet|TaskControlBlock}
  25[009] - load field local 19 // {Null_|LargeInteger_|SmallInteger_}
  27[025] - load smi 1
- 28[069] - invoke bit and // {LargeInteger_|SmallInteger_}
- 29[023] - load smi 0
- 30[062] - invoke eq // {True_|False_}
- 31[082] - branch if false T56
+ 28[069] - invoke bit and
+ 29[023] - load smi 0 // {LargeInteger_|SmallInteger_}
+ 30[062] - invoke eq
+ 31[082] - branch if false T56 // {True_|False_}
  34[017] - load local 3
  35[009] - load field local 20 // {Null_|LargeInteger_|SmallInteger_}
  37[025] - load smi 1
- 38[071] - invoke bit shr // {LargeInteger_|SmallInteger_}
- 39[048] - as class LargeInteger_(22 - 24)
+ 38[071] - invoke bit shr
+ 39[048] - as class LargeInteger_(22 - 24) // {LargeInteger_|SmallInteger_}
  41[013] - store field, pop 1
  43[009] - load field local 3 // {Null_|Scheduler}
  45[026] - load smi 4
- 47[053] - invoke static Scheduler.release tests/type_propagation/richards_test.toit // {*}
- 50[088] - return S1 2
+ 47[053] - invoke static Scheduler.release tests/type_propagation/richards_test.toit
+ 50[088] - return S1 2 // {*}
  53[080] - branch T79
  56[017] - load local 3
  57[009] - load field local 20 // {Null_|LargeInteger_|SmallInteger_}
  59[025] - load smi 1
- 60[071] - invoke bit shr // {LargeInteger_|SmallInteger_}
- 61[027] - load smi 53256
- 64[068] - invoke bit xor // {LargeInteger_|SmallInteger_}
- 65[048] - as class LargeInteger_(22 - 24)
+ 60[071] - invoke bit shr
+ 61[027] - load smi 53256 // {LargeInteger_|SmallInteger_}
+ 64[068] - invoke bit xor
+ 65[048] - as class LargeInteger_(22 - 24) // {LargeInteger_|SmallInteger_}
  67[013] - store field, pop 1
  69[009] - load field local 3 // {Null_|Scheduler}
  71[026] - load smi 5
- 73[053] - invoke static Scheduler.release tests/type_propagation/richards_test.toit // {*}
- 76[088] - return S1 2
+ 73[053] - invoke static Scheduler.release tests/type_propagation/richards_test.toit
+ 76[088] - return S1 2 // {*}
 
 DeviceTask tests/type_propagation/richards_test.toit
  - argument 0: {DeviceTask}
@@ -648,23 +648,23 @@ DeviceTask.run tests/type_propagation/richards_test.toit
   4[009] - load field local 19 // {Null_|Packet}
   6[081] - branch if true T17
   9[009] - load field local 3 // {Null_|Scheduler}
- 11[053] - invoke static Scheduler.suspend_current tests/type_propagation/richards_test.toit // {*}
- 14[088] - return S1 2
+ 11[053] - invoke static Scheduler.suspend_current tests/type_propagation/richards_test.toit
+ 14[088] - return S1 2 // {*}
  17[009] - load field local 19 // {Null_|Packet}
  19[018] - load local 4
  20[022] - load null
  21[013] - store field, pop 1
  23[009] - load field local 4 // {Null_|Scheduler}
  25[015] - load local 1
- 26[053] - invoke static Scheduler.queue tests/type_propagation/richards_test.toit // {*}
- 29[088] - return S2 2
+ 26[053] - invoke static Scheduler.queue tests/type_propagation/richards_test.toit
+ 29[088] - return S2 2 // {*}
  32[080] - branch T47
  35[017] - load local 3
  36[017] - load local 3
  37[013] - store field, pop 1
  39[009] - load field local 3 // {Null_|Scheduler}
- 41[053] - invoke static Scheduler.hold_current tests/type_propagation/richards_test.toit // {Null_|Packet|TaskControlBlock}
- 44[088] - return S1 2
+ 41[053] - invoke static Scheduler.hold_current tests/type_propagation/richards_test.toit
+ 44[088] - return S1 2 // {Null_|Packet|TaskControlBlock}
 
 WorkerTask tests/type_propagation/richards_test.toit
  - argument 0: {WorkerTask}
@@ -695,60 +695,60 @@ WorkerTask.run tests/type_propagation/richards_test.toit
   0[016] - load local 2
   1[081] - branch if true T12
   4[009] - load field local 3 // {Null_|Scheduler}
-  6[053] - invoke static Scheduler.suspend_current tests/type_propagation/richards_test.toit // {*}
-  9[088] - return S1 2
+  6[053] - invoke static Scheduler.suspend_current tests/type_propagation/richards_test.toit
+  9[088] - return S1 2 // {*}
  12[017] - load local 3
  13[026] - load smi 2
  15[009] - load field local 21 // {Null_|SmallInteger_}
  17[026] - load smi 2
- 19[062] - invoke eq // {True_|False_}
- 20[082] - branch if false T26
+ 19[062] - invoke eq
+ 20[082] - branch if false T26 // {True_|False_}
  23[041] - pop 1
  24[026] - load smi 3
  26[048] - as class LargeInteger_(22 - 24)
  28[013] - store field, pop 1
  30[016] - load local 2
  31[009] - load field local 20 // {Null_|SmallInteger_}
- 33[061] - invoke virtual set id // {SmallInteger_}
- 36[002] - pop, load local S2
+ 33[061] - invoke virtual set id
+ 36[002] - pop, load local S2 // {SmallInteger_}
  38[023] - load smi 0
- 39[061] - invoke virtual set a1 // {SmallInteger_}
- 42[041] - pop 1
+ 39[061] - invoke virtual set a1
+ 42[041] - pop 1 // {SmallInteger_}
  43[023] - load smi 0
  44[014] - load local 0
  45[026] - load smi 4
- 47[063] - invoke lt // {True_|False_}
- 48[082] - branch if false T93
+ 47[063] - invoke lt
+ 48[082] - branch if false T93 // {True_|False_}
  51[018] - load local 4
  52[009] - load field local 37 // {Null_|LargeInteger_|SmallInteger_}
  54[025] - load smi 1
- 55[073] - invoke add // {LargeInteger_|SmallInteger_}
- 56[048] - as class LargeInteger_(22 - 24)
+ 55[073] - invoke add
+ 56[048] - as class LargeInteger_(22 - 24) // {LargeInteger_|SmallInteger_}
  58[011] - store field 2
  60[026] - load smi 26
- 62[064] - invoke gt // {True_|False_}
- 63[082] - branch if false T72
+ 62[064] - invoke gt
+ 63[082] - branch if false T72 // {True_|False_}
  66[018] - load local 4
  67[025] - load smi 1
  68[048] - as class LargeInteger_(22 - 24)
  70[013] - store field, pop 2
  72[017] - load local 3
- 73[060] - invoke virtual get a2 // {Null_|List_}
- 76[015] - load local 1
+ 73[060] - invoke virtual get a2
+ 76[015] - load local 1 // {Null_|List_}
  77[009] - load field local 38 // {Null_|LargeInteger_|SmallInteger_}
- 79[079] - invoke at_put // {*}
- 80[041] - pop 1
+ 79[079] - invoke at_put
+ 80[041] - pop 1 // {*}
  81[014] - load local 0
  82[014] - load local 0
  83[025] - load smi 1
- 84[073] - invoke add // {LargeInteger_|SmallInteger_}
- 85[004] - store local, pop S2
+ 84[073] - invoke add
+ 85[004] - store local, pop S2 // {LargeInteger_|SmallInteger_}
  87[041] - pop 1
  88[083] - branch back T44
  93[010] - pop, load field local 3 // {Null_|Scheduler}
  95[017] - load local 3
- 96[053] - invoke static Scheduler.queue tests/type_propagation/richards_test.toit // {*}
- 99[088] - return S1 2
+ 96[053] - invoke static Scheduler.queue tests/type_propagation/richards_test.toit
+ 99[088] - return S1 2 // {*}
 
 HandlerTask tests/type_propagation/richards_test.toit
  - argument 0: {HandlerTask}
@@ -767,65 +767,65 @@ HandlerTask.run tests/type_propagation/richards_test.toit
   0[016] - load local 2
   1[082] - branch if false T36
   4[016] - load local 2
-  5[060] - invoke virtual get kind // {Null_|SmallInteger_}
-  8[025] - load smi 1
-  9[062] - invoke eq // {True_|False_}
- 10[082] - branch if false T26
+  5[060] - invoke virtual get kind
+  8[025] - load smi 1 // {Null_|SmallInteger_}
+  9[062] - invoke eq
+ 10[082] - branch if false T26 // {True_|False_}
  13[017] - load local 3
  14[017] - load local 3
  15[009] - load field local 21 // {Null_|Packet}
- 17[058] - invoke virtual add_to // {Packet}
- 21[013] - store field, pop 1
+ 17[058] - invoke virtual add_to
+ 21[013] - store field, pop 1 // {Packet}
  23[080] - branch T36
  26[017] - load local 3
  27[017] - load local 3
  28[009] - load field local 37 // {Null_|Packet}
- 30[058] - invoke virtual add_to // {Packet}
- 34[013] - store field, pop 2
+ 30[058] - invoke virtual add_to
+ 34[013] - store field, pop 2 // {Packet}
  36[009] - load field local 19 // {Null_|Packet}
  38[082] - branch if false T119
  41[009] - load field local 19 // {Null_|Packet}
- 43[060] - invoke virtual get a1 // {*}
- 46[014] - load local 0
+ 43[060] - invoke virtual get a1
+ 46[014] - load local 0 // {*}
  47[026] - load smi 4
- 49[063] - invoke lt // {True_|False_}
- 50[082] - branch if false T99
+ 49[063] - invoke lt
+ 50[082] - branch if false T99 // {True_|False_}
  53[009] - load field local 36 // {Null_|Packet}
  55[082] - branch if false T96
  58[009] - load field local 36 // {Null_|Packet}
  60[019] - load local 5
  61[009] - load field local 38 // {Null_|Packet}
- 63[060] - invoke virtual get link // {Null_|Packet}
- 66[013] - store field, pop 2
+ 63[060] - invoke virtual get link
+ 66[013] - store field, pop 2 // {Null_|Packet}
  68[014] - load local 0
  69[009] - load field local 22 // {Null_|Packet}
- 71[060] - invoke virtual get a2 // {Null_|List_}
- 74[017] - load local 3
- 75[078] - invoke at // {*}
+ 71[060] - invoke virtual get a2
+ 74[017] - load local 3 // {Null_|List_}
+ 75[078] - invoke at
  76[061] - invoke virtual set a1 // {*}
- 79[010] - pop, load field local 21 // {Null_|Packet}
+ 79[010] - pop, load field local 21 // {*}
  81[016] - load local 2
  82[025] - load smi 1
- 83[073] - invoke add // {float|LargeInteger_|SmallInteger_}
+ 83[073] - invoke add
  84[061] - invoke virtual set a1 // {float|LargeInteger_|SmallInteger_}
- 87[010] - pop, load field local 5 // {Null_|Scheduler}
+ 87[010] - pop, load field local 5 // {Null_|float|LargeInteger_|SmallInteger_|Scheduler}
  89[015] - load local 1
- 90[053] - invoke static Scheduler.queue tests/type_propagation/richards_test.toit // {*}
- 93[088] - return S3 2
+ 90[053] - invoke static Scheduler.queue tests/type_propagation/richards_test.toit
+ 93[088] - return S3 2 // {*}
  96[080] - branch T118
  99[009] - load field local 20 // {Null_|Packet}
 101[019] - load local 5
 102[009] - load field local 22 // {Null_|Packet}
-104[060] - invoke virtual get link // {Null_|Packet}
-107[013] - store field, pop 1
+104[060] - invoke virtual get link
+107[013] - store field, pop 1 // {Null_|Packet}
 109[009] - load field local 5 // {Null_|Scheduler}
 111[015] - load local 1
-112[053] - invoke static Scheduler.queue tests/type_propagation/richards_test.toit // {*}
-115[088] - return S3 2
+112[053] - invoke static Scheduler.queue tests/type_propagation/richards_test.toit
+115[088] - return S3 2 // {*}
 118[041] - pop 1
 119[009] - load field local 3 // {Null_|Scheduler}
-121[053] - invoke static Scheduler.suspend_current tests/type_propagation/richards_test.toit // {*}
-124[088] - return S1 2
+121[053] - invoke static Scheduler.suspend_current tests/type_propagation/richards_test.toit
+124[088] - return S1 2 // {*}
 
 Packet tests/type_propagation/richards_test.toit
  - argument 0: {Packet}
@@ -853,8 +853,8 @@ Packet tests/type_propagation/richards_test.toit
  28[019] - load local 5
  29[026] - load smi 4
  31[022] - load null
- 32[053] - invoke static List <sdk>/core/collections.toit // {List_}
- 35[013] - store field, pop 4
+ 32[053] - invoke static List <sdk>/core/collections.toit
+ 35[013] - store field, pop 4 // {List_}
  37[019] - load local 5
  38[088] - return S1 4
 
@@ -923,8 +923,8 @@ Packet.add_to tests/type_propagation/richards_test.toit
  11[088] - return S1 2
  14[016] - load local 2
  15[014] - load local 0
- 16[060] - invoke virtual get link // {Null_|Packet}
- 19[014] - load local 0
+ 16[060] - invoke virtual get link
+ 19[014] - load local 0 // {Null_|Packet}
  20[081] - branch if true T27
  23[041] - pop 1
  24[080] - branch T36
@@ -934,6 +934,6 @@ Packet.add_to tests/type_propagation/richards_test.toit
  31[083] - branch back T15
  36[014] - load local 0
  37[019] - load local 5
- 38[061] - invoke virtual set link // {Packet}
- 41[002] - pop, load local S3
+ 38[061] - invoke virtual set link
+ 41[002] - pop, load local S3 // {Packet}
  43[088] - return S2 2
