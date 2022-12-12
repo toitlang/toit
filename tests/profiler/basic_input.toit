@@ -9,13 +9,13 @@ ITERATIONS ::= 1000
 bar:
   sum := 0
   ITERATIONS.repeat: sum += it
-  expect_equals 499500 sum
+  expect_equals 499_500 sum
 
 foo:
   sum := 0
-  for i := 0; i < ITERATIONS * 4; i++:
+  for i := 0; i < ITERATIONS * 8; i++:
     sum += i
-  expect_equals 7998000 sum
+  expect_equals 31_996_000 sum
 
 compute:
   // Repeat the two computations to even
