@@ -18,7 +18,7 @@ Operations are not constant-time, so this library is not suitable for many
   cryptographic tasks.
 # Note
 Even on host machines you may get out-of-memory errors for very large numbers.
-  The underlying MbedTLS library is compiled with a maxiumum number of base-256
+  The underlying MbedTLS library is compiled with a maximum number of base-256
   digits, often 10_000.
 */
 class Bignum:
