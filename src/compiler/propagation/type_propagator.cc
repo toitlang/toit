@@ -97,7 +97,7 @@ void TypePropagator::ensure_entry_task() {
   if (has_entry_task_) return;
   TypeScope scope(1, words_per_type());
   TypeStack* stack = scope.top();
-  stack->push_any();  // TODO(kasper): Should be lambda.
+  stack->push_any(program());  // TODO(kasper): Should be lambda.
   Method target = program()->entry_task();
   call_static(null, &scope, null, target);
   has_entry_task_ = true;
@@ -107,7 +107,7 @@ void TypePropagator::ensure_lookup_failure() {
   if (has_lookup_failure_) return;
   TypeScope scope(2, words_per_type());
   TypeStack* stack = scope.top();
-  stack->push_any();           // receiver
+  stack->push_any(program());  // receiver
   // We always pass the selector offset for implicit lookup
   // failures. The compiler sometimes generates explicit calls
   // to 'lookup_failure' and pass string selectors for those.
@@ -121,7 +121,7 @@ void TypePropagator::ensure_as_check_failure() {
   if (has_as_check_failure_) return;
   TypeScope scope(2, words_per_type());
   TypeStack* stack = scope.top();
-  stack->push_any();           // receiver
+  stack->push_any(program());  // receiver
   // We always pass the bci for implicit as check failures.
   // The compiler sometimes generates explicit calls to
   // 'as_check_failure' and pass string class names for those.
@@ -216,7 +216,7 @@ void TypePropagator::propagate(TypeDatabase* types) {
 
   // Initialize Exception_.value
   ASSERT(program()->instance_fields_for(program()->exception_class_id()) == 2);
-  stack.push_any();
+  stack.push_any(program());
   field(program()->exception_class_id()->value(), 0)->merge(this, stack.local(0));
   stack.pop();
 
@@ -362,13 +362,12 @@ void TypePropagator::call_method(MethodTemplate* caller,
   // instantiate a method template for each possible combination. This
   // is essentially <arity> nested loops with a few cut-offs for blocks
   // and megamorphic types that tend to blow up the analysis.
-  Program* program = this->program();
   TypeSet type = stack->local(arity - index);
   if (type.is_block()) {
     arguments.push_back(type.block()->pass_as_argument(scope));
     call_method(caller, scope, site, target, arguments);
     arguments.pop_back();
-  } else if (type.size(program) > 5) {
+  } else if (type.size(words_per_type_) > 5) {
     // If one of the arguments is megamorphic, we analyze the target
     // method with the any type for that argument instead. This cuts
     // down on the number of separate analysis at the cost of more
@@ -377,8 +376,9 @@ void TypePropagator::call_method(MethodTemplate* caller,
     call_method(caller, scope, site, target, arguments);
     arguments.pop_back();
   } else {
-    for (int id = 0; id < program->class_bits.length(); id++) {
-      if (!type.contains(id)) continue;
+    TypeSet::Iterator it(type, words_per_type_);
+    while (it.has_next()) {
+      unsigned id = it.next();
       arguments.push_back(ConcreteType(id));
       call_method(caller, scope, site, target, arguments);
       arguments.pop_back();
@@ -402,8 +402,9 @@ void TypePropagator::call_virtual(MethodTemplate* caller, TypeScope* scope, uint
   stack->push_empty();
 
   Program* program = this->program();
-  for (int id = 0; id < program->class_bits.length(); id++) {
-    if (!receiver.contains(id)) continue;
+  TypeSet::Iterator it(receiver, words_per_type_);
+  while (it.has_next()) {
+    unsigned id = it.next();
     int entry_index = id + offset;
     int entry_id = program->dispatch_table[entry_index];
     Method target = (entry_id >= 0)
@@ -498,9 +499,9 @@ void TypePropagator::load_field(MethodTemplate* user, TypeStack* stack, uint8* s
   TypeSet instance = stack->local(0);
   stack->push_empty();
 
-  Program* program = this->program();
-  for (int id = 0; id < program->class_bits.length(); id++) {
-    if (!instance.contains(id)) continue;
+  TypeSet::Iterator it(instance, words_per_type_);
+  while (it.has_next()) {
+    unsigned id = it.next();
     TypeSet result = field(id, index)->use(this, user, site);
     stack->merge_top(result);
   }
@@ -512,9 +513,9 @@ void TypePropagator::store_field(MethodTemplate* user, TypeStack* stack, int ind
   TypeSet value = stack->local(0);
   TypeSet instance = stack->local(1);
 
-  Program* program = this->program();
-  for (int id = 0; id < program->class_bits.length(); id++) {
-    if (!instance.contains(id)) continue;
+  TypeSet::Iterator it(instance, words_per_type_);
+  while (it.has_next()) {
+    unsigned id = it.next();
     field(id, index)->merge(this, value);
   }
 
@@ -695,7 +696,7 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
 
   OPCODE_BEGIN_WITH_WIDE(LOAD_FIELD, field_index);
     propagator->load_field(method, stack, bcp, field_index);
-    if (stack->local(0).is_empty(program)) return scope;
+    if (stack->top_is_empty()) return scope;
   OPCODE_END();
 
   OPCODE_BEGIN(LOAD_FIELD_LOCAL);
@@ -705,7 +706,7 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
     TypeSet instance = stack->local(local);
     stack->push(instance);
     propagator->load_field(method, stack, bcp, field_index);
-    if (stack->local(0).is_empty(program)) return scope;
+    if (stack->top_is_empty()) return scope;
   OPCODE_END();
 
   OPCODE_BEGIN(POP_LOAD_FIELD_LOCAL);
@@ -715,7 +716,7 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
     TypeSet instance = stack->local(local + 1);
     stack->set_local(0, instance);
     propagator->load_field(method, stack, bcp, field_index);
-    if (stack->local(0).is_empty(program)) return scope;
+    if (stack->top_is_empty()) return scope;
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(STORE_FIELD, field_index);
@@ -775,7 +776,7 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
   OPCODE_BEGIN_WITH_WIDE(LOAD_GLOBAL_VAR, index);
     TypeVariable* variable = propagator->global_variable(index);
     stack->push(variable->use(propagator, method, bcp));
-    if (stack->local(0).is_empty(program)) return scope;
+    if (stack->top_is_empty()) return scope;
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(LOAD_GLOBAL_VAR_LAZY, index);
@@ -795,7 +796,7 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
     stack->pop();
     // Push the resulting type.
     stack->push(variable->use(propagator, method, bcp));
-    if (stack->local(0).is_empty(program)) return scope;
+    if (stack->top_is_empty()) return scope;
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(STORE_GLOBAL_VAR, index);
@@ -819,7 +820,7 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
     // 'run_global_initializer_' and in that context
     // it can produce any value.
     stack->pop();  // Drop the id.
-    stack->push_any();
+    stack->push_any(program);
   OPCODE_END();
 
   OPCODE_BEGIN(STORE_GLOBAL_VAR_DYNAMIC);
@@ -835,7 +836,7 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
     // from the LOAD_GLOBAL_VAR_LAZY bytecode. Here, it
     // is fine to let it produce any value.
     stack->pop();  // Drop the id.
-    stack->push_any();
+    stack->push_any(program);
     method->ret(propagator, stack);
     return scope;
   OPCODE_END();
@@ -918,14 +919,14 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
     S_ARG1(offset);
     Method target(program->bytecodes, program->dispatch_table[offset]);
     propagator->call_static(method, scope, bcp, target);
-    if (stack->local(0).is_empty(program)) return scope;
+    if (stack->top_is_empty()) return scope;
   OPCODE_END();
 
   OPCODE_BEGIN(INVOKE_STATIC_TAIL);
     S_ARG1(offset);
     Method target(program->bytecodes, program->dispatch_table[offset]);
     propagator->call_static(method, scope, bcp, target);
-    if (stack->local(0).is_empty(program)) return scope;
+    if (stack->top_is_empty()) return scope;
     if (scope->level() > 0) {
       TypeSet receiver = stack->get(0);
       BlockTemplate* block = receiver.block();
@@ -940,7 +941,7 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
   OPCODE_BEGIN(INVOKE_BLOCK);
     B_ARG1(index);
     propagator->call_block(scope, bcp, index);
-    if (stack->local(0).is_empty(program)) {
+    if (stack->top_is_empty()) {
       if (!linked) return scope;
       // We've just invoked a try-block that is guaranteed
       // to unwind as indicated by the empty return type.
@@ -960,26 +961,26 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
   OPCODE_BEGIN_WITH_WIDE(INVOKE_VIRTUAL, arity);
     int offset = Utils::read_unaligned_uint16(bcp + 2);
     propagator->call_virtual(method, scope, bcp, arity + 1, offset);
-    if (stack->local(0).is_empty(program)) return scope;
+    if (stack->top_is_empty()) return scope;
   OPCODE_END();
 
   OPCODE_BEGIN(INVOKE_VIRTUAL_GET);
     int offset = Utils::read_unaligned_uint16(bcp + 1);
     propagator->call_virtual(method, scope, bcp, 1, offset);
-    if (stack->local(0).is_empty(program)) return scope;
+    if (stack->top_is_empty()) return scope;
   OPCODE_END();
 
   OPCODE_BEGIN(INVOKE_VIRTUAL_SET);
     int offset = Utils::read_unaligned_uint16(bcp + 1);
     propagator->call_virtual(method, scope, bcp, 2, offset);
-    if (stack->local(0).is_empty(program)) return scope;
+    if (stack->top_is_empty()) return scope;
   OPCODE_END();
 
 #define INVOKE_VIRTUAL_BINARY(opcode)                         \
   OPCODE_BEGIN(opcode);                                       \
     int offset = program->invoke_bytecode_offset(opcode);     \
     propagator->call_virtual(method, scope, bcp, 2, offset);  \
-    if (stack->local(0).is_empty(program)) return scope;      \
+    if (stack->top_is_empty()) return scope;                   \
   OPCODE_END();
 
   INVOKE_VIRTUAL_BINARY(INVOKE_EQ)
@@ -1050,7 +1051,7 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
   OPCODE_BEGIN(INVOKE_LAMBDA_TAIL);
     propagator->ensure_code_failure();
     scope->throw_maybe();
-    stack->push_any();
+    stack->push_any(program);
     method->ret(propagator, stack);
     return scope;
   OPCODE_END();
@@ -1066,7 +1067,7 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
     stack->push_empty();
     entry(program, stack->local(0), stack->local(1));
     method->ret(propagator, stack);
-    if (stack->local(0).is_empty(program)) return scope;
+    if (stack->top_is_empty()) return scope;
     if (TypePrimitive::uses_entry_task(module, index)) {
       propagator->ensure_entry_task();
     }
@@ -1106,15 +1107,32 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
   OPCODE_END();
 
   OPCODE_BEGIN(NON_LOCAL_RETURN);
+    // For 'continue.label' the pushed block is the block from which the
+    // non-local return should return.
+    int level = stack->local(0).block()->level();
     stack->pop();  // Pop block.
-    method->ret(propagator, stack);
+    if (level == 0) {
+      method->ret(propagator, stack);
+    } else {
+      // The worklists keep track of the blocks they correspond
+      // to. The outermost worklist has a null block because it 
+      // corresponds to a method.
+      BlockTemplate* block = worklists[level]->block();
+      block->ret(propagator, stack);
+    }
     scope->outer()->merge(scope, TypeScope::MERGE_UNWIND);
     return scope;
   OPCODE_END();
 
   OPCODE_BEGIN(NON_LOCAL_RETURN_WIDE);
+    int level = stack->local(0).block()->level();
     stack->pop();  // Pop block.
-    method->ret(propagator, stack);
+    if (level == 0) {
+      method->ret(propagator, stack);
+    } else {
+      BlockTemplate* block = worklists[level]->block();
+      block->ret(propagator, stack);
+    }
     scope->outer()->merge(scope, TypeScope::MERGE_UNWIND);
     return scope;
   OPCODE_END();
@@ -1166,7 +1184,7 @@ static TypeScope* process(TypeScope* scope, uint8* bcp, std::vector<Worklist*>& 
     // If the try-block is guaranteed to cause unwinding,
     // we avoid analyzing the bytecodes following this one.
     TypeSet target = stack->local(1);
-    bool unwind = !target.is_empty(program);
+    bool unwind = !target.is_empty(propagator->words_per_type());
     if (unwind) return scope;
     stack->pop();
     stack->pop();
@@ -1260,7 +1278,7 @@ void MethodTemplate::propagate() {
   }
 
   std::vector<Worklist*> worklists;
-  Worklist worklist(method_.entry(), scope);
+  Worklist worklist(method_.entry(), scope, null);
   worklists.push_back(&worklist);
 
   while (worklist.has_next()) {
@@ -1314,7 +1332,8 @@ void BlockTemplate::propagate(TypeScope* scope, std::vector<Worklist*>& worklist
     TypeScope* copy = scope->copy_lazy();
     TypeScope* inner = new TypeScope(this, copy, linked);
 
-    Worklist worklist(method_.entry(), inner);
+    ASSERT(level() == worklists.size() - 1);
+    Worklist worklist(method_.entry(), inner, this);
     worklists.push_back(&worklist);
 
     while (worklist.has_next()) {
