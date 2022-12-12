@@ -88,6 +88,9 @@ TypeScope::TypeScope(BlockTemplate* block, TypeScope* outer, bool linked)
   }
 }
 
+// This is the constructor used from TypeScope::copy_lazy(). If the
+// target scope is non-null, we only keep the outermost levels and
+// make the copied scope match the target.
 TypeScope::TypeScope(const TypeScope* source, const TypeScope* target)
     : words_per_type_(target->words_per_type_)
     , level_(target->level())
