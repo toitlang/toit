@@ -85,7 +85,7 @@ stop_unwinding tests/type_propagation/nlr_test.toit
  - argument 0: [block]
   0[020] - load literal hest
   2[017] - load local 3
-  3[005] - load outer S3
+  3[005] - load outer S3 // [block]
   5[090] - non-local return 16
   7[088] - return S1 1
 
@@ -125,7 +125,7 @@ stop_unwinding_alternative tests/type_propagation/nlr_test.toit
   7[041] - pop 1
   8[020] - load literal hest
  10[017] - load local 3
- 11[005] - load outer S3
+ 11[005] - load outer S3 // [block]
  13[090] - non-local return 16
  15[088] - return S1 1
 

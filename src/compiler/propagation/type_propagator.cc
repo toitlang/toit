@@ -254,7 +254,7 @@ void TypePropagator::propagate(TypeDatabase* types) {
   sites_.for_each([&](uint8* site, Set<TypeVariable*>& results) {
     type.clear(words_per_type());
     for (auto it = results.begin(); it != results.end(); it++) {
-      type.add_all((*it)->type(), words_per_type());
+      type.add_all_also_blocks((*it)->type(), words_per_type());
     }
     int position = program()->absolute_bci_from_bcp(site);
     types->add_usage(position, type);
@@ -572,13 +572,12 @@ void TypePropagator::load_outer(TypeScope* scope, uint8* site, int index) {
   TypeSet value = scope->load_outer(block, index);
   stack->pop();
   stack->push(value);
-  if (value.is_block()) return;
   // We keep track of the types we've seen for outer locals for
   // this particular access site. We use this merged type exclusively
   // for the output of the type propagator, so we don't actually
   // use the merged type anywhere in the analysis.
   TypeVariable* merged = this->outer(site);
-  merged->merge(this, value);
+  merged->type().add_all_also_blocks(value, words_per_type());
 }
 
 TypeVariable* TypePropagator::field(unsigned type, int index) {
@@ -1414,7 +1413,7 @@ void BlockTemplate::propagate(TypeScope* scope, std::vector<Worklist*>& worklist
     TypeScope* copy = scope->copy_lazy();
     TypeScope* inner = new TypeScope(this, copy, linked);
 
-    ASSERT(level() == worklists.size() - 1);
+    ASSERT(level() == static_cast<int>(worklists.size()) - 1);
     Worklist worklist(method_.entry(), inner, this);
     worklists.push_back(&worklist);
 
