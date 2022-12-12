@@ -106,7 +106,7 @@ void TypeSet::add_range(unsigned start, unsigned end) {
   }
 }
 
-void TypeSet::add_all_even_blocks(TypeSet other, int words) {
+void TypeSet::add_all_also_blocks(TypeSet other, int words) {
   if (other.is_block()) {
     if (is_empty(words)) {
       set_block(other.block());

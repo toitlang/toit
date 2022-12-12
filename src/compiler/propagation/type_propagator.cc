@@ -254,7 +254,7 @@ void TypePropagator::propagate(TypeDatabase* types) {
   sites_.for_each([&](uint8* site, Set<TypeVariable*>& results) {
     type.clear(words_per_type());
     for (auto it = results.begin(); it != results.end(); it++) {
-      type.add_all_even_blocks((*it)->type(), words_per_type());
+      type.add_all_also_blocks((*it)->type(), words_per_type());
     }
     int position = program()->absolute_bci_from_bcp(site);
     types->add_usage(position, type);
@@ -533,7 +533,7 @@ void TypePropagator::load_outer(TypeScope* scope, uint8* site, int index) {
   // for the output of the type propagator, so we don't actually
   // use the merged type anywhere in the analysis.
   TypeVariable* merged = this->outer(site);
-  merged->type().add_all_even_blocks(value, words_per_type());
+  merged->type().add_all_also_blocks(value, words_per_type());
 }
 
 TypeVariable* TypePropagator::field(unsigned type, int index) {

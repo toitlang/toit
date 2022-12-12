@@ -150,7 +150,7 @@ class TypeSet {
   bool add_bool(Program* program);
   void add_range(unsigned start, unsigned end);
 
-  void add_all_even_blocks(TypeSet other, int words);
+  void add_all_also_blocks(TypeSet other, int words);
 
   bool add_all(TypeSet other, int words) {
     ASSERT(!is_block());
