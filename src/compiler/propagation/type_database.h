@@ -16,6 +16,9 @@
 #pragma once
 
 #include "type_set.h"
+
+#include "../source_mapper.h"
+
 #include "../../objects.h"
 
 #include <unordered_map>
@@ -32,7 +35,7 @@ class TypeStack;
 
 class TypeDatabase {
  public:
-  static TypeDatabase* compute(Program* program);
+  static TypeDatabase* compute(Program* program, SourceMapper* source_mapper);
   ~TypeDatabase();
 
   const std::vector<Method> methods() const;
@@ -41,15 +44,20 @@ class TypeDatabase {
 
   std::string as_json() const;
 
+  // ...
+  void huha(Source::Range range);
+
  private:
   Program* const program_;
+  SourceMapper* const source_mapper_;
+
   const int words_per_type_;
   std::vector<TypeStack*> types_;
 
   std::unordered_map<int, TypeStack*> methods_;
   std::unordered_map<int, TypeSet> usage_;
 
-  TypeDatabase(Program* program, int words_per_type);
+  TypeDatabase(Program* program, SourceMapper* source_mapper, int words_per_type);
 
   void add_method(Method method);
   void add_argument(Method method, int n, const TypeSet type);

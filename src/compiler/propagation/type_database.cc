@@ -24,8 +24,9 @@ namespace compiler {
 
 static const int TYPES_BLOCK_SIZE = 1024;
 
-TypeDatabase::TypeDatabase(Program* program, int words_per_type)
+TypeDatabase::TypeDatabase(Program* program, SourceMapper* source_mapper, int words_per_type)
     : program_(program)
+    , source_mapper_(source_mapper)
     , words_per_type_(words_per_type) {
   add_types_block();
 }
@@ -36,9 +37,9 @@ TypeDatabase::~TypeDatabase() {
   }
 }
 
-TypeDatabase* TypeDatabase::compute(Program* program) {
+TypeDatabase* TypeDatabase::compute(Program* program, SourceMapper* source_mapper) {
   TypePropagator propagator(program);
-  TypeDatabase* types = new TypeDatabase(program, propagator.words_per_type());
+  TypeDatabase* types = new TypeDatabase(program, source_mapper, propagator.words_per_type());
   propagator.propagate(types);
   return types;
 }
@@ -72,6 +73,10 @@ const TypeSet TypeDatabase::usage(int position) const {
   } else {
     return probe->second;
   }
+}
+
+void TypeDatabase::huha(Source::Range range) {
+
 }
 
 std::string TypeDatabase::as_json() const {

@@ -84,7 +84,7 @@ class OptimizationVisitor : public ReplacingVisitor {
   UnorderedSet<Symbol> field_names_;
 };
 
-void optimize(Program* program) {
+void optimize(Program* program, TypeDatabase* propagated_types) {
   // The constant propagation runs independently, as it builds up its own
   // dependency graph.
   propagate_constants(program);
@@ -143,6 +143,13 @@ void optimize(Program* program) {
   visitor.set_class(null);
   for (auto method : program->methods()) {
     if (method->is_constructor()) continue;  // Already handled within the class.
+    //
+    //
+    if (propagated_types) {
+      propagated_types->huha(method->range());
+    }
+    //
+    //
     visitor.set_method(method);
     visitor.visit(method);
   }

@@ -102,6 +102,8 @@ class SourceMapper {
 
   explicit SourceMapper(SourceManager* manager) : manager_(manager) {}
 
+  SourceManager* manager() const { return manager_; }
+
   /// Returns a malloced buffer of the source-map.
   uint8* cook(int* size);
   MethodMapper register_method(ir::Method* method);

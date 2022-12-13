@@ -59,8 +59,6 @@ class ByteGen : private ir::Visitor {
                       int dispatch_offset,
                       bool is_field_accessor);
 
-  bool is_eager_global(ir::Global* global);
-
  private:
   int assemble_function(ir::Method* function,
                         int dispatch_offset,

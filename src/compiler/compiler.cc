@@ -89,6 +89,8 @@ struct PipelineConfiguration {
   bool werror;
   bool parse_only;
   bool is_for_analysis;
+  /// Optimization level.
+  int optimization_level;
 };
 
 class Pipeline {
@@ -377,6 +379,7 @@ void Compiler::language_server(const Compiler::Configuration& compiler_config) {
     .werror = compiler_config.werror,
     .parse_only = false,
     .is_for_analysis = true,
+    .optimization_level = compiler_config.optimization_level,
   };
 
   if (strcmp("ANALYZE", mode) == 0) {
@@ -546,6 +549,7 @@ void Compiler::analyze(List<const char*> source_paths,
     .werror = compiler_config.werror,
     .parse_only = false,
     .is_for_analysis = true,
+    .optimization_level = compiler_config.optimization_level,
   };
   Pipeline pipeline(configuration);
   pipeline.run(source_paths, false);
@@ -671,6 +675,7 @@ SnapshotBundle Compiler::compile(const char* source_path,
     .werror = compiler_config.werror,
     .parse_only = false,
     .is_for_analysis = false,
+    .optimization_level = compiler_config.optimization_level,
   };
 
   return compile(source_path, configuration);
@@ -1501,6 +1506,37 @@ static void check_sdk(const std::string& constraint, Diagnostics* diagnostics) {
   };
 }
 
+toit::Program* construct_program(ir::Program* ir_program,
+                                 SourceMapper* source_mapper,
+                                 TypeDatabase* propagated_types,
+                                 bool run_optimizations) {
+  source_mapper->register_selectors(ir_program->classes());
+
+  add_lambda_boxes(ir_program);
+  add_monitor_locks(ir_program);
+  add_stub_methods_and_switch_to_plain_shapes(ir_program);
+  add_interface_stub_methods(ir_program);
+
+  ASSERT(_sorted_by_inheritance(ir_program->classes()));
+
+  if (run_optimizations) optimize(ir_program, propagated_types);
+  tree_shake(ir_program);
+
+  // We assign the field ids very late in case we can inline field-accesses.
+  assign_field_indexes(ir_program->classes());
+  // Similarly, assign the global ids at the end, in case they can be tree
+  // shaken or inlined.
+  assign_global_ids(ir_program->globals());
+
+  // Mark globals that can be accessed directly without going through the
+  // lazy getter.
+  mark_eager_globals(ir_program->globals());
+
+  Backend backend(source_mapper->manager(), source_mapper);
+  auto program = backend.emit(ir_program);
+  return program;
+}
+
 Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
   auto fs = configuration_.filesystem;
   fs->initialize(diagnostics());
@@ -1571,36 +1607,23 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
     exit(1);
   }
 
-  SourceMapper source_mapper(source_manager());
-
-  source_mapper.register_selectors(ir_program->classes());
-
-  add_lambda_boxes(ir_program);
-  add_monitor_locks(ir_program);
-  add_stub_methods_and_switch_to_plain_shapes(ir_program);
-  add_interface_stub_methods(ir_program);
-
-  ASSERT(_sorted_by_inheritance(ir_program->classes()));
-
   // Only optimize the program, if we didn't encounter any errors.
   // If there was an error, we might not be able to trust the type annotations.
-  if (!diagnostics()->encountered_error()) {
-    optimize(ir_program);
+  bool run_optimizations = !diagnostics()->encountered_error() &&
+      configuration_.optimization_level >= 1;
+
+  SourceMapper source_mapper(source_manager());
+  auto program = construct_program(ir_program, &source_mapper, null, run_optimizations);
+
+  if (run_optimizations && configuration_.optimization_level >= 2) {
+    ir_program = resolve(units, ENTRY_UNIT_INDEX, CORE_UNIT_INDEX);
+    patch(ir_program);
+    ASSERT(!diagnostics()->encountered_error());
+    TypeDatabase* types = TypeDatabase::compute(program);
+    SourceMapper optimized_source_mapper(source_manager());
+    construct_program(ir_program, &optimized_source_mapper, types, true);
+    delete types;
   }
-  tree_shake(ir_program);
-
-  // We assign the field ids very late in case we can inline field-accesses.
-  assign_field_indexes(ir_program->classes());
-  // Similarly, assign the global ids at the end, in case they can be tree
-  // shaken or inlined.
-  assign_global_ids(ir_program->globals());
-
-  // Mark globals that can be accessed directly without going through the
-  //   lazy getter.
-  mark_eager_globals(ir_program->globals());
-
-  Backend backend(source_manager(), &source_mapper);
-  auto program = backend.emit(ir_program);
 
   if (propagate) {
     TypeDatabase* types = TypeDatabase::compute(program);
