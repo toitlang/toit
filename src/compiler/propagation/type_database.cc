@@ -17,10 +17,16 @@
 #include "type_propagator.h"
 #include "type_stack.h"
 
+#include "../source_mapper.h"
+
 #include <sstream>
 
 namespace toit {
 namespace compiler {
+
+#define BYTECODE_LENGTH(name, length, format, print) length,
+static int opcode_length[] { BYTECODES(BYTECODE_LENGTH) -1 };
+#undef BYTECODE_LENGTH
 
 static const int TYPES_BLOCK_SIZE = 1024;
 
@@ -75,8 +81,21 @@ const TypeSet TypeDatabase::usage(int position) const {
   }
 }
 
-void TypeDatabase::huha(Source::Range range) {
+bool TypeDatabase::is_dead(ir::Method* method) const {
+  if (method->is_IsInterfaceStub()) return false;
+  int id = source_mapper_->id_for_method(method);
+  if (id < 0) return true;
+  auto probe = methods_.find(id);
+  return probe == methods_.end();
+}
 
+bool TypeDatabase::does_not_return(ir::Call* call) const {
+  int id = source_mapper_->id_for_call(call);
+  if (id < 0) return true;
+  auto probe = return_types_.find(id);
+  if (probe == return_types_.end()) return true;
+  TypeSet type = probe->second;
+  return type.is_empty(words_per_type_);
 }
 
 std::string TypeDatabase::as_json() const {
@@ -140,7 +159,10 @@ void TypeDatabase::add_argument(Method method, int n, const TypeSet type) {
 
 void TypeDatabase::add_usage(int position, const TypeSet type) {
   ASSERT(usage_.find(position) == usage_.end());
-  usage_.emplace(position, copy_type(type));
+  TypeSet copy = copy_type(type);
+  usage_.emplace(position, copy);
+  uint8 opcode = *(program_->bcp_from_absolute_bci(position));
+  return_types_.emplace(position + opcode_length[opcode], copy);
 }
 
 TypeSet TypeDatabase::copy_type(const TypeSet type) {

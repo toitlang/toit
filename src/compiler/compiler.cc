@@ -1476,6 +1476,11 @@ static void assign_global_ids(List<ir::Global*> globals) {
 static void mark_eager_globals(List<ir::Global*> globals) {
   for (auto global : globals) {
     auto body = global->body();
+    if (body->is_Sequence()) {
+      List<ir::Expression*> sequence = body->as_Sequence()->expressions();
+      if (sequence.length() != 1) continue;
+      body = sequence[0];
+    }
     if (!body->is_Return()) continue;
     auto value = body->as_Return()->value();
     if (value->is_Literal()) {
@@ -1612,21 +1617,23 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
   bool run_optimizations = !diagnostics()->encountered_error() &&
       configuration_.optimization_level >= 1;
 
-  SourceMapper source_mapper(source_manager());
-  auto program = construct_program(ir_program, &source_mapper, null, run_optimizations);
+  SourceMapper unoptimized_source_mapper(source_manager());
+  auto source_mapper = &unoptimized_source_mapper;
+  auto program = construct_program(ir_program, source_mapper, null, run_optimizations);
 
+  SourceMapper optimized_source_mapper(source_manager());
   if (run_optimizations && configuration_.optimization_level >= 2) {
     ir_program = resolve(units, ENTRY_UNIT_INDEX, CORE_UNIT_INDEX);
     patch(ir_program);
     ASSERT(!diagnostics()->encountered_error());
-    TypeDatabase* types = TypeDatabase::compute(program);
-    SourceMapper optimized_source_mapper(source_manager());
-    construct_program(ir_program, &optimized_source_mapper, types, true);
+    TypeDatabase* types = TypeDatabase::compute(program, source_mapper);
+    source_mapper = &optimized_source_mapper;
+    program = construct_program(ir_program, source_mapper, types, true);
     delete types;
   }
 
   if (propagate) {
-    TypeDatabase* types = TypeDatabase::compute(program);
+    TypeDatabase* types = TypeDatabase::compute(program, null);
     auto json = types->as_json();
     printf("%s", json.c_str());
     delete types;
@@ -1635,7 +1642,7 @@ Pipeline::Result Pipeline::run(List<const char*> source_paths, bool propagate) {
   SnapshotGenerator generator(program);
   generator.generate(program);
   int source_map_size;
-  uint8* source_map_data = source_mapper.cook(&source_map_size);
+  uint8* source_map_data = source_mapper->cook(&source_map_size);
   int snapshot_size;
   uint8* snapshot = generator.take_buffer(&snapshot_size);
   return {

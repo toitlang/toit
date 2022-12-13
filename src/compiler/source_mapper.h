@@ -30,6 +30,7 @@ class Global;
 class Method;
 class Code;
 class Class;
+class Call;
 }  // namespace toit::compiler::ir
 
 class SourceInfoCollector;
@@ -122,6 +123,9 @@ class SourceMapper {
     if (probe == class_information_.end()) return -1;
     return probe->second.id;
   }
+
+  int id_for_method(ir::Method* method);
+  int id_for_call(ir::Call* call);
 
   void register_selector_offset(int offset, const char* name) {
     selector_offsets_[offset] = name;

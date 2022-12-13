@@ -20,18 +20,25 @@ namespace compiler {
 
 using namespace ir;
 
-static bool expression_terminates(Expression* expression, Program* program) {
+static bool expression_terminates(Expression* expression,
+                                  Program* program,
+                                  TypeDatabase* propagated_types) {
   if (expression->is_Return()) return true;
   if (expression->is_If() &&
-      expression_terminates(expression->as_If()->no(), program) &&
-      expression_terminates(expression->as_If()->yes(), program)) {
+      expression_terminates(expression->as_If()->no(), program, propagated_types) &&
+      expression_terminates(expression->as_If()->yes(), program, propagated_types)) {
     return true;
   }
   if (expression->is_Sequence()) {
     // We know that all subexpressions are already optimized. As such, we only need to check
     //   the last expression in the list of subexpressions.
     List<Expression*> subexpressions = expression->as_Sequence()->expressions();
-    return !subexpressions.is_empty() && expression_terminates(subexpressions.last(), program);
+    return !subexpressions.is_empty() &&
+        expression_terminates(subexpressions.last(), program, propagated_types);
+  }
+  if (propagated_types != null && expression->is_Call()) {
+    if (expression->is_CallBuiltin()) return false;
+    return propagated_types->does_not_return(expression->as_Call());
   }
   if (expression->is_CallStatic()) {
     auto target_method = expression->as_CallStatic()->target()->target();
@@ -51,7 +58,9 @@ static bool is_dead_code(Expression* expression) {
       expression->is_Nop();
 }
 
-ir::Sequence* eliminate_dead_code(Sequence* node, Program* program) {
+ir::Sequence* eliminate_dead_code(Sequence* node,
+                                  Program* program,
+                                  TypeDatabase* propagated_types) {
   List<Expression*> expressions = node->expressions();
   int target_index = 0;
   for (int i = 0; i < expressions.length(); i++) {
@@ -65,7 +74,7 @@ ir::Sequence* eliminate_dead_code(Sequence* node, Program* program) {
   }
 
   for (int i = 0; i < expressions.length() - 1; i++) {
-    if (expression_terminates(expressions[i], program)) {
+    if (expression_terminates(expressions[i], program, propagated_types)) {
       return _new Sequence(expressions.sublist(0, i + 1), node->range());
     }
   }

@@ -388,6 +388,33 @@ void SourceMapper::add_global_entry(ir::Global* global) {
   });
 }
 
+int SourceMapper::id_for_method(ir::Method* method) {
+  auto location = manager_->compute_location(method->range().from());
+  for (auto it : source_information_) {
+    if (strcmp(it.absolute_path, location.source->absolute_path()) != 0) continue;
+    FilePosition position = it.position;
+    if (position.line != location.line_number) continue;
+    if (position.column != location.offset_in_line + 1) continue;
+    return it.id;
+  }
+  return -1;
+}
+
+int SourceMapper::id_for_call(ir::Call* call) {
+  auto location = manager_->compute_location(call->range().from());
+  for (auto it : source_information_) {
+    if (strcmp(it.absolute_path, location.source->absolute_path()) != 0) continue;
+    for (auto pair : it.bytecode_positions) {
+      FilePosition position = pair.second;
+      if (position.line != location.line_number) continue;
+      if (position.column != location.offset_in_line + 1) continue;
+      int p = it.id + 4 + pair.first;
+      return p;
+    }
+  }
+  return -1;
+}
+
 SourceMapper::MethodMapper SourceMapper::register_method(ir::Method* method) {
   int index = source_information_.size();
   auto name = method->name().c_str();

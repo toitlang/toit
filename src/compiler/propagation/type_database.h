@@ -17,8 +17,7 @@
 
 #include "type_set.h"
 
-#include "../source_mapper.h"
-
+#include "../ir.h"
 #include "../../objects.h"
 
 #include <unordered_map>
@@ -32,6 +31,7 @@ class Program;
 namespace compiler {
 
 class TypeStack;
+class SourceMapper;
 
 class TypeDatabase {
  public:
@@ -41,11 +41,13 @@ class TypeDatabase {
   const std::vector<Method> methods() const;
   const std::vector<TypeSet> arguments(Method method) const;
   const TypeSet usage(int position) const;
+  const TypeSet return_type(int position) const;
 
   std::string as_json() const;
 
   // ...
-  void huha(Source::Range range);
+  bool is_dead(ir::Method* method) const;
+  bool does_not_return(ir::Call* call) const;
 
  private:
   Program* const program_;
@@ -56,6 +58,7 @@ class TypeDatabase {
 
   std::unordered_map<int, TypeStack*> methods_;
   std::unordered_map<int, TypeSet> usage_;
+  std::unordered_map<int, TypeSet> return_types_;
 
   TypeDatabase(Program* program, SourceMapper* source_mapper, int words_per_type);
 

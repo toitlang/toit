@@ -600,6 +600,9 @@ class Method : public Node {
 
   void replace_body(Expression* new_body) { body_ = new_body; }
 
+  bool is_dead() const { return is_dead_; }
+  void kill() { is_dead_ = true; }
+
   List<Parameter*> parameters() const { return parameters_; }
   void set_parameters(List<Parameter*> parameters) {
     ASSERT(_parameters_have_correct_index(parameters));
@@ -643,6 +646,7 @@ class Method : public Node {
 
   List<Parameter*> parameters_;
   Expression* body_;
+  bool is_dead_ = false;
 
   static bool _parameters_have_correct_index(List<Parameter*> parameters);
 
