@@ -915,6 +915,7 @@ class FieldStore : public Expression {
   Field* field() const { return field_; }
   Expression* value() const { return value_; }
 
+  void replace_receiver(Expression* new_receiver) { receiver_ = new_receiver; }
   void replace_value(Expression* new_value) { value_ = new_value; }
 
   bool is_box_store() const { return is_box_store_; }
