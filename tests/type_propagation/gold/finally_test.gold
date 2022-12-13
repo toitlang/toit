@@ -1,27 +1,27 @@
 main tests/type_propagation/finally_test.toit
-  0[053] - invoke static test_is_exception tests/type_propagation/finally_test.toit
-  3[041] - pop 1 // {Null_}
-  4[053] - invoke static test_exception tests/type_propagation/finally_test.toit
-  7[041] - pop 1 // {Null_}
-  8[053] - invoke static test_catchy tests/type_propagation/finally_test.toit
- 11[041] - pop 1 // {Null_}
- 12[053] - invoke static test_nlb_out_of_try tests/type_propagation/finally_test.toit
- 15[089] - return null S1 0 // {Null_}
+  0[053] - invoke static test_is_exception tests/type_propagation/finally_test.toit // {Null_}
+  3[041] - pop 1
+  4[053] - invoke static test_exception tests/type_propagation/finally_test.toit // {Null_}
+  7[041] - pop 1
+  8[053] - invoke static test_catchy tests/type_propagation/finally_test.toit // {Null_}
+ 11[041] - pop 1
+ 12[053] - invoke static test_nlb_out_of_try tests/type_propagation/finally_test.toit // {Null_}
+ 15[089] - return null S1 0
 
 test_is_exception tests/type_propagation/finally_test.toit
-  0[053] - invoke static return_is_exception tests/type_propagation/finally_test.toit
-  3[041] - pop 1 // {True_|False_}
+  0[053] - invoke static return_is_exception tests/type_propagation/finally_test.toit // {True_|False_}
+  3[041] - pop 1
   4[022] - load null
   5[029] - load [block] in test_is_exception tests/type_propagation/finally_test.toit
  10[094] - link try 0
  12[038] - load block 4
- 14[055] - invoke block S1
- 16[041] - pop 1 // {Null_}
+ 14[055] - invoke block S1 // {Null_}
+ 16[041] - pop 1
  17[095] - unlink try 0
  19[020] - load literal -2
  21[015] - load local 1
- 22[062] - invoke eq
- 23[022] - load null // {True_|False_}
+ 22[062] - invoke eq // {True_|False_}
+ 23[022] - load null
  24[015] - load local 1
  25[082] - branch if false T30
  28[002] - pop, load local S3
@@ -30,8 +30,8 @@ test_is_exception tests/type_propagation/finally_test.toit
  33[040] - pop 2
  35[096] - unwind
  36[002] - pop, load local S0
- 38[053] - invoke static id tests/type_propagation/finally_test.toit
- 41[089] - return null S2 0 // {True_|False_}
+ 38[053] - invoke static id tests/type_propagation/finally_test.toit // {True_|False_}
+ 41[089] - return null S2 0
 
 [block] in test_is_exception tests/type_propagation/finally_test.toit
  - argument 0: [block]
@@ -42,13 +42,13 @@ return_is_exception tests/type_propagation/finally_test.toit
   0[029] - load [block] in return_is_exception tests/type_propagation/finally_test.toit
   5[094] - link try 0
   7[038] - load block 4
-  9[055] - invoke block S1
- 11[041] - pop 1 // {Null_}
+  9[055] - invoke block S1 // {Null_}
+ 11[041] - pop 1
  12[095] - unlink try 0
  14[020] - load literal -2
  16[015] - load local 1
- 17[062] - invoke eq
- 18[022] - load null // {True_|False_}
+ 17[062] - invoke eq // {True_|False_}
+ 18[022] - load null
  19[015] - load local 1
  20[082] - branch if false T25
  23[002] - pop, load local S3
@@ -63,19 +63,19 @@ return_is_exception tests/type_propagation/finally_test.toit
   1[088] - return S1 1
 
 test_exception tests/type_propagation/finally_test.toit
-  0[053] - invoke static return_exception tests/type_propagation/finally_test.toit
-  3[041] - pop 1 // {Null_|Exception_}
+  0[053] - invoke static return_exception tests/type_propagation/finally_test.toit // {Null_|Exception_}
+  3[041] - pop 1
   4[022] - load null
   5[029] - load [block] in test_exception tests/type_propagation/finally_test.toit
  10[094] - link try 0
  12[038] - load block 4
- 14[055] - invoke block S1
- 16[041] - pop 1 // {Null_}
+ 14[055] - invoke block S1 // {Null_}
+ 16[041] - pop 1
  17[095] - unlink try 0
  19[020] - load literal -2
  21[015] - load local 1
- 22[062] - invoke eq
- 23[022] - load null // {True_|False_}
+ 22[062] - invoke eq // {True_|False_}
+ 23[022] - load null
  24[015] - load local 1
  25[082] - branch if false T30
  28[002] - pop, load local S3
@@ -84,8 +84,8 @@ test_exception tests/type_propagation/finally_test.toit
  33[040] - pop 2
  35[096] - unwind
  36[002] - pop, load local S0
- 38[053] - invoke static id tests/type_propagation/finally_test.toit
- 41[089] - return null S2 0 // {Null_|Exception_}
+ 38[053] - invoke static id tests/type_propagation/finally_test.toit // {Null_|Exception_}
+ 41[089] - return null S2 0
 
 [block] in test_exception tests/type_propagation/finally_test.toit
  - argument 0: [block]
@@ -96,13 +96,13 @@ return_exception tests/type_propagation/finally_test.toit
   0[029] - load [block] in return_exception tests/type_propagation/finally_test.toit
   5[094] - link try 0
   7[038] - load block 4
-  9[055] - invoke block S1
- 11[041] - pop 1 // {Null_}
+  9[055] - invoke block S1 // {Null_}
+ 11[041] - pop 1
  12[095] - unlink try 0
  14[020] - load literal -2
  16[015] - load local 1
- 17[062] - invoke eq
- 18[022] - load null // {True_|False_}
+ 17[062] - invoke eq // {True_|False_}
+ 18[022] - load null
  19[015] - load local 1
  20[082] - branch if false T25
  23[002] - pop, load local S3
@@ -117,20 +117,20 @@ return_exception tests/type_propagation/finally_test.toit
   1[088] - return S1 1
 
 test_catchy tests/type_propagation/finally_test.toit
-  0[053] - invoke static catchy tests/type_propagation/finally_test.toit
-  3[089] - return null S1 0 // {Null_|True_|False_}
+  0[053] - invoke static catchy tests/type_propagation/finally_test.toit // {Null_|True_|False_}
+  3[089] - return null S1 0
 
 catchy tests/type_propagation/finally_test.toit
   0[029] - load [block] in catchy tests/type_propagation/finally_test.toit
   5[094] - link try 0
   7[038] - load block 4
-  9[055] - invoke block S1
- 11[041] - pop 1 // {}
+  9[055] - invoke block S1 // {}
+ 11[041] - pop 1
  12[095] - unlink try 0
  14[020] - load literal -2
  16[015] - load local 1
- 17[062] - invoke eq
- 18[022] - load null // {True_|False_}
+ 17[062] - invoke eq // {True_|False_}
+ 18[022] - load null
  19[015] - load local 1
  20[082] - branch if false T25
  23[002] - pop, load local S3
@@ -151,12 +151,12 @@ test_nlb_out_of_try tests/type_propagation/finally_test.toit
   2[029] - load [block] in test_nlb_out_of_try tests/type_propagation/finally_test.toit
   7[094] - link try 0
   9[038] - load block 4
- 11[055] - invoke block S1
- 13[041] - pop 1 // {Null_}
+ 11[055] - invoke block S1 // {Null_}
+ 13[041] - pop 1
  14[095] - unlink try 0
  16[018] - load local 4
- 17[053] - invoke static id tests/type_propagation/finally_test.toit
- 20[041] - pop 1 // {String_|Null_|SmallInteger_}
+ 17[053] - invoke static id tests/type_propagation/finally_test.toit // {String_|Null_|SmallInteger_}
+ 20[041] - pop 1
  21[096] - unwind
  22[089] - return null S2 0
 
@@ -164,19 +164,19 @@ test_nlb_out_of_try tests/type_propagation/finally_test.toit
  - argument 0: [block]
   0[029] - load [block] in [block] in test_nlb_out_of_try tests/type_propagation/finally_test.toit
   5[038] - load block 0
-  7[053] - invoke static invoke tests/type_propagation/finally_test.toit
- 10[040] - pop 2 // {}
+  7[053] - invoke static invoke tests/type_propagation/finally_test.toit // {}
+ 10[040] - pop 2
  12[083] - branch back T0
  17[016] - load local 2
  18[020] - load literal hest
  20[006] - store outer S1
  22[041] - pop 1
- 23[053] - invoke static pick tests/type_propagation/finally_test.toit
- 26[082] - branch if false T41 // {True_|False_}
+ 23[053] - invoke static pick tests/type_propagation/finally_test.toit // {True_|False_}
+ 26[082] - branch if false T41
  29[029] - load [block] in [block] in test_nlb_out_of_try tests/type_propagation/finally_test.toit
  34[038] - load block 0
- 36[053] - invoke static invoke tests/type_propagation/finally_test.toit
- 39[040] - pop 2 // {}
+ 36[053] - invoke static invoke tests/type_propagation/finally_test.toit // {}
+ 39[040] - pop 2
  41[016] - load local 2
  42[022] - load null
  43[006] - store outer S1
@@ -203,13 +203,13 @@ id tests/type_propagation/finally_test.toit
 
 pick tests/type_propagation/finally_test.toit
   0[026] - load smi 100
-  2[053] - invoke static random <sdk>/core/utils.toit
-  5[026] - load smi 50 // {LargeInteger_|SmallInteger_}
-  7[063] - invoke lt
-  8[088] - return S1 0 // {True_|False_}
+  2[053] - invoke static random <sdk>/core/utils.toit // {LargeInteger_|SmallInteger_}
+  5[026] - load smi 50
+  7[063] - invoke lt // {True_|False_}
+  8[088] - return S1 0
 
 invoke tests/type_propagation/finally_test.toit
  - argument 0: [block]
   0[016] - load local 2
-  1[055] - invoke block S1
-  3[089] - return null S1 1 // {}
+  1[055] - invoke block S1 // {}
+  3[089] - return null S1 1

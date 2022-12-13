@@ -22,6 +22,10 @@
 namespace toit {
 namespace compiler {
 
+#define BYTECODE_LENGTH(name, length, format, print) length,
+static int opcode_length[] { BYTECODES(BYTECODE_LENGTH) -1 };
+#undef BYTECODE_LENGTH
+
 static const int TYPES_BLOCK_SIZE = 1024;
 std::unordered_map<Program*, TypeDatabase*> TypeDatabase::cache_;
 
@@ -38,6 +42,27 @@ TypeDatabase::~TypeDatabase() {
 }
 
 void TypeDatabase::check_top(uint8* bcp, Object* value) const {
+  int position = program_->absolute_bci_from_bcp(bcp);
+  auto probe = usage_.find(position);
+  if (probe == usage_.end()) {
+    FATAL("usage not analyzed: %d", position);
+  }
+  TypeSet type = probe->second;
+  if (type.is_block()) {
+    // TODO(kasper): We should improve the type check
+    // for blocks and verify that they point into the
+    // right stack section.
+    if (is_smi(value)) return;
+    FATAL("expected a block at %d", position);
+  }
+  Smi* class_id = is_smi(value)
+      ? program_->smi_class_id()
+      : HeapObject::cast(value)->class_id();
+  if (type.contains(class_id->value())) return;
+  FATAL("didn't expect %d at %d", class_id->value(), position);
+}
+
+void TypeDatabase::check_return(uint8* bcp, Object* value) const {
   // TODO(kasper): This isn't super nice, but we have to avoid
   // getting hung up over the intrinsic bytecodes. We sometimes
   // return from a block and restart at the intrinsic bytecode,
@@ -48,9 +73,9 @@ void TypeDatabase::check_top(uint8* bcp, Object* value) const {
   if (opcode > HALT) return;
 
   int position = program_->absolute_bci_from_bcp(bcp);
-  auto probe = usage_.find(position);
-  if (probe == usage_.end()) {
-    FATAL("usage not analyzed: %d", position);
+  auto probe = returns_.find(position);
+  if (probe == returns_.end()) {
+    FATAL("return site not analyzed: %d", position);
   }
   TypeSet type = probe->second;
   if (type.is_block()) {
@@ -202,7 +227,10 @@ void TypeDatabase::add_argument(Method method, int n, const TypeSet type) {
 
 void TypeDatabase::add_usage(int position, const TypeSet type) {
   ASSERT(usage_.find(position) == usage_.end());
-  usage_.emplace(position, copy_type(type));
+  TypeSet copy = copy_type(type);
+  uint8 opcode = *(program_->bcp_from_absolute_bci(position));
+  usage_.emplace(position, copy);
+  returns_.emplace(position + opcode_length[opcode], copy);
 }
 
 TypeSet TypeDatabase::copy_type(const TypeSet type) {

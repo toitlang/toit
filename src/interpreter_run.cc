@@ -179,9 +179,14 @@ Method Program::find_method(Object* receiver, int offset) {
   if (propagated_types) {                             \
     propagated_types->check_top(bcp, *sp);            \
   }
+#define CHECK_PROPAGATED_TYPES_RETURN()               \
+  if (propagated_types) {                             \
+    propagated_types->check_return(bcp, *sp);         \
+  }
 #else
 #define CHECK_PROPAGATED_TYPES_METHOD_ENTRY(target)
 #define CHECK_PROPAGATED_TYPES_TOP()
+#define CHECK_PROPAGATED_TYPES_RETURN()
 #endif
 
 #define CALL_METHOD_WITH_RETURN_ADDRESS(target, return_address)       \
@@ -269,8 +274,7 @@ Interpreter::Result Interpreter::run() {
   // Interpretation state.
   Program* program = process_->program();
 #ifdef TOIT_CHECK_PROPAGATED_TYPES
-  compiler::TypeDatabase* propagated_types =
-      compiler::TypeDatabase::compute(program);
+  compiler::TypeDatabase* propagated_types = compiler::TypeDatabase::compute(program);
 #endif
   preemption_method_header_bcp_ = null;
   uword index__ = 0;
@@ -1075,8 +1079,8 @@ Interpreter::Result Interpreter::run() {
       ASSERT(!is_stack_empty());
       PUSH(result);
       process_->object_heap()->check_install_heap_limit();
+      CHECK_PROPAGATED_TYPES_RETURN();
       DISPATCH(0);
-      CHECK_PROPAGATED_TYPES_TOP();
     }
   OPCODE_END();
 
@@ -1106,7 +1110,7 @@ Interpreter::Result Interpreter::run() {
     DROP(arity);
     ASSERT(!is_stack_empty());
     PUSH(result);
-    CHECK_PROPAGATED_TYPES_TOP();
+    CHECK_PROPAGATED_TYPES_RETURN();
     DISPATCH(0);
   OPCODE_END();
 
@@ -1124,7 +1128,7 @@ Interpreter::Result Interpreter::run() {
     DROP(arity);
     ASSERT(!is_stack_empty());
     PUSH(program->null_object());
-    CHECK_PROPAGATED_TYPES_TOP();
+    CHECK_PROPAGATED_TYPES_RETURN();
     DISPATCH(0);
   OPCODE_END();
 
@@ -1282,7 +1286,7 @@ Interpreter::Result Interpreter::run() {
       ASSERT(!is_stack_empty());
       PUSH(result_or_height_diff);
       if (tos_value != UNWIND_REASON_WHEN_THROWING_EXCEPTION) {
-        CHECK_PROPAGATED_TYPES_TOP();
+        CHECK_PROPAGATED_TYPES_RETURN();
       }
     } else {
       // A non-local branch.
@@ -1374,6 +1378,7 @@ Interpreter::Result Interpreter::run() {
       DROP1();
       ASSERT(!is_stack_empty());
       STACK_AT_PUT(0, program->null_object());
+      // CHECK_PROPAGATED_TYPES_RETURN();
       DISPATCH(0);
     }
 
@@ -1414,6 +1419,7 @@ Interpreter::Result Interpreter::run() {
       DROP(2);
       ASSERT(!is_stack_empty());
       STACK_AT_PUT(0, program->null_object());
+      // CHECK_PROPAGATED_TYPES_RETURN();
       DISPATCH(0);
     }
 
@@ -1488,8 +1494,8 @@ Interpreter::Result Interpreter::run() {
     DROP(NUMBER_OF_ARGUMENTS - 1);
     ASSERT(!is_stack_empty());
     STACK_AT_PUT(0, return_value);
+    // CHECK_PROPAGATED_TYPES_RETURN();
     DISPATCH(0);
-    UNREACHABLE();
   OPCODE_END();
 
   OPCODE_BEGIN(INTRINSIC_HASH_FIND); {
@@ -1505,6 +1511,7 @@ Interpreter::Result Interpreter::run() {
       bcp = reinterpret_cast<uint8*>(POP());
       ASSERT(!is_stack_empty());
       STACK_AT_PUT(0, result);
+      // CHECK_PROPAGATED_TYPES_RETURN();
       DISPATCH(0);
     } else {
       ASSERT(action == kCallBlockThenRestartBytecode);
