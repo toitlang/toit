@@ -81,10 +81,10 @@ SystemMessage* Scheduler::new_process_message(SystemMessage::Type type, int gid)
   // We must encode a proper message in the data. Otherwise, we cannot free it
   // later without running into issues when we traverse the data to find pointers
   // to external memory areas.
-  MessageEncoder::encode_process_message(data, 0);
+  MessageEncoder::encode_process_message(data, 0);  // Does not take over data.
 
-  SystemMessage* result = _new SystemMessage(type, gid, -1, data);
-  if (result == NULL) {
+  SystemMessage* result = _new SystemMessage(type, gid, -1, data);  // Takes over data.
+  if (result == null) {
     free(data);
   }
   return result;
@@ -103,11 +103,10 @@ Process* Scheduler::new_boot_process(Locker& locker, Program* program, int group
 
   ProcessGroup* group = ProcessGroup::create(group_id, program);
   SystemMessage* termination = new_process_message(SystemMessage::TERMINATED, group_id);
-  Object** global_variables = program->global_variables.copy();
-  ASSERT(global_variables);  // Booting system.
-  Process* process = _new Process(program, group, termination, manager.initial_chunk, global_variables);
+  manager.global_variables = program->global_variables.copy();
+  ASSERT(manager.global_variables);  // Booting system.
+  Process* process = _new Process(program, group, termination, &manager);
   ASSERT(process);
-  manager.dont_auto_free();
   // Start the boot process with a high priority. It can always
   // be adjusted later if necessary.
   update_priority(locker, process, Process::PRIORITY_HIGH);
@@ -209,18 +208,18 @@ int Scheduler::next_group_id() {
   return next_group_id_++;
 }
 
-int Scheduler::run_program(Program* program, uint8* arguments, ProcessGroup* group, Chunk* initial_chunk, Object** global_variables) {
+int Scheduler::run_program(Program* program, MessageEncoder* arguments, ProcessGroup* group, InitialMemoryManager* initial_memory) {
   Locker locker(mutex_);
   SystemMessage* termination = new_process_message(SystemMessage::TERMINATED, group->id());
   if (termination == null) {
     return INVALID_PROCESS_ID;
   }
-  Process* process = _new Process(program, group, termination, initial_chunk, global_variables);
+  Process* process = _new Process(program, group, termination, initial_memory);  // Takes over initial_memory.
   if (process == null) {
     delete termination;
     return INVALID_PROCESS_ID;
   }
-  process->set_main_arguments(arguments);
+  process->set_main_arguments(arguments->take_buffer());  // Neuters the encoder.
 
   Interpreter interpreter;
   interpreter.activate(process);
@@ -261,7 +260,10 @@ scheduler_err_t Scheduler::send_system_message(SystemMessage* message) {
 scheduler_err_t Scheduler::send_message(ProcessGroup* group, int process_id, Message* message) {
   Locker locker(mutex_);
   Process* p = group->lookup(process_id);
-  if (p == null) return MESSAGE_NO_SUCH_RECEIVER;
+  if (p == null) {
+    delete message;
+    return MESSAGE_NO_SUCH_RECEIVER;
+  }
   p->_append_message(message);
   process_ready(locker, p);
   return MESSAGE_OK;
@@ -270,7 +272,10 @@ scheduler_err_t Scheduler::send_message(ProcessGroup* group, int process_id, Mes
 scheduler_err_t Scheduler::send_message(int process_id, Message* message) {
   Locker locker(mutex_);
   Process* p = find_process(locker, process_id);
-  if (p == null) return MESSAGE_NO_SUCH_RECEIVER;
+  if (p == null) {
+    delete message;
+    return MESSAGE_NO_SUCH_RECEIVER;
+  }
   p->_append_message(message);
   process_ready(locker, p);
   return MESSAGE_OK;
@@ -325,18 +330,19 @@ bool Scheduler::signal_process(Process* sender, int target_id, Process::Signal s
 }
 
 int Scheduler::spawn(Program* program, ProcessGroup* process_group, int priority,
-                     Method method, uint8* arguments, Chunk* initial_chunk, Object** global_variables) {
+                     Method method, MessageEncoder* arguments, InitialMemoryManager* initial_memory) {
   Locker locker(mutex_);
 
   SystemMessage* termination = new_process_message(SystemMessage::TERMINATED, process_group->id());
   if (!termination) return INVALID_PROCESS_ID;
 
-  Process* process = _new Process(program, process_group, termination, method, initial_chunk, global_variables);
+  // Takes over the initial_memory.
+  Process* process = _new Process(program, process_group, termination, method, initial_memory);
   if (!process) {
     delete termination;
     return INVALID_PROCESS_ID;
   }
-  process->set_spawn_arguments(arguments);
+  process->set_spawn_arguments(arguments->take_buffer());  // Neuters the encoder.
 
   SystemMessage* spawned = new_process_message(SystemMessage::SPAWNED, process_group->id());
   if (!spawned) {

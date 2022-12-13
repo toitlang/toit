@@ -59,10 +59,10 @@ class Process : public ProcessListFromProcessGroup::Element,
   static const char* StateName[];
 
   // Constructor for an internal process based on Toit code.
-  Process(Program* program, ProcessGroup* group, SystemMessage* termination, Chunk* initial_chunk, Object** global_variables);
+  Process(Program* program, ProcessGroup* group, SystemMessage* termination, InitialMemoryManager* initial_memory);
 
   // Constructor for an internal process spawned from Toit code.
-  Process(Program* program, ProcessGroup* group, SystemMessage* termination, Method method, Chunk* initial_chunk, Object** global_variables);
+  Process(Program* program, ProcessGroup* group, SystemMessage* termination, Method method, InitialMemoryManager* initial_memory);
 
   // Constructor for an external process with no Toit code.
   Process(ProcessRunner* runner, ProcessGroup* group, SystemMessage* termination);
@@ -136,7 +136,7 @@ class Process : public ProcessListFromProcessGroup::Element,
   SystemMessage* take_termination_message(uint8 result);
 
   uint64_t random();
-  void random_seed(const uint8_t* buffer, size_t size);
+  void random_seed(const uint8* buffer, size_t size);
 
   State state() { return state_; }
   void set_state(State state) { state_ = state; }
@@ -236,7 +236,7 @@ class Process : public ProcessListFromProcessGroup::Element,
   }
 
  private:
-  Process(Program* program, ProcessRunner* runner, ProcessGroup* group, SystemMessage* termination, Chunk* initial_chunk, Object** global_variables);
+  Process(Program* program, ProcessRunner* runner, ProcessGroup* group, SystemMessage* termination, InitialMemoryManager* initial_memory);
   void _append_message(Message* message);
   void _ensure_random_seeded();
 
@@ -304,14 +304,15 @@ class AllocationManager {
     , size_(0)
     , process_(process) {}
 
-  AllocationManager(Process* process, void* ptr, word size)
-    : ptr_(ptr)
+  template<typename T>
+  AllocationManager(Process* process, T* ptr, word size=0)
+    : ptr_(void_cast(ptr))
     , size_(size)
     , process_(process) {
     process->register_external_allocation(size);
   }
 
-  uint8_t* alloc(word length) {
+  uint8* alloc(word length) {
     ASSERT(ptr_ == null);
     bool ok = process_->should_allow_external_allocation(length);
     if (!ok) {
@@ -327,15 +328,15 @@ class AllocationManager {
       size_ = length;
     }
 
-    return unvoid_cast<uint8_t*>(ptr_);
+    return unvoid_cast<uint8*>(ptr_);
   }
 
   static uint8* reallocate(uint8* old_allocation, word new_size) {
     return unvoid_cast<uint8*>(::realloc(old_allocation, new_size));
   }
 
-  uint8_t* calloc(word length, word size) {
-    uint8_t* allocation = alloc(length * size);
+  uint8* calloc(word length, word size) {
+    uint8* allocation = alloc(length * size);
     if (allocation != null) {
       ASSERT(size_ == length * size);
       memset(allocation, 0, size_);
@@ -350,10 +351,10 @@ class AllocationManager {
     }
   }
 
-  uint8_t* keep_result() {
+  uint8* keep_result() {
     void* result = ptr_;
     ptr_ = null;
-    return unvoid_cast<uint8_t*>(result);
+    return unvoid_cast<uint8*>(result);
   }
 
  private:

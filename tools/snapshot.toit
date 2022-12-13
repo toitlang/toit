@@ -532,7 +532,12 @@ class ToitMethod:
     else if format == OP_SS:
       line += " S$(method.uint16 bci + 1)"
     else if format == OP_BL:
-      line += " $program.literals[index]"
+      if index == 0:
+        line += " true"
+      else if index == 1:
+        line += " false"
+      else:
+        line += " $program.literals[index]"
     else if format == OP_SL:
       line += " $program.literals[method.uint16 bci + 1]"
     else if format == OP_BC:

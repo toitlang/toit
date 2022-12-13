@@ -67,30 +67,45 @@ class NestingTracker {
   int* nesting_;
 };
 
+SystemMessage::SystemMessage(int type, int gid, int pid, MessageEncoder* encoder)
+    : type_(type)
+    , gid_(gid)
+    , pid_(pid)
+    , data_(encoder->take_buffer()) {}
+
+SystemMessage::SystemMessage(int type, int gid, int pid, uint8* data)
+    : type_(type)
+    , gid_(gid)
+    , pid_(pid)
+    , data_(data) {}
+
 void SystemMessage::free_data_and_externals() {
   MessageDecoder::deallocate(data_);
   data_ = null;
 }
 
-MessageEncoder::MessageEncoder(Process* process, uint8* buffer, MessageFormat format)
+MessageEncoder::MessageEncoder(Process* process, uint8* buffer, MessageFormat format, bool take_ownership_of_buffer)
     : process_(process)
     , program_(process ? process->program() : null)
     , format_(format)
-    , buffer_(buffer) {}
+    , buffer_(buffer)
+    , take_ownership_of_buffer_(take_ownership_of_buffer) {}
 
 void MessageEncoder::encode_process_message(uint8* buffer, uint8 value) {
   MessageEncoder encoder(null, buffer);
   encoder.encode(Smi::from(value));
+  encoder.take_buffer();  // Don't free the buffer in the destructor.
   ASSERT(encoder.size() <= MESSAGING_PROCESS_MESSAGE_SIZE);
 }
 
-void MessageEncoder::free_copied() {
+MessageEncoder::~MessageEncoder() {
   for (unsigned i = 0; i < copied_count_; i++) {
     free(copied_[i]);
   }
+  if (take_ownership_of_buffer_) free(buffer_);
 }
 
-void MessageEncoder::neuter_externals() {
+uint8* MessageEncoder::take_buffer() {
   ObjectHeap* heap = process_->object_heap();
   for (unsigned i = 0; i < externals_count_; i++) {
     ByteArray* array = externals_[i];
@@ -103,6 +118,13 @@ void MessageEncoder::neuter_externals() {
     // collector does not have to deal with disposing a neutered byte array.
     heap->remove_vm_finalizer(array);
   }
+  for (unsigned i = 0; i < copied_count_; i++) {
+    copied_[i] = null;
+  }
+
+  uint8* result = buffer_;
+  buffer_ = null;
+  return result;
 }
 
 bool TisonEncoder::encode(Object* object) {
@@ -306,17 +328,17 @@ bool MessageEncoder::encode_arguments(char** argv, int argc) {
 bool MessageEncoder::encode_bundles(SnapshotBundle system, SnapshotBundle application) {
   write_uint8(TAG_ARRAY);
   write_cardinal(2);
-  return encode_byte_array_external(system.buffer(), system.size()) &&
-      encode_byte_array_external(application.buffer(), application.size());
+  return encode_bytes_external(system.buffer(), system.size()) &&
+      encode_bytes_external(application.buffer(), application.size());
 }
 #endif
 
-bool MessageEncoder::encode_byte_array_external(void* data, int length) {
+bool MessageEncoder::encode_bytes_external(void* data, int length, bool free_on_failure) {
   if (encoding_tison()) return false;
   write_uint8(TAG_BYTE_ARRAY);
   write_cardinal(length);
   write_pointer(data);
-  if (!encoding_for_size()) {
+  if (!encoding_for_size() && free_on_failure) {
     if (copied_count() >= ARRAY_SIZE(copied_)) {
       // TODO(kasper): Report meaningful error.
       return false;
@@ -733,33 +755,28 @@ bool ExternalSystemMessageHandler::set_priority(uint8 priority) {
   return (pid < 0) ? false : vm_->scheduler()->set_priority(pid, priority);
 }
 
-bool ExternalSystemMessageHandler::send(int pid, int type, void* data, int length, bool discard) {
+bool ExternalSystemMessageHandler::send(int pid, int type, void* data, int length, bool free_on_failure) {
   int buffer_size = 0;
   { MessageEncoder encoder(null);
-    encoder.encode_byte_array_external(data, length);
+    encoder.encode_bytes_external(data, length);
     buffer_size = encoder.size();
   }
 
   uint8* buffer = unvoid_cast<uint8*>(malloc(buffer_size));
   if (buffer == null) {
-    if (discard) free(data);
+    if (free_on_failure) free(data);
     return false;
   }
-  MessageEncoder encoder(buffer);
-  encoder.encode_byte_array_external(data, length);
+  MessageEncoder encoder(buffer);  // Takes over buffer.
+  encoder.encode_bytes_external(data, length, free_on_failure);
 
-  SystemMessage* message = _new SystemMessage(type, process_->group()->id(), process_->id(), buffer);
-  if (message == null) {
-    if (discard) encoder.free_copied();
-    free(buffer);
-    return false;
-  }
-  scheduler_err_t result = vm_->scheduler()->send_message(pid, message);
-  if (result == MESSAGE_OK) return true;
-  message->free_data_but_keep_externals();
-  if (discard) encoder.free_copied();
-  delete message;
-  return false;
+  // Takes over the buffer and neutralizes the MessageEncoder.
+  SystemMessage* system_message = _new SystemMessage(type, process_->group()->id(), process_->id(), &encoder);
+  if (system_message == null) return false;
+
+  // Can only fail if the pid is invalid.
+  scheduler_err_t result = vm_->scheduler()->send_message(pid, system_message);
+  return result == MESSAGE_OK;
 }
 
 Interpreter::Result ExternalSystemMessageHandler::run() {
@@ -770,8 +787,8 @@ Interpreter::Result ExternalSystemMessageHandler::run() {
       return Interpreter::Result(Interpreter::Result::YIELDED);
     }
     if (message->is_system()) {
-      SystemMessage* system = static_cast<SystemMessage*>(message);
-      MessageDecoder decoder(system->data());
+      SystemMessage* system_message = static_cast<SystemMessage*>(message);
+      MessageDecoder decoder(system_message->data());
       void* data = null;
       int length = 0;
       bool success = decoder.decode_byte_array_external(&data, &length);
@@ -782,10 +799,10 @@ Interpreter::Result ExternalSystemMessageHandler::run() {
       bool allocation_failed = !success && decoder.allocation_failed();
       if (allocation_failed && on_failed_allocation(length)) continue;
 
-      int pid = system->pid();
-      int type = system->type();
+      int pid = system_message->pid();
+      int type = system_message->type();
       if (success) {
-        system->free_data_but_keep_externals();
+        system_message->free_data_but_keep_externals();
       }
       process->remove_first_message();
       if (success) {

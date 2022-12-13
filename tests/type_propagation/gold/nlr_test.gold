@@ -77,7 +77,7 @@ stop_unwinding tests/type_propagation/nlr_test.toit
  18[053] - invoke static invoke tests/type_propagation/nlr_test.toit // {}
  21[041] - pop 1
  22[002] - pop, load local S2
- 24[020] - load literal Oddball (true/false/null)
+ 24[020] - load literal true
  26[006] - store outer S1
  28[088] - return S1 1
 
@@ -113,7 +113,7 @@ stop_unwinding_alternative tests/type_propagation/nlr_test.toit
  13[053] - invoke static invoke tests/type_propagation/nlr_test.toit // {Null_}
  16[041] - pop 1
  17[002] - pop, load local S2
- 19[020] - load literal Oddball (true/false/null)
+ 19[020] - load literal true
  21[006] - store outer S1
  23[088] - return S1 1
 
