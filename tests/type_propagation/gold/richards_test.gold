@@ -404,38 +404,34 @@ TaskControlBlock tests/type_propagation/richards_test.toit
   0[000] - load local S7
   2[000] - load local S7
   4[048] - as class TaskControlBlock?(45 - 46)
-  6[048] - as class TaskControlBlock?(45 - 46)
-  8[013] - store field, pop 0
- 10[000] - load local S7
- 12[000] - load local S6
- 14[048] - as class LargeInteger_(22 - 24)
- 16[048] - as class LargeInteger_(22 - 24)
- 18[013] - store field, pop 1
- 20[000] - load local S7
- 22[019] - load local 5
- 23[048] - as class LargeInteger_(22 - 24)
- 25[048] - as class LargeInteger_(22 - 24)
- 27[013] - store field, pop 2
- 29[000] - load local S7
- 31[018] - load local 4
- 32[048] - as class Packet?(40 - 41)
- 34[048] - as class Packet?(40 - 41)
- 36[013] - store field, pop 3
- 38[000] - load local S7
- 40[017] - load local 3
- 41[013] - store field, pop 4
- 43[000] - load local S7
- 45[022] - load null
- 46[013] - store field, pop 5
- 48[000] - load local S7
- 50[026] - load smi 2
- 52[009] - load field local 57 // {Null_|Packet}
- 54[082] - branch if false T60
- 57[041] - pop 1
- 58[026] - load smi 3
- 60[013] - store field, pop 5
- 62[000] - load local S7
- 64[088] - return S1 6
+  6[013] - store field, pop 0
+  8[000] - load local S7
+ 10[000] - load local S6
+ 12[048] - as class LargeInteger_(22 - 24)
+ 14[013] - store field, pop 1
+ 16[000] - load local S7
+ 18[019] - load local 5
+ 19[048] - as class LargeInteger_(22 - 24)
+ 21[013] - store field, pop 2
+ 23[000] - load local S7
+ 25[018] - load local 4
+ 26[048] - as class Packet?(40 - 41)
+ 28[013] - store field, pop 3
+ 30[000] - load local S7
+ 32[017] - load local 3
+ 33[013] - store field, pop 4
+ 35[000] - load local S7
+ 37[022] - load null
+ 38[013] - store field, pop 5
+ 40[000] - load local S7
+ 42[026] - load smi 2
+ 44[009] - load field local 57 // {Null_|Packet}
+ 46[082] - branch if false T52
+ 49[041] - pop 1
+ 50[026] - load smi 3
+ 52[013] - store field, pop 5
+ 54[000] - load local S7
+ 56[088] - return S1 6
 
 TaskControlBlock.set_running tests/type_propagation/richards_test.toit
  - argument 0: {TaskControlBlock}
@@ -567,20 +563,17 @@ IdleTask tests/type_propagation/richards_test.toit
   0[019] - load local 5
   1[019] - load local 5
   2[048] - as class Scheduler(46 - 47)
-  4[048] - as class Scheduler(46 - 47)
-  6[013] - store field, pop 0
-  8[019] - load local 5
-  9[018] - load local 4
- 10[048] - as class LargeInteger_(22 - 24)
- 12[048] - as class LargeInteger_(22 - 24)
- 14[013] - store field, pop 1
- 16[019] - load local 5
- 17[017] - load local 3
- 18[048] - as class LargeInteger_(22 - 24)
- 20[048] - as class LargeInteger_(22 - 24)
- 22[013] - store field, pop 2
- 24[019] - load local 5
- 25[088] - return S1 4
+  4[013] - store field, pop 0
+  6[019] - load local 5
+  7[018] - load local 4
+  8[048] - as class LargeInteger_(22 - 24)
+ 10[013] - store field, pop 1
+ 12[019] - load local 5
+ 13[017] - load local 3
+ 14[048] - as class LargeInteger_(22 - 24)
+ 16[013] - store field, pop 2
+ 18[019] - load local 5
+ 19[088] - return S1 4
 
 IdleTask.run tests/type_propagation/richards_test.toit
  - argument 0: {IdleTask}
@@ -635,10 +628,9 @@ DeviceTask tests/type_propagation/richards_test.toit
   0[017] - load local 3
   1[017] - load local 3
   2[048] - as class Scheduler(46 - 47)
-  4[048] - as class Scheduler(46 - 47)
-  6[013] - store field, pop 0
-  8[017] - load local 3
-  9[088] - return S1 2
+  4[013] - store field, pop 0
+  6[017] - load local 3
+  7[088] - return S1 2
 
 DeviceTask.run tests/type_propagation/richards_test.toit
  - argument 0: {DeviceTask}
@@ -674,20 +666,17 @@ WorkerTask tests/type_propagation/richards_test.toit
   0[019] - load local 5
   1[019] - load local 5
   2[048] - as class Scheduler(46 - 47)
-  4[048] - as class Scheduler(46 - 47)
-  6[013] - store field, pop 0
-  8[019] - load local 5
-  9[018] - load local 4
- 10[048] - as class LargeInteger_(22 - 24)
- 12[048] - as class LargeInteger_(22 - 24)
- 14[013] - store field, pop 1
- 16[019] - load local 5
- 17[017] - load local 3
- 18[048] - as class LargeInteger_(22 - 24)
- 20[048] - as class LargeInteger_(22 - 24)
- 22[013] - store field, pop 2
- 24[019] - load local 5
- 25[088] - return S1 4
+  4[013] - store field, pop 0
+  6[019] - load local 5
+  7[018] - load local 4
+  8[048] - as class LargeInteger_(22 - 24)
+ 10[013] - store field, pop 1
+ 12[019] - load local 5
+ 13[017] - load local 3
+ 14[048] - as class LargeInteger_(22 - 24)
+ 16[013] - store field, pop 2
+ 18[019] - load local 5
+ 19[088] - return S1 4
 
 WorkerTask.run tests/type_propagation/richards_test.toit
  - argument 0: {WorkerTask}
@@ -756,10 +745,9 @@ HandlerTask tests/type_propagation/richards_test.toit
   0[017] - load local 3
   1[017] - load local 3
   2[048] - as class Scheduler(46 - 47)
-  4[048] - as class Scheduler(46 - 47)
-  6[013] - store field, pop 0
-  8[017] - load local 3
-  9[088] - return S1 2
+  4[013] - store field, pop 0
+  6[017] - load local 3
+  7[088] - return S1 2
 
 HandlerTask.run tests/type_propagation/richards_test.toit
  - argument 0: {HandlerTask}
@@ -835,28 +823,25 @@ Packet tests/type_propagation/richards_test.toit
   0[019] - load local 5
   1[019] - load local 5
   2[048] - as class Packet?(40 - 41)
-  4[048] - as class Packet?(40 - 41)
-  6[013] - store field, pop 0
-  8[019] - load local 5
-  9[018] - load local 4
- 10[048] - as class LargeInteger_(22 - 24)
- 12[048] - as class LargeInteger_(22 - 24)
- 14[013] - store field, pop 1
- 16[019] - load local 5
- 17[017] - load local 3
- 18[048] - as class LargeInteger_(22 - 24)
- 20[048] - as class LargeInteger_(22 - 24)
- 22[013] - store field, pop 2
- 24[019] - load local 5
- 25[023] - load smi 0
- 26[013] - store field, pop 3
- 28[019] - load local 5
- 29[026] - load smi 4
- 31[022] - load null
- 32[053] - invoke static List <sdk>/core/collections.toit // {List_}
- 35[013] - store field, pop 4
- 37[019] - load local 5
- 38[088] - return S1 4
+  4[013] - store field, pop 0
+  6[019] - load local 5
+  7[018] - load local 4
+  8[048] - as class LargeInteger_(22 - 24)
+ 10[013] - store field, pop 1
+ 12[019] - load local 5
+ 13[017] - load local 3
+ 14[048] - as class LargeInteger_(22 - 24)
+ 16[013] - store field, pop 2
+ 18[019] - load local 5
+ 19[023] - load smi 0
+ 20[013] - store field, pop 3
+ 22[019] - load local 5
+ 23[026] - load smi 4
+ 25[022] - load null
+ 26[053] - invoke static List <sdk>/core/collections.toit // {List_}
+ 29[013] - store field, pop 4
+ 31[019] - load local 5
+ 32[088] - return S1 4
 
 Packet.link tests/type_propagation/richards_test.toit
  - argument 0: {Packet}
