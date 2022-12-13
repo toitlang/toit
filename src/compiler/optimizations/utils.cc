@@ -63,7 +63,7 @@ Type compute_guaranteed_type(Expression* node, Class* holder, Method* method) {
     return field->type();
   } else if (node->is_Typecheck()) {
     auto check = node->as_Typecheck();
-    return check->type();
+    if (check->is_as_check()) return check->type();
   }
   return Type::invalid();
 }

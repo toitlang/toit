@@ -270,6 +270,7 @@ Node* ReplacingVisitor::visit_Error(Error* node) {
 Node* ReplacingVisitor::visit_Nop(Nop* node) { return visit_Expression(node); }
 
 Node* ReplacingVisitor::visit_FieldStore(FieldStore* node) {
+  node->replace_receiver(_replace_expression(node->receiver()));
   node->replace_value(_replace_expression(node->value()));
   return visit_Expression(node);
 }
