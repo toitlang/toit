@@ -1378,7 +1378,7 @@ Interpreter::Result Interpreter::run() {
       DROP1();
       ASSERT(!is_stack_empty());
       STACK_AT_PUT(0, program->null_object());
-      // CHECK_PROPAGATED_TYPES_RETURN();
+      CHECK_PROPAGATED_TYPES_RETURN();
       DISPATCH(0);
     }
 
@@ -1419,7 +1419,7 @@ Interpreter::Result Interpreter::run() {
       DROP(2);
       ASSERT(!is_stack_empty());
       STACK_AT_PUT(0, program->null_object());
-      // CHECK_PROPAGATED_TYPES_RETURN();
+      CHECK_PROPAGATED_TYPES_RETURN();
       DISPATCH(0);
     }
 
@@ -1494,7 +1494,7 @@ Interpreter::Result Interpreter::run() {
     DROP(NUMBER_OF_ARGUMENTS - 1);
     ASSERT(!is_stack_empty());
     STACK_AT_PUT(0, return_value);
-    // CHECK_PROPAGATED_TYPES_RETURN();
+    CHECK_PROPAGATED_TYPES_RETURN();
     DISPATCH(0);
   OPCODE_END();
 
@@ -1511,7 +1511,7 @@ Interpreter::Result Interpreter::run() {
       bcp = reinterpret_cast<uint8*>(POP());
       ASSERT(!is_stack_empty());
       STACK_AT_PUT(0, result);
-      // CHECK_PROPAGATED_TYPES_RETURN();
+      CHECK_PROPAGATED_TYPES_RETURN();
       DISPATCH(0);
     } else {
       ASSERT(action == kCallBlockThenRestartBytecode);

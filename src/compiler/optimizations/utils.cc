@@ -61,9 +61,12 @@ Type compute_guaranteed_type(Expression* node, Class* holder, Method* method) {
       return Type::invalid();
     }
     return field->type();
-  } else if (node->is_Typecheck()) {
-    auto check = node->as_Typecheck();
-    return check->type();
+// TODO(kasper): This is temporarily disabled. It leads to typechecks with
+// ranges from 65535 to 65535.
+//
+//  } else if (node->is_Typecheck()) {
+//    auto check = node->as_Typecheck();
+//    return check->type();
   }
   return Type::invalid();
 }
