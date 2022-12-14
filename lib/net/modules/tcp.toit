@@ -163,10 +163,8 @@ class TcpSocket extends TcpSocket_ implements net.Socket Reader:
     while true:
       state := ensure_state_ TOIT_TCP_WRITE_ --error_bits=(TOIT_TCP_ERROR_ | TOIT_TCP_CLOSE_) --failure=: throw it
       wrote := tcp_write_ state.group state.resource data from to
-      if wrote == -1:
-        state.clear_state TOIT_TCP_WRITE_
-      else:
-        return wrote
+      if wrote != -1: return wrote
+      state.clear_state TOIT_TCP_WRITE_
 
   close_write -> none:
     state := state_
