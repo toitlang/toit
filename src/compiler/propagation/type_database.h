@@ -41,6 +41,10 @@ class TypeDatabase {
 
   std::string as_json() const;
 
+  void check_top(uint8* bcp, Object* top) const;
+  void check_return(uint8* bcp, Object* value) const;
+  void check_method_entry(Method method, Object** sp) const;
+
  private:
   Program* const program_;
   const int words_per_type_;
@@ -48,6 +52,9 @@ class TypeDatabase {
 
   std::unordered_map<int, TypeStack*> methods_;
   std::unordered_map<int, TypeSet> usage_;
+  std::unordered_map<int, TypeSet> returns_;
+
+  static std::unordered_map<Program*, TypeDatabase*> cache_;
 
   TypeDatabase(Program* program, int words_per_type);
 

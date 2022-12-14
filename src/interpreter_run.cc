@@ -25,6 +25,14 @@
 
 #include "objects_inline.h"
 
+#if defined(TOIT_FREERTOS)
+#undef TOIT_CHECK_PROPAGATED_TYPES
+#endif
+
+#if defined(TOIT_CHECK_PROPAGATED_TYPES)
+#include "compiler/propagation/type_database.h"
+#endif
+
 namespace toit {
 
 inline bool are_smis(Object* a, Object* b) {
@@ -166,11 +174,31 @@ Method Program::find_method(Object* receiver, int offset) {
     return Result(Result::PREEMPTED);                                 \
   }
 
+#ifdef TOIT_CHECK_PROPAGATED_TYPES
+#define CHECK_PROPAGATED_TYPES_METHOD_ENTRY(target)   \
+  if (propagated_types) {                             \
+    propagated_types->check_method_entry(target, sp); \
+  }
+#define CHECK_PROPAGATED_TYPES_TOP()                  \
+  if (propagated_types) {                             \
+    propagated_types->check_top(bcp, *sp);            \
+  }
+#define CHECK_PROPAGATED_TYPES_RETURN()               \
+  if (propagated_types) {                             \
+    propagated_types->check_return(bcp, *sp);         \
+  }
+#else
+#define CHECK_PROPAGATED_TYPES_METHOD_ENTRY(target)
+#define CHECK_PROPAGATED_TYPES_TOP()
+#define CHECK_PROPAGATED_TYPES_RETURN()
+#endif
+
 #define CALL_METHOD_WITH_RETURN_ADDRESS(target, return_address)       \
   static_assert(FRAME_SIZE == 2, "Unexpected frame size");            \
   PUSH(reinterpret_cast<Object*>(return_address));                    \
   PUSH(program->frame_marker());                                      \
   CHECK_STACK_OVERFLOW(target)                                        \
+  CHECK_PROPAGATED_TYPES_METHOD_ENTRY(target);                        \
   bcp = target.entry();                                               \
   DISPATCH(0)
 
@@ -249,6 +277,9 @@ Interpreter::Result Interpreter::run() {
 
   // Interpretation state.
   Program* program = process_->program();
+#ifdef TOIT_CHECK_PROPAGATED_TYPES
+  compiler::TypeDatabase* propagated_types = compiler::TypeDatabase::compute(program);
+#endif
   preemption_method_header_bcp_ = null;
   uword index__ = 0;
   Object** sp;
@@ -321,6 +352,7 @@ Interpreter::Result Interpreter::run() {
     Smi* block = Smi::cast(POP());
     Object** block_ptr = from_block(block);
     PUSH(block_ptr[stack_offset]);
+    CHECK_PROPAGATED_TYPES_TOP();
   OPCODE_END();
 
   OPCODE_BEGIN(STORE_OUTER);
@@ -335,6 +367,7 @@ Interpreter::Result Interpreter::run() {
   OPCODE_BEGIN_WITH_WIDE(LOAD_FIELD, field_index);
     Instance* instance = Instance::cast(POP());
     PUSH(instance->at(field_index));
+    CHECK_PROPAGATED_TYPES_TOP();
   OPCODE_END();
 
   OPCODE_BEGIN(LOAD_FIELD_LOCAL);
@@ -343,6 +376,7 @@ Interpreter::Result Interpreter::run() {
     int field = encoded >> 4;
     Instance* instance = Instance::cast(STACK_AT(local));
     PUSH(instance->at(field));
+    CHECK_PROPAGATED_TYPES_TOP();
   OPCODE_END();
 
   OPCODE_BEGIN(POP_LOAD_FIELD_LOCAL);
@@ -351,6 +385,7 @@ Interpreter::Result Interpreter::run() {
     int field = encoded >> 4;
     Instance* instance = Instance::cast(STACK_AT(local + 1));
     STACK_AT_PUT(0, instance->at(field));
+    CHECK_PROPAGATED_TYPES_TOP();
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(STORE_FIELD, field_index);
@@ -409,6 +444,7 @@ Interpreter::Result Interpreter::run() {
   OPCODE_BEGIN_WITH_WIDE(LOAD_GLOBAL_VAR, global_index);
     Object** global_variables = process_->object_heap()->global_variables();
     PUSH(global_variables[global_index]);
+    CHECK_PROPAGATED_TYPES_TOP();
   OPCODE_END();
 
   OPCODE_BEGIN(LOAD_GLOBAL_VAR_DYNAMIC);
@@ -438,6 +474,7 @@ Interpreter::Result Interpreter::run() {
     } else {
       PUSH(value);
     }
+    CHECK_PROPAGATED_TYPES_TOP();
   OPCODE_END();
 
   OPCODE_BEGIN_WITH_WIDE(STORE_GLOBAL_VAR, global_index);
@@ -1046,6 +1083,7 @@ Interpreter::Result Interpreter::run() {
       ASSERT(!is_stack_empty());
       PUSH(result);
       process_->object_heap()->check_install_heap_limit();
+      CHECK_PROPAGATED_TYPES_RETURN();
       DISPATCH(0);
     }
   OPCODE_END();
@@ -1076,6 +1114,7 @@ Interpreter::Result Interpreter::run() {
     DROP(arity);
     ASSERT(!is_stack_empty());
     PUSH(result);
+    CHECK_PROPAGATED_TYPES_RETURN();
     DISPATCH(0);
   OPCODE_END();
 
@@ -1093,6 +1132,7 @@ Interpreter::Result Interpreter::run() {
     DROP(arity);
     ASSERT(!is_stack_empty());
     PUSH(program->null_object());
+    CHECK_PROPAGATED_TYPES_RETURN();
     DISPATCH(0);
   OPCODE_END();
 
@@ -1249,6 +1289,9 @@ Interpreter::Result Interpreter::run() {
       DROP(arity);
       ASSERT(!is_stack_empty());
       PUSH(result_or_height_diff);
+      if (tos_value != UNWIND_REASON_WHEN_THROWING_EXCEPTION) {
+        CHECK_PROPAGATED_TYPES_RETURN();
+      }
     } else {
       // A non-local branch.
       int absolute_bci = tos_value >> 1;
@@ -1339,6 +1382,7 @@ Interpreter::Result Interpreter::run() {
       DROP1();
       ASSERT(!is_stack_empty());
       STACK_AT_PUT(0, program->null_object());
+      CHECK_PROPAGATED_TYPES_RETURN();
       DISPATCH(0);
     }
 
@@ -1379,6 +1423,7 @@ Interpreter::Result Interpreter::run() {
       DROP(2);
       ASSERT(!is_stack_empty());
       STACK_AT_PUT(0, program->null_object());
+      CHECK_PROPAGATED_TYPES_RETURN();
       DISPATCH(0);
     }
 
@@ -1453,8 +1498,8 @@ Interpreter::Result Interpreter::run() {
     DROP(NUMBER_OF_ARGUMENTS - 1);
     ASSERT(!is_stack_empty());
     STACK_AT_PUT(0, return_value);
+    CHECK_PROPAGATED_TYPES_RETURN();
     DISPATCH(0);
-    UNREACHABLE();
   OPCODE_END();
 
   OPCODE_BEGIN(INTRINSIC_HASH_FIND); {
@@ -1470,6 +1515,7 @@ Interpreter::Result Interpreter::run() {
       bcp = reinterpret_cast<uint8*>(POP());
       ASSERT(!is_stack_empty());
       STACK_AT_PUT(0, result);
+      CHECK_PROPAGATED_TYPES_RETURN();
       DISPATCH(0);
     } else {
       ASSERT(action == kCallBlockThenRestartBytecode);
