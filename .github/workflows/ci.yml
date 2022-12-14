@@ -190,7 +190,7 @@ jobs:
         run: |
           make all
           if [ "$RUNNER_OS" == "Linux" ]; then
-            make CROSS_ARCH=host-32 BUILD_TYPE=Debug all-cross
+            make CROSS_ARCH=host32 BUILD_TYPE=Debug all-cross
             make HOST=host-ctp TOIT_CHECK_PROPAGATED_TYPES=1 sdk
           fi
 
@@ -217,7 +217,7 @@ jobs:
       - name: Test 32-bit debug
         if: runner.os == 'Linux'
         run: |
-          make HOST=host-32 BUILD_TYPE=Debug test
+          make HOST=host32 BUILD_TYPE=Debug test
 
       # Test external code.
       - name: Test external
@@ -243,9 +243,9 @@ jobs:
           make test-external
           make test-external-health
           if [ "$RUNNER_OS" == "Linux" ]; then
-            cmake -DTOIT_TEST_EXTERNAL=ON build/host-32
-            make CROSS_ARCH=host-32 BUILD_TYPE=Debug rebuild-cross-cmake
-            cd build/host-32
+            cmake -DTOIT_TEST_EXTERNAL=ON build/host32
+            make CROSS_ARCH=host32 BUILD_TYPE=Debug rebuild-cross-cmake
+            cd build/host32
             ninja check_external
             cd ../..
           fi
