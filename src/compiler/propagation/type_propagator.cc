@@ -428,7 +428,6 @@ void TypePropagator::call_static(MethodTemplate* caller, TypeScope* scope, uint8
     Program* program = this->program();
     TypeSet receiver = stack->local(arity);
     TypeSet::Iterator it(receiver, words_per_type_);
-    int variants = 0;
     while (it.has_next()) {
       unsigned id = it.next();
       int entry_index = id + offset;
@@ -443,9 +442,7 @@ void TypePropagator::call_static(MethodTemplate* caller, TypeScope* scope, uint8
       arguments.push_back(ConcreteType(id));
       call_method(caller, scope, site, target, arguments);
       arguments.pop_back();
-      variants++;
     }
-    ASSERT(variants > 0);
   }
 
   stack->drop_arguments(target.arity());
