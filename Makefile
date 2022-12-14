@@ -85,7 +85,7 @@ endif
 # cmake needs to be rerun, but we don't detect that, so it might not
 # get run enough.  It takes <1s on Linux to run cmake, so it's
 # usually best to run it eagerly.
-.PHONY: build/host/CMakeCache.txt
+.PHONY: build/$(HOST)/CMakeCache.txt
 build/$(HOST)/CMakeCache.txt:
 	$(MAKE) rebuild-cmake
 
