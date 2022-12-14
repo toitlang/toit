@@ -25,7 +25,11 @@
 
 #include "objects_inline.h"
 
-#ifdef TOIT_CHECK_PROPAGATED_TYPES
+#if defined(TOIT_FREERTOS)
+#undef TOIT_CHECK_PROPAGATED_TYPES
+#endif
+
+#if defined(TOIT_CHECK_PROPAGATED_TYPES)
 #include "compiler/propagation/type_database.h"
 #endif
 

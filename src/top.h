@@ -80,12 +80,6 @@
 #error "No OS configuration specified"
 #endif
 
-#if defined(TOIT_FREERTOS)
-#undef TOIT_CHECK_PROPAGATED_TYPES
-#else
-#define TOIT_CHECK_PROPAGATED_TYPES
-#endif
-
 #if (__WORDSIZE == 64) || __WIN64
 #define BUILD_64 1
 #elif (__WORDSIZE == 32) || ESP32 || __WIN32
