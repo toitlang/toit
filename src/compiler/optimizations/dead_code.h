@@ -22,9 +22,7 @@ namespace toit {
 namespace compiler {
 
 /// Removes dead code after a `return` or a call.
-ir::Sequence* eliminate_dead_code(ir::Sequence* node,
-                                  ir::Program* program,
-                                  TypeDatabase* propaged_types);
+ir::Sequence* eliminate_dead_code(ir::Sequence* node, TypeDatabase* propaged_types);
 
 } // namespace toit::compiler
 } // namespace toit

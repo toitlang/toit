@@ -47,6 +47,7 @@ class TypeDatabase {
 
   // ...
   bool is_dead(ir::Method* method) const;
+  bool is_dead(ir::Call* call) const;
   bool does_not_return(ir::Call* call) const;
 
   void check_top(uint8* bcp, Object* top) const;

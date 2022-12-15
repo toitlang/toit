@@ -386,6 +386,7 @@ void DispatchTableBuilder::handle_classes(List<Class*> classes, int static_metho
     auto holder = classes[i];
 
     for (auto method : holder->methods()) {
+      if (method->is_dead()) continue;
       DispatchSelector selector(method->name(), method->plain_shape());
       fitter.define(selector, holder, method);
     }

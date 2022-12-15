@@ -71,7 +71,7 @@ class OptimizationVisitor : public ReplacingVisitor {
   /// Removes code after `return`s and calls.
   Node* visit_Sequence(Sequence* node) {
     node = ReplacingVisitor::visit_Sequence(node)->as_Sequence();
-    node = eliminate_dead_code(node, program_, propagated_types_);
+    node = eliminate_dead_code(node, propagated_types_);
     return simplify_sequence(node);
   }
 
@@ -87,7 +87,6 @@ class OptimizationVisitor : public ReplacingVisitor {
   }
 
   void set_class(Class* klass) { holder_ = klass; }
-  void set_method(Method* method) { method_ = method; }
 
  private:
   Program* program_;

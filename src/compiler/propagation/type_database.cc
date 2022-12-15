@@ -177,6 +177,13 @@ bool TypeDatabase::is_dead(ir::Method* method) const {
   return probe == methods_.end();
 }
 
+bool TypeDatabase::is_dead(ir::Call* call) const {
+  int id = source_mapper_->id_for_call(call);
+  if (id < 0) return true;
+  auto probe = returns_.find(id);
+  return (probe == returns_.end());
+}
+
 bool TypeDatabase::does_not_return(ir::Call* call) const {
   int id = source_mapper_->id_for_call(call);
   if (id < 0) return true;
