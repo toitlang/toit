@@ -601,10 +601,10 @@ PRIMITIVE(ap_info) {
   Array* ap_array = process->object_heap()->allocate_array(element_count, Smi::zero());
   if (ap_array == null) ALLOCATION_FAILED;
 
-  String* ssid = process->allocate_string((char *)ap_record.ssid);
+  String* ssid = process->allocate_string((char*)ap_record.ssid);
   if (ssid == null) ALLOCATION_FAILED;
 
-  size_t bssid_size = 6;
+  const size_t bssid_size = 6;
   ByteArray* bssid = process->allocate_byte_array(bssid_size);
   if (bssid == null) ALLOCATION_FAILED;
 
